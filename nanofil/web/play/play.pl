@@ -21,6 +21,7 @@
 :- use_module(c_lower).
 :- use_module(opt).
 :- use_module(ir_text).
+:- use_module(pizlonate).
 :- use_module(filc_amd64).
 :- use_module(asm).
 :- use_module(library(lists)).
@@ -77,7 +78,7 @@ stages_opt(Opt, M0, [S, term(ir, M), P|Ss]) :-
     ).
 
 stages_asm(M, [S|Ss]) :-
-    timed(backend, filc_module_asm(M, Lines), S),
+    timed(backend, ( pizlonate_module(M, C), filc_module_asm(C, Lines) ), S),
     (   ok(S)
     ->  timed(print_asm, with_output_to(chars(Asm), print_asm(Lines)), P),
         Ss = [term(asm, Lines), P, text(asm, Asm)]

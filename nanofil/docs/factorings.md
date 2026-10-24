@@ -218,6 +218,19 @@ accepts what clang accepts and it refused: a `void` arm of `?:`
 `?:` pointer arms by composite type and qualifiers. Each of these has
 a test that failed before.
 
+## Fil-C's checks, stated once
+
+The access check was emitted by `filc_amd64.pl` inside every load and
+store at a p address and given meaning, separately, by `interp.pl`.
+Now `pizlonate.pl` states each check as an IR term that yields a proven
+address (class `a`), which raw accesses read; `ir.pl` says when a check
+covers an access and that every loop polls; the interpreter runs the
+checks and reports an access no check covers as `unchecked(Why)`; and
+the backend emits the check's sequence from the term. The assembly
+stayed byte-identical. Along the way `valid_module` learned that
+definitions dominate uses. Design, runtime evidence and review:
+[pizlonation.md](pizlonation.md).
+
 ## Where this goes
 
 The direction past these five is the same. Look for anything that is

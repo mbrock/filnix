@@ -498,3 +498,23 @@ Verified in staging `35faf87`, not inferred from libc conventions:
 
 Nanofil's approved IR, conservative payload snapshot, optimizer barrier,
 Oracle review conditions and test coverage are in [setjmp.md](setjmp.md).
+
+## Safepoints between a check and its access
+
+Verified at the pin for [pizlonation.md](pizlonation.md), which has the
+details:
+
+- `filc_object_ensure_aux_ptr_outline` can exit (a safepoint): for an
+  object larger than `FILC_MAX_BYTES_BETWEEN_POLLCHECKS` it zeroes the new
+  aux between `filc_exit_with_allocation_root` and
+  `filc_enter_with_allocation_root` (filc_runtime.c:2575-2590), and
+  `filc_exit` runs deferred signal handlers and the pollcheck callback
+  (filc_runtime.c:1231-1266). `filc_store_barrier_for_lower_slow` does
+  not exit (`barrier_impl`, filc_runtime.c:2278).
+- `free_impl` sets `upper = lower` and the FREE flag but keeps the aux
+  pointer (filc_runtime.c:3172-3195). Frame lowers are marked with plain
+  `marker.mark` (filc_runtime_inlines.h:459), so a freed object a frame
+  still roots is not reclaimed; heap references to freed objects are
+  redirected to `filc_free_singleton` (fugc.h:162-170).
+- `filc_allocate` exits only for sizes above
+  `FILC_MAX_BYTES_BETWEEN_POLLCHECKS` (filc_runtime.c:2919, 2954-2957).

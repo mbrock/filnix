@@ -86,9 +86,9 @@ Smaller ones: scalar-type facts spread over eight tables (`int_info/3`,
 `rank/2`, `unsigned_of/2`, `type_class/2`, `load_op/3`, `store_width/2`,
 `narrow_ext/2`, `conversion_int_type/2`); C operators tabled about six
 times (`c_parse`, `c_types`, `c_lower`), with punctuators and
-identifier characters defined in both `c_lex.pl` and `c_pp.pl`; and the
-Fil-C checks, which have no IR form and are stated separately by
-`filc_amd64.pl` (emission) and `interp.pl` (semantics).
+identifier characters defined in both `c_lex.pl` and `c_pp.pl`. (The
+Fil-C checks, stated separately by `filc_amd64.pl` and `interp.pl`, now
+have an IR form: [pizlonation.md](pizlonation.md).)
 
 ## The next big intervention: one typed tree
 

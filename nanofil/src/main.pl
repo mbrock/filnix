@@ -4,7 +4,8 @@
       print FILE              read, validate, print the IR (ir_text.pl)
       compile FILE            read, validate, print x86-64 assembly
       cc FILE                 compile C (.c or preprocessed .i) to Fil-C assembly
-      cc-ir FILE              compile C, print the IR
+      cc-ir FILE              compile C, print the IR (unchecked; the
+                              Fil-C backend's input is pizlonated)
       tokens FILE             print C token terms, without locations
       run FILE FN ARG...      interpret $FN on integer arguments
       difftest FILE OUTDIR    write OUTDIR/{expected.txt,harness.c,mode}
@@ -39,6 +40,7 @@
 :- use_module(c_lower).
 :- use_module(opt).
 :- use_module(promote).
+:- use_module(pizlonate).
 :- use_module(library(lists)).
 :- use_module(library(format)).
 :- use_module(library(pio)).
@@ -146,7 +148,7 @@ command(Opt, [compile, File]) :-
 command(Opt, [cc, File]) :-
     c_file_module(File, Module0),
     optimize(Opt, Module0, Module),
-    filc_module_asm(Module, Asm),
+    mode_module_asm(filc, Module, Asm),
     print_asm(Asm).
 command(Opt, ['cc-ir', File]) :-
     c_file_module(File, Module0),
@@ -180,6 +182,7 @@ command(Opt, [difftest, File, Dir]) :-
             ResultVerdicts),
     pairs_keys_values(ResultVerdicts, Results, Verdicts),
     opt_report_validation(Opt, File, Module0, Module, Verdicts),
+    mode_pizlonation_agrees(Mode, File, Module-Prepared, Runs),
     include(comparable(Mode), Results, Compared),
     exclude(comparable(Mode), Results, Skipped),
     atom_concat(Dir, '/expected.txt', ExpectedFile),
@@ -201,7 +204,58 @@ command(Opt, [difftest, File, Dir]) :-
 % mode_module_asm(+Mode, +Module, -Asm): Asm is the asm.pl lines of
 % Module by the backend for Mode, filc or plain.
 mode_module_asm(plain, Module, Asm) :- module_asm(Module, Asm).
-mode_module_asm(filc, Module, Asm) :- filc_module_asm(Module, Asm).
+mode_module_asm(filc, Module, Asm) :-
+    checked_module(Module, Checked),
+    filc_module_asm(Checked, Asm).
+
+% checked_module(+Module, -Checked): Checked is Module pizlonated, which
+% must be valid checked IR (ir.pl): the validator verifies the pass.
+checked_module(Module, Checked) :-
+    pizlonate_module(Module, Checked),
+    once(valid_module(Checked)).
+
+/* mode_pizlonation_agrees(+Mode, +File, +Module-Prepared, +Runs): for a
+   filc module, the pizlonated Module has the same outcome as Module on
+   every run, traps and their reasons included, or the command throws:
+   the explicit checks are exactly the implicit ones. A missing or too
+   weak check shows as the outcome unchecked(Why). Both run with the same
+   fuel, since pizlonate keeps every block. */
+mode_pizlonation_agrees(plain, _, _, _).
+mode_pizlonation_agrees(filc, File, Module-Prepared, Runs) :-
+    checked_module(Module, Checked),
+    module_prepared(Checked, CheckedPrepared),
+    findall(Bad,
+            ( member(Run, Runs),
+              pizlonation_verdict(Module-Prepared, Checked-CheckedPrepared,
+                                  Run, Bad),
+              Bad \== ok
+            ),
+            Bads),
+    forall(member(bad(CallText, Text0, Text), Bads),
+           format("PIZLONATION FAILED ~w ~w: ~w unchecked, ~w checked~n",
+                  [File, CallText, Text0, Text])),
+    (   Bads == [] -> true
+    ;   throw(nanofil_error('pizlonation changed an outcome'))
+    ).
+
+pizlonation_verdict(Original, Checked, Run, Verdict) :-
+    fuel_step(Fuel),
+    module_run_result(Original, Run, Fuel, r(Fn, Args, Outcome0)),
+    max_fuel(MaxFuel),
+    (   Outcome0 \== out_of_fuel
+    ;   Fuel == MaxFuel
+    ),
+    !,
+    module_run_result(Checked, Run, Fuel, r(_, _, Outcome)),
+    (   (   ground(Outcome0) -> Outcome0 == Outcome
+        ;   \+ \+ Outcome0 = Outcome
+        )
+    ->  Verdict = ok
+    ;   call_text(Fn, Args, CallText),
+        outcome_text(Outcome0, Text0),
+        outcome_text(Outcome, Text),
+        Verdict = bad(CallText, Text0, Text)
+    ).
 
 % opt_valid_module(+Opt, +Module): with -O (o1), the optimized Module is
 % valid. valid_module's clauses leave choice points that throw on retry.

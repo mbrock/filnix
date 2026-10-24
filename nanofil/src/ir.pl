@@ -22,8 +22,12 @@
       loc(File, Line)                     the instructions after it, up to
                                           the next loc, come from line Line
                                           of File; it does nothing
+      st(Width, Off, Value, Addr)         checked stage: a raw store (below)
     Jump: jmp(L) | jnz(V, L1, L2) | ret(V) | rets([V1, V2]) | ret | hlt
-          rets returns a tuple
+          rets returns a tuple. A jump's target may be poll(L): a
+          pollcheck on the edge, after the phis' copies, then L. A
+          pollcheck is a safepoint: the thread may run signal handlers
+          and answer the collector.
 
     Op: add sub mul div udiv rem urem and or xor sar shr shl neg copy
         cmp(Cond, K)   K w|l: eq ne sle slt sge sgt ule ult uge ugt;
@@ -45,6 +49,13 @@
                       setjmp | '_setjmp' | sigsetjmp. SaveMask must be
                       c(0) except for sigsetjmp. Native returns-twice;
                       snapshot/restore contract in docs/setjmp.md.
+        check(Lo, Hi, Rights, Align)
+                      checked stage: class a result, [p P]. Traps unless
+                      P's capability permits Rights (read | write) on
+                      [P+Lo, P+Hi) and P+Lo is Align-aligned; else the
+                      result is P, proven accessible.
+        ld(T, Off)    checked stage: a raw load of type T (as load(T))
+                      at A+Off, [a A]
 
     Values: t(Name) | c(Integer) | glo(Name)
       At s/d, c(Integer) is an unsigned IEEE bit pattern (docs/float.md).
@@ -73,6 +84,25 @@
              data or function object; S may be defined outside the
              module. See docs/m3.md, m4.md.
 
+    A module is in one of two stages, told apart by its vocabulary:
+
+      unchecked  as the frontend and the middle end write it. In filc
+                 mode, load(T) and store at a p address mean "Fil-C's
+                 access check, then the access".
+      checked    after pizlonate.pl, what the Fil-C backend compiles:
+                 every check is explicit. A check yields a temporary of
+                 class a, a proven address, which only raw accesses read:
+                 ld(T, Off) and st(W, Off, V, A). The check that covers
+                 an access is its address operand's definition. A raw
+                 access its check does not cover is a bug of the pass,
+                 which the interpreter reports as the outcome
+                 unchecked(Why). Every cycle of the CFG has a poll edge.
+
+    Class a never crosses a safepoint (a call, a pollcheck, alloc, setjmp,
+    va_arg, a symbol's getter, or st(p, ...), whose ensure-aux may exit),
+    since a free may make the proof stale. For now each check is followed
+    immediately by its one use, so none can.
+
     Variable names below: M a module, Fn a function name, K a class
     (w, l or p), V an IR value, L a label.
 */
@@ -80,11 +110,13 @@
                op_kind/2, valid_op/1, valid_module/1, func_named/3, width_bytes/2,
                op_arg_classes/4, op_result_ok/3,
                module_mode/2, addr_class/2, variadic_func/1, setjmp_func/1,
-               narrow_type/3, without_locs/2]).
+               narrow_type/3, without_locs/2, access_size_align/3,
+               jump_target/2, polls_every_cycle/1]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
 :- use_module(library(dcgs)).
+:- use_module(cfg).
 
 %! class(?K, ?Kind, ?Bits) is nondet.
 %
@@ -173,6 +205,8 @@ kind_arity(float_convert, 1).
 kind_arity(float_to_int, 1).
 kind_arity(int_to_float, 1).
 kind_arity(cast, 1).
+kind_arity(check, 1).
+kind_arity(ld, 1).
 
 %! valid_op(+Op) is semidet.
 %
@@ -182,7 +216,24 @@ kind_arity(cast, 1).
 valid_op(cmp(Cond, K)) :- !, comparison(Cond, K).
 valid_op(load(T)) :- !, load_type(T).
 valid_op(alloc(Align)) :- !, alloc_align(Align).
+valid_op(check(Lo, Hi, Rights, Align)) :- !,
+    integer(Lo), integer(Hi), Lo < Hi,
+    memberchk(Rights, [read, write]),
+    memberchk(Align, [1, 2, 4, 8, 16]).
+valid_op(ld(T, Off)) :- !, load_type(T), integer(Off).
 valid_op(Op) :- op_kind(Op, _).
+
+%! access_size_align(?X, ?Size, ?Align) is nondet.
+%
+%  A load of type X or a store of width X accesses Size bytes, and Fil-C
+%  requires its address to be Align-aligned: 8 for a pointer, whose
+%  capability lives in the aux word of its 8-byte slot, else 1.
+
+access_size_align(p, 8, 8).
+access_size_align(X, Size, 1) :-
+    (   width_bytes(X, Size), X \== p
+    ;   narrow_type(X, Size, _)
+    ).
 
 cmp_cond(eq).  cmp_cond(ne).
 cmp_cond(sle). cmp_cond(slt). cmp_cond(sge). cmp_cond(sgt).
@@ -221,7 +272,8 @@ alloc_align(16).
 %    alu       mul div udiv rem urem and or xor: binary, integer only
 %    shift     sar shr shl: the count is read at w
 %    neg copy ptoi itop  each its own kind; copy may be of class p
-%    cmp ext load alloc  the four compounds
+%    cmp ext load alloc  compounds
+%    check ld   the checked stage: a check and a raw load
 
 op_kind(add, additive).
 op_kind(sub, additive).
@@ -258,6 +310,8 @@ op_kind(cmp(_, _), cmp).
 op_kind(ext(T), ext) :- narrow_type(T, _, _).
 op_kind(load(_), load).
 op_kind(alloc(_), alloc).
+op_kind(check(_, _, _, _), check).
+op_kind(ld(_, _), ld).
 
 %! func_named(+M, +Name, -Func) is semidet.
 %
@@ -336,6 +390,8 @@ pointer_inst(call(to(_, p), _, _)).
 pointer_inst(call(tuple(_), _, _)).
 pointer_inst(call(_, _, Args)) :- memberchk(arg(p, _), Args).
 pointer_inst(call(_, t(_), _)).
+pointer_inst(ins(_, a, _, _)).
+pointer_inst(st(_, _, _, _)).
 
 %% Validation
 
@@ -355,10 +411,32 @@ pointer_inst(call(_, t(_), _)).
 valid_module(M) :-
     M = module(Items),
     module_mode(M, Mode),
-    maplist(valid_item(M, Mode), Items).
+    module_stage(M, Stage),
+    maplist(valid_item(M, Mode, Stage), Items).
 
-% valid_item(+M, +Mode, +Item): Item, an item of M, is well formed.
-valid_item(M, Mode, func(Name, _, Ret, Params, Blocks)) :-
+% module_stage(+M, -Stage): Stage is checked when M uses any word of the
+% checked stage (a check, a raw access or a poll edge), else unchecked.
+module_stage(module(Items), Stage) :-
+    (   member(func(_, _, _, _, Blocks), Items),
+        member(blk(_, _, Insts, Jump), Blocks),
+        (   member(Inst, Insts), checked_inst(Inst)
+        ;   checked_jump(Jump)
+        )
+    ->  Stage = checked
+    ;   Stage = unchecked
+    ).
+
+checked_inst(ins(_, _, check(_, _, _, _), _)).
+checked_inst(ins(_, _, ld(_, _), _)).
+checked_inst(st(_, _, _, _)).
+
+checked_jump(jmp(poll(_))).
+checked_jump(jnz(_, poll(_), _)).
+checked_jump(jnz(_, _, poll(_))).
+
+% valid_item(+M, +Mode, +Stage, +Item): Item, an item of M, is well
+% formed.
+valid_item(M, Mode, Stage, func(Name, _, Ret, Params, Blocks)) :-
     (   Blocks == [] -> fn_error(Name, 'function has no blocks', []) ; true ),
     ( (any_class(Ret) ; Ret == void ; Ret = tuple(_)) -> true
     ; fn_error(Name, 'invalid return class ~w', [Ret]) ),
@@ -388,8 +466,11 @@ valid_item(M, Mode, func(Name, _, Ret, Params, Blocks)) :-
         jump_target(Jump, Entry)
     ->  fn_error(Name, 'jump to the entry block ~w', [Entry])
     ;   true
-    ).
-valid_item(_, Mode, data(Name, _, Align, Items)) :-
+    ),
+    proof_class_defs(Name, Params, Blocks),
+    definitions_dominate(Name, Params, Blocks),
+    stage_func(Stage, Name, Mode, Blocks).
+valid_item(_, Mode, _, data(Name, _, Align, Items)) :-
     (   memberchk(Align, [1, 2, 4, 8, 16]) -> true
     ;   fn_error(Name, 'unsupported data alignment ~w', [Align])
     ),
@@ -428,7 +509,7 @@ temp_defs(Params, Blocks, Defs) :-
 % Defs is sorted, so two classes for one temporary are adjacent.
 check_temp_classes(Fn, Defs) :-
     forall(member(_-K, Defs),
-           ( any_class(K) -> true ; fn_error(Fn, 'invalid class ~w', [K]) )),
+           ( temp_class(K) -> true ; fn_error(Fn, 'invalid class ~w', [K]) )),
     (   append(_, [N-K1, N-K2|_], Defs), K1 \== K2
     ->  fn_error(Fn, 't(~w) has classes ~w and ~w', [N, K1, K2])
     ;   true
@@ -463,10 +544,243 @@ valid_block(Ctx, blk(Label, Phis, Insts, Jump)) :-
     ;   true
     ).
 
-% jump_target(+Jump, -L) is nondet: Jump can branch to L.
-jump_target(jmp(L), L).
-jump_target(jnz(_, L, _), L).
-jump_target(jnz(_, _, L), L).
+%! jump_target(+Jump, -L) is nondet.
+%
+%  Jump can branch to the label L, with or without a pollcheck.
+jump_target(jmp(T), L) :- edge_label(T, L).
+jump_target(jnz(_, T, _), L) :- edge_label(T, L).
+jump_target(jnz(_, _, T), L) :- edge_label(T, L).
+
+% temp_class(?K): a temporary may have class K: a value class, or a, a
+% proven address (checked stage), which lives in no memory and is no
+% value of C.
+temp_class(K) :- any_class(K).
+temp_class(a).
+
+% proof_class_defs(+Fn, +Params, +Blocks): only a check defines a
+% temporary of class a, and nothing passes one to a call. Phis,
+% parameters and call results would carry a proof across an edge or a
+% safepoint. (A check's own class is op_result_ok/3's.)
+proof_class_defs(Fn, Params, Blocks) :-
+    (   (   member(par(a, _), Params)
+        ;   member(blk(_, Phis, Insts, _), Blocks),
+            (   member(phi(_, a, _), Phis)
+            ;   member(call(Res, _, Args), Insts),
+                (   Res = to(_, a)
+                ;   Res = tuple(Tos), memberchk(to(_, a), Tos)
+                ;   memberchk(arg(a, _), Args)
+                )
+            )
+        )
+    ->  fn_error(Fn, 'class a is only a check''s result, read by ld and st',
+                 [])
+    ;   true
+    ).
+
+/* definitions_dominate(+Fn, +Params, +Blocks): in every reachable block,
+   each use of a temporary is dominated by one of its definitions: a
+   parameter, an earlier instruction or phi of the same block, or one in
+   a block that strictly dominates it. A phi reads its value at the end
+   of the predecessor, if that is reachable. A temporary may be defined
+   more than once (tests/fixtures/memory.ir); one dominating definition
+   is enough. Unreachable blocks are not checked. */
+definitions_dominate(Fn, Params, Blocks) :-
+    func_cfg(Blocks, Cfg),
+    cfg_idoms(Cfg, Idom),
+    dom_intervals(Cfg, Idom, Intervals),
+    findall(N-param, member(par(_, t(N)), Params), ParamSites),
+    block_sites(Blocks, Pairs0, []),
+    append(ParamSites, Pairs0, Pairs),
+    keysort(Pairs, Sorted),
+    group_sites(Sorted, Grouped),
+    list_to_assoc(Grouped, Sites),
+    findall(L-End, ( member(blk(L, _, Insts, _), Blocks), length(Insts, End) ),
+            Ends0),
+    list_to_assoc(Ends0, Ends),
+    dominated_blocks(Blocks, dom(Fn, Sites, Intervals, Ends)).
+
+% block_sites(+Blocks)//: N-at(L, I) for each definition of t(N), at
+% index I of block L, a phi's at -1.
+block_sites([]) --> [].
+block_sites([blk(L, Phis, Insts, _)|Bs]) -->
+    phi_sites(Phis, L),
+    inst_sites(Insts, L, 0),
+    block_sites(Bs).
+
+phi_sites([], _) --> [].
+phi_sites([phi(t(N), _, _)|Phis], L) --> [N-at(L, -1)], phi_sites(Phis, L).
+
+inst_sites([], _, _) --> [].
+inst_sites([Inst|Insts], L, I) -->
+    { findall(N-at(L, I), inst_def(Inst, N), Defs),
+      I1 is I + 1 },
+    seq(Defs),
+    inst_sites(Insts, L, I1).
+
+% group_sites(+Pairs, -Groups): Pairs N-Site, sorted by N, grouped as
+% N-Sites.
+group_sites([], []).
+group_sites([N-S|Ps], [N-[S|Ss]|Gs]) :-
+    same_key(N, Ps, Ss, Rest),
+    group_sites(Rest, Gs).
+
+same_key(N, [N1-S|Ps], [S|Ss], Rest) :- N1 == N, !, same_key(N, Ps, Ss, Rest).
+same_key(_, Ps, [], Ps).
+
+% dominated_blocks(+Blocks, +D): every use in the reachable blocks of
+% Blocks (those with a dominator-tree interval) is dominated: an
+% instruction's at its index, the jump's at the end of the block, and a
+% phi's operand at the end of its predecessor, if that is reachable. D
+% is dom(Fn, Sites, Intervals, Ends), Ends the number of instructions of
+% each block. Plain recursion, not maplist/3 over closures, which
+% Trealla copies with D at every call.
+dominated_blocks([], _).
+dominated_blocks([blk(L, Phis, Insts, Jump)|Bs], D) :-
+    D = dom(_, _, Intervals, _),
+    (   get_assoc(L, Intervals, _)
+    ->  dominated_insts(Insts, 0, End, L, D),
+        jump_uses(Jump, Us),
+        dominated_uses(Us, L, End, D),
+        dominated_phis(Phis, D)
+    ;   true
+    ),
+    dominated_blocks(Bs, D).
+
+dominated_insts([], I, I, _, _).
+dominated_insts([Inst|Insts], I, End, L, D) :-
+    inst_uses(Inst, Us),
+    dominated_uses(Us, L, I, D),
+    I1 is I + 1,
+    dominated_insts(Insts, I1, End, L, D).
+
+dominated_uses([], _, _, _).
+dominated_uses([N|Ns], L, I, D) :-
+    dominated_use(D, L, I, N),
+    dominated_uses(Ns, L, I, D).
+
+dominated_phis([], _).
+dominated_phis([phi(_, _, PVs)|Phis], D) :-
+    dominated_phi_operands(PVs, D),
+    dominated_phis(Phis, D).
+
+dominated_phi_operands([], _).
+dominated_phi_operands([P-V|PVs], D) :-
+    D = dom(_, _, Intervals, Ends),
+    (   V = t(N), get_assoc(P, Intervals, _)
+    ->  get_assoc(P, Ends, End),
+        dominated_use(D, P, End, N)
+    ;   true
+    ),
+    dominated_phi_operands(PVs, D).
+
+% dominated_use(+D, +L, +I, +N): some definition of t(N) dominates
+% position I of block L.
+dominated_use(dom(Fn, Sites, Intervals, _), L, I, N) :-
+    (   get_assoc(N, Sites, Defs),
+        member(Def, Defs),
+        site_dominates(Def, L, I, Intervals)
+    ->  true
+    ;   fn_error(Fn, 't(~w) is used in block ~w, which no definition dominates',
+                 [N, L])
+    ).
+
+% site_dominates(+Def, +L, +I, +Intervals): the definition Def comes
+% before position I of block L on every path from the entry.
+site_dominates(param, _, _, _).
+site_dominates(at(L, J), L, I, _) :- J < I.
+site_dominates(at(D, _), L, _, Intervals) :-
+    D \== L,
+    dominates_by_interval(Intervals, D, L).
+
+% stage_func(+Stage, +Fn, +Mode, +Blocks): Fn's blocks are well formed
+% for the module's Stage. A checked function accesses memory only by raw
+% accesses, each covered by the check right before it, and polls on
+% every cycle.
+stage_func(unchecked, _, _, _).
+stage_func(checked, Fn, Mode, Blocks) :-
+    forall(member(blk(_, _, Insts, _), Blocks), checked_insts(Insts, Fn, Mode)),
+    (   polls_every_cycle(Blocks) -> true
+    ;   fn_error(Fn, 'a cycle without a poll edge in checked IR', [])
+    ).
+
+% checked_insts(+Insts, +Fn, +Mode): each check in Insts is followed by
+% the one access it covers, which is its only use, so no safepoint can
+% come between them; no other instruction accesses memory unchecked.
+checked_insts([], _, _).
+checked_insts([Inst|Insts], Fn, Mode) :-
+    checked_inst_rest(Inst, Insts, Fn, Mode, Rest),
+    checked_insts(Rest, Fn, Mode).
+
+checked_inst_rest(ins(t(Q), a, check(Lo, Hi, Rights, Align), _), Insts, Fn, _,
+                  Rest) :- !,
+    (   Insts = [Access|Rest],
+        covered_access(Access, Q, Lo, Hi, Rights, Align)
+    ->  true
+    ;   fn_error(Fn, 'check t(~w) is not followed by an access it covers', [Q])
+    ).
+checked_inst_rest(Inst, Insts, Fn, Mode, Insts) :-
+    (   raw_access(Inst, _, _, _, _)
+    ->  fn_error(Fn, 'a raw access whose address is not checked just before it', [])
+    ;   Mode == filc, unchecked_access(Inst, What)
+    ->  fn_error(Fn, '~w in checked IR, where every access is checked', [What])
+    ;   true
+    ).
+
+% raw_access(?Inst, ?Q, ?X, ?Off, ?Rights): Inst is a raw load of type X
+% or store of width X at t(Q)+Off, needing Rights.
+raw_access(ins(_, _, ld(T, Off), [t(Q)]), Q, T, Off, read).
+raw_access(st(W, Off, _, t(Q)), Q, W, Off, write).
+
+unchecked_access(ins(_, _, load(T), _), load(T)).
+unchecked_access(store(W, _, _), store(W)).
+
+% covered_access(+Access, +Q, +Lo, +Hi, +Rights, +Align): Access is a raw
+% access at t(Q) within [Q+Lo, Q+Hi), as aligned as it must be, and
+% Rights allow it (write allows reading too).
+covered_access(Access, Q, Lo, Hi, Rights, Align) :-
+    raw_access(Access, Q, X, Off, Need),
+    access_size_align(X, Size, AccessAlign), !,
+    Lo =< Off, Off + Size =< Hi,
+    Align mod AccessAlign =:= 0,
+    (Off - Lo) mod AccessAlign =:= 0,
+    rights_allow(Rights, Need).
+
+rights_allow(write, _).
+rights_allow(read, read).
+
+%! polls_every_cycle(+Blocks) is semidet.
+%
+%  Every cycle of the control-flow graph of Blocks, unreachable blocks
+%  included, has a poll edge: without them the graph is acyclic. A call
+%  does not count, since the callee need not poll. Depth-first search,
+%  with each label gray while on the path and done after.
+polls_every_cycle(Blocks) :-
+    findall(L-Ss,
+            ( member(blk(L, _, _, Jump), Blocks),
+              findall(S, unpolled_edge(Jump, S), Ss) ),
+            Pairs),
+    list_to_assoc(Pairs, Graph),
+    empty_assoc(Color0),
+    findall(L, member(L-_, Pairs), Labels),
+    acyclic_from_all(Labels, Graph, Color0, _).
+
+unpolled_edge(jmp(T), T) :- T \= poll(_).
+unpolled_edge(jnz(_, T, _), T) :- T \= poll(_).
+unpolled_edge(jnz(_, _, T), T) :- T \= poll(_).
+
+% acyclic_from_all(+Ls, +Graph, +Color0, -Color): no cycle of Graph is
+% reachable from Ls; a gray successor closes one. Plain recursion, since
+% Trealla copies a closure's arguments, Graph included, at every call.
+acyclic_from_all([], _, Color, Color).
+acyclic_from_all([L|Ls], Graph, Color0, Color) :-
+    (   get_assoc(L, Color0, C)
+    ->  C == done, Color1 = Color0
+    ;   put_assoc(L, Color0, gray, ColorG),
+        get_assoc(L, Graph, Ss),
+        acyclic_from_all(Ss, Graph, ColorG, ColorS),
+        put_assoc(L, ColorS, done, Color1)
+    ),
+    acyclic_from_all(Ls, Graph, Color1, Color).
 
 valid_phi(Ctx, Label, Preds, phi(_, K, Pairs)) :-
     Ctx = ctx(_, Fn, _, _, _, _, _),
@@ -523,6 +837,13 @@ valid_inst(Ctx, store(Width, Value, Addr)) :-
     valid_use(Ctx, ValueClass, Value),
     addr_class(Mode, AddrClass),
     valid_use(Ctx, AddrClass, Addr).
+valid_inst(Ctx, st(Width, Off, Value, Addr)) :-
+    Ctx = ctx(_, Fn, _, _, _, _, _),
+    (   store_value_class(Width, ValueClass), integer(Off) -> true
+    ;   fn_error(Fn, 'bad raw store st(~w, ~w, ...)', [Width, Off])
+    ),
+    valid_use(Ctx, ValueClass, Value),
+    valid_use(Ctx, a, Addr).
 valid_inst(Ctx, call(Res, glo(Callee), Args)) :-
     Ctx = ctx(M, Fn, _, _, _, _, Mode),
     findall(K, member(arg(K, _), Args), ArgClasses),
@@ -589,11 +910,11 @@ class_result_ok(Ret, K, Fn, Callee) :-
 
 % valid_jump(+Ctx, +Jump): Jump names existing labels and returns what
 % the function's return class requires.
-valid_jump(Ctx, jmp(L)) :- label_exists(Ctx, L).
-valid_jump(Ctx, jnz(V, L1, L2)) :-
+valid_jump(Ctx, jmp(T)) :- target_exists(Ctx, T).
+valid_jump(Ctx, jnz(V, T1, T2)) :-
     valid_use(Ctx, w, V),
-    label_exists(Ctx, L1),
-    label_exists(Ctx, L2).
+    target_exists(Ctx, T1),
+    target_exists(Ctx, T2).
 valid_jump(Ctx, ret(V)) :-
     Ctx = ctx(_, _, Ret, _, _, _, _),
     ret_value_ok(Ret, Ctx, V).
@@ -626,6 +947,12 @@ ret_void_ok(Ret, Fn) :-
     any_class(Ret),
     fn_error(Fn, 'ret without a value', []).
 
+% target_exists(+Ctx, +T): the jump target T, a label or poll(Label),
+% names a block.
+target_exists(Ctx, T) :-
+    edge_label(T, L),
+    label_exists(Ctx, L).
+
 label_exists(ctx(_, Fn, _, LabelSet, _, _, _), L) :-
     (   get_assoc(L, LabelSet, _) -> true
     ;   fn_error(Fn, 'undefined block label ~w', [L])
@@ -635,14 +962,17 @@ label_exists(ctx(_, Fn, _, LabelSet, _, _, _), L) :-
 % order maplist needs; valid_use_/3 indexes on the value.
 valid_use(Ctx, K, V) :-
     Ctx = ctx(_, Fn, _, _, _, _, _),
-    ( any_class(K) -> true ; fn_error(Fn, 'invalid use class ~w', [K]) ),
+    ( temp_class(K) -> true ; fn_error(Fn, 'invalid use class ~w', [K]) ),
     valid_use_(V, Ctx, K).
 
 % A p temporary is used only at p and vice versa; ptoi and itop are the
 % conversions. An integer constant at p is a pointer with no capability.
+% Only a check makes a proven address (class a): no constant is one.
 valid_use_(t(N), ctx(_, Fn, _, _, TempClasses, _, _), K) :-
     (   get_assoc(N, TempClasses, K0)
-    ->  (   (float_class(K) ; float_class(K0)), K \== K0
+    ->  (   (K == a ; K0 == a), K \== K0
+        ->  fn_error(Fn, 't(~w) has class ~w but is used as ~w', [N, K0, K])
+        ;   (float_class(K) ; float_class(K0)), K \== K0
         ->  fn_error(Fn, 't(~w) has class ~w but is used as ~w', [N, K0, K])
         ;   K == l, K0 == w
         ->  fn_error(Fn, 't(~w) has class w but is used as l', [N])
@@ -660,6 +990,8 @@ valid_use_(c(N), ctx(_, Fn, _, _, _, _, _), K) :-
     integer(N),
     ( float_class(K), modulus(K, M), (N < 0 ; N >= M)
     -> fn_error(Fn, 'float bits out of range: ~w', [N])
+    ; K == a
+    -> fn_error(Fn, 'c(~w) used as a proven address (class a)', [N])
     ; true ).
 valid_use_(glo(G), Ctx, K) :-
     Ctx = ctx(_, _, _, _, _, _, Mode),
@@ -713,6 +1045,8 @@ kind_result_ok(cast, _, _, K) :- numeric_class(K).
 kind_result_ok(ext, ext(T), _, K) :- ext_result_ok(T, K).
 kind_result_ok(load, load(T), Mode, K) :- load_result_ok(T, Mode, K).
 kind_result_ok(alloc, _, Mode, K) :- addr_class(Mode, K).
+kind_result_ok(check, _, filc, a).
+kind_result_ok(ld, ld(T, _), filc, K) :- load_result_ok(T, filc, K).
 
 % ext_result_ok(+T, +K): an extension of type T may have class K; one
 % from a word is a long.
@@ -770,6 +1104,8 @@ kind_arg_classes(cast, _, K, _, [From]) :- cast_classes(K, From).
 kind_arg_classes(ext, _, _, _, [w]).
 kind_arg_classes(load, _, _, Mode, [A]) :- addr_class(Mode, A).
 kind_arg_classes(alloc, _, _, _, [l]).
+kind_arg_classes(check, _, _, filc, [p]).
+kind_arg_classes(ld, _, _, filc, [a]).
 
 % additive_arg_classes(+K, ?Classes): add and sub of class K read
 % Classes; at p they offset a pointer by an l.

@@ -9,9 +9,12 @@
       lowers[] entry of a filc_frame pushed on thread->top_frame, for the
       whole function. Values are never kept in registers across a call or
       safepoint, so every live capability is always in a scanned slot.
-    - Every access gets the full check sequence; pointer loads and stores
-      go through the aux array, with ensure-aux and the store barrier.
-    - alloc is a heap allocation. Back edges in block order pollcheck.
+    - The IR is checked (ir.pl, pizlonate.pl): each check comes right
+      before the raw access it covers, and the two are emitted as one
+      instruction, fused/2, the check's sequence then the access. Pointer
+      loads and stores go through the aux array, with ensure-aux and the
+      store barrier.
+    - alloc is a heap allocation. Edges to poll(L) pollcheck.
     - Calls use the fast convention (thread, callee lower, words...) and
       propagate has_exception by popping the frame and returning AL = 1.
     - Exported functions get an alias, a getter, a function object and a
@@ -36,6 +39,7 @@
 :- use_module(ir).
 :- use_module(amd64).
 :- use_module(frame_slots).
+:- use_module(cfg, [edge_label/2]).
 
 %! filc_module_asm(+Module, -Lines) is det.
 %
@@ -267,13 +271,10 @@ lower_slot(FrameBase, Key, Slots0-I0, Slots-I) :-
 /* function_ctx(+Name, +Ret, +Slots, +Blocks, +Module, +FrameBase, -Ctx):
    Ctx = ctx(Fn, Module, FrameBase, Labels) is the context of function
    Name, where Fn = f(Name, Ret, Slots, Blocks) is the context amd64's
-   load//4 and compute_op//4 take. Labels maps each block label to
-   block(Index, Phis), so an edge finds its target's position and phis
-   without searching Blocks. */
+   load//4 and compute_op//4 take. Labels maps each block label to its
+   phis, so an edge finds them without searching Blocks. */
 function_ctx(Name, Ret, Slots, Blocks, Module, FrameBase, Ctx) :-
-    findall(Label-block(Index, Phis),
-            nth0(Index, Blocks, blk(Label, Phis, _, _)),
-            LabelBlocks),
+    findall(Label-Phis, member(blk(Label, Phis, _, _), Blocks), LabelBlocks),
     list_to_assoc(LabelBlocks, Labels),
     Ctx = ctx(f(Name, Ret, Slots, Blocks), Module, FrameBase, Labels).
 
@@ -338,12 +339,13 @@ item(_, data(Name, Linkage, _, Items)) -->
 % A function: its implementation (prologue, blocks, the shared exception
 % exit and failure blocks), then its function object and origins.
 function(Module, Func) -->
-    { Func = func(Name, Linkage, Ret, Params, Blocks),
+    { Func = func(Name, Linkage, Ret, Params, Blocks0),
+      fused_blocks(Name, Blocks0, Blocks, LiveBlocks),
       implementation_params(Func, Params, BodyParams),
       func_signature(Func, Sig),
       ret_kinds(Ret, RetKs),
       ret_form(RetKs, Form),
-      layout(Form, BodyParams, Blocks, Slots, FrameBase, NLowers, Size),
+      layout(Form, BodyParams, LiveBlocks, Slots, FrameBase, NLowers, Size),
       function_ctx(Name, Ret, Slots, Blocks, Module, FrameBase, Ctx),
       abi_symbol(impl(Sig), Name, Impl),
       access_check_kinds(Blocks, CheckKinds),
@@ -363,6 +365,71 @@ function(Module, Func) -->
     body_function_object(Func, Name, Linkage, Ret, Params, Sig, Impl),
     { setjmp_sites(Blocks, Sites), length(Sites, NumSetjmps) },
     origins(Name, NLowers, CheckKinds, NumSetjmps).
+
+/* fused_blocks(+Fn, +Blocks0, -Blocks, -LiveBlocks): Blocks are the
+   checked Blocks0 with each check and the raw access after it, which
+   reads its proven address, fused into fused(Check, Access) at one index,
+   so labels and frame slots number instructions as they did before
+   checks were explicit. Access reads the checked pointer P itself: a
+   proof is a register value (%rax:%rcx after the check) and needs no
+   slot. LiveBlocks have the bare accesses, for liveness and layout,
+   which so keep P live through the access, as the reload after
+   ensure-aux needs. Throws unless the IR is checked and every cycle
+   polls. */
+fused_blocks(Fn, Blocks0, Blocks, LiveBlocks) :-
+    (   polls_every_cycle(Blocks0) -> true
+    ;   throw_fn(Fn, 'a cycle without a poll edge; run pizlonate first')
+    ),
+    maplist(fused_block(Fn), Blocks0, Blocks),
+    maplist(live_block, Blocks, LiveBlocks).
+
+fused_block(Fn, blk(L, Phis, Insts0, Jump), blk(L, Phis, Insts, Jump)) :-
+    fused_insts(Insts0, Fn, Insts).
+
+fused_insts([], _, []).
+fused_insts([Inst0|Insts0], Fn, [Inst|Insts]) :-
+    fused_inst(Inst0, Insts0, Fn, Inst, Insts1),
+    fused_insts(Insts1, Fn, Insts).
+
+fused_inst(ins(t(Q), a, Check, [P]), [Access0|Insts], Fn, Inst, Insts) :- !,
+    (   proven_access(Access0, Q, P, Access) -> Inst = fused(Check, Access)
+    ;   throw_fn(Fn, 'a check not followed by the access it proves')
+    ),
+    % access_check//2 checks [P, P+Size) for alignment 1 or 8, and a raw
+    % access emits at offset 0.
+    (   Check = check(0, _, _, Align), memberchk(Align, [1, 8]),
+        access_pointer(Access, _, 0)
+    ->  true
+    ;   throw_fn(Fn, 'a check or offset access_check//2 cannot emit yet')
+    ).
+fused_inst(Inst, Insts, Fn, Inst, Insts) :-
+    (   unchecked_access(Inst)
+    ->  throw_fn(Fn, 'an unchecked access; run pizlonate first')
+    ;   true
+    ).
+
+% proven_access(+Access0, +Q, +P, -Access): Access0 is a raw access at
+% t(Q) and Access is the same at P.
+proven_access(ins(D, K, ld(T, Off), [t(Q)]), Q, P, ins(D, K, ld(T, Off), [P])).
+proven_access(st(W, Off, V, t(Q)), Q, P, st(W, Off, V, P)).
+
+% access_pointer(+Access, -P, -Off): the fused Access is at P + Off.
+access_pointer(ins(_, _, ld(_, Off), [P]), P, Off).
+access_pointer(st(_, Off, _, P), P, Off).
+access_pointer(Access, P) :- access_pointer(Access, P, _).
+
+unchecked_access(ins(_, _, load(_), _)).
+unchecked_access(store(_, _, _)).
+
+live_block(blk(L, Phis, Insts0, Jump), blk(L, Phis, Insts, Jump)) :-
+    maplist(live_inst, Insts0, Insts).
+
+live_inst(Inst0, Inst) :-
+    (   Inst0 = fused(_, Access) -> Inst = Access ; Inst = Inst0 ).
+
+throw_fn(Fn, Why) :-
+    format(atom(Msg), 'Fil-C backend, in ~w: ~w', [Fn, Why]),
+    throw(nanofil_error(Msg)).
 
 % Root parameters before allocating. All snapshot roots must be stable
 % before any site captures lowers, including sites not yet executed.
@@ -725,20 +792,23 @@ return(Ctx) -->
      ins(leave, none, []),
      ins(ret, none, [])].
 
-% Phi copies for the edge, a pollcheck if it goes backwards in block
-% order, then the jump.
-edge(From, To, Tag, Ctx) -->
-    { ctx_labels(Ctx, Labels),
-      get_assoc(From, Labels, block(FromIndex, _)),
-      get_assoc(To, Labels, block(ToIndex, Phis)),
+% Phi copies for the edge to Target, a label or poll(Label), then the
+% pollcheck if Target asks for one, then the jump.
+edge(From, Target, Tag, Ctx) -->
+    { edge_label(Target, To),
+      ctx_labels(Ctx, Labels),
+      get_assoc(To, Labels, Phis),
       block_label(Ctx, To, ToLabel) },
     phi_reads(Phis, From, Ctx),
     phi_writes(Phis, Ctx),
-    (   { ToIndex =< FromIndex }
+    edge_poll(Target, From, Tag, Ctx),
+    [ins(jmp, none, [sym(ToLabel)])].
+
+edge_poll(Target, From, Tag, Ctx) -->
+    (   { Target = poll(_) }
     ->  pollcheck(Ctx, From, Tag)
     ;   []
-    ),
-    [ins(jmp, none, [sym(ToLabel)])].
+    ).
 
 % The pollcheck: a call of filc_pollcheck_slow if the thread's state asks
 % for it.
@@ -830,8 +900,12 @@ insts([Inst|Insts], Index, Block, Ctx) -->
 inst(ins(t(D), K, Op, Args), Index, Block, Ctx) -->
     { op_kind(Op, Kind) },
     kind_inst(Kind, K, Op, Args, D, Index, Block, Ctx).
-inst(store(W, V, A), Index, Block, Ctx) -->
-    store(W, V, A, Index, Block, Ctx).
+inst(fused(check(_, Size, Rights, Align), Access), Index, Block, Ctx) -->
+    { access_pointer(Access, P),
+      rights_write(Rights, Write) },
+    flight_load(P, Ctx),
+    access_check(k(Size, Write, Align), Ctx),
+    raw_access(Access, Index, Block, Ctx).
 inst(call(Res, Callee, Args), Index, Block, Ctx) -->
     callee_call(Callee, Res, Args, Index, Block, Ctx).
 
@@ -894,7 +968,7 @@ kind_inst(setjmp, w, setjmp(Kind), [Buf, Mask], D, Index, Block, Ctx) -->
     [ins(call, none, [plt(filc_jmp_buf_recreate)]),
      ins(mov, q, [reg(rax), reg(rcx)])],
     flight_store(hidden(setjmp_buf(D)), Ctx),
-    store(p, t(hidden(setjmp_buf(D))), Buf, Index, Block, Ctx),
+    checked_pointer_store(t(hidden(setjmp_buf(D))), Buf, Index, Block, Ctx),
     slot_reg_load(lower(t(hidden(setjmp_buf(D)))), rdi, Ctx),
     [ins(call, none, [plt('_setjmp')]),
      ins(test, l, [reg(eax), reg(eax)]),
@@ -907,8 +981,6 @@ kind_inst(cmp, K, Op, Args, D, _, _, Ctx) -->
     integer_inst(Op, K, Args, D, Ctx).
 kind_inst(ext, K, Op, Args, D, _, _, Ctx) -->
     integer_inst(Op, K, Args, D, Ctx).
-kind_inst(load, K, load(T), [A], D, Index, Block, Ctx) -->
-    load_inst(T, K, A, D, Index, Block, Ctx).
 kind_inst(alloc, p, alloc(Align), [N], D, _, _, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     load(N, l, si, Fn),
@@ -1023,14 +1095,23 @@ flight_copy(V, D, Ctx) -->
     flight_load(V, Ctx),
     flight_store(D, Ctx).
 
-% load_inst(+T, +K, +A, +D, +Index, +Block, +Ctx)//: a load of type T at
-% K from A, the Indexth instruction of Block. A load(p) also reads the
-% capability; the others read an integer.
-load_inst(p, p, A, D, Index, Block, Ctx) -->
+% raw_access(+Access, +Index, +Block, +Ctx)//: the code of the raw
+% Access at P, the Indexth instruction of Block, after its check left P
+% in %rax and its lower in %rcx.
+raw_access(ins(t(D), K, ld(T, 0), [_]), Index, Block, Ctx) -->
+    raw_load(T, K, D, Index, Block, Ctx).
+raw_access(st(W, 0, V, P), Index, Block, Ctx) -->
+    raw_store(W, V, P, Index, Block, Ctx).
+
+rights_write(read, 0).
+rights_write(write, 1).
+
+% raw_load(+T, +K, +D, +Index, +Block, +Ctx)//: a load of type T at K
+% into t(D). A load of p also reads the capability from the aux array;
+% the others read an integer.
+raw_load(p, p, D, Index, Block, Ctx) -->
     { local_label(Ctx, Block, Index, nolower, NoLower),
       local_label(Ctx, Block, Index, have, Have) },
-    flight_load(A, Ctx),
-    access_check(k(8, 0, 8), Ctx),
     aux_of_lower,
     [ins(jz, none, [sym(NoLower)]),
      ins(mov, q, [reg(rax), reg(rsi)]),
@@ -1047,32 +1128,37 @@ load_inst(p, p, A, D, Index, Block, Ctx) -->
      ins(mov, q, [mem(0, rax), reg(rax)]),
      ins(mov, q, [reg(rsi), reg(rcx)])],
     flight_store(D, Ctx).
-load_inst(l, K, A, D, _, _, Ctx) --> integer_load(l, K, A, D, Ctx).
-load_inst(s,K,A,D,_,_,Ctx) --> integer_load(s,K,A,D,Ctx).
-load_inst(d,K,A,D,_,_,Ctx) --> integer_load(d,K,A,D,Ctx).
-load_inst(sw, K, A, D, _, _, Ctx) --> integer_load(sw, K, A, D, Ctx).
-load_inst(uw, K, A, D, _, _, Ctx) --> integer_load(uw, K, A, D, Ctx).
-load_inst(sh, K, A, D, _, _, Ctx) --> integer_load(sh, K, A, D, Ctx).
-load_inst(uh, K, A, D, _, _, Ctx) --> integer_load(uh, K, A, D, Ctx).
-load_inst(sb, K, A, D, _, _, Ctx) --> integer_load(sb, K, A, D, Ctx).
-load_inst(ub, K, A, D, _, _, Ctx) --> integer_load(ub, K, A, D, Ctx).
+raw_load(l, K, D, _, _, Ctx) --> integer_load(l, K, D, Ctx).
+raw_load(s, K, D, _, _, Ctx) --> integer_load(s, K, D, Ctx).
+raw_load(d, K, D, _, _, Ctx) --> integer_load(d, K, D, Ctx).
+raw_load(sw, K, D, _, _, Ctx) --> integer_load(sw, K, D, Ctx).
+raw_load(uw, K, D, _, _, Ctx) --> integer_load(uw, K, D, Ctx).
+raw_load(sh, K, D, _, _, Ctx) --> integer_load(sh, K, D, Ctx).
+raw_load(uh, K, D, _, _, Ctx) --> integer_load(uh, K, D, Ctx).
+raw_load(sb, K, D, _, _, Ctx) --> integer_load(sb, K, D, Ctx).
+raw_load(ub, K, D, _, _, Ctx) --> integer_load(ub, K, D, Ctx).
 
-integer_load(T, K, A, D, Ctx) -->
-    { load_type_size_align(T, Size, Align),
-      load_insn(T, K, LoadInsn) },
-    flight_load(A, Ctx),
-    access_check(k(Size, 0, Align), Ctx),
+integer_load(T, K, D, Ctx) -->
+    { load_insn(T, K, LoadInsn) },
     [LoadInsn],
     reg_slot_store(rax, t(D), Ctx).
 
-% store(+W, +V, +A, +Index, +Block, +Ctx)//: the code of a store of V
-% at A of width W, the Indexth instruction of Block.
-store(p, V, A, Index, Block, Ctx) -->
+% checked_pointer_store(+V, +A, +Index, +Block, +Ctx)//: a store of the
+% pointer V at A with its check, for an instruction whose store is
+% internal (setjmp's jmp_buf).
+checked_pointer_store(V, A, Index, Block, Ctx) -->
+    flight_load(A, Ctx),
+    access_check(k(8, 1, 8), Ctx),
+    raw_store(p, V, A, Index, Block, Ctx).
+
+% raw_store(+W, +V, +A, +Index, +Block, +Ctx)//: a store of V of width W
+% at A, which its check left in %rax:%rcx. A pointer store ensures the
+% object's aux array, which may exit (a safepoint), and so reloads A
+% from its rooted slot rather than keep it in a register.
+raw_store(p, V, A, Index, Block, Ctx) -->
     { ctx_fn(Ctx, Fn),
       local_label(Ctx, Block, Index, haveaux, HaveAux),
       local_label(Ctx, Block, Index, nobarrier, NoBarrier) },
-    flight_load(A, Ctx),
-    access_check(k(8, 1, 8), Ctx),
     aux_of_lower,
     [ins(jnz, none, [sym(HaveAux)])],
     slot_reg_load(thread, rdi, Ctx),
@@ -1098,21 +1184,18 @@ store(p, V, A, Index, Block, Ctx) -->
     load(V, l, r9, Fn),
     [ins(mov, q, [reg(rsi), mem(0, rdx, r8)]),
      ins(mov, q, [reg(r9), mem(0, rax)])].
-store(b, V, A, _, _, Ctx) --> integer_store(b, V, A, Ctx).
-store(h, V, A, _, _, Ctx) --> integer_store(h, V, A, Ctx).
-store(w, V, A, _, _, Ctx) --> integer_store(w, V, A, Ctx).
-store(l, V, A, _, _, Ctx) --> integer_store(l, V, A, Ctx).
-store(s,V,A,_,_,Ctx) --> integer_store(s,V,A,Ctx).
-store(d,V,A,_,_,Ctx) --> integer_store(d,V,A,Ctx).
+raw_store(b, V, _, _, _, Ctx) --> integer_store(b, V, Ctx).
+raw_store(h, V, _, _, _, Ctx) --> integer_store(h, V, Ctx).
+raw_store(w, V, _, _, _, Ctx) --> integer_store(w, V, Ctx).
+raw_store(l, V, _, _, _, Ctx) --> integer_store(l, V, Ctx).
+raw_store(s, V, _, _, _, Ctx) --> integer_store(s, V, Ctx).
+raw_store(d, V, _, _, _, Ctx) --> integer_store(d, V, Ctx).
 
-% The code of a store of the integer V at A of width W.
-integer_store(W, V, A, Ctx) -->
+% The code of a store of the integer V of width W at %rax.
+integer_store(W, V, Ctx) -->
     { ctx_fn(Ctx, Fn),
-      width_bytes(W, Size),
       width_value_class(W, ValueK),
       store_insn(W, d, StoreInsn) },
-    flight_load(A, Ctx),
-    access_check(k(Size, 1, 1), Ctx),
     load(V, ValueK, d, Fn),
     [StoreInsn].
 
@@ -1351,29 +1434,6 @@ aux_of_lower -->
      ins(movabs, q, [imm(Mask), reg(rsi)]),
      ins(and, q, [reg(rsi), reg(rdx)])].
 
-% load_type_size_align(?T, ?Size, ?Align): a load of type T reads Size
-% bytes, and its address is checked for alignment Align (8 for a pointer
-% load, so its lower is in the aux array).
-load_type_size_align(p, 8, 8).
-load_type_size_align(l, 8, 1).
-load_type_size_align(s,4,1).
-load_type_size_align(d,8,1).
-load_type_size_align(sw, 4, 1).
-load_type_size_align(uw, 4, 1).
-load_type_size_align(sh, 2, 1).
-load_type_size_align(uh, 2, 1).
-load_type_size_align(sb, 1, 1).
-load_type_size_align(ub, 1, 1).
-
-% width_align(?W, ?Align): a store of width W is checked for alignment
-% Align.
-width_align(p, 8).
-width_align(l, 1).
-width_align(w, 1).
-width_align(s,1).
-width_align(d,1).
-width_align(h, 1).
-width_align(b, 1).
 
 % call_target(+Ctx, +F, +Res, +Args, -Target): Target is the operand a
 % direct call of F calls. Functions in the module are called at their
@@ -1611,12 +1671,9 @@ access_check_kinds(Blocks, Kinds) :-
 
 % inst_check_kind(+Inst, -Kind): Inst's access needs a check of Kind;
 % fails if Inst does not access memory.
-inst_check_kind(ins(_, _, load(T), _), k(Size, 0, Align)) :-
-    load_type_size_align(T, Size, Align).
+inst_check_kind(fused(check(_, Size, Rights, Align), _), k(Size, Write, Align)) :-
+    rights_write(Rights, Write).
 inst_check_kind(ins(_, _, setjmp(_), _), k(8, 1, 8)).
-inst_check_kind(store(W, _, _), k(Size, 1, Align)) :-
-    width_bytes(W, Size),
-    width_align(W, Align).
 
 % A failure block for each check kind, calling the runtime's reporter.
 check_fail_blocks([], _) --> [].

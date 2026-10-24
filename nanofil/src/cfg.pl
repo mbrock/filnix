@@ -20,7 +20,7 @@
                 natural_loops/3,
                 liveness/5, temp_liveness/3, blocks_gen_kill/2,
                 phi_edge_uses/2, inst_uses/2, inst_def/2, jump_uses/2,
-                jump_succs/2]).
+                jump_succs/2, edge_label/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -33,13 +33,25 @@
 %
 %  Succs is the ordset of labels Jump can branch to.
 
-jump_succs(jmp(L), [L]).
-jump_succs(jnz(_, L1, L2), Ls) :-
+jump_succs(jmp(T), [L]) :-
+    edge_label(T, L).
+jump_succs(jnz(_, T1, T2), Ls) :-
+    edge_label(T1, L1),
+    edge_label(T2, L2),
     sort([L1, L2], Ls).
 jump_succs(ret(_), []).
 jump_succs(ret, []).
 jump_succs(rets(_), []).
 jump_succs(hlt, []).
+
+%! edge_label(+Target, -L) is det.
+%
+%  A jump's Target is the label L, or poll(L): a pollcheck on the edge,
+%  then L (ir.pl). A label is any other term, so the cut commits to
+%  poll/1.
+
+edge_label(poll(L), L) :- !.
+edge_label(L, L).
 
 %! func_cfg(+Blocks, -Cfg) is det.
 %
@@ -489,6 +501,8 @@ phi_edge_uses(Blocks, EdgeUses) :-
 inst_uses(ins(_, _, _, Args), Us) :-
     temps(Args, Us).
 inst_uses(store(_, V, A), Us) :-
+    temps([V, A], Us).
+inst_uses(st(_, _, V, A), Us) :-
     temps([V, A], Us).
 inst_uses(call(_, F, Args), Us) :-
     findall(V, member(arg(_, V), Args), Vs),

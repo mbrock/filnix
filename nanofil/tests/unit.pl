@@ -20,6 +20,7 @@
 :- use_module('../src/promote').
 :- use_module('../src/copy').
 :- use_module('../src/opt').
+:- use_module('../src/pizlonate').
 :- use_module('../src/c_lex').
 :- use_module('../src/c_parse').
 :- use_module('../src/c_lower').
@@ -828,19 +829,33 @@ func_phi_names(M, Name, Names) :-
             Ts),
     sort(Ts, Names).
 
-% copy leaves a non-SSA function (a use before its definition) and a
-% literal pointer copy, which keeps the module Fil-C, unchanged.
-test(copy_keeps_unguarded_definitions) :-
-    ir_module([
-        func(f, export, l, [par(l, t(x))], [
-            blk(s, [], [
-                ins(t(a), l, copy, [t(b)]),
-                ins(t(b), l, add, [t(x), c(1)])
-            ], ret(t(a)))
-        ])
-    ], NonSSA),
-    copy_module(NonSSA, Unchanged),
-    NonSSA == Unchanged,
+% A use must be dominated by a definition: one later in the same block
+% is not, and neither is one in only one arm of a diamond. A second
+% definition in a dominating block is enough (memory.ir's twice).
+test(definitions_dominate_uses) :-
+    Later = func(f, export, l, [par(l, t(x))], [
+        blk(s, [], [
+            ins(t(a), l, copy, [t(b)]),
+            ins(t(b), l, add, [t(x), c(1)])
+        ], ret(t(a)))
+    ]),
+    catch(( valid_module(module([Later])), fail ), nanofil_error(M1), true),
+    M1 == 'in f: t(b) is used in block s, which no definition dominates',
+    Arm = func(g, export, w, [par(w, t(x))], [
+        blk(s, [], [ins(t(y), w, copy, [c(0)])], jnz(t(x), l, r)),
+        blk(l, [], [ins(t(y), w, copy, [c(1)]), ins(t(z), w, copy, [c(2)])],
+            jmp(j)),
+        blk(r, [], [], jmp(j)),
+        blk(j, [], [], ret(t(z)))
+    ]),
+    catch(( valid_module(module([Arm])), fail ), nanofil_error(M2), true),
+    M2 == 'in g: t(z) is used in block j, which no definition dominates',
+    Arm = func(G, E, R, Ps, [S, L, Rt, blk(j, [], [], ret(t(z)))]),
+    valid_module(module([func(G, E, R, Ps, [S, L, Rt, blk(j, [], [], ret(t(y)))])])).
+
+% copy leaves a literal pointer copy, which keeps the module Fil-C,
+% unchanged.
+test(copy_keeps_literal_pointer_copy) :-
     ir_module([
         func(f, export, w, [], [
             blk(s, [], [
@@ -1145,6 +1160,75 @@ test(source_locations) :-
     FnLines == [fib-[[2, 3], [3], [3], [3]],
                 sum-[[6, 7, 8], [8], [9], [8], [10]]],
     optimize(o1, M, O), without_locs(O, O1), O1 == O.
+
+% Pizlonation states the checks that load and store imply in filc mode,
+% so the checked module has the same outcomes, traps included; deleting
+% a check turns that trap into unchecked (not ub, not a trap), and the
+% validator rejects the mutant. The object is [b, b+8): at offset 4 the
+% w store and load fit and return 7; at offset 6 the store reaches b+10.
+test(pizlonate_states_every_check) :-
+    ir_module([
+        func(f, export, w, [par(l, t(i))], [
+            blk(s, [], [
+                ins(t(b), p, alloc(8), [c(8)]),
+                ins(t(a), p, add, [t(b), t(i)]),
+                store(w, c(7), t(a)),
+                ins(t(x), w, load(sw), [t(a)])
+            ], ret(t(x)))
+        ])
+    ], M),
+    pizlonate_module(M, C),
+    valid_module(C),
+    C = module([func(f, E, R, Ps, [blk(s, [], Is, J)])]),
+    Is = [Alloc, Add, ins(t(Q), a, check(0, 4, write, 1), [t(a)]),
+          st(w, 0, c(7), t(Q)),
+          ins(t(Q2), a, check(0, 4, read, 1), [t(a)]),
+          ins(t(x), w, ld(sw, 0), [t(Q2)])],
+    Q \== Q2,
+    once(run(M, f, [4], 10, ret(7))),
+    once(run(C, f, [4], 10, ret(7))),
+    once(run(M, f, [6], 10, trap(out_of_bounds))),
+    once(run(C, f, [6], 10, trap(out_of_bounds))),
+    [_, _, _, _|Rest] = Is,
+    Mutant = module([func(f, E, R, Ps,
+                          [blk(s, [], [Alloc, Add, st(w, 0, c(7), t(a))|Rest],
+                               J)])]),
+    once(run(Mutant, f, [4], 10, ret(7))),
+    once(run(Mutant, f, [6], 10, unchecked(out_of_bounds))),
+    catch(( valid_module(Mutant), fail ), nanofil_error(Msg), true),
+    Msg == 'in f: t(a) has class p but is used as a'.
+
+% Checked IR states which check covers an access, and nothing else may
+% come between them; every loop polls.
+test(checked_ir_rules) :-
+    Weak = func(f, export, l, [par(p, t(a))], [
+        blk(s, [], [
+            ins(t(q), a, check(0, 4, read, 1), [t(a)]),
+            ins(t(x), l, ld(l, 0), [t(q)])
+        ], ret(t(x)))
+    ]),
+    catch(( valid_module(module([Weak])), fail ), nanofil_error(M1), true),
+    M1 == 'in f: check t(q) is not followed by an access it covers',
+    Apart = func(f, export, l, [par(p, t(a))], [
+        blk(s, [], [
+            ins(t(q), a, check(0, 8, read, 1), [t(a)]),
+            call(void, glo(g), []),
+            ins(t(x), l, ld(l, 0), [t(q)])
+        ], ret(t(x)))
+    ]),
+    catch(( valid_module(module([Apart])), fail ), nanofil_error(M2), true),
+    M2 == 'in f: check t(q) is not followed by an access it covers',
+    Loop = func(f, export, w, [par(p, t(a))], [
+        blk(s, [], [], jmp(h)),
+        blk(h, [], [
+            ins(t(q), a, check(0, 4, write, 1), [t(a)]),
+            st(w, 0, c(0), t(q))
+        ], jmp(h))
+    ]),
+    catch(( valid_module(module([Loop])), fail ), nanofil_error(M3), true),
+    M3 == 'in f: a cycle without a poll edge in checked IR',
+    Loop = func(F, E, R, Ps, [S, blk(h, [], Is, jmp(h))]),
+    valid_module(module([func(F, E, R, Ps, [S, blk(h, [], Is, jmp(poll(h)))])])).
 
 % A host atom built at run time is an atom of arity 0 only. Unpatched
 % Trealla unified it with any same-name compound, so a field named label

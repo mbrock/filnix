@@ -17,6 +17,11 @@
       ub(Reason)      undefined behaviour: division by zero or overflow,
                       a memory access outside every live allocation
       trap(Reason)    a Fil-C check failed (filc mode only)
+      unchecked(Reason)
+                      a raw access (checked stage, ir.pl) that its
+                      capability does not allow: a check is missing or
+                      too weak, which only a broken pass produces. It is
+                      neither ub nor a trap, so it refines nothing.
       out_of_fuel     executed Fuel blocks without finishing
 
     Integer arithmetic and branches are CLP(Z) constraints, so the relation
@@ -59,6 +64,7 @@
 :- use_module(library(error)).
 :- use_module(ir).
 :- use_module(ieee).
+:- use_module(cfg, [edge_label/2]).
 
 %! run(+M, +Fn, ?Args, +Fuel, ?Outcome) is nondet.
 %
@@ -239,14 +245,18 @@ result_outcome(stop(Out, S), _, _, _, Out, S).
 % outcome of Jump, ending block From, and everything after it. When the
 % jnz condition is unknown, both edges are solutions, each constraining
 % it; a known one takes the fast path.
-jump_outcome(jmp(L), Ctx, From, Env, S0, Out, S) :-
+% A pollcheck on the edge (poll(L)) changes nothing the interpreter
+% models: it has no signals and no free.
+jump_outcome(jmp(T), Ctx, From, Env, S0, Out, S) :-
+    edge_label(T, L),
     block_outcome(Ctx, L, from(From), Env, S0, Out, S).
-jump_outcome(jnz(V, L1, L2), Ctx, From, Env, S0, Out, S) :-
+jump_outcome(jnz(V, T1, T2), Ctx, From, Env, S0, Out, S) :-
     value_x(w, V, Ctx, Env, X),
-    (   integer(X) -> ( X =\= 0 -> L = L1 ; L = L2 )
-    ;   X #\= 0, L = L1
-    ;   X #= 0, L = L2
+    (   integer(X) -> ( X =\= 0 -> T = T1 ; T = T2 )
+    ;   X #\= 0, T = T1
+    ;   X #= 0, T = T2
     ),
+    edge_label(T, L),
     block_outcome(Ctx, L, from(From), Env, S0, Out, S).
 jump_outcome(ret(V), Ctx, _, Env, S, ret(X), S) :-
     Ctx = ctx(_, _, _, K, _),
@@ -292,6 +302,14 @@ inst_result(store(Width, V, A), Ctx, Env, s(Mem0, Fuel), Result) :-
     addr_class(Mode, AddrClass),
     value_x(AddrClass, A, Ctx, Env, Addr),
     store_res(Mode, Width, Mem0, Addr, X, Res, Mem),
+    store_res_result(Res, Env, s(Mem, Fuel), Result).
+inst_result(st(Width, Off, V, A), Ctx, Env, s(Mem0, Fuel), Result) :-
+    width_value_class(Width, ValueClass),
+    value_x(ValueClass, V, Ctx, Env, X),
+    value_x(a, A, Ctx, Env, ptr(B, Cap)),
+    raw_address(B, Off, Addr),
+    store_res(filc, Width, Mem0, ptr(Addr, Cap), X, Res0, Mem),
+    raw_res(Res0, Res),
     store_res_result(Res, Env, s(Mem, Fuel), Result).
 inst_result(call(Res, glo(F), Args), Ctx, Env0, S0, Result) :-
     Ctx = ctx(Fns, Globals, _, _, Mode),
@@ -458,10 +476,12 @@ arg_x(Ctx, Env, arg(K, V), X) :- value_x(K, V, Ctx, Env, X).
 res_result(val(X), D, Env0, S, cont(Env, S)) :- put_assoc(D, Env0, X, Env).
 res_result(ub(Why), _, _, S, stop(ub(Why), S)).
 res_result(trap(Why), _, _, S, stop(trap(Why), S)).
+res_result(unchecked(Why), _, _, S, stop(unchecked(Why), S)).
 
 store_res_result(ok, Env, S, cont(Env, S)).
 store_res_result(ub(Why), _, S, stop(ub(Why), S)).
 store_res_result(trap(Why), _, S, stop(trap(Why), S)).
+store_res_result(unchecked(Why), _, S, stop(unchecked(Why), S)).
 
 call_outcome_result(ret(X), Res, Env0, S, cont(Env, S)) :-
     ret_env(Res, X, Env0, Env).
@@ -471,6 +491,7 @@ call_outcome_result(ret, void, Env, S, cont(Env, S)).
 call_outcome_result(hlt, _, _, S, stop(hlt, S)).
 call_outcome_result(ub(Why), _, _, S, stop(ub(Why), S)).
 call_outcome_result(trap(Why), _, _, S, stop(trap(Why), S)).
+call_outcome_result(unchecked(Why), _, _, S, stop(unchecked(Why), S)).
 call_outcome_result(out_of_fuel, _, _, S, stop(out_of_fuel, S)).
 
 % ret_env(+Res, +X, +Env0, -Env) and rets_env(+Res, +Xs, +Env0, -Env):
@@ -491,6 +512,7 @@ to_word_env(to(t(D), K), X0, Env0, Env) :-
 word_at_class(w, X0, X) :- modulus(w, Mod), int_is(X, X0 mod Mod).
 word_at_class(l, X0, X) :- modulus(l, Mod), int_is(X, X0 mod Mod).
 word_at_class(p, X, X).
+word_at_class(a, X, X).
 word_at_class(s, X0, X) :- must_be(integer, X0), X is X0 mod 4294967296.
 word_at_class(d, X0, X) :- must_be(integer, X0), X is X0 mod 18446744073709551616.
 
@@ -546,6 +568,16 @@ kind_res(setjmp, _, _, _, _, _, _, _) :-
     throw(nanofil_error('interpreter does not support setjmp/nonlocal returns')).
 kind_res(load, load(T), K, Mode, Args, S0, Res, S) :-
     load_op_res(T, K, Mode, Args, S0, Res, S).
+kind_res(check, check(Lo, Hi, Rights, Align), a, filc, [ptr(A, Cap)],
+         s(Mem, Fuel), Res, s(Mem, Fuel)) :-
+    raw_address(A, Lo, B),
+    Size is Hi - Lo,
+    access_res(Mem, B, Cap, Size, Rights, Align, Res0),
+    checked_res(Res0, ptr(A, Cap), Res).
+kind_res(ld, ld(T, Off), K, filc, [ptr(A, Cap)], S0, Res, S) :-
+    raw_address(A, Off, B),
+    load_op_res(T, K, filc, [ptr(B, Cap)], S0, Res0, S),
+    raw_res(Res0, Res).
 kind_res(alloc, alloc(Align), _, Mode, [Size], s(Mem0, Fuel), val(P),
          s(Mem, Fuel)) :-
     alloc_base(Mode, Mem0, Align, Size, Base, Mem),
@@ -603,6 +635,21 @@ va_checked_res(ok, K, P, A, Size, s(Mem0, Fuel), Res, s(Mem, Fuel)) :-
     ( Store = trap(Why) -> Res = trap(Why), Mem = Mem1
     ; K == p -> pointer_access_load(ok, Mem1, A, Res, Mem)
     ; load_res(filc, Mem1, A, Size, Res, Mem) ).
+
+% checked_res(+Res0, +P, -Res): a check whose access_res/7 is Res0
+% yields P, proven, or traps.
+checked_res(ok, P, val(P)).
+checked_res(trap(Why), _, trap(Why)).
+
+% raw_res(+Res0, -Res): a raw access is the access its check covers,
+% made again without trapping: what would have trapped is unchecked.
+raw_res(val(X), val(X)).
+raw_res(ok, ok).
+raw_res(ub(Why), ub(Why)).
+raw_res(trap(Why), unchecked(Why)).
+
+% raw_address(+A, +Off, -B): B is the address A plus the constant Off.
+raw_address(A, Off, B) :- B is (A + Off) mod 18446744073709551616.
 
 alloc_pointer(plain, Base, Base).
 alloc_pointer(filc, Base, ptr(Base, obj(Base))).
@@ -1127,6 +1174,7 @@ outcome_text(ret, ret).
 outcome_text(hlt, hlt).
 outcome_text(ub(Why), T) :- format(atom(T), 'ub ~w', [Why]).
 outcome_text(trap(Why), T) :- format(atom(T), 'trap ~w', [Why]).
+outcome_text(unchecked(Why), T) :- format(atom(T), 'unchecked ~w', [Why]).
 outcome_text(out_of_fuel, out_of_fuel).
 
 ret_text(V, T) :-
