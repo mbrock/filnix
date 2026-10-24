@@ -331,8 +331,15 @@ table.symbols tr.import td.name { color: var(--muted); }
     .pane { padding-left: 1.2em; }
   details.legend { margin-left: -1.2em; }
   details.legend > summary .hint { display: none; }
-  .tabs .pass { padding: 0 0.2rem 0.4rem; }
-  .tabs button { font-size: 0.8rem; }
+  /* Only the arrows between outputs: each pass is named in its hover
+     text, and the stages under the editor give the times. */
+  .tabs { gap: 0; }
+  .tabs .pass { display: inline-block; padding: 0 0.15rem 0.45rem; }
+  .tabs .pass .pname, .tabs .pass .ptime { display: none; }
+  .tabs .pass .arrow { font-size: 0.8rem; }
+  .tabs .pass:first-child { display: none; }
+  .tabs button { font-size: 0.8rem; padding-bottom: 0.4rem; }
+  .tabs .as-text { padding-left: 0.6rem; }
   #run kbd { display: none; }
   .side { display: contents; }
   .editor { grid-area: editor; }

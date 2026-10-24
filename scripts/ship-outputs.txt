@@ -4,3 +4,6 @@
 # Wider distributions and ports belong to the campaign, not this gate.
 packages.x86_64-linux.filcc
 packages.x86_64-linux.baseline
+# SWI-Prolog 10 for the Pages build (.#site), which would otherwise compile
+# it on every run; it changes only with nixpkgs.
+packages.x86_64-linux.site-swipl
