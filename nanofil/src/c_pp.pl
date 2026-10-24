@@ -48,6 +48,7 @@
 %  profile(Macros, IncludeDirs, FeatureAnswers) from pp_profile/2.
 %  Throws nanofil_error/1 on a preprocessing or lexical error.
 pp_file(File, profile(Macros, Paths, Features), Tokens) :-
+    retractall(source_cache(_, _)),
     file_tokens(File, env(Macros, Paths, Features, [], File), _, PpTokens),
     phrase(lex_tokens(PpTokens), Tokens).
 
@@ -84,10 +85,21 @@ file_tokens(File, Env0, Env, Tokens) :-
 % read_source(+File, -PpTokens): PpTokens are File's preprocessing
 % tokens, before line splitting. Impure file adapter. Keep the input
 % buffer local so it can be reclaimed before processing nested includes;
-% the macro environment stays explicit.
+% the macro environment stays explicit. A file's tokens do not depend on
+% the macros, so each file is read once per pp_file/3: headers are
+% included again and again (lvm.c reads 124 files 272 times), and
+% reading was most of the preprocessor's time.
 read_source(File, PpTokens) :-
-    phrase_from_file(seq(Cs), File),
-    once(source_tokens(Cs, File:1, PpTokens)).
+    (   source_cache(File, PpTokens0)
+    ->  PpTokens = PpTokens0
+    ;   phrase_from_file(seq(Cs), File),
+        once(source_tokens(Cs, File:1, PpTokens)),
+        assertz(source_cache(File, PpTokens))
+    ).
+
+% source_cache(?File, ?PpTokens): read_source/2's tokens of File, for
+% the pp_file/3 call in progress.
+:- dynamic(source_cache/2).
 
 %% Translation phases 2 and 3
 

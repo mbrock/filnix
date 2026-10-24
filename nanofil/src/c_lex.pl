@@ -489,17 +489,18 @@ punct(P) -->
 %
 %  Spelling is one of C's punctuators of two or three characters
 %  (C11 6.4.6), digraphs aside; the one-character ones are punct//1's.
-punctuator(P) :-
-    member(P, ['...', '<<=', '>>=',
-               '->', '++', '--', '<<', '>>', '<=', '>=', '==', '!=',
-               '&&', '||', '*=', '/=', '%=', '+=', '-=', '&=', '^=', '|=',
-               '##']).
+punctuator('...').  punctuator('<<=').  punctuator('>>=').
+punctuator('->').  punctuator('++').  punctuator('--').  punctuator('<<').
+punctuator('>>').  punctuator('<=').  punctuator('>=').  punctuator('==').
+punctuator('!=').  punctuator('&&').  punctuator('||').  punctuator('*=').
+punctuator('/=').  punctuator('%=').  punctuator('+=').  punctuator('-=').
+punctuator('&=').  punctuator('^=').  punctuator('|=').  punctuator('##').
 
 %! digraph(?Spelling) is nondet.
 %
 %  Spelling is a digraph (C11 6.4.6p3), a preprocessing token that
 %  stands for [, ], {, } or #.
-digraph(P) :- member(P, ['<:', ':>', '<%', '%>', '%:']).
+digraph('<:').  digraph(':>').  digraph('<%').  digraph('%>').  digraph('%:').
 
 %% Keywords, with GNU alternate spellings folded.
 
