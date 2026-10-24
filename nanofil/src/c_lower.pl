@@ -669,8 +669,9 @@ stmt_(block(Items), Ctx) -->
     items(Items, Ctx),
     restore_scope(Scope).
 stmt_(null, _) --> [].
-stmt_(expr(Expr), Ctx) --> rval(Expr, Ctx, _).
+stmt_(expr(Expr), Ctx) --> judged(Expr, Ctx), rval(Expr, Ctx, _).
 stmt_(if(Cond, Then, Else), Ctx) -->
+    judged(Cond, Ctx),
     label(LThen), label(LElse), label(LJoin),
     cond_jump(Cond, Ctx, LThen, LElse),
     start(LThen), stmt(Then, Ctx), term(jmp(LJoin)),
@@ -678,7 +679,7 @@ stmt_(if(Cond, Then, Else), Ctx) -->
     start(LJoin).
 stmt_(while(Cond, Body), Ctx) -->
     label(LCond), label(LBody), label(LEnd),
-    start(LCond), cond_jump(Cond, Ctx, LBody, LEnd),
+    start(LCond), judged(Cond, Ctx), cond_jump(Cond, Ctx, LBody, LEnd),
     start(LBody),
     { loop_ctx(Ctx, LEnd, LCond, BodyCtx) },
     stmt(Body, BodyCtx),
@@ -689,28 +690,29 @@ stmt_(do(Body, Cond), Ctx) -->
     start(LBody),
     { loop_ctx(Ctx, LEnd, LCond, BodyCtx) },
     stmt(Body, BodyCtx),
-    start(LCond), cond_jump(Cond, Ctx, LBody, LEnd),
+    start(LCond), judged(Cond, Ctx), cond_jump(Cond, Ctx, LBody, LEnd),
     start(LEnd).
 stmt_(for(Init, Cond, Step, Body), Ctx) -->
     save_scope(Scope),
     (   { Init == none } -> []
-    ;   { Init = expr(InitExpr) } -> rval(InitExpr, Ctx, _)
+    ;   { Init = expr(InitExpr) } -> judged(InitExpr, Ctx), rval(InitExpr, Ctx, _)
     ;   item(Init, Ctx)
     ),
     label(LCond), label(LBody), label(LStep), label(LEnd),
     start(LCond),
     (   { Cond == none } -> term(jmp(LBody))
-    ;   cond_jump(Cond, Ctx, LBody, LEnd)
+    ;   judged(Cond, Ctx), cond_jump(Cond, Ctx, LBody, LEnd)
     ),
     start(LBody),
     { loop_ctx(Ctx, LEnd, LStep, BodyCtx) },
     stmt(Body, BodyCtx),
     start(LStep),
-    ( { Step == none } -> [] ; rval(Step, Ctx, _) ),
+    ( { Step == none } -> [] ; judged(Step, Ctx), rval(Step, Ctx, _) ),
     term(jmp(LCond)),
     start(LEnd),
     restore_scope(Scope).
 stmt_(switch(Expr, Body), Ctx) -->
+    judged(Expr, Ctx),
     rval(Expr, Ctx, Value0),
     { Value0 = v(_, Type0), ctx_loc(Ctx, Loc) },
     {   int_type(Type0) -> integer_promotion(Type0, Type)
@@ -749,6 +751,7 @@ stmt_(return(none), Ctx) -->
     zero_ret(RetType).
 stmt_(return(Expr), Ctx) -->
     { Expr \== none, Ctx = ctx(_, RetType, _, _, Loc) },
+    judged(Expr, Ctx),
     rval(Expr, Ctx, Value0),
     (   { RetType == void } -> term(ret)
     ;   { su(RetType) }
@@ -900,6 +903,12 @@ dispatch_cases([CaseValue-Label|Pairs], Value, Type, Class, LDefault) -->
     term(jnz(Test, Label, Next)),
     start(Next),
     dispatch_cases(Pairs, Value, Type, Class, LDefault).
+
+% judged(+Expr, +Ctx)//: full expression Expr is typed, or c_types says
+% why not; where it cannot say, lowering reports the fault.
+judged(Expr, Ctx) -->
+    env(Env),
+    { ctx_loc(Ctx, Loc), ( elaborate(Expr, Env, Loc, _) -> true ; true ) }.
 
 % cond_jump(+Expr, +Ctx, +LTrue, +LFalse)//: branch on the truth of
 % scalar Expr.
@@ -1109,6 +1118,7 @@ store_leaf(val(Off, Type, N), Addr, _) -->
     emit(store(Width, c(N), P)).
 store_leaf(expr(Off, Type, Expr), Addr, Ctx) -->
     offset(Addr, Off, P),
+    judged(Expr, Ctx),
     rval(Expr, Ctx, Value0),
     { ctx_loc(Ctx, Loc) },
     assign_convert(Expr, Value0, Type, Loc, v(Value, _)),
@@ -1146,7 +1156,7 @@ statement_expression_items([Item|Items], Ctx, R) -->
     item(Item, Ctx), statement_expression_items(Items, Ctx, R).
 
 statement_expression_last(at(Loc, expr(Expr)), Ctx0, R) --> !,
-    { ctx_at(Ctx0, Loc, Ctx) }, rval(Expr, Ctx, R).
+    { ctx_at(Ctx0, Loc, Ctx) }, judged(Expr, Ctx), rval(Expr, Ctx, R).
 statement_expression_last(at(_, label(Name, Body)), Ctx, R) --> !,
     goto_label(Name, Label), start(Label),
     statement_expression_last(Body, Ctx, R).
@@ -1554,23 +1564,6 @@ vm_check(Type, Loc) :-
     ->  sema_error(Loc, '~w is not supported', [Why])
     ;   true
     ).
-
-unsupported_value_type(ldouble, 'long double').
-unsupported_value_type(bad(Why), Why).
-unsupported_value_type(array(T, _), Why) :- unsupported_value_type(T, Why).
-
-% vm_type(+Type): Type is variably modified. The cut ending the func
-% clause succeeds once however many parts are variably modified.
-vm_type(bad('non-constant array size')).
-vm_type(ptr(Type)) :- vm_type(Type).
-vm_type(array(Type, _)) :- vm_type(Type).
-vm_type(func(Ret, Params, _)) :-
-    (   vm_type(Ret)
-    ;   is_list(Params),
-        member(Param, Params),
-        vm_type(Param)
-    ),
-    !.
 
 %% Conversions
 

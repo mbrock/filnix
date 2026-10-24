@@ -39,7 +39,8 @@
                     scalar_type/1, type_class/2, member_type_offset/5, type_name_type/4,
                     lookup_ordinary/3, bind_ordinary/4, env_scope/3,
                     env_restore/3, sema_error/3, enum_underlying/2,
-                    decl_types/5, expression_type/3, value_type/2,
+                    decl_types/5, elaborate/3, elaborate/4, expression_type/3,
+                    vm_type/1, unsupported_value_type/2, value_type/2,
                     generic_selection/5, reflect_type/4, reflect_params/4,
                     conditional_type/3, unqualified/2,
                     overflow_builtin/3, binary_operands/6,
@@ -550,6 +551,26 @@ type_adjusted(T, T).
 type_name_type(type(Specs, SyntaxType), Type, Env0, Env) :-
     specs_type(Specs, Base, Env0, Env1),
     apply_declarator(SyntaxType, Base, Type, Env1, Env).
+
+% vm_type(+Type): Type is variably modified (6.7.6p3), which nanofil
+% does not support. The cut ending the func clause succeeds once however
+% many parts are variably modified.
+vm_type(bad('non-constant array size')).
+vm_type(ptr(Type)) :- vm_type(Type).
+vm_type(array(Type, _)) :- vm_type(Type).
+vm_type(func(Ret, Params, _)) :-
+    (   vm_type(Ret)
+    ;   is_list(Params),
+        member(Param, Params),
+        vm_type(Param)
+    ),
+    !.
+
+% unsupported_value_type(+Type, -Why): nanofil has no values of Type,
+% for the reason Why.
+unsupported_value_type(ldouble, 'long double').
+unsupported_value_type(bad(Why), Why).
+unsupported_value_type(array(T, _), Why) :- unsupported_value_type(T, Why).
 
 % bad_type(+T, -Why): bad(Why) is the first bad type inside T, if any
 % (not through pointers, which may point at anything).
@@ -1869,4 +1890,162 @@ generic_unique([assoc(T, _)|Rest], Loc) :-
     ( member(assoc(U, _), Rest), compatible_type(T, U)
     -> sema_error(Loc, '_Generic has duplicate compatible associations', [])
     ; generic_unique(Rest, Loc)
+    ).
+
+%% Diagnoses
+
+/*  When an expression cannot be typed, fault/4 says why: it finds the
+    first operand, in the order lowering evaluates them, that cannot be
+    typed, and the rule it breaks. The messages are lowering's, which
+    the reject tests hold to. A rule the elaborator does not check yet
+    (that an assignment's target is modifiable, an argument's conversion
+    to its parameter), or a type nanofil does not support, comes first
+    in that order, so fault/4 declines rather than misplace the blame;
+    lowering then reports. */
+
+doc(elaborate(+E, +Env, +Loc, -X), semidet, [
+    E: "a full expression",
+    Env: "the scope it is read in",
+    Loc: "where it is, for a diagnostic",
+    X: "its typed tree",
+    "elaborate/3, raising the diagnosis at Loc when E cannot be typed.",
+    "Fails, raising nothing, when fault/4 declines to say why.",
+    example(( empty_env(E), elaborate(chr(1), E, here, X) ), X = val(int, int(1))),
+    example(( empty_env(E),
+              catch(elaborate(id(g), E, here, _), nanofil_error(M), true) ),
+            M == 'here: undeclared identifier g')
+]).
+elaborate(E, Env, Loc, X) :-
+    (   elaborate(E, Env, X0) -> X = X0
+    ;   fault(E, Env, Format, Args) -> sema_error(Loc, Format, Args)
+    ).
+
+doc(fault(+E, +Env, -Format, -Args), semidet, [
+    E: "an expression that cannot be typed",
+    Env: "the scope it is read in",
+    Format: "the diagnostic's format",
+    Args: "its arguments, with types unqualified as lowering has them",
+    "The first fault in E, in evaluation order. Fails when it is not",
+    "one the elaborator diagnoses.",
+    example(( empty_env(E), fault(bin(add, chr(1), id(g)), E, F, A) ),
+            (F = 'undeclared identifier ~w', A = [g])),
+    example(( empty_env(E0), bind_ordinary(x, var(none, double), E0, E1),
+              bind_ordinary(qtype(x), qualified([const], double), E1, E),
+              fault(bin(mod, id(x), chr(2)), E, F, A) ),
+            (F = 'invalid operands to ~w: ~w and ~w', A = [mod, double, int])),
+    example(( empty_env(E0), bind_ordinary(p, var(none, ptr(int)), E0, E1),
+              bind_ordinary(d, var(none, double), E1, E),
+              fault(cond(id(g), id(p), id(d)), E, F, A) ),
+            (F = 'incompatible ?: operands ~w and ~w', A = [ptr(int), double])),
+    example(( empty_env(E0), bind_ordinary(x, var(none, int), E0, E),
+              fault(arrow(id(x), f), E, F, _) ),
+            F = '-> on a non-pointer'),
+    fails(( empty_env(E0), bind_ordinary(c, var(none, int), E0, E1),
+            bind_ordinary(qtype(c), qualified([const], int), E1, E),
+            fault(assign(=, id(c), id(g)), E, _, _) )),
+    fails(( empty_env(E),
+            fault(cast(type([tspec(int)], base), float(['1', '.', '0', 'L'])), E, _, _) ))
+]).
+fault(E, Env, Format, Args) :-
+    \+ unsupported_within(E, Env),
+    fault_(E, Env, Format, Args).
+
+fault_(id(Name), _, 'undeclared identifier ~w', [Name]).
+fault_(index(A, I), Env, F, As) :- fault_(un(deref, bin(add, A, I)), Env, F, As).
+fault_(un(Op, E), Env, F, As) :-
+    (   untyped(E, Env) -> fault_(E, Env, F, As)
+    ;   Op == deref -> F = 'dereferencing a non-pointer', As = []
+    ;   memberchk(Op, [plus, neg, bnot, not]),
+        lowered_type(E, Env, T), F = 'invalid operand to ~w: ~w', As = [Op, T]
+    ).
+fault_(member(E, Field), Env, F, As) :-
+    (   untyped(E, Env) -> fault_(E, Env, F, As)
+    ;   elaborate(E, Env, XS), member_subject(XS)
+    ->  F = 'no member named ~w', As = [Field]
+    ;   F = 'member access on a non-lvalue', As = []
+    ).
+fault_(arrow(E, Field), Env, F, As) :-
+    (   untyped(E, Env) -> fault_(E, Env, F, As)
+    ;   lowered_type(E, Env, ptr(_)) -> F = 'no member named ~w', As = [Field]
+    ;   F = '-> on a non-pointer', As = []
+    ).
+fault_(cast(TN, E), Env, F, As) :-
+    type_name_type(TN, To, Env, _),
+    (   untyped(E, Env) -> fault_(E, Env, F, As)
+    ;   lowered_type(E, Env, From), F = 'cannot convert ~w to ~w', As = [From, To]
+    ).
+fault_(call(Fn, _), Env, F, As) :-
+    \+ ( Fn = id(Name), \+ lookup_ordinary(Env, Name, _),
+         ( builtin_type(Name, _) ; float_builtin(Name, _, _) ) ),
+    (   untyped(Fn, Env) -> fault_(Fn, Env, F, As)
+    ;   \+ lowered_type(Fn, Env, ptr(func(_, _, _)))
+    ->  F = 'called object is not a function', As = []
+    ).
+fault_(assign(Op, A, B), Env, F, As) :-
+    (   untyped(A, Env) -> fault_(A, Env, F, As)
+    ;   modifiable_lvalue(A, Env),
+        ( Op == (=) -> true ; lowered_type(A, Env, T), scalar_type(T) ),
+        fault_(B, Env, F, As)
+    ).
+fault_(comma(A, B), Env, F, As) :- operands_fault([A, B], Env, F, As).
+fault_(sizeof_expr(E), Env, F, As) :- fault_(E, Env, F, As).
+fault_(bin(Op, A, B), Env, F, As) :-
+    memberchk(Op, [land, lor]), !,
+    (   untyped(A, Env) -> fault_(A, Env, F, As)
+    ;   lowered_type(A, Env, T), scalar_type(T), fault_(B, Env, F, As)
+    ).
+fault_(bin(Op, A, B), Env, F, As) :-
+    (   operands_fault([A, B], Env, F, As) -> true
+    ;   maplist(lowered_type_in(Env), [A, B], [TA, TB]),
+        F = 'invalid operands to ~w: ~w and ~w', As = [Op, TA, TB]
+    ).
+fault_(cond(C, A, B), Env, F, As) :-
+    (   arms_fault(A, B, Env, F, As) -> true
+    ;   fault_(C, Env, F, As)
+    ).
+fault_(gcond(C, B), Env, F, As) :- arms_fault(C, B, Env, F, As).
+fault_(generic(C, As0), Env, F, As) :-
+    (   untyped(C, Env) -> fault_(C, Env, F, As)
+    ;   operand(C, Env, _, CT),
+        generic_selection(CT, As0, Env, constant, E),
+        fault_(E, Env, F, As)
+    ).
+
+% arms_fault(+A, +B, +Env, -F, -As): the first fault of ?: arms A and B,
+% lowered first, then whether they go together (6.5.15p3).
+arms_fault(A, B, Env, F, As) :-
+    (   operands_fault([A, B], Env, F, As) -> true
+    ;   \+ conditional_type(A-B, Env, _),
+        maplist(lowered_type_in(Env), [A, B], [TA, TB]),
+        F = 'incompatible ?: operands ~w and ~w', As = [TA, TB]
+    ).
+
+% operands_fault(+Es, +Env, -F, -As): the fault of the first of Es that
+% cannot be typed.
+operands_fault(Es, Env, F, As) :-
+    member(E, Es), untyped(E, Env), !,
+    fault_(E, Env, F, As).
+
+untyped(E, Env) :- \+ elaborate(E, Env, _).
+
+% member_subject(+XS): lowering looks for members in XS, an lvalue or a
+% struct or union value; it refuses other values.
+member_subject(obj(_, _)).
+member_subject(val(T, _)) :- unqualified(T, U), ( U = struct(_) ; U = union(_) ).
+
+% lowered_type(+E, +Env, -T): T is E's value type as lowering has it,
+% unqualified.
+lowered_type(E, Env, T) :- operand(E, Env, _, T0), unqualified(T0, T).
+lowered_type_in(Env, E, T) :- lowered_type(E, Env, T).
+
+% unsupported_within(+E, +Env): E names a type nanofil does not support,
+% or a long double constant; lowering refuses them where it meets them.
+unsupported_within(E, Env) :-
+    compound(E),
+    (   E = type(_, _)
+    ->  \+ catch(( type_name_type(E, T, Env, _), \+ vm_type(T),
+                   \+ unsupported_value_type(T, _) ),
+                 _, fail)
+    ;   E = float(Cs) -> last(Cs, S), memberchk(S, [l, 'L'])
+    ;   E =.. [_|As], member(A, As), unsupported_within(A, Env)
     ).
