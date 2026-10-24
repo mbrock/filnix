@@ -51,15 +51,17 @@
   <section class="panel" id="symbols-panel"><h2>Symbols</h2><div data-slot="symbols"></div></section>
   </div>
   <div class="out">
-    <nav class="tabs" id="tabs">
-      <button data-tab="c">C</button>
-      <button data-tab="ir">IR</button>
-      <button data-tab="irtext">IR text</button>
-      <button data-tab="asm">Assembly</button>
+    <nav class="tabs" id="tabs" data-slot="pipeline">
+      <button data-tab="c">C syntax</button>
+      <button data-tab="lowered">IR</button>
+      <button data-tab="ir">checked IR</button>
+      <button data-tab="asm">assembly</button>
     </nav>
     <div data-slot="failure" class="failure"></div>
     <div class="panes">
       <div data-slot="c" class="pane"></div>
+      <div data-slot="lowered" class="pane"></div>
+      <div data-slot="optimized" class="pane"></div>
       <div data-slot="ir" class="pane"></div>
       <div data-slot="irtext" class="pane"></div>
       <div data-slot="asm" class="pane"></div>

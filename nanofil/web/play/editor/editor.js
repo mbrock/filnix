@@ -2,7 +2,7 @@
 // the wiki's and dterm's colours. default.nix bundles this into the
 // page's editor.js.
 import { EditorState, StateEffect, StateField, RangeSet } from "@codemirror/state";
-import { EditorView, Decoration, GutterMarker, keymap, lineNumbers, gutterLineClass, gutter, drawSelection, hoverTooltip } from "@codemirror/view";
+import { EditorView, Decoration, GutterMarker, keymap, lineNumbers, gutterLineClass, drawSelection, hoverTooltip } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { StreamLanguage, HighlightStyle, syntaxHighlighting, bracketMatching, indentOnInput, indentUnit } from "@codemirror/language";
 import { c } from "@codemirror/legacy-modes/mode/clike";
@@ -38,12 +38,9 @@ const linked = StateField.define({
   provide: (f) => EditorView.decorations.from(f),
 });
 
-// How many IR instructions each line made, in a gutter of its own.
-class Count extends GutterMarker {
-  constructor(n) { super(); this.n = n; }
-  eq(o) { return o.n === this.n; }
-  toDOM() { return document.createTextNode(String(this.n)); }
-}
+// The lines IR instructions come from: their numbers are tinted, so the
+// editor keeps one gutter.
+const irMarker = new (class extends GutterMarker { elementClass = "cm-ir"; })();
 const setCounts = StateEffect.define();
 const counts = StateField.define({
   create: () => RangeSet.empty,
@@ -51,8 +48,8 @@ const counts = StateField.define({
     for (const e of tr.effects) if (e.is(setCounts)) return e.value;
     return set.map(tr.changes);
   },
+  provide: (f) => gutterLineClass.from(f),
 });
-const countGutter = gutter({ class: "cm-counts", markers: (v) => v.state.field(counts) });
 
 const colours = HighlightStyle.define([
   { tag: [t.keyword, t.controlKeyword, t.modifier], color: "var(--call)" },
@@ -66,20 +63,20 @@ const colours = HighlightStyle.define([
 const theme = EditorView.theme({
   "&": { height: "100%", color: "var(--ink)", background: "none" },
   "&.cm-focused": { outline: "none" },
-  ".cm-scroller": { font: "0.8rem/1.55 var(--mono-font)" },
-  ".cm-content": { padding: "0.4rem 0", caretColor: "var(--ink)" },
-  ".cm-line": { padding: "0 0.6rem 0 0.1rem" },
+  ".cm-scroller": { font: "var(--code-size, 0.8rem)/1.5 var(--mono-font)" },
+  ".cm-content": { padding: "0.25rem 0", caretColor: "var(--ink)" },
+  ".cm-line": { padding: "0 0.4rem 0 0.35rem" },
   ".cm-cursor": { borderLeftColor: "var(--ink)" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground":
     { background: "color-mix(in srgb, var(--accent) 16%, transparent)" },
   ".cm-gutters": { background: "var(--code-bg)", border: "0", color: "color-mix(in srgb, var(--muted) 70%, transparent)" },
-  ".cm-lineNumbers .cm-gutterElement": { padding: "0 0.6em 0 0.5em", minWidth: "1.6em" },
+  ".cm-lineNumbers .cm-gutterElement": { padding: "0 0.2em 0 0.35em", minWidth: "1.4em" },
+  ".cm-gutterElement.cm-ir": { color: "color-mix(in srgb, var(--atom) 80%, transparent)", fontWeight: "600" },
   ".cm-gutterElement.cm-bad": { color: "var(--accent)", fontWeight: "700" },
   ".cm-line.cm-bad": { background: "color-mix(in srgb, var(--accent) 9%, transparent)" },
   "&.cm-focused .cm-matchingBracket": { background: "color-mix(in srgb, var(--accent) 14%, transparent)" },
   ".cm-nonmatchingBracket": { color: "var(--accent)" },
-  ".cm-counts .cm-gutterElement": { padding: "0 0.3em 0 0.1em", minWidth: "1.4em", textAlign: "right", fontSize: "0.85em", color: "color-mix(in srgb, var(--atom) 55%, transparent)" },
-  ".cm-line.cm-linked": { background: "color-mix(in srgb, var(--atom) 9%, transparent)" },
+  ".cm-line.cm-linked": { background: "color-mix(in srgb, var(--atom) 6%, transparent)" },
   ".cm-tooltip": {
     border: "1px solid var(--rule)",
     borderRadius: "4px",
@@ -98,7 +95,6 @@ export function editor(parent, { run, update, hover }) {
   const extensions = [
     lineNumbers(),
     counts,
-    countGutter,
     history(),
     drawSelection(),
     indentOnInput(),
@@ -130,11 +126,11 @@ export function link(view, from, to) {
   view.dispatch({ effects: setLinked.of(Decoration.set(lines)) });
 }
 
-// count(view, lines): show lines' instruction counts, lines a list of
-// {line, n}; an empty list clears them.
+// count(view, lines): tint the numbers of lines, a list of {line, n}
+// with n > 0 IR instructions; an empty list clears them.
 export function count(view, lines) {
   const doc = view.state.doc;
-  const marks = lines.filter((c) => c.line >= 1 && c.line <= doc.lines).map((c) => new Count(c.n).range(doc.line(c.line).from));
+  const marks = lines.filter((c) => c.line >= 1 && c.line <= doc.lines).map((c) => irMarker.range(doc.line(c.line).from));
   view.dispatch({ effects: setCounts.of(RangeSet.of(marks, true)) });
 }
 

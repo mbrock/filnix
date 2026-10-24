@@ -27,7 +27,7 @@ main.play {
   display: grid;
   grid-template-columns: minmax(20rem, 30rem) minmax(0, 1fr);
   gap: 0 clamp(1.25rem, 2.5vw, 2.5rem);
-  padding: 1rem var(--gutter) 0;
+  padding: 0.7rem var(--gutter) 0;
   max-width: var(--workspace-max);
   margin: 0 auto;
 }
@@ -45,7 +45,7 @@ main.play {
    opens the stages, and where the cursor is. */
 .editor {
   position: relative;
-  margin-bottom: 1.2rem;
+  margin-bottom: 0.9rem;
   border: 1px solid var(--rule);
   border-radius: 6px;
   background: var(--code-bg);
@@ -160,23 +160,53 @@ table.stages td.name { padding-left: 0; color: var(--muted); }
 table.stages td.time { text-align: right; font-variant-numeric: tabular-nums; }
 table.stages tr.bad td { color: var(--accent); font-weight: 700; }
 table.stages tr.total td { border-top: 1px solid var(--rule); font-weight: 700; padding-top: 0.15rem; }
-/* The output: four tabs over one pane. */
+/* The output: the pipeline. Each pass's output is a tab, and the pass
+   that made it stands before it, an arrow with its name and time; the
+   bar scrolls sideways when it is wider than the page. */
 .out { min-width: 0; }
-.tabs { display: flex; gap: 1.4rem; border-bottom: 1px solid var(--rule); }
+.tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.15rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
 .tabs button {
+  flex: none;
   margin-bottom: -1px;
-  padding: 0.2rem 0 0.45rem;
+  padding: 0.15rem 0.1rem 0.4rem;
   border: 0;
   border-bottom: 2px solid transparent;
   background: none;
   color: var(--muted);
-  font: 600 0.9rem var(--display-font);
+  font: 600 0.88rem var(--display-font);
   cursor: pointer;
 }
 .tabs button:hover { color: var(--ink); }
 .tabs button.selected { color: var(--ink); border-bottom-color: var(--accent); }
 .tabs button:disabled { opacity: 0.35; cursor: default; }
-.panes { padding-top: 0.6rem; }
+.tabs .pass {
+  flex: none;
+  display: grid;
+  grid-template-columns: auto auto;
+  column-gap: 0.25em;
+  justify-items: center;
+  padding: 0 0.3rem 0.4rem;
+  color: var(--muted);
+  font: 0.6rem/1.2 var(--mono-font);
+  cursor: help;
+}
+.tabs .pass:first-child { padding-left: 0; }
+.tabs .pass .arrow { grid-row: 2; grid-column: 1 / -1; font-size: 1rem; line-height: 0.85; color: color-mix(in srgb, var(--muted) 55%, transparent); }
+.tabs .pass .ptime { font-variant-numeric: tabular-nums; opacity: 0.7; }
+.tabs .pass.bad { color: var(--accent); font-weight: 700; }
+.tabs .pass.none { opacity: 0.45; }
+.tabs .as-text { margin-left: auto; padding-left: 1rem; font-weight: 500; font-size: 0.8rem; }
+.panes { padding-top: 0.5rem; }
+.panes .clause { font-size: 0.9rem; line-height: 1.42; }
+.pass-note { margin: 0 0 0.5rem; max-width: 46rem; color: var(--muted); font-size: 0.8rem; line-height: 1.4; }
 
 .failure:empty { display: none; }
 .failure { margin: 0.9rem 0 0.4rem; }
@@ -196,37 +226,44 @@ details.clause > summary::before {
   cursor: pointer;
 }
 details.clause:not([open]) > summary::before { content: "▸"; }
-[data-slot="ir"], [data-slot="c"] { padding-left: 1.2em; }
-details.clause { margin: 0.3rem 0 1.1rem; scroll-margin-top: 1rem; }
-details.clause.func > .goals { margin-left: 1.2em; row-gap: 0.4em; }
-details.clause.data > .goals { margin-left: 1.2em; }
-.block-ir > .label { font-weight: 700; }
+.pane { padding-left: 1.4em; }
+details.clause { margin: 0.2rem 0 0.9rem; scroll-margin-top: 1rem; }
+details.clause.func > .goals { margin-left: 0; row-gap: 0.25em; }
+details.clause.data > .goals { margin-left: 0.8em; }
+.block-ir > .label { font-weight: 700; color: var(--w-control, var(--ink)); }
 .block-ir > .label .neck { margin-left: 0.1em; }
-.block-ir > .goals { margin-left: 1.2em; }
+.block-ir > .goals { margin-left: 0.9em; row-gap: 0.06em; }
 .more { color: var(--muted); font-size: 0.85em; }
 .clause.item { margin: 0.4rem 0 0.9rem; }
 
-/* The item the cursor is in, and what the editor shows over a name. The
-   tint reaches left by a shadow, not by margin and padding, since a head
-   is a hanging indent (dterm.css) and changing its padding moves its
-   first line. */
-details.clause.here > summary, .clause.item.here {
-  --here: color-mix(in srgb, var(--atom) 9%, transparent);
-  border-radius: 3px;
-  background: var(--here);
-  box-shadow: -0.3em 0 0 var(--here);
-}
+/* The item the cursor is in: its fold mark and name in the accent. IR
+   rows from the cursor's line: a rule in the margin, continuous across a
+   run, and their line number. Rows pizlonation wrote: a thin rule of
+   their own. Nothing takes a background, so no row turns into a box. */
+details.clause.here > summary::before { color: var(--accent); }
+details.clause.here > summary .f.def { color: var(--accent); }
+.clause.item.here { box-shadow: -0.5em 0 0 -0.32em var(--accent); }
 .clause.item[data-line] { cursor: pointer; }
-/* IR rows from the cursor's line, and each run's line beside it. */
-.goal[data-line] { position: relative; }
-.goal.at { background: color-mix(in srgb, var(--atom) 10%, transparent); box-shadow: inset 2px 0 color-mix(in srgb, var(--atom) 45%, transparent); }
+.goal { position: relative; }
+.goal::before {
+  content: "";
+  position: absolute;
+  left: -0.45em;
+  top: -0.03em;
+  bottom: -0.03em;
+  width: 2px;
+}
+.goal.pz::before { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+.goal.at::before { left: -0.55em; width: 3px; background: var(--atom); }
 .goal > .ln {
   position: absolute;
-  right: calc(100% + 0.7em);
-  font: 0.68rem var(--mono-font);
-  color: color-mix(in srgb, var(--atom) 55%, transparent);
+  right: calc(100% + 0.9em);
+  white-space: nowrap;
+  font: 0.62rem/1.9 var(--mono-font);
+  color: color-mix(in srgb, var(--atom) 50%, transparent);
   font-variant-numeric: tabular-nums;
 }
+.goal.at > .ln { color: var(--atom); font-weight: 700; }
 .symbol { max-width: min(34rem, 90vw); padding: 0.4rem 0.6rem; }
 .symbol .head { font: 0.85rem var(--display-font); margin-bottom: 0.2rem; }
 .symbol .facts { font: 0.72rem var(--mono-font); color: var(--muted); }
@@ -281,7 +318,23 @@ table.symbols tr.import td.name { color: var(--muted); }
   }
   .doors { justify-content: flex-end; flex-wrap: nowrap; gap: 0; }
   .door { padding: 0.35rem 0.4rem; font-size: 0.82rem; }
-  .code { height: 11rem; }
+  main.play { padding: 0.4rem 0.6rem 2rem; }
+  .library-frame { padding: 0.35rem 0.6rem; }
+  .code { height: 10rem; }
+  .editor { --code-size: 0.72rem; margin-bottom: 0.7rem; border-radius: 4px; }
+  .bar { padding: 0.2rem 0.25rem; }
+  .foot { padding: 0.15rem 0.45rem; }
+  .bar, .foot { font-size: 0.72rem; }
+  /* Terms a size smaller, with shallower hangs, so an instruction fits
+     a phone's line. */
+  .panes { --indent: 1em; --hang: 1em; }
+  .panes .clause { font-size: 0.8rem; }
+  .pass-note { font-size: 0.74rem; }
+  .pane { padding-left: 1.2em; }
+  details.legend { margin-left: -1.2em; }
+  details.legend > summary .hint { display: none; }
+  .tabs .pass { padding: 0 0.2rem 0.4rem; }
+  .tabs button { font-size: 0.8rem; }
   #run kbd { display: none; }
   .side { display: contents; }
   .editor { grid-area: editor; }
@@ -295,7 +348,7 @@ table.symbols tr.import td.name { color: var(--muted); }
    memory, Fil-C's checks and where control goes stand apart, and the
    wrappers of values recede so their names and numbers read first. A
    class is a small badge. The legend over the IR uses the same colours. */
-[data-slot="ir"] {
+.pane {
   --w-inst: var(--ink);
   --w-memory: #94570c;
   --w-check: var(--accent);
@@ -323,10 +376,10 @@ dt.w-value { color: var(--var); }
 }
 .a.w-cond, dt.w-cond { background: color-mix(in srgb, var(--w-control) 10%, transparent); }
 .a.w-data, dt.w-data { color: var(--muted); }
-[data-slot="ir"] [title] { cursor: help; }
+.pane [title] { cursor: help; }
 
 details.legend {
-  margin: 0.2rem 0 1rem -1.2em;
+  margin: 0 0 0.8rem -1.4em;
   padding: 0.35rem 0.7rem;
   border: 1px solid var(--rule);
   border-radius: 6px;

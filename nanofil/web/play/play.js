@@ -67,17 +67,15 @@ function follow(n) {
   if (n !== atLine) {
     atLine = n;
     for (const el of document.querySelectorAll(".goal.at")) el.classList.remove("at");
-    const rows = document.querySelectorAll(`[data-slot="ir"] .goal[data-line="${n}"]`);
-    for (const el of rows) el.classList.add("at");
-    if (tab === "ir") rows[0]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    for (const el of document.querySelectorAll(`.pane .goal[data-line="${n}"]`)) el.classList.add("at");
+    document.querySelector(`[data-slot="${tab}"] .goal[data-line="${n}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
   const item = itemAt(n) ?? null;
   if (item?.name === here?.name && item?.from === here?.from) return;
   here = item;
   for (const el of document.querySelectorAll(".here")) el.classList.remove("here");
   if (!item) return;
-  const ir = document.getElementById("ir-" + item.name);
-  ir?.classList.add("here");
+  for (const ir of document.querySelectorAll(`details.clause[data-name="${CSS.escape(item.name)}"]`)) ir.classList.add("here");
   document.querySelector(`[data-slot="c"] [data-line="${item.from}"]`)?.classList.add("here");
   const pane = document.querySelector(`[data-slot="${tab}"] .here`);
   pane?.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -85,8 +83,8 @@ function follow(n) {
 function lines(el) {
   const row = el.closest(".goal[data-line]");
   if (row) return outline.lines?.get(+row.dataset.line);
-  const ir = el.closest('details.clause[id^="ir-"]');
-  if (ir) return outline.find((o) => "ir-" + o.name === ir.id);
+  const ir = el.closest("details.clause[data-name]");
+  if (ir) return outline.find((o) => o.name === ir.dataset.name);
   const c = el.closest(".clause.item[data-line]");
   return c && itemAt(+c.dataset.line);
 }
@@ -142,23 +140,35 @@ $("revert").onclick = () => {
 };
 if (/Mac|iP(hone|ad)/.test(navigator.platform)) $("keys").textContent = "⌘ ↵";
 
-// Tabs: the one chosen stays chosen across compiles.
+// Tabs: each pass's output (play_view.pl's pipeline, which replaces the
+// bar's buttons on every compile). The one chosen stays chosen across
+// compiles; if a compile has no such output (the optimized IR without
+// -O), the checked IR shows instead.
 let tab = "ir";
+const tabs = () => $("tabs").querySelectorAll("button[data-tab]");
+const has = (name) => document.querySelector(`[data-slot="${name}"]`)?.hasChildNodes();
 function show(name) {
   tab = name;
-  for (const b of $("tabs").children) b.classList.toggle("selected", b.dataset.tab === name);
+  for (const b of tabs()) b.classList.toggle("selected", b.dataset.tab === name);
+  const bar = $("tabs"), sel = bar.querySelector(".selected");
+  if (sel) bar.scrollLeft = Math.max(0, sel.offsetLeft - bar.offsetLeft - bar.clientWidth / 2 + sel.offsetWidth / 2);
   for (const p of document.querySelectorAll(".pane")) p.hidden = p.dataset.slot !== name;
 }
-$("tabs").onclick = (e) => e.target.dataset.tab && show(e.target.dataset.tab);
+$("tabs").onclick = (e) => {
+  const b = e.target.closest("button[data-tab]");
+  if (b && !b.disabled) show(b.dataset.tab);
+};
 show(tab);
+const irTabs = ["lowered", "optimized", "ir"];
 
 // A link to an IR item (from Data or Symbols) opens the IR tab there.
 document.addEventListener("click", (e) => {
   const a = e.target.closest('a[href^="#ir-"]');
   if (!a) return;
   e.preventDefault();
-  show("ir");
-  const el = document.getElementById(decodeURIComponent(a.hash.slice(1)));
+  if (!irTabs.includes(tab)) show("ir");
+  const name = decodeURIComponent(a.hash.slice(4));
+  const el = document.querySelector(`[data-slot="${tab}"] details.clause[data-name="${CSS.escape(name)}"]`);
   if (el) {
     el.open = true;
     el.scrollIntoView({ block: "start", behavior: "smooth" });
@@ -198,7 +208,7 @@ function gloss(ir) {
   for (const r of ir.querySelectorAll(".legend .role")) r.hidden = !r.querySelector(".word:not([hidden])");
 }
 // Hovering a temporary lights up its definition and uses in the function.
-document.querySelector('[data-slot="ir"]').addEventListener("pointerover", (e) => {
+document.querySelector(".panes").addEventListener("pointerover", (e) => {
   for (const el of document.querySelectorAll(".c.lit")) el.classList.remove("lit");
   const t = e.target.closest(".c[data-tmp]");
   if (!t) return;
@@ -230,11 +240,11 @@ worker.onmessage = ({ data }) => {
       const slot = document.querySelector(`[data-slot="${sec.id}"]`);
       if (slot) slot.append(...sec.childNodes);
     }
-    gloss(document.querySelector('[data-slot="ir"]'));
+    for (const t of irTabs) gloss(document.querySelector(`[data-slot="${t}"]`));
     $("status").textContent = failed ?? fmt(data.ms);
     $("memory").textContent = `${fmt(data.ms)} · ${data.mb.toFixed(0)} MB`;
-    for (const b of $("tabs").children)
-      b.disabled = !document.querySelector(`[data-slot="${b.dataset.tab}"]`).hasChildNodes();
+    for (const b of tabs()) b.disabled = !has(b.dataset.tab);
+    show(has(tab) ? tab : has("ir") ? "ir" : [...tabs()].findLast((b) => !b.disabled)?.dataset.tab ?? "c");
     state(failed ? "failed" : "ok");
     Promise.all([ask("play_view:play_outline(O)"), ask("play_view:play_lines(C)")]).then(([r, c]) => {
       outline = r?.O ?? [];

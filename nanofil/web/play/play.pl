@@ -3,8 +3,9 @@
     play(+File, +Opt, -Stages): Stages lists stage(Name, Seconds, Result)
     for preprocessing, parsing, lowering, validation, the middle end (Opt
     o0 or o1), pizlonation (Fil-C's checks made explicit) and the Fil-C
-    backend, and what they made: term(syntax,
-    Items), term(ir, Module), term(asm, Lines), text(ir, Chars) and
+    backend, and what they made: term(syntax, Items), term(lowered, M0)
+    (the IR as lowering made it), term(optimized, M) (with o1 only),
+    term(ir, Module) (the checked IR), term(asm, Lines), text(ir, Chars) and
     text(asm, Chars). Stops at the first stage that fails or throws,
     whose Result is then failed or error(E).
 
@@ -65,13 +66,18 @@ stages_lower(Opt, Items, [S, V|Ss]) :-
     timed(lower, c_module(Items, M0), S),
     (   ok(S)
     ->  timed(validate, valid_module(M0), V),
-        (   ok(V) -> stages_opt(Opt, M0, Ss) ; Ss = [] )
+        Ss = [term(lowered, M0)|Ss0],
+        (   ok(V) -> stages_opt(Opt, M0, Ss0) ; Ss0 = [] )
     ;   V = stage(validate, 0, skipped), Ss = []
     ).
 
 stages_opt(Opt, M0, [S|Ss]) :-
     timed(optimize, optimize(Opt, M0, M), S),
-    (   ok(S) -> stages_pizlonate(M, Ss) ; Ss = [] ).
+    (   ok(S)
+    ->  ( Opt == o1 -> Ss = [term(optimized, M)|Ss1] ; Ss = Ss1 ),
+        stages_pizlonate(M, Ss1)
+    ;   Ss = []
+    ).
 
 % The IR shown is the checked module the backend compiles: Fil-C's
 % checks and pollchecks in the IR (docs/pizlonation.md), validated as

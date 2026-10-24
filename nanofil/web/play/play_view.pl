@@ -157,14 +157,23 @@ term(T) --> dterm:term(T, _, 999, ctx(play, data)).
 article(File, Stages) -->
     el(article, "dterm play", (
         stages_(Stages),
+        pipeline_(Stages),
         failure_(Stages),
         (   { memberchk(term(syntax, All), Stages) }
         ->  { play_items(File, All, Items) },
             section_(c, seq(Items, item_))
         ;   []
         ),
+        (   { memberchk(term(lowered, M0), Stages) }
+        ->  ir_(lowered, File, M0, lowered_note(M0))
+        ;   []
+        ),
+        (   { memberchk(term(optimized, M1), Stages), memberchk(term(lowered, M0), Stages) }
+        ->  ir_(optimized, File, M1, optimized_note(M0, M1))
+        ;   []
+        ),
         (   { memberchk(term(ir, M), Stages) }
-        ->  ir_(File, M), data_(M), symbols_(M)
+        ->  ir_(ir, File, M, checked_note(M)), data_(M), symbols_(M)
         ;   []
         ),
         (   { memberchk(text(ir, IR), Stages) }
@@ -175,7 +184,8 @@ article(File, Stages) -->
     )).
 
 % The page moves each section into its own place: stages under the
-% Compile button, c, ir, irtext and asm into tabs, data and symbols beside.
+% Compile button, the pipeline into the tab bar, c, lowered, optimized,
+% ir, irtext and asm into tabs, data and symbols beside.
 section_(Id, Body) --> el(section, none, [id=Id], Body).
 
 %% Stages
@@ -244,8 +254,65 @@ strings(T, T).
 %% over one instruction per row; a data object its head over its items.
 %% Each folds away under its head.
 
-ir_(File, module(Items)) -->
-    section_(ir, ( legend_, seq(Items, ir_item(File)) )).
+ir_(Slot, File, module(Items), Note) -->
+    section_(Slot, (
+        el(p, "pass-note", Note),
+        legend_,
+        seq(Items, ir_item(Slot, File))
+    )).
+
+%% The pipeline: each pass's output is a tab, and between them the pass
+%% that made it, with its time. Stage names are play.pl's.
+
+pipeline_(Stages) -->
+    { ( memberchk(term(optimized, _), Stages) -> Steps = [parse-c-"C syntax", lower-lowered-"IR",
+                                                          optimize-optimized-"optimized IR"|Rest]
+      ; Steps = [parse-c-"C syntax", lower-lowered-"IR"|Rest] ),
+      Rest = [pizlonate-ir-"checked IR", backend-asm-"assembly"] },
+    section_(pipeline, ( seq(Steps, step_(Stages)),
+                         el(button, "as-text", ['data-tab'=irtext, title="the checked IR as the text nanofil print reads"], "text") )).
+
+step_(Stages, Stage-Slot-Label) -->
+    { (   memberchk(stage(Stage, T, R), Stages)
+      ->  ( R == ok -> C = "pass" ; C = "pass bad" ),
+          format(codes(Time), "~0f ms", [T * 1000])
+      ;   C = "pass none", Time = ""
+      ),
+      pass_name(Stage, Name, Title) },
+    el(span, C, [title=Title], ( el(span, "arrow", "→"), el(span, "pname", esc(Name)), el(span, "ptime", esc(Time)) )),
+    el(button, none, ['data-tab'=Slot], esc(Label)).
+
+pass_name(parse, "parse", "preprocess, lex and parse the C file").
+pass_name(lower, "lower", "lower the typed C syntax to IR").
+pass_name(optimize, "optimize", "the middle end: promote locals to temporaries, fold copies").
+pass_name(pizlonate, "pizlonate", "make Fil-C's checks explicit: a check before every load and store, a pollcheck on every loop").
+pass_name(backend, "amd64", "compile the checked IR to x86-64 in the Fil-C ABI").
+
+% What each pass made, in a line over its output.
+lowered_note(M) -->
+    { module_counts(M, F, N) },
+    "lower made ", count_(F, "function"), " of ", count_(N, "instruction"),
+    " from the typed C syntax; each load and store is still checked implicitly.".
+optimized_note(M0, M) -->
+    { module_counts(M0, _, N0), module_counts(M, _, N) },
+    "optimize left ", count_(N, "instruction"), " of the ", esc(N0), " lowering made.".
+checked_note(M) -->
+    { module_counts(M, _, N),
+      aggregate_all(count, sub_term(check(_, _, _, _), M), K),
+      aggregate_all(count, sub_term(poll(_), M), P) },
+    "pizlonate added ", count_(K, "check"), " (each proves one access's address) and ",
+    count_(P, "pollcheck"), " on loop edges, marked at the left; ",
+    count_(N, "instruction"), " in all, which the backend compiles.".
+
+count_(N, Word) --> esc(N), " ", esc(Word), ( { N =:= 1 } -> [] ; "s" ).
+
+% module_counts(+M, -Functions, -Insts): instructions are phis, insts
+% other than loc/2, and jumps.
+module_counts(module(Items), F, N) :-
+    aggregate_all(count, member(func(_, _, _, _, _), Items), F),
+    aggregate_all(sum(K), ( member(func(_, _, _, _, Bs), Items), member(block(_, Ps, Is, _), Bs),
+                            length(Ps, P), exclude([loc(_, _)]>>true, Is, Is1), length(Is1, I),
+                            K is P + I + 1 ), N).
 
 %% Reading the IR: what each word means, for someone who has not read
 %% ir.pl. The legend over the IR lists them, by role; play.js gives each
@@ -421,19 +488,19 @@ entry_(Role, Key-Shape-Text) -->
         el(dd, none, esc(Text))
     )).
 
-ir_item(File, func(Name, Linkage, Ret, Params, Blocks)) --> !,
-    folding("clause func", Name,
+ir_item(Slot, File, func(Name, Linkage, Ret, Params, Blocks)) --> !,
+    folding(Slot, "clause func", Name,
         dterm:compound_(func(Name, Linkage, Ret, Params, '$VAR'('Blocks')), _, ctx(play, head)),
         seq(Blocks, block_(File))).
-ir_item(_, data(Name, Linkage, Align, Items0)) -->
+ir_item(Slot, _, data(Name, Linkage, Align, Items0)) -->
     { text_runs(Items0, Items), length(Items, N), shown(N, Max) },
-    folding("clause data", Name,
+    folding(Slot, "clause data", Name,
         dterm:compound_(data(Name, Linkage, Align, '$VAR'('Items')), _, ctx(play, head)),
         ( seq_max(Items, Max, row), more(N, Max) )).
 
-folding(Class, Name, Head, Goals) -->
-    { atom_codes(Name, Cs), append("ir-", Cs, Id) },
-    el(details, Class, [id=Id, open=""], (
+folding(Slot, Class, Name, Head, Goals) -->
+    { format(codes(Id), "~w-~w", [Slot, Name]), atom_codes(Name, Ns) },
+    el(details, Class, [id=Id, 'data-name'=Ns, open=""], (
         el(summary, "head", Head),
         el(div, "goals", Goals)
     )).
@@ -483,7 +550,8 @@ lined_rows([], _) --> [].
 lined_rows([T-L|Rows], Prev) -->
     (   { integer(L) }
     ->  { format(codes(Ls), "~d", [L]) },
-        el(div, "goal", ['data-line'=Ls], (
+        { goal_class(T, C) },
+        el(div, C, ['data-line'=Ls], (
             ( { L == Prev } -> [] ; el(span, "ln", esc(Ls)) ),
             term(T)
         ))
@@ -491,7 +559,17 @@ lined_rows([T-L|Rows], Prev) -->
     ),
     lined_rows(Rows, L).
 
-row(T) --> el(div, "goal", term(T)).
+row(T) --> { goal_class(T, C) }, el(div, C, term(T)).
+
+% A row pizlonation wrote (a check, a raw access, a jump through a
+% pollcheck) is marked.
+goal_class(T, "goal pz") :- pizlonated(T), !.
+goal_class(_, "goal").
+
+pizlonated(let(_, _, check(_, _, _, _), _)).
+pizlonated(let(_, _, raw_load(_, _), _)).
+pizlonated(raw_store(_, _, _, _)).
+pizlonated(J) :- sub_term(poll(_), J).
 
 shown(N, Max) :- ( N > 80 -> Max = 64 ; Max = N ).
 
@@ -623,14 +701,19 @@ asm_term_lines(1500).
 asm_(Lines) -->
     { length(Lines, N), asm_term_lines(Max) },
     (   { N =< Max }
-    ->  section_(asm, el(table, "asm", seq(Lines, asm_row)))
+    ->  section_(asm, ( asm_note(N), el(table, "asm", seq(Lines, asm_row)) ))
     ;   { length(First, Max), append(First, _, Lines),
           with_output_to(codes(Text), asm:print_asm(Lines)) },
         section_(asm, (
+            asm_note(N),
             el(table, "asm", seq(First, asm_row)),
             el(pre, "text", esc(Text))
         ))
     ).
+
+asm_note(N) -->
+    el(p, "pass-note", ( "amd64 made ", count_(N, "line"),
+                         " of x86-64 in the Fil-C ABI: each term beside the AT&T text it prints as." )).
 
 asm_row(L) -->
     { with_output_to(codes(Cs0), asm:print_asm([L])),

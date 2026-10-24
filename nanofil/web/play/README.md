@@ -11,23 +11,31 @@ and the page shows, from one `<article>` whose sections it puts in place:
   backend, print assembly) with their times and the memory. A stage that
   fails names itself there, says why above the tabs, and marks the line
   in the gutter;
-- four tabs: **C**, the syntax terms of the input's own items
-  (`c_parse/2`), not the header declarations; **IR**, the checked IR
-  terms the backend compiles (`ir.pl`'s grammar, after `pizlonate.pl`
-  has made Fil-C's checks and pollchecks explicit; see
-  [docs/pizlonation.md](../../docs/pizlonation.md)), a function as its
-  head over its blocks, a block as
-  its label over one row per phi, instruction and jump, each function and
-  data object folding under its head, and a run of text bytes drawn as
-  the one `item(b, str(S))` it means. Over the IR, "How to read the IR"
+- the output as a pipeline: each pass's output is a tab, and before it
+  stands the pass that made it, with its time: parse → **C syntax**
+  (`c_parse/2`, the input's own items, not the header declarations) →
+  lower → **IR** (as `c_lower.pl` made it) → optimize → **optimized
+  IR** (with -O only) → pizlonate → **checked IR** (after
+  `pizlonate.pl` has made Fil-C's checks and pollchecks explicit, the
+  module the backend compiles; see
+  [docs/pizlonation.md](../../docs/pizlonation.md)) → amd64 →
+  **assembly** (each `asm.pl` line term beside the AT&T line it prints
+  as; the first 1500 lines, longer listings follow as text), and at
+  the end **text**, the checked IR as the clauses `nanofil print` and
+  `compile` read (`src/ir_text.pl`). Each output opens with a line on
+  what its pass did (how many instructions, checks, pollchecks), and in
+  the checked IR the rows pizlonation wrote are marked at the left.
+  An IR is a function as its head over its blocks, a block as its label
+  over one row per phi, instruction and jump, each function and data
+  object folding under its head, and a run of text bytes drawn as the
+  one `item(b, str(S))` it means. Over each IR, "How to read the IR"
   explains each word the module uses (`play_view.pl`'s `gloss/4`), and
   every word in the IR is coloured by its role (instruction, memory,
   Fil-C check, jump, value) and says what it means on hover, a class or
   op atom by its place (`slot/2`); hovering a temporary lights up its
-  definition and uses. **IR text**, the same module as
-  the clauses `nanofil print` and `compile` read (`src/ir_text.pl`);
-  **Assembly**, each `asm.pl` line term beside the AT&T line it prints
-  as (the first 1500 lines; longer listings follow as text);
+  definition and uses. Without -O each row's source line is beside it;
+  the editor tints the numbers of the lines that made IR, and the
+  cursor's line rules its rows in every IR;
 - **Data**, each data object's bytes as hex and text, pointers as the
   symbols they point at;
 - **Symbols**, what the module defines (name, kind, IR signature or size,
