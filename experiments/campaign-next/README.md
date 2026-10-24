@@ -70,16 +70,20 @@ Determinate daemon. A daemon-store smoke request also built successfully on the 
 
 ## Bounded world campaign and deployment
 
-`shells/world-packages.nix` is the ordered, reusable root set for both the world
-shell/VM and this campaign. It includes 82 roots: Linux userland, foundational
-libraries, GTK/Wayland, language runtimes, and applications. Emacs is headless;
-GTK uses the existing Wayland/Broadway port configuration. Custom Qt ports are
-not selected. FFmpeg and GTKmm are last to avoid delaying the core landmarks.
+`world.nix` defaults to `scope = "expected"`: CI/distribution leaders followed
+by the explicit compatibility list in `ports/expected.nix`. Selected evaluation
+failures block freezing, rather than silently shrinking the obligation. See
+[selection policy](../../docs/campaigns.md) and run
+`python3 tests/campaign-manifest.py` from the repository root to test freezing.
 
-`world.nix` with `scope = "ports"` expands this to the union of the world roots
-and all active `ports.nix` declarations. Evaluations that fail are retained in
-the manifest's `excluded` array. The initial full port manifest has 300 admitted
-roots and 12 exclusions. The runner accepts up to 1024 roots, retaining all
+`scope = "world"` uses `shells/world-packages.nix`, the 82-root shell/VM
+composition: userland, libraries, GTK/Wayland, runtimes and applications. It
+remains separate from the expected compatibility contract.
+
+`scope = "ports"` is exploratory: the union of world roots and active
+`ports.nix` declarations. Evaluation failures remain in `excluded`, with known
+broken reasons where available; exclusions never count as successes. Manifest
+counts vary with the frozen revision. The runner accepts up to 1024 roots, retaining all
 cohort summaries while the table renders 100 rows per page.
 
 `cohort` accepts an immutable JSON manifest with `id`, `name`, and a `roots`

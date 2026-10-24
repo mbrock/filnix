@@ -5,6 +5,9 @@ to it. The native C++/NXT runner owns its DuckDB recording and listens on
 loopback port 8778. `filnix-v2.service` runs the application selected by
 `/opt/filnix-v2`; state lives under `/var/lib/filnix-v2`.
 
+See [campaign purpose and selection policy](campaigns.md) before choosing a
+scope. The normal per-revision campaign is `expected`; `ports` is exploration.
+
 ## Toolchain rollout workflow
 
 1. Build the matched compiler/runtime and run focused semantic regressions
@@ -15,10 +18,10 @@ loopback port 8778. `filnix-v2.service` runs the application selected by
    baseline smoke tests. GTK, Emacs and distribution tarballs are not in
    this gate. `--no-publish` explicitly bypasses the cache guarantee and is
    not the normal toolchain rollout path.
-3. Freeze a `scope = "ports"` manifest at the pushed revision and roll the
+3. Freeze a `scope = "expected"` manifest at the pushed revision and roll the
    recording as described below. The manifest starts with the wider
    `scripts/ci-outputs.txt` list, including the foundation and distribution
-   artifacts, then the world and remaining declared ports. Keep the
+   artifacts, then the explicit `ports/expected.nix` compatibility list. Keep the
    previous recording and manifest together for comparison and rollback.
 4. Watch the public campaign and both publishers. Report failures and
    unattempted roots separately from successful builds. A foundation-ready
@@ -32,18 +35,24 @@ checks. It does not automatically execute every `flake.nix` check: those
 additional integration/regression checks remain available for targeted or
 broader validation, without delaying an urgent foundation-ready update.
 
-The smaller campaign uses the release Fil-C 0.687 toolchain and the
-union of `shells/world-packages.nix` with the active `ports.nix` declarations.
-At the initial launch this selects 300 evaluable roots. Twelve declarations
-are excluded by their existing unsupported-platform metadata: `onetbb`,
-`valgrind`, `gnustep-libobjc`, `libbsd`, `go`, `luajit`, `rspamd`, `python311`,
-`python313`, `colm`, `ragel`, and `rustc`. The frozen manifest records them in
-`excluded`; this does not count them as successful builds.
+The expected selection starts with the curated baseline packages and the 82
+world landmarks, all successful in the `ports-a324a843` recording. It is an
+independent list, not dynamically expanded by shell composition or new port
+declarations. Unexpected selected evaluation failures block freezing.
+
+For exploration, explicitly freeze `scope = "ports"`: the union of
+`shells/world-packages.nix` and active `ports.nix` declarations. The original
+full port launch admitted 300 roots; the later 0.687 recording admitted 327.
+Counts are historical: read the new manifest rather than assuming either count.
+Evaluation exclusions never count as successes. Broken-port reasons are retained
+where known; unresolved evaluation errors remain labeled as such. PipeWire and
+its seven observed blocked consumers are recorded even outside the expected
+selection (`selected = false`), without expanding the attempted denominator.
 
 Each root asks Nix to realise its complete dependency graph, using existing
 valid outputs and substitutions where available. This is a build of the latest
 package definitions, not a forced rebuild of unchanged outputs. Roots run in
-distribution-priority order, then world order and the remaining declarations.
+distribution-priority order, then the chosen package-list order.
 The service allows two
 local jobs with four cores, respects configured remote builders, admits work
 for at most 24 hours, and allows two hours per root and 30 minutes of silence.
@@ -59,7 +68,7 @@ nix build path:./experiments/campaign-next --out-link result-campaign-next
 nix flake check path:./experiments/campaign-next
 revision=$(git rev-parse HEAD)
 manifest=$(nix eval --impure --raw --expr \
-  "import ./experiments/campaign-next/world.nix { source = \"git+file:$PWD?rev=$revision\"; revision = \"$revision\"; scope = \"ports\"; }")
+  "import ./experiments/campaign-next/world.nix { source = \"git+file:$PWD?rev=$revision\"; revision = \"$revision\"; scope = \"expected\"; }")
 ```
 
 Review `roots` and `excluded` in that manifest. Root both the immutable manifest
@@ -74,7 +83,11 @@ The runner deliberately has no implicit resume. Restarting with a nonempty
 database serves its recording without issuing builds. To start another campaign,
 stop the service, preserve the closed database and manifest together under a
 dated archive directory, select the new manifest, and start with a fresh
-`campaign.duckdb`. Never copy/open a live DuckDB recording from another process;
+`campaign.duckdb`. After stopping, a WAL may already have been checkpointed
+away; archive it only if present. Root both old and new manifests before the
+switch, and retain the application root. Save `/api/state` before stopping and
+verify the new revision/scope, `/api/outputs`, and both publisher statuses after
+starting. Never copy/open a live DuckDB recording from another process;
 its owning process provides the online read APIs. Keep rollback packages rooted.
 
 The Python controller, web, classification, retention and analytics services
@@ -120,7 +133,9 @@ sudo /opt/filnix-cache/bin/filnix-publish-cache cachix --status
 ```
 
 `/api/state` exposes the cohort counts, frozen revision, exclusions and current
-session; the dashboard supports filters and 100-row pages for all 300 roots.
+session; the dashboard supports filters and 100-row pages. Its name/scope now
+distinguishes expected compatibility from exploratory ports. Exclusion disclosure
+is currently in the API/manifest, not the main outcome arithmetic.
 An output receipt means upload completion, not continuous remote verification
 or test success. Compare cache NAR hashes/sizes/references and restore into a
 fresh store when testing actual cache availability.
