@@ -12,10 +12,20 @@ nanofil should read like the standards it implements. A clause of
 `ir.pl` as a sentence about the IR, a clause of `filc_amd64.pl` as a
 fact about the Fil-C ABI. Each fact is stated once, as a relation, and
 everything that needs it reads it. When that holds, the compiler is
-short because nothing is said twice, trustworthy because there is no
-second copy to drift, and delightful because you can learn memory-safe
-C by reading it. Some relations can even run backwards, generating the
-programs they describe.
+trustworthy because there is no second copy to drift, and delightful
+because you can learn memory-safe C by reading it. Some relations can
+even run backwards, generating the programs they describe.
+
+The aim is adequacy of structure, not brevity: the shape of the code
+should be the shape of what it describes, the way a proposition pictures
+its fact. A rule of C belongs in one clause group named for it, a
+distinction C draws (lvalue or not, constant or not, which conversion)
+belongs in a principal functor, and a step C takes implicitly (an
+lvalue conversion, a promotion) should be visible as a term. Clarity is
+not concision: supporting more of real C will keep making nanofil
+larger, and that growth is fine when each new fact has its obvious
+place. Condensing and unifying are the means; line counts are a symptom
+worth watching, not the goal.
 
 The model is Markus Triska's [The Power of Prolog](https://www.metalevel.at/prolog):
 clean representations with cases told apart by their principal functor,
@@ -36,8 +46,10 @@ data).
   and say so in the commit.
 - **Both hosts.** Code runs on SWI-Prolog and Trealla; watch Trealla's
   memory on c-testsuite 00040 and 00200 for changes to the frontend.
-- **Measure the claim.** Report line counts honestly. "One home per
-  rule" is a gain; "shorter" must be shown with `git diff --stat`.
+- **Report honestly.** Say what a step made clearer and where the
+  structure still differs from what it describes. Track line counts
+  with `git diff --stat` as a symptom (a factoring that only adds lines
+  should say what it bought), but do not optimize for them.
 - **Coordinate.** Shared files (`c_lower.pl`, `filc_amd64.pl`, `ir.pl`,
   `interp.pl`) may have other owners; see AGENTS.md.
 
@@ -82,7 +94,8 @@ Fil-C checks, which have no IR form and are stated separately by
 
 Elaborate each full expression once into a typed tree, and let every
 consumer fold over it: IR emission, integer constants and address
-constants. That ends the four walks, which is where the lines go.
+constants. That ends the four walks: one description of what each C
+expression is, read three ways.
 
 ```prolog
 % X     ::= val(Type, Node) | obj(Type, Place) | fun(Type, Designator)
@@ -127,7 +140,7 @@ Update the status column when a step lands, with its commit.
 | 2 | One scalar table (`scalar/5` or similar) replacing the eight scalar-fact tables; one C operator table replacing `binop/3`, `assign_op/1`, `binary_kind/2`, `cmp_op/3`, `arith_op/3`, `compound_op/2`; one punctuator and identifier-character definition shared by `c_lex.pl` and `c_pp.pl`. | Snapshot identical; `pptest.sh`; unit tests and Nix checks on both hosts. Expect about −100 lines. | Done, −53 lines: `integer_type/4` and ir's `narrow_type/3`; `c_operator/4` with `compound_assignment/2`; c_lex's `punctuator/1`, `digraph/1` and character classes, shared by c_pp. Not done: `const_arith/4`, `cmp_op/3` and `arith_op/3`, which map C ops to IR ops and belong to step 3. |
 | 3 | `elaborate/4` as the judgment: `expression_type/3` and `expression_category/3` become projections, and the elaborator raises diagnostics. | Assert old and new agree on every subexpression the snapshot reaches; snapshot identical; reject tests reject. | |
 | 4 | Lower from the tree, form by form, through `src(E)`: literals and conversions (deleting `decay//3`, `assign_convert//5`), then places, then `?:` and assignment, then calls. Delete `obj//3` and `rvalue//3`. | Snapshot identical after every form; Trealla memory on c-testsuite 00040 and 00200. | |
-| 5 | Integer and address constants as folds over the tree: `const_eval/4` loses its own typing, `addr_const`/`lvalue_const` fold places to `sym(S, Off)`. | The `#if` cases against `clang -E`, `pptest.sh`, snapshot, `nanofil-zlib`, `nanofil-lua`. Count lines: the −300 should show here. | |
+| 5 | Integer and address constants as folds over the tree: `const_eval/4` loses its own typing, `addr_const`/`lvalue_const` fold places to `sym(S, Off)`. | The `#if` cases against `clang -E`, `pptest.sh`, snapshot, `nanofil-zlib`, `nanofil-lua`. The four walks should be one. | |
 
 ## Visions
 
