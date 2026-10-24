@@ -307,7 +307,7 @@ table.asm td.term { white-space: nowrap; }
    alt_nests/1, alt_conj/1), and one too wide for its place (dterm.js, or
    a narrow screen without it), is a flow: each condition, then its
    consequence under it. */
-.cases.stack { grid-template-columns: max-content minmax(0, max-content); column-gap: 0.55em; }
+.cases.stack { grid-template-columns: max-content minmax(0, max-content); column-gap: 0.8em; }
 .cases.stack > .case {
   display: grid;
   grid-column: 1 / -1;
@@ -328,10 +328,10 @@ table.asm td.term { white-space: nowrap; }
   letter-spacing: 0.06em; white-space: nowrap;
 }
 .cases.stack > .case.plain > .cond:has(.kw:empty) { display: none; }
-.cases.stack > .case > .then > .goals {
-  margin-left: calc(-0.45em - 2px); padding-left: 0.45em;
-  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, var(--rule));
-}
+/* The labels are the structure: no bars, and all set alike, flush left
+   on the first line of their branch. */
+.cases.stack > .case.plain > .cond { text-align: left; }
+.cases.stack .kw { justify-self: start; }
 @media (max-width: 700px) {
   /* A run of a term with nowhere to break (a functor, its parenthesis
      and a first argument, or a long atom) breaks where it must rather
