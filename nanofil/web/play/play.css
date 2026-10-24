@@ -1,80 +1,238 @@
-/* The nanofil playground, inside the wiki's frame: ../../style.css sets
-   the palette, type and header, ../dterm.css draws the terms. This file
-   lays out the editor beside the article. */
+/* The nanofil playground, in the wiki's palette and type (../../style.css)
+   with terms drawn by ../dterm.css. On a wide screen it fills the window:
+   the source, the Compile row, Data and Symbols in a column beside the
+   tabbed output, each scrolling on its own. On a narrow one it is a page:
+   source, Compile, output, Data, Symbols. */
 
-main.play-page {
+/* The wiki's library band, in one short row. */
+.library-frame {
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 0.45rem var(--gutter);
+}
+.library .eyebrow { font-size: 0.62rem; margin-bottom: 0.15rem; }
+.library .eyebrow a { color: inherit; }
+.library h1 { font-size: 1.35rem; margin: 0; }
+
+main.play {
   display: grid;
-  grid-template-columns: minmax(16rem, 26rem) minmax(0, 1fr);
-  gap: clamp(1.5rem, 3vw, 3rem);
+  grid-template-columns: minmax(20rem, 30rem) minmax(0, 1fr);
+  gap: 0 clamp(1.25rem, 2.5vw, 2.5rem);
+  padding: 1rem var(--gutter) 0;
+  max-width: var(--workspace-max);
+  margin: 0 auto;
+}
+@media (min-width: 900px) {
+  body { display: flex; flex-direction: column; height: 100vh; }
+  main.play { flex: 1; min-height: 0; width: 100%; }
+  .side, .panes { overflow: auto; padding-bottom: 2rem; }
+  .out { overflow: hidden; display: flex; flex-direction: column; }
+  .panes { flex: 1; }
 }
 
-.status-right.bad { color: color-mix(in srgb, var(--status-ink) 40%, var(--accent)); }
-
-.editor { position: sticky; top: 2.6rem; align-self: start; }
-.editor textarea {
-  display: block;
-  width: 100%;
-  min-height: 15rem;
-  resize: vertical;
-  padding: 0.7rem 0.8rem;
+/* The source, with its line numbers. */
+.editor {
+  display: flex;
   border: 1px solid var(--rule);
   border-radius: 4px;
   background: var(--code-bg);
-  color: var(--ink);
-  font: 0.8rem/1.5 var(--mono-font);
-  tab-size: 4;
 }
-.editor textarea:focus { outline: none; border-color: var(--accent); }
-.controls { display: flex; align-items: center; gap: 0.9rem; margin: 0.6rem 0 1rem; }
-.controls button {
-  padding: 0.3rem 1rem;
+.editor:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, var(--rule)); }
+.gutter, .editor textarea {
+  margin: 0;
+  padding: 0.65rem 0;
+  font: 0.8rem/1.55 var(--mono-font);
+}
+/* The numbers follow the textarea's height and scroll, never set them. */
+.gutter {
+  flex: none;
+  width: 3.4em;
+  contain: size;
+  padding-right: 0.7em;
+  padding-left: 0.5em;
+  overflow: hidden;
+  background: none;
+  color: color-mix(in srgb, var(--muted) 70%, transparent);
+  text-align: right;
+  user-select: none;
+}
+.gutter b { color: var(--accent); }
+.editor textarea {
+  flex: 1;
+  min-width: 0;
+  height: 16rem;
+  min-height: 8rem;
+  padding-right: 0.8rem;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  resize: vertical;
+  tab-size: 4;
+  white-space: pre;
+}
+.editor textarea:focus { outline: none; }
+
+/* Compile, -O, and a dot for how it went; the dot opens the stages. */
+.run {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0.7rem 0 1.2rem;
+}
+.run button {
+  padding: 0.32rem 1.1rem;
   border: 0;
   border-radius: 4px;
   background: var(--accent);
   color: white;
-  font: 700 0.9rem var(--display-font);
+  font: 700 0.88rem var(--display-font);
   cursor: pointer;
 }
-.controls button:disabled { opacity: 0.45; cursor: progress; }
-.controls label { font: 0.85rem var(--mono-font); color: var(--muted); }
-.editor .toc { position: static; max-height: none; padding-top: 0; }
+.run button:disabled { opacity: 0.5; cursor: progress; }
+.run label { font: 600 0.85rem var(--display-font); color: var(--muted); cursor: pointer; }
+.run label input { accent-color: var(--accent); }
 
-.out { min-width: 0; }
-.out pre.error { color: var(--accent); white-space: pre-wrap; }
+details.stages { margin-left: auto; }
+details.stages > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  list-style: none;
+  font: 0.82rem var(--mono-font);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+details.stages > summary::-webkit-details-marker { display: none; }
+details.stages > summary::after { content: "▾"; color: var(--muted); font-size: 0.75em; }
+details.stages[open] > summary::after { content: "▴"; }
+.dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--rule); }
+body[data-state="ok"] .dot { background: #3f9a52; }
+body[data-state="failed"] .dot { background: var(--accent); }
+body[data-state="failed"] #status { color: var(--accent); font-weight: 700; }
+body[data-state="busy"] .dot { background: #c9962a; animation: pulse 0.8s ease-in-out infinite alternate; }
+@keyframes pulse { to { opacity: 0.25; } }
 
-article.play section { margin-bottom: 2.2rem; scroll-margin-top: 2.6rem; }
-article.play h2 { margin: 0 0 0.7rem; }
-
-table.stages { display: table; font-size: 0.85rem; margin: 0; }
-table.stages td { padding: 0.08rem 1.2rem 0.08rem 0; border-bottom: 0; }
-table.stages td.name { font-family: var(--mono-font); color: var(--muted); }
+details.stages .drop {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  top: 100%;
+  min-width: 13rem;
+  padding: 0.5rem 0.8rem 0.6rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.08);
+}
+.memory { font: 0.72rem var(--mono-font); color: var(--muted); }
+table.stages { display: table; width: 100%; margin: 0 0 0.4rem; font: 0.78rem/1.5 var(--mono-font); }
+table.stages td { padding: 0 0 0 1rem; border: 0; }
+table.stages td.name { padding-left: 0; color: var(--muted); }
 table.stages td.time { text-align: right; font-variant-numeric: tabular-nums; }
-table.stages td.result { color: var(--str); }
-table.stages tr.bad td { color: var(--accent); font-weight: 600; }
-table.stages tr.total td { border-top: 1px solid var(--rule); font-weight: 700; }
-table.stages .error { white-space: pre-wrap; font-weight: 500; }
+table.stages tr.bad td { color: var(--accent); font-weight: 700; }
+table.stages tr.total td { border-top: 1px solid var(--rule); font-weight: 700; padding-top: 0.15rem; }
+/* The output: four tabs over one pane. */
+.out { min-width: 0; }
+.tabs { display: flex; gap: 1.4rem; border-bottom: 1px solid var(--rule); }
+.tabs button {
+  margin-bottom: -1px;
+  padding: 0.2rem 0 0.45rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font: 600 0.9rem var(--display-font);
+  cursor: pointer;
+}
+.tabs button:hover { color: var(--ink); }
+.tabs button.selected { color: var(--ink); border-bottom-color: var(--accent); }
+.tabs button:disabled { opacity: 0.35; cursor: default; }
+.panes { padding-top: 0.6rem; }
 
-/* IR: a function is its head over its blocks; a block is its label over
-   one instruction per row. */
-.clause.func > .goals { margin-left: 1.2em; row-gap: 0.4em; }
+.failure:empty { display: none; }
+.failure { margin: 0.9rem 0 0.4rem; }
+.failure .name { font: 700 0.85rem var(--mono-font); color: var(--accent); }
+.failure pre.why { margin: 0.3rem 0 0; color: var(--ink); white-space: pre-wrap; font-size: 0.8rem; }
+
+/* IR: a function is its head over its blocks, a block its label over one
+   instruction per row; functions and data fold under their heads. */
+details.clause > summary { list-style: none; cursor: default; }
+details.clause > summary::-webkit-details-marker { display: none; }
+details.clause > summary::before {
+  content: "▾";
+  position: absolute;
+  left: -1.1em;
+  color: var(--muted);
+  font-size: 0.8em;
+  cursor: pointer;
+}
+details.clause:not([open]) > summary::before { content: "▸"; }
+[data-slot="ir"], [data-slot="c"] { padding-left: 1.2em; }
+details.clause { margin: 0.3rem 0 1.1rem; scroll-margin-top: 1rem; }
+details.clause.func > .goals { margin-left: 1.2em; row-gap: 0.4em; }
+details.clause.data > .goals { margin-left: 1.2em; }
 .block-ir > .label { font-weight: 700; }
 .block-ir > .label .neck { margin-left: 0.1em; }
 .block-ir > .goals { margin-left: 1.2em; }
-.clause.item, .clause.data { margin: 0.4rem 0 0.9rem; }
+.more { color: var(--muted); font-size: 0.85em; }
+.clause.item { margin: 0.4rem 0 0.9rem; }
 
-article.play pre.text { margin: 0; font-size: 0.78rem; }
+.pane pre.text { margin: 0; font-size: 0.78rem; background: none; padding: 0; }
 
 /* Assembly: the term and the line it prints as. */
-table.asm { display: block; max-width: 100%; overflow-x: auto; font-size: 0.88rem; margin: 0; }
+table.asm { display: table; font-size: 0.88rem; margin: 0; }
 table.asm td { padding: 0.04rem 1.4rem 0.04rem 0; border-bottom: 0; vertical-align: baseline; }
 table.asm td.term { padding-left: 1.2em; }
 table.asm tr.label td.term { padding-left: 0; padding-top: 0.4rem; }
 table.asm td.att code { font-size: 0.78rem; color: var(--muted); white-space: pre; }
 table.asm tr:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+[data-slot="asm"] { overflow-x: auto; }
 
-@media (max-width: 900px) {
-  main.play-page { display: block; }
-  .editor { position: static; margin-bottom: 1.5rem; }
-  .editor .toc { display: block; }
-  .editor .toc ul { display: flex; flex-wrap: wrap; gap: 0 1rem; }
+/* Data and Symbols. */
+.panel { margin-bottom: 1.2rem; min-width: 0; }
+.panel:has([data-slot]:empty) { display: none; }
+.panel h2 {
+  margin: 0 0 0.35rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.85rem;
+  letter-spacing: 0;
+}
+.panel table { display: table; width: 100%; margin: 0; font: 0.75rem/1.55 var(--mono-font); }
+.panel td { padding: 0 0.8rem 0 0; border: 0; white-space: nowrap; }
+.panel a { color: var(--ink); }
+.panel a:hover { color: var(--accent); }
+
+details.object { margin-bottom: 0.4rem; }
+details.object > summary { font: 0.78rem var(--mono-font); cursor: pointer; color: var(--muted); }
+details.object > summary .name { color: var(--ink); font-weight: 600; margin-right: 0.8em; }
+table.hex td.off { color: color-mix(in srgb, var(--muted) 70%, transparent); }
+table.hex td.bytes { color: var(--num); }
+table.hex td.text { color: var(--str); white-space: pre; }
+table.hex tr.sym td.bytes, table.hex tr.zero td.bytes { color: var(--muted); }
+table.hex { width: auto; }
+
+table.symbols td { color: var(--muted); }
+table.symbols td.name { color: var(--ink); }
+table.symbols td.type { color: var(--atom); }
+table.symbols tr.import td.name { color: var(--muted); }
+
+/* On a narrow screen the side column dissolves into the page, with the
+   output between Compile and Data. */
+@media (max-width: 899px) {
+  main.play {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "editor" "run" "out" "data" "symbols";
+    padding-bottom: 2rem;
+  }
+  .doors { justify-content: flex-end; flex-wrap: nowrap; gap: 0; }
+  .door { padding: 0.35rem 0.4rem; font-size: 0.82rem; }
+  .editor textarea { height: 11rem; }
+  .side { display: contents; }
+  .editor { grid-area: editor; }
+  .run { grid-area: run; }
+  .out { grid-area: out; margin-bottom: 1.5rem; }
+  #data-panel { grid-area: data; }
+  #symbols-panel { grid-area: symbols; }
+  .panel { overflow-x: auto; }
 }

@@ -3,20 +3,27 @@
 nanofil compiles C in a web page, on SWI-Prolog 10.1.19 in WebAssembly,
 and the page draws what it made with dterm. It is published with the wiki
 at [nanofil/play/](https://mbrock.github.io/filnix/nanofil/play/), in the
-wiki's frame and stylesheets. Paste C, press Compile, and get an
-`<article>` with
+wiki's palette and stylesheets. Paste C, press Compile (or Ctrl+Enter),
+and the page shows, from one `<article>` whose sections it puts in place:
 
-- the stages (profile, preprocess, parse, lower, validate, optimize,
-  print IR, backend, print assembly) with their times, and the first
-  error;
-- the C syntax terms of the input's own items (`c_parse/2`), not the
-  header declarations;
-- the IR terms (`ir.pl`'s grammar), a function as its head over its
-  blocks and a block as its label over one row per phi, instruction and
-  jump;
-- the IR as QBE text;
-- the Fil-C amd64 assembly, each `asm.pl` line term beside the AT&T line
-  it prints as (the first 1500 lines; longer listings follow as text).
+- beside the source, a dot and the time; it opens on the stages
+  (profile, preprocess, parse, lower, validate, optimize, print IR,
+  backend, print assembly) with their times and the memory. A stage that
+  fails names itself there, says why above the tabs, and marks the line
+  in the gutter;
+- four tabs: **C**, the syntax terms of the input's own items
+  (`c_parse/2`), not the header declarations; **IR**, the IR terms
+  (`ir.pl`'s grammar), a function as its head over its blocks, a block as
+  its label over one row per phi, instruction and jump, each function and
+  data object folding under its head, and a run of text bytes drawn as
+  the one `item(b, str(S))` it means; **QBE**, the IR as text;
+  **Assembly**, each `asm.pl` line term beside the AT&T line it prints
+  as (the first 1500 lines; longer listings follow as text);
+- **Data**, each data object's bytes as hex and text, pointers as the
+  symbols they point at;
+- **Symbols**, what the module defines (name, kind, IR signature or size,
+  linkage) and what it calls or uses without defining. A name opens the
+  IR tab at its definition.
 
 ```sh
 nix build .#site -o /tmp/site

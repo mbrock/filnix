@@ -460,7 +460,11 @@ source_text(P, T, Src) :-
     (   nonvar(P), P = From-To, nb_getval(dterm_text, Text),
         Len is To - From, sub_string(Text, From, Len, _, Src0)
     ->  Src = Src0
-    ;   format(string(Src), "~q", [T])
+    ;   format(string(Q), "~q", [T]),
+        % writeq leaves NUL raw, which would end the page's text early.
+        split_string(Q, "\u0000", "", Parts),
+        atomic_list_concat(Parts, '\\0\\', A),
+        atom_string(A, Src)
     ).
 
 var_('_') --> !, el(span, "v anon", "_").

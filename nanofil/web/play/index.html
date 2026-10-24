@@ -12,36 +12,53 @@
 <link rel="stylesheet" href="play.css">
 </head>
 <body>
-<header class="library"><div class="page-frame library-frame">
-  <div class="library-heading"><p class="eyebrow">Fil-C on Nix</p><h1><a href="../../index.html">Filnix wiki</a></h1></div>
+<header class="library"><div class="library-frame">
+  <div class="library-heading"><p class="eyebrow"><a href="../../index.html">Filnix wiki</a></p><h1><a href="../index.html">nanofil</a></h1></div>
   <nav class="doors">
+    <a class="door selected" href="./">Play</a>
+    <a class="door" href="../index.html">Source</a>
     <a class="door" href="../../docs/">Docs</a>
-    <a class="door" href="../../index.html#explainers">Explainers</a>
-    <a class="door selected" href="../index.html">nanofil</a>
-    <a class="door" href="https://nix.swa.sh/">Campaigns</a>
-    <a class="door" href="https://github.com/mbrock/filnix">Source</a>
+    <a class="door" href="https://github.com/mbrock/filnix/tree/main/nanofil">GitHub ↗</a>
   </nav>
 </div></header>
-<div class="status"><div class="page-frame status-frame">
-  <nav class="crumbs" aria-label="Breadcrumb"><a class="crumb" href="../../index.html">Wiki</a><span class="crumb-sep">›</span><a class="crumb" href="../index.html">nanofil</a><span class="crumb-sep">›</span><span class="crumb current">play</span></nav>
-  <span class="status-right" id="status">loading</span>
-</div></div>
-<main class="page-frame play-page">
+<main class="play dterm">
+  <div class="side">
   <form id="form" class="editor">
-    <textarea id="source" spellcheck="false" autocomplete="off" aria-label="C source">#include &lt;stdio.h&gt;
+    <pre class="gutter" id="gutter" aria-hidden="true"></pre>
+    <textarea id="source" spellcheck="false" autocomplete="off" wrap="off" aria-label="C source">#include &lt;stdio.h&gt;
 
 int main(void) {
     printf("hello, world\n");
     return 0;
 }
 </textarea>
-    <div class="controls">
-      <button id="run" type="submit" disabled title="Ctrl+Enter">Compile</button>
-      <label><input id="opt" type="checkbox"> -O</label>
-    </div>
-    <nav class="toc dterm-nav" id="sections"></nav>
   </form>
-  <div id="out" class="out"></div>
+  <div class="run">
+    <button id="run" type="submit" form="form" disabled title="Ctrl+Enter">Compile</button>
+    <label><input id="opt" type="checkbox"> -O</label>
+    <details id="stages" class="stages">
+      <summary><span class="dot"></span><span id="status">loading</span></summary>
+      <div class="drop"><div data-slot="stages"></div><div id="memory" class="memory"></div></div>
+    </details>
+  </div>
+  <section class="panel" id="data-panel"><h2>Data</h2><div data-slot="data"></div></section>
+  <section class="panel" id="symbols-panel"><h2>Symbols</h2><div data-slot="symbols"></div></section>
+  </div>
+  <div class="out">
+    <nav class="tabs" id="tabs">
+      <button data-tab="c">C</button>
+      <button data-tab="ir">IR</button>
+      <button data-tab="qbe">QBE</button>
+      <button data-tab="asm">Assembly</button>
+    </nav>
+    <div data-slot="failure" class="failure"></div>
+    <div class="panes">
+      <div data-slot="c" class="pane"></div>
+      <div data-slot="ir" class="pane"></div>
+      <div data-slot="qbe" class="pane"></div>
+      <div data-slot="asm" class="pane"></div>
+    </div>
+  </div>
 </main>
 <script src="../dterm.js"></script>
 <script src="play.js"></script>
