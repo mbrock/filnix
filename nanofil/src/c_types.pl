@@ -55,7 +55,7 @@
 % Documentation is a relation of the module, doc(Head, Det, Props)
 % (docs/dterm.md); tests/unit.pl runs every example.
 :- discontiguous(doc/3).
-:- use_module(c_parse, [c_operator/4]).
+:- use_module(c_parse, [c_operator/4, compound_assignment/2]).
 
 %% Environment
 
@@ -1285,7 +1285,18 @@ doc(elaborate(+E, +Env, -X), semidet, [
                                  val(short, load(obj(short, id(x))))))),
     example(( empty_env(E), elaborate(str([104, 105]), E, X) ),
             X = obj(array(char, 3), str([104, 105]))),
-    fails(( empty_env(E), elaborate(un(deref, chr(1)), E, _) ))
+    fails(( empty_env(E), elaborate(un(deref, chr(1)), E, _) )),
+    example(( empty_env(E0), bind_ordinary(f, fn(func(int, [int], variadic), f, extern), E0, E),
+              elaborate(call(id(f), [chr(1), chr(2)]), E, X) ),
+            X = val(int, call(_, [val(int, int(1)), val(int, int(2))]))),
+    fails(( empty_env(E0), bind_ordinary(f, fn(func(int, [int], fixed), f, extern), E0, E),
+            elaborate(call(id(f), [chr(1), chr(2)]), E, _) )),
+    fails(( empty_env(E0), bind_ordinary(f, fn(func(int, [ptr(int)], fixed), f, extern), E0, E),
+            elaborate(call(id(f), [chr(1)]), E, _) )),
+    fails(( empty_env(E), elaborate(un(addr, chr(1)), E, _) )),
+    fails(( empty_env(E0), bind_ordinary(c, var(none, int), E0, E1),
+            bind_ordinary(qtype(c), qualified([const], int), E1, E),
+            elaborate(assign(=, id(c), chr(1)), E, _) ))
 ]).
 elaborate(E, Env, X) :- elab(E, Env, X0), !, X = X0.
 
@@ -1314,14 +1325,15 @@ elab(cast(TN, E), Env, val(T, cast(XV))) :-
     reflect_type(TN, T0, Env, T).
 elab(complit(TN, Init), Env, obj(T, complit(Init))) :-
     type_name_type(TN, T0, Env, _), reflect_type(TN, T0, Env, T).
-elab(un(addr, E), Env, val(ptr(T), addr(X))) :-
-    elaborate(E, Env, X), tree_type(X, T).
+elab(un(addr, E), Env, val(ptr(T), addr(X))) :-       % 6.5.3.2p1
+    elaborate(E, Env, X), X \= val(_, _), tree_type(X, T).
 elab(un(deref, E), Env, X) :-
     operand(E, Env, XV, ptr(T)),
     designator(T, deref(XV), X).
-elab(un(Op, E), Env, val(T, incdec(Op, X))) :-
+elab(un(Op, E), Env, val(T, incdec(Op, X))) :-        % 6.5.3.1p1
     memberchk(Op, [preinc, predec, postinc, postdec]),
-    elaborate(E, Env, X), tree_type(X, T0), value_type(T0, T).
+    elaborate(E, Env, X), modifiable(X, Env),
+    tree_type(X, T0), value_type(T0, T), scalar_type(T).
 elab(un(Op, E), Env, val(T, un(Op, XV))) :-
     memberchk(Op, [plus, neg, bnot, not]),
     operand(E, Env, XV, T1),
@@ -1338,12 +1350,16 @@ elab(call(id(Name), Args), Env, val(T, builtin(Name, Args))) :-
     (   Args == [], float_builtin(Name, T, _) -> true
     ;   builtin_type(Name, T)
     ).
-elab(call(E, Args), Env, val(T, call(XV, XArgs))) :-
-    operand(E, Env, XV, ptr(func(T, _, _))),
-    maplist(argument(Env), Args, XArgs).
-elab(assign(Op, A, B), Env, val(T, assign(Op, X, XB))) :-
-    elaborate(A, Env, X), tree_type(X, T),
-    argument(Env, B, XB).
+elab(call(E, Args), Env, val(T, call(XV, XArgs))) :-   % 6.5.2.2p2
+    operand(E, Env, XV, ptr(func(T, Ps, V))),
+    maplist(argument(Env), Args, XArgs),
+    arity_fits(Ps, V, Args),
+    passes(Ps, Args, XArgs, Env).
+elab(assign(Op, A, B), Env, val(T, assign(Op, X, XB))) :-   % 6.5.16p2
+    elaborate(A, Env, X), tree_type(X, T), modifiable(X, Env),
+    argument(Env, B, XB),
+    unqualified(T, TA), lowered(XB, TB),
+    assigns(Op, TA, B, TB, Env).
 elab(comma(A, B), Env, val(T, comma(XA, XV))) :-
     argument(Env, A, XA),
     operand(B, Env, XV, T).
@@ -1355,11 +1371,11 @@ elab(offsetof(TN, Path), _, val(ulong, offsetof(TN, Path))).
 elab(bin(Op, A, B), Env, val(T, bin(Op, XA, XB))) :-
     operand(A, Env, XA, TA), operand(B, Env, XB, TB),
     expression_binary_type(Op, TA, TB, T).
-elab(cond(C, A, B), Env, val(T, cond(XC, XA, XB))) :-
-    argument(Env, C, XC),
+elab(cond(C, A, B), Env, val(T, cond(XC, XA, XB))) :-   % 6.5.15p2
+    argument(Env, C, XC), tree_type(XC, TC), scalar_type(TC),
     arms(A, B, Env, XA, XB, T).
 elab(gcond(C, B), Env, val(T, gcond(XC, XB))) :-
-    arms(C, B, Env, XC, XB, T).
+    arms(C, B, Env, XC, XB, T), tree_type(XC, TC), scalar_type(TC).
 elab(va_arg(A, TN), Env, val(T, va_arg(XA))) :-
     argument(Env, A, XA),
     type_name_type(TN, T0, Env, _), reflect_type(TN, T0, Env, T).
@@ -1374,6 +1390,34 @@ elab(generic(C, As), Env, X) :-                             % 6.5.1.1
 % call argument, the source of an assignment, a ?: condition, or the left
 % operand of a comma, whose value is discarded after it is evaluated.
 argument(Env, E, XV) :- operand(E, Env, XV, _).
+
+% lowered(+XV, -T): T is the type of value XV without qualifiers, the
+% type lowering gives it.
+lowered(XV, T) :- tree_type(XV, T0), unqualified(T0, T).
+
+% assigns(+Op, +TA, +B, +TB, +Env): assignment Op stores B, a value of
+% type TB, into an object of unqualified type TA: B as it is (6.5.16.1),
+% or the result of the operator applied to the two (6.5.16.2).
+assigns(=, TA, B, TB, Env) :- !, nullness(B, Env, TB, N), assignable(TB, N, TA).
+assigns(Op, TA, _, TB, _) :-
+    compound_assignment(Op, BinOp), scalar_type(TA),
+    binary_operands(BinOp, TA, TB, _, _, T), assignable(T, value, TA).
+
+% arity_fits(+Ps, +V, +Args): a function with parameters Ps, fixed or
+% variadic, takes Args.
+arity_fits(unspecified, _, _) :- !.
+arity_fits(Ps, V, Args) :-
+    length(Ps, NP), length(Args, NA),
+    ( V == fixed -> NA =:= NP ; NA >= NP ).
+
+% passes(+Ps, +Args, +XArgs, +Env): each argument, elaborated in XArgs,
+% may be assigned to the unqualified type of its parameter in Ps.
+passes(unspecified, _, _, _) :- !.
+passes([], _, _, _).
+passes([P|Ps], [A|As], [X|Xs], Env) :-
+    lowered(X, T), unqualified(P, TP), nullness(A, Env, T, N),
+    assignable(T, N, TP),
+    passes(Ps, As, Xs, Env).
 
 doc(identifier_type(+Binding, +Name, +Env, -T), det, [
     Binding: "what the identifier Name stands for in Env",
@@ -1609,9 +1653,10 @@ doc(modifiable_lvalue(+E, +Env), semidet, [
             modifiable_lvalue(id(a), E) )),
     fails(( empty_env(E), modifiable_lvalue(chr(0), E) ))
 ]).
-modifiable_lvalue(E, Env) :-
-    elaborate(E, Env, obj(T, _)),
-    modifiable_type(T, Env).
+modifiable_lvalue(E, Env) :- elaborate(E, Env, X), modifiable(X, Env).
+
+% modifiable(+X, +Env): typed tree X designates a modifiable object.
+modifiable(obj(T, _), Env) :- modifiable_type(T, Env).
 
 modifiable_type(qualified(Qs, T), Env) :- !,
     \+ memberchk(const, Qs), modifiable_type(T, Env).
@@ -1652,7 +1697,9 @@ unary_operand(not, T0, int) :- scalar_type(T0).
 
 % expression_binary_type(+Op, +TA, +TB, -T): binary Op on operands of
 % value types TA and TB has type T; && and || give an int (6.5.13-14).
-expression_binary_type(Op, _, _, int) :- memberchk(Op, [land, lor]), !.
+expression_binary_type(Op, A, B, int) :-                  % 6.5.13p2, 6.5.14p2
+    memberchk(Op, [land, lor]), !,
+    scalar_type(A), scalar_type(B).
 expression_binary_type(Op, A, B, T) :- binary_operands(Op, A, B, _, _, T).
 
 doc(binary_operands(+Op, +TA, +TB, -CA, -CB, -T), semidet, [
@@ -1897,11 +1944,11 @@ generic_unique([assoc(T, _)|Rest], Loc) :-
 /*  When an expression cannot be typed, fault/4 says why: it finds the
     first operand, in the order lowering evaluates them, that cannot be
     typed, and the rule it breaks. The messages are lowering's, which
-    the reject tests hold to. A rule the elaborator does not check yet
-    (that an assignment's target is modifiable, an argument's conversion
-    to its parameter), or a type nanofil does not support, comes first
-    in that order, so fault/4 declines rather than misplace the blame;
-    lowering then reports. */
+    the reject tests hold to. Where lowering would first refuse
+    something the elaborator accepts (a type nanofil does not support, a
+    struct or union passed by value, a va_arg or a statement expression),
+    fault/4 declines rather than misplace the blame, and lowering
+    reports. */
 
 doc(elaborate(+E, +Env, +Loc, -X), semidet, [
     E: "a full expression",
@@ -1940,9 +1987,21 @@ doc(fault(+E, +Env, -Format, -Args), semidet, [
     example(( empty_env(E0), bind_ordinary(x, var(none, int), E0, E),
               fault(arrow(id(x), f), E, F, _) ),
             F = '-> on a non-pointer'),
-    fails(( empty_env(E0), bind_ordinary(c, var(none, int), E0, E1),
-            bind_ordinary(qtype(c), qualified([const], int), E1, E),
-            fault(assign(=, id(c), id(g)), E, _, _) )),
+    example(( empty_env(E0), bind_ordinary(c, var(none, int), E0, E1),
+              bind_ordinary(qtype(c), qualified([const], int), E1, E),
+              fault(assign(=, id(c), id(g)), E, F, A) ),
+            (F = '~w a read-only lvalue', A = ['assignment to'])),
+    example(( empty_env(E0),
+              bind_ordinary(f, fn(func(void, [ptr(char), int], fixed), f, extern), E0, E),
+              fault(call(id(f), [chr(0), chr(1), id(g)]), E, F, A) ),
+            (F = 'too many arguments to ~w', A = [f])),
+    example(( empty_env(E0),
+              bind_ordinary(f, fn(func(void, [ptr(char), int], fixed), f, extern), E0, E),
+              fault(call(id(f), [chr(1), id(g)]), E, F, A) ),
+            (F = 'cannot assign ~w to ~w', A = [int, ptr(char)])),
+    example(( empty_env(E0), bind_ordinary(s, var(none, struct('builtin.va_list')), E0, E),
+              fault(bin(lor, chr(0), id(s)), E, F, A) ),
+            (F = 'a ~w value is not a scalar', A = [struct('builtin.va_list')])),
     fails(( empty_env(E),
             fault(cast(type([tspec(int)], base), float(['1', '.', '0', 'L'])), E, _, _) ))
 ]).
@@ -1955,8 +2014,12 @@ fault_(index(A, I), Env, F, As) :- fault_(un(deref, bin(add, A, I)), Env, F, As)
 fault_(un(Op, E), Env, F, As) :-
     (   untyped(E, Env) -> fault_(E, Env, F, As)
     ;   Op == deref -> F = 'dereferencing a non-pointer', As = []
-    ;   memberchk(Op, [plus, neg, bnot, not]),
-        lowered_type(E, Env, T), F = 'invalid operand to ~w: ~w', As = [Op, T]
+    ;   Op == addr -> F = '& of a non-lvalue', As = []
+    ;   memberchk(Op, [plus, neg, bnot, not])
+    ->  lowered_type(E, Env, T), F = 'invalid operand to ~w: ~w', As = [Op, T]
+    ;   elaborate(E, Env, X), \+ modifiable(X, Env)
+    ->  atom_concat(Op, ' of', What), modifiable_fault(X, What, F, As)
+    ;   F = '~w of a non-scalar lvalue', As = [Op]
     ).
 fault_(member(E, Field), Env, F, As) :-
     (   untyped(E, Env) -> fault_(E, Env, F, As)
@@ -1974,25 +2037,34 @@ fault_(cast(TN, E), Env, F, As) :-
     (   untyped(E, Env) -> fault_(E, Env, F, As)
     ;   lowered_type(E, Env, From), F = 'cannot convert ~w to ~w', As = [From, To]
     ).
-fault_(call(Fn, _), Env, F, As) :-
+fault_(call(Fn, Args), Env, F, As) :-
     \+ ( Fn = id(Name), \+ lookup_ordinary(Env, Name, _),
          ( builtin_type(Name, _) ; float_builtin(Name, _, _) ) ),
     (   untyped(Fn, Env) -> fault_(Fn, Env, F, As)
     ;   \+ lowered_type(Fn, Env, ptr(func(_, _, _)))
     ->  F = 'called object is not a function', As = []
+    ;   lowered_type(Fn, Env, ptr(func(_, Ps, V))),
+        callee_name(Fn, Env, Sym),
+        (   arity_fault(Ps, V, Args, Sym, F0, As0) -> F = F0, As = As0
+        ;   arguments_fault(Ps, Args, Env, F, As)
+        )
     ).
 fault_(assign(Op, A, B), Env, F, As) :-
     (   untyped(A, Env) -> fault_(A, Env, F, As)
-    ;   modifiable_lvalue(A, Env),
-        ( Op == (=) -> true ; lowered_type(A, Env, T), scalar_type(T) ),
-        fault_(B, Env, F, As)
+    ;   elaborate(A, Env, X), \+ modifiable(X, Env)
+    ->  modifiable_fault(X, 'assignment to', F, As)
+    ;   elaborate(A, Env, X), tree_type(X, T0), unqualified(T0, TA),
+        ( Op == (=) -> true ; scalar_type(TA) ),
+        (   untyped(B, Env) -> fault_(B, Env, F, As)
+        ;   lowered_type(B, Env, TB), assignment_fault(Op, TA, TB, F, As)
+        )
     ).
 fault_(comma(A, B), Env, F, As) :- operands_fault([A, B], Env, F, As).
 fault_(sizeof_expr(E), Env, F, As) :- fault_(E, Env, F, As).
 fault_(bin(Op, A, B), Env, F, As) :-
     memberchk(Op, [land, lor]), !,
-    (   untyped(A, Env) -> fault_(A, Env, F, As)
-    ;   lowered_type(A, Env, T), scalar_type(T), fault_(B, Env, F, As)
+    (   scalar_fault(A, Env, F, As) -> true
+    ;   scalar_fault(B, Env, F, As)
     ).
 fault_(bin(Op, A, B), Env, F, As) :-
     (   operands_fault([A, B], Env, F, As) -> true
@@ -2001,9 +2073,12 @@ fault_(bin(Op, A, B), Env, F, As) :-
     ).
 fault_(cond(C, A, B), Env, F, As) :-
     (   arms_fault(A, B, Env, F, As) -> true
-    ;   fault_(C, Env, F, As)
+    ;   scalar_fault(C, Env, F, As)
     ).
-fault_(gcond(C, B), Env, F, As) :- arms_fault(C, B, Env, F, As).
+fault_(gcond(C, B), Env, F, As) :-
+    (   arms_fault(C, B, Env, F, As) -> true
+    ;   scalar_fault(C, Env, F, As)
+    ).
 fault_(generic(C, As0), Env, F, As) :-
     (   untyped(C, Env) -> fault_(C, Env, F, As)
     ;   operand(C, Env, _, CT),
@@ -2027,6 +2102,66 @@ operands_fault(Es, Env, F, As) :-
     fault_(E, Env, F, As).
 
 untyped(E, Env) :- \+ elaborate(E, Env, _).
+
+% scalar_fault(+E, +Env, -F, -As): E, tested for truth, cannot be typed
+% or is not a scalar.
+scalar_fault(E, Env, F, As) :-
+    (   untyped(E, Env) -> fault_(E, Env, F, As)
+    ;   lowered_type(E, Env, T), \+ scalar_type(T),
+        F = 'a ~w value is not a scalar', As = [T]
+    ).
+
+% modifiable_fault(+X, +What, -F, -As): X, the operand of What, is not a
+% modifiable lvalue.
+modifiable_fault(obj(_, _), What, '~w a read-only lvalue', [What]) :- !.
+modifiable_fault(_, What, '~w a non-lvalue', [What]).
+
+% assignment_fault(+Op, +TA, +TB, -F, -As): why assignment Op cannot
+% store a value of type TB into an object of type TA.
+assignment_fault(=, TA, TB, 'cannot assign ~w to ~w', [TB, TA]) :- !.
+assignment_fault(Op, TA, TB, F, As) :-
+    compound_assignment(Op, BinOp),
+    (   binary_operands(BinOp, TA, TB, _, _, T)
+    ->  F = 'cannot assign ~w to ~w', As = [T, TA]
+    ;   F = 'invalid operands to ~w: ~w and ~w', As = [BinOp, TA, TB]
+    ).
+
+% callee_name(+Fn, +Env, -Sym): lowering names a call's callee by its
+% symbol when Fn names a function, else as a function pointer.
+callee_name(id(Name), Env, Sym) :- lookup_ordinary(Env, Name, fn(_, Sym, _)), !.
+callee_name(_, _, 'function pointer').
+
+% arity_fault(+Ps, +V, +Args, +Sym, -F, -As): Args are too few or too
+% many for parameters Ps of callee Sym.
+arity_fault(Ps, V, Args, Sym, F, [Sym]) :-
+    Ps \== unspecified, length(Ps, NP), length(Args, NA),
+    (   NA < NP -> F = 'too few arguments to ~w'
+    ;   NA > NP, V == fixed -> F = 'too many arguments to ~w'
+    ).
+
+% arguments_fault(+Ps, +Args, +Env, -F, -As): the first argument, in
+% order, that cannot be typed or passed for its parameter. Lowering may
+% refuse a struct or union argument, or an unpromotable variadic one,
+% before it reaches a later one, so those end the search.
+arguments_fault(Ps, [A|Args], Env, F, As) :-
+    param_split(Ps, P, Ps1),
+    (   untyped(A, Env) -> fault_(A, Env, F, As)
+    ;   lowered_type(A, Env, T),
+        (   P == none
+        ->  ( arithmetic_type(T) -> true ; T = ptr(_) ),
+            arguments_fault(Ps1, Args, Env, F, As)
+        ;   unqualified(P, TP), nullness(A, Env, T, N),
+            (   \+ assignable(T, N, TP)
+            ->  F = 'cannot assign ~w to ~w', As = [T, TP]
+            ;   TP \= struct(_), TP \= union(_),
+                arguments_fault(Ps1, Args, Env, F, As)
+            )
+        )
+    ).
+
+param_split(unspecified, none, unspecified).
+param_split([], none, []).
+param_split([P|Ps], P, Ps).
 
 % member_subject(+XS): lowering looks for members in XS, an lvalue or a
 % struct or union value; it refuses other values.
