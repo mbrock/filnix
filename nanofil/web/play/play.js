@@ -1,6 +1,7 @@
 // The playground page: send the source to the worker and put each
 // section of the article it returns into its place (data-slot).
 import { editor, mark, link, count } from "./editor.js";
+import { gloss, highlightValues } from "./ir.js";
 
 const $ = (id) => document.getElementById(id);
 const worker = new Worker("worker.js");
@@ -56,9 +57,8 @@ const ask = (goal, input) =>
 // item the cursor is in is "here" in the C and IR panes, and an item
 // under the pointer in either pane tints its lines in the editor.
 //
-// Without -O the IR's rows carry the line they come from (data-line),
-// so the cursor's line is "at" in the IR, a row under the pointer tints
-// just its line, and the editor counts each line's instructions.
+// IR rows carry a data-line only when sidecar provenance identifies one
+// source line (also after -O). Ambiguous rows do not pretend to have one.
 let outline = [];
 let here = null;
 let atLine = 0;
@@ -81,8 +81,15 @@ function follow(n) {
   pane?.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 function lines(el) {
-  const row = el.closest(".goal[data-line]");
-  if (row) return outline.lines?.get(+row.dataset.line);
+  const row = el.closest(".goal, .source-hint");
+  if (row) {
+    const n = +row.dataset.line;
+    if (!n) return null;
+    // An earlier stage can still contain lines optimized out of checked IR.
+    if (!outline.lines) outline.lines = new Map();
+    if (!outline.lines.has(n)) outline.lines.set(n, { from: n, to: n });
+    return outline.lines.get(n);
+  }
   const ir = el.closest("details.clause[data-name]");
   if (ir) return outline.find((o) => o.name === ir.dataset.name);
   const c = el.closest(".clause.item[data-line]");
@@ -99,9 +106,9 @@ document.querySelector(".panes").addEventListener("pointerleave", () => {
   linkedTo = null;
   link(source, 0, 0);
 });
-// A click on a C item puts the cursor at its start.
-document.querySelector('[data-slot="c"]').addEventListener("click", (e) => {
-  const c = e.target.closest(".clause.item[data-line]");
+// C items, unambiguous IR rows, and sparse C hints navigate to their line.
+document.querySelector(".panes").addEventListener("click", (e) => {
+  const c = e.target.closest(".clause.item[data-line], .goal[data-line], .source-hint[data-line]");
   if (!c) return;
   const line = source.state.doc.line(Math.min(+c.dataset.line, source.state.doc.lines));
   source.dispatch({ selection: { anchor: line.from }, scrollIntoView: true });
@@ -187,46 +194,8 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// The IR's words, from the legend over it (play_view.pl's gloss/4): each
-// word gets its role's colour and its meaning as hover text, and so does
-// an atom whose meaning depends on its place (a class, an op), by the
-// word's data-slots. Entries the module does not use are hidden.
-function gloss(ir) {
-  const words = new Map([...ir.querySelectorAll(".legend .word")].map((w) => [w.dataset.key, w]));
-  const used = new Set();
-  const note = (el, key, target = el) => {
-    const w = words.get(key);
-    if (!w) return false;
-    target.title = w.dataset.tip;
-    target.classList.add("w-" + w.dataset.role);
-    used.add(w);
-    return true;
-  };
-  for (const c of ir.querySelectorAll(".c")) {
-    const f = c.firstElementChild;
-    const args = [...(c.querySelector(":scope > .args")?.children ?? [])].filter((a) => a.matches(".arg"));
-    const key = `${f.textContent}/${args.length}`;
-    note(f, key, c);
-    if (key === "tmp/1") c.dataset.tmp = args[0].textContent;
-    for (const s of words.get(key)?.dataset.slots.split(" ").filter(Boolean) ?? []) {
-      const [i, kind] = s.split(":");
-      const a = args[i - 1]?.firstElementChild;
-      if (a?.matches(".a")) note(a, `${kind}:${a.textContent}`) ||
-        (kind === "type" && note(a, `class:${a.textContent}`));
-    }
-  }
-  for (const a of ir.querySelectorAll(".goal > .a")) note(a, `${a.textContent}/0`);
-  for (const w of words.values()) w.hidden = !used.has(w);
-  for (const r of ir.querySelectorAll(".legend .role")) r.hidden = !r.querySelector(".word:not([hidden])");
-}
-// Hovering a temporary lights up its definition and uses in the function.
-document.querySelector(".panes").addEventListener("pointerover", (e) => {
-  for (const el of document.querySelectorAll(".c.lit")) el.classList.remove("lit");
-  const t = e.target.closest(".c[data-tmp]");
-  if (!t) return;
-  const fn = t.closest("details.clause") ?? document;
-  for (const el of fn.querySelectorAll(`.c[data-tmp="${CSS.escape(t.dataset.tmp)}"]`)) el.classList.add("lit");
-});
+// Shared with the workbench; raw data-tmp identities never come from text.
+highlightValues(document.querySelector(".panes"));
 
 function compile() {
   $("run").disabled = true;

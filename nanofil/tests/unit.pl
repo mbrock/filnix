@@ -1342,25 +1342,168 @@ test(setjmp_contract) :-
         ])
     ], "class p").
 
-% Lowered C says where its code comes from: every block of tests/c/
-% locations.c begins with a loc/2, each statement's code follows its own
-% line, and a loop's condition and step are at the loop's line. By hand:
-% fib's entry is line 2 then the return, line 3, whose ?: arms and join
-% are line 3 too; sum's entry is line 6, its declaration 7 and the for
-% 8; the condition is 8, the body 9, the step 8 and the return 10. The
-% middle end and the backends do not see them.
+% The C binding and typed origins survive every selected pass, without
+% changing executable IR, outcomes or assembly. sum's loop-carried s
+% gets a generated phi, distinct from its narrow machine-class meaning.
 test(source_locations) :-
     c_file_module('../tests/c/locations.c', M),
     M = module(Items),
-    findall(Fn-Lines,
-            ( member(func(Fn, _, _, _, Bs), Items),
-              findall(Ls, ( member(block(_, _, Is, _), Bs),
-                            findall(L, member(loc(_, L), Is), Ls) ),
-                      Lines) ),
-            FnLines),
-    FnLines == [fib-[[2, 3], [3], [3], [3]],
-                sum-[[6, 7, 8], [8], [9], [8], [10]]],
-    optimize(o1, M, O), without_locs(O, O1), O1 == O.
+    memberchk(context(fib, Rs), Items),
+    member(binding(B, n, int, at(_, 2)), Rs),
+    member(value(_, named(B, value), _), Rs),
+    member(origin(_, at(_, 3), typed(val, int, _), _), Rs),
+    without_locs(M, Bare),
+    forall(member(Option, [o0, passes([promote]), passes([promote, copy]), o1]),
+           ( optimize(Option, M, O), valid_module(O),
+             optimize(Option, Bare, OBare), without_locs(O, OBare),
+             run(O, sum, [10], 10000, ret(88)),
+             pizlonate_module(O, Checked), valid_module(Checked),
+             without_locs(Checked, CPlain),
+             filc_module_asm(Checked, Asm), filc_module_asm(CPlain, Asm),
+             Checked = module(CItems), memberchk(context(fib, CRs), CItems),
+             member(site(inst(_, _), [_|_]), CRs)
+           )),
+    optimize(passes([promote]), M, module(PItems)),
+    memberchk(context(sum, PRs), PItems),
+    member(binding(S, s, long, at(_, 7)), PRs),
+    member(value(Phi, named(S, value), [OId]), PRs),
+    member(origin(OId, none, generated(promote, slot(S, 0, l)), _), PRs),
+    member(site(phi(Phi), [OId]), PRs).
+
+% Shadowing is binding identity, not spelling. Eliminating a's load
+% must not rename its surviving parameter n; the inner n becomes 7.
+test(source_binding_aliases) :-
+    c_tokens("int f(int n) { int a=n; { int n=7; a+=n; } return a; }
+              int g(int n) { return n; }", 'bindings.c', Ts),
+    c_parse(Ts, C), c_module(C, M), valid_module(M),
+    M = module(Is), memberchk(context(f, Rs), Is),
+    findall(B, member(binding(B, n, int, _), Rs), [Outer, Inner]),
+    Outer \== Inner,
+    memberchk(binding(A, a, int, _), Rs),
+    member(value(Param, named(Outer, value), [0]), Rs),
+    optimize(o1, M, O), valid_module(O), reads_back(O),
+    O = module(OIs), memberchk(context(f, ORs), OIs),
+    member(alias(_, tmp(Param), named(A, value), _), ORs),
+    member(alias(_, const(7), named(Inner, value), _), ORs),
+    member(value(Param, named(Outer, value), [0]), ORs),
+    run(O, f, [5], 100, ret(12)), run(O, g, [19], 100, ret(19)),
+    forall(member(Goal, [promote_module, copy_module, local_storage:local_storage_module]),
+           ( call(Goal, M, Direct), valid_module(Direct),
+             Direct = module(DIs), memberchk(context(f, _), DIs) )).
+
+% Legacy location instructions become sidecars. A generated check and
+% its access share the old access's location; metadata cannot excuse a
+% loc or real instruction inserted between the proof and its use.
+test(context_boundaries) :-
+    F = func(f, export, w, [param(p, tmp(p))], [block(s, [], [
+        loc('legacy.c', 17), let(tmp(x), w, load(sw), [tmp(p)])
+    ], ret(tmp(x)))]),
+    M = module([F]), valid_module(M),
+    pizlonate_module(M, Checked), valid_module(Checked), reads_back(Checked),
+    Checked = module([CF, context(f, Rs)]),
+    memberchk(site(inst(s, 0), [AccessOrigin]), Rs),
+    memberchk(site(inst(s, 1), [AccessOrigin]), Rs),
+    memberchk(origin(AccessOrigin, at('legacy.c', 17), _, _), Rs),
+    member(value(Q, none, [CheckOrigin]), Rs),
+    memberchk(origin(CheckOrigin, none, generated(pizlonate, check), [AccessOrigin]), Rs),
+    CF = func(f, export, w, Ps, [block(s, [], [Check, Access], J)]),
+    Check = let(tmp(Q), a, _, _),
+    forall(member(Between, [loc('legacy.c', 17), let(tmp(extra), w, copy, [const(0)])]),
+           catch((valid_module(module([func(f, export, w, Ps,
+                     [block(s, [], [Check, Between, Access], J)]), context(f, [])])), fail),
+                 nanofil_error(_), true)),
+    \+ valid_module(module([CF, context(missing, [])])),
+    \+ valid_module(module([CF, context(f, [site(inst(s, 2), [])])])),
+    \+ valid_module(module([CF, context(f, [value(x, none, [missing])])])),
+    \+ valid_module(module([CF, context(f, [
+        alias(chk0, const(1), none, []), alias(chk0, const(1), none, [])])])),
+    valid_module(module([CF, context(f, [])])),
+    module_mode(Checked, filc), module_stage(Checked, checked),
+    % Existing sites count loc instructions too. Normalizing must move
+    % the rich load attachment from 1 to 0 and merge, not duplicate, sites.
+    Mixed = module([F, context(f, [
+        origin(rich, at('legacy.c', 18), typed(val, int, load), []),
+        site(inst(s, 1), [rich]), site(jump(s), [rich])])]),
+    valid_module(Mixed), promote_module(Mixed, Normal), valid_module(Normal),
+    Normal = module([_, context(f, NRs)]),
+    memberchk(origin(Legacy, at('legacy.c', 17), statement(legacy), []), NRs),
+    sort([rich, Legacy], Both),
+    memberchk(site(inst(s, 0), Both), NRs), memberchk(site(jump(s), Both), NRs),
+    \+ member(site(inst(s, 1), _), NRs),
+    pizlonate_module(Mixed, Expanded), valid_module(Expanded),
+    Expanded = module([_, context(f, ERs)]),
+    memberchk(site(inst(s, 0), Both), ERs), memberchk(site(inst(s, 1), Both), ERs).
+
+% A deleted executable name can be reused for a proof; its old constant
+% alias must not describe the new definition. Occupied origin names are
+% independent of executable freshness and cannot affect emitted code.
+test(context_historical_names) :-
+    M = module([func(f, local, w, [param(p, tmp(p))], [block(s, [], [
+        let(tmp(chk0), w, copy, [const(1)]),
+        let(tmp(x), w, load(sw), [tmp(p)])
+    ], ret(tmp(x)))]), context(f, [
+        origin(old, at('history.c', 2), statement(decl), []),
+        origin(access, at('history.c', 3), typed(val, int, load), []),
+        origin(pizlonate(chk0), none, generated(test, occupied), []),
+        value(chk0, none, [old]), value(x, none, [access]),
+        site(inst(s, 0), [old]), site(inst(s, 1), [access])])]),
+    valid_module(M), copy_module(M, Copied), valid_module(Copied),
+    Copied = module([_, context(f, CRs)]),
+    memberchk(site(inst(s, 0), [access]), CRs),
+    \+ member(site(inst(s, 1), _), CRs),
+    pizlonate_module(Copied, Checked), valid_module(Checked), reads_back(Checked),
+    Checked = module([func(f, _, _, _, [block(s, [], [
+        let(tmp(chk0), a, _, _), let(tmp(x), w, raw_load(sw, 0), [tmp(chk0)])
+    ], _)]), context(f, Rs)]),
+    member(history(_, chk0, none, [old], replaced(const(1))), Rs),
+    \+ member(alias(chk0, _, _, _), Rs),
+    memberchk(value(chk0, none, [Proof]), Rs), Proof \== pizlonate(chk0),
+    memberchk(origin(Proof, none, generated(pizlonate, check), [access]), Rs),
+    without_locs(M, Bare), copy_module(Bare, BCopy), pizlonate_module(BCopy, BChecked),
+    without_locs(Checked, BChecked),
+    filc_module_asm(Checked, Asm), filc_module_asm(BChecked, Asm),
+    % The alias TARGET can also be retired: local objects and proofs
+    % inhabit different executable namespaces, despite sharing chk0.
+    Local = module([func(g, local, w, [], [block(s, [], [
+        let(tmp(chk0), p, alloc(4), [const(4)]),
+        let(tmp(q), p, copy, [tmp(chk0)]),
+        store(w, const(257), tmp(q)), store(b, const(2), tmp(q)),
+        let(tmp(x), w, load(sw), [tmp(q)])
+    ], ret(tmp(x)))]), context(g, [
+        origin(o, none, statement(decl), []),
+        value(chk0, none, [o]), value(q, none, [o]),
+        history(earlier, previous, none, [o], replaced(tmp(chk0))),
+        origin(earlier, none, generated(test, previous), [])])]),
+    valid_module(Local), optimize(o1, Local, LOpt), valid_module(LOpt),
+    pizlonate_module(LOpt, LChecked), valid_module(LChecked), reads_back(LChecked),
+    LChecked = module([_, context(g, LRs)]),
+    memberchk(alias(q, historical(Retired), none, [o]), LRs),
+    memberchk(history(Retired, chk0, none, [o], none), LRs),
+    memberchk(history(earlier, previous, none, [o], replaced(historical(Retired))), LRs),
+    Historical = module([func(g, local, w, [], [block(s, [], [], ret(const(0)))]), context(g, LRs)]),
+    copy_module(Historical, HCopy), valid_module(HCopy),
+    HCopy = module([_, context(g, HRs)]), memberchk(alias(q, historical(Retired), none, [o]), HRs),
+    without_locs(Local, LBare), optimize(o1, LBare, LBOpt), pizlonate_module(LBOpt, LBChecked),
+    without_locs(LChecked, LBChecked),
+    filc_module_asm(LChecked, LAsm), filc_module_asm(LBChecked, LAsm),
+    run(LChecked, g, [], 100, ret(258)),
+    LChecked = module([F|_]),
+    \+ valid_module(module([F, context(g, [alias(q, historical(missing), none, [])])])).
+
+% Completed array bounds are part of the binding type; a struct's
+% first field shares its address, but is not a value of the whole struct.
+test(context_binding_types) :-
+    c_tokens("char g[] = \"abc\";
+              struct S { int x, y; };
+              int f(void) { char s[] = \"hi\"; struct S a = {1, 2};
+                return a.x + s[0] + g[0]; }", 'types.c', Ts),
+    c_parse(Ts, C), c_module(C, M), valid_module(M),
+    M = module(Is), memberchk(context(f, Rs), Is),
+    member(binding(_, s, array(char, 3), _), Rs),
+    member(binding(global(g), g, array(char, 4), _), Rs),
+    member(binding(A, a, struct(_), _), Rs),
+    \+ member(value(_, named(A, value), _), Rs),
+    optimize(o1, M, O), valid_module(O), run(O, f, [], 100, ret(202)).
 
 % Pizlonation states the checks that load and store imply in filc mode,
 % so the checked module has the same outcomes, traps included; deleting

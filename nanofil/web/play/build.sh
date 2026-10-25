@@ -60,7 +60,7 @@ with open(dest, "w") as h:
     json.dump(fs, h, separators=(",", ":"), sort_keys=True)
 EOF
 
-cp "$here"/{index.html,play.css,play.js,worker.js} "$out/"
+cp "$here"/{index.html,play.css,play.js,ir.js,worker.js} "$out/"
 cp -r "$here/examples" "$out/"
 if [ -n "${SWIPL_WASM:-}" ]; then
   mkdir -p "$out/swipl"

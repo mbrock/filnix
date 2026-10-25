@@ -58,25 +58,26 @@
 :- use_module(ir).
 :- use_module(cfg).
 :- use_module(escape).
+:- use_module(provenance).
 
 %! promote_module(+M0, -M) is det.
 %
 %  M is the module M0 with the promotable allocs of each function
 %  promoted.
 
-promote_module(module(Items0), module(Items)) :-
+promote_module(M0, module(Items)) :-
+    legacy_context(M0, module(Items0)),
     module_mode(module(Items0), Mode),
-    maplist(promote_item(Mode), Items0, Items).
+    code_items(Items0, Code),
+    maplist(promote_item(Mode, Items0), Code, Groups), append(Groups, Items).
 
 % promote_item(+Mode, +Item0, -Item): Item is the module item Item0,
 % promoted if it is a function.
-promote_item(Mode, Item0, Item) :-
-    item_mode_promoted(Item0, Mode, Item).
-
-item_mode_promoted(func(Name, Linkage, Ret, Params, Blocks), Mode, F) :-
-    promote_func(Mode, func(Name, Linkage, Ret, Params, Blocks), F).
-item_mode_promoted(data(Name, Linkage, Align, Items), _,
-                   data(Name, Linkage, Align, Items)).
+promote_item(Mode, All, F0, Items) :-
+    F0 = func(Name, _, _, _, _),
+    context_records(All, Name, Rs0),
+    promote_context(Mode, F0, Rs0, F, Rs), with_context(F, Rs, Items).
+promote_item(_, _, data(N, L, A, Is), [data(N, L, A, Is)]).
 
 %! alloc_count(+M, -N) is det.
 %
@@ -96,18 +97,70 @@ alloc_count(module(Items), N) :-
 %  it has none or is not in strict SSA form. Mode is module_mode/2 of
 %  the module being promoted.
 
-promote_func(_, F, F) :- setjmp_func(F), !.
-promote_func(Mode, F0, F) :-
+promote_func(Mode, F0, F) :- promote_context(Mode, F0, [], F, _).
+
+promote_context(_, F, Rs, F, Rs) :- setjmp_func(F), !.
+promote_context(Mode, F0, Rs0, F, Rs) :-
     F0 = func(Name, Linkage, Ret, Params, Blocks0),
     func_cfg(Blocks0, Cfg),
     cfg_idoms(Cfg, Idom),
     (   promotable(Mode, F0, Roots),
         Roots \== [],
         strict_ssa(F0, Cfg, Idom)
-    ->  promote_roots(Roots, F0, Cfg, Idom, Blocks),
-        F = func(Name, Linkage, Ret, Params, Blocks)
-    ;   F = F0
+    ->  promote_roots(Roots, F0, Cfg, Idom, Blocks, Map, Placed, Addrs, Widths),
+        F = func(Name, Linkage, Ret, Params, Blocks),
+        remap_sites(Rs0, Map, Rs1),
+        promoted_context(Rs0, Rs1, Blocks0, Placed, Addrs, Widths, Rs)
+    ;   F = F0, Rs = Rs0
     ).
+
+promoted_context([], Rs, _, _, _, _, Rs) :- !.
+promoted_context(Before, Rs0, Bs, Placed, Addrs, Widths, Rs) :-
+    site_index(Before, Sites), origin_ids(Before, Ids0),
+    findall(T, member(_-(_-T), Placed), Temps),
+    retire_values(Rs0, Temps, Ids0, Ids1, Kept),
+    findall(A-Os, member(value(A, _, Os), Before), VPairs), list_to_assoc(VPairs, Values),
+    findall(A-Ty, member(binding(A, _, Ty, _), Before), BPairs), list_to_assoc(BPairs, Bindings),
+    findall(Slot-Os,
+            ( member(block(L, _, Is, _), Bs), nth0(I, Is, store(_, _, tmp(X))),
+              get_assoc(X, Addrs, Slot), site_origins(Sites, inst(L, I), Os) ), StorePairs),
+    keysort(StorePairs, Sorted), group_pairs_by_key(Sorted, Groups),
+    maplist(slot_parents, Groups, ParentPairs), list_to_assoc(ParentPairs, Stores),
+    findall(Slot, member(_-(Slot-_), Placed), Slots0), sort(Slots0, Slots),
+    slot_records(Slots, Values, Stores, Ids1, Ids2, SummaryPairs, Summaries),
+    list_to_assoc(SummaryPairs, SummaryIds),
+    phi_records(Placed, Bindings, Widths, SummaryIds, Ids2, _, Phis),
+    append([Kept, Summaries, Phis], Rs).
+
+slot_parents(Slot-Lists, Slot-Parents) :- append(Lists, Os), sort(Os, Parents).
+
+% A single shared summary per slot avoids repeating all stores for every
+% phi. These are conservative contributors, not reaching-definition facts.
+slot_records([], _, _, Ids, Ids, [], []).
+slot_records([A-Off|Slots], Values, Stores, Ids0, Ids, [A-Off-Summary|Pairs],
+             [origin(Initial, none, generated(promote, initial_zero), AllocOs),
+              origin(Summary, none, generated(promote, slot_stores(A, Off)), [Initial|Parents])|Rs]) :-
+    ( get_assoc(A, Values, AllocOs) -> true ; AllocOs = [] ),
+    ( get_assoc(A-Off, Stores, Parents) -> true ; Parents = [] ),
+    fresh_origin(initial(A, Off), Ids0, Ids1, Initial),
+    fresh_origin(stores(A, Off), Ids1, Ids2, Summary),
+    slot_records(Slots, Values, Stores, Ids2, Ids, Pairs, Rs).
+
+phi_records([], _, _, _, Ids, Ids, []).
+phi_records([_-((A-Off)-T)|Placed], Bindings, Widths, Summaries, Ids0, Ids,
+            [origin(Id, none, generated(promote, slot(A, Off, Width)), [Summary]),
+             value(T, Hint, [Id]), site(phi(T), [Id])|Rs]) :-
+    get_assoc(A-Off, Widths, Width), get_assoc(A-Off, Summaries, Summary),
+    ( Off =:= 0, get_assoc(A, Bindings, Type), type_slot(Type, Width)
+    -> Hint = named(A, value) ; Hint = none ),
+    fresh_origin(promote(T), Ids0, Ids1, Id),
+    phi_records(Placed, Bindings, Widths, Summaries, Ids1, Ids, Rs).
+
+% Only a scalar whole-object slot inherits its declaration's name.
+type_slot(qualified(_, T), W) :- !, type_slot(T, W).
+type_slot(T, W) :- memberchk(T-W, [char-b, schar-b, uchar-b, bool-b,
+    short-h, ushort-h, int-w, uint-w, long-l, ulong-l, llong-l, ullong-l]).
+type_slot(ptr(_), p).
 
 %! promotable(+Mode, +F, -Roots) is det.
 %
@@ -241,7 +294,7 @@ at_after(at(N), Pos) :-
 
 % promote_roots(+Roots, +F0, +Cfg, +Idom, -Blocks): Blocks are the blocks
 % of F0 with every slot of Roots promoted.
-promote_roots(Roots, F0, Cfg, Idom, Blocks) :-
+promote_roots(Roots, F0, Cfg, Idom, Blocks, Map, Placed0, Addrs, Widths) :-
     F0 = func(_, _, _, _, Blocks0),
     address_temps(F0, AllAddrs),
     % Only addresses of promoted allocs matter from here on.
@@ -300,7 +353,8 @@ promote_roots(Roots, F0, Cfg, Idom, Blocks) :-
             Dead),
     phrase(subtree_renamed(Entry, Zero, Env), Renamed, Unreached),
     phrase(blocks_renamed(Dead, Zero, Env), Unreached),
-    maplist(renamed_block_args, Renamed, New, PhiArgss),
+    maplist(renamed_block_args, Renamed, New, PhiArgss, Maps),
+    append(Maps, Map),
     append(PhiArgss, PhiArgs0),
     list_to_assoc(New, NewBlocks),
     keysort(PhiArgs0, PhiArgs1),
@@ -428,11 +482,11 @@ blocks_renamed([L|Ls], Cur0, Env) -->
 % given the slots' values Cur0 on entry (Cur on exit), and Args the
 % (Succ-Var)-(L-Value) arguments it gives its successors' slot phis.
 block_renamed(L, Cur0, env(Addrs, PhiAt, ByLabel, _, Succs), Cur,
-              renamed(L-block(L, Phis, Insts, Jump), Args)) :-
+              renamed(L-block(L, Phis, Insts, Jump), Args, Map)) :-
     get_assoc(L, ByLabel, block(L, Phis, Insts0, Jump)),
     (   get_assoc(L, PhiAt, VarTemps) -> true ; VarTemps = [] ),
     foldl(phi_cur, VarTemps, Cur0, Cur1),
-    phrase(insts_renamed(Insts0, Addrs, Cur1, Cur), Insts),
+    phrase(insts_renamed(Insts0, Addrs, Cur1, Cur, L, 0, 0, Map), Insts),
     get_assoc(L, Succs, Ss),
     findall((S-Var)-(L-Val),
             ( member(S, Ss),
@@ -441,7 +495,7 @@ block_renamed(L, Cur0, env(Addrs, PhiAt, ByLabel, _, Succs), Cur,
               get_assoc(Var, Cur, Val) ),
             Args).
 
-renamed_block_args(renamed(LBlk, Args), LBlk, Args).
+renamed_block_args(renamed(LBlk, Args, Map), LBlk, Args, Map).
 
 phi_cur(Var-T, Cur0, Cur) :-
     put_assoc(Var, Cur0, tmp(T), Cur).
@@ -449,10 +503,15 @@ phi_cur(Var-T, Cur0, Cur) :-
 % insts_renamed(+Insts0, +Addrs, +Cur0, -Cur)//: the instructions
 % Insts0 with their slot accesses rewritten, Cur0 and Cur being the
 % slots' values before and after them.
-insts_renamed([], _, Cur, Cur) --> [].
-insts_renamed([I|Is], Addrs, Cur0, Cur) -->
-    inst_renamed(I, Addrs, Cur0, Cur1),
-    insts_renamed(Is, Addrs, Cur1, Cur).
+insts_renamed([], _, Cur, Cur, _, _, _, []) --> [].
+insts_renamed([I|Is], Addrs, Cur0, Cur, L, Old, New, Map) -->
+    { phrase(inst_renamed(I, Addrs, Cur0, Cur1), Out),
+      emission_sites(L, Old, New, Out, Map, Rest, Next), Old1 is Old + 1 },
+    inst_list(Out),
+    insts_renamed(Is, Addrs, Cur1, Cur, L, Old1, Next, Rest).
+
+inst_list([]) --> [].
+inst_list([I|Is]) --> [I], inst_list(Is).
 
 % inst_renamed(+I, +Addrs, +Cur0, -Cur)//: the alloc and the derived
 % addresses are no instructions, a load of a slot is an operation on

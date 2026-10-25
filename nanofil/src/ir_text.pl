@@ -58,7 +58,7 @@ ir_clause(T, File, _, _, _, _) :-
     throw(nanofil_error(Msg)).
 ir_clause(run(Fn, Args), _, Is, Is, [run(Fn, Args)|Rs], Rs) :- !.
 ir_clause(T, _, [T|Is], Is, Rs, Rs) :-
-    ( T = func(_, _, _, _, _) ; T = data(_, _, _, _) ), !.
+    ( T = func(_, _, _, _, _) ; T = data(_, _, _, _) ; T = context(_, _) ), !.
 ir_clause(T, File, _, _, _, _) :-
     format(atom(Msg), '~w: not an IR clause: ~q', [File, T]),
     throw(nanofil_error(Msg)).

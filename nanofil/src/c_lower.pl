@@ -35,7 +35,8 @@
     |---|---|
     | Env | the c_types environment `e(Ords, Tags, Defs, Next)` |
     | Cur | `cur(Label, Phis)`, the open block, or `none` after a jump; dead code then opens an unreachable block |
-    | Insts, Blocks, Allocs | the instructions, blocks and allocs so far, reversed |
+    | Insts, Blocks | reversed instructions and blocks, temporarily paired with origin IDs |
+    | Allocs | `build(RevAllocs, ActiveOrigins, OriginCounter, RevRecords, Indexes)`; independent of executable names |
     | N | the counter for fresh temporaries and labels |
     | Labels | an assoc from C goto labels to IR labels |
     | Cases | the enclosing switch's `case(Value, Label)` and `default(Label)` |
@@ -77,6 +78,7 @@
 :- use_module(c_types).
 :- use_module(ir, [op_kind/2, narrow_type/3, width_bytes/2]).
 :- use_module(c_parse, [compound_assignment/2]).
+:- use_module(cfg, [inst_def/2]).
 
 %! c_module(+Items, -Module)
 %
@@ -134,7 +136,8 @@ with_used_inlines(Funcs0, Env0, Items) :-
     sort(Syms0, Syms),
     (   Syms == []
     ->  Items = Items0
-    ;   foldl(lower_inline, Syms, New, Env0, Env1),
+    ;   foldl(lower_inline, Syms, Newss, Env0, Env1),
+        append(Newss, New),
         append(Funcs0, New, Funcs1),
         with_used_inlines(Funcs1, Env1, Items)
     ).
@@ -204,8 +207,7 @@ top_item(ExternalNames, fundef(Loc, Specs, dcl(some(Name), DclType, Asm), Body),
                     Env2, Env)
         ;   Env = Env2      % GNU extern inline or a C99 inline-only definition
         )
-    ;   Funcs = [Func],
-        function(Loc, Name, Type, DclType, Body, Env2, Env, Func)
+    ;   function(Loc, Name, Type, DclType, Body, Env2, Env, Funcs)
     ).
 
 % static_assert(+Loc, +Expr, +Env): throw a semantic error unless Expr
@@ -343,7 +345,7 @@ global_item(Sym-g(Type, Linkage, Init, Loc),
 % function(+Loc, +Name, +Type, +DclType, +Body, +Env0, -Env, -Func): Func
 % is the IR function for the definition of Name with body Body.
 function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
-         Env0, Env, func(Sym, Linkage, RetClass, Params, Blocks)) :-
+         Env0, Env, [func(Sym, Linkage, RetClass, Params, Blocks), context(Sym, Records)]) :-
     lookup_ordinary(Env0, Name, fn(_, Sym, Linkage)),
     (   ParamTypes0 == unspecified
     ->  ParamTypes = []
@@ -353,7 +355,11 @@ function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     param_names(DclType, Names),
     statement_expression_jumps(Body, Loc),
     reflect_params(DclType, ParamTypes, Env0, ParamEnv),
-    State0 = st(ParamEnv, cur(start, []), [], [], 0, Labels, [], []),
+    source_location(Loc, SourceLoc),
+    empty_assoc(Empty), put_assoc(0, Empty, SourceLoc, OriginLocs),
+    State0 = st(ParamEnv, cur(start, []), [], [], 0, Labels, [],
+                build([], [0], 1, [origin(0, SourceLoc, statement(function), [])],
+                      index(Empty, Empty, OriginLocs))),
     empty_assoc(Labels),
     Ctx = ctx(Name, RetType, none, none, Loc),
     phrase(( sret_param(RetType, SretParams),
@@ -364,29 +370,36 @@ function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
            ),
            [State0], [State]),
     append(SretParams, Params0, Params),
-    State = st(EnvEnd, none, [], RevBlocks, _, _, _, RevAllocs),
+    State = st(EnvEnd, none, [], RevBlocks, _, _, _, build(RevAllocs, _, _, RevRecords, _)),
     env_scope(Env0, Scope, _),
     env_restore(Scope, EnvEnd, Env),
     reverse(RevBlocks, [block(start, [], Insts0, Jump)|Rest]),
     reverse(RevAllocs, Allocs),
     append(Allocs, Insts0, Insts),
-    foldl(block_located, [block(start, [], Insts, Jump)|Rest], Blocks,
-          Loc, _).
+    maplist(context_block, [block(start, [], Insts, Jump)|Rest], Blocks, Sites0),
+    append(Sites0, Sites), reverse(RevRecords, RawRecords),
+    exclude(is_hint, RawRecords, Origins),
+    findall(T-H, member(hint(T, H), RawRecords), HintPairs), list_to_assoc(HintPairs, Hints),
+    findall(S-Os, member(site(S, Os), Sites), SitePairs), list_to_assoc(SitePairs, SiteMap),
+    findall(value(T, Hint, Os),
+            ( ( member(param(_, tmp(T)), Params), Os = [0]
+              ; member(block(L, Phis, Is, _), Blocks),
+                ( member(phi(tmp(T), _, _), Phis), get_assoc(phi(T), SiteMap, Os)
+                ; nth0(I, Is, Inst), inst_def(Inst, T),
+                  get_assoc(inst(L, I), SiteMap, Os) ) ),
+              ( get_assoc(T, Hints, H) -> Hint = H ; Hint = none ) ), Values),
+    append([Origins, Values, Sites], Records).
 
-% block_located(+Block0, -Block, +Loc0, -Loc): Block is Block0 starting
-% with its source location: a block that does not begin with a loc/2
-% began within the statement in effect, Loc0 (File:Line), when lowering
-% opened it, which is the last one the blocks before it record. Loc is
-% the location in effect after Block.
-block_located(block(L, Phis, Insts0, J), block(L, Phis, Insts, J), Loc0, Loc) :-
-    (   Insts0 = [loc(_, _)|_] -> Insts = Insts0
-    ;   Loc0 = File:Line -> Insts = [loc(File, Line)|Insts0]
-    ;   Insts = Insts0
-    ),
-    foldl(last_loc, Insts, Loc0, Loc).
+is_hint(hint(_, _)).
 
-last_loc(loc(File, Line), _, File:Line) :- !.
-last_loc(_, Loc, Loc).
+context_block(block(L, Ps0, Is0, from(Os, J)), block(L, Ps, Is, J), Rs) :-
+    maplist(context_phi, Ps0, Ps, PRs),
+    context_insts(Is0, L, 0, Is, IRs),
+    append([PRs, IRs, [site(jump(L), Os)]], Rs).
+context_phi(from(Os, P), P, site(phi(T), Os)) :- P = phi(tmp(T), _, _).
+context_insts([], _, _, [], []).
+context_insts([from(Os, I)|Is0], L, N, [I|Is], [site(inst(L, N), Os)|Rs]) :-
+    N1 is N + 1, context_insts(Is0, L, N1, Is, Rs).
 
 variadic_entry(fixed, _, _) --> [].
 variadic_entry(variadic, Sret, Params) -->
@@ -464,14 +477,16 @@ params([Name|Names], [Type|Types], Ctx, [param(Class, P)|Params]) -->
 su_param_local(none, _, _, _) --> [].
 su_param_local(some(Name), Type, Ebs, Values) -->
     local_slot(Type, Addr),
-    store_words(Ebs, Values, Addr),
-    bind(Name, var(Addr, Type)).
+    bind(Name, var(Addr, Type)),
+    name_values(Values, Addr, piece),
+    store_words(Ebs, Values, Addr).
 
 param_local(none, _, _) --> [].
 param_local(some(Name), Type, P) -->
     local_slot(Type, Addr),
-    store_typed(Type, P, Addr),
-    bind(Name, var(Addr, Type)).
+    bind(Name, var(Addr, Type)),
+    name_value(P, Addr, value),
+    store_typed(Type, P, Addr).
 
 % fresh_params(+Ebs, -Params, -Values)//: one fresh parameter per
 % eightbyte; Values are their temporaries.
@@ -512,6 +527,90 @@ state(S), [S] --> [S].
 
 state(S0, S), [S] --> [S0].
 
+% Metadata has its own counter; it never consumes a temporary or label.
+build_state(B0, B) -->
+    state(st(E, C, Is, Bs, N, Ls, Cs, B0), st(E, C, Is, Bs, N, Ls, Cs, B)).
+active_origins(Os) --> build_state(build(A, Os, N, R, X), build(A, Os, N, R, X)).
+metadata(Index) --> build_state(build(A, Os, N, R, Index), build(A, Os, N, R, Index)).
+record(R) -->
+    build_state(build(A, Os, N, Rs, X0), build(A, Os, N, [R|Rs], X)),
+    { indexed_record(R, X0, X) }.
+
+indexed_record(binding(Id, Name, T, Loc), index(B0, H, O), index(B, H, O)) :- !,
+    put_assoc(Id, B0, binding(Id, Name, T, Loc), B).
+indexed_record(hint(T, Hint), index(B, H0, O), index(B, H, O)) :- !,
+    put_assoc(T, H0, Hint, H).
+indexed_record(origin(Id, Loc, _, _), index(B, H, O0), index(B, H, O)) :-
+    put_assoc(Id, O0, Loc, O).
+
+enter_origin(Loc0, Description, Parent) -->
+    build_state(build(A, Parent, N, Rs, X), build(A, [N], Next, Rs, X)),
+    { Next is N + 1, source_location(Loc0, Loc) },
+    record(origin(N, Loc, Description, Parent)).
+restore_origin(Os) --> build_state(build(A, _, N, Rs, X), build(A, Os, N, Rs, X)).
+source_location(F:L, at(F, L)) :- !.
+source_location(_, none).
+
+binding_context(Name, var(tmp(B), _)) --> !,
+    env(Env), active_origins(Os), metadata(index(_, _, Origins)),
+    { expression_type(id(Name), Env, T),
+      ( Os = [O|_], get_assoc(O, Origins, At) -> Loc = At ; Loc = none ) },
+    record(binding(B, Name, T, Loc)), name_value(tmp(B), tmp(B), address).
+binding_context(Name, gvar(_, Sym, _, _)) --> !,
+    env(Env), metadata(index(Bindings, _, _)),
+    ( { get_assoc(global(Sym), Bindings, _) } -> []
+    ; { expression_type(id(Name), Env, T) },
+      record(binding(global(Sym), Name, T, none)) ).
+binding_context(_, _) --> [].
+
+name_values([], _, _) --> [].
+name_values([V|Vs], B, Role) --> name_value(V, B, Role), name_values(Vs, B, Role).
+name_value(tmp(T), tmp(B), Role) --> !,
+    metadata(index(Bindings, Hints, _)),
+    ( { address_binding(B, Bindings, Hints, Id), \+ get_assoc(T, Hints, _) }
+    -> record(hint(T, named(Id, Role)))
+    ; [] ).
+name_value(_, _, _) --> [].
+
+address_binding(B, Bindings, Hints, Id) :-
+    ( get_assoc(B, Bindings, _) -> Id = B ; get_assoc(B, Hints, named(Id, address)) ).
+
+stored_name(store(W, V, Addr)) --> !, access_name(store(W), V, Addr).
+stored_name(let(V, K, load(Op), [Addr])) --> !, access_name(load(K, Op), V, Addr).
+stored_name(_) --> [].
+
+% A zero-offset field or partial access is not the whole C object.
+access_name(Access, V, tmp(A)) --> !,
+    metadata(index(Bs, Hs, _)),
+    ( { address_binding(A, Bs, Hs, B), get_assoc(B, Bs, binding(_, _, T, _)),
+        unqualified(T, U), scalar_access(Access, U) }
+    -> name_value(V, tmp(A), value)
+    ; [] ).
+access_name(_, _, _) --> [].
+scalar_access(store(W), T) :- store_width(T, W).
+scalar_access(load(K, Op), T) :- load_op(T, K, Op).
+
+typed_origin(X, Ctx, Parent) -->
+    env(Env),
+    { X =.. [Category, Type, Node], ctx_loc(Ctx, Loc),
+      shallow_node(Node, Env, Form),
+      ( ground(Type) -> Description = typed(Category, Type, Form)
+      ; Description = generated(lower, Form) ) },
+    enter_origin(Loc, Description, Parent).
+
+% Keep the operation and resolved binding, not recursive typed trees.
+shallow_node(id(Name), Env, binding(B)) :-
+    lookup_ordinary(Env, Name, var(tmp(B), _)), !.
+shallow_node(id(Name), Env, binding(global(Sym))) :-
+    lookup_ordinary(Env, Name, gvar(_, Sym, _, _)), !.
+shallow_node(Node, _, Form) :-
+    Node =.. [Op|Args], include(atomic, Args, Atoms), Form =.. [Op|Atoms].
+
+result_name(val(_, load(obj(_, id(Name)))), v(V, _)) --> !,
+    env(Env),
+    ( { lookup_ordinary(Env, Name, var(Addr, _)) } -> name_value(V, Addr, value) ; [] ).
+result_name(_, _) --> [].
+
 % Readers (cur//1, env//1, cases//1) leave the state as it is; set_*//1
 % replace one field; fresh//1 and label//1 take the next number.
 
@@ -526,7 +625,8 @@ set_env(Env) -->
 bind(Name, Value) -->
     env(Env0),
     { bind_ordinary(Name, Value, Env0, Env) },
-    set_env(Env).
+    set_env(Env),
+    binding_context(Name, Value).
 
 fresh(tmp(Temp)) -->
     state(st(Env, Cur, Insts, Blocks, N0, Labels, Cases, Allocs),
@@ -555,8 +655,9 @@ set_cur(Cur) -->
     state(st(Env, _, Insts, Blocks, N, Labels, Cases, Allocs),
           st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)).
 
-% emit(+Inst)//: append Inst to the current block.
-emit(Inst) --> ensure_live, push_inst(Inst).
+% emit(+Inst)//: append Inst with its active typed origin. These private
+% wrappers disappear before c_module/2 returns; they are never IR.
+emit(Inst) --> ensure_live, stored_name(Inst), active_origins(Os), push_inst(from(Os, Inst)).
 
 push_inst(Inst) -->
     state(st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs),
@@ -566,8 +667,9 @@ push_inst(Inst) -->
 term(Jump) --> ensure_live, close_block(Jump).
 
 close_block(Jump) -->
+    active_origins(Os),
     state(st(Env, cur(Label, Phis), Insts, Blocks, N, Labels, Cases, Allocs),
-          st(Env, none, [], [block(Label, Phis, BlockInsts, Jump)|Blocks],
+          st(Env, none, [], [block(Label, Phis, BlockInsts, from(Os, Jump))|Blocks],
              N, Labels, Cases, Allocs)),
     { reverse(Insts, BlockInsts) }.
 
@@ -584,14 +686,17 @@ cur_fallthrough(none, _) --> [].
 cur_fallthrough(cur(_, _), Label) --> term(goto(Label)).
 
 % start_phi(+Label, +Phis)//: begin block Label, reached only by jumps.
-start_phi(Label, Phis) --> set_cur(cur(Label, Phis)).
+start_phi(Label, Phis) -->
+    active_origins(Os), { maplist(from_origins(Os), Phis, Located) },
+    set_cur(cur(Label, Located)).
+
+from_origins(Os, I, from(Os, I)).
 
 % here(-Label)//: Label is the current block's label.
 here(Label) --> ensure_live, cur(cur(Label, _)).
 
 add_alloc(Inst) -->
-    state(st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs),
-          st(Env, Cur, Insts, Blocks, N, Labels, Cases, [Inst|Allocs])).
+    build_state(build(As, Os, N, Rs, X), build([from(Os, Inst)|As], Os, N, Rs, X)).
 
 cases(Cases) --> state(st(_, _, _, _, _, _, Cases, _)).
 
@@ -704,26 +809,12 @@ check_case_region(Regions, Switch, Loc) :-
 % stmt(+Stmt, +Ctx)//: lower statement Stmt, an at(Loc, S) term; stmt_//2
 % lowers S itself.
 stmt(at(Loc, Stmt), Ctx0) -->
-    { ctx_at(Ctx0, Loc, Ctx) },
-    located(Stmt, Loc),
-    stmt_(Stmt, Ctx).
+    { ctx_at(Ctx0, Loc, Ctx), functor(Stmt, Kind, _) },
+    enter_origin(Loc, statement(Kind), Parent),
+    stmt_(Stmt, Ctx), restore_origin(Parent).
 
-% located(+Stmt, +Loc)//: a statement that makes code of its own records
-% where it is, loc(File, Line). A loc with no code after it yet (the
-% statement before made none) gives way to the new one. A block, an
-% empty statement or code after a jump records nothing.
-located(block(_), _) --> !.
-located(null, _) --> !.
-located(_, File:Line) -->
-    cur(Cur),
-    (   { Cur = cur(_, _) }
-    ->  state(st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs),
-              st(Env, Cur, Insts1, Blocks, N, Labels, Cases, Allocs)),
-        { Insts = [loc(_, _)|Insts0] -> true ; Insts0 = Insts },
-        { Insts1 = [loc(File, Line)|Insts0] }
-    ;   []
-    ).
-located(_, _) --> [].
+% Declaration and loop helpers update the enclosing source context.
+located(Kind, Loc) --> enter_origin(Loc, statement(Kind), _).
 
 % loop_located(+Ctx)//: a loop's condition or step, in a block of its
 % own after the body, is at the loop statement's location.
@@ -867,8 +958,8 @@ item(decl(Loc, Specs, Inits), Ctx0) -->
             sema_error(Loc, 'array size is not a constant', [])) },
     set_env(Env),
     { ctx_at(Ctx0, Loc, Ctx) },
-    located(decl, Loc),
-    local_decls(Decls, Ctx).
+    enter_origin(Loc, statement(decl), Parent),
+    local_decls(Decls, Ctx), restore_origin(Parent).
 
 % local_decls(+Decls, +Ctx)//, local_decl(+Decl, +Ctx)//: lower
 % block-scope declarations. Functions and extern objects are global, a
@@ -1287,39 +1378,43 @@ rval(Expr, Ctx, R) -->
    is XV. Types are unqualified, as code generation has them; a type
    name the source writes (a cast's, va_arg's, sizeof's) is read again
    by type_name/4, which refuses one nanofil does not support. */
-lower(val(T, int(V)), _, v(const(V), U)) --> !, { unqualified(T, U) }.
-lower(val(_, float(Cs)), _, v(const(V), Type)) --> !,
+lower(X, Ctx, R) -->
+    typed_origin(X, Ctx, Parent), lower_node(X, Ctx, R),
+    result_name(X, R), restore_origin(Parent).
+
+lower_node(val(T, int(V)), _, v(const(V), U)) --> !, { unqualified(T, U) }.
+lower_node(val(_, float(Cs)), _, v(const(V), Type)) --> !,
     { float_literal(Cs, V, Type) }.
-lower(val(T, load(X)), Ctx, R) --> !,                      % 6.3.2.1p2
+lower_node(val(T, load(X)), Ctx, R) --> !,                 % 6.3.2.1p2
     place(X, Ctx, P),
     { unqualified(T, U) },
     place_loaded(P, U, Ctx, R).
-lower(val(T, decay(X)), Ctx, R) --> !,                     % 6.3.2.1p3-4
+lower_node(val(T, decay(X)), Ctx, R) --> !,                % 6.3.2.1p3-4
     place(X, Ctx, P),
     decayed(P, T, Ctx, R).
-lower(val(T, addr(X)), Ctx, R) --> !,                      % 6.5.3.2p3
+lower_node(val(T, addr(X)), Ctx, R) --> !,                 % 6.5.3.2p3
     place(X, Ctx, P),
     decayed(P, T, Ctx, R).
-lower(val(_, member(XS, F)), Ctx, R) --> !,                % 6.5.2.3p3
+lower_node(val(_, member(XS, F)), Ctx, R) --> !,           % 6.5.2.3p3
     lower(XS, Ctx, v(Addr, SU)),
     member_lv(Addr, SU, F, Ctx, P, Type),
     (   { Type = array(E, _) } -> { R = v(P, ptr(E)) }
     ;   loaded(Type, P, Ctx, R)
     ).
-lower(val(_, comma(XA, XB)), Ctx, R) --> !,                % 6.5.17
+lower_node(val(_, comma(XA, XB)), Ctx, R) --> !,           % 6.5.17
     lower(XA, Ctx, _),
     lower(XB, Ctx, R).
-lower(val(_, un(Op, XV)), Ctx, R) --> !,
+lower_node(val(_, un(Op, XV)), Ctx, R) --> !,
     lower(XV, Ctx, V),
     unary(Op, V, Ctx, R).
-lower(val(_, bin(Op, XA, XB)), Ctx, R) -->                 % 6.5.13-14
+lower_node(val(_, bin(Op, XA, XB)), Ctx, R) -->            % 6.5.13-14
     { memberchk(Op, [land, lor]) }, !,
     logical(Op, XA, XB, Ctx, R).
-lower(val(_, bin(Op, XA, XB)), Ctx, R) --> !,
+lower_node(val(_, bin(Op, XA, XB)), Ctx, R) --> !,
     lower(XA, Ctx, VA),
     lower(XB, Ctx, VB),
     binary(Op, VA, VB, Ctx, R).
-lower(val(T, cond(XC, XA, XB)), Ctx, R) --> !,             % 6.5.15
+lower_node(val(T, cond(XC, XA, XB)), Ctx, R) --> !,        % 6.5.15
     { unqualified(T, U) },
     label(LA), label(LB), label(LJoin),
     lower(XC, Ctx, VC), truth(VC, Ctx, W), term(branch(W, LA, LB)),
@@ -1328,7 +1423,7 @@ lower(val(T, cond(XC, XA, XB)), Ctx, R) --> !,             % 6.5.15
     start(LB), lower(XB, Ctx, VB), converted(VB, U, v(VB1, _)), here(LB1),
     term(goto(LJoin)),
     join_arms(U, LJoin, LA1-VA1, LB1-VB1, R).
-lower(val(T, gcond(XC, XB)), Ctx, R) --> !,                % GNU c ?: b
+lower_node(val(T, gcond(XC, XB)), Ctx, R) --> !,           % GNU c ?: b
     { unqualified(T, U) },
     lower(XC, Ctx, VC), truth(VC, Ctx, W),
     label(LA), label(LB), label(LJoin),
@@ -1337,7 +1432,7 @@ lower(val(T, gcond(XC, XB)), Ctx, R) --> !,                % GNU c ?: b
     start(LB), lower(XB, Ctx, VB), converted(VB, U, v(VB1, _)), here(LB1),
     term(goto(LJoin)),
     join_arms(U, LJoin, LA1-VA1, LB1-VB1, R).
-lower(val(_, assign(Op, X, XB)), Ctx, R) --> !,            % 6.5.16
+lower_node(val(_, assign(Op, X, XB)), Ctx, R) --> !,       % 6.5.16
     place(X, Ctx, P),
     (   { Op == (=) } -> lower(XB, Ctx, Value0)
     ;   { compound_assignment(Op, BinOp) },
@@ -1346,26 +1441,26 @@ lower(val(_, assign(Op, X, XB)), Ctx, R) --> !,            % 6.5.16
         binary(BinOp, Cur, VB, Ctx, Value0)
     ),
     place_write(P, Value0, Ctx, R).
-lower(val(_, incdec(Op, X)), Ctx, R) --> !,                % 6.5.2.4, 6.5.3.1
+lower_node(val(_, incdec(Op, X)), Ctx, R) --> !,           % 6.5.2.4, 6.5.3.1
     place(X, Ctx, P),
     place_read(P, Ctx, Cur),
     { memberchk(Op, [preinc, postinc]) -> BinOp = add ; BinOp = sub },
     binary(BinOp, Cur, v(const(1), int), Ctx, Value0),
     place_write(P, Value0, Ctx, New),
     { memberchk(Op, [preinc, predec]) -> R = New ; R = Cur }.
-lower(val(_, call(XF, XArgs)), Ctx, R) --> !,              % 6.5.2.2
+lower_node(val(_, call(XF, XArgs)), Ctx, R) --> !,         % 6.5.2.2
     callee(XF, Ctx, Callee, func(RetType, Ps, _)),
     { Ps == unspecified -> ParamTypes = [] ; ParamTypes = Ps },
     call_args(XArgs, ParamTypes, Ctx, IRArgs),
     call_result(Callee, RetType, IRArgs, Ctx, R).
-lower(val(_, builtin(Name, Args)), Ctx, R) --> !,
+lower_node(val(_, builtin(Name, Args)), Ctx, R) --> !,
     builtin(Name, Args, Ctx, R).
-lower(val(_, cast(TN, XV)), Ctx, R) --> !,                 % 6.5.4
+lower_node(val(_, cast(TN, XV)), Ctx, R) --> !,            % 6.5.4
     env(Env),
     { ctx_loc(Ctx, Loc), type_name(TN, Type, Env, Loc) },
     lower(XV, Ctx, Value0),
     converted(Value0, Type, R).
-lower(val(_, va_arg(TN, XA)), Ctx, v(V, Type)) --> !,      % 7.16.1.1
+lower_node(val(_, va_arg(TN, XA)), Ctx, v(V, Type)) --> !, % 7.16.1.1
     env(Env),
     { ctx_loc(Ctx, Loc), type_name(TN, Type, Env, Loc),
       ( type_class(Type, K), memberchk(Type, [int, uint, long, ulong, llong, ullong, double, ptr(_)])
@@ -1373,22 +1468,22 @@ lower(val(_, va_arg(TN, XA)), Ctx, v(V, Type)) --> !,      % 7.16.1.1
       ; sema_error(Loc, 'unsupported va_arg type ~w', [Type]) ) },
     lower(XA, Ctx, v(P, _)),
     let(K, va_arg, [P], V).
-lower(val(_, sizeof(TN)), Ctx, v(const(Size), ulong)) -->      % 6.5.3.4
+lower_node(val(_, sizeof(TN)), Ctx, v(const(Size), ulong)) --> % 6.5.3.4
     { TN = type(_, _) }, !,
     env(Env),
     { type_size(TN, Env, Ctx, Size) }.
-lower(val(_, sizeof(X)), Ctx, v(const(Size), ulong)) --> !,
+lower_node(val(_, sizeof(X)), Ctx, v(const(Size), ulong)) --> !,
     env(Env),
     { tree_type(X, Type), ctx_loc(Ctx, Loc),
       catch(type_size_align(Type, Env, Size, _), bad(Why),
             sema_error(Loc, 'sizeof: ~w', [Why])) }.
-lower(val(_, alignof(TN)), Ctx, v(const(Align), ulong)) --> !,
+lower_node(val(_, alignof(TN)), Ctx, v(const(Align), ulong)) --> !,
     env(Env),
     { ctx_loc(Ctx, Loc),
       type_name(TN, Type, Env, Loc),
       catch(type_size_align(Type, Env, _, Align), bad(Why),
             sema_error(Loc, 'alignof: ~w', [Why])) }.
-lower(val(_, offsetof(TN, Path)), Ctx, v(const(V), ulong)) --> !,
+lower_node(val(_, offsetof(TN, Path)), Ctx, v(const(V), ulong)) --> !,
     env(Env),
     { ctx_loc(Ctx, Loc),
       (   catch(const_value(offsetof(TN, Path), Env, V, _),
@@ -1396,7 +1491,7 @@ lower(val(_, offsetof(TN, Path)), Ctx, v(const(V), ulong)) --> !,
       ->  true
       ;   sema_error(Loc, 'bad offsetof', [])
       ) }.
-lower(val(_, stmtexpr(at(_, block(Items)))), Ctx, R) -->   % GNU ({ ... })
+lower_node(val(_, stmtexpr(at(_, block(Items)))), Ctx, R) --> % GNU ({ ... })
     save_scope(Scope),
     statement_expression_items(Items, Ctx, R),
     restore_scope(Scope).
@@ -1427,23 +1522,29 @@ decayed(fd(Callee, Type), _, _, v(Callee, ptr(Type))) --> [].
 
 /* place(+X, +Ctx, -P)//: P is lv(Addr, Type), the object that typed
    tree X designates, or fd(Callee, Type) for a function. */
-place(obj(_, id(Name)), _, P) --> !, env(Env),
+place(X, Ctx, P) -->
+    typed_origin(X, Ctx, Parent), place_node(X, Ctx, P), restore_origin(Parent).
+
+place_node(obj(_, id(Name)), _, P) --> !, env(Env),
+    { lookup_ordinary(Env, Name, Binding) },
+    binding_obj(Binding, P),
+    ( { Binding = gvar(_, Sym, _, _), P = lv(tmp(T), _) }
+    -> binding_context(Name, Binding), record(hint(T, named(global(Sym), address)))
+    ; [] ).
+place_node(fun(_, id(Name)), _, P) --> !, env(Env),
     { lookup_ordinary(Env, Name, Binding) },
     binding_obj(Binding, P).
-place(fun(_, id(Name)), _, P) --> !, env(Env),
-    { lookup_ordinary(Env, Name, Binding) },
-    binding_obj(Binding, P).
-place(obj(_, predefined(_)), Ctx, P) --> !,                % 6.4.2.2
+place_node(obj(_, predefined(_)), Ctx, P) --> !,           % 6.4.2.2
     { Ctx = ctx(Func, _, _, _, _), atom_codes(Func, Bytes) },
     place(obj(_, str(Bytes)), Ctx, P).
-place(obj(_, str(Bytes)), _, lv(Addr, array(char, N))) --> !,
+place_node(obj(_, str(Bytes)), _, lv(Addr, array(char, N))) --> !,
     env(Env0),
     { new_literal(Bytes, Sym, Env0, Env),
       length(Bytes, N0),
       N is N0 + 1 },
     set_env(Env),
     let(p, copy, [global(Sym)], Addr).
-place(obj(_, wstr(WideType, Values)), _, lv(Addr, array(WideType, N))) --> !,
+place_node(obj(_, wstr(WideType, Values)), _, lv(Addr, array(WideType, N))) --> !,
     env(Env0),
     { new_literal(w(WideType, Values), Sym, Env0, Env),
       length(Values, N0),
@@ -1451,7 +1552,7 @@ place(obj(_, wstr(WideType, Values)), _, lv(Addr, array(WideType, N))) --> !,
     set_env(Env),
     let(p, copy, [global(Sym)], Addr).
 % A compound literal is an unnamed local, initialized where it appears.
-place(obj(_, complit(TN, Init)), Ctx, lv(Addr, Type)) --> !,  % 6.5.2.5
+place_node(obj(_, complit(TN, Init)), Ctx, lv(Addr, Type)) --> !, % 6.5.2.5
     env(Env),
     { ctx_loc(Ctx, Loc),
       type_name(TN, Type0, Env, Loc),
@@ -1459,18 +1560,18 @@ place(obj(_, complit(TN, Init)), Ctx, lv(Addr, Type)) --> !,  % 6.5.2.5
       check_local_type(Type, Env, Loc, 'compound literal') },
     local_slot(Type, Addr),
     init(Addr, Type, Init, Ctx).
-place(obj(T, deref(XV)), Ctx, lv(V, U)) --> !,             % 6.5.3.2p4
+place_node(obj(T, deref(XV)), Ctx, lv(V, U)) --> !,        % 6.5.3.2p4
     lower(XV, Ctx, v(V, _)),
     { unqualified(T, U) }.
-place(fun(T, deref(XV)), Ctx, fd(Callee, U)) --> !,
+place_node(fun(T, deref(XV)), Ctx, fd(Callee, U)) --> !,
     lower(XV, Ctx, v(V, _)),
     callee_temp(V, Callee),
     { unqualified(T, U) }.
-place(obj(T, member(XS, F)), Ctx, lv(P, U)) -->            % 6.5.2.3p3
+place_node(obj(T, member(XS, F)), Ctx, lv(P, U)) -->       % 6.5.2.3p3
     place(XS, Ctx, lv(Addr, SU)),
     member_lv(Addr, SU, F, Ctx, P, _),
     { unqualified(T, U) }.
-place(obj(_, bitfield(member(XS, F), W)), Ctx, bits(P, T, Pos, W)) --> % 6.7.2.1p10
+place_node(obj(_, bitfield(member(XS, F), W)), Ctx, bits(P, T, Pos, W)) --> % 6.7.2.1p10
     place(XS, Ctx, lv(Addr, SU)),
     env(Env),
     { member_layout(SU, F, Env, T, Off, bits(Pos, W)) },

@@ -13,6 +13,7 @@
 
 :- use_module(library(lists)).
 :- use_module(library(apply)).
+:- use_module(library(readutil)).
 
 % dterm's main would draw the whole wiki; play_view.pl loads it after.
 :- asserta((user:term_expansion((:- initialization(main, main)), []) :-
@@ -35,9 +36,15 @@ sample("Lists, tails and a DCG",
        "c_pp.pl: list patterns with tails, terminals, {} goals and operators.",
        pred(c_pp, located_splice/4)).
 sample("", "", pred(c_pp, pp_tokens//3)).
-sample("IR",
-       "A function as the playground's IR tab draws it: its head over its blocks.",
+sample("IR without source metadata",
+       "The shared playground renderer, with raw temporary identities when no C provenance is available.",
        ir).
+sample("C names, lowered IR",
+       "Actual compiler output for the playground's sum.c. Subscripts count SSA definitions, & marks an address; hover for raw identity, IR class, C expression type and C binding type.",
+       provenance(o0)).
+sample("The same loop after optimization",
+       "Actual -O output. Historical definitions reserve their subscripts, and source hints follow the surviving sites rather than instruction positions in the old listing.",
+       provenance(o1)).
 sample("Assembly",
        "asm.pl line terms beside the AT&T lines they print as.",
        asm).
@@ -66,7 +73,7 @@ page(Sources) -->
     "<link rel=\"stylesheet\" href=\"samples.css\">\n",
     "</head>\n<body>\n",
     el(article, "dterm play wb", seq_samples(Sources)),
-    "\n<script src=\"../dterm.js\"></script>\n<script src=\"samples.js\"></script>\n</body>\n</html>\n".
+    "\n<script src=\"../dterm.js\"></script>\n<script type=\"module\" src=\"samples.js\"></script>\n</body>\n</html>\n".
 
 seq_samples(Sources) -->
     { findall(T-N-W, sample(T, N, W), Ss) },
@@ -86,7 +93,12 @@ draw(pred(Base, Key), Sources) -->
     dterm:pred_(Key, Doc, Items, Base).
 draw(ir, _) -->
     { sample_ir(F) },
-    el(div, "pane", ['data-slot'=ir], play_view:ir_item(ir, 'sample.c', F)).
+    el(div, "pane", ['data-slot'=ir], play_view:ir_module(ir, 'sample.c', module([F]))).
+draw(provenance(Stage), _) -->
+    { format(atom(Path), 'sum-~w.ir', [Stage]), read_file_to_terms(Path, Items, []),
+      memberchk(func(sum, L, R, Ps, Bs), Items), memberchk(context(sum, Records), Items),
+      M = module([func(sum, L, R, Ps, Bs), context(sum, Records)]) },
+    el(div, "pane", ['data-slot'=ir], play_view:ir_module(Stage, '../play/examples/sum.c', M)).
 draw(asm, _) -->
     { findall(T-S, sample_asm(T, S), Ls) },
     el(div, "pane", ['data-slot'=asm], el(table, asm, seq(Ls, asm_row))).

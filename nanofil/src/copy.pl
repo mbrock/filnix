@@ -45,20 +45,27 @@
 :- use_module(ir).
 :- use_module(cfg).
 :- use_module(promote, [strict_ssa/3]).
+:- use_module(provenance).
 
 %! copy_module(+M0, -M) is det.
 %
 %  M is the module M0 with copies and trivial phis propagated away in
 %  each strict SSA function.
 
-copy_module(module(Items0), module(Items)) :-
-    maplist(copy_item, Items0, Items).
+copy_module(M0, module(Items)) :-
+    legacy_context(M0, module(Items0)), code_items(Items0, Code),
+    maplist(copy_item(Items0), Code, Groups), append(Groups, Items).
 
 % copy_item(+Item0, -Item): Item is the module item Item0, with copies
 % propagated if it is a function.
 % Reps (here and below): assoc Temp -> the value that replaces it.
-copy_item(F, F) :- F = func(_, _, _, _, _), setjmp_func(F), !.
-copy_item(func(Name, Linkage, Ret, Params, Blocks0), F) :-
+copy_item(All, F0, Items) :-
+    F0 = func(Name, _, _, _, _), context_records(All, Name, Rs0),
+    copy_context(F0, Rs0, F, Rs), with_context(F, Rs, Items).
+copy_item(_, data(N, L, A, Is), [data(N, L, A, Is)]).
+
+copy_context(F, Rs, F, Rs) :- setjmp_func(F), !.
+copy_context(func(Name, Linkage, Ret, Params, Blocks0), Rs0, F, Rs) :-
     F0 = func(Name, Linkage, Ret, Params, Blocks0),
     func_cfg(Blocks0, Cfg),
     cfg_idoms(Cfg, Idom),
@@ -76,13 +83,28 @@ copy_item(func(Name, Linkage, Ret, Params, Blocks0), F) :-
         list_to_assoc(CopyPairs, Copies),
         empty_assoc(Empty),
         foldl(copy_reps(Copies), CopyPairs, Empty, Reps),
-        maplist(reps_block(Reps), Blocks0, Copied),
-        trivial_phis(Copied, Classes, Reach, Blocks),
+        maplist(reps_block(Reps), Blocks0, Copied, Maps), append(Maps, Map),
+        copied_records(Reps, Map, Rs0, Rs1),
+        trivial_phis(Copied, Classes, Reach, Blocks, PhiReps, PhiMap),
+        copied_records(PhiReps, PhiMap, Rs1, Rs),
         F = func(Name, Linkage, Ret, Params, Blocks)
-    ;   F = F0
+    ;   F = F0, Rs = Rs0
     ).
-copy_item(data(Name, Linkage, Align, Items),
-          data(Name, Linkage, Align, Items)).
+
+% A substitution is history, not a new primary name for its survivor.
+copied_records(Reps, Map, Rs0, Rs) :-
+    remap_sites(Rs0, Map, Rs1),
+    exclude(removed_phi_site(Reps), Rs1, Rs2),
+    maplist(alias_reps(Reps), Rs2, Rs3),
+    findall(alias(T, V, Hint, Os),
+            ( member(value(T, Hint, Os), Rs0), get_assoc(T, Reps, V) ), Aliases),
+    append(Rs3, Aliases, Rs).
+
+removed_phi_site(Reps, site(phi(T), _)) :- get_assoc(T, Reps, _).
+alias_reps(_, alias(T, historical(Id), H, Os), alias(T, historical(Id), H, Os)) :- !.
+alias_reps(Reps, alias(T, V0, H, Os), alias(T, V, H, Os)) :- !,
+    value_reps(V0, Reps, V).
+alias_reps(_, R, R).
 
 % temp_classes(+Params, +Blocks, -Classes): assoc Temp -> class of its
 % definition.
@@ -138,7 +160,7 @@ value_temp_reps(V, T, Reps0, Reps) :-
 % simplification revisits only dependent phis, not the whole function.
 % Redirect those dependencies too: if A becomes B and B later becomes C,
 % every remaining phi that used A must see C.
-trivial_phis(Blocks0, Classes, Reach, Blocks) :-
+trivial_phis(Blocks0, Classes, Reach, Blocks, Reps, Map) :-
     findall(D-Vs,
             ( member(block(L, PhiList, _, _), Blocks0),
               get_assoc(L, Reach, _),
@@ -155,7 +177,7 @@ trivial_phis(Blocks0, Classes, Reach, Blocks) :-
     phi_worklist_reps(Pending, Phis, Users, Empty, Aliases),
     assoc_to_list(Aliases, AliasPairs),
     foldl(copy_reps(Aliases), AliasPairs, Empty, Reps),
-    maplist(reps_block(Reps), Blocks0, Blocks).
+    maplist(reps_block(Reps), Blocks0, Blocks, Maps), append(Maps, Map).
 
 phi_value(K, Classes, _-Src, V) :-
     copy_value(Src, K, Classes, V).
@@ -209,9 +231,9 @@ value_redirected(D, V, V0, R) :-
 % the phis and copies whose temp is in Reps, and with every use of such
 % a temp replaced by its value.
 reps_block(Reps, block(L, Phis0, Insts0, Jump0),
-                  block(L, Phis, Insts, Jump)) :-
+                  block(L, Phis, Insts, Jump), Map) :-
     phis_reps(Phis0, Reps, Phis),
-    insts_reps(Insts0, Reps, Insts),
+    insts_reps(Insts0, Reps, Insts, L, 0, 0, Map),
     jump_reps(Jump0, Reps, Jump).
 
 phis_reps([], _, []).
@@ -229,15 +251,17 @@ reps_phi(Reps, phi(D, K, Args0), phi(D, K, Args)) :-
 reps_edge(Reps, L-V0, L-V) :-
     value_reps(V0, Reps, V).
 
-insts_reps([], _, []).
-insts_reps([I0|Is0], Reps, Is) :-
+insts_reps([], _, [], _, _, _, []).
+insts_reps([I0|Is0], Reps, Is, L, Old, New, Map) :-
     (   I0 = let(tmp(D), _, copy, _), get_assoc(D, Reps, _)
-    ->  Is = Rest
+    ->  Is = Rest, Out = []
     ;   Is = [I|Rest],
-        inst_reps(I0, Reps, I)
+        inst_reps(I0, Reps, I), Out = [I]
     ),
-    insts_reps(Is0, Reps, Rest).
+    emission_sites(L, Old, New, Out, Map, Maps, Next), Old1 is Old + 1,
+    insts_reps(Is0, Reps, Rest, L, Old1, Next, Maps).
 
+inst_reps(loc(F, L), _, loc(F, L)).
 inst_reps(let(D, K, Op, Vs0), Reps, let(D, K, Op, Vs)) :-
     maplist(reps_value(Reps), Vs0, Vs).
 inst_reps(store(W, V0, A0), Reps, store(W, V, A)) :-

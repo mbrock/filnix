@@ -240,11 +240,25 @@ details.clause > summary::before {
 details.clause:not([open]) > summary::before { content: "▸"; }
 .pane { padding-left: 1.4em; }
 details.clause { margin: 0.2rem 0 0.9rem; scroll-margin-top: 1rem; }
-details.clause.func > .goals { margin-left: 0; row-gap: 0.25em; }
+details.clause.func > .goals { margin: 0.35em 0 0; row-gap: 0; grid-template-columns: minmax(0, 1fr); }
 details.clause.data > .goals { margin-left: 0.8em; }
-.block-ir > .label { font-weight: 700; color: var(--w-control, var(--ink)); }
+.block-ir {
+  display: grid;
+  grid-template-columns: 4.5em minmax(0, 1fr);
+  column-gap: 0.9em;
+  padding: 0.3em 0 0.4em;
+  border-top: 1px solid color-mix(in srgb, var(--rule) 65%, transparent);
+  line-height: 1.32;
+}
+.block-ir > .label { font-weight: 700; color: var(--w-control, var(--ink)); overflow-wrap: anywhere; }
 .block-ir > .label .neck { margin-left: 0.1em; }
-.block-ir > .goals { margin-left: 0.9em; row-gap: 0.06em; }
+.block-size { display: block; color: var(--muted); font: 0.6rem/1.4 var(--mono-font); opacity: 0.7; }
+.block-ir > .goals { margin-left: 0; row-gap: 0.04em; }
+.source-hint { display: flex; align-items: baseline; gap: 0.7em; min-width: 0; margin: 0.12em 0 0.2em; color: var(--muted); }
+.source-hint .source-line { flex: none; font: 0.6rem var(--mono-font); font-variant-numeric: tabular-nums; }
+.source-hint code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 0.68rem/1.35 var(--mono-font); color: inherit; background: none; padding: 0; }
+.source-hint:hover { color: var(--atom); }
+.pane .source-hint[data-line] { cursor: pointer; }
 .more { color: var(--muted); font-size: 0.85em; }
 .clause.item { margin: 0.4rem 0 0.9rem; }
 
@@ -385,6 +399,11 @@ dt.w-value { color: var(--var); }
 .c.w-value:has(> .args .n) > .args .n { font-weight: 600; }
 .c.w-value:not([data-tmp]):not(:has(.n)) > .args .a { color: var(--w-global); font-weight: 600; }
 .c.lit { background: color-mix(in srgb, var(--var) 16%, transparent); border-radius: 3px; }
+.ir-value { display: inline; white-space: nowrap; color: var(--var); font-weight: 600; }
+.ir-value sub { font-size: 0.72em; line-height: 0; font-variant-numeric: tabular-nums; }
+.ir-value .value-role { color: var(--muted); font-weight: 400; }
+.ir-value .value-scope { color: var(--muted); font-size: 0.6em; line-height: 0; }
+.ir-value.lit { background: color-mix(in srgb, var(--var) 16%, transparent); border-radius: 3px; outline: 1px solid color-mix(in srgb, var(--var) 35%, transparent); }
 .a.w-class, .a.w-type, .a.w-cond, dt.w-class, dt.w-type, dt.w-cond {
   padding: 0 0.22em;
   border-radius: 3px;

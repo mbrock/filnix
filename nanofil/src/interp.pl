@@ -119,6 +119,7 @@
 :- use_module(ir).
 :- use_module(ieee).
 :- use_module(cfg, [edge_label/2]).
+:- use_module(provenance, [code_items/2]).
 
 %! run(+M, +Fn, ?Args, +Fuel, ?Outcome) is nondet.
 %
@@ -137,10 +138,10 @@ run(M, Fn, Args, Fuel, Outcome) :-
 %  initial memory, and its functions and their blocks indexed by name and
 %  label. The initial memory holds integers only, so runs can share it.
 
-module_prepared(M, prep(Fns, Globals, Mode, Mem0)) :-
+module_prepared(M0, prep(Fns, Globals, Mode, Mem0)) :-
+    M0 = module(All), code_items(All, Items), M = module(Items),
     module_mode(M, Mode),
     initial_memory(Mode, M, Globals, Mem0),
-    M = module(Items),
     findall(Name-fn(Ret, Params, Entry, BlockMap),
             ( member(func(Name, _, Ret, Params, Blocks), Items),
               Blocks = [block(Entry, _, _, _)|_],

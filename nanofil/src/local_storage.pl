@@ -23,26 +23,31 @@
 :- use_module(cfg).
 :- use_module(escape).
 :- use_module(promote, [strict_ssa/3]).
+:- use_module(provenance).
 
 %! local_storage_module(+M0, -M) is det.
 %
 %  M has named local objects for the eligible allocations of M0.
 local_storage_module(M0, M) :-
     (   module_mode(M0, filc), module_stage(M0, unchecked)
-    ->  M0 = module(Items0), maplist(local_item, Items0, Items),
+    ->  legacy_context(M0, module(Items0)), code_items(Items0, Code),
+        maplist(local_item(Items0), Code, Groups), append(Groups, Items),
         M = module(Items)
     ;   M = M0
     ).
 
-local_item(func(N, L, R, Ps, Bs), F) :-
-    local_storage_func(func(N, L, R, Ps, Bs), F).
-local_item(data(N, L, A, Is), data(N, L, A, Is)).
+local_item(All, F0, Items) :-
+    F0 = func(N, _, _, _, _), context_records(All, N, Rs0),
+    local_context(F0, Rs0, F, Rs), with_context(F, Rs, Items).
+local_item(_, data(N, L, A, Is), [data(N, L, A, Is)]).
 
 %! local_storage_func(+F0, -F) is det.
 %
 %  F0 is an unchecked Fil-C function. Unknown or unsupported allocation
 %  uses keep their heap representation.
-local_storage_func(F0, F) :-
+local_storage_func(F0, F) :- local_context(F0, [], F, _).
+
+local_context(F0, Rs0, F, Rs) :-
     F0 = func(N, L, R, Ps, Bs0),
     (   \+ setjmp_func(F0),
         local_objects(F0, []),
@@ -50,9 +55,9 @@ local_storage_func(F0, F) :-
         strict_ssa(F0, Cfg, Idom),
         address_temps(F0, Addresses),
         local_objects(F0, Addresses, Objects), Objects \== []
-    ->  maplist(local_block(Objects, Addresses), Bs0, Bs),
-        F = func(N, L, R, Ps, Bs)
-    ;   F = F0
+    ->  maplist(local_block(Objects, Addresses), Bs0, Bs, Maps), append(Maps, Map),
+        remap_sites(Rs0, Map, Rs), F = func(N, L, R, Ps, Bs)
+    ;   F = F0, Rs = Rs0
     ).
 
 % Only in-bounds accesses qualify, but not necessarily disjoint ones:
@@ -92,22 +97,24 @@ access_inside(Size, acc(Off, Width)) :-
     Off >= 0, Off + Bytes =< Size.
 
 local_block(Objects, Addresses, block(L, Phis, Is0, Jump),
-            block(L, Phis, Is, Jump)) :-
-    local_insts(Is0, Objects, Addresses, Is).
+            block(L, Phis, Is, Jump), Map) :-
+    local_insts(Is0, Objects, Addresses, Is, L, 0, 0, Map).
 
-local_insts([], _, _, []).
-local_insts([I0|Is0], Objects, Addresses, Is) :-
+local_insts([], _, _, [], _, _, _, []).
+local_insts([I0|Is0], Objects, Addresses, Is, L, Old, New, Map) :-
     (   I0 = let(tmp(A), p, alloc(_), [const(Size)]),
         memberchk(A-Size, Objects)
-    ->  Is = [local_alloc(A, Size)|Rest]
+    ->  Out = [local_alloc(A, Size)]
     ;   local_access(I0, Objects, Addresses, I)
-    ->  Is = [I|Rest]
+    ->  Out = [I]
     ;   I0 = let(tmp(D), p, _, _),
         get_assoc(D, Addresses, A-_), memberchk(A-_, Objects)
-    ->  Is = Rest
-    ;   Is = [I0|Rest]
+    ->  Out = []
+    ;   Out = [I0]
     ),
-    local_insts(Is0, Objects, Addresses, Rest).
+    append(Out, Rest, Is),
+    emission_sites(L, Old, New, Out, Map, Maps, Next), Old1 is Old + 1,
+    local_insts(Is0, Objects, Addresses, Rest, L, Old1, Next, Maps).
 
 local_access(let(D, K, load(T), [tmp(P)]), Objects, Addresses,
              local_load(D, K, T, A, Off)) :-

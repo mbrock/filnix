@@ -445,6 +445,13 @@ args_pos(P, N, As) :-
 term(T, P0, Prec, Ctx) --> { unparen(P0, P) }, term_(T, P, Prec, Ctx).
 
 term_('$VAR'(N), _, _, _) --> !, var_(N).
+% Presentation-only IR values, prepared by play_view. The raw identity is
+% never reconstructed from the pretty name (which can contain a subscript).
+term_('$IR_VALUE'(Raw, Name, Serial, Role, Scope, Binding, Tip), _, _, _) --> !,
+    ir_value(Raw, Name, Serial, Role, Scope, Binding, Tip).
+term_(tmp(Raw), _, _, ctx(play, _)) --> !,
+    { format(string(Tip), "tmp(~w): raw IR temporary", [Raw]) },
+    ir_value(Raw, Raw, none, temporary, none, none, Tip).
 term_(T, P, _, _) --> { number(T) }, !, { source_text(P, T, Src) }, el(span, n, esc(Src)).
 term_(T, P, _, _) --> { string(T) }, !, { source_text(P, T, Src) }, el(span, s, esc(Src)).
 term_(T, _, _, _) --> { T == [] }, !, el(span, "l empty", "[]").
@@ -476,6 +483,29 @@ var_(N) -->
       ( Cs = [0'_|_] -> Class = "v anon" ; Class = v ) },
     el(span, Class, ['data-v'=N],
        ( esc(Stem), ( { Digits == [] } -> [] ; el(sub, none, esc(Digits)) ) )).
+
+ir_value(Raw, Name, Serial, Role, Scope, Binding, Tip) -->
+    { ( Role == temporary, Serial == none -> raw_value_name(Name, Stem, Sub)
+      ; Stem = Name, Sub = Serial ) },
+    el(span, "ir-value", ['data-tmp'=Raw, 'data-role'=Role, 'data-binding'=Binding, title=Tip], (
+        ( { Role == address } -> el(span, "value-role", "&")
+        ; { Role == piece } -> el(span, "value-role", "part·")
+        ; { Role == temporary } -> el(span, "value-role", "%")
+        ; [] ),
+        esc(Stem),
+        ( { Scope == none } -> [] ; el(sup, "value-scope", ( "·", esc(Scope) )) ),
+        ( { Sub == none } -> [] ; el(sub, none, esc(Sub)) )
+    )).
+
+% Unnamed compiler values still have numeric identities: v12, chk3,
+% pr.2. Subscript the complete trailing number, not digits in a source
+% spelling. Handwritten names without such a suffix remain verbatim.
+raw_value_name(Raw, Stem, Digits) :-
+    atom_codes(Raw, Cs), append(Stem0, Digits, Cs),
+    Stem0 \== [], Digits \== [], last(Stem0, Last), \+ between(0'0, 0'9, Last),
+    maplist([C]>>between(0'0, 0'9, C), Digits), !,
+    ( append(S, [Sep], Stem0), memberchk(Sep, [0'., 0'_]), S \== [] -> Stem = S ; Stem = Stem0 ).
+raw_value_name(Raw, Raw, none).
 
 atom_(T, Prec, ctx(_, head)) --> !, el(span, "f def", atom_text(T, Prec)).
 atom_(T, Prec, _) --> el(span, a, atom_text(T, Prec)).

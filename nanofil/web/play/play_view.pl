@@ -25,19 +25,21 @@
     and ir whether the IR has an item of that name (true or false, which
     reach JavaScript as strings).
 
-    play_lines(-Counts): one _{line, n} per line of the file that IR
-    instructions come from (by the IR's loc/2, so only without -O), n
-    the number of them, phis and jumps included.
+    play_lines(-Counts): one _{line, n} per unambiguous source line of
+    the checked IR, using sidecar site origins (or legacy loc/2), n the
+    number of instructions, phis and jumps included.
 
     play_symbol(+Name, -Info): what the last compile knows of Name: its
     kind, signature, linkage and defining line, and its IR head drawn as
     HTML. Fails for a name it does not know.
 */
-:- module(play_view, [play_html/3, play_outline/1, play_lines/1, play_symbol/2]).
+:- module(play_view, [play_html/3, play_outline/1, play_lines/1, play_symbol/2, ir_module//3]).
 :- set_prolog_flag(double_quotes, codes).
 
 :- use_module(library(lists)).
 :- use_module(library(apply)).
+:- use_module(library(assoc)).
+:- use_module(library(readutil)).
 
 play_html(File, Opt, Html) :-
     play:play(File, Opt, Stages),
@@ -58,7 +60,8 @@ last_compile(File, Items, M) :-
 
 play_lines(Counts) :-
     last_compile(File, _, module(IR)),
-    findall(L, ( member(func(_, _, _, _, Bs), IR), member(B, Bs), block_rows(File, B, Rows),
+    findall(L, ( member(func(Name, _, _, _, Bs), IR), function_records(IR, Name, Records),
+                 member(B, Bs), block_rows(File, Records, B, Rows),
                  member(_-L, Rows), integer(L) ), Ls),
     msort(Ls, Sorted),
     clumped_pairs(Sorted, Counts).
@@ -82,7 +85,7 @@ outline([N-K-From|Ns], IR, [_{name:N, kind:K, from:From, to:To, ir:InIR}|Os]) :-
     ;   Ns = [_-_-From|_] -> To = From
     ;   To = 1000000
     ),
-    (   member(I, IR), arg(1, I, N) -> InIR = true ; InIR = false ),
+    (   member(I, IR), executable_item(I), arg(1, I, N) -> InIR = true ; InIR = false ),
     outline(Ns, IR, Os).
 
 item_line(I, L) :- arg(1, I, _:L).
@@ -118,17 +121,21 @@ symbol(Name, IR, _{kind:function, sig:Sig, linkage:Ls, blocks:NB, insts:NI, html
     linkage(Linkage, Ls),
     length(Blocks, NB),
     foldl([block(_, Ps, Is, _), A0, A]>>(length(Ps, P), exclude([loc(_, _)]>>true, Is, Is1), length(Is1, I), A is A0 + P + I + 1), Blocks, 0, NI),
-    html(dterm:compound_(func(Name, Linkage, Ret, Params, '$VAR'('Blocks')), _, ctx(play, head)), H).
+    function_records(IR, Name, Records),
+    value_view(Records, func(Name, Linkage, Ret, Params, Blocks), View),
+    named_terms(func(Name, Linkage, Ret, Params, '$VAR'('Blocks')), View, Head),
+    html(dterm:compound_(Head, _, ctx(play, head)), H).
 symbol(Name, IR, _{kind:object, size:Size, linkage:Ls, html:H}) :-
     member(data(Name, Linkage, Align, Items), IR), !,
     foldl(data_rows, Items, 0-[], Size-_),
     linkage(Linkage, Ls),
     html(dterm:compound_(data(Name, Linkage, Align, '$VAR'('Items')), _, ctx(play, head)), H).
 symbol(Name, IR, _{kind:import, sig:Sig, calls:N}) :-
-    sub_term(call(Res, global(Name), Args), IR), !,
+    include(executable_item, IR, Executable),
+    sub_term(call(Res, global(Name), Args), Executable), !,
     ( Res = result(_, R) -> true ; R = Res ),
     maplist([arg(K, _), K]>>true, Args, Ks), sig(R, Ks, Sig0), string_codes(Sig, Sig0),
-    aggregate_all(count, sub_term(call(_, global(Name), _), IR), N).
+    aggregate_all(count, sub_term(call(_, global(Name), _), Executable), N).
 
 linkage(ro(L), S) :- !, format(string(S), "~w, read-only", [L]).
 linkage(L, S) :- format(string(S), "~w", [L]).
@@ -255,11 +262,27 @@ strings(T, T).
 %% over one instruction per row; a data object its head over its items.
 %% Each folds away under its head.
 
-ir_(Slot, File, module(Items)) -->
-    section_(Slot, (
-        legend_,
-        seq(Items, ir_item(Slot, File))
-    )).
+ir_(Slot, File, M) --> section_(Slot, ir_module(Slot, File, M)).
+
+% Shared by the playground and workbench. Context is not an executable
+% item: neither drawing nor symbol/import discovery traverses its terms.
+ir_module(Slot, File, module(Items)) -->
+    { include(executable_item, Items, Executable), source_lines(File, Lines) },
+    legend_,
+    seq(Executable, ir_item(Slot, File, Items, Lines)).
+
+executable_item(func(_, _, _, _, _)).
+executable_item(data(_, _, _, _)).
+
+function_records(Items, Name, Records) :-
+    ( memberchk(context(Name, Records0), Items) -> Records = Records0 ; Records = [] ).
+
+source_lines(File, Lines) :-
+    (   atom(File), File \== none,
+        catch(read_file_to_string(File, Text, [encoding(utf8)]), _, fail)
+    ->  split_string(Text, "\n", "\r", Lines)
+    ;   Lines = []
+    ).
 
 %% The pipeline: each pass's output is a tab, and between them the pass
 %% that made it, with its time. Stage names are play.pl's.
@@ -316,7 +339,7 @@ gloss(class, class:b, "b", "8 bits (byte), a width of memory").
 gloss(class, class:h, "h", "16 bits (halfword), a width of memory").
 gloss(class, class:void, "void", "no value").
 
-gloss(value, tmp/1, "tmp(Name)", "a temporary, assigned exactly once").
+gloss(value, tmp/1, "name₀ / %tmp", "an SSA value, assigned once; the subscript counts definitions of this source name, including removed ones. &name is its address, part·name an ABI piece; a superscript distinguishes shadowed bindings. Hover for raw identity and types").
 gloss(value, const/1, "const(N)", "a constant; for a float, its IEEE bit pattern").
 gloss(value, global/1, "global(Symbol)", "the address of a function or data object").
 
@@ -430,7 +453,7 @@ slot(store/3, [1-class]).
 slot(raw_store/4, [1-class]).
 slot(item/2, [1-class]).
 
-role_title(class, "Classes: every value has one").
+role_title(class, "IR machine classes (not C types)").
 role_title(value, "Values").
 role_title(inst, "Instructions").
 role_title(op, "Operations, in let").
@@ -471,15 +494,86 @@ entry_(Role, Key-Shape-Text) -->
         el(dd, none, esc(Text))
     )).
 
-ir_item(Slot, File, func(Name, Linkage, Ret, Params, Blocks)) --> !,
+ir_item(Slot, File, Items, Lines, func(Name, Linkage, Ret, Params, Blocks)) --> !,
+    { function_records(Items, Name, Records),
+      value_view(Records, func(Name, Linkage, Ret, Params, Blocks), View),
+      named_terms(func(Name, Linkage, Ret, Params, '$VAR'('Blocks')), View, Head) },
     folding(Slot, "clause func", Name,
-        dterm:compound_(func(Name, Linkage, Ret, Params, '$VAR'('Blocks')), _, ctx(play, head)),
-        seq(Blocks, block_(File))).
-ir_item(Slot, _, data(Name, Linkage, Align, Items0)) -->
+        dterm:compound_(Head, _, ctx(play, head)),
+        seq(Blocks, block_(File, Records, View, Lines))).
+ir_item(Slot, _, _, _, data(Name, Linkage, Align, Items0)) -->
     { text_runs(Items0, Items), length(Items, N), shown(N, Max) },
     folding(Slot, "clause data", Name,
         dterm:compound_(data(Name, Linkage, Align, '$VAR'('Items')), _, ctx(play, head)),
         ( seq_max(Items, Max, row), more(N, Max) )).
+
+% Allocate serials from the complete value history, not just live defs.
+% Passes append records; copy aliases reserve the OLD name, never rename
+% their replacement. Counters are per source spelling/role. Binding ids
+% stay separate, with a scope qualifier when a spelling is shadowed.
+% A displaced value reserves its serial under history(Id), NOT OldTemp:
+% executable allocators can legitimately reuse a removed temporary name.
+value_view(Records, Function, View) :-
+    findall(Raw-Hint, ( member(R, Records), history_value(R, Raw, Hint) ), History),
+    empty_assoc(Empty),
+    foldl(value_label(Records), History, labels(Empty, Empty), labels(Labels, _)),
+    findall(Raw-K, ( sub_term(T, Function), value_class(T, Raw, K) ), Classes0),
+    sort(Classes0, Classes), list_to_assoc(Classes, ClassMap),
+    findall(Raw, sub_term(tmp(Raw), Function), Raws0), sort(Raws0, Raws),
+    maplist(value_entry(Records, Labels, ClassMap), Raws, Entries),
+    list_to_assoc(Entries, View).
+
+history_value(value(Raw, Hint, _), Raw, Hint).
+history_value(alias(Raw, _, Hint, _), Raw, Hint).
+history_value(history(Id, _, Hint, _, _), history(Id), Hint).
+
+value_label(Records, Raw-Hint, labels(V0, C0), labels(V, C)) :-
+    (   get_assoc(Raw, V0, _) -> V = V0, C = C0
+    ;   Hint = named(Id, Role), memberchk(binding(Id, Name, Type, _), Records)
+    ->  Key = Name-Role,
+        ( get_assoc(Key, C0, N) -> true ; N = 0 ), N1 is N + 1,
+        put_assoc(Key, C0, N1, C),
+        binding_scope(Records, Name, Id, Scope),
+        put_assoc(Raw, V0, label(Name, N, Role, Scope, Id, Type), V)
+    ;   V = V0, C = C0
+    ).
+
+binding_scope(Records, Name, Id, Scope) :-
+    findall(B, member(binding(B, Name, _, _), Records), Bs0), list_to_set(Bs0, Bs),
+    ( Bs = [_,_|_] -> once(nth1(Scope, Bs, Id)) ; Scope = none ).
+
+value_class(param(K, tmp(Raw)), Raw, K).
+value_class(let(tmp(Raw), K, _, _), Raw, K).
+value_class(local_load(tmp(Raw), K, _, _, _), Raw, K).
+value_class(flight(tmp(Raw), _, _, _), Raw, p).
+value_class(phi(tmp(Raw), K, _), Raw, K).
+value_class(result(tmp(Raw), K), Raw, K).
+
+value_entry(Records, Labels, Classes, Raw, Raw-Value) :-
+    (   get_assoc(Raw, Labels, label(Name, Serial, Role, Scope, Id, BindingType)) -> true
+    ;   Name = Raw, Serial = none, Role = temporary, Scope = none, Id = none, BindingType = unknown
+    ),
+    ( get_assoc(Raw, Classes, Class) -> true ; Class = unknown ),
+    value_origins(Records, Raw, Ids),
+    origin_locations(Records, Ids, Locations),
+    findall(D, ( member(O, Ids), memberchk(origin(O, _, D, _), Records) ), Descriptions),
+    findall(T, member(typed(_, T, _), Descriptions), Types0), sort(Types0, Types),
+    ( Types = [ExprType] -> true ; Types == [] -> ExprType = unknown ; ExprType = Types ),
+    format(string(Tip), "tmp(~w) · IR class: ~w · ~w · binding: ~w\nC expression type: ~w · C binding type: ~w\nOrigins: ~w\n~w",
+           [Raw, Class, Role, Id, ExprType, BindingType, Locations, Descriptions]),
+    Value = '$IR_VALUE'(Raw, Name, Serial, Role, Scope, Id, Tip).
+
+value_origins(Records, Raw, Ids) :-
+    ( memberchk(value(Raw, _, Os), Records) -> Ids = Os
+    ; memberchk(alias(Raw, _, _, Os), Records) -> Ids = Os
+    ; Ids = [] ).
+
+named_terms(tmp(Raw), View, T) :- !,
+    ( get_assoc(Raw, View, T) -> true ; T = tmp(Raw) ).
+named_terms(T0, View, T) :- compound(T0), !,
+    T0 =.. [F|As0], maplist(named_terms_(View), As0, As), T =.. [F|As].
+named_terms(T, _, T).
+named_terms_(View, T0, T) :- named_terms(T0, View, T).
 
 folding(Slot, Class, Name, Head, Goals) -->
     { format(codes(Id), "~w-~w", [Slot, Name]), atom_codes(Name, Ns) },
@@ -503,44 +597,77 @@ take_text(Is, [], Is).
 
 text_byte(C) :- integer(C), ( between(32, 126, C) ; memberchk(C, [0, 9, 10, 13]) ), !.
 
-% A block's rows, each with the line of File it comes from: the
-% instructions after loc(F, L) come from line L if F is File (and from
-% none in a header); the phis from the block's first loc, which opens
-% it, and the jump from the last. The locs themselves are not rows.
-block_rows(File, block(_, Phis, Insts, Jump), Rows) :-
+% Sidecar indexes count every list entry, including legacy loc markers.
+% A known site never falls back to a legacy line if its origins are
+% ambiguous, missing, or in a header. Legacy loc-only IR still works.
+block_rows(File, Records, block(Label, Phis, Insts, Jump), Rows) :-
     (   Insts = [loc(F, L)|_], F == File -> L0 = L ; L0 = none ),
-    findall(P-L0, member(P, Phis), PRows),
-    lined(Insts, File, L0, IRows, LJ),
+    findall(P-LP, ( member(P, Phis), P = phi(tmp(Raw), _, _),
+                    site_line(Records, phi(Raw), File, L0, LP) ), PRows),
+    lined(Insts, File, Records, Label, 0, L0, IRows, LJ0),
+    site_line(Records, jump(Label), File, LJ0, LJ),
     append(PRows, IRows, Rows0),
     append(Rows0, [Jump-LJ], Rows).
 
-lined([], _, L, [], L).
-lined([loc(F, L1)|Is], File, _, Rows, LJ) :- !,
+lined([], _, _, _, _, L, [], L).
+lined([loc(F, L1)|Is], File, Records, Label, N, _, Rows, LJ) :- !,
     ( F == File -> L = L1 ; L = none ),
-    lined(Is, File, L, Rows, LJ).
-lined([I|Is], File, L, [I-L|Rows], LJ) :- lined(Is, File, L, Rows, LJ).
+    N1 is N + 1, lined(Is, File, Records, Label, N1, L, Rows, LJ).
+lined([I|Is], File, Records, Label, N, Legacy, [I-L|Rows], LJ) :-
+    site_line(Records, inst(Label, N), File, Legacy, L), N1 is N + 1,
+    lined(Is, File, Records, Label, N1, Legacy, Rows, LJ).
 
-block_(File, B) -->
-    { B = block(Label, _, _, _), block_rows(File, B, Rows) },
-    el(div, "block-ir", (
-        el(div, "label", ( el(span, "f pat", esc(Label)), el(span, "neck", ":") )),
-        el(div, "goals", lined_rows(Rows, none))
+site_line(Records, Site, File, Legacy, Line) :-
+    (   memberchk(site(Site, Ids), Records)
+    ->  origin_locations(Records, Ids, Locations),
+        ( Locations = [at(File, L)], integer(L), L > 0 -> Line = L ; Line = none )
+    ;   Line = Legacy
+    ).
+
+% Resolve every origin in a merged set, not just its first member. An
+% origin's own location wins over its enclosing statement/function's;
+% generated origins without a location inherit parents. Unresolved ids
+% and cycles conservatively prevent a claim of one line.
+origin_locations(Records, Ids, Locations) :-
+    origin_locations_(Ids, Records, [], Ls), sort(Ls, Locations).
+
+origin_locations_([], _, _, []).
+origin_locations_([Id|Ids], Records, Seen, Locations) :-
+    (   memberchk(Id, Seen) -> Here = [unknown]
+    ;   memberchk(origin(Id, Loc, _, Parents), Records)
+    ->  ( Loc = at(_, _) -> Here = [Loc]
+        ; Parents == [] -> Here = [unknown]
+        ; origin_locations_(Parents, Records, [Id|Seen], Here) )
+    ;   Here = [unknown]
+    ),
+    origin_locations_(Ids, Records, Seen, Rest), append(Here, Rest, Locations).
+
+block_(File, Records, View, Lines, B) -->
+    { B = block(Label, Phis, Insts, _), block_rows(File, Records, B, Rows),
+      exclude([loc(_, _)]>>true, Insts, Code), length(Code, NI), length(Phis, NP), N is NI + NP + 1 },
+    el(div, "block-ir", ['data-block'=Label], (
+        el(div, "label", ( el(span, "f pat", esc(Label)), el(span, "neck", ":"),
+                           el(span, "block-size", ( esc(N), " ops" )) )),
+        el(div, "goals", lined_rows(Rows, View, Lines, none))
     )).
 
-% A row carries its line as data-line; the first of a run of rows from
-% one line shows it.
-lined_rows([], _) --> [].
-lined_rows([T-L|Rows], Prev) -->
-    (   { integer(L) }
-    ->  { format(codes(Ls), "~d", [L]) },
-        { goal_class(T, C) },
-        el(div, C, ['data-line'=Ls], (
-            ( { L == Prev } -> [] ; el(span, "ln", esc(Ls)) ),
-            term(T)
+% One quiet source hint per run, not an AST alongside every operation.
+% These are statement-line hints, not exact expression spans.
+lined_rows([], _, _, _) --> [].
+lined_rows([T-L|Rows], View, Lines, Prev) -->
+    { goal_class(T, C), named_terms(T, View, Named),
+      ( integer(L) -> Attrs = ['data-line'=L] ; Attrs = [] ) },
+    (   { integer(L), L \== Prev }
+    ->  el(div, "source-hint", ['data-line'=L, title="C context at the enclosing statement line; not an exact expression span"], (
+            el(span, "source-line", ( "C · ", esc(L) )),
+            (   { nth1(L, Lines, Text), split_string(Text, "", " \t\r", [S]) }
+            ->  el(code, none, esc(S))
+            ;   [] )
         ))
-    ;   row(T)
+    ;   []
     ),
-    lined_rows(Rows, L).
+    el(div, C, Attrs, term(Named)),
+    lined_rows(Rows, View, Lines, L).
 
 row(T) --> { goal_class(T, C) }, el(div, C, term(T)).
 
@@ -634,13 +761,14 @@ sym_ref(S) --> { atom_codes(S, Cs), append("#ir-", Cs, H) }, el(a, none, [href=H
 %% Symbols: what the module defines, and what it uses but does not.
 
 symbols_(module(Items)) -->
-    { findall(N, ( member(I, Items), arg(1, I, N) ), Defined),
-      findall(S, sub_term(global(S), Items), Used0), sort(Used0, Used),
+    { include(executable_item, Items, Executable),
+      findall(N, ( member(I, Executable), arg(1, I, N) ), Defined),
+      findall(S, sub_term(global(S), Executable), Used0), sort(Used0, Used),
       subtract(Used, Defined, Imports) },
     section_(symbols,
         el(table, "symbols", (
-            seq(Items, symbol_row),
-            seq(Imports, import_row(Items))
+            seq(Executable, symbol_row),
+            seq(Imports, import_row(Executable))
         ))).
 
 symbol_row(func(Name, Linkage, Ret, Params, _)) -->

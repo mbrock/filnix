@@ -1,3 +1,8 @@
+import { gloss, highlightValues } from "../play/ir.js";
+
+for (const pane of document.querySelectorAll('.pane[data-slot="ir"]')) gloss(pane);
+highlightValues(document.querySelector("article.wb"));
+
 // The no-break spaces dterm.pl writes before wide operators and necks are
 // text; v2's flex layout (samples.css) would draw each as an item, so each
 // gets a span that layout can hide.

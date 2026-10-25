@@ -39,6 +39,7 @@
 :- use_module(library(format)).
 :- use_module(ir).
 :- use_module(cfg, [inst_def/2]).
+:- use_module(provenance).
 
 %! pizlonate_module(+M0, -M) is det.
 %
@@ -49,17 +50,41 @@
 
 pizlonate_module(M0, module(Items)) :-
     module_mode(M0, Mode),
-    M0 = module(Items0),
-    maplist(pizlonated_item(Mode), Items0, Items).
+    legacy_context(M0, module(Items0)), code_items(Items0, Code),
+    maplist(pizlonated_item(Mode, Items0), Code, Groups), append(Groups, Items).
 
-pizlonated_item(Mode, func(Name, Linkage, Ret, Params, Blocks0),
-                func(Name, Linkage, Ret, Params, Blocks)) :-
+pizlonated_item(Mode, All, func(Name, Linkage, Ret, Params, Blocks0), Items) :-
     func_temp_names(Params, Blocks0, Names),
     findall(L-I, nth0(I, Blocks0, block(L, _, _, _)), Pairs),
     list_to_assoc(Pairs, Index),
-    pizlonated_blocks(Blocks0, p(Mode, Names, Index), 0, 0, Blocks).
-pizlonated_item(_, data(Name, Linkage, Align, Items),
-                data(Name, Linkage, Align, Items)).
+    context_records(All, Name, Rs0),
+    pizlonated_blocks(Blocks0, p(Mode, Names, Index), 0, 0, Blocks, Map, Generated),
+    remap_sites(Rs0, Map, Rs1),
+    checked_origins(Rs0, Rs1, Generated, Rs),
+    with_context(func(Name, Linkage, Ret, Params, Blocks), Rs, Items).
+pizlonated_item(_, _, data(N, L, A, Is), [data(N, L, A, Is)]).
+
+checked_origins([], Rs, _, Rs) :- !.
+checked_origins(Before, Rs0, Generated, Rs) :-
+    site_index(Before, Sites), origin_ids(Before, Ids0),
+    findall(Q, member(proof(Q, _), Generated), Temps),
+    retire_values(Rs0, Temps, Ids0, Ids1, Retired),
+    findall(L-true, member(poll(L), Generated), Pairs), list_to_assoc(Pairs, Polls),
+    exclude(polled_site(Polls), Retired, Kept),
+    generated_records(Generated, Sites, Ids1, _, Extra), append(Kept, Extra, Rs).
+
+generated_records([], _, Ids, Ids, []).
+generated_records([proof(Q, Site)|Gs], Sites, Ids0, Ids,
+                  [origin(Id, none, generated(pizlonate, check), Os),
+                   value(Q, none, [Id])|Rs]) :-
+    site_origins(Sites, Site, Os), fresh_origin(pizlonate(Q), Ids0, Ids1, Id),
+    generated_records(Gs, Sites, Ids1, Ids, Rs).
+generated_records([poll(L)|Gs], Sites, Ids0, Ids,
+                  [origin(Id, none, generated(pizlonate, poll), Os),
+                   site(jump(L), [Id])|Rs]) :-
+    site_origins(Sites, jump(L), Os), fresh_origin(poll(L), Ids0, Ids1, Id),
+    generated_records(Gs, Sites, Ids1, Ids, Rs).
+polled_site(Polls, site(jump(L), _)) :- get_assoc(L, Polls, _).
 
 % func_temp_names(+Params, +Blocks, -Names): the assoc of every temp
 % name the function defines, so a fresh name avoids them. A valid
@@ -80,25 +105,29 @@ func_temp_names(Params, Blocks, Names) :-
 % the first at index I, checked; P is p(Mode, Names, Index), and N
 % counts fresh names. Plain recursion: Trealla copies a closure's
 % arguments at every call.
-pizlonated_blocks([], _, _, _, []).
+pizlonated_blocks([], _, _, _, [], [], []).
 pizlonated_blocks([block(L, Phis, Insts0, Jump0)|Bs0], P, I, N0,
-                  [block(L, Phis, Insts, Jump)|Bs]) :-
+                  [block(L, Phis, Insts, Jump)|Bs], Map, Generated) :-
     P = p(Mode, Names, Index),
-    checked_insts(Insts0, Mode, Names, N0, N, Insts),
+    checked_insts(Insts0, Mode, Names, N0, N, Insts, L, 0, 0, Map0, G0),
     polled_jump(Jump0, I, Index, Jump),
     I1 is I + 1,
-    pizlonated_blocks(Bs0, P, I1, N, Bs).
+    pizlonated_blocks(Bs0, P, I1, N, Bs, Map1, G1),
+    ( Jump0 == Jump -> G2 = G1 ; G2 = [poll(L)|G1] ),
+    append(Map0, Map1, Map), append(G0, G2, Generated).
 
 % checked_insts(+Insts0, +Mode, +Names, +N0, -N, -Insts).
-checked_insts([], _, _, N, N, []).
-checked_insts([Inst0|Insts0], Mode, Names, N0, N, Insts) :-
-    (   Mode == filc, checked_access(Inst0, Q, Insts, Insts1)
-    ->  fresh_name(Names, N0, N1, Q)
+checked_insts([], _, _, N, N, [], _, _, _, [], []).
+checked_insts([Inst0|Insts0], Mode, Names, N0, N, Insts, L, Old, New, Map, Generated) :-
+    (   Mode == filc, checked_access(Inst0, Q, Out, [])
+    ->  fresh_name(Names, N0, N1, Q), Generated = [proof(Q, inst(L, Old))|Gs]
     ;   Mode == filc, flight_inst(Inst0, Inst)
-    ->  Insts = [Inst|Insts1], N1 = N0
-    ;   Insts = [Inst0|Insts1], N1 = N0
+    ->  Out = [Inst], N1 = N0, Generated = Gs
+    ;   Out = [Inst0], N1 = N0, Generated = Gs
     ),
-    checked_insts(Insts0, Mode, Names, N1, N, Insts1).
+    append(Out, Insts1, Insts),
+    emission_sites(L, Old, New, Out, Map, Maps, Next), Old1 is Old + 1,
+    checked_insts(Insts0, Mode, Names, N1, N, Insts1, L, Old1, Next, Maps, Gs).
 
 % Pure pointer operations choose the address calculation and lower
 % independently. No new temporary or safepoint separates the components.

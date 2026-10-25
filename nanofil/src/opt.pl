@@ -5,7 +5,7 @@
 
     ```diagram
     o0:  M0 ─────────────────────────────────────▶ M
-    o1:  M0 ─▶ without_locs ─▶ promote ─▶ copy ─▶ local_storage ─▶ M
+    o1:  M0 ─▶ promote ─▶ copy ─▶ local_storage ─▶ M
     ```
 
     `optimization_passes/2` names that sequence. `optimize_pass/3` runs
@@ -26,7 +26,7 @@
 :- use_module(promote).
 :- use_module(copy).
 :- use_module(local_storage).
-:- use_module(ir, [without_locs/2, module_stage/2, local_objects/2]).
+:- use_module(ir, [module_stage/2, local_objects/2]).
 :- use_module(library(lists)).
 
 %! optimize(+Options, +M0, -M) is semidet.
@@ -57,14 +57,13 @@ ordered_passes([P|Ps], All) :-
 %! optimize_pass(+Name, +M0, -M) is semidet.
 %
 %  Run one named transformation on unchecked, ordinary-address IR.
-%  Source locations are removed, as for -O; all guards and algorithms
-%  remain in the existing pass modules. Unknown names fail.
+%  Each pass transports its source contexts alongside executable IR.
+%  Unknown names fail; all guards remain in the existing pass modules.
 optimize_pass(Name, M0, M) :-
     pass_predicate(Name, Goal),
     (   ( module_stage(M0, checked) ; has_local_storage(M0) )
     ->  M = M0
-    ;   without_locs(M0, M1),
-        call(Goal, M1, M)
+    ;   call(Goal, M0, M)
     ).
 
 pass_predicate(promote, promote_module).

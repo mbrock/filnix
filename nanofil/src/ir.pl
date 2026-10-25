@@ -42,9 +42,10 @@
 
     | Term | Means |
     |---|---|
-    | `module(Items)` | Items are `func/5` and `data/4` terms, in source order |
+    | `module(Items)` | Items are `func/5`, `data/4` and optional `context/2` terms |
     | `func(Name, Linkage, Ret, Params, Blocks)` | a function, fields below |
     | `data(Name, Linkage, Align, Items)` | a data object, fields under Data |
+    | `context(Name, Records)` | explanatory binding, typed-origin, value, alias and site records; see provenance.pl |
 
     | Field of func | Is |
     |---|---|
@@ -255,6 +256,7 @@
 :- use_module(library(assoc)).
 :- use_module(library(dcgs)).
 :- use_module(cfg).
+:- use_module(provenance, [code_items/2, valid_contexts/1]).
 
 %! class(?K, ?Kind, ?Bits) is nondet.
 %
@@ -582,10 +584,12 @@ pointer_inst(local_store(_, _, _, _)).
 %  and each label to its sorted predecessors.
 
 valid_module(M) :-
-    M = module(Items),
+    M = module(All),
+    code_items(All, Items),
     module_mode(M, Mode),
     module_stage(M, Stage),
-    maplist(valid_item(M, Mode, Stage), Items).
+    maplist(valid_item(M, Mode, Stage), Items),
+    valid_contexts(All).
 
 % module_stage(+M, -Stage): Stage is checked when M uses any word of the
 % checked stage (a check, a raw access, flight or a poll edge), else unchecked.
@@ -1435,9 +1439,10 @@ fn_error(Fn, Fmt, Args) :-
 
 %! without_locs(+Module0, -Module) is det.
 %
-%  Module is Module0 without its loc/2 source locations, which the
-%  middle end and the backends do not read yet.
-without_locs(module(Items0), module(Items)) :-
+%  Erase explanatory metadata at execution/code-generation boundaries.
+%  Never use erasure to relax checked-IR validation's adjacency rule.
+without_locs(module(All), module(Items)) :-
+    code_items(All, Items0),
     maplist(item_without_locs, Items0, Items).
 
 item_without_locs(func(N, L, R, Ps, Bs0), func(N, L, R, Ps, Bs)) :- !,
