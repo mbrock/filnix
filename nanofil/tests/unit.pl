@@ -915,6 +915,57 @@ test(promote_removes_allocs) :-
             Kept),
     Kept == [arr, ptrs].
 
+% Each selectable pass must do its own work. The first allocation can
+% promote; the second has overlapping stores and must stay as memory.
+% Little-endian 0x1234 with its low byte replaced by 0x56 is 4694;
+% adding the first slot's 7 gives 4701, with any subset of the passes.
+test(selectable_optimization_passes) :-
+    ir_module([func(f, export, w, [], [block(s, [], [
+        loc('passes.c', 1),
+        let(tmp(slot), p, alloc(4), [const(4)]),
+        let(tmp(v), w, copy, [const(7)]),
+        store(w, tmp(v), tmp(slot)),
+        let(tmp(x), w, load(sw), [tmp(slot)]),
+        let(tmp(bytes), p, alloc(8), [const(8)]),
+        store(h, const(4660), tmp(bytes)),
+        store(b, const(86), tmp(bytes)),
+        let(tmp(y), w, load(uw), [tmp(bytes)]),
+        let(tmp(z), w, add, [tmp(x), tmp(y)])
+    ], ret(tmp(z)))])], M0),
+    forall(member(Passes, [[], [promote], [copy], [local_storage],
+                          [promote, copy], [promote, local_storage],
+                          [copy, local_storage],
+                          [promote, copy, local_storage]]),
+           ( optimize(passes(Passes), M0, M), valid_module(M),
+             module_fn_args_outcome(M, f, [], ret(4701)),
+             ( memberchk(local_storage, Passes) -> Allocs = 0
+             ; memberchk(promote, Passes) -> Allocs = 1
+             ; Allocs = 2 ),
+             alloc_count(M, Allocs),
+             findall(Name, sub_term(local_alloc(Name, _), M), Locals),
+             ( memberchk(local_storage, Passes)
+             -> ( memberchk(promote, Passes) -> Locals == [bytes]
+                ; Locals == [slot, bytes] )
+             ; Locals == [] ),
+             ( memberchk(copy, Passes)
+             -> \+ sub_term(let(_, _, copy, _), M)
+             ;  sub_term(let(_, _, copy, _), M) ),
+             ( Passes == [] -> M == M0
+             ; \+ sub_term(loc(_, _), M) )
+           )),
+    optimization_passes(o1, All),
+    optimize(o1, M0, Full), optimize(passes(All), M0, Full),
+    foldl(optimize_pass, All, M0, Full),
+    pizlonate_module(M0, Checked),
+    optimize(passes(All), Checked, Unchanged), Unchanged == Checked,
+    optimize_pass(local_storage, M0, Local),
+    optimize(passes(All), Local, StillLocal), StillLocal == Local,
+    \+ optimize_pass(unknown, Checked, _),
+    \+ optimize_pass(unknown, Local, _),
+    forall(member(Bad, [[copy, promote], [local_storage, copy],
+                        [copy, copy], [unknown]]),
+           \+ optimization_passes(passes(Bad), _)).
+
 % The optimizer must actually remove aliases, not just preserve results.
 % Keep the narrowing copy, global materialization and non-SSA function.
 test(copy_eliminates_aliases) :-

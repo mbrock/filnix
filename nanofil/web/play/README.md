@@ -7,15 +7,16 @@ wiki's palette and stylesheets. Paste C, press Compile (or Ctrl+Enter),
 and the page shows, from one `<article>` whose sections it puts in place:
 
 - beside the source, a dot and the time; it opens on the stages
-  (profile, preprocess, parse, lower, validate, optimize, pizlonate, print IR,
-  backend, print assembly) with their times and the memory. A stage that
+  (profile, preprocess, parse, lower, validate, each selected optimization,
+  pizlonate, print IR, backend, print assembly) with their times and the memory. A stage that
   fails names itself there, says why above the tabs, and marks the line
   in the gutter;
 - the output as a pipeline: each pass's output is a tab, and before it
   stands the pass that made it, with its time: parse → **C syntax**
   (`c_parse/2`, the input's own items, not the header declarations) →
-  lower → **IR** (as `c_lower.pl` made it) → optimize → **optimized
-  IR** (with -O only) → pizlonate → **checked IR** (after
+  lower → **IR** (as `c_lower.pl` made it) → promote → **promoted IR**
+  → copy → **copies folded** → local_storage → **local storage**
+  → pizlonate → **checked IR** (after
   `pizlonate.pl` has made Fil-C's checks and pollchecks explicit, the
   module the backend compiles; see
   [docs/pizlonation.md](../../docs/pizlonation.md)) → amd64 →
@@ -40,6 +41,21 @@ and the page shows, from one `<article>` whose sections it puts in place:
 - **Symbols**, what the module defines (name, kind, IR signature or size,
   linkage) and what it calls or uses without defining. A name opens the
   IR tab at its definition.
+
+The three **Optimization passes** checkboxes select promotion, copy
+elimination and local storage independently; **-O** selects all or none
+and shows a mixed state for a partial selection. Press **Compile** to
+apply the selection. Only selected passes add output tabs. If the tab
+being read disappears, the page returns to checked IR. The order stays
+promotion → copy → local storage, with pizlonation always afterwards.
+
+The page and compiler share `opt:optimization_passes/2` and
+`opt:optimize_pass/3`; the page records the actual intermediate modules,
+not separately reconstructed examples. `optimize(passes([copy]), M0, M)`
+runs copy elimination alone; `o0` and `o1` retain their existing outputs.
+Each playground pass also validates its output (included in its time).
+Checked and already-local modules keep the optimizer's identity bypass.
+Pass algorithms and the one-check-per-access safety contract are unchanged.
 
 ```sh
 nix build .#site -o /tmp/site

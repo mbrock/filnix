@@ -1,7 +1,7 @@
 // nanofil in a Web Worker: SWI-Prolog (swipl-wasm) with nanofil's
 // sources, the frozen preprocessor profile and the headers (fs.json, from
 // build.sh) in its file system. Messages:
-//   in:  {source, opt}            opt "o0" or "o1"
+//   in:  {source, passes}         selected middle-end pass names, in order
 //        {ask, goal, input}       a question about the last compile
 //                                 (play_view.pl), input its bindings
 //   out: {type: "ready", ms, mb}  once loaded
@@ -51,7 +51,7 @@ ready.catch((e) => postMessage({ type: "error", message: String(e.stack ?? e) })
 // JSON makes them plain for postMessage.
 const plain = (v) => JSON.parse(JSON.stringify(v, (k, x) => (typeof x === "bigint" ? Number(x) : x)));
 
-onmessage = async ({ data: { source, opt, ask, goal, input } }) => {
+onmessage = async ({ data: { source, passes, ask, goal, input } }) => {
   if (ask !== undefined) {
     const swipl = await ready;
     let value = null;
@@ -66,7 +66,7 @@ onmessage = async ({ data: { source, opt, ask, goal, input } }) => {
     swipl.FS.writeFile("/work/input.c", source);
     log = [];
     const t0 = performance.now();
-    const r = swipl.prolog.query(`play_html('/work/input.c', ${opt === "o1" ? "o1" : "o0"}, Html)`).once();
+    const r = swipl.prolog.query("play_html('/work/input.c', passes(Passes), Html)", { Passes: passes }).once();
     const ms = performance.now() - t0;
     // A solution is {$tag: "bindings", Html}; Html is a Prolog string object.
     if (r?.$tag !== "bindings") {

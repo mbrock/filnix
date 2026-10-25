@@ -1,12 +1,18 @@
 /*  The middle end's entry points for the driver, and the comparison the
     interpreter uses to validate it.
 
-    optimize/3 runs the passes at a level:
+    optimize/3 runs the passes at a level, or an explicit ordered subset:
 
     ```diagram
     o0:  M0 ─────────────────────────────────────▶ M
     o1:  M0 ─▶ without_locs ─▶ promote ─▶ copy ─▶ local_storage ─▶ M
     ```
+
+    `optimization_passes/2` names that sequence. `optimize_pass/3` runs
+    one member, so the playground can time it and show its actual output
+    without implementing another optimizer. `passes([promote, copy])`,
+    for example, leaves local storage off. Ordering stays fixed: local
+    storage introduces a vocabulary the earlier passes do not consume.
 
     refines/2 relates the outcome of a program to the outcome of its
     optimized version. The driver's difftest and the unit tests validate
@@ -15,28 +21,55 @@
     module supplied directly (even with -O) is left unchanged: promotion
     and substitution do not understand proofs or flight projections.
 */
-:- module(opt, [optimize/3, refines/2]).
+:- module(opt, [optimize/3, optimization_passes/2, optimize_pass/3, refines/2]).
 
 :- use_module(promote).
 :- use_module(copy).
 :- use_module(local_storage).
 :- use_module(ir, [without_locs/2, module_stage/2, local_objects/2]).
+:- use_module(library(lists)).
 
-%! optimize(+Level, +M0, -M) is det.
+%! optimize(+Options, +M0, -M) is semidet.
 %
-%  M is the module M0 optimized at Level: o0 leaves M0 unchanged (the
-%  reference path); o1 runs promotion, copy elimination and local storage
-%  on unchecked IR. Checked or already-local IR stays unchanged.
+%  Options is o0 (the reference path), o1 (all three passes), or
+%  passes(Names), an ordered subset of o1. Invalid selections fail.
+%  Checked or already-local IR stays unchanged.
 
-optimize(o0, M, M).
-optimize(o1, M0, M) :-
+optimize(Options, M0, M) :-
+    optimization_passes(Options, Passes),
+    foldl(optimize_pass, Passes, M0, M).
+
+%! optimization_passes(+Options, -Passes) is semidet.
+%
+%  Passes is the selected sequence. A selection can omit passes but
+%  cannot reorder or repeat them, or name an unknown pass.
+optimization_passes(o0, []).
+optimization_passes(o1, [promote, copy, local_storage]).
+optimization_passes(passes(Passes), Passes) :-
+    optimization_passes(o1, All),
+    ordered_passes(Passes, All).
+
+ordered_passes([], _).
+ordered_passes([P|Ps], All) :-
+    append(_, [P|Rest], All),
+    ordered_passes(Ps, Rest).
+
+%! optimize_pass(+Name, +M0, -M) is semidet.
+%
+%  Run one named transformation on unchecked, ordinary-address IR.
+%  Source locations are removed, as for -O; all guards and algorithms
+%  remain in the existing pass modules. Unknown names fail.
+optimize_pass(Name, M0, M) :-
+    pass_predicate(Name, Goal),
     (   ( module_stage(M0, checked) ; has_local_storage(M0) )
     ->  M = M0
     ;   without_locs(M0, M1),
-        promote_module(M1, Promoted),
-        copy_module(Promoted, Copied),
-        local_storage_module(Copied, M)
+        call(Goal, M1, M)
     ).
+
+pass_predicate(promote, promote_module).
+pass_predicate(copy, copy_module).
+pass_predicate(local_storage, local_storage_module).
 
 % Named local objects are already the storage pass's product. Earlier
 % passes consume ordinary addresses, not this lowered vocabulary.

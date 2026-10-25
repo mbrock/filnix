@@ -168,10 +168,8 @@ article(File, Stages) -->
         ->  ir_(lowered, File, M0)
         ;   []
         ),
-        (   { memberchk(term(optimized, M1), Stages), memberchk(term(lowered, M0), Stages) }
-        ->  ir_(optimized, File, M1)
-        ;   []
-        ),
+        { optimization_steps(Stages, Steps) },
+        seq(Steps, optimization_ir_(File, Stages)),
         (   { memberchk(term(ir, M), Stages) }
         ->  ir_(ir, File, M), data_(M), symbols_(M)
         ;   []
@@ -184,9 +182,12 @@ article(File, Stages) -->
     )).
 
 % The page moves each section into its own place: stages under the
-% Compile button, the pipeline into the tab bar, c, lowered, optimized,
-% ir, irtext and asm into tabs, data and symbols beside.
+% Compile button, the pipeline into the tab bar, c, lowered, each
+% optimization, ir, irtext and asm into tabs, data and symbols beside.
 section_(Id, Body) --> el(section, none, [id=Id], Body).
+
+optimization_ir_(File, Stages, _-Slot-_) -->
+    (   { memberchk(term(Slot, M), Stages) } -> ir_(Slot, File, M) ; [] ).
 
 %% Stages
 
@@ -264,12 +265,18 @@ ir_(Slot, File, module(Items)) -->
 %% that made it, with its time. Stage names are play.pl's.
 
 pipeline_(Stages) -->
-    { ( memberchk(term(optimized, _), Stages) -> Steps = [parse-c-"C syntax", lower-lowered-"IR",
-                                                          optimize-optimized-"optimized IR"|Rest]
-      ; Steps = [parse-c-"C syntax", lower-lowered-"IR"|Rest] ),
-      Rest = [pizlonate-ir-"checked IR", backend-asm-"assembly"] },
+    { optimization_steps(Stages, Optimizations),
+      append([parse-c-"C syntax", lower-lowered-"IR"|Optimizations],
+             [pizlonate-ir-"checked IR", backend-asm-"assembly"], Steps) },
     section_(pipeline, ( seq(Steps, step_(Stages)),
                          el(button, "as-text", ['data-tab'=irtext, title="the checked IR as the text nanofil print reads"], "text") )).
+
+optimization_steps(Stages, Steps) :-
+    findall(P-P-Label, ( member(stage(P, _, _), Stages), optimization_output(P, Label) ), Steps).
+
+optimization_output(promote, "promoted IR").
+optimization_output(copy, "copies folded").
+optimization_output(local_storage, "local storage").
 
 step_(Stages, Stage-Slot-Label) -->
     { (   memberchk(stage(Stage, T, R), Stages)
@@ -283,7 +290,9 @@ step_(Stages, Stage-Slot-Label) -->
 
 pass_name(parse, "parse", "preprocess, lex and parse the C file").
 pass_name(lower, "lower", "lower the typed C syntax to IR").
-pass_name(optimize, "optimize", "the middle end: promote locals to temporaries, fold copies").
+pass_name(promote, "promote", "promote_module/2: replace eligible memory slots with SSA temporaries").
+pass_name(copy, "copy", "copy_module/2: substitute copies and simplify trivial phis").
+pass_name(local_storage, "local_storage", "local_storage_module/2: put eligible remaining objects in exact-sized local storage").
 pass_name(pizlonate, "pizlonate", "make Fil-C's checks explicit: a check before every load and store, a pollcheck on every loop").
 pass_name(backend, "amd64", "compile the checked IR to x86-64 in the Fil-C ABI").
 

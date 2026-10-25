@@ -140,10 +140,22 @@ $("revert").onclick = () => {
 };
 if (/Mac|iP(hone|ad)/.test(navigator.platform)) $("keys").textContent = "⌘ ↵";
 
+// -O is the all-passes shortcut. A partial selection is mixed; changing
+// either control takes effect on Compile, just as the old -O did.
+const passInputs = [...$("passes").querySelectorAll("input")];
+$("opt").onchange = () => {
+  for (const input of passInputs) input.checked = $("opt").checked;
+  $("opt").indeterminate = false;
+};
+$("passes").onchange = () => {
+  const n = passInputs.filter((input) => input.checked).length;
+  $("opt").checked = n === passInputs.length;
+  $("opt").indeterminate = n > 0 && n < passInputs.length;
+};
+
 // Tabs: each pass's output (play_view.pl's pipeline, which replaces the
 // bar's buttons on every compile). The one chosen stays chosen across
-// compiles; if a compile has no such output (the optimized IR without
-// -O), the checked IR shows instead.
+// compiles; if its pass is no longer selected, the checked IR shows instead.
 let tab = "ir";
 const tabs = () => $("tabs").querySelectorAll("button[data-tab]");
 const has = (name) => document.querySelector(`[data-slot="${name}"]`)?.hasChildNodes();
@@ -159,7 +171,7 @@ $("tabs").onclick = (e) => {
   if (b && !b.disabled) show(b.dataset.tab);
 };
 show(tab);
-const irTabs = ["lowered", "optimized", "ir"];
+const irTabs = ["lowered", ...passInputs.map((input) => input.value), "ir"];
 
 // A link to an IR item (from Data or Symbols) opens the IR tab there.
 document.addEventListener("click", (e) => {
@@ -219,7 +231,8 @@ document.querySelector(".panes").addEventListener("pointerover", (e) => {
 function compile() {
   $("run").disabled = true;
   state("busy");
-  worker.postMessage({ source: source.state.doc.toString(), opt: $("opt").checked ? "o1" : "o0" });
+  worker.postMessage({ source: source.state.doc.toString(),
+    passes: passInputs.filter((input) => input.checked).map((input) => input.value) });
 }
 
 worker.onmessage = ({ data }) => {

@@ -35,9 +35,15 @@
         <option value="shapes">shapes.c</option>
       </select>
       <button id="revert" class="quiet" type="button" hidden title="Back to the example as it was">Revert</button>
-      <label class="opt" title="Run the middle end's optimizations"><input id="opt" type="checkbox"> -O</label>
+      <label class="opt" title="Select all middle-end passes, as with -O"><input id="opt" type="checkbox"> -O</label>
       <button id="run" type="submit" disabled>Compile <kbd id="keys">Ctrl ↵</kbd></button>
     </div>
+    <fieldset id="passes" class="passes">
+      <legend>Optimization passes</legend>
+      <label title="Replace eligible memory slots with SSA temporaries"><input type="checkbox" value="promote"> Promotion</label>
+      <label title="Substitute copies and simplify trivial phis"><input type="checkbox" value="copy"> Copy elimination</label>
+      <label title="Put eligible remaining objects in exact-sized local storage"><input type="checkbox" value="local_storage"> Local storage</label>
+    </fieldset>
     <div class="code" id="code"></div>
     <div class="foot">
       <details id="stages" class="stages">
@@ -61,7 +67,9 @@
     <div class="panes">
       <div data-slot="c" class="pane"></div>
       <div data-slot="lowered" class="pane"></div>
-      <div data-slot="optimized" class="pane"></div>
+      <div data-slot="promote" class="pane"></div>
+      <div data-slot="copy" class="pane"></div>
+      <div data-slot="local_storage" class="pane"></div>
       <div data-slot="ir" class="pane"></div>
       <div data-slot="irtext" class="pane"></div>
       <div data-slot="asm" class="pane"></div>

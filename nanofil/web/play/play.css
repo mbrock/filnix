@@ -105,6 +105,19 @@ main.play {
 }
 .bar .opt:has(:checked) { color: var(--ink); }
 .bar .opt input { margin: 0; accent-color: var(--accent); }
+.passes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.8rem;
+  margin: 0;
+  padding: 0.25rem 0.6rem 0.5rem;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  font: 0.7rem var(--mono-font);
+}
+.passes legend { padding: 0.4rem 0 0.2rem; color: var(--muted); }
+.passes label { display: flex; align-items: center; gap: 0.3rem; cursor: pointer; }
+.passes input { margin: 0; accent-color: var(--accent); }
 #run { background: var(--accent); color: white; white-space: nowrap; }
 #run:hover { background: color-mix(in srgb, var(--accent) 85%, black); }
 #run:disabled { opacity: 0.5; cursor: progress; }
@@ -169,7 +182,7 @@ table.stages tr.total td { border-top: 1px solid var(--rule); font-weight: 700; 
   align-items: flex-end;
   gap: 0.15rem;
   overflow-x: auto;
-  scrollbar-width: none;
+  scrollbar-width: thin;
   border-bottom: 1px solid var(--rule);
   white-space: nowrap;
 }
