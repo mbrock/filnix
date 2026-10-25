@@ -320,6 +320,30 @@ primary address differs from its box's address. Fault injections test
 the effects, not just their spelling. See [pizlonation.md](pizlonation.md)
 and [lifetime.md](lifetime.md) for the contracts and remaining limits.
 
+## Named local storage completes the bounded foundation
+
+`local_storage` selects exact-in-bounds, fixed-offset objects after
+promotion and copy elimination. The IR names each object without making
+its native address a pointer value. Pizlonation emits an exact local
+check and the local pointer protocol; ABI lowering describes separate
+payload/aux storage and special stack-aux roots. The interpreter gives
+each invocation fresh identities and invalidates only its own locals on
+exit, preserving the latest heap state.
+
+This is deliberately not a looser interpretation of heap allocation:
+accesses into heap padding, unknown uses, returns-twice functions and
+over-budget objects retain heap storage. The GC regression detects a
+missing stack-aux root by its wrong result. All 1014 existing normal
+snapshot outputs remain identical; only compilation and printing of the
+new local-syntax fixture differ from the old compiler. The combined Nix
+gates cover both optimization modes. The [M5 note](m5.md) states the
+selection boundary and remaining general C local-OOB gap.
+
+The basic separation is now in place: source judgments, checked safety
+effects, ABI plans and target instructions have distinct owners. More
+coverage, register allocation and check optimization can build on those
+contracts without hiding decisions in the emitter again.
+
 ## Where this goes
 
 The direction past these five is the same. Look for anything that is

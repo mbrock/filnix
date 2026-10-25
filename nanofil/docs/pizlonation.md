@@ -245,7 +245,7 @@ collection, returning 73 under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`.
 
 ## Explicit pointer-memory effects
 
-Ordinary non-atomic pointer accesses carry their execution sequence:
+Ordinary non-atomic heap pointer accesses carry their execution sequence:
 
 ```prolog
 let(tmp(D), p,
@@ -260,6 +260,23 @@ Pizlonation inserts them and validation requires the complete sequence;
 both executors traverse the supplied list. Legacy checked
 `raw_load(p, Off)` and `raw_store(p, ...)` are refused, not silently
 given hidden effects. The scalar forms keep their meaning.
+
+Named locals have a different provenance and protocol:
+
+```prolog
+let(tmp(Q), a, check_local(Name, Off, Bytes, Rights, Align), [])
+% Immediately followed by a raw access at offset zero:
+% pointer load:  [aux_read, address_read]
+% pointer store: [lower_write, address_write]
+```
+
+The local proof checks exact logical bounds and alignment without
+creating a heap lower. Its explicit stack aux needs no ensure-aux,
+barrier or box resolution. Validation requires the protocol belonging
+to the proof's provenance: a caller cannot omit heap effects by simply
+supplying the shorter local list. The local's native address is never
+an ordinary `p` value. See [m5.md](m5.md) for selection, lifetime and
+collector metadata; all local bounds/alignment checks remain emitted.
 
 | Effect | Meaning |
 | --- | --- |

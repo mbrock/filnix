@@ -14,23 +14,26 @@ disagree, the findings win.
 
 ```diagram
  C source
-    │  M4: DCG preprocessor + parser, cproc-style lowering, SysV struct
-    ▼      classification
- ┌──────────────────────────────┐   M1: relational interpreter (CLP(Z))
- │ IR terms: ins/4, jumps, phis │◀── checks every pass; differential
- └──────────────┬───────────────┘    tests against native runs
-                │  M5: analyses, SSA, promote, copy, alias
-                ▼
- ┌──────────────────────────────┐
- │ IR with pointer class p      │
- └──────────────┬───────────────┘
-                │  M3: pizlonate: flight pointers, checks, frame,
-                ▼      pollchecks, getters, function objects
- ┌──────────────────────────────┐
- │ IR with explicit (ptr,lower) │
- └──────────────┬───────────────┘
-                │  M2/M6: isel, regalloc, DCG emission
-                ▼
+    │  M4: preprocess, parse, elaborate once, lower
+    ▼
+ ┌─────────────────────────────────┐
+ │ Unchecked IR: p, memory, calls  │◀── M1 interpreter
+ └───────────────┬─────────────────┘    validates before/after outcomes
+                 │ M5: promote, copy, conservative local storage
+                 │ M3: pizlonate
+                 ▼
+ ┌─────────────────────────────────┐
+ │ Checked IR: flight, proofs,     │◀── same interpreter
+ │ pointer effects, poll edges     │
+ └───────────────┬─────────────────┘
+                 │ filc_abi
+                 ▼
+ ┌─────────────────────────────────┐
+ │ ABI plans: roots, entry/exit,    │◀── native interop and GC tests
+ │ call channels, getters, origins │
+ └───────────────┬─────────────────┘
+                 │ AMD64 placement, instruction selection, emission
+                 ▼
  GNU as  ──▶  link with filcc  ──▶  runs under the Fil-C runtime
 ```
 
@@ -95,12 +98,12 @@ start. Reversing one is cheap until the milestone it names.
   skipping) get an Oracle review first, as for the compiler itself
   (root AGENTS.md).
 
-## Completing the foundation
+## The basic foundation is complete for the documented subset
 
-The milestone labels below record working behavior, not completion of
-the architecture in the opening diagram. Pizlonation now states checks,
-flight construction and ordinary pointer-memory effects in executable
-IR. Fil-C ABI lowering describes frames and calls before AMD64 emission.
+Pizlonation states checks, flight construction and ordinary pointer-memory
+effects in executable IR. Fil-C ABI lowering describes frames and calls
+before AMD64 emission. Exact-sized nonescaping objects have explicit local
+storage and collector metadata, with a conservative heap fallback.
 Pointer pairs stay indivisible; this is not an IR of independently
 scheduled address and lower temporaries.
 
@@ -125,15 +128,20 @@ same separation on the Fil-C side now has these boundaries:
    serialization and relocations remain target-side.
 4. **Complete the lifetime oracle before optimizing checks.** The
    interpreter now models free/invalidation, including aliases and
-   stored capabilities. Remaining: finish M5's exact-sized,
-   non-escaping stack objects with a reviewed rooting/lifetime rule.
+   stored capabilities. Named locals have fresh invocation identities,
+   exact bounds and scoped lifetime cleanup. Their native stack-aux
+   roots are distinct from ordinary heap lowers. Selection requires
+   fixed-offset in-bounds accesses and a 4 KiB payload/aux budget; all
+   unsupported candidates retain heap semantics.
 
-Each step needs a reviewed contract, interpreter evidence where the
-effect is modelled, native interoperation and GC stress, and byte-identical
-assembly for representation-only changes. The foundation is complete
-when the safety and ABI decisions are visible before target emission,
-with these gates covering them—not when the backend merely has fewer
-lines. M6 register allocation and M7 check removal remain later work.
+Each boundary has a reviewed contract, interpreter evidence where the
+effect is modelled, native interoperation and GC stress. Representation-
+only changes preserve assembly; local-storage selection is checked by
+before/after semantics and native rooting tests. M6 register allocation
+and M7 check removal remain later work, as do general C local-OOB
+precision, broader stack-local selection, general symbolic memory
+validation and C++ unwinding. This is a stable foundation to extend,
+not a claim to implement every Fil-C operation or all of C.
 The detailed next steps are in [docs/campaign.md](docs/campaign.md).
 
 ## Milestones
@@ -190,12 +198,13 @@ lowering bugs.
 
 ### M3. Pizlonation and Fil-C ABI emission
 
-**Status: runtime acceptance complete; IR lowering partial.** See
+**Status: basic lowering and runtime acceptance complete.** See
 [docs/m3.md](docs/m3.md) and [docs/pizlonation.md](docs/pizlonation.md). nanofil's Fil-C
 output matches the interpreter's returns and traps, interoperates with
 clang-built code in both directions, and survives a GC stress test that
-catches planted rooting bugs. Checks and polls are explicit IR; flight
-pointer decomposition, frame construction and ABI lowering are not yet.
+catches planted rooting bugs. Checks, polls, flight construction and
+pointer-memory effects are explicit IR; frame and call policies are ABI
+products before emission. Pointer pairs remain indivisible.
 
 **Deliverable:**
 
@@ -324,7 +333,8 @@ gets a rejection test.
 
 ### M5. Middle end and translation validation
 
-**Status: in progress.** Analyses and scalar simplification are implemented,
+**Status: foundation subset complete.** Analyses, scalar simplification
+and conservative exact-sized local storage are implemented,
 see [docs/m5.md](docs/m5.md):
 CFG, dominators, frontiers, liveness, natural loops and base-plus-offset
 alias facts; `ALoc`/`AEsc` escape
@@ -338,10 +348,12 @@ functions over assocs (cfg.pl). Tabled liveness is no faster than an
 assoc worklist once the cost of asserting facts is counted, tabled
 dominators are cubic, and incremental tabling invalidates whole tables on
 small edits. Alias and loop facts are available for later passes but do
-not yet change code generation or remove checks. Next: keeping
-non-escaping arrays on the stack. General symbolic memory validation
-remains open; the bounded
-integer queries are not a universal equivalence prover.
+not remove checks. After copy elimination, `local_storage` keeps eligible
+fixed-offset objects on the stack, including overlapping pointer/scalar
+contents; uncertain uses, heap-padding accesses, returns-twice functions
+and over-budget objects stay on the heap. General symbolic memory
+validation remains open; the bounded integer queries are not a universal
+equivalence prover.
 
 **Deliverable:** tabled CFG, dominator, liveness, alias and loop
 relations, plus SSA construction, `promote`, copy elimination and

@@ -40,7 +40,8 @@ Regions contains `region(Base, End, Kind, Life)`:
   never the live allocation that happens to contain the pointer's address.
 - `Kind` is `heap`, `global` or `stack`. Fil-C IR `alloc` and nonempty
   argument snapshots are heap objects; static data is global. `stack`
-  describes only the existing plain-mode interpreter allocation lifetime.
+  describes plain-mode allocations and the named Fil-C locals added by
+  [local storage](m5.md), whose exact identities die with their invocation.
 - `Life` is `live` or `freed`, independently of whether End equals Base.
   A live zero-sized heap allocation can be freed exactly once.
 - Free changes just End and Life, to Base and `freed`. It preserves
@@ -109,8 +110,10 @@ access memory. Aux entries remain capability identities, not copied bounds.
 
 Plain allocations retain exact sizes and die on function return. Fil-C
 heap bounds now match the runtime's rounding; global layout keeps its
-existing eight-byte rounding. This does not introduce native stack
-objects, change rooting, or relax proof adjacency.
+existing eight-byte rounding. The free/invalidation change itself did
+not change native rooting or proof adjacency. The later local-storage
+pass adds exact-sized stack objects and distinct stack-aux roots; its
+invocation cleanup preserves this same current heap state.
 
 ## Review and evidence
 
