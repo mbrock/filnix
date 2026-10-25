@@ -190,6 +190,57 @@ the old and new assembly was byte-identical, including frame and
 setjmp payload layouts. This is a representation change, not a
 check-elimination or rooting change.
 
+## Pure flight-pointer construction
+
+Pizlonation now states address arithmetic and lower propagation
+separately, rather than leaving the latter to a `p` case in AMD64:
+
+```prolog
+flight(tmp(D), add, [address(P), X], lower(P))  % pointer addition
+flight(tmp(D), sub, [address(P), X], lower(P))  % pointer subtraction
+flight(tmp(D), copy, [address(P)], lower(P))   % pure pointer copy
+flight(tmp(D), copy, [X], none)               % integer to pointer
+```
+
+The closed vocabulary is `copy`, `add`, `sub` on 64-bit words; arguments
+are `l` values or `address(P)` projections. `lower(P)` copies exactly
+P's capability identity (including readonly, function and external
+capabilities), irrespective of P's address. `none` and
+`lower(const(N))` both denote the null capability, even for nonzero N.
+A lower is never an ordinary integer or a separately live temporary.
+
+Independent donors are intentional: an address with no capability can
+be paired with a capability already held. This creates no authority or
+proof; subsequent memory and function checks still test the resulting
+pair. Globals and proof classes are forbidden in either projection.
+The interpreter uses its existing integer ALU, so wrapping and backward
+queries retain their meaning. The unchecked semantics stay as the
+before-pizlonation oracle.
+
+Oracle approved this boundary, requiring every nested address and
+lower donor to be a use at the same instruction index as the `p`
+definition. Both backend views retain `flight`; it is not fused back
+into the old implicit operation. The existing closed-interval allocator
+and setjmp storage apply without changes. Emission reads all components
+before writing the result and introduces no safepoint. Pure `p`
+copy/add/sub and `itop` are rejected by both checked validation and
+the backend; symbol copies still call getters.
+
+Review also found the stage boundary at the middle end: direct checked
+input with `-O` used to enter passes that cannot substitute nested
+operands or account for their escapes. `optimize` now leaves checked
+modules unchanged. Optimizing unchecked input still precedes
+pizlonation as before.
+
+This is pure pointer construction, not full decomposition: phis,
+allocation, pointer loads/stores and ABI operations still use whole
+`p` values. Aux/barrier effects are next. The existing snapshot's 1014
+outputs remain byte-identical; the new unit tests failed before the
+implementation. Native checked-input tests cover independent donors,
+wrapping, same-name redefinitions and `-O`; a lower-only donor survives
+forced collection before construction and its result survives another
+collection, returning 73 under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`.
+
 ## Cost
 
 `valid_module` now computes dominators, and `cc` validates twice (the

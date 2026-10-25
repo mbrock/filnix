@@ -279,6 +279,23 @@ from that unfinished architecture. Review, tests and native evidence
 are in [pizlonation.md](pizlonation.md); the next responsibilities are
 in [campaign.md](campaign.md).
 
+## Address arithmetic and lower propagation are independent operands
+
+Pure pointer construction now has the term `flight(D, Op, Args, Lower)`.
+Pizlonation chooses the address calculation and the capability source;
+the interpreter reads those choices independently, and AMD64 only emits
+them. The backend no longer has a pointer-add rule that inherits a lower
+or an integer-to-pointer rule that drops one. This is one instruction,
+not separately scheduled components, so the existing rooting and frame
+layout stay intact. Getters, pointer memory operations and the ABI are
+still opaque and remain the next work.
+
+The increment adds a contract rather than reducing line count. Review
+also exposed an existing boundary problem: the unchecked-only middle
+end must not process directly supplied checked IR. It now leaves that
+input unchanged, including with `-O`. Design and evidence are in
+[pizlonation.md](pizlonation.md).
+
 ## Where this goes
 
 The direction past these five is the same. Look for anything that is

@@ -111,10 +111,12 @@ next structural work is the same separation on the Fil-C side:
 1. **State safety obligations in checked IR.** Memory checks and polls
    are done; function-target checks now also have a proof class and raw
    call, validated and interpreted. No checks are removed.
-2. **Expose flight-pointer operations and their effects.** Address and
-   lower propagation, aux access, ensure-aux and barriers need one
-   explicit meaning before they become independently schedulable.
-   Preserve the pointer store's check/ensure-aux/reload ordering.
+2. **Expose flight-pointer operations and their effects.** Pure pointer
+   construction now uses `flight`: an explicit address calculation and
+   lower source, validated and interpreted independently. The pair stays
+   indivisible. Aux access, ensure-aux and barriers remain to be stated
+   explicitly; preserve the pointer store's check/ensure-aux/reload
+   ordering. Phis, loads, calls and allocation still carry whole `p`s.
 3. **Separate Fil-C ABI lowering from AMD64 emission.** Frame roots,
    entry/exit, fast/generic calls, getters and origins belong to the
    Fil-C lowering description; physical stack/register placement and

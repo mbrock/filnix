@@ -322,6 +322,11 @@ rest_result(stop(Out, S), _, _, stop(Out, S)).
 % inst_result(+Inst, +Ctx, +Env0, +S0, -Result): Result is cont(Env, S)
 % after Inst, or stop(Outcome, S) when it ends the run.
 inst_result(loc(_, _), _, Env, S, cont(Env, S)) :- !.
+inst_result(flight(tmp(D), Op, Args, Lower), Ctx, Env0, S, Result) :-
+    maplist(flight_arg_x(Ctx, Env0), Args, Xs),
+    alu(Op, l, Xs, val(A)),
+    flight_cap(Lower, Ctx, Env0, Cap),
+    res_result(val(ptr(A, Cap)), D, Env0, S, Result).
 inst_result(let(tmp(D), p, va_args, [const(Off)]), _, Env0, S, Result) :- !,
     get_assoc(hidden(va_snapshot), Env0, ptr(A, Cap)),
     B is (A + Off) mod 18446744073709551616,
@@ -604,6 +609,17 @@ constant_at_class(s, A, A).
 constant_at_class(d, A, A).
 
 undefined_symbol(filc, N, ptr(0, ext(N))).
+
+% Flight's two components are read independently from the old
+% environment. Projecting an address takes its low 64 bits; projecting
+% a lower copies capability identity without inspecting it or its address.
+flight_arg_x(Ctx, Env, address(P), X) :- !,
+    value_x(p, P, Ctx, Env, ptr(A, _)),
+    word_at_class(l, A, X).
+flight_arg_x(Ctx, Env, V, X) :- value_x(l, V, Ctx, Env, X).
+
+flight_cap(none, _, _, none).
+flight_cap(lower(P), Ctx, Env, Cap) :- value_x(p, P, Ctx, Env, ptr(_, Cap)).
 
 %% Operations
 

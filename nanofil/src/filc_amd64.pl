@@ -46,6 +46,9 @@
       `check_function`, not from inferring that an indirect call needs one.
     - Pointer loads and stores go through the object's aux array; a
       pointer store ensures the aux array and runs the store barrier.
+    - `flight` supplies its address calculation and lower source
+      separately. Emission preserves neither by inference from a `p`
+      arithmetic operation; pizlonation has already chosen both.
     - `alloc` is a heap allocation.
     - An edge to `poll(L)` runs a pollcheck: a call of
       filc_pollcheck_slow when the thread's state asks for one.
@@ -296,6 +299,7 @@ setjmp_sites(Blocks, Sites) :-
 % inst_dest_class(+Inst, -N, -K): tmp(N), of class K, is a destination of
 % instruction Inst.
 inst_dest_class(let(tmp(N), K, _, _), N, K).
+inst_dest_class(flight(tmp(N), _, _, _), N, p).
 inst_dest_class(call(result(tmp(N), K), _, _), N, K).
 inst_dest_class(call(tuple(Tos), _, _), N, K) :-
     member(result(tmp(N), K), Tos).
@@ -464,6 +468,8 @@ fused_inst(let(tmp(Q), f, check_function, [P]), Insts0, Fn,
 fused_inst(Inst, Insts, Fn, Inst, Insts) :-
     (   unchecked_access(Inst)
     ->  throw_fn(Fn, 'an unchecked access; run pizlonate first')
+    ;   implicit_flight(Inst)
+    ->  throw_fn(Fn, 'an implicit pointer operation; run pizlonate first')
     ;   true
     ).
 
@@ -961,6 +967,11 @@ insts([Inst|Insts], Index, Block, Ctx) -->
 inst(let(tmp(D), K, Op, Args), Index, Block, Ctx) -->
     { op_kind(Op, Kind) },
     kind_inst(Kind, K, Op, Args, D, Index, Block, Ctx).
+inst(flight(tmp(D), Op, [A|Args], Lower), _, _, Ctx) -->
+    flight_address_load(A, a, Ctx),
+    flight_lower_load(Lower, Ctx),
+    flight_calculation(Op, Args, Ctx),
+    flight_store(D, Ctx).
 inst(fused(check(_, Size, Rights, Align), Access), Index, Block, Ctx) -->
     { access_pointer(Access, P),
       rights_write(Rights, Write) },
@@ -1001,11 +1012,6 @@ kind_inst(ptoi, l, _, [P], D, _, _, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     load(P, l, a, Fn),
     reg_slot_store(rax, tmp(D), Ctx).
-kind_inst(itop, p, _, [X], D, _, _, Ctx) -->
-    { ctx_fn(Ctx, Fn) },
-    load(X, l, a, Fn),
-    [ins(xor, l, [reg(ecx), reg(ecx)])],
-    flight_store(D, Ctx).
 kind_inst(va_args, p, _, [const(Off)], D, _, _, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     flight_load(tmp(hidden(va_snapshot)), Ctx),
@@ -1122,14 +1128,7 @@ va_arg_load(p, D, Index, Block, Ctx) -->
      ins(mov, q, [mem(0, rax), reg(rax)])],
     flight_store(D, Ctx).
 
-% additive_inst(+K, +Op, +Args, +D, +Ctx)//: add or sub (Op) at K; at p
-% it offsets the flight pointer and keeps its lower.
-additive_inst(p, Op, [P, X], D, Ctx) -->
-    { ctx_fn(Ctx, Fn) },
-    flight_load(P, Ctx),
-    load(X, l, d, Fn),
-    [ins(Op, q, [reg(rdx), reg(rax)])],
-    flight_store(D, Ctx).
+% additive_inst(+K, +Op, +Args, +D, +Ctx)//: scalar add or sub.
 additive_inst(w, Op, Args, D, Ctx) --> integer_inst(Op, w, Args, D, Ctx).
 additive_inst(l, Op, Args, D, Ctx) --> integer_inst(Op, l, Args, D, Ctx).
 additive_inst(K,Op,Args,D,Ctx) -->
@@ -1142,9 +1141,8 @@ copy_inst(l, Op, Args, D, Ctx) --> integer_inst(Op, l, Args, D, Ctx).
 copy_inst(K,Op,Args,D,Ctx) -->
     { float_class(K) }, integer_inst(Op,K,Args,D,Ctx).
 
-% pointer_copy(+V, +D, +Ctx)//: let(tmp(D), p, copy, [V]). A symbol's
-% pointer comes from its getter; any other value is a flight pointer
-% already.
+% pointer_copy(+V, +D, +Ctx)//: only a symbol's getter remains a p copy.
+% Pure copies have explicit components in flight.
 pointer_copy(global(S), D, Ctx) -->
     { ctx_name(Ctx, Name),
       ctx_module(Ctx, Module),
@@ -1156,14 +1154,23 @@ pointer_copy(global(S), D, Ctx) -->
      ins(call, none, [Getter]),
      ins(mov, q, [reg(rdx), reg(rcx)])],
     flight_store(D, Ctx).
-pointer_copy(tmp(N), D, Ctx) --> flight_copy(tmp(N), D, Ctx).
-pointer_copy(const(N), D, Ctx) --> flight_copy(const(N), D, Ctx).
 
-% flight_copy(+V, +D, +Ctx)//: let(tmp(D), p, copy, [V]) of a temp or
-% constant.
-flight_copy(V, D, Ctx) -->
-    flight_load(V, Ctx),
-    flight_store(D, Ctx).
+% Flight's inputs are all read before its destination is written. The
+% second address uses %rdx, not the scalar ALU's %rcx, which holds the
+% explicitly selected lower. No call or safepoint splits the pair.
+flight_address_load(address(P), R, Ctx) --> !,
+    { ctx_fn(Ctx, Fn) }, load(P, l, R, Fn).
+flight_address_load(V, R, Ctx) -->
+    { ctx_fn(Ctx, Fn) }, load(V, l, R, Fn).
+
+flight_lower_load(lower(P), Ctx) --> lower_reg_load(P, rcx, Ctx).
+flight_lower_load(none, _) --> [ins(xor, l, [reg(ecx), reg(ecx)])].
+
+flight_calculation(copy, [], _) --> [].
+flight_calculation(Op, [X], Ctx) -->
+    { memberchk(Op, [add, sub]) },
+    flight_address_load(X, d, Ctx),
+    [ins(Op, q, [reg(rdx), reg(rax)])].
 
 % raw_access(+Access, +Index, +Block, +Ctx)//: the code of the raw
 % Access at P, the Indexth instruction of Block, after its check left P

@@ -509,6 +509,9 @@ phi_edge_uses(Blocks, EdgeUses) :-
 
 inst_uses(let(_, _, _, Args), Us) :-
     temps(Args, Us).
+inst_uses(flight(_, _, Args, Lower), Us) :-
+    findall(V, (member(A, Args), flight_arg_value(A, V)), Vs),
+    ( Lower = lower(P) -> temps([P|Vs], Us) ; temps(Vs, Us) ).
 inst_uses(store(_, V, A), Us) :-
     temps([V, A], Us).
 inst_uses(raw_store(_, _, V, A), Us) :-
@@ -520,11 +523,18 @@ inst_uses(raw_call(Res, F, Args), Us) :-
     inst_uses(call(Res, F, Args), Us).
 inst_uses(loc(_, _), []).
 
+% Only flight's address projection wraps a value. Do not traverse temp
+% names (opaque ground terms) or mistake a destination for a use.
+flight_arg_value(address(P), P).
+flight_arg_value(tmp(N), tmp(N)).
+flight_arg_value(const(N), const(N)).
+
 %! inst_def(+Inst, -Temp) is nondet.
 %
 %  The instruction Inst defines Temp (a call can define several).
 
 inst_def(let(tmp(D), _, _, _), D).
+inst_def(flight(tmp(D), _, _, _), D).
 inst_def(call(result(tmp(D), _), _, _), D).
 inst_def(call(tuple(Rs), _, _), D) :-
     member(result(tmp(D), _), Rs).

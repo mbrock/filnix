@@ -1198,6 +1198,119 @@ test(pizlonate_states_every_check) :-
     catch(( valid_module(Mutant), fail ), nanofil_error(Msg), true),
     Msg == 'in f: tmp(a) has class p but is used as a'.
 
+% Address arithmetic and lower propagation are separate decisions. The
+% address wraps at 64 bits, while every kind of capability is preserved;
+% an integer round trip keeps the address but discards the capability.
+test(pizlonate_states_flight_components) :-
+    ir_module([
+        func(shift, local, p, [param(p, tmp(p)), param(l, tmp(n))], [
+            block(s, [], [
+                let(tmp(a), p, add, [tmp(p), tmp(n)]),
+                let(tmp(b), p, sub, [tmp(a), const(2)]),
+                let(tmp(r), p, copy, [tmp(b)])
+            ], ret(tmp(r)))
+        ]),
+        func(forge, local, p, [param(p, tmp(p))], [
+            block(s, [], [
+                let(tmp(i), l, ptoi, [tmp(p)]),
+                let(tmp(r), p, itop, [tmp(i)])
+            ], ret(tmp(r)))
+        ])
+    ], M),
+    pizlonate_module(M, C), valid_module(C), reads_back(C),
+    pizlonate_module(C, C1), C1 == C,
+    optimize(o1, C, C2), C2 == C,
+    C = module([
+        func(shift, local, p, _, [block(s, [], [
+            flight(tmp(a), add, [address(tmp(p)), tmp(n)], lower(tmp(p))),
+            flight(tmp(b), sub, [address(tmp(a)), const(2)], lower(tmp(a))),
+            flight(tmp(r), copy, [address(tmp(b))], lower(tmp(b)))
+        ], ret(tmp(r)))]),
+        func(forge, local, p, _, [block(s, [], [
+            let(tmp(i), l, ptoi, [tmp(p)]),
+            flight(tmp(r), copy, [tmp(i)], none)
+        ], ret(tmp(r)))])
+    ]),
+    forall(member(Cap, [none, obj(4096), ro(8192), fn(shift), ext(other)]),
+           ( once(run(M, shift, [ptr(18446744073709551614, Cap), 5], 10,
+                      ret(ptr(1, Cap)))),
+             once(run(C, shift, [ptr(18446744073709551614, Cap), 5], 10,
+                      ret(ptr(1, Cap)))),
+             once(run(C, forge, [ptr(37, Cap)], 10, ret(ptr(37, none)))) )),
+    once(run(C, shift, [ptr(18446744073709551614, obj(4096)), N], 10,
+             ret(ptr(1, obj(4096))))),
+    once(labeling([], [N])), N == 5.
+
+% The lower donor need not supply the address: capabilities cannot be
+% forged from integer bits, but may be paired with any computed address.
+% Both projections are real uses, including in dominance and liveness.
+test(flight_components_are_independent) :-
+    F = func(f, local, p, [param(p, tmp(a)), param(p, tmp(b))], [
+        block(s, [], [
+            flight(tmp(r), sub, [address(tmp(a)), address(tmp(b))], lower(tmp(b)))
+        ], ret(tmp(r)))
+    ]),
+    ir_module([F], M), reads_back(M),
+    once(run(M, f, [ptr(31, obj(4096)), ptr(9, ro(8192))], 10,
+             ret(ptr(22, ro(8192))))),
+    inst_uses(flight(tmp(r), sub, [address(tmp(a)), address(tmp(b))], lower(tmp(c))),
+              [a, b, c]),
+    % Restoring an already held capability to capability-free address
+    % bits succeeds; borrowing a disjoint object's lower still traps.
+    forall(member(Source-Expected, [bits-ret(29), a-trap(out_of_bounds)]),
+        ( ir_module([
+            data(left, local, 8, [item(l, const(17))]),
+            data(right, local, 8, [item(l, const(29))]),
+            func(read, local, l, [], [block(s, [], [
+                let(tmp(a), p, copy, [global(left)]),
+                let(tmp(b), p, copy, [global(right)]),
+                flight(tmp(bits), copy, [address(tmp(b))], none),
+                flight(tmp(r), copy, [address(tmp(Source))], lower(tmp(b))),
+                let(tmp(q), a, check(0, 8, read, 1), [tmp(r)]),
+                let(tmp(v), l, raw_load(l, 0), [tmp(q)])
+            ], ret(tmp(v)))])
+          ], Access),
+          once(run(Access, read, [], 10, Expected)) )),
+    forall(member(Inst, [
+        flight(tmp(r), copy, [const(1)], lower(const(7))),
+        flight(tmp(r), copy, [address(const(1))], none)
+    ]),
+        ( ir_module([func(g, local, p, [], [block(s, [], [Inst], ret(tmp(r)))])], G),
+          once(run(G, g, [], 10, ret(ptr(1, none)))) )),
+    forall(member(Bad, [
+        flight(tmp(r), mul, [const(2), const(3)], none),
+        flight(tmp(r), add, [const(2)], none),
+        flight(tmp(r), copy, [tmp(a)], lower(tmp(b))),
+        flight(tmp(r), copy, [address(tmp(i))], none),
+        flight(tmp(r), copy, [const(0)], lower(tmp(i))),
+        flight(tmp(r), copy, [const(0)], const(4096)),
+        flight(tmp(r), copy, [address(global(g))], none),
+        flight(tmp(r), copy, [const(0)], lower(global(g))),
+        flight(tmp(r), copy, [address(address(tmp(a)))], none)
+    ]),
+        \+ catch(valid_module(module([func(bad, local, p,
+            [param(p, tmp(a)), param(p, tmp(b)), param(l, tmp(i))],
+            [block(s, [], [Bad], ret(tmp(r)))])])), nanofil_error(_), fail)),
+    forall(member(Inst, [
+        flight(tmp(r), copy, [address(tmp(late))], none),
+        flight(tmp(r), add, [const(0), address(tmp(late))], none),
+        flight(tmp(r), copy, [const(0)], lower(tmp(late)))
+    ]), rejected_with([func(late, local, p, [], [block(s, [], [
+            Inst, flight(tmp(late), copy, [const(0)], none)
+        ], ret(tmp(r)))])], "dominate")),
+    % Even an unreachable flight selects the checked contract for the
+    % entire module, including otherwise untouched functions.
+    Witness = func(witness, local, void, [], [block(s, [], [], ret),
+        block(dead, [], [flight(tmp(dead), copy, [const(0)], none)], ret)]),
+    forall(member(Implicit, [
+        let(tmp(r), p, add, [tmp(p), const(3)]),
+        let(tmp(r), p, sub, [tmp(p), const(3)]),
+        let(tmp(r), p, copy, [tmp(p)]),
+        let(tmp(r), p, copy, [const(7)]),
+        let(tmp(r), p, itop, [const(7)])
+    ]), rejected_with([Witness, func(old, local, p, [param(p, tmp(p))],
+        [block(s, [], [Implicit], ret(tmp(r)))])], "implicit pointer operation")).
+
 % A function proof is not a memory proof. It certifies the exact
 % function address, not just its capability. Removing it exposes a pass
 % error; a trap from the callee or its ABI still belongs to the program.
@@ -1296,7 +1409,7 @@ test(checked_ir_rules) :-
 test(checked_call_rules) :-
     Check = let(tmp(q), f, check_function, [tmp(p)]),
     Call = raw_call(void, tmp(q), []),
-    Prefix = let(tmp(p), p, itop, [const(0)]),
+    Prefix = flight(tmp(p), copy, [const(0)], none),
     valid_module(module([func(f, local, void, [], [
         block(s, [], [Prefix, Check, Call], ret)])])),
     forall(member(Insts, [
@@ -1314,6 +1427,8 @@ test(checked_call_rules) :-
         [Prefix, Check, raw_call(void, tmp(q), [arg(a, const(0))])],
         [Prefix, Check, Call, let(tmp(r), w, copy, [tmp(q)])],
         [Prefix, Check, Call, let(tmp(r), l, copy, [tmp(q)])],
+        [Prefix, Check, Call, flight(tmp(r), copy, [address(tmp(q))], none)],
+        [Prefix, Check, Call, flight(tmp(r), copy, [const(0)], lower(tmp(q)))],
         [Prefix, Check, Call, store(l, tmp(q), tmp(p))],
         [Prefix, Check, Call, let(tmp(r), f, copy, [tmp(q)])],
         [Prefix, Check],

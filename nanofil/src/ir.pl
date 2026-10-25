@@ -68,9 +68,19 @@
     | `loc(File, Line)` | does nothing: the instructions after it, up to the next loc, come from line Line of File |
     | `raw_store(Width, Off, Value, Addr)` | checked stage: a store at Addr+Off that does not check (Stages, below) |
     | `raw_call(Res, Callee, Args)` | checked stage: call the proven function Callee (class `f`); argument, result and exception handling are as for `call` |
+    | `flight(tmp(D), Op, Args, Lower)` | checked stage: construct a `p` from a 64-bit address calculation and an independently selected capability |
 
     A call's Res is one of `result(tmp(D), K)`, `void`, or
     `tuple([result(tmp(D1), K1), result(tmp(D2), K2)])`.
+
+    `flight` computes its address with `copy`, `add` or `sub`, using
+    unsigned 64-bit arithmetic. Each argument is an `l` value or
+    `address(P)`, the address bits of a `p` value. Lower is `none` or
+    `lower(P)`, exactly P's capability identity, not an integer bound.
+    The donors may differ: constructing a pair proves nothing about
+    access. No getter, check, memory access or safepoint occurs inside
+    flight; both components become one rooted `p` result. Projections
+    occur only here and cannot read globals or proof classes.
 
     ## Jumps
 
@@ -182,6 +192,11 @@
     is a bug of the pass, which the interpreter reports as the outcome
     `unchecked(Why)`.
 
+    Pure pointer copies, add/sub and integer-to-pointer conversion use
+    `flight` in checked IR; ordinary `p` copy remains only for getters.
+    The middle end runs before pizlonation. Its entry point leaves a
+    directly supplied checked module unchanged, even with `-O`.
+
     A `check_function` similarly yields class `f`, consumed only as
     the callee of the immediately following `raw_call`. It proves the
     target's identity, not a signature match: raw_call still selects
@@ -203,9 +218,9 @@
 :- module(ir, [class_bits/2, modulus/2, half_modulus/2, op_arity/2,
                op_kind/2, valid_op/1, valid_module/1, func_named/3, width_bytes/2,
                op_arg_classes/4, op_result_ok/3,
-               module_mode/2, addr_class/2, variadic_func/1, setjmp_func/1,
+               module_mode/2, module_stage/2, addr_class/2, variadic_func/1, setjmp_func/1,
                narrow_type/3, without_locs/2, access_size_align/3,
-               jump_target/2, polls_every_cycle/1]).
+               jump_target/2, polls_every_cycle/1, implicit_flight/1]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -489,6 +504,7 @@ pointer_inst(call(_, tmp(_), _)).
 pointer_inst(let(_, K, _, _)) :- proof_class(K).
 pointer_inst(raw_store(_, _, _, _)).
 pointer_inst(raw_call(_, _, _)).
+pointer_inst(flight(_, _, _, _)).
 
 %% Validation
 
@@ -512,7 +528,7 @@ valid_module(M) :-
     maplist(valid_item(M, Mode, Stage), Items).
 
 % module_stage(+M, -Stage): Stage is checked when M uses any word of the
-% checked stage (a check, a raw access or a poll edge), else unchecked.
+% checked stage (a check, a raw access, flight or a poll edge), else unchecked.
 module_stage(module(Items), Stage) :-
     (   member(func(_, _, _, _, Blocks), Items),
         member(block(_, _, Insts, Jump), Blocks),
@@ -528,6 +544,7 @@ checked_inst(let(_, _, check_function, _)).
 checked_inst(let(_, _, raw_load(_, _), _)).
 checked_inst(raw_store(_, _, _, _)).
 checked_inst(raw_call(_, _, _)).
+checked_inst(flight(_, _, _, _)).
 
 checked_jump(goto(poll(_))).
 checked_jump(branch(_, poll(_), _)).
@@ -598,6 +615,7 @@ temp_defs(Params, Blocks, Defs) :-
             ( member(block(_, Phis, Insts, _), Blocks),
               (   member(phi(tmp(N), K, _), Phis)
               ;   member(let(tmp(N), K, _, _), Insts)
+              ;   member(flight(tmp(N), _, _, _), Insts), K = p
               ;   member(I, Insts), call_result_args(I, Res, _),
                   ( Res = result(tmp(N), K)
                   ; Res = tuple(Tos), member(result(tmp(N), K), Tos) )
@@ -834,8 +852,17 @@ checked_inst_rest(Inst, Insts, Fn, Mode, Insts) :-
     ->  fn_error(Fn, 'a raw call whose target is not checked just before it', [])
     ;   Mode == filc, unchecked_access(Inst, What)
     ->  fn_error(Fn, '~w in checked IR, where every access is checked', [What])
+    ;   implicit_flight(Inst)
+    ->  fn_error(Fn, 'implicit pointer operation in checked IR; use flight', [])
     ;   true
     ).
+
+% implicit_flight(+Inst): a pure pointer operation whose address/lower
+% policy must be made explicit before either validation or emission of
+% checked IR. Getter copies are effects, not members of this set.
+implicit_flight(let(_, p, Op, _)) :- memberchk(Op, [add, sub, itop]).
+implicit_flight(let(_, p, copy, [tmp(_)])).
+implicit_flight(let(_, p, copy, [const(_)])).
 
 % raw_access(?Inst, ?Q, ?X, ?Off, ?Rights): Inst is a raw load of type X
 % or store of width X at tmp(Q)+Off, needing Rights.
@@ -916,6 +943,14 @@ valid_inst(ctx(_, Fn, _, _, _, _, _), loc(File, Line)) :- !,
     (   atom(File), integer(Line) -> true
     ;   fn_error(Fn, 'bad source location loc(~q, ~q)', [File, Line])
     ).
+valid_inst(Ctx, flight(tmp(_), Op, Args, Lower)) :-
+    Ctx = ctx(_, Fn, _, _, _, _, filc),
+    (   memberchk(Op, [copy, add, sub]), op_arity(Op, N), length(Args, N)
+    ->  true
+    ;   fn_error(Fn, 'bad flight calculation ~w with ~w', [Op, Args])
+    ),
+    maplist(valid_flight_arg(Ctx), Args),
+    valid_flight_lower(Lower, Ctx).
 valid_inst(ctx(_, _, _, _, _, _, filc), let(_, p, copy, [global(_)])) :- !.
 valid_inst(Ctx, let(_, K, Op, Args)) :-
     Ctx = ctx(_, Fn, _, _, _, _, Mode),
@@ -1072,6 +1107,14 @@ label_exists(ctx(_, Fn, _, LabelSet, _, _, _), L) :-
     (   get_assoc(L, LabelSet, _) -> true
     ;   fn_error(Fn, 'undefined block label ~w', [L])
     ).
+
+% Projections are local to flight, not new ordinary operands. A lower
+% is copied only from a p value; no integer can manufacture one.
+valid_flight_arg(Ctx, address(P)) :- !, valid_use(Ctx, p, P).
+valid_flight_arg(Ctx, V) :- valid_use(Ctx, l, V).
+
+valid_flight_lower(none, _).
+valid_flight_lower(lower(P), Ctx) :- valid_use(Ctx, p, P).
 
 % valid_use(+Ctx, +K, +V): V may be read at class K. Arguments are in the
 % order maplist needs; valid_use_/3 indexes on the value.

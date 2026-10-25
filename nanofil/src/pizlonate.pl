@@ -11,6 +11,9 @@
     | `let(tmp(D), K, load(T), [A])` | `let(tmp(Q), a, check(0, S, read, Al), [A])`, then `let(tmp(D), K, raw_load(T, 0), [tmp(Q)])` |
     | `store(W, V, A)` | `let(tmp(Q), a, check(0, S, write, Al), [A])`, then `raw_store(W, 0, V, tmp(Q))` |
     | `call(Res, tmp(P), Args)` | `let(tmp(Q), f, check_function, [tmp(P)])`, then `raw_call(Res, tmp(Q), Args)` |
+    | `let(D, p, add, [P, X])` (also `sub`) | `flight(D, add, [address(P), X], lower(P))` |
+    | `let(D, p, copy, [P])` (not a symbol) | `flight(D, copy, [address(P)], lower(P))` |
+    | `let(D, p, itop, [X])` | `flight(D, copy, [X], none)` |
 
     S and Al are the access's size and alignment
     (ir:access_size_align/3), and Q is a fresh name.
@@ -90,9 +93,20 @@ checked_insts([], _, _, N, N, []).
 checked_insts([Inst0|Insts0], Mode, Names, N0, N, Insts) :-
     (   Mode == filc, checked_access(Inst0, Q, Insts, Insts1)
     ->  fresh_name(Names, N0, N1, Q)
+    ;   Mode == filc, flight_inst(Inst0, Inst)
+    ->  Insts = [Inst|Insts1], N1 = N0
     ;   Insts = [Inst0|Insts1], N1 = N0
     ),
     checked_insts(Insts0, Mode, Names, N1, N, Insts1).
+
+% Pure pointer operations choose the address calculation and lower
+% independently. No new temporary or safepoint separates the components.
+% A symbol copy still calls its getter; it is not a pure projection.
+flight_inst(let(D, p, add, [P, X]), flight(D, add, [address(P), X], lower(P))).
+flight_inst(let(D, p, sub, [P, X]), flight(D, sub, [address(P), X], lower(P))).
+flight_inst(let(D, p, copy, [tmp(N)]), flight(D, copy, [address(tmp(N))], lower(tmp(N)))).
+flight_inst(let(D, p, copy, [const(N)]), flight(D, copy, [address(const(N))], lower(const(N)))).
+flight_inst(let(D, p, itop, [X]), flight(D, copy, [X], none)).
 
 % checked_access(+Access, ?Q, -Insts, ?Insts1): Insts less Insts1 are
 % Access's check, defining tmp(Q), and its raw access.
