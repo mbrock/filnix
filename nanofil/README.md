@@ -93,8 +93,8 @@ as -o hello.o hello.s && $FILCC -o hello hello.o && ./hello
 (interpret), and `difftest`. See the top of
 [src/main.pl](src/main.pl).
 
-`--registers=local` before `cc` or `compile` enables validated block-local
-integer stack caching in Fil-C implementations. It is independent of
+`--registers=local` before `cc` or `compile` enables integer immediate
+selection followed by validated block-local stack caching. It is independent of
 `-O`; `--registers=stack` is the default reference. Build/test harnesses
 accept the same choice as `NANOFIL_REGISTERS=local`. This does not change
 pointer/root placement, and setjmp functions retain their original code.

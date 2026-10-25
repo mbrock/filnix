@@ -49,7 +49,7 @@
     | RN | the name of R at a width |
     | Ctx | the function context, `f(Name, Ret, Slots, Blocks)` |
 */
-:- module(amd64, [module_asm/2, compute_op//4, load//4, load_slot//4,
+:- module(amd64, [module_asm/2, compute_op//4, compute_op//5, load//4, load_slot//4,
                   store_reg//3, store_insn/3, reg_name/3, load_insn/3,
                   att_suffix/2, float_class/1,
                   to_xmm//3, from_xmm//3, bank_locations/5]).
@@ -353,6 +353,32 @@ call_args([arg(Class, V)|Args], I, Ctx) -->
 store_insn(W, R, ins(mov, S, [reg(RN), mem(0, rax)])) :-
     att_suffix(W, S),
     reg_name(R, W, RN).
+
+% Local Fil-C selection can encode an integer RHS directly. The reference
+% selector below stays unchanged. Only RCX's dead scratch result differs;
+% RAX and the operation's defined flags agree, even for a zero shift.
+compute_op(local, Op, K, [X,const(N)], Ctx) -->
+    { integer(N), immediate_instruction(Op,K,N,Insn) }, !,
+    load(X, K, a, Ctx), [Insn].
+compute_op(_, Op, K, Args, Ctx) --> compute_op(Op, K, Args, Ctx).
+
+immediate_instruction(Op,K,N,ins(Insn,S,[imm(V),reg(A)])) :-
+    ( Op == mul -> Insn = imul
+    ; memberchk(Op,[add,sub,and,or,xor]), Insn = Op ),
+    integer_immediate(K,N,V), att_suffix(K,S), reg_name(a,K,A).
+immediate_instruction(Op,K,N,ins(Op,S,[imm(V),reg(A)])) :-
+    memberchk(Op,[shl,shr,sar]),
+    ( K == w -> Mask = 31 ; K == l, Mask = 63 ),
+    V is N /\ Mask, att_suffix(K,S), reg_name(a,K,A).
+
+% GNU as accepts the signed spelling of every imm32 bit pattern. Qword
+% operations sign-extend that encoding: e.g. +0xffffffff is NOT -1.
+integer_immediate(w,N,V) :- V is (N + 2147483648) mod 4294967296 - 2147483648.
+integer_immediate(l,N,V) :-
+    U is N mod 18446744073709551616,
+    ( U >= 9223372036854775808 -> V is U - 18446744073709551616
+    ; V = U ),
+    V >= -2147483648, V =< 2147483647.
 
 %! compute_op(+Op, +Class, +Args, +Ctx)//
 %

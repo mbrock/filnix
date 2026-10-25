@@ -368,12 +368,13 @@ tabling, at realistic sizes (hundreds of blocks, small live sets).
 
 ### M6. Instruction selection and register allocation
 
-**First slice: opt-in scalar stack caching.** `--registers=local` caches
-private `w/l` frame homes within straight-line machine regions in two
-audited registers. It follows instruction selection and preserves frame
-layout, pointer homes, roots, helpers, phis and polls. Setjmp (even in a
-dead block) and unknown machine forms retain the all-stack implementation.
-Every candidate passes an independent symbolic translation checker.
+**First slice: opt-in scalar stack caching and immediate selection.**
+`--registers=local` selects integer immediate arithmetic and shifts, then
+caches private `w/l` homes in two registers within straight-line regions.
+Frame layout, pointer homes, roots, helpers, phis and polls stay unchanged.
+Setjmp (even in a dead block) retains reference selection and no caching;
+unknown machine forms retain selected-but-uncached code. The independent
+symbolic checker validates caching, not the preceding instruction selection.
 `--registers=stack` remains the default and differential reference,
 independent of `-O`. See [m6.md](docs/m6.md) for boundaries and measurements.
 

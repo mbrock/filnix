@@ -288,3 +288,35 @@ func(free_forged, export, w, [param(w, tmp(forge))], [
     ], ret(const(0))),
     block(done, [], [let(tmp(x), w, load(sw), [tmp(p)])], ret(tmp(x)))
 ]).
+
+% IR shifts mask their count even where a C shift would be undefined.
+% A masked-zero shift leaves flags alone; branch still tests its result.
+run(immediate_shiftw, [0]).
+run(immediate_shiftw, [2147483649]).
+func(immediate_shiftw, export, w, [param(w, tmp(x))], [
+    block(start, [], [
+        let(tmp(z), w, and, [tmp(x), const(0)]),
+        let(tmp(y), w, shl, [tmp(x), const(32)])
+    ], branch(tmp(y), yes, no)),
+    block(yes, [], [
+        let(tmp(a), w, shr, [tmp(y), const(33)]),
+        let(tmp(b), w, sar, [tmp(y), const(-1)]),
+        let(tmp(r), w, xor, [tmp(a), tmp(b)])
+    ], ret(tmp(r))),
+    block(no, [], [], ret(const(19)))
+]).
+
+run(immediate_shiftl, [0]).
+run(immediate_shiftl, [9223372036854775809]).
+func(immediate_shiftl, export, l, [param(l, tmp(x))], [
+    block(start, [], [
+        let(tmp(z), l, and, [tmp(x), const(0)]),
+        let(tmp(y), l, sar, [tmp(x), const(64)])
+    ], branch(tmp(y), yes, no)),
+    block(yes, [], [
+        let(tmp(a), l, shr, [tmp(y), const(65)]),
+        let(tmp(b), l, shl, [tmp(y), const(-1)]),
+        let(tmp(r), l, xor, [tmp(a), tmp(b)])
+    ], ret(tmp(r))),
+    block(no, [], [], ret(const(23)))
+]).

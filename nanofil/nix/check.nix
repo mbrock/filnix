@@ -94,9 +94,9 @@ pkgs.runCommandCC "nanofil-check"
     step "-O progtest gc-stress" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     step "-O run-c gc gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc
     unset NANOFIL_OPT
-    # The target-only cache is independent of the middle end. Every
-    # changed implementation is translation-checked before printing;
-    # native suites check the contract and helpers on the real runtime.
+    # Local selection and caching are independent of the middle end.
+    # The checker validates caching of the selected stream; native suites
+    # also check immediate selection and helpers on the real runtime.
     export NANOFIL_REGISTERS=local
     for opt in "" -O; do
       export NANOFIL_OPT=$opt

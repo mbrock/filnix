@@ -54,7 +54,8 @@
     - `alloc` is a heap allocation.
     - An edge to `poll(L)` runs a pollcheck: a call of
       filc_pollcheck_slow when the thread's state asks for one.
-    - Scalar integer and SSE2 instructions share amd64:compute_op//4.
+    - Scalar integer and SSE2 instructions share amd64:compute_op//5.
+      Local mode selects integer immediates before scalar stack caching.
     - Float bits have no lower. At ABI boundaries they travel in XMM
       registers, or in generic payload words with zero aux
       (docs/abi-findings.md).
@@ -79,7 +80,7 @@
 
     | Variable | Means |
     |---|---|
-    | Ctx | the function context (function_ctx/7) |
+    | Ctx | the function context (function_ctx/8) |
     | Fn | the amd64 context inside Ctx |
     | K | a word class: `w`, `l`, `p`, `s` or `d` |
     | V | a value, `tmp(N)` or `const(N)` |
@@ -134,20 +135,24 @@ lower_item(Module, func(N,L,R,Ps,Bs0), Product) :-
     lower_function(Module, func(N,L,R,Ps,Bs), Live, Product).
 lower_item(_, data(N,L,A,Is), data(N,L,A,Is)).
 
-item_lines(Item, Lines) :-
-    (   phrase(item(Item), Lines) -> true
+item_lines(Selection, Item, Lines) :-
+    (   phrase(item(Selection,Item), Lines) -> true
     ;   arg(1, Item, Name),
         format(atom(Msg), 'Fil-C backend cannot emit ~w', [Name]),
         throw(nanofil_error(Msg))
     ).
 
-placed_lines(stack, _, Item, Lines, stack) :- item_lines(Item,Lines).
+placed_lines(stack, _, Item, Lines, stack) :- item_lines(stack,Item,Lines).
 placed_lines(local, data(N,L,A,Is), Item, Lines, data(N)) :-
-    Item = data(N,L,A,Is), item_lines(Item,Lines).
+    Item = data(N,L,A,Is), item_lines(stack,Item,Lines).
 placed_lines(local, Func, Item, Lines, function(Name,Report)) :-
     Func = func(Name,_,_,Ps,Bs),
     Item = abi_function(Name,_,_,Sig,Frame,_,_,_,_,_),
-    item_lines(Item,Original),
+    % Preserve entire setjmp functions, including unreachable sites, in
+    % both selection and caching. ABI lowering hides the original sites.
+    ( setjmp_func(Func) -> Setjmp = true, Selection = stack
+    ; Setjmp = false, Selection = local ),
+    item_lines(Selection,Item,Original),
     abi_symbol(impl(Sig),Name,Impl),
     % Adapters, getters and origins have different frames. Only the
     % implementation before its .size belongs to this placement map.
@@ -163,9 +168,8 @@ placed_lines(local, Func, Item, Lines, function(Name,Report)) :-
     keysort(Uses,Sorted), group_pairs_by_key(Sorted,Groups),
     findall(home(D,Ks),
             (member(Key-Ks,Groups), get_assoc(Key,Slots,Off), D is -Off), Homes),
-    % The middle end preserves entire setjmp functions, including dead
-    % sites. Inspect the original IR here, before ABI actions hide them.
-    ( setjmp_func(Func) -> Setjmp = true ; Setjmp = false ),
+    % The checker validates caching against the selected stream; it does
+    % not prove instruction selection itself.
     cache_asm(local,cache_metadata(Setjmp,Homes),Body,Cached,Report),
     append(Cached,[size(Impl)|Rest],Lines).
 
@@ -258,28 +262,30 @@ lower_slot(FrameBase, Key, Slots0-I0, Slots-I) :-
 
 %% The function context
 
-/* function_ctx(+Name, +Ret, +Slots, +Blocks, +Size, +FrameBase, -Ctx):
-   Ctx = ctx(Fn, Size, FrameBase, Labels) is the context of function
+/* function_ctx(+Name, +Ret, +Slots, +Blocks, +Size, +FrameBase, +Selection, -Ctx):
+   Ctx = ctx(Fn, Size, FrameBase, Labels, Selection) is the context of function
    Name, where Fn = f(Name, Ret, Slots, Blocks) is the context amd64's
    load//4 and compute_op//4 take. Labels maps each block label to its
    phis, so an edge finds them without searching Blocks. */
-function_ctx(Name, Ret, Slots, Blocks, Size, FrameBase, Ctx) :-
+function_ctx(Name, Ret, Slots, Blocks, Size, FrameBase, Selection, Ctx) :-
     findall(Label-Phis, member(block(Label, Phis, _, _), Blocks), LabelBlocks),
     list_to_assoc(LabelBlocks, Labels),
-    Ctx = ctx(f(Name, Ret, Slots, Blocks), Size, FrameBase, Labels).
+    Ctx = ctx(f(Name, Ret, Slots, Blocks), Size, FrameBase, Labels, Selection).
 
-ctx_fn(ctx(Fn, _, _, _), Fn).
+ctx_fn(ctx(Fn, _, _, _, _), Fn).
 
-ctx_name(ctx(f(Name, _, _, _), _, _, _), Name).
+ctx_name(ctx(f(Name, _, _, _), _, _, _, _), Name).
 
-ctx_size(ctx(_, Size, _, _), Size).
+ctx_size(ctx(_, Size, _, _, _), Size).
 
-ctx_frame_base(ctx(_, _, FrameBase, _), FrameBase).
+ctx_frame_base(ctx(_, _, FrameBase, _, _), FrameBase).
 
-ctx_labels(ctx(_, _, _, Labels), Labels).
+ctx_labels(ctx(_, _, _, Labels, _), Labels).
+
+ctx_selection(ctx(_, _, _, _, Selection), Selection).
 
 % ctx_slot(+Ctx, +Key, -Off): Key's slot is at -Off(%rbp).
-ctx_slot(ctx(f(_, _, Slots, _), _, _, _), Key, Off) :-
+ctx_slot(ctx(f(_, _, Slots, _), _, _, _, _), Key, Off) :-
     get_assoc(Key, Slots, Off).
 
 % The store of register Reg into Key's slot.
@@ -318,18 +324,18 @@ origin_label(Name, Which, A) :-
 %% Functions
 
 % The lines of a module item, a function or a data object.
-item(Func) -->
+item(Selection, Func) -->
     { Func = abi_function(_, _, _, _, _, _, _, _, _, _) },
-    function(Func).
-item(data(Name, Linkage, _, Items)) -->
+    function(Selection, Func).
+item(_, data(Name, Linkage, _, Items)) -->
     data_object(Name, Linkage, Items).
 
 % A function: its implementation (prologue, blocks, the shared exception
 % exit and failure blocks), then its function object and origins.
-function(abi_function(Name, Linkage, Ret, Sig, Frame, Entry, Blocks,
-                      Exit, Object, Origins)) -->
+function(Selection, abi_function(Name, Linkage, Ret, Sig, Frame, Entry, Blocks,
+                                 Exit, Object, Origins)) -->
     { layout(Frame, Slots, FrameBase, Size),
-      function_ctx(Name, Ret, Slots, Blocks, Size, FrameBase, Ctx),
+      function_ctx(Name, Ret, Slots, Blocks, Size, FrameBase, Selection, Ctx),
       abi_symbol(impl(Sig), Name, Impl),
       access_check_kinds(Blocks, CheckKinds),
       special_label(Ctx, exc, Exc) },
@@ -896,7 +902,7 @@ local_check(Name, Off, Kind, I, B, Ctx) -->
 
 % kind_inst(+Kind, +K, +Op, +Args, +D, +Index, +Block, +Ctx)//: as
 % inst//4, for tmp(D) =K Op Args with Op of Kind. Integer instructions go
-% to amd64:compute_op//4; the pointer ones are by K, or (copy at p) by
+% to amd64:compute_op//5; the pointer ones are by K, or (copy at p) by
 % the operand.
 kind_inst(float_convert,K,Op,Args,D,_,_,Ctx) --> integer_inst(Op,K,Args,D,Ctx).
 kind_inst(float_to_int,K,Op,Args,D,_,_,Ctx) --> integer_inst(Op,K,Args,D,Ctx).
@@ -973,8 +979,8 @@ payload_word_copy(restore, Key, Off, Ctx) -->
 % integer_inst(+Op, +K, +Args, +D, +Ctx)//: the code of the integer
 % instruction tmp(D) =K Op Args.
 integer_inst(Op, K, Args, D, Ctx) -->
-    { ctx_fn(Ctx, Fn) },
-    compute_op(Op, K, Args, Fn),
+    { ctx_fn(Ctx, Fn), ctx_selection(Ctx, Selection) },
+    compute_op(Selection, Op, K, Args, Fn),
     reg_slot_store(rax, tmp(D), Ctx).
 
 % The helper returns payload and auxiliary *addresses*, not a flight
