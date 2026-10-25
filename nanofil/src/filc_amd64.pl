@@ -1,6 +1,8 @@
-/*  The naive Fil-C backend for x86-64 (milestone 3): it lowers checked
-    IR to asm.pl lines whose GNU as text links with code clang builds
-    for filnix staging Fil-C 0.687.
+/*  The Fil-C backend for x86-64: filc_abi.pl lowers checked functions
+    to frame, call and entry products; this module places their words
+    and emits asm.pl lines whose GNU as text links with code clang builds
+    for filnix staging Fil-C 0.687. Checked pointer-memory emission remains
+    here, as does global-data serialization and getter initialization.
 
     Every rule is chosen to be easy to check, not fast; docs/m3.md has
     them in full.
@@ -65,6 +67,9 @@
     in %al or in the return buffer; a caller that sees it propagates it
     the same way.
 
+    Origins preserve the existing can_throw=0: exception flags propagate,
+    but the runtime will not unwind a C++ exception through this frame.
+
     Every function gets a getter, a function object and a generic entry,
     so its address can be taken; an exported one also gets the global
     alias for its signature and a global getter, so clang code can call
@@ -83,7 +88,7 @@
     | W | a store width |
     | S, F | symbols |
     | Off | a byte offset |
-    | Form | a return form, `reg` or `mem(Bytes)` (ret_form/2) |
+    | Form | a placed return form, `reg` or `mem(Bytes)` (target_form/2) |
 */
 :- module(filc_amd64, [filc_module_asm/2, signature/3]).
 
@@ -93,7 +98,7 @@
 :- use_module(library(assoc)).
 :- use_module(ir).
 :- use_module(amd64).
-:- use_module(frame_slots).
+:- use_module(filc_abi).
 :- use_module(cfg, [edge_label/2]).
 
 %! filc_module_asm(+Module, -Lines) is det.
@@ -105,9 +110,10 @@
 filc_module_asm(Module0, Lines) :-
     without_locs(Module0, Module),
     Module = module(Items),
-    maplist(item_lines(Module), Items, LinesPerItem),
+    maplist(lower_item(Module), Items, Products),
+    lower_thunks(Module, Callees),
+    maplist(item_lines, Products, LinesPerItem),
     append(LinesPerItem, ItemLines),
-    external_callees(Module, Callees),
     maplist(thunk_lines, Callees, LinesPerThunk),
     append(LinesPerThunk, ThunkLines),
     append([ItemLines, ThunkLines, [section(note_gnu_stack)]], Lines).
@@ -115,54 +121,19 @@ filc_module_asm(Module0, Lines) :-
 thunk_lines(Callee, Lines) :-
     phrase(thunk(Callee), Lines).
 
-% item_lines(+Module, +Item, -Lines): Lines is the code or data of Item;
-% throws if there is none.
-item_lines(Module, Item, Lines) :-
-    (   phrase(item(Module, Item), Lines) -> true
+% Complete the ABI product before any instruction selection. Fusion is
+% still target preparation; its separate liveness view preserves indices.
+lower_item(Module, func(N,L,R,Ps,Bs0), Product) :-
+    fused_blocks(N, Bs0, Bs, Live),
+    lower_function(Module, func(N,L,R,Ps,Bs), Live, Product).
+lower_item(_, data(N,L,A,Is), data(N,L,A,Is)).
+
+item_lines(Item, Lines) :-
+    (   phrase(item(Item), Lines) -> true
     ;   arg(1, Item, Name),
         format(atom(Msg), 'Fil-C backend cannot emit ~w', [Name]),
         throw(nanofil_error(Msg))
     ).
-
-%% Signatures (docs/abi-findings.md): each word class is a bijective
-%% base-11 digit, i64 = 0, float = 1, double = 2 and ptr = 7;
-%% sig = 1 + ret + 133 * args.
-
-%! signature(+Ret, +ParamKs, -Sig) is det.
-%
-%  Sig is the Fil-C signature number of a function returning Ret (void,
-%  a class or tuple(Ks)) and taking parameters of classes ParamKs. Fails
-%  on a class other than w, l, p, s or d; throws nanofil_error/1 for more than
-%  16 parameters.
-signature(Ret, ParamKs, Sig) :-
-    ret_kinds(Ret, RetKs),
-    maplist(class_digit, RetKs, RetDigits),
-    maplist(class_digit, ParamKs, ArgDigits),
-    length(ArgDigits, NArgs),
-    (   NArgs =< 16
-    ->  true
-    ;   throw(nanofil_error('more than 16 arguments'))
-    ),
-    bijective_value(RetDigits, R),
-    bijective_value(ArgDigits, A),
-    Sig is 1 + R + 133 * A.
-
-class_digit(w, 0).
-class_digit(l, 0).
-class_digit(p, 7).
-class_digit(s, 1).
-class_digit(d, 2).
-
-% bijective_value(+Digits, -Value): Value is the number whose bijective
-% base-11 digits, least significant first, are Digits.
-bijective_value([], 0).
-bijective_value([D|Ds], V) :-
-    bijective_value(Ds, V1),
-    V is D + 1 + 11 * V1.
-
-func_signature(func(_, _, Ret, Params, _), Sig) :-
-    findall(K, member(param(K, _), Params), Ks),
-    signature(Ret, Ks, Sig).
 
 %% ABI facts (docs/abi-findings.md), at the pin
 
@@ -213,37 +184,8 @@ aux_pointer_mask(0xffffffffffff).
 
 %% Frame layout
 
-/* layout(+Form, +Params, +Blocks, -Slots, -FrameBase, -NLowers, -Size):
-   the frame of a function with return form Form. Slots maps tmp(N) and
-   shadow(N) to address slots and lower(Key) to lowers[] entries, all as
-   offsets below %rbp; thread and aux are scratch slots, and retbuf holds
-   the return buffer of a buffered return. The filc_frame {parent,
-   origin, lowers[NLowers]} sits at -FrameBase(%rbp), and Size is the
-   16-aligned frame size. */
-layout(Form, Params, Blocks, Slots, FrameBase, NLowers, Size) :-
-    findall(N-K,
-            (   member(param(K, tmp(N)), Params)
-            ;   member(block(_, Phis, Insts, _), Blocks),
-                (   member(phi(tmp(N), K, _), Phis)
-                ;   member(I, Insts),
-                    inst_dest_class(I, N, K)
-                )
-            ),
-            Temps0),
-    sort(Temps0, Temps),
-    findall(N-K,
-            (   member(block(_, Phis, _, _), Blocks),
-                member(phi(tmp(N), K, _), Phis)
-            ),
-            Shadows0),
-    sort(Shadows0, Shadows),
-    findall(shadow(N), member(N-_, Shadows), ShadowKeys),
-    form_extra_slots(Form, Extra),
-    setjmp_slots(Blocks, JPlain, JLowers),
-    temp_storage(JLowers, Params, Blocks, Temps, TempKeys, TempLowers, Aliases),
-    append([TempKeys, ShadowKeys, [thread, aux], Extra, JPlain], Plain),
-    findall(lower(shadow(N)), member(N-p, Shadows), ShadowLowers),
-    append([TempLowers, ShadowLowers, JLowers], Lowers),
+% Place the already chosen payloads, roots and aliases below %rbp.
+layout(frame(Plain, Lowers, Aliases), Slots, FrameBase, Size) :-
     length(Plain, NPlain),
     length(Lowers, NLowers),
     FrameBase is 8 * NPlain + 16 + 8 * NLowers,
@@ -253,60 +195,8 @@ layout(Form, Params, Blocks, Slots, FrameBase, NLowers, Size) :-
     foldl(temp_alias, Aliases, Slots2, Slots),
     Size is (FrameBase + 15) // 16 * 16.
 
-% Returns-twice snapshots cover every logical payload slot, not merely
-% live values. Keep their original unique layout, even for dead sites.
-temp_storage([], Params, Blocks, Temps, Keys, Lowers, Aliases) :-
-    temp_slots(Params, Blocks, Temps, Map, NS, NP),
-    storage_keys(scalar, 0, NS, Scalars),
-    storage_keys(pointer, 0, NP, Pointers),
-    append(Scalars, Pointers, Keys),
-    maplist(storage_lower, Pointers, Lowers),
-    assoc_to_list(Map, Pairs),
-    maplist(storage_alias, Pairs, Aliases).
-temp_storage([_|_], _, _, Temps, Keys, Lowers, []) :-
-    findall(tmp(N), member(N-_, Temps), Keys),
-    findall(lower(tmp(N)), member(N-p, Temps), Lowers).
-
-storage_keys(Pool, I, N, Keys) :-
-    ( I < N
-    -> Keys = [storage(Pool, I)|Rest], Next is I + 1,
-       storage_keys(Pool, Next, N, Rest)
-    ;  Keys = [] ).
-
-storage_lower(Key, lower(Key)).
-storage_alias(N-Key, tmp(N)-Key).
-
 temp_alias(T-Key, Slots0, Slots) :-
-    get_assoc(Key, Slots0, Off), put_assoc(T, Slots0, Off, Slots1),
-    ( Key = storage(pointer, _)
-    -> get_assoc(lower(Key), Slots1, Lower),
-       put_assoc(lower(T), Slots1, Lower, Slots)
-    ;  Slots = Slots1 ).
-
-% Persistent jmpbuf roots must be the highest-indexed lowers. Ordinary
-% snapshot roots are initialized eagerly and never change thereafter.
-setjmp_slots(Blocks, Plain, Lowers) :-
-    setjmp_sites(Blocks, Sites),
-    findall(tmp(hidden(setjmp_buf(D))), member(D, Sites), Plain),
-    findall(lower(setjmp_snapshot(D)), member(D, Sites), Snapshots),
-    findall(lower(tmp(hidden(setjmp_buf(D)))), member(D, Sites), JmpBufs),
-    append(Snapshots, JmpBufs, Lowers).
-
-setjmp_sites(Blocks, Sites) :-
-    findall(D, (member(block(_, _, Insts, _), Blocks),
-                member(let(tmp(D), w, setjmp(_), _), Insts)), Sites).
-
-% inst_dest_class(+Inst, -N, -K): tmp(N), of class K, is a destination of
-% instruction Inst.
-inst_dest_class(let(tmp(N), K, _, _), N, K).
-inst_dest_class(flight(tmp(N), _, _, _), N, p).
-inst_dest_class(call(result(tmp(N), K), _, _), N, K).
-inst_dest_class(call(tuple(Tos), _, _), N, K) :-
-    member(result(tmp(N), K), Tos).
-
-% A buffered return keeps its buffer's address in a slot.
-form_extra_slots(reg, []).
-form_extra_slots(mem(_), [retbuf]).
+    get_assoc(Key, Slots0, Off), put_assoc(T, Slots0, Off, Slots).
 
 % plain_slot(+Key, +Slots0-I0, -Slots-I): Slots maps Key to the slot
 % after the I0 already allocated, the Ith from %rbp.
@@ -324,23 +214,21 @@ lower_slot(FrameBase, Key, Slots0-I0, Slots-I) :-
 
 %% The function context
 
-/* function_ctx(+Name, +Ret, +Slots, +Blocks, +Module, +FrameBase, -Ctx):
-   Ctx = ctx(Fn, Module, FrameBase, Labels) is the context of function
+/* function_ctx(+Name, +Ret, +Slots, +Blocks, +Size, +FrameBase, -Ctx):
+   Ctx = ctx(Fn, Size, FrameBase, Labels) is the context of function
    Name, where Fn = f(Name, Ret, Slots, Blocks) is the context amd64's
    load//4 and compute_op//4 take. Labels maps each block label to its
    phis, so an edge finds them without searching Blocks. */
-function_ctx(Name, Ret, Slots, Blocks, Module, FrameBase, Ctx) :-
+function_ctx(Name, Ret, Slots, Blocks, Size, FrameBase, Ctx) :-
     findall(Label-Phis, member(block(Label, Phis, _, _), Blocks), LabelBlocks),
     list_to_assoc(LabelBlocks, Labels),
-    Ctx = ctx(f(Name, Ret, Slots, Blocks), Module, FrameBase, Labels).
+    Ctx = ctx(f(Name, Ret, Slots, Blocks), Size, FrameBase, Labels).
 
 ctx_fn(ctx(Fn, _, _, _), Fn).
 
 ctx_name(ctx(f(Name, _, _, _), _, _, _), Name).
 
-ctx_ret(ctx(f(_, Ret, _, _), _, _, _), Ret).
-
-ctx_module(ctx(_, Module, _, _), Module).
+ctx_size(ctx(_, Size, _, _), Size).
 
 ctx_frame_base(ctx(_, _, FrameBase, _), FrameBase).
 
@@ -386,41 +274,33 @@ origin_label(Name, Which, A) :-
 %% Functions
 
 % The lines of a module item, a function or a data object.
-item(Module, Func) -->
-    { Func = func(_, _, _, _, _) },
-    function(Module, Func).
-item(_, data(Name, Linkage, _, Items)) -->
+item(Func) -->
+    { Func = abi_function(_, _, _, _, _, _, _, _, _, _) },
+    function(Func).
+item(data(Name, Linkage, _, Items)) -->
     data_object(Name, Linkage, Items).
 
 % A function: its implementation (prologue, blocks, the shared exception
 % exit and failure blocks), then its function object and origins.
-function(Module, Func) -->
-    { Func = func(Name, Linkage, Ret, Params, Blocks0),
-      fused_blocks(Name, Blocks0, Blocks, LiveBlocks),
-      implementation_params(Func, Params, BodyParams),
-      func_signature(Func, Sig),
-      ret_kinds(Ret, RetKs),
-      ret_form(RetKs, Form),
-      layout(Form, BodyParams, LiveBlocks, Slots, FrameBase, NLowers, Size),
-      function_ctx(Name, Ret, Slots, Blocks, Module, FrameBase, Ctx),
+function(abi_function(Name, Linkage, Ret, Sig, Frame, Entry, Blocks,
+                      Exit, Object, Origins)) -->
+    { layout(Frame, Slots, FrameBase, Size),
+      function_ctx(Name, Ret, Slots, Blocks, Size, FrameBase, Ctx),
       abi_symbol(impl(Sig), Name, Impl),
       access_check_kinds(Blocks, CheckKinds),
       special_label(Ctx, exc, Exc) },
     [section(text), p2align(4)],
     linkage_globl(Linkage, Impl),
     [type(Impl, function), label(Impl)],
-    prologue(Form, Size, NLowers, Ctx),
-    body_param_stores(BodyParams, Form, Ctx),
-    setjmp_entry(Ctx),
+    abi_actions(Entry, entry, entry, Ctx),
     blocks(Blocks, Ctx),
     [label(Exc)],
-    exception_exit(Form, Ctx),
+    abi_actions(Exit, exit, exit, Ctx),
     check_fail_blocks(CheckKinds, Ctx),
     not_function_block(Blocks, Ctx),
     [size(Impl)],
-    body_function_object(Func, Name, Linkage, Ret, Params, Sig, Impl),
-    { setjmp_sites(Blocks, Sites), length(Sites, NumSetjmps) },
-    origins(Name, NLowers, CheckKinds, NumSetjmps).
+    body_function_object(Object, Name, Linkage, Impl),
+    origins(Name, Origins, CheckKinds).
 
 /* fused_blocks(+Fn, +Blocks0, -Blocks, -LiveBlocks): Blocks are the
    checked Blocks0 with each check and the raw access after it, which
@@ -498,14 +378,6 @@ throw_fn(Fn, Why) :-
     format(atom(Msg), 'Fil-C backend, in ~w: ~w', [Fn, Why]),
     throw(nanofil_error(Msg)).
 
-% Root parameters before allocating. All snapshot roots must be stable
-% before any site captures lowers, including sites not yet executed.
-setjmp_entry(Ctx) -->
-    { ctx_fn(Ctx, f(_, _, Slots, _)), assoc_to_keys(Slots, All),
-      findall(D, member(lower(setjmp_snapshot(D)), All), Sites),
-      setjmp_payload_slots(Ctx, Keys), length(Keys, N), Bytes is 8 * N },
-    setjmp_snapshots(Sites, Bytes, Ctx).
-
 setjmp_snapshots([], _, _) --> [].
 setjmp_snapshots([D|Ds], Bytes, Ctx) -->
     origin_store(Ctx, c),
@@ -516,40 +388,99 @@ setjmp_snapshots([D|Ds], Bytes, Ctx) -->
     reg_slot_store(rdx, lower(setjmp_snapshot(D)), Ctx),
     setjmp_snapshots(Ds, Bytes, Ctx).
 
-% A private fast body keeps the existing return convention. Its final
-% parameter roots the eager snapshot before the first body safepoint.
-implementation_params(Func, Params, BodyParams) :-
-    ( variadic_func(Func)
-    -> append(Params, [param(p, tmp(hidden(va_snapshot)))], BodyParams)
-    ; BodyParams = Params ).
+body_function_object(generic_only(Adapter), Name, Linkage, Impl) -->
+    variadic_object(Name, Linkage, Adapter, Impl).
+body_function_object(fast_and_generic(Sig,Adapter), Name, Linkage, Impl) -->
+    function_object(Name, Linkage, Adapter, Sig, Impl).
 
-body_function_object(Func, Name, Linkage, Ret, Params, Sig, Impl) -->
-    ( { variadic_func(Func) }
-    -> variadic_object(Name, Linkage, Ret, Params, Impl)
-    ; function_object(Name, Linkage, Ret, Params, Sig, Impl) ).
+% The return protocol is already chosen; this is only its native size.
+target_form(registers, reg).
+target_form(buffer(N), mem(Bytes)) :- Bytes is (8 + 8*N + 15) // 16 * 16.
 
-% The prologue: the frame's allocation, the stack overflow check, the
-% thread (and return buffer) in their slots, zeroed lowers[] and the
-% filc_frame pushed on thread->top_frame.
-prologue(Form, Size, NLowers, Ctx) -->
-    { ctx_frame_base(Ctx, FrameBase),
-      NegFrameBase is -FrameBase,
-      field(thread, stack_limit, rdi, Limit),
-      field(thread, top_frame, rdi, Top) },
+abi_actions([], _, _, _) --> [].
+abi_actions([A|As], I, B, Ctx) -->
+    abi_action(A, I, B, Ctx), abi_actions(As, I, B, Ctx).
+
+abi_action(native_frame(Return), _, _, Ctx) -->
+    { ctx_size(Ctx, Size), target_form(Return, Form) },
     [ins(push, q, [reg(rbp)]),
      ins(mov, q, [reg(rsp), reg(rbp)]),
      ins(sub, q, [imm(Size), reg(rsp)])],
-    entry_regs_shift(Form),
+    entry_regs_shift(Form).
+abi_action(stack_check, _, _, _) -->
+    { field(thread, stack_limit, rdi, Limit) },
     [ins(cmp, q, [reg(rsp), Limit]),
-     ins(jae, none, [plt(filc_stack_overflow_failure)])],
-    reg_slot_store(rdi, thread, Ctx),
-    retbuf_store(Form, Ctx),
-    lowers_zeroing(NLowers, FrameBase),
+     ins(jae, none, [plt(filc_stack_overflow_failure)])].
+abi_action(save_thread, _, _, Ctx) --> reg_slot_store(rdi, thread, Ctx).
+abi_action(save_return(Return), _, _, Ctx) -->
+    { target_form(Return, Form) }, retbuf_store(Form, Ctx).
+abi_action(zero_roots(N), _, _, Ctx) -->
+    { ctx_frame_base(Ctx, Base) }, lowers_zeroing(N, Base).
+abi_action(push_frame(Which), _, _, Ctx) -->
+    { ctx_frame_base(Ctx, Base), NegFrameBase is -Base,
+      field(thread, top_frame, rdi, Top) },
     [ins(mov, q, [Top, reg(rax)]),
      ins(mov, q, [reg(rax), mem(NegFrameBase, rbp)])],
-    origin_store(Ctx, c),
+    origin_store(Ctx, Which),
     [ins(lea, q, [mem(NegFrameBase, rbp), reg(rax)]),
      ins(mov, q, [reg(rax), Top])].
+abi_action(receive(Return, Ts), _, _, Ctx) -->
+    { target_form(Return, Form), typed_locations(Ts, Form, Ls, _, _) },
+    typed_incoming(Ts, Ls, Ctx).
+abi_action(snapshots(Sites, Keys), _, _, Ctx) -->
+    { length(Keys, N), Bytes is 8*N }, setjmp_snapshots(Sites, Bytes, Ctx).
+abi_action(pop_frame, _, _, Ctx) --> frame_pop(Ctx).
+abi_action(exception(Return), _, _, Ctx) -->
+    { target_form(Return, Form) }, exception_flag(Form, Ctx),
+    [ins(leave, none, []), ins(ret, none, [])].
+abi_action(origin(Which), _, _, Ctx) --> origin_store(Ctx, Which).
+abi_action(reserve_result(Return), _, _, _) -->
+    { target_form(Return, Form) }, ret_buffer_reservation(Form).
+abi_action(release_result(Return), _, _, _) -->
+    { target_form(Return, Form) }, ret_buffer_release(Form).
+abi_action(invoke(Target, Return, Words), _, _, Ctx) -->
+    { target_form(Return, Form), target_operand(Target, Operand) },
+    fast_call(Form, Words, direct(Operand), Ctx).
+abi_action(result(Return, Channels), _, _, Ctx) -->
+    { target_form(Return, Form) }, fast_result(Form, Channels, Ctx).
+abi_action(dispatch(P,Sig,Return,Words,Result,Size,Cells,GenericResult), I,B,Ctx) -->
+    { special_label(Ctx, notfn, NotFn), target_form(Return, Form) },
+    flight_load(P, Ctx), function_check(NotFn), reg_slot_store(rcx, aux, Ctx),
+    indirect_call(Sig, Form, Words, Result, Size, Cells, GenericResult, I, B, Ctx).
+abi_action(getter(Target, Which, D), _, _, Ctx) -->
+    { ctx_name(Ctx, Name), origin_label(Name, Which, Origin),
+      target_operand(Target, Getter) },
+    slot_reg_load(thread, rdi, Ctx),
+    [ins(lea, q, [rip(Origin), reg(rsi)]),
+     ins(call, none, [Getter]), ins(mov, q, [reg(rdx), reg(rcx)])],
+    flight_store(D, Ctx).
+abi_action(snapshot_cursor(Snapshot, Off, D), _, _, Ctx) -->
+    { ctx_fn(Ctx, Fn) }, flight_load(Snapshot, Ctx),
+    load(const(Off), l, d, Fn),
+    [ins(add, q, [reg(rdx), reg(rax)])], flight_store(D, Ctx).
+abi_action(consume_va(K,P,Size,D), I,B,Ctx) -->
+    flight_load(P, Ctx),
+    [ins(mov, q, [reg(rax), reg(rdi)]), ins(mov, q, [reg(rcx), reg(rsi)]),
+     ins(mov, l, [imm(Size), reg(edx)]), ins(mov, l, [imm(Size), reg(ecx)]),
+     ins(call, none, [plt(filc_get_next_ptr_bytes_for_va_arg)])],
+    va_arg_load(K, D, I, B, Ctx).
+abi_action(returns_twice(D,Kind,Buf,Mask,Keys), I,B,Ctx) -->
+    setjmp(D, Kind, Buf, Mask, Keys, I, B, Ctx).
+abi_action(return_value(K,V), _, _, Ctx) --> ret_value(K, V, Ctx).
+abi_action(return_registers([V1,V2]), _, _, Ctx) -->
+    { ctx_fn(Ctx, Fn) }, load(V1,l,d,Fn), load(V2,l,c,Fn).
+abi_action(return_buffer(Words), _, _, Ctx) -->
+    slot_reg_load(retbuf, rax, Ctx), buffer_words(Words, 8, Ctx).
+abi_action(success(registers), _, _, _) -->
+    [ins(xor, l, [reg(eax), reg(eax)]),ins(leave, none, []),ins(ret, none, [])].
+abi_action(success_buffer, _, _, _) -->
+    [ins(mov, b, [imm(0), mem(0, rax)])].
+abi_action(native_return, _, _, _) --> [ins(leave, none, []),ins(ret, none, [])].
+
+target_operand(implementation(F,Sig), sym(S)) :- abi_symbol(impl(Sig), F, S).
+target_operand(entry(F,Sig), sym(S)) :- abi_symbol(entry(Sig), F, S).
+target_operand(local_getter(F), sym(S)) :- abi_symbol(getter, F, S).
+target_operand(external_getter(F), plt(S)) :- abi_symbol(getter, F, S).
 
 % A buffered return's entry has the buffer in %rdi and the thread in
 % %rsi: the buffer goes to %rax and the thread to %rdi.
@@ -598,12 +529,6 @@ frame_pop(Ctx) -->
     [ins(mov, q, [mem(NegFrameBase, rbp), reg(rdi)]),
      ins(mov, q, [reg(rdi), Top])].
 
-% The exception exit: the frame popped and has_exception = 1 returned.
-exception_exit(Form, Ctx) -->
-    frame_pop(Ctx),
-    exception_flag(Form, Ctx),
-    [ins(leave, none, []), ins(ret, none, [])].
-
 % has_exception = 1, in %al or in the return buffer.
 exception_flag(reg, _) -->
     [ins(mov, b, [imm(1), reg(al)])].
@@ -615,7 +540,8 @@ exception_flag(mem(_), Ctx) -->
 % a pointer.
 not_function_block(Blocks, Ctx) -->
     (   { member(block(_, _, Insts, _), Blocks),
-          memberchk(fused(check_function, _), Insts) }
+          member(abi(Actions), Insts),
+          memberchk(dispatch(_,_,_,_,_,_,_,_), Actions) }
     ->  { special_label(Ctx, notfn, NotFn) },
         [label(NotFn),
          ins(mov, q, [reg(rax), reg(rdi)]),
@@ -625,93 +551,9 @@ not_function_block(Blocks, Ctx) -->
     ;   []
     ).
 
-%% Words: a p value is two words (address, lower); w and l are one.
-
-% class_key_slots(+K, +T, -Slots0, ?Slots): Slots0 less Slots are the
-% slots of a class K word whose address slot is T: T, then lower(T) for
-% p.
-class_key_slots(p, T, [T, lower(T)|Ss], Ss).
-class_key_slots(w, T, [T|Ss], Ss).
-class_key_slots(l, T, [T|Ss], Ss).
-class_key_slots(s, T, [T|Ss], Ss).
-class_key_slots(d, T, [T|Ss], Ss).
-
-% The stores of the incoming words of Ps into their slots, from where
-% the convention puts them (typed_locations/5).
-body_param_stores(Ps, Form, Ctx) -->
-    { typed_params(Ps, Ts),
-      typed_locations(Ts, Form, Ls, _, _) },
-    typed_incoming(Ts, Ls, Ctx).
-
-%% Results: none, one word or a tuple of two. A p word is two slots,
-%% address and lower. Up to two slots come back in %rdx:%rcx; more go in
-%% a buffer the caller passes in %rdi, {i8 has_exception, slots at 8..},
-%% with the thread in %rsi, the callee lower in %rdx and the argument
-%% words from %rcx (docs/abi-findings.md).
-
-% ret_kinds(+Ret, -Ks): Ks are the classes of the words of return type
-% Ret.
-ret_kinds(void, []).
-ret_kinds(tuple(Ks), Ks).
-ret_kinds(w, [w]).
-ret_kinds(l, [l]).
-ret_kinds(p, [p]).
-ret_kinds(s, [s]).
-ret_kinds(d, [d]).
-
-% result_tos(+Res, -Tos): Tos are the to(T, K) destinations of call
-% result Res.
-result_tos(void, []).
-result_tos(result(T, K), [result(T, K)]).
-result_tos(tuple(Tos), Tos).
-
-% result_ret(+Res, -Ret): Ret is the return type of call result Res.
-result_ret(void, void).
-result_ret(result(_, K), K).
-result_ret(tuple(Tos), tuple(Ks)) :-
-    findall(K, member(result(_, K), Tos), Ks).
-
-% result_form(Res, Tos, Kinds, Form): a call result's destinations,
-% their classes and its return form.
-result_form(Res, Tos, Kinds, Form) :-
-    result_tos(Res, Tos),
-    findall(K, member(result(_, K), Tos), Kinds),
-    ret_form(Kinds, Form).
-
-% ret_form(+Kinds, -Form): Form is reg when words of classes Kinds fit
-% in two slots, else mem(Bytes) with Bytes the buffer size rounded to 16.
-ret_form(Ks, Form) :-
-    maplist(class_slot_count, Ks, Ns),
-    sum_list(Ns, N),
-    (   N > 2
-    ->  Bytes is (8 + 8 * N + 15) // 16 * 16,
-        Form = mem(Bytes)
-    ;   Form = reg
-    ).
-
-% class_slot_count(?K, ?N): a word of class K takes N slots.
-class_slot_count(p, 2).
-class_slot_count(w, 1).
-class_slot_count(l, 1).
-class_slot_count(s, 1).
-class_slot_count(d, 1).
-
-% The registers that carry argument words in each form.
-form_regs(reg, [rdx, rcx, r8, r9]).
-form_regs(mem(_), [rcx, r8, r9]).
-
 % The same registers by their amd64 short names, for load//4.
 form_short_regs(reg, [d, c, r8, r9]).
 form_short_regs(mem(_), [c, r8, r9]).
-
-% The slots of a result, in order, as the frame slots they fill.
-result_slots(Res, Slots) :-
-    result_tos(Res, Tos),
-    foldl(to_slots, Tos, Slots, []).
-
-% to_slots(+To, -Slots0, ?Slots): Slots0 less Slots are To's slots.
-to_slots(result(T, K), Ss0, Ss) :-
-    class_key_slots(K, T, Ss0, Ss).
 
 % Word I of a generic call's arguments or results is at thread offset
 % Addr, word I of the inline buffer, with its lower at Lower, word I of
@@ -722,29 +564,10 @@ generic_offsets(I, Addr, Lower) :-
     Addr is Buffer + 8 * I,
     Lower is AuxBuffer + 8 * I.
 
-% gw(Kind, Offset) for each result word: its thread offset in a generic
-% return (its lower, for p, is 256 further on).
-generic_words(Ks, GWs) :-
-    generic_words(Ks, 0, GWs).
-
-% Invariant: Ks are the result words from word I on.
-generic_words([], _, []).
-generic_words([K|Ks], I, [gw(K, Off)|GWs]) :-
-    generic_offsets(I, Off, _),
-    I1 is I + 1,
-    generic_words(Ks, I1, GWs).
-
-% generic_srcs(+GW, -Offs0, ?Offs): Offs0 less Offs are the thread
-% offsets of GW's slots in a generic return, in slot order.
-generic_srcs(gw(K, Off), Os0, Os) :-
-    class_generic_srcs(K, Off, Os0, Os).
-
-class_generic_srcs(p, Off, [Off, LowerOff|Os], Os) :-
-    LowerOff is Off + 256.
-class_generic_srcs(w, Off, [Off|Os], Os).
-class_generic_srcs(l, Off, [Off|Os], Os).
-class_generic_srcs(s, Off, [Off|Os], Os).
-class_generic_srcs(d, Off, [Off|Os], Os).
+channel_offset(data(I), Off) :- generic_offsets(I, Off, _).
+channel_offset(aux(I), Off) :- generic_offsets(I, _, Off).
+packet_offsets(packet(Copies, Zeros), packet(Offsets, ZeroOffsets)) :-
+    maplist(channel_offset, Copies, Offsets), maplist(channel_offset, Zeros, ZeroOffsets).
 
 % Stack space for a buffered return, around a call.
 ret_buffer_reservation(reg) --> [].
@@ -788,16 +611,7 @@ jump(branch(V, True, False), From, Ctx) -->
     edge(From, True, t, Ctx),
     [label(FalseLabel)],
     edge(From, False, f, Ctx).
-jump(ret(V), _, Ctx) -->
-    { ctx_ret(Ctx, K) },
-    ret_value(K, V, Ctx),
-    return(Ctx).
-jump(rets(Vs), _, Ctx) -->
-    { ctx_ret(Ctx, tuple(Ks)),
-      ret_form(Ks, Form) },
-    tuple_return(Form, Ks, Vs, Ctx).
-jump(ret, _, Ctx) -->
-    return(Ctx).
+jump(abi_return(Actions), B, Ctx) --> abi_actions(Actions, ret, B, Ctx).
 jump(unreachable, _, _) -->
     [ins(ud2, none, [])].
 
@@ -816,48 +630,21 @@ ret_value(K, V, Ctx) -->
     { float_class(K), ctx_fn(Ctx,Fn) },
     load(V,K,a,Fn), to_xmm(K,a,xmm0).
 
-% The return of the tuple Vs of classes Ks in form Form: in %rdx:%rcx,
-% or in the buffer with has_exception = 0.
-tuple_return(reg, _, [V1, V2], Ctx) -->
-    { ctx_fn(Ctx, Fn) },
-    load(V1, l, d, Fn),
-    load(V2, l, c, Fn),
-    return(Ctx).
-tuple_return(mem(_), Ks, Vs, Ctx) -->
-    slot_reg_load(retbuf, rax, Ctx),
-    buffer_words(Ks, Vs, 8, Ctx),
-    [ins(mov, b, [imm(0), mem(0, rax)])],
-    frame_pop(Ctx),
-    [ins(leave, none, []), ins(ret, none, [])].
-
 % The words of a buffered return, into the buffer at %rax.
-buffer_words([], [], _, _) --> [].
-buffer_words([K|Ks], [V|Vs], Off, Ctx) -->
-    { ctx_fn(Ctx, Fn) },
-    load(V, l, d, Fn),
-    [ins(mov, q, [reg(rdx), mem(Off, rax)])],
-    buffer_word_lower(K, V, Off, Off1, Ctx),
-    buffer_words(Ks, Vs, Off1, Ctx).
-
-% The lower, for p, of the buffer word at Off; Off1 is the next word's
-% offset.
-buffer_word_lower(p, V, Off, Off1, Ctx) -->
-    { LowerOff is Off + 8,
-      Off1 is Off + 16 },
-    lower_reg_load(V, rcx, Ctx),
-    [ins(mov, q, [reg(rcx), mem(LowerOff, rax)])].
-buffer_word_lower(w, _, Off, Off1, _) -->
-    { Off1 is Off + 8 }.
-buffer_word_lower(l, _, Off, Off1, _) -->
-    { Off1 is Off + 8 }.
-
-% The return in register form, with has_exception = 0 in %al; the
-% result, if any, is already in %rdx:%rcx.
-return(Ctx) -->
-    frame_pop(Ctx),
-    [ins(xor, l, [reg(eax), reg(eax)]),
-     ins(leave, none, []),
-     ins(ret, none, [])].
+buffer_words([], _, _) --> [].
+buffer_words([wf(_,Word)|Words], Off, Ctx) -->
+    { ctx_fn(Ctx, Fn), buffer_register(Word, R), reg_name(R,l,Reg) },
+    buffer_word_load(Word, R, Fn, Ctx),
+    [ins(mov, q, [reg(Reg), mem(Off, rax)])],
+    { Next is Off+8 }, buffer_words(Words, Next, Ctx).
+buffer_register(lower(_), c).
+buffer_register(addr(_), d).
+buffer_register(val(_,_), d).
+% Tuple payloads occupy full eightbyte slots even for a w element.
+buffer_word_load(val(_,V), R, Fn, _) --> load(V,l,R,Fn).
+buffer_word_load(addr(V), R, Fn, _) --> load(V,l,R,Fn).
+buffer_word_load(lower(V), R, _, Ctx) -->
+    { reg_name(R,l,Reg) }, lower_reg_load(V,Reg,Ctx).
 
 % Phi copies for the edge to Target, a label or poll(Label), then the
 % pollcheck if Target asks for one, then the jump.
@@ -978,17 +765,7 @@ inst(fused(check(_, Size, Rights, Align), Access), Index, Block, Ctx) -->
     flight_load(P, Ctx),
     access_check(k(Size, Write, Align), Ctx),
     raw_access(Access, Index, Block, Ctx).
-inst(fused(check_function, call(Res, P, Args)), Index, Block, Ctx) -->
-    { result_form(Res, _, _, Form),
-      special_label(Ctx, notfn, NotFn) },
-    origin_store(Ctx, c),
-    ret_buffer_reservation(Form),
-    flight_load(P, Ctx),
-    function_check(NotFn),
-    reg_slot_store(rcx, aux, Ctx),
-    indirect_call(Res, Args, Index, Block, Ctx).
-inst(call(Res, global(F), Args), _, _, Ctx) -->
-    direct_call(F, Res, Args, Ctx).
+inst(abi(Actions), Index, Block, Ctx) --> abi_actions(Actions, Index, Block, Ctx).
 
 % kind_inst(+Kind, +K, +Op, +Args, +D, +Index, +Block, +Ctx)//: as
 % inst//4, for tmp(D) =K Op Args with Op of Kind. Integer instructions go
@@ -1012,29 +789,27 @@ kind_inst(ptoi, l, _, [P], D, _, _, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     load(P, l, a, Fn),
     reg_slot_store(rax, tmp(D), Ctx).
-kind_inst(va_args, p, _, [const(Off)], D, _, _, Ctx) -->
+kind_inst(cmp, K, Op, Args, D, _, _, Ctx) -->
+    integer_inst(Op, K, Args, D, Ctx).
+kind_inst(ext, K, Op, Args, D, _, _, Ctx) -->
+    integer_inst(Op, K, Args, D, Ctx).
+kind_inst(alloc, p, alloc(Align), [N], D, _, _, Ctx) -->
     { ctx_fn(Ctx, Fn) },
-    flight_load(tmp(hidden(va_snapshot)), Ctx),
-    load(const(Off), l, d, Fn),
-    [ins(add, q, [reg(rdx), reg(rax)])],
+    load(N, l, si, Fn),
+    slot_reg_load(thread, rdi, Ctx),
+    (   { Align == 16 }
+    ->  [ins(mov, l, [imm(16), reg(edx)]),
+         ins(call, none, [plt(filc_allocate_with_alignment)])]
+    ;   [ins(call, none, [plt(filc_allocate)])]
+    ),
+    [ins(lea, q, [mem(16, rax), reg(rax)]),
+     ins(mov, q, [reg(rax), reg(rcx)])],
     flight_store(D, Ctx).
-kind_inst(va_arg, K, _, [P], D, Index, Block, Ctx) -->
-    { width_bytes(K, Size) },
-    origin_store(Ctx, c),
-    flight_load(P, Ctx),
-    [ins(mov, q, [reg(rax), reg(rdi)]),
-     ins(mov, q, [reg(rcx), reg(rsi)]),
-     ins(mov, l, [imm(Size), reg(edx)]),
-     ins(mov, l, [imm(Size), reg(ecx)]),
-     ins(call, none, [plt(filc_get_next_ptr_bytes_for_va_arg)])],
-    va_arg_load(K, D, Index, Block, Ctx).
-kind_inst(setjmp, w, setjmp(Kind), [Buf, Mask], D, Index, Block, Ctx) -->
+
+setjmp(D, KindNo, Buf, Mask, Keys, Index, Block, Ctx) -->
     { ctx_fn(Ctx, Fn),
-      setjmp_payload_slots(Ctx, Keys),
       ctx_slot(Ctx, lower(tmp(hidden(setjmp_buf(D)))), Off), NegOff is -Off,
-      setjmp_kind(Kind, KindNo),
       local_label(Ctx, Block, Index, setjmp_done, Done) },
-    origin_store(Ctx, c),
     slot_reg_load(lower(setjmp_snapshot(D)), rdx, Ctx),
     setjmp_payload_copy(save, Keys, 0, Ctx),
     slot_reg_load(thread, rdi, Ctx),
@@ -1053,34 +828,6 @@ kind_inst(setjmp, w, setjmp(Kind), [Buf, Mask], D, Index, Block, Ctx) -->
     setjmp_payload_copy(restore, Keys, 0, Ctx),
     [label(Done)],
     reg_slot_store(rax, tmp(D), Ctx).
-kind_inst(cmp, K, Op, Args, D, _, _, Ctx) -->
-    integer_inst(Op, K, Args, D, Ctx).
-kind_inst(ext, K, Op, Args, D, _, _, Ctx) -->
-    integer_inst(Op, K, Args, D, Ctx).
-kind_inst(alloc, p, alloc(Align), [N], D, _, _, Ctx) -->
-    { ctx_fn(Ctx, Fn) },
-    load(N, l, si, Fn),
-    slot_reg_load(thread, rdi, Ctx),
-    (   { Align == 16 }
-    ->  [ins(mov, l, [imm(16), reg(edx)]),
-         ins(call, none, [plt(filc_allocate_with_alignment)])]
-    ;   [ins(call, none, [plt(filc_allocate)])]
-    ),
-    [ins(lea, q, [mem(16, rax), reg(rax)]),
-     ins(mov, q, [reg(rax), reg(rcx)])],
-    flight_store(D, Ctx).
-
-setjmp_kind(setjmp, 0).
-setjmp_kind('_setjmp', 1).
-setjmp_kind(sigsetjmp, 2).
-
-% Never copy bookkeeping or any jmpbuf payload slot: their special lowers
-% are deliberately not restored by the runtime. Snapshot roots are stable.
-setjmp_payload_slots(Ctx, Keys) :-
-    ctx_fn(Ctx, f(_, _, Slots, _)), assoc_to_keys(Slots, All),
-    findall(Key, (member(Key, All), payload_key(Key)), Keys).
-payload_key(tmp(N)) :- N \= hidden(setjmp_buf(_)).
-payload_key(shadow(_)).
 
 % RDX is the snapshot payload; RCX is scratch. EAX's full native int
 % survives restoration, which contains no calls, polls or checked loads.
@@ -1135,25 +882,10 @@ additive_inst(K,Op,Args,D,Ctx) -->
     { float_class(K) }, integer_inst(Op,K,Args,D,Ctx).
 
 % copy_inst(+K, +Op, +Args, +D, +Ctx)//: a copy at K.
-copy_inst(p, _, [V], D, Ctx) --> pointer_copy(V, D, Ctx).
 copy_inst(w, Op, Args, D, Ctx) --> integer_inst(Op, w, Args, D, Ctx).
 copy_inst(l, Op, Args, D, Ctx) --> integer_inst(Op, l, Args, D, Ctx).
 copy_inst(K,Op,Args,D,Ctx) -->
     { float_class(K) }, integer_inst(Op,K,Args,D,Ctx).
-
-% pointer_copy(+V, +D, +Ctx)//: only a symbol's getter remains a p copy.
-% Pure copies have explicit components in flight.
-pointer_copy(global(S), D, Ctx) -->
-    { ctx_name(Ctx, Name),
-      ctx_module(Ctx, Module),
-      symbol_getter(Module, S, Getter),
-      origin_label(Name, c, Origin) },
-    origin_store(Ctx, c),
-    slot_reg_load(thread, rdi, Ctx),
-    [ins(lea, q, [rip(Origin), reg(rsi)]),
-     ins(call, none, [Getter]),
-     ins(mov, q, [reg(rdx), reg(rcx)])],
-    flight_store(D, Ctx).
 
 % Flight's inputs are all read before its destination is written. The
 % second address uses %rdx, not the scalar ALU's %rcx, which holds the
@@ -1285,28 +1017,14 @@ width_value_class(l, l).
 width_value_class(s,s).
 width_value_class(d,d).
 
-% direct_call(+F, +Res, +Args, +Ctx)//: a call through F's FI symbol,
-% including the external thunk when its definition is not in the module.
-direct_call(F, Res, Args, Ctx) -->
-    { call_target(Ctx, F, Res, Args, Target),
-      result_form(Res, _, _, Form) },
-    origin_store(Ctx, c),
-    ret_buffer_reservation(Form),
-    fast_call(Form, Args, direct(Target), Ctx),
-    fast_result(Form, Res, Ctx),
-    ret_buffer_release(Form).
-
 /* A call through an already checked function, whose lower is in the
    aux slot. The fast entry if the signature matches the call site's,
    else the generic entry with every argument as an 8-byte word at
    thread+128+8i and its lower at thread+384+8i (docs/abi-findings.md). */
-indirect_call(Res, Args, Index, Block, Ctx) -->
+indirect_call(Sig, Form, Words, result(_,Channels), ArgsSize, Cells,
+              GenericResult, Index, Block, Ctx) -->
     { ctx_fn(Ctx, Fn),
-      call_sig(Res, Args, _, _, Sig),
-      result_form(Res, Tos, RetKs, Form),
       special_label(Ctx, exc, Exc),
-      length(Args, NArgs),
-      ArgsSize is 8 * NArgs,
       local_label(Ctx, Block, Index, generic, Generic),
       local_label(Ctx, Block, Index, done, Done),
       local_label(Ctx, Block, Index, retok, RetOk),
@@ -1315,38 +1033,32 @@ indirect_call(Res, Args, Index, Block, Ctx) -->
     [ins(movabs, q, [imm(Sig), reg(rsi)]),
      ins(cmp, q, [reg(rsi), FoSig]),
      ins(jne, none, [sym(Generic)])],
-    fast_call(Form, Args, indirect, Ctx),
-    fast_result(Form, Res, Ctx),
+    fast_call(Form, Words, indirect, Ctx),
+    fast_result(Form, Channels, Ctx),
     [ins(jmp, none, [sym(Done)]),
      label(Generic)],
-    generic_call_args(Args, 0, Fn, Ctx),
+    generic_call_args(Cells, Fn, Ctx),
     slot_reg_load(thread, rdi, Ctx),
     slot_reg_load(aux, rsi, Ctx),
     [ins(mov, l, [imm(ArgsSize), reg(edx)]),
      ins(call, q, [ind(FoGeneric)]),
      ins(test, b, [imm(1), reg(al)]),
      ins(jnz, none, [sym(Exc)])],
-    generic_results(Tos, RetKs, RetOk, Ctx),
-    [label(Done)],
-    ret_buffer_release(Form).
+    generic_results(GenericResult, RetOk, Ctx),
+    [label(Done)].
 
-% The results Tos, of classes RetKs, of a generic call, after a check of
-% the return size.
-generic_results([], _, _, _) --> [].
-generic_results([To|Tos], RetKs, RetOk, Ctx) -->
-    { length([To|Tos], NRetWords),
-      Need is 8 * NRetWords,
-      generic_words(RetKs, GWs) },
+% The generic result cells, after the product's required-size check.
+generic_results(receive_generic(0, []), _, _) --> [].
+generic_results(receive_generic(Need, [Cell|Cells]), RetOk, Ctx) -->
     slot_reg_load(thread, rsi, Ctx),
     rets_check(Need, RetOk),
-    generic_slot_copies(GWs, [To|Tos], Ctx).
+    generic_slot_copies([Cell|Cells], Ctx).
 
 % Arguments, the entry registers and the call itself, for the fast
 % convention in form Form; Callee is direct(Symbol) or indirect (through
 % the aux slot).
-fast_call(Form, Args, Callee, Ctx) -->
+fast_call(Form, Ts, Callee, Ctx) -->
     { ctx_fn(Ctx, Fn),
-      typed_args(Args, Ts),
       typed_locations(Ts, Form, Ls, NS, _),
       stack_bytes(NS, Pop) },
     reserve_stack(Pop),
@@ -1378,19 +1090,17 @@ entry_call(mem(_), indirect, Pop, Ctx) -->
      ins(call, q, [ind(Fast)])].
 
 % has_exception, then the result slots from %rdx:%rcx or the buffer.
-fast_result(reg, Res, Ctx) -->
-    { Res=result(T,K), float_class(K), special_label(Ctx,exc,Exc) }, !,
+fast_result(reg, float(K,T), Ctx) -->
+    { special_label(Ctx,exc,Exc) },
     [ins(test,b,[imm(1),reg(al)]),ins(jnz,none,[sym(Exc)])],
     from_xmm(K,xmm0,a), reg_slot_store(rax,T,Ctx).
-fast_result(reg, Res, Ctx) -->
-    { special_label(Ctx, exc, Exc),
-      result_slots(Res, Slots) },
+fast_result(reg, slots(Slots), Ctx) -->
+    { special_label(Ctx, exc, Exc) },
     [ins(test, b, [imm(1), reg(al)]),
      ins(jnz, none, [sym(Exc)])],
     reg_slot_stores(Slots, [rdx, rcx], Ctx).
-fast_result(mem(_), Res, Ctx) -->
-    { special_label(Ctx, exc, Exc),
-      result_slots(Res, Slots) },
+fast_result(mem(_), slots(Slots), Ctx) -->
+    { special_label(Ctx, exc, Exc) },
     [ins(cmp, b, [imm(0), mem(0, rsp)]),
      ins(jne, none, [sym(Exc)])],
     buffer_slot_copies(Slots, 8, Ctx).
@@ -1410,22 +1120,19 @@ buffer_slot_copies([Slot|Slots], Off, Ctx) -->
     buffer_slot_copies(Slots, Off1, Ctx).
 
 % A generic return's words, from the thread at %rsi, into the slots.
-generic_slot_copies([], [], _) --> [].
-generic_slot_copies([gw(K, Off)|GWs], [result(T, _)|Tos], Ctx) -->
+generic_slot_copies([], _) --> [].
+generic_slot_copies([cell(I, _, T, Lower)|Cells], Ctx) -->
+    { generic_offsets(I, Off, LowerOff) },
     [ins(mov, q, [mem(Off, rsi), reg(rax)])],
     reg_slot_store(rax, T, Ctx),
-    generic_lower_slot_copy(K, Off, T, Ctx),
-    generic_slot_copies(GWs, Tos, Ctx).
+    generic_lower_slot_copy(Lower, LowerOff, Ctx),
+    generic_slot_copies(Cells, Ctx).
 
 % For a p word at thread offset Off, its lower into lower(T).
-generic_lower_slot_copy(p, Off, T, Ctx) -->
-    { LowerOff is Off + 256 },
+generic_lower_slot_copy(lower(T), LowerOff, Ctx) -->
     [ins(mov, q, [mem(LowerOff, rsi), reg(rax)])],
     reg_slot_store(rax, lower(T), Ctx).
-generic_lower_slot_copy(w, _, _, _) --> [].
-generic_lower_slot_copy(l, _, _, _) --> [].
-generic_lower_slot_copy(s, _, _, _) --> [].
-generic_lower_slot_copy(d, _, _, _) --> [].
+generic_lower_slot_copy(none, _, _) --> [].
 
 % The check that the generic return size in %rdx is at least Need, with
 % a call of filc_cc_rets_check_failure if it is not.
@@ -1441,30 +1148,15 @@ rets_check(Need, RetOk) -->
 
 % The store of each argument into the thread's generic argument area.
 % Invariant: Args are the arguments from argument I on.
-generic_call_args([], _, _, _) --> [].
-generic_call_args([arg(K, V)|Args], I, Fn, Ctx) -->
+generic_call_args([], _, _) --> [].
+generic_call_args([cell(I, K, V, LowerSource)|Cells], Fn, Ctx) -->
     { generic_offsets(I, Addr, Lower) },
-    flight_value(K, V, Fn, Ctx),
+    load(V, K, a, Fn),
+    flight_lower_load(LowerSource, Ctx),
     slot_reg_load(thread, rdx, Ctx),
     [ins(mov, q, [reg(rax), mem(Addr, rdx)]),
      ins(mov, q, [reg(rcx), mem(Lower, rdx)])],
-    { I1 is I + 1 },
-    generic_call_args(Args, I1, Fn, Ctx).
-
-% The value V of class K in %rax, with its lower (0 for an integer) in
-% %rcx.
-flight_value(p, V, Fn, Ctx) -->
-    load(V, l, a, Fn),
-    lower_reg_load(V, rcx, Ctx).
-flight_value(w, V, Fn, _) -->
-    load(V, w, a, Fn),
-    [ins(xor, l, [reg(ecx), reg(ecx)])].
-flight_value(l, V, Fn, _) -->
-    load(V, l, a, Fn),
-    [ins(xor, l, [reg(ecx), reg(ecx)])].
-flight_value(K,V,Fn,_) -->
-    { float_class(K) }, load(V,K,a,Fn),
-    [ins(xor,l,[reg(ecx),reg(ecx)])].
+    generic_call_args(Cells, Fn, Ctx).
 
 % With a flight pointer in %rax:%rcx, jump to Fail unless it points at a
 % function object. Clobbers %rdx, %rsi and %rdi.
@@ -1485,17 +1177,6 @@ function_check(Fail) -->
      ins(cmp, q, [reg(rdx), reg(rax)]),
      ins(jne, none, [sym(Fail)])].
 
-% symbol_getter(+Module, +S, -Getter): Getter is the call operand of
-% S's getter, a local sym if Module defines S and a plt one otherwise.
-symbol_getter(module(Items), S, Getter) :-
-    abi_symbol(getter, S, Name),
-    (   (   memberchk(func(S, _, _, _, _), Items)
-        ;   memberchk(data(S, _, _, _), Items)
-        )
-    ->  Getter = sym(Name)
-    ;   Getter = plt(Name)
-    ).
-
 % The aux pointer of the object at lower %rcx into %rdx, setting ZF if
 % it has none.
 aux_of_lower -->
@@ -1504,29 +1185,6 @@ aux_of_lower -->
      ins(movabs, q, [imm(Mask), reg(rsi)]),
      ins(and, q, [reg(rsi), reg(rdx)])].
 
-
-% call_target(+Ctx, +F, +Res, +Args, -Target): Target is the operand a
-% direct call of F calls. Functions in the module are called at their
-% implementation; others at
-% their pizlonatedFI symbol: a weak thunk this module emits (thunk//1),
-% overridden by a clang definition with the same signature if one is
-% linked in.
-call_target(Ctx, F, Res, Args, sym(Target)) :-
-    ctx_module(Ctx, Module),
-    (   func_named(Module, F, Func), \+ variadic_func(Func)
-    ->  func_signature(Func, Sig),
-        abi_symbol(impl(Sig), F, Target)
-    ;   call_sig(Res, Args, _, _, Sig),
-        abi_symbol(entry(Sig), F, Target)
-    ).
-
-% call_sig(+Res, +Args, -RetKind, -ArgKinds, -Sig): a call site with
-% result Res and arguments Args has return type RetKind, argument
-% classes ArgKinds and signature Sig.
-call_sig(Res, Args, RetKind, ArgKinds, Sig) :-
-    result_ret(Res, RetKind),
-    findall(K, member(arg(K, _), Args), ArgKinds),
-    signature(RetKind, ArgKinds, Sig).
 
 % A word into register R, an amd64 register short name (a, d, c, r8...).
 word_reg_load(addr(V), R, Fn, _) --> load(V, l, R, Fn).
@@ -1542,12 +1200,6 @@ word_reg_load(lower(V), R, _, Ctx) -->
 %% words stack(I) at 8I(%rsp) at the call. Entries, call sites, the
 %% generic entry, the variadic adapter and external thunks all read
 %% this one placement, so they agree by construction.
-typed_params(Ps,Ts) :- foldl(typed_param,Ps,Ts,[]).
-typed_param(param(p,T),[wf(l,T),wf(l,lower(T))|Ts],Ts).
-typed_param(param(K,T),[wf(K,T)|Ts],Ts) :- K \== p.
-typed_args(As,Ts) :- foldl(typed_arg,As,Ts,[]).
-typed_arg(arg(p,V),[wf(l,addr(V)),wf(l,lower(V))|Ts],Ts).
-typed_arg(arg(K,V),[wf(K,val(K,V))|Ts],Ts) :- K \== p.
 typed_locations(Ts,Form,Ls,NS,NX) :-
     findall(K,member(wf(K,_),Ts),Ks), form_short_regs(Form,Rs),
     bank_locations(Ks,Rs,Ls,NS,NX).
@@ -1608,33 +1260,32 @@ adapter_load(K,W,G) -->
     snapshot_load(W,G),
     ( { K == s } -> [ins(mov,l,[reg(eax),reg(eax)])] ; [] ).
 
-typed_generic(Ks,Ts) :- typed_generic(Ks,0,Ts).
-typed_generic([],_,[]).
-typed_generic([K|Ks],I,Ts) :-
-    generic_offsets(I,A,L),
-    ( K==p -> Ts=[wf(l,mem(A,rbx)),wf(l,mem(L,rbx))|Rest]
-    ; Ts=[wf(K,mem(A,rbx))|Rest] ),
-    I1 is I+1, typed_generic(Ks,I1,Rest).
+% Physical operands for the already flattened adapter sources.
+adapter_word(Area, wf(K,Source), wf(K,Operand)) :-
+    adapter_operand(Area, Source, Operand).
+adapter_operand(thread, Source, mem(Off,rbx)) :- channel_offset(Source,Off).
+adapter_operand(snapshot, data(I), mem(Off,r12)) :- Off is 8*I.
+adapter_operand(snapshot, aux(I), snapshot_lower(Off)) :- Off is 8*I.
+adapter_operand(snapshot, snapshot, reg(r12)).
+saved_operand(saved(I), mem(Off,rbp)) :- Off is -32-8*I.
 
 
-/* thunk(+Callee)//: the weak thunk of Callee = t(F, Sig, Ret, Ks),
-   which resolves F through its getter and calls the fast entry when
-   the signature matches, else the generic entry. Every incoming word,
+/* thunk(+Product)//: the lowered weak thunk resolves its symbol through
+   the getter and calls the fast entry when the supplied signature matches,
+   else transports its generic cells and result channels. Every incoming word,
    integer or XMM, is saved below rbp before the getter can exit or
    clobber caller-saved registers; rbx holds the thread (r12 the return
    buffer) and -24(%rbp) the function object. Pointer authority stays
    rooted by the caller. */
-thunk(t(F,Sig,Ret,Ks)) -->
+thunk(thunk(F,Sig,Ts,Cells,ArgsSize,Result,Need)) -->
     { abi_symbol(entry(Sig),F,FI), abi_symbol(getter,F,Getter),
       atom_concat('.L',FI,G),atom_concat(G,'.generic',Generic),
       atom_concat(G,'.out',Out),atom_concat(G,'.fail',Fail),
       atom_concat(G,'.retok',RetOk),atom_concat(G,'.exc',Exc),
-      ret_kinds(Ret,RKs),ret_form(RKs,Form),
-      findall(param(K,tmp(I)),nth0(I,Ks,K),Ps),typed_params(Ps,Ts),
+      Result = adapter_result(Return,Channel,_,Packet),
+      target_form(Return,Form), packet_offsets(Packet,packet(Srcs,_)),
       typed_locations(Ts,Form,Ls,NS,_), stack_bytes(NS, Pop),
       saved_words(Ts,0,Saved),length(Ts,NW),Alloc is ((8+8*NW+15)//16)*16,
-      length(Ks,NA),ArgsSize is 8*NA,
-      length(RKs,NR),Need is 8*NR,generic_words(RKs,GWs),
       field(function_object,generic_entry,rsi,GenericEntry) },
     [section(text),p2align(4),hidden(FI),weak(FI),type(FI,function),label(FI),
      ins(push,q,[reg(rbp)]),ins(mov,q,[reg(rsp),reg(rbp)]),
@@ -1651,11 +1302,11 @@ thunk(t(F,Sig,Ret,Ks)) -->
     reserve_stack(Pop),adapter_stack(Saved,Ls,G),adapter_registers(Saved,Ls,G),
     mixed_thunk_call(Form),
     [ins(jmp,none,[sym(Out)]),label(Generic)],
-    saved_generic(Ks,Saved,0),
+    saved_generic(Cells),
     [ins(mov,q,[reg(rbx),reg(rdi)]),ins(mov,q,[mem(-24,rbp),reg(rsi)]),
      ins(mov,l,[imm(ArgsSize),reg(edx)]),
      ins(call,q,[ind(GenericEntry)]),ins(test,b,[imm(1),reg(al)])],
-    thunk_generic_return(Form,RKs,Need,GWs,Out,RetOk,Exc),
+    thunk_generic_return(Form,Channel,Need,Srcs,Out,RetOk,Exc),
     [label(Fail),ins(mov,q,[reg(rax),reg(rdi)]),ins(mov,q,[reg(rcx),reg(rsi)]),
      ins(call,none,[plt(filc_check_function_call_fail)]),ins(ud2,none,[]),
      label(Out),ins(lea,q,[mem(-16,rbp),reg(rsp)]),
@@ -1680,15 +1331,15 @@ mixed_thunk_call(mem(_)) -->
     { field(function_object,fast_entry,rdx,Fast) },
     [ins(mov,q,[reg(r12),reg(rdi)]),ins(mov,q,[reg(rbx),reg(rsi)]),
      ins(mov,q,[mem(-24,rbp),reg(rdx)]),ins(call,q,[ind(Fast)])].
-saved_generic([],[],_) --> [].
-saved_generic([p|Ks],[wf(_,A),wf(_,L)|Ts],I) -->
-    { generic_offsets(I,AO,LO),I1 is I+1 },
-    operand_thread_store(A,AO),operand_thread_store(L,LO),saved_generic(Ks,Ts,I1).
-saved_generic([K|Ks],[wf(_,W)|Ts],I) -->
-    { K\==p,generic_offsets(I,AO,LO),I1 is I+1 },
+saved_generic([]) --> [].
+saved_generic([cell(I,_,Data,saved(L))|Cells]) -->
+    { generic_offsets(I,AO,LO), saved_operand(Data,A), saved_operand(saved(L),Lower) },
+    operand_thread_store(A,AO),operand_thread_store(Lower,LO),saved_generic(Cells).
+saved_generic([cell(I,K,Data,none)|Cells]) -->
+    { generic_offsets(I,AO,LO), saved_operand(Data,W) },
     adapter_load(K,W,unused),
     [ins(mov,q,[reg(rax),mem(AO,rbx)]),ins(mov,q,[imm(0),mem(LO,rbx)])],
-    saved_generic(Ks,Ts,I1).
+    saved_generic(Cells).
 
 %% Access checks: k(Size, Write, Align), with the pointer in %rax and its
 %% lower in %rcx, which the failure block passes on.
@@ -1743,7 +1394,8 @@ access_check_kinds(Blocks, Kinds) :-
 % fails if Inst does not access memory.
 inst_check_kind(fused(check(_, Size, Rights, Align), _), k(Size, Write, Align)) :-
     rights_write(Rights, Write).
-inst_check_kind(let(_, _, setjmp(_), _), k(8, 1, 8)).
+inst_check_kind(abi(Actions), k(8, 1, 8)) :-
+    memberchk(returns_twice(_,_,_,_,_), Actions).
 
 % A failure block for each check kind, calling the runtime's reporter.
 check_fail_blocks([], _) --> [].
@@ -1765,7 +1417,7 @@ check_fail_blocks([Kind|Kinds], Ctx) -->
 
 % Generic-only public entry, with a private fast body. Promotion is the
 % only exiting call before the body roots the hidden snapshot parameter.
-variadic_object(Name, Linkage, Ret, Params, Impl) -->
+variadic_object(Name, Linkage, Adapter, Impl) -->
     { abi_symbol(function_object, Name, FO),
       abi_symbol(getter, Name, Getter),
       abi_symbol(impl(0), Name, Generic),
@@ -1773,18 +1425,16 @@ variadic_object(Name, Linkage, Ret, Params, Impl) -->
       atom_concat(Generic, '.body', BodyObject) },
     linkage_alias(Linkage, FI, Generic, Getter),
     object_getter(Getter, FO),
-    variadic_adapter(Generic, BodyObject, Ret, Params),
+    variadic_adapter(Generic, BodyObject, Adapter),
     [section(data_rel_ro), p2align(4), label(BodyObject), quad(Impl)],
     function_object_data(FO, 0, Generic, 0).
 
-variadic_adapter(Generic, BodyObject, Ret, Params) -->
-    { length(Params, N), Need is N * 8,
-      ret_kinds(Ret, RetKs), ret_form(RetKs, Form),
-      snapshot_words(Params, Ts),
+variadic_adapter(Generic, BodyObject, promote_incoming(Need,Words,Result)) -->
+    { Result = adapter_result(Return,Channel,RetSize,Packet),
+      target_form(Return, Form), packet_offsets(Packet, PlacedPacket),
+      maplist(adapter_word(snapshot), Words, Ts),
       typed_locations(Ts, Form, Ls, NS, _),
       stack_bytes(NS, Pop),
-      length(RetKs, NRet), RetSize is 8 * max(1, NRet),
-      generic_words(RetKs, GWs), foldl(generic_srcs, GWs, Dests, []),
       atom_concat(Generic, '.short', Short),
       atom_concat(Generic, '.done', Done) },
     [section(text), type(Generic, function), label(Generic),
@@ -1810,7 +1460,7 @@ variadic_adapter(Generic, BodyObject, Ret, Params) -->
     adapter_registers(Ts, Ls, Generic),
     [ins(mov, q, [reg(rbx), reg(rdi)]),
      ins(lea, q, [rip(BodyObject), reg(rsi)])],
-    generic_entry_call(Form, RetKs, GWs, Dests, Pop, RetSize, Done),
+    generic_entry_call(Form, Channel, PlacedPacket, Pop, RetSize, Done),
     [ins(pop, q, [reg(r13)]), ins(pop, q, [reg(r12)]),
      ins(pop, q, [reg(rbx)]), ins(ret, none, []),
      label(Short), ins(mov, q, [reg(rdx), reg(rdi)]),
@@ -1818,21 +1468,6 @@ variadic_adapter(Generic, BodyObject, Ret, Params) -->
      ins(xor, l, [reg(edx), reg(edx)]),
      ins(call, none, [plt(filc_cc_args_check_failure)]),
      ins(ud2, none, [])].
-
-% snapshot_words(+Params, -Ts): the words of the fast body's arguments,
-% read from the argument snapshot at %r12 (lowers from its aux at %r13),
-% then the snapshot itself as the hidden p parameter.
-snapshot_words(Ps, Ts) :-
-    findall(wf(B, W),
-            (   nth0(I, Ps, param(K, _)),
-                snapshot_word(K, I, W),
-                ( K == p -> B = l ; B = K )
-            ),
-            Ts0),
-    append(Ts0, [wf(l, reg(r12)), wf(l, reg(r12))], Ts).
-
-snapshot_word(_, I, mem(Off, r12)) :- Off is 8 * I.
-snapshot_word(p, I, snapshot_lower(Off)) :- Off is 8 * I.
 
 snapshot_load(reg(R), _) --> [ins(mov, q, [reg(R), reg(rax)])].
 snapshot_load(mem(O, R), _) --> [ins(mov, q, [mem(O, R), reg(rax)])].
@@ -1843,14 +1478,14 @@ snapshot_load(snapshot_lower(O), G) -->
      ins(jz, none, [sym(NoAux)]),
      ins(mov, q, [mem(O, r13), reg(rax)]), label(NoAux)].
 
-function_object(Name, Linkage, Ret, Params, Sig, Impl) -->
+function_object(Name, Linkage, Adapter, Sig, Impl) -->
     { abi_symbol(entry(Sig), Name, FI),
       abi_symbol(function_object, Name, FO),
       abi_symbol(getter, Name, Getter),
       format(atom(Generic), '.L~w..generic', [Name]) },
     linkage_alias(Linkage, FI, Impl, Getter),
     object_getter(Getter, FO),
-    generic_entry(Generic, Ret, Params),
+    generic_entry(Generic, Adapter),
     [section(data_rel_ro), p2align(4)],
     function_object_data(FO, Impl, Generic, Sig).
 
@@ -2042,38 +1677,6 @@ reloc_nodes([r(_, S, Addend)|Rs], I, Name) -->
 reloc_node(Name, I, Node) :-
     format(atom(Node), '.Lpizlonated_~w..node~w', [Name, I]).
 
-%% Thunks for functions outside the module, as clang emits them: a hidden
-%% weak pizlonatedFI<sig>_f that gets f's function object from its getter,
-%% checks it, and calls the fast entry if the signature matches or the
-%% generic entry otherwise. A clang definition of the same symbol wins.
-
-% external_callees(+Module, -Callees): Callees are t(F, Sig, RetKind,
-% ArgKinds), sorted, one for each thunk the module needs.
-external_callees(Module, Callees) :-
-    Module = module(Items),
-    findall(t(F, Sig, RetKind, ArgKinds),
-            (   member(func(_, _, _, _, Blocks), Items),
-                member(block(_, _, Insts, _), Blocks),
-                member(call(Res, global(F), Args), Insts),
-                ( \+ func_named(Module, F, _)
-                ; func_named(Module, F, VF), variadic_func(VF) ),
-                call_sig(Res, Args, RetKind, ArgKinds, Sig)
-            ),
-            Callees0),
-    sort(Callees0, Callees1),
-    one_per_symbol(Callees1, Callees).
-
-% one_per_symbol(+Callees0, -Callees): Callees keeps the first callee
-% in Callees0 of each symbol, F and Sig. w and l are the same word, so
-% call sites that differ only there share a thunk.
-one_per_symbol([], []).
-one_per_symbol([T|Ts0], [T|Ts]) :-
-    T = t(F, Sig, _, _),
-    exclude(same_symbol(F, Sig), Ts0, Ts1),
-    one_per_symbol(Ts1, Ts).
-
-same_symbol(F, Sig, t(F, Sig, _, _)).
-
 % thunk_generic_return(+Form, +RetKs, +Need, +GWs, +Out, +RetOk,
 % +GenericExc)//: the return, in form Form, of the generic entry's
 % result words GWs, of classes RetKs and Need bytes, then a jump to Out.
@@ -2082,10 +1685,9 @@ thunk_generic_return(reg, RetKs, Need, GWs, Out, RetOk, _) -->
     thunk_generic_reg_words(RetKs, Need, GWs, RetOk),
     [ins(xor, l, [reg(eax), reg(eax)]),
      ins(jmp, none, [sym(Out)])].
-thunk_generic_return(mem(_), _, Need, GWs, Out, RetOk, GenericExc) -->
+thunk_generic_return(mem(_), _, Need, Srcs, Out, RetOk, GenericExc) -->
     [ins(jnz, none, [sym(GenericExc)])],
     rets_check(Need, RetOk),
-    { foldl(generic_srcs, GWs, Srcs, []) },
     thunk_buffer_copies(Srcs, 8),
     [ins(mov, b, [imm(0), mem(0, r12)]),
      ins(mov, q, [reg(r12), reg(rax)]),
@@ -2096,14 +1698,13 @@ thunk_generic_return(mem(_), _, Need, GWs, Out, RetOk, GenericExc) -->
      ins(jmp, none, [sym(Out)])].
 
 % The result words, if RetKs has any, in %rdx:%rcx.
-thunk_generic_reg_words([], _, _, _) --> [].
-thunk_generic_reg_words([K],Need,[gw(K,Off)],RetOk) -->
-    { float_class(K),att_suffix(K,S),reg_name(d,K,R) }, !,
+thunk_generic_reg_words(void, _, _, _) --> [].
+thunk_generic_reg_words(float(K),Need,[Off],RetOk) -->
+    { att_suffix(K,S),reg_name(d,K,R) },
     rets_check(Need,RetOk),
     [ins(mov,S,[mem(Off,rbx),reg(R)])],to_xmm(K,d,xmm0).
-thunk_generic_reg_words([_|_], Need, GWs, RetOk) -->
+thunk_generic_reg_words(words, Need, Srcs, RetOk) -->
     rets_check(Need, RetOk),
-    { foldl(generic_srcs, GWs, Srcs, []) },
     thunk_reg_loads(Srcs, [rdx, rcx]).
 
 % The load of each generic return word, at thread offset Off, into its
@@ -2135,40 +1736,36 @@ operand_thread_store(mem(D, B), Off) -->
    thread+384+8i, and so is result word i. It calls the fast entry
    through callee_lower, with a buffer on the stack for a buffered
    return. */
-generic_entry(Generic, Ret, Params) -->
-    { findall(K,member(param(K,_),Params),Ks),
-      length(Params,N), Need is 8*N,
-      ret_kinds(Ret,RKs),ret_form(RKs,Form),
-      typed_generic(Ks,Ts),typed_locations(Ts,Form,Ls,NS,_),
+generic_entry(Generic, adapt(Need,Words,Result)) -->
+    { Result = adapter_result(Return,Channel,RetSize,Packet),
+      target_form(Return,Form), packet_offsets(Packet,PlacedPacket),
+      maplist(adapter_word(thread),Words,Ts),typed_locations(Ts,Form,Ls,NS,_),
       stack_bytes(NS, Pop),
-      length(RKs,NR), RetSize is 8*max(1,NR),
-      generic_words(RKs,GWs),foldl(generic_srcs,GWs,Dests,[]),
       atom_concat(Generic,'.short',Short),atom_concat(Generic,'.done',Done) },
     [section(text),label(Generic),ins(push,q,[reg(rbx)]),
      ins(cmp,q,[imm(Need),reg(rdx)]),ins(jb,none,[sym(Short)]),
      ins(mov,q,[reg(rdi),reg(rbx)])],
     ret_buffer_reservation(Form), reserve_stack(Pop),
     adapter_stack(Ts,Ls,Generic),adapter_registers(Ts,Ls,Generic),
-    generic_entry_call(Form,RKs,GWs,Dests,Pop,RetSize,Done),
+    generic_entry_call(Form,Channel,PlacedPacket,Pop,RetSize,Done),
     [ins(pop,q,[reg(rbx)]),ins(ret,none,[]),label(Short),
      ins(mov,q,[reg(rdx),reg(rdi)]),ins(mov,l,[imm(Need),reg(esi)]),
      ins(xor,l,[reg(edx),reg(edx)]),
      ins(call,none,[plt(filc_cc_args_check_failure)]),ins(ud2,none,[])].
-/* generic_entry_call(+Form, +RetKs, +GWs, +Dests, +Pop, +RetSize,
-   +Done)//: the generic entry's call of the fast entry in form Form,
-   then the result words GWs, of classes RetKs, at their thread offsets
-   Dests, and the return size RetSize in %edx. Pop is the size of the
-   pushed argument words. */
-generic_entry_call(reg, RetKs, GWs, Dests, Pop, RetSize, Done) -->
+/* generic_entry_call(+Form, +Channel, +Packet, +Pop, +RetSize, +Done)//:
+   call the fast entry in placed Form, then transport Channel into the
+   placed Packet and return RetSize in %edx. Pop is the native stack
+   argument size. Exceptions skip all result reads and size production. */
+generic_entry_call(reg, Channel, Packet, Pop, RetSize, Done) -->
     { field(function_object, fast_entry, rsi, Fast) },
     [ins(call, q, [ind(Fast)])],
     stack_release(Pop),
     [ins(test, b, [imm(1), reg(al)]),
      ins(jnz, none, [sym(Done)])],
-    generic_reg_results(RetKs, GWs, Dests),
+    generic_reg_results(Channel, Packet),
     [ins(mov, l, [imm(RetSize), reg(edx)]),
      label(Done)].
-generic_entry_call(mem(Bytes), _, GWs, Dests, Pop, RetSize, Done) -->
+generic_entry_call(mem(Bytes), _, packet(Dests,Zeros), Pop, RetSize, Done) -->
     { field(function_object, fast_entry, rdx, Fast) },
     [ins(mov, q, [reg(rsi), reg(rdx)]),
      ins(mov, q, [reg(rbx), reg(rsi)]),
@@ -2179,7 +1776,7 @@ generic_entry_call(mem(Bytes), _, GWs, Dests, Pop, RetSize, Done) -->
      ins(test, b, [reg(al), reg(al)]),
      ins(jnz, none, [sym(Done)])],
     generic_buffer_copies(Dests, 8),
-    generic_lower_zeroings(GWs),
+    generic_zeroings(Zeros),
     [ins(mov, l, [imm(RetSize), reg(edx)]),
      ins(xor, l, [reg(eax), reg(eax)]),
      label(Done)],
@@ -2187,18 +1784,14 @@ generic_entry_call(mem(Bytes), _, GWs, Dests, Pop, RetSize, Done) -->
 
 % The result words from %rdx:%rcx at their thread offsets; a void result
 % is one zero word.
-generic_reg_results([], _, _) -->
-    { generic_offsets(0, Addr, Lower) },
-    [ins(mov, q, [imm(0), mem(Addr, rbx)]),
-     ins(mov, q, [imm(0), mem(Lower, rbx)])].
-generic_reg_results([K], [gw(K,Off)], _) -->
-    { float_class(K), Lower is Off+256 }, !,
+generic_reg_results(void, packet([],Zeros)) --> generic_zeroings(Zeros).
+generic_reg_results(float(K), packet([Off],[Lower])) -->
     from_xmm(K,xmm0,d),
     [ins(mov,q,[reg(rdx),mem(Off,rbx)]),
      ins(mov,q,[imm(0),mem(Lower,rbx)])].
-generic_reg_results([_|_], GWs, Dests) -->
+generic_reg_results(words, packet(Dests,Zeros)) -->
     generic_reg_stores(Dests, [rdx, rcx]),
-    generic_lower_zeroings(GWs).
+    generic_zeroings(Zeros).
 
 % The store of each result register at its thread offset.
 generic_reg_stores([], _) --> [].
@@ -2215,32 +1808,30 @@ generic_buffer_copies([Dest|Dests], Off) -->
     { Off1 is Off + 8 },
     generic_buffer_copies(Dests, Off1).
 
-% An integer result word has no lower.
-generic_lower_zeroings([]) --> [].
-generic_lower_zeroings([gw(K, Off)|GWs]) -->
-    generic_lower_zeroing(K, Off),
-    generic_lower_zeroings(GWs).
-
-generic_lower_zeroing(p, _) --> [].
-generic_lower_zeroing(w, Off) -->
-    { LowerOff is Off + 256 },
-    [ins(mov, q, [imm(0), mem(LowerOff, rbx)])].
-generic_lower_zeroing(l, Off) -->
-    { LowerOff is Off + 256 },
-    [ins(mov, q, [imm(0), mem(LowerOff, rbx)])].
+% Explicit zero channels from the ABI product.
+generic_zeroings([]) --> [].
+generic_zeroings([Off|Offs]) -->
+    [ins(mov, q, [imm(0), mem(Off, rbx)])], generic_zeroings(Offs).
 
 %% Static data: function origins (staging's 48-byte layout), origins,
 %% and one access-check origin per check kind.
 
 % The name string, the c and n function origins with their origins, and
 % the check origins of function Name.
-origins(Name, NLowers, CheckKinds, NumSetjmps) -->
+origins(Name, Origins, CheckKinds) -->
     { format(atom(NameLabel), '.L~w..name', [Name]) },
     [section(rodata), label(NameLabel), asciz(Name),
      section(data_rel_ro), p2align(4)],
-    function_origin(Name, NameLabel, NLowers, c, 1, NumSetjmps),
-    function_origin(Name, NameLabel, NLowers, n, 0, NumSetjmps),
+    function_origins(Origins, Name, NameLabel),
     check_origins(CheckKinds, Name).
+
+function_origins([], _, _) --> [].
+function_origins([origin(Which,Catch,NLowers,NumSetjmps)|Origins], Name, NameLabel) -->
+    { catch_flag(Catch, CanCatch) },
+    function_origin(Name, NameLabel, NLowers, Which, CanCatch, NumSetjmps),
+    function_origins(Origins, Name, NameLabel).
+catch_flag(catches, 1).
+catch_flag(no_catch, 0).
 
 % A function origin and the origin (origin_label/3) that points at it.
 function_origin(Name, NameLabel, NLowers, Which, CanCatch, NumSetjmps) -->

@@ -26,6 +26,7 @@
 :- use_module('../src/c_lower').
 :- use_module('../src/c_types').
 :- use_module('../src/asm').
+:- use_module('abi').
 :- use_module(library(assoc)).
 :- use_module(library(pio)).
 :- use_module(library(clpz)).
@@ -111,6 +112,8 @@ rejected_with(Items, Fragment) :-
     !.
 
 %% Backend regressions (tests/backend), cases qbe 1.2 / c081897 got wrong
+
+test(abi_products) :- abi_products.
 
 % storew of an l value stores its low word.
 % memory 11 22 88 99 aa bb 77 88, loaduh at 5 = 0x77bb
