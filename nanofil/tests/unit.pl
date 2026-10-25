@@ -1198,6 +1198,67 @@ test(pizlonate_states_every_check) :-
     catch(( valid_module(Mutant), fail ), nanofil_error(Msg), true),
     Msg == 'in f: tmp(a) has class p but is used as a'.
 
+% A function proof is not a memory proof. It certifies the exact
+% function address, not just its capability. Removing it exposes a pass
+% error; a trap from the callee or its ABI still belongs to the program.
+test(pizlonate_states_function_checks) :-
+    ir_module([
+        func(subtract, local, l, [param(l, tmp(x)), param(l, tmp(y))], [
+            block(s, [], [let(tmp(r), l, sub, [tmp(x), tmp(y)])], ret(tmp(r)))
+        ]),
+        func(f, export, l, [param(l, tmp(off))], [
+            block(s, [], [
+                let(tmp(chk0), p, copy, [global(subtract)]),
+                let(tmp(p), p, add, [tmp(chk0), tmp(off)]),
+                call(result(tmp(r), l), tmp(p), [arg(l, const(42)), arg(l, const(7))])
+            ], ret(tmp(r)))
+        ])
+    ], M),
+    pizlonate_module(M, C), valid_module(C), reads_back(C),
+    pizlonate_module(C, C1), C1 == C,
+    C = module([Sub, func(f, E, R, Ps, [block(s, [], Is, J)])]),
+    Is = [Copy, Add, let(tmp(Q), f, check_function, [tmp(p)]),
+          raw_call(Res, tmp(Q), Args)],
+    Q \== chk0,
+    forall(member(Input-Expected, [0-ret(35), 1-trap(not_a_function),
+                                   8-trap(not_a_function)]),
+           ( once(run(M, f, [Input], 10, Expected)),
+             once(run(C, f, [Input], 10, Expected)) )),
+    Mutant = module([Sub, func(f, E, R, Ps,
+        [block(s, [], [Copy, Add, raw_call(Res, tmp(p), Args)], J)])]),
+    once(run(Mutant, f, [0], 10, ret(35))),
+    once(run(Mutant, f, [1], 10, unchecked(not_a_function))),
+    catch(( valid_module(Mutant), fail ), nanofil_error(_), true),
+    file_module('../tests/filc/globals.ir', G),
+    pizlonate_module(G, GC), valid_module(GC),
+    once(run(GC, toofew, [], 10, trap(argument_size))),
+    once(run(GC, trapcall, [], 10, trap(readonly))),
+    % A nested bad target must not be mistaken for a missing outer check.
+    Nested = func(nested, local, w, [], [block(s, [], [
+        let(tmp(p), p, copy, [global(nullfn)]),
+        call(result(tmp(r), w), tmp(p), [])], ret(tmp(r)))]),
+    G = module(GItems), pizlonate_module(module([Nested|GItems]), GN),
+    valid_module(GN), once(run(GN, nested, [], 10, trap(not_a_function))),
+    % Target identity alone says nothing about the number of result words.
+    Returns = func(returns, local, tuple([l, l]), [], [block(s, [], [
+        let(tmp(p), p, copy, [global(three)]),
+        call(tuple([result(tmp(x), l), result(tmp(y), l)]), tmp(p),
+             [arg(w, const(7))])], rets([tmp(x), tmp(y)]))]),
+    pizlonate_module(module([Returns|GItems]), GR), valid_module(GR),
+    once(run(GR, returns, [], 10, trap(return_size))),
+    % No ordinary p temporary: this is still checked Fil-C IR.
+    Null = module([func(null, local, void, [], [block(s, [], [
+        let(tmp(q), f, check_function, [const(0)]),
+        raw_call(void, tmp(q), [])], ret)])]),
+    valid_module(Null), once(run(Null, null, [], 10, trap(not_a_function))),
+    Ext = module([func(ext, local, void, [], [block(s, [], [
+        let(tmp(p), p, copy, [global(external)]),
+        let(tmp(q), f, check_function, [tmp(p)]),
+        raw_call(void, tmp(q), [])], ret)])]),
+    valid_module(Ext),
+    catch(( run(Ext, ext, [], 10, _), fail ), nanofil_error(External), true),
+    External == 'cannot interpret a call to external external'.
+
 % Checked IR states which check covers an access, and nothing else may
 % come between them; every loop polls.
 test(checked_ir_rules) :-
@@ -1229,6 +1290,38 @@ test(checked_ir_rules) :-
     M3 == 'in f: a cycle without a poll edge in checked IR',
     Loop = func(F, E, R, Ps, [S, block(h, [], Is, goto(h))]),
     valid_module(module([func(F, E, R, Ps, [S, block(h, [], Is, goto(poll(h)))])])).
+
+% Only the immediately preceding function check authorizes a raw call.
+% Neither a memory proof nor a proof carried across an effect qualifies.
+test(checked_call_rules) :-
+    Check = let(tmp(q), f, check_function, [tmp(p)]),
+    Call = raw_call(void, tmp(q), []),
+    Prefix = let(tmp(p), p, itop, [const(0)]),
+    valid_module(module([func(f, local, void, [], [
+        block(s, [], [Prefix, Check, Call], ret)])])),
+    forall(member(Insts, [
+        [Prefix, Check, call(void, global(g), []), Call],
+        [Prefix, Check, Call, Call],
+        [Prefix, let(tmp(q), a, check(0, 8, read, 8), [tmp(p)]), Call],
+        [Prefix, Check, raw_call(void, tmp(p), [])],
+        [Prefix, Check, Call, call(void, tmp(p), [])],
+        [Prefix, Check, raw_call(void, tmp(q), [arg(f, tmp(q))])],
+        [Prefix, Check, raw_call(result(tmp(r), f), tmp(q), [])],
+        [Prefix, Check, raw_call(tuple([result(tmp(r), l), result(tmp(t), f)]), tmp(q), [])],
+        [Prefix, Check, raw_call(void, const(0), [])],
+        [Prefix, Check, raw_call(result(tmp(r), a), tmp(q), [])],
+        [Prefix, Check, raw_call(tuple([result(tmp(r), a), result(tmp(t), l)]), tmp(q), [])],
+        [Prefix, Check, raw_call(void, tmp(q), [arg(a, const(0))])],
+        [Prefix, Check, Call, let(tmp(r), w, copy, [tmp(q)])],
+        [Prefix, Check, Call, let(tmp(r), l, copy, [tmp(q)])],
+        [Prefix, Check, Call, store(l, tmp(q), tmp(p))],
+        [Prefix, Check, Call, let(tmp(r), f, copy, [tmp(q)])],
+        [Prefix, Check],
+        [Prefix, Check, raw_call(void, tmp(other), [])]
+    ]), catch(( valid_module(module([func(f, local, void, [], [
+                    block(s, [], Insts, ret)])])), fail ), nanofil_error(_), true)),
+    catch(( valid_module(module([func(f, local, void, [param(f, tmp(q))], [
+                block(s, [], [Call], ret)])])), fail ), nanofil_error(_), true).
 
 % A host atom built at run time is an atom of arity 0 only. Unpatched
 % Trealla unified it with any same-name compound, so a field named label

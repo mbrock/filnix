@@ -516,6 +516,8 @@ inst_uses(raw_store(_, _, V, A), Us) :-
 inst_uses(call(_, F, Args), Us) :-
     findall(V, member(arg(_, V), Args), Vs),
     temps([F|Vs], Us).
+inst_uses(raw_call(Res, F, Args), Us) :-
+    inst_uses(call(Res, F, Args), Us).
 inst_uses(loc(_, _), []).
 
 %! inst_def(+Inst, -Temp) is nondet.
@@ -526,6 +528,8 @@ inst_def(let(tmp(D), _, _, _), D).
 inst_def(call(result(tmp(D), _), _, _), D).
 inst_def(call(tuple(Rs), _, _), D) :-
     member(result(tmp(D), _), Rs).
+inst_def(raw_call(Res, F, Args), D) :-
+    inst_def(call(Res, F, Args), D).
 
 %! jump_uses(+Jump, -Uses) is det.
 %

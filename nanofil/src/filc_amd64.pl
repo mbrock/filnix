@@ -40,9 +40,10 @@
     ## Instructions
 
     - The IR must be checked (ir.pl, pizlonate.pl): each check comes
-      right before the raw access it covers, and the two are emitted as
-      one instruction, `fused(Check, Access)`: the check's sequence,
-      then the access.
+      right before the raw access or call it covers, and the two are
+      emitted as one instruction, `fused(Check, Access)`: the check's
+      sequence, then the operation. Function identity checks come from
+      `check_function`, not from inferring that an indirect call needs one.
     - Pointer loads and stores go through the object's aux array; a
       pointer store ensures the aux array and runs the store barrier.
     - `alloc` is a heap allocation.
@@ -425,8 +426,10 @@ function(Module, Func) -->
    proof is a register value (%rax:%rcx after the check) and needs no
    slot. LiveBlocks have the bare accesses, for liveness and layout,
    which so keep P live through the access, as the reload after
-   ensure-aux needs. Throws unless the IR is checked and every cycle
-   polls. */
+   ensure-aux needs. Function proofs fuse with raw_call in the same way:
+   the original pointer and all arguments stay live through the call,
+   and neither proof gets a frame slot. Throws unless the IR is checked
+   and every cycle polls. */
 fused_blocks(Fn, Blocks0, Blocks, LiveBlocks) :-
     (   polls_every_cycle(Blocks0) -> true
     ;   throw_fn(Fn, 'a cycle without a poll edge; run pizlonate first')
@@ -453,6 +456,11 @@ fused_inst(let(tmp(Q), a, Check, [P]), [Access0|Insts], Fn, Inst, Insts) :- !,
     ->  true
     ;   throw_fn(Fn, 'a check or offset access_check//2 cannot emit yet')
     ).
+fused_inst(let(tmp(Q), f, check_function, [P]), Insts0, Fn,
+           fused(check_function, call(Res, P, Args)), Insts) :- !,
+    (   Insts0 = [raw_call(Res, tmp(Q), Args)|Insts] -> true
+    ;   throw_fn(Fn, 'a function check not followed by its raw call')
+    ).
 fused_inst(Inst, Insts, Fn, Inst, Insts) :-
     (   unchecked_access(Inst)
     ->  throw_fn(Fn, 'an unchecked access; run pizlonate first')
@@ -471,6 +479,8 @@ access_pointer(Access, P) :- access_pointer(Access, P, _).
 
 unchecked_access(let(_, _, load(_), _)).
 unchecked_access(store(_, _, _)).
+unchecked_access(call(_, tmp(_), _)).
+unchecked_access(raw_call(_, _, _)).
 
 live_block(block(L, Phis, Insts0, Jump), block(L, Phis, Insts, Jump)) :-
     maplist(live_inst, Insts0, Insts).
@@ -599,7 +609,7 @@ exception_flag(mem(_), Ctx) -->
 % a pointer.
 not_function_block(Blocks, Ctx) -->
     (   { member(block(_, _, Insts, _), Blocks),
-          memberchk(call(_, tmp(_), _), Insts) }
+          memberchk(fused(check_function, _), Insts) }
     ->  { special_label(Ctx, notfn, NotFn) },
         [label(NotFn),
          ins(mov, q, [reg(rax), reg(rdi)]),
@@ -957,8 +967,17 @@ inst(fused(check(_, Size, Rights, Align), Access), Index, Block, Ctx) -->
     flight_load(P, Ctx),
     access_check(k(Size, Write, Align), Ctx),
     raw_access(Access, Index, Block, Ctx).
-inst(call(Res, Callee, Args), Index, Block, Ctx) -->
-    callee_call(Callee, Res, Args, Index, Block, Ctx).
+inst(fused(check_function, call(Res, P, Args)), Index, Block, Ctx) -->
+    { result_form(Res, _, _, Form),
+      special_label(Ctx, notfn, NotFn) },
+    origin_store(Ctx, c),
+    ret_buffer_reservation(Form),
+    flight_load(P, Ctx),
+    function_check(NotFn),
+    reg_slot_store(rcx, aux, Ctx),
+    indirect_call(Res, Args, Index, Block, Ctx).
+inst(call(Res, global(F), Args), _, _, Ctx) -->
+    direct_call(F, Res, Args, Ctx).
 
 % kind_inst(+Kind, +K, +Op, +Args, +D, +Index, +Block, +Ctx)//: as
 % inst//4, for tmp(D) =K Op Args with Op of Kind. Integer instructions go
@@ -1259,9 +1278,9 @@ width_value_class(l, l).
 width_value_class(s,s).
 width_value_class(d,d).
 
-% callee_call(+Callee, +Res, +Args, +Index, +Block, +Ctx)//: the code of
-% a call of Callee, the Indexth instruction of Block.
-callee_call(global(F), Res, Args, _, _, Ctx) -->
+% direct_call(+F, +Res, +Args, +Ctx)//: a call through F's FI symbol,
+% including the external thunk when its definition is not in the module.
+direct_call(F, Res, Args, Ctx) -->
     { call_target(Ctx, F, Res, Args, Target),
       result_form(Res, _, _, Form) },
     origin_store(Ctx, c),
@@ -1270,28 +1289,21 @@ callee_call(global(F), Res, Args, _, _, Ctx) -->
     fast_result(Form, Res, Ctx),
     ret_buffer_release(Form).
 
-/* A call through a p value. The callee must be a function object: lower
-   not 0, ptr equal to the object's aux pointer, and special type
-   function. Then the fast entry if the signature matches the call site's,
+/* A call through an already checked function, whose lower is in the
+   aux slot. The fast entry if the signature matches the call site's,
    else the generic entry with every argument as an 8-byte word at
    thread+128+8i and its lower at thread+384+8i (docs/abi-findings.md). */
-callee_call(tmp(C), Res, Args, Index, Block, Ctx) -->
+indirect_call(Res, Args, Index, Block, Ctx) -->
     { ctx_fn(Ctx, Fn),
       call_sig(Res, Args, _, _, Sig),
       result_form(Res, Tos, RetKs, Form),
-      special_label(Ctx, notfn, NotFn),
       special_label(Ctx, exc, Exc),
       length(Args, NArgs),
       ArgsSize is 8 * NArgs,
       local_label(Ctx, Block, Index, generic, Generic),
       local_label(Ctx, Block, Index, done, Done),
-      local_label(Ctx, Block, Index, retok, RetOk) },
-    origin_store(Ctx, c),
-    ret_buffer_reservation(Form),
-    flight_load(tmp(C), Ctx),
-    function_check(NotFn),
-    reg_slot_store(rcx, aux, Ctx),
-    { field(function_object, signature, rcx, FoSig),
+      local_label(Ctx, Block, Index, retok, RetOk),
+      field(function_object, signature, rcx, FoSig),
       field(function_object, generic_entry, rsi, FoGeneric) },
     [ins(movabs, q, [imm(Sig), reg(rsi)]),
      ins(cmp, q, [reg(rsi), FoSig]),

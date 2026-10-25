@@ -143,6 +143,35 @@ Update the status column when a step lands, with its commit.
 | 4 | Lower from the tree, form by form, through `src(E)`: literals and conversions (deleting `decay//3`, `assign_convert//5`), then places, then `?:` and assignment, then calls. Delete `obj//3` and `rvalue//3`. | Snapshot identical after every form. | Done. `rval//3` elaborates, then `lower//3` and `place//3` translate the tree; nothing lowers from source any more, and the source argument is gone. Deleted: `obj//3`, `rvalue//3`, `decay//3`, `expr_type//3`, `lower_call` and the duplicate checks for `?:`, assignment, `++`/`--`, casts and calls. Each node has one clause, with its C11 section: places (identifiers, `__func__`, string literals, compound literals, `*`, `.`) and values (constants, conversions, operators, `&&`/`||`, `?:`, assignment, calls, builtins, casts, `va_arg`, `sizeof`/`alignof`/`offsetof`, statement expressions, members of struct values). A cast, compound literal or `va_arg` keeps its type name in the tree, so lowering reads it again with the VM check. c_types now owns the remaining judgments: `assigned/4` for returns, initializers and builtin arguments, and `unsupported_type/3` for what nanofil refuses, which `fault/4` reports instead of declining (the long double literal's error now has its line). `assign_convert//5` remains as that judgment then `converted//3`, until returns and initializers become tree nodes. |
 | 5 | Integer and address constants as folds over the tree: `const_eval/4` loses its own typing, `addr_const`/`lvalue_const` fold places to `sym(S, Off)`. | The `#if` cases against `clang -E`, `pptest.sh`, snapshot, `nanofil-zlib`, `nanofil-lua`. The four walks should be one. | Done. `const_eval/4` elaborates, then `folded/3` does arithmetic on the tree with the elaborator's conversions (`binary_operands/6` gives a comparison's common type); `kind_binary` lost its typing. `#if` elaborates with `Env = pp`: `env_int_type/3` at constants and int-yielding operators states 6.10.1p4 once, and refuses floating constants there. Null pointer constants are judged on the elaborated tree, not by elaborating the source again. c_lower's `address_constant/5` and `place_constant/5` replace `addr_const/5` and `lvalue_const/5`, one clause per tree node, which closed two gaps against clang, both now in `tests/c/static-array-address.c`: `&x[1][2]` (an array lvalue that decays) and `0 + 0` as a null pointer. Snapshot identical apart from cproc's `initializer-nested-array-address.c`, which now compiles. −16 lines in `src/`. |
 
+## The next intervention: Fil-C lowering before target emission
+
+Steps 3–5 established the frontend's boundary: c_types judges a C
+expression once; c_lower emits from that judgment. Apply the same rule
+to pizlonation. The checked IR must state what Fil-C requires, and the
+target should implement those terms rather than rediscover the
+requirements from a high-level pointer operation.
+
+The first checked stage is not yet the explicit address/lower IR in
+PLAN's diagram. It still contains `p` values, opaque pointer loads and
+stores, ordinary calls, allocations, setjmp and variadic operations.
+Fusing a proof with its immediate use is a target instruction-selection
+choice; moving more policy into that fusion would not complete the
+separation.
+
+| Step | Contract and gate | Status |
+| --- | --- | --- |
+| Explicit function-target checks | `check_function` produces an ephemeral `f`; `raw_call` consumes it immediately. Target validity is distinct from signature dispatch and callee traps. Same assembly, including buffered returns, roots and setjmp layouts. | Implemented; see [pizlonation.md](pizlonation.md). Memory checks and poll edges were already explicit. |
+| Flight-pointer and runtime effects | Define address/lower propagation and aux/barrier operations once, with a semantics and validator. State which operations may exit to the runtime; preserve ensure-aux's rooted reload. Review before adoption. | Next. Do not relax proof adjacency as part of this factoring. |
+| ABI lowering | Describe frame-root placement, prologues/exits, call signatures and fast/generic dispatch, getters and origins before AMD64 instruction selection. Keep setjmp's returns-twice storage distinct. Snapshot each extracted responsibility; exercise clang interop in both directions and forced GC. | Pending. Naming ABI constants alone does not do this. |
+| Lifetime semantics and remaining M5 storage | Give free/invalidation an interpreter meaning before check optimizations; then review exact-sized non-escaping stack objects and their rooting/lifetime rules. | Pending. Existing escape and alias facts are not by themselves safety proofs. |
+
+Do not add a parallel hierarchy of wrappers just to make a pass appear
+in a diagram. A new term earns its place when it states a fact the
+validator, interpreter and emitter can all read. A new module earns its
+place when it owns a coherent specification. This may add code while
+making the boundary explicit; the measure is whether there are fewer
+independent accounts of the same rule.
+
 ## Visions
 
 Where the campaign leads if it succeeds, to keep the ambition honest:

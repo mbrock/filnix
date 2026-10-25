@@ -23,3 +23,27 @@ func(use, export, l, [param(l, tmp(n))], [
     ], ret(tmp(r3)))
 ]).
 run(use, [41]).
+
+% Pointer-bearing results use a buffer. The first indirect call matches
+% mk's signature; the extra argument forces the second through generic
+% dispatch. Both pointer results stay usable, including across a phi.
+% chk0 is deliberately a tuple-result name: proof freshness includes it.
+func(buffered, export, l, [param(l, tmp(n))], [
+    block(s, [], [
+        let(tmp(p), p, alloc(8), [const(8)]),
+        store(l, const(19), tmp(p)),
+        let(tmp(f), p, copy, [global(mk)]),
+        call(tuple([result(tmp(chk0), l), result(tmp(p1), p)]), tmp(f),
+             [arg(p, tmp(p)), arg(l, tmp(n))]),
+        call(tuple([result(tmp(b), l), result(tmp(p2), p)]), tmp(f),
+             [arg(p, tmp(p1)), arg(l, tmp(chk0)), arg(l, const(99))]),
+        let(tmp(x), l, load(l), [tmp(p1)])
+    ], goto(done)),
+    block(done, [phi(tmp(chosen), p, [s-tmp(p2)])], [
+        let(tmp(y), l, load(l), [tmp(chosen)]),
+        let(tmp(ab), l, add, [tmp(chk0), tmp(b)]),
+        let(tmp(xy), l, add, [tmp(x), tmp(y)]),
+        let(tmp(r), l, add, [tmp(ab), tmp(xy)])
+    ], ret(tmp(r)))
+]).
+run(buffered, [41]).

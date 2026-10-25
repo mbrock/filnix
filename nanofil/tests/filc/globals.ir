@@ -70,6 +70,30 @@ func(toofew, export, w, [], [
         call(result(tmp(r), w), tmp(f), [])
     ], ret(tmp(r)))
 ]).
+% Null and a forged function address fail even though the latter's
+% integer bits are exactly those of a real function pointer.
+func(nullfn, export, w, [], [
+    block(s, [], [
+        let(tmp(f), p, itop, [const(0)]),
+        call(result(tmp(r), w), tmp(f), [])
+    ], ret(tmp(r)))
+]).
+func(forgedfn, export, w, [], [
+    block(s, [], [
+        let(tmp(f), p, copy, [global(three)]),
+        let(tmp(i), l, ptoi, [tmp(f)]),
+        let(tmp(g), p, itop, [tmp(i)]),
+        call(result(tmp(r), w), tmp(g), [arg(w, const(7))])
+    ], ret(tmp(r)))
+]).
+% The target is valid; the callee's readonly store, not the function
+% check, traps. Checked calls must preserve that outcome.
+func(trapcall, export, w, [], [
+    block(s, [], [
+        let(tmp(f), p, copy, [global(poke)]),
+        call(result(tmp(r), w), tmp(f), [])
+    ], ret(tmp(r)))
+]).
 run(get, [1]).
 run(get, [2]).
 run(get, [3]).
@@ -81,3 +105,6 @@ run(notfn, []).
 run(offfn, []).
 run(readfn, []).
 run(toofew, []).
+run(nullfn, []).
+run(forgedfn, []).
+run(trapcall, []).

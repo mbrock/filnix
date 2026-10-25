@@ -32,6 +32,7 @@
     | `d` | 64-bit float (double) |
     | `p` | pointer: an address with its Fil-C capability (filc mode only) |
     | `a` | proven address: a `p` that a check has cleared (checked stage only) |
+    | `f` | proven function: a `p` that a function check has cleared (checked stage only) |
 
     A store's width may also be `b` (8 bits) or `h` (16 bits). A load
     and `ext` name the narrow types `sb` `ub` `sh` `uh` `sw` `uw`:
@@ -66,6 +67,7 @@
     | `call(Res, Callee, [arg(K, Value)])` | call Callee: `global(F)`, or (filc mode) a `p` temp |
     | `loc(File, Line)` | does nothing: the instructions after it, up to the next loc, come from line Line of File |
     | `raw_store(Width, Off, Value, Addr)` | checked stage: a store at Addr+Off that does not check (Stages, below) |
+    | `raw_call(Res, Callee, Args)` | checked stage: call the proven function Callee (class `f`); argument, result and exception handling are as for `call` |
 
     A call's Res is one of `result(tmp(D), K)`, `void`, or
     `tuple([result(tmp(D1), K1), result(tmp(D2), K2)])`.
@@ -115,6 +117,7 @@
     | `setjmp(Kind)` | `w` | `[p, w]`: Buf, SaveMask | filc only, below |
     | `check(Lo, Hi, Rights, Align)` | `a` | `[p]` | checked stage, below |
     | `raw_load(T, Off)` | as `load(T)` | `[a]` | checked stage: a load of type T at A+Off that does not check |
+    | `check_function` | `f` | `[p]` | checked stage: trap unless the pointer designates a function object at its exact callable address |
 
     `setjmp(Kind)`: Kind is `setjmp`, `'_setjmp'` or `sigsetjmp`, and
     SaveMask must be `const(0)` except for `sigsetjmp`. It returns twice
@@ -179,7 +182,14 @@
     is a bug of the pass, which the interpreter reports as the outcome
     `unchecked(Why)`.
 
-    Class `a` never crosses a safepoint (a call, a pollcheck, `alloc`,
+    A `check_function` similarly yields class `f`, consumed only as
+    the callee of the immediately following `raw_call`. It proves the
+    target's identity, not a signature match: raw_call still selects
+    fast or generic argument/result handling. A bad raw target reports
+    `unchecked(not_a_function)`; traps from that handling or from the
+    callee remain traps. Direct calls keep `call` and their ABI thunks.
+
+    Neither proof class crosses a safepoint (a call, a pollcheck, `alloc`,
     `setjmp`, `va_arg`, a symbol's getter, or `raw_store(p, Off, V, A)`,
     whose ensure-aux may exit), since a free may make the proof stale.
     For now each check is followed immediately by its one use, so none
@@ -290,6 +300,7 @@ kind_arity(float_to_int, 1).
 kind_arity(int_to_float, 1).
 kind_arity(cast, 1).
 kind_arity(check, 1).
+kind_arity(check_function, 1).
 kind_arity(ld, 1).
 
 %! valid_op(+Op) is semidet.
@@ -395,6 +406,7 @@ op_kind(ext(T), ext) :- narrow_type(T, _, _).
 op_kind(load(_), load).
 op_kind(alloc(_), alloc).
 op_kind(check(_, _, _, _), check).
+op_kind(check_function, check_function).
 op_kind(raw_load(_, _), ld).
 
 %! func_named(+M, +Name, -Func) is semidet.
@@ -474,8 +486,9 @@ pointer_inst(call(result(_, p), _, _)).
 pointer_inst(call(tuple(_), _, _)).
 pointer_inst(call(_, _, Args)) :- memberchk(arg(p, _), Args).
 pointer_inst(call(_, tmp(_), _)).
-pointer_inst(let(_, a, _, _)).
+pointer_inst(let(_, K, _, _)) :- proof_class(K).
 pointer_inst(raw_store(_, _, _, _)).
+pointer_inst(raw_call(_, _, _)).
 
 %% Validation
 
@@ -511,8 +524,10 @@ module_stage(module(Items), Stage) :-
     ).
 
 checked_inst(let(_, _, check(_, _, _, _), _)).
+checked_inst(let(_, _, check_function, _)).
 checked_inst(let(_, _, raw_load(_, _), _)).
 checked_inst(raw_store(_, _, _, _)).
+checked_inst(raw_call(_, _, _)).
 
 checked_jump(goto(poll(_))).
 checked_jump(branch(_, poll(_), _)).
@@ -583,12 +598,17 @@ temp_defs(Params, Blocks, Defs) :-
             ( member(block(_, Phis, Insts, _), Blocks),
               (   member(phi(tmp(N), K, _), Phis)
               ;   member(let(tmp(N), K, _, _), Insts)
-              ;   member(call(result(tmp(N), K), _, _), Insts)
-              ;   member(call(tuple(Tos), _, _), Insts),
-                  member(result(tmp(N), K), Tos)
+              ;   member(I, Insts), call_result_args(I, Res, _),
+                  ( Res = result(tmp(N), K)
+                  ; Res = tuple(Tos), member(result(tmp(N), K), Tos) )
               ) ),
             BlockDefs),
     append(ParamDefs, BlockDefs, Defs).
+
+% Both call forms have the same result and argument vocabulary; only
+% the callee's proof obligation differs.
+call_result_args(call(Res, _, Args), Res, Args).
+call_result_args(raw_call(Res, _, Args), Res, Args).
 
 % Defs is sorted, so two classes for one temporary are adjacent.
 check_temp_classes(Fn, Defs) :-
@@ -635,29 +655,30 @@ jump_target(goto(T), L) :- edge_label(T, L).
 jump_target(branch(_, T, _), L) :- edge_label(T, L).
 jump_target(branch(_, _, T), L) :- edge_label(T, L).
 
-% temp_class(?K): a temporary may have class K: a value class, or a, a
-% proven address (checked stage), which lives in no memory and is no
-% value of C.
+% temp_class(?K): a temporary may have a value class or a proof class.
+% Proofs live in no memory and are not values of C.
 temp_class(K) :- any_class(K).
-temp_class(a).
+temp_class(K) :- proof_class(K).
+
+proof_class(a).
+proof_class(f).
 
 % proof_class_defs(+Fn, +Params, +Blocks): only a check defines a
-% temporary of class a, and nothing passes one to a call. Phis,
+% proof temporary, and nothing passes one as a call argument. Phis,
 % parameters and call results would carry a proof across an edge or a
 % safepoint. (A check's own class is op_result_ok/3's.)
 proof_class_defs(Fn, Params, Blocks) :-
-    (   (   member(param(a, _), Params)
+    (   (   member(param(K, _), Params)
         ;   member(block(_, Phis, Insts, _), Blocks),
-            (   member(phi(_, a, _), Phis)
-            ;   member(call(Res, _, Args), Insts),
-                (   Res = result(_, a)
-                ;   Res = tuple(Tos), memberchk(result(_, a), Tos)
-                ;   memberchk(arg(a, _), Args)
+            (   member(phi(_, K, _), Phis)
+            ;   member(I, Insts), call_result_args(I, Res, Args),
+                (   Res = result(_, K)
+                ;   Res = tuple(Tos), member(result(_, K), Tos)
+                ;   member(arg(K, _), Args)
                 )
             )
-        )
-    ->  fn_error(Fn, 'class a is only a check''s result, read by ld and st',
-                 [])
+        ), proof_class(K)
+    ->  fn_error(Fn, 'class ~w is only a check''s result', [K])
     ;   true
     ).
 
@@ -802,9 +823,15 @@ checked_inst_rest(let(tmp(Q), a, check(Lo, Hi, Rights, Align), _), Insts, Fn, _,
     ->  true
     ;   fn_error(Fn, 'check tmp(~w) is not followed by an access it covers', [Q])
     ).
+checked_inst_rest(let(tmp(Q), f, check_function, _), Insts, Fn, _, Rest) :- !,
+    (   Insts = [raw_call(_, tmp(Q), _)|Rest] -> true
+    ;   fn_error(Fn, 'function check tmp(~w) is not followed by its raw call', [Q])
+    ).
 checked_inst_rest(Inst, Insts, Fn, Mode, Insts) :-
     (   raw_access(Inst, _, _, _, _)
     ->  fn_error(Fn, 'a raw access whose address is not checked just before it', [])
+    ;   Inst = raw_call(_, _, _)
+    ->  fn_error(Fn, 'a raw call whose target is not checked just before it', [])
     ;   Mode == filc, unchecked_access(Inst, What)
     ->  fn_error(Fn, '~w in checked IR, where every access is checked', [What])
     ;   true
@@ -817,6 +844,7 @@ raw_access(raw_store(W, Off, _, tmp(Q)), Q, W, Off, write).
 
 unchecked_access(let(_, _, load(T), _), load(T)).
 unchecked_access(store(W, _, _), store(W)).
+unchecked_access(call(_, tmp(_), _), 'indirect call').
 
 % covered_access(+Access, +Q, +Lo, +Hi, +Rights, +Align): Access is a raw
 % access at tmp(Q) within [Q+Lo, Q+Hi), as aligned as it must be, and
@@ -951,6 +979,9 @@ valid_inst(Ctx, call(_, Callee, Args)) :-
     ;   fn_error(Fn, 'bad callee ~w', [Callee])
     ),
     forall(member(arg(K, V), Args), valid_use(Ctx, K, V)).
+valid_inst(Ctx, raw_call(_, Callee, Args)) :-
+    valid_use(Ctx, f, Callee),
+    forall(member(arg(K, V), Args), valid_use(Ctx, K, V)).
 
 % store_value_class(?Width, ?K): a store of Width reads its value at K.
 store_value_class(b, w).
@@ -1051,10 +1082,10 @@ valid_use(Ctx, K, V) :-
 
 % A p temporary is used only at p and vice versa; ptoi and itop are the
 % conversions. An integer constant at p is a pointer with no capability.
-% Only a check makes a proven address (class a): no constant is one.
+% Only a check makes a proof (class a or f): no constant is one.
 valid_use_(tmp(N), ctx(_, Fn, _, _, TempClasses, _, _), K) :-
     (   get_assoc(N, TempClasses, K0)
-    ->  (   (K == a ; K0 == a), K \== K0
+    ->  (   (proof_class(K) ; proof_class(K0)), K \== K0
         ->  fn_error(Fn, 'tmp(~w) has class ~w but is used as ~w', [N, K0, K])
         ;   (float_class(K) ; float_class(K0)), K \== K0
         ->  fn_error(Fn, 'tmp(~w) has class ~w but is used as ~w', [N, K0, K])
@@ -1074,8 +1105,8 @@ valid_use_(const(N), ctx(_, Fn, _, _, _, _, _), K) :-
     integer(N),
     ( float_class(K), modulus(K, M), (N < 0 ; N >= M)
     -> fn_error(Fn, 'float bits out of range: ~w', [N])
-    ; K == a
-    -> fn_error(Fn, 'const(~w) used as a proven address (class a)', [N])
+    ; proof_class(K)
+    -> fn_error(Fn, 'const(~w) used as a proof (class ~w)', [N, K])
     ; true ).
 valid_use_(global(G), Ctx, K) :-
     Ctx = ctx(_, _, _, _, _, _, Mode),
@@ -1130,6 +1161,7 @@ kind_result_ok(ext, ext(T), _, K) :- ext_result_ok(T, K).
 kind_result_ok(load, load(T), Mode, K) :- load_result_ok(T, Mode, K).
 kind_result_ok(alloc, _, Mode, K) :- addr_class(Mode, K).
 kind_result_ok(check, _, filc, a).
+kind_result_ok(check_function, _, filc, f).
 kind_result_ok(ld, raw_load(T, _), filc, K) :- load_result_ok(T, filc, K).
 
 % ext_result_ok(+T, +K): an extension of type T may have class K; one
@@ -1189,6 +1221,7 @@ kind_arg_classes(ext, _, _, _, [w]).
 kind_arg_classes(load, _, _, Mode, [A]) :- addr_class(Mode, A).
 kind_arg_classes(alloc, _, _, _, [l]).
 kind_arg_classes(check, _, _, filc, [p]).
+kind_arg_classes(check_function, _, _, filc, [p]).
 kind_arg_classes(ld, _, _, filc, [a]).
 
 % additive_arg_classes(+K, ?Classes): add and sub of class K read

@@ -95,6 +95,46 @@ start. Reversing one is cheap until the milestone it names.
   skipping) get an Oracle review first, as for the compiler itself
   (root AGENTS.md).
 
+## Completing the foundation
+
+The milestone labels below record working behavior, not completion of
+the architecture in the opening diagram. In particular, M3's runtime
+and interoperation tests pass, but pizlonation does **not yet** turn
+`p` values into explicit address/lower pairs or lower frames and calls
+into target-independent operations. Much of that still happens while
+`filc_amd64.pl` emits assembly.
+
+The frontend refactoring is through campaign step 5: one elaborated
+tree supplies lowering, integer constants and address constants. The
+next structural work is the same separation on the Fil-C side:
+
+1. **State safety obligations in checked IR.** Memory checks and polls
+   are done; function-target checks now also have a proof class and raw
+   call, validated and interpreted. No checks are removed.
+2. **Expose flight-pointer operations and their effects.** Address and
+   lower propagation, aux access, ensure-aux and barriers need one
+   explicit meaning before they become independently schedulable.
+   Preserve the pointer store's check/ensure-aux/reload ordering.
+3. **Separate Fil-C ABI lowering from AMD64 emission.** Frame roots,
+   entry/exit, fast/generic calls, getters and origins belong to the
+   Fil-C lowering description; physical stack/register placement and
+   instruction spelling belong to the target. Setjmp snapshots and
+   variadic cursors must remain explicit exceptions to ordinary value
+   lifetimes. Extract these responsibilities, not arbitrary chunks of
+   the large backend into files.
+4. **Complete the lifetime oracle before optimizing checks.** The
+   interpreter must model free/invalidation before it can detect a
+   proof reused after an effect. Then finish M5's exact-sized,
+   non-escaping stack objects with a reviewed rooting/lifetime rule.
+
+Each step needs a reviewed contract, interpreter evidence where the
+effect is modelled, native interoperation and GC stress, and byte-identical
+assembly for representation-only changes. The foundation is complete
+when the safety and ABI decisions are visible before target emission,
+with these gates covering them—not when the backend merely has fewer
+lines. M6 register allocation and M7 check removal remain later work.
+The detailed next steps are in [docs/campaign.md](docs/campaign.md).
+
 ## Milestones
 
 ### M0. Ground truth on the pinned toolchain
@@ -149,10 +189,12 @@ lowering bugs.
 
 ### M3. Pizlonation and Fil-C ABI emission
 
-**Status: complete.** See [docs/m3.md](docs/m3.md). nanofil's Fil-C
+**Status: runtime acceptance complete; IR lowering partial.** See
+[docs/m3.md](docs/m3.md) and [docs/pizlonation.md](docs/pizlonation.md). nanofil's Fil-C
 output matches the interpreter's returns and traps, interoperates with
 clang-built code in both directions, and survives a GC stress test that
-catches planted rooting bugs.
+catches planted rooting bugs. Checks and polls are explicit IR; flight
+pointer decomposition, frame construction and ABI lowering are not yet.
 
 **Deliverable:**
 

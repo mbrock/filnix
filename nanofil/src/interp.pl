@@ -326,6 +326,11 @@ inst_result(let(tmp(D), p, va_args, [const(Off)]), _, Env0, S, Result) :- !,
     get_assoc(hidden(va_snapshot), Env0, ptr(A, Cap)),
     B is (A + Off) mod 18446744073709551616,
     res_result(val(ptr(B, Cap)), D, Env0, S, Result).
+inst_result(let(tmp(D), f, check_function, [V]), Ctx, Env0, S, Result) :- !,
+    value_x(p, V, Ctx, Env0, P),
+    function_check_res(P, Ctx, Check),
+    checked_res(Check, P, Res),
+    res_result(Res, D, Env0, S, Result).
 inst_result(let(tmp(D), K, Op, Args), Ctx, Env0, S0, Result) :-
     Ctx = ctx(_, _, _, _, Mode),
     op_arg_classes(Op, K, Mode, ArgClasses),
@@ -356,8 +361,14 @@ inst_result(call(Res, global(F), Args), Ctx, Env0, S0, Result) :-
 inst_result(call(Res, tmp(N), Args), Ctx, Env0, S0, Result) :-
     value_x(p, tmp(N), Ctx, Env0, ptr(A, Cap)),
     maplist(arg_x(Ctx, Env0), Args, Xs),
-    must_be(callable, Cap),
-    cap_call_result(Cap, A, Res, Args, Xs, Ctx, Env0, S0, Result).
+    function_check_res(ptr(A, Cap), Ctx, Check),
+    checked_call_result(Check, Cap, Res, Args, Xs, Ctx, Env0, S0, Result).
+inst_result(raw_call(Res, Callee, Args), Ctx, Env0, S0, Result) :-
+    value_x(f, Callee, Ctx, Env0, ptr(A, Cap)),
+    maplist(arg_x(Ctx, Env0), Args, Xs),
+    function_check_res(ptr(A, Cap), Ctx, Check0),
+    raw_res(Check0, Check),
+    checked_call_result(Check, Cap, Res, Args, Xs, Ctx, Env0, S0, Result).
 
 % width_value_class(+Width, -K): a store of Width reads its value at K.
 width_value_class(b, w).
@@ -368,33 +379,42 @@ width_value_class(p, p).
 width_value_class(s, s).
 width_value_class(d, d).
 
-% cap_call_result(+Cap, +A, +Res, +Args, +Xs, +Ctx, +Env0, +S0, -Result):
-% a call through the pointer ptr(A, Cap) reaches a function only when it
-% carries the function's capability at the function's own address. A
-% known capability is an atom or compound, so these cases are disjoint.
-% An unknown address A (a constrained variable) is not the function's.
-cap_call_result(fn(F), A, Res, Args, Xs, Ctx, Env0, S0, Result) :-
-    Ctx = ctx(Fns, Globals, _, _, Mode),
+% function_check_res(+P, +Ctx, -Res): P designates a function only when
+% it carries that function's capability at its exact callable address.
+% An unknown address is not proof; an external symbol's kind is unknown
+% to the interpreter, which must not guess that it names a function.
+function_check_res(ptr(A, Cap), ctx(_, Globals, _, _, _), Res) :-
+    must_be(callable, Cap),
+    cap_function_res(Cap, A, Globals, Res).
+
+cap_function_res(fn(F), A, Globals, Res) :-
     (   get_assoc(F, Globals, ptr(FnAddr, _)),
         A == FnAddr
-    ->  get_assoc(F, Fns, fn(Ret, Params, _, Bs)),
-        indirect_call_conv(Ret, Params, Res, Args, Xs, Fixed, Conv),
-        assoc_to_values(Bs, Blocks),
-        ( variadic_func(func(_, _, _, _, Blocks)), Conv \= trap(_)
-        -> length(Params, NP), length(Prefix, NP), append(Prefix, Extra, Xs),
-           append(Fixed, Extra, Ys)
-        ; Ys = Fixed ),
-        conv_call_result(Conv, Fns, Globals, Mode, F, Ys, Res, Env0, S0,
-                         Result)
-    ;   Result = stop(trap(not_a_function), S0)
+    ->  Res = ok
+    ;   Res = trap(not_a_function)
     ).
-cap_call_result(ext(F), _, _, _, _, _, _, _, _) :-
+cap_function_res(ext(F), _, _, _) :-
     format(atom(Msg), 'cannot interpret a call to external ~w', [F]),
     throw(nanofil_error(Msg)).
-cap_call_result(none, _, _, _, _, _, _, S0, stop(trap(not_a_function), S0)).
-cap_call_result(obj(_), _, _, _, _, _, _, S0,
-                stop(trap(not_a_function), S0)).
-cap_call_result(ro(_), _, _, _, _, _, _, S0, stop(trap(not_a_function), S0)).
+cap_function_res(none, _, _, trap(not_a_function)).
+cap_function_res(obj(_), _, _, trap(not_a_function)).
+cap_function_res(ro(_), _, _, trap(not_a_function)).
+
+% A target check authorizes the call, not its signature. Only a failed
+% target check becomes unchecked in raw_call; ABI and callee traps keep
+% their meaning. The conversions below are shared with unchecked call.
+checked_call_result(ok, fn(F), Res, Args, Xs, Ctx, Env0, S0, Result) :-
+    Ctx = ctx(Fns, Globals, _, _, Mode),
+    get_assoc(F, Fns, fn(Ret, Params, _, Bs)),
+    indirect_call_conv(Ret, Params, Res, Args, Xs, Fixed, Conv),
+    assoc_to_values(Bs, Blocks),
+    ( variadic_func(func(_, _, _, _, Blocks)), Conv \= trap(_)
+    -> length(Params, NP), length(Prefix, NP), append(Prefix, Extra, Xs),
+       append(Fixed, Extra, Ys)
+    ; Ys = Fixed ),
+    conv_call_result(Conv, Fns, Globals, Mode, F, Ys, Res, Env0, S0, Result).
+checked_call_result(trap(Why), _, _, _, _, _, _, S, stop(trap(Why), S)).
+checked_call_result(unchecked(Why), _, _, _, _, _, _, S, stop(unchecked(Why), S)).
 
 % conv_call_result(+Conv, +Fns, +Globals, +Mode, +F, +Ys, +Res, +Env0,
 % +S0, -Result): the result of an indirect call to F on Ys, with the
@@ -550,6 +570,7 @@ word_at_class(w, X0, X) :- modulus(w, Mod), int_is(X, X0 mod Mod).
 word_at_class(l, X0, X) :- modulus(l, Mod), int_is(X, X0 mod Mod).
 word_at_class(p, X, X).
 word_at_class(a, X, X).
+word_at_class(f, X, X).
 word_at_class(s, X0, X) :- must_be(integer, X0), X is X0 mod 4294967296.
 word_at_class(d, X0, X) :- must_be(integer, X0), X is X0 mod 18446744073709551616.
 

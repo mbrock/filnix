@@ -10,6 +10,7 @@
     |---|---|
     | `let(tmp(D), K, load(T), [A])` | `let(tmp(Q), a, check(0, S, read, Al), [A])`, then `let(tmp(D), K, raw_load(T, 0), [tmp(Q)])` |
     | `store(W, V, A)` | `let(tmp(Q), a, check(0, S, write, Al), [A])`, then `raw_store(W, 0, V, tmp(Q))` |
+    | `call(Res, tmp(P), Args)` | `let(tmp(Q), f, check_function, [tmp(P)])`, then `raw_call(Res, tmp(Q), Args)` |
 
     S and Al are the access's size and alignment
     (ir:access_size_align/3), and Q is a fresh name.
@@ -103,6 +104,9 @@ checked_access(store(W, V, A), Q,
                [let(tmp(Q), a, check(0, Size, write, Align), [A]),
                 raw_store(W, 0, V, tmp(Q))|Is], Is) :-
     access_size_align(W, Size, Align), !.
+checked_access(call(Res, tmp(P), Args), Q,
+               [let(tmp(Q), f, check_function, [tmp(P)]),
+                raw_call(Res, tmp(Q), Args)|Is], Is).
 
 % fresh_name(+Names, +N0, -N, -Q): Q is chkI for the least I >= N0 not
 % among Names, and N is I + 1.

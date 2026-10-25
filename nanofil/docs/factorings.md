@@ -261,6 +261,24 @@ lvalue used as a value, so `&x[1][2]` was refused, and it took `0 + 0`
 for pointer arithmetic on a null; both now agree with clang, with a
 test that failed before.
 
+## Function-target checks join the checked IR
+
+An indirect call's target check now has its own term,
+`check_function`, and an ephemeral proof class `f` consumed by
+`raw_call`. The validator separates function proofs from memory proofs
+and ordinary values; the interpreter shares one target-identity rule
+between both stages; AMD64 emission selects the check from the term.
+The existing fast/generic dispatch remains separate from target
+validity. Fusion retains the original call's liveness interval, roots,
+labels and setjmp payloads, so emitted assembly stays byte-identical.
+
+This adds a contract rather than shrinking the backend: pointer pairs,
+aux/barrier operations and frame/ABI lowering still need to move before
+target emission. PLAN now distinguishes M3's completed runtime tests
+from that unfinished architecture. Review, tests and native evidence
+are in [pizlonation.md](pizlonation.md); the next responsibilities are
+in [campaign.md](campaign.md).
+
 ## Where this goes
 
 The direction past these five is the same. Look for anything that is
