@@ -6,6 +6,8 @@
 
    Each region starts and ends with synchronized memory. Calls, control
    flow, frame changes and non-rewritable memory accesses separate regions.
+   Loads whose complete destination value is already present are removed
+   first; a low-word load still has to zero its destination's high half.
    A linear scan assigns a home's entire first-to-last reference interval;
    every intervening store replaces its cached version. There is no
    eviction: intervals under pressure keep their stack representation.
@@ -23,7 +25,7 @@
 :- use_module(library(dcgs)).
 
 % Report is stack, excluded(setjmp|unsupported), or cached(Homes,Regions).
-% Regions counts only regions with a profitable assigned interval.
+% Regions counts regions changed by load removal or an assigned interval.
 cache_asm(stack, _, Lines, Lines, stack).
 cache_asm(local, Meta, Before, After, Report) :-
     Meta = cache_metadata(Setjmp,Homes),
@@ -62,12 +64,55 @@ regions([],_,0) --> [].
 regions([boundary-L|Ls],Es,N) --> [L], regions(Ls,Es,N).
 regions([inside-L|Ls],Es,N) -->
     { region(Ls,More,Rest),
-      Region = [L|More], region_plan(Region,Es,Plan),
-      ( empty_assoc(Plan) -> Here = 0 ; Here = 1 ) },
-    cached_lines(Region,Es,Plan,0), regions(Rest,Es,N1),
+      Region = [L|More], retained_loads(Region,Es,[],Clean),
+      region_plan(Clean,Es,Plan),
+      ( Clean == Region, empty_assoc(Plan) -> Here = 0 ; Here = 1 ) },
+    cached_lines(Clean,Es,Plan,0), regions(Rest,Es,N1),
     { N is N1+Here }.
 region([inside-L|Ls],[L|More],Rest) :- !, region(Ls,More,Rest).
 region(Rest,[],Rest).
+
+% At most one association per ordinary register: part of a current home,
+% and whether the register's upper half is zero. A store invalidates all
+% associations with that physical home, even if its temporary has changed.
+% This bounded forward analysis is separate from the checker's symbols.
+retained_loads([],_,_,[]).
+retained_loads([L|Ls],Es,Rs,Out) :-
+    ( redundant_load(L,Es,Rs) -> Out = Rest, Next = Rs
+    ; Out = [L|Rest], register_contents(L,Es,Rs,Next) ),
+    retained_loads(Ls,Es,Next,Rest).
+
+redundant_load(ins(mov,S,[mem(D,rbp),reg(R)]),Es,Rs) :-
+    get_assoc(D,Es,_), move_width(S,W), register(R,F,W),
+    memberchk(F-content(home(D),Bits,Zero),Rs),
+    ( W =:= 64 -> Bits =:= 64 ; Zero == true ).
+
+register_contents(L,Es,Rs,Next) :-
+    ( home_move(L,Es,D,write)
+    -> L = ins(mov,q,[reg(F),_]),
+       contents(F,Rs,content(_,_,Zero)),
+       invalidate_home(Rs,D,Fresh),
+       replace_contents(F,content(home(D),64,Zero),Fresh,Next)
+    ; home_move(L,Es,D,read)
+    -> L = ins(mov,S,[_,reg(R)]), move_width(S,W), register(R,F,W),
+       ( W =:= 32 -> Zero = true ; Zero = false ),
+       replace_contents(F,content(home(D),W,Zero),Rs,Next)
+    ; once(instruction_effects(L,effect(_,Writes,_,_,_))),
+      written_contents(Writes,Rs,Next) ).
+
+contents(F,Rs,C) :-
+    ( memberchk(F-Value,Rs) -> C = Value ; C = content(none,0,false) ).
+replace_contents(F,C,Rs,[F-C|Rest]) :-
+    ( select(F-_,Rs,Rest) -> true ; Rest = Rs ).
+invalidate_home([],_,[]).
+invalidate_home([F-content(H,W,Z)|Rs],D,[F-C|Next]) :-
+    ( H == home(D) -> C = content(none,0,Z) ; C = content(H,W,Z) ),
+    invalidate_home(Rs,D,Next).
+written_contents([],Rs,Rs).
+written_contents([write(F,W)|Ws],Rs,Next) :-
+    ( W =:= 32 -> Zero = true ; Zero = false ),
+    replace_contents(F,content(none,0,Zero),Rs,Fresh),
+    written_contents(Ws,Fresh,Next).
 
 region_plan(Lines,Es,Plan) :-
     findall(D-(I-Access), (nth0(I,Lines,L), home_move(L,Es,D,Access)), Events),

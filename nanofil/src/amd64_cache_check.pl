@@ -1,8 +1,9 @@
 /* Independent translation validation for the block-local scalar cache.
    There are no allocation intervals, slot assignments or eviction plans
    here. The two streams execute together on symbolic register and home
-   contents; only the three eligible moves may differ. All other lines
-   match exactly, including flags, failure arguments and control flow.
+   contents; only the three eligible moves may differ, and a load may be
+   absent when its complete result is already in its destination. All other
+   lines match exactly, including flags, failure arguments and control flow.
 
    Ordinary registers have one shared symbolic map: a changed load must
    prove equality before writing it. Homes have separate reference and
@@ -96,12 +97,22 @@ cache_name(r11d, r11, 32).
 % The syntax partitions extra moves from matched instructions: preflight
 % excludes the cache bank everywhere in the original, including addresses.
 paired(Before, [Line|After], Offsets, S0) :-
-    extra_move(Line, Offsets, Move), !,
-    fill_anchor(Move, Before, After, Offsets),
+    extra_move(Line, Offsets, Move),
+    fill_anchor(Move, Before, After, Offsets), !,
     execute_extra(Move, S0, S),
     paired(Before, After, Offsets, S).
 paired([instruction(Line, Effect)|Before], [Actual|After], Offsets, S0) :-
-    matched(Line, Actual, Effect, Offsets, S0, S),
+    matched(Line, Actual, Effect, Offsets, S0, S), !,
+    paired(Before, After, Offsets, S).
+paired([instruction(Line, Effect)|Before], After, Offsets, S0) :-
+    \+ boundary(Line, Effect, Offsets),
+    eligible_move(Line, Offsets, load(O,F,Bits)),
+    S0 = state(Hs,Rs,_,E,_,open),
+    home_value(O, Hs, E, Reference, _),
+    read_width(Bits, Reference, Expected),
+    ordinary_value(F, Rs, Value),
+    Value == Expected,
+    next_symbol(S0, S),
     paired(Before, After, Offsets, S).
 paired([], [], _, state(Homes, _, _, _, _, _)) :-
     synchronized(Homes).

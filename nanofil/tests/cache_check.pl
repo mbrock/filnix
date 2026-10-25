@@ -115,6 +115,8 @@ opaque_fixture(sign_extension, rdx, ins(cqto,none,[])).
 opaque_fixture(word_sign_extension, rdx, ins(cltd,none,[])).
 opaque_fixture(low_byte, rax, ins(setne,none,[reg(al)])).
 opaque_fixture(low_word, rax, ins(mov,w,[imm(7),reg(ax)])).
+opaque_fixture(copy_word, rax, ins(mov,l,[reg(ecx),reg(eax)])).
+opaque_fixture(copy_full, rax, ins(mov,q,[reg(rcx),reg(rax)])).
 opaque_fixture(from_sse, rax, ins(movq,none,[reg(xmm0),reg(rax)])).
 
 % This is intentionally unlike the allocator's no-eviction policy: the
@@ -284,6 +286,59 @@ skeleton_change(label, label(exception), label(success)).
 checker_case(deleted_original, [home(-8,[l])], [
     ins(mov,q,[mem(-8,rbp),reg(rax)])
 ], [], no).
+
+checker_case(omitted_reload(Width), [home(-8,[w,l])], Before, Prefix, yes) :-
+    member(Width-Reg,[q-rax,l-eax]),
+    Prefix = [ins(add,l,[imm(17),reg(eax)]),
+              ins(mov,q,[reg(rax),mem(-8,rbp)])],
+    append(Prefix,[ins(mov,Width,[mem(-8,rbp),reg(Reg)])],Before).
+checker_case(omitted_word_high_bits, [home(-8,[w])], [Store,Load],
+             [Store], no) :-
+    Store = ins(mov,q,[reg(rax),mem(-8,rbp)]),
+    Load = ins(mov,l,[mem(-8,rbp),reg(eax)]).
+checker_case(omitted_full_after_word, [home(-8,[w,l])], [Low,Full],
+             [Low], no) :-
+    Low = ins(mov,l,[mem(-8,rbp),reg(eax)]),
+    Full = ins(mov,q,[mem(-8,rbp),reg(rax)]).
+checker_case(omitted_after_write(Name), [home(-8,[l])], Before,
+             Prefix, no) :-
+    opaque_fixture(Name,R,Instruction),
+    Prefix = [ins(mov,q,[reg(R),mem(-8,rbp)]),Instruction],
+    append(Prefix,[ins(mov,q,[mem(-8,rbp),reg(R)])],Before).
+checker_case(omitted_stale_home, [home(-8,[l])], [A,B,Load], [A,B], no) :-
+    A = ins(mov,q,[reg(rax),mem(-8,rbp)]),
+    B = ins(mov,q,[reg(rcx),mem(-8,rbp)]),
+    Load = ins(mov,q,[mem(-8,rbp),reg(rax)]).
+checker_case(omitted_stale_actual_home, [home(-8,[l])], [Load,Store,Load],
+             [Load,Cache,Spill], no) :-
+    Load = ins(mov,q,[mem(-8,rbp),reg(rax)]),
+    Store = ins(mov,q,[reg(rsi),mem(-8,rbp)]),
+    Cache = ins(mov,q,[reg(rsi),reg(r10)]),
+    Spill = ins(mov,q,[reg(r10),mem(-8,rbp)]).
+checker_case(omitted_after_boundary(Name), [home(-8,[l])],
+             [Load,Boundary,Load], [Load,Boundary], no) :-
+    boundary_fixture(Name,Boundary),
+    Load = ins(mov,q,[mem(-8,rbp),reg(rax)]).
+% A later fill must not hide the preceding omitted read, or permit an
+% unanchored read of a different (possibly inaccessible) frame address.
+checker_case(omitted_before_fill(D), [home(-8,[l]),home(-16,[l])], [
+    ins(mov,q,[reg(rax),mem(-8,rbp)]),
+    ins(mov,q,[mem(-8,rbp),reg(rax)]),
+    ins(mov,q,[mem(-8,rbp),reg(rax)]),
+    ins(mov,q,[mem(D,rbp),reg(rcx)])
+], [
+    ins(mov,q,[reg(rax),mem(-8,rbp)]),
+    ins(mov,q,[mem(D,rbp),reg(r10)]),
+    ins(mov,q,[reg(r10),reg(rcx)])
+], yes) :- member(D,[-8,-16]).
+checker_case(omitted_with_dirty_home, [home(-8,[l])], [
+    ins(mov,q,[reg(rax),mem(-8,rbp)]),
+    ins(mov,q,[mem(-8,rbp),reg(rax)])
+], [
+    ins(mov,q,[reg(rax),reg(r10)]),
+    ins(mov,q,[reg(r10),mem(-8,rbp)])
+], yes).
+
 checker_case(arithmetic_rewrite, [home(-8,[l])], [
     ins(mov,q,[mem(-8,rbp),reg(rax)]),
     ins(add,q,[imm(1),reg(rax)])
@@ -376,6 +431,9 @@ frame_cases :-
     \+ check_cache(M, Prologue, TooEarly),
     framed([Fill,Spill], Established),
     \+ check_cache(M, Prologue, Established),
+    Store = ins(mov,q,[reg(rax),mem(-8,rbp)]),
+    Load = ins(mov,q,[mem(-8,rbp),reg(rax)]),
+    \+ check_cache(M, [Store,Load], [Store]),
     % Establishing rbp does not mean stack growth has been checked. An
     % unrelated fill here could fault instead of reporting stack overflow.
     Push = ins(push,q,[reg(rbp)]),

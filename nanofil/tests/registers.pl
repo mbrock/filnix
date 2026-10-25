@@ -11,7 +11,43 @@
 :- use_module('../src/pizlonate').
 :- use_module(library(lists)).
 
-scalar_cache :- pressure, exclusions, backend, mixed_homes, dead_setjmp.
+scalar_cache :- pressure, redundant_loads, exclusions, backend,
+                mixed_homes, dead_setjmp.
+
+% The result still in the scratch register needs no trip through the
+% cache bank. A word read is redundant only if it also clears no high bits.
+redundant_loads :-
+    M = cache_metadata(false,[home(-8,[w,l])]),
+    Frame = ins(mov,q,[reg(rsp),reg(rbp)]),
+    Store = ins(mov,q,[reg(rax),mem(-8,rbp)]),
+    Q = ins(mov,q,[mem(-8,rbp),reg(rax)]),
+    L = ins(mov,l,[mem(-8,rbp),reg(eax)]),
+    End = ins(leave,none,[]),
+    cache_asm(local,M,[Frame,Store,Q,End],[Frame,Store,End],_),
+    % Incoming upper bits are unknown, so the first movl must remain.
+    cache_asm(local,M,[Frame,Store,L,L,End],Word,_),
+    findall(S,member(ins(mov,l,[S,reg(eax)]),Word),[_]),
+    Zero = ins(add,l,[imm(17),reg(eax)]),
+    cache_asm(local,M,[Frame,Zero,Store,L,Q,End],
+                      [Frame,Zero,Store,End],_),
+    % A boundary forgets even a zeroing load's result. Partial writes
+    % likewise forget the whole register rather than carrying stale facts.
+    forall(member(Prefix,[[ins(mov,l,[mem(0,rdi),reg(eax)])],
+                          [Zero,ins(setne,none,[reg(al)])]]),
+           (append([Frame|Prefix],[Store,L,End],Code),
+            cache_asm(local,M,Code,New,_),
+            memberchk(ins(mov,l,[_,reg(eax)]),New))),
+    % Both implicit/partial register writes and home overwrites invalidate.
+    forall(member(Change,[ins(idiv,q,[reg(rcx)]),
+                          ins(setne,none,[reg(al)]),
+                          ins(mov,q,[reg(rcx),reg(rax)]),
+                          ins(mov,l,[reg(ecx),reg(eax)]),
+                          ins(mov,q,[reg(rcx),mem(-8,rbp)]),
+                          ins(call,none,[plt(filc_pollcheck_slow)]),
+                          label(join)]),
+           (Changed = [Frame,Store,Change,Q,End],
+            cache_asm(local,M,Changed,Kept,_),
+            memberchk(ins(mov,q,[_,reg(rax)]),Kept))).
 
 pressure :-
     M = cache_metadata(false,[home(-8,[w,l]),home(-16,[l]),home(-24,[w])]),
