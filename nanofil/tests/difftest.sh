@@ -11,7 +11,8 @@
 # harness. A Fil-C module (one that uses class p) is linked with a
 # clang-built Fil-C harness (FILCC, a filcc clang), and each run executes
 # in its own process: a Fil-C safety panic is the native form of the
-# interpreter's trap.
+# interpreter's trap. These executables are non-PIE so globals also test
+# bounds arithmetic at low addresses; filc/run-c.sh covers PIE executables.
 #
 # A C file is preprocessed and lowered by nanofil (cc-ir), and its
 # "// run: $fn arg..." comments become run facts. Besides nanofil's own
@@ -46,10 +47,10 @@ for f in "$@"; do
     if [ -z "$filcc" ]; then echo "$f: Fil-C module, set FILCC" >&2; exit 2; fi
     (cd "$src" && "$nanofil" ${NANOFIL_OPT:-} compile "$f" </dev/null) >"$d/filc.s"
     as -o "$d/filc.o" "$d/filc.s"
-    "$filcc" -O1 -o "$d/filc" "$d/harness.c" "$d/filc.o"
+    "$filcc" -O1 -fno-pie -no-pie -o "$d/filc" "$d/harness.c" "$d/filc.o"
     variants=filc
     if [ -n "$csrc" ]; then
-      "$filcc" -O1 -o "$d/clang" "$d/harness.c" "$csrc"
+      "$filcc" -O1 -fno-pie -no-pie -o "$d/clang" "$d/harness.c" "$csrc"
       variants="filc clang"
     fi
     n=$(wc -l <"$d/expected.txt")

@@ -5,6 +5,8 @@
 // run: $static_float 0
 // run: $float_objects 0
 // run: $integer_conversions 0
+// run: $union_float_bits 0
+// run: $union_double_bits 0
 static double folded = (1.5 + 2) * 0x1.8p+1;
 static float rounded = 16777217.0f;
 static unsigned int folded_unsigned = (unsigned int)4294967295.0;
@@ -72,4 +74,16 @@ int integer_conversions(int unused) {
         && d == -4294967297.0 && f == -123.0f
         && (long)d == l && (short)f == -123 && (signed char)f == -123
         && (_Bool)-0.0 == 0 && (_Bool)f == 1;
+}
+
+// Integer stores followed by float loads must stay in memory under -O.
+int union_float_bits(int unused) {
+    union { unsigned int i; float f; } x;
+    x.i = 1065353216U;
+    return x.f == 1.0f;
+}
+int union_double_bits(int unused) {
+    union { unsigned long i; double d; } x;
+    x.i = 4607182418800017408UL;
+    return x.d == 1.0;
 }

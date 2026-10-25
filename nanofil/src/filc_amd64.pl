@@ -344,8 +344,10 @@ fused_inst(let(tmp(Q), a, Check, [P]), [Access0|Insts], Fn, Inst, Insts) :- !,
     ;   throw_fn(Fn, 'a check not followed by the access it proves')
     ),
     % access_check//2 checks [P, P+Size) for alignment 1 or 8, and a raw
-    % access emits at offset 0.
-    (   Check = check(0, _, _, Align), memberchk(Align, [1, 8]),
+    % access emits at offset 0. subq's immediate is signed 32-bit: a
+    % larger check needs a different native representation, not truncation.
+    (   Check = check(0, Size, _, Align), memberchk(Align, [1, 8]),
+        integer(Size), Size > 0, Size =< 2147483647,
         access_pointer(Access, _, 0)
     ->  true
     ;   throw_fn(Fn, 'a check or offset access_check//2 cannot emit yet')
@@ -1486,6 +1488,7 @@ access_check(k(Size, Write, Align), Ctx) -->
      ins(jb, none, [sym(Fail)]),
      ins(mov, q, [mem(-16, rcx), reg(rdx)]),
      ins(sub, q, [imm(Size), reg(rdx)]),
+     ins(jb, none, [sym(Fail)]),
      ins(cmp, q, [reg(rdx), reg(rax)]),
      ins(ja, none, [sym(Fail)])],
     write_check(Write, Fail),

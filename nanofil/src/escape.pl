@@ -22,7 +22,8 @@
 
 %! load_width(?LoadType, ?Width) is nondet.
 %
-%  A load of type LoadType reads a slot of width Width (b h w l p).
+%  A supported integer or pointer load reads a slot of width Width
+%  (b h w l p). Other load types must make the allocation escape.
 
 load_width(l, l).
 load_width(sw, w).
@@ -44,8 +45,8 @@ load_width(p, p).
 %      Width in b h w l p. Size is the alloc's operand.
 %    - escapes(Why): the address is used any other way (stored, passed,
 %      returned, compared, converted, merged in a phi, offset by a
-%      variable), or it or a temp derived from it is defined more than
-%      once, so offsets are unknown.
+%      variable, loaded with an unsupported type), or it or a temp
+%      derived from it is defined more than once, so offsets are unknown.
 
 alloc_classes(F, Classes) :-
     F = func(_, _, _, _, Blocks),
@@ -115,12 +116,16 @@ inst_event(call(_, F, Args), Addrs, Root-esc(call)) :-
 
 % kind_event(+Kind, +Ins, +Addrs, -Root-Event) is nondet: as
 % inst_event/3, for the instruction Ins of an Op of Kind. A load
-% accesses its address; every other op lets the addresses it reads
-% escape.
+% accesses its address only when its slot width is supported; otherwise
+% it escapes, so promotion cannot mistake an unknown access for no use.
+% Every other op lets the addresses it reads escape.
 kind_event(load, let(_, _, load(T), [tmp(X)]), Addrs,
-           Root-acc(acc(Off, W))) :-
+           Root-Event) :-
     get_assoc(X, Addrs, Root-Off),
-    load_width(T, W).
+    (   load_width(T, W)
+    ->  Event = acc(acc(Off, W))
+    ;   Event = esc(load(T))
+    ).
 kind_event(additive, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
 kind_event(alu, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
 kind_event(shift, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).

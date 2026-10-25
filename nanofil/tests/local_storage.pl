@@ -7,6 +7,7 @@
 :- use_module('../src/ir').
 :- use_module('../src/ir_text').
 :- use_module('../src/interp').
+:- use_module('../src/opt').
 :- use_module('../src/pizlonate').
 :- use_module(library(clpz)).
 :- use_module(library(lists)).
@@ -18,6 +19,8 @@ local_selection :-
     nonentry_unchanged,
     redefinition_unchanged,
     dead_float_unchanged,
+    forall(float_heap_case(_, _, M, Expected),
+           optimized_float_heap(M, Expected)),
     storage_budget,
     zero_size.
 
@@ -98,6 +101,42 @@ dead_float_unchanged :-
                       let(tmp(b), p, add, [tmp(a), const(1)])], ret),
         block(dead, [], [let(tmp(x), d, load(d), [tmp(b)])], ret)])]),
     local_storage_module(M, N), N == M.
+
+% Exercise the public pipeline: promotion runs before local storage's
+% unsupported-load guard. Each allocation is large enough that bounds
+% alone cannot keep it on the heap. Fil-C zeroes new memory; the integer
+% bit patterns below encode 1.0 in binary32 and binary64, not conversions.
+float_heap_case(T, zero, module([func(f, export, T, [], [
+    block(s, [], [let(tmp(a), p, alloc(8), [const(Size)]),
+                  let(tmp(x), T, load(T), [tmp(a)])], ret(tmp(x)))
+])]), ret(0)) :-
+    float_layout(T, Size, _, _).
+float_heap_case(T, pun, module([func(f, export, T, [], [
+    block(s, [], [let(tmp(a), p, alloc(8), [const(Size)]),
+                  store(W, const(Bits), tmp(a)),
+                  let(tmp(x), T, load(T), [tmp(a)])], ret(tmp(x)))
+])]), ret(Bits)) :-
+    float_layout(T, Size, W, Bits).
+% An unreachable load still uses the allocation, through a derived
+% address. It must neither disappear from classification nor leave an
+% undefined address behind when the entry allocation is optimized.
+float_heap_case(T, dead, module([func(f, export, w, [], [
+    block(s, [], [let(tmp(a), p, alloc(8), [const(16)]),
+                  let(tmp(b), p, add, [tmp(a), const(8)])], ret(const(7))),
+    block(dead, [], [let(tmp(x), T, load(T), [tmp(b)])], ret(const(7)))
+])]), ret(7)) :-
+    float_layout(T, _, _, _).
+
+float_layout(s, 4, w, 1065353216).
+float_layout(d, 8, l, 4607182418800017408).
+
+optimized_float_heap(M0, Expected) :-
+    valid_module(M0), once(run(M0, f, [], 100, Expected)),
+    optimize(o0, M0, Unoptimized), Unoptimized == M0,
+    optimize(o1, M0, M), valid_module(M), M == M0,
+    once(run(M, f, [], 100, Expected)),
+    pizlonate_module(M, Checked), valid_module(Checked),
+    once(run(Checked, f, [], 100, Expected)).
 
 storage_budget :-
     M = module([func(f, export, void, [], [block(s, [], [

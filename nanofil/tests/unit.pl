@@ -26,6 +26,7 @@
 :- use_module('../src/c_lower').
 :- use_module('../src/c_types').
 :- use_module('../src/asm').
+:- use_module('../src/filc_amd64').
 :- use_module('abi').
 :- use_module('local_storage').
 :- use_module(library(assoc)).
@@ -1631,6 +1632,20 @@ test(checked_ir_rules) :-
     M3 == 'in f: a cycle without a poll edge in checked IR',
     Loop = func(F, E, R, Ps, [S, block(h, [], Is, goto(h))]),
     valid_module(module([func(F, E, R, Ps, [S, block(h, [], Is, goto(poll(h)))])])).
+
+% The IR can describe wider proofs than subq's signed immediate. Native
+% compilation must refuse them, never emit an immediate that changes size.
+test(native_check_range) :-
+    forall(member(Size, [8, 2147483647, 2147483648, 4294967296]),
+        ( M = module([func(f, export, l, [param(p, tmp(p))], [
+              block(s, [], [
+                  let(tmp(q), a, check(0, Size, read, 1), [tmp(p)]),
+                  let(tmp(r), l, raw_load(l, 0), [tmp(q)])
+              ], ret(tmp(r)))])]),
+          valid_module(M),
+          ( Size =< 2147483647 -> filc_module_asm(M, _)
+          ; catch((filc_module_asm(M, _), fail), nanofil_error(_), true)
+          ) )).
 
 % Only the immediately preceding function check authorizes a raw call.
 % Neither a memory proof nor a proof carried across an effect qualifies.

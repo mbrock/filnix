@@ -1,0 +1,25 @@
+% difftest links at low addresses: upper - Size must not wrap around
+% and turn this impossible range into permission to read outside g.
+data(g, local, 8, [item(l, const(123))]).
+func(wide, export, l, [param(l, tmp(off))], [
+    block(start, [], [
+        let(tmp(base), p, copy, [global(g)]),
+        flight(tmp(p), add, [address(tmp(base)), tmp(off)], lower(tmp(base))),
+        let(tmp(q), a, check(0, 2147483647, read, 1), [tmp(p)]),
+        let(tmp(r), l, raw_load(l, 0), [tmp(q)])
+    ], ret(tmp(r)))
+]).
+func(narrow, export, l, [param(l, tmp(off))], [
+    block(start, [], [
+        let(tmp(base), p, copy, [global(g)]),
+        flight(tmp(p), add, [address(tmp(base)), tmp(off)], lower(tmp(base))),
+        let(tmp(q), a, check(0, 8, read, 1), [tmp(p)]),
+        let(tmp(r), l, raw_load(l, 0), [tmp(q)])
+    ], ret(tmp(r)))
+]).
+run(wide, [0]).
+run(wide, [16]).
+run(narrow, [0]).
+run(narrow, [1]).
+run(narrow, [16]).
+run(narrow, [18446744073709551615]).
