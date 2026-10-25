@@ -167,12 +167,21 @@ Neither lowering introduces independently scheduled lower temporaries.
 
 This closes the basic foundation for the documented subset. The four
 Nix gates cover the combined pipeline; native root-removal and effect
-mutations fail, not just malformed-term tests. M6 register allocation,
-M7 check removal, broader local selection and general symbolic memory
-validation remain later work. Pointer pairs are still indivisible, and
-global data serialization and physical layout remain target-side. The
-next optimization must extend these contracts rather than weaken
+mutations fail, not just malformed-term tests. M6's first slice is now
+an opt-in, independently checked scalar stack cache ([m6.md](m6.md)).
+General register allocation, M7 check removal, broader local selection and
+general symbolic memory validation remain later work. Pointer pairs are
+still indivisible, and global data serialization and physical layout remain
+target-side. The next optimization must extend these contracts rather than weaken
 refinement or hide a new safety decision inside emission.
+
+The review followups close two earlier correctness gaps: native range
+checks detect unsigned subtraction borrow and reject unencodable sizes;
+unsupported float loads escape before promotion, including in dead code.
+Durable native probes now cover actual ensure-aux exits with last-use
+operands, lower-only donors across collection, and both exception-return
+channels restoring the parent frame. These are regression guarantees for
+the bounded foundation, not a general memory-safety certification.
 
 Do not add a parallel hierarchy of wrappers just to make a pass appear
 in a diagram. A new term earns its place when it states a fact the

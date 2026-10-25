@@ -1,0 +1,11 @@
+% The first pointer store into a large heap object must survive ensure-aux
+% and the lower barrier. Both operands die at the store: neither is a
+% caller-rooted parameter or a value used again after the helpers.
+func(large_store, export, void, [], [
+    block(start, [], [
+        call(result(tmp(dst), p), global(c_large), []),
+        call(result(tmp(src), p), global(c_value), [arg(l, const(80))]),
+        call(void, global(c_collect), []),
+        store(p, tmp(src), tmp(dst))
+    ], ret)
+]).

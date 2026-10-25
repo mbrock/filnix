@@ -19,7 +19,8 @@ pkgs.runCommandCC "nanofil-zlib" { src = pkgs.zlib.src; } ''
   cat ${../.}/src/*.pl ${../.}/docs/*.md > text
   head -c 2000000 /dev/urandom > random
 
-  for opt in "" -O; do
+  # Middle end and target cache are independent choices.
+  for opt in "" -O "--registers=local" "-O --registers=local"; do
     echo "== zlib, nanofil $opt"
     rm -rf nf
     unpack nf

@@ -93,6 +93,13 @@ as -o hello.o hello.s && $FILCC -o hello hello.o && ./hello
 (interpret), and `difftest`. See the top of
 [src/main.pl](src/main.pl).
 
+`--registers=local` before `cc` or `compile` enables validated block-local
+integer stack caching in Fil-C implementations. It is independent of
+`-O`; `--registers=stack` is the default reference. Build/test harnesses
+accept the same choice as `NANOFIL_REGISTERS=local`. This does not change
+pointer/root placement, and setjmp functions retain their original code.
+See [docs/m6.md](docs/m6.md) for the deliberately limited scope and cost.
+
 `nix build .#checks.x86_64-linux.nanofil` runs everything: unit tests,
 differential tests of the interpreter against native code and clang,
 whole programs under GC

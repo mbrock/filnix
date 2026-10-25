@@ -2,6 +2,7 @@
 # Link NAME.ir (compiled by nanofil) with NAME.c (clang-built Fil-C),
 # run case i of NAME.expected in its own process for every line i, and
 # compare. A Fil-C safety panic prints as "trap".
+# An optional NAME.s supplies native ABI probes, assembled without clang.
 #
 #   run-c.sh NAME...    (needs FILCC; NANOFIL_OPT=-O for the middle end)
 set -euo pipefail
@@ -17,7 +18,12 @@ for name in "$@"; do
   mkdir -p "$d"
   (cd "$src" && "$nanofil" ${NANOFIL_OPT:-} compile "$here/$name.ir" </dev/null) >"$d/n.s"
   as -o "$d/n.o" "$d/n.s"
-  "$filcc" -O1 -o "$d/t" "$here/$name.c" "$d/n.o"
+  native=()
+  if [[ -f "$here/$name.s" ]]; then
+    as -o "$d/native.o" "$here/$name.s"
+    native=("$d/native.o")
+  fi
+  "$filcc" -O1 -o "$d/t" "$here/$name.c" "$d/n.o" "${native[@]}"
   n=$(wc -l <"$here/$name.expected")
   : >"$d/out.txt"
   for ((i = 0; i < n; i++)); do

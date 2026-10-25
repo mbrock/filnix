@@ -1,0 +1,15 @@
+% Synthetic ABI exception channels, NOT C++ unwinding. The origins keep
+% can_throw=0. exceptions.s catches the flag before returning to C and
+% checks that the nanofil frame has restored its real parent's top_frame.
+func(exception_reg, export, l, [param(p, tmp(unused))], [
+    block(start, [], [
+        call(result(tmp(value), l), global(raise_reg), [])
+    ], ret(tmp(value)))
+]).
+
+func(exception_buffer, export, tuple([l, p]), [], [
+    block(start, [], [
+        call(tuple([result(tmp(value), l), result(tmp(ptr), p)]),
+             global(raise_buffer), [])
+    ], rets([tmp(value), tmp(ptr)]))
+]).

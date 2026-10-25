@@ -330,6 +330,20 @@ runtime state. The allocation-root exit wrapper is inlined: the trace
 breaks at `ensure_aux_ptr_slow_large`'s call to `filc_exit`, not at the
 wrapper's unused exported entry.
 
+The equivalent durable regressions are now `tests/filc/pointer-effects.*`,
+`lower-donor.*` and `exceptions.*`. `trace-pointer-effects.sh` runs the
+large-store fixture under Python-enabled GDB, locates that actual exit
+call by disassembly, and requires 20 exits and at least one targeted
+lower-barrier call. The fixture waits for a real marking phase with a
+rooted tracing workload; its assembly accessor only reads marking state.
+Barrier counts vary with scheduling. The lower-only donor must return 73;
+the two exception probes compare `thread->top_frame` with the actual
+parent before returning to C. Removing the rooted reload, donor scanning,
+or either exception frame pop makes the corresponding native test fail.
+Skipping the lower barrier or shrinking the destination preserves the
+simple result but fails the helper-path audit. Both middle-end and scalar
+cache modes run these tests; this is still not C++ unwinding coverage.
+
 ## ABI products before instruction selection
 
 `filc_abi:lower_function/4` describes payload storage, ordered roots and

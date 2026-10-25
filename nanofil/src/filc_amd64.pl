@@ -90,14 +90,16 @@
     | Off | a byte offset |
     | Form | a placed return form, `reg` or `mem(Bytes)` (target_form/2) |
 */
-:- module(filc_amd64, [filc_module_asm/2, signature/3]).
+:- module(filc_amd64, [filc_module_asm/2, filc_module_asm/4, signature/3]).
 
 :- use_module(library(lists)).
 :- use_module(library(dcgs)).
 :- use_module(library(format)).
 :- use_module(library(assoc)).
+:- use_module(library(pairs)).
 :- use_module(ir).
 :- use_module(amd64).
+:- use_module(amd64_cache).
 :- use_module(filc_abi).
 :- use_module(cfg, [edge_label/2]).
 
@@ -107,12 +109,16 @@
 %  each item's code and data, a weak thunk for each function the module
 %  calls but does not define, and the GNU-stack note. Throws
 %  nanofil_error(Msg) if an item cannot be lowered.
-filc_module_asm(Module0, Lines) :-
+filc_module_asm(Module, Lines) :- filc_module_asm(Module, stack, Lines, _).
+
+% Registers is stack (the reference) or local (validated scalar caching).
+% Reports records each item's caching result, without driver-side state.
+filc_module_asm(Module0, Registers, Lines, Reports) :-
     without_locs(Module0, Module),
     Module = module(Items),
     maplist(lower_item(Module), Items, Products),
     lower_thunks(Module, Callees),
-    maplist(item_lines, Products, LinesPerItem),
+    maplist(placed_lines(Registers), Items, Products, LinesPerItem, Reports),
     append(LinesPerItem, ItemLines),
     maplist(thunk_lines, Callees, LinesPerThunk),
     append(LinesPerThunk, ThunkLines),
@@ -134,6 +140,41 @@ item_lines(Item, Lines) :-
         format(atom(Msg), 'Fil-C backend cannot emit ~w', [Name]),
         throw(nanofil_error(Msg))
     ).
+
+placed_lines(stack, _, Item, Lines, stack) :- item_lines(Item,Lines).
+placed_lines(local, data(N,L,A,Is), Item, Lines, data(N)) :-
+    Item = data(N,L,A,Is), item_lines(Item,Lines).
+placed_lines(local, Func, Item, Lines, function(Name,Report)) :-
+    Func = func(Name,_,_,Ps,Bs),
+    Item = abi_function(Name,_,_,Sig,Frame,_,_,_,_,_),
+    item_lines(Item,Original),
+    abi_symbol(impl(Sig),Name,Impl),
+    % Adapters, getters and origins have different frames. Only the
+    % implementation before its .size belongs to this placement map.
+    once(append(Body,[size(Impl)|Rest],Original)),
+    layout(Frame,Slots,_,_), Frame = frame(_,_,Aliases),
+    findall(T-K, (member(param(K,T),Ps)
+                ; member(block(_,Phis,Is,_),Bs),
+                  ( member(phi(T,K,_),Phis)
+                  ; member(I,Is), cache_temp_class(I,T,K) )), Types0),
+    sort(Types0,Types1), list_to_assoc(Types1,Types),
+    findall(Key-K, (member(T-Key,Aliases), Key = storage(scalar,_),
+                    ( get_assoc(T,Types,K0) -> K = K0 ; K = unknown )), Uses),
+    keysort(Uses,Sorted), group_pairs_by_key(Sorted,Groups),
+    findall(home(D,Ks),
+            (member(Key-Ks,Groups), get_assoc(Key,Slots,Off), D is -Off), Homes),
+    % The middle end preserves entire setjmp functions, including dead
+    % sites. Inspect the original IR here, before ABI actions hide them.
+    ( setjmp_func(Func) -> Setjmp = true ; Setjmp = false ),
+    cache_asm(local,cache_metadata(Setjmp,Homes),Body,Cached,Report),
+    append(Cached,[size(Impl)|Rest],Lines).
+
+cache_temp_class(let(T,K,_,_),T,K).
+cache_temp_class(local_load(T,K,_,_,_),T,K).
+cache_temp_class(call(result(T,K),_,_),T,K).
+cache_temp_class(raw_call(result(T,K),_,_),T,K).
+cache_temp_class(call(tuple(Rs),_,_),T,K) :- member(result(T,K),Rs).
+cache_temp_class(raw_call(tuple(Rs),_,_),T,K) :- member(result(T,K),Rs).
 
 %% ABI facts (docs/abi-findings.md), at the pin
 

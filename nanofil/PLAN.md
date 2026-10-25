@@ -137,8 +137,9 @@ same separation on the Fil-C side now has these boundaries:
 Each boundary has a reviewed contract, interpreter evidence where the
 effect is modelled, native interoperation and GC stress. Representation-
 only changes preserve assembly; local-storage selection is checked by
-before/after semantics and native rooting tests. M6 register allocation
-and M7 check removal remain later work, as do general C local-OOB
+before/after semantics and native rooting tests. M6 now has an opt-in,
+validated scalar stack cache; general register allocation and M7 check
+removal remain later work, as do general C local-OOB
 precision, broader stack-local selection, general symbolic memory
 validation and C++ unwinding. This is a stable foundation to extend,
 not a claim to implement every Fil-C operation or all of C.
@@ -367,13 +368,23 @@ tabling, at realistic sizes (hundreds of blocks, small live sets).
 
 ### M6. Instruction selection and register allocation
 
-**Deliverable:** cut-free isel that enumerates tilings, then selects the
-minimum-cost one. Register allocation in CLP(Z) with a search budget and a
-greedy fallback in the style of QBE's spill-then-assign.
+**First slice: opt-in scalar stack caching.** `--registers=local` caches
+private `w/l` frame homes within straight-line machine regions in two
+audited registers. It follows instruction selection and preserves frame
+layout, pointer homes, roots, helpers, phis and polls. Setjmp (even in a
+dead block) and unknown machine forms retain the all-stack implementation.
+Every candidate passes an independent symbolic translation checker.
+`--registers=stack` remains the default and differential reference,
+independent of `-O`. See [m6.md](docs/m6.md) for boundaries and measurements.
 
-**Acceptance:** same corpus results with lower instruction counts, and
-allocation time bounded on every corpus function. The budget and fallback
-answer the handoff's open question about predictability.
+**Next:** use measured native benefit to decide whether to extend allocation
+across regions or improve instruction selection. Fewer frame accesses do
+not imply fewer instructions or faster execution. The earlier combined
+tiling-search/CLP(Z) proposal is deferred: deterministic allocation plus
+validation comes first. A solver would need reproducible limits on problem
+construction, propagation and search, with a clean-state checked fallback.
+Pointer allocation, root reduction, setjmp allocation and check removal
+are separate safety decisions, not extensions hidden in this pass.
 
 ### M7. Check optimization and the rest of the ABI
 
@@ -409,9 +420,9 @@ matches a filcc-built Lua, like the hello and zlib checks.
 
 - Symbolic addresses in the interpreter, for translation validation of
   memory passes (M5).
-- The CLP(Z) allocation budget (M6), a measurement question. (Versioned
-  facts versus incremental tabling was measured in M5: neither; see
-  docs/m5.md.)
+- Whether broader allocation or instruction selection justifies its cost
+  (M6). CLP(Z) is deferred, not the default algorithm. Versioned facts
+  versus incremental tabling was measured in M5: neither; see docs/m5.md.
 - In-process execution (`tcc -run` style) needs a native host that boots
   the Fil-C runtime. It is out of scope until after M8.
 - Supporting atomics and inline asm, all

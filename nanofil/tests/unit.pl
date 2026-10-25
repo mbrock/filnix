@@ -29,6 +29,8 @@
 :- use_module('../src/filc_amd64').
 :- use_module('abi').
 :- use_module('local_storage').
+:- use_module('registers').
+:- use_module('cache_check').
 :- use_module(library(assoc)).
 :- use_module(library(pio)).
 :- use_module(library(clpz)).
@@ -97,6 +99,8 @@ clause_term(T, X) :- read_term_from_chars(T, X, []).
 
 test(abi_products) :- abi_products.
 test(local_storage_selection) :- local_selection.
+test(scalar_cache) :- scalar_cache.
+test(cache_checker) :- cache_checker.
 test(local_storage_semantics) :- local_semantics.
 test(local_storage_lifetime) :- local_lifetime.
 test(local_storage_validation) :- local_validation.

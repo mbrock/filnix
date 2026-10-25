@@ -1,0 +1,13 @@
+% Checked IR intentionally uses independent address and lower donors.
+% Across c_collect, only lower(donor) keeps the capability live. Its
+% address is already an integer, not a second pointer or a GC root.
+func(lower_donor, export, l, [], [
+    block(start, [], [
+        call(result(tmp(donor), p), global(c_value), []),
+        let(tmp(bits), l, ptoi, [tmp(donor)]),
+        call(void, global(c_collect), []),
+        flight(tmp(restored), copy, [tmp(bits)], lower(tmp(donor))),
+        let(tmp(proof), a, check(0, 8, read, 1), [tmp(restored)]),
+        let(tmp(value), l, raw_load(l, 0), [tmp(proof)])
+    ], ret(tmp(value)))
+]).

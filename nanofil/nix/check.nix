@@ -27,6 +27,7 @@ pkgs.runCommandCC "nanofil-check"
     nativeBuildInputs = [
       pkgs.swi-prolog
       pkgs.python3
+      pkgs.gdb
     ]
     ++ pkgs.lib.optional withTrealla trealla;
   }
@@ -65,6 +66,8 @@ pkgs.runCommandCC "nanofil-check"
     step "run-c interop gc float" tests/par.sh tests/filc/run-c.sh interop gc float
     step "variadic+float gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh variadic float
     step "setjmp gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh setjmp
+    step "pointer+exception gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh pointer-effects lower-donor exceptions
+    step "actual ensure-aux exits" tests/filc/trace-pointer-effects.sh
     step "difftest c/*.c" tests/par.sh tests/difftest.sh tests/c/*.c
     step reject tests/reject.sh
     step progtest tests/par.sh tests/progtest.sh tests/c/prog/*.c
@@ -85,10 +88,26 @@ pkgs.runCommandCC "nanofil-check"
     step "-O run-c interop gc float" tests/par.sh tests/filc/run-c.sh interop gc float
     step "-O variadic+float gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh variadic float
     step "-O setjmp gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh setjmp
+    step "-O pointer+exception gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh pointer-effects lower-donor exceptions
+    step "-O actual ensure-aux exits" tests/filc/trace-pointer-effects.sh
     step "-O progtest" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     step "-O progtest gc-stress" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     step "-O run-c gc gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc
     unset NANOFIL_OPT
+    # The target-only cache is independent of the middle end. Every
+    # changed implementation is translation-checked before printing;
+    # native suites check the contract and helpers on the real runtime.
+    export NANOFIL_REGISTERS=local
+    for opt in "" -O; do
+      export NANOFIL_OPT=$opt
+      step "local $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/c/*.c big1.c
+      step "local $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions
+      step "local $opt actual ensure-aux exits" tests/filc/trace-pointer-effects.sh
+      step "local $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    done
+    unset NANOFIL_OPT
+    step "local corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    unset NANOFIL_REGISTERS
     # The functional, versioned-fact and incremental analyses must agree.
     python3 -I tests/bigfn.py 2 100 > big2.c
     step bench-cfg bash -c '(cd src && ../bin/nanofil --script ../tests/bench-cfg.pl ../big2.c </dev/null)'

@@ -43,6 +43,11 @@
     (translation validation), and prints how many allocs promote
     removed.
 
+    `--registers=stack|local` independently selects reference emission or
+    validated block-local scalar caching in the Fil-C backend. The default
+    is stack; NANOFIL_REGISTERS supplies the same choice to build harnesses.
+    The plain backend is unchanged. Options precede the command.
+
     ## difftest
 
     expected.txt holds the interpreter's result for every run line whose
@@ -87,13 +92,10 @@ main :-
     % Trealla gives argv as character lists, SWI as atoms.
     current_prolog_flag(argv, RawArgv),
     maplist(arg_atom, RawArgv, Argv0),
-    (   Argv0 = ['-O'|Argv]
-    ->  Opt = o1
-    ;   Argv = Argv0,
-        Opt = o0
-    ),
     % halt/1 outside catch/3: SWI implements halt as an exception.
-    catch(( command(Opt, Argv)
+    catch(( ( register_default(Default),
+              options(Argv0,o0,Default,Opt,Registers,Argv),
+              command(Opt,Registers,Argv) )
           ->  Status = 0
           ;   format(user_error, "nanofil: failed~n", []),
               Status = 1
@@ -103,6 +105,18 @@ main :-
             Status = 1
           )),
     halt(Status).
+
+register_default(Registers) :-
+    ( getenv('NANOFIL_REGISTERS',R) -> Registers = R ; Registers = stack ),
+    register_mode(Registers).
+register_mode(R) :-
+    ( memberchk(R,[stack,local]) -> true
+    ; throw(nanofil_error('registers must be stack or local')) ).
+options(['-O'|As],_,R,O,Rs,Args) :- !, options(As,o1,R,O,Rs,Args).
+options([A|As],O,_,Opt,Rs,Args) :-
+    atom_concat('--registers=',R,A), !, register_mode(R),
+    options(As,O,R,Opt,Rs,Args).
+options(Args,O,R,O,R,Args).
 
 % arg_atom(+Arg, -Atom): Atom is the command-line argument Arg, which
 % is an atom (SWI) or a character list (Trealla).
@@ -158,7 +172,22 @@ c_file_tokens(File, Tokens) :-
 
 %% Commands
 
-% command(+Opt, +Args): carry out the command line Args (without -O),
+% Only native emission needs Registers; other commands consume Opt.
+command(Opt, Registers, [compile, File]) :- !,
+    file_module(File, Module0),
+    % Promote can remove every p from a module; the ABI is the original's.
+    module_mode(Module0, Mode),
+    optimize(Opt, Module0, Module),
+    mode_module_asm(Mode, Registers, Module, Asm),
+    print_asm(Asm).
+command(Opt, Registers, [cc, File]) :- !,
+    c_file_module(File, Module0),
+    optimize(Opt, Module0, Module),
+    mode_module_asm(filc, Registers, Module, Asm),
+    print_asm(Asm).
+command(Opt, _, Args) :- command(Opt,Args).
+
+% command(+Opt, +Args): carry out the command line Args (without options),
 % running the middle end when Opt is o1 (-O given) and not when o0.
 % Fails or throws when the command does.
 command(_, [tokens, File]) :-
@@ -172,18 +201,6 @@ command(Opt, [print, File]) :-
     file_module(File, Module0),
     optimize(Opt, Module0, Module),
     print_module(Module).
-command(Opt, [compile, File]) :-
-    file_module(File, Module0),
-    % Promote can remove every p from a module; the ABI is the original's.
-    module_mode(Module0, Mode),
-    optimize(Opt, Module0, Module),
-    mode_module_asm(Mode, Module, Asm),
-    print_asm(Asm).
-command(Opt, [cc, File]) :-
-    c_file_module(File, Module0),
-    optimize(Opt, Module0, Module),
-    mode_module_asm(filc, Module, Asm),
-    print_asm(Asm).
 command(Opt, ['cc-ir', File]) :-
     c_file_module(File, Module0),
     optimize(Opt, Module0, Module),
@@ -235,12 +252,12 @@ command(Opt, [difftest, File, Dir]) :-
              format("  ~w = ~w~n", [CallText, Text])
            )).
 
-% mode_module_asm(+Mode, +Module, -Asm): Asm is the asm.pl lines of
+% mode_module_asm(+Mode, +Registers, +Module, -Asm): Asm is the asm.pl lines of
 % Module by the backend for Mode, filc or plain.
-mode_module_asm(plain, Module, Asm) :- module_asm(Module, Asm).
-mode_module_asm(filc, Module, Asm) :-
+mode_module_asm(plain, _, Module, Asm) :- module_asm(Module, Asm).
+mode_module_asm(filc, Registers, Module, Asm) :-
     checked_module(Module, Checked),
-    filc_module_asm(Checked, Asm).
+    filc_module_asm(Checked, Registers, Asm, _).
 
 % checked_module(+Module, -Checked): Checked is Module pizlonated, which
 % must be valid checked IR (ir.pl): the validator verifies the pass.

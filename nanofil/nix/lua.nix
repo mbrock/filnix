@@ -37,8 +37,13 @@ pkgs.runCommandCC "nanofil-lua"
     cc=${import ./nanofil-cc.nix { inherit pkgs filcc; }}
     mkdir official $out
     tar -xf ${officialTests} -C official --strip-components=1
-    for opt in "" -O; do
-      if [ -z "$opt" ]; then label=plain; else label=optimized; fi
+    for opt in "" -O "--registers=local" "-O --registers=local"; do
+      case "$opt" in
+        "") label=plain ;;
+        -O) label=optimized ;;
+        --registers=local) label=local-plain ;;
+        *) label=local-optimized ;;
+      esac
       echo "== Lua 5.4.7, nanofil $opt"
       rm -rf lua && mkdir lua
       tar -xf $src -C lua --strip-components=1
