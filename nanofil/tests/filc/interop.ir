@@ -23,6 +23,12 @@ func(setslot, export, void, [param(p, tmp(slot)), param(p, tmp(v))], [
     ], ret)
 ]).
 
+func(getslot, export, p, [param(p, tmp(slot))], [
+    block(start, [], [
+        let(tmp(v), p, load(p), [tmp(slot)])
+    ], ret(tmp(v)))
+]).
+
 func(offset, export, p, [param(p, tmp(p)), param(l, tmp(off))], [
     block(start, [], [
         let(tmp(q), p, add, [tmp(p), tmp(off)])

@@ -151,19 +151,19 @@ to pizlonation. The checked IR must state what Fil-C requires, and the
 target should implement those terms rather than rediscover the
 requirements from a high-level pointer operation.
 
-The first checked stage is not yet the explicit address/lower IR in
-PLAN's diagram. It still contains `p` values, opaque pointer loads and
-stores, ordinary calls, allocations, setjmp and variadic operations.
-Fusing a proof with its immediate use is a target instruction-selection
-choice; moving more policy into that fusion would not complete the
-separation.
+The checked stage keeps `p` pairs but makes their construction and
+ordinary memory effects explicit. A subsequent `filc_abi` product
+describes frames, calls, getters and origins before native placement.
+Fusing a proof with its immediate use remains a target instruction-
+selection choice, with a separate liveness view at the same index.
+Neither lowering introduces independently scheduled lower temporaries.
 
 | Step | Contract and gate | Status |
 | --- | --- | --- |
 | Explicit function-target checks | `check_function` produces an ephemeral `f`; `raw_call` consumes it immediately. Target validity is distinct from signature dispatch and callee traps. Same assembly, including buffered returns, roots and setjmp layouts. | Implemented; see [pizlonation.md](pizlonation.md). Memory checks and poll edges were already explicit. |
-| Flight-pointer and runtime effects | Define address/lower propagation and aux/barrier operations once, with a semantics and validator. State which operations may exit to the runtime; preserve ensure-aux's rooted reload. Review before adoption. | Pure propagation implemented: `flight(D, Op, Args, Lower)` makes address arithmetic and capability selection independent. It remains one instruction, with the same roots and layout. Checked inputs bypass the unchecked-only optimizer. Next: aux/barrier effects; whole-pointer phis, memory and ABI operations remain. Do not relax proof adjacency. |
-| ABI lowering | Describe frame-root placement, prologues/exits, call signatures and fast/generic dispatch, getters and origins before AMD64 instruction selection. Keep setjmp's returns-twice storage distinct. Snapshot each extracted responsibility; exercise clang interop in both directions and forced GC. | Pending. Naming ABI constants alone does not do this. |
-| Lifetime semantics and remaining M5 storage | Give free/invalidation an interpreter meaning before check optimizations; then review exact-sized non-escaping stack objects and their rooting/lifetime rules. | Pending. Existing escape and alias facts are not by themselves safety proofs. |
+| Flight-pointer and runtime effects | Define address/lower propagation and aux/barrier operations once, with a semantics and validator. State which operations may exit to the runtime; preserve ensure-aux's rooted reload. Review before adoption. | Implemented: `flight` and the closed pointer-memory effect lists are validated and executed, preserving one interval, roots and layout. Checked inputs bypass the unchecked-only optimizer. Snapshot: 1014 identical outputs; native boxed-load/replacement and actual ensure-aux exit coverage. Proof adjacency is unchanged. |
+| ABI lowering | Describe frame-root placement, prologues/exits, call signatures and fast/generic dispatch, getters and origins before AMD64 instruction selection. Keep setjmp's returns-twice storage distinct. Snapshot each extracted responsibility; exercise clang interop in both directions and forced GC. | Implemented in [fe019c0](https://github.com/mbrock/filnix/commit/fe019c0cb8cb4c5e2afb2f2d63ec2006cfa79620): `filc_abi` produces consumed plans, not just constants. Snapshot: 1014 identical outputs; native interop, setjmp, variadic and exception-channel coverage. Global data serialization and physical placement remain target-side; C++ unwinding remains unsupported. |
+| Lifetime semantics and remaining M5 storage | Give free/invalidation an interpreter meaning before check optimizations; then review exact-sized non-escaping stack objects and their rooting/lifetime rules. | Lifetime implemented in [3251c43](https://github.com/mbrock/filnix/commit/3251c438043f37e40246bd6ca585fd34b679beaf); see [lifetime.md](lifetime.md). Exact-sized local storage is in progress. Existing escape and alias facts are not by themselves safety proofs. |
 
 Do not add a parallel hierarchy of wrappers just to make a pass appear
 in a diagram. A new term earns its place when it states a fact the

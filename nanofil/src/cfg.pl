@@ -516,6 +516,8 @@ inst_uses(store(_, V, A), Us) :-
     temps([V, A], Us).
 inst_uses(raw_store(_, _, V, A), Us) :-
     temps([V, A], Us).
+inst_uses(raw_store_pointer(_, V, A, _), Us) :-
+    temps([V, A], Us).
 inst_uses(call(_, F, Args), Us) :-
     findall(V, member(arg(_, V), Args), Vs),
     temps([F|Vs], Us).

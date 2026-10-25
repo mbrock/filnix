@@ -66,7 +66,8 @@
     | `store(Width, Value, Addr)` | store Value at Addr; Width one of `b` `h` `w` `l` `p` `s` `d` |
     | `call(Res, Callee, [arg(K, Value)])` | call Callee: `global(F)`, or (filc mode) a `p` temp |
     | `loc(File, Line)` | does nothing: the instructions after it, up to the next loc, come from line Line of File |
-    | `raw_store(Width, Off, Value, Addr)` | checked stage: a store at Addr+Off that does not check (Stages, below) |
+    | `raw_store(Width, Off, Value, Addr)` | checked stage: a non-pointer store at Addr+Off that does not check (Stages, below) |
+    | `raw_store_pointer(Off, Value, Addr, Effects)` | checked stage: a pointer store whose ordered aux/barrier effects are explicit |
     | `raw_call(Res, Callee, Args)` | checked stage: call the proven function Callee (class `f`); argument, result and exception handling are as for `call` |
     | `flight(tmp(D), Op, Args, Lower)` | checked stage: construct a `p` from a 64-bit address calculation and an independently selected capability |
 
@@ -126,7 +127,8 @@
     | `va_arg` | any | `[p]` | filc only: a load through a va_list address, advancing its cursor (reads and writes memory) |
     | `setjmp(Kind)` | `w` | `[p, w]`: Buf, SaveMask | filc only, below |
     | `check(Lo, Hi, Rights, Align)` | `a` | `[p]` | checked stage, below |
-    | `raw_load(T, Off)` | as `load(T)` | `[a]` | checked stage: a load of type T at A+Off that does not check |
+    | `raw_load(T, Off)` | as `load(T)`, except `p` | `[a]` | checked stage: a non-pointer load at A+Off that does not check |
+    | `raw_load_pointer(Off, Effects)` | `p` | `[a]` | checked stage: read aux, resolve the lower, then read the primary address |
     | `check_function` | `f` | `[p]` | checked stage: trap unless the pointer designates a function object at its exact callable address |
 
     `setjmp(Kind)`: Kind is `setjmp`, `'_setjmp'` or `sigsetjmp`, and
@@ -204,11 +206,18 @@
     `unchecked(not_a_function)`; traps from that handling or from the
     callee remain traps. Direct calls keep `call` and their ABI thunks.
 
-    Neither proof class crosses a safepoint (a call, a pollcheck, `alloc`,
-    `setjmp`, `va_arg`, a symbol's getter, or `raw_store(p, Off, V, A)`,
-    whose ensure-aux may exit), since a free may make the proof stale.
-    For now each check is followed immediately by its one use, so none
-    can.
+    Pointer accesses carry the complete ordered list described by
+    pointer_memory_effects/2. The list is executed, not an annotation.
+    Each access is one instruction for liveness and layout, not an atomic
+    transaction: aux_ensure may exit/re-enter or fail without returning.
+    rooted_reload reloads the original p pair, not the ephemeral proof.
+    The stored value also remains rooted through the whole instruction.
+
+    Neither proof class crosses an intervening safepoint (a call, a
+    pollcheck, alloc, setjmp, va_arg or getter), since a free may make it
+    stale. Each check is followed immediately by its one use. The pointer
+    store's internal ensure-aux/reload sequence is the existing Fil-C
+    exception, not permission to move another effect between the pair.
 
     ## Variable names
 
@@ -220,7 +229,8 @@
                op_arg_classes/4, op_result_ok/3,
                module_mode/2, module_stage/2, addr_class/2, variadic_func/1, setjmp_func/1,
                narrow_type/3, without_locs/2, access_size_align/3,
-               jump_target/2, polls_every_cycle/1, implicit_flight/1]).
+               jump_target/2, polls_every_cycle/1, implicit_flight/1,
+               pointer_memory_effects/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -317,6 +327,7 @@ kind_arity(cast, 1).
 kind_arity(check, 1).
 kind_arity(check_function, 1).
 kind_arity(ld, 1).
+kind_arity(ld_pointer, 1).
 
 %! valid_op(+Op) is semidet.
 %
@@ -330,8 +341,21 @@ valid_op(check(Lo, Hi, Rights, Align)) :- !,
     integer(Lo), integer(Hi), Lo < Hi,
     memberchk(Rights, [read, write]),
     memberchk(Align, [1, 2, 4, 8, 16]).
-valid_op(raw_load(T, Off)) :- !, load_type(T), integer(Off).
+valid_op(raw_load(T, Off)) :- !, load_type(T), T \== p, integer(Off).
+valid_op(raw_load_pointer(Off, Effects)) :- !,
+    integer(Off), pointer_memory_effects(load, Effects).
 valid_op(Op) :- op_kind(Op, _).
+
+% pointer_memory_effects(?Access, ?Effects): the closed protocol for an
+% ordinary non-atomic pointer access. aux_read reads the encoded lower
+% (or none); lower_resolve unboxes it without taking the box's address.
+% A store ensures aux (may exit), barriers the value's lower (may call,
+% cannot exit), reloads its destination p pair from rooted storage, then
+% writes the ordinary lower before the primary address. No effect list
+% may omit or reorder these obligations.
+pointer_memory_effects(load, [aux_read, lower_resolve, address_read]).
+pointer_memory_effects(store,
+    [aux_ensure, lower_barrier, rooted_reload, lower_write, address_write]).
 
 %! access_size_align(?X, ?Size, ?Align) is nondet.
 %
@@ -423,6 +447,7 @@ op_kind(alloc(_), alloc).
 op_kind(check(_, _, _, _), check).
 op_kind(check_function, check_function).
 op_kind(raw_load(_, _), ld).
+op_kind(raw_load_pointer(_, _), ld_pointer).
 
 %! func_named(+M, +Name, -Func) is semidet.
 %
@@ -503,6 +528,8 @@ pointer_inst(call(_, _, Args)) :- memberchk(arg(p, _), Args).
 pointer_inst(call(_, tmp(_), _)).
 pointer_inst(let(_, K, _, _)) :- proof_class(K).
 pointer_inst(raw_store(_, _, _, _)).
+pointer_inst(raw_store_pointer(_, _, _, _)).
+pointer_inst(let(_, _, raw_load_pointer(_, _), _)).
 pointer_inst(raw_call(_, _, _)).
 pointer_inst(flight(_, _, _, _)).
 
@@ -542,7 +569,9 @@ module_stage(module(Items), Stage) :-
 checked_inst(let(_, _, check(_, _, _, _), _)).
 checked_inst(let(_, _, check_function, _)).
 checked_inst(let(_, _, raw_load(_, _), _)).
+checked_inst(let(_, _, raw_load_pointer(_, _), _)).
 checked_inst(raw_store(_, _, _, _)).
+checked_inst(raw_store_pointer(_, _, _, _)).
 checked_inst(raw_call(_, _, _)).
 checked_inst(flight(_, _, _, _)).
 
@@ -868,6 +897,8 @@ implicit_flight(let(_, p, copy, [const(_)])).
 % or store of width X at tmp(Q)+Off, needing Rights.
 raw_access(let(_, _, raw_load(T, Off), [tmp(Q)]), Q, T, Off, read).
 raw_access(raw_store(W, Off, _, tmp(Q)), Q, W, Off, write).
+raw_access(let(_, _, raw_load_pointer(Off, _), [tmp(Q)]), Q, p, Off, read).
+raw_access(raw_store_pointer(Off, _, tmp(Q), _), Q, p, Off, write).
 
 unchecked_access(let(_, _, load(T), _), load(T)).
 unchecked_access(store(W, _, _), store(W)).
@@ -986,10 +1017,17 @@ valid_inst(Ctx, store(Width, Value, Addr)) :-
     valid_use(Ctx, AddrClass, Addr).
 valid_inst(Ctx, raw_store(Width, Off, Value, Addr)) :-
     Ctx = ctx(_, Fn, _, _, _, _, _),
-    (   store_value_class(Width, ValueClass), integer(Off) -> true
+    (   Width \== p, store_value_class(Width, ValueClass), integer(Off) -> true
     ;   fn_error(Fn, 'bad raw store raw_store(~w, ~w, ...)', [Width, Off])
     ),
     valid_use(Ctx, ValueClass, Value),
+    valid_use(Ctx, a, Addr).
+valid_inst(Ctx, raw_store_pointer(Off, Value, Addr, Effects)) :-
+    Ctx = ctx(_, Fn, _, _, _, _, filc),
+    (   integer(Off), pointer_memory_effects(store, Effects) -> true
+    ;   fn_error(Fn, 'bad pointer store offset/effects ~w, ~w', [Off, Effects])
+    ),
+    valid_use(Ctx, p, Value),
     valid_use(Ctx, a, Addr).
 valid_inst(Ctx, call(Res, global(Callee), Args)) :-
     Ctx = ctx(M, Fn, _, _, _, _, Mode),
@@ -1206,6 +1244,7 @@ kind_result_ok(alloc, _, Mode, K) :- addr_class(Mode, K).
 kind_result_ok(check, _, filc, a).
 kind_result_ok(check_function, _, filc, f).
 kind_result_ok(ld, raw_load(T, _), filc, K) :- load_result_ok(T, filc, K).
+kind_result_ok(ld_pointer, _, filc, p).
 
 % ext_result_ok(+T, +K): an extension of type T may have class K; one
 % from a word is a long.
@@ -1266,6 +1305,7 @@ kind_arg_classes(alloc, _, _, _, [l]).
 kind_arg_classes(check, _, _, filc, [p]).
 kind_arg_classes(check_function, _, _, filc, [p]).
 kind_arg_classes(ld, _, _, filc, [a]).
+kind_arg_classes(ld_pointer, _, _, filc, [a]).
 
 % additive_arg_classes(+K, ?Classes): add and sub of class K read
 % Classes; at p they offset a pointer by an l.

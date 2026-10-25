@@ -10,6 +10,7 @@
     |---|---|
     | `let(tmp(D), K, load(T), [A])` | `let(tmp(Q), a, check(0, S, read, Al), [A])`, then `let(tmp(D), K, raw_load(T, 0), [tmp(Q)])` |
     | `store(W, V, A)` | `let(tmp(Q), a, check(0, S, write, Al), [A])`, then `raw_store(W, 0, V, tmp(Q))` |
+    | pointer load/store | the same check, then `raw_load_pointer` or `raw_store_pointer` with its explicit `pointer_memory_effects/2` sequence |
     | `call(Res, tmp(P), Args)` | `let(tmp(Q), f, check_function, [tmp(P)])`, then `raw_call(Res, tmp(Q), Args)` |
     | `let(D, p, add, [P, X])` (also `sub`) | `flight(D, add, [address(P), X], lower(P))` |
     | `let(D, p, copy, [P])` (not a symbol) | `flight(D, copy, [address(P)], lower(P))` |
@@ -110,6 +111,16 @@ flight_inst(let(D, p, itop, [X]), flight(D, copy, [X], none)).
 
 % checked_access(+Access, ?Q, -Insts, ?Insts1): Insts less Insts1 are
 % Access's check, defining tmp(Q), and its raw access.
+checked_access(let(D, p, load(p), [A]), Q,
+               [let(tmp(Q), a, check(0, Size, read, Align), [A]),
+                let(D, p, raw_load_pointer(0, Effects), [tmp(Q)])|Is], Is) :- !,
+    access_size_align(p, Size, Align),
+    pointer_memory_effects(load, Effects).
+checked_access(store(p, V, A), Q,
+               [let(tmp(Q), a, check(0, Size, write, Align), [A]),
+                raw_store_pointer(0, V, tmp(Q), Effects)|Is], Is) :- !,
+    access_size_align(p, Size, Align),
+    pointer_memory_effects(store, Effects).
 checked_access(let(D, K, load(T), [A]), Q,
                [let(tmp(Q), a, check(0, Size, read, Align), [A]),
                 let(D, K, raw_load(T, 0), [tmp(Q)])|Is], Is) :-

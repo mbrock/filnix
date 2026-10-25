@@ -93,6 +93,8 @@ clause_texts(Cs, [T|Ts]) :-
 
 clause_term(T, X) :- read_term_from_chars(T, X, []).
 
+test(abi_products) :- abi_products.
+
 % module_fn_args_outcome(+Module, +Fn, +Args, ?Outcome): Outcome is the first
 % outcome of Fn(Args) on Module with fuel for 1000 blocks.
 module_fn_args_outcome(M, Fn, Args, Out) :-
@@ -112,8 +114,6 @@ rejected_with(Items, Fragment) :-
     !.
 
 %% Backend regressions (tests/backend), cases qbe 1.2 / c081897 got wrong
-
-test(abi_products) :- abi_products.
 
 % storew of an l value stores its low word.
 % memory 11 22 88 99 aa bb 77 88, loaduh at 5 = 0x77bb
@@ -562,9 +562,11 @@ test(free_invalidates_checks) :-
     Free = call(void, global(free), [arg(p, tmp(p))]),
     forall(member(Rights-Access, [
         read-let(tmp(x), l, raw_load(l, 0), [tmp(q)]),
-        read-let(tmp(x), p, raw_load(p, 0), [tmp(q)]),
+        read-let(tmp(x), p, raw_load_pointer(0,
+            [aux_read, lower_resolve, address_read]), [tmp(q)]),
         write-raw_store(l, 0, const(9), tmp(q)),
-        write-raw_store(p, 0, tmp(p), tmp(q))
+        write-raw_store_pointer(0, tmp(p), tmp(q),
+            [aux_ensure, lower_barrier, rooted_reload, lower_write, address_write])
     ]), (
         Check = let(tmp(q), a, check(0, 8, Rights, 8), [tmp(p)]),
         Fresh = module([func(f, local, w, [], [
@@ -644,6 +646,10 @@ test(free_symbol_resolution) :-
 % Unsupported external signatures/objects are incompleteness errors,
 % never failure, invented external effects, or a null no-op for ext(_).
 test(free_external_boundary) :-
+    ir_module([func(f, local, void, [param(p, tmp(p))], [block(s, [], [
+        call(void, global(free), [arg(p, tmp(p))])], ret)])], Numeric),
+    once(run(Numeric, f, [0], 10, ret)),
+    once(run(Numeric, f, [1], 10, trap(invalid_free))),
     forall(member(Call, [call(void, global(free), []),
                          call(void, global(free), [arg(l, const(0))]),
                          call(result(tmp(x), w), global(free), [arg(p, const(0))]),
@@ -1329,6 +1335,89 @@ test(pizlonate_states_every_check) :-
     once(run(Mutant, f, [14], 10, unchecked(out_of_bounds))),
     catch(( valid_module(Mutant), fail ), nanofil_error(Msg), true),
     Msg == 'in f: tmp(a) has class p but is used as a'.
+
+% Pointer memory states the aux/barrier order, without new operand
+% lifetimes. chk0 tests freshness; direct checked input is a normal form.
+test(pizlonate_states_pointer_effects) :-
+    Load = [aux_read, lower_resolve, address_read],
+    Store = [aux_ensure, lower_barrier, rooted_reload, lower_write, address_write],
+    ir_module([func(f, local, p, [], [block(s, [], [
+        let(tmp(chk0), p, alloc(8), [const(16)]),
+        store(p, const(7), tmp(chk0)),
+        let(tmp(x), p, load(p), [tmp(chk0)])
+    ], ret(tmp(x)))])], M),
+    pizlonate_module(M, C), valid_module(C), reads_back(C),
+    C = module([func(f, local, p, [], [block(s, [], [
+        let(tmp(chk0), p, alloc(8), [const(16)]),
+        let(tmp(chk1), a, check(0, 8, write, 8), [tmp(chk0)]),
+        raw_store_pointer(0, const(7), tmp(chk1), Store),
+        let(tmp(chk2), a, check(0, 8, read, 8), [tmp(chk0)]),
+        let(tmp(x), p, raw_load_pointer(0, Load), [tmp(chk2)])
+    ], ret(tmp(x)))])]),
+    pizlonate_module(C, C1), C1 == C,
+    optimize(o1, C, C2), C2 == C,
+    once(run(C, f, [], 10, ret(ptr(7, none)))),
+    inst_uses(raw_store_pointer(0, tmp(v), tmp(q), Store), [q, v]),
+    forall(bad_pointer_effects(Load, Bad),
+        rejected_pointer_access(read,
+            let(tmp(x), p, raw_load_pointer(0, Bad), [tmp(q)]))),
+    forall(bad_pointer_effects(Store, Bad),
+        rejected_pointer_access(write, raw_store_pointer(0, const(7), tmp(q), Bad))),
+    rejected_pointer_access(read, let(tmp(x), p, raw_load(p, 0), [tmp(q)])),
+    rejected_pointer_access(write, raw_store(p, 0, const(7), tmp(q))),
+    rejected_pointer_access(write, raw_store_pointer(0, tmp(q), tmp(q), Store)).
+
+% Every obligation matters, as does its order; malformed protocols are
+% rejected at the public checked-IR boundary, not repaired by emission.
+bad_pointer_effects(Es, Bad) :-
+    append(Before, [_|After], Es), append(Before, After, Bad).
+bad_pointer_effects(Es, Bad) :-
+    append(Before, [E|After], Es), append(Before, [E,E|After], Bad).
+bad_pointer_effects(Es, Bad) :-
+    append(Before, [A,B|After], Es), append(Before, [B,A|After], Bad).
+bad_pointer_effects(Es, [unknown|Es]).
+
+rejected_pointer_access(Rights, Access) :-
+    \+ catch(valid_module(module([func(f, local, void, [param(p, tmp(a))], [
+        block(s, [], [let(tmp(q), a, check(0, 8, Rights, 8), [tmp(a)]),
+            Access], ret)])])), nanofil_error(_), fail).
+
+% Replacing a pointer must replace both halves. Scalar stores instead
+% retain the old lower. The two objects are disjoint and hold different
+% values, so missing either write or the aux read cannot pass by chance.
+test(pointer_memory_effects_execute) :-
+    Prefix = [let(tmp(box), p, alloc(8), [const(16)]),
+              let(tmp(a), p, alloc(8), [const(16)]),
+              let(tmp(b), p, alloc(8), [const(16)]),
+              store(l, const(41), tmp(a)), store(l, const(73), tmp(b))],
+    forall(member(case(Is, K, Out), [
+        case([store(p, tmp(a), tmp(box)), store(p, tmp(b), tmp(box)),
+              let(tmp(p), p, load(p), [tmp(box)]),
+              let(tmp(r), l, load(l), [tmp(p)])], l, ret(73)),
+        case([store(p, tmp(a), tmp(box)), let(tmp(bits), l, ptoi, [tmp(b)]),
+              store(l, tmp(bits), tmp(box)),
+              let(tmp(p), p, load(p), [tmp(box)]),
+              let(tmp(r), l, load(l), [tmp(p)])], l, trap(out_of_bounds)),
+        case([store(l, const(19), tmp(box)),
+              let(tmp(r), p, load(p), [tmp(box)])], p, ret(ptr(19, none))),
+        case([store(p, tmp(a), tmp(box)), store(p, const(0), tmp(box)),
+              let(tmp(r), p, load(p), [tmp(box)])], p, ret(ptr(0, none))),
+        case([store(p, tmp(a), tmp(box)), store(p, const(19), tmp(box)),
+              let(tmp(r), p, load(p), [tmp(box)])], p, ret(ptr(19, none))),
+        % The source slot and result may be the same logical temporary.
+        case([store(p, tmp(b), tmp(box)),
+              let(tmp(box), p, load(p), [tmp(box)]),
+              let(tmp(r), l, load(l), [tmp(box)])], l, ret(73)),
+        case([store(p, tmp(box), tmp(box)),
+              let(tmp(p), p, load(p), [tmp(box)]),
+              let(tmp(r), l, sub, [const(9), const(2)]),
+              store(l, tmp(r), tmp(p))], l, ret(7))
+    ]), (
+        append(Prefix, Is, All),
+        ir_module([func(f, local, K, [], [block(s, [], All, ret(tmp(r)))])], M),
+        pizlonate_module(M, C), valid_module(C),
+        once(run(M, f, [], 10, Out)), once(run(C, f, [], 10, Out))
+    )).
 
 % Address arithmetic and lower propagation are separate decisions. The
 % address wraps at 64 bits, while every kind of capability is preserved;

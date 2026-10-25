@@ -380,6 +380,14 @@ inst_result(raw_store(Width, Off, V, A), Ctx, Env, s(Mem0, Fuel), Result) :-
     store_res(filc, Width, Mem0, ptr(Addr, Cap), X, Res0, Mem),
     raw_res(Res0, Res),
     store_res_result(Res, Env, s(Mem, Fuel), Result).
+inst_result(raw_store_pointer(Off, V, A, Effects), Ctx, Env,
+            s(Mem0, Fuel), Result) :-
+    value_x(p, V, Ctx, Env, X),
+    value_x(a, A, Ctx, Env, ptr(B, Cap)),
+    raw_address(B, Off, Addr),
+    access_res(Mem0, Addr, Cap, 8, write, 8, Check),
+    pointer_store_effects_res(Check, Effects, Addr, X, Mem0, Res, Mem),
+    store_res_result(Res, Env, s(Mem, Fuel), Result).
 inst_result(call(Res, global(F), Args), Ctx, Env0, S0, Result) :-
     Ctx = ctx(Fns, Globals, _, _, Mode),
     maplist(arg_x(Ctx, Env0), Args, Xs),
@@ -696,6 +704,11 @@ kind_res(ld, raw_load(T, Off), K, filc, [ptr(A, Cap)], S0, Res, S) :-
     raw_address(A, Off, B),
     load_op_res(T, K, filc, [ptr(B, Cap)], S0, Res0, S),
     raw_res(Res0, Res).
+kind_res(ld_pointer, raw_load_pointer(Off, Effects), p, filc, [ptr(A, Cap)],
+         s(Mem0, Fuel), Res, s(Mem, Fuel)) :-
+    raw_address(A, Off, B),
+    access_res(Mem0, B, Cap, 8, read, 8, Check),
+    pointer_load_effects_res(Check, Effects, B, Mem0, Res, Mem).
 kind_res(alloc, alloc(Align), _, Mode, [Size], s(Mem0, Fuel), val(P),
          s(Mem, Fuel)) :-
     alloc_base(Mode, Mem0, Align, Size, Base, Mem),
@@ -807,6 +820,44 @@ pointer_access_load(ok, Mem0, A, val(ptr(U, C)), Mem) :-
     Mem = mem(_, _, _, Aux),
     (   get_assoc(A, Aux, C) -> true ; C = none ).
 pointer_access_load(trap(Why), Mem, _, trap(Why), Mem).
+
+% Execute the supplied pointer-access protocol. Its local state keeps
+% the aux word separate from the resolved lower and primary address;
+% only the completed load publishes a pointer. Aux contains abstract
+% capability identities, not native boxes, so resolution is identity.
+pointer_load_effects_res(ok, Effects, A, Mem0, val(P), Mem) :-
+    foldl(pointer_load_effect(A), Effects,
+          loaded(none, ptr(0, none), Mem0), loaded(_, P, Mem)).
+pointer_load_effects_res(trap(Why), _, _, Mem, unchecked(Why), Mem).
+
+pointer_load_effect(A, aux_read, loaded(_, P, Mem), loaded(C, P, Mem)) :-
+    Mem = mem(_, _, _, Aux),
+    ( get_assoc(A, Aux, C) -> true ; C = none ).
+pointer_load_effect(_, lower_resolve, loaded(C, ptr(U, _), Mem),
+                    loaded(C, ptr(U, C), Mem)).
+pointer_load_effect(A, address_read, loaded(C, ptr(_, Lower), Mem0),
+                    loaded(C, ptr(U, Lower), Mem)) :-
+    load_res(filc, Mem0, A, 8, val(U), Mem).
+
+% The interpreter has no GC, aux allocation or asynchronous frees.
+% Ensure/barrier/reload are therefore abstract identities, not a claim
+% that native helpers cannot exit or fail. The observable writes still
+% execute in list order: lower first, then primary bytes, without another
+% bounds check after ensure-aux. Regions and Next are carried opaquely.
+pointer_store_effects_res(ok, Effects, A, P, Mem0, ok, Mem) :-
+    foldl(pointer_store_effect(A, P), Effects, Mem0, Mem).
+pointer_store_effects_res(trap(Why), _, _, _, Mem, unchecked(Why), Mem).
+
+pointer_store_effect(_, _, aux_ensure, Mem, Mem).
+pointer_store_effect(_, _, lower_barrier, Mem, Mem).
+pointer_store_effect(_, _, rooted_reload, Mem, Mem).
+pointer_store_effect(A, ptr(_, C), lower_write,
+                     mem(Bytes, Rs, Next, Aux0), mem(Bytes, Rs, Next, Aux)) :-
+    stored_aux(cap(C), A, Aux0, Aux).
+pointer_store_effect(A, ptr(U, _), address_write,
+                     mem(Bytes0, Rs, Next, Aux), mem(Bytes, Rs, Next, Aux)) :-
+    le_bytes(8, U, Written),
+    written_bytes(Written, A, Bytes0, Bytes).
 
 ext_load_res(T, Size, K, Mode, Args, S0, Res, S) :-
     int_load_res(Mode, Size, Args, S0, Res0, S),
@@ -1003,6 +1054,10 @@ extension(uw, X, S) :- int_is(S, X mod 4294967296).
 % free_res(+P, +Mem0, -Res, -Mem): the pinned runtime's free_with_checks,
 % object_for_deallocate and free_impl, for objects this interpreter owns.
 % ext(_) has a placeholder address, not a known zero; it stays unsupported.
+% Public run/5 also accepts integer p arguments: these have no capability.
+free_res(A, Mem0, Res, Mem) :-
+    integer(A), !,
+    cap_free_res(none, A, Mem0, Res, Mem).
 free_res(ptr(A, Cap), Mem0, Res, Mem) :-
     must_be(integer, A), must_be(callable, Cap),
     cap_free_res(Cap, A, Mem0, Res, Mem).

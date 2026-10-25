@@ -14,3 +14,4 @@ five overrun = trap
 callc = 60324
 indirect = 6
 wrong signature = trap
+boxed slot = 4 5

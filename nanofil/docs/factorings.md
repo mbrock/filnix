@@ -296,6 +296,30 @@ end must not process directly supplied checked IR. It now leaves that
 input unchanged, including with `-O`. Design and evidence are in
 [pizlonation.md](pizlonation.md).
 
+## Pointer-memory protocols and ABI plans are consumed before emission
+
+Ordinary pointer loads and stores now carry their aux/barrier/reload
+sequence in checked IR. The interpreter and AMD64 emitter execute those
+effects in order; neither silently expands the former whole-pointer raw
+operation. Fusion preserves the old layout and helper-call roots. This
+adds about 150 source lines: the gain is an executable intermediate
+contract and isolated effect clauses, not fewer lines of assembly code.
+
+In parallel, `filc_abi` took ownership of frames, entry/exit actions,
+call channels, dispatch, getters and origins. Its products keep setjmp
+and variadic lifetimes explicit, with no extra instruction indices.
+The interpreter now shares lifetime state across all copies of an
+object's capability, so free invalidates aliases and stored pointers
+without erasing their identity. These three responsibilities meet at
+the checked IR and the synchronized emission/liveness views.
+
+The combined representation changes retain 1014 byte-identical
+snapshot outputs. Native interoperation/GC tests and four Nix gates
+pass, including a traced ensure-aux exit and a boxed lower whose
+primary address differs from its box's address. Fault injections test
+the effects, not just their spelling. See [pizlonation.md](pizlonation.md)
+and [lifetime.md](lifetime.md) for the contracts and remaining limits.
+
 ## Where this goes
 
 The direction past these five is the same. Look for anything that is

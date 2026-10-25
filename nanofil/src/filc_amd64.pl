@@ -355,22 +355,42 @@ fused_inst(Inst, Insts, Fn, Inst, Insts) :-
 
 % proven_access(+Access0, +Q, +P, -Access): Access0 is a raw access at
 % tmp(Q) and Access is the same at P.
-proven_access(let(D, K, raw_load(T, Off), [tmp(Q)]), Q, P, let(D, K, raw_load(T, Off), [P])).
-proven_access(raw_store(W, Off, V, tmp(Q)), Q, P, raw_store(W, Off, V, P)).
+proven_access(let(D, K, raw_load(T, Off), [tmp(Q)]), Q, P,
+              let(D, K, raw_load(T, Off), [P])) :- T \== p.
+proven_access(raw_store(W, Off, V, tmp(Q)), Q, P,
+              raw_store(W, Off, V, P)) :- W \== p.
+proven_access(let(D, p, raw_load_pointer(Off, Es), [tmp(Q)]), Q, P,
+              let(D, p, raw_load_pointer(Off, Es), [P])) :-
+    pointer_memory_effects(load, Es).
+proven_access(raw_store_pointer(Off, V, tmp(Q), Es), Q, P,
+              raw_store_pointer(Off, V, P, Es)) :-
+    pointer_memory_effects(store, Es).
 
 % access_pointer(+Access, -P, -Off): the fused Access is at P + Off.
 access_pointer(let(_, _, raw_load(_, Off), [P]), P, Off).
 access_pointer(raw_store(_, Off, _, P), P, Off).
+access_pointer(let(_, p, raw_load_pointer(Off, _), [P]), P, Off).
+access_pointer(raw_store_pointer(Off, _, P, _), P, Off).
 access_pointer(Access, P) :- access_pointer(Access, P, _).
 
 unchecked_access(let(_, _, load(_), _)).
 unchecked_access(store(_, _, _)).
 unchecked_access(call(_, tmp(_), _)).
 unchecked_access(raw_call(_, _, _)).
+unchecked_access(let(_, _, raw_load(_, _), _)).
+unchecked_access(raw_store(_, _, _, _)).
+unchecked_access(let(_, _, raw_load_pointer(_, _), _)).
+unchecked_access(raw_store_pointer(_, _, _, _)).
 
 live_block(block(L, Phis, Insts0, Jump), block(L, Phis, Insts, Jump)) :-
     maplist(live_inst, Insts0, Insts).
 
+% Layout sees exactly the former whole-pointer operation at this index.
+% In particular both original p operands survive every internal helper.
+live_inst(fused(_, let(D, p, raw_load_pointer(Off, _), [P])),
+          let(D, p, raw_load(p, Off), [P])) :- !.
+live_inst(fused(_, raw_store_pointer(Off, V, P, _)),
+          raw_store(p, Off, V, P)) :- !.
 live_inst(Inst0, Inst) :-
     (   Inst0 = fused(_, Access) -> Inst = Access ; Inst = Inst0 ).
 
@@ -911,32 +931,46 @@ raw_access(let(tmp(D), K, raw_load(T, 0), [_]), Index, Block, Ctx) -->
     raw_load(T, K, D, Index, Block, Ctx).
 raw_access(raw_store(W, 0, V, P), Index, Block, Ctx) -->
     raw_store(W, V, P, Index, Block, Ctx).
+raw_access(let(tmp(D), p, raw_load_pointer(0, Effects), [_]), I, B, Ctx) -->
+    pointer_load_effects(Effects, I, B, Ctx),
+    flight_store(D, Ctx).
+raw_access(raw_store_pointer(0, V, P, Effects), I, B, Ctx) -->
+    pointer_store_effects(Effects, V, P, I, B, Ctx).
 
 rights_write(read, 0).
 rights_write(write, 1).
 
-% raw_load(+T, +K, +D, +Index, +Block, +Ctx)//: a load of type T at K
-% into tmp(D). A load of p also reads the capability from the aux array;
-% the others read an integer.
-raw_load(p, p, D, Index, Block, Ctx) -->
-    { local_label(Ctx, Block, Index, nolower, NoLower),
-      local_label(Ctx, Block, Index, have, Have) },
+% The effect list determines execution; only its caller publishes the
+% result. No-aux jumps to lower_resolve's null arm. Resolving a box reads
+% only its lower: address_read always reads the primary payload.
+pointer_load_effects([], _, _, _) --> [].
+pointer_load_effects([E|Es], I, B, Ctx) -->
+    pointer_load_effect(E, I, B, Ctx), pointer_load_effects(Es, I, B, Ctx).
+
+pointer_load_effect(aux_read, Index, Block, Ctx) -->
+    { local_label(Ctx, Block, Index, nolower, NoLower) },
     aux_of_lower,
     [ins(jz, none, [sym(NoLower)]),
      ins(mov, q, [reg(rax), reg(rsi)]),
      ins(sub, q, [reg(rcx), reg(rsi)]),
-     ins(mov, q, [mem(0, rdx, rsi), reg(rsi)]),
-     ins(test, b, [imm(1), reg(sil)]),
+     ins(mov, q, [mem(0, rdx, rsi), reg(rsi)])].
+pointer_load_effect(lower_resolve, Index, Block, Ctx) -->
+    { local_label(Ctx, Block, Index, nolower, NoLower),
+      local_label(Ctx, Block, Index, have, Have) },
+    [ins(test, b, [imm(1), reg(sil)]),
      ins(jz, none, [sym(Have)]),
      ins(and, q, [imm(-2), reg(rsi)]),
      ins(mov, q, [mem(8, rsi), reg(rsi)]),
      ins(jmp, none, [sym(Have)]),
      label(NoLower),
      ins(xor, l, [reg(esi), reg(esi)]),
-     label(Have),
-     ins(mov, q, [mem(0, rax), reg(rax)]),
-     ins(mov, q, [reg(rsi), reg(rcx)])],
-    flight_store(D, Ctx).
+     label(Have)].
+pointer_load_effect(address_read, _, _, _) -->
+    [ins(mov, q, [mem(0, rax), reg(rax)]),
+     ins(mov, q, [reg(rsi), reg(rcx)])].
+
+% raw_load(+T, +K, +D, +Index, +Block, +Ctx)//: a scalar load of type
+% T at K into tmp(D). Pointer loads require their explicit effect list.
 raw_load(l, K, D, _, _, Ctx) --> integer_load(l, K, D, Ctx).
 raw_load(s, K, D, _, _, Ctx) --> integer_load(s, K, D, Ctx).
 raw_load(d, K, D, _, _, Ctx) --> integer_load(d, K, D, Ctx).
@@ -956,18 +990,20 @@ integer_load(T, K, D, Ctx) -->
 % pointer V at A with its check, for an instruction whose store is
 % internal (setjmp's jmp_buf).
 checked_pointer_store(V, A, Index, Block, Ctx) -->
+    { pointer_memory_effects(store, Effects) },
     flight_load(A, Ctx),
     access_check(k(8, 1, 8), Ctx),
-    raw_store(p, V, A, Index, Block, Ctx).
+    pointer_store_effects(Effects, V, A, Index, Block, Ctx).
 
-% raw_store(+W, +V, +A, +Index, +Block, +Ctx)//: a store of V of width W
-% at A, which its check left in %rax:%rcx. A pointer store ensures the
-% object's aux array, which may exit (a safepoint), and so reloads A
-% from its rooted slot rather than keep it in a register.
-raw_store(p, V, A, Index, Block, Ctx) -->
-    { ctx_fn(Ctx, Fn),
-      local_label(Ctx, Block, Index, haveaux, HaveAux),
-      local_label(Ctx, Block, Index, nobarrier, NoBarrier) },
+% A pointer store may exit during ensure-aux. Reload both rooted inputs
+% after the helpers, before writing the lower and then the address.
+pointer_store_effects([], _, _, _, _, _) --> [].
+pointer_store_effects([E|Es], V, A, I, B, Ctx) -->
+    pointer_store_effect(E, V, A, I, B, Ctx),
+    pointer_store_effects(Es, V, A, I, B, Ctx).
+
+pointer_store_effect(aux_ensure, _, _, Index, Block, Ctx) -->
+    { local_label(Ctx, Block, Index, haveaux, HaveAux) },
     aux_of_lower,
     [ins(jnz, none, [sym(HaveAux)])],
     slot_reg_load(thread, rdi, Ctx),
@@ -975,7 +1011,9 @@ raw_store(p, V, A, Index, Block, Ctx) -->
      ins(call, none, [plt(filc_object_ensure_aux_ptr_outline)]),
      ins(mov, q, [reg(rax), reg(rdx)]),
      label(HaveAux)],
-    reg_slot_store(rdx, aux, Ctx),
+    reg_slot_store(rdx, aux, Ctx).
+pointer_store_effect(lower_barrier, V, _, Index, Block, Ctx) -->
+    { local_label(Ctx, Block, Index, nobarrier, NoBarrier) },
     lower_reg_load(V, rsi, Ctx),
     [ins(test, q, [reg(rsi), reg(rsi)]),
      ins(jz, none, [sym(NoBarrier)]),
@@ -984,15 +1022,21 @@ raw_store(p, V, A, Index, Block, Ctx) -->
      ins(je, none, [sym(NoBarrier)])],
     slot_reg_load(thread, rdi, Ctx),
     [ins(call, none, [plt(filc_store_barrier_for_lower_slow)]),
-     label(NoBarrier)],
+     label(NoBarrier)].
+pointer_store_effect(rooted_reload, V, A, _, _, Ctx) -->
+    { ctx_fn(Ctx, Fn) },
     flight_load(A, Ctx),
     slot_reg_load(aux, rdx, Ctx),
     [ins(mov, q, [reg(rax), reg(r8)]),
      ins(sub, q, [reg(rcx), reg(r8)])],
     lower_reg_load(V, rsi, Ctx),
-    load(V, l, r9, Fn),
-    [ins(mov, q, [reg(rsi), mem(0, rdx, r8)]),
-     ins(mov, q, [reg(r9), mem(0, rax)])].
+    load(V, l, r9, Fn).
+pointer_store_effect(lower_write, _, _, _, _, _) -->
+    [ins(mov, q, [reg(rsi), mem(0, rdx, r8)])].
+pointer_store_effect(address_write, _, _, _, _, _) -->
+    [ins(mov, q, [reg(r9), mem(0, rax)])].
+
+% Scalar stores have no aux or barrier effects.
 raw_store(b, V, _, _, _, Ctx) --> integer_store(b, V, Ctx).
 raw_store(h, V, _, _, _, Ctx) --> integer_store(h, V, Ctx).
 raw_store(w, V, _, _, _, Ctx) --> integer_store(w, V, Ctx).

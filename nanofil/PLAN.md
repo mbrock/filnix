@@ -98,15 +98,15 @@ start. Reversing one is cheap until the milestone it names.
 ## Completing the foundation
 
 The milestone labels below record working behavior, not completion of
-the architecture in the opening diagram. In particular, M3's runtime
-and interoperation tests pass, but pizlonation does **not yet** turn
-`p` values into explicit address/lower pairs or lower frames and calls
-into target-independent operations. Much of that still happens while
-`filc_amd64.pl` emits assembly.
+the architecture in the opening diagram. Pizlonation now states checks,
+flight construction and ordinary pointer-memory effects in executable
+IR. Fil-C ABI lowering describes frames and calls before AMD64 emission.
+Pointer pairs stay indivisible; this is not an IR of independently
+scheduled address and lower temporaries.
 
 The frontend refactoring is through campaign step 5: one elaborated
 tree supplies lowering, integer constants and address constants. The
-next structural work is the same separation on the Fil-C side:
+same separation on the Fil-C side now has these boundaries:
 
 1. **State safety obligations in checked IR.** Memory checks and polls
    are done; function-target checks now also have a proof class and raw
@@ -114,19 +114,18 @@ next structural work is the same separation on the Fil-C side:
 2. **Expose flight-pointer operations and their effects.** Pure pointer
    construction now uses `flight`: an explicit address calculation and
    lower source, validated and interpreted independently. The pair stays
-   indivisible. Aux access, ensure-aux and barriers remain to be stated
-   explicitly; preserve the pointer store's check/ensure-aux/reload
-   ordering. Phis, loads, calls and allocation still carry whole `p`s.
+   indivisible. Ordinary pointer accesses carry ordered aux, barrier,
+   reload and payload effects, executed by interpreter and emitter.
+   Phis, loads, calls and allocation still carry whole `p`s.
 3. **Separate Fil-C ABI lowering from AMD64 emission.** Frame roots,
-   entry/exit, fast/generic calls, getters and origins belong to the
-   Fil-C lowering description; physical stack/register placement and
-   instruction spelling belong to the target. Setjmp snapshots and
-   variadic cursors must remain explicit exceptions to ordinary value
-   lifetimes. Extract these responsibilities, not arbitrary chunks of
-   the large backend into files.
+   entry/exit, fast/generic calls, getters and origins are products of
+   `filc_abi`; physical stack/register placement and instruction spelling
+   belong to the target. Setjmp snapshots and variadic cursors are
+   explicit exceptions to ordinary value lifetimes. Global data
+   serialization and relocations remain target-side.
 4. **Complete the lifetime oracle before optimizing checks.** The
-   interpreter must model free/invalidation before it can detect a
-   proof reused after an effect. Then finish M5's exact-sized,
+   interpreter now models free/invalidation, including aliases and
+   stored capabilities. Remaining: finish M5's exact-sized,
    non-escaping stack objects with a reviewed rooting/lifetime rule.
 
 Each step needs a reviewed contract, interpreter evidence where the

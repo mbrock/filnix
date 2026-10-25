@@ -4,12 +4,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdatomic.h>
+#include <stdint.h>
 
 /* Fil-C's malloc rounds sizes up to 16 bytes, so the test buffer is
    exactly 16 bytes and the overruns below start at byte 16. */
 
 long sumbytes(char *buf, long n);
 void setslot(char **slot, char *v);
+char *getslot(char **slot);
 char *offset(char *p, long off);
 void poke(char *p, unsigned v);
 long five(char *a, char *b, char *c, char *d, char *e);
@@ -59,6 +62,18 @@ int main(int argc, char **argv)
     CASE(15, "wrong signature") {
         long (*volatile bad)(char *) = (long (*)(char *))(void *)sumbytes;
         printf("%ld\n", bad(b));
+        break;
+    }
+    /* Atomic stores box the aux entry. A scalar overwrite changes only
+       the primary address: getslot must combine it with the box's lower,
+       not take the box's old address. setslot then replaces the box. */
+    CASE(16, "boxed slot") {
+        _Atomic(char *) *boxed = calloc(1, sizeof(*boxed));
+        atomic_store(boxed, b + 2);
+        *(uintptr_t *)boxed = (uintptr_t)(b + 3);
+        printf("%d ", *getslot((char **)boxed));
+        setslot((char **)boxed, b + 4);
+        printf("%d\n", *atomic_load(boxed));
         break;
     }
     }
