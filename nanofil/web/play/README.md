@@ -57,6 +57,13 @@ Each playground pass also validates its output (included in its time).
 Checked and already-local modules keep the optimizer's identity bypass.
 Pass algorithms and the one-check-per-access safety contract are unchanged.
 
+The [semantic campaign](../../docs/campaign.md) gives this view a longer-term
+role: inspect an access's requirements and the evidence that discharges
+them. A future check-reuse pass should expose its real result and reasons
+here, including obligations left to runtime checks. That evidence must be
+a compiler product, not an analysis independently reconstructed by the UI.
+The page does not yet display such evidence or certify transformations.
+
 ```sh
 nix build .#site -o /tmp/site
 python3 -m http.server -d /tmp/site    # then open /nanofil/play/

@@ -1,20 +1,35 @@
-# The campaign: nanofil as a specification that compiles programs
+# The campaign: executable capability semantics
 
-This is the compass for the refactoring campaign. Read it before
-changing how nanofil is factored, and update its roadmap when a step
-lands or the plan changes. [factorings.md](factorings.md) is the log of
-what has been done and why; this file is where we are going.
+This is the foundation and current direction of nanofil. Read it before
+changing its semantics or factoring. [../PLAN.md](../PLAN.md) tracks
+milestones; [factorings.md](factorings.md) records completed refactorings.
+The historical frontend roadmap below is not the next work queue.
 
 ## The ambition
+
+nanofil is both a working C compiler and an executable account of
+Fil-C's capability semantics. Compiling programs and investigating their
+meaning are two uses of the same explicit IR and relations. The purpose
+is not to reproduce LLVM's optimizer in Prolog. It is to make the memory
+model, safety obligations, and reasons for accepting a transformation
+readable, executable, and eventually amenable to small formal proofs.
+
+The organizing distinction is **requirement, evidence, implementation**.
+An access requires authority over an object's bytes. A runtime check is
+one way to establish it; static reasoning, still-valid earlier evidence,
+or a combination may establish it too. An optimizer must justify a
+cheaper implementation of the requirement, not silently weaken it.
+Today nanofil accepts immediate checks, not arbitrary certificates or
+reusable proofs. Extending the accepted evidence is future semantic work.
 
 nanofil should read like the standards it implements. A clause of
 `c_types.pl` should be recognizable as a paragraph of C11, a clause of
 `ir.pl` as a sentence about the IR, a clause of `filc_amd64.pl` as a
 fact about the Fil-C ABI. Each fact is stated once, as a relation, and
-everything that needs it reads it. When that holds, the compiler is
-trustworthy because there is no second copy to drift, and delightful
-because you can learn memory-safe C by reading it. Some relations can
-even run backwards, generating the programs they describe.
+its consumers read that relation. This reduces drift; it does not prove
+the shared rule correct. Independent observations, native comparisons,
+and explicit proof obligations remain necessary. Some relations can run
+backwards, finding inputs or generating the programs they describe.
 
 The aim is adequacy of structure, not brevity: the shape of the code
 should be the shape of what it describes, the way a proposition pictures
@@ -34,6 +49,169 @@ directions, and relations that describe what holds rather than
 procedures that compute it. AGENTS.md's "Purity where it pays" records
 where we deliberately stop short (`#=` and `if_/3` on ground compiler
 data).
+
+## The memory model comes before the optimization
+
+C syntax identifies operations but does not uniquely determine their
+safe interpretation. Fil-C supplies a capability model where ordinary C
+permits undefined behavior. nanofil must state which part of that model
+it implements, rather than assume that source programs are already safe.
+
+- **Address is not authority.** A pointer has address bits and a
+  capability identifying an object. Computing another live object's
+  address does not acquire its capability. Bounds, rights, and lifetime
+  are properties of the identified object, not just an address range.
+- **Identity is shared.** Freeing through one alias invalidates the
+  others. A stored capability is an identity, not a snapshot of bounds.
+  The [lifetime oracle](lifetime.md) states the current explicit-free
+  semantics and its limits.
+- **Effects matter to evidence.** Calls, polls, allocation and
+  pointer-memory helpers have distinct effects. A fact about alignment
+  need not expire when a not-freed fact expires. Rooting and the runtime's
+  treatment of concurrent free are separate from detecting explicit free.
+- **Representation protocols need semantics too.** Printing a pointer
+  and parsing its address back does not preserve its capability. The
+  Ghostscript [adaptation](../../patches/ghostscript-filc.patch) retains
+  pointers in an exact pointer table. This supplies a runtime mechanism,
+  not an assertion that arbitrary parsed addresses are safe. A future C
+  annotation could describe such a protocol or propose an invariant; it
+  must not manufacture authority or act as an unchecked safety axiom.
+
+Checked IR makes these distinctions executable: `flight` states address
+and capability sources, `check` and `check_local` produce class `a`, and
+`check_function` produces class `f`. Raw operations cite their evidence.
+The validator currently requires each check's immediate, single use;
+the interpreter can expose an invalid raw access as `unchecked(Why)`.
+The [pizlonation contract](pizlonation.md) owns these rules, including the
+closed pointer-memory effect protocols and the indivisible `p` pair.
+
+## FilPizlonator is a source of analyses, not a proof oracle
+
+The pinned LLVM pass already combines static reasoning and runtime
+enforcement. It is one module pass containing several analyses and
+lowerings, not one undifferentiated check-insertion algorithm. These
+observations are from staging
+[`af813053ecb5`](https://github.com/mbrock/fil-c/commit/af813053ecb5a5ff27292bfede8d3a9e870d4c8e);
+the [ABI findings](abi-findings.md) explain how to obtain its small source
+snapshot. Method names below are in `FilPizlonator.cpp`.
+
+| Analysis | Facts and purpose |
+| --- | --- |
+| `inferPointerAsIntLaunderingForFunction` | `Bottom`, `Definite(P)`, `Top` track a capability source through integer dataflow; phis/selects can select matching capabilities. Recovering a source does not prove the resulting address in bounds. |
+| `scheduleChecks` | Separate validity, alignment, bounds, writability, not-free and auxiliary-metadata requirements. Forward propagation removes established checks; backward propagation schedules requirements earlier; a final forward pass removes new redundancy. |
+| `findNonescapingAllocasInFunction` | Backward lifetime facts (`Undetermined`, `Live`, `Zombie`) and escape analysis choose general managed storage or local representations. This contains the comment “Vive l'interprétation abstraite!” |
+| `lazifyAllocasInFunction`, `computeFrameIndexMap` | Initialization and liveness analyses delay allocations and reuse GC-root storage; derived pointers can share a root when its identity and dominance justify it. |
+
+The check scheduler reasons about canonical pointers and constant offsets,
+not arbitrary symbolic arithmetic. Its forward joins retain common facts;
+its backward joins are more restrictive. It can retain spatial facts
+across a poll while requiring renewed temporal validation. A poll is not
+therefore a blanket prohibition on loop-invariant spatial-check motion.
+
+These are trusted C++ analyses that directly produce code, not independent
+proof certificates. Their assertions and final LLVM `verifyModule` check
+representation invariants, not semantic preservation. Ordinary scalar
+optimization largely belongs to the surrounding LLVM pipelines.
+
+## Safety and behavior preservation are separate obligations
+
+Three different claims must not be conflated:
+
+1. **Checked-IR safety:** under stated initial-state and environment
+   assumptions, every admitted execution of a validated checked module
+   avoids `unchecked`. This is a theorem to establish about validation
+   and semantics, not a theorem obtained merely by running the validator.
+2. **Transformation correctness:** a pass produces admissible output and
+   preserves or refines the original program's observations. Replacing
+   every program with a trap could satisfy the first claim and fail this
+   one. Object correspondence matters when allocations move or disappear.
+3. **Implementation correctness:** native lowering and the runtime realize
+   those semantics, including roots, helper exits and call channels. An IR
+   proof alone does not establish this claim.
+
+Observations need a precise definition. The current `opt:refines/2`
+compares outcomes, with specific treatment of undefined behavior,
+constrained results and allocation-relative pointer results. It is not
+a general relation on memory states, effect traces or object bijections.
+Pizlonation tests compare returns and traps; unknown external effects,
+asynchronous free and general symbolic memory are outside the interpreter.
+Do not infer a stronger theorem from that test interface.
+
+In particular, upstream check scheduling can move failure before an
+ordinary or volatile store: it does not promise every preceding effect
+on an execution containing an invalid access. That is not permission to
+weaken nanofil's current acceptance criteria. Before adopting such motion,
+state the permitted failure timing, diagnostics and observable effects,
+and extend the oracle and review the contract. First reuse experiments
+should preserve the existing behavior, without speculative earlier traps.
+
+## Evidence has a scope and a trust boundary
+
+- **Structural validation** checks this module against the IR's rules.
+  Accepted class-`a`/`f` uses carry a small, conditional safety argument;
+  they are not Agda proof terms or a proof of the whole compiler.
+- **Concrete differential tests** compare executions. **Bounded symbolic
+  queries** can find counterexamples, or establish their absence within
+  completely searched finite domains. Unknown inputs are supported only
+  where the interpreter is relational: addresses, allocation sizes,
+  capabilities and floats must be concrete when used. Exhausted fuel,
+  unsupported execution or incomplete search is inconclusive.
+- **Translation validation** checks a particular transformation against a
+  contract. M6's scalar-cache checker already does this for its selected
+  instruction stream; it does not verify instruction selection, the
+  original emitter, or the runtime.
+- **Universal proofs** would establish explicitly quantified claims over
+  a specified model. Prolog success and executable `doc/3` examples do not
+  supply those proofs. Shared source rules can share a bug as well as a
+  definition; independent validation must not repeat the producer's choice.
+
+AI-assisted proof discovery is a possible producer of evidence, not a new
+authority. Agents could spend substantial offline effort finding an
+invariant, auxiliary lemmas, or a replacement for one hot path. A routine
+build should replay a deterministic check of the resulting evidence, not
+ask a model whether it is convincing. The theorem, allowed assumptions,
+program, dependencies, semantics and checker version must be identified;
+freezing dependencies does not freeze external inputs. No added postulate
+or unchecked annotation may silently discharge the safety obligation.
+Timeout or failure leaves the checked reference implementation available.
+
+This is an architectural direction, not an implemented certificate
+format or a decision to port the compiler to Agda, Twelf or another proof
+assistant. Formalizing one small rule and its correspondence to the
+executable model would be useful; proving a disconnected model would not
+certify emitted assembly.
+
+## The next work extends evidence, not an optimizer framework
+
+1. **State a small obligation and its effects.** For an initial scalar
+   check-reuse experiment, identify the pointer, covered bytes, rights,
+   alignment and lifetime facts, their invalidators, and the observations
+   that must remain unchanged. Start inside the current oracle's domain.
+2. **Extend acceptance before relying on new evidence.** Design the IR,
+   validator, interpreter and emitter contract together; immediate-use
+   fusion currently prevents reuse. Give an analysis explicit facts and
+   merge/transfer rules, and a checker an independently stated acceptance
+   rule. Keep runtime checks for obligations not established. Review the
+   safety change before implementation.
+3. **Make the counterexamples discriminating.** Aliasing free, wrong
+   allocation identity, branch-specific knowledge, misalignment, rights,
+   helper effects and changed trap behavior should defeat incorrect
+   proposals. Use finite complete searches where possible, native/GC tests
+   where the interpreter abstracts effects, and one narrow formalization
+   if it clarifies the contract. Passing these tests is not a universal
+   soundness proof.
+4. **Expose the actual computation.** Keep passes independently callable
+   and show their real intermediate IR in the playground. As evidence
+   becomes explicit, show why an obligation is discharged or remains a
+   runtime check. That explanatory view must read the compiler's result,
+   not reconstruct a second analysis in the UI.
+
+The existing `promote`, `copy` and `local_storage` selections establish
+the modularity pattern: ordinary Prolog relations, explicit products,
+fixed legal ordering, and no required microscopic-pass framework. A
+substantial analysis may remain one coherent module. Broad arithmetic
+optimization and general register allocation are not prerequisites for
+this semantic work, nor is an end-to-end compiler proof.
 
 ## How we work
 
@@ -91,12 +269,12 @@ identifier characters defined in both `c_lex.pl` and `c_pp.pl`. (The
 Fil-C checks, stated separately by `filc_amd64.pl` and `interp.pl`, now
 have an IR form: [pizlonation.md](pizlonation.md).)
 
-## The next big intervention: one typed tree
+## Completed frontend design: one typed tree
 
-Elaborate each full expression once into a typed tree, and let every
+Steps 3–5 below implemented this design. Its rationale is retained here:
+elaborate each full expression once into a typed tree, and let every
 consumer fold over it: IR emission, integer constants and address
-constants. That ends the four walks: one description of what each C
-expression is, read three ways.
+constants. One description of what each C expression is, read three ways.
 
 ```prolog
 % X     ::= val(Type, Node) | obj(Type, Place) | fun(Type, Designator)
@@ -131,7 +309,7 @@ expression is, read three ways.
   but wraps in the IR. `interp` is a good test oracle, not the
   implementation.
 
-## Roadmap
+## Frontend roadmap and implementation record
 
 Update the status column when a step lands, with its commit.
 
@@ -190,22 +368,22 @@ place when it owns a coherent specification. This may add code while
 making the boundary explicit; the measure is whether there are fewer
 independent accounts of the same rule.
 
-## Visions
+## Further semantic investigations
 
-Where the campaign leads if it succeeds, to keep the ambition honest:
+These are research directions, not additional acceptance claims:
 
-- **c_types reads as C11 6.3 and 6.5; c_lower is an IR compiler.**
-  `elaborate/4` is about 600 lines with each clause group citing its
-  paragraph; `c_lower` is about 1,700 lines with no type logic and only
-  "unsupported" diagnostics. The C11 tags give an index from clause to
-  predicate, and a report of which clauses the corpora exercise.
+- **Source rules and their coverage.** The C11 citations can index
+  typing rules and report which clauses the corpora exercise. Relate
+  frontend lowering to the IR's chosen semantics; do not identify C's
+  undefined behavior with permission to violate capability safety.
 - **One arithmetic, three readings, cross-checked backwards.** With the
   typing relations table-driven, the elaborator can generate
   well-typed constant expressions over a finite type universe; then
-  `const_eval` must equal `interp(lower(E))` must equal clang. That is
-  the C-level counterpart of what `gen.pl` does for the IR.
-- **Fil-C safety as an IR relation.** A pass from IR to IR makes every
-  access check explicit, `interp` runs it, and "every access is
-  checked" becomes testable; `filc_amd64.pl` shrinks to emission. This
-  changes the IR contract, so it needs the orchestrating thread's
-  agreement and an Oracle review first.
+  compare `const_eval`, `interp(lower(E))` and clang where their domains
+  agree. Constant-expression rejection and IR wrapping are deliberately
+  different outside that overlap.
+- **Relations between interpretations.** Investigate unchecked versus
+  checked execution, heap versus local storage, and concrete versus
+  abstract execution. State the object correspondence and environmental
+  assumptions each comparison needs. These provide small candidates for
+  formalization without claiming a verified C frontend or native backend.

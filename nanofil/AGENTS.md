@@ -75,15 +75,32 @@ SWI, `swipl ... -g 'profile(Goal)'` shows where time goes.
   look a name up in a relation, generate the candidates' chars and
   compare.
 
-## The refactoring campaign
+## The semantic foundation and campaign
 
-nanofil is being refactored toward a specification that compiles
-programs: each fact about C, the IR or Fil-C stated once, as a relation
-everything else reads. [docs/campaign.md](docs/campaign.md) holds the
-ambition, the working rules (snapshot byte-identity, fail-first tests
-for behaviour changes) and the ordered roadmap; read it before
-refactoring, and mark roadmap steps done when they land.
-[docs/factorings.md](docs/factorings.md) logs what has been done.
+nanofil is a working compiler and an executable account of capability
+semantics. [docs/campaign.md](docs/campaign.md) states its foundation and
+current priorities; read it before semantic or structural work.
+[PLAN.md](PLAN.md) tracks milestones and [docs/factorings.md](docs/factorings.md)
+records completed refactorings. The old frontend roadmap is a record,
+not a request to repeat completed work.
+
+- Separate safety requirements, evidence that discharges them, and their
+  implementation. Today checked IR requires immediate, single-use checks;
+  new evidence needs a reviewed validator/interpreter/emitter contract.
+- State the abstract facts, transfer/merge rules and invalidating effects
+  of an analysis. Keep passes independently callable as ordinary Prolog
+  relations; do not require microscopic passes or wrapper frameworks.
+- Distinguish checked-IR safety, behavior preservation and native/runtime
+  correctness. Shared relations, bounded searches, tests and `doc/3`
+  examples are not a universal proof. Preserve current trap behavior
+  unless a changed observation contract is explicitly reviewed.
+- AI may propose transformations, invariants or proofs; acceptance must
+  check the result under fixed assumptions, not trust the proposer.
+  Unsupported evidence or exhausted search never authorizes check removal.
+- Keep the selectable reference path and the existing snapshot/fail-first
+  gates. The playground must show actual compiler products, not a second
+  implementation of their explanation. General arithmetic optimization
+  and register allocation are not prerequisites for semantic work.
 
 ## Purity where it pays
 

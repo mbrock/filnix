@@ -1,16 +1,24 @@
 # nanofil plan
 
-nanofil is a C compiler written in Prolog. Its IR started as a QBE
-subset and is now its own (`src/ir.pl`, with `src/interp.pl` as its
-meaning and `src/ir_text.pl` as its text), and its output is x86-64 assembly in the Fil-C ABI. That assembly links
-with clang-built Fil-C code and keeps Fil-C's memory-safety guarantees.
-It is meant to be a small, readable reference implementation of what the
-Fil-C pass does, not a replacement for it.
+nanofil is a C compiler and an executable account of capability semantics,
+written in Prolog. Its own IR (`src/ir.pl`, interpreted by `src/interp.pl`
+and printed by `src/ir_text.pl`) makes object identity, address/capability
+propagation, access requirements and runtime effects explicit. Its x86-64
+assembly links with clang-built Fil-C code for the documented subset.
 
-Background and design rationale are in [docs/handoff.md](docs/handoff.md),
-kept as written. What was checked against the toolchain filnix actually
-ships is in [docs/abi-findings.md](docs/abi-findings.md). Where the two
-disagree, the findings win.
+The foundation is [docs/campaign.md](docs/campaign.md): separate safety
+obligations from the evidence that discharges them and the code that
+implements them. Runtime checks are the reference implementation, not the
+only possible justification. Semantic investigation is a purpose of the
+compiler, not a testing accessory. Broad LLVM-style optimization is not
+the goal, and neither a verified compiler nor a certificate system is
+claimed to exist today.
+
+This file tracks milestones; their numbering records the project's
+history, not a requirement to finish general register allocation before
+semantic work. [docs/handoff.md](docs/handoff.md) is the original proposal,
+kept as written. [docs/abi-findings.md](docs/abi-findings.md) records what
+was checked against the pinned toolchain and takes precedence over it.
 
 ```diagram
  C source
@@ -84,21 +92,34 @@ start. Reversing one is cheap until the milestone it names.
 
 ## Rules for extending
 
-- Every pass is checked by the M1 interpreter on its tests: same inputs
-  before and after the pass, same observable results.
-- Safety checks may be removed only on a complete, successful analysis.
-  An unknown result, a resource limit or an exception keeps the check or
-  rejects compilation. It never counts as evidence of safety.
+- State each transformation's input/output contract, effects, evidence
+  and preservation claim. Keep safety of checked execution, behavioral
+  refinement and correctness of native lowering as distinct obligations.
+- Compare before/after executions with the M1 interpreter where modeled,
+  and with native interop/GC tests where effects are abstracted. Bounded
+  symbolic searches and tests support universal claims; they do not
+  discharge them. Unknown execution or exhausted fuel is inconclusive.
+- Remove a safety check only when its obligation has an accepted
+  justification under explicit rules. An analysis, annotation or AI
+  proposal does not authorize its own result. Failure, resource limits
+  or unsupported evidence keep the reference checks or reject compilation.
+- Check motion requires a stated policy for failure timing and effects.
+  Upstream's permission to fail earlier on violating executions is not
+  automatically nanofil's. Preserve current behavior until a different
+  contract and its validation have been explicitly reviewed.
 - Keep the unoptimized path selectable and use it as the differential
-  reference for each optimization.
+  reference for each optimization. Give transformations independent
+  computational identities, as `optimize_pass/3` does, without imposing
+  microscopic passes or a generic framework.
 - Purity wherever it pays (handoff, "Lessons from The Power of Prolog").
-  Impurity is confined to the driver: versioned facts at pass boundaries,
-  I/O, and time budgets. Each impure spot gets a comment saying why.
+  Use explicit terms, mode contracts and ordinary relations; ground
+  compiler walks need not run backwards. Keep I/O and search budgets out
+  of semantic rules. See AGENTS.md for the measured host tradeoffs.
 - Changes to what is considered safe (check elimination, rooting, getter
   skipping) get an Oracle review first, as for the compiler itself
   (root AGENTS.md).
 
-## The basic foundation is complete for the documented subset
+## The executable foundation is in place; general proofs are not
 
 Pizlonation states checks, flight construction and ordinary pointer-memory
 effects in executable IR. Fil-C ABI lowering describes frames and calls
@@ -380,27 +401,51 @@ independent of `-O`. See [m6.md](docs/m6.md) for boundaries and measurements.
 
 **Next:** use measured native benefit to decide whether to extend allocation
 across regions or improve instruction selection. Fewer frame accesses do
-not imply fewer instructions or faster execution. The earlier combined
+not imply fewer instructions or faster execution. This is a separate
+workstream, not a prerequisite for the semantic agenda. The earlier combined
 tiling-search/CLP(Z) proposal is deferred: deterministic allocation plus
 validation comes first. A solver would need reproducible limits on problem
 construction, propagation and search, with a clean-state checked fallback.
 Pointer allocation, root reduction, setjmp allocation and check removal
 are separate safety decisions, not extensions hidden in this pass.
 
-### M7. Check optimization and the rest of the ABI
+### M7. Safety obligations and alternative evidence
 
-**Deliverable:**
+**Status: planned, no access-check elimination implemented.** Pizlonation
+still emits each check immediately before its one use. The validator and
+backend enforce that contract; an optimizer cannot simply delete a check
+or reuse a proof without extending both.
 
-- Inline pointer load and store fast paths.
-- Check merging per canonical pointer, using M5 alias base-plus-offset
-  facts. Redundant-pollcheck removal.
-- Caching global addresses across a function instead of calling the
-  getter at every use (globals themselves arrive in M4c).
-- Getter-free pointer-free readonly literals. This is the findings' claim,
-  and it needs Oracle review and the M3 GC stress test before it ships.
+**First deliverable:** one narrowly specified alternative to repeated
+runtime checking, such as reuse for repeated scalar accesses in a
+straight-line region. State the facts, transfer and merge rules,
+invalidation effects and independent acceptance rule. Preserve the
+reference path and current behavior; keep checks for unproved conditions.
+The [campaign](docs/campaign.md#the-next-work-extends-evidence-not-an-optimizer-framework)
+sets the work order and proof boundaries.
 
-**Acceptance:** fewer checks in the output than M3, the same trap behavior
-on the M3 failure suite, and Oracle sign-off on each removal rule.
+**Acceptance:**
+
+- An explicit reviewed IR/validator/interpreter/emitter contract, including
+  the identity and lifetime of evidence. No unchecked assertion of safety.
+- Before/after outcomes within the oracle's domain, including existing
+  trap distinctions; tests that reject stale, wrong-object, branch-only
+  and insufficient-rights/range evidence. Plant plausible invalidation
+  and coverage mistakes and require the tests or checker to reject them.
+- Native and GC/helper-effect coverage for what the oracle abstracts.
+  Fewer emitted checks and measured costs are useful outcomes, not proofs.
+- A selectable transformation and its actual output in the playground.
+  Show explanatory evidence only when it is a real compiler product.
+
+**Later, separate contracts:** split spatial and temporal facts for broader
+motion, infer capabilities through integer dataflow, or formalize a small
+validation rule. AI-assisted discovery may propose proofs or replacements;
+acceptance must remain reproducible and independent of the proposing agent.
+No theorem prover or certificate format is chosen yet.
+
+Poll removal, getter caching, getter-free literals and broader local
+storage remain separate runtime/rooting decisions. None follows merely
+from having proved an access range or from an existing M6 cache check.
 
 ### M8. Demo
 
@@ -419,6 +464,11 @@ matches a filcc-built Lua, like the hello and zlib checks.
 
 ## Still open
 
+- The observation relation for semantic transformations: object identity
+  correspondence, failure timing and effects, beyond today's outcome
+  comparison. Checked-IR safety and native correctness need separate claims.
+- The first independently checked alternative evidence for an access,
+  and a small formalization connected to the actual executable semantics.
 - Symbolic addresses in the interpreter, for translation validation of
   memory passes (M5).
 - Whether broader allocation or instruction selection justifies its cost

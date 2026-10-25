@@ -6,6 +6,14 @@ This is a deterministic, single-threaded subset: no asynchronous handlers,
 reclamation, or collector rewriting of capabilities. It is not a proof
 that check elimination or moving checks across safepoints is safe.
 
+Within the [semantic foundation](campaign.md), this oracle supplies the
+object-identity and explicit-free model against which proposed evidence
+can be tested. A stale-proof counterexample refutes a transformation;
+passing the comparisons does not establish universal soundness. Return
+and trap comparisons also do not establish preservation of all earlier
+effects or their timing. Broader check motion needs both a richer
+observation contract and separate native/runtime evidence.
+
 ## Ground truth at staging af81305
 
 The source is the pinned staging revision

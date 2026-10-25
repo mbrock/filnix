@@ -1,14 +1,25 @@
 # nanofil
 
-A C compiler written in Prolog that emits x86-64 assembly in the
-[Fil-C](https://github.com/pizlonator/fil-c) ABI. Its object files link
-with clang-built Fil-C code, and they keep Fil-C's guarantees: every
-access is bounds-checked against a capability, pointers are rooted for
-the garbage collector, and calls go through checked function objects.
+A C compiler and an executable model of
+[Fil-C](https://github.com/pizlonator/fil-c)'s capability semantics,
+written in Prolog. It emits x86-64 assembly that links with clang-built
+Fil-C code. For its supported subset, it implements capability-checked
+accesses, collector roots and checked indirect calls.
 
-It is meant as a small reference for what Fil-C's LLVM pass does, in a
-form you can read, test and run backwards. About 13,000 lines of Prolog
-run on SWI-Prolog or Trealla.
+The aim is a compiler whose meaning can also be worked on directly:
+inspect object identity and pointer authority, search for counterexamples
+to transformations, and state what justifies replacing a runtime check
+with other evidence. Runtime checks are one implementation of safety
+obligations, not the obligations themselves. FilPizlonator's abstract
+interpreters are a reference for that separation, not a mandate to
+reproduce LLVM's optimizer.
+
+Today nanofil has executable IR semantics, structural validation,
+differential tests and bounded symbolic comparisons. It does not have a
+universal correctness proof or an access-proof certificate system. The
+[foundation and direction](docs/campaign.md) distinguish what exists from
+what we want to establish. The compiler runs on SWI-Prolog; Trealla's
+dialect is retained, with active work currently on SWI.
 
 ## A look
 
@@ -60,20 +71,38 @@ against `a`'s capability and polls for the collector on the back edge.
 ## How it is built
 
 ```diagram
-C source ──▶ preprocessor ──▶ parser ──▶ lowering ──▶ IR
-             (DCG)            (DCG)      (cproc style)  │
-                                                        ▼
-assembly ◀── Fil-C backend ◀── middle end (-O): SSA, promote,
-                               copies, alias, escape, loops
+C source ──▶ preprocess, parse, elaborate, lower
+                                          │
+                                          ▼
+                                     unchecked IR
+                                          │ selected middle-end passes
+                                          │ pizlonate
+                                          ▼
+assembly ◀── AMD64 ◀── Fil-C ABI plans ◀── checked IR
+                                         checks, flight, effects
 ```
 
 The IR has a reference semantics: an interpreter written with CLP(Z)
-constraints. That interpreter is the test oracle. Every test input runs
-in the interpreter and natively, and the results must agree. With `-O`,
-each run is repeated on the unoptimized IR and the optimized result must
-refine it. Because the interpreter is a relation, it can also run with
-unknown inputs, for example to search for arguments on which two
-functions differ.
+constraints. Differential fixtures compare interpreted and native
+outcomes, and optimized results against the unoptimized IR. Symbolic
+integers can search for counterexamples; complete finite searches establish
+absence only within their bounds. Memory addresses, capabilities and
+allocation sizes must be concrete when used, as must floating-point values.
+The interpreter abstracts GC and concurrency; native tests cover runtime
+integration. Neither kind of test proves the compiler correct universally.
+
+In [checked IR](docs/pizlonation.md), an access cites a proven address
+and the validator checks its coverage. Currently that evidence must come
+from an immediately preceding runtime check; reuse and static discharge
+remain planned. The interpreter distinguishes an invalid raw access
+(`unchecked`) from a program's legitimate safety trap. Keeping access
+safety separate from behavior preservation is the basis for future work.
+
+The [playground](https://mbrock.github.io/filnix/nanofil/play/) exposes
+the actual intermediate IR for independently selected promotion, copy
+elimination and local storage. It is a view of the compiler's computations,
+not a second implementation. Explaining why an obligation is discharged
+is a future extension of that same pattern.
 
 ## Trying it
 
@@ -126,7 +155,12 @@ lives in a stack slot.
 
 ## Reading on
 
+- [docs/campaign.md](docs/campaign.md): the semantic foundation, evidence
+  and trust boundaries, upstream analyses, and current priorities.
 - [PLAN.md](PLAN.md): milestones, decisions, what is next.
+- [docs/pizlonation.md](docs/pizlonation.md) and
+  [docs/lifetime.md](docs/lifetime.md): the current check/effect contract
+  and explicit-free model, including what they do not establish.
 - [docs/abi-findings.md](docs/abi-findings.md): the Fil-C ABI as checked
   against filnix's pinned Fil-C.
 - [docs/m1.md](docs/m1.md) to [docs/m5.md](docs/m5.md): the IR and

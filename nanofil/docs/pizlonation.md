@@ -9,6 +9,12 @@ frontend and middle end write into the checked IR the Fil-C backend
 compiles, and `ir.pl` states the rules that make a check cover an
 access.
 
+The [campaign](campaign.md) separates the requirement to access memory
+safely, the evidence that establishes it, and its native implementation.
+This document specifies today's evidence: an adjacent runtime check with
+one raw use. Reusable or statically discharged evidence would extend this
+contract; neither is implemented by simply exposing checks in the IR.
+
 ## The checked stage
 
 ```prolog
@@ -371,16 +377,44 @@ c-testsuite 00200. On Trealla it is about +30% time and +1 GB peak memory
 (00200, `cc`: 9.3 s, 2.66 GB before; about 12-13 s, 3.6 GB after; `-O
 cc` 3.7 to 4.7 GB), nearly all in `cfg.pl`'s dominator computation.
 
-## Deferred
+## Extending evidence beyond adjacent checks
+
+FilPizlonator provides a reference for separating facts by their effects,
+not a ready-made correctness argument. Its
+[check scheduler](https://github.com/mbrock/fil-c/blob/af813053ecb5a5ff27292bfede8d3a9e870d4c8e/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp#L5771-L6283)
+propagates established facts forward, schedules requirements backward,
+then removes newly redundant checks. Calls that may free and backedge
+polls invalidate temporal and auxiliary-pointer facts selectively, rather
+than discarding everything known about a pointer.
+
+Spatial facts can therefore survive a poll when coupled with renewed
+temporal validation. This does not mean that bounds never change: free
+empties the object's bounds. Nor does it prove an induction variable's
+range. The scheduler works with canonical pointers and constant offsets.
+Loop polling alone is not a reason all spatial-check hoisting is impossible.
+The [lifetime oracle](lifetime.md) supplies explicit-free counterexamples,
+not a model of every native safepoint or concurrent free.
+
+Safety and behavior preservation are different obligations. Upstream's
+backward scheduling can move a failing check before an ordinary or
+volatile store; it does not preserve every effect before an invalid
+access. nanofil has not adopted that policy. The first reuse experiment
+should preserve current behavior, without speculative earlier traps.
+Broader motion needs a reviewed observation contract, including failure
+timing and effects, not just evidence that raw accesses remain protected.
+
+Even straight-line reuse needs a new acceptance rule: the validator's
+single-use restriction and the backend's adjacent-check fusion currently
+exclude it. Design the validator, interpreter and emitter contract
+together; keep runtime checks wherever evidence is insufficient. See
+[M7](../PLAN.md#m7-safety-obligations-and-alternative-evidence) for the
+proposed first slice and its gates.
+
+## Other deferred work
 
 - Separately scheduled address/lower values. Pointer pairs remain
   indivisible for phis, allocation and ABI storage; explicit flight and
   memory effects do not introduce independently live capability temps.
-- Merging and removing checks, and removing redundant pollchecks. This
-  now has a [lifetime oracle](lifetime.md), but still needs
-  FilPizlonator's split between stable facts (bounds, rights, alignment)
-  and volatile ones (not freed, aux pointer). Moving a check
-  earlier is a refinement only when every access it covers is sure to
-  execute and no safepoint comes between. Hoisting out of loops is
-  mostly impossible, since every loop polls.
+- Removing redundant pollchecks. A proof of access safety does not itself
+  establish that a collector poll can be removed.
 - Class-a values across instructions, and `Lo =/= 0` in the backend.
