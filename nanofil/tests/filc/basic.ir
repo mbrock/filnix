@@ -194,3 +194,97 @@ func(outlive, export, l, [param(l, tmp(v))], [
         let(tmp(y), l, add, [tmp(x), const(1)])
     ], ret(tmp(y)))
 ]).
+
+% Free in another function invalidates aliases already held in memory.
+% Reading the live holder is legal; dereferencing the loaded pointer is not.
+func(retire, local, void, [param(p, tmp(p)), param(w, tmp(yes))], [
+    block(start, [], [], branch(tmp(yes), release, done)),
+    block(release, [], [call(void, global(free), [arg(p, tmp(p))])], ret),
+    block(done, [], [], ret)
+]).
+
+run(free_alias, [0]).
+run(free_alias, [1]).
+func(free_alias, export, l, [param(w, tmp(yes))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(16), [const(16)]),
+        let(tmp(alias), p, add, [tmp(p), const(8)]),
+        store(l, const(73), tmp(alias)),
+        let(tmp(box), p, alloc(16), [const(16)]),
+        store(p, tmp(alias), tmp(box)),
+        call(void, global(retire), [arg(p, tmp(p)), arg(w, tmp(yes))]),
+        let(tmp(back), p, load(p), [tmp(box)]),
+        let(tmp(x), l, load(l), [tmp(back)])
+    ], ret(tmp(x)))
+]).
+
+% Storing/loading a dead pointer does not dereference it. Integer stores
+% keep its lower, and freeing one object must not affect a different one.
+run(freed_pointer_value, []).
+func(freed_pointer_value, export, l, [], [
+    block(start, [], [
+        let(tmp(p), p, alloc(16), [const(16)]),
+        let(tmp(box), p, alloc(16), [const(16)]),
+        call(void, global(free), [arg(p, tmp(p))]),
+        store(p, tmp(p), tmp(box)),
+        let(tmp(a), l, ptoi, [tmp(p)]),
+        let(tmp(a8), l, add, [tmp(a), const(8)]),
+        store(l, tmp(a8), tmp(box)),
+        let(tmp(back), p, load(p), [tmp(box)]),
+        let(tmp(b), l, ptoi, [tmp(back)]),
+        let(tmp(delta), l, sub, [tmp(b), tmp(a)])
+    ], ret(tmp(delta)))
+]).
+
+% A zero-sized heap allocation still has identity and may be freed once.
+% Interior and one-past pointers are never acceptable to free.
+run(free_offset, [16, 0, 0]).
+run(free_offset, [16, 1, 0]).
+run(free_offset, [16, 16, 0]).
+run(free_offset, [16, 0, 1]).
+run(free_offset, [0, 0, 0]).
+run(free_offset, [0, 0, 1]).
+func(free_offset, export, w,
+     [param(l, tmp(size)), param(l, tmp(off)), param(w, tmp(twice))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(16), [tmp(size)]),
+        let(tmp(q), p, add, [tmp(p), tmp(off)]),
+        call(void, global(free), [arg(p, tmp(q))])
+    ], branch(tmp(twice), again, done)),
+    block(again, [], [call(void, global(free), [arg(p, tmp(p))])], ret(const(1))),
+    block(done, [], [], ret(const(1)))
+]).
+
+% Runtime heap bounds round up to 16, but a zero request remains empty.
+run(heap_bounds, [0, 0]).
+run(heap_bounds, [1, 15]).
+run(heap_bounds, [1, 16]).
+run(heap_bounds, [17, 31]).
+run(heap_bounds, [17, 32]).
+func(heap_bounds, export, w, [param(l, tmp(size)), param(l, tmp(off))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(16), [tmp(size)]),
+        let(tmp(q), p, add, [tmp(p), tmp(off)]),
+        let(tmp(x), w, load(ub), [tmp(q)])
+    ], ret(tmp(x)))
+]).
+
+% The address, not the lower, decides the null no-op. A nonzero forged
+% pointer, even with an allocation's real address, has no free authority.
+run(free_forged, [0]).
+run(free_forged, [1]).
+func(free_forged, export, w, [param(w, tmp(forge))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(16), [const(16)]),
+        let(tmp(a), l, ptoi, [tmp(p)]),
+        let(tmp(zero), p, sub, [tmp(p), tmp(a)]),
+        call(void, global(free), [arg(p, tmp(zero))]),
+        call(void, global(free), [arg(p, const(0))]),
+        store(w, const(31), tmp(p))
+    ], branch(tmp(forge), forged, done)),
+    block(forged, [], [
+        let(tmp(q), p, itop, [tmp(a)]),
+        call(void, global(free), [arg(p, tmp(q))])
+    ], ret(const(0))),
+    block(done, [], [let(tmp(x), w, load(sw), [tmp(p)])], ret(tmp(x)))
+]).

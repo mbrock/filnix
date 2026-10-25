@@ -526,6 +526,135 @@ test(in_bounds_offsets) :-
     numlist(0, 15, Expected),
     Is == Expected.
 
+% Lifetime cases also run natively in basic.ir. Expected bounds are the
+% runtime's 16-byte rounding, not the size the C caller requested.
+test(free_lifetime_outcomes) :-
+    file_module('../tests/filc/basic.ir', M),
+    pizlonate_module(M, Checked), valid_module(Checked),
+    forall(member(case(F, Args, Out), [
+        case(free_alias, [0], ret(73)),
+        case(free_alias, [1], trap(out_of_bounds)),
+        case(freed_pointer_value, [], ret(8)),
+        case(free_offset, [16, 0, 0], ret(1)),
+        case(free_offset, [16, 1, 0], trap(invalid_free)),
+        case(free_offset, [16, 16, 0], trap(invalid_free)),
+        case(free_offset, [16, 0, 1], trap(double_free)),
+        case(free_offset, [0, 0, 0], ret(1)),
+        case(free_offset, [0, 0, 1], trap(double_free)),
+        case(heap_bounds, [0, 0], trap(out_of_bounds)),
+        case(heap_bounds, [1, 15], ret(0)),
+        case(heap_bounds, [1, 16], trap(out_of_bounds)),
+        case(heap_bounds, [17, 31], ret(0)),
+        case(heap_bounds, [17, 32], trap(out_of_bounds)),
+        case(free_forged, [0], ret(31)),
+        case(free_forged, [1], trap(invalid_free))
+    ]), (once(run(M, F, Args, 20, Out)),
+         once(run(Checked, F, Args, 20, Out)))).
+
+% A check cannot survive free. Deliberately run the invalid checked
+% program too: the interpreter must expose the stale proof as unchecked,
+% including pointer accesses, rather than silently read retained bytes.
+test(free_invalidates_checks) :-
+    Alloc = let(tmp(p), p, alloc(16), [const(16)]),
+    Free = call(void, global(free), [arg(p, tmp(p))]),
+    forall(member(Rights-Access, [
+        read-let(tmp(x), l, raw_load(l, 0), [tmp(q)]),
+        read-let(tmp(x), p, raw_load(p, 0), [tmp(q)]),
+        write-raw_store(l, 0, const(9), tmp(q)),
+        write-raw_store(p, 0, tmp(p), tmp(q))
+    ]), (
+        Check = let(tmp(q), a, check(0, 8, Rights, 8), [tmp(p)]),
+        Fresh = module([func(f, local, w, [], [
+            block(s, [], [Alloc, Free, Check, Access], ret(const(1)))])]),
+        valid_module(Fresh),
+        once(run(Fresh, f, [], 10, trap(out_of_bounds))),
+        Stale = module([func(f, local, w, [], [
+            block(s, [], [Alloc, Check, Free, Access], ret(const(1)))])]),
+        catch((valid_module(Stale), fail), nanofil_error(_), true),
+        once(run(Stale, f, [], 10, unchecked(out_of_bounds)))
+    )).
+
+% Neither changing a pointer's address bits nor allocating a new object
+% revives its dead lower. An integer overwrite must retain that lower.
+test(free_does_not_launder_stored_capability) :-
+    ir_module([func(f, local, l, [], [block(s, [], [
+        let(tmp(p), p, alloc(16), [const(16)]),
+        let(tmp(box), p, alloc(16), [const(16)]),
+        store(p, tmp(p), tmp(box)),
+        call(void, global(free), [arg(p, tmp(p))]),
+        let(tmp(new), p, alloc(16), [const(16)]),
+        store(l, const(87), tmp(new)),
+        let(tmp(a), l, ptoi, [tmp(new)]),
+        store(l, tmp(a), tmp(box)),
+        let(tmp(back), p, load(p), [tmp(box)]),
+        let(tmp(x), l, load(l), [tmp(back)])
+    ], ret(tmp(x)))])], M),
+    once(run(M, f, [], 10, trap(out_of_bounds))),
+    pizlonate_module(M, C), valid_module(C),
+    once(run(C, f, [], 10, trap(out_of_bounds))).
+
+% Readonly is permission, not allocation origin: heap snapshots may be
+% freed, but static objects and function objects cannot be freed.
+test(free_object_kinds) :-
+    forall(member(Obj, [data(obj, local, 8, [zero(16)]),
+                       data(obj, ro(local), 8, [zero(16)]),
+                       func(obj, local, void, [], [block(s, [], [], ret)])]), (
+        ir_module([Obj, func(f, local, void, [], [block(s, [], [
+            let(tmp(p), p, copy, [global(obj)]),
+            call(void, global(free), [arg(p, tmp(p))])], ret)])], M),
+        once(run(M, f, [], 10, trap(invalid_free)))
+    )),
+    ir_module([func(f, local, void, [], [block(s, [], [
+        let(tmp(p), p, va_args, [const(0)]),
+        call(void, global(free), [arg(p, tmp(p))]),
+        call(void, global(free), [arg(p, tmp(p))])], ret)])], Snapshot),
+    once(run(Snapshot, f, [], 10, ret)),
+    once(run(Snapshot, f, [23], 10, trap(double_free))).
+
+% A module function called free remains an ordinary function, even with
+% a different signature. A data symbol with that name is not libc free.
+test(free_symbol_resolution) :-
+    ir_module([
+        func(free, local, void, [param(p, tmp(p))], [block(s, [], [
+            store(w, const(59), tmp(p))], ret)]),
+        func(f, local, w, [], [block(s, [], [
+            let(tmp(p), p, alloc(16), [const(16)]),
+            call(void, global(free), [arg(p, tmp(p))]),
+            let(tmp(x), w, load(sw), [tmp(p)])], ret(tmp(x)))])
+    ], Ordinary),
+    once(run(Ordinary, f, [], 10, ret(59))),
+    ir_module([
+        func(free, local, w, [param(w, tmp(x))], [block(s, [], [], ret(tmp(x)))]),
+        func(f, local, w, [], [block(s, [], [
+            let(tmp(p), p, alloc(16), [const(16)]),
+            call(result(tmp(x), w), global(free), [arg(w, const(43))])
+        ], ret(tmp(x)))])
+    ], Defined),
+    once(run(Defined, f, [], 10, ret(43))),
+    ir_module([
+        data(free, local, 8, [zero(16)]),
+        func(f, local, void, [], [block(s, [], [
+            call(void, global(free), [arg(p, const(0))])], ret)])
+    ], Data),
+    once(run(Data, f, [], 10, trap(not_a_function))).
+
+% Unsupported external signatures/objects are incompleteness errors,
+% never failure, invented external effects, or a null no-op for ext(_).
+test(free_external_boundary) :-
+    forall(member(Call, [call(void, global(free), []),
+                         call(void, global(free), [arg(l, const(0))]),
+                         call(result(tmp(x), w), global(free), [arg(p, const(0))]),
+                         call(void, global(free), [arg(p, const(0)), arg(w, const(1))]),
+                         call(void, global(malloc), [arg(l, const(16))])]), (
+        ir_module([func(f, local, void, [], [block(s, [], [
+            let(tmp(p), p, alloc(16), [const(16)]), Call], ret)])], M),
+        catch((run(M, f, [], 10, _), fail), nanofil_error(_), true)
+    )),
+    ir_module([func(f, local, void, [], [block(s, [], [
+        let(tmp(p), p, copy, [global(unknown)]),
+        call(void, global(free), [arg(p, tmp(p))])], ret)])], Ext),
+    catch((run(Ext, f, [], 10, _), fail), nanofil_error(_), true).
+
 %% Printing
 
 % Printing a module and reading the text gives the same module back.
@@ -1164,13 +1293,13 @@ test(source_locations) :-
 % Pizlonation states the checks that load and store imply in filc mode,
 % so the checked module has the same outcomes, traps included; deleting
 % a check turns that trap into unchecked (not ub, not a trap), and the
-% validator rejects the mutant. The object is [b, b+8): at offset 4 the
-% w store and load fit and return 7; at offset 6 the store reaches b+10.
+% validator rejects the mutant. The object is [b, b+16): at offset 12 the
+% w store and load fit and return 7; at offset 14 the store reaches b+18.
 test(pizlonate_states_every_check) :-
     ir_module([
         func(f, export, w, [param(l, tmp(i))], [
             block(s, [], [
-                let(tmp(b), p, alloc(8), [const(8)]),
+                let(tmp(b), p, alloc(8), [const(16)]),
                 let(tmp(a), p, add, [tmp(b), tmp(i)]),
                 store(w, const(7), tmp(a)),
                 let(tmp(x), w, load(sw), [tmp(a)])
@@ -1185,16 +1314,16 @@ test(pizlonate_states_every_check) :-
           let(tmp(Q2), a, check(0, 4, read, 1), [tmp(a)]),
           let(tmp(x), w, raw_load(sw, 0), [tmp(Q2)])],
     Q \== Q2,
-    once(run(M, f, [4], 10, ret(7))),
-    once(run(C, f, [4], 10, ret(7))),
-    once(run(M, f, [6], 10, trap(out_of_bounds))),
-    once(run(C, f, [6], 10, trap(out_of_bounds))),
+    once(run(M, f, [12], 10, ret(7))),
+    once(run(C, f, [12], 10, ret(7))),
+    once(run(M, f, [14], 10, trap(out_of_bounds))),
+    once(run(C, f, [14], 10, trap(out_of_bounds))),
     [_, _, _, _|Rest] = Is,
     Mutant = module([func(f, E, R, Ps,
                           [block(s, [], [Alloc, Add, raw_store(w, 0, const(7), tmp(a))|Rest],
                                J)])]),
-    once(run(Mutant, f, [4], 10, ret(7))),
-    once(run(Mutant, f, [6], 10, unchecked(out_of_bounds))),
+    once(run(Mutant, f, [12], 10, ret(7))),
+    once(run(Mutant, f, [14], 10, unchecked(out_of_bounds))),
     catch(( valid_module(Mutant), fail ), nanofil_error(Msg), true),
     Msg == 'in f: tmp(a) has class p but is used as a'.
 

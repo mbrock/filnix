@@ -93,6 +93,11 @@ cannot be freed. Note that the write check still tests FREE together with
 READONLY (`testb $6, -2(lower)`). So skipping only the not-freed check
 when bounds are checked is sound, but write checks remain.
 
+The interpreter's [lifetime contract](lifetime.md) records the verified
+libc wrapper, null/base-pointer validation, zero-sized objects, readonly
+heap snapshots, shared alias invalidation and the boundary with GC. It
+also documents the Oracle review and native/interpreter regression gates.
+
 **Can string literals skip the getter?** Clang does not skip it. Each
 literal gets `pizlonatedDO_.str` with header
 `{upper = DO + 16 + size rounded up to 8, aux = 0x0003 << 48}` (GLOBAL | READONLY, no aux

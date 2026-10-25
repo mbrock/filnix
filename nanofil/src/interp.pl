@@ -23,7 +23,7 @@
     | `ret` | returned from a void function |
     | `unreachable` | executed `unreachable` |
     | `ub(Reason)` | undefined behaviour: `division_by_zero`, `division_overflow`, `float_conversion` (an invalid float-to-integer conversion), or in plain mode `out_of_bounds(A, Size)`, a memory access outside every live allocation |
-    | `trap(Reason)` | a Fil-C check failed (filc mode only): `null_capability`, `out_of_bounds`, `misaligned`, `readonly`, `not_a_function`, `argument_size`, `return_size` |
+    | `trap(Reason)` | a Fil-C check failed (filc mode only): `null_capability`, `out_of_bounds`, `misaligned`, `readonly`, `not_a_function`, `argument_size`, `return_size`, `invalid_free`, `double_free` |
     | `unchecked(Reason)` | a raw access (checked stage, ir.pl) that its capability does not allow: a check is missing or too weak, which only a broken pass produces. It is neither ub nor a trap, so it refines nothing. |
     | `out_of_fuel` | executed Fuel blocks without finishing |
 
@@ -49,8 +49,8 @@
     | Part | Is |
     |---|---|
     | Bytes | an assoc from address to byte |
-    | Regions | the list of live Base-End regions |
-    | Next | the next free stack address, where the next allocation goes |
+    | Regions | `region(Base, End, Kind, Life)` objects; Kind is stack, heap or global, Life is live or freed |
+    | Next | the next allocation address; addresses are never reused |
     | Aux | in filc mode, the capabilities stored in memory |
 
     A byte nobody wrote is, in plain mode, a fresh variable in 0..255,
@@ -59,8 +59,24 @@
 
     In plain mode a function's allocations die when it returns, and
     addresses are never reused, so use after return is an out-of-bounds
-    access. In filc mode every allocation is a heap object that lives
-    on.
+    access. In filc mode allocations outlive their function. External
+    `call(void, global(free), [arg(p, P)])` invalidates P's heap object:
+    End becomes Base and Life becomes freed. A live zero-sized object
+    also has End = Base, but may be freed once. Bytes and stored lowers
+    stay intact; every alias consults the same region's current bounds.
+    Module-defined functions take precedence over this external adapter.
+
+    A capability's Base is stable identity, never recovered from address
+    bits. All exposed capabilities for an object have the same rights
+    (`obj(Base)` or `ro(Base)`); snapshot initialization is private until
+    its readonly capability is published. Memory-using injected pointer
+    arguments must obey these invariants and name existing objects.
+
+    This is the deterministic explicit-free subset, not a GC simulator:
+    no reclamation, concurrent or signal-handler frees, or rewriting dead
+    lowers to the runtime's free singleton. Unknown external effects and
+    addresses remain outside the oracle's domain. It does not justify
+    check elimination or safepoint motion (docs/lifetime.md).
 
     ## Run state
 
@@ -182,7 +198,7 @@ int_arg_in_range(K, X) :-
 % call_outcome(+Fns, +Globals, +Mode, +Fn, +Xs, +S0, -Out, -S): calling
 % Fn on Xs in state S0 ends with Out in state S. In plain mode a
 % callee's allocations die when it returns; in filc mode every
-% allocation is a heap object that lives on.
+% allocation is a heap object that lives until explicitly freed.
 call_outcome(Fns, Globals, Mode, Fn, Args, S0, Out, S) :-
     (   get_assoc(Fn, Fns, fn(Ret, Params, Entry, Blocks)) -> true
     ;   format(atom(Msg), 'cannot interpret a call to external ~w', [Fn]),
@@ -208,11 +224,17 @@ param_arg_env(param(_, tmp(N)), X, Env0, Env) :- put_assoc(N, Env0, X, Env).
 entry_snapshot(Blocks, Args, Env0, Env, s(Mem0, Fuel), s(Mem, Fuel)) :-
     assoc_to_values(Blocks, Bs),
     ( variadic_func(func(_, _, _, _, Bs))
-    -> length(Args, N), Size is (N * 8 + 15) // 16 * 16,
-       alloc_base(filc, Mem0, 16, Size, Base, Mem1),
-       snapshot_values(Args, Base, Base, Mem1, Mem),
-       put_assoc(hidden(va_snapshot), Env0, ptr(Base, ro(Base)), Env)
+    -> args_snapshot(Args, Mem0, Snapshot, Mem),
+       put_assoc(hidden(va_snapshot), Env0, Snapshot, Env)
     ; Env = Env0, Mem = Mem0 ).
+
+% promote_cc_to_heap returns null for an empty argument packet. This is
+% distinct from alloc(0), which creates an ordinary zero-sized object.
+args_snapshot([], Mem, ptr(0, none), Mem).
+args_snapshot([X|Xs], Mem0, ptr(Base, ro(Base)), Mem) :-
+    length([X|Xs], N), Size is N * 8,
+    alloc_base(filc, Mem0, 16, Size, Base, Mem1),
+    snapshot_values([X|Xs], Base, Base, Mem1, Mem).
 
 snapshot_values([], _, _, Mem, Mem).
 snapshot_values([X|Xs], A, Base, Mem0, Mem) :-
@@ -283,7 +305,7 @@ result_outcome(stop(Out, S), _, _, _, Out, S).
 % jnz condition is unknown, both edges are solutions, each constraining
 % it; a known one takes the fast path.
 % A pollcheck on the edge (poll(L)) changes nothing the interpreter
-% models: it has no signals and no free.
+% models: explicit free calls run, but there are no asynchronous frees.
 jump_outcome(goto(T), Ctx, From, Env, S0, Out, S) :-
     edge_label(T, L),
     block_outcome(Ctx, L, from(From), Env, S0, Out, S).
@@ -361,7 +383,10 @@ inst_result(raw_store(Width, Off, V, A), Ctx, Env, s(Mem0, Fuel), Result) :-
 inst_result(call(Res, global(F), Args), Ctx, Env0, S0, Result) :-
     Ctx = ctx(Fns, Globals, _, _, Mode),
     maplist(arg_x(Ctx, Env0), Args, Xs),
-    call_outcome(Fns, Globals, Mode, F, Xs, S0, Out, S),
+    (   get_assoc(F, Fns, _)
+    ->  call_outcome(Fns, Globals, Mode, F, Xs, S0, Out, S)
+    ;   external_call_outcome(Mode, Globals, F, Res, Args, Xs, S0, Out, S)
+    ),
     call_outcome_result(Out, Res, Env0, S, Result).
 inst_result(call(Res, tmp(N), Args), Ctx, Env0, S0, Result) :-
     value_x(p, tmp(N), Ctx, Env0, ptr(A, Cap)),
@@ -374,6 +399,25 @@ inst_result(raw_call(Res, Callee, Args), Ctx, Env0, S0, Result) :-
     function_check_res(ptr(A, Cap), Ctx, Check0),
     raw_res(Check0, Check),
     checked_call_result(Check, Cap, Res, Args, Xs, Ctx, Env0, S0, Result).
+
+% Only libc free's ordinary signature is modeled. Resolution comes first:
+% an in-module function is handled above; an in-module data symbol is not
+% a function. Other signatures and external calls are explicit gaps, not
+% silently failed relations or guessed libc effects.
+external_call_outcome(filc, Globals, free, Res, Args, Xs,
+                      s(Mem0, Fuel), Out, s(Mem, Fuel)) :- !,
+    (   get_assoc(free, Globals, _)
+    ->  Out = trap(not_a_function), Mem = Mem0
+    ;   Res == void, Args = [arg(p, _)], Xs = [P]
+    ->  free_res(P, Mem0, Freed, Mem), free_outcome(Freed, Out)
+    ;   throw(nanofil_error('interpreter supports only void free(p)'))
+    ).
+external_call_outcome(_, _, F, _, _, _, _, _, _) :-
+    format(atom(Msg), 'cannot interpret a call to external ~w', [F]),
+    throw(nanofil_error(Msg)).
+
+free_outcome(ok, ret).
+free_outcome(trap(Why), trap(Why)).
 
 % width_value_class(+Width, -K): a store of Width reads its value at K.
 width_value_class(b, w).
@@ -947,9 +991,58 @@ extension(uw, X, S) :- int_is(S, X mod 4294967296).
 
 %% Memory: mem(Bytes, Regions, Next, Aux)
 %
+% Each region(Base, End, Kind, Life) is shared by every capability with
+% that Base. Only free changes a Fil-C object's bounds, monotonically
+% to empty. Freed regions remain so zero-sized live objects and double
+% frees are distinguishable. No reclamation or address reuse is modeled.
+%
 % Aux is used in filc mode only: it maps an 8-aligned address to the
 % capability a store(p, ...) left there. An integer store leaves it alone, as
 % Fil-C's aux array does.
+
+% free_res(+P, +Mem0, -Res, -Mem): the pinned runtime's free_with_checks,
+% object_for_deallocate and free_impl, for objects this interpreter owns.
+% ext(_) has a placeholder address, not a known zero; it stays unsupported.
+free_res(ptr(A, Cap), Mem0, Res, Mem) :-
+    must_be(integer, A), must_be(callable, Cap),
+    cap_free_res(Cap, A, Mem0, Res, Mem).
+
+cap_free_res(ext(N), _, _, _, _) :-
+    format(atom(Msg), 'cannot interpret free of external ~w', [N]),
+    throw(nanofil_error(Msg)).
+cap_free_res(none, A, Mem, Res, Mem) :-
+    ( A =:= 0 -> Res = ok ; Res = trap(invalid_free) ).
+cap_free_res(fn(_), A, Mem, Res, Mem) :-
+    ( A =:= 0 -> Res = ok ; Res = trap(invalid_free) ).
+cap_free_res(obj(Base), A, Mem0, Res, Mem) :-
+    object_free_res(Base, A, Mem0, Res, Mem).
+cap_free_res(ro(Base), A, Mem0, Res, Mem) :-
+    object_free_res(Base, A, Mem0, Res, Mem).
+
+% Null is a no-op even with an object's lower. Otherwise kind/address
+% validation precedes the FREE test, as object_for_deallocate precedes
+% free_impl. READONLY alone does not prevent deallocation of a heap object.
+object_free_res(Base, A, mem(Bytes, Rs0, Next, Aux), Res,
+                mem(Bytes, Rs, Next, Aux)) :-
+    (   A =:= 0 -> Res = ok, Rs = Rs0
+    ;   object_region(Base, Rs0, region(Base, End, Kind, Life)),
+        (   Kind \== heap -> Res = trap(invalid_free), Rs = Rs0
+        ;   A =\= Base -> Res = trap(invalid_free), Rs = Rs0
+        ;   Life == freed -> Res = trap(double_free), Rs = Rs0
+        ;   select(region(Base, End, Kind, Life), Rs0, Rest),
+            Rs = [region(Base, Base, heap, freed)|Rest], Res = ok
+        )
+    ).
+
+% object_region(+Base, +Rs, -Region): capabilities refer to registered
+% identities. An injected unknown base is outside the interpreter domain,
+% not authority for the live object that happens to contain its address.
+object_region(Base, Rs, Region) :-
+    must_be(integer, Base),
+    (   memberchk(region(Base, End, Kind, Life), Rs)
+    ->  Region = region(Base, End, Kind, Life)
+    ;   throw(nanofil_error('capability names an unregistered object'))
+    ).
 
 % load_res(+Mode, +Mem0, +A, +Size, -Res, -Mem): Res is val(U), U the
 % little-endian value of the Size bytes at A, or ub(...). In plain mode
@@ -1017,7 +1110,7 @@ stored_aux(cap(C), A, Aux0, Aux) :- put_assoc(A, Aux0, C, Aux).
    a symbol defined outside the module, which the interpreter cannot
    follow. Cap must be known: an unknown capability (an unknown p
    argument) raises an instantiation error, as an unknown address does.
-   Fails when Base is not an allocation of Mem. */
+   An unregistered Base is outside the interpreter's domain. */
 access_res(mem(_, Rs, _, _), A, Cap, Size, Kind, Align, Res) :-
     must_be(integer, A),
     must_be(callable, Cap),
@@ -1029,13 +1122,13 @@ cap_access_res(ext(N), _, _, _, _, _, _) :-
     format(atom(Msg), 'cannot interpret an access to external ~w', [N]),
     throw(nanofil_error(Msg)).
 cap_access_res(obj(Base), Rs, A, Size, _, Align, Res) :-
-    memberchk(Base-End, Rs),
+    object_region(Base, Rs, region(Base, End, _, _)),
     (   A >= Base, A + Size =< End
     ->  aligned_res(A, Align, Res)
     ;   Res = trap(out_of_bounds)
     ).
 cap_access_res(ro(Base), Rs, A, Size, Kind, Align, Res) :-
-    memberchk(Base-End, Rs),
+    object_region(Base, Rs, region(Base, End, _, _)),
     (   A >= Base, A + Size =< End
     ->  readonly_access_res(Kind, A, Align, Res)
     ;   Res = trap(out_of_bounds)
@@ -1051,7 +1144,7 @@ aligned_res(A, Align, Res) :-
 % live region. A and the regions are integers here, so the if-then-else
 % in the callers is sound. The cut commits to the first such region.
 in_live_region(Rs, A, Size) :-
-    member(Base-End, Rs),
+    member(region(Base, End, _, live), Rs),
     A >= Base,
     A + Size =< End,
     !.
@@ -1099,15 +1192,19 @@ low_bytes([B|Bs], X) :-
 
 % alloc_base(+Mode, +Mem0, +Align, +Size, -Base, -Mem): Base is a new
 % region of Size bytes in Mem. Allocations are aligned (Fil-C's to 16),
-% and a 16-byte gap separates them so a small overrun cannot land in a
-% neighbour.
+% with Fil-C bounds rounded to 16 as prepare_allocate_object does (zero
+% stays zero). A 16-byte gap separates distinct, never-reused identities.
 alloc_base(Mode, mem(Bytes, Rs, Next0, Aux), Align0, Size, Base,
-           mem(Bytes, [Base-End|Rs], Next, Aux)) :-
+           mem(Bytes, [region(Base, End, Kind, live)|Rs], Next, Aux)) :-
     must_be(integer, Size),
     alloc_align(Mode, Align0, Align),
+    alloc_extent(Mode, Size, Extent, Kind),
     Base is (Next0 + Align - 1) // Align * Align,
-    End is Base + Size,
+    End is Base + Extent,
     Next is End + 16.
+
+alloc_extent(plain, Size, Size, stack).
+alloc_extent(filc, Size, Extent, heap) :- Extent is (Size + 15) // 16 * 16.
 
 alloc_align(plain, Align, Align).
 alloc_align(filc, _, 16).
@@ -1142,7 +1239,7 @@ initial_memory(filc, module(Items), Globals, mem(Bytes, Rs, Stack, Aux)) :-
 % next address from A0 that its alignment allows; a function takes no
 % space.
 plain_layout(data(Name, _, Align, DataItems), A0-Globals0-Rs0,
-             A-Globals-[Base-End|Rs0]) :-
+             A-Globals-[region(Base, End, global, live)|Rs0]) :-
     Base is (A0 + Align - 1) // Align * Align,
     foldl(item_size, DataItems, 0, Size),
     End is Base + Size,
@@ -1162,7 +1259,7 @@ plain_contents(_, func(_, _, _, _, _), Bytes, Bytes).
 % filc_layout(+Item, +A0-Globals0-Rs0, -A-Globals-Rs): place Item at
 % the next 16-aligned address from A0.
 filc_layout(data(Name, Linkage, _, Items), A0-Globals0-Rs0,
-            A-Globals-[Base-End|Rs0]) :-
+            A-Globals-[region(Base, End, global, live)|Rs0]) :-
     Base is (A0 + 15) // 16 * 16,
     foldl(item_size, Items, 0, Size),
     End is Base + (Size + 7) // 8 * 8,
