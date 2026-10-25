@@ -97,3 +97,37 @@ func(sum, export, l, [param(p, tmp(list))], [
         let(tmp(result), l, add, [tmp(s), tmp(delta)])
     ], ret(tmp(result)))
 ]).
+
+% The holder's overlapping p/l stores prevent scalar promotion. Its
+% address never escapes, so -O keeps it in LocalExplicit storage. Both
+% source pointer slots are overwritten before collections: the holder's
+% aux words, not accidental temporary retention, must root the pointees.
+func(local_roots, export, l, [], [
+    block(start, [], [
+        let(tmp(holder), p, alloc(8), [const(24)]),
+        let(tmp(last), p, add, [tmp(holder), const(16)]),
+        call(result(tmp(a), p), global(c_value), [arg(l, const(17))]),
+        store(p, tmp(a), tmp(holder)),
+        let(tmp(bits), l, ptoi, [tmp(a)]), store(l, tmp(bits), tmp(holder)),
+        call(result(tmp(b), p), global(c_value), [arg(l, const(29))]),
+        store(p, tmp(b), tmp(last)),
+        let(tmp(clear1), p, copy, [const(0)]),
+        let(tmp(clear2), p, copy, [const(0)]),
+        let(tmp(zero1), l, ptoi, [tmp(clear1)]),
+        let(tmp(zero2), l, ptoi, [tmp(clear2)])
+    ], goto(loop)),
+    block(loop, [phi(tmp(i), w, [start-const(0), body-tmp(next)])], [
+        let(tmp(more), w, cmp(slt, w), [tmp(i), const(4)])
+    ], branch(tmp(more), body, done)),
+    block(body, [], [
+        call(void, global(c_gc), [arg(l, const(0))]),
+        let(tmp(next), w, add, [tmp(i), const(1)])
+    ], goto(loop)),
+    block(done, [], [
+        let(tmp(left), p, load(p), [tmp(holder)]),
+        let(tmp(right), p, load(p), [tmp(last)]),
+        let(tmp(lv), l, load(l), [tmp(left)]),
+        let(tmp(rv), l, load(l), [tmp(right)]),
+        let(tmp(result), l, add, [tmp(lv), tmp(rv)])
+    ], ret(tmp(result)))
+]).

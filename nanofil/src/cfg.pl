@@ -524,6 +524,9 @@ inst_uses(call(_, F, Args), Us) :-
 inst_uses(raw_call(Res, F, Args), Us) :-
     inst_uses(call(Res, F, Args), Us).
 inst_uses(loc(_, _), []).
+inst_uses(local_alloc(_, _), []).
+inst_uses(local_load(_, _, _, _, _), []).
+inst_uses(local_store(_, V, _, _), Us) :- temps([V], Us).
 
 % Only flight's address projection wraps a value. Do not traverse temp
 % names (opaque ground terms) or mistake a destination for a use.
@@ -537,6 +540,7 @@ flight_arg_value(const(N), const(N)).
 
 inst_def(let(tmp(D), _, _, _), D).
 inst_def(flight(tmp(D), _, _, _), D).
+inst_def(local_load(tmp(D), _, _, _, _), D).
 inst_def(call(result(tmp(D), _), _, _), D).
 inst_def(call(tuple(Rs), _, _), D) :-
     member(result(tmp(D), _), Rs).

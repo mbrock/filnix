@@ -82,7 +82,7 @@
 
     The run state is `s(Mem, Fuel)`; each block costs one unit of Fuel.
     Inside a function the interpreter carries
-    `ctx(Fns, Globals, Blocks, Ret, Mode)`:
+    `ctx(Fns, Globals, Blocks, Ret, Mode, Locals)`:
 
     | Part | Is |
     |---|---|
@@ -91,6 +91,7 @@
     | Blocks | the function's blocks by label |
     | Ret | its return class |
     | Mode | the module mode |
+    | Locals | this invocation's local names and fresh object identities, bound at local_alloc |
 
     A block is entered `from(Pred)`, Pred the label of the block that
     jumped to it, or at `entry`.
@@ -208,10 +209,27 @@ call_outcome(Fns, Globals, Mode, Fn, Args, S0, Out, S) :-
     length(Params, NParams), length(Fixed, NParams), append(Fixed, _, Args),
     foldl(param_arg_env, Params, Fixed, Env0, Env1),
     entry_snapshot(Blocks, Args, Env1, Env, S0, SEntry),
-    Ctx = ctx(Fns, Globals, Blocks, Ret, Mode),
+    assoc_to_values(Blocks, Bs),
+    local_objects(func(Fn, local, Ret, Params, Bs), Objects),
+    findall(Name-_, member(Name-_, Objects), LocalPairs),
+    list_to_assoc(LocalPairs, Locals),
+    Ctx = ctx(Fns, Globals, Blocks, Ret, Mode, Locals),
     block_outcome(Ctx, Entry, entry, Env, SEntry, Out, S1),
+    assoc_to_values(Locals, Bases),
+    invalidate_locals(Bases, S1, S2),
     S0 = s(mem(_, Regions, _, _), _),
-    returned_state(Mode, Regions, S1, S).
+    returned_state(Mode, Regions, S2, S).
+
+% Keep identities, bytes and aux, but end just this invocation's stack
+% lifetimes in the latest state. A trap may precede a declaration; its
+% unbound Base is not authority to select and invalidate another object.
+invalidate_locals([], S, S).
+invalidate_locals([Base|Bases], s(mem(Bytes, Rs0, Next, Aux), Fuel), S) :-
+    ( integer(Base)
+    -> select(region(Base, _, stack, live), Rs0, Rest),
+       Rs = [region(Base, Base, stack, freed)|Rest]
+    ; Rs = Rs0 ),
+    invalidate_locals(Bases, s(mem(Bytes, Rs, Next, Aux), Fuel), S).
 
 % returned_state(+Mode, +Regions, +S1, -S): S is the caller's state after
 % a callee that ended in S1, Regions the caller's live regions.
@@ -276,7 +294,7 @@ block_outcome(Ctx, Label, Pred, Env0, s(Mem, Fuel0), Out, S) :-
     ->  Out = out_of_fuel,
         S = s(Mem, Fuel0)
     ;   Fuel1 is Fuel0 - 1,
-        Ctx = ctx(_, _, Blocks, _, _),
+        Ctx = ctx(_, _, Blocks, _, _, _),
         get_assoc(Label, Blocks, block(_, Phis, Insts, Jump)),
         phis_env(Phis, Ctx, Pred, Env0, Env0, Env1),
         insts_result(Insts, Ctx, Env1, s(Mem, Fuel1), Result),
@@ -318,10 +336,10 @@ jump_outcome(branch(V, T1, T2), Ctx, From, Env, S0, Out, S) :-
     edge_label(T, L),
     block_outcome(Ctx, L, from(From), Env, S0, Out, S).
 jump_outcome(ret(V), Ctx, _, Env, S, ret(X), S) :-
-    Ctx = ctx(_, _, _, K, _),
+    Ctx = ctx(_, _, _, K, _, _),
     value_x(K, V, Ctx, Env, X).
 jump_outcome(rets(Vs), Ctx, _, Env, S, rets(Xs), S) :-
-    Ctx = ctx(_, _, _, tuple(Ks), _),
+    Ctx = ctx(_, _, _, tuple(Ks), _, _),
     maplist(class_value_x(Ctx, Env), Ks, Vs, Xs).
 jump_outcome(ret, _, _, _, S, ret, S).
 jump_outcome(unreachable, _, _, _, S, unreachable, S).
@@ -344,6 +362,26 @@ rest_result(stop(Out, S), _, _, stop(Out, S)).
 % inst_result(+Inst, +Ctx, +Env0, +S0, -Result): Result is cont(Env, S)
 % after Inst, or stop(Outcome, S) when it ends the run.
 inst_result(loc(_, _), _, Env, S, cont(Env, S)) :- !.
+inst_result(local_alloc(Name, Size), ctx(_, _, _, _, filc, Locals), Env,
+            s(Mem0, Fuel), cont(Env, s(Mem, Fuel))) :-
+    ( get_assoc(Name, Locals, Base), var(Base) -> true
+    ; throw(nanofil_error('duplicate or undeclared local allocation')) ),
+    alloc_base(local, Mem0, 16, Size, Base, Mem).
+inst_result(local_load(tmp(D), K, T, Name, Off), Ctx, Env, S0, Result) :-
+    local_pointer(Ctx, Name, Off, P),
+    load_op_res(T, K, filc, [P], S0, Res, S),
+    res_result(Res, D, Env, S, Result).
+inst_result(local_store(W, V, Name, Off), Ctx, Env, s(Mem0, Fuel), Result) :-
+    local_pointer(Ctx, Name, Off, P),
+    width_value_class(W, K), value_x(K, V, Ctx, Env, X),
+    store_res(filc, W, Mem0, P, X, Res, Mem),
+    store_res_result(Res, Env, s(Mem, Fuel), Result).
+inst_result(let(tmp(D), a, check_local(Name, Off, Size, Rights, Align), []),
+            Ctx, Env, s(Mem, Fuel), Result) :- !,
+    local_pointer(Ctx, Name, Off, ptr(A, Cap)),
+    access_res(Mem, A, Cap, Size, Rights, Align, Check),
+    checked_res(Check, ptr(A, Cap), Res),
+    res_result(Res, D, Env, s(Mem, Fuel), Result).
 inst_result(flight(tmp(D), Op, Args, Lower), Ctx, Env0, S, Result) :-
     maplist(flight_arg_x(Ctx, Env0), Args, Xs),
     alu(Op, l, Xs, val(A)),
@@ -359,13 +397,13 @@ inst_result(let(tmp(D), f, check_function, [V]), Ctx, Env0, S, Result) :- !,
     checked_res(Check, P, Res),
     res_result(Res, D, Env0, S, Result).
 inst_result(let(tmp(D), K, Op, Args), Ctx, Env0, S0, Result) :-
-    Ctx = ctx(_, _, _, _, Mode),
+    Ctx = ctx(_, _, _, _, Mode, _),
     op_arg_classes(Op, K, Mode, ArgClasses),
     maplist(class_value_x(Ctx, Env0), ArgClasses, Args, Xs),
     op_res(Op, K, Mode, Xs, S0, Res, S),
     res_result(Res, D, Env0, S, Result).
 inst_result(store(Width, V, A), Ctx, Env, s(Mem0, Fuel), Result) :-
-    Ctx = ctx(_, _, _, _, Mode),
+    Ctx = ctx(_, _, _, _, Mode, _),
     width_value_class(Width, ValueClass),
     value_x(ValueClass, V, Ctx, Env, X),
     addr_class(Mode, AddrClass),
@@ -389,7 +427,7 @@ inst_result(raw_store_pointer(Off, V, A, Effects), Ctx, Env,
     pointer_store_effects_res(Check, Effects, Addr, X, Mem0, Res, Mem),
     store_res_result(Res, Env, s(Mem, Fuel), Result).
 inst_result(call(Res, global(F), Args), Ctx, Env0, S0, Result) :-
-    Ctx = ctx(Fns, Globals, _, _, Mode),
+    Ctx = ctx(Fns, Globals, _, _, Mode, _),
     maplist(arg_x(Ctx, Env0), Args, Xs),
     (   get_assoc(F, Fns, _)
     ->  call_outcome(Fns, Globals, Mode, F, Xs, S0, Out, S)
@@ -407,6 +445,11 @@ inst_result(raw_call(Res, Callee, Args), Ctx, Env0, S0, Result) :-
     function_check_res(ptr(A, Cap), Ctx, Check0),
     raw_res(Check0, Check),
     checked_call_result(Check, Cap, Res, Args, Xs, Ctx, Env0, S0, Result).
+
+local_pointer(ctx(_, _, _, _, filc, Locals), Name, Off, ptr(A, obj(Base))) :-
+    ( get_assoc(Name, Locals, Base), integer(Base) -> true
+    ; throw(nanofil_error('local access before allocation')) ),
+    A is Base + Off.
 
 % Only libc free's ordinary signature is modeled. Resolution comes first:
 % an in-module function is handled above; an in-module data symbol is not
@@ -440,7 +483,7 @@ width_value_class(d, d).
 % it carries that function's capability at its exact callable address.
 % An unknown address is not proof; an external symbol's kind is unknown
 % to the interpreter, which must not guess that it names a function.
-function_check_res(ptr(A, Cap), ctx(_, Globals, _, _, _), Res) :-
+function_check_res(ptr(A, Cap), ctx(_, Globals, _, _, _, _), Res) :-
     must_be(callable, Cap),
     cap_function_res(Cap, A, Globals, Res).
 
@@ -461,7 +504,7 @@ cap_function_res(ro(_), _, _, trap(not_a_function)).
 % target check becomes unchecked in raw_call; ABI and callee traps keep
 % their meaning. The conversions below are shared with unchecked call.
 checked_call_result(ok, fn(F), Res, Args, Xs, Ctx, Env0, S0, Result) :-
-    Ctx = ctx(Fns, Globals, _, _, Mode),
+    Ctx = ctx(Fns, Globals, _, _, Mode, _),
     get_assoc(F, Fns, fn(Ret, Params, _, Bs)),
     indirect_call_conv(Ret, Params, Res, Args, Xs, Fixed, Conv),
     assoc_to_values(Bs, Blocks),
@@ -647,7 +690,7 @@ value_x_(const(N), K, _, _, X) :-
     modulus(K, Mod),
     A is N mod Mod,
     constant_at_class(K, A, X).
-value_x_(global(N), _, ctx(_, Globals, _, _, Mode), _, X) :-
+value_x_(global(N), _, ctx(_, Globals, _, _, Mode, _), _, X) :-
     (   get_assoc(N, Globals, X0) -> X = X0
     ;   undefined_symbol(Mode, N, X)
     ).
@@ -830,7 +873,8 @@ pointer_load_effects_res(ok, Effects, A, Mem0, val(P), Mem) :-
           loaded(none, ptr(0, none), Mem0), loaded(_, P, Mem)).
 pointer_load_effects_res(trap(Why), _, _, Mem, unchecked(Why), Mem).
 
-pointer_load_effect(A, aux_read, loaded(_, P, Mem), loaded(C, P, Mem)) :-
+pointer_load_effect(A, aux_read, loaded(_, ptr(U, _), Mem),
+                    loaded(C, ptr(U, C), Mem)) :-
     Mem = mem(_, _, _, Aux),
     ( get_assoc(A, Aux, C) -> true ; C = none ).
 pointer_load_effect(_, lower_resolve, loaded(C, ptr(U, _), Mem),
@@ -1256,13 +1300,20 @@ alloc_base(Mode, mem(Bytes, Rs, Next0, Aux), Align0, Size, Base,
     alloc_extent(Mode, Size, Extent, Kind),
     Base is (Next0 + Align - 1) // Align * Align,
     End is Base + Extent,
-    Next is End + 16.
+    allocation_stride(Mode, Size, Extent, Stride),
+    Next is Base + Stride + 16.
 
 alloc_extent(plain, Size, Size, stack).
 alloc_extent(filc, Size, Extent, heap) :- Extent is (Size + 15) // 16 * 16.
+alloc_extent(local, Size, Size, stack).
+
+allocation_stride(plain, _, Extent, Extent).
+allocation_stride(filc, _, Extent, Extent).
+allocation_stride(local, Size, _, Stride) :- Stride is (Size + 15) // 16 * 16.
 
 alloc_align(plain, Align, Align).
 alloc_align(filc, _, 16).
+alloc_align(local, _, 16).
 
 stack_base(4294967296).
 data_base(65536).

@@ -186,11 +186,10 @@ aux_pointer_mask(0xffffffffffff).
 
 % Place the already chosen payloads, roots and aliases below %rbp.
 layout(frame(Plain, Lowers, Aliases), Slots, FrameBase, Size) :-
-    length(Plain, NPlain),
     length(Lowers, NLowers),
-    FrameBase is 8 * NPlain + 16 + 8 * NLowers,
     empty_assoc(Slots0),
-    foldl(plain_slot, Plain, Slots0-0, Slots1-_),
+    foldl(plain_slot, Plain, Slots0-0, Slots1-PlainBytes),
+    FrameBase is PlainBytes + 16 + 8 * NLowers,
     foldl(lower_slot(FrameBase), Lowers, Slots1-0, Slots2-_),
     foldl(temp_alias, Aliases, Slots2, Slots),
     Size is (FrameBase + 15) // 16 * 16.
@@ -198,11 +197,15 @@ layout(frame(Plain, Lowers, Aliases), Slots, FrameBase, Size) :-
 temp_alias(T-Key, Slots0, Slots) :-
     get_assoc(Key, Slots0, Off), put_assoc(T, Slots0, Off, Slots).
 
-% plain_slot(+Key, +Slots0-I0, -Slots-I): Slots maps Key to the slot
-% after the I0 already allocated, the Ith from %rbp.
-plain_slot(Key, Slots0-I0, Slots-I) :-
-    I is I0 + 1,
-    Off is 8 * I,
+% Named object storage is not a temporary slot and is never reused.
+% Payload is 16-aligned; aux is a count header followed by lower words.
+plain_slot(local(Name, Size), Slots0-Off0, Slots-End) :- !,
+    Padded is (Size + 15) // 16 * 16,
+    Payload is (Off0 + Padded + 15) // 16 * 16,
+    Aux is Payload + Padded + 8, End = Aux,
+    put_assoc(local(Name), Slots0, local(Payload, Aux, Size, Padded), Slots).
+plain_slot(Key, Slots0-Off0, Slots-Off) :-
+    Off is Off0 + 8,
     put_assoc(Key, Slots0, Off, Slots).
 
 % lower_slot(+FrameBase, +Key, +Slots0-I0, -Slots-I): Slots maps Key to
@@ -329,6 +332,13 @@ fused_insts([Inst0|Insts0], Fn, [Inst|Insts]) :-
     fused_inst(Inst0, Insts0, Fn, Inst, Insts1),
     fused_insts(Insts1, Fn, Insts).
 
+fused_inst(let(tmp(Q), a, Check, []), [Access0|Insts], Fn,
+           fused(Check, Access), Insts) :-
+    Check = check_local(Name, Off, _, _, _), !,
+    ( proven_local_access(Access0, Q, local(Name, Off), Access),
+      access_pointer(Access, _, 0)
+    -> true
+    ; throw_fn(Fn, 'a local check not followed by its local access') ).
 fused_inst(let(tmp(Q), a, Check, [P]), [Access0|Insts], Fn, Inst, Insts) :- !,
     (   proven_access(Access0, Q, P, Access) -> Inst = fused(Check, Access)
     ;   throw_fn(Fn, 'a check not followed by the access it proves')
@@ -366,6 +376,17 @@ proven_access(raw_store_pointer(Off, V, tmp(Q), Es), Q, P,
               raw_store_pointer(Off, V, P, Es)) :-
     pointer_memory_effects(store, Es).
 
+proven_local_access(let(D, p, raw_load_pointer(Off, Es), [tmp(Q)]), Q, P,
+                    let(D, p, raw_load_pointer(Off, Es), [P])) :-
+    pointer_memory_effects(local_load, Es).
+proven_local_access(raw_store_pointer(Off, V, tmp(Q), Es), Q, P,
+                    raw_store_pointer(Off, V, P, Es)) :-
+    pointer_memory_effects(local_store, Es).
+proven_local_access(let(D, K, raw_load(T, Off), [tmp(Q)]), Q, P,
+                    let(D, K, raw_load(T, Off), [P])) :- T \== p.
+proven_local_access(raw_store(W, Off, V, tmp(Q)), Q, P,
+                    raw_store(W, Off, V, P)) :- W \== p.
+
 % access_pointer(+Access, -P, -Off): the fused Access is at P + Off.
 access_pointer(let(_, _, raw_load(_, Off), [P]), P, Off).
 access_pointer(raw_store(_, Off, _, P), P, Off).
@@ -381,6 +402,8 @@ unchecked_access(let(_, _, raw_load(_, _), _)).
 unchecked_access(raw_store(_, _, _, _)).
 unchecked_access(let(_, _, raw_load_pointer(_, _), _)).
 unchecked_access(raw_store_pointer(_, _, _, _)).
+unchecked_access(local_load(_, _, _, _, _)).
+unchecked_access(local_store(_, _, _, _)).
 
 live_block(block(L, Phis, Insts0, Jump), block(L, Phis, Insts, Jump)) :-
     maplist(live_inst, Insts0, Insts).
@@ -449,6 +472,14 @@ abi_action(receive(Return, Ts), _, _, Ctx) -->
     typed_incoming(Ts, Ls, Ctx).
 abi_action(snapshots(Sites, Keys), _, _, Ctx) -->
     { length(Keys, N), Bytes is 8*N }, setjmp_snapshots(Sites, Bytes, Ctx).
+abi_action(initialize_local(Name), _, _, Ctx) -->
+    { ctx_slot(Ctx, local(Name), local(Payload, Aux, _, Padded)),
+      P is -Payload, A is -Aux, Words is Padded // 8 },
+    zero_words(P, Words),
+    { Lowers is A + 8 }, zero_words(Lowers, Words),
+    [ins(mov, q, [imm(Words), mem(A, rbp)]),
+     ins(lea, q, [mem(A, rbp), reg(rax)])],
+    reg_slot_store(rax, stack_aux(Name), Ctx).
 abi_action(pop_frame, _, _, Ctx) --> frame_pop(Ctx).
 abi_action(exception(Return), _, _, Ctx) -->
     { target_form(Return, Form) }, exception_flag(Form, Ctx),
@@ -530,6 +561,11 @@ lower_entry_stores([I|Is], FrameBase) -->
     { Off is 16 + 8 * I - FrameBase },
     [ins(mov, q, [reg(rax), mem(Off, rbp)])],
     lower_entry_stores(Is, FrameBase).
+
+zero_words(_, 0) --> !, [].
+zero_words(Off, N) -->
+    [ins(mov, q, [imm(0), mem(Off, rbp)])],
+    { Next is Off + 8, Rest is N - 1 }, zero_words(Next, Rest).
 
 % The store of the c or n origin (origin_label/3) into the filc_frame.
 origin_store(Ctx, Which) -->
@@ -785,7 +821,35 @@ inst(fused(check(_, Size, Rights, Align), Access), Index, Block, Ctx) -->
     flight_load(P, Ctx),
     access_check(k(Size, Write, Align), Ctx),
     raw_access(Access, Index, Block, Ctx).
+inst(fused(check_local(Name, Off, Size, Rights, Align), Access), I, B, Ctx) -->
+    { rights_write(Rights, Write) },
+    local_check(Name, Off, k(Size, Write, Align), I, B, Ctx),
+    local_raw_access(Access, I, B, Ctx).
 inst(abi(Actions), Index, Block, Ctx) --> abi_actions(Actions, Index, Block, Ctx).
+
+% Check exact logical bounds without manufacturing a heap lower. Offset
+% and size are the stack reporter's arguments. Address formation happens
+% only after the full range/alignment check, even for constant accesses.
+local_check(Name, Off, Kind, I, B, Ctx) -->
+    { Kind = k(Bytes, _, Align), Mask is Align - 1,
+      ctx_slot(Ctx, local(Name), local(Payload, Aux, Size, _)),
+      P is -Payload, A is 8 - Aux, Limit is Size - Bytes,
+      local_label(Ctx, B, I, localfail, Fail),
+      local_label(Ctx, B, I, localok, Good),
+      ctx_name(Ctx, FnName), check_origin_label(FnName, Kind, Origin),
+      ctx_fn(Ctx, Fn) },
+    load(const(Off), l, a, Fn), load(const(Size), l, c, Fn),
+    load(const(Limit), l, d, Fn),
+    [ins(test, q, [reg(rdx), reg(rdx)]), ins(js, none, [sym(Fail)]),
+     ins(cmp, q, [reg(rdx), reg(rax)]), ins(ja, none, [sym(Fail)]),
+     ins(test, q, [imm(Mask), reg(rax)]), ins(jnz, none, [sym(Fail)]),
+     ins(jmp, none, [sym(Good)]), label(Fail),
+     ins(mov, q, [reg(rax), reg(rdi)]), ins(mov, q, [reg(rcx), reg(rsi)]),
+     ins(lea, q, [rip(Origin), reg(rdx)]),
+     ins(call, none, [plt(filc_optimized_stack_access_check_fail)]),
+     ins(ud2, none, []), label(Good),
+     ins(lea, q, [mem(A, rbp, rax), reg(rdx)]),
+     ins(lea, q, [mem(P, rbp, rax), reg(rax)])].
 
 % kind_inst(+Kind, +K, +Op, +Args, +D, +Index, +Block, +Ctx)//: as
 % inst//4, for tmp(D) =K Op Args with Op of Kind. Integer instructions go
@@ -936,6 +1000,29 @@ raw_access(let(tmp(D), p, raw_load_pointer(0, Effects), [_]), I, B, Ctx) -->
     flight_store(D, Ctx).
 raw_access(raw_store_pointer(0, V, P, Effects), I, B, Ctx) -->
     pointer_store_effects(Effects, V, P, I, B, Ctx).
+
+% %rax is the checked payload address, %rdx its explicit aux word.
+% Neither register is an ordinary root. Only loaded/stored *contents*
+% have heap lowers, and no helper or safepoint splits these operations.
+local_raw_access(let(tmp(D), p, raw_load_pointer(0, Es), [_]), _, _, Ctx) --> !,
+    local_load_effects(Es), flight_store(D, Ctx).
+local_raw_access(raw_store_pointer(0, V, _, Es), _, _, Ctx) --> !,
+    local_store_effects(Es, V, Ctx).
+local_raw_access(Access, I, B, Ctx) --> raw_access(Access, I, B, Ctx).
+
+local_load_effects([]) --> [].
+local_load_effects([E|Es]) --> local_load_effect(E), local_load_effects(Es).
+local_load_effect(aux_read) --> [ins(mov, q, [mem(0, rdx), reg(rcx)])].
+local_load_effect(address_read) --> [ins(mov, q, [mem(0, rax), reg(rax)])].
+
+local_store_effects([], _, _) --> [].
+local_store_effects([E|Es], V, Ctx) -->
+    local_store_effect(E, V, Ctx), local_store_effects(Es, V, Ctx).
+local_store_effect(lower_write, V, Ctx) -->
+    lower_reg_load(V, rcx, Ctx), [ins(mov, q, [reg(rcx), mem(0, rdx)])].
+local_store_effect(address_write, V, Ctx) -->
+    { ctx_fn(Ctx, Fn) }, load(V, l, si, Fn),
+    [ins(mov, q, [reg(rsi), mem(0, rax)])].
 
 rights_write(read, 0).
 rights_write(write, 1).
@@ -1438,6 +1525,8 @@ access_check_kinds(Blocks, Kinds) :-
 % fails if Inst does not access memory.
 inst_check_kind(fused(check(_, Size, Rights, Align), _), k(Size, Write, Align)) :-
     rights_write(Rights, Write).
+inst_check_kind(fused(check_local(_, _, Size, Rights, Align), _), k(Size, Write, Align)) :-
+    rights_write(Rights, Write).
 inst_check_kind(abi(Actions), k(8, 1, 8)) :-
     memberchk(returns_twice(_,_,_,_,_), Actions).
 
@@ -1870,15 +1959,15 @@ origins(Name, Origins, CheckKinds) -->
     check_origins(CheckKinds, Name).
 
 function_origins([], _, _) --> [].
-function_origins([origin(Which,Catch,NLowers,NumSetjmps)|Origins], Name, NameLabel) -->
+function_origins([origin(Which,Catch,NLowers,NumSetjmps,NumLocals)|Origins], Name, NameLabel) -->
     { catch_flag(Catch, CanCatch) },
-    function_origin(Name, NameLabel, NLowers, Which, CanCatch, NumSetjmps),
+    function_origin(Name, NameLabel, NLowers, Which, CanCatch, NumSetjmps, NumLocals),
     function_origins(Origins, Name, NameLabel).
 catch_flag(catches, 1).
 catch_flag(no_catch, 0).
 
 % A function origin and the origin (origin_label/3) that points at it.
-function_origin(Name, NameLabel, NLowers, Which, CanCatch, NumSetjmps) -->
+function_origin(Name, NameLabel, NLowers, Which, CanCatch, NumSetjmps, NumLocals) -->
     { format(atom(FOrigin), '.L~w..forigin_~w', [Name, Which]),
       origin_label(Name, Which, Origin) },
     [label(FOrigin),
@@ -1886,7 +1975,7 @@ function_origin(Name, NameLabel, NLowers, Which, CanCatch, NumSetjmps) -->
      long(NLowers), zero(4),
      quad(0),
      byte([0, CanCatch]), zero(2),
-     long(NumSetjmps), long(0), zero(4),
+     long(NumSetjmps), long(NumLocals), zero(4),
      label(Origin),
      quad(FOrigin), long(0), long(0)].
 

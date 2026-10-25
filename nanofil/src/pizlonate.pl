@@ -132,6 +132,20 @@ checked_access(store(W, V, A), Q,
 checked_access(call(Res, tmp(P), Args), Q,
                [let(tmp(Q), f, check_function, [tmp(P)]),
                 raw_call(Res, tmp(Q), Args)|Is], Is).
+checked_access(local_load(D, K, T, Name, Off), Q,
+               [let(tmp(Q), a, check_local(Name, Off, Size, read, Align), []),
+                Access|Is], Is) :-
+    access_size_align(T, Size, Align),
+    ( T == p -> pointer_memory_effects(local_load, Es),
+                Access = let(D, p, raw_load_pointer(0, Es), [tmp(Q)])
+    ; Access = let(D, K, raw_load(T, 0), [tmp(Q)]) ).
+checked_access(local_store(W, V, Name, Off), Q,
+               [let(tmp(Q), a, check_local(Name, Off, Size, write, Align), []),
+                Access|Is], Is) :-
+    access_size_align(W, Size, Align),
+    ( W == p -> pointer_memory_effects(local_store, Es),
+                Access = raw_store_pointer(0, V, tmp(Q), Es)
+    ; Access = raw_store(W, 0, V, tmp(Q)) ).
 
 % fresh_name(+Names, +N0, -N, -Q): Q is chkI for the least I >= N0 not
 % among Names, and N is I + 1.

@@ -5,7 +5,7 @@
 
     ```diagram
     o0:  M0 ─────────────────────────────────────▶ M
-    o1:  M0 ─▶ without_locs ─▶ promote ─▶ copy ─▶ M
+    o1:  M0 ─▶ without_locs ─▶ promote ─▶ copy ─▶ local_storage ─▶ M
     ```
 
     refines/2 relates the outcome of a program to the outcome of its
@@ -19,22 +19,30 @@
 
 :- use_module(promote).
 :- use_module(copy).
-:- use_module(ir, [without_locs/2, module_stage/2]).
+:- use_module(local_storage).
+:- use_module(ir, [without_locs/2, module_stage/2, local_objects/2]).
 
 %! optimize(+Level, +M0, -M) is det.
 %
 %  M is the module M0 optimized at Level: o0 leaves M0 unchanged (the
-%  reference path); o1 runs promote followed by copy elimination on
-%  unchecked IR and leaves checked IR unchanged.
+%  reference path); o1 runs promotion, copy elimination and local storage
+%  on unchecked IR. Checked or already-local IR stays unchanged.
 
 optimize(o0, M, M).
 optimize(o1, M0, M) :-
-    (   module_stage(M0, checked)
+    (   ( module_stage(M0, checked) ; has_local_storage(M0) )
     ->  M = M0
     ;   without_locs(M0, M1),
         promote_module(M1, Promoted),
-        copy_module(Promoted, M)
+        copy_module(Promoted, Copied),
+        local_storage_module(Copied, M)
     ).
+
+% Named local objects are already the storage pass's product. Earlier
+% passes consume ordinary addresses, not this lowered vocabulary.
+has_local_storage(module(Items)) :-
+    member(F, Items), F = func(_, _, _, _, _),
+    local_objects(F, [_|_]).
 
 %! refines(+Before, +After) is semidet.
 %

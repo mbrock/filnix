@@ -6,8 +6,16 @@
 
 void *build(long n);
 long sum(void *list);
+long local_roots(void);
 
 static void *volatile sink;
+
+void *c_value(long value)
+{
+    long *p = malloc(sizeof(*p));
+    *p = value;
+    return p;
+}
 
 void c_gc(long i)
 {
@@ -28,6 +36,10 @@ int main(int argc, char **argv)
         zgc_request_and_wait();
         zgc_request_and_wait();
         printf("%ld\n", sum(l));
+        break;
+    }
+    CASE(1, "local roots") {
+        printf("%ld\n", local_roots());
         break;
     }
     }

@@ -13,6 +13,14 @@
     and aux sources, including zero aux for scalars. registers/buffer(N)
     chooses the return protocol; AMD64 assigns registers and buffer bytes.
 
+    `frame(Plain, Roots, Aliases)` includes `local(Name, Size)` in Plain
+    for nonescaping objects, separate from temporary slots. The special
+    `stack_aux(Name)` roots form a suffix before the setjmp slots;
+    `origin(Which, Catch, NRoots, NSetjmps, NLocals)` describes that order
+    to the collector. `initialize_local(Name)` zeroes payload and aux
+    and publishes the stack-aux root without a safepoint. It does not
+    produce a heap lower or an address value.
+
     `returns_twice` invokes native setjmp in the current body and restores
     payloads without a safepoint before writing the full native int result.
     Setjmp disables sharing even for unreachable sites. Its snapshots
@@ -39,7 +47,8 @@ lower_function(Module, Func, LiveBlocks,
     return_protocol(Ret, Return),
     body_params(Func, Params, BodyParams),
     frame(BodyParams, LiveBlocks, Return, Frame, Snapshots),
-    Frame = frame(_, Roots, _), length(Roots, NRoots),
+    Frame = frame(Plain, Roots, _), length(Roots, NRoots),
+    findall(N, member(local(N, _), Plain), LocalNames), length(LocalNames, NLocals),
     fast_params(BodyParams, Incoming),
     Snapshots = snapshots(Sites, Payload), sort(Sites, InitSites),
     Entry = [native_frame(Return), stack_check, save_thread, save_return(Return),
@@ -49,8 +58,8 @@ lower_function(Module, Func, LiveBlocks,
     maplist(lower_block(Module, Ret, Return, Snapshots), Blocks0, Blocks),
     public_object(Func, Return, Object),
     Snapshots = snapshots(Sites, _), length(Sites, NSites),
-    Origins = [origin(c, catches, NRoots, NSites),
-               origin(n, no_catch, NRoots, NSites)].
+    Origins = [origin(c, catches, NRoots, NSites, NLocals),
+               origin(n, no_catch, NRoots, NSites, NLocals)].
 
 % The bijective base-11 encoding is independent of native locations.
 signature(Ret, ParamKs, Sig) :-
@@ -112,11 +121,16 @@ frame(Params, Blocks, Return, frame(Plain, Roots, Aliases),
     temp_storage(Sites, Params, Blocks, Temps, Keys, Lowers, Aliases),
     return_storage(Return, Extra),
     findall(tmp(hidden(setjmp_buf(D))), member(D, Sites), JPlain),
-    append([Keys, ShadowKeys, [thread, aux], Extra, JPlain], Plain),
+    local_objects(func(frame, local, void, Params, Blocks), Locals),
+    findall(local(N, Size), member(N-Size, Locals), LocalStorage),
+    findall(stack_aux(N), member(N-_, Locals), LocalRoots),
+    append([Keys, ShadowKeys, [thread, aux], Extra, JPlain, LocalStorage], Plain),
     findall(lower(shadow(N)), member(N-p, Shadows), ShadowRoots),
     findall(lower(setjmp_snapshot(D)), member(D, Sites), SnapRoots),
     findall(lower(tmp(hidden(setjmp_buf(D)))), member(D, Sites), JRoots),
-    append([Lowers, ShadowRoots, SnapRoots, JRoots], Roots),
+    % Explicit stack auxes are the final root group before jmpbufs,
+    % as filc_function_origin_stack_aux_begin/end_index specifies.
+    append([Lowers, ShadowRoots, SnapRoots, LocalRoots, JRoots], Roots),
     % Preserve the old assoc's canonical payload traversal order.
     findall(tmp(N), member(N-_, Temps), TempPayload),
     append(TempPayload, ShadowKeys, Payload0), sort(Payload0, Payload).
@@ -139,6 +153,7 @@ return_storage(registers, []).
 return_storage(buffer(_), [retbuf]).
 inst_dest(let(tmp(N), K, _, _), N, K).
 inst_dest(flight(tmp(N), _, _, _), N, p).
+inst_dest(local_load(tmp(N), K, _, _, _), N, K).
 inst_dest(call(result(tmp(N), K), _, _), N, K).
 inst_dest(call(tuple(Tos), _, _), N, K) :- member(result(tmp(N), K), Tos).
 
@@ -215,6 +230,7 @@ lower_inst(_, _, let(tmp(D),p,va_args,[const(Off)]),
 lower_inst(_, _, let(tmp(D),K,va_arg,[P]),
            abi([origin(c), consume_va(K,P,Size,D)])) :- !,
     width_bytes(K,Size).
+lower_inst(_, _, local_alloc(Name, _), abi([initialize_local(Name)])) :- !.
 lower_inst(_, _, I, I).
 
 % Returns are actions too: materialize before popping roots, then signal

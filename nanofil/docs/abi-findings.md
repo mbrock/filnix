@@ -523,3 +523,33 @@ details:
   redirected to `filc_free_singleton` (fugc.h:162-170).
 - `filc_allocate` exits only for sizes above
   `FILC_MAX_BYTES_BETWEEN_POLLCHECKS` (filc_runtime.c:2919, 2954-2957).
+
+## Nonescaping LocalExplicit storage
+
+Verified against the same staging pin, not inferred from heap lowers:
+
+- `FilPizlonator.cpp:17626-17655` gives each nonescaping alloca a
+  payload and separate aux. `alignedAllocaSize` rounds physical storage
+  to `GCMinAlign` (16); payload alignment is at least 16, aux alignment
+  is 8. LocalExplicit adds one word before aux for its count header.
+- `initializeNonescapingAlloca` (8276) stores the physical word count,
+  records `AuxAlloca` in an `ExplicitStackAux` frame entry, and zeroes
+  both payload and aux. LocalNaked instead replicates individual lowers
+  into ordinary frame roots. Nanofil uses only LocalExplicit, initializes
+  before publishing the root, and retains exact logical bounds.
+- `filc_runtime.h:425` defines `filc_stack_aux` as `size_t num_lowers`
+  followed by `void *lowers[]`. The origin's special root range is
+  `[num_lowers_ish - num_setjmps - num_stack_auxes,
+  num_lowers_ish - num_setjmps)` (2189-2206).
+- `filc_mark_outgoing_ptrs_in_frames` (filc_runtime_inlines.h:413-460)
+  distinguishes that range **before** converting a lower to a heap
+  object. It skips null stack-aux roots, otherwise scans precisely the
+  header's word count. Registering the native aux address as an ordinary
+  heap lower is invalid; it is not a heap object with a hidden header.
+
+Nanofil's ABI product carries `local(Name,Size)` storage descriptors and
+distinct `stack_aux(Name)` root keys. `origin(Which,Catch,Roots,Setjmps,Locals)`
+states both suffix counts. Local payload/aux never enter the temporary
+alias pool; the origin remains correct across calls and pollchecks.
+The exact IR, lifetime and conservative selection policy are in
+[m5.md](m5.md#nonescaping-local-storage).

@@ -27,6 +27,7 @@
 :- use_module('../src/c_types').
 :- use_module('../src/asm').
 :- use_module('abi').
+:- use_module('local_storage').
 :- use_module(library(assoc)).
 :- use_module(library(pio)).
 :- use_module(library(clpz)).
@@ -94,6 +95,10 @@ clause_texts(Cs, [T|Ts]) :-
 clause_term(T, X) :- read_term_from_chars(T, X, []).
 
 test(abi_products) :- abi_products.
+test(local_storage_selection) :- local_selection.
+test(local_storage_semantics) :- local_semantics.
+test(local_storage_lifetime) :- local_lifetime.
+test(local_storage_validation) :- local_validation.
 
 % module_fn_args_outcome(+Module, +Fn, +Args, ?Outcome): Outcome is the first
 % outcome of Fn(Args) on Module with fuel for 1000 blocks.
@@ -1017,7 +1022,9 @@ test(copy_removes_gc_aliases) :-
     optimize(o1, M0, M),
     once(valid_module(M)),
     M = module(Items),
-    \+ ( member(func(_, _, _, _, Bs), Items),
+    % local_roots deliberately retains null literals to overwrite roots;
+    % the list functions exercise eliminated pointer aliases.
+    \+ ( member(func(Name, _, _, _, Bs), Items), memberchk(Name, [build, sum]),
          member(block(_, _, Is, _), Bs),
          member(let(_, p, copy, _), Is)
        ),

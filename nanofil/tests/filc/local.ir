@@ -1,0 +1,97 @@
+% Named local objects exercise bounds independently of the conservative
+% selection pass, which must leave original heap-padding accesses alone.
+run(local_bounds, [0]).
+run(local_bounds, [1]).
+run(local_bounds, [2]).
+run(local_bounds, [3]).
+func(local_bounds, export, w, [param(w, tmp(k))], [
+    block(start, [], [local_alloc(x, 13)], branch(tmp(k), other, last)),
+    block(last, [], [local_load(tmp(a), w, ub, x, 12)], ret(tmp(a))),
+    block(other, [], [let(tmp(c), w, cmp(eq, w), [tmp(k), const(1)])],
+          branch(tmp(c), past, more)),
+    block(past, [], [local_load(tmp(b), w, ub, x, 13)], ret(tmp(b))),
+    block(more, [], [let(tmp(d), w, cmp(eq, w), [tmp(k), const(2)])],
+          branch(tmp(d), below, wide)),
+    block(below, [], [local_load(tmp(e), w, ub, x, -1)], ret(tmp(e))),
+    block(wide, [], [local_load(tmp(f), w, uh, x, 12)], ret(tmp(f)))
+]).
+
+% Empty objects still have a real stack-aux header with zero lower words.
+run(local_empty, [0]).
+run(local_empty, [1]).
+func(local_empty, export, w, [param(w, tmp(access))], [
+    block(start, [], [local_alloc(x, 0)], branch(tmp(access), bad, done)),
+    block(bad, [], [local_load(tmp(v), w, ub, x, 0)], ret(tmp(v))),
+    block(done, [], [], ret(const(19)))
+]).
+
+% Both payload and aux start empty. Writing scalar bits must not create
+% a capability or clear an existing one (gc.ir tests the latter).
+run(local_aux, [0]).
+run(local_aux, [1]).
+func(local_aux, export, l, [param(w, tmp(forge))], [
+    block(start, [], [local_alloc(x, 8)], branch(tmp(forge), forged, zero)),
+    block(zero, [], [
+        local_load(tmp(p), p, p, x, 0), let(tmp(a), l, ptoi, [tmp(p)])
+    ], ret(tmp(a))),
+    block(forged, [], [
+        let(tmp(heap), p, alloc(8), [const(8)]),
+        store(l, const(31), tmp(heap)), let(tmp(bits), l, ptoi, [tmp(heap)]),
+        local_store(l, tmp(bits), x, 0), local_load(tmp(q), p, p, x, 0),
+        let(tmp(v), l, load(l), [tmp(q)])
+    ], ret(tmp(v)))
+]).
+
+run(local_misaligned, []).
+func(local_misaligned, export, void, [], [block(start, [], [
+    local_alloc(x, 9), local_store(p, const(0), x, 1)
+], ret)]).
+
+% Huge invalid offsets must fail the bounds check, not overflow native
+% address formation or become an out-of-range assembler displacement.
+run(local_huge, []).
+func(local_huge, export, w, [], [block(start, [], [
+    local_alloc(x, 16), local_load(tmp(v), w, ub, x, 9223372036854775807)
+], ret(tmp(v))) ]).
+
+% Names are scoped per invocation, including recursion and reentry.
+% A temporary with a hidden-looking name cannot replace local metadata.
+run(local_recursive, [0]).
+run(local_recursive, [3]).
+run(local_recursive, [5]).
+func(local_recursive, export, l, [param(l, tmp(n))], [
+    block(start, [], [
+        local_alloc(x, 8), local_store(l, tmp(n), x, 0),
+        let(tmp(hidden(local(x))), l, copy, [const(99)])
+    ], branch(tmp(n), recurse, done)),
+    block(recurse, [], [
+        let(tmp(next), l, sub, [tmp(n), const(1)]),
+        call(result(tmp(child), l), global(local_recursive), [arg(l, tmp(next))]),
+        local_load(tmp(v), l, l, x, 0),
+        let(tmp(sum), l, add, [tmp(v), tmp(child)])
+    ], ret(tmp(sum))),
+    block(done, [], [local_load(tmp(z), l, l, x, 0)], ret(tmp(z)))
+]).
+
+% Ending a callee's local lifetime must preserve the caller local and
+% the latest heap state (including both new allocations and frees).
+run(local_caller, [0]).
+run(local_caller, [1]).
+func(local_caller, export, l, [param(w, tmp(read_freed))], [
+    block(start, [], [
+        let(tmp(doomed), p, alloc(8), [const(8)]),
+        let(tmp(survivor), p, alloc(8), [const(8)]),
+        store(l, const(57), tmp(survivor)),
+        local_alloc(x, 8), local_store(p, tmp(survivor), x, 0),
+        call(result(tmp(fresh), p), global(local_callee), [arg(p, tmp(doomed))])
+    ], branch(tmp(read_freed), freed, live)),
+    block(freed, [], [let(tmp(bad), l, load(l), [tmp(doomed)])], ret(tmp(bad))),
+    block(live, [], [
+        local_load(tmp(p), p, p, x, 0), let(tmp(a), l, load(l), [tmp(p)]),
+        let(tmp(b), l, load(l), [tmp(fresh)]), let(tmp(v), l, add, [tmp(a), tmp(b)])
+    ], ret(tmp(v)))
+]).
+func(local_callee, local, p, [param(p, tmp(doomed))], [block(start, [], [
+    local_alloc(x, 8), call(void, global(free), [arg(p, tmp(doomed))]),
+    let(tmp(fresh), p, alloc(8), [const(8)]), store(l, const(29), tmp(fresh))
+], ret(tmp(fresh))) ]).

@@ -31,7 +31,7 @@
     | `s` | 32-bit float (single) |
     | `d` | 64-bit float (double) |
     | `p` | pointer: an address with its Fil-C capability (filc mode only) |
-    | `a` | proven address: a `p` that a check has cleared (checked stage only) |
+    | `a` | proven address: a pointer or named-local access that a check has cleared (checked stage only) |
     | `f` | proven function: a `p` that a function check has cleared (checked stage only) |
 
     A store's width may also be `b` (8 bits) or `h` (16 bits). A load
@@ -64,6 +64,9 @@
     | `phi(tmp(D), K, [Pred-Value])` | D is Value when control came from block Pred |
     | `let(tmp(D), K, Op, Args)` | D, of class K, is Op of Args (Ops below) |
     | `store(Width, Value, Addr)` | store Value at Addr; Width one of `b` `h` `w` `l` `p` `s` `d` |
+    | `local_alloc(Name, Size)` | create a zeroed, exact-sized invocation-local object, without an address value |
+    | `local_load(tmp(D), K, T, Name, Off)` | checked load semantics at the fixed byte offset Off in Name |
+    | `local_store(Width, Value, Name, Off)` | checked store semantics at the fixed byte offset Off in Name |
     | `call(Res, Callee, [arg(K, Value)])` | call Callee: `global(F)`, or (filc mode) a `p` temp |
     | `loc(File, Line)` | does nothing: the instructions after it, up to the next loc, come from line Line of File |
     | `raw_store(Width, Off, Value, Addr)` | checked stage: a non-pointer store at Addr+Off that does not check (Stages, below) |
@@ -73,6 +76,14 @@
 
     A call's Res is one of `result(tmp(D), K)`, `void`, or
     `tuple([result(tmp(D1), K1), result(tmp(D2), K2)])`.
+
+    Named locals are Fil-C-only. Their ground names have a separate
+    namespace from temporaries. Each is declared once in the entry
+    block, before its uses, and lives until this invocation exits.
+    Functions with setjmp cannot contain them. Off is a signed 64-bit
+    integer; an access outside [0, Size) traps, including every access
+    to a zero-sized object. Pointer contents have ordinary capabilities,
+    but a local's own native address is never a `p` value or heap lower.
 
     `flight` computes its address with `copy`, `add` or `sub`, using
     unsigned 64-bit arithmetic. Each argument is an `l` value or
@@ -127,6 +138,7 @@
     | `va_arg` | any | `[p]` | filc only: a load through a va_list address, advancing its cursor (reads and writes memory) |
     | `setjmp(Kind)` | `w` | `[p, w]`: Buf, SaveMask | filc only, below |
     | `check(Lo, Hi, Rights, Align)` | `a` | `[p]` | checked stage, below |
+    | `check_local(Name, Off, Bytes, Rights, Align)` | `a` | `[]` | checked stage: prove exact bounds and alignment for the named object, preserving its identity and offset |
     | `raw_load(T, Off)` | as `load(T)`, except `p` | `[a]` | checked stage: a non-pointer load at A+Off that does not check |
     | `raw_load_pointer(Off, Effects)` | `p` | `[a]` | checked stage: read aux, resolve the lower, then read the primary address |
     | `check_function` | `f` | `[p]` | checked stage: trap unless the pointer designates a function object at its exact callable address |
@@ -139,6 +151,13 @@
     capability permits Rights (`read` or `write`) on [P+Lo, P+Hi) and
     P+Lo is Align-aligned (Align one of 1, 2, 4, 8, 16); otherwise its
     result is P, proven accessible.
+
+    `check_local` proves [Off, Off+Bytes) within the named object's
+    exact size and 16-aligned base. Its adjacent raw access has offset
+    zero. Pointer load/store effects are respectively
+    `[aux_read, address_read]` and `[lower_write, address_write]`:
+    explicit stack aux has neither a heap header nor a lower box.
+    Validation selects this protocol by proof provenance, not list shape.
 
     ## Values
 
@@ -229,7 +248,7 @@
                op_arg_classes/4, op_result_ok/3,
                module_mode/2, module_stage/2, addr_class/2, variadic_func/1, setjmp_func/1,
                narrow_type/3, without_locs/2, access_size_align/3,
-               jump_target/2, polls_every_cycle/1, implicit_flight/1,
+               jump_target/2, polls_every_cycle/1, implicit_flight/1, local_objects/2,
                pointer_memory_effects/2]).
 
 :- use_module(library(lists)).
@@ -325,6 +344,7 @@ kind_arity(float_to_int, 1).
 kind_arity(int_to_float, 1).
 kind_arity(cast, 1).
 kind_arity(check, 1).
+kind_arity(check_local, 0).
 kind_arity(check_function, 1).
 kind_arity(ld, 1).
 kind_arity(ld_pointer, 1).
@@ -341,9 +361,13 @@ valid_op(check(Lo, Hi, Rights, Align)) :- !,
     integer(Lo), integer(Hi), Lo < Hi,
     memberchk(Rights, [read, write]),
     memberchk(Align, [1, 2, 4, 8, 16]).
+valid_op(check_local(Name, Off, Bytes, Rights, Align)) :- !,
+    ground(Name), local_offset(Off), integer(Bytes), Bytes > 0, Bytes =< 2147483647,
+    memberchk(Rights, [read, write]), memberchk(Align, [1, 2, 4, 8, 16]).
 valid_op(raw_load(T, Off)) :- !, load_type(T), T \== p, integer(Off).
 valid_op(raw_load_pointer(Off, Effects)) :- !,
-    integer(Off), pointer_memory_effects(load, Effects).
+    integer(Off),
+    ( pointer_memory_effects(load, Effects) ; pointer_memory_effects(local_load, Effects) ).
 valid_op(Op) :- op_kind(Op, _).
 
 % pointer_memory_effects(?Access, ?Effects): the closed protocol for an
@@ -356,6 +380,11 @@ valid_op(Op) :- op_kind(Op, _).
 pointer_memory_effects(load, [aux_read, lower_resolve, address_read]).
 pointer_memory_effects(store,
     [aux_ensure, lower_barrier, rooted_reload, lower_write, address_write]).
+% Proven nonescaping memory has an explicit stack aux, never a heap
+% header or atomic box. These protocols are selected by check_local's
+% provenance, not merely by a shorter effect list supplied by the caller.
+pointer_memory_effects(local_load, [aux_read, address_read]).
+pointer_memory_effects(local_store, [lower_write, address_write]).
 
 %! access_size_align(?X, ?Size, ?Align) is nondet.
 %
@@ -445,6 +474,7 @@ op_kind(ext(T), ext) :- narrow_type(T, _, _).
 op_kind(load(_), load).
 op_kind(alloc(_), alloc).
 op_kind(check(_, _, _, _), check).
+op_kind(check_local(_, _, _, _, _), check_local).
 op_kind(check_function, check_function).
 op_kind(raw_load(_, _), ld).
 op_kind(raw_load_pointer(_, _), ld_pointer).
@@ -532,6 +562,9 @@ pointer_inst(raw_store_pointer(_, _, _, _)).
 pointer_inst(let(_, _, raw_load_pointer(_, _), _)).
 pointer_inst(raw_call(_, _, _)).
 pointer_inst(flight(_, _, _, _)).
+pointer_inst(local_alloc(_, _)).
+pointer_inst(local_load(_, _, _, _, _)).
+pointer_inst(local_store(_, _, _, _)).
 
 %% Validation
 
@@ -567,6 +600,7 @@ module_stage(module(Items), Stage) :-
     ).
 
 checked_inst(let(_, _, check(_, _, _, _), _)).
+checked_inst(let(_, _, check_local(_, _, _, _, _), _)).
 checked_inst(let(_, _, check_function, _)).
 checked_inst(let(_, _, raw_load(_, _), _)).
 checked_inst(let(_, _, raw_load_pointer(_, _), _)).
@@ -614,6 +648,7 @@ valid_item(M, Mode, Stage, func(Name, _, Ret, Params, Blocks)) :-
     ),
     proof_class_defs(Name, Params, Blocks),
     definitions_dominate(Name, Params, Blocks),
+    valid_locals(Name, Params, Blocks),
     stage_func(Stage, Name, Mode, Blocks).
 valid_item(_, Mode, _, data(Name, _, Align, Items)) :-
     (   memberchk(Align, [1, 2, 4, 8, 16]) -> true
@@ -636,6 +671,37 @@ valid_item(_, Mode, _, data(Name, _, Align, Items)) :-
 % byte_char(+C): C is a character that stands for one byte.
 byte_char(C) :- atom(C), atom_length(C, 1), char_code(C, N), N =< 255.
 
+% local_objects(+Func, -Objects): declarations, in instruction order.
+% Names belong to a separate namespace: they are never ordinary values.
+local_objects(func(_, _, _, _, Blocks), Objects) :-
+    findall(Name-Size,
+            ( member(block(_, _, Is, _), Blocks),
+              member(local_alloc(Name, Size), Is) ), Objects).
+
+local_offset(Off) :- integer(Off), Off >= -9223372036854775808, Off < 9223372036854775808.
+
+valid_locals(Fn, Params, Blocks) :-
+    F = func(Fn, local, void, Params, Blocks),
+    local_objects(F, Objects),
+    findall(N, member(N-_, Objects), Names), sort(Names, Unique),
+    ( length(Names, Count), length(Unique, Count) -> true
+    ; fn_error(Fn, 'duplicate local allocation', []) ),
+    ( Objects \== [], setjmp_func(F)
+    -> fn_error(Fn, 'local storage in a returns-twice function', []) ; true ),
+    Blocks = [block(Entry, _, _, _)|_],
+    findall(N-I, (member(block(Entry, _, Is, _), Blocks),
+                  nth0(I, Is, local_alloc(N, _))), Declared),
+    ( length(Declared, Count) -> true
+    ; fn_error(Fn, 'local allocation outside the entry block', []) ),
+    forall((member(block(L, _, Is, _), Blocks), nth0(I, Is, Ins),
+            local_reference(Ins, N)),
+           ( memberchk(N-At, Declared), (L \== Entry ; At < I) -> true
+           ; fn_error(Fn, 'local ~w is used before its declaration', [N]) )).
+
+local_reference(local_load(_, _, _, N, _), N).
+local_reference(local_store(_, _, N, _), N).
+local_reference(let(_, _, check_local(N, _, _, _, _), _), N).
+
 % temp_defs(+Params, +Blocks, -Defs): Name-Class for every definition of
 % a temporary, in parameter and then block order.
 temp_defs(Params, Blocks, Defs) :-
@@ -644,6 +710,7 @@ temp_defs(Params, Blocks, Defs) :-
             ( member(block(_, Phis, Insts, _), Blocks),
               (   member(phi(tmp(N), K, _), Phis)
               ;   member(let(tmp(N), K, _, _), Insts)
+              ;   member(local_load(tmp(N), K, _, _, _), Insts)
               ;   member(flight(tmp(N), _, _, _), Insts), K = p
               ;   member(I, Insts), call_result_args(I, Res, _),
                   ( Res = result(tmp(N), K)
@@ -866,9 +933,19 @@ checked_insts([Inst|Insts], Fn, Mode) :-
 checked_inst_rest(let(tmp(Q), a, check(Lo, Hi, Rights, Align), _), Insts, Fn, _,
                   Rest) :- !,
     (   Insts = [Access|Rest],
-        covered_access(Access, Q, Lo, Hi, Rights, Align)
+        covered_access(Access, Q, Lo, Hi, Rights, Align),
+        access_storage_effects(Access, heap)
     ->  true
     ;   fn_error(Fn, 'check tmp(~w) is not followed by an access it covers', [Q])
+    ).
+checked_inst_rest(let(tmp(Q), a, check_local(_, _, Bytes, Rights, Align), []),
+                  Insts, Fn, _, Rest) :- !,
+    (   Insts = [Access|Rest],
+        raw_access(Access, Q, _, 0, _),
+        covered_access(Access, Q, 0, Bytes, Rights, Align),
+        access_storage_effects(Access, local)
+    ->  true
+    ;   fn_error(Fn, 'local check tmp(~w) is not followed by an access it covers', [Q])
     ).
 checked_inst_rest(let(tmp(Q), f, check_function, _), Insts, Fn, _, Rest) :- !,
     (   Insts = [raw_call(_, tmp(Q), _)|Rest] -> true
@@ -902,7 +979,21 @@ raw_access(raw_store_pointer(Off, _, tmp(Q), _), Q, p, Off, write).
 
 unchecked_access(let(_, _, load(T), _), load(T)).
 unchecked_access(store(W, _, _), store(W)).
+unchecked_access(local_load(_, _, T, _, _), local_load(T)).
+unchecked_access(local_store(W, _, _, _), local_store(W)).
 unchecked_access(call(_, tmp(_), _), 'indirect call').
+
+access_storage_effects(let(_, _, raw_load(_, _), _), _).
+access_storage_effects(raw_store(_, _, _, _), _).
+access_storage_effects(let(_, p, raw_load_pointer(_, Es), _), Storage) :-
+    storage_effect_kind(Storage, load, Kind), pointer_memory_effects(Kind, Es).
+access_storage_effects(raw_store_pointer(_, _, _, Es), Storage) :-
+    storage_effect_kind(Storage, store, Kind), pointer_memory_effects(Kind, Es).
+
+storage_effect_kind(heap, load, load).
+storage_effect_kind(heap, store, store).
+storage_effect_kind(local, load, local_load).
+storage_effect_kind(local, store, local_store).
 
 % covered_access(+Access, +Q, +Lo, +Hi, +Rights, +Align): Access is a raw
 % access at tmp(Q) within [Q+Lo, Q+Hi), as aligned as it must be, and
@@ -974,6 +1065,17 @@ valid_inst(ctx(_, Fn, _, _, _, _, _), loc(File, Line)) :- !,
     (   atom(File), integer(Line) -> true
     ;   fn_error(Fn, 'bad source location loc(~q, ~q)', [File, Line])
     ).
+valid_inst(ctx(_, Fn, _, _, _, _, filc), local_alloc(Name, Size)) :-
+    ( ground(Name), integer(Size), Size >= 0, Size =< 2147483647 -> true
+    ; fn_error(Fn, 'invalid local allocation ~w, ~w', [Name, Size]) ).
+valid_inst(ctx(_, Fn, _, _, _, _, filc), local_load(tmp(_), K, T, _, Off)) :-
+    ( load_type(T), load_result_ok(T, filc, K), local_offset(Off) -> true
+    ; fn_error(Fn, 'invalid local load ~w, ~w, ~w', [K, T, Off]) ).
+valid_inst(Ctx, local_store(W, V, _, Off)) :-
+    Ctx = ctx(_, Fn, _, _, _, _, filc),
+    ( store_value_class(W, K), local_offset(Off) -> true
+    ; fn_error(Fn, 'invalid local store ~w, ~w', [W, Off]) ),
+    valid_use(Ctx, K, V).
 valid_inst(Ctx, flight(tmp(_), Op, Args, Lower)) :-
     Ctx = ctx(_, Fn, _, _, _, _, filc),
     (   memberchk(Op, [copy, add, sub]), op_arity(Op, N), length(Args, N)
@@ -1024,7 +1126,9 @@ valid_inst(Ctx, raw_store(Width, Off, Value, Addr)) :-
     valid_use(Ctx, a, Addr).
 valid_inst(Ctx, raw_store_pointer(Off, Value, Addr, Effects)) :-
     Ctx = ctx(_, Fn, _, _, _, _, filc),
-    (   integer(Off), pointer_memory_effects(store, Effects) -> true
+    (   integer(Off),
+        ( pointer_memory_effects(store, Effects) ; pointer_memory_effects(local_store, Effects) )
+    -> true
     ;   fn_error(Fn, 'bad pointer store offset/effects ~w, ~w', [Off, Effects])
     ),
     valid_use(Ctx, p, Value),
@@ -1242,6 +1346,7 @@ kind_result_ok(ext, ext(T), _, K) :- ext_result_ok(T, K).
 kind_result_ok(load, load(T), Mode, K) :- load_result_ok(T, Mode, K).
 kind_result_ok(alloc, _, Mode, K) :- addr_class(Mode, K).
 kind_result_ok(check, _, filc, a).
+kind_result_ok(check_local, _, filc, a).
 kind_result_ok(check_function, _, filc, f).
 kind_result_ok(ld, raw_load(T, _), filc, K) :- load_result_ok(T, filc, K).
 kind_result_ok(ld_pointer, _, filc, p).
@@ -1303,6 +1408,7 @@ kind_arg_classes(ext, _, _, _, [w]).
 kind_arg_classes(load, _, _, Mode, [A]) :- addr_class(Mode, A).
 kind_arg_classes(alloc, _, _, _, [l]).
 kind_arg_classes(check, _, _, filc, [p]).
+kind_arg_classes(check_local, _, _, filc, []).
 kind_arg_classes(check_function, _, _, filc, [p]).
 kind_arg_classes(ld, _, _, filc, [a]).
 kind_arg_classes(ld_pointer, _, _, filc, [a]).
