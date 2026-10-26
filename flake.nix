@@ -267,6 +267,17 @@
             gnutls-tls = import ./tests/gnutls-tls.nix {
               inherit pkgs pkgsFilc;
             };
+            # The StealMyBitcoin exploit works end to end on the unstripped
+            # Nixpkgs PHP 8.4.25 and is thwarted by pkgsFilc.php84_25, the
+            # same vulnerable release under Fil-C (docs/php.md).
+            php-stealmybitcoin = import ./tests/php-stealmybitcoin.nix {
+              inherit pkgs;
+              native = pkgs.php84.overrideAttrs (old: {
+                dontStrip = true;
+                separateDebugInfo = false;
+              });
+              filc = pkgsFilcPhp84_25.php84_25;
+            };
             utf8-locale = import ./tests/locale.nix { inherit pkgsFilc; };
             pthread-pi = import ./tests/pthread-pi.nix { inherit pkgsFilc; };
             pthread-spin = import ./tests/pthread-spin.nix { inherit pkgsFilc; };

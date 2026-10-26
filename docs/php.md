@@ -311,18 +311,61 @@ process before PHP knew about them, and it did so without knowing what the
 bugs were. That is the case for running PHP on Fil-C. But the evidence
 has limits:
 
-- These are PHP's regression tests, not exploits. Exploiting
-  CVE-2026-109619 across requests takes heap grooming to reach a dangling
-  reference. We showed the corrupted state it starts from (on 8.4.25,
-  `rfc1867_no_user_code.phpt` runs user code from the upload-progress
-  handler before the request has started) but not a groomed dereference.
-- The startup OOM route to CVE-2026-109618 needs mod_php or FrankenPHP,
-  which have no Fil-C build. It was not tested.
+- The OOM stage of the exploit below runs in the CLI server. The startup
+  OOM routes to CVE-2026-109618 that need mod_php or FrankenPHP, which
+  have no Fil-C build, were not tested.
 - A trap is still a crash, and an attacker who can trigger one at will can
   take workers down. Logic bugs in the same code are unaffected.
 
 So run patched releases. `php84_25` is marked insecure for that reason
 and exists only to reproduce the bugs and compare them with their fixes.
+
+### The StealMyBitcoin exploit against 8.4.25
+
+[StealMyBitcoin](https://github.com/KillaBoi/StealMyBitcoin-PoC) is a
+public exploit chain for these two CVEs. A multipart request walks a
+worker into its memory limit during startup parsing; the abort skips the
+session deactivate and leaves stale request state behind. Consumers then
+race for that worker: a fresh session-id string lands on the freed slot,
+later multipart fields corrupt its length, and the corrupted read leaks
+neighbouring heap bytes — the Zend chunk base, then `zval_ptr_dtor`,
+which locates the code image. A final request plants a forged HashTable
+whose pDestructor is `zif_system`, and PHP's cleanup path runs the
+attacker's command.
+
+We adapted the PoC's address constants to the builds this flake ships and
+run it as a differential check
+(`nix build .#checks.x86_64-linux.php-stealmybitcoin`,
+[tests/php-stealmybitcoin.nix](../tests/php-stealmybitcoin.nix)): the same
+exploit, against the Nixpkgs PHP 8.4.25 built the same way without Fil-C,
+and against `pkgsFilc.php84_25`, each behind nginx. On the native build
+the exploit succeeds: both leaks land, the forged callback fires, and the
+response carries the execution evidence. On the Fil-C build the producer
+still OOMs — the vulnerability is real and gets exercised — but the first
+consumer's corrupted read stops at the capability trap, every single run
+(three runs, all at the same source line):
+
+```text
+filc safety error: cannot read pointer with null object.
+    pointer: (nil),<null>
+    expected 8 bytes.
+semantic origin:
+    (php) Zend/zend_alloc.c:3006:16: tracked_free
+...
+    (session.so) session.c:3378:5: php_session_rfc1867_callback
+    (php) main/php_variables.c:498:3: php_default_treat_data
+    (php) main/php_variables.c:788:2: php_hash_environment
+    (php) main/main.c:1873:3: php_request_startup
+filc panic: thwarted a futile attempt to violate memory safety.
+```
+
+No heap bytes, no code pointer, no callback: the stages after the trap
+cannot even start. The check writes both arms' raw HTTP, the PoC's
+attempt records and the server logs to `$out/evidence`. The PoC's
+calibrated constants (the `zif_system` offset, the heap carrier delta)
+are build-specific; the defaults match the unstripped Nixpkgs baseline,
+and `SMB_*` environment variables override each one while re-measuring
+([thread](https://ampcode.com/threads/T-01a1783f-2a3f-71c0-9ae7-db5c801ce9c0)).
 
 The `var_destroy` use after free in `unserialize()`
 ([php-src#21824](https://github.com/php/php-src/issues/21824), fix in
