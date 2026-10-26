@@ -69,6 +69,8 @@ jobs:
           python3 scripts/ci-cache-check.py \
             packages.x86_64-linux.php-dist \
             packages.x86_64-linux.php-docker \
+            packages.x86_64-linux.php84_25-dist \
+            packages.x86_64-linux.php84_25-docker \
             packages.x86_64-linux.optfil
           status=$?
           set -e
@@ -98,22 +100,37 @@ jobs:
         run: |
           nix build .#php-dist --out-link php-dist
           nix build .#php-docker --out-link php-docker
+          nix build .#php84_25-dist --out-link php84_25-dist
+          nix build .#php84_25-docker --out-link php84_25-docker
           nix build .#optfil --out-link optfil
-          echo "TARBALL=$(basename "$(readlink php-dist)" | cut -d- -f2-)" >> "$GITHUB_ENV"
-          echo "TAG=$(nix eval --raw .#php-docker.imageTag)" >> "$GITHUB_ENV"
+          {
+            echo "TARBALL=$(basename "$(readlink php-dist)" | cut -d- -f2-)"
+            echo "TAG=$(nix eval --raw .#php-docker.imageTag)"
+            echo "TARBALL_84_25=$(basename "$(readlink php84_25-dist)" | cut -d- -f2-)"
+            echo "TAG_84_25=$(nix eval --raw .#php84_25-docker.imageTag)"
+          } >> "$GITHUB_ENV"
       - name: The tarball runs without Nix
         run: |
           packages/php-dist/test/run.sh php-dist debian:13 alpine:3
+          packages/php-dist/test/run.sh php84_25-dist debian:13 alpine:3
           packages/optfil/test/run.sh optfil debian:13 alpine:3
       - name: The image serves PHP
         run: |
-          podman load < php-docker
-          podman run --rm "filnix-php:$TAG" php -r 'echo PHP_VERSION, "\n"; exit(extension_loaded("Zend OPcache") ? 0 : 1);'
+          for image in php-docker:$TAG php84_25-docker:$TAG_84_25; do
+            podman load < "${image%%:*}"
+            podman run --rm "filnix-php:${image#*:}" php -r 'echo PHP_VERSION, "\n"; exit(PHP_VERSION === $argv[1] && extension_loaded("Zend OPcache") ? 0 : 1);' "${image#*:}"
+          done
       - run: cp -L php-dist "$TARBALL"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.TARBALL }}
           path: ${{ env.TARBALL }}
+          compression-level: 0
+      - run: cp -L php84_25-dist "$TARBALL_84_25"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TARBALL_84_25 }}
+          path: ${{ env.TARBALL_84_25 }}
           compression-level: 0
       - name: Publish the image to ghcr.io
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
@@ -123,3 +140,6 @@ jobs:
             skopeo copy --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
               docker-archive:php-docker "docker://$image:$tag"
           done
+          # The vulnerable reproduction build must never become :latest.
+          skopeo copy --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
+            docker-archive:php84_25-docker "docker://$image:$TAG_84_25"

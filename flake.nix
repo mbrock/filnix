@@ -51,6 +51,7 @@
               staging ? false,
               blockRustGo ? false,
               crossOverlays ? [ ],
+              permittedInsecurePackages ? [ ],
             }:
             let
               cc = if staging then filcc-staging else filcc;
@@ -58,6 +59,7 @@
             import nixpkgs {
               localSystem = system;
               crossSystem.config = "${pkgs.stdenv.hostPlatform.parsed.cpu.name}-unknown-linux-gnufilc0";
+              config.permittedInsecurePackages = permittedInsecurePackages;
               config.replaceCrossStdenv =
                 { buildPackages, baseStdenv }:
                 let
@@ -85,6 +87,14 @@
             };
 
           pkgsFilc = mkPkgsFilc { };
+          # Explicit reproduction outputs only; the ordinary package set still
+          # refuses this vulnerable PHP unless the caller opts in.
+          pkgsFilcPhp84_25 = mkPkgsFilc {
+            permittedInsecurePackages = [
+              "php-8.4.25"
+              "php-with-extensions-8.4.25"
+            ];
+          };
           optfil = import ./packages/optfil {
             inherit
               pkgs
@@ -389,6 +399,17 @@
             inherit (sarcasm) minilute;
             inherit (pkgsFilc) openssl-sarcasm;
             php-dist = import ./packages/php-dist { inherit pkgs pkgsFilc; };
+            # Vulnerable PHP for reproductions, never the default or :latest.
+            php84_25 = pkgsFilcPhp84_25.php84_25;
+            php84_25-dist = import ./packages/php-dist {
+              inherit pkgs;
+              pkgsFilc = pkgsFilcPhp84_25;
+              base = pkgsFilcPhp84_25.php84_25;
+            };
+            php84_25-docker = import ./packages/php-dist/docker.nix {
+              inherit pkgs;
+              dist = self.packages.${system}.php84_25-dist;
+            };
             # Experimental: opcache's JIT, compiled through C (docs/php.md).
             php-jit = pkgsFilc.php84-jit;
             # Native against Fil-C PHP 8.5 on real applications (bench/php).

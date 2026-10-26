@@ -119,14 +119,16 @@ pushes, pull requests and daily:
   neither has. It downloads nothing and runs locally too.
 - It substitutes the cached `filcc` and checks that it stops an
   out-of-bounds write.
-- A distribution readiness job checks the complete closures of the three
+- A distribution readiness job checks the complete closures of the five
   artifacts used by the optional tarball/image job. Missing artifacts are
   reported as pending and skip that job, not as a failed foundation update.
   Evaluation errors and failed artifact tests still fail CI.
-- When ready, with `max-jobs = 0`, it substitutes the tarballs and image, tests both
-  tarballs in Debian and Alpine containers, and uploads the PHP tarball as
-  a workflow artifact. On `main` it pushes the image to
-  `ghcr.io/mbrock/filnix-php` with its version tag and `latest`.
+- When ready, with `max-jobs = 0`, it substitutes the tarballs and images,
+  tests the tarballs in Debian and Alpine containers, and uploads both PHP
+  tarballs as workflow artifacts. On `main` it pushes the images to
+  `ghcr.io/mbrock/filnix-php` with their version tags. Only the default,
+  patched PHP also gets `latest`; vulnerable 8.4.25 is for isolated
+  reproductions only (see [PHP](php.md)).
 
 Rerun the workflow after the campaign publishes pending artifacts (the daily
 run also rechecks readiness). A skipped distribution job is not a claim that

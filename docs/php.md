@@ -22,6 +22,23 @@ insecure, so Nix refuses it unless asked:
 NIXPKGS_ALLOW_INSECURE=1 nix build --impure .#pkgsFilc.php84_25
 ```
 
+For isolated reproductions, the explicitly named distribution outputs opt in
+to this version only, without allowing insecure packages globally:
+
+```sh
+nix build .#php84_25          # cached Nix package, default extensions
+nix build .#php84_25-dist     # php-8.4.25-filc-x86_64-linux.tar.xz
+nix build .#php84_25-docker   # the same distribution as an OCI image
+docker pull ghcr.io/mbrock/filnix-php:8.4.25
+```
+
+Configure a [binary cache](binary-caches.md) to substitute the Nix outputs.
+The tarball and image have the same programs, extensions and layout as
+8.4.27. CI keeps both tarballs as workflow artifacts; releases include both
+tarballs and image archives. **8.4.25 is vulnerable, for reproductions only,
+not production.** It never replaces `pkgsFilc.php`, `php-dist`, `php-docker`
+or the container's `latest` tag.
+
 `pkgsFilc.php.withExtensions` and `pkgsFilc.php.buildEnv` work as in
 Nixpkgs; see [php-extensions.md](php-extensions.md) for which extensions are
 ported and how they are tested. PHP 8.5 is an opt-in package,

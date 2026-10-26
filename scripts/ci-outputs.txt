@@ -6,6 +6,10 @@ packages.x86_64-linux.baseline
 legacyPackages.x86_64-linux.pkgsFilc.php
 packages.x86_64-linux.php-dist
 packages.x86_64-linux.php-docker
+# Explicitly opted-in vulnerable PHP for exploit reproductions, not :latest.
+packages.x86_64-linux.php84_25
+packages.x86_64-linux.php84_25-dist
+packages.x86_64-linux.php84_25-docker
 legacyPackages.x86_64-linux.pkgsFilc.php74
 packages.x86_64-linux.php74-dist
 legacyPackages.x86_64-linux.pkgsFilc.php85
