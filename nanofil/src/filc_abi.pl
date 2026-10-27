@@ -32,7 +32,7 @@
     packet size, then roots that pointer in the body before any further
     safepoint. See docs/setjmp.md and abi-findings.md.
 */
-:- module(filc_abi, [lower_function/4, lower_thunks/2, signature/3]).
+:- module(filc_abi, [lower_function/4, lower_thunks/2, signature/3, never_signature/1]).
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
 :- use_module(ir).
@@ -222,7 +222,8 @@ lower_block(Module, Ret, Return, Snapshots, block(L,Ps,Is0,J0), block(L,Ps,Is,J)
     lower_jump(Ret, Return, J0, J).
 
 lower_inst(Module, _, call(Res,global(F),Args), abi(Actions)) :- !,
-    call_signature(Res, Args, Sig), direct_target(Module,F,Sig,Target),
+    call_signature(Res, Args, Sig0), call_symbol_signature(Res, Args, Sig0, Sig),
+    direct_target(Module,F,Sig,Target),
     fast_result(Res, Result), Result = result(Return,_), fast_args(Args,Words),
     Actions = [origin(c), reserve_result(Return),
                invoke(Target, Return, Words), Result, release_result(Return)].
@@ -269,6 +270,22 @@ setjmp_kind(sigsetjmp, 2).
 
 call_signature(Res, Args, Sig) :-
     result_ret(Res,Ret), findall(K,member(arg(K,_),Args),Ks), signature(Ret,Ks,Sig).
+
+% call_symbol_signature(+Res, +Args, +Sig0, -Sig): Sig names the weak
+% thunk a direct call goes through. Every call of more than 16 words has
+% the never signature, so its thunk is named never(R-A) by the whole
+% word list instead: two such calls with different words (a variadic
+% callee's, say) must not share one thunk and its packet size.
+call_symbol_signature(Res, Args, Sig0, Sig) :-
+    (   never_signature(Sig0)
+    ->  result_ret(Res,Ret), findall(K,member(arg(K,_),Args),Ks),
+        word_codes(Ret, Ks, Code), Sig = never(Code)
+    ;   Sig = Sig0
+    ).
+word_codes(Ret, Ks, R-A) :-
+    ret_kinds(Ret, RetKs),
+    maplist(class_digit, RetKs, RDs), maplist(class_digit, Ks, ADs),
+    bijective_value(RDs, R), bijective_value(ADs, A).
 direct_target(Module,F,_,implementation(F,Sig)) :-
     func_named(Module,F,Func), \+ variadic_func(Func), !,
     Func = func(_,_,Ret,Ps,_), param_kinds(Ps,Ks), signature(Ret,Ks,Sig).
@@ -307,7 +324,7 @@ lower_thunks(Module, Thunks) :-
              member(call(Res,global(F),Args),Is),
              direct_target(Module,F,unused,Target), Target = entry(F,unused),
              result_ret(Res,Ret),findall(K,member(arg(K,_),Args),Ks),
-             signature(Ret,Ks,Sig)), Ts0),
+             signature(Ret,Ks,Sig0), call_symbol_signature(Res,Args,Sig0,Sig)), Ts0),
     sort(Ts0,Ts1), one_per_symbol(Ts1,Ts), maplist(lower_thunk,Ts,Thunks).
 one_per_symbol([], []).
 one_per_symbol([T|Ts0], [T|Ts]) :-

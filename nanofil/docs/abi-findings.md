@@ -344,6 +344,18 @@ size is short. nanofil's generic call paths do the same, and its call
 sites with more than 16 words use a signature no object has, so they
 always go generic.
 
+**Distinct thunks for distinct word lists.** Every direct call of more
+than 16 words has that one never-matching signature, so the weak thunk
+it goes through cannot be named by signature alone: two calls to one
+callee with different word lists (a variadic one, say, or `printf` with
+18 and then 24 words) would share one thunk, sized for whichever came
+first, and the second call's callee would read past its packet.
+`filc_abi:call_symbol_signature/4` names such a thunk
+`pizlonatedFIN<R>_<A>_<f>` instead, R and A being the bijective
+base-11 values of the whole result and argument digit lists. Only
+nanofil makes these weak hidden thunks; no definition exports such a
+name. `tests/c/prog/wide-varargs.c` is the regression test.
+
 ## Verified end to end
 
 [probes/link/add2.s](../probes/link/add2.s) is hand-written GNU `as`

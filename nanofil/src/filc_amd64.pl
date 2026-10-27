@@ -190,6 +190,8 @@ cache_temp_class(raw_call(tuple(Rs),_,_),T,K) :- member(result(T,K),Rs).
 % entry) and FI alias for signature Sig, its getter, its function object,
 % or its data object and aux array.
 abi_symbol(impl(Sig), F, S) :- format(atom(S), 'pizlonatedFIP~w_~w', [Sig, F]).
+abi_symbol(entry(never(R-A)), F, S) :- !,
+    format(atom(S), 'pizlonatedFIN~w_~w_~w', [R, A, F]).
 abi_symbol(entry(Sig), F, S) :- format(atom(S), 'pizlonatedFI~w_~w', [Sig, F]).
 abi_symbol(getter, F, S) :- format(atom(S), 'pizlonated_~w', [F]).
 abi_symbol(function_object, F, S) :- format(atom(S), 'pizlonatedFO_~w', [F]).
@@ -1651,7 +1653,8 @@ thunk(thunk(F,Sig,Ts,Cells,ArgsSize,Result,Need)) -->
       target_form(Return,Form), packet_offsets(Packet,packet(Srcs,_)),
       typed_locations(Ts,Form,Ls,NS,_), stack_bytes(NS, Pop),
       saved_words(Ts,0,Saved),length(Ts,NW),Alloc is ((8+8*NW+15)//16)*16,
-      field(function_object,generic_entry,rsi,GenericEntry) },
+      field(function_object,generic_entry,rsi,GenericEntry),
+      ( Sig = never(_) -> never_signature(SigV) ; SigV = Sig ) },
     [section(text),p2align(4),hidden(FI),weak(FI),type(FI,function),label(FI),
      ins(push,q,[reg(rbp)]),ins(mov,q,[reg(rsp),reg(rbp)]),
      ins(push,q,[reg(rbx)]),ins(push,q,[reg(r12)]),
@@ -1662,7 +1665,7 @@ thunk(thunk(F,Sig,Ts,Cells,ArgsSize,Result,Need)) -->
     function_check(Fail),
     { field(function_object,signature,rcx,Signature) },
     [ins(mov,q,[reg(rcx),mem(-24,rbp)]),
-     ins(movabs,q,[imm(Sig),reg(rsi)]),ins(cmp,q,[reg(rsi),Signature]),
+     ins(movabs,q,[imm(SigV),reg(rsi)]),ins(cmp,q,[reg(rsi),Signature]),
      ins(jne,none,[sym(Generic)])],
     reserve_stack(Pop),adapter_stack(Saved,Ls,G),adapter_registers(Saved,Ls,G),
     mixed_thunk_call(Form),
