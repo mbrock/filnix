@@ -672,7 +672,9 @@ valid_item(M, Mode, Stage, func(Name, _, Ret, Params, Blocks)) :-
     list_to_assoc(Defs, TempClasses),
     predecessors(Blocks, PredMap),
     Ctx = ctx(M, Name, Ret, LabelSet, TempClasses, PredMap, Mode),
-    maplist(valid_block(Ctx), Blocks),
+    % forall/2: validation binds nothing, and a choicepoint per block
+    % would keep a large function's (sqlite3VdbeExec's) garbage alive.
+    forall(member(Block, Blocks), valid_block(Ctx, Block)),
     Blocks = [block(Entry, _, _, _)|_],
     (   member(block(_, _, _, Jump), Blocks),
         jump_target(Jump, Entry)

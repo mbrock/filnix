@@ -151,9 +151,17 @@ item_placed_lines(Module, Registers, Branches, Item, Lines, Report) :-
 %  Calls Emit(Lines) for each part of the lines filc_module_asm/4 gives,
 %  in order, so a large module (SQLite) need not hold all its lines.
 filc_module_emit(Module0, Emission, Emit) :-
-    without_locs(Module0, Module),
-    Module = module(Items),
+    % A last call after deterministic goals: the frame holding Module0
+    % and its provenance contexts (170 MB for SQLite) is dropped.
+    once(without_locs(Module0, Module)),
     emission(Emission, Registers, Branches),
+    module_emit(Module, Registers, Branches, Emit).
+
+module_emit(Module, Registers, Branches, Emit) :-
+    Module = module(Items),
+    % Validation leaves SWI's heap near its peak; collecting once here,
+    % with only 130 MB live for SQLite, keeps emission within 1 GB.
+    catch(garbage_collect, error(existence_error(_, _), _), true),
     forall(member(Item, Items),
            ( item_placed_lines(Module, Registers, Branches, Item, Lines, _),
              call(Emit, Lines) )),

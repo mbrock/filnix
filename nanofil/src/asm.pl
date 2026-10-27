@@ -58,20 +58,36 @@
 %  text. Throws nanofil_error(bad_asm_line(Line)) for a line it cannot
 %  print.
 print_asm(Lines) :-
-    % Line by line: SQLite's 100 MB of text as one code list would not
-    % fit the default stack.
-    forall(member(Line, Lines),
-           ( phrase(line(Line), Cs), format("~s", [Cs]) )).
+    % In chunks of lines: SQLite's 100 MB of text as one character list
+    % would not fit the default stack, and a format/2 per line is slow.
+    (   length(Chunk, 256), append(Chunk, Rest, Lines)
+    ->  print_chunk(Chunk), print_asm(Rest)
+    ;   print_chunk(Lines)
+    ).
+
+% The text is a list of atomic parts (atoms, numbers and characters),
+% joined once per chunk: building it character by character was most of
+% emission's time.
+print_chunk(Lines) :-
+    lines_text(Lines, Parts, []),
+    atomic_list_concat(Parts, Text),
+    write(Text).
+
+lines_text([], Cs, Cs).
+lines_text([Line|Lines], Cs0, Cs) :-
+    line(Line, Cs0, Cs1),
+    lines_text(Lines, Cs1, Cs).
 
 % The text of one line, committed to its first parse.
-line(Line) -->
-    {   line_chars(Line, Cs) -> true
+line(Line, Cs0, Cs) :-
+    (   line_text(Line, Cs0, Cs) -> true
     ;   throw(nanofil_error(bad_asm_line(Line)))
-    },
-    seq(Cs).
+    ).
 
 line_chars(Line, Cs) :-
-    phrase(line_text(Line), Cs).
+    phrase(line_text(Line), Parts),
+    atomic_list_concat(Parts, Text),
+    atom_chars(Text, Cs).
 
 % line_text(+Line)//: the text of Line. directive//1 has no clause for
 % label/1 or ins/3, so the cases are disjoint; line//1 commits to the
@@ -133,7 +149,7 @@ expr(A+B) -->
     expr(B).
 expr(E) --> literal(E).
 
-directive(section(S)) --> { section_name(S, Name) }, seq(Name).
+directive(section(S)) --> { section_name(S, Name) }, chars(Name).
 directive(p2align(N)) --> ".p2align ", literal(N).
 directive(balign(N)) --> ".balign ", literal(N).
 directive(globl(S)) --> ".globl ", literal(S).
@@ -167,7 +183,7 @@ ascii_char(C) --> { char_code(C, N), N >= 32, N =< 126 }, !, [C].
 ascii_char(C) -->
     { char_code(C, N),
       maplist(octal_char(N), [6, 3, 0], Os) },
-    "\\", seq(Os).
+    "\\", chars(Os).
 
 % octal_char(+N, +Shift, -O): O is the octal digit of N at bit Shift.
 octal_char(N, Shift, O) :- D is (N >> Shift) /\ 7 + 0'0, char_code(O, D).
@@ -186,10 +202,8 @@ section_name(bss, ".bss").
 section_name(data_rel_ro, ".section .data.rel.ro,\"aw\",@progbits").
 section_name(note_gnu_stack, ".section .note.GNU-stack,\"\",@progbits").
 
-% The text of an atom or number.
-literal(X) -->
-    {   atom(X)
-    ->  atom_chars(X, Cs)
-    ;   number_chars(X, Cs)
-    },
-    seq(Cs).
+% The text of an atom or number, as one part.
+literal(X) --> { atomic(X) }, [X].
+
+% chars(+Cs)//: the characters Cs, as parts.
+chars(Cs, S0, S) :- append(Cs, S, S0).

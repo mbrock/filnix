@@ -22,27 +22,29 @@
 :- module(frame_slots, [temp_slots/7]).
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
-:- use_module(library(pairs)).
 :- use_module(cfg).
 
 % temp_slots(+Params, +Blocks, +Temps, -Aliases, -ScalarCount, -PtrCount,
 % -WideCount). Aliases maps each temp name to physical storage(Pool, Index).
 temp_slots(Params, Blocks, Temps, Aliases, NS, NP, NW) :-
     temp_liveness(Blocks, In, Out),
-    foldl(param_point, Params, [], R1),
-    block_ranges(Blocks, In, Out, 1, End, R1, R2),
+    findall(N, member(param(_, tmp(N)), Params), ParamNs),
+    block_ranges(Blocks, In, Out, 1, End, Touches1, Touches2),
     % va_args reads this backend-only parameter implicitly. Reserve both
     % its address and lower for the entire invocation.
     (   memberchk(param(p, tmp(hidden(va_snapshot))), Params)
-    ->  touch(hidden(va_snapshot), End, R2, Points)
-    ;   Points = R2
+    ->  Touches2 = [[hidden(va_snapshot)]-End]
+    ;   Touches2 = []
     ),
-    % Batch the points rather than updating a persistent tree for every
-    % use. Trealla otherwise retains gigabytes of intermediate trees on
-    % large functions. Grouping computes exactly the same convex hulls.
-    keysort(Points, Sorted), group_pairs_by_key(Sorted, Groups),
-    maplist(group_range, Groups, Pairs), list_to_assoc(Pairs, Ranges),
-    maplist(temp_interval(Ranges), Temps, Intervals0),
+    Touches = [ParamNs-0|Touches1],
+    % Touches are groups Ns-P in increasing P, sharing the liveness sets
+    % rather than copying a point per temporary and block (1.7 million
+    % in SQLite's sqlite3VdbeExec). A temporary's convex hull runs from
+    % its first touch to its last, so each bound is one insertion per
+    % temporary, not a tree update per use, which Trealla would retain.
+    first_touches(Touches, Lo),
+    reverse(Touches, Backwards), first_touches(Backwards, Hi),
+    maplist(temp_interval(Lo, Hi), Temps, Intervals0),
     sort(Intervals0, Intervals1),
     partition(wide_range, Intervals1, Wides, Intervals),
     empty_assoc(A0),
@@ -56,40 +58,41 @@ wide_slot(range(S, E, wide, N), Ss0-N0-A0, Ss-N1-A) :-
     reuse_slot(Ss0, S, E, N0, N1, Ss, I),
     put_assoc(N, A0, storage(wide, I), A).
 
-param_point(param(_, tmp(N)), R0, R) :- touch(N, 0, R0, R).
+% first_touches(+Touches, -First): First maps each temporary to the
+% point of its first touch in Touches.
+first_touches(Touches, First) :-
+    empty_assoc(A0), foldl(first_touch_group, Touches, A0, First).
 
-touch(N, P, R, [N-P|R]).
+first_touch_group(Ns-P, A0, A) :- foldl(first_touch(P), Ns, A0, A).
 
-group_range(N-Ps, N-(Lo-Hi)) :- min_list(Ps, Lo), max_list(Ps, Hi).
+first_touch(P, N, A0, A) :-
+    (   get_assoc(N, A0, _) -> A = A0 ; put_assoc(N, A0, P, A) ).
 
-points([], _, R, R).
-points([N|Ns], P, R0, R) :-
-    touch(N, P, R0, R1), points(Ns, P, R1, R).
-
-block_ranges([], _, _, P, P, R, R).
-block_ranges([block(L, Phis, Insts, Jump)|Bs], In, Out, P, End, R0, R) :-
-    get_assoc(L, In, LiveIn), points(LiveIn, P, R0, R1),
-    phi_points(Phis, P, R1, R2),
+% block_ranges(+Blocks, +In, +Out, +P0, -End, -Touches, ?Tail): the
+% touch groups of Blocks from point P0: live-in and phis at the block's
+% point, each instruction's uses and definitions at its own, and the
+% jump's uses and live-out at the exit.
+block_ranges([], _, _, P, P, T, T).
+block_ranges([block(L, Phis, Insts, Jump)|Bs], In, Out, P,
+             End, [LiveIn-P, PhiNs-P|T0], T) :-
+    get_assoc(L, In, LiveIn),
+    findall(N, member(phi(tmp(N), _, _), Phis), PhiNs),
     P1 is P + 1,
-    inst_ranges(Insts, P1, Exit, R2, R3),
-    jump_uses(Jump, Uses), points(Uses, Exit, R3, R4),
-    get_assoc(L, Out, LiveOut), points(LiveOut, Exit, R4, R5),
+    inst_ranges(Insts, P1, Exit, T0, [Uses-Exit, LiveOut-Exit|T1]),
+    jump_uses(Jump, Uses),
+    get_assoc(L, Out, LiveOut),
     Next is Exit + 1,
-    block_ranges(Bs, In, Out, Next, End, R5, R).
+    block_ranges(Bs, In, Out, Next, End, T1, T).
 
-phi_points([], _, R, R).
-phi_points([phi(tmp(N), _, _)|Ps], P, R0, R) :-
-    touch(N, P, R0, R1), phi_points(Ps, P, R1, R).
-
-inst_ranges([], P, P, R, R).
-inst_ranges([I|Is], P, End, R0, R) :-
-    inst_uses(I, Uses), points(Uses, P, R0, R1),
-    findall(N, inst_def(I, N), Defs), points(Defs, P, R1, R2),
+inst_ranges([], P, P, T, T).
+inst_ranges([I|Is], P, End, [Uses-P, Defs-P|T0], T) :-
+    inst_uses(I, Uses),
+    findall(N, inst_def(I, N), Defs),
     Next is P + 1,
-    inst_ranges(Is, Next, End, R2, R).
+    inst_ranges(Is, Next, End, T0, T).
 
-temp_interval(Ranges, N-K, range(Start, End, Pool, N)) :-
-    get_assoc(N, Ranges, Start-End),
+temp_interval(Lo, Hi, N-K, range(Start, End, Pool, N)) :-
+    get_assoc(N, Lo, Start), get_assoc(N, Hi, End),
     class_pool(K, Pool).
 
 class_pool(p, pointer).

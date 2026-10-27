@@ -135,13 +135,21 @@ remap_sites(Rs0, Map, Rs) :-
 instruction_site(site(inst(_, _), _)).
 
 % The rewriting loop calls this with the instructions it just emitted.
-emission_sites(_, _, J, [], Rest, Rest, J).
+% The cut leaves no choicepoint per instruction (10,000 in SQLite's
+% sqlite3VdbeExec), which would pin the rest of the function's trail.
+emission_sites(_, _, J, [], Rest, Rest, J) :- !.
 emission_sites(L, I, J, [_|Is], [inst(L, I)-inst(L, J)|Ms], Rest, End) :-
     J1 is J + 1, emission_sites(L, I, J1, Is, Ms, Rest, End).
 
 % Legacy loc markers remain valid input. At unchecked transformation
 % boundaries they become context, never before checked-IR validation.
 legacy_context(M, M) :- ir:module_stage(M, checked), !.
+% The frontend writes no loc markers: such a module is its own result,
+% shared rather than copied (a copy of SQLite's contexts is 60 MB, and
+% the caller still holds the original).
+legacy_context(module(Is), module(Is)) :-
+    \+ ( member(func(_, _, _, _, Bs), Is), member(block(_, _, Insts, _), Bs),
+         memberchk(loc(_, _), Insts) ), !.
 legacy_context(module(Is0), module(Is)) :-
     maplist(legacy_item_once(Is0), Is0, Groups), append(Groups, Is).
 

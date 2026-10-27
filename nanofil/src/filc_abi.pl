@@ -160,8 +160,8 @@ storage_keys(Pool, N, Keys) :-
     Last is N - 1, findall(storage(Pool, I), between(0, Last, I), Keys).
 storage_lower(Key, lower(Key)).
 storage_alias(N-storage(pointer,I),
-              [tmp(N)-storage(pointer,I),lower(tmp(N))-lower(storage(pointer,I))|As], As).
-storage_alias(N-storage(scalar,I), [tmp(N)-storage(scalar,I)|As], As).
+              [tmp(N)-storage(pointer,I),lower(tmp(N))-lower(storage(pointer,I))|As], As) :- !.
+storage_alias(N-storage(scalar,I), [tmp(N)-storage(scalar,I)|As], As) :- !.
 storage_alias(N-storage(wide,I), [tmp(N)-storage(wide,I)|As], As).
 return_storage(registers, []).
 return_storage(buffer(_), [retbuf]).
@@ -173,10 +173,13 @@ inst_dest(call(tuple(Tos), _, _), N, K) :- member(result(tmp(N), K), Tos).
 
 % No physical locations: these are ordered words and their sources.
 fast_params(Ps, Ts) :- foldl(fast_param, Ps, Ts, []).
-fast_param(param(p,T), [wf(l,T),wf(l,lower(T))|Ts], Ts).
+% The cuts keep these per-word steps deterministic: a choicepoint per
+% temporary or argument (9,000 in SQLite's sqlite3VdbeExec) would pin
+% the trail and heap of the rest of the function's emission.
+fast_param(param(p,T), [wf(l,T),wf(l,lower(T))|Ts], Ts) :- !.
 fast_param(param(K,T), [wf(K,T)|Ts], Ts) :- K \== p.
 fast_args(As, Ts) :- foldl(fast_arg, As, Ts, []).
-fast_arg(arg(p,V), [wf(l,addr(V)),wf(l,lower(V))|Ts], Ts).
+fast_arg(arg(p,V), [wf(l,addr(V)),wf(l,lower(V))|Ts], Ts) :- !.
 fast_arg(arg(K,V), [wf(K,val(K,V))|Ts], Ts) :- K \== p.
 
 % Generic cells are one eightbyte per source value, not per fast word.
@@ -202,7 +205,7 @@ result_ret(result(_,K), K).
 result_ret(tuple(Tos), tuple(Ks)) :-
     findall(K, member(result(_,K), Tos), Ks).
 result_slots(Tos, Slots) :- foldl(result_slot, Tos, Slots, []).
-result_slot(result(T,p), [T,lower(T)|Ss], Ss).
+result_slot(result(T,p), [T,lower(T)|Ss], Ss) :- !.
 result_slot(result(T,K), [T|Ss], Ss) :- K \== p.
 
 % Results name their channels explicitly. Scalar floating results are
