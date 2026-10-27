@@ -21,7 +21,7 @@ ap.add_argument("--cpu", type=int, default=6)
 ap.add_argument("--out", default=f"{HERE}/out")
 ap.add_argument("--ref", default=f"{HERE}/ref",
                 help="where the filcc builds come from (default ref/, else --out): pin them, filcc is not deterministic")
-ap.add_argument("--modes", default="ref,off,O,O-reuse,O-local,O-refbranches,O-function")
+ap.add_argument("--modes", default="ref,off,O,O-reuse,O-local,O-refbranches,O-stack")
 ap.add_argument("--only", default="")
 ap.add_argument("--json", default="results.json")
 ap.add_argument("--markdown", metavar="JSON", help="print tables of an earlier run's samples and exit")
@@ -80,10 +80,15 @@ TEXT, RANDOM = f"{O}/inputs/text", f"{O}/inputs/random"
 tmp = tempfile.mkdtemp(prefix="nanofil-bench-")
 
 
+def ref_dir(prog):
+    """Where prog's filcc build comes from: the pin if it has one."""
+    return REF if os.path.isdir(f"{REF}/{prog}/ref") else O
+
+
 def ref_output(prog, exe, args, src, name):
     path = f"{tmp}/{name}"
     with open(src, "rb") as i, open(path, "wb") as o:
-        subprocess.run([f"{REF}/{prog}/ref/{exe}", *args], stdin=i, stdout=o, check=True)
+        subprocess.run([f"{ref_dir(prog)}/{prog}/ref/{exe}", *args], stdin=i, stdout=o, check=True)
     return path
 
 
@@ -103,13 +108,14 @@ W = {
     "lua int": ("lua", "lua", LUA("int"), None),
     "lua tab": ("lua", "lua", LUA("tab"), None),
     "lua str": ("lua", "lua", LUA("str"), None),
+    "sqlite": ("sqlite", "sqlite3", [], f"{HERE}/sqlite.sql"),
 }
 W = {k: v for k, v in W.items() if a.only in k}
 
 
 def cmd(w, m):
     prog, exe, args, _ = W[w]
-    return [f"{REF if m == 'ref' else O}/{prog}/{m}/{exe}", *args]
+    return [f"{ref_dir(prog) if m == 'ref' else O}/{prog}/{m}/{exe}", *args]
 
 
 def stdin(w):

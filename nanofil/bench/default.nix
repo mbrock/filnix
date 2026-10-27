@@ -5,7 +5,7 @@
 #
 #   nix build --impure -f nanofil/bench -o nanofil/bench/out
 #
-# from the repository root (`--argstr only O,O-function` builds just those
+# from the repository root (`--argstr only O,O-stack` builds just those
 # nanofil modes); run.py then checks and times them.
 {
   flake ? builtins.getFlake (toString ../..),
@@ -27,7 +27,7 @@ let
     O-reuse = "-O --checks=reuse";
     O-local = "-O --registers=local";
     O-refbranches = "-O --branches=reference";
-    O-function = "-O --registers=function";
+    O-stack = "-O --registers=stack";
   };
   chosen =
     if only == "" then

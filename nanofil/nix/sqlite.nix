@@ -46,7 +46,7 @@ pkgs.runCommandCC "nanofil-sqlite"
   ''
     cc=${import ./nanofil-cc.nix { inherit pkgs filcc; }}
     cp ${amalgamation}/* .
-    for opt in "" "-O --registers=local --checks=reuse"; do
+    for opt in "" -O "-O --registers=local --checks=reuse"; do
       echo "== SQLite 3.51.2, nanofil $opt"
       rm -f *.o sqlite3 nanofil.log
       export NANOFIL_OPT=$opt NANOFIL_LOG=$PWD/nanofil.log NANOFIL_STACK_LIMIT=4000000000

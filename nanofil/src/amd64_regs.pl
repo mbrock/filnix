@@ -39,7 +39,7 @@ regs_asm(regs_metadata(Setjmp, Impl, Homes, Saves), Before, After,
              findall(S, member(save(_,S), Saves), Ss),
              preflight_regs(Body, None, Ss),
              allocated_stream(Body, None, [], _),
-             home_liveness(Body, [], _, _) )
+             successors(Body, _) )
     ->  After = Before, Map = [], Used = [], Report = excluded(unsupported)
     ;   impl_body(Impl, Before, Pre, Body),
         allocation(Body, Homes, Map),

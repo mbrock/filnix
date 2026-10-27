@@ -12,17 +12,18 @@ and safety decisions are flagged for review before implementation.
 ## The benchmark gate
 
 [`bench/`](../bench) builds zlib 1.3.2 (`minigzip`), bzip2 1.0.8, lz4
-1.10.0 and Lua 5.4.7 with filcc `-O2` (`ref`) and with nanofil in each
+1.10.0, Lua 5.4.7 and SQLite 3.51.2 (the amalgamation and shell of
+[nix/sqlite.nix](../nix/sqlite.nix)) with filcc `-O2` (`ref`) and with nanofil in each
 mode, through the same `nanofil-cc` wrapper the Nix checks use:
 
 | Mode | nanofil options |
 | --- | --- |
 | `off` | none: the reference backend without the middle end |
-| `O` | `-O` (with selected branches, item 2) |
+| `O` | `-O` (selected branches, item 2, and function registers, item 3a) |
 | `O-reuse` | `-O --checks=reuse` ([m7.md](m7.md)) |
 | `O-local` | `-O --registers=local` ([m6.md](m6.md)) |
 | `O-refbranches` | `-O --branches=reference`: `-O` before item 2 became its default |
-| `O-function` | `-O --registers=function` (item 3a below; `--argstr only O,O-function` builds a subset) |
+| `O-stack` | `-O --registers=stack`: `-O` before item 3a became its default (`--argstr only O,O-stack` builds a subset) |
 
 From the repository root, on swa (or any quiet x86-64 machine with perf):
 
@@ -47,7 +48,12 @@ sorted C sources of the four tarballs, repeated to 4 MiB; `random` is
 them (decompression inputs are ref's own output) and run three Lua
 scripts: [int.lua](../bench/int.lua) (an integer loop),
 [tab.lua](../bench/tab.lua) (table reads) and
-[str.lua](../bench/str.lua) (string formatting, sort, gsub).
+[str.lua](../bench/str.lua) (string formatting, sort, gsub), and SQLite
+on [sqlite.sql](../bench/sqlite.sql): an in-memory database of 5,000
+customers and 50,000 orders with joins, windows, a correlated subquery,
+JSON, updates, FTS5 and a sort. nanofil needs 1.5–2.5 minutes and up to
+7 GB for each build of `sqlite3.c`, so build only the modes you compare
+(`--argstr only off,O`).
 
 It is not part of `nix flake check`: timings need a quiet machine.
 
@@ -59,10 +65,11 @@ lz4 ran `-9` in 2.99G instructions once and 2.84G another time. The
 cause is FilPizlonator's check order, which follows heap addresses
 ([abi-findings.md](abi-findings.md#filcc-output-depends-on-heap-addresses)). So pin
 the reference: `run.py` and `profile.py` take filcc's builds from
-`bench/ref` when it exists (`--ref DIR`), else from `out`. Pin once with
+`bench/ref/PROGRAM/ref` when it exists (`--ref DIR`), else from `out`.
+Pin a program once, as a GC root, with
 
 ```sh
-nix-store --add-root nanofil/bench/ref --realise $(readlink -f nanofil/bench/out)
+nix-store --add-root nanofil/bench/ref/sqlite/ref --realise $(readlink -f nanofil/bench/out/sqlite/ref)
 ```
 
 and compare runs only against the same `ref` (run.py prints its path).
@@ -363,8 +370,9 @@ treating arithmetic as uninterpreted. Memory operands may name only
 non-allocated homes, never the stale slot of an allocated one. Once
 measured better, it replaces the region-local `--registers=local`.
 
-*Step 3a (register homes, moves only) implemented opt-in as
-`--registers=function`; see [Results](#item-3a-whole-function-scalar-register-homes).*
+*Step 3a (register homes, moves only) implemented as
+`--registers=function`, the `-O` default since its gate result; see
+[Results](#item-3a-whole-function-scalar-register-homes).*
 
 ### 4. Inlining small functions
 
@@ -516,7 +524,10 @@ upper bound on what a jump table could still remove.
 
 ### Item 3a: whole-function scalar register homes
 
-`--registers=function` (or `NANOFIL_REGISTERS=function`) is opt-in. A
+`--registers=function` (or `NANOFIL_REGISTERS=function`) landed opt-in
+and became the `-O` default after the gate below; without `-O` the stack
+reference stays the default, and `-O --registers=stack` (the gate's
+`O-stack` mode, also run by the Nix checks) gives the earlier `-O`. A
 fixed map per function puts scalar `w`/`l` homes and phi shadows in
 registers: `rbx` and `r12`–`r15` for homes live across a call, `r10`/`r11`
 too for the others. Only moves of a mapped home change; instruction
@@ -555,7 +566,8 @@ ms; zlib `-6`, 595 → 429 ms): store-to-load forwarding chains through
 frame slots were the bottleneck. bzip2 `-d` is now faster with `-O`
 than off (403 ms against 525 ms). Step 3b, register operands instead of
 moves through `rax`/`rcx`, is what removes instructions. Compile time
-of the largest files rises from 2.9–3.8 s to 4.4–4.6 s.
+of the largest files rises from 2.9–3.8 s (`-O --registers=local`) to
+4.4–4.6 s, 20–50% more.
 
 Oracle reviewed the result before it shipped. It found no runtime
 interaction to fix (callee-saved registers are preserved by every callee
@@ -567,6 +579,52 @@ closer than 8 bytes, a duplicate pointer description of a mapped home,
 a `movq` immediate outside imm32 (the register form assembles as
 `movabs`), and a `call` to a label in the body. The checker now rejects
 each, with a fixture that fails when its rule is removed.
+
+### Function registers as the `-O` default, and SQLite in the gate
+
+With `-O` now meaning function registers, the gate in one run (filcc
+pinned, SQLite added):
+
+| Workload | `O-stack` (old `-O`) | `O-local` | `O` |
+|---|--:|--:|--:|
+| zlib -6 text | 4.41 (5.68) | 4.22 (5.62) | 3.21 (5.62) |
+| zlib -d text | 3.14 (4.33) | 2.96 (4.23) | 2.67 (4.22) |
+| bzip2 -9 text | 3.36 (3.70) | 3.10 (3.62) | 2.64 (3.61) |
+| bzip2 -d text | 6.05 (4.30) | 5.72 (4.19) | 4.09 (4.20) |
+| lz4 -1 random | 3.61 (23.29) | 3.61 (23.48)* | 3.32 (23.36)* |
+| lz4 -9 text | 6.36 (5.91) | 5.68 (5.81)* | 5.47 (5.87) |
+| lz4 -d text | 5.87 (17.49) | 5.81 (17.53)* | 5.36 (17.46) |
+| lua int | 3.80 (3.43) | 3.69 (3.21)* | 3.33 (3.24) |
+| lua tab | 3.75 (3.32) | 3.64 (3.13)* | 3.35 (3.14) |
+| lua str | 1.77 (1.93) | 1.73 (1.91)* | 1.67 (1.93) |
+| sqlite | 2.67 (2.48) | 2.65 (2.46)* | 2.41 (2.47) |
+| geomean | 3.82 (5.02) | 3.67 (4.92) | 3.23 (4.93) |
+
+bzip2 `-d` with `-O` takes 4.09× filcc against 5.54× off.
+
+Compile time is the cost. `sqlite3.c` (FTS5 on, preprocessed, `-O`)
+compiles in 73 s with `--registers=stack`, 92 s with `local` and 122 s
+with `function` (5.6 GB peak), so the register pass and its checker are
+about 40% of that compile: +33% over `local`, +67% over `stack`, in line
+with +20–50% on the bench programs' largest files.
+The register pass recomputed each line's instruction effects several
+times and ran a whole liveness pass to check the CFG; sharing them cut
+its backend time on `lvm.c` from 4.3 s to 2.8 s (local: 1.5 s), with
+the same output.
+
+Where `-O`'s instructions go now, by shape (`bench/profile/shapes.py`
+over callgrind; frame traffic is now mostly pointer payloads and lowers):
+
+| Workload | frame loads + stores | home ↔ scratch moves | constants | control |
+|---|--:|--:|--:|--:|
+| lua int | 43% | 9% | 5% | 12% |
+| zlib -6 | 28% | 23% | 3% | 16% |
+| bzip2 -d | 41% | 17% | 2% | 13% |
+| lz4 -9 | 43% | 10% | 3% | 11% |
+| sqlite | 29% | 9% | 3% | 15% |
+
+Step 3b (register operands) targets the home ↔ scratch moves; the frame
+traffic left is pointer material, item 5.
 
 ## Review
 

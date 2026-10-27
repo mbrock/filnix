@@ -21,7 +21,7 @@ pkgs.runCommandCC "nanofil-lz4" { src = pkgs.lz4.src; } ''
   head -c 1000000 /dev/urandom > random
   cat text random text > mixed
 
-  for opt in "" -O "--registers=local" "-O --registers=local" "-O --branches=reference" "-O --registers=function" "--checks=reuse"; do
+  for opt in "" -O "--registers=local" "-O --registers=local" "-O --branches=reference" "-O --registers=stack" "--checks=reuse"; do
     echo "== lz4, nanofil $opt"
     rm -rf nf
     unpack nf

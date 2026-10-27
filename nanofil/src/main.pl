@@ -46,8 +46,9 @@
     `--registers=stack|local|function` independently selects reference
     emission, validated block-local scalar caching, or validated
     whole-function register homes for scalars (docs/perf.md item 3) in the
-    Fil-C backend. The default is stack; NANOFIL_REGISTERS supplies the
-    same choice to build harnesses.
+    Fil-C backend. The default is function with `-O` and stack without
+    it; NANOFIL_REGISTERS supplies the same choice to build harnesses, and
+    `-O --registers=stack` keeps the reference emission.
     The plain backend is unchanged. Options precede the command.
 
     `--branches=reference|selected` independently selects the reference
@@ -125,9 +126,8 @@ main :-
 
 % The emission choices: emit(Registers, Branches).
 register_default(emit(Registers, Branches)) :-
-    ( getenv('NANOFIL_REGISTERS',R) -> Registers = R ; Registers = stack ),
-    register_mode(Registers),
-    % Unbound until options/8: the branch default depends on -O.
+    % Unbound until options/8: both defaults depend on -O.
+    ( getenv('NANOFIL_REGISTERS',R) -> register_mode(R), Registers = R ; true ),
     ( getenv('NANOFIL_BRANCHES',B) -> branches_mode(B), Branches = B ; true ).
 register_mode(R) :-
     ( memberchk(R,[stack,local,function]) -> true
@@ -151,11 +151,16 @@ options([A|As],O,emit(R,_),C,Opt,Rs,Cs,Args) :-
 options([A|As],O,R,_,Opt,Rs,Cs,Args) :-
     atom_concat('--checks=',C,A), !, checks_mode(C),
     options(As,O,R,C,Opt,Rs,Cs,Args).
-options(Args,O,emit(R,B),C,O,emit(R,B),C,Args) :- branches_default(O,B).
+options(Args,O,emit(R,B),C,O,emit(R,B),C,Args) :-
+    registers_default(O,R), branches_default(O,B).
 
-% branches_default(+Opt, ?Branches): with no --branches or
-% NANOFIL_BRANCHES, -O selects branches and its absence keeps the
-% reference.
+% registers_default(+Opt, ?Registers) and branches_default(+Opt,
+% ?Branches): with no option or environment variable, -O selects
+% whole-function registers and branches, and its absence keeps the
+% reference emission.
+registers_default(_, R) :- nonvar(R), !.
+registers_default(o0, stack).
+registers_default(o1, function).
 branches_default(_, B) :- nonvar(B), !.
 branches_default(o0, reference).
 branches_default(o1, selected).

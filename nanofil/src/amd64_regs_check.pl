@@ -42,7 +42,7 @@
    lie elsewhere in the frame). */
 :- module(amd64_regs_check,
           [check_regs/4, substitute/3, impl_body/4, preflight_regs/3,
-           allocated_stream/4, home_liveness/4, rbp_access/3,
+           allocated_stream/4, home_liveness/4, successors/2, rbp_access/3,
            allocatable/1, callee_saved/1]).
 
 :- use_module(amd64_contract,
@@ -120,14 +120,14 @@ preflight_regs(Body, Mapped, Saves) :-
     maplist(preflight_line(Mapped, SaveOffsets), Rest).
 
 preflight_line(Mapped, Saves, Line) :-
-    once(instruction_effects(Line, _)),
+    once(instruction_effects(Line, effect(_,_,_,Ms,_))),
     explicit_registers(Line, Rs),
     \+ (member(R, Rs), allocatable(R)),
     \+ (Line = ins(_,_,Os), member(O, Os), rbp_register(O)),
     \+ (Line = ins(_,_,Os), member(mem(_,rbp,_), Os)),
     \+ (Line = ins(lea,_,[mem(D,rbp),_]), touches(D, 1, Mapped, Saves)),
-    \+ (rbp_access(Line, D, N), member(S, Saves), D < S+8, S < D+N),
-    (   Line \= ins(lea,_,_), rbp_access(Line, D, N), mapped_overlap(D, N, Mapped)
+    \+ (effect_access(Ms, D, N), member(S, Saves), D < S+8, S < D+N),
+    (   Line \= ins(lea,_,_), effect_access(Ms, D, N), mapped_overlap(D, N, Mapped)
     ->  once(substitute(Line, Mapped, _))
     ;   true
     ).
@@ -144,6 +144,8 @@ mapped_overlap(D, N, Mapped) :-
 % rbp_access(+Line, -D, -Bytes): Line reads or writes Bytes at D(%rbp).
 rbp_access(Line, D, N) :-
     once(instruction_effects(Line, effect(_,_,_,Ms,_))),
+    effect_access(Ms, D, N).
+effect_access(Ms, D, N) :-
     member(M, Ms), ( M = read(mem(D,rbp),N) ; M = write(mem(D,rbp),N) ).
 
 %! substitute(+Line, +Mapped, -New) is semidet.
@@ -206,17 +208,22 @@ expected_line(Mapped, L, L1) :-
 % The successors of each line of Body by index, or failure when a
 % transfer is unknown or the last line falls through.
 successors(Body, Succs) :-
+    maplist(line_effect, Body, Effects),
+    successors(Body, Effects, Succs).
+
+line_effect(Line, Effect) :- once(instruction_effects(Line, Effect)).
+
+successors(Body, Effects, Succs) :-
     length(Body, N),
     findall(L-I, nth0(I, Body, label(L)), Ls0), keysort(Ls0, Ls1),
     group_pairs_by_key(Ls1, Ls), list_to_assoc(Ls, Labels),
     numlist_from(0, N, Is),
-    maplist(line_successors(Labels, N), Is, Body, Succs).
+    maplist(line_successors(Labels, N), Is, Body, Effects, Succs).
 
 numlist_from(I, N, []) :- I >= N, !.
 numlist_from(I, N, [I|Is]) :- J is I+1, numlist_from(J, N, Is).
 
-line_successors(Labels, N, I, Line, Ss) :-
-    once(instruction_effects(Line, effect(_,_,_,_,Flow))),
+line_successors(Labels, N, I, Line, effect(_,_,_,_,Flow), Ss) :-
     J is I+1,
     flow_successors(Flow, Line, Labels-I, J, Ss0),
     \+ (member(S, Ss0), S >= N),
@@ -262,9 +269,10 @@ noreturn(filc_stack_overflow_failure).
 %  Dataflow runs on basic blocks: a block ends at a line whose only
 %  successor is not the next line, and starts at a label.
 home_liveness(Body, Homes, LiveOut, LiveIn0) :-
-    successors(Body, Succs),
+    maplist(line_effect, Body, Effects),
+    successors(Body, Effects, Succs),
     numbered(Homes, 0, Pairs), list_to_assoc(Pairs, Index),
-    maplist(line_use_def(Index), Body, UDs),
+    maplist(line_use_def(Index), Effects, UDs),
     lines(Body, 0, Succs, UDs, Lines),
     blocks(Lines, Blocks),
     findall(S-B, nth0(B, Blocks, block(S,_,_)), Starts), list_to_assoc(Starts, Ids),
@@ -337,8 +345,7 @@ line_outs([line(_,_,_,ud(U,D))|Ls], Out, Acc, Outs) :-
 
 % Uses and definitions of home halves by one line. A write covering a
 % whole half defines it; a partial write reads it too.
-line_use_def(Index, Line, ud(Use, Def)) :-
-    once(instruction_effects(Line, effect(_,_,_,Ms,_))),
+line_use_def(Index, effect(_,_,_,Ms,_), ud(Use, Def)) :-
     foldl(memory_use_def(Index), Ms, 0-0, Use-Def0),
     Def is Def0 /\ \ Use.
 
