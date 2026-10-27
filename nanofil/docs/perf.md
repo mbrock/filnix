@@ -298,6 +298,32 @@ first step is to estimate coverage per hot function from the profile's
 per-slot counts. Time should gain more than instructions where phi
 chains bound IPC (bzip2 `-d`). Cost: large.
 
+Coverage, estimated by `bench/profile/coverage.py` on the marked `-O`
+build (selected branches). A home is an rbp offset that no pointer
+payload, lower or address-taking instruction touches. Liveness is per
+offset over the function's control-flow graph, and a home crosses a
+call when it is live after a call that returns. The script colours
+homes greedily by executed instructions (cachegrind), without splitting
+and with temps that share a slot merged into one node, so it
+underestimates:
+
+| Function (workloads) | Scalar home traffic | Live across a call | Covered | Covered if slow paths save `r10`/`r11` |
+|---|--:|--:|--:|--:|
+| `luaV_execute` (lua int, tab, str) | 1.92G, 26% of the function | 84% | 98% | 100% |
+| `longest_match` (zlib -6) | 2.16G, 34% | 36% | 92% | 94% |
+| `BZ2_decompress` (bzip2 -d) | 1.74G, 34% | 65% | 47% | 53% |
+| `LZ4HC_InsertAndGetWiderMatch` (lz4 -9) | 3.68G, 52% | 68% | 70% | 70% |
+| all four | 9.50G | | 76% | |
+
+`frame_slots` already packs short-lived temps into a few hot slots
+(`luaV_execute`'s five hottest homes carry 87% of its traffic), so few
+registers go far: at most 6 of its homes are live at once. `BZ2_decompress`
+is limited by pressure: a median of 22 and at most 26 homes are live at
+once, the state its resumable decoder keeps across the loop.
+`LZ4HC_InsertAndGetWiderMatch` is limited by real calls (`LZ4_read32`, `LZ4_count`, `LZ4HC_countBack`),
+which inlining (item 4) removes. The last column assumes that poll,
+store-barrier and ensure-aux slow paths, which are cold, save `r10`/`r11`.
+
 It is not a new safety decision under four conditions, which Oracle
 checked against the runtime and emitter. The runtime never inspects
 mutator registers: stacks are scanned only through `top_frame` lowers,
