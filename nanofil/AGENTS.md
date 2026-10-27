@@ -32,6 +32,7 @@ export SWIPL=/tmp/swipl/bin/swipl FILCC=/tmp/filcc/bin/clang
 nanofil/tests/difftest.sh FILE.ir|FILE.c...    # interpreter vs native (and clang for .c)
 nanofil/tests/progtest.sh                      # whole programs vs filcc
 nanofil/tests/reject.sh                        # unsupported C is refused
+nanofil/tests/arith.sh slice|complete|random SEED COUNT DEPTH  # const_eval vs IR vs clang (docs/arith.md)
 nanofil/tests/snapshot.sh [REV]                # every output identical to REV's (default HEAD)
 (cd nanofil/src && ../bin/nanofil --script ../tests/gen.pl SEED COUNT </dev/null) >gen.ir  # random IR corpus
 nix build .#checks.x86_64-linux.nanofil        # everything; must pass before pushing

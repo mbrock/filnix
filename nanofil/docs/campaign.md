@@ -381,7 +381,13 @@ These are research directions, not additional acceptance claims:
   well-typed constant expressions over a finite type universe; then
   compare `const_eval`, `interp(lower(E))` and clang where their domains
   agree. Constant-expression rejection and IR wrapping are deliberately
-  different outside that overlap.
+  different outside that overlap. First round done ([arith.md](arith.md)):
+  a generator over c_types' typing relations, the overlap stated as
+  classes, a slice in the Nix check and `tests/arith.sh` for larger
+  searches. It found unchecked shift counts, folded `INT_MIN / -1` and a
+  lowering crash on casts of undefined constants. Signed overflow in
+  `+ - * <<` still wraps in `const_eval`, as clang's default folding
+  does; it is now a measured class rather than an assumption.
 - **Relations between interpretations.** Investigate unchecked versus
   checked execution, heap versus local storage, and concrete versus
   abstract execution. State the object correspondence and environmental

@@ -70,6 +70,8 @@ pkgs.runCommandCC "nanofil-check"
     step "actual ensure-aux exits" tests/filc/trace-pointer-effects.sh
     step "difftest c/*.c" tests/par.sh tests/difftest.sh tests/c/*.c
     step reject tests/reject.sh
+    # const_eval, the IR and clang on generated integer expressions (docs/arith.md).
+    step "arith slice" tests/arith.sh slice
     step progtest tests/par.sh tests/progtest.sh tests/c/prog/*.c
     # c-testsuite/00200 (1557 blocks) is the slowest compile (docs/m5.md).
     step corpus env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}

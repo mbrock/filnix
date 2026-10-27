@@ -1110,10 +1110,27 @@ float_builtin('__builtin_inf', double, 0x7ff0000000000000).
 float_builtin('__builtin_huge_valf', float, 0x7f800000).
 float_builtin('__builtin_inff', float, 0x7f800000).
 
-% C arithmetic conversion of a constant. An undefined float-to-int
-% conversion propagates ub, just like integer division by zero.
-const_convert(ub, _, _, ub) :- !.
-const_convert(V, T, T, V) :- !.
+doc(const_convert(+V, +From, +To, ?(W)), semidet, [
+    V: "a constant's value: an integer, float bits, or ub",
+    From: "its arithmetic type",
+    To: "an arithmetic type",
+    W: "V converted to To",
+    "An undefined float-to-int conversion gives ub, like integer division",
+    "by zero, and ub stays ub. W may be bound: a null pointer constant is",
+    "asked for the value 0, and ub is then not 0.",
+    cites('C11 6.3.1.2p1'),
+    cites('C11 6.3.1.3p2'),
+    cites('C11 6.3.1.4p1'),
+    example(const_convert(300, int, uchar, W), W = 44),
+    example(const_convert(-1, int, int, W), W = -1),
+    example(const_convert(2, int, bool, W), W = 1),
+    example(const_convert(0x41200000, float, int, W), W = 10),
+    example(const_convert(0x7f800000, float, int, W), W == ub),
+    example(const_convert(ub, int, llong, W), W == ub),
+    fails(const_convert(ub, int, llong, 0))
+]).
+const_convert(V0, _, _, V) :- V0 == ub, !, V = ub.
+const_convert(V0, T0, T, V) :- T0 == T, !, V = V0.
 const_convert(V, From, bool, W) :- !, const_truth(V, From, W).
 const_convert(V, From, To, W) :-
     ( int_type(From), int_type(To) -> convert_int(V, To, W)
@@ -1279,10 +1296,44 @@ binary_kind(Op, Kind) :-
     c_operator(_, _, Op, Kind0),
     ( Kind0 = arith(_) -> Kind = arith ; Kind = Kind0 ).
 
-% kind_binary(+Kind, +Op, +A, +B, +T, -V): V, of type T, is the value of
-% Op, of Kind, on operands A and B, each Value-Type. Arithmetic converts
-% both to T, a comparison both to their common type (binary_operands/6),
-% and a shift only the left one to T.
+doc(kind_binary(+Kind, +Op, +A, +B, +T, -V), semidet, [
+    Kind: "arith, shift, compare or logical, as binary_kind/2 names Op",
+    Op: "a binary operator",
+    A: "the left operand, Value-Type",
+    B: "the right operand, Value-Type",
+    T: "the type of the result",
+    V: "the value of the result, or ub",
+    "Arithmetic converts both operands to T, a comparison both to their",
+    "common type (binary_operands/6), and a shift only the left one, to T.",
+    "A shift count that is negative or not below the width of T is",
+    "undefined, so it is ub, as is a division by zero or a quotient",
+    "that the signed type cannot represent. Other signed overflow wraps,",
+    "as clang and GCC fold it (with a warning).",
+    cites('C11 6.5.5p5'),
+    cites('C11 6.5.5p6'),
+    cites('C11 6.5.7p3'),
+    cites('C11 6.5.8p3'),
+    cites('C11 6.5.13p4'),
+    example(kind_binary(arith, sub, 1-uint, 2-int, uint, V), V = 4294967295),
+    example(kind_binary(arith, div, 1-int, 0-int, int, V), V == ub),
+    example(kind_binary(arith, div, -2147483648-int, -1-int, int, V), V == ub),
+    example(kind_binary(arith, mod, -2147483648-int, -1-int, int, V), V == ub),
+    example(kind_binary(arith, div, -2147483647-int, -1-int, int, V),
+            V = 2147483647),
+    example(kind_binary(arith, div, -2147483648-int, -1-long, long, V),
+            V = 2147483648),
+    example(kind_binary(arith, add, 2147483647-int, 1-int, int, V),
+            V = -2147483648),
+    example(kind_binary(shift, shl, 1-int, 30-int, int, V), V = 1073741824),
+    example(kind_binary(shift, shl, 1-int, 32-int, int, V), V == ub),
+    example(kind_binary(shift, shl, 1-long, 32-int, long, V), V = 4294967296),
+    example(kind_binary(shift, shl, 1-int, 40-long, int, V), V == ub),
+    example(kind_binary(shift, shr, 8-int, -1-int, int, V), V == ub),
+    example(kind_binary(shift, shl, 1-int, 18446744073709551615-ullong, int, V),
+            V == ub),
+    example(kind_binary(compare, lt, -1-int, 0-uint, int, V), V = 0),
+    example(kind_binary(logical, land, 0-int, ub-int, int, V), V = 0)
+]).
 kind_binary(arith, Op, VA-TA, VB-TB, T, V) :-
     defined([VA, VB], V,
             (   const_convert(VA, TA, T, A),
@@ -1290,14 +1341,17 @@ kind_binary(arith, Op, VA-TA, VB-TB, T, V) :-
                 ( float_type(T)
                 -> type_class(T, K), memberchk(Op, [add, sub, mul, div]),
                    ieee:ieee_binary(K, Op, A, B, V)
+                ; quotient_overflows(Op, A, B, T) -> V = ub
                 ; const_arith(Op, A, B, R), int_value(R, T, V)
                 )
             )).
 kind_binary(shift, Op, VA-_, VB-_, T, V) :-
     defined([VA, VB], V,
-            (   convert_int(VA, T, A),
+            (   int_info(T, Size, _), VB >= 0, VB < 8 * Size
+            ->  convert_int(VA, T, A),
                 const_shift(Op, A, VB, R),
                 convert_int(R, T, V)
+            ;   V = ub
             )).
 kind_binary(compare, Op, VA-TA, VB-TB, _, V) :-
     binary_operands(Op, TA, TB, CT, CT, _),
@@ -1322,6 +1376,14 @@ const_logical(land, A, VB, V) :-
     (   A =:= 0 -> V = 0 ; defined([VB], V, truth(VB =\= 0, V)) ).
 const_logical(lor, A, VB, V) :-
     (   A =\= 0 -> V = 1 ; defined([VB], V, truth(VB =\= 0, V)) ).
+
+% quotient_overflows(+Op, +A, +B, +T): A / B of the signed type T is not
+% representable, so A / B and A % B are undefined (C11 6.5.5p6): the
+% minimum divided by -1.
+quotient_overflows(Op, A, -1, T) :-
+    memberchk(Op, [div, mod]),
+    int_info(T, Size, signed),
+    A =:= -(1 << (8 * Size - 1)).
 
 % Division by zero is undefined: R is ub.
 const_arith(add, A, B, R) :- R is A + B.
