@@ -1,3 +1,11 @@
+// Two unsigned-to-double conversions in a loop: GNU as numeric labels
+// repeat within one function.
+int two_unsigned_conversions(int n) {
+    unsigned long a = 13835058055282163712UL, b = 3;
+    double s = 0;
+    for (int i = 0; i < n + 2; i++) s += (double)a + (double)b;
+    return s == 2 * (0x1.8p63 + 3.0);
+}
 // run: $mixed 7
 // run: $unsigned_conversion 0
 // run: $nan_logic 0
@@ -7,6 +15,7 @@
 // run: $integer_conversions 0
 // run: $union_float_bits 0
 // run: $union_double_bits 0
+// run: $two_unsigned_conversions 0
 static double folded = (1.5 + 2) * 0x1.8p+1;
 static float rounded = 16777217.0f;
 static unsigned int folded_unsigned = (unsigned int)4294967295.0;

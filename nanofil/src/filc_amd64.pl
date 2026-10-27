@@ -16,7 +16,9 @@
     `thread->top_frame` and every return and exception exit pops.
     Values are never kept in registers across a call or safepoint, so
     every live capability is always in a slot the GC scans. The prologue
-    zeroes `lowers[]`, so the GC sees no stale lowers.
+    zeroes `lowers[]`, so the GC sees no stale lowers. Only the opt-in
+    function mode (amd64_regs.pl) keeps scalar `w`/`l` homes in
+    registers, callee-saved ones across calls; pointers never.
 
     Temporaries whose closed live intervals are disjoint share a slot
     (frame_slots.pl). A function that calls setjmp is the exception:
@@ -105,6 +107,8 @@
 :- use_module(ir).
 :- use_module(amd64).
 :- use_module(amd64_cache).
+:- use_module(amd64_regs).
+:- use_module(amd64_regs_check, [callee_saved/1]).
 :- use_module(filc_abi).
 :- use_module(cfg, [edge_label/2, inst_def/2]).
 
@@ -117,8 +121,10 @@
 filc_module_asm(Module, Lines) :- filc_module_asm(Module, stack, Lines, _).
 
 % Emission is emit(Registers, Branches), or just Registers with reference
-% branches. Registers is stack (the reference) or local (validated scalar
-% caching); Branches is reference or selected (branch selection, below).
+% branches. Registers is stack (the reference), local (validated scalar
+% caching) or function (validated whole-function register homes,
+% amd64_regs.pl); Branches is reference or selected (branch selection,
+% below).
 % Reports records each item's caching result, without driver-side state.
 filc_module_asm(Module0, Emission, Lines, Reports) :-
     without_locs(Module0, Module),
@@ -177,10 +183,11 @@ item_lines(Selection, Item, Lines) :-
 placed_lines(stack, Branches, Func, Item, Lines, stack) :-
     ( setjmp_func(Func) -> B = reference ; B = Branches ),
     item_lines(sel(stack,B),Item,Lines).
-placed_lines(local, _, data(N,L,A,Is), Item, Lines, data(N)) :-
+placed_lines(R, _, data(N,L,A,Is), Item, Lines, data(N)) :-
+    memberchk(R, [local,function]),
     Item = data(N,L,A,Is), item_lines(sel(stack,reference),Item,Lines).
 placed_lines(local, Branches, Func, Item, Lines, function(Name,Report)) :-
-    Func = func(Name,_,_,Ps,Bs),
+    Func = func(Name,_,_,_,_),
     Item = abi_function(Name,_,_,Sig,Frame,_,_,_,_,_),
     % Preserve entire setjmp functions, including unreachable sites, in
     % both selection and caching. ABI lowering hides the original sites.
@@ -192,6 +199,42 @@ placed_lines(local, Branches, Func, Item, Lines, function(Name,Report)) :-
     % implementation before its .size belongs to this placement map.
     once(append(Body,[size(Impl)|Rest],Original)),
     layout(Frame,Slots,_,_), Frame = frame(_,_,Aliases),
+    scalar_homes(Func, Aliases, Slots, Homes),
+    % The checker validates caching against the selected stream; it does
+    % not prove instruction selection itself.
+    cache_asm(local,cache_metadata(Setjmp,Homes),Body,Cached,Report),
+    append(Cached,[size(Impl)|Rest],Lines).
+% Function mode reserves a save slot for each callee-saved register, so
+% the stream the checker compares with has the same frame.
+placed_lines(function, Branches, Func, Item0, Lines, function(Name,Report)) :-
+    Func = func(Name,_,_,_,_),
+    Item0 = abi_function(Name,Lk,Rt,Sig,frame(Plain,Lowers,Aliases),E,B,X,O,Or),
+    (   setjmp_func(Func)
+    ->  Setjmp = true, Selection = sel(stack,reference), Item = Item0
+    ;   Setjmp = false, Selection = sel(local,Branches),
+        findall(callee_save(R), callee_saved(R), Extra),
+        append(Plain, Extra, Plain1),
+        Item = abi_function(Name,Lk,Rt,Sig,frame(Plain1,Lowers,Aliases),E,B,X,O,Or)
+    ),
+    item_lines(Selection,Item,Original),
+    abi_symbol(impl(Sig),Name,Impl),
+    once(append(Body,[size(Impl)|Rest],Original)),
+    Item = abi_function(_,_,_,_,Frame,_,_,_,_,_),
+    layout(Frame,Slots,_,_),
+    scalar_homes(Func, Aliases, Slots, Homes0),
+    % Phi shadows are homes too; each has its own slot.
+    Func = func(_,_,_,_,Bs),
+    findall(home(D,[K]), ( member(block(_,Phis,_,_),Bs), member(phi(tmp(N),K,_),Phis),
+                           get_assoc(shadow(N),Slots,Off), D is -Off ), Shadows),
+    append(Homes0, Shadows, Homes),
+    findall(save(R,D), ( callee_saved(R), get_assoc(callee_save(R),Slots,Off),
+                         D is -Off ), Saves),
+    regs_asm(regs_metadata(Setjmp,Impl,Homes,Saves),Body,Allocated,_,Report),
+    append(Allocated,[size(Impl)|Rest],Lines).
+
+% scalar_homes(+Func, +Aliases, +Slots, -Homes): home(Disp, Classes) for
+% each scalar-pool slot, with the classes of the temporaries sharing it.
+scalar_homes(func(_,_,_,Ps,Bs), Aliases, Slots, Homes) :-
     findall(T-K, (member(param(K,T),Ps)
                 ; member(block(_,Phis,Is,_),Bs),
                   ( member(phi(T,K,_),Phis)
@@ -201,11 +244,7 @@ placed_lines(local, Branches, Func, Item, Lines, function(Name,Report)) :-
                     ( get_assoc(T,Types,K0) -> K = K0 ; K = unknown )), Uses),
     keysort(Uses,Sorted), group_pairs_by_key(Sorted,Groups),
     findall(home(D,Ks),
-            (member(Key-Ks,Groups), get_assoc(Key,Slots,Off), D is -Off), Homes),
-    % The checker validates caching against the selected stream; it does
-    % not prove instruction selection itself.
-    cache_asm(local,cache_metadata(Setjmp,Homes),Body,Cached,Report),
-    append(Cached,[size(Impl)|Rest],Lines).
+            (member(Key-Ks,Groups), get_assoc(Key,Slots,Off), D is -Off), Homes).
 
 cache_temp_class(let(T,K,_,_),T,K).
 cache_temp_class(local_load(T,K,_,_,_),T,K).

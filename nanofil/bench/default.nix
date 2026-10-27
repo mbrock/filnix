@@ -5,11 +5,13 @@
 #
 #   nix build --impure -f nanofil/bench -o nanofil/bench/out
 #
-# from the repository root; run.py then checks and times them.
+# from the repository root (`--argstr only O,O-function` builds just those
+# nanofil modes); run.py then checks and times them.
 {
   flake ? builtins.getFlake (toString ../..),
   pkgs ? import flake.inputs.nixpkgs { system = "x86_64-linux"; },
   filcc ? flake.packages.x86_64-linux.filcc-staging,
+  only ? "",
 }:
 let
   # The flake's copy of nanofil: tracked files only, not out/ or results.
@@ -25,7 +27,15 @@ let
     O-reuse = "-O --checks=reuse";
     O-local = "-O --registers=local";
     O-refbranches = "-O --branches=reference";
+    O-function = "-O --registers=function";
   };
+  chosen =
+    if only == "" then
+      modes
+    else
+      pkgs.lib.filterAttrs (
+        m: _: builtins.elem m (pkgs.lib.splitString "," only)
+      ) modes;
   # 4 MiB of C source text from the four pinned tarballs, sorted by path
   # and repeated, and 4 MiB of SHA-256 counter output. Both depend only on
   # nixpkgs' pinned sources.
@@ -71,7 +81,7 @@ pkgs.linkFarm "nanofil-bench" (
       ++ pkgs.lib.mapAttrsToList (mode: opt: {
         name = "${name}/${mode}";
         path = programs.build name mode cc opt "";
-      }) modes
+      }) chosen
     ) programs.progs
   )
 )

@@ -22,6 +22,7 @@ mode, through the same `nanofil-cc` wrapper the Nix checks use:
 | `O-reuse` | `-O --checks=reuse` ([m7.md](m7.md)) |
 | `O-local` | `-O --registers=local` ([m6.md](m6.md)) |
 | `O-refbranches` | `-O --branches=reference`: `-O` before item 2 became its default |
+| `O-function` | `-O --registers=function` (item 3a below; `--argstr only O,O-function` builds a subset) |
 
 From the repository root, on swa (or any quiet x86-64 machine with perf):
 
@@ -362,6 +363,9 @@ treating arithmetic as uninterpreted. Memory operands may name only
 non-allocated homes, never the stale slot of an allocated one. Once
 measured better, it replaces the region-local `--registers=local`.
 
+*Step 3a (register homes, moves only) implemented opt-in as
+`--registers=function`; see [Results](#item-3a-whole-function-scalar-register-homes).*
+
 ### 4. Inlining small functions
 
 Inline calls to small non-recursive functions before promotion, so the
@@ -509,6 +513,60 @@ branches, against 525 ms off. The phi store/reload chains need item 3.
 With selected branches, const-compare blocks are 5.0% of `lua int` and
 4.6% of `lua tab` (0.21G of 4.17G, 0.15G of 3.25G), 1% of `lua str`: an
 upper bound on what a jump table could still remove.
+
+### Item 3a: whole-function scalar register homes
+
+`--registers=function` (or `NANOFIL_REGISTERS=function`) is opt-in. A
+fixed map per function puts scalar `w`/`l` homes and phi shadows in
+registers: `rbx` and `r12`–`r15` for homes live across a call, `r10`/`r11`
+too for the others. Only moves of a mapped home change; instruction
+selection is M6's immediate selection with selected branches, as in
+`--registers=local`, which this mode replaces. Setjmp functions keep the
+reference. The allocator (`amd64_regs.pl`) colours homes greedily by
+loop-weighted references; the checker (`amd64_regs_check.pl`) trusts
+none of that. It rebuilds the allocated stream from the reference
+stream, the map and the save slots and requires equality, then proves
+on its own width-aware liveness over a complete CFG that every live half
+of a mapped home equals its register: nothing mapped is live at entry or
+at a `leave`, a write to a home leaves the other homes of its register
+dead, a 32-bit store leaves the high half dead, and `r10`/`r11` homes are
+dead after every call. Fixtures in `tests/regs_check.pl` each fail when
+the obligation they target is removed.
+
+The gate in one run (filcc pinned):
+
+| Workload | `O` | `O-local` | `O-function` |
+|---|--:|--:|--:|
+| zlib -6 text | 4.40 (5.68) | 4.23 (5.62) | 3.18 (5.62) |
+| zlib -d text | 2.93 (4.33) | 2.82 (4.23)* | 2.53 (4.22) |
+| bzip2 -9 text | 3.37 (3.70) | 3.11 (3.62) | 2.64 (3.61) |
+| bzip2 -d text | 6.09 (4.30) | 5.91 (4.19) | 4.31 (4.20) |
+| lz4 -1 random | 4.11 (23.06) | 3.95 (23.24)* | 3.77 (23.14)* |
+| lz4 -9 text | 6.38 (5.91) | 5.68 (5.81)* | 5.54 (5.87) |
+| lz4 -d text | 6.34 (17.45) | 6.28 (17.49)* | 5.98 (17.46)* |
+| lua int | 3.85 (3.43) | 3.74 (3.21) | 3.34 (3.24) |
+| lua tab | 3.75 (3.32) | 3.71 (3.13)* | 3.36 (3.14) |
+| lua str | 1.80 (1.94) | 1.75 (1.92)* | 1.68 (1.93)* |
+| geomean | 4.03 (5.39) | 3.87 (5.27) | 3.41 (5.28) |
+
+Instruction counts barely move (a register move replaces a slot move),
+but time falls 15% on the geomean and up to 29% (bzip2 `-d`, 568 → 403
+ms; zlib `-6`, 595 → 429 ms): store-to-load forwarding chains through
+frame slots were the bottleneck. bzip2 `-d` is now faster with `-O`
+than off (403 ms against 525 ms). Step 3b, register operands instead of
+moves through `rax`/`rcx`, is what removes instructions. Compile time
+of the largest files rises from 2.9–3.8 s to 4.4–4.6 s.
+
+Oracle reviewed the result before it shipped. It found no runtime
+interaction to fix (callee-saved registers are preserved by every callee
+and restored by native `_longjmp`; roots are only `lowers[]`), but five
+streams the checker wrongly accepted, none of which the emitter
+produces: a mapped home written, a label, or a branch before the stack
+check (which would lose or never save a caller's register), mapped homes
+closer than 8 bytes, a duplicate pointer description of a mapped home,
+a `movq` immediate outside imm32 (the register form assembles as
+`movabs`), and a `call` to a label in the body. The checker now rejects
+each, with a fixture that fails when its rule is removed.
 
 ## Review
 

@@ -32,6 +32,7 @@
 :- use_module('local_storage').
 :- use_module('registers').
 :- use_module('cache_check').
+:- use_module('regs_check').
 :- use_module(library(assoc)).
 :- use_module(library(pio)).
 :- use_module(library(clpz)).
@@ -102,6 +103,7 @@ test(abi_products) :- abi_products.
 test(local_storage_selection) :- local_selection.
 test(scalar_cache) :- scalar_cache.
 test(cache_checker) :- cache_checker.
+test(regs_checker) :- regs_checker.
 test(local_storage_semantics) :- local_semantics.
 test(local_storage_lifetime) :- local_lifetime.
 test(local_storage_validation) :- local_validation.

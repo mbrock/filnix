@@ -110,6 +110,20 @@ pkgs.runCommandCC "nanofil-check"
     unset NANOFIL_OPT
     step "local corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
     unset NANOFIL_REGISTERS
+    # Whole-function register homes (docs/perf.md item 3), validated by
+    # amd64_regs_check against the selected stream; the native suites run
+    # callee-saved registers across real calls, polls and collections.
+    export NANOFIL_REGISTERS=function
+    for opt in "" -O; do
+      export NANOFIL_OPT=$opt
+      step "function $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/branches.ir tests/c/*.c big1.c
+      step "function $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
+      step "function $opt actual ensure-aux exits" tests/filc/trace-pointer-effects.sh
+      step "function $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    done
+    unset NANOFIL_OPT
+    step "function corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    unset NANOFIL_REGISTERS
     # M7 check reuse (docs/m7.md) is independent of both. difftest also
     # runs each run line on the reused module, which must agree with the
     # unchecked one, traps included; the native suites cover helper exits
