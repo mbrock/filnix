@@ -161,7 +161,7 @@ Each boundary has a reviewed contract, interpreter evidence where the
 effect is modelled, native interoperation and GC stress. Representation-
 only changes preserve assembly; local-storage selection is checked by
 before/after semantics and native rooting tests. M6 now has an opt-in,
-validated scalar stack cache, and M7 an opt-in, block-local reuse of
+validated scalar stack cache, and M7 an opt-in, forward reuse of
 heap check evidence; general register allocation and broader check
 removal remain later work, as do general C local-OOB
 precision, broader stack-local selection, general symbolic memory
@@ -416,15 +416,17 @@ are separate safety decisions, not extensions hidden in this pass.
 
 **Status: first deliverable done ([docs/m7.md](docs/m7.md)).** An opt-in
 pass (`--checks=reuse`, off by default) lets a heap check's proof cover
-later scalar accesses through the same pointer in the same block, until a
-call, allocation, pointer store, getter or other non-preserving
+later scalar accesses through the same pointer, in its block and
+forward along CFG edges (intersected at joins), until a call,
+allocation, pointer store, getter, poll edge or other non-preserving
 instruction, or a redefinition. The validator, emitter and an
 independent refinement check accept the result by separately stated
 rules; the interpreter's raw accesses already re-check against current
 object state. Every check still sits at its first access, so traps keep
 their timing and reasons. Oracle reviewed the design before
-implementation and the result after; both reviews' findings are fixed. It removes 15% of emitted heap checks on
-the C corpora without `-O`, 5% with it.
+implementation and the result after, for each of the two rounds. It
+removes 17.7% of emitted heap checks on the C corpora without `-O`, 5.2%
+with it.
 
 **First deliverable:** one narrowly specified alternative to repeated
 runtime checking, such as reuse for repeated scalar accesses in a

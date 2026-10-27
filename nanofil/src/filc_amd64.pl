@@ -134,7 +134,7 @@ thunk_lines(Callee, Lines) :-
 % Complete the ABI product before any instruction selection. Fusion is
 % still target preparation; its separate liveness view preserves indices.
 lower_item(Module, func(N,L,R,Ps,Bs0), Product) :-
-    fused_blocks(N, Bs0, Bs, Live),
+    fused_blocks(N, Ps, Bs0, Bs, Live),
     lower_function(Module, func(N,L,R,Ps,Bs), Live, Product).
 lower_item(_, data(N,L,A,Is), data(N,L,A,Is)).
 
@@ -357,7 +357,7 @@ function(Selection, abi_function(Name, Linkage, Ret, Sig, Frame, Entry, Blocks,
     origins(Name, Origins, CheckKinds),
     unreachable_message(Blocks, Name).
 
-/* fused_blocks(+Fn, +Blocks0, -Blocks, -LiveBlocks): Blocks are the
+/* fused_blocks(+Fn, +Params, +Blocks0, -Blocks, -LiveBlocks): Blocks are the
    checked Blocks0 with each check and the raw access after it, which
    reads its proven address, fused into fused(Check, Access) at one index,
    so labels and frame slots number instructions as they did before
@@ -369,23 +369,48 @@ function(Selection, abi_function(Name, Linkage, Ret, Sig, Frame, Entry, Blocks,
    the original pointer and all arguments stay live through the call,
    and neither proof gets a frame slot. Throws unless the IR is checked
    and every cycle polls. */
-fused_blocks(Fn, Blocks0, Blocks, LiveBlocks) :-
+fused_blocks(Fn, Params, Blocks0, Blocks, LiveBlocks) :-
     (   polls_every_cycle(Blocks0) -> true
     ;   throw_fn(Fn, 'a cycle without a poll edge; run pizlonate first')
     ),
-    maplist(fused_block(Fn), Blocks0, Blocks),
+    single_proofs(Params, Blocks0, Single),
+    maplist(fused_block(Fn, Single), Blocks0, Blocks),
     maplist(live_block, Blocks, LiveBlocks).
 
-fused_block(Fn, block(L, Phis, Insts0, Jump), block(L, Phis, Insts, Jump)) :-
-    fused_insts(Insts0, Fn, [], Insts).
+fused_block(Fn, Single, block(L, Phis, Insts0, Jump), block(L, Phis, Insts, Jump)) :-
+    fused_insts(Insts0, Fn, Single, [], Insts).
 
-% fused_insts(+Insts0, +Fn, +Proofs, -Insts): Proofs are Q-P for the
-% block's heap checks so far. A later scalar access at one of them is
-% reused(Access) at P, with no check: validation (ir.pl, docs/m7.md)
+% single_proofs(+Params, +Blocks, -Single): Q-P for each heap check of P
+% defining tmp(Q) where Q has one definition in the function and P at
+% most one, counting parameters and phis. Only these may be reused in
+% another block: with strict SSA, reloading P there gives the value
+% that was checked.
+single_proofs(Params, Blocks, Single) :-
+    temp_defs(Params, Blocks, Defs0),
+    pairs_keys(Defs0, Names), msort(Names, Sorted),
+    multiply_defined(Sorted, Multi0), sort(Multi0, Multi),
+    findall(N-true, member(N, Multi), MultiPairs), list_to_assoc(MultiPairs, MultiSet),
+    findall(Q-P, ( member(block(_, _, Is, _), Blocks),
+                   member(let(tmp(Q), a, check(_, _, _, _), [P]), Is),
+                   \+ get_assoc(Q, MultiSet, _),
+                   ( P = tmp(N) -> \+ get_assoc(N, MultiSet, _) ; true ) ),
+            Single0),
+    % Q has one definition, so each key occurs once.
+    list_to_assoc(Single0, Single).
+
+% multiply_defined(+Sorted, -Names): the names that occur twice or more.
+multiply_defined([], []).
+multiply_defined([N, M|Ns], [N|Ds]) :- N == M, !, multiply_defined([M|Ns], Ds).
+multiply_defined([_|Ns], Ds) :- multiply_defined(Ns, Ds).
+
+% fused_insts(+Insts0, +Fn, +Single, +Proofs, -Insts): Proofs are Q-P
+% for the block's heap checks so far, Single those of the function that
+% may be reused in another block. A later scalar access at one of them
+% is reused(Access) at P, with no check: validation (ir.pl, docs/m7.md)
 % has established that its evidence still holds, which is not repeated
 % here. Its liveness view reads P, so P keeps its rooted slot.
-fused_insts([], _, _, []).
-fused_insts([Inst0|Insts0], Fn, Proofs0, [Inst|Insts]) :-
+fused_insts([], _, _, _, []).
+fused_insts([Inst0|Insts0], Fn, Single, Proofs0, [Inst|Insts]) :-
     % Emission reloads P from its slot where the interpreter reads the
     % value Q captured: forget a pair once either name is redefined.
     (   inst_def(Inst0, D)
@@ -398,7 +423,7 @@ fused_insts([Inst0|Insts0], Fn, Proofs0, [Inst|Insts]) :-
     ),
     (   ( Inst0 = let(_, _, raw_load(_, Off), [tmp(Q1)])
         ; Inst0 = raw_store(_, Off, _, tmp(Q1)) ),
-        memberchk(Q1-P1, Proofs)
+        (   memberchk(Q1-P1, Proofs) -> true ; get_assoc(Q1, Single, P1) )
     ->  (   Off == 0, proven_access(Inst0, Q1, P1, Access)
         ->  Inst = reused(Access), Insts1 = Insts0
         ;   throw_fn(Fn, 'a reused proof at an offset access cannot emit yet')
@@ -409,7 +434,7 @@ fused_insts([Inst0|Insts0], Fn, Proofs0, [Inst|Insts]) :-
     live_inst(Inst, Live),
     findall(LD, inst_def(Live, LD), Ds),
     exclude(proof_named(Ds), Proofs1, Proofs2),
-    fused_insts(Insts1, Fn, Proofs2, Insts).
+    fused_insts(Insts1, Fn, Single, Proofs2, Insts).
 
 proof_named(Ds, Q-P) :- member(D, Ds), proof_names(D, Q-P), !.
 

@@ -1896,17 +1896,117 @@ test(reuse_validation) :-
         [let(tmp(q), a, check(0, 8, write, 8), [tmp(a)]), S,
          let(tmp(z), p, raw_load_pointer(0, LoadEs), [tmp(q)])]
     ]), ( reuse_fn(Insts, M), reuse_rejected(M) )),
-    % Rejected: evidence crosses no edge, polled or not, even to a block
-    % it dominates; branch-only evidence is not even dominating.
-    forall(member(Edge, [goto(t), goto(poll(t))]),
-        reuse_rejected(module([func(f, local, w, [param(p, tmp(a))], [
-            block(s, [], [C, S], Edge),
-            block(t, [], [L], ret(const(0)))])]))),
+    % A check on one arm does not dominate the join at all.
     catch(( valid_module(module([func(f, local, w, [param(p, tmp(a)), param(w, tmp(c))], [
                 block(s, [], [], branch(tmp(c), t, u)),
                 block(t, [], [C, S], goto(u)),
                 block(u, [], [L], ret(const(0)))])])), fail ),
           nanofil_error(_), true).
+
+% Across edges (docs/m7.md): evidence flows along plain edges and is
+% intersected at joins; a poll edge, an edge from a later block, a free
+% on one path or a phi redefining the pointer ends it.
+% reuse_cfg(+Blocks, -M): f(a, b, c) with Blocks.
+reuse_cfg(Blocks, module([func(f, local, w,
+    [param(p, tmp(a)), param(p, tmp(b)), param(w, tmp(c))], Blocks)])).
+
+test(reuse_edges) :-
+    C = let(tmp(q), a, check(0, 8, write, 1), [tmp(a)]),
+    S = raw_store(l, 0, const(1), tmp(q)),
+    L = let(tmp(x), l, raw_load(l, 0), [tmp(q)]),
+    Free = call(void, global(free), [arg(p, tmp(a))]),
+    R = ret(const(0)),
+    forall(member(Bs, [
+        [block(s, [], [C, S], goto(t)), block(t, [], [L], R)],
+        [block(s, [], [C, S], branch(tmp(c), t, u)), block(t, [], [], goto(j)),
+         block(u, [], [], goto(j)), block(j, [], [L], R)]
+    ]), ( reuse_cfg(Bs, M), valid_module(M) )),
+    forall(member(Bs, [
+        % a poll edge, even forward
+        [block(s, [], [C, S], goto(poll(t))), block(t, [], [L], R)],
+        % one arm of the same branch polls
+        [block(s, [], [C, S], branch(tmp(c), poll(j), j)), block(j, [], [L], R)],
+        % free on one path
+        [block(s, [], [C, S], branch(tmp(c), t, j)), block(t, [], [Free], goto(j)),
+         block(j, [], [L], R)],
+        % the same, from a block after the join in block order
+        [block(s, [], [C, S], branch(tmp(c), j, t)), block(j, [], [L], R),
+         block(t, [], [Free], goto(j))],
+        % branch-only: q proves 8 bytes only on t's path, 4 on u's
+        [block(s, [], [let(tmp(q), a, check(0, 4, write, 1), [tmp(a)]),
+                       raw_store(w, 0, const(1), tmp(q))], branch(tmp(c), t, j)),
+         block(t, [], [C, S], goto(j)), block(j, [], [L], R)],
+        % a phi redefines the checked pointer
+        [block(s, [], [C, S], branch(tmp(c), t, j)), block(t, [], [], goto(j)),
+         block(j, [phi(tmp(a), p, [s-tmp(b), t-tmp(b)])], [L], R)],
+        % loop-carried: the previous iteration freed a
+        [block(s, [], [C, S], goto(h)),
+         block(h, [], [L, Free], goto(poll(h)))]
+    ]), ( reuse_cfg(Bs, M), reuse_rejected(M) )),
+    % The pass deletes the join's check only when every path checked p,
+    % keeps it after a free on one path or around a loop, and all three
+    % keep the reference outcomes.
+    Alloc = let(tmp(p), p, alloc(8), [const(8)]),
+    St = store(l, const(5), tmp(p)), Ld = let(tmp(y), l, load(l), [tmp(p)]),
+    PFree = call(void, global(free), [arg(p, tmp(p))]),
+    forall(member(Bs-Checks-Outs, [
+        [block(s, [], [Alloc, St], branch(tmp(c), t, u)),
+         block(t, [], [], goto(j)), block(u, [], [], goto(j)),
+         block(j, [], [Ld], ret(tmp(y)))]-1-[ret(5), ret(5)],
+        [block(s, [], [Alloc, St], branch(tmp(c), t, j)),
+         block(t, [], [PFree], goto(j)),
+         block(j, [], [Ld], ret(tmp(y)))]-2-[trap(out_of_bounds), ret(5)],
+        [block(s, [], [Alloc, St], goto(h)),
+         block(h, [phi(tmp(i), l, [s-const(0), h-tmp(i1)])],
+               [Ld, let(tmp(i1), l, add, [tmp(i), const(1)]),
+                let(tmp(d), w, cmp(slt, l), [tmp(i1), const(3)])],
+               branch(tmp(d), h, e)),
+         block(e, [], [], ret(tmp(y)))]-2-[ret(5), ret(5)]
+    ]), (
+        M = module([func(g, local, l, [param(w, tmp(c))], Bs)]),
+        valid_module(M), pizlonate_module(M, Ck), reuse_checks(Ck, Re),
+        reuse_refines(Ck, Re), valid_module(Re),
+        reuse_fail_jumps(Re, Checks),
+        Outs = [O1, O0],
+        forall(member(X, [M, Ck, Re]),
+               ( once(run(X, g, [1], 20, O1)), once(run(X, g, [0], 20, O0)) ))
+    )),
+    Rc = let(tmp(r), a, check(0, 8, read, 1), [tmp(a)]),
+    Lr = let(tmp(x), l, raw_load(l, 0), [tmp(r)]),
+    % Emission reuses across an edge only a proof and pointer each
+    % defined once; a second definition of a, even unreachable, refuses.
+    reuse_cfg([block(s, [], [C, S], goto(t)), block(t, [], [L], R)], One),
+    reuse_fail_jumps(One, 1),
+    reuse_cfg([block(s, [], [C, S], goto(t)), block(t, [], [L], R),
+               block(u, [], [flight(tmp(a), copy, [address(tmp(b))], lower(tmp(b)))], R)],
+              Two),
+    valid_module(Two),
+    catch(( filc_module_asm(Two, _), fail ), nanofil_error(_), true),
+    % Nor when the proof's name has two definitions: here t's reuse is
+    % of v's check of a, and reloading u's pointer b would be wrong.
+    reuse_cfg([block(s, [], [], goto(v)),
+               block(u, [], [let(tmp(q), a, check(0, 8, write, 1), [tmp(b)]),
+                             raw_store(l, 0, const(2), tmp(q))], R),
+               block(v, [], [C, S], goto(t)), block(t, [], [L], R)], TwoQ),
+    valid_module(TwoQ),
+    catch(( filc_module_asm(TwoQ, _), fail ), nanofil_error(_), true),
+    % Nor does the pass carry a proof over a poll edge.
+    reuse_cfg([block(s, [], [C, S], goto(poll(t))), block(t, [], [Rc, Lr], R)], Polled),
+    valid_module(Polled), reuse_checks(Polled, Polled1), Polled1 == Polled,
+    % So the pass rewires across an edge only under the same condition.
+    reuse_cfg([block(s, [], [C, S], goto(t)), block(t, [], [Rc, Lr], R),
+               block(u, [], [flight(tmp(a), copy, [address(tmp(b))], lower(tmp(b)))], R)],
+              TwoChecked),
+    valid_module(TwoChecked), reuse_checks(TwoChecked, TwoChecked1), TwoChecked1 == TwoChecked,
+    % A deleted proof must have had no reader in another block.
+    Zr = let(tmp(z), l, raw_load(l, 0), [tmp(r)]),
+    reuse_cfg([block(s, [], [C, S], goto(t)), block(t, [], [Rc, Lr], goto(u)),
+               block(u, [], [Zr], R)], Before),
+    valid_module(Before),
+    reuse_cfg([block(s, [], [C, S], goto(t)), block(t, [], [L], goto(u)),
+               block(u, [], [Zr], R)], After),
+    \+ reuse_refines(Before, After),
+    reuse_checks(Before, Before1), Before1 == Before.
 
 % The interpreter re-checks every raw access against the object as it
 % is now: stale evidence after free is unchecked where the reference

@@ -55,3 +55,26 @@ func(survive, export, l, [param(l, tmp(n))], [
         let(tmp(r), l, sub, [tmp(r3), tmp(ov)])
     ], ret(tmp(r)))
 ]).
+
+% Across edges: p's last checked use is in start and its reuse in last;
+% o, made in mid, would take p's slot if liveness did not keep p live
+% across both edges, and the reused read would return 1000.
+% survive2(n) = n + 1000 + 1.
+func(survive2, export, l, [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(other), p, alloc(8), [const(8)]),
+        store(l, const(1000), tmp(other)),
+        let(tmp(p), p, alloc(8), [const(8)]),
+        call(void, global(c_gc), [arg(l, tmp(n))]),
+        store(l, tmp(n), tmp(p))
+    ], goto(mid)),
+    block(mid, [], [
+        let(tmp(o), p, add, [tmp(other), const(0)]),
+        let(tmp(ov), l, load(l), [tmp(o)]),
+        let(tmp(t), l, add, [tmp(ov), const(1)])
+    ], goto(last)),
+    block(last, [], [
+        let(tmp(a), l, load(l), [tmp(p)]),
+        let(tmp(r), l, add, [tmp(a), tmp(t)])
+    ], ret(tmp(r)))
+]).

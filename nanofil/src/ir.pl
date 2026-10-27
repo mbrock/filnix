@@ -240,10 +240,11 @@
     exception, not permission to move another effect between the pair.
 
     A heap check's proof may also be read by later scalar raw accesses
-    in its block that it covers, while its evidence lasts
-    (docs/m7.md): only evidence_preserving/1 instructions come between,
-    and neither the proof nor the checked pointer is redefined. Evidence
-    never crosses an edge. Local and function proofs have one use.
+    that it covers, while its evidence lasts (docs/m7.md): on every path
+    from the check only evidence_preserving/1 instructions and unpolled
+    edges come between, and neither the proof nor the checked pointer is
+    redefined (a phi destination counts). Local and function proofs have
+    one use.
 
     ## Variable names
 
@@ -255,7 +256,7 @@
                op_arg_classes/4, op_result_ok/3,
                module_mode/2, module_stage/2, addr_class/2, variadic_func/1, setjmp_func/1,
                narrow_type/3, without_locs/2, access_size_align/3,
-               jump_target/2, polls_every_cycle/1, implicit_flight/1, local_objects/2,
+               jump_target/2, polls_every_cycle/1, temp_defs/3, implicit_flight/1, local_objects/2,
                pointer_memory_effects/2]).
 
 :- use_module(library(lists)).
@@ -923,27 +924,80 @@ site_dominates(at(D, _), L, _, Intervals) :-
 
 % stage_func(+Stage, +Fn, +Mode, +Blocks): Fn's blocks are well formed
 % for the module's Stage. A checked function accesses memory only by raw
-% accesses, each covered by the check right before it, and polls on
-% every cycle.
+% accesses, each covered by a check whose evidence still holds, and
+% polls on every cycle.
 stage_func(unchecked, _, _, _).
 stage_func(checked, Fn, Mode, Blocks) :-
-    forall(member(block(_, _, Insts, _), Blocks), checked_insts(Insts, Fn, Mode, [])),
+    incoming_edges(Blocks, Incoming),
+    empty_assoc(Exits0),
+    foldl(checked_block(Fn, Mode, Incoming), Blocks, Exits0, _),
     (   polls_every_cycle(Blocks) -> true
     ;   fn_error(Fn, 'a cycle without a poll edge in checked IR', [])
     ).
 
-/* checked_insts(+Insts, +Fn, +Mode, +Live): each check in Insts is
+/* Evidence across edges (docs/m7.md): one pass in block order. A
+   block's entry evidence is the intersection, over every incoming edge
+   (both arms of a branch counted separately), of what the edge carries:
+   the source's exit evidence on a plain edge from a block already
+   processed, none on a poll edge or from a block not yet processed. A
+   block with no incoming edge starts with none. Phi destinations then
+   end the evidence that names them. */
+checked_block(Fn, Mode, Incoming, block(L, Phis, Insts, _), Exits0, Exits) :-
+    (   get_assoc(L, Incoming, Edges) -> true ; Edges = [] ),
+    maplist(edge_evidence(Exits0), Edges, Sets),
+    evidence_meet(Sets, Live0),
+    foldl(phi_ends_evidence, Phis, Live0, Live1),
+    checked_insts(Insts, Fn, Mode, Live1, Live),
+    put_assoc(L, Exits0, Live, Exits).
+
+% incoming_edges(+Blocks, -Incoming): each label's incoming edges as
+% From-plain or From-poll, one per jump target, duplicates kept.
+incoming_edges(Blocks, Incoming) :-
+    findall(L-(From-Kind),
+            ( member(block(From, _, _, Jump), Blocks),
+              jump_edge(Jump, T), edge_kind(T, L, Kind) ),
+            Pairs),
+    empty_assoc(I0),
+    foldl(add_edge, Pairs, I0, Incoming).
+
+jump_edge(goto(T), T).
+jump_edge(branch(_, T, _), T).
+jump_edge(branch(_, _, T), T).
+
+edge_kind(poll(L), L, poll) :- !.
+edge_kind(L, L, plain).
+
+add_edge(L-E, I0, I) :-
+    (   get_assoc(L, I0, Es) -> true ; Es = [] ),
+    put_assoc(L, I0, [E|Es], I).
+
+edge_evidence(_, _-poll, []).
+edge_evidence(Exits, From-plain, Live) :-
+    (   get_assoc(From, Exits, Live) -> true ; Live = [] ).
+
+% evidence_meet(+Sets, -Live): the facts in every one of Sets; none for
+% no sets.
+evidence_meet([], []).
+evidence_meet([S|Ss], Live) :- include(in_every(Ss), S, Live).
+
+in_every(Ss, F) :- forall(member(S, Ss), memberchk(F, S)).
+
+phi_ends_evidence(phi(tmp(D), _, _), Live0, Live) :-
+    exclude(evidence_names(D), Live0, Live).
+
+/* checked_insts(+Insts, +Fn, +Mode, +Live, -LiveOut): each check in Insts is
    followed by an access it covers, its first use, so no safepoint can
    come between them; no other instruction accesses memory unchecked.
    Live are the heap proofs `live(Q, P, Lo, Hi, Rights, Align)` whose
    evidence still holds (docs/m7.md): a later scalar raw access may read
-   one that covers it. A block starts with none, an instruction that is
-   not evidence_preserving/1 ends them all, and redefining Q or P ends
-   that one. Local and function proofs are used once, right away. */
-checked_insts([], _, _, _).
-checked_insts([Inst|Insts], Fn, Mode, Live0) :-
+   one that covers it. An instruction that is not evidence_preserving/1
+   ends them all, and redefining Q or P ends that one; LiveOut are those
+   at the block's end. Local and function proofs are used once, right
+   away. */
+checked_insts([], _, _, Live, Live).
+checked_insts([Inst|Insts], Fn, Mode, Live0, LiveOut) :-
     checked_inst_rest(Inst, Insts, Fn, Mode, Live0, Rest, Live),
-    checked_insts(Rest, Fn, Mode, Live).
+    checked_insts(Rest, Fn, Mode, Live, LiveOut).
 
 checked_inst_rest(let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Insts, Fn, _,
                   Live0, Rest, Live) :- !,
@@ -987,7 +1041,7 @@ checked_inst_rest(Inst, Insts, Fn, Mode, Live0, Insts, Live) :-
     ).
 
 % evidence_after(+Inst, +Live0, -Live): Live are the proofs of Live0
-% whose evidence still holds after Inst (checked_insts/4).
+% whose evidence still holds after Inst (checked_insts/5).
 evidence_after(Inst, Live0, Live) :-
     (   evidence_preserving(Inst)
     ->  (   inst_def(Inst, D)

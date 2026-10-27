@@ -20,7 +20,7 @@ one way to establish it; static reasoning, still-valid earlier evidence,
 or a combination may establish it too. An optimizer must justify a
 cheaper implementation of the requirement, not silently weaken it.
 Today nanofil accepts immediate checks and one reviewed reuse rule
-(a heap check's evidence for later scalar accesses in its block,
+(a heap check's evidence for later scalar accesses on every path forward,
 [m7.md](m7.md)), not arbitrary certificates. Extending the accepted
 evidence further is future semantic work.
 
@@ -83,7 +83,7 @@ Checked IR makes these distinctions executable: `flight` states address
 and capability sources, `check` and `check_local` produce class `a`, and
 `check_function` produces class `f`. Raw operations cite their evidence.
 The validator requires each check's immediate first use, and accepts
-later scalar uses of a heap proof only within M7's block-local rule;
+later scalar uses of a heap proof only within M7's forward rule;
 the interpreter can expose an invalid raw access as `unchecked(Why)`.
 The [pizlonation contract](pizlonation.md) owns these rules, including the
 closed pointer-memory effect protocols and the indivisible `p` pair.
@@ -192,7 +192,7 @@ certify emitted assembly.
    that must remain unchanged. Start inside the current oracle's domain.
 2. **Extend acceptance before relying on new evidence.** Design the IR,
    validator, interpreter and emitter contract together (done for
-   block-local scalar reuse in [m7.md](m7.md)). Give an analysis explicit facts and
+   forward scalar reuse in [m7.md](m7.md)). Give an analysis explicit facts and
    merge/transfer rules, and a checker an independently stated acceptance
    rule. Keep runtime checks for obligations not established. Review the
    safety change before implementation.

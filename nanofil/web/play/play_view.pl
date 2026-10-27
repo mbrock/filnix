@@ -326,7 +326,7 @@ pass_name(promote, "promote", "promote_module/2: replace eligible memory slots w
 pass_name(copy, "copy", "copy_module/2: substitute copies and simplify trivial phis").
 pass_name(local_storage, "local_storage", "local_storage_module/2: put eligible remaining objects in exact-sized local storage").
 pass_name(pizlonate, "pizlonate", "make Fil-C's checks explicit: a check before every load and store, a pollcheck on every loop").
-pass_name(check_reuse, "check_reuse", "reuse_checks/2: delete a heap check that an earlier proof of the same pointer in its block covers (docs/m7.md)").
+pass_name(check_reuse, "check_reuse", "reuse_checks/2: delete a heap check that an earlier proof of the same pointer covers on every path (docs/m7.md)").
 pass_name(backend, "amd64", "compile the checked IR to x86-64 in the Fil-C ABI").
 
 

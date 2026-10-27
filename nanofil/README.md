@@ -93,8 +93,9 @@ integration. Neither kind of test proves the compiler correct universally.
 
 In [checked IR](docs/pizlonation.md), an access cites a proven address
 and the validator checks its coverage. Currently that evidence must come
-from an immediately preceding runtime check; reuse and static discharge
-remain planned. The interpreter distinguishes an invalid raw access
+from a runtime check, either immediately preceding or, under the opt-in
+`--checks=reuse`, an earlier one still valid ([M7](docs/m7.md)); static
+discharge remains planned. The interpreter distinguishes an invalid raw access
 (`unchecked`) from a program's legitimate safety trap. Keeping access
 safety separate from behavior preservation is the basis for future work.
 

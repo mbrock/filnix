@@ -90,7 +90,7 @@ not a request to repeat completed work.
 
 - Separate safety requirements, evidence that discharges them, and their
   implementation. Checked IR accepts adjacent checks and, since M7's
-  first slice, block-local reuse of heap check evidence by later scalar
+  first slice, forward reuse of heap check evidence by later scalar
   accesses (docs/m7.md); other new evidence needs a reviewed
   validator/interpreter/emitter contract.
 - State the abstract facts, transfer/merge rules and invalidating effects

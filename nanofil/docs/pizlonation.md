@@ -104,13 +104,13 @@ FilPizlonator does too (EnsureAuxPtr erases only later accesses' facts,
 FilPizlonator.cpp:5821-5827).
 
 Each check is followed immediately by its first use, so no safepoint
-can come between them; the IR says so (`checked_insts/4`) and the
-backend fuses the pair (`fused_blocks/4`) into one instruction at one
+can come between them; the IR says so (`checked_insts/5`) and the
+backend fuses the pair (`fused_blocks/5`) into one instruction at one
 index, so local labels and frame slots number instructions as before
 and the assembly is byte-identical. By default that is also its only
 use; the opt-in reuse of [m7.md](m7.md) lets later scalar accesses in
-the same block read a heap proof while only evidence-preserving
-instructions intervene.
+the same block or along plain CFG edges read a heap proof while only
+evidence-preserving instructions intervene on every path.
 
 ## Gates
 
