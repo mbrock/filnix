@@ -1116,11 +1116,19 @@ complete_array(array(ElemType, none), Init, array(ElemType, N), Loc, Env,
     ).
 complete_array(Type, _, Type, _, _, _).
 
+% static_complit(+V, +Type, +C): V is a compound literal of Type in a
+% static initializer, which GNU C accepts as its initializer list.
+static_complit(complit(TN, _), Type, c(Env, none, _)) :-
+    aggregate(Type),
+    catch(type_name_type(TN, T, Env, _), _, fail),
+    T == Type.
+
 % single_value(+Type, +V, +Env, +Whole): entry value V initializes a
 % slot of type Type by itself, so no braces were elided. The final cut
 % makes this semidet: the alternatives can overlap.
 single_value(Type, V, Env, Whole) :-
     (   V = list(_)
+    ;   static_complit(V, Type, c(Env, Whole, unknown))
     ;   \+ aggregate(Type)
     ;   Type = array(CharType, _),
         str_elems(V, CharType, _)
@@ -1203,6 +1211,9 @@ init_leaves(Type, Init, C, Leaves) :-
 
 % object_init(+Type, +Off, +Init, +C)//: the leaves of Init for the
 % object of Type at Off. A scalar may be braced.
+object_init(Type, Off, complit(TN, Init), C) -->
+    { static_complit(complit(TN, Init), Type, C) }, !,
+    object_init(Type, Off, Init, C).
 object_init(bits(T, Pos, W), Off, list([entry(_, V)|Rest]), C) --> !,
     { Rest == [] -> true ; init_error(C, 'excess initializers', []) },
     object_init(bits(T, Pos, W), Off, V, C).
@@ -1248,6 +1259,14 @@ elem_leaves([V|Vs], Type, Off, Size) -->
    what is left when the slots run out. Max is the larger of Max0 and
    one past the last slot initialized. */
 slots(_, _, _, [], [], Max, Max, _) --> !.
+slots(Type, _, Off, [entry([range(E1, E2)|Ds], V)|Entries0], Entries, Max0, Max, C) --> !,
+    { range_indexes(E1, E2, V, C, Is),
+      findall(entry([index(num(I, none-dec))|Ds], V), member(I, Is), Expanded),
+      append(Expanded, Entries0, Entries1) },
+    slots(Type, 0, Off, Entries1, Entries, Max0, Max, C).
+slots(Type, I, Off, [entry([field(F)|Ds], V)|Entries0], Entries, Max0, Max, C) -->
+    { anonymous_member(Type, F, C, K) }, !,           % C11 6.7.2.1p13
+    slots(Type, I, Off, [entry([anon(K), field(F)|Ds], V)|Entries0], Entries, Max0, Max, C).
 slots(Type, _, Off, [entry([D|Ds], V)|Entries0], Entries, Max0, Max, C) --> !,
     { designated_slot(D, Type, C, I, SlotOff, SlotType),
       Off1 is Off + SlotOff },
@@ -1327,8 +1346,50 @@ designated_slot(field(Field), SU, C, I, Off, Type) :-
     ->  true
     ;   init_error(C, 'no member ~w', [Field])
     ).
+designated_slot(anon(I), SU, c(Env, _, _), I, Off, Type) :- !,
+    su_members(SU, Env, Members),
+    nth0(I, Members, M), member_slot(M, none, Off, Type).
 designated_slot(_, Type, C, _, _, _) :-
     init_error(C, 'bad designator for a ~w', [Type]).
+
+% anonymous_member(+SU, +F, +C, -I): F is not a member of struct or
+% union SU itself but of its anonymous member I, so a designator .F
+% designates that member's F.
+anonymous_member(SU, F, c(Env, _, _), I) :-
+    su(SU),
+    su_members(SU, Env, Members),
+    \+ ( member(M, Members), member_slot(M, some(F), _, _) ),
+    nth0(I, Members, M),
+    member_slot(M, none, _, AT),
+    catch(member_type_offset(AT, F, Env, _, _), _, fail), !.
+
+% range_indexes(+E1, +E2, +V, +C, -Is): the GNU range designator
+% [E1 ... E2] designates the elements Is, each initialized by V as if it
+% had a designator of its own. GCC evaluates V once; nanofil lowers it
+% for each element, so V may not have side effects.
+range_indexes(E1, E2, V, C, Is) :-
+    C = c(Env, _, _),
+    (   catch(( const_value(E1, Env, Lo, _), const_value(E2, Env, Hi, _) ),
+              not_constant, fail),
+        0 =< Lo, Lo =< Hi
+    ->  numlist(Lo, Hi, Is)
+    ;   init_error(C, 'bad range designator', [])
+    ),
+    (   Lo < Hi, effectful(V)
+    ->  init_error(C, 'a range designator\'s initializer has side effects', [])
+    ;   true
+    ).
+
+% effectful(+E): the expression or initializer E may have side effects:
+% it contains an assignment, increment, call or statement expression.
+effectful(E) :-
+    compound(E),
+    (   ( E = assign(_, _, _) ; E = call(_, _) ; E = stmtexpr(_)
+        ; E = un(Op, _), memberchk(Op, [preinc, predec, postinc, postdec]) )
+    ->  true
+    ;   E =.. [_|Args], member(A, Args), effectful(A)
+    ->  true
+    ).
 
 % su_members(+SU, +Env, -Members): Members are the m(Name, Type, Offset)
 % of the complete struct or union SU.

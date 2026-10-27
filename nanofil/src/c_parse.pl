@@ -684,12 +684,15 @@ designators(_, []) --> [].
 designator(_, field(Name)) -->
     punct('.'),
     token(id(Name)).
-designator(Env, index(E)) -->
+designator(Env, D) -->
     punct('['),
     conditional(Env, E),
-    (   punct('...')
-    ->  parse_error('GNU range designators are not supported')
-    ;   expect(']')
+    (   punct('...')                            % GNU [first ... last]
+    ->  conditional(Env, Last),
+        expect(']'),
+        { D = range(E, Last) }
+    ;   expect(']'),
+        { D = index(E) }
     ).
 
 %% Statements

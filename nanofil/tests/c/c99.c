@@ -49,3 +49,20 @@ long abstract(long x) {
     return first(a, 1) * 100 + ((long (__attribute__((noinline)) *)(long))p)(x);
 }
 // run: $abstract 4
+/* GNU range designators, overlapping and later overridden; a designator
+   naming a member of an anonymous member (C11 6.7.2.1p13); and GNU
+   constant compound literals in static initializers (c-testsuite 00216). */
+struct Q { char a, b; };
+union R { struct { char x, y; }; struct Q q; };
+static struct Q gq2 = ((struct Q){ 3, 4 });
+static struct { struct Q q; char c; } gqc = { (struct Q){ 5, 6 }, 7 };
+static int granges[8] = { [1 ... 5] = 9, [4 ... 6] = 2, [2] = 1, 8 };
+long ranges(long x) {
+    int a[6] = { [0 ... 2] = (int)x, [4 ... 5] = 3 };
+    union R r = { .y = 7, .x = 6 };
+    long s = 0;
+    for (int i = 0; i < 8; i++) s = s * 10 + granges[i];
+    return s * 1000000000 + a[0] * 100000 + a[2] * 10000 + a[3] * 1000 + a[5] * 100
+           + r.q.a * 10 + r.q.b + gq2.b * 1000000 + gqc.q.b * 10000000 + gqc.c * 100000000L;
+}
+// run: $ranges 4

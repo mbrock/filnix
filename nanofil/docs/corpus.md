@@ -58,20 +58,23 @@ the survey is stable, **not** that the compiler implements that feature.
 
 ## Current counts (October 2026)
 
-The checked baseline has **258 passes, 4 rejections, 7 reference
+The checked baseline has **259 passes, 3 rejections, 7 reference
 errors and 147 without main**. Variable length arrays and variably
 modified types (m4.md, "Variable length arrays") turn eight rejections
 into passes: cproc `builtin-vaarg-vm`, `cast-vm`, `func-vla`,
 `sizeof-vla`, `vla-deref`, `vla-nested`; c-testsuite `00162` (`[*]` and
 qualified array parameters) and `00207`. Two declarator fixes pass
 c-testsuite `00209` (`int ([4])` as an abstract parameter declarator)
-and `00210` (an attribute before `*` in an abstract declarator). The
-four left:
+and `00210` (an attribute before `*` in an abstract declarator).
+c-testsuite `00216` passes with three GNU initializer extensions: range
+designators `[a ... b]`, constant compound literals in static
+initializers, and designators that name a member of an anonymous
+member (C11 6.7.2.1p13 makes those members of the enclosing struct).
+The three left:
 
 | Test | First failure | Owner |
 | --- | --- | --- |
 | c-testsuite `00140`, `00204` | struct arguments over 16 bytes (byval, generic convention); `00140`'s struct also holds a float | ABI/backend (PLAN decision 7) |
-| c-testsuite `00216` | GNU range designators, then GNU static compound-literal initializers | extensions, not C11 |
 | cproc `struct-packed` | `[[gnu::packed]]` layout | extension, not C11 |
 
 cproc `constraint/c23-6.7.7.3p2-vm-declaration-2` stays a pass: under
@@ -241,9 +244,9 @@ targets, lvalue conversion, compatible typedefs, function/array decay,
 struct identity and `default`. cproc `generic.c` also compiles, but stays
 `no-main` in the executable survey because it only defines a global.
 
-### GNU range designators — 1 rejection
+### GNU range designators — 1 rejection (resolved)
 
-**Extension gap:** c-testsuite `00216`.
+**Extension gap, now passing:** c-testsuite `00216`.
 
 ```c
 int main(void) { int a[2] = {[0 ... 1] = 3}; return a[1]; }
@@ -305,8 +308,7 @@ belong in this milestone.
 
 ## Follow-ups
 
-1. The remaining gaps are GNU extensions (range designators, constant
-   compound literals in static initializers, packed layout) and struct
+1. The remaining gaps are packed layout (a GNU extension) and struct
    arguments over 16 bytes.
 
 ## Harness validation
