@@ -64,7 +64,7 @@
                     integer_promotion/2, usual_arith_conversion/3,
                     float_type/1, arithmetic_type/1, default_promotion/2,
                     constant_value/4, const_convert/4, float_literal/3,
-                    float_builtin/3,
+                    float_builtin/3, libm_builtin/2,
                     convert_int/3, const_value/4, pp_value/2, num_type/3,
                     scalar_type/1, type_class/2, member_type_offset/5, type_name_type/4,
                     lookup_ordinary/3, bind_ordinary/4, env_scope/3,
@@ -1191,6 +1191,23 @@ float_builtin('__builtin_huge_val', double, 0x7ff0000000000000).
 float_builtin('__builtin_inf', double, 0x7ff0000000000000).
 float_builtin('__builtin_huge_valf', float, 0x7f800000).
 float_builtin('__builtin_inff', float, 0x7f800000).
+float_builtin(Name, T, V) :- nan_builtin(Name, T, V).
+
+doc(nan_builtin(?(Name), ?(Type), ?(Bits)), nondet, [
+    Name: "a GNU NaN builtin",
+    Type: "float or double",
+    Bits: "the IEEE bits of its value",
+    "__builtin_nan(\"\") and __builtin_nanf(\"\"), glibc's NAN, are",
+    "constant expressions: the quiet NaN of Type with a zero payload, as",
+    "nan(\"\") is. Only the empty string is accepted; a payload string",
+    "would name other bits.",
+    cites('GCC manual, Other Built-in Functions'),
+    cites('C11 7.12.11.2p2'),
+    example(nan_builtin('__builtin_nanf', T, V), (T = float, V = 0x7fc00000)),
+    fails(nan_builtin('__builtin_inff', _, _))
+]).
+nan_builtin('__builtin_nan', double, 0x7ff8000000000000).
+nan_builtin('__builtin_nanf', float, 0x7fc00000).
 
 doc(const_convert(+V, +From, +To, ?(W)), semidet, [
     V: "a constant's value: an integer, float bits, or ub",
@@ -1717,9 +1734,16 @@ elab(call(id(Name), Args), Env, X) :-
     \+ lookup_ordinary(Env, Name, _),
     library_builtin(Name, F), lookup_ordinary(Env, F, _), !,
     elab(call(id(F), Args), Env, X).
+elab(call(id(Name), Args), Env, X) :-
+    \+ lookup_ordinary(Env, Name, _),
+    atomic_builtin(Name, Args, Env, E), !,
+    elab(E, Env, X).
+elab(call(id(Name), [str([])]), Env, val(T, builtin(Name, []))) :-
+    \+ lookup_ordinary(Env, Name, _),
+    nan_builtin(Name, T, _), !.
 elab(call(id(Name), Args), Env, val(T, builtin(Name, Args))) :-
     \+ lookup_ordinary(Env, Name, _),
-    (   Args == [], float_builtin(Name, T, _) -> true
+    (   Args == [], float_builtin(Name, T, _), \+ nan_builtin(Name, _, _) -> true
     ;   builtin_type(Name, T)
     ).
 elab(call(E, Args), Env, val(T, call(XV, XArgs))) :-   % 6.5.2.2p2
@@ -1899,6 +1923,52 @@ library_builtin('__builtin_memcpy', memcpy).
 library_builtin('__builtin_memmove', memmove).
 library_builtin('__builtin_memset', memset).
 
+doc(atomic_builtin(+Name, +Args, +Env, -E), semidet, [
+    Name: "a GNU __atomic builtin",
+    Args: "its argument expressions",
+    Env: "the scope",
+    E: "the plain C expression it is",
+    "__atomic_load_n(P, Order) is *P and __atomic_store_n(P, V, Order)",
+    "is (void)(*P = V), after Order: an aligned integer load or store is",
+    "already atomic on x86-64, and relaxed, consume and acquire loads and",
+    "relaxed and release stores need no fence there. *P is an integer or",
+    "a pointer. A pointer's capability is a second word, which the plain",
+    "access writes before its address and reads after it, as clang's",
+    "non-atomic pointer accesses do: memory-safe, since a torn pair still",
+    "fails or passes the bounds check of the capability it has, but not",
+    "single-copy atomic against another thread's atomic store, which",
+    "clang's boxed atomic pointers are (docs/m4.md, Atomic builtins).",
+    "A sequentially consistent store needs a fence and is refused",
+    "(fault/4 says so).",
+    cites('GCC manual, __atomic Builtins'),
+    cites('C11 7.17.3p1'),
+    example(( empty_env(E0), bind_ordinary(p, var(none, ptr(int)), E0, E),
+              atomic_builtin('__atomic_load_n', [id(p), chr(0)], E, X) ),
+            X = comma(chr(0), un(deref, id(p)))),
+    fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(int)), E0, E),
+            atomic_builtin('__atomic_store_n', [id(p), chr(1), chr(5)], E, _) )),
+    fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(double)), E0, E),
+            atomic_builtin('__atomic_load_n', [id(p), chr(0)], E, _) ))
+]).
+atomic_builtin('__atomic_load_n', [P, O], Env, comma(O, un(deref, P))) :-
+    atomic_operands(P, O, Env, [0, 1, 2, 5]).
+atomic_builtin('__atomic_store_n', [P, V, O], Env,
+               cast(type([tspec(void)], base), comma(O, assign(=, un(deref, P), V)))) :-
+    atomic_operands(P, O, Env, [0, 3]).
+
+atomic_name('__atomic_load_n').
+atomic_name('__atomic_store_n').
+
+% atomic_operands(+P, +O, +Env, +Orders): P points to an integer or a
+% pointer and O is
+% a constant memory order among Orders (__ATOMIC_RELAXED 0, CONSUME 1,
+% ACQUIRE 2, RELEASE 3, ACQ_REL 4, SEQ_CST 5).
+atomic_operands(P, O, Env, Orders) :-
+    lowered_type(P, Env, ptr(T0)), unqualified(T0, T),
+    ( int_type(T) -> true ; T = ptr(_) ),
+    catch(const_value(O, Env, V, _), not_constant, fail),
+    memberchk(V, Orders).
+
 doc(builtin_type(?(Name), ?(Type)), nondet, [
     Name: "a builtin's name",
     Type: "the type of a call of it",
@@ -1924,6 +1994,23 @@ builtin_type(Name, int) :- bit_builtin(Name, _, _).
 builtin_type('__builtin_bswap16', ushort).
 builtin_type('__builtin_bswap32', uint).
 builtin_type('__builtin_bswap64', ulong).
+builtin_type(Name, double) :- libm_builtin(Name, _).
+
+doc(libm_builtin(?(Name), ?(F)), nondet, [
+    Name: "a GNU math builtin",
+    F: "the libm function it computes",
+    "__builtin_ceil(x) and __builtin_floor(x) are ceil(x) and floor(x)",
+    "of x converted to double, even with F undeclared. Clang computes",
+    "them inline (roundsd); a call of libm's F gives the same exact",
+    "result, signed zeros and NaNs included.",
+    cites('GCC manual, Other Built-in Functions'),
+    cites('C11 7.12.9.1p2'),
+    cites('C11 7.12.9.2p2'),
+    example(libm_builtin('__builtin_floor', F), F = floor),
+    fails(libm_builtin('__builtin_round', _))
+]).
+libm_builtin('__builtin_ceil', ceil).
+libm_builtin('__builtin_floor', floor).
 
 doc(bit_builtin(?(Name), ?(Op), ?(Type)), nondet, [
     Name: "a bit-counting builtin",
@@ -2514,6 +2601,9 @@ fault_(cast(TN, E), Env, F, As) :-
     (   untyped(E, Env) -> fault_(E, Env, F, As)
     ;   lowered_type(E, Env, From), F = 'cannot convert ~w to ~w', As = [From, To]
     ).
+fault_(call(id(Name), _), Env, F, [Name]) :-
+    \+ lookup_ordinary(Env, Name, _), atomic_name(Name), !,
+    F = '~w needs a pointer to an integer or pointer and a constant memory order it supports (relaxed, or acquire for a load, release for a store)'.
 fault_(call(Fn, Args), Env, F, As) :-
     \+ ( Fn = id(Name), \+ lookup_ordinary(Env, Name, _),
          ( builtin_type(Name, _) ; float_builtin(Name, _, _) ) ),

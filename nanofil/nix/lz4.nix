@@ -3,8 +3,8 @@
 # nanofil-cc, and its output must be byte for byte the same as a
 # filcc-built lz4's at several levels and modes, on text and on random
 # data, with each build decompressing the other's output. Repeated with
-# each middle-end and register choice; the comparisons also run under
-# FUGC_SCRIBBLE and FUGC_VERIFY. The source is unpatched: --list shows
+# each middle-end, register and check-reuse choice; the comparisons also
+# run under FUGC_SCRIBBLE and FUGC_VERIFY. The source is unpatched: --list shows
 # file sizes through lz4io's x87 long double LZ4IO_toHuman.
 { pkgs, filcc }:
 assert pkgs.lz4.version == "1.10.0";
@@ -21,7 +21,7 @@ pkgs.runCommandCC "nanofil-lz4" { src = pkgs.lz4.src; } ''
   head -c 1000000 /dev/urandom > random
   cat text random text > mixed
 
-  for opt in "" -O "--registers=local" "-O --registers=local" "-O --branches=reference"; do
+  for opt in "" -O "--registers=local" "-O --registers=local" "-O --branches=reference" "--checks=reuse"; do
     echo "== lz4, nanofil $opt"
     rm -rf nf
     unpack nf

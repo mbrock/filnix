@@ -3,8 +3,8 @@
 # own `make test` round-trips its three samples, and bzip2's output must
 # be byte for byte the same as a filcc-built bzip2's at block sizes 1, 5
 # and 9, on text and on random data, with each build decompressing the
-# other's output. Repeated with each middle-end and register choice; the
-# comparisons also run under FUGC_SCRIBBLE and FUGC_VERIFY.
+# other's output. Repeated with each middle-end, register and check-reuse
+# choice; the comparisons also run under FUGC_SCRIBBLE and FUGC_VERIFY.
 { pkgs, filcc }:
 assert pkgs.bzip2.version == "1.0.8";
 pkgs.runCommandCC "nanofil-bzip2" { src = pkgs.bzip2.src; } ''
@@ -19,7 +19,7 @@ pkgs.runCommandCC "nanofil-bzip2" { src = pkgs.bzip2.src; } ''
   cat ${../.}/src/*.pl ${../.}/docs/*.md > text
   head -c 1000000 /dev/urandom > random
 
-  for opt in "" -O "--registers=local" "-O --registers=local" "-O --branches=reference"; do
+  for opt in "" -O "--registers=local" "-O --registers=local" "-O --branches=reference" "--checks=reuse"; do
     echo "== bzip2, nanofil $opt"
     rm -rf nf
     unpack nf

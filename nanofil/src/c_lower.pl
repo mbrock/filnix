@@ -1966,6 +1966,13 @@ builtin('__builtin_alloca', [Size], Ctx, v(Addr, ptr(void))) --> !,
     { ctx_loc(Ctx, Loc) },
     assign_convert(Size, V0, ulong, Loc, v(N, _)),
     let(p, alloc(16), [N], Addr).
+builtin(Name, [A], Ctx, v(D, double)) -->
+    { libm_builtin(Name, F) }, !,
+    rval(A, Ctx, V0),
+    { ctx_loc(Ctx, Loc) },
+    assign_convert(A, V0, double, Loc, v(X, _)),
+    fresh(D),
+    emit(call(result(D, d), global(F), [arg(d, X)])).
 builtin('__builtin_expect', [A, B], Ctx, R) --> !,
     rval(A, Ctx, VA),
     rval(B, Ctx, _),
@@ -3112,6 +3119,8 @@ expr_chunk(ptr(_), Off, Expr, Loc, Env0, Env, Chunk) :- !,
     address_constant(XV, Loc, Env0, Env, R),
     (   R = sym(Sym, SymOff)
     ->  Chunk = chunk(Off, 8, item(p, sym(Sym, SymOff)))
+    ;   R = int(N)
+    ->  Chunk = chunk(Off, 8, item(l, const(N)))
     ;   Chunk = chunk(Off, 8, item(l, const(0)))
     ).
 expr_chunk(Type, _, _, Loc, _, _, _) :-
@@ -3119,7 +3128,8 @@ expr_chunk(Type, _, _, Loc, _, _, _) :-
 
 /* address_constant(+XV, +Loc, +Env0, -Env, -R): the value tree XV is an
    address constant (C11 6.6p9), R = sym(Symbol, Offset), or a null
-   pointer, R = null. It is the address of a static object or a
+   pointer, R = null, or an integer constant cast to a pointer, R =
+   int(Address). It is the address of a static object or a
    function, perhaps cast, plus or minus an integer constant; string
    literals and compound literals become data of their own. */
 address_constant(val(_, decay(X)), Loc, Env0, Env, R) :- !,
@@ -3128,7 +3138,11 @@ address_constant(val(_, addr(X)), Loc, Env0, Env, R) :- !,
     place_constant(X, Loc, Env0, Env, R).
 address_constant(val(_, cast(TypeName, XV)), Loc, Env0, Env, R) :- !,
     type_name(TypeName, Type, Env0, Loc),
-    (   Type = ptr(_) -> address_constant(XV, Loc, Env0, Env, R)
+    (   Type = ptr(_), lowered(XV, T), int_type(T), folded(XV, Env0, N), integer(N)
+    ->  % 6.6p9: an integer constant cast to a pointer type is an address
+        % constant, here an address with no capability, as in clang.
+        Env = Env0, U is N mod (1 << 64), ( U =:= 0 -> R = null ; R = int(U) )
+    ;   Type = ptr(_) -> address_constant(XV, Loc, Env0, Env, R)
     ;   sema_error(Loc, 'initializer is not a constant', [])
     ).
 address_constant(val(ptr(_), bin(Op, XA, XB)), Loc, Env0, Env, R) :-

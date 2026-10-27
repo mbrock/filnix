@@ -145,7 +145,7 @@ expressions and the `__builtin_*_overflow` family. Of the corpus
 programs that have a `main`, all 262 that clang itself builds and runs
 match clang's output; what nanofil does not support it refuses with a
 message, never miscompiles ([docs/corpus.md](docs/corpus.md)). GNU
-hello, zlib, Lua, bzip2 and lz4 build with nanofil alone and behave
+hello, zlib, Lua, bzip2, lz4 and SQLite build with nanofil alone and behave
 exactly like their clang builds; zlib's compressed output is
 byte-identical, at about five times clang's time.
 
