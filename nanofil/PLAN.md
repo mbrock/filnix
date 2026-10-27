@@ -405,7 +405,10 @@ symbolic checker validates caching, not the preceding instruction selection.
 `--registers=stack` remains the default and differential reference,
 independent of `-O`. See [m6.md](docs/m6.md) for boundaries and measurements.
 
-**Next:** use measured native benefit to decide whether to extend allocation
+**Next:** [docs/perf.md](docs/perf.md) profiles `-O` against filcc `-O2`
+with a benchmark gate and ranks the code-quality work: switch dispatch,
+branch selection, whole-function scalar allocation, inlining, then the
+items that need safety review. Use measured native benefit to decide whether to extend allocation
 across regions or improve instruction selection. Fewer frame accesses do
 not imply fewer instructions or faster execution. This is a separate
 workstream, not a prerequisite for the semantic agenda. The earlier combined

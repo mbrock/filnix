@@ -42,6 +42,7 @@ nix build .#checks.x86_64-linux.nanofil-hello  # GNU hello built only by nanofil
 nix build .#checks.x86_64-linux.nanofil-zlib   # zlib built only by nanofil, vs filcc
 nix build .#checks.x86_64-linux.nanofil-lua    # Lua built only by nanofil, vs filcc
 nix build .#checks.x86_64-linux.nanofil-bzip2  # bzip2 built only by nanofil, vs filcc
+nix build --impure -f nanofil/bench -o nanofil/bench/out && (cd nanofil/bench && python3 run.py)  # speed vs filcc -O2 (docs/perf.md)
 ```
 
 For many runs, `bin/nanofil --save-state /tmp/nanofil.state` and

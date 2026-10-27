@@ -1392,6 +1392,21 @@ test(source_binding_aliases) :-
            ( call(Goal, M, Direct), valid_module(Direct),
              Direct = module(DIs), memberchk(context(f, _), DIs) )).
 
+% A switch of 64 cases reaches each case, and the default, within 20
+% blocks: a binary search takes about 10, a compare chain up to 66.
+% Case values are scrambled and include negatives (docs/perf.md).
+test(switch_dispatch_is_logarithmic) :-
+    findall(N-V, ( between(0, 63, N), V is (N * 37) mod 64 * 3 - 90 ), NVs),
+    findall(Case, ( member(N-V, NVs),
+                    format(atom(Case), " case ~d: return ~d;", [V, N]) ), Cases),
+    atomic_list_concat(['int f(int x) { switch (x) {'|Cases], Head),
+    atom_concat(Head, ' default: return -1; } }', Source),
+    atom_chars(Source, Cs),
+    c_tokens(Cs, 'switch.c', Ts), c_parse(Ts, C), c_module(C, M), valid_module(M),
+    forall(member(N-V, NVs),
+           ( W is V mod 4294967296, once(run(M, f, [W], 20, ret(N))) )),
+    once(run(M, f, [1], 20, ret(4294967295))).
+
 % Legacy location instructions become sidecars. A generated check and
 % its access share the old access's location; metadata cannot excuse a
 % loc or real instruction inserted between the proof and its use.

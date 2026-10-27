@@ -950,7 +950,7 @@ stmt_(switch(Expr, Body), Ctx) -->
     env(Env2), { bind_ordinary('vm.switch', OuterScopes, Env2, Env3) }, set_env(Env3),
     term(goto(LEnd)),
     cases(Cases0), set_cases(Outer),
-    { reverse(Cases0, Cases) },
+    { reverse(Cases0, Cases), distinct_cases(Cases, Type, Loc) },
     start(LDispatch), dispatch(Cases, Value, Type, LEnd),
     start(LEnd).
 stmt_(case(Expr, Body), Ctx) -->
@@ -1158,25 +1158,69 @@ single_value(Type, V, Env, Whole) :-
     ),
     !.
 
-% dispatch(+Cases, +Value, +Type, +LEnd)//: the switch dispatch, one
-% comparison per case, then a jump to the default or LEnd.
+% dispatch(+Cases, +Value, +Type, +LEnd)//: the switch dispatch (C11
+% 6.8.4.2p5): a jump to the case whose value, converted to the promoted
+% type Type, equals Value, else to the default or LEnd. Up to four cases
+% are compared for equality in source order. More are read with Type's
+% signedness and sorted; a binary search compares Value with them in
+% Type's order, down to a few cases compared one by one.
 dispatch([], _, _, LEnd) --> term(goto(LEnd)).
 dispatch(Cases, Value, Type, LEnd) -->
-    { findall(CaseValue-Label, member(case(CaseValue, Label), Cases), Pairs),
+    { findall(Wrapped-Label,
+              ( member(case(CaseValue, Label), Cases),
+                convert_int(CaseValue, Type, Wrapped) ),
+              Pairs0),
       ( memberchk(default(LDefault), Cases) -> true ; LDefault = LEnd ),
       type_class(Type, Class) },
-    dispatch_cases(Pairs, Value, Type, Class, LDefault).
+    (   { length(Pairs0, N), N =< 4 }
+    ->  dispatch_cases(Pairs0, Value, Class, LDefault)
+    ;   { keysort(Pairs0, Pairs),
+          int_info(Type, _, Sign) },
+        dispatch_search(Pairs, Value, Sign, Class, LDefault)
+    ).
 
-% dispatch_cases(+Pairs, +Value, +Type, +Class, +LDefault)//: compare
-% Value with each case value of Pairs in turn, then jump to LDefault.
-dispatch_cases([], _, _, _, LDefault) --> term(goto(LDefault)).
-dispatch_cases([CaseValue-Label|Pairs], Value, Type, Class, LDefault) -->
-    { convert_int(CaseValue, Type, Wrapped) },
+% distinct_cases(+Cases, +Type, +Loc): no two case values of a switch
+% are equal once converted to the promoted controlling type Type (C11
+% 6.8.4.2p3).
+distinct_cases(Cases, Type, Loc) :-
+    findall(W, ( member(case(V, _), Cases), convert_int(V, Type, W) ), Ws),
+    msort(Ws, Sorted),
+    (   append(_, [W, W|_], Sorted)
+    ->  sema_error(Loc, 'duplicate case value ~w', [W])
+    ;   true
+    ).
+
+% dispatch_search(+Pairs, +Value, +Sign, +Class, +LDefault)//: Pairs are
+% sorted by value. More than four: branch on Value < the middle value,
+% to the search of the lower or the upper half. Otherwise compare Value
+% with each in turn, then jump to LDefault.
+dispatch_search(Pairs, Value, Sign, Class, LDefault) -->
+    { length(Pairs, N), N > 4, !,
+      Half is N // 2, length(Lower, Half), append(Lower, Upper, Pairs),
+      Upper = [Pivot-_|_],
+      less_than(Sign, Less) },
+    let(w, cmp(Less, Class), [Value, const(Pivot)], Test),
+    label(LLower), label(LUpper),
+    term(branch(Test, LLower, LUpper)),
+    start(LLower),
+    dispatch_search(Lower, Value, Sign, Class, LDefault),
+    start(LUpper),
+    dispatch_search(Upper, Value, Sign, Class, LDefault).
+dispatch_search(Pairs, Value, _, Class, LDefault) -->
+    dispatch_cases(Pairs, Value, Class, LDefault).
+
+less_than(signed, slt).
+less_than(unsigned, ult).
+
+% dispatch_cases(+Pairs, +Value, +Class, +LDefault)//: compare Value
+% with each case value of Pairs in turn, then jump to LDefault.
+dispatch_cases([], _, _, LDefault) --> term(goto(LDefault)).
+dispatch_cases([Wrapped-Label|Pairs], Value, Class, LDefault) -->
     let(w, cmp(eq, Class), [Value, const(Wrapped)], Test),
     label(Next),
     term(branch(Test, Label, Next)),
     start(Next),
-    dispatch_cases(Pairs, Value, Type, Class, LDefault).
+    dispatch_cases(Pairs, Value, Class, LDefault).
 
 % judged(+Expr, +Ctx)//: full expression Expr is typed, or c_types says
 % why not; where it cannot say, lowering reports the fault.

@@ -1,0 +1,112 @@
+--- a/nanofil/src/filc_amd64.pl
++++ b/nanofil/src/filc_amd64.pl
+@@ -304,12 +304,14 @@
+ reg_slot_store(Reg, Key, Ctx) -->
+     { ctx_slot(Ctx, Key, Off),
+       Disp is -Off },
++    pf_slot(Key),
+     [ins(mov, q, [reg(Reg), mem(Disp, rbp)])].
+ 
+ % The load of Key's slot into register Reg.
+ slot_reg_load(Key, Reg, Ctx) -->
+     { ctx_slot(Ctx, Key, Off),
+       Disp is -Off },
++    pf_slot(Key),
+     [ins(mov, q, [mem(Disp, rbp), reg(Reg)])].
+ 
+ %% Local labels: A is the label atom in each relation.
+@@ -357,7 +359,9 @@
+     abi_actions(Entry, entry, entry, Ctx),
+     blocks(Blocks, Ctx),
+     [label(Exc)],
++    pf(exc_exit),
+     abi_actions(Exit, exit, exit, Ctx),
++    pf(cold),
+     check_fail_blocks(CheckKinds, Ctx),
+     not_function_block(Blocks, Ctx),
+     unreachable_block(Blocks, Ctx),
+@@ -562,6 +566,7 @@
+ 
+ abi_actions([], _, _, _) --> [].
+ abi_actions([A|As], I, B, Ctx) -->
++    { functor(A, AF, _), atom_concat(abi_, AF, AR) }, pf(AR),
+     abi_action(A, I, B, Ctx), abi_actions(As, I, B, Ctx).
+ 
+ abi_action(native_frame(Return), _, _, Ctx) -->
+@@ -813,6 +818,7 @@
+ jump(branch(V, True, False), From, Ctx) -->
+     { ctx_fn(Ctx, Fn),
+       local_label(Ctx, From, jnz, false, FalseLabel) },
++    pf(br_test),
+     load(V, w, a, Fn),
+     [ins(test, l, [reg(eax), reg(eax)]),
+      ins(jz, none, [sym(FalseLabel)])],
+@@ -878,9 +884,12 @@
+       ctx_labels(Ctx, Labels),
+       get_assoc(To, Labels, Phis),
+       block_label(Ctx, To, ToLabel) },
++    pf(phi),
+     phi_reads(Phis, From, Ctx),
+     phi_writes(Phis, Ctx),
++    pf(poll),
+     edge_poll(Target, From, Tag, Ctx),
++    pf(jmp),
+     [ins(jmp, none, [sym(ToLabel)])].
+ 
+ edge_poll(Target, From, Tag, Ctx) -->
+@@ -908,7 +917,7 @@
+ % (phi_writes//2).
+ phi_reads([], _, _) --> [].
+ phi_reads([phi(tmp(D), K, Pairs)|Phis], From, Ctx) -->
+-    { memberchk(From-V, Pairs) },
++    { memberchk(From-V, Pairs), atom_concat(phi_, K, PR) }, pf(PR),
+     phi_read(K, V, D, Ctx),
+     phi_reads(Phis, From, Ctx).
+ 
+@@ -934,6 +943,7 @@
+ % The second half of the parallel copy: each phi's shadow into the phi.
+ phi_writes([], _) --> [].
+ phi_writes([phi(tmp(D), K, _)|Phis], Ctx) -->
++    { atom_concat(phi_, K, PR) }, pf(PR),
+     slot_reg_load(shadow(D), rax, Ctx),
+     reg_slot_store(rax, tmp(D), Ctx),
+     phi_lower_write(K, D, Ctx),
+@@ -969,6 +979,7 @@
+ % of Block from index Index on.
+ insts([], _, _, _) --> [].
+ insts([Inst|Insts], Index, Block, Ctx) -->
++    pf_inst(Inst),
+     inst(Inst, Index, Block, Ctx),
+     { Index1 is Index + 1 },
+     insts(Insts, Index1, Block, Ctx).
+@@ -988,7 +999,9 @@
+     { access_pointer(Access, P),
+       rights_write(Rights, Write) },
+     flight_load(P, Ctx),
++    pf(chk),
+     access_check(k(Size, Write, Align), Ctx),
++    pf_access(Access),
+     raw_access(Access, Index, Block, Ctx).
+ inst(reused(Access), Index, Block, Ctx) -->
+     { access_pointer(Access, P), ctx_fn(Ctx, Fn) },
+@@ -997,6 +1010,7 @@
+ inst(fused(check_local(Name, Off, Size, Rights, Align), Access), I, B, Ctx) -->
+     { rights_write(Rights, Write) },
+     local_check(Name, Off, k(Size, Write, Align), I, B, Ctx),
++    pf_access(Access),
+     local_raw_access(Access, I, B, Ctx).
+ inst(abi(Actions), Index, Block, Ctx) --> abi_actions(Actions, Index, Block, Ctx).
+ 
+@@ -2406,3 +2420,12 @@
+      long(Size), byte([Align, 0, Write]), zero(1),
+      quad(Origin), quad(Origin), quad(0)],
+     check_origins(Kinds, Name).
++
++pf(R) --> { flag(pf, N, N+1), format(atom(A), '.Lpf.R.~w.~w', [R, N]) }, [label(A)].
++pf_slot(Key) --> { functor(Key, F, _), flag(pf, N, N+1), format(atom(A), '.Lpf.S.~w.~w', [F, N]) }, [label(A)].
++pf_inst(let(_, C, Op, _)) --> !, { op_kind(Op, K), functor(Op, F, _), format(atom(A), 'let_~w_~w_~w', [C, K, F]) }, pf(A).
++pf_inst(fused(check(_,_,_,_), _)) --> !, pf(chk_ptr).
++pf_inst(fused(check_local(_,_,_,_,_), _)) --> !, pf(lchk).
++pf_inst(I) --> { functor(I, F, _) }, pf(F).
++pf_access(let(_, C, Op, _)) --> !, { functor(Op, F, _), format(atom(A), 'acc_~w_~w', [F, C]) }, pf(A).
++pf_access(A) --> { functor(A, F, _), atom_concat(acc_, F, R) }, pf(R).
