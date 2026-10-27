@@ -39,6 +39,7 @@ nix build .#checks.x86_64-linux.nanofil        # everything; must pass before pu
 nix build .#checks.x86_64-linux.nanofil-hello  # GNU hello built only by nanofil, vs filcc
 nix build .#checks.x86_64-linux.nanofil-zlib   # zlib built only by nanofil, vs filcc
 nix build .#checks.x86_64-linux.nanofil-lua    # Lua built only by nanofil, vs filcc
+nix build .#checks.x86_64-linux.nanofil-bzip2  # bzip2 built only by nanofil, vs filcc
 ```
 
 For many runs, `bin/nanofil --save-state /tmp/nanofil.state` and

@@ -228,6 +228,10 @@
               inherit pkgs;
               filcc = filcc-staging;
             };
+            nanofil-bzip2 = import ./nanofil/nix/bzip2.nix {
+              inherit pkgs;
+              filcc = filcc-staging;
+            };
             sarcasm-prolog = import ./tests/sarcasm-prolog.nix {
               inherit pkgs filcc sarcasm-prolog;
               trealla = pkgsFilc.trealla;
