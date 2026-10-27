@@ -76,7 +76,7 @@ filcc `-O1`, which behaved as `-O2` on every probe below.
 | strict aliasing (6.5p7) | `tbaa`: `*i = 1; *f = 2.0f; return *i;` | 0x40000000 | 0x40000000 | `!tbaa` dropped; memory is bytes | bytes: same |
 | uninitialized automatic (6.7.9p10, 6.3.2.1p2) | `uninit`: `int x; if (c) x = 5; return x;`, `c = 0` | 0 | **5** | allocations are zeroed, but SROA makes `x` an SSA `undef` before pizlonation, and the select folds | 0: interpreter zeroes allocations; `promote` starts slots at `initial_zero` |
 | out-of-range float to int (6.3.1.4p1) | `fp`: `(int)1e20` | `INT_MIN` | `INT_MIN` | `cvttsd2si`'s indefinite value; LLVM poison | interpreter `ub(float_conversion)`; native `INT_MIN` |
-| `__builtin_unreachable` reached | `unreach` | panic | **returns 7** | `unreachable` exploited before pizlonation | `unreachable`: interpreter outcome; native `ud2`, SIGILL (132) |
+| `__builtin_unreachable` reached | `unreach` | panic | **returns 7** | `unreachable` exploited before pizlonation | `unreachable`: interpreter outcome; native Fil-C panic, as clang `-O0` |
 | out of bounds after wrap | `wrap-idx`: `j = i + 1` with `i = INT_MAX`, then `g[j]` | panic `ptr < lower` | panic | the wrapped index is checked | panic |
 | null dereference, then a null test | `null` | panic | panic | `nonnull` dropped; the check is on the access | panic |
 
@@ -119,11 +119,12 @@ not a nanofil bug. Such a test is not a valid comparison.
 
 Differences worth closing or keeping in mind:
 
-- **A reached `unreachable` is SIGILL in nanofil, a Fil-C panic in
-  clang `-O0`.** `filc_amd64.pl`'s `jump(unreachable, ...)` emits `ud2`;
-  Fil-C calls its error routine with an origin. `progtest.sh` normalizes
-  only `filc safety error` output to `trap`, so these do not compare
-  equal.
+- **A reached `unreachable` panics as clang `-O0`'s does.**
+  `filc_amd64.pl`'s `jump(unreachable, ...)` calls `filc_error` with
+  clang's message and the frame's origin (it was `ud2`, SIGILL, before
+  October 2026). In Fil-C mode the difftest compares it as a trap
+  (`unreachable_arm` in `tests/filc/basic.ir`). The plain SysV backend
+  still emits `ud2`.
 - **Constant contexts:** `const_eval` wraps signed overflow where C11
   6.6p4 requires a diagnostic. This matches clang's default folding of
   static initializers; making it `ub` would refuse initializers clang

@@ -438,12 +438,13 @@ module_run_result(Module-Prepared, run(Fn, Args0), Fuel,
 
 % comparable(+Mode, +Result) is semidet: a native run in Mode (plain or
 % filc) reproduces Result's outcome, a known return value or, for
-% filc, a trap, which is a Fil-C safety panic natively. Nothing else has
-% a native counterpart.
+% filc, a trap or a reached unreachable, both a Fil-C safety panic
+% natively. Nothing else has a native counterpart.
 comparable(_, r(_, _, ret(V))) :-
     integer(V).
 comparable(_, r(_, _, ret)).
 comparable(filc, r(_, _, trap(_))).
+comparable(filc, r(_, _, unreachable)).
 
 % call_text(+Fn, +Args, -Text): Text is the atom 'Fn(A1, A2, ...)'.
 call_text(Fn, Args, Text) :-
@@ -462,10 +463,12 @@ write_file(File, Body_2) :-
 
 % expected_lines(+Results)//: one "CALL = OUTCOME" line per result, a
 % trap's outcome shown as just "trap" (the native run cannot tell why).
+% Only Fil-C mode compares unreachable, which panics there.
 expected_lines([]) --> [].
 expected_lines([r(Fn, Args, Outcome)|Results]) -->
     { call_text(Fn, Args, CallText),
       (   Outcome = trap(_) -> Text = trap
+      ;   Outcome == unreachable -> Text = trap
       ;   outcome_text(Outcome, Text)
       ) },
     fmt("~w = ~w~n", [CallText, Text]),

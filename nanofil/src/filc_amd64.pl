@@ -351,9 +351,11 @@ function(Selection, abi_function(Name, Linkage, Ret, Sig, Frame, Entry, Blocks,
     abi_actions(Exit, exit, exit, Ctx),
     check_fail_blocks(CheckKinds, Ctx),
     not_function_block(Blocks, Ctx),
+    unreachable_block(Blocks, Ctx),
     [size(Impl)],
     body_function_object(Object, Name, Linkage, Impl),
-    origins(Name, Origins, CheckKinds).
+    origins(Name, Origins, CheckKinds),
+    unreachable_message(Blocks, Name).
 
 /* fused_blocks(+Fn, +Blocks0, -Blocks, -LiveBlocks): Blocks are the
    checked Blocks0 with each check and the raw access after it, which
@@ -691,6 +693,34 @@ not_function_block(Blocks, Ctx) -->
     ;   []
     ).
 
+% The failure block of jump(unreachable)//3, if a block ends in one:
+% filc_error(Message, Origin) with the frame's n origin.
+unreachable_block(Blocks, Ctx) -->
+    (   { memberchk(block(_, _, _, unreachable), Blocks) }
+    ->  { special_label(Ctx, unreachable, Unreachable),
+          ctx_name(Ctx, Name),
+          unreachable_message_label(Name, Message),
+          origin_label(Name, n, Origin) },
+        [label(Unreachable),
+         ins(lea, q, [rip(Message), reg(rdi)]),
+         ins(lea, q, [rip(Origin), reg(rsi)]),
+         ins(call, none, [plt(filc_error)]),
+         ins(ud2, none, [])]
+    ;   []
+    ).
+
+% clang's message, so a nanofil panic reads as clang's does.
+unreachable_message(Blocks, Name) -->
+    (   { memberchk(block(_, _, _, unreachable), Blocks) }
+    ->  { unreachable_message_label(Name, Message) },
+        [section(rodata), label(Message),
+         asciz('llvm unreachable instruction')]
+    ;   []
+    ).
+
+unreachable_message_label(Name, Label) :-
+    format(atom(Label), '.L~w..unreachable_msg', [Name]).
+
 % The same registers by their amd64 short names, for load//4.
 form_short_regs(reg, [d, c, r8, r9]).
 form_short_regs(mem(_), [c, r8, r9]).
@@ -752,8 +782,11 @@ jump(branch(V, True, False), From, Ctx) -->
     [label(FalseLabel)],
     edge(From, False, f, Ctx).
 jump(abi_return(Actions), B, Ctx) --> abi_actions(Actions, ret, B, Ctx).
-jump(unreachable, _, _) -->
-    [ins(ud2, none, [])].
+% A reached unreachable is a Fil-C safety panic, as clang's is
+% (FilPizlonator's UnreachableInst case): one shared block per function.
+jump(unreachable, _, Ctx) -->
+    { special_label(Ctx, unreachable, Unreachable) },
+    [ins(jmp, none, [sym(Unreachable)])].
 
 % The returned value V of class K, in %rdx, and its lower in %rcx for p.
 ret_value(p, V, Ctx) -->

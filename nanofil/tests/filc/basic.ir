@@ -320,3 +320,12 @@ func(immediate_shiftl, export, l, [param(l, tmp(x))], [
     ], ret(tmp(r))),
     block(no, [], [], ret(const(23)))
 ]).
+
+% A reached unreachable is a Fil-C safety panic natively, as clang's is.
+run(unreachable_arm, [0]).
+run(unreachable_arm, [1]).
+func(unreachable_arm, export, w, [param(w, tmp(k))], [
+    block(start, [], [], branch(tmp(k), bad, ok)),
+    block(bad, [], [], unreachable),
+    block(ok, [], [], ret(const(7)))
+]).
