@@ -308,9 +308,11 @@ constants. One description of what each C expression is, read three ways.
   subexpression. Keep literal symbol numbering and the order of fresh
   temporaries as they are today. `#if` elaborates with `Env = pp`.
 - Rejected alternative: computing constants by lowering and running
-  `interp`. Signed overflow in a constant expression is an error in C
-  but wraps in the IR. `interp` is a good test oracle, not the
-  implementation.
+  `interp`. A constant context must refuse an oversized shift count or
+  a zero divisor, where the IR masks the count and traps. (Signed
+  overflow is a constraint violation by C11 6.6p4, but `const_eval`
+  wraps it as clang's default folding does; see [ub.md](ub.md).)
+  `interp` is a good test oracle, not the implementation.
 
 ## Frontend roadmap and implementation record
 
@@ -391,6 +393,9 @@ These are research directions, not additional acceptance claims:
   lowering crash on casts of undefined constants. Signed overflow in
   `+ - * <<` still wraps in `const_eval`, as clang's default folding
   does; it is now a measured class rather than an assumption.
+  [ub.md](ub.md) states Fil-C's policy on undefined behaviour (its
+  KillUB pass, what each kind of UB does at `-O0` and `-O2`) and where
+  nanofil's IR agrees.
 - **Relations between interpretations.** Investigate unchecked versus
   checked execution, heap versus local storage, and concrete versus
   abstract execution. State the object correspondence and environmental

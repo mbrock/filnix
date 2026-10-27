@@ -4,7 +4,9 @@ A C compiler in Prolog that emits Fil-C ABI assembly. Read
 [PLAN.md](PLAN.md) for milestones and decisions, then the `docs/mN.md`
 for the area you touch. ABI facts are in
 [docs/abi-findings.md](docs/abi-findings.md); add to it when you verify
-something new against the pinned sources.
+something new against the pinned sources. What Fil-C does with C's
+undefined behaviour (overflow, shifts, aliasing, uninitialized reads)
+is in [docs/ub.md](docs/ub.md).
 
 ## Tools
 
