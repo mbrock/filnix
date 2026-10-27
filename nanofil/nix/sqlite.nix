@@ -6,8 +6,9 @@
 # modes and a VACUUM) must print the same bytes and leave the same
 # database file as a filcc-built sqlite3, plain and under FUGC_SCRIBBLE
 # and FUGC_VERIFY, for nanofil's reference and its optimized
-# configuration. sqlite3.c alone is 260,000 lines; nanofil compiles it in
-# about 2.5 minutes and 3 GB, so each configuration builds one sqlite3.
+# configuration. sqlite3.c alone is 260,000 lines; nanofil's reference
+# configuration compiles it in about 2 minutes within the default 1 GB
+# Prolog stack.
 { pkgs, filcc }:
 assert pkgs.sqlite.version == "3.51.2";
 let
@@ -49,7 +50,10 @@ pkgs.runCommandCC "nanofil-sqlite"
     for opt in "" -O "-O --registers=local --checks=reuse"; do
       echo "== SQLite 3.51.2, nanofil $opt"
       rm -f *.o sqlite3 nanofil.log
-      export NANOFIL_OPT=$opt NANOFIL_LOG=$PWD/nanofil.log NANOFIL_STACK_LIMIT=4000000000
+      export NANOFIL_OPT=$opt NANOFIL_LOG=$PWD/nanofil.log
+      # The reference configuration fits SWI's default 1 GB stack; the
+      # middle end and register allocation keep the raised limit.
+      if [ -n "$opt" ]; then export NANOFIL_STACK_LIMIT=4000000000; else unset NANOFIL_STACK_LIMIT; fi
       start=$SECONDS
       $cc -c ${flags} -I. sqlite3.c -o sqlite3.o
       $cc -c ${flags} -I. shell.c -o shell.o
