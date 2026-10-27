@@ -19,7 +19,7 @@ pkgs.runCommandCC "nanofil-bzip2" { src = pkgs.bzip2.src; } ''
   cat ${../.}/src/*.pl ${../.}/docs/*.md > text
   head -c 1000000 /dev/urandom > random
 
-  for opt in "" -O "--registers=local" "-O --registers=local" "-O --branches=selected"; do
+  for opt in "" -O "--registers=local" "-O --registers=local" "-O --branches=reference"; do
     echo "== bzip2, nanofil $opt"
     rm -rf nf
     unpack nf

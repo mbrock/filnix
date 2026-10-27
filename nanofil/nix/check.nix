@@ -125,16 +125,18 @@ pkgs.runCommandCC "nanofil-check"
     step "reuse corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
     step "reuse local ABI+GC" env NANOFIL_REGISTERS=local RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh gc setjmp pointer-effects reuse-gc
     unset NANOFIL_CHECKS
-    # Branch selection (docs/perf.md), alone and with local caching, whose
-    # checker validates the selected stream.
-    export NANOFIL_BRANCHES=selected
-    for opt in "" -O "-O --registers=local"; do
-      export NANOFIL_OPT=$opt
-      step "branches $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/branches.ir tests/c/*.c big1.c
-      step "branches $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
-      step "branches $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    # Branch selection (docs/perf.md) is the -O default, so the -O suites
+    # above run it; here it runs without -O, and -O runs the reference
+    # branches, alone and with local caching, whose checker validates the
+    # selected stream.
+    for mode in "selected:" "reference:-O" "reference:-O --registers=local"; do
+      export NANOFIL_BRANCHES=''${mode%%:*} NANOFIL_OPT=''${mode#*:}
+      step "branches $mode difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/branches.ir tests/c/*.c big1.c
+      step "branches $mode ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
+      step "branches $mode programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     done
     unset NANOFIL_OPT
+    export NANOFIL_BRANCHES=selected
     step "branches corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
     unset NANOFIL_BRANCHES
     # The functional, versioned-fact and incremental analyses must agree.

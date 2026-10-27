@@ -18,10 +18,10 @@ mode, through the same `nanofil-cc` wrapper the Nix checks use:
 | Mode | nanofil options |
 | --- | --- |
 | `off` | none: the reference backend without the middle end |
-| `O` | `-O` |
+| `O` | `-O` (with selected branches, item 2) |
 | `O-reuse` | `-O --checks=reuse` ([m7.md](m7.md)) |
 | `O-local` | `-O --registers=local` ([m6.md](m6.md)) |
-| `O-branches` | `-O --branches=selected` (item 2 below) |
+| `O-refbranches` | `-O --branches=reference`: `-O` before item 2 became its default |
 
 From the repository root, on swa (or any quiet x86-64 machine with perf):
 
@@ -54,7 +54,9 @@ filcc is not deterministic: compiling the same file twice gives different
 code (October 2026; zlib's `deflate.c`, bzip2's `blocksort.c`, lz4's
 `lz4.c` and `lz4hc.c` all differ run to run, and three compiles of
 `lz4.c` disassemble to 57,561, 57,729 and 57,594 lines). A rebuilt filcc
-lz4 ran `-9` in 2.99G instructions once and 2.84G another time. So pin
+lz4 ran `-9` in 2.99G instructions once and 2.84G another time. The
+cause is FilPizlonator's check order, which follows heap addresses
+([abi-findings.md](abi-findings.md#filcc-output-depends-on-heap-addresses)). So pin
 the reference: `run.py` and `profile.py` take filcc's builds from
 `bench/ref` when it exists (`--ref DIR`), else from `out`. Pin once with
 
@@ -273,7 +275,7 @@ the gate; item 3's checker adds one pairing rule for it (a `jz` on a
 register holding `zext(setcc(C, F))` is `j¬C` on flags F, with flags
 live across the transfer).
 
-*Implemented in this round, opt-in as `--branches=selected`; see [Results](#item-2-branch-selection).*
+*Implemented in this round; the `-O` default since its gate result, see [Results](#item-2-branch-selection).*
 
 ### 3. Whole-function scalar register allocation with register operands
 
@@ -441,9 +443,12 @@ each per dispatch. Item 2 shortens each level.
 
 ### Item 2: branch selection
 
-`--branches=selected` (or `NANOFIL_BRANCHES=selected`) is opt-in, like
-M6's local caching: the reference stays the default and its 1,080
-snapshot outputs are byte-identical. A block whose last instruction is a
+`--branches=selected` (or `NANOFIL_BRANCHES=selected`) landed opt-in,
+and after the gate below it became the default under `-O`. Without
+`-O` the reference branches stay the default, so the 1,080 snapshot
+outputs (none use `-O`) are byte-identical; `-O --branches=reference`
+gives the earlier `-O` output, which the Nix checks and the gate's
+`O-refbranches` mode keep running. A block whose last instruction is a
 `w`/`l` comparison read by nothing but the block's branch emits `cmp`
 (register or imm32 operand) and a conditional jump; the boolean is never
 materialized. Of the two arms, a plain edge (no phi copies, no poll)
@@ -456,7 +461,7 @@ conditional jumps and labels were already region boundaries.
 The gate, with filcc's builds pinned to the item-1 run's (`item 1 rerun`
 is `-O` in the same run as item 2):
 
-| Workload | ab05a5b `O` | item 1 `O` | item 1 rerun `O` | item 2 `O-branches` |
+| Workload | ab05a5b `O` | item 1 `O` | item 1 rerun `O` | item 2 `-O --branches=selected` |
 |---|--:|--:|--:|--:|
 | zlib -6 text | 4.59 (5.97) | 4.54 (5.97)* | 4.55 (5.97)* | 4.40 (5.68) |
 | zlib -d text | 3.36 (4.62) | 3.21 (4.60)* | 3.04 (4.60) | 2.99 (4.33)* |

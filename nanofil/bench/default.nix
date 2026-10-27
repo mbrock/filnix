@@ -24,7 +24,7 @@ let
     O = "-O";
     O-reuse = "-O --checks=reuse";
     O-local = "-O --registers=local";
-    O-branches = "-O --branches=selected";
+    O-refbranches = "-O --branches=reference";
   };
   # 4 MiB of C source text from the four pinned tarballs, sorted by path
   # and repeated, and 4 MiB of SHA-256 counter output. Both depend only on

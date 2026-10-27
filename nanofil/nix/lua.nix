@@ -37,7 +37,7 @@ pkgs.runCommandCC "nanofil-lua"
     cc=${import ./nanofil-cc.nix { inherit pkgs filcc; }}
     mkdir official $out
     tar -xf ${officialTests} -C official --strip-components=1
-    for opt in "" -O "--registers=local" "-O --registers=local" "-O --branches=selected" "--checks=reuse"; do
+    for opt in "" -O "--registers=local" "-O --registers=local" "-O --branches=reference" "--checks=reuse"; do
       case "$opt" in
         "") label=plain ;;
         -O) label=optimized ;;

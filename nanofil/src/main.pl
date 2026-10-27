@@ -51,8 +51,9 @@
     `--branches=reference|selected` independently selects the reference
     branch on a stored boolean, or a branch on the flags of a compare
     that only the branch reads, with jumps to the next block left to
-    fall through (docs/perf.md). The default is reference;
-    NANOFIL_BRANCHES supplies the same choice.
+    fall through (docs/perf.md). The default is selected with `-O` and
+    reference without it; NANOFIL_BRANCHES supplies the same choice, and
+    `-O --branches=reference` keeps the reference branches.
 
     `--checks=reference|reuse` independently selects the reference checked
     IR, a check before every access, or check reuse after pizlonation
@@ -124,8 +125,8 @@ main :-
 register_default(emit(Registers, Branches)) :-
     ( getenv('NANOFIL_REGISTERS',R) -> Registers = R ; Registers = stack ),
     register_mode(Registers),
-    ( getenv('NANOFIL_BRANCHES',B) -> Branches = B ; Branches = reference ),
-    branches_mode(Branches).
+    % Unbound until options/8: the branch default depends on -O.
+    ( getenv('NANOFIL_BRANCHES',B) -> branches_mode(B), Branches = B ; true ).
 register_mode(R) :-
     ( memberchk(R,[stack,local]) -> true
     ; throw(nanofil_error('registers must be stack or local')) ).
@@ -148,7 +149,14 @@ options([A|As],O,emit(R,_),C,Opt,Rs,Cs,Args) :-
 options([A|As],O,R,_,Opt,Rs,Cs,Args) :-
     atom_concat('--checks=',C,A), !, checks_mode(C),
     options(As,O,R,C,Opt,Rs,Cs,Args).
-options(Args,O,R,C,O,R,C,Args).
+options(Args,O,emit(R,B),C,O,emit(R,B),C,Args) :- branches_default(O,B).
+
+% branches_default(+Opt, ?Branches): with no --branches or
+% NANOFIL_BRANCHES, -O selects branches and its absence keeps the
+% reference.
+branches_default(_, B) :- nonvar(B), !.
+branches_default(o0, reference).
+branches_default(o1, selected).
 
 % arg_atom(+Arg, -Atom): Atom is the command-line argument Arg, which
 % is an atom (SWI) or a character list (Trealla).

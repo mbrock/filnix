@@ -706,3 +706,36 @@ states both suffix counts. Local payload/aux never enter the temporary
 alias pool; the origin remains correct across calls and pollchecks.
 The exact IR, lifetime and conservative selection policy are in
 [m5.md](m5.md#nonescaping-local-storage).
+
+## filcc output depends on heap addresses
+
+Verified October 2026 with filcc-staging, for the toolchain owner; nanofil
+does not depend on it. The same `filcc -O2 -c` of one file gives a
+different object on each run: zlib's `deflate.c`, bzip2's `blocksort.c`
+and lz4's `lz4.c` and `lz4hc.c`. `-O2` compiles of `lz4.c` disassemble
+to anywhere from 57,561 to 59,241 lines,
+with `LZ4_decompress_safe` at 0x3301 or 0x3478 bytes, and a filcc lz4
+ran `lz4 -9` in 2.99G instructions in one build and 2.84G in another.
+Two Nix builds of one derivation differ (`nix build --rebuild`).
+
+- `-O0` is deterministic. `-O1` and `-O2` are not: four compiles, four
+  objects.
+- Under `setarch -R` (no ASLR) three `-O2` compiles are byte-identical,
+  so the output depends on where objects are allocated.
+- `-mllvm -print-changed` runs first differ in `FilPizlonatorPass`'s
+  output: the `filc_optimized_access_check_origin` constants come out in
+  a different order (`.38`/`.39` swap their write flag in
+  `LZ4_compress_fast_extState_fastReset`).
+- `AccessCheck::operator<` (FilPizlonator.cpp:737) orders checks first
+  by `CanonicalPtr < Other.CanonicalPtr`, a `Value*` comparison, and
+  `canonicalizeAccessChecks` (5229) `stable_sort`s by it; `emitChecks`
+  (3568) then emits one group per pointer in that order. So the order of
+  check groups, their fail blocks and their origins follows heap
+  addresses, and later passes (block placement, register allocation)
+  turn it into different code and speed.
+
+Likely fix (not tried): order by a stable key, such as the instruction
+or argument index of `CanonicalPtr` in the function, instead of its
+address. Other pointer-keyed containers in the pass (58 `DenseMap`/
+`unordered_map`/`SmallPtrSet` of pointers) are harmless only where they
+are not iterated to produce output.
