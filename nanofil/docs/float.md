@@ -100,9 +100,14 @@ compares exactly against native code:
   conversions to and from every integer type, comparisons and `!`/`&&`
   on floats, floating constants (decimal and hex, `f`/`F` suffixes), and
   constant expressions in static initializers, evaluated with ieee.pl.
-- Refused with a message: `long double`, `_Complex`, and passing or
-  returning by value a struct or union that contains a float (SysV
-  classifies those into SSE registers; a later step).
+- Structs and unions with float members pass and return by value as
+  SysV classifies their eightbytes (abi-findings.md, *Structs with
+  float members*): an eightbyte of only floats and doubles is class `d`
+  if it holds a double, `s` for a lone float, and a pair of floats is
+  `l` (its bytes) in a generic-only function, as clang's `<2 x float>`.
+  A returned `tuple` may then hold `s` and `d` words, which come back
+  in XMM0 and XMM1 beside the integer words in RDX and RCX.
+- Refused with a message: `long double`, `_Complex`.
 - `<math.h>` functions are ordinary calls into libm.
 
 ## Backends

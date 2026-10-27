@@ -55,8 +55,9 @@
     | Params | a list of `param(K, tmp(N))`, K one of `w` `l` `p` `s` `d` |
     | Blocks | a list of `block(Label, Phis, Insts, Jump)`, the entry block first |
 
-    A `tuple([K1, K2])` return is two words, each Ki `l` or `p`: a
-    struct of 9 to 16 bytes (filc mode only).
+    A `tuple([K1, K2])` return is two words, each Ki `l`, `p`, `s` or
+    `d`: a struct of 9 to 16 bytes, its eightbytes as SysV classes them
+    (filc mode only).
 
     ## Phis and instructions
 
@@ -631,9 +632,9 @@ valid_item(M, Mode, Stage, func(Name, _, Ret, Params, Blocks)) :-
     ( (any_class(Ret) ; Ret == void ; Ret = tuple(_)) -> true
     ; fn_error(Name, 'invalid return class ~w', [Ret]) ),
     (   Ret = tuple(Ks),
-        \+ ( Ks = [_, _], forall(member(K, Ks), memberchk(K, [l, p])) )
+        \+ ( Ks = [_, _], forall(member(K, Ks), memberchk(K, [l, p, s, d])) )
     ->  fn_error(Name,
-                 'a tuple return is two words of class l or p, not ~w', [Ks])
+                 'a tuple return is two words of class l, p, s or d, not ~w', [Ks])
     ;   true
     ),
     findall(Label, member(block(Label, _, _, _), Blocks), Labels),

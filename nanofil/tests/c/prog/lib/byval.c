@@ -28,6 +28,7 @@ long c_vsum(int n, ...)
 }
 struct trio c_mk(struct trio t, long d) { t.a += d; t.p += 1; t.c -= d; return t; }
 struct reals c_reals(struct reals r, double k) { r.d[0] *= k; r.d[2] += k; r.f -= 1; return r; }
+long c_huge(struct huge h, long k) { return h.a[0] + h.a[39] * 3 + *h.p + k + n_huge(h, k + 1); }
 
 long c_calls_back(char *buf)
 {

@@ -25,6 +25,7 @@ long n_wide(struct wide w)
 long n_tight(struct tight t) { return t.c * 3 + t.n; }
 struct trio n_mk(struct trio t, long d) { t.a *= d; t.p += 2; t.c += d; return t; }
 struct reals n_reals(struct reals r, double k) { r.d[1] -= k; r.d[2] *= k; r.f += 2; return r; }
+long n_huge(struct huge h, long k) { return h.a[1] * 5 + h.a[38] + h.p[1] + k; }
 static long n_vsum(int n, ...);
 
 int main(void)
@@ -61,6 +62,14 @@ int main(void)
 
     struct trio u = { 1, buf + 9, 2 };
     printf("variadic %ld %ld\n", c_vsum(2, t, 10L, u, 20L), n_vsum(2, t, u));
+    /* 336 bytes: the packet spills past the 256 inline bytes into the
+       thread's outline buffers, the pointer's capability included. */
+    struct huge hg;
+    for (int i = 0; i < 40; i++)
+        hg.a[i] = i * 3 + 1;
+    hg.p = buf + 6;
+    long (*volatile hp)(struct huge, long) = n_huge;
+    printf("huge %ld %ld %ld\n", c_huge(hg, 2), n_huge(hg, 3), hp(hg, 4));
     printf("calls back %ld\n", c_calls_back(buf));
     printf("generic back %ld\n", c_generic(buf));
     fflush(stdout);

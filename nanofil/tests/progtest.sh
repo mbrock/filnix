@@ -4,7 +4,10 @@
 # agree on stdout, stderr and exit status. A Fil-C safety panic counts as
 # "trap" (its message names different functions in the two builds). An
 # "// args: ..." line gives the arguments, and "// link: FILE.c" names a
-# companion, relative to the program, that clang builds into both.
+# companion, relative to the program, that clang builds into both. With
+# a "// signatures" line, nanofil must also give each function the
+# fast-entry signature clang gives it (exported pizlonatedFI<Sig>_<name>): a
+# wrong one still works through the generic entries, so only this sees it.
 # NANOFIL_OPT=-O turns on nanofil's middle end.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -81,6 +84,15 @@ for f in "$@"; do
   "$filcc" -o "$d/nanofil" "$d/n.o" "${libs[@]}" -lm
   [[ $reference_failed == 0 ]] || exit 1
   outcome=pass
+  if grep -q '^// signatures' "$f"; then
+    "$filcc" -O1 -w -S -o "$d/c.s" "$f"
+    for s in n c; do
+      grep -oE 'globl[[:space:]]+pizlonatedFI[0-9]+_[A-Za-z0-9_]+' "$d/$s.s" | awk '{print $2}' | sort >"$d/$s.sigs" || true
+    done
+    if ! diff -u "$d/c.sigs" "$d/n.sigs" >"$d/sigs.diff"; then
+      echo "MISMATCH $f (signatures):"; cat "$d/sigs.diff"; status=1; outcome=mismatch
+    fi
+  fi
   run "$d/nanofil" "$d/n" "${args[@]}"
   run "$d/clang" "$d/c" "${args[@]}"
   for part in stdout stderr status; do

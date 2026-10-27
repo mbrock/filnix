@@ -67,10 +67,18 @@ signature(Ret, ParamKs, Sig) :-
     maplist(class_digit, RetKs, RetDigits),
     maplist(class_digit, ParamKs, ArgDigits),
     length(ArgDigits, NArgs),
-    ( NArgs =< 16 -> true
-    ; throw(nanofil_error('more than 16 arguments')) ),
-    bijective_value(RetDigits, R), bijective_value(ArgDigits, A),
-    Sig is 1 + R + 133 * A.
+    (   NArgs =< 16
+    ->  bijective_value(RetDigits, R), bijective_value(ArgDigits, A),
+        Sig is 1 + R + 133 * A
+    ;   never_signature(Sig)
+    ).
+
+% More than 16 words have no fast signature (clang's is generic, 0). A
+% call site gets one no function object has, the largest 64-bit value
+% (fast signatures stay below 2^63), so it always goes generic; the
+% frontend makes such a definition generic-only, and its private body is
+% named with this one.
+never_signature(18446744073709551615).
 
 class_digit(w, 0).
 class_digit(l, 0).
@@ -97,8 +105,9 @@ return_protocol(Ret, Protocol) :-
 return_words(p, N0, N) :- N is N0 + 2.
 return_words(w, N0, N) :- N is N0 + 1.
 return_words(l, N0, N) :- N is N0 + 1.
-return_words(s, N0, N) :- N is N0 + 1.
-return_words(d, N0, N) :- N is N0 + 1.
+% Float words return in %xmm0 and %xmm1, not in integer registers.
+return_words(s, N, N).
+return_words(d, N, N).
 
 body_params(Func, Ps, Body) :-
     ( variadic_func(Func)
@@ -193,10 +202,16 @@ result_slot(result(T,K), [T|Ss], Ss) :- K \== p.
 
 % Results name their channels explicitly. Scalar floating results are
 % distinct from integer slots; the target must test the exception first.
+% A tuple with a float word names each slot's class: typed(K-Slot).
 fast_result(Res, result(Return, Channels)) :-
     result_ret(Res, Ret), return_protocol(Ret, Return),
     ( Res = result(T,K), memberchk(K,[s,d]) -> Channels = float(K,T)
+    ; Res = tuple(Tos), float_tuple(Tos)
+    -> foldl(typed_slot, Tos, Typed, []), Channels = typed(Typed)
     ; result_tos(Res,Tos), result_slots(Tos,Slots), Channels = slots(Slots) ).
+float_tuple(Tos) :- member(result(_,K), Tos), memberchk(K, [s,d]), !.
+typed_slot(result(T,p), [l-T,l-lower(T)|Ss], Ss) :- !.
+typed_slot(result(T,K), [K-T|Ss], Ss).
 generic_result(Res, receive_generic(Need, Cells)) :-
     result_tos(Res, Tos), length(Tos,N), Need is 8*N,
     findall(cell(I,K,T,Lower),
@@ -239,6 +254,9 @@ lower_jump(K, Return, ret(V), abi_return([return_value(K,V),pop_frame,success(Re
 lower_jump(tuple(Ks), buffer(N), rets(Vs),
            abi_return([return_buffer(Words),success_buffer,pop_frame,native_return])) :- !,
     maplist(return_arg,Ks,Vs,Args), fast_args(Args,Words), length(Words,N).
+lower_jump(tuple(Ks), registers, rets(Vs),
+           abi_return([return_typed(Ks,Vs),pop_frame,success(registers)])) :-
+    member(K, Ks), memberchk(K, [s,d]), !.
 lower_jump(_, registers, rets(Vs),
            abi_return([return_registers(Vs),pop_frame,success(registers)])) :- !.
 lower_jump(_, Return, ret, abi_return([pop_frame,success(Return)])) :- !.
@@ -266,6 +284,7 @@ adapter_return(Ret, adapter_result(Return,Channel,Size,Packet)) :-
     Size is 8*max(1,N),
     ( Ks = [] -> Channel = void
     ; Ks = [K], memberchk(K,[s,d]) -> Channel = float(K)
+    ; member(K, Ks), memberchk(K,[s,d]) -> Channel = typed(Ks)
     ; Channel = words ),
     generic_params(Ks, Words), findall(S,member(wf(_,S),Words),Copies),
     ( Ks = [] -> Zeros = [data(0),aux(0)]

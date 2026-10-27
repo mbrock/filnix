@@ -207,6 +207,9 @@ struct_field(thread, state, 8).
 struct_field(thread, top_frame, 16).
 struct_field(thread, cc_inline_buffer, 128).
 struct_field(thread, cc_inline_aux_buffer, 384).
+struct_field(thread, cc_outline_buffer, 640).
+struct_field(thread, cc_outline_aux_buffer, 648).
+struct_field(thread, cc_outline_size, 656).
 struct_field(function_object, fast_entry, 0).
 struct_field(function_object, generic_entry, 8).
 struct_field(function_object, signature, 16).
@@ -629,6 +632,10 @@ abi_action(consume_va(K,P,Size,D), I,B,Ctx) -->
 abi_action(returns_twice(D,Kind,Buf,Mask,Keys), I,B,Ctx) -->
     setjmp(D, Kind, Buf, Mask, Keys, I, B, Ctx).
 abi_action(return_value(K,V), _, _, Ctx) --> ret_value(K, V, Ctx).
+abi_action(return_typed(Ks,Vs), _, _, Ctx) -->
+    { ctx_fn(Ctx, Fn), foldl(typed_return_word, Ks, Vs, KTs, []),
+      result_registers(KTs, Rs) },
+    typed_return_loads(KTs, Rs, Fn, Ctx).
 abi_action(return_registers([V1,V2]), _, _, Ctx) -->
     { ctx_fn(Ctx, Fn) }, load(V1,l,d,Fn), load(V2,l,c,Fn).
 abi_action(return_buffer(Words), _, _, Ctx) -->
@@ -827,6 +834,20 @@ ret_value(l, V, Ctx) -->
 ret_value(K, V, Ctx) -->
     { float_class(K), ctx_fn(Ctx,Fn) },
     load(V,K,a,Fn), to_xmm(K,a,xmm0).
+
+% A returned tuple's words as K-Word, a p value being its address and
+% lower; then each loaded into its result register.
+typed_return_word(p, V, [l-addr(V),l-lower(V)|W], W) :- !.
+typed_return_word(K, V, [K-val(V)|W], W).
+typed_return_loads([], [], _, _) --> [].
+typed_return_loads([K-W|KTs], [R|Rs], Fn, Ctx) -->
+    typed_return_load(W, K, R, Fn, Ctx), typed_return_loads(KTs, Rs, Fn, Ctx).
+typed_return_load(val(V), K, xmm(K,X), Fn, _) --> load(V, K, a, Fn), to_xmm(K, a, X).
+typed_return_load(val(V), K, gpr(G), Fn, _) --> { short_reg(G, R) }, load(V, K, R, Fn).
+typed_return_load(addr(V), _, gpr(G), Fn, _) --> { short_reg(G, R) }, load(V, l, R, Fn).
+typed_return_load(lower(V), _, gpr(G), _, Ctx) --> lower_reg_load(V, G, Ctx).
+short_reg(rdx, d).
+short_reg(rcx, c).
 
 % The words of a buffered return, into the buffer at %rax.
 buffer_words([], _, _) --> [].
@@ -1314,6 +1335,8 @@ indirect_call(Sig, Form, Words, result(_,Channels), ArgsSize, Cells,
     fast_result(Form, Channels, Ctx),
     [ins(jmp, none, [sym(Done)]),
      label(Generic)],
+    { local_label(Ctx, Block, Index, outline, Outline) },
+    outline_ensure(ArgsSize, Outline, Ctx),
     generic_call_args(Cells, Fn, Ctx),
     slot_reg_load(thread, rdi, Ctx),
     slot_reg_load(aux, rsi, Ctx),
@@ -1371,6 +1394,12 @@ fast_result(reg, float(K,T), Ctx) -->
     { special_label(Ctx,exc,Exc) },
     [ins(test,b,[imm(1),reg(al)]),ins(jnz,none,[sym(Exc)])],
     from_xmm(K,xmm0,a), reg_slot_store(rax,T,Ctx).
+fast_result(reg, typed(KTs), Ctx) -->
+    { special_label(Ctx, exc, Exc) },
+    [ins(test, b, [imm(1), reg(al)]),
+     ins(jnz, none, [sym(Exc)])],
+    { result_registers(KTs, Rs) },
+    typed_result_stores(KTs, Rs, Ctx).
 fast_result(reg, slots(Slots), Ctx) -->
     { special_label(Ctx, exc, Exc) },
     [ins(test, b, [imm(1), reg(al)]),
@@ -1381,6 +1410,30 @@ fast_result(mem(_), slots(Slots), Ctx) -->
     [ins(cmp, b, [imm(0), mem(0, rsp)]),
      ins(jne, none, [sym(Exc)])],
     buffer_slot_copies(Slots, 8, Ctx).
+
+% result_registers(+KTs, -Rs): the register of each K-Slot word of a
+% returned tuple, in order: integer words in %rdx then %rcx, float
+% words in %xmm0 then %xmm1, as LLVM returns {i1, ...}.
+result_registers(KTs, Rs) :- result_registers(KTs, [rdx, rcx], [xmm0, xmm1], Rs).
+result_registers([], _, _, []).
+result_registers([K-_|KTs], Gs, [X|Xs], [xmm(K,X)|Rs]) :-
+    float_class(K), !, result_registers(KTs, Gs, Xs, Rs).
+result_registers([_|KTs], [G|Gs], Xs, [gpr(G)|Rs]) :-
+    result_registers(KTs, Gs, Xs, Rs).
+
+% Integer registers first: a float word goes into its slot through %rax.
+typed_result_stores(KTs, Rs, Ctx) -->
+    typed_result_gprs(KTs, Rs, Ctx), typed_result_xmms(KTs, Rs, Ctx).
+typed_result_gprs([], [], _) --> [].
+typed_result_gprs([_-T|KTs], [R|Rs], Ctx) -->
+    ( { R = gpr(G) } -> reg_slot_store(G, T, Ctx) ; [] ),
+    typed_result_gprs(KTs, Rs, Ctx).
+typed_result_xmms([], [], _) --> [].
+typed_result_xmms([_-T|KTs], [R|Rs], Ctx) -->
+    (   { R = xmm(K, X) } -> from_xmm(K, X, a), reg_slot_store(rax, T, Ctx)
+    ;   []
+    ),
+    typed_result_xmms(KTs, Rs, Ctx).
 
 % The store of each register into the matching slot.
 reg_slot_stores([], _, _) --> [].
@@ -1427,13 +1480,48 @@ rets_check(Need, RetOk) -->
 % Invariant: Args are the arguments from argument I on.
 generic_call_args([], _, _) --> [].
 generic_call_args([cell(I, K, V, LowerSource)|Cells], Fn, Ctx) -->
-    { generic_offsets(I, Addr, Lower) },
     load(V, K, a, Fn),
     flight_lower_load(LowerSource, Ctx),
     slot_reg_load(thread, rdx, Ctx),
-    [ins(mov, q, [reg(rax), mem(Addr, rdx)]),
-     ins(mov, q, [reg(rcx), mem(Lower, rdx)])],
+    cell_stores(I, rdx),
     generic_call_args(Cells, Fn, Ctx).
+
+% cell_stores(+I, +Thread)//: argument cell I from %rax, its lower from
+% %rcx, with the thread in register Thread: in the inline buffers, or
+% for a cell past their 256 bytes in the outline ones (clobbering
+% %rsi), as storeCC writes them.
+cell_stores(I, T) -->
+    { inline_cells(N), I < N }, !,
+    { generic_offsets(I, Addr, Lower) },
+    [ins(mov, q, [reg(rax), mem(Addr, T)]),
+     ins(mov, q, [reg(rcx), mem(Lower, T)])].
+cell_stores(I, T) -->
+    { inline_cells(N), Off is 8 * (I - N),
+      field(thread, cc_outline_buffer, T, Buf),
+      field(thread, cc_outline_aux_buffer, T, AuxBuf) },
+    [ins(mov, q, [Buf, reg(rsi)]), ins(mov, q, [reg(rax), mem(Off, rsi)]),
+     ins(mov, q, [AuxBuf, reg(rsi)]), ins(mov, q, [reg(rcx), mem(Off, rsi)])].
+
+inline_cells(32).
+
+% outline_ensure(+Size, +Ctx)//: for an argument packet of Size bytes
+% past the 256 inline ones, make the thread's outline buffers hold the
+% rest (filc_thread_ensure_cc_outline_buffer), before any cell is set.
+outline_ensure(Size, Ok, Ctx) -->
+    (   { Size > 256 }
+    ->  slot_reg_load(thread, rdi, Ctx), outline_ensure_rdi(Size, Ok)
+    ;   []
+    ).
+outline_ensure_rdi(Size, Ok) -->
+    (   { Size > 256 }
+    ->  { Need is Size - 256,
+          field(thread, cc_outline_size, rdi, Have) },
+        [ins(cmp, q, [imm(Need), Have]), ins(jae, none, [sym(Ok)]),
+         ins(mov, q, [imm(Need), reg(rsi)]),
+         ins(call, none, [plt(filc_thread_ensure_cc_outline_buffer_slow)]),
+         label(Ok)]
+    ;   []
+    ).
 
 % With a flight pointer in %rax:%rcx, jump to Fail unless it points at a
 % function object. Clobbers %rdx, %rsi and %rdi.
@@ -1579,6 +1667,7 @@ thunk(thunk(F,Sig,Ts,Cells,ArgsSize,Result,Need)) -->
     reserve_stack(Pop),adapter_stack(Saved,Ls,G),adapter_registers(Saved,Ls,G),
     mixed_thunk_call(Form),
     [ins(jmp,none,[sym(Out)]),label(Generic)],
+    thunk_outline_ensure(ArgsSize,G),
     saved_generic(Cells),
     [ins(mov,q,[reg(rbx),reg(rdi)]),ins(mov,q,[mem(-24,rbp),reg(rsi)]),
      ins(mov,l,[imm(ArgsSize),reg(edx)]),
@@ -1608,15 +1697,36 @@ mixed_thunk_call(mem(_)) -->
     { field(function_object,fast_entry,rdx,Fast) },
     [ins(mov,q,[reg(r12),reg(rdi)]),ins(mov,q,[reg(rbx),reg(rsi)]),
      ins(mov,q,[mem(-24,rbp),reg(rdx)]),ins(call,q,[ind(Fast)])].
+thunk_outline_ensure(ArgsSize,G) -->
+    (   { ArgsSize > 256 }
+    ->  { atom_concat(G,'.outline',Outline) },
+        [ins(mov,q,[reg(rbx),reg(rdi)])], outline_ensure_rdi(ArgsSize,Outline)
+    ;   []
+    ).
+
+% Inline cells go straight to the thread at %rbx; later ones through
+% cell_stores//2 into the outline buffers.
 saved_generic([]) --> [].
 saved_generic([cell(I,_,Data,saved(L))|Cells]) -->
+    { inline_cells(N), I < N }, !,
     { generic_offsets(I,AO,LO), saved_operand(Data,A), saved_operand(saved(L),Lower) },
     operand_thread_store(A,AO),operand_thread_store(Lower,LO),saved_generic(Cells).
 saved_generic([cell(I,K,Data,none)|Cells]) -->
+    { inline_cells(N), I < N }, !,
     { generic_offsets(I,AO,LO), saved_operand(Data,W) },
     adapter_load(K,W,unused),
     [ins(mov,q,[reg(rax),mem(AO,rbx)]),ins(mov,q,[imm(0),mem(LO,rbx)])],
     saved_generic(Cells).
+saved_generic([cell(I,_,Data,saved(L))|Cells]) -->
+    { saved_operand(Data,mem(AD,AB)), saved_operand(saved(L),mem(LD,LB)) },
+    [ins(mov,q,[mem(AD,AB),reg(rax)]),ins(mov,q,[mem(LD,LB),reg(rcx)]),
+     ins(mov,q,[reg(rbx),reg(rdx)])],
+    cell_stores(I,rdx), saved_generic(Cells).
+saved_generic([cell(I,K,Data,none)|Cells]) -->
+    { saved_operand(Data,W) },
+    adapter_load(K,W,unused),
+    [ins(xor,l,[reg(ecx),reg(ecx)]),ins(mov,q,[reg(rbx),reg(rdx)])],
+    cell_stores(I,rdx), saved_generic(Cells).
 
 %% Access checks: k(Size, Write, Align), with the pointer in %rax and its
 %% lower in %rcx, which the failure block passes on.
@@ -1983,9 +2093,21 @@ thunk_generic_reg_words(float(K),Need,[Off],RetOk) -->
     { att_suffix(K,S),reg_name(d,K,R) },
     rets_check(Need,RetOk),
     [ins(mov,S,[mem(Off,rbx),reg(R)])],to_xmm(K,d,xmm0).
+thunk_generic_reg_words(typed(Ks), Need, Srcs, RetOk) -->
+    { foldl(typed_ret_kind, Ks, KTs, []), result_registers(KTs, Rs) },
+    rets_check(Need, RetOk),
+    thunk_typed_loads(Rs, Srcs).
 thunk_generic_reg_words(words, Need, Srcs, RetOk) -->
     rets_check(Need, RetOk),
     thunk_reg_loads(Srcs, [rdx, rcx]).
+
+thunk_typed_loads([], []) --> [].
+thunk_typed_loads([R|Rs], [Off|Offs]) -->
+    (   { R = gpr(G) } -> [ins(mov, q, [mem(Off, rbx), reg(G)])]
+    ;   { R = xmm(K, X) },
+        [ins(mov, q, [mem(Off, rbx), reg(rax)])], to_xmm(K, a, X)
+    ),
+    thunk_typed_loads(Rs, Offs).
 
 % The load of each generic return word, at thread offset Off, into its
 % register.
@@ -2069,9 +2191,28 @@ generic_reg_results(float(K), packet([Off],[Lower])) -->
     from_xmm(K,xmm0,d),
     [ins(mov,q,[reg(rdx),mem(Off,rbx)]),
      ins(mov,q,[imm(0),mem(Lower,rbx)])].
+generic_reg_results(typed(Ks), packet(Dests,Zeros)) -->
+    { foldl(typed_ret_kind, Ks, KTs, []), result_registers(KTs, Rs) },
+    generic_typed_gprs(Rs, Dests), generic_typed_xmms(Rs, Dests),
+    [ins(xor, l, [reg(eax), reg(eax)])],
+    generic_zeroings(Zeros).
 generic_reg_results(words, packet(Dests,Zeros)) -->
     generic_reg_stores(Dests, [rdx, rcx]),
     generic_zeroings(Zeros).
+
+typed_ret_kind(p, [l-x,l-x|W], W) :- !.
+typed_ret_kind(K, [K-x|W], W).
+generic_typed_gprs([], []) --> [].
+generic_typed_gprs([R|Rs], [Off|Offs]) -->
+    ( { R = gpr(G) } -> [ins(mov, q, [reg(G), mem(Off, rbx)])] ; [] ),
+    generic_typed_gprs(Rs, Offs).
+generic_typed_xmms([], []) --> [].
+generic_typed_xmms([R|Rs], [Off|Offs]) -->
+    (   { R = xmm(K, X) }
+    ->  from_xmm(K, X, a), [ins(mov, q, [reg(rax), mem(Off, rbx)])]
+    ;   []
+    ),
+    generic_typed_xmms(Rs, Offs).
 
 % The store of each result register at its thread offset.
 generic_reg_stores([], _) --> [].

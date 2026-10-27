@@ -374,7 +374,7 @@ function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     Ctx = ctx(Name, RetType, none, none, Loc),
     phrase(( sret_param(RetType, SretParams),
              params(Names, ParamTypes, Ctx, Params0),
-             variadic_entry(Variadic, ParamTypes, SretParams, Params0),
+             variadic_entry(Variadic, RetType-ParamTypes, SretParams, Params0),
              vm_params(Names, ParamTypes, Ctx),
              stmt(Body, Ctx),
              fall_off(RetType),
@@ -415,16 +415,21 @@ context_insts([from(Os, I)|Is0], L, N, [I|Is], [site(inst(L, N), Os)|Rs]) :-
 
 % variadic_entry(+Variadic, +Types, +Sret, +Params)//: a variadic
 % function takes the entry snapshot, a cursor past its fixed words. So
-% does a function with a byval parameter, unbound: the snapshot makes it
+% does a function with a byval parameter, one whose parameters or
+% result clang passes outside the fast signature (generic_only_type/2),
+% or one of more than 16 words, which has no fast signature, unbound: the snapshot makes it
 % generic-only, as clang makes it, and the packet it promotes to the
 % heap holds the byval words, each pointer word with its capability.
 variadic_entry(variadic, _, Sret, Params) -->
     { append(Sret, Params, All), length(All, N), Off is 8 * N },
     bind(builtin(va_args), tmp(va_args)),
     emit(let(tmp(va_args), p, va_args, [const(Off)])).
-variadic_entry(fixed, Types, Sret, Params) -->
+variadic_entry(fixed, RetType-Types, Sret, Params) -->
     env(Env),
-    (   { member(Type, Types), su(Type), byval_type(Type, Env) }
+    (   { (   member(Type, Types), su(Type), generic_only_type(Type, Env)
+          ;   su(RetType), float_pair_type(RetType, Env)
+          ;   append(Sret, Params, All), length(All, NW), NW > 16
+          ) }
     ->  { append(Sret, Params, All), length(All, N), Off is 8 * N },
         emit(let(tmp(va_args), p, va_args, [const(Off)]))
     ;   []
@@ -1625,6 +1630,20 @@ lower_node(val(_, cast(TN, XV)), Ctx, R) --> !,            % 6.5.4
     evaluated_type(TN, Ctx, Type),
     lower(XV, Ctx, Value0),
     converted(Value0, Type, R).
+lower_node(val(_, va_arg(TN, XA)), Ctx, v(Tmp, Type)) -->  % 7.16.1.1
+    evaluated_type(TN, Ctx, Type),
+    { su(Type) }, !,
+    % A struct or union is in consecutive 8-byte cells of the packet,
+    % as the caller passed it: one va_arg per eightbyte, a pointer one
+    % with its capability.
+    env(Env),
+    { ctx_loc(Ctx, Loc), eightbytes(Type, Env, Loc, Ebs0),
+      findall(eb(O, N, K), ( member(eb(O, N, K0), Ebs0),
+                             ( K0 == p -> K = p ; K = l ) ), Ebs) },
+    lower(XA, Ctx, v(P, _)),
+    va_words(Ebs, P, Words),
+    local_slot(Type, Tmp),
+    store_words(Ebs, Words, Tmp).
 lower_node(val(_, va_arg(TN, XA)), Ctx, v(V, Type)) --> !, % 7.16.1.1
     evaluated_type(TN, Ctx, Type),
     { ctx_loc(Ctx, Loc),
@@ -2508,6 +2527,12 @@ call_args([XA|XAs], ParamTypes0, Ctx, IRArgs) -->
     call_args(XAs, ParamTypes, Ctx, IRArgs1),
     { append(IRArgs0, IRArgs1, IRArgs) }.
 
+% va_words(+Ebs, +P, -Words)//: Words are read through the va_list at
+% P, one per eightbyte at its class.
+va_words([], _, []) --> [].
+va_words([eb(_, _, K)|Ebs], P, [W|Ws]) -->
+    let(K, va_arg, [P], W), va_words(Ebs, P, Ws).
+
 % struct_call(+RetType, +Callee, +Args, +Loc, -R)//: R is the result of a
 % call returning a struct: its words land in a fresh local, or the
 % callee writes the local through the sret pointer.
@@ -2620,16 +2645,29 @@ member_ptrs(_, _, m(_, _, _, bits(_, _)), Offs, Offs).
 % goes only in the generic packet, where its words are its bytes, so a
 % float member does not matter; its eightbytes start at an 8-aligned
 % offset, as clang's do for alignments up to 8, the most nanofil's
-% types have. nanofil's calls carry at most 16 words.
+% types have. Others are classified as SysV does (abi_eightbytes/4).
 arg_words(Type, Env, Loc, Ebs) :-
-    ( byval_type(Type, Env) -> true ; by_value_check(Type, Env, Loc) ),
-    eightbytes(Type, Env, Loc, Ebs),
-    length(Ebs, N),
-    (   N > 16
-    ->  sema_error(Loc, 'passing a ~w of ~w words by value needs more than 16 arguments',
-                   [Type, N])
-    ;   true
+    (   byval_type(Type, Env) -> eightbytes(Type, Env, Loc, Ebs)
+    ;   by_value_check(Type, Env, Loc),
+        abi_eightbytes(Type, Env, Loc, Ebs)
     ).
+
+% generic_only_type(+Type, +Env): clang gives a function taking a
+% struct or union of Type no fast entry: it is byval, or (as for a
+% result, float_pair_type/2) an eightbyte of it holds two floats, which clang passes as <2 x float>,
+% a type outside the fast signature's digits. nanofil makes such a
+% function generic-only too, so the signatures agree.
+% A byval result is an sret pointer, which leaves the fast entry.
+generic_only_type(Type, Env) :- byval_type(Type, Env), !.
+generic_only_type(Type, Env) :- float_pair_type(Type, Env).
+
+float_pair_type(Type, Env) :-
+    \+ byval_type(Type, Env),
+    eightbytes(Type, Env, unknown, Ebs),
+    leaves(Type, Env, 0, Leaves, []),
+    member(eb(O, _, _), Ebs), End is O + 8,
+    findall(T, ( member(Off-T, Leaves), Off >= O, Off < End ), [T1, T2|Ts]),
+    forall(member(T, [T1, T2|Ts]), T == float), !.
 
 % byval_type(+Type, +Env): a struct or union of Type has SysV class
 % MEMORY, so clang passes it byval and returns it through sret: it is
@@ -2643,23 +2681,67 @@ byval_type(Type, Env) :-
 ret_shape(Type, Env, Loc, Shape) :-
     (   byval_type(Type, Env) -> Shape = sret
     ;   by_value_check(Type, Env, Loc),
-        eightbytes(Type, Env, Loc, Ebs),
+        abi_eightbytes(Type, Env, Loc, Ebs),
         Shape = words(Ebs)
     ).
 
 by_value_check(Type, Env, Loc) :-
-    ( contains_float(Type, Env)
-    -> sema_error(Loc, 'float-containing struct or union by value is not supported', [])
-    ; true
+    (   leaves(Type, Env, 0, Leaves, []), memberchk(_-x87, Leaves)
+    ->  sema_error(Loc, 'a struct or union holding a long double by value is not supported', [])
+    ;   true
     ).
 
-contains_float(Type, _) :- float_type(Type), !.
-contains_float(ldouble, _).
-contains_float(array(T, _), Env) :- contains_float(T, Env).
-contains_float(Type, Env) :-
-    su(Type), Type =.. [_, Id], env_defs(Env, Defs),
+% abi_eightbytes(+Type, +Env, +Loc, -Ebs): the eightbytes of a struct
+% or union of 16 bytes or less, classed as the SysV psABI (3.2.3) and
+% clang do. An eightbyte is p where a pointer starts. One holding only
+% floating members is SSE: d if a double is among them, s for a lone
+% float at its start, else l, for clang's <2 x float>, whose bytes go
+% in an integer word in nanofil and in the generic packet's cell in
+% both (so the function is generic-only in clang, by signature). Any
+% other eightbyte is INTEGER, l.
+abi_eightbytes(Type, Env, Loc, Ebs) :-
+    eightbytes(Type, Env, Loc, Ebs0),
+    leaves(Type, Env, 0, Leaves, []),
+    maplist(eightbyte_class(Leaves), Ebs0, Ebs).
+
+eightbyte_class(_, eb(O, N, p), eb(O, N, p)) :- !.
+eightbyte_class(Leaves, eb(O, N, _), eb(O, N, K)) :-
+    End is O + 8,
+    findall(Off-T, ( member(Off-T, Leaves), Off >= O, Off < End ), In),
+    (   In \== [], forall(member(_-T, In), memberchk(T, [float, double]))
+    ->  (   memberchk(_-double, In) -> K = d
+        ;   forall(member(Off-_, In), Off =:= O) -> K = s
+        ;   K = l
+        )
+    ;   K = l
+    ).
+
+% leaves(+Type, +Env, +Base, -Leaves0, ?Leaves): Leaves0-Leaves are the
+% scalars of Type as Offset-Kind, Offset from Base and Kind one of int,
+% ptr, float, double or x87; a bit-field is an int at its unit.
+leaves(float, _, B, [B-float|L], L) :- !.
+leaves(double, _, B, [B-double|L], L) :- !.
+leaves(ldouble, _, B, [B-x87|L], L) :- !.
+leaves(ptr(_), _, B, [B-ptr|L], L) :- !.
+leaves(array(T, N), Env, B, L0, L) :-
+    integer(N), N > 0, !,
+    type_size_align(T, Env, Size, _),
+    Last is N - 1, numlist(0, Last, Is),
+    foldl(elem_leaves(T, Env, B, Size), Is, L0, L).
+leaves(SU, Env, B, L0, L) :-
+    su(SU), !,
+    SU =.. [_, Id], env_defs(Env, Defs),
     get_assoc(Id, Defs, def(_, Members, _, _)),
-    member(m(_, T, _), Members), contains_float(T, Env).
+    foldl(member_leaves(Env, B), Members, L0, L).
+leaves(array(_, _), _, _, L, L) :- !.
+leaves(_, _, B, [B-int|L], L).
+
+elem_leaves(T, Env, B, Size, I, L0, L) :-
+    B1 is B + I * Size, leaves(T, Env, B1, L0, L).
+
+member_leaves(Env, B, m(_, T, Off), L0, L) :-
+    B1 is B + Off, leaves(T, Env, B1, L0, L).
+member_leaves(_, B, m(_, _, Off, bits(_, _)), [B1-int|L], L) :- B1 is B + Off.
 
 % copy_object(+Type, +Src, +Dst)//: copy the object of Type at Src to
 % Dst, an eightbyte at a time.
@@ -2705,7 +2787,7 @@ copy_pieces([p(Off, _, Load, Store)|Pieces], Src, Dst) -->
 load_words([], _, []) --> [].
 load_words([eb(Off, N, Class)|Ebs], Addr, [W|Words]) -->
     offset(Addr, Off, P),
-    (   { Class == p } -> let(p, load(p), [P], W)
+    (   { memberchk(Class, [p, s, d]) } -> let(Class, load(Class), [P], W)
     ;   { pieces(N, 0, Pieces) },
         load_pieces(Pieces, P, none, W)
     ),
@@ -2731,7 +2813,7 @@ load_pieces([p(Off, _, Load, _)|Pieces], P, Acc0, W) -->
 store_words([], [], _) --> [].
 store_words([eb(Off, N, Class)|Ebs], [W|Words], Addr) -->
     offset(Addr, Off, P),
-    (   { Class == p } -> emit(store(p, W, P))
+    (   { memberchk(Class, [p, s, d]) } -> emit(store(Class, W, P))
     ;   { pieces(N, 0, Pieces) },
         store_pieces(Pieces, W, P)
     ),

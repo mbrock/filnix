@@ -303,9 +303,46 @@ generic-only exactly like a variadic function: its generic entry
 promotes the whole packet to the heap (`filc_promote_args_to_heap`,
 capabilities included) and passes the words to the private body, which
 roots the snapshot. A small struct passed past a prototype's `...` goes
-as its eightbytes too, as clang coerces it. Limits: at most 16 words in
-all (the fast signature's limit, which nanofil's private bodies keep),
-and no aggregate `va_arg` yet.
+as its eightbytes too, as clang coerces it. A function of more than 16
+words is generic-only as well, and its packet may use the outline
+buffers (below). An aggregate `va_arg` reads one cell per eightbyte (a
+pointer one with its capability).
+
+## Structs with float members
+
+Verified at the staging pin with `-O2` probes and `-emit-llvm`. Clang
+classifies a struct or union of 16 bytes or less per eightbyte, as the
+SysV psABI says (3.2.3), and FilPizlonator keeps the resulting scalar
+types, so the fast signature has their digits:
+
+| C type | fast form |
+| --- | --- |
+| `struct {float a;}` | one `float` (digit 1): `r_f1` returns `{i1, float}`, `FI269` |
+| `struct {double a, b;}` | two `double`s: returned in XMM0 and XMM1 (`{i1, double, double}`, `FI436`), passed as two `double` arguments |
+| `struct {long a; double b;}` | `{i1, i64, double}`: RDX and XMM0; arguments `i64, double` |
+| `struct {double a; char *p;}` | `{i1, double, flight_ptr}`: XMM0, then RDX:RCX |
+| `struct {double a; float b;}` | `double, float` |
+| `struct {float a; int b;}` | one `i64` (a mixed eightbyte is INTEGER) |
+| `struct {float a, b;}`, `{float a, b, c;}` | `<2 x float>` for the first eightbyte, which has no signature digit: the function is generic-only (`FIP0`), as a caller or as a callee, argument or result |
+
+Integer words of a returned pair go in RDX then RCX and float words in
+XMM0 then XMM1, whatever their order in the struct. In the generic
+packet each eightbyte is one 8-byte cell, a float one holding its bits.
+nanofil's `abi_eightbytes/4` gives each eightbyte the IR class `s`, `d`,
+`l` or `p` accordingly, a pair of floats `l` (its bytes); a function
+taking or returning such a pair takes the entry snapshot so it is
+generic-only too, and `progtest.sh`'s `// signatures` mode compares
+every exported `pizlonatedFI<Sig>_` name with clang's.
+
+**More than 16 argument words, or 256 bytes of packet.** A call with
+more than 16 fast words has the generic signature 0. A packet past the
+256 inline bytes continues in the thread's outline buffers:
+`cc_outline_buffer` at thread+640, `cc_outline_aux_buffer` at +648, and
+their size at +656; `storeCC` first calls
+`filc_thread_ensure_cc_outline_buffer_slow(thread, size - 256)` when the
+size is short. nanofil's generic call paths do the same, and its call
+sites with more than 16 words use a signature no object has, so they
+always go generic.
 
 ## Verified end to end
 
