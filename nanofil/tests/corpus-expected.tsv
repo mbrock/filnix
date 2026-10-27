@@ -155,7 +155,7 @@ cproc/string-octal.c	no-main
 cproc/string-u8-type.c	no-main
 cproc/struct-copy.c	pass
 cproc/struct-flexible-array.c	no-main
-cproc/struct-packed.c	reject
+cproc/struct-packed.c	pass
 cproc/struct-passing-bitfield.c	no-main
 cproc/struct-passing-call.c	no-main
 cproc/struct-passing.c	no-main

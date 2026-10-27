@@ -78,7 +78,7 @@
                     castable/2, expression_category/3, modifiable_lvalue/2,
                     integer_type/4, elaborate/3, tree_type/2, value/2,
                     lowered/2, folded/3, member_layout/6,
-                    bitfield_promotion/3]).
+                    bitfield_promotion/3, unaligned_type/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -254,6 +254,15 @@ layout_attr(attr(Tokens)) :-
     memberchk(Word, [aligned, '__aligned__', packed, '__packed__']),
     !.
 
+% packed_attr(+Tokens), aligned_attr(+Tokens): the attribute tokens
+% name packed, or aligned.
+packed_attr(Tokens) :-
+    is_list(Tokens), attr_word(Tokens, Word),
+    memberchk(Word, [packed, '__packed__']), !.
+aligned_attr(Tokens) :-
+    is_list(Tokens), attr_word(Tokens, Word),
+    memberchk(Word, [aligned, '__aligned__']), !.
+
 % attr_word(+Tokens, -Word) is nondet: Word is an identifier anywhere in
 % an attribute's tokens, looking into groups.
 attr_word(Tokens, Word) :-
@@ -363,16 +372,19 @@ su_definition(Members, Kind, Tag, Attrs, Type, Env0, Env) :-
     foldl(member_decl, Members, Fieldss, Reflectss, Env1, Env2),
     append(Fieldss, Fields),
     append(Reflectss, Reflected),
-    (   member(Attr, Attrs), layout_attr(attr(Attr))
+    (   member(Attr, Attrs), packed_attr(Attr) -> Packing = packed
+    ;   Packing = natural
+    ),
+    (   member(Attr, Attrs), aligned_attr(Attr)
     ->  Def = bad('alignment attributes')
     ;   memberchk(bad(Why), Fields)
     ->  known_field_prefix(Fields, Prefix),
-        su_layout(Kind, Prefix, Env2, PrefixDef),
+        su_layout(Kind, Packing, Prefix, Env2, PrefixDef),
         (   PrefixDef = def(_, Known, _, _)
         ->  Def = partial(Why, Known)
         ;   Def = bad(Why)
         )
-    ;   su_layout(Kind, Fields, Env2, Def)
+    ;   su_layout(Kind, Packing, Fields, Env2, Def)
     ),
     Env2 = e(Ords, Tags2, Defs0, Next),
     put_assoc(Id, Defs0, Def, Defs1),
@@ -440,22 +452,46 @@ bitfield_width(Expr, Name, Type, Env, W) :-
     W >= 0, W =< Max,
     ( W =:= 0 -> Name == none ; true ).
 
-% su_layout(+Kind, +Fields, +Env, -Def), with the SysV rules: each member
-% at the next multiple of its alignment; size rounded up to the
-% alignment. A trailing flexible array member has size 0. A bit-field
-% follows the bits before it unless it would cross a boundary of its
-% type's size, where it starts instead; a zero-width one only moves to
-% that boundary. Unnamed bit-fields do not align the struct.
-su_layout(Kind, Fields, Env, Def) :-
-    catch(fields_layout(Kind, Fields, Env, Layout), bad(Why),
+doc(su_layout(+Kind, +Packing, +Fields, +Env, -Def), det, [
+    Kind: "struct or union",
+    Packing: "natural, or packed for GNU's packed attribute",
+    Fields: "the f(Name, Type) and bit-fields b(Name, Type, Width) in order",
+    Env: "the scope defining the members' types",
+    Def: "the definition: def(Kind, Members, Size, Align), or bad(Why)",
+    "The SysV rules: each member at the next multiple of its alignment;",
+    "size rounded up to the alignment. A trailing flexible array member",
+    "has size 0. A bit-field follows the bits before it unless it would",
+    "cross a boundary of its type's size, where it starts instead; a",
+    "zero-width one only moves to that boundary. Unnamed bit-fields do not",
+    "align the struct. Packed, every member has alignment 1, and so has",
+    "the struct; nanofil refuses packed bit-fields, and packed pointers,",
+    "whose capabilities Fil-C keeps only at 8-aligned addresses.",
+    cites('C11 6.7.2.1p15'),
+    example(( empty_env(E), su_layout(struct, natural, [f(some(a), char), f(some(b), int)], E, D) ),
+            D = def(struct, [m(some(a), char, 0), m(some(b), int, 4)], 8, 4)),
+    example(( empty_env(E), su_layout(struct, packed, [f(some(a), char), f(some(b), int)], E, D) ),
+            D = def(struct, [m(some(a), char, 0), m(some(b), int, 1)], 5, 1)),
+    example(( empty_env(E), su_layout(union, packed, [f(some(a), char), f(some(b), long)], E, D) ),
+            D = def(union, [m(some(a), char, 0), m(some(b), long, 0)], 8, 1)),
+    example(( empty_env(E), su_layout(struct, packed, [f(some(p), ptr(int))], E, D) ),
+            D = bad('packed pointers')),
+    example(( empty_env(E), su_layout(struct, packed, [b(some(x), int, 3)], E, D) ),
+            D = bad('packed bit-fields'))
+]).
+su_layout(Kind, Packing, Fields, Env, Def) :-
+    catch(fields_layout(Kind, Packing, Fields, Env, Layout), bad(Why),
           Layout = bad(Why)),
     layout_def(Layout, Kind, Def).
 
-% fields_layout(+Kind, +Fields, +Env, -Layout): Layout is
+% fields_layout(+Kind, +Packing, +Fields, +Env, -Layout): Layout is
 % placed(Members, End, Align) for Fields laid out in Env, or incomplete
 % when a field has no size. Throws bad(Why) as type_size_align/4.
-fields_layout(Kind, Fields, Env, Layout) :-
-    (   foldl(field_member(Kind, Env), Fields, Memberss, 0-1, EndBits-Align)
+fields_layout(_, packed, Fields, _, _) :-
+    member(b(_, _, _), Fields), throw(bad('packed bit-fields')).
+fields_layout(_, packed, Fields, Env, _) :-
+    member(f(_, T), Fields), holds_pointer(T, Env), throw(bad('packed pointers')).
+fields_layout(Kind, Packing, Fields, Env, Layout) :-
+    (   foldl(field_member(Kind, Packing, Env), Fields, Memberss, 0-1, EndBits-Align)
     ->  append(Memberss, Members),
         End is (EndBits + 7) // 8,
         Layout = placed(Members, End, Align)
@@ -475,16 +511,17 @@ layout_def(bad(Why), _, bad(Why)).
 % and Align include them. Throws bad(Why) as type_size_align/4. Any type
 % but a flexible array (array(_, none)) has its own size, so the
 % if-then-else keeps that default case.
-field_member(Kind, Env, f(Name, Type), [m(Name, Type, Off)], End0-Align0,
+field_member(Kind, Packing, Env, f(Name, Type), [m(Name, Type, Off)], End0-Align0,
              End-Align) :-
     (   Type = array(ElemType, none)
-    ->  type_size_align(ElemType, Env, _, FieldAlign),
+    ->  type_size_align(ElemType, Env, _, NaturalAlign),
         FieldSize = 0
-    ;   type_size_align(Type, Env, FieldSize, FieldAlign)
+    ;   type_size_align(Type, Env, FieldSize, NaturalAlign)
     ),
+    ( Packing == packed -> FieldAlign = 1 ; FieldAlign = NaturalAlign ),
     member_offset_end(Kind, End0, FieldSize, FieldAlign, Off, End),
     Align is max(Align0, FieldAlign).
-field_member(Kind, Env, b(Name, Type, W), Members, End0-Align0, End-Align) :-
+field_member(Kind, natural, Env, b(Name, Type, W), Members, End0-Align0, End-Align) :-
     type_size_align(Type, Env, Size, FieldAlign),
     UnitBits is 8 * Size,
     bitfield_start_end(Kind, End0, W, UnitBits, Start, End),
@@ -494,6 +531,39 @@ field_member(Kind, Env, b(Name, Type, W), Members, End0-Align0, End-Align) :-
         Members = [m(Name, Type, Unit, bits(Pos, W))],
         Align is max(Align0, FieldAlign)
     ).
+
+% holds_pointer(+T, +Env): an object of type T holds a pointer.
+holds_pointer(ptr(_), _).
+holds_pointer(array(T, _), Env) :- holds_pointer(T, Env).
+holds_pointer(SU, e(_, _, Defs, _)) :-
+    ( SU = struct(Id) ; SU = union(Id) ), !,
+    get_assoc(Id, Defs, def(_, Members, _, _)),
+    member(M, Members), arg(2, M, T), holds_pointer(T, e(_, _, Defs, _)), !.
+
+doc(unaligned_type(+T, +Env), semidet, [
+    T: "a struct or union type",
+    Env: "the scope defining it",
+    "T has a member, perhaps nested, at an offset that is not a multiple",
+    "of its type's alignment, as only a packed struct can. The SysV ABI",
+    "then classifies T as MEMORY: passed and returned in memory.",
+    cites('SysV x86-64 psABI 3.2.3'),
+    example(( empty_env(E0), su_definition([field([tspec(char)], dcl(some(a), base, none), none),
+                                            field([tspec(int)], dcl(some(b), base, none), none)],
+                                           struct, none, [[group([id(packed)])]], T, E0, E),
+              unaligned_type(T, E) )),
+    fails(( empty_env(E0), su_definition([field([tspec(int)], dcl(some(b), base, none), none),
+                                          field([tspec(char)], dcl(some(a), base, none), none)],
+                                         struct, none, [[group([id(packed)])]], T, E0, E),
+            unaligned_type(T, E) )),
+    fails(( empty_env(E), unaligned_type(struct('builtin.va_list'), E) ))
+]).
+unaligned_type(SU, e(O, Tg, Defs, N)) :-
+    ( SU = struct(Id) ; SU = union(Id) ), !,
+    get_assoc(Id, Defs, def(_, Members, _, _)),
+    member(M, Members), M = m(_, T, Off),
+    catch(type_size_align(T, e(O, Tg, Defs, N), _, Align), bad(_), fail),
+    (   Off mod Align =\= 0 -> true ; unaligned_type(T, e(O, Tg, Defs, N)) ), !.
+unaligned_type(array(T, _), Env) :- unaligned_type(T, Env).
 
 % member_offset_end(+Kind, +End0, +Size, +Align, -Off, -End): a member of
 % Size and Align after members ending at bit End0 is at byte Off and

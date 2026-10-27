@@ -1511,6 +1511,9 @@ member_lv(Addr, SUType, Field, Ctx, P, Type) -->
     (   { ( SUType = struct(_) ; SUType = union(_) ),
           member_type_offset(SUType, Field, Env, Type, Off) }
     ->  offset(Addr, Off, P)
+    ;   { SUType =.. [_, Id], env_defs(Env, Defs),
+          get_assoc(Id, Defs, Def), ( Def = bad(Why) ; Def = partial(Why, _) ) }
+    ->  { sema_error(Loc, 'member ~w of a type nanofil does not support (~w)', [Field, Why]) }
     ;   { sema_error(Loc, 'no member named ~w', [Field]) }
     ).
 
@@ -2543,6 +2546,9 @@ arg_words(Type, Env, Loc, Ebs) :-
     (   Size > 16
     ->  sema_error(Loc, 'passing a ~w of ~w bytes by value is not supported yet',
                    [Type, Size])
+    ;   unaligned_type(Type, Env)          % class MEMORY, passed as byval
+    ->  sema_error(Loc, 'passing a packed ~w with misaligned members by value is not supported yet',
+                   [Type])
     ;   eightbytes(Type, Env, Loc, Ebs)
     ).
 
@@ -2551,7 +2557,7 @@ arg_words(Type, Env, Loc, Ebs) :-
 ret_shape(Type, Env, Loc, Shape) :-
     by_value_check(Type, Env, Loc),
     type_size_align(Type, Env, Size, _),
-    (   Size > 16 -> Shape = sret
+    (   ( Size > 16 ; unaligned_type(Type, Env) ) -> Shape = sret
     ;   eightbytes(Type, Env, Loc, Ebs),
         Shape = words(Ebs)
     ).

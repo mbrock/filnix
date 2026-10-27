@@ -433,6 +433,13 @@ struct_spec(Env, Kind, su(Kind, Tag, Members, Attrs)) -->
 attr_list([A|As]) -->
     gnu_attr(A), !,
     attr_list(As).
+attr_list([[group([id(packed)])]|As]) -->   % [[gnu::packed]], as GNU's
+    punct('['), punct('['),
+    attribute_word(Prefix), { memberchk(Prefix, [gnu, '__gnu__']) },
+    punct(':'), punct(':'),
+    attribute_word(Name), { memberchk(Name, [packed, '__packed__']) },
+    punct(']'), punct(']'), !,
+    attr_list(As).
 attr_list(As) --> c23_attr, !, attr_list(As).
 attr_list([]) --> [].
 

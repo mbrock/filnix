@@ -58,7 +58,7 @@ the survey is stable, **not** that the compiler implements that feature.
 
 ## Current counts (October 2026)
 
-The checked baseline has **259 passes, 3 rejections, 7 reference
+The checked baseline has **260 passes, 2 rejections, 7 reference
 errors and 147 without main**. Variable length arrays and variably
 modified types (m4.md, "Variable length arrays") turn eight rejections
 into passes: cproc `builtin-vaarg-vm`, `cast-vm`, `func-vla`,
@@ -70,12 +70,13 @@ c-testsuite `00216` passes with three GNU initializer extensions: range
 designators `[a ... b]`, constant compound literals in static
 initializers, and designators that name a member of an anonymous
 member (C11 6.7.2.1p13 makes those members of the enclosing struct).
-The three left:
+cproc `struct-packed` passes with GNU packed layout (m4.md, "Packed
+structs and unions"), including the `[[gnu::packed]]` spelling. The two
+left:
 
 | Test | First failure | Owner |
 | --- | --- | --- |
 | c-testsuite `00140`, `00204` | struct arguments over 16 bytes (byval, generic convention); `00140`'s struct also holds a float | ABI/backend (PLAN decision 7) |
-| cproc `struct-packed` | `[[gnu::packed]]` layout | extension, not C11 |
 
 cproc `constraint/c23-6.7.7.3p2-vm-declaration-2` stays a pass: under
 C11 a block-scope `static` pointer to a VLA is allowed (only a VLA
@@ -256,7 +257,7 @@ nanofil: `GNU range designators are not supported, at int(1,none-dec)`.
 
 ### C23 attribute spelling — 1 rejection
 
-**Outside the C11 contract:** cproc `struct-packed` uses `[[gnu::packed]]`.
+**Outside the C11 contract, now passing:** cproc `struct-packed` uses `[[gnu::packed]]`.
 Packed structs themselves are already an intentional rejection in M4's
 tests; this particular failure is earlier, at the new attribute syntax.
 
@@ -308,8 +309,9 @@ belong in this milestone.
 
 ## Follow-ups
 
-1. The remaining gaps are packed layout (a GNU extension) and struct
-   arguments over 16 bytes.
+1. The remaining gap is struct arguments over 16 bytes (and packed
+   ones with misaligned members), passed byval in the generic
+   convention: backend work in `filc_amd64`.
 
 ## Harness validation
 
