@@ -306,9 +306,12 @@ settled the ABI questions first:
 6. **Struct copies** are word-wise `load(p)`/`store(p, ...)` over
    8-aligned words and narrower integer copies for the rest. That preserves every
    capability bit-for-bit without calling libc.
-7. **Struct arguments larger than 16 bytes** are rejected at first: clang
-   passes them `byval`, which forces the generic convention. Returns
-   larger than 16 bytes use an sret pointer argument and are supported.
+7. **Struct arguments larger than 16 bytes** were rejected at first:
+   clang passes them `byval`, which forces the generic convention. They
+   are now passed as their eightbytes, and a function taking one is
+   generic-only, promoting its packet like a variadic function
+   ([docs/abi-findings.md](docs/abi-findings.md), *Byval arguments*).
+   Returns larger than 16 bytes use an sret pointer argument.
 8. **The oracle for whole programs is filcc.** A corpus program is built
    twice, by nanofil (linked with filcc) and by `filcc -O0`, and must give
    the same stdout, exit status, and trap or no trap. Functions that do

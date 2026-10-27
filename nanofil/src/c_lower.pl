@@ -374,7 +374,7 @@ function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     Ctx = ctx(Name, RetType, none, none, Loc),
     phrase(( sret_param(RetType, SretParams),
              params(Names, ParamTypes, Ctx, Params0),
-             variadic_entry(Variadic, SretParams, Params0),
+             variadic_entry(Variadic, ParamTypes, SretParams, Params0),
              vm_params(Names, ParamTypes, Ctx),
              stmt(Body, Ctx),
              fall_off(RetType),
@@ -413,11 +413,22 @@ context_insts([], _, _, [], []).
 context_insts([from(Os, I)|Is0], L, N, [I|Is], [site(inst(L, N), Os)|Rs]) :-
     N1 is N + 1, context_insts(Is0, L, N1, Is, Rs).
 
-variadic_entry(fixed, _, _) --> [].
-variadic_entry(variadic, Sret, Params) -->
+% variadic_entry(+Variadic, +Types, +Sret, +Params)//: a variadic
+% function takes the entry snapshot, a cursor past its fixed words. So
+% does a function with a byval parameter, unbound: the snapshot makes it
+% generic-only, as clang makes it, and the packet it promotes to the
+% heap holds the byval words, each pointer word with its capability.
+variadic_entry(variadic, _, Sret, Params) -->
     { append(Sret, Params, All), length(All, N), Off is 8 * N },
     bind(builtin(va_args), tmp(va_args)),
     emit(let(tmp(va_args), p, va_args, [const(Off)])).
+variadic_entry(fixed, Types, Sret, Params) -->
+    env(Env),
+    (   { member(Type, Types), su(Type), byval_type(Type, Env) }
+    ->  { append(Sret, Params, All), length(All, N), Off is 8 * N },
+        emit(let(tmp(va_args), p, va_args, [const(Off)]))
+    ;   []
+    ).
 
 % ret_class(+Loc, +RetType, +Env, -Class): Class is the IR return class
 % of a function returning RetType.
@@ -2413,23 +2424,33 @@ call_args([XA|XAs], [ParamType|ParamTypes], Ctx, IRArgs) -->
               IRArgs0) },
     call_args(XAs, ParamTypes, Ctx, IRArgs1),
     { append(IRArgs0, IRArgs1, IRArgs) }.
-call_args([XA|XAs], ParamTypes0, Ctx, [arg(Class, V)|IRArgs]) -->
+call_args([XA|XAs], ParamTypes0, Ctx, IRArgs) -->
     lower(XA, Ctx, Value0),
-    (   { ParamTypes0 = [ParamType|ParamTypes] }
-    ->  converted(Value0, ParamType, v(V, Type))
-    ;   { ParamTypes = [], Value0 = v(_, Type0) },
-        (   { arithmetic_type(Type0) }
-        ->  { default_promotion(Type0, Type) },
-            convert(Value0, Type, v(V, _))
-        ;   { Type0 = ptr(_) } -> { Value0 = v(V, Type) }
-        ;   { ctx_loc(Ctx, Loc),
-              sema_error(Loc,
-                'passing ~w to a variadic or unprototyped function is not supported',
-                [Type0]) }
-        )
+    (   { ParamTypes0 == [], Value0 = v(Src, Type0), su(Type0) }
+    ->  env(Env),                       % 6.5.2.2p7: no conversion
+        { ctx_loc(Ctx, Loc), arg_words(Type0, Env, Loc, Ebs) },
+        load_words(Ebs, Src, Words),
+        { findall(arg(Class, W),
+                  ( nth0(I, Ebs, eb(_, _, Class)), nth0(I, Words, W) ),
+                  IRArgs0),
+          ParamTypes = [] }
+    ;   (   { ParamTypes0 = [ParamType|ParamTypes] }
+        ->  converted(Value0, ParamType, v(V, Type))
+        ;   { ParamTypes = [], Value0 = v(_, Type0) },
+            (   { arithmetic_type(Type0) }
+            ->  { default_promotion(Type0, Type) },
+                convert(Value0, Type, v(V, _))
+            ;   { Type0 = ptr(_) } -> { Value0 = v(V, Type) }
+            ;   { ctx_loc(Ctx, Loc),
+                  sema_error(Loc,
+                    'passing ~w to a variadic or unprototyped function is not supported',
+                    [Type0]) }
+            )
+        ),
+        { type_class(Type, Class), IRArgs0 = [arg(Class, V)] }
     ),
-    { type_class(Type, Class) },
-    call_args(XAs, ParamTypes, Ctx, IRArgs).
+    call_args(XAs, ParamTypes, Ctx, IRArgs1),
+    { append(IRArgs0, IRArgs1, IRArgs) }.
 
 % struct_call(+RetType, +Callee, +Args, +Loc, -R)//: R is the result of a
 % call returning a struct: its words land in a fresh local, or the
@@ -2539,26 +2560,34 @@ member_ptrs(Env, Base, m(_, Type, Off), Offs0, Offs) :-
 member_ptrs(_, _, m(_, _, _, bits(_, _)), Offs, Offs).
 
 % arg_words(+Type, +Env, +Loc, -Ebs): Ebs are the eightbytes in which a
-% struct or union argument of Type is passed.
+% struct or union argument of Type is passed. A byval one (class MEMORY)
+% goes only in the generic packet, where its words are its bytes, so a
+% float member does not matter; its eightbytes start at an 8-aligned
+% offset, as clang's do for alignments up to 8, the most nanofil's
+% types have. nanofil's calls carry at most 16 words.
 arg_words(Type, Env, Loc, Ebs) :-
-    by_value_check(Type, Env, Loc),
-    type_size_align(Type, Env, Size, _),
-    (   Size > 16
-    ->  sema_error(Loc, 'passing a ~w of ~w bytes by value is not supported yet',
-                   [Type, Size])
-    ;   unaligned_type(Type, Env)          % class MEMORY, passed as byval
-    ->  sema_error(Loc, 'passing a packed ~w with misaligned members by value is not supported yet',
-                   [Type])
-    ;   eightbytes(Type, Env, Loc, Ebs)
+    ( byval_type(Type, Env) -> true ; by_value_check(Type, Env, Loc) ),
+    eightbytes(Type, Env, Loc, Ebs),
+    length(Ebs, N),
+    (   N > 16
+    ->  sema_error(Loc, 'passing a ~w of ~w words by value needs more than 16 arguments',
+                   [Type, N])
+    ;   true
     ).
+
+% byval_type(+Type, +Env): a struct or union of Type has SysV class
+% MEMORY, so clang passes it byval and returns it through sret: it is
+% larger than 16 bytes, or packed with misaligned members.
+byval_type(Type, Env) :-
+    type_size_align(Type, Env, Size, _),
+    ( Size > 16 -> true ; unaligned_type(Type, Env) ).
 
 % ret_shape(+Type, +Env, +Loc, -Shape): Shape is how a struct or union
 % of Type is returned: sret, or words(Eightbytes).
 ret_shape(Type, Env, Loc, Shape) :-
-    by_value_check(Type, Env, Loc),
-    type_size_align(Type, Env, Size, _),
-    (   ( Size > 16 ; unaligned_type(Type, Env) ) -> Shape = sret
-    ;   eightbytes(Type, Env, Loc, Ebs),
+    (   byval_type(Type, Env) -> Shape = sret
+    ;   by_value_check(Type, Env, Loc),
+        eightbytes(Type, Env, Loc, Ebs),
         Shape = words(Ebs)
     ).
 

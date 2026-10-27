@@ -245,12 +245,67 @@ Probed with `filcc -O1 -S` at the pin; the generic-entry layout matches
   by hand: `struct {long a, b, c} f(long)` has the signature of `void
   g(struct three *, long)`, `FI2528`. The caller allocates the object.
 - **Larger arguments are byval**: `take_three(struct three)` is `FIP0`
-  and reads its argument from the generic buffers. nanofil rejects them.
+  and reads its argument from the generic buffers. See *Byval
+  arguments* below for what nanofil does with them.
 - **Generic return of a struct**: word i (an eightbyte) at thread+128+8i
   with its lower at thread+384+8i, and the returned size is 8 × the
   number of words (16 for a two-word struct); callers check for at least
   that much. A generic entry for a buffered return calls the fast entry
   with a buffer on its own stack and copies the slots out.
+
+## Byval arguments
+
+Verified at the staging pin (FilPizlonator `argInfosForFunction`,
+`iterateArgs`, `loadCC`, `storeCC`, and probes compiled with `-O2`).
+A struct or union of SysV class MEMORY (over 16 bytes, or packed with
+misaligned members) is a `byval` argument, and:
+
+- **Any byval parameter makes the function generic-only**:
+  `computeSignature` returns the generic signature 0 for a non-direct
+  argument, so the function object has `fast_entry` 0 and signature 0,
+  the generic entry is `pizlonatedFIP0_f`, and `pizlonatedFI0_f` is its
+  alias. Callers of a byval function always go generic: direct external
+  calls through the weak `pizlonatedFI0_f` thunk (getter, function
+  check, then a tail jump to `*8(lower)`), indirect calls straight to
+  the generic entry with RDX = the packet size.
+- **Packet layout** (`iterateArgs`): each argument starts at an offset
+  aligned to max(8, its ABI alignment) and advances by its alloc size;
+  the total rounds up to 8. Payload at thread+128+off, aux at
+  thread+384+off, inline up to 256 bytes. `take2(long, struct{long;
+  char *; long}, long)` needs 40 bytes: the entry tests `cmpq $39, %rdx;
+  jbe` and calls `filc_cc_args_check_failure(actual, 40, origin)`. A
+  17-byte struct takes 24 bytes. So for alignment up to 8, a byval
+  struct's eightbytes are consecutive 8-byte cells, the same cells a
+  caller fills when it passes those eightbytes as separate words.
+- **Caller** (`storeCC`): it copies the struct into a fresh heap object,
+  zeroes payload and aux buffers on its stack, and demotes the object
+  into them with `filc_demote_word_aligned_already_checked_heap_to_stack_without_exiting`
+  (types with pointers) or `filc_demote_already_checked_heap_to_stack_without_exiting`,
+  which write each pointer word's lower into the aux cell. Then both
+  buffers are copied to the thread.
+- **Callee** (`loadCC`): it copies the packet to its stack and calls
+  `filc_promote_already_checked_stack_to_heap_without_exiting(thread,
+  payload, aux, size rounded to 8)` (the `_with_alignment_` variant
+  above 16), which returns a new heap object carrying payload and aux.
+  That object is the parameter, rooted by the callee.
+- **Variadic calls** put a byval struct in the packet the same way:
+  `callv(fmt, big24, long, small16)` passes 56 bytes. An aggregate
+  `va_arg` reads with `filc_get_next_ptr_bytes_for_va_arg(size)`.
+
+nanofil reaches the same packet without a new IR form. A byval argument
+is lowered as its eightbytes, one IR argument each, with a pointer
+eightbyte as class `p`; a call carrying them is not generic-only by
+itself, but it calls a generic-only callee through the thunk or the
+dispatch, whose generic path writes each word and its lower to the
+cell clang's demotion would. A function with a byval parameter also
+takes the entry snapshot (`va_args`, unbound), so `filc_abi` makes it
+generic-only exactly like a variadic function: its generic entry
+promotes the whole packet to the heap (`filc_promote_args_to_heap`,
+capabilities included) and passes the words to the private body, which
+roots the snapshot. A small struct passed past a prototype's `...` goes
+as its eightbytes too, as clang coerces it. Limits: at most 16 words in
+all (the fast signature's limit, which nanofil's private bodies keep),
+and no aggregate `va_arg` yet.
 
 ## Verified end to end
 

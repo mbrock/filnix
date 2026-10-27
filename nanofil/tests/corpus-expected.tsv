@@ -333,7 +333,7 @@ c-testsuite/00136.c	pass
 c-testsuite/00137.c	pass
 c-testsuite/00138.c	pass
 c-testsuite/00139.c	pass
-c-testsuite/00140.c	reject
+c-testsuite/00140.c	pass
 c-testsuite/00141.c	pass
 c-testsuite/00142.c	pass
 c-testsuite/00143.c	pass

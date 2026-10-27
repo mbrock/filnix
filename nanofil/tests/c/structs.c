@@ -96,3 +96,12 @@ long cmember(long x) {
 struct own { long a, b; };
 long own_cast(long x) { struct own o = { x, 2 }; return ((struct own)o).a * 10 + ((struct own)o).b; }
 // run: $own_cast 4
+
+/* Structs over 16 bytes are passed byval: the callee is generic-only,
+   and each pointer word keeps its capability, so the last run traps. */
+struct big3 { long a; char *p; long c; };
+static long take3(long x, struct big3 b, long y) { b.a = 0; return x + b.a + b.p[y] + b.c * 3; }
+static long vtake(int n, ...) { return n; }
+long byval(long i) { char buf[4] = { 1, 2, 3, 4 }; struct big3 b = { 7, buf, 5 }; long (*f)(long, struct big3, long) = take3; return take3(i, b, i) + f(1, b, 0) + b.a + vtake(2, b, b); }
+// run: $byval 2
+// run: $byval 4

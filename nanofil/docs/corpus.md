@@ -58,7 +58,7 @@ the survey is stable, **not** that the compiler implements that feature.
 
 ## Current counts (October 2026)
 
-The checked baseline has **260 passes, 2 rejections, 7 reference
+The checked baseline has **261 passes, 1 rejection, 7 reference
 errors and 147 without main**. Variable length arrays and variably
 modified types (m4.md, "Variable length arrays") turn eight rejections
 into passes: cproc `builtin-vaarg-vm`, `cast-vm`, `func-vla`,
@@ -71,12 +71,13 @@ designators `[a ... b]`, constant compound literals in static
 initializers, and designators that name a member of an anonymous
 member (C11 6.7.2.1p13 makes those members of the enclosing struct).
 cproc `struct-packed` passes with GNU packed layout (m4.md, "Packed
-structs and unions"), including the `[[gnu::packed]]` spelling. The two
-left:
+structs and unions"), including the `[[gnu::packed]]` spelling.
+c-testsuite `00140` passes with byval struct arguments (abi-findings.md,
+*Byval arguments*), including one past a prototype's `...`. One left:
 
 | Test | First failure | Owner |
 | --- | --- | --- |
-| c-testsuite `00140`, `00204` | struct arguments over 16 bytes (byval, generic convention); `00140`'s struct also holds a float | ABI/backend (PLAN decision 7) |
+| c-testsuite `00204` | small float-containing structs by value (SSE eightbytes); also `long double` HFAs and aggregate `va_arg` | frontend/ABI (float.md) |
 
 cproc `constraint/c23-6.7.7.3p2-vm-declaration-2` stays a pass: under
 C11 a block-scope `static` pointer to a VLA is allowed (only a VLA
@@ -309,9 +310,9 @@ belong in this milestone.
 
 ## Follow-ups
 
-1. The remaining gap is struct arguments over 16 bytes (and packed
-   ones with misaligned members), passed byval in the generic
-   convention: backend work in `filc_amd64`.
+1. The remaining gap, `00204`, needs small structs with float
+   members by value (SSE classification in the fast convention),
+   aggregate `va_arg`, and x87 `long double`.
 
 ## Harness validation
 
