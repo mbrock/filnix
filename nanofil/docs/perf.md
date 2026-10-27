@@ -374,6 +374,180 @@ measured better, it replaces the region-local `--registers=local`.
 `--registers=function`, the `-O` default since its gate result; see
 [Results](#item-3a-whole-function-scalar-register-homes).*
 
+#### Step 3b: register operands, and the region checker's contract
+
+*Contract written before the implementation, for review.*
+
+3a leaves values flowing through scratch registers: `movl %ebx, %eax;
+movl %r13d, %ecx; cmpl %ecx, %eax` where `cmpl %r13d, %ebx` would do, and
+`movl $1, %ecx; addl %ecx, %eax`. A rewrite pass over the 3a stream
+(untrusted, `amd64_regs.pl`) forwards register and immediate copies into
+the instructions that read them, retargets a scratch result into the home
+it is copied to, and deletes copies left dead. The region checker
+(`amd64_regs_check.pl`) relates the 3a stream A (already validated
+against the reference R) to the rewritten stream B. It knows nothing of
+the rewrite's rules.
+
+**Lines.** A *move* is an `ins(mov,{l,q},[Src,reg(Y)])` term whose source
+is a general register or an integer immediate, or `ins(movabs,q,[imm(I),reg(Y)])`,
+where Y is not `rsp` or `rbp`; no move writes the flags. Every other line
+is a *paired* line, and A and B must contain the same paired lines in the
+same order. Moves may appear, disappear or differ freely. Every line of B
+must have audited effects (`amd64_contract.pl`), as every line of A does;
+the contract admits no high-byte registers (`%ah`).
+
+**Immediates.** An immediate's value is I mod 2^W at its operation's
+width W. A `q` operation other than `movabs` accepts only
+−2^31 ≤ I < 2^31 (sign-extended; GNU as would otherwise turn `movq` into
+`movabs` without sign extension, or reject it), an `l` one
+−2^31 ≤ I < 2^32, `b` and `w` their own ranges, a shift count 0..255, and
+`movabs` −2^63 ≤ I < 2^64. A symbolic immediate (`imm(Sym)`) is never a
+move and is compared syntactically.
+
+**Values.** Each stream has a symbolic state: the low and high 32 bits
+of each general register, each XMM register as one value, and the
+flags. A value is a ground term: `const(N)` (N in 0..2^32−1), `in(R,H,K)`
+(the value of half H of R at region entry, K = shared or the stream's
+name), `res(J,P,H)` (half H of output P of paired line J; an XMM or flags
+output has one value, `res(J,P)`), and the width wrappers
+`byte(V)`, `word(V)`, `merge8(Old,New)` and `merge16(Old,New)` for 8- and
+16-bit reads and writes. Equality is syntactic (`==`); arithmetic is
+uninterpreted.
+
+- A move executes in its stream only. `movq` copies both halves,
+  `movl` copies the low half and sets the high half to `const(0)`, an
+  immediate sets constants (sign-extended to the high half for `q`;
+  `movl $I` zero-extends).
+- A paired line requires A's and B's lines to have the same mnemonic,
+  size, operand count and audited effect shape: each position is a source
+  or destination, GPR or XMM, at the same width, and operand kinds match
+  per position, except that a source position may be a register in one
+  stream and an immediate in the other. A line that is a boundary in
+  either stream (below) must be syntactically identical in the other.
+  Every operand that is not a register, immediate or memory operand
+  (labels, `sym`, `plt`, directive arguments) must be identical. Then,
+  position by position: a register or
+  immediate source operand must have the same value in A and B at the
+  operand's width (a register reads `byte`, `word`, the low half, or both
+  halves; an immediate is its `const`s, sign-extended for `q`). A memory
+  operand must have the same form, displacement and symbol, and base and
+  index registers with equal 64-bit values. A two-address destination
+  is also a source and is compared the same way. Implicit operands
+  (`div`'s `rax`/`rdx`, `cltd`/`cqto`, flag reads of `jcc`, `setcc` and
+  shifts) are fixed by the equal mnemonic and must have equal values; a
+  `cl` shift count is an explicit operand, compared like any source.
+  Then each written location gets `res` in both streams, at the
+  position's location in each: a 32-bit register write sets the low half
+  and `const(0)` high, 64 bits both halves, 8 and 16 bits
+  `merge8`/`merge16` of *each stream's own* old low half (the source
+  check compared only the low byte or word), an XMM write the XMM value,
+  and flags the form defines become `res(J,flags)`. Flags a form
+  preserves or leaves undefined (`btc`'s ZF, `imul`'s and `div`'s
+  undefined flags) get stream-distinct symbols instead. Because the line
+  is the same deterministic instruction on equal inputs, its defined
+  outputs are equal.
+- Memory is not modelled. Every memory access is a paired line, so both
+  streams make the same accesses in the same order at equal addresses
+  with equal stored values; a load's result is `res` and is shared.
+
+**Regions.** A region is a maximal run of lines between *boundaries*:
+labels, branches (`jmp`, `jcc`), `call`, `ret`, `leave`, `push`, `pop`,
+`ud2`, and any write to `rsp` or `rbp`. Boundary lines are paired lines
+(so they are identical and in the same order) and cannot be moves. A
+region's start state:
+
+- General register families live at the region start get the same
+  `in(R,H,shared)` in A and B; dead ones get `in(R,H,a)` in A and
+  `in(R,H,b)` in B, so a read B makes of a register that A treats as
+  dead is caught. Home registers (`rbx`, `r12`–`r15`, `r10`, `r11`),
+  `rsp`, `rbp` and XMM registers always start shared.
+- The flags start shared if live, else as distinct symbols in A and B.
+
+At each region end, just before the boundary line, A and B must agree,
+on both halves of every compared general register, on: every home
+register, `rsp` and `rbp`, every XMM register, each scratch register
+family (`rax`, `rcx`, `rdx`, `rsi`, `rdi`, `r8`, `r9`) live after that
+point, and the flags if live. The boundary line
+is then checked as a paired line. At the function's end each `ret` is a
+boundary, so B returns what A returns and preserves the callee-saved
+registers as A does; 3a's checker proved A does.
+
+**Liveness.** The checker computes scratch-family and flags liveness
+itself from R; it never accepts liveness from the rewrite. It is the 3a
+checker's liveness pass, extended by one bit per scratch family and one
+for the flags: one liveness run per function, shared with 3a's where 3a
+runs one. Functions 3a skips (empty map, no candidates) get that one run
+with no home bits. If the CFG cannot be built (`successors/2` fails), B = A.
+The scope is the implementation body only, not adapters, getters or
+thunks. A read at any width uses the
+family; a 32- or 64-bit write defines it; an 8- or 16-bit write uses and
+defines it (it keeps the rest). Flags: read by `jcc`, `setcc` and shifts
+whose effect is `read`/`read_write`; defined by any writing line. A
+`call` uses all seven scratch families (the checker does not know the
+callee's arity) and defines them; `ret` uses `rax` and `rdx`; the
+stack-overflow jump uses all; `ud2` uses none. This is the same CFG as
+3a's, which rejects unknown transfers, so check-fail blocks make `rax` and
+`rcx` live at the conditional jumps that reach them. The liveness carries
+over from R to A because 3a changes no scratch or flag use or definition:
+`substitute/3` replaces only the home operand of a `mov`, `movz*` or
+`movs*`, and its inserted saves and restores, which take the live set of
+their insertion point, move between callee-saved registers and save
+slots. The 3a
+checker already proved A is exactly that stream.
+
+**Why the boundaries suffice.** Every path into a region comes through a
+boundary: a label (any predecessor's end, which established equality of
+everything live there), the line after a branch or call (that boundary's
+region end), or function entry, where A and B are the same machine
+state. Boundary lines are identical, so what they write lands in the
+same place with equal values; in particular `rsp` is equal in A and B at
+every instruction, so an asynchronous signal frame lands in the same
+place. So at every region start, every live register is in fact equal in
+A and B, which is what the shared `in` symbols assume, and a dead one is
+not assumed equal. Within a region both streams execute the same paired
+lines on values the checker proves equal, so each paired line computes
+the same outputs and makes the same memory access. A `call` boundary
+has equal arguments, memory and callee-saved registers on both sides, so
+the callee behaves the same; the identical `call` line writes `res` to
+the same caller-saved locations in both streams. Memory is equal except
+for pushed return addresses, which differ between A and B; nanofil code
+and the runtime never read them as data (an assumption: every `rip()`
+operand the emitter produces is a data symbol). A collector or signal handler only
+runs inside calls (polls are calls), and it reads only memory and
+`lowers[]`, which are equal. Exceptions return through `leave`/`ret`,
+boundaries like any other.
+
+**Fallbacks and errors.** A setjmp function, or any line without
+audited effects, keeps B = A. A failed check is an error, never a
+silent fallback.
+
+**Costs.** The checker is region-local symbolic execution, linear in the
+function, plus eight bits per line in the shared liveness bitsets. It must not
+raise the peak memory of `sqlite3.c` with `-O` (5.6 GB) by more than a
+few percent; the measurement goes with the result.
+
+**Fail-first fixtures** (`tests/regs_check.pl`), one per rule: a
+forwarded read of a register redefined in between; a `movl` copy used at
+64 bits; swapped `sub` operands; a different memory displacement or base
+value; a deleted or added memory access; a scratch register live at a
+region end left different (into a fail block, into a call, at `ret`);
+flags read after a region start where they are dead; a read of a register
+dead at region entry; a home register different at a label; an
+immediate outside imm32 for `q`; `movq $0xffffffff` against `movq $-1`;
+a retargeted `subq $16,%rsp` and a `jcc` with a different target (boundary
+identity); a register operand swapped for a memory operand; `%ah`; an
+8-bit write merged over different upper bits; `movl` against `movq`
+into `%rdi` before a call.
+
+Oracle reviewed this contract before implementation. Two blockers are
+fixed in the text above: boundary lines were not required to be
+identical (a retargeted `subq $16,%rsp` was accepted, leaving `rsp` 16
+bytes off), and the `q` immediate rule did not match GNU as. The
+should-fix items are folded in too: B's lines must be audited with A's
+effect shape, partial writes merge per stream, both halves of every
+compared register, preserved or undefined flags are not shared, and
+liveness is computed by the checker, once per function.
+
 ### 4. Inlining small functions
 
 Inline calls to small non-recursive functions before promotion, so the
