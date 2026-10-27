@@ -38,3 +38,14 @@ long gnup(long x) { char a[2] = { 3, 4 }; char *p = x ? a : 0; char *q = p ?: a 
    (C11 6.6p3); the array sizes are still constant. */
 long lazy(long x) { static char a[1 || 1/0], b[(0 && 1/0) + 2], c[1 ? 3 : 1/0]; return sizeof a + sizeof b * 10 + sizeof c * 100 + x * 0; }
 // run: $lazy 0
+/* Parenthesized abstract declarators: an array parameter, and a pointer
+   declarator after a GNU attribute (c-testsuite 00209, 00210). */
+static long twice(long x) { return 2 * x; }
+static long first(long ([2]), long);
+static long first(long a[2], long i) { return a[i]; }
+long abstract(long x) {
+    long a[2] = { x, 7 };
+    void *p = twice;
+    return first(a, 1) * 100 + ((long (__attribute__((noinline)) *)(long))p)(x);
+}
+// run: $abstract 4

@@ -81,7 +81,9 @@ start. Reversing one is cheap until the milestone it names.
    pointer atomics, bitfields, VLAs, `_Complex` and threads. Unknown input
    is a compile error with a source location. Bitfields are now
    supported, laid out as SysV says and accessed through their storage
-   unit (docs/m4.md).
+   unit (docs/m4.md). So are VLAs and variably modified types: an
+   `alloc` of the run-time size where the declaration is reached, and
+   lengths evaluated where C evaluates them (docs/m4.md).
    Direct setjmp-family calls and ordinary longjmp calls are now supported
    in Fil-C mode; see [docs/setjmp.md](docs/setjmp.md).
 7. **Relationship to [experiments/sarcasm-prolog](../experiments/sarcasm-prolog/README.md).**

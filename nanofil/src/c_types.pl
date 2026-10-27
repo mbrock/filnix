@@ -13,12 +13,16 @@
     | `float` `double` `ldouble` | the floating types |
     | `ptr(T)` | a pointer to T |
     | `array(T, N)` | N elements of T, or `array(T, none)` of unknown length |
+    | `array(T, vla(E))` | a variable length array whose size expression E is not yet evaluated; E is `star` for `[*]` |
+    | `array(T, dyn(V))` | a variable length array whose length lowering evaluated into the IR value V |
     | `func(Ret, Params, Arity)` | Params a list of types, or `unspecified`; Arity `fixed` or `variadic` |
     | `struct(Id)` `union(Id)` | the struct or union Id of the environment's Defs |
     | `bad(Reason)` | a type the frontend cannot handle yet |
 
     Parameter types are already adjusted: arrays and functions become
-    pointers. Qualifiers are dropped, and an enum type is its underlying
+    pointers. A type with a `vla` or `dyn` length somewhere inside is
+    variably modified (`vm_type/1`); lowering evaluates each `vla(E)`
+    where C evaluates it, which makes it `dyn(V)`. Qualifiers are dropped, and an enum type is its underlying
     integer type. A `bad(Reason)` is an error only when a declaration
     uses it, so headers that mention such types still parse.
 
@@ -66,7 +70,7 @@
                     lookup_ordinary/3, bind_ordinary/4, env_scope/3,
                     env_restore/3, sema_error/3, enum_underlying/2,
                     decl_types/5, elaborate/3, elaborate/4, expression_type/3,
-                    vm_type/1, unsupported_type/3, value_type/2,
+                    vm_type/1, vla_type/1, unsupported_type/3, value_type/2,
                     generic_selection/5, reflect_type/4, reflect_params/4,
                     conditional_type/3, unqualified/2,
                     overflow_builtin/3, binary_operands/6,
@@ -411,6 +415,8 @@ member_decl(field(Specs, dcl(Name, SyntaxType, _), Width), Fields,
     specs_type(Specs, Base, Env0, Env1),
     apply_declarator(SyntaxType, Base, Type, Env1, Env),
     (   bad_type(Type, Why) -> Fields = [bad(Why)], Reflected = []
+    ;   vm_type(Type)                                       % 6.7.2.1p9
+    ->  Fields = [bad('variably modified member')], Reflected = []
     ;   Width \== none, \+ bitfield_width(Width, Name, Type, Env, _)
     ->  Fields = [bad('invalid bit-field')], Reflected = []
     ;   (   Width == none -> Fields = [f(Name, Type)]
@@ -568,14 +574,34 @@ enum_underlying([V|Vs], Type) :-
 
 %% Declarators
 
-%! apply_declarator(+SyntaxType, +Base, -Type, +Env0, -Env) is det.
-%
-%  Type is the declarator type SyntaxType with the atom base replaced by
-%  Base, array sizes evaluated and parameter types resolved. The parser
-%  builds declarator types outermost first around base. An array size
-%  that is not a non-negative constant gives bad(Reason). Env is Env0
-%  with the definitions of any struct or union a parameter list
-%  declares; their names are scoped to the list.
+doc(apply_declarator(+SyntaxType, +Base, -Type, +Env0, -Env), det, [
+    SyntaxType: "a declarator's type, built by the parser outermost first around the atom base",
+    Base: "the type the declaration specifiers name",
+    Type: "the declared type",
+    Env0: "the scope",
+    Env: "Env0 with the struct and union definitions of any parameter list",
+    "Array sizes are evaluated and parameter types resolved. A size that",
+    "is not an integer constant expression, or `[*]`, makes a variable",
+    "length array, whose size expression lowering evaluates; a negative",
+    "constant size is bad. Parameter names are in scope for the size",
+    "expressions of the parameters after them, and only there.",
+    cites('C11 6.7.6.2p4'),
+    cites('C11 6.2.1p4'),
+    example(( empty_env(E), apply_declarator(array(base, num(3, none-dec)), int, T, E, _) ),
+            T = array(int, 3)),
+    example(( empty_env(E), apply_declarator(array(base, id(n)), int, T, E, _) ),
+            T = array(int, vla(id(n)))),
+    example(( empty_env(E), apply_declarator(ptr(array(base, star), []), int, T, E, _) ),
+            T = ptr(array(int, vla(star)))),
+    example(( empty_env(E), apply_declarator(array(base, un(neg, num(1, none-dec))), int, T, E, _) ),
+            T = bad('negative array size')),
+    example(( empty_env(E0), bind_ordinary(n, enumconst(4, int), E0, E),
+              apply_declarator(func(base, params([param([tspec(int)], dcl(some(n), base, none)),
+                                                  param([tspec(int)], dcl(some(a), ptr(array(base, id(n)), []), none))],
+                                                 fixed)),
+                               int, T, E, _) ),
+            T = func(int, [int, ptr(array(int, vla(id(n))))], fixed))
+]).
 apply_declarator(base, Base, Base, Env, Env).
 apply_declarator(ptr(Syntax, _), Base, ptr(Type), Env0, Env) :-
     apply_declarator(Syntax, Base, Type, Env0, Env).
@@ -583,9 +609,11 @@ apply_declarator(array(Syntax, SizeExpr), Base, Type, Env0, Env) :-
     apply_declarator(Syntax, Base, ElemType, Env0, Env),
     (   SizeExpr == none
     ->  Type = array(ElemType, none)
-    ;   catch(const_value(SizeExpr, Env, N, _), not_constant, fail), N >= 0
-    ->  Type = array(ElemType, N)
-    ;   Type = bad('non-constant array size')
+    ;   SizeExpr == star
+    ->  Type = array(ElemType, vla(star))
+    ;   catch(const_value(SizeExpr, Env, N, _), not_constant, fail)
+    ->  ( N >= 0 -> Type = array(ElemType, N) ; Type = bad('negative array size') )
+    ;   Type = array(ElemType, vla(SizeExpr))
     ).
 apply_declarator(func(Syntax, Params), Base, func(Ret, ParamTypes, Variadic),
           Env0, Env) :-
@@ -601,10 +629,13 @@ param_types(params(Params, Variadic), Types, Variadic, Env0, Env) :-
     foldl(param_type, Params, Types, Env0, Env1),
     env_restore(Scope, Env1, Env).
 
-param_type(param(Specs, dcl(_, SyntaxType, _)), Type, Env0, Env) :-
+param_type(param(Specs, dcl(Name, SyntaxType, _)), Type, Env0, Env) :-
     specs_type(Specs, Base, Env0, Env1),
-    apply_declarator(SyntaxType, Base, Type0, Env1, Env),
-    type_adjusted(Type0, Type).
+    apply_declarator(SyntaxType, Base, Type0, Env1, Env2),
+    type_adjusted(Type0, Type),
+    (   Name = some(N) -> bind_ordinary(N, var(none, Type), Env2, Env)
+    ;   Env = Env2
+    ).
 
 % type_adjusted(+Type0, -Type): a parameter declared with Type0 has
 % Type. Every other type is its own adjustment: a default case over the
@@ -622,12 +653,21 @@ type_name_type(type(Specs, SyntaxType), Type, Env0, Env) :-
     specs_type(Specs, Base, Env0, Env1),
     apply_declarator(SyntaxType, Base, Type, Env1, Env).
 
-% vm_type(+Type): Type is variably modified (6.7.6p3), which nanofil
-% does not support. The cut ending the func clause succeeds once however
-% many parts are variably modified.
-vm_type(bad('non-constant array size')).
-vm_type(ptr(Type)) :- vm_type(Type).
-vm_type(array(Type, _)) :- vm_type(Type).
+doc(vm_type(+T), semidet, [
+    T: "a type",
+    "T is variably modified: a variable length array type, or a type",
+    "derived from one by pointers, arrays, or a function's return or",
+    "parameter types.",
+    cites('C11 6.7.6p3'),
+    example(vm_type(ptr(array(int, vla(id(n)))))),
+    example(vm_type(func(int, [int, ptr(array(int, dyn(tmp(v1))))], fixed))),
+    example(vm_type(qualified([const], array(array(int, vla(star)), 2)))),
+    fails(vm_type(ptr(array(int, 3)))),
+    fails(vm_type(array(int, none)))
+]).
+vm_type(qualified(_, T)) :- vm_type(T).
+vm_type(ptr(T)) :- vm_type(T).
+vm_type(array(T, N)) :- ( variable_size(N) -> true ; vm_type(T) ).
 vm_type(func(Ret, Params, _)) :-
     (   vm_type(Ret)
     ;   is_list(Params),
@@ -636,18 +676,35 @@ vm_type(func(Ret, Params, _)) :-
     ),
     !.
 
+% variable_size(+N): array length N is not a constant: unevaluated or
+% evaluated at run time.
+variable_size(vla(_)).
+variable_size(dyn(_)).
+
+doc(vla_type(+T), semidet, [
+    T: "a type",
+    "T is a variable length array type: an array whose size is not an",
+    "integer constant expression, or whose element type has no constant",
+    "size. A pointer to one is variably modified but has a constant size.",
+    cites('C11 6.7.6.2p4'),
+    example(vla_type(array(int, dyn(tmp(v1))))),
+    example(vla_type(array(array(int, vla(id(n))), 3))),
+    example(vla_type(qualified([const], array(int, vla(star))))),
+    fails(vla_type(ptr(array(int, vla(id(n)))))),
+    fails(vla_type(array(int, 3)))
+]).
+vla_type(qualified(_, T)) :- vla_type(T).
+vla_type(array(T, N)) :- ( variable_size(N) -> true ; vla_type(T) ).
+
 doc(unsupported_type(+T, -Format, -Args), semidet, [
     T: "a type an expression or declaration names",
     Format: "the diagnostic's format",
     Args: "its arguments",
-    "nanofil does not support T: it is variably modified, since its",
-    "size expressions would have to be evaluated, side effects and all,",
-    "or it has no values nanofil can hold.",
+    "nanofil does not support T: it has no values nanofil can hold.",
     example(unsupported_type(ldouble, '~w is not supported', ['long double'])),
-    fails(unsupported_type(ptr(ldouble), _, _))
+    fails(unsupported_type(ptr(ldouble), _, _)),
+    fails(unsupported_type(array(int, vla(id(n))), _, _))
 ]).
-unsupported_type(T, 'variably modified types (non-constant array size) are not supported', []) :-
-    vm_type(T), !.
 unsupported_type(T, '~w is not supported', [Why]) :-
     unsupported_value_type(T, Why).
 
@@ -697,6 +754,9 @@ size_align_(float, _, 4, 4).
 size_align_(double, _, 8, 8).
 size_align_(ldouble, _, 16, 16).
 size_align_(ptr(_), _, 8, 8).
+size_align_(array(_, N), _, _, _) :-
+    variable_size(N),
+    throw(bad('variable length array')).
 size_align_(array(T, N), Env, Size, Align) :-
     integer(N),
     type_size_align(T, Env, ElemSize, Align),
@@ -1094,10 +1154,27 @@ const_eval(Expr, Env, V, T) :-
     elaborate(Expr, Env, X), value(X, XV), lowered(XV, T),
     folded(XV, Env, V).
 
-/*  folded(+XV, +Env, -V): the value tree XV is a constant expression of
-    value V. Its types are the tree's: the conversions are those the
-    elaborator chose, so this is arithmetic only. A node that is not a
-    constant (a load, a call, an assignment, an address) does not fold. */
+doc(folded(+XV, +Env, -V), semidet, [
+    XV: "a value tree",
+    Env: "the scope, or pp in a #if expression",
+    V: "its value: an integer, or float bits",
+    "XV is a constant expression of value V. Its types are the tree's:",
+    "the conversions are those the elaborator chose, so this is",
+    "arithmetic only. A node that is not a constant (a load, a call, an",
+    "assignment, an address) does not fold. A comma operator folds, as",
+    "an extension, only when both operands do: one with an effect on its",
+    "left, as in the length of int[(c++, 5)], is not a constant, so that",
+    "array has variable length and the effect happens.",
+    cites('C11 6.6p3'),
+    example(( empty_env(E), folded(val(int, bin(add, val(int, int(2)), val(int, int(3)))), E, V) ),
+            V = 5),
+    example(( empty_env(E), folded(val(int, comma(val(int, int(1)), val(int, int(5)))), E, V) ),
+            V = 5),
+    fails(( empty_env(E),
+            folded(val(int, comma(val(int, incdec(postinc, obj(int, id(c)))),
+                                  val(int, int(5)))), E, _) )),
+    fails(( empty_env(E), folded(val(int, load(obj(int, id(c)))), E, _) ))
+]).
 folded(val(_, int(V)), _, V).                               % 6.4.4.1, 6.4.4.4
 folded(val(T, float(Cs)), _, V) :- float_literal(Cs, V, T).  % 6.4.4.2
 folded(val(_, builtin(Name, [])), _, V) :- float_builtin(Name, _, V).
@@ -1141,7 +1218,7 @@ folded(val(_, alignof(TypeName)), Env, V) :-                % 6.5.3.4p3
 folded(val(_, offsetof(TypeName, Path)), Env, V) :-         % 7.19p3
     type_name_type(TypeName, T, Env, _),
     offset_path(Path, T, Env, 0, V).
-folded(val(_, comma(_, XV)), Env, V) :- folded(XV, Env, V).
+folded(val(_, comma(XA, XV)), Env, V) :- folded(XA, Env, _), folded(XV, Env, V).
 
 % operand_value(+XV, +Env, -V, -T): value tree XV folds to V, of
 % unqualified type T.
@@ -1322,11 +1399,17 @@ doc(composite_type(+T, +U, -C), semidet, [
     U: "a type compatible with T",
     C: "their composite type",
     "The type that says what both say: an array's size where either knows",
-    "it, a function's parameters where either has a prototype. Fails when",
-    "T and U are not compatible.",
+    "it (a constant one over a variable one), a function's parameters",
+    "where either has a prototype. Fails when T and U are not compatible.",
+    "Variable lengths are compatible with any length (6.7.6.2p6).",
+    cites('C11 6.7.6.2p6'),
     cites('C11 6.2.7p3'),
     example(composite_type(ptr(array(int, none)), ptr(array(int, 3)), C),
             C = ptr(array(int, 3))),
+    example(composite_type(ptr(array(int, vla(id(n)))), ptr(array(int, 3)), C),
+            C = ptr(array(int, 3))),
+    example(composite_type(array(int, 3), array(int, dyn(tmp(v1))), C),
+            C = array(int, 3)),
     example(composite_type(func(int, unspecified, fixed),
                            func(int, [ptr(char)], fixed), C),
             C = func(int, [ptr(char)], fixed)),
@@ -1348,6 +1431,8 @@ composite_type(func(R, Ps, V), func(S, Qs, V), func(C, Cs, V)) :-
 % agree on K.
 composite_size(none, M, M) :- !.
 composite_size(N, none, N) :- !.
+composite_size(N, M, M) :- variable_size(N), !.
+composite_size(N, M, N) :- variable_size(M), !.
 composite_size(N, N, N).
 
 % composite_params(+Ps, +Qs, -Cs): parameter lists Ps and Qs, each
@@ -1598,6 +1683,8 @@ binding_type(enumconst(_, T), T).
 reflected_shape(qualified(Qs, R), T, qualified(Qs, S)) :- !,
     reflected_shape(R, T, S).
 reflected_shape(array(R, _), array(T, N), array(S, N)) :- !,
+    reflected_shape(R, T, S).
+reflected_shape(ptr(R), ptr(T), ptr(S)) :- vm_type(T), !,   % evaluated lengths
     reflected_shape(R, T, S).
 reflected_shape(R, _, R).
 

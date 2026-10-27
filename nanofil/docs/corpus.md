@@ -56,9 +56,31 @@ fixtures, which are not executable programs. Reference compilation failures
 are distinct from nanofil rejections. A matching expected failure means
 the survey is stable, **not** that the compiler implements that feature.
 
-## Current counts (M9)
+## Current counts (October 2026)
 
-The checked baseline now has **243 passes, 19 rejections, 7 reference
+The checked baseline has **258 passes, 4 rejections, 7 reference
+errors and 147 without main**. Variable length arrays and variably
+modified types (m4.md, "Variable length arrays") turn eight rejections
+into passes: cproc `builtin-vaarg-vm`, `cast-vm`, `func-vla`,
+`sizeof-vla`, `vla-deref`, `vla-nested`; c-testsuite `00162` (`[*]` and
+qualified array parameters) and `00207`. Two declarator fixes pass
+c-testsuite `00209` (`int ([4])` as an abstract parameter declarator)
+and `00210` (an attribute before `*` in an abstract declarator). The
+four left:
+
+| Test | First failure | Owner |
+| --- | --- | --- |
+| c-testsuite `00140`, `00204` | struct arguments over 16 bytes (byval, generic convention); `00140`'s struct also holds a float | ABI/backend (PLAN decision 7) |
+| c-testsuite `00216` | GNU range designators, then GNU static compound-literal initializers | extensions, not C11 |
+| cproc `struct-packed` | `[[gnu::packed]]` layout | extension, not C11 |
+
+cproc `constraint/c23-6.7.7.3p2-vm-declaration-2` stays a pass: under
+C11 a block-scope `static` pointer to a VLA is allowed (only a VLA
+itself may not be static), and nanofil and filcc both evaluate its size.
+
+## Floating-point counts (M9)
+
+The baseline then had **243 passes, 19 rejections, 7 reference
 errors and 147 without main**. Floating-point support adds eleven passes:
 cproc `conditional`, `convert-char-float`, `logical-and`, `logical-or`,
 `while-condition`; c-testsuite `00113`, `00119`, `00123`, `00174`, `00175`,
@@ -108,9 +130,10 @@ nanofil: `cannot assign int to double`. Other members report
 `loading a float/double value is not supported yet`, `cannot convert uchar
 to float`, or `floating point is not supported`.
 
-### VLAs / variably modified types — 7 rejections
+### VLAs / variably modified types — 7 rejections (resolved October 2026)
 
-**Planned:** PLAN decision 6 rejects VLAs. cproc: `func-vla`, `sizeof-vla`,
+**Now passing**, with `00162` and `builtin-vaarg-vm`; the history below
+is how it stood before. PLAN decision 6 rejected VLAs. cproc: `func-vla`, `sizeof-vla`,
 `vla-deref`, `vla-nested`, **`cast-vm`**. c-testsuite: `00162`, `00207`.
 
 ```c
@@ -182,9 +205,9 @@ stop earlier at `__builtin_va_start is not supported, at (`.
 
 ## Other gaps — 4
 
-### Abstract array parameter declarator — 1 rejection
+### Abstract array parameter declarator — 1 rejection (resolved)
 
-**Gap:** c-testsuite `00209`. The earlier complex function declarators
+**Gap, now passing:** c-testsuite `00209`. The earlier complex function declarators
 parse, but an unnamed parenthesized array parameter does not.
 
 ```c
@@ -194,9 +217,9 @@ int main(void) { return 0; }
 
 nanofil: `expected a parameter declaration, at [`.
 
-### Attribute inside a function-pointer declarator — 1 rejection
+### Attribute inside a function-pointer declarator — 1 rejection (resolved)
 
-**Gap:** c-testsuite `00210`. Its earlier packed unions are not used;
+**Gap, now passing:** c-testsuite `00210`. Its earlier packed unions are not used;
 the first actual failure is a GNU attribute in a pointer cast, not
 aggregate ABI lowering.
 
@@ -282,8 +305,9 @@ belong in this milestone.
 
 ## Follow-ups
 
-1. The remaining gaps are small parser items (GNU range
-   designators, two declarator forms, C23 attribute spelling).
+1. The remaining gaps are GNU extensions (range designators, constant
+   compound literals in static initializers, packed layout) and struct
+   arguments over 16 bytes.
 
 ## Harness validation
 

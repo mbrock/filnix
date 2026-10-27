@@ -234,7 +234,7 @@ global_decl(Loc, d(Name, Type0, Storage, Asm, Init), Env0, Env) :-
         ;   true
         ),
         bind_ordinary(Name, fn(Type0, Sym, Linkage), Env0, Env)
-    ;   vm_check(Type0, Loc),
+    ;   static_type(Name, Type0, Loc),
         complete_array(Type0, Init, Type, Loc, Env0, none),
         bind_ordinary(Name, gvar(Type, Sym, Storage, Init), Env0, Env1),
         (   Storage == extern, Init == none
@@ -242,6 +242,16 @@ global_decl(Loc, d(Name, Type0, Storage, Asm, Init), Env0, Env) :-
         ;   ( Storage == static -> Linkage = local ; Linkage = export ),
             define_global(Sym, Type, Linkage, Init, Loc, Env1, Env)
         )
+    ).
+
+% static_type(+Name, +Type, +Loc): an object Name at file scope or with
+% linkage may have Type: nanofil supports it, and it is not variably
+% modified (C11 6.7.6.2p2).
+static_type(Name, Type, Loc) :-
+    supported(Type, Loc),
+    (   vm_type(Type)
+    ->  sema_error(Loc, '~w has a variably modified type at file scope or with linkage', [Name])
+    ;   true
     ).
 
 /* Definitions of globals live in the environment's Defs under
@@ -365,8 +375,10 @@ function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     phrase(( sret_param(RetType, SretParams),
              params(Names, ParamTypes, Ctx, Params0),
              variadic_entry(Variadic, SretParams, Params0),
+             vm_params(Names, ParamTypes, Ctx),
              stmt(Body, Ctx),
-             fall_off(RetType)
+             fall_off(RetType),
+             vm_jumps
            ),
            [State0], [State]),
     append(SretParams, Params0, Params),
@@ -462,7 +474,7 @@ params([Name|Names], [Type|Types], Ctx, Params) -->
     { append(Params0, Params1, Params) }.
 params([Name|Names], [Type|Types], Ctx, [param(Class, P)|Params]) -->
     { ctx_loc(Ctx, Loc),
-      vm_check(Type, Loc),
+      supported(Type, Loc),
       (   type_class(Type, Class) -> true
       ;   sema_error(Loc, 'parameter of type ~w is not supported yet', [Type])
       ) },
@@ -487,6 +499,21 @@ param_local(some(Name), Type, P) -->
     bind(Name, var(Addr, Type)),
     name_value(P, Addr, value),
     store_typed(Type, P, Addr).
+
+% vm_params(+Names, +Types, +Ctx)//: on entry, the size expressions of
+% each variably modified parameter are evaluated, in order, after every
+% parameter is bound (C11 6.9.1p10); the parameter's binding then has
+% the evaluated type.
+vm_params([], [], _) --> [].
+vm_params([Name|Names], [Type0|Types], Ctx) -->
+    (   { Name = some(N), vm_type(Type0) }
+    ->  env(Env),
+        { lookup_ordinary(Env, N, var(Addr, _)) },
+        realized(Type0, Type, Ctx),
+        env(Env1), { bind_ordinary(N, var(Addr, Type), Env1, Env2) }, set_env(Env2)
+    ;   []
+    ),
+    vm_params(Names, Types, Ctx).
 
 % fresh_params(+Ebs, -Params, -Values)//: one fresh parameter per
 % eightbyte; Values are their temporaries.
@@ -722,6 +749,22 @@ let(Class, Op, Args, Dest) -->
     fresh(Dest),
     emit(let(Dest, Class, Op, Args)).
 
+% vla_slot(+Type, +Ctx, -Addr)//: Addr points at a new object of the
+% variable length array Type, allocated where its declaration is
+% reached, with its length as evaluated then (C11 6.2.4p7, 6.7.6.2p5).
+vla_slot(Type, Ctx, Addr) -->
+    extent(Type, Ctx, Size),
+    env(Env),
+    { element_type(Type, Elem),
+      catch(type_size_align(Elem, Env, _, Align0), bad(Why), throw(nanofil_error(Why))),
+      Align is min(16, max(4, Align0)) },
+    let(p, alloc(Align), [Size], Addr).
+
+% element_type(+Type, -Elem): Elem is the innermost element type of
+% array Type, or Type itself.
+element_type(array(T, _), E) :- !, element_type(T, E).
+element_type(T, T).
+
 % local_slot(+Type, -Addr)//: Addr points at a new local object of
 % Type, an alloc in the entry block.
 local_slot(Type, Addr) -->
@@ -881,7 +924,13 @@ stmt_(switch(Expr, Body), Ctx) -->
     term(goto(LDispatch)),
     cases(Outer), set_cases([]),
     { switch_ctx(Ctx, LEnd, BodyCtx) },
+    env(Env0),
+    { vm_scopes(Env0, Scopes),
+      ( lookup_ordinary(Env0, 'vm.switch', OuterScopes) -> true ; OuterScopes = [] ),
+      bind_ordinary('vm.switch', Scopes, Env0, Env1) },
+    set_env(Env1),
     stmt(Body, BodyCtx),
+    env(Env2), { bind_ordinary('vm.switch', OuterScopes, Env2, Env3) }, set_env(Env3),
     term(goto(LEnd)),
     cases(Cases0), set_cases(Outer),
     { reverse(Cases0, Cases) },
@@ -893,10 +942,12 @@ stmt_(case(Expr, Body), Ctx) -->
       (   catch(const_value(Expr, Env, Value, _), not_constant, fail) -> true
       ;   sema_error(Loc, 'case label is not a constant', [])
       ) },
+    vm_case(Ctx),
     label(Label), start(Label),
     cases(Cases), set_cases([case(Value, Label)|Cases]),
     stmt(Body, Ctx).
 stmt_(default(Body), Ctx) -->
+    vm_case(Ctx),
     label(Label), start(Label),
     cases(Cases), set_cases([default(Label)|Cases]),
     stmt(Body, Ctx).
@@ -918,10 +969,13 @@ stmt_(return(Expr), Ctx) -->
     ;   assign_convert(Expr, Value0, RetType, Loc, v(Value, _)),
         term(ret(Value))
     ).
-stmt_(goto(Name), _) -->
+stmt_(goto(Name), Ctx) -->
+    { ctx_loc(Ctx, Loc) },
+    vm_goto(Name, Loc),
     goto_label(Name, Label),
     term(goto(Label)).
 stmt_(label(Name, Body), Ctx) -->
+    vm_label(label(Name)),
     goto_label(Name, Label),
     start(Label),
     stmt(Body, Ctx).
@@ -959,6 +1013,7 @@ item(decl(Loc, Specs, Inits), Ctx0) -->
     set_env(Env),
     { ctx_at(Ctx0, Loc, Ctx) },
     enter_origin(Loc, statement(decl), Parent),
+    vm_typedefs(Specs, Inits, Ctx),
     local_decls(Decls, Ctx), restore_origin(Parent).
 
 % local_decls(+Decls, +Ctx)//, local_decl(+Decl, +Ctx)//: lower
@@ -977,22 +1032,36 @@ local_decl(d(Name, Type0, Storage, Asm, Init), Ctx) -->
         { global_decl(Loc, d(Name, Type0, Storage, Asm, Init), Env0, Env) },
         set_env(Env)
     ;   { Storage == static }
-    ->  env(Env0),
+    ->  { supported(Type0, Loc),
+          (   vla_type(Type0)                               % 6.7.6.2p2
+          ->  sema_error(Loc, '~w is a variable length array with static storage', [Name])
+          ;   true
+          ) },
+        realized(Type0, Type1, Ctx),      % a pointer to one is allowed
+        env(Env0),
         { Ctx = ctx(Func, _, _, _, _),
           next_id(K, Env0, Env1),
           format(atom(Sym), '~w.~w.~w', [Func, Name, K]),
-          complete_array(Type0, Init, Type, Loc, Env0, none),
+          complete_array(Type1, Init, Type, Loc, Env0, none),
           bind_ordinary(Name, gvar(Type, Sym, static, Init), Env1, Env2),
           define_global(Sym, Type, local, Init, Loc, Env2, Env3),
           % Resolve block-scope names before the scope is restored.
           static_items(Type, Init, Loc, Env3, Env4, Items),
           put_def(initialized(Sym), Items, Env4, Env) },
-        set_env(Env)
-    ;   env(Env),
-        { complete_array(Type0, Init, Type, Loc, Env, whole),
+        set_env(Env),
+        vm_scope(Type)
+    ;   realized(Type0, Type1, Ctx),
+        env(Env),
+        { complete_array(Type1, Init, Type, Loc, Env, whole),
           check_local_type(Type, Env, Loc, Name) },
-        local_slot(Type, Addr),
+        (   { vla_type(Type) }
+        ->  { Init == none -> true                          % 6.7.9p3
+            ; sema_error(Loc, 'a variable length array cannot be initialized', []) },
+            vla_slot(Type, Ctx, Addr)
+        ;   local_slot(Type, Addr)
+        ),
         bind(Name, var(Addr, Type)),
+        vm_scope(Type),
         (   { Init == none } -> []
         ;   init(Addr, Type, Init, Ctx)
         )
@@ -1001,10 +1070,30 @@ local_decl(d(Name, Type0, Storage, Asm, Init), Ctx) -->
 % check_local_type(+Type, +Env, +Loc, +Name): throw a semantic error
 % unless Type is a type a local object Name can have.
 check_local_type(Type, Env, Loc, Name) :-
-    vm_check(Type, Loc),
-    catch(( type_size_align(Type, Env, _, _) -> true ; true ), bad(Why),
+    supported(Type, Loc),
+    (   vla_type(Type) -> element_type(Type, Elem) ; Elem = Type ),
+    catch(( type_size_align(Elem, Env, _, _) -> true ; true ), bad(Why),
           sema_error(Loc, '~w has a type nanofil does not support (~w)',
                      [Name, Why])).
+
+% vm_typedefs(+Specs, +Inits, +Ctx)//: a block-scope typedef of a
+% variably modified type evaluates its size expressions where it is
+% declared, once (C11 6.7.8p3); the name then has the evaluated type.
+vm_typedefs(Specs, Inits, Ctx) -->
+    (   { memberchk(storage(typedef), Specs) } -> vm_typedef_names(Inits, Ctx)
+    ;   []
+    ).
+
+vm_typedef_names([], _) --> [].
+vm_typedef_names([init(dcl(some(Name), _, _), _)|Inits], Ctx) -->
+    env(Env0),
+    (   { lookup_ordinary(Env0, Name, typedef(Type0)), vm_type(Type0) }
+    ->  realized(Type0, Type, Ctx),
+        env(Env1), { bind_ordinary(Name, typedef(Type), Env1, Env) }, set_env(Env),
+        vm_scope(Type)
+    ;   []
+    ),
+    vm_typedef_names(Inits, Ctx).
 
 /* complete_array(+Type0, +Init, -Type, +Loc, +Env, +Whole): Type is
    Type0 with the size of an array of unknown size taken from its
@@ -1389,11 +1478,13 @@ lower_node(val(T, load(X)), Ctx, R) --> !,                 % 6.3.2.1p2
     place(X, Ctx, P),
     { unqualified(T, U) },
     place_loaded(P, U, Ctx, R).
-lower_node(val(T, decay(X)), Ctx, R) --> !,                % 6.3.2.1p3-4
+lower_node(val(T0, decay(X)), Ctx, R) --> !,               % 6.3.2.1p3-4
     place(X, Ctx, P),
+    { ( P = lv(_, array(E, _)) -> PT = ptr(E) ; PT = T0 ), vm_typed(T0, PT, T) },
     decayed(P, T, Ctx, R).
-lower_node(val(T, addr(X)), Ctx, R) --> !,                 % 6.5.3.2p3
+lower_node(val(T0, addr(X)), Ctx, R) --> !,                % 6.5.3.2p3
     place(X, Ctx, P),
+    { ( P = lv(_, PT0) -> PT = ptr(PT0) ; PT = T0 ), vm_typed(T0, PT, T) },
     decayed(P, T, Ctx, R).
 lower_node(val(_, member(XS, F)), Ctx, R) --> !,           % 6.5.2.3p3
     lower(XS, Ctx, v(Addr, SU)),
@@ -1456,31 +1547,43 @@ lower_node(val(_, call(XF, XArgs)), Ctx, R) --> !,         % 6.5.2.2
 lower_node(val(_, builtin(Name, Args)), Ctx, R) --> !,
     builtin(Name, Args, Ctx, R).
 lower_node(val(_, cast(TN, XV)), Ctx, R) --> !,            % 6.5.4
-    env(Env),
-    { ctx_loc(Ctx, Loc), type_name(TN, Type, Env, Loc) },
+    evaluated_type(TN, Ctx, Type),
     lower(XV, Ctx, Value0),
     converted(Value0, Type, R).
 lower_node(val(_, va_arg(TN, XA)), Ctx, v(V, Type)) --> !, % 7.16.1.1
-    env(Env),
-    { ctx_loc(Ctx, Loc), type_name(TN, Type, Env, Loc),
+    evaluated_type(TN, Ctx, Type),
+    { ctx_loc(Ctx, Loc),
       ( type_class(Type, K), memberchk(Type, [int, uint, long, ulong, llong, ullong, double, ptr(_)])
       -> true
       ; sema_error(Loc, 'unsupported va_arg type ~w', [Type]) ) },
     lower(XA, Ctx, v(P, _)),
     let(K, va_arg, [P], V).
-lower_node(val(_, sizeof(TN)), Ctx, v(const(Size), ulong)) --> % 6.5.3.4
+% The operand of sizeof is evaluated only when it has a variable length
+% array type, whose size is then known only at run time (6.5.3.4p2).
+lower_node(val(_, sizeof(TN)), Ctx, v(Size, ulong)) --> % 6.5.3.4
     { TN = type(_, _) }, !,
     env(Env),
-    { type_size(TN, Env, Ctx, Size) }.
-lower_node(val(_, sizeof(X)), Ctx, v(const(Size), ulong)) --> !,
-    env(Env),
-    { tree_type(X, Type), ctx_loc(Ctx, Loc),
-      catch(type_size_align(Type, Env, Size, _), bad(Why),
-            sema_error(Loc, 'sizeof: ~w', [Why])) }.
+    { ctx_loc(Ctx, Loc), type_name_type(TN, Type0, Env, _) },
+    (   { vla_type(Type0) }
+    ->  evaluated_type(TN, Ctx, Type),
+        extent(Type, Ctx, Size)
+    ;   { type_size(TN, Env, Loc, Size0), Size = const(Size0) }
+    ).
+lower_node(val(_, sizeof(X)), Ctx, v(Size, ulong)) --> !,
+    (   { tree_type(X, T), vla_type(T) }
+    ->  place(X, Ctx, lv(_, Type)),
+        extent(Type, Ctx, Size)
+    ;   env(Env),
+        { tree_type(X, Type), ctx_loc(Ctx, Loc),
+          catch(type_size_align(Type, Env, Size0, _), bad(Why),
+                sema_error(Loc, 'sizeof: ~w', [Why])),
+          Size = const(Size0) }
+    ).
 lower_node(val(_, alignof(TN)), Ctx, v(const(Align), ulong)) --> !,
     env(Env),
     { ctx_loc(Ctx, Loc),
-      type_name(TN, Type, Env, Loc),
+      type_name_type(TN, Type0, Env, _), supported(Type0, Loc),
+      element_type(Type0, Type),
       catch(type_size_align(Type, Env, _, Align), bad(Why),
             sema_error(Loc, 'alignof: ~w', [Why])) }.
 lower_node(val(_, offsetof(TN, Path)), Ctx, v(const(V), ulong)) --> !,
@@ -1555,14 +1658,18 @@ place_node(obj(_, wstr(WideType, Values)), _, lv(Addr, array(WideType, N))) --> 
 place_node(obj(_, complit(TN, Init)), Ctx, lv(Addr, Type)) --> !, % 6.5.2.5
     env(Env),
     { ctx_loc(Ctx, Loc),
-      type_name(TN, Type0, Env, Loc),
-      complete_array(Type0, Init, Type, Loc, Env, whole),
+      type_name_type(TN, Type00, Env, _),
+      ( vla_type(Type00)                                    % 6.5.2.5p1
+      -> sema_error(Loc, 'a compound literal cannot have a variable length array type', [])
+      ; true ) },
+    evaluated_type(TN, Ctx, Type0),
+    { complete_array(Type0, Init, Type, Loc, Env, whole),
       check_local_type(Type, Env, Loc, 'compound literal') },
     local_slot(Type, Addr),
     init(Addr, Type, Init, Ctx).
 place_node(obj(T, deref(XV)), Ctx, lv(V, U)) --> !,        % 6.5.3.2p4
-    lower(XV, Ctx, v(V, _)),
-    { unqualified(T, U) }.
+    lower(XV, Ctx, v(V, PT)),
+    { ( PT = ptr(L) -> true ; L = T ), vm_typed(T, L, U) }.
 place_node(fun(T, deref(XV)), Ctx, fd(Callee, U)) --> !,
     lower(XV, Ctx, v(V, _)),
     callee_temp(V, Callee),
@@ -1783,25 +1890,150 @@ overflow_exact(mul, X, XH, Y, YH, Low, High) -->
     let(l, and, [XH, Y], CX), let(l, and, [YH, X], CY),
     let(l, sub, [H2, CX], H3), let(l, sub, [H3, CY], High).
 
-% type_size(+TypeName, +Env, +Ctx, -Size): Size is sizeof(TypeName).
-type_size(TypeName, Env, Ctx, Size) :-
-    ctx_loc(Ctx, Loc),
-    type_name(TypeName, Type, Env, Loc),
+% type_size(+TypeName, +Env, +Loc, -Size): Size is sizeof(TypeName), a
+% type of constant size.
+type_size(TypeName, Env, Loc, Size) :-
+    type_name_type(TypeName, Type, Env, _),
+    supported(Type, Loc),
     catch(type_size_align(Type, Env, Size, _), bad(Why),
           sema_error(Loc, 'sizeof: ~w', [Why])).
 
 % type_name(+TypeName, -Type, +Env, +Loc): Type is the type TypeName
-% names, as lowering uses it: a variably modified one (an array of
-% non-constant size anywhere inside) is rejected, since its size
-% expressions would have to be evaluated, side effects and all.
+% names in a constant initializer, where nothing is evaluated: a
+% variably modified one is refused.
 type_name(TypeName, Type, Env, Loc) :-
     type_name_type(TypeName, Type, Env, _),
-    vm_check(Type, Loc).
+    supported(Type, Loc),
+    (   vm_type(Type)
+    ->  sema_error(Loc, 'a variably modified type in a constant initializer', [])
+    ;   true
+    ).
 
-% vm_check(+Type, +Loc): throw a semantic error if nanofil does not
+% evaluated_type(+TypeName, +Ctx, -Type)//: Type is the type TypeName
+% names where it is evaluated (a cast, va_arg, sizeof of a variable
+% length array type, a compound literal), its size expressions evaluated
+% there (6.8p4).
+evaluated_type(TypeName, Ctx, Type) -->
+    env(Env),
+    { ctx_loc(Ctx, Loc), type_name_type(TypeName, Type0, Env, _),
+      supported(Type0, Loc) },
+    realized(Type0, Type, Ctx).
+
+% supported(+Type, +Loc): throw a semantic error if nanofil does not
 % support Type (c_types' unsupported_type/3).
-vm_check(Type, Loc) :-
+supported(Type, Loc) :-
     (   unsupported_type(Type, F, As) -> sema_error(Loc, F, As) ; true ).
+
+% vm_typed(+T, +L, -U): U is the type code generation gives a tree of
+% type T, when lowering knows it as L. A variably modified T may still
+% hold the size expressions of a type name that lowering has evaluated
+% since, so L, which has the lengths, is used; otherwise T unqualified.
+vm_typed(T, L, U) :- ( vm_type(T) -> U = L ; unqualified(T, U) ).
+
+/* Variable length arrays (C11 6.7.6.2). The type of each has an
+   unevaluated length vla(E), until lowering reaches the declaration or
+   type name: realized//3 evaluates E there, once, and the type holds
+   the value as dyn(V). extent//3 is the size of a type then: a product
+   of those lengths and a constant. A goto or switch may not jump into
+   the scope of an identifier of variably modified type (6.8.6.1p1,
+   6.8.4.2p2); vm_scope//1 enters one, and labels, cases and gotos
+   remember the scopes they are in. */
+
+% realized(+Type0, -Type, +Ctx)//: Type is Type0 with the size
+% expressions of its variable length arrays evaluated, outermost first,
+% each converted to a length of type long. Pointers and a function's
+% return type are evaluated through; its parameters are not, since only
+% a function's definition evaluates them, on entry.
+realized(T, T, _) --> { \+ vm_type(T) }, !.
+realized(ptr(T0), ptr(T), Ctx) --> !, realized(T0, T, Ctx).
+realized(array(_, vla(star)), _, Ctx) --> !,               % 6.7.6.2p4
+    { ctx_loc(Ctx, Loc),
+      sema_error(Loc, '[*] is allowed only in a function prototype', []) }.
+realized(array(T0, vla(E)), array(T, dyn(V)), Ctx) --> !,
+    judged(E, Ctx),
+    rval(E, Ctx, V0),
+    { V0 = v(_, LT), ctx_loc(Ctx, Loc),
+      ( int_type(LT) -> true
+      ; sema_error(Loc, 'array size is not an integer', []) ) },
+    convert(V0, long, v(V, _)),
+    realized(T0, T, Ctx).
+realized(array(T0, N), array(T, N), Ctx) --> !, realized(T0, T, Ctx).
+realized(func(R0, Ps, A), func(R, Ps, A), Ctx) --> realized(R0, R, Ctx).
+
+% extent(+Type, +Ctx, -Size)//: Size is the size in bytes of Type, an
+% l value: a constant unless Type is a variable length array.
+extent(Type, Ctx, Size) -->
+    { vla_type(Type) }, !,
+    { Type = array(T, N) },
+    extent(T, Ctx, ElemSize),
+    { array_length(N, Ctx, Length) },
+    product(Length, ElemSize, Size).
+extent(Type, Ctx, const(Size)) -->
+    env(Env),
+    { ctx_loc(Ctx, Loc),
+      catch(type_size_align(Type, Env, Size, _), bad(Why),
+            sema_error(Loc, 'size of ~w (~w)', [Type, Why])) }.
+
+array_length(dyn(V), _, V).
+array_length(N, _, const(N)) :- integer(N).
+array_length(vla(_), Ctx, _) :-
+    ctx_loc(Ctx, Loc),
+    sema_error(Loc, 'the length of a variable length array is not known here', []).
+
+product(const(A), const(B), const(C)) --> !, { C is A * B }.
+product(A, const(1), A) --> !.
+product(A, B, C) --> let(l, mul, [A, B], C).
+
+% vm_scope(+Type)//: a new identifier of Type is in scope; if Type is
+% variably modified, this is a scope no jump may enter.
+vm_scope(Type) -->
+    (   { vm_type(Type) }
+    ->  env(Env0),
+        { vm_scopes(Env0, Scopes), next_id(K, Env0, Env1),
+          bind_ordinary('vm.scopes', [K|Scopes], Env1, Env) },
+        set_env(Env)
+    ;   []
+    ).
+
+% vm_scopes(+Env, -Scopes): Scopes are the variably modified scopes
+% that are open, innermost first.
+vm_scopes(Env, Scopes) :-
+    ( lookup_ordinary(Env, 'vm.scopes', Scopes0) -> Scopes = Scopes0 ; Scopes = [] ).
+
+% vm_label(+Key)//, vm_goto(+Name, +Loc)//: remember the open scopes of
+% a label or case, and of a goto, in the function's label assoc.
+vm_label(Key) -->
+    env(Env), { vm_scopes(Env, Scopes) },
+    state(st(E, C, I, B, N, Labels0, Cs, A), st(E, C, I, B, N, Labels, Cs, A)),
+    { put_assoc(vm(Key), Labels0, Scopes, Labels) }.
+
+vm_goto(Name, Loc) -->
+    env(Env), { vm_scopes(Env, Scopes) },
+    state(st(E, C, I, B, N, Labels0, Cs, A), st(E, C, I, B, N, Labels, Cs, A)),
+    { ( get_assoc(vm_gotos, Labels0, Gs) -> true ; Gs = [] ),
+      put_assoc(vm_gotos, Labels0, [goto(Name, Scopes, Loc)|Gs], Labels) }.
+
+% vm_jumps//: no goto of the function enters a scope it is not in.
+vm_jumps -->
+    state(st(_, _, _, _, _, Labels, _, _)),
+    { ( get_assoc(vm_gotos, Labels, Gs) -> true ; Gs = [] ),
+      maplist(vm_goto_ok(Labels), Gs) }.
+
+vm_goto_ok(Labels, goto(Name, From, Loc)) :-
+    (   get_assoc(vm(label(Name)), Labels, To), \+ append(_, To, From)
+    ->  sema_error(Loc, 'goto into the scope of a variably modified identifier', [])
+    ;   true
+    ).
+
+% vm_case(+Ctx)//: a case or default label is in no variably modified
+% scope its switch is not in.
+vm_case(Ctx) -->
+    env(Env),
+    { vm_scopes(Env, Scopes),
+      ( lookup_ordinary(Env, 'vm.switch', Outer) -> true ; Outer = [] ),
+      ( Scopes == Outer -> true
+      ; ctx_loc(Ctx, Loc),
+        sema_error(Loc, 'switch jumps into the scope of a variably modified identifier', []) ) }.
 
 %% Conversions
 
@@ -1992,6 +2224,13 @@ arith_op(shr, unsigned, shr).
 % P - I, I scaled by the element size.
 ptr_offset(Op, v(P, PtrType), ElemType, VI, Ctx, v(R, PtrType)) -->
     { PtrType = ptr(ElemType) },
+    { vla_type(ElemType) }, !,
+    extent(ElemType, Ctx, Size),
+    convert(VI, long, v(I, _)),
+    product(I, Size, OffV),
+    let(p, Op, [P, OffV], R).
+ptr_offset(Op, v(P, PtrType), ElemType, VI, Ctx, v(R, PtrType)) -->
+    { PtrType = ptr(ElemType) },
     env(Env),
     { ctx_loc(Ctx, Loc),
       catch(type_size_align(ElemType, Env, Size, _), bad(Why),
@@ -2005,6 +2244,13 @@ ptr_offset(Op, v(P, PtrType), ElemType, VI, Ctx, v(R, PtrType)) -->
     let(p, Op, [P, OffV], R).
 
 % ptr_diff(+VA, +VB, +ElemType, +Ctx, -R)//: R is A - B in elements.
+ptr_diff(v(A, _), v(B, _), ElemType, Ctx, v(V, long)) -->
+    { vla_type(ElemType) }, !,
+    extent(ElemType, Ctx, Size),
+    let(l, ptoi, [A], IA),
+    let(l, ptoi, [B], IB),
+    let(l, sub, [IA, IB], Diff),
+    let(l, div, [Diff, Size], V).
 ptr_diff(v(A, _), v(B, _), ElemType, Ctx, v(V, long)) -->
     env(Env),
     { ctx_loc(Ctx, Loc),

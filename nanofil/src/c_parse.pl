@@ -551,15 +551,17 @@ qualifiers(Quals) --> c23_attr, !, qualifiers(Quals).
 qualifiers([]) --> [].
 
 % abstract_declarator(+Env, -Type, +Base)//: like declarator//4 without
-% a name. A '(' starts a nested declarator only before a '*'; otherwise
-% it is a parameter list.
+% a name. A '(' starts a nested declarator only before a '*' or '['
+% (perhaps after attributes), which cannot begin a parameter list;
+% otherwise it is a parameter list.
 abstract_declarator(Env, Type, Base) -->
     punct('*'), !,
     qualifiers(Quals),
     abstract_declarator(Env, Type, ptr(Base, Quals)).
 abstract_declarator(Env, Type, Base) -->
     punct('('),
-    peek(p('*')), !,
+    attrs,
+    ( peek(p('*')) ; peek(p('[')) ), !,
     abstract_declarator(Env, Type, Mid),
     expect(')'),
     suffixes(Env, Base, Mid).
@@ -586,10 +588,9 @@ suffixes(_, Base, Base) --> [].
 % array_size(+Env, -Size)//: the size between '[' and ']', or none; the
 % ']' stays in the input.
 array_size(_, none), [tok(p(']'), Loc)] --> [tok(p(']'), Loc)], !.
-array_size(_, _) -->
+array_size(_, star) -->     % a VLA of unspecified size, C11 6.7.6.2p4
     punct('*'),
-    peek(p(']')), !,
-    parse_error('variable length arrays are not supported').
+    peek(p(']')), !.
 array_size(Env, Size) -->
     kw(static), !,
     array_size(Env, Size).

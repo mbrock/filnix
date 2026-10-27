@@ -392,6 +392,10 @@ flight pointer just like every other `p` temporary. No new IR or check
 elimination is involved. `tests/c/prog/alloca-bounds.c` writes the last
 valid byte of a dynamic 32-byte allocation, then traps on byte 32 in both
 nanofil and clang builds, also under the GC verification environment.
+Variable length arrays lower the same way: an `alloc` of the run-time
+size where the declaration is reached, which is what clang's dynamic
+`alloca` becomes under the pass (`tests/c/vla.c` traps one past a
+16-byte array in nanofil, the interpreter and clang alike).
 The runtime's `prepare_allocate_object` rounds sizes up to `FILC_MINALIGN`
 (16 bytes), so the capability for a 37-byte request covers 48 bytes in
 both compilers; byte 37 is not a valid bounds-trap probe at this pin.

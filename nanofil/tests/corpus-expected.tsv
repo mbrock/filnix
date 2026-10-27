@@ -37,9 +37,9 @@ cproc/builtin-offsetof.c	no-main
 cproc/builtin-types-compatible-p.c	no-main
 cproc/builtin-va-copy+aarch64.c	no-main
 cproc/builtin-va-copy+x86_64-sysv.c	no-main
-cproc/builtin-vaarg-vm.c	reject
+cproc/builtin-vaarg-vm.c	pass
 cproc/cast-bool-char.c	reference-error
-cproc/cast-vm.c	reject
+cproc/cast-vm.c	pass
 cproc/char-const-hex.c	pass
 cproc/char-const-u8.c	no-main
 cproc/char-sign+aarch64.c	pass
@@ -99,7 +99,7 @@ cproc/func-array-param.c	no-main
 cproc/func-noreturn.c	pass
 cproc/func-param-scope.c	no-main
 cproc/func-unnamed-param.c	no-main
-cproc/func-vla.c	reject
+cproc/func-vla.c	pass
 cproc/generic.c	no-main
 cproc/global-align.c	no-main
 cproc/gnu-attribute-aligned.c	no-main
@@ -147,7 +147,7 @@ cproc/preprocess-undef.c	no-main
 cproc/sizeof-compound-literal.c	no-main
 cproc/sizeof-postfix.c	no-main
 cproc/sizeof-string-literal.c	no-main
-cproc/sizeof-vla.c	reject
+cproc/sizeof-vla.c	pass
 cproc/static-assert-concat.c	no-main
 cproc/static-assert-struct.c	no-main
 cproc/string-concat.c	pass
@@ -186,8 +186,8 @@ cproc/varargs+aarch64.c	no-main
 cproc/varargs+riscv64.c	no-main
 cproc/varargs+x86_64-sysv.c	no-main
 cproc/vla-2d.c	no-main
-cproc/vla-deref.c	reject
-cproc/vla-nested.c	reject
+cproc/vla-deref.c	pass
+cproc/vla-nested.c	pass
 cproc/vla-pointer-incdec.c	no-main
 cproc/vla.c	no-main
 cproc/wchar-sign+aarch64.c	pass
@@ -355,7 +355,7 @@ c-testsuite/00158.c	pass
 c-testsuite/00159.c	pass
 c-testsuite/00160.c	pass
 c-testsuite/00161.c	pass
-c-testsuite/00162.c	reject
+c-testsuite/00162.c	pass
 c-testsuite/00163.c	pass
 c-testsuite/00164.c	pass
 c-testsuite/00165.c	pass
@@ -400,10 +400,10 @@ c-testsuite/00203.c	pass
 c-testsuite/00204.c	reject
 c-testsuite/00205.c	pass
 c-testsuite/00206.c	pass
-c-testsuite/00207.c	reject
+c-testsuite/00207.c	pass
 c-testsuite/00208.c	pass
-c-testsuite/00209.c	reject
-c-testsuite/00210.c	reject
+c-testsuite/00209.c	pass
+c-testsuite/00210.c	pass
 c-testsuite/00211.c	pass
 c-testsuite/00212.c	pass
 c-testsuite/00213.c	pass
