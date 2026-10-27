@@ -1736,8 +1736,10 @@ elab(call(id(Name), Args), Env, X) :-
     elab(call(id(F), Args), Env, X).
 elab(call(id(Name), Args), Env, X) :-
     \+ lookup_ordinary(Env, Name, _),
-    atomic_builtin(Name, Args, Env, E), !,
-    elab(E, Env, X).
+    atomic_builtin(Name, Args, Env, R), !,
+    (   R = expr(E) -> elab(E, Env, X)
+    ;   R = builtin(T), X = val(T, builtin(Name, Args))
+    ).
 elab(call(id(Name), [str([])]), Env, val(T, builtin(Name, []))) :-
     \+ lookup_ordinary(Env, Name, _),
     nan_builtin(Name, T, _), !.
@@ -1923,47 +1925,62 @@ library_builtin('__builtin_memcpy', memcpy).
 library_builtin('__builtin_memmove', memmove).
 library_builtin('__builtin_memset', memset).
 
-doc(atomic_builtin(+Name, +Args, +Env, -E), semidet, [
+doc(atomic_builtin(+Name, +Args, +Env, -R), semidet, [
     Name: "a GNU __atomic builtin",
     Args: "its argument expressions",
     Env: "the scope",
-    E: "the plain C expression it is",
-    "__atomic_load_n(P, Order) is *P and __atomic_store_n(P, V, Order)",
-    "is (void)(*P = V), after Order: an aligned integer load or store is",
-    "already atomic on x86-64, and relaxed, consume and acquire loads and",
-    "relaxed and release stores need no fence there. *P is an integer or",
-    "a pointer. A pointer's capability is a second word, which the plain",
-    "access writes before its address and reads after it, as clang's",
-    "non-atomic pointer accesses do: memory-safe, since a torn pair still",
-    "fails or passes the bounds check of the capability it has, but not",
-    "single-copy atomic against another thread's atomic store, which",
-    "clang's boxed atomic pointers are (docs/m4.md, Atomic builtins).",
-    "A sequentially consistent store needs a fence and is refused",
-    "(fault/4 says so).",
+    R: "expr(E), the plain C expression E it is, or builtin(T), a builtin call of type T that lowering makes atomic",
+    "On an integer, __atomic_load_n(P, Order) is *P and, for a relaxed or",
+    "release Order, __atomic_store_n(P, V, Order) is (void)(*P = V), both",
+    "after Order: an aligned integer access is already atomic on x86-64,",
+    "and none of those orders needs a fence there. A sequentially",
+    "consistent integer store is the store and then a fence (mov; mfence,",
+    "where clang emits xchg; both are seq_cst stores against plain-mov",
+    "seq_cst loads). On a pointer, whose capability is a second word, both",
+    "are builtin(T) at every order: lowering emits IR's atomic_load and",
+    "atomic_store, which call Fil-C's helpers as clang does, single-copy",
+    "atomic and sequentially consistent (docs/m4.md, Atomic builtins).",
+    "*P is an integer or a pointer, and Order a constant: relaxed,",
+    "consume, acquire or seq_cst for a load; relaxed, release or seq_cst",
+    "for a store. Anything else fails (fault/4 says why).",
     cites('GCC manual, __atomic Builtins'),
     cites('C11 7.17.3p1'),
+    cites('C11 7.17.7.1p2'),
+    cites('C11 7.17.7.2p2'),
     example(( empty_env(E0), bind_ordinary(p, var(none, ptr(int)), E0, E),
               atomic_builtin('__atomic_load_n', [id(p), chr(0)], E, X) ),
-            X = comma(chr(0), un(deref, id(p)))),
+            X = expr(comma(chr(0), un(deref, id(p))))),
+    example(( empty_env(E0), bind_ordinary(p, var(none, ptr(ptr(int))), E0, E),
+              atomic_builtin('__atomic_load_n', [id(p), chr(2)], E, X) ),
+            X = builtin(ptr(int))),
+    example(( empty_env(E0), bind_ordinary(p, var(none, ptr(int)), E0, E),
+              atomic_builtin('__atomic_store_n', [id(p), chr(1), chr(5)], E, X) ),
+            X = builtin(void)),
     fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(int)), E0, E),
-            atomic_builtin('__atomic_store_n', [id(p), chr(1), chr(5)], E, _) )),
+            atomic_builtin('__atomic_store_n', [id(p), chr(1), chr(2)], E, _) )),
     fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(double)), E0, E),
             atomic_builtin('__atomic_load_n', [id(p), chr(0)], E, _) ))
 ]).
-atomic_builtin('__atomic_load_n', [P, O], Env, comma(O, un(deref, P))) :-
-    atomic_operands(P, O, Env, [0, 1, 2, 5]).
-atomic_builtin('__atomic_store_n', [P, V, O], Env,
-               cast(type([tspec(void)], base), comma(O, assign(=, un(deref, P), V)))) :-
-    atomic_operands(P, O, Env, [0, 3]).
+atomic_builtin('__atomic_load_n', [P, O], Env, R) :-
+    atomic_operands(P, O, Env, [0, 1, 2, 5], T),
+    (   T = ptr(_) -> R = builtin(T)
+    ;   R = expr(comma(O, un(deref, P)))
+    ).
+atomic_builtin('__atomic_store_n', [P, V, O], Env, R) :-
+    atomic_operands(P, O, Env, [0, 3, 5], T, Order),
+    (   ( T = ptr(_) ; Order =:= 5 ) -> R = builtin(void)
+    ;   R = expr(cast(type([tspec(void)], base), comma(O, assign(=, un(deref, P), V))))
+    ).
 
 atomic_name('__atomic_load_n').
 atomic_name('__atomic_store_n').
 
-% atomic_operands(+P, +O, +Env, +Orders): P points to an integer or a
-% pointer and O is
-% a constant memory order among Orders (__ATOMIC_RELAXED 0, CONSUME 1,
-% ACQUIRE 2, RELEASE 3, ACQ_REL 4, SEQ_CST 5).
-atomic_operands(P, O, Env, Orders) :-
+% atomic_operands(+P, +O, +Env, +Orders, -T[, -Order]): P points to an
+% integer or a pointer of unqualified type T and O is a constant memory
+% order Order among Orders (__ATOMIC_RELAXED 0, CONSUME 1, ACQUIRE 2,
+% RELEASE 3, ACQ_REL 4, SEQ_CST 5).
+atomic_operands(P, O, Env, Orders, T) :- atomic_operands(P, O, Env, Orders, T, _).
+atomic_operands(P, O, Env, Orders, T, V) :-
     lowered_type(P, Env, ptr(T0)), unqualified(T0, T),
     ( int_type(T) -> true ; T = ptr(_) ),
     catch(const_value(O, Env, V, _), not_constant, fail),
@@ -2603,7 +2620,7 @@ fault_(cast(TN, E), Env, F, As) :-
     ).
 fault_(call(id(Name), _), Env, F, [Name]) :-
     \+ lookup_ordinary(Env, Name, _), atomic_name(Name), !,
-    F = '~w needs a pointer to an integer or pointer and a constant memory order it supports (relaxed, or acquire for a load, release for a store)'.
+    F = '~w needs a pointer to an integer or pointer and a constant memory order it supports (relaxed, consume, acquire or seq_cst for a load; relaxed, release or seq_cst for a store)'.
 fault_(call(Fn, Args), Env, F, As) :-
     \+ ( Fn = id(Name), \+ lookup_ordinary(Env, Name, _),
          ( builtin_type(Name, _) ; float_builtin(Name, _, _) ) ),

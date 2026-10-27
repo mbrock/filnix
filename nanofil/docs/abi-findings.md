@@ -739,3 +739,36 @@ or argument index of `CanonicalPtr` in the function, instead of its
 address. Other pointer-keyed containers in the pass (58 `DenseMap`/
 `unordered_map`/`SmallPtrSet` of pointers) are harmless only where they
 are not iterated to produce output.
+
+## Pointer atomics
+
+Read from `filc_runtime.h`/`filc_runtime.c` and clang `-O1` output at the
+pin (`__atomic_load_n` and `__atomic_store_n` on a `void *` global, every
+order).
+
+- Clang emits the same code for every order. It checks the slot inline
+  (8 bytes, 8-aligned, write rights for a store; a store also ensures the
+  object's aux inline, calling `filc_object_ensure_aux_ptr_outline`), sets
+  the frame's call-site origin and calls a helper. No fence is emitted
+  outside the helper, and none follows it.
+- `filc_ptr filc_load_ptr_atomic_with_manual_tracking_outline(filc_ptr p)`:
+  `p` in `%rdi` (address) and `%rsi` (lower), the result in `%rax`/`%rdx`.
+  It checks again, reads the address, does a load-load fence, then reads
+  the slot's lower-or-box: a box's 16-byte pair is read atomically and
+  returned whole. It takes no thread and cannot exit. The caller roots the
+  result in a frame slot; there is no tracking call.
+- `void filc_store_ptr_atomic_outline(filc_thread *t, filc_ptr dest,
+  filc_ptr value)`: `t` in `%rdi`, `dest` in `%rsi`/`%rdx`, `value` in
+  `%rcx`/`%r8`. It checks again (bounds, alignment, read-only), ensures
+  aux (this may exit), runs the store barrier on the value, stores the
+  pair atomically into the slot's atomic box (allocating one the first
+  time), does a store-store fence, then writes the raw address. A box is
+  published with a seq_cst store.
+- Plain accesses interoperate: a plain load reads a box's lower, and a
+  plain store replaces the box with a plain lower.
+- An integer seq_cst store is `xchg`; other integer orders and all
+  integer loads are plain `mov`.
+
+nanofil passes the checked pair and the value's rooted pair the same way.
+It moves the pair out of `%rax`/`%rcx` before storing the origin.
+

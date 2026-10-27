@@ -1973,6 +1973,22 @@ builtin(Name, [A], Ctx, v(D, double)) -->
     assign_convert(A, V0, double, Loc, v(X, _)),
     fresh(D),
     emit(call(result(D, d), global(F), [arg(d, X)])).
+% The atomics c_types leaves as builtins (atomic_builtin/4): pointer
+% loads and stores at any order, which Fil-C's helpers make single-copy
+% atomic, and a sequentially consistent integer store, the store and a
+% fence. The order is a constant without side effects.
+builtin('__atomic_load_n', [P, _], Ctx, v(D, T)) --> !,
+    rval(P, Ctx, v(Addr, ptr(T0))),
+    { unqualified(T0, T) },
+    let(p, atomic_load(p), [Addr], D).
+builtin('__atomic_store_n', [P, V, _], Ctx, v(const(0), void)) --> !,
+    rval(P, Ctx, v(Addr, ptr(T0))),
+    rval(V, Ctx, V0),
+    { unqualified(T0, T), ctx_loc(Ctx, Loc) },
+    assign_convert(V, V0, T, Loc, v(X, _)),
+    (   { T = ptr(_) } -> emit(atomic_store(p, X, Addr))
+    ;   store_typed(T, X, Addr), emit(fence)
+    ).
 builtin('__builtin_expect', [A, B], Ctx, R) --> !,
     rval(A, Ctx, VA),
     rval(B, Ctx, _),

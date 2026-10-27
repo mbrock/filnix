@@ -67,6 +67,8 @@
     | `phi(tmp(D), K, [Pred-Value])` | D is Value when control came from block Pred |
     | `let(tmp(D), K, Op, Args)` | D, of class K, is Op of Args (Ops below) |
     | `store(Width, Value, Addr)` | store Value at Addr; Width one of `b` `h` `w` `l` `p` `s` `d` |
+    | `atomic_store(p, Value, Addr)` | (filc mode) store the pointer Value at Addr single-copy atomically, sequentially consistent (Fil-C's filc_store_ptr_atomic) |
+    | `fence` | a sequentially consistent fence (`mfence`) |
     | `local_alloc(Name, Size)` | create a zeroed, exact-sized invocation-local object, without an address value |
     | `local_load(tmp(D), K, T, Name, Off)` | checked load semantics at the fixed byte offset Off in Name |
     | `local_store(Width, Value, Name, Off)` | checked store semantics at the fixed byte offset Off in Name |
@@ -145,6 +147,7 @@
     | `setjmp(Kind)` | `w` | `[p, w]`: Buf, SaveMask | filc only, below |
     | `check(Lo, Hi, Rights, Align)` | `a` | `[p]` | checked stage, below |
     | `check_local(Name, Off, Bytes, Rights, Align)` | `a` | `[]` | checked stage: prove exact bounds and alignment for the named object, preserving its identity and offset |
+    | `atomic_load(p)` | `p` | `[p]` | (filc mode) a single-copy atomic, sequentially consistent pointer load (Fil-C's filc_load_ptr_atomic) |
     | `raw_load(T, Off)` | as `load(T)`, except `p` | `[a]` | checked stage: a non-pointer load at A+Off that does not check |
     | `raw_load_pointer(Off, Effects)` | `p` | `[a]` | checked stage: read aux, resolve the lower, then read the primary address |
     | `check_function` | `f` | `[p]` | checked stage: trap unless the pointer designates a function object at its exact callable address |
@@ -243,6 +246,9 @@
     stale. Each check is followed immediately by its first use. The pointer
     store's internal ensure-aux/reload sequence is the existing Fil-C
     exception, not permission to move another effect between the pair.
+    The atomic store's helper call (atomic_write), which may exit in its
+    ensure-aux, is the same exception; both atomic effect lists are
+    heap-only and end every live proof.
 
     A heap check's proof may also be read by later scalar raw accesses
     that it covers, while its evidence lasts (docs/m7.md): on every path
@@ -353,6 +359,7 @@ kind_arity(va_arg, 1).
 kind_arity(setjmp, 2).
 kind_arity(ext, 1).
 kind_arity(load, 1).
+kind_arity(atomic_load, 1).
 kind_arity(alloc, 1).
 kind_arity(float_convert, 1).
 kind_arity(float_to_int, 1).
@@ -382,7 +389,8 @@ valid_op(check_local(Name, Off, Bytes, Rights, Align)) :- !,
 valid_op(raw_load(T, Off)) :- !, load_type(T), T \== p, integer(Off).
 valid_op(raw_load_pointer(Off, Effects)) :- !,
     integer(Off),
-    ( pointer_memory_effects(load, Effects) ; pointer_memory_effects(local_load, Effects) ).
+    ( pointer_memory_effects(load, Effects) ; pointer_memory_effects(local_load, Effects)
+    ; pointer_memory_effects(atomic_load, Effects) ).
 valid_op(Op) :- op_kind(Op, _).
 
 % pointer_memory_effects(?Access, ?Effects): the closed protocol for an
@@ -400,6 +408,14 @@ pointer_memory_effects(store,
 % provenance, not merely by a shorter effect list supplied by the caller.
 pointer_memory_effects(local_load, [aux_read, address_read]).
 pointer_memory_effects(local_store, [lower_write, address_write]).
+% An atomic access delegates its whole protocol to Fil-C's helper, after
+% the inline check: atomic_read is filc_load_ptr_atomic (the address,
+% then the lower or the atomic box's pair, fenced); atomic_write is
+% filc_store_ptr_atomic (its own check, ensure-aux, which may exit, the
+% store barrier, a box allocated or reused, the pair stored atomically,
+% then the address). Heap storage only: stack aux has no boxes.
+pointer_memory_effects(atomic_load, [atomic_read]).
+pointer_memory_effects(atomic_store, [atomic_write]).
 
 %! access_size_align(?X, ?Size, ?Align) is nondet.
 %
@@ -493,6 +509,7 @@ op_kind(cast, cast).
 op_kind(cmp(_, _), cmp).
 op_kind(ext(T), ext) :- narrow_type(T, _, _).
 op_kind(load(_), load).
+op_kind(atomic_load(p), atomic_load).
 op_kind(alloc(_), alloc).
 op_kind(check(_, _, _, _), check).
 op_kind(check_local(_, _, _, _, _), check_local).
@@ -575,6 +592,7 @@ pointer_inst(store(x, _, _)).
 pointer_inst(let(_, _, ptoi, _)).
 pointer_inst(let(_, _, setjmp(_), _)).
 pointer_inst(store(p, _, _)).
+pointer_inst(atomic_store(_, _, _)).
 pointer_inst(call(result(_, p), _, _)).
 pointer_inst(call(tuple(_), _, _)).
 pointer_inst(call(_, _, Args)) :- memberchk(arg(p, _), Args).
@@ -1115,6 +1133,8 @@ raw_access(raw_store_pointer(Off, _, tmp(Q), _), Q, p, Off, write).
 
 unchecked_access(let(_, _, load(T), _), load(T)).
 unchecked_access(store(W, _, _), store(W)).
+unchecked_access(let(_, _, atomic_load(T), _), atomic_load(T)).
+unchecked_access(atomic_store(W, _, _), atomic_store(W)).
 unchecked_access(local_load(_, _, T, _, _), local_load(T)).
 unchecked_access(local_store(W, _, _, _), local_store(W)).
 unchecked_access(call(_, tmp(_), _), 'indirect call').
@@ -1128,6 +1148,8 @@ access_storage_effects(raw_store_pointer(_, _, _, Es), Storage) :-
 
 storage_effect_kind(heap, load, load).
 storage_effect_kind(heap, store, store).
+storage_effect_kind(heap, load, atomic_load).
+storage_effect_kind(heap, store, atomic_store).
 storage_effect_kind(local, load, local_load).
 storage_effect_kind(local, store, local_store).
 
@@ -1243,6 +1265,14 @@ valid_inst(Ctx, let(_, K, Op, Args)) :-
     ),
     op_arg_classes(Op, K, Mode, ArgClasses),
     maplist(valid_use(Ctx), ArgClasses, Args).
+valid_inst(Ctx, atomic_store(W, Value, Addr)) :-
+    Ctx = ctx(_, Fn, _, _, _, _, Mode),
+    (   W == p, Mode == filc -> true
+    ;   fn_error(Fn, 'atomic_store(~w, ...) needs a pointer in a Fil-C module', [W])
+    ),
+    valid_use(Ctx, p, Value),
+    valid_use(Ctx, p, Addr).
+valid_inst(_, fence).
 valid_inst(Ctx, store(Width, Value, Addr)) :-
     Ctx = ctx(_, Fn, _, _, _, _, Mode),
     (   Width == p, Mode == plain
@@ -1263,7 +1293,8 @@ valid_inst(Ctx, raw_store(Width, Off, Value, Addr)) :-
 valid_inst(Ctx, raw_store_pointer(Off, Value, Addr, Effects)) :-
     Ctx = ctx(_, Fn, _, _, _, _, filc),
     (   integer(Off),
-        ( pointer_memory_effects(store, Effects) ; pointer_memory_effects(local_store, Effects) )
+        ( pointer_memory_effects(store, Effects) ; pointer_memory_effects(local_store, Effects)
+        ; pointer_memory_effects(atomic_store, Effects) )
     -> true
     ;   fn_error(Fn, 'bad pointer store offset/effects ~w, ~w', [Off, Effects])
     ),
@@ -1482,6 +1513,7 @@ kind_result_ok(int_to_float, _, _, K) :- float_class(K).
 kind_result_ok(cast, _, _, K) :- numeric_class(K).
 kind_result_ok(ext, ext(T), _, K) :- ext_result_ok(T, K).
 kind_result_ok(load, load(T), Mode, K) :- load_result_ok(T, Mode, K).
+kind_result_ok(atomic_load, _, filc, p).
 kind_result_ok(alloc, _, Mode, K) :- addr_class(Mode, K).
 kind_result_ok(check, _, filc, a).
 kind_result_ok(check_local, _, filc, a).
@@ -1546,6 +1578,7 @@ kind_arg_classes(int_to_float, Op, _, _, [K]) :-
 kind_arg_classes(cast, _, K, _, [From]) :- cast_classes(K, From).
 kind_arg_classes(ext, _, _, _, [w]).
 kind_arg_classes(load, _, _, Mode, [A]) :- addr_class(Mode, A).
+kind_arg_classes(atomic_load, _, p, filc, [p]).
 kind_arg_classes(alloc, _, _, _, [l]).
 kind_arg_classes(check, _, _, filc, [p]).
 kind_arg_classes(check_local, _, _, filc, []).

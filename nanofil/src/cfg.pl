@@ -514,6 +514,9 @@ inst_uses(flight(_, _, Args, Lower), Us) :-
     ( Lower = lower(P) -> temps([P|Vs], Us) ; temps(Vs, Us) ).
 inst_uses(store(_, V, A), Us) :-
     temps([V, A], Us).
+inst_uses(atomic_store(_, V, A), Us) :-
+    temps([V, A], Us).
+inst_uses(fence, []).
 inst_uses(raw_store(_, _, V, A), Us) :-
     temps([V, A], Us).
 inst_uses(raw_store_pointer(_, V, A, _), Us) :-

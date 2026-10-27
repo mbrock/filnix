@@ -109,6 +109,14 @@ inst_event(store(W, V, A), Addrs, Event) :-
         get_assoc(X, Addrs, Root-Off),
         Event = Root-acc(acc(Off, W))
     ).
+% Atomic accesses are not slot accesses: their objects escape, so they
+% stay heap objects, which Fil-C's atomic helpers require (atomic boxes
+% live in a heap object's aux).
+inst_event(let(_, _, atomic_load(_), [tmp(X)]), Addrs, Root-esc(atomic)) :-
+    get_assoc(X, Addrs, Root-_).
+inst_event(atomic_store(_, V, A), Addrs, Root-esc(atomic)) :-
+    member(tmp(X), [V, A]),
+    get_assoc(X, Addrs, Root-_).
 inst_event(call(_, F, Args), Addrs, Root-esc(call)) :-
     findall(V, member(arg(_, V), Args), Vs),
     member(tmp(X), [F|Vs]),

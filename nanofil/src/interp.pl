@@ -411,6 +411,11 @@ inst_result(store(Width, V, A), Ctx, Env, s(Mem0, Fuel), Result) :-
     value_x(AddrClass, A, Ctx, Env, Addr),
     store_res(Mode, Width, Mem0, Addr, X, Res, Mem),
     store_res_result(Res, Env, s(Mem, Fuel), Result).
+% One thread and no atomic boxes: an atomic pointer store is a pointer
+% store, and a fence does nothing observable.
+inst_result(atomic_store(p, V, A), Ctx, Env, S, Result) :- !,
+    inst_result(store(p, V, A), Ctx, Env, S, Result).
+inst_result(fence, _, Env, S, cont(Env, S)) :- !.
 inst_result(raw_store(Width, Off, V, A), Ctx, Env, s(Mem0, Fuel), Result) :-
     width_value_class(Width, ValueClass),
     value_x(ValueClass, V, Ctx, Env, X),
@@ -741,6 +746,8 @@ kind_res(setjmp, _, _, _, _, _, _, _) :-
     throw(nanofil_error('interpreter does not support setjmp/nonlocal returns')).
 kind_res(load, load(T), K, Mode, Args, S0, Res, S) :-
     load_op_res(T, K, Mode, Args, S0, Res, S).
+kind_res(atomic_load, atomic_load(p), K, Mode, Args, S0, Res, S) :-
+    load_op_res(p, K, Mode, Args, S0, Res, S).
 kind_res(check, check(Lo, Hi, Rights, Align), a, filc, [ptr(A, Cap)],
          s(Mem, Fuel), Res, s(Mem, Fuel)) :-
     raw_address(A, Lo, B),
@@ -900,6 +907,11 @@ pointer_load_effect(A, aux_read, loaded(_, ptr(U, _), Mem),
     ( get_assoc(A, Aux, C) -> true ; C = none ).
 pointer_load_effect(_, lower_resolve, loaded(C, ptr(U, _), Mem),
                     loaded(C, ptr(U, C), Mem)).
+% Fil-C's helper reads the address and the lower (or the box's pair) as
+% one unit; with one thread that is aux_read then address_read.
+pointer_load_effect(A, atomic_read, L0, L) :-
+    pointer_load_effect(A, aux_read, L0, L1),
+    pointer_load_effect(A, address_read, L1, L).
 pointer_load_effect(A, address_read, loaded(C, ptr(_, Lower), Mem0),
                     loaded(C, ptr(U, Lower), Mem)) :-
     load_res(filc, Mem0, A, 8, val(U), Mem).
@@ -916,6 +928,9 @@ pointer_store_effects_res(trap(Why), _, _, _, Mem, unchecked(Why), Mem).
 pointer_store_effect(_, _, aux_ensure, Mem, Mem).
 pointer_store_effect(_, _, lower_barrier, Mem, Mem).
 pointer_store_effect(_, _, rooted_reload, Mem, Mem).
+pointer_store_effect(A, P, atomic_write, Mem0, Mem) :-
+    pointer_store_effect(A, P, lower_write, Mem0, Mem1),
+    pointer_store_effect(A, P, address_write, Mem1, Mem).
 pointer_store_effect(A, ptr(_, C), lower_write,
                      mem(Bytes, Rs, Next, Aux0), mem(Bytes, Rs, Next, Aux)) :-
     stored_aux(cap(C), A, Aux0, Aux).

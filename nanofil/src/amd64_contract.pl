@@ -162,6 +162,8 @@ instruction_effects(ins(leave,none,[]),
 instruction_effects(ins(ret,none,[]),
                     effect([rsp],[write(rsp,64)],preserve,[read(stack,8)],terminal)).
 instruction_effects(ins(ud2,none,[]), effect([],[],preserve,[],terminal)).
+% A fence orders memory; it reads and writes no register or frame slot.
+instruction_effects(ins(mfence,none,[]), effect([],[],preserve,[],next)).
 instruction_effects(label(S), effect([],[],preserve,[],label)) :- atom(S).
 instruction_effects(D, effect([],[],preserve,[],directive)) :- directive(D).
 

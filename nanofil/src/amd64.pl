@@ -296,6 +296,7 @@ insts([Inst|Insts], Ctx) -->
 inst(let(D, Class, Op, Args), Ctx) -->
     compute_op(Op, Class, Args, Ctx),
     store_reg(rax, D, Ctx).
+inst(fence, _) --> [ins(mfence, none, [])].
 inst(store(Width, V, Addr), Ctx) -->
     { width_class(Width, Class) },
     load(V, Class, c, Ctx),

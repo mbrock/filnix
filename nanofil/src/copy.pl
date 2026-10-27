@@ -267,6 +267,10 @@ inst_reps(let(D, K, Op, Vs0), Reps, let(D, K, Op, Vs)) :-
 inst_reps(store(W, V0, A0), Reps, store(W, V, A)) :-
     value_reps(V0, Reps, V),
     value_reps(A0, Reps, A).
+inst_reps(atomic_store(W, V0, A0), Reps, atomic_store(W, V, A)) :-
+    value_reps(V0, Reps, V),
+    value_reps(A0, Reps, A).
+inst_reps(fence, _, fence).
 inst_reps(call(R, F0, Args0), Reps, call(R, F, Args)) :-
     value_reps(F0, Reps, F),
     maplist(reps_arg(Reps), Args0, Args).

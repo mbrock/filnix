@@ -577,6 +577,13 @@ proven_access(let(D, p, raw_load_pointer(Off, Es), [tmp(Q)]), Q, P,
 proven_access(raw_store_pointer(Off, V, tmp(Q), Es), Q, P,
               raw_store_pointer(Off, V, P, Es)) :-
     pointer_memory_effects(store, Es).
+% Atomic pointer accesses are heap-only: no proven_local_access clause.
+proven_access(let(D, p, raw_load_pointer(Off, Es), [tmp(Q)]), Q, P,
+              let(D, p, raw_load_pointer(Off, Es), [P])) :-
+    pointer_memory_effects(atomic_load, Es).
+proven_access(raw_store_pointer(Off, V, tmp(Q), Es), Q, P,
+              raw_store_pointer(Off, V, P, Es)) :-
+    pointer_memory_effects(atomic_store, Es).
 
 proven_local_access(let(D, p, raw_load_pointer(Off, Es), [tmp(Q)]), Q, P,
                     let(D, p, raw_load_pointer(Off, Es), [P])) :-
@@ -598,6 +605,8 @@ access_pointer(Access, P) :- access_pointer(Access, P, _).
 
 unchecked_access(let(_, _, load(_), _)).
 unchecked_access(store(_, _, _)).
+unchecked_access(let(_, _, atomic_load(_), _)).
+unchecked_access(atomic_store(_, _, _)).
 unchecked_access(call(_, tmp(_), _)).
 unchecked_access(raw_call(_, _, _)).
 unchecked_access(let(_, _, raw_load(_, _), _)).
@@ -1201,6 +1210,7 @@ inst(fused(check_local(Name, Off, Size, Rights, Align), Access), I, B, Ctx) -->
     local_check(Name, Off, k(Size, Write, Align), I, B, Ctx),
     local_raw_access(Access, I, B, Ctx).
 inst(abi(Actions), Index, Block, Ctx) --> abi_actions(Actions, Index, Block, Ctx).
+inst(fence, _, _, _) --> [ins(mfence, none, [])].
 
 % Check exact logical bounds without manufacturing a heap lower. Offset
 % and size are the stack reporter's arguments. Address formation happens
@@ -1543,6 +1553,17 @@ pointer_load_effect(lower_resolve, Index, Block, Ctx) -->
      label(NoLower),
      ins(xor, l, [reg(esi), reg(esi)]),
      label(Have)].
+% Fil-C's filc_load_ptr_atomic_with_manual_tracking_outline(filc_ptr):
+% the checked pair in %rdi/%rsi, the result pair in %rax/%rdx. The pair
+% leaves %rax/%rcx before origin_store, which uses %rax. The helper takes
+% no thread and cannot exit; flight_store roots the result at once, as
+% clang's frame slot does (no tracking call).
+pointer_load_effect(atomic_read, _, _, Ctx) -->
+    [ins(mov, q, [reg(rax), reg(rdi)]),
+     ins(mov, q, [reg(rcx), reg(rsi)])],
+    origin_store(Ctx, c),
+    [ins(call, none, [plt(filc_load_ptr_atomic_with_manual_tracking_outline)]),
+     ins(mov, q, [reg(rdx), reg(rcx)])].
 pointer_load_effect(address_read, _, _, _) -->
     [ins(mov, q, [mem(0, rax), reg(rax)]),
      ins(mov, q, [reg(rsi), reg(rcx)])].
@@ -1610,6 +1631,20 @@ pointer_store_effect(rooted_reload, V, A, _, _, Ctx) -->
      ins(sub, q, [reg(rcx), reg(r8)])],
     lower_reg_load(V, rsi, Ctx),
     load(V, l, r9, Fn).
+% Fil-C's filc_store_ptr_atomic_outline(thread, filc_ptr dest, filc_ptr
+% value): the checked destination in %rsi/%rdx, the value from its
+% rooted slots in %rcx/%r8. The helper checks again, ensures aux (it may
+% exit), barriers the value, boxes the slot and stores the pair
+% atomically, then the address; V stays rooted throughout.
+pointer_store_effect(atomic_write, V, _, _, _, Ctx) -->
+    { ctx_fn(Ctx, Fn) },
+    [ins(mov, q, [reg(rax), reg(rsi)]),
+     ins(mov, q, [reg(rcx), reg(rdx)])],
+    origin_store(Ctx, c),
+    slot_reg_load(thread, rdi, Ctx),
+    load(V, l, c, Fn),
+    lower_reg_load(V, r8, Ctx),
+    [ins(call, none, [plt(filc_store_ptr_atomic_outline)])].
 pointer_store_effect(lower_write, _, _, _, _, _) -->
     [ins(mov, q, [reg(rsi), mem(0, rdx, r8)])].
 pointer_store_effect(address_write, _, _, _, _, _) -->

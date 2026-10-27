@@ -11,6 +11,7 @@
     | `let(tmp(D), K, load(T), [A])` | `let(tmp(Q), a, check(0, S, read, Al), [A])`, then `let(tmp(D), K, raw_load(T, 0), [tmp(Q)])` |
     | `store(W, V, A)` | `let(tmp(Q), a, check(0, S, write, Al), [A])`, then `raw_store(W, 0, V, tmp(Q))` |
     | pointer load/store | the same check, then `raw_load_pointer` or `raw_store_pointer` with its explicit `pointer_memory_effects/2` sequence |
+    | `atomic_load(p)`, `atomic_store(p, V, A)` | the same check, then the raw pointer access with the atomic effect list (`[atomic_read]`, `[atomic_write]`) |
     | `call(Res, tmp(P), Args)` | `let(tmp(Q), f, check_function, [tmp(P)])`, then `raw_call(Res, tmp(Q), Args)` |
     | `let(D, p, add, [P, X])` (also `sub`) | `flight(D, add, [address(P), X], lower(P))` |
     | `let(D, p, copy, [P])` (not a symbol) | `flight(D, copy, [address(P)], lower(P))` |
@@ -154,6 +155,18 @@ checked_access(store(p, V, A), Q,
                 raw_store_pointer(0, V, tmp(Q), Effects)|Is], Is) :- !,
     access_size_align(p, Size, Align),
     pointer_memory_effects(store, Effects).
+% An atomic pointer access has the same inline check; Fil-C's helper
+% does the rest (ir.pl, pointer_memory_effects/2).
+checked_access(let(D, p, atomic_load(p), [A]), Q,
+               [let(tmp(Q), a, check(0, Size, read, Align), [A]),
+                let(D, p, raw_load_pointer(0, Effects), [tmp(Q)])|Is], Is) :- !,
+    access_size_align(p, Size, Align),
+    pointer_memory_effects(atomic_load, Effects).
+checked_access(atomic_store(p, V, A), Q,
+               [let(tmp(Q), a, check(0, Size, write, Align), [A]),
+                raw_store_pointer(0, V, tmp(Q), Effects)|Is], Is) :- !,
+    access_size_align(p, Size, Align),
+    pointer_memory_effects(atomic_store, Effects).
 checked_access(let(D, K, load(T), [A]), Q,
                [let(tmp(Q), a, check(0, Size, read, Align), [A]),
                 let(D, K, raw_load(T, 0), [tmp(Q)])|Is], Is) :-
