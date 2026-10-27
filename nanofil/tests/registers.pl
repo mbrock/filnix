@@ -12,7 +12,34 @@
 :- use_module(library(lists)).
 
 scalar_cache :- pressure, redundant_loads, exclusions, backend,
-                mixed_homes, dead_setjmp, immediate_selection.
+                mixed_homes, dead_setjmp, immediate_selection,
+                branch_selection.
+
+% Branch selection (docs/perf.md): a comparison only its branch reads
+% becomes cmp and a conditional jump to the arm that is not next, with
+% no boolean; a register or an imm32 operand; the scalar cache's checker
+% accepts the selected stream. A comparison also returned stays a boolean.
+branch_selection :-
+    forall(member(Y-Cmp, [tmp(b)-ins(cmp,l,[reg(ecx),reg(eax)]),
+                          const(-7)-ins(cmp,l,[imm(-7),reg(eax)])]),
+           ( branch_module(Y, const(1), M),
+             filc_module_asm(M, stack, Ref, _),
+             filc_module_asm(M, emit(stack,selected), Sel, _),
+             filc_module_asm(M, emit(local,selected), _, [function(b,cached(_,_))]),
+             memberchk(ins(setl,none,_), Ref),
+             \+ memberchk(ins(setl,none,_), Sel),
+             append(_, [Cmp, ins(jge,none,[sym(F)])|_], Sel),
+             atom_concat(_, '.f', F),
+             \+ ( member(ins(jmp,none,[sym(T)]), Sel), atom_concat(_, '.t', T) ) )),
+    branch_module(tmp(b), tmp(c), Kept),
+    filc_module_asm(Kept, emit(stack,selected), KeptSel, _),
+    memberchk(ins(setl,none,_), KeptSel).
+
+% b(a, b): c = a < Y; branch on c to t (next) or f; t returns R.
+branch_module(Y, R, module([func(b,export,w,[param(w,tmp(a)),param(w,tmp(b))],[
+    block(s,[],[let(tmp(c),w,cmp(slt,w),[tmp(a),Y])],branch(tmp(c),t,f)),
+    block(t,[],[],ret(R)),
+    block(f,[],[],ret(const(2)))])])).
 
 % Public emission: local selection saves the constant's scratch move,
 % while stack stays the reference. Expected encodings are hand-derived,

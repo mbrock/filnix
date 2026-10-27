@@ -21,6 +21,7 @@ mode, through the same `nanofil-cc` wrapper the Nix checks use:
 | `O` | `-O` |
 | `O-reuse` | `-O --checks=reuse` ([m7.md](m7.md)) |
 | `O-local` | `-O --registers=local` ([m6.md](m6.md)) |
+| `O-branches` | `-O --branches=selected` (item 2 below) |
 
 From the repository root, on swa (or any quiet x86-64 machine with perf):
 
@@ -48,6 +49,20 @@ scripts: [int.lua](../bench/int.lua) (an integer loop),
 [str.lua](../bench/str.lua) (string formatting, sort, gsub).
 
 It is not part of `nix flake check`: timings need a quiet machine.
+
+filcc is not deterministic: compiling the same file twice gives different
+code (October 2026; zlib's `deflate.c`, bzip2's `blocksort.c`, lz4's
+`lz4.c` and `lz4hc.c` all differ run to run, and three compiles of
+`lz4.c` disassemble to 57,561, 57,729 and 57,594 lines). A rebuilt filcc
+lz4 ran `-9` in 2.99G instructions once and 2.84G another time. So pin
+the reference: `run.py` and `profile.py` take filcc's builds from
+`bench/ref` when it exists (`--ref DIR`), else from `out`. Pin once with
+
+```sh
+nix-store --add-root nanofil/bench/ref --realise $(readlink -f nanofil/bench/out)
+```
+
+and compare runs only against the same `ref` (run.py prints its path).
 
 ### Baseline (October 2026)
 
@@ -258,6 +273,8 @@ the gate; item 3's checker adds one pairing rule for it (a `jz` on a
 register holding `zext(setcc(C, F))` is `j¬C` on flags F, with flags
 live across the transfer).
 
+*Implemented in this round, opt-in as `--branches=selected`; see [Results](#item-2-branch-selection).*
+
 ### 3. Whole-function scalar register allocation with register operands
 
 Assign `w`/`l` temporaries, phis and phi shadows to registers for the
@@ -414,12 +431,53 @@ beyond noise. bzip2 `-d`'s ranges separate by 1% (581 to 588 ms), with
 identical instruction counts: layout noise. The filcc builds were
 rebuilt between the two runs, and lz4's is not reproducible: its `-9`
 runs 2.99G instructions in one build and 2.84G in the other, which moves
-lz4's ratios though nanofil's own counts are unchanged.
+lz4's ratios though nanofil's own counts are unchanged. From item 2 on,
+the gate pins filcc's builds (`bench/ref`) to the ones this run used.
 
 After item 1, blocks that only compare a value with a constant and
 branch (`profile.py`'s upper bound on switch dispatch) are still 13% of
 `lua int` and 12% of `lua tab`: about seven levels of ten instructions
 each per dispatch. Item 2 shortens each level.
+
+### Item 2: branch selection
+
+`--branches=selected` (or `NANOFIL_BRANCHES=selected`) is opt-in, like
+M6's local caching: the reference stays the default and its 1,080
+snapshot outputs are byte-identical. A block whose last instruction is a
+`w`/`l` comparison read by nothing but the block's branch emits `cmp`
+(register or imm32 operand) and a conditional jump; the boolean is never
+materialized. Of the two arms, a plain edge (no phi copies, no poll)
+gets the conditional jump straight to its block; the other edge's copies
+follow, and an edge to the next block falls through. A branch on any
+other value tests it and does the same. Setjmp functions keep the
+reference. The M6 cache checker accepts the selected stream unchanged:
+conditional jumps and labels were already region boundaries.
+
+The gate, with filcc's builds pinned to the item-1 run's (`item 1 rerun`
+is `-O` in the same run as item 2):
+
+| Workload | ab05a5b `O` | item 1 `O` | item 1 rerun `O` | item 2 `O-branches` |
+|---|--:|--:|--:|--:|
+| zlib -6 text | 4.59 (5.97) | 4.54 (5.97)* | 4.55 (5.97)* | 4.40 (5.68) |
+| zlib -d text | 3.36 (4.62) | 3.21 (4.60)* | 3.04 (4.60) | 2.99 (4.33)* |
+| bzip2 -9 text | 3.59 (3.97) | 3.59 (3.97)* | 3.59 (3.97)* | 3.36 (3.69) |
+| bzip2 -d text | 6.22 (4.65) | 6.20 (4.65) | 6.10 (4.65) | 6.02 (4.30) |
+| lz4 -1 random | 3.95 (23.91) | 3.72 (23.16)* | 3.78 (23.22)* | 3.71 (22.62)* |
+| lz4 -9 text | 6.49 (6.00) | 6.56 (6.31)* | 6.66 (6.31)* | 6.53 (5.91)* |
+| lz4 -d text | 6.48 (18.22) | 5.94 (17.93)* | 5.91 (17.90)* | 5.82 (17.48)* |
+| lua int | 6.33 (6.12) | 4.30 (3.93) | 4.38 (3.93)* | 4.03 (3.43) |
+| lua tab | 6.24 (5.76) | 4.12 (3.77) | 4.09 (3.77)* | 3.71 (3.32) |
+| lua str | 1.91 (2.10) | 1.86 (2.03)* | 1.83 (2.04)* | 1.77 (1.94) |
+| geomean | 4.61 (6.30) | 4.16 (5.76) | 4.14 (5.76) | 3.98 (5.38) |
+
+Instructions fall 5–13% against `-O` in the same run, time 2–9%, with
+separated trial ranges except for lz4 and zlib `-d`. bzip2 `-d` is still
+slower with `-O` than without: 579 ms for `-O`, 572 ms with selected
+branches, against 525 ms off. The phi store/reload chains need item 3.
+
+With selected branches, const-compare blocks are 5.0% of `lua int` and
+4.6% of `lua tab` (0.21G of 4.17G, 0.15G of 3.25G), 1% of `lua str`: an
+upper bound on what a jump table could still remove.
 
 ## Review
 

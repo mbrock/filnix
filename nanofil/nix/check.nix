@@ -62,7 +62,7 @@ pkgs.runCommandCC "nanofil-check"
     step "difftest backend" env CC=$CC tests/par.sh tests/difftest.sh tests/backend/*.ir
     export FILCC=${filcc}/bin/clang
     step pptest tests/pptest.sh
-    step "difftest filc/*.ir" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir
+    step "difftest filc/*.ir" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/branches.ir
     step "run-c interop gc float" tests/par.sh tests/filc/run-c.sh interop gc float
     step "variadic+float gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh variadic float
     step "setjmp gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh setjmp
@@ -125,6 +125,18 @@ pkgs.runCommandCC "nanofil-check"
     step "reuse corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
     step "reuse local ABI+GC" env NANOFIL_REGISTERS=local RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh gc setjmp pointer-effects reuse-gc
     unset NANOFIL_CHECKS
+    # Branch selection (docs/perf.md), alone and with local caching, whose
+    # checker validates the selected stream.
+    export NANOFIL_BRANCHES=selected
+    for opt in "" -O "-O --registers=local"; do
+      export NANOFIL_OPT=$opt
+      step "branches $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/branches.ir tests/c/*.c big1.c
+      step "branches $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
+      step "branches $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    done
+    unset NANOFIL_OPT
+    step "branches corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    unset NANOFIL_BRANCHES
     # The functional, versioned-fact and incremental analyses must agree.
     python3 -I tests/bigfn.py 2 100 > big2.c
     step bench-cfg bash -c '(cd src && ../bin/nanofil --script ../tests/bench-cfg.pl ../big2.c </dev/null)'

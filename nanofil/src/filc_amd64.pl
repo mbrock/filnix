@@ -115,18 +115,24 @@
 %  nanofil_error(Msg) if an item cannot be lowered.
 filc_module_asm(Module, Lines) :- filc_module_asm(Module, stack, Lines, _).
 
-% Registers is stack (the reference) or local (validated scalar caching).
+% Emission is emit(Registers, Branches), or just Registers with reference
+% branches. Registers is stack (the reference) or local (validated scalar
+% caching); Branches is reference or selected (branch selection, below).
 % Reports records each item's caching result, without driver-side state.
-filc_module_asm(Module0, Registers, Lines, Reports) :-
+filc_module_asm(Module0, Emission, Lines, Reports) :-
     without_locs(Module0, Module),
     Module = module(Items),
+    emission(Emission, Registers, Branches),
     maplist(lower_item(Module), Items, Products),
     lower_thunks(Module, Callees),
-    maplist(placed_lines(Registers), Items, Products, LinesPerItem, Reports),
+    maplist(placed_lines(Registers, Branches), Items, Products, LinesPerItem, Reports),
     append(LinesPerItem, ItemLines),
     maplist(thunk_lines, Callees, LinesPerThunk),
     append(LinesPerThunk, ThunkLines),
     append([ItemLines, ThunkLines, [section(note_gnu_stack)]], Lines).
+
+emission(emit(Registers, Branches), Registers, Branches) :- !.
+emission(Registers, Registers, reference).
 
 thunk_lines(Callee, Lines) :-
     phrase(thunk(Callee), Lines).
@@ -145,16 +151,19 @@ item_lines(Selection, Item, Lines) :-
         throw(nanofil_error(Msg))
     ).
 
-placed_lines(stack, _, Item, Lines, stack) :- item_lines(stack,Item,Lines).
-placed_lines(local, data(N,L,A,Is), Item, Lines, data(N)) :-
-    Item = data(N,L,A,Is), item_lines(stack,Item,Lines).
-placed_lines(local, Func, Item, Lines, function(Name,Report)) :-
+% A setjmp function keeps reference selection, branches included.
+placed_lines(stack, Branches, Func, Item, Lines, stack) :-
+    ( setjmp_func(Func) -> B = reference ; B = Branches ),
+    item_lines(sel(stack,B),Item,Lines).
+placed_lines(local, _, data(N,L,A,Is), Item, Lines, data(N)) :-
+    Item = data(N,L,A,Is), item_lines(sel(stack,reference),Item,Lines).
+placed_lines(local, Branches, Func, Item, Lines, function(Name,Report)) :-
     Func = func(Name,_,_,Ps,Bs),
     Item = abi_function(Name,_,_,Sig,Frame,_,_,_,_,_),
     % Preserve entire setjmp functions, including unreachable sites, in
     % both selection and caching. ABI lowering hides the original sites.
-    ( setjmp_func(Func) -> Setjmp = true, Selection = stack
-    ; Setjmp = false, Selection = local ),
+    ( setjmp_func(Func) -> Setjmp = true, Selection = sel(stack,reference)
+    ; Setjmp = false, Selection = sel(local,Branches) ),
     item_lines(Selection,Item,Original),
     abi_symbol(impl(Sig),Name,Impl),
     % Adapters, getters and origins have different frames. Only the
@@ -279,10 +288,11 @@ lower_slot(FrameBase, Key, Slots0-I0, Slots-I) :-
    Name, where Fn = f(Name, Ret, Slots, Blocks) is the context amd64's
    load//4 and compute_op//4 take. Labels maps each block label to its
    phis, so an edge finds them without searching Blocks. */
-function_ctx(Name, Ret, Slots, Blocks, Size, FrameBase, Selection, Ctx) :-
+function_ctx(Name, Ret, Slots, Blocks, Size, FrameBase, sel(Imm, B), Ctx) :-
     findall(Label-Phis, member(block(Label, Phis, _, _), Blocks), LabelBlocks),
     list_to_assoc(LabelBlocks, Labels),
-    Ctx = ctx(f(Name, Ret, Slots, Blocks), Size, FrameBase, Labels, Selection).
+    branch_selection(B, Blocks, Branches),
+    Ctx = ctx(f(Name, Ret, Slots, Blocks), Size, FrameBase, Labels, sel(Imm, Branches)).
 
 ctx_fn(ctx(Fn, _, _, _, _), Fn).
 
@@ -294,7 +304,11 @@ ctx_frame_base(ctx(_, _, FrameBase, _, _), FrameBase).
 
 ctx_labels(ctx(_, _, _, Labels, _), Labels).
 
-ctx_selection(ctx(_, _, _, _, Selection), Selection).
+% Immediate selection: stack (the reference) or local.
+ctx_selection(ctx(_, _, _, _, sel(Selection, _)), Selection).
+
+% Branch selection: reference, or selected(Uses) (branch selection).
+ctx_branches(ctx(_, _, _, _, sel(_, Branches)), Branches).
 
 % ctx_slot(+Ctx, +Key, -Off): Key's slot is at -Off(%rbp).
 ctx_slot(ctx(f(_, _, Slots, _), _, _, _, _), Key, Off) :-
@@ -803,8 +817,14 @@ blocks([], _) --> [].
 blocks([block(Label, _, Insts, Jump)|Blocks], Ctx) -->
     { block_label(Ctx, Label, A) },
     [label(A)],
-    insts(Insts, 0, Label, Ctx),
-    jump(Jump, Label, Ctx),
+    (   { ctx_branches(Ctx, selected(Uses)) }
+    ->  { next_block(Blocks, Next),
+          compare_branch(Insts, Jump, Uses, Insts1, Jump1) },
+        insts(Insts1, 0, Label, Ctx),
+        selected_jump(Jump1, Label, Next, Ctx)
+    ;   insts(Insts, 0, Label, Ctx),
+        jump(Jump, Label, Ctx)
+    ),
     blocks(Blocks, Ctx).
 
 % The code of the jump that ends block From.
@@ -874,14 +894,119 @@ buffer_word_load(lower(V), R, _, Ctx) -->
 % Phi copies for the edge to Target, a label or poll(Label), then the
 % pollcheck if Target asks for one, then the jump.
 edge(From, Target, Tag, Ctx) -->
+    edge_moves(From, Target, Tag, Ctx),
+    { edge_label(Target, To),
+      block_label(Ctx, To, ToLabel) },
+    [ins(jmp, none, [sym(ToLabel)])].
+
+edge_moves(From, Target, Tag, Ctx) -->
     { edge_label(Target, To),
       ctx_labels(Ctx, Labels),
-      get_assoc(To, Labels, Phis),
-      block_label(Ctx, To, ToLabel) },
+      get_assoc(To, Labels, Phis) },
     phi_reads(Phis, From, Ctx),
     phi_writes(Phis, Ctx),
-    edge_poll(Target, From, Tag, Ctx),
-    [ins(jmp, none, [sym(ToLabel)])].
+    edge_poll(Target, From, Tag, Ctx).
+
+/* Branch selection (docs/perf.md). A block whose last instruction is an
+   integer comparison read only by the block's branch branches on the
+   comparison's flags; a branch whose edge needs no phi copies or poll
+   jumps straight to its block; an edge to the next block falls through.
+   The reference above stores the comparison's boolean, tests it and
+   jumps on both arms. Setjmp functions keep the reference. */
+
+% branch_selection(+Mode, +Blocks, -Branches): reference, or
+% selected(Uses), where Uses counts each temporary's occurrences in
+% Blocks, its definition included.
+branch_selection(reference, _, reference).
+branch_selection(selected, Blocks, selected(Uses)) :-
+    phrase(temp_names(Blocks), Names),
+    msort(Names, Sorted),
+    name_counts(Sorted, Counts),
+    list_to_assoc(Counts, Uses).
+
+temp_names(tmp(N)) --> !, [N].
+temp_names(T) -->
+    (   { compound(T) }
+    ->  { T =.. [_|As] }, temp_name_list(As)
+    ;   []
+    ).
+temp_name_list([]) --> [].
+temp_name_list([A|As]) --> temp_names(A), temp_name_list(As).
+
+name_counts([], []).
+name_counts([N|Ns], [N-C|Cs]) :- same_names(Ns, N, 1, C, Rest), name_counts(Rest, Cs).
+same_names([M|Ms], N, C0, C, Rest) :- M == N, !, C1 is C0 + 1, same_names(Ms, N, C1, C, Rest).
+same_names(Rest, _, C, C, Rest).
+
+next_block([block(L, _, _, _)|_], some(L)).
+next_block([], none).
+
+% compare_branch(+Insts, +Jump, +Uses, -Insts1, -Jump1): a last integer
+% comparison that only the branch reads moves into the jump.
+compare_branch(Insts, branch(tmp(D), T, F), Uses, Init, compare(C, K, Args, T, F)) :-
+    once(append(Init, [let(tmp(D), w, cmp(C, K), Args)], Insts)),
+    ( K == w ; K == l ),
+    get_assoc(D, Uses, 2),
+    !.
+compare_branch(Insts, Jump, _, Insts, Jump).
+
+selected_jump(compare(C, K, [X, Y], T, F), From, Next, Ctx) -->
+    { ctx_fn(Ctx, Fn), cond_code(C, CC), att_suffix(K, S), reg_name(a, K, A) },
+    load(X, K, a, Fn),
+    (   { Y = const(N), integer_immediate(K, N, V) }
+    ->  [ins(cmp, S, [imm(V), reg(A)])]
+    ;   { reg_name(c, K, RC) },
+        load(Y, K, c, Fn),
+        [ins(cmp, S, [reg(RC), reg(A)])]
+    ),
+    selected_branch(CC, T, F, From, Next, Ctx).
+selected_jump(branch(V, T, F), From, Next, Ctx) -->
+    { ctx_fn(Ctx, Fn) },
+    load(V, w, a, Fn),
+    [ins(test, l, [reg(eax), reg(eax)])],
+    selected_branch(ne, T, F, From, Next, Ctx).
+selected_jump(goto(To), From, Next, Ctx) -->
+    selected_edge(From, To, j, Next, Ctx).
+selected_jump(abi_return(As), From, _, Ctx) --> jump(abi_return(As), From, Ctx).
+selected_jump(unreachable, From, _, Ctx) --> jump(unreachable, From, Ctx).
+
+% The flags hold condition CC exactly when the branch goes to True.
+selected_branch(CC, True, False, From, Next, Ctx) -->
+    (   { Next == some(True), plain_edge(True, Ctx), plain_edge(False, Ctx) }
+    ->  { block_label(Ctx, False, FalseLabel), negated(CC, NC), atom_concat(j, NC, J) },
+        [ins(J, none, [sym(FalseLabel)])]
+    ;   { plain_edge(True, Ctx) }
+    ->  { block_label(Ctx, True, TrueLabel), atom_concat(j, CC, J) },
+        [ins(J, none, [sym(TrueLabel)])],
+        selected_edge(From, False, f, Next, Ctx)
+    ;   { plain_edge(False, Ctx) }
+    ->  { block_label(Ctx, False, FalseLabel), negated(CC, NC), atom_concat(j, NC, J) },
+        [ins(J, none, [sym(FalseLabel)])],
+        selected_edge(From, True, t, Next, Ctx)
+    ;   { local_label(Ctx, From, jnz, false, FalseLabel), negated(CC, NC),
+          atom_concat(j, NC, J) },
+        [ins(J, none, [sym(FalseLabel)])],
+        edge(From, True, t, Ctx),
+        [label(FalseLabel)],
+        selected_edge(From, False, f, Next, Ctx)
+    ).
+
+% An edge to a block without phis, and without a poll.
+plain_edge(Target, Ctx) :-
+    Target \= poll(_),
+    ctx_labels(Ctx, Labels),
+    get_assoc(Target, Labels, []).
+
+% The edge's code without its jump when it goes to the next block.
+selected_edge(From, Target, Tag, Next, Ctx) -->
+    (   { edge_label(Target, To), Next == some(To) }
+    ->  edge_moves(From, Target, Tag, Ctx)
+    ;   edge(From, Target, Tag, Ctx)
+    ).
+
+negated(e, ne). negated(ne, e).
+negated(l, ge). negated(ge, l). negated(le, g). negated(g, le).
+negated(b, ae). negated(ae, b). negated(be, a). negated(a, be).
 
 edge_poll(Target, From, Tag, Ctx) -->
     (   { Target = poll(_) }

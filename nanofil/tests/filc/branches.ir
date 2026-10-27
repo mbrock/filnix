@@ -1,0 +1,46 @@
+% Branch selection (docs/perf.md) on edges the C frontend does not make:
+% a true arm that is the next block and a false edge with phi copies
+% (the false jump must still copy the phi), and a polled false edge.
+func(keep, export, p, [param(p, tmp(p))], [
+    block(start, [], [], ret(tmp(p)))
+]).
+func(false_phi, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+    block(start, [], [
+        let(tmp(c), w, cmp(slt, w), [tmp(a), tmp(b)])
+    ], branch(tmp(c), next, join)),
+    block(next, [], [
+        let(tmp(m), w, mul, [tmp(a), const(3)])
+    ], goto(join)),
+    block(join, [
+        phi(tmp(x), w, [start-const(5), next-tmp(m)])
+    ], [], ret(tmp(x)))
+]).
+func(true_phi, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+    block(start, [], [
+        let(tmp(c), w, cmp(ult, w), [tmp(a), tmp(b)])
+    ], branch(tmp(c), join, next)),
+    block(next, [], [
+        let(tmp(m), w, add, [tmp(a), const(100)])
+    ], goto(join)),
+    block(join, [
+        phi(tmp(x), w, [start-const(9), next-tmp(m)])
+    ], [], ret(tmp(x)))
+]).
+func(count, export, w, [param(w, tmp(n))], [
+    block(start, [], [], goto(loop)),
+    block(loop, [
+        phi(tmp(i), w, [start-const(0), loop-tmp(j)])
+    ], [
+        let(tmp(j), w, add, [tmp(i), const(1)]),
+        let(tmp(c), w, cmp(sge, w), [tmp(j), tmp(n)])
+    ], branch(tmp(c), done, poll(loop))),
+    block(done, [], [], ret(tmp(j)))
+]).
+run(false_phi, [1, 2]).
+run(false_phi, [2, 1]).
+run(false_phi, [4294967295, 0]).
+run(true_phi, [1, 2]).
+run(true_phi, [2, 1]).
+run(true_phi, [4294967295, 0]).
+run(count, [5]).
+run(count, [1]).

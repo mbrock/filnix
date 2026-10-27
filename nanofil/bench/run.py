@@ -19,31 +19,37 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--trials", type=int, default=7)
 ap.add_argument("--cpu", type=int, default=6)
 ap.add_argument("--out", default=f"{HERE}/out")
-ap.add_argument("--modes", default="ref,off,O,O-reuse,O-local")
+ap.add_argument("--ref", default=f"{HERE}/ref",
+                help="where the filcc builds come from (default ref/, else --out): pin them, filcc is not deterministic")
+ap.add_argument("--modes", default="ref,off,O,O-reuse,O-local,O-branches")
 ap.add_argument("--only", default="")
 ap.add_argument("--json", default="results.json")
 ap.add_argument("--markdown", metavar="JSON", help="print tables of an earlier run's samples and exit")
-ap.add_argument("--compare", metavar="LABEL=JSON", nargs="+",
-                help="print MODE's ratios to ref across earlier runs and exit")
+ap.add_argument("--compare", metavar="LABEL=JSON[@MODE]", nargs="+",
+                help="print each run's MODE (default --mode) ratios to ref and exit")
 ap.add_argument("--mode", default="O", help="the mode --compare reports")
 a = ap.parse_args()
 if a.compare:
     import statistics as st
-    runs = [(c.split("=", 1)[0], json.load(open(c.split("=", 1)[1]))["samples"]) for c in a.compare]
+    runs = []
+    for c in a.compare:
+        label, rest = c.split("=", 1)
+        path, _, mode = rest.partition("@")
+        runs.append((label, json.load(open(path))["samples"], mode or a.mode))
     med = st.median
-    print(f"`{a.mode}` time ratio to ref (instruction ratio); * marks a row whose {a.mode} trial times overlap the previous column's\n")
-    print("| Workload | " + " | ".join(l for l, _ in runs) + " |\n|---|" + "--:|" * len(runs))
+    print("time ratio to ref (instruction ratio); * marks a row whose trial times overlap the previous column's\n")
+    print("| Workload | " + " | ".join(f"{l} `{m}`" for l, _, m in runs) + " |\n|---|" + "--:|" * len(runs))
     geo = [[] for _ in runs]
     for w in runs[0][1]:
         cells = []
-        for k, (_, r) in enumerate(runs):
+        for k, (_, r, m) in enumerate(runs):
             d = r[w]
-            t, i = (med(x[j] for x in d[a.mode]) / med(x[j] for x in d["ref"]) for j in (1, 0))
+            t, i = (med(x[j] for x in d[m]) / med(x[j] for x in d["ref"]) for j in (1, 0))
             geo[k].append((t, i))
-            ts = [x[1] for x in d[a.mode]]
+            ts = [x[1] for x in d[m]]
             mark = ""
             if k:
-                ps = [x[1] for x in runs[k - 1][1][w][a.mode]]
+                ps = [x[1] for x in runs[k - 1][1][w][runs[k - 1][2]]]
                 mark = "*" if max(ts) >= min(ps) and max(ps) >= min(ts) else ""
             cells.append(f"{t:.2f} ({i:.2f}){mark}")
         print(f"| {w} | " + " | ".join(cells) + " |")
@@ -68,6 +74,7 @@ if a.markdown:
         f"({st.geometric_mean([ratio(d, m, 0) for d in r.values()]):.2f})" for m in ns) + " |")
     sys.exit()
 O = a.out
+REF = a.ref if os.path.isdir(a.ref) else O
 MODES = a.modes.split(",")
 TEXT, RANDOM = f"{O}/inputs/text", f"{O}/inputs/random"
 tmp = tempfile.mkdtemp(prefix="nanofil-bench-")
@@ -76,7 +83,7 @@ tmp = tempfile.mkdtemp(prefix="nanofil-bench-")
 def ref_output(prog, exe, args, src, name):
     path = f"{tmp}/{name}"
     with open(src, "rb") as i, open(path, "wb") as o:
-        subprocess.run([f"{O}/{prog}/ref/{exe}", *args], stdin=i, stdout=o, check=True)
+        subprocess.run([f"{REF}/{prog}/ref/{exe}", *args], stdin=i, stdout=o, check=True)
     return path
 
 
@@ -102,7 +109,7 @@ W = {k: v for k, v in W.items() if a.only in k}
 
 def cmd(w, m):
     prog, exe, args, _ = W[w]
-    return [f"{O}/{prog}/{m}/{exe}", *args]
+    return [f"{REF if m == 'ref' else O}/{prog}/{m}/{exe}", *args]
 
 
 def stdin(w):
@@ -168,6 +175,7 @@ def measure(w, m):
     return v["instructions"], v["task-clock"]
 
 
+print(f"ref {os.path.realpath(REF)}", file=sys.stderr)
 print(f"loadavg {open('/proc/loadavg').read().split()[:3]}, cpu {a.cpu} (siblings {sorted(CORE)})", file=sys.stderr)
 rng = random.Random(1)
 res = {w: {m: [] for m in MODES} for w in W}

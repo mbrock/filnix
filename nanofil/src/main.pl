@@ -48,6 +48,12 @@
     is stack; NANOFIL_REGISTERS supplies the same choice to build harnesses.
     The plain backend is unchanged. Options precede the command.
 
+    `--branches=reference|selected` independently selects the reference
+    branch on a stored boolean, or a branch on the flags of a compare
+    that only the branch reads, with jumps to the next block left to
+    fall through (docs/perf.md). The default is reference;
+    NANOFIL_BRANCHES supplies the same choice.
+
     `--checks=reference|reuse` independently selects the reference checked
     IR, a check before every access, or check reuse after pizlonation
     (src/check_reuse.pl, docs/m7.md). The default is reference;
@@ -114,12 +120,18 @@ main :-
           )),
     halt(Status).
 
-register_default(Registers) :-
+% The emission choices: emit(Registers, Branches).
+register_default(emit(Registers, Branches)) :-
     ( getenv('NANOFIL_REGISTERS',R) -> Registers = R ; Registers = stack ),
-    register_mode(Registers).
+    register_mode(Registers),
+    ( getenv('NANOFIL_BRANCHES',B) -> Branches = B ; Branches = reference ),
+    branches_mode(Branches).
 register_mode(R) :-
     ( memberchk(R,[stack,local]) -> true
     ; throw(nanofil_error('registers must be stack or local')) ).
+branches_mode(B) :-
+    ( memberchk(B,[reference,selected]) -> true
+    ; throw(nanofil_error('branches must be reference or selected')) ).
 checks_default(Checks) :-
     ( getenv('NANOFIL_CHECKS',C) -> Checks = C ; Checks = reference ),
     checks_mode(Checks).
@@ -127,9 +139,12 @@ checks_mode(C) :-
     ( memberchk(C,[reference,reuse]) -> true
     ; throw(nanofil_error('checks must be reference or reuse')) ).
 options(['-O'|As],_,R,C,O,Rs,Cs,Args) :- !, options(As,o1,R,C,O,Rs,Cs,Args).
-options([A|As],O,_,C,Opt,Rs,Cs,Args) :-
+options([A|As],O,emit(_,B),C,Opt,Rs,Cs,Args) :-
     atom_concat('--registers=',R,A), !, register_mode(R),
-    options(As,O,R,C,Opt,Rs,Cs,Args).
+    options(As,O,emit(R,B),C,Opt,Rs,Cs,Args).
+options([A|As],O,emit(R,_),C,Opt,Rs,Cs,Args) :-
+    atom_concat('--branches=',B,A), !, branches_mode(B),
+    options(As,O,emit(R,B),C,Opt,Rs,Cs,Args).
 options([A|As],O,R,_,Opt,Rs,Cs,Args) :-
     atom_concat('--checks=',C,A), !, checks_mode(C),
     options(As,O,R,C,Opt,Rs,Cs,Args).

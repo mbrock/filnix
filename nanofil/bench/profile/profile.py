@@ -20,11 +20,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ap = argparse.ArgumentParser()
 ap.add_argument("--marked", default=f"{HERE}/out")
 ap.add_argument("--bench", default=f"{HERE}/../out")
+ap.add_argument("--ref", default=f"{HERE}/../ref")
 ap.add_argument("--work", default="profile-work")
 ap.add_argument("--only", default="")
 a = ap.parse_args()
 os.makedirs(a.work, exist_ok=True)
 B, M, L = a.bench, a.marked, os.path.dirname(HERE)
+R = a.ref if os.path.isdir(a.ref) else B
 TEXT, RANDOM = f"{B}/inputs/text", f"{B}/inputs/random"
 EXE = {"zlib": "minigzip", "bzip2": "bzip2", "lz4": "lz4", "lua": "lua"}
 
@@ -32,7 +34,7 @@ EXE = {"zlib": "minigzip", "bzip2": "bzip2", "lz4": "lz4", "lua": "lua"}
 def ref_output(prog, args, src, name):
     path = f"{a.work}/{name}"
     with open(src, "rb") as i, open(path, "wb") as o:
-        subprocess.run([f"{B}/{prog}/ref/{EXE[prog]}", *args], stdin=i, stdout=o, check=True)
+        subprocess.run([f"{R}/{prog}/ref/{EXE[prog]}", *args], stdin=i, stdout=o, check=True)
     return path
 
 
@@ -54,7 +56,7 @@ key = lambda w: re.sub(r"\W+", "-", w)
 
 def cachegrind(w, variant):
     prog, args, stdin = W[w]
-    exe = f"{M}/{prog}/{EXE[prog]}" if variant == "nf" else f"{B}/{prog}/ref/{EXE[prog]}"
+    exe = f"{M}/{prog}/{EXE[prog]}" if variant == "nf" else f"{R}/{prog}/ref/{EXE[prog]}"
     out = f"{a.work}/cg.{variant}.{key(w)}"
     # Fil-C's ioctl wrapper asserts an integer argument below 4 GiB is not
     # a heap pointer; valgrind would otherwise put the heap there.
@@ -184,10 +186,12 @@ for w, (prog, _, _) in W.items():
     chain = 0
     for bl in blocks.values():
         regions = {re.sub(r"_\d+$", "", r) for r, _, _ in bl}
+        texts = [t for _, t, _ in bl]
+        materialized = any(re.match(r"\tset[a-z]+ ", t) for t in texts) and \
+            any(re.match(r"\tmov[lq] \$-?\d+, %[re]cx", t) for t in texts)
+        selected = any(re.match(r"\tcmp[lq] \$-?\d+, %", t) for t in texts)  # --branches=selected
         if regions <= {"let_w_cmp_cmp", "let_l_cmp_cmp", "br_test", "phi", "poll", "jmp"} and \
-                any(r.startswith("let_") for r in regions) and \
-                any(re.match(r"\t(set[a-z]+) ", t) for _, t, _ in bl) and \
-                any(re.match(r"\tmov[lq] \$-?\d+, %[re]cx", t) for _, t, _ in bl):
+                (materialized or selected):
             chain += sum(ir for _, _, ir in bl)
     rows.append((w, sum(ref_fns.values()), total, cat, chain))
     details.append((w, sub, byfn, ref_fns, total))
