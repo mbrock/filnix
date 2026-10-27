@@ -1890,9 +1890,65 @@ builtin('__builtin_expect', [A, B], Ctx, R) --> !,
 builtin(Name, Args, Ctx, R) -->
     { overflow_builtin(Name, Op, Fixed) }, !,
     checked_arithmetic(Args, Op, Fixed, Ctx, R).
+builtin(Name, [A], Ctx, R) -->
+    { bit_builtin(Name, Op, Type) }, !,
+    rval(A, Ctx, V0),
+    { ctx_loc(Ctx, Loc) },
+    assign_convert(A, V0, Type, Loc, V1),
+    convert(V1, ulong, v(X, _)),
+    { int_info(Type, Bytes, _), Bits is 8 * Bytes },
+    bit_count(Op, Bits, X, N),
+    convert(v(N, long), int, R).
+builtin(Name, [A], Ctx, R) -->
+    { builtin_type(Name, Type), atom_concat('__builtin_bswap', _, Name) }, !,
+    rval(A, Ctx, V0),
+    { ctx_loc(Ctx, Loc) },
+    assign_convert(A, V0, Type, Loc, V1),
+    convert(V1, ulong, v(X, _)),
+    { int_info(Type, Bytes, _), Last is Bytes - 1,
+      numlist(1, Last, Is) },
+    swapped_bytes([0|Is], X, Last, none, Y),
+    convert(v(Y, ulong), Type, R).
+
 builtin(Name, _, Ctx, _) -->
     { ctx_loc(Ctx, Loc), sema_error(Loc, 'wrong arguments to ~w', [Name]) }.
 
+% bit_count(+Op, +Bits, +X, -N)//: N is the number of trailing zeros,
+% leading zeros or ones of X, a Bits-wide unsigned value zero-extended
+% to 64 bits; branch-free, so the operand 0 (undefined for ctz and clz)
+% needs no block.
+bit_count(popcount, _, X, N) --> popcount64(X, N).
+bit_count(ctz, _, X, N) -->
+    let(l, neg, [X], M), let(l, and, [X, M], Low),
+    let(l, sub, [Low, const(1)], Below), popcount64(Below, N).
+bit_count(clz, Bits, X, N) -->
+    smear([1, 2, 4, 8, 16, 32], X, S), popcount64(S, P),
+    let(l, sub, [P, const(Bits)], NegN), let(l, neg, [NegN], N).
+
+smear([], X, X) --> [].
+smear([Sh|Shs], X, Y) -->
+    let(l, shr, [X, const(Sh)], T), let(l, or, [X, T], X1), smear(Shs, X1, Y).
+
+popcount64(X, N) -->
+    let(l, shr, [X, const(1)], A1), let(l, and, [A1, const(0x5555555555555555)], A2),
+    let(l, sub, [X, A2], B),
+    let(l, and, [B, const(0x3333333333333333)], C1),
+    let(l, shr, [B, const(2)], C2), let(l, and, [C2, const(0x3333333333333333)], C3),
+    let(l, add, [C1, C3], C),
+    let(l, shr, [C, const(4)], D1), let(l, add, [C, D1], D2),
+    let(l, and, [D2, const(0x0f0f0f0f0f0f0f0f)], D),
+    let(l, mul, [D, const(0x0101010101010101)], E),
+    let(l, shr, [E, const(56)], N).
+
+% swapped_bytes(+Is, +X, +Last, +Y0, -Y)//: Y is Y0 (none for nothing
+% yet) with each byte I in Is of X moved to byte Last - I.
+swapped_bytes([], _, _, Y, Y) --> [].
+swapped_bytes([I|Is], X, Last, Y0, Y) -->
+    { From is 8 * I, To is 8 * (Last - I) },
+    let(l, shr, [X, const(From)], B0), let(l, and, [B0, const(255)], B),
+    let(l, shl, [B, const(To)], Moved),
+    (   { Y0 == none } -> { Y1 = Moved } ; let(l, or, [Y0, Moved], Y1) ),
+    swapped_bytes(Is, X, Last, Y1, Y).
 % The generic builtins do NOT use the usual arithmetic conversions.
 % Keep the exact result in two l limbs, then compare it with the stored
 % value extended back to two limbs. 128 bits suffice for all supported

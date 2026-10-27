@@ -73,7 +73,7 @@
                     vm_type/1, vla_type/1, unsupported_type/3, value_type/2,
                     generic_selection/5, reflect_type/4, reflect_params/4,
                     conditional_type/3, unqualified/2,
-                    overflow_builtin/3, binary_operands/6,
+                    overflow_builtin/3, bit_builtin/3, builtin_type/2, binary_operands/6,
                     unary_operand/3, assigned/4,
                     castable/2, expression_category/3, modifiable_lvalue/2,
                     integer_type/4, elaborate/3, tree_type/2, value/2,
@@ -1701,6 +1701,10 @@ elab(member(E, F), Env, X) :-
     ).
 elab(arrow(E, F), Env, X) :-                                % 6.5.2.3p4
     elab(member(un(deref, E), F), Env, X).
+elab(call(id(Name), Args), Env, X) :-
+    \+ lookup_ordinary(Env, Name, _),
+    library_builtin(Name, F), lookup_ordinary(Env, F, _), !,
+    elab(call(id(F), Args), Env, X).
 elab(call(id(Name), Args), Env, val(T, builtin(Name, Args))) :-
     \+ lookup_ordinary(Env, Name, _),
     (   Args == [], float_builtin(Name, T, _) -> true
@@ -1869,8 +1873,33 @@ members_type(Members, F, _, T) :-
 members_type(Members, F, Env, T) :-
     member(q(none, Anon), Members), member_type(Anon, F, Env, T), !.
 
-% builtin_type(?Name, ?Type): a call of builtin Name, when Name is not
-% declared, has Type.
+doc(library_builtin(?(Name), ?(F)), nondet, [
+    Name: "a GNU builtin spelling of a standard library function",
+    F: "that function",
+    "An undeclared Name called is a call of F, when F is declared:",
+    "GCC treats these builtins as the library functions they name.",
+    cites('GCC manual, Other Built-in Functions'),
+    cites('C11 7.24.2.1'),
+    example(library_builtin('__builtin_memcpy', F), F = memcpy),
+    fails(library_builtin(memcpy, _))
+]).
+library_builtin('__builtin_memcpy', memcpy).
+library_builtin('__builtin_memmove', memmove).
+library_builtin('__builtin_memset', memset).
+
+doc(builtin_type(?(Name), ?(Type)), nondet, [
+    Name: "a builtin's name",
+    Type: "the type of a call of it",
+    "A call of builtin Name, when Name is not declared, has Type. The",
+    "bit builtins count trailing or leading zero bits, or one bits, of",
+    "an unsigned int, long or long long, giving an int; the byte swaps",
+    "give the unsigned type of their width.",
+    cites('GCC manual, Other Built-in Functions'),
+    example(builtin_type('__builtin_ctzll', T), T = int),
+    example(builtin_type('__builtin_bswap16', T), T = ushort),
+    example(builtin_type('__builtin_bswap64', T), T = ulong),
+    fails(builtin_type('__builtin_ctzlll', _))
+]).
 builtin_type('__builtin_va_start', void).
 builtin_type('__builtin_va_copy', void).
 builtin_type('__builtin_va_end', void).
@@ -1879,6 +1908,24 @@ builtin_type('__builtin_alloca', ptr(void)).
 builtin_type('__builtin_expect', long).
 builtin_type('__builtin_constant_p', int).
 builtin_type(Name, bool) :- overflow_builtin(Name, _, _).
+builtin_type(Name, int) :- bit_builtin(Name, _, _).
+builtin_type('__builtin_bswap16', ushort).
+builtin_type('__builtin_bswap32', uint).
+builtin_type('__builtin_bswap64', ulong).
+
+doc(bit_builtin(?(Name), ?(Op), ?(Type)), nondet, [
+    Name: "a bit-counting builtin",
+    Op: "ctz, clz or popcount",
+    Type: "its operand's type: uint, ulong or ullong",
+    cites('GCC manual, Other Built-in Functions'),
+    example(bit_builtin('__builtin_clzl', Op, T), (Op, T) = (clz, ulong)),
+    example(bit_builtin('__builtin_popcount', Op, T), (Op, T) = (popcount, uint)),
+    fails(bit_builtin('__builtin_ffs', _, _))
+]).
+bit_builtin(Name, Op, Type) :-
+    member(Op, [ctz, clz, popcount]),
+    member(Suffix-Type, [''-uint, l-ulong, ll-ullong]),
+    atomic_list_concat(['__builtin_', Op, Suffix], Name).
 
 % overflow_builtin(?Name, ?Op, ?Fixed): builtin Name checks arithmetic Op
 % on operands of type Fixed, or of any integer types (generic).
