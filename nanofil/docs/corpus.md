@@ -58,7 +58,7 @@ the survey is stable, **not** that the compiler implements that feature.
 
 ## Current counts (October 2026)
 
-The checked baseline has **261 passes, 1 rejection, 7 reference
+The checked baseline has **262 passes, no rejections, 7 reference
 errors and 147 without main**. Variable length arrays and variably
 modified types (m4.md, "Variable length arrays") turn eight rejections
 into passes: cproc `builtin-vaarg-vm`, `cast-vm`, `func-vla`,
@@ -73,11 +73,13 @@ member (C11 6.7.2.1p13 makes those members of the enclosing struct).
 cproc `struct-packed` passes with GNU packed layout (m4.md, "Packed
 structs and unions"), including the `[[gnu::packed]]` spelling.
 c-testsuite `00140` passes with byval struct arguments (abi-findings.md,
-*Byval arguments*), including one past a prototype's `...`. One left:
-
-| Test | First failure | Owner |
-| --- | --- | --- |
-| c-testsuite `00204` | small float-containing structs by value (SSE eightbytes); also `long double` HFAs and aggregate `va_arg` | frontend/ABI (float.md) |
+*Byval arguments*), including one past a prototype's `...`. The last
+rejection, c-testsuite `00204`, passes with small float-containing
+structs by value (SSE eightbytes), aggregate `va_arg`, and x87 `long
+double` (float.md, *x87 long double*), whose HFAs it passes by value,
+returns and reads through `va_arg`. Its `myprintf` calls of more than
+16 words to one variadic callee also needed one weak thunk per word
+list (abi-findings.md, *Distinct thunks for distinct word lists*).
 
 cproc `constraint/c23-6.7.7.3p2-vm-declaration-2` stays a pass: under
 C11 a block-scope `static` pointer to a VLA is allowed (only a VLA
@@ -310,9 +312,8 @@ belong in this milestone.
 
 ## Follow-ups
 
-1. The remaining gap, `00204`, needs small structs with float
-   members by value (SSE classification in the fast convention),
-   aggregate `va_arg`, and x87 `long double`.
+1. None in the corpus: `00204` passes since x87 `long double`
+   (float.md).
 
 ## Harness validation
 

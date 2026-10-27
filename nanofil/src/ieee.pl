@@ -8,7 +8,13 @@
 
     ## Predicates
 
-    K is `s` (binary32) or `d` (binary64).
+    K is `s` (binary32), `d` (binary64) or `x` (the x87 80-bit extended
+    format of C's `long double` on x86-64: a sign, 15 exponent bits and
+    a 64-bit significand whose integer bit is explicit, in the low 80
+    bits of the pattern). An x NaN operand follows the x87's rule
+    instead of SSE's: when both operands are NaNs, a quiet one wins over
+    a signaling one, else the one with the larger significand, else the
+    first.
 
     | Predicate | Notes |
     |---|---|
@@ -28,22 +34,31 @@
 :- use_module(library(dcgs)).
 :- use_module(library(error)).
 
-% format(K, fraction bits, exponent bits, bias).
+% format(K, fraction bits, exponent bits, bias): the fraction excludes
+% the integer bit, which x stores explicitly (integer_bit/2).
 format(s, 23, 8, 127).
 format(d, 52, 11, 1023).
+format(x, 63, 15, 16383).
+
+% integer_bit(K, Bits): the bits of the explicit integer bit, if any;
+% the exponent starts above it.
+integer_bit(s, 0).
+integer_bit(d, 0).
+integer_bit(x, 1).
+exponent_shift(K, Sh) :- format(K, F, _, _), integer_bit(K, I), Sh is F + I.
 
 decode(K, B, S, T) :-
-    must_be(integer, B), format(K, F, E, Bias),
-    S is B >> (F + E), M is B /\ ((1 << F) - 1),
-    X is (B >> F) /\ ((1 << E) - 1), Max is (1 << E) - 1,
+    must_be(integer, B), format(K, F, E, Bias), exponent_shift(K, Sh),
+    S is B >> (Sh + E), M is B /\ ((1 << F) - 1),
+    X is (B >> Sh) /\ ((1 << E) - 1), Max is (1 << E) - 1,
     ( X =:= Max -> ( M =:= 0 -> T = inf ; T = nan )
-    ; X =:= 0 -> P is 1 - Bias - F, T = finite(M, P)
+    ; X =:= 0 -> P is 1 - Bias - F, Sig is B /\ ((1 << Sh) - 1), T = finite(Sig, P)
     ; N is (1 << F) + M, P is X - Bias - F, T = finite(N, P) ).
 
-sign_bits(K, S, B) :- format(K, F, E, _), B is S << (F + E).
+sign_bits(K, S, B) :- format(K, _, E, _), exponent_shift(K, Sh), B is S << (Sh + E).
 infinity(K, S, B) :-
-    format(K, F, E, _), sign_bits(K, S, SB),
-    B is SB + (((1 << E) - 1) << F).
+    format(K, F, E, _), exponent_shift(K, Sh), sign_bits(K, S, SB),
+    integer_bit(K, I), B is SB + (((1 << E) - 1) << Sh) + (I << F).
 quiet(K, A, B) :- format(K, F, _, _), B is A \/ (1 << (F - 1)).
 invalid(K, B) :- infinity(K, 1, I), quiet(K, I, B).
 
@@ -71,10 +86,11 @@ round_ratio(K, S, N, D, B) :-
     scale(N, D, -Step, A, C), round_even(A, C, Q),
     ( Q >= 1 << (F + 1) -> Q1 is Q >> 1, E1 is E + 1
     ; Q1 = Q, E1 is max(E, Emin) ),
+    integer_bit(K, I), exponent_shift(K, Sh),
     ( E1 > Bias -> infinity(K, S, B)
     ; Q1 < 1 << F -> Exp = 0, Mant = Q1
-    ; Exp is E1 + Bias, Mant is Q1 - (1 << F) ),
-    ( E1 =< Bias -> sign_bits(K, S, SB), B is SB + (Exp << F) + Mant
+    ; Exp is E1 + Bias, Mant is Q1 - ((1 - I) << F) ),
+    ( E1 =< Bias -> sign_bits(K, S, SB), B is SB + (Exp << Sh) + Mant
     ; true ).
 
 finite_ratio(finite(N, E), A, B) :- scale(N, 1, E, A, B).
@@ -98,9 +114,17 @@ ieee_neg(K, A, B) :-
 
 ieee_binary(K, Op, A, B, R) :-
     decode(K, A, SA, TA), decode(K, B, SB, TB),
-    ( TA == nan -> quiet(K, A, R)
+    ( TA == nan, TB == nan, K == x -> x87_nan(A, B, R)
+    ; TA == nan -> quiet(K, A, R)
     ; TB == nan -> quiet(K, B, R)
     ; binary(Op, K, SA, TA, SB, TB, R) ).
+
+% The x87 picks between two NaN operands (Intel SDM vol. 1, 4.8.3.5).
+x87_nan(A, B, R) :-
+    QA is (A >> 62) /\ 1, QB is (B >> 62) /\ 1,
+    MA is A /\ ((1 << 64) - 1), MB is B /\ ((1 << 64) - 1),
+    ( QA > QB -> W = A ; QB > QA -> W = B ; MB > MA -> W = B ; W = A ),
+    quiet(x, W, R).
 
 binary(sub, K, SA, TA, SB, TB, R) :-
     SC is 1 - SB, binary(add, K, SA, TA, SC, TB, R).

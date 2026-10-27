@@ -30,6 +30,7 @@
     | `l` | 64-bit integer (a long) |
     | `s` | 32-bit float (single) |
     | `d` | 64-bit float (double) |
+    | `x` | x87 80-bit extended float (C's `long double`; filc mode only, never a parameter, result, call argument or phi: docs/float.md) |
     | `p` | pointer: an address with its Fil-C capability (filc mode only) |
     | `a` | proven address: a pointer or named-local access that a check has cleared (checked stage only) |
     | `f` | proven function: a `p` that a function check has cleared (checked stage only) |
@@ -128,8 +129,11 @@
     | `cmp(Cond, K1)` | `w` `l`; `w` when K1 is a float | `[K1, K1]` | Cond for K1 `w` or `l`: `eq` `ne` `sle` `slt` `sge` `sgt` `ule` `ult` `uge` `ugt`; for `s` or `d`: `eq` `ne` `le` `lt` `ge` `gt` `o` `uo` |
     | `ext(T)` | `l` for `sw` `uw`; `w` or `l` for `sh` `uh` `sb` `ub` | `[w]` | extend the low bytes |
     | `ext(s)` | `d` | `[s]` | single to double |
+    | `ext(s)` | `x` | `[s]` | single to extended |
+    | `ext(d)` | `x` | `[d]` | double to extended |
     | `truncd` | `s` | `[d]` | double to single |
-    | `stosi` `stoui` / `dtosi` `dtoui` | `w` `l` | `[s]` / `[d]` | float to signed or unsigned integer |
+    | `truncx` | `s` `d` | `[x]` | extended to single or double |
+    | `stosi` `stoui` / `dtosi` `dtoui` / `xtosi` `xtoui` | `w` `l` | `[s]` / `[d]` / `[x]` | float to signed or unsigned integer |
     | `swtof` `uwtof` / `sltof` `ultof` | `s` `d` | `[w]` / `[l]` | signed or unsigned integer to float |
     | `cast` | `w` `s` `l` `d` | `[s]` `[w]` `[d]` `[l]` | bitwise: `w` and `s`, `l` and `d` |
     | `load(T)` | as T: `l`, `p`, `s`, `d`; `w` or `l` for a narrow T | `[Addr]` | T one of `l` `sw` `uw` `sh` `uh` `sb` `ub` `p` `s` `d` |
@@ -276,6 +280,7 @@ class(l, int, 64).
 class(p, pointer, 64).
 class(s, float, 32).
 class(d, float, 64).
+class(x, float, 80).
 
 any_class(K) :- class(K, _, _).
 int_class(K) :- class(K, int, _).
@@ -403,8 +408,9 @@ pointer_memory_effects(local_store, [lower_write, address_write]).
 %  capability lives in the aux word of its 8-byte slot, else 1.
 
 access_size_align(p, 8, 8).
+access_size_align(x, 10, 8).
 access_size_align(X, Size, 1) :-
-    (   width_bytes(X, Size), X \== p
+    (   width_bytes(X, Size), X \== p, X \== x
     ;   narrow_type(X, Size, _)
     ).
 
@@ -429,6 +435,7 @@ narrow_type(sb, 1, signed).   narrow_type(ub, 1, unsigned).
 load_type(l). load_type(p).
 load_type(d).
 load_type(s).
+load_type(x).
 load_type(T) :- narrow_type(T, _, _).
 
 alloc_align(4).
@@ -470,6 +477,10 @@ op_kind(va_arg, va_arg).
 op_kind(setjmp(Kind), setjmp) :- member(Kind, [setjmp, '_setjmp', sigsetjmp]).
 op_kind(ext(s), float_convert).
 op_kind(truncd, float_convert).
+op_kind(ext(d), float_convert).
+op_kind(truncx, float_convert).
+op_kind(xtosi, float_to_int).
+op_kind(xtoui, float_to_int).
 op_kind(stosi, float_to_int).
 op_kind(stoui, float_to_int).
 op_kind(dtosi, float_to_int).
@@ -559,6 +570,8 @@ pointer_item(data(_, Linkage, _, Items)) :-
 % pointer_inst(+Inst): Inst produces, stores, passes or calls through a p
 % value, or converts one (ptoi). Several clauses may hold for one Inst.
 pointer_inst(let(_, p, _, _)).
+pointer_inst(let(_, x, _, _)).
+pointer_inst(store(x, _, _)).
 pointer_inst(let(_, _, ptoi, _)).
 pointer_inst(let(_, _, setjmp(_), _)).
 pointer_inst(store(p, _, _)).
@@ -631,6 +644,13 @@ valid_item(M, Mode, Stage, func(Name, _, Ret, Params, Blocks)) :-
     (   Blocks == [] -> fn_error(Name, 'function has no blocks', []) ; true ),
     ( (any_class(Ret) ; Ret == void ; Ret = tuple(_)) -> true
     ; fn_error(Name, 'invalid return class ~w', [Ret]) ),
+    (   ( Ret == x ; member(param(x, _), Params)
+        ; member(block(_, Phis, Is, _), Blocks),
+          ( member(phi(_, x, _), Phis)
+          ; member(call(CR, _, CA), Is), ( CR = result(_, x) ; memberchk(arg(x, _), CA) ) ) )
+    ->  fn_error(Name, 'class x is a parameter, result, call argument or phi', [])
+    ;   true
+    ),
     (   Ret = tuple(Ks),
         \+ ( Ks = [_, _], forall(member(K, Ks), memberchk(K, [l, p, s, d])) )
     ->  fn_error(Name,
@@ -1070,7 +1090,8 @@ evidence_preserving(raw_store(W, _, _, _)) :- W \== p.
 evidence_preserving(let(_, _, Op, _)) :-
     memberchk(Op, [add, sub, mul, div, udiv, rem, urem, and, or, xor,
                    sar, shr, shl, neg, ptoi, cast, truncd,
-                   stosi, stoui, dtosi, dtoui, swtof, uwtof, sltof, ultof]).
+                   stosi, stoui, dtosi, dtoui, swtof, uwtof, sltof, ultof,
+                   ext(d), truncx, xtosi, xtoui]).
 evidence_preserving(let(_, _, cmp(_, _), _)).
 evidence_preserving(let(_, _, ext(_), _)).
 evidence_preserving(let(_, _, copy, Args)) :- \+ memberchk(global(_), Args).
@@ -1449,8 +1470,10 @@ kind_result_ok(va_arg, _, filc, K) :- any_class(K).
 kind_result_ok(setjmp, _, filc, w).
 kind_result_ok(cmp, cmp(C, CK), _, K) :-
     comparison(C, CK), (float_class(CK) -> K = w ; int_class(K)).
-kind_result_ok(float_convert, ext(s), _, d).
+kind_result_ok(float_convert, ext(s), _, K) :- memberchk(K, [d, x]).
+kind_result_ok(float_convert, ext(d), _, x).
 kind_result_ok(float_convert, truncd, _, s).
+kind_result_ok(float_convert, truncx, _, K) :- memberchk(K, [s, d]).
 kind_result_ok(float_to_int, _, _, K) :- int_class(K).
 kind_result_ok(int_to_float, _, _, K) :- float_class(K).
 kind_result_ok(cast, _, _, K) :- numeric_class(K).
@@ -1478,6 +1501,7 @@ load_result_ok(l, _, l).
 load_result_ok(p, filc, p).
 load_result_ok(s, _, s).
 load_result_ok(d, _, d).
+load_result_ok(x, filc, x).
 load_result_ok(sw, _, K) :- int_class(K).
 load_result_ok(uw, _, K) :- int_class(K).
 load_result_ok(sh, _, K) :- int_class(K).
@@ -1511,8 +1535,9 @@ kind_arg_classes(setjmp, _, w, filc, [p, w]).
 kind_arg_classes(cmp, cmp(_, CK), _, _, [CK, CK]).
 kind_arg_classes(float_convert, ext(s), _, _, [s]).
 kind_arg_classes(float_convert, truncd, _, _, [d]).
-kind_arg_classes(float_to_int, Op, _, _, [K]) :-
-    ( memberchk(Op, [stosi, stoui]) -> K = s ; K = d ).
+kind_arg_classes(float_convert, ext(d), _, _, [d]).
+kind_arg_classes(float_convert, truncx, _, _, [x]).
+kind_arg_classes(float_to_int, Op, _, _, [K]) :- float_int_source(Op, K).
 kind_arg_classes(int_to_float, Op, _, _, [K]) :-
     ( memberchk(Op, [swtof, uwtof]) -> K = w ; K = l ).
 kind_arg_classes(cast, _, K, _, [From]) :- cast_classes(K, From).
@@ -1532,6 +1557,12 @@ additive_arg_classes(l, [l, l]).
 additive_arg_classes(p, [p, l]).
 additive_arg_classes(s, [s, s]).
 additive_arg_classes(d, [d, d]).
+additive_arg_classes(x, [x, x]).
+
+% float_int_source(?Op, ?K): the float-to-integer Op reads class K.
+float_int_source(stosi, s). float_int_source(stoui, s).
+float_int_source(dtosi, d). float_int_source(dtoui, d).
+float_int_source(xtosi, x). float_int_source(xtoui, x).
 
 cast_classes(w, s).
 cast_classes(s, w).

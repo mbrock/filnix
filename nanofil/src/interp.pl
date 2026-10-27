@@ -479,6 +479,7 @@ width_value_class(l, l).
 width_value_class(p, p).
 width_value_class(s, s).
 width_value_class(d, d).
+width_value_class(x, x).
 
 % function_check_res(+P, +Ctx, -Res): P designates a function only when
 % it carries that function's capability at its exact callable address.
@@ -674,6 +675,7 @@ word_at_class(a, X, X).
 word_at_class(f, X, X).
 word_at_class(s, X0, X) :- must_be(integer, X0), X is X0 mod 4294967296.
 word_at_class(d, X0, X) :- must_be(integer, X0), X is X0 mod 18446744073709551616.
+word_at_class(x, X0, X) :- must_be(integer, X0), X is X0 mod (1 << 80).
 
 % value_x(+K, +V, +Ctx, +Env, -X): X is the IR value V read at class K,
 % which takes its low bits(K) bits. value_x_/5 indexes on the value. A
@@ -703,6 +705,7 @@ constant_at_class(l, A, A).
 constant_at_class(p, A, ptr(A, none)).
 constant_at_class(s, A, A).
 constant_at_class(d, A, A).
+constant_at_class(x, A, A).
 
 undefined_symbol(filc, N, ptr(0, ext(N))).
 
@@ -724,9 +727,9 @@ flight_cap(lower(P), Ctx, Env, Cap) :- value_x(p, P, Ctx, Env, ptr(_, Cap)).
 % Commit before integer dispatch: float bits must never get CLP(Z)
 % arithmetic, even if a caller asks for a different result on backtracking.
 op_res(cmp(C, CK), _, _, [A, B], S, val(R), S) :-
-    memberchk(CK, [s, d]), !, ieee_compare(CK, C, A, B, R).
+    memberchk(CK, [s, d, x]), !, ieee_compare(CK, C, A, B, R).
 op_res(Op, K, _, Xs, S, val(R), S) :-
-    memberchk(K, [s, d]), memberchk(Op, [add, sub, mul, div, neg, copy]), !,
+    memberchk(K, [s, d, x]), memberchk(Op, [add, sub, mul, div, neg, copy]), !,
     float_arithmetic(Op, K, Xs, R).
 op_res(Op, K, Mode, Xs, S0, Res, S) :-
     op_kind(Op, Kind),
@@ -769,10 +772,14 @@ kind_res(ptoi, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
 kind_res(itop, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
 kind_res(cmp, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
 kind_res(ext, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
-kind_res(float_convert, ext(s), d, _, [X], S, val(R), S) :-
-    ieee_convert(s, d, X, R).
+kind_res(float_convert, ext(s), K, _, [X], S, val(R), S) :-
+    ieee_convert(s, K, X, R).
+kind_res(float_convert, ext(d), x, _, [X], S, val(R), S) :-
+    ieee_convert(d, x, X, R).
 kind_res(float_convert, truncd, s, _, [X], S, val(R), S) :-
     ieee_convert(d, s, X, R).
+kind_res(float_convert, truncx, K, _, [X], S, val(R), S) :-
+    ieee_convert(x, K, X, R).
 kind_res(float_to_int, Op, K, _, [X], S, Res, S) :-
     float_integer(Op, K, X, Res).
 kind_res(int_to_float, Op, K, _, [X], S, val(R), S) :-
@@ -789,23 +796,34 @@ integer_source(sltof, X, N) :- signed(l, X, N).
 integer_source(ultof, X, X).
 
 float_integer(Op, K, X, Res) :-
-    ( memberchk(Op, [stosi, stoui]) -> From = s ; From = d ),
+    float_source(Op, From, Sign),
     modulus(K, M),
-    ( memberchk(Op, [stosi, dtosi]) -> Min is -(M // 2), Max is M // 2 - 1
+    ( Sign == signed -> Min is -(M // 2), Max is M // 2 - 1
     ; Min = 0, Max is M - 1 ),
     ( ieee_to_int(From, X, N), N >= Min, N =< Max
     -> R is N mod M, Res = val(R)
     ; Res = ub(float_conversion) ).
 
+float_source(stosi, s, signed). float_source(stoui, s, unsigned).
+float_source(dtosi, d, signed). float_source(dtoui, d, unsigned).
+float_source(xtosi, x, signed). float_source(xtoui, x, unsigned).
+
+% A va_arg of class K takes Step bytes at an Align-aligned cursor, as
+% filc_get_next_ptr_bytes_for_va_arg does: a long double's cell is 16
+% bytes at 16, of which it reads its 10.
+va_cell(x, 16, 16) :- !.
+va_cell(K, Size, 8) :- width_bytes(K, Size).
+
 va_cursor_res(trap(Why), _, _, S, trap(Why), S).
 va_cursor_res(val(ptr(A, Cap)), K, P, s(Mem0, Fuel), Res, S) :-
-    width_bytes(K, Size), Aligned is (A + 7) // 8 * 8,
-    access_res(Mem0, Aligned, Cap, Size, read, 8, Check),
-    va_checked_res(Check, K, P, Aligned, Size, s(Mem0, Fuel), Res, S).
+    va_cell(K, Step, Align), width_bytes(K, Size),
+    Aligned is (A + Align - 1) // Align * Align,
+    access_res(Mem0, Aligned, Cap, Step, read, 8, Check),
+    va_checked_res(Check, K, P, Aligned, Size-Step, s(Mem0, Fuel), Res, S).
 
 va_checked_res(trap(Why), _, _, _, _, S, trap(Why), S).
-va_checked_res(ok, K, P, A, Size, s(Mem0, Fuel), Res, s(Mem, Fuel)) :-
-    Next is A + Size,
+va_checked_res(ok, K, P, A, Size-Step, s(Mem0, Fuel), Res, s(Mem, Fuel)) :-
+    Next is A + Step,
     store_res(filc, l, Mem0, P, Next, Store, Mem1),
     ( Store = trap(Why) -> Res = trap(Why), Mem = Mem1
     ; K == p -> pointer_access_load(ok, Mem1, A, Res, Mem)
@@ -840,6 +858,8 @@ load_op_res(s, _, Mode, Args, S0, Res, S) :-
     int_load_res(Mode, 4, Args, S0, Res, S).
 load_op_res(d, _, Mode, Args, S0, Res, S) :-
     int_load_res(Mode, 8, Args, S0, Res, S).
+load_op_res(x, _, Mode, Args, S0, Res, S) :-
+    int_load_res(Mode, 10, Args, S0, Res, S).
 load_op_res(sw, K, Mode, Args, S0, Res, S) :-
     ext_load_res(sw, 4, K, Mode, Args, S0, Res, S).
 load_op_res(uw, K, Mode, Args, S0, Res, S) :-
@@ -1189,6 +1209,7 @@ width_word(w, V, V, 1, none).
 width_word(l, V, V, 1, none).
 width_word(s, V, V, 1, none).
 width_word(d, V, V, 1, none).
+width_word(x, V, V, 8, none).
 width_word(p, ptr(V, C), V, 8, cap(C)).
 
 % access_store(+Res, +Mem0, +A, +Size, +V, +Stored, -Mem): Mem is Mem0

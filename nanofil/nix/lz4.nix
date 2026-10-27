@@ -4,8 +4,8 @@
 # filcc-built lz4's at several levels and modes, on text and on random
 # data, with each build decompressing the other's output. Repeated with
 # each middle-end and register choice; the comparisons also run under
-# FUGC_SCRIBBLE and FUGC_VERIFY. lz4io's file-size display uses x87
-# long double, which nanofil refuses; both builds get it as double.
+# FUGC_SCRIBBLE and FUGC_VERIFY. The source is unpatched: --list shows
+# file sizes through lz4io's x87 long double LZ4IO_toHuman.
 { pkgs, filcc }:
 assert pkgs.lz4.version == "1.10.0";
 pkgs.runCommandCC "nanofil-lz4" { src = pkgs.lz4.src; } ''
@@ -13,9 +13,6 @@ pkgs.runCommandCC "nanofil-lz4" { src = pkgs.lz4.src; } ''
   unpack() {
     cp -r $src $1
     chmod -R u+w $1
-    sed -i 's/(long double)/(double)/g; s/LZ4IO_toHuman(long double size/LZ4IO_toHuman(double size/; s/"%.2Lf%c"/"%.2f%c"/' \
-      $1/programs/lz4io.c
-    ! grep -q 'long double' $1/programs/lz4io.c
   }
 
   unpack ref
@@ -47,7 +44,8 @@ pkgs.runCommandCC "nanofil-lz4" { src = pkgs.lz4.src; } ''
           ref/programs/lz4 -q -d <$f.nf.lz4 | cmp - $f
         done
       done
-      # A frame listing reads headers through lz4frame's by-value structs.
+      # A frame listing reads headers through lz4frame's by-value structs
+      # and shows sizes as long double.
       ref/programs/lz4 -q -f -9 text t.lz4
       ref/programs/lz4 --list t.lz4 >list.ref
       env $env nf/programs/lz4 --list t.lz4 >list.nf

@@ -356,6 +356,51 @@ base-11 values of the whole result and argument digit lists. Only
 nanofil makes these weak hidden thunks; no definition exports such a
 name. `tests/c/prog/wide-varargs.c` is the regression test.
 
+## x87 long double
+
+Verified at the staging pin with `-O2` probes (`-S` and `-emit-llvm`):
+
+- `sizeof(long double)` is 16, `_Alignof` 16, `LDBL_MANT_DIG` 64. Data
+  holds the 80-bit value in its first 10 bytes and zeros after: `0.1L`
+  is `.quad 0xcccccccccccccccd` then `.short 0x3ffb`, padded to 16.
+- A load or store is a 10-byte access with 8-byte alignment (the check
+  is `addq $-10` against the upper bound and `testb $7`), then `fldt`
+  or `fstpt`.
+- **Fast convention.** Signature digit 3 (`FilPizlonator.cpp`'s x87
+  digit). An argument goes on the native stack in a 16-byte slot: the
+  caller writes `fstpt (%rsp)`, the callee reads `fldt 16(%rbp)`, beside
+  integer words in registers: `ld(long double, int)` is `FI2000`, with
+  the int in EDX. A result comes back in ST0 beside `has_exception` in
+  AL: `long double f(long double *)` is `FI1069`, and a struct of one
+  long double is returned as `{i1, x86_fp80}`, also in ST0 (`FI537`).
+- **Generic convention.** A long double is one 16-byte cell: the
+  generic entry of `ld(long double, int)` checks a 24-byte packet, reads
+  the value with `fldt 128(%rdi)` and the int at thread+144. A cell
+  holding one starts at a 16-aligned offset: after an `int`, a long
+  double is at +16. A generic return writes `fstpt` at thread+128,
+  zeroes bytes 138–143 and the aux word at +384, and returns size 16.
+- **Structs.** A struct or union holding a long double is SysV class X87
+  or MEMORY. As an argument it is generic-only (`FIP0`), as is any
+  function taking one; a 32-byte one returns through sret.
+- **Variadic.** `va_arg(ap, long double)` is
+  `filc_get_next_ptr_bytes_for_va_arg(ap, 16, 16)`, then `fldt` from
+  the returned address. A variadic call's packet holds each long double
+  in a 16-aligned 16-byte cell; clang calls even a variadic callee
+  through a `pizlonatedFI<Sig>` thunk whose generic fallback lays the
+  packet out so. An aggregate `va_arg` of a struct of long doubles takes
+  its size at alignment 16 at once.
+
+nanofil (float.md, *x87 long double*) keeps long double values in the
+IR class `x` and never puts one in the fast convention. A function
+taking or returning one, or a struct holding one, is generic-only, and
+its long double words are the 16 bytes as two `l` words at a
+16-aligned packet offset, after a zero pad word when needed. A clang
+caller's FI thunk finds no matching signature and uses the generic
+entry, and nanofil's calls of clang functions go generic through
+nanofil's own thunks. `tests/c/prog/ldouble.c` checks both directions
+against clang, directly, indirectly, variadically and with wrong
+prototypes, under FUGC_SCRIBBLE and FUGC_VERIFY too.
+
 ## Verified end to end
 
 [probes/link/add2.s](../probes/link/add2.s) is hand-written GNU `as`

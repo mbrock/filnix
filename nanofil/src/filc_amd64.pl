@@ -257,6 +257,10 @@ plain_slot(local(Name, Size), Slots0-Off0, Slots-End) :- !,
     Payload is (Off0 + Padded + 15) // 16 * 16,
     Aux is Payload + Padded + 8, End = Aux,
     put_assoc(local(Name), Slots0, local(Payload, Aux, Size, Padded), Slots).
+% A long double temporary's wide slot is 16 bytes, 10 of them used.
+plain_slot(storage(wide, I), Slots0-Off0, Slots-Off) :- !,
+    Off is Off0 + 16,
+    put_assoc(storage(wide, I), Slots0, Off, Slots).
 plain_slot(Key, Slots0-Off0, Slots-Off) :-
     Off is Off0 + 8,
     put_assoc(Key, Slots0, Off, Slots).
@@ -1024,6 +1028,8 @@ local_check(Name, Off, Kind, I, B, Ctx) -->
 % inst//4, for tmp(D) =K Op Args with Op of Kind. Integer instructions go
 % to amd64:compute_op//5; the pointer ones are by K, or (copy at p) by
 % the operand.
+kind_inst(Kind,K,Op,Args,D,_,_,Ctx) -->
+    { x87_op(Kind, K, Op) }, !, x87_inst(Op, K, Args, D, Ctx).
 kind_inst(float_convert,K,Op,Args,D,_,_,Ctx) --> integer_inst(Op,K,Args,D,Ctx).
 kind_inst(float_to_int,K,Op,Args,D,_,_,Ctx) --> integer_inst(Op,K,Args,D,Ctx).
 kind_inst(int_to_float,K,Op,Args,D,_,_,Ctx) --> integer_inst(Op,K,Args,D,Ctx).
@@ -1111,6 +1117,8 @@ va_arg_load(w, D, _, _, Ctx) -->
 va_arg_load(l, D, _, _, Ctx) -->
     [ins(mov, q, [mem(0, rax), reg(rax)])],
     reg_slot_store(rax, tmp(D), Ctx).
+va_arg_load(x, D, _, _, Ctx) -->
+    [ins(fld, t, [mem(0, rax)])], x87_pop(D, Ctx).
 va_arg_load(s,D,I,B,Ctx) --> va_arg_load(w,D,I,B,Ctx).
 va_arg_load(d,D,I,B,Ctx) --> va_arg_load(l,D,I,B,Ctx).
 va_arg_load(p, D, Index, Block, Ctx) -->
@@ -1127,6 +1135,118 @@ va_arg_load(p, D, Index, Block, Ctx) -->
      label(Have), label(None),
      ins(mov, q, [mem(0, rax), reg(rax)])],
     flight_store(D, Ctx).
+
+/*  x87 long double (docs/float.md). An x temporary has a 16-byte wide
+    slot, of which fldt and fstpt use the first 10 bytes. Each
+    instruction pushes its operands on the x87 stack, computes and pops
+    the stack empty again, so no value stays in an x87 register across
+    instructions, calls or safepoints. Scalars and constants go through
+    the red zone below %rsp: no call or signal frame can intervene
+    within one instruction's sequence. */
+x87_op(_, x, _).
+x87_op(cmp, _, cmp(_, x)).
+x87_op(float_convert, _, truncx).
+x87_op(float_to_int, _, Op) :- memberchk(Op, [xtosi, xtoui]).
+
+% x87_inst(+Op, +K, +Args, +D, +Ctx)//: tmp(D) =K Op Args, with x87.
+% Operands go in reverse, so %st is the first and %st(1) the second.
+x87_inst(Op, x, [A, B], D, Ctx) -->
+    { memberchk(Op-I, [add-fadd, sub-fsub, mul-fmul, div-fdiv]) }, !,
+    x87_push(B, Ctx), x87_push(A, Ctx),
+    [ins(I, none, [reg('st(1)'), reg(st)])],
+    x87_pop(D, Ctx), [ins(fstp, none, [reg('st(0)')])].
+x87_inst(neg, x, [A], D, Ctx) --> !,
+    x87_push(A, Ctx), [ins(fchs, none, [])], x87_pop(D, Ctx).
+x87_inst(copy, x, [A], D, Ctx) --> !,
+    x87_push(A, Ctx), x87_pop(D, Ctx).
+x87_inst(cmp(Cond, x), w, [A, B], D, Ctx) --> !,
+    x87_push(B, Ctx), x87_push(A, Ctx),
+    [ins(fucomip, none, [reg('st(1)'), reg(st)]),
+     ins(fstp, none, [reg('st(0)')])],
+    float_condition(Cond),
+    [ins(movzb, l, [reg(al), reg(eax)])],
+    reg_slot_store(rax, tmp(D), Ctx).
+x87_inst(ext(F), x, [A], D, Ctx) --> !,
+    x87_push_float(F, A, Ctx), x87_pop(D, Ctx).
+x87_inst(truncx, K, [A], D, Ctx) --> !,
+    { x87_suffix(K, S, Mov), ( Mov == l -> R = eax ; R = rax ) },
+    x87_push(A, Ctx),
+    [ins(fstp, S, [mem(-8, rsp)]), ins(mov, Mov, [mem(-8, rsp), reg(R)])],
+    reg_slot_store(rax, tmp(D), Ctx).
+x87_inst(xtosi, K, [A], D, Ctx) --> !,
+    x87_push(A, Ctx), x87_fisttp(K, D, Ctx).
+x87_inst(xtoui, w, [A], D, Ctx) --> !,
+    x87_push(A, Ctx), x87_fisttp(w, D, Ctx).
+% Above 2^63, subtract 2^63, convert, and restore bit 63, as SSE2's
+% unsigned qword conversion does (amd64:float_integer//4).
+x87_inst(xtoui, l, [A], D, Ctx) --> !,
+    x87_push(A, Ctx),
+    [ins(mov, l, [imm(1593835520), mem(-12, rsp)]),
+     ins(fld, s, [mem(-12, rsp)]),
+     ins(fucomip, none, [reg('st(1)'), reg(st)]),
+     ins(ja, none, [sym('1f')]),
+     ins(fsub, s, [mem(-12, rsp)]),
+     ins(fisttp, ll, [mem(-8, rsp)]),
+     ins(mov, q, [mem(-8, rsp), reg(rax)]),
+     ins(btc, q, [imm(63), reg(rax)]),
+     ins(jmp, none, [sym('2f')]),
+     label('1'),
+     ins(fisttp, ll, [mem(-8, rsp)]),
+     ins(mov, q, [mem(-8, rsp), reg(rax)]),
+     label('2')],
+    reg_slot_store(rax, tmp(D), Ctx).
+x87_inst(Op, x, [A], D, Ctx) -->
+    { memberchk(Op, [swtof, uwtof, sltof, ultof]), ctx_fn(Ctx, Fn) },
+    x87_int_source(Op, A, Fn),
+    [ins(mov, q, [reg(rax), mem(-8, rsp)]), ins(fild, ll, [mem(-8, rsp)])],
+    x87_unsigned_fix(Op),
+    x87_pop(D, Ctx).
+
+% The integer operand in %rax, extended to 64 bits as Op reads it.
+x87_int_source(swtof, A, Fn) --> load(A, w, a, Fn), [ins(movsl, q, [reg(eax), reg(rax)])].
+x87_int_source(uwtof, A, Fn) --> load(A, w, a, Fn), [ins(mov, l, [reg(eax), reg(eax)])].
+x87_int_source(sltof, A, Fn) --> load(A, l, a, Fn).
+x87_int_source(ultof, A, Fn) --> load(A, l, a, Fn).
+
+% fildll read an unsigned l with bit 63 set as negative: add 2^64,
+% exactly, since the 64-bit significand holds every such sum.
+x87_unsigned_fix(ultof) --> !,
+    [ins(test, q, [reg(rax), reg(rax)]), ins(jns, none, [sym('1f')]),
+     ins(mov, l, [imm(1602224128), mem(-12, rsp)]),
+     ins(fadd, s, [mem(-12, rsp)]), label('1')].
+x87_unsigned_fix(_) --> [].
+
+% Truncate %st toward zero into tmp(D) of class K and pop it.
+x87_fisttp(K, D, Ctx) -->
+    { K == w -> Mov = l, R = eax ; Mov = q, R = rax },
+    [ins(fisttp, ll, [mem(-8, rsp)]), ins(mov, Mov, [mem(-8, rsp), reg(R)])],
+    reg_slot_store(rax, tmp(D), Ctx).
+
+x87_suffix(s, s, l).
+x87_suffix(d, l, q).
+
+% x87_push(+V, +Ctx)//: push the x value V. A constant's 10 bytes go
+% through the red zone, by %rdx, which no raw access holds.
+x87_push(tmp(N), Ctx) -->
+    { ctx_slot(Ctx, tmp(N), Off), Disp is -Off },
+    [ins(fld, t, [mem(Disp, rbp)])].
+x87_push(const(N), Ctx) -->
+    { ctx_fn(Ctx, Fn), Lo is N /\ 0xffffffffffffffff, Hi is (N >> 64) /\ 0xffff },
+    load(const(Lo), l, d, Fn),
+    [ins(mov, q, [reg(rdx), mem(-16, rsp)]),
+     ins(mov, w, [imm(Hi), mem(-8, rsp)]),
+     ins(fld, t, [mem(-16, rsp)])].
+
+% Push the s or d value V, widened exactly.
+x87_push_float(F, V, Ctx) -->
+    { ctx_fn(Ctx, Fn), x87_suffix(F, S, _) },
+    load(V, F, a, Fn),
+    [ins(mov, q, [reg(rax), mem(-8, rsp)]), ins(fld, S, [mem(-8, rsp)])].
+
+% Pop %st into tmp(D)'s wide slot.
+x87_pop(D, Ctx) -->
+    { ctx_slot(Ctx, tmp(D), Off), Disp is -Off },
+    [ins(fstp, t, [mem(Disp, rbp)])].
 
 % additive_inst(+K, +Op, +Args, +D, +Ctx)//: scalar add or sub.
 additive_inst(w, Op, Args, D, Ctx) --> integer_inst(Op, w, Args, D, Ctx).
@@ -1228,6 +1348,7 @@ pointer_load_effect(address_read, _, _, _) -->
 % raw_load(+T, +K, +D, +Index, +Block, +Ctx)//: a scalar load of type
 % T at K into tmp(D). Pointer loads require their explicit effect list.
 raw_load(l, K, D, _, _, Ctx) --> integer_load(l, K, D, Ctx).
+raw_load(x, x, D, _, _, Ctx) --> [ins(fld, t, [mem(0, rax)])], x87_pop(D, Ctx).
 raw_load(s, K, D, _, _, Ctx) --> integer_load(s, K, D, Ctx).
 raw_load(d, K, D, _, _, Ctx) --> integer_load(d, K, D, Ctx).
 raw_load(sw, K, D, _, _, Ctx) --> integer_load(sw, K, D, Ctx).
@@ -1299,6 +1420,7 @@ raw_store(w, V, _, _, _, Ctx) --> integer_store(w, V, Ctx).
 raw_store(l, V, _, _, _, Ctx) --> integer_store(l, V, Ctx).
 raw_store(s, V, _, _, _, Ctx) --> integer_store(s, V, Ctx).
 raw_store(d, V, _, _, _, Ctx) --> integer_store(d, V, Ctx).
+raw_store(x, V, _, _, _, Ctx) --> x87_push(V, Ctx), [ins(fstp, t, [mem(0, rax)])].
 
 % The code of a store of the integer V of width W at %rax.
 integer_store(W, V, Ctx) -->
@@ -2024,6 +2146,10 @@ value_payload(sym(S, Addend), p, quad(0), Off0-Rs,
     ;   throw(nanofil_error('pointer data item is not 8-aligned'))
     ),
     Off is Off0 + 8.
+value_payload(const(N), x, byte(Bs), Off0-Rs, Off-Rs) :- !,
+    numlist(0, 9, Is),
+    findall(B, ( member(I, Is), B is (N >> (8 * I)) /\ 255 ), Bs),
+    Off is Off0 + 10.
 value_payload(const(N), W, Directive, Off0-Rs, Off-Rs) :-
     width_bytes(W, Bytes),
     Bits is 8 * Bytes,

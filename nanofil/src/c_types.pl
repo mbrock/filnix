@@ -771,8 +771,9 @@ doc(unsupported_type(+T, -Format, -Args), semidet, [
     Format: "the diagnostic's format",
     Args: "its arguments",
     "nanofil does not support T: it has no values nanofil can hold.",
-    example(unsupported_type(ldouble, '~w is not supported', ['long double'])),
-    fails(unsupported_type(ptr(ldouble), _, _)),
+    example(unsupported_type(bad('_Complex'), '~w is not supported', ['_Complex'])),
+    fails(unsupported_type(ldouble, _, _)),
+    fails(unsupported_type(ptr(bad('_Complex')), _, _)),
     fails(unsupported_type(array(int, vla(id(n))), _, _))
 ]).
 unsupported_type(T, '~w is not supported', [Why]) :-
@@ -780,7 +781,6 @@ unsupported_type(T, '~w is not supported', [Why]) :-
 
 % unsupported_value_type(+Type, -Why): nanofil has no values of Type,
 % for the reason Why.
-unsupported_value_type(ldouble, 'long double').
 unsupported_value_type(bad(Why), Why).
 unsupported_value_type(array(T, _), Why) :- unsupported_value_type(T, Why).
 
@@ -997,12 +997,17 @@ scalar_type(T) :- type_class(T, _).
 
 doc(float_type(?(Type)), nondet, [
     Type: "a real floating type",
-    "The floating types nanofil supports; long double is refused.",
+    "The real floating types. long double is the x87 80-bit extended",
+    "format, as in clang for x86-64 (class x): sizeof 16, alignment 16,",
+    "64 significand bits, LDBL_MANT_DIG (docs/float.md).",
     cites('C11 6.2.5p10'),
-    fails(float_type(ldouble))
+    cites('C11 F.2p1'),
+    example(float_type(ldouble)),
+    fails(float_type(int))
 ]).
 float_type(float).
 float_type(double).
+float_type(ldouble).
 
 doc(arithmetic_type(+Type), semidet, [
     Type: "a type term",
@@ -1054,6 +1059,8 @@ doc(usual_arith_conversion(+TypeA, +TypeB, -Type), semidet, [
     "as a higher-ranked unsigned one gives way to its own unsigned type.",
     cites('C11 6.3.1.8p1'),
     example(usual_arith_conversion(int, double, T), T = double),
+    example(usual_arith_conversion(double, ldouble, T), T = ldouble),
+    example(usual_arith_conversion(ldouble, float, T), T = ldouble),
     example(usual_arith_conversion(float, long, T), T = float),
     example(usual_arith_conversion(char, short, T), T = int),
     example(usual_arith_conversion(int, uint, T), T = uint),
@@ -1062,6 +1069,10 @@ doc(usual_arith_conversion(+TypeA, +TypeB, -Type), semidet, [
     example(usual_arith_conversion(llong, ulong, T), T = ullong),
     fails(usual_arith_conversion(ptr(int), int, _))
 ]).
+usual_arith_conversion(TypeA0, TypeB0, Type) :-
+    arithmetic_type(TypeA0), arithmetic_type(TypeB0),
+    ( TypeA0 == ldouble ; TypeB0 == ldouble ), !,
+    Type = ldouble.
 usual_arith_conversion(TypeA0, TypeB0, Type) :-
     arithmetic_type(TypeA0), arithmetic_type(TypeB0),
     ( TypeA0 == double ; TypeB0 == double ), !,
@@ -1124,17 +1135,19 @@ doc(type_class(?(Type), ?(Class)), nondet, [
     Type: "a scalar type",
     Class: "its IR class",
     "w for an integer type of at most 4 bytes, l for an 8-byte one, p for",
-    "a pointer, s and d for float and double. Deterministic when Type is",
-    "bound.",
+    "a pointer, s and d for float and double, x for long double.",
+    "Deterministic when Type is bound.",
     example(type_class(ushort, K), K = w),
     example(type_class(ullong, K), K = l),
     example(type_class(ptr(void), K), K = p),
     example(type_class(float, K), K = s),
+    example(type_class(ldouble, K), K = x),
     fails(type_class(struct(0), _))
 ]).
 type_class(T, K) :- integer_type(T, Size, _, _), ( Size =:= 8 -> K = l ; K = w ).
 type_class(float, s).
 type_class(double, d).
+type_class(ldouble, x).
 type_class(ptr(_), p).
 
 %% Arithmetic constant expressions
@@ -1167,8 +1180,7 @@ constant_value(Expr, Env, V, T) :-
 float_literal(Cs, Bits, Type) :-
     append(Body, [Suffix], Cs),
     ( memberchk(Suffix, [f, 'F']) -> Type = float, Digits = Body
-    ; memberchk(Suffix, [l, 'L'])
-    -> sema_error(constant, 'long double is not supported', [])
+    ; memberchk(Suffix, [l, 'L']) -> Type = ldouble, Digits = Body
     ; Type = double, Digits = Cs
     ),
     type_class(Type, K), ieee:ieee_parse(K, Digits, Bits).
@@ -2435,8 +2447,8 @@ doc(fault(+E, +Env, -Format, -Args), semidet, [
     Env: "the scope it is read in",
     Format: "the diagnostic's format",
     Args: "its arguments, with types unqualified as lowering has them",
-    "The first fault in E, in evaluation order, or first a type or a",
-    "long double constant in E that nanofil does not support. Fails",
+    "The first fault in E, in evaluation order, or first a type in E",
+    "that nanofil does not support. Fails",
     "when it is not one the elaborator diagnoses.",
     example(( empty_env(E), fault(bin(add, chr(1), id(g)), E, F, A) ),
             (F = 'undeclared identifier ~w', A = [g])),
@@ -2465,10 +2477,7 @@ doc(fault(+E, +Env, -Format, -Args), semidet, [
             (F = 'cannot assign ~w to ~w', A = [int, ptr(char)])),
     example(( empty_env(E0), bind_ordinary(s, var(none, struct('builtin.va_list')), E0, E),
               fault(bin(lor, chr(0), id(s)), E, F, A) ),
-            (F = 'a ~w value is not a scalar', A = [struct('builtin.va_list')])),
-    example(( empty_env(E),
-              fault(cast(type([tspec(int)], base), float(['1', '.', '0', 'L'])), E, F, A) ),
-            (F = 'long double is not supported', A = []))
+            (F = 'a ~w value is not a scalar', A = [struct('builtin.va_list')]))
 ]).
 fault(E, Env, Format, Args) :-
     (   unsupported(E, Env, F, As) -> Format = F, Args = As
@@ -2645,13 +2654,11 @@ lowered_type(E, Env, T) :- operand(E, Env, _, T0), unqualified(T0, T).
 lowered_type_in(Env, E, T) :- lowered_type(E, Env, T).
 
 % unsupported(+E, +Env, -F, -As): the first type name in E that names a
-% type nanofil does not support, or long double constant, and why.
+% type nanofil does not support, and why.
 unsupported(E, Env, F, As) :-
     E = type(_, _), !,
     type_name_type(E, T, Env, _),
     unsupported_type(T, F, As).
-unsupported(float(Cs), _, 'long double is not supported', []) :-
-    last(Cs, S), memberchk(S, [l, 'L']), !.
 unsupported(E, Env, F, As) :-
     compound(E), E =.. [_|Xs],
     member(X, Xs), unsupported(X, Env, F, As), !.

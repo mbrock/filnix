@@ -107,7 +107,9 @@ compares exactly against native code:
   `l` (its bytes) in a generic-only function, as clang's `<2 x float>`.
   A returned `tuple` may then hold `s` and `d` words, which come back
   in XMM0 and XMM1 beside the integer words in RDX and RCX.
-- Refused with a message: `long double`, `_Complex`.
+- `long double` is x87 extended precision, as in clang (see *x87 long
+  double* below).
+- Refused with a message: `_Complex`.
 - `<math.h>` functions are ordinary calls into libm.
 
 ## Backends
@@ -119,6 +121,74 @@ compares exactly against native code:
   signature digits for float and double, and `double` through
   `va_arg`, all checked against the pinned pass and runtime and
   recorded in abi-findings.md.
+
+## x87 long double
+
+C's `long double` on x86-64 is the x87 80-bit extended format: a sign,
+a 15-bit exponent with bias 16383, an explicit integer bit and 63
+fraction bits, so `LDBL_MANT_DIG` is 64. At the pin clang gives it size
+16 and alignment 16, stores its 10 bytes followed by 6 bytes of padding,
+checks each load and store as a 10-byte access with 8-byte alignment,
+and computes with fldt, fstpt and the x87 stack (abi-findings.md, *x87
+long double*).
+
+**Decision: a real 80-bit semantics, as a new class `x`.** The
+alternative, holding long double values as `d` and converting at memory,
+would print and compare differently from clang wherever the extra 11
+significand bits matter. 00204's HFAs are bit patterns `printf("%Lf")`
+reads back, `1 + 0x1p-60L != 1`, and `(unsigned long)(long double)
+ULONG_MAX` round-trips only with 64 bits. A narrower representation
+would make nanofil a different C implementation with the same
+`<float.h>`, not a cheaper one. The class is kept as small as the
+semantics allow:
+
+- **Class `x`** (filc mode only): a value is its 80 bits as an unsigned
+  integer below 2^80, so `const(N)` at x is those bits. An `x` value is
+  never a parameter, a result, a call argument, a tuple element or a
+  phi (the validator rejects each). Values cross calls and joins
+  through memory, so no calling convention, register class or phi copy
+  needs an 80-bit case.
+- **Ops at x:** `add sub mul div neg copy`, `cmp(Cond, x)` with the
+  float conditions, `load(x)` and store width `x` (a 10-byte access,
+  8-aligned), `va_arg` at x, and data items `item(x, const(Bits))`
+  (10 bytes; the frontend pads with `zero(6)`).
+- **Conversions:** `ext(s)` and `ext(d)` to x (exact), `truncx` from x
+  to s or d (rounded), `xtosi`/`xtoui` to w or l (truncated toward zero;
+  out of range is `ub(float_conversion)`), and `swtof uwtof sltof
+  ultof` to x (exact for every 64-bit integer).
+- **Interpreter:** ieee.pl has the x format with its explicit integer
+  bit; results round to nearest even with full 64-bit precision, the
+  x87's default control word on Linux. Of two NaN operands the x87
+  keeps a quiet one over a signaling one, then the larger significand,
+  then the first, quieted; an invalid operation gives the default NaN
+  0xFFFF_C000000000000000. `va_arg` at x takes a 16-byte,
+  16-aligned cell and reads its first 10 bytes, as
+  `filc_get_next_ptr_bytes_for_va_arg(…, 16, 16)` does.
+- **Backend:** each x temporary has a 16-byte frame slot (a `wide`
+  pool in frame_slots.pl). Each instruction pushes its operands with
+  fldt (a constant goes through the red zone), computes, and pops the
+  x87 stack empty again, so no x87 register is live across
+  instructions, calls or safepoints and the GC never sees x87 state.
+  Truncation uses fisttpll; `xtoui` to l subtracts 2^63 above it, and
+  `ultof` adds 2^64 to fildll's result when bit 63 is set, both exact.
+- **C frontend:** `ldouble` is a real floating type for the usual
+  arithmetic conversions (C11 6.3.1.8p1), literals with an `L` suffix,
+  constant folding and static data. A long double crosses a call as
+  two `l` words, its 16 bytes, through a 16-byte local that only
+  `store(x)` writes, so its padding is zero, which is what clang's
+  generic packet holds. A function taking or returning one, or a
+  struct or union holding one, is generic-only, and an argument
+  holding a long double starts at a 16-aligned packet offset after a
+  zero pad word, as clang lays out the generic packet. Calls in either
+  direction then meet in the generic convention: clang's fast entry
+  (digit 3, on the native stack, returned in ST0) is never used, and a
+  clang caller's `pizlonatedFI<Sig>` thunk falls back to the generic
+  entry. A `?:` of long doubles joins addresses, not values.
+
+The cost of the generic convention is a call's speed, not its
+meaning. Programs that print, compare or store long doubles get
+clang's bits. Exported long double functions have no fast signature
+alias, unlike clang's, so a `// signatures` progtest leaves them out.
 
 ## Order
 

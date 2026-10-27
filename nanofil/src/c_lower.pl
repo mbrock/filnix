@@ -373,7 +373,9 @@ function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     empty_assoc(Labels),
     Ctx = ctx(Name, RetType, none, none, Loc),
     phrase(( sret_param(RetType, SretParams),
-             params(Names, ParamTypes, Ctx, Params0),
+             params(Names, ParamTypes, Ctx, Params00),
+             { length(SretParams, NSret) },
+             pad_params(Params00, NSret, Params0),
              variadic_entry(Variadic, RetType-ParamTypes, SretParams, Params0),
              vm_params(Names, ParamTypes, Ctx),
              stmt(Body, Ctx),
@@ -426,8 +428,9 @@ variadic_entry(variadic, _, Sret, Params) -->
     emit(let(tmp(va_args), p, va_args, [const(Off)])).
 variadic_entry(fixed, RetType-Types, Sret, Params) -->
     env(Env),
-    (   { (   member(Type, Types), su(Type), generic_only_type(Type, Env)
+    (   { (   member(Type, Types), abi_memory(Type), generic_only_type(Type, Env)
           ;   su(RetType), float_pair_type(RetType, Env)
+          ;   x87_type(RetType, Env)
           ;   append(Sret, Params, All), length(All, NW), NW > 16
           ) }
     ->  { append(Sret, Params, All), length(All, N), Off is 8 * N },
@@ -438,6 +441,7 @@ variadic_entry(fixed, RetType-Types, Sret, Params) -->
 % ret_class(+Loc, +RetType, +Env, -Class): Class is the IR return class
 % of a function returning RetType.
 ret_class(_, void, _, void) :- !.
+ret_class(_, ldouble, _, tuple([l, l])) :- !.
 ret_class(_, Type, _, Class) :-
     type_class(Type, Class), !.
 ret_class(Loc, Type, Env, Class) :-
@@ -448,10 +452,6 @@ ret_class(Loc, Type, Env, Class) :-
     ;   Shape = words([eb(_, _, K1), eb(_, _, K2)]) -> Class = tuple([K1, K2])
     ;   Class = void
     ).
-ret_class(Loc, Type, _, _) :-
-    Type == ldouble,
-    !,
-    sema_error(Loc, 'long double is not supported', []).
 ret_class(Loc, Type, _, _) :-
     sema_error(Loc, 'returning ~w is not supported yet', [Type]).
 
@@ -480,14 +480,14 @@ param_names(func(_, params(Params, _)), Names) :-
 % one word per eightbyte.
 params([], [], _, []) --> [].
 params([Name|Names], [Type|Types], Ctx, Params) -->
-    { su(Type) },
+    { abi_memory(Type) },
     !,
     env(Env),
     { ctx_loc(Ctx, Loc), arg_words(Type, Env, Loc, Ebs) },
     fresh_params(Ebs, Params0, Values),
     su_param_local(Name, Type, Ebs, Values),
     params(Names, Types, Ctx, Params1),
-    { append(Params0, Params1, Params) }.
+    { pad16_mark(Type, Env, Params0, Params2), append(Params2, Params1, Params) }.
 params([Name|Names], [Type|Types], Ctx, [param(Class, P)|Params]) -->
     { ctx_loc(Ctx, Loc),
       supported(Type, Loc),
@@ -554,6 +554,7 @@ cur_fall_off(cur(_, _), RetType) --> zero_ret(RetType).
 zero_ret(RetType) -->
     env(Env),
     (   { RetType == void } -> term(ret)
+    ;   { RetType == ldouble } -> term(rets([const(0), const(0)]))
     ;   { su(RetType), ret_shape(RetType, Env, unknown, Shape) }
     ->  (   { Shape = words([_, _]) } -> term(rets([const(0), const(0)]))
         ;   { Shape = words(_) } -> term(ret(const(0)))
@@ -979,8 +980,9 @@ stmt_(return(Expr), Ctx) -->
     judged(Expr, Ctx),
     rval(Expr, Ctx, Value0),
     (   { RetType == void } -> term(ret)
-    ;   { su(RetType) }
-    ->  assign_convert(Expr, Value0, RetType, Loc, v(Addr, _)),
+    ;   { abi_memory(RetType) }
+    ->  assign_convert(Expr, Value0, RetType, Loc, v(V, _)),
+        abi_source(RetType, V, Addr),
         return_struct(RetType, Addr, Loc)
     ;   assign_convert(Expr, Value0, RetType, Loc, v(Value, _)),
         term(ret(Value))
@@ -1589,9 +1591,11 @@ lower_node(val(T, cond(XC, XA, XB)), Ctx, R) --> !,        % 6.5.15
     { unqualified(T, U) },
     label(LA), label(LB), label(LJoin),
     lower(XC, Ctx, VC), truth(VC, Ctx, W), term(branch(W, LA, LB)),
-    start(LA), lower(XA, Ctx, VA), converted(VA, U, v(VA1, _)), here(LA1),
+    start(LA), lower(XA, Ctx, VA), converted(VA, U, v(VA0, _)),
+    arm_value(U, VA0, VA1), here(LA1),
     term(goto(LJoin)),
-    start(LB), lower(XB, Ctx, VB), converted(VB, U, v(VB1, _)), here(LB1),
+    start(LB), lower(XB, Ctx, VB), converted(VB, U, v(VB0, _)),
+    arm_value(U, VB0, VB1), here(LB1),
     term(goto(LJoin)),
     join_arms(U, LJoin, LA1-VA1, LB1-VB1, R).
 lower_node(val(T, gcond(XC, XB)), Ctx, R) --> !,           % GNU c ?: b
@@ -1599,8 +1603,10 @@ lower_node(val(T, gcond(XC, XB)), Ctx, R) --> !,           % GNU c ?: b
     lower(XC, Ctx, VC), truth(VC, Ctx, W),
     label(LA), label(LB), label(LJoin),
     term(branch(W, LA, LB)),
-    start(LA), converted(VC, U, v(VA1, _)), here(LA1), term(goto(LJoin)),
-    start(LB), lower(XB, Ctx, VB), converted(VB, U, v(VB1, _)), here(LB1),
+    start(LA), converted(VC, U, v(VA0, _)), arm_value(U, VA0, VA1), here(LA1),
+    term(goto(LJoin)),
+    start(LB), lower(XB, Ctx, VB), converted(VB, U, v(VB0, _)),
+    arm_value(U, VB0, VB1), here(LB1),
     term(goto(LJoin)),
     join_arms(U, LJoin, LA1-VA1, LB1-VB1, R).
 lower_node(val(_, assign(Op, X, XB)), Ctx, R) --> !,       % 6.5.16
@@ -1622,7 +1628,10 @@ lower_node(val(_, incdec(Op, X)), Ctx, R) --> !,           % 6.5.2.4, 6.5.3.1
 lower_node(val(_, call(XF, XArgs)), Ctx, R) --> !,         % 6.5.2.2
     callee(XF, Ctx, Callee, func(RetType, Ps, _)),
     { Ps == unspecified -> ParamTypes = [] ; ParamTypes = Ps },
-    call_args(XArgs, ParamTypes, Ctx, IRArgs),
+    call_args(XArgs, ParamTypes, Ctx, IRArgs0),
+    env(Env),
+    { su(RetType), ret_shape(RetType, Env, unknown, sret) -> NSret = 1 ; NSret = 0 },
+    pad_args(IRArgs0, NSret, IRArgs),
     call_result(Callee, RetType, IRArgs, Ctx, R).
 lower_node(val(_, builtin(Name, Args)), Ctx, R) --> !,
     builtin(Name, Args, Ctx, R).
@@ -1636,10 +1645,11 @@ lower_node(val(_, va_arg(TN, XA)), Ctx, v(Tmp, Type)) -->  % 7.16.1.1
     % A struct or union is in consecutive 8-byte cells of the packet,
     % as the caller passed it: one va_arg per eightbyte, a pointer one
     % with its capability.
+    % A long double member is one 16-aligned x cell (va_cells/5).
     env(Env),
     { ctx_loc(Ctx, Loc), eightbytes(Type, Env, Loc, Ebs0),
-      findall(eb(O, N, K), ( member(eb(O, N, K0), Ebs0),
-                             ( K0 == p -> K = p ; K = l ) ), Ebs) },
+      leaves(Type, Env, 0, Leaves, []),
+      va_cells(Ebs0, Leaves, Type, Loc, Ebs) },
     lower(XA, Ctx, v(P, _)),
     va_words(Ebs, P, Words),
     local_slot(Type, Tmp),
@@ -1647,7 +1657,7 @@ lower_node(val(_, va_arg(TN, XA)), Ctx, v(Tmp, Type)) -->  % 7.16.1.1
 lower_node(val(_, va_arg(TN, XA)), Ctx, v(V, Type)) --> !, % 7.16.1.1
     evaluated_type(TN, Ctx, Type),
     { ctx_loc(Ctx, Loc),
-      ( type_class(Type, K), memberchk(Type, [int, uint, long, ulong, llong, ullong, double, ptr(_)])
+      ( type_class(Type, K), memberchk(Type, [int, uint, long, ulong, llong, ullong, double, ldouble, ptr(_)])
       -> true
       ; sema_error(Loc, 'unsupported va_arg type ~w', [Type]) ) },
     lower(XA, Ctx, v(P, _)),
@@ -1863,6 +1873,7 @@ store_typed(Type, V, Addr) -->
 store_width(ptr(_), p) :- !.
 store_width(float, s) :- !.
 store_width(double, d) :- !.
+store_width(ldouble, x) :- !.
 store_width(Type, Width) :-
     int_info(Type, Size, _),
     width_bytes(Width, Size), memberchk(Width, [b, h, w, l]), !.
@@ -2207,6 +2218,14 @@ convert(v(V, float), double, v(R, double)) --> !,
     let(d, ext(s), [V], R).
 convert(v(V, double), float, v(R, float)) --> !,
     let(s, truncd, [V], R).
+convert(v(V, float), ldouble, v(R, ldouble)) --> !,
+    let(x, ext(s), [V], R).
+convert(v(V, double), ldouble, v(R, ldouble)) --> !,
+    let(x, ext(d), [V], R).
+convert(v(V, ldouble), To, v(R, To)) -->
+    { memberchk(To, [float, double]) }, !,
+    { type_class(To, K) },
+    let(K, truncx, [V], R).
 convert(v(V, From), To, v(R, To)) -->
     { int_type(From), float_type(To),
       type_class(From, IK), int_info(From, _, Sign),
@@ -2251,6 +2270,8 @@ float_int_op(s, signed, stosi).
 float_int_op(s, unsigned, stoui).
 float_int_op(d, signed, dtosi).
 float_int_op(d, unsigned, dtoui).
+float_int_op(x, signed, xtosi).
+float_int_op(x, unsigned, xtoui).
 
 % Float-to-integer instructions produce a full w/l; normalize narrow C
 % destinations afterward, without ever routing an unsigned result via signed.
@@ -2433,6 +2454,11 @@ logical(Op, XA, XB, Ctx, v(V, int)) -->
 % is the ?: result there, a phi of VA from LA and VB from LB.
 join_arms(Type, LJoin, LA-VA, LB-VB, R) -->
     (   { Type == void } -> start(LJoin), { R = v(const(0), void) }
+    ;   { Type == ldouble }
+    ->  fresh(A),
+        start_phi(LJoin, [phi(A, p, [LA-VA, LB-VB])]),
+        let(x, load(x), [A], V),
+        { R = v(V, Type) }
     ;   { su(Type) -> Class = p ; type_class(Type, Class) },
         fresh(V),
         start_phi(LJoin, [phi(V, Class, [LA-VA, LB-VB])]),
@@ -2466,6 +2492,10 @@ call_result(global(Kind), RetType, IRArgs, Ctx, R) -->
 call_result(Callee, RetType, IRArgs, Ctx, R) -->
     { ctx_loc(Ctx, Loc) },
     (   { su(RetType) } -> struct_call(RetType, Callee, IRArgs, Loc, R)
+    ;   { RetType == ldouble }
+    ->  struct_call(RetType, Callee, IRArgs, Loc, v(Tmp, _)),
+        let(x, load(x), [Tmp], V),
+        { R = v(V, RetType) }
     ;   { RetType == void }
     ->  emit(call(void, Callee, IRArgs)),
         { R = v(const(0), void) }
@@ -2488,26 +2518,30 @@ setjmp_args('_setjmp', [arg(p, Buf)], [Buf, const(0)]).
 % promotions.
 call_args([], _, _, []) --> [].
 call_args([XA|XAs], [ParamType|ParamTypes], Ctx, IRArgs) -->
-    { su(ParamType) }, !,
+    { abi_memory(ParamType) }, !,
     lower(XA, Ctx, Value0),
-    converted(Value0, ParamType, v(Src, _)),
+    converted(Value0, ParamType, v(V, _)),
+    abi_source(ParamType, V, Src),
     env(Env),
     { ctx_loc(Ctx, Loc), arg_words(ParamType, Env, Loc, Ebs) },
     load_words(Ebs, Src, Words),
     { findall(arg(Class, W),
               ( nth0(I, Ebs, eb(_, _, Class)), nth0(I, Words, W) ),
-              IRArgs0) },
+              IRArgs00),
+      pad16_mark(ParamType, Env, IRArgs00, IRArgs0) },
     call_args(XAs, ParamTypes, Ctx, IRArgs1),
     { append(IRArgs0, IRArgs1, IRArgs) }.
 call_args([XA|XAs], ParamTypes0, Ctx, IRArgs) -->
     lower(XA, Ctx, Value0),
-    (   { ParamTypes0 == [], Value0 = v(Src, Type0), su(Type0) }
+    (   { ParamTypes0 == [], Value0 = v(V0, Type0), abi_memory(Type0) }
     ->  env(Env),                       % 6.5.2.2p7: no conversion
+        abi_source(Type0, V0, Src),
         { ctx_loc(Ctx, Loc), arg_words(Type0, Env, Loc, Ebs) },
         load_words(Ebs, Src, Words),
         { findall(arg(Class, W),
                   ( nth0(I, Ebs, eb(_, _, Class)), nth0(I, Words, W) ),
-                  IRArgs0),
+                  IRArgs00),
+          pad16_mark(Type0, Env, IRArgs00, IRArgs0),
           ParamTypes = [] }
     ;   (   { ParamTypes0 = [ParamType|ParamTypes] }
         ->  converted(Value0, ParamType, v(V, Type))
@@ -2526,6 +2560,25 @@ call_args([XA|XAs], ParamTypes0, Ctx, IRArgs) -->
     ),
     call_args(XAs, ParamTypes, Ctx, IRArgs1),
     { append(IRArgs0, IRArgs1, IRArgs) }.
+
+% va_cells(+Ebs0, +Leaves, +Type, +Loc, -Ebs): Ebs are the cells in
+% which a variadic caller passed a struct or union of Type with
+% eightbytes Ebs0 and scalars Leaves: a long double is one x cell,
+% 16-aligned, covering its two eightbytes; a pointer eightbyte is p, any
+% other l. The x cell aligns the cursor, so a 16-aligned Type must start
+% with one.
+va_cells(Ebs0, Leaves, Type, Loc, Ebs) :-
+    (   memberchk(_-x87, Leaves), Ebs0 = [eb(O, _, _)|_], \+ memberchk(O-x87, Leaves)
+    ->  sema_error(Loc, 'va_arg of ~w, which does not start with its long double, is not supported', [Type])
+    ;   va_cells(Ebs0, Leaves, Ebs)
+    ).
+va_cells([], _, []).
+va_cells([eb(O, _, _), _|Ebs0], Leaves, [eb(O, 10, x)|Ebs]) :-
+    memberchk(O-x87, Leaves), !,
+    va_cells(Ebs0, Leaves, Ebs).
+va_cells([eb(O, N, K0)|Ebs0], Leaves, [eb(O, N, K)|Ebs]) :-
+    ( K0 == p -> K = p ; K = l ),
+    va_cells(Ebs0, Leaves, Ebs).
 
 % va_words(+Ebs, +P, -Words)//: Words are read through the va_list at
 % P, one per eightbyte at its class.
@@ -2646,11 +2699,68 @@ member_ptrs(_, _, m(_, _, _, bits(_, _)), Offs, Offs).
 % float member does not matter; its eightbytes start at an 8-aligned
 % offset, as clang's do for alignments up to 8, the most nanofil's
 % types have. Others are classified as SysV does (abi_eightbytes/4).
+arg_words(ldouble, _, _, [eb(0, 8, l), eb(8, 8, l)]) :- !.
 arg_words(Type, Env, Loc, Ebs) :-
     (   byval_type(Type, Env) -> eightbytes(Type, Env, Loc, Ebs)
-    ;   by_value_check(Type, Env, Loc),
-        abi_eightbytes(Type, Env, Loc, Ebs)
+    ;   abi_eightbytes(Type, Env, Loc, Ebs)
     ).
+
+% abi_memory(+Type): an argument or result of Type crosses calls as the
+% words of its bytes (arg_words/4): a struct or union, or a long double,
+% whose 10 bytes and 6 zero bytes of padding go as two l words, as in
+% clang's generic packet (docs/float.md).
+abi_memory(Type) :- su(Type).
+abi_memory(ldouble).
+
+% abi_source(+Type, +V, -Addr)//: Addr holds the bytes of the value V of
+% Type: V itself for a struct or union, whose value is its address; a
+% fresh 16-byte local for a long double. Only store(x) ever writes the
+% local, so its last 6 bytes stay zero.
+abi_source(ldouble, V, Addr) --> !,
+    local_slot(ldouble, Addr),
+    emit(store(x, V, Addr)).
+abi_source(_, Addr, Addr) --> [].
+
+% arm_value(+Type, +V0, -V)//: V is the ?: arm value V0 as the join's
+% phi carries it: a long double through memory, since no phi has class x.
+arm_value(ldouble, V0, A) --> !, abi_source(ldouble, V0, A).
+arm_value(_, V, V) --> [].
+
+% x87_type(+Type, +Env): Type is or holds a long double. clang passes
+% none of them in the fast convention's registers (a long double is
+% digit 3, on the native stack), and nanofil makes a function taking or
+% returning one generic-only (docs/float.md).
+x87_type(ldouble, _) :- !.
+x87_type(Type, Env) :-
+    su(Type), leaves(Type, Env, 0, Leaves, []), memberchk(_-x87, Leaves).
+
+% pad16_mark(+Type, +Env, +Args0, -Args): an argument of Type with
+% alignment 16 that holds a long double starts at a 16-aligned packet
+% offset, as clang lays out the generic packet: Args is Args0 after a
+% pad16 marker, which pad_args//3 resolves once the word count before
+% it is known.
+pad16_mark(Type, Env, Args, [pad16|Args]) :-
+    x87_type(Type, Env), !.
+pad16_mark(_, _, Args, Args).
+
+% pad_args(+Args0, +N0, -Args)// and pad_params(+Params0, +N0, -Params)//:
+% each pad16 marker becomes a zero l word when N0 words, counting an
+% sret pointer, precede it at an odd count, and is dropped otherwise.
+pad_args([], _, []) --> [].
+pad_args([pad16|As0], N0, As) --> !,
+    (   { N0 mod 2 =:= 1 } -> { As = [arg(l, const(0))|As1], N = N0 + 1 }
+    ;   { As = As1, N = N0 }
+    ),
+    { N1 is N }, pad_args(As0, N1, As1).
+pad_args([A|As0], N0, [A|As]) --> { N is N0 + 1 }, pad_args(As0, N, As).
+
+pad_params([], _, []) --> [].
+pad_params([pad16|Ps0], N0, Ps) --> !,
+    (   { N0 mod 2 =:= 1 } -> fresh(P), { Ps = [param(l, P)|Ps1], N is N0 + 1 }
+    ;   { Ps = Ps1, N = N0 }
+    ),
+    pad_params(Ps0, N, Ps1).
+pad_params([P|Ps0], N0, [P|Ps]) --> { N is N0 + 1 }, pad_params(Ps0, N, Ps).
 
 % generic_only_type(+Type, +Env): clang gives a function taking a
 % struct or union of Type no fast entry: it is byval, or (as for a
@@ -2658,6 +2768,7 @@ arg_words(Type, Env, Loc, Ebs) :-
 % a type outside the fast signature's digits. nanofil makes such a
 % function generic-only too, so the signatures agree.
 % A byval result is an sret pointer, which leaves the fast entry.
+generic_only_type(Type, Env) :- x87_type(Type, Env), !.
 generic_only_type(Type, Env) :- byval_type(Type, Env), !.
 generic_only_type(Type, Env) :- float_pair_type(Type, Env).
 
@@ -2678,17 +2789,11 @@ byval_type(Type, Env) :-
 
 % ret_shape(+Type, +Env, +Loc, -Shape): Shape is how a struct or union
 % of Type is returned: sret, or words(Eightbytes).
+ret_shape(ldouble, _, _, words([eb(0, 8, l), eb(8, 8, l)])) :- !.
 ret_shape(Type, Env, Loc, Shape) :-
     (   byval_type(Type, Env) -> Shape = sret
-    ;   by_value_check(Type, Env, Loc),
-        abi_eightbytes(Type, Env, Loc, Ebs),
+    ;   abi_eightbytes(Type, Env, Loc, Ebs),
         Shape = words(Ebs)
-    ).
-
-by_value_check(Type, Env, Loc) :-
-    (   leaves(Type, Env, 0, Leaves, []), memberchk(_-x87, Leaves)
-    ->  sema_error(Loc, 'a struct or union holding a long double by value is not supported', [])
-    ;   true
     ).
 
 % abi_eightbytes(+Type, +Env, +Loc, -Ebs): the eightbytes of a struct
@@ -2787,7 +2892,7 @@ copy_pieces([p(Off, _, Load, Store)|Pieces], Src, Dst) -->
 load_words([], _, []) --> [].
 load_words([eb(Off, N, Class)|Ebs], Addr, [W|Words]) -->
     offset(Addr, Off, P),
-    (   { memberchk(Class, [p, s, d]) } -> let(Class, load(Class), [P], W)
+    (   { memberchk(Class, [p, s, d, x]) } -> let(Class, load(Class), [P], W)
     ;   { pieces(N, 0, Pieces) },
         load_pieces(Pieces, P, none, W)
     ),
@@ -2813,7 +2918,7 @@ load_pieces([p(Off, _, Load, _)|Pieces], P, Acc0, W) -->
 store_words([], [], _) --> [].
 store_words([eb(Off, N, Class)|Ebs], [W|Words], Addr) -->
     offset(Addr, Off, P),
-    (   { memberchk(Class, [p, s, d]) } -> emit(store(Class, W, P))
+    (   { memberchk(Class, [p, s, d, x]) } -> emit(store(Class, W, P))
     ;   { pieces(N, 0, Pieces) },
         store_pieces(Pieces, W, P)
     ),
@@ -2942,7 +3047,7 @@ expr_chunk(Type, Off, Expr, Loc, Env, Env, Chunk) :-
     ;   sema_error(Loc, 'initializer is not a constant', [])
     ),
     ( float_type(Type)
-    -> type_class(Type, K), type_size_align(Type, Env, N, _),
+    -> type_class(Type, K), width_bytes(K, N),
        Chunk = chunk(Off, N, item(K, const(V)))
     ; int_chunk(Off, Type, V, Chunk)
     ).

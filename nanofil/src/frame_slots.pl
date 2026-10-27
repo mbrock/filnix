@@ -13,20 +13,21 @@
     |---|---|
     | `pointer` | `p` temporaries: each slot is a payload slot and its lower, allocated together |
     | `scalar` | `w`, `l`, `s` and `d` temporaries; they never use the pointer pool |
+    | `wide` | `x` temporaries: 16-byte slots for the 10 bytes of a long double |
 
     A variadic function's hidden `va_snapshot` parameter is kept live for
     the whole invocation. Functions that call setjmp must not use this
     allocator (docs/setjmp.md).
 */
-:- module(frame_slots, [temp_slots/6]).
+:- module(frame_slots, [temp_slots/7]).
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
 :- use_module(library(pairs)).
 :- use_module(cfg).
 
-% temp_slots(+Params, +Blocks, +Temps, -Aliases, -ScalarCount, -PtrCount).
-% Aliases maps each temp name to physical storage(Pool, Index).
-temp_slots(Params, Blocks, Temps, Aliases, NS, NP) :-
+% temp_slots(+Params, +Blocks, +Temps, -Aliases, -ScalarCount, -PtrCount,
+% -WideCount). Aliases maps each temp name to physical storage(Pool, Index).
+temp_slots(Params, Blocks, Temps, Aliases, NS, NP, NW) :-
     temp_liveness(Blocks, In, Out),
     foldl(param_point, Params, [], R1),
     block_ranges(Blocks, In, Out, 1, End, R1, R2),
@@ -42,9 +43,18 @@ temp_slots(Params, Blocks, Temps, Aliases, NS, NP) :-
     keysort(Points, Sorted), group_pairs_by_key(Sorted, Groups),
     maplist(group_range, Groups, Pairs), list_to_assoc(Pairs, Ranges),
     maplist(temp_interval(Ranges), Temps, Intervals0),
-    sort(Intervals0, Intervals),
+    sort(Intervals0, Intervals1),
+    partition(wide_range, Intervals1, Wides, Intervals),
     empty_assoc(A0),
-    allocate(Intervals, [], [], 0, NS, 0, NP, A0, Aliases).
+    allocate(Intervals, [], [], 0, NS, 0, NP, A0, A1),
+    foldl(wide_slot, Wides, []-0-A1, _-NW-Aliases).
+
+wide_range(range(_, _, wide, _)).
+
+% Wide slots are a pool of their own, reused as scalar slots are.
+wide_slot(range(S, E, wide, N), Ss0-N0-A0, Ss-N1-A) :-
+    reuse_slot(Ss0, S, E, N0, N1, Ss, I),
+    put_assoc(N, A0, storage(wide, I), A).
 
 param_point(param(_, tmp(N)), R0, R) :- touch(N, 0, R0, R).
 
@@ -87,6 +97,7 @@ class_pool(w, scalar).
 class_pool(l, scalar).
 class_pool(s, scalar).
 class_pool(d, scalar).
+class_pool(x, wide).
 
 allocate([], _, _, NS, NS, NP, NP, A, A).
 allocate([range(Start, End, Pool, N)|Rs], SS0, PS0, NS0, NS, NP0, NP, A0, A) :-

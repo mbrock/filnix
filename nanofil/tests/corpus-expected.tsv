@@ -397,7 +397,7 @@ c-testsuite/00200.c	pass
 c-testsuite/00201.c	pass
 c-testsuite/00202.c	pass
 c-testsuite/00203.c	pass
-c-testsuite/00204.c	reject
+c-testsuite/00204.c	pass
 c-testsuite/00205.c	pass
 c-testsuite/00206.c	pass
 c-testsuite/00207.c	pass

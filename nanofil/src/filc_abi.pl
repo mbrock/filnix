@@ -145,10 +145,14 @@ frame(Params, Blocks, Return, frame(Plain, Roots, Aliases),
     append(TempPayload, ShadowKeys, Payload0), sort(Payload0, Payload).
 
 temp_storage([], Ps, Bs, Temps, Keys, Lowers, Aliases) :-
-    temp_slots(Ps, Bs, Temps, Map, NS, NP),
+    temp_slots(Ps, Bs, Temps, Map, NS, NP, NW),
     storage_keys(scalar, NS, Scalars), storage_keys(pointer, NP, Pointers),
-    append(Scalars, Pointers, Keys), maplist(storage_lower, Pointers, Lowers),
+    storage_keys(wide, NW, Wides),
+    append([Scalars, Pointers, Wides], Keys), maplist(storage_lower, Pointers, Lowers),
     assoc_to_list(Map, Pairs), foldl(storage_alias, Pairs, Aliases, []).
+temp_storage([_|_], _, _, Temps, _, _, _) :-
+    memberchk(_-x, Temps), !,
+    throw(nanofil_error('long double in a function that calls setjmp is not supported')).
 temp_storage([_|_], _, _, Temps, Keys, Lowers, []) :-
     findall(tmp(N), member(N-_, Temps), Keys),
     findall(lower(tmp(N)), member(N-p, Temps), Lowers).
@@ -158,6 +162,7 @@ storage_lower(Key, lower(Key)).
 storage_alias(N-storage(pointer,I),
               [tmp(N)-storage(pointer,I),lower(tmp(N))-lower(storage(pointer,I))|As], As).
 storage_alias(N-storage(scalar,I), [tmp(N)-storage(scalar,I)|As], As).
+storage_alias(N-storage(wide,I), [tmp(N)-storage(wide,I)|As], As).
 return_storage(registers, []).
 return_storage(buffer(_), [retbuf]).
 inst_dest(let(tmp(N), K, _, _), N, K).
@@ -245,7 +250,8 @@ lower_inst(_, _, let(tmp(D),p,va_args,[const(Off)]),
            abi([snapshot_cursor(tmp(hidden(va_snapshot)),Off,D)])) :- !.
 lower_inst(_, _, let(tmp(D),K,va_arg,[P]),
            abi([origin(c), consume_va(K,P,Size,D)])) :- !,
-    width_bytes(K,Size).
+    % A long double's cell is 16 bytes at 16 (docs/float.md).
+    ( K == x -> Size = 16 ; width_bytes(K,Size) ).
 lower_inst(_, _, local_alloc(Name, _), abi([initialize_local(Name)])) :- !.
 lower_inst(_, _, I, I).
 
