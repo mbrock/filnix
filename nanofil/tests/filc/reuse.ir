@@ -1,0 +1,86 @@
+% Check reuse (docs/m7.md): difftest runs each run line on the unchecked
+% module, the pizlonated one and, with NANOFIL_CHECKS=reuse, the module
+% whose covered checks were deleted; all must agree, traps included.
+% Each function holds a mistake a wrong reuse would make; the comments
+% say which checks must stay. reuse-gc.ir is the native GC fixture.
+
+% A write proof covers the 8-byte read and the 4-byte read after it. A
+% call (here free) ends the evidence: the load after it keeps its check
+% and traps. Treating calls as transparent would read the freed object.
+run(stale, [0]).
+run(stale, [1]).
+func(stale, export, l, [param(w, tmp(yes))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(8), [const(8)]),
+        store(l, const(5), tmp(p)),
+        let(tmp(x), l, load(l), [tmp(p)]),
+        let(tmp(y), w, load(sw), [tmp(p)])
+    ], branch(tmp(yes), freed, kept)),
+    block(freed, [], [
+        let(tmp(w), l, load(l), [tmp(p)]),
+        call(void, global(free), [arg(p, tmp(p))]),
+        let(tmp(z), l, load(l), [tmp(p)]),
+        let(tmp(r), l, add, [tmp(z), tmp(w)])
+    ], ret(tmp(r))),
+    block(kept, [], [
+        let(tmp(y1), l, ext(sw), [tmp(y)]),
+        let(tmp(z), l, add, [tmp(x), tmp(y1)])
+    ], ret(tmp(z)))
+]).
+
+% A 4-byte proof does not cover an 8-byte read of a 4-byte object.
+run(narrow, [0]).
+func(narrow, export, l, [param(w, tmp(v))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(4), [const(4)]),
+        store(w, tmp(v), tmp(p)),
+        let(tmp(x), w, load(sw), [tmp(p)]),
+        let(tmp(y), l, load(l), [tmp(p)])
+    ], ret(tmp(y)))
+]).
+
+% A read proof does not cover a write: the store traps readonly.
+data(msg, ro(local), 1, [item(b, str("hi"))]).
+run(readonly, []).
+func(readonly, export, w, [], [
+    block(start, [], [
+        let(tmp(p), p, copy, [global(msg)]),
+        let(tmp(x), w, load(ub), [tmp(p)]),
+        let(tmp(y), w, load(ub), [tmp(p)]),
+        let(tmp(z), w, add, [tmp(x), tmp(y)]),
+        store(b, tmp(z), tmp(p))
+    ], ret(tmp(z)))
+]).
+
+% Two objects at different addresses: evidence about a is not about b.
+% 10 * 1 + 2 = 12; reading a for b would give 11.
+run(objects, []).
+func(objects, export, l, [], [
+    block(start, [], [
+        let(tmp(a), p, alloc(8), [const(8)]),
+        let(tmp(b), p, alloc(8), [const(8)]),
+        store(l, const(1), tmp(a)),
+        store(l, const(2), tmp(b)),
+        let(tmp(x), l, load(l), [tmp(a)]),
+        let(tmp(y), l, load(l), [tmp(b)]),
+        let(tmp(t), l, mul, [tmp(x), const(10)]),
+        let(tmp(r), l, add, [tmp(t), tmp(y)])
+    ], ret(tmp(r)))
+]).
+
+% Evidence ends at the block: a proof from start does not cover join,
+% even though start dominates it, nor the arm that frees p.
+run(branches, [0]).
+run(branches, [1]).
+func(branches, export, l, [param(w, tmp(yes))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(8), [const(8)]),
+        store(l, const(3), tmp(p))
+    ], branch(tmp(yes), release, join)),
+    block(release, [], [
+        call(void, global(free), [arg(p, tmp(p))])
+    ], goto(join)),
+    block(join, [], [
+        let(tmp(x), l, load(l), [tmp(p)])
+    ], ret(tmp(x)))
+]).

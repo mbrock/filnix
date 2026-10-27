@@ -181,6 +181,10 @@ article(File, Stages) -->
         ->  ir_(ir, File, M), data_(M), symbols_(M)
         ;   []
         ),
+        (   { memberchk(term(check_reuse, R), Stages) }
+        ->  ir_(check_reuse, File, R)
+        ;   []
+        ),
         (   { memberchk(text(ir, IR), Stages) }
         ->  section_(irtext, el(pre, "text", esc(IR)))
         ;   []
@@ -289,8 +293,13 @@ source_lines(File, Lines) :-
 
 pipeline_(Stages) -->
     { optimization_steps(Stages, Optimizations),
+      (   memberchk(stage(check_reuse, _, _), Stages)
+      ->  Reuse = [check_reuse-check_reuse-"reused checks"]
+      ;   Reuse = []
+      ),
       append([parse-c-"C syntax", lower-lowered-"IR"|Optimizations],
-             [pizlonate-ir-"checked IR", backend-asm-"assembly"], Steps) },
+             [pizlonate-ir-"checked IR"|Reuse], Steps0),
+      append(Steps0, [backend-asm-"assembly"], Steps) },
     section_(pipeline, ( seq(Steps, step_(Stages)),
                          el(button, "as-text", ['data-tab'=irtext, title="the checked IR as the text nanofil print reads"], "text") )).
 
@@ -317,6 +326,7 @@ pass_name(promote, "promote", "promote_module/2: replace eligible memory slots w
 pass_name(copy, "copy", "copy_module/2: substitute copies and simplify trivial phis").
 pass_name(local_storage, "local_storage", "local_storage_module/2: put eligible remaining objects in exact-sized local storage").
 pass_name(pizlonate, "pizlonate", "make Fil-C's checks explicit: a check before every load and store, a pollcheck on every loop").
+pass_name(check_reuse, "check_reuse", "reuse_checks/2: delete a heap check that an earlier proof of the same pointer in its block covers (docs/m7.md)").
 pass_name(backend, "amd64", "compile the checked IR to x86-64 in the Fil-C ABI").
 
 

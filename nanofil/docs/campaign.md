@@ -19,8 +19,10 @@ An access requires authority over an object's bytes. A runtime check is
 one way to establish it; static reasoning, still-valid earlier evidence,
 or a combination may establish it too. An optimizer must justify a
 cheaper implementation of the requirement, not silently weaken it.
-Today nanofil accepts immediate checks, not arbitrary certificates or
-reusable proofs. Extending the accepted evidence is future semantic work.
+Today nanofil accepts immediate checks and one reviewed reuse rule
+(a heap check's evidence for later scalar accesses in its block,
+[m7.md](m7.md)), not arbitrary certificates. Extending the accepted
+evidence further is future semantic work.
 
 nanofil should read like the standards it implements. A clause of
 `c_types.pl` should be recognizable as a paragraph of C11, a clause of
@@ -80,7 +82,8 @@ it implements, rather than assume that source programs are already safe.
 Checked IR makes these distinctions executable: `flight` states address
 and capability sources, `check` and `check_local` produce class `a`, and
 `check_function` produces class `f`. Raw operations cite their evidence.
-The validator currently requires each check's immediate, single use;
+The validator requires each check's immediate first use, and accepts
+later scalar uses of a heap proof only within M7's block-local rule;
 the interpreter can expose an invalid raw access as `unchecked(Why)`.
 The [pizlonation contract](pizlonation.md) owns these rules, including the
 closed pointer-memory effect protocols and the indivisible `p` pair.
@@ -188,8 +191,8 @@ certify emitted assembly.
    alignment and lifetime facts, their invalidators, and the observations
    that must remain unchanged. Start inside the current oracle's domain.
 2. **Extend acceptance before relying on new evidence.** Design the IR,
-   validator, interpreter and emitter contract together; immediate-use
-   fusion currently prevents reuse. Give an analysis explicit facts and
+   validator, interpreter and emitter contract together (done for
+   block-local scalar reuse in [m7.md](m7.md)). Give an analysis explicit facts and
    merge/transfer rules, and a checker an independently stated acceptance
    rule. Keep runtime checks for obligations not established. Review the
    safety change before implementation.

@@ -1,0 +1,57 @@
+% Check reuse under GC stress (docs/m7.md), driven by reuse-gc.c with
+% NANOFIL_CHECKS=reuse and without. Each reused read is p's last use
+% after many new temporaries, so p must keep its rooted slot until then;
+% c_gc ends the first proof, and the store needs its own write check.
+% The pointer o, made after p's last checked use, would take p's slot if
+% the reused read did not keep p live, and reads 1000.
+% With a = n, e = v2 = 2n + 12, g = w10 - 10 - v2 = 0 and ov = 1000,
+% survive(n) = (n + 12) + a - n + e + g - ov = 3n - 976.
+func(survive, export, l, [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(other), p, alloc(8), [const(8)]),
+        store(l, const(1000), tmp(other)),
+        let(tmp(p), p, alloc(8), [const(16)]),
+        store(l, tmp(n), tmp(p)),
+        let(tmp(q), p, add, [tmp(p), const(8)]),
+        store(l, tmp(n), tmp(q)),
+        let(tmp(u1), l, add, [tmp(n), const(1)]),
+        let(tmp(u2), l, add, [tmp(u1), const(1)]),
+        let(tmp(u3), l, add, [tmp(u2), const(1)]),
+        let(tmp(u4), l, add, [tmp(u3), const(1)]),
+        let(tmp(u5), l, add, [tmp(u4), const(1)]),
+        let(tmp(u6), l, add, [tmp(u5), const(1)]),
+        let(tmp(u7), l, add, [tmp(u6), const(1)]),
+        let(tmp(u8), l, add, [tmp(u7), const(1)]),
+        let(tmp(u9), l, add, [tmp(u8), const(1)]),
+        let(tmp(u10), l, add, [tmp(u9), const(1)]),
+        let(tmp(u11), l, add, [tmp(u10), const(1)]),
+        let(tmp(a), l, load(l), [tmp(p)]),
+        let(tmp(t12), l, add, [tmp(u11), const(1)]),
+        call(void, global(c_gc), [arg(l, tmp(n))]),
+        let(tmp(b), l, load(l), [tmp(p)]),
+        let(tmp(c), l, load(l), [tmp(q)]),
+        let(tmp(v1), l, add, [tmp(b), tmp(c)]),
+        let(tmp(v2), l, add, [tmp(v1), const(12)]),
+        store(l, tmp(v2), tmp(p)),
+        let(tmp(o), p, add, [tmp(other), const(0)]),
+        let(tmp(w1), l, add, [tmp(v2), const(1)]),
+        let(tmp(w2), l, add, [tmp(w1), const(1)]),
+        let(tmp(w3), l, add, [tmp(w2), const(1)]),
+        let(tmp(w4), l, add, [tmp(w3), const(1)]),
+        let(tmp(w5), l, add, [tmp(w4), const(1)]),
+        let(tmp(w6), l, add, [tmp(w5), const(1)]),
+        let(tmp(w7), l, add, [tmp(w6), const(1)]),
+        let(tmp(w8), l, add, [tmp(w7), const(1)]),
+        let(tmp(w9), l, add, [tmp(w8), const(1)]),
+        let(tmp(w10), l, add, [tmp(w9), const(1)]),
+        let(tmp(e), l, load(l), [tmp(p)]),
+        let(tmp(ov), l, load(l), [tmp(o)]),
+        let(tmp(f), l, sub, [tmp(w10), const(10)]),
+        let(tmp(g), l, sub, [tmp(f), tmp(v2)]),
+        let(tmp(r0), l, add, [tmp(t12), tmp(a)]),
+        let(tmp(r1), l, sub, [tmp(r0), tmp(n)]),
+        let(tmp(r2), l, add, [tmp(r1), tmp(e)]),
+        let(tmp(r3), l, add, [tmp(r2), tmp(g)]),
+        let(tmp(r), l, sub, [tmp(r3), tmp(ov)])
+    ], ret(tmp(r)))
+]).

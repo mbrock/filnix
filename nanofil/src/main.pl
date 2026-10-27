@@ -48,6 +48,12 @@
     is stack; NANOFIL_REGISTERS supplies the same choice to build harnesses.
     The plain backend is unchanged. Options precede the command.
 
+    `--checks=reference|reuse` independently selects the reference checked
+    IR, a check before every access, or check reuse after pizlonation
+    (src/check_reuse.pl, docs/m7.md). The default is reference;
+    NANOFIL_CHECKS supplies the same choice. With reuse, `cc`, `compile`
+    and difftest's pizlonation comparison use the reused module.
+
     ## difftest
 
     expected.txt holds the interpreter's result for every run line whose
@@ -80,6 +86,7 @@
 :- use_module(opt).
 :- use_module(promote).
 :- use_module(pizlonate).
+:- use_module(check_reuse).
 :- use_module(library(lists)).
 :- use_module(library(format)).
 :- use_module(library(pio)).
@@ -94,8 +101,9 @@ main :-
     maplist(arg_atom, RawArgv, Argv0),
     % halt/1 outside catch/3: SWI implements halt as an exception.
     catch(( ( register_default(Default),
-              options(Argv0,o0,Default,Opt,Registers,Argv),
-              command(Opt,Registers,Argv) )
+              checks_default(Checks0),
+              options(Argv0,o0,Default,Checks0,Opt,Registers,Checks,Argv),
+              command(Opt,Registers,Checks,Argv) )
           ->  Status = 0
           ;   format(user_error, "nanofil: failed~n", []),
               Status = 1
@@ -112,11 +120,20 @@ register_default(Registers) :-
 register_mode(R) :-
     ( memberchk(R,[stack,local]) -> true
     ; throw(nanofil_error('registers must be stack or local')) ).
-options(['-O'|As],_,R,O,Rs,Args) :- !, options(As,o1,R,O,Rs,Args).
-options([A|As],O,_,Opt,Rs,Args) :-
+checks_default(Checks) :-
+    ( getenv('NANOFIL_CHECKS',C) -> Checks = C ; Checks = reference ),
+    checks_mode(Checks).
+checks_mode(C) :-
+    ( memberchk(C,[reference,reuse]) -> true
+    ; throw(nanofil_error('checks must be reference or reuse')) ).
+options(['-O'|As],_,R,C,O,Rs,Cs,Args) :- !, options(As,o1,R,C,O,Rs,Cs,Args).
+options([A|As],O,_,C,Opt,Rs,Cs,Args) :-
     atom_concat('--registers=',R,A), !, register_mode(R),
-    options(As,O,R,Opt,Rs,Args).
-options(Args,O,R,O,R,Args).
+    options(As,O,R,C,Opt,Rs,Cs,Args).
+options([A|As],O,R,_,Opt,Rs,Cs,Args) :-
+    atom_concat('--checks=',C,A), !, checks_mode(C),
+    options(As,O,R,C,Opt,Rs,Cs,Args).
+options(Args,O,R,C,O,R,C,Args).
 
 % arg_atom(+Arg, -Atom): Atom is the command-line argument Arg, which
 % is an atom (SWI) or a character list (Trealla).
@@ -172,20 +189,23 @@ c_file_tokens(File, Tokens) :-
 
 %% Commands
 
-% Only native emission needs Registers; other commands consume Opt.
-command(Opt, Registers, [compile, File]) :- !,
+% Only native emission needs Registers; only the Fil-C checked stage
+% needs Checks (difftest runs it too); other commands consume Opt.
+command(Opt, Registers, Checks, [compile, File]) :- !,
     file_module(File, Module0),
     % Promote can remove every p from a module; the ABI is the original's.
     module_mode(Module0, Mode),
     optimize(Opt, Module0, Module),
-    mode_module_asm(Mode, Registers, Module, Asm),
+    mode_module_asm(Mode, Registers, Checks, Module, Asm),
     print_asm(Asm).
-command(Opt, Registers, [cc, File]) :- !,
+command(Opt, Registers, Checks, [cc, File]) :- !,
     c_file_module(File, Module0),
     optimize(Opt, Module0, Module),
-    mode_module_asm(filc, Registers, Module, Asm),
+    mode_module_asm(filc, Registers, Checks, Module, Asm),
     print_asm(Asm).
-command(Opt, _, Args) :- command(Opt,Args).
+command(Opt, _, Checks, [difftest, File, Dir]) :- !,
+    difftest(Opt, Checks, File, Dir).
+command(Opt, _, _, Args) :- command(Opt,Args).
 
 % command(+Opt, +Args): carry out the command line Args (without options),
 % running the middle end when Opt is o1 (-O given) and not when o0.
@@ -215,7 +235,7 @@ command(Opt, [run, File, Fn|ArgAtoms]) :-
     once(run(Module, Fn, Args, Fuel, Outcome)),
     outcome_text(Outcome, Text),
     format("~w~n", [Text]).
-command(Opt, [difftest, File, Dir]) :-
+difftest(Opt, Checks, File, Dir) :-
     file_module(File, Module0),
     module_mode(Module0, Mode),
     optimize(Opt, Module0, Module),
@@ -233,7 +253,7 @@ command(Opt, [difftest, File, Dir]) :-
             ResultVerdicts),
     pairs_keys_values(ResultVerdicts, Results, Verdicts),
     opt_report_validation(Opt, File, Module0, Module, Verdicts),
-    mode_pizlonation_agrees(Mode, File, Module-Prepared, Runs),
+    mode_pizlonation_agrees(Mode, Checks, File, Module-Prepared, Runs),
     include(comparable(Mode), Results, Compared),
     exclude(comparable(Mode), Results, Skipped),
     atom_concat(Dir, '/expected.txt', ExpectedFile),
@@ -252,17 +272,28 @@ command(Opt, [difftest, File, Dir]) :-
              format("  ~w = ~w~n", [CallText, Text])
            )).
 
-% mode_module_asm(+Mode, +Registers, +Module, -Asm): Asm is the asm.pl lines of
-% Module by the backend for Mode, filc or plain.
-mode_module_asm(plain, _, Module, Asm) :- module_asm(Module, Asm).
-mode_module_asm(filc, Registers, Module, Asm) :-
-    checked_module(Module, Checked),
+% mode_module_asm(+Mode, +Registers, +Checks, +Module, -Asm): Asm is the
+% asm.pl lines of Module by the backend for Mode, filc or plain.
+mode_module_asm(plain, _, _, Module, Asm) :- module_asm(Module, Asm).
+mode_module_asm(filc, Registers, Checks, Module, Asm) :-
+    checked_module(Checks, Module, Checked),
     filc_module_asm(Checked, Registers, Asm, _).
 
-% checked_module(+Module, -Checked): Checked is Module pizlonated, which
-% must be valid checked IR (ir.pl): the validator verifies the pass.
-checked_module(Module, Checked) :-
-    pizlonate_module(Module, Checked),
+% checked_module(+Checks, +Module, -Checked): Checked is Module
+% pizlonated, with check reuse (docs/m7.md) when Checks is reuse, which
+% must be valid checked IR (ir.pl): the validator verifies the passes.
+% Reuse must also change nothing but which proof a covered access reads.
+checked_module(Checks, Module, Checked) :-
+    pizlonate_module(Module, Checked0),
+    once(valid_module(Checked0)),
+    checks_module(Checks, Checked0, Checked).
+
+checks_module(reference, Checked, Checked).
+checks_module(reuse, Checked0, Checked) :-
+    reuse_checks(Checked0, Checked),
+    (   reuse_refines(Checked0, Checked) -> true
+    ;   throw(nanofil_error('check reuse changed more than proofs'))
+    ),
     once(valid_module(Checked)).
 
 /* mode_pizlonation_agrees(+Mode, +File, +Module-Prepared, +Runs): for a
@@ -271,9 +302,9 @@ checked_module(Module, Checked) :-
    the explicit checks are exactly the implicit ones. A missing or too
    weak check shows as the outcome unchecked(Why). Both run with the same
    fuel, since pizlonate keeps every block. */
-mode_pizlonation_agrees(plain, _, _, _).
-mode_pizlonation_agrees(filc, File, Module-Prepared, Runs) :-
-    checked_module(Module, Checked),
+mode_pizlonation_agrees(plain, _, _, _, _).
+mode_pizlonation_agrees(filc, Checks, File, Module-Prepared, Runs) :-
+    checked_module(Checks, Module, Checked),
     module_prepared(Checked, CheckedPrepared),
     findall(Bad,
             ( member(Run, Runs),

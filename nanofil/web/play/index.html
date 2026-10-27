@@ -44,6 +44,10 @@
       <label title="Substitute copies and simplify trivial phis"><input type="checkbox" value="copy"> Copy elimination</label>
       <label title="Put eligible remaining objects in exact-sized local storage"><input type="checkbox" value="local_storage"> Local storage</label>
     </fieldset>
+    <fieldset id="checks" class="passes">
+      <legend>Check evidence</legend>
+      <label title="Let a heap check's proof cover later scalar accesses through the same pointer in its block (docs/m7.md)"><input id="check-reuse" type="checkbox" value="check_reuse"> Check reuse</label>
+    </fieldset>
     <div class="code" id="code"></div>
     <div class="foot">
       <details id="stages" class="stages">
@@ -71,6 +75,7 @@
       <div data-slot="copy" class="pane"></div>
       <div data-slot="local_storage" class="pane"></div>
       <div data-slot="ir" class="pane"></div>
+      <div data-slot="check_reuse" class="pane"></div>
       <div data-slot="irtext" class="pane"></div>
       <div data-slot="asm" class="pane"></div>
     </div>

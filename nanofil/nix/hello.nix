@@ -36,7 +36,7 @@ pkgs.runCommandCC "nanofil-hello" { src = pkgs.hello.src; } ''
   )
 
   # Middle end and target cache are independent choices.
-  for opt in "" -O "--registers=local" "-O --registers=local"; do
+  for opt in "" -O "--registers=local" "-O --registers=local" "--checks=reuse"; do
     echo "== GNU hello, nanofil $opt"
     rm -rf hello && mkdir hello
     tar -xf $src -C hello --strip-components=1

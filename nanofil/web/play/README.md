@@ -49,6 +49,13 @@ apply the selection. Only selected passes add output tabs. If the tab
 being read disappears, the page returns to checked IR. The order stays
 promotion → copy → local storage, with pizlonation always afterwards.
 
+**Check evidence → Check reuse** runs `check_reuse:reuse_checks/2` after
+pizlonation ([docs/m7.md](../../docs/m7.md)) and adds a **reused checks**
+tab after checked IR: the module the backend then compiles, accepted by
+`reuse_refines/2` and `valid_module/1` as `cc --checks=reuse` accepts it.
+Accesses there may read an earlier proof in their block; the text and
+assembly tabs show that module.
+
 The page and compiler share `opt:optimization_passes/2` and
 `opt:optimize_pass/3`; the page records the actual intermediate modules,
 not separately reconstructed examples. `optimize(passes([copy]), M0, M)`
@@ -62,7 +69,8 @@ role: inspect an access's requirements and the evidence that discharges
 them. A future check-reuse pass should expose its real result and reasons
 here, including obligations left to runtime checks. That evidence must be
 a compiler product, not an analysis independently reconstructed by the UI.
-The page does not yet display such evidence or certify transformations.
+The reused checks tab shows which proof each access reads, but not yet
+why a remaining check was kept; it does not certify transformations.
 
 ```sh
 nix build .#site -o /tmp/site

@@ -46,6 +46,9 @@
       emitted as one instruction, `fused(Check, Access)`: the check's
       sequence, then the operation. Function identity checks come from
       `check_function`, not from inferring that an indirect call needs one.
+      A later scalar access that reuses a heap proof (docs/m7.md) is
+      `reused(Access)`: the access at the checked pointer, reloaded from
+      its slot, without a check.
     - Pointer loads and stores go through the object's aux array; a
       pointer store ensures the aux array and runs the store barrier.
     - `flight` supplies its address calculation and lower source
@@ -102,7 +105,7 @@
 :- use_module(amd64).
 :- use_module(amd64_cache).
 :- use_module(filc_abi).
-:- use_module(cfg, [edge_label/2]).
+:- use_module(cfg, [edge_label/2, inst_def/2]).
 
 %! filc_module_asm(+Module, -Lines) is det.
 %
@@ -372,12 +375,43 @@ fused_blocks(Fn, Blocks0, Blocks, LiveBlocks) :-
     maplist(live_block, Blocks, LiveBlocks).
 
 fused_block(Fn, block(L, Phis, Insts0, Jump), block(L, Phis, Insts, Jump)) :-
-    fused_insts(Insts0, Fn, Insts).
+    fused_insts(Insts0, Fn, [], Insts).
 
-fused_insts([], _, []).
-fused_insts([Inst0|Insts0], Fn, [Inst|Insts]) :-
-    fused_inst(Inst0, Insts0, Fn, Inst, Insts1),
-    fused_insts(Insts1, Fn, Insts).
+% fused_insts(+Insts0, +Fn, +Proofs, -Insts): Proofs are Q-P for the
+% block's heap checks so far. A later scalar access at one of them is
+% reused(Access) at P, with no check: validation (ir.pl, docs/m7.md)
+% has established that its evidence still holds, which is not repeated
+% here. Its liveness view reads P, so P keeps its rooted slot.
+fused_insts([], _, _, []).
+fused_insts([Inst0|Insts0], Fn, Proofs0, [Inst|Insts]) :-
+    % Emission reloads P from its slot where the interpreter reads the
+    % value Q captured: forget a pair once either name is redefined.
+    (   inst_def(Inst0, D)
+    ->  exclude(proof_names(D), Proofs0, Proofs)
+    ;   Proofs = Proofs0
+    ),
+    (   Inst0 = let(tmp(Q), a, check(_, _, _, _), [P])
+    ->  Proofs1 = [Q-P|Proofs]
+    ;   Proofs1 = Proofs
+    ),
+    (   ( Inst0 = let(_, _, raw_load(_, Off), [tmp(Q1)])
+        ; Inst0 = raw_store(_, Off, _, tmp(Q1)) ),
+        memberchk(Q1-P1, Proofs)
+    ->  (   Off == 0, proven_access(Inst0, Q1, P1, Access)
+        ->  Inst = reused(Access), Insts1 = Insts0
+        ;   throw_fn(Fn, 'a reused proof at an offset access cannot emit yet')
+        )
+    ;   fused_inst(Inst0, Insts0, Fn, Inst, Insts1)
+    ),
+    % A fused access or call may define Q's pointer too.
+    live_inst(Inst, Live),
+    findall(LD, inst_def(Live, LD), Ds),
+    exclude(proof_named(Ds), Proofs1, Proofs2),
+    fused_insts(Insts1, Fn, Proofs2, Insts).
+
+proof_named(Ds, Q-P) :- member(D, Ds), proof_names(D, Q-P), !.
+
+proof_names(D, Q-P) :- ( Q == D ; P == tmp(D) ).
 
 fused_inst(let(tmp(Q), a, Check, []), [Access0|Insts], Fn,
            fused(Check, Access), Insts) :-
@@ -463,6 +497,7 @@ live_inst(fused(_, let(D, p, raw_load_pointer(Off, _), [P])),
           let(D, p, raw_load(p, Off), [P])) :- !.
 live_inst(fused(_, raw_store_pointer(Off, V, P, _)),
           raw_store(p, Off, V, P)) :- !.
+live_inst(reused(Access), Access) :- !.
 live_inst(Inst0, Inst) :-
     (   Inst0 = fused(_, Access) -> Inst = Access ; Inst = Inst0 ).
 
@@ -869,6 +904,10 @@ inst(fused(check(_, Size, Rights, Align), Access), Index, Block, Ctx) -->
       rights_write(Rights, Write) },
     flight_load(P, Ctx),
     access_check(k(Size, Write, Align), Ctx),
+    raw_access(Access, Index, Block, Ctx).
+inst(reused(Access), Index, Block, Ctx) -->
+    { access_pointer(Access, P), ctx_fn(Ctx, Fn) },
+    load(P, l, a, Fn),
     raw_access(Access, Index, Block, Ctx).
 inst(fused(check_local(Name, Off, Size, Rights, Align), Access), I, B, Ctx) -->
     { rights_write(Rights, Write) },

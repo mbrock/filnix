@@ -87,8 +87,10 @@ records completed refactorings. The old frontend roadmap is a record,
 not a request to repeat completed work.
 
 - Separate safety requirements, evidence that discharges them, and their
-  implementation. Today checked IR requires immediate, single-use checks;
-  new evidence needs a reviewed validator/interpreter/emitter contract.
+  implementation. Checked IR accepts adjacent checks and, since M7's
+  first slice, block-local reuse of heap check evidence by later scalar
+  accesses (docs/m7.md); other new evidence needs a reviewed
+  validator/interpreter/emitter contract.
 - State the abstract facts, transfer/merge rules and invalidating effects
   of an analysis. Keep passes independently callable as ordinary Prolog
   relations; do not require microscopic passes or wrapper frameworks.

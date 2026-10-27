@@ -235,9 +235,15 @@
 
     Neither proof class crosses an intervening safepoint (a call, a
     pollcheck, alloc, setjmp, va_arg or getter), since a free may make it
-    stale. Each check is followed immediately by its one use. The pointer
+    stale. Each check is followed immediately by its first use. The pointer
     store's internal ensure-aux/reload sequence is the existing Fil-C
     exception, not permission to move another effect between the pair.
+
+    A heap check's proof may also be read by later scalar raw accesses
+    in its block that it covers, while its evidence lasts
+    (docs/m7.md): only evidence_preserving/1 instructions come between,
+    and neither the proof nor the checked pointer is redefined. Evidence
+    never crosses an edge. Local and function proofs have one use.
 
     ## Variable names
 
@@ -921,43 +927,56 @@ site_dominates(at(D, _), L, _, Intervals) :-
 % every cycle.
 stage_func(unchecked, _, _, _).
 stage_func(checked, Fn, Mode, Blocks) :-
-    forall(member(block(_, _, Insts, _), Blocks), checked_insts(Insts, Fn, Mode)),
+    forall(member(block(_, _, Insts, _), Blocks), checked_insts(Insts, Fn, Mode, [])),
     (   polls_every_cycle(Blocks) -> true
     ;   fn_error(Fn, 'a cycle without a poll edge in checked IR', [])
     ).
 
-% checked_insts(+Insts, +Fn, +Mode): each check in Insts is followed by
-% the one access it covers, which is its only use, so no safepoint can
-% come between them; no other instruction accesses memory unchecked.
-checked_insts([], _, _).
-checked_insts([Inst|Insts], Fn, Mode) :-
-    checked_inst_rest(Inst, Insts, Fn, Mode, Rest),
-    checked_insts(Rest, Fn, Mode).
+/* checked_insts(+Insts, +Fn, +Mode, +Live): each check in Insts is
+   followed by an access it covers, its first use, so no safepoint can
+   come between them; no other instruction accesses memory unchecked.
+   Live are the heap proofs `live(Q, P, Lo, Hi, Rights, Align)` whose
+   evidence still holds (docs/m7.md): a later scalar raw access may read
+   one that covers it. A block starts with none, an instruction that is
+   not evidence_preserving/1 ends them all, and redefining Q or P ends
+   that one. Local and function proofs are used once, right away. */
+checked_insts([], _, _, _).
+checked_insts([Inst|Insts], Fn, Mode, Live0) :-
+    checked_inst_rest(Inst, Insts, Fn, Mode, Live0, Rest, Live),
+    checked_insts(Rest, Fn, Mode, Live).
 
-checked_inst_rest(let(tmp(Q), a, check(Lo, Hi, Rights, Align), _), Insts, Fn, _,
-                  Rest) :- !,
+checked_inst_rest(let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Insts, Fn, _,
+                  Live0, Rest, Live) :- !,
     (   Insts = [Access|Rest],
         covered_access(Access, Q, Lo, Hi, Rights, Align),
         access_storage_effects(Access, heap)
-    ->  true
+    ->  evidence_after(let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Live0, Live1),
+        evidence_after(Access, [live(Q, P, Lo, Hi, Rights, Align)|Live1], Live)
     ;   fn_error(Fn, 'check tmp(~w) is not followed by an access it covers', [Q])
     ).
 checked_inst_rest(let(tmp(Q), a, check_local(_, _, Bytes, Rights, Align), []),
-                  Insts, Fn, _, Rest) :- !,
+                  Insts, Fn, _, Live0, Rest, Live) :- !,
     (   Insts = [Access|Rest],
         raw_access(Access, Q, _, 0, _),
         covered_access(Access, Q, 0, Bytes, Rights, Align),
         access_storage_effects(Access, local)
-    ->  true
+    ->  exclude(evidence_names(Q), Live0, Live1),
+        evidence_after(Access, Live1, Live)
     ;   fn_error(Fn, 'local check tmp(~w) is not followed by an access it covers', [Q])
     ).
-checked_inst_rest(let(tmp(Q), f, check_function, _), Insts, Fn, _, Rest) :- !,
+checked_inst_rest(let(tmp(Q), f, check_function, _), Insts, Fn, _, _, Rest, []) :- !,
     (   Insts = [raw_call(_, tmp(Q), _)|Rest] -> true
     ;   fn_error(Fn, 'function check tmp(~w) is not followed by its raw call', [Q])
     ).
-checked_inst_rest(Inst, Insts, Fn, Mode, Insts) :-
-    (   raw_access(Inst, _, _, _, _)
-    ->  fn_error(Fn, 'a raw access whose address is not checked just before it', [])
+checked_inst_rest(Inst, Insts, Fn, Mode, Live0, Insts, Live) :-
+    evidence_after(Inst, Live0, Live),
+    (   raw_access(Inst, Q, X, _, _)
+    ->  (   X \== p,
+            member(live(Q, _, Lo, Hi, Rights, Align), Live0),
+            covered_access(Inst, Q, Lo, Hi, Rights, Align)
+        ->  true
+        ;   fn_error(Fn, 'a raw access at tmp(~w) that no live check covers', [Q])
+        )
     ;   Inst = raw_call(_, _, _)
     ->  fn_error(Fn, 'a raw call whose target is not checked just before it', [])
     ;   Mode == filc, unchecked_access(Inst, What)
@@ -966,6 +985,40 @@ checked_inst_rest(Inst, Insts, Fn, Mode, Insts) :-
     ->  fn_error(Fn, 'implicit pointer operation in checked IR; use flight', [])
     ;   true
     ).
+
+% evidence_after(+Inst, +Live0, -Live): Live are the proofs of Live0
+% whose evidence still holds after Inst (checked_insts/4).
+evidence_after(Inst, Live0, Live) :-
+    (   evidence_preserving(Inst)
+    ->  (   inst_def(Inst, D)
+        ->  exclude(evidence_names(D), Live0, Live)
+        ;   Live = Live0
+        )
+    ;   Live = []
+    ).
+
+evidence_names(D, live(Q, P, _, _, _, _)) :- ( Q == D ; P == tmp(D) ).
+
+% evidence_preserving(+Inst): Inst reaches no safepoint and cannot free
+% an object or change its bounds or rights: pure arithmetic, comparison
+% and conversion, pure pointer construction, a heap check, a scalar raw
+% access (object headers lie outside every object's bounds) and a raw
+% pointer load (aux and box reads, no helper). Calls, alloc, getters,
+% setjmp, va_arg, pointer stores and the rest are not.
+evidence_preserving(loc(_, _)).
+evidence_preserving(flight(_, _, _, _)).
+evidence_preserving(let(_, a, check(_, _, _, _), _)).
+evidence_preserving(let(_, _, raw_load(T, _), _)) :- T \== p.
+evidence_preserving(let(_, p, raw_load_pointer(_, Es), _)) :-
+    ( pointer_memory_effects(load, Es) ; pointer_memory_effects(local_load, Es) ), !.
+evidence_preserving(raw_store(W, _, _, _)) :- W \== p.
+evidence_preserving(let(_, _, Op, _)) :-
+    memberchk(Op, [add, sub, mul, div, udiv, rem, urem, and, or, xor,
+                   sar, shr, shl, neg, ptoi, cast, truncd,
+                   stosi, stoui, dtosi, dtoui, swtof, uwtof, sltof, ultof]).
+evidence_preserving(let(_, _, cmp(_, _), _)).
+evidence_preserving(let(_, _, ext(_), _)).
+evidence_preserving(let(_, _, copy, Args)) :- \+ memberchk(global(_), Args).
 
 % implicit_flight(+Inst): a pure pointer operation whose address/lower
 % policy must be made explicit before either validation or emission of

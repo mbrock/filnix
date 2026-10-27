@@ -103,11 +103,14 @@ ensure-aux. That is sound for the reasons above and is what
 FilPizlonator does too (EnsureAuxPtr erases only later accesses' facts,
 FilPizlonator.cpp:5821-5827).
 
-For now each check is followed immediately by its only use, so no
-safepoint can come between them; the IR says so (`checked_insts/3`) and
-the backend fuses the pair (`fused_blocks/4`) into one instruction at one
+Each check is followed immediately by its first use, so no safepoint
+can come between them; the IR says so (`checked_insts/4`) and the
+backend fuses the pair (`fused_blocks/4`) into one instruction at one
 index, so local labels and frame slots number instructions as before
-and the assembly is byte-identical.
+and the assembly is byte-identical. By default that is also its only
+use; the opt-in reuse of [m7.md](m7.md) lets later scalar accesses in
+the same block read a heap proof while only evidence-preserving
+instructions intervene.
 
 ## Gates
 
@@ -403,12 +406,12 @@ should preserve current behavior, without speculative earlier traps.
 Broader motion needs a reviewed observation contract, including failure
 timing and effects, not just evidence that raw accesses remain protected.
 
-Even straight-line reuse needs a new acceptance rule: the validator's
-single-use restriction and the backend's adjacent-check fusion currently
-exclude it. Design the validator, interpreter and emitter contract
-together; keep runtime checks wherever evidence is insufficient. See
+Straight-line reuse needed a new acceptance rule, since the validator's
+single-use restriction and the backend's adjacent-check fusion excluded
+it. [m7.md](m7.md) states that rule for scalar accesses in one block,
+reviewed and implemented as an opt-in pass. See
 [M7](../PLAN.md#m7-safety-obligations-and-alternative-evidence) for the
-proposed first slice and its gates.
+first slice and its gates.
 
 ## Other deferred work
 

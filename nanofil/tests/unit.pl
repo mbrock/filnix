@@ -21,6 +21,7 @@
 :- use_module('../src/copy').
 :- use_module('../src/opt').
 :- use_module('../src/pizlonate').
+:- use_module('../src/check_reuse').
 :- use_module('../src/c_lex').
 :- use_module('../src/c_parse').
 :- use_module('../src/c_lower').
@@ -1830,6 +1831,195 @@ test(checked_ir_rules) :-
     M3 == 'in f: a cycle without a poll edge in checked IR',
     Loop = func(F, E, R, Ps, [S, block(h, [], Is, goto(h))]),
     valid_module(module([func(F, E, R, Ps, [S, block(h, [], Is, goto(poll(h)))])])).
+
+% Check reuse (docs/m7.md). A heap proof covers later scalar accesses
+% in its block until an instruction that could free the object or reach
+% a safepoint, or a redefinition of the proof or its pointer; never in
+% another block, never more range or rights than its check, never a
+% pointer access. reuse_fn(+Insts, -M): f(a, b) with body Insts.
+reuse_fn(Insts, module([func(f, local, w, [param(p, tmp(a)), param(p, tmp(b))],
+                             [block(s, [], Insts, ret(const(0)))])])).
+
+reuse_l_fn(Insts, module([func(f, local, l, [], [block(s, [], Insts, ret(tmp(x)))])])).
+
+% reuse_fail_jumps(+M, -N): M's assembly jumps to a check failure block
+% after N lower tests, one per heap access check.
+reuse_fail_jumps(M, N) :-
+    filc_module_asm(M, Lines),
+    findall(F, ( member(ins(jz, none, [sym(F)]), Lines),
+                 atom_concat(_, Suffix, F), atom_concat('..fail.', _, Suffix) ), Fs),
+    length(Fs, N).
+
+reuse_rejected(M) :-
+    catch(( valid_module(M), fail ), nanofil_error(Msg), true),
+    Msg == 'in f: a raw access at tmp(q) that no live check covers'.
+
+test(reuse_validation) :-
+    pointer_memory_effects(load, LoadEs), pointer_memory_effects(store, StoreEs),
+    C = let(tmp(q), a, check(0, 8, write, 1), [tmp(a)]),
+    S = raw_store(l, 0, const(1), tmp(q)),
+    L = let(tmp(x), l, raw_load(l, 0), [tmp(q)]),
+    % Accepted: a write proof covers a later 4- and 8-byte read across
+    % arithmetic, another object's check and scalar store, and a pointer
+    % load; a write between two reads may reuse a write proof.
+    forall(member(Insts, [
+        [C, S, L],
+        [C, S, let(tmp(n), l, add, [const(1), const(2)]),
+         let(tmp(r), a, check(0, 8, write, 1), [tmp(b)]),
+         raw_store(l, 0, tmp(n), tmp(r)),
+         flight(tmp(c), add, [address(tmp(b)), const(8)], lower(tmp(b))),
+         let(tmp(y), w, raw_load(sw, 0), [tmp(q)]),
+         let(tmp(r2), a, check(0, 8, read, 8), [tmp(b)]),
+         let(tmp(z), p, raw_load_pointer(0, LoadEs), [tmp(r2)]),
+         L, raw_store(w, 0, const(2), tmp(q))]
+    ]), ( reuse_fn(Insts, M), valid_module(M) )),
+    % Rejected: whatever may free, exit or relabel comes between.
+    forall(member(Between, [
+        [call(void, global(g), [])],
+        [call(void, global(free), [arg(p, tmp(b))])],
+        [let(tmp(n), p, alloc(8), [const(8)])],
+        [let(tmp(n), p, copy, [global(g)])],
+        [let(tmp(r), a, check(0, 8, write, 8), [tmp(b)]),
+         raw_store_pointer(0, tmp(b), tmp(r), StoreEs)],
+        [let(tmp(r), f, check_function, [tmp(b)]), raw_call(void, tmp(r), [])],
+        [flight(tmp(a), copy, [address(tmp(b))], lower(tmp(b)))],
+        [let(tmp(q), a, check(0, 4, write, 1), [tmp(b)]),
+         raw_store(w, 0, const(3), tmp(q))]
+    ]), ( append([[C, S], Between, [L]], Insts), reuse_fn(Insts, M),
+          reuse_rejected(M) )),
+    % Rejected: too little range, a read proof for a write, a pointer
+    % access at a live proof.
+    forall(member(Insts, [
+        [let(tmp(q), a, check(0, 4, write, 1), [tmp(a)]),
+         raw_store(w, 0, const(1), tmp(q)), L],
+        [let(tmp(q), a, check(0, 8, read, 1), [tmp(a)]), L, S],
+        [let(tmp(q), a, check(0, 8, write, 8), [tmp(a)]), S,
+         let(tmp(z), p, raw_load_pointer(0, LoadEs), [tmp(q)])]
+    ]), ( reuse_fn(Insts, M), reuse_rejected(M) )),
+    % Rejected: evidence crosses no edge, polled or not, even to a block
+    % it dominates; branch-only evidence is not even dominating.
+    forall(member(Edge, [goto(t), goto(poll(t))]),
+        reuse_rejected(module([func(f, local, w, [param(p, tmp(a))], [
+            block(s, [], [C, S], Edge),
+            block(t, [], [L], ret(const(0)))])]))),
+    catch(( valid_module(module([func(f, local, w, [param(p, tmp(a)), param(w, tmp(c))], [
+                block(s, [], [], branch(tmp(c), t, u)),
+                block(t, [], [C, S], goto(u)),
+                block(u, [], [L], ret(const(0)))])])), fail ),
+          nanofil_error(_), true).
+
+% The interpreter re-checks every raw access against the object as it
+% is now: stale evidence after free is unchecked where the reference
+% traps. A proof of the wrong object is safe, so only reuse_refines/2
+% rejects that rewiring: 10 * 1 + 2 = 12 becomes 11.
+test(reuse_semantics) :-
+    Alloc = let(tmp(p), p, alloc(8), [const(8)]),
+    C = let(tmp(q), a, check(0, 8, write, 1), [tmp(p)]),
+    S = raw_store(l, 0, const(5), tmp(q)),
+    Free = call(void, global(free), [arg(p, tmp(p))]),
+    R = let(tmp(r), a, check(0, 8, read, 1), [tmp(p)]),
+    reuse_l_fn([Alloc, C, S, Free, R, let(tmp(x), l, raw_load(l, 0), [tmp(r)])], Fresh),
+    valid_module(Fresh), once(run(Fresh, f, [], 10, trap(out_of_bounds))),
+    reuse_l_fn([Alloc, C, S, Free, let(tmp(x), l, raw_load(l, 0), [tmp(q)])], Stale),
+    \+ catch(valid_module(Stale), nanofil_error(_), fail),
+    once(run(Stale, f, [], 10, unchecked(out_of_bounds))),
+    Two = [let(tmp(a), p, alloc(8), [const(8)]), let(tmp(b), p, alloc(8), [const(8)]),
+           let(tmp(qa), a, check(0, 8, write, 1), [tmp(a)]), raw_store(l, 0, const(1), tmp(qa)),
+           let(tmp(qb), a, check(0, 8, write, 1), [tmp(b)]), raw_store(l, 0, const(2), tmp(qb)),
+           let(tmp(u), l, raw_load(l, 0), [tmp(qa)])],
+    Tail = [let(tmp(t), l, mul, [tmp(u), const(10)]), let(tmp(x), l, add, [tmp(t), tmp(v)])],
+    append([Two, [let(tmp(rb), a, check(0, 8, read, 1), [tmp(b)]),
+                  let(tmp(v), l, raw_load(l, 0), [tmp(rb)])], Tail], RefInsts),
+    reuse_l_fn(RefInsts, Ref), valid_module(Ref), once(run(Ref, f, [], 10, ret(12))),
+    reuse_checks(Ref, Reused), reuse_refines(Ref, Reused), valid_module(Reused),
+    once(run(Reused, f, [], 10, ret(12))),
+    append([Two, [let(tmp(v), l, raw_load(l, 0), [tmp(qa)])], Tail], WrongInsts),
+    reuse_l_fn(WrongInsts, Wrong), valid_module(Wrong), once(run(Wrong, f, [], 10, ret(11))),
+    \+ reuse_refines(Ref, Wrong).
+
+% The pass deletes exactly the covered checks of pizlonated IR, and on
+% hand-written checked IR compares with the deleted check itself, not
+% its access, and forgets a proof whose name is redefined.
+test(reuse_pass) :-
+    ir_module([func(f, local, l, [param(w, tmp(v))], [block(s, [], [
+        let(tmp(p), p, alloc(4), [const(8)]),
+        store(w, tmp(v), tmp(p)),
+        let(tmp(x), w, load(sw), [tmp(p)]),
+        let(tmp(y), l, load(l), [tmp(p)]),
+        call(void, global(free), [arg(p, tmp(p))]),
+        let(tmp(z), w, load(sw), [tmp(p)])
+    ], ret(tmp(y)))])], M),
+    pizlonate_module(M, C), reuse_checks(C, R),
+    reuse_refines(C, R), valid_module(R),
+    R = module([func(f, local, l, _, [block(s, [], [_,
+        let(tmp(Q), a, check(0, 4, write, 1), [tmp(p)]), raw_store(w, 0, tmp(v), tmp(Q)),
+        let(tmp(x), w, raw_load(sw, 0), [tmp(Q)]),
+        let(tmp(Q2), a, check(0, 8, read, 1), [tmp(p)]),
+        let(tmp(y), l, raw_load(l, 0), [tmp(Q2)]),
+        _, let(tmp(Q3), a, check(0, 4, read, 1), [tmp(p)]), _], _)])|_]),
+    Q \== Q2, Q2 \== Q3,
+    forall(member(Mod, [M, C, R]), once(run(Mod, f, [7], 10, trap(out_of_bounds)))),
+    % A read proof does not subsume a hand-written wider write check
+    % before a read: the readonly trap stays.
+    Ro = module([data(msg, ro(local), 1, [item(b, str("h"))]),
+        func(g, local, w, [], [block(s, [], [
+            let(tmp(p), p, copy, [global(msg)]),
+            let(tmp(q), a, check(0, 1, read, 1), [tmp(p)]),
+            let(tmp(x), w, raw_load(ub, 0), [tmp(q)]),
+            let(tmp(r), a, check(0, 1, write, 1), [tmp(p)]),
+            let(tmp(y), w, raw_load(ub, 0), [tmp(r)])
+        ], ret(tmp(y)))])]),
+    valid_module(Ro), reuse_checks(Ro, Ro1), Ro1 == Ro,
+    once(run(Ro, g, [], 10, trap(readonly))),
+    % q proves a, then b: r's check of a must stay, and reading b
+    % instead would return 2, not 1.
+    Re = module([func(h, local, l, [], [block(s, [], [
+            let(tmp(a), p, alloc(8), [const(8)]),
+            let(tmp(b), p, alloc(8), [const(8)]),
+            let(tmp(q), a, check(0, 8, write, 1), [tmp(a)]),
+            raw_store(l, 0, const(1), tmp(q)),
+            let(tmp(q), a, check(0, 8, write, 1), [tmp(b)]),
+            raw_store(l, 0, const(2), tmp(q)),
+            let(tmp(r), a, check(0, 8, read, 1), [tmp(a)]),
+            let(tmp(x), l, raw_load(l, 0), [tmp(r)])
+        ], ret(tmp(x)))])]),
+    valid_module(Re), reuse_checks(Re, Re1), Re1 == Re,
+    once(run(Re, h, [], 10, ret(1))),
+    % A deleted check's proof must have no other reader: here x reads
+    % q's proof of b after it, so deleting that check and pointing only y
+    % at r would leave x reading q's proof of a, 1 instead of 2.
+    Two = [let(tmp(a), p, alloc(8), [const(8)]), let(tmp(b), p, alloc(8), [const(8)]),
+           let(tmp(q), a, check(0, 8, write, 1), [tmp(a)]), raw_store(l, 0, const(1), tmp(q)),
+           let(tmp(r), a, check(0, 8, write, 1), [tmp(b)]), raw_store(l, 0, const(2), tmp(r))],
+    Last = [let(tmp(x), l, raw_load(l, 0), [tmp(q)])],
+    append([Two, [let(tmp(q), a, check(0, 8, read, 1), [tmp(b)]),
+                  let(tmp(y), l, raw_load(l, 0), [tmp(q)])], Last], ReadIs),
+    append([Two, [let(tmp(y), l, raw_load(l, 0), [tmp(r)])], Last], WrongIs),
+    Rd = module([func(k, local, l, [], [block(s, [], ReadIs, ret(tmp(x)))])]),
+    Wr = module([func(k, local, l, [], [block(s, [], WrongIs, ret(tmp(x)))])]),
+    valid_module(Rd), once(run(Rd, k, [], 10, ret(2))),
+    valid_module(Wr), once(run(Wr, k, [], 10, ret(1))),
+    \+ reuse_refines(Rd, Wr), reuse_checks(Rd, Rd1), Rd1 == Rd.
+
+% Emission reads a reused access at the checked pointer without a
+% check, and refuses one whose pointer was redefined since its check,
+% which only the validator would otherwise catch.
+test(reuse_emission) :-
+    C = let(tmp(q), a, check(0, 8, write, 1), [tmp(a)]),
+    S = raw_store(l, 0, const(1), tmp(q)),
+    L = let(tmp(x), l, raw_load(l, 0), [tmp(q)]),
+    reuse_fn([C, S, L], Reused), valid_module(Reused),
+    reuse_fail_jumps(Reused, 1),
+    reuse_fn([C, S, let(tmp(r), a, check(0, 8, read, 1), [tmp(a)]),
+              let(tmp(x), l, raw_load(l, 0), [tmp(r)])], Ref),
+    reuse_fail_jumps(Ref, 2),
+    reuse_fn([C, S, flight(tmp(a), copy, [address(tmp(b))], lower(tmp(b))), L], Moved),
+    catch(( filc_module_asm(Moved, _), fail ), nanofil_error(_), true),
+    % Also when the fused first access itself redefines the pointer.
+    pointer_memory_effects(load, Es),
+    reuse_fn([let(tmp(q), a, check(0, 8, write, 8), [tmp(a)]),
+              let(tmp(a), p, raw_load_pointer(0, Es), [tmp(q)]), L], Loaded),
+    catch(( filc_module_asm(Loaded, _), fail ), nanofil_error(_), true).
 
 % The IR can describe wider proofs than subq's signed immediate. Native
 % compilation must refuse them, never emit an immediate that changes size.

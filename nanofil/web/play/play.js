@@ -178,7 +178,7 @@ $("tabs").onclick = (e) => {
   if (b && !b.disabled) show(b.dataset.tab);
 };
 show(tab);
-const irTabs = ["lowered", ...passInputs.map((input) => input.value), "ir"];
+const irTabs = ["lowered", ...passInputs.map((input) => input.value), "ir", "check_reuse"];
 
 // A link to an IR item (from Data or Symbols) opens the IR tab there.
 document.addEventListener("click", (e) => {
@@ -201,7 +201,7 @@ function compile() {
   $("run").disabled = true;
   state("busy");
   worker.postMessage({ source: source.state.doc.toString(),
-    passes: passInputs.filter((input) => input.checked).map((input) => input.value) });
+    passes: [...passInputs, $("check-reuse")].filter((input) => input.checked).map((input) => input.value) });
 }
 
 worker.onmessage = ({ data }) => {
