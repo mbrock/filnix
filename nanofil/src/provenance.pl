@@ -143,7 +143,9 @@ emission_sites(L, I, J, [_|Is], [inst(L, I)-inst(L, J)|Ms], Rest, End) :-
 % boundaries they become context, never before checked-IR validation.
 legacy_context(M, M) :- ir:module_stage(M, checked), !.
 legacy_context(module(Is0), module(Is)) :-
-    maplist(legacy_item(Is0), Is0, Groups), append(Groups, Is).
+    maplist(legacy_item_once(Is0), Is0, Groups), append(Groups, Is).
+
+legacy_item_once(All, Item, Items) :- once(legacy_item(All, Item, Items)).
 
 legacy_item(All, func(N, L, R, Ps, Bs0), Items) :- !,
     context_records(All, N, Rs0),
@@ -187,7 +189,7 @@ legacy_insts([Inst|Is0], L, Old, New, Loc, [Inst|Is], Rs, Last, Ids0, Ids,
 valid_contexts(Items) :-
     findall(N, member(context(N, _), Items), Names),
     sort(Names, Unique), length(Names, Count), length(Unique, Count),
-    maplist(valid_context(Items), Names).
+    forall(member(Name, Names), valid_context(Items, Name)).
 
 valid_context(Items, Name) :-
     memberchk(func(Name, _, _, _, Bs), Items),
@@ -201,7 +203,10 @@ valid_context(Items, Name) :-
     findall(L-N, (member(block(L, _, Is, _), Bs), length(Is, N)), Sizes), list_to_assoc(Sizes, Blocks),
     findall(T-true, (member(block(_, Ps, _, _), Bs), member(phi(tmp(T), _, _), Ps)), Phis0),
     list_to_assoc(Phis0, Phis),
-    maplist(valid_record(index(Origins, Bindings, Histories), sites(Blocks, Phis)), Rs).
+    % forall/2 leaves no choicepoint per record, which a large function's
+    % hundreds of thousands of records would otherwise keep alive.
+    forall(member(R, Rs),
+           valid_record(index(Origins, Bindings, Histories), sites(Blocks, Phis), R)).
 
 unique_assoc(Pairs, Assoc) :-
     findall(K, member(K-_, Pairs), Keys), sort(Keys, Unique),

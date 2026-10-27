@@ -354,7 +354,12 @@ global_item(Sym-g(Type, Linkage, Init, Loc),
 
 % function(+Loc, +Name, +Type, +DclType, +Body, +Env0, -Env, -Func): Func
 % is the IR function for the definition of Name with body Body.
-function(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
+% Lowering is deterministic; once/1 keeps a function's choicepoints from
+% holding its states alive while the rest of the file is lowered.
+function(Loc, Name, Type, DclType, Body, Env0, Env, Func) :-
+    once(function_(Loc, Name, Type, DclType, Body, Env0, Env, Func)).
+
+function_(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
          Env0, Env, [func(Sym, Linkage, RetClass, Params, Blocks), context(Sym, Records)]) :-
     lookup_ordinary(Env0, Name, fn(_, Sym, Linkage)),
     (   ParamTypes0 == unspecified
@@ -868,7 +873,12 @@ check_case_region(Regions, Switch, Loc) :-
 
 % stmt(+Stmt, +Ctx)//: lower statement Stmt, an at(Loc, S) term; stmt_//2
 % lowers S itself.
-stmt(at(Loc, Stmt), Ctx0) -->
+% Lowering a statement is deterministic: committing to it keeps the
+% choicepoints of a large function (sqlite3WhereCodeOneLoopStart) from
+% holding every earlier state alive.
+stmt(Stmt, Ctx, S0, S) :- once(stmt_at(Stmt, Ctx, S0, S)).
+
+stmt_at(at(Loc, Stmt), Ctx0) -->
     { ctx_at(Ctx0, Loc, Ctx), functor(Stmt, Kind, _) },
     enter_origin(Loc, statement(Kind), Parent),
     stmt_(Stmt, Ctx), restore_origin(Parent).

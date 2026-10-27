@@ -58,13 +58,10 @@
 %  text. Throws nanofil_error(bad_asm_line(Line)) for a line it cannot
 %  print.
 print_asm(Lines) :-
-    phrase(lines(Lines), Cs),
-    format("~s", [Cs]).
-
-lines([]) --> [].
-lines([Line|Lines]) -->
-    line(Line),
-    lines(Lines).
+    % Line by line: SQLite's 100 MB of text as one code list would not
+    % fit the default stack.
+    forall(member(Line, Lines),
+           ( phrase(line(Line), Cs), format("~s", [Cs]) )).
 
 % The text of one line, committed to its first parse.
 line(Line) -->

@@ -195,8 +195,10 @@ c_file_module(File, Module) :-
     (   c_parse(Tokens, Items) -> true
     ;   throw(nanofil_error('C parse failed'))
     ),
-    c_module(Items, Module),
-    valid_module(Module).
+    % Deterministic stages: a leftover choicepoint would keep the tokens
+    % and items of a large translation unit (SQLite) alive to the end.
+    once(c_module(Items, Module)),
+    once(valid_module(Module)).
 
 % c_file_tokens(+File, -Tokens): Tokens are the C tokens of File. A .i
 % file is already preprocessed; anything else goes through c_pp with the
@@ -204,7 +206,7 @@ c_file_module(File, Module) :-
 c_file_tokens(File, Tokens) :-
     (   atom_concat(_, '.i', File)
     ->  phrase_from_file(seq(Cs), File),
-        c_tokens(Cs, File, Tokens)
+        once(c_tokens(Cs, File, Tokens))
     ;   ( getenv('FILCC', Clang) -> true ; Clang = filcc ),
         pp_profile(Clang, Profile),
         pp_file(File, Profile, Tokens)
@@ -219,13 +221,11 @@ command(Opt, Registers, Checks, [compile, File]) :- !,
     % Promote can remove every p from a module; the ABI is the original's.
     module_mode(Module0, Mode),
     optimize(Opt, Module0, Module),
-    mode_module_asm(Mode, Registers, Checks, Module, Asm),
-    print_asm(Asm).
+    mode_print_asm(Mode, Registers, Checks, Module).
 command(Opt, Registers, Checks, [cc, File]) :- !,
     c_file_module(File, Module0),
-    optimize(Opt, Module0, Module),
-    mode_module_asm(filc, Registers, Checks, Module, Asm),
-    print_asm(Asm).
+    once(optimize(Opt, Module0, Module)),
+    mode_print_asm(filc, Registers, Checks, Module).
 command(Opt, _, Checks, [difftest, File, Dir]) :- !,
     difftest(Opt, Checks, File, Dir).
 command(Opt, _, _, Args) :- command(Opt,Args).
@@ -295,25 +295,28 @@ difftest(Opt, Checks, File, Dir) :-
              format("  ~w = ~w~n", [CallText, Text])
            )).
 
-% mode_module_asm(+Mode, +Registers, +Checks, +Module, -Asm): Asm is the
-% asm.pl lines of Module by the backend for Mode, filc or plain.
-mode_module_asm(plain, _, _, Module, Asm) :- module_asm(Module, Asm).
-mode_module_asm(filc, Registers, Checks, Module, Asm) :-
+% mode_print_asm(+Mode, +Registers, +Checks, +Module): print the
+% assembly of Module by the backend for Mode, filc or plain. Fil-C
+% prints one item at a time (filc_module_emit/3), since a large module's
+% lines (SQLite's) need not all be held at once.
+mode_print_asm(plain, _, _, Module) :-
+    module_asm(Module, Asm), print_asm(Asm).
+mode_print_asm(filc, Registers, Checks, Module) :-
     checked_module(Checks, Module, Checked),
-    filc_module_asm(Checked, Registers, Asm, _).
+    filc_module_emit(Checked, Registers, print_asm).
 
 % checked_module(+Checks, +Module, -Checked): Checked is Module
 % pizlonated, with check reuse (docs/m7.md) when Checks is reuse, which
 % must be valid checked IR (ir.pl): the validator verifies the passes.
 % Reuse must also change nothing but which proof a covered access reads.
 checked_module(Checks, Module, Checked) :-
-    pizlonate_module(Module, Checked0),
+    once(pizlonate_module(Module, Checked0)),
     once(valid_module(Checked0)),
     checks_module(Checks, Checked0, Checked).
 
 checks_module(reference, Checked, Checked).
 checks_module(reuse, Checked0, Checked) :-
-    reuse_checks(Checked0, Checked),
+    once(reuse_checks(Checked0, Checked)),
     (   reuse_refines(Checked0, Checked) -> true
     ;   throw(nanofil_error('check reuse changed more than proofs'))
     ),

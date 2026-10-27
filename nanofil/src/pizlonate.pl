@@ -51,7 +51,11 @@
 pizlonate_module(M0, module(Items)) :-
     module_mode(M0, Mode),
     legacy_context(M0, module(Items0)), code_items(Items0, Code),
-    maplist(pizlonated_item(Mode, Items0), Code, Groups), append(Groups, Items).
+    maplist(pizlonated_item_once(Mode, Items0), Code, Groups), append(Groups, Items).
+
+% Each item has one pizlonation; committing to it frees the choicepoints
+% that would otherwise keep every function's intermediate terms alive.
+pizlonated_item_once(Mode, All, Item, Items) :- once(pizlonated_item(Mode, All, Item, Items)).
 
 pizlonated_item(Mode, All, func(Name, Linkage, Ret, Params, Blocks0), Items) :-
     func_temp_names(Params, Blocks0, Names),

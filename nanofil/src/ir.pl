@@ -609,7 +609,8 @@ valid_module(M) :-
     code_items(All, Items),
     module_mode(M, Mode),
     module_stage(M, Stage),
-    maplist(valid_item(M, Mode, Stage), Items),
+    % forall/2: no choicepoint per item keeps its garbage alive.
+    forall(member(Item, Items), valid_item(M, Mode, Stage, Item)),
     valid_contexts(All).
 
 % module_stage(+M, -Stage): Stage is checked when M uses any word of the

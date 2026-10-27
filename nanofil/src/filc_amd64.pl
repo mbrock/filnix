@@ -94,7 +94,8 @@
     | Off | a byte offset |
     | Form | a placed return form, `reg` or `mem(Bytes)` (target_form/2) |
 */
-:- module(filc_amd64, [filc_module_asm/2, filc_module_asm/4, signature/3]).
+:- module(filc_amd64, [filc_module_asm/2, filc_module_asm/4, filc_module_emit/3,
+                       signature/3]).
 
 :- use_module(library(lists)).
 :- use_module(library(dcgs)).
@@ -123,9 +124,10 @@ filc_module_asm(Module0, Emission, Lines, Reports) :-
     without_locs(Module0, Module),
     Module = module(Items),
     emission(Emission, Registers, Branches),
-    maplist(lower_item(Module), Items, Products),
+    % Lower and place each item in one committed step, so a large
+    % module (SQLite) never holds every item's ABI product at once.
+    maplist(item_placed_lines(Module, Registers, Branches), Items, LinesPerItem, Reports),
     lower_thunks(Module, Callees),
-    maplist(placed_lines(Registers, Branches), Items, Products, LinesPerItem, Reports),
     append(LinesPerItem, ItemLines),
     maplist(thunk_lines, Callees, LinesPerThunk),
     append(LinesPerThunk, ThunkLines),
@@ -133,6 +135,26 @@ filc_module_asm(Module0, Emission, Lines, Reports) :-
 
 emission(emit(Registers, Branches), Registers, Branches) :- !.
 emission(Registers, Registers, reference).
+
+item_placed_lines(Module, Registers, Branches, Item, Lines, Report) :-
+    once(( lower_item(Module, Item, Product),
+           placed_lines(Registers, Branches, Item, Product, Lines, Report) )).
+
+%! filc_module_emit(+Module, +Emission, :Emit) is det.
+%
+%  Calls Emit(Lines) for each part of the lines filc_module_asm/4 gives,
+%  in order, so a large module (SQLite) need not hold all its lines.
+filc_module_emit(Module0, Emission, Emit) :-
+    without_locs(Module0, Module),
+    Module = module(Items),
+    emission(Emission, Registers, Branches),
+    forall(member(Item, Items),
+           ( item_placed_lines(Module, Registers, Branches, Item, Lines, _),
+             call(Emit, Lines) )),
+    lower_thunks(Module, Callees),
+    forall(member(Callee, Callees),
+           ( thunk_lines(Callee, Lines), call(Emit, Lines) )),
+    call(Emit, [section(note_gnu_stack)]).
 
 thunk_lines(Callee, Lines) :-
     phrase(thunk(Callee), Lines).
@@ -814,7 +836,16 @@ stack_release(Bytes) -->
 
 % Each block: its label, instructions and jump.
 blocks([], _) --> [].
-blocks([block(Label, _, Insts, Jump)|Blocks], Ctx) -->
+blocks([Block|Blocks], Ctx) -->
+    block_once(Block, Blocks, Ctx),
+    blocks(Blocks, Ctx).
+
+% A block's code is its first: committing frees the choicepoints that
+% would keep a large function's (sqlite3VdbeExec's) garbage alive.
+% Blocks are the ones after it, for branch selection's fallthrough.
+block_once(Block, Blocks, Ctx, S0, S) :- once(block_code(Block, Blocks, Ctx, S0, S)).
+
+block_code(block(Label, _, Insts, Jump), Blocks, Ctx) -->
     { block_label(Ctx, Label, A) },
     [label(A)],
     (   { ctx_branches(Ctx, selected(Uses)) }
@@ -824,8 +855,7 @@ blocks([block(Label, _, Insts, Jump)|Blocks], Ctx) -->
         selected_jump(Jump1, Label, Next, Ctx)
     ;   insts(Insts, 0, Label, Ctx),
         jump(Jump, Label, Ctx)
-    ),
-    blocks(Blocks, Ctx).
+    ).
 
 % The code of the jump that ends block From.
 jump(goto(To), From, Ctx) -->

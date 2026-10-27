@@ -29,6 +29,17 @@ user:utf8_streams :-
 :- user:utf8_streams.
 :- initialization(user:utf8_streams, restore).
 
+% NANOFIL_STACK_LIMIT=BYTES raises SWI's 1 GB stack limit, from source or
+% a saved state alike (a state ignores --stack-limit): the SQLite
+% amalgamation with FTS5 needs about 3 GB.
+user:nanofil_stack_limit :-
+    (   getenv('NANOFIL_STACK_LIMIT', A), atom_number(A, N)
+    ->  set_prolog_flag(stack_limit, N)
+    ;   true
+    ).
+:- user:nanofil_stack_limit.
+:- initialization(user:nanofil_stack_limit, restore).
+
 user:term_expansion((:- module(M, Es)),
                     [(:- module(M, Es)), (:- set_prolog_flag(double_quotes, chars))]).
 user:term_expansion((:- initialization(G)), (:- initialization(G, main))) :-
