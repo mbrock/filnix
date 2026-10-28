@@ -2092,7 +2092,97 @@ against `-O --inline=none` is lz4 -9 488 against 639 (10.52G against
 13.37G), lua str 398 against 416, sqlite 1360 against 1378, and equal
 within noise elsewhere. This is the baseline 3d is measured against.
 
-#### Contract
+#### First: a home per temporary (`--registers=temps`), no checker change
+
+The webs come from `frame_slots` pooling unrelated temporaries into one
+home, the same kind of cause as the float pools. So before any new
+trusted analysis, the layout stops pooling them: `temp_slots/9` with
+pools `own` gives each `w`/`l` temporary its own home. 3a's per-home
+allocation and checker then see each temporary's live range as a home,
+and 3b and cells run unchanged. Only the layout changes, and it is not
+trusted. The reference layout (no `-O`, `stack`, `local`) and the other
+allocating modes keep their pools, and the snapshot's 4032 existing
+outputs are byte-identical. The new `T.` mode adds 576.
+
+Three versions were measured. bzip2 -d is the hard case: one function
+of 55k instructions, bound by the op cache, whose cycles track
+legacy-decoder micro-ops in every variant.
+
+1. *Every temporary its own home.* This cut instructions everywhere
+   (geomean 3.42 → 3.27), but bzip2 -d ran slower (gate 3.74 → 4.07,
+   with a padding band of 1.70–1.91G against base's 1.65–1.76G).
+   `BZ2_decompress`'s frame grew from 5.5 KB to 25.6 KB, and with 22
+   values live at once, many homes stay in that frame, spread across
+   it.
+2. *A cap of 1024 own homes per function* kept `BZ2_decompress` pooled,
+   but cost Lua its gain: `luaV_execute` is over the cap, and it gains
+   because nearly every home gets a register, so its large frame is
+   never touched.
+3. *Two lowerings (kept).* The first gives every temporary its own
+   home and allocates. If more than 256 homes (2 KiB) stay in the
+   frame, the function is lowered again. That second lowering pools the
+   temporaries whose homes got no register, as split pools them, and
+   places them first, near `%rbp`; the own homes follow. Then the
+   function is allocated and checked again. Only the emitted stream is
+   checked, as always. With the pooled homes placed first, bzip2 -d's
+   band is 1.65–1.81G (base 1.59–1.82G in the same session), with
+   4.550G instructions against 4.851G.
+
+Gate (7 trials, cpu 6), ratio to filcc -O2, time (instructions), with
+the trials' range of time ratios:
+
+| Workload | `O` | `O-temps` | ranges |
+| --- | --- | --- | --- |
+| zlib -6 | 2.60 (4.21) 2.54..2.62 | 2.50 (4.02) 2.44..2.55 | touch |
+| zlib -d | 2.03 (3.38) 2.02..2.06 | 1.95 (3.21) 1.89..1.99 | apart |
+| bzip2 -9 | 2.06 (2.66) 2.06..2.08 | 2.01 (2.53) 2.00..2.02 | apart |
+| bzip2 -d | 3.66 (3.40) 3.65..3.67 | 3.78 (3.19) 3.78..3.79 | apart, slower |
+| lz4 -1 | 2.29 (10.70) | 2.25 (10.60) | overlap |
+| lz4 -9 | 2.98 (3.71) 2.91..3.02 | 2.63 (3.37) 2.59..2.75 | apart |
+| lz4 -d | 2.79 (7.31) | 2.82 (7.18) | overlap |
+| lua int | 2.26 (2.49) 2.25..2.53 | 2.14 (2.35) 2.13..2.15 | apart |
+| lua tab | 2.10 (2.40) 2.10..2.15 | 2.00 (2.26) 1.99..2.00 | apart |
+| lua str | 1.52 (1.63) | 1.54 (1.62) | overlap |
+| sqlite | 2.07 (2.04) 2.06..2.08 | 2.01 (1.99) 2.00..2.01 | apart |
+| geomean | 2.34 (3.42) | 2.27 (3.27) | |
+
+The instruction drop matches or exceeds the webs estimate above (lz4
+-9: 0.97G against 0.53G estimated; bzip2 -d: 0.30G against 0.20G),
+because 3b then folds the new register moves too.
+
+bzip2 -d is 3% slower in the gate with 6% fewer instructions. Its
+padding bands overlap, so the loss is within this function's layout
+noise, but it is the same sign in every gate run.
+
+**Costs.**
+
+- *Frames.* Homes that got a register keep their own slots, which the
+  emitted code never touches. Across bzip2's main files, frames grow
+  from 29.6 KB to 109 KB in total (median 160 → 272 bytes);
+  `sendMTFValues` goes from 912 bytes to 20.5 KB, and `BZ2_decompress`
+  from 5.5 KB to 19.9 KB. Entry costs nothing more: scalar homes are
+  not zeroed, and the pointer roots, which are, keep their pool. The
+  cost is stack depth, so deep recursion reaches the stack-overflow
+  trap sooner.
+- *Compile.* `sqlite3.c` with `-O --registers=temps` takes 119.2 s of
+  user time against 116.3 s for cells (+2.5%), measured side by side.
+  Peak RSS is 2.39 GB against 1.46 GB, mostly from the larger frames'
+  cells (cells mode lists every scalar slot). Without the explicit
+  collection before the second lowering, it peaked at 4.75 GB.
+- *Trust.* Nothing new is trusted. The second lowering reruns the
+  allocator, 3a's checker and 3b's checker on its own stream.
+
+Fail-first: unit test `own_scalar_homes` fails when own pools behave as
+split, and when `own(Names)` ignores Names. Under `-O --registers=temps`
+the difftests and progtests pass, and one Nix check configuration runs
+them.
+
+What remains for 3d (webs with a new checker) is the part temps cannot
+reach without the frame growth: functions where pressure leaves many
+homes in the frame. The second lowering pools those again, so
+`BZ2_decompress` keeps 3a's limits there.
+
+#### Contract (webs; approved, held while temps is measured)
 
 **Mode.** `--registers=webs` is opt-in: frame cells (the current `-O`
 default) with webs in place of whole homes. It becomes the default only

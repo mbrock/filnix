@@ -153,9 +153,42 @@ emission(Registers, Registers, reference).
 item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
     % The allocating modes keep float temporaries out of the scalar
     % slots (frame_slots:temp_slots/9), so integer homes stay eligible.
-    ( memberchk(Registers, [function,operands,cells]) -> Pools = split ; Pools = shared ),
-    once(( lower_item(Pools, Symbols, Item, Product),
-           placed_lines(Registers, Branches, Item, Product, Lines, Report) )).
+    % Temps mode also gives each w/l temporary its own home (docs/perf.md 3d).
+    % It lowers twice: once with every w/l temporary in a home of its own,
+    % then with those whose homes got no register pooled again, so the
+    % frame stays compact where pressure leaves homes in it. Both are
+    % layout choices; the checkers validate the stream that is emitted.
+    (   Registers == temps
+    ->  temps_first(Symbols, Branches, Item, First),
+        (   First = placed(Lines, Report) -> true
+        ;   First = again(Unmapped),
+            % The first lowering is garbage now; collect it before the
+            % second grows the stacks (SQLite's largest functions).
+            catch(garbage_collect, error(existence_error(_, _), _), true),
+            once(( lower_item(own(Unmapped), Symbols, Item, Product),
+                   placed_lines(temps, Branches, Item, Product, Lines, Report, _) ))
+        )
+    ;   (   memberchk(Registers, [function,operands,cells]) -> Pools = split
+        ;   Pools = shared
+        ),
+        once(( lower_item(Pools, Symbols, Item, Product),
+               placed_lines(Registers, Branches, Item, Product, Lines, Report) ))
+    ).
+
+% temps_first(+Symbols, +Branches, +Item, -First): temps mode's first
+% lowering, with a home per w/l temporary. First is placed(Lines,
+% Report) when at most own_frame_limit/1 of those homes stay in the
+% frame, else again(Unmapped) with the ones that do; the first lines are
+% dropped then, so the second lowering does not hold them.
+temps_first(Symbols, Branches, Item, First) :-
+    once(( lower_item(own, Symbols, Item, Product),
+           placed_lines(temps, Branches, Item, Product, Lines, Report, Unmapped) )),
+    own_frame_limit(Limit), length(Unmapped, N),
+    ( N =< Limit -> First = placed(Lines, Report) ; First = again(Unmapped) ).
+
+% own_frame_limit(-N): own homes left in the frame worth keeping apart
+% (2 KiB); past it they are pooled again (docs/perf.md 3d).
+own_frame_limit(256).
 
 %! filc_module_emit(+Module, +Emission, :Emit) is det.
 %
@@ -199,14 +232,21 @@ item_lines(Selection, Item, Lines) :-
         throw(nanofil_error(Msg))
     ).
 
+% placed_lines(+Registers, +Branches, +Item, +Product, -Lines, -Report,
+% -Unmapped): Unmapped is the ordset of w/l temporaries whose scalar
+% homes the register map left in the frame (all of them when nothing is
+% allocated), for temps mode's second lowering; [] for data.
+placed_lines(R, Br, Item, Product, Lines, Report) :-
+    placed_lines(R, Br, Item, Product, Lines, Report, _).
+
 % A setjmp function keeps reference selection, branches included.
-placed_lines(stack, Branches, Func, Item, Lines, stack) :-
+placed_lines(stack, Branches, Func, Item, Lines, stack, []) :-
     ( setjmp_func(Func) -> B = reference ; B = Branches ),
     item_lines(sel(stack,B),Item,Lines).
-placed_lines(R, _, data(N,L,A,Is), Item, Lines, data(N)) :-
-    memberchk(R, [local,function,operands,cells]),
+placed_lines(R, _, data(N,L,A,Is), Item, Lines, data(N), []) :-
+    memberchk(R, [local,function,operands,cells,temps]),
     Item = data(N,L,A,Is), item_lines(sel(stack,reference),Item,Lines).
-placed_lines(local, Branches, Func, Item, Lines, function(Name,Report)) :-
+placed_lines(local, Branches, Func, Item, Lines, function(Name,Report), []) :-
     Func = func(Name,_,_,_,_),
     Item = abi_function(Name,_,_,Sig,Frame,_,_,_,_,_),
     % Preserve entire setjmp functions, including unreachable sites, in
@@ -226,8 +266,8 @@ placed_lines(local, Branches, Func, Item, Lines, function(Name,Report)) :-
     append(Cached,[size(Impl)|Rest],Lines).
 % Function mode reserves a save slot for each callee-saved register, so
 % the stream the checker compares with has the same frame.
-placed_lines(Mode, Branches, Func, Item0, Lines, function(Name,Report)) :-
-    memberchk(Mode, [function,operands,cells]),
+placed_lines(Mode, Branches, Func, Item0, Lines, function(Name,Report), Unmapped) :-
+    memberchk(Mode, [function,operands,cells,temps]),
     Func = func(Name,_,_,_,_),
     Item0 = abi_function(Name,Lk,Rt,Sig,frame(Plain,Lowers,Aliases),E,B,X,O,Or),
     (   setjmp_func(Func)
@@ -251,8 +291,14 @@ placed_lines(Mode, Branches, Func, Item0, Lines, function(Name,Report)) :-
     findall(save(R,D), ( callee_saved(R), get_assoc(callee_save(R),Slots,Off),
                          D is -Off ), Saves),
     regs_mode(Mode, Slots, Mode1),
-    regs_asm(Mode1,regs_metadata(Setjmp,Impl,Homes,Saves),Body,Allocated,_,Report),
-    append(Allocated,[size(Impl)|Rest],Lines).
+    regs_asm(Mode1,regs_metadata(Setjmp,Impl,Homes,Saves),Body,Allocated,
+             checked(_,Map),Report),
+    append(Allocated,[size(Impl)|Rest],Lines),
+    ( Map == [] -> empty_assoc(Mapped) ; list_to_assoc(Map, Mapped) ),
+    findall(N, ( member(tmp(N)-storage(scalar,I), Aliases),
+                 get_assoc(storage(scalar,I), Slots, Off), D is -Off,
+                 \+ get_assoc(D, Mapped, _) ), Ns),
+    sort(Ns, Unmapped).
 
 % regs_mode(+Mode, +Slots, -Mode1): cells mode is operands mode with the
 % frame cells (docs/perf.md, 5a-loads): the 8-byte words of lowers[],
@@ -260,6 +306,8 @@ placed_lines(Mode, Branches, Func, Item0, Lines, function(Name,Report)) :-
 % stack-aux roots, as cells(Ds, Others) with the other frame ranges
 % (local storage, wide slots, save slots) the checker keeps them apart
 % from. The header words (parent, origin) are never cells.
+% Temps mode is cells mode on a frame with unpooled scalar homes.
+regs_mode(temps, Slots, Mode) :- !, regs_mode(cells, Slots, Mode).
 regs_mode(cells, Slots, frame(cells(Ds, Others))) :- !,
     assoc_to_list(Slots, Ps),
     findall(D, ( member(K-Off, Ps), integer(Off), cell_key(K), D is -Off ), Ds0),

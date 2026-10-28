@@ -155,7 +155,16 @@ test(split_float_pools) :-
     once(( member(home(_, Ks), Shared), memberchk(d, Ks), memberchk(w, Ks) )),
     pool_homes(split, P, F, Split), Split = [_|_],
     forall(member(home(_, Ks), Split), forall(member(K, Ks), memberchk(K, [w,l]))).
+% Own pools give each w/l temporary its own home, where split pools
+% reuse slots of disjoint temporaries; own(Names) pools Names again.
+test(own_scalar_homes) :-
+    own_homes("int f(int x, int n) { int a = x * 3; int b = a + n;
+               int c = b * x; return c - n; }", Split, Own, Again),
+    length(Split, NS), length(Own, NO), NO > NS,
+    findall(K, member(home(_, [K]), Own), Ks), length(Ks, NO),
+    length(Again, NS).
 test(local_storage_semantics) :- local_semantics.
+
 test(local_storage_lifetime) :- local_lifetime.
 test(local_storage_validation) :- local_validation.
 
@@ -167,6 +176,20 @@ pool_homes(Pools, Module, Func, Homes) :-
     Product = abi_function(_,_,_,_,Frame,_,_,_,_,_), Frame = frame(_,_,Aliases),
     filc_amd64:layout(Frame, Slots, _, _),
     filc_amd64:scalar_homes(Func, Aliases, Slots, Homes).
+
+% own_homes(+Src, -Split, -Own, -Again): the scalar homes of the one
+% function in Src lowered with split pools, with own pools, and with own
+% pools that pool every w/l temporary again.
+own_homes(Src, Split, Own, Again) :-
+    c_tokens(Src, 'own.c', Ts),
+    c_parse(Ts, C), c_module(C, M), optimize(o1, M, O), pizlonate_module(O, P),
+    P = module(Items), member(F, Items), F = func(_,_,_,_,_), !,
+    pool_homes(split, P, F, Split), pool_homes(own, P, F, Own),
+    F = func(_,_,_,Ps,Bs),
+    findall(N, ( member(param(K, tmp(N)), Ps) ; member(block(_,Phis,Is,_), Bs),
+                 ( member(phi(tmp(N),K,_), Phis) ; member(let(tmp(N),K,_,_), Is) ) ), Ns0),
+    sort(Ns0, Ns),
+    pool_homes(own(Ns), P, F, Again).
 
 % copy_lines(+Decl, +Src, +Copies, -Lines-Reports): the -O Fil-C lines
 % and reports of the C text Decl followed by Src, with small copies
