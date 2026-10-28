@@ -158,14 +158,14 @@ designators, `_FORTIFY_SOURCE` and the
 programs that have a `main`, all 262 that clang itself builds and runs
 match clang's output; what nanofil does not support it refuses with a
 message, never miscompiles ([docs/corpus.md](docs/corpus.md)). GNU
-hello, zlib, Lua, bzip2, lz4, SQLite, GNU sed, jq and dash build with
+hello, zlib, Lua, bzip2, lz4, SQLite, GNU sed, jq, dash and xz build with
 nanofil alone and behave exactly like their clang builds, each checked
 by a `checks.x86_64-linux.nanofil-<name>` build ([PLAN.md](PLAN.md),
 M4); zlib's compressed output is byte-identical, at about five times
 clang's time.
 
 It refuses `_Complex`, `_Atomic`, inline `asm` other than an empty
-barrier, and K&R definitions. Without
+barrier, GNU vector types, and K&R definitions. Without
 `-O` every temporary lives in a stack slot; `-O` promotes locals and
 allocates scalar registers ([docs/perf.md](docs/perf.md)).
 

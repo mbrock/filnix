@@ -818,3 +818,60 @@ linkage `tls(export)` or `tls(local)`; the interpreter runs one thread,
 so there it is an ordinary object.
 `tests/c/prog/thread-local.c` runs eight threads over thread-locals
 defined on both sides, with forced collections, against clang.
+
+## Constructors and destructors
+
+Read from clang `-O1 -S` output at the pin for static and external
+constructors with and without a priority and a static destructor.
+
+- Each constructor gets a private native function
+  `.Lfilc_ctor_forwarder[.N]`: `lea pizlonatedFO_f+16(%rip), %rdi;
+  mov %rdi, %rsi; jmp filc_defer_or_run_global_ctor@PLT`. A destructor's
+  forwarder jumps to `filc_run_global_dtor@PLT` the same way. The
+  runtime takes the function object (its payload address, twice: as
+  the pointer and its lower) and calls the function through it, so the
+  function keeps its ordinary pizlonated entries and linkage.
+- The forwarder's address is the one `.quad` of an `.init_array` entry
+  (`.fini_array` for a destructor), `.init_array.N` for priority N, as
+  the linker sorts them: lower priorities first, then those without.
+
+nanofil emits the same (`init_entry//4` in filc_amd64.pl), named
+`.L__nanofil_ctor_f..forwarder`, from IR data of linkage
+`init(ctor|dtor, Priority)` whose one item is `item(p, sym(f, 0))`.
+[tests/c/prog/constructor.c](../tests/c/prog/constructor.c) mixes
+nanofil's and clang's constructors and checks the order.
+
+## Eightbytes without data
+
+A struct or union of at most 16 bytes that is not MEMORY passes only
+the eightbytes holding some member's data (clang's
+`X86_64ABIInfo::classify` leaves the others NO_CLASS, and its coerced
+type covers just the other eightbyte). Observed at the pin with
+`-emit-llvm`:
+
+| Type | clang passes |
+| --- | --- |
+| `struct __attribute__((aligned(16))) { int x; }` (16 bytes) | `i32` |
+| `struct { long a; int :32; }` | `i64` |
+| `struct { int :32; int :32; long b; }` | `i64`, the eightbyte at 8 |
+
+A long double covers both its eightbytes (X87, X87UP). Past a
+prototype, clang passes such a struct `byval` instead, so the generic
+packet holds every eightbyte, padding included, where `va_arg` reads it
+(`llvm.filc.va.arg.address` with the struct's size). nanofil's
+`abi_eightbytes/4` drops the empty eightbytes for parameters, arguments
+and results, and `variadic_words/4` keeps them for variadic arguments.
+
+## Weak thunks are shared by signature
+
+A call of a function defined elsewhere goes through
+`pizlonatedFI<Sig>_<f>`, a hidden weak thunk each calling object emits
+for each signature it calls `f` with; the linker keeps one. A signature
+digit says an argument is one integer word, not whether it is 32 or 64
+bits wide: `snprintf(buf, n, "%x", (uint32_t)u)` and
+`snprintf(buf, n, "%lx", (uint64_t)v)` share `FI308296_snprintf`. A
+thunk must therefore copy every integer word whole. clang's do; nanofil's
+copied a stack word at the width of the call it was emitted for, so its
+thunk for a 32-bit call, chosen by the linker, truncated other objects'
+64-bit arguments, clang's included (xz's `-lvv` CRC64 values, found by
+the xz check; fixed in [`d1d5986`](https://github.com/mbrock/filnix/commit/d1d5986)).

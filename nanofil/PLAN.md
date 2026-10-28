@@ -282,6 +282,7 @@ check compared with a filcc build:
 | `nanofil-sed` | GNU sed 4.10 (gnulib) | [`cda56e6`](https://github.com/mbrock/filnix/commit/cda56e6) |
 | `nanofil-jq` | jq 1.8.2 with oniguruma, decNumber | [`cda56e6`](https://github.com/mbrock/filnix/commit/cda56e6) |
 | `nanofil-dash` | dash 0.5.13 | [`cda56e6`](https://github.com/mbrock/filnix/commit/cda56e6) |
+| `nanofil-xz` | xz-utils 5.8.4, threaded coders at 1 to 8 threads | [`41da3be`](https://github.com/mbrock/filnix/commit/41da3be) |
 
 Since the steps below were planned, M4 gained VLAs and variably
 modified types ([`4822471`](https://github.com/mbrock/filnix/commit/4822471)),
@@ -292,10 +293,14 @@ float-containing structs and aggregate `va_arg`
 builtins, a C23 mode and the GNU extensions gnulib uses
 ([`36039eb`](https://github.com/mbrock/filnix/commit/36039eb)).
 Refused with a message: `_Complex`, `_Atomic`, K&R definitions, inline
-asm other than the empty barrier, GNU case ranges, alignment stronger
-than natural, pointer-to-`bool` in static initializers, variable and
+asm other than the empty barrier (in a function that is compiled),
+GNU case ranges, alignment stronger than natural except up to 16 on a
+struct or union definition, vector types, `_Float16` and `__bf16`,
+pointer-to-`bool` in static initializers, variable and
 variadic function aliases, and long double classification other than
-by sign ([docs/m4.md](docs/m4.md), *Linux userland additions*).
+by sign ([docs/m4.md](docs/m4.md), *Linux userland additions* and *xz
+additions*). Constructors and destructors run as clang's do
+([`41da3be`](https://github.com/mbrock/filnix/commit/41da3be)).
 `_Thread_local` and `__thread` variables are per-thread objects, created
 lazily through clang's getter protocol and interoperating with clang's
 ([docs/abi-findings.md](docs/abi-findings.md), *Thread-local variables*).
