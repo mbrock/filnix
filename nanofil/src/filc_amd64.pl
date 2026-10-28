@@ -155,17 +155,22 @@ item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
     % slots (frame_slots:temp_slots/9), so integer homes stay eligible.
     % Temps mode also gives each w/l temporary its own home (docs/perf.md 3d).
     % It lowers twice: once with every w/l temporary in a home of its own,
-    % then with those whose homes got no register pooled again, so the
-    % frame stays compact where pressure leaves homes in it. Both are
-    % layout choices; the checkers validate the stream that is emitted.
+    % then with the temporaries pooled by where the first allocation put
+    % them: those left in the frame together, and those given a register
+    % with the others given the same one, so the frame stays compact.
+    % Both are layout choices; the checkers validate the emitted stream.
     (   Registers == temps
     ->  temps_first(Symbols, Branches, Item, First),
         (   First = placed(Lines, Report) -> true
-        ;   First = again(Unmapped),
+        ;   First = again(Groups),
             % The first lowering is garbage now; collect it before the
-            % second grows the stacks (SQLite's largest functions).
-            catch(garbage_collect, error(existence_error(_, _), _), true),
-            once(( lower_item(own(Unmapped), Symbols, Item, Product),
+            % second grows the stacks, in large functions only (SQLite's
+            % largest): collecting before every function costs far more.
+            (   length(Groups, NG), NG > 1024
+            ->  catch(garbage_collect, error(existence_error(_, _), _), true)
+            ;   true
+            ),
+            once(( lower_item(own(Groups), Symbols, Item, Product),
                    placed_lines(temps, Branches, Item, Product, Lines, Report, _) ))
         )
     ;   (   memberchk(Registers, [function,operands,cells]) -> Pools = split
@@ -177,18 +182,26 @@ item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
 
 % temps_first(+Symbols, +Branches, +Item, -First): temps mode's first
 % lowering, with a home per w/l temporary. First is placed(Lines,
-% Report) when at most own_frame_limit/1 of those homes stay in the
-% frame, else again(Unmapped) with the ones that do; the first lines are
-% dropped then, so the second lowering does not hold them.
+% Report) when it has at most own_frame_limit/1 such homes, else
+% again(Groups) with each temporary's group for the second lowering,
+% from a function-mode (3a) allocation of the first; its lines are
+% dropped, so the second lowering does not hold them.
 temps_first(Symbols, Branches, Item, First) :-
-    once(( lower_item(own, Symbols, Item, Product),
-           placed_lines(temps, Branches, Item, Product, Lines, Report, Unmapped) )),
-    own_frame_limit(Limit), length(Unmapped, N),
-    ( N =< Limit -> First = placed(Lines, Report) ; First = again(Unmapped) ).
+    once(lower_item(own, Symbols, Item, Product)),
+    own_frame_limit(Limit),
+    (   Product = abi_function(_,_,_,_,frame(_,_,Aliases),_,_,_,_,_),
+        findall(x, member(_-storage(scalar,_), Aliases), Xs), length(Xs, N), N > Limit
+    ->  % Only the register map matters here: 3a's allocation, unchecked
+        % because these lines are dropped, and no operand rewrite.
+        once(placed_lines(map, Branches, Item, Product, _, _, Groups)),
+        First = again(Groups)
+    ;   once(placed_lines(temps, Branches, Item, Product, Lines, Report, _)),
+        First = placed(Lines, Report)
+    ).
 
-% own_frame_limit(-N): own homes left in the frame worth keeping apart
-% (2 KiB); past it they are pooled again (docs/perf.md 3d).
-own_frame_limit(256).
+% own_frame_limit(-N): own scalar homes (512 bytes) worth a second
+% lowering to share their slots (docs/perf.md 3d).
+own_frame_limit(16).
 
 %! filc_module_emit(+Module, +Emission, :Emit) is det.
 %
@@ -233,9 +246,9 @@ item_lines(Selection, Item, Lines) :-
     ).
 
 % placed_lines(+Registers, +Branches, +Item, +Product, -Lines, -Report,
-% -Unmapped): Unmapped is the ordset of w/l temporaries whose scalar
-% homes the register map left in the frame (all of them when nothing is
-% allocated), for temps mode's second lowering; [] for data.
+% -Groups): Groups pairs each temporary in a scalar home with the
+% register the map gave the home, or frame, for temps mode's second
+% lowering; [] for data and the non-allocating modes.
 placed_lines(R, Br, Item, Product, Lines, Report) :-
     placed_lines(R, Br, Item, Product, Lines, Report, _).
 
@@ -266,8 +279,8 @@ placed_lines(local, Branches, Func, Item, Lines, function(Name,Report), []) :-
     append(Cached,[size(Impl)|Rest],Lines).
 % Function mode reserves a save slot for each callee-saved register, so
 % the stream the checker compares with has the same frame.
-placed_lines(Mode, Branches, Func, Item0, Lines, function(Name,Report), Unmapped) :-
-    memberchk(Mode, [function,operands,cells,temps]),
+placed_lines(Mode, Branches, Func, Item0, Lines, function(Name,Report), Groups) :-
+    memberchk(Mode, [function,operands,cells,temps,map]),
     Func = func(Name,_,_,_,_),
     Item0 = abi_function(Name,Lk,Rt,Sig,frame(Plain,Lowers,Aliases),E,B,X,O,Or),
     (   setjmp_func(Func)
@@ -295,10 +308,10 @@ placed_lines(Mode, Branches, Func, Item0, Lines, function(Name,Report), Unmapped
              checked(_,Map),Report),
     append(Allocated,[size(Impl)|Rest],Lines),
     ( Map == [] -> empty_assoc(Mapped) ; list_to_assoc(Map, Mapped) ),
-    findall(N, ( member(tmp(N)-storage(scalar,I), Aliases),
-                 get_assoc(storage(scalar,I), Slots, Off), D is -Off,
-                 \+ get_assoc(D, Mapped, _) ), Ns),
-    sort(Ns, Unmapped).
+    findall(N-G, ( member(tmp(N)-storage(scalar,I), Aliases),
+                   get_assoc(storage(scalar,I), Slots, Off), D is -Off,
+                   ( get_assoc(D, Mapped, R) -> G = R ; G = frame ) ), Groups0),
+    sort(Groups0, Groups).
 
 % regs_mode(+Mode, +Slots, -Mode1): cells mode is operands mode with the
 % frame cells (docs/perf.md, 5a-loads): the 8-byte words of lowers[],

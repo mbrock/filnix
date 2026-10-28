@@ -2104,7 +2104,7 @@ trusted. The reference layout (no `-O`, `stack`, `local`) and the other
 allocating modes keep their pools, and the snapshot's 4032 existing
 outputs are byte-identical. The new `T.` mode adds 576.
 
-Three versions were measured. bzip2 -d is the hard case: one function
+Four versions were measured. bzip2 -d is the hard case: one function
 of 55k instructions, bound by the op cache, whose cycles track
 legacy-decoder micro-ops in every variant.
 
@@ -2118,64 +2118,94 @@ legacy-decoder micro-ops in every variant.
    but cost Lua its gain: `luaV_execute` is over the cap, and it gains
    because nearly every home gets a register, so its large frame is
    never touched.
-3. *Two lowerings (kept).* The first gives every temporary its own
-   home and allocates. If more than 256 homes (2 KiB) stay in the
-   frame, the function is lowered again. That second lowering pools the
-   temporaries whose homes got no register, as split pools them, and
-   places them first, near `%rbp`; the own homes follow. Then the
-   function is allocated and checked again. Only the emitted stream is
-   checked, as always. With the pooled homes placed first, bzip2 -d's
-   band is 1.65–1.81G (base 1.59–1.82G in the same session), with
-   4.550G instructions against 4.851G.
+3. *Two lowerings, frame-resident homes pooled.* If more than 256
+   homes stay in the frame, the function is lowered again with those
+   pooled, as split pools them, and placed first, near `%rbp`. This
+   fixed bzip2 -d (band 1.65–1.81G against base's 1.59–1.82G, 4.550G
+   instructions against 4.851G). But the homes that got a register
+   kept their own slots, never touched, so frames grew 3.7× across
+   bzip2 (`sendMTFValues` 0.9 → 20.5 KB), and deep recursion would
+   reach the stack-overflow trap sooner. This version shipped opt-in in
+   `d20067b`.
+4. *Two lowerings, grouped by register (kept).* The second lowering
+   pools every temporary by where the first allocation put it: those
+   left in the frame together (placed first), and those given a
+   register together with the others given the same register. Same-
+   register temporaries never interfere, so 3a gives each shared home
+   that register again. The frame then holds about one home per
+   register in use plus the pooled remainder, as in cells mode. The
+   first lowering only proposes the map (`regs_asm/6`'s map mode: 3a's
+   allocator, no check, no operand rewrite), because its lines are
+   dropped. Only the second, emitted stream is checked, by 3a's checker
+   and 3b's, unchanged. Functions with at most 16 scalar homes (128
+   bytes) keep one lowering and their own homes.
+
+Frames under 4, across bzip2's main files: 31.9 KB in total against
+29.6 KB for cells (1.08×; version 3 was 109 KB), median 208 against 160
+bytes. `BZ2_decompress` is 5584 bytes against 5552, and bzip2 -d keeps
+its instruction drop (4.559G).
+
+Recursion depth before the stack-overflow trap (8 MiB stack, to 1%):
+
+| Program | filcc -O2 | `-O` (cells) | `-O --registers=temps` |
+| --- | --: | --: | --: |
+| small recursive function (`1 + f(n - 1)`) | 173,056 | 74,240 | 65,024 (0.88×) |
+| recursive function with ~20 temporaries | 65,024 | 34,560 | 34,560 (1.00×; 17,280 with a 256-home threshold) |
+| Lua, Lua-level recursion | 499,712 | 499,712 | 499,712 |
+| Lua, recursion through `pcall` (C) | 196 | 196 | 196 |
+
+Lua's limits are its own (`LUAI_MAXSTACK`, and the C-call count), not
+the machine stack. The small function is under the 16-home threshold:
+its frame grows from 96 to 112 bytes. The threshold bounds any
+function's growth at 128 bytes.
 
 Gate (7 trials, cpu 6), ratio to filcc -O2, time (instructions), with
 the trials' range of time ratios:
 
 | Workload | `O` | `O-temps` | ranges |
 | --- | --- | --- | --- |
-| zlib -6 | 2.60 (4.21) 2.54..2.62 | 2.50 (4.02) 2.44..2.55 | touch |
-| zlib -d | 2.03 (3.38) 2.02..2.06 | 1.95 (3.21) 1.89..1.99 | apart |
-| bzip2 -9 | 2.06 (2.66) 2.06..2.08 | 2.01 (2.53) 2.00..2.02 | apart |
-| bzip2 -d | 3.66 (3.40) 3.65..3.67 | 3.78 (3.19) 3.78..3.79 | apart, slower |
-| lz4 -1 | 2.29 (10.70) | 2.25 (10.60) | overlap |
-| lz4 -9 | 2.98 (3.71) 2.91..3.02 | 2.63 (3.37) 2.59..2.75 | apart |
-| lz4 -d | 2.79 (7.31) | 2.82 (7.18) | overlap |
-| lua int | 2.26 (2.49) 2.25..2.53 | 2.14 (2.35) 2.13..2.15 | apart |
-| lua tab | 2.10 (2.40) 2.10..2.15 | 2.00 (2.26) 1.99..2.00 | apart |
-| lua str | 1.52 (1.63) | 1.54 (1.62) | overlap |
-| sqlite | 2.07 (2.04) 2.06..2.08 | 2.01 (1.99) 2.00..2.01 | apart |
-| geomean | 2.34 (3.42) | 2.27 (3.27) | |
+| zlib -6 | 2.59 (4.21) 2.56..2.62 | 2.44 (4.02) 2.41..2.46 | apart |
+| zlib -d | 2.04 (3.38) 2.01..2.25 | 1.96 (3.22) 1.94..1.98 | apart |
+| bzip2 -9 | 2.06 (2.66) 2.05..2.12 | 1.99 (2.53) 1.99..2.00 | apart |
+| bzip2 -d | 4.04 (3.40) 4.04..4.07 | 3.81 (3.19) 3.79..3.84 | apart |
+| lz4 -1 | 2.27 (10.69) 2.16..2.33 | 2.22 (10.64) 2.15..2.29 | overlap |
+| lz4 -9 | 2.99 (3.71) 2.89..3.01 | 2.56 (3.37) 2.53..2.69 | apart |
+| lz4 -d | 2.77 (7.24) 2.72..2.92 | 2.76 (7.18) 2.70..2.91 | overlap |
+| lua int | 2.26 (2.49) 2.25..2.67 | 2.14 (2.35) 2.12..2.15 | apart |
+| lua tab | 2.09 (2.40) 2.09..2.13 | 1.99 (2.26) 1.98..2.04 | apart |
+| lua str | 1.51 (1.63) 1.45..1.54 | 1.50 (1.61) 1.48..1.55 | overlap |
+| sqlite | 2.06 (2.04) 2.05..2.11 | 1.98 (1.99) 1.98..1.99 | apart |
+| geomean | 2.35 (3.41) | 2.24 (3.27) | |
 
-The instruction drop matches or exceeds the webs estimate above (lz4
--9: 0.97G against 0.53G estimated; bzip2 -d: 0.30G against 0.20G),
-because 3b then folds the new register moves too.
+bzip2 -d flipped against version 3's gate (3.66 → 3.78 there): `O`'s
+binary, relinked, drew a worse layout (4.04), with the same instruction
+count. That function's time is link layout, as above.
 
-bzip2 -d is 3% slower in the gate with 6% fewer instructions. Its
-padding bands overlap, so the loss is within this function's layout
-noise, but it is the same sign in every gate run.
+The instruction drop matches or exceeds the webs estimate (lz4 -9:
+0.97G against 0.53G estimated; bzip2 -d: 0.30G against 0.20G), because
+3b then folds the new register moves too.
 
 **Costs.**
 
-- *Frames.* Homes that got a register keep their own slots, which the
-  emitted code never touches. Across bzip2's main files, frames grow
-  from 29.6 KB to 109 KB in total (median 160 → 272 bytes);
-  `sendMTFValues` goes from 912 bytes to 20.5 KB, and `BZ2_decompress`
-  from 5.5 KB to 19.9 KB. Entry costs nothing more: scalar homes are
-  not zeroed, and the pointer roots, which are, keep their pool. The
-  cost is stack depth, so deep recursion reaches the stack-overflow
-  trap sooner.
-- *Compile.* `sqlite3.c` with `-O --registers=temps` takes 119.2 s of
-  user time against 116.3 s for cells (+2.5%), measured side by side.
-  Peak RSS is 2.39 GB against 1.46 GB, mostly from the larger frames'
-  cells (cells mode lists every scalar slot). Without the explicit
-  collection before the second lowering, it peaked at 4.75 GB.
-- *Trust.* Nothing new is trusted. The second lowering reruns the
-  allocator, 3a's checker and 3b's checker on its own stream.
+- *Compile.* `sqlite3.c`, user time, each run alone: cells 106.5 s,
+  temps 138.3 s (+30%). By threshold: 0 homes 143.2 s, 16 138.3 s, 256
+  126.2 s (but 2× depth loss on the 20-temporary function). The second
+  lowering costs a backend pass on each function above the threshold.
+  An explicit collection before every second lowering cost 4×, so it
+  is done only for functions with more than 1024 homes.
+- *Memory.* Peak RSS 2.39 GB against 1.46 GB for cells, at every
+  threshold tried (0, 16, 256), and 2.26 GB with one lowering. So it
+  comes with own homes themselves, most likely the first lowering's
+  liveness bitsets over thousands of homes in SQLite's largest
+  functions; not measured further.
+- *Trust.* Nothing new is trusted. The map-only first pass is a layout
+  choice whose lines are never emitted.
 
 Fail-first: unit test `own_scalar_homes` fails when own pools behave as
-split, and when `own(Names)` ignores Names. Under `-O --registers=temps`
-the difftests and progtests pass, and one Nix check configuration runs
-them.
+split, and when `own(Groups)` ignores the groups; `temps_frame` (the
+~20-temporary function's frame is no larger than cells') fails when the
+second lowering is skipped. Under `-O --registers=temps` the difftests
+and progtests pass, and one Nix check configuration runs them.
 
 What remains for 3d (webs with a new checker) is the part temps cannot
 reach without the frame growth: functions where pressure leaves many

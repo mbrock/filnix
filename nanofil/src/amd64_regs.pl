@@ -29,8 +29,9 @@
 
 %! regs_asm(+Mode, +Metadata, +Before, -After, -Checked, -Report) is det.
 %
-%  Mode is function (step 3a), operands (3a, then step 3b's operand
-%  rewrite) or frame(Cells) (operands with the frame cells of
+%  Mode is map (3a's map alone, unchecked, for a layout choice; Final
+%  is then not to be emitted), function (step 3a), operands (3a, then
+%  step 3b's operand rewrite) or frame(Cells) (operands with the frame cells of
 %  docs/perf.md 5a-loads). Metadata is regs_metadata(Setjmp, Impl, Homes, Saves) with a
 %  save slot for every callee-saved register. Checked is the metadata
 %  and map the checker validated: checked(Metadata1, Map). Report is
@@ -56,7 +57,7 @@ regs_asm(Mode, regs_metadata(Setjmp, Impl, Homes, Saves), Before, Final,
             append(Pre, [label(Impl)|Body1], After)
         ),
         length(Map, NH), length(Used, NR), Report = allocated(NH, NR),
-        (   Analysis0 == none, Mode \== function
+        (   Analysis0 == none, Mode \== function, Mode \== map
         ->  body_analysis(Body, Effects, [], Analysis)
         ;   Analysis = Analysis0
         )
@@ -64,7 +65,10 @@ regs_asm(Mode, regs_metadata(Setjmp, Impl, Homes, Saves), Before, Final,
         Analysis = none
     ),
     Meta = regs_metadata(Setjmp, Impl, Homes, Used),
-    (   check_regs(Meta, Map, Before, After, Analysis) -> true
+    % Map mode only proposes the map, for a layout choice (temps mode's
+    % first lowering); its stream is never emitted, so nothing checks it.
+    (   Mode == map -> true
+    ;   check_regs(Meta, Map, Before, After, Analysis) -> true
     ;   throw(nanofil_error('register home translation check failed'))
     ),
     (   operand_cells(Mode, Cells0), Report = allocated(_, _)

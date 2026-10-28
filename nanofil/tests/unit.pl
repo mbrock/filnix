@@ -156,13 +156,31 @@ test(split_float_pools) :-
     pool_homes(split, P, F, Split), Split = [_|_],
     forall(member(home(_, Ks), Split), forall(member(K, Ks), memberchk(K, [w,l]))).
 % Own pools give each w/l temporary its own home, where split pools
-% reuse slots of disjoint temporaries; own(Names) pools Names again.
+% reuse slots of disjoint temporaries; own(Groups) pools a group again.
 test(own_scalar_homes) :-
     own_homes("int f(int x, int n) { int a = x * 3; int b = a + n;
                int c = b * x; return c - n; }", Split, Own, Again),
     length(Split, NS), length(Own, NO), NO > NS,
     findall(K, member(home(_, [K]), Own), Ks), length(Ks, NO),
     length(Again, NS).
+% Temps mode lowers a function with many temporaries twice, the second
+% time sharing slots among temporaries the first allocation gave the
+% same register, so its frame is no larger than cells mode's (docs/perf.md
+% 3d): recursion keeps its depth.
+test(temps_frame) :-
+    c_tokens("long g(long n, long a, long b) {
+                if (n == 0) return a ^ b;
+                long c = a * 3 + b, d = b * 5 - a, e = (c ^ d) + n, h = c * d - e;
+                long i = (h >> 3) + (e << 2), j = i ^ (c + d), k = j * 7 + h, l = k - (i ^ e);
+                long m = (l + c) * (d - e), o = m ^ (k + j), p = o + (l >> 1), q = p * (m & 15);
+                long r = g(n - 1, q ^ c, p + d);
+                return r + (a ^ e) + (b ^ h) + (i ^ j) + (k ^ l) + (m ^ o) + (p ^ q) + c + d; }",
+             'frame.c', Ts),
+    c_parse(Ts, C), c_module(C, M), optimize(o1, M, O), pizlonate_module(O, P),
+    findall(R-F, ( member(R, [cells, temps]),
+                   filc_module_asm(P, emit(R, selected), Lines, _),
+                   once(( append(_, [ins(sub,q,[imm(F),reg(rsp)])|_], Lines) )) ), [cells-FC, temps-FT]),
+    FT =< FC.
 test(local_storage_semantics) :- local_semantics.
 
 test(local_storage_lifetime) :- local_lifetime.
@@ -179,7 +197,7 @@ pool_homes(Pools, Module, Func, Homes) :-
 
 % own_homes(+Src, -Split, -Own, -Again): the scalar homes of the one
 % function in Src lowered with split pools, with own pools, and with own
-% pools that pool every w/l temporary again.
+% pools that put every w/l temporary in one group.
 own_homes(Src, Split, Own, Again) :-
     c_tokens(Src, 'own.c', Ts),
     c_parse(Ts, C), c_module(C, M), optimize(o1, M, O), pizlonate_module(O, P),
@@ -188,8 +206,8 @@ own_homes(Src, Split, Own, Again) :-
     F = func(_,_,_,Ps,Bs),
     findall(N, ( member(param(K, tmp(N)), Ps) ; member(block(_,Phis,Is,_), Bs),
                  ( member(phi(tmp(N),K,_), Phis) ; member(let(tmp(N),K,_,_), Is) ) ), Ns0),
-    sort(Ns0, Ns),
-    pool_homes(own(Ns), P, F, Again).
+    sort(Ns0, Ns), findall(N-frame, member(N, Ns), Groups),
+    pool_homes(own(Groups), P, F, Again).
 
 % copy_lines(+Decl, +Src, +Copies, -Lines-Reports): the -O Fil-C lines
 % and reports of the C text Decl followed by Src, with small copies
