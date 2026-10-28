@@ -16,6 +16,9 @@
 #include <stdlib.h>
 #include "lib/atomic-rmw.h"
 
+static _Atomic double ad = 1.5;
+static _Atomic float af = 2.5f;
+
 static void *own_hammer(void *arg)
 {
     long id = (long)arg;
@@ -127,7 +130,19 @@ int main(void)
     int self = 4;
     ok = __atomic_compare_exchange_n(&self, &self, 6, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
     printf(" self %d %d\n", ok, self);
+    /* Exchange and compare-exchange of a floating _Atomic compare bits:
+       0.0 is not the -0.0 stored. */
     int r[5];
+    double ed = 1.5;
+    r[0] = atomic_compare_exchange_strong(&ad, &ed, 4.25);
+    double od = atomic_exchange(&ad, -0.0);
+    ed = 0.0;
+    r[1] = atomic_compare_exchange_strong(&ad, &ed, 9.0);
+    float ef = 2.5f;
+    r[2] = __c11_atomic_compare_exchange_weak(&af, &ef, 7.5f, 5, 5);
+    float of = __c11_atomic_exchange(&af, 1.0f, 5);
+    printf("floating %d %g %d %g %g %d %g %g\n", r[0], od, r[1], ed, (double)ad, r[2],
+           (double)of, (double)af);
     r[0] = __atomic_fetch_add(&pi, 4, __ATOMIC_RELAXED);
     r[1] = __atomic_sub_fetch(&pi, 1, __ATOMIC_ACQ_REL);
     r[2] = __atomic_fetch_nand(&pi, 6, 5);

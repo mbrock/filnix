@@ -2766,9 +2766,11 @@ rmw_aligned(X, Ctx) -->
 % cas_once(+T, +Addr, +E, +N, -Got, -Eq)//: one cas of the T at Addr from
 % E to N; Got is the old value and Eq whether it was E.
 cas_once(T, Addr, E, N, Got, Eq) -->
-    { cas_repr(T, CT, K, none) },
-    let(K, cas(CT), [E, N, Addr], Got),
-    cas_equal(K, Got, E, Eq).
+    { cas_repr(T, CT, K, Bits) },
+    to_bits(Bits, E, EB), to_bits(Bits, N, NB),
+    let(K, cas(CT), [EB, NB, Addr], GB),
+    cas_equal(K, GB, EB, Eq),
+    from_bits(Bits, GB, Got).
 
 % cas_repr(+U, -T, -K, -Bits): an atomic U is cas(T) of class K; a float
 % or double is the cas of its bits (Bits s or d), else Bits is none.

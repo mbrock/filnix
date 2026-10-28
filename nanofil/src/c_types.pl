@@ -2501,8 +2501,10 @@ doc(atomic_builtin(+Name, +Args, +Env, -R), semidet, [
     "lowering makes a loop of IR's cas (docs/m4.md): __c11_atomic_exchange",
     "and __c11_atomic_fetch_OP (add, sub, and, or, xor, nand, max, min) on",
     "an _Atomic integer return the old value, add and sub also on an",
-    "_Atomic pointer, by elements; __c11_atomic_compare_exchange_strong",
-    "and _weak return whether *P equaled *Expected, and write *P to",
+    "_Atomic pointer, by elements, and exchange also on an _Atomic float",
+    "or double; __c11_atomic_compare_exchange_strong and _weak, on any of",
+    "these, return whether *P equaled *Expected, bit for bit (so 0.0 is",
+    "not -0.0, as clang's cmpxchg of the bits has it), and write *P to",
     "*Expected only when not (a weak one never fails spuriously). GCC's",
     "__atomic_exchange_n, __atomic_fetch_OP, __atomic_OP_fetch (the new",
     "value), __atomic_compare_exchange_n, the __sync builtins and",
@@ -2532,6 +2534,13 @@ doc(atomic_builtin(+Name, +Args, +Env, -R), semidet, [
             atomic_builtin('__atomic_fetch_add', [id(p), chr(1), chr(5)], E, _) )),
     fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(qualified([atomic], double))), E0, E),
             atomic_builtin('__c11_atomic_fetch_add', [id(p), chr(1), chr(5)], E, _) )),
+    example(( empty_env(E0), bind_ordinary(p, var(none, ptr(qualified([atomic], double))), E0, E),
+              bind_ordinary(e, var(none, ptr(double)), E, E1),
+              atomic_builtin('__c11_atomic_compare_exchange_strong',
+                             [id(p), id(e), chr(0), chr(5), chr(5)], E1, X) ),
+            X = builtin(bool)),
+    fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(double)), E0, E),
+            atomic_builtin('__atomic_exchange_n', [id(p), chr(0), chr(5)], E, _) )),
     example(( empty_env(E0), bind_ordinary(p, var(none, ptr(qualified([atomic], ptr(void)))), E0, E),
               atomic_builtin('__c11_atomic_load', [id(p), chr(0)], E, X) ),
             X = builtin(ptr(void))),
@@ -2638,9 +2647,11 @@ rmw_op(or, sync). rmw_op(xor, sync). rmw_op(nand, sync).
 rmw_op(max, none). rmw_op(min, none).
 
 % rmw_operand(+Op, +T): an _Atomic T may be combined by Op: any integer
-% by any, a pointer by exchange, add or sub.
+% by any, a pointer by exchange, add or sub, a float or double by
+% exchange.
 rmw_operand(_, T) :- int_type(T), !.
 rmw_operand(Op, ptr(_)) :- memberchk(Op, [xchg, add, sub]).
+rmw_operand(xchg, T) :- memberchk(T, [float, double]).
 
 % gnu_operand(+Op, +T): GCC's builtins take an integer, or a pointer
 % only to exchange it.
@@ -2648,10 +2659,10 @@ gnu_operand(_, T) :- int_type(T), !.
 gnu_operand(xchg, ptr(_)).
 
 % cas_operands(+P, +E, +Env): Expected E points to an object of *P's
-% unqualified type.
+% unqualified type, an integer, pointer, float or double.
 cas_operands(P, E, Env) :-
     lowered_type(P, Env, ptr(T0)), unqualified(T0, T),
-    ( int_type(T) ; T = ptr(_) ),
+    ( int_type(T) ; T = ptr(_) ; memberchk(T, [float, double]) ),
     lowered_type(E, Env, ptr(U0)), unqualified(U0, U),
     ( U == T -> true ; T = ptr(_), U = ptr(_) ).
 
