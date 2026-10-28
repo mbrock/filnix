@@ -1,0 +1,46 @@
+--- a/Programs/python.c
++++ b/Programs/python.c
+@@ -9,9 +9,42 @@
+     return Py_Main(argc, argv);
+ }
+ #else
++/* nanofil's checks: the interpreter runs on a fiber with a 256 MB
++   stack, so deep recursion does not depend on the builder's
++   RLIMIT_STACK, which a sandbox may not let a check raise. Fil-C sizes
++   a thread's stack by that limit, whatever its attributes ask, but
++   gives a fiber the stack makecontext asks for. The fiber runs on the
++   process's first thread, so Python's main thread is that one. */
++#include <stdlib.h>
++#include <ucontext.h>
++
++static ucontext_t main_context, python_context;
++static int main_argc, main_status;
++static char **main_argv;
++
++static void
++run(void)
++{
++    main_status = Py_BytesMain(main_argc, main_argv);
++    swapcontext(&python_context, &main_context);
++}
++
+ int
+ main(int argc, char **argv)
+ {
+-    return Py_BytesMain(argc, argv);
++    size_t size = (size_t)256 << 20;
++    main_argc = argc;
++    main_argv = argv;
++    if (getcontext(&python_context) != 0
++        || (python_context.uc_stack.ss_sp = malloc(size)) == NULL) {
++        return Py_BytesMain(argc, argv);
++    }
++    python_context.uc_stack.ss_size = size;
++    python_context.uc_link = NULL;
++    makecontext(&python_context, run, 0);
++    if (swapcontext(&main_context, &python_context) != 0) {
++        return Py_BytesMain(argc, argv);
++    }
++    return main_status;
+ }
+ #endif

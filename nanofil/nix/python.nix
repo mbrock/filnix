@@ -21,8 +21,11 @@
 # about as long as the rest. Both builds' per-test-case results (from
 # --junit-xml, read by the reference interpreter) and per-file results
 # must be equal: some tests fail or stop with a Fil-C error in filcc's
-# build too. Everything runs with a 256 MB stack: nanofil's frames are
-# larger than clang's (_PyEval_EvalFrameDefault's is 24,880 bytes plain
+# build too. Both builds' interpreters run on a fiber with a 256 MB
+# stack (python-main-stack.patch; Fil-C sizes a thread's stack by
+# RLIMIT_STACK, whatever its attributes ask, which a sandbox may not let
+# a check raise), and Python's other threads on the builder's default:
+# nanofil's frames are larger than clang's (_PyEval_EvalFrameDefault's is 24,880 bytes plain
 # and 9,872 with -O, against clang's 3,640), and Python's recursion
 # tests overflow 8 MB first (Fil-C stops them safely); test_isinstance's
 # test_infinitely_many_bases recurses about 2,400 levels of about 27 KB
@@ -59,7 +62,8 @@ let
     cd ${dir}
     for p in ${../../ports/patch/Python-3.12.5.patch} \
       ${../../patches/python-code-header-cxx.patch} \
-      ${../../patches/python-faulthandler.patch}; do
+      ${../../patches/python-faulthandler.patch} \
+      ${./python-main-stack.patch}; do
       patch -p1 <$p
     done
     export ACLOCAL_PATH=${pkgs.autoconf-archive}/share/aclocal:${pkgs.pkg-config}/share/aclocal
@@ -114,7 +118,6 @@ let
       }
       ''
         cc=${import ./nanofil-cc.nix { inherit pkgs filcc; }}
-        ulimit -s 262144
         (cd $NIX_BUILD_TOP && tar -xf ${reference}/ref.tar)
         ${unpack "python"}
         echo "== python, nanofil ${opt}"
@@ -142,7 +145,6 @@ let
   test =
     name: label: body:
     pkgs.runCommandCC name { } ''
-      ulimit -s 262144
       cd $NIX_BUILD_TOP
       tar -xf ${reference}/ref.tar
       tar -xf ${builds.${label}}/python.tar
