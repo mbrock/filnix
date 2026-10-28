@@ -2578,6 +2578,13 @@ doc(atomic_builtin(+Name, +Args, +Env, -R), semidet, [
     "A store through a pointer to an _Atomic object is builtin(void) at",
     "every order, since assigning the object would be a seq_cst store.",
     cites('GCC manual, __atomic Builtins'),
+    example(( empty_env(E0), bind_ordinary(p, var(none, ptr(long)), E0, E),
+              atomic_builtin('__atomic_load', [id(p), id(r), chr(2)], E, X) ),
+            X = expr(cast(type([tspec(void)], base),
+                          assign(=, un(deref, id(r)),
+                                 call(id('__atomic_load_n'), [id(p), chr(2)]))))),
+    fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(struct(0))), E0, E),
+            atomic_builtin('__atomic_load', [id(p), id(r), chr(2)], E, _) )),
     cites('C11 7.17.3p1'),
     cites('C11 7.17.7.1p2'),
     cites('C11 7.17.7.2p2'),
@@ -2624,6 +2631,13 @@ doc(atomic_builtin(+Name, +Args, +Env, -R), semidet, [
     "pointer) work on a plain integer, or a pointer to exchange or compare",
     "it; their fetch-and-ops on a pointer are refused (clang adds bytes,",
     "not elements, and filcc cannot compile them).",
+    "GCC's generic __atomic_load(P, R, O), __atomic_store(P, V, O),",
+    "__atomic_exchange(P, V, R, O) and __atomic_compare_exchange(P, E, D,",
+    "W, S, F) pass the values through pointers: they are *R =",
+    "__atomic_load_n(P, O), __atomic_store_n(P, *V, O), *R =",
+    "__atomic_exchange_n(P, *V, O) and __atomic_compare_exchange_n(P, E,",
+    "*D, W, S, F), on the same integers and pointers.",
+    cites('GCC manual, __atomic Builtins'),
     cites('C11 7.17.7.2p2'),
     cites('C11 7.17.7.3p2'),
     cites('C11 7.17.7.4p2'),
@@ -2670,6 +2684,10 @@ doc(atomic_builtin(+Name, +Args, +Env, -R), semidet, [
     fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(int)), E0, E),
             atomic_builtin('__c11_atomic_fetch_add', [id(p), chr(1), chr(5)], E, _) ))
 ]).
+atomic_builtin(Name, Args, Env, expr(E)) :-
+    generic_atomic(Name, Args, E),
+    Args = [P|_], lowered_type(P, Env, ptr(T0)), unqualified(T0, T),
+    gnu_operand(xchg, T), !.
 atomic_builtin('__atomic_load_n', [P, O], Env, R) :-
     atomic_operands(P, O, Env, [0, 1, 2, 5], T),
     (   T = ptr(_) -> R = builtin(T)
@@ -2732,6 +2750,20 @@ atomic_builtin(Name, [P, O], Env, builtin(R)) :-
     memberchk(Name-R, ['__atomic_test_and_set'-bool, '__atomic_clear'-void]),
     lowered_type(P, Env, ptr(T)), T \= func(_, _, _),
     order_constant(O, Env).
+
+% generic_atomic(+Name, +Args, -E): GCC's generic atomic Name on Args
+% is E, its _n form on the values the pointers in Args point to.
+generic_atomic('__atomic_load', [P, R, O],
+               cast(type([tspec(void)], base),
+                    assign(=, un(deref, R), call(id('__atomic_load_n'), [P, O])))).
+generic_atomic('__atomic_store', [P, V, O],
+               call(id('__atomic_store_n'), [P, un(deref, V), O])).
+generic_atomic('__atomic_exchange', [P, V, R, O],
+               cast(type([tspec(void)], base),
+                    assign(=, un(deref, R),
+                           call(id('__atomic_exchange_n'), [P, un(deref, V), O])))).
+generic_atomic('__atomic_compare_exchange', [P, E, D, W, S, F],
+               call(id('__atomic_compare_exchange_n'), [P, E, un(deref, D), W, S, F])).
 
 % rmw_builtin(?Name, ?Family, ?Op, ?Result): Name is a read-modify-write
 % of Family (c11 on an _Atomic object, gnu or sync on a plain one) that
