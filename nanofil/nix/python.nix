@@ -12,12 +12,13 @@
 #
 # The build runs the nanofil-built interpreter itself (deepfreeze.py
 # freezes the bootstrap modules with _bootstrap_python), and its
-# Python/deepfreeze/deepfreeze.c must equal the reference's. Each
-# configuration's derivation (configurations.nix) then runs, beside
-# its own build and on the same builder, both builds' deterministic
+# Python/deepfreeze/deepfreeze.c must equal the reference's. One build
+# derivation per configuration (plain and -O) is shared by the checks:
+# nanofil-python runs, on the same builder, both builds' deterministic
 # workload (workloads/python.sh, nanofil's also under FUGC_SCRIBBLE and
-# FUGC_VERIFY), which must match byte for byte, and both builds'
-# regrtest on the tests below, whose per-test-case results (from
+# FUGC_VERIFY), which must match byte for byte, and -O's regrtest on the
+# tests below; nanofil-python-regrtest-plain runs the plain build's,
+# about as long as the rest. Both builds' per-test-case results (from
 # --junit-xml, read by the reference interpreter) and per-file results
 # must be equal: some tests fail or stop with a Fil-C error in filcc's
 # build too. Everything runs with a 256 MB stack: nanofil's frames are
@@ -98,15 +99,11 @@ let
         mkdir $out
         tar -cf $out/ref.tar ref
       '';
-in
-import ./configurations.nix { inherit pkgs; } "nanofil-python"
-  {
-    plain = "";
-    O = "-O";
-  }
-  (
+  # build label opt: the tree nanofil builds with NANOFIL_OPT=opt, its
+  # objects deleted once checked to all come from nanofil.
+  build =
     label: opt:
-    pkgs.runCommandCC "nanofil-python-${label}"
+    pkgs.runCommandCC "nanofil-python-build-${label}"
       {
         inherit src;
         nativeBuildInputs = [
@@ -125,25 +122,67 @@ import ./configurations.nix { inherit pkgs; } "nanofil-python"
         make -j$NIX_BUILD_CORES CC="$cc$(sed -n 's/^CC=[[:space:]]*[^ ]*//p' Makefile)"
         cmp $NIX_BUILD_TOP/ref/Python/deepfreeze/deepfreeze.c Python/deepfreeze/deepfreeze.c
         echo "the nanofil-built bootstrap interpreter froze the same modules as filcc's"
-        w=$NIX_BUILD_TOP/w
-        rm -rf $w && mkdir $w
-        (cd $w && bash ${workload} $NIX_BUILD_TOP/ref/python >../ref.out)
-        for env in "" "FUGC_SCRIBBLE=1 FUGC_VERIFY=1"; do
-          rm -rf $w && mkdir $w
-          (cd $w && env $env bash ${workload} $NIX_BUILD_TOP/python/python >../nf.out)
-          diff -u $NIX_BUILD_TOP/ref.out $NIX_BUILD_TOP/nf.out
-          echo "python matches filcc's on $(grep -c '^### exit' $NIX_BUILD_TOP/ref.out) scripts ($env)"
-        done
-        ${regrtest "$NIX_BUILD_TOP/ref" "ref.results"}
-        ${regrtest "$NIX_BUILD_TOP/python" "nf.results"}
-        diff -u $NIX_BUILD_TOP/ref.results $NIX_BUILD_TOP/nf.results
-        echo "regrtest: $(awk '{print $2}' $NIX_BUILD_TOP/nf.results | sort | uniq -c | tr -s ' \n' ' '), as filcc's"
         # Compare paths, not just counts: no object may come from clang.
         find . -name '*.o' -printf '%P\n' | sort >../objects
         sort -u nanofil.log >../compiled
         test -s ../objects
         diff -u ../objects ../compiled
         echo "nanofil compiled every one of $(wc -l <../objects) python objects"
-        touch $out
-      ''
-  )
+        find . -name '*.o' -delete
+        cd $NIX_BUILD_TOP
+        mkdir $out
+        tar -cf $out/python.tar python
+      '';
+  builds = builtins.mapAttrs build {
+    plain = "";
+    O = "-O";
+  };
+  # test name label body: a derivation that runs body beside both
+  # builds' trees, ref and python, under $NIX_BUILD_TOP.
+  test =
+    name: label: body:
+    pkgs.runCommandCC name { } ''
+      ulimit -s 262144
+      cd $NIX_BUILD_TOP
+      tar -xf ${reference}/ref.tar
+      tar -xf ${builds.${label}}/python.tar
+      ${body}
+      touch $out
+    '';
+  workloads = ''
+    w=$NIX_BUILD_TOP/w
+    rm -rf $w && mkdir $w
+    (cd $w && bash ${workload} $NIX_BUILD_TOP/ref/python >../ref.out)
+    for env in "" "FUGC_SCRIBBLE=1 FUGC_VERIFY=1"; do
+      rm -rf $w && mkdir $w
+      (cd $w && env $env bash ${workload} $NIX_BUILD_TOP/python/python >../nf.out)
+      diff -u $NIX_BUILD_TOP/ref.out $NIX_BUILD_TOP/nf.out
+      echo "python matches filcc's on $(grep -c '^### exit' $NIX_BUILD_TOP/ref.out) scripts ($env)"
+    done
+  '';
+  regrtests = ''
+    ${regrtest "$NIX_BUILD_TOP/ref" "ref.results"}
+    ${regrtest "$NIX_BUILD_TOP/python" "nf.results"}
+    diff -u $NIX_BUILD_TOP/ref.results $NIX_BUILD_TOP/nf.results
+    echo "regrtest: $(awk '{print $2}' $NIX_BUILD_TOP/nf.results | sort | uniq -c | tr -s ' \n' ' '), as filcc's"
+  '';
+in
+{
+  # The workload for both builds, and regrtest for -O's; the plain
+  # build's regrtest, about as long as the rest, is its own check.
+  nanofil-python =
+    import ./configurations.nix { inherit pkgs; } "nanofil-python"
+      {
+        plain = "";
+        O = "-O";
+      }
+      (
+        label: _:
+        test "nanofil-python-${label}" label (
+          workloads + pkgs.lib.optionalString (label == "O") regrtests
+        )
+      );
+  nanofil-python-regrtest-plain =
+    test "nanofil-python-regrtest-plain" "plain"
+      regrtests;
+}

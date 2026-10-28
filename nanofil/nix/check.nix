@@ -48,6 +48,9 @@ pkgs.runCommandCC "nanofil-check"
     chmod -R u+w nanofil
     cd nanofil
     patchShebangs tests bin
+    # Above the interactive 20 s: a check must not time out on a loaded
+    # builder (unused-intrinsics.c took 22 s beside two CPython builds).
+    export COMPILE_TIMEOUT=60
     # Commands run from a saved state (bin/nanofil); scripts still load
     # src/, so both paths are tested.
     bin/nanofil --save-state "$TMPDIR/nanofil.state"

@@ -264,10 +264,14 @@
               inherit pkgs;
               filcc = filcc-staging;
             };
-            nanofil-python = import ./nanofil/nix/python.nix {
-              inherit pkgs;
-              filcc = filcc-staging;
-            };
+            inherit
+              (import ./nanofil/nix/python.nix {
+                inherit pkgs;
+                filcc = filcc-staging;
+              })
+              nanofil-python
+              nanofil-python-regrtest-plain
+              ;
             sarcasm-prolog = import ./tests/sarcasm-prolog.nix {
               inherit pkgs filcc sarcasm-prolog;
               trealla = pkgsFilc.trealla;
