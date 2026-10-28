@@ -2187,6 +2187,89 @@ test(reuse_pass) :-
     valid_module(Wr), once(run(Wr, k, [], 10, ret(1))),
     \+ reuse_refines(Rd, Wr), reuse_checks(Rd, Rd1), Rd1 == Rd.
 
+% Round 3 (docs/m7.md): a check of a constant-offset flight from the
+% same root, with the same lower donor, reuses the root's proof at the
+% shifted offset. Fields hold distinct values, so a wrong distance or
+% root shows as a value; refines rejects both rewirings independently.
+test(reuse_related) :-
+    Obj = [let(tmp(p), p, alloc(16), [const(16)]),
+           let(tmp(q), a, check(0, 16, write, 1), [tmp(p)]),
+           raw_store(l, 0, const(5), tmp(q)), raw_store(l, 8, const(7), tmp(q))],
+    F8 = flight(tmp(f), add, [address(tmp(p)), const(8)], lower(tmp(p))),
+    Read = [let(tmp(c), a, check(0, 8, read, 1), [tmp(f)]),
+            let(tmp(x), l, raw_load(l, 0), [tmp(c)])],
+    append([Obj, [F8], Read], RefIs), reuse_l_fn(RefIs, Ref),
+    valid_module(Ref), once(run(Ref, f, [], 10, ret(7))),
+    reuse_checks(Ref, R), reuse_refines(Ref, R), valid_module(R),
+    once(run(R, f, [], 10, ret(7))),
+    R = module([func(f, _, _, _, [block(s, [], RIs, _)])|_]),
+    append(_, [F8, let(tmp(x), l, raw_load(l, 8), [tmp(q)])], RIs),
+    % It emits as a reload of p plus 8, with one check.
+    once(( filc_module_asm(R, emit(cells, selected), Lines, _),
+           memberchk(ins(add, q, [imm(8), reg(rax)]), Lines) )),
+    reuse_fail_jumps(R, 1),
+    % The same flight read at the wrong distance (offset 0) is valid and
+    % reads 5; only refines tells.
+    append([Obj, [F8], [let(tmp(x), l, raw_load(l, 0), [tmp(q)])]], DistIs),
+    reuse_l_fn(DistIs, Dist), valid_module(Dist), once(run(Dist, f, [], 10, ret(5))),
+    \+ reuse_refines(Ref, Dist),
+    % A rewiring to another root's proof at the right offset reads o's 9.
+    O = [let(tmp(o), p, alloc(16), [const(16)]),
+         let(tmp(r), a, check(0, 16, write, 1), [tmp(o)]),
+         raw_store(l, 8, const(9), tmp(r))],
+    append([Obj, O, [F8], Read], Ref2Is), reuse_l_fn(Ref2Is, Ref2),
+    append([Obj, O, [F8], [let(tmp(x), l, raw_load(l, 8), [tmp(r)])]], RootIs),
+    reuse_l_fn(RootIs, Root), valid_module(Root), once(run(Root, f, [], 10, ret(9))),
+    \+ reuse_refines(Ref2, Root),
+    % Kept: another lower donor, another root, a shifted range outside
+    % the proof, a read proof before a store, and a free in between.
+    forall(member(Is, [
+        % (o first: an alloc after p's proof would end it anyway.)
+        [ O, Obj, [flight(tmp(f), add, [address(tmp(p)), const(8)], lower(tmp(o)))], Read ],
+        [ [let(tmp(o), p, alloc(16), [const(16)])], Obj,
+          [flight(tmp(f), add, [address(tmp(o)), const(8)], lower(tmp(o)))], Read ],
+        [ [let(tmp(p), p, alloc(16), [const(16)]),
+           let(tmp(q), a, check(0, 8, write, 1), [tmp(p)]),
+           raw_store(l, 0, const(5), tmp(q))], [F8], Read ],
+        [ [let(tmp(p), p, alloc(16), [const(16)]),
+           let(tmp(q), a, check(0, 16, read, 1), [tmp(p)]),
+           let(tmp(x0), l, raw_load(l, 0), [tmp(q)])], [F8],
+          [let(tmp(c), a, check(0, 8, write, 1), [tmp(f)]),
+           raw_store(l, 0, const(3), tmp(c)), let(tmp(x), l, add, [tmp(x0), const(0)])] ],
+        [ Obj, [F8, call(void, global(free), [arg(p, tmp(p))])], Read ]]),
+        ( append(Is, Flat), reuse_l_fn(Flat, M), valid_module(M),
+          reuse_checks(M, M1), M1 == M )),
+    % The validator still bounds a rewired access by its proof's range.
+    append([Obj, [F8], [let(tmp(x), l, raw_load(l, 16), [tmp(q)])]], OutIs),
+    reuse_l_fn(OutIs, Out), reuse_rejected(Out),
+    % A negative distance, from hand-written checked IR (pizlonation's
+    % checks have Lo = 0): f's proof of [-8, 8), the only one, covers
+    % p's [0, 8).
+    Neg = [let(tmp(p), p, alloc(16), [const(16)]), F8,
+           let(tmp(n), a, check(-8, 8, write, 1), [tmp(f)]),
+           raw_store(l, -8, const(5), tmp(n)),
+           let(tmp(c), a, check(0, 8, read, 1), [tmp(p)]),
+           let(tmp(x), l, raw_load(l, 0), [tmp(c)])],
+    reuse_l_fn(Neg, NegM), valid_module(NegM),
+    reuse_checks(NegM, NegR), reuse_refines(NegM, NegR), valid_module(NegR),
+    NegR = module([func(f, _, _, _, [block(s, [], NIs, _)])|_]),
+    last(NIs, let(tmp(x), l, raw_load(l, -8), [tmp(n)])),
+    once(run(NegR, f, [], 10, ret(5))),
+    % Self-referential and two-cycle flights in an unreachable block:
+    % the pass terminates and keeps their checks.
+    forall(member(Cyc, [
+        [flight(tmp(u), add, [address(tmp(u)), const(8)], lower(tmp(u)))],
+        [flight(tmp(u), add, [address(tmp(v)), const(8)], lower(tmp(v))),
+         flight(tmp(v), add, [address(tmp(u)), const(8)], lower(tmp(u)))]]),
+        ( append(Cyc, [let(tmp(k1), a, check(0, 8, read, 1), [tmp(u)]),
+                       let(tmp(z1), l, raw_load(l, 0), [tmp(k1)]),
+                       flight(tmp(w), add, [address(tmp(u)), const(8)], lower(tmp(u))),
+                       let(tmp(k2), a, check(0, 8, read, 1), [tmp(w)]),
+                       let(tmp(z2), l, raw_load(l, 0), [tmp(k2)])], Dead),
+          C = module([func(f, local, l, [], [block(s, [], [], ret(const(0))),
+                                             block(d, [], Dead, ret(tmp(z2)))])]),
+          valid_module(C), reuse_checks(C, C1), reuse_refines(C, C1) )).
+
 % Emission reads a reused access at the checked pointer without a
 % check, and refuses one whose pointer was redefined since its check,
 % which only the validator would otherwise catch.

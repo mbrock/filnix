@@ -7,6 +7,7 @@
 
 long survive(long n);
 long survive2(long n);
+long survive3(long n);
 
 static void *volatile sink;
 
@@ -36,6 +37,14 @@ int main(int argc, char **argv)
         for (long i = 0; i < 3000; i++)
             s += survive2(i);
         printf("survive2 = %ld\n", s);
+        break;
+    }
+    case 2: {
+        /* sum of i + 1001 for i < 3000, as survive2 */
+        long s = 0;
+        for (long i = 0; i < 3000; i++)
+            s += survive3(i);
+        printf("survive3 = %ld\n", s);
         break;
     }
     }

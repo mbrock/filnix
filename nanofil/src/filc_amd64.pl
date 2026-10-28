@@ -51,7 +51,8 @@
       `check_function`, not from inferring that an indirect call needs one.
       A later scalar access that reuses a heap proof (docs/m7.md) is
       `reused(Access)`: the access at the checked pointer, reloaded from
-      its slot, without a check.
+      its slot, plus the access's offset (a related pointer's distance),
+      without a check.
     - Pointer loads and stores go through the object's aux array; a
       pointer store ensures the aux array and runs the store barrier.
     - `flight` supplies its address calculation and lower source
@@ -558,7 +559,8 @@ multiply_defined([_|Ns], Ds) :- multiply_defined(Ns, Ds).
 % fused_insts(+Insts0, +Fn, +Single, +Proofs, -Insts): Proofs are Q-P
 % for the block's heap checks so far, Single those of the function that
 % may be reused in another block. A later scalar access at one of them
-% is reused(Access) at P, with no check: validation (ir.pl, docs/m7.md)
+% is reused(Access) at P, with no check, at its offset from P (nonzero
+% for a related pointer, round 3): validation (ir.pl, docs/m7.md)
 % has established that its evidence still holds, which is not repeated
 % here. Its liveness view reads P, so P keeps its rooted slot.
 fused_insts([], _, _, _, []).
@@ -576,9 +578,10 @@ fused_insts([Inst0|Insts0], Fn, Single, Proofs0, [Inst|Insts]) :-
     (   ( Inst0 = let(_, _, raw_load(_, Off), [tmp(Q1)])
         ; Inst0 = raw_store(_, Off, _, tmp(Q1)) ),
         (   memberchk(Q1-P1, Proofs) -> true ; get_assoc(Q1, Single, P1) )
-    ->  (   Off == 0, proven_access(Inst0, Q1, P1, Access)
+    ->  (   integer(Off), Off >= -2147483648, Off =< 2147483647,
+            proven_access(Inst0, Q1, P1, Access)
         ->  Inst = reused(Access), Insts1 = Insts0
-        ;   throw_fn(Fn, 'a reused proof at an offset access cannot emit yet')
+        ;   throw_fn(Fn, 'a reused proof at an offset beyond 32 bits')
         )
     ;   fused_inst(Inst0, Insts0, Fn, Inst, Insts1)
     ),
@@ -662,6 +665,10 @@ access_pointer(raw_store(_, Off, _, P), P, Off).
 access_pointer(let(_, p, raw_load_pointer(Off, _), [P]), P, Off).
 access_pointer(raw_store_pointer(Off, _, P, _), P, Off).
 access_pointer(Access, P) :- access_pointer(Access, P, _).
+
+% zero_offset(+Access, -Access0): Access at offset 0.
+zero_offset(let(D, K, raw_load(T, _), Ps), let(D, K, raw_load(T, 0), Ps)).
+zero_offset(raw_store(W, _, V, P), raw_store(W, 0, V, P)).
 
 unchecked_access(let(_, _, load(_), _)).
 unchecked_access(store(_, _, _)).
@@ -1343,9 +1350,10 @@ inst(fused(check(_, Size, Rights, Align), Access), Index, Block, Ctx) -->
     access_check(k(Size, Write, Align), Ctx),
     raw_access(Access, Index, Block, Ctx).
 inst(reused(Access), Index, Block, Ctx) -->
-    { access_pointer(Access, P), ctx_fn(Ctx, Fn) },
+    { access_pointer(Access, P, Off), ctx_fn(Ctx, Fn), zero_offset(Access, Access0) },
     load(P, l, a, Fn),
-    raw_access(Access, Index, Block, Ctx).
+    ( { Off =:= 0 } -> [] ; [ins(add, q, [imm(Off), reg(rax)])] ),
+    raw_access(Access0, Index, Block, Ctx).
 inst(fused(check_local(Name, Off, Size, Rights, Align), Access), I, B, Ctx) -->
     { rights_write(Rights, Write) },
     local_check(Name, Off, k(Size, Write, Align), I, B, Ctx),

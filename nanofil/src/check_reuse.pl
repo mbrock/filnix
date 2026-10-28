@@ -1,11 +1,13 @@
 /*  Check reuse: a heap access check's proof covers later scalar accesses
-    through the same pointer, in its block and along CFG edges
-    (docs/m7.md).
+    through the same pointer or a related one, in its block and along CFG
+    edges (docs/m7.md).
 
     Pizlonation states one check per access, right before it. This pass
     deletes a check when an earlier proof already
-    establishes what it would: the same pointer operand, at least its
-    range and rights, and nothing in between that could free the object
+    establishes what it would: the same pointer operand, or one related
+    to it (both constant offsets, by single-definition flights with the
+    same lower donor, from one root; round 3), at least its range, shifted
+    by their distance, and rights, and nothing in between that could free the object
     or redefine either temporary. The covered access then reads the
     earlier proof. Nothing is moved, widened or added, so every
     remaining check fails exactly where it failed before.
@@ -30,7 +32,8 @@
     The pass is selected with `--checks=reuse`; the reference path keeps
     every check. ir.pl's validator accepts the result by its own rule,
     and `reuse_refines/2` checks that the only change is deleted checks
-    whose access now reads a proof of the same operand.
+    whose access now reads a proof of the same or a related operand, at
+    an offset changed by exactly their distance.
 */
 :- module(check_reuse, [reuse_checks/2, reuse_refines/2]).
 
@@ -60,8 +63,9 @@ reused_item(All, func(N, L, R, Ps, Bs0), Items) :- !,
     context_records(All, N, Rs0),
     (   Rs0 == [] -> Rs = []
     ;   remap_sites(Rs0, Map, Rs1),
+        % A proof read at another distance is not Q's equal: no alias.
         findall(alias(Q, tmp(Q1), none, Os),
-                ( member(Q-Q1, Reused),
+                ( member(Q-Q1-0, Reused),
                   ( memberchk(value(Q, _, Os), Rs0) -> true ; Os = [] ) ),
                 Aliases),
         append(Rs1, Aliases, Rs)
@@ -117,12 +121,41 @@ phi_kills(phi(tmp(D), _, _), Facts0, Facts) :-
 % names_info(+Params, +Blocks, -Info): Info is info(Defs, Uses), each
 % temporary's number of definitions (parameters, phis and every
 % instruction form) and of instructions reading it.
-names_info(Params, Blocks, info(Defs, Uses)) :-
+names_info(Params, Blocks, info(Defs, Uses, Bases)) :-
     temp_defs(Params, Blocks, DefList),
     findall(N, member(N-_, DefList), Ns), counts(Ns, Defs),
     findall(Q, ( member(block(_, _, Insts, _), Blocks), member(I, Insts),
                  inst_uses(I, Us), member(Q, Us) ), Qs),
-    counts(Qs, Uses).
+    counts(Qs, Uses),
+    findall(X-(B-K),
+            ( member(block(_, _, Insts, _), Blocks), member(I, Insts),
+              flight_offset(I, X, B, K),
+              count(Defs, X, 1), B = tmp(BN), count(Defs, BN, 1) ),
+            BasePairs),
+    list_to_assoc(BasePairs, Bases).
+
+flight_offset(flight(tmp(X), add, [address(B), const(K)], lower(B1)), X, B, K) :- B == B1.
+flight_offset(flight(tmp(X), sub, [address(B), const(K0)], lower(B1)), X, B, K) :- B == B1, K is -K0.
+flight_offset(flight(tmp(X), copy, [address(B)], lower(B1)), X, B, 0) :- B == B1.
+
+% base_of(+Info, +P, -R, -K): P's address is R's plus K, with R's
+% capability, by single-definition flights; R = P and K = 0 if P is no
+% such flight or its chain has a cycle (possible in unreachable blocks).
+base_of(Info, P, R, K) :-
+    (   base_walk(Info, P, [], R0, K0) -> R = R0, K = K0 ; R = P, K = 0 ).
+
+base_walk(info(_, _, Bases), tmp(N), Seen, R, K) :- get_assoc(N, Bases, B-K0), !,
+    \+ memberchk(N, Seen),
+    base_walk(info(_, _, Bases), B, [N|Seen], R, K1), K is K0 + K1.
+base_walk(_, P, _, P, 0).
+
+% related(+Info, +P, +P1, -D): P's address is P1's plus D, same capability.
+related(_, P, P1, 0) :- P == P1, !.
+related(Info, P, P1, D) :-
+    % Roots are singly defined: names_info/3 records only flights from
+    % singly defined bases.
+    base_of(Info, P, R, K), base_of(Info, P1, R1, K1), R == R1,
+    D is K - K1.
 
 counts(Xs, Assoc) :-
     msort(Xs, Sorted), clumped_pairs(Sorted, Pairs), list_to_assoc(Pairs, Assoc).
@@ -136,13 +169,13 @@ count(Assoc, N, C) :- ( get_assoc(N, Assoc, C0) -> C = C0 ; C = 0 ).
 
 % A fact crosses an edge only when its proof has one definition and its
 % pointer at most one (the emitter reloads the pointer there).
-single_names(info(Defs, _), avail(P, Q, _, _, _, _)) :-
+single_names(info(Defs, _, _), avail(P, Q, _, _, _, _)) :-
     count(Defs, Q, 1),
     (   P = tmp(N) -> count(Defs, N, C), C =< 1 ; true ).
 
 % single_proof(+Info, +Q): the proof tmp(Q) has one definition and one
 % reader, the access that follows its check.
-single_proof(info(Defs, Uses), Q) :- count(Defs, Q, 1), count(Uses, Q, 1).
+single_proof(info(Defs, Uses, _), Q) :- count(Defs, Q, 1), count(Uses, Q, 1).
 
 % reused_insts(+Insts0, +Facts, +L-Old-New, -Insts, -Map, -Reused): Old
 % and New index the next instruction of block L before and after; Map
@@ -153,12 +186,14 @@ reused_insts([let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Access0|Insts0]
              Info, Facts, L-Old-New, Insts, Map, Reused, Exit) :-
     scalar_access(Access0, Q), !,
     Old1 is Old + 1, Old2 is Old + 2,
-    (   member(avail(P, Q1, Lo1, Hi1, Rights1, Align1), Facts),
-        subsumes(Lo1, Hi1, Rights1, Align1, Lo, Hi, Rights, Align),
+    (   member(avail(P1, Q1, Lo1, Hi1, Rights1, Align1), Facts),
+        related(Info, P, P1, D),
+        LoD is Lo + D, HiD is Hi + D,
+        subsumes(Lo1, Hi1, Rights1, Align1, LoD, HiD, Rights, Align),
         single_proof(Info, Q)
-    ->  renamed_access(Access0, Q1, Access), Insts = [Access|Insts1],
+    ->  renamed_access(Access0, Q1, D, Access), Insts = [Access|Insts1],
         Map = [inst(L, Old1)-inst(L, New)|Map1], New2 is New + 1,
-        Reused = [Q-Q1|Reused1], Facts1 = Facts
+        Reused = [Q-Q1-D|Reused1], Facts1 = Facts
     ;   Insts = [let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Access0|Insts1],
         New1 is New + 1, New2 is New + 2,
         Map = [inst(L, Old)-inst(L, New), inst(L, Old1)-inst(L, New1)|Map1],
@@ -214,10 +249,11 @@ insts_refine([Inst|Insts0], [Inst|Insts], r(Info, Global, Proofs)) :- !,
 insts_refine([let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Access0|Insts0],
              [Access|Insts], r(Info, Global, Proofs)) :-
     scalar_access(Access0, Q),
-    renamed_access(Access0, Q1, Access),
+    renamed_access(Access0, Q1, D, Access),
     (   memberchk(Q1-Checked, Proofs) -> true ; memberchk(Q1-Checked, Global) ),
-    Checked = checked(P1, check(Lo1, Hi1, Rights1, Align1)), P1 == P,
-    subsumes(Lo1, Hi1, Rights1, Align1, Lo, Hi, Rights, Align),
+    Checked = checked(P1, check(Lo1, Hi1, Rights1, Align1)), related(Info, P, P1, D),
+    LoD is Lo + D, HiD is Hi + D,
+    subsumes(Lo1, Hi1, Rights1, Align1, LoD, HiD, Rights, Align),
     single_proof(Info, Q),
     insts_refine(Insts0, Insts, r(Info, Global, Proofs)).
 
@@ -225,8 +261,10 @@ insts_refine([let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Access0|Insts0]
 scalar_access(let(_, _, raw_load(T, _), [tmp(Q)]), Q) :- T \== p.
 scalar_access(raw_store(W, _, _, tmp(Q)), Q) :- W \== p.
 
-renamed_access(let(D, K, raw_load(T, Off), [_]), Q, let(D, K, raw_load(T, Off), [tmp(Q)])).
-renamed_access(raw_store(W, Off, V, _), Q, raw_store(W, Off, V, tmp(Q))).
+renamed_access(let(R, K, raw_load(T, Off0), [_]), Q, D, let(R, K, raw_load(T, Off), [tmp(Q)])) :-
+    ( var(D) -> D is Off - Off0 ; Off is Off0 + D ).
+renamed_access(raw_store(W, Off0, V, _), Q, D, raw_store(W, Off, V, tmp(Q))) :-
+    ( var(D) -> D is Off - Off0 ; Off is Off0 + D ).
 
 % subsumes(+Lo1, +Hi1, +Rights1, +Align1, +Lo, +Hi, +Rights, +Align): a
 % check of [Lo1, Hi1) with Rights1 at Align1 that succeeded implies that

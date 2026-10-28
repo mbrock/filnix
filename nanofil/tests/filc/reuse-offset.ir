@@ -1,0 +1,23 @@
+% Checked IR (docs/m7.md, round 3): one proof of a 24-byte object covers
+% stores and loads at offsets 8 and 16 from its pointer, which emission
+% reaches by reloading the pointer and adding the offset. Each field
+% holds a distinct value, so an emitter that drops the offset returns
+% 111 instead of 321. A load at offset 24 is outside the proof and is
+% rejected by the validator; it is not here.
+run(offsets, []).
+func(offsets, export, l, [], [
+    block(start, [], [
+        let(tmp(p), p, alloc(8), [const(24)]),
+        let(tmp(q), a, check(0, 24, write, 1), [tmp(p)]),
+        raw_store(l, 0, const(1), tmp(q)),
+        raw_store(l, 8, const(2), tmp(q)),
+        raw_store(l, 16, const(3), tmp(q)),
+        let(tmp(x0), l, raw_load(l, 0), [tmp(q)]),
+        let(tmp(x8), l, raw_load(l, 8), [tmp(q)]),
+        let(tmp(x16), l, raw_load(l, 16), [tmp(q)]),
+        let(tmp(h), l, mul, [tmp(x16), const(100)]),
+        let(tmp(t), l, mul, [tmp(x8), const(10)]),
+        let(tmp(s), l, add, [tmp(h), tmp(t)]),
+        let(tmp(r), l, add, [tmp(s), tmp(x0)])
+    ], ret(tmp(r)))
+]).

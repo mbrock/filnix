@@ -78,3 +78,31 @@ func(survive2, export, l, [param(l, tmp(n))], [
         let(tmp(r), l, add, [tmp(a), tmp(t)])
     ], ret(tmp(r)))
 ]).
+
+% Round 3: the reload through a fresh flight b to p's field reuses the
+% proof of the earlier flight a, so emission reads a. o, made after a's
+% last checked use, would take a's slot if the reused read did not keep
+% a live, and the read would return 1000. survive3(n) = n + 1000 + 1.
+func(survive3, export, l, [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(other), p, alloc(8), [const(8)]),
+        store(l, const(1000), tmp(other)),
+        let(tmp(p), p, alloc(16), [const(16)]),
+        call(void, global(c_gc), [arg(l, tmp(n))]),
+        let(tmp(a), p, add, [tmp(p), const(8)]),
+        store(l, tmp(n), tmp(a)),
+        let(tmp(o), p, add, [tmp(other), const(0)]),
+        let(tmp(ov), l, load(l), [tmp(o)]),
+        let(tmp(t1), l, add, [tmp(ov), const(1)]),
+        let(tmp(t2), l, add, [tmp(t1), const(0)]),
+        let(tmp(t3), l, add, [tmp(t2), const(0)]),
+        let(tmp(t4), l, add, [tmp(t3), const(0)]),
+        let(tmp(t5), l, add, [tmp(t4), const(0)]),
+        let(tmp(t6), l, add, [tmp(t5), const(0)]),
+        let(tmp(t7), l, add, [tmp(t6), const(0)]),
+        let(tmp(t8), l, add, [tmp(t7), const(0)]),
+        let(tmp(b), p, add, [tmp(p), const(8)]),
+        let(tmp(x), l, load(l), [tmp(b)]),
+        let(tmp(r), l, add, [tmp(x), tmp(t8)])
+    ], ret(tmp(r)))
+]).

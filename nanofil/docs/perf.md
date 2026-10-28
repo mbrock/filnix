@@ -1207,20 +1207,29 @@ byte as filcc's; instructions against today's `-O`):
 | SQLite | 23052M | −1.3% | −3.2% |
 | time geomean (ratio to filcc) | 2.44 | 2.46 | 2.43 |
 
-- **6c-1, related pointers** ([m7.md, round 3](m7.md#related-pointers-round-3-proposed)):
+- **6c-1, related pointers** ([m7.md, round 3](m7.md#related-pointers-round-3)):
   M7's rule, matching a check's pointer to an earlier proof's pointer
   when both are single-definition flights from one root with constant
   offsets, rather than only the same SSA pointer. The validator's
   safety rule does not change. Yield 0–3.4%; it needs `--checks=reuse`
   to become the `-O` default to do anything by default.
-- **6c-2, widening within a stretch** (prototype only, no contract):
-  the first check of an object in an invalidator-free stretch is
-  widened to cover the later fields, which 6c-1 then deletes. This is
-  what the pin does (`$-4800`). A trap can then come earlier in the
-  block, before scalar stores that precede the failing access, and
-  report the first access rather than the failing one. That is an
-  observation-contract change, so it needs its own review. Added yield
-  about 2–4%.
+- **6c-1 result.** Implemented (m7.md round 3); `--checks=reuse` stays
+  opt-in. Gate after it, 7 trials, ratio to filcc, time (instructions),
+  `-O` against `-O --checks=reuse`: zlib `-6` 2.58 (4.21) / 2.58 (4.07),
+  bzip2 `-9` 2.07 (2.66, 2.06..2.07) / 2.05 (2.63, 2.05..2.06), bzip2 `-d`
+  3.77 (3.40) / 3.90 (3.35, separated, worse), lz4 `-9` 4.10 / 3.93 with
+  identical instructions (layout; ranges overlap), SQLite 2.07 (2.07) /
+  2.06 (2.05), the rest within 0.02; geomean 2.45 / 2.46. Reuse cuts
+  instructions by up to 3.4% but wins time with separated ranges on no
+  workload, which was the bar for making it the `-O` default.
+- **6c-2, widening within a stretch: rejected** (prototype only). The
+  first check of an object in an invalidator-free stretch is widened
+  to cover the later fields, which 6c-1 then deletes. This is what the
+  pin does (`$-4800`). It adds about 2–4% (table above). A trap then
+  comes earlier in the block, before scalar stores that precede the
+  failing access, and reports the first access rather than the failing
+  one. That is the observation-contract change campaign.md says not to
+  make, and 2–4% does not justify it; do not rediscover it.
 - **The rest of the gap** is elsewhere. bzip2 `-9` runs 539M checks
   under `-O` against filcc's 230M, and 6c-1 plus 6c-2 remove about 75M
   of them. Per function (callgrind on filcc, cachegrind on nanofil),

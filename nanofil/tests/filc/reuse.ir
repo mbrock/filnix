@@ -117,3 +117,65 @@ func(loop_free, export, l, [], [
         call(void, global(free), [arg(p, tmp(p))])
     ], goto(head))
 ]).
+
+% Round 3 (related pointers): each field is reached by a fresh flight
+% from p, as -O emits, so only a proof of an earlier flight to the same
+% field covers the reload. Fields hold 1, 2 and 3, so a wrong distance
+% changes the result: 100 * 3 + 10 * 2 + 1 = 321.
+run(fields, []).
+func(fields, export, l, [], [
+    block(start, [], [
+        let(tmp(p), p, alloc(16), [const(16)]),
+        store(w, const(1), tmp(p)),
+        let(tmp(a4), p, add, [tmp(p), const(4)]),
+        store(w, const(2), tmp(a4)),
+        let(tmp(a8), p, add, [tmp(p), const(8)]),
+        store(l, const(3), tmp(a8)),
+        let(tmp(b8), p, add, [tmp(p), const(8)]),
+        let(tmp(x8), l, load(l), [tmp(b8)]),
+        let(tmp(b4), p, add, [tmp(p), const(4)]),
+        let(tmp(x4), w, load(sw), [tmp(b4)]),
+        let(tmp(x0), w, load(sw), [tmp(p)]),
+        let(tmp(y4), l, ext(sw), [tmp(x4)]),
+        let(tmp(y0), l, ext(sw), [tmp(x0)]),
+        let(tmp(h), l, mul, [tmp(x8), const(100)]),
+        let(tmp(t), l, mul, [tmp(y4), const(10)]),
+        let(tmp(s), l, add, [tmp(h), tmp(t)]),
+        let(tmp(r), l, add, [tmp(s), tmp(y0)])
+    ], ret(tmp(r)))
+]).
+
+% A free between the field's store and its reload through another
+% flight: the reload keeps its check and traps. A field past the end
+% of the object (offset 8 of 8 bytes) keeps its own check and traps at
+% its access, after an in-bounds field of the same object; it is never
+% covered by the first field's proof.
+run(fields_free, [0]).
+run(fields_free, [1]).
+run(fields_free, [2]).
+func(fields_free, export, l, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(8), [const(8)]),
+        let(tmp(a), p, add, [tmp(p), const(0)]),
+        store(l, const(4), tmp(a)),
+        let(tmp(c), w, cmp(eq, w), [tmp(k), const(1)])
+    ], branch(tmp(c), freed, other)),
+    block(freed, [], [
+        call(void, global(free), [arg(p, tmp(p))]),
+        let(tmp(b), p, add, [tmp(p), const(0)]),
+        let(tmp(x), l, load(l), [tmp(b)])
+    ], ret(tmp(x))),
+    block(other, [], [
+        let(tmp(d), w, cmp(eq, w), [tmp(k), const(2)])
+    ], branch(tmp(d), past, across)),
+    block(past, [], [
+        let(tmp(e), p, add, [tmp(p), const(8)]),
+        let(tmp(y), l, load(l), [tmp(e)])
+    ], ret(tmp(y))),
+    % Rounds 2 and 3 together: a plain edge from start, where a proves
+    % the field, to a reload through a different flight.
+    block(across, [], [
+        let(tmp(f), p, add, [tmp(p), const(0)]),
+        let(tmp(z), l, load(l), [tmp(f)])
+    ], ret(tmp(z)))
+]).
