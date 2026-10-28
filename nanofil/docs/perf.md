@@ -2527,6 +2527,167 @@ existing refinement checks. Expected: small and unmeasured; constant
 moves are 3–11% today, partly removed by immediate operands (M6) and
 item 3. Last because the profile shows little to gain yet.
 
+### 9. Phi shadows shared by position (frame size) — contract (approved, A)
+
+Measured first (`_PyEval_EvalFrameDefault`, item 3d's CPython table):
+phi shadows are 38% of the `-O` frame, 295 shadow slots and 172 shadow
+lowers (3,736 bytes), because every phi has a shadow of its own. Its
+6,078 blocks have at most 7 phis each, and at most 4 pointer phis.
+Shadows shared by their phi's position in its block would need 11 slots
+(88 bytes), and the frame would go from 9,920 to about 6,270 bytes.
+
+**What a shadow is.** An edge into a block with phis is the parallel
+copy `edge_moves//4` (filc_amd64.pl): `phi_reads//3` stores each
+incoming value into its phi's `shadow(D)` (and, for a pointer phi, the
+value's lower into `lower(shadow(D))`); then `phi_writes//2` loads each
+shadow into its phi's home `tmp(D)` (and `lower(tmp(D))`); then the
+edge's pollcheck, if it has one, and the jump. A shadow is written and
+read only there. Between an edge's first shadow store and its last
+shadow load there is no call, poll or other safepoint, and no access to
+another block's shadows.
+
+**The change, layout only.** In the allocating modes (`function`,
+`operands`, `cells`, `temps`), a block's phis are numbered in phi order
+within three classes: `int` (`w`, `l`), `p` and `float` (`s`, `d`). The
+`i`-th phi of class `C` in its block uses the plain slot
+`shadow_slot(C, i)`, and the `i`-th pointer phi also uses the root
+`lower(shadow_slot(p, i))`. Only a temporary that is a phi destination
+once in its function shares. The IR allows a temporary to be defined
+more than once (ir.pl), so a phi destination in two blocks would need
+two positions under one name; it keeps a shadow of its own, as every
+phi does now. (Long double phis are rejected by validation.) Each
+function then has, per class, as many shadow slots as its largest block
+has sharing phis of that class, and as many shadow roots as its largest
+block has sharing pointer phis. `frame/6` (filc_abi.pl) adds
+`shadow(D) -> shadow_slot(C, i)` and `lower(shadow(D)) ->
+lower(shadow_slot(p, i))` to the frame's aliases, as `tmp(N) ->
+storage(...)` already are. It shares only when the function has no
+setjmp sites and its pools are not `shared` (stack and local layouts
+use `shared`), since a placement cannot undo a frame already built.
+Emission is unchanged: it stores to and loads from `shadow(D)`, and the
+layout resolves the alias. The reference layout is unchanged and
+selectable: no `-O`, `-O --registers=stack` and `local` keep one shadow
+per phi, byte-identical. A function that calls setjmp keeps one shadow
+per phi too. Its snapshot payload names each shadow key, and
+setjmp/longjmp copy all of the frame's lowers by index; sharing would
+stay consistent there, but excluding these functions is simpler.
+
+**Why the parallel copy is preserved.** Two phis of one block have
+different slots: different classes, or different indices within a
+class, or (a phi destination defined more than once) a shadow of their
+own. So an edge copy's stores never overwrite each other, and each load
+reads its own phi's incoming value, as now. Incoming values are read
+from homes (`tmp(E)`, `lower(tmp(E))`), never from shadows, so swaps,
+self-loops and a phi fed by another phi of its block behave as today.
+Each phi has one pair per predecessor (ir.pl's `valid_phi`), so every
+load in a copy follows its store in the same copy. Phis of different
+blocks may share a slot. A shadow's value is live only from its store
+to the load in the same edge copy, and copies are never interleaved: a
+branch with copies on both arms emits them one after the other,
+`branch(v, L, L)` included. So a later edge's store never meets a live
+value.
+
+**GC roots: kept, fewer, never a non-lower.** Shared shadow lowers stay
+in the root area (`lowers[]`), zeroed at entry by `zero_roots` with the
+rest before the frame is pushed, and are counted in the origins' root
+count, which is the frame's own `length(Roots)`. FUGC marks the object
+of each non-null `lowers[i]` below the count (filc_runtime_inlines.h),
+and requires nothing else of a root slot between safepoints. Stack-aux
+roots are found from the end of the array (`end = num_lowers -
+has_setjmps`, `begin = end - num_stack_auxes`, filc_runtime.h), and the
+shadow roots come before them, so fewer shadow roots only move that
+suffix. A shadow root is
+written only by `phi_read(p, ...)`, from the incoming pointer's lower
+(`lower_reg_load//3`: the value's lower slot, or 0 for a constant). So
+every root word is always null or a lower this frame stored. At the
+pollcheck after an edge copy, the shared root holds the same lower as
+the phi's own `lower(tmp(D))`. At any other safepoint it may hold a stale
+lower from an earlier copy, as today's per-phi shadow roots do, since
+none is ever cleared. The frame may keep fewer stale objects alive than
+before, never different kinds of words. The `shadow_slot(C, i)` words
+themselves, a pointer's address word included, are plain frame words,
+never roots, as the shadow words are now.
+
+Not proposed (B): taking shadow lowers out of the root area entirely,
+since no safepoint separates their store and load. That is a root
+reduction. It would rely on three things: no safepoint between a
+shadow lower's store and its load, FUGC scanning a running thread's
+frame only at its safepoints, and the object being reachable from some
+other root at every safepoint. That is the principle clang's Fil-C uses
+for values in registers, but no checker verifies the first: a later
+helper call inside a phi copy would break it silently. It would save 4
+root words (32 bytes) in CPython's frame. Oracle's review recommends A;
+B would first need a mechanical check that no call falls inside an edge
+copy, and its own review.
+
+**The no-safepoint condition is checked, not argued.** `edge_moves//4`
+builds each edge's parallel copy and refuses to emit it unless every
+line is a move: `mov`, `movabs` of an immediate, or `lea` of a
+rip-relative address. Any call, poll, helper, trap or jump inside a copy
+is a compile error ("a phi copy contains a possible safepoint"), in
+every mode, so a later change cannot put a safepoint between a shared
+shadow's store and its load without being stopped. The register checker
+then sees the copy's moves, and it refuses a scratch register for a
+shadow live across a call (`shadow_across_poll` in
+tests/regs_check.pl).
+
+**What the checkers see.** Nothing new is trusted. The register
+checker and frame cells work by slot offset. A shared shadow slot is
+one home whose classes are its phis' classes. Separating the classes
+keeps each home eligible exactly when its phis are (only `w`/`l` homes
+are); a mixed integer and float slot would be refused by the checker,
+which requires every class of a home to be `w`/`l`, not miscompiled.
+`placed_lines` lists each shared shadow slot once, with the union of its
+classes, grouping its phis by offset. Cells are already deduplicated by
+offset. A `w` and an `l` phi sharing a slot leave only a `w` value's
+dead high half behind, as uninitialized frame words do now.
+`own_frame_limit` counts only scalar storage, so temps mode's threshold
+is unaffected.
+
+**Validation.**
+- Fail-first unit test (`shared_shadows`): a function with two
+  phi blocks has as many shadow slots as its larger block, not the sum.
+  It fails when the layout gives every phi its own shadow. It also
+  asserts that the origin's root count, `zero_roots(N)` and the placed
+  `lowers[]` agree.
+- Fail-first fixture: one temporary as a phi destination in two blocks,
+  beside another phi in each, so the two positions differ. Plant:
+  share it anyway. The difftest must fail.
+- A plant for each exclusion, each caught: dropping the
+  multiply-defined-destination exclusion, and dropping the setjmp
+  exclusion. If a plant gives correct code, the report says so, and
+  says which test catches the layout change.
+- A plant of a call inside an edge copy, refused by the checked
+  condition above.
+- Fail-first difftest and progtest with swaps (`a, b = b, a` phis in a
+  loop), a pointer phi whose incoming value is another phi of the same
+  block, `branch(v, L, L)` into a phi block, and a selected branch whose
+  arms enter two phi blocks that share slots. Plant: number all of a
+  block's phis 0. The tests must fail, then pass once the plant is
+  reverted. They run in all five allocating modes (`function`,
+  `operands`, `cells`, `temps` and the `-O` default), not only `-O`.
+- A register-checker fixture where a shared shadow is mapped to `r10`
+  or `r11` on an edge that has a poll.
+- GC stress: `run-c.sh gc pointer-effects` and progtests under
+  `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`, with pointer phis on polled back
+  edges, and a function with both nonescaping locals (stack-aux roots)
+  and pointer phis, since fewer shadow roots move the stack-aux suffix.
+- Snapshot: only the allocating `-O` modes' outputs (F., P., C., I.,
+  T.) change; `cc`, `compile`, O. and `local` outputs are byte-identical.
+- The ten-workload gate (instructions should not move; frame offsets
+  shrink), bzip2's and SQLite's frames, the 14 Nix checks, and CPython
+  (`nanofil-python`, on chapel): `_PyEval_EvalFrameDefault`'s frame,
+  and the recursion depth of `test_isinstance`'s
+  `test_infinitely_many_bases` case at a fixed stack, before and after.
+
+**Review (Oracle, October 2026): sound with fixes; A, not B.** It
+confirmed from the code that the edge copy has no safepoint inside, that
+the GC needs root words to be null or lowers and nothing more, that the
+origins' count and the stack-aux suffix stay consistent, and that the
+setjmp exclusion is sufficient. Its one blocker was a phi destination
+defined in two blocks, now excluded from sharing above. Its validation
+additions are in the list above.
+
 ### Projection
 
 From the profile's shares: items 1–4 leave the compressors at about 3–4×
