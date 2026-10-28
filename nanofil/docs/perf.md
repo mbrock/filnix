@@ -1989,6 +1989,289 @@ and calls: `BZ2_decompress` keeps 22–26 homes live at once, and
 functions, which item 4 removes. Pointer slots, at 15–22% everywhere, are
 item 5b's.
 
+### 3d. Live-range splitting: webs, not edge moves
+
+#### Measured first (October 2026, after inlining became the default)
+
+`bench/profile/split.py` estimates two ways of giving the homes 3a
+leaves in the frame registers, on the marked build. One caveat applies
+to every profile of the marked build: its marker labels come before the
+stack check and split every region, so `allocated_stream/4` excludes
+every function from 3a, and 3b and cells do nothing either. The marked
+build is the stack reference with `-O`'s other passes. That is what an
+allocator starts from, but cells already forward some of these loads in
+`-O`, so the yields below overstate the gain. The estimate also models
+homes approximately: it finds them by `%rbp` offset rather than from the
+metadata, tracks whole words rather than halves, and leaves out
+noreturn calls. It ranks the options; it does not predict the result. Both estimates and coverage.py's
+colour by executed instructions (cachegrind), callee-saved registers for
+values live across a returning call, and `r10`/`r11` for the others.
+They admit only whole moves of a home, 3a's rule.
+
+- **Whole homes** is what 3a does: one register for a home's whole life.
+- **Loops** splits at natural loops of backward jumps, outermost first.
+  Each loop colours the leftover homes it references with registers no
+  home occupies inside it. A home pays one move per execution of each
+  entry and exit edge it is live across, which is an upper bound, and is
+  kept only if its traffic in the loop is larger.
+- **Webs** splits each home into its webs: the connected parts of its
+  live range, joined along the CFG edges it is live across. Webs are
+  coloured instead of homes. A web needs no moves, because its home is
+  dead wherever it meets another web.
+
+| Function (workload) | Scalar home traffic | Whole homes | Loops | Webs | Homes → webs |
+| --- | --: | --: | --: | --: | --: |
+| `BZ2_decompress` (bzip2 -d) | 1.742G, 35% of the function | 47% | 48% (0 moves) | 59% | 559 → 5049 |
+| `LZ4HC_InsertAndGetWiderMatch` (lz4 -9) | 3.774G, 49% | 70% | 68% (0.004G moves) | 84% | 152 → 663 |
+| `longest_match` (zlib -6) | 2.163G, 35% | 92% | 84% | 93% | 40 → 185 |
+| `luaV_execute` (lua int) | 1.032G, 29% | 99% | 99% | 100% | 220 → 4769 |
+| `mainGtU` (bzip2 -9) | 0.894G, 33% | 84% | 36% | 98% | 21 → 368 |
+| `mainSort` (bzip2 -9) | 0.675G, 34% | 82% | 98% | 99% | 58 → 557 |
+
+On this build the loop estimate starts without 3a's whole-function
+homes, so it loses to them where traffic lies outside loops (`mainGtU`).
+Its assignments needed almost no edge moves. What they found is the same thing webs find, less completely. `frame_slots` packs
+unrelated short-lived temporaries into a few hot slots (a median of 2
+webs per home, up to thousands of webs in a large function), and 3a's
+one register per slot cannot use a register that is free only where one
+of those temporaries lives. Values that cross loop boundaries are not
+the limit in any of these functions.
+
+So item 3d is webs. Splitting with edge moves is item 3e and is
+deferred. The loop estimate above colours only homes a loop references,
+so it never spills a value that lives through a loop unused, and that
+is the main thing edge moves buy. Counted directly in `BZ2_decompress`:
+its four largest loops (2281 to 8654 instructions) have no homes live
+through them unreferenced. Its third-hottest loop (245 instructions,
+0.91G Ir) has 19 such homes and references only 7, and those 7 carry
+0.19G of scalar traffic. A 92-instruction loop (0.23G Ir) has 18. Their
+entries are rare, so spilling around them is nearly free. The ceiling
+for 3e on bzip2 -d is therefore those loops' traffic, about 0.2–0.25G
+(4%), on top of webs. 3e needs moves, landing pads for critical edges
+and a checker that accepts inserted lines. It comes after 3d's result,
+if the gate still shows the gap.
+
+**Expected yield.** This is traffic moved from frame slots to registers,
+over whole homes. It is an upper bound, because the estimate colours by
+the real execution counts and the allocator by loop depth:
+
+| Workload | Traffic moved | Share of the workload's instructions |
+| --- | --: | --: |
+| bzip2 -d | +0.20G | 3.4% |
+| lz4 -9 | +0.53G | 4.0% |
+| bzip2 -9 | +0.23G | 1.4% |
+| zlib -6 | +0.02G | 0.2% |
+| lua int | +0.01G | 0.2% |
+
+That is less than bzip2 -d's 24% suggested. 41% of `BZ2_decompress`'s
+scalar traffic (0.72G, about 12% of bzip2 -d) stays in the frame under
+webs too. Most of it is pressure in the large loops, with a median of 21
+homes live at once against 7 allocatable registers and none of them
+unreferenced. Splitting cannot fix that part (3e reaches the small inner
+loops, above). Memory operands for frame homes
+(`addl -8(%rbp), %eax`, which removes the load but not the access) or
+more allocatable registers would be needed, and both are instruction
+selection.
+
+Instructions barely move when a slot move becomes a register move. 3a's
+lesson is that the gain is time: it cut the geomean 15% with flat
+instructions, because store-to-load forwarding chains through frame
+slots bound IPC. 3b's operand rewrite then folds many of the new
+register moves. Expect a few percent of time on bzip2 -d and lz4 -9 and
+nothing elsewhere. bzip2 -d's time is also layout-sensitive (step 3b's
+result), so the result is judged against a padding sweep. At
+`0230f1d` (`-O`, cells and inlining), `.skip N` before `BZ2_decompress`
+for N = 0, 16, …, 112 gives the same 4.851G instructions (±0.0001G) and
+cycles from 1.652G to 1.757G (6%), the median of 5 trials each, on cpu 6.
+Legacy-decoder micro-ops move with them, from 0.76G to 0.88G. A
+change inside that band is layout. To count as a gain, webs must move
+the whole band.
+
+Gate at `0230f1d` (7 trials, cpu 6, median ms, instructions): `-O`
+against `-O --inline=none` is lz4 -9 488 against 639 (10.52G against
+13.37G), lua str 398 against 416, sqlite 1360 against 1378, and equal
+within noise elsewhere. This is the baseline 3d is measured against.
+
+#### Contract
+
+**Mode.** `--registers=webs` is opt-in: frame cells (the current `-O`
+default) with webs in place of whole homes. It becomes the default only
+after a gate run where it wins time. `function`, `operands` and `cells`
+keep their fixed maps, their checker and their snapshot outputs
+unchanged.
+
+**Allocator (untrusted, `amd64_regs.pl`).** It works from the shared
+`body_analysis/4` liveness of the candidate homes:
+
+- A home's webs are the connected components of the lines where one of
+  its halves is live, or where the line accesses it. Two lines are
+  joined along each CFG edge into a line where the home is live-in.
+- Home eligibility stays 3a's, per home: a w/l home that is 8 apart
+  from every other home and save slot, whose address no `lea` takes,
+  and whose every access in the function is a substitutable move (3a's
+  `substitute/3`). This matches the checker's preflight exactly (a
+  `lea` has no memory effect, so a per-web rule would miss it, and a
+  rejection is a compile error, not a fallback). Only the colouring is
+  per web.
+- A web of an eligible home is a candidate when it is not live at the
+  function's entry and no 32-bit store in it leaves the high half
+  live.
+- Two webs interfere when one is written while the other is live, 3a's
+  rule at web granularity. A web live across a returning call gets a
+  callee-saved register.
+- Webs are coloured greedily by loop-weighted references, as 3a colours
+  homes.
+- The output is the reference body with each access of a coloured web
+  substituted by its register (`substitute/3` with a one-home map), plus
+  3a's saves after the stack check and restores before every `leave`,
+  for each callee-saved register any web uses.
+- No other line is inserted. There are no moves and no new labels.
+
+**Checker (trusted): value locations, not a map.** A new validator in
+`amd64_regs_check.pl` that needs neither webs nor liveness. That keeps
+the web computation and the colouring out of the trusted base: a wrong
+partition can only produce a stream that the checker rejects.
+
+1. *Shape.* The proposal pairs line for line with the reference body.
+   Each line is identical to its reference line, or is that line with
+   one home operand replaced by an allocatable register of the same
+   width (`substitute/3` with a one-home map, for any allocatable
+   register). 3a's preflight applies unchanged: the reference names no
+   allocatable register and has no indexed `%rbp` operand, no `lea`
+   takes the address of a substituted home or save slot, no line
+   touches a save slot, nothing before the stack check is a label, a
+   transfer or an access to a substituted home, and setjmp functions
+   admit only identity. Two of 3a's `valid_map/3` rules apply too.
+   They are not part of its preflight, and the checker must state
+   both:
+   - *Homes.* Every substituted home is an 8-byte home of the
+     metadata, every description of it is `w` or `l`, and it is 8 apart
+     from every other home and every save slot. Otherwise a write to
+     one home's register would leave a reference write to an
+     overlapping home's slot unaccounted for.
+   - *Saves.* The saves are exactly `save(R, S)` for each callee-saved
+     R that some substituted line names, in `callee_saved/1` order,
+     with valid_map's slot conditions (integer, negative, 8-aligned,
+     distinct, outside every home). They come right after the stack
+     check, the matching restores come before every `leave`, and every
+     `leave` is followed by `ret` (`allocated_stream/4`). The
+     proposal must equal the stream rebuilt from the reference, the
+     per-line substitutions and these saves.
+2. *State.* At every point, for each location X (the home's slot, or
+   one of `rbx`, `r12`–`r15`, `r10`, `r11`), the set of halves (home,
+   low or high) whose reference value X holds. At entry every slot holds
+   its own home's halves and no register holds anything. The analysis
+   runs forward over the proposal's CFG. That CFG must be complete, as
+   for 3a: every jump names a label of the body or the stack-overflow
+   exit, and no line falls off the end. States meet at labels by
+   intersection, unvisited blocks start at top, and the analysis
+   iterates to a fixed point.
+3. *Transfer.* For a line that writes bytes of home H at location X
+   (the substituted register, or the slot for an unsubstituted access):
+   - Halves the write covers: X holds them, and no other location does.
+   - Halves the write only partly covers: X keeps each one only if it
+     held it before, since the other bytes are unchanged in both
+     streams. No other location holds them.
+   - A 32-bit write to a register zeroes its high half, so X no longer
+     holds H's high half. A 32-bit store to the slot keeps it.
+   - A register write also takes from X every other home's halves.
+   - Halves the write does not touch are unchanged in every location
+     (for example H's high half under a byte write to its register).
+
+   A `call` takes everything from `r10` and `r11`, and a restore takes
+   everything from its register. No other line can change a home slot
+   or an allocatable register (shape and preflight).
+4. *Obligation.* Every read of a half of home H at location X requires
+   X to hold that half before the line: a substituted read from the
+   register, or an unsubstituted read from the slot.
+5. *Why it suffices.* Lines that are identical in both streams read
+   identical operands. The exceptions are home reads, and the
+   obligation makes those equal. So by induction along any execution
+   path, every non-home location (scratch registers, flags, non-home
+   memory, control) is equal in both streams at every corresponding
+   point. The must-analysis' fixed point covers loops. The callers'
+   registers are restored before every `leave` (the *Saves* rule).
+   Homes do not escape, the same trust as 3a, and no reference line
+   touches a save slot. So the only state that differs is home slots,
+   save slots and allocatable registers, and nothing outside the
+   function reads the first two.
+
+The validator accepts every fixed-map stream that 3a's checker accepts:
+a fixed map is one web per home. A unit test runs it on 3a's outputs for
+the regs fixtures and a corpus. It replaces nothing yet: the fixed-map
+modes keep their checker.
+
+**3b and cells.** `operand_lives/4` assumes A is the reference with
+substitutions and saves inserted, and a webs stream is exactly that. The
+operand rewrite and `check_operands/4` therefore run unchanged; neither
+reads the map (`region_end` compares `rbx` and `r10`–`r15` at every
+boundary whatever the map). Cells are unchanged too. `regs_mode/3` lists
+every scalar slot as a cell, mapped homes included, and `valid_cells`
+excludes only locals, wide and save slots. So the slot webs of a split
+home are cells, which is sound because cells compare A against B. This
+corrects 5a's text, which says cells stay apart from mapped homes. No
+code does that, and none needs to.
+
+**No new runtime or GC assumption.** Only `w`/`l` homes move, as in
+3a. Pointer payloads, lowers and every GC-visible word stay where they
+are. No trap, check or call changes. The runtime assumptions are 3a's:
+callees preserve callee-saved registers, only `%rbp`-relative operands
+reach homes, homes do not escape, and `instruction_effects/2` is
+audited. The trusted code does grow by this validator, which replaces
+3a's checker in this mode. Under `--checks=reuse`, later accesses rely
+on M7 check evidence about values that live in homes, so a validator
+bug there would be a memory-safety bug and not only a wrong result.
+That is why its fixtures follow 3a's in full.
+
+**Validation.**
+
+- Fail-first fixtures for the validator, each rejected and each failing
+  when its rule is removed:
+  1. Another home written into the same register between H's write and
+     its read.
+  2. H written in `rbx` on one arm and `r12` on the other, then read
+     from `rbx` after the join. The meet must intersect.
+  3. A `movl` to H's register, then a `movq` read of H. The high half
+     is zeroed.
+  4. H in `r10` across a call.
+  5. A read of H's slot after its last write went to a register (a
+     stale slot).
+  6. A loop whose back edge carries H in the slot while the head reads
+     it from `rbx`. The fixed point must not start from "held".
+  7. A byte store to H's slot, then a read from its register.
+  8. A substituted home whose address a `lea` takes.
+  9. A substitution in a setjmp function.
+  10. A substitution that is not of the same width.
+  11. A callee-saved register used but not saved, and a save missing
+      a restore before one of two `leave`s.
+  12. A substituted home overlapping another home or a save slot, and
+      one with a `d` description.
+  13. A read from a register at entry with no write before it.
+  14. A byte write to H's register, then a read of H's slot.
+  15. 3a's rejecting fixtures for the rules webs keeps (a `movq`
+      immediate outside imm32, a call to a body label, a write before
+      the stack check), run against the new validator.
+- Accepted fixtures: the same home in two registers in disjoint webs, a
+  web left in the slot between two register webs, and every 3a
+  fixed-map fixture.
+- Fail-first allocator tests (unit, through the public `regs_asm/6`):
+  a pooled slot whose two temporaries need different registers gets two
+  webs, where whole homes gives it none; and a home with a `lea` in one
+  web stays in its slot in every web, rather than failing the check.
+- Snapshot: every existing output identical, plus a new `W.` mode for
+  `-O --registers=webs`. Difftests, progtests and one Nix check
+  configuration run under webs, and then all twelve checks.
+- Gate: `O` against `O-webs`, 7 trials. A `.skip N` sweep before
+  `BZ2_decompress`, N from 0 to 112 in steps of 16, runs in both modes,
+  with cycles, instructions and legacy-decoder micro-ops
+  (`de_src_op_disp.decoder`). If webs moves the whole cycle band down,
+  that is a gain. If the bands overlap, only the instruction count
+  moved.
+- Compile time: `sqlite3.c` with `-O --registers=webs` within 10% of
+  `-O` (105.0 s user, 1.46 GB peak RSS). Over budget, the allocator caps
+  the webs it colours per function. That is a choice of the untrusted
+  allocator; the checker is unchanged.
+
 ### 8. A cheap middle end
 
 Constant folding and propagation, local value numbering of pure
