@@ -213,11 +213,17 @@ c_file_module(File, Module) :-
 % predefined macros and include paths of $FILCC (default filcc).
 c_file_tokens(File, Tokens) :-
     (   atom_concat(_, '.i', File)
-    ->  phrase_from_file(seq(Cs), File),
-        once(c_tokens(Cs, File, Tokens))
+    ->  phrase_from_file(seq(Cs), File, [type(binary)]),
+        once(c_tokens(Cs, File, Tokens0))
     ;   ( getenv('FILCC', Clang) -> true ; Clang = filcc ),
         pp_profile(Clang, Profile),
-        pp_file(File, Profile, Tokens)
+        pp_file(File, Profile, Tokens0)
+    ),
+    (   getenv('NANOFIL_STD', Std), Std \== c17
+    ->  (   Std == c23 -> c23_tokens(Tokens0, Tokens)
+        ;   throw(nanofil_error('NANOFIL_STD must be c17 or c23'))
+        )
+    ;   Tokens = Tokens0
     ).
 
 %% Commands

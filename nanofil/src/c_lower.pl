@@ -75,6 +75,7 @@
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
 :- use_module(library(ordsets)).
+:- use_module(library(pairs)).
 :- use_module(library(dcgs)).
 :- use_module(c_types).
 :- use_module(ir, [op_kind/2, narrow_type/3, width_bytes/2]).
@@ -203,6 +204,13 @@ next_id(Id, e(Ords, Tags, Defs, Id), e(Ords, Tags, Defs, Next)) :-
 % functions a top-level item defines now (a static inline is deferred).
 top_item(_, static_assert(Loc, Expr, _), [], Env, Env) :- !,
     static_assert(Loc, Expr, Env).
+top_item(_, decl(_, Specs, [init(Dcl, none)]), [], Env, Env) :-
+    overload(Specs, Dcl, Env), !.
+top_item(_, fundef(_, Specs, Dcl, _), [], Env, Env) :-
+    overload(Specs, Dcl, Env), !.
+top_item(ExternalNames, decl(Loc, Specs, Inits), Funcs, Env0, Env) :-
+    alias_target(Specs, Target), !,
+    alias_decl(ExternalNames, Loc, Specs, Inits, Target, Funcs, Env0, Env).
 top_item(_, decl(Loc, Specs, Inits), [], Env0, Env) :- !,
     catch(decl_types(Specs, Inits, Decls, Env0, Env1), not_constant,
           sema_error(Loc, 'array size is not a constant', [])),
@@ -226,6 +234,73 @@ top_item(ExternalNames, fundef(Loc, Specs, dcl(some(Name), DclType, Asm), Body),
         )
     ;   function(Loc, Name, Type, DclType, Body, Env2, Env, Funcs)
     ).
+
+/* GCC's alias attribute: `int bg(int, char **) __attribute__((alias("fg")))`
+   (dash's bgcmd). The name is bound to the target's symbol, as if
+   declared with asm("fg"), so the translation unit's calls and
+   addresses are the target's, as clang's are. An alias with external
+   linkage also needs its own symbol for other translation units: Fil-C
+   gives it only a getter that returns the target's function object;
+   nanofil defines a function of the alias's name that calls the target
+   with its arguments. Its address, seen from another translation unit,
+   is therefore not the target's. Variable aliases, variadic or
+   unprototyped function aliases and several declarators are refused. */
+alias_target(Specs, Target) :-
+    member(attr([group(Tokens)]), Specs),
+    append(_, [id(Word), group(Arg)|_], Tokens),
+    memberchk(Word, [alias, '__alias__']), !,
+    Arg = [str(Bytes)], atom_codes(Target, Bytes).
+
+alias_decl(ExternalNames, Loc, Specs, Inits, Target, Funcs, Env0, Env) :-
+    (   Inits = [init(dcl(some(Name), DclType, none), none)],
+        DclType = func(RetSyntax, params(Ps, fixed))
+    ->  true
+    ;   sema_error(Loc, 'alias is supported only for one prototyped, non-variadic function', [])
+    ),
+    decl_types(Specs, [init(dcl(some(Name), DclType, asm(Target)), none)],
+               [d(_, Type, Storage, Asm, Init)], Env0, Env1),
+    (   Type = func(Ret, _, fixed) -> true
+    ;   sema_error(Loc, 'alias is supported only for functions, not ~w', [Name])
+    ),
+    global_decl(Loc, d(Name, Type, Storage, Asm, Init), Env1, Env2),
+    (   Storage == static
+    ->  Funcs = [], Env = Env2
+    ;   % The alias's own symbol: a function that calls the target.
+        findall(param(PSpecs, dcl(some(A), S, PAsm)) - id(A),
+                ( nth0(I, Ps, param(PSpecs, dcl(_, S, PAsm))),
+                  format(atom(A), '__nanofil_alias_arg~w', [I]) ),
+                Named),
+        pairs_keys_values(Named, NamedPs, Args),
+        atom_concat('__nanofil_alias_', Name, Self),
+        Call = call(id(Name), Args),
+        (   Ret == void -> Stmt = expr(Call) ; Stmt = return(Call) ),
+        exclude(alias_spec, Specs, DefSpecs),
+        top_item(ExternalNames,
+                 fundef(Loc, DefSpecs,
+                        dcl(some(Self), func(RetSyntax, params(NamedPs, fixed)), asm(Name)),
+                        at(Loc, block([at(Loc, Stmt)]))),
+                 Funcs, Env2, Env)
+    ).
+
+/* clang's overloadable attribute: glibc's _FORTIFY_SOURCE headers add
+   overloads of open, open64 and openat chosen by arity, which C cannot
+   express. nanofil has no overloading: a declaration or definition
+   marked overloadable whose type is not compatible with the visible
+   declaration of its name is skipped, and calls reach that function
+   (glibc's open). glibc's overloads only check the flags before calling
+   it, so a valid program behaves alike. A compatible overloadable
+   declaration (glibc's printf wrappers) is an ordinary redeclaration. */
+overload(Specs, dcl(some(Name), DclType, Asm), Env) :-
+    member(attr([group(Tokens)]), Specs),
+    member(id(Word), Tokens), memberchk(Word, [overloadable, '__overloadable__']), !,
+    lookup_ordinary(Env, Name, fn(Visible, _, _)),
+    decl_types(Specs, [init(dcl(some(Name), DclType, Asm), none)],
+               [d(_, Type, _, _, _)], Env, _),
+    \+ compatible_type(Visible, Type).
+
+alias_spec(attr([group(Tokens)])) :-
+    member(id(Word), Tokens), memberchk(Word, [alias, '__alias__']), !.
+alias_spec(storage(extern)).
 
 % static_assert(+Loc, +Expr, +Env): throw a semantic error unless Expr
 % is a nonzero constant.
@@ -386,7 +461,8 @@ function_(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     ret_class(Loc, RetType, Env0, RetClass),
     param_names(DclType, Names),
     statement_expression_jumps(Body, Loc),
-    reflect_params(DclType, ParamTypes, Env0, ParamEnv),
+    reflect_params(DclType, ParamTypes, Env0, ParamEnv0),
+    label_values(Body, ParamEnv0, ParamEnv),
     source_location(Loc, SourceLoc),
     empty_assoc(Empty),
     State0 = st(ParamEnv, cur(start, []), [], [], 0, Labels, [],
@@ -402,6 +478,7 @@ function_(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
              vm_params(Names, ParamTypes, Ctx),
              stmt(Body, Ctx),
              fall_off(RetType),
+             computed_dispatch,
              vm_jumps
            ),
            [State0], [State]),
@@ -1021,6 +1098,27 @@ stmt_(goto(Name), Ctx) -->
     vm_goto(Name, Loc),
     goto_label(Name, Label),
     term(goto(Label)).
+% GNU goto *E: E is one of the function's label values (c_types'
+% label_value/3), the label's number. Every goto * of the function
+% stores it in one local and jumps to the function's single dispatch
+% block (computed_dispatch//0), so an interpreter's many gotos share
+% one search.
+stmt_(computed_goto(E), Ctx) -->
+    rval(E, Ctx, V0),
+    { ctx_loc(Ctx, Loc) },
+    (   { V0 = v(_, ptr(_)) } -> []
+    ;   { sema_error(Loc, 'goto * of a non-pointer', []) }
+    ),
+    convert(V0, ulong, v(X, _)),
+    state(st(_, _, _, _, _, Labels0, _, _)),
+    (   { get_assoc(computed(goto), Labels0, dispatch(LDispatch, Slot, _)) } -> []
+    ;   label(LDispatch), local_slot(ulong, Slot),
+        state(st(E1, C1, I1, B1, N1, Labels1, Cs1, A1),
+              st(E1, C1, I1, B1, N1, Labels2, Cs1, A1)),
+        { put_assoc(computed(goto), Labels1, dispatch(LDispatch, Slot, Loc), Labels2) }
+    ),
+    store_typed(ulong, X, Slot),
+    term(goto(LDispatch)).
 stmt_(label(Name, Body), Ctx) -->
     vm_label(label(Name)),
     goto_label(Name, Label),
@@ -1028,6 +1126,56 @@ stmt_(label(Name, Body), Ctx) -->
     stmt(Body, Ctx).
 stmt_(decl(Loc, Specs, Inits), Ctx) -->
     item(decl(Loc, Specs, Inits), Ctx).
+
+% computed_dispatch//: the dispatch block of the function's goto *, if
+% any: among its address-taken labels by number, any other value
+% reaching unreachable, a Fil-C panic. Each such label is a goto
+% target, so none may be in a variably modified scope the jump is not.
+computed_dispatch -->
+    state(st(Env, _, _, _, _, Labels, _, _)),
+    (   { get_assoc(computed(goto), Labels, dispatch(LDispatch, Slot, Loc)) }
+    ->  start(LDispatch),
+        let(l, load(l), [Slot], X),
+        { lookup_ordinary(Env, 'labels.taken', Names) },
+        label_cases(Names, 1, Loc, Cases),
+        label(LTrap),
+        dispatch(Cases, X, ulong, LTrap),
+        start(LTrap), term(unreachable)
+    ;   []
+    ).
+
+label_cases([], _, _, []) --> [].
+label_cases([Name|Names], N, Loc, [case(N, Label)|Cases]) -->
+    vm_goto(Name, Loc), goto_label(Name, Label),
+    { N1 is N + 1 },
+    label_cases(Names, N1, Loc, Cases).
+
+% label_values(+Body, +Env0, -Env): Env is Env0 with each label whose
+% address Body takes (&&L, label_addr(L)) bound to its number, 1, 2, ...
+% in order of first use, and 'labels.taken' to their list.
+label_values(Body, Env0, Env) :-
+    phrase(label_addrs(Body), Names0),
+    list_to_ord_set(Names0, Set),
+    first_uses(Names0, Set, Names),
+    foldl(label_number, Names, 1-Env0, _-Env1),
+    bind_ordinary('labels.taken', Names, Env1, Env).
+
+label_addrs(label_addr(Name)) --> !, [Name].
+label_addrs(T) --> { compound(T), !, T =.. [_|Args] }, label_addrs_list(Args).
+label_addrs(_) --> [].
+label_addrs_list([]) --> [].
+label_addrs_list([A|As]) --> label_addrs(A), label_addrs_list(As).
+
+first_uses([], _, []).
+first_uses([N|Ns], Left0, Firsts) :-
+    (   ord_memberchk(N, Left0)
+    ->  ord_del_element(Left0, N, Left), Firsts = [N|Firsts1]
+    ;   Left = Left0, Firsts = Firsts1
+    ),
+    first_uses(Ns, Left, Firsts1).
+
+label_number(Name, N-Env0, N1-Env) :-
+    bind_ordinary(label_addr(Name), N, Env0, Env), N1 is N + 1.
 
 % target_jump(+Target, +Loc, +Error)//: a jump to the break or
 % continue Target, some(Label); none is semantic error Error at Loc.
@@ -1754,6 +1902,14 @@ lower_node(val(_, sizeof(TN)), Ctx, v(Size, ulong)) --> % 6.5.3.4
         extent(Type, Ctx, Size)
     ;   { type_size(TN, Env, Loc, Size0), Size = const(Size0) }
     ).
+% sizeof (T[]){...}: the compound literal's array type is completed by
+% its initializer (6.5.2.5p3, 6.7.9p22); the operand is not evaluated.
+lower_node(val(_, sizeof(obj(array(_, none), complit(TN, Init)))), Ctx,
+           v(const(Size), ulong)) --> !,
+    env(Env),
+    { ctx_loc(Ctx, Loc), type_name_type(TN, T0, Env, Env1),
+      complete_array(T0, Init, T, Loc, Env1, whole),
+      type_size_align(T, Env1, Size, _) }.
 lower_node(val(_, sizeof(X)), Ctx, v(Size, ulong)) --> !,
     (   { tree_type(X, T), vla_type(T) }
     ->  place(X, Ctx, lv(_, Type)),
@@ -1767,9 +1923,9 @@ lower_node(val(_, sizeof(X)), Ctx, v(Size, ulong)) --> !,
 lower_node(val(_, alignof(TN)), Ctx, v(const(Align), ulong)) --> !,
     env(Env),
     { ctx_loc(Ctx, Loc),
-      type_name_type(TN, Type0, Env, _), supported(Type0, Loc),
+      type_name_type(TN, Type0, Env, Env1), supported(Type0, Loc),
       element_type(Type0, Type),
-      catch(type_size_align(Type, Env, _, Align), bad(Why),
+      catch(type_size_align(Type, Env1, _, Align), bad(Why),
             sema_error(Loc, 'alignof: ~w', [Why])) }.
 lower_node(val(_, offsetof(TN, Path)), Ctx, v(const(V), ulong)) --> !,
     env(Env),
@@ -1986,6 +2142,8 @@ builtin('__builtin_constant_p', [Expr], _, v(const(V), int)) --> !,
       -> V = 1
       ; V = 0
       ) }.
+builtin(Name, Args, _, v(const(V), ulong)) -->
+    env(Env), { object_size(Name, Args, Env, V) }, !.
 builtin('__builtin_unreachable', [], _, v(const(0), void)) --> !,
     term(unreachable).
 builtin('__builtin_alloca', [Size], Ctx, v(Addr, ptr(void))) --> !,
@@ -2000,6 +2158,57 @@ builtin(Name, [A], Ctx, v(D, double)) -->
     assign_convert(A, V0, double, Loc, v(X, _)),
     fresh(D),
     emit(call(result(D, d), global(F), [arg(d, X)])).
+% __builtin_isnan(x): x is unordered with itself. A float compares as
+% itself; anything else (double, long double, an integer) as a double,
+% which keeps a NaN a NaN and makes no other value one.
+builtin('__builtin_isnan', [A], Ctx, v(N, int)) --> !,
+    rval(A, Ctx, V0),
+    (   { V0 = v(X, float) } -> { K = s }
+    ;   { ctx_loc(Ctx, Loc) },
+        assign_convert(A, V0, double, Loc, v(X, _)), { K = d }
+    ),
+    let(w, cmp(uo, K), [X, X], N).
+% The classification builtins (c_types' classify_builtin/1) read the
+% float's bits: Abs is them without the sign; Inf and MinNormal are
+% the format's infinity and smallest normal magnitude.
+builtin('__builtin_fpclassify', [Nan, Inf, Normal, Sub, Zero, A], Ctx, v(N, int)) --> !,
+    float_bits(A, Ctx, f(K, _, Abs, InfBits, MinNormal)),
+    let(w, cmp(ugt, K), [Abs, InfBits], IsNan),
+    let(w, cmp(eq, K), [Abs, InfBits], IsInf),
+    normal_flag(K, Abs, InfBits, MinNormal, IsNormal),
+    let(w, cmp(eq, K), [Abs, const(0)], IsZero),
+    let(w, cmp(ult, K), [Abs, MinNormal], Small),
+    let(w, sub, [Small, IsZero], IsSub),
+    class_sum([IsNan-Nan, IsInf-Inf, IsNormal-Normal, IsSub-Sub, IsZero-Zero],
+              Ctx, const(0), N).
+builtin('__builtin_signbitf', [A], Ctx, R) --> !,
+    builtin('__builtin_signbit', [cast(type([tspec(float)], base), A)], Ctx, R).
+% A long double's sign is the top bit of its 80, stored to memory: bit
+% 15 of the 16-bit sign and exponent at byte 8.
+builtin(Name, [A], Ctx, v(N, int)) -->
+    { memberchk(Name, ['__builtin_signbit', '__builtin_signbitl']) },
+    rval(A, Ctx, V0),
+    { Name == '__builtin_signbitl' ; V0 = v(_, ldouble) }, !,
+    { ctx_loc(Ctx, Loc) },
+    assign_convert(A, V0, ldouble, Loc, v(X, _)),
+    local_slot(ldouble, Slot),
+    store_typed(ldouble, X, Slot),
+    let(p, add, [Slot, const(8)], Top),
+    load_typed(ushort, Top, Ctx, Exp),
+    let(w, shr, [Exp, const(15)], N).
+builtin(Name, [A], Ctx, v(N, int)) -->
+    { classify_builtin(Name) }, !,
+    float_bits(A, Ctx, f(K, Bits, Abs, InfBits, MinNormal)),
+    classified(Name, K, Bits, Abs, InfBits, MinNormal, N).
+% __builtin_flt_rounds(): libc's fegetround() reads the x87 control
+% word, as clang's lowering does, and its FE_* value R (0, 0x400, 0x800,
+% 0xc00) maps to FLT_ROUNDS by (0x2D >> (R >> 9)) & 3, clang's formula.
+builtin('__builtin_flt_rounds', [], _, v(N, int)) --> !,
+    fresh(R),
+    emit(call(result(R, w), global(fegetround), [])),
+    let(w, shr, [R, const(9)], S),
+    let(w, shr, [const(0x2D), S], M),
+    let(w, and, [M, const(3)], N).
 % The atomics c_types leaves as builtins (atomic_builtin/4): pointer
 % loads and stores at any order, which Fil-C's helpers make single-copy
 % atomic, and a sequentially consistent integer store, the store and a
@@ -2046,6 +2255,51 @@ builtin(Name, [A], Ctx, R) -->
 
 builtin(Name, _, Ctx, _) -->
     { ctx_loc(Ctx, Loc), sema_error(Loc, 'wrong arguments to ~w', [Name]) }.
+
+classified('__builtin_isinf_sign', K, Bits, Abs, InfBits, _, N) -->
+    let(w, cmp(eq, K), [Abs, InfBits], IsInf),
+    let(w, cmp(slt, K), [Bits, const(0)], Neg),
+    let(w, and, [IsInf, Neg], T), let(w, add, [T, T], T2),
+    let(w, sub, [IsInf, T2], N).
+classified('__builtin_isfinite', K, _, Abs, InfBits, _, N) -->
+    let(w, cmp(ult, K), [Abs, InfBits], N).
+classified('__builtin_isnormal', K, _, Abs, InfBits, MinNormal, N) -->
+    normal_flag(K, Abs, InfBits, MinNormal, N).
+classified('__builtin_signbit', K, Bits, _, _, _, N) -->
+    let(w, cmp(slt, K), [Bits, const(0)], N).
+
+% A normal magnitude is in [MinNormal, Inf): one unsigned compare.
+normal_flag(K, Abs, InfBits, MinNormal, N) -->
+    let(K, sub, [Abs, MinNormal], D),
+    { InfBits = const(I), MinNormal = const(M), R is I - M },
+    let(w, cmp(ult, K), [D, const(R)], N).
+
+% class_sum(+Flags, +Ctx, +Acc, -Sum)//: Sum is Acc plus each Flag-E
+% pair's flag (0 or 1) times E, E converted to int.
+class_sum([], _, Sum, Sum) --> [].
+class_sum([Flag-E|Fs], Ctx, Acc, Sum) -->
+    rval(E, Ctx, V0), { ctx_loc(Ctx, Loc) },
+    assign_convert(E, V0, int, Loc, v(X, _)),
+    let(w, mul, [Flag, X], T),
+    let(w, add, [Acc, T], Acc1),
+    class_sum(Fs, Ctx, Acc1, Sum).
+
+% float_bits(+A, +Ctx, -F)//: F = f(K, Bits, Abs, Inf, MinNormal), the
+% bits of A as an integer of class K: a float's at w, anything else's as
+% a double at l.
+float_bits(A, Ctx, f(K, Bits, Abs, const(Inf), const(MinNormal))) -->
+    rval(A, Ctx, V0), { ctx_loc(Ctx, Loc) },
+    (   { V0 = v(X, float) }
+    ->  { K = w, Inf = 0x7f800000, MinNormal = 0x00800000, Mask = 0x7fffffff },
+        let(w, cast, [X], Bits)
+    ;   { V0 = v(_, ldouble) }
+    ->  { sema_error(Loc, 'classifying a long double is not supported', []) }
+    ;   assign_convert(A, V0, double, Loc, v(X, _)),
+        { K = l, Inf = 0x7ff0000000000000, MinNormal = 0x0010000000000000,
+          Mask = 0x7fffffffffffffff },
+        let(l, cast, [X], Bits)
+    ),
+    let(K, and, [Bits, const(Mask)], Abs).
 
 % bit_count(+Op, +Bits, +X, -N)//: N is the number of trailing zeros,
 % leading zeros or ones of X, a Bits-wide unsigned value zero-extended
@@ -2157,8 +2411,10 @@ overflow_exact(mul, X, XH, Y, YH, Low, High) -->
 
 % type_size(+TypeName, +Env, +Loc, -Size): Size is sizeof(TypeName), a
 % type of constant size.
-type_size(TypeName, Env, Loc, Size) :-
-    type_name_type(TypeName, Type, Env, _),
+type_size(TypeName, Env0, Loc, Size) :-
+    % A type name can define a tag (sizeof(union {...}), dash's
+    % SHELL_SIZE), which its own size needs.
+    type_name_type(TypeName, Type, Env0, Env),
     supported(Type, Loc),
     catch(type_size_align(Type, Env, Size, _), bad(Why),
           sema_error(Loc, 'sizeof: ~w', [Why])).
@@ -2507,7 +2763,7 @@ ptr_offset(Op, v(P, PtrType), ElemType, VI, Ctx, v(R, PtrType)) -->
     { PtrType = ptr(ElemType) },
     env(Env),
     { ctx_loc(Ctx, Loc),
-      catch(type_size_align(ElemType, Env, Size, _), bad(Why),
+      catch(arith_size(ElemType, Env, Size), bad(Why),
             sema_error(Loc, 'pointer arithmetic on ~w (~w)',
                        [ElemType, Why])) },
     convert(VI, long, v(I, _)),
@@ -2528,7 +2784,7 @@ ptr_diff(v(A, _), v(B, _), ElemType, Ctx, v(V, long)) -->
 ptr_diff(v(A, _), v(B, _), ElemType, Ctx, v(V, long)) -->
     env(Env),
     { ctx_loc(Ctx, Loc),
-      catch(type_size_align(ElemType, Env, Size, _), bad(Why),
+      catch(arith_size(ElemType, Env, Size), bad(Why),
             sema_error(Loc, 'pointer subtraction on ~w (~w)',
                        [ElemType, Why])) },
     let(l, ptoi, [A], IA),
@@ -3205,7 +3461,7 @@ address_constant(XV, Loc, Env, Env, null) :-
 % offset_const(+Op, +R0, +Elem, +K, +Env, +Loc, -R): R is address
 % constant R0 plus (add) or minus (sub) K elements of type Elem.
 offset_const(Op, sym(Sym, Off0), Elem, K, Env, Loc, sym(Sym, Off)) :- !,
-    catch(type_size_align(Elem, Env, Size, _), bad(Why),
+    catch(arith_size(Elem, Env, Size), bad(Why),
           sema_error(Loc, 'pointer arithmetic on ~w (~w)', [Elem, Why])),
     (   Op == add -> Off is Off0 + K * Size
     ;   Off is Off0 - K * Size

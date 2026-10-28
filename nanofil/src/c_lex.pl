@@ -24,7 +24,7 @@
     | `wstr(Type, Codes)` | `L"..."`, `u"..."` or `U"..."`: Type is the element type, `int` (wchar_t), `ushort` (char16_t) or `uint` (char32_t), and Codes the elements without the 0 |
     | `p(Atom)` | a punctuator, such as `p('->')` or `p('<<=')` |
 */
-:- module(c_lex, [c_tokens/3, keyword/2, decimal/1, ident_start/1,
+:- module(c_lex, [c_tokens/3, c23_tokens/2, keyword/2, decimal/1, ident_start/1,
                   ident_char/1, ident_rest//1, punctuator/1, digraph/1]).
 
 :- use_module(library(lists)).
@@ -305,12 +305,20 @@ char_body(Loc, Bs) --> lit_chars('\'', Loc, Bs).
 str_body(Loc, Bs) --> lit_chars('"', Loc, Bs).
 
 % lit_chars(+Quote, +Loc, -Bytes)//: Bytes is the literal body up to the
-% closing Quote, with escapes decoded and other characters encoded as
-% UTF-8.
+% closing Quote, with escapes decoded. The source is read as bytes
+% (main and c_pp read files so), and a narrow literal keeps them as
+% written, as clang does, valid UTF-8 or not (oniguruma's EUC-JP
+% tests); a code point above 255, from text that was not read as
+% bytes, is encoded as UTF-8.
 lit_chars(Q, _, []) --> [Q], !.
 lit_chars(_, Loc, _) -->
     ['\n'], !,
     { loc_error(Loc, 'unterminated literal', []) }.
+lit_chars(Q, Loc, Bs) -->                       % C11 6.4.3: \u, \U
+    ['\\'], ucn(K), !,
+    { utf8_bytes(K, Us) },     % clang's execution character set is UTF-8
+    lit_chars(Q, Loc, Bs0),
+    { append(Us, Bs0, Bs) }.
 lit_chars(Q, Loc, Bs) -->
     ['\\'], !,
     escape(Loc, B),
@@ -318,7 +326,7 @@ lit_chars(Q, Loc, Bs) -->
     { Bs = [B|Bs0] }.
 lit_chars(Q, Loc, Bs) -->
     [C], !,
-    { char_code(C, K), utf8_bytes(K, Us) },
+    { char_code(C, K), ( K < 256 -> Us = [K] ; utf8_bytes(K, Us) ) },
     lit_chars(Q, Loc, Bs0),
     { append(Us, Bs0, Bs) }.
 lit_chars(_, Loc, _) --> { loc_error(Loc, 'unterminated literal', []) }.
@@ -335,6 +343,10 @@ escape(_, B) -->
     oct_upto(2, Ds),
     { base_value([D|Ds], 8, V), B is V /\ 255 }.
 escape(Loc, _) --> [C], { loc_error(Loc, 'unknown escape \\~w', [C]) }.
+
+% ucn(-Code)//: a universal character name after its backslash.
+ucn(K) --> ['u'], hex_exactly(4, Ds), { base_value(Ds, 16, K) }.
+ucn(K) --> ['U'], hex_exactly(8, Ds), { base_value(Ds, 16, K) }.
 
 % oct_upto(+N, -Digits)//: Digits are at most N octal digits, as many as
 % there are.
@@ -365,7 +377,8 @@ wide_prefix(u, ushort).
 wide_prefix('U', uint).
 
 % wide_lit_chars(+Quote, +Loc, -Codes)//: like lit_chars//3, but Codes
-% are the body's code points.
+% are the body's code points: the source's bytes decoded as UTF-8 (a
+% byte that starts no valid sequence stands for itself).
 wide_lit_chars(Q, _, []) --> [Q], !.
 wide_lit_chars(_, Loc, _) -->
     ['\n'], !,
@@ -373,6 +386,9 @@ wide_lit_chars(_, Loc, _) -->
 wide_lit_chars(Q, Loc, [V|Vs]) -->
     ['\\'], !,
     wide_escape(Loc, V),
+    wide_lit_chars(Q, Loc, Vs).
+wide_lit_chars(Q, Loc, [K|Vs]) -->
+    utf8_char(K), !,
     wide_lit_chars(Q, Loc, Vs).
 wide_lit_chars(Q, Loc, [K|Vs]) -->
     [C], !,
@@ -453,6 +469,22 @@ char_value([], B, V, _) :-
 char_value([_|_], _, _, Loc) :- multi_char_error(Loc).
 
 multi_char_error(Loc) :- loc_error(Loc, 'multi-character constant', []).
+
+% utf8_char(-Code)//: the next bytes are the UTF-8 encoding of Code, of
+% two to four bytes.
+utf8_char(K) -->
+    [C0], { char_code(C0, B0), B0 >= 0xC2, B0 =< 0xF4,
+            ( B0 < 0xE0 -> N = 1, K0 is B0 /\ 0x1F
+            ; B0 < 0xF0 -> N = 2, K0 is B0 /\ 0x0F
+            ; N = 3, K0 is B0 /\ 0x07 ) },
+    utf8_continuation(N, K0, K),
+    { utf8_bytes(K, Bs), length(Bs, L), L =:= N + 1 }.   % not overlong
+
+utf8_continuation(0, K, K) --> !.
+utf8_continuation(N, K0, K) -->
+    [C], { char_code(C, B), B /\ 0xC0 =:= 0x80, K1 is K0 << 6 \/ (B /\ 0x3F),
+           N1 is N - 1 },
+    utf8_continuation(N1, K1, K).
 
 % utf8_bytes(+Code, -Bytes): Bytes is the UTF-8 encoding of Code.
 utf8_bytes(K, [K]) :- K < 128, !.
@@ -575,6 +607,27 @@ keyword('__alignof', alignof).
 keyword('__alignof__', alignof).
 keyword('__int128', int128).
 keyword('__thread', thread_local).
+
+%! c23_tokens(+Tokens0, -Tokens) is det.
+%
+%  Tokens are Tokens0 read as C23, where bool, true, false, nullptr,
+%  static_assert, alignas, alignof and thread_local are keywords (C23
+%  6.4.1p1); C17 spells the type-like ones _Bool, _Static_assert, ...
+%  and has no true, false or nullptr keywords. main applies it when
+%  NANOFIL_STD is c23 (nanofil-cc sets it for -std=c23 or gnu23).
+c23_tokens(Ts0, Ts) :- maplist(c23_token, Ts0, Ts).
+
+c23_token(tok(id(A), Loc), tok(kw(K), Loc)) :- c23_keyword(A, K), !.
+c23_token(T, T).
+
+c23_keyword(bool, bool).
+c23_keyword(true, true).
+c23_keyword(false, false).
+c23_keyword(nullptr, nullptr).
+c23_keyword(static_assert, static_assert).
+c23_keyword(alignas, alignas).
+c23_keyword(alignof, alignof).
+c23_keyword(thread_local, thread_local).
 
 % loc_error(+Loc, +Format, +Args): throw a nanofil_error/1 located at Loc.
 loc_error(File:Line, Fmt, Args) :-

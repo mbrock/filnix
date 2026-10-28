@@ -92,7 +92,7 @@ file_tokens(File, Env0, Env, Tokens) :-
 read_source(File, PpTokens) :-
     (   source_cache(File, PpTokens0)
     ->  PpTokens = PpTokens0
-    ;   phrase_from_file(seq(Cs), File),
+    ;   phrase_from_file(seq(Cs), File, [type(binary)]),
         once(source_tokens(Cs, File:1, PpTokens)),
         assertz(source_cache(File, PpTokens))
     ).
@@ -188,6 +188,9 @@ block_comment(_, _) -->
 
 % spelling(-Chars)//: Chars is the spelling of one preprocessing token,
 % the longest that matches.
+spelling([u, '8', '"'|Cs]) -->              % C11 6.4.5: u8"..."
+    [u, '8', '"'], !,
+    quoted('"', Cs).
 spelling([P, Q|Cs]) -->
     [P, Q], { memberchk(P, ['L', u, 'U']), memberchk(Q, ['"', '\'']) }, !,
     quoted(Q, Cs).

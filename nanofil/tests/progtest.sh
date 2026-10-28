@@ -8,7 +8,10 @@
 # a "// signatures" line, nanofil must also give each function the
 # fast-entry signature clang gives it (exported pizlonatedFI<Sig>_<name>): a
 # wrong one still works through the generic entries, so only this sees it.
-# NANOFIL_OPT=-O turns on nanofil's middle end.
+# A "// cflags: ..." line passes those flags to clang, and nanofil
+# compiles clang's preprocessing with them, as nanofil-cc does (with
+# NANOFIL_STD=c23 for -std=c23 or gnu23). NANOFIL_OPT=-O turns on nanofil's
+# middle end.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 src="$here/../src"
@@ -60,6 +63,9 @@ for f in "$@"; do
   mkdir -p "$d"
   read -r -a args <<<"$(sed -n 's|^// args: ||p' "$f")"
   link=$(sed -n 's|^// link: ||p' "$f")
+  read -r -a cflags <<<"$(sed -n 's|^// cflags: ||p' "$f")"
+  input=$f std=c17
+  if [[ " ${cflags[*]} " =~ \ -std=(c|gnu)(23|2x)\  ]]; then std=c23; fi
   libs=()
   outcome=reference-error
   reference_failed=0
@@ -69,9 +75,13 @@ for f in "$@"; do
   fi
   # Attempt nanofil too when the oracle fails; retain both diagnostics,
   # but never call that a measured rejection or a differential pass.
-  if ! "$filcc" -O1 -w -o "$d/clang" "$f" "${libs[@]}" -lm; then reference_failed=1; fi
+  if [ ${#cflags[@]} != 0 ]; then
+    input=$d/$name.i
+    "$filcc" "${cflags[@]}" -E -o "$input" "$f"
+  fi
+  if ! "$filcc" "${cflags[@]}" -O1 -w -o "$d/clang" "$f" "${libs[@]}" -lm; then reference_failed=1; fi
   outcome=reject
-  if (cd "$src" && timeout "${COMPILE_TIMEOUT:-20}" "$nanofil" ${NANOFIL_OPT:-} cc "$f" </dev/null) >"$d/n.s"; then
+  if (cd "$src" && NANOFIL_STD=$std timeout "${COMPILE_TIMEOUT:-20}" "$nanofil" ${NANOFIL_OPT:-} cc "$input" </dev/null) >"$d/n.s"; then
     :
   else
     rc=$?
@@ -85,7 +95,7 @@ for f in "$@"; do
   [[ $reference_failed == 0 ]] || exit 1
   outcome=pass
   if grep -q '^// signatures' "$f"; then
-    "$filcc" -O1 -w -S -o "$d/c.s" "$f"
+    "$filcc" "${cflags[@]}" -O1 -w -S -o "$d/c.s" "$f"
     for s in n c; do
       grep -oE 'globl[[:space:]]+pizlonatedFI[0-9]+_[A-Za-z0-9_]+' "$d/$s.s" | awk '{print $2}' | sort >"$d/$s.sigs" || true
     done

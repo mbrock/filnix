@@ -60,11 +60,11 @@
     Env as its last two arguments, so it threads through foldl/4,6.
 */
 :- module(c_types, [empty_env/1, specs_type/4, apply_declarator/5,
-                    type_size_align/4, complete_type/2, int_type/1, int_info/3,
+                    type_size_align/4, arith_size/3, classify_builtin/1, complete_type/2, int_type/1, int_info/3,
                     integer_promotion/2, usual_arith_conversion/3,
                     float_type/1, arithmetic_type/1, default_promotion/2,
                     constant_value/4, const_convert/4, float_literal/3,
-                    float_builtin/3, libm_builtin/2,
+                    float_builtin/3, libm_builtin/2, object_size/4, compatible_type/2,
                     convert_int/3, const_value/4, pp_value/2, num_type/3,
                     scalar_type/1, type_class/2, member_type_offset/5, type_name_type/4,
                     lookup_ordinary/3, bind_ordinary/4, env_scope/3,
@@ -87,7 +87,7 @@
 % Documentation is a relation of the module, doc(Head, Det, Props)
 % (docs/dterm.md); tests/unit.pl runs every example.
 :- discontiguous(doc/3).
-:- use_module(c_parse, [c_operator/4, compound_assignment/2]).
+:- use_module(c_parse, [c_operator/4, compound_assignment/2, c_constant_expression/2]).
 
 %% Environment
 
@@ -172,7 +172,8 @@ declarator_type(Specs, Base, Storage, init(dcl(some(Name), SyntaxType, Asm), Ini
     reflect_type(type(Specs, SyntaxType), Type, Env1, Reflected),
     bind_ordinary(qtype(Name), Reflected, Env1, Env2),
     (   Storage == typedef
-    ->  bind_ordinary(Name, typedef(Type), Env2, Env),
+    ->  bind_ordinary(Name, typedef(Type), Env2, Env3),
+        transparent_typedef(Specs, Type, Env3, Env),
         Decl = none
     ;   Env = Env2,
         Decl = d(Name, Type, Storage, Asm, Init)
@@ -188,6 +189,10 @@ reflect_type(type(Specs, Syntax), Type, Env, Reflected) :-
 reflect_declarator(base, Specs, Type, Env, Reflected) :-
     ( memberchk(tname(Name), Specs), lookup_ordinary(Env, qtype(Name), T)
     -> Base = T
+    ; memberchk(typeof(expr(E)), Specs), expression_type(E, Env, T)
+    -> Base = T
+    ; memberchk(typeof(type(TN)), Specs), type_name_type(TN, T0, Env, _)
+    -> reflect_type(TN, T0, Env, Base)
     ; Base = Type
     ),
     findall(Q, member(qual(Q), Specs), Qs), qualify(Qs, Base, Reflected).
@@ -207,7 +212,8 @@ reflect_param_types(params(Params, _), Ts, Env, RTs) :-
 reflect_param_type(Env, param(Specs, dcl(_, Syntax, _)), T, RT) :-
     parameter_syntax(Syntax, Adjusted),
     reflect_type(type(Specs, Adjusted), T, Env, R0),
-    value_type(R0, RT).
+    value_type(R0, R1),
+    ( transparent_first(R1, Env, _, RFirst) -> RT = RFirst ; RT = R1 ).
 
 parameter_syntax(array(S, _), ptr(S, [])) :- !.
 parameter_syntax(func(S, P), ptr(func(S, P), [])) :- !.
@@ -299,11 +305,41 @@ named_type(tname(Name), Type, Env, Env) :-
     (   lookup_ordinary(Env, Name, typedef(Type0)) -> Type = Type0
     ;   Type = bad('unknown typedef')
     ).
-named_type(typeof(_), bad('typeof'), Env, Env).
+named_type(typeof(Arg), Type, Env0, Env) :-
+    typeof_type(Arg, Type, Env0, Env).
+
 named_type(su(Kind, Tag, Members, Attrs), Type, Env0, Env) :-
     su_type(Members, Kind, Tag, Attrs, Type, Env0, Env).
 named_type(enum(Tag, Enumerators), Type, Env0, Env) :-
     enum_type(Enumerators, Tag, Type, Env0, Env).
+
+doc(typeof_type(+Arg, -Type, +Env0, -Env), det, [
+    Arg: "a typeof specifier's argument: expr(E) or type(TypeName)",
+    Type: "the unqualified type it names, as code generation has it",
+    Env0: "the scope it is read in",
+    Env: "Env0 with any struct, union or enum TypeName defines",
+    "The type of expression E, which is not evaluated, or of TypeName",
+    "(GNU typeof, C23 typeof). An array or function keeps its type: no",
+    "conversion applies. Reflection (reflect_type/4) keeps its",
+    "qualifiers. A variably modified type would need E evaluated for its",
+    "size, and is refused.",
+    cites('C23 6.7.2.5p4'),
+    example(( empty_env(E0), bind_ordinary(a, var(none, array(int, 4)), E0, E),
+              typeof_type(expr(id(a)), T, E, _) ),
+            T = array(int, 4)),
+    example(( empty_env(E0), typeof_type(expr(bin(add, num(1, none-dec), chr(65))), T, E0, _) ),
+            T = int)
+]).
+typeof_type(expr(E), Type, Env, Env) :-
+    (   expression_type(E, Env, T0)
+    ->  (   vm_type(T0) -> Type = bad('typeof a variably modified type')
+        ;   unqualified(T0, Type)
+        )
+    ;   Type = bad('typeof an expression that cannot be typed')
+    ).
+typeof_type(type(TN), Type, Env0, Env) :-
+    type_name_type(TN, Type0, Env0, Env),
+    ( vm_type(Type0) -> Type = bad('typeof a variably modified type') ; Type = Type0 ).
 
 % keyword_type(+Keywords, -Type): the type a list of type keywords names.
 keyword_type([], int).   % implicit int, as in old headers' K&R style
@@ -421,9 +457,14 @@ tag_bound(some(Name), Value, Tags0, Tags) :- put_assoc(Name, Tags0, Value, Tags)
 % Name is some(Field), or none for an anonymous member or an unnamed
 % bit-field. Reflected are the q(Name, QType) of the named members,
 % QType keeping the qualifiers that Type drops.
-member_decl(static_assert(_, _, _), [], [], Env, Env).
-member_decl(field(Specs, dcl(Name, SyntaxType, _), Width), Fields,
+member_decl(static_assert(Loc, Expr, _), [], [], Env, Env) :-    % C11 6.7.10p2
+    (   catch(const_value(Expr, Env, V, _), not_constant, fail)
+    ->  ( V =\= 0 -> true ; sema_error(Loc, 'static assertion failed', []) )
+    ;   sema_error(Loc, 'static assertion is not a constant', [])
+    ).
+member_decl(field(Specs0, dcl(Name, SyntaxType, _), Width), Fields,
             Reflected, Env0, Env) :-
+    natural_alignments(Specs0, SyntaxType, Env0, Specs),
     specs_type(Specs, Base, Env0, Env1),
     apply_declarator(SyntaxType, Base, Type, Env1, Env),
     (   bad_type(Type, Why) -> Fields = [bad(Why)], Reflected = []
@@ -440,6 +481,62 @@ member_decl(field(Specs, dcl(Name, SyntaxType, _), Width), Fields,
             Reflected = [q(Name, QType)]
         )
     ).
+
+doc(natural_alignments(+Specs0, +SyntaxType, +Env, -Specs), det, [
+    Specs0: "a member's specifiers, attributes included",
+    SyntaxType: "its declarator's type syntax",
+    Env: "the scope it is declared in",
+    Specs: "Specs0 without the alignment requests its type already meets",
+    "An _Alignas or aligned(N) attribute no stronger than the member",
+    "type's own alignment changes nothing: _Alignas cannot weaken it, nor",
+    "can aligned without packed, so the request is dropped. glibc's and",
+    "clang's max_align_t align its long long and long double members",
+    "so. A stronger request stays, and the type is refused (bad).",
+    cites('C11 6.7.5p4'),
+    cites('GCC manual, Common Type Attributes, aligned'),
+    example(( empty_env(E),
+              natural_alignments([tspec(long), tspec(double),
+                                  attr([group([id('__aligned__'), group([int(16, none-dec)])])])],
+                                 base, E, S) ),
+            S = [tspec(long), tspec(double)]),
+    example(( empty_env(E),
+              natural_alignments([tspec(int), alignas(expr(num(8, none-dec)))], base, E, S) ),
+            S = [tspec(int), alignas(expr(num(8, none-dec)))])
+]).
+natural_alignments(Specs0, SyntaxType, Env, Specs) :-
+    partition(alignment_request, Specs0, Requests, Others),
+    (   Requests \== [],
+        catch(( specs_type(Others, Base, Env, Env1),
+                apply_declarator(SyntaxType, Base, Type, Env1, Env2),
+                type_size_align(Type, Env2, _, Natural) ), _, fail),
+        \+ ( member(R, Requests), \+ request_met(R, Natural, Env2) )
+    ->  exclude(alignment_request, Specs0, Specs)
+    ;   Specs = Specs0
+    ).
+
+alignment_request(alignas(_)).
+alignment_request(attr(Tokens)) :- aligned_attr(Tokens).
+
+% request_met(+Request, +Natural, +Env): the alignment Request asks for
+% is a constant no greater than Natural.
+request_met(alignas(type(TN)), Natural, Env) :-
+    type_name_type(TN, T, Env, Env1), type_size_align(T, Env1, _, A), A =< Natural.
+request_met(alignas(expr(E)), Natural, Env) :-
+    catch(const_value(E, Env, A, _), not_constant, fail), A =< Natural.
+request_met(attr([group(Attr)]), Natural, Env) :-   % __attribute__((...))
+    request_met(attr(Attr), Natural, Env).
+request_met(attr([Word, group(Ts)]), Natural, Env) :-
+    memberchk(Word, [id(aligned), id('__aligned__')]),
+    phrase(flat_tokens(Ts), Flat),
+    catch(c_constant_expression(Flat, E), nanofil_error(_), fail),
+    catch(const_value(E, Env, A, _), not_constant, fail), A =< Natural.
+
+% flat_tokens(+Tokens)//: attribute Tokens, groups parenthesized again,
+% as c_lex tokens.
+flat_tokens([]) --> [].
+flat_tokens([group(Ts)|Rest]) --> !,
+    [tok(p('('), attr)], flat_tokens(Ts), [tok(p(')'), attr)], flat_tokens(Rest).
+flat_tokens([T|Rest]) --> [tok(T, attr)], flat_tokens(Rest).
 
 % bitfield_width(+Expr, +Name, +Type, +Env, -W): a bit-field Name of
 % Type may have the width Expr, of value W: an integer constant no wider
@@ -702,10 +799,40 @@ param_types(params(Params, Variadic), Types, Variadic, Env0, Env) :-
 param_type(param(Specs, dcl(Name, SyntaxType, _)), Type, Env0, Env) :-
     specs_type(Specs, Base, Env0, Env1),
     apply_declarator(SyntaxType, Base, Type0, Env1, Env2),
-    type_adjusted(Type0, Type),
+    type_adjusted(Type0, Type1),
+    ( transparent_first(Type1, Env2, First, _) -> Type = First ; Type = Type1 ),
     (   Name = some(N) -> bind_ordinary(N, var(none, Type), Env2, Env)
     ;   Env = Env2
     ).
+
+doc(transparent_first(+Union, +Env, -First, -Reflected), semidet, [
+    Union: "a parameter's type, a union marked transparent_union",
+    Env: "the scope",
+    First: "the type of its first member, which the parameter has instead",
+    Reflected: "First with its qualifiers, as reflection keeps them",
+    "GNU C passes a transparent union argument as its first member, and",
+    "accepts an argument of any member's type. nanofil supports the",
+    "unions glibc's socket functions take with _GNU_SOURCE, whose members",
+    "are all pointers: the parameter is a pointer, and any member's",
+    "pointer converts to it. A union with a non-pointer member stays a",
+    "union, so an argument of a member's type is refused.",
+    cites('GCC manual, Common Type Attributes, transparent_union')
+]).
+transparent_first(union(Id), e(_, _, Defs, _), First, Reflected) :-
+    get_assoc(transparent(Id), Defs, t),
+    get_assoc(Id, Defs, def(union, [m(_, First, 0)|Ms], _, _)),
+    First = ptr(_),
+    \+ ( member(m(_, T, _), Ms), T \= ptr(_) ),
+    get_assoc(qmembers(Id), Defs, [q(_, Reflected0)|_]),
+    value_type(Reflected0, Reflected).
+
+% transparent_typedef(+Specs, +Type, +Env0, -Env): a typedef of a union
+% with the transparent_union attribute marks the union so.
+transparent_typedef(Specs, union(Id), e(O, T, Defs0, N), e(O, T, Defs, N)) :-
+    member(attr(Tokens), Specs), is_list(Tokens), attr_word(Tokens, Word),
+    memberchk(Word, [transparent_union, '__transparent_union__']), !,
+    put_assoc(transparent(Id), Defs0, t, Defs).
+transparent_typedef(_, _, Env, Env).
 
 % type_adjusted(+Type0, -Type): a parameter declared with Type0 has
 % Type. Every other type is its own adjustment: a default case over the
@@ -722,6 +849,24 @@ type_adjusted(T, T).
 type_name_type(type(Specs, SyntaxType), Type, Env0, Env) :-
     specs_type(Specs, Base, Env0, Env1),
     apply_declarator(SyntaxType, Base, Type, Env1, Env).
+
+doc(arith_size(+Elem, +Env, -Size), det, [
+    Elem: "the pointed-to type of a pointer in arithmetic",
+    Env: "the scope",
+    Size: "the bytes one step of the pointer moves",
+    "The size of Elem, as type_size_align/4 gives it (and throws). GNU C",
+    "also lets a pointer to void step by one byte, as clang does with a",
+    "warning; dash's stackblock() + n relies on it. ISO C requires a",
+    "complete object type.",
+    cites('C11 6.5.6p2'),
+    cites('GCC manual, Pointer Arithmetic'),
+    example(( empty_env(E), arith_size(void, E, S) ), S = 1),
+    example(( empty_env(E), arith_size(long, E, S) ), S = 8)
+]).
+arith_size(Elem, Env, Size) :-
+    (   unqualified(Elem, void) -> Size = 1
+    ;   type_size_align(Elem, Env, Size, _)
+    ).
 
 doc(vm_type(+T), semidet, [
     T: "a type",
@@ -1191,13 +1336,15 @@ float_builtin('__builtin_huge_val', double, 0x7ff0000000000000).
 float_builtin('__builtin_inf', double, 0x7ff0000000000000).
 float_builtin('__builtin_huge_valf', float, 0x7f800000).
 float_builtin('__builtin_inff', float, 0x7f800000).
+float_builtin('__builtin_huge_vall', ldouble, 0x7fff8000000000000000).
+float_builtin('__builtin_infl', ldouble, 0x7fff8000000000000000).
 float_builtin(Name, T, V) :- nan_builtin(Name, T, V).
 
 doc(nan_builtin(?(Name), ?(Type), ?(Bits)), nondet, [
     Name: "a GNU NaN builtin",
-    Type: "float or double",
-    Bits: "the IEEE bits of its value",
-    "__builtin_nan(\"\") and __builtin_nanf(\"\"), glibc's NAN, are",
+    Type: "float, double or long double",
+    Bits: "the IEEE bits of its value (x87's 80 for long double)",
+    "__builtin_nan(\"\"), __builtin_nanf(\"\") and __builtin_nanl(\"\"), glibc's NAN, are",
     "constant expressions: the quiet NaN of Type with a zero payload, as",
     "nan(\"\") is. Only the empty string is accepted; a payload string",
     "would name other bits.",
@@ -1208,6 +1355,7 @@ doc(nan_builtin(?(Name), ?(Type), ?(Bits)), nondet, [
 ]).
 nan_builtin('__builtin_nan', double, 0x7ff8000000000000).
 nan_builtin('__builtin_nanf', float, 0x7fc00000).
+nan_builtin('__builtin_nanl', ldouble, 0x7fffc000000000000000).
 
 doc(const_convert(+V, +From, +To, ?(W)), semidet, [
     V: "a constant's value: an integer, float bits, or ub",
@@ -1294,6 +1442,7 @@ doc(folded(+XV, +Env, -V), semidet, [
 folded(val(_, int(V)), _, V).                               % 6.4.4.1, 6.4.4.4
 folded(val(T, float(Cs)), _, V) :- float_literal(Cs, V, T).  % 6.4.4.2
 folded(val(_, builtin(Name, [])), _, V) :- float_builtin(Name, _, V).
+folded(val(_, builtin(Name, Args)), Env, V) :- object_size(Name, Args, Env, V).
 folded(val(_, un(not, XV)), Env, V) :-                      % 6.5.3.3p5
     operand_value(XV, Env, V0, T0),
     const_truth(V0, T0, B),
@@ -1322,18 +1471,18 @@ folded(val(T0, cast(_, XV)), Env, V) :-                     % 6.5.4p5
     unqualified(T0, T), arithmetic_type(T),
     operand_value(XV, Env, V0, From),
     const_convert(V0, From, T, V).
-folded(val(_, sizeof(type(Specs, Decl))), Env, V) :- !,     % 6.5.3.4p2
-    type_name_type(type(Specs, Decl), T, Env, _),
+folded(val(_, sizeof(type(Specs, Decl))), Env0, V) :- !,    % 6.5.3.4p2
+    type_name_type(type(Specs, Decl), T, Env0, Env),
     catch(type_size_align(T, Env, V, _), bad(_), fail).
 folded(val(_, sizeof(X)), Env, V) :-
     tree_type(X, T),
     catch(type_size_align(T, Env, V, _), bad(_), fail).
 folded(val(_, alignof(TypeName)), Env, V) :-                % 6.5.3.4p3
-    type_name_type(TypeName, T, Env, _),
-    catch(type_size_align(T, Env, _, V), bad(_), fail).
+    type_name_type(TypeName, T, Env, Env1),
+    catch(type_size_align(T, Env1, _, V), bad(_), fail).
 folded(val(_, offsetof(TypeName, Path)), Env, V) :-         % 7.19p3
-    type_name_type(TypeName, T, Env, _),
-    offset_path(Path, T, Env, 0, V).
+    type_name_type(TypeName, T, Env, Env1),
+    offset_path(Path, T, Env1, 0, V).
 folded(val(_, comma(XA, XV)), Env, V) :- folded(XA, Env, _), folded(XV, Env, V).
 
 % operand_value(+XV, +Env, -V, -T): value tree XV folds to V, of
@@ -1736,6 +1885,13 @@ elab(call(id(Name), Args), Env, X) :-
     elab(call(id(F), Args), Env, X).
 elab(call(id(Name), Args), Env, X) :-
     \+ lookup_ordinary(Env, Name, _),
+    checking_builtin(Name, Chk, Plain), !,
+    (   lookup_ordinary(Env, Chk, _) -> elab(call(id(Chk), Args), Env, X)
+    ;   unchecked_call(Plain, Args, Env, Call), lookup_ordinary(Env, Plain, _),
+        elab(Call, Env, X)
+    ).
+elab(call(id(Name), Args), Env, X) :-
+    \+ lookup_ordinary(Env, Name, _),
     atomic_builtin(Name, Args, Env, R), !,
     (   R = expr(E) -> elab(E, Env, X)
     ;   R = builtin(T), X = val(T, builtin(Name, Args))
@@ -1766,6 +1922,8 @@ elab(sizeof_expr(E), Env, val(ulong, sizeof(X))) :-     % 6.5.3.4p1
 elab(sizeof_type(TN), _, val(ulong, sizeof(TN))).
 elab(alignof(TN), _, val(ulong, alignof(TN))).
 elab(offsetof(TN, Path), _, val(ulong, offsetof(TN, Path))).
+elab(label_addr(Name), Env, X) :-                          % GNU &&label
+    label_value(Name, Env, E), elab(E, Env, X).
 elab(bin(Op, A, B), Env, val(T, bin(Op, XA, XB))) :-
     operand(A, Env, XA, TA), operand(B, Env, XB, TB),
     expression_binary_type(Op, TA, TB, T0), env_int_type(Env, T0, T).
@@ -1925,6 +2083,79 @@ library_builtin('__builtin_memcpy', memcpy).
 library_builtin('__builtin_memmove', memmove).
 library_builtin('__builtin_memset', memset).
 
+doc(label_value(+Name, +Env, -E), semidet, [
+    Name: "a label whose address GNU C's &&Name takes",
+    Env: "the scope of the function that defines it, where c_lower bound",
+    "label_addr(Name) to the label's number N (1, 2, ... in the order the",
+    "function takes the addresses)",
+    E: "the expression (void *)N, which &&Name stands for",
+    "A label's value is a void * that only goto * of the same function",
+    "uses. nanofil gives it no capability: the address N is the label's",
+    "number, an address constant (so static tables of labels work), and",
+    "goto * dispatches on it among the function's address-taken labels,",
+    "trapping on any other value. Values of labels of different",
+    "functions may compare equal.",
+    cites('GCC manual, Labels as Values'),
+    example(( empty_env(E0), bind_ordinary(label_addr(l), 3, E0, E),
+              label_value(l, E, X) ),
+            X = cast(type([tspec(void)], ptr(base, [])), num(3, none-dec))),
+    fails(( empty_env(E), label_value(l, E, _) ))
+]).
+label_value(Name, Env, cast(type([tspec(void)], ptr(base, [])), num(N, none-dec))) :-
+    lookup_ordinary(Env, label_addr(Name), N).
+
+doc(checking_builtin(?(Name), ?(Chk), ?(Plain)), nondet, [
+    Name: "a GNU object-size checking builtin, which glibc's _FORTIFY_SOURCE headers call",
+    Chk: "the library function that checks",
+    Plain: "the function it checks",
+    "An undeclared Name called is a call of Chk with the same arguments",
+    "when Chk is declared (glibc declares the printf family's). Else a",
+    "string or memory function's last argument is the destination's",
+    "object size, and when it folds to (size_t)-1, unknown, the call is",
+    "one of Plain without it, as GCC and clang lower it; any other size",
+    "is refused. Fil-C checks every access anyway.",
+    cites('GCC manual, Object Size Checking'),
+    example(checking_builtin('__builtin___memcpy_chk', C, P),
+            (C = '__memcpy_chk', P = memcpy)),
+    fails(checking_builtin('__builtin_memcpy', _, _))
+]).
+checking_builtin(Name, Chk, Plain) :-
+    atom(Name),
+    atom_concat('__builtin___', Rest, Name), atom_concat(Plain, '_chk', Rest),
+    atom_concat('__', Rest, Chk).
+
+% unchecked_call(+Plain, +Args, +Env, -Call): Call is Plain of Args but
+% the last, a constant object size of (size_t)-1, for a memory or string
+% function.
+unchecked_call(Plain, Args, Env, call(id(Plain), Args0)) :-
+    memberchk(Plain, [memcpy, memmove, mempcpy, memset, strcpy, stpcpy,
+                      strncpy, stpncpy, strcat, strncat]),
+    append(Args0, [Size], Args),
+    catch(const_value(Size, Env, V, _), not_constant, fail),
+    V =:= 0xffffffffffffffff.
+
+doc(object_size(+Name, +Args, +Env, -V), semidet, [
+    Name: "__builtin_object_size or __builtin_dynamic_object_size",
+    Args: "its pointer and its constant type, 0 to 3",
+    Env: "the scope the type is read in",
+    V: "the size it answers: (size_t)-1 for types 0 and 1, 0 for 2 and 3",
+    "nanofil always answers that the size is unknown, which GCC",
+    "documents as a correct answer for any pointer; the pointer is not",
+    "evaluated. Fails unless the type is a constant 0 to 3.",
+    cites('GCC manual, Object Size Checking'),
+    example(( empty_env(E), object_size('__builtin_object_size', [id(p), num(1, none-dec)], E, V) ),
+            V = 0xffffffffffffffff),
+    example(( empty_env(E), object_size('__builtin_dynamic_object_size', [id(p), num(2, none-dec)], E, V) ),
+            V = 0),
+    fails(( empty_env(E), object_size('__builtin_object_size', [id(p), num(4, none-dec)], E, _) ))
+]).
+object_size(Name, [_, Type], Env, V) :-
+    memberchk(Name, ['__builtin_object_size', '__builtin_dynamic_object_size']),
+    catch(const_value(Type, Env, K, _), not_constant, fail),
+    (   memberchk(K, [0, 1]) -> V = 0xffffffffffffffff
+    ;   memberchk(K, [2, 3]) -> V = 0
+    ).
+
 doc(atomic_builtin(+Name, +Args, +Env, -R), semidet, [
     Name: "a GNU __atomic builtin",
     Args: "its argument expressions",
@@ -1997,6 +2228,13 @@ doc(builtin_type(?(Name), ?(Type)), nondet, [
     example(builtin_type('__builtin_ctzll', T), T = int),
     example(builtin_type('__builtin_bswap16', T), T = ushort),
     example(builtin_type('__builtin_bswap64', T), T = ulong),
+    "__builtin_isnan(x) is nonzero for a NaN of any floating type (an",
+    "integer converts to double first). __builtin_flt_rounds() is",
+    "FLT_ROUNDS, the current rounding direction: 0 toward zero, 1 to",
+    "nearest, 2 upward, 3 downward.",
+    cites('C11 5.2.4.2.2p8'),
+    cites('C11 7.12.3.4p2'),
+    example(builtin_type('__builtin_isnan', T), T = int),
     fails(builtin_type('__builtin_ctzlll', _))
 ]).
 builtin_type('__builtin_va_start', void).
@@ -2012,6 +2250,34 @@ builtin_type('__builtin_bswap16', ushort).
 builtin_type('__builtin_bswap32', uint).
 builtin_type('__builtin_bswap64', ulong).
 builtin_type(Name, double) :- libm_builtin(Name, _).
+builtin_type('__builtin_isnan', int).
+builtin_type('__builtin_flt_rounds', int).
+builtin_type('__builtin_object_size', ulong).
+builtin_type('__builtin_dynamic_object_size', ulong).
+builtin_type(Name, int) :- classify_builtin(Name).
+
+doc(classify_builtin(?(Name)), nondet, [
+    Name: "a type-generic classification builtin glibc's math.h uses",
+    "__builtin_isinf_sign(x) is 1 for +inf, -1 for -inf, else 0;",
+    "__builtin_isfinite, __builtin_isnormal and __builtin_signbit are 1",
+    "or 0; __builtin_fpclassify(Nan, Inf, Normal, Subnormal, Zero, x) is",
+    "the argument for x's class. A float classifies as itself, an integer",
+    "or double as a double; a long double is refused (its narrowing to",
+    "double would change its class), except by the signbit builtins:",
+    "__builtin_signbitl(x) is __builtin_signbit((long double)x), and",
+    "__builtin_signbitf(x) __builtin_signbit((float)x).",
+    cites('C11 7.12.3'),
+    cites('GCC manual, Other Built-in Functions'),
+    example(classify_builtin('__builtin_fpclassify')),
+    fails(classify_builtin('__builtin_isinf'))
+]).
+classify_builtin('__builtin_isinf_sign').
+classify_builtin('__builtin_isfinite').
+classify_builtin('__builtin_isnormal').
+classify_builtin('__builtin_signbit').
+classify_builtin('__builtin_signbitl').
+classify_builtin('__builtin_signbitf').
+classify_builtin('__builtin_fpclassify').
 
 doc(libm_builtin(?(Name), ?(F)), nondet, [
     Name: "a GNU math builtin",
@@ -2381,12 +2647,16 @@ conditional_type(A-B, Env, T) :- arms(A, B, Env, _, _, T).
 % arms(+A, +B, +Env, -XA, -XB, -T): A and B, elaborated as XA and XB,
 % used for their values, are ?: arms giving the result type T.
 arms(A, B, Env, XA, XB, T) :-
-    arm(A, Env, XA, TA, NA), arm(B, Env, XB, TB, NB),
+    operand(A, Env, XA, TA), operand(B, Env, XB, TB),
+    arm_nullness(TB, XA, Env, NA), arm_nullness(TA, XB, Env, NB),
     arms_type(TA, NA, TB, NB, T).
 
-arm(E, Env, XV, T, N) :-
-    operand(E, Env, XV, T),
-    nullness(XV, Env, N).
+% arm_nullness(+Other, +XV, +Env, -N): N is arm XV's nullness/3 when the
+% other arm has the pointer type Other, the only case arms_type/5 reads
+% it; else value. Folding every arm made nested ?: (gnulib's intprops)
+% fold each subexpression once per enclosing ?:.
+arm_nullness(ptr(_), XV, Env, N) :- !, nullness(XV, Env, N).
+arm_nullness(_, _, _, value).
 
 doc(assigned(+E, +Env, +To, +Loc), det, [
     E: "an expression that can be typed",
@@ -2589,6 +2859,7 @@ fault(E, Env, Format, Args) :-
     ).
 
 fault_(id(Name), _, 'undeclared identifier ~w', [Name]).
+fault_(label_addr(Name), _, 'the address of label ~w outside its function', [Name]).
 fault_(index(A, I), Env, F, As) :- fault_(un(deref, bin(add, A, I)), Env, F, As).
 fault_(un(Op, E), Env, F, As) :-
     (   untyped(E, Env) -> fault_(E, Env, F, As)
@@ -2621,6 +2892,9 @@ fault_(cast(TN, E), Env, F, As) :-
 fault_(call(id(Name), _), Env, F, [Name]) :-
     \+ lookup_ordinary(Env, Name, _), atomic_name(Name), !,
     F = '~w needs a pointer to an integer or pointer and a constant memory order it supports (relaxed, consume, acquire or seq_cst for a load; relaxed, release or seq_cst for a store)'.
+fault_(call(id(Name), _), Env, F, [Name, Chk, Plain]) :-
+    \+ lookup_ordinary(Env, Name, _), checking_builtin(Name, Chk, Plain), !,
+    F = '~w needs ~w declared, or ~w declared and an object size of (size_t)-1'.
 fault_(call(Fn, Args), Env, F, As) :-
     \+ ( Fn = id(Name), \+ lookup_ordinary(Env, Name, _),
          ( builtin_type(Name, _) ; float_builtin(Name, _, _) ) ),

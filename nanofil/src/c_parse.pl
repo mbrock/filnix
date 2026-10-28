@@ -74,6 +74,7 @@
     | `break` `continue` | |
     | `return(E)` | E may be `none` |
     | `goto(L)` `label(L, S)` | |
+    | `computed_goto(E)` | GNU `goto *E` |
 
     ## Expressions
 
@@ -98,6 +99,7 @@
     | `offsetof(TypeName, Path)` | Path a list of `field(F)` and `index(E)` |
     | `va_arg(A, TypeName)` | `__builtin_va_arg` |
     | `stmtexpr(Block)` | a GNU statement expression |
+    | `label_addr(L)` | GNU `&&L`, the address of label L |
     | `generic(Control, Associations)` | `_Generic`, Associations a list of `assoc(TypeName, E)` and `assoc(default, E)` |
 
     A TypeName is `type(Specs, Type)`.
@@ -838,16 +840,28 @@ statement_body(Env, return(E)) -->
     kw(return), !,
     opt_expr(Env, E),
     expect(';').
-statement_body(_, goto(Label)) -->
+statement_body(Env, S) -->
     kw(goto), !,
     (   token(id(Label0))
-    ->  { Label = Label0 }
-    ;   parse_error('computed goto is not supported')
+    ->  { S = goto(Label0) }
+    ;   punct('*')
+    ->  expr(Env, E), { S = computed_goto(E) }
+    ;   parse_error('expected a label after goto')
     ),
     expect(';').
-statement_body(_, _) -->
+% GNU asm: only the empty compiler barrier, asm volatile("" ::: "memory")
+% with no operands, which dash's INTOFF uses. It emits no instruction,
+% and nanofil moves no memory access across a statement anyway. Any
+% other asm would run code nanofil cannot check, and is refused.
+statement_body(_, null) -->
     kw(asm), !,
-    parse_error('inline asm is not supported').
+    asm_qualifiers,
+    (   punct('('), string_bytes([]),
+        asm_operands, asm_operands, asm_clobbers,
+        punct(')')
+    ->  expect(';')
+    ;   parse_error('inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")')
+    ).
 statement_body(Env, label(Label, S)) -->
     label_start, !,
     [tok(id(Label), _), _],
@@ -855,6 +869,15 @@ statement_body(Env, label(Label, S)) -->
 statement_body(Env, expr(E)) -->
     expr(Env, E),
     expect(';').
+
+asm_qualifiers --> ( kw(volatile) -> asm_qualifiers ; kw(inline) -> asm_qualifiers ; [] ).
+
+% An operand section of an empty barrier: absent, or ':' and no operand.
+asm_operands --> ( punct(':') -> [] ; [] ).
+
+% The clobbers of an empty barrier: absent, or ':' and "memory" or "cc".
+asm_clobbers --> ( punct(':') -> asm_clobber_list ; [] ).
+asm_clobber_list --> ( string_bytes(Bs) -> { atom_codes(A, Bs), memberchk(A, [memory, cc]) }, ( punct(',') -> asm_clobber_list ; [] ) ; [] ).
 
 % opt_expr(+Env, -E)//: an expression, or none before ';' or ')', which
 % stays in the input.
@@ -977,7 +1000,12 @@ unary(Env, E) -->
     (   punct('('), starts_type(Env)
     ->  type_name(Env, Type),
         expect(')'),
-        { E = sizeof_type(Type) }
+        (   punct('{')          % sizeof (T){...}, of a compound literal
+        ->  init_entries(Env, Entries),
+            postfix(Env, complit(Type, list(Entries)), E0),
+            { E = sizeof_expr(E0) }
+        ;   { E = sizeof_type(Type) }
+        )
     ;   unary(Env, E0),
         { E = sizeof_expr(E0) }
     ).
@@ -989,9 +1017,11 @@ unary(Env, alignof(Type)) -->
 unary(Env, E) -->
     kw(extension), !,
     cast(Env, E).
-unary(_, _) -->
+unary(_, label_addr(Label)) -->
     punct('&&'), !,
-    parse_error('label addresses are not supported').
+    (   token(id(Label0)) -> { Label = Label0 }
+    ;   parse_error('expected a label after &&')
+    ).
 unary(Env, E) -->
     primary(Env, P),
     postfix(Env, P, E).
@@ -1062,6 +1092,16 @@ primary(_, _) -->
     }, !,
     { format(atom(Msg), '~w is not supported', [N]) },
     parse_error(Msg).
+% C23's true and false are the bool constants 1 and 0, and nullptr a
+% null pointer constant (C23 6.4.4.5, 6.4.4.6). nanofil gives nullptr
+% the type void *, not nullptr_t: the two convert alike, and only
+% _Generic, which would select void * for it, tells them apart.
+primary(Env, cast(Type, num(V, none-dec))) -->
+    loc(Loc), ( kw(true) -> { V = 1 } ; kw(false) -> { V = 0 } ), !,
+    { phrase(type_name(Env, Type), [tok(kw(bool), Loc)]) }.
+primary(Env, cast(Type, num(0, none-dec))) -->
+    loc(Loc), kw(nullptr), !,
+    { phrase(type_name(Env, Type), [tok(kw(void), Loc), tok(p('*'), Loc)]) }.
 primary(_, id(N)) --> token(id(N)), !.
 primary(_, num(V, S)) --> token(int(V, S)), !.
 primary(_, float(Cs)) --> token(float(Cs)), !.
