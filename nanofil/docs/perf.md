@@ -676,6 +676,31 @@ the same padding. The gate measures layout luck in one large function
 here. Aligning loop heads would be a small emitter change; it has not
 been measured on the other workloads.
 
+A fresh gate run at [`9bcbb67`](https://github.com/mbrock/filnix/commit/9bcbb67ec04d)
+(7 trials, cpu 6, same compiler output; the binaries were relinked) bears
+this out. bzip2 -d is now 3.71 (3.67) in operands mode against 4.17
+(4.20) for `O`, where it was 4.16 against 4.08:
+
+| Workload | `O` (3a) | `O-operands` (3b) |
+| --- | --- | --- |
+| zlib -6 | 3.18 (5.62) 3.14..3.21 | 2.98 (4.64) 2.95..3.01 |
+| zlib -d | 2.50 (4.22) 2.42..2.53 | 2.47 (3.84) 2.39..2.51 |
+| bzip2 -9 | 2.61 (3.61) 2.60..2.62 | 2.41 (3.02) 2.41..2.42 |
+| bzip2 -d | 4.17 (4.20) 4.14..4.17 | 3.71 (3.67) 3.69..3.75 |
+| lz4 -1 | 3.40 (23.11) | 3.27 (22.43) |
+| lz4 -9 | 5.67 (5.87) | 5.50 (5.55) |
+| lz4 -d | 5.40 (17.48) | 5.28 (16.88) |
+| lua int | 3.58 (3.24) 3.52..3.62 | 3.60 (3.04) 3.53..3.64 |
+| lua tab | 3.50 (3.14) | 3.48 (2.96) |
+| lua str | 1.67 (1.92) | 1.64 (1.79) |
+| sqlite | 2.40 (2.47) 2.39..2.41 | 2.27 (2.26) 2.26..2.27 |
+| geomean | 3.27 (4.92) | 3.14 (4.49) |
+
+No workload is slower outside the trials' range (lua int overlaps), and
+the compile cost is now +20% on `sqlite3.c`. Proposed: make
+`--registers=operands` the `-O` default, keeping `function`, `stack` and
+`local` selectable.
+
 ### 4. Inlining small functions
 
 Inline calls to small non-recursive functions before promotion, so the
@@ -688,23 +713,233 @@ middle end's run-by-run refinement (`-O` difftest) and the gates. It
 changes panic origins and stack traces (the inlined access reports the
 caller's frame), an observation change to state and review with it.
 
-### 5. Pointer register allocation — needs review
+### 5. Pointer frame traffic — needs review
 
-Keep `p` addresses, and then lowers, in registers between safepoints.
-Expected: most of the pointer-temp and lower shares, 15–23% of the
-compressors. It is a **safety decision**: a lower held only in a register
-is invisible to the collector. The proposed rule: every `call`
-instruction is a safepoint, with no exemptions (polls, `filc_allocate`,
+The original idea: keep `p` addresses, and then lowers, in registers
+between safepoints. It is a **safety decision**: a lower held only in a
+register is invisible to the collector. The proposed rule was that every
+`call` is a safepoint, with no exemptions (polls, `filc_allocate`,
 ensure-aux and the store-barrier slow path included: an exited thread's
 frames are scanned, and a filcc callee may spill a callee-saved register
-to the unscanned native stack). At each, every live pointer's lower must
-be in its `lowers[]` entry. FUGC does not move objects and allocates
-black, so register copies stay valid after the spill; stale entries only
-extend lifetimes; signals are deferred to polls. The checker must verify
-two more obligations: each live lower's entry symbolically equals its
-register at each safepoint, and lower material never enters a home that
-item 3 treats as scalar. Needs Oracle review of the implementation
-design before it starts, per the root AGENTS.md.
+to the unscanned native stack), and that at each one every live
+pointer's lower is in its `lowers[]` entry. Measurements after 3b change
+the plan.
+
+#### Where the frame traffic is now
+
+Cachegrind on `-O --registers=operands` builds assembled with `-g`, each
+`(%rbp)` access attributed through the emitter's frame layout (slot keys
+per offset: `lower(…)` entries, `storage(pointer,…)` and pointer phi
+shadows, scalar homes left in the frame). Share of all instructions:
+
+| Workload | total | lowers ld | lowers st | addresses ld | addresses st | scalars ld+st | redundant loads in a region |
+| --- | --: | --: | --: | --: | --: | --: | --: |
+| zlib -6 | 9.11G | 8.4% | 6.2% | 7.4% | 4.9% | 6.8% | 10.3% (12.9%) |
+| zlib -d | 0.75G | 8.0% | 6.3% | 7.1% | 4.9% | 19.2% | 14.6% |
+| bzip2 -9 | 14.13G | 7.9% | 4.5% | 7.8% | 4.2% | 3.8% | 8.9% (13.1%) |
+| bzip2 -d | 5.24G | 7.2% | 5.0% | 6.3% | 4.1% | 23.3% | 13.2% (15.9%) |
+| lz4 -9 | 15.76G | 3.7% | 4.2% | 4.0% | 2.6% | 23.2% | 9.7% (9.9%) |
+| lua int | 3.59G | 7.2% | 5.2% | 5.7% | 3.7% | 23.9% | 16.0% (17.9%) |
+| lua tab | 2.90G | 7.4% | 5.4% | 5.9% | 3.9% | 22.8% | 16.4% |
+| lua str | 5.39G | 5.1% | 6.0% | 5.0% | 3.5% | 1.8% | 5.3% |
+
+"Redundant loads in a region" is an upper bound: loads of a frame word
+already loaded or stored earlier in the same region (straight-line code
+between labels, jumps and calls), whatever its class. In brackets, the
+same if the jumps to check-fail blocks did not end a region.
+
+Three findings:
+
+- **Register pressure, not pointer class, is the limit.** Adding pointer
+  address slots to 3a's candidates (scratch experiment; all outputs equal)
+  *adds* instructions: zlib -6 −2.6%, bzip2 -9 +1.4%, bzip2 -d +3.5%,
+  lz4 -9 +0.3%, lua int +0.3%. With seven allocatable registers, pointer
+  homes displace scalar homes. A pointer needs two registers (address
+  and lower). `luaV_execute` maps 211 of its 305 homes and
+  `BZ2_decompress` 277 of 603; the scalar homes left in the frame are
+  their 23–24%.
+- **One excluded function is 23% of lz4 -9.** 3a maps none of
+  `LZ4HC_InsertAndGetWiderMatch`'s 139 homes: the preflight rejects any
+  function with an indexed frame operand, and the function computes
+  `lea D(%rbp,%rax)` into local storage. Scalar homes left in the frame
+  cost 3.58G of lz4 -9's 15.76G there. Item 3c below.
+- **A tenth or more of all instructions reload a frame word in the same
+  region.** Region-local forwarding of frame words needs no register
+  across a call, so it adds no register pressure and no root decision.
+
+So item 5 becomes two steps. 5a forwards frame words within regions,
+which keeps `lowers[]` exactly as the reference has it at every boundary.
+5b, pointers in registers across calls, waits until more registers are
+free (live-range splitting or regional use of the scratch registers),
+because today it loses.
+
+#### 3c. Indexed frame operands
+
+The only indexed `rbp` operands come from `local_check`
+(`filc_amd64.pl`): `lea (8-Aux)(%rbp,%rax),%rdx` and
+`lea -Payload(%rbp,%rax),%rax` after the range check, where `%rax`
+holds the access's constant offset `Off`. The first proposal (accept an
+indexed `lea` whose displacement misses every mapped home and save slot)
+bounds nothing: the address is `rbp+D+X` for any X. Oracle's review
+found that, and a simpler fix with no new trust. When `Off` is in range
+and aligned, the emitter emits `lea (-Payload+Off)(%rbp)` and
+`lea (8-Aux+Off)(%rbp)` after the same check (otherwise the success path
+is unreachable and the indexed form stays). 3a's existing rule for a
+non-indexed `lea` then sees the exact address, and the checker does not
+change. Expected: most of lz4 -9's 23% in `LZ4HC_InsertAndGetWiderMatch`.
+Cost: small, in the shared `filc_amd64.pl`; the snapshot changes where
+locals are accessed. Checks and trap behaviour are unchanged.
+
+#### 5a. Frame words: forwarding loads first
+
+Oracle reviewed the contract below before implementation and found two
+blockers in it. (1) The prologue's `lea -FrameBase(%rbp)`, published to
+`thread->top_frame`, is a `lea` of a cell, so every function would fall
+back. (2) Step 3 is false for the header words. `signal_pizlonator` tests
+the stack limit before deferring a signal and, near it, panics with
+`filc_thread_dump_stack`, which walks `parent` and dereferences
+`origin` at an arbitrary instruction (filc_runtime.c:1795-1812,
+2449-2452, 7015-7031). A B that used either word as scratch could make
+the panic print from a B-chosen address. The rest of step 3 holds at the
+pin: other threads scan this one's frames only while it is not entered
+(soft handshakes and stop-the-world wait for that), nanofil code always
+runs entered and exits only inside runtime calls, other signals are
+deferred to pollchecks, and synchronous faults kill the process without
+reading the frame.
+
+So the first step is the smaller **5a-loads**. Cell stores stay paired
+lines as in 3b (same order, equal values); only cell loads become moves,
+which may disappear or be replaced by a register holding the cell's
+symbolic value. Frame memory is then identical in A and B at every
+instruction: no observer argument (step 3) is needed, nor region-end
+comparison of cells. The only trust is 3a's: nothing but nanofil's own
+`rbp`-relative operands reaches a cell within a region (the published
+header pointer and `rsp`-relative red zone and argument areas
+included). It targets exactly the measured "redundant loads" column.
+Cells are listed by key class (`lower(…)`, `storage(scalar|pointer,…)`,
+phi shadows, `thread`, `aux`, the `retbuf` pointer slot), never
+`parent`/`origin`, locals, wide or save slots, and the checker verifies
+they are 8-aligned and disjoint from each other, from locals, wide
+slots, save slots and mapped homes. A cell's state is reset to the
+shared start value at every region start; a paired 4-byte store writes
+the low half and keeps each stream's high half; a non-GPR or odd-width
+access of a cell makes the function keep cells as plain memory, and the
+implementation reports how often. Fixtures: Oracle's list, plus the
+ones below that apply to loads.
+
+Dropping stores (the full contract below) is a second step, after
+5a-loads is measured, with the header words excluded and step 3
+reworded to name the stack-overflow panic as the one in-region reader.
+
+#### 5a, full: frame words in the region checker (second step)
+
+
+*Contract written before the implementation, for review.*
+
+A **cell** is an 8-byte frame word at an `rbp` displacement D listed by
+the emitter: every plain slot of `layout/4` (scalar homes 3a left in the
+frame, pointer address slots, phi shadows), every `lowers[]` entry, the
+filc_frame's `parent` and `origin` words, and the thread and aux slots.
+Not cells: local storage (payload and aux), wide slots, callee-save
+slots, return buffers, and anything in a setjmp function (excluded, as
+in 3a). The metadata gives the cells, and the checker verifies:
+
+- D is 8-aligned, cells are disjoint, and no cell overlaps a save slot or
+  a mapped home.
+- Every `rbp`-relative operand that overlaps a cell is a whole access
+  of that cell: `mem(D,rbp)` in a `mov` of 4 or 8 bytes, or in a paired
+  line as an 8- or 4-byte source or destination at exactly D. Anything
+  else overlapping a cell (a byte or word access, an indexed operand
+  reaching it by its displacement, a `lea` of it) makes the function
+  keep B = A for cells, that is, cells stay paired memory as in 3b.
+
+**State.** Each stream's symbolic state gains a value per cell, two
+32-bit halves like a general register. At every region start every
+cell is `in(cell(D),H,shared)` in both streams. Cells are not dead or
+live: all of them are compared at every boundary.
+
+**Lines.** A *cell move* is a move (3b's definition) with a cell as
+source or destination: `movq D(%rbp),%R` copies both halves into R,
+`movl D(%rbp),%R` copies the low half and zeroes R's high half,
+`movq %R,D(%rbp)` and `movq $I,D(%rbp)` (I in imm32, sign-extended) set
+both halves of the cell, and `movl %R,D(%rbp)` or `movl $I,D(%rbp)` sets
+the low half and *keeps* the high half (a memory store does not
+zero-extend). Cell moves execute in their own stream, like register
+moves, and may appear, disappear or differ. A paired line with a cell
+operand must have the same cell at that position in both streams; as a
+source it compares the cell's value at the operand's width, as a
+destination it writes `res` into the cell in both streams, with 3b's
+rules for widths. Every other memory operand is paired as in 3b and
+never addresses a cell (below).
+
+**Region end.** In addition to 3b's comparisons, A and B agree on both
+halves of every cell at every boundary.
+
+**Why the boundaries suffice.** 3b's argument gives equal registers,
+equal non-cell memory and identical boundaries. For cells:
+
+1. At function entry the frame is the same memory in both streams. At
+   every later region start, the previous boundary compared every cell,
+   so the shared start values are true.
+2. Within a region, only rbp-relative operands of nanofil's own code
+   touch a cell. Every other access goes through a pointer: checked
+   accesses stay inside the bounds of the object they check, and no
+   object's bounds cover a cell (local storage is laid out beside the
+   cells, with exact bounds); the unchecked accesses nanofil emits
+   address the thread, aux arrays and object headers, never the
+   frame. This is the assumption 3a makes for homes, now for every
+   cell.
+3. Nothing else observes the frame within a region. The collector
+   reads `lowers[]` and the frame header when it scans this thread's
+   stack: at its own safepoints, which are calls, or from another thread
+   while this one is exited, which happens only inside a call. Signal
+   handlers are deferred to pollchecks, which are calls. Check failures
+   leave through a jump (a boundary) into a block that calls the fail
+   function. `ud2` and the stack-overflow jump are boundaries. So
+   between boundaries a cell's memory may differ between A and B, but
+   at every point where anything else can see it, it is equal.
+4. Because cells are compared at every boundary, B keeps every
+   `lowers[]` store A makes before a call, in time for the call: the GC
+   sees the same roots at every safepoint as with the reference. This
+   is not root reduction. A stale or missing lower is caught at the
+   next boundary, not trusted.
+
+**What it allows.** Within a region, B may replace a cell load by a
+register that holds the cell's value (forwarding), drop a store that a
+later store in the region overwrites before any boundary, and drop a
+store of the value the cell already holds (for example a repeated
+`origin` store). Across a boundary, nothing changes.
+
+**Liveness.** The rewrite needs free registers to hold forwarded cell
+values: scratch families dead over the stretch, from 3b's shared
+liveness. The checker needs no cell liveness, since it compares every
+cell.
+
+**Costs.** One state entry per cell, built lazily: a cell gets an entry
+when a region first touches it, and a region end compares only the
+cells either stream touched since the region started; the others hold
+the shared start value in both. That keeps the checker linear in the
+function and leaves peak memory at 3b's. Expected yield: the
+"redundant loads in a region" column is the upper bound, 5–16% of
+instructions; the rewrite gets the part for which a scratch register is
+free, plus dropped repeated stores. Cost: medium (checker extension and
+a forwarding pass in the rewrite).
+
+**Fail-first fixtures**, one per rule: a forwarded load of a cell stored
+in between by another register; a cell store dropped before a call, a
+`jcc` and a label (one each, a `lowers[]` entry among them); a `movl`
+store forwarded as if it zero-extended the cell; a load forwarded from a
+register clobbered in between; a cell accessed at a byte width, by an
+indexed operand reaching it and by a `lea` of it (each must fall back to
+B = A for cells); a cell overlapping a save slot or a mapped home in the
+metadata; two overlapping cells.
+
+#### 5b. Pointers in registers across calls (deferred)
+
+Only after more registers are free. It needs the safepoint rule above,
+plus two checker obligations: each live lower's `lowers[]` entry
+symbolically equals its register at each safepoint, and lower material
+never enters a home that item 3 treats as scalar.
 
 ### 6. Check sequences — needs review
 
