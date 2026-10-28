@@ -1030,6 +1030,139 @@ out of loops needs M7's spatial/temporal split ([m7.md](m7.md#limits)).
 Expected: about 40% of the check share, 4–11%. Review each sequence
 against the check's contract before adoption.
 
+#### 6, measured (October 2026): the count of checks, not their length
+
+Cachegrind on the `-O` build after 7a, with check sequences recognized
+in the `.s` and filcc's counted at the address level (jumps to blocks
+that call `filc_optimized_access_check_fail`):
+
+| Workload | Check sequences, share of instructions | Borrow `jb`, share |
+| --- | --: | --: |
+| zlib -6 | 28.8% | 3.0% |
+| zlib -d | 24.8% | 2.6% |
+| bzip2 -9 | 37.1% | 3.8% |
+| bzip2 -d | 24.5% | 2.5% |
+| lz4 -9 | 10.5% | 1.1% |
+| lz4 -d | 9.5% | 0.9% |
+| lua int | 18.8% | 1.9% |
+| lua tab | 19.9% | 2.0% |
+| lua str | 16.0% | 1.5% |
+
+- **The pin's own sequence is eight instructions:** `test lower; je;
+  cmp lower,ptr; jb; mov -16(lower),u; add $-Size,u; cmp u,ptr; ja`
+  (filcc -O2, staging pin). It does not hoist the null test or the upper
+  load out of a loop with a poll. nanofil's is the same plus the borrow
+  `jb` after `sub $Size`. The profile's earlier "four or five" was the
+  hoisted form, which this pin does not produce; the yield estimated
+  above from it was too high.
+- **The gap is the number of checks.** bzip2 -9 runs 539M checks under
+  nanofil `-O` against 230M under filcc. filcc inlines (`mainQSort3` and
+  `mainSort` into `BZ2_blockSort`, `copy_input_until_stop` into
+  `handle_compress`) and keeps struct fields in registers. nanofil
+  checks every reload of `s->field`: `copy_input_until_stop` alone runs
+  129M checks, against 41M in filcc's whole `handle_compress`.
+- **Same-object checks.** A check whose lower repeats an earlier check's
+  lower in the same label- and call-free stretch is 24% of checks in
+  zlib -6, 26% in bzip2 -9, 9–14% in bzip2 -d and Lua, and 1% in lz4 -9.
+  Skipping only their null tests saves 0–2% of instructions.
+
+#### 6a. Contract: no borrow test after `upper − Size`
+
+**Change.** `access_check//2` emits
+`test %rcx,%rcx; jz F; cmp %rcx,%rax; jb F; mov -16(%rcx),%rdx;
+sub $Size,%rdx; cmp %rdx,%rax; ja F`, followed by the write and
+alignment tests unchanged. Only the `jb F` after `sub` goes, and only
+when Size ≤ 16; a larger check keeps it, on every path. The
+failure block, its arguments (`%rax`, `%rcx`), the origin, the order of
+the remaining tests and the trap text are unchanged. This is the pinned
+pass's own sequence. It is emitted where instruction selection is on
+(the `local` selection, which every `-O` register mode except `stack`
+uses). No `-O`, and `-O --registers=stack`, keep the borrow test byte
+for byte, as the reference.
+
+**Why the test is dead.** It fires only when `upper < Size`. The check
+proves `lower ≤ ptr ≤ upper − Size`, which equals the runtime's
+`ptr ≥ lower ∧ ptr < upper ∧ Size ≤ upper − ptr` when `upper ≥ Size`
+(the bounds argument in 7a). Three facts give `upper ≥ Size`:
+1. **Sizes.** Pizlonate's checks have Size ∈ {1, 2, 4, 8, 10}
+   (`access_size_align/3`; 10 is `x`, a long double, whose 16-byte cell
+   exists only for `va_arg`, which does not go through `access_check`).
+   `check_reuse` only deletes checks whose proof subsumes them, and
+   fused checks have offset 0, so neither widens a check. Checked-IR
+   input may state any `0 < Size ≤ 2³¹−1` (`tests/filc/check-range.ir`,
+   unit test `native_check_range`, the regression tests of 37ba5f5,
+   which added the borrow test); those sizes keep the `jb`, so the
+   argument needs only Size ≤ 16. `local_check` and the 7a filter have
+   their own sequences, and the filter keeps its borrow test.
+2. **Lowers.** A nonnull lower is the lower of a real object: lowers
+   are created only by the runtime (allocation, globals, function and
+   special objects, mmap objects) and are never forged, since integer
+   to pointer gives a null lower (GIMSO). The object's header, `upper`
+   at `-16(lower)` and `aux` at `-8(lower)`, sits in the 16 bytes below
+   it, so `lower ≥ 16`. The check itself reads that header. This
+   assumes, as the check already does, that the lower in `%rcx` is
+   rooted: an unrooted lower could point into reused memory, which would
+   be unsound with or without the `jb`.
+3. **Upper.** `upper ≥ lower` for every object at every time. A free sets
+   `upper = lower`, including a concurrent free on another thread; the
+   racy read sees either value, and both satisfy it.
+
+So for Size ≤ 16, `upper ≥ lower ≥ 16 ≥ Size`, and `upper − Size` cannot
+borrow. The pin omits the borrow test more widely, for merged constant
+ranges too (`s->a[0] + s->a[599]` becomes one check with `$-4800`,
+FilPizlonator.cpp:4111-4116), on an unstated assumption; 6a relies only
+on its own ≤ 16 bound, not on the pin. A null
+lower is caught first by the unchanged `test`/`jz`.
+
+**What does not change.** The check still runs before every access, as
+in the reference. No check, poll or root is removed or moved. The
+checked IR and its validator are untouched: this is instruction
+selection inside one check.
+
+**Validation.**
+- **Fail-first unit test.** Under `-O`, a checked load of Size 1, 8 or
+  10 has no `jb` after `sub`, and still has `test`/`jz` and `ja`;
+  `check(0, 17, …)` and `check(0, 2147483647, …)` keep the `jb`. The
+  reference sequence keeps it for every size.
+- **Matrix, at sizes 1, 2, 4, 8 and 10.** Must pass: ptr = lower and
+  ptr = upper − Size. Must trap with text byte-identical to the
+  reference build: one past the end, Size − 1 bytes before the end,
+  below lower, a freed object (upper = lower) and null.
+  `check-range.ir` and `native_check_range` keep passing on every path.
+- **Plants.** Emit `sub $(Size+16)` (caught by the must-pass cases);
+  drop the `ja` instead of the `jb`; drop the `jb` for every size
+  (caught by `check-range.ir`'s `wide(16)`).
+- **Gates.** Snapshot changes only `-O` outputs. All Nix checks. The
+  bench gate, where the expected yield is the borrow column above.
+
+Expected yield: the borrow column, 1–4% of instructions.
+
+**Review.** Oracle confirmed the runtime half at the pin: every nonnull
+lower has a real 16-byte header below it (special, function, ordinary,
+aligned and mmap objects, closures, the free singleton, nanofil's data
+and function objects), and every write of upper keeps upper ≥ lower,
+free and munmap included. It found two blockers, both fixed above:
+checked-IR input reaches `access_check` with sizes up to 2³¹−1, which
+the borrow test exists for (37ba5f5), and a long double access is 10
+bytes, not 16. The size guard, the must-pass boundary cases, the
+plant that drops the `jb` everywhere and the rooting assumption come
+from its review.
+
+#### 6b and 6c (not proposed yet)
+
+- **6b, null tests of a lower already tested in the stretch:** at most
+  2%. With the `lower ≤ ptr` test and alignment, it is the sound
+  spatial-only subset of reuse (a capability's lower never changes). It needs lower-equality facts across derived pointers in the
+  emitter. Not worth a contract now.
+- **6c, fewer checks.** This is where the gap is: eliminating redundant
+  field loads together with their checks, and same-object reuse of
+  check evidence across derived pointers. Both are temporal or change
+  the failure point (a concurrent free, or a combined range failing
+  earlier), so each needs its own reviewed contract, extending M7's.
+  The same-object share above, a quarter of checks in zlib and
+  bzip2 -9, bounds part of the yield; inlining (item 4) removes another
+  part.
+
 ### 7. Small constant `memcpy` — needs review
 
 An inline copy must preserve what `filc_memmove` does: null, bounds and
