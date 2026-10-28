@@ -315,12 +315,18 @@ static_assert(Loc, Expr, Env) :-
     ).
 
 % global_decl(+Loc, +Decl, +Env0, -Env): Env binds the d/5 declaration
-% Decl of a function or of an object with static storage, and defines
-% the object unless it is an extern without an initializer.
-global_decl(Loc, d(Name, Type0, Storage, Asm, Init), Env0, Env) :-
+% Decl of a function or of an object with static or thread storage, and
+% defines the object unless it is an extern without an initializer. A
+% thread-local definition is data of linkage tls(L) (ir.pl).
+global_decl(Loc, d(Name, Type0, Storage0, Asm, Init), Env0, Env) :-
     ( Asm = asm(Sym) -> true ; Sym = Name ),
+    (   Storage0 = thread_local(Storage) -> Thread = tls ; Storage = Storage0, Thread = none ),
     (   Type0 = func(_, _, _)
-    ->  ( Storage == static -> Linkage = local ; Linkage = export ),
+    ->  (   Thread == tls                                   % 6.7.1p4
+        ->  sema_error(Loc, 'function ~w cannot be _Thread_local', [Name])
+        ;   true
+        ),
+        ( Storage == static -> Linkage = local ; Linkage = export ),
         (   Init \== none
         ->  sema_error(Loc, 'function ~w has an initializer', [Name])
         ;   true
@@ -328,13 +334,19 @@ global_decl(Loc, d(Name, Type0, Storage, Asm, Init), Env0, Env) :-
         bind_ordinary(Name, fn(Type0, Sym, Linkage), Env0, Env)
     ;   static_type(Name, Type0, Loc),
         complete_array(Type0, Init, Type, Loc, Env0, none),
-        bind_ordinary(Name, gvar(Type, Sym, Storage, Init), Env0, Env1),
+        bind_ordinary(Name, gvar(Type, Sym, Storage0, Init), Env0, Env1),
         (   Storage == extern, Init == none
         ->  Env = Env1
-        ;   ( Storage == static -> Linkage = local ; Linkage = export ),
+        ;   ( Storage == static -> Linkage0 = local ; Linkage0 = export ),
+            thread_linkage(Thread, Linkage0, Linkage),
             define_global(Sym, Type, Linkage, Init, Loc, Env1, Env)
         )
     ).
+
+% thread_linkage(+Thread, +Linkage0, -Linkage): the data linkage of a
+% definition of linkage Linkage0, thread-local if Thread is tls.
+thread_linkage(none, Linkage, Linkage).
+thread_linkage(tls, Linkage, tls(Linkage)).
 
 % static_type(+Name, +Type, +Loc): an object Name at file scope or with
 % linkage may have Type: nanofil supports it, and it is not variably
@@ -1220,12 +1232,17 @@ local_decls([Decl|Decls], Ctx) -->
     local_decl(Decl, Ctx),
     local_decls(Decls, Ctx).
 
-local_decl(d(Name, Type0, Storage, Asm, Init), Ctx) -->
-    { ctx_loc(Ctx, Loc) },
+local_decl(d(Name, Type0, Storage0, Asm, Init), Ctx) -->
+    { ctx_loc(Ctx, Loc),
+      (   Storage0 = thread_local(Storage) -> Thread = tls
+      ;   Storage = Storage0, Thread = none
+      ) },
     (   { Type0 = func(_, _, _) ; Storage == extern }
     ->  env(Env0),
-        { global_decl(Loc, d(Name, Type0, Storage, Asm, Init), Env0, Env) },
+        { global_decl(Loc, d(Name, Type0, Storage0, Asm, Init), Env0, Env) },
         set_env(Env)
+    ;   { Thread == tls, Storage \== static }              % 6.7.1p3
+    ->  { sema_error(Loc, '_Thread_local ~w at block scope must also be static or extern', [Name]) }
     ;   { Storage == static }
     ->  { supported(Type0, Loc),
           (   vla_type(Type0)                               % 6.7.6.2p2
@@ -1238,8 +1255,9 @@ local_decl(d(Name, Type0, Storage, Asm, Init), Ctx) -->
           next_id(K, Env0, Env1),
           format(atom(Sym), '~w.~w.~w', [Func, Name, K]),
           complete_array(Type1, Init, Type, Loc, Env0, none),
-          bind_ordinary(Name, gvar(Type, Sym, static, Init), Env1, Env2),
-          define_global(Sym, Type, local, Init, Loc, Env2, Env3),
+          bind_ordinary(Name, gvar(Type, Sym, Storage0, Init), Env1, Env2),
+          thread_linkage(Thread, local, Linkage),
+          define_global(Sym, Type, Linkage, Init, Loc, Env2, Env3),
           % Resolve block-scope names before the scope is restored.
           static_items(Type, Init, Loc, Env3, Env4, Items),
           put_def(initialized(Sym), Items, Env4, Env) },
@@ -3472,7 +3490,11 @@ offset_const(_, _, _, _, _, Loc, _) :-
 % place_constant(+X, +Loc, +Env0, -Env, -R): typed tree X designates a
 % static object or a function at R = sym(Symbol, Offset).
 place_constant(obj(_, id(Name)), Loc, Env, Env, sym(Sym, 0)) :- !,
-    (   lookup_ordinary(Env, Name, gvar(_, Sym, _, _)) -> true
+    (   lookup_ordinary(Env, Name, gvar(_, Sym, Storage, _))
+    ->  (   Storage = thread_local(_)                       % 6.6p9
+        ->  sema_error(Loc, 'the address of thread-local ~w is not a constant', [Name])
+        ;   true
+        )
     ;   sema_error(Loc, '~w is not a global', [Name])
     ).
 place_constant(fun(_, id(Name)), _, Env, Env, sym(Sym, 0)) :-

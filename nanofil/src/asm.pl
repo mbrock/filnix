@@ -12,7 +12,7 @@
 
     | Directive | Prints as |
     |---|---|
-    | `section(S)` | the section S: `text`, `data`, `rodata`, `bss`, `data_rel_ro` or `note_gnu_stack` |
+    | `section(S)` | the section S: `text`, `data`, `rodata`, `bss`, `tbss` (thread-local, zeroed), `data_rel_ro` or `note_gnu_stack` |
     | `p2align(N)` `balign(N)` | `.p2align N`, `.balign N` |
     | `globl(S)` `weak(S)` `hidden(S)` | `.globl S`, `.weak S`, `.hidden S` |
     | `type(S, T)` | `.type S, @T`, T `function` or `object` |
@@ -40,6 +40,8 @@
     | `rip(E)` | `E(%rip)` |
     | `gotpcrel(S)` | `S@GOTPCREL(%rip)` |
     | `plt(S)` | `S@PLT` |
+    | `gottpoff(S)` | `S@GOTTPOFF(%rip)`, the GOT slot of thread-local S's offset from %fs |
+    | `fs(O)` | `%fs:O`, memory operand O in the thread segment |
     | `sym(E)` | `E`, a jump or call target |
     | `ind(O)` | `*O` |
 
@@ -130,6 +132,8 @@ operand(mem(D, B, I)) --> disp(D), "(%", literal(B), ",%", literal(I), ")".
 operand(rip(E)) --> expr(E), "(%rip)".
 operand(gotpcrel(S)) --> literal(S), "@GOTPCREL(%rip)".
 operand(plt(S)) --> literal(S), "@PLT".
+operand(gottpoff(S)) --> literal(S), "@GOTTPOFF(%rip)".
+operand(fs(O)) --> "%fs:", operand(O).
 operand(sym(E)) --> expr(E).
 operand(ind(O)) --> "*", operand(O).
 
@@ -199,6 +203,7 @@ section_name(text, ".text").
 section_name(data, ".data").
 section_name(rodata, ".section .rodata").
 section_name(bss, ".bss").
+section_name(tbss, ".section .tbss,\"awT\",@nobits").
 section_name(data_rel_ro, ".section .data.rel.ro,\"aw\",@progbits").
 section_name(note_gnu_stack, ".section .note.GNU-stack,\"\",@progbits").
 

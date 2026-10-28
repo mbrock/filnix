@@ -151,18 +151,43 @@ sema_error(Loc, Fmt, Args) :-
 %! decl_types(+Specs, +Inits, -Decls, +Env0, -Env) is det.
 %
 %  Decls are d(Name, Type, Storage, Asm, Init) for the declarators Inits
-%  under the specifiers Specs, Storage one of none, static or extern. A
+%  under the specifiers Specs, Storage as decl_storage/2 gives it. A
 %  typedef declares no Decls; Env is Env0 with its names bound instead.
 %  Env also has any struct, union or enum Specs defines. Throws
 %  not_constant when an enumerator's value is not constant.
 
 decl_types(Specs, Inits, Decls, Env0, Env) :-
     specs_type(Specs, Base, Env0, Env1),
-    (   memberchk(storage(Storage0), Specs) -> Storage = Storage0
-    ;   Storage = none
-    ),
+    decl_storage(Specs, Storage),
     foldl(declarator_type(Specs, Base, Storage), Inits, Decls0, Env1, Env),
     exclude(==(none), Decls0, Decls).
+
+doc(decl_storage(+Specs, -Storage), det, [
+    Specs: "a declaration's specifiers",
+    Storage: "none, typedef, static, extern, auto or register, or thread_local(S) with S one of none, static or extern",
+    "Storage is the declaration's storage-class specifier. _Thread_local",
+    "(also spelled thread_local and GNU __thread) may appear with static or",
+    "extern, and then gives the object thread storage duration instead of",
+    "static: one instance per thread, created and initialized when the",
+    "thread first uses it (Fil-C creates it lazily, as clang's getter does).",
+    "Where it may appear is the lowering's to check.",
+    cites('C11 6.7.1p2-3'),
+    cites('C11 6.2.4p4'),
+    example(decl_storage([storage(static), tspec(int)], S), S = static),
+    example(decl_storage([tspec(int)], S), S = none),
+    example(decl_storage([storage(thread_local), storage(static), tspec(int)], S),
+            S = thread_local(static)),
+    example(decl_storage([storage(extern), storage(thread_local), tspec(int)], S),
+            S = thread_local(extern)),
+    example(decl_storage([storage(thread_local), tspec(int)], S), S = thread_local(none))
+]).
+decl_storage(Specs, Storage) :-
+    (   member(storage(S0), Specs), S0 \== (thread_local) -> S = S0
+    ;   S = none
+    ),
+    (   memberchk(storage(thread_local), Specs) -> Storage = thread_local(S)
+    ;   Storage = S
+    ).
 
 % declarator_type(+Specs, +Base, +Storage, +Init, -Decl, +Env0, -Env): Decl is
 % the d/5 term Init declares, or none for a typedef, which binds the name.

@@ -180,7 +180,11 @@
 
     In `data(Name, Linkage, Align, Items)`, Linkage is `export`,
     `local`, `ro(export)` or `ro(local)`, `ro` for read-only data (in
-    .rodata), and Align is 1, 2, 4, 8 or 16. Items is a list of:
+    .rodata), or `tls(export)` or `tls(local)` (filc mode only) for C's
+    thread-local objects: each thread has its own instance, created
+    and initialized with Items when that thread first takes the
+    symbol's address. The interpreter runs one thread, so there it is
+    an ordinary object. Align is 1, 2, 4, 8 or 16. Items is a list of:
 
     | Item | Means |
     |---|---|
@@ -628,6 +632,7 @@ pointer_item(func(_, _, Ret, Params, Blocks)) :-
     !.
 pointer_item(data(_, Linkage, _, Items)) :-
     (   Linkage = ro(_)
+    ;   Linkage = tls(_)
     ;   memberchk(item(p, _), Items)
     ),
     !.
@@ -752,9 +757,16 @@ valid_item(Symbols, Mode, Stage, func(Name, _, Ret, Params, Blocks)) :-
     definitions_dominate(Name, Params, Blocks),
     valid_locals(Name, Params, Blocks),
     stage_func(Stage, Name, Mode, Blocks).
-valid_item(_, Mode, _, data(Name, _, Align, Items)) :-
+valid_item(_, Mode, _, data(Name, Linkage, Align, Items)) :-
     (   memberchk(Align, [1, 2, 4, 8, 16]) -> true
     ;   fn_error(Name, 'unsupported data alignment ~w', [Align])
+    ),
+    (   memberchk(Linkage, [export, local, ro(export), ro(local)]) -> true
+    ;   memberchk(Linkage, [tls(export), tls(local)])
+    ->  (   Mode == filc -> true
+        ;   fn_error(Name, 'thread-local data needs a Fil-C module', [])
+        )
+    ;   fn_error(Name, 'invalid data linkage ~w', [Linkage])
     ),
     forall((member(item(K, V), Items), float_class(K)),
            ( V = const(N), integer(N), modulus(K, Mod), N >= 0, N < Mod

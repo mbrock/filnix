@@ -301,8 +301,7 @@ support implicit function declarations`. The others use `bool` without
 stdbool.h (`use of undeclared identifier 'bool'`) or `thread_local`
 (`unknown type name 'thread_local'`). They stay reference errors: the
 survey runs both compilers in their default modes, and nanofil's C23
-mode, added for gnulib, does not change that. `thread-local` would also
-need real thread-local storage, which nanofil does not have yet.
+mode, added for gnulib, does not change that.
 
 ### filcc LLVM assertion on typeof of a VM expression — 1 reference error
 

@@ -480,6 +480,8 @@ origin_label(Name, Which, A) :-
 item(Selection, Func) -->
     { Func = abi_function(_, _, _, _, _, _, _, _, _, _) },
     function(Selection, Func).
+item(_, data(Name, tls(Linkage), Align, Items)) --> !,
+    thread_local_object(Name, Linkage, Align, Items).
 item(_, data(Name, Linkage, _, Items)) -->
     data_object(Name, Linkage, Items).
 
@@ -2489,6 +2491,91 @@ data_object(Name, Linkage0, Items) -->
      ins(lea, q, [rip(DO+16), reg(rax)]),
      ins(mov, q, [reg(rax), reg(rdx)]),
      ins(ret, none, [])].
+
+%% Thread-local data, as clang lays it out (docs/abi-findings.md,
+%% *Thread-local variables*): a .tbss word TP_d holding this thread's
+%% payload address, null until the thread first asks, and a getter that
+%% returns it or calls the slow path GS_d. GS_d allocates the thread's
+%% object with filc_allocate_thread_local (which roots it in the thread),
+%% copies the initializer's bytes from a template TI_d and runs its
+%% relocations, as a global's slow path does, then sets TP_d.
+
+thread_local_object(Name, Linkage, Align, Items) -->
+    { abi_symbol(getter, Name, Getter),
+      format(atom(TP), 'pizlonatedTP_~w', [Name]),
+      format(atom(Slow), '.LpizlonatedGS_~w', [Name]),
+      format(atom(Template), '.LpizlonatedTI_~w', [Name]),
+      format(atom(Relocs), '.Lpizlonated_~w..relocs', [Name]),
+      format(atom(Ensure), '.Lpizlonated_~w..ensure', [Name]),
+      foldl(payload_item, Items, Payload, 0-[], Size-Rs0),
+      reverse(Rs0, Rs),
+      (   Rs == [] -> Allocate = filc_allocate_thread_local
+      ;   Allocate = filc_allocate_thread_local_with_ptrs
+      ) },
+    [section(tbss), p2align(3)],
+    linkage_globl(Linkage, TP),
+    [type(TP, object), label(TP), zero(8), size(TP, 8)],
+    (   { template_needed(Items) }
+    ->  [section(rodata), p2align(4), label(Template)], seq(Payload),
+        { Copy = [ins(lea, q, [mem(16, r12), reg(rdi)]),
+                  ins(lea, q, [rip(Template), reg(rsi)]),
+                  ins(mov, q, [imm(Size), reg(rcx)]),
+                  ins('rep movsb', none, [])] }
+    ;   { Copy = [] }
+    ),
+    (   { Rs == [] }
+    ->  { RelocsCall = [] }
+    ;   [section(data_rel_ro), p2align(4), label(Relocs)],
+        relocations(Rs, Name),
+        { length(Rs, NRelocs),
+          RelocsCall = [ins(mov, q, [reg(rbx), reg(rdi)]),
+                        ins(mov, q, [reg(r12), reg(rsi)]),
+                        ins(lea, q, [rip(Relocs), reg(rdx)]),
+                        ins(mov, l, [imm(NRelocs), reg(ecx)]),
+                        ins(call, none, [plt(filc_execute_constant_relocations)])] }
+    ),
+    [section(text), p2align(4)],
+    linkage_globl(Linkage, Getter),
+    [type(Getter, function), label(Getter),
+     ins(mov, q, [gottpoff(TP), reg(rax)]),
+     ins(mov, q, [fs(mem(0, rax)), reg(rax)]),
+     ins(test, q, [reg(rax), reg(rax)]),
+     ins(jz, none, [sym(Ensure)]),
+     ins(mov, q, [reg(rax), reg(rdx)]),
+     ins(ret, none, []),
+     label(Ensure),
+     ins(sub, q, [imm(8), reg(rsp)]),
+     ins(call, none, [sym(Slow)]),
+     ins(add, q, [imm(8), reg(rsp)]),
+     ins(mov, q, [reg(rax), reg(rdx)]),
+     ins(ret, none, []),
+     p2align(4), type(Slow, function), label(Slow),
+     ins(push, q, [reg(rbx)]),
+     ins(push, q, [reg(r12)]),
+     ins(sub, q, [imm(8), reg(rsp)]),
+     ins(mov, q, [reg(rdi), reg(rbx)]),
+     ins(mov, q, [imm(Size), reg(rsi)]),
+     ins(mov, q, [imm(Align), reg(rdx)]),
+     ins(call, none, [plt(Allocate)]),
+     ins(mov, q, [reg(rax), reg(r12)])],
+    seq(Copy),
+    seq(RelocsCall),
+    [ins(lea, q, [mem(16, r12), reg(rax)]),
+     ins(mov, q, [gottpoff(TP), reg(rcx)]),
+     ins(mov, q, [reg(rax), fs(mem(0, rcx))]),
+     ins(add, q, [imm(8), reg(rsp)]),
+     ins(pop, q, [reg(r12)]),
+     ins(pop, q, [reg(rbx)]),
+     ins(ret, none, [])].
+
+% template_needed(+Items): some byte of data Items is not zero, so the
+% fresh (zeroed) object needs a copy of them.
+template_needed(Items) :-
+    member(Item, Items),
+    (   Item = item(_, const(N)), N =\= 0
+    ;   Item = item(b, str(Cs)), member(C, Cs), char_code(C, Code), Code =\= 0
+    ),
+    !.
 
 % relocs_aux_word(+Rs, +Flags, +DA, -AuxWord): AuxWord is the aux word
 % of a global data object with relocations Rs and other flags Flags: its

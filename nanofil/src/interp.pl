@@ -1418,6 +1418,7 @@ filc_layout(func(Name, _, _, _, _), A0-Globals0-Rs, A-Globals-Rs) :-
 data_cap(export, Base, obj(Base)).
 data_cap(local, Base, obj(Base)).
 data_cap(ro(_), Base, ro(Base)).
+data_cap(tls(_), Base, obj(Base)).      % one thread: one instance
 
 filc_contents(Globals, data(Name, _, _, Items), Bytes0-Aux0, Bytes-Aux) :-
     get_assoc(Name, Globals, ptr(Base, _)),

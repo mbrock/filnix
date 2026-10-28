@@ -295,10 +295,10 @@ Refused with a message: `_Complex`, `_Atomic`, K&R definitions, inline
 asm other than the empty barrier, GNU case ranges, alignment stronger
 than natural, pointer-to-`bool` in static initializers, variable and
 variadic function aliases, and long double classification other than
-by sign ([docs/m4.md](docs/m4.md), *Linux userland additions*). Known
-gap: `_Thread_local` and `__thread` are parsed and then ignored, so a
-thread-local variable is one ordinary global, which is wrong only when
-several threads use it.
+by sign ([docs/m4.md](docs/m4.md), *Linux userland additions*).
+`_Thread_local` and `__thread` variables are per-thread objects, created
+lazily through clang's getter protocol and interoperating with clang's
+([docs/abi-findings.md](docs/abi-findings.md), *Thread-local variables*).
 
 Broken into steps below. Probes at the pin
 (compile `printf`, `puts`, globals and string literals with `filcc -S`)
@@ -548,7 +548,6 @@ matches a filcc-built Lua, like the hello and zlib checks.
   versus incremental tabling was measured in M5: neither; see docs/m5.md.
 - In-process execution (`tcc -run` style) needs a native host that boots
   the Fil-C runtime. It is out of scope until after M8.
-- `_Atomic` types, `__atomic` builtins beyond load and store, inline asm
-  other than the empty barrier, and real thread-local storage. All but
-  the last are refused until a milestone claims them; `_Thread_local` is
-  currently ignored (see M4's status).
+- `_Atomic` types, `__atomic` builtins beyond load and store, and inline
+  asm other than the empty barrier, all refused until a milestone claims
+  them.

@@ -152,7 +152,8 @@ initializers, `switch` and `goto`, compound literals, variadic
 functions, C99 `extern inline`, `__atomic` loads and stores, C23
 keywords and `[[...]]` attributes (`-std=c23`), and the GNU extensions
 glibc and gnulib lean on: statement expressions, computed `goto`,
-packed layout, range designators, `_FORTIFY_SOURCE` and the
+`_Thread_local`/`__thread` variables, packed layout, range
+designators, `_FORTIFY_SOURCE` and the
 `__builtin_*_overflow` family. Of the corpus
 programs that have a `main`, all 262 that clang itself builds and runs
 match clang's output; what nanofil does not support it refuses with a
@@ -164,8 +165,7 @@ M4); zlib's compressed output is byte-identical, at about five times
 clang's time.
 
 It refuses `_Complex`, `_Atomic`, inline `asm` other than an empty
-barrier, and K&R definitions. `_Thread_local` is not yet thread-local:
-it is ignored, so such a variable is shared by all threads. Without
+barrier, and K&R definitions. Without
 `-O` every temporary lives in a stack slot; `-O` promotes locals and
 allocates scalar registers ([docs/perf.md](docs/perf.md)).
 

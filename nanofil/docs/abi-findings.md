@@ -772,3 +772,49 @@ order).
 nanofil passes the checked pair and the value's rooted pair the same way.
 It moves the pair out of `%rax`/`%rcx` before storing the origin.
 
+## Thread-local variables
+
+Read from FilPizlonator.cpp (`G->isThreadLocal()` in the global
+lowering), `filc_runtime.c` and clang `-O1` output at the pin, for
+`_Thread_local` ints with and without initializers, a pointer, a struct
+with a pointer to a global, a block-scope `static _Thread_local` and an
+`extern` one.
+
+- A thread-local `x` keeps the ordinary getter `pizlonated_x`, called
+  with the thread in `%rdi` and returning the pointer in `%rax`/`%rdx`
+  (both the payload address). Other translation units call it as for
+  any global (`pizlonated_y@PLT` for an `extern _Thread_local int y`);
+  nothing else about `x` is visible to them.
+- The getter loads `pizlonatedTP_x`, an 8-byte `.tbss` word with `x`'s
+  linkage, through `%fs` (`@GOTTPOFF` for a visible symbol, `@TPOFF`
+  for an internal one). It holds this thread's payload address, or 0
+  before the thread first asks; then the getter calls the private slow
+  path `pizlonatedGS_x(thread)`.
+- The slow path calls `filc_allocate_thread_local(thread, size, align)`,
+  or `filc_allocate_thread_local_with_ptrs` (which also ensures the aux
+  array) when the type holds pointers, with the type's alloc size and
+  alignment. The runtime allocates an ordinary heap object (not
+  `GLOBAL`, not read-only even for `const`) and pushes it on the
+  thread's `thread_locals` array, which roots it for the collector
+  until the thread exits. The slow path stores the initializer into the
+  fresh object (pointers with the store barrier), writes the payload
+  address to `TP_x` and returns it.
+- Getter results are never cached (`shouldCacheGetter` excludes
+  thread-locals), since each thread gets a different pointer.
+- `&x` is not an address constant: clang refuses `int *p = &x;` with
+  "initializer element is not a compile-time constant" (C11 6.6p9).
+
+nanofil emits the same symbols and protocol (`filc_amd64.pl`,
+`thread_local_object//4`), always with `@GOTTPOFF`, which also resolves
+internal symbols. Its slow path copies the non-pointer bytes from a
+read-only template `.LpizlonatedTI_x`, then fills the pointers with
+`filc_execute_constant_relocations`, the global slow path's own helper.
+That helper stores without a barrier, which is sound here: a static
+initializer's pointers all point to global objects (functions, globals,
+literals), which the collector does not free. nanofil asks for the aux
+array only when the initializer has pointers; a later pointer store
+ensures it as any heap store does. In the IR a thread-local is data of
+linkage `tls(export)` or `tls(local)`; the interpreter runs one thread,
+so there it is an ordinary object.
+`tests/c/prog/thread-local.c` runs eight threads over thread-locals
+defined on both sides, with forced collections, against clang.
