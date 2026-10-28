@@ -2,7 +2,8 @@
 # bash-tests.sh TREE: run bash's own tests/run-* scripts against TREE/bash,
 # one at a time, printing "NAME ok" when a script prints nothing (bash's
 # convention for a pass), else "NAME differs" and what it printed, or
-# "NAME timeout".
+# "NAME timeout", after 1200 s (nanofil's plain bash runs ifs-posix's
+# 6856 cases in over 300 s on a loaded builder).
 # The builder's shell may export every variable and its options.
 set +a; export -n SHELLOPTS BASHOPTS 2>/dev/null
 tree=$(cd "$1" && pwd)
@@ -13,7 +14,7 @@ base=${TMPDIR:-/tmp}
 for x in run-*; do
   case $x in run-all|run-minimal|run-gprof|*.orig|*~) continue ;; esac
   t=$(mktemp -d "$base/bash-test.XXXXXX"); export TMPDIR=$t BASH_TSTOUT=$t/tstout
-  timeout 300 bash "$x" </dev/null >"$t/out" 2>&1; rc=$?
+  timeout 1200 bash "$x" </dev/null >"$t/out" 2>&1; rc=$?
   if [ $rc = 124 ]; then r=timeout; elif [ -s "$t/out" ]; then r=differs; else r=ok; fi
   echo "${x#run-} $r"
   # What a failing script printed, its temporary directory, the tree's

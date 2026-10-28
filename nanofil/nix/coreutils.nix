@@ -44,10 +44,14 @@ let
       --without-libgmp >configure.log 2>&1 || { cat configure.log; exit 1; }
   '';
   # The suite's per-test results; its own exit status is not the
-  # comparison (filcc's build fails some tests too).
+  # comparison (filcc's build fails some tests too). timeout.sh and
+  # seq-epipe.sh measure time (a sleep against a deadline): on a loaded
+  # builder filcc's run failed one and skipped the other while nanofil's
+  # passed both, so they are not compared.
   testSuite = out: ''
     make check -j$NIX_BUILD_CORES >check.log 2>&1 || true
     grep -E '^(PASS|FAIL|SKIP|XFAIL|XPASS|ERROR): tests/.*\.(sh|pl|xpl)$' check.log \
+      | grep -vE ' tests/(timeout/timeout|seq/seq-epipe)\.sh$' \
       | sort -k2 >${out}
     test -s ${out}
   '';
