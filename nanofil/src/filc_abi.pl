@@ -32,7 +32,7 @@
     packet size, then roots that pointer in the body before any further
     safepoint. See docs/setjmp.md and abi-findings.md.
 */
-:- module(filc_abi, [lower_function/4, lower_thunks/2, signature/3, never_signature/1]).
+:- module(filc_abi, [lower_function/4, lower_function/5, lower_thunks/2, signature/3, never_signature/1]).
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
 :- use_module(ir).
@@ -40,15 +40,22 @@
 
 % lower_function(+Symbols, +FusedFunction, +LiveBlocks, -Product):
 % Symbols is the module's ir:module_symbols/2 (or the module itself).
-% Calls and getters look their targets up in it.
-lower_function(Module, Func, LiveBlocks,
+% Calls and getters look their targets up in it. The frame's pools are
+% shared; lower_function/5 chooses.
+lower_function(Module, Func, LiveBlocks, Product) :-
+    lower_function(shared, Module, Func, LiveBlocks, Product).
+
+% lower_function(+Pools, +Symbols, +FusedFunction, +LiveBlocks, -Product):
+% as lower_function/4, with the temporaries' slot pools shared or split
+% (frame_slots:temp_slots/9).
+lower_function(Pools, Module, Func, LiveBlocks,
                abi_function(Name, Linkage, Ret, Sig, Frame, Entry, Blocks,
                             Exit, Object, Origins)) :-
     Func = func(Name, Linkage, Ret, Params, Blocks0),
     param_kinds(Params, Ks), signature(Ret, Ks, Sig),
     return_protocol(Ret, Return),
     body_params(Func, Params, BodyParams),
-    frame(BodyParams, LiveBlocks, Return, Frame, Snapshots),
+    frame(Pools, BodyParams, LiveBlocks, Return, Frame, Snapshots),
     Frame = frame(Plain, Roots, _), length(Roots, NRoots),
     findall(N, member(local(N, _), Plain), LocalNames), length(LocalNames, NLocals),
     fast_params(BodyParams, Incoming),
@@ -116,7 +123,7 @@ body_params(Func, Ps, Body) :-
     -> append(Ps, [param(p, tmp(hidden(va_snapshot)))], Body)
     ; Body = Ps ).
 
-frame(Params, Blocks, Return, frame(Plain, Roots, Aliases),
+frame(Pools, Params, Blocks, Return, frame(Plain, Roots, Aliases),
       snapshots(Sites, Payload)) :-
     findall(N-K, (member(param(K, tmp(N)), Params)
                 ; member(block(_, Phis, Is, _), Blocks),
@@ -129,7 +136,7 @@ frame(Params, Blocks, Return, frame(Plain, Roots, Aliases),
     findall(shadow(N), member(N-_, Shadows), ShadowKeys),
     findall(D, (member(block(_, _, Is, _), Blocks),
                 member(let(tmp(D), w, setjmp(_), _), Is)), Sites),
-    temp_storage(Sites, Params, Blocks, Temps, Keys, Lowers, Aliases),
+    temp_storage(Sites, Pools, Params, Blocks, Temps, Keys, Lowers, Aliases),
     return_storage(Return, Extra),
     findall(tmp(hidden(setjmp_buf(D))), member(D, Sites), JPlain),
     local_objects(func(frame, local, void, Params, Blocks), Locals),
@@ -146,16 +153,16 @@ frame(Params, Blocks, Return, frame(Plain, Roots, Aliases),
     findall(tmp(N), member(N-_, Temps), TempPayload),
     append(TempPayload, ShadowKeys, Payload0), sort(Payload0, Payload).
 
-temp_storage([], Ps, Bs, Temps, Keys, Lowers, Aliases) :-
-    temp_slots(Ps, Bs, Temps, Map, NS, NP, NW),
-    storage_keys(scalar, NS, Scalars), storage_keys(pointer, NP, Pointers),
-    storage_keys(wide, NW, Wides),
-    append([Scalars, Pointers, Wides], Keys), maplist(storage_lower, Pointers, Lowers),
+temp_storage([], Pools, Ps, Bs, Temps, Keys, Lowers, Aliases) :-
+    temp_slots(Pools, Ps, Bs, Temps, Map, NS, NP, NW, NF),
+    storage_keys(scalar, NS, Scalars), storage_keys(float, NF, Floats),
+    storage_keys(pointer, NP, Pointers), storage_keys(wide, NW, Wides),
+    append([Scalars, Floats, Pointers, Wides], Keys), maplist(storage_lower, Pointers, Lowers),
     assoc_to_list(Map, Pairs), foldl(storage_alias, Pairs, Aliases, []).
-temp_storage([_|_], _, _, Temps, _, _, _) :-
+temp_storage([_|_], _, _, _, Temps, _, _, _) :-
     memberchk(_-x, Temps), !,
     throw(nanofil_error('long double in a function that calls setjmp is not supported')).
-temp_storage([_|_], _, _, Temps, Keys, Lowers, []) :-
+temp_storage([_|_], _, _, _, Temps, Keys, Lowers, []) :-
     findall(tmp(N), member(N-_, Temps), Keys),
     findall(lower(tmp(N)), member(N-p, Temps), Lowers).
 storage_keys(Pool, N, Keys) :-
@@ -164,6 +171,7 @@ storage_lower(Key, lower(Key)).
 storage_alias(N-storage(pointer,I),
               [tmp(N)-storage(pointer,I),lower(tmp(N))-lower(storage(pointer,I))|As], As) :- !.
 storage_alias(N-storage(scalar,I), [tmp(N)-storage(scalar,I)|As], As) :- !.
+storage_alias(N-storage(float,I), [tmp(N)-storage(float,I)|As], As) :- !.
 storage_alias(N-storage(wide,I), [tmp(N)-storage(wide,I)|As], As).
 return_storage(registers, []).
 return_storage(buffer(_), [retbuf]).

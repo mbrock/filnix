@@ -150,7 +150,10 @@ emission(emit(Registers, Branches), Registers, Branches) :- !.
 emission(Registers, Registers, reference).
 
 item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
-    once(( lower_item(Symbols, Item, Product),
+    % The allocating modes keep float temporaries out of the scalar
+    % slots (frame_slots:temp_slots/9), so integer homes stay eligible.
+    ( memberchk(Registers, [function,operands,cells]) -> Pools = split ; Pools = shared ),
+    once(( lower_item(Pools, Symbols, Item, Product),
            placed_lines(Registers, Branches, Item, Product, Lines, Report) )).
 
 %! filc_module_emit(+Module, +Emission, :Emit) is det.
@@ -183,10 +186,10 @@ thunk_lines(Callee, Lines) :-
 
 % Complete the ABI product before any instruction selection. Fusion is
 % still target preparation; its separate liveness view preserves indices.
-lower_item(Symbols, func(N,L,R,Ps,Bs0), Product) :-
+lower_item(Pools, Symbols, func(N,L,R,Ps,Bs0), Product) :-
     fused_blocks(N, Ps, Bs0, Bs, Live),
-    lower_function(Symbols, func(N,L,R,Ps,Bs), Live, Product).
-lower_item(_, data(N,L,A,Is), data(N,L,A,Is)).
+    lower_function(Pools, Symbols, func(N,L,R,Ps,Bs), Live, Product).
+lower_item(_, _, data(N,L,A,Is), data(N,L,A,Is)).
 
 item_lines(Selection, Item, Lines) :-
     (   phrase(item(Selection,Item), Lines) -> true
@@ -265,6 +268,7 @@ regs_mode(Mode, _, Mode).
 
 cell_key(lower(_)).
 cell_key(storage(scalar,_)).
+cell_key(storage(float,_)).
 cell_key(storage(pointer,_)).
 cell_key(shadow(_)).
 cell_key(thread).

@@ -12,14 +12,15 @@
     | Pool | Holds |
     |---|---|
     | `pointer` | `p` temporaries: each slot is a payload slot and its lower, allocated together |
-    | `scalar` | `w`, `l`, `s` and `d` temporaries; they never use the pointer pool |
+    | `scalar` | `w` and `l` temporaries, and `s` and `d` ones when the pools are `shared`; they never use the pointer pool |
+    | `float` | `s` and `d` temporaries when the pools are `split` |
     | `wide` | `x` temporaries: 16-byte slots for the 10 bytes of a long double |
 
     A variadic function's hidden `va_snapshot` parameter is kept live for
     the whole invocation. Functions that call setjmp must not use this
     allocator (docs/setjmp.md).
 */
-:- module(frame_slots, [temp_slots/7]).
+:- module(frame_slots, [temp_slots/7, temp_slots/9]).
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
 :- use_module(library(ordsets)).
@@ -27,7 +28,16 @@
 
 % temp_slots(+Params, +Blocks, +Temps, -Aliases, -ScalarCount, -PtrCount,
 % -WideCount). Aliases maps each temp name to physical storage(Pool, Index).
+% The pools are shared: s and d temporaries use scalar slots.
 temp_slots(Params, Blocks, Temps, Aliases, NS, NP, NW) :-
+    temp_slots(shared, Params, Blocks, Temps, Aliases, NS, NP, NW, 0).
+
+% temp_slots(+Pools, +Params, +Blocks, +Temps, -Aliases, -ScalarCount,
+% -PtrCount, -WideCount, -FloatCount): as temp_slots/7, with Pools shared
+% or split. Split gives s and d temporaries a float pool of their own, so
+% no scalar slot holds both an integer and a float temporary: register
+% allocation (docs/perf.md item 3) takes only w/l homes.
+temp_slots(Pools, Params, Blocks, Temps, Aliases, NS, NP, NW, NF) :-
     temp_liveness(Blocks, In, Out),
     findall(N, member(param(_, tmp(N)), Params), ParamNs),
     block_ranges(Blocks, In, Out, [], 1, End, Touches1, Touches2),
@@ -52,12 +62,12 @@ temp_slots(Params, Blocks, Temps, Aliases, NS, NP, NW) :-
     % one live into the block after: block_ranges/8 leaves them out.
     first_touches(out, Touches, Lo),
     reverse(Touches, Backwards), first_touches(in, Backwards, Hi),
-    maplist(temp_interval(Lo, Hi), Temps, Intervals0),
+    maplist(temp_interval(Pools, Lo, Hi), Temps, Intervals0),
     sort(Intervals0, Intervals1),
     partition(wide_range, Intervals1, Wides, Intervals),
     % Each temporary has one interval, so the pairs have distinct keys
     % and make the assoc at once, not by an insertion per temporary.
-    allocate(Intervals, [], [], 0, NS, 0, NP, Pairs, WidePairs),
+    allocate(Intervals, st([]-0, []-0, []-0), st(_-NS, _-NP, _-NF), Pairs, WidePairs),
     foldl(wide_slot, Wides, []-0-WidePairs, _-NW-[]),
     list_to_assoc(Pairs, Aliases).
 
@@ -111,27 +121,32 @@ inst_ranges([I|Is], P, End, [Uses-P, Defs-P|T0], T) :-
     Next is P + 1,
     inst_ranges(Is, Next, End, T0, T).
 
-temp_interval(Lo, Hi, N-K, range(Start, End, Pool, N)) :-
+temp_interval(Pools, Lo, Hi, N-K, range(Start, End, Pool, N)) :-
     get_assoc(N, Lo, Start), get_assoc(N, Hi, End),
-    class_pool(K, Pool).
+    class_pool(K, Pools, Pool).
 
-class_pool(p, pointer).
-class_pool(w, scalar).
-class_pool(l, scalar).
-class_pool(s, scalar).
-class_pool(d, scalar).
-class_pool(x, wide).
+class_pool(p, _, pointer).
+class_pool(w, _, scalar).
+class_pool(l, _, scalar).
+class_pool(s, shared, scalar).
+class_pool(d, shared, scalar).
+class_pool(s, split, float).
+class_pool(d, split, float).
+class_pool(x, _, wide).
 
-allocate([], _, _, NS, NS, NP, NP, Ps, Ps).
-allocate([range(Start, End, Pool, N)|Rs], SS0, PS0, NS0, NS, NP0, NP,
+% The pools' states st(Scalar, Pointer, Float), each Slots-Count.
+allocate([], St, St, Ps, Ps).
+allocate([range(Start, End, Pool, N)|Rs], St0, St,
          [N-storage(Pool, I)|Ps0], Ps) :-
-    pool_slot(Pool, Start, End, SS0, SS, PS0, PS, NS0, NS1, NP0, NP1, I),
-    allocate(Rs, SS, PS, NS1, NS, NP1, NP, Ps0, Ps).
+    pool_slot(Pool, Start, End, St0, St1, I),
+    allocate(Rs, St1, St, Ps0, Ps).
 
-pool_slot(scalar, S, E, SS0, SS, PS, PS, NS0, NS, NP, NP, I) :-
-    reuse_slot(SS0, S, E, NS0, NS, SS, I).
-pool_slot(pointer, S, E, SS, SS, PS0, PS, NS, NS, NP0, NP, I) :-
-    reuse_slot(PS0, S, E, NP0, NP, PS, I).
+pool_slot(scalar, S, E, st(SS0-N0, P, F), st(SS-N, P, F), I) :-
+    reuse_slot(SS0, S, E, N0, N, SS, I).
+pool_slot(pointer, S, E, st(C, PS0-N0, F), st(C, PS-N, F), I) :-
+    reuse_slot(PS0, S, E, N0, N, PS, I).
+pool_slot(float, S, E, st(C, P, FS0-N0), st(C, P, FS-N), I) :-
+    reuse_slot(FS0, S, E, N0, N, FS, I).
 
 % One end point per physical slot, not an interference graph. Reuse only
 % strictly disjoint intervals: results cannot overwrite their operands.

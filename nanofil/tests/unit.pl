@@ -142,9 +142,31 @@ test(small_copy_filter) :-
                       void *memcpy(void *d, const void *s, size_t n) { return d; }",
                inline, Defined-_),
     \+ memberchk(ins(movabs,q,[imm(Mask),reg(rdx)]), Defined).
+% Split pools (the allocating modes) keep s and d temporaries out of the
+% scalar slots, so every scalar home is w/l and can take a register;
+% shared pools (the reference layout) mix them in this function.
+test(split_float_pools) :-
+    c_tokens("int f(double x, int n) { int a = (int)(x * 3.0);
+              double y = x + 1.0; int b = a * n;
+              int c = (int)(y * 2.0); return b + c; }", 'pools.c', Ts),
+    c_parse(Ts, C), c_module(C, M), optimize(o1, M, O), pizlonate_module(O, P),
+    P = module(Items), memberchk(F, Items), F = func(f,_,_,_,_),
+    pool_homes(shared, P, F, Shared),
+    once(( member(home(_, Ks), Shared), memberchk(d, Ks), memberchk(w, Ks) )),
+    pool_homes(split, P, F, Split), Split = [_|_],
+    forall(member(home(_, Ks), Split), forall(member(K, Ks), memberchk(K, [w,l]))).
 test(local_storage_semantics) :- local_semantics.
 test(local_storage_lifetime) :- local_lifetime.
 test(local_storage_validation) :- local_validation.
+
+% pool_homes(+Pools, +Module, +Func, -Homes): the scalar homes, with
+% their temporaries' classes, of Func lowered with Pools.
+pool_homes(Pools, Module, Func, Homes) :-
+    module_symbols(Module, Symbols),
+    filc_amd64:lower_item(Pools, Symbols, Func, Product),
+    Product = abi_function(_,_,_,_,Frame,_,_,_,_,_), Frame = frame(_,_,Aliases),
+    filc_amd64:layout(Frame, Slots, _, _),
+    filc_amd64:scalar_homes(Func, Aliases, Slots, Homes).
 
 % copy_lines(+Decl, +Src, +Copies, -Lines-Reports): the -O Fil-C lines
 % and reports of the C text Decl followed by Src, with small copies

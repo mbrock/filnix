@@ -1337,6 +1337,58 @@ lz4 `-d` halves its instructions and lz4 `-1` loses 40%. zlib `-d` and
 bzip2 `-d` run the same instruction counts and move by layout, as
 before (item 3b's note on bzip2 -d).
 
+### Where scalar frame traffic remains, and split float pools
+
+Measured after 7a (cachegrind on the `-O` build with `as -g`, each `.s`
+line's count joined with the class of the frame slot it touches, from
+nanofil's own layout). Shares are of each workload's executed
+instructions:
+
+| Workload | Scalar homes left in the frame (with phi shadows) | Mostly in | Homes shared with `d` temps | Pointer address and lower slots |
+| --- | --: | --- | --: | --: |
+| bzip2 -d | 23.8% | `BZ2_decompress` 21.6% | – | 18.6% |
+| lz4 -9 | 10.7% | `LZ4HC_InsertAndGetWiderMatch` 10.4% | – | 14.7% |
+| zlib -6 | 6.1% | `longest_match` 5.5% | – | 22.3% |
+| bzip2 -9 | 2.1% | `mainSort`, `mainQSort3` | 1.3% | 18.6% |
+| lua int | 2.8% | `luaV_execute` | 16.0% | 19.7% |
+| lua tab | 3.0% | `luaV_execute` | 15.6% | 20.1% |
+
+Lua's 16% was in `luaV_execute`'s three hottest pooled scalar slots.
+Each held hundreds of `w`/`l` temporaries and a few `d` ones (Lua
+numbers), and one float alias makes a home ineligible (M6's rule, which
+the checker keeps). So the allocating modes (`--registers=function`,
+`operands`, `cells`) now lower with split pools:
+`frame_slots:temp_slots/9` gives `s` and `d` temporaries a float pool,
+and frame cells include it. The reference layout (no `-O`,
+`--registers=stack` and `local`) keeps shared pools and is unchanged.
+The snapshot differs in 75 of 3312 outputs, all in the three allocating
+`-O` modes. Unit test `split_float_pools` fails when split pools behave
+as shared.
+
+Gate (7 trials, cpu 6), ratio to filcc -O2, time (instructions);
+`O-memcpy` is `-O` after 7a:
+
+| Workload | `O-memcpy` | `O` |
+| --- | --- | --- |
+| zlib -6 | 2.60 (4.36) | 2.60 (4.36) |
+| zlib -d | 2.12 (3.48) | 2.07 (3.48) |
+| bzip2 -9 | 2.14 (2.81) | 2.13 (2.78) |
+| bzip2 -d | 3.74 (3.49) | 3.68 (3.49) |
+| lz4 -1 | 2.40 (13.03) | 2.35 (13.03) |
+| lz4 -9 | 3.94 (4.77) | 3.95 (4.77) |
+| lz4 -d | 3.14 (8.41) | 3.15 (8.41) |
+| lua int | 3.45 (2.94) 3.42..3.45 | 2.28 (2.54) 2.25..2.30 |
+| lua tab | 3.29 (2.83) 3.21..3.30 | 2.15 (2.46) 2.10..2.16 |
+| lua str | 1.59 (1.74) | 1.58 (1.73) |
+| sqlite | 2.13 (2.16) | 2.15 (2.13) |
+| geomean | 2.68 (3.81) | 2.46 (3.70) |
+
+What is left for live-range splitting is the first two rows' pressure
+and calls: `BZ2_decompress` keeps 22–26 homes live at once, and
+`LZ4HC_InsertAndGetWiderMatch` keeps homes live across calls to small
+functions, which item 4 removes. Pointer slots, at 15–22% everywhere, are
+item 5b's.
+
 ### 8. A cheap middle end
 
 Constant folding and propagation, local value numbering of pure
