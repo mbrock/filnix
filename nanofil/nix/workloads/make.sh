@@ -14,20 +14,25 @@ set -u
 make=$1
 export LC_ALL=C
 unset MAKEFLAGS MFLAGS MAKELEVEL
+# make reports a child's SIGSEGV with "(core dumped)" only where a core
+# was dumped, which depends on the builder's core limit and
+# core_pattern (a pipe handler dumps whatever the limit): no cores, and
+# the suffix is dropped.
+ulimit -c 0
 here=$PWD
 
 run() {
   echo "### make $*"
   # bash's own report of a make killed by a signal names its pid.
   { ("$make" "$@") >out 2>&1; } 2>/dev/null && status=0 || status=$?
-  sed "s|$here|DIR|g; s|^$make|make|; s|^make\[[0-9]*\]|make[N]|" out
+  sed "s|$here|DIR|g; s|^$make|make|; s|^make\[[0-9]*\]|make[N]|; s| (core dumped)$||" out
   echo "### exit $status"
 }
 # For parallel runs: the lines in a stable order.
 runs() {
   echo "### make $* (sorted)"
   ("$make" "$@") >out 2>&1 && status=0 || status=$?
-  sed "s|$here|DIR|g; s|^$make|make|; s|^make\[[0-9]*\]|make[N]|" out | sort
+  sed "s|$here|DIR|g; s|^$make|make|; s|^make\[[0-9]*\]|make[N]|; s| (core dumped)$||" out | sort
   echo "### exit $status"
 }
 tree() { find "$@" -type f | sort | xargs sha256sum | cut -c1-16,64-; }
