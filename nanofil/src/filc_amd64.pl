@@ -2324,7 +2324,9 @@ thunk(thunk(F,Ref,Sig,Ts,Cells,ArgsSize,Result,Need)) -->
       saved_words(Ts,0,Saved),length(Ts,NW),Alloc is ((8+8*NW+15)//16)*16,
       field(function_object,generic_entry,rsi,GenericEntry),
       ( Sig = never(_) -> never_signature(SigV) ; SigV = Sig ) },
-    [section(text),p2align(4),hidden(FI),weak(FI),type(FI,function),label(FI),
+    [section(text),p2align(4)],
+    ( { Ref == local } -> [] ; [hidden(FI),weak(FI)] ),
+    [type(FI,function),label(FI),
      ins(push,q,[reg(rbp)]),ins(mov,q,[reg(rsp),reg(rbp)]),
      ins(push,q,[reg(rbx)]),ins(push,q,[reg(r12)]),
      ins(sub,q,[imm(Alloc),reg(rsp)])],
@@ -2353,6 +2355,7 @@ thunk(thunk(F,Ref,Sig,Ts,Cells,ArgsSize,Result,Need)) -->
 % The callee's function object in %rax:%rcx. A weak declaration's
 % getter may be null, and then so is the object: the function check
 % fails, as clang's thunk does.
+thunk_getter(local,Getter,G) --> thunk_getter(strong,Getter,G).
 thunk_getter(strong,Getter,_) -->
     [ins(xor,l,[reg(esi),reg(esi)]),ins(call,none,[plt(Getter)]),
      ins(mov,q,[reg(rdx),reg(rcx)])].

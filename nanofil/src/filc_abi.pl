@@ -443,10 +443,16 @@ one_per_symbol([], []).
 one_per_symbol([T|Ts0], [T|Ts]) :-
     T = t(F,Sig,_,_), exclude(same_symbol(F,Sig),Ts0,Ts1), one_per_symbol(Ts1,Ts).
 same_symbol(F,Sig,t(F,Sig,_,_)).
-% Ref is weak if the callee is declared weak: its getter may be null.
+% Ref is weak if the callee is declared weak: its getter may be null;
+% local if this module defines it with local linkage, so that the thunk
+% is local too and never merges with another object's thunk for its own
+% local function of the same name, as clang keeps such thunks local.
 lower_thunk(Symbols, t(F,Sig,Ret,Ks),
             thunk(F,Ref,Sig,Words,Cells,ArgsSize,Result,Need)) :-
-    ( weak_declared(Symbols,F) -> Ref = weak ; Ref = strong ),
+    (   weak_declared(Symbols,F) -> Ref = weak
+    ;   func_named(Symbols,F,func(_,local,_,_,_)) -> Ref = local
+    ;   Ref = strong
+    ),
     findall(param(K,tmp(I)),nth0(I,Ks,K),Ps), fast_params(Ps,Words),
     thunk_cells(Ks,0,0,Cells),
     length(Ks,N), ArgsSize is 8*N,

@@ -6,7 +6,9 @@
 # "// args: ..." line gives the arguments, and "// link: FILE.c" names a
 # companion, relative to the program, that clang builds into both (with
 # "// link-first", before nanofil's object in its link, so the linker
-# keeps the companion's weak symbols where both define one). With
+# keeps the companion's weak symbols where both define one). A
+# "// nanofil-link: FILE.c" companion is built by nanofil on nanofil's
+# side and by clang on clang's, for symbols two nanofil objects share. With
 # a "// signatures" line, nanofil must also give each function the
 # fast-entry signature clang gives it (exported pizlonatedFI<Sig>_<name>): a
 # wrong one still works through the generic entries, so only this sees it.
@@ -65,6 +67,7 @@ for f in "$@"; do
   mkdir -p "$d"
   read -r -a args <<<"$(sed -n 's|^// args: ||p' "$f")"
   link=$(sed -n 's|^// link: ||p' "$f")
+  nlink=$(sed -n 's|^// nanofil-link: ||p' "$f")
   read -r -a cflags <<<"$(sed -n 's|^// cflags: ||p' "$f")"
   input=$f std=c17
   if [[ " ${cflags[*]} " =~ \ -std=(c|gnu)(23|2x)\  ]]; then std=c23; fi
@@ -82,7 +85,14 @@ for f in "$@"; do
     input=$d/$name.i
     "$filcc" "${cflags[@]}" -E -o "$input" "$f"
   fi
-  if ! "$filcc" "${cflags[@]}" -O1 -w -o "$d/clang" "$f" "${libs[@]}" -lm; then reference_failed=1; fi
+  clibs=() nlibs=()
+  if [ -n "$nlink" ]; then
+    "$filcc" -O1 -w -c -o "$d/nlib-clang.o" "$(dirname "$f")/$nlink"
+    (cd "$src" && timeout "${COMPILE_TIMEOUT:-20}" "$nanofil" ${NANOFIL_OPT:-} cc "$(dirname "$f")/$nlink" </dev/null) >"$d/nlib.s"
+    as -o "$d/nlib.o" "$d/nlib.s"
+    clibs=("$d/nlib-clang.o") nlibs=("$d/nlib.o")
+  fi
+  if ! "$filcc" "${cflags[@]}" -O1 -w -o "$d/clang" "$f" "${libs[@]}" "${clibs[@]}" -lm; then reference_failed=1; fi
   outcome=reject
   if (cd "$src" && NANOFIL_STD=$std timeout "${COMPILE_TIMEOUT:-20}" "$nanofil" ${NANOFIL_OPT:-} cc "$input" </dev/null) >"$d/n.s"; then
     :
@@ -95,9 +105,9 @@ for f in "$@"; do
   as -o "$d/n.o" "$d/n.s"
   outcome='link-error'
   if grep -q '^// link-first' "$f"; then
-    "$filcc" -o "$d/nanofil" "${libs[@]}" "$d/n.o" -lm
+    "$filcc" -o "$d/nanofil" "${libs[@]}" "$d/n.o" "${nlibs[@]}" -lm
   else
-    "$filcc" -o "$d/nanofil" "$d/n.o" "${libs[@]}" -lm
+    "$filcc" -o "$d/nanofil" "$d/n.o" "${nlibs[@]}" "${libs[@]}" -lm
   fi
   [[ $reference_failed == 0 ]] || exit 1
   outcome=pass

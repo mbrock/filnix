@@ -923,6 +923,7 @@ nanofil emits no comdat or linkonce section, and nothing else is
 | Symbol | Binding | Shared? |
 | --- | --- | --- |
 | `pizlonatedFI<Sig>_<f>`, call thunk (callee elsewhere) | hidden, weak | yes, by name and signature, with clang's and nanofil's |
+| `pizlonatedFI<Sig>_<f>`, call thunk for a local `f` (a static variadic one, or an unprototyped call) | local | no: each object's static `f` is its own, as clang's thunk is local too (tests/c/prog/static-thunks.c; potrace's two static `ship`s once merged) |
 | `pizlonatedFIN<R>_<A>_<f>`, thunk for more than 16 words | hidden, weak | among nanofil objects only (clang calls `FI0_<f>`) |
 | `pizlonatedFI<Sig>_<f>` / `FIP<Sig>_<f>`, definition entries | global or local | no: one definition |
 | `pizlonated_<f>` getter, `pizlonatedFO_<f>` function object | global or local | no |

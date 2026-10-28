@@ -137,10 +137,12 @@ routing :-
                abi([origin(c),getter(weak_getter(wdecl),c,weakdecl)])],
     % w/l signatures coincide. The sorted representative is l; void
     % requires zero returned bytes although its adapter produces eight.
+    % The local variadic's thunk is local, never merged with another
+    % object's (tests/c/prog/static-thunks.c).
     lower_thunks(M,[thunk(ext,strong,134,[wf(l,tmp(0))],
                          [cell(0,l,saved(0),none)],8,
                          adapter_result(registers,void,8,packet([],[data(0),aux(0)])),0),
-                    thunk(variadic,strong,1,[],[],0,
+                    thunk(variadic,local,1,[],[],0,
                          adapter_result(registers,void,8,packet([],[data(0),aux(0)])),0),
                     thunk(wdecl,weak,1,[],[],0,
                          adapter_result(registers,void,8,packet([],[data(0),aux(0)])),0),
