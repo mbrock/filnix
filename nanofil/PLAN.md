@@ -283,6 +283,7 @@ check compared with a filcc build:
 | `nanofil-jq` | jq 1.8.2 with oniguruma, decNumber | [`cda56e6`](https://github.com/mbrock/filnix/commit/cda56e6) |
 | `nanofil-dash` | dash 0.5.13 | [`cda56e6`](https://github.com/mbrock/filnix/commit/cda56e6) |
 | `nanofil-xz` | xz-utils 5.8.4, threaded coders at 1 to 8 threads | [`41da3be`](https://github.com/mbrock/filnix/commit/41da3be) |
+| `nanofil-make` | GNU make 4.4.1: jobserver, -j, signals, its test suite | no frontend change needed |
 
 Since the steps below were planned, M4 gained VLAs and variably
 modified types ([`4822471`](https://github.com/mbrock/filnix/commit/4822471)),
@@ -304,6 +305,11 @@ additions*). Constructors and destructors run as clang's do
 `_Thread_local` and `__thread` variables are per-thread objects, created
 lazily through clang's getter protocol and interoperating with clang's
 ([docs/abi-findings.md](docs/abi-findings.md), *Thread-local variables*).
+Weak C symbols (`__attribute__((weak))`, `#pragma weak`) are compiled
+as strong ones. That can turn into a link error but never changes a
+linked program's meaning. Implementing them needs a weak IR linkage
+([docs/abi-findings.md](docs/abi-findings.md), *Symbols the linker
+merges*).
 
 Broken into steps below. Probes at the pin
 (compile `printf`, `puts`, globals and string literals with `filcc -S`)
