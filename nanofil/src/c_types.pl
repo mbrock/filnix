@@ -217,10 +217,11 @@ declarator_type(Specs, Requests0, Base, Storage, init(dcl(some(Name), SyntaxType
         ; Requests = Requests0 ),
         object_alignment(Requests, Type0, Env2, Type, A),
         (   A == none, lookup_ordinary(Env2, qalign(Name), _)
-        ->  bind_ordinary(qalign(Name), none, Env2, Env)
-        ;   A == none -> Env = Env2
-        ;   bind_ordinary(qalign(Name), A, Env2, Env)
+        ->  bind_ordinary(qalign(Name), none, Env2, Env3)
+        ;   A == none -> Env3 = Env2
+        ;   bind_ordinary(qalign(Name), A, Env2, Env3)
         ),
+        constant_object(Name, Reflected, Type0, Storage, Init, Env3, Env),
         Decl = d(Name, Type, Storage, Asm, Init)
     ).
 
@@ -270,6 +271,50 @@ object_alignment(Requests, Type0, Env, Type, A) :-
         ;   Type = bad('an alignment above 4096'), A = none
         )
     ;   Type = bad('alignment attributes'), A = none
+    ).
+
+doc(constant_object(+Name, +Reflected, +Type, +Storage, +Init, +Env0, -Env), det, [
+    Name: "a declared object",
+    Reflected: "its reflected type, with its qualifiers",
+    Type: "its type",
+    Storage: "its storage class",
+    Init: "its initializer, or none",
+    Env0: "the scope it is declared in",
+    Env: "Env0 with cval(Name) bound to its value c(V) if it is a constant object, else to none if an outer one was",
+    "An object of const, not volatile, arithmetic type whose definition",
+    "has an initializer that folds is a constant in constant expressions",
+    "where its definition is visible, as clang and GCC fold it (6.6p10",
+    "lets an implementation accept other forms): in initializers, case",
+    "labels, enumerators, static assertions and array sizes, which so",
+    "declare no variable length array. Any other declaration of the name",
+    "hides it, except an extern one without an initializer, which",
+    "declares the same object. A parameter's reflected type has no",
+    "top-level qualifiers, so a parameter is never read as one.",
+    cites('C11 6.6p10'),
+    example(( empty_env(E0),
+              constant_object('K', qualified([const], int), int, none, num(300, none-dec), E0, E),
+              lookup_ordinary(E, cval('K'), C) ), C = c(300)),
+    example(( empty_env(E0),
+              constant_object('K', qualified([const], char), char, static, num(300, none-dec), E0, E),
+              lookup_ordinary(E, cval('K'), C) ), C = c(44)),
+    example(( empty_env(E0),
+              constant_object('K', qualified([const, volatile], int), int, none, num(7, none-dec), E0, E),
+              \+ lookup_ordinary(E, cval('K'), _) )),
+    example(( empty_env(E0), bind_ordinary(cval('K'), c(7), E0, E1),
+              constant_object('K', int, int, none, none, E1, E),
+              lookup_ordinary(E, cval('K'), C) ), C = none)
+]).
+constant_object(Name, Reflected, Type, Storage, Init, Env0, Env) :-
+    (   Reflected = qualified(Qs, _), memberchk(const, Qs), \+ memberchk(volatile, Qs),
+        arithmetic_type(Type), Init \== none, Init \= list(_),
+        catch(constant_value(Init, Env0, V0, From), not_constant, fail),
+        const_convert(V0, From, Type, V), integer(V)
+    ->  bind_ordinary(cval(Name), c(V), Env0, Env)
+    ;   Storage == extern, Init == none
+    ->  Env = Env0
+    ;   lookup_ordinary(Env0, cval(Name), _)
+    ->  bind_ordinary(cval(Name), none, Env0, Env)
+    ;   Env = Env0
     ).
 
 % max_alignment(-A): the strictest alignment nanofil gives an object.
@@ -1948,6 +1993,9 @@ folded(val(_, offsetof(TypeName, Path)), Env, V) :-         % 7.19p3
     type_name_type(TypeName, T, Env, Env1),
     offset_path(Path, T, Env1, 0, V).
 folded(val(_, comma(XA, XV)), Env, V) :- folded(XA, Env, _), folded(XV, Env, V).
+folded(val(_, load(obj(qualified(Qs, _), id(Name)))), Env, V) :-  % 6.6p10
+    memberchk(const, Qs),
+    lookup_ordinary(Env, cval(Name), c(V)).
 
 % operand_value(+XV, +Env, -V, -T): value tree XV folds to V, of
 % unqualified type T.
