@@ -2255,6 +2255,39 @@ reach without the frame growth: functions where pressure leaves many
 homes in the frame. The second lowering pools those again, so
 `BZ2_decompress` keeps 3a's limits there.
 
+#### Temps as the `-O` default
+
+Approved after the compile cuts above, as 1.17–1.18× today's cells and
+1.12× the cells the budget was set against, with memory within the
+default stack. `-O` now selects `--registers=temps`. `--registers=cells`
+stays selectable. The snapshot's existing `-O` modes keep their explicit
+`--registers` (cells in C. and I.), so their outputs are unchanged, and
+T. guards temps. `nix/check.nix` runs one configuration on
+`-O --registers=cells`, and the gate has an `O-cells` mode.
+
+Gate on the switch (7 trials, cpu 6), ratio to filcc -O2, time
+(instructions), with the trials' range of time ratios:
+
+| Workload | `O` (temps) | `O-cells` |
+| --- | --- | --- |
+| zlib -6 | 2.43 (4.02) 2.38..2.48 | 2.60 (4.21) 2.54..2.61 |
+| zlib -d | 1.92 (3.22) 1.80..1.95 | 2.02 (3.38) 1.93..2.06 |
+| bzip2 -9 | 2.00 (2.53) 1.98..2.00 | 2.06 (2.66) 2.05..2.06 |
+| bzip2 -d | 3.73 (3.19) 3.72..3.81 | 3.54 (3.40) 3.52..3.57 |
+| lz4 -1 | 2.20 (10.63) 2.18..2.31 | 2.16 (10.70) 2.12..2.32 |
+| lz4 -9 | 2.67 (3.37) 2.53..2.72 | 2.94 (3.71) 2.91..3.50 |
+| lz4 -d | 2.81 (7.29) 2.72..2.89 | 2.83 (7.33) 2.74..3.17 |
+| lua int | 2.12 (2.35) 2.12..2.14 | 2.26 (2.49) 2.25..2.26 |
+| lua tab | 1.99 (2.26) 1.99..2.00 | 2.10 (2.40) 2.10..2.12 |
+| lua str | 1.49 (1.63) 1.47..1.53 | 1.48 (1.64) 1.47..1.51 |
+| sqlite | 1.99 (1.99) 1.98..2.00 | 2.06 (2.04) 2.05..2.08 |
+| geomean | 2.24 (3.28) | 2.31 (3.42) |
+
+bzip2 -d is the exception: 0.29G fewer instructions but slower in this
+link, the reverse of the earlier gate (3.81 against 4.04). That function's
+time follows its layout, not its instruction count (3d's padding
+bands).
+
 #### CPython's interpreter frame (measured for the next item)
 
 CPython (`nanofil-python`, a1a5306) needs a 256 MB stack for

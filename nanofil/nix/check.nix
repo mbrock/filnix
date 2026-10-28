@@ -111,11 +111,13 @@ pkgs.runCommandCC "nanofil-check"
     step "-O inline=none ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
     step "-O inline=none programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     unset NANOFIL_INLINE
-    # A home per scalar temporary (docs/perf.md 3d), inlining as -O does.
-    export NANOFIL_REGISTERS=temps
-    step "-O temps difftest" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/c/*.c big1.c
-    step "-O temps ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
-    step "-O temps programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    # A home per scalar temporary (docs/perf.md 3d) is the -O default,
+    # so the -O suites above run it; these keep -O on cells, pooled
+    # scalar homes, inlining as -O does.
+    export NANOFIL_REGISTERS=cells
+    step "-O cells difftest" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/c/*.c big1.c
+    step "-O cells ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
+    step "-O cells programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     unset NANOFIL_REGISTERS NANOFIL_OPT
     # Local selection and caching are independent of the middle end.
     # The checker validates caching of the selected stream; native suites
@@ -132,11 +134,11 @@ pkgs.runCommandCC "nanofil-check"
     step "local corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
     unset NANOFIL_REGISTERS
     # Whole-function register homes with register operands and frame
-    # cells (docs/perf.md items 3 and 5a-loads) are the -O default, so the
-    # -O suites above run them, validated by amd64_regs_check; here they
-    # run without -O, and -O runs register operands without cells,
-    # function registers alone and the stack reference, so the older
-    # paths stay tested.
+    # cells (docs/perf.md items 3 and 5a-loads) are the -O default (on
+    # temps' frame), so the -O suites above run them, validated by
+    # amd64_regs_check; here cells run without -O, and -O runs register
+    # operands without cells, function registers alone and the stack
+    # reference, so the older paths stay tested.
     for mode in "cells:" "operands:-O" "function:-O" "stack:-O"; do
       export NANOFIL_REGISTERS=''${mode%%:*} NANOFIL_OPT=''${mode#*:}
       step "registers $mode difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/branches.ir tests/c/*.c big1.c

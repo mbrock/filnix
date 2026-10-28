@@ -10,8 +10,9 @@
 # compile of each .ir again through the middle end in six fixed modes
 # ($OPT, $FUN, $OPS and $CEL below: the stack reference, function
 # registers, those with register operands, and those with frame cells,
-# all without inlining; $INL, frame cells with inlining, the -O
-# default; and $TMP, frame cells with a home per scalar temporary).
+# all without inlining; $INL, frame cells with inlining; and $TMP,
+# frame cells with a home per scalar temporary, the -O default's
+# registers, without inlining).
 # The corpora come from nix/corpus.nix; set CPROC and CTS to their roots
 # to skip the nix build. Needs FILCC and the bin/nanofil host (SWIPL,
 # or NANOFIL_HOST=trealla with TPL). Baselines are cached per commit under ${SNAPSHOT_CACHE:-/tmp/nanofil-snapshot}.

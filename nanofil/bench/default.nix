@@ -31,7 +31,7 @@ let
     O-stack = "-O --registers=stack";
     O-function = "-O --registers=function";
     O-operands = "-O --registers=operands";
-    O-temps = "-O --registers=temps";
+    O-cells = "-O --registers=cells";
     O-call = "-O --memcpy=call";
   };
   chosen =
