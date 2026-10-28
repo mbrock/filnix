@@ -125,7 +125,9 @@ as -o hello.o hello.s && $FILCC -o hello hello.o && ./hello
 
 `--registers=local` before `cc` or `compile` enables integer immediate
 selection followed by validated block-local stack caching. It is independent of
-`-O`; `--registers=stack` is the default reference. Build/test harnesses
+`-O`; `--registers=stack` is the default reference without `-O`, and
+`-O` defaults to whole-function registers with register operands
+(`--registers=operands`, [docs/perf.md](docs/perf.md)). Build/test harnesses
 accept the same choice as `NANOFIL_REGISTERS=local`. This does not change
 pointer/root placement, and setjmp functions retain their original code.
 See [docs/m6.md](docs/m6.md) for the deliberately limited scope and cost.

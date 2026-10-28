@@ -1,5 +1,6 @@
-/* Opt-in whole-function register homes for scalar temporaries
-   (`--registers=function`, docs/perf.md item 3, step 3a). A fixed map
+/* Whole-function register homes for scalar temporaries
+   (`--registers=function`, docs/perf.md item 3, step 3a; with step 3b's
+   operand rewrite, `--registers=operands`, the -O default). A fixed map
    puts frame homes in registers for the whole function: homes live
    across a call in the callee-saved rbx and r12-r15, the others also in
    r10/r11. Accesses stay the moves the reference emits, with a register

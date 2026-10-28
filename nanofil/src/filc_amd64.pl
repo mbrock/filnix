@@ -17,8 +17,9 @@
     Values are never kept in registers across a call or safepoint, so
     every live capability is always in a slot the GC scans. The prologue
     zeroes `lowers[]`, so the GC sees no stale lowers. Only function
-    mode (amd64_regs.pl, the -O default) keeps scalar `w`/`l` homes in
-    registers, callee-saved ones across calls; pointers never.
+    and operands modes (amd64_regs.pl; operands is the -O default) keep
+    scalar `w`/`l` homes in registers, callee-saved ones across calls;
+    pointers never.
 
     Temporaries whose closed live intervals are disjoint share a slot
     (frame_slots.pl). A function that calls setjmp is the exception:

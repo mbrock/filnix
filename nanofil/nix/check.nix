@@ -110,12 +110,12 @@ pkgs.runCommandCC "nanofil-check"
     unset NANOFIL_OPT
     step "local corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
     unset NANOFIL_REGISTERS
-    # Whole-function register homes (docs/perf.md item 3) are the -O
-    # default, so the -O suites above run them, validated by
-    # amd64_regs_check; here they run without -O, -O runs the stack
-    # reference so the old path stays tested, and -O runs register
-    # operands (step 3b, opt-in), validated by its region checker.
-    for mode in "function:" "stack:-O" "operands:-O"; do
+    # Whole-function register homes with register operands (docs/perf.md
+    # item 3, steps 3a and 3b) are the -O default, so the -O suites above
+    # run them, validated by amd64_regs_check; here they run without -O,
+    # and -O runs function registers alone and the stack reference, so
+    # both older paths stay tested.
+    for mode in "operands:" "function:-O" "stack:-O"; do
       export NANOFIL_REGISTERS=''${mode%%:*} NANOFIL_OPT=''${mode#*:}
       step "registers $mode difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/branches.ir tests/c/*.c big1.c
       step "registers $mode ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
