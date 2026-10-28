@@ -271,10 +271,29 @@ reflect_param(_, _, Env, Env).
 
 specs_type(Specs, Type, Env0, Env) :-
     base_type(Specs, Type0, Env0, Env),
-    (   member(Spec, Specs), layout_attr(Spec)
+    (   member(attr(Tokens), Specs), vector_attr(Tokens)
+    ->  Type = bad('vector types')
+    ;   member(Spec, Specs), layout_attr(Spec)
     ->  Type = bad('alignment attributes')
     ;   Type = Type0
     ).
+
+doc(vector_attr(+Tokens), semidet, [
+    Tokens: "the tokens of a GNU attribute",
+    "The attribute is vector_size, which makes the declared type a",
+    "vector of its specifiers' type (immintrin.h's __m128i). nanofil",
+    "has no vector types: the type is refused (bad), an error only where",
+    "it is used, so a header declaring vector typedefs and inline",
+    "functions it never calls still compiles. Ignoring the attribute",
+    "would give the vector the size of one element.",
+    cites('GCC manual, Using Vector Instructions through Built-in Functions'),
+    example(vector_attr([group([id('__vector_size__'), group([int(16, none-dec)])])])),
+    fails(vector_attr([group([id(aligned), group([int(16, none-dec)])])]))
+]).
+vector_attr(Tokens) :-
+    is_list(Tokens),
+    attr_word(Tokens, Word),
+    memberchk(Word, [vector_size, '__vector_size__', ext_vector_type]), !.
 
 % layout_attr(+Spec): Spec is an attribute that changes layout, which
 % the frontend does not model. The cut commits to the first such word.
@@ -402,6 +421,8 @@ keyword_combo([double], double).
 keyword_combo([double, long], ldouble).
 keyword_combo(S, bad('_Complex')) :- memberchk(complex, S).
 keyword_combo(S, bad('__int128')) :- memberchk(int128, S).
+keyword_combo(S, bad('_Float16')) :- memberchk(float16, S).
+keyword_combo(S, bad('__bf16')) :- memberchk(bf16, S).
 
 %% Structs and unions
 
@@ -436,7 +457,7 @@ su_definition(Members, Kind, Tag, Attrs, Type, Env0, Env) :-
     (   member(Attr, Attrs), packed_attr(Attr) -> Packing = packed
     ;   Packing = natural
     ),
-    (   member(Attr, Attrs), aligned_attr(Attr)
+    (   \+ definition_alignment(Attrs, Env2, _)
     ->  Def = bad('alignment attributes')
     ;   memberchk(bad(Why), Fields)
     ->  known_field_prefix(Fields, Prefix),
@@ -445,12 +466,88 @@ su_definition(Members, Kind, Tag, Attrs, Type, Env0, Env) :-
         ->  Def = partial(Why, Known)
         ;   Def = bad(Why)
         )
-    ;   su_layout(Kind, Packing, Fields, Env2, Def)
+    ;   su_layout(Kind, Packing, Fields, Env2, Def0),
+        definition_alignment(Attrs, Env2, Request),
+        aligned_def(Def0, Request, Def)
     ),
     Env2 = e(Ords, Tags2, Defs0, Next),
     put_assoc(Id, Defs0, Def, Defs1),
     put_assoc(qmembers(Id), Defs1, Reflected, Defs2),
     Env = e(Ords, Tags2, Defs2, Next).
+
+doc(definition_alignment(+Attrs, +Env, -Align), semidet, [
+    Attrs: "the attributes of a struct or union definition",
+    Env: "the scope it is defined in",
+    Align: "the alignment its aligned attributes request, 1 if none",
+    "GNU's aligned(N) on a struct or union definition makes its",
+    "alignment the larger of N and its members' (packed or not); bare",
+    "aligned means the target's biggest alignment, 16 on x86-64 (clang's",
+    "__BIGGEST_ALIGNMENT__). N must be a constant power of two. Fails",
+    "for an alignment above 16, which nanofil does not give objects",
+    "(globals and allocations are 16-aligned), or a non-constant N.",
+    cites('GCC manual, Common Type Attributes, aligned'),
+    cites('C11 6.2.8p4'),
+    example(( empty_env(E),
+              definition_alignment([[group([id(packed), p(','), id(aligned),
+                                            group([int(4, none-dec)])])]], E, A) ),
+            A = 4),
+    example(( empty_env(E), definition_alignment([[group([id('__aligned__')])]], E, A) ),
+            A = 16),
+    example(( empty_env(E), definition_alignment([], E, A) ), A = 1),
+    fails(( empty_env(E),
+            definition_alignment([[group([id(aligned), group([int(32, none-dec)])])]], E, _) )),
+    fails(( empty_env(E),
+            definition_alignment([[group([id(aligned), group([int(12, none-dec)])])]], E, _) ))
+]).
+definition_alignment(Attrs, Env, Align) :-
+    findall(R, ( member(Attr, Attrs), aligned_entry(Attr, R) ), Requests),
+    foldl(requested_alignment(Env), Requests, 1, Align).
+
+% aligned_entry(+Tokens, -Request) is nondet: Request is bare, or
+% arg(Ts) with the argument tokens Ts, for each aligned in an
+% attribute's Tokens, looking into the __attribute__((...)) groups.
+aligned_entry(Tokens, Request) :-
+    append(_, [id(Word)|Rest], Tokens),
+    memberchk(Word, [aligned, '__aligned__']),
+    ( Rest = [group(Ts)|_] -> Request = arg(Ts) ; Request = bare ).
+aligned_entry(Tokens, Request) :-
+    member(group(Group), Tokens),
+    aligned_entry(Group, Request).
+
+requested_alignment(_, bare, A0, A) :- A is max(A0, 16).
+requested_alignment(Env, arg(Ts), A0, A) :-
+    phrase(flat_tokens(Ts), Flat),
+    catch(c_constant_expression(Flat, E), nanofil_error(_), fail),
+    catch(const_value(E, Env, N, _), not_constant, fail),
+    N > 0, N /\ (N - 1) =:= 0, N =< 16,
+    A is max(A0, N).
+
+% aligned_def(+Def0, +Align, -Def): Def is the definition Def0 with its
+% alignment at least Align and its size rounded up to that.
+aligned_def(def(Kind, Members, Size0, Align0), Request, def(Kind, Members, Size, Align)) :- !,
+    Align is max(Align0, Request),
+    Size is (Size0 + Align - 1) // Align * Align.
+aligned_def(Def, _, Def).
+
+doc(bit_castable(+From, +To, +Env), semidet, [
+    From: "the type of __builtin_bit_cast's operand, after conversion",
+    To: "the type it names",
+    Env: "the scope",
+    "Both are complete object types of one size, and To is not an",
+    "array (clang's rule; C has no __builtin_bit_cast). The result has",
+    "the operand's bytes, as memcpy into a To would give it (C11 7.24.2.1):",
+    "a pointer's bytes keep its address and leave its capability, and",
+    "a pointer made from bytes has none, as in Fil-C's clang.",
+    cites('C11 6.2.6.1p4'),
+    cites('Clang Language Extensions, __builtin_bit_cast'),
+    example(( empty_env(E), bit_castable(float, uint, E) )),
+    fails(( empty_env(E), bit_castable(int, long, E) )),
+    fails(( empty_env(E), bit_castable(long, array(char, 8), E) ))
+]).
+bit_castable(From, To, Env) :-
+    To \= array(_, _), To \= func(_, _, _), To \== void,
+    catch(( type_size_align(From, Env, Size, _),
+            type_size_align(To, Env, Size, _) ), bad(_), fail).
 
 % A later unsupported member (notably glibc FILE's _flags2 bitfield)
 % does not change preceding offsets. Never infer offsets beyond it, or
@@ -1960,6 +2057,10 @@ elab(gcond(C, B), Env, val(T, gcond(XC, XB))) :-
 elab(va_arg(A, TN), Env, val(T, va_arg(TN, XA))) :-
     argument(Env, A, XA),
     type_name_type(TN, T0, Env, _), reflect_type(TN, T0, Env, T).
+elab(bit_cast(TN, E), Env, val(T, bit_cast(XA))) :-
+    argument(Env, E, XA), tree_type(XA, TA),
+    type_name_type(TN, T0, Env, _), unqualified(T0, T),
+    bit_castable(TA, T, Env).
 elab(stmtexpr(at(Loc, block(Items))), Env, val(T, stmtexpr(at(Loc, block(Items))))) :-
     block_value_type(Items, Env, T).
 elab(generic(C, As), Env, X) :-                             % 6.5.1.1
@@ -2260,6 +2361,9 @@ doc(builtin_type(?(Name), ?(Type)), nondet, [
     cites('C11 5.2.4.2.2p8'),
     cites('C11 7.12.3.4p2'),
     example(builtin_type('__builtin_isnan', T), T = int),
+    "__builtin_assume_aligned(p, align[, offset]) is p as a void *; the",
+    "alignment it promises changes no bounds, so nanofil drops it.",
+    example(builtin_type('__builtin_assume_aligned', T), T = ptr(void)),
     fails(builtin_type('__builtin_ctzlll', _))
 ]).
 builtin_type('__builtin_va_start', void).
@@ -2268,6 +2372,7 @@ builtin_type('__builtin_va_end', void).
 builtin_type('__builtin_unreachable', void).
 builtin_type('__builtin_alloca', ptr(void)).
 builtin_type('__builtin_expect', long).
+builtin_type('__builtin_assume_aligned', ptr(void)).
 builtin_type('__builtin_constant_p', int).
 builtin_type(Name, bool) :- overflow_builtin(Name, _, _).
 builtin_type(Name, int) :- bit_builtin(Name, _, _).
@@ -2913,6 +3018,13 @@ fault_(cast(TN, E), Env, F, As) :-
     type_name_type(TN, To, Env, _),
     (   untyped(E, Env) -> fault_(E, Env, F, As)
     ;   lowered_type(E, Env, From), F = 'cannot convert ~w to ~w', As = [From, To]
+    ).
+fault_(bit_cast(TN, E), Env, F, As) :-
+    type_name_type(TN, To, Env, _),
+    (   untyped(E, Env) -> fault_(E, Env, F, As)
+    ;   lowered_type(E, Env, From),
+        F = '__builtin_bit_cast from ~w to ~w, which is not an object of the same size that is not an array',
+        As = [From, To]
     ).
 fault_(call(id(Name), _), Env, F, [Name]) :-
     \+ lookup_ordinary(Env, Name, _), atomic_name(Name), !,

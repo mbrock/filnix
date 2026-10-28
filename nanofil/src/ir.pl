@@ -184,7 +184,15 @@
     thread-local objects: each thread has its own instance, created
     and initialized with Items when that thread first takes the
     symbol's address. The interpreter runs one thread, so there it is
-    an ordinary object. Align is 1, 2, 4, 8 or 16. Items is a list of:
+    an ordinary object. Linkage `init(ctor, Priority)` or
+    `init(dtor, Priority)` (filc mode only) is an entry of the
+    constructor (destructor) table, which the program runs before main
+    (at exit) through the Fil-C runtime: Items is the one
+    `item(p, sym(F, 0))` of a function F defined in the module, and
+    Priority an integer from 0 to 65535, lower first, or `none`, after
+    those with one. It is not an object: nothing may take its address,
+    and the interpreter does not run it. Align is 1, 2, 4, 8 or 16.
+    Items is a list of:
 
     | Item | Means |
     |---|---|
@@ -765,6 +773,11 @@ valid_item(_, Mode, _, data(Name, Linkage, Align, Items)) :-
     ;   memberchk(Linkage, [tls(export), tls(local)])
     ->  (   Mode == filc -> true
         ;   fn_error(Name, 'thread-local data needs a Fil-C module', [])
+        )
+    ;   Linkage = init(Kind, Prio), memberchk(Kind, [ctor, dtor]),
+        ( Prio == none -> true ; integer(Prio), between(0, 65535, Prio) )
+    ->  (   Mode == filc, Items = [item(p, sym(_, 0))] -> true
+        ;   fn_error(Name, 'a ~w entry is one function in a Fil-C module', [Kind])
         )
     ;   fn_error(Name, 'invalid data linkage ~w', [Linkage])
     ),

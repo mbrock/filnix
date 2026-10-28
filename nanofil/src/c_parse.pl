@@ -98,6 +98,7 @@
     | `complit(TypeName, Init)` | a compound literal |
     | `offsetof(TypeName, Path)` | Path a list of `field(F)` and `index(E)` |
     | `va_arg(A, TypeName)` | `__builtin_va_arg` |
+    | `bit_cast(TypeName, E)` | `__builtin_bit_cast` |
     | `stmtexpr(Block)` | a GNU statement expression |
     | `label_addr(L)` | GNU `&&L`, the address of label L |
     | `generic(Control, Associations)` | `_Generic`, Associations a list of `assoc(TypeName, E)` and `assoc(default, E)` |
@@ -303,7 +304,7 @@ specifier(_, _, storage(S)) -->
 specifier(_, _, tspec(K)) -->
     kw(K),
     {   memberchk(K, [void, char, short, int, long, float, double, signed,
-                      unsigned, bool, complex, int128])
+                      unsigned, bool, complex, int128, float16, bf16])
     }, !.
 specifier(_, _, _) -->
     kw(atomic),
@@ -655,7 +656,8 @@ starts_type(Env), [tok(X, Loc)] -->
 
 type_start_token(kw(K), _) :-
     memberchk(K, [void, char, short, int, long, float, double, signed,
-                  unsigned, bool, complex, int128, struct, union, enum,
+                  unsigned, bool, complex, int128, float16, bf16,
+                  struct, union, enum,
                   const, volatile, restrict, atomic, typeof, attribute,
                   alignas, extension]).
 type_start_token(id(N), Env) :-
@@ -852,16 +854,22 @@ statement_body(Env, S) -->
 % GNU asm: only the empty compiler barrier, asm volatile("" ::: "memory")
 % with no operands, which dash's INTOFF uses. It emits no instruction,
 % and nanofil moves no memory access across a statement anyway. Any
-% other asm would run code nanofil cannot check, and is refused.
-statement_body(_, null) -->
+% other asm would run code nanofil cannot check: it parses as
+% unsupported_asm, which c_lower refuses, so only a function that is
+% lowered is refused, not an unused static inline one from a header
+% (immintrin.h's hresetintrin.h), which clang never emits either.
+statement_body(_, S) -->
     kw(asm), !,
     asm_qualifiers,
     (   punct('('), string_bytes([]),
         asm_operands, asm_operands, asm_clobbers,
         punct(')')
-    ->  expect(';')
-    ;   parse_error('inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")')
-    ).
+    ->  { S = null }
+    ;   punct('('), attribute_argument(')')
+    ->  { S = unsupported_asm }
+    ;   parse_error('expected asm operands in parentheses')
+    ),
+    expect(';').
 statement_body(Env, label(Label, S)) -->
     label_start, !,
     [tok(id(Label), _), _],
@@ -1086,6 +1094,10 @@ primary(Env, va_arg(A, Type)) -->
     token(id('__builtin_va_arg')), !,
     expect('('), assignment(Env, A), expect(','),
     type_name(Env, Type), expect(')').
+primary(Env, bit_cast(Type, E)) -->
+    token(id('__builtin_bit_cast')), !,
+    expect('('), type_name(Env, Type), expect(','),
+    assignment(Env, E), expect(')').
 primary(_, _) -->
     token(id(N)),
     {   memberchk(N, ['__builtin_types_compatible_p'])

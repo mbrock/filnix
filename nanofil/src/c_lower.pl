@@ -130,7 +130,12 @@ with_used_inlines(Funcs0, Env0, Items) :-
     sort(Defined0, Defined),
     used_inlines(Funcs0, Defined, Env0, New, Env),
     global_data(Env, Data),
-    append([Funcs0, New, Data], Items).
+    append([Funcs0, New, Data], Items),
+    forall(member(data(_, init(Kind, _), _, [item(p, sym(Sym, _))]), Data),
+           (   memberchk(func(Sym, _, _, _, _), Items) -> true
+           ;   format(atom(Msg), 'the ~w ~w is not defined in this translation unit', [Kind, Sym]),
+               throw(nanofil_error(Msg))
+           )).
 
 % used_inlines(+Scan, +Defined, +Env0, -New, -Env): New are the deferred
 % inline functions that the functions Scan or the global data refer to
@@ -214,12 +219,14 @@ top_item(ExternalNames, decl(Loc, Specs, Inits), Funcs, Env0, Env) :-
 top_item(_, decl(Loc, Specs, Inits), [], Env0, Env) :- !,
     catch(decl_types(Specs, Inits, Decls, Env0, Env1), not_constant,
           sema_error(Loc, 'array size is not a constant', [])),
-    foldl(global_decl(Loc), Decls, Env1, Env).
+    foldl(global_decl(Loc), Decls, Env1, Env2),
+    foldl(init_decl(Loc, Specs), Decls, Env2, Env).
 top_item(ExternalNames, fundef(Loc, Specs, dcl(some(Name), DclType, Asm), Body), Funcs,
          Env0, Env) :-
     decl_types(Specs, [init(dcl(some(Name), DclType, Asm), none)],
                [d(_, Type, Storage, _, _)], Env0, Env1),
-    global_decl(Loc, d(Name, Type, Storage, Asm, none), Env1, Env2),
+    global_decl(Loc, d(Name, Type, Storage, Asm, none), Env1, Env1a),
+    init_decl(Loc, Specs, d(Name, Type, Storage, Asm, none), Env1a, Env2),
     (   memberchk(fspec(inline), Specs),
         (   Storage == static
         ;   \+ external_inline_body(Specs, Storage, Name, ExternalNames)
@@ -232,8 +239,70 @@ top_item(ExternalNames, fundef(Loc, Specs, dcl(some(Name), DclType, Asm), Body),
                     Env2, Env)
         ;   Env = Env2      % GNU extern inline or a C99 inline-only definition
         )
+    ;   Storage == static
+    ->  % One nanofil cannot lower is deferred as a static inline is:
+        % clang emits an unreferenced static function not at all, and
+        % headers (amxcomplexintrin.h) define ones nanofil refuses. A
+        % reference lowers it again, which raises the error then.
+        catch(function(Loc, Name, Type, DclType, Body, Env2, Env3, Funcs0),
+              Error, ( deferrable(Error) -> true ; throw(Error) )),
+        (   var(Funcs0)
+        ->  Funcs = [],
+            lookup_ordinary(Env2, Name, fn(_, Sym, _)),
+            env_scope(Env2, Scope, _),
+            put_def(deferred(Sym), df(Loc, Name, Type, DclType, Body, Scope),
+                    Env2, Env)
+        ;   Funcs = Funcs0, Env = Env3
+        )
     ;   function(Loc, Name, Type, DclType, Body, Env2, Env, Funcs)
     ).
+
+/* GNU's constructor and destructor attributes, with an optional
+   priority: the function runs before main (after exit), as clang emits
+   it: an .init_array (.fini_array) entry, with the priority in the
+   section's name, whose native forwarder hands the function object to
+   the Fil-C runtime. nanofil records init(Kind, Sym) with the priority
+   (none without one), and global_data/2 makes a data item of linkage
+   init(Kind, Priority) holding the function (ir.pl). The item refers to
+   the function, so a static one is lowered even if deferred. */
+init_decl(Loc, Specs, d(Name, func(_, _, _), _, _, _), Env0, Env) :-
+    findall(Kind-Prio, init_attr(Specs, Kind, Prio), Inits), Inits \== [], !,
+    lookup_ordinary(Env0, Name, fn(_, Sym, _)),
+    foldl(init_def(Loc, Sym), Inits, Env0, Env).
+init_decl(_, _, _, Env, Env).
+
+init_def(Loc, Sym, Kind-Prio, Env0, Env) :-
+    (   Prio = bad
+    ->  sema_error(Loc, 'the ~w priority of ~w is not an integer from 0 to 65535', [Kind, Sym])
+    ;   put_def(init(Kind, Sym), Prio, Env0, Env)
+    ).
+
+% init_attr(+Specs, -Kind, -Priority) is nondet: Specs carry GNU's
+% constructor (Kind ctor) or destructor (dtor) attribute, with
+% Priority an integer, none without one, or bad.
+init_attr(Specs, Kind, Prio) :-
+    member(attr(Tokens), Specs), is_list(Tokens),
+    member(group(Group), Tokens),
+    append(_, [id(Word)|Rest], Group),
+    init_word(Word, Kind),
+    (   Rest = [group(Arg)|_]
+    ->  ( Arg = [int(Prio, _)], integer(Prio), between(0, 65535, Prio) -> true ; Prio = bad )
+    ;   Prio = none
+    ).
+
+init_word(constructor, ctor).
+init_word('__constructor__', ctor).
+init_word(destructor, dtor).
+init_word('__destructor__', dtor).
+
+% rvals_discarded(+Args, +Ctx)//: evaluate Args for their effects.
+rvals_discarded([], _) --> [].
+rvals_discarded([A|As], Ctx) --> rval(A, Ctx, _), rvals_discarded(As, Ctx).
+
+% deferrable(+Error): Error is a diagnostic of C that nanofil does not
+% lower, not an internal failure, so a static function raising it can
+% wait for a reference.
+deferrable(nanofil_error(_)).
 
 /* GCC's alias attribute: `int bg(int, char **) __attribute__((alias("fg")))`
    (dash's bgcmd). The name is bound to the target's symbol, as if
@@ -419,7 +488,12 @@ global_data(Env0, Data) :-
                 findall(item(Width, const(V)), member(V, Values), Items)
             ),
             LiteralData),
-    append(GlobalData, LiteralData, Data).
+    findall(data(Name, init(Kind, Prio), 8, [item(p, sym(Sym, 0))]),
+            (   member(init(Kind, Sym)-Prio, Pairs),
+                format(atom(Name), '__nanofil_~w_~w', [Kind, Sym])
+            ),
+            InitData),
+    append([GlobalData, LiteralData, InitData], Data).
 
 % global_items(+Env0, +Done, -Data, -Env): Data are the data items of
 % the global definitions whose symbols are not in Done. Initializers
@@ -460,8 +534,11 @@ global_item(Sym-g(Type, Linkage, Init, Loc),
 % is the IR function for the definition of Name with body Body.
 % Lowering is deterministic; once/1 keeps a function's choicepoints from
 % holding its states alive while the rest of the file is lowered.
+% A type nanofil refuses (bad/1, from c_types) is reported at the
+% function, unless a caller defers it (deferrable/1).
 function(Loc, Name, Type, DclType, Body, Env0, Env, Func) :-
-    once(function_(Loc, Name, Type, DclType, Body, Env0, Env, Func)).
+    catch(once(function_(Loc, Name, Type, DclType, Body, Env0, Env, Func)), bad(Why),
+          sema_error(Loc, '~w uses a type nanofil does not support (~w)', [Name, Why])).
 
 function_(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
          Env0, Env, [func(Sym, Linkage, RetClass, Params, Blocks), context(Sym, Records)]) :-
@@ -1005,6 +1082,9 @@ stmt_(block(Items), Ctx) -->
     items(Items, Ctx),
     restore_scope(Scope).
 stmt_(null, _) --> [].
+stmt_(unsupported_asm, Ctx) -->
+    { ctx_loc(Ctx, Loc),
+      sema_error(Loc, 'inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")', []) }.
 stmt_(expr(Expr), Ctx) --> judged_rval(Expr, Ctx, _).
 stmt_(if(Cond, Then, Else), Ctx) -->
     judged(Cond, Ctx),
@@ -1882,6 +1962,12 @@ lower_node(val(_, call(XF, XArgs)), Ctx, R) --> !,         % 6.5.2.2
     call_result(Callee, RetType, IRArgs, Ctx, R).
 lower_node(val(_, builtin(Name, Args)), Ctx, R) --> !,
     builtin(Name, Args, Ctx, R).
+lower_node(val(T, bit_cast(XA)), Ctx, R) --> !,
+    % The operand's bytes stored, then loaded as T (c_types bit_castable/3).
+    lower(XA, Ctx, v(V, A)),
+    local_slot(T, Tmp),
+    store_typed(A, V, Tmp),
+    loaded(T, Tmp, Ctx, R).
 lower_node(val(_, cast(TN, XV)), Ctx, R) --> !,            % 6.5.4
     evaluated_type(TN, Ctx, Type),
     lower(XV, Ctx, Value0),
@@ -2243,6 +2329,11 @@ builtin('__atomic_store_n', [P, V, _], Ctx, v(const(0), void)) --> !,
     (   { T = ptr(_) } -> emit(atomic_store(p, X, Addr))
     ;   store_typed(T, X, Addr), emit(fence)
     ).
+builtin('__builtin_assume_aligned', [P|Rest], Ctx, R) --> !,
+    rval(P, Ctx, VP),
+    rvals_discarded(Rest, Ctx),
+    { ctx_loc(Ctx, Loc) },
+    assign_convert(P, VP, ptr(void), Loc, R).
 builtin('__builtin_expect', [A, B], Ctx, R) --> !,
     rval(A, Ctx, VA),
     rval(B, Ctx, _),
@@ -2913,7 +3004,7 @@ call_args([XA|XAs], ParamTypes0, Ctx, IRArgs) -->
     (   { ParamTypes0 == [], Value0 = v(V0, Type0), abi_memory(Type0) }
     ->  env(Env),                       % 6.5.2.2p7: no conversion
         abi_source(Type0, V0, Src),
-        { ctx_loc(Ctx, Loc), arg_words(Type0, Env, Loc, Ebs) },
+        { ctx_loc(Ctx, Loc), variadic_words(Type0, Env, Loc, Ebs) },
         load_words(Ebs, Src, Words),
         { findall(arg(Class, W),
                   ( nth0(I, Ebs, eb(_, _, Class)), nth0(I, Words, W) ),
@@ -3180,11 +3271,37 @@ ret_shape(Type, Env, Loc, Shape) :-
 % float at its start, else l, for clang's <2 x float>, whose bytes go
 % in an integer word in nanofil and in the generic packet's cell in
 % both (so the function is generic-only in clang, by signature). Any
-% other eightbyte is INTEGER, l.
+% other eightbyte is INTEGER, l. One without a scalar in it (only
+% padding, as after aligned(16) on a struct of one int, or only unnamed
+% bit-fields) is NO_CLASS, and is not passed at all, as clang does: its
+% coerced type covers only the other eightbyte.
 abi_eightbytes(Type, Env, Loc, Ebs) :-
+    classed_eightbytes(Type, Env, Loc, Leaves, Ebs0),
+    include(holds_leaf(Leaves), Ebs0, Ebs).
+
+% classed_eightbytes(+Type, +Env, +Loc, -Leaves, -Ebs): Ebs are all the
+% eightbytes of Type, classed as abi_eightbytes/4 does; Leaves are its
+% scalars (leaves/5).
+classed_eightbytes(Type, Env, Loc, Leaves, Ebs) :-
     eightbytes(Type, Env, Loc, Ebs0),
     leaves(Type, Env, 0, Leaves, []),
     maplist(eightbyte_class(Leaves), Ebs0, Ebs).
+
+% variadic_words(+Type, +Env, +Loc, -Ebs): the eightbytes in which a
+% struct or union of Type is passed past a prototype. clang passes it
+% byval there, every eightbyte in the packet, NO_CLASS ones included,
+% which is where va_arg reads them.
+variadic_words(Type, Env, Loc, Ebs) :-
+    (   ( Type == ldouble ; byval_type(Type, Env) )
+    ->  arg_words(Type, Env, Loc, Ebs)
+    ;   classed_eightbytes(Type, Env, Loc, _, Ebs)
+    ).
+
+holds_leaf(Leaves, eb(O, _, _)) :-
+    End is O + 8,
+    member(Off-T, Leaves),
+    ( T == x87 -> LeafEnd is Off + 16 ; LeafEnd is Off + 1 ),  % X87UP too
+    Off < End, LeafEnd > O, !.
 
 eightbyte_class(_, eb(O, N, p), eb(O, N, p)) :- !.
 eightbyte_class(Leaves, eb(O, N, _), eb(O, N, K)) :-

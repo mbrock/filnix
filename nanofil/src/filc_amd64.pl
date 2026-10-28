@@ -483,8 +483,27 @@ item(Selection, Func) -->
     function(Selection, Func).
 item(_, data(Name, tls(Linkage), Align, Items)) --> !,
     thread_local_object(Name, Linkage, Align, Items).
+item(_, data(Name, init(Kind, Prio), _, [item(p, sym(F, 0))])) --> !,
+    init_entry(Name, Kind, Prio, F).
 item(_, data(Name, Linkage, _, Items)) -->
     data_object(Name, Linkage, Items).
+
+% A constructor or destructor table entry (ir.pl's init linkage), as
+% clang's Fil-C emits one: a native forwarder in the .init_array or
+% .fini_array section, which hands F's function object to the runtime
+% (filc_defer_or_run_global_ctor or filc_run_global_dtor) to call.
+init_entry(Name, Kind, Prio, F) -->
+    { abi_symbol(function_object, F, FO),
+      format(atom(Forwarder), '.L~w..forwarder', [Name]),
+      init_runtime(Kind, Run) },
+    [section(text), p2align(4), type(Forwarder, function), label(Forwarder),
+     ins(lea, q, [rip(FO+16), reg(rdi)]),
+     ins(mov, q, [reg(rdi), reg(rsi)]),
+     ins(jmp, none, [plt(Run)]),
+     section(init(Kind, Prio)), p2align(3), quad(Forwarder)].
+
+init_runtime(ctor, filc_defer_or_run_global_ctor).
+init_runtime(dtor, filc_run_global_dtor).
 
 % A function: its implementation (prologue, blocks, the shared exception
 % exit and failure blocks), then its function object and origins.

@@ -606,6 +606,8 @@ keyword(typeof, typeof).
 keyword('__alignof', alignof).
 keyword('__alignof__', alignof).
 keyword('__int128', int128).
+keyword('_Float16', float16).
+keyword('__bf16', bf16).
 keyword('__thread', thread_local).
 
 %! c23_tokens(+Tokens0, -Tokens) is det.

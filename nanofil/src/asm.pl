@@ -12,7 +12,7 @@
 
     | Directive | Prints as |
     |---|---|
-    | `section(S)` | the section S: `text`, `data`, `rodata`, `bss`, `tbss` (thread-local, zeroed), `data_rel_ro` or `note_gnu_stack` |
+    | `section(S)` | the section S: `text`, `data`, `rodata`, `bss`, `tbss` (thread-local, zeroed), `data_rel_ro`, `note_gnu_stack`, or `init(ctor\|dtor, Priority)` for .init_array or .fini_array, with `.Priority` unless it is `none` |
     | `p2align(N)` `balign(N)` | `.p2align N`, `.balign N` |
     | `globl(S)` `weak(S)` `hidden(S)` | `.globl S`, `.weak S`, `.hidden S` |
     | `type(S, T)` | `.type S, @T`, T `function` or `object` |
@@ -206,6 +206,14 @@ section_name(bss, ".bss").
 section_name(tbss, ".section .tbss,\"awT\",@nobits").
 section_name(data_rel_ro, ".section .data.rel.ro,\"aw\",@progbits").
 section_name(note_gnu_stack, ".section .note.GNU-stack,\"\",@progbits").
+section_name(init(Kind, Prio), Name) :-     % .init_array[.Prio], .fini_array[.Prio]
+    nonvar(Kind),
+    ( Kind == ctor -> Array = init_array ; Array = fini_array ),
+    (   Prio == none
+    ->  format(atom(A), '.section .~w,"aw",@~w', [Array, Array])
+    ;   format(atom(A), '.section .~w.~w,"aw",@~w', [Array, Prio, Array])
+    ),
+    atom_chars(A, Name).
 
 % The text of an atom or number, as one part.
 literal(X) --> { atomic(X) }, [X].
