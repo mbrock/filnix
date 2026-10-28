@@ -284,10 +284,11 @@ check compared with a filcc build:
 | `nanofil-sed` | GNU sed 4.10 (gnulib) | [`cda56e6`](https://github.com/mbrock/filnix/commit/cda56e6) |
 | `nanofil-jq` | jq 1.8.2 with oniguruma, decNumber | [`cda56e6`](https://github.com/mbrock/filnix/commit/cda56e6) |
 | `nanofil-dash` | dash 0.5.13 | [`cda56e6`](https://github.com/mbrock/filnix/commit/cda56e6) |
-| `nanofil-xz` | xz-utils 5.8.4, threaded coders at 1 to 8 threads | [`41da3be`](https://github.com/mbrock/filnix/commit/41da3be) |
-| `nanofil-make` | GNU make 4.4.1: jobserver, -j, signals, its test suite | no frontend change needed |
-| `nanofil-coreutils` | GNU coreutils 9.11, 107 programs and its test suite | [docs/m4.md](docs/m4.md), *coreutils additions* |
-| `nanofil-python`, `nanofil-python-regrtest-plain` | CPython 3.12.5, 62 extension modules, a regrtest subset | [`f351f1c`](https://github.com/mbrock/filnix/commit/f351f1c), [docs/m4.md](docs/m4.md), *CPython additions* |
+| `nanofil-xz` | xz-utils 5.8.4, threaded coders at 1 to 8 threads | [`41da3be`](https://github.com/mbrock/filnix/commit/41da3be), [`a4b5444`](https://github.com/mbrock/filnix/commit/a4b5444) |
+| `nanofil-make` | GNU make 4.4.1: jobserver, -j, signals, its test suite | [`2b24bbb`](https://github.com/mbrock/filnix/commit/2b24bbb), no frontend change needed |
+| `nanofil-coreutils` | GNU coreutils 9.11, 107 programs and its test suite | [`616b3ac`](https://github.com/mbrock/filnix/commit/616b3ac), [docs/m4.md](docs/m4.md), *coreutils additions* |
+| `nanofil-python`, `nanofil-python-regrtest-plain` | CPython 3.12.5, 62 extension modules, a regrtest subset | [`f351f1c`](https://github.com/mbrock/filnix/commit/f351f1c), [`a1a5306`](https://github.com/mbrock/filnix/commit/a1a5306), [docs/m4.md](docs/m4.md), *CPython additions* |
+| `nanofil-bash` | GNU bash 5.3 with its bundled readline: job control, traps, coprocesses, its test suite | no frontend change needed |
 
 Since the steps below were planned, M4 gained VLAs and variably
 modified types ([`4822471`](https://github.com/mbrock/filnix/commit/4822471)),
@@ -312,7 +313,19 @@ lazily through clang's getter protocol and interoperating with clang's
 Weak symbols (`__attribute__((weak))`, `#pragma weak`, weak aliases)
 link as clang's do, including unresolved weak references tested for
 null, through the IR linkages `weak`, `ro(weak)` and `extern(weak)`
-([docs/abi-findings.md](docs/abi-findings.md), *Weak symbols*).
+([docs/abi-findings.md](docs/abi-findings.md), *Weak symbols*;
+[`7807232`](https://github.com/mbrock/filnix/commit/7807232)).
+For CPython, `_Atomic` objects are atomic loads and stores, objects take
+`_Alignas` and `aligned(N)` up to 16 bytes, and a pointer laundered
+through an integer keeps its one source's capability, as Fil-C infers
+([`f351f1c`](https://github.com/mbrock/filnix/commit/f351f1c)). Every
+atomic read-modify-write (compound assignment and `++`/`--` on
+`_Atomic`, the exchange, compare-exchange and fetch-and-op builtins of
+`<stdatomic.h>`, clang, GCC and `__sync`) is one compare-exchange or a
+loop of them, through the one IR term `cas(T)`, `lock cmpxchg` for
+integers and Fil-C's pointer CAS helper for pointers
+([`eef63f8`](https://github.com/mbrock/filnix/commit/eef63f8),
+[docs/pizlonation.md](docs/pizlonation.md), *Atomic compare-exchange*).
 
 Broken into steps below. Probes at the pin
 (compile `printf`, `puts`, globals and string literals with `filcc -S`)

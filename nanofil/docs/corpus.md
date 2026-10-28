@@ -97,6 +97,16 @@ cproc `constraint/c23-6.7.7.3p2-vm-declaration-2` stays a pass: under
 C11 a block-scope `static` pointer to a VLA is allowed (only a VLA
 itself may not be static), and nanofil and filcc both evaluate its size.
 
+Since this baseline, the real-program checks (PLAN.md, M4: xz, make,
+coreutils, CPython, bash) drove constructors, thread-local variables,
+weak symbols, `_Atomic`, object alignment, pointer laundering through
+integers and atomic read-modify-write (`cas(T)`). None of these appears
+in the two corpora's programs with a `main`, so the counts above are
+unchanged; their tests are whole programs in `tests/c/prog`
+(`atomic-rmw.c`, `atomic-misaligned.c`, `c11-atomics.c`, `launder.c`,
+`object-alignment.c`, `constructor.c`, `thread-local.c`,
+`weak-symbols.c`) and refusals in `tests/c/reject`.
+
 ## Floating-point counts (M9)
 
 The baseline then had **243 passes, 19 rejections, 7 reference
