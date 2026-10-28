@@ -64,7 +64,7 @@
                     integer_promotion/2, usual_arith_conversion/3,
                     float_type/1, arithmetic_type/1, default_promotion/2,
                     constant_value/4, const_convert/4, float_literal/3,
-                    float_builtin/3, libm_builtin/2, object_size/4, compatible_type/2, composite_type/3, inherited_alignment/4,
+                    float_builtin/3, libm_builtin/2, object_size/4, compatible_type/2, composite_type/3, inherited_alignment/4, knr_definition/6,
                     convert_int/3, const_value/4, pp_value/2, num_type/3,
                     scalar_type/1, type_class/2, member_type_offset/5, type_name_type/4,
                     lookup_ordinary/3, bind_ordinary/4, env_scope/3,
@@ -1180,6 +1180,8 @@ apply_declarator(func(Syntax, Params), Base, func(Ret, ParamTypes, Variadic),
 % adjusted parameter types. Parameter declarations are scoped to the
 % parameter list.
 param_types(unspecified, unspecified, fixed, Env, Env).
+param_types(knr(_), _, _, _, _) :-                         % 6.7.6.3p3
+    throw(nanofil_error('a parameter list without types is only allowed in a function definition')).
 param_types(params(Params, Variadic), Types, Variadic, Env0, Env) :-
     env_scope(Env0, Scope, _),
     foldl(param_type, Params, Types, Env0, Env1),
@@ -1193,6 +1195,70 @@ param_type(param(Specs, dcl(Name, SyntaxType, _)), Type, Env0, Env) :-
     (   Name = some(N) -> bind_ordinary(N, var(none, Type), Env2, Env)
     ;   Env = Env2
     ).
+
+doc(knr_definition(+Loc, +Knr, +Prototyped, +Env, -Params, -Locals), det, [
+    Loc: "the definition's location",
+    Knr: "knr(Names, Decls): a K&R definition's identifier list and the declarations of its parameters",
+    Prototyped: "true if a prototype of the function is in scope, else false",
+    Env: "the file scope",
+    Params: "params(Ps, fixed), the parameters of the equivalent prototyped definition",
+    Locals: "the declarations its body starts with",
+    "Without a prototype in scope a caller passes each argument default-",
+    "promoted, so a parameter whose declared type promotion changes (char,",
+    "short, _Bool, float) comes in as the promoted type, under a name no",
+    "source can spell, and the body starts with a local of the declared",
+    "type initialized from it. clang gives the function the signature of",
+    "the promoted types; with a prototype in scope it keeps the declared",
+    "ones, as this does. A name with no declaration is int in GNU89 mode",
+    "(NANOFIL_STD=gnu89) and refused otherwise with clang's message, as",
+    "is a declaration of a name not in the list.",
+    cites('C11 6.9.1p6'),
+    cites('C11 6.9.1p10'),
+    cites('C11 6.5.2.2p6'),
+    example(( empty_env(E),
+              knr_definition(l, knr([a, p], [decl(l, [tspec(char)], [init(dcl(some(a), base, none), none)]),
+                                             decl(l, [tspec(char)], [init(dcl(some(p), ptr(base, []), none), none)])]),
+                             false, E, Ps, Ls) ),
+            ( Ps = params([param([tspec(int)], dcl(some('%knr_a'), base, none)),
+                           param([tspec(char)], dcl(some(p), ptr(base, []), none))], fixed),
+              Ls = [decl(l, [tspec(char)], [init(dcl(some(a), base, none), id('%knr_a'))])] )),
+    example(( empty_env(E),
+              knr_definition(l, knr([b], [decl(l, [tspec(float)], [init(dcl(some(b), base, none), none)])]),
+                             true, E, Ps, Ls) ),
+            ( Ps = params([param([tspec(float)], dcl(some(b), base, none))], fixed), Ls = [] ))
+]).
+knr_definition(Loc, knr(Names, Decls), Prototyped, Env, params(Params, fixed), Locals) :-
+    findall(N-p(DLoc, Specs, Syn, Init),
+            ( member(decl(DLoc, Specs, Inits), Decls),
+              member(init(dcl(some(N), Syn, _), Init), Inits) ),
+            Declared),
+    forall(member(N-p(_, _, _, Init), Declared),
+           (   \+ memberchk(N, Names)
+           ->  sema_error(Loc, 'parameter named \'~w\' is missing', [N])
+           ;   Init \== none
+           ->  sema_error(Loc, 'C does not support default arguments', [])
+           ;   true
+           )),
+    maplist(knr_param(Loc, Declared, Prototyped, Env), Names, Params, Localss),
+    append(Localss, Locals).
+
+knr_param(Loc, Declared, Prototyped, Env, N, Param, Locals) :-
+    (   memberchk(N-p(DLoc, Specs, Syn, _), Declared) -> true
+    ;   getenv('NANOFIL_STD', gnu89) -> DLoc = Loc, Specs = [tspec(int)], Syn = base
+    ;   sema_error(Loc, 'parameter \'~w\' was not declared, defaults to \'int\'; ISO C99 and later do not support implicit int', [N])
+    ),
+    (   Prototyped == false,
+        param_type(param(Specs, dcl(none, Syn, none)), T0, Env, _),
+        unqualified(T0, T), default_promotion(T, P), P \== T,
+        promoted_specs(P, PSpecs)
+    ->  atom_concat('%knr_', N, Fresh),
+        Param = param(PSpecs, dcl(some(Fresh), base, none)),
+        Locals = [decl(DLoc, Specs, [init(dcl(some(N), Syn, none), id(Fresh))])]
+    ;   Param = param(Specs, dcl(some(N), Syn, none)), Locals = []
+    ).
+
+promoted_specs(int, [tspec(int)]).
+promoted_specs(double, [tspec(double)]).
 
 doc(transparent_first(+Union, +Env, -First, -Reflected), semidet, [
     Union: "a parameter's type, a union marked transparent_union",

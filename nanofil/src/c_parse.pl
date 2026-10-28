@@ -32,7 +32,7 @@
     | `base` | the type of the specifiers |
     | `ptr(T, Quals)` | a pointer to T, Quals a list of qualifiers |
     | `array(T, Size)` | Size `none` or an expression |
-    | `func(T, Params)` | Params `unspecified`, or `params(Ps, Variadic)` |
+    | `func(T, Params)` | Params `unspecified`, `params(Ps, Variadic)`, a K&R identifier list `knr(Names)`, or in a definition `knr(Names, Decls)` with the parameters' declarations |
 
     In `params(Ps, Variadic)`, Ps is a list of `param(Specs, Dcl)` and
     Variadic is `fixed` or `variadic`.
@@ -209,7 +209,7 @@ external_decl(Env0, Env, [Item|Items], Items) -->
     (   punct(';')
     ->  { Item = decl(Loc, Specs, []), Env = Env0 }
     ;   full_declarator(Env0, Dcl, Attrs0),
-        (   { Dcl = dcl(some(Name), func(_, Params), _) }, peek(p('{'))
+        (   { Dcl = dcl(some(Name), func(_, Params), _), Params \= knr(_) }, peek(p('{'))
         ->  {   typedefs_hidden([Name], Env0, Env),
                 params_env(Params, Env, BodyEnv)
             },
@@ -217,6 +217,14 @@ external_decl(Env0, Env, [Item|Items], Items) -->
             {   append(Specs, Attrs0, Specs1),
                 Item = fundef(Loc, Specs1, Dcl, Body)
             }
+        ;   { Dcl = dcl(some(Name), func(Ret, knr(Names)), Asm) },
+            knr_decls(Env0, Decls), peek(p('{'))
+        ->  {   typedefs_hidden([Name|Names], Env0, Env),
+                append(Specs, Attrs0, Specs1),
+                Item = fundef(Loc, Specs1,
+                              dcl(some(Name), func(Ret, knr(Names, Decls)), Asm), Body)
+            },
+            block(Env, Body)
         ;   init_declarators(Env0, Dcl, Inits, Attrs0, Attrs),
             expect(';'),
             {   append(Specs, Attrs, Specs1),
@@ -260,6 +268,18 @@ params_env(params(Params, _), Env0, Env) :-
     findall(N, member(param(_, dcl(some(N), _, _)), Params), Names),
     typedefs_hidden(Names, Env0, Env).
 params_env(unspecified, Env, Env).
+
+% knr_decls(+Env, -Decls)//: the declarations of a K&R definition's
+% parameters, between its declarator and its body (C11 6.9.1p6).
+knr_decls(Env, [decl(Loc, Specs1, Inits)|Decls]) -->
+    loc(Loc),
+    decl_specs(Env, Specs), !,
+    full_declarator(Env, Dcl, Attrs0),
+    init_declarators(Env, Dcl, Inits, Attrs0, Attrs),
+    expect(';'),
+    { append(Specs, Attrs, Specs1) },
+    knr_decls(Env, Decls).
+knr_decls(_, []) --> [].
 
 % init_declarators(+Env, +Dcl, -Inits, +Attrs0, -Attrs)//: Inits are the
 % init(Dcl, Init) of the declarator list whose first declarator Dcl is
@@ -621,6 +641,9 @@ params(_, unspecified) --> punct(')'), !.
 params(_, params([], fixed)) -->
     kw(void),
     punct(')'), !.
+params(Env, knr(Names)) -->       % an identifier list, C11 6.7.6.3p3
+    knr_names(Env, Names),
+    punct(')'), !.
 params(Env, params(Params, Variadic)) -->
     param_list(Env, Params, Variadic),
     expect(')').
@@ -631,6 +654,14 @@ param_list(Env, [Param|Params], Variadic) -->
     (   punct(',')
     ->  param_list(Env, Params, Variadic)
     ;   { Params = [], Variadic = fixed }
+    ).
+
+knr_names(Env, [N|Ns]) -->
+    \+ starts_type(Env),
+    [tok(id(N), _)],
+    (   punct(',')
+    ->  knr_names(Env, Ns)
+    ;   { Ns = [] }
     ).
 
 param(Env, param(Specs, dcl(Name, Type, none))) -->

@@ -336,6 +336,18 @@ top_item(_, static_assert(Loc, Expr, _), [], Env, Env) :- !,
     static_assert(Loc, Expr, Env).
 top_item(_, decl(_, Specs, [init(Dcl, none)]), [], Env, Env) :-
     overload(Specs, Dcl, Env), !.
+top_item(ExternalNames, fundef(Loc, Specs, dcl(some(Name), func(Ret, knr(Names, Decls)), Asm),
+                                at(BL, block(Items))), Funcs, Env0, Env) :- !,
+    % A K&R definition is lowered as the prototyped one knr_definition/6
+    % rewrites it to.
+    (   lookup_ordinary(Env0, Name, fn(func(_, Ps, _), _, _)), Ps \== unspecified
+    ->  Prototyped = true
+    ;   Prototyped = false
+    ),
+    knr_definition(Loc, knr(Names, Decls), Prototyped, Env0, Params, Locals),
+    append(Locals, Items, Items1),
+    top_item(ExternalNames, fundef(Loc, Specs, dcl(some(Name), func(Ret, Params), Asm),
+                                   at(BL, block(Items1))), Funcs, Env0, Env).
 top_item(_, fundef(_, Specs, Dcl, _), [], Env, Env) :-
     overload(Specs, Dcl, Env), !.
 top_item(ExternalNames, decl(Loc, Specs, Inits), Funcs, Env0, Env) :-

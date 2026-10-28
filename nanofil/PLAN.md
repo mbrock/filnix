@@ -298,7 +298,7 @@ float-containing structs and aggregate `va_arg`
 ([`b6c1cc6`](https://github.com/mbrock/filnix/commit/b6c1cc6)), atomic
 builtins, a C23 mode and the GNU extensions gnulib uses
 ([`36039eb`](https://github.com/mbrock/filnix/commit/36039eb)).
-Refused with a message: `_Complex`, K&R definitions, inline
+Refused with a message: `_Complex`, inline
 asm other than the empty barrier (in a function that is compiled),
 GNU case ranges, alignments above 4096, aligned bit-fields, pointer
 members aligned below 8, vector types, `_Float16` and `__bf16`,
@@ -310,7 +310,10 @@ additions*). Alignments up to 4096 on objects, members and typedefs
 GCC's generic `__atomic` builtins, `__builtin_types_compatible_p`,
 `__builtin_choose_expr` and hint builtins follow the package survey
 ([docs/survey.md](docs/survey.md)); incompatible redeclarations are
-refused as clang refuses them (C11 6.7p4). Constructors and destructors run as clang's do
+refused as clang refuses them (C11 6.7p4). K&R definitions are
+rewritten to prototyped ones whose promoted parameters (char, short,
+float) convert to the declared type on entry, with clang's signatures,
+and C90 modes give inline bodies GNU89 semantics. Constructors and destructors run as clang's do
 ([`41da3be`](https://github.com/mbrock/filnix/commit/41da3be)).
 `_Thread_local` and `__thread` variables are per-thread objects, created
 lazily through clang's getter protocol and interoperating with clang's
