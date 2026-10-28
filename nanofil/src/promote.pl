@@ -8,9 +8,12 @@
     that escape.pl calls local. An alloc is promoted, all its slots at
     once, when:
 
-    - it is in the entry block, so it runs exactly once per call (the
-      validator forbids jumps to the entry block) and its fresh contents
-      are the only initial state;
+    - it is in any block, its every execution a fresh zeroed object:
+      the alloc itself sets each slot to 0, and its block is a
+      definition block for phi placement. Strict SSA makes every access
+      go through the latest execution's address (an inlined callee's
+      local, perf.md item 4, in a caller's loop is an alloc in a middle
+      block);
     - its size is a constant and every slot lies inside it, so no access
       could trap or be undefined;
     - its slots do not overlap and each offset has one width, so every
@@ -27,11 +30,12 @@
 
     Loads become copies or extensions of the slot's current value, and
     stores disappear. Phis are placed on the iterated dominance frontier
-    of the entry and the reachable blocks that store to the slot, where
-    the slot is live (pruned SSA, Cytron et al.); their temps are named
-    `pr.N`. Before any store a slot holds 0: Fil-C allocations are
-    zeroed, and in plain mode the bytes are unknown, so 0 is one of the
-    values they could have. Unreachable blocks read 0 too.
+    of the entry and the reachable blocks that store to the slot or hold
+    its alloc, where the slot is live (pruned SSA, Cytron et al.); their
+    temps are named `pr.N`. After its alloc and before any store a slot
+    holds 0: Fil-C allocations are zeroed, and in plain mode the bytes
+    are unknown, so 0 is one of the values they could have. Unreachable
+    blocks read 0 too.
 
     Values keep the class of the store: a `store(b, V, A)` of a `w`
     value keeps the whole value, and each load narrows or extends it
@@ -173,15 +177,14 @@ type_slot(ptr(_), p).
 %  order, Slots an ordset of acc(Off, Width).
 
 promotable(_, F, []) :- setjmp_func(F), !.
-% Only an entry-block alloc is a root: without one, skip escape analysis.
-promotable(_, func(_, _, _, _, [block(_, _, EntryInsts, _)|_]), []) :-
-    \+ memberchk(let(_, _, alloc(_), _), EntryInsts), !.
+% Without an alloc, skip escape analysis.
+promotable(_, func(_, _, _, _, Blocks), []) :-
+    \+ ( member(block(_, _, Insts, _), Blocks),
+         memberchk(let(_, _, alloc(_), _), Insts) ), !.
 promotable(Mode, F, Roots) :-
-    F = func(_, _, _, _, [block(_, _, EntryInsts, _)|_]),
     alloc_classes(F, Classes),
     findall(A-Accs,
             ( member(A-local(const(Size), Accs), Classes),
-              memberchk(let(tmp(A), _, alloc(_), _), EntryInsts),
               slots_ok(Mode, Size, Accs) ),
             Roots).
 
@@ -313,10 +316,13 @@ promote_roots(Roots, F0, Cfg, Idom, Blocks, Map, Placed0, Addrs, Widths) :-
     list_to_assoc(VarWidths, Widths),
     pairs_keys(VarWidths, Vars),
     % Liveness of slots: a load reads one, a store writes it.
+    % An alloc writes 0 to each of its slots.
+    findall(A-AVars, ( member(A-Accs, Roots), alloc_vars(A, Accs, AVars) ), AllocVarPairs),
+    list_to_assoc(AllocVarPairs, AllocVars),
     findall(L-GenKill,
             ( member(B, Blocks0),
               B = block(L, _, _, _),
-              slot_gen_kill(B, Addrs, GenKill) ),
+              slot_gen_kill(B, Addrs, AllocVars, GenKill) ),
             GenKillPairs),
     list_to_assoc(GenKillPairs, GenKill),
     empty_assoc(NoEdges),
@@ -330,8 +336,10 @@ promote_roots(Roots, F0, Cfg, Idom, Blocks, Map, Placed0, Addrs, Widths) :-
     findall(Var-L,
             ( member(block(L, _, Insts, _), Blocks0),
               get_assoc(L, DF, _),
-              member(store(_, _, tmp(X)), Insts),
-              get_assoc(X, Addrs, Var) ),
+              (   member(store(_, _, tmp(X)), Insts),
+                  get_assoc(X, Addrs, Var)
+              ;   member(let(tmp(A), _, alloc(_), _), Insts),
+                  get_assoc(A, AllocVars, AVs), member(Var, AVs) ) ),
             Stores0),
     keysort(Stores0, Stores1),
     group_pairs_by_key(Stores1, StorePairs),
@@ -348,7 +356,7 @@ promote_roots(Roots, F0, Cfg, Idom, Blocks, Map, Placed0, Addrs, Widths) :-
     list_to_assoc(Zeros, Zero),
     blocks_by_label(Blocks0, ByLabel),
     dom_children(Cfg, Idom, Kids),
-    Env = env(Addrs, PhiAt, ByLabel, Kids, Succs),
+    Env = env(Addrs-AllocVars, PhiAt, ByLabel, Kids, Succs),
     % Unreachable blocks never run; their slot reads see 0 so that they
     % stay valid, and they still give each successor's phis an argument.
     Cfg = cfg(_, Rpo, _, _),
@@ -366,11 +374,16 @@ promote_roots(Roots, F0, Cfg, Idom, Blocks, Map, Placed0, Addrs, Widths) :-
     list_to_assoc(PhiArgs, ArgsAt),
     maplist(promoted_block(NewBlocks, PhiAt, ArgsAt, Widths), Blocks0, Blocks).
 
-slot_gen_kill(block(_, _, Insts, _), Addrs, Gen-Kill) :-
-    foldl(slot_inst_gen_kill(Addrs), Insts, []-[], Gen-Kill).
+alloc_vars(A, Accs, Vars) :- findall(A-Off, member(acc(Off, _), Accs), Vars).
 
-slot_inst_gen_kill(Addrs, I, Gen0-Kill0, Gen-Kill) :-
-    (   I = let(_, _, load(_), [tmp(X)]), get_assoc(X, Addrs, Var)
+slot_gen_kill(block(_, _, Insts, _), Addrs, AllocVars, Gen-Kill) :-
+    foldl(slot_inst_gen_kill(Addrs, AllocVars), Insts, []-[], Gen-Kill).
+
+slot_inst_gen_kill(Addrs, AllocVars, I, Gen0-Kill0, Gen-Kill) :-
+    (   I = let(tmp(A), _, alloc(_), _), get_assoc(A, AllocVars, AVs)
+    ->  Gen = Gen0,
+        list_to_ord_set(AVs, AVSet), ord_union(Kill0, AVSet, Kill)
+    ;   I = let(_, _, load(_), [tmp(X)]), get_assoc(X, Addrs, Var)
     ->  (   ord_memberchk(Var, Kill0)
         ->  Gen = Gen0
         ;   ord_add_element(Gen0, Var, Gen)
@@ -521,8 +534,10 @@ inst_list([I|Is]) --> [I], inst_list(Is).
 % addresses are no instructions, a load of a slot is an operation on
 % its current value, a store to a slot is none and sets its value, and
 % any other instruction is itself.
-inst_renamed(I, Addrs, Cur0, Cur) -->
-    (   { I = let(tmp(D), _, _, _), get_assoc(D, Addrs, _) }
+inst_renamed(I, Addrs-AllocVars, Cur0, Cur) -->
+    (   { I = let(tmp(A), _, alloc(_), _), get_assoc(A, AllocVars, AVs) }
+    ->  { foldl(slot_zero, AVs, Cur0, Cur) }
+    ;   { I = let(tmp(D), _, _, _), get_assoc(D, Addrs, _) }
     ->  { Cur = Cur0 }
     ;   { I = let(D, K, load(T), [tmp(X)]), get_assoc(X, Addrs, Var) }
     ->  { get_assoc(Var, Cur0, V),
@@ -534,6 +549,8 @@ inst_renamed(I, Addrs, Cur0, Cur) -->
     ;   { Cur = Cur0 },
         [I]
     ).
+
+slot_zero(Var, Cur0, Cur) :- put_assoc(Var, Cur0, const(0), Cur).
 
 % What a load at class K of type T computes from the value last stored
 % at its width (see the header).

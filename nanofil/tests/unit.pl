@@ -962,6 +962,76 @@ test(promote_reads_zero_in_filc) :-
     module_fn_args_outcome(M0, g, [], trap(null_capability)),
     module_fn_args_outcome(M, g, [], trap(null_capability)).
 
+% An alloc outside the entry block (an inlined callee's local, perf.md
+% item 4) is a fresh zeroed object at each execution. Promoted, each
+% execution must read 0 before its first store: x is 0 three times, so
+% 3 * (0 + 5) = 15; a value surviving the loop would give 0+5+5+... A
+% pointer stored on the first pass must not survive to the second,
+% which traps on it as null, also when the object is too small to
+% promote (a 4-byte object written as a pointer stays memory, fresh per
+% pass: the review's reproduction of a store reset keeping capabilities).
+% An address merged in a phi escapes and stays a heap object per pass,
+% so the two passes see different objects (ret 2; one shared object,
+% as hoisting made it, gives 1).
+test(promote_nonentry_allocs) :-
+    Loop = [block(s, [], [], goto(h)),
+            block(h, [phi(tmp(i), w, [s-const(0), b-tmp(i1)]),
+                      phi(tmp(t), w, [s-const(0), b-tmp(t1)])],
+                  [let(tmp(c), w, cmp(slt, w), [tmp(i), const(3)])],
+                  branch(tmp(c), b, e))],
+    append(Loop, [
+        block(b, [], [
+            let(tmp(a), p, alloc(4), [const(4)]),
+            let(tmp(x), w, load(sw), [tmp(a)]),
+            let(tmp(x5), w, add, [tmp(x), const(5)]),
+            store(w, tmp(x5), tmp(a)),
+            let(tmp(y), w, load(sw), [tmp(a)]),
+            let(tmp(xy), w, add, [tmp(x), tmp(y)]),
+            let(tmp(t1), w, add, [tmp(t), tmp(xy)]),
+            let(tmp(i1), w, add, [tmp(i), const(1)])
+        ], goto(h)),
+        block(e, [], [], ret(tmp(t)))], ZeroBs),
+    Ptr = fun(Size, [block(s, [], [let(tmp(g), p, alloc(8), [const(8)])], goto(h)),
+           block(h, [phi(tmp(i), w, [s-const(0), next-tmp(i1)])],
+                 [let(tmp(c), w, cmp(slt, w), [tmp(i), const(2)])],
+                 branch(tmp(c), b, e)),
+           block(b, [], [
+               let(tmp(a), p, alloc(8), [const(Size)]),
+               let(tmp(q), p, load(p), [tmp(a)]),
+               let(tmp(z), w, cmp(eq, w), [tmp(i), const(1)])
+           ], branch(tmp(z), use, first)),
+           block(first, [], [store(p, tmp(g), tmp(a))], goto(next)),
+           block(use, [], [let(tmp(v), w, load(sw), [tmp(q)])], goto(next)),
+           block(next, [], [let(tmp(i1), w, add, [tmp(i), const(1)])], goto(h)),
+           block(e, [], [], ret(const(7)))]),
+    copy_term(Ptr, fun(4, SmallBs)), Ptr = fun(16, PtrBs),
+    Esc = [block(s, [], [], goto(h)),
+           block(h, [phi(tmp(i), w, [s-const(0), b-tmp(i1)]),
+                     phi(tmp(prev), p, [s-const(0), b-tmp(a)]),
+                     phi(tmp(t), w, [s-const(0), b-tmp(t1)])],
+                 [let(tmp(c), w, cmp(slt, w), [tmp(i), const(2)])],
+                 branch(tmp(c), b, e)),
+           block(b, [], [
+               let(tmp(a), p, alloc(4), [const(4)]),
+               store(w, tmp(i), tmp(a)),
+               let(tmp(av), l, ptoi, [tmp(a)]),
+               let(tmp(pv), l, ptoi, [tmp(prev)]),
+               let(tmp(d), w, cmp(ne, l), [tmp(av), tmp(pv)]),
+               let(tmp(t1), w, add, [tmp(t), tmp(d)]),
+               let(tmp(i1), w, add, [tmp(i), const(1)])
+           ], goto(h)),
+           block(e, [], [], ret(tmp(t)))],
+    ir_module([func(zero, export, w, [], ZeroBs), func(ptr, export, w, [], PtrBs),
+               func(small, export, w, [], SmallBs), func(esc, export, w, [], Esc)], M0),
+    optimize(passes([promote]), M0, M), once(valid_module(M)),
+    forall(member(F-Want, [zero-ret(15), ptr-trap(null_capability),
+                           small-trap(null_capability), esc-ret(2)]),
+           ( module_fn_args_outcome(M0, F, [], Want),
+             module_fn_args_outcome(M, F, [], Want) )),
+    % zero's and ptr's loop allocs promote; small's and esc's stay.
+    forall(member(F-N, [zero-0, ptr-1, small-2, esc-1]),
+           ( func_named(M, F, Fn), alloc_count(module([Fn]), N) )).
+
 % Which allocs promote must remove, and which it must keep, on the
 % fixture and on tests/c/basic.c (only arr's array and ptrs's array have
 % their address passed or stored). A promote that did nothing would still
@@ -971,9 +1041,9 @@ test(promote_removes_allocs) :-
     alloc_count(M0, 12),
     optimize(o1, M0, M),
     once(valid_module(M)),
-    alloc_count(M, 4),
+    alloc_count(M, 3),
     func_named(M, kept, K),
-    alloc_count(module([K]), 4),
+    alloc_count(module([K]), 3),
     c_file_module('../tests/c/basic.c', C0),
     alloc_count(C0, 23),
     optimize(o1, C0, C),

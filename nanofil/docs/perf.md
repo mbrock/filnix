@@ -848,7 +848,13 @@ that could not promote would turn a local object into a per-call heap
 allocation. Allocations keep their order relative to the caller's own,
 so the 4096-byte local-storage budget is not taken first by inlined
 objects. Promotion is shared code, so this part is its own commit with
-its own refinement tests, before inlining.
+its own refinement tests, before inlining. **Landed:** promote.pl now takes a constant-size
+local alloc in any block (unit `promote_nonentry_allocs`: a fresh 0 per
+pass of a loop, a pointer from an earlier pass trapping as null in a
+promoted and in a too-small, unpromoted object, and an address merged
+in a phi staying a distinct heap object per pass). No C input changes,
+since the frontend puts every local in the entry block; the snapshot
+differs only in two IR fixtures' `-O` outputs.
 
 **Function identity.** The callee's function object, getter, generic
 entry and alias are still emitted unchanged, so its address,
