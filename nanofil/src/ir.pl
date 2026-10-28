@@ -148,9 +148,29 @@
     | `check(Lo, Hi, Rights, Align)` | `a` | `[p]` | checked stage, below |
     | `check_local(Name, Off, Bytes, Rights, Align)` | `a` | `[]` | checked stage: prove exact bounds and alignment for the named object, preserving its identity and offset |
     | `atomic_load(p)` | `p` | `[p]` | (filc mode) a single-copy atomic, sequentially consistent pointer load (Fil-C's filc_load_ptr_atomic) |
+    | `cas(T)` | as `load(T)` | `[K, K, p]`: Expected, New, Addr | (filc mode) atomic compare-exchange, below; T one of `l` `sw` `uw` `sh` `uh` `sb` `ub` `p` |
+    | `raw_cas(T, Off)` | as `cas(T)` | `[a, K, K]` | checked stage: `cas(T)` at A+Off, right after the check that covers it |
     | `raw_load(T, Off)` | as `load(T)`, except `p` | `[a]` | checked stage: a non-pointer load at A+Off that does not check |
     | `raw_load_pointer(Off, Effects)` | `p` | `[a]` | checked stage: read aux, resolve the lower, then read the primary address |
     | `check_function` | `f` | `[p]` | checked stage: trap unless the pointer designates a function object at its exact callable address |
+
+    `cas(T)` reads `[Expected, New, Addr]` and is one sequentially
+    consistent atomic step: it reads the T at Addr, old; if old equals
+    Expected, it writes New there; the result is old, extended as
+    `load(T)` extends it. Equality is bitwise on the low bytes of T, and
+    for `p` it compares addresses only: capabilities are ignored, so a
+    New may replace an old that has the expected address but another
+    capability, and the result is old's pair, as Fil-C's
+    filc_strong_cas_ptr does. An integer cas needs write rights and its
+    address aligned to its width, even when it fails (x86 `lock cmpxchg`
+    writes; a misaligned one is a split lock, and Fil-C traps); a
+    pointer cas, the 8-byte slot's. The checked form `raw_cas(T, Off)`
+    is right after its own check, never a reused proof. A pointer cas
+    is heap only, with the effect list `[atomic_cas]`: Fil-C's helper
+    checks again, ensures aux (it may exit), barriers New, and boxes the
+    slot; New and Addr stay rooted through it. Every cas ends every live
+    proof. Read-modify-writes other than compare-exchange are loops of
+    cas (c_lower.pl); there is no other atomic read-modify-write term.
 
     `setjmp(Kind)`: Kind is `setjmp`, `'_setjmp'` or `sigsetjmp`, and
     SaveMask must be `const(0)` except for `sigsetjmp`. It returns twice
@@ -377,6 +397,8 @@ kind_arity(setjmp, 2).
 kind_arity(ext, 1).
 kind_arity(load, 1).
 kind_arity(atomic_load, 1).
+kind_arity(cas, 3).
+kind_arity(raw_cas, 3).
 kind_arity(alloc, 1).
 kind_arity(float_convert, 1).
 kind_arity(float_to_int, 1).
@@ -404,6 +426,8 @@ valid_op(check_local(Name, Off, Bytes, Rights, Align)) :- !,
     ground(Name), local_offset(Off), integer(Bytes), Bytes > 0, Bytes =< 2147483647,
     memberchk(Rights, [read, write]), memberchk(Align, [1, 2, 4, 8, 16]).
 valid_op(raw_load(T, Off)) :- !, load_type(T), T \== p, integer(Off).
+valid_op(cas(T)) :- !, cas_type(T).
+valid_op(raw_cas(T, Off)) :- !, cas_type(T), integer(Off).
 valid_op(raw_load_pointer(Off, Effects)) :- !,
     integer(Off),
     ( pointer_memory_effects(load, Effects) ; pointer_memory_effects(local_load, Effects)
@@ -433,6 +457,10 @@ pointer_memory_effects(local_store, [lower_write, address_write]).
 % then the address). Heap storage only: stack aux has no boxes.
 pointer_memory_effects(atomic_load, [atomic_read]).
 pointer_memory_effects(atomic_store, [atomic_write]).
+% atomic_cas is filc_strong_cas_ptr_with_manual_tracking (its own check,
+% ensure-aux, which may exit, the barrier of New, a box, then the
+% address), named for raw_cas(p, _), which has no list of its own.
+pointer_memory_effects(cas, [atomic_cas]).
 
 %! access_size_align(?X, ?Size, ?Align) is nondet.
 %
@@ -441,6 +469,7 @@ pointer_memory_effects(atomic_store, [atomic_write]).
 %  capability lives in the aux word of its 8-byte slot, else 1.
 
 access_size_align(p, 8, 8).
+access_size_align(cas(T), Size, Size) :- cas_type(T), cas_bytes(T, Size).
 access_size_align(x, 10, 8).
 access_size_align(X, Size, 1) :-
     (   width_bytes(X, Size), X \== p, X \== x
@@ -470,6 +499,12 @@ load_type(d).
 load_type(s).
 load_type(x).
 load_type(T) :- narrow_type(T, _, _).
+
+% cas_type(?T): a cas may be of type T, cas_bytes(+T, -Bytes) wide.
+cas_type(l). cas_type(p).
+cas_type(T) :- narrow_type(T, _, _).
+cas_bytes(l, 8). cas_bytes(p, 8).
+cas_bytes(T, B) :- narrow_type(T, B, _).
 
 alloc_align(4).
 alloc_align(8).
@@ -527,6 +562,8 @@ op_kind(cmp(_, _), cmp).
 op_kind(ext(T), ext) :- narrow_type(T, _, _).
 op_kind(load(_), load).
 op_kind(atomic_load(p), atomic_load).
+op_kind(cas(_), cas).
+op_kind(raw_cas(_, _), raw_cas).
 op_kind(alloc(_), alloc).
 op_kind(check(_, _, _, _), check).
 op_kind(check_local(_, _, _, _, _), check_local).
@@ -744,6 +781,7 @@ checked_inst(let(_, _, check_local(_, _, _, _, _), _)).
 checked_inst(let(_, _, check_function, _)).
 checked_inst(let(_, _, raw_load(_, _), _)).
 checked_inst(let(_, _, raw_load_pointer(_, _), _)).
+checked_inst(let(_, _, raw_cas(_, _), _)).
 checked_inst(raw_store(_, _, _, _)).
 checked_inst(raw_store_pointer(_, _, _, _)).
 checked_inst(raw_call(_, _, _)).
@@ -1193,7 +1231,7 @@ checked_inst_rest(let(tmp(Q), f, check_function, _), Insts, Fn, _, _, Rest, []) 
 checked_inst_rest(Inst, Insts, Fn, Mode, Live0, Insts, Live) :-
     evidence_after(Inst, Live0, Live),
     (   raw_access(Inst, Q, X, _, _)
-    ->  (   X \== p,
+    ->  (   X \== p, X \= cas(_),
             member(live(Q, _, Lo, Hi, Rights, Align), Live0),
             covered_access(Inst, Q, Lo, Hi, Rights, Align)
         ->  true
@@ -1256,17 +1294,20 @@ raw_access(let(_, _, raw_load(T, Off), [tmp(Q)]), Q, T, Off, read).
 raw_access(raw_store(W, Off, _, tmp(Q)), Q, W, Off, write).
 raw_access(let(_, _, raw_load_pointer(Off, _), [tmp(Q)]), Q, p, Off, read).
 raw_access(raw_store_pointer(Off, _, tmp(Q), _), Q, p, Off, write).
+raw_access(let(_, _, raw_cas(T, Off), [tmp(Q)|_]), Q, cas(T), Off, write).
 
 unchecked_access(let(_, _, load(T), _), load(T)).
 unchecked_access(store(W, _, _), store(W)).
 unchecked_access(let(_, _, atomic_load(T), _), atomic_load(T)).
 unchecked_access(atomic_store(W, _, _), atomic_store(W)).
+unchecked_access(let(_, _, cas(T), _), cas(T)).
 unchecked_access(local_load(_, _, T, _, _), local_load(T)).
 unchecked_access(local_store(W, _, _, _), local_store(W)).
 unchecked_access(call(_, tmp(_), _), 'indirect call').
 
 access_storage_effects(let(_, _, raw_load(_, _), _), _).
 access_storage_effects(raw_store(_, _, _, _), _).
+access_storage_effects(let(_, _, raw_cas(_, _), _), heap).
 access_storage_effects(let(_, p, raw_load_pointer(_, Es), _), Storage) :-
     storage_effect_kind(Storage, load, Kind), pointer_memory_effects(Kind, Es).
 access_storage_effects(raw_store_pointer(_, _, _, Es), Storage) :-
@@ -1645,6 +1686,8 @@ kind_result_ok(check_local, _, filc, a).
 kind_result_ok(check_function, _, filc, f).
 kind_result_ok(ld, raw_load(T, _), filc, K) :- load_result_ok(T, filc, K).
 kind_result_ok(ld_pointer, _, filc, p).
+kind_result_ok(cas, cas(T), filc, K) :- load_result_ok(T, filc, K).
+kind_result_ok(raw_cas, raw_cas(T, _), filc, K) :- load_result_ok(T, filc, K).
 
 % ext_result_ok(+T, +K): an extension of type T may have class K; one
 % from a word is a long.
@@ -1710,6 +1753,8 @@ kind_arg_classes(check_local, _, _, filc, []).
 kind_arg_classes(check_function, _, _, filc, [p]).
 kind_arg_classes(ld, _, _, filc, [a]).
 kind_arg_classes(ld_pointer, _, _, filc, [a]).
+kind_arg_classes(cas, _, K, filc, [K, K, p]).
+kind_arg_classes(raw_cas, _, K, filc, [a, K, K]).
 
 % additive_arg_classes(+K, ?Classes): add and sub of class K read
 % Classes; at p they offset a pointer by an l.

@@ -117,6 +117,7 @@ kind_base(cmp, _, _, D, _, _, value(D)).
 kind_base(ext, _, _, D, _, _, value(D)).
 kind_base(load, _, _, D, _, _, value(D)).
 kind_base(atomic_load, _, _, D, _, _, value(D)).
+kind_base(cas, _, _, D, _, _, value(D)).
 kind_base(alloc, _, _, D, _, _, alloc(D)).
 
 % copy_base(+V, +D, +K, +Defs, -Base): as kind_base/7, for D a copy of V.

@@ -2723,3 +2723,129 @@ doc_example_form(fails(_)).
 doc_example_holds(M, example(G)) :- once(M:G).
 doc_example_holds(M, example(G, C)) :- once(( M:G, C )).
 doc_example_holds(M, fails(G)) :- \+ M:G.
+
+%% Atomic compare-exchange (ir.pl, cas(T))
+
+% cas_fn(+Name, +Insts, +R, -Func): a filc function of no arguments
+% running Insts over a 16-byte object p (an l at 0, a w at 8) and
+% returning tmp(R).
+cas_fn(Name, Insts, R, func(Name, export, l, [], [block(s, [], [
+        let(tmp(p), p, alloc(8), [const(16)]),
+        let(tmp(q), p, add, [tmp(p), const(8)]),
+        store(l, const(0x1122334455667788), tmp(p)),
+        store(w, const(0xfffffffe), tmp(q))|Insts], ret(tmp(R)))])).
+
+% The old value either way; New written only when old equals Expected,
+% on the cas's width: a narrow cas compares Expected's low bytes and
+% extends old as load(T) does. Expected values by hand: 0x1122334455667788
+% is 1234605616436508552; sw of 0xfffffffe is -2, 2^64 - 2 at l.
+test(cas_semantics) :-
+    Old = 1234605616436508552,
+    Specs = [
+        cas_fn(unequal, [let(tmp(r), l, cas(l), [const(5), const(9), tmp(p)])], r),
+        cas_fn(unequal_kept, [let(tmp(o), l, cas(l), [const(5), const(9), tmp(p)]),
+                              let(tmp(r), l, load(l), [tmp(p)])], r),
+        cas_fn(equal, [let(tmp(r), l, cas(l), [const(Old), const(42), tmp(p)])], r),
+        cas_fn(equal_written, [let(tmp(o), l, cas(l), [const(Old), const(42), tmp(p)]),
+                               let(tmp(r), l, load(l), [tmp(p)])], r),
+        % Expected's high bytes are not compared: 0x1fffffffe matches.
+        cas_fn(narrow, [let(tmp(r), l, cas(sw), [const(0x1fffffffe), const(7), tmp(q)])], r),
+        cas_fn(narrow_written, [let(tmp(o), l, cas(uw), [const(0x1fffffffe), const(7), tmp(q)]),
+                                let(tmp(r), l, load(uw), [tmp(q)])], r),
+        cas_fn(narrow_unequal, [let(tmp(o), l, cas(ub), [const(0xfd), const(7), tmp(q)]),
+                                let(tmp(r), l, load(uw), [tmp(q)])], r),
+        % Aligned to its width: a 4-byte cas at p+2 traps though a
+        % 4-byte store there would not.
+        cas_fn(misaligned, [let(tmp(m), p, add, [tmp(p), const(2)]),
+                            let(tmp(r), l, cas(uw), [const(0), const(1), tmp(m)])], r),
+        cas_fn(misaligned_store, [let(tmp(m), p, add, [tmp(p), const(2)]),
+                                  store(w, const(1), tmp(m)),
+                                  let(tmp(r), l, load(l), [tmp(p)])], r)
+    ],
+    findall(F, ( member(cas_fn(N, I, R), Specs), cas_fn(N, I, R, F) ), Fns),
+    ir_module(Fns, M),
+    module_fn_args_outcome(M, unequal, [], ret(Old)),
+    module_fn_args_outcome(M, unequal_kept, [], ret(Old)),
+    module_fn_args_outcome(M, equal, [], ret(Old)),
+    module_fn_args_outcome(M, equal_written, [], ret(42)),
+    module_fn_args_outcome(M, narrow, [], ret(18446744073709551614)),
+    module_fn_args_outcome(M, narrow_written, [], ret(7)),
+    module_fn_args_outcome(M, narrow_unequal, [], ret(0xfffffffe)),
+    module_fn_args_outcome(M, misaligned, [], trap(_)),
+    module_fn_args_outcome(M, misaligned_store, [], ret(_)).
+
+% A pointer cas compares addresses only. Slot holds a's pair; Expected
+% x has a's address and no capability, so the cas succeeds and stores
+% b's pair, and the result is the slot's old pair, a's, not x's: both
+% are dereferenced. A different address fails and leaves the slot.
+test(cas_pointer_semantics) :-
+    Setup = [let(tmp(a), p, alloc(8), [const(8)]),
+             let(tmp(b), p, alloc(8), [const(8)]),
+             let(tmp(s), p, alloc(8), [const(8)]),
+             store(l, const(3), tmp(a)), store(l, const(5), tmp(b)),
+             store(p, tmp(a), tmp(s)),
+             let(tmp(i), l, ptoi, [tmp(a)]),
+             let(tmp(x), p, itop, [tmp(i)])],
+    Fn = [Name, Body, R]>>(append(Setup, Body, Is),
+             F = func(Name, export, l, [], [block(s, [], Is, ret(tmp(R)))]),
+             nb_setval(cas_fn, F)),
+    findall(F, ( member(N-B-R, [
+        old-[let(tmp(o), p, cas(p), [tmp(x), tmp(b), tmp(s)]),
+             let(tmp(r), l, load(l), [tmp(o)])]-r,
+        new-[let(tmp(o), p, cas(p), [tmp(x), tmp(b), tmp(s)]),
+             let(tmp(n), p, load(p), [tmp(s)]),
+             let(tmp(r), l, load(l), [tmp(n)])]-r,
+        kept-[let(tmp(o), p, cas(p), [tmp(b), tmp(x), tmp(s)]),
+              let(tmp(n), p, load(p), [tmp(s)]),
+              let(tmp(r), l, load(l), [tmp(n)])]-r,
+        % The failed cas's result is a's pair too.
+        failed-[let(tmp(o), p, cas(p), [tmp(b), tmp(x), tmp(s)]),
+                let(tmp(r), l, load(l), [tmp(o)])]-r
+      ]), call(Fn, N, B, R), nb_getval(cas_fn, F) ), Fns),
+    ir_module(Fns, M),
+    module_fn_args_outcome(M, old, [], ret(3)),
+    module_fn_args_outcome(M, new, [], ret(5)),
+    module_fn_args_outcome(M, kept, [], ret(3)),
+    module_fn_args_outcome(M, failed, [], ret(3)).
+
+% Checked cas: right after its own write check at its width's
+% alignment, never on a reused proof, and it ends every live proof, so
+% a load after it cannot read a proof made before it; the reuse pass
+% keeps such a check. A cas left unchecked is rejected.
+test(cas_checked) :-
+    C = let(tmp(q), a, check(0, 8, write, 1), [tmp(a)]),
+    S = raw_store(l, 0, const(1), tmp(q)),
+    L = let(tmp(x), l, raw_load(l, 0), [tmp(q)]),
+    Cb = let(tmp(r), a, check(0, 8, write, 8), [tmp(b)]),
+    X = let(tmp(y), l, raw_cas(l, 0), [tmp(r), const(1), const(2)]),
+    reuse_fn([C, S, Cb, raw_store(l, 0, const(3), tmp(r)), L], Plain), valid_module(Plain),
+    reuse_fn([Cb, X], Ok), valid_module(Ok),
+    reuse_fn([C, S, Cb, X, L], Across), reuse_rejected(Across),
+    reuse_fn([C, S, let(tmp(y), l, raw_cas(l, 0), [tmp(q), const(1), const(2)])], Reused),
+    reuse_rejected(Reused),
+    catch(( reuse_fn([Cb, raw_store(l, 0, const(3), tmp(r)),
+                      let(tmp(y), l, cas(l), [const(1), const(2), tmp(a)])], Un),
+            valid_module(Un), fail ), nanofil_error(Msg), true),
+    sub_atom(Msg, _, _, _, 'cas(l) in checked IR'),
+    % The pass keeps the load's check after a cas of another pointer.
+    Src = module([func(f, local, w, [param(p, tmp(a)), param(p, tmp(b))], [block(s, [], [
+        store(l, const(1), tmp(a)),
+        let(tmp(y), l, cas(l), [const(1), const(2), tmp(b)]),
+        let(tmp(x), l, load(l), [tmp(a)])], ret(const(0)))])]),
+    valid_module(Src), pizlonate_module(Src, Ck), reuse_checks(Ck, Re), Re == Ck,
+    Ck = module([func(_, _, _, _, [block(_, _, Is, _)])]),
+    aggregate_all(count, member(let(_, a, check(_, _, _, _), _), Is), 3).
+
+% An object a cas reads stays an object through -O: promotion must not
+% delete it under the cas (escape.pl), so the cas still sees its stores.
+test(cas_object_escapes) :-
+    ir_module([func(f, export, l, [], [block(s, [], [
+        let(tmp(p), p, alloc(8), [const(8)]),
+        store(l, const(4), tmp(p)),
+        let(tmp(o), l, cas(l), [const(4), const(6), tmp(p)]),
+        let(tmp(n), l, load(l), [tmp(p)]),
+        let(tmp(r), l, add, [tmp(o), tmp(n)])], ret(tmp(r)))])], M),
+    optimize(o1, M, O), valid_module(O),
+    O = module([func(_, _, _, _, [block(_, _, Is, _)])]),
+    memberchk(let(_, _, alloc(_), _), Is),
+    module_fn_args_outcome(O, f, [], ret(10)).

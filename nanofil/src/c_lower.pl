@@ -2185,12 +2185,24 @@ lower_node(val(_, assign(=, X, XB)), Ctx, R) -->           % 6.2.6.1p9
     converted(Value0, U, R),
     { R = v(V, _) },
     atomic_stored(U, V, Addr, 5).
-lower_node(val(_, assign(Op, X, _)), Ctx, _) -->
-    { tree_type(X, TX), atomic_qualified(TX), ctx_loc(Ctx, Loc) }, !,
-    { sema_error(Loc, 'compound assignment ~w to an _Atomic object is an atomic read-modify-write, which nanofil does not support', [Op]) }.
-lower_node(val(_, incdec(_, X)), Ctx, _) -->
-    { tree_type(X, TX), atomic_qualified(TX), ctx_loc(Ctx, Loc) }, !,
-    { sema_error(Loc, 'incrementing or decrementing an _Atomic object is an atomic read-modify-write, which nanofil does not support', []) }.
+% A compound assignment or increment of an _Atomic object is one atomic
+% read-modify-write (6.5.16.2p3, 6.5.2.4p2): a cas loop, the operand
+% evaluated once before it; a pointer keeps its capability.
+lower_node(val(_, assign(Op, X, XB)), Ctx, R) -->
+    { tree_type(X, TX), atomic_qualified(TX) }, !,
+    rmw_aligned(X, Ctx),
+    place(X, Ctx, lv(Addr, U0)),
+    lower(XB, Ctx, VB),
+    { unqualified(U0, U), compound_assignment(Op, BinOp) },
+    rmw(U, Addr, BinOp, VB, Ctx, _, R).
+lower_node(val(_, incdec(Op, X)), Ctx, R) -->
+    { tree_type(X, TX), atomic_qualified(TX) }, !,
+    rmw_aligned(X, Ctx),
+    place(X, Ctx, lv(Addr, U0)),
+    { unqualified(U0, U),
+      ( memberchk(Op, [preinc, postinc]) -> BinOp = add ; BinOp = sub ) },
+    rmw(U, Addr, BinOp, v(const(1), int), Ctx, Old, New),
+    { memberchk(Op, [preinc, predec]) -> R = New ; R = Old }.
 lower_node(val(_, assign(Op, X, XB)), Ctx, R) --> !,       % 6.5.16
     place(X, Ctx, P),
     (   { Op == (=) } -> lower(XB, Ctx, Value0)
@@ -2613,6 +2625,65 @@ builtin(Name, [OE], _, v(const(0), void)) -->
     ;   []
     ).
 
+% The read-modify-writes (c_types atomic_builtin/4): a cas loop, or one
+% cas to compare and exchange. A __c11 fetch-and-op of a pointer returns
+% the old address without a capability, as filcc's does.
+builtin(Name, [P, V|_], Ctx, R) -->
+    { rmw_builtin(Name, Family, Op, Which) }, !,
+    rmw_arg_aligned(P, Ctx),
+    rval(P, Ctx, v(Addr, ptr(T0))),
+    rval(V, Ctx, V0),
+    { unqualified(T0, T), ctx_loc(Ctx, Loc),
+      ( T = ptr(_), Op \== xchg -> To = long ; To = T ) },
+    assign_convert(V, V0, To, Loc, V1),
+    rmw(T, Addr, Op, V1, Ctx, Old, New),
+    { Which == old -> R0 = Old ; R0 = New },
+    (   { Family == c11, T = ptr(_), Op \== xchg, R0 = v(A, _) }
+    ->  let(l, ptoi, [A], I), let(p, itop, [I], D), { R = v(D, T) }
+    ;   { R = R0 }
+    ).
+builtin(Name, [P, E, D|_], Ctx, v(Eq, bool)) -->
+    { memberchk(Name, ['__c11_atomic_compare_exchange_strong',
+                       '__c11_atomic_compare_exchange_weak',
+                       '__atomic_compare_exchange_n']) }, !,
+    rmw_arg_aligned(P, Ctx),
+    rval(P, Ctx, v(Addr, ptr(T0))),
+    rval(E, Ctx, v(EAddr, _)),
+    rval(D, Ctx, D0),
+    { unqualified(T0, T), ctx_loc(Ctx, Loc) },
+    assign_convert(D, D0, T, Loc, v(New, _)),
+    load_typed(T, EAddr, Ctx, Expected),
+    cas_once(T, Addr, Expected, New, Got, Eq),
+    % *Expected gets *P only on failure (7.17.7.4p2).
+    label(LF), label(LJ),
+    term(branch(Eq, LJ, LF)),
+    start(LF), store_typed(T, Got, EAddr), term(goto(LJ)),
+    start(LJ).
+builtin(Name, [P, O, N|_], Ctx, R) -->
+    { memberchk(Name-Which, ['__sync_val_compare_and_swap'-val,
+                             '__sync_bool_compare_and_swap'-bool]) }, !,
+    rmw_arg_aligned(P, Ctx),
+    rval(P, Ctx, v(Addr, ptr(T0))),
+    rval(O, Ctx, O0), rval(N, Ctx, N0),
+    { unqualified(T0, T), ctx_loc(Ctx, Loc) },
+    assign_convert(O, O0, T, Loc, v(Expected, _)),
+    assign_convert(N, N0, T, Loc, v(New, _)),
+    cas_once(T, Addr, Expected, New, Got, Eq),
+    { Which == val -> R = v(Got, T) ; R = v(Eq, bool) }.
+builtin('__sync_lock_release', [P|_], Ctx, v(const(0), void)) --> !,
+    rval(P, Ctx, v(Addr, ptr(T0))),
+    { unqualified(T0, T) },
+    atomic_stored(T, const(0), Addr, 3).
+builtin('__sync_synchronize', [], _, v(const(0), void)) --> !, emit(fence).
+builtin('__atomic_test_and_set', [P, _], Ctx, v(Set, bool)) --> !,
+    rval(P, Ctx, v(Addr, _)),
+    rmw(uchar, Addr, xchg, v(const(1), uchar), Ctx, v(Old, _), _),
+    let(w, cmp(ne, w), [Old, const(0)], Set).
+builtin('__atomic_clear', [P, OE], Ctx, v(const(0), void)) --> !,
+    rval(P, Ctx, v(Addr, _)),
+    env(Env), { const_value(OE, Env, Order, _) },
+    atomic_stored(uchar, const(0), Addr, Order).
+
 builtin('__builtin_assume_aligned', [P|Rest], Ctx, R) --> !,
     rval(P, Ctx, VP),
     rvals_discarded(Rest, Ctx),
@@ -2648,6 +2719,88 @@ builtin(Name, [A], Ctx, R) -->
 
 builtin(Name, _, Ctx, _) -->
     { ctx_loc(Ctx, Loc), sema_error(Loc, 'wrong arguments to ~w', [Name]) }.
+
+% rmw(+U, +Addr, +Op, +V, +Ctx, -Old, -New)//: the atomic
+% read-modify-write of the U at Addr, New being Old combined with the
+% value V by Op (a binary operator, or xchg, nand, max or min): read the
+% U, then repeat a cas of the read value for its combination until the
+% cas finds it unchanged (ir.pl). The first read of a pointer is atomic,
+% so the pair it combines is one; a float or double goes through its
+% bits, compared as an integer. Old and New are those of the cas that
+% succeeded.
+rmw(U, Addr, Op, V, Ctx, v(Old, U), v(New, U)) -->
+    { cas_repr(U, T, K, Bits), type_class(U, KU) },
+    (   { T == p } -> let(p, atomic_load(p), [Addr], Old0)
+    ;   let(K, load(T), [Addr], B0), from_bits(Bits, B0, Old0)
+    ),
+    here(LE), label(LL), label(LD), fresh(Old),
+    term(goto(LL)),
+    start_phi(LL, [phi(Old, KU, [LE-Old0, LB-Got])]),
+    rmw_new(Op, v(Old, U), V, U, Ctx, v(New, _)),
+    to_bits(Bits, Old, OB), to_bits(Bits, New, NB),
+    let(K, cas(T), [OB, NB, Addr], GB),
+    cas_equal(K, GB, OB, Eq),
+    from_bits(Bits, GB, Got),
+    here(LB), term(branch(Eq, LD, LL)),
+    start(LD).
+
+% rmw_aligned(+X, +Ctx)//: X, the object tree of an atomic
+% read-modify-write, is not an underaligned member (c_types
+% underaligned_member/4); rmw_arg_aligned(+P, +Ctx)// is that for the
+% object a builtin's pointer argument P takes the address &X of.
+rmw_arg_aligned(P, Ctx) -->
+    env(Env),
+    (   { elaborate(P, Env, val(_, addr(X))) } -> rmw_aligned(X, Ctx)
+    ;   []
+    ).
+rmw_aligned(X, Ctx) -->
+    env(Env),
+    {   tree_type(X, T0), unqualified(T0, T),
+        catch(type_size_align(T, Env, W, _), bad(_), fail),
+        underaligned_member(X, Env, W, Name)
+    ->  ctx_loc(Ctx, Loc),
+        sema_error(Loc, 'an atomic read-modify-write of ~w, a member of a packed struct or union, may be misaligned; clang calls libatomic for it, which nanofil does not have', [Name])
+    ;   true
+    }.
+
+% cas_once(+T, +Addr, +E, +N, -Got, -Eq)//: one cas of the T at Addr from
+% E to N; Got is the old value and Eq whether it was E.
+cas_once(T, Addr, E, N, Got, Eq) -->
+    { cas_repr(T, CT, K, none) },
+    let(K, cas(CT), [E, N, Addr], Got),
+    cas_equal(K, Got, E, Eq).
+
+% cas_repr(+U, -T, -K, -Bits): an atomic U is cas(T) of class K; a float
+% or double is the cas of its bits (Bits s or d), else Bits is none.
+cas_repr(float, uw, w, s) :- !.
+cas_repr(double, l, l, d) :- !.
+cas_repr(U, T, K, none) :- load_op(U, K, T).
+
+cas_equal(p, A, B, Eq) --> !,
+    let(l, ptoi, [A], IA), let(l, ptoi, [B], IB),
+    let(w, cmp(eq, l), [IA, IB], Eq).
+cas_equal(K, A, B, Eq) --> let(w, cmp(eq, K), [A, B], Eq).
+
+to_bits(none, V, V) --> [].
+to_bits(s, V, B) --> let(w, cast, [V], B).
+to_bits(d, V, B) --> let(l, cast, [V], B).
+from_bits(none, B, B) --> [].
+from_bits(s, B, V) --> let(s, cast, [B], V).
+from_bits(d, B, V) --> let(d, cast, [B], V).
+
+% rmw_new(+Op, +Old, +V, +U, +Ctx, -New)//: New, of U, is Old combined
+% with V by Op.
+rmw_new(xchg, _, V, U, _, New) --> !, convert(V, U, New).
+rmw_new(nand, Old, V, U, Ctx, New) --> !,
+    binary(and, Old, V, Ctx, A), unary(bnot, A, Ctx, B), convert(B, U, New).
+rmw_new(Op, Old, V, U, Ctx, New) -->
+    { memberchk(Op-Cmp, [max-gt, min-lt]) }, !,
+    % Old where Old Cmp V, else V: a mask, so the loop stays one block.
+    binary(Cmp, Old, V, Ctx, C), convert(C, U, C1), unary(neg, C1, Ctx, M),
+    convert(M, U, M1), binary(and, Old, M1, Ctx, A), unary(bnot, M1, Ctx, NM),
+    binary(and, V, NM, Ctx, B), binary(or, A, B, Ctx, O), convert(O, U, New).
+rmw_new(Op, Old, V, U, Ctx, New) -->
+    binary(Op, Old, V, Ctx, B), convert(B, U, New).
 
 % atomic_stored(+T, +X, +Addr, +Order)//: X, of T, stored atomically at
 % Addr with memory order Order: a pointer through Fil-C's helper, which

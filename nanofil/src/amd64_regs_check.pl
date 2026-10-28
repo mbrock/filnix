@@ -932,6 +932,11 @@ operand_roles(idiv, b, [src(8)]).
 operand_roles(idiv, w, [src(16)]).
 operand_roles(idiv, l, [src(32)]).
 operand_roles(idiv, q, [src(64)]).
+% lock cmpxchg: New, then the memory it compares and writes.
+operand_roles('lock cmpxchg', b, [src(8), srcdst(8)]).
+operand_roles('lock cmpxchg', w, [src(16), srcdst(16)]).
+operand_roles('lock cmpxchg', l, [src(32), srcdst(32)]).
+operand_roles('lock cmpxchg', q, [src(64), srcdst(64)]).
 operand_roles(movd, none, [src(_), dst(_)]).
 operand_roles(movq, none, [src(_), dst(_)]).
 operand_roles(add, ss, [src(128), srcdst(128)]).
@@ -974,6 +979,12 @@ implicit(idiv, b, [rax-8,rdx-8], [rax-8,rdx-8]).
 implicit(idiv, w, [rax-16,rdx-16], [rax-16,rdx-16]).
 implicit(idiv, l, [rax-32,rdx-32], [rax-32,rdx-32]).
 implicit(idiv, q, [rax-64,rdx-64], [rax-64,rdx-64]).
+% lock cmpxchg reads %rax at its width and writes it: wholly at 32 and
+% 64 bits (amd64_contract.pl), the width's part at 8 and 16.
+implicit('lock cmpxchg', b, [rax-8], [rax-8]).
+implicit('lock cmpxchg', w, [rax-16], [rax-16]).
+implicit('lock cmpxchg', l, [rax-32], [rax-64]).
+implicit('lock cmpxchg', q, [rax-64], [rax-64]).
 
 % The flags a form defines from its inputs (res), or leaves partly
 % undefined or preserved (distinct per stream).
@@ -1041,6 +1052,10 @@ flags_out(idiv, b, undefined).
 flags_out(idiv, w, undefined).
 flags_out(idiv, l, undefined).
 flags_out(idiv, q, undefined).
+flags_out('lock cmpxchg', b, defined).
+flags_out('lock cmpxchg', w, defined).
+flags_out('lock cmpxchg', l, defined).
+flags_out('lock cmpxchg', q, defined).
 
 %! paired(+LA, +LB, +J, +SA0, +SB0, -SA, -SB) is semidet.
 paired(ins(Op,S,OsA), ins(Op,S,OsB), J, SA0, SB0, SA, SB) :-

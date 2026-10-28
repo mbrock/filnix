@@ -12,6 +12,7 @@
     | `store(W, V, A)` | `let(tmp(Q), a, check(0, S, write, Al), [A])`, then `raw_store(W, 0, V, tmp(Q))` |
     | pointer load/store | the same check, then `raw_load_pointer` or `raw_store_pointer` with its explicit `pointer_memory_effects/2` sequence |
     | `atomic_load(p)`, `atomic_store(p, V, A)` | the same check, then the raw pointer access with the atomic effect list (`[atomic_read]`, `[atomic_write]`) |
+    | `let(D, K, cas(T), [E, N, A])` | a write check of T's width at that alignment, then `let(D, K, raw_cas(T, 0), [tmp(Q), E, N])` |
     | `call(Res, tmp(P), Args)` | `let(tmp(Q), f, check_function, [tmp(P)])`, then `raw_call(Res, tmp(Q), Args)` |
     | `let(D, p, add, [P, X])` (also `sub`) | `flight(D, add, [address(P), X], lower(P))` |
     | `let(D, p, copy, [P])` (not a symbol) | `flight(D, copy, [address(P)], lower(P))` |
@@ -170,6 +171,12 @@ checked_access(atomic_store(p, V, A), Q,
                 raw_store_pointer(0, V, tmp(Q), Effects)|Is], Is) :- !,
     access_size_align(p, Size, Align),
     pointer_memory_effects(atomic_store, Effects).
+% A cas, integer or pointer, checks write rights at its width's
+% alignment (ir.pl); for p Fil-C's helper does the rest.
+checked_access(let(D, K, cas(T), [E, N, A]), Q,
+               [let(tmp(Q), a, check(0, Size, write, Align), [A]),
+                let(D, K, raw_cas(T, 0), [tmp(Q), E, N])|Is], Is) :- !,
+    access_size_align(cas(T), Size, Align).
 checked_access(let(D, K, load(T), [A]), Q,
                [let(tmp(Q), a, check(0, Size, read, Align), [A]),
                 let(D, K, raw_load(T, 0), [tmp(Q)])|Is], Is) :-

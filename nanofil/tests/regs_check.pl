@@ -101,6 +101,18 @@ across_call(Body) :-
 
 homes([home(-8,[w]), home(-16,[w,l])]).
 
+% A home lives across lock cmpxchg through another register; it cannot
+% be cmpxchg's memory operand, which is no whole move of it.
+regs_case(cmpxchg_beside_home, Hs, [-8-r10], [], B, yes) :-
+    homes(Hs), exit(E),
+    append([ins(mov,q,[reg(rdx),mem(-8,rbp)]),
+            ins('lock cmpxchg',q,[reg(rcx),mem(0,rsi)]),
+            ins(mov,q,[mem(-8,rbp),reg(rax)])], E, B).
+regs_case(cmpxchg_on_home, Hs, [-8-r10], [], B, no) :-
+    homes(Hs), exit(E),
+    append([ins(mov,q,[reg(rdx),mem(-8,rbp)]),
+            ins('lock cmpxchg',q,[reg(rcx),mem(-8,rbp)]),
+            ins(mov,q,[mem(-8,rbp),reg(rax)])], E, B).
 regs_case(callee_saved_across_call, Hs, [-16-r10, -8-rbx], [save(rbx,-24)], B, yes) :-
     homes(Hs), across_call(B).
 regs_case(scratch_across_call, Hs, [-16-r10, -8-r11], [], B, no) :-
@@ -370,6 +382,21 @@ operand_case(setcc_elsewhere,
      ins(movzb,l,[reg(al),reg(eax)]), ins(mov,q,[reg(rax),reg(r13)]), ins(mov,l,[imm(0),reg(ecx)])],
     [ins(cmp,q,[imm(0),reg(rbx)]), ins(sete,none,[reg(cl)]),
      ins(movzb,l,[reg(cl),reg(eax)]), ins(mov,q,[reg(rax),reg(r13)]), ins(mov,l,[imm(0),reg(ecx)])], yes).
+% lock cmpxchg: New may be forwarded; %rax is read (Expected) and
+% written (the old value) implicitly, so neither move of it can go.
+operand_case(cmpxchg_forward_new,
+    [ins(mov,q,[reg(r12),reg(rcx)]), ins('lock cmpxchg',q,[reg(rcx),mem(0,rdx)]),
+     ins(mov,l,[imm(0),reg(ecx)])],
+    [ins('lock cmpxchg',q,[reg(r12),mem(0,rdx)]), ins(mov,l,[imm(0),reg(ecx)])], yes).
+operand_case(cmpxchg_drops_expected,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins('lock cmpxchg',q,[reg(rcx),mem(0,rdx)]),
+     ins(mov,q,[reg(rax),reg(rbx)])],
+    [ins('lock cmpxchg',q,[reg(rcx),mem(0,rdx)]), ins(mov,q,[reg(rax),reg(rbx)])], no).
+operand_case(cmpxchg_forwards_old_rax,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins('lock cmpxchg',q,[reg(rcx),mem(0,rdx)]),
+     ins(mov,q,[reg(rax),reg(rbx)])],
+    [ins(mov,q,[reg(r12),reg(rax)]), ins('lock cmpxchg',q,[reg(rcx),mem(0,rdx)]),
+     ins(mov,q,[reg(r12),reg(rbx)])], no).
 % A forwarded read of a register redefined in between.
 operand_case(redefined_source,
     [ins(mov,q,[reg(r12),reg(rax)]), ins(mov,q,[imm(5),reg(r12)]), ins(add,q,[reg(rax),reg(rbx)])],

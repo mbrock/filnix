@@ -117,6 +117,13 @@ inst_event(let(_, _, atomic_load(_), [tmp(X)]), Addrs, Root-esc(atomic)) :-
 inst_event(atomic_store(_, V, A), Addrs, Root-esc(atomic)) :-
     member(tmp(X), [V, A]),
     get_assoc(X, Addrs, Root-_).
+% A cas, of an integer as of a pointer, lets every address it reads
+% escape: its object stays on the heap, which lock cmpxchg on a shared
+% object and Fil-C's pointer helper both need, and promotion never
+% deletes the object of a cas it would leave behind.
+inst_event(let(_, _, cas(_), Args), Addrs, Root-esc(atomic)) :-
+    member(tmp(X), Args),
+    get_assoc(X, Addrs, Root-_).
 inst_event(call(_, F, Args), Addrs, Root-esc(call)) :-
     findall(V, member(arg(_, V), Args), Vs),
     member(tmp(X), [F|Vs]),

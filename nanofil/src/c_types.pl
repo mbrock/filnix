@@ -78,7 +78,8 @@
                     castable/2, expression_category/3, modifiable_lvalue/2,
                     integer_type/4, elaborate/3, tree_type/2, value/2,
                     lowered/2, folded/3, member_layout/6,
-                    bitfield_promotion/3, unaligned_type/2, atomic_qualified/1]).
+                    bitfield_promotion/3, unaligned_type/2, underaligned_member/4, atomic_qualified/1,
+                    rmw_builtin/4]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -462,8 +463,8 @@ doc(atomic_object_type(+T), semidet, [
     "atomic version clang may pad, realign or make a library call, is",
     "refused (bad). Lvalue conversion of an atomic object is an atomic",
     "load and simple assignment an atomic store, both sequentially",
-    "consistent; a compound assignment or increment, an atomic",
-    "read-modify-write, is refused in lowering. Initialization is not",
+    "consistent; a compound assignment or increment is an atomic",
+    "read-modify-write, a cas loop in lowering. Initialization is not",
     "atomic. An _Atomic bit-field, which C leaves to the implementation",
     "and clang rejects, is refused (bad).",
     cites('C11 6.2.5p27'),
@@ -917,6 +918,34 @@ unaligned_type(SU, e(O, Tg, Defs, N)) :-
     catch(type_size_align(T, e(O, Tg, Defs, N), _, Align), bad(_), fail),
     (   Off mod Align =\= 0 -> true ; unaligned_type(T, e(O, Tg, Defs, N)) ), !.
 unaligned_type(array(T, _), Env) :- unaligned_type(T, Env).
+
+doc(underaligned_member(+X, +Env, +Width, -Name), semidet, [
+    X: "an object tree",
+    Env: "the scope of X",
+    Width: "the byte width of an atomic access to X",
+    Name: "the member, perhaps containing X, that may be misaligned",
+    "X is a member, perhaps nested, of a struct or union aligned to less",
+    "than Width, or at an offset that is not a multiple of it, as only a",
+    "packed one can be: clang then lowers an atomic read-modify-write of",
+    "X to libatomic's lock-based calls, which nanofil does not have, so",
+    "lowering refuses it rather than trap on Fil-C's alignment check.",
+    cites('C11 7.17.6p1'),
+    example(( empty_env(E0), su_definition([field([tspec(char)], dcl(some(c), base, none), none),
+                                            field([tspec(int)], dcl(some(x), base, none), none)],
+                                           struct, none, [[group([id(packed)])]], T, E0, E),
+              underaligned_member(obj(int, member(obj(T, id(ps)), x)), E, 4, N) ),
+            N = x),
+    fails(( empty_env(E0), su_definition([field([tspec(char)], dcl(some(c), base, none), none),
+                                          field([tspec(int)], dcl(some(x), base, none), none)],
+                                         struct, none, [], T, E0, E),
+            underaligned_member(obj(int, member(obj(T, id(s)), x)), E, 4, _) ))
+]).
+underaligned_member(obj(_, member(XS, F)), Env, W, Name) :-
+    tree_type(XS, SU0), unqualified(SU0, SU),
+    (   catch(type_size_align(SU, Env, _, A), bad(_), fail), A < W -> Name = F
+    ;   member_layout(SU, F, Env, _, Off, _), Off mod W =\= 0 -> Name = F
+    ;   underaligned_member(XS, Env, W, Name)
+    ).
 
 % member_offset_end(+Kind, +End0, +Size, +Align, -Off, -End): a member of
 % Size and Align after members ending at bit End0 is at byte Off and
@@ -2463,12 +2492,46 @@ doc(atomic_builtin(+Name, +Args, +Env, -R), semidet, [
     "__c11_atomic_init(P, V) stores V without atomicity, as clang does.",
     "A thread fence of a constant order is builtin(void), a fence only",
     "when seq_cst (x86-64 orders the rest itself); a signal fence orders",
-    "nothing a single thread can observe. The read-modify-write",
-    "builtins (exchange, compare-exchange, fetch-and-op) are refused: IR",
-    "has no atomic read-modify-write.",
+    "nothing a single thread can observe.",
     cites('C11 7.17.2.2p2'),
     cites('C11 7.17.4.1p2'),
     cites('C11 7.17.4.2p2'),
+    "The read-modify-writes are builtin(T) of the type they return, each",
+    "one sequentially consistent atomic step whatever its orders, which",
+    "lowering makes a loop of IR's cas (docs/m4.md): __c11_atomic_exchange",
+    "and __c11_atomic_fetch_OP (add, sub, and, or, xor, nand, max, min) on",
+    "an _Atomic integer return the old value, add and sub also on an",
+    "_Atomic pointer, by elements; __c11_atomic_compare_exchange_strong",
+    "and _weak return whether *P equaled *Expected, and write *P to",
+    "*Expected only when not (a weak one never fails spuriously). GCC's",
+    "__atomic_exchange_n, __atomic_fetch_OP, __atomic_OP_fetch (the new",
+    "value), __atomic_compare_exchange_n, the __sync builtins and",
+    "__atomic_test_and_set and __atomic_clear (a byte at any object",
+    "pointer) work on a plain integer, or a pointer to exchange or compare",
+    "it; their fetch-and-ops on a pointer are refused (clang adds bytes,",
+    "not elements, and filcc cannot compile them).",
+    cites('C11 7.17.7.2p2'),
+    cites('C11 7.17.7.3p2'),
+    cites('C11 7.17.7.4p2'),
+    cites('C11 7.17.7.5p2'),
+    cites('C11 7.17.7.5p3'),
+    cites('C11 7.17.8.1p2'),
+    cites('GCC manual, __sync Builtins'),
+    example(( empty_env(E0), bind_ordinary(p, var(none, ptr(qualified([atomic], int))), E0, E),
+              atomic_builtin('__c11_atomic_fetch_add', [id(p), chr(1), chr(5)], E, X) ),
+            X = builtin(int)),
+    example(( empty_env(E0), bind_ordinary(p, var(none, ptr(qualified([atomic], ptr(char)))), E0, E),
+              bind_ordinary(e, var(none, ptr(ptr(char))), E, E1),
+              atomic_builtin('__c11_atomic_compare_exchange_weak',
+                             [id(p), id(e), id(e), chr(5), chr(0)], E1, X) ),
+            X = builtin(bool)),
+    example(( empty_env(E0), bind_ordinary(p, var(none, ptr(long)), E0, E),
+              atomic_builtin('__sync_add_and_fetch', [id(p), chr(1)], E, X) ),
+            X = builtin(long)),
+    fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(ptr(int))), E0, E),
+            atomic_builtin('__atomic_fetch_add', [id(p), chr(1), chr(5)], E, _) )),
+    fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(qualified([atomic], double))), E0, E),
+            atomic_builtin('__c11_atomic_fetch_add', [id(p), chr(1), chr(5)], E, _) )),
     example(( empty_env(E0), bind_ordinary(p, var(none, ptr(qualified([atomic], ptr(void)))), E0, E),
               atomic_builtin('__c11_atomic_load', [id(p), chr(0)], E, X) ),
             X = builtin(ptr(void))),
@@ -2483,7 +2546,7 @@ doc(atomic_builtin(+Name, +Args, +Env, -R), semidet, [
             X = builtin(void)),
     fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(int)), E0, E),
             atomic_builtin('__c11_atomic_load', [id(p), chr(0)], E, _) )),
-    fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(qualified([atomic], int))), E0, E),
+    fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(int)), E0, E),
             atomic_builtin('__c11_atomic_fetch_add', [id(p), chr(1), chr(5)], E, _) ))
 ]).
 atomic_builtin('__atomic_load_n', [P, O], Env, R) :-
@@ -2513,6 +2576,89 @@ atomic_builtin(Name, [O], Env, builtin(void)) :-
     catch(const_value(O, Env, V, _), not_constant, fail),
     between(0, 5, V).
 
+atomic_builtin(Name, [P, _, O], Env, builtin(T)) :-
+    rmw_builtin(Name, c11, Op, _),
+    atomic_pointee(P, Env),
+    lowered_type(P, Env, ptr(T0)), unqualified(T0, T),
+    rmw_operand(Op, T), order_constant(O, Env).
+atomic_builtin(Name, [P, E, _, Os, Of], Env, builtin(bool)) :-
+    memberchk(Name, ['__c11_atomic_compare_exchange_strong',
+                     '__c11_atomic_compare_exchange_weak']),
+    atomic_pointee(P, Env),
+    cas_operands(P, E, Env),
+    order_constant(Os, Env), order_constant(Of, Env).
+atomic_builtin(Name, [P, _, O], Env, builtin(T)) :-
+    rmw_builtin(Name, gnu, Op, _),
+    lowered_type(P, Env, ptr(T0)), unqualified(T0, T),
+    gnu_operand(Op, T), order_constant(O, Env).
+atomic_builtin('__atomic_compare_exchange_n', [P, E, _, W, Os, Of], Env, builtin(bool)) :-
+    lowered_type(P, Env, ptr(T0)), unqualified(T0, T), gnu_operand(xchg, T),
+    cas_operands(P, E, Env),
+    order_constant(Os, Env), order_constant(Of, Env),
+    catch(const_value(W, Env, _, _), not_constant, fail).
+atomic_builtin(Name, [P, _|_], Env, builtin(T)) :-
+    rmw_builtin(Name, sync, Op, _),
+    lowered_type(P, Env, ptr(T0)), unqualified(T0, T), gnu_operand(Op, T).
+atomic_builtin(Name, [P, _, _|_], Env, builtin(R)) :-
+    memberchk(Name-R0, ['__sync_val_compare_and_swap'-val,
+                        '__sync_bool_compare_and_swap'-bool]),
+    lowered_type(P, Env, ptr(T0)), unqualified(T0, T), gnu_operand(xchg, T),
+    ( R0 == val -> R = T ; R = bool ).
+atomic_builtin('__sync_lock_release', [P|_], Env, builtin(void)) :-
+    lowered_type(P, Env, ptr(T0)), unqualified(T0, T), gnu_operand(xchg, T).
+atomic_builtin('__sync_synchronize', [], _, builtin(void)).
+atomic_builtin(Name, [P, O], Env, builtin(R)) :-
+    memberchk(Name-R, ['__atomic_test_and_set'-bool, '__atomic_clear'-void]),
+    lowered_type(P, Env, ptr(T)), T \= func(_, _, _),
+    order_constant(O, Env).
+
+% rmw_builtin(?Name, ?Family, ?Op, ?Result): Name is a read-modify-write
+% of Family (c11 on an _Atomic object, gnu or sync on a plain one) that
+% combines the old value and its operand by Op (xchg: the operand), and
+% returns the old or the new value (Result).
+rmw_builtin('__c11_atomic_exchange', c11, xchg, old).
+rmw_builtin(Name, c11, Op, old) :-
+    rmw_op(Op, _), Op \== xchg, atom_concat('__c11_atomic_fetch_', Op, Name).
+rmw_builtin('__atomic_exchange_n', gnu, xchg, old).
+rmw_builtin(Name, gnu, Op, old) :-
+    rmw_op(Op, _), Op \== xchg, atom_concat('__atomic_fetch_', Op, Name).
+rmw_builtin(Name, gnu, Op, new) :-
+    rmw_op(Op, _), Op \== xchg, atomic_list_concat(['__atomic_', Op, '_fetch'], Name).
+rmw_builtin('__sync_lock_test_and_set', sync, xchg, old).
+rmw_builtin(Name, sync, Op, old) :-
+    rmw_op(Op, sync), atom_concat('__sync_fetch_and_', Op, Name).
+rmw_builtin(Name, sync, Op, new) :-
+    rmw_op(Op, sync), atomic_list_concat(['__sync_', Op, '_and_fetch'], Name).
+
+% rmw_op(?Op, ?Sync): an Op of the fetch-and-op builtins; Sync is sync
+% for those __sync has too.
+rmw_op(xchg, none).
+rmw_op(add, sync). rmw_op(sub, sync). rmw_op(and, sync).
+rmw_op(or, sync). rmw_op(xor, sync). rmw_op(nand, sync).
+rmw_op(max, none). rmw_op(min, none).
+
+% rmw_operand(+Op, +T): an _Atomic T may be combined by Op: any integer
+% by any, a pointer by exchange, add or sub.
+rmw_operand(_, T) :- int_type(T), !.
+rmw_operand(Op, ptr(_)) :- memberchk(Op, [xchg, add, sub]).
+
+% gnu_operand(+Op, +T): GCC's builtins take an integer, or a pointer
+% only to exchange it.
+gnu_operand(_, T) :- int_type(T), !.
+gnu_operand(xchg, ptr(_)).
+
+% cas_operands(+P, +E, +Env): Expected E points to an object of *P's
+% unqualified type.
+cas_operands(P, E, Env) :-
+    lowered_type(P, Env, ptr(T0)), unqualified(T0, T),
+    ( int_type(T) ; T = ptr(_) ),
+    lowered_type(E, Env, ptr(U0)), unqualified(U0, U),
+    ( U == T -> true ; T = ptr(_), U = ptr(_) ).
+
+order_constant(O, Env) :-
+    catch(const_value(O, Env, V, _), not_constant, fail),
+    between(0, 5, V).
+
 fence_builtin('__c11_atomic_thread_fence').
 fence_builtin('__c11_atomic_signal_fence').
 fence_builtin('__atomic_thread_fence').
@@ -2538,14 +2684,14 @@ atomic_name('__c11_atomic_init').
 atomic_name(Name) :- fence_builtin(Name).
 atomic_name(Name) :- rmw_atomic(Name).
 
-% rmw_atomic(?Name): an atomic read-modify-write builtin, refused.
+% rmw_atomic(?Name): an atomic read-modify-write builtin.
+rmw_atomic(Name) :- rmw_builtin(Name, _, _, _).
 rmw_atomic(Name) :-
-    member(Name, ['__c11_atomic_exchange', '__c11_atomic_compare_exchange_strong',
-                  '__c11_atomic_compare_exchange_weak', '__c11_atomic_fetch_add',
-                  '__c11_atomic_fetch_sub', '__c11_atomic_fetch_and',
-                  '__c11_atomic_fetch_or', '__c11_atomic_fetch_xor',
-                  '__c11_atomic_fetch_nand', '__c11_atomic_fetch_max',
-                  '__c11_atomic_fetch_min']).
+    member(Name, ['__c11_atomic_compare_exchange_strong',
+                  '__c11_atomic_compare_exchange_weak', '__atomic_compare_exchange_n',
+                  '__sync_val_compare_and_swap', '__sync_bool_compare_and_swap',
+                  '__sync_lock_release', '__sync_synchronize',
+                  '__atomic_test_and_set', '__atomic_clear']).
 
 % atomic_operands(+P, +O, +Env, +Orders, -T[, -Order]): P points to an
 % integer or a pointer of unqualified type T and O is a constant memory
@@ -3244,7 +3390,7 @@ fault_(bit_cast(TN, E), Env, F, As) :-
 fault_(call(id(Name), _), Env, F, [Name]) :-
     \+ lookup_ordinary(Env, Name, _), atomic_name(Name), !,
     (   rmw_atomic(Name)
-    ->  F = '~w is an atomic read-modify-write, which nanofil does not support'
+    ->  F = '~w needs a pointer to an integer (an _Atomic one for __c11 builtins), or to a pointer to exchange, compare it or (__c11) add to it, and constant memory orders'
     ;   fence_builtin(Name)
     ->  F = '~w needs a constant memory order'
     ;   atom_concat('__c11', _, Name)

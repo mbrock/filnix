@@ -763,6 +763,12 @@ kind_res(ld_pointer, raw_load_pointer(Off, Effects), p, filc, [ptr(A, Cap)],
     raw_address(A, Off, B),
     access_res(Mem0, B, Cap, 8, read, 8, Check),
     pointer_load_effects_res(Check, Effects, B, Mem0, Res, Mem).
+kind_res(cas, cas(T), K, filc, [E, N, ptr(A, Cap)], S0, Res, S) :-
+    cas_res(T, K, E, N, A, Cap, S0, Res, S).
+kind_res(raw_cas, raw_cas(T, Off), K, filc, [ptr(A, Cap), E, N], S0, Res, S) :-
+    raw_address(A, Off, B),
+    cas_res(T, K, E, N, B, Cap, S0, Res0, S),
+    raw_res(Res0, Res).
 kind_res(alloc, alloc(Align), _, Mode, [Size], s(Mem0, Fuel), val(P),
          s(Mem, Fuel)) :-
     alloc_base(Mode, Mem0, Align, Size, Base, Mem),
@@ -938,6 +944,37 @@ pointer_store_effect(A, ptr(U, _), address_write,
                      mem(Bytes0, Rs, Next, Aux), mem(Bytes, Rs, Next, Aux)) :-
     le_bytes(8, U, Written),
     written_bytes(Written, A, Bytes0, Bytes).
+
+% cas_res(+T, +K, +E, +N, +A, +Cap, +S0, -Res, -S): the cas(T) of
+% Expected E and New N at A (ir.pl): a write check of its width, at
+% its width's alignment; then old, the T at A, and N written there when
+% old's bytes are E's low bytes (for p, when the addresses are equal,
+% whatever the capabilities). Res is old, as load(T) would give it.
+cas_res(T, K, E, N, A, Cap, s(Mem0, Fuel), Res, s(Mem, Fuel)) :-
+    access_size_align(cas(T), Size, Align),
+    access_res(Mem0, A, Cap, Size, write, Align, Check),
+    cas_checked(Check, T, K, E, N, A, Size, Mem0, Res, Mem).
+
+cas_checked(trap(Why), _, _, _, _, _, _, Mem, trap(Why), Mem).
+cas_checked(ok, p, _, ptr(EU, _), N, A, _, Mem0, val(ptr(U, C)), Mem) :-
+    pointer_access_load(ok, Mem0, A, val(ptr(U, C)), Mem1),
+    (   U =:= EU
+    ->  pointer_store_effect(A, N, lower_write, Mem1, Mem2),
+        pointer_store_effect(A, N, address_write, Mem2, Mem)
+    ;   Mem = Mem1
+    ).
+cas_checked(ok, T, K, E, N, A, Size, Mem0, Res, Mem) :-
+    T \== p,
+    load_res(filc, Mem0, A, Size, val(U), Mem1),
+    M is 1 << (8 * Size),
+    (   U =:= E mod M
+    ->  le_bytes(Size, N, Written),
+        Mem1 = mem(Bytes0, Rs, Next, Aux),
+        written_bytes(Written, A, Bytes0, Bytes),
+        Mem = mem(Bytes, Rs, Next, Aux)
+    ;   Mem = Mem1
+    ),
+    (   T == l -> Res = val(U) ; extended_res(val(U), T, K, Res) ).
 
 ext_load_res(T, Size, K, Mode, Args, S0, Res, S) :-
     int_load_res(Mode, Size, Args, S0, Res0, S),

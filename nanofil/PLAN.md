@@ -88,8 +88,10 @@ start. Reversing one is cheap until the milestone it names.
    in Fil-C mode; see [docs/setjmp.md](docs/setjmp.md). `__atomic_load_n`
    and `__atomic_store_n` are supported, pointers through Fil-C's atomic
    helpers ([`90fe17c`](https://github.com/mbrock/filnix/commit/90fe17c)),
-   and the empty asm barrier is accepted; other inline asm, `_Atomic`
-   and `_Complex` are still refused.
+   and the empty asm barrier is accepted. `_Atomic` objects and every
+   atomic read-modify-write are now supported, the latter through one IR
+   term, `cas(T)` (docs/pizlonation.md). Other inline asm and `_Complex`
+   are still refused.
 7. **Relationship to [experiments/sarcasm-prolog](../experiments/sarcasm-prolog/README.md).**
    It is related but separate. That experiment translates assembly to C and
    lets clang apply Fil-C. nanofil emits the Fil-C ABI itself. nanofil
@@ -295,7 +297,7 @@ float-containing structs and aggregate `va_arg`
 ([`b6c1cc6`](https://github.com/mbrock/filnix/commit/b6c1cc6)), atomic
 builtins, a C23 mode and the GNU extensions gnulib uses
 ([`36039eb`](https://github.com/mbrock/filnix/commit/36039eb)).
-Refused with a message: `_Complex`, `_Atomic`, K&R definitions, inline
+Refused with a message: `_Complex`, K&R definitions, inline
 asm other than the empty barrier (in a function that is compiled),
 GNU case ranges, alignment stronger than natural except up to 16 on a
 struct or union definition, vector types, `_Float16` and `__bf16`,
@@ -560,6 +562,5 @@ matches a filcc-built Lua, like the hello and zlib checks.
   versus incremental tabling was measured in M5: neither; see docs/m5.md.
 - In-process execution (`tcc -run` style) needs a native host that boots
   the Fil-C runtime. It is out of scope until after M8.
-- `_Atomic` types, `__atomic` builtins beyond load and store, and inline
-  asm other than the empty barrier, all refused until a milestone claims
-  them.
+- Inline asm other than the empty barrier, refused until a milestone
+  claims it.

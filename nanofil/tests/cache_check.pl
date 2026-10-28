@@ -39,6 +39,29 @@ framed(Body, [ins(push,q,[reg(rbp)]),
               ins(mov,q,[reg(rsp),reg(rbp)])|Body]).
 
 checker_case(empty, [], [], [], yes).
+% lock cmpxchg writes %rax (amd64_contract.pl): a copy of rax taken
+% after it holds the old value, one taken before it does not. Its
+% memory access through a register is a boundary (boundary_fixture).
+checker_case(cmpxchg_result_in_rax, [home(-8,[l])], [
+    ins('lock cmpxchg',q,[reg(rcx),mem(0,rdx)]),
+    ins(mov,q,[reg(rax),mem(-8,rbp)]),
+    ins(mov,q,[mem(-8,rbp),reg(rsi)])
+], [
+    ins('lock cmpxchg',q,[reg(rcx),mem(0,rdx)]),
+    ins(mov,q,[reg(rax),reg(r10)]),
+    ins(mov,q,[reg(r10),reg(rsi)]),
+    ins(mov,q,[reg(r10),mem(-8,rbp)])
+], yes).
+checker_case(cmpxchg_stale_rax, [home(-8,[l])], [
+    ins('lock cmpxchg',q,[reg(rcx),mem(0,rdx)]),
+    ins(mov,q,[reg(rax),mem(-8,rbp)]),
+    ins(mov,q,[mem(-8,rbp),reg(rsi)])
+], [
+    ins(mov,q,[reg(rax),reg(r10)]),
+    ins('lock cmpxchg',q,[reg(rcx),mem(0,rdx)]),
+    ins(mov,q,[reg(r10),reg(rsi)]),
+    ins(mov,q,[reg(r10),mem(-8,rbp)])
+], no).
 checker_case(reads_both_widths, [home(-8,[w,l])], [
     ins(mov,q,[mem(-8,rbp),reg(rax)]),
     ins(mov,l,[mem(-8,rbp),reg(ecx)]),
@@ -227,6 +250,7 @@ boundary_fixture(directive, p2align(4)).
 boundary_fixture(read_memory, ins(mov,q,[mem(0,rdi),reg(rdx)])).
 boundary_fixture(write_memory, ins(mov,q,[reg(rax),mem(0,rdi)])).
 boundary_fixture(read_write_memory, ins(add,q,[imm(1),mem(0,rdi)])).
+boundary_fixture(cmpxchg, ins('lock cmpxchg',q,[reg(rcx),mem(0,rdi)])).
 boundary_fixture(partial_home_write, ins(mov,l,[reg(eax),mem(-8,rbp)])).
 boundary_fixture(noneligible_home, ins(mov,q,[mem(-16,rbp),reg(rax)])).
 boundary_fixture(indexed_home, ins(mov,q,[mem(-8,rbp,rcx),reg(rax)])).

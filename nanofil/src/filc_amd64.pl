@@ -697,10 +697,11 @@ fused_inst(let(tmp(Q), a, Check, [P]), [Access0|Insts], Fn, Inst, Insts) :- !,
     (   proven_access(Access0, Q, P, Access) -> Inst = fused(Check, Access)
     ;   throw_fn(Fn, 'a check not followed by the access it proves')
     ),
-    % access_check//2 checks [P, P+Size) for alignment 1 or 8, and a raw
+    % access_check//2 checks [P, P+Size) for alignment 1, 2, 4 or 8 (a
+    % cas is aligned to its width), and a raw
     % access emits at offset 0. subq's immediate is signed 32-bit: a
     % larger check needs a different native representation, not truncation.
-    (   Check = check(0, Size, _, Align), memberchk(Align, [1, 8]),
+    (   Check = check(0, Size, _, Align), memberchk(Align, [1, 2, 4, 8]),
         integer(Size), Size > 0, Size =< 2147483647,
         access_pointer(Access, _, 0)
     ->  true
@@ -739,6 +740,10 @@ proven_access(raw_store_pointer(Off, V, tmp(Q), Es), Q, P,
               raw_store_pointer(Off, V, P, Es)) :-
     pointer_memory_effects(atomic_store, Es).
 
+% A cas, heap only too (escape.pl), reads Expected and New beside P.
+proven_access(let(D, K, raw_cas(T, Off), [tmp(Q), E, N]), Q, P,
+              let(D, K, raw_cas(T, Off), [P, E, N])).
+
 proven_local_access(let(D, p, raw_load_pointer(Off, Es), [tmp(Q)]), Q, P,
                     let(D, p, raw_load_pointer(Off, Es), [P])) :-
     pointer_memory_effects(local_load, Es).
@@ -755,6 +760,7 @@ access_pointer(let(_, _, raw_load(_, Off), [P]), P, Off).
 access_pointer(raw_store(_, Off, _, P), P, Off).
 access_pointer(let(_, p, raw_load_pointer(Off, _), [P]), P, Off).
 access_pointer(raw_store_pointer(Off, _, P, _), P, Off).
+access_pointer(let(_, _, raw_cas(_, Off), [P|_]), P, Off).
 access_pointer(Access, P) :- access_pointer(Access, P, _).
 
 % zero_offset(+Access, -Access0): Access at offset 0.
@@ -771,6 +777,7 @@ unchecked_access(let(_, _, raw_load(_, _), _)).
 unchecked_access(raw_store(_, _, _, _)).
 unchecked_access(let(_, _, raw_load_pointer(_, _), _)).
 unchecked_access(raw_store_pointer(_, _, _, _)).
+unchecked_access(let(_, _, raw_cas(_, _), _)).
 unchecked_access(local_load(_, _, _, _, _)).
 unchecked_access(local_store(_, _, _, _)).
 
@@ -1765,6 +1772,53 @@ raw_access(let(tmp(D), p, raw_load_pointer(0, Effects), [_]), I, B, Ctx) -->
     flight_store(D, Ctx).
 raw_access(raw_store_pointer(0, V, P, Effects), I, B, Ctx) -->
     pointer_store_effects(Effects, V, P, I, B, Ctx).
+raw_access(let(tmp(D), K, raw_cas(T, 0), [_, E, N]), _, _, Ctx) -->
+    raw_cas(T, K, D, E, N, Ctx).
+
+% raw_cas(+T, +K, +D, +E, +N, +Ctx)//: the cas(T) of Expected E and New
+% N at the checked address in %rax (lower in %rcx), its old value into
+% tmp(D) at class K (ir.pl). An integer is lock cmpxchg on the address
+% in %rdx, Expected in %rax and New in %rcx; %rax is then old, extended
+% as load(T) would. A pointer is Fil-C's
+% filc_strong_cas_ptr_with_manual_tracking(thread, filc_ptr dest,
+% offset, filc_ptr expected, filc_ptr new), as clang calls it: dest in
+% %rsi/%rdx, offset 0 in %rcx, Expected's pair in %r8/%r9 and New's on
+% the stack, the old pair back in %rax/%rdx. The helper checks again,
+% ensures aux (it may exit), barriers New and boxes the slot; P and New
+% stay rooted in their slots, and flight_store roots the result at once.
+raw_cas(p, p, D, E, N, Ctx) --> !,
+    { ctx_fn(Ctx, Fn) },
+    [ins(mov, q, [reg(rax), reg(rsi)]),
+     ins(mov, q, [reg(rcx), reg(rdx)])],
+    origin_store(Ctx, c),
+    slot_reg_load(thread, rdi, Ctx),
+    load(E, l, r8, Fn),
+    lower_reg_load(E, r9, Ctx),
+    load(N, l, a, Fn),
+    lower_reg_load(N, rcx, Ctx),
+    [ins(sub, q, [imm(16), reg(rsp)]),
+     ins(mov, q, [reg(rax), mem(0, rsp)]),
+     ins(mov, q, [reg(rcx), mem(8, rsp)]),
+     ins(xor, l, [reg(ecx), reg(ecx)]),
+     ins(call, none, [plt(filc_strong_cas_ptr_with_manual_tracking)]),
+     ins(add, q, [imm(16), reg(rsp)]),
+     ins(mov, q, [reg(rdx), reg(rcx)])],
+    flight_store(D, Ctx).
+raw_cas(T, K, D, E, N, Ctx) -->
+    { ctx_fn(Ctx, Fn), cas_operand(T, S, New) },
+    [ins(mov, q, [reg(rax), reg(rdx)])],
+    load(E, K, a, Fn),
+    load(N, K, c, Fn),
+    [ins('lock cmpxchg', S, [reg(New), mem(0, rdx)])],
+    (   { T \== l, ext_insn(T, K, Ext) } -> [Ext] ; [] ),
+    reg_slot_store(rax, tmp(D), Ctx).
+
+% cas_operand(?T, ?S, ?New): a cas of type T is cmpxchg with suffix S,
+% New in the part New of %rcx.
+cas_operand(l, q, rcx).
+cas_operand(sw, l, ecx). cas_operand(uw, l, ecx).
+cas_operand(sh, w, cx).  cas_operand(uh, w, cx).
+cas_operand(sb, b, cl).  cas_operand(ub, b, cl).
 
 % %rax is the checked payload address, %rdx its explicit aux word.
 % Neither register is an ordinary root. Only loaded/stored *contents*
@@ -2406,8 +2460,14 @@ write_check(1, Fail) -->
     [ins(test, b, [imm(6), mem(-2, rcx)]),
      ins(jnz, none, [sym(Fail)])].
 
-% For Align = 8, a check that the pointer is 8-aligned.
+% For Align = 2, 4 or 8, a check that the pointer is so aligned.
 align_check(1, _) --> [].
+align_check(2, Fail) -->
+    [ins(test, b, [imm(1), reg(al)]),
+     ins(jnz, none, [sym(Fail)])].
+align_check(4, Fail) -->
+    [ins(test, b, [imm(3), reg(al)]),
+     ins(jnz, none, [sym(Fail)])].
 align_check(8, Fail) -->
     [ins(test, b, [imm(7), reg(al)]),
      ins(jnz, none, [sym(Fail)])].

@@ -50,7 +50,7 @@
     | Ctx | the function context, `f(Name, Ret, Slots, Blocks)` |
 */
 :- module(amd64, [module_asm/2, compute_op//4, compute_op//5, load//4, load_slot//4,
-                  store_reg//3, store_insn/3, reg_name/3, load_insn/3,
+                  store_reg//3, store_insn/3, reg_name/3, load_insn/3, ext_insn/3,
                   cond_code/2, integer_immediate/3,
                   att_suffix/2, float_class/1,
                   to_xmm//3, from_xmm//3, bank_locations/5,

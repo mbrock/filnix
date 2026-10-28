@@ -772,6 +772,43 @@ order).
 nanofil passes the checked pair and the value's rooted pair the same way.
 It moves the pair out of `%rax`/`%rcx` before storing the origin.
 
+## Atomic read-modify-write
+
+Read from FilPizlonator.cpp and filc_runtime.{c,h} at the pin, and from
+filcc `-O1` output on probes.
+
+- Integer `atomicrmw` and `cmpxchg` stay native: an inline write check
+  (bounds, write rights, alignment to the width), then `lock xadd`,
+  `xchg`, `lock cmpxchg` or a cmpxchg loop. A misaligned one traps:
+  "alignment requirement of 4 bytes not met".
+- Pointer `cmpxchg` calls `filc_strong_cas_ptr_with_manual_tracking`
+  (thread, dest pair, offset, expected pair, new pair). Success is
+  address equality, unboxed or boxed; the old pair comes from the slot.
+  The helper ensures aux (it may exit) before the store barrier of New.
+- Pointer `xchg` calls `filc_xchg_ptr_with_manual_tracking`: an atomic
+  load, then a weak-CAS loop.
+- `atomic_fetch_add` on an `_Atomic(T*)` is an integer `atomicrmw add`
+  on the address word with a null-capability result. On a boxed slot the
+  update is lost for atomic readers (they read the box's pair).
+- `++`/`--` on an `_Atomic(T*)` is an atomic load and a loop of
+  `filc_strong_cas_ptr_with_manual_tracking`; the result keeps its
+  capability. clang refuses `+=` on one.
+- GNU `__atomic_fetch_add` on a pointer breaks filcc's module
+  ("atomicrmw add operand must have integer type").
+- An under-aligned (packed) member goes through libatomic's
+  `__atomic_load` and `__atomic_compare_exchange` calls.
+
+nanofil lowers every one of them through the one IR term `cas(T)`
+(docs/pizlonation.md): integers as `lock cmpxchg` after the same check,
+singly or in a loop; pointers through the same CAS helper. Pointer
+fetch-and-add and `++`/`--` are loops over a flight add of the old pair,
+so a boxed slot keeps the update; the `__c11` fetch builtins then strip
+the result's capability, as filcc's does, while `++`/`--` keep it.
+Compare-exchange writes `*expected` back only on failure, with the old
+value (C11 7.17.7.4p2). GNU `__atomic_fetch_add` on a pointer, fetch
+operations on a floating `_Atomic`, and read-modify-writes of packed
+members are refused.
+
 ## Thread-local variables
 
 Read from FilPizlonator.cpp (`G->isThreadLocal()` in the global

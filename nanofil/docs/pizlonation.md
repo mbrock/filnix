@@ -353,6 +353,43 @@ Skipping the lower barrier or shrinking the destination preserves the
 simple result but fails the helper-path audit. Both middle-end and scalar
 cache modes run these tests; this is still not C++ unwinding coverage.
 
+## Atomic compare-exchange
+
+`cas(T)` (filc mode) is the one atomic read-modify-write term:
+`let(tmp(D), K, cas(T), [Expected, New, Addr])` reads the T at Addr; if
+its low |T| bytes equal Expected's, it writes New; D is the old value,
+extended as `load(T)`. A `p` cas compares addresses only (Expected's
+capability is never consulted, as in `filc_strong_cas_ptr`) and returns
+the slot's old pair. Pizlonation gives it its own check, write rights
+with the alignment of its width (`access_size_align(cas(T), W, W)`, not
+the 1 of ordinary integer accesses), then `raw_cas(T, 0)` right after
+it:
+
+```prolog
+let(tmp(Q), a, check(0, 4, write, 4), [tmp(A)])
+let(tmp(D), w, raw_cas(sw, 0), [tmp(Q), tmp(E), tmp(N)])
+```
+
+The validator never accepts a raw_cas under a reused proof, and raw_cas
+is not evidence-preserving, so it ends every live proof (as the atomic
+pointer load and store do); check_reuse kills all its facts at it,
+because it is not transparent. A pointer cas is heap only, with the
+effect list `[atomic_cas]`; the backend calls
+`filc_strong_cas_ptr_with_manual_tracking`, which checks again, ensures
+aux (it may exit), barriers New and boxes the slot, so New and Addr stay
+rooted through it and D is rooted at once. An integer cas is
+`lock cmpxchg` with Expected in `%rax`; amd64_contract.pl knows its
+implicit `%rax` read and write, its flags and its memory read and write.
+escape.pl makes the object of every cas escape, so promote and
+local_storage never see one on the stack.
+
+c_lower builds every other read-modify-write as a cas loop: an initial
+load (`atomic_load` for a pointer, so its pair cannot tear), the new
+value from the old, a cas, and a bitwise compare of its result with the
+old (floats and doubles through their bits). Oracle reviewed the
+contract; see [abi-findings.md](abi-findings.md#atomic-read-modify-write)
+for filcc's lowering at the pin.
+
 ## ABI products before instruction selection
 
 `filc_abi:lower_function/4` describes payload storage, ordered roots and

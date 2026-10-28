@@ -164,6 +164,16 @@ instruction_effects(ins(ret,none,[]),
 instruction_effects(ins(ud2,none,[]), effect([],[],preserve,[],terminal)).
 % A fence orders memory; it reads and writes no register or frame slot.
 instruction_effects(ins(mfence,none,[]), effect([],[],preserve,[],next)).
+% lock cmpxchg R, M compares %rax's low W bits with M; equal, it writes
+% R to M, else M to them. It reads rax, R and M's addressing registers,
+% reads and writes M (the write happens either way), and defines the
+% flags. At 32 bits a failure zero-extends rax and a success leaves it,
+% so 32 and 64 record a whole write of an unknown value; 8 and 16
+% preserve the rest either way. A locked access is also a full fence.
+instruction_effects(ins('lock cmpxchg',S,[reg(R),M]),
+                    effect([rax,F|Rs],[write(rax,WA)],write,[read(M,N),write(M,N)],next)) :-
+    width(S,W), register(R,F,W), address(M,Rs), N is W//8,
+    ( W >= 32 -> WA = 64 ; WA = W ).
 instruction_effects(label(S), effect([],[],preserve,[],label)) :- atom(S).
 instruction_effects(D, effect([],[],preserve,[],directive)) :- directive(D).
 
