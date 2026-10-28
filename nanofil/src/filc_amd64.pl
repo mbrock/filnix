@@ -2210,7 +2210,11 @@ mixed_thunk_thread(mem(_)) -->
     [ins(mov,q,[reg(rdi),reg(r12)]),ins(mov,q,[reg(rsi),reg(rbx)]),
      ins(mov,q,[reg(rsi),reg(rdi)])].
 save_mixed_words([],[],[]) --> [].
-save_mixed_words([wf(K,_)|Ts],[L|Ls],[wf(_,W)|Ss]) -->
+% A thunk copies an integer stack word whole, as a register one: w and l
+% share a signature digit, so one emitted for a 32-bit call also serves
+% another object's 64-bit calls (the linker keeps one weak thunk).
+save_mixed_words([wf(K0,_)|Ts],[L|Ls],[wf(_,W)|Ss]) -->
+    { K0 == w -> K = l ; K = K0 },
     incoming_bits(L,K),[ins(mov,q,[reg(rax),W])],save_mixed_words(Ts,Ls,Ss).
 mixed_thunk_call(reg) -->
     { field(function_object,fast_entry,rsi,Fast) },
