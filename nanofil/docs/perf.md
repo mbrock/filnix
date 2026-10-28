@@ -9,6 +9,90 @@ instructions, and a ranked plan. It is separate from the semantic
 campaign ([campaign.md](campaign.md)): nothing here weakens a check,
 and safety decisions are flagged for review before implementation.
 
+## Summary (October 2026, at `2ce8b0f`)
+
+**Where we are.** `-O` runs the eleven gate workloads at a geomean of
+**2.13–2.18× filcc `-O2`'s time** (3.2× its instructions; run-to-run
+spread about ±0.03). The round started at **4.61× (6.30×)** on the
+first ten workloads, at `3576b51`. Ten of the eleven are within
+1.5–2.5×. lz4 `-d` is 3.0×, bound by calls. The target was 1.5–2×.
+
+**How.** Each step's gate run, before → after. The workload set gained
+SQLite at 3a's default and the reference pin changed once, so the steps
+chain only approximately:
+
+| Step | Geomean time (instructions) |
+| --- | --- |
+| Baseline, every value in a stack slot | 4.61 (6.30) |
+| 1 switch dispatch by binary search | → 4.16 (5.76) |
+| 2 branch selection | → 3.98 (5.38) |
+| 3a whole-function scalar register homes (default; SQLite added) | → 3.23 (4.93) |
+| 3b register operands, region checker | → 3.14 (4.49) |
+| 5a-loads frame cells | 3.06 → 2.89 |
+| 7a inline small constant `memcpy` | 2.87 → 2.67 |
+| split float pools | 2.68 → 2.46 |
+| 6a no borrow test in checks | 2.46 → 2.44 |
+| 4 inlining small leaf functions | 2.44 → 2.34 |
+| 3d a home per temporary (`--registers=temps`) | 2.35 → 2.24 |
+| 9 phi shadows shared by position | 2.24 → 2.15 |
+| punned union reads promote | 2.14 → 2.13 |
+| 5b-1 `--registers=flow` (opt-in, not adopted) | 2.12 |
+
+Every step is translation-validated or checked against the reference
+path, and the reference stays selectable and snapshot-identical. No
+check was weakened, and no root or GC invariant changed except item 9's
+shadow sharing (option A, Oracle-reviewed).
+
+**The gate now** (7 trials, cpu 6, ratio to filcc `-O2`: time
+(instructions), with its min..max time range):
+
+| Workload | filcc ms | `-O` | `-O --registers=flow` |
+| --- | --: | --: | --: |
+| zlib -6 | 134.0 | 2.51 (4.08) 2.48..2.54 | 2.48 (4.06) |
+| zlib -d | 17.6 | 2.06 (3.19) 1.97..2.13 | 2.04 (3.18) |
+| bzip2 -9 | 273.7 | 2.01 (2.52) 2.00..2.07 | 1.97 (2.49) |
+| bzip2 -d | 93.9 | 2.43 (3.11) 2.40..2.52 | 2.38 (3.09) |
+| lz4 -1 | 13.7 | 2.26 (10.81) 2.08..2.35 | 2.21 (10.76) |
+| lz4 -9 | 162.1 | 2.49 (3.07) 2.45..2.51 | 2.43 (3.06) |
+| lz4 -d | 12.4 | 2.99 (6.84) 2.88..3.21 | 2.98 (6.79) |
+| lua int | 50.1 | 2.14 (2.35) 2.09..2.28 | 2.09 (2.32) |
+| lua tab | 41.9 | 2.00 (2.26) 1.95..2.12 | 2.11 (2.24) |
+| lua str | 263.6 | 1.50 (1.61) 1.49..1.51 | 1.49 (1.61) |
+| sqlite | 661.2 | 1.97 (1.99) 1.97..1.99 | 1.93 (1.98) |
+| geomean | | 2.18 (3.23) | 2.16 (3.21) |
+
+**What remains, and why it stays** (shares of `-O`'s instructions, from
+the profile at `04c7e7c` and the re-measurement under 5b):
+
+- **Check count, 18–39%.** Each check is the pin's own sequence (6a);
+  the gap is how many run. filcc merges and hoists checks (bzip2 `-9`:
+  540M against 230M). Widening a check moves a trap before earlier
+  stores and reports the wrong access. That is the observation-contract
+  change campaign.md rules out, so 6c-2 was rejected. Hoisting needs
+  M7's spatial/temporal split. This is the gap that stays.
+- **Pointer frame traffic, 16–30%** at `04c7e7c`, stores included;
+  64-bit frame-word loads alone are 6–17%. Each access reloads the
+  pointer and lower from the frame. Forwarding is exhausted: 5b-1 reaches what
+  is still in a register, at most 1.7%. What is left (2.5–11%, up to
+  16% across calls) needs pointer homes in registers. That is register
+  pressure in the hot functions (3d), plus GC root rules for lowers
+  held in registers (5b-2, deferred). The loads hit L1, so time gains
+  would be smaller.
+- **Calls to extern helpers, 12–16%** in lz4 `-9`, Lua str and SQLite,
+  and 36–43% in lz4 `-1`/`-d`. The Fil-C runtime's helpers (allocation,
+  `memcpy`/`memset` of non-constant size, string and pollcheck slow
+  paths) and libc are out-of-line calls through the ABI's frame
+  protocol. The runtime's own instructions are 18–26% of lz4
+  `-1`/`-d`, Lua str and SQLite. filcc's builds run the same runtime, so
+  only the calling side is nanofil's to shrink: wider small-copy
+  filters, and inlining across modules, which nanofil does not do.
+- **Register pressure.** Sixteen registers hold scalar homes, scratch and
+  the checks' operands. bzip2 `-d`'s `BZ2_decompress` keeps phi shadows
+  in the frame (0.69G), and webs (3d) would not change that.
+- Selection (5–15%: boolean tests, constant moves, `setcc`) and copies
+  (4–13%) remain, each spread over many small patterns. The middle end
+  (item 8) was never needed for the target.
+
 ## The benchmark gate
 
 [`bench/`](../bench) builds zlib 1.3.2 (`minigzip`), bzip2 1.0.8, lz4
@@ -314,6 +398,64 @@ Where the rest is, as a share of `-O`'s instructions:
   1.97G, bzip2 `-9` 2.83G vs 4.69G). After the overheads go, the gap
   will be in checks, addressing and the middle end, not in the operations
   themselves.
+
+## Register modes: inventory and proposal (October 2026)
+
+Seven `--registers` modes have accumulated, one per step. Each step's
+checker extends the previous one, and temps, the `-O` default, runs all
+of them. So most intermediate modes add check time, snapshot modes and
+configurations, but no trusted code of their own. Gate at `2ce8b0f`
+(7 trials, all modes in one run): geomean time (instructions) ratio to
+filcc `-O2`, and the `nanofil` check's step time for each mode (610 s
+in all, from the last check's timings):
+
+| Mode | What it is | Trusted code of its own | Untrusted code of its own | Still uses it | Check time | Gate | Dominated by temps? |
+| --- | --- | --- | --- | --- | --: | --- | --- |
+| `stack` | reference emission (no `-O` default, setjmp functions) | none: it is the reference | none | everything: difftests, snapshot `O.`, `O-stack` configurations | 41 s (`-O`) | 3.48 (4.23) | yes, kept as the reference |
+| `local` (M6) | block-local validated scalar cache | `amd64_cache_check.pl`, 266 lines | `amd64_cache.pl` 152; `placed_lines(local)` 25 | 11 program configurations (bzip2, hello, lz4, zlib `local` and `O-local`; Lua `local-plain`, `local-optimized`; SQLite `reuse` = local + `--checks=reuse`); `tests/cache_check.pl` 475, `tests/registers.pl`; m7.md's GC fixtures with reuse | 97 s | 3.32 (4.06) | yes: more instructions and slower on all 11 (lz4 `-1`'s ranges overlap) |
+| `function` (3a) | whole-function scalar homes, `split` pools | none: `check_regs` (lines 1–533 of `amd64_regs_check.pl`) runs in every allocating mode | the `split` pool choice (2 clauses in `frame_slots.pl`, 1 in `filc_amd64.pl`). The allocator stays: temps' first lowering runs it (`map`) | the "function corpus" step (the only allocating-mode corpus run); snapshot `F.` | 60 s | 2.58 (4.08) | yes, on instructions on all 11; time ties on lz4 `-1` and `-d` (ranges overlap) |
+| `operands` (3b) | `function` with register operands, no cells | none: `check_operands/3` is temps' checker with no cells | `operand_cells(operands, …)`, 1 clause | snapshot `P.` | 36 s | 2.44 (3.50) | yes, instructions on all 11; time within noise only on lz4 `-1`/`-d` |
+| `cells` (5a-loads) | `operands` with frame cells, `split` pools | none: the cell rules (`valid_cells/3`, cell stores) are temps' too | `split` pools (as `function`) | snapshot `C.` and `I.` (cells with inlining); the no-`-O` "registers cells" block | 67 s | 2.28 (3.38) | yes, instructions on all 11; time ties on lz4 `-1`/`-d` and Lua str |
+| `temps` (3d) | `cells` on a frame with a home per temporary | (all of the above) | `temps_first/5`, own pools | the `-O` default | (the `-O` suites) | **2.18 (3.23)** | — |
+| `flow` (5b-1) | `temps` with Rule 1 and label facts | 122 lines (`continued_jump/3`, `edge_facts/4`, `label_facts/5`, `well_formed_facts/4`, `fact_labels/2`) | about 200 lines in `amd64_regs.pl` | opt-in only; snapshot `W.` | about 25 s | 2.16 (3.21) | no: 1–2% faster on four workloads, +14% compile on `sqlite3.c` |
+
+**Proposal.** Keep `stack` (the reference), `temps` (the default) and
+the allocator, operand checker and cell checker that temps runs.
+Retire as selectable modes:
+
+1. **`local`.** This removes the only intermediate mode with trusted
+   code of its own: `amd64_cache_check.pl` (266) and `amd64_cache.pl`
+   (152), their 475 lines of checker tests, and 10 program builds. The
+   SQLite `reuse` configuration becomes `-O --checks=reuse` on temps.
+   `--checks=reuse` does not depend on local. m7.md's "GC fixtures with
+   `--registers=local`" step becomes temps. `tests/registers.pl` tests
+   immediate selection through `local`. The selection (`sel(local, …)`)
+   is the allocating modes' too, so those tests move to temps emission.
+   M6 stays in the record (m6.md); the mode no longer runs.
+2. **`function`, `operands` and `cells`.** No trusted code goes. Their
+   checks run inside temps. This removes the `split` pool choice, three
+   snapshot modes (`F.`, `P.`, `C.`; `I.` becomes temps with inlining),
+   and about 100 s of check steps (163 s, less the two kept). Two steps are kept, retargeted to
+   temps: the corpus run (today's "function corpus", the only corpus run
+   through the register checkers) and the no-`-O` block. `-O
+   --branches=reference --registers=local` is dropped, since `-O
+   --branches=reference` already runs on temps.
+3. **`flow`: the orchestrator's choice.** 5b forwarding is closed
+   (re-measurement above), so flow is not a base for a later item; 5b-2
+   would be function-wide pointer homes under `check_regs`, not facts.
+   Either retire it (122 trusted lines, one snapshot mode, about 25 s),
+   or make it the default for its 1–2% (its gate test passed with
+   separated ranges on four workloads, at +14% compile time). Keeping it
+   opt-in pays the cost and gets nothing. Recommended: retire it.
+
+Net, with flow retired: about 390 lines of trusted checker code
+(266 + 122), about 400 lines of untrusted code and 475 of tests;
+`nanofil` check about 610 s → about 390 s; 10 fewer program builds;
+snapshot modes 7 → 3 (`O.`, `T.`, `I.`): 5 outputs per input instead of 9.
+Bench modes `O-local`, `O-function`, `O-operands`, `O-cells` go,
+`O-stack` stays. The other axes (`--branches`, `--checks`, `--memcpy`,
+`--inline`) are not part of this proposal. Nothing is deleted until the
+orchestrator agrees.
 
 ## The plan
 
@@ -1789,9 +1931,59 @@ checks, so Rule 1 works, but the address is reloaded from `-0x48(%rbp)`
 into `rax` after every access, because `add $0x6c,%rax` turned `rax` into
 the field address. No forwarding reaches that: the value is in no
 register. Reaching it means giving the base its own register, which is
-5b-2's register pressure question, not another rule. Re-measuring the
-bound with "the register still holds the value" taken literally (no
-intervening write) is the next step before any more work on 5b.
+5b-2's register pressure question, not another rule (re-measured
+below).
+
+#### 5b, re-measured literally (after 5b-1)
+
+The bound under 5b-1's contract (4–12% of instructions) came from a
+scratch analysis that kept a register as holding a frame word until
+the next move into it. An arithmetic write such as `add $0x6c,%rax`
+after `mov -0x48(%rbp),%rax` did not count as a write, and the annotated
+bzip2 block above is that case. Rerun with the value still in the
+register taken literally, at `2ce8b0f`, on the final binaries' disassembly with callgrind's
+per-instruction counts:
+
+- any write to a register family at any width kills what it holds;
+- a store that overlaps a frame word kills that word;
+- a `lea` of a word excludes it;
+- calls kill every register;
+- the meet is the intersection over all predecessors.
+
+The loads counted are 64-bit loads of frame words into general
+registers in nanofil's functions. Each is attributed to the first
+class that applies. Shares are of all instructions:
+
+| Workload | still in that register, `-O` | frame-word loads, flow | still in that register, flow | in another register, flow | loaded before, in no register, flow | same, if calls kept callee-saved registers |
+| --- | --: | --: | --: | --: | --: | --: |
+| zlib -6 | 1.4% | 1.03G (13.0%) | 1.2% | 0.4% | 8.2% | 11.3% |
+| zlib -d | 1.0% | 0.11G (17.3%) | 1.0% | 0.2% | 11.3% | 16.0% |
+| bzip2 -9 | 1.3% | 1.18G (10.2%) | 1.0% | 0.2% | 4.3% | 7.4% |
+| bzip2 -d | 1.7% | 0.64G (14.5%) | 1.5% | 0.2% | 9.1% | 12.5% |
+| lz4 -1 | 0.7% | 0.02G (5.9%) | 0.1% | 0.0% | 0.8% | 5.7% |
+| lz4 -9 | 1.7% | 0.95G (11.0%) | 1.1% | 0.7% | 3.9% | 8.1% |
+| lz4 -d | 0.8% | 0.05G (9.4%) | 0.4% | 0.2% | 2.5% | 8.0% |
+| lua int | 1.3% | 0.44G (15.5%) | 0.5% | 0.1% | 9.5% | 13.8% |
+| lua tab | 1.3% | 0.33G (14.8%) | 0.6% | 0.2% | 9.7% | 13.2% |
+| lua str | 0.9% | 0.45G (9.5%) | 0.6% | 0.7% | 3.5% | 7.7% |
+| sqlite | 0.9% | 2.55G (12.0%) | 0.5% | 0.4% | 5.6% | 10.0% |
+
+So forwarding had at most 0.7–1.7% to win, and flow takes 0.1–0.8
+points of it. The 0.1–1.5% flow leaves are labels its facts do not
+reach, which were not investigated further.
+
+The large class is the last two columns: words loaded before and
+unchanged in memory, but in no register. Here 2.5–11%, and up to 16%
+counting calls. Forwarding cannot reach them. They need a register that
+holds the value across the code that overwrites the one it was loaded
+into, which is pointer homes. That is register allocation (5b-2, with
+its GC root rules), and 3d measured that adding pointer homes to the
+scalar ones loses to register pressure in the hot functions. These
+loads also hit L1, so time gains are well below the instruction share.
+
+**Decision:** no more 5b forwarding work; 5b-1 is the end of that line.
+5b-2 stays deferred. If it is taken up, the last two columns bound it,
+and it needs its own contract and review.
 
 #### Punned union reads in promote (after 5b-1)
 
