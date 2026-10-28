@@ -38,7 +38,9 @@
 :- use_module(ir).
 :- use_module(frame_slots).
 
-% lower_function(+Module, +FusedFunction, +LiveBlocks, -Product).
+% lower_function(+Symbols, +FusedFunction, +LiveBlocks, -Product):
+% Symbols is the module's ir:module_symbols/2 (or the module itself).
+% Calls and getters look their targets up in it.
 lower_function(Module, Func, LiveBlocks,
                abi_function(Name, Linkage, Ret, Sig, Frame, Entry, Blocks,
                             Exit, Object, Origins)) :-
@@ -296,11 +298,11 @@ word_codes(Ret, Ks, R-A) :-
     maplist(class_digit, RetKs, RDs), maplist(class_digit, Ks, ADs),
     bijective_value(RDs, R), bijective_value(ADs, A).
 direct_target(Module,F,_,implementation(F,Sig)) :-
-    func_named(Module,F,Func), \+ variadic_func(Func), !,
+    func_named(Module,F,Func), \+ variadic_named(Module,F), !,
     Func = func(_,_,Ret,Ps,_), param_kinds(Ps,Ks), signature(Ret,Ks,Sig).
 direct_target(_,F,Sig,entry(F,Sig)).
-getter_target(module(Items), S, Target) :-
-    ( ( memberchk(func(S,_,_,_,_),Items) ; memberchk(data(S,_,_,_),Items) )
+getter_target(Symbols, S, Target) :-
+    ( ( func_named(Symbols,S,_) ; data_named(Symbols,S) )
     -> Target = local_getter(S) ; Target = external_getter(S) ).
 
 % Adapter plans are consumed by public generic entries and weak thunks.
@@ -327,11 +329,11 @@ public_object(Func, _, Object) :-
       Object = fast_and_generic(Sig,adapt(Need,Words,Result)) ).
 
 lower_thunks(Module, Thunks) :-
-    Module = module(Items),
+    Module = module(Items), module_symbols(Module, Symbols),
     findall(t(F,Sig,Ret,Ks),
             (member(func(_,_,_,_,Bs),Items),member(block(_,_,Is,_),Bs),
              member(call(Res,global(F),Args),Is),
-             direct_target(Module,F,unused,Target), Target = entry(F,unused),
+             direct_target(Symbols,F,unused,Target), Target = entry(F,unused),
              result_ret(Res,Ret),findall(K,member(arg(K,_),Args),Ks),
              signature(Ret,Ks,Sig0), call_symbol_signature(Res,Args,Sig0,Sig)), Ts0),
     sort(Ts0,Ts1), one_per_symbol(Ts1,Ts), maplist(lower_thunk,Ts,Thunks).

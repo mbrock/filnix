@@ -41,18 +41,35 @@
     additionally have generated origins. Erasure cannot authorize an
     otherwise-invalid check/access pair.
 */
-:- module(provenance, [code_items/2, context_records/3, with_context/3,
+:- module(provenance, [code_items/2, context_records/3, context_index/2, with_context/3,
                        remap_sites/3, site_origins/3, valid_contexts/1,
                        legacy_context/2, emission_sites/7, site_index/2,
-                       origin_ids/2, fresh_origin/4, retire_values/5]).
+                       origin_ids/2, fresh_origin/4, fresh_origin/3, retire_values/5]).
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
 
 code_items(Items, Code) :- exclude(is_context, Items, Code).
 is_context(context(_, _)).
 
+% context_records(+Items, +Name, -Records): Records are the context of
+% function Name in Items, or [] if it has none. Items may be the
+% contexts(Index) of context_index/2: a pass over every function of a
+% large module (SQLite's 3,000) would otherwise scan its items for each.
+context_records(contexts(Index), Name, Records) :- !,
+    ( get_assoc(Name, Index, Rs) -> Records = Rs ; Records = [] ).
 context_records(Items, Name, Records) :-
     ( memberchk(context(Name, Rs), Items) -> Records = Rs ; Records = [] ).
+
+% context_index(+Items, -Contexts): Contexts indexes the contexts of
+% Items by function name, the first of a name as memberchk/2 finds it.
+context_index(Items, contexts(Index)) :-
+    empty_assoc(Index0), foldl(index_context, Items, Index0, Index).
+
+index_context(Item, Index0, Index) :-
+    (   Item = context(Name, Rs), \+ get_assoc(Name, Index0, _)
+    ->  put_assoc(Name, Index0, Rs, Index)
+    ;   Index = Index0
+    ).
 
 with_context(F, [], [F]) :- !.
 with_context(F, Rs, [F, context(Name, Rs)]) :- F = func(Name, _, _, _, _).
@@ -71,6 +88,12 @@ origin_ids(Rs, Ids) :-
 fresh_origin(Base, Ids0, Ids, Id) :-
     ( get_assoc(Base, Ids0, _) -> unused_origin(Base, 0, Ids0, Id) ; Id = Base ),
     put_assoc(Id, Ids0, true, Ids).
+% fresh_origin(+Base, +Ids, -Id): Id is fresh_origin/4's for Base, but
+% Ids is not extended: for a batch of bases that are distinct and so
+% cannot choose the same Id (derived ids keep their base), inserting
+% each one in a function's whole origin assoc only costs time.
+fresh_origin(Base, Ids, Id) :-
+    ( get_assoc(Base, Ids, _) -> unused_origin(Base, 0, Ids, Id) ; Id = Base ).
 unused_origin(Base, N, Ids, Id) :-
     Candidate = derived(Base, N),
     ( get_assoc(Candidate, Ids, _) -> N1 is N + 1, unused_origin(Base, N1, Ids, Id)
@@ -92,9 +115,12 @@ historical_temp(alias(T, _, _, _), T).
 historical_temp(alias(_, tmp(T), _, _), T).
 historical_temp(history(_, _, _, _, replaced(tmp(T))), T).
 
-retirement_ids([], Ids, Ids, []).
-retirement_ids([T|Ts], Ids0, Ids, [T-Id|Pairs]) :-
-    fresh_origin(retired(T), Ids0, Ids1, Id), retirement_ids(Ts, Ids1, Ids, Pairs).
+% The temps Ts are distinct, so their bases retired(T) are, and no other
+% base is retired/1: the new ids cannot meet each other or a later
+% fresh_origin's, and Ids0 need not grow (inserting each one in a large
+% function's origin assoc was most of retirement's time).
+retirement_ids(Ts, Ids, Ids, Pairs) :-
+    findall(T-Id, ( member(T, Ts), fresh_origin(retired(T), Ids, Id) ), Pairs).
 
 retire_records([], _, _, _, []).
 retire_records([value(T, H, Os)|Rs0], New, As, Vs, Rs) :-
@@ -151,7 +177,8 @@ legacy_context(module(Is), module(Is)) :-
     \+ ( member(func(_, _, _, _, Bs), Is), member(block(_, _, Insts, _), Bs),
          memberchk(loc(_, _), Insts) ), !.
 legacy_context(module(Is0), module(Is)) :-
-    maplist(legacy_item_once(Is0), Is0, Groups), append(Groups, Is).
+    context_index(Is0, Contexts),
+    maplist(legacy_item_once(Contexts), Is0, Groups), append(Groups, Is).
 
 legacy_item_once(All, Item, Items) :- once(legacy_item(All, Item, Items)).
 
@@ -197,17 +224,25 @@ legacy_insts([Inst|Is0], L, Old, New, Loc, [Inst|Is], Rs, Last, Ids0, Ids,
 valid_contexts(Items) :-
     findall(N, member(context(N, _), Items), Names),
     sort(Names, Unique), length(Names, Count), length(Unique, Count),
-    forall(member(Name, Names), valid_context(Items, Name)).
+    % Each context's function is found in an index of the module's, not
+    % by a scan of its items per context (quadratic for SQLite). The
+    % records are read in place: a findall/3 would copy them all.
+    empty_assoc(Funcs0), foldl(index_func, Items, Funcs0, Funcs),
+    forall(member(context(N, Rs), Items), valid_context(Funcs, N-Rs)).
 
-valid_context(Items, Name) :-
-    memberchk(func(Name, _, _, _, Bs), Items),
-    memberchk(context(Name, Rs), Items), ground(Rs), is_list(Rs),
-    findall(Id-true, member(origin(Id, _, _, _), Rs), Ids), unique_assoc(Ids, Origins),
-    findall(B-true, member(binding(B, _, _, _), Rs), Bindings0), unique_assoc(Bindings0, Bindings),
-    findall(T-true, member(value(T, _, _), Rs), Values), unique_assoc(Values, _),
-    findall(T-true, member(alias(T, _, _, _), Rs), Aliases), unique_assoc(Aliases, _),
-    findall(Id-true, member(history(Id, _, _, _, _), Rs), Hs), unique_assoc(Hs, Histories),
-    findall(S-true, member(site(S, _), Rs), Sites), unique_assoc(Sites, _),
+index_func(Item, Fs0, Fs) :-
+    (   Item = func(Name, _, _, _, Bs), \+ get_assoc(Name, Fs0, _)
+    ->  put_assoc(Name, Fs0, Bs, Fs)
+    ;   Fs = Fs0
+    ).
+
+valid_context(Funcs, Name-Rs) :-
+    get_assoc(Name, Funcs, Bs),
+    ground(Rs), is_list(Rs),
+    record_keys(Rs, Ids, Bindings0, Values, Aliases, Hs, Sites),
+    unique_assoc(Ids, Origins), unique_assoc(Bindings0, Bindings),
+    unique_assoc(Values, _), unique_assoc(Aliases, _),
+    unique_assoc(Hs, Histories), unique_assoc(Sites, _),
     findall(L-N, (member(block(L, _, Is, _), Bs), length(Is, N)), Sizes), list_to_assoc(Sizes, Blocks),
     findall(T-true, (member(block(_, Ps, _, _), Bs), member(phi(tmp(T), _, _), Ps)), Phis0),
     list_to_assoc(Phis0, Phis),
@@ -216,9 +251,28 @@ valid_context(Items, Name) :-
     forall(member(R, Rs),
            valid_record(index(Origins, Bindings, Histories), sites(Blocks, Phis), R)).
 
+% record_keys(+Rs, -Origins, -Bindings, -Values, -Aliases, -Histories,
+% -Sites): the K-true pairs of each kind of record's key, in order, in
+% one pass over a context's records. Other records are left to
+% valid_record/3, which rejects them.
+record_keys([], [], [], [], [], [], []).
+record_keys([R|Rs], Os, Bs, Vs, As, Hs, Ss) :-
+    record_key(R, Os, Bs, Vs, As, Hs, Ss, Os1, Bs1, Vs1, As1, Hs1, Ss1),
+    record_keys(Rs, Os1, Bs1, Vs1, As1, Hs1, Ss1).
+
+record_key(origin(Id, _, _, _), [Id-true|Os], Bs, Vs, As, Hs, Ss, Os, Bs, Vs, As, Hs, Ss) :- !.
+record_key(binding(B, _, _, _), Os, [B-true|Bs], Vs, As, Hs, Ss, Os, Bs, Vs, As, Hs, Ss) :- !.
+record_key(value(T, _, _), Os, Bs, [T-true|Vs], As, Hs, Ss, Os, Bs, Vs, As, Hs, Ss) :- !.
+record_key(alias(T, _, _, _), Os, Bs, Vs, [T-true|As], Hs, Ss, Os, Bs, Vs, As, Hs, Ss) :- !.
+record_key(history(Id, _, _, _, _), Os, Bs, Vs, As, [Id-true|Hs], Ss, Os, Bs, Vs, As, Hs, Ss) :- !.
+record_key(site(S, _), Os, Bs, Vs, As, Hs, [S-true|Ss], Os, Bs, Vs, As, Hs, Ss) :- !.
+record_key(_, Os, Bs, Vs, As, Hs, Ss, Os, Bs, Vs, As, Hs, Ss).
+
+% The pairs are all K-true: the assoc is built from the sorted keys in
+% linear time.
 unique_assoc(Pairs, Assoc) :-
-    findall(K, member(K-_, Pairs), Keys), sort(Keys, Unique),
-    length(Keys, N), length(Unique, N), list_to_assoc(Pairs, Assoc).
+    sort(Pairs, Unique),
+    length(Pairs, N), length(Unique, N), ord_list_to_assoc(Unique, Assoc).
 
 valid_record(_, _, binding(_, Name, _, Loc)) :- atom(Name), location(Loc).
 valid_record(Rs, _, origin(_, Loc, Description, Parents)) :-

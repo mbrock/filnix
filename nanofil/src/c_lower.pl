@@ -36,7 +36,7 @@
     | Env | the c_types environment `e(Ords, Tags, Defs, Next)` |
     | Cur | `cur(Label, Phis)`, the open block, or `none` after a jump; dead code then opens an unreachable block |
     | Insts, Blocks | reversed instructions and blocks, temporarily paired with origin IDs |
-    | Allocs | `build(RevAllocs, ActiveOrigins, OriginCounter, RevRecords, Indexes)`; independent of executable names |
+    | Allocs | `build(RevAllocs, ActiveOrigins, OriginCounter, RevRecords, index(Bindings, Hints, ActiveLoc))`; independent of executable names |
     | N | the counter for fresh temporaries and labels |
     | Labels | an assoc from C goto labels to IR labels |
     | Cases | the enclosing switch's `case(Value, Label)` and `default(Label)` |
@@ -74,6 +74,7 @@
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
+:- use_module(library(ordsets)).
 :- use_module(library(dcgs)).
 :- use_module(c_types).
 :- use_module(ir, [op_kind/2, narrow_type/3, width_bytes/2]).
@@ -124,23 +125,39 @@ external_inline_body(Specs, Storage, Name, ExternalNames) :-
    then; headers are full of ones nanofil cannot lower. Lowering one can
    refer to more, so this iterates until no new symbol turns up. */
 with_used_inlines(Funcs0, Env0, Items) :-
-    global_data(Env0, Data),
-    append(Funcs0, Data, Items0),
+    findall(Sym, func_symbol(Funcs0, Sym), Defined0),
+    sort(Defined0, Defined),
+    used_inlines(Funcs0, Defined, Env0, New, Env),
+    global_data(Env, Data),
+    append([Funcs0, New, Data], Items).
+
+% used_inlines(+Scan, +Defined, +Env0, -New, -Env): New are the deferred
+% inline functions that the functions Scan or the global data refer to
+% and that are not in the ordset Defined, then those the new ones (or
+% data they add) refer to, and so on. Each round scans only the
+% functions the previous one lowered, and the sorted references are
+% looked up once: rescanning every function per round, with a scan of
+% the functions per reference, was quadratic for SQLite.
+used_inlines(Scan, Defined, Env0, New, Env) :-
     env_defs(Env0, Defs),
-    findall(Sym,
-            (   item_ref(Items0, Sym),
-                get_assoc(deferred(Sym), Defs, _),
-                \+ memberchk(func(Sym, _, _, _, _), Funcs0)
-            ),
-            Syms0),
-    sort(Syms0, Syms),
+    global_data(Env0, Data),
+    findall(Sym, ( item_ref(Scan, Sym) ; item_ref(Data, Sym) ), Refs0),
+    sort(Refs0, Refs1),
+    ord_subtract(Refs1, Defined, Refs),
+    include(deferred_def(Defs), Refs, Syms),
     (   Syms == []
-    ->  Items = Items0
+    ->  New = [], Env = Env0
     ;   foldl(lower_inline, Syms, Newss, Env0, Env1),
-        append(Newss, New),
-        append(Funcs0, New, Funcs1),
-        with_used_inlines(Funcs1, Env1, Items)
+        append(Newss, New0),
+        findall(Sym, func_symbol(New0, Sym), Lowered0),
+        sort(Lowered0, Lowered),
+        ord_union(Defined, Lowered, Defined1),
+        used_inlines(New0, Defined1, Env1, New1, Env),
+        append(New0, New1, New)
     ).
+
+func_symbol(Items, Sym) :- member(func(Sym, _, _, _, _), Items).
+deferred_def(Defs, Sym) :- get_assoc(deferred(Sym), Defs, _).
 
 % item_ref(+Items, -Sym): some function or data item of Items refers to
 % symbol Sym (nondet, with repeats).
@@ -371,10 +388,10 @@ function_(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     statement_expression_jumps(Body, Loc),
     reflect_params(DclType, ParamTypes, Env0, ParamEnv),
     source_location(Loc, SourceLoc),
-    empty_assoc(Empty), put_assoc(0, Empty, SourceLoc, OriginLocs),
+    empty_assoc(Empty),
     State0 = st(ParamEnv, cur(start, []), [], [], 0, Labels, [],
                 build([], [0], 1, [origin(0, SourceLoc, statement(function), [])],
-                      index(Empty, Empty, OriginLocs))),
+                      index(Empty, Empty, SourceLoc))),
     empty_assoc(Labels),
     Ctx = ctx(Name, RetType, none, none, Loc),
     phrase(( sret_param(RetType, SretParams),
@@ -589,21 +606,25 @@ indexed_record(binding(Id, Name, T, Loc), index(B0, H, O), index(B, H, O)) :- !,
     put_assoc(Id, B0, binding(Id, Name, T, Loc), B).
 indexed_record(hint(T, Hint), index(B, H0, O), index(B, H, O)) :- !,
     put_assoc(T, H0, Hint, H).
-indexed_record(origin(Id, Loc, _, _), index(B, H, O0), index(B, H, O)) :-
-    put_assoc(Id, O0, Loc, O).
+indexed_record(origin(_, _, _, _), X, X).
 
-enter_origin(Loc0, Description, Parent) -->
-    build_state(build(A, Parent, N, Rs, X), build(A, [N], Next, Rs, X)),
+% The index's third part is the location of the active origin, the only
+% one a binding asks for; an assoc of every origin's (half a million in
+% SQLite) was a sixth of lowering. enter_origin//3 gives the parent's
+% origins and location, which restore_origin//1 makes active again.
+enter_origin(Loc0, Description, saved(Parent, ParentLoc)) -->
+    build_state(build(A, Parent, N, Rs, index(B, H, ParentLoc)),
+                build(A, [N], Next, Rs, index(B, H, Loc))),
     { Next is N + 1, source_location(Loc0, Loc) },
     record(origin(N, Loc, Description, Parent)).
-restore_origin(Os) --> build_state(build(A, _, N, Rs, X), build(A, Os, N, Rs, X)).
+restore_origin(saved(Os, Loc)) -->
+    build_state(build(A, _, N, Rs, index(B, H, _)), build(A, Os, N, Rs, index(B, H, Loc))).
 source_location(F:L, at(F, L)) :- !.
 source_location(_, none).
 
 binding_context(Name, var(tmp(B), _)) --> !,
-    env(Env), active_origins(Os), metadata(index(_, _, Origins)),
-    { expression_type(id(Name), Env, T),
-      ( Os = [O|_], get_assoc(O, Origins, At) -> Loc = At ; Loc = none ) },
+    env(Env), metadata(index(_, _, Loc)),
+    { expression_type(id(Name), Env, T) },
     record(binding(B, Name, T, Loc)), name_value(tmp(B), tmp(B), address).
 binding_context(Name, gvar(_, Sym, _, _)) --> !,
     env(Env), metadata(index(Bindings, _, _)),
@@ -681,13 +702,13 @@ fresh(tmp(Temp)) -->
     state(st(Env, Cur, Insts, Blocks, N0, Labels, Cases, Allocs),
           st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)),
     { N is N0 + 1,
-      format(atom(Temp), 'v~w', [N0]) }.
+      number_codes(N0, Cs), atom_codes(Temp, [0'v|Cs]) }.
 
 label(Label) -->
     state(st(Env, Cur, Insts, Blocks, N0, Labels, Cases, Allocs),
           st(Env, Cur, Insts, Blocks, N, Labels, Cases, Allocs)),
     { N is N0 + 1,
-      format(atom(Label), 'L~w', [N0]) }.
+      number_codes(N0, Cs), atom_codes(Label, [0'L|Cs]) }.
 
 % ensure_live//: make sure there is a current block, opening an
 % unreachable one after a jump.
@@ -895,7 +916,7 @@ stmt_(block(Items), Ctx) -->
     items(Items, Ctx),
     restore_scope(Scope).
 stmt_(null, _) --> [].
-stmt_(expr(Expr), Ctx) --> judged(Expr, Ctx), rval(Expr, Ctx, _).
+stmt_(expr(Expr), Ctx) --> judged_rval(Expr, Ctx, _).
 stmt_(if(Cond, Then, Else), Ctx) -->
     judged(Cond, Ctx),
     label(LThen), label(LElse), label(LJoin),
@@ -923,7 +944,7 @@ stmt_(do(Body, Cond), Ctx) -->
 stmt_(for(Init, Cond, Step, Body), Ctx) -->
     save_scope(Scope),
     (   { Init == none } -> []
-    ;   { Init = expr(InitExpr) } -> judged(InitExpr, Ctx), rval(InitExpr, Ctx, _)
+    ;   { Init = expr(InitExpr) } -> judged_rval(InitExpr, Ctx, _)
     ;   item(Init, Ctx)
     ),
     label(LCond), label(LBody), label(LStep), label(LEnd),
@@ -935,13 +956,12 @@ stmt_(for(Init, Cond, Step, Body), Ctx) -->
     { loop_ctx(Ctx, LEnd, LStep, BodyCtx) },
     stmt(Body, BodyCtx),
     start(LStep), loop_located(Ctx),
-    ( { Step == none } -> [] ; judged(Step, Ctx), rval(Step, Ctx, _) ),
+    ( { Step == none } -> [] ; judged_rval(Step, Ctx, _) ),
     term(goto(LCond)),
     start(LEnd),
     restore_scope(Scope).
 stmt_(switch(Expr, Body), Ctx) -->
-    judged(Expr, Ctx),
-    rval(Expr, Ctx, Value0),
+    judged_rval(Expr, Ctx, Value0),
     { Value0 = v(_, Type0), ctx_loc(Ctx, Loc) },
     {   int_type(Type0) -> integer_promotion(Type0, Type)
     ;   sema_error(Loc, 'switch on a non-integer', [])
@@ -987,8 +1007,7 @@ stmt_(return(none), Ctx) -->
     zero_ret(RetType).
 stmt_(return(Expr), Ctx) -->
     { Expr \== none, Ctx = ctx(_, RetType, _, _, Loc) },
-    judged(Expr, Ctx),
-    rval(Expr, Ctx, Value0),
+    judged_rval(Expr, Ctx, Value0),
     (   { RetType == void } -> term(ret)
     ;   { abi_memory(RetType) }
     ->  assign_convert(Expr, Value0, RetType, Loc, v(V, _)),
@@ -1237,6 +1256,16 @@ dispatch_cases([Wrapped-Label|Pairs], Value, Class, LDefault) -->
 judged(Expr, Ctx) -->
     env(Env),
     { ctx_loc(Ctx, Loc), ( elaborate(Expr, Env, Loc, _) -> true ; true ) }.
+
+% judged_rval(+Expr, +Ctx, -R)//: judged//2, then rval//3, from one
+% elaboration of Expr: elaborating each full expression twice was a
+% seventh of lowering.
+judged_rval(Expr, Ctx, R) -->
+    env(Env),
+    (   { ctx_loc(Ctx, Loc), elaborate(Expr, Env, Loc, X) }
+    ->  { value(X, XV) }, lower(XV, Ctx, R)
+    ;   { ctx_loc(Ctx, Loc), sema_error(Loc, 'cannot type ~w', [Expr]) }
+    ).
 
 % cond_jump(+Expr, +Ctx, +LTrue, +LFalse)//: branch on the truth of
 % scalar Expr.
@@ -1511,15 +1540,13 @@ store_leaf(val(Off, Type, N), Addr, _) -->
     emit(store(Width, const(N), P)).
 store_leaf(expr(Off, Type, Expr), Addr, Ctx) -->
     offset(Addr, Off, P),
-    judged(Expr, Ctx),
-    rval(Expr, Ctx, Value0),
+    judged_rval(Expr, Ctx, Value0),
     { ctx_loc(Ctx, Loc) },
     assign_convert(Expr, Value0, Type, Loc, v(Value, _)),
     store_typed(Type, Value, P).
 store_leaf(bits(Off, Type, Pos, W, Expr), Addr, Ctx) -->
     offset(Addr, Off, P),
-    judged(Expr, Ctx),
-    rval(Expr, Ctx, Value0),
+    judged_rval(Expr, Ctx, Value0),
     { ctx_loc(Ctx, Loc) },
     assign_convert(Expr, Value0, Type, Loc, Value),
     place_write(bits(P, Type, Pos, W), Value, Ctx, _).
@@ -1556,7 +1583,7 @@ statement_expression_items([Item|Items], Ctx, R) -->
     item(Item, Ctx), statement_expression_items(Items, Ctx, R).
 
 statement_expression_last(at(Loc, expr(Expr)), Ctx0, R) --> !,
-    { ctx_at(Ctx0, Loc, Ctx) }, judged(Expr, Ctx), rval(Expr, Ctx, R).
+    { ctx_at(Ctx0, Loc, Ctx) }, judged_rval(Expr, Ctx, R).
 statement_expression_last(at(_, label(Name, Body)), Ctx, R) --> !,
     goto_label(Name, Label), start(Label),
     statement_expression_last(Body, Ctx, R).
@@ -2188,8 +2215,7 @@ realized(array(_, vla(star)), _, Ctx) --> !,               % 6.7.6.2p4
     { ctx_loc(Ctx, Loc),
       sema_error(Loc, '[*] is allowed only in a function prototype', []) }.
 realized(array(T0, vla(E)), array(T, dyn(V)), Ctx) --> !,
-    judged(E, Ctx),
-    rval(E, Ctx, V0),
+    judged_rval(E, Ctx, V0),
     { V0 = v(_, LT), ctx_loc(Ctx, Loc),
       ( int_type(LT) -> true
       ; sema_error(Loc, 'array size is not an integer', []) ) },

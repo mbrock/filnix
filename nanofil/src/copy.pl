@@ -54,7 +54,8 @@
 
 copy_module(M0, module(Items)) :-
     legacy_context(M0, module(Items0)), code_items(Items0, Code),
-    maplist(copy_item(Items0), Code, Groups), append(Groups, Items).
+    context_index(Items0, Contexts),
+    maplist(copy_item(Contexts), Code, Groups), append(Groups, Items).
 
 % copy_item(+Item0, -Item): Item is the module item Item0, with copies
 % propagated if it is a function.

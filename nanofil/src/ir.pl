@@ -263,7 +263,8 @@
     V an IR value, L a label.
 */
 :- module(ir, [class_bits/2, modulus/2, half_modulus/2, op_arity/2,
-               op_kind/2, valid_op/1, valid_module/1, func_named/3, width_bytes/2,
+               op_kind/2, valid_op/1, valid_module/1, func_named/3, module_symbols/2,
+               data_named/2, variadic_named/2, width_bytes/2,
                op_arg_classes/4, op_result_ok/3,
                module_mode/2, module_stage/2, addr_class/2, variadic_func/1, setjmp_func/1,
                narrow_type/3, without_locs/2, access_size_align/3,
@@ -519,11 +520,58 @@ op_kind(raw_load_pointer(_, _), ld_pointer).
 
 %! func_named(+M, +Name, -Func) is semidet.
 %
-%  Func is the func/5 term that defines Name in the module M.
+%  Func is the func/5 term that defines Name in the module M, or in the
+%  symbols(Index) that module_symbols/2 made of it.
 
 func_named(module(Items), Name, Func) :-
     Func = func(Name, _, _, _, _),
     memberchk(Func, Items).
+func_named(symbols(Index), Name, Func) :-
+    get_assoc(func(Name), Index, f(Func, _)).
+
+%! data_named(+M, +Name) is semidet.
+%
+%  The module M, or the one module_symbols/2 indexed, has data named
+%  Name.
+
+data_named(module(Items), Name) :-
+    memberchk(data(Name, _, _, _), Items).
+data_named(symbols(Index), Name) :-
+    get_assoc(data(Name), Index, _).
+
+%! variadic_named(+M, +Name) is semidet.
+%
+%  The function named Name in M, or in the module module_symbols/2
+%  indexed, is variadic (variadic_func/1), found without rescanning its
+%  blocks at every call to it.
+
+variadic_named(module(Items), Name) :-
+    func_named(module(Items), Name, F), variadic_func(F).
+variadic_named(symbols(Index), Name) :-
+    get_assoc(func(Name), Index, f(_, variadic)).
+
+%! module_symbols(+M, -Symbols) is det.
+%
+%  Symbols indexes the functions and data of module M by name, for
+%  func_named/3 and data_named/2: a large module (SQLite) calls
+%  thousands of functions, and a scan of its items per call would be
+%  quadratic. As memberchk/2 does, the first item of a name wins.
+
+module_symbols(module(Items), symbols(Index)) :-
+    findall(Key-Value, ( member(Item, Items), symbol_entry(Item, Key, Value) ), Pairs0),
+    keysort(Pairs0, Pairs1),        % stable: the first of a name stays first
+    first_of_keys(Pairs1, Pairs),
+    ord_list_to_assoc(Pairs, Index).
+
+symbol_entry(F, func(Name), f(F, V)) :-
+    F = func(Name, _, _, _, _),
+    ( variadic_func(F) -> V = variadic ; V = fixed ).
+symbol_entry(D, data(Name), D) :- D = data(Name, _, _, _).
+
+first_of_keys([], []).
+first_of_keys([K-V|Ps0], [K-V|Ps]) :- drop_key(K, Ps0, Ps1), first_of_keys(Ps1, Ps).
+drop_key(K, [K1-_|Ps0], Ps) :- K1 == K, !, drop_key(K, Ps0, Ps).
+drop_key(_, Ps, Ps).
 
 % Entry snapshot metadata is retained even if its cursor is unused.
 variadic_func(func(_, _, _, _, Blocks)) :-
@@ -618,8 +666,8 @@ pointer_inst(local_store(_, _, _, _)).
 %  fail instead.
 %
 %  Functions are checked against a context
-%    ctx(Module, Fn, Ret, LabelSet, TempClasses, PredMap, Mode)
-%  whose three assocs map each label to t, each temporary to its class,
+%    ctx(Symbols, Fn, Ret, LabelSet, TempClasses, PredMap, Mode)
+%  where Symbols is the module's module_symbols/2, and whose three assocs map each label to t, each temporary to its class,
 %  and each label to its sorted predecessors.
 
 valid_module(M) :-
@@ -628,7 +676,8 @@ valid_module(M) :-
     module_mode(M, Mode),
     module_stage(M, Stage),
     % forall/2: no choicepoint per item keeps its garbage alive.
-    forall(member(Item, Items), valid_item(M, Mode, Stage, Item)),
+    module_symbols(M, Symbols),
+    forall(member(Item, Items), valid_item(Symbols, Mode, Stage, Item)),
     valid_contexts(All).
 
 % module_stage(+M, -Stage): Stage is checked when M uses any word of the
@@ -659,7 +708,7 @@ checked_jump(branch(_, _, poll(_))).
 
 % valid_item(+M, +Mode, +Stage, +Item): Item, an item of M, is well
 % formed.
-valid_item(M, Mode, Stage, func(Name, _, Ret, Params, Blocks)) :-
+valid_item(Symbols, Mode, Stage, func(Name, _, Ret, Params, Blocks)) :-
     (   Blocks == [] -> fn_error(Name, 'function has no blocks', []) ; true ),
     ( (any_class(Ret) ; Ret == void ; Ret = tuple(_)) -> true
     ; fn_error(Name, 'invalid return class ~w', [Ret]) ),
@@ -689,7 +738,7 @@ valid_item(M, Mode, Stage, func(Name, _, Ret, Params, Blocks)) :-
     list_to_assoc(LabelPairs, LabelSet),
     list_to_assoc(Defs, TempClasses),
     predecessors(Blocks, PredMap),
-    Ctx = ctx(M, Name, Ret, LabelSet, TempClasses, PredMap, Mode),
+    Ctx = ctx(Symbols, Name, Ret, LabelSet, TempClasses, PredMap, Mode),
     % forall/2: validation binds nothing, and a choicepoint per block
     % would keep a large function's (sqlite3VdbeExec's) garbage alive.
     forall(member(Block, Blocks), valid_block(Ctx, Block)),
@@ -756,21 +805,24 @@ local_reference(local_store(_, _, N, _), N).
 local_reference(let(_, _, check_local(N, _, _, _, _), _), N).
 
 % temp_defs(+Params, +Blocks, -Defs): Name-Class for every definition of
-% a temporary, in parameter and then block order.
+% a temporary: parameters, then each block's phis and instructions.
 temp_defs(Params, Blocks, Defs) :-
     findall(N-K, member(param(K, tmp(N)), Params), ParamDefs),
+    % One pass over each block's instructions, not one per form.
     findall(N-K,
             ( member(block(_, Phis, Insts, _), Blocks),
               (   member(phi(tmp(N), K, _), Phis)
-              ;   member(let(tmp(N), K, _, _), Insts)
-              ;   member(local_load(tmp(N), K, _, _, _), Insts)
-              ;   member(flight(tmp(N), _, _, _), Insts), K = p
-              ;   member(I, Insts), call_result_args(I, Res, _),
-                  ( Res = result(tmp(N), K)
-                  ; Res = tuple(Tos), member(result(tmp(N), K), Tos) )
+              ;   member(I, Insts), inst_temp_def(I, N, K)
               ) ),
             BlockDefs),
     append(ParamDefs, BlockDefs, Defs).
+
+inst_temp_def(let(tmp(N), K, _, _), N, K).
+inst_temp_def(local_load(tmp(N), K, _, _, _), N, K).
+inst_temp_def(flight(tmp(N), _, _, _), N, p).
+inst_temp_def(I, N, K) :-
+    call_result_args(I, Res, _),
+    ( Res = result(tmp(N), K) ; Res = tuple(Tos), member(result(tmp(N), K), Tos) ).
 
 % Both call forms have the same result and argument vocabulary; only
 % the callee's proof obligation differs.
@@ -1474,8 +1526,7 @@ symbol_use_ok(plain, G, ctx(M, Fn, _, _, _, _, _), K) :-
     (   K == AddrClass -> true
     ;   fn_error(Fn, 'global(~w) used as ~w', [G, K])
     ),
-    M = module(Items),
-    (   memberchk(data(G, _, _, _), Items) -> true
+    (   data_named(M, G) -> true
     ;   fn_error(Fn, 'global(~w) is not a data definition', [G])
     ).
 

@@ -31,7 +31,8 @@
 local_storage_module(M0, M) :-
     (   module_mode(M0, filc), module_stage(M0, unchecked)
     ->  legacy_context(M0, module(Items0)), code_items(Items0, Code),
-        maplist(local_item(Items0), Code, Groups), append(Groups, Items),
+        context_index(Items0, Contexts),
+        maplist(local_item(Contexts), Code, Groups), append(Groups, Items),
         M = module(Items)
     ;   M = M0
     ).
@@ -51,6 +52,10 @@ local_context(F0, Rs0, F, Rs) :-
     F0 = func(N, L, R, Ps, Bs0),
     (   \+ setjmp_func(F0),
         local_objects(F0, []),
+        % Only a constant alloc in the entry block can become local
+        % (local_objects/3): most functions have none, so look first.
+        Bs0 = [block(_, _, Entry, _)|_],
+        memberchk(let(_, p, alloc(_), [const(_)]), Entry),
         func_cfg(Bs0, Cfg), cfg_idoms(Cfg, Idom),
         strict_ssa(F0, Cfg, Idom),
         address_temps(F0, Addresses),

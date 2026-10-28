@@ -69,7 +69,8 @@ promote_module(M0, module(Items)) :-
     legacy_context(M0, module(Items0)),
     module_mode(module(Items0), Mode),
     code_items(Items0, Code),
-    maplist(promote_item(Mode, Items0), Code, Groups), append(Groups, Items).
+    context_index(Items0, Contexts),
+    maplist(promote_item(Mode, Contexts), Code, Groups), append(Groups, Items).
 
 % promote_item(+Mode, +Item0, -Item): Item is the module item Item0,
 % promoted if it is a function.
@@ -102,10 +103,12 @@ promote_func(Mode, F0, F) :- promote_context(Mode, F0, [], F, _).
 promote_context(_, F, Rs, F, Rs) :- setjmp_func(F), !.
 promote_context(Mode, F0, Rs0, F, Rs) :-
     F0 = func(Name, Linkage, Ret, Params, Blocks0),
-    func_cfg(Blocks0, Cfg),
-    cfg_idoms(Cfg, Idom),
+    % Most functions have nothing to promote: look before building the
+    % dominator tree.
     (   promotable(Mode, F0, Roots),
         Roots \== [],
+        func_cfg(Blocks0, Cfg),
+        cfg_idoms(Cfg, Idom),
         strict_ssa(F0, Cfg, Idom)
     ->  promote_roots(Roots, F0, Cfg, Idom, Blocks, Map, Placed, Addrs, Widths),
         F = func(Name, Linkage, Ret, Params, Blocks),
@@ -168,6 +171,9 @@ type_slot(ptr(_), p).
 %  order, Slots an ordset of acc(Off, Width).
 
 promotable(_, F, []) :- setjmp_func(F), !.
+% Only an entry-block alloc is a root: without one, skip escape analysis.
+promotable(_, func(_, _, _, _, [block(_, _, EntryInsts, _)|_]), []) :-
+    \+ memberchk(let(_, _, alloc(_), _), EntryInsts), !.
 promotable(Mode, F, Roots) :-
     F = func(_, _, _, _, [block(_, _, EntryInsts, _)|_]),
     alloc_classes(F, Classes),
@@ -237,8 +243,7 @@ strict_ssa(F, cfg(_, Rpo, _, _), Idom) :-
             BlockDefs),
     append(ParamDefs, BlockDefs, DefPairs),
     list_to_assoc(DefPairs, Defs),
-    list_to_assoc([], Empty),
-    foldl(label_reach, Rpo, Empty, Reach),
+    findall(L-t, member(L, Rpo), ReachPairs), list_to_assoc(ReachPairs, Reach),
     dom_intervals(cfg(Entry, Rpo, x, x), Idom, Intervals),
     % Collect the uses first: a goal that mentions the big assocs, run by
     % forall/2 once per block, copies them every time.
@@ -255,9 +260,6 @@ block_reached(Reach, L-_-_-_) :-
 
 use_reached(Reach, use(_, L, _)) :-
     get_assoc(L, Reach, _).
-
-label_reach(L, Reach0, Reach) :-
-    put_assoc(L, Reach0, t, Reach).
 
 % block_use(+Block, -Use): Block, given as L-Phis-Insts-Jump, reads a
 % temp as Use = use(T, L, At): T is read in block L at At, which is

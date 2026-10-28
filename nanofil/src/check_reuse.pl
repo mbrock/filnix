@@ -38,7 +38,7 @@
 :- use_module(library(assoc)).
 :- use_module(ir, [op_kind/2, pointer_memory_effects/2, temp_defs/3]).
 :- use_module(cfg, [inst_def/2, inst_uses/2]).
-:- use_module(provenance, [code_items/2, context_records/3, with_context/3,
+:- use_module(provenance, [code_items/2, context_records/3, context_index/2, with_context/3,
                            remap_sites/3]).
 
 %! reuse_checks(+M0, -M) is det.
@@ -50,7 +50,8 @@
 
 reuse_checks(module(Items0), module(Items)) :-
     code_items(Items0, Code),
-    maplist(reused_item(Items0), Code, Groups), append(Groups, Items).
+    context_index(Items0, Contexts),
+    maplist(reused_item(Contexts), Code, Groups), append(Groups, Items).
 
 reused_item(All, func(N, L, R, Ps, Bs0), Items) :- !,
     names_info(Ps, Bs0, Info),

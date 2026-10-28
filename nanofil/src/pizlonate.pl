@@ -52,7 +52,8 @@
 pizlonate_module(M0, module(Items)) :-
     module_mode(M0, Mode),
     legacy_context(M0, module(Items0)), code_items(Items0, Code),
-    maplist(pizlonated_item_once(Mode, Items0), Code, Groups), append(Groups, Items).
+    context_index(Items0, Contexts),
+    maplist(pizlonated_item_once(Mode, Contexts), Code, Groups), append(Groups, Items).
 
 % Each item has one pizlonation; committing to it frees the choicepoints
 % that would otherwise keep every function's intermediate terms alive.
@@ -76,19 +77,21 @@ checked_origins(Before, Rs0, Generated, Rs) :-
     retire_values(Rs0, Temps, Ids0, Ids1, Retired),
     findall(L-true, member(poll(L), Generated), Pairs), list_to_assoc(Pairs, Polls),
     exclude(polled_site(Polls), Retired, Kept),
-    generated_records(Generated, Sites, Ids1, _, Extra), append(Kept, Extra, Rs).
+    generated_records(Generated, Sites, Ids1, Extra), append(Kept, Extra, Rs).
 
-generated_records([], _, Ids, Ids, []).
-generated_records([proof(Q, Site)|Gs], Sites, Ids0, Ids,
+% Each proof temp and polled label is generated once, so the bases
+% pizlonate(Q) and poll(L) are distinct and Ids need not grow.
+generated_records([], _, _, []).
+generated_records([proof(Q, Site)|Gs], Sites, Ids,
                   [origin(Id, none, generated(pizlonate, check), Os),
                    value(Q, none, [Id])|Rs]) :-
-    site_origins(Sites, Site, Os), fresh_origin(pizlonate(Q), Ids0, Ids1, Id),
-    generated_records(Gs, Sites, Ids1, Ids, Rs).
-generated_records([poll(L)|Gs], Sites, Ids0, Ids,
+    site_origins(Sites, Site, Os), fresh_origin(pizlonate(Q), Ids, Id),
+    generated_records(Gs, Sites, Ids, Rs).
+generated_records([poll(L)|Gs], Sites, Ids,
                   [origin(Id, none, generated(pizlonate, poll), Os),
                    site(jump(L), [Id])|Rs]) :-
-    site_origins(Sites, jump(L), Os), fresh_origin(poll(L), Ids0, Ids1, Id),
-    generated_records(Gs, Sites, Ids1, Ids, Rs).
+    site_origins(Sites, jump(L), Os), fresh_origin(poll(L), Ids, Id),
+    generated_records(Gs, Sites, Ids, Rs).
 polled_site(Polls, site(jump(L), _)) :- get_assoc(L, Polls, _).
 
 % func_temp_names(+Params, +Blocks, -Names): the assoc of every temp

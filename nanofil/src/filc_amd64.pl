@@ -132,7 +132,8 @@ filc_module_asm(Module0, Emission, Lines, Reports) :-
     emission(Emission, Registers, Branches),
     % Lower and place each item in one committed step, so a large
     % module (SQLite) never holds every item's ABI product at once.
-    maplist(item_placed_lines(Module, Registers, Branches), Items, LinesPerItem, Reports),
+    module_symbols(Module, Symbols),
+    maplist(item_placed_lines(Symbols, Registers, Branches), Items, LinesPerItem, Reports),
     lower_thunks(Module, Callees),
     append(LinesPerItem, ItemLines),
     maplist(thunk_lines, Callees, LinesPerThunk),
@@ -142,8 +143,8 @@ filc_module_asm(Module0, Emission, Lines, Reports) :-
 emission(emit(Registers, Branches), Registers, Branches) :- !.
 emission(Registers, Registers, reference).
 
-item_placed_lines(Module, Registers, Branches, Item, Lines, Report) :-
-    once(( lower_item(Module, Item, Product),
+item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
+    once(( lower_item(Symbols, Item, Product),
            placed_lines(Registers, Branches, Item, Product, Lines, Report) )).
 
 %! filc_module_emit(+Module, +Emission, :Emit) is det.
@@ -162,8 +163,9 @@ module_emit(Module, Registers, Branches, Emit) :-
     % Validation leaves SWI's heap near its peak; collecting once here,
     % with only 130 MB live for SQLite, keeps emission within 1 GB.
     catch(garbage_collect, error(existence_error(_, _), _), true),
+    module_symbols(Module, Symbols),
     forall(member(Item, Items),
-           ( item_placed_lines(Module, Registers, Branches, Item, Lines, _),
+           ( item_placed_lines(Symbols, Registers, Branches, Item, Lines, _),
              call(Emit, Lines) )),
     lower_thunks(Module, Callees),
     forall(member(Callee, Callees),
@@ -175,9 +177,9 @@ thunk_lines(Callee, Lines) :-
 
 % Complete the ABI product before any instruction selection. Fusion is
 % still target preparation; its separate liveness view preserves indices.
-lower_item(Module, func(N,L,R,Ps,Bs0), Product) :-
+lower_item(Symbols, func(N,L,R,Ps,Bs0), Product) :-
     fused_blocks(N, Ps, Bs0, Bs, Live),
-    lower_function(Module, func(N,L,R,Ps,Bs), Live, Product).
+    lower_function(Symbols, func(N,L,R,Ps,Bs), Live, Product).
 lower_item(_, data(N,L,A,Is), data(N,L,A,Is)).
 
 item_lines(Selection, Item, Lines) :-
@@ -322,11 +324,14 @@ layout(frame(Plain, Lowers, Aliases), Slots, FrameBase, Size) :-
     foldl(plain_slot, Plain, Slots0-0, Slots1-PlainBytes),
     FrameBase is PlainBytes + 16 + 8 * NLowers,
     foldl(lower_slot(FrameBase), Lowers, Slots1-0, Slots2-_),
-    foldl(temp_alias, Aliases, Slots2, Slots),
+    % One assoc from all the keys, not an insertion per alias (a fifth
+    % of the frame's cost for SQLite). put_assoc would let a later alias
+    % replace a key; list_to_assoc refuses duplicates, which no frame has.
+    assoc_to_list(Slots2, Placed),
+    findall(T-Off, ( member(T-Key, Aliases), get_assoc(Key, Slots2, Off) ), AliasSlots),
+    append(Placed, AliasSlots, All),
+    list_to_assoc(All, Slots),
     Size is (FrameBase + 15) // 16 * 16.
-
-temp_alias(T-Key, Slots0, Slots) :-
-    get_assoc(Key, Slots0, Off), put_assoc(T, Slots0, Off, Slots).
 
 % Named object storage is not a temporary slot and is never reused.
 % Payload is 16-aligned; aux is a count header followed by lower words.
@@ -400,17 +405,26 @@ slot_reg_load(Key, Reg, Ctx) -->
 % A label shared by the whole function, e.g. exc for exception exits.
 special_label(Ctx, Tag, A) :-
     ctx_name(Ctx, Name),
-    format(atom(A), '.L~w..~w', [Name, Tag]).
+    label_atom(['.L', Name, '..', Tag], A).
 
 % The label of the block named Label.
 block_label(Ctx, Label, A) :-
     ctx_name(Ctx, Name),
-    format(atom(A), '.L~w.~w', [Name, Label]).
+    label_atom(['.L', Name, '.', Label], A).
 
 % A label inside the code of instruction Index (or a jump) in Block.
 local_label(Ctx, Block, Index, Tag, A) :-
     ctx_name(Ctx, Name),
-    format(atom(A), '.L~w.~w..~w.~w', [Name, Block, Index, Tag]).
+    label_atom(['.L', Name, '.', Block, '..', Index, '.', Tag], A).
+
+% label_atom(+Parts, -A): A is the parts' text, as format's ~w writes
+% them; atomic_list_concat/2 is several times faster than format/3,
+% which was a twentieth of emission for SQLite.
+label_atom(Parts, A) :-
+    (   maplist(atomic, Parts) -> atomic_list_concat(Parts, A)
+    ;   length(Parts, N), length(Ws, N), maplist(=('~w'), Ws),
+        atomic_list_concat(Ws, Format), format(atom(A), Format, Parts)
+    ).
 
 % The frame's origin: c (calls, can_catch) or n (pollchecks and checks).
 origin_label(Name, Which, A) :-
@@ -2125,7 +2139,7 @@ align_check(8, Fail) -->
 % The labels of a check kind's failure block and origin.
 check_fail_label(Ctx, k(Size, Write, Align), Label) :-
     ctx_name(Ctx, Name),
-    format(atom(Label), '.L~w..fail.~w.~w.~w', [Name, Size, Write, Align]).
+    label_atom(['.L', Name, '..fail.', Size, '.', Write, '.', Align], Label).
 
 check_origin_label(Name, k(Size, Write, Align), Label) :-
     format(atom(Label), '.L~w..chk.~w.~w.~w', [Name, Size, Write, Align]).
