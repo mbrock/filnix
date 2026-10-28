@@ -537,11 +537,16 @@ enumerators(_, _) --> parse_error('expected an enumerator').
 %% Declarators
 
 % full_declarator(+Env, -Dcl, -Attrs)//: a declarator with its GNU
-% suffix. Attributes after a declarator come back as attr(Tokens)
-% specifiers in Attrs.
+% suffix. Attributes before a declarator (GNU allows them after the
+% comma of a declarator list, as in `char *a, __attribute__((unused))
+% *b`) and after it come back as attr(Tokens) specifiers in Attrs.
 full_declarator(Env, dcl(some(Name), Type, Asm), Attrs) -->
+    attr_list(Pre0),
     declarator(Env, Name, Type, base),
-    gnu_suffix(Asm, Attrs).
+    gnu_suffix(Asm, Attrs1),
+    {   findall(attr(X), member(X, Pre0), Pre),
+        append(Pre, Attrs1, Attrs)
+    }.
 
 % gnu_suffix(-Asm, -Attrs)//: attributes and an asm("symbol") label.
 gnu_suffix(Asm, Attrs) -->
