@@ -1173,20 +1173,69 @@ modes. Gate on swa, ratio to filcc, time (instructions), before → after:
 Instructions fall 0.2–4.3%, as estimated. bzip2 `-d`'s time rose
 while its instructions fell, which is layout (the M7 noise floor).
 
-#### 6b and 6c (not proposed yet)
+#### 6b (not proposed)
 
-- **6b, null tests of a lower already tested in the stretch:** at most
-  2%. With the `lower ≤ ptr` test and alignment, it is the sound
-  spatial-only subset of reuse (a capability's lower never changes). It needs lower-equality facts across derived pointers in the
-  emitter. Not worth a contract now.
-- **6c, fewer checks.** This is where the gap is: eliminating redundant
-  field loads together with their checks, and same-object reuse of
-  check evidence across derived pointers. Both are temporal or change
-  the failure point (a concurrent free, or a combined range failing
-  earlier), so each needs its own reviewed contract, extending M7's.
-  The same-object share above, a quarter of checks in zlib and
-  bzip2 -9, bounds part of the yield; inlining (item 4) removes another
-  part.
+**6b, null tests of a lower already tested in the stretch:** at most 2%.
+With the `lower ≤ ptr` test and alignment, it is the sound spatial-only
+subset of reuse (a capability's lower never changes). It needs
+lower-equality facts across derived pointers in the emitter. Not worth
+a contract now.
+
+#### 6c, fewer checks: measured before the contract
+
+The 24–26% "same lower" share above was measured over straight-line
+stretches between labels and calls, keyed by where `%rcx` was loaded
+from. With `-O` each field access has its own flight from the struct
+pointer, so most of those checks are of one object but of *different*
+fields. M7's reuse rule can only delete a check whose range an earlier
+proof subsumes, and a new field always extends the range. Two
+prototypes, measured with the gate (`O-reuse` builds, outputs byte for
+byte as filcc's; instructions against today's `-O`):
+
+| Workload | `-O` | 6c-1: offsets | 6c-1 + 6c-2: widening |
+| --- | ---: | ---: | ---: |
+| zlib `-6` | 8269M | −3.4% | −6.1% |
+| zlib `-d` | 654M | 0.0% | −7.2% |
+| bzip2 `-9` | 12421M | −1.0% | −5.1% |
+| bzip2 `-d` | 4852M | −1.4% | −4.5% |
+| lz4 `-1` | 396M | 0.0% | −0.2% |
+| lz4 `-9` | 13376M | 0.0% | −0.1% |
+| lz4 `-d` | 608M | −1.2% | −0.1% |
+| Lua int | 2941M | 0.0% | −3.9% |
+| Lua tab | 2313M | 0.0% | −3.6% |
+| Lua str | 6014M | +0.2% | −0.3% |
+| SQLite | 23052M | −1.3% | −3.2% |
+| time geomean (ratio to filcc) | 2.44 | 2.46 | 2.43 |
+
+- **6c-1, related pointers** ([m7.md, round 3](m7.md#related-pointers-round-3-proposed)):
+  M7's rule, matching a check's pointer to an earlier proof's pointer
+  when both are single-definition flights from one root with constant
+  offsets, rather than only the same SSA pointer. The validator's
+  safety rule does not change. Yield 0–3.4%; it needs `--checks=reuse`
+  to become the `-O` default to do anything by default.
+- **6c-2, widening within a stretch** (prototype only, no contract):
+  the first check of an object in an invalidator-free stretch is
+  widened to cover the later fields, which 6c-1 then deletes. This is
+  what the pin does (`$-4800`). A trap can then come earlier in the
+  block, before scalar stores that precede the failing access, and
+  report the first access rather than the failing one. That is an
+  observation-contract change, so it needs its own review. Added yield
+  about 2–4%.
+- **The rest of the gap** is elsewhere. bzip2 `-9` runs 539M checks
+  under `-O` against filcc's 230M, and 6c-1 plus 6c-2 remove about 75M
+  of them. Per function (callgrind on filcc, cachegrind on nanofil),
+  filcc's `handle_compress` runs 41M checks where nanofil's
+  `copy_input_until_stop`, `add_pair_to_block` and
+  `copy_output_until_stop` run 158M. filcc's `BZ2_blockSort` runs 92M
+  and its `mainGtU` 30M, against nanofil's 245M in `mainQSort3`,
+  `mainSort`, `mainSimpleSort` and `mainGtU`. Its `BZ2_compressBlock`
+  runs 65M against nanofil's 129M in `sendMTFValues`,
+  `generateMTFValues` and `bsW`. Each filcc function inlines the
+  nanofil ones it is compared with. So the hypothesis, not yet
+  measured, is that the rest comes from what a call boundary kills
+  (inlining, item 4), from pointer fields reloaded per access
+  (`s->strm->avail_in`, which needs load reuse), from merging across
+  blocks, and from variable-index pairs like `block[i]`, `block[i+1]`.
 
 ### 7. Small constant `memcpy` — needs review
 
