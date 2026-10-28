@@ -55,6 +55,9 @@ pp_file(File, profile(Macros, Paths, Features), Tokens) :-
 % lex_tokens(+PpTokens)//: the c_lex tokens of PpTokens. Each
 % preprocessing token is lexed on its own and keeps its location.
 lex_tokens([]) --> [].
+lex_tokens([t(pragma_weak(N, T), Loc, _, _)|PpTokens]) --> !,
+    [tok(pragma_weak(N, T), Loc)],
+    lex_tokens(PpTokens).
 lex_tokens([t(A, Loc, _, _)|PpTokens]) -->
     {   atom_chars(A, Cs),
         c_tokens(Cs, '<preprocessing token>', Lexed),
@@ -441,6 +444,8 @@ active_directive(Kind, Loc, Args, File, Env0, Env, Ts, Rest) :-
     ),
     file_tokens(Path, Env0, Env, Included),
     append(Included, Rest, Ts).
+active_directive(pragma, Loc, Args, _, Env, Env, [t(pragma_weak(Name, Target), Loc, yes, [])|Ts], Ts) :-
+    pragma_weak(Args, Name, Target), !.
 active_directive(pragma, _, Args, File, Env0, Env, Ts, Ts) :- !,
     pragma(Args, File, Env0, Env).
 active_directive(error, Loc, Args, _, _, _, _, _) :- !,
@@ -448,6 +453,13 @@ active_directive(error, Loc, Args, _, _, _, _, _) :- !,
 active_directive(ident, _, _, _, Env, Env, Ts, Ts) :- !.
 active_directive(Name, Loc, _, _, _, _, _, _) :-
     pp_error(Loc, unsupported_directive(Name)).
+
+% #pragma weak Name [= Target] is the c_lex token pragma_weak(Name, Target).
+pragma_weak([t(weak, _, _, _), t(Name, _, _, _)|Rest], Name, Target) :-
+    atom_chars(Name, [C|_]), ident_start(C),
+    (   Rest == [] -> Target = none
+    ;   Rest = [t('=', _, _, _), t(Target, _, _, _)], atom_chars(Target, [D|_]), ident_start(D)
+    ).
 
 % #pragma once, push_macro and pop_macro; other pragmas are ignored.
 % Macro save stacks use compound assoc keys, which cannot collide with C

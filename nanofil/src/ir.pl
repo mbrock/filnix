@@ -51,7 +51,7 @@
     | Field of func | Is |
     |---|---|
     | Name | an atom, the symbol |
-    | Linkage | `export` or `local` |
+    | Linkage | `export`, `local`, or `weak` (filc mode only): exported, and a strong definition elsewhere replaces it |
     | Ret | `w`, `l`, `p`, `s`, `d`, `void`, or `tuple([K1, K2])` |
     | Params | a list of `param(K, tmp(N))`, K one of `w` `l` `p` `s` `d` |
     | Blocks | a list of `block(Label, Phis, Insts, Jump)`, the entry block first |
@@ -191,8 +191,12 @@
     `item(p, sym(F, 0))` of a function F defined in the module, and
     Priority an integer from 0 to 65535, lower first, or `none`, after
     those with one. It is not an object: nothing may take its address,
-    and the interpreter does not run it. Align is 1, 2, 4, 8 or 16.
-    Items is a list of:
+    and the interpreter does not run it. Linkage `weak` or `ro(weak)`
+    (filc mode only) is `export` that a strong definition elsewhere
+    replaces. Linkage `extern(weak)` (filc mode only), with Items `[]`,
+    declares that Name, which the module does not define, is weak: if no
+    object of the program defines it, `global(Name)` is a null pointer.
+    It is not an object. Align is 1, 2, 4, 8 or 16. Items is a list of:
 
     | Item | Means |
     |---|---|
@@ -276,7 +280,7 @@
 */
 :- module(ir, [class_bits/2, modulus/2, half_modulus/2, op_arity/2,
                op_kind/2, valid_op/1, valid_module/1, func_named/3, module_symbols/2,
-               data_named/2, variadic_named/2, width_bytes/2,
+               data_named/2, weak_defined/2, weak_declared/2, variadic_named/2, width_bytes/2,
                op_arg_classes/4, op_result_ok/3,
                module_mode/2, module_stage/2, addr_class/2, variadic_func/1, setjmp_func/1,
                narrow_type/3, without_locs/2, access_size_align/3,
@@ -547,7 +551,7 @@ func_named(symbols(Index), Name, Func) :-
 %  Name.
 
 data_named(module(Items), Name) :-
-    memberchk(data(Name, _, _, _), Items).
+    member(data(Name, Linkage, _, _), Items), Linkage \== extern(weak), !.
 data_named(symbols(Index), Name) :-
     get_assoc(data(Name), Index, _).
 
@@ -556,6 +560,31 @@ data_named(symbols(Index), Name) :-
 %  The function named Name in M, or in the module module_symbols/2
 %  indexed, is variadic (variadic_func/1), found without rescanning its
 %  blocks at every call to it.
+
+%! weak_defined(+M, +Name) is semidet.
+%
+%  M, or the module module_symbols/2 indexed, defines Name with linkage
+%  `weak` (or `ro(weak)`), which another object's definition may replace.
+
+weak_defined(Symbols, Name) :-
+    (   func_named(Symbols, Name, func(_, weak, _, _, _)) -> true
+    ;   data_item(Symbols, Name, data(_, Linkage, _, _)),
+        memberchk(Linkage, [weak, ro(weak)])
+    ).
+data_item(module(Items), Name, D) :-
+    D = data(Name, Linkage, _, _), member(D, Items), Linkage \== extern(weak), !.
+data_item(symbols(Index), Name, D) :-
+    get_assoc(data(Name), Index, D).
+
+%! weak_declared(+M, +Name) is semidet.
+%
+%  M, or the module module_symbols/2 indexed, declares Name weak
+%  (linkage `extern(weak)`) without defining it.
+
+weak_declared(module(Items), Name) :-
+    memberchk(data(Name, extern(weak), _, []), Items).
+weak_declared(symbols(Index), Name) :-
+    get_assoc(weak(Name), Index, _).
 
 variadic_named(module(Items), Name) :-
     func_named(module(Items), Name, F), variadic_func(F).
@@ -578,7 +607,9 @@ module_symbols(module(Items), symbols(Index)) :-
 symbol_entry(F, func(Name), f(F, V)) :-
     F = func(Name, _, _, _, _),
     ( variadic_func(F) -> V = variadic ; V = fixed ).
-symbol_entry(D, data(Name), D) :- D = data(Name, _, _, _).
+symbol_entry(D, Key, D) :-
+    D = data(Name, Linkage, _, _),
+    ( Linkage == extern(weak) -> Key = weak(Name) ; Key = data(Name) ).
 
 first_of_keys([], []).
 first_of_keys([K-V|Ps0], [K-V|Ps]) :- drop_key(K, Ps0, Ps1), first_of_keys(Ps1, Ps).
@@ -626,10 +657,11 @@ module_mode(module(Items), Mode) :-
     ;   Mode = plain
     ).
 
-% pointer_item(+Item): Item has class p somewhere, or is read-only data,
-% which only filc mode models. The cuts commit to the first witness.
-pointer_item(func(_, _, Ret, Params, Blocks)) :-
-    (   ( Ret == p ; Ret = tuple(_) )
+% pointer_item(+Item): Item has class p somewhere, or is read-only, weak
+% or thread-local data or a weak function, which only filc mode models. The cuts commit to the first witness.
+pointer_item(func(_, Linkage, Ret, Params, Blocks)) :-
+    (   Linkage == weak
+    ;   ( Ret == p ; Ret = tuple(_) )
     ;   member(param(p, _), Params)
     ;   member(block(_, Phis, Insts, _), Blocks),
         (   member(phi(_, p, _), Phis)
@@ -641,6 +673,8 @@ pointer_item(func(_, _, Ret, Params, Blocks)) :-
 pointer_item(data(_, Linkage, _, Items)) :-
     (   Linkage = ro(_)
     ;   Linkage = tls(_)
+    ;   Linkage == weak
+    ;   Linkage = extern(_)
     ;   memberchk(item(p, _), Items)
     ),
     !.
@@ -721,8 +755,15 @@ checked_jump(branch(_, _, poll(_))).
 
 % valid_item(+M, +Mode, +Stage, +Item): Item, an item of M, is well
 % formed.
-valid_item(Symbols, Mode, Stage, func(Name, _, Ret, Params, Blocks)) :-
+valid_item(Symbols, Mode, Stage, func(Name, Linkage, Ret, Params, Blocks)) :-
     (   Blocks == [] -> fn_error(Name, 'function has no blocks', []) ; true ),
+    (   memberchk(Linkage, [export, local]) -> true
+    ;   Linkage == weak
+    ->  (   Mode == filc -> true
+        ;   fn_error(Name, 'weak linkage needs a Fil-C module', [])
+        )
+    ;   fn_error(Name, 'invalid function linkage ~w', [Linkage])
+    ),
     ( (any_class(Ret) ; Ret == void ; Ret = tuple(_)) -> true
     ; fn_error(Name, 'invalid return class ~w', [Ret]) ),
     (   ( Ret == x ; member(param(x, _), Params)
@@ -770,6 +811,14 @@ valid_item(_, Mode, _, data(Name, Linkage, Align, Items)) :-
     ;   fn_error(Name, 'unsupported data alignment ~w', [Align])
     ),
     (   memberchk(Linkage, [export, local, ro(export), ro(local)]) -> true
+    ;   memberchk(Linkage, [weak, ro(weak)])
+    ->  (   Mode == filc -> true
+        ;   fn_error(Name, 'weak linkage needs a Fil-C module', [])
+        )
+    ;   Linkage == extern(weak)
+    ->  (   Mode == filc, Items == [] -> true
+        ;   fn_error(Name, 'a weak declaration has no items, in a Fil-C module', [])
+        )
     ;   memberchk(Linkage, [tls(export), tls(local)])
     ->  (   Mode == filc -> true
         ;   fn_error(Name, 'thread-local data needs a Fil-C module', [])

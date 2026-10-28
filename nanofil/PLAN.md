@@ -305,11 +305,10 @@ additions*). Constructors and destructors run as clang's do
 `_Thread_local` and `__thread` variables are per-thread objects, created
 lazily through clang's getter protocol and interoperating with clang's
 ([docs/abi-findings.md](docs/abi-findings.md), *Thread-local variables*).
-Weak C symbols (`__attribute__((weak))`, `#pragma weak`) are compiled
-as strong ones. That can turn into a link error but never changes a
-linked program's meaning. Implementing them needs a weak IR linkage
-([docs/abi-findings.md](docs/abi-findings.md), *Symbols the linker
-merges*).
+Weak symbols (`__attribute__((weak))`, `#pragma weak`, weak aliases)
+link as clang's do, including unresolved weak references tested for
+null, through the IR linkages `weak`, `ro(weak)` and `extern(weak)`
+([docs/abi-findings.md](docs/abi-findings.md), *Weak symbols*).
 
 Broken into steps below. Probes at the pin
 (compile `printf`, `puts`, globals and string literals with `filcc -S`)

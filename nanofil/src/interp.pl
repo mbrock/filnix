@@ -1401,6 +1401,9 @@ plain_contents(_, func(_, _, _, _, _), Bytes, Bytes).
 
 % filc_layout(+Item, +A0-Globals0-Rs0, -A-Globals-Rs): place Item at
 % the next 16-aligned address from A0.
+% A weak declaration (extern(weak)) takes no space: its symbol stays
+% undefined, a null pointer (undefined_symbol/3).
+filc_layout(data(_, extern(weak), _, []), State, State) :- !.
 filc_layout(data(Name, Linkage, _, Items), A0-Globals0-Rs0,
             A-Globals-[region(Base, End, global, live)|Rs0]) :-
     Base is (A0 + 15) // 16 * 16,
@@ -1417,10 +1420,12 @@ filc_layout(func(Name, _, _, _, _), A0-Globals0-Rs, A-Globals-Rs) :-
 % data_cap(+Linkage, +Base, -Cap): the capability of data at Base.
 data_cap(export, Base, obj(Base)).
 data_cap(local, Base, obj(Base)).
+data_cap(weak, Base, obj(Base)).        % no other definition here
 data_cap(ro(_), Base, ro(Base)).
 data_cap(tls(_), Base, obj(Base)).      % one thread: one instance
 data_cap(init(_, _), Base, ro(Base)).   % a table entry, never run here
 
+filc_contents(_, data(_, extern(weak), _, []), State, State) :- !.
 filc_contents(Globals, data(Name, _, _, Items), Bytes0-Aux0, Bytes-Aux) :-
     get_assoc(Name, Globals, ptr(Base, _)),
     foldl(filc_item_contents(Globals), Items, Base-Bytes0-Aux0, _-Bytes-Aux).

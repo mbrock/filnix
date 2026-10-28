@@ -930,23 +930,61 @@ fails without d1d5986. `shared-thunks-clang.c` links clang's object
 first, so clang's thunks serve nanofil's calls.
 `vararg-thunk-width.c` is the single-thunk regression.
 
-**Weak C symbols are not implemented.** nanofil ignores
-`__attribute__((weak))` and `#pragma weak`: it emits weak definitions
-as strong ones, and refers to weak declarations strongly. clang makes
-the getter, `FIP`, `FO` and `2ET` symbols of a weak definition weak.
-For a weak reference it emits `.weak pizlonated_<f>` and tests the
-getter's GOT entry for null before calling it.
+Weak C symbols are covered in *Weak symbols* below.
 
-Ignoring weak never changes the meaning of a program that links. The
-difference shows up only as a link error:
+## Weak symbols
 
-- a weak and a strong definition in one link are a duplicate
-  definition;
-- a weak reference to a symbol nothing defines stays unresolved.
+`__attribute__((weak))`, `#pragma weak` and weak aliases, as clang
+lowers them at the pin (`FilPizlonator.cpp`, observed with `-S` on
+`hook`, `wdata`, `maybe`, `mdata`):
 
-A definition in an executable takes precedence over a shared library's
-whether or not it is weak. gnulib's `#pragma weak pthread_*` (sed,
-hello) references symbols that glibc 2.34's libc defines. Implementing
-weak needs a weak linkage for functions and data, plus a weak
-declaration for undefined symbols, in ir.pl; that is an IR grammar
-change, deferred.
+- **Weak definition.** The pass keeps C's `weak` linkage on the getter
+  `pizlonated_<f>`, the implementation `FIP<Sig>_<f>` and the `2ET`
+  entrypoint thunk, which are all `.weak`. There is no `FI<Sig>_<f>`
+  alias, and the function object `FO_<f>` is local. Data likewise has a
+  weak getter with a local `DO_`/`GP_`. The module's own calls and
+  address-taking go through the getter (`@PLT`), and calls through the
+  hidden weak `FI` thunk, as they would for an external function. The
+  linker keeps a strong definition from another object over this one;
+  of two weak ones it keeps the first in link order.
+- **Weak declaration** (`extern int maybe(int) __attribute__((weak))`).
+  The pass emits `.weak pizlonated_<f>`. Where it needs the symbol's
+  pointer (`filc_weak_symbol_is_null`) it tests the getter's GOT slot,
+  `cmpq $0, pizlonated_<f>@GOTPCREL(%rip)`, and uses the null flight
+  pointer if the slot is 0, else calls the getter. The callee thunk
+  `FI<Sig>_<f>` does the same test, so calling an absent weak function
+  fails the function check, as a call through a null pointer does. A
+  static initializer's relocation names the getter, which the runtime
+  (`filc_execute_constant_relocations`) leaves null when the getter is 0.
+- `#pragma weak n` marks `n` weak wherever it is declared or defined in
+  the translation unit. `#pragma weak n = t` and
+  `__attribute__((weak, alias("t")))` define `n` weakly as `t`.
+
+nanofil does the same. The IR got three linkages (ir.pl):
+
+- `weak` for functions and data;
+- `ro(weak)` for read-only data;
+- `extern(weak)`, a data item with no items that declares an undefined
+  symbol weak.
+
+c_lower gives a name declared weak anywhere in the unit the `weak`
+linkage on its definition, or an `extern(weak)` declaration if the unit
+uses it without defining it. filc_abi routes a weak definition's calls
+and addresses as an external symbol's, and a weak declaration's address
+through `weak_getter`. filc_amd64 emits the GOT test in front of the
+getter call and in the weak thunk.
+
+A weak alias is a weak function of its own name that calls the target,
+as nanofil's strong aliases are, so its address seen from another object
+is not the target's. Weak static and weak thread-local names are
+refused.
+
+`tests/c/prog/weak-symbols.c` links a nanofil and a clang object that
+each have weak definitions used alone and overridden by the other's
+strong definition, a name weak in both (both objects must see one
+definition), `#pragma weak`, weak aliases, a weak reference that the
+other object resolves, and unresolved weak functions and data tested for
+null, called only if present, and whose addresses are taken in code and
+in static initializers. `weak-symbols-clang.c` links clang's object
+first. Without weak linkage the overrides are duplicate definitions and
+the unresolved references are undefined, so both fail to link.

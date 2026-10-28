@@ -4,8 +4,9 @@
     ## Input
 
     The input is preprocessed text. A line marker `# N "file"` or
-    `#line N "file"` sets the location of the next line; any other
-    directive line, such as `#pragma` or `#ident`, is skipped. Comments
+    `#line N "file"` sets the location of the next line, and
+    `#pragma weak` is a token; any other directive line, such as
+    another `#pragma` or `#ident`, is skipped. Comments
     are skipped too, so hand-written test input works without a
     preprocessor.
 
@@ -23,6 +24,7 @@
     | `str(Bytes)` | a string literal, its bytes without the terminator (`u8"..."` too, as UTF-8 bytes) |
     | `wstr(Type, Codes)` | `L"..."`, `u"..."` or `U"..."`: Type is the element type, `int` (wchar_t), `ushort` (char16_t) or `uint` (char32_t), and Codes the elements without the 0 |
     | `p(Atom)` | a punctuator, such as `p('->')` or `p('<<=')` |
+    | `pragma_weak(Name, Target)` | `#pragma weak Name`, Target `none`, or `#pragma weak Name = Target` |
 */
 :- module(c_lex, [c_tokens/3, c23_tokens/2, keyword/2, decimal/1, ident_start/1,
                   ident_char/1, ident_rest//1, punctuator/1, digraph/1]).
@@ -50,6 +52,9 @@ tokens(Ts, Loc, _) -->
     ['\n'], !,
     { loc_next_line(Loc, Loc1) },
     tokens(Ts, Loc1, bol).
+tokens([tok(T, Loc)|Ts], Loc, bol) -->
+    ['#'], spaces, pragma_weak(T), !,
+    tokens(Ts, Loc, mid).
 tokens(Ts, Loc, bol) -->
     ['#'], !,
     directive(Loc, Loc1),
@@ -115,6 +120,18 @@ directive(Loc0, Loc) -->
     ;   { Loc = Loc0 }
     ),
     line_rest.
+
+% pragma_weak(-T)//: `pragma weak Name` or `pragma weak Name = Target`
+% after the line's `#`, up to its newline.
+pragma_weak(pragma_weak(Name, Target)) -->
+    "pragma", [C], { blank(C) }, spaces, "weak", [D], { blank(D) }, spaces,
+    identifier(Name), spaces,
+    (   ['='] -> spaces, identifier(Target), spaces ; { Target = none } ),
+    pragma_end.
+pragma_end, ['\n'] --> ['\n'], !.
+pragma_end([], []).
+identifier(Name) -->
+    [C], { ident_start(C) }, ident_rest(Cs), { atom_chars(Name, [C|Cs]) }.
 
 marker_file([]) --> ['"'], !.
 marker_file([C|Cs]) --> [C], marker_file(Cs).

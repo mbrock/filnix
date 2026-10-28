@@ -485,6 +485,8 @@ item(_, data(Name, tls(Linkage), Align, Items)) --> !,
     thread_local_object(Name, Linkage, Align, Items).
 item(_, data(Name, init(Kind, Prio), _, [item(p, sym(F, 0))])) --> !,
     init_entry(Name, Kind, Prio, F).
+item(_, data(Name, extern(weak), _, [])) --> !,
+    { abi_symbol(getter, Name, Getter) }, [weak(Getter)].
 item(_, data(Name, Linkage, _, Items)) -->
     data_object(Name, Linkage, Items).
 
@@ -796,6 +798,18 @@ abi_action(dispatch(P,Sig,Return,Words,Result,Size,Cells,GenericResult), I,B,Ctx
     { special_label(Ctx, notfn, NotFn), target_form(Return, Form) },
     flight_load(P, Ctx), function_check(NotFn), reg_slot_store(rcx, aux, Ctx),
     indirect_call(Sig, Form, Words, Result, Size, Cells, GenericResult, I, B, Ctx).
+abi_action(getter(weak_getter(S), Which, D), I, B, Ctx) --> !,
+    % A weak declaration's getter is null if nothing defines it; then its
+    % address is the null pointer (clang's filc_weak_symbol_is_null).
+    { abi_symbol(getter, S, Getter),
+      local_label(Ctx, B, I, weak_null, Null),
+      local_label(Ctx, B, I, weak_done, Done) },
+    [ins(cmp, q, [imm(0), gotpcrel(Getter)]), ins(je, none, [sym(Null)])],
+    abi_action(getter(external_getter(S), Which, D), I, B, Ctx),
+    [ins(jmp, none, [sym(Done)]), label(Null),
+     ins(xor, l, [reg(eax), reg(eax)]), ins(xor, l, [reg(ecx), reg(ecx)])],
+    flight_store(D, Ctx),
+    [label(Done)].
 abi_action(getter(Target, Which, D), _, _, Ctx) -->
     { ctx_name(Ctx, Name), origin_label(Name, Which, Origin),
       target_operand(Target, Getter) },
@@ -2183,7 +2197,7 @@ saved_operand(saved(I), mem(Off,rbp)) :- Off is -32-8*I.
    clobber caller-saved registers; rbx holds the thread (r12 the return
    buffer) and -24(%rbp) the function object. Pointer authority stays
    rooted by the caller. */
-thunk(thunk(F,Sig,Ts,Cells,ArgsSize,Result,Need)) -->
+thunk(thunk(F,Ref,Sig,Ts,Cells,ArgsSize,Result,Need)) -->
     { abi_symbol(entry(Sig),F,FI), abi_symbol(getter,F,Getter),
       atom_concat('.L',FI,G),atom_concat(G,'.generic',Generic),
       atom_concat(G,'.out',Out),atom_concat(G,'.fail',Fail),
@@ -2199,8 +2213,7 @@ thunk(thunk(F,Sig,Ts,Cells,ArgsSize,Result,Need)) -->
      ins(push,q,[reg(rbx)]),ins(push,q,[reg(r12)]),
      ins(sub,q,[imm(Alloc),reg(rsp)])],
     mixed_thunk_thread(Form), save_mixed_words(Ts,Ls,Saved),
-    [ins(xor,l,[reg(esi),reg(esi)]),ins(call,none,[plt(Getter)]),
-     ins(mov,q,[reg(rdx),reg(rcx)])],
+    thunk_getter(Ref,Getter,G),
     function_check(Fail),
     { field(function_object,signature,rcx,Signature) },
     [ins(mov,q,[reg(rcx),mem(-24,rbp)]),
@@ -2220,6 +2233,19 @@ thunk(thunk(F,Sig,Ts,Cells,ArgsSize,Result,Need)) -->
      label(Out),ins(lea,q,[mem(-16,rbp),reg(rsp)]),
      ins(pop,q,[reg(r12)]),ins(pop,q,[reg(rbx)]),ins(pop,q,[reg(rbp)]),
      ins(ret,none,[]),size(FI)].
+
+% The callee's function object in %rax:%rcx. A weak declaration's
+% getter may be null, and then so is the object: the function check
+% fails, as clang's thunk does.
+thunk_getter(strong,Getter,_) -->
+    [ins(xor,l,[reg(esi),reg(esi)]),ins(call,none,[plt(Getter)]),
+     ins(mov,q,[reg(rdx),reg(rcx)])].
+thunk_getter(weak,Getter,G) -->
+    { atom_concat(G,'.null',Null), atom_concat(G,'.got',Got) },
+    [ins(cmp,q,[imm(0),gotpcrel(Getter)]),ins(je,none,[sym(Null)])],
+    thunk_getter(strong,Getter,G),
+    [ins(jmp,none,[sym(Got)]),label(Null),
+     ins(xor,l,[reg(eax),reg(eax)]),ins(xor,l,[reg(ecx),reg(ecx)]),label(Got)].
 
 saved_words([],_,[]).
 saved_words([wf(K,_)|Ts],I,[wf(K,mem(O,rbp))|Ss]) :-
@@ -2460,10 +2486,15 @@ function_object_data(FO, Fast, Generic, Sig) -->
 linkage_alias(export, FI, Impl, Getter) -->
     [globl(FI), type(FI, function), set(FI, Impl), globl(Getter)].
 linkage_alias(local, _, _, _) --> [].
+% A weak function has a weak getter and no FI alias, as clang's: callers
+% elsewhere go through their thunks to whichever definition the linker
+% keeps.
+linkage_alias(weak, _, _, Getter) --> [weak(Getter)].
 
 % The .globl of S if its linkage is export.
 linkage_globl(export, S) --> [globl(S)].
 linkage_globl(local, _) --> [].
+linkage_globl(weak, S) --> [weak(S)].
 
 %% Data objects, as clang lays out globals (docs/abi-findings.md):
 %% DO_d = {upper, aux} then the payload rounded up to 8 bytes, a 16-byte
@@ -2640,6 +2671,7 @@ relocations_call([R|Rs], DO, Relocs) -->
 linkage_flags(ro(Linkage), Linkage, [readonly]).
 linkage_flags(export, export, []).
 linkage_flags(local, local, []).
+linkage_flags(weak, weak, []).
 
 % payload_item(+Item, -Line, +Off0-Rs0, -Off-Rs): Line is the payload
 % directive of Item at offset Off0, and Rs adds to Rs0 a relocation

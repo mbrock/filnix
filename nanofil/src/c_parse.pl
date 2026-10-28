@@ -15,6 +15,7 @@
     | `decl(Loc, Specs, Inits)` | a declaration; Inits is a list of `init(Dcl, Init)`, Init `none`, an expression or `list(Entries)` |
     | `fundef(Loc, Specs, Dcl, Body)` | a function definition |
     | `static_assert(Loc, Expr, Message)` | Message the string's bytes, or `[]` without one |
+    | `pragma_weak(Loc, Name, Target)` | `#pragma weak Name`, Target `none`, or `#pragma weak Name = Target` |
 
     Entries are `entry(Designators, Init)` terms, each designator
     `field(Name)` or `index(Expr)`.
@@ -195,6 +196,8 @@ external_decl(Env, Env, [Item|Items], Items) -->
     loc(Loc),
     kw(static_assert), !,
     static_assert_rest(Env, Loc, Item).
+external_decl(Env, Env, [pragma_weak(Loc, Name, Target)|Items], Items) -->
+    [tok(pragma_weak(Name, Target), Loc)], !.
 external_decl(_, _, _, _) -->
     kw(asm), !,
     parse_error('top-level asm is not supported').

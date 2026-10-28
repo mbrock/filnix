@@ -320,13 +320,22 @@ small_copy(Module, F, Res, [arg(p,D),arg(p,S),arg(l,const(N))],
     ( Res == void -> true ; Res = result(_,p) ),
     \+ func_named(Module,F,_), \+ data_named(Module,F).
 
+% A weak definition may be replaced by another object's, so the module's
+% own calls and addresses of it go through its PLT getter, as an
+% external symbol's do; a weak declaration's getter may be null.
 direct_target(Module,F,_,implementation(F,Sig)) :-
-    func_named(Module,F,Func), \+ variadic_named(Module,F), !,
+    func_named(Module,F,Func), \+ variadic_named(Module,F),
+    \+ weak_defined(Module,F), !,
     Func = func(_,_,Ret,Ps,_), param_kinds(Ps,Ks), signature(Ret,Ks,Sig).
 direct_target(_,F,Sig,entry(F,Sig)).
 getter_target(Symbols, S, Target) :-
-    ( ( func_named(Symbols,S,_) ; data_named(Symbols,S) )
-    -> Target = local_getter(S) ; Target = external_getter(S) ).
+    (   ( func_named(Symbols,S,_) ; data_named(Symbols,S) ),
+        \+ weak_defined(Symbols,S)
+    ->  Target = local_getter(S)
+    ;   weak_declared(Symbols,S)
+    ->  Target = weak_getter(S)
+    ;   Target = external_getter(S)
+    ).
 
 % Adapter plans are consumed by public generic entries and weak thunks.
 % The void generic result is one zero word, despite having no fast value.
@@ -359,12 +368,16 @@ lower_thunks(Module, Thunks) :-
              direct_target(Symbols,F,unused,Target), Target = entry(F,unused),
              result_ret(Res,Ret),findall(K,member(arg(K,_),Args),Ks),
              signature(Ret,Ks,Sig0), call_symbol_signature(Res,Args,Sig0,Sig)), Ts0),
-    sort(Ts0,Ts1), one_per_symbol(Ts1,Ts), maplist(lower_thunk,Ts,Thunks).
+    sort(Ts0,Ts1), one_per_symbol(Ts1,Ts),
+    maplist(lower_thunk(Symbols),Ts,Thunks).
 one_per_symbol([], []).
 one_per_symbol([T|Ts0], [T|Ts]) :-
     T = t(F,Sig,_,_), exclude(same_symbol(F,Sig),Ts0,Ts1), one_per_symbol(Ts1,Ts).
 same_symbol(F,Sig,t(F,Sig,_,_)).
-lower_thunk(t(F,Sig,Ret,Ks), thunk(F,Sig,Words,Cells,ArgsSize,Result,Need)) :-
+% Ref is weak if the callee is declared weak: its getter may be null.
+lower_thunk(Symbols, t(F,Sig,Ret,Ks),
+            thunk(F,Ref,Sig,Words,Cells,ArgsSize,Result,Need)) :-
+    ( weak_declared(Symbols,F) -> Ref = weak ; Ref = strong ),
     findall(param(K,tmp(I)),nth0(I,Ks,K),Ps), fast_params(Ps,Words),
     thunk_cells(Ks,0,0,Cells),
     length(Ks,N), ArgsSize is 8*N,

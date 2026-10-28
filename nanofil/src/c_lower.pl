@@ -88,13 +88,132 @@
 %  module(Funcs) with the functions followed by the data of every
 %  global and string literal. Throws a semantic error for C that
 %  nanofil cannot lower.
-c_module(Items, module(Funcs)) :-
+c_module(Items0, module(Funcs)) :-
     empty_env(Env0),
+    weak_aliases(Items0, Items, Aliases),
     findall(Name, external_inline_declaration(Items, Name), Names0),
     sort(Names0, ExternalNames),
-    foldl(top_item(ExternalNames), Items, Funcss, Env0, Env),
-    append(Funcss, Funcs0),
-    with_used_inlines(Funcs0, Env, Funcs).
+    foldl(top_item(ExternalNames), Items, Funcss, Env0, Env1),
+    foldl(weak_alias_def(ExternalNames), Aliases, AliasFuncss, Env1, Env),
+    append(Funcss, Funcs0a), append(AliasFuncss, Funcs0b), append(Funcs0a, Funcs0b, Funcs0),
+    with_used_inlines(Funcs0, Env, Funcs1),
+    weak_symbols(Items0, Env, Weak),
+    weak_linkage(Weak, Funcs1, Funcs).
+
+/* Weak symbols (GCC's weak attribute and #pragma weak; C11 J.5.11 lists
+   such extensions as common, not standard). A name declared weak in any
+   declaration of the translation unit, before or after its definition,
+   is a weak symbol: its definition has linkage weak (ir.pl), which a
+   strong definition elsewhere replaces, and if the unit only declares
+   it, its uses refer to it through data of linkage extern(weak), so
+   that it is null when no object of the program defines it, as clang's
+   are (docs/abi-findings.md, *Weak symbols*). A weak alias,
+   `__attribute__((weak, alias("t")))` or `#pragma weak n = t`, is a weak
+   definition of its own name that calls t. Weak static and thread-local
+   names are refused. */
+weak_attr(Specs) :-
+    member(attr([group(Tokens)]), Specs),
+    member(id(W), Tokens), memberchk(W, [weak, '__weak__']), !.
+
+% weak_aliases(+Items0, -Items, -Aliases): Items is Items0 with each weak
+% alias declaration an ordinary declaration of its name, and Aliases its
+% alias(Loc, Specs, Dcl, Target) terms, defined after the last item.
+weak_aliases(Items0, Items, Aliases) :- weak_aliases(Items0, Items0, Items, Aliases).
+weak_aliases(_, [], [], []).
+weak_aliases(All, [decl(Loc, Specs, Inits)|Is0], [decl(Loc, Specs1, Inits)|Is],
+             [alias(Loc, Specs1, Inits, Target)|As]) :-
+    weak_attr(Specs), alias_target(Specs, Target), !,
+    exclude(alias_attr, Specs, Specs1),
+    weak_aliases(All, Is0, Is, As).
+weak_aliases(All, [pragma_weak(Loc, Name, Target)|Is0], Is, [Alias|As]) :-
+    Target \== none, !,
+    (   member(decl(_, Specs0, Inits), All),
+        Inits = [init(dcl(some(Name), _, _), none)]
+    ->  exclude(alias_attr, Specs0, Specs),
+        Alias = alias(Loc, Specs, Inits, Target)
+    ;   sema_error(Loc, '#pragma weak ~w = ~w needs a declaration of ~w', [Name, Target, Name])
+    ),
+    weak_aliases(All, Is0, Is, As).
+weak_aliases(All, [I|Is0], [I|Is], As) :- weak_aliases(All, Is0, Is, As).
+alias_attr(attr([group(Tokens)])) :-
+    member(id(Word), Tokens), memberchk(Word, [alias, '__alias__']), !.
+
+% weak_alias_def(+ExternalNames, +Alias, -Funcs, +Env0, -Env): Funcs
+% define the alias's own symbol, calling its target with its arguments.
+weak_alias_def(ExternalNames, alias(Loc, Specs, Inits, Target), Funcs, Env0, Env) :-
+    (   Inits = [init(dcl(some(Name), DclType, none), none)],
+        DclType = func(RetSyntax, params(Ps, fixed))
+    ->  true
+    ;   sema_error(Loc, 'alias is supported only for one prototyped, non-variadic function', [])
+    ),
+    decl_types(Specs, Inits, [d(_, Type, _, _, _)], Env0, _),
+    (   Type = func(Ret, _, fixed) -> true
+    ;   sema_error(Loc, 'alias is supported only for functions, not ~w', [Name])
+    ),
+    findall(param(PSpecs, dcl(some(A), S, PAsm)) - id(A),
+            ( nth0(I, Ps, param(PSpecs, dcl(_, S, PAsm))),
+              format(atom(A), '__nanofil_alias_arg~w', [I]) ),
+            Named),
+    pairs_keys_values(Named, NamedPs, Args),
+    atom_concat('__nanofil_alias_', Name, Self),
+    Call = call(id(Target), Args),
+    (   Ret == void -> Stmt = expr(Call) ; Stmt = return(Call) ),
+    exclude(alias_spec, Specs, DefSpecs),
+    top_item(ExternalNames,
+             fundef(Loc, DefSpecs,
+                    dcl(some(Self), func(RetSyntax, params(NamedPs, fixed)), asm(Name)),
+                    at(Loc, block([at(Loc, Stmt)]))),
+             Funcs, Env0, Env).
+
+% weak_symbols(+Items, +Env, -Weak): Weak is the ordset of the symbols
+% of the names Items declare weak, each Sym-Kind, Kind fn or data.
+weak_symbols(Items, Env, Weak) :-
+    findall(Loc-Name, weak_name(Items, Loc, Name), LNs),
+    foldl(weak_symbol(Env), LNs, Weak0, []),
+    sort(Weak0, Weak).
+weak_name(Items, Loc, Name) :-
+    member(Item, Items),
+    (   Item = pragma_weak(Loc, Name, _)
+    ;   Item = decl(Loc, Specs, Inits), weak_attr(Specs),
+        member(init(dcl(some(Name), _, _), _), Inits)
+    ;   Item = fundef(Loc, Specs, dcl(some(Name), _, _), _), weak_attr(Specs)
+    ).
+weak_symbol(Env, Loc-Name) -->
+    (   { lookup_ordinary(Env, Name, fn(_, Sym, Linkage)) }
+    ->  { weak_public(Loc, Name, Linkage) }, [Sym-fn]
+    ;   { lookup_ordinary(Env, Name, gvar(_, Sym, Storage, _)) }
+    ->  {   Storage = thread_local(_)
+        ->  sema_error(Loc, 'weak thread-local variable ~w is not supported', [Name])
+        ;   Storage == static -> weak_public(Loc, Name, local)
+        ;   true
+        },
+        [Sym-data]
+    ;   []                  % #pragma weak of an undeclared name: unused
+    ).
+weak_public(Loc, Name, local) :- !,
+    sema_error(Loc, 'weak declaration of ~w must have external linkage', [Name]).
+weak_public(_, _, _).
+
+% weak_linkage(+Weak, +Items0, -Items): Items is Items0 with the weak
+% symbols' definitions weak, and an extern(weak) declaration of each
+% one Items0 refers to without defining it.
+weak_linkage([], Items, Items) :- !.
+weak_linkage(Weak, Items0, Items) :-
+    maplist(weak_item(Weak), Items0, Items1),
+    findall(data(Sym, extern(weak), 1, []),
+            ( member(Sym-_, Weak),
+              \+ memberchk(func(Sym, _, _, _, _), Items0),
+              \+ memberchk(data(Sym, _, _, _), Items0),
+              once(item_ref(Items0, Sym)) ),
+            Decls),
+    append(Items1, Decls, Items).
+weak_item(Weak, func(S, export, R, Ps, Bs), func(S, weak, R, Ps, Bs)) :-
+    memberchk(S-_, Weak), !.
+weak_item(Weak, data(S, export, A, Is), data(S, weak, A, Is)) :-
+    memberchk(S-_, Weak), !.
+weak_item(Weak, data(S, ro(export), A, Is), data(S, ro(weak), A, Is)) :-
+    memberchk(S-_, Weak), !.
+weak_item(_, Item, Item).
 
 % C99 6.7.4: an inline body is an external definition unless ALL
 % file-scope declarations are inline without extern. Inspect the whole
@@ -207,6 +326,7 @@ next_id(Id, e(Ords, Tags, Defs, Id), e(Ords, Tags, Defs, Next)) :-
 
 % top_item(+ExternalNames, +Item, -Funcs, +Env0, -Env): Funcs are the IR
 % functions a top-level item defines now (a static inline is deferred).
+top_item(_, pragma_weak(_, _, _), [], Env, Env) :- !.
 top_item(_, static_assert(Loc, Expr, _), [], Env, Env) :- !,
     static_assert(Loc, Expr, Env).
 top_item(_, decl(_, Specs, [init(Dcl, none)]), [], Env, Env) :-
