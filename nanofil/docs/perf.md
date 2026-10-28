@@ -722,6 +722,212 @@ middle end's run-by-run refinement (`-O` difftest) and the gates. It
 changes panic origins and stack traces (the inlined access reports the
 caller's frame), an observation change to state and review with it.
 
+#### 4. Contract (proposed, reviewed, not implemented)
+
+**What inlining buys, measured.** filcc's own `-O2` against
+`-O2 -fno-inline`, user instructions: lz4 `-9` 2.84G / 5.19G, lz4 `-1`
+0.15G / 0.37G, Lua int 1.18G / 1.91G, tab 0.96G / 1.45G, str 3.51G /
+3.99G, bzip2 `-9` 4.67G / 4.76G, zlib `-6` 1.96G / 1.96G. Checks are
+not where it pays. On bzip2 `-9`, filcc without inlining runs 299M
+checks, against 230M with it and nanofil's 539M. Its per-function
+counts line up with nanofil's:
+
+| bzip2 `-9` function | filcc `-fno-inline` | nanofil `-O` |
+| --- | ---: | ---: |
+| `copy_input_until_stop` | 35M | 129M |
+| `mainGtU` | 84M | 85M |
+| `mainQSort3` | 45M | 77M |
+| `mainSort` | 42M | 64M |
+| `sendMTFValues` | 36M | 62M |
+| `generateMTFValues` | 29M | 46M |
+
+So item 6c's hypothesis was mostly wrong: the check gap is inside
+functions, chiefly reloaded fields such as `s->strm->avail_in` (load
+reuse across pointer loads). Inlining's gain is call overhead.
+
+A prototype (`/tmp`, not committed) inlined static, non-variadic,
+non-setjmp leaf callees of at most 120 pre-promotion instructions into
+callers of at most 2000, two rounds, hoisting direct-only allocations
+as below. Gate, 5 trials, ratio to filcc, time (instructions), `-O`
+against the prototype: lz4 `-9` 4.10 (4.71) / 3.20 (3.83), lz4 `-1`
+2.42 (13.17) / 2.11 (9.67), lz4 `-d` 3.20 (8.40) / 2.92 (6.74), Lua str
+1.59 (1.71) / 1.56 (1.66), SQLite 2.08 (2.07) / 2.21 (2.11), the rest
+within 0.04; geomean 2.45 (3.63) / 2.36 (3.39). lz4 `-9`'s checks went
+from 157M to 189M (filcc 111M) while its instructions fell from 13.2G
+to 10.0G. Without the caller cap, SQLite was 2.62: `sqlite3VdbeExec`'s
+frame grew from 0x1510 to 0x1c10 bytes and its hot loop spread over
+more slots. Lua int and tab do not change, because their hot helpers
+(`luaH_getint`, ...) are extern. sqlite3.c at `-O`: 1:44 and 2.27 GB
+without, 1:57 and 2.30 GB with.
+
+**Where.** A middle-end pass `inline`, first in `o1`, on unchecked IR
+before promotion. Everything after it, pizlonation, checked-IR
+validation, check reuse, emission and the register checkers, sees
+ordinary code; no checked-IR contract changes. `--inline=none|small`
+and `NANOFIL_INLINE` select it; `none` is the reference path, and
+without `-O` it is off. nanofil-cc maps `-fno-inline` and `-O0` to
+`none`. The snapshot pins the mode.
+
+**Callee eligibility.**
+
+- Defined in the module with `local` linkage. Extern callees are
+  excluded: a shared library's exported definition can be interposed
+  at load time. This loses Lua's `luaH_*`; a later round can admit
+  extern callees in executables (`-fno-semantic-interposition`, as clang
+  does by default for non-PIC code).
+- No `va_args` instruction: its argument snapshot belongs to its own
+  entry. This also excludes generic-only fixed callees (byval or
+  float-pair structs, x87 returns, more than 16 words), which use the
+  same snapshot (*review*).
+- At least one reachable `ret`, and strict SSA (`strict_ssa/3`): a join
+  phi with no predecessors is invalid, and a non-strict callee would
+  cost the whole caller its promotion (*review*).
+- `noinline` is not kept by the frontend (`func/5` has no attribute
+  field), so it is ignored, unlike filcc; honouring it is an IR change
+  for the orchestrator to agree first (*review*).
+- No `setjmp` or other returns-twice call (`setjmp_func/1`). A call to
+  `longjmp` is an ordinary call and is fine.
+- No tuple return (`rets`), no dynamic-size `alloc` (VLA, `alloca`), no
+  allocation over 256 bytes.
+- No recursion: callees are taken bottom-up from the module call graph
+  restricted to defined functions; a function in a cycle, a self-call
+  included, is never inlined. At most two rounds (depth 2).
+- Size: at most 120 unchecked instructions (jumps counted). Indirect
+  calls never inline: the callee is unknown.
+
+**Caller eligibility.** Not a setjmp function: it keeps reference
+selection, and inlined temporaries would be live across returns-twice.
+Not in a call-graph cycle: inlining into a recursive caller grows every
+recursive frame, so stack overflow would come at a smaller depth
+(*review*). At most 2000 instructions before inlining, and at most 1.5×
+its own size after. A variadic caller is fine.
+
+**Transformation.** Split the calling block at the call. Copy the
+arguments into renamed parameters, rename every temporary and label of
+the callee with a fresh prefix, place its blocks right after the
+calling block, turn each `ret(V)` into a jump to a join block whose phi
+takes V, and move the original jump to the join block, renaming the
+calling block to the join block in its successors' phis. Labels and
+temporaries are fresh against both functions' names (as
+`pizlonate:fresh_name`), not a fixed prefix, which can collide in IR
+text (*review*). Source contexts follow: the callee's origin IDs, temps
+and labels are renamed into the caller's records, `inst(L, I)` sites are
+re-indexed after the split, and `site(jump(L))` moves to the join block;
+the prototype dropped them, which opt.pl does not allow. Block order
+keeps every callee loop's back edge an edge to an earlier block, so
+pizlonation still polls every cycle; edges into and out of the inlined
+body are forward and not polled, as a call is not.
+
+**Allocations** (revised after review). The prototype hoisted a
+callee's entry allocations to the caller's entry and reset them with
+stores at the original point. Review showed that this is unsound and
+counterproductive, reproduced under the interpreter:
+
+- An integer store keeps the word's capability (abi-findings.md), and
+  any 8-aligned word of a 16-aligned object can hold a pointer, padding
+  included. `int b; *(char **)&b = p;` read back on a second call trapped
+  `null_capability` without `-O` and returned 0 with the prototype.
+- Its direct-only test ignored phis and jumps, so it hoisted an escaping
+  `return &x`: two calls returned the same object (`ret 1`, not 0).
+- The 8-byte null stores gave slots two widths, which promotion rejects,
+  so `long` and `double` locals stopped promoting. That probably explains
+  lz4 `-9`'s checks rising from 157M to 189M (not verified).
+
+The contract therefore does not hoist. Instead promotion learns to take
+a constant-size allocation in any block, not only the entry, whose
+escape class (`escape:alloc_classes/2`, which sees phi, jump and call
+uses) is `local` and whose slots pass `slots_ok`: the alloc instruction
+counts as a store of 0 to every slot, and its block joins the
+definition blocks for phi placement. Under strict SSA every access goes
+through the latest execution's address, so this is exact on its own,
+and `passes([inline])` without promote stays correct (each allocation
+stays a fresh heap object per execution). A callee is inlined only if
+each of its entry allocations either promotes that way or escapes; an
+escaping one is a heap object inlined or not, while a non-escaping one
+that could not promote would turn a local object into a per-call heap
+allocation. Allocations keep their order relative to the caller's own,
+so the 4096-byte local-storage budget is not taken first by inlined
+objects. Promotion is shared code, so this part is its own commit with
+its own refinement tests, before inlining.
+
+**Function identity.** The callee's function object, getter, generic
+entry and alias are still emitted unchanged, so its address,
+comparisons of function pointers and indirect calls are unaffected.
+Dropping static functions left unreferenced is out of scope.
+
+**Observation changes**, the review point:
+
+1. *Check failures in inlined code.* Today nanofil reports the
+   function containing the access: "semantic origin: get; check
+   scheduled at: get / outer / main". filcc `-O2` without `-g` reports
+   only the function the code ended up in ("semantic origin: main;
+   check scheduled at: main"); with `-g` it lists "get (inlined) /
+   outer (inlined) / main" from `filc_inline_frame` nodes
+   (`num_lowers_ish == UINT_MAX`, filc_runtime.h:459-563), measured
+   with a small test. Proposal (A): report as filcc `-O2` without `-g`
+   does, the caller's frame only. (B), follow-up: emit inline-frame
+   check origins from provenance, so nanofil reports what filcc `-g`
+   does, without file and line. Review confirmed the layout and found
+   what (B) costs: chains per inline path ending at both the `c` and
+   `n` function origins (the pass keys them by `CanCatch`); check
+   origins and fail blocks per (path, kind); per-path origin stores
+   before calls and polls, getter origins and `unreachable` origins;
+   and an inline path per instruction surviving every later pass.
+   The collector reads `num_lowers` through the chain, so a malformed
+   one is a GC crash, not a wrong message. Driving it from provenance
+   would let metadata decide panic text, so it needs an IR path marker,
+   a grammar change. (A) is described as "as filcc does for the calls
+   it inlines", which is where both compilers agree.
+2. *Traces through calls from inlined code* lose the inlined frame, as
+   with filcc without `-g`: panics in a callee or in the runtime
+   (getters, allocation), and `zstack_scan`, which returns the frames to
+   user code (*review*).
+3. *Frames*: recursive functions are neither inlined nor inlined into,
+   so recursion depth before stack overflow is unchanged.
+4. *No trap moves or changes kind.* Every access keeps its check
+   (pizlonation runs after), and every block order keeps a poll on
+   every cycle, since pizlonation polls by block index. Each allocation
+   stays fresh at each execution.
+
+**Validation.**
+
+- Unit tests for each exclusion: extern, variadic, setjmp in callee and
+  caller, tuple return, VLA, recursion (self and mutual), size caps,
+  indirect calls.
+- `-O` difftest refinement on everything it already runs, plus a
+  fixture for each hazard:
+  - a callee called in a loop that reads its local before writing it;
+  - an object with alignment under 8 holding a pointer, read back on a
+    later call, and an access in heap padding (the review's
+    reproduction);
+  - a returned local, also through a phi (`c ? &x : &y`), `if (&x)` and
+    `ptoi`; called in a loop, comparing the two pointers in the program
+    (`refines/2` keys pointers by offset);
+  - `long`, `double` and struct-field locals still promoting after
+    inlining (count allocations and local objects);
+  - a generic-only (byval) callee, a callee with no `ret`, label and
+    temporary collisions in IR text;
+  - a phi successor of the calling block; void and valued returns; a
+    callee with a loop;
+  - both sides of the 120, 2000 and 1.5× caps; a recursive caller;
+    `passes([inline])` alone;
+  - an inlined out-of-bounds access, its function lines compared with
+    filcc `-O2`'s in a panic-text harness (progtest reduces every
+    panic to "trap").
+- Native: progtests and run-c under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`.
+- Plants: no phi rename, admitting an escaping allocation to
+  non-entry promotion, promoting without the alloc's zero, admitting
+  recursion or setjmp callers, no 1.5× cap, fixed-prefix names. Each
+  must be caught.
+- **Review.** Oracle reviewed this contract and the prototype: block
+  placement, polls, function identity, GC roots and frame sizes, and
+  (A) as the origin policy hold. Its two blockers, the store reset and
+  the escape test, replaced the allocation design above; its other
+  findings are marked *review*.
+- Snapshot limited to `-O` outputs, the gate (no workload slower beyond
+  its trial range, SQLite included), the ten checks, and sqlite3.c's
+  `-O` compile within 25% of its time and memory.
+
 ### 5. Pointer frame traffic — needs review
 
 The original idea: keep `p` addresses, and then lowers, in registers
