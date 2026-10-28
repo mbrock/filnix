@@ -28,7 +28,7 @@ os.makedirs(a.work, exist_ok=True)
 B, M, L = a.bench, a.marked, os.path.dirname(HERE)
 R = a.ref if os.path.isdir(a.ref) else B
 TEXT, RANDOM = f"{B}/inputs/text", f"{B}/inputs/random"
-EXE = {"zlib": "minigzip", "bzip2": "bzip2", "lz4": "lz4", "lua": "lua"}
+EXE = {"zlib": "minigzip", "bzip2": "bzip2", "lz4": "lz4", "lua": "lua", "sqlite": "sqlite3"}
 
 
 def ref_output(prog, args, src, name):
@@ -49,6 +49,7 @@ W = {
     "lua int": ("lua", [f"{L}/int.lua"], None),
     "lua tab": ("lua", [f"{L}/tab.lua"], None),
     "lua str": ("lua", [f"{L}/str.lua"], None),
+    "sqlite": ("sqlite", [], f"{L}/sqlite.sql"),
 }
 W = {k: v for k, v in W.items() if a.only in k}
 key = lambda w: re.sub(r"\W+", "-", w)
@@ -72,10 +73,11 @@ with ThreadPoolExecutor(max_workers=os.cpu_count() // 2) as ex:
     files = {k: f.result() for k, f in runs.items()}
 
 INS = re.compile(r"^\t([a-z][a-z0-9]*)\s*(.*)$")
-REGION = re.compile(r"^\.Lpf\.R\.([A-Za-z0-9_]+)\.\d+:$")
-SLOT = re.compile(r"^\.Lpf\.S\.([A-Za-z0-9_]+)\.\d+:$")
+REGION = re.compile(r"^\s*\.Lpf\.R\.([A-Za-z0-9_]+)\.\d+:$")
+SLOT = re.compile(r"^\s*\.Lpf\.S\.([A-Za-z0-9_]+)\.\d+:$")
 FUNC = re.compile(r"^([A-Za-z_][A-Za-z0-9_.$]*):$")
 RBP = re.compile(r"-?\d*\(%rbp\)")
+REGREG = re.compile(r"^%[a-z0-9]+, %[a-z0-9]+$")
 POINTER_REGIONS = ("flight", "chk_ptr", "reused", "phi_p", "acc_raw_load_pointer_p", "acc_raw_store_pointer")
 CALL_TEMPS = ("abi_receive", "abi_result", "abi_invoke", "abi_return_value", "abi_dispatch")
 
@@ -101,6 +103,10 @@ def classify(region, slot, op, args, fn):
         return "lowers", region.split("_")[0]
     if slot in ("thread", "aux"):
         return "calls", f"{slot} {region}"
+    if not rbp and op in ("movl", "movq", "movw", "movb") and REGREG.match(args) and region not in ("chk", "lchk"):
+        # A move between registers: what a home in a register still
+        # costs (copies into and out of the operation's registers).
+        return "copies", "phi" if region.startswith("phi") else region.split("_")[0]
     if rbp:
         pointer = region in POINTER_REGIONS or region.startswith("let_p_")
         kind = "phi" if region.startswith("phi_") else "let" if region.startswith("let_") else region
@@ -141,15 +147,19 @@ def cg_lines(path):
     """{(file base name, line): Ir} and {function: Ir} of a cachegrind file."""
     lines, fns = collections.Counter(), collections.Counter()
     fl = fn = None
+    hi = 0
     for line in open(path):
         if line.startswith("fl="):
             fl = os.path.basename(line[3:].strip())
+            # loc.awk: line N of X is line N mod 2^20 of "X+K", K = N >> 20.
+            fl, _, k = fl.partition("+")
+            hi = int(k or 0) << 20
         elif line.startswith("fn="):
             fn = line[3:].strip()
         else:
             f = line.split()
             if len(f) == 2 and f[0].isdigit() and f[1].isdigit():
-                lines[(fl, int(f[0]))] += int(f[1])
+                lines[(fl, hi + int(f[0]))] += int(f[1])
                 fns[fn] += int(f[1])
     return lines, fns
 
@@ -159,7 +169,7 @@ def name(fn):
     return m.group(1) if m else fn
 
 
-CATS = ["scalar temps", "pointer temps", "checks", "lowers", "calls", "polls", "selection", "ops", "runtime"]
+CATS = ["scalar temps", "copies", "pointer temps", "checks", "lowers", "calls", "polls", "selection", "ops", "runtime"]
 rows, details = [], []
 smaps = {}
 for w, (prog, _, _) in W.items():

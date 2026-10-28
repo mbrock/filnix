@@ -1,8 +1,10 @@
 # The benchmark's programs built by a marked nanofil for instruction
 # attribution (docs/perf.md): marks.patch puts a local label before each
-# IR instruction, ABI action, jump part and frame-slot access, which
-# changes no code. Objects are assembled with `as -g`, so each
-# instruction's DWARF line is its line in the marked .s, kept in s/.
+# IR instruction, ABI action, jump part and frame-slot access. The
+# post-emission passes run without the marks and remark.py puts them
+# back, so the code is the unmarked compiler's. Objects carry each
+# instruction's line in the marked .s, kept in s/, as DWARF line info
+# (loc.awk).
 #
 #   nix build --impure -f nanofil/bench/profile -o nanofil/bench/profile/out
 #   nix build --impure -f nanofil/bench/profile --argstr opt "-O --registers=local" ...
@@ -31,7 +33,8 @@ let
         patchShebangs $out/nanofil/bin
         $out/nanofil/bin/nanofil --save-state $out/nanofil.state
       '';
-  # nanofil-cc (nix/nanofil-cc.nix), but marked, with as -g, keeping .s.
+  # nanofil-cc (nix/nanofil-cc.nix), but marked (remark.py), with line
+  # info (loc.awk), keeping .s.
   cc = pkgs.writeShellScript "nanofil-cc-marked" ''
     set -eu
     PATH=${pkgs.swi-prolog}/bin:${pkgs.binutils-unwrapped}/bin:$PATH
@@ -53,8 +56,13 @@ let
     ${filcc}/bin/clang "''${args[@]}" -E -o "$out.i"
     input=$(realpath "$out.i")
     (cd ${marked}/nanofil/src && ../bin/nanofil ''${NANOFIL_OPT:-} cc "$input" \
-      </dev/null) >"$out.s"
-    as -g -o "$out" "$out.s"
+      </dev/null) >"$out.pre.s"
+    ${pkgs.python3}/bin/python3 ${./remark.py} "$out.pre.s" "$out.s"
+    rm "$out.pre.s"
+    # as -g would number lines past valgrind's 20 bits (loc.awk).
+    ${pkgs.gawk}/bin/awk -v base="$(basename "$out.s")" -f ${./loc.awk} "$out.s" >"$out.loc.s"
+    as -o "$out" "$out.loc.s"
+    rm "$out.loc.s"
     rm "$out.i"
   '';
 in

@@ -125,11 +125,19 @@ instruction. [`bench/profile/marks.patch`](../bench/profile/marks.patch)
 makes a copy of the emitter put a local label before each IR
 instruction, each ABI action, each part of a jump (branch test, phi
 copies, poll, jump) and each frame-slot access (naming the slot's kind:
-temporary, lower, phi shadow, thread, aux). Local labels change no code:
-the marked and unmarked objects' `.text` are identical.
-[`bench/profile`](../bench/profile/default.nix) builds the four programs
-with it at `-O` and assembles them with `as -g`, so each instruction's
-DWARF line is its line in the marked `.s`:
+temporary, lower, phi shadow, thread, aux). The post-emission passes
+(register homes, operands, cells) would see a mark as a block boundary,
+so they run on the stream without marks, and the emitter writes the
+marked stream they ran on after each function as comments.
+[`remark.py`](../bench/profile/remark.py) aligns the two block by block
+(labels survive the passes) and puts each mark back before the line its
+pre-pass line became. The marked and unmarked binaries' `.text` are
+identical (checked for all five programs at `04c7e7c`).
+[`bench/profile`](../bench/profile/default.nix) builds the programs
+with it at `-O` and gives each instruction its line in the marked `.s` as
+DWARF line info. [`loc.awk`](../bench/profile/loc.awk) writes it, in
+files of 2^20 lines, because valgrind keeps 20 bits of a line number
+and `sqlite3.c`'s `.s` has 3.7M lines:
 
 ```sh
 nix build --impure -f nanofil/bench -o nanofil/bench/out      # inputs and filcc builds
@@ -153,6 +161,7 @@ macro-fused `test`/`jz` pairs count as one op there.
 | --- | --- |
 | scalar temps | `rbp` loads and stores of `w`/`l`/`s`/`d` temporaries and phi shadows: operand loads, result stores, phi copies |
 | pointer temps | the same for `p` addresses, and temporaries moved at call sites |
+| copies | moves between general registers outside checks and ABI sequences: what a home in a register still costs (since register allocation; not in the first profile) |
 | checks | the access check sequence (`test`, `cmp`, upper load, `sub`, `jb`/`ja`, flags and alignment) |
 | lowers | loads and stores of `lowers[]` entries: flight pointers, phis, call arguments |
 | calls/frames | prologue, epilogue, frame push/pop, roots zeroing, origins, call sequences, getters, thunks |
@@ -183,7 +192,94 @@ Per-function cachegrind counts on the filcc builds show the same
 functions 4–7× smaller (`longest_match` 6.77G vs 0.97G,
 `BZ2_decompress` 5.54G vs 1.10G, `luaV_execute` 7.05G vs 1.17G).
 
-### Findings
+### Where we are now (04c7e7c)
+
+At [`04c7e7c`](https://github.com/mbrock/filnix/commit/04c7e7cb1d09)
+(`-O` is `--registers=temps`, `--inline=small`, phi shadows shared), the
+same method, all eleven workloads, billions of instructions (share of
+nanofil's total):
+
+| Workload | filcc | nanofil -O | scalar temps | copies | pointer temps | checks | lowers | calls/frames | polls | selection | ops | runtime |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| zlib -6 | 1.97 | 8.02 | 0.17 (2%) | 0.85 (11%) | 1.07 (13%) | 2.42 (30%) | 1.08 (13%) | 0.14 (2%) | 0.11 (1%) | 0.95 (12%) | 1.22 (15%) | 0.02 (0%) |
+| zlib -d | 0.20 | 0.62 | 0.02 (3%) | 0.07 (12%) | 0.09 (15%) | 0.15 (25%) | 0.09 (15%) | 0.06 (9%) | 0.01 (1%) | 0.03 (5%) | 0.08 (12%) | 0.02 (3%) |
+| bzip2 -9 | 4.67 | 11.81 | 0.08 (1%) | 0.88 (7%) | 1.29 (11%) | 4.66 (39%) | 1.28 (11%) | 0.45 (4%) | 0.17 (1%) | 0.64 (5%) | 2.29 (19%) | 0.05 (0%) |
+| bzip2 -d | 1.43 | 4.44 | 0.77 (17%) | 0.37 (8%) | 0.53 (12%) | 1.21 (27%) | 0.53 (12%) | 0.06 (1%) | 0.06 (1%) | 0.28 (6%) | 0.63 (14%) | 0.02 (0%) |
+| lz4 -1 rnd | 0.03 | 0.32 | 0.00 (0%) | 0.02 (7%) | 0.01 (3%) | 0.03 (8%) | 0.01 (4%) | 0.14 (43%) | 0.00 (0%) | 0.01 (4%) | 0.01 (4%) | 0.08 (26%) |
+| lz4 -9 | 2.84 | 9.71 | 0.76 (8%) | 1.27 (13%) | 0.78 (8%) | 1.83 (19%) | 0.78 (8%) | 1.48 (15%) | 0.09 (1%) | 1.32 (14%) | 1.20 (12%) | 0.21 (2%) |
+| lz4 -d | 0.07 | 0.54 | 0.00 (1%) | 0.03 (6%) | 0.03 (5%) | 0.07 (13%) | 0.04 (7%) | 0.20 (36%) | 0.00 (0%) | 0.03 (5%) | 0.05 (9%) | 0.10 (18%) |
+| lua int | 1.18 | 2.88 | 0.00 (0%) | 0.26 (9%) | 0.40 (14%) | 0.60 (21%) | 0.40 (14%) | 0.08 (3%) | 0.05 (2%) | 0.44 (15%) | 0.53 (18%) | 0.11 (4%) |
+| lua tab | 0.96 | 2.18 | 0.00 (0%) | 0.19 (9%) | 0.32 (15%) | 0.53 (25%) | 0.33 (15%) | 0.00 (0%) | 0.04 (2%) | 0.32 (15%) | 0.42 (19%) | 0.02 (1%) |
+| lua str | 2.60 | 4.78 | 0.02 (0%) | 0.18 (4%) | 0.40 (8%) | 0.85 (18%) | 0.41 (9%) | 0.75 (16%) | 0.03 (1%) | 0.31 (7%) | 0.63 (13%) | 1.21 (25%) |
+| sqlite | 10.98 | 21.83 | 0.25 (1%) | 0.88 (4%) | 2.31 (11%) | 5.40 (25%) | 2.32 (11%) | 2.65 (12%) | 0.14 (1%) | 1.25 (6%) | 2.76 (13%) | 3.86 (18%) |
+
+The campaign so far, `-O` against filcc `-O2`: nanofil's instructions
+at `3576b51` and now, and the gate's time ratio (instruction ratio) at
+[`ab05a5b`](https://github.com/mbrock/filnix/commit/ab05a5b682bb) and at
+`04c7e7c` (item 9's gate):
+
+| Workload | instructions then | now | time ratio then | now |
+| --- | --: | --: | --: | --: |
+| zlib -6 | 11.73G | 8.02G | 4.59 (5.97) | 2.48 (4.08) |
+| zlib -d | 0.90G | 0.62G | 3.36 (4.62) | 1.91 (3.20) |
+| bzip2 -9 | 18.56G | 11.81G | 3.59 (3.97) | 1.99 (2.52) |
+| bzip2 -d | 6.63G | 4.44G | 6.22 (4.65) | 2.39 (3.11) |
+| lz4 -1 | 0.71G | 0.32G | 3.95 (23.91) | 2.12 (10.62) |
+| lz4 -9 | 17.94G | 9.71G | 6.49 (6.00) | 2.67 (3.41) |
+| lz4 -d | 1.32G | 0.54G | 6.48 (18.22) | 2.86 (7.29) |
+| lua int | 7.37G | 2.88G | 6.33 (6.12) | 2.13 (2.35) |
+| lua tab | 5.71G | 2.18G | 6.24 (5.76) | 1.99 (2.26) |
+| lua str | 6.22G | 4.78G | 1.91 (2.10) | 1.51 (1.62) |
+| geomean of these ten | | | 4.61 (6.30) | 2.17 (3.44) |
+| sqlite (added at `0879a72`; then is the old `-O` there) | | 21.83G | 2.67 (2.48) | 1.97 (1.99) |
+
+With SQLite the geomean is 2.15 (3.27). Scalar frame traffic went from
+22–33% of the compressors to 1–3%, except bzip2 `-d` (17%) and lz4 `-9`
+(8%), where register pressure leaves phi shadows in the frame
+(`BZ2_decompress`'s are 0.69G). Its replacement, moves between
+registers, is 4–13%. Lua's switch chains are gone, the runtime's share
+of lz4 `-1`/`-d` (its small `memcpy`s) went from 45–47% to 18–26%, and
+checks fell only by 6a's borrow test: bzip2 `-9` ran 5.20G of them and
+runs 4.66G.
+
+Where the rest is, as a share of `-O`'s instructions:
+
+- **Checks, 18–39%** outside lz4's call-bound runs, now the largest
+  category. The sequence is the pin's own eight instructions (6a); the
+  gap is their count, which filcc gets down by merging and hoisting
+  checks, the class 6c-2 rejected for the observation contract
+  (bzip2 `-9`: 540M checks, against filcc's 230M). No item is proposed;
+  it is the gap that stays.
+- **Pointer payloads and lowers, 16–30%** (lz4 `-1`/`-d` 7–12%). Every
+  access reloads the pointer and its lower from the frame after a label
+  or a check's `jcc`.
+  Measured on the final `.s` (a forward must-analysis per function over
+  its CFG, cachegrind counts per line): of the remaining loads of
+  pointer and lower frame words, 49–84% read a word whose value was
+  loaded or stored earlier on every path with no call or poll in
+  between, and nearly all of those are still in the register that
+  loaded or stored it. That is 4–12% of all instructions on nine
+  workloads (table under 5b-1), reached only by forwarding across both
+  labels and checks' `jcc`s. Allowing calls in between adds 5–40
+  points of those loads, mostly in Lua and SQLite, but needs
+  callee-saved registers. Stores are one address and one lower per
+  definition plus pointer phi copies through shadows (zlib `-6` 0.4G,
+  SQLite 0.6G).
+- **Calls, 12–16%** in lz4 `-9`, Lua str and SQLite, 36–43% in lz4
+  `-1`/`-d`. In lz4 `-9`, `LZ4_isLittleEndian` (0.74G) is never inlined:
+  it reads a byte of a `U32` union, the local does not promote, and the
+  inliner only admits callees whose locals promote. So `LZ4_NbCommonBytes`,
+  `LZ4_count` and `LZ4HC_countBack` stay calls too. In lz4 `-1`/`-d` it is
+  the small-`memcpy` filter and the `XXH32` helpers.
+- **Selection, 5–15%**: boolean tests (`test`/`jz` 2–6%), constant moves
+  (Lua 5.8%), boolean materialization (`setcc`/`movzbl` 0.4–2.6%) and
+  jumps (0.6–1.9%).
+- **Copies, 4–13%**, and in-place zero extensions (`movl %r11d, %r11d`,
+  0.4–3.2%) among them.
+- **Ops, 12–19%**, already close to filcc's whole count in the
+  compressors. Multiplies by a power of two are 0.2–1.7%.
+
+### Findings (3576b51)
 
 - **Every value round-trips through the frame.** Scalar temporaries
   alone are 22–33% of the compressors' instructions; with pointer
@@ -238,6 +334,38 @@ gate above before it becomes a default.
 | 6 | Shorter check sequences | 4–11% | medium | **yes**: check implementation |
 | 7 | Inline small constant `memcpy` | 45% of lz4 `-d` and `-1` | medium | **yes**: capability copying |
 | 8 | Cheap middle end (folding, value numbering) | small, unmeasured | medium | no |
+
+### Status (04c7e7c)
+
+Closed, each the `-O` default unless it says otherwise:
+
+| Item | What landed | Where |
+| --- | --- | --- |
+| 1 | switch dispatch by binary search | item 1 |
+| 2 | branch selection: branch on flags, fall through | item 2 |
+| 3a | whole-function scalar register homes | item 3, 3a result |
+| 3b | register operands, with the region checker | 3b contract and result |
+| 3c | indexed frame operands (lz4's `lea D(%rbp,%rax)` functions) | 3c |
+| temps | a home per temporary (`--registers=temps`), the frame grown by at most 1.08× | 3d, temps as the `-O` default |
+| 5a-loads | frame cells: loads forwarded from a register within a region | 5a-loads result |
+| 6a | no borrow test after `upper − Size` | 6a |
+| 6c-1 | checks of related pointers; `--checks=reuse`, opt-in (no time win) | 6c |
+| 7 | small constant `memcpy` through a filter in front of the call | 7a result |
+| 9 | phi shadows shared by position (option A: shadow lowers stay roots) | 9 result |
+| inlining | small local leaf functions (`--inline=small`) | item 4 result |
+
+Rejected or dropped, and why:
+
+| Item | Why |
+| --- | --- |
+| jump tables | after binary search and branch selection, compare-and-branch blocks are an upper bound of 6% of Lua int/tab (0.17G and 0.12G now) and 1% elsewhere, for a new IR terminator and a control-flow-integrity contract (index extension, the unsigned range test, label differences, every successor known to every checker) |
+| store-side 5a (5a, full) | its measured ceiling: cell stores overwritten before a boundary are 2.8–3.8% of `rbp` stores, 0.3–0.5% of static instructions; dropped by the orchestrating thread |
+| 6c-2, check widening | moves a trap earlier, before scalar stores that precede the failing access, and reports the first access instead of the failing one: the observation-contract change campaign.md rules out, for 2–4% |
+| load reuse (6d) | reaches 0–2% of bzip2 `-9`'s checks: stores through other roots kill the facts, and the 2% needs a type-based alias rule Fil-C does not have |
+| loop alignment | `.p2align` at backward-jump targets left the geomean at 2.97 against 2.97 and only moved layout noise, for 0.2% padding |
+| webs (3d) | contract approved, then held: temps already beat its estimate, and what remains is register pressure |
+
+Not proposed: 6b (at most 2%). Deferred: 5b, now proposed as 5b-1 below.
 
 ### 1. Switch dispatch by binary search
 
@@ -1357,6 +1485,206 @@ Only after more registers are free. It needs the safepoint rule above,
 plus two checker obligations: each live lower's `lowers[]` entry
 symbolically equals its register at each safepoint, and lower material
 never enters a home that item 3 treats as scalar.
+
+#### 5b-1. Contract (proposed; Oracle-reviewed, awaiting the orchestrator): cells across `jcc`s and labels
+
+**Why this form.** The profile at `04c7e7c` (Where we are now) puts
+pointer payloads and lowers at 16–30% of `-O`'s instructions. The reach
+is in their loads: 5a-loads forwards a frame word from a register only
+within a region, and every label and `jcc` ends a region, so each block,
+and each access after a check, reloads the pointer and lower it checks. Measured on the final `.s`
+with a forward must-analysis per function (scratch, not kept;
+cachegrind counts per line), the loads of pointer and lower frame words
+whose value is still, on every path, in the register that last loaded or
+stored it, with no call or poll since (labels and `jcc`s not killing):
+
+| Workload | pointer and lower loads | in that register | of which into that same register | share of all instructions (same register / any) | if calls did not kill |
+| --- | --: | --: | --: | --: | --: |
+| zlib -6 | 1.00G | 0.75G | 0.67G | 8.3% / 9.3% | 0.89G |
+| zlib -d | 0.09G | 0.08G | 0.07G | 11.3% / 12.3% | 0.09G |
+| bzip2 -9 | 1.25G | 0.67G | 0.62G | 5.3% / 5.7% | 0.91G |
+| bzip2 -d | 0.50G | 0.30G | 0.28G | 6.4% / 6.8% | 0.38G |
+| lz4 -1 | 0.01G | 0.003G | 0.001G | 0.3% / 0.9% | 0.01G |
+| lz4 -9 | 0.78G | 0.35G | 0.25G | 2.6% / 3.6% | 0.47G |
+| lz4 -d | 0.03G | 0.010G | 0.008G | 1.5% / 1.9% | 0.03G |
+| lua int | 0.44G | 0.31G | 0.30G | 10.4% / 10.8% | 0.41G |
+| lua tab | 0.33G | 0.25G | 0.24G | 10.9% / 11.5% | 0.32G |
+| lua str | 0.37G | 0.20G | 0.15G | 3.1% / 4.2% | 0.33G |
+| sqlite | 2.29G | 1.36G | 1.12G | 5.1% / 6.2% | 1.86G |
+
+A load into the register that already holds the value is deleted; one
+into another register becomes a move that forward/3 then propagates.
+That needs no register allocation: the value is already there. Pointer
+*homes* (registers holding addresses instead of frame slots) need the
+registers the scalar homes use; 3d measured that adding them loses
+(register pressure), and the hot functions use every allocatable
+register somewhere. Moving lower stores from definitions to safepoints
+changes when the root set holds an object, which is the invariant
+Oracle declined to add for phi shadows (option B, item 9). So the first
+step keeps every store and every root and forwards loads across `jcc`s
+and labels.
+
+Oracle's review (below) found that the checker also resets B's state at
+every `jcc` fallthrough, so label facts alone reach much less than the
+table. Rerun with each mechanism alone, the same loads as a share of all
+instructions:
+
+| Workload | label facts only | `jcc` continuation only | both |
+| --- | --: | --: | --: |
+| zlib -6 | 0.8% | 1.7% | 9.3% |
+| zlib -d | 1.1% | 1.1% | 12.3% |
+| bzip2 -9 | 0.6% | 2.0% | 5.7% |
+| bzip2 -d | 1.1% | 2.1% | 6.8% |
+| lz4 -1 | 0.0% | 0.0% | 0.9% |
+| lz4 -9 | 1.6% | 0.4% | 3.6% |
+| lz4 -d | 0.4% | 0.0% | 1.9% |
+| lua int | 0.5% | 1.5% | 10.8% |
+| lua tab | 0.7% | 1.7% | 11.5% |
+| lua str | 0.9% | 0.5% | 4.2% |
+| sqlite | 0.6% | 0.9% | 6.2% |
+
+They are not additive: a block loads its pointer and lower before its
+checks, each check ends in `jcc`s to its fail block, and the next
+block's reload follows the last of them. A label fact can only be
+established after that `jcc`, and the continuation alone stops at the
+label. So 5b-1 is both, and the table's "both" column is its upper
+bound.
+
+**Mode.** Opt-in `--registers=flow`: temps mode with both rules below.
+It becomes the `-O` default only after a gate run where it wins time and
+compile time stays within budget. `stack`, `local`, `function`,
+`operands`, `cells` and `temps` keep their streams, checker paths and
+snapshot outputs; the snapshot gets one new mode for `flow`.
+
+**Rule 1: `jcc` continuation (changes 3b's region rule, in `flow` only).**
+A `jcc`'s fallthrough has one predecessor and the `jcc` writes nothing.
+After `region_end/3` at a `jcc` (both streams agree on what is live, as
+today), the walk continues with A's and B's states and the cell map
+unchanged instead of `region_start/4`. Labels, `jmp`, calls, `ret` and
+every other boundary reset as today. In the rewrite, regions span
+`jcc`s: forwarding and `cell_forward/4`'s held map continue past them,
+and dead-move deletion and retargeting treat each `jcc` as a merge
+point whose live-out includes its `In` (the taken edge's needs).
+
+**Rule 2: label facts (the certificate).** For each local label L of
+the body, identified by its position in A (GNU numeric labels such as
+`1` repeat; `target/3` resolves `1f`/`1b` by index, and so does every
+fact lookup), the rewrite proposes Facts(L): pairs (R, D), register
+family R holds the whole 64-bit value of cell D on entry to L. The
+checker requires, before using them:
+
+- *Well-formed:* at most one fact per family; each D a key of
+  `valid_cells/3`'s map (a cell, and not addressed by any `lea`); each R
+  a scratch family (`rax`, `rcx`, `rdx`, `rsi`, `rdi`, `r8`, `r9`), never
+  `rbx`, `rsp`, `rbp` or `r10`–`r15`, which `region_end/3` compares at
+  every boundary; R not live in A at L (`In` bit clear).
+- *Complete edges:* no line of the body names L other than as a direct
+  jump target (no `rip(L)` operand). Indirect jumps, `jmp` to a PLT
+  symbol and calls into the body already make `successors/3` fail, so
+  such a function is never allocated. Data outside the body does not
+  name a body label (`.L<fn>.` naming); the contract relies on that.
+- *Edge check:* at every jump to L (resolved by `target/3` on A's
+  indices) and at the fallthrough into L, in B's state *before* the
+  boundary and with the region's current cell map (not the reset one),
+  each (R, D) in Facts(L) has `reg_get(R, SB) == cell_value(D, CS)`.
+  Lines in state `none` are unreachable and make no edge.
+- *Assumption:* at L, after `region_start/4`, B's R is set to
+  `cell_value(D, empty)`, the cell's shared start value, which is the
+  same symbol as A's and B's memory there.
+
+Rule 1 lets a fact be established after a block's last check and lets a
+label after a `jcc` fallthrough carry facts (the fallthrough is then an
+ordinary edge with the continued state).
+
+**Rewrite (untrusted).** The held map flows over the body's CFG: at each
+label, the intersection of the maps on its incoming edges (a fixpoint
+over back edges), killed by calls and every boundary the checker resets,
+by writes to the register and by any write to the cell, minus families
+live in A at L. A region's end liveness adds the facts of the label it
+falls or jumps into (for a `jcc`, the taken target's), so the moves
+that establish them stay. Before emitting, a must-analysis over the
+final B reconfirms each label's facts and drops the ones it cannot, so
+a rewrite bug costs a reload, not a build failure (`regs_asm` throws on
+a failed check).
+
+**Soundness.** Stores stay paired, so frame memory, `lowers[]`
+included, is identical in A and B at every instruction. Rule 1 is exact
+symbolic execution along the only edge into the fallthrough. For Rule
+2, on every executed edge into L the checker proved R equal to the
+cell's current content; nothing between an edge and its label writes
+memory or R, so at L, R equals the cell, which is what the assumption
+says. Induction over the executed trace, from function entry (shared
+state, no facts). A call or poll resets B's registers, so no fact
+survives one unless a load after it re-establishes it.
+
+**GC.** No root changes, and nothing depends on when FUGC scans:
+`lowers[]` holds the reference's values at every instruction. A register
+holding a lower is a copy proven equal to its slot wherever B reads it.
+The runtime writes `lowers[]` only in setjmp/longjmp, and setjmp
+functions are not allocated; it writes `top_frame->origin` only inside
+calls, and the origin is no cell. Signals are deferred to pollchecks,
+which are calls. Oracle found no root or GC decision here.
+
+**Expected yield.** An upper bound of 4–12% of instructions on nine
+workloads (the "both" column; lz4 `-1`/`-d` 1–2%), most of it loads into
+the register that already holds the value, which are deleted. Less where
+a fact register is live in A at the label or a path writes it. Time less
+than instructions: these loads hit L1. Letting facts cross calls would
+add 5–40 points of these loads in Lua and SQLite; that is a later step
+(5b-2, callee-saved registers and 3a's save rules), as is allowing
+r10/r11 when they are not homes, which changes `region_end/3`'s
+invariant and needs its own review.
+
+**Cost.** Medium: Rule 1 is about three lines in the trusted walk plus
+regions spanning `jcc`s in the rewrite; Rule 2 is the facts, their
+well-formedness and edge checks, and the rewrite's fixpoint.
+`sqlite3VdbeExec` (73k lines) bounds the compile cost; measured on
+`sqlite3.c` against temps before it can be the default.
+
+**Validation.**
+
+- Checker fixtures (fail-first), refused unless marked:
+  - a fact established on both predecessors (accepted); a loop-carried
+    fact over a back edge without a poll (accepted) and with one;
+  - one predecessor not holding the value; a store from another register
+    to D on one path, with R holding the start symbol (B1's stale edge);
+    a `movl` store to D on one path; a non-`mov` write to D (`add` to
+    memory, `lock cmpxchg`); a call on one path;
+  - a fact register live in A at L; a fact in `rbx` or `r10`–`r15`; two
+    facts on one family; a fact on a non-cell or a `lea`'d word; L named
+    by a `rip(L)` operand;
+  - two labels `1` with different facts and a `jmp 1b`/`1f` checked
+    against the wrong one;
+  - a label after a `jcc` fallthrough with facts (accepted under Rule
+    1); consecutive labels `L1: L2:` with facts on both;
+  - a 32-bit load establishing a 64-bit fact with an unknown high half,
+    and accepted where the cell's high half is a known 0;
+  - Rule 1: a register written in the fallthrough and compared at the
+    next boundary; flags across a `jcc` continuation.
+- Plants in the checker, each caught by a fixture: skip the edge check;
+  check edges against the reset cell map; key facts by name; skip the
+  `rip(L)` rule; let facts survive a call; ignore A's liveness of R;
+  reset at `jcc` in the checker but not the rewrite (a compile error).
+  In the rewrite: no successor facts in end liveness (a compile error in
+  difftest without the reconfirmation pass).
+- Difftests of the fixtures, the filc IRs and `c/*.c` in `flow`,
+  including a use-after-free across a label that must trap the same way;
+  progtest and `run-c` under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`; the
+  snapshot with only the new mode's outputs changed; the 13 nanofil
+  checks plus nanofil-python; the gate with alternating trials; the
+  profile rerun to confirm the loads moved.
+
+**Review (Oracle, October 2026): sound with fixes, all folded in above.**
+B1: the edge check must use the region's current cell map; checking
+after the reset accepts a stale fact. B2: facts keyed by position, since
+numeric labels repeat (the x87 sequences). B3: certificate
+well-formedness (one fact per family, D a valid cell). B4: the checker
+resets at every `jcc` fallthrough, so the rewrite must too, or Rule 1
+must be adopted; Rule 1 was recommended and the label-only bound
+measured above confirms it is needed. Its two items for the
+orchestrating thread: Rule 1 changes 3b's region rule in the trusted
+checker; freeing r10/r11 changes `region_end/3`'s invariant and is not
+part of 5b-1.
 
 ### 6. Check sequences — needs review
 
