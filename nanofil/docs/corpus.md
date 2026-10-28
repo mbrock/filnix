@@ -60,7 +60,8 @@ the survey is stable, **not** that the compiler implements that feature.
 
 The checked baseline has **262 passes, no rejections, 7 reference
 errors and 147 without main**. Variable length arrays and variably
-modified types (m4.md, "Variable length arrays") turn eight rejections
+modified types (m4.md, "Variable length arrays",
+[`4822471`](https://github.com/mbrock/filnix/commit/4822471)) turn eight rejections
 into passes: cproc `builtin-vaarg-vm`, `cast-vm`, `func-vla`,
 `sizeof-vla`, `vla-deref`, `vla-nested`; c-testsuite `00162` (`[*]` and
 qualified array parameters) and `00207`. Two declarator fixes pass
@@ -69,17 +70,28 @@ and `00210` (an attribute before `*` in an abstract declarator).
 c-testsuite `00216` passes with three GNU initializer extensions: range
 designators `[a ... b]`, constant compound literals in static
 initializers, and designators that name a member of an anonymous
-member (C11 6.7.2.1p13 makes those members of the enclosing struct).
+member (C11 6.7.2.1p13 makes those members of the enclosing struct;
+[`bbee6cc`](https://github.com/mbrock/filnix/commit/bbee6cc)).
 cproc `struct-packed` passes with GNU packed layout (m4.md, "Packed
-structs and unions"), including the `[[gnu::packed]]` spelling.
+structs and unions"), including the `[[gnu::packed]]` spelling
+([`59581cd`](https://github.com/mbrock/filnix/commit/59581cd)).
 c-testsuite `00140` passes with byval struct arguments (abi-findings.md,
-*Byval arguments*), including one past a prototype's `...`. The last
+*Byval arguments*), including one past a prototype's `...`
+([`1d1b22c`](https://github.com/mbrock/filnix/commit/1d1b22c)). The last
 rejection, c-testsuite `00204`, passes with small float-containing
 structs by value (SSE eightbytes), aggregate `va_arg`, and x87 `long
 double` (float.md, *x87 long double*), whose HFAs it passes by value,
 returns and reads through `va_arg`. Its `myprintf` calls of more than
 16 words to one variadic callee also needed one weak thunk per word
-list (abi-findings.md, *Distinct thunks for distinct word lists*).
+list (abi-findings.md, *Distinct thunks for distinct word lists*;
+[`b6c1cc6`](https://github.com/mbrock/filnix/commit/b6c1cc6),
+[`8bf1564`](https://github.com/mbrock/filnix/commit/8bf1564),
+[`ab05a5b`](https://github.com/mbrock/filnix/commit/ab05a5b)).
+
+The survey compiles every test in each compiler's default language
+mode. nanofil's C23 mode (`NANOFIL_STD=c23`, which nanofil-cc sets for
+`-std=c23`; [`36039eb`](https://github.com/mbrock/filnix/commit/36039eb))
+is exercised by `tests/c/prog/c23.c` and the sed check, not here.
 
 cproc `constraint/c23-6.7.7.3p2-vm-declaration-2` stays a pass: under
 C11 a block-scope `static` pointer to a VLA is allowed (only a VLA
@@ -287,9 +299,10 @@ int main(void) { alignas(16) char x; return 0; }
 filcc: `call to undeclared function 'alignas'; ISO C99 and later do not
 support implicit function declarations`. The others use `bool` without
 stdbool.h (`use of undeclared identifier 'bool'`) or `thread_local`
-(`unknown type name 'thread_local'`). Several also need VLA/TLS support
-that nanofil explicitly excludes. Whether to add a separate C23 mode is
-an orchestrator decision, not a reason to count these as passes.
+(`unknown type name 'thread_local'`). They stay reference errors: the
+survey runs both compilers in their default modes, and nanofil's C23
+mode, added for gnulib, does not change that. `thread-local` would also
+need real thread-local storage, which nanofil does not have yet.
 
 ### filcc LLVM assertion on typeof of a VM expression — 1 reference error
 

@@ -139,21 +139,29 @@ stress, and a 416-file survey of the cproc and c-testsuite corpora.
 
 ## What it compiles
 
-C17 code with integers, `float`, `double` and x87 `long double`: structs, unions, enums, arrays, pointers, function
-pointers, globals with initializers, `switch` and `goto`, compound
-literals, variadic functions, C99 `extern inline`, C23 `[[...]]`
-attributes, and the GNU extensions glibc and gnulib lean on: statement
-expressions and the `__builtin_*_overflow` family. Of the corpus
+C17 code with integers, `float`, `double` and x87 `long double`:
+structs, unions (passed and returned by value as SysV says), enums,
+bit-fields, arrays and VLAs, pointers, function pointers, globals with
+initializers, `switch` and `goto`, compound literals, variadic
+functions, C99 `extern inline`, `__atomic` loads and stores, C23
+keywords and `[[...]]` attributes (`-std=c23`), and the GNU extensions
+glibc and gnulib lean on: statement expressions, computed `goto`,
+packed layout, range designators, `_FORTIFY_SOURCE` and the
+`__builtin_*_overflow` family. Of the corpus
 programs that have a `main`, all 262 that clang itself builds and runs
 match clang's output; what nanofil does not support it refuses with a
 message, never miscompiles ([docs/corpus.md](docs/corpus.md)). GNU
-hello, zlib, Lua, bzip2, lz4 and SQLite build with nanofil alone and behave
-exactly like their clang builds; zlib's compressed output is
-byte-identical, at about five times clang's time.
+hello, zlib, Lua, bzip2, lz4, SQLite, GNU sed, jq and dash build with
+nanofil alone and behave exactly like their clang builds, each checked
+by a `checks.x86_64-linux.nanofil-<name>` build ([PLAN.md](PLAN.md),
+M4); zlib's compressed output is byte-identical, at about five times
+clang's time.
 
-It refuses `_Complex`, `_Atomic`, inline `asm` and K&R definitions.
-The code generator is deliberately naive: every temporary
-lives in a stack slot.
+It refuses `_Complex`, `_Atomic`, inline `asm` other than an empty
+barrier, and K&R definitions. `_Thread_local` is not yet thread-local:
+it is ignored, so such a variable is shared by all threads. Without
+`-O` every temporary lives in a stack slot; `-O` promotes locals and
+allocates scalar registers ([docs/perf.md](docs/perf.md)).
 
 ## Reading on
 

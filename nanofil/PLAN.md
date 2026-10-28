@@ -85,7 +85,11 @@ start. Reversing one is cheap until the milestone it names.
    `alloc` of the run-time size where the declaration is reached, and
    lengths evaluated where C evaluates them (docs/m4.md).
    Direct setjmp-family calls and ordinary longjmp calls are now supported
-   in Fil-C mode; see [docs/setjmp.md](docs/setjmp.md).
+   in Fil-C mode; see [docs/setjmp.md](docs/setjmp.md). `__atomic_load_n`
+   and `__atomic_store_n` are supported, pointers through Fil-C's atomic
+   helpers ([`90fe17c`](https://github.com/mbrock/filnix/commit/90fe17c)),
+   and the empty asm barrier is accepted; other inline asm, `_Atomic`
+   and `_Complex` are still refused.
 7. **Relationship to [experiments/sarcasm-prolog](../experiments/sarcasm-prolog/README.md).**
    It is related but separate. That experiment translates assembly to C and
    lets clang apply Fil-C. nanofil emits the Fil-C ABI itself. nanofil
@@ -262,7 +266,40 @@ products before emission. Pointer pairs remain indivisible.
 ### M4. C frontend subset
 
 **Status: done.** M4a through M4f are done, see
-[docs/m4.md](docs/m4.md) and [docs/corpus.md](docs/corpus.md).
+[docs/m4.md](docs/m4.md) and [docs/corpus.md](docs/corpus.md). The
+corpus has no rejections left: all 262 programs with a `main` that
+filcc builds pass. Real programs built with nanofil alone, each a Nix
+check compared with a filcc build:
+
+| Check | Program | Added in |
+| --- | --- | --- |
+| `nanofil-hello` | GNU hello | [`e8d4524`](https://github.com/mbrock/filnix/commit/e8d4524) |
+| `nanofil-zlib` | zlib | [`5d2ac42`](https://github.com/mbrock/filnix/commit/5d2ac42) |
+| `nanofil-lua` | Lua 5.4 | [`d1ba1ee`](https://github.com/mbrock/filnix/commit/d1ba1ee) |
+| `nanofil-bzip2` | bzip2 1.0.8 | [`9987a8c`](https://github.com/mbrock/filnix/commit/9987a8c) |
+| `nanofil-lz4` | lz4, unpatched | [`bf0e86d`](https://github.com/mbrock/filnix/commit/bf0e86d), [`ab05a5b`](https://github.com/mbrock/filnix/commit/ab05a5b) |
+| `nanofil-sqlite` | SQLite 3.51.2 with FTS5 | [`715c737`](https://github.com/mbrock/filnix/commit/715c737) |
+| `nanofil-sed` | GNU sed 4.10 (gnulib) | [`cda56e6`](https://github.com/mbrock/filnix/commit/cda56e6) |
+| `nanofil-jq` | jq 1.8.2 with oniguruma, decNumber | [`cda56e6`](https://github.com/mbrock/filnix/commit/cda56e6) |
+| `nanofil-dash` | dash 0.5.13 | [`cda56e6`](https://github.com/mbrock/filnix/commit/cda56e6) |
+
+Since the steps below were planned, M4 gained VLAs and variably
+modified types ([`4822471`](https://github.com/mbrock/filnix/commit/4822471)),
+GNU packed layout, range designators, struct arguments over 16 bytes
+by value ([`1d1b22c`](https://github.com/mbrock/filnix/commit/1d1b22c)),
+float-containing structs and aggregate `va_arg`
+([`b6c1cc6`](https://github.com/mbrock/filnix/commit/b6c1cc6)), atomic
+builtins, a C23 mode and the GNU extensions gnulib uses
+([`36039eb`](https://github.com/mbrock/filnix/commit/36039eb)).
+Refused with a message: `_Complex`, `_Atomic`, K&R definitions, inline
+asm other than the empty barrier, GNU case ranges, alignment stronger
+than natural, pointer-to-`bool` in static initializers, variable and
+variadic function aliases, and long double classification other than
+by sign ([docs/m4.md](docs/m4.md), *Linux userland additions*). Known
+gap: `_Thread_local` and `__thread` are parsed and then ignored, so a
+thread-local variable is one ordinary global, which is wrong only when
+several threads use it.
+
 Broken into steps below. Probes at the pin
 (compile `printf`, `puts`, globals and string literals with `filcc -S`)
 settled the ABI questions first:
@@ -289,7 +326,7 @@ settled the ABI questions first:
 
 1. **Integers only.** No floating point in M4, as the deliverable says.
    Float types parse in declarations, because the headers use them, and
-   any use of a float value is rejected.
+   any use of a float value is rejected. *Superseded by M9.*
 2. **Real glibc headers** from filcc's sysroot, not private headers. The
    parser accepts the GNU subset they use: `__attribute__` (ignored),
    `__extension__`, `__restrict`, `__inline`, `__builtin_va_list`
@@ -420,7 +457,10 @@ are separate safety decisions, not extensions hidden in this pass.
 
 ### M7. Safety obligations and alternative evidence
 
-**Status: first deliverable done ([docs/m7.md](docs/m7.md)).** An opt-in
+**Status: first deliverable done ([docs/m7.md](docs/m7.md)), in two
+rounds: block-local
+([`57cacd6`](https://github.com/mbrock/filnix/commit/57cacd6)) and across
+CFG edges ([`d9883ed`](https://github.com/mbrock/filnix/commit/d9883ed)).** An opt-in
 pass (`--checks=reuse`, off by default) lets a heap check's proof cover
 later scalar accesses through the same pointer, in its block and
 forward along CFG edges (intersected at joins), until a call,
@@ -432,7 +472,11 @@ object state. Every check still sits at its first access, so traps keep
 their timing and reasons. Oracle reviewed the design before
 implementation and the result after, for each of the two rounds. It
 removes 17.7% of emitted heap checks on the C corpora without `-O`, 5.2%
-with it.
+with it. Measured natively on zlib, bzip2, lz4 and Lua, it saves up to
+6.4% of run time without `-O` and nothing measurable with it
+([`3576b51`](https://github.com/mbrock/filnix/commit/3576b51)). The
+hello, zlib, Lua, bzip2, lz4 and SQLite checks also build with
+`--checks=reuse` and must match filcc.
 
 **First deliverable:** one narrowly specified alternative to repeated
 runtime checking, such as reuse for repeated scalar accesses in a
@@ -473,6 +517,16 @@ nanofil running on Fil-C-built Trealla. Package it as
 
 ### M9. Floating point
 
+**Status: done.** `float` and `double` are IR classes `s` and `d`, and
+Lua 5.4 builds with nanofil alone
+([`d1ba1ee`](https://github.com/mbrock/filnix/commit/d1ba1ee)). x87
+`long double` is a further class `x` with real 80-bit semantics in the
+interpreter and both backends
+([`ab05a5b`](https://github.com/mbrock/filnix/commit/ab05a5b)); it is
+stored, passed, returned and promoted in variadic calls as clang does,
+which closed c-testsuite `00204` and lets lz4 build unpatched.
+[docs/float.md](docs/float.md) is the contract. `_Complex` is refused.
+
 `float` and `double` through the IR, interpreter, both backends and the
 C frontend, so Lua 5.4 builds with nanofil alone. The IR contract and
 work order are in [docs/float.md](docs/float.md).
@@ -494,5 +548,7 @@ matches a filcc-built Lua, like the hello and zlib checks.
   versus incremental tabling was measured in M5: neither; see docs/m5.md.
 - In-process execution (`tcc -run` style) needs a native host that boots
   the Fil-C runtime. It is out of scope until after M8.
-- Supporting atomics and inline asm, all
-  rejected until a milestone claims them.
+- `_Atomic` types, `__atomic` builtins beyond load and store, inline asm
+  other than the empty barrier, and real thread-local storage. All but
+  the last are refused until a milestone claims them; `_Thread_local` is
+  currently ignored (see M4's status).
