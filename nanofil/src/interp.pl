@@ -1364,7 +1364,8 @@ low_bytes([B|Bs], X) :-
     low_bytes(Bs, X1).
 
 % alloc_base(+Mode, +Mem0, +Align, +Size, -Base, -Mem): Base is a new
-% region of Size bytes in Mem. Allocations are aligned (Fil-C's to 16),
+% region of Size bytes in Mem. Allocations are aligned (Fil-C's to at
+% least 16, as filc_allocate_with_alignment aligns them),
 % with Fil-C bounds rounded to 16 as prepare_allocate_object does (zero
 % stays zero). A 16-byte gap separates distinct, never-reused identities.
 alloc_base(Mode, mem(Bytes, Rs, Next0, Aux), Align0, Size, Base,
@@ -1386,7 +1387,7 @@ allocation_stride(filc, _, Extent, Extent).
 allocation_stride(local, Size, _, Stride) :- Stride is (Size + 15) // 16 * 16.
 
 alloc_align(plain, Align, Align).
-alloc_align(filc, _, 16).
+alloc_align(filc, Align0, Align) :- Align is max(Align0, 16).
 alloc_align(local, _, 16).
 
 stack_base(4294967296).
@@ -1395,7 +1396,8 @@ data_base(65536).
 /* initial_memory(+Mode, +M, -Globals, -Mem): Mem holds every data
    definition, each in its own region, with its bytes. Globals maps a
    name to its address, or in filc mode to a pointer value: data objects
-   are 16-aligned with their size rounded up to 8, as Fil-C's are, and
+   are aligned to 16 or their stricter Align with their size rounded up
+   to 8, as Fil-C's are, and
    each function gets an address and a fn capability. */
 initial_memory(plain, module(Items), Globals, mem(Bytes, Rs, Stack, Aux)) :-
     empty_assoc(Aux),
@@ -1437,13 +1439,14 @@ plain_contents(Globals, data(Name, _, _, Items), Bytes0, Bytes) :-
 plain_contents(_, func(_, _, _, _, _), Bytes, Bytes).
 
 % filc_layout(+Item, +A0-Globals0-Rs0, -A-Globals-Rs): place Item at
-% the next 16-aligned address from A0.
+% the next address from A0 aligned to 16 or, if stricter, its Align.
 % A weak declaration (extern(weak)) takes no space: its symbol stays
 % undefined, a null pointer (undefined_symbol/3).
 filc_layout(data(_, extern(weak), _, []), State, State) :- !.
-filc_layout(data(Name, Linkage, _, Items), A0-Globals0-Rs0,
+filc_layout(data(Name, Linkage, Align0, Items), A0-Globals0-Rs0,
             A-Globals-[region(Base, End, global, live)|Rs0]) :-
-    Base is (A0 + 15) // 16 * 16,
+    Align is max(Align0, 16),
+    Base is (A0 + Align - 1) // Align * Align,
     foldl(item_size, Items, 0, Size),
     End is Base + (Size + 7) // 8 * 8,
     data_cap(Linkage, Base, Cap),

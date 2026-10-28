@@ -139,7 +139,7 @@
     | `swtof` `uwtof` / `sltof` `ultof` | `s` `d` | `[w]` / `[l]` | signed or unsigned integer to float |
     | `cast` | `w` `s` `l` `d` | `[s]` `[w]` `[d]` `[l]` | bitwise: `w` and `s`, `l` and `d` |
     | `load(T)` | as T: `l`, `p`, `s`, `d`; `w` or `l` for a narrow T | `[Addr]` | T one of `l` `sw` `uw` `sh` `uh` `sb` `ub` `p` `s` `d` |
-    | `alloc(Align)` | the address class | `[l]`, the size | Align one of 4, 8, 16 |
+    | `alloc(Align)` | the address class | `[l]`, the size | Align a power of two from 4 to 4096 |
     | `ptoi` | `l` | `[p]` | filc only |
     | `itop` | `p` | `[l]` | filc only |
     | `va_args` | `p` | `[const(N)]` | filc only: a cursor into the entry argument snapshot; N, non-negative, is the byte count of the fixed prefix |
@@ -198,7 +198,8 @@
 
     ## Data
 
-    In `data(Name, Linkage, Align, Items)`, Linkage is `export`,
+    In `data(Name, Linkage, Align, Items)`, Align is a power of two
+    from 1 to 4096, the payload's alignment, and Linkage is `export`,
     `local`, `ro(export)` or `ro(local)`, `ro` for read-only data (in
     .rodata), or `tls(export)` or `tls(local)` (filc mode only) for C's
     thread-local objects: each thread has its own instance, created
@@ -506,9 +507,14 @@ cas_type(T) :- narrow_type(T, _, _).
 cas_bytes(l, 8). cas_bytes(p, 8).
 cas_bytes(T, B) :- narrow_type(T, B, _).
 
-alloc_align(4).
-alloc_align(8).
-alloc_align(16).
+% alloc_align(?Align), data_align(?Align): an alloc's alignment is a
+% power of two from 4 to 4096, a data item's from 1 to 4096. Above 16,
+% Fil-C allocates with filc_allocate_with_alignment and pads a data
+% object before its header (docs/abi-findings.md).
+alloc_align(Align) :- data_align(Align), Align >= 4.
+data_align(Align) :- integer(Align), !,
+    Align >= 1, Align =< 4096, Align /\ (Align - 1) =:= 0.
+data_align(Align) :- between(0, 12, E), Align is 1 << E.
 
 %! op_kind(?Op, ?Kind) is nondet.
 %
@@ -845,7 +851,7 @@ valid_item(Symbols, Mode, Stage, func(Name, Linkage, Ret, Params, Blocks)) :-
     valid_locals(Name, Params, Blocks),
     stage_func(Stage, Name, Mode, Blocks).
 valid_item(_, Mode, _, data(Name, Linkage, Align, Items)) :-
-    (   memberchk(Align, [1, 2, 4, 8, 16]) -> true
+    (   integer(Align), data_align(Align) -> true
     ;   fn_error(Name, 'unsupported data alignment ~w', [Align])
     ),
     (   memberchk(Linkage, [export, local, ro(export), ro(local)]) -> true

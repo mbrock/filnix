@@ -64,7 +64,7 @@
                     integer_promotion/2, usual_arith_conversion/3,
                     float_type/1, arithmetic_type/1, default_promotion/2,
                     constant_value/4, const_convert/4, float_literal/3,
-                    float_builtin/3, libm_builtin/2, object_size/4, compatible_type/2, composite_type/3,
+                    float_builtin/3, libm_builtin/2, object_size/4, compatible_type/2, composite_type/3, inherited_alignment/4,
                     convert_int/3, const_value/4, pp_value/2, num_type/3,
                     scalar_type/1, type_class/2, member_type_offset/5, type_name_type/4,
                     lookup_ordinary/3, bind_ordinary/4, env_scope/3,
@@ -160,10 +160,7 @@ sema_error(Loc, Fmt, Args) :-
 
 decl_types(Specs0, Inits, Decls, Env0, Env) :-
     decl_storage(Specs0, Storage),
-    (   Storage \== typedef
-    ->  partition(alignment_request, Specs0, Requests, Specs)
-    ;   Requests = [], Specs = Specs0
-    ),
+    partition(alignment_request, Specs0, Requests, Specs),
     specs_type(Specs, Base, Env0, Env1),
     foldl(declarator_type(Specs, Requests, Base, Storage), Inits, Decls0, Env1, Env),
     exclude(==(none), Decls0, Decls).
@@ -198,18 +195,27 @@ decl_storage(Specs, Storage) :-
 % declarator_type(+Specs, +Requests, +Base, +Storage, +Init, -Decl, +Env0, -Env):
 % Decl is the d/5 term Init declares, or none for a typedef, which binds
 % the name. An object's alignment beyond its type's (object_alignment/5,
-% from the alignment Requests) is bound to qalign(Name), none when it
-% has none and an outer declaration did.
-declarator_type(Specs, Requests, Base, Storage, init(dcl(some(Name), SyntaxType, Asm), Init),
+% from the alignment Requests and its typedef's) is bound to
+% qalign(Name), none when it has none and an outer declaration did. A
+% typedef's alignment (typedef_alignment/5) is bound to talign(Name).
+declarator_type(Specs, Requests0, Base, Storage, init(dcl(some(Name), SyntaxType, Asm), Init),
                 Decl, Env0, Env) :-
     apply_declarator(SyntaxType, Base, Type0, Env0, Env1),
     reflect_type(type(Specs, SyntaxType), Type0, Env1, Reflected),
     bind_ordinary(qtype(Name), Reflected, Env1, Env2),
+    inherited_alignment(Specs, SyntaxType, Env2, Inherited),
     (   Storage == typedef
-    ->  bind_ordinary(Name, typedef(Type0), Env2, Env3),
-        transparent_typedef(Specs, Type0, Env3, Env),
+    ->  typedef_alignment(Requests0, Inherited, Type0, Env2, TA),
+        ( TA = bad(Why) -> Type1 = bad(Why), TA1 = none ; Type1 = Type0, TA1 = TA ),
+        bind_ordinary(Name, typedef(Type1), Env2, Env3),
+        (   TA1 == none, \+ lookup_ordinary(Env3, talign(Name), _) -> Env4 = Env3
+        ;   bind_ordinary(talign(Name), TA1, Env3, Env4)
+        ),
+        transparent_typedef(Specs, Type1, Env4, Env),
         Decl = none
-    ;   object_alignment(Requests, Type0, Env2, Type, A),
+    ;   ( Inherited = [align(IA)] -> Requests = [alignas(value(IA))|Requests0]
+        ; Requests = Requests0 ),
+        object_alignment(Requests, Type0, Env2, Type, A),
         (   A == none, lookup_ordinary(Env2, qalign(Name), _)
         ->  bind_ordinary(qalign(Name), none, Env2, Env)
         ;   A == none -> Env = Env2
@@ -229,9 +235,10 @@ doc(object_alignment(+Requests, +Type0, +Env, -Type, -A), det, [
     "type's own alignment if stricter, is the object's. _Alignas(0) and",
     "a request no stricter than the type's change nothing; aligned with",
     "no argument is 16, x86-64's largest alignment (__BIGGEST_ALIGNMENT__).",
-    "Lowering honors up to 16 bytes, the most an alloc or a data item",
-    "aligns to, and a stricter request, or one on a function, is",
-    "refused (bad). The type, and so sizeof and _Alignof of it, is",
+    "Lowering honors up to 4096 bytes, the most an alloc or a data item",
+    "aligns to (above 16 as Fil-C's filc_allocate_with_alignment and its",
+    "padded data objects do); a stricter request, or one on a function,",
+    "is refused (bad). The type, and so sizeof and _Alignof of it, is",
     "unchanged.",
     cites('C11 6.7.5p2'),
     cites('C11 6.7.5p6'),
@@ -246,8 +253,10 @@ doc(object_alignment(+Requests, +Type0, +Env, -Type, -A), det, [
             (T = char, A = 8)),
     example(( empty_env(E), object_alignment([attr([group([id('__aligned__')])])], char, E, _, A) ),
             A = 16),
-    example(( empty_env(E), object_alignment([alignas(expr(num(64, none-dec)))], int, E, T, _) ),
-            T = bad('alignment attributes'))
+    example(( empty_env(E), object_alignment([alignas(expr(num(64, none-dec)))], int, E, T, A) ),
+            (T = int, A = 64)),
+    example(( empty_env(E), object_alignment([alignas(expr(num(8192, none-dec)))], int, E, T, _) ),
+            T = bad('an alignment above 4096'))
 ]).
 object_alignment([], Type, _, Type, none) :- !.
 object_alignment(_, func(_, _, _), _, bad('alignment attributes'), none) :- !.
@@ -257,19 +266,92 @@ object_alignment(Requests, Type0, Env, Type, A) :-
         maplist(request_alignment(Env), Requests, As),
         max_list([Natural|As], Max)
     ->  (   Max =:= Natural -> Type = Type0, A = none
-        ;   Max =< 16 -> Type = Type0, A = Max
-        ;   Type = bad('alignment attributes'), A = none
+        ;   max_alignment(M), Max =< M -> Type = Type0, A = Max
+        ;   Type = bad('an alignment above 4096'), A = none
         )
     ;   Type = bad('alignment attributes'), A = none
     ).
+
+% max_alignment(-A): the strictest alignment nanofil gives an object.
+max_alignment(4096).
+
+doc(typedef_alignment(+Requests, +Inherited, +Type, +Env, -A), det, [
+    Requests: "the aligned attributes of a typedef declaration",
+    Inherited: "[align(I)] if it names a typedef of alignment I (inherited_alignment/4), else []",
+    Type: "the type it declares",
+    Env: "the scope",
+    A: "the typedef's alignment, none for its type's own, or bad(Reason)",
+    "GNU aligned on a typedef sets the alignment of the typedef, not of",
+    "its type, and may lower it as well as raise it; sizeof is unchanged",
+    "(clang gives typedef struct { long a[3]; } B __attribute__((aligned))",
+    "size 24, alignment 16). Without one, a typedef of a typedef keeps",
+    "its alignment. _Alignas may not be applied to a typedef, and an",
+    "alignment above 4096 or one that is not a constant power of two is",
+    "refused.",
+    cites('GCC manual, Common Type Attributes, aligned'),
+    cites('C11 6.7.5p2'),
+    example(( empty_env(E),
+              typedef_alignment([attr([group([id('__aligned__')])])], [], long, E, A) ),
+            A = 16),
+    example(( empty_env(E),
+              typedef_alignment([attr([group([id(aligned), group([int(1, none-dec)])])])],
+                                [], int, E, A) ),
+            A = 1),
+    example(( empty_env(E), typedef_alignment([], [align(64)], int, E, A) ), A = 64),
+    example(( empty_env(E), typedef_alignment([], [], int, E, A) ), A = none),
+    example(( empty_env(E),
+              typedef_alignment([attr([group([id(aligned), group([int(8192, none-dec)])])])],
+                                [], int, E, A) ),
+            A = bad('an alignment above 4096'))
+]).
+typedef_alignment([], Inherited, _, _, A) :- !,
+    ( Inherited = [align(A)] -> true ; A = none ).
+typedef_alignment(Requests, _, _, _, bad('_Alignas on a typedef')) :-
+    memberchk(alignas(_), Requests), !.
+typedef_alignment(Requests, _, _, Env, A) :-
+    (   maplist(request_alignment(Env), Requests, As)
+    ->  max_list(As, A0),
+        (   max_alignment(M), A0 > M -> A = bad('an alignment above 4096')
+        ;   A = A0
+        )
+    ;   A = bad('alignment attributes')
+    ).
+
+doc(inherited_alignment(+Specs, +SyntaxType, +Env, -Inherited), det, [
+    Specs: "a declaration's specifiers",
+    SyntaxType: "its declarator's type syntax",
+    Env: "the scope",
+    Inherited: "[align(A)] if Specs name a typedef of alignment A (typedef_alignment/5) and the declarator declares an object or array of it, else []",
+    cites('GCC manual, Common Type Attributes, aligned'),
+    example(( empty_env(E0), c_types:bind_ordinary(talign('B'), 64, E0, E),
+              inherited_alignment([tname('B')], array(base, none), E, I) ),
+            I = [align(64)]),
+    example(( empty_env(E0), c_types:bind_ordinary(talign('B'), 64, E0, E),
+              inherited_alignment([tname('B')], ptr(base, []), E, I) ),
+            I = [])
+]).
+inherited_alignment(Specs, SyntaxType, Env, Inherited) :-
+    (   memberchk(tname(N), Specs), object_declarator(SyntaxType),
+        lookup_ordinary(Env, talign(N), A), integer(A)
+    ->  Inherited = [align(A)]
+    ;   Inherited = []
+    ).
+
+object_declarator(base).
+object_declarator(array(S, _)) :- object_declarator(S).
 
 innermost_element(array(T, _), E) :- !, innermost_element(T, E).
 innermost_element(T, T).
 
 % request_alignment(+Env, +Request, -A): the constant alignment Request
 % asks for, a power of two or 0 (none).
+request_alignment(_, alignas(value(A)), A) :- !.
 request_alignment(Env, alignas(type(TN)), A) :- !,
-    type_name_type(TN, T, Env, Env1), type_size_align(T, Env1, _, A).
+    (   TN = type(Specs, Syntax),
+        inherited_alignment(Specs, Syntax, Env, [align(IA)])
+    ->  A = IA
+    ;   type_name_type(TN, T, Env, Env1), type_size_align(T, Env1, _, A)
+    ).
 request_alignment(Env, alignas(expr(E)), A) :- !,
     catch(const_value(E, Env, A, _), not_constant, fail),
     ( A =:= 0 -> true ; A > 0, A /\ (A - 1) =:= 0 ).
@@ -615,8 +697,8 @@ doc(definition_alignment(+Attrs, +Env, -Align), semidet, [
     "alignment the larger of N and its members' (packed or not); bare",
     "aligned means the target's biggest alignment, 16 on x86-64 (clang's",
     "__BIGGEST_ALIGNMENT__). N must be a constant power of two. Fails",
-    "for an alignment above 16, which nanofil does not give objects",
-    "(globals and allocations are 16-aligned), or a non-constant N.",
+    "for an alignment above 4096, which nanofil does not give objects",
+    "(max_alignment/1), or a non-constant N.",
     cites('GCC manual, Common Type Attributes, aligned'),
     cites('C11 6.2.8p4'),
     example(( empty_env(E),
@@ -627,7 +709,7 @@ doc(definition_alignment(+Attrs, +Env, -Align), semidet, [
             A = 16),
     example(( empty_env(E), definition_alignment([], E, A) ), A = 1),
     fails(( empty_env(E),
-            definition_alignment([[group([id(aligned), group([int(32, none-dec)])])]], E, _) )),
+            definition_alignment([[group([id(aligned), group([int(8192, none-dec)])])]], E, _) )),
     fails(( empty_env(E),
             definition_alignment([[group([id(aligned), group([int(12, none-dec)])])]], E, _) ))
 ]).
@@ -651,7 +733,7 @@ requested_alignment(Env, arg(Ts), A0, A) :-
     phrase(flat_tokens(Ts), Flat),
     catch(c_constant_expression(Flat, E), nanofil_error(_), fail),
     catch(const_value(E, Env, N, _), not_constant, fail),
-    N > 0, N /\ (N - 1) =:= 0, N =< 16,
+    N > 0, N /\ (N - 1) =:= 0, max_alignment(M), N =< M,
     A is max(A0, N).
 
 % aligned_def(+Def0, +Align, -Def): Def is the definition Def0 with its
@@ -718,10 +800,15 @@ member_decl(static_assert(Loc, Expr, _), [], [], Env, Env) :-    % C11 6.7.10p2
     ).
 member_decl(field(Specs0, dcl(Name, SyntaxType, _), Width), Fields,
             Reflected, Env0, Env) :-
-    natural_alignments(Specs0, SyntaxType, Env0, Specs),
+    partition(alignment_request, Specs0, Requests, Specs),
     specs_type(Specs, Base, Env0, Env1),
     apply_declarator(SyntaxType, Base, Type, Env1, Env),
+    inherited_alignment(Specs, SyntaxType, Env, Inherited),
+    member_alignment(Requests, Inherited, Env, MA),
     (   bad_type(Type, Why) -> Fields = [bad(Why)], Reflected = []
+    ;   MA = bad(Why) -> Fields = [bad(Why)], Reflected = []
+    ;   Width \== none, MA \== none
+    ->  Fields = [bad('alignment attributes')], Reflected = []
     ;   vm_type(Type)                                       % 6.7.2.1p9
     ->  Fields = [bad('variably modified member')], Reflected = []
     ;   Width \== none, \+ bitfield_width(Width, Name, Type, Env, _)
@@ -729,7 +816,8 @@ member_decl(field(Specs0, dcl(Name, SyntaxType, _), Width), Fields,
     ;   Width \== none,                                     % 6.7.2.1p5
         reflect_type(type(Specs, SyntaxType), Type, Env, QT), atomic_qualified(QT)
     ->  Fields = [bad('_Atomic bit-field')], Reflected = []
-    ;   (   Width == none -> Fields = [f(Name, Type)]
+    ;   (   Width == none, MA == none -> Fields = [f(Name, Type)]
+        ;   Width == none -> Fields = [f(Name, Type, MA)]
         ;   bitfield_width(Width, Name, Type, Env, W),
             Fields = [b(Name, Type, W)]
         ),
@@ -739,54 +827,43 @@ member_decl(field(Specs0, dcl(Name, SyntaxType, _), Width), Fields,
         )
     ).
 
-doc(natural_alignments(+Specs0, +SyntaxType, +Env, -Specs), det, [
-    Specs0: "a member's specifiers, attributes included",
-    SyntaxType: "its declarator's type syntax",
+doc(member_alignment(+Requests, +Inherited, +Env, -MA), det, [
+    Requests: "a member's _Alignas specifiers and aligned attributes",
+    Inherited: "[align(I)] if its type is a typedef of alignment I (inherited_alignment/4), else []",
     Env: "the scope it is declared in",
-    Specs: "Specs0 without the alignment requests its type already meets",
-    "An _Alignas or aligned(N) attribute no stronger than the member",
-    "type's own alignment changes nothing: _Alignas cannot weaken it, nor",
-    "can aligned without packed, so the request is dropped. glibc's and",
-    "clang's max_align_t align its long long and long double members",
-    "so. A stronger request stays, and the type is refused (bad).",
+    MA: "none, a(Base, Explicit) or bad(Reason)",
+    "The member's alignment is Explicit, the strictest request (1 if",
+    "none), or Base if that is stricter: its typedef's alignment, or",
+    "natural, its type's own. _Alignas and aligned cannot weaken a",
+    "member (6.7.5p4), but a typedef's alignment can (GCC's aligned",
+    "typedefs). In a packed struct only Explicit counts. Above 4096, or",
+    "with a request that is not a constant power of two, the member is",
+    "refused (bad).",
     cites('C11 6.7.5p4'),
     cites('GCC manual, Common Type Attributes, aligned'),
+    cites('GCC manual, Common Variable Attributes, aligned'),
+    example(( empty_env(E), member_alignment([], [], E, MA) ), MA = none),
     example(( empty_env(E),
-              natural_alignments([tspec(long), tspec(double),
-                                  attr([group([id('__aligned__'), group([int(16, none-dec)])])])],
-                                 base, E, S) ),
-            S = [tspec(long), tspec(double)]),
-    example(( empty_env(E),
-              natural_alignments([tspec(int), alignas(expr(num(8, none-dec)))], base, E, S) ),
-            S = [tspec(int), alignas(expr(num(8, none-dec)))])
+              member_alignment([attr([group([id(aligned), group([int(32, none-dec)])])])],
+                               [], E, MA) ),
+            MA = a(natural, 32)),
+    example(( empty_env(E), member_alignment([], [align(1)], E, MA) ), MA = a(1, 1)),
+    example(( empty_env(E), member_alignment([alignas(expr(num(8192, none-dec)))], [], E, MA) ),
+            MA = bad('an alignment above 4096'))
 ]).
-natural_alignments(Specs0, SyntaxType, Env, Specs) :-
-    partition(alignment_request, Specs0, Requests, Others),
-    (   Requests \== [],
-        catch(( specs_type(Others, Base, Env, Env1),
-                apply_declarator(SyntaxType, Base, Type, Env1, Env2),
-                type_size_align(Type, Env2, _, Natural) ), _, fail),
-        \+ ( member(R, Requests), \+ request_met(R, Natural, Env2) )
-    ->  exclude(alignment_request, Specs0, Specs)
-    ;   Specs = Specs0
+member_alignment([], [], _, none) :- !.
+member_alignment(Requests, Inherited, Env, MA) :-
+    ( Inherited = [align(B)] -> Base = B ; Base = natural ),
+    (   maplist(request_alignment(Env), Requests, As)
+    ->  max_list([1|As], Explicit),
+        (   max_alignment(M), Explicit > M -> MA = bad('an alignment above 4096')
+        ;   MA = a(Base, Explicit)
+        )
+    ;   MA = bad('alignment attributes')
     ).
 
 alignment_request(alignas(_)).
 alignment_request(attr(Tokens)) :- aligned_attr(Tokens).
-
-% request_met(+Request, +Natural, +Env): the alignment Request asks for
-% is a constant no greater than Natural.
-request_met(alignas(type(TN)), Natural, Env) :-
-    type_name_type(TN, T, Env, Env1), type_size_align(T, Env1, _, A), A =< Natural.
-request_met(alignas(expr(E)), Natural, Env) :-
-    catch(const_value(E, Env, A, _), not_constant, fail), A =< Natural.
-request_met(attr([group(Attr)]), Natural, Env) :-   % __attribute__((...))
-    request_met(attr(Attr), Natural, Env).
-request_met(attr([Word, group(Ts)]), Natural, Env) :-
-    memberchk(Word, [id(aligned), id('__aligned__')]),
-    phrase(flat_tokens(Ts), Flat),
-    catch(c_constant_expression(Flat, E), nanofil_error(_), fail),
-    catch(const_value(E, Env, A, _), not_constant, fail), A =< Natural.
 
 % flat_tokens(+Tokens)//: attribute Tokens, groups parenthesized again,
 % as c_lex tokens.
@@ -843,7 +920,8 @@ su_layout(Kind, Packing, Fields, Env, Def) :-
 fields_layout(_, packed, Fields, _, _) :-
     member(b(_, _, _), Fields), throw(bad('packed bit-fields')).
 fields_layout(_, packed, Fields, Env, _) :-
-    member(f(_, T), Fields), holds_pointer(T, Env), throw(bad('packed pointers')).
+    ( member(f(_, T), Fields) ; member(f(_, T, _), Fields) ),
+    holds_pointer(T, Env), throw(bad('packed pointers')).
 fields_layout(Kind, Packing, Fields, Env, Layout) :-
     (   foldl(field_member(Kind, Packing, Env), Fields, Memberss, 0-1, EndBits-Align)
     ->  append(Memberss, Members),
@@ -873,6 +951,23 @@ field_member(Kind, Packing, Env, f(Name, Type), [m(Name, Type, Off)], End0-Align
     ;   type_size_align(Type, Env, FieldSize, NaturalAlign)
     ),
     ( Packing == packed -> FieldAlign = 1 ; FieldAlign = NaturalAlign ),
+    member_offset_end(Kind, End0, FieldSize, FieldAlign, Off, End),
+    Align is max(Align0, FieldAlign).
+field_member(Kind, Packing, Env, f(Name, Type, a(Base, Explicit)), [m(Name, Type, Off)],
+             End0-Align0, End-Align) :-
+    (   Type = array(ElemType, none)
+    ->  type_size_align(ElemType, Env, _, NaturalAlign),
+        FieldSize = 0
+    ;   type_size_align(Type, Env, FieldSize, NaturalAlign)
+    ),
+    ( Base == natural -> BaseAlign = NaturalAlign ; BaseAlign = Base ),
+    (   Packing == packed -> FieldAlign = Explicit
+    ;   FieldAlign is max(BaseAlign, Explicit)
+    ),
+    (   FieldAlign < 8, holds_pointer(Type, Env)
+    ->  throw(bad('underaligned pointers'))
+    ;   true
+    ),
     member_offset_end(Kind, End0, FieldSize, FieldAlign, Off, End),
     Align is max(Align0, FieldAlign).
 field_member(Kind, natural, Env, b(Name, Type, W), Members, End0-Align0, End-Align) :-
@@ -1764,7 +1859,12 @@ folded(val(_, sizeof(X)), Env, V) :-
     catch(type_size_align(T, Env, V, _), bad(_), fail).
 folded(val(_, alignof(TypeName)), Env, V) :-                % 6.5.3.4p3
     type_name_type(TypeName, T, Env, Env1),
-    catch(type_size_align(T, Env1, _, V), bad(_), fail).
+    catch(type_size_align(T, Env1, _, V0), bad(_), fail),
+    (   TypeName = type(Specs, Syntax),
+        inherited_alignment(Specs, Syntax, Env, [align(A)])
+    ->  V = A
+    ;   V = V0
+    ).
 folded(val(_, offsetof(TypeName, Path)), Env, V) :-         % 7.19p3
     type_name_type(TypeName, T, Env, Env1),
     offset_path(Path, T, Env1, 0, V).

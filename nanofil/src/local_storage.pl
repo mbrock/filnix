@@ -83,7 +83,9 @@ local_objects(F, Addresses, Objects) :-
             ( member(A-local(const(Size), Accesses), Classes),
               integer(Size), Size >= 0,
               \+ memberchk(A, Unsupported),
-              memberchk(let(tmp(A), p, alloc(_), [const(Size)]), Entry),
+              % A local object is 16-aligned (local_alloc has no Align).
+              memberchk(let(tmp(A), p, alloc(Align), [const(Size)]), Entry),
+              Align =< 16,
               maplist(access_inside(Size), Accesses) ),
             Candidates),
     within_budget(Candidates, 4096, Objects).

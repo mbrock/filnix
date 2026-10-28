@@ -616,6 +616,38 @@ test(float_filc_memory) :-
     Expected is xor(18444492273895866370, 2147483648),
     module_fn_args_outcome(M, f, [], ret(Expected)).
 
+% Alignment above 16 (docs/abi-findings.md): in Fil-C mode an alloc and
+% a data object are as aligned as they ask, 16 at least, up to 4096,
+% each placed after a 1-byte object that leaves the next address
+% unaligned; 8192 is refused.
+test(over_aligned_alloc_and_data) :-
+    forall(member(A, [16, 32, 4096]),
+           ( Mask is A - 1,
+             ir_module([
+                 data(pad, local, 1, [item(b, const(1))]),
+                 data(g, local, A, [item(b, const(1))]),
+                 func(f, export, l, [], [
+                     block(s, [], [
+                         let(tmp(c), p, alloc(4), [const(1)]),
+                         let(tmp(p), p, alloc(A), [const(8)]),
+                         let(tmp(g), p, copy, [global(g)]),
+                         let(tmp(i), l, ptoi, [tmp(p)]),
+                         let(tmp(j), l, ptoi, [tmp(g)]),
+                         let(tmp(k), l, or, [tmp(i), tmp(j)]),
+                         let(tmp(r), l, and, [tmp(k), const(Mask)])
+                     ], ret(tmp(r)))
+                 ])
+             ], M),
+             module_fn_args_outcome(M, f, [], ret(0)) )).
+test(rejects_alignment_above_4096) :-
+    rejected_with([data(g, local, 8192, [item(b, const(1))])],
+                  "unsupported data alignment 8192"),
+    rejected_with([
+        func(f, export, p, [], [
+            block(s, [], [let(tmp(p), p, alloc(8192), [const(8)])], ret(tmp(p)))
+        ])
+    ], "alloc(8192)").
+
 %% Class p
 
 % A p temporary cannot be read as l without ptoi.

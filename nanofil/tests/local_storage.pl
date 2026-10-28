@@ -22,7 +22,8 @@ local_selection :-
     forall(float_heap_case(_, _, M, Expected),
            optimized_float_heap(M, Expected)),
     storage_budget,
-    zero_size.
+    zero_size,
+    over_aligned_unchanged.
 
 selected_overlap :-
     overlap(F), local_storage_module(module([F]), M),
@@ -36,6 +37,14 @@ overlap(func(overlap, export, l, [], [block(s, [], [
     store(h, const(4660), tmp(a)), store(b, const(86), tmp(b)),
     let(tmp(r), l, load(l), [tmp(a)])
 ], ret(tmp(r)))])).
+
+% A local object is only 16-aligned: an alloc asking for more keeps its
+% heap allocation, which filc_allocate_with_alignment aligns.
+over_aligned_unchanged :-
+    overlap(func(N, L, R, Ps, [block(B, Phis, [let(A, p, alloc(_), S)|Is], J)])),
+    remains_heap(Ps, [let(A, p, alloc(32), S)|Is], J),
+    F = func(N, L, R, Ps, [block(B, Phis, [let(A, p, alloc(16), S)|Is], J)]),
+    local_storage_module(module([F]), M), M \== module([F]).
 
 remains_heap(Ps, Is, J) :-
     F = func(f, export, void, Ps, [block(s, [], Is, J)]),

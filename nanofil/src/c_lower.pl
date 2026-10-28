@@ -681,7 +681,7 @@ global_item(Sym-g(Type, Linkage, Init, Loc),
           sema_error(Loc, '~w has an unsupported type (~w)', [Sym, Why])),
     env_defs(Env0, Defs),
     ( get_assoc(galign(Sym), Defs, Requested) -> true ; Requested = 1 ),
-    Align is max(min(Align0, 16), Requested),
+    Align is max(Align0, Requested),
     ( get_assoc(initialized(Sym), Defs, Items)
     -> Env = Env0
     ; static_items(Type, Init, Loc, Env0, Env, Items)
@@ -708,6 +708,7 @@ function_(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     ),
     ret_class(Loc, RetType, Env0, RetClass),
     param_names(DclType, Names),
+    param_mins(DclType, Env0, Mins),
     statement_expression_jumps(Body, Loc),
     reflect_params(DclType, ParamTypes, Env0, ParamEnv0),
     label_values(Body, ParamEnv0, ParamEnv),
@@ -719,7 +720,7 @@ function_(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     empty_assoc(Labels),
     Ctx = ctx(Name, RetType, none, none, Loc),
     phrase(( sret_param(RetType, SretParams),
-             params(Names, ParamTypes, Ctx, Params00),
+             params(Names, Mins, ParamTypes, Ctx, Params00),
              { length(SretParams, NSret) },
              pad_params(Params00, NSret, Params0),
              variadic_entry(Variadic, RetType-ParamTypes, SretParams, Params0),
@@ -822,43 +823,53 @@ param_names(func(_, unspecified), []) :- !.
 param_names(func(_, params(Params, _)), Names) :-
     findall(Name, member(param(_, dcl(Name, _, _)), Params), Names).
 
-% params(+Names, +Types, +Ctx, -Params)//: Params are the IR parameters,
+% param_mins(+DclType, +Env, -Mins): each parameter's minimum alignment,
+% its typedef's (inherited_alignment/4) or 1, as clang lays it out.
+param_mins(func(_, unspecified), _, []) :- !.
+param_mins(func(_, params(Params, _)), Env, Mins) :-
+    findall(Min,
+            ( member(param(Specs, dcl(_, Syntax, _)), Params),
+              ( Syntax == base, inherited_alignment(Specs, base, Env, [align(Min)])
+              -> true ; Min = 1 ) ),
+            Mins).
+
+% params(+Names, +Mins, +Types, +Ctx, -Params)//: Params are the IR parameters,
 % and each named one is stored into a local. A struct or union comes in
 % one word per eightbyte.
-params([], [], _, []) --> [].
-params([Name|Names], [Type|Types], Ctx, Params) -->
+params([], _, [], _, []) --> [].
+params([Name|Names], [Min|Mins], [Type|Types], Ctx, Params) -->
     { abi_memory(Type) },
     !,
     env(Env),
     { ctx_loc(Ctx, Loc), arg_words(Type, Env, Loc, Ebs) },
     fresh_params(Ebs, Params0, Values),
-    su_param_local(Name, Type, Ebs, Values),
-    params(Names, Types, Ctx, Params1),
+    su_param_local(Name, Type, Min, Ebs, Values),
+    params(Names, Mins, Types, Ctx, Params1),
     { pad16_mark(Type, Env, Params0, Params2), append(Params2, Params1, Params) }.
-params([Name|Names], [Type|Types], Ctx, [param(Class, P)|Params]) -->
+params([Name|Names], [Min|Mins], [Type|Types], Ctx, [param(Class, P)|Params]) -->
     { ctx_loc(Ctx, Loc),
       supported(Type, Loc),
       (   type_class(Type, Class) -> true
       ;   sema_error(Loc, 'parameter of type ~w is not supported yet', [Type])
       ) },
     fresh(P),
-    param_local(Name, Type, P),
-    params(Names, Types, Ctx, Params).
+    param_local(Name, Type, Min, P),
+    params(Names, Mins, Types, Ctx, Params).
 
-% su_param_local(+Name, +Type, +Ebs, +Values)// and
-% param_local(+Name, +Type, +P)//: a named parameter of Type, which came
+% su_param_local(+Name, +Type, +Min, +Ebs, +Values)// and
+% param_local(+Name, +Type, +Min, +P)//: a named parameter of Type, which came
 % in as the words Values (eightbytes Ebs) or the temporary P, is stored
 % into a local it is bound to; an unnamed one is dropped.
-su_param_local(none, _, _, _) --> [].
-su_param_local(some(Name), Type, Ebs, Values) -->
-    local_slot(Type, Addr),
+su_param_local(none, _, _, _, _) --> [].
+su_param_local(some(Name), Type, Min, Ebs, Values) -->
+    local_slot(Type, Min, Addr),
     bind(Name, var(Addr, Type)),
     name_values(Values, Addr, piece),
     store_words(Ebs, Values, Addr).
 
-param_local(none, _, _) --> [].
-param_local(some(Name), Type, P) -->
-    local_slot(Type, Addr),
+param_local(none, _, _, _) --> [].
+param_local(some(Name), Type, Min, P) -->
+    local_slot(Type, Min, Addr),
     bind(Name, var(Addr, Type)),
     name_value(P, Addr, value),
     store_typed(Type, P, Addr).
@@ -1120,13 +1131,13 @@ let(Class, Op, Args, Dest) -->
 % vla_slot(+Type, +Min, +Ctx, -Addr)//: Addr points at a new object of the
 % variable length array Type, allocated where its declaration is
 % reached, with its length as evaluated then (C11 6.2.4p7, 6.7.6.2p5),
-% aligned to Min (at most 16) at least.
+% aligned to Min at least.
 vla_slot(Type, Min, Ctx, Addr) -->
     extent(Type, Ctx, Size),
     env(Env),
     { element_type(Type, Elem),
       catch(type_size_align(Elem, Env, _, Align0), bad(Why), throw(nanofil_error(Why))),
-      Align is min(16, max(4, max(Min, Align0))) },
+      Align is max(4, max(Min, Align0)) },
     let(p, alloc(Align), [Size], Addr).
 
 /* laundered(+XV, -XP, -Hole, -XV1): the integer value tree XV, cast to
@@ -1221,7 +1232,7 @@ element_type(T, T).
 
 % local_slot(+Type, -Addr)//: Addr points at a new local object of
 % Type, an alloc in the entry block; local_slot(+Type, +Min, -Addr)//
-% aligns it to Min (at most 16) at least.
+% aligns it to Min at least.
 local_slot(Type, Addr) --> local_slot(Type, 1, Addr).
 local_slot(Type, Min, Addr) -->
     env(Env),
@@ -2335,8 +2346,13 @@ lower_node(val(_, alignof(TN)), Ctx, v(const(Align), ulong)) --> !,
     { ctx_loc(Ctx, Loc),
       type_name_type(TN, Type0, Env, Env1), supported(Type0, Loc),
       element_type(Type0, Type),
-      catch(type_size_align(Type, Env1, _, Align), bad(Why),
-            sema_error(Loc, 'alignof: ~w', [Why])) }.
+      catch(type_size_align(Type, Env1, _, Align0), bad(Why),
+            sema_error(Loc, 'alignof: ~w', [Why])),
+      (   TN = type(Specs, Syntax),
+          inherited_alignment(Specs, Syntax, Env, [align(A)])
+      ->  Align = A
+      ;   Align = Align0
+      ) }.
 lower_node(val(_, offsetof(TN, Path)), Ctx, v(const(V), ulong)) --> !,
     env(Env),
     { ctx_loc(Ctx, Loc),

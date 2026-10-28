@@ -538,8 +538,8 @@ item(_, data(Name, init(Kind, Prio), _, [item(p, sym(F, 0))])) --> !,
     init_entry(Name, Kind, Prio, F).
 item(_, data(Name, extern(weak), _, [])) --> !,
     { abi_symbol(getter, Name, Getter) }, [weak(Getter)].
-item(_, data(Name, Linkage, _, Items)) -->
-    data_object(Name, Linkage, Items).
+item(_, data(Name, Linkage, Align, Items)) -->
+    data_object(Name, Linkage, Align, Items).
 
 % A constructor or destructor table entry (ir.pl's init linkage), as
 % clang's Fil-C emits one: a native forwarder in the .init_array or
@@ -1531,8 +1531,8 @@ kind_inst(alloc, p, alloc(Align), [N], D, _, _, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     load(N, l, si, Fn),
     slot_reg_load(thread, rdi, Ctx),
-    (   { Align == 16 }
-    ->  [ins(mov, l, [imm(16), reg(edx)]),
+    (   { Align >= 16 }
+    ->  [ins(mov, l, [imm(Align), reg(edx)]),
          ins(call, none, [plt(filc_allocate_with_alignment)])]
     ;   [ins(call, none, [plt(filc_allocate)])]
     ),
@@ -2622,9 +2622,10 @@ linkage_globl(weak, S) --> [weak(S)].
 %% DO_d = {upper, aux} then the payload rounded up to 8 bytes, a 16-byte
 %% cache GP_d, an aux array DA_d if the payload holds pointers, and a
 %% getter whose slow path registers the object and runs the relocations
-%% that fill in its pointers.
+%% that fill in its pointers. A payload aligned to more than 16 has
+%% Align - 16 zero bytes before DO_d, so that DO_d + 16 is aligned.
 
-data_object(Name, Linkage0, Items) -->
+data_object(Name, Linkage0, Align, Items) -->
     { linkage_flags(Linkage0, Linkage, Flags),
       abi_symbol(data_object, Name, DO),
       abi_symbol(data_aux, Name, DA),
@@ -2638,8 +2639,15 @@ data_object(Name, Linkage0, Items) -->
       Size is (Size0 + 7) // 8 * 8,
       Pad is Size - Size0,
       relocs_aux_word(Rs, Flags, DA, AuxWord),
-      Total is 16 + Size },
-    [section(data), p2align(4), type(DO, object), label(DO),
+      Total is 16 + Size,
+      PayloadAlign is max(Align, 16), Front is PayloadAlign - 16,
+      Log is msb(PayloadAlign) },
+    [section(data), p2align(Log)],
+    (   { Front > 0 }
+    ->  [zero(Front)]
+    ;   []
+    ),
+    [type(DO, object), label(DO),
      quad(DO+16+Size), quad(AuxWord)],
     seq(Payload),
     (   { Pad > 0 }

@@ -430,12 +430,16 @@ compute_op(load(Type), K, [Addr], Ctx) -->
     load(Addr, l, a, Ctx),
     { load_insn(Type, K, Insn) },
     [Insn].
-compute_op(alloc(_), _, [Size], Ctx) -->
+compute_op(alloc(Align), _, [Size], Ctx) -->
     load(Size, l, a, Ctx),
     [ins(add, q, [imm(15), reg(rax)]),
      ins(and, q, [imm(-16), reg(rax)]),
-     ins(sub, q, [reg(rax), reg(rsp)]),
-     ins(mov, q, [reg(rsp), reg(rax)])].
+     ins(sub, q, [reg(rax), reg(rsp)])],
+    (   { Align > 16 }
+    ->  { Mask is -Align }, [ins(and, q, [imm(Mask), reg(rsp)])]
+    ;   []
+    ),
+    [ins(mov, q, [reg(rsp), reg(rax)])].
 
 % alu(+Insn, +K, +Args, +Ctx)//: the x86 two-operand instruction Insn
 % on Args.

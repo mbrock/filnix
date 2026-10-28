@@ -1039,3 +1039,67 @@ null, called only if present, and whose addresses are taken in code and
 in static initializers. `weak-symbols-clang.c` links clang's object
 first. Without weak linkage the overrides are duplicate definitions and
 the unresolved references are undefined, so both fail to link.
+
+## Alignment above 16
+
+Read in `filc_runtime.c` (`allocate_aligned_impl`, `prepare_allocate`)
+and `FilPizlonator.cpp` (`allocateObject`) at the pin, and checked
+against `filcc -S` output.
+
+**Heap objects.** `filc_object* filc_allocate_with_alignment(filc_thread*
+thread, size_t size, size_t alignment)` returns the object header, and the
+payload is header + 16, aligned to `alignment` (at least 8). The size
+rounds up to 16, the allocation is `size + max(alignment, 16)` bytes from
+`verse_heap_allocate_with_alignment`, and above 16 its base holds a
+`filc_alignment_header` (log2 alignment in the high 16 bits) for the
+GC's object scans. An alignment above the heap's maximum fails
+`FILC_CHECK(... "alignment %zu too big")`. clang's `allocateObject`
+calls `filc_allocate` (or allocates inline) when the alignment is at
+most `GCMinAlign` (16) and `filc_allocate_with_alignment` otherwise.
+nanofil lowers `alloc(Align)` with Align ≥ 16 to
+`filc_allocate_with_alignment(thread, size, Align)` and smaller ones to
+`filc_allocate`. A local object is a frame slot (`local_alloc`) only if
+its alloc asks for 16 or less (local_storage.pl), since a frame slot is
+16-aligned.
+
+**Data objects.** clang aligns `DO_g` to the payload's alignment A and
+emits A − 16 zero bytes before the header, so the payload starts at
+`DO_g + A`:
+
+```asm
+	.p2align	6, 0x0
+pizlonatedDO_x:
+	.zero	48
+	.quad	pizlonatedDO_x+72          # upper
+	.quad	0+281474976710656          # aux: GLOBAL, no alignment bits
+	.long	1                          # payload, at DO + 64
+```
+
+The getter returns `DO_g + A`, and `filc_global_initialization_start`
+gets the header, `DO_g + A − 16`. The aux word is the same as for a
+16-aligned global: globals carry no log2 alignment. nanofil emits the
+same bytes but puts its `DO_g` label after the pad, at the header. `DO_g`
+is local to its module, since other modules reach a global through its
+getter, so only the label's position differs, and with it the symbol's
+`.size` (the payload plus header rather than the pad too).
+
+**Bounds.** The capability's lower is the payload in both cases, so the
+pad, and on the heap the alignment header, are never in bounds.
+tests/c/prog/over-aligned-trap.c and over-aligned-trap-global.c read the
+byte below an aligned(64) local and an aligned(64) global, and both trap
+under nanofil as they do under filcc. The GC sees a global through its
+header, registered by the getter, and never scans the pad.
+
+`tests/c/prog/over-aligned.c` (with `lib/over-aligned.c`) checks
+alignments from 32 to 4096 across a nanofil and a clang object: globals,
+a pointer-holding global whose relocations follow the pad, locals passed
+to the other side, an aligned(32) member, and aligned typedefs. The Nix
+check runs it under FUGC_SCRIBBLE and FUGC_VERIFY. Thread-local objects
+already pass their alignment to `filc_allocate_thread_local`. nanofil
+refuses alignments above 4096, a pointer-holding member aligned below 8
+(Fil-C keeps capabilities only at 8-aligned addresses, as for packed
+pointers), and an aligned request on a bit-field, which clang honours by
+starting the bit-field at a boundary of that alignment even when its
+type already has it. Arrays of an aligned typedef whose element size is
+not a multiple of the alignment, which clang rejects, are still
+accepted.
