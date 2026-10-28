@@ -1104,3 +1104,15 @@ starting the bit-field at a boundary of that alignment even when its
 type already has it. Arrays of an aligned typedef whose element size is
 not a multiple of the alignment, which clang rejects, are still
 accepted.
+
+## A pointer cast through a 64-bit integer
+
+filcc gives `(T *)(uintptr_t)&g`, a pointer cast to a 64-bit integer and
+straight back, `&g`'s capability, at `-O0` and `-O1`, at run time and in
+a static initializer: `*p` reads `g` (checked October 2026 against the
+pinned filcc). nanofil's run-time lowering already did; a static
+initializer now does too (c_lower `address_constant/5`), so lighttpd's
+`static connection *const sentinel = (connection *)(uintptr_t)&queue`
+compiles. A round trip through a narrower integer stays refused, as
+clang refuses it ("initializer element is not a compile-time
+constant"). tests/c/prog/uintptr-roundtrip.c.

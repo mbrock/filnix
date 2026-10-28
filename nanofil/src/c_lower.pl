@@ -4087,6 +4087,12 @@ address_constant(val(_, cast(TypeName, XV)), Loc, Env0, Env, R) :- !,
         % constant, here an address with no capability, as in clang.
         Env = Env0, U is N mod (1 << 64), ( U =:= 0 -> R = null ; R = int(U) )
     ;   Type = ptr(_) -> address_constant(XV, Loc, Env0, Env, R)
+    ;   % A pointer cast to a 64-bit integer, inside a cast back to a
+        % pointer (the clause above), is the same address constant with
+        % its capability, as filcc keeps it.
+        int_type(Type), type_size_align(Type, Env0, 8, _),
+        lowered(XV, ptr(_))
+    ->  address_constant(XV, Loc, Env0, Env, R)
     ;   sema_error(Loc, 'initializer is not a constant', [])
     ).
 address_constant(val(ptr(_), bin(Op, XA, XB)), Loc, Env0, Env, R) :-
