@@ -235,8 +235,12 @@ lower_inst(Module, _, call(Res,global(F),Args), abi(Actions)) :- !,
     call_signature(Res, Args, Sig0), call_symbol_signature(Res, Args, Sig0, Sig),
     direct_target(Module,F,Sig,Target),
     fast_result(Res, Result), Result = result(Return,_), fast_args(Args,Words),
-    Actions = [origin(c), reserve_result(Return),
-               invoke(Target, Return, Words), Result, release_result(Return)].
+    Call = [origin(c), reserve_result(Return),
+            invoke(Target, Return, Words), Result, release_result(Return)],
+    (   small_copy(Module, F, Res, Args, Filter)
+    ->  append([Filter|Call], [copy_join], Actions)
+    ;   Actions = Call
+    ).
 lower_inst(_, _, fused(check_function,call(Res,P,Args)), abi(Actions)) :- !,
     call_signature(Res,Args,Sig), fast_result(Res,Result),
     Result = result(Return,_), fast_args(Args,Words),
@@ -297,6 +301,17 @@ word_codes(Ret, Ks, R-A) :-
     ret_kinds(Ret, RetKs),
     maplist(class_digit, RetKs, RDs), maplist(class_digit, Ks, ADs),
     bijective_value(RDs, R), bijective_value(ADs, A).
+% small_copy(+Module, +F, +Res, +Args, -Filter): the call is a memcpy or
+% memmove of a constant 1 to 16 bytes that the module does not define, so
+% the emitter may put the inline filter of docs/perf.md item 7a in front
+% of the unchanged call; Filter is copy_filter(Dst, Src, N, Res).
+small_copy(Module, F, Res, [arg(p,D),arg(p,S),arg(l,const(N))],
+           copy_filter(D,S,N,Res)) :-
+    memberchk(F, [memcpy,memmove]),
+    integer(N), N >= 1, N =< 16,
+    ( Res == void -> true ; Res = result(_,p) ),
+    \+ func_named(Module,F,_), \+ data_named(Module,F).
+
 direct_target(Module,F,_,implementation(F,Sig)) :-
     func_named(Module,F,Func), \+ variadic_named(Module,F), !,
     Func = func(_,_,Ret,Ps,_), param_kinds(Ps,Ks), signature(Ret,Ks,Sig).

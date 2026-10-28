@@ -30,6 +30,7 @@ let
     O-stack = "-O --registers=stack";
     O-function = "-O --registers=function";
     O-operands = "-O --registers=operands";
+    O-call = "-O --memcpy=call";
   };
   chosen =
     if only == "" then

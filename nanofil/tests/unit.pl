@@ -119,9 +119,41 @@ test(local_array_registers) :-
            ( filc_module_asm(P, emit(R, selected), Lines, Reports),
              memberchk(function(f, allocated(N, _)), Reports), N > 0,
              \+ ( member(ins(_,_,Os), Lines), member(mem(_,rbp,_), Os) ) )).
+% Item 7a: -O puts the inline filter, with the destination's masked
+% header test, in front of a small constant memcpy and keeps the call
+% behind it; call mode, 17 bytes and a module that defines memcpy keep
+% only the call.
+test(small_copy_filter) :-
+    Decl = "typedef unsigned long size_t; void *memcpy(void *, const void *, size_t);",
+    Mask = 0x0786ffffffffffff,
+    copy_lines(Decl, "long f(char *d, char *s, long n) { long t = 0;
+                        for (long i = 0; i < n; i++) { memcpy(d + i, s, 8); t += d[i]; }
+                        return t; }", inline, Lines-Reports),
+    % The region checker accepts the filter in an allocated function.
+    memberchk(function(f, allocated(A, _)), Reports), A > 0,
+    memberchk(ins(movabs,q,[imm(Mask),reg(rdx)]), Lines),
+    memberchk(ins(mov,q,[mem(0,rsi),reg(rdx)]), Lines),
+    memberchk(ins(call,none,[sym(_)]), Lines),
+    copy_lines(Decl, "void f(char *d, char *s) { memcpy(d, s, 8); }", call, Called-_),
+    \+ memberchk(ins(movabs,q,[imm(Mask),reg(rdx)]), Called),
+    copy_lines(Decl, "void f(char *d, char *s) { memcpy(d, s, 17); }", inline, Long-_),
+    \+ memberchk(ins(movabs,q,[imm(Mask),reg(rdx)]), Long),
+    copy_lines(Decl, "void f(char *d, char *s) { memcpy(d, s, 8); }
+                      void *memcpy(void *d, const void *s, size_t n) { return d; }",
+               inline, Defined-_),
+    \+ memberchk(ins(movabs,q,[imm(Mask),reg(rdx)]), Defined).
 test(local_storage_semantics) :- local_semantics.
 test(local_storage_lifetime) :- local_lifetime.
 test(local_storage_validation) :- local_validation.
+
+% copy_lines(+Decl, +Src, +Copies, -Lines-Reports): the -O Fil-C lines
+% and reports of the C text Decl followed by Src, with small copies
+% Copies (call or inline).
+copy_lines(Decl, Src, Copies, Lines-Reports) :-
+    append(Decl, Src, Text),
+    c_tokens(Text, 'copy.c', Ts), c_parse(Ts, C), c_module(C, M),
+    optimize(o1, M, O), pizlonate_module(O, P),
+    filc_module_asm(P, emit(cells, selected, Copies), Lines, Reports).
 
 % module_fn_args_outcome(+Module, +Fn, +Args, ?Outcome): Outcome is the first
 % outcome of Fn(Args) on Module with fuel for 1000 blocks.

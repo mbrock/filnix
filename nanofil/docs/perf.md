@@ -879,7 +879,10 @@ removed were store-to-load forwards on the critical path. lz4 -1 and
 3c column here is `O` against the previous gate's `O-operands`: lz4 -9
 5.50 (5.55) → 4.32 (5.01), zlib -d 2.47 → 2.14.
 
-#### 5a, full: frame words in the region checker (second step)
+#### 5a, full: frame words in the region checker (dropped)
+
+**Dropped, by decision of the orchestrating thread (October 2026), on the
+measurement below. Do not reopen without a new measurement.**
 
 **Measured ceiling, before writing the corrected contract: too small to
 pursue.** Regions end at every label, jump and call (`boundary_line/2`
@@ -1259,6 +1262,80 @@ its own contract.
 - **Gates.** Snapshot changes are limited to `-O` default outputs that
   contain small constant copies. All Nix checks pass, and the bench
   gate covers lz4 `-1` and `-d`.
+
+#### 7a: result
+
+Implemented as contracted: `copy_filter`/`copy_join` actions around an
+eligible call (`small_copy/5` in `filc_abi.pl`), expanded by
+`copy_filter//7` in `filc_amd64.pl` when the copy choice is `inline`, the
+`-O` default (`--memcpy=call|inline`, `NANOFIL_MEMCPY`). Without `-O`,
+and in setjmp functions, the output is unchanged: the snapshot differs in
+20 of 3306 outputs, all `-O` (5 programs in each of the four pinned `-O`
+modes).
+
+Tests:
+- **Unit test `small_copy_filter`.** The filter appears in an allocated
+  function, which the region checker accepts. Call mode, 17 bytes and a
+  module defining `memcpy` keep only the call. It fails without the
+  change.
+- **`tests/memcpy.sh`.** 14 failing cases (dst or src with aux,
+  read-only dst, freed dst or src, out of bounds on each side, null dst
+  or src lower, a function as source, `malloc(0)`, the result's bounds),
+  each at N = 1, 8, 9 and 16. Every case must give byte-identical stdout,
+  stderr and status under `-O` and `-O --memcpy=call`, pids and
+  addresses aside, and must trap exactly when filcc's build traps. It
+  runs in the Nix check by default and under every `--registers` mode.
+- **`tests/c/prog/memcpy-small.c`**, a progtest against filcc, also
+  under GC stress. It covers every N from 1 to 16 at every pair of
+  misalignments, copying and overlapping memmove in both directions
+  (`d == s` included). It also covers pointers copied through `memcpy`,
+  a global holding pointers as destination, holders made by a
+  clang-built companion and copied whole and in part, a string-literal
+  source, the result's bounds, and N = 0, 17, a variable N and
+  `__builtin___memcpy_chk`.
+
+Planted bugs:
+
+| Plant | Caught by |
+| --- | --- |
+| Destination mask without the aux bits | `dst-aux` at all four sizes (the pointer survives where the runtime clears it) |
+| Source mask 0 | `src-aux` and progtest (the copied pointer loses its capability) |
+| Destination mask without READONLY and FREE | `readonly` at all four sizes |
+| Each store right after its load | progtest, 790 overlapping moves wrong |
+| `mov; shl $16; jnz` in place of the masked test | the region checker rejects it ("register operand translation check failed") |
+| A copy register in r10 | the unit test |
+
+A destination mask without the SPECIAL bits is not observable: special
+objects have upper = lower, so the bounds test sends them to the call
+first. The runtime has the same redundancy, and the bits stay as the
+contract states.
+
+filcc's own inline check, for a memcpy source below its lower,
+panics through a failed assertion in `filc_optimized_access_check_fail`
+("Should not be reached") rather than a safety error. That is a panic all
+the same; `memcpy.sh` counts it as a trap.
+
+Gate (7 trials, cpu 6), ratio to filcc -O2, time (instructions). `O-call`
+is `-O --memcpy=call`, the previous default:
+
+| Workload | `O-call` | `O` |
+| --- | --- | --- |
+| zlib -6 | 2.60 (4.36) | 2.60 (4.36) |
+| zlib -d | 2.05 (3.48) 2.01..2.34 | 2.11 (3.48) 2.10..2.12 |
+| bzip2 -9 | 2.14 (2.81) | 2.14 (2.81) |
+| bzip2 -d | 3.56 (3.49) 3.55..4.02 | 3.73 (3.49) 3.72..3.76 |
+| lz4 -1 | 3.37 (21.92) 3.15..3.42 | 2.44 (13.00) 2.18..2.53 |
+| lz4 -9 | 4.03 (4.90) 4.00..5.19 | 3.93 (4.77) 3.89..3.94 |
+| lz4 -d | 5.15 (16.82) 4.96..5.26 | 3.14 (8.50) 2.96..3.26 |
+| lua int | 3.43 (2.94) | 3.43 (2.94) |
+| lua tab | 3.23 (2.83) | 3.26 (2.83) |
+| lua str | 1.60 (1.75) | 1.57 (1.75) |
+| sqlite | 2.14 (2.17) | 2.13 (2.16) |
+| geomean | 2.87 (4.26) | 2.67 (3.81) |
+
+lz4 `-d` halves its instructions and lz4 `-1` loses 40%. zlib `-d` and
+bzip2 `-d` run the same instruction counts and move by layout, as
+before (item 3b's note on bzip2 -d).
 
 ### 8. A cheap middle end
 

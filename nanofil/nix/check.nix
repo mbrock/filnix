@@ -73,6 +73,9 @@ pkgs.runCommandCC "nanofil-check"
     # const_eval, the IR and clang on generated integer expressions (docs/arith.md).
     step "arith slice" tests/arith.sh slice
     step progtest tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    # Small constant copies (docs/perf.md item 7a): the failing cases,
+    # inline filter against --memcpy=call.
+    step memcpy tests/memcpy.sh
     # c-testsuite/00200 (1557 blocks) is the slowest compile (docs/m5.md).
     step corpus env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
     step "progtest gc-stress" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
@@ -121,6 +124,7 @@ pkgs.runCommandCC "nanofil-check"
       step "registers $mode difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/branches.ir tests/c/*.c big1.c
       step "registers $mode ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
       step "registers $mode actual ensure-aux exits" tests/filc/trace-pointer-effects.sh
+      step "registers $mode memcpy" tests/memcpy.sh
       step "registers $mode programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     done
     unset NANOFIL_OPT

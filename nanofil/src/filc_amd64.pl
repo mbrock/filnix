@@ -127,7 +127,9 @@ filc_module_asm(Module, Lines) :- filc_module_asm(Module, stack, Lines, _).
 % amd64_regs.pl), operands (function, then validated register
 % operands, docs/perf.md step 3b) or cells (operands, also forwarding
 % frame-word loads, docs/perf.md 5a-loads); Branches is reference or
-% selected (branch selection, below).
+% selected (branch selection, below). emit(Registers, Branches, Copies)
+% also gives Copies: call (the reference) or inline, the small-copy
+% filter of docs/perf.md item 7a; emit/2 means call.
 % Reports records each item's caching result, without driver-side state.
 filc_module_asm(Module0, Emission, Lines, Reports) :-
     without_locs(Module0, Module),
@@ -143,6 +145,7 @@ filc_module_asm(Module0, Emission, Lines, Reports) :-
     append(LinesPerThunk, ThunkLines),
     append([ItemLines, ThunkLines, [section(note_gnu_stack)]], Lines).
 
+emission(emit(Registers, Branches, Copies), Registers, choices(Branches, Copies)) :- !.
 emission(emit(Registers, Branches), Registers, Branches) :- !.
 emission(Registers, Registers, reference).
 
@@ -394,11 +397,13 @@ lower_slot(FrameBase, Key, Slots0-I0, Slots-I) :-
    Name, where Fn = f(Name, Ret, Slots, Blocks) is the context amd64's
    load//4 and compute_op//4 take. Labels maps each block label to its
    phis, so an edge finds them without searching Blocks. */
-function_ctx(Name, Ret, Slots, Blocks, Size, FrameBase, sel(Imm, B), Ctx) :-
+function_ctx(Name, Ret, Slots, Blocks, Size, FrameBase, sel(Imm, B0), Ctx) :-
     findall(Label-Phis, member(block(Label, Phis, _, _), Blocks), LabelBlocks),
     list_to_assoc(LabelBlocks, Labels),
+    ( B0 = choices(B, Copies) -> true ; B = B0, Copies = call ),
     branch_selection(B, Blocks, Branches),
-    Ctx = ctx(f(Name, Ret, Slots, Blocks), Size, FrameBase, Labels, sel(Imm, Branches)).
+    Ctx = ctx(f(Name, Ret, Slots, Blocks), Size, FrameBase, Labels,
+              sel(Imm, Branches, Copies)).
 
 ctx_fn(ctx(Fn, _, _, _, _), Fn).
 
@@ -411,10 +416,13 @@ ctx_frame_base(ctx(_, _, FrameBase, _, _), FrameBase).
 ctx_labels(ctx(_, _, _, Labels, _), Labels).
 
 % Immediate selection: stack (the reference) or local.
-ctx_selection(ctx(_, _, _, _, sel(Selection, _)), Selection).
+ctx_selection(ctx(_, _, _, _, sel(Selection, _, _)), Selection).
 
 % Branch selection: reference, or selected(Uses) (branch selection).
-ctx_branches(ctx(_, _, _, _, sel(_, Branches)), Branches).
+ctx_branches(ctx(_, _, _, _, sel(_, Branches, _)), Branches).
+
+% Small constant copies: call (the reference) or inline (item 7a).
+ctx_copies(ctx(_, _, _, _, sel(_, _, Copies)), Copies).
 
 % ctx_slot(+Ctx, +Key, -Off): Key's slot is at -Off(%rbp).
 ctx_slot(ctx(f(_, _, Slots, _), _, _, _, _), Key, Off) :-
@@ -789,6 +797,87 @@ abi_action(success(registers), _, _, _) -->
 abi_action(success_buffer, _, _, _) -->
     [ins(mov, b, [imm(0), mem(0, rax)])].
 abi_action(native_return, _, _, _) --> [ins(leave, none, []),ins(ret, none, [])].
+abi_action(copy_filter(D,S,N,Res), I, B, Ctx) -->
+    (   { ctx_copies(Ctx, inline) } -> copy_filter(D, S, N, Res, I, B, Ctx)
+    ;   []
+    ).
+abi_action(copy_join, I, B, Ctx) -->
+    (   { ctx_copies(Ctx, inline) }
+    ->  { local_label(Ctx, B, I, copied, Done) }, [label(Done)]
+    ;   []
+    ).
+
+/* The small-copy filter (docs/perf.md item 7a): a copy of N bytes,
+   1 =< N =< 16, from S to D, done inline when the runtime's memmove would
+   pass its checks and have nothing to do for aux; otherwise a jump to
+   the unchanged call after it. D is in %rax:%rcx and S in %rsi:%rdi; the
+   checks and the copy use %rdx and %r8. Only the call's scratch
+   registers, which nothing allocates, are named. */
+copy_filter(D, S, N, Res, I, B, Ctx) -->
+    { ctx_fn(Ctx, Fn),
+      local_label(Ctx, B, I, copy, Slow),
+      local_label(Ctx, B, I, copied, Done) },
+    load(D, l, a, Fn), lower_reg_load(D, rcx, Ctx),
+    copy_check(rax, rcx, N, 0x0786ffffffffffff, Slow),
+    load(S, l, si, Fn), lower_reg_load(S, rdi, Ctx),
+    copy_check(rsi, rdi, N, 0x0000ffffffffffff, Slow),
+    { copy_parts(N, Parts) },
+    copy_loads(Parts, [rdx, r8]),
+    copy_stores(Parts, [rdx, r8]),
+    copy_result(Res, Ctx),
+    [ins(jmp, none, [sym(Done)]),
+     label(Slow)].
+
+% A jump to Slow unless the pointer P with lower L may be accessed for N
+% bytes (CHECK_BOUNDS_FAST: lower =< P, N =< upper - P) and the header
+% word at -8(L) has none of Mask's bits: the aux pointer (low 48 bits)
+% and, for the destination, READONLY | FREE | SPECIAL (CHECK_WRITE_FAST).
+copy_check(P, L, N, Mask, Slow) -->
+    [ins(test, q, [reg(L), reg(L)]),
+     ins(jz, none, [sym(Slow)]),
+     ins(cmp, q, [reg(L), reg(P)]),
+     ins(jb, none, [sym(Slow)]),
+     ins(mov, q, [mem(-16, L), reg(rdx)]),
+     ins(sub, q, [imm(N), reg(rdx)]),
+     ins(jb, none, [sym(Slow)]),
+     ins(cmp, q, [reg(rdx), reg(P)]),
+     ins(ja, none, [sym(Slow)]),
+     ins(movabs, q, [imm(Mask), reg(rdx)]),
+     ins(test, q, [reg(rdx), mem(-8, L)]),
+     ins(jnz, none, [sym(Slow)])].
+
+% copy_parts(+N, -Parts): the accesses, Bytes-Offset, that cover N bytes;
+% two may overlap.
+copy_parts(N, [N-0]) :- memberchk(N, [1,2,4,8]), !.
+copy_parts(3, [2-0, 2-1]) :- !.
+copy_parts(N, [4-0, 4-O]) :- N < 8, !, O is N - 4.
+copy_parts(N, [8-0, 8-O]) :- O is N - 8.
+
+% Every load before any store, so an overlapping memmove copies the
+% source as it was.
+copy_loads([], _) --> [].
+copy_loads([Bytes-Off|Ps], [R|Rs]) -->
+    { copy_load(Bytes, Op, S, R, Rn) },
+    [ins(Op, S, [mem(Off, rsi), reg(Rn)])],
+    copy_loads(Ps, Rs).
+copy_stores([], _) --> [].
+copy_stores([Bytes-Off|Ps], [R|Rs]) -->
+    { copy_reg(Bytes, R, Rn), copy_width(Bytes, S) },
+    [ins(mov, S, [reg(Rn), mem(Off, rax)])],
+    copy_stores(Ps, Rs).
+
+copy_load(1, movzb, l, R, Rn) :- copy_reg(4, R, Rn).
+copy_load(2, movzw, l, R, Rn) :- copy_reg(4, R, Rn).
+copy_load(4, mov, l, R, Rn) :- copy_reg(4, R, Rn).
+copy_load(8, mov, q, R, Rn) :- copy_reg(8, R, Rn).
+copy_width(1, b). copy_width(2, w). copy_width(4, l). copy_width(8, q).
+copy_reg(1, rdx, dl). copy_reg(2, rdx, dx). copy_reg(4, rdx, edx). copy_reg(8, rdx, rdx).
+copy_reg(1, r8, r8b). copy_reg(2, r8, r8w). copy_reg(4, r8, r8d). copy_reg(8, r8, r8).
+
+% The call's result is its destination, address and lower.
+copy_result(void, _) --> [].
+copy_result(result(T, p), Ctx) -->
+    reg_slot_store(rax, T, Ctx), reg_slot_store(rcx, lower(T), Ctx).
 
 target_operand(implementation(F,Sig), sym(S)) :- abi_symbol(impl(Sig), F, S).
 target_operand(entry(F,Sig), sym(S)) :- abi_symbol(entry(Sig), F, S).

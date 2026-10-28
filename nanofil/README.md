@@ -132,6 +132,12 @@ accept the same choice as `NANOFIL_REGISTERS=local`. This does not change
 pointer/root placement, and setjmp functions retain their original code.
 See [docs/m6.md](docs/m6.md) for the deliberately limited scope and cost.
 
+`-O` also copies small constant `memcpy` and `memmove` inline (1 to 16
+bytes) when the runtime's checks would pass and neither object has aux,
+and calls the runtime otherwise. `--memcpy=call` (or `NANOFIL_MEMCPY=call`)
+keeps every call, the reference; nanofil-cc passes it for `-fno-builtin`
+and `-ffreestanding` ([docs/perf.md](docs/perf.md) item 7a).
+
 `nix build .#checks.x86_64-linux.nanofil` runs everything: unit tests,
 differential tests of the interpreter against native code and clang,
 whole programs under GC

@@ -60,6 +60,15 @@
     reference without it; NANOFIL_BRANCHES supplies the same choice, and
     `-O --branches=reference` keeps the reference branches.
 
+    `--memcpy=call|inline` independently selects the reference call for
+    every memcpy and memmove, or, for a constant 1 to 16 bytes to a
+    function the module does not define, an inline copy in front of
+    that call, taken only when the runtime's checks would pass and
+    neither object has aux (docs/perf.md item 7a). The default is
+    inline with `-O` and call without it; NANOFIL_MEMCPY supplies the
+    same choice, and nanofil-cc passes call for -fno-builtin,
+    -fno-builtin-memcpy, -fno-builtin-memmove and -ffreestanding.
+
     `--checks=reference|reuse` independently selects the reference checked
     IR, a check before every access, or check reuse after pizlonation
     (src/check_reuse.pl, docs/m7.md). The default is reference;
@@ -126,17 +135,21 @@ main :-
           )),
     halt(Status).
 
-% The emission choices: emit(Registers, Branches).
-register_default(emit(Registers, Branches)) :-
-    % Unbound until options/8: both defaults depend on -O.
+% The emission choices: emit(Registers, Branches, Copies).
+register_default(emit(Registers, Branches, Copies)) :-
+    % Unbound until options/8: the defaults depend on -O.
     ( getenv('NANOFIL_REGISTERS',R) -> register_mode(R), Registers = R ; true ),
-    ( getenv('NANOFIL_BRANCHES',B) -> branches_mode(B), Branches = B ; true ).
+    ( getenv('NANOFIL_BRANCHES',B) -> branches_mode(B), Branches = B ; true ),
+    ( getenv('NANOFIL_MEMCPY',M) -> memcpy_mode(M), Copies = M ; true ).
 register_mode(R) :-
     ( memberchk(R,[stack,local,function,operands,cells]) -> true
     ; throw(nanofil_error('registers must be stack, local, function, operands or cells')) ).
 branches_mode(B) :-
     ( memberchk(B,[reference,selected]) -> true
     ; throw(nanofil_error('branches must be reference or selected')) ).
+memcpy_mode(M) :-
+    ( memberchk(M,[call,inline]) -> true
+    ; throw(nanofil_error('memcpy must be call or inline')) ).
 checks_default(Checks) :-
     ( getenv('NANOFIL_CHECKS',C) -> Checks = C ; Checks = reference ),
     checks_mode(Checks).
@@ -144,17 +157,20 @@ checks_mode(C) :-
     ( memberchk(C,[reference,reuse]) -> true
     ; throw(nanofil_error('checks must be reference or reuse')) ).
 options(['-O'|As],_,R,C,O,Rs,Cs,Args) :- !, options(As,o1,R,C,O,Rs,Cs,Args).
-options([A|As],O,emit(_,B),C,Opt,Rs,Cs,Args) :-
+options([A|As],O,emit(_,B,M),C,Opt,Rs,Cs,Args) :-
     atom_concat('--registers=',R,A), !, register_mode(R),
-    options(As,O,emit(R,B),C,Opt,Rs,Cs,Args).
-options([A|As],O,emit(R,_),C,Opt,Rs,Cs,Args) :-
+    options(As,O,emit(R,B,M),C,Opt,Rs,Cs,Args).
+options([A|As],O,emit(R,_,M),C,Opt,Rs,Cs,Args) :-
     atom_concat('--branches=',B,A), !, branches_mode(B),
-    options(As,O,emit(R,B),C,Opt,Rs,Cs,Args).
+    options(As,O,emit(R,B,M),C,Opt,Rs,Cs,Args).
+options([A|As],O,emit(R,B,_),C,Opt,Rs,Cs,Args) :-
+    atom_concat('--memcpy=',M,A), !, memcpy_mode(M),
+    options(As,O,emit(R,B,M),C,Opt,Rs,Cs,Args).
 options([A|As],O,R,_,Opt,Rs,Cs,Args) :-
     atom_concat('--checks=',C,A), !, checks_mode(C),
     options(As,O,R,C,Opt,Rs,Cs,Args).
-options(Args,O,emit(R,B),C,O,emit(R,B),C,Args) :-
-    registers_default(O,R), branches_default(O,B).
+options(Args,O,emit(R,B,M),C,O,emit(R,B,M),C,Args) :-
+    registers_default(O,R), branches_default(O,B), memcpy_default(O,M).
 
 % registers_default(+Opt, ?Registers) and branches_default(+Opt,
 % ?Branches): with no option or environment variable, -O selects
@@ -167,6 +183,10 @@ registers_default(o1, cells).
 branches_default(_, B) :- nonvar(B), !.
 branches_default(o0, reference).
 branches_default(o1, selected).
+% memcpy_default(+Opt, ?Copies): -O inlines small constant copies.
+memcpy_default(_, M) :- nonvar(M), !.
+memcpy_default(o0, call).
+memcpy_default(o1, inline).
 
 % arg_atom(+Arg, -Atom): Atom is the command-line argument Arg, which
 % is an atom (SWI) or a character list (Trealla).
