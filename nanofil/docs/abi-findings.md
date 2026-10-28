@@ -875,3 +875,78 @@ copied a stack word at the width of the call it was emitted for, so its
 thunk for a 32-bit call, chosen by the linker, truncated other objects'
 64-bit arguments, clang's included (xz's `-lvv` CRC64 values, found by
 the xz check; fixed in [`d1d5986`](https://github.com/mbrock/filnix/commit/d1d5986)).
+
+## Symbols the linker merges
+
+An audit of what nanofil emits that the linker can merge with clang's,
+or with another nanofil object's. The weak thunks are the only kind.
+nanofil emits no comdat or linkonce section, and nothing else is
+`.weak`:
+
+| Symbol | Binding | Shared? |
+| --- | --- | --- |
+| `pizlonatedFI<Sig>_<f>`, call thunk (callee elsewhere) | hidden, weak | yes, by name and signature, with clang's and nanofil's |
+| `pizlonatedFIN<R>_<A>_<f>`, thunk for more than 16 words | hidden, weak | among nanofil objects only (clang calls `FI0_<f>`) |
+| `pizlonatedFI<Sig>_<f>` / `FIP<Sig>_<f>`, definition entries | global or local | no: one definition |
+| `pizlonated_<f>` getter, `pizlonatedFO_<f>` function object | global or local | no |
+| `pizlonatedTP_<x>` thread-local key, init forwarders | global or local | no |
+| string data, origins, check-failure data | local (`.L`) | no |
+
+clang also emits linkonce_odr `pizlonated1ET<Sig>` / `2ET<Sig>`
+entrypoint thunks, keyed by signature alone. nanofil emits neither name,
+so nothing of nanofil's merges with them.
+
+A shared call thunk is safe when it does the same thing for every caller
+that can reach it. Callers of one `f` can legally differ only in words
+passed past a prototype: variadic arguments, or unprototyped calls.
+Differing parameter or result types are undefined (C11 6.5.2.2p9), and
+they mostly differ in signature digits anyway. Within one digit, the
+thunk now:
+
+- copies every integer word whole, from a register or the stack, since
+  `w` and `l` share digit 0 (the d1d5986 fix above);
+- truncates only floats (`s`, digit 1), whose upper half no caller
+  defines, and passes doubles (`d`, digit 2) and pointers (`p`, digit 7,
+  with their lower) whole;
+- builds the generic packet from the same saved words, one 8-byte cell
+  each, so its `ArgsSize` is the word count every caller of the digit
+  list shares;
+- loads the result as whole words from the thread's return words, or
+  copies them whole into a buffer result.
+
+For more than 16 words clang names its call thunk `FI0_<f>` (signature
+0) and the callee's entry `FIP0_<f>`. nanofil names the entry
+`FIP18446744073709551615_<f>` and also exports `FI0_<f>` as the
+definition's generic entry, which overrides a clang caller's weak
+`FI0_<f>`. A function object's signature then differs from clang's
+(`never` against 0), so an indirect call between the two takes the
+generic path. That path is slower but correct.
+
+`tests/c/prog/shared-thunks.c` links a nanofil and a clang object that
+call each other's variadic, mixed and two-word-result functions,
+`snprintf`, and 18-parameter functions both directly and through a
+pointer. Their 32-bit and 64-bit words meet in one thunk, so the test
+fails without d1d5986. `shared-thunks-clang.c` links clang's object
+first, so clang's thunks serve nanofil's calls.
+`vararg-thunk-width.c` is the single-thunk regression.
+
+**Weak C symbols are not implemented.** nanofil ignores
+`__attribute__((weak))` and `#pragma weak`: it emits weak definitions
+as strong ones, and refers to weak declarations strongly. clang makes
+the getter, `FIP`, `FO` and `2ET` symbols of a weak definition weak.
+For a weak reference it emits `.weak pizlonated_<f>` and tests the
+getter's GOT entry for null before calling it.
+
+Ignoring weak never changes the meaning of a program that links. The
+difference shows up only as a link error:
+
+- a weak and a strong definition in one link are a duplicate
+  definition;
+- a weak reference to a symbol nothing defines stays unresolved.
+
+A definition in an executable takes precedence over a shared library's
+whether or not it is weak. gnulib's `#pragma weak pthread_*` (sed,
+hello) references symbols that glibc 2.34's libc defines. Implementing
+weak needs a weak linkage for functions and data, plus a weak
+declaration for undefined symbols, in ir.pl; that is an IR grammar
+change, deferred.

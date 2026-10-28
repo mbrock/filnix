@@ -4,7 +4,9 @@
 # agree on stdout, stderr and exit status. A Fil-C safety panic counts as
 # "trap" (its message names different functions in the two builds). An
 # "// args: ..." line gives the arguments, and "// link: FILE.c" names a
-# companion, relative to the program, that clang builds into both. With
+# companion, relative to the program, that clang builds into both (with
+# "// link-first", before nanofil's object in its link, so the linker
+# keeps the companion's weak symbols where both define one). With
 # a "// signatures" line, nanofil must also give each function the
 # fast-entry signature clang gives it (exported pizlonatedFI<Sig>_<name>): a
 # wrong one still works through the generic entries, so only this sees it.
@@ -91,7 +93,11 @@ for f in "$@"; do
   outcome=assemble-error
   as -o "$d/n.o" "$d/n.s"
   outcome='link-error'
-  "$filcc" -o "$d/nanofil" "$d/n.o" "${libs[@]}" -lm
+  if grep -q '^// link-first' "$f"; then
+    "$filcc" -o "$d/nanofil" "${libs[@]}" "$d/n.o" -lm
+  else
+    "$filcc" -o "$d/nanofil" "$d/n.o" "${libs[@]}" -lm
+  fi
   [[ $reference_failed == 0 ]] || exit 1
   outcome=pass
   if grep -q '^// signatures' "$f"; then
