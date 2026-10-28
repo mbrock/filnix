@@ -47,8 +47,8 @@
     reference emission, validated block-local scalar caching, validated
     whole-function register homes for scalars (docs/perf.md item 3), or
     those homes with validated register operands (item 3, step 3b), or
-    those with frame-word loads forwarded too (item 5a-loads, opt-in) in the
-    Fil-C backend. The default is operands with `-O` and stack without
+    those with frame-word loads forwarded too (item 5a-loads) in the
+    Fil-C backend. The default is cells with `-O` and stack without
     it; NANOFIL_REGISTERS supplies the same choice to build harnesses, and
     `-O --registers=stack` keeps the reference emission.
     The plain backend is unchanged. Options precede the command.
@@ -158,11 +158,12 @@ options(Args,O,emit(R,B),C,O,emit(R,B),C,Args) :-
 
 % registers_default(+Opt, ?Registers) and branches_default(+Opt,
 % ?Branches): with no option or environment variable, -O selects
-% whole-function registers with register operands and branch selection,
+% whole-function registers with register operands and frame cells, and
+% branch selection,
 % and its absence keeps the reference emission.
 registers_default(_, R) :- nonvar(R), !.
 registers_default(o0, stack).
-registers_default(o1, operands).
+registers_default(o1, cells).
 branches_default(_, B) :- nonvar(B), !.
 branches_default(o0, reference).
 branches_default(o1, selected).

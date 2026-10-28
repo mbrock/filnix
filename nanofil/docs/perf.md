@@ -19,13 +19,13 @@ mode, through the same `nanofil-cc` wrapper the Nix checks use:
 | Mode | nanofil options |
 | --- | --- |
 | `off` | none: the reference backend without the middle end |
-| `O` | `-O` (selected branches, item 2, and function registers with register operands, items 3a and 3b) |
+| `O` | `-O` (selected branches, item 2; function registers with register operands, items 3a and 3b; frame cells, 5a-loads) |
 | `O-reuse` | `-O --checks=reuse` ([m7.md](m7.md)) |
 | `O-local` | `-O --registers=local` ([m6.md](m6.md)) |
 | `O-refbranches` | `-O --branches=reference`: `-O` before item 2 became its default |
 | `O-stack` | `-O --registers=stack`: `-O` before item 3a became its default (`--argstr only O,O-stack` builds a subset) |
 | `O-function` | `-O --registers=function`: whole-function register homes alone (item 3, step 3a), `-O` before 3b became its default |
-| `O-cells` | `-O --registers=cells`: `-O` with frame-word loads forwarded too (item 5a-loads, opt-in) |
+| `O-operands` | `-O --registers=operands`: `-O` before 5a-loads became its default |
 
 From the repository root, on swa (or any quiet x86-64 machine with perf):
 

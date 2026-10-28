@@ -29,7 +29,7 @@ let
     O-refbranches = "-O --branches=reference";
     O-stack = "-O --registers=stack";
     O-function = "-O --registers=function";
-    O-cells = "-O --registers=cells";
+    O-operands = "-O --registers=operands";
   };
   chosen =
     if only == "" then

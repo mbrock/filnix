@@ -16,8 +16,8 @@
     `thread->top_frame` and every return and exception exit pops.
     Values are never kept in registers across a call or safepoint, so
     every live capability is always in a slot the GC scans. The prologue
-    zeroes `lowers[]`, so the GC sees no stale lowers. Only function
-    and operands modes (amd64_regs.pl; operands is the -O default) keep
+    zeroes `lowers[]`, so the GC sees no stale lowers. Only function,
+    operands and cells modes (amd64_regs.pl; cells is the -O default) keep
     scalar `w`/`l` homes in registers, callee-saved ones across calls;
     pointers never.
 
