@@ -7,12 +7,13 @@
 # Inputs are the working tree's tests (cc-ir and cc of tests/c and
 # tests/filc C files, compile and print of every tests .ir) and the
 # pinned cproc and c-testsuite corpora, and cc of each C file and
-# compile of each .ir again through the middle end in six fixed modes
+# compile of each .ir again through the middle end in seven fixed modes
 # ($OPT, $FUN, $OPS and $CEL below: the stack reference, function
 # registers, those with register operands, and those with frame cells,
 # all without inlining; $INL, frame cells with inlining; and $TMP,
 # frame cells with a home per scalar temporary, the -O default's
-# registers, without inlining).
+# registers, without inlining; and $FLW, those with flow, cells across
+# check jumps and labels, docs/perf.md 5b-1).
 # The corpora come from nix/corpus.nix; set CPROC and CTS to their roots
 # to skip the nix build. Needs FILCC and the bin/nanofil host (SWIPL,
 # or NANOFIL_HOST=trealla with TPL). Baselines are cached per commit under ${SNAPSHOT_CACHE:-/tmp/nanofil-snapshot}.
@@ -34,6 +35,7 @@ OPS="-O --registers=operands --branches=selected --checks=reference --memcpy=inl
 CEL="-O --registers=cells --branches=selected --checks=reference --memcpy=inline --inline=none"
 INL="-O --registers=cells --branches=selected --checks=reference --memcpy=inline --inline=small"
 TMP="-O --registers=temps --branches=selected --checks=reference --memcpy=inline --inline=none"
+FLW="-O --registers=flow --branches=selected --checks=reference --memcpy=inline --inline=none"
 mkdir -p "$cache"
 
 # corpus NAME: the store path of the pinned corpus NAME.
@@ -54,11 +56,11 @@ inputs() {
   local t=$root/nanofil/tests f
   for f in "$t"/c/*.c "$t"/c/prog/*.c "$t"/c/reject/*.c "$t"/filc/*.c \
            "$CPROC"/test/*.c "$CTS"/tests/single-exec/*.c; do
-    echo "cc-ir $f"; echo "cc $f"; echo "$OPT cc $f"; echo "$FUN cc $f"; echo "$OPS cc $f"; echo "$CEL cc $f"; echo "$INL cc $f"; echo "$TMP cc $f"
+    echo "cc-ir $f"; echo "cc $f"; echo "$OPT cc $f"; echo "$FUN cc $f"; echo "$OPS cc $f"; echo "$CEL cc $f"; echo "$INL cc $f"; echo "$TMP cc $f"; echo "$FLW cc $f"
   done
   find "$t" -name '*.ir' | sort | while read -r f; do
     echo "compile $f"; echo "print $f"; echo "$OPT compile $f"; echo "$FUN compile $f"
-    echo "$OPS compile $f"; echo "$CEL compile $f"; echo "$INL compile $f"; echo "$TMP compile $f"
+    echo "$OPS compile $f"; echo "$CEL compile $f"; echo "$INL compile $f"; echo "$TMP compile $f"; echo "$FLW compile $f"
   done
 }
 
@@ -67,8 +69,8 @@ run() {
   mkdir -p "$2"
   # The output of "OPTIONS... COMMAND FILE" is named COMMAND-FILE, with
   # O. (stack), F. (function registers), P. (register operands), C.
-  # (frame cells), I. (frame cells with inlining) or T. (a home per
-  # scalar temporary) before it for the -O modes.
+  # (frame cells), I. (frame cells with inlining), T. (a home per
+  # scalar temporary) or W. (flow) before it for the -O modes.
   inputs | SRC=$1 OUT=$2 xargs -P "$(nproc)" -L1 bash -c '
     set -- "$0" "$@"
     f=${!#} c=${@:$#-1:1}
@@ -77,13 +79,14 @@ run() {
       *inline=small*) n="I.$n" ;;
       *registers=function*) n="F.$n" ;; *registers=operands*) n="P.$n" ;;
       *registers=cells*) n="C.$n" ;; *registers=temps*) n="T.$n" ;;
+      *registers=flow*) n="W.$n" ;;
       *registers=stack*) n="O.$n" ;;
     esac
     (cd "$SRC/nanofil/src" && timeout 300 ../bin/nanofil "$@" </dev/null) >"$OUT/$n" 2>&1
     echo "exit=$?" >>"$OUT/$n"'
 }
 
-base=$cache/$rev.OFPCIT
+base=$cache/$rev.OFPCITW
 if [[ ! -d $base ]]; then
   tree=$(mktemp -d)
   git -C "$root" worktree add -q --detach "$tree" "$rev"

@@ -32,6 +32,7 @@ let
     O-function = "-O --registers=function";
     O-operands = "-O --registers=operands";
     O-cells = "-O --registers=cells";
+    O-flow = "-O --registers=flow";
     O-call = "-O --memcpy=call";
   };
   chosen =

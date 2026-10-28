@@ -43,13 +43,14 @@
     (translation validation), and prints how many allocs promote
     removed.
 
-    `--registers=stack|local|function|operands|cells|temps` independently
+    `--registers=stack|local|function|operands|cells|temps|flow` independently
     selects reference emission, validated block-local scalar caching,
     validated whole-function register homes for scalars (docs/perf.md
     item 3), or those homes with validated register operands (item 3,
     step 3b), or those with frame-word loads forwarded too (item
     5a-loads), or those on a frame with a home per scalar temporary
-    (item 3d) in the Fil-C backend. The default is temps with `-O` and
+    (item 3d), or those with frame cells forwarded across checks' jumps
+    and labels (item 5b-1) in the Fil-C backend. The default is temps with `-O` and
     stack without it; NANOFIL_REGISTERS supplies the same choice to build
     harnesses, and `-O --registers=stack` keeps the reference emission.
     The plain backend is unchanged. Options precede the command.
@@ -154,8 +155,8 @@ register_default(emit(Registers, Branches, Copies)) :-
     ( getenv('NANOFIL_BRANCHES',B) -> branches_mode(B), Branches = B ; true ),
     ( getenv('NANOFIL_MEMCPY',M) -> memcpy_mode(M), Copies = M ; true ).
 register_mode(R) :-
-    ( memberchk(R,[stack,local,function,operands,cells,temps]) -> true
-    ; throw(nanofil_error('registers must be stack, local, function, operands, cells or temps')) ).
+    ( memberchk(R,[stack,local,function,operands,cells,temps,flow]) -> true
+    ; throw(nanofil_error('registers must be stack, local, function, operands, cells, temps or flow')) ).
 branches_mode(B) :-
     ( memberchk(B,[reference,selected]) -> true
     ; throw(nanofil_error('branches must be reference or selected')) ).

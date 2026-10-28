@@ -1486,7 +1486,7 @@ plus two checker obligations: each live lower's `lowers[]` entry
 symbolically equals its register at each safepoint, and lower material
 never enters a home that item 3 treats as scalar.
 
-#### 5b-1. Contract (proposed; Oracle-reviewed, awaiting the orchestrator): cells across `jcc`s and labels
+#### 5b-1. Contract (approved; implemented opt-in as `--registers=flow`): cells across `jcc`s and labels
 
 **Why this form.** The profile at `04c7e7c` (Where we are now) puts
 pointer payloads and lowers at 16–30% of `-O`'s instructions. The reach
@@ -1685,6 +1685,113 @@ measured above confirms it is needed. Its two items for the
 orchestrating thread: Rule 1 changes 3b's region rule in the trusted
 checker; freeing r10/r11 changes `region_end/3`'s invariant and is not
 part of 5b-1.
+
+#### 5b-1. Implementation (opt-in)
+
+Approved by the orchestrating thread with both decisions: Rule 1 in
+`flow` only (every other mode's checker keeps the same rule: the
+snapshot's other six modes are identical), and `flow` the `-O` default
+only after a gate win with separated ranges and at most +15% compile
+time on `sqlite3.c`.
+
+- *Checker* (`amd64_regs_check.pl`): `check_operands/5` takes `cells`
+  (every existing caller, through `check_operands/4`) or `flow(Facts)`.
+  `continued_jump/3` is Rule 1; `edge_facts/4` runs at every boundary
+  before the reset, with the region's current cell map (B1);
+  `label_facts/5` sets the fact registers after `region_start/4` and
+  requires them dead in A. `fact_labels/2` admits a label only when it
+  is defined once, is not numeric, and no line names it other than as a
+  direct jump target (B2 and the `rip(L)` rule: facts on any other label
+  are refused, so position keying is not needed). `well_formed_facts/4`
+  checks one cell per scratch family and a valid, non-`lea`'d cell
+  (B3).
+- *Rewrite* (`amd64_regs.pl`, untrusted): regions span continued `jcc`s
+  (their `In` joins the region's uses); `flow_facts/4` iterates the held
+  map of `cell_forward/6` over the regions to a fixpoint (optimistic,
+  at most 64 rounds, then no facts), meeting the incoming maps at each
+  admitted label and dropping families live in A there; the end
+  liveness of a region and the uses of its continued `jcc`s gain their
+  targets' fact registers so the establishing moves stay (B4). The
+  reconfirmation pass was not built: a wrong fact is a compile error
+  (`regs_asm` throws), which the rewrite plant below shows.
+- Two rewrite bugs found while validating, both refusals, not
+  miscompiles: two cells proposed for one family (the checker's B3 test
+  refused it; now one per family), and a label that may not carry facts
+  starting its region from "top", which hid its edges from the meet
+  (found on `sqlite3.c`; regression case `no_fact_label_region`, fails
+  with the old rule). A third was cost only: the fixpoint compared held
+  maps as assoc trees, which may differ for equal contents.
+
+**Validation.** 31 checker cases in `tests/regs_check.pl`
+(`flow_spec/4`), each also run with no facts and in `cells` mode to show
+that the positives depend on their facts or on Rule 1: past a `jcc`
+(accepted; refused in `cells`), into the taken target, into a label
+that falls through from a `jcc`, past a `jmp`; facts on a jump, a
+fallthrough, two edges, after a `jcc`, a loop back edge (accepted), a
+loop with a poll, R clobbered on the fallthrough or the jump edge, a
+call or poll between load and label, byte and dword writes to R, `movl`
+and `add` to the cell, B1's stale symbol, consecutive labels, a 32-bit
+load with a known-zero high half (accepted) and an unknown one, R live
+in A, `rbx` and `r10`, two cells on one family, a non-cell, a `lea`'d
+cell, a numeric label, a `rip`-named label, a label defined twice. Plants
+(each restored; the unit suite fails on all but one):
+
+| Plant | Cases that flip |
+| --- | --- |
+| Rule 1 widened to labels | `past_jcc_into_label`, `fact_live_register` |
+| Rule 1 state carried into the taken target | `past_jcc_into_taken`, `fact_across_poll` |
+| jump edges not checked (one incoming edge dropped) | `fact_clobbered_jump`, `fact_stale_symbol` |
+| fallthrough edges not checked | 8 cases (clobber, call, poll, partial writes, cell writes) |
+| facts kept across a call | `fact_across_call` |
+| a 32-bit store preserves the 64-bit cell | `fact_movl_cell_store` |
+| edge check against the reset cell map (B1) | 6 positive cases |
+| facts keyed by name | `fact_numeric_label`, `fact_named_label`, `fact_twice_defined` |
+| R's liveness in A at L ignored | none: redundant, `region_end/3` already compares a live R |
+| rewrite: no successor facts in end liveness | 2 of 30 `c/*.c` difftests fail the check (compile errors) |
+
+Difftests of the fixtures, filc IRs and `c/*.c`, `run-c` and progtest
+under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`, and the ensure-aux trace all pass
+in `flow`. In `flow` and `temps` alike, the nine IRs that `nix/check.nix`
+does not list for difftest (they need `run-c.sh`) fail to link. The
+snapshot changes only the 593 new `W.` outputs; the other 4,744 are
+identical. All 562 C inputs exit the same in `flow` as in `temps`. The
+Nix check gained an `-O flow` block (difftest, ABI+GC, ensure-aux,
+programs).
+
+**Compile time** (`sqlite3.c`, one core each): `temps` 144.7 s, `flow`
+165.3 s (+14.3%, within the +15% budget; 183 s before the fixpoint
+fixes). Static frame loads into registers: 280,039 → 266,701 (−4.8%).
+
+**Gate** (`run.py --modes ref,O,O-flow --trials 7`, cpu 6, load 2; ratio
+to filcc -O2, time (instructions), min..max range):
+
+| Workload | `-O` (temps) | `-O --registers=flow` | ranges |
+| --- | --: | --: | --- |
+| zlib -6 | 2.47 (4.08) | 2.49 (4.06) | overlap |
+| zlib -d | 1.91 (3.20) | 1.90 (3.19) | overlap |
+| bzip2 -9 | 1.99 (2.52) | 1.95 (2.48) | separated, flow faster |
+| bzip2 -d | 2.38 (3.11) | 2.35 (3.09) | separated, flow faster |
+| lz4 -1 | 2.10 (10.63) | 2.12 (10.54) | overlap |
+| lz4 -9 | 2.66 (3.41) | 2.54 (3.40) | overlap |
+| lz4 -d | 2.72 (7.19) | 2.77 (7.25) | overlap |
+| lua int | 2.13 (2.35) | 2.07 (2.32) | separated, flow faster |
+| lua tab | 1.98 (2.26) | 1.97 (2.24) | overlap |
+| lua str | 1.51 (1.61) | 1.49 (1.61) | overlap |
+| sqlite | 1.98 (1.99) | 1.94 (1.98) | separated, flow faster |
+| geomean | 2.14 (3.27) | 2.12 (3.25) | |
+
+Instructions fall 0.5–1.5%, far below the 4–12% bound. Flow wins time
+with separated ranges on four workloads and loses on none with separated
+ranges. Compile time is within budget, but the yield is too small to call
+this a win, so `flow` stays opt-in. The annotated hot block of bzip2's
+`copy_input_until_stop` shows why. The lower stays in `rcx` across the
+checks, so Rule 1 works, but the address is reloaded from `-0x48(%rbp)`
+into `rax` after every access, because `add $0x6c,%rax` turned `rax` into
+the field address. No forwarding reaches that: the value is in no
+register. Reaching it means giving the base its own register, which is
+5b-2's register pressure question, not another rule. Re-measuring the
+bound with "the register still holds the value" taken literally (no
+intervening write) is the next step before any more work on 5b.
 
 ### 6. Check sequences — needs review
 

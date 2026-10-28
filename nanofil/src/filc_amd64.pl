@@ -159,8 +159,8 @@ item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
     % them: those left in the frame together, and those given a register
     % with the others given the same one, so the frame stays compact.
     % Both are layout choices; the checkers validate the emitted stream.
-    (   Registers == temps
-    ->  temps_first(Symbols, Branches, Item, First),
+    (   memberchk(Registers, [temps,flow])
+    ->  temps_first(Registers, Symbols, Branches, Item, First),
         (   First = placed(Lines, Report) -> true
         ;   First = again(Groups, Fused, Ranges),
             % The first lowering is garbage now; collect it before the
@@ -171,7 +171,7 @@ item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
             ;   true
             ),
             once(lower_fused(own(Groups, Ranges), Symbols, Fused, Product)),
-            once(placed_lines(temps, Branches, Item, Product, Lines, Report, _))
+            once(placed_lines(Registers, Branches, Item, Product, Lines, Report, _))
         )
     ;   (   memberchk(Registers, [function,operands,cells]) -> Pools = split
         ;   Pools = shared
@@ -180,7 +180,8 @@ item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
                placed_lines(Registers, Branches, Item, Product, Lines, Report) ))
     ).
 
-% temps_first(+Symbols, +Branches, +Item, -First): temps mode's first
+% temps_first(+Registers, +Symbols, +Branches, +Item, -First): temps (or
+% flow) mode's first
 % lowering, with a home per w/l temporary. First is placed(Lines,
 % Report) when it has at most own_frame_limit/1 such homes, else
 % again(Groups, Fused, Ranges) with each temporary's group for the
@@ -188,7 +189,7 @@ item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
 % and the fused blocks and live ranges the second reuses (the groups
 % change only which slots the ranges share); the first's lines are
 % dropped, so the second lowering does not hold them.
-temps_first(Symbols, Branches, Item, First) :-
+temps_first(Registers, Symbols, Branches, Item, First) :-
     fused_item(Item, Fused),
     once(lower_fused(own([], Ranges), Symbols, Fused, Product)),
     own_frame_limit(Limit),
@@ -198,7 +199,7 @@ temps_first(Symbols, Branches, Item, First) :-
         % because these lines are dropped, and no operand rewrite.
         once(placed_lines(map, Branches, Item, Product, _, _, Groups)),
         First = again(Groups, Fused, Ranges)
-    ;   once(placed_lines(temps, Branches, Item, Product, Lines, Report, _)),
+    ;   once(placed_lines(Registers, Branches, Item, Product, Lines, Report, _)),
         First = placed(Lines, Report)
     ).
 
@@ -266,7 +267,7 @@ placed_lines(stack, Branches, Func, Item, Lines, stack, []) :-
     ( setjmp_func(Func) -> B = reference ; B = Branches ),
     item_lines(sel(stack,B),Item,Lines).
 placed_lines(R, _, data(N,L,A,Is), Item, Lines, data(N), []) :-
-    memberchk(R, [local,function,operands,cells,temps]),
+    memberchk(R, [local,function,operands,cells,temps,flow]),
     Item = data(N,L,A,Is), item_lines(sel(stack,reference),Item,Lines).
 placed_lines(local, Branches, Func, Item, Lines, function(Name,Report), []) :-
     Func = func(Name,_,_,_,_),
@@ -289,7 +290,7 @@ placed_lines(local, Branches, Func, Item, Lines, function(Name,Report), []) :-
 % Function mode reserves a save slot for each callee-saved register, so
 % the stream the checker compares with has the same frame.
 placed_lines(Mode, Branches, Func, Item0, Lines, function(Name,Report), Groups) :-
-    memberchk(Mode, [function,operands,cells,temps,map]),
+    memberchk(Mode, [function,operands,cells,temps,flow,map]),
     Func = func(Name,_,_,_,_),
     Item0 = abi_function(Name,Lk,Rt,Sig,frame(Plain,Lowers,Aliases),E,B,X,O,Or),
     (   setjmp_func(Func)
@@ -334,6 +335,9 @@ placed_lines(Mode, Branches, Func, Item0, Lines, function(Name,Report), Groups) 
 % from. The header words (parent, origin) are never cells.
 % Temps mode is cells mode on a frame with unpooled scalar homes.
 regs_mode(temps, Slots, Mode) :- !, regs_mode(cells, Slots, Mode).
+% Flow mode is temps mode with the cells carried across checks' jumps
+% and labels (docs/perf.md, 5b-1).
+regs_mode(flow, Slots, flow(Cells)) :- !, regs_mode(cells, Slots, frame(Cells)).
 regs_mode(cells, Slots, frame(cells(Ds, Others))) :- !,
     assoc_to_list(Slots, Ps),
     findall(D, ( member(K-Off, Ps), integer(Off), cell_key(K), D is -Off ), Ds0),

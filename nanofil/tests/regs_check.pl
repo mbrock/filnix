@@ -5,6 +5,7 @@
 :- module(regs_check_tests, [regs_checker/0, operands_checker/0]).
 
 :- use_module('../src/amd64_regs_check').
+:- use_module('../src/amd64_regs', [operands_rewrite/6]).
 :- use_module(library(assoc)).
 :- use_module(library(lists)).
 
@@ -290,7 +291,28 @@ operands_checker :-
            ( ob(A0, A), operand_run(Name, A, A, no, Edit) )),
     saves_case,
     forall(cell_case(Name, Cells, A0, B0, Expected),
-           ( ob(A0, A), ob(B0, B), cell_run(Name, Cells, A, B, Expected) )).
+           ( ob(A0, A), ob(B0, B), cell_run(Name, Cells, A, B, Expected) )),
+    forall(flow_case(Name, Facts, A0, B0, Expected),
+           ( ob(A0, A), ob(B0, B), flow_run(Name, Facts, A, B, Expected) )),
+    forall(flow_rewrite_case(Name, A0), ( ob(A0, A), flow_rewrite_run(Name, A) )).
+
+% The rewrite's facts must pass the checker. x may not carry facts (a
+% lea names it), and its region writes rsi before falling into m: m's
+% facts must not include rsi, although its other edge holds it.
+flow_rewrite_case(no_fact_label_region,
+    [ins(lea,q,[rip(x),reg(rdi)]),
+     ins(mov,q,[mem(-8,rbp),reg(rsi)]), ins(mov,q,[reg(rsi),mem(-40,rbp)]),
+     ins(test,q,[reg(r12),reg(r12)]), ins(je,none,[sym(x)]), ins(jmp,none,[sym(m)]),
+     label(x), ins(mov,q,[imm(1),reg(rsi)]), ins(mov,q,[reg(rsi),mem(-48,rbp)]),
+     label(m), ins(mov,q,[mem(-8,rbp),reg(rdx)]), ins(mov,q,[reg(rdx),mem(-32,rbp)])]).
+
+flow_rewrite_run(Name, A) :-
+    body_analysis(A, [], An), operand_lives(An, [], A, Lives),
+    Cells0 = cells([-8],[]), valid_cells(Cells0, A, Cells),
+    amd64_regs:operands_rewrite(flow, A, Lives, Cells, B, Checked),
+    (   check_operands(A, B, Lives, Cells0, Checked) -> true
+    ;   throw(error(flow_rewrite(Name), flow_checker/0))
+    ).
 
 % Frame cells (docs/perf.md, 5a-loads): a load of a cell is a move of
 % its value, which paired stores set and every boundary resets.
@@ -349,6 +371,108 @@ cell_case(unaligned, cells([-12],[]),
     [ins(mov,q,[reg(r12),mem(-8,rbp)])], [ins(mov,q,[reg(r12),mem(-8,rbp)])], no).
 cell_case(duplicate, cells([-8,-8],[]),
     [ins(mov,q,[reg(r12),mem(-8,rbp)])], [ins(mov,q,[reg(r12),mem(-8,rbp)])], no).
+
+% Flow mode (docs/perf.md 5b-1): rule 1 continues a region past a
+% conditional jump's fallthrough; rule 2 lets a scratch register carry a
+% cell's value into a label whose every incoming edge holds it. The cell
+% is -8 and the fact register rsi, which no later line reads in A.
+flow_run(Name, Facts0, A, B, Expected) :-
+    body_analysis(A, [], An), operand_lives(An, [], A, Lives),
+    list_to_assoc(Facts0, Facts),
+    ( check_operands(A, B, Lives, cells([-16,-8],[]), flow(Facts)) -> Got = yes ; Got = no ),
+    (   Got == Expected -> true
+    ;   throw(error(flow_checker(Name, Expected), flow_checker/0))
+    ).
+
+fl(store, ins(mov,q,[reg(r12),mem(-8,rbp)])).
+fl(load_rsi, ins(mov,q,[mem(-8,rbp),reg(rsi)])).
+fl(load_rdx, ins(mov,q,[mem(-8,rbp),reg(rdx)])).
+fl(use(R), ins(mov,q,[reg(R),reg(rdx)])) :- !.
+fl(test, ins(test,q,[reg(r12),reg(r12)])).
+fls(Ns, Ls) :- maplist(fl_line, Ns, Ls).
+fl_line(N, L) :- ( fl(N, L0) -> L = L0 ; L = N ).
+
+% flow_case(Name, Facts, A, B, Expected), B with A's last cell load
+% replaced by a use of the last fact's register (rsi when none). A and B
+% are built by fls/2 from names.
+flow_case(Name, Facts, A, B, Expected) :-
+    flow_spec(Name, Facts, Ns, Expected),
+    fls(Ns, A),
+    once(( append(Pre, [load_rdx|Post], Ns), \+ memberchk(load_rdx, Post) )),
+    ( last(Facts, _-[_|_]), last(Facts, _-Fs), last(Fs, R-_) -> true ; R = rsi ),
+    append(Pre, [use(R)|Post], NsB), fls(NsB, B).
+
+% Rule 1: within one region, past a check's jcc.
+flow_spec(past_jcc, [], [store, load_rsi, test, ins(je,none,[sym(t)]), load_rdx, label(t)], yes).
+flow_spec(past_jcc_into_taken, [],
+    [store, load_rsi, test, ins(je,none,[sym(t)]), ins(jmp,none,[sym(e)]),
+     label(t), load_rdx, label(e)], no).
+flow_spec(past_jcc_into_label, [],
+    [store, test, ins(je,none,[sym(m)]), load_rsi, label(m), load_rdx], no).
+flow_spec(past_jmp, [],
+    [store, load_rsi, ins(jmp,none,[sym(e)]), label(e), load_rdx], no).
+% Rule 2: label facts, checked on every incoming edge.
+flow_spec(fact_jump, [m-[rsi-(-8)]],
+    [store, load_rsi, ins(jmp,none,[sym(m)]), label(m), load_rdx], yes).
+flow_spec(fact_fallthrough, [m-[rsi-(-8)]],
+    [store, load_rsi, label(m), load_rdx], yes).
+flow_spec(fact_two_edges, [m-[rsi-(-8)]],
+    [store, load_rsi, test, ins(je,none,[sym(m)]), ins(mov,q,[imm(1),reg(rdi)]),
+     label(m), load_rdx], yes).
+flow_spec(fact_after_jcc, [m-[rsi-(-8)]],
+    [store, load_rsi, test, ins(je,none,[sym(e)]), label(m), load_rdx, label(e)], yes).
+flow_spec(fact_clobbered_fallthrough, [m-[rsi-(-8)]],
+    [store, load_rsi, test, ins(je,none,[sym(m)]), ins(mov,q,[imm(1),reg(rsi)]),
+     label(m), load_rdx], no).
+flow_spec(fact_clobbered_jump, [m-[rsi-(-8)]],
+    [store, load_rsi, ins(mov,q,[imm(1),reg(rsi)]), test, ins(je,none,[sym(m)]),
+     load_rsi, label(m), load_rdx], no).
+flow_spec(fact_across_call, [m-[rsi-(-8)]],
+    [store, load_rsi, ins(call,none,[sym(f)]), label(m), load_rdx], no).
+flow_spec(fact_across_poll, [m-[rsi-(-8)], p-[]],
+    [store, load_rsi, test, ins(je,none,[sym(p)]), ins(call,none,[sym(filc_pollcheck_slow)]),
+     label(p), label(m), load_rdx], no).
+flow_spec(fact_byte_write, [m-[rsi-(-8)]],
+    [store, load_rsi, ins(mov,b,[imm(1),reg(sil)]), label(m), load_rdx], no).
+flow_spec(fact_dword_write, [m-[rsi-(-8)]],
+    [store, load_rsi, ins(mov,l,[reg(r12d),reg(esi)]), label(m), load_rdx], no).
+flow_spec(fact_movl_cell_store, [m-[rsi-(-8)]],
+    [store, load_rsi, ins(mov,l,[reg(r13d),mem(-8,rbp)]), label(m), load_rdx], no).
+flow_spec(fact_add_to_cell, [m-[rsi-(-8)]],
+    [store, load_rsi, ins(add,q,[imm(1),mem(-8,rbp)]), label(m), load_rdx], no).
+flow_spec(fact_stale_symbol, [l-[rsi-(-8)], m-[rsi-(-8)]],
+    [store, load_rsi, label(l), ins(mov,q,[reg(r13),mem(-8,rbp)]),
+     ins(jmp,none,[sym(m)]), label(m), load_rdx], no).
+flow_spec(fact_consecutive_labels, [l-[rsi-(-8)], m-[rsi-(-8)]],
+    [store, load_rsi, label(l), label(m), load_rdx], yes).
+flow_spec(fact_dword_known_high, [m-[rsi-(-8)]],
+    [ins(mov,q,[imm(5),mem(-8,rbp)]), ins(mov,l,[mem(-8,rbp),reg(esi)]), label(m), load_rdx], yes).
+flow_spec(fact_dword_unknown_high, [m-[rsi-(-8)]],
+    [store, ins(mov,l,[mem(-8,rbp),reg(esi)]), label(m), load_rdx], no).
+flow_spec(fact_live_register, [m-[rsi-(-8)]],
+    [store, load_rsi, label(m), load_rdx, ins(mov,q,[reg(rsi),reg(r13)])], no).
+flow_spec(fact_loop, [m-[rsi-(-8)]],
+    [store, load_rsi, label(m), load_rdx, test, ins(jne,none,[sym(m)])], yes).
+flow_spec(fact_loop_poll, [m-[rsi-(-8)]],
+    [store, load_rsi, label(m), load_rdx, test, ins(je,none,[sym(p)]),
+     ins(call,none,[sym(filc_pollcheck_slow)]), label(p), ins(jmp,none,[sym(m)])], no).
+% Well-formedness of the certificate.
+flow_spec(fact_callee_saved, [m-[rbx-(-8)]],
+    [store, ins(mov,q,[mem(-8,rbp),reg(rbx)]), label(m), load_rdx], no).
+flow_spec(fact_r10, [m-[r10-(-8)]],
+    [store, ins(mov,q,[mem(-8,rbp),reg(r10)]), label(m), load_rdx], no).
+flow_spec(fact_two_cells_one_family, [m-[rsi-(-16), rsi-(-8)]],
+    [store, load_rsi, label(m), load_rdx], no).
+flow_spec(fact_not_a_cell, [m-[rsi-(-24)]],
+    [store, load_rsi, label(m), load_rdx], no).
+flow_spec(fact_lea_cell, [m-[rsi-(-8)]],
+    [ins(lea,q,[mem(-8,rbp),reg(rdi)]), store, load_rsi, label(m), load_rdx], no).
+flow_spec(fact_numeric_label, ['1'-[rsi-(-8)]],
+    [store, load_rsi, ins(jmp,none,[sym('1f')]), label('1'), load_rdx], no).
+flow_spec(fact_named_label, [m-[rsi-(-8)]],
+    [ins(lea,q,[rip(m),reg(rdi)]), store, load_rsi, label(m), load_rdx], no).
+flow_spec(fact_twice_defined, [m-[rsi-(-8)]],
+    [store, load_rsi, label(m), label(m), load_rdx], no).
 
 % The whole body: a frame, the lines, rax zeroed by a move (xor would
 % read it), leave and ret.
