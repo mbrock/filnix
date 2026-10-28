@@ -101,6 +101,7 @@
     | `offsetof(TypeName, Path)` | Path a list of `field(F)` and `index(E)` |
     | `va_arg(A, TypeName)` | `__builtin_va_arg` |
     | `bit_cast(TypeName, E)` | `__builtin_bit_cast` |
+    | `types_compatible(TypeName, TypeName)` | `__builtin_types_compatible_p` |
     | `stmtexpr(Block)` | a GNU statement expression |
     | `label_addr(L)` | GNU `&&L`, the address of label L |
     | `generic(Control, Associations)` | `_Generic`, Associations a list of `assoc(TypeName, E)` and `assoc(default, E)` |
@@ -1122,12 +1123,10 @@ primary(Env, bit_cast(Type, E)) -->
     token(id('__builtin_bit_cast')), !,
     expect('('), type_name(Env, Type), expect(','),
     assignment(Env, E), expect(')').
-primary(_, _) -->
-    token(id(N)),
-    {   memberchk(N, ['__builtin_types_compatible_p'])
-    }, !,
-    { format(atom(Msg), '~w is not supported', [N]) },
-    parse_error(Msg).
+primary(Env, types_compatible(A, B)) -->
+    token(id('__builtin_types_compatible_p')), !,
+    expect('('), type_name(Env, A), expect(','),
+    type_name(Env, B), expect(')').
 % C23's true and false are the bool constants 1 and 0, and nullptr a
 % null pointer constant (C23 6.4.4.5, 6.4.4.6). nanofil gives nullptr
 % the type void *, not nullptr_t: the two convert alike, and only

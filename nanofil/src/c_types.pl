@@ -375,6 +375,13 @@ request_alignment(Env, attr([Word, group(Ts)]), A) :-
 reflect_type(type(Specs, Syntax), Type, Env, Reflected) :-
     once(reflect_declarator(Syntax, Specs, Type, Env, Reflected)).
 
+% enum_key(+Tag, +Enumerators, -K): an enum type's identity in reflected
+% types, enum(K) among its qualifiers (composite_type/3): its tag, or
+% for an anonymous one its first constant, which no other enum in scope
+% can declare.
+enum_key(some(Name), _, Name).
+enum_key(none, [enumerator(First, _)|_], anon(First)).
+
 reflect_declarator(base, Specs, Type, Env, Reflected) :-
     ( memberchk(tname(Name), Specs), lookup_ordinary(Env, qtype(Name), T)
     -> Base = T
@@ -384,6 +391,8 @@ reflect_declarator(base, Specs, Type, Env, Reflected) :-
     -> reflect_type(TN, T0, Env, Base)
     ; memberchk(atomic(TN), Specs), type_name_type(TN, T0, Env, _)
     -> reflect_type(TN, T0, Env, B0), qualify([atomic], B0, Base)
+    ; member(enum(Tag, Enumerators), Specs), enum_key(Tag, Enumerators, K)
+    -> Base = qualified([enum(K)], Type)
     ; Base = Type
     ),
     findall(Q, member(qual(Q), Specs), Qs), qualify(Qs, Base, Reflected).
@@ -2115,10 +2124,20 @@ doc(composite_type(+T, +U, -C), semidet, [
             C = func(int, [int], fixed)),
     fails(composite_type(func(int, [ptr(qualified([const], int))], fixed),
                          func(int, [ptr(int)], fixed), _)),
+    "An enum is compatible with its underlying integer type, but not with",
+    "another enum (6.7.2.2p4): reflection marks each enum's type",
+    "enum(Tag) (enum_key/3), which code generation drops.",
+    cites('C11 6.7.2.2p4'),
+    example(compatible_type(qualified([enum('E')], uint), uint)),
+    fails(compatible_type(qualified([enum('E')], uint), qualified([enum('G')], uint))),
     fails(composite_type(array(int, 2), array(int, 3), _)),
     fails(composite_type(func(int, [], fixed), func(int, [], variadic), _))
 ]).
 composite_type(T, U, T) :- T == U, !.
+composite_type(T, U, C) :- enum_marked(T, K, T1), !,
+    ( enum_marked(U, L, U1) -> K == L ; U1 = U ),
+    composite_type(T1, U1, C).
+composite_type(T, U, C) :- enum_marked(U, _, U1), !, composite_type(T, U1, C).
 composite_type(qualified(Qs, T), qualified(Qs, U), qualified(Qs, C)) :-
     composite_type(T, U, C).
 composite_type(ptr(T), ptr(U), ptr(C)) :- composite_type(T, U, C).
@@ -2128,6 +2147,11 @@ composite_type(array(T, N), array(U, M), array(C, K)) :-
 composite_type(func(R, Ps, V), func(S, Qs, V), func(C, Cs, V)) :-
     composite_type(R, S, C),
     composite_params(Ps, Qs, Cs).
+
+% enum_marked(+T, -K, -T1): reflected type T is enum K (enum_key/3),
+% otherwise T1.
+enum_marked(qualified(Qs, X), K, T1) :-
+    select(enum(K), Qs, Rest), !, qualify(Rest, X, T1).
 
 % composite_size(+N, +M, -K): array sizes N and M, each none if unknown,
 % agree on K.
@@ -2338,8 +2362,25 @@ elab(bit_cast(TN, E), Env, val(T, bit_cast(XA))) :-
     bit_castable(TA, T, Env).
 elab(stmtexpr(at(Loc, block(Items))), Env, val(T, stmtexpr(at(Loc, block(Items))))) :-
     block_value_type(Items, Env, T).
+elab(types_compatible(TA, TB), Env, X) :- !,
+    types_compatible_value(TA, TB, Env, V),
+    elab(num(V, none-dec), Env, X).
+elab(call(id('__builtin_choose_expr'), [C, A, B]), Env, X) :-
+    \+ lookup_ordinary(Env, '__builtin_choose_expr', _), !,
+    (   catch(const_value(C, Env, V, _), not_constant, fail)
+    ->  ( V =\= 0 -> elab(A, Env, X) ; elab(B, Env, X) )
+    ;   throw(nanofil_error('__builtin_choose_expr needs a constant condition'))
+    ).
+elab(call(id(Name), Args), Env, X) :-
+    \+ lookup_ordinary(Env, Name, _),
+    hint_builtin(Name, Args, E), !,
+    elab(cast(type([tspec(void)], base), E), Env, X).
 elab(generic(C, As), Env, X) :-                             % 6.5.1.1
-    operand(C, Env, _, CT),
+    operand(C, Env, _, CT0),
+    (   expression_type(C, Env, T0), enum_marked(T0, K, _)
+    ->  CT = qualified([enum(K)], CT0)          % lvalue conversion keeps it
+    ;   CT = CT0
+    ),
     generic_selection(CT, As, Env, constant, E),
     elaborate(E, Env, X).
 
@@ -3402,6 +3443,63 @@ target(U, [], U).
 pointed_type(A, B, Qs, T) :- ( A == void ; B == void ), !, qualify(Qs, void, T).
 pointed_type(A, B, Qs, T) :- composite_type(A, B, C), !, qualify(Qs, C, T).
 pointed_type(_, _, _, void).
+
+doc(types_compatible_value(+TA, +TB, +Env, -V), det, [
+    TA: "a type name",
+    TB: "another",
+    Env: "the scope",
+    V: "1 if their types are compatible, ignoring top-level qualifiers, else 0",
+    "GCC's __builtin_types_compatible_p(TA, TB), an integer constant",
+    "expression of type int, by compatible_type/2 on the reflected types:",
+    "a typedef is its type, an enum is compatible with its underlying",
+    "type but not with another enum, and char, signed char and unsigned",
+    "char are three types, as are long and long long.",
+    cites('GCC manual, Other Built-in Functions, __builtin_types_compatible_p'),
+    cites('C11 6.2.7p1'),
+    example(( empty_env(E),
+              types_compatible_value(type([qual(const), tspec(int)], base),
+                                     type([tspec(int)], base), E, V) ),
+            V = 1),
+    example(( empty_env(E),
+              types_compatible_value(type([tspec(long)], base),
+                                     type([tspec(long), tspec(long)], base), E, V) ),
+            V = 0),
+    example(( empty_env(E),
+              types_compatible_value(type([tspec(int)], array(base, none)),
+                                     type([tspec(int)], array(base, num(3, none-dec))), E, V) ),
+            V = 1),
+    example(( empty_env(E),
+              types_compatible_value(type([tspec(int)], ptr(base, [])),
+                                     type([qual(const), tspec(int)], ptr(base, [])), E, V) ),
+            V = 0)
+]).
+types_compatible_value(TA, TB, Env, V) :-
+    maplist(compared_type_name(Env), [TA, TB], [A, B]),
+    ( compatible_type(A, B) -> V = 1 ; V = 0 ).
+
+compared_type_name(Env, TN, T) :-
+    type_name_type(TN, T0, Env, _), reflect_type(TN, T0, Env, R),
+    (   R = qualified(Qs, R1)
+    ->  include(=(enum(_)), Qs, Es), qualify(Es, R1, T)
+    ;   T = R
+    ).
+
+doc(hint_builtin(+Name, +Args, -E), semidet, [
+    Name: "a builtin's name",
+    Args: "its arguments",
+    E: "the expression it evaluates, for its side effects",
+    "A hint that changes no result: __builtin_assume(C) evaluates",
+    "nothing, as clang's does not; __builtin_prefetch(P, ...) evaluates P",
+    "and touches no memory, so a wild address is no access; x86's",
+    "__builtin_ia32_pause, the spin-wait hint of _mm_pause, does nothing.",
+    cites('Clang Language Extensions, __builtin_assume'),
+    cites('GCC manual, Other Built-in Functions, __builtin_prefetch'),
+    example(hint_builtin('__builtin_assume', [id(x)], num(0, none-dec))),
+    example(hint_builtin('__builtin_prefetch', [id(p), num(0, none-dec)], id(p)))
+]).
+hint_builtin('__builtin_assume', [_], num(0, none-dec)).
+hint_builtin('__builtin_prefetch', [P|_], P).
+hint_builtin('__builtin_ia32_pause', [], num(0, none-dec)).
 
 %% Generic selection
 
