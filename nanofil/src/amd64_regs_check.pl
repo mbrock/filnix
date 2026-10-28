@@ -505,28 +505,38 @@ line_obligation(Mapped, Index, Masks, Scratch, All, Line, Out) :-
 
 %! operand_lives(+Analysis, +Saves, +A, -Lives) is det.
 %
-%  Lives lists live(In, Out), the scratch and flags bits before and
-%  after each line of A, the 3a stream of the reference body the shared
-%  Analysis is of. A is that body with mapped moves substituted, which
+%  Lives lists live(In, Out, Effect) for each line of A: the scratch and
+%  flags bits before and after it, and its audited effects (line_effect/2,
+%  shared with the analysis when the line is the reference's). A is the
+%  3a stream of the reference body the shared Analysis is of. A is that body with mapped moves substituted, which
 %  changes no scratch or flags use, and with the save and restore moves
 %  of Saves inserted (check_regs/5 proved it is exactly that stream);
 %  an inserted line touches neither, so it takes the set live before the
 %  next reference line.
-operand_lives(analysis(_, _, Homes, _, LiveOut, _, UDs), Saves, A, Lives) :-
+operand_lives(analysis(Body, Effects, Homes, _, LiveOut, _, UDs), Saves, A, Lives) :-
     length(Homes, N), Base is 2*N,
-    maplist(line_lives(Base), LiveOut, UDs, RLives),
+    ref_lives(Body, Effects, LiveOut, UDs, Base, RLives),
     a_lives(A, RLives, Saves, Lives).
 
-line_lives(Base, Out, ud(U,D), live(I8, O8)) :-
+ref_lives([], [], [], [], _, []).
+ref_lives([R|Rs], [E|Es], [O|Os], [UD|UDs], Base, [Lv|Lvs]) :-
+    line_lives(Base, R, E, O, UD, Lv),
+    ref_lives(Rs, Es, Os, UDs, Base, Lvs).
+
+% live(In, Out, R, E): R is the reference line, E its effects.
+line_lives(Base, R, E, Out, ud(U,D), live(I8, O8, R, E)) :-
     In is U \/ (Out /\ \ D),
     I8 is (In >> Base) /\ 255, O8 is (Out >> Base) /\ 255.
 
+% Each line of A gets live(In, Out, Effect): a line equal to its reference
+% line shares its effects; a substituted or inserted one gets its own.
 a_lives([], [], _, []).
-a_lives([L|As], RLs, Saves, [live(I,I)|Ls]) :-
+a_lives([L|As], RLs, Saves, [live(I,I,E)|Ls]) :-
     save_move(L, Saves), !,
-    RLs = [live(I,_)|_],
+    RLs = [live(I,_,_,_)|_], line_effect(L, E),
     a_lives(As, RLs, Saves, Ls).
-a_lives([_|As], [Lv|RLs], Saves, [Lv|Ls]) :-
+a_lives([L|As], [live(I,O,R,E0)|RLs], Saves, [live(I,O,E)|Ls]) :-
+    ( L == R -> E = E0 ; line_effect(L, E) ),
     a_lives(As, RLs, Saves, Ls).
 
 save_move(ins(mov,q,[reg(R),mem(S,rbp)]), Saves) :- memberchk(save(R,S), Saves).
@@ -536,10 +546,12 @@ save_move(ins(mov,q,[mem(S,rbp),reg(R)]), Saves) :- memberchk(save(R,S), Saves).
 %
 %  B, the operand rewrite of the implementation body A, makes the same
 %  paired lines in the same order on equal values (docs/perf.md, step
-%  3b's contract). Lives lists live(In, Out) for each line of A: the
-%  scratch families and flags (8 bits, scratch_family/2) live before
+%  3b's contract). Lives lists live(In, Out, Effect) for each line of A:
+%  the scratch families and flags (8 bits, scratch_family/2) live before
 %  and after it, from the shared analysis of the reference
-%  (operand_lives/4). Moves (operand_move/2) execute in their own stream
+%  (operand_lives/4), and its audited effects. The walk takes A's
+%  boundaries from those effects, and B's from its own unless the line
+%  is identical to A's. Moves (operand_move/2) execute in their own stream
 %  only; boundary lines must be identical, and at each boundary A and B
 %  agree on every register compared there.
 check_operands(A, B, Lives) :-
@@ -557,9 +569,10 @@ operands_walk(As, [LB|Bs], Ls, J, SA, SB, S0) :-
     operand_move(LB, M), !,
     move_state(M, SB, SB1),
     operands_walk(As, Bs, Ls, J, SA, SB1, S0).
-operands_walk([LA|As], [LB|Bs], [live(In,Out)|Ls], J, SA, SB, S0) :-
-    line_effect(LA, EA), line_effect(LB, EB),
-    (   ( boundary_line(LA, EA) ; boundary_line(LB, EB) )
+operands_walk([LA|As], [LB|Bs], [live(In,Out,EA)|Ls], J, SA, SB, S0) :-
+    % An identical line has A's effect; line_effect/2 is a function.
+    (   LA == LB -> EB = EA ; line_effect(LB, EB) ),
+    (   ( boundary_line(LA, EA) ; LA \== LB, boundary_line(LB, EB) )
     ->  LA == LB,
         ( SA == none -> true ; region_end(In, SA, SB) ),
         (   no_fallthrough(LA, EA)
@@ -606,11 +619,11 @@ imm_range(64, I) :- I >= -(1<<31), I < 1<<31.
 % The state: st(GPRs, XMMs, Flags); a GPR is v(Low, High).
 move_state(_, none, none) :- !.
 move_state(move(F, reg(G), 64), st(R0,X,Fl), st(R,X,Fl)) :- !,
-    get_assoc(G, R0, V), put_assoc(F, R0, V, R).
+    reg_get(G, R0, V), reg_put(F, R0, V, R).
 move_state(move(F, reg(G), 32), st(R0,X,Fl), st(R,X,Fl)) :- !,
-    get_assoc(G, R0, v(Lo,_)), put_assoc(F, R0, v(Lo,const(0)), R).
+    reg_get(G, R0, v(Lo,_)), reg_put(F, R0, v(Lo,const(0)), R).
 move_state(move(F, imm(I), W), st(R0,X,Fl), st(R,X,Fl)) :-
-    imm_halves(W, I, Lo, Hi), put_assoc(F, R0, v(Lo,Hi), R).
+    imm_halves(W, I, Lo, Hi), reg_put(F, R0, v(Lo,Hi), R).
 
 % A 32-bit immediate write zero-extends; a 64-bit one is I mod 2^64.
 imm_halves(32, I, const(Lo), const(0)) :- Lo is I mod (1<<32).
@@ -624,8 +637,45 @@ boundary_line(Line, effect(_,Ws,_,_,Flow)) :-
     ).
 
 shared_state(st(R, X, in(flags,shared))) :-
-    findall(F-v(in(F,lo,shared),in(F,hi,shared)), gpr(F), Rs), list_to_assoc(Rs, R),
-    findall(F-in(F,shared), xmm(F), Xs), list_to_assoc(Xs, X).
+    findall(v(in(F,lo,shared),in(F,hi,shared)), gpr(F), Rs), R =.. [r|Rs],
+    findall(in(F,shared), xmm(F), Xs), X =.. [x|Xs].
+
+% The registers of a state are the arguments of r/16 and x/8, in gpr/1's
+% and xmm/1's order. put_slot/4 (r/16) and put_xslot/4 (x/8) are
+% separate so that a bound index leaves no choicepoint.
+reg_get(F, T, V) :- reg_index(F, I), arg(I, T, V).
+reg_put(F, T0, V, T) :- reg_index(F, I), put_slot(I, T0, V, T).
+put_slot(1, r(_,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16), V, r(V,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16)).
+put_slot(2, r(A1,_,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16), V, r(A1,V,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16)).
+put_slot(3, r(A1,A2,_,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16), V, r(A1,A2,V,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16)).
+put_slot(4, r(A1,A2,A3,_,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16), V, r(A1,A2,A3,V,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16)).
+put_slot(5, r(A1,A2,A3,A4,_,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16), V, r(A1,A2,A3,A4,V,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16)).
+put_slot(6, r(A1,A2,A3,A4,A5,_,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16), V, r(A1,A2,A3,A4,A5,V,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16)).
+put_slot(7, r(A1,A2,A3,A4,A5,A6,_,A8,A9,A10,A11,A12,A13,A14,A15,A16), V, r(A1,A2,A3,A4,A5,A6,V,A8,A9,A10,A11,A12,A13,A14,A15,A16)).
+put_slot(8, r(A1,A2,A3,A4,A5,A6,A7,_,A9,A10,A11,A12,A13,A14,A15,A16), V, r(A1,A2,A3,A4,A5,A6,A7,V,A9,A10,A11,A12,A13,A14,A15,A16)).
+put_slot(9, r(A1,A2,A3,A4,A5,A6,A7,A8,_,A10,A11,A12,A13,A14,A15,A16), V, r(A1,A2,A3,A4,A5,A6,A7,A8,V,A10,A11,A12,A13,A14,A15,A16)).
+put_slot(10, r(A1,A2,A3,A4,A5,A6,A7,A8,A9,_,A11,A12,A13,A14,A15,A16), V, r(A1,A2,A3,A4,A5,A6,A7,A8,A9,V,A11,A12,A13,A14,A15,A16)).
+put_slot(11, r(A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,_,A12,A13,A14,A15,A16), V, r(A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,V,A12,A13,A14,A15,A16)).
+put_slot(12, r(A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,_,A13,A14,A15,A16), V, r(A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,V,A13,A14,A15,A16)).
+put_slot(13, r(A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,_,A14,A15,A16), V, r(A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,V,A14,A15,A16)).
+put_slot(14, r(A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,_,A15,A16), V, r(A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,V,A15,A16)).
+put_slot(15, r(A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,_,A16), V, r(A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,V,A16)).
+put_slot(16, r(A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,_), V, r(A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,V)).
+put_xslot(1, x(_,A2,A3,A4,A5,A6,A7,A8), V, x(V,A2,A3,A4,A5,A6,A7,A8)).
+put_xslot(2, x(A1,_,A3,A4,A5,A6,A7,A8), V, x(A1,V,A3,A4,A5,A6,A7,A8)).
+put_xslot(3, x(A1,A2,_,A4,A5,A6,A7,A8), V, x(A1,A2,V,A4,A5,A6,A7,A8)).
+put_xslot(4, x(A1,A2,A3,_,A5,A6,A7,A8), V, x(A1,A2,A3,V,A5,A6,A7,A8)).
+put_xslot(5, x(A1,A2,A3,A4,_,A6,A7,A8), V, x(A1,A2,A3,A4,V,A6,A7,A8)).
+put_xslot(6, x(A1,A2,A3,A4,A5,_,A7,A8), V, x(A1,A2,A3,A4,A5,V,A7,A8)).
+put_xslot(7, x(A1,A2,A3,A4,A5,A6,_,A8), V, x(A1,A2,A3,A4,A5,A6,V,A8)).
+put_xslot(8, x(A1,A2,A3,A4,A5,A6,A7,_), V, x(A1,A2,A3,A4,A5,A6,A7,V)).
+
+reg_index(rax,1). reg_index(rcx,2). reg_index(rdx,3). reg_index(rbx,4).
+reg_index(rsp,5). reg_index(rbp,6). reg_index(rsi,7). reg_index(rdi,8).
+reg_index(r8,9). reg_index(r9,10). reg_index(r10,11). reg_index(r11,12).
+reg_index(r12,13). reg_index(r13,14). reg_index(r14,15). reg_index(r15,16).
+reg_index(xmm0,1). reg_index(xmm1,2). reg_index(xmm2,3). reg_index(xmm3,4).
+reg_index(xmm4,5). reg_index(xmm5,6). reg_index(xmm6,7). reg_index(xmm7,8).
 
 % region_start(+Out, +Shared, -SA, -SB): after a boundary, live scratch families
 % and live flags are shared, dead ones distinct per stream; the rest is
@@ -640,17 +690,24 @@ dead_scratch(Out, F, RA0-RB0, RA-RB) :-
     scratch_family(F, Bit),
     (   Out /\ (1 << Bit) =\= 0
     ->  RA = RA0, RB = RB0
-    ;   put_assoc(F, RA0, v(in(F,lo,a),in(F,hi,a)), RA),
-        put_assoc(F, RB0, v(In,Hi), RB), In = in(F,lo,b), Hi = in(F,hi,b)
+    ;   reg_put(F, RA0, v(in(F,lo,a),in(F,hi,a)), RA),
+        reg_put(F, RB0, v(In,Hi), RB), In = in(F,lo,b), Hi = in(F,hi,b)
     ).
 
 % region_end(+In, +SA, +SB): at a boundary, A and B agree on both halves
 % of every home register, rsp and rbp, every XMM register, each live
 % scratch family, and the flags if live.
 region_end(In, st(RA,XA,FA), st(RB,XB,FB)) :-
-    forall(( gpr(F), ( scratch_family(F, Bit) -> In /\ (1 << Bit) =\= 0 ; true ) ),
-           ( get_assoc(F, RA, V), get_assoc(F, RB, W), V == W )),
-    forall(xmm(F), ( get_assoc(F, XA, V), get_assoc(F, XB, W), V == W )),
+    RA == RB, XA == XB, !,
+    ( In /\ 128 =\= 0 -> FA == FB ; true ).
+region_end(In, st(RA,XA,FA), st(RB,XB,FB)) :-
+    XA == XB,
+    % rbx, rsp, rbp and r10-r15 (arguments 4-6 and 11-16) always.
+    RA = r(_,_,_,X4,X5,X6,_,_,_,_,X11,X12,X13,X14,X15,X16),
+    RB = r(_,_,_,Y4,Y5,Y6,_,_,_,_,Y11,Y12,Y13,Y14,Y15,Y16),
+    f(X4,X5,X6,X11,X12,X13,X14,X15,X16) == f(Y4,Y5,Y6,Y11,Y12,Y13,Y14,Y15,Y16),
+    forall(( scratch_family(F, Bit), In /\ (1 << Bit) =\= 0 ),
+           ( reg_get(F, RA, V), reg_get(F, RB, W), V == W )),
     ( In /\ 128 =\= 0 -> FA == FB ; true ).
 
 %! operand_roles(+Op, +Size, -Roles) is semidet.
@@ -658,63 +715,262 @@ region_end(In, st(RA,XA,FA), st(RB,XB,FB)) :-
 %  src(W), dst(W), srcdst(W) (a two-address destination) or addr (a
 %  memory operand not accessed). W is the operand's width in bits, or
 %  unbound when its register gives it (SSE forms).
-operand_roles(mov, S, [src(W), dst(W)]) :- move_bits(S, W).
+% Facts, indexed on the mnemonic.
+operand_roles(mov, b, [src(8), dst(8)]).
+operand_roles(mov, w, [src(16), dst(16)]).
+operand_roles(mov, l, [src(32), dst(32)]).
+operand_roles(mov, q, [src(64), dst(64)]).
 operand_roles(movabs, q, [src(64), dst(64)]).
-operand_roles(Op, S, [src(F), dst(W)]) :- extension_bits(Op, F), move_bits(S, W).
+operand_roles(movzb, b, [src(8), dst(8)]).
+operand_roles(movzb, w, [src(8), dst(16)]).
+operand_roles(movzb, l, [src(8), dst(32)]).
+operand_roles(movzb, q, [src(8), dst(64)]).
+operand_roles(movsb, b, [src(8), dst(8)]).
+operand_roles(movsb, w, [src(8), dst(16)]).
+operand_roles(movsb, l, [src(8), dst(32)]).
+operand_roles(movsb, q, [src(8), dst(64)]).
+operand_roles(movzw, b, [src(16), dst(8)]).
+operand_roles(movzw, w, [src(16), dst(16)]).
+operand_roles(movzw, l, [src(16), dst(32)]).
+operand_roles(movzw, q, [src(16), dst(64)]).
+operand_roles(movsw, b, [src(16), dst(8)]).
+operand_roles(movsw, w, [src(16), dst(16)]).
+operand_roles(movsw, l, [src(16), dst(32)]).
+operand_roles(movsw, q, [src(16), dst(64)]).
+operand_roles(movsl, b, [src(32), dst(8)]).
+operand_roles(movsl, w, [src(32), dst(16)]).
+operand_roles(movsl, l, [src(32), dst(32)]).
+operand_roles(movsl, q, [src(32), dst(64)]).
 operand_roles(lea, q, [addr, dst(64)]).
-operand_roles(Op, S, [src(W), srcdst(W)]) :-
-    memberchk(Op, [add,sub,and,or,xor,imul,btc]), move_bits(S, W).
-operand_roles(Op, S, [src(W), src(W)]) :- memberchk(Op, [cmp,test]), move_bits(S, W).
-operand_roles(neg, S, [srcdst(W)]) :- move_bits(S, W).
-operand_roles(Op, S, [src(8), srcdst(W)]) :- memberchk(Op, [shl,shr,sar]), move_bits(S, W).
-operand_roles(Op, none, [dst(8)]) :- atom_concat(set, _, Op).
+operand_roles(add, b, [src(8), srcdst(8)]).
+operand_roles(add, w, [src(16), srcdst(16)]).
+operand_roles(add, l, [src(32), srcdst(32)]).
+operand_roles(add, q, [src(64), srcdst(64)]).
+operand_roles(sub, b, [src(8), srcdst(8)]).
+operand_roles(sub, w, [src(16), srcdst(16)]).
+operand_roles(sub, l, [src(32), srcdst(32)]).
+operand_roles(sub, q, [src(64), srcdst(64)]).
+operand_roles(and, b, [src(8), srcdst(8)]).
+operand_roles(and, w, [src(16), srcdst(16)]).
+operand_roles(and, l, [src(32), srcdst(32)]).
+operand_roles(and, q, [src(64), srcdst(64)]).
+operand_roles(or, b, [src(8), srcdst(8)]).
+operand_roles(or, w, [src(16), srcdst(16)]).
+operand_roles(or, l, [src(32), srcdst(32)]).
+operand_roles(or, q, [src(64), srcdst(64)]).
+operand_roles(xor, b, [src(8), srcdst(8)]).
+operand_roles(xor, w, [src(16), srcdst(16)]).
+operand_roles(xor, l, [src(32), srcdst(32)]).
+operand_roles(xor, q, [src(64), srcdst(64)]).
+operand_roles(imul, b, [src(8), srcdst(8)]).
+operand_roles(imul, w, [src(16), srcdst(16)]).
+operand_roles(imul, l, [src(32), srcdst(32)]).
+operand_roles(imul, q, [src(64), srcdst(64)]).
+operand_roles(btc, b, [src(8), srcdst(8)]).
+operand_roles(btc, w, [src(16), srcdst(16)]).
+operand_roles(btc, l, [src(32), srcdst(32)]).
+operand_roles(btc, q, [src(64), srcdst(64)]).
+operand_roles(cmp, b, [src(8), src(8)]).
+operand_roles(cmp, w, [src(16), src(16)]).
+operand_roles(cmp, l, [src(32), src(32)]).
+operand_roles(cmp, q, [src(64), src(64)]).
+operand_roles(test, b, [src(8), src(8)]).
+operand_roles(test, w, [src(16), src(16)]).
+operand_roles(test, l, [src(32), src(32)]).
+operand_roles(test, q, [src(64), src(64)]).
+operand_roles(neg, b, [srcdst(8)]).
+operand_roles(neg, w, [srcdst(16)]).
+operand_roles(neg, l, [srcdst(32)]).
+operand_roles(neg, q, [srcdst(64)]).
+operand_roles(shl, b, [src(8), srcdst(8)]).
+operand_roles(shl, w, [src(8), srcdst(16)]).
+operand_roles(shl, l, [src(8), srcdst(32)]).
+operand_roles(shl, q, [src(8), srcdst(64)]).
+operand_roles(shr, b, [src(8), srcdst(8)]).
+operand_roles(shr, w, [src(8), srcdst(16)]).
+operand_roles(shr, l, [src(8), srcdst(32)]).
+operand_roles(shr, q, [src(8), srcdst(64)]).
+operand_roles(sar, b, [src(8), srcdst(8)]).
+operand_roles(sar, w, [src(8), srcdst(16)]).
+operand_roles(sar, l, [src(8), srcdst(32)]).
+operand_roles(sar, q, [src(8), srcdst(64)]).
+operand_roles(sete, none, [dst(8)]).
+operand_roles(setne, none, [dst(8)]).
+operand_roles(setz, none, [dst(8)]).
+operand_roles(setnz, none, [dst(8)]).
+operand_roles(setb, none, [dst(8)]).
+operand_roles(setbe, none, [dst(8)]).
+operand_roles(seta, none, [dst(8)]).
+operand_roles(setae, none, [dst(8)]).
+operand_roles(setl, none, [dst(8)]).
+operand_roles(setle, none, [dst(8)]).
+operand_roles(setg, none, [dst(8)]).
+operand_roles(setge, none, [dst(8)]).
+operand_roles(sets, none, [dst(8)]).
+operand_roles(setns, none, [dst(8)]).
+operand_roles(setp, none, [dst(8)]).
+operand_roles(setnp, none, [dst(8)]).
 operand_roles(cltd, none, []).
+operand_roles(cqto, none, []).
 % A fence pairs with itself, in its place among the memory accesses.
 operand_roles(mfence, none, []).
-operand_roles(cqto, none, []).
-operand_roles(Op, S, [src(W)]) :- memberchk(Op, [div,idiv]), move_bits(S, W).
-operand_roles(Op, none, [src(_), dst(_)]) :- memberchk(Op, [movd,movq]).
-operand_roles(Op, S, [src(128), srcdst(128)]) :-
-    memberchk(Op, [add,sub,mul,div]), memberchk(S, [ss,sd]).
-operand_roles(Op, none, [src(128), src(128)]) :- memberchk(Op, [ucomiss,ucomisd]).
-operand_roles(Op, none, [src(128), srcdst(128)]) :- memberchk(Op, [cvtss2sd,cvtsd2ss]).
-operand_roles(Op, S, [src(128), dst(W)]) :-
-    memberchk(Op, [cvttss2si,cvttsd2si]), move_bits(S, W).
-operand_roles(Op, S, [src(W), srcdst(128)]) :-
-    memberchk(Op, [cvtsi2ss,cvtsi2sd]), move_bits(S, W).
+operand_roles(div, b, [src(8)]).
+operand_roles(div, w, [src(16)]).
+operand_roles(div, l, [src(32)]).
+operand_roles(div, q, [src(64)]).
+operand_roles(idiv, b, [src(8)]).
+operand_roles(idiv, w, [src(16)]).
+operand_roles(idiv, l, [src(32)]).
+operand_roles(idiv, q, [src(64)]).
+operand_roles(movd, none, [src(_), dst(_)]).
+operand_roles(movq, none, [src(_), dst(_)]).
+operand_roles(add, ss, [src(128), srcdst(128)]).
+operand_roles(add, sd, [src(128), srcdst(128)]).
+operand_roles(sub, ss, [src(128), srcdst(128)]).
+operand_roles(sub, sd, [src(128), srcdst(128)]).
+operand_roles(mul, ss, [src(128), srcdst(128)]).
+operand_roles(mul, sd, [src(128), srcdst(128)]).
+operand_roles(div, ss, [src(128), srcdst(128)]).
+operand_roles(div, sd, [src(128), srcdst(128)]).
+operand_roles(ucomiss, none, [src(128), src(128)]).
+operand_roles(ucomisd, none, [src(128), src(128)]).
+operand_roles(cvtss2sd, none, [src(128), srcdst(128)]).
+operand_roles(cvtsd2ss, none, [src(128), srcdst(128)]).
+operand_roles(cvttss2si, b, [src(128), dst(8)]).
+operand_roles(cvttss2si, w, [src(128), dst(16)]).
+operand_roles(cvttss2si, l, [src(128), dst(32)]).
+operand_roles(cvttss2si, q, [src(128), dst(64)]).
+operand_roles(cvttsd2si, b, [src(128), dst(8)]).
+operand_roles(cvttsd2si, w, [src(128), dst(16)]).
+operand_roles(cvttsd2si, l, [src(128), dst(32)]).
+operand_roles(cvttsd2si, q, [src(128), dst(64)]).
+operand_roles(cvtsi2ss, b, [src(8), srcdst(128)]).
+operand_roles(cvtsi2ss, w, [src(16), srcdst(128)]).
+operand_roles(cvtsi2ss, l, [src(32), srcdst(128)]).
+operand_roles(cvtsi2ss, q, [src(64), srcdst(128)]).
+operand_roles(cvtsi2sd, b, [src(8), srcdst(128)]).
+operand_roles(cvtsi2sd, w, [src(16), srcdst(128)]).
+operand_roles(cvtsi2sd, l, [src(32), srcdst(128)]).
+operand_roles(cvtsi2sd, q, [src(64), srcdst(128)]).
 
 % Implicit operands, read and written at a width, by mnemonic.
 implicit(cltd, _, [rax-32], [rdx-32]).
 implicit(cqto, _, [rax-64], [rdx-64]).
-implicit(Op, S, [rax-W,rdx-W], [rax-W,rdx-W]) :- memberchk(Op, [div,idiv]), move_bits(S, W).
+implicit(div, b, [rax-8,rdx-8], [rax-8,rdx-8]).
+implicit(div, w, [rax-16,rdx-16], [rax-16,rdx-16]).
+implicit(div, l, [rax-32,rdx-32], [rax-32,rdx-32]).
+implicit(div, q, [rax-64,rdx-64], [rax-64,rdx-64]).
+implicit(idiv, b, [rax-8,rdx-8], [rax-8,rdx-8]).
+implicit(idiv, w, [rax-16,rdx-16], [rax-16,rdx-16]).
+implicit(idiv, l, [rax-32,rdx-32], [rax-32,rdx-32]).
+implicit(idiv, q, [rax-64,rdx-64], [rax-64,rdx-64]).
 
 % The flags a form defines from its inputs (res), or leaves partly
 % undefined or preserved (distinct per stream).
 % The SSE arithmetic forms (add, sub, mul, div with ss/sd) preserve them.
-flags_out(Op, S, defined) :-
-    memberchk(Op, [add,sub,and,or,xor,cmp,test,neg]), memberchk(S, [b,w,l,q]).
-flags_out(Op, none, defined) :- memberchk(Op, [ucomiss,ucomisd]).
-flags_out(Op, _, shift) :- memberchk(Op, [shl,shr,sar]).
-flags_out(Op, S, undefined) :- memberchk(Op, [imul,btc,div,idiv]), memberchk(S, [b,w,l,q]).
+% Facts, indexed on the mnemonic.
+flags_out(add, b, defined).
+flags_out(add, w, defined).
+flags_out(add, l, defined).
+flags_out(add, q, defined).
+flags_out(sub, b, defined).
+flags_out(sub, w, defined).
+flags_out(sub, l, defined).
+flags_out(sub, q, defined).
+flags_out(and, b, defined).
+flags_out(and, w, defined).
+flags_out(and, l, defined).
+flags_out(and, q, defined).
+flags_out(or, b, defined).
+flags_out(or, w, defined).
+flags_out(or, l, defined).
+flags_out(or, q, defined).
+flags_out(xor, b, defined).
+flags_out(xor, w, defined).
+flags_out(xor, l, defined).
+flags_out(xor, q, defined).
+flags_out(cmp, b, defined).
+flags_out(cmp, w, defined).
+flags_out(cmp, l, defined).
+flags_out(cmp, q, defined).
+flags_out(test, b, defined).
+flags_out(test, w, defined).
+flags_out(test, l, defined).
+flags_out(test, q, defined).
+flags_out(neg, b, defined).
+flags_out(neg, w, defined).
+flags_out(neg, l, defined).
+flags_out(neg, q, defined).
+flags_out(ucomiss, none, defined).
+flags_out(ucomisd, none, defined).
+flags_out(shl, b, shift).
+flags_out(shl, w, shift).
+flags_out(shl, l, shift).
+flags_out(shl, q, shift).
+flags_out(shr, b, shift).
+flags_out(shr, w, shift).
+flags_out(shr, l, shift).
+flags_out(shr, q, shift).
+flags_out(sar, b, shift).
+flags_out(sar, w, shift).
+flags_out(sar, l, shift).
+flags_out(sar, q, shift).
+flags_out(imul, b, undefined).
+flags_out(imul, w, undefined).
+flags_out(imul, l, undefined).
+flags_out(imul, q, undefined).
+flags_out(btc, b, undefined).
+flags_out(btc, w, undefined).
+flags_out(btc, l, undefined).
+flags_out(btc, q, undefined).
+flags_out(div, b, undefined).
+flags_out(div, w, undefined).
+flags_out(div, l, undefined).
+flags_out(div, q, undefined).
+flags_out(idiv, b, undefined).
+flags_out(idiv, w, undefined).
+flags_out(idiv, l, undefined).
+flags_out(idiv, q, undefined).
 
 %! paired(+LA, +LB, +J, +SA0, +SB0, -SA, -SB) is semidet.
 paired(ins(Op,S,OsA), ins(Op,S,OsB), J, SA0, SB0, SA, SB) :-
-    length(OsA, N), length(OsB, N),
-    once(operand_roles(Op, S, Roles)), length(Roles, N),
-    maplist(operand_sources(SA0, SB0, Op), Roles, OsA, OsB),
+    once(operand_roles(Op, S, Roles)),
+    sources(Roles, OsA, OsB, Op, SA0, SB0),
     (   implicit(Op, S, Reads, _)
     ->  forall(member(F-W, Reads), ( read_value(F, W, SA0, V), read_value(F, W, SB0, V1), V == V1 ))
     ;   true
     ),
     (   flags_read(Op) -> SA0 = st(_,_,FA0), SB0 = st(_,_,FB0), FA0 == FB0 ; true ),
-    numbered_roles(Roles, 1, Positions),
-    foldl(operand_write(J), Positions, OsA, SA0, SA1),
-    foldl(operand_write(J), Positions, OsB, SB0, SB1),
+    writes(Roles, OsA, 1, J, SA0, SA1),
+    writes(Roles, OsB, 1, J, SB0, SB1),
     (   implicit(Op, S, _, Writes)
     ->  foldl(implicit_write(J), Writes, SA1, SA2), foldl(implicit_write(J), Writes, SB1, SB2)
     ;   SA2 = SA1, SB2 = SB1
     ),
     flags_after(Op, S, J, SA0, SB0, SA2, SB2, SA, SB).
+
+% sources(+Roles, +OsA, +OsB, +Op, +SA, +SB): one role per operand of
+% both lines, and each operand pair matches in the pre-states.
+sources([], [], [], _, _, _).
+sources([R|Rs], [OA|OsA], [OB|OsB], Op, SA, SB) :-
+    role_sources(R, Op, SA, SB, OA, OB),
+    sources(Rs, OsA, OsB, Op, SA, SB).
+
+% writes(+Roles, +Os, +P, +J, +S0, -S): register destinations at
+% positions P.. get res(J,P).
+writes([], [], _, _, S, S).
+writes([R|Rs], [O|Os], P, J, S0, S) :-
+    role_write(R, O, P, J, S0, S1),
+    P1 is P+1,
+    writes(Rs, Os, P1, J, S1, S).
+
+role_write(dst(_), O, P, J, S0, S) :- !, register_write(O, P, J, S0, S).
+role_write(srcdst(_), O, P, J, S0, S) :- !, register_write(O, P, J, S0, S).
+role_write(_, _, _, _, S, S).
+
+register_write(reg(N), P, J, S0, S) :- !,
+    register(N, F, W), write_value(F, W, res(J,P), S0, S).
+register_write(_, _, _, S, S).
 
 % setcc reads the flags; a shift's flags output depends on its input
 % (flags_after/9), jcc is a boundary.
@@ -722,18 +978,15 @@ flags_read(Op) :- atom_concat(set, _, Op).
 
 flags_after(Op, S, J, st(_,_,FA0), st(_,_,FB0), st(RA,XA,_), st(RB,XB,_),
             st(RA,XA,FA), st(RB,XB,FB)) :-
-    (   flags_out(Op, S, defined) -> FA = res(J,flags), FB = FA
-    ;   flags_out(Op, S, shift), FA0 == FB0 -> FA = res(J,flags), FB = FA
-    ;   flags_out(Op, S, _) -> FA = res(J,flags,a), FB = res(J,flags,b)
+    (   flags_out(Op, S, K) -> true ; K = preserve ),
+    (   K == defined -> FA = res(J,flags), FB = FA
+    ;   K == shift, FA0 == FB0 -> FA = res(J,flags), FB = FA
+    ;   K \== preserve -> FA = res(J,flags,a), FB = res(J,flags,b)
     ;   FA = FA0, FB = FB0
     ).
 
-numbered_roles([], _, []).
-numbered_roles([R|Rs], P, [P-R|Ps]) :- P1 is P+1, numbered_roles(Rs, P1, Ps).
-
 % Sources: equal values at the role's width; memory operands of the same
 % form on equal addressing registers; other operands identical.
-operand_sources(SA, SB, Op, Role, OA, OB) :- role_sources(Role, Op, SA, SB, OA, OB).
 
 role_sources(dst(W), _, SA, SB, OA, OB) :- place_match(W, SA, SB, OA, OB).
 role_sources(addr, _, SA, SB, OA, OB) :- memory_match(SA, SB, OA, OB).
@@ -769,14 +1022,13 @@ imm_value(I, 64, [const(Lo),const(Hi)]) :- !,
 imm_value(I, W, [const(V)]) :- V is I mod (1<<W).
 
 % read_value(+F, +W, +S, -V): register family F read at W bits.
-read_value(F, 128, st(_,X,_), [V]) :- !, get_assoc(F, X, V).
-read_value(F, W, st(R,_,_), V) :-
-    get_assoc(F, R, v(Lo,Hi)),
-    (   W =:= 64 -> V = [Lo,Hi]
-    ;   W =:= 32 -> V = [Lo]
-    ;   W =:= 16 -> narrow(word, Lo, V0), V = [V0]
-    ;   narrow(byte, Lo, V0), V = [V0]
-    ).
+read_value(F, W, S, V) :- width_read(W, F, S, V).
+
+width_read(128, F, st(_,X,_), [V]) :- reg_get(F, X, V).
+width_read(64, F, st(R,_,_), [Lo,Hi]) :- reg_get(F, R, v(Lo,Hi)).
+width_read(32, F, st(R,_,_), [Lo]) :- reg_get(F, R, v(Lo,_)).
+width_read(16, F, st(R,_,_), [V]) :- reg_get(F, R, v(Lo,_)), narrow(word, Lo, V).
+width_read(8, F, st(R,_,_), [V]) :- reg_get(F, R, v(Lo,_)), narrow(byte, Lo, V).
 
 narrow(byte, const(N), const(M)) :- !, M is N /\ 255.
 narrow(word, const(N), const(M)) :- !, M is N /\ 65535.
@@ -798,20 +1050,16 @@ same_base(SA, SB, A, B) :-
     register(A, FA, 64), register(B, FB, 64),
     read_value(FA, 64, SA, V), read_value(FB, 64, SB, W), V == W.
 
-operand_write(J, P-Role, O, S0, S) :-
-    (   ( Role = dst(_) ; Role = srcdst(_) ), O = reg(N)
-    ->  register(N, F, W), write_value(F, W, res(J,P), S0, S)
-    ;   S = S0
-    ).
 implicit_write(J, F-W, S0, S) :- write_value(F, W, res(J,F), S0, S).
 
 % write_value(+F, +W, +V, +S0, -S): V written to F at W bits.
-write_value(F, 128, V, st(R,X0,Fl), st(R,X,Fl)) :- !, put_assoc(F, X0, V, X).
+write_value(F, 128, V, st(R,X0,Fl), st(R,X,Fl)) :- !, reg_index(F, I), put_xslot(I, X0, V, X).
 write_value(F, W, V, st(R0,X,Fl), st(R,X,Fl)) :-
-    get_assoc(F, R0, v(Lo0,Hi0)),
-    (   W =:= 64 -> New = v(lo(V),hi(V))
-    ;   W =:= 32 -> New = v(lo(V),const(0))
-    ;   W =:= 16 -> New = v(merge16(Lo0,lo(V)),Hi0)
-    ;   New = v(merge8(Lo0,lo(V)),Hi0)
-    ),
-    put_assoc(F, R0, New, R).
+    reg_index(F, I), arg(I, R0, Old),
+    written(W, V, Old, New),
+    put_slot(I, R0, New, R).
+
+written(64, V, _, v(lo(V),hi(V))).
+written(32, V, _, v(lo(V),const(0))).
+written(16, V, v(Lo0,Hi0), v(merge16(Lo0,lo(V)),Hi0)).
+written(8, V, v(Lo0,Hi0), v(merge8(Lo0,lo(V)),Hi0)).

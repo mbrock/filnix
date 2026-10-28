@@ -274,7 +274,7 @@ operand_run(Name, A, B, Expected, Edit) :-
 edit_lives(same, _, Lives, Lives).
 edit_lives(dead(Bit, L), A, Lives0, Lives) :-
     maplist(edit_live(Bit, L), A, Lives0, Lives).
-edit_live(Bit, L, Line, live(I,O0), live(I,O)) :-
+edit_live(Bit, L, Line, live(I,O0,E), live(I,O,E)) :-
     ( Line == label(L) -> O is O0 /\ \ (1 << Bit) ; O = O0 ).
 
 r(N, reg(N)).

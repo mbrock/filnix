@@ -634,10 +634,47 @@ every scratch register, so a dead copy into `rcx`, `r8` or `r9` before a
 call survives. Knowing the call's argument registers would need the
 emitter to state them, which is a contract change.
 
-Compile time: `lvm.i` 3.65 s → 4.71 s (+29%), `sqlite3.c` 122.1 s →
-141.7 s user (+16%). Peak memory for `sqlite3.c` is unchanged at 5.58 GB.
-The checker is about a quarter of the backend's time and the rewrite a
-fifth.
+Compile time as first landed: `lvm.i` 3.65 s → 4.71 s (+29%),
+`sqlite3.c` 122.1 s → 141.7 s user (+16%). Peak memory for `sqlite3.c`
+is unchanged at 5.58 GB. The checker is about a quarter of the backend's
+time and the rewrite a fifth.
+
+Most of the checker's cost was choicepoints, not work. `put_slot/4` had
+clauses for both `r/16` and `x/8` under each index, and `operand_write/5`
+chose its role with a disjunction, so each paired line left a choicepoint
+behind. A function's walk kept them all, and with them every state it had
+built. The checker took 0.66 s on all of `lvm.i`'s functions alone but
+1.2 s inside the compiler, with the module live, which points at garbage
+collection over the retained states. Splitting `put_xslot/4` off, writing the
+roles as clauses, and reading registers by width through clause indexing
+make the walk deterministic. An identical line also reuses A's effects
+rather than auditing B's again, and the rewrite skips forwarding when
+nothing is held. The output is byte-identical (snapshot, all modes).
+Backend time on `lvm.i` (CPU s, SWI):
+
+| | function | operands, before | operands, after |
+| --- | --- | --- | --- |
+| backend | 1.45 | 3.04 | 2.11 |
+| `check_operands/3` | | 1.20 | 0.21 |
+| rewrite | | 0.33 | 0.25 |
+
+`sqlite3.c` with `-O` (user time, after the C thread's frontend work):
+function 60.0 s, operands 72.2 s (+20%, was +46%: 72.8 s → 106.1 s
+measured before it). Peak RSS is 2.93 GB in both modes.
+
+bzip2 -d is slower with fewer instructions because of code layout, not
+because of what 3b emits. `BZ2_decompress` is one function of about 40k
+lines, and its loops' alignment decides how often the op cache misses.
+In function mode alone, padding the function's start with `.skip N`
+moves its cycles between 1.81G and 2.07G, tracking
+`de_src_op_disp.decoder` (micro-ops from the legacy decoder). With 3b's
+passes added one by one, cycles go 1.75G (function), 1.94G (forwarding),
+1.98G (+ dead moves) and 1.83G (+ retargeting): each changes the layout.
+With `.p2align 5` at the 123 targets of backward jumps (the loop heads),
+function mode runs 1.81G and operands 1.76G, and both stay put under
+the same padding. The gate measures layout luck in one large function
+here. Aligning loop heads would be a small emitter change; it has not
+been measured on the other workloads.
 
 ### 4. Inlining small functions
 

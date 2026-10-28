@@ -66,7 +66,9 @@ regs_asm(Mode, regs_metadata(Setjmp, Impl, Homes, Saves), Before, Final,
     ),
     (   Mode == operands, Report = allocated(_, _)
     ->  impl_body(Impl, After, PreA, A),
-        operand_lives(Analysis, Used, A, Lives),
+        (   operand_lives(Analysis, Used, A, Lives) -> true
+        ;   throw(nanofil_error('register operand liveness failed'))
+        ),
         operands_rewrite(A, Lives, B),
         (   check_operands(A, B, Lives) -> true
         ;   throw(nanofil_error('register operand translation check failed'))
@@ -214,8 +216,9 @@ colour(Index, Owners, Cross, Neighbours, _-D, Colours0, Colours) :-
    scratch result copied into a register is written there directly, and
    dead moves are deleted again. Liveness at a region's end is the
    reference's (operand_lives/4); inside, it is recomputed on the
-   rewritten lines. The passes carry each line with its audited effects,
-   Line-Effect, so a line's effects are computed once. */
+   rewritten lines. The passes carry each line as Line-inf(Effect, Use,
+   Def, Move): its audited effects, the scratch and flags sets it uses
+   and defines, and its operand_move/2 reading or none, computed once. */
 
 %! operands_rewrite(+A, +Lives, -B) is det.
 operands_rewrite(A, Lives, B) :-
@@ -229,11 +232,10 @@ operand_regions(As, Ls, [region(Lines, End, Boundary)|Rs]) :-
     operand_regions(As1, Ls1, Rs).
 
 region_lines([], [], [], 0, [], [], []).
-region_lines([L|As], [live(In,_)|Ls], Lines, End, Boundary, As1, Ls1) :-
-    line_effect(L, E),
+region_lines([L|As], [live(In,_,E)|Ls], Lines, End, Boundary, As1, Ls1) :-
     (   boundary_line(L, E)
     ->  Lines = [], End is In /\ 127, Boundary = [L], As1 = As, Ls1 = Ls
-    ;   Lines = [L-E|Lines1],
+    ;   effect_info(L, E, I), Lines = [L-I|Lines1],
         region_lines(As, Ls, Lines1, End, Boundary, As1, Ls1)
     ).
 
@@ -246,27 +248,31 @@ region_rewrite(region(Lines, End, Boundary), Out) :-
     pairs_keys(L4, Ls4),
     append(Ls4, Boundary, Out).
 
-with_effect(L, L-E) :- line_effect(L, E).
+with_effect(L, L-I) :- line_effect(L, E), effect_info(L, E, I).
+
+effect_info(L, E, inf(E, U, D, M)) :-
+    extra_use_def(L, E, U, D),
+    ( operand_move(L, M0) -> M = M0 ; M = none ).
 
 % forward(+Lines, +Contents, -Out): Contents maps a register family to
 % what it holds: copy(G, W), G's value (W = 64) or its low half
 % zero-extended (W = 32), or imm(V), the 64-bit value V.
 forward([], _, []).
-forward([L-E|Ls], C0, Out) :-
-    (   operand_move(L, move(F, Src, W))
+forward([L-I|Ls], C0, Out) :-
+    (   I = inf(_,_,_,move(F, Src, W))
     ->  move_content(Src, W, C0, Content),
         forget(F, C0, C1),
         (   Content = copy(F, 64) -> Emit = []
         ;   Src = reg(G), get_assoc(G, C0, _)
         ->  materialize(Content, F, Line), with_effect(Line, LE), Emit = [LE]
-        ;   Emit = [L-E]
+        ;   Emit = [L-I]
         ),
         (   ( Content == none ; Content = copy(F, _) ) -> C = C1
         ;   put_assoc(F, C1, Content, C)
         )
     ;   forward_line(L, C0, L1),
-        ( L1 == L -> E1 = E ; line_effect(L1, E1) ),
-        Emit = [L1-E1], E1 = effect(_,Ws,_,_,_),
+        ( L1 == L -> I1 = I ; with_effect(L1, L1-I1) ),
+        Emit = [L1-I1], I1 = inf(effect(_,Ws,_,_,_),_,_,_),
         foldl(forget_written, Ws, C0, C)
     ),
     append(Emit, Rest, Out),
@@ -305,6 +311,7 @@ forget_written(write(F,_), C0, C) :- !, forget(F, C0, C).
 forget_written(_, C, C).
 
 % forget(+F, +C0, -C): F changes; drop what it held and every copy of it.
+forget(_, C0, C) :- empty_assoc(C0), !, C = C0.
 forget(F, C0, C) :-
     assoc_to_list(C0, Ps),
     exclude(depends_on(F), Ps, Kept),
@@ -316,23 +323,21 @@ depends_on(F, _-copy(F,_)).
 % immediate read the original; memory operands address through the
 % original register. Each replacement must leave an audited form.
 forward_line(L, C, L1) :-
-    (   L = ins(Op,S,Os), once(operand_roles(Op, S, Roles))
-    ->  numbered_list(Os, 1, Ns),
-        foldl(forward_operand(C, Op, Roles), Ns, L, L1)
+    (   \+ empty_assoc(C), L = ins(Op,S,Os), once(operand_roles(Op, S, Roles))
+    ->  forward_operands(Roles, Os, 1, C, Op, L, L1)
     ;   L1 = L
     ).
 
-numbered_list([], _, []).
-numbered_list([O|Os], K, [K-O|Ns]) :- K1 is K+1, numbered_list(Os, K1, Ns).
-
-forward_operand(C, Op, Roles, K-O, L0, L) :-
-    nth1(K, Roles, Role),
+forward_operands([], _, _, _, _, L, L).
+forward_operands([Role|Roles], [O|Os], K, C, Op, L0, L) :-
     (   forwarded(Role, Op, C, O, O1), O1 \== O,
         L0 = ins(Op,S,Os0), replace_nth(K, Os0, O1, Os1), L1 = ins(Op,S,Os1),
         line_effect(L1, E), \+ boundary_line(L1, E)
-    ->  L = L1
-    ;   L = L0
-    ).
+    ->  true
+    ;   L1 = L0
+    ),
+    K1 is K+1,
+    forward_operands(Roles, Os, K1, C, Op, L1, L).
 
 forwarded(src(_), Op, C, reg(N), O) :-
     register(N, F, W), W < 128, get_assoc(F, C, Content), renames(F, Content),
@@ -362,14 +367,13 @@ replace_nth(K, [X|Xs], Y, [X|Ys]) :- K1 is K-1, replace_nth(K1, Xs, Y, Ys).
 dead_moves(Lines, End, Out) :-
     reverse(Lines, Rev),
     foldl(dead_move, Rev, End-[], _-Out).
-dead_move(L-E, Live0-Acc, Live-Acc1) :-
-    (   operand_move(L, move(F,_,_)), scratch_family(F, Bit), Live0 /\ (1 << Bit) =:= 0
+dead_move(L-I, Live0-Acc, Live-Acc1) :-
+    (   I = inf(_,_,_,move(F,_,_)), scratch_family(F, Bit), Live0 /\ (1 << Bit) =:= 0
     ->  Live = Live0, Acc1 = Acc
-    ;   live_before(L-E, Live0, Live), Acc1 = [L-E|Acc]
+    ;   live_before(L-I, Live0, Live), Acc1 = [L-I|Acc]
     ).
 
-live_before(L-E, Out, In) :-
-    extra_use_def(L, E, U, D),
+live_before(_-inf(_,U,D,_), Out, In) :-
     In is (U \/ (Out /\ \ D)) /\ 127.
 
 % live_after(+Lines, +End, -Pairs): each line with the scratch families
