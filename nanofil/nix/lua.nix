@@ -1,8 +1,10 @@
 # Lua 5.4 built entirely through the shared nanofil-cc wrapper. Compare
 # deterministic float/format/libm scripts with filcc, and run Lua's
 # unchanged official basic suite on both builds, plain and under GC stress.
-# Repeat with nanofil's middle end enabled. reference is exposed so the
-# harness and upstream suite can be checked before the compiler is ready.
+# Once per middle-end, register and check-reuse choice, each in its own
+# derivation (configurations.nix), whose outputs the check links under
+# their labels. reference is exposed so the harness and upstream suite
+# can be checked before the compiler is ready.
 { pkgs, filcc }:
 assert pkgs.lua5_4.version == "5.4.7";
 let
@@ -27,42 +29,44 @@ let
     cp lua/src/lua lua/src/luac $out/bin/
     bash ${scripts}/check.sh $out/bin/lua $out/bin/lua official $out/check
   '';
+  configurations = {
+    plain = "";
+    optimized = "-O";
+    local-plain = "--registers=local";
+    local-optimized = "-O --registers=local";
+    branches-reference = "-O --branches=reference";
+    stack-optimized = "-O --registers=stack";
+    reuse-plain = "--checks=reuse";
+  };
 in
-pkgs.runCommandCC "nanofil-lua"
-  {
-    inherit src;
-    passthru = { inherit reference; };
-  }
-  ''
+(import ./configurations.nix { inherit pkgs; } "nanofil-lua" configurations (
+  label: opt:
+  pkgs.runCommandCC "nanofil-lua-${label}" { inherit src; } ''
     cc=${import ./nanofil-cc.nix { inherit pkgs filcc; }}
     mkdir official $out
     tar -xf ${officialTests} -C official --strip-components=1
-    for opt in "" -O "--registers=local" "-O --registers=local" "-O --branches=reference" "-O --registers=stack" "--checks=reuse"; do
-      case "$opt" in
-        "") label=plain ;;
-        -O) label=optimized ;;
-        --registers=local) label=local-plain ;;
-        --checks=reuse) label=reuse-plain ;;
-        *) label=local-optimized ;;
-      esac
-      echo "== Lua 5.4.7, nanofil $opt"
-      rm -rf lua && mkdir lua
-      tar -xf $src -C lua --strip-components=1
-      export NANOFIL_OPT=$opt NANOFIL_LOG=$PWD/nanofil.log
-      rm -f nanofil.log
-      make -C lua/src -j$NIX_BUILD_CORES CC=$cc \
-        CFLAGS="${flags}" SYSLIBS="-Wl,-E -ldl" all
-      # Compare names, not just counts: not one Lua object may come from
-      # a configure probe or a silent fallback to clang.
-      find lua/src -name '*.o' -printf '%f\n' | sort >objects
-      sort -u nanofil.log >compiled
-      test -s objects
-      diff -u objects compiled
-      echo "nanofil compiled every one of $(wc -l <objects) Lua objects ($label)"
-      mkdir -p $out/$label/bin
-      cp lua/src/lua lua/src/luac $out/$label/bin/
-      cp compiled $out/$label/compiled-objects.txt
-      bash ${scripts}/check.sh ${reference}/bin/lua "$PWD/lua/src/lua" \
-        official $out/$label/check
-    done
+    echo "== Lua 5.4.7, nanofil ${opt}"
+    mkdir lua
+    tar -xf $src -C lua --strip-components=1
+    export NANOFIL_OPT="${opt}" NANOFIL_LOG=$PWD/nanofil.log
+    make -C lua/src -j$NIX_BUILD_CORES CC=$cc \
+      CFLAGS="${flags}" SYSLIBS="-Wl,-E -ldl" all
+    # Compare names, not just counts: not one Lua object may come from
+    # a configure probe or a silent fallback to clang.
+    find lua/src -name '*.o' -printf '%f\n' | sort >objects
+    sort -u nanofil.log >compiled
+    test -s objects
+    diff -u objects compiled
+    echo "nanofil compiled every one of $(wc -l <objects) Lua objects (${label})"
+    mkdir -p $out/bin
+    cp lua/src/lua lua/src/luac $out/bin/
+    cp compiled $out/compiled-objects.txt
+    bash ${scripts}/check.sh ${reference}/bin/lua "$PWD/lua/src/lua" \
+      official $out/check
   ''
+)).overrideAttrs
+  (old: {
+    passthru = old.passthru // {
+      inherit reference;
+    };
+  })

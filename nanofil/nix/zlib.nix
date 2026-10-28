@@ -3,29 +3,49 @@
 # zlib's own `make test` runs, and minigzip's output must be byte for
 # byte the same as a filcc-built zlib's, at levels 1, 6 and 9 on text
 # and on random data, with each build inflating the other's output.
-# Once with nanofil's middle end off and once with -O; the tests also
-# run under FUGC_SCRIBBLE and FUGC_VERIFY.
+# Once per middle-end, register and check-reuse choice, each in its own
+# derivation (configurations.nix); the tests also run under
+# FUGC_SCRIBBLE and FUGC_VERIFY.
 { pkgs, filcc }:
-pkgs.runCommandCC "nanofil-zlib" { src = pkgs.zlib.src; } ''
-  cc=${import ./nanofil-cc.nix { inherit pkgs filcc; }}
-  unpack() {
-    mkdir $1
-    tar -xf $src -C $1 --strip-components=1
-    (cd $1 && CC=${filcc}/bin/clang ./configure --static >configure.log)
-  }
-
-  unpack ref
-  make -C ref -j$NIX_BUILD_CORES libz.a example minigzip >/dev/null
-  cat ${../.}/src/*.pl ${../.}/docs/*.md > text
-  head -c 2000000 /dev/urandom > random
-
+let
+  src = pkgs.zlib.src;
+  unpack = ''
+    unpack() {
+      mkdir $1
+      tar -xf $src -C $1 --strip-components=1
+      (cd $1 && CC=${filcc}/bin/clang ./configure --static >configure.log)
+    }
+  '';
+  reference = pkgs.runCommandCC "nanofil-zlib-reference" { inherit src; } ''
+    ${unpack}
+    unpack ref
+    make -C ref -j$NIX_BUILD_CORES libz.a example minigzip >/dev/null
+    mkdir -p $out/bin
+    cp ref/minigzip $out/bin/
+  '';
   # Middle end and target cache are independent choices.
-  for opt in "" -O "--registers=local" "-O --registers=local" "-O --branches=reference" "-O --registers=stack" "--checks=reuse"; do
-    echo "== zlib, nanofil $opt"
-    rm -rf nf
+  configurations = {
+    plain = "";
+    O = "-O";
+    local = "--registers=local";
+    O-local = "-O --registers=local";
+    O-branches-reference = "-O --branches=reference";
+    O-stack = "-O --registers=stack";
+    reuse = "--checks=reuse";
+  };
+in
+import ./configurations.nix { inherit pkgs; } "nanofil-zlib" configurations (
+  label: opt:
+  pkgs.runCommandCC "nanofil-zlib-${label}" { inherit src; } ''
+    cc=${import ./nanofil-cc.nix { inherit pkgs filcc; }}
+    ref=${reference}/bin/minigzip
+    ${unpack}
+    cat ${../.}/src/*.pl ${../.}/docs/*.md > text
+    head -c 2000000 /dev/urandom > random
+
+    echo "== zlib, nanofil ${opt}"
     unpack nf
-    export NANOFIL_OPT=$opt NANOFIL_LOG=$PWD/nanofil.log
-    rm -f nanofil.log
+    export NANOFIL_OPT="${opt}" NANOFIL_LOG=$PWD/nanofil.log
     make -C nf -j$NIX_BUILD_CORES CC=$cc libz.a example minigzip
     objects=$(find nf -name '*.o' | wc -l)
     compiled=$(sort -u nanofil.log | wc -l)
@@ -36,15 +56,15 @@ pkgs.runCommandCC "nanofil-zlib" { src = pkgs.zlib.src; } ''
       grep -q '\*\*\* zlib test OK \*\*\*' test.log
       for f in text random; do
         for level in 1 6 9; do
-          ref/minigzip -$level <$f >$f.ref.gz
+          $ref -$level <$f >$f.ref.gz
           env $env nf/minigzip -$level <$f >$f.nf.gz
           cmp $f.ref.gz $f.nf.gz
           env $env nf/minigzip -d <$f.ref.gz | cmp - $f
-          ref/minigzip -d <$f.nf.gz | cmp - $f
+          $ref -d <$f.nf.gz | cmp - $f
         done
       done
       echo "minigzip matches filcc's zlib byte for byte ($env)"
     done
-  done
-  touch $out
-''
+    touch $out
+  ''
+)

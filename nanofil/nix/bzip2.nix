@@ -3,28 +3,48 @@
 # own `make test` round-trips its three samples, and bzip2's output must
 # be byte for byte the same as a filcc-built bzip2's at block sizes 1, 5
 # and 9, on text and on random data, with each build decompressing the
-# other's output. Repeated with each middle-end, register and check-reuse
-# choice; the comparisons also run under FUGC_SCRIBBLE and FUGC_VERIFY.
+# other's output. Once per middle-end, register and check-reuse choice,
+# each in its own derivation (configurations.nix); the comparisons also
+# run under FUGC_SCRIBBLE and FUGC_VERIFY.
 { pkgs, filcc }:
 assert pkgs.bzip2.version == "1.0.8";
-pkgs.runCommandCC "nanofil-bzip2" { src = pkgs.bzip2.src; } ''
-  cc=${import ./nanofil-cc.nix { inherit pkgs filcc; }}
-  unpack() {
-    mkdir $1
-    tar -xf $src -C $1 --strip-components=1
-  }
+let
+  src = pkgs.bzip2.src;
+  unpack = ''
+    unpack() {
+      mkdir $1
+      tar -xf $src -C $1 --strip-components=1
+    }
+  '';
+  reference = pkgs.runCommandCC "nanofil-bzip2-reference" { inherit src; } ''
+    ${unpack}
+    unpack ref
+    make -C ref -j$NIX_BUILD_CORES CC=${filcc}/bin/clang bzip2 bzip2recover >/dev/null
+    mkdir -p $out/bin
+    cp ref/bzip2 ref/bzip2recover $out/bin/
+  '';
+  configurations = {
+    plain = "";
+    O = "-O";
+    local = "--registers=local";
+    O-local = "-O --registers=local";
+    O-branches-reference = "-O --branches=reference";
+    O-stack = "-O --registers=stack";
+    reuse = "--checks=reuse";
+  };
+in
+import ./configurations.nix { inherit pkgs; } "nanofil-bzip2" configurations (
+  label: opt:
+  pkgs.runCommandCC "nanofil-bzip2-${label}" { inherit src; } ''
+    cc=${import ./nanofil-cc.nix { inherit pkgs filcc; }}
+    ref=${reference}/bin
+    ${unpack}
+    cat ${../.}/src/*.pl ${../.}/docs/*.md > text
+    head -c 1000000 /dev/urandom > random
 
-  unpack ref
-  make -C ref -j$NIX_BUILD_CORES CC=${filcc}/bin/clang bzip2 bzip2recover >/dev/null
-  cat ${../.}/src/*.pl ${../.}/docs/*.md > text
-  head -c 1000000 /dev/urandom > random
-
-  for opt in "" -O "--registers=local" "-O --registers=local" "-O --branches=reference" "-O --registers=stack" "--checks=reuse"; do
-    echo "== bzip2, nanofil $opt"
-    rm -rf nf
+    echo "== bzip2, nanofil ${opt}"
     unpack nf
-    export NANOFIL_OPT=$opt NANOFIL_LOG=$PWD/nanofil.log
-    rm -f nanofil.log
+    export NANOFIL_OPT="${opt}" NANOFIL_LOG=$PWD/nanofil.log
     make -C nf -j$NIX_BUILD_CORES CC=$cc bzip2 bzip2recover
     # Compare names, not just counts: no object may come from clang.
     find nf -name '*.o' -printf '%f\n' | sort >objects
@@ -37,21 +57,21 @@ pkgs.runCommandCC "nanofil-bzip2" { src = pkgs.bzip2.src; } ''
     for env in "" "FUGC_SCRIBBLE=1 FUGC_VERIFY=1"; do
       for f in text random; do
         for level in 1 5 9; do
-          ref/bzip2 -$level <$f >$f.ref.bz2
+          $ref/bzip2 -$level <$f >$f.ref.bz2
           env $env nf/bzip2 -$level <$f >$f.nf.bz2
           cmp $f.ref.bz2 $f.nf.bz2
           env $env nf/bzip2 -d <$f.ref.bz2 | cmp - $f
-          ref/bzip2 -d <$f.nf.bz2 | cmp - $f
+          $ref/bzip2 -d <$f.nf.bz2 | cmp - $f
         done
       done
       # bzip2recover splits a damaged-free file into its blocks the same way.
       rm -rf rec.ref rec.nf && mkdir rec.ref rec.nf
       cp text.ref.bz2 rec.ref/t.bz2 && cp text.ref.bz2 rec.nf/t.bz2
-      (cd rec.ref && ../ref/bzip2recover t.bz2 >/dev/null 2>&1)
+      (cd rec.ref && $ref/bzip2recover t.bz2 >/dev/null 2>&1)
       (cd rec.nf && env $env ../nf/bzip2recover t.bz2 >/dev/null 2>&1)
       diff -r rec.ref rec.nf
       echo "bzip2 matches filcc's bzip2 byte for byte ($env)"
     done
-  done
-  touch $out
-''
+    touch $out
+  ''
+)
