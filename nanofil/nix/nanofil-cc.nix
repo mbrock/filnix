@@ -10,12 +10,17 @@
 # (linking, configure probes) goes to filcc unchanged. On SWI, nanofil
 # runs from a saved state built here, which starts in 0.05 s instead of
 # 0.26 s.
-{ pkgs, filcc }:
+{
+  pkgs,
+  filcc,
+  # The nanofil tree to run; the survey passes one of only bin/ and src/.
+  src ? ../.,
+}:
 let
   nanofil =
     pkgs.runCommand "nanofil-src" { nativeBuildInputs = [ pkgs.swi-prolog ]; }
       ''
-        cp -r ${../.} $out
+        cp -r ${src} $out
         chmod -R u+w $out
         patchShebangs $out/bin
         $out/bin/nanofil --save-state $out/nanofil.state
