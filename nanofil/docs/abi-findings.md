@@ -932,6 +932,20 @@ first, so clang's thunks serve nanofil's calls.
 
 Weak C symbols are covered in *Weak symbols* below.
 
+## Inline asm
+
+At the pin the pass (`handleInlineAsm`) passes through an empty asm
+whose operands hold no pointers, and a validated AT&T asm without
+pointer operands or result. Anything else, in particular an asm with a
+memory (`m`) operand, whose operand is a pointer, becomes a call of the
+runtime's error with the message `cannot handle inline asm (inline
+assembly with pointer argument is not supported): ...`, followed by a
+fake load for its result: the program compiles and stops with a safety
+error only if it runs the asm. nanofil accepts the empty barrier,
+compiles an asm with a memory operand to a call of `zsafety_error` with
+the same message (the instruction text instead of clang's IR), and
+refuses any other asm at compile time.
+
 ## Weak symbols
 
 `__attribute__((weak))`, `#pragma weak` and weak aliases, as clang

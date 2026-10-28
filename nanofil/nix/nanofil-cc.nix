@@ -5,7 +5,8 @@
 # sets NANOFIL_STD=c23, so nanofil reads C23's keywords; -fno-builtin,
 # -fno-builtin-memcpy, -fno-builtin-memmove and -ffreestanding keep every
 # memcpy and memmove a call (--memcpy=call); -fno-inline and -O0 select
-# --inline=none. Anything else
+# --inline=none. __SIZEOF_INT128__ is not defined, since nanofil
+# refuses __int128. Anything else
 # (linking, configure probes) goes to filcc unchanged. On SWI, nanofil
 # runs from a saved state built here, which starts in 0.05 s instead of
 # 0.26 s.
@@ -42,7 +43,8 @@ pkgs.writeShellScript "nanofil-cc" ''
     exec ${filcc}/bin/clang "''${args[@]}" ''${out:+-o "$out"}
   fi
   : "''${out:=$(basename "''${src%.c}").o}"
-  ${filcc}/bin/clang "''${args[@]}" -E -o "$out.i"
+  # nanofil refuses __int128, so it is not advertised (c_pp.pl).
+  ${filcc}/bin/clang "''${args[@]}" -U__SIZEOF_INT128__ -E -o "$out.i"
   input=$(realpath "$out.i")
   # Trealla resolves transitive module imports relative to the working
   # directory. Keep package builds usable on either Prolog host.

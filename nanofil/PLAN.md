@@ -284,6 +284,7 @@ check compared with a filcc build:
 | `nanofil-dash` | dash 0.5.13 | [`cda56e6`](https://github.com/mbrock/filnix/commit/cda56e6) |
 | `nanofil-xz` | xz-utils 5.8.4, threaded coders at 1 to 8 threads | [`41da3be`](https://github.com/mbrock/filnix/commit/41da3be) |
 | `nanofil-make` | GNU make 4.4.1: jobserver, -j, signals, its test suite | no frontend change needed |
+| `nanofil-coreutils` | GNU coreutils 9.11, 107 programs and its test suite | [docs/m4.md](docs/m4.md), *coreutils additions* |
 
 Since the steps below were planned, M4 gained VLAs and variably
 modified types ([`4822471`](https://github.com/mbrock/filnix/commit/4822471)),

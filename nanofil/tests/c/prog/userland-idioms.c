@@ -4,7 +4,8 @@
    __builtin_flt_rounds, dash's SHELL_ALIGN (sizeof a union type that
    the type name defines) and stackblock() + n (GNU void pointer
    arithmetic), and gnulib's max_align_t unions (alignment attributes
-   no stronger than the member's own alignment). */
+   no stronger than the member's own alignment), and gnulib's
+   _GL_UNUSED_LABEL (a label's attributes). */
 #include <stddef.h>
 #include <stdio.h>
 #include <math.h>
@@ -32,6 +33,9 @@ int main(int argc, char **argv)
     unsigned bufsize = 7;
     printf("%ld %ld %d\n", MIN(len, bufsize - 1), MAX(len, 3), (int)(MIN(2.5, argc) * 10));
     printf("%d\n", MAX((char)-1, 1));
+    if (argc > 9) goto done_early;
+ done_early: __attribute__((__unused__));
+ unused_label: __attribute__((__unused__));
     char *p = stackblock() + 3;
     void *q = stackblock();
     q += 5; q++;

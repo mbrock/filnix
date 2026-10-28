@@ -858,9 +858,12 @@ statement_body(Env, S) -->
 % with no operands, which dash's INTOFF uses. It emits no instruction,
 % and nanofil moves no memory access across a statement anyway. Any
 % other asm would run code nanofil cannot check: it parses as
-% unsupported_asm, which c_lower refuses, so only a function that is
-% lowered is refused, not an unused static inline one from a header
-% (immintrin.h's hresetintrin.h), which clang never emits either.
+% unsupported_asm(Kind), which c_lower refuses, so only a function that
+% is lowered is refused, not an unused static inline one from a header
+% (immintrin.h's hresetintrin.h), which clang never emits either. Kind
+% is memory(Template) if an operand has a memory constraint, which
+% clang's Fil-C compiles to a run-time error (gnulib's fpucw.h), else
+% other.
 statement_body(_, S) -->
     kw(asm), !,
     asm_qualifiers,
@@ -868,18 +871,33 @@ statement_body(_, S) -->
         asm_operands, asm_operands, asm_clobbers,
         punct(')')
     ->  { S = null }
-    ;   punct('('), attribute_argument(')')
-    ->  { S = unsupported_asm }
+    ;   punct('('), balanced(Toks)
+    ->  { asm_kind(Toks, Kind), S = unsupported_asm(Kind) }
     ;   parse_error('expected asm operands in parentheses')
     ),
     expect(';').
+% A label's GNU or C23 attributes (gnulib's _GL_UNUSED_LABEL,
+% `fail: __attribute__((__unused__));`) are ignored.
 statement_body(Env, label(Label, S)) -->
     label_start, !,
     [tok(id(Label), _), _],
+    attrs,
     statement(Env, S).
 statement_body(Env, expr(E)) -->
     expr(Env, E),
     expect(';').
+
+% asm_kind(+Toks, -Kind): memory(Template) if some operand of the asm
+% with tokens Toks has a memory constraint ("m", "=m", "+rm"...), else
+% other. Template is its instruction text.
+asm_kind(Toks, Kind) :-
+    (   append(Strs, Rest, Toks), maplist(asm_string, Strs, Parts),
+        \+ Rest = [str(_)|_],
+        append(_, [str(C), group(_)|_], Rest), memberchk(0'm, C)
+    ->  append(Parts, Template), Kind = memory(Template)
+    ;   Kind = other
+    ).
+asm_string(str(Bs), Bs).
 
 asm_qualifiers --> ( kw(volatile) -> asm_qualifiers ; kw(inline) -> asm_qualifiers ; [] ).
 

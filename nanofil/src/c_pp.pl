@@ -895,6 +895,11 @@ pp_profile(Clang, profile(Macros, Paths, Features)) :-
     include_directories(VerboseLines, Paths),
     feature_profile(Clang, Features).
 
+% clang defines __SIZEOF_INT128__, but nanofil refuses __int128: a
+% program that tests for it (coreutils' factor.c) takes its portable
+% path instead. nanofil-cc undefines it in clang's preprocessing too.
+profile_define([t('#', _, _, _), t(define, _, _, _), t('__SIZEOF_INT128__', _, _, _)|_],
+               Macros, Macros) :- !.
 profile_define([t('#', _, _, _), t(define, _, _, _)|Ts], Macros0, Macros) :-
     !,
     definition_macros(Ts, Macros0, Macros).

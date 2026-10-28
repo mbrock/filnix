@@ -1202,7 +1202,20 @@ stmt_(block(Items), Ctx) -->
     items(Items, Ctx),
     restore_scope(Scope).
 stmt_(null, _) --> [].
-stmt_(unsupported_asm, Ctx) -->
+% An asm with a memory operand passes a pointer to code that nothing
+% checks. clang's Fil-C compiles it to a run-time error, which a program
+% reaches only if it runs the asm (gnulib's x87 control-word accesses in
+% fpucw.h, under long double printf); nanofil calls zsafety_error alike
+% (docs/abi-findings.md, *Inline asm*). Any other asm is refused.
+stmt_(unsupported_asm(memory(Template)), _) --> !,
+    { atom_codes(T, Template),
+      format(codes(Msg), 'cannot handle inline asm (inline assembly with pointer argument is not supported): ~w', [T]) },
+    env(Env0),
+    { new_literal(Msg, Sym, Env0, Env) },
+    set_env(Env),
+    let(p, copy, [global(Sym)], Addr),
+    emit(call(void, global(zsafety_error), [arg(p, Addr)])).
+stmt_(unsupported_asm(_), Ctx) -->
     { ctx_loc(Ctx, Loc),
       sema_error(Loc, 'inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")', []) }.
 stmt_(expr(Expr), Ctx) --> judged_rval(Expr, Ctx, _).
