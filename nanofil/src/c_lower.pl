@@ -528,7 +528,8 @@ global_decl(Loc, d(Name, Type0, Storage0, Asm, Init), Env0, Env) :-
         ->  Env = Env1
         ;   ( Storage == static -> Linkage0 = local ; Linkage0 = export ),
             thread_linkage(Thread, Linkage0, Linkage),
-            define_global(Sym, Type, Linkage, Init, Loc, Env1, Env)
+            define_global(Sym, Type, Linkage, Init, Loc, Env1, Env2),
+            data_alignment(Name, Sym, Env2, Env)
         )
     ).
 
@@ -551,6 +552,17 @@ static_type(Name, Type, Loc) :-
    gdef(Symbol), string literals under lit(Symbol); both survive block
    scopes. A tentative definition (no initializer) does not replace one
    with an initializer. */
+% data_alignment(+Name, +Sym, +Env0, -Env): the data Sym of object Name
+% is aligned to Name's alignment request (c_types' object_alignment/5),
+% if it has one, the strictest of its declarations'.
+data_alignment(Name, Sym, Env0, Env) :-
+    (   lookup_ordinary(Env0, qalign(Name), A), integer(A)
+    ->  env_defs(Env0, Defs),
+        ( get_assoc(galign(Sym), Defs, A0) -> A1 is max(A, A0) ; A1 = A ),
+        put_def(galign(Sym), A1, Env0, Env)
+    ;   Env = Env0
+    ).
+
 define_global(Sym, Type, Linkage, Init, Loc, Env0, Env) :-
     env_defs(Env0, Defs),
     (   get_assoc(gdef(Sym), Defs, g(_, _, Init0, _)), Init0 \== none
@@ -641,8 +653,9 @@ global_item(Sym-g(Type, Linkage, Init, Loc),
             data(Sym, Linkage, Align, Items), Env0, Env) :-
     catch(type_size_align(Type, Env0, _, Align0), bad(Why),
           sema_error(Loc, '~w has an unsupported type (~w)', [Sym, Why])),
-    Align is min(Align0, 16),
     env_defs(Env0, Defs),
+    ( get_assoc(galign(Sym), Defs, Requested) -> true ; Requested = 1 ),
+    Align is max(min(Align0, 16), Requested),
     ( get_assoc(initialized(Sym), Defs, Items)
     -> Env = Env0
     ; static_items(Type, Init, Loc, Env0, Env, Items)
@@ -1078,16 +1091,102 @@ let(Class, Op, Args, Dest) -->
     fresh(Dest),
     emit(let(Dest, Class, Op, Args)).
 
-% vla_slot(+Type, +Ctx, -Addr)//: Addr points at a new object of the
+% vla_slot(+Type, +Min, +Ctx, -Addr)//: Addr points at a new object of the
 % variable length array Type, allocated where its declaration is
-% reached, with its length as evaluated then (C11 6.2.4p7, 6.7.6.2p5).
-vla_slot(Type, Ctx, Addr) -->
+% reached, with its length as evaluated then (C11 6.2.4p7, 6.7.6.2p5),
+% aligned to Min (at most 16) at least.
+vla_slot(Type, Min, Ctx, Addr) -->
     extent(Type, Ctx, Size),
     env(Env),
     { element_type(Type, Elem),
       catch(type_size_align(Elem, Env, _, Align0), bad(Why), throw(nanofil_error(Why))),
-      Align is min(16, max(4, Align0)) },
+      Align is min(16, max(4, max(Min, Align0))) },
     let(p, alloc(Align), [Size], Addr).
+
+/* laundered(+XV, -XP, -Hole, -XV1): the integer value tree XV, cast to
+   a pointer, takes the capability of the one pointer XP that a cast to
+   an integer inside it converts, as Fil-C's pointer-as-int laundering
+   does: XV1 is XV with that pointer replaced by val(T, lowered(Hole)),
+   Hole the value XP lowers to. The pointer is the capability source
+   through integer conversions, unary -, + and ~, and arithmetic and
+   bitwise binary operators; a load, call, comparison, constant or
+   anything else contributes none. The same pointer named more than
+   once, without side effects (Fil-C sees one SSA value), is one source
+   and is read once. Two different sources, or a pointer difference, or
+   a source passed through ?:, a comma, an assignment or a statement
+   expression, make it fail (Fil-C's TOP), as does none. XP is
+   evaluated first: the operands of those operators are unsequenced, so
+   that is an order C allows. Fil-C infers on SSA, after the optimizer
+   has made locals values, so a source flowing through a local variable
+   is not found here. */
+laundered(XV, XP, Hole, XV1) :-
+    launder_source(XV, XV1, [XP-Hole|Sources]),
+    XP \== top,
+    (   Sources == [] -> true
+    ;   pure_tree(XP),
+        maplist(same_source(XP, Hole), Sources)
+    ).
+
+same_source(XP, Hole, S-Hole) :- S == XP.
+
+% launder_source(+XV, -XV1, -Sources): Sources are the XP-Hole pairs of
+% the capability sources in integer tree XV, each replaced in XV1, with
+% top-_ for a source Fil-C would merge into TOP.
+launder_source(val(T, cast(TN, X)), val(T, cast(TN, XH)), Sources) :-
+    \+ unqualified(T, bool), !,
+    (   lowered(X, ptr(_))
+    ->  tree_type(X, PT), XH = val(PT, lowered(Hole)), Sources = [X-Hole]
+    ;   lowered(X, IT), int_type(IT)
+    ->  launder_source(X, XH, Sources)
+    ;   XH = X, Sources = []
+    ).
+launder_source(val(T, bin(Op, A, B)), val(T, bin(Op, A1, B1)), Sources) :-
+    memberchk(Op, [add, sub, mul, div, mod, and, or, xor, shl, shr]),
+    lowered(A, TA), int_type(TA), lowered(B, TB), int_type(TB), !,
+    launder_source(A, A1, SA),
+    launder_source(B, B1, SB),
+    append(SA, SB, Sources).
+launder_source(val(T, un(Op, A)), val(T, un(Op, A1)), Sources) :-
+    memberchk(Op, [neg, plus, bnot]), !,
+    launder_source(A, A1, Sources).
+launder_source(X, X, Sources) :-
+    (   passes_pointer_int(X) -> Sources = [top-_] ; Sources = [] ).
+
+% passes_pointer_int(+X): X is a pointer difference, or passes on a
+% value (?:, comma, assignment, statement expression) whose tree holds
+% a pointer converted to an integer or a pointer difference.
+passes_pointer_int(val(_, bin(sub, A, B))) :-
+    lowered(A, ptr(_)), lowered(B, ptr(_)), !.
+passes_pointer_int(val(_, Node)) :-
+    functor(Node, F, _),
+    memberchk(F, [cond, gcond, comma, assign, stmtexpr]),
+    pointer_int_within(Node), !.
+
+pointer_int_within(val(T, cast(_, X))) :-
+    unqualified(T, IT), int_type(IT), lowered(X, ptr(_)), !.
+pointer_int_within(X) :- passes_pointer_int(X), !.
+pointer_int_within(X) :-
+    compound(X), X =.. [_|Args], member(A, Args), pointer_int_within(A), !.
+
+% pure_tree(+X): reading X twice is reading it once: X has no side
+% effects and reads no volatile or _Atomic object.
+pure_tree(val(_, int(_))).
+pure_tree(val(_, load(X))) :-
+    tree_type(X, T), \+ qualified_with(T, volatile), \+ atomic_qualified(T),
+    pure_place(X).
+pure_tree(val(_, decay(X))) :- pure_place(X).
+pure_tree(val(_, addr(X))) :- pure_place(X).
+pure_tree(val(_, cast(_, X))) :- pure_tree(X).
+pure_tree(val(_, un(Op, X))) :- memberchk(Op, [neg, plus, bnot, not]), pure_tree(X).
+pure_tree(val(_, bin(Op, A, B))) :-
+    \+ memberchk(Op, [div, mod]), pure_tree(A), pure_tree(B).
+pure_tree(val(_, member(XS, _))) :- pure_tree(XS).
+
+pure_place(obj(_, id(_))).
+pure_place(obj(_, member(X, _))) :- pure_place(X).
+pure_place(obj(_, deref(XV))) :- pure_tree(XV).
+
+qualified_with(qualified(Qs, _), Q) :- memberchk(Q, Qs).
 
 % element_type(+Type, -Elem): Elem is the innermost element type of
 % array Type, or Type itself.
@@ -1095,12 +1194,14 @@ element_type(array(T, _), E) :- !, element_type(T, E).
 element_type(T, T).
 
 % local_slot(+Type, -Addr)//: Addr points at a new local object of
-% Type, an alloc in the entry block.
-local_slot(Type, Addr) -->
+% Type, an alloc in the entry block; local_slot(+Type, +Min, -Addr)//
+% aligns it to Min (at most 16) at least.
+local_slot(Type, Addr) --> local_slot(Type, 1, Addr).
+local_slot(Type, Min, Addr) -->
     env(Env),
     { catch(type_size_align(Type, Env, Size0, Align0), bad(Why),
             throw(nanofil_error(Why))),
-      ( Align0 =< 4 -> Align = 4 ; Align = Align0 ),
+      Align is max(4, max(Align0, Min)),
       Size is max(Size0, 1) },
     fresh(Addr),
     add_alloc(let(Addr, p, alloc(Align), [const(Size)])).
@@ -1470,7 +1571,8 @@ local_decl(d(Name, Type0, Storage0, Asm, Init), Ctx) -->
           complete_array(Type1, Init, Type, Loc, Env0, none),
           bind_ordinary(Name, gvar(Type, Sym, Storage0, Init), Env1, Env2),
           thread_linkage(Thread, local, Linkage),
-          define_global(Sym, Type, Linkage, Init, Loc, Env2, Env3),
+          define_global(Sym, Type, Linkage, Init, Loc, Env2, Env2a),
+          data_alignment(Name, Sym, Env2a, Env3),
           % Resolve block-scope names before the scope is restored.
           static_items(Type, Init, Loc, Env3, Env4, Items),
           put_def(initialized(Sym), Items, Env4, Env) },
@@ -1480,11 +1582,12 @@ local_decl(d(Name, Type0, Storage0, Asm, Init), Ctx) -->
         env(Env),
         { complete_array(Type1, Init, Type, Loc, Env, whole),
           check_local_type(Type, Env, Loc, Name) },
+        { lookup_ordinary(Env, qalign(Name), A), integer(A) -> true ; A = 1 },
         (   { vla_type(Type) }
         ->  { Init == none -> true                          % 6.7.9p3
             ; sema_error(Loc, 'a variable length array cannot be initialized', []) },
-            vla_slot(Type, Ctx, Addr)
-        ;   local_slot(Type, Addr)
+            vla_slot(Type, A, Ctx, Addr)
+        ;   local_slot(Type, A, Addr)
         ),
         bind(Name, var(Addr, Type)),
         vm_scope(Type),
@@ -1685,9 +1788,11 @@ truth(v(V, Type), Ctx, W) -->
 
 % init_leaves(+Type, +Init, +C, -Leaves): Leaves are what Init assigns
 % to an object of Type. C = c(Env, Whole, Loc), with Whole as for
-% complete_array/6.
+% complete_array/6. The walk is deterministic; once/1 drops the
+% choicepoints its clauses leave per slot, which would keep every
+% slot's frames alive while a large table's leaves are used.
 init_leaves(Type, Init, C, Leaves) :-
-    phrase(object_init(Type, 0, Init, C), Leaves).
+    once(phrase(object_init(Type, 0, Init, C), Leaves)).
 
 % object_init(+Type, +Off, +Init, +C)//: the leaves of Init for the
 % object of Type at Off. A scalar may be braced.
@@ -2019,7 +2124,11 @@ lower_node(val(_, float(Cs)), _, v(const(V), Type)) --> !,
 lower_node(val(T, load(X)), Ctx, R) --> !,                 % 6.3.2.1p2
     place(X, Ctx, P),
     { unqualified(T, U) },
-    place_loaded(P, U, Ctx, R).
+    (   { tree_type(X, TX), atomic_qualified(TX), P = lv(Addr, ptr(_)) }
+    ->  let(p, atomic_load(p), [Addr], D),                 % 6.2.6.1p9
+        { R = v(D, U) }
+    ;   place_loaded(P, U, Ctx, R)
+    ).
 lower_node(val(T0, decay(X)), Ctx, R) --> !,               % 6.3.2.1p3-4
     place(X, Ctx, P),
     { ( P = lv(_, array(E, _)) -> PT = ptr(E) ; PT = T0 ), vm_typed(T0, PT, T) },
@@ -2069,6 +2178,19 @@ lower_node(val(T, gcond(XC, XB)), Ctx, R) --> !,           % GNU c ?: b
     arm_value(U, VB0, VB1), here(LB1),
     term(goto(LJoin)),
     join_arms(U, LJoin, LA1-VA1, LB1-VB1, R).
+lower_node(val(_, assign(=, X, XB)), Ctx, R) -->           % 6.2.6.1p9
+    { tree_type(X, TX), atomic_qualified(TX) }, !,
+    place(X, Ctx, lv(Addr, U)),
+    lower(XB, Ctx, Value0),
+    converted(Value0, U, R),
+    { R = v(V, _) },
+    atomic_stored(U, V, Addr, 5).
+lower_node(val(_, assign(Op, X, _)), Ctx, _) -->
+    { tree_type(X, TX), atomic_qualified(TX), ctx_loc(Ctx, Loc) }, !,
+    { sema_error(Loc, 'compound assignment ~w to an _Atomic object is an atomic read-modify-write, which nanofil does not support', [Op]) }.
+lower_node(val(_, incdec(_, X)), Ctx, _) -->
+    { tree_type(X, TX), atomic_qualified(TX), ctx_loc(Ctx, Loc) }, !,
+    { sema_error(Loc, 'incrementing or decrementing an _Atomic object is an atomic read-modify-write, which nanofil does not support', []) }.
 lower_node(val(_, assign(Op, X, XB)), Ctx, R) --> !,       % 6.5.16
     place(X, Ctx, P),
     (   { Op == (=) } -> lower(XB, Ctx, Value0)
@@ -2101,10 +2223,23 @@ lower_node(val(T, bit_cast(XA)), Ctx, R) --> !,
     local_slot(T, Tmp),
     store_typed(A, V, Tmp),
     loaded(T, Tmp, Ctx, R).
+lower_node(val(T, cast(TN, XV)), Ctx, R) -->              % 6.5.4
+    { unqualified(T, ptr(_)), lowered(XV, IT), int_type(IT),
+      laundered(XV, XP, Hole, XV1) }, !,
+    evaluated_type(TN, Ctx, Type),
+    lower(XP, Ctx, VP),
+    { Hole = VP, VP = v(P, _) },
+    lower(XV1, Ctx, VI),
+    convert(VI, ulong, v(I, _)),
+    let(l, ptoi, [P], IP),
+    let(l, sub, [I, IP], D),
+    let(p, add, [P, D], Q),
+    { R = v(Q, Type) }.
 lower_node(val(_, cast(TN, XV)), Ctx, R) --> !,            % 6.5.4
     evaluated_type(TN, Ctx, Type),
     lower(XV, Ctx, Value0),
     converted(Value0, Type, R).
+lower_node(val(_, lowered(V)), _, V) --> !.
 lower_node(val(_, va_arg(TN, XA)), Ctx, v(Tmp, Type)) -->  % 7.16.1.1
     evaluated_type(TN, Ctx, Type),
     { su(Type) }, !,
@@ -2448,20 +2583,36 @@ builtin('__builtin_flt_rounds', [], _, v(N, int)) --> !,
     let(w, and, [M, const(3)], N).
 % The atomics c_types leaves as builtins (atomic_builtin/4): pointer
 % loads and stores at any order, which Fil-C's helpers make single-copy
-% atomic, and a sequentially consistent integer store, the store and a
-% fence. The order is a constant without side effects.
-builtin('__atomic_load_n', [P, _], Ctx, v(D, T)) --> !,
+% atomic, a sequentially consistent integer store, the store and a
+% fence, any store to an _Atomic object, and __c11_atomic_init's plain
+% store. The order is a constant without side effects.
+builtin(Name, [P, _], Ctx, v(D, T)) -->
+    { memberchk(Name, ['__atomic_load_n', '__c11_atomic_load']) }, !,
     rval(P, Ctx, v(Addr, ptr(T0))),
     { unqualified(T0, T) },
     let(p, atomic_load(p), [Addr], D).
-builtin('__atomic_store_n', [P, V, _], Ctx, v(const(0), void)) --> !,
+builtin(Name, [P, V|O], Ctx, v(const(0), void)) -->
+    { memberchk(Name-O, ['__atomic_store_n'-[_], '__c11_atomic_store'-[_],
+                         '__c11_atomic_init'-[]]) }, !,
     rval(P, Ctx, v(Addr, ptr(T0))),
     rval(V, Ctx, V0),
     { unqualified(T0, T), ctx_loc(Ctx, Loc) },
     assign_convert(V, V0, T, Loc, v(X, _)),
-    (   { T = ptr(_) } -> emit(atomic_store(p, X, Addr))
-    ;   store_typed(T, X, Addr), emit(fence)
+    (   { O = [OE] } -> env(Env), { const_value(OE, Env, Order, _) },
+        atomic_stored(T, X, Addr, Order)
+    ;   store_typed(T, X, Addr)
     ).
+% A seq_cst thread fence is mfence; x86-64 already orders loads and
+% stores for the others, and a signal fence orders nothing a thread sees.
+builtin(Name, [OE], _, v(const(0), void)) -->
+    { memberchk(Name, ['__c11_atomic_thread_fence', '__c11_atomic_signal_fence',
+                       '__atomic_thread_fence', '__atomic_signal_fence']) }, !,
+    env(Env),
+    (   { const_value(OE, Env, 5, _), atom_concat(_, '_thread_fence', Name) }
+    ->  emit(fence)
+    ;   []
+    ).
+
 builtin('__builtin_assume_aligned', [P|Rest], Ctx, R) --> !,
     rval(P, Ctx, VP),
     rvals_discarded(Rest, Ctx),
@@ -2497,6 +2648,15 @@ builtin(Name, [A], Ctx, R) -->
 
 builtin(Name, _, Ctx, _) -->
     { ctx_loc(Ctx, Loc), sema_error(Loc, 'wrong arguments to ~w', [Name]) }.
+
+% atomic_stored(+T, +X, +Addr, +Order)//: X, of T, stored atomically at
+% Addr with memory order Order: a pointer through Fil-C's helper, which
+% is seq_cst at every order, anything else by the store, then a fence
+% when seq_cst.
+atomic_stored(ptr(_), X, Addr, _) --> !, emit(atomic_store(p, X, Addr)).
+atomic_stored(T, X, Addr, Order) -->
+    store_typed(T, X, Addr),
+    (   { Order =:= 5 } -> emit(fence) ; [] ).
 
 classified('__builtin_isinf_sign', K, Bits, Abs, InfBits, _, N) -->
     let(w, cmp(eq, K), [Abs, InfBits], IsInf),
@@ -3576,7 +3736,7 @@ static_items(Type, Init, Loc, Env0, Env, Items) :-
     (   Init == none -> Leaves = []
     ;   init_leaves(Type, Init, c(Env0, none, Loc), Leaves)
     ),
-    foldl(static_leaf(Loc), Leaves, s(Env0, [], 0), s(Env, Chunks0, _)),
+    foldl(static_leaf_once(Loc), Leaves, s(Env0, [], 0), s(Env, Chunks0, _)),
     reverse(Chunks0, Chunks),
     empty_assoc(ByOffset0),
     foldl(put_chunk, Chunks, ByOffset0, ByOffset),
@@ -3611,6 +3771,10 @@ int_chunk(Off, Type, V, chunk(Off, N, item(Width, const(U)))) :-
     int_info(Type, N, _),
     memberchk(N-Width, [1-b, 2-h, 4-w, 8-l]),
     convert_int(V, Type, U).
+
+% static_leaf_once(+Loc, +Leaf, +S0, -S): static_leaf/4, committed: a
+% choicepoint left per leaf would keep every leaf's state alive.
+static_leaf_once(Loc, Leaf, S0, S) :- once(static_leaf(Loc, Leaf, S0, S)).
 
 /* static_leaf(+Loc, +Leaf, +S0, -S): S = s(Env, Chunks, End) adds the
    chunk of Leaf to the reversed Chunks of S0; End is where the chunks

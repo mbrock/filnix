@@ -78,7 +78,7 @@
                     castable/2, expression_category/3, modifiable_lvalue/2,
                     integer_type/4, elaborate/3, tree_type/2, value/2,
                     lowered/2, folded/3, member_layout/6,
-                    bitfield_promotion/3, unaligned_type/2]).
+                    bitfield_promotion/3, unaligned_type/2, atomic_qualified/1]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -153,13 +153,18 @@ sema_error(Loc, Fmt, Args) :-
 %  Decls are d(Name, Type, Storage, Asm, Init) for the declarators Inits
 %  under the specifiers Specs, Storage as decl_storage/2 gives it. A
 %  typedef declares no Decls; Env is Env0 with its names bound instead.
-%  Env also has any struct, union or enum Specs defines. Throws
+%  Env also has any struct, union or enum Specs defines, and each
+%  object's alignment request (object_alignment/5). Throws
 %  not_constant when an enumerator's value is not constant.
 
-decl_types(Specs, Inits, Decls, Env0, Env) :-
+decl_types(Specs0, Inits, Decls, Env0, Env) :-
+    decl_storage(Specs0, Storage),
+    (   Storage \== typedef
+    ->  partition(alignment_request, Specs0, Requests, Specs)
+    ;   Requests = [], Specs = Specs0
+    ),
     specs_type(Specs, Base, Env0, Env1),
-    decl_storage(Specs, Storage),
-    foldl(declarator_type(Specs, Base, Storage), Inits, Decls0, Env1, Env),
+    foldl(declarator_type(Specs, Requests, Base, Storage), Inits, Decls0, Env1, Env),
     exclude(==(none), Decls0, Decls).
 
 doc(decl_storage(+Specs, -Storage), det, [
@@ -189,27 +194,103 @@ decl_storage(Specs, Storage) :-
     ;   Storage = S
     ).
 
-% declarator_type(+Specs, +Base, +Storage, +Init, -Decl, +Env0, -Env): Decl is
-% the d/5 term Init declares, or none for a typedef, which binds the name.
-declarator_type(Specs, Base, Storage, init(dcl(some(Name), SyntaxType, Asm), Init),
+% declarator_type(+Specs, +Requests, +Base, +Storage, +Init, -Decl, +Env0, -Env):
+% Decl is the d/5 term Init declares, or none for a typedef, which binds
+% the name. An object's alignment beyond its type's (object_alignment/5,
+% from the alignment Requests) is bound to qalign(Name), none when it
+% has none and an outer declaration did.
+declarator_type(Specs, Requests, Base, Storage, init(dcl(some(Name), SyntaxType, Asm), Init),
                 Decl, Env0, Env) :-
-    apply_declarator(SyntaxType, Base, Type, Env0, Env1),
-    reflect_type(type(Specs, SyntaxType), Type, Env1, Reflected),
+    apply_declarator(SyntaxType, Base, Type0, Env0, Env1),
+    reflect_type(type(Specs, SyntaxType), Type0, Env1, Reflected),
     bind_ordinary(qtype(Name), Reflected, Env1, Env2),
     (   Storage == typedef
-    ->  bind_ordinary(Name, typedef(Type), Env2, Env3),
-        transparent_typedef(Specs, Type, Env3, Env),
+    ->  bind_ordinary(Name, typedef(Type0), Env2, Env3),
+        transparent_typedef(Specs, Type0, Env3, Env),
         Decl = none
-    ;   Env = Env2,
+    ;   object_alignment(Requests, Type0, Env2, Type, A),
+        (   A == none, lookup_ordinary(Env2, qalign(Name), _)
+        ->  bind_ordinary(qalign(Name), none, Env2, Env)
+        ;   A == none -> Env = Env2
+        ;   bind_ordinary(qalign(Name), A, Env2, Env)
+        ),
         Decl = d(Name, Type, Storage, Asm, Init)
     ).
+
+doc(object_alignment(+Requests, +Type0, +Env, -Type, -A), det, [
+    Requests: "the _Alignas specifiers and GNU aligned attributes of an object's declaration",
+    Type0: "the declared type",
+    Env: "the scope",
+    Type: "Type0, or bad(Reason) for a request nanofil cannot honor",
+    A: "the alignment the object needs beyond its type's, or none",
+    "An alignment specifier or aligned attribute on an object declaration",
+    "aligns that object, not its type: the strictest request, or the",
+    "type's own alignment if stricter, is the object's. _Alignas(0) and",
+    "a request no stricter than the type's change nothing; aligned with",
+    "no argument is 16, x86-64's largest alignment (__BIGGEST_ALIGNMENT__).",
+    "Lowering honors up to 16 bytes, the most an alloc or a data item",
+    "aligns to, and a stricter request, or one on a function, is",
+    "refused (bad). The type, and so sizeof and _Alignof of it, is",
+    "unchanged.",
+    cites('C11 6.7.5p2'),
+    cites('C11 6.7.5p6'),
+    cites('GCC manual, Common Variable Attributes, aligned'),
+    example(( empty_env(E),
+              object_alignment([attr([group([id(aligned), group([int(8, none-dec)])])])],
+                               array(char, 4), E, T, A) ),
+            (T = array(char, 4), A = 8)),
+    example(( empty_env(E), object_alignment([alignas(expr(num(2, none-dec)))], int, E, T, A) ),
+            (T = int, A = none)),
+    example(( empty_env(E), object_alignment([alignas(type(type([tspec(long)], base)))], char, E, T, A) ),
+            (T = char, A = 8)),
+    example(( empty_env(E), object_alignment([attr([group([id('__aligned__')])])], char, E, _, A) ),
+            A = 16),
+    example(( empty_env(E), object_alignment([alignas(expr(num(64, none-dec)))], int, E, T, _) ),
+            T = bad('alignment attributes'))
+]).
+object_alignment([], Type, _, Type, none) :- !.
+object_alignment(_, func(_, _, _), _, bad('alignment attributes'), none) :- !.
+object_alignment(Requests, Type0, Env, Type, A) :-
+    (   innermost_element(Type0, Elem),       % a VLA has no constant size
+        catch(type_size_align(Elem, Env, _, Natural), _, fail),
+        maplist(request_alignment(Env), Requests, As),
+        max_list([Natural|As], Max)
+    ->  (   Max =:= Natural -> Type = Type0, A = none
+        ;   Max =< 16 -> Type = Type0, A = Max
+        ;   Type = bad('alignment attributes'), A = none
+        )
+    ;   Type = bad('alignment attributes'), A = none
+    ).
+
+innermost_element(array(T, _), E) :- !, innermost_element(T, E).
+innermost_element(T, T).
+
+% request_alignment(+Env, +Request, -A): the constant alignment Request
+% asks for, a power of two or 0 (none).
+request_alignment(Env, alignas(type(TN)), A) :- !,
+    type_name_type(TN, T, Env, Env1), type_size_align(T, Env1, _, A).
+request_alignment(Env, alignas(expr(E)), A) :- !,
+    catch(const_value(E, Env, A, _), not_constant, fail),
+    ( A =:= 0 -> true ; A > 0, A /\ (A - 1) =:= 0 ).
+request_alignment(Env, attr([group(Attr)]), A) :- !,   % __attribute__((...))
+    request_alignment(Env, attr(Attr), A).
+request_alignment(_, attr([Word]), 16) :-
+    memberchk(Word, [id(aligned), id('__aligned__')]), !.
+request_alignment(Env, attr([Word, group(Ts)]), A) :-
+    memberchk(Word, [id(aligned), id('__aligned__')]),
+    phrase(flat_tokens(Ts), Flat),
+    catch(c_constant_expression(Flat, E), nanofil_error(_), fail),
+    catch(const_value(E, Env, A, _), not_constant, fail),
+    A > 0, A /\ (A - 1) =:= 0.
 
 % Keep qualification for type reflection without changing the unqualified
 % code-generation types. These entries share ordinary identifier scope,
 % including shadowing and typedefs. Lvalue conversion removes only the
 % outer qualification, never the qualification of a pointer's target.
+% reflect_declarator/5 is deterministic; a choicepoint left by each
+% declaration would keep its terms alive to the end of the file.
 reflect_type(type(Specs, Syntax), Type, Env, Reflected) :-
-    reflect_declarator(Syntax, Specs, Type, Env, Reflected).
+    once(reflect_declarator(Syntax, Specs, Type, Env, Reflected)).
 
 reflect_declarator(base, Specs, Type, Env, Reflected) :-
     ( memberchk(tname(Name), Specs), lookup_ordinary(Env, qtype(Name), T)
@@ -218,6 +299,8 @@ reflect_declarator(base, Specs, Type, Env, Reflected) :-
     -> Base = T
     ; memberchk(typeof(type(TN)), Specs), type_name_type(TN, T0, Env, _)
     -> reflect_type(TN, T0, Env, Base)
+    ; memberchk(atomic(TN), Specs), type_name_type(TN, T0, Env, _)
+    -> reflect_type(TN, T0, Env, B0), qualify([atomic], B0, Base)
     ; Base = Type
     ),
     findall(Q, member(qual(Q), Specs), Qs), qualify(Qs, Base, Reflected).
@@ -273,6 +356,8 @@ specs_type(Specs, Type, Env0, Env) :-
     base_type(Specs, Type0, Env0, Env),
     (   member(attr(Tokens), Specs), vector_attr(Tokens)
     ->  Type = bad('vector types')
+    ;   memberchk(qual(atomic), Specs), Type0 \= bad(_), \+ atomic_object_type(Type0)
+    ->  Type = bad('_Atomic on a type other than an integer, pointer, float or double')
     ;   member(Spec, Specs), layout_attr(Spec)
     ->  Type = bad('alignment attributes')
     ;   Type = Type0
@@ -340,6 +425,7 @@ other_type_spec(tname(_)).
 other_type_spec(su(_, _, _, _)).
 other_type_spec(enum(_, _)).
 other_type_spec(typeof(_)).
+other_type_spec(atomic(_)).
 
 % Clang retains the SysV va_list array/record layout; Fil-C stores its
 % capability-bearing cursor in the first word and ignores the rest.
@@ -351,11 +437,56 @@ named_type(tname(Name), Type, Env, Env) :-
     ).
 named_type(typeof(Arg), Type, Env0, Env) :-
     typeof_type(Arg, Type, Env0, Env).
+named_type(atomic(TN), Type, Env0, Env) :-
+    type_name_type(TN, Type0, Env0, Env),
+    reflect_type(TN, Type0, Env, Reflected),
+    (   Type0 = bad(_) -> Type = Type0
+    ;   Reflected = qualified(_, _)                        % 6.7.2.4p3
+    ->  Type = bad('_Atomic of a qualified type')
+    ;   atomic_object_type(Type0) -> Type = Type0
+    ;   Type = bad('_Atomic of a type other than an integer, pointer, float or double')
+    ).
 
 named_type(su(Kind, Tag, Members, Attrs), Type, Env0, Env) :-
     su_type(Members, Kind, Tag, Attrs, Type, Env0, Env).
 named_type(enum(Tag, Enumerators), Type, Env0, Env) :-
     enum_type(Enumerators, Tag, Type, Env0, Env).
+
+doc(atomic_object_type(+T), semidet, [
+    T: "the unqualified type an _Atomic specifier or qualifier applies to",
+    "_Atomic(T) and _Atomic T are the atomic version of T. nanofil takes",
+    "an integer, a pointer, float or double: on x86-64 each has the size",
+    "and alignment of T, a power of two of at most 8 bytes, which clang",
+    "keeps for its atomic version, so the layout is T's. An array or",
+    "function type is not allowed; a struct, union or long double, whose",
+    "atomic version clang may pad, realign or make a library call, is",
+    "refused (bad). Lvalue conversion of an atomic object is an atomic",
+    "load and simple assignment an atomic store, both sequentially",
+    "consistent; a compound assignment or increment, an atomic",
+    "read-modify-write, is refused in lowering. Initialization is not",
+    "atomic. An _Atomic bit-field, which C leaves to the implementation",
+    "and clang rejects, is refused (bad).",
+    cites('C11 6.2.5p27'),
+    cites('C11 6.2.6.1p9'),
+    cites('C11 6.7.2.4p3'),
+    cites('C11 6.7.3p3'),
+    cites('C11 6.5.16.2p3'),
+    cites('C11 7.17.2.1p2'),
+    cites('C11 6.7.2.1p5'),
+    example(atomic_object_type(int)),
+    example(atomic_object_type(ptr(void))),
+    example(atomic_object_type(double)),
+    fails(atomic_object_type(ldouble)),
+    fails(atomic_object_type(struct(1))),
+    fails(atomic_object_type(array(int, 2)))
+]).
+atomic_object_type(T) :- int_type(T), !.
+atomic_object_type(ptr(_)).
+atomic_object_type(float).
+atomic_object_type(double).
+
+% atomic_qualified(+T): the (reflected) type T is atomic at its top.
+atomic_qualified(qualified(Qs, _)) :- memberchk(atomic, Qs).
 
 doc(typeof_type(+Arg, -Type, +Env0, -Env), det, [
     Arg: "a typeof specifier's argument: expr(E) or type(TypeName)",
@@ -594,6 +725,9 @@ member_decl(field(Specs0, dcl(Name, SyntaxType, _), Width), Fields,
     ->  Fields = [bad('variably modified member')], Reflected = []
     ;   Width \== none, \+ bitfield_width(Width, Name, Type, Env, _)
     ->  Fields = [bad('invalid bit-field')], Reflected = []
+    ;   Width \== none,                                     % 6.7.2.1p5
+        reflect_type(type(Specs, SyntaxType), Type, Env, QT), atomic_qualified(QT)
+    ->  Fields = [bad('_Atomic bit-field')], Reflected = []
     ;   (   Width == none -> Fields = [f(Name, Type)]
         ;   bitfield_width(Width, Name, Type, Env, W),
             Fields = [b(Name, Type, W)]
@@ -2283,7 +2417,7 @@ object_size(Name, [_, Type], Env, V) :-
     ).
 
 doc(atomic_builtin(+Name, +Args, +Env, -R), semidet, [
-    Name: "a GNU __atomic builtin",
+    Name: "a GNU __atomic or clang __c11_atomic builtin",
     Args: "its argument expressions",
     Env: "the scope",
     R: "expr(E), the plain C expression E it is, or builtin(T), a builtin call of type T that lowering makes atomic",
@@ -2300,6 +2434,8 @@ doc(atomic_builtin(+Name, +Args, +Env, -R), semidet, [
     "*P is an integer or a pointer, and Order a constant: relaxed,",
     "consume, acquire or seq_cst for a load; relaxed, release or seq_cst",
     "for a store. Anything else fails (fault/4 says why).",
+    "A store through a pointer to an _Atomic object is builtin(void) at",
+    "every order, since assigning the object would be a seq_cst store.",
     cites('GCC manual, __atomic Builtins'),
     cites('C11 7.17.3p1'),
     cites('C11 7.17.7.1p2'),
@@ -2313,10 +2449,42 @@ doc(atomic_builtin(+Name, +Args, +Env, -R), semidet, [
     example(( empty_env(E0), bind_ordinary(p, var(none, ptr(int)), E0, E),
               atomic_builtin('__atomic_store_n', [id(p), chr(1), chr(5)], E, X) ),
             X = builtin(void)),
+    example(( empty_env(E0), bind_ordinary(p, var(none, ptr(qualified([atomic], int))), E0, E),
+              atomic_builtin('__atomic_store_n', [id(p), chr(1), chr(0)], E, X) ),
+            X = builtin(void)),
     fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(int)), E0, E),
             atomic_builtin('__atomic_store_n', [id(p), chr(1), chr(2)], E, _) )),
     fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(double)), E0, E),
-            atomic_builtin('__atomic_load_n', [id(p), chr(0)], E, _) ))
+            atomic_builtin('__atomic_load_n', [id(p), chr(0)], E, _) )),
+    "<stdatomic.h>'s generic functions are clang's __c11_atomic builtins,",
+    "whose pointer must point to an _Atomic object, here of an integer,",
+    "pointer, float or double. __c11_atomic_load and __c11_atomic_store",
+    "are __atomic_load_n and __atomic_store_n, with the same orders;",
+    "__c11_atomic_init(P, V) stores V without atomicity, as clang does.",
+    "A thread fence of a constant order is builtin(void), a fence only",
+    "when seq_cst (x86-64 orders the rest itself); a signal fence orders",
+    "nothing a single thread can observe. The read-modify-write",
+    "builtins (exchange, compare-exchange, fetch-and-op) are refused: IR",
+    "has no atomic read-modify-write.",
+    cites('C11 7.17.2.2p2'),
+    cites('C11 7.17.4.1p2'),
+    cites('C11 7.17.4.2p2'),
+    example(( empty_env(E0), bind_ordinary(p, var(none, ptr(qualified([atomic], ptr(void)))), E0, E),
+              atomic_builtin('__c11_atomic_load', [id(p), chr(0)], E, X) ),
+            X = builtin(ptr(void))),
+    example(( empty_env(E0), bind_ordinary(p, var(none, ptr(qualified([atomic], double))), E0, E),
+              atomic_builtin('__c11_atomic_load', [id(p), chr(5)], E, X) ),
+            X = expr(comma(chr(5), un(deref, id(p))))),
+    example(( empty_env(E0), bind_ordinary(p, var(none, ptr(qualified([atomic], int))), E0, E),
+              atomic_builtin('__c11_atomic_init', [id(p), chr(1)], E, X) ),
+            X = builtin(void)),
+    example(( empty_env(E),
+              atomic_builtin('__c11_atomic_thread_fence', [chr(2)], E, X) ),
+            X = builtin(void)),
+    fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(int)), E0, E),
+            atomic_builtin('__c11_atomic_load', [id(p), chr(0)], E, _) )),
+    fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(qualified([atomic], int))), E0, E),
+            atomic_builtin('__c11_atomic_fetch_add', [id(p), chr(1), chr(5)], E, _) ))
 ]).
 atomic_builtin('__atomic_load_n', [P, O], Env, R) :-
     atomic_operands(P, O, Env, [0, 1, 2, 5], T),
@@ -2325,12 +2493,59 @@ atomic_builtin('__atomic_load_n', [P, O], Env, R) :-
     ).
 atomic_builtin('__atomic_store_n', [P, V, O], Env, R) :-
     atomic_operands(P, O, Env, [0, 3, 5], T, Order),
-    (   ( T = ptr(_) ; Order =:= 5 ) -> R = builtin(void)
+    (   ( T = ptr(_) ; Order =:= 5 ; atomic_pointee(P, Env) ) -> R = builtin(void)
     ;   R = expr(cast(type([tspec(void)], base), comma(O, assign(=, un(deref, P), V))))
     ).
+atomic_builtin('__c11_atomic_load', [P, O], Env, R) :-
+    atomic_pointee(P, Env),
+    c11_operands(P, O, Env, [0, 1, 2, 5], T),
+    (   T = ptr(_) -> R = builtin(T)
+    ;   R = expr(comma(O, un(deref, P)))
+    ).
+atomic_builtin('__c11_atomic_store', [P, _, O], Env, builtin(void)) :-
+    atomic_pointee(P, Env),
+    c11_operands(P, O, Env, [0, 3, 5], _).
+atomic_builtin('__c11_atomic_init', [P, _], Env, builtin(void)) :-
+    atomic_pointee(P, Env),
+    lowered_type(P, Env, ptr(T0)), unqualified(T0, T), atomic_object_type(T).
+atomic_builtin(Name, [O], Env, builtin(void)) :-
+    fence_builtin(Name),
+    catch(const_value(O, Env, V, _), not_constant, fail),
+    between(0, 5, V).
+
+fence_builtin('__c11_atomic_thread_fence').
+fence_builtin('__c11_atomic_signal_fence').
+fence_builtin('__atomic_thread_fence').
+fence_builtin('__atomic_signal_fence').
+
+% atomic_pointee(+P, +Env): P points to an _Atomic object.
+atomic_pointee(P, Env) :-
+    expression_type(P, Env, T0), value_type(T0, ptr(T)), atomic_qualified(T).
+
+% c11_operands(+P, +O, +Env, +Orders, -T): as atomic_operands/5, with a
+% float or double *P too.
+c11_operands(P, O, Env, Orders, T) :-
+    lowered_type(P, Env, ptr(T0)), unqualified(T0, T),
+    atomic_object_type(T),
+    catch(const_value(O, Env, V, _), not_constant, fail),
+    memberchk(V, Orders).
 
 atomic_name('__atomic_load_n').
 atomic_name('__atomic_store_n').
+atomic_name('__c11_atomic_load').
+atomic_name('__c11_atomic_store').
+atomic_name('__c11_atomic_init').
+atomic_name(Name) :- fence_builtin(Name).
+atomic_name(Name) :- rmw_atomic(Name).
+
+% rmw_atomic(?Name): an atomic read-modify-write builtin, refused.
+rmw_atomic(Name) :-
+    member(Name, ['__c11_atomic_exchange', '__c11_atomic_compare_exchange_strong',
+                  '__c11_atomic_compare_exchange_weak', '__c11_atomic_fetch_add',
+                  '__c11_atomic_fetch_sub', '__c11_atomic_fetch_and',
+                  '__c11_atomic_fetch_or', '__c11_atomic_fetch_xor',
+                  '__c11_atomic_fetch_nand', '__c11_atomic_fetch_max',
+                  '__c11_atomic_fetch_min']).
 
 % atomic_operands(+P, +O, +Env, +Orders, -T[, -Order]): P points to an
 % integer or a pointer of unqualified type T and O is a constant memory
@@ -3028,7 +3243,14 @@ fault_(bit_cast(TN, E), Env, F, As) :-
     ).
 fault_(call(id(Name), _), Env, F, [Name]) :-
     \+ lookup_ordinary(Env, Name, _), atomic_name(Name), !,
-    F = '~w needs a pointer to an integer or pointer and a constant memory order it supports (relaxed, consume, acquire or seq_cst for a load; relaxed, release or seq_cst for a store)'.
+    (   rmw_atomic(Name)
+    ->  F = '~w is an atomic read-modify-write, which nanofil does not support'
+    ;   fence_builtin(Name)
+    ->  F = '~w needs a constant memory order'
+    ;   atom_concat('__c11', _, Name)
+    ->  F = '~w needs a pointer to an _Atomic integer, pointer, float or double and a constant memory order it supports (relaxed, consume, acquire or seq_cst for a load; relaxed, release or seq_cst for a store)'
+    ;   F = '~w needs a pointer to an integer or pointer and a constant memory order it supports (relaxed, consume, acquire or seq_cst for a load; relaxed, release or seq_cst for a store)'
+    ).
 fault_(call(id(Name), _), Env, F, [Name, Chk, Plain]) :-
     \+ lookup_ordinary(Env, Name, _), checking_builtin(Name, Chk, Plain), !,
     F = '~w needs ~w declared, or ~w declared and an object size of (size_t)-1'.

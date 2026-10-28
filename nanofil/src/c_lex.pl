@@ -333,19 +333,17 @@ lit_chars(_, Loc, _) -->
     { loc_error(Loc, 'unterminated literal', []) }.
 lit_chars(Q, Loc, Bs) -->                       % C11 6.4.3: \u, \U
     ['\\'], ucn(K), !,
-    { utf8_bytes(K, Us) },     % clang's execution character set is UTF-8
-    lit_chars(Q, Loc, Bs0),
-    { append(Us, Bs0, Bs) }.
-lit_chars(Q, Loc, Bs) -->
+    { utf8_bytes(K, Us),       % clang's execution character set is UTF-8
+      append(Us, Bs0, Bs) },
+    lit_chars(Q, Loc, Bs0).
+lit_chars(Q, Loc, [B|Bs]) -->
     ['\\'], !,
     escape(Loc, B),
-    lit_chars(Q, Loc, Bs0),
-    { Bs = [B|Bs0] }.
+    lit_chars(Q, Loc, Bs).
 lit_chars(Q, Loc, Bs) -->
     [C], !,
-    { char_code(C, K), ( K < 256 -> Us = [K] ; utf8_bytes(K, Us) ) },
-    lit_chars(Q, Loc, Bs0),
-    { append(Us, Bs0, Bs) }.
+    { char_code(C, K), ( K < 256 -> Bs = [K|Bs0] ; utf8_bytes(K, Us), append(Us, Bs0, Bs) ) },
+    lit_chars(Q, Loc, Bs0).
 lit_chars(_, Loc, _) --> { loc_error(Loc, 'unterminated literal', []) }.
 
 % escape(+Loc, -Byte)//: Byte is the value of an escape after its

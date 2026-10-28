@@ -53,6 +53,7 @@
     | `attr(Tokens)` | an attribute |
     | `alignas(type(TypeName))` `alignas(expr(E))` | `_Alignas` |
     | `typeof(type(TypeName))` `typeof(expr(E))` | `typeof` |
+    | `atomic(TypeName)` | `_Atomic ( TypeName )` |
 
     A Tag is `some(Identifier)` or `none`. Members is `none`, or a list
     of `field(Specs, Dcl, Width)` and `static_assert` terms, Width `none`
@@ -298,6 +299,7 @@ spec_type_seen(alignas(_), TypeSeen, TypeSeen).
 spec_type_seen(su(_, _, _, _), _, yes).
 spec_type_seen(enum(_, _), _, yes).
 spec_type_seen(typeof(_), _, yes).
+spec_type_seen(atomic(_), _, yes).
 spec_type_seen(tname(_), _, yes).
 
 specifier(_, _, storage(S)) -->
@@ -309,10 +311,11 @@ specifier(_, _, tspec(K)) -->
     {   memberchk(K, [void, char, short, int, long, float, double, signed,
                       unsigned, bool, complex, int128, float16, bf16])
     }, !.
-specifier(_, _, _) -->
+specifier(Env, _, atomic(T)) -->      % C11 6.7.2.4p4
     kw(atomic),
     punct('('), !,
-    parse_error('_Atomic types are not supported').
+    type_name(Env, T),
+    expect(')').
 specifier(_, _, qual(Q)) -->
     kw(Q), { memberchk(Q, [const, volatile, restrict, atomic]) }, !.
 specifier(_, _, fspec(F)) -->

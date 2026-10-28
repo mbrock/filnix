@@ -261,9 +261,11 @@ file_module(File, Module) :-
 % file.
 c_file_module(File, Module) :-
     c_file_tokens(File, Tokens),
+    release_stacks,
     (   c_parse(Tokens, Items) -> true
     ;   throw(nanofil_error('C parse failed'))
     ),
+    release_stacks,
     % Deterministic stages: a leftover choicepoint would keep the tokens
     % and items of a large translation unit (SQLite) alive to the end.
     once(c_module(Items, Module)),
