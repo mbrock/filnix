@@ -194,6 +194,32 @@ good_stream :-
                    Before, After)
     ->  true
     ;   throw(error(regs_checker(good_stream, yes), regs_checker/0))
+    ),
+    shared_analysis(Hs, Before, After).
+
+% check_regs/5 takes the allocator's analysis; it must be of the very
+% body and cover every mapped home.
+shared_analysis(Hs, Before, After) :-
+    Meta = regs_metadata(false,f,Hs,[save(rbx,-24)]), Map = [-16-r10,-8-rbx],
+    impl_body(f, Before, _, Body),
+    body_analysis(Body, [-16,-8], Full),
+    body_analysis(Body, [-16], Partial),
+    (   check_regs(Meta, Map, Before, After, Full) -> true
+    ;   throw(error(regs_checker(shared_analysis, yes), regs_checker/0))
+    ),
+    forall(member(Name-A, [partial_analysis-Partial, no_analysis-none]),
+           (   \+ check_regs(Meta, Map, Before, After, A) -> true
+           ;   throw(error(regs_checker(Name, no), regs_checker/0)) )),
+    % live_at_entry's stream, given the analysis of the same body with the
+    % entry read turned into a write: that analysis sees nothing live at
+    % entry, so only the check that it is of this body rejects it.
+    exit(E), whole([ins(mov,q,[mem(-8,rbp),reg(rax)])|E], Bad),
+    whole([ins(mov,q,[reg(rax),mem(-8,rbp)])|E], Good),
+    impl_body(f, Good, _, GoodBody), body_analysis(GoodBody, [-8], GoodA),
+    determined([-8-r10], [], Bad, BadAfter),
+    (   \+ check_regs(regs_metadata(false,f,Hs,[]), [-8-r10], Bad, BadAfter, GoodA)
+    ->  true
+    ;   throw(error(regs_checker(other_body, no), regs_checker/0))
     ).
 
 % Proposals that differ from the determined stream.

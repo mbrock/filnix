@@ -34,15 +34,15 @@ regs_asm(regs_metadata(Setjmp, Impl, Homes, Saves), Before, After,
          checked(Meta, Map), Report) :-
     empty_assoc(None),
     (   Setjmp == true
-    ->  After = Before, Map = [], Used = [], Report = excluded(setjmp)
-    ;   \+ ( impl_body(Impl, Before, _, Body),
-             findall(S, member(save(_,S), Saves), Ss),
-             preflight_regs(Body, None, Ss),
-             allocated_stream(Body, None, [], _),
-             successors(Body, _) )
-    ->  After = Before, Map = [], Used = [], Report = excluded(unsupported)
+    ->  After = Before, Map = [], Used = [], Report = excluded(setjmp),
+        Analysis = none
     ;   impl_body(Impl, Before, Pre, Body),
-        allocation(Body, Homes, Map),
+        maplist(line_effect, Body, Effects),
+        findall(S, member(save(_,S), Saves), Ss),
+        preflight_regs(Body, None, Ss, Effects),
+        once(allocated_stream(Body, None, [], _)),
+        successors(Body, Effects, _)
+    ->  allocation(Body, Effects, Homes, Map, Analysis),
         findall(save(R,S), (member(save(R,S), Saves), memberchk(_-R, Map)), Used),
         (   Map == []
         ->  After = Before
@@ -51,14 +51,18 @@ regs_asm(regs_metadata(Setjmp, Impl, Homes, Saves), Before, After,
             append(Pre, [label(Impl)|Body1], After)
         ),
         length(Map, NH), length(Used, NR), Report = allocated(NH, NR)
+    ;   After = Before, Map = [], Used = [], Report = excluded(unsupported),
+        Analysis = none
     ),
     Meta = regs_metadata(Setjmp, Impl, Homes, Used),
-    (   check_regs(Meta, Map, Before, After) -> true
+    (   check_regs(Meta, Map, Before, After, Analysis) -> true
     ;   throw(nanofil_error('register home translation check failed'))
     ).
 
-% allocation(+Body, +Homes, -Map): Map assigns candidate homes registers.
-allocation(Body, Homes, Map) :-
+% allocation(+Body, +Effects, +Homes, -Map, -Analysis): Map assigns
+% candidate homes registers. Analysis is body_analysis/4's result for
+% the candidates (a superset of Map's homes), or none when there are none.
+allocation(Body, Effects, Homes, Map, Analysis) :-
     findall(D, (member(home(D,Ks), Homes), Ks = [_|_],
                 forall(member(K,Ks), memberchk(K,[w,l]))), Scalar),
     list_to_assoc_keys(Scalar, ScalarSet),
@@ -69,8 +73,9 @@ allocation(Body, Homes, Map) :-
                    sum_list(Ws, W) ), Weighted),
     pairs_keys(Weighted, Candidates0),
     (   Candidates0 == []
-    ->  Map = []
-    ;   home_liveness(Body, Candidates0, Outs, In0),
+    ->  Map = [], Analysis = none
+    ;   body_analysis(Body, Effects, Candidates0, Analysis),
+        Analysis = analysis(_, _, _, _, Outs, In0),
         numbered(Candidates0, 0, Numbered),
         list_to_assoc(Numbered, Index),
         list_to_assoc(Weighted, Weights),

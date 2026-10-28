@@ -41,8 +41,10 @@
    never escape; the frame record and local storage the code does expose
    lie elsewhere in the frame). */
 :- module(amd64_regs_check,
-          [check_regs/4, substitute/3, impl_body/4, preflight_regs/3,
-           allocated_stream/4, home_liveness/4, successors/2, rbp_access/3,
+          [check_regs/4, check_regs/5, substitute/3, impl_body/4,
+           preflight_regs/3, preflight_regs/4, body_analysis/3,
+           allocated_stream/4, home_liveness/4, successors/2, successors/3, rbp_access/3,
+           effect_access/3, line_effect/2, body_analysis/4,
            allocatable/1, callee_saved/1]).
 
 :- use_module(amd64_contract,
@@ -58,17 +60,35 @@
 %  Offset) for each callee-saved register in Map, in callee_saved/1
 %  order. Map lists Offset-Register. An empty map or a setjmp function
 %  admits only identity.
-check_regs(regs_metadata(Setjmp, Impl, Homes, Saves), Map, Before, After) :-
+check_regs(Meta, Map, Before, After) :-
+    Meta = regs_metadata(_, Impl, _, _),
+    (   impl_body(Impl, Before, _, Body), pairs_offsets(Map, Homes),
+        body_analysis(Body, Homes, Analysis)
+    ->  true
+    ;   Analysis = none
+    ),
+    check_regs(Meta, Map, Before, After, Analysis).
+
+%! check_regs(+Metadata, +Map, +Before, +After, +Analysis) is semidet.
+%
+%  As check_regs/4, with the effects, CFG and home liveness of Before's
+%  implementation body already computed by body_analysis/3 (the driver
+%  computes it once and shares it with the allocator). The analysis
+%  must be of that very body and cover every mapped home; liveness bits
+%  are independent per home, so extra homes change nothing.
+check_regs(regs_metadata(Setjmp, Impl, Homes, Saves), Map, Before, After, Analysis) :-
     ground(Setjmp-Impl-Homes-Saves-Map-Before-After),
     (   ( Setjmp == true ; Map == [] )
     ->  Before == After
     ;   valid_map(Map, Homes, Saves),
         impl_body(Impl, Before, Pre, Body),
+        Analysis = analysis(Body0, Effects, _, _, _, _),
+        Body0 == Body,
         list_to_assoc(Map, Mapped),
-        preflight_regs(Body, Mapped, Saves),
+        preflight_regs(Body, Mapped, Saves, Effects),
         allocated_stream(Body, Mapped, Saves, Expected),
         append(Pre, [label(Impl)|Expected], After),
-        obligations(Body, Mapped)
+        obligations(Body, Mapped, Analysis)
     ).
 
 allocatable(R) :- callee_saved(R).
@@ -115,12 +135,18 @@ impl_body(Impl, Lines, Pre, Body) :-
 %  slot; an access that touches a mapped home is a substitutable move
 %  of that exact home.
 preflight_regs(Body, Mapped, Saves) :-
-    Body = [ins(push,q,[reg(rbp)]), ins(mov,q,[reg(rsp),reg(rbp)])|Rest],
-    findall(S, member(save(_,S), Saves), SaveOffsets),
-    maplist(preflight_line(Mapped, SaveOffsets), Rest).
+    maplist(line_effect, Body, Effects),
+    preflight_regs(Body, Mapped, Saves, Effects).
 
-preflight_line(Mapped, Saves, Line) :-
-    once(instruction_effects(Line, effect(_,_,_,Ms,_))),
+%! preflight_regs(+Body, +Mapped, +Saves, +Effects) is semidet.
+%  As preflight_regs/3, with Effects the lines' audited effects.
+preflight_regs(Body, Mapped, Saves, Effects) :-
+    Body = [ins(push,q,[reg(rbp)]), ins(mov,q,[reg(rsp),reg(rbp)])|Rest],
+    Effects = [_,_|RestEffects],
+    findall(S, member(save(_,S), Saves), SaveOffsets),
+    maplist(preflight_line(Mapped, SaveOffsets), Rest, RestEffects).
+
+preflight_line(Mapped, Saves, Line, effect(_,_,_,Ms,_)) :-
     explicit_registers(Line, Rs),
     \+ (member(R, Rs), allocatable(R)),
     \+ (Line = ins(_,_,Os), member(O, Os), rbp_register(O)),
@@ -233,7 +259,10 @@ line_successors(Labels, N, I, Line, effect(_,_,_,_,Flow), Ss) :-
 % to from line I. GNU as numeric labels: `1f` is the next `1`, `1b` the
 % previous one.
 target(Labels-I, Name, T) :-
-    atom_concat(Digits, Dir, Name), memberchk(Dir, [f,b]),
+    % The last character first: splitting every name with atom_concat/3
+    % costs its length per jump.
+    sub_atom(Name, _, 1, 0, Dir), memberchk(Dir, [f,b]),
+    sub_atom(Name, 0, _, 1, Digits),
     atom_chars(Digits, [C|Cs]), maplist(digit, [C|Cs]), !,
     get_assoc(Digits, Labels, Is),
     (   Dir == f
@@ -269,7 +298,22 @@ noreturn(filc_stack_overflow_failure).
 %  Dataflow runs on basic blocks: a block ends at a line whose only
 %  successor is not the next line, and starts at a label.
 home_liveness(Body, Homes, LiveOut, LiveIn0) :-
+    body_analysis(Body, Homes, analysis(_, _, _, _, LiveOut, LiveIn0)).
+
+%! body_analysis(+Body, +Homes, -Analysis) is semidet.
+%  Analysis = analysis(Body, Effects, Homes, Index, LiveOut, LiveIn0):
+%  each line's audited effects, the home offsets and their bit numbers
+%  (Index), and home_liveness/4's results. Fails when a line has no
+%  audited effects or the CFG is incomplete. The one whole-function
+%  analysis the allocator and the checker share.
+body_analysis(Body, Homes, Analysis) :-
     maplist(line_effect, Body, Effects),
+    body_analysis(Body, Effects, Homes, Analysis).
+
+%! body_analysis(+Body, +Effects, +Homes, -Analysis) is semidet.
+%  As body_analysis/3, with Effects the lines' audited effects.
+body_analysis(Body, Effects, Homes,
+              analysis(Body, Effects, Homes, Index, LiveOut, LiveIn0)) :-
     successors(Body, Effects, Succs),
     numbered(Homes, 0, Pairs), list_to_assoc(Pairs, Index),
     maplist(line_use_def(Index), Effects, UDs),
@@ -370,15 +414,15 @@ or_pair(B-C, T0-C0, T-C1) :- T is T0 \/ B, C1 is C0 \/ C.
 
 %% The obligations
 
-obligations(Body, Mapped) :-
+obligations(Body, Mapped, analysis(_, _, _, Index, LiveOut, LiveIn0)) :-
     assoc_to_list(Mapped, Pairs),
-    pairs_offsets(Pairs, Homes),
-    home_liveness(Body, Homes, LiveOut, LiveIn0),
-    LiveIn0 =:= 0,
-    numbered(Homes, 0, Ks), list_to_assoc(Ks, Index),
+    forall(member(H-_, Pairs), get_assoc(H, Index, _)),
+    findall(B, (member(H-_, Pairs), get_assoc(H, Index, K), B is 3 << (2*K)), Bs),
+    foldl(or_bits, Bs, 0, All),
+    LiveIn0 /\ All =:= 0,
     register_masks(Pairs, Index, Masks),
     scratch_mask(Pairs, Index, Scratch),
-    maplist(line_obligation(Mapped, Index, Masks, Scratch), Body, LiveOut).
+    maplist(line_obligation(Mapped, Index, Masks, Scratch, All), Body, LiveOut).
 
 % Each register's mask: both halves of every home mapped to it.
 register_masks(Pairs, Index, Masks) :-
@@ -392,7 +436,7 @@ scratch_mask(Pairs, Index, M) :-
     foldl(or_bits, Bs, 0, M).
 or_bits(B, A0, A) :- A is A0 \/ B.
 
-line_obligation(Mapped, Index, Masks, Scratch, Line, Out) :-
+line_obligation(Mapped, Index, Masks, Scratch, All, Line, Out) :-
     (   substitute(Line, Mapped, _), Line = ins(_,S,[_,mem(D,rbp)])
     ->  get_assoc(D, Mapped, R), get_assoc(D, Index, K),
         memberchk(R-M, Masks),
@@ -402,6 +446,6 @@ line_obligation(Mapped, Index, Masks, Scratch, Line, Out) :-
     ;   Line = ins(call,_,_)
     ->  Out /\ Scratch =:= 0
     ;   Line = ins(leave,none,[])
-    ->  Out =:= 0
+    ->  Out /\ All =:= 0
     ;   true
     ).
