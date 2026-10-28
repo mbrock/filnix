@@ -507,8 +507,9 @@ static_assert(Loc, Expr, Env) :-
 % Decl of a function or of an object with static or thread storage, and
 % defines the object unless it is an extern without an initializer. A
 % thread-local definition is data of linkage tls(L) (ir.pl).
-global_decl(Loc, d(Name, Type0, Storage0, Asm, Init), Env0, Env) :-
+global_decl(Loc, d(Name, Type1, Storage0, Asm, Init), Env0, Env) :-
     ( Asm = asm(Sym) -> true ; Sym = Name ),
+    redeclared(Loc, Name, Sym, Type1, Env0, Type0),
     (   Storage0 = thread_local(Storage) -> Thread = tls ; Storage = Storage0, Thread = none ),
     (   Type0 = func(_, _, _)
     ->  (   Thread == tls                                   % 6.7.1p4
@@ -531,6 +532,31 @@ global_decl(Loc, d(Name, Type0, Storage0, Asm, Init), Env0, Env) :-
             define_global(Sym, Type, Linkage, Init, Loc, Env1, Env2),
             data_alignment(Name, Sym, Env2, Env)
         )
+    ).
+
+% redeclared(+Loc, +Name, +Sym, +Type0, +Env, -Type): Type is what a
+% declaration of Name (symbol Sym) as Type0 declares, given Name's
+% visible declaration of the same symbol: their composite (C11 6.2.7p3),
+% or a semantic error, as clang's, if they are of different kinds or
+% incompatible types (6.7p4, 6.2.7p2). A declaration without one, or
+% of another symbol (a block-scope static, an asm label), is Type0.
+redeclared(Loc, Name, Sym, Type0, Env, Type) :-
+    (   lookup_ordinary(Env, Name, Prev),
+        ( Prev = fn(PType, PSym, _) ; Prev = gvar(PType, PSym, _, _) ),
+        PSym == Sym
+    ->  ( PType = func(_, _, _) -> K0 = function ; K0 = object ),
+        ( Type0 = func(_, _, _) -> K = function ; K = object ),
+        (   K0 == K
+        ->  true
+        ;   sema_error(Loc, 'redefinition of \'~w\' as different kind of symbol', [Name])
+        ),
+        (   composite_type(PType, Type0, Type)
+        ->  true
+        ;   Type0 = func(_, _, _)
+        ->  sema_error(Loc, 'conflicting types for \'~w\'', [Name])
+        ;   sema_error(Loc, 'redeclaration of \'~w\' with a different type', [Name])
+        )
+    ;   Type = Type0
     ).
 
 % thread_linkage(+Thread, +Linkage0, -Linkage): the data linkage of a

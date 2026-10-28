@@ -64,7 +64,7 @@
                     integer_promotion/2, usual_arith_conversion/3,
                     float_type/1, arithmetic_type/1, default_promotion/2,
                     constant_value/4, const_convert/4, float_literal/3,
-                    float_builtin/3, libm_builtin/2, object_size/4, compatible_type/2,
+                    float_builtin/3, libm_builtin/2, object_size/4, compatible_type/2, composite_type/3,
                     convert_int/3, const_value/4, pp_value/2, num_type/3,
                     scalar_type/1, type_class/2, member_type_offset/5, type_name_type/4,
                     lookup_ordinary/3, bind_ordinary/4, env_scope/3,
@@ -2008,6 +2008,13 @@ doc(composite_type(+T, +U, -C), semidet, [
     example(composite_type(func(int, unspecified, fixed),
                            func(int, [ptr(char)], fixed), C),
             C = func(int, [ptr(char)], fixed)),
+    "A parameter's own qualifiers do not count (6.7.6.3p15).",
+    cites('C11 6.7.6.3p15'),
+    example(composite_type(func(int, [qualified([const], int)], fixed),
+                           func(int, [int], fixed), C),
+            C = func(int, [int], fixed)),
+    fails(composite_type(func(int, [ptr(qualified([const], int))], fixed),
+                         func(int, [ptr(int)], fixed), _)),
     fails(composite_type(array(int, 2), array(int, 3), _)),
     fails(composite_type(func(int, [], fixed), func(int, [], variadic), _))
 ]).
@@ -2034,7 +2041,12 @@ composite_size(N, N, N).
 % unspecified without a prototype, agree on Cs.
 composite_params(unspecified, Qs, Qs) :- !.
 composite_params(Ps, unspecified, Ps) :- !.
-composite_params(Ps, Qs, Cs) :- maplist(composite_type, Ps, Qs, Cs).
+composite_params(Ps, Qs, Cs) :- maplist(composite_param, Ps, Qs, Cs).
+
+composite_param(P, Q, C) :-
+    ( P = qualified(_, P1) -> true ; P1 = P ),
+    ( Q = qualified(_, Q1) -> true ; Q1 = Q ),
+    composite_type(P1, Q1, C).
 
 doc(unqualified(+T0, -T), det, [
     T0: "a reflected type",

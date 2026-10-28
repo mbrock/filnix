@@ -25,3 +25,12 @@ int poke(void) { char *s = (char *)names[1]; s[0] = 'X'; return s[0]; }
 // run: $lit 1
 // run: $lit 6
 // run: $poke
+/* Compatible redeclarations (C11 6.2.7p3): the composite keeps what
+   either says, an array's size and a prototype; a parameter's own
+   qualifiers do not count (6.7.6.3p15). */
+int sized[3];
+extern int sized[];
+int proto(const int x);
+int proto();
+int proto(int x) { return x + (int)sizeof sized; }
+// run: $proto 1
