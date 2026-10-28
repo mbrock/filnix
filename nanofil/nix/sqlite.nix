@@ -39,21 +39,18 @@ let
       ${amalgamation}/shell.c ${amalgamation}/sqlite3.c -lm
     $out/sqlite3 $out/workload.db <${workload} >$out/workload.out 2>&1
   '';
-in
-pkgs.runCommandCC "nanofil-sqlite"
-  {
-    passthru = { inherit amalgamation reference; };
-  }
-  ''
-    cc=${import ./nanofil-cc.nix { inherit pkgs filcc; }}
-    cp ${amalgamation}/* .
-    for opt in "" -O "-O --registers=local --checks=reuse"; do
-      echo "== SQLite 3.51.2, nanofil $opt"
-      rm -f *.o sqlite3 nanofil.log
-      export NANOFIL_OPT=$opt NANOFIL_LOG=$PWD/nanofil.log
+  # One derivation per nanofil configuration, so the three compiles of
+  # sqlite3.c (each a single long-running process) run in parallel.
+  configuration =
+    name: opt:
+    pkgs.runCommandCC "nanofil-sqlite-${name}" { } ''
+      cc=${import ./nanofil-cc.nix { inherit pkgs filcc; }}
+      cp ${amalgamation}/* .
+      echo "== SQLite 3.51.2, nanofil ${opt}"
+      export NANOFIL_OPT="${opt}" NANOFIL_LOG=$PWD/nanofil.log
       # The reference configuration fits SWI's default 1 GB stack; the
       # middle end and register allocation keep the raised limit.
-      if [ -n "$opt" ]; then export NANOFIL_STACK_LIMIT=4000000000; else unset NANOFIL_STACK_LIMIT; fi
+      ${if opt != "" then "export NANOFIL_STACK_LIMIT=4000000000" else ""}
       start=$SECONDS
       $cc -c ${flags} -I. sqlite3.c -o sqlite3.o
       $cc -c ${flags} -I. shell.c -o shell.o
@@ -68,6 +65,21 @@ pkgs.runCommandCC "nanofil-sqlite"
         cmp ${reference}/workload.db workload.db
         echo "sqlite3 matches filcc's output and database byte for byte ($env)"
       done
-    done
+      touch $out
+    '';
+  configurations = {
+    plain = configuration "plain" "";
+    O = configuration "O" "-O";
+    reuse = configuration "reuse" "-O --registers=local --checks=reuse";
+  };
+in
+pkgs.runCommand "nanofil-sqlite"
+  {
+    passthru = { inherit amalgamation reference configurations; };
+  }
+  ''
+    ${pkgs.lib.concatMapStringsSep "\n" (c: "test -e ${c}") (
+      builtins.attrValues configurations
+    )}
     touch $out
   ''
