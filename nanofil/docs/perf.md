@@ -2688,6 +2688,80 @@ setjmp exclusion is sufficient. Its one blocker was a phi destination
 defined in two blocks, now excluded from sharing above. Its validation
 additions are in the list above.
 
+#### 9: result
+
+Implemented as written (`efd378c`). Frames under `-O` (temps), before
+and after:
+
+| Frames | before | after |
+| --- | --: | --: |
+| CPython `_PyEval_EvalFrameDefault` | 9,920 | 6,272 |
+| bzip2's 108 functions: total / median / largest | 31,872 / 208 / 5,584 | 23,568 / 192 / 1,296 |
+| SQLite's 3,130 functions: total / median / largest | 794,080 / 224 / 5,504 | 685,376 / 208 / 1,488 |
+
+bzip2's output is byte-identical, and so is everything outside the
+allocating `-O` modes: 347 of the snapshot's 4728 outputs differ, all
+in F., P., C., I. and T.
+
+CPython's test_isinstance case (test_infinitely_many_bases:
+`__getattr__` calling `self.assertEqual` through C), levels reached
+before the stack-overflow trap. Since `5d084c76f` the check's interpreter
+runs on a 256 MB fiber, which ignores `ulimit -s`, so the after build was
+measured with that fiber's size patched to the same 8 and 16 MB that bound
+the before build's main stack:
+
+| Stack | before | after |
+| --: | --: | --: |
+| 8 MB | 650 | 940 |
+| 16 MB | 1,310 | 1,880 |
+
+That is 1.45× deeper, about 12.8 KB per level before and 8.9 KB after.
+The 4,997 levels the test reaches before Python's RecursionError need
+about 64 MB before and 45 MB after, so 256 MB has room either way.
+
+Gate after sharing (7 trials, cpu 6), ratio to filcc -O2, time
+(instructions), with the trials' range of time ratios:
+
+| Workload | `O` (temps) | `O-cells` |
+| --- | --- | --- |
+| zlib -6 | 2.48 (4.08) 2.39..3.50 | 2.51 (4.20) 2.47..2.56 |
+| zlib -d | 1.91 (3.20) 1.84..1.96 | 2.02 (3.39) 1.90..2.04 |
+| bzip2 -9 | 1.99 (2.52) 1.98..1.99 | 2.06 (2.66) 2.05..2.32 |
+| bzip2 -d | 2.39 (3.11) 2.38..2.40 | 2.73 (3.44) 2.73..2.74 |
+| lz4 -1 | 2.12 (10.62) 2.05..2.22 | 2.11 (10.71) 2.08..2.25 |
+| lz4 -9 | 2.67 (3.41) 2.54..2.68 | 3.05 (3.69) 3.03..3.05 |
+| lz4 -d | 2.86 (7.29) 2.81..2.93 | 2.89 (7.34) 2.81..2.94 |
+| lua int | 2.13 (2.35) 2.13..2.13 | 2.29 (2.49) 2.28..2.29 |
+| lua tab | 1.99 (2.26) 1.98..2.00 | 2.15 (2.40) 2.14..2.53 |
+| lua str | 1.51 (1.62) 1.48..1.55 | 1.50 (1.63) 1.47..1.52 |
+| sqlite | 1.97 (1.99) 1.96..1.98 | 1.98 (2.04) 1.97..1.98 |
+| geomean | 2.15 (3.27) | 2.26 (3.42) |
+
+Most rows are within noise of the switch's gate. bzip2 -d is the
+exception, and most of the geomean's change from 2.24: 3.73 to 2.39
+under temps and 3.54 to 2.73 under cells, while its instruction ratios
+barely move (3.19 to 3.11, 3.40 to 3.44). Its time follows its layout
+(3d), and BZ2_decompress's frame, the 5,584-byte largest, shrank most.
+
+The plants, each restored afterwards:
+
+- Numbering every phi of a block 0: the shadows.ir difftest fails
+  (`swaps` and `twice` return other values), and so does
+  `shared_shadows`.
+- No sharing at all: `shared_shadows` fails.
+- Dropping the multiply-defined-destination exclusion: the compile
+  refuses `twice` (duplicate `shadow(t)` keys in the layout), so the
+  difftest and `shared_shadows` fail.
+- Dropping the setjmp exclusion: `shared_shadows` fails, on the layout.
+  The code stays correct: `run-c.sh setjmp` and the setjmp progtests
+  pass under GC stress. As Oracle found, setjmp/longjmp copy all of the
+  frame's lowers by index, and the snapshot of a dead shadow is
+  harmless, so this exclusion is for simplicity, not safety.
+- A call in `phi_writes`: every compile with a phi is refused ("a phi
+  copy contains a possible safepoint").
+- `shadow_across_poll` expected to pass: the register checker refuses
+  it, so the regs_check test fails.
+
 ### Projection
 
 From the profile's shares: items 1–4 leave the compressors at about 3–4×

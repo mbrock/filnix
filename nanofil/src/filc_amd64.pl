@@ -305,10 +305,14 @@ placed_lines(Mode, Branches, Func, Item0, Lines, function(Name,Report), Groups) 
     Item = abi_function(_,_,_,_,Frame,_,_,_,_,_),
     layout(Frame,Slots,_,_),
     scalar_homes(Func, Aliases, Slots, Homes0),
-    % Phi shadows are homes too; each has its own slot.
+    % Phi shadows are homes too. Phis of different blocks may share a
+    % shadow slot (filc_abi.pl's shadow_storage/8): one home each, with
+    % the classes of the phis sharing it.
     Func = func(_,_,_,_,Bs),
-    findall(home(D,[K]), ( member(block(_,Phis,_,_),Bs), member(phi(tmp(N),K,_),Phis),
-                           get_assoc(shadow(N),Slots,Off), D is -Off ), Shadows),
+    findall(D-K, ( member(block(_,Phis,_,_),Bs), member(phi(tmp(N),K,_),Phis),
+                   get_assoc(shadow(N),Slots,Off), D is -Off ), DKs0),
+    sort(DKs0, DKs), group_pairs_by_key(DKs, ShadowGroups),
+    findall(home(D,Ks), member(D-Ks, ShadowGroups), Shadows),
     append(Homes0, Shadows, Homes),
     findall(save(R,D), ( callee_saved(R), get_assoc(callee_save(R),Slots,Off),
                          D is -Off ), Saves),
@@ -342,6 +346,7 @@ cell_key(storage(scalar,_)).
 cell_key(storage(float,_)).
 cell_key(storage(pointer,_)).
 cell_key(shadow(_)).
+cell_key(shadow_slot(_,_)).
 cell_key(thread).
 cell_key(aux).
 cell_key(retbuf).
@@ -1246,10 +1251,21 @@ edge(From, Target, Tag, Ctx) -->
 edge_moves(From, Target, Tag, Ctx) -->
     { edge_label(Target, To),
       ctx_labels(Ctx, Labels),
-      get_assoc(To, Labels, Phis) },
-    phi_reads(Phis, From, Ctx),
-    phi_writes(Phis, Ctx),
+      get_assoc(To, Labels, Phis),
+      phrase((phi_reads(Phis, From, Ctx), phi_writes(Phis, Ctx)), Copy),
+      (   maplist(copy_line, Copy) -> true
+      ;   throw(nanofil_error('a phi copy contains a possible safepoint'))
+      ) },
+    seq(Copy),
     edge_poll(Target, From, Tag, Ctx).
+
+% copy_line(+Line): Line is a move that cannot reach a safepoint: no
+% call, poll, helper, trap or jump. Phis of different blocks share
+% shadow slots and roots (filc_abi.pl's shadow_storage/8) because no
+% safepoint is inside an edge's parallel copy; this keeps it so.
+copy_line(ins(mov, _, [_, _])).
+copy_line(ins(movabs, q, [imm(_), reg(_)])).
+copy_line(ins(lea, q, [rip(_), reg(_)])).
 
 /* Branch selection (docs/perf.md). A block whose last instruction is an
    integer comparison read only by the block's branch branches on the

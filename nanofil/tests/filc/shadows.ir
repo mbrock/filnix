@@ -1,0 +1,135 @@
+% Fil-C mode. In the allocating -O modes, phis of different blocks share
+% shadow slots by their position in the block (docs/perf.md item 9).
+% Each edge's copy must stay parallel, and a phi destination defined in
+% two blocks keeps a shadow of its own.
+
+% Two loops whose phis share slots: pointer phis swapped on each trip,
+% then three integers rotated, each fed by another phi of its block.
+run(swaps, [0]).
+run(swaps, [1]).
+run(swaps, [2]).
+run(swaps, [5]).
+func(swaps, export, l, [param(w, tmp(n))], [
+    block(start, [], [
+        let(tmp(p0), p, alloc(8), [const(16)]),
+        store(l, const(11), tmp(p0)),
+        let(tmp(q0), p, add, [tmp(p0), const(8)]),
+        store(l, const(22), tmp(q0))
+    ], goto(h1)),
+    block(h1, [
+        phi(tmp(p), p, [start-tmp(p0), b1-tmp(q)]),
+        phi(tmp(q), p, [start-tmp(q0), b1-tmp(p)]),
+        phi(tmp(i), w, [start-const(0), b1-tmp(i1)])
+    ], [
+        let(tmp(t1), w, cmp(slt, w), [tmp(i), tmp(n)])
+    ], branch(tmp(t1), b1, mid)),
+    block(b1, [], [
+        let(tmp(i1), w, add, [tmp(i), const(1)])
+    ], goto(h1)),
+    block(mid, [], [
+        let(tmp(x), l, load(l), [tmp(p)])
+    ], goto(h2)),
+    block(h2, [
+        phi(tmp(a), l, [mid-tmp(x), b2-tmp(b)]),
+        phi(tmp(b), l, [mid-const(5), b2-tmp(c)]),
+        phi(tmp(c), l, [mid-const(7), b2-tmp(a)]),
+        phi(tmp(j), w, [mid-const(0), b2-tmp(j1)])
+    ], [
+        let(tmp(t2), w, cmp(slt, w), [tmp(j), tmp(n)])
+    ], branch(tmp(t2), b2, done)),
+    block(b2, [], [
+        let(tmp(j1), w, add, [tmp(j), const(1)])
+    ], goto(h2)),
+    block(done, [], [
+        let(tmp(y), l, load(l), [tmp(q)]),
+        let(tmp(a1), l, mul, [tmp(a), const(1000000)]),
+        let(tmp(b1v), l, mul, [tmp(b), const(10000)]),
+        let(tmp(c1), l, mul, [tmp(c), const(100)]),
+        let(tmp(s1), l, add, [tmp(a1), tmp(b1v)]),
+        let(tmp(s2), l, add, [tmp(s1), tmp(c1)]),
+        let(tmp(r), l, add, [tmp(s2), tmp(y)])
+    ], ret(tmp(r)))
+]).
+
+% Both arms of one branch go to the same phi block: one copy per arm.
+run(same, [0]).
+run(same, [1]).
+func(same, export, l, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(a0), l, copy, [const(40)])
+    ], branch(tmp(k), h, h)),
+    block(h, [
+        phi(tmp(x), l, [start-tmp(a0)]),
+        phi(tmp(y), l, [start-const(2)])
+    ], [
+        let(tmp(r), l, sub, [tmp(x), tmp(y)])
+    ], ret(tmp(r)))
+]).
+
+% The arms of one branch enter two phi blocks whose phis share slots:
+% two copies, one after the other.
+run(arms, [0]).
+run(arms, [1]).
+func(arms, export, l, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(a0), l, copy, [const(9)]),
+        let(tmp(b0), l, copy, [const(4)])
+    ], branch(tmp(k), left, right)),
+    block(left, [
+        phi(tmp(u), l, [start-tmp(a0)]),
+        phi(tmp(v), l, [start-tmp(b0)])
+    ], [
+        let(tmp(r1), l, sub, [tmp(u), tmp(v)])
+    ], ret(tmp(r1))),
+    block(right, [
+        phi(tmp(w0), l, [start-tmp(b0)]),
+        phi(tmp(z), l, [start-tmp(a0)])
+    ], [
+        let(tmp(m), l, mul, [tmp(z), const(10)]),
+        let(tmp(r2), l, sub, [tmp(w0), tmp(m)])
+    ], ret(tmp(r2)))
+]).
+
+% tmp(t) is a phi destination in two loops, in a different position in
+% each: it keeps a shadow of its own. Shared by position, it would need
+% two positions under one name.
+run(twice, [0, 0]).
+run(twice, [1, 3]).
+run(twice, [0, 4]).
+func(twice, export, l, [param(w, tmp(k)), param(w, tmp(n))], [
+    block(start, [], [
+        let(tmp(p0), p, alloc(8), [const(8)]),
+        store(l, const(6), tmp(p0)),
+        let(tmp(e), l, load(l), [tmp(p0)])
+    ], branch(tmp(k), ea, eb)),
+    block(ea, [], [], goto(la)),
+    block(la, [
+        phi(tmp(x), l, [ea-const(3), ba-tmp(t)]),
+        phi(tmp(t), l, [ea-tmp(e), ba-tmp(x)]),
+        phi(tmp(i), w, [ea-const(0), ba-tmp(i1)])
+    ], [
+        let(tmp(ca), w, cmp(slt, w), [tmp(i), tmp(n)])
+    ], branch(tmp(ca), ba, xa)),
+    block(ba, [], [
+        let(tmp(i1), w, add, [tmp(i), const(1)])
+    ], goto(la)),
+    block(xa, [], [
+        let(tmp(ma), l, mul, [tmp(x), const(100)]),
+        let(tmp(ra), l, add, [tmp(ma), tmp(t)])
+    ], ret(tmp(ra))),
+    block(eb, [], [], goto(lb)),
+    block(lb, [
+        phi(tmp(t), l, [eb-const(8), bb-tmp(y)]),
+        phi(tmp(y), l, [eb-tmp(e), bb-tmp(t)]),
+        phi(tmp(j), w, [eb-const(0), bb-tmp(j1)])
+    ], [
+        let(tmp(cb), w, cmp(slt, w), [tmp(j), tmp(n)])
+    ], branch(tmp(cb), bb, xb)),
+    block(bb, [], [
+        let(tmp(j1), w, add, [tmp(j), const(1)])
+    ], goto(lb)),
+    block(xb, [], [
+        let(tmp(mb), l, mul, [tmp(t), const(100)]),
+        let(tmp(rb), l, add, [tmp(mb), tmp(y)])
+    ], ret(tmp(rb)))
+]).

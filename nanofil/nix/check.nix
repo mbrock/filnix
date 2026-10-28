@@ -65,7 +65,7 @@ pkgs.runCommandCC "nanofil-check"
     step "difftest backend" env CC=$CC tests/par.sh tests/difftest.sh tests/backend/*.ir
     export FILCC=${filcc}/bin/clang
     step pptest tests/pptest.sh
-    step "difftest filc/*.ir" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/branches.ir
+    step "difftest filc/*.ir" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/filc/branches.ir
     step "run-c interop gc float" tests/par.sh tests/filc/run-c.sh interop gc float
     step "variadic+float gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh variadic float
     step "setjmp gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh setjmp
@@ -95,7 +95,7 @@ pkgs.runCommandCC "nanofil-check"
     step "-O difftest float SSE2" env CC=$CC tests/difftest.sh tests/float/*.ir
     step "-O difftest fixtures+gen1" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir
     step "-O difftest backend" env CC=$CC tests/par.sh tests/difftest.sh tests/backend/*.ir
-    step "-O difftest filc, c, big1" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/c/*.c big1.c
+    step "-O difftest filc, c, big1" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
     step "-O run-c interop gc float" tests/par.sh tests/filc/run-c.sh interop gc float
     step "-O variadic+float gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh variadic float
     step "-O setjmp gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh setjmp
@@ -107,7 +107,7 @@ pkgs.runCommandCC "nanofil-check"
     # Inlining (docs/perf.md item 4) is the -O default, so the -O suites
     # above inline; these keep -O --inline=none, the uninlined path.
     export NANOFIL_INLINE=none
-    step "-O inline=none difftest" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/c/*.c big1.c
+    step "-O inline=none difftest" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
     step "-O inline=none ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
     step "-O inline=none programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     unset NANOFIL_INLINE
@@ -115,7 +115,7 @@ pkgs.runCommandCC "nanofil-check"
     # so the -O suites above run it; these keep -O on cells, pooled
     # scalar homes, inlining as -O does.
     export NANOFIL_REGISTERS=cells
-    step "-O cells difftest" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/c/*.c big1.c
+    step "-O cells difftest" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
     step "-O cells ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
     step "-O cells programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     unset NANOFIL_REGISTERS NANOFIL_OPT
@@ -125,7 +125,7 @@ pkgs.runCommandCC "nanofil-check"
     export NANOFIL_REGISTERS=local
     for opt in "" -O; do
       export NANOFIL_OPT=$opt
-      step "local $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/c/*.c big1.c
+      step "local $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
       step "local $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions
       step "local $opt actual ensure-aux exits" tests/filc/trace-pointer-effects.sh
       step "local $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
@@ -141,7 +141,7 @@ pkgs.runCommandCC "nanofil-check"
     # reference, so the older paths stay tested.
     for mode in "cells:" "operands:-O" "function:-O" "stack:-O"; do
       export NANOFIL_REGISTERS=''${mode%%:*} NANOFIL_OPT=''${mode#*:}
-      step "registers $mode difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/branches.ir tests/c/*.c big1.c
+      step "registers $mode difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/filc/branches.ir tests/c/*.c big1.c
       step "registers $mode ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
       step "registers $mode actual ensure-aux exits" tests/filc/trace-pointer-effects.sh
       step "registers $mode memcpy" tests/memcpy.sh
@@ -159,7 +159,7 @@ pkgs.runCommandCC "nanofil-check"
     export NANOFIL_CHECKS=reuse
     for opt in "" -O; do
       export NANOFIL_OPT=$opt
-      step "reuse $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/c/*.c big1.c
+      step "reuse $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
       step "reuse $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
       step "reuse $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     done
@@ -173,7 +173,7 @@ pkgs.runCommandCC "nanofil-check"
     # selected stream.
     for mode in "selected:" "reference:-O" "reference:-O --registers=local"; do
       export NANOFIL_BRANCHES=''${mode%%:*} NANOFIL_OPT=''${mode#*:}
-      step "branches $mode difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/branches.ir tests/c/*.c big1.c
+      step "branches $mode difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/filc/branches.ir tests/c/*.c big1.c
       step "branches $mode ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
       step "branches $mode programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     done

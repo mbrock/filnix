@@ -117,6 +117,29 @@ regs_case(callee_saved_across_call, Hs, [-16-r10, -8-rbx], [save(rbx,-24)], B, y
     homes(Hs), across_call(B).
 regs_case(scratch_across_call, Hs, [-16-r10, -8-r11], [], B, no) :-
     homes(Hs), across_call(B).
+% A phi shadow shared by two edges (docs/perf.md item 9): each edge's
+% copy stores the shadow, loads it into the phi's home, then polls. The
+% shadow is dead at each poll, so a scratch register may hold it.
+regs_case(shared_shadow_polled_edges, [home(-8,[l]), home(-16,[l])], [-16-r10], [], B, yes) :-
+    exit(E),
+    append([ins(mov,q,[reg(rdx),mem(-16,rbp)]),
+            ins(mov,q,[mem(-16,rbp),reg(rax)]),
+            ins(mov,q,[reg(rax),mem(-8,rbp)]),
+            ins(call,none,[plt(filc_pollcheck_slow)]),
+            ins(mov,q,[reg(rcx),mem(-16,rbp)]),
+            ins(mov,q,[mem(-16,rbp),reg(rax)]),
+            ins(mov,q,[reg(rax),mem(-8,rbp)]),
+            ins(call,none,[plt(filc_pollcheck_slow)]),
+            ins(mov,q,[mem(-8,rbp),reg(rax)])], E, B).
+% With a poll inside the copy the shadow would be live across it, and a
+% scratch register must be refused.
+regs_case(shadow_across_poll, [home(-8,[l]), home(-16,[l])], [-16-r11], [], B, no) :-
+    exit(E),
+    append([ins(mov,q,[reg(rdx),mem(-16,rbp)]),
+            ins(call,none,[plt(filc_pollcheck_slow)]),
+            ins(mov,q,[mem(-16,rbp),reg(rax)]),
+            ins(mov,q,[reg(rax),mem(-8,rbp)]),
+            ins(mov,q,[mem(-8,rbp),reg(rax)])], E, B).
 % Both homes in rbx while both are live.
 regs_case(shared_register_conflict, Hs, [-16-rbx, -8-rbx], [save(rbx,-24)], B, no) :-
     homes(Hs), exit(E),

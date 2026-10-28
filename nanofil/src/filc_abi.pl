@@ -35,6 +35,8 @@
 :- module(filc_abi, [lower_function/4, lower_function/5, lower_thunks/2, signature/3, never_signature/1]).
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
+:- use_module(library(pairs)).
+:- use_module(library(ordsets)).
 :- use_module(ir).
 :- use_module(frame_slots).
 
@@ -133,17 +135,19 @@ frame(Pools, Params, Blocks, Return, frame(Plain, Roots, Aliases),
     findall(N-K, (member(block(_, Phis, _, _), Blocks),
                   member(phi(tmp(N), K, _), Phis)), Shadows0),
     sort(Shadows0, Shadows),
-    findall(shadow(N), member(N-_, Shadows), ShadowKeys),
+    findall(shadow(N), member(N-_, Shadows), PayloadShadows),
     findall(D, (member(block(_, _, Is, _), Blocks),
                 member(let(tmp(D), w, setjmp(_), _), Is)), Sites),
-    temp_storage(Sites, Pools, Params, Blocks, Temps, Keys, Lowers, Aliases),
+    temp_storage(Sites, Pools, Params, Blocks, Temps, Keys, Lowers, Aliases0),
+    shadow_storage(Sites, Pools, Blocks, Temps0, Shadows, ShadowKeys, ShadowRoots,
+                   ShadowAliases),
+    append(Aliases0, ShadowAliases, Aliases),
     return_storage(Return, Extra),
     findall(tmp(hidden(setjmp_buf(D))), member(D, Sites), JPlain),
     local_objects(func(frame, local, void, Params, Blocks), Locals),
     findall(local(N, Size), member(N-Size, Locals), LocalStorage),
     findall(stack_aux(N), member(N-_, Locals), LocalRoots),
     append([Keys, ShadowKeys, [thread, aux], Extra, JPlain, LocalStorage], Plain),
-    findall(lower(shadow(N)), member(N-p, Shadows), ShadowRoots),
     findall(lower(setjmp_snapshot(D)), member(D, Sites), SnapRoots),
     findall(lower(tmp(hidden(setjmp_buf(D)))), member(D, Sites), JRoots),
     % Explicit stack auxes are the final root group before jmpbufs,
@@ -151,7 +155,72 @@ frame(Pools, Params, Blocks, Return, frame(Plain, Roots, Aliases),
     append([Lowers, ShadowRoots, SnapRoots, LocalRoots, JRoots], Roots),
     % Preserve the old assoc's canonical payload traversal order.
     findall(tmp(N), member(N-_, Temps), TempPayload),
-    append(TempPayload, ShadowKeys, Payload0), sort(Payload0, Payload).
+    append(TempPayload, PayloadShadows, Payload0), sort(Payload0, Payload).
+
+% shadow_storage(+Sites, +Pools, +Blocks, +Defs, +Shadows, -Keys, -Roots,
+% -Aliases): the phi shadows' plain keys, root keys and aliases
+% (docs/perf.md item 9). A shadow is stored and loaded only inside one
+% edge's parallel copy (filc_amd64.pl's edge_moves//4, which checks that
+% no safepoint is inside it), so in the allocating modes (pools not
+% shared) of a function without setjmp sites, the i-th phi of class C in
+% its block uses shadow_slot(C, i), C being int (w, l), p or float (s,
+% d), and a pointer phi's lower the root lower(shadow_slot(p, i)). A
+% temporary defined more than once (Defs, one N-K per definition) keeps
+% a shadow of its own, as every phi does in the reference layout.
+shadow_storage(Sites, Pools, Blocks, Defs, Shadows, Keys, Roots, Aliases) :-
+    (   Sites == [], Pools \== shared
+    ->  findall(N-x, member(N-_, Defs), Ds0), keysort(Ds0, Ds),
+        group_pairs_by_key(Ds, Counted),
+        findall(N, member(N-[_], Counted), Once0), sort(Once0, Once),
+        findall(Ps, ( member(block(_, Phis, _, _), Blocks),
+                      block_shadows(Phis, Once, Ps) ), PerBlock),
+        append(PerBlock, Positions),
+        findall(N, member(N-_-_, Positions), Placed0), sort(Placed0, Placed),
+        findall(N-K, ( member(N-K, Shadows), \+ ord_memberchk(N, Placed) ), Own),
+        foldl(class_count(PerBlock), [int, p, float], Counts, []),
+        findall(shadow(N), member(N-_, Own), OwnKeys),
+        findall(shadow_slot(C, I), ( member(C-M, Counts), Last is M-1,
+                                     between(0, Last, I) ), SlotKeys),
+        append(OwnKeys, SlotKeys, Keys),
+        findall(lower(shadow(N)), member(N-p, Own), OwnRoots),
+        ( memberchk(p-MP, Counts) -> true ; MP = 0 ),
+        LastP is MP-1,
+        findall(lower(shadow_slot(p, I)), between(0, LastP, I), SlotRoots),
+        append(OwnRoots, SlotRoots, Roots),
+        findall(A, ( member(N-C-I, Positions),
+                     ( A = shadow(N)-shadow_slot(C, I)
+                     ; C == p, A = lower(shadow(N))-lower(shadow_slot(p, I)) ) ),
+                Aliases)
+    ;   findall(shadow(N), member(N-_, Shadows), Keys),
+        findall(lower(shadow(N)), member(N-p, Shadows), Roots),
+        Aliases = []
+    ).
+
+% block_shadows(+Phis, +Once, -Positions): N-Class-Index for each phi of
+% a block whose destination is defined once, numbered within its class.
+block_shadows(Phis, Once, Positions) :-
+    foldl(phi_position(Once), Phis, [int-0, p-0, float-0]-Positions, _-[]).
+
+phi_position(Once, phi(tmp(N), K, _), Next0-Ps0, Next-Ps) :-
+    (   ord_memberchk(N, Once), shadow_class(K, C)
+    ->  select(C-I, Next0, C-I1, Next), I1 is I+1,
+        Ps0 = [N-C-I|Ps]
+    ;   Next = Next0, Ps0 = Ps
+    ).
+
+shadow_class(w, int).
+shadow_class(l, int).
+shadow_class(p, p).
+shadow_class(s, float).
+shadow_class(d, float).
+
+% class_count(+PerBlock, +Class, -Counts0, -Counts): Class-M with M the
+% largest number of Class phis a block shares, when M > 0.
+class_count(PerBlock, C, [C-M|Cs], Cs) :-
+    findall(L, ( member(Ps, PerBlock),
+                 findall(x, member(_-C-_, Ps), Xs), length(Xs, L) ), Ls),
+    max_list([0|Ls], M), M > 0, !.
+class_count(_, _, Cs, Cs).
 
 temp_storage([], Pools, Ps, Bs, Temps, Keys, Lowers, Aliases) :-
     temp_slots(Pools, Ps, Bs, Temps, Map, NS, NP, NW, NF),

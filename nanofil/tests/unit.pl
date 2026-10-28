@@ -181,10 +181,53 @@ test(temps_frame) :-
                    filc_module_asm(P, emit(R, selected), Lines, _),
                    once(( append(_, [ins(sub,q,[imm(F),reg(rsp)])|_], Lines) )) ), [cells-FC, temps-FT]),
     FT =< FC.
+% Phis of different blocks share shadow slots by class and position in
+% the allocating layouts (docs/perf.md item 9): swaps' two loops have
+% 1 + 4 integer and 2 + 0 pointer phis, so 4 + 2 shadows, not 7. The
+% reference layout keeps one per phi; so do a phi destination defined in
+% two blocks (twice's t) and a setjmp function. Each frame's roots are
+% the origin's count, zeroed at entry, at distinct offsets.
+test(shared_shadows) :-
+    file_module('../tests/filc/shadows.ir', M0), pizlonate_module(M0, P),
+    P = module(Items), memberchk(func(swaps,L,R,Ps,Bs), Items),
+    shadow_frame(split, P, func(swaps,L,R,Ps,Bs), Shared),
+    Shared = frame(SKs, [_,_]),
+    msort(SKs, [shadow_slot(int,0), shadow_slot(int,1), shadow_slot(int,2),
+                shadow_slot(int,3), shadow_slot(p,0), shadow_slot(p,1)]),
+    shadow_frame(shared, P, func(swaps,L,R,Ps,Bs), frame(RKs, [_,_])),
+    length(RKs, 7), forall(member(K, RKs), K = shadow(_)),
+    memberchk(func(twice,L2,R2,Ps2,Bs2), Items),
+    shadow_frame(split, P, func(twice,L2,R2,Ps2,Bs2), frame(TKs, _)),
+    memberchk(shadow(t), TKs), \+ memberchk(shadow(x), TKs),
+    file_module('../tests/filc/setjmp.ir', J0), pizlonate_module(J0, J),
+    J = module(JItems),
+    once(( member(F, JItems), F = func(_,_,_,_,JBs),
+           member(block(_,[_|_],_,_), JBs) )),
+    shadow_frame(split, J, F, frame(JKs, _)), JKs = [_|_],
+    forall(member(K, JKs), K = shadow(_)).
 test(local_storage_semantics) :- local_semantics.
 
 test(local_storage_lifetime) :- local_lifetime.
 test(local_storage_validation) :- local_validation.
+
+% shadow_frame(+Pools, +Module, +Func, -frame(Keys, Roots)): the shadow
+% keys and shadow roots of Func's frame lowered with Pools, after
+% checking that the frame's roots are as many as its origins count and
+% its entry zeroes, each at an offset of its own.
+shadow_frame(Pools, Module, Func, frame(Keys, ShadowRoots)) :-
+    module_symbols(Module, Symbols),
+    filc_amd64:lower_item(Pools, Symbols, Func, Product),
+    Product = abi_function(_,_,_,_,Frame,Entry,_,_,_,Origins),
+    Frame = frame(Plain, Roots, _),
+    length(Roots, NR), memberchk(zero_roots(NR), Entry),
+    forall(member(origin(_,_,N,_,_), Origins), N =:= NR),
+    filc_amd64:layout(Frame, Slots, _, _),
+    findall(Off, ( member(Root, Roots), get_assoc(Root, Slots, Off) ), Offs),
+    sort(Offs, Distinct), length(Distinct, NR),
+    findall(K, ( member(K, Plain), ( K = shadow(_) ; K = shadow_slot(_,_) ) ), Keys),
+    findall(Root, ( member(Root, Roots),
+                    ( Root = lower(shadow(_)) ; Root = lower(shadow_slot(_,_)) ) ),
+            ShadowRoots).
 
 % pool_homes(+Pools, +Module, +Func, -Homes): the scalar homes, with
 % their temporaries' classes, of Func lowered with Pools.
