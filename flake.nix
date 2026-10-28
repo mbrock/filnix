@@ -264,6 +264,10 @@
               inherit pkgs;
               filcc = filcc-staging;
             };
+            nanofil-bash = import ./nanofil/nix/bash.nix {
+              inherit pkgs;
+              filcc = filcc-staging;
+            };
             inherit
               (import ./nanofil/nix/python.nix {
                 inherit pkgs;
