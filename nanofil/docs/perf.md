@@ -459,7 +459,42 @@ Bench modes `O-local`, `O-function`, `O-operands`, `O-cells` go,
 `O-stack` stays. The other axes (`--branches`, `--checks`, `--memcpy`,
 `--inline`) are not part of this proposal.
 
-RETIREMENT_OUTCOME
+**Outcome (approved and done).** The orchestrator approved all three,
+flow included, with these conditions: the kept modes' outputs do not
+change, every checker rule keeps its test, the removed modes' coverage
+moves to temps, and a retired value fails loudly. In the commit after
+`7fc3fa2`:
+
+- *Unchanged outputs.* The snapshot's 2,965 outputs (no `-O`,
+  `-O --registers=stack`, temps, and temps with inlining) and the `-O`
+  assembly of `sqlite3.c` (59 MB) are byte-identical to `7fc3fa2`'s.
+- *Removed:*
+  - trusted, 377 lines net: `amd64_cache_check.pl` (266) and flow's
+    Rule 1 and label facts in `amd64_regs_check.pl` (111);
+  - untrusted, 359 net: `amd64_cache.pl`, flow's rewrite, the
+    `local` placement and the `split` pool choice;
+  - tests, 768 net: `cache_check.pl`, the cache tests in
+    `registers.pl`, flow's 31 cases and plants, `bench-registers`.
+- *Kept tested.* The function, operands and cells checkers stay because
+  temps runs them, with all their fixtures and plants in
+  `regs_check.pl`. Unit tests that compiled through `cells`, `function`
+  or `operands` compile through temps; those that used `split` pools as
+  a comparator use `own` or `shared`.
+- *Coverage moved to temps:* difftest, ABI and GC stress (setjmp
+  included), the ensure-aux trace, memcpy, checks and programs, all
+  without `-O`; the corpus; and reuse with GC stress.
+  `--checks=reuse` builds zlib, bzip2, lz4, hello and Lua with and
+  without `-O`, and SQLite with `-O`. Before, SQLite's reuse
+  configuration ran on local.
+- *Refused.* `tests/registers.sh` (a check step) requires each retired
+  value, by option and by `NANOFIL_REGISTERS`, to exit nonzero with no
+  output and `registers=MODE was retired (docs/perf.md); registers must
+  be stack or temps`. Planting `flow` back into the accepted list fails
+  it: the mode then falls back silently to stack emission.
+- *Check time.* The `nanofil` check went from 498 s to 396 s and from 95
+  steps to 65. Program builds: 10 fewer, 5 more (`O-reuse` for zlib,
+  bzip2, lz4, hello and Lua). Snapshot: 5 outputs per C input instead
+  of 9.
 
 ## The plan
 
