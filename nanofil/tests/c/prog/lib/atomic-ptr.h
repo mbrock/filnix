@@ -10,4 +10,12 @@ void *peer_load(void *arg);
    other's, both sequentially consistent, once per round. */
 extern int flag_a, flag_b, seen_b, seen_a, round_no, done_a, done_b;
 enum { LITMUS = 100000 };
+
+/* Spin, then yield: the litmus threads start each round together on idle
+   cores, and still make progress when the cores are oversubscribed (the
+   Nix checks run dozens of builds at once). */
+#include <sched.h>
+#define SPIN_UNTIL(cond)                                    \
+    for (int spins_ = 0; !(cond); spins_++)                 \
+        if (spins_ > 1000) sched_yield()
 void *peer_litmus(void *arg);

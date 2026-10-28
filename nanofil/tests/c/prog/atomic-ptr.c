@@ -43,8 +43,7 @@ static int counter;
 static void *own_litmus(void *arg)
 {
     for (int i = 1; i <= LITMUS; i++) {
-        while (__atomic_load_n(&round_no, __ATOMIC_ACQUIRE) != i)
-            ;
+        SPIN_UNTIL(__atomic_load_n(&round_no, __ATOMIC_ACQUIRE) == i);
         __atomic_store_n(&flag_a, 1, __ATOMIC_SEQ_CST);
         seen_b = __atomic_load_n(&flag_b, __ATOMIC_SEQ_CST);
         __atomic_store_n(&done_a, i, __ATOMIC_RELEASE);
@@ -61,9 +60,8 @@ static void litmus(void)
     for (int i = 1; i <= LITMUS; i++) {
         flag_a = flag_b = 0;
         __atomic_store_n(&round_no, i, __ATOMIC_SEQ_CST);
-        while (__atomic_load_n(&done_a, __ATOMIC_ACQUIRE) != i
-               || __atomic_load_n(&done_b, __ATOMIC_ACQUIRE) != i)
-            ;
+        SPIN_UNTIL(__atomic_load_n(&done_a, __ATOMIC_ACQUIRE) == i
+                   && __atomic_load_n(&done_b, __ATOMIC_ACQUIRE) == i);
         both_zero += !seen_a && !seen_b;
     }
     pthread_join(a, 0);

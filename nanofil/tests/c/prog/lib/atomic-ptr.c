@@ -36,8 +36,7 @@ int flag_a, flag_b, seen_b, seen_a, round_no, done_a, done_b;
 void *peer_litmus(void *arg)
 {
     for (int i = 1; i <= LITMUS; i++) {
-        while (__atomic_load_n(&round_no, __ATOMIC_ACQUIRE) != i)
-            ;
+        SPIN_UNTIL(__atomic_load_n(&round_no, __ATOMIC_ACQUIRE) == i);
         __atomic_store_n(&flag_b, 1, __ATOMIC_SEQ_CST);
         seen_a = __atomic_load_n(&flag_a, __ATOMIC_SEQ_CST);
         __atomic_store_n(&done_b, i, __ATOMIC_RELEASE);
