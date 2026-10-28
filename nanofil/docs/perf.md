@@ -1583,6 +1583,49 @@ byte as filcc's; instructions against today's `-O`):
   (`s->strm->avail_in`, which needs load reuse), from merging across
   blocks, and from variable-index pairs like `block[i]`, `block[i+1]`.
 
+#### 6d. Load reuse across pointer loads: measured, not proposed
+
+The hypothesis under item 4 was that bzip2 `-9`'s check gap is
+reloaded fields such as `s->strm->avail_in`, which removing the
+repeated load (and with it its check) would reach. Measured on 539M
+checks, it reaches almost none of them.
+
+*Method* (scratch, not kept): bzip2 built with `-O`, its output and
+12.42G instructions equal to the gate's, a symbol at every block label,
+and callgrind's entry count for each block. For each block of the
+checked IR, an analysis counts the checks that guard a load whose value
+an earlier load or store of the same address still provides. Address
+means the root pointer's value number plus a constant offset, with the
+same type. A repeated load takes the earlier value's number, so
+`s->strm->avail_in` chains. Facts cross plain forward edges, as M7's
+check reuse does, and no poll edge. Calls, allocations, getters,
+atomics and every other non-pure instruction kill all facts. The kill
+rule for stores varies:
+
+| stores kill | checks reached |
+| --- | ---: |
+| every fact (K1) | 0.0M (0%) |
+| facts unless same root and disjoint bytes (K2) | 0.0M (0%) |
+| as K2, pointer and scalar stores separately (K3, TBAA-like) | 11.0M (2.0%) |
+
+All of K3's gain is in `copy_input_until_stop` (8.4M of 129M) and
+`copy_output_until_stop` (2.6M). The block counts sum to the gate
+binary's 539M checks.
+
+*Why.* In the hot loops each field's first load is in the loop header.
+Within an iteration, a store through another root (`s->block[i] = ch`)
+kills `s->strm` under any rule that does not assume types. Across
+iterations, the only way to remove the load is to hoist it and its
+check to the preheader. filcc gets its `copy_input_until_stop` count
+(35M without inlining) by check scheduling: one merged range check of
+`s` at entry covers `s->nblock`, `s->nblockMAX` and the rest, which the
+loop then reads unchecked. It still reloads and checks `s->strm` every
+iteration. That is 6c-2's class, hoisting and merging that move a trap
+earlier, which is rejected. K3's 2% needs a type-based alias rule,
+and Fil-C has none: the pass drops `!tbaa`, and memory is bytes
+(docs/ub.md, 6.5p7). So load reuse gets no contract. What remains of
+the check gap is check scheduling, not reloads.
+
 ### 7. Small constant `memcpy` — needs review
 
 An inline copy must preserve what `filc_memmove` does: null, bounds and
