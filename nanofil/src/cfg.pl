@@ -376,7 +376,9 @@ loop_body([B|Pending], Preds, Intervals, Seen0, Seen) :-
 
 liveness(cfg(_, Rpo, Succs, Preds), GenKill, EdgeUses, LiveIn, LiveOut) :-
     assoc_to_keys(Succs, All),
-    subtract(All, Rpo, Unreached),
+    % All is sorted; subtract/3 would be quadratic in the block count.
+    sort(Rpo, Reached),
+    ord_subtract(All, Reached, Unreached),
     reverse(Rpo, Post),
     append(Post, Unreached, Order),
     labels_numbered(Order, 0, Numbered),
