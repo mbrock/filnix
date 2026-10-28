@@ -674,8 +674,16 @@ passes added one by one, cycles go 1.75G (function), 1.94G (forwarding),
 With `.p2align 5` at the 123 targets of backward jumps (the loop heads),
 function mode runs 1.81G and operands 1.76G, and both stay put under
 the same padding. The gate measures layout luck in one large function
-here. Aligning loop heads would be a small emitter change; it has not
-been measured on the other workloads.
+here. Aligning loop heads would be a small emitter change.
+
+Measured on the whole gate at [`3d3d251`](https://github.com/mbrock/filnix/commit/3d3d25182318)
+(cells default), with `.p2align 4` before every backward-jump target in
+every translation unit against the same build without it, 9 trials:
+geomean 2.97 (4.57) without it and 2.97 (4.58) with it. No workload's
+ranges separate. zlib `-d` 2.06..2.10 against 2.02..2.06 touch; bzip2
+`-d` 3.62..3.65 against 3.59..3.66 overlap; lz4 `-9` moves the other way
+(4.06 to 4.11). It adds about 0.2% instructions as padding. Not adopted:
+it only moves the layout noise.
 
 A fresh gate run at [`9bcbb67`](https://github.com/mbrock/filnix/commit/9bcbb67ec04d)
 (7 trials, cpu 6, same compiler output; the binaries were relinked) bears
@@ -873,6 +881,31 @@ removed were store-to-load forwards on the critical path. lz4 -1 and
 
 #### 5a, full: frame words in the region checker (second step)
 
+**Measured ceiling, before writing the corrected contract: too small to
+pursue.** Regions end at every label, jump and call (`boundary_line/2`
+in `amd64_regs_check.pl`). With every cell compared at each boundary,
+a cell store can be dropped only if a later store to the same cell in
+the same straight-line stretch overwrites it first. In the cells-default
+`-O` output at [`3d3d251`](https://github.com/mbrock/filnix/commit/3d3d25182318),
+those stores are:
+
+| Program | Share of `rbp` stores | Share of static instructions |
+| --- | --- | --- |
+| zlib | 2.8% | 0.30% |
+| bzip2 | 3.8% | 0.50% |
+| lz4 | 3.3% | 0.36% |
+| Lua | 7.3% | 0.74% |
+
+Repeated `origin` stores were the other target; they are excluded now.
+
+Stores of cells that the function never reads again are 0.9–2.3% of
+static instructions. That figure includes `lowers[]` roots, which must
+stay. Dropping the rest would need cell liveness across boundaries, a
+different contract in which the collector observes only `lowers[]` and
+the stack-overflow panic only the header. Neither is proposed. The text
+below is kept as the record of the first review; implementing it as
+written is blocked by the two findings above 5a-loads.
+
 
 *Contract written before the implementation, for review.*
 
@@ -1003,6 +1036,229 @@ aux allocation (an exit, so a safepoint) and the barrier. The smallest
 safe version copies inline only when neither object has an aux pointer,
 the runtime's "nothing to do" case, and calls the runtime otherwise.
 Expected: 45% of lz4 `-d` and `-1`.
+
+#### 7a. Contract: a filter in front of the unchanged call
+
+The inline code is a *filter* placed before the existing call, not a
+replacement for it. It either takes the fast path, when the runtime
+would succeed and would do nothing for aux, or jumps to the call exactly
+as `-O` emits it today. Every failure, every aux case, the barrier, aux
+allocation and the panic text and origins stay the runtime's, reached
+the same way. The only new claim is that the fast path's effect equals
+the call's in the cases the filter admits.
+
+**What the runtime does (pin, `filc_runtime.c`).** glibc's `memcpy` and
+`memmove` (`pizlonatedFI28870___GI_memcpy`/`__GI_memmove` in
+`libc.so.6666`) push a frame and call `zmemmove`, which reaches
+`filc_native_zmemmove` and then `memmove_impl` (5659). Then:
+
+1. `count == 0` returns.
+2. A null object for either pointer goes to `memmove_fail`.
+3. `CHECK_BOUNDS_FAST` (2376) runs on both pointers:
+   `ptr >= lower`, `ptr < upper`, `count <= upper - ptr`.
+4. `CHECK_WRITE_FAST` (2392) runs on the destination only:
+   `flags & (READONLY | FREE | SPECIAL_MASK)`, mask `0x786`. The
+   source gets no flag test. A freed object has size 0 (`upper =
+   lower`), so step 3 already rejects it.
+5. Below `FILC_MAX_BYTES_BETWEEN_POLLCHECKS`, `memmove_size_specialized`
+   (5534) copies the bytes with `filc_memmove_small` (overlap-safe), with
+   no exit and no poll.
+6. It then reads both aux pointers and calls `memmove_aux_with_ptrs`.
+   That does nothing when neither object has aux, or when only the
+   source has aux and the offsets are out of phase.
+7. The call returns `dst`.
+
+**Scope.** The filter applies to `call(R, global(F), [arg(p,D), arg(p,S),
+arg(l,const(N))])` under these conditions:
+- F is `memcpy` or `memmove`. That includes `__builtin_memcpy` and
+  `__builtin_memmove`, which `library_builtin/2` maps to them, and
+  `__builtin___memcpy_chk` with size `(size_t)-1` when `__memcpy_chk`
+  is undeclared (c_types.pl:1887-1892, 2122-2136).
+- 1 ≤ N ≤ 16.
+- No function in the module is emitted with symbol F. F is the
+  assembler symbol, so asm labels and aliases count; a `gnu_inline`
+  extern body emits nothing and does not count.
+- The function is compiled with `-O`, and `--memcpy=call` is not given.
+
+`--memcpy=call` is the new selectable reference. `nanofil-cc` passes it
+for `-fno-builtin`, `-fno-builtin-memcpy`, `-fno-builtin-memmove` and
+`-ffreestanding`.
+
+Treating F as the standard function is the C library-reservation
+assumption that clang makes: filcc lowers these calls to `llvm.memcpy`
+and never calls libc's `memcpy` for them. An interposed `memcpy`
+(`LD_PRELOAD`, or a definition in another translation unit) is no
+longer called for small constant copies, as with filcc. `N = 0` and
+other sizes keep the call.
+
+**Sequence.** D is `(dp, dl)` and S is `(sp, sl)`. Only rax, rcx, rdx,
+rsi, rdi, r8 and r9 are used: they are not allocatable, and the call
+clobbers them anyway. r10 and r11 are allocatable, so the checker's
+preflight rejects any stream that names them.
+
+```
+    test dl,dl ; jz slow
+    cmp  dl,dp ; jb slow                 dp >= dl
+    mov  -16(dl),u ; sub $N,u ; jb slow  upper >= N
+    cmp  u,dp ; ja slow                  dp <= upper - N
+    movabs $0x0786ffffffffffff,u
+    test u,-8(dl) ; jnz slow             flags & 0x786, and aux pointer
+    (the same for S, with mask $0x0000ffffffffffff: aux only)
+    loads from sp, then stores to dp, at the offsets below
+    R := D (if the result is used)
+    jmp  done
+slow:
+    the call exactly as emitted today: origin store, arguments,
+    call, exception test, result moves
+done:
+```
+
+- **Bounds.** For N ≥ 1, `dp >= dl ∧ upper >= N ∧ dp <= upper − N` holds
+  exactly when step 3 holds: `dp <= upper − N` gives `dp < upper` and
+  `N <= upper − dp`. Conversely, step 3 gives `dp + N <= upper`, so
+  there is no borrow. The test order is today's `access_check`.
+- **Flags and aux in one read.** The word at `-8(lower)` holds the aux
+  pointer in its low 48 bits (`FILC_OBJECT_AUX_PTR_MASK`;
+  `PAS_ADDRESS_BITS` is 48) and the flags above them. The masked `test`
+  is zero exactly when the destination's flags have none of
+  READONLY | FREE | SPECIAL_MASK and its aux pointer is null; the
+  source's mask tests only the aux pointer. `movabs` and `test q` are
+  already audited, with defined flags (amd64_regs_check.pl:691-693,
+  977-980). A `shl $16; jnz` form was rejected in review: `shl` leaves
+  the flags shared only when its input flags are, and after the
+  previous `jcc` they are not, so the region checker would fail the
+  compile (`shift_keeps_flags` in tests/regs_check.pl).
+- **Accepted set.** The filter accepts a subset of the cases where steps
+  2–4 pass and step 6 is "nothing to do". It is stricter in one place:
+  it requires the source to have no aux, even out of phase.
+- **Copy.** Every load comes before any store, so overlap gives
+  `memmove` semantics, as `filc_memmove_small` does.
+  - N ∈ {1, 2, 4, 8}: one access of N bytes at offset 0.
+  - N = 3: 2 bytes at 0 and 2 bytes at 1.
+  - N ∈ {5, 6, 7}: 4 bytes at 0 and 4 bytes at N − 4.
+  - N ∈ {9, …, 16}: 8 bytes at 0 and 8 bytes at N − 8.
+  - All accesses are plain unaligned integer moves inside `[ptr, ptr +
+    N)`, which the bounds test has just admitted.
+
+**Why the fast path equals the call.** In the single-threaded case, the
+call's observable effects under the filter are these:
+- N payload bytes of D are replaced by S's N bytes as they were before
+  the copy.
+- No aux word is read or written.
+- No allocation, exit, poll or barrier happens.
+- The result is D.
+
+The fast path has the same effects. Two things are lost:
+- **The safepoint at the call.** Removing a poll does not change
+  semantics, filcc inlines the same way, and nanofil polls every
+  backward edge (pizlonate.pl:24-26), so no loop loses its safepoint.
+- **The call's frame push and origin store.** These matter only to a
+  panic stack trace during the copy. The fast path cannot panic through
+  a Fil-C check, and the origin is per function, not per call site
+  (filc_amd64.pl:833-840).
+
+A hardware fault on mapped memory, such as SIGBUS reading a
+file-backed mapping past EOF, happens on both paths, with different
+stack traces.
+
+**Races.** The runtime reads bounds before the copy and aux after it;
+the filter reads both before the copy. With concurrency, the fast path
+is exactly a checked N-byte integer load from S followed by a checked
+N-byte integer store to D. nanofil already emits that sequence for
+`*(uN *)d = *(uN *)s` under the same check. So the fast path adds no
+reachable state.
+- **A concurrent pointer store to D** that installs D's aux after the
+  filter reads it leaves that word with our bytes and the other
+  thread's capability. That is the intval/capability tearing already
+  allowed for an integer store racing a pointer store
+  (`gimso_semantics.md` "Simplified Rules"). Accesses through the torn
+  pointer are still checked against a real object's bounds.
+- **A concurrent pointer store to S** after the filter's read: the
+  copy carries bytes without lowers, as if the copy ran first.
+- **A concurrent free** after the bounds test: the copy still
+  completes, as the runtime's own note at `memmove_size_specialized`
+  allows ("still safe to finish the memcpy"). Free does not unmap, and
+  with no safepoint in the fast path the lower stays rooted. `munmap`
+  of an mmap object remaps the range as anonymous read-write memory
+  (filc_runtime.c:9930-9977), so neither path faults.
+- **Aux before the copy has precedent.** filcc's own inline copy reads
+  the aux base before it copies (`accessDataForOperand` before
+  `RealMemmove`, FilPizlonator.cpp:7671-7672, 7882-7885).
+- **No atomic boxes.** With aux null at the filter's read, no word of
+  either object was in atomic mode then. A later atomic store races as
+  it would with an integer access.
+
+**Frame and checker.**
+- D and S are heap or global lowers. Non-escaping locals cannot reach a
+  call; they escape and become heap allocations, and no native stack
+  address becomes a lower (campaign.md, M5). So the inline accesses
+  cannot touch frame cells. That is 3a's existing trust, that only
+  `%rbp`-relative operands reach the frame; nothing new.
+- The sequence is part of the reference stream R, so the register
+  allocator and the region checker treat it like any other code. Its
+  internal labels and jumps are ordinary CFG edges. `slow` keeps the
+  call, so the call is still a boundary on that path.
+- Every opcode it uses (`test`, `cmp`, `sub`, `shl`, `mov`, `testw`
+  with a memory operand, and `jcc`) needs an audited entry in the
+  checker's effect table. Any that is missing is added with a fixture.
+
+**Review.** Oracle checked every claim against the pin and found no hole
+in the accepted set, the bounds equivalence or the race argument. One
+blocker, the `shl` step above, is fixed. The text fixes are folded in:
+the register list, scoping by symbol and the `_chk` route, panic
+identity only against `--memcpy=call`, the hardware-fault caveat, and
+the extra fixtures. glibc's `memcpy` and `memmove` were checked by
+disassembling `libc.so.6666` at the pin: each pushes a frame, calls
+`zmemmove`, and returns `dst` in `rdx`/`rcx`. `nanofil-cc` does not
+parse `-fno-builtin` yet; mapping it to `--memcpy=call` is part of the
+change.
+
+**What is not claimed.** The filter does not inline any aux case, does
+not change failure behaviour, and does not inline sizes above 16 or
+non-constant sizes. A wider version that copies aux words inline, as
+the pass's `emitOptMemmove` does with `FinishMemmoveSmall1–5`, needs
+its own contract.
+
+**Validation.**
+- **Fail-first unit test.** `-O` on `memcpy(d, s, 8)` emits no call on
+  the fast path and keeps the call on `slow`; `--memcpy=call` and
+  non-`-O` keep today's output.
+- **Runtime matrix (`tests/memcpy_small.c`, a difftest).** Run it
+  against `--memcpy=call` and filcc. It covers:
+  - N = 1…16, each with dst and src misaligned by 0–7 and overlapping
+    in both directions;
+  - null dst or src, one past the end, one byte too long, a pointer
+    below lower, a read-only dst (string literal), a freed dst or src;
+  - dst with aux (holds a pointer) in and out of phase, src with aux in
+    and out of phase, and copying a pointer through `memcpy` then
+    dereferencing it;
+  - a defined `memcpy` in the module, which must be called;
+  - `-fno-builtin`.
+
+  Also covered:
+  - `__builtin___memcpy_chk(d, s, 8, (size_t)-1)`, with and without
+    `__memcpy_chk` declared;
+  - a function as source, `(char *)main`, and `malloc(0)`;
+  - a read-only string literal as source, which stays on the fast path;
+  - a global holding pointers as destination;
+  - a used result (`p = memcpy(...); p[n]`), including its bounds;
+  - exact overlap `d == s`;
+  - N = 0, N = 17 and a variable N, which keep the call;
+  - an allocated function whose D and S live in callee-saved registers;
+  - the pointer-through-`memcpy` case under `FUGC_SCRIBBLE` and
+    `FUGC_VERIFY`.
+
+  Output, panic text and exit status must be byte-identical to
+  `--memcpy=call`. Against filcc, success output must match and a
+  failing case must panic; the texts differ, because filcc's inline
+  check fails through `filc_optimized_access_check_fail` and the
+  runtime through `memmove_fail`.
+- **Checker fixture.** The real filter sequence in an allocated function
+  is accepted by `check_operands/4`. A planted `shl`/`jnz` variant, or
+  one naming r10, is rejected.
+- **Gates.** Snapshot changes are limited to `-O` default outputs that
+  contain small constant copies. All Nix checks pass, and the bench
+  gate covers lz4 `-1` and `-d`.
 
 ### 8. A cheap middle end
 
