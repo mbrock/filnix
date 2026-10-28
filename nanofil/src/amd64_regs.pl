@@ -28,8 +28,9 @@
 
 %! regs_asm(+Mode, +Metadata, +Before, -After, -Checked, -Report) is det.
 %
-%  Mode is function (step 3a) or operands (3a, then step 3b's operand
-%  rewrite). Metadata is regs_metadata(Setjmp, Impl, Homes, Saves) with a
+%  Mode is function (step 3a), operands (3a, then step 3b's operand
+%  rewrite) or frame(Cells) (operands with the frame cells of
+%  docs/perf.md 5a-loads). Metadata is regs_metadata(Setjmp, Impl, Homes, Saves) with a
 %  save slot for every callee-saved register. Checked is the metadata
 %  and map the checker validated: checked(Metadata1, Map). Report is
 %  excluded(setjmp|unsupported) or allocated(Homes, Registers).
@@ -54,7 +55,7 @@ regs_asm(Mode, regs_metadata(Setjmp, Impl, Homes, Saves), Before, Final,
             append(Pre, [label(Impl)|Body1], After)
         ),
         length(Map, NH), length(Used, NR), Report = allocated(NH, NR),
-        (   Analysis0 == none, Mode == operands
+        (   Analysis0 == none, Mode \== function
         ->  body_analysis(Body, Effects, [], Analysis)
         ;   Analysis = Analysis0
         )
@@ -65,13 +66,14 @@ regs_asm(Mode, regs_metadata(Setjmp, Impl, Homes, Saves), Before, Final,
     (   check_regs(Meta, Map, Before, After, Analysis) -> true
     ;   throw(nanofil_error('register home translation check failed'))
     ),
-    (   Mode == operands, Report = allocated(_, _)
+    (   operand_cells(Mode, Cells0), Report = allocated(_, _)
     ->  impl_body(Impl, After, PreA, A),
         (   operand_lives(Analysis, Used, A, Lives) -> true
         ;   throw(nanofil_error('register operand liveness failed'))
         ),
-        operands_rewrite(A, Lives, B),
-        (   check_operands(A, B, Lives) -> true
+        valid_cells(Cells0, A, Cells),
+        operands_rewrite(A, Lives, Cells, B),
+        (   check_operands(A, B, Lives, Cells0) -> true
         ;   throw(nanofil_error('register operand translation check failed'))
         ),
         append(PreA, [label(Impl)|B], Final)
@@ -221,10 +223,16 @@ colour(Index, Owners, Cross, Neighbours, _-D, Colours0, Colours) :-
    Def, Move): its audited effects, the scratch and flags sets it uses
    and defines, and its operand_move/2 reading or none, computed once. */
 
-%! operands_rewrite(+A, +Lives, -B) is det.
-operands_rewrite(A, Lives, B) :-
+% operand_cells(+Mode, -Cells): the frame cells whose loads the rewrite
+% may forward: none in operands mode, the emitter's in frame mode
+% (docs/perf.md, 5a-loads).
+operand_cells(operands, cells([], [])).
+operand_cells(frame(Cells), Cells).
+
+%! operands_rewrite(+A, +Lives, +Cells, -B) is det.
+operands_rewrite(A, Lives, Cells, B) :-
     operand_regions(A, Lives, Regions),
-    maplist(region_rewrite, Regions, Parts),
+    maplist(region_rewrite(Cells), Regions, Parts),
     append(Parts, B).
 
 operand_regions([], [], []) :- !.
@@ -240,8 +248,11 @@ region_lines([L|As], [live(In,_,E)|Ls], Lines, End, Boundary, As1, Ls1) :-
         region_lines(As, Ls, Lines1, End, Boundary, As1, Ls1)
     ).
 
-region_rewrite(region(Lines, End, Boundary), Out) :-
+region_rewrite(Cells, region(Lines0, End, Boundary), Out) :-
     empty_assoc(C0),
+    (   empty_assoc(Cells) -> Lines = Lines0
+    ;   cell_forward(Lines0, Cells, C0, Lines)
+    ),
     forward(Lines, C0, L1),
     dead_moves(L1, End, L2),
     retarget(L2, End, L3),
@@ -250,6 +261,51 @@ region_rewrite(region(Lines, End, Boundary), Out) :-
     append(Ls4, Boundary, Out).
 
 with_effect(L, L-I) :- line_effect(L, E), effect_info(L, E, I).
+
+% cell_forward(+Lines, +Cells, +Held, -Out): a load of a cell that a
+% register still holds whole (Held maps the cell to the register family
+% that loaded or stored it, unchanged since) reads that register
+% instead. forward/3 then propagates the copy like any other.
+cell_forward([], _, _, []).
+cell_forward([L-I|Ls], Cells, H0, Out) :-
+    (   L = ins(mov,S,[mem(D,rbp),reg(Y)]), get_assoc(D, Cells, _),
+        memberchk(S-W, [l-32,q-64]), register(Y, F, W), \+ memberchk(F, [rsp,rbp])
+    ->  (   get_assoc(D, H0, G)
+        ->  (   S == q, G == F -> Emit = [], H = H0
+            ;   register(GN, G, W), L1 = ins(mov,S,[reg(GN),reg(Y)]),
+                with_effect(L1, LE), Emit = [LE], drop_held(F, H0, H)
+            )
+        ;   Emit = [L-I], drop_held(F, H0, H1),
+            ( S == q -> put_assoc(D, H1, F, H) ; H = H1 )
+        )
+    ;   L = ins(mov,q,[reg(X),mem(D,rbp)]), get_assoc(D, Cells, _),
+        register(X, G, 64), \+ memberchk(G, [rsp,rbp])
+    ->  Emit = [L-I], put_assoc(D, H0, G, H)
+    ;   Emit = [L-I], I = inf(effect(_,Ws,_,Ms,_),_,_,_),
+        foldl(drop_written, Ws, H0, H1),
+        foldl(drop_stored, Ms, H1, H)
+    ),
+    append(Emit, Rest, Out),
+    cell_forward(Ls, Cells, H, Rest).
+
+% drop_held(+F, +H0, -H): F changes; no cell is held in it any more.
+drop_held(F, H0, H) :-
+    assoc_to_list(H0, Ps),
+    (   memberchk(_-F, Ps) -> exclude(held_in(F), Ps, Kept), list_to_assoc(Kept, H)
+    ;   H = H0
+    ).
+held_in(F, _-G) :- G == F.
+drop_written(write(F,_), H0, H) :- !, drop_held(F, H0, H).
+drop_written(_, H, H).
+% A store overlapping a cell drops it.
+drop_stored(write(mem(D0,rbp),N), H0, H) :- !,
+    assoc_to_list(H0, Ps),
+    (   member(P, Ps), overlaps(D0, N, P)
+    ->  exclude(overlaps(D0, N), Ps, Kept), list_to_assoc(Kept, H)
+    ;   H = H0
+    ).
+drop_stored(_, H, H).
+overlaps(D0, N, D-_) :- D < D0+N, D0 < D+8.
 
 effect_info(L, E, inf(E, U, D, M)) :-
     extra_use_def(L, E, U, D),

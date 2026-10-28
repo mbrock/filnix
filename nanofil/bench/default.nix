@@ -28,7 +28,8 @@ let
     O-local = "-O --registers=local";
     O-refbranches = "-O --branches=reference";
     O-stack = "-O --registers=stack";
-    O-operands = "-O --registers=operands";
+    O-function = "-O --registers=function";
+    O-cells = "-O --registers=cells";
   };
   chosen =
     if only == "" then

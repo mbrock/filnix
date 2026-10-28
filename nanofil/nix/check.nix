@@ -114,8 +114,8 @@ pkgs.runCommandCC "nanofil-check"
     # item 3, steps 3a and 3b) are the -O default, so the -O suites above
     # run them, validated by amd64_regs_check; here they run without -O,
     # and -O runs function registers alone and the stack reference, so
-    # both older paths stay tested.
-    for mode in "operands:" "function:-O" "stack:-O"; do
+    # both older paths stay tested, and frame cells (5a-loads, opt-in).
+    for mode in "operands:" "function:-O" "stack:-O" "cells:-O"; do
       export NANOFIL_REGISTERS=''${mode%%:*} NANOFIL_OPT=''${mode#*:}
       step "registers $mode difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/branches.ir tests/c/*.c big1.c
       step "registers $mode ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc

@@ -124,9 +124,10 @@ filc_module_asm(Module, Lines) :- filc_module_asm(Module, stack, Lines, _).
 % Emission is emit(Registers, Branches), or just Registers with reference
 % branches. Registers is stack (the reference), local (validated scalar
 % caching), function (validated whole-function register homes,
-% amd64_regs.pl) or operands (function, then validated register
-% operands, docs/perf.md step 3b); Branches is reference or selected (branch selection,
-% below).
+% amd64_regs.pl), operands (function, then validated register
+% operands, docs/perf.md step 3b) or cells (operands, also forwarding
+% frame-word loads, docs/perf.md 5a-loads); Branches is reference or
+% selected (branch selection, below).
 % Reports records each item's caching result, without driver-side state.
 filc_module_asm(Module0, Emission, Lines, Reports) :-
     without_locs(Module0, Module),
@@ -196,7 +197,7 @@ placed_lines(stack, Branches, Func, Item, Lines, stack) :-
     ( setjmp_func(Func) -> B = reference ; B = Branches ),
     item_lines(sel(stack,B),Item,Lines).
 placed_lines(R, _, data(N,L,A,Is), Item, Lines, data(N)) :-
-    memberchk(R, [local,function,operands]),
+    memberchk(R, [local,function,operands,cells]),
     Item = data(N,L,A,Is), item_lines(sel(stack,reference),Item,Lines).
 placed_lines(local, Branches, Func, Item, Lines, function(Name,Report)) :-
     Func = func(Name,_,_,_,_),
@@ -219,7 +220,7 @@ placed_lines(local, Branches, Func, Item, Lines, function(Name,Report)) :-
 % Function mode reserves a save slot for each callee-saved register, so
 % the stream the checker compares with has the same frame.
 placed_lines(Mode, Branches, Func, Item0, Lines, function(Name,Report)) :-
-    memberchk(Mode, [function,operands]),
+    memberchk(Mode, [function,operands,cells]),
     Func = func(Name,_,_,_,_),
     Item0 = abi_function(Name,Lk,Rt,Sig,frame(Plain,Lowers,Aliases),E,B,X,O,Or),
     (   setjmp_func(Func)
@@ -242,8 +243,36 @@ placed_lines(Mode, Branches, Func, Item0, Lines, function(Name,Report)) :-
     append(Homes0, Shadows, Homes),
     findall(save(R,D), ( callee_saved(R), get_assoc(callee_save(R),Slots,Off),
                          D is -Off ), Saves),
-    regs_asm(Mode,regs_metadata(Setjmp,Impl,Homes,Saves),Body,Allocated,_,Report),
+    regs_mode(Mode, Slots, Mode1),
+    regs_asm(Mode1,regs_metadata(Setjmp,Impl,Homes,Saves),Body,Allocated,_,Report),
     append(Allocated,[size(Impl)|Rest],Lines).
+
+% regs_mode(+Mode, +Slots, -Mode1): cells mode is operands mode with the
+% frame cells (docs/perf.md, 5a-loads): the 8-byte words of lowers[],
+% the scalar and pointer pools, phi shadows, thread, aux, retbuf, and
+% stack-aux roots, as cells(Ds, Others) with the other frame ranges
+% (local storage, wide slots, save slots) the checker keeps them apart
+% from. The header words (parent, origin) are never cells.
+regs_mode(cells, Slots, frame(cells(Ds, Others))) :- !,
+    assoc_to_list(Slots, Ps),
+    findall(D, ( member(K-Off, Ps), integer(Off), cell_key(K), D is -Off ), Ds0),
+    sort(Ds0, Ds),
+    findall(D-N, ( member(K-V, Ps), other_range(K, V, D, N) ), Others).
+regs_mode(Mode, _, Mode).
+
+cell_key(lower(_)).
+cell_key(storage(scalar,_)).
+cell_key(storage(pointer,_)).
+cell_key(shadow(_)).
+cell_key(thread).
+cell_key(aux).
+cell_key(retbuf).
+cell_key(stack_aux(_)).
+
+other_range(local(_), local(Payload, Aux, _, Padded), D, N) :-
+    D is -Aux, N is Aux - Payload + Padded.
+other_range(storage(wide,_), Off, D, 16) :- D is -Off.
+other_range(callee_save(_), Off, D, 8) :- D is -Off.
 
 % scalar_homes(+Func, +Aliases, +Slots, -Homes): home(Disp, Classes) for
 % each scalar-pool slot, with the classes of the temporaries sharing it.

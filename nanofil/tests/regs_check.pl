@@ -253,7 +253,67 @@ operands_checker :-
            operand_run(Name, A, B, Expected, same)),
     forall(operand_live_case(Name, A0, Edit),
            ( ob(A0, A), operand_run(Name, A, A, no, Edit) )),
-    saves_case.
+    saves_case,
+    forall(cell_case(Name, Cells, A0, B0, Expected),
+           ( ob(A0, A), ob(B0, B), cell_run(Name, Cells, A, B, Expected) )).
+
+% Frame cells (docs/perf.md, 5a-loads): a load of a cell is a move of
+% its value, which paired stores set and every boundary resets.
+cell_run(Name, Cells, A, B, Expected) :-
+    body_analysis(A, [], An), operand_lives(An, [], A, Lives),
+    ( check_operands(A, B, Lives, Cells) -> Got = yes ; Got = no ),
+    (   Got == Expected -> true
+    ;   throw(error(operands_checker(Name, Expected), operands_checker/0))
+    ).
+
+cell_case(forwarded_load, cells([-16,-8],[]),
+    [ins(mov,q,[reg(r12),mem(-8,rbp)]), ins(mov,q,[mem(-8,rbp),reg(rdx)])],
+    [ins(mov,q,[reg(r12),mem(-8,rbp)]), ins(mov,q,[reg(r12),reg(rdx)])], yes).
+cell_case(not_a_cell, cells([-16],[]),
+    [ins(mov,q,[reg(r12),mem(-8,rbp)]), ins(mov,q,[mem(-8,rbp),reg(rdx)])],
+    [ins(mov,q,[reg(r12),mem(-8,rbp)]), ins(mov,q,[reg(r12),reg(rdx)])], no).
+cell_case(stored_in_between, cells([-8],[]),
+    [ins(mov,q,[reg(r12),mem(-8,rbp)]), ins(mov,q,[reg(r13),mem(-8,rbp)]),
+     ins(mov,q,[mem(-8,rbp),reg(rdx)])],
+    [ins(mov,q,[reg(r12),mem(-8,rbp)]), ins(mov,q,[reg(r13),mem(-8,rbp)]),
+     ins(mov,q,[reg(r12),reg(rdx)])], no).
+cell_case(across_call, cells([-8],[]),
+    [ins(mov,q,[reg(r12),mem(-8,rbp)]), ins(call,none,[sym(f)]),
+     ins(mov,q,[mem(-8,rbp),reg(rdx)])],
+    [ins(mov,q,[reg(r12),mem(-8,rbp)]), ins(call,none,[sym(f)]),
+     ins(mov,q,[reg(r12),reg(rdx)])], no).
+cell_case(across_label, cells([-8],[]),
+    [ins(mov,q,[reg(r12),mem(-8,rbp)]), label(l), ins(mov,q,[mem(-8,rbp),reg(rdx)])],
+    [ins(mov,q,[reg(r12),mem(-8,rbp)]), label(l), ins(mov,q,[reg(r12),reg(rdx)])], no).
+% A 32-bit store keeps the cell's high half; a 32-bit load zero-extends.
+cell_case(movl_store_keeps_high, cells([-8],[]),
+    [ins(mov,q,[reg(r12),mem(-8,rbp)]), ins(mov,l,[reg(r13d),mem(-8,rbp)]),
+     ins(mov,q,[mem(-8,rbp),reg(rdx)])],
+    [ins(mov,q,[reg(r12),mem(-8,rbp)]), ins(mov,l,[reg(r13d),mem(-8,rbp)]),
+     ins(mov,l,[reg(r13d),reg(edx)])], no).
+cell_case(movl_load_after_movl_store, cells([-8],[]),
+    [ins(mov,q,[reg(r12),mem(-8,rbp)]), ins(mov,l,[reg(r13d),mem(-8,rbp)]),
+     ins(mov,l,[mem(-8,rbp),reg(edx)])],
+    [ins(mov,q,[reg(r12),mem(-8,rbp)]), ins(mov,l,[reg(r13d),mem(-8,rbp)]),
+     ins(mov,l,[reg(r13d),reg(edx)])], yes).
+cell_case(byte_store, cells([-8],[]),
+    [ins(mov,q,[reg(r12),mem(-8,rbp)]), ins(mov,b,[reg(r13b),mem(-8,rbp)]),
+     ins(mov,q,[mem(-8,rbp),reg(rdx)])],
+    [ins(mov,q,[reg(r12),mem(-8,rbp)]), ins(mov,b,[reg(r13b),mem(-8,rbp)]),
+     ins(mov,q,[reg(r12),reg(rdx)])], no).
+cell_case(address_taken, cells([-8],[]),
+    [ins(lea,q,[mem(-8,rbp),reg(rsi)]),
+     ins(mov,q,[reg(r12),mem(-8,rbp)]), ins(mov,q,[mem(-8,rbp),reg(rdx)])],
+    [ins(lea,q,[mem(-8,rbp),reg(rsi)]),
+     ins(mov,q,[reg(r12),mem(-8,rbp)]), ins(mov,q,[reg(r12),reg(rdx)])], no).
+cell_case(inside_local, cells([-16],[-32-24]),
+    [ins(mov,q,[reg(r12),mem(-16,rbp)])], [ins(mov,q,[reg(r12),mem(-16,rbp)])], no).
+cell_case(beside_local, cells([-8],[-32-24]),
+    [ins(mov,q,[reg(r12),mem(-8,rbp)])], [ins(mov,q,[reg(r12),mem(-8,rbp)])], yes).
+cell_case(unaligned, cells([-12],[]),
+    [ins(mov,q,[reg(r12),mem(-8,rbp)])], [ins(mov,q,[reg(r12),mem(-8,rbp)])], no).
+cell_case(duplicate, cells([-8,-8],[]),
+    [ins(mov,q,[reg(r12),mem(-8,rbp)])], [ins(mov,q,[reg(r12),mem(-8,rbp)])], no).
 
 % The whole body: a frame, the lines, rax zeroed by a move (xor would
 % read it), leave and ret.

@@ -46,7 +46,7 @@
            allocated_stream/4, home_liveness/4, successors/2, successors/3, rbp_access/3,
            effect_access/3, line_effect/2, body_analysis/4,
            allocatable/1, callee_saved/1, scratch_family/2,
-           check_operands/3, operand_lives/4, operand_move/2,
+           check_operands/3, check_operands/4, valid_cells/3, operand_lives/4, operand_move/2,
            operand_roles/3, boundary_line/2, extra_use_def/4]).
 
 :- use_module(amd64_contract,
@@ -555,36 +555,113 @@ save_move(ins(mov,q,[mem(S,rbp),reg(R)]), Saves) :- memberchk(save(R,S), Saves).
 %  only; boundary lines must be identical, and at each boundary A and B
 %  agree on every register compared there.
 check_operands(A, B, Lives) :-
+    check_operands(A, B, Lives, cells([], [])).
+
+%! check_operands(+A, +B, +Lives, +Cells) is semidet.
+%
+%  As check_operands/3, with frame cells (docs/perf.md, 5a-loads). Cells
+%  is cells(Ds, Others): the rbp displacements of the 8-byte frame words
+%  the emitter lists as cells, and the Disp-Bytes ranges of the other
+%  frame storage (locals, wide and save slots) they must stay apart from.
+%  Stores to cells stay paired lines, so frame memory is the same in A
+%  and B at every instruction; a whole 32- or 64-bit load of a cell into
+%  a general register is a move in its own stream, reading the cell's
+%  symbolic value. The value is shared by A and B, set by paired stores
+%  and reset at every region start. A word whose address a `lea`
+%  computes is not a cell.
+check_operands(A, B, Lives, Cells0) :-
+    valid_cells(Cells0, A, Cells),
     shared_state(S0),
-    operands_walk(A, B, Lives, 0, S0, S0, S0).
+    empty_assoc(None),
+    operands_walk(A, B, Lives, 0, S0, S0, None, env(S0, Cells, None)).
+
+% valid_cells(+Cells0, +A, -Cells): the cells are distinct, 8-aligned and
+% outside every other range; Cells maps those no lea in A addresses.
+valid_cells(cells(Ds, Others), A, Cells) :-
+    msort(Ds, Ds), sort(Ds, Ds),
+    % Distinct multiples of 8 are 8 apart.
+    forall(member(D, Ds), ( integer(D), D < 0, D mod 8 =:= 0 )),
+    forall(( member(D, Ds), member(O-N, Others) ), ( D+8 =< O ; O+N =< D )),
+    findall(E, ( member(ins(lea,_,[M|_]), A), lea_base(M, E) ), Es0), sort(Es0, Es),
+    findall(D-cell, ( member(D, Ds),
+                      \+ ( member(E, Es), E < D+8, D < E+8 ) ), Ps),
+    list_to_assoc(Ps, Cells).
+lea_base(mem(E,rbp), E).
+lea_base(mem(E,rbp,_), E).
 
 % Lines after a ret, ud2 or jmp and before the next boundary are
 % unreachable (state none): they must pair, but nothing is compared.
-operands_walk([], [], [], _, _, _, _) :- !.
-operands_walk([LA|As], Bs, [_|Ls], J, SA, SB, S0) :-
-    operand_move(LA, M), !,
+% CS is the cells' values (cell_value/3), shared by A and B.
+operands_walk([], [], [], _, _, _, _, _) :- !.
+operands_walk([LA|As], Bs, [_|Ls], J, SA, SB, CS, Env) :-
+    stream_move(LA, Env, CS, M), !,
     move_state(M, SA, SA1),
-    operands_walk(As, Bs, Ls, J, SA1, SB, S0).
-operands_walk(As, [LB|Bs], Ls, J, SA, SB, S0) :-
-    operand_move(LB, M), !,
+    operands_walk(As, Bs, Ls, J, SA1, SB, CS, Env).
+operands_walk(As, [LB|Bs], Ls, J, SA, SB, CS, Env) :-
+    stream_move(LB, Env, CS, M), !,
     move_state(M, SB, SB1),
-    operands_walk(As, Bs, Ls, J, SA, SB1, S0).
-operands_walk([LA|As], [LB|Bs], [live(In,Out,EA)|Ls], J, SA, SB, S0) :-
+    operands_walk(As, Bs, Ls, J, SA, SB1, CS, Env).
+operands_walk([LA|As], [LB|Bs], [live(In,Out,EA)|Ls], J, SA, SB, CS, Env) :-
+    Env = env(S0, Cells, None),
     % An identical line has A's effect; line_effect/2 is a function.
     (   LA == LB -> EB = EA ; line_effect(LB, EB) ),
     (   ( boundary_line(LA, EA) ; LA \== LB, boundary_line(LB, EB) )
-    ->  LA == LB,
+    ->  LA == LB, CS1 = None,
         ( SA == none -> true ; region_end(In, SA, SB) ),
         (   no_fallthrough(LA, EA)
         ->  SA1 = none, SB1 = none
         ;   region_start(Out, S0, SA1, SB1)
         )
     ;   SA == none
-    ->  LA = ins(Op,S,_), LB = ins(Op,S,_), SA1 = none, SB1 = none
-    ;   paired(LA, LB, J, SA, SB, SA1, SB1)
+    ->  LA = ins(Op,S,_), LB = ins(Op,S,_), SA1 = none, SB1 = none, CS1 = CS
+    ;   paired(LA, LB, J, SA, SB, SA1, SB1),
+        cell_writes(EA, LA, J, SA, Cells, CS, CS1)
     ),
     J1 is J+1,
-    operands_walk(As, Bs, Ls, J1, SA1, SB1, S0).
+    operands_walk(As, Bs, Ls, J1, SA1, SB1, CS1, Env).
+
+% stream_move(+Line, +Env, +CS, -Move): Line is a move (operand_move/2)
+% or a whole load of a cell into a general register other than rsp or
+% rbp, as a move of the cell's value.
+stream_move(Line, _, _, M) :- operand_move(Line, M), !.
+stream_move(ins(mov,S,[mem(D,rbp),reg(Y)]), env(_, Cells, _), CS, move(F, value(V), W)) :-
+    get_assoc(D, Cells, _),
+    memberchk(S-W, [l-32, q-64]),
+    register(Y, F, W), gpr(F), \+ memberchk(F, [rsp,rbp]),
+    cell_value(D, CS, V).
+
+% cell_value(+D, +CS, -V): the cell's halves, v(Lo, Hi); a cell not
+% written in this region holds its shared start value.
+cell_value(D, CS, V) :-
+    (   get_assoc(D, CS, V0) -> V = V0
+    ;   V = v(in(cell(D),lo,shared), in(cell(D),hi,shared))
+    ).
+
+% cell_writes(+Effect, +Line, +J, +SA0, +Cells, +CS0, -CS): the paired
+% line J writes the same memory in A and B. A whole store of a register
+% or immediate sets the cell from A's source (equal to B's): 64 bits
+% both halves, 32 bits the low half, keeping the high half. Any other
+% write overlapping a cell gives it a fresh shared value.
+cell_writes(effect(_,_,_,Ms,_), Line, J, SA0, Cells, CS0, CS) :-
+    foldl(cell_write(Line, J, SA0, Cells), Ms, CS0, CS).
+
+cell_write(Line, J, SA0, Cells, write(mem(D0,rbp),N), CS0, CS) :- !,
+    findall(C, ( Lo is D0-7, Hi is D0+N-1, between(Lo, Hi, C), get_assoc(C, Cells, _) ), Cs),
+    foldl(cell_store(Line, J, SA0, D0, N), Cs, CS0, CS).
+cell_write(_, _, _, _, _, CS, CS).
+
+cell_store(ins(mov,q,[Src,mem(D,rbp)]), _, SA0, D, 8, D, CS0, CS) :-
+    store_source(Src, 64, SA0, [Lo,Hi]), !,
+    put_assoc(D, CS0, v(Lo,Hi), CS).
+cell_store(ins(mov,l,[Src,mem(D,rbp)]), _, SA0, D, 4, D, CS0, CS) :-
+    store_source(Src, 32, SA0, [Lo]), !,
+    cell_value(D, CS0, v(_,Hi)),
+    put_assoc(D, CS0, v(Lo,Hi), CS).
+cell_store(_, J, _, _, _, C, CS0, CS) :-
+    put_assoc(C, CS0, v(res(J,cell(C),lo), res(J,cell(C),hi)), CS).
+
+store_source(reg(N), W, SA0, V) :- register(N, F, W), gpr(F), read_value(F, W, SA0, V).
+store_source(imm(I), W, _, V) :- integer(I), imm_range(W, I), imm_value(I, W, V).
 
 no_fallthrough(_, effect(_,_,_,_,terminal)).
 no_fallthrough(ins(jmp,_,_), _).
@@ -622,6 +699,10 @@ move_state(move(F, reg(G), 64), st(R0,X,Fl), st(R,X,Fl)) :- !,
     reg_get(G, R0, V), reg_put(F, R0, V, R).
 move_state(move(F, reg(G), 32), st(R0,X,Fl), st(R,X,Fl)) :- !,
     reg_get(G, R0, v(Lo,_)), reg_put(F, R0, v(Lo,const(0)), R).
+move_state(move(F, value(v(Lo,Hi)), 64), st(R0,X,Fl), st(R,X,Fl)) :- !,
+    reg_put(F, R0, v(Lo,Hi), R).
+move_state(move(F, value(v(Lo,_)), 32), st(R0,X,Fl), st(R,X,Fl)) :- !,
+    reg_put(F, R0, v(Lo,const(0)), R).
 move_state(move(F, imm(I), W), st(R0,X,Fl), st(R,X,Fl)) :-
     imm_halves(W, I, Lo, Hi), reg_put(F, R0, v(Lo,Hi), R).
 

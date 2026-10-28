@@ -19,12 +19,13 @@ mode, through the same `nanofil-cc` wrapper the Nix checks use:
 | Mode | nanofil options |
 | --- | --- |
 | `off` | none: the reference backend without the middle end |
-| `O` | `-O` (selected branches, item 2, and function registers, item 3a) |
+| `O` | `-O` (selected branches, item 2, and function registers with register operands, items 3a and 3b) |
 | `O-reuse` | `-O --checks=reuse` ([m7.md](m7.md)) |
 | `O-local` | `-O --registers=local` ([m6.md](m6.md)) |
 | `O-refbranches` | `-O --branches=reference`: `-O` before item 2 became its default |
 | `O-stack` | `-O --registers=stack`: `-O` before item 3a became its default (`--argstr only O,O-stack` builds a subset) |
-| `O-operands` | `-O --registers=operands`: function registers with register operands (item 3, step 3b) |
+| `O-function` | `-O --registers=function`: whole-function register homes alone (item 3, step 3a), `-O` before 3b became its default |
+| `O-cells` | `-O --registers=cells`: `-O` with frame-word loads forwarded too (item 5a-loads, opt-in) |
 
 From the repository root, on swa (or any quiet x86-64 machine with perf):
 
@@ -830,6 +831,45 @@ ones below that apply to loads.
 Dropping stores (the full contract below) is a second step, after
 5a-loads is measured, with the header words excluded and step 3
 reworded to name the stack-overflow panic as the one in-region reader.
+
+#### 5a-loads: result
+
+`--registers=cells` (opt-in; bench mode `O-cells`) is operands mode with
+frame cells. The emitter lists the cells (`regs_mode/3` in
+`filc_amd64.pl`: lowers[], the scalar and pointer pools, phi shadows,
+thread, aux, retbuf and stack-aux roots) and the other frame ranges;
+`check_operands/4` keeps stores paired and treats whole 32- and 64-bit
+cell loads as moves of the cell's value, reset at every boundary. The
+rewrite forwards a load to the register that still holds the cell
+(`cell_forward/4`), then 3b's passes propagate the copy and delete it
+where dead. 13 `cell_case` fixtures; each of 9 planted checker bugs
+fails one. Static frame loads drop 16–35% on `lvm.i`, `decompress.i`,
+`deflate.i` and `lz4hc.i`; the backend is 2–4% slower than operands
+mode (a first version scanned the body per cell for `lea`s and was
++90% on `decompress.i`).
+
+Gate after 3c (7 trials, cpu 6), ratio to filcc -O2, time (instructions):
+
+| Workload | `O` | `O-cells` |
+| --- | --- | --- |
+| zlib -6 | 2.92 (4.61) 2.90..2.95 | 2.60 (4.36) 2.58..2.62 |
+| zlib -d | 2.14 (3.61) 2.07..2.18 | 2.07 (3.48) 1.95..2.09 |
+| bzip2 -9 | 2.43 (3.03) 2.42..2.43 | 2.14 (2.81) 2.13..2.15 |
+| bzip2 -d | 4.12 (3.67) 4.11..4.13 | 3.69 (3.49) 3.67..3.70 |
+| lz4 -1 | 3.42 (22.07) | 3.44 (21.97) |
+| lz4 -9 | 4.32 (5.01) | 4.04 (4.90) 4.02..4.95 |
+| lz4 -d | 5.23 (16.86) | 5.25 (16.80) |
+| lua int | 3.62 (3.04) 3.51..3.88 | 3.46 (2.94) 3.33..3.46 |
+| lua tab | 3.48 (2.96) 3.35..3.48 | 3.25 (2.83) 3.15..3.29 |
+| lua str | 1.61 (1.79) | 1.57 (1.74) |
+| sqlite | 2.28 (2.26) 2.27..2.30 | 2.14 (2.17) 2.14..2.16 |
+| geomean | 3.06 (4.42) | 2.89 (4.26) |
+
+Time improves more than instructions (−5.6% against −3.6%): the loads
+removed were store-to-load forwards on the critical path. lz4 -1 and
+-d are runtime-dominated (small `memcpy`, item 7) and unchanged. The
+3c column here is `O` against the previous gate's `O-operands`: lz4 -9
+5.50 (5.55) → 4.32 (5.01), zlib -d 2.47 → 2.14.
 
 #### 5a, full: frame words in the region checker (second step)
 
