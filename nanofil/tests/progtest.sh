@@ -12,7 +12,7 @@
 # wrong one still works through the generic entries, so only this sees it.
 # A "// cflags: ..." line passes those flags to clang, and nanofil
 # compiles clang's preprocessing with them, as nanofil-cc does (with
-# NANOFIL_STD=c23 for -std=c23 or gnu23). NANOFIL_OPT=-O turns on nanofil's
+# NANOFIL_STD=c23 for -std=c23 or gnu23, gnu89 for C90 modes). NANOFIL_OPT=-O turns on nanofil's
 # middle end.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -68,6 +68,7 @@ for f in "$@"; do
   read -r -a cflags <<<"$(sed -n 's|^// cflags: ||p' "$f")"
   input=$f std=c17
   if [[ " ${cflags[*]} " =~ \ -std=(c|gnu)(23|2x)\  ]]; then std=c23; fi
+  if [[ " ${cflags[*]} " =~ \ (-std=(c|gnu)(89|90)|-ansi|-fgnu89-inline)\  ]]; then std=gnu89; fi
   libs=()
   outcome=reference-error
   reference_failed=0

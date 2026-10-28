@@ -287,9 +287,9 @@ c_file_tokens(File, Tokens) :-
         pp_profile(Clang, Profile),
         pp_file(File, Profile, Tokens0)
     ),
-    (   getenv('NANOFIL_STD', Std), Std \== c17
+    (   getenv('NANOFIL_STD', Std), Std \== c17, Std \== gnu89
     ->  (   Std == c23 -> c23_tokens(Tokens0, Tokens)
-        ;   throw(nanofil_error('NANOFIL_STD must be c17 or c23'))
+        ;   throw(nanofil_error('NANOFIL_STD must be c17, c23 or gnu89'))
         )
     ;   Tokens = Tokens0
     ).

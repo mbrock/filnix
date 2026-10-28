@@ -230,10 +230,15 @@ external_inline_declaration(Items, Name) :-
 % GNU inline reverses the C99 rule: an extern inline body is never the
 % external definition, while a plain inline body is. The parser retains
 % both spellings in the balanced tokens of specifier and suffix attrs.
+% GNU89 mode (NANOFIL_STD=gnu89: -std=c90, gnu90 or -fgnu89-inline,
+% where clang predefines __GNUC_GNU_INLINE__) gives every inline body
+% the GNU rule, as glibc's extern __inline atoi relies on.
 external_inline_body(Specs, Storage, Name, ExternalNames) :-
-    (   member(attr([group(Attrs)]), Specs),
-        member(id(Attr), Attrs),
-        memberchk(Attr, [gnu_inline, '__gnu_inline__'])
+    (   (   getenv('NANOFIL_STD', gnu89)
+        ;   member(attr([group(Attrs)]), Specs),
+            member(id(Attr), Attrs),
+            memberchk(Attr, [gnu_inline, '__gnu_inline__'])
+        )
     ->  Storage \== extern
     ;   memberchk(Name, ExternalNames)
     ).

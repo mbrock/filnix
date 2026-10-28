@@ -2,7 +2,8 @@
 # of one .c file) is preprocessed by filcc with the same flags, compiled
 # by nanofil (with $NANOFIL_OPT, e.g. -O) and assembled by GNU as, and
 # the object's name is appended to $NANOFIL_LOG; -std=c23 or gnu23 also
-# sets NANOFIL_STD=c23, so nanofil reads C23's keywords; -fno-builtin,
+# sets NANOFIL_STD=c23, so nanofil reads C23's keywords, and C90 modes or
+# -fgnu89-inline set NANOFIL_STD=gnu89, for GNU inline semantics; -fno-builtin,
 # -fno-builtin-memcpy, -fno-builtin-memmove and -ffreestanding keep every
 # memcpy and memmove a call (--memcpy=call); -fno-inline and -O0 select
 # --inline=none. __SIZEOF_INT128__ is not defined, since nanofil
@@ -36,6 +37,9 @@ pkgs.writeShellScript "nanofil-cc" ''
       -c) compile=1 ;;
       -o) out=$2; shift ;;
       -std=c23|-std=gnu23|-std=c2x|-std=gnu2x) export NANOFIL_STD=c23; args+=("$1") ;;
+      -std=c89|-std=c90|-std=gnu89|-std=gnu90|-std=iso9899:1990|-std=iso9899:199409|-ansi|-fgnu89-inline)
+        export NANOFIL_STD=gnu89; args+=("$1") ;;
+      -std=*) unset NANOFIL_STD; args+=("$1") ;;
       -fno-builtin|-fno-builtin-memcpy|-fno-builtin-memmove|-ffreestanding)
         copies=--memcpy=call; args+=("$1") ;;
       -fno-inline|-O0) inline=--inline=none; args+=("$1") ;;
