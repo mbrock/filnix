@@ -504,6 +504,15 @@ operand_case(sse_keeps_defined,
     [ins(cmp,q,[reg(r12),reg(rbx)]), ins(div,sd,[reg(xmm1),reg(xmm0)]), ins(sete,none,[reg(al)]),
      ins(movzb,l,[reg(al),reg(eax)]), ins(mov,q,[reg(rax),reg(r13)])], yes).
 
+% A fence pairs with itself; a copy forwarded across it is accepted, a
+% fence moved past a store is not.
+operand_case(across_fence,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(mfence,none,[]), ins(add,q,[reg(rax),reg(rbx)])],
+    [ins(mfence,none,[]), ins(add,q,[reg(r12),reg(rbx)])], yes).
+operand_case(fence_moved,
+    [ins(mov,q,[reg(r12),mem(-8,rbp)]), ins(mfence,none,[])],
+    [ins(mfence,none,[]), ins(mov,q,[reg(r12),mem(-8,rbp)])], no).
+
 % Whole bodies: ret uses rax (ob/2 would write it first).
 operand_raw_case(ret_uses_rax,
     [ins(push,q,[reg(rbp)]), ins(mov,q,[reg(rsp),reg(rbp)]), ins(mov,q,[reg(r12),reg(rax)]),

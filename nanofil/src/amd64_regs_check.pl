@@ -669,6 +669,8 @@ operand_roles(neg, S, [srcdst(W)]) :- move_bits(S, W).
 operand_roles(Op, S, [src(8), srcdst(W)]) :- memberchk(Op, [shl,shr,sar]), move_bits(S, W).
 operand_roles(Op, none, [dst(8)]) :- atom_concat(set, _, Op).
 operand_roles(cltd, none, []).
+% A fence pairs with itself, in its place among the memory accesses.
+operand_roles(mfence, none, []).
 operand_roles(cqto, none, []).
 operand_roles(Op, S, [src(W)]) :- memberchk(Op, [div,idiv]), move_bits(S, W).
 operand_roles(Op, none, [src(_), dst(_)]) :- memberchk(Op, [movd,movq]).
