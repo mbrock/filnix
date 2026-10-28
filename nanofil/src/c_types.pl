@@ -1926,6 +1926,10 @@ folded(val(T0, cast(_, XV)), Env, V) :-                     % 6.5.4p5
     unqualified(T0, T), arithmetic_type(T),
     operand_value(XV, Env, V0, From),
     const_convert(V0, From, T, V).
+folded(val(T0, cast(_, XV)), Env, V) :-                     % 6.6p10
+    unqualified(T0, T), int_type(T),
+    constant_address(XV, Env, A),
+    const_convert(A, ulong, T, V).
 folded(val(_, sizeof(type(Specs, Decl))), Env0, V) :- !,    % 6.5.3.4p2
     type_name_type(type(Specs, Decl), T, Env0, Env),
     catch(type_size_align(T, Env, V, _), bad(_), fail).
@@ -1955,6 +1959,55 @@ constant_unary(T, Op, A, V) :-
        ( Op == plus -> V = A ; Op == neg -> ieee:ieee_neg(K, A, V) ; fail )
     ; unary_arith(Op, A, R), convert_int(R, T, V)
     ).
+
+doc(constant_address(+XP, +Env, -A), semidet, [
+    XP: "a pointer value tree",
+    Env: "the scope",
+    A: "the address it is, when it is built from an integer constant",
+    "An integer constant cast to a pointer, moved by integer constants,",
+    "and then a member or element of what it points to, is the address",
+    "A, so a cast of it to an integer folds: offsetof's old spelling",
+    "(size_t)&((T *)0)->m, and gperf's string pools. clang and GCC fold",
+    "these in initializers and case labels (6.6p10 allows other forms of",
+    "constant expression); nothing is dereferenced.",
+    cites('C11 6.6p10'),
+    cites('C11 6.5.6p8'),
+    example(( empty_env(E),
+              constant_address(val(ptr(char), bin(add, val(ptr(char), cast(t, val(int, int(0)))),
+                                                   val(int, int(4)))), E, A) ),
+            A = 4),
+    example(( empty_env(E),
+              constant_address(val(ptr(int), addr(obj(int, deref(
+                  val(ptr(int), bin(add, val(ptr(int), cast(t, val(int, int(16)))),
+                                    val(int, int(2)))))))), E, A) ),
+            A = 24),
+    fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(int)), E0, E),
+            constant_address(val(ptr(int), cast(t, obj(ptr(int), id(p)))), E, _) ))
+]).
+constant_address(val(ptr(_), cast(_, X)), Env, A) :-
+    (   X = val(ptr(_), _) -> constant_address(X, Env, A)
+    ;   operand_value(X, Env, A, From), int_type(From)
+    ).
+constant_address(val(ptr(T), bin(Op, XA, XB)), Env, A) :-
+    memberchk(Op-S, [add-1, sub-(-1)]),
+    (   constant_address(XA, Env, A0), XI = XB
+    ;   Op == add, constant_address(XB, Env, A0), XI = XA
+    ),
+    operand_value(XI, Env, I, IT), int_type(IT),
+    unqualified(T, T1),
+    (   T1 == void -> Size = 1
+    ;   catch(type_size_align(T1, Env, Size, _), bad(_), fail)
+    ),
+    A is A0 + S * I * Size.
+constant_address(val(ptr(_), addr(L)), Env, A) :- lvalue_address(L, Env, A).
+constant_address(val(ptr(_), decay(L)), Env, A) :- lvalue_address(L, Env, A).
+
+lvalue_address(obj(_, deref(XP)), Env, A) :- constant_address(XP, Env, A).
+lvalue_address(obj(_, member(L, F)), Env, A) :-
+    L = obj(SU0, _), unqualified(SU0, SU),
+    lvalue_address(L, Env, A0),
+    catch(member_type_offset(SU, F, Env, _, Off), bad(_), fail),
+    A is A0 + Off.
 
 % offset_path(+Path, +Type, +Env, +Off0, -Off): offsetof's member path.
 offset_path([], _, _, Off, Off).
