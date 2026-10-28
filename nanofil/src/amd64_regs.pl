@@ -36,6 +36,20 @@
 %  save slot for every callee-saved register. Checked is the metadata
 %  and map the checker validated: checked(Metadata1, Map). Report is
 %  excluded(setjmp|unsupported) or allocated(Homes, Registers).
+regs_asm(map, regs_metadata(Setjmp, Impl, Homes, _), Before, Before,
+         checked(none, Map), map) :- !,
+    % Map mode only proposes the map, for a layout choice (temps mode's
+    % first lowering): its stream is never emitted, so neither the
+    % preflight nor the checker runs. A body the real run would exclude
+    % still gets one; the run on the final layout excludes it.
+    (   Setjmp \== true, impl_body(Impl, Before, _, Body0),
+        maplist(line_effect, Body0, Effects0),
+        home_lines(Body0, Effects0, Body, Effects),
+        allocation(Body, Effects, Homes, Map, _)
+    ->  true
+    ;   Map = []
+    ).
+
 regs_asm(Mode, regs_metadata(Setjmp, Impl, Homes, Saves), Before, Final,
          checked(Meta, Map), Report) :-
     empty_assoc(None),
@@ -57,7 +71,7 @@ regs_asm(Mode, regs_metadata(Setjmp, Impl, Homes, Saves), Before, Final,
             append(Pre, [label(Impl)|Body1], After)
         ),
         length(Map, NH), length(Used, NR), Report = allocated(NH, NR),
-        (   Analysis0 == none, Mode \== function, Mode \== map
+        (   Analysis0 == none, Mode \== function
         ->  body_analysis(Body, Effects, [], Analysis)
         ;   Analysis = Analysis0
         )
@@ -65,10 +79,7 @@ regs_asm(Mode, regs_metadata(Setjmp, Impl, Homes, Saves), Before, Final,
         Analysis = none
     ),
     Meta = regs_metadata(Setjmp, Impl, Homes, Used),
-    % Map mode only proposes the map, for a layout choice (temps mode's
-    % first lowering); its stream is never emitted, so nothing checks it.
-    (   Mode == map -> true
-    ;   check_regs(Meta, Map, Before, After, Analysis) -> true
+    (   check_regs(Meta, Map, Before, After, Analysis) -> true
     ;   throw(nanofil_error('register home translation check failed'))
     ),
     (   operand_cells(Mode, Cells0), Report = allocated(_, _)
@@ -85,15 +96,32 @@ regs_asm(Mode, regs_metadata(Setjmp, Impl, Homes, Saves), Before, Final,
     ;   Final = After
     ).
 
+% home_lines(+Body0, +Effects0, -Body, -Effects): the lines the map
+% depends on: labels, control flow, calls, and lines with a memory
+% operand or a lea. A line left out falls through and touches no home,
+% so home liveness, interference, loop depths and references are the
+% same as on the whole body; only scratch and flags liveness, which the
+% allocation masks off, differ.
+home_lines([], [], [], []).
+home_lines([L|Ls], [E|Es], Body, Effects) :-
+    E = effect(_,_,_,Ms,Flow),
+    (   Ms == [], memberchk(Flow, [next,frame,directive]),
+        L \= ins(lea,_,_), L \= ins(call,_,_)
+    ->  Body = Body1, Effects = Effects1
+    ;   Body = [L|Body1], Effects = [E|Effects1]
+    ),
+    home_lines(Ls, Es, Body1, Effects1).
+
 % allocation(+Body, +Effects, +Homes, -Map, -Analysis): Map assigns
 % candidate homes registers. Analysis is body_analysis/4's result for
 % the candidates (a superset of Map's homes), or none when there are none.
 allocation(Body, Effects, Homes, Map, Analysis) :-
     findall(D, (member(home(D,Ks), Homes), Ks = [_|_],
                 forall(member(K,Ks), memberchk(K,[w,l]))), Scalar),
-    list_to_assoc_keys(Scalar, ScalarSet),
+    findall(W-H, ( member(H, Scalar), W is H >> 3 ), WHs0),
+    keysort(WHs0, WHs), group_pairs_by_key(WHs, Words), list_to_assoc(Words, ScalarSet),
     depths(Body, Depths),
-    foldl(home_refs(ScalarSet), Body, Depths, [], Refs),
+    foldl(home_refs(ScalarSet), Body, Effects, Depths, [], Refs),
     keysort(Refs, Sorted), group_pairs_by_key(Sorted, Groups),
     findall(D-W, ( member(D-Ws, Groups), \+ memberchk(bad, Ws),
                    sum_list(Ws, W) ), Weighted),
@@ -118,29 +146,35 @@ allocation(Body, Effects, Homes, Map, Analysis) :-
         assoc_to_list(Colours, Map)
     ).
 
-list_to_assoc_keys(Ks, A) :-
-    findall(K-true, member(K, Ks), Ps), list_to_assoc(Ps, A).
-
 numbered([], _, []).
 numbered([H|Hs], K, [H-K|Ps]) :- K1 is K+1, numbered(Hs, K1, Ps).
 
-% home_refs(+Scalar, +Line, +Depth, +Refs0, -Refs): each reference to a
-% scalar home gives Home-Weight, or Home-bad when the line is not a whole
-% move of exactly that home.
-home_refs(Scalar, Line, Depth, Refs0, Refs) :-
-    findall(H-Ref, line_home_ref(Scalar, Line, Depth, H, Ref), New),
-    append(New, Refs0, Refs).
+% home_refs(+Scalar, +Line, +Effect, +Depth, +Refs0, -Refs): each
+% reference to a scalar home gives Home-Weight, or Home-bad when the line
+% is not a whole move of exactly that home.
+home_refs(Scalar, Line, effect(_,_,_,Ms,_), Depth, Refs0, Refs) :-
+    (   Ms == [], Line \= ins(lea,_,_)
+    ->  Refs = Refs0
+    ;   findall(H-Ref, line_home_ref(Scalar, Line, Ms, Depth, H, Ref), New),
+        append(New, Refs0, Refs)
+    ).
 
-line_home_ref(Scalar, Line, Depth, H, Ref) :-
-    rbp_access(Line, D, N),
-    H0 is D-7, H1 is D+N-1, between(H0, H1, H), get_assoc(H, Scalar, _),
+% scalar_home(+Words, +H0, +H1, -H): a scalar home H within H0..H1;
+% Words buckets the homes by 8-byte word.
+scalar_home(Words, H0, H1, H) :-
+    W0 is H0 >> 3, W1 is H1 >> 3, between(W0, W1, W),
+    get_assoc(W, Words, Hs), member(H, Hs), H >= H0, H =< H1.
+
+line_home_ref(Scalar, Line, Ms, Depth, H, Ref) :-
+    effect_access(Ms, D, N),
+    H0 is D-7, H1 is D+N-1, scalar_home(Scalar, H0, H1, H),
     (   Line \= ins(lea,_,_), H =:= D, single(H, Map),
         once(substitute(Line, Map, _))
     ->  Ref is 1 << (3 * min(Depth, 5))
     ;   Ref = bad
     ).
-line_home_ref(Scalar, ins(lea,_,[mem(D,rbp),_]), _, H, bad) :-
-    H0 is D-7, between(H0, D, H), get_assoc(H, Scalar, _).
+line_home_ref(Scalar, ins(lea,_,[mem(D,rbp),_]), _, _, H, bad) :-
+    H0 is D-7, scalar_home(Scalar, H0, D, H).
 
 single(H, Map) :- list_to_assoc([H-rbx], Map).
 

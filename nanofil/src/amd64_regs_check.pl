@@ -327,7 +327,8 @@ body_analysis(Body, Effects, Homes,
     successors(Body, Effects, Succs),
     numbered(Homes, 0, Pairs), list_to_assoc(Pairs, Index),
     length(Homes, NH), Base is 2*NH,
-    maplist(line_use_def(Index, Base), Body, Effects, UDs),
+    home_lookup(Pairs, Lookup),
+    maplist(line_use_def(Lookup, Base), Body, Effects, UDs),
     lines(Body, 0, Succs, UDs, Lines),
     blocks(Lines, Blocks),
     findall(S-B, nth0(B, Blocks, block(S,_,_)), Starts), list_to_assoc(Starts, Ids),
@@ -400,9 +401,9 @@ line_outs([line(_,_,_,ud(U,D))|Ls], Out, Acc, Outs) :-
 
 % Uses and definitions of home halves by one line. A write covering a
 % whole half defines it; a partial write reads it too.
-line_use_def(Index, Base, Line, Effect, ud(Use, Def)) :-
+line_use_def(Lookup, Base, Line, Effect, ud(Use, Def)) :-
     Effect = effect(_,_,_,Ms,_),
-    foldl(memory_use_def(Index), Ms, 0-0, Use0-Def0),
+    foldl(memory_use_def(Lookup), Ms, 0-0, Use0-Def0),
     extra_use_def(Line, Effect, EU, ED),
     Use is Use0 \/ (EU << Base), Def1 is Def0 \/ (ED << Base),
     Def is Def1 /\ \ Use.
@@ -444,24 +445,52 @@ write_bits(write(F,W), U0-D0, U-D) :-
     ;   U = U0, D = D0
     ).
 
-memory_use_def(Index, read(mem(D,rbp),N), U0-D0, U-D0) :- !,
-    halves(Index, D, N, _, Touched), U is U0 \/ Touched.
-memory_use_def(Index, write(mem(D,rbp),N), U0-D0, U-Df) :- !,
-    halves(Index, D, N, Covered, Touched),
+% home_lookup(+Pairs, -Lookup): the homes' offset-to-number pairs
+% bucketed by 8-byte word, so halves/5 looks up the two or three words
+% an access can overlap rather than each of its byte offsets.
+home_lookup(Pairs, words(Words)) :-
+    findall(W-(D-K), ( member(D-K, Pairs), W is D >> 3 ), WPs0),
+    keysort(WPs0, WPs), group_pairs_by_key(WPs, Grouped),
+    list_to_assoc(Grouped, Words).
+
+memory_use_def(Lookup, read(mem(D,rbp),N), U0-D0, U-D0) :- !,
+    halves(Lookup, D, N, _, Touched), U is U0 \/ Touched.
+memory_use_def(Lookup, write(mem(D,rbp),N), U0-D0, U-Df) :- !,
+    halves(Lookup, D, N, Covered, Touched),
     U is U0 \/ (Touched /\ \ Covered), Df is D0 \/ Covered.
 memory_use_def(_, _, UD, UD).
 
-% halves(+Index, +D, +N, -Covered, -Touched): bitsets of the home halves
+% halves(+Lookup, +D, +N, -Covered, -Touched): bitsets of the home halves
 % that bytes [D, D+N) cover entirely and touch at all.
-halves(Index, D, N, Covered, Touched) :-
-    E is D+N, H0 is D-7, H1 is E-1,
-    findall(B-C, ( between(H0, H1, H), get_assoc(H, Index, K),
-                   between(0, 1, Half), S is H + 4*Half, S < E, D < S+4,
-                   B is 1 << (2*K+Half),
-                   ( D =< S, S+4 =< E -> C = B ; C = 0 ) ), BCs),
-    foldl(or_pair, BCs, 0-0, Touched-Covered).
+halves(words(Words), D, N, Covered, Touched) :-
+    E is D+N, W0 is (D-7) >> 3, W1 is (E-1) >> 3,
+    halves_words(W0, W1, Words, D, E, 0, Touched, 0, Covered).
+halves_words(W, W1, Words, D, E, T0, T, C0, C) :-
+    (   W > W1
+    ->  T = T0, C = C0
+    ;   (   get_assoc(W, Words, Hs)
+        ->  foldl(home_halves(D, E), Hs, T0-C0, T1-C1)
+        ;   T1 = T0, C1 = C0
+        ),
+        W2 is W+1,
+        halves_words(W2, W1, Words, D, E, T1, T, C1, C)
+    ).
 
-or_pair(B-C, T0-C0, T-C1) :- T is T0 \/ B, C1 is C0 \/ C.
+% A home at H overlaps [D, E) when H is within D-7..E-1.
+home_halves(D, E, H-K, T0-C0, T-C) :-
+    (   H >= D-7, H < E
+    ->  half_bits(0, H, K, D, E, T0, T1, C0, C1),
+        half_bits(1, H, K, D, E, T1, T, C1, C)
+    ;   T = T0, C = C0
+    ).
+
+half_bits(Half, H, K, D, E, T0, T, C0, C) :-
+    S is H + 4*Half,
+    (   S < E, D < S+4
+    ->  B is 1 << (2*K+Half), T is T0 \/ B,
+        ( D =< S, S+4 =< E -> C is C0 \/ B ; C = C0 )
+    ;   T = T0, C = C0
+    ).
 
 %% The obligations
 

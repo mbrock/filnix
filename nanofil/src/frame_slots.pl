@@ -35,14 +35,42 @@ temp_slots(Params, Blocks, Temps, Aliases, NS, NP, NW) :-
 
 % temp_slots(+Pools, +Params, +Blocks, +Temps, -Aliases, -ScalarCount,
 % -PtrCount, -WideCount, -FloatCount): as temp_slots/7, with Pools shared,
-% split, own or own(Names). Split gives s and d temporaries a float pool of their
-% own, so no scalar slot holds both an integer and a float temporary:
-% register allocation (docs/perf.md item 3) takes only w/l homes. Own is
+% split, own, own(Groups) or own(Groups, Ranges). Split gives s and d
+% temporaries a float pool of their own, so no scalar slot holds both an
+% integer and a float temporary: register allocation (docs/perf.md item
+% 3) takes only w/l homes. Own is
 % split with no reuse of scalar slots: each w/l temporary has its own
 % home, so a home is one live range (docs/perf.md 3d). Own(Groups),
 % with Groups a list of Temporary-Key pairs, pools each key's w/l
 % temporaries among themselves, as split pools them; key frame first.
+% Own(Groups, Ranges) is own(Groups) that binds Ranges to the live
+% ranges, or takes them when Ranges is bound (temp_ranges/6).
 temp_slots(Pools, Params, Blocks, Temps, Aliases, NS, NP, NW, NF) :-
+    (   Pools = own(_, Ranges), nonvar(Ranges)
+    ->  Ranges = ranges(Wides, Intervals)
+    ;   temp_ranges(Pools, Params, Blocks, Temps, Wides, Intervals),
+        ( Pools = own(_, Ranges) -> Ranges = ranges(Wides, Intervals) ; true )
+    ),
+    own_groups(Pools, Groups),
+    % The frame group takes the first scalar slots, near %rbp, so the
+    % homes that stay in the frame sit together; each other group's
+    % temporaries share slots among themselves, and ungrouped ones
+    % (own) have homes of their own.
+    partition(frame_range(Groups), Intervals, Frame, Rest0),
+    allocate(Frame, all, st([]-0, []-0, []-0), St1, Pairs, Pairs1),
+    group_ranges(Rest0, Groups, Grouped, Owns),
+    foldl(group_allocate, Grouped, St1-Pairs1, St2-Pairs2),
+    allocate(Owns, own, St2, st(_-NS, _-NP, _-NF), Pairs2, WidePairs),
+    foldl(wide_slot, Wides, []-0-WidePairs, _-NW-[]),
+    % Each temporary has one interval, so the pairs have distinct keys
+    % and make the assoc at once, not by an insertion per temporary.
+    list_to_assoc(Pairs, Aliases).
+
+% temp_ranges(+Pools, +Params, +Blocks, +Temps, -Wides, -Intervals): each
+% temporary's live range, wide ones apart. They do not depend on the
+% scalar groups, so own(Groups, Ranges) lowers again with the ranges of
+% an earlier lowering (temps mode, docs/perf.md 3d).
+temp_ranges(Pools, Params, Blocks, Temps, Wides, Intervals) :-
     temp_liveness(Blocks, In, Out),
     findall(N, member(param(_, tmp(N)), Params), ParamNs),
     block_ranges(Blocks, In, Out, [], 1, End, Touches1, Touches2),
@@ -69,27 +97,14 @@ temp_slots(Pools, Params, Blocks, Temps, Aliases, NS, NP, NW, NF) :-
     reverse(Touches, Backwards), first_touches(in, Backwards, Hi),
     maplist(temp_interval(Pools, Lo, Hi), Temps, Intervals0),
     sort(Intervals0, Intervals1),
-    partition(wide_range, Intervals1, Wides, Intervals),
-    % Each temporary has one interval, so the pairs have distinct keys
-    % and make the assoc at once, not by an insertion per temporary.
-    own_groups(Pools, Groups),
-    % The frame group takes the first scalar slots, near %rbp, so the
-    % homes that stay in the frame sit together; each other group's
-    % temporaries share slots among themselves, and ungrouped ones
-    % (own) have homes of their own.
-    partition(frame_range(Groups), Intervals, Frame, Rest0),
-    allocate(Frame, all, st([]-0, []-0, []-0), St1, Pairs, Pairs1),
-    group_ranges(Rest0, Groups, Grouped, Owns),
-    foldl(group_allocate, Grouped, St1-Pairs1, St2-Pairs2),
-    allocate(Owns, own, St2, st(_-NS, _-NP, _-NF), Pairs2, WidePairs),
-    foldl(wide_slot, Wides, []-0-WidePairs, _-NW-[]),
-    list_to_assoc(Pairs, Aliases).
+    partition(wide_range, Intervals1, Wides, Intervals).
 
 % own_groups(+Pools, -Groups): all when every scalar temporary is
 % pooled (shared, split), else an assoc from temporary to its group
 % (own(Pairs); own has no groups, so every scalar home is its own).
 own_groups(own, G) :- !, empty_assoc(G).
 own_groups(own(Ps), G) :- !, list_to_assoc(Ps, G).
+own_groups(own(Ps, _), G) :- !, list_to_assoc(Ps, G).
 own_groups(_, all).
 
 % Everything but grouped or own scalar temporaries is in the frame group.
@@ -175,6 +190,8 @@ class_pool(s, own, float).
 class_pool(d, own, float).
 class_pool(s, own(_), float).
 class_pool(d, own(_), float).
+class_pool(s, own(_,_), float).
+class_pool(d, own(_,_), float).
 class_pool(x, _, wide).
 
 % The pools' states st(Scalar, Pointer, Float), each Slots-Count.

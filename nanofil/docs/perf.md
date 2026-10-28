@@ -2193,11 +2193,54 @@ The instruction drop matches or exceeds the webs estimate (lz4 -9:
   lowering costs a backend pass on each function above the threshold.
   An explicit collection before every second lowering cost 4×, so it
   is done only for functions with more than 1024 homes.
-- *Memory.* Peak RSS 2.39 GB against 1.46 GB for cells, at every
-  threshold tried (0, 16, 256), and 2.26 GB with one lowering. So it
-  comes with own homes themselves, most likely the first lowering's
-  liveness bitsets over thousands of homes in SQLite's largest
-  functions; not measured further.
+
+  Then three cuts, each leaving every output byte-identical (the
+  snapshot's modes, `sqlite3.c` in cells and temps). They are measured
+  in `perf stat` user instructions, because user time on this compile
+  varies by up to 8% between identical runs, and instruction counts by
+  under 1%:
+
+  1. Map mode runs only the allocation: no preflight, allocated stream,
+     successors or check, since its stream is dropped. It also analyses
+     only the lines a home can depend on: labels, control flow, calls,
+     `lea` and lines with a memory operand. Every other line falls
+     through and touches no home, so home liveness, interference, loop
+     depths and references are unchanged; only the scratch and flags
+     bits differ, and the allocation masks them off.
+  2. The second lowering reuses the first's fused blocks and live
+     ranges (`temp_slots/9` with pools `own(Groups, Ranges)`). The groups
+     change only which slots the ranges share, and building the ranges
+     was 6.3 s of the 7.0 s of frame layout.
+  3. `body_analysis` and the allocator's references find the homes an
+     access overlaps by 8-byte word (`halves/5`), not by an assoc lookup
+     per byte offset. This is shared code, so cells gains too.
+
+  | `sqlite3.c -O` | instructions | user (pinned, alone) |
+  | --- | --: | --: |
+  | cells at `77c1c56` | 1,749G | 106.5 s |
+  | temps at `77c1c56` | 2,320G | 138.3 s |
+  | cells now | 1,655G | 107 s |
+  | temps now | 1,954G | 125 s |
+
+  Temps is now 1.18× cells by instructions (1.17× by time), and 1.12×
+  the cells compile at the start of this work. What remains is temps'
+  own: the map pass, about 16 s (selecting the own lowering 3.2 s, line
+  effects 1.4 s, the allocation 11 s), and the second lowering, 0.5 s.
+  The map pass's cost is spread over all 1374 two-lowering functions
+  (`sqlite3VdbeExec` is 2.3 s; the largest seven are 4.7 of 22 s). So
+  the threshold is not the lever. Skipping the second lowering when it
+  could save at most 16 homes against the split pools gave 1,977G
+  against 1,986G at the time; thresholds of 24 and 32 homes gave 1,956G
+  and 1,938G.
+- *Memory.* With the 4 GB stack limit the `sqlite3.c` builds above
+  use, peak RSS is 2.28–2.39 GB for temps against 1.46 GB for cells.
+  (After cut 3, cells reads 1.83 GB with the same output and fewer
+  instructions.) Under the default 1 GB limit, which the Nix checks
+  use, cells at `77c1c56`, cells now and temps all peak at 2.28 GB and
+  finish. So the difference is how far SWI lets its stacks grow between
+  collections, not live state temps would have to re-key: garbage
+  collection takes 7.1 s in temps against 6.5 s in cells. Temps fits the
+  default stack.
 - *Trust.* Nothing new is trusted. The map-only first pass is a layout
   choice whose lines are never emitted.
 
@@ -2211,6 +2254,57 @@ What remains for 3d (webs with a new checker) is the part temps cannot
 reach without the frame growth: functions where pressure leaves many
 homes in the frame. The second lowering pools those again, so
 `BZ2_decompress` keeps 3a's limits there.
+
+#### CPython's interpreter frame (measured for the next item)
+
+CPython (`nanofil-python`, a1a5306) needs a 256 MB stack for
+`test_isinstance`'s recursion, because `_PyEval_EvalFrameDefault`'s frame
+is far larger than clang's 3,640 bytes. Measured on `Python/ceval.c`
+preprocessed as `nanofil-cc` does (`-std=gnu23`, so `NANOFIL_STD=c23`),
+by frame key, in bytes, with each kind's lower words counted with it:
+
+| Frame part | plain | `-O --registers=stack` | `-O` (cells) | `-O --registers=temps` |
+| --- | --: | --: | --: | --: |
+| pointer pool (slots + lowers) | 1,486 + 1,486: 23,776 | 150 + 150: 2,400 | 2,400 | 2,400 |
+| phi shadows (slots + pointer lowers) | 106 + 23: 1,032 | 295 + 172: 3,736 | 3,736 | 3,736 |
+| local objects (64, with aux words and alignment) | — | 3,072 | 3,072 | 3,072 |
+| stack-aux roots of those objects | — | 512 | 512 | 512 |
+| scalar and float pools | 32 | 56 | 56 + 24 | 104 + 24 |
+| callee-saved registers | — | — | 40 | 40 |
+| header, thread, aux | 32 | 32 | 32 | 32 |
+| **frame** | **24,880** | **9,808** | **9,872** | **9,920** |
+
+Plain, the frame is the pointer pool: 1,486 pointer temporaries, each
+with its lower word. `-O` removes 90% of them. It also places 64 heap
+allocations in the frame as M5's local objects (zeroed payload and aux,
+a stack-aux root each, within M5's 4096-byte per-function budget), and
+its control flow has 295 phis against 106, 172 of them pointers against
+23. What fills the `-O` frame is pointers and objects, not scalars:
+shadows 38%, local objects and their roots 36%, the pointer pool 24%,
+scalars 1%.
+
+Temps' pooling neither helps nor hurts: its first lowering's 6,605 own
+scalar homes (52,840 bytes) pool back to 13 homes, 48 bytes more than
+cells' 7. The levers are elsewhere:
+
+- *Phi shadows* each have a slot of their own, never shared, with a
+  lower word for a pointer phi. Pooling shadows whose copies' lifetimes
+  are disjoint, as the pointer pool already is, would address the
+  largest part. A shadow's lower is a GC root, so this changes what the
+  frame's roots are, and it needs review before implementation.
+- *Local objects* are kept whole in the frame, payload and aux, with a
+  stack-aux root each, and their storage is never reused. Clang turns
+  most such objects into SSA values. Splitting an object whose fields
+  are only loaded and stored whole into temporaries, or sharing storage
+  between objects whose lifetimes are disjoint, would be middle-end
+  work under M5's local-object contract, and needs its own review.
+- *The pointer pool* is shared by liveness already.
+
+A CPython workload would be the gate's most realistic interpreter. It
+costs a nanofil build of CPython per mode (280 objects), against about
+a minute for each of today's workloads. Candidates are a recursion-
+heavy script and the `python.sh` workload's scripts, timed against the
+filcc build that `nanofil-python` already makes. This is not added yet.
 
 #### Contract (webs; approved, held while temps is measured)
 

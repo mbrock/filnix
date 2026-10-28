@@ -162,7 +162,7 @@ item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
     (   Registers == temps
     ->  temps_first(Symbols, Branches, Item, First),
         (   First = placed(Lines, Report) -> true
-        ;   First = again(Groups),
+        ;   First = again(Groups, Fused, Ranges),
             % The first lowering is garbage now; collect it before the
             % second grows the stacks, in large functions only (SQLite's
             % largest): collecting before every function costs far more.
@@ -170,8 +170,8 @@ item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
             ->  catch(garbage_collect, error(existence_error(_, _), _), true)
             ;   true
             ),
-            once(( lower_item(own(Groups), Symbols, Item, Product),
-                   placed_lines(temps, Branches, Item, Product, Lines, Report, _) ))
+            once(lower_fused(own(Groups, Ranges), Symbols, Fused, Product)),
+            once(placed_lines(temps, Branches, Item, Product, Lines, Report, _))
         )
     ;   (   memberchk(Registers, [function,operands,cells]) -> Pools = split
         ;   Pools = shared
@@ -183,18 +183,21 @@ item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
 % temps_first(+Symbols, +Branches, +Item, -First): temps mode's first
 % lowering, with a home per w/l temporary. First is placed(Lines,
 % Report) when it has at most own_frame_limit/1 such homes, else
-% again(Groups) with each temporary's group for the second lowering,
-% from a function-mode (3a) allocation of the first; its lines are
+% again(Groups, Fused, Ranges) with each temporary's group for the
+% second lowering, from a function-mode (3a) allocation of the first,
+% and the fused blocks and live ranges the second reuses (the groups
+% change only which slots the ranges share); the first's lines are
 % dropped, so the second lowering does not hold them.
 temps_first(Symbols, Branches, Item, First) :-
-    once(lower_item(own, Symbols, Item, Product)),
+    fused_item(Item, Fused),
+    once(lower_fused(own([], Ranges), Symbols, Fused, Product)),
     own_frame_limit(Limit),
     (   Product = abi_function(_,_,_,_,frame(_,_,Aliases),_,_,_,_,_),
         findall(x, member(_-storage(scalar,_), Aliases), Xs), length(Xs, N), N > Limit
     ->  % Only the register map matters here: 3a's allocation, unchecked
         % because these lines are dropped, and no operand rewrite.
         once(placed_lines(map, Branches, Item, Product, _, _, Groups)),
-        First = again(Groups)
+        First = again(Groups, Fused, Ranges)
     ;   once(placed_lines(temps, Branches, Item, Product, Lines, Report, _)),
         First = placed(Lines, Report)
     ).
@@ -233,10 +236,16 @@ thunk_lines(Callee, Lines) :-
 
 % Complete the ABI product before any instruction selection. Fusion is
 % still target preparation; its separate liveness view preserves indices.
-lower_item(Pools, Symbols, func(N,L,R,Ps,Bs0), Product) :-
-    fused_blocks(N, Ps, Bs0, Bs, Live),
-    lower_function(Pools, Symbols, func(N,L,R,Ps,Bs), Live, Product).
-lower_item(_, _, data(N,L,A,Is), data(N,L,A,Is)).
+lower_item(Pools, Symbols, Item, Product) :-
+    fused_item(Item, Fused), lower_fused(Pools, Symbols, Fused, Product).
+
+fused_item(func(N,L,R,Ps,Bs0), fused(func(N,L,R,Ps,Bs), Live)) :-
+    fused_blocks(N, Ps, Bs0, Bs, Live).
+fused_item(data(N,L,A,Is), data(N,L,A,Is)).
+
+lower_fused(Pools, Symbols, fused(Func, Live), Product) :-
+    lower_function(Pools, Symbols, Func, Live, Product).
+lower_fused(_, _, data(N,L,A,Is), data(N,L,A,Is)).
 
 item_lines(Selection, Item, Lines) :-
     (   phrase(item(Selection,Item), Lines) -> true
