@@ -37,8 +37,9 @@ local_storage_module(M0, M) :-
     ;   M = M0
     ).
 
+% The cut leaves no choicepoint per function (promote_item/4).
 local_item(All, F0, Items) :-
-    F0 = func(N, _, _, _, _), context_records(All, N, Rs0),
+    F0 = func(N, _, _, _, _), !, context_records(All, N, Rs0),
     local_context(F0, Rs0, F, Rs), with_context(F, Rs, Items).
 local_item(_, data(N, L, A, Is), [data(N, L, A, Is)]).
 

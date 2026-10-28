@@ -235,7 +235,9 @@ c_file_module(File, Module) :-
 % predefined macros and include paths of $FILCC (default filcc).
 c_file_tokens(File, Tokens) :-
     (   atom_concat(_, '.i', File)
-    ->  phrase_from_file(seq(Cs), File, [type(binary)]),
+    ->  % once/1: seq//1's last alternative would stay a choicepoint for
+        % the rest of the compile.
+        once(phrase_from_file(seq(Cs), File, [type(binary)])),
         once(c_tokens(Cs, File, Tokens0))
     ;   ( getenv('FILCC', Clang) -> true ; Clang = filcc ),
         pp_profile(Clang, Profile),
@@ -250,6 +252,19 @@ c_file_tokens(File, Tokens) :-
 
 %% Commands
 
+/* release_stacks: collect garbage and return unused stack memory to the
+   system between the stages of a large compile. SWI grows its stacks
+   between collections and keeps them grown, and its stack limit counts
+   what is allocated, not what is live: gnulib's test-intprops.c, whose
+   main has 87,000 blocks, never has more than about 210 MB live, yet
+   the frontend leaves the trail at 250 MB and the middle end the global
+   stack at 1 GB, and the next collection, which must shift them first,
+   exceeds the default 1 GB limit. A host without these predicates
+   skips them. */
+release_stacks :-
+    catch(garbage_collect, error(existence_error(_, _), _), true),
+    catch(trim_stacks, error(existence_error(_, _), _), true).
+
 % Only native emission needs Registers; only the Fil-C checked stage
 % needs Checks (difftest runs it too); other commands consume Opt.
 command(Opt, Registers, Checks, [compile, File]) :- !,
@@ -260,7 +275,9 @@ command(Opt, Registers, Checks, [compile, File]) :- !,
     mode_print_asm(Mode, Registers, Checks, Module).
 command(Opt, Registers, Checks, [cc, File]) :- !,
     c_file_module(File, Module0),
+    release_stacks,
     once(optimize(Opt, Module0, Module)),
+    release_stacks,
     mode_print_asm(filc, Registers, Checks, Module).
 command(Opt, _, Checks, [difftest, File, Dir]) :- !,
     difftest(Opt, Checks, File, Dir).
@@ -347,7 +364,9 @@ mode_print_asm(filc, Registers, Checks, Module) :-
 % Reuse must also change nothing but which proof a covered access reads.
 checked_module(Checks, Module, Checked) :-
     once(pizlonate_module(Module, Checked0)),
+    release_stacks,
     once(valid_module(Checked0)),
+    release_stacks,
     checks_module(Checks, Checked0, Checked).
 
 checks_module(reference, Checked, Checked).

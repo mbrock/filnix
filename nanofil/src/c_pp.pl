@@ -92,7 +92,7 @@ file_tokens(File, Env0, Env, Tokens) :-
 read_source(File, PpTokens) :-
     (   source_cache(File, PpTokens0)
     ->  PpTokens = PpTokens0
-    ;   phrase_from_file(seq(Cs), File, [type(binary)]),
+    ;   once(phrase_from_file(seq(Cs), File, [type(binary)])),
         once(source_tokens(Cs, File:1, PpTokens)),
         assertz(source_cache(File, PpTokens))
     ).

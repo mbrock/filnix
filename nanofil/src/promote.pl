@@ -74,8 +74,10 @@ promote_module(M0, module(Items)) :-
 
 % promote_item(+Mode, +Item0, -Item): Item is the module item Item0,
 % promoted if it is a function.
+% The cut: the item's clause is not indexed (Mode comes first), and a
+% choicepoint per function would pin the module's trail until the pass ends.
 promote_item(Mode, All, F0, Items) :-
-    F0 = func(Name, _, _, _, _),
+    F0 = func(Name, _, _, _, _), !,
     context_records(All, Name, Rs0),
     promote_context(Mode, F0, Rs0, F, Rs), with_context(F, Rs, Items).
 promote_item(_, _, data(N, L, A, Is), [data(N, L, A, Is)]).

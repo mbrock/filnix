@@ -60,8 +60,9 @@ copy_module(M0, module(Items)) :-
 % copy_item(+Item0, -Item): Item is the module item Item0, with copies
 % propagated if it is a function.
 % Reps (here and below): assoc Temp -> the value that replaces it.
+% The cut leaves no choicepoint per function (promote_item/4).
 copy_item(All, F0, Items) :-
-    F0 = func(Name, _, _, _, _), context_records(All, Name, Rs0),
+    F0 = func(Name, _, _, _, _), !, context_records(All, Name, Rs0),
     copy_context(F0, Rs0, F, Rs), with_context(F, Rs, Items).
 copy_item(_, data(N, L, A, Is), [data(N, L, A, Is)]).
 
