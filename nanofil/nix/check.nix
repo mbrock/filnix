@@ -112,9 +112,10 @@ pkgs.runCommandCC "nanofil-check"
     unset NANOFIL_REGISTERS
     # Whole-function register homes (docs/perf.md item 3) are the -O
     # default, so the -O suites above run them, validated by
-    # amd64_regs_check; here they run without -O, and -O runs the stack
-    # reference so the old path stays tested.
-    for mode in "function:" "stack:-O"; do
+    # amd64_regs_check; here they run without -O, -O runs the stack
+    # reference so the old path stays tested, and -O runs register
+    # operands (step 3b, opt-in), validated by its region checker.
+    for mode in "function:" "stack:-O" "operands:-O"; do
       export NANOFIL_REGISTERS=''${mode%%:*} NANOFIL_OPT=''${mode#*:}
       step "registers $mode difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/branches.ir tests/c/*.c big1.c
       step "registers $mode ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc

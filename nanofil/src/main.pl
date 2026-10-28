@@ -43,9 +43,10 @@
     (translation validation), and prints how many allocs promote
     removed.
 
-    `--registers=stack|local|function` independently selects reference
-    emission, validated block-local scalar caching, or validated
-    whole-function register homes for scalars (docs/perf.md item 3) in the
+    `--registers=stack|local|function|operands` independently selects
+    reference emission, validated block-local scalar caching, validated
+    whole-function register homes for scalars (docs/perf.md item 3), or
+    those homes with validated register operands (item 3, step 3b) in the
     Fil-C backend. The default is function with `-O` and stack without
     it; NANOFIL_REGISTERS supplies the same choice to build harnesses, and
     `-O --registers=stack` keeps the reference emission.
@@ -130,8 +131,8 @@ register_default(emit(Registers, Branches)) :-
     ( getenv('NANOFIL_REGISTERS',R) -> register_mode(R), Registers = R ; true ),
     ( getenv('NANOFIL_BRANCHES',B) -> branches_mode(B), Branches = B ; true ).
 register_mode(R) :-
-    ( memberchk(R,[stack,local,function]) -> true
-    ; throw(nanofil_error('registers must be stack, local or function')) ).
+    ( memberchk(R,[stack,local,function,operands]) -> true
+    ; throw(nanofil_error('registers must be stack, local, function or operands')) ).
 branches_mode(B) :-
     ( memberchk(B,[reference,selected]) -> true
     ; throw(nanofil_error('branches must be reference or selected')) ).

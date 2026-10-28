@@ -45,7 +45,9 @@
            preflight_regs/3, preflight_regs/4, body_analysis/3,
            allocated_stream/4, home_liveness/4, successors/2, successors/3, rbp_access/3,
            effect_access/3, line_effect/2, body_analysis/4,
-           allocatable/1, callee_saved/1]).
+           allocatable/1, callee_saved/1, scratch_family/2,
+           check_operands/3, operand_lives/4, operand_move/2,
+           operand_roles/3, boundary_line/2, extra_use_def/4]).
 
 :- use_module(amd64_contract,
               [instruction_effects/2, register/3, explicit_registers/2]).
@@ -82,7 +84,7 @@ check_regs(regs_metadata(Setjmp, Impl, Homes, Saves), Map, Before, After, Analys
     ->  Before == After
     ;   valid_map(Map, Homes, Saves),
         impl_body(Impl, Before, Pre, Body),
-        Analysis = analysis(Body0, Effects, _, _, _, _),
+        Analysis = analysis(Body0, Effects, _, _, _, _, _),
         Body0 == Body,
         list_to_assoc(Map, Mapped),
         preflight_regs(Body, Mapped, Saves, Effects),
@@ -298,14 +300,22 @@ noreturn(filc_stack_overflow_failure).
 %  Dataflow runs on basic blocks: a block ends at a line whose only
 %  successor is not the next line, and starts at a label.
 home_liveness(Body, Homes, LiveOut, LiveIn0) :-
-    body_analysis(Body, Homes, analysis(_, _, _, _, LiveOut, LiveIn0)).
+    body_analysis(Body, Homes, analysis(_, _, _, _, LiveOut0, LiveIn00, _)),
+    length(Homes, N), Mask is (1 << (2*N)) - 1,
+    maplist(and_mask(Mask), LiveOut0, LiveOut), LiveIn0 is LiveIn00 /\ Mask.
+
+and_mask(M, X, Y) :- Y is X /\ M.
 
 %! body_analysis(+Body, +Homes, -Analysis) is semidet.
-%  Analysis = analysis(Body, Effects, Homes, Index, LiveOut, LiveIn0):
+%  Analysis = analysis(Body, Effects, Homes, Index, LiveOut, LiveIn0, UDs):
 %  each line's audited effects, the home offsets and their bit numbers
-%  (Index), and home_liveness/4's results. Fails when a line has no
-%  audited effects or the CFG is incomplete. The one whole-function
-%  analysis the allocator and the checker share.
+%  (Index), the live sets after each line (LiveOut) and at the first,
+%  and each line's ud(Use, Def). Home K's halves are bits 2K and 2K+1
+%  (home_liveness/4); above them, from bit 2N for N homes, are one bit
+%  per scratch family (scratch_family/2) and one for the flags, which
+%  only the operand checker reads (docs/perf.md, step 3b). Fails when a
+%  line has no audited effects or the CFG is incomplete. The one
+%  whole-function analysis the allocator and both checkers share.
 body_analysis(Body, Homes, Analysis) :-
     maplist(line_effect, Body, Effects),
     body_analysis(Body, Effects, Homes, Analysis).
@@ -313,10 +323,11 @@ body_analysis(Body, Homes, Analysis) :-
 %! body_analysis(+Body, +Effects, +Homes, -Analysis) is semidet.
 %  As body_analysis/3, with Effects the lines' audited effects.
 body_analysis(Body, Effects, Homes,
-              analysis(Body, Effects, Homes, Index, LiveOut, LiveIn0)) :-
+              analysis(Body, Effects, Homes, Index, LiveOut, LiveIn0, UDs)) :-
     successors(Body, Effects, Succs),
     numbered(Homes, 0, Pairs), list_to_assoc(Pairs, Index),
-    maplist(line_use_def(Index), Effects, UDs),
+    length(Homes, NH), Base is 2*NH,
+    maplist(line_use_def(Index, Base), Body, Effects, UDs),
     lines(Body, 0, Succs, UDs, Lines),
     blocks(Lines, Blocks),
     findall(S-B, nth0(B, Blocks, block(S,_,_)), Starts), list_to_assoc(Starts, Ids),
@@ -389,9 +400,49 @@ line_outs([line(_,_,_,ud(U,D))|Ls], Out, Acc, Outs) :-
 
 % Uses and definitions of home halves by one line. A write covering a
 % whole half defines it; a partial write reads it too.
-line_use_def(Index, effect(_,_,_,Ms,_), ud(Use, Def)) :-
-    foldl(memory_use_def(Index), Ms, 0-0, Use-Def0),
-    Def is Def0 /\ \ Use.
+line_use_def(Index, Base, Line, Effect, ud(Use, Def)) :-
+    Effect = effect(_,_,_,Ms,_),
+    foldl(memory_use_def(Index), Ms, 0-0, Use0-Def0),
+    extra_use_def(Line, Effect, EU, ED),
+    Use is Use0 \/ (EU << Base), Def1 is Def0 \/ (ED << Base),
+    Def is Def1 /\ \ Use.
+
+%! scratch_family(?Family, ?Bit) is nondet.
+%  The scratch families whose liveness the analysis tracks, by bit; the
+%  flags are bit 7.
+scratch_family(rax, 0). scratch_family(rcx, 1). scratch_family(rdx, 2).
+scratch_family(rsi, 3). scratch_family(rdi, 4). scratch_family(r8, 5).
+scratch_family(r9, 6).
+
+% extra_use_def(+Line, +Effect, -Use, -Def): the scratch families and
+% flags Line uses and defines, as 8-bit sets. A read at any width uses a
+% family, a 32- or 64-bit write defines it, a narrower one uses and
+% defines it. A call uses every scratch family (its arity is not known
+% here), ret uses rax, rcx and rdx (the fast ABI returns two words in
+% rdx and rcx, filc_amd64.pl's return_registers), and the stack-overflow
+% jump uses all.
+extra_use_def(Line, effect(Rs,Ws,Fl,_,_), Use, Def) :-
+    foldl(read_bit, Rs, 0, U0),
+    foldl(write_bits, Ws, U0-0, U1-D0),
+    % A shift's flags output (read_write: a zero count keeps them) is
+    % shared only if its inputs are (flags_after/8), so it need not keep
+    % them live: unequal inputs give unequal outputs, which a later read
+    % rejects.
+    (   Fl == read -> U2 is U1 \/ 128 ; U2 = U1 ),
+    (   memberchk(Fl, [write,read_write]) -> Def is D0 \/ 128 ; Def = D0 ),
+    (   ( Line = ins(call,_,_) ; Line = ins(jae,none,[plt(filc_stack_overflow_failure)]) )
+    ->  Use is U2 \/ 127
+    ;   Line = ins(ret,none,[])
+    ->  Use is U2 \/ 7
+    ;   Use = U2
+    ).
+
+read_bit(F, U0, U) :- ( scratch_family(F, B) -> U is U0 \/ (1 << B) ; U = U0 ).
+write_bits(write(F,W), U0-D0, U-D) :-
+    (   scratch_family(F, B)
+    ->  D is D0 \/ (1 << B), ( W < 32 -> U is U0 \/ (1 << B) ; U = U0 )
+    ;   U = U0, D = D0
+    ).
 
 memory_use_def(Index, read(mem(D,rbp),N), U0-D0, U-D0) :- !,
     halves(Index, D, N, _, Touched), U is U0 \/ Touched.
@@ -414,7 +465,7 @@ or_pair(B-C, T0-C0, T-C1) :- T is T0 \/ B, C1 is C0 \/ C.
 
 %% The obligations
 
-obligations(Body, Mapped, analysis(_, _, _, Index, LiveOut, LiveIn0)) :-
+obligations(Body, Mapped, analysis(_, _, _, Index, LiveOut, LiveIn0, _)) :-
     assoc_to_list(Mapped, Pairs),
     forall(member(H-_, Pairs), get_assoc(H, Index, _)),
     findall(B, (member(H-_, Pairs), get_assoc(H, Index, K), B is 3 << (2*K)), Bs),
@@ -449,3 +500,316 @@ line_obligation(Mapped, Index, Masks, Scratch, All, Line, Out) :-
     ->  Out /\ All =:= 0
     ;   true
     ).
+
+%% The operand checker (docs/perf.md, step 3b)
+
+%! operand_lives(+Analysis, +Saves, +A, -Lives) is det.
+%
+%  Lives lists live(In, Out), the scratch and flags bits before and
+%  after each line of A, the 3a stream of the reference body the shared
+%  Analysis is of. A is that body with mapped moves substituted, which
+%  changes no scratch or flags use, and with the save and restore moves
+%  of Saves inserted (check_regs/5 proved it is exactly that stream);
+%  an inserted line touches neither, so it takes the set live before the
+%  next reference line.
+operand_lives(analysis(_, _, Homes, _, LiveOut, _, UDs), Saves, A, Lives) :-
+    length(Homes, N), Base is 2*N,
+    maplist(line_lives(Base), LiveOut, UDs, RLives),
+    a_lives(A, RLives, Saves, Lives).
+
+line_lives(Base, Out, ud(U,D), live(I8, O8)) :-
+    In is U \/ (Out /\ \ D),
+    I8 is (In >> Base) /\ 255, O8 is (Out >> Base) /\ 255.
+
+a_lives([], [], _, []).
+a_lives([L|As], RLs, Saves, [live(I,I)|Ls]) :-
+    save_move(L, Saves), !,
+    RLs = [live(I,_)|_],
+    a_lives(As, RLs, Saves, Ls).
+a_lives([_|As], [Lv|RLs], Saves, [Lv|Ls]) :-
+    a_lives(As, RLs, Saves, Ls).
+
+save_move(ins(mov,q,[reg(R),mem(S,rbp)]), Saves) :- memberchk(save(R,S), Saves).
+save_move(ins(mov,q,[mem(S,rbp),reg(R)]), Saves) :- memberchk(save(R,S), Saves).
+
+%! check_operands(+A, +B, +Lives) is semidet.
+%
+%  B, the operand rewrite of the implementation body A, makes the same
+%  paired lines in the same order on equal values (docs/perf.md, step
+%  3b's contract). Lives lists live(In, Out) for each line of A: the
+%  scratch families and flags (8 bits, scratch_family/2) live before
+%  and after it, from the shared analysis of the reference
+%  (operand_lives/4). Moves (operand_move/2) execute in their own stream
+%  only; boundary lines must be identical, and at each boundary A and B
+%  agree on every register compared there.
+check_operands(A, B, Lives) :-
+    shared_state(S0),
+    operands_walk(A, B, Lives, 0, S0, S0, S0).
+
+% Lines after a ret, ud2 or jmp and before the next boundary are
+% unreachable (state none): they must pair, but nothing is compared.
+operands_walk([], [], [], _, _, _, _) :- !.
+operands_walk([LA|As], Bs, [_|Ls], J, SA, SB, S0) :-
+    operand_move(LA, M), !,
+    move_state(M, SA, SA1),
+    operands_walk(As, Bs, Ls, J, SA1, SB, S0).
+operands_walk(As, [LB|Bs], Ls, J, SA, SB, S0) :-
+    operand_move(LB, M), !,
+    move_state(M, SB, SB1),
+    operands_walk(As, Bs, Ls, J, SA, SB1, S0).
+operands_walk([LA|As], [LB|Bs], [live(In,Out)|Ls], J, SA, SB, S0) :-
+    line_effect(LA, EA), line_effect(LB, EB),
+    (   ( boundary_line(LA, EA) ; boundary_line(LB, EB) )
+    ->  LA == LB,
+        ( SA == none -> true ; region_end(In, SA, SB) ),
+        (   no_fallthrough(LA, EA)
+        ->  SA1 = none, SB1 = none
+        ;   region_start(Out, S0, SA1, SB1)
+        )
+    ;   SA == none
+    ->  LA = ins(Op,S,_), LB = ins(Op,S,_), SA1 = none, SB1 = none
+    ;   paired(LA, LB, J, SA, SB, SA1, SB1)
+    ),
+    J1 is J+1,
+    operands_walk(As, Bs, Ls, J1, SA1, SB1, S0).
+
+no_fallthrough(_, effect(_,_,_,_,terminal)).
+no_fallthrough(ins(jmp,_,_), _).
+
+%! operand_move(+Line, -Move) is semidet.
+%  Line is a move: a 32- or 64-bit mov of a general register or an
+%  integer immediate into a general register other than rsp or rbp, or
+%  a movabs, with its immediate in range. Move is move(Dest, Src, Bits).
+operand_move(ins(Op,S,Os), Move) :- move_form(Op, S, Os, Move).
+
+move_form(mov, S, [Src,reg(Y)], move(F, Src1, W)) :-
+    memberchk(S-W, [l-32, q-64]),
+    register(Y, F, W), gpr(F), \+ memberchk(F, [rsp,rbp]),
+    (   Src = reg(X) -> register(X, G, W), gpr(G), Src1 = reg(G)
+    ;   Src = imm(I), integer(I), imm_range(W, I), Src1 = imm(I)
+    ).
+move_form(movabs, q, [imm(I),reg(Y)], move(F, imm(I), 64)) :-
+    integer(I), I >= -(1<<63), I < 1<<64,
+    register(Y, F, 64), gpr(F), \+ memberchk(F, [rsp,rbp]).
+
+% Facts, so a bound query is deterministic and an unbound one enumerates.
+gpr(rax). gpr(rcx). gpr(rdx). gpr(rbx). gpr(rsp). gpr(rbp). gpr(rsi). gpr(rdi).
+gpr(r8). gpr(r9). gpr(r10). gpr(r11). gpr(r12). gpr(r13). gpr(r14). gpr(r15).
+xmm(xmm0). xmm(xmm1). xmm(xmm2). xmm(xmm3). xmm(xmm4). xmm(xmm5). xmm(xmm6). xmm(xmm7).
+
+% Immediate ranges by operation width; q is a sign-extended imm32.
+imm_range(8, I) :- I >= -128, I < 256.
+imm_range(16, I) :- I >= -32768, I < 65536.
+imm_range(32, I) :- I >= -(1<<31), I < 1<<32.
+imm_range(64, I) :- I >= -(1<<31), I < 1<<31.
+
+% The state: st(GPRs, XMMs, Flags); a GPR is v(Low, High).
+move_state(_, none, none) :- !.
+move_state(move(F, reg(G), 64), st(R0,X,Fl), st(R,X,Fl)) :- !,
+    get_assoc(G, R0, V), put_assoc(F, R0, V, R).
+move_state(move(F, reg(G), 32), st(R0,X,Fl), st(R,X,Fl)) :- !,
+    get_assoc(G, R0, v(Lo,_)), put_assoc(F, R0, v(Lo,const(0)), R).
+move_state(move(F, imm(I), W), st(R0,X,Fl), st(R,X,Fl)) :-
+    imm_halves(W, I, Lo, Hi), put_assoc(F, R0, v(Lo,Hi), R).
+
+% A 32-bit immediate write zero-extends; a 64-bit one is I mod 2^64.
+imm_halves(32, I, const(Lo), const(0)) :- Lo is I mod (1<<32).
+imm_halves(64, I, const(Lo), const(Hi)) :-
+    U is I mod (1<<64), Lo is U /\ 0xffffffff, Hi is U >> 32.
+
+boundary_line(Line, effect(_,Ws,_,_,Flow)) :-
+    (   Flow \== next -> true
+    ;   member(write(F,_), Ws), memberchk(F, [rsp,rbp]) -> true
+    ;   Line \= ins(_,_,_)
+    ).
+
+shared_state(st(R, X, in(flags,shared))) :-
+    findall(F-v(in(F,lo,shared),in(F,hi,shared)), gpr(F), Rs), list_to_assoc(Rs, R),
+    findall(F-in(F,shared), xmm(F), Xs), list_to_assoc(Xs, X).
+
+% region_start(+Out, +Shared, -SA, -SB): after a boundary, live scratch families
+% and live flags are shared, dead ones distinct per stream; the rest is
+% shared.
+region_start(Out, st(R0,X,_), st(RA,X,FA), st(RB,X,FB)) :-
+    foldl(dead_scratch(Out), [rax,rcx,rdx,rsi,rdi,r8,r9], R0-R0, RA-RB),
+    (   Out /\ 128 =\= 0
+    ->  FA = in(flags,shared), FB = FA
+    ;   FA = in(flags,a), FB = in(flags,b)
+    ).
+dead_scratch(Out, F, RA0-RB0, RA-RB) :-
+    scratch_family(F, Bit),
+    (   Out /\ (1 << Bit) =\= 0
+    ->  RA = RA0, RB = RB0
+    ;   put_assoc(F, RA0, v(in(F,lo,a),in(F,hi,a)), RA),
+        put_assoc(F, RB0, v(In,Hi), RB), In = in(F,lo,b), Hi = in(F,hi,b)
+    ).
+
+% region_end(+In, +SA, +SB): at a boundary, A and B agree on both halves
+% of every home register, rsp and rbp, every XMM register, each live
+% scratch family, and the flags if live.
+region_end(In, st(RA,XA,FA), st(RB,XB,FB)) :-
+    forall(( gpr(F), ( scratch_family(F, Bit) -> In /\ (1 << Bit) =\= 0 ; true ) ),
+           ( get_assoc(F, RA, V), get_assoc(F, RB, W), V == W )),
+    forall(xmm(F), ( get_assoc(F, XA, V), get_assoc(F, XB, W), V == W )),
+    ( In /\ 128 =\= 0 -> FA == FB ; true ).
+
+%! operand_roles(+Op, +Size, -Roles) is semidet.
+%  The role of each explicit operand of an audited non-boundary form:
+%  src(W), dst(W), srcdst(W) (a two-address destination) or addr (a
+%  memory operand not accessed). W is the operand's width in bits, or
+%  unbound when its register gives it (SSE forms).
+operand_roles(mov, S, [src(W), dst(W)]) :- move_bits(S, W).
+operand_roles(movabs, q, [src(64), dst(64)]).
+operand_roles(Op, S, [src(F), dst(W)]) :- extension_bits(Op, F), move_bits(S, W).
+operand_roles(lea, q, [addr, dst(64)]).
+operand_roles(Op, S, [src(W), srcdst(W)]) :-
+    memberchk(Op, [add,sub,and,or,xor,imul,btc]), move_bits(S, W).
+operand_roles(Op, S, [src(W), src(W)]) :- memberchk(Op, [cmp,test]), move_bits(S, W).
+operand_roles(neg, S, [srcdst(W)]) :- move_bits(S, W).
+operand_roles(Op, S, [src(8), srcdst(W)]) :- memberchk(Op, [shl,shr,sar]), move_bits(S, W).
+operand_roles(Op, none, [dst(8)]) :- atom_concat(set, _, Op).
+operand_roles(cltd, none, []).
+operand_roles(cqto, none, []).
+operand_roles(Op, S, [src(W)]) :- memberchk(Op, [div,idiv]), move_bits(S, W).
+operand_roles(Op, none, [src(_), dst(_)]) :- memberchk(Op, [movd,movq]).
+operand_roles(Op, S, [src(128), srcdst(128)]) :-
+    memberchk(Op, [add,sub,mul,div]), memberchk(S, [ss,sd]).
+operand_roles(Op, none, [src(128), src(128)]) :- memberchk(Op, [ucomiss,ucomisd]).
+operand_roles(Op, none, [src(128), srcdst(128)]) :- memberchk(Op, [cvtss2sd,cvtsd2ss]).
+operand_roles(Op, S, [src(128), dst(W)]) :-
+    memberchk(Op, [cvttss2si,cvttsd2si]), move_bits(S, W).
+operand_roles(Op, S, [src(W), srcdst(128)]) :-
+    memberchk(Op, [cvtsi2ss,cvtsi2sd]), move_bits(S, W).
+
+% Implicit operands, read and written at a width, by mnemonic.
+implicit(cltd, _, [rax-32], [rdx-32]).
+implicit(cqto, _, [rax-64], [rdx-64]).
+implicit(Op, S, [rax-W,rdx-W], [rax-W,rdx-W]) :- memberchk(Op, [div,idiv]), move_bits(S, W).
+
+% The flags a form defines from its inputs (res), or leaves partly
+% undefined or preserved (distinct per stream).
+% The SSE arithmetic forms (add, sub, mul, div with ss/sd) preserve them.
+flags_out(Op, S, defined) :-
+    memberchk(Op, [add,sub,and,or,xor,cmp,test,neg]), memberchk(S, [b,w,l,q]).
+flags_out(Op, none, defined) :- memberchk(Op, [ucomiss,ucomisd]).
+flags_out(Op, _, shift) :- memberchk(Op, [shl,shr,sar]).
+flags_out(Op, S, undefined) :- memberchk(Op, [imul,btc,div,idiv]), memberchk(S, [b,w,l,q]).
+
+%! paired(+LA, +LB, +J, +SA0, +SB0, -SA, -SB) is semidet.
+paired(ins(Op,S,OsA), ins(Op,S,OsB), J, SA0, SB0, SA, SB) :-
+    length(OsA, N), length(OsB, N),
+    once(operand_roles(Op, S, Roles)), length(Roles, N),
+    maplist(operand_sources(SA0, SB0, Op), Roles, OsA, OsB),
+    (   implicit(Op, S, Reads, _)
+    ->  forall(member(F-W, Reads), ( read_value(F, W, SA0, V), read_value(F, W, SB0, V1), V == V1 ))
+    ;   true
+    ),
+    (   flags_read(Op) -> SA0 = st(_,_,FA0), SB0 = st(_,_,FB0), FA0 == FB0 ; true ),
+    numbered_roles(Roles, 1, Positions),
+    foldl(operand_write(J), Positions, OsA, SA0, SA1),
+    foldl(operand_write(J), Positions, OsB, SB0, SB1),
+    (   implicit(Op, S, _, Writes)
+    ->  foldl(implicit_write(J), Writes, SA1, SA2), foldl(implicit_write(J), Writes, SB1, SB2)
+    ;   SA2 = SA1, SB2 = SB1
+    ),
+    flags_after(Op, S, J, SA0, SB0, SA2, SB2, SA, SB).
+
+% setcc reads the flags; a shift's flags output depends on its input
+% (flags_after/9), jcc is a boundary.
+flags_read(Op) :- atom_concat(set, _, Op).
+
+flags_after(Op, S, J, st(_,_,FA0), st(_,_,FB0), st(RA,XA,_), st(RB,XB,_),
+            st(RA,XA,FA), st(RB,XB,FB)) :-
+    (   flags_out(Op, S, defined) -> FA = res(J,flags), FB = FA
+    ;   flags_out(Op, S, shift), FA0 == FB0 -> FA = res(J,flags), FB = FA
+    ;   flags_out(Op, S, _) -> FA = res(J,flags,a), FB = res(J,flags,b)
+    ;   FA = FA0, FB = FB0
+    ).
+
+numbered_roles([], _, []).
+numbered_roles([R|Rs], P, [P-R|Ps]) :- P1 is P+1, numbered_roles(Rs, P1, Ps).
+
+% Sources: equal values at the role's width; memory operands of the same
+% form on equal addressing registers; other operands identical.
+operand_sources(SA, SB, Op, Role, OA, OB) :- role_sources(Role, Op, SA, SB, OA, OB).
+
+role_sources(dst(W), _, SA, SB, OA, OB) :- place_match(W, SA, SB, OA, OB).
+role_sources(addr, _, SA, SB, OA, OB) :- memory_match(SA, SB, OA, OB).
+role_sources(src(W), Op, SA, SB, OA, OB) :- source_match(Op, W, SA, SB, OA, OB).
+role_sources(srcdst(W), Op, SA, SB, OA, OB) :-
+    source_match(Op, W, SA, SB, OA, OB), place_match(W, SA, SB, OA, OB).
+
+% A destination: registers of the same width (any register), or the
+% same memory operand.
+place_match(W, SA, SB, OA, OB) :-
+    (   OA = reg(A), OB = reg(B)
+    ->  register(A, FA, W), register(B, FB, W), \+ memberchk(FA, [rsp,rbp]),
+        \+ memberchk(FB, [rsp,rbp])
+    ;   memory_match(SA, SB, OA, OB)
+    ).
+
+source_match(Op, W, SA, SB, OA, OB) :-
+    (   memory_match(SA, SB, OA, OB) -> true
+    ;   operand_value(OA, Op, W, SA, VA), operand_value(OB, Op, W, SB, VB), VA == VB
+    ).
+
+operand_value(reg(N), _, W, S, V) :- register(N, F, W), read_value(F, W, S, V).
+operand_value(imm(I), Op, W, _, V) :-
+    integer(W),
+    (   integer(I)
+    ->  ( Op == movabs -> I >= -(1<<63), I < 1<<64 ; imm_range(W, I) ),
+        imm_value(I, W, V)
+    ;   V = [sym(I)]
+    ).
+
+imm_value(I, 64, [const(Lo),const(Hi)]) :- !,
+    U is I mod (1<<64), Lo is U /\ 0xffffffff, Hi is U >> 32.
+imm_value(I, W, [const(V)]) :- V is I mod (1<<W).
+
+% read_value(+F, +W, +S, -V): register family F read at W bits.
+read_value(F, 128, st(_,X,_), [V]) :- !, get_assoc(F, X, V).
+read_value(F, W, st(R,_,_), V) :-
+    get_assoc(F, R, v(Lo,Hi)),
+    (   W =:= 64 -> V = [Lo,Hi]
+    ;   W =:= 32 -> V = [Lo]
+    ;   W =:= 16 -> narrow(word, Lo, V0), V = [V0]
+    ;   narrow(byte, Lo, V0), V = [V0]
+    ).
+
+narrow(byte, const(N), const(M)) :- !, M is N /\ 255.
+narrow(word, const(N), const(M)) :- !, M is N /\ 65535.
+narrow(byte, merge8(_,N), N) :- !.
+narrow(word, merge16(_,N), N) :- !.
+narrow(byte, merge16(_,N), V) :- !, narrow(byte, N, V).
+narrow(K, X, V) :- V =.. [K,X].
+
+% memory_match(+SA, +SB, +OA, +OB): the same memory operand on equal
+% addressing registers, or the same non-register, non-immediate operand.
+memory_match(SA, SB, OA, OB) :-
+    (   OA = mem(D,BA), OB = mem(D,BB)
+    ->  same_base(SA, SB, BA, BB)
+    ;   OA = mem(D,BA,IA), OB = mem(D,BB,IB)
+    ->  same_base(SA, SB, BA, BB), same_base(SA, SB, IA, IB)
+    ;   OA \= reg(_), OA \= imm(_), OA \= mem(_,_), OA \= mem(_,_,_), OA == OB
+    ).
+same_base(SA, SB, A, B) :-
+    register(A, FA, 64), register(B, FB, 64),
+    read_value(FA, 64, SA, V), read_value(FB, 64, SB, W), V == W.
+
+operand_write(J, P-Role, O, S0, S) :-
+    (   ( Role = dst(_) ; Role = srcdst(_) ), O = reg(N)
+    ->  register(N, F, W), write_value(F, W, res(J,P), S0, S)
+    ;   S = S0
+    ).
+implicit_write(J, F-W, S0, S) :- write_value(F, W, res(J,F), S0, S).
+
+% write_value(+F, +W, +V, +S0, -S): V written to F at W bits.
+write_value(F, 128, V, st(R,X0,Fl), st(R,X,Fl)) :- !, put_assoc(F, X0, V, X).
+write_value(F, W, V, st(R0,X,Fl), st(R,X,Fl)) :-
+    get_assoc(F, R0, v(Lo0,Hi0)),
+    (   W =:= 64 -> New = v(lo(V),hi(V))
+    ;   W =:= 32 -> New = v(lo(V),const(0))
+    ;   W =:= 16 -> New = v(merge16(Lo0,lo(V)),Hi0)
+    ;   New = v(merge8(Lo0,lo(V)),Hi0)
+    ),
+    put_assoc(F, R0, New, R).

@@ -24,6 +24,7 @@ mode, through the same `nanofil-cc` wrapper the Nix checks use:
 | `O-local` | `-O --registers=local` ([m6.md](m6.md)) |
 | `O-refbranches` | `-O --branches=reference`: `-O` before item 2 became its default |
 | `O-stack` | `-O --registers=stack`: `-O` before item 3a became its default (`--argstr only O,O-stack` builds a subset) |
+| `O-operands` | `-O --registers=operands`: function registers with register operands (item 3, step 3b) |
 
 From the repository root, on swa (or any quiet x86-64 machine with perf):
 
@@ -443,7 +444,9 @@ uninterpreted.
   check compared only the low byte or word), an XMM write the XMM value,
   and flags the form defines become `res(J,flags)`. Flags a form
   preserves or leaves undefined (`btc`'s ZF, `imul`'s and `div`'s
-  undefined flags) get stream-distinct symbols instead. Because the line
+  undefined flags) get stream-distinct symbols instead. The SSE
+  arithmetic forms (`add`, `sub`, `mul`, `div` with `ss`/`sd`) preserve
+  the flags; only the integer forms define or undefine them. Because the line
   is the same deterministic instruction on equal inputs, its defined
   outputs are equal.
 - Memory is not modelled. Every memory access is a paired line, so both
@@ -462,6 +465,14 @@ region's start state:
   dead is caught. Home registers (`rbx`, `r12`–`r15`, `r10`, `r11`),
   `rsp`, `rbp` and XMM registers always start shared.
 - The flags start shared if live, else as distinct symbols in A and B.
+- After a boundary that does not fall through (`ret`, `ud2`, `jmp`), the
+  lines up to the next boundary are unreachable: control enters the body
+  only at its start and at labels, and boundaries are identical, so B has
+  A's CFG. They must pair by mnemonic and size, but nothing is compared
+  there, nor at the boundary that ends them; a label reached by a jump is
+  covered by the jump's own region end, which compares everything live
+  into its target. (Added during implementation: the exception block
+  after a `ret` made identical streams fail.)
 
 At each region end, just before the boundary line, A and B must agree,
 on both halves of every compared general register, on: every home
@@ -481,10 +492,18 @@ with no home bits. If the CFG cannot be built (`successors/2` fails), B = A.
 The scope is the implementation body only, not adapters, getters or
 thunks. A read at any width uses the
 family; a 32- or 64-bit write defines it; an 8- or 16-bit write uses and
-defines it (it keeps the rest). Flags: read by `jcc`, `setcc` and shifts
-whose effect is `read`/`read_write`; defined by any writing line. A
+defines it (it keeps the rest). Flags: read by `jcc` and `setcc`; defined by any writing line, shifts
+included. (The contract first counted a shift, whose zero count keeps the
+flags, as a read too. That kept the flags live from a `div`, whose flags
+are stream-distinct, to every boundary before the next shift by `%cl`,
+and rejected identical streams in zlib's `adler32_z`. A shift's output
+flags are shared only if its input flags are equal, so unequal inputs
+still give unequal outputs that a later read rejects.) A
 `call` uses all seven scratch families (the checker does not know the
-callee's arity) and defines them; `ret` uses `rax` and `rdx`; the
+callee's arity) and defines them; `ret` uses `rax`, `rcx` and `rdx` (the
+fast ABI returns two words in `rdx` and `rcx`; the contract first said
+`rax` and `rdx`, and `tests/c/prog/structs.c` failed in operands mode
+until the fixture `at_ret_rcx` and this fix); the
 stack-overflow jump uses all; `ud2` uses none. This is the same CFG as
 3a's, which rejects unknown transfers, so check-fail blocks make `rax` and
 `rcx` live at the conditional jumps that reach them. The liveness carries
@@ -547,6 +566,78 @@ should-fix items are folded in too: B's lines must be audited with A's
 effect shape, partial writes merge per stream, both halves of every
 compared register, preserved or undefined flags are not shared, and
 liveness is computed by the checker, once per function.
+
+#### Step 3b: result
+
+`--registers=operands` (opt-in; bench mode `O-operands`) runs 3a, then
+the rewrite in `amd64_regs.pl` ("Step 3b"), then the region checker
+`check_operands/3` in `amd64_regs_check.pl`. The rewrite works one region
+at a time: a forward pass propagates register and immediate copies into
+later moves, source operands and addressing registers, but never replaces
+a home register's name with a scratch one. Moves into dead scratch
+registers are deleted. A scratch result copied into registers is written
+into the first of them: `op …,%S; mov %S,%H` and
+`mov X,%S; op Y,%S; mov %S,%H` become `op …,%H` and `mov X,%H; op Y,%H`.
+The liveness is the shared `body_analysis/4` run, extended by the scratch
+and flags bits (one run per function; `operand_lives/4` maps it to A).
+
+`LZ4HC_countBack`'s loop head, 3a then 3b:
+
+```
+movl %r13d, %eax          movl %r13d, %ebx
+movq %rax, %rbx           movl %r12d, %r10d
+movl %r12d, %eax          subl %r13d, %r10d
+movl %ebx, %ecx           cmpl $3, %r10d
+subl %ecx, %eax           jle .LLZ4HC_countBack.L37
+movq %rax, %r10
+movl %r10d, %eax
+cmpl $3, %eax
+jle .LLZ4HC_countBack.L37
+```
+
+Fixtures: 50 `operand_case`s and their kin in `tests/regs_check.pl`,
+covering every rule listed above plus those Oracle's review of the result
+asked for. Each of 32 planted checker bugs fails at least one of them.
+The implementation found two errors in the contract, both fixed in the
+text above: `ret` uses `rcx`, and a shift does not read the flags for
+liveness. The first was a miscompile the checker accepted
+(`tests/c/prog/structs.c`); the second rejected identical streams. A rewrite
+bug that dropped a line's effects (so copies were not invalidated) was
+rejected by the checker, as it should be. Oracle's review of the result
+found no blockers. It found the fixture gaps, now closed. It also found
+that SSE arithmetic was modelled as writing the flags, now fixed.
+
+Gate (7 trials, cpu 6), ratio to filcc -O2, time (instructions), with the
+trials' range of time ratios:
+
+| Workload | `O` (3a) | `O-operands` (3b) | overlap |
+| --- | --- | --- | --- |
+| zlib -6 | 3.18 (5.62) 3.12..3.26 | 2.96 (4.64) 2.93..2.99 | no |
+| zlib -d | 2.52 (4.22) 2.45..2.56 | 2.47 (3.84) 2.36..2.48 | yes |
+| bzip2 -9 | 2.63 (3.61) 2.62..2.64 | 2.43 (3.02) 2.43..2.44 | no |
+| bzip2 -d | 4.08 (4.20) 4.07..4.09 | 4.16 (3.67) 4.15..4.17 | no, slower |
+| lz4 -1 | 3.37 (22.69) | 3.25 (22.03) | yes |
+| lz4 -9 | 5.49 (5.87) | 5.43 (5.55) | yes |
+| lz4 -d | 5.47 (17.46) | 5.34 (16.88) | yes |
+| lua int | 3.43 (3.24) | 3.42 (3.04) | yes |
+| lua tab | 3.25 (3.14) | 3.23 (2.96) | yes |
+| lua str | 1.67 (1.92) | 1.65 (1.80) | yes |
+| sqlite | 2.41 (2.47) 2.40..2.45 | 2.27 (2.26) 2.26..2.28 | no |
+| geomean | 3.22 (4.92) | 3.14 (4.49) | |
+
+3b removes 9% of the dynamic instructions (geomean), up to 17% (zlib -6,
+bzip2 -9), but only 2.5% of the time: the copies it deletes were cheap
+(move elimination at rename), and what remains is dominated by the
+stack-slot pointer traffic 3b leaves alone. bzip2 -d is 2% slower with
+13% fewer instructions. One limitation is in the contract: a call uses
+every scratch register, so a dead copy into `rcx`, `r8` or `r9` before a
+call survives. Knowing the call's argument registers would need the
+emitter to state them, which is a contract change.
+
+Compile time: `lvm.i` 3.65 s → 4.71 s (+29%), `sqlite3.c` 122.1 s →
+141.7 s user (+16%). Peak memory for `sqlite3.c` is unchanged at 5.58 GB.
+The checker is about a quarter of the backend's time and the rewrite a
+fifth.
 
 ### 4. Inlining small functions
 

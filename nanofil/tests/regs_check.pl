@@ -2,7 +2,7 @@
    allocator. Each negative case gives the checker the stream its map
    determines, so only an obligation (or the comparison, where the
    proposal differs) can reject it. */
-:- module(regs_check_tests, [regs_checker/0]).
+:- module(regs_check_tests, [regs_checker/0, operands_checker/0]).
 
 :- use_module('../src/amd64_regs_check').
 :- use_module(library(assoc)).
@@ -240,3 +240,297 @@ proposal_cases :-
            (   ( M = regs_metadata(true,_,_,_) -> Map1 = [] ; Map1 = Map ),
                (   \+ check_regs(M, Map1, Before, A) -> true
                ;   throw(error(regs_checker(Name, no), regs_checker/0)) ) )).
+
+%% The operand checker (docs/perf.md, step 3b)
+
+% operand_case(Name, A, B, Expected): A is a reference body (3a's stream
+% for an empty map), B a proposed operand rewrite of it; Expected says
+% whether check_operands/3 must accept it, with liveness computed from A.
+operands_checker :-
+    forall(operand_case(Name, A0, B0, Expected),
+           ( ob(A0, A), ob(B0, B), operand_run(Name, A, B, Expected, same) )),
+    forall(operand_raw_case(Name, A, B, Expected),
+           operand_run(Name, A, B, Expected, same)),
+    forall(operand_live_case(Name, A0, Edit),
+           ( ob(A0, A), operand_run(Name, A, A, no, Edit) )),
+    saves_case.
+
+% The whole body: a frame, the lines, rax zeroed by a move (xor would
+% read it), leave and ret.
+ob(Lines, Body) :-
+    append([[ins(push,q,[reg(rbp)]), ins(mov,q,[reg(rsp),reg(rbp)])], Lines,
+            [ins(mov,l,[imm(0),reg(eax)]), ins(leave,none,[]), ins(ret,none,[])]], Body).
+
+operand_run(Name, A, B, Expected, Edit) :-
+    body_analysis(A, [], An), operand_lives(An, [], A, Lives0),
+    edit_lives(Edit, A, Lives0, Lives),
+    ( check_operands(A, B, Lives) -> Got = yes ; Got = no ),
+    (   Got == Expected -> true
+    ;   throw(error(operands_checker(Name, Expected), operands_checker/0))
+    ).
+
+% edit_lives(+Edit, +A, +Lives0, -Lives): dead(Bit, Label) clears Bit
+% after the label, as wrong liveness would.
+edit_lives(same, _, Lives, Lives).
+edit_lives(dead(Bit, L), A, Lives0, Lives) :-
+    maplist(edit_live(Bit, L), A, Lives0, Lives).
+edit_live(Bit, L, Line, live(I,O0), live(I,O)) :-
+    ( Line == label(L) -> O is O0 /\ \ (1 << Bit) ; O = O0 ).
+
+r(N, reg(N)).
+mv(S, A, B, ins(mov,S,[A,B])).
+
+% Accepted rewrites: a forwarded copy and immediate, a retargeted load
+% and two-address result, a forwarded base, a narrowed copy, and a
+% setcc into another register whose upper bits nothing reads.
+operand_case(forward_copy,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(add,q,[reg(rax),reg(rbx)])],
+    [ins(add,q,[reg(r12),reg(rbx)])], yes).
+operand_case(forward_l_copy,
+    [ins(mov,l,[reg(r12d),reg(eax)]), ins(add,l,[reg(eax),reg(ebx)])],
+    [ins(add,l,[reg(r12d),reg(ebx)])], yes).
+operand_case(forward_imm,
+    [ins(mov,q,[imm(-1),reg(rax)]), ins(add,q,[reg(rax),reg(rbx)])],
+    [ins(add,q,[imm(-1),reg(rbx)])], yes).
+operand_case(shift_count,
+    [ins(mov,l,[imm(3),reg(ecx)]), ins(shl,l,[reg(cl),reg(ebx)]), ins(mov,l,[imm(0),reg(ecx)])],
+    [ins(shl,l,[imm(3),reg(ebx)]), ins(mov,l,[imm(0),reg(ecx)])], yes).
+operand_case(retarget_load,
+    [ins(mov,q,[mem(-8,rbp),reg(rax)]), ins(mov,q,[reg(rax),reg(rbx)])],
+    [ins(mov,q,[mem(-8,rbp),reg(rbx)])], yes).
+operand_case(two_address,
+    [ins(mov,q,[reg(rbx),reg(rax)]), ins(sub,q,[reg(r12),reg(rax)]), ins(mov,q,[reg(rax),reg(rbx)])],
+    [ins(sub,q,[reg(r12),reg(rbx)])], yes).
+operand_case(forward_base,
+    [ins(mov,q,[reg(r12),reg(rcx)]), ins(mov,q,[mem(8,rcx),reg(rax)]), ins(add,q,[reg(rax),reg(rbx)]),
+     ins(mov,l,[imm(0),reg(ecx)])],
+    [ins(mov,q,[mem(8,r12),reg(rax)]), ins(add,q,[reg(rax),reg(rbx)]), ins(mov,l,[imm(0),reg(ecx)])], yes).
+operand_case(setcc_elsewhere,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(cmp,q,[imm(0),reg(rbx)]), ins(sete,none,[reg(al)]),
+     ins(movzb,l,[reg(al),reg(eax)]), ins(mov,q,[reg(rax),reg(r13)]), ins(mov,l,[imm(0),reg(ecx)])],
+    [ins(cmp,q,[imm(0),reg(rbx)]), ins(sete,none,[reg(cl)]),
+     ins(movzb,l,[reg(cl),reg(eax)]), ins(mov,q,[reg(rax),reg(r13)]), ins(mov,l,[imm(0),reg(ecx)])], yes).
+% A forwarded read of a register redefined in between.
+operand_case(redefined_source,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(mov,q,[imm(5),reg(r12)]), ins(add,q,[reg(rax),reg(rbx)])],
+    [ins(mov,q,[imm(5),reg(r12)]), ins(add,q,[reg(r12),reg(rbx)])], no).
+% A movl copy used at 64 bits.
+operand_case(l_copy_at_q,
+    [ins(mov,l,[reg(r12d),reg(eax)]), ins(add,q,[reg(rax),reg(rbx)])],
+    [ins(add,q,[reg(r12),reg(rbx)])], no).
+% Swapped sub operands.
+operand_case(swapped_sub,
+    [ins(mov,q,[reg(rbx),reg(rax)]), ins(sub,q,[reg(r12),reg(rax)]), ins(mov,q,[reg(rax),reg(rbx)])],
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(sub,q,[reg(rbx),reg(rax)]), ins(mov,q,[reg(rax),reg(rbx)])], no).
+% A different displacement, and a different base value.
+operand_case(displacement,
+    [ins(mov,q,[mem(-8,rbp),reg(rax)]), ins(add,q,[reg(rax),reg(rbx)])],
+    [ins(mov,q,[mem(-16,rbp),reg(rax)]), ins(add,q,[reg(rax),reg(rbx)])], no).
+operand_case(base_value,
+    [ins(mov,q,[reg(r12),reg(rcx)]), ins(mov,q,[mem(8,rcx),reg(rax)]), ins(add,q,[reg(rax),reg(rbx)]),
+     ins(mov,l,[imm(0),reg(ecx)])],
+    [ins(mov,q,[mem(8,r13),reg(rax)]), ins(add,q,[reg(rax),reg(rbx)]), ins(mov,l,[imm(0),reg(ecx)])], no).
+% A deleted and an added memory access.
+operand_case(deleted_access,
+    [ins(mov,q,[mem(-8,rbp),reg(rax)]), ins(mov,q,[reg(rax),reg(rbx)])],
+    [ins(mov,q,[reg(rax),reg(rbx)])], no).
+operand_case(added_access,
+    [ins(mov,q,[reg(r12),reg(rbx)])],
+    [ins(mov,q,[mem(-8,rbp),reg(rcx)]), ins(mov,q,[reg(r12),reg(rbx)])], no).
+% A live scratch register left different: into a fail block, into a call
+% (which uses every scratch register), and at ret (rdx, rcx).
+operand_case(into_fail_block,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(cmp,q,[imm(0),reg(rbx)]), ins(je,none,[sym(fail)]),
+     ins(mov,l,[imm(0),reg(eax)]), ins(leave,none,[]), ins(ret,none,[]),
+     label(fail), ins(mov,q,[reg(rax),mem(-8,rbp)]), ins(ud2,none,[])],
+    [ins(cmp,q,[imm(0),reg(rbx)]), ins(je,none,[sym(fail)]),
+     ins(mov,l,[imm(0),reg(eax)]), ins(leave,none,[]), ins(ret,none,[]),
+     label(fail), ins(mov,q,[reg(rax),mem(-8,rbp)]), ins(ud2,none,[])], no).
+operand_case(into_call,
+    [ins(mov,q,[reg(r12),reg(rcx)]), ins(call,none,[sym(f)])],
+    [ins(call,none,[sym(f)])], no).
+operand_case(at_ret,
+    [ins(mov,q,[reg(r12),reg(rdx)])],
+    [], no).
+% A two-word result's second word returns in rcx.
+operand_case(at_ret_rcx,
+    [ins(mov,q,[reg(r12),reg(rcx)])],
+    [], no).
+% A home register different at a label.
+operand_case(home_at_label,
+    [ins(mov,q,[reg(r12),reg(rbx)]), label(m)],
+    [label(m)], no).
+% Immediates: outside imm32 for q, and 0xffffffff for -1 at 64 bits.
+operand_case(q_imm_range,
+    [ins(movabs,q,[imm(0x100000000),reg(rax)]), ins(add,q,[reg(rax),reg(rbx)])],
+    [ins(add,q,[imm(0x100000000),reg(rbx)])], no).
+operand_case(ffffffff_for_minus_one,
+    [ins(mov,l,[imm(0xffffffff),reg(eax)]), ins(add,q,[reg(rax),reg(rbx)])],
+    [ins(add,q,[imm(-1),reg(rbx)])], no).
+operand_case(movq_ffffffff,
+    [ins(mov,q,[imm(-1),reg(rax)]), ins(add,q,[reg(rax),reg(rbx)])],
+    [ins(mov,q,[imm(0xffffffff),reg(rax)]), ins(add,q,[reg(rax),reg(rbx)])], no).
+% Boundary identity: a retargeted stack adjustment, a different jcc target.
+operand_case(retargeted_rsp,
+    [ins(mov,q,[imm(16),reg(rax)]), ins(sub,q,[reg(rax),reg(rsp)])],
+    [ins(sub,q,[imm(16),reg(rsp)])], no).
+operand_case(rsp_amount,
+    [ins(sub,q,[imm(16),reg(rsp)])],
+    [ins(sub,q,[imm(32),reg(rsp)])], no).
+operand_case(jcc_target,
+    [ins(cmp,q,[imm(0),reg(rbx)]), ins(je,none,[sym(l1)]), label(l1), label(l2)],
+    [ins(cmp,q,[imm(0),reg(rbx)]), ins(je,none,[sym(l2)]), label(l1), label(l2)], no).
+% A register operand swapped for a memory operand.
+operand_case(reg_for_mem,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(add,q,[reg(rax),reg(rbx)])],
+    [ins(add,q,[mem(-8,rbp),reg(rbx)])], no).
+% %ah has no audited effects.
+operand_case(high_byte,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(mov,b,[reg(al),mem(-1,rbp)])],
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(mov,b,[reg(ah),mem(-1,rbp)])], no).
+% An 8-bit write merged over different upper bits.
+operand_case(merge_upper,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(cmp,q,[imm(0),reg(rbx)]), ins(sete,none,[reg(al)]),
+     ins(mov,q,[reg(rax),reg(r13)])],
+    [ins(mov,q,[reg(r14),reg(rax)]), ins(cmp,q,[imm(0),reg(rbx)]), ins(sete,none,[reg(al)]),
+     ins(mov,q,[reg(rax),reg(r13)])], no).
+operand_case(merge_upper_low,
+    [ins(mov,l,[reg(r12d),reg(eax)]), ins(cmp,q,[imm(0),reg(rbx)]), ins(sete,none,[reg(al)]),
+     ins(mov,q,[reg(rax),reg(r13)])],
+    [ins(mov,l,[reg(r14d),reg(eax)]), ins(cmp,q,[imm(0),reg(rbx)]), ins(sete,none,[reg(al)]),
+     ins(mov,q,[reg(rax),reg(r13)])], no).
+% A two-address destination is a source too.
+operand_case(two_address_source,
+    [ins(mov,q,[reg(rbx),reg(rax)]), ins(add,q,[reg(r12),reg(rax)]), ins(mov,q,[reg(rax),reg(rbx)])],
+    [ins(mov,q,[reg(r13),reg(rax)]), ins(add,q,[reg(r12),reg(rax)]), ins(mov,q,[reg(rax),reg(rbx)])], no).
+% A form the contract does not audit (an immediate as cmp's second
+% operand) on equal values.
+operand_case(unaudited_form,
+    [ins(mov,q,[imm(5),reg(rax)]), ins(cmp,q,[reg(rbx),reg(rax)]), ins(sete,none,[reg(al)]),
+     ins(movzb,l,[reg(al),reg(eax)]), ins(mov,q,[reg(rax),reg(r13)])],
+    [ins(cmp,q,[reg(rbx),imm(5)]), ins(sete,none,[reg(al)]),
+     ins(movzb,l,[reg(al),reg(eax)]), ins(mov,q,[reg(rax),reg(r13)])], no).
+% An implicit operand (idiv's rax) different.
+operand_case(implicit_operand,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(mov,q,[imm(0),reg(rdx)]), ins(idiv,q,[reg(rbx)]),
+     ins(mov,q,[reg(rax),reg(r13)])],
+    [ins(mov,q,[reg(r14),reg(rax)]), ins(mov,q,[imm(0),reg(rdx)]), ins(idiv,q,[reg(rbx)]),
+     ins(mov,q,[reg(rax),reg(r13)])], no).
+% movl for movq into rdi before a call.
+operand_case(movl_argument,
+    [ins(mov,q,[reg(r12),reg(rdi)]), ins(call,none,[sym(f)])],
+    [ins(mov,l,[reg(r12d),reg(edi)]), ins(call,none,[sym(f)])], no).
+
+% A div's flags are distinct per stream; a later shift by %cl (whose zero
+% count would keep them) does not make them live at the jump between.
+operand_case(div_then_shift,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(cqto,none,[]), ins(idiv,q,[reg(rbx)]),
+     ins(mov,q,[reg(rax),reg(r13)]), ins(jmp,none,[sym(l)]), label(l),
+     ins(mov,l,[imm(0),reg(edx)]), ins(shl,l,[reg(cl),reg(r13d)])],
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(cqto,none,[]), ins(idiv,q,[reg(rbx)]),
+     ins(mov,q,[reg(rax),reg(r13)]), ins(jmp,none,[sym(l)]), label(l),
+     ins(mov,l,[imm(0),reg(edx)]), ins(shl,l,[reg(cl),reg(r13d)])], yes).
+% A shift on flags that differ (dead at the label) keeps them different
+% for a zero count, so a read after it rejects even identical streams.
+operand_case(shift_keeps_flags,
+    [label(l), ins(shl,l,[reg(cl),reg(ebx)]), ins(sete,none,[reg(al)]),
+     ins(movzb,l,[reg(al),reg(eax)]), ins(mov,q,[reg(rax),reg(r13)])],
+    [label(l), ins(shl,l,[reg(cl),reg(ebx)]), ins(sete,none,[reg(al)]),
+     ins(movzb,l,[reg(al),reg(eax)]), ins(mov,q,[reg(rax),reg(r13)])], no).
+
+% Control: a call falls through, so the region after it is compared; a
+% label after unreachable lines is reached, so the state is live again;
+% a jmp compares what is live into its target; unreachable lines pair by
+% mnemonic.
+operand_case(after_call,
+    [ins(call,none,[sym(f)]), ins(mov,q,[reg(r12),reg(rdx)])],
+    [ins(call,none,[sym(f)])], no).
+operand_case(after_unreachable_label,
+    [ins(jmp,none,[sym(l)]), label(l), ins(mov,q,[reg(r12),reg(rdx)])],
+    [ins(jmp,none,[sym(l)]), label(l)], no).
+operand_case(live_into_jmp,
+    [ins(mov,q,[reg(r12),reg(rdx)]), ins(jmp,none,[sym(l)]), label(l)],
+    [ins(jmp,none,[sym(l)]), label(l)], no).
+operand_case(unreachable_mnemonic,
+    [ins(jmp,none,[sym(l)]), ins(add,q,[reg(r12),reg(rbx)]), label(l)],
+    [ins(jmp,none,[sym(l)]), ins(sub,q,[reg(r12),reg(rbx)]), label(l)], no).
+% The stack-overflow jump uses every scratch register.
+operand_case(stack_check_uses,
+    [ins(mov,q,[reg(r12),reg(rsi)]), ins(cmp,q,[reg(rsp),mem(0,rdi)]),
+     ins(jae,none,[plt(filc_stack_overflow_failure)]), ins(mov,l,[imm(0),reg(esi)])],
+    [ins(cmp,q,[reg(rsp),mem(0,rdi)]),
+     ins(jae,none,[plt(filc_stack_overflow_failure)]), ins(mov,l,[imm(0),reg(esi)])], no).
+% Indexed memory: the index register's value and the displacement.
+operand_case(index_value,
+    [ins(mov,q,[reg(r12),reg(rcx)]), ins(mov,q,[mem(8,rbx,rcx),reg(rax)]), ins(add,q,[reg(rax),reg(rbx)]),
+     ins(mov,l,[imm(0),reg(ecx)])],
+    [ins(mov,q,[mem(8,rbx,r13),reg(rax)]), ins(add,q,[reg(rax),reg(rbx)]), ins(mov,l,[imm(0),reg(ecx)])], no).
+operand_case(index_displacement,
+    [ins(mov,q,[mem(8,rbx,r12),reg(rax)]), ins(add,q,[reg(rax),reg(rbx)])],
+    [ins(mov,q,[mem(16,rbx,r12),reg(rax)]), ins(add,q,[reg(rax),reg(rbx)])], no).
+% An XMM destination retargeted leaves the original XMM register
+% different at the boundary.
+operand_case(xmm_retarget,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(movq,none,[reg(rax),reg(xmm0)])],
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(movq,none,[reg(rax),reg(xmm1)])], no).
+% Implicit reads: div's rdx and cltd's eax.
+operand_case(div_reads_rdx,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(mov,q,[reg(r13),reg(rdx)]), ins(idiv,q,[reg(rbx)]),
+     ins(mov,q,[reg(rax),reg(r14)]), ins(mov,l,[imm(0),reg(edx)])],
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(mov,q,[reg(r15),reg(rdx)]), ins(idiv,q,[reg(rbx)]),
+     ins(mov,q,[reg(rax),reg(r14)]), ins(mov,l,[imm(0),reg(edx)])], no).
+operand_case(cltd_reads_eax,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(cltd,none,[]), ins(mov,q,[reg(rdx),reg(r14)]),
+     ins(mov,l,[imm(0),reg(edx)])],
+    [ins(mov,q,[reg(r13),reg(rax)]), ins(cltd,none,[]), ins(mov,q,[reg(rdx),reg(r14)]),
+     ins(mov,l,[imm(0),reg(edx)])], no).
+% Flags live at a boundary are compared there: imul's undefined flags
+% read after a jump reject even identical streams.
+operand_case(flags_at_boundary,
+    [ins(imul,q,[reg(r12),reg(rbx)]), ins(jmp,none,[sym(l)]), label(l), ins(sets,none,[reg(al)]),
+     ins(movzb,l,[reg(al),reg(eax)]), ins(mov,q,[reg(rax),reg(r13)])],
+    [ins(imul,q,[reg(r12),reg(rbx)]), ins(jmp,none,[sym(l)]), label(l), ins(sets,none,[reg(al)]),
+     ins(movzb,l,[reg(al),reg(eax)]), ins(mov,q,[reg(rax),reg(r13)])], no).
+% SSE arithmetic preserves the flags: it neither launders imul's
+% undefined flags nor spoils a compare's.
+operand_case(sse_keeps_undefined,
+    [ins(imul,q,[reg(r12),reg(rbx)]), ins(add,sd,[reg(xmm1),reg(xmm0)]), ins(sets,none,[reg(al)]),
+     ins(movzb,l,[reg(al),reg(eax)]), ins(mov,q,[reg(rax),reg(r13)])],
+    [ins(imul,q,[reg(r12),reg(rbx)]), ins(add,sd,[reg(xmm1),reg(xmm0)]), ins(sets,none,[reg(al)]),
+     ins(movzb,l,[reg(al),reg(eax)]), ins(mov,q,[reg(rax),reg(r13)])], no).
+operand_case(sse_keeps_defined,
+    [ins(cmp,q,[reg(r12),reg(rbx)]), ins(div,sd,[reg(xmm1),reg(xmm0)]), ins(sete,none,[reg(al)]),
+     ins(movzb,l,[reg(al),reg(eax)]), ins(mov,q,[reg(rax),reg(r13)])],
+    [ins(cmp,q,[reg(r12),reg(rbx)]), ins(div,sd,[reg(xmm1),reg(xmm0)]), ins(sete,none,[reg(al)]),
+     ins(movzb,l,[reg(al),reg(eax)]), ins(mov,q,[reg(rax),reg(r13)])], yes).
+
+% Whole bodies: ret uses rax (ob/2 would write it first).
+operand_raw_case(ret_uses_rax,
+    [ins(push,q,[reg(rbp)]), ins(mov,q,[reg(rsp),reg(rbp)]), ins(mov,q,[reg(r12),reg(rax)]),
+     ins(leave,none,[]), ins(ret,none,[])],
+    [ins(push,q,[reg(rbp)]), ins(mov,q,[reg(rsp),reg(rbp)]),
+     ins(leave,none,[]), ins(ret,none,[])], no).
+
+% 3a's save and restore lines in A, which the reference's liveness does
+% not have: operand_lives/4 must align them, and a rewrite around them is
+% accepted.
+saves_case :-
+    ob([ins(mov,q,[reg(r12),reg(rax)]), ins(add,q,[reg(rax),reg(r13)])], R),
+    Save = ins(mov,q,[reg(rbx),mem(-8,rbp)]), Restore = ins(mov,q,[mem(-8,rbp),reg(rbx)]),
+    R = [P1,P2|Rest], append(Mid, [Leave,Ret], Rest),
+    append([[P1,P2,Save], Mid, [Restore,Leave,Ret]], A),
+    append([[P1,P2,Save], [ins(add,q,[reg(r12),reg(r13)]), ins(mov,l,[imm(0),reg(eax)])],
+            [Restore,Leave,Ret]], B),
+    body_analysis(R, [], An),
+    (   operand_lives(An, [save(rbx,-8)], A, Lives), check_operands(A, B, Lives) -> true
+    ;   throw(error(operands_checker(saves, yes), operands_checker/0))
+    ).
+
+% Identical streams under wrong liveness: a register read after a region
+% start where it is said dead, and the flags likewise (both start
+% distinct per stream, so the reads differ).
+operand_live_case(dead_register,
+    [label(m), ins(mov,q,[reg(r8),reg(rax)]), ins(add,q,[reg(rax),reg(rbx)])], dead(5, m)).
+operand_live_case(dead_flags,
+    [ins(cmp,q,[imm(0),reg(rbx)]), label(m), ins(sete,none,[reg(al)]),
+     ins(movzb,l,[reg(al),reg(eax)]), ins(mov,q,[reg(rax),reg(r13)])], dead(7, m)).

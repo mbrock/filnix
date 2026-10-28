@@ -104,6 +104,7 @@ test(local_storage_selection) :- local_selection.
 test(scalar_cache) :- scalar_cache.
 test(cache_checker) :- cache_checker.
 test(regs_checker) :- regs_checker.
+test(operands_checker) :- operands_checker.
 test(local_storage_semantics) :- local_semantics.
 test(local_storage_lifetime) :- local_lifetime.
 test(local_storage_validation) :- local_validation.
