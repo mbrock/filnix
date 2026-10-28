@@ -1046,6 +1046,77 @@ test(promote_reads_zero_in_filc) :-
     module_fn_args_outcome(M0, g, [], trap(null_capability)),
     module_fn_args_outcome(M, g, [], trap(null_capability)).
 
+% A union read through a narrower member (lz4's LZ4_isLittleEndian,
+% perf.md): a word stored once and read as bytes or halves at each
+% offset promotes, and each read is the little-endian bytes the store
+% wrote: 0x81828384 is 0x84 0x83 0x82 0x81 in memory, so the unsigned
+% bytes are 132, 131, 130, 129, the signed top byte -127, the unsigned
+% halves 0x8384 = 33668 and 0x8182 = 33154, the signed high half
+% -32382 (a w result is reported mod 2^32: 4294967169 and 4294934914). A half stored and read as bytes promotes too (0x1234: 52, 18).
+% The other order, bytes stored and the word read, must stay memory:
+% bytes 1, 2, 3, 4 read as a word are 0x04030201 = 67305985.
+test(promote_punned_reads) :-
+    Word = 2172814212,
+    Reads = [ub-0-132, ub-1-131, ub-2-130, ub-3-129, sb-3-4294967169,
+             uh-0-33668, uh-2-33154, sh-2-4294934914],
+    findall(func(Fn, export, w, [], [block(s, [], [
+                let(tmp(a), p, alloc(4), [const(4)]),
+                store(w, const(Word), tmp(a)),
+                let(tmp(q), p, add, [tmp(a), const(Off)]),
+                let(tmp(v), w, load(T), [tmp(q)])
+            ], ret(tmp(v)))]),
+            ( nth0(I, Reads, T-Off-_), atom_concat(r, I, Fn) ), Fs),
+    ir_module([func(half, export, w, [], [block(s, [], [
+                   let(tmp(a), p, alloc(4), [const(2)]),
+                   store(h, const(4660), tmp(a)),
+                   let(tmp(x), w, load(ub), [tmp(a)]),
+                   let(tmp(q), p, add, [tmp(a), const(1)]),
+                   let(tmp(y), w, load(ub), [tmp(q)]),
+                   let(tmp(z), w, mul, [tmp(x), const(256)]),
+                   let(tmp(v), w, add, [tmp(z), tmp(y)])
+               ], ret(tmp(v)))]),
+               func(bytes, export, w, [], [block(s, [], [
+                   let(tmp(a), p, alloc(4), [const(4)]),
+                   store(b, const(1), tmp(a)),
+                   let(tmp(q1), p, add, [tmp(a), const(1)]),
+                   store(b, const(2), tmp(q1)),
+                   let(tmp(q2), p, add, [tmp(a), const(2)]),
+                   store(b, const(3), tmp(q2)),
+                   let(tmp(q3), p, add, [tmp(a), const(3)]),
+                   store(b, const(4), tmp(q3)),
+                   let(tmp(v), w, load(uw), [tmp(a)])
+               ], ret(tmp(v)))])|Fs], M0),
+    optimize(passes([promote]), M0, M), once(valid_module(M)),
+    forall(nth0(I, Reads, _-_-V),
+           ( atom_concat(r, I, Fn),
+             module_fn_args_outcome(M0, Fn, [], ret(V)),
+             module_fn_args_outcome(M, Fn, [], ret(V)),
+             func_named(M, Fn, F), alloc_count(module([F]), 0) )),
+    module_fn_args_outcome(M0, half, [], ret(13330)),
+    module_fn_args_outcome(M, half, [], ret(13330)),
+    func_named(M, half, H), alloc_count(module([H]), 0),
+    module_fn_args_outcome(M0, bytes, [], ret(67305985)),
+    module_fn_args_outcome(M, bytes, [], ret(67305985)),
+    func_named(M, bytes, B), alloc_count(module([B]), 1),
+    % Only h and w slots are punned: a pointer's bytes are no value of a
+    % w slot, and an l slot would need l shifts. Both stay memory.
+    ir_module([func(pb, export, w, [], [block(s, [], [
+                   let(tmp(a), p, alloc(8), [const(8)]),
+                   let(tmp(g), p, alloc(8), [const(8)]),
+                   store(p, tmp(g), tmp(a)),
+                   let(tmp(v), w, load(ub), [tmp(a)])
+               ], ret(tmp(v)))]),
+               func(lb, export, w, [], [block(s, [], [
+                   let(tmp(a), p, alloc(8), [const(8)]),
+                   store(l, const(4294967296), tmp(a)),
+                   let(tmp(q), p, add, [tmp(a), const(4)]),
+                   let(tmp(v), w, load(ub), [tmp(q)])
+               ], ret(tmp(v)))])], P0),
+    optimize(passes([promote]), P0, P), once(valid_module(P)),
+    module_fn_args_outcome(P, lb, [], ret(1)),
+    func_named(P, lb, LB), alloc_count(module([LB]), 1),
+    func_named(P, pb, PB), alloc_count(module([PB]), 2).
+
 % An alloc outside the entry block (an inlined callee's local, perf.md
 % item 4) is a fresh zeroed object at each execution. Promoted, each
 % execution must read 0 before its first store: x is 0 three times, so

@@ -1793,6 +1793,18 @@ register. Reaching it means giving the base its own register, which is
 bound with "the register still holds the value" taken literally (no
 intervening write) is the next step before any more work on 5b.
 
+#### Punned union reads in promote (after 5b-1)
+
+lz4's `LZ4_isLittleEndian` writes a union as a word and reads a byte, so
+its alloc stayed memory in every inlined caller. Promote now treats an
+unstored `b`/`h` load inside an `h`/`w` slot as the slot's value shifted
+right by 8 × offset, then extended (promote.pl's header; fail-first test
+`promote_punned_reads`). Gate after it (7 trials, cpu 6, idle), `-O`
+time (instructions) ratio to filcc -O2: lz4 -9 2.66 (3.41) → 2.35 (3.07),
+lz4 -d 2.72 (7.19) → 2.72 (6.82), lz4 -1 2.10 (10.63) → 2.22 (10.53)
+(ranges overlap); the others are unchanged within noise. Geomean
+2.14 (3.27) → 2.13 (3.22); `flow` 2.11 (3.20).
+
 ### 6. Check sequences — needs review
 
 Select a shorter check with the same failure behaviour: the same fail

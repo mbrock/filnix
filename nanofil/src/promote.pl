@@ -17,7 +17,12 @@
     - its size is a constant and every slot lies inside it, so no access
       could trap or be undefined;
     - its slots do not overlap and each offset has one width, so every
-      load reads exactly the bytes one earlier store wrote;
+      load reads exactly the bytes one earlier store wrote, except for
+      punned reads: a `b` or `h` load, at an access never stored, inside
+      a slot of width `h` or `w` (a union read through a narrower
+      member, lz4's `LZ4_isLittleEndian`). It reads the slot's value
+      shifted right by 8 times its byte offset (little-endian), then
+      extended as any narrow load. `l` and `p` slots are never punned;
     - in filc mode, its `p` slots are 8-aligned (allocs are 16-aligned),
       so no `load(p)` or `store(p, V, A)` could trap as misaligned.
 
@@ -183,10 +188,46 @@ promotable(_, func(_, _, _, _, Blocks), []) :-
          memberchk(let(_, _, alloc(_), _), Insts) ), !.
 promotable(Mode, F, Roots) :-
     alloc_classes(F, Classes),
-    findall(A-Accs,
+    stored_accs(F, Stored),
+    findall(A-Slots,
             ( member(A-local(const(Size), Accs), Classes),
-              slots_ok(Mode, Size, Accs) ),
+              ( get_assoc(A, Stored, Ws) -> true ; Ws = [] ),
+              punned_slots(Accs, Ws, Slots),
+              slots_ok(Mode, Size, Slots) ),
             Roots).
+
+% stored_accs(+F, -Stored): Stored maps each alloc to the accesses that
+% store to it.
+stored_accs(F, Stored) :-
+    F = func(_, _, _, _, Blocks),
+    address_temps(F, Addrs),
+    findall(A-acc(Off, W),
+            ( member(block(_, _, Is, _), Blocks), member(store(W, _, tmp(X)), Is),
+              get_assoc(X, Addrs, A-Off) ),
+            Ps0),
+    keysort(Ps0, Ps1), group_pairs_by_key(Ps1, Ps),
+    list_to_assoc(Ps, Stored).
+
+% punned_slots(+Accs, +Stored, -Slots): Slots are the accesses of Accs
+% that no other one contains. Each other access is a punned read: a
+% load of b or h, never stored, inside a slot of width h or w (a union
+% read through a narrower member; its bytes are a shift and an
+% extension of the slot's value, little-endian). Fails otherwise.
+punned_slots(Accs, Stored, Slots) :-
+    partition(inner_acc(Accs), Accs, Inner, Slots),
+    forall(member(Acc, Inner), punned_read(Acc, Slots, Stored)).
+
+inner_acc(Accs, Acc) :- member(Outer, Accs), Outer \== Acc, acc_inside(Acc, Outer), !.
+
+acc_inside(acc(O, W), acc(SO, SW)) :-
+    width_bytes(W, B), width_bytes(SW, SB),
+    SO =< O, O + B =< SO + SB.
+
+punned_read(acc(O, W), Slots, Stored) :-
+    memberchk(W, [b, h]),
+    \+ memberchk(acc(O, W), Stored),
+    member(acc(SO, SW), Slots), acc_inside(acc(O, W), acc(SO, SW)), !,
+    memberchk(SW, [h, w]).
 
 slots_ok(Mode, Size, Accs) :-
     maplist(slot_ok(Mode, Size), Accs),
@@ -305,10 +346,20 @@ promote_roots(Roots, F0, Cfg, Idom, Blocks, Map, Placed0, Addrs, Widths) :-
     F0 = func(_, _, _, _, Blocks0),
     address_temps(F0, AllAddrs),
     % Only addresses of promoted allocs matter from here on.
-    findall(X-(A-Off),
-            ( gen_assoc(X, AllAddrs, A-Off), memberchk(A-_, Roots) ),
-            AddrPairs),
+    % A punned read's address names its slot; Shifts holds its byte
+    % offset in the slot when that is not 0.
+    findall(X-(A-SOff)-Shift,
+            ( gen_assoc(X, AllAddrs, A-Off), memberchk(A-Slots, Roots),
+              (   member(acc(SOff, SW), Slots), width_bytes(SW, SB),
+                  SOff =< Off, Off < SOff + SB
+              ->  Shift is Off - SOff
+              ;   SOff = Off, Shift = 0
+              ) ),
+            AddrShifts),
+    findall(X-Var, member(X-Var-_, AddrShifts), AddrPairs),
     list_to_assoc(AddrPairs, Addrs),
+    findall(X-Shift, ( member(X-_-Shift, AddrShifts), Shift =\= 0 ), ShiftPairs),
+    list_to_assoc(ShiftPairs, Shifts),
     % A slot (Var) is A-Off; Widths maps it to its access width.
     findall((A-Off)-Width,
             ( member(A-Accs, Roots), member(acc(Off, Width), Accs) ),
@@ -356,7 +407,7 @@ promote_roots(Roots, F0, Cfg, Idom, Blocks, Map, Placed0, Addrs, Widths) :-
     list_to_assoc(Zeros, Zero),
     blocks_by_label(Blocks0, ByLabel),
     dom_children(Cfg, Idom, Kids),
-    Env = env(Addrs-AllocVars, PhiAt, ByLabel, Kids, Succs),
+    Env = env(Addrs-AllocVars-Shifts, PhiAt, ByLabel, Kids, Succs),
     % Unreachable blocks never run; their slot reads see 0 so that they
     % stay valid, and they still give each successor's phis an argument.
     Cfg = cfg(_, Rpo, _, _),
@@ -534,11 +585,20 @@ inst_list([I|Is]) --> [I], inst_list(Is).
 % addresses are no instructions, a load of a slot is an operation on
 % its current value, a store to a slot is none and sets its value, and
 % any other instruction is itself.
-inst_renamed(I, Addrs-AllocVars, Cur0, Cur) -->
+inst_renamed(I, Addrs-AllocVars-Shifts, Cur0, Cur) -->
     (   { I = let(tmp(A), _, alloc(_), _), get_assoc(A, AllocVars, AVs) }
     ->  { foldl(slot_zero, AVs, Cur0, Cur) }
     ;   { I = let(tmp(D), _, _, _), get_assoc(D, Addrs, _) }
     ->  { Cur = Cur0 }
+    ;   { I = let(D, K, load(T), [tmp(X)]), get_assoc(X, Addrs, Var),
+          get_assoc(X, Shifts, Shift) }
+    ->  % A punned read of the slot's bytes at Shift: the value shifted
+        % right by 8*Shift, then extended as any narrow load (punned_slots/3).
+        { get_assoc(Var, Cur0, V),
+          load_op(T, K, Op),
+          D = tmp(N), atom_concat('pun.', N, P), Bits is 8*Shift,
+          Cur = Cur0 },
+        [let(tmp(P), w, shr, [V, const(Bits)]), let(D, K, Op, [tmp(P)])]
     ;   { I = let(D, K, load(T), [tmp(X)]), get_assoc(X, Addrs, Var) }
     ->  { get_assoc(Var, Cur0, V),
           load_op(T, K, Op),
