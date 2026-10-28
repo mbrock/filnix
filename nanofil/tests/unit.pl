@@ -1032,6 +1032,208 @@ test(promote_nonentry_allocs) :-
     forall(member(F-N, [zero-0, ptr-1, small-2, esc-1]),
            ( func_named(M, F, Fn), alloc_count(module([Fn]), N) )).
 
+% --inline=small (src/inline.pl, docs/perf.md item 4): eligible calls
+% inline, every exclusion keeps its call, both sides of each cap, and
+% every run keeps its outcome under passes([inline]) and o1(small).
+test(inline_small) :-
+    Add1 = func(add1, local, w, [param(w, tmp(x))],
+                [block(s, [], [let(tmp(y), w, add, [tmp(x), const(1)])], ret(tmp(y)))]),
+    Sum3 = func(sum3, export, w, [], [
+        block(s, [], [], goto(h)),
+        block(h, [phi(tmp(i), w, [s-const(0), b-tmp(i1)]),
+                  phi(tmp(t), w, [s-const(0), b-tmp(t1)])],
+              [let(tmp(c), w, cmp(slt, w), [tmp(i), const(3)])], branch(tmp(c), b, e)),
+        block(b, [], [call(result(tmp(r), w), global(add1), [arg(w, tmp(i))]),
+                      let(tmp(t1), w, add, [tmp(t), tmp(r)]),
+                      let(tmp(i1), w, add, [tmp(i), const(1)])], goto(h)),
+        block(e, [], [], ret(tmp(t)))]),
+    % A fresh zero per call, in a loop.
+    Cell = func(cell, local, w, [param(w, tmp(v))], [
+        block(s, [], [let(tmp(a), p, alloc(4), [const(4)]),
+                      let(tmp(x), w, load(sw), [tmp(a)]),
+                      store(w, tmp(v), tmp(a)),
+                      let(tmp(y), w, load(sw), [tmp(a)]),
+                      let(tmp(z), w, add, [tmp(x), tmp(y)])], ret(tmp(z)))]),
+    Cells = func(cells, export, w, [], [
+        block(s, [], [], goto(h)),
+        block(h, [phi(tmp(i), w, [s-const(0), b-tmp(i1)]),
+                  phi(tmp(t), w, [s-const(0), b-tmp(t1)])],
+              [let(tmp(c), w, cmp(slt, w), [tmp(i), const(3)])], branch(tmp(c), b, e)),
+        block(b, [], [let(tmp(v), w, add, [tmp(i), const(5)]),
+                      call(result(tmp(r), w), global(cell), [arg(w, tmp(v))]),
+                      let(tmp(t1), w, add, [tmp(t), tmp(r)]),
+                      let(tmp(i1), w, add, [tmp(i), const(1)])], goto(h)),
+        block(e, [], [], ret(tmp(t)))]),
+    % A returned local, through a phi and ptoi in a loop: a heap object
+    % per call, as before.
+    Addr = func(addr, local, p, [], [
+        block(s, [], [let(tmp(a), p, alloc(4), [const(4)]),
+                      store(w, const(1), tmp(a))], ret(tmp(a)))]),
+    Addrs = func(addrs, export, w, [], [
+        block(s, [], [], goto(h)),
+        block(h, [phi(tmp(i), w, [s-const(0), b-tmp(i1)]),
+                  phi(tmp(prev), p, [s-const(0), b-tmp(a)]),
+                  phi(tmp(t), w, [s-const(0), b-tmp(t1)])],
+              [let(tmp(c), w, cmp(slt, w), [tmp(i), const(2)])], branch(tmp(c), b, e)),
+        block(b, [], [call(result(tmp(a), p), global(addr), []),
+                      let(tmp(av), l, ptoi, [tmp(a)]),
+                      let(tmp(pv), l, ptoi, [tmp(prev)]),
+                      let(tmp(d), w, cmp(ne, l), [tmp(av), tmp(pv)]),
+                      let(tmp(t1), w, add, [tmp(t), tmp(d)]),
+                      let(tmp(i1), w, add, [tmp(i), const(1)])], goto(h)),
+        block(e, [], [], ret(tmp(t)))]),
+    % Depth 2: twice calls add1, so it inlines in the second round.
+    Twice = func(twice, local, w, [param(w, tmp(x))], [
+        block(s, [], [call(result(tmp(a), w), global(add1), [arg(w, tmp(x))]),
+                      call(result(tmp(b), w), global(add1), [arg(w, tmp(a))])], ret(tmp(b)))]),
+    % The caller already holds names with the second round's first
+    % prefix, one of which twice's renamed body would redefine.
+    Deep = func(deep, export, w, [param(w, tmp(n))], [
+        block(s, [], [let(tmp('i2_1.x'), w, add, [tmp(n), const(10)]),
+                      let(tmp('i2_1.a'), w, add, [tmp(n), const(100)]),
+                      call(result(tmp(r), w), global(twice), [arg(w, tmp('i2_1.x'))]),
+                      let(tmp(z), w, add, [tmp(r), tmp('i2_1.a')])], ret(tmp(z)))]),
+    % A callee label that the join block's label must avoid.
+    Jn = func(jn, local, w, [param(w, tmp(x))], [
+        block(s, [], [], branch(tmp(x), join, z)),
+        block(join, [], [], ret(const(1))),
+        block(z, [], [], ret(const(2)))]),
+    Jns = func(jns, export, w, [param(w, tmp(n))], [
+        block(s, [], [call(result(tmp(r), w), global(jn), [arg(w, tmp(n))])], ret(tmp(r)))]),
+    % Exclusions: each keeps its call.
+    Rec = func(rec, local, w, [param(w, tmp(n))], [
+        block(s, [], [], branch(tmp(n), d, z)),
+        block(d, [], [let(tmp(m), w, sub, [tmp(n), const(1)]),
+                      call(result(tmp(r), w), global(rec), [arg(w, tmp(m))])], ret(tmp(r))),
+        block(z, [], [], ret(const(4)))]),
+    Va = func(va, local, w, [param(w, tmp(x))], [
+        block(s, [], [let(tmp(ap), p, va_args, [const(0)])], ret(tmp(x)))]),
+    Ext = func(ext, export, w, [param(w, tmp(x))], [block(s, [], [], ret(tmp(x)))]),
+    Big = func(big, local, w, [], [
+        block(s, [], [let(tmp(a), p, alloc(4), [const(300)]),
+                      let(tmp(x), w, load(sw), [tmp(a)])], ret(tmp(x)))]),
+    Dyn = func(dyn, local, w, [param(l, tmp(k))], [
+        block(s, [], [let(tmp(a), p, alloc(4), [tmp(k)]),
+                      store(w, const(3), tmp(a)),
+                      let(tmp(x), w, load(sw), [tmp(a)])], ret(tmp(x)))]),
+    Sj = func(sj, local, w, [param(p, tmp(buf))], [
+        block(s, [], [let(tmp(x), w, setjmp('_setjmp'), [tmp(buf), const(0)])], ret(tmp(x)))]),
+    Noret = func(noret, local, w, [], [block(s, [], [], goto(l)), block(l, [], [], goto(l))]),
+    Users = func(users, export, w, [param(w, tmp(n)), param(p, tmp(buf))], [
+        block(s, [], [call(result(tmp(r1), w), global(rec), [arg(w, tmp(n))]),
+                      call(result(tmp(r2), w), global(va), [arg(w, tmp(n))]),
+                      call(result(tmp(r3), w), global(ext), [arg(w, tmp(n))]),
+                      call(result(tmp(r5), w), global(big), []),
+                      call(result(tmp(r6), w), global(dyn), [arg(l, const(4))])],
+              branch(tmp(n), more, out)),
+        block(more, [], [call(result(tmp(r7), w), global(sj), [arg(p, tmp(buf))]),
+                         call(result(tmp(r8), w), global(noret), [])], goto(out)),
+        block(out, [], [let(tmp(a), w, add, [tmp(r1), tmp(r3)]),
+                        let(tmp(c), w, add, [tmp(a), tmp(r6)])], ret(tmp(c)))]),
+    % A setjmp caller and a recursive caller keep their calls.
+    SjCaller = func(sjc, export, w, [param(p, tmp(buf))], [
+        block(s, [], [let(tmp(x), w, setjmp('_setjmp'), [tmp(buf), const(0)]),
+                      call(result(tmp(r), w), global(add1), [arg(w, tmp(x))])], ret(tmp(r)))]),
+    RecCaller = func(rc, export, w, [param(w, tmp(n))], [
+        block(s, [], [call(result(tmp(a), w), global(add1), [arg(w, tmp(n))])],
+              branch(tmp(n), d, z)),
+        block(d, [], [let(tmp(m), w, sub, [tmp(n), const(1)]),
+                      call(result(tmp(r), w), global(rc), [arg(w, tmp(m))]),
+                      let(tmp(q), w, add, [tmp(r), tmp(a)])], ret(tmp(q))),
+        block(z, [], [], ret(tmp(a)))]),
+    % Callee cap: 120 inlines, 121 does not. Caller cap: 2000 inlines,
+    % 2001 does not. Growth: a 301 caller takes 150 more, a 100 callee
+    % but not then a 51 one.
+    chain_func(c120, local, 119, F120), chain_func(c121, local, 120, F121),
+    chain_func(c100, local, 99, F100), chain_func(c51, local, 50, F51),
+    caller_func(k2000, 1998, [c120], K2000), caller_func(k2001, 1999, [c120], K2001),
+    caller_func(k300, 298, [c100, c51], K300),
+    caller_func(kc, 0, [c121, c120], KC),
+    Items = [Add1, Sum3, Cell, Cells, Addr, Addrs, Twice, Deep, Jn, Jns, Rec, Va, Ext,
+             Big, Dyn, Sj, Noret, Users, SjCaller, RecCaller,
+             F120, F121, F100, F51, K2000, K2001, K300, KC],
+    ir_module(Items, M0),
+    optimize(passes([inline]), M0, MI), once(valid_module(MI)), reads_back(MI),
+    optimize(o1(small), M0, M), once(valid_module(M)),
+    forall(member(Caller-Callee, [sum3-add1, cells-cell, addrs-addr, deep-twice,
+                                  deep-add1, jns-jn, k2000-c120, kc-c120]),
+           \+ calls_in(MI, Caller, Callee)),
+    forall(member(Caller-Callee-N, [users-rec-1, users-va-1, users-ext-1,
+                                    users-big-1, users-dyn-1, users-sj-1, users-noret-1,
+                                    sjc-add1-1, rc-add1-1, k2001-c120-1, kc-c121-1,
+                                    k300-c100-0, k300-c51-1]),
+           ( findall(x, call_in(MI, Caller, Callee), Xs), length(Xs, N) )),
+    % No callee of users is eligible, so it is unchanged.
+    func_named(M0, users, Users), func_named(MI, users, Users),
+    forall(member(F-Args-Want, [sum3-[]-ret(6), cells-[]-ret(18), addrs-[]-ret(2),
+                                deep-[5]-ret(122), jns-[0]-ret(2), jns-[3]-ret(1), users-[0, 0]-ret(7), rc-[2]-ret(6),
+                                k2000-[1]-ret(_), kc-[1]-ret(_)]),
+           ( module_fn_args_outcome(M0, F, Args, Want),
+             module_fn_args_outcome(MI, F, Args, Want),
+             module_fn_args_outcome(M, F, Args, Want) )),
+    func_named(M, cells, CellsF), alloc_count(module([CellsF]), 0),
+    func_named(M, addrs, AddrsF), alloc_count(module([AddrsF]), 1).
+
+calls_in(M, Caller, Callee) :- once(call_in(M, Caller, Callee)).
+call_in(M, Caller, Callee) :-
+    func_named(M, Caller, func(_, _, _, _, Bs)),
+    member(block(_, _, Is, _), Bs), member(call(_, global(Callee), _), Is).
+
+% chain_func(+Name, +Linkage, +N, -F): F takes x and returns it plus N,
+% with N adds and a ret: N + 1 instructions and jumps.
+chain_func(Name, L, N, func(Name, L, w, [param(w, tmp(x0))], [block(s, [], Is, ret(Last))])) :-
+    chain_adds(0, N, Is, Last).
+chain_adds(K, N, [], tmp(X)) :- K >= N, !, format(atom(X), 'x~w', [K]).
+chain_adds(K, N, [let(tmp(Y), w, add, [tmp(X), const(1)])|Is], Last) :-
+    format(atom(X), 'x~w', [K]), K1 is K + 1, format(atom(Y), 'x~w', [K1]),
+    chain_adds(K1, N, Is, Last).
+
+% caller_func(+Name, +N, +Callees, -F): F does N adds, then calls each
+% of Callees in turn and returns the last result: N + |Callees| + 1.
+caller_func(Name, N, Callees, func(Name, export, w, [param(w, tmp(x0))],
+                                   [block(s, [], Is, ret(Last))])) :-
+    chain_adds(0, N, Adds, V0),
+    foldl(callee_call, Callees, Calls, 0-V0, _-Last),
+    append(Adds, Calls, Is).
+callee_call(G, call(result(tmp(R), w), global(G), [arg(w, V)]), K0-V, K-tmp(R)) :-
+    K is K0 + 1, format(atom(R), 'r~w', [K]).
+
+% Source contexts follow an inlined call: the calling block's sites
+% before the call stay, the call's origins go to the parameter copies,
+% later sites and the jump move to the join, shifted, and the callee's
+% records are renamed with inl(Round, N, Id) identities.
+test(inline_contexts) :-
+    O = origin(_, at('t.c', 1), statement(expr), []),
+    Callee = func(add1, local, w, [param(w, tmp(x))],
+                  [block(s, [], [let(tmp(y), w, add, [tmp(x), const(1)])], ret(tmp(y)))]),
+    Caller = func(f, export, w, [param(w, tmp(n))], [
+        block(s, [], [let(tmp(a), w, add, [tmp(n), const(2)]),
+                      call(result(tmp(r), w), global(add1), [arg(w, tmp(a))]),
+                      let(tmp(b), w, add, [tmp(r), const(3)]),
+                      call(result(tmp(r2), w), global(add1), [arg(w, tmp(b))]),
+                      let(tmp(c), w, add, [tmp(r2), const(4)])], ret(tmp(c)))]),
+    maplist(origin_named(O), [o1, o2, o3, o4, o5, o6], Os),
+    origin_named(O, c1, C1), origin_named(O, c2, C2),
+    ir_module([Callee, context(add1, [C1, C2, site(inst(s, 0), [c1]), site(jump(s), [c2])]),
+               Caller, context(f, [site(inst(s, 0), [o1]), site(inst(s, 1), [o2]),
+                                   site(inst(s, 2), [o3]), site(inst(s, 3), [o4]),
+                                   site(inst(s, 4), [o5]), site(jump(s), [o6])|Os])],
+              M0),
+    optimize(passes([inline]), M0, module(Items)),
+    once(valid_module(module(Items))),
+    memberchk(context(f, Rs), Items),
+    findall(S-Ids, member(site(S, Ids), Rs), Sites),
+    msort(Sites, Got),
+    msort([inst(s, 0)-[o1], inst(s, 1)-[o2],
+           inst('i1_1.s', 0)-[inl(1, 1, c1)], jump('i1_1.s')-[inl(1, 1, c2)],
+           inst('i1_1.join', 0)-[o3], inst('i1_1.join', 1)-[o4],
+           inst('i1_2.s', 0)-[inl(1, 2, c1)], jump('i1_2.s')-[inl(1, 2, c2)],
+           inst('i1_2.join', 0)-[o5], jump('i1_2.join')-[o6]], Want),
+    Got == Want,
+    memberchk(origin(inl(1, 2, c1), at('t.c', 1), statement(expr), []), Rs).
+
+origin_named(origin(_, L, D, Ps), Id, origin(Id, L, D, Ps)).
+
 % Which allocs promote must remove, and which it must keep, on the
 % fixture and on tests/c/basic.c (only arr's array and ptrs's array have
 % their address passed or stored). A promote that did nothing would still

@@ -23,6 +23,7 @@
 */
 :- module(opt, [optimize/3, optimization_passes/2, optimize_pass/3, refines/2]).
 
+:- use_module(inline).
 :- use_module(promote).
 :- use_module(copy).
 :- use_module(local_storage).
@@ -31,8 +32,9 @@
 
 %! optimize(+Options, +M0, -M) is semidet.
 %
-%  Options is o0 (the reference path), o1 (all three passes), or
-%  passes(Names), an ordered subset of o1. Invalid selections fail.
+%  Options is o0 (the reference path), o1 (all three passes), o1(small)
+%  (inlining of small static functions first, `--inline=small`), or
+%  passes(Names), an ordered subset of o1(small). Invalid selections fail.
 %  Checked or already-local IR stays unchanged.
 
 optimize(Options, M0, M) :-
@@ -45,8 +47,9 @@ optimize(Options, M0, M) :-
 %  cannot reorder or repeat them, or name an unknown pass.
 optimization_passes(o0, []).
 optimization_passes(o1, [promote, copy, local_storage]).
+optimization_passes(o1(small), [inline, promote, copy, local_storage]).
 optimization_passes(passes(Passes), Passes) :-
-    optimization_passes(o1, All),
+    optimization_passes(o1(small), All),
     ordered_passes(Passes, All).
 
 ordered_passes([], _).
@@ -66,6 +69,7 @@ optimize_pass(Name, M0, M) :-
     ;   call(Goal, M0, M)
     ).
 
+pass_predicate(inline, inline_module).
 pass_predicate(promote, promote_module).
 pass_predicate(copy, copy_module).
 pass_predicate(local_storage, local_storage_module).

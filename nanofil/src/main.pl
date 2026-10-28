@@ -69,6 +69,13 @@
     same choice, and nanofil-cc passes call for -fno-builtin,
     -fno-builtin-memcpy, -fno-builtin-memmove and -ffreestanding.
 
+    `--inline=none|small` independently selects no inlining, or, with
+    `-O`, inlining of small static functions before promotion
+    (src/inline.pl, docs/perf.md item 4). The default is none;
+    NANOFIL_INLINE supplies the same choice. Under small a trap inside an
+    inlined function reports its caller's name, as filcc -O2 does
+    without -g.
+
     `--checks=reference|reuse` independently selects the reference checked
     IR, a check before every access, or check reuse after pizlonation
     (src/check_reuse.pl, docs/m7.md). The default is reference;
@@ -123,7 +130,10 @@ main :-
     % halt/1 outside catch/3: SWI implements halt as an exception.
     catch(( ( register_default(Default),
               checks_default(Checks0),
-              options(Argv0,o0,Default,Checks0,Opt,Registers,Checks,Argv),
+              inline_default(Inline0),
+              inline_options(Argv0,Inline0,Inline,Argv1),
+              options(Argv1,o0,Default,Checks0,Level,Registers,Checks,Argv),
+              opt_selection(Level,Inline,Opt),
               command(Opt,Registers,Checks,Argv) )
           ->  Status = 0
           ;   format(user_error, "nanofil: failed~n", []),
@@ -156,6 +166,30 @@ checks_default(Checks) :-
 checks_mode(C) :-
     ( memberchk(C,[reference,reuse]) -> true
     ; throw(nanofil_error('checks must be reference or reuse')) ).
+% inline_options(+Argv0, +Inline0, -Inline, -Argv): Argv is Argv0 less
+% its --inline= options, the last of which gives Inline.
+inline_options([], I, I, []).
+inline_options([A|As], I0, I, Args) :-
+    (   atom(A), atom_concat('--inline=', I1, A)
+    ->  inline_mode(I1), inline_options(As, I1, I, Args)
+    ;   Args = [A|Args1], inline_options(As, I0, I, Args1)
+    ).
+inline_default(Inline) :-
+    ( getenv('NANOFIL_INLINE',I) -> Inline = I ; Inline = none ),
+    inline_mode(Inline).
+inline_mode(I) :-
+    ( memberchk(I,[none,small]) -> true
+    ; throw(nanofil_error('inline must be none or small')) ).
+% opt_selection(+Level, +Inline, -Opt): the middle end's selection
+% (opt.pl); inlining needs -O.
+opt_selection(o0, _, o0).
+opt_selection(o1, none, o1).
+opt_selection(o1, small, o1(small)).
+% opt_level(+Opt, -Level): o0 or o1, for difftest's validation.
+opt_level(o0, o0).
+opt_level(o1, o1).
+opt_level(o1(_), o1).
+
 options(['-O'|As],_,R,C,O,Rs,Cs,Args) :- !, options(As,o1,R,C,O,Rs,Cs,Args).
 options([A|As],O,emit(_,B,M),C,Opt,Rs,Cs,Args) :-
     atom_concat('--registers=',R,A), !, register_mode(R),
@@ -311,10 +345,11 @@ command(Opt, [run, File, Fn|ArgAtoms]) :-
     once(run(Module, Fn, Args, Fuel, Outcome)),
     outcome_text(Outcome, Text),
     format("~w~n", [Text]).
-difftest(Opt, Checks, File, Dir) :-
+difftest(Sel, Checks, File, Dir) :-
     file_module(File, Module0),
     module_mode(Module0, Mode),
-    optimize(Opt, Module0, Module),
+    optimize(Sel, Module0, Module),
+    opt_level(Sel, Opt),
     file_runs(File, Runs),
     opt_valid_module(Opt, Module),
     module_prepared(Module0, Prepared0),
@@ -323,7 +358,7 @@ difftest(Opt, Checks, File, Dir) :-
     % backtracking before the next starts.
     findall(Result-Verdict,
             ( member(Run, Runs),
-              validated_run(Opt, Module0-Prepared0, Module-Prepared, Run,
+              validated_run(Sel, Module0-Prepared0, Module-Prepared, Run,
                             Result, Verdict)
             ),
             ResultVerdicts),
@@ -467,7 +502,8 @@ max_fuel(1000000).
 validated_run(o0, _, Optimized, Run, Result, ok) :-
     max_fuel(Fuel),
     module_run_result(Optimized, Run, Fuel, Result).
-validated_run(o1, Original, Optimized, Run, Result, Verdict) :-
+validated_run(Sel, Original, Optimized, Run, Result, Verdict) :-
+    opt_level(Sel, o1),
     fuel_step(Fuel),
     module_run_result(Original, Run, Fuel, r(Fn, Args, Outcome0)),
     max_fuel(MaxFuel),
@@ -477,7 +513,8 @@ validated_run(o1, Original, Optimized, Run, Result, Verdict) :-
     % Commit to the first fuel step at which the original finishes, or
     % to the last one.
     !,
-    module_run_result(Optimized, Run, Fuel, Result),
+    optimized_fuel(Sel, Fuel, Fuel1),
+    module_run_result(Optimized, Run, Fuel1, Result),
     Result = r(_, _, Outcome),
     (   refines(Outcome0, Outcome) -> Verdict = ok
     ;   call_text(Fn, Args, CallText),
@@ -485,6 +522,12 @@ validated_run(o1, Original, Optimized, Run, Result, Verdict) :-
         outcome_text(Outcome, Text),
         Verdict = bad(CallText, Text0, Text)
     ).
+
+% optimized_fuel(+Sel, +Fuel, -Fuel1): the optimized module's fuel.
+% Inlining adds a join block per inlined call, at most one block run
+% for each block the original runs.
+optimized_fuel(o1, Fuel, Fuel).
+optimized_fuel(o1(_), Fuel, Fuel1) :- Fuel1 is 2 * Fuel.
 
 % fuel_step(-Fuel) is multi: Fuel is one of the growing fuel limits,
 % smallest first, ending at max_fuel.

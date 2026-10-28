@@ -722,7 +722,7 @@ middle end's run-by-run refinement (`-O` difftest) and the gates. It
 changes panic origins and stack traces (the inlined access reports the
 caller's frame), an observation change to state and review with it.
 
-#### 4. Contract (proposed, reviewed, not implemented)
+#### 4. Contract (approved; implemented as `--inline=small`, opt-in)
 
 **What inlining buys, measured.** filcc's own `-O2` against
 `-O2 -fno-inline`, user instructions: lz4 `-9` 2.84G / 5.19G, lz4 `-1`
@@ -933,6 +933,131 @@ Dropping static functions left unreferenced is out of scope.
 - Snapshot limited to `-O` outputs, the gate (no workload slower beyond
   its trial range, SQLite included), the ten checks, and sqlite3.c's
   `-O` compile within 25% of its time and memory.
+
+#### 4: result (`--inline=small`, opt-in)
+
+`src/inline.pl` is the pass, first in `o1(small)` (opt.pl);
+`--inline=none|small` and `NANOFIL_INLINE` select it (main.pl), and
+without `-O` it is off. nanofil-cc passes `--inline=none` for
+`-fno-inline` and `-O0`; the bench has an `O-inline` mode; the Nix check
+runs the `-O` difftests, ABI+GC run-c and progtests (GC stress) with it.
+The snapshot unsets `NANOFIL_INLINE`, so its `-O` outputs stay
+uninlined; it pins `--inline=none` once both revisions know the option.
+
+Departures from the contract, none of them a safety rule:
+
+- *Growth cap*: a caller may grow by half its size **or by 120
+  instructions, whichever is more**. Exactly 1.5× forbids inlining
+  anything into a caller under 240 instructions (wrappers, most
+  `static` helpers' callers), where frame growth is negligible.
+- Both caller caps, 2000 and the growth, are on the caller's size
+  **before the first round**. A first version measured them per round,
+  so round 2 granted another half; `inline_small` caught it (`k300`).
+- In plain mode every callee alloc must promote: an unpromoted plain
+  stack alloc would live until the caller returns.
+- A callee label can be the join's base name: the join takes the first
+  of `join`, `join_`, ... that no callee name and no caller name uses.
+- Splits and callee records are collected while the blocks are walked
+  and applied to the caller's records in one pass: rewriting the record
+  list per inlined call was quadratic on SQLite's largest functions.
+- difftest gives the inlined module twice the original's fuel: each
+  inlined call adds a join block.
+- `va_args` alone excludes a variadic callee (`variadic_func/1` is the
+  same test).
+
+**Panic origins** (decision (A)). Under `--inline=small` a check that
+fails in inlined code reports the function the code ended up in, as
+filcc `-O2` without `-g` does. Measured on an out-of-bounds read in
+`get`, called from `sum`, called from `main`, all static but `main`:
+
+| build | semantic origin | check scheduled at |
+| --- | --- | --- |
+| filcc `-O2` | `main` | `main` |
+| nanofil `-O --inline=none` | `get` | `get`, `sum`, `main` |
+| nanofil `-O --inline=small` | `main` | `main` |
+
+The rest of the safety message (the pointer, "expected 4 bytes") is
+the same. (B), inline frames as filcc `-g` reports them, stays a
+follow-up that needs an IR path marker, a grammar change. progtest
+reduces every panic to "trap", so this comparison is recorded here
+rather than kept as a test.
+
+**Tests.** Unit `inline_small`: eligible calls inline (a loop body
+with a phi successor, a fresh zero per call in a loop, a returned local
+through a phi and `ptoi`, depth 2, a name collision with the round's
+prefix that the renamed body would redefine, a callee label `join`);
+each exclusion keeps its call and leaves `users` unchanged (recursive,
+variadic, extern, 300-byte and dynamic allocs, setjmp callee and
+caller, no `ret`, recursive caller); both sides of the 120, 2000 and
+growth caps; every run keeps its outcome under `passes([inline])` and
+`o1(small)`. Unit `inline_contexts`: the exact sites after two inlined
+calls in one block. `tests/c/inline.c`: static callees in loops with
+`long`, `double` and struct locals, a returned local's address, void
+returns and loops; a byval callee and a union local only local storage
+takes stay calls. Plants, each caught: no phi rename, no zero for a
+promoted alloc, admitting a recursive caller, a non-leaf callee, a
+setjmp caller or callee, `va_args`, dynamic allocs; no growth cap,
+per-round growth, each cap one higher; fixed-prefix names; no reapplied
+split, a wrong shift. Two plants first survived and tightened the test:
+dropping the leaf rule (the inlined recursive body still held one call,
+hence the `users` equality), and fixed prefixes (the IR allows a
+redefinition, so the collision now clobbers a value read after the
+call).
+
+**Gate** (5 trials, ratio to filcc, time (instructions); the `O`
+binaries are 812a745's, whose C outputs the snapshot shows unchanged):
+
+| workload | `-O` | `-O --inline=small` |
+| --- | --- | --- |
+| zlib -6 | 2.57 (4.21) | 2.60 (4.21) |
+| zlib -d | 2.02 (3.38) | 2.04 (3.38) |
+| bzip2 -9 | 2.07 (2.66) | 2.06 (2.66) |
+| bzip2 -d | 3.62 (3.40) | 3.75 (3.40) |
+| lz4 -1 | 2.42 (12.92) | 2.25 (10.71) |
+| lz4 -9 | 4.07 (4.71) | 2.91 (3.71) |
+| lz4 -d | 3.08 (8.32) | 2.88 (7.24) |
+| lua int | 2.25 (2.49) | 2.25 (2.49) |
+| lua tab | 2.09 (2.40) | 2.08 (2.40) |
+| lua str | 1.58 (1.71) | 1.53 (1.64) |
+| sqlite | 2.07 (2.07) | 2.07 (2.04) |
+| geomean | 2.44 (3.62) | 2.34 (3.42) |
+
+SQLite is unchanged (2.07..2.11 against 2.06..2.07): measuring the caps
+on the pre-inlining size is what fixed the prototype's 2.08 → 2.21.
+lz4 `-9` gains more than the prototype did (4.10 → 3.20 there). bzip2
+`-d` is 4% slower over 11 trials (3.61 against 3.76) with the same
+4.85G instructions. Its hot functions (`BZ2_decompress`,
+`unRLE_obuf_to_output_*`) are the same size in both binaries, and only
+compress-side functions and `main` grew. Legacy-decoder micro-ops rise
+from 0.75–0.76G to 0.79G: this is the layout sensitivity measured under
+3b, not inlined code. zlib's +1% is within its range.
+
+**sqlite3.c `-O` compile**, under the 4 GB stack limit its builds use
+(`NANOFIL_STACK_LIMIT`): `--inline=none` 90.6 s user, 1:37 wall,
+1.46 GB peak RSS; `--inline=small` 105.0 s (+16%), 1:52, 1.46 GB.
+Under SWI's default 1 GB limit both also finish, at 2.28 and 2.27 GB.
+The
+pass itself takes about 5 s; the rest is the 18% more blocks (66k to
+78k) that later passes and the backend handle. Reaching that took three
+changes to a first version that was quadratic and overflowed SWI's
+default 1 GB limit with 200 MB live: per-call rewriting of the caller's
+records (now one pass), linear ordsets for the module's 3,000 names,
+the caller's names and the cycle search (now assocs; 17 s to 4.4 s
+under the profiler), and the first round's garbage, which SWI's limit
+counts as allocated (collected between rounds, as main.pl does between
+stages; peak RSS was 2.14 GB without it).
+
+
+**Default.** The conditions for proposing it as the `-O` default hold:
+SQLite within its range, the compile within 25%, every other workload
+faster or unchanged in instructions (bzip2 `-d`'s time is layout). It
+stays opt-in until that is agreed; making it the default changes every
+`-O` C output, so the snapshot would then pin `--inline=none`.
+
+Not inlined yet, measured: `escape.pl` classes a `d` load as escaping,
+so `double` and struct-with-`double` locals stay heap objects with or
+without inlining (`mix` in `tests/c/inline.c` keeps three); that is a
+promotion limit, not an inlining one. Lua's hot helpers are extern.
 
 ### 5. Pointer frame traffic — needs review
 
