@@ -3,7 +3,7 @@
 disassembly: frame-slot loads and stores, moves between register homes
 (rbx, r12-r15, r10, r11) and scratch registers, constants, booleans and
 control. Unlike profile.py it needs no marked build, so it works with
---registers=function, whose checker rejects marked prologues.
+builds whose checker rejects marked prologues.
 
 usage: shapes.py BINARY CALLGRIND_OUT
   valgrind --aspace-minaddr=0x100000000 --tool=callgrind --dump-instr=yes \

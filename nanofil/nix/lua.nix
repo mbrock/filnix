@@ -32,11 +32,10 @@ let
   configurations = {
     plain = "";
     optimized = "-O";
-    local-plain = "--registers=local";
-    local-optimized = "-O --registers=local";
     branches-reference = "-O --branches=reference";
     stack-optimized = "-O --registers=stack";
     reuse-plain = "--checks=reuse";
+    reuse-optimized = "-O --checks=reuse";
   };
 in
 (import ./configurations.nix { inherit pkgs; } "nanofil-lua" configurations (

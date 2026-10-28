@@ -13,7 +13,7 @@
     |---|---|
     | `pointer` | `p` temporaries: each slot is a payload slot and its lower, allocated together |
     | `scalar` | `w` and `l` temporaries, and `s` and `d` ones when the pools are `shared`; they never use the pointer pool. With pools `own`, never reused |
-    | `float` | `s` and `d` temporaries when the pools are `split` or `own` |
+    | `float` | `s` and `d` temporaries when the pools are `own` |
     | `wide` | `x` temporaries: 16-byte slots for the 10 bytes of a long double |
 
     A variadic function's hidden `va_snapshot` parameter is kept live for
@@ -35,14 +35,15 @@ temp_slots(Params, Blocks, Temps, Aliases, NS, NP, NW) :-
 
 % temp_slots(+Pools, +Params, +Blocks, +Temps, -Aliases, -ScalarCount,
 % -PtrCount, -WideCount, -FloatCount): as temp_slots/7, with Pools shared,
-% split, own, own(Groups) or own(Groups, Ranges). Split gives s and d
+% own, own(Groups) or own(Groups, Ranges). Own gives s and d
 % temporaries a float pool of their own, so no scalar slot holds both an
-% integer and a float temporary: register allocation (docs/perf.md item
-% 3) takes only w/l homes. Own is
-% split with no reuse of scalar slots: each w/l temporary has its own
-% home, so a home is one live range (docs/perf.md 3d). Own(Groups),
-% with Groups a list of Temporary-Key pairs, pools each key's w/l
-% temporaries among themselves, as split pools them; key frame first.
+% integer and a float temporary (register allocation, docs/perf.md item
+% 3, takes only w/l homes), and reuses no scalar slot: each w/l
+% temporary has its own home, so a home is one live range (docs/perf.md
+% 3d). Own(Groups), with Groups a list of Temporary-Key pairs, pools each
+% key's w/l temporaries among themselves, as shared pools them; key frame
+% first. (A split choice, own's float pool with shared scalar slots, served
+% the retired function, operands and cells modes.)
 % Own(Groups, Ranges) is own(Groups) that binds Ranges to the live
 % ranges, or takes them when Ranges is bound (temp_ranges/6).
 temp_slots(Pools, Params, Blocks, Temps, Aliases, NS, NP, NW, NF) :-
@@ -100,7 +101,7 @@ temp_ranges(Pools, Params, Blocks, Temps, Wides, Intervals) :-
     partition(wide_range, Intervals1, Wides, Intervals).
 
 % own_groups(+Pools, -Groups): all when every scalar temporary is
-% pooled (shared, split), else an assoc from temporary to its group
+% pooled (shared), else an assoc from temporary to its group
 % (own(Pairs); own has no groups, so every scalar home is its own).
 own_groups(own, G) :- !, empty_assoc(G).
 own_groups(own(Ps), G) :- !, list_to_assoc(Ps, G).
@@ -184,8 +185,6 @@ class_pool(w, _, scalar).
 class_pool(l, _, scalar).
 class_pool(s, shared, scalar).
 class_pool(d, shared, scalar).
-class_pool(s, split, float).
-class_pool(d, split, float).
 class_pool(s, own, float).
 class_pool(d, own, float).
 class_pool(s, own(_), float).

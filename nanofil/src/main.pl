@@ -43,16 +43,15 @@
     (translation validation), and prints how many allocs promote
     removed.
 
-    `--registers=stack|local|function|operands|cells|temps|flow` independently
-    selects reference emission, validated block-local scalar caching,
-    validated whole-function register homes for scalars (docs/perf.md
-    item 3), or those homes with validated register operands (item 3,
-    step 3b), or those with frame-word loads forwarded too (item
-    5a-loads), or those on a frame with a home per scalar temporary
-    (item 3d), or those with frame cells forwarded across checks' jumps
-    and labels (item 5b-1) in the Fil-C backend. The default is temps with `-O` and
-    stack without it; NANOFIL_REGISTERS supplies the same choice to build
-    harnesses, and `-O --registers=stack` keeps the reference emission.
+    `--registers=stack|temps` independently selects reference emission or
+    validated whole-function register homes for scalars with validated
+    register operands and frame cells, on a frame with a home per scalar
+    temporary (docs/perf.md items 3, 5a-loads and 3d), in the Fil-C
+    backend. The default is temps with `-O` and stack without it;
+    NANOFIL_REGISTERS supplies the same choice to build harnesses, and
+    `-O --registers=stack` keeps the reference emission. The modes local,
+    function, operands, cells and flow were retired in October 2026
+    (docs/perf.md, register modes) and are refused.
     The plain backend is unchanged. Options precede the command.
 
     `--branches=reference|selected` independently selects the reference
@@ -155,8 +154,11 @@ register_default(emit(Registers, Branches, Copies)) :-
     ( getenv('NANOFIL_BRANCHES',B) -> branches_mode(B), Branches = B ; true ),
     ( getenv('NANOFIL_MEMCPY',M) -> memcpy_mode(M), Copies = M ; true ).
 register_mode(R) :-
-    ( memberchk(R,[stack,local,function,operands,cells,temps,flow]) -> true
-    ; throw(nanofil_error('registers must be stack, local, function, operands, cells, temps or flow')) ).
+    ( memberchk(R,[stack,temps]) -> true
+    ; memberchk(R,[local,function,operands,cells,flow])
+    -> format(atom(Msg), 'registers=~w was retired (docs/perf.md); registers must be stack or temps', [R]),
+       throw(nanofil_error(Msg))
+    ; throw(nanofil_error('registers must be stack or temps')) ).
 branches_mode(B) :-
     ( memberchk(B,[reference,selected]) -> true
     ; throw(nanofil_error('branches must be reference or selected')) ).

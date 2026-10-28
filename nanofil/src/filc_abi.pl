@@ -48,7 +48,7 @@ lower_function(Module, Func, LiveBlocks, Product) :-
     lower_function(shared, Module, Func, LiveBlocks, Product).
 
 % lower_function(+Pools, +Symbols, +FusedFunction, +LiveBlocks, -Product):
-% as lower_function/4, with the temporaries' slot pools shared or split
+% as lower_function/4, with the temporaries' slot pools shared or own
 % (frame_slots:temp_slots/9).
 lower_function(Pools, Module, Func, LiveBlocks,
                abi_function(Name, Linkage, Ret, Sig, Frame, Entry, Blocks,

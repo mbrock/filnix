@@ -1,5 +1,5 @@
 /* Translation validation for whole-function scalar register homes
-   (`--registers=function`, docs/perf.md item 3). The allocator proposes
+   (docs/perf.md item 3, run by `--registers=temps`). The allocator proposes
    a fixed map from frame homes to registers; nothing about how it chose
    the map is trusted here.
 
@@ -36,7 +36,7 @@
    register or %rbp outside the prologue, must not take the address of
    a mapped home or save slot, and must not touch a save slot.
 
-   Trusted, as in amd64_cache_check: the emitter's home classes, and
+   Trusted, as in M6's retired cache checker: the emitter's home classes, and
    that only %rbp-relative operands reach a home (homes and save slots
    never escape; the frame record and local storage the code does expose
    lie elsewhere in the frame). */
@@ -46,9 +46,8 @@
            allocated_stream/4, home_liveness/4, successors/2, successors/3, rbp_access/3,
            effect_access/3, line_effect/2, body_analysis/4,
            allocatable/1, callee_saved/1, scratch_family/2,
-           check_operands/3, check_operands/4, check_operands/5, valid_cells/3, operand_lives/4,
-           operand_move/2, operand_roles/3, boundary_line/2, continued_jump/3, extra_use_def/4,
-           fact_labels/2, no_fallthrough/2, scratch_family/2]).
+           check_operands/3, check_operands/4, valid_cells/3, operand_lives/4, operand_move/2,
+           operand_roles/3, boundary_line/2, extra_use_def/4]).
 
 :- use_module(amd64_contract,
               [instruction_effects/2, register/3, explicit_registers/2]).
@@ -600,79 +599,10 @@ check_operands(A, B, Lives) :-
 %  and reset at every region start. A word whose address a `lea`
 %  computes is not a cell.
 check_operands(A, B, Lives, Cells0) :-
-    check_operands(A, B, Lives, Cells0, cells).
-
-%! check_operands(+A, +B, +Lives, +Cells, +Flow) is semidet.
-%
-%  As check_operands/4. Flow is cells, or flow(Facts) for docs/perf.md
-%  5b-1. Rule 1: a conditional jump to a local label (continued_jump/3)
-%  ends a region as every boundary does (the line is identical and A
-%  and B agree on what is live), but its fallthrough, which has no other
-%  predecessor and follows a line that writes nothing, continues with
-%  both states and the cells' values instead of a region start. Rule 2:
-%  Facts maps a label L to pairs F-D, scratch family F holding the whole
-%  value of cell D on entry to L (well_formed_facts/4). On every edge
-%  into L (a jump to it, or falling into it, in a reachable state), B's
-%  F equals the cell's current value; at L, after the region start, B's
-%  F is the cell's start value, and F must not be live in A there.
-check_operands(A, B, Lives, Cells0, Flow) :-
     valid_cells(Cells0, A, Cells),
-    empty_assoc(None),
-    (   Flow = flow(Facts) -> well_formed_facts(Facts, A, Cells, Lives)
-    ;   Flow == cells, Facts = None
-    ),
     shared_state(S0),
-    operands_walk(A, B, Lives, 0, S0, S0, None, env(S0, Cells, None, Flow, Facts)).
-
-%! well_formed_facts(+Facts, +A, +Cells, +Lives) is semidet.
-%  Every label with facts is defined once in A, is not a GNU numeric
-%  label, and is named by no line of A other than as a direct jump's
-%  target; its facts have one cell each for distinct scratch families,
-%  and each cell is one of Cells (no lea addresses it).
-well_formed_facts(Facts, A, Cells, _) :-
-    assoc_to_list(Facts, Ps),
-    (   Ps == [] -> true
-    ;   fact_labels(A, Labels),
-        forall(member(L-Fs, Ps), well_formed_label(L, Fs, Labels, Cells))
-    ).
-
-%! fact_labels(+A, -Labels) is det.
-%  Labels maps each label of A that may carry facts: defined once, not a
-%  GNU numeric label, and named by no line other than as a direct jump's
-%  target.
-fact_labels(A, Labels) :-
-    findall(L, member(label(L), A), Ls0), msort(Ls0, Ls),
-    named_labels(A, Named),
-    once_labels(Ls, Named, Ps),
-    list_to_assoc(Ps, Labels).
-once_labels([], _, []).
-once_labels([L|Ls], Named, Ps) :-
-    (   Ls = [L|_] -> skip_label(L, Ls, Rest), Ps = Ps1
-    ;   atom(L), \+ atom_number(L, _), \+ get_assoc(L, Named, _)
-    ->  Rest = Ls, Ps = [L-label|Ps1]
-    ;   Rest = Ls, Ps = Ps1
-    ),
-    once_labels(Rest, Named, Ps1).
-skip_label(L, [M|Ms], Rest) :- M == L, !, skip_label(L, Ms, Rest).
-skip_label(_, Ms, Ms).
-
-well_formed_label(L, Fs, Labels, Cells) :-
-    get_assoc(L, Labels, _),
-    is_list(Fs), msort(Fs, Fs1), Fs1 == Fs,
-    pairs_keys(Fs, Rs), sort(Rs, Rs1), length(Rs, N), length(Rs1, N),
-    forall(member(F-D, Fs), ( scratch_family(F, _), integer(D), get_assoc(D, Cells, _) )).
-
-% named_labels(+A, -Named): the atoms any line of A names other than a
-% direct jump's target: rip operands, symbols of calls and every other
-% operand.
-named_labels(A, Named) :-
-    findall(X-t, ( member(ins(Op,_,Os), A),
-                   \+ ( atom_concat(j, _, Op), Os = [sym(_)] ),
-                   operand_atom(Os, X) ), Ps0),
-    sort(Ps0, Ps), list_to_assoc(Ps, Named).
-
-operand_atom(T, X) :- atom(T), !, X = T.
-operand_atom(T, X) :- compound(T), T =.. [_|As], member(A, As), operand_atom(A, X).
+    empty_assoc(None),
+    operands_walk(A, B, Lives, 0, S0, S0, None, env(S0, Cells, None)).
 
 % valid_cells(+Cells0, +A, -Cells): the cells are distinct, 8-aligned and
 % outside every other range; Cells maps those no lea in A addresses.
@@ -701,25 +631,15 @@ operands_walk(As, [LB|Bs], Ls, J, SA, SB, CS, Env) :-
     move_state(M, SB, SB1),
     operands_walk(As, Bs, Ls, J, SA, SB1, CS, Env).
 operands_walk([LA|As], [LB|Bs], [live(In,Out,EA)|Ls], J, SA, SB, CS, Env) :-
-    Env = env(S0, Cells, None, Flow, Facts),
+    Env = env(S0, Cells, None),
     % An identical line has A's effect; line_effect/2 is a function.
     (   LA == LB -> EB = EA ; line_effect(LB, EB) ),
     (   ( boundary_line(LA, EA) ; LA \== LB, boundary_line(LB, EB) )
-    ->  LA == LB,
-        (   SA == none -> true
-        ;   region_end(In, SA, SB),
-            % The edge into a label with facts, in the region's state and
-            % with its cells' current values, before anything is reset.
-            edge_facts(LA, Facts, SB, CS)
-        ),
-        (   SA \== none, continued_jump(Flow, LA, EA)
-        ->  SA1 = SA, SB1 = SB, CS1 = CS
-        ;   CS1 = None,
-            (   no_fallthrough(LA, EA)
-            ->  SA1 = none, SB1 = none
-            ;   region_start(Out, S0, SA1, SB0),
-                label_facts(LA, Facts, In, SB0, SB1)
-            )
+    ->  LA == LB, CS1 = None,
+        ( SA == none -> true ; region_end(In, SA, SB) ),
+        (   no_fallthrough(LA, EA)
+        ->  SA1 = none, SB1 = none
+        ;   region_start(Out, S0, SA1, SB1)
         )
     ;   SA == none
     ->  LA = ins(Op,S,_), LB = ins(Op,S,_), SA1 = none, SB1 = none, CS1 = CS
@@ -733,7 +653,7 @@ operands_walk([LA|As], [LB|Bs], [live(In,Out,EA)|Ls], J, SA, SB, CS, Env) :-
 % or a whole load of a cell into a general register other than rsp or
 % rbp, as a move of the cell's value.
 stream_move(Line, _, _, M) :- operand_move(Line, M), !.
-stream_move(ins(mov,S,[mem(D,rbp),reg(Y)]), env(_, Cells, _, _, _), CS, move(F, value(V), W)) :-
+stream_move(ins(mov,S,[mem(D,rbp),reg(Y)]), env(_, Cells, _), CS, move(F, value(V), W)) :-
     get_assoc(D, Cells, _),
     memberchk(S-W, [l-32, q-64]),
     register(Y, F, W), gpr(F), \+ memberchk(F, [rsp,rbp]),
@@ -771,37 +691,6 @@ cell_store(_, J, _, _, _, C, CS0, CS) :-
 
 store_source(reg(N), W, SA0, V) :- register(N, F, W), gpr(F), read_value(F, W, SA0, V).
 store_source(imm(I), W, _, V) :- integer(I), imm_range(W, I), imm_value(I, W, V).
-
-%! continued_jump(+Flow, +Line, +Effect) is semidet.
-%  In flow mode, Line is a conditional jump to a local label: its
-%  fallthrough continues the region (check_operands/5). Flow is flow
-%  in the rewrite and flow(Facts) in the checker.
-continued_jump(Flow, ins(Op,none,[sym(_)]), effect(_,_,_,_,branch)) :-
-    ( Flow == flow -> true ; nonvar(Flow), Flow = flow(_) ),
-    Op \== jmp.
-
-% edge_facts(+Line, +Facts, +SB, +CS): Line, a jump to L or the label L
-% itself (the fallthrough into it), leaves B's state SB with every fact
-% of L: F holds both halves of cell D's current value.
-edge_facts(Line, Facts, SB, CS) :-
-    (   ( Line = label(L) ; Line = ins(Op,none,[sym(L)]), atom_concat(j, _, Op) ),
-        get_assoc(L, Facts, Fs)
-    ->  SB = st(R,_,_),
-        forall(member(F-D, Fs), ( reg_get(F, R, V), cell_value(D, CS, W), V == W ))
-    ;   true
-    ).
-
-% label_facts(+Line, +Facts, +In, +SB0, -SB): at a label with facts, B's
-% fact registers hold their cells' start values; none is live in A.
-label_facts(Line, Facts, In, SB0, SB) :-
-    (   Line = label(L), get_assoc(L, Facts, Fs)
-    ->  empty_assoc(None),
-        foldl(label_fact(In, None), Fs, SB0, SB)
-    ;   SB = SB0
-    ).
-label_fact(In, None, F-D, st(R0,X,Fl), st(R,X,Fl)) :-
-    scratch_family(F, Bit), In /\ (1 << Bit) =:= 0,
-    cell_value(D, None, V), reg_put(F, R0, V, R).
 
 no_fallthrough(_, effect(_,_,_,_,terminal)).
 no_fallthrough(ins(jmp,_,_), _).

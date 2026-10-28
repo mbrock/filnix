@@ -26,11 +26,10 @@ let
   configurations = {
     plain = "";
     O = "-O";
-    local = "--registers=local";
-    O-local = "-O --registers=local";
     O-branches-reference = "-O --branches=reference";
     O-stack = "-O --registers=stack";
     reuse = "--checks=reuse";
+    O-reuse = "-O --checks=reuse";
   };
 in
 import ./configurations.nix { inherit pkgs; } "nanofil-bzip2" configurations (

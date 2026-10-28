@@ -123,14 +123,15 @@ as -o hello.o hello.s && $FILCC -o hello hello.o && ./hello
 (interpret), and `difftest`. See the top of
 [src/main.pl](src/main.pl).
 
-`--registers=local` before `cc` or `compile` enables integer immediate
-selection followed by validated block-local stack caching. It is independent of
-`-O`; `--registers=stack` is the default reference without `-O`, and
-`-O` defaults to whole-function registers with register operands and
-forwarded frame-word loads (`--registers=cells`, [docs/perf.md](docs/perf.md)). Build/test harnesses
-accept the same choice as `NANOFIL_REGISTERS=local`. This does not change
+`--registers=stack|temps` before `cc` or `compile` chooses the emission,
+independently of `-O`: `stack` is the reference and the default without
+`-O`; `temps`, the `-O` default, gives scalar temporaries validated
+whole-function register homes with register operands and forwarded
+frame-word loads ([docs/perf.md](docs/perf.md)). Build/test harnesses
+accept the same choice as `NANOFIL_REGISTERS`. This does not change
 pointer/root placement, and setjmp functions retain their original code.
-See [docs/m6.md](docs/m6.md) for the deliberately limited scope and cost.
+The earlier modes `local` ([docs/m6.md](docs/m6.md)), `function`,
+`operands`, `cells` and `flow` were retired and are refused.
 
 `-O` also copies small constant `memcpy` and `memmove` inline (1 to 16
 bytes) when the runtime's checks would pass and neither object has aux,

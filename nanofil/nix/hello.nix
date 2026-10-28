@@ -41,10 +41,9 @@ let
   configurations = {
     plain = "";
     O = "-O";
-    local = "--registers=local";
-    O-local = "-O --registers=local";
     O-stack = "-O --registers=stack";
     reuse = "--checks=reuse";
+    O-reuse = "-O --checks=reuse";
   };
 in
 import ./configurations.nix { inherit pkgs; } "nanofil-hello" configurations (

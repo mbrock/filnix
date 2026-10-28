@@ -67,7 +67,7 @@ let
   configurations = {
     plain = configuration "plain" "";
     O = configuration "O" "-O";
-    reuse = configuration "reuse" "-O --registers=local --checks=reuse";
+    reuse = configuration "reuse" "-O --checks=reuse";
   };
 in
 pkgs.runCommand "nanofil-sqlite"

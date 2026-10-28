@@ -459,7 +459,10 @@ tabling, at realistic sizes (hundreds of blocks, small live sets).
 
 ### M6. Instruction selection and register allocation
 
-**First slice: opt-in scalar stack caching and immediate selection.**
+**First slice: opt-in scalar stack caching and immediate selection**
+(retired in October 2026: `--registers=temps`, the `-O` default, does
+more with fewer instructions everywhere; the immediate selection stays as
+temps' selection; [m6.md](docs/m6.md), [perf.md](docs/perf.md)).
 `--registers=local` selects integer immediate arithmetic and shifts, then
 caches private `w/l` homes in two registers within straight-line regions.
 Frame layout, pointer homes, roots, helpers, phis and polls stay unchanged.

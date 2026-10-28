@@ -7,7 +7,7 @@
 # (loc.awk).
 #
 #   nix build --impure -f nanofil/bench/profile -o nanofil/bench/profile/out
-#   nix build --impure -f nanofil/bench/profile --argstr opt "-O --registers=local" ...
+#   nix build --impure -f nanofil/bench/profile --argstr opt "-O --registers=stack" ...
 {
   flake ? builtins.getFlake (toString ../../..),
   pkgs ? import flake.inputs.nixpkgs { system = "x86_64-linux"; },

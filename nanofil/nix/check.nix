@@ -111,43 +111,15 @@ pkgs.runCommandCC "nanofil-check"
     step "-O inline=none ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
     step "-O inline=none programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     unset NANOFIL_INLINE
-    # A home per scalar temporary (docs/perf.md 3d) is the -O default,
-    # so the -O suites above run it; these keep -O on cells, pooled
-    # scalar homes, inlining as -O does.
-    export NANOFIL_REGISTERS=cells
-    step "-O cells difftest" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
-    step "-O cells ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
-    step "-O cells programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
-    # Flow (docs/perf.md 5b-1, opt-in): cells continue past check jumps
-    # and into labels whose every edge holds them, validated by
-    # check_operands/5.
-    export NANOFIL_REGISTERS=flow
-    step "-O flow difftest" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
-    step "-O flow ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
-    step "-O flow actual ensure-aux exits" tests/filc/trace-pointer-effects.sh
-    step "-O flow programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
-    unset NANOFIL_REGISTERS NANOFIL_OPT
-    # Local selection and caching are independent of the middle end.
-    # The checker validates caching of the selected stream; native suites
-    # also check immediate selection and helpers on the real runtime.
-    export NANOFIL_REGISTERS=local
-    for opt in "" -O; do
-      export NANOFIL_OPT=$opt
-      step "local $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
-      step "local $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions
-      step "local $opt actual ensure-aux exits" tests/filc/trace-pointer-effects.sh
-      step "local $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
-    done
-    unset NANOFIL_OPT
-    step "local corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
-    unset NANOFIL_REGISTERS
-    # Whole-function register homes with register operands and frame
-    # cells (docs/perf.md items 3 and 5a-loads) are the -O default (on
-    # temps' frame), so the -O suites above run them, validated by
-    # amd64_regs_check; here cells run without -O, and -O runs register
-    # operands without cells, function registers alone and the stack
-    # reference, so the older paths stay tested.
-    for mode in "cells:" "operands:-O" "function:-O" "stack:-O"; do
+    # Register homes with register operands and frame cells on a frame
+    # with a home per scalar temporary (--registers=temps, docs/perf.md
+    # items 3, 5a-loads and 3d) are the -O default, so the -O suites
+    # above run them, validated by amd64_regs_check; here temps runs
+    # without -O and -O runs the stack reference. The modes local,
+    # function, operands, cells and flow were retired (docs/perf.md,
+    # register modes); tests/registers.sh shows they are refused.
+    step "retired registers" tests/registers.sh
+    for mode in "temps:" "stack:-O"; do
       export NANOFIL_REGISTERS=''${mode%%:*} NANOFIL_OPT=''${mode#*:}
       step "registers $mode difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/filc/branches.ir tests/c/*.c big1.c
       step "registers $mode ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
@@ -157,8 +129,8 @@ pkgs.runCommandCC "nanofil-check"
       step "registers $mode programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     done
     unset NANOFIL_OPT
-    export NANOFIL_REGISTERS=function
-    step "function corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    export NANOFIL_REGISTERS=temps
+    step "temps corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
     unset NANOFIL_REGISTERS
     # M7 check reuse (docs/m7.md) is independent of both. difftest also
     # runs each run line on the reused module, which must agree with the
@@ -173,13 +145,12 @@ pkgs.runCommandCC "nanofil-check"
     done
     unset NANOFIL_OPT
     step "reuse corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
-    step "reuse local ABI+GC" env NANOFIL_REGISTERS=local RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh gc setjmp pointer-effects reuse-gc
+    step "reuse temps ABI+GC" env NANOFIL_REGISTERS=temps RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh gc setjmp pointer-effects reuse-gc
     unset NANOFIL_CHECKS
     # Branch selection (docs/perf.md) is the -O default, so the -O suites
     # above run it; here it runs without -O, and -O runs the reference
-    # branches, alone and with local caching, whose checker validates the
-    # selected stream.
-    for mode in "selected:" "reference:-O" "reference:-O --registers=local"; do
+    # branches, whose stream temps' checkers validate.
+    for mode in "selected:" "reference:-O"; do
       export NANOFIL_BRANCHES=''${mode%%:*} NANOFIL_OPT=''${mode#*:}
       step "branches $mode difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/filc/branches.ir tests/c/*.c big1.c
       step "branches $mode ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc

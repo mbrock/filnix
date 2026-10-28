@@ -108,7 +108,6 @@
 :- use_module(library(pairs)).
 :- use_module(ir).
 :- use_module(amd64).
-:- use_module(amd64_cache).
 :- use_module(amd64_regs).
 :- use_module(amd64_regs_check, [callee_saved/1]).
 :- use_module(filc_abi).
@@ -123,11 +122,10 @@
 filc_module_asm(Module, Lines) :- filc_module_asm(Module, stack, Lines, _).
 
 % Emission is emit(Registers, Branches), or just Registers with reference
-% branches. Registers is stack (the reference), local (validated scalar
-% caching), function (validated whole-function register homes,
-% amd64_regs.pl), operands (function, then validated register
-% operands, docs/perf.md step 3b) or cells (operands, also forwarding
-% frame-word loads, docs/perf.md 5a-loads); Branches is reference or
+% branches. Registers is stack (the reference) or temps (validated
+% whole-function register homes, amd64_regs.pl, with validated register
+% operands and frame cells, on a frame with a home per scalar temporary:
+% docs/perf.md items 3, 5a-loads and 3d); Branches is reference or
 % selected (branch selection, below). emit(Registers, Branches, Copies)
 % also gives Copies: call (the reference) or inline, the small-copy
 % filter of docs/perf.md item 7a; emit/2 means call.
@@ -159,8 +157,8 @@ item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
     % them: those left in the frame together, and those given a register
     % with the others given the same one, so the frame stays compact.
     % Both are layout choices; the checkers validate the emitted stream.
-    (   memberchk(Registers, [temps,flow])
-    ->  temps_first(Registers, Symbols, Branches, Item, First),
+    (   Registers == temps
+    ->  temps_first(Symbols, Branches, Item, First),
         (   First = placed(Lines, Report) -> true
         ;   First = again(Groups, Fused, Ranges),
             % The first lowering is garbage now; collect it before the
@@ -171,17 +169,13 @@ item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
             ;   true
             ),
             once(lower_fused(own(Groups, Ranges), Symbols, Fused, Product)),
-            once(placed_lines(Registers, Branches, Item, Product, Lines, Report, _))
+            once(placed_lines(temps, Branches, Item, Product, Lines, Report, _))
         )
-    ;   (   memberchk(Registers, [function,operands,cells]) -> Pools = split
-        ;   Pools = shared
-        ),
-        once(( lower_item(Pools, Symbols, Item, Product),
+    ;   once(( lower_item(shared, Symbols, Item, Product),
                placed_lines(Registers, Branches, Item, Product, Lines, Report) ))
     ).
 
-% temps_first(+Registers, +Symbols, +Branches, +Item, -First): temps (or
-% flow) mode's first
+% temps_first(+Symbols, +Branches, +Item, -First): temps mode's first
 % lowering, with a home per w/l temporary. First is placed(Lines,
 % Report) when it has at most own_frame_limit/1 such homes, else
 % again(Groups, Fused, Ranges) with each temporary's group for the
@@ -189,7 +183,7 @@ item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
 % and the fused blocks and live ranges the second reuses (the groups
 % change only which slots the ranges share); the first's lines are
 % dropped, so the second lowering does not hold them.
-temps_first(Registers, Symbols, Branches, Item, First) :-
+temps_first(Symbols, Branches, Item, First) :-
     fused_item(Item, Fused),
     once(lower_fused(own([], Ranges), Symbols, Fused, Product)),
     own_frame_limit(Limit),
@@ -199,7 +193,7 @@ temps_first(Registers, Symbols, Branches, Item, First) :-
         % because these lines are dropped, and no operand rewrite.
         once(placed_lines(map, Branches, Item, Product, _, _, Groups)),
         First = again(Groups, Fused, Ranges)
-    ;   once(placed_lines(Registers, Branches, Item, Product, Lines, Report, _)),
+    ;   once(placed_lines(temps, Branches, Item, Product, Lines, Report, _)),
         First = placed(Lines, Report)
     ).
 
@@ -267,30 +261,13 @@ placed_lines(stack, Branches, Func, Item, Lines, stack, []) :-
     ( setjmp_func(Func) -> B = reference ; B = Branches ),
     item_lines(sel(stack,B),Item,Lines).
 placed_lines(R, _, data(N,L,A,Is), Item, Lines, data(N), []) :-
-    memberchk(R, [local,function,operands,cells,temps,flow]),
+    memberchk(R, [temps]),
     Item = data(N,L,A,Is), item_lines(sel(stack,reference),Item,Lines).
-placed_lines(local, Branches, Func, Item, Lines, function(Name,Report), []) :-
-    Func = func(Name,_,_,_,_),
-    Item = abi_function(Name,_,_,Sig,Frame,_,_,_,_,_),
-    % Preserve entire setjmp functions, including unreachable sites, in
-    % both selection and caching. ABI lowering hides the original sites.
-    ( setjmp_func(Func) -> Setjmp = true, Selection = sel(stack,reference)
-    ; Setjmp = false, Selection = sel(local,Branches) ),
-    item_lines(Selection,Item,Original),
-    abi_symbol(impl(Sig),Name,Impl),
-    % Adapters, getters and origins have different frames. Only the
-    % implementation before its .size belongs to this placement map.
-    once(append(Body,[size(Impl)|Rest],Original)),
-    layout(Frame,Slots,_,_), Frame = frame(_,_,Aliases),
-    scalar_homes(Func, Aliases, Slots, Homes),
-    % The checker validates caching against the selected stream; it does
-    % not prove instruction selection itself.
-    cache_asm(local,cache_metadata(Setjmp,Homes),Body,Cached,Report),
-    append(Cached,[size(Impl)|Rest],Lines).
-% Function mode reserves a save slot for each callee-saved register, so
-% the stream the checker compares with has the same frame.
+% Temps mode reserves a save slot for each callee-saved register, so
+% the stream the checker compares with has the same frame. Map is temps
+% mode's first lowering when it only needs the register map.
 placed_lines(Mode, Branches, Func, Item0, Lines, function(Name,Report), Groups) :-
-    memberchk(Mode, [function,operands,cells,temps,flow,map]),
+    memberchk(Mode, [temps,map]),
     Func = func(Name,_,_,_,_),
     Item0 = abi_function(Name,Lk,Rt,Sig,frame(Plain,Lowers,Aliases),E,B,X,O,Or),
     (   setjmp_func(Func)
@@ -327,18 +304,13 @@ placed_lines(Mode, Branches, Func, Item0, Lines, function(Name,Report), Groups) 
                    ( get_assoc(D, Mapped, R) -> G = R ; G = frame ) ), Groups0),
     sort(Groups0, Groups).
 
-% regs_mode(+Mode, +Slots, -Mode1): cells mode is operands mode with the
-% frame cells (docs/perf.md, 5a-loads): the 8-byte words of lowers[],
+% regs_mode(+Mode, +Slots, -Mode1): temps mode allocates with register
+% operands and the frame cells (docs/perf.md, 5a-loads): the 8-byte words of lowers[],
 % the scalar and pointer pools, phi shadows, thread, aux, retbuf, and
 % stack-aux roots, as cells(Ds, Others) with the other frame ranges
 % (local storage, wide slots, save slots) the checker keeps them apart
 % from. The header words (parent, origin) are never cells.
-% Temps mode is cells mode on a frame with unpooled scalar homes.
-regs_mode(temps, Slots, Mode) :- !, regs_mode(cells, Slots, Mode).
-% Flow mode is temps mode with the cells carried across checks' jumps
-% and labels (docs/perf.md, 5b-1).
-regs_mode(flow, Slots, flow(Cells)) :- !, regs_mode(cells, Slots, frame(Cells)).
-regs_mode(cells, Slots, frame(cells(Ds, Others))) :- !,
+regs_mode(temps, Slots, frame(cells(Ds, Others))) :- !,
     assoc_to_list(Slots, Ps),
     findall(D, ( member(K-Off, Ps), integer(Off), cell_key(K), D is -Off ), Ds0),
     sort(Ds0, Ds),

@@ -103,13 +103,16 @@ mode, through the same `nanofil-cc` wrapper the Nix checks use:
 | Mode | nanofil options |
 | --- | --- |
 | `off` | none: the reference backend without the middle end |
-| `O` | `-O` (selected branches, item 2; function registers with register operands, items 3a and 3b; frame cells, 5a-loads) |
+| `O` | `-O` (selected branches, item 2; `--registers=temps`: register homes with register operands and frame cells, items 3a, 3b, 5a-loads and 3d; inlining, item 4; inline small copies, 7a) |
 | `O-reuse` | `-O --checks=reuse` ([m7.md](m7.md)) |
-| `O-local` | `-O --registers=local` ([m6.md](m6.md)) |
+| `O-noinline` | `-O --inline=none` |
 | `O-refbranches` | `-O --branches=reference`: `-O` before item 2 became its default |
-| `O-stack` | `-O --registers=stack`: `-O` before item 3a became its default (`--argstr only O,O-stack` builds a subset) |
-| `O-function` | `-O --registers=function`: whole-function register homes alone (item 3, step 3a), `-O` before 3b became its default |
-| `O-operands` | `-O --registers=operands`: `-O` before 5a-loads became its default |
+| `O-stack` | `-O --registers=stack`: the reference emission under the middle end (`--argstr only O,O-stack` builds a subset) |
+| `O-call` | `-O --memcpy=call` |
+
+The modes `O-local`, `O-function`, `O-operands`, `O-cells` and `O-flow`
+of earlier tables measured register modes retired in October 2026
+(register modes, below).
 
 From the repository root, on swa (or any quiet x86-64 machine with perf):
 
@@ -399,7 +402,7 @@ Where the rest is, as a share of `-O`'s instructions:
   will be in checks, addressing and the middle end, not in the operations
   themselves.
 
-## Register modes: inventory and proposal (October 2026)
+## Register modes: inventory and retirement (October 2026)
 
 Seven `--registers` modes have accumulated, one per step. Each step's
 checker extends the previous one, and temps, the `-O` default, runs all
@@ -454,8 +457,9 @@ Net, with flow retired: about 390 lines of trusted checker code
 snapshot modes 7 → 3 (`O.`, `T.`, `I.`): 5 outputs per input instead of 9.
 Bench modes `O-local`, `O-function`, `O-operands`, `O-cells` go,
 `O-stack` stays. The other axes (`--branches`, `--checks`, `--memcpy`,
-`--inline`) are not part of this proposal. Nothing is deleted until the
-orchestrator agrees.
+`--inline`) are not part of this proposal.
+
+RETIREMENT_OUTCOME
 
 ## The plan
 
@@ -477,7 +481,7 @@ gate above before it becomes a default.
 | 7 | Inline small constant `memcpy` | 45% of lz4 `-d` and `-1` | medium | **yes**: capability copying |
 | 8 | Cheap middle end (folding, value numbering) | small, unmeasured | medium | no |
 
-### Status (04c7e7c)
+### Status (04c7e7c, updated at the retirement)
 
 Closed, each the `-O` default unless it says otherwise:
 
@@ -495,6 +499,9 @@ Closed, each the `-O` default unless it says otherwise:
 | 7 | small constant `memcpy` through a filter in front of the call | 7a result |
 | 9 | phi shadows shared by position (option A: shadow lowers stay roots) | 9 result |
 | inlining | small local leaf functions (`--inline=small`) | item 4 result |
+| 5b-1 | `--registers=flow`: cells across checks' jumps and labels; opt-in, then retired (1–2%, +14% compile) | 5b-1, 5b re-measured |
+| punned reads | promote reads a union through a narrower member (lz4) | punned union reads |
+| retirement | the register modes `local`, `function`, `operands`, `cells` and `flow` removed; `stack` and `temps` remain | register modes |
 
 Rejected or dropped, and why:
 

@@ -26,13 +26,8 @@ let
     O = "-O";
     O-reuse = "-O --checks=reuse";
     O-noinline = "-O --inline=none";
-    O-local = "-O --registers=local";
     O-refbranches = "-O --branches=reference";
     O-stack = "-O --registers=stack";
-    O-function = "-O --registers=function";
-    O-operands = "-O --registers=operands";
-    O-cells = "-O --registers=cells";
-    O-flow = "-O --registers=flow";
     O-call = "-O --memcpy=call";
   };
   chosen =

@@ -1,7 +1,6 @@
-/* Whole-function register homes for scalar temporaries
-   (`--registers=function`, docs/perf.md item 3, step 3a; with step 3b's
-   operand rewrite, `--registers=operands`, and frame cells,
-   `--registers=cells`, the -O default). A fixed map
+/* Whole-function register homes for scalar temporaries (docs/perf.md
+   item 3, step 3a), with step 3b's operand rewrite and 5a-loads' frame
+   cells: `--registers=temps`, the -O default. A fixed map
    puts frame homes in registers for the whole function: homes live
    across a call in the callee-saved rbx and r12-r15, the others also in
    r10/r11. Accesses stay the moves the reference emits, with a register
@@ -19,7 +18,7 @@
    mode; the registers the map uses are saved after the stack check and
    restored before every leave. amd64_regs_check validates the result;
    a failed check is an error, never a silent fallback. */
-:- module(amd64_regs, [regs_asm/6, operands_rewrite/6]).
+:- module(amd64_regs, [regs_asm/6]).
 :- use_module(amd64_contract, [instruction_effects/2, register/3,
                                 explicit_registers/2]).
 :- use_module(amd64_regs_check).
@@ -30,9 +29,8 @@
 %! regs_asm(+Mode, +Metadata, +Before, -After, -Checked, -Report) is det.
 %
 %  Mode is map (3a's map alone, unchecked, for a layout choice; Final
-%  is then not to be emitted), function (step 3a), operands (3a, then
-%  step 3b's operand rewrite) or frame(Cells) (operands with the frame cells of
-%  docs/perf.md 5a-loads). Metadata is regs_metadata(Setjmp, Impl, Homes, Saves) with a
+%  is then not to be emitted) or frame(Cells) (step 3a, then step 3b's
+%  operand rewrite with the frame cells of docs/perf.md 5a-loads). Metadata is regs_metadata(Setjmp, Impl, Homes, Saves) with a
 %  save slot for every callee-saved register. Checked is the metadata
 %  and map the checker validated: checked(Metadata1, Map). Report is
 %  excluded(setjmp|unsupported) or allocated(Homes, Registers).
@@ -71,7 +69,7 @@ regs_asm(Mode, regs_metadata(Setjmp, Impl, Homes, Saves), Before, Final,
             append(Pre, [label(Impl)|Body1], After)
         ),
         length(Map, NH), length(Used, NR), Report = allocated(NH, NR),
-        (   Analysis0 == none, Mode \== function
+        (   Analysis0 == none
         ->  body_analysis(Body, Effects, [], Analysis)
         ;   Analysis = Analysis0
         )
@@ -82,14 +80,14 @@ regs_asm(Mode, regs_metadata(Setjmp, Impl, Homes, Saves), Before, Final,
     (   check_regs(Meta, Map, Before, After, Analysis) -> true
     ;   throw(nanofil_error('register home translation check failed'))
     ),
-    (   operand_cells(Mode, Cells0, Flow), Report = allocated(_, _)
+    (   operand_cells(Mode, Cells0), Report = allocated(_, _)
     ->  impl_body(Impl, After, PreA, A),
         (   operand_lives(Analysis, Used, A, Lives) -> true
         ;   throw(nanofil_error('register operand liveness failed'))
         ),
         valid_cells(Cells0, A, Cells),
-        operands_rewrite(Flow, A, Lives, Cells, B, Checked),
-        (   check_operands(A, B, Lives, Cells0, Checked) -> true
+        operands_rewrite(A, Lives, Cells, B),
+        (   check_operands(A, B, Lives, Cells0) -> true
         ;   throw(nanofil_error('register operand translation check failed'))
         ),
         append(PreA, [label(Impl)|B], Final)
@@ -262,205 +260,33 @@ colour(Index, Owners, Cross, Neighbours, _-D, Colours0, Colours) :-
    Def, Move): its audited effects, the scratch and flags sets it uses
    and defines, and its operand_move/2 reading or none, computed once. */
 
-% operand_cells(+Mode, -Cells, -Flow): the frame cells whose loads the
-% rewrite may forward: none in operands mode, the emitter's in frame
-% mode (docs/perf.md, 5a-loads) and flow mode (5b-1), where Flow is flow
-% and regions continue past conditional jumps; cells otherwise.
-operand_cells(operands, cells([], []), cells).
-operand_cells(frame(Cells), Cells, cells).
-operand_cells(flow(Cells), Cells, flow).
+% operand_cells(+Mode, -Cells): the frame cells whose loads the rewrite
+% may forward, the emitter's (docs/perf.md, 5a-loads).
+operand_cells(frame(Cells), Cells).
 
 %! operands_rewrite(+A, +Lives, +Cells, -B) is det.
 operands_rewrite(A, Lives, Cells, B) :-
-    operands_rewrite(cells, A, Lives, Cells, B).
-
-%! operands_rewrite(+Flow, +A, +Lives, +Cells, -B) is det.
-operands_rewrite(Flow, A, Lives, Cells, B) :-
-    operands_rewrite(Flow, A, Lives, Cells, B, _).
-
-%! operands_rewrite(+Flow, +A, +Lives, +Cells, -B, -Checked) is det.
-%  Checked is the Flow argument for check_operands/5: cells, or
-%  flow(Facts) with the label facts B relies on (docs/perf.md 5b-1).
-operands_rewrite(cells, A, Lives, Cells, B, cells) :-
-    operand_regions(cells, A, Lives, Regions),
-    empty_assoc(H0),
-    maplist(region_rewrite(Cells, H0), Regions, Parts),
-    append(Parts, B).
-operands_rewrite(flow, A, Lives, Cells, B, flow(Facts)) :-
-    operand_regions(flow, A, Lives, Regions),
-    flow_facts(Regions, A, Cells, Facts),
-    flow_parts(Regions, none, Facts, Cells, Parts),
+    operand_regions(A, Lives, Regions),
+    maplist(region_rewrite(Cells), Regions, Parts),
     append(Parts, B).
 
-/* Label facts (untrusted; check_operands/5 verifies every edge). The
-   held map of cell_forward/6 flows across the regions: a region starts
-   from its label's facts, or from nothing after any other boundary, and
-   passes its held map to the label it falls into or jumps to, and to
-   the targets of the conditional jumps it continues past. A label's
-   facts are the cell-register pairs held on all its incoming edges, in
-   scratch families not live in the reference there; labels that may
-   not carry facts (fact_labels/2) get none. Optimistic iteration from
-   "everything" (top) to a fixpoint. */
-flow_facts(Regions, A, Cells, Facts) :-
-    fact_labels(A, Labels),
-    empty_assoc(F0),
-    label_ins(Regions, Ins),
-    flow_iterate(Regions, Labels, Ins, Cells, F0, 0, Facts1),
-    assoc_to_list(Facts1, Ps0),
-    findall(L-Fs, ( member(L-H, Ps0), H \== top, assoc_to_list(H, DFs),
-                    findall(F-D, member(D-F, DFs), Fs0), msort(Fs0, Fs), Fs \== [] ), Ps),
-    list_to_assoc(Ps, Facts).
+operand_regions([], [], []) :- !.
+operand_regions(As, Ls, [region(Lines, End, Boundary)|Rs]) :-
+    region_lines(As, Ls, Lines, End, Boundary, As1, Ls1),
+    operand_regions(As1, Ls1, Rs).
 
-% Facts maps a label to top (no edge seen yet) or a held map; a label
-% missing from it is top.
-flow_iterate(Regions, Labels, Ins, Cells, F0, N, F) :-
-    flow_edges(Regions, none, Labels, F0, Cells, Edges),
-    findall(L-H, ( member(L-H0, Edges), get_assoc(L, Labels, _),
-                   ( H0 == top -> H = top ; H = H0 ) ), LHs0),
-    keysort(LHs0, LHs), group_pairs_by_key(LHs, Groups),
-    findall(L-H, ( member(L-Hs, Groups), meet(Hs, H1), restrict(H1, L, Ins, H) ), Ps0),
-    % A label no edge reaches holds nothing (the checker starts it from
-    % the shared state and checks its edges out).
-    empty_assoc(E), pairs_keys(Groups, Gs), ord_label_set(Gs, Reached),
-    findall(L-E, ( gen_assoc(L, Labels, _), \+ get_assoc(L, Reached, _) ), Ps1),
-    append(Ps0, Ps1, Ps2), keysort(Ps2, Ps),
-    list_to_assoc(Ps, F1),
-    % Compare contents: equal held maps may differ in their trees.
-    (   facts_list(F1, L1), facts_list(F0, L0), L1 == L0 -> F = F1
-    ;   N >= 64 -> empty_assoc(F)
-    ;   N1 is N+1, flow_iterate(Regions, Labels, Ins, Cells, F1, N1, F)
-    ).
-
-ord_label_set(Ls, Set) :- findall(L-t, member(L, Ls), Ps), list_to_assoc(Ps, Set).
-
-facts_list(F, Ps) :-
-    assoc_to_list(F, Ps0),
-    findall(L-V, ( member(L-H, Ps0), ( H == top -> V = top ; assoc_to_list(H, V) ) ), Ps).
-
-% meet(+Hs, -H): the pairs every non-top map holds; top if all are top.
-meet(Hs, H) :-
-    exclude(==(top), Hs, Ms),
-    (   Ms = [] -> H = top
-    ;   Ms = [M|Rest], assoc_to_list(M, Ps),
-        include(held_by_all(Rest), Ps, Kept), list_to_assoc(Kept, H)
-    ).
-held_by_all(Ms, D-F) :- forall(member(M, Ms), ( get_assoc(D, M, G), G == F )).
-
-% restrict(+H0, +L, +Ins, -H): only families dead in the reference at L,
-% one cell each.
-restrict(top, _, _, top) :- !.
-restrict(H0, L, Ins, H) :-
-    ( get_assoc(L, Ins, In) -> true ; In = 127 ),
-    assoc_to_list(H0, Ps),
-    include(dead_at(In), Ps, Kept0),
-    one_per_family(Kept0, [], Kept), list_to_assoc(Kept, H).
-
-% one_per_family(+Ps, +Seen, -Kept): a family holds one cell's value in
-% a fact; keep the first cell (lowest offset) for each.
-one_per_family([], _, []).
-one_per_family([D-F|Ps], Seen, Kept) :-
-    (   memberchk(F, Seen) -> Kept = Kept1
-    ;   Kept = [D-F|Kept1]
-    ),
-    one_per_family(Ps, [F|Seen], Kept1).
-dead_at(In, _-F) :- scratch_family(F, Bit), In /\ (1 << Bit) =:= 0.
-
-% label_ins(+Regions, -Ins): each label's reference liveness, the End of
-% the region it ends.
-label_ins(Regions, Ins) :-
-    findall(L-In, member(region(_, In, [label(L)]), Regions), Ps0),
-    sort(Ps0, Ps1), first_per_label(Ps1, Ps), list_to_assoc(Ps, Ins).
-first_per_label([], []).
-first_per_label([L-I|Ps], [L-I|Qs]) :- skip_same(L, Ps, Ps1), first_per_label(Ps1, Qs).
-skip_same(L, [M-_|Ps], Rest) :- M == L, !, skip_same(L, Ps, Rest).
-skip_same(_, Ps, Ps).
-
-% flow_edges(+Regions, +Prev, +Labels, +Facts, +Cells, -Edges):
-% Label-Held for every edge, Held top when its region starts at a top
-% label. Prev is the boundary before the region, none for the first.
-flow_edges([], _, _, _, _, []).
-flow_edges([region(Lines, _, Boundary)|Rs], Prev, Labels, Facts, Cells, Edges) :-
-    region_start_held(Prev, Labels, Facts, H0),
-    (   H0 == top
-    ->  findall(T-top, ( member(L-_, Lines), jcc_target(L, T) ), Es0),
-        Hend = top
-    ;   cell_forward(Lines, Cells, H0, _, Hend, Es0)
-    ),
-    boundary_edges(Boundary, Hend, Es1),
-    append(Es0, Es1, Es),
-    ( Boundary = [B] -> Prev1 = B ; Prev1 = none ),
-    flow_edges(Rs, Prev1, Labels, Facts, Cells, Es2),
-    append(Es, Es2, Edges).
-
-% region_start_held(+Prev, +Labels, +Facts, -H): the held map a region
-% starts from: its label's facts, top for a label with no edge yet,
-% nothing at a label that may not carry facts (it never gets an entry,
-% so top would hide its region's edges from the meet for good), after
-% any other boundary or at the function's start.
-region_start_held(label(L), Labels, Facts, H) :- get_assoc(L, Labels, _), !,
-    ( get_assoc(L, Facts, H) -> true ; H = top ).
-region_start_held(_, _, _, H) :- empty_assoc(H).
-
-boundary_edges([label(L)], H, [L-H]) :- !.
-boundary_edges([ins(jmp,none,[sym(T)])], H, [T-H]) :- !.
-boundary_edges(_, _, []).
-
-jcc_target(ins(Op,none,[sym(T)]), T) :- Op \== jmp, atom_concat(j, _, Op).
-
-% flow_parts(+Regions, +Prev, +Facts, +Cells, -Parts): each region
-% rewritten from its start facts, its end liveness and its continued
-% jumps' uses extended by the fact registers of their targets.
-flow_parts([], _, _, _, []).
-flow_parts([region(Lines0, End0, Boundary)|Rs], Prev, Facts, Cells, [Part|Parts]) :-
-    (   Prev = label(L), get_assoc(L, Facts, Fs)
-    ->  findall(D-F, member(F-D, Fs), DFs), list_to_assoc(DFs, H0)
-    ;   empty_assoc(H0)
-    ),
-    maplist(jump_uses(Facts), Lines0, Lines),
-    (   ( Boundary = [label(T)] ; Boundary = [ins(jmp,none,[sym(T)])] )
-    ->  fact_bits(T, Facts, Bits), End is End0 \/ Bits
-    ;   End = End0
-    ),
-    region_rewrite(Cells, H0, region(Lines, End, Boundary), Part),
-    ( Boundary = [B] -> Prev1 = B ; Prev1 = none ),
-    flow_parts(Rs, Prev1, Facts, Cells, Parts).
-
-jump_uses(Facts, L-inf(E,U0,D,M), L-inf(E,U,D,M)) :-
-    (   jcc_target(L, T) -> fact_bits(T, Facts, Bits), U is U0 \/ Bits
-    ;   U = U0
-    ).
-
-fact_bits(T, Facts, Bits) :-
-    (   get_assoc(T, Facts, Fs)
-    ->  foldl(fact_bit, Fs, 0, Bits)
-    ;   Bits = 0
-    ).
-fact_bit(F-_, B0, B) :- scratch_family(F, Bit), B is B0 \/ (1 << Bit).
-
-operand_regions(_, [], [], []) :- !.
-operand_regions(Flow, As, Ls, [region(Lines, End, Boundary)|Rs]) :-
-    region_lines(Flow, As, Ls, Lines, End, Boundary, As1, Ls1),
-    operand_regions(Flow, As1, Ls1, Rs).
-
-% In flow mode a conditional jump to a local label stays in its region
-% (continued_jump/3), as a line that reads every scratch family live
-% before it in the reference, so the moves its taken edge needs stay.
-region_lines(_, [], [], [], 0, [], [], []).
-region_lines(Flow, [L|As], [live(In,_,E)|Ls], Lines, End, Boundary, As1, Ls1) :-
-    (   continued_jump(Flow, L, E)
-    ->  effect_info(L, E, inf(E, U0, D, M)), U is U0 \/ (In /\ 127),
-        Lines = [L-inf(E, U, D, M)|Lines1],
-        region_lines(Flow, As, Ls, Lines1, End, Boundary, As1, Ls1)
-    ;   boundary_line(L, E)
+region_lines([], [], [], 0, [], [], []).
+region_lines([L|As], [live(In,_,E)|Ls], Lines, End, Boundary, As1, Ls1) :-
+    (   boundary_line(L, E)
     ->  Lines = [], End is In /\ 127, Boundary = [L], As1 = As, Ls1 = Ls
     ;   effect_info(L, E, I), Lines = [L-I|Lines1],
-        region_lines(Flow, As, Ls, Lines1, End, Boundary, As1, Ls1)
+        region_lines(As, Ls, Lines1, End, Boundary, As1, Ls1)
     ).
 
-region_rewrite(Cells, H0, region(Lines0, End, Boundary), Out) :-
+region_rewrite(Cells, region(Lines0, End, Boundary), Out) :-
     empty_assoc(C0),
     (   empty_assoc(Cells) -> Lines = Lines0
-    ;   cell_forward(Lines0, Cells, H0, Lines, _, _)
+    ;   cell_forward(Lines0, Cells, C0, Lines)
     ),
     forward(Lines, C0, L1),
     dead_moves(L1, End, L2),
@@ -475,13 +301,8 @@ with_effect(L, L-I) :- line_effect(L, E), effect_info(L, E, I).
 % register still holds whole (Held maps the cell to the register family
 % that loaded or stored it, unchanged since) reads that register
 % instead. forward/3 then propagates the copy like any other.
-cell_forward(Lines, Cells, H0, Out) :-
-    cell_forward(Lines, Cells, H0, Out, _, _).
-
-% cell_forward(+Lines, +Cells, +Held, -Out, -HeldAfter, -Edges): also the
-% held map after the lines, and Target-Held at each conditional jump.
-cell_forward([], _, H, [], H, []).
-cell_forward([L-I|Ls], Cells, H0, Out, Hend, Edges) :-
+cell_forward([], _, _, []).
+cell_forward([L-I|Ls], Cells, H0, Out) :-
     (   L = ins(mov,S,[mem(D,rbp),reg(Y)]), get_assoc(D, Cells, _),
         memberchk(S-W, [l-32,q-64]), register(Y, F, W), \+ memberchk(F, [rsp,rbp])
     ->  (   get_assoc(D, H0, G)
@@ -499,9 +320,8 @@ cell_forward([L-I|Ls], Cells, H0, Out, Hend, Edges) :-
         foldl(drop_written, Ws, H0, H1),
         foldl(drop_stored, Ms, H1, H)
     ),
-    ( jcc_target(L, T) -> Edges = [T-H0|Edges1] ; Edges = Edges1 ),
     append(Emit, Rest, Out),
-    cell_forward(Ls, Cells, H, Rest, Hend, Edges1).
+    cell_forward(Ls, Cells, H, Rest).
 
 % drop_held(+F, +H0, -H): F changes; no cell is held in it any more.
 drop_held(F, H0, H) :-

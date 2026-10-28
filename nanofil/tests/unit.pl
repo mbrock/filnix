@@ -31,7 +31,6 @@
 :- use_module('abi').
 :- use_module('local_storage').
 :- use_module('registers').
-:- use_module('cache_check').
 :- use_module('regs_check').
 :- use_module(library(assoc)).
 :- use_module(library(pio)).
@@ -102,7 +101,6 @@ clause_term(T, X) :- read_term_from_chars(T, X, []).
 test(abi_products) :- abi_products.
 test(local_storage_selection) :- local_selection.
 test(scalar_cache) :- scalar_cache.
-test(cache_checker) :- cache_checker.
 test(regs_checker) :- regs_checker.
 test(operands_checker) :- operands_checker.
 % A function that indexes a local array still gets register homes: the
@@ -115,7 +113,7 @@ test(local_array_registers) :-
               for (int i = 0; i < n; i++) s += one.c[0] + i;
               return s; }", 'local.c', Ts),
     c_parse(Ts, C), c_module(C, M), optimize(o1, M, O), pizlonate_module(O, P),
-    forall(member(R, [function, operands]),
+    forall(member(R, [temps]),
            ( filc_module_asm(P, emit(R, selected), Lines, Reports),
              memberchk(function(f, allocated(N, _)), Reports), N > 0,
              \+ ( member(ins(_,_,Os), Lines), member(mem(_,rbp,_), Os) ) )).
@@ -142,9 +140,9 @@ test(small_copy_filter) :-
                       void *memcpy(void *d, const void *s, size_t n) { return d; }",
                inline, Defined-_),
     \+ memberchk(ins(movabs,q,[imm(Mask),reg(rdx)]), Defined).
-% Split pools (the allocating modes) keep s and d temporaries out of the
-% scalar slots, so every scalar home is w/l and can take a register;
-% shared pools (the reference layout) mix them in this function.
+% Own pools (temps, the allocating layout) keep s and d temporaries out
+% of the scalar slots, so every scalar home is w/l and can take a
+% register; shared pools (the reference layout) mix them in this function.
 test(split_float_pools) :-
     c_tokens("int f(double x, int n) { int a = (int)(x * 3.0);
               double y = x + 1.0; int b = a * n;
@@ -153,20 +151,22 @@ test(split_float_pools) :-
     P = module(Items), memberchk(F, Items), F = func(f,_,_,_,_),
     pool_homes(shared, P, F, Shared),
     once(( member(home(_, Ks), Shared), memberchk(d, Ks), memberchk(w, Ks) )),
-    pool_homes(split, P, F, Split), Split = [_|_],
-    forall(member(home(_, Ks), Split), forall(member(K, Ks), memberchk(K, [w,l]))).
-% Own pools give each w/l temporary its own home, where split pools
+    pool_homes(own, P, F, Own), Own = [_|_],
+    forall(member(home(_, Ks), Own), forall(member(K, Ks), memberchk(K, [w,l]))).
+% Own pools give each w/l temporary its own home, where shared pools
 % reuse slots of disjoint temporaries; own(Groups) pools a group again.
 test(own_scalar_homes) :-
     own_homes("int f(int x, int n) { int a = x * 3; int b = a + n;
-               int c = b * x; return c - n; }", Split, Own, Again),
-    length(Split, NS), length(Own, NO), NO > NS,
+               int c = b * x; return c - n; }", Shared, Own, Again),
+    length(Shared, NS), length(Own, NO), NO > NS,
     findall(K, member(home(_, [K]), Own), Ks), length(Ks, NO),
     length(Again, NS).
 % Temps mode lowers a function with many temporaries twice, the second
 % time sharing slots among temporaries the first allocation gave the
-% same register, so its frame is no larger than cells mode's (docs/perf.md
-% 3d): recursion keeps its depth.
+% same register, so its frame is far smaller than a home per temporary
+% needs (432 bytes here) and no larger than the reference's (176) with the
+% five callee-save slots, rounded to 16 (docs/perf.md 3d): recursion keeps
+% its depth.
 test(temps_frame) :-
     c_tokens("long g(long n, long a, long b) {
                 if (n == 0) return a ^ b;
@@ -177,10 +177,13 @@ test(temps_frame) :-
                 return r + (a ^ e) + (b ^ h) + (i ^ j) + (k ^ l) + (m ^ o) + (p ^ q) + c + d; }",
              'frame.c', Ts),
     c_parse(Ts, C), c_module(C, M), optimize(o1, M, O), pizlonate_module(O, P),
-    findall(R-F, ( member(R, [cells, temps]),
+    findall(R-F, ( member(R, [stack, temps]),
                    filc_module_asm(P, emit(R, selected), Lines, _),
-                   once(( append(_, [ins(sub,q,[imm(F),reg(rsp)])|_], Lines) )) ), [cells-FC, temps-FT]),
-    FT =< FC.
+                   once(( append(_, [ins(sub,q,[imm(F),reg(rsp)])|_], Lines) )) ), [stack-FS, temps-FT]),
+    P = module(Items), memberchk(G, Items), G = func(g,_,_,_,_), module_symbols(P, Symbols),
+    filc_amd64:lower_item(own, Symbols, G, abi_function(_,_,_,_,OwnFrame,_,_,_,_,_)),
+    filc_amd64:layout(OwnFrame, _, _, FO),
+    FT < FO, FT =< FS + 48.
 % Phis of different blocks share shadow slots by class and position in
 % the allocating layouts (docs/perf.md item 9): swaps' two loops have
 % 1 + 4 integer and 2 + 0 pointer phis, so 4 + 2 shadows, not 7. The
@@ -190,20 +193,20 @@ test(temps_frame) :-
 test(shared_shadows) :-
     file_module('../tests/filc/shadows.ir', M0), pizlonate_module(M0, P),
     P = module(Items), memberchk(func(swaps,L,R,Ps,Bs), Items),
-    shadow_frame(split, P, func(swaps,L,R,Ps,Bs), Shared),
+    shadow_frame(own, P, func(swaps,L,R,Ps,Bs), Shared),
     Shared = frame(SKs, [_,_]),
     msort(SKs, [shadow_slot(int,0), shadow_slot(int,1), shadow_slot(int,2),
                 shadow_slot(int,3), shadow_slot(p,0), shadow_slot(p,1)]),
     shadow_frame(shared, P, func(swaps,L,R,Ps,Bs), frame(RKs, [_,_])),
     length(RKs, 7), forall(member(K, RKs), K = shadow(_)),
     memberchk(func(twice,L2,R2,Ps2,Bs2), Items),
-    shadow_frame(split, P, func(twice,L2,R2,Ps2,Bs2), frame(TKs, _)),
+    shadow_frame(own, P, func(twice,L2,R2,Ps2,Bs2), frame(TKs, _)),
     memberchk(shadow(t), TKs), \+ memberchk(shadow(x), TKs),
     file_module('../tests/filc/setjmp.ir', J0), pizlonate_module(J0, J),
     J = module(JItems),
     once(( member(F, JItems), F = func(_,_,_,_,JBs),
            member(block(_,[_|_],_,_), JBs) )),
-    shadow_frame(split, J, F, frame(JKs, _)), JKs = [_|_],
+    shadow_frame(own, J, F, frame(JKs, _)), JKs = [_|_],
     forall(member(K, JKs), K = shadow(_)).
 test(local_storage_semantics) :- local_semantics.
 
@@ -238,14 +241,14 @@ pool_homes(Pools, Module, Func, Homes) :-
     filc_amd64:layout(Frame, Slots, _, _),
     filc_amd64:scalar_homes(Func, Aliases, Slots, Homes).
 
-% own_homes(+Src, -Split, -Own, -Again): the scalar homes of the one
-% function in Src lowered with split pools, with own pools, and with own
+% own_homes(+Src, -Shared, -Own, -Again): the scalar homes of the one
+% function in Src lowered with shared pools, with own pools, and with own
 % pools that put every w/l temporary in one group.
-own_homes(Src, Split, Own, Again) :-
+own_homes(Src, Shared, Own, Again) :-
     c_tokens(Src, 'own.c', Ts),
     c_parse(Ts, C), c_module(C, M), optimize(o1, M, O), pizlonate_module(O, P),
     P = module(Items), member(F, Items), F = func(_,_,_,_,_), !,
-    pool_homes(split, P, F, Split), pool_homes(own, P, F, Own),
+    pool_homes(shared, P, F, Shared), pool_homes(own, P, F, Own),
     F = func(_,_,_,Ps,Bs),
     findall(N, ( member(param(K, tmp(N)), Ps) ; member(block(_,Phis,Is,_), Bs),
                  ( member(phi(tmp(N),K,_), Phis) ; member(let(tmp(N),K,_,_), Is) ) ), Ns0),
@@ -259,7 +262,7 @@ copy_lines(Decl, Src, Copies, Lines-Reports) :-
     append(Decl, Src, Text),
     c_tokens(Text, 'copy.c', Ts), c_parse(Ts, C), c_module(C, M),
     optimize(o1, M, O), pizlonate_module(O, P),
-    filc_module_asm(P, emit(cells, selected, Copies), Lines, Reports).
+    filc_module_asm(P, emit(temps, selected, Copies), Lines, Reports).
 
 % module_fn_args_outcome(+Module, +Fn, +Args, ?Outcome): Outcome is the first
 % outcome of Fn(Args) on Module with fuel for 1000 blocks.
@@ -2632,7 +2635,7 @@ test(reuse_related) :-
     R = module([func(f, _, _, _, [block(s, [], RIs, _)])|_]),
     append(_, [F8, let(tmp(x), l, raw_load(l, 8), [tmp(q)])], RIs),
     % It emits as a reload of p plus 8, with one check.
-    once(( filc_module_asm(R, emit(cells, selected), Lines, _),
+    once(( filc_module_asm(R, emit(temps, selected), Lines, _),
            memberchk(ins(add, q, [imm(8), reg(rax)]), Lines) )),
     reuse_fail_jumps(R, 1),
     % The same flight read at the wrong distance (offset 0) is valid and
@@ -2736,8 +2739,8 @@ test(native_check_range) :-
 % checks keep it, and so does the reference (stack) selection.
 test(borrow_test_sizes) :-
     forall(member(Size-Mode-Borrow,
-                  [1-cells-no, 8-cells-no, 10-cells-no, 10-local-no,
-                   17-cells-yes, 2147483647-cells-yes,
+                  [1-temps-no, 8-temps-no, 10-temps-no,
+                   17-temps-yes, 2147483647-temps-yes,
                    1-stack-yes, 8-stack-yes, 10-stack-yes]),
         ( M = module([func(f, export, l, [param(p, tmp(p))], [
               block(s, [], [
