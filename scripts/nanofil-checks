@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Build every nanofil Nix check (or those named) in one `nix build
+# --keep-going`, so Nix spreads them over the local jobs and the remote
+# builders in /etc/nix/machines, then print which passed.
+#
+#   scripts/nanofil-checks                       # all nanofil* checks
+#   scripts/nanofil-checks nanofil nanofil-lua   # some
+#   scripts/nanofil-checks -- --rebuild          # extra nix build arguments
+#
+# Run it on swa (or another host whose nix-daemon has the builders); in an
+# orb it works but builds everything in the orb. The log is in
+# $NANOFIL_CHECKS_LOG (default .amp/in/nanofil-checks.log).
+set -euo pipefail
+export PATH=/nix/var/nix/profiles/default/bin:$PATH
+cd "$(git rev-parse --show-toplevel)"
+
+names=() extra=()
+while [ $# -gt 0 ]; do
+  case $1 in
+    --) shift; extra=("$@"); break ;;
+    *) names+=("$1"); shift ;;
+  esac
+done
+
+drvs=$(nix eval --json .#checks.x86_64-linux --apply \
+  'cs: builtins.mapAttrs (_: c: c.drvPath)
+         (builtins.removeAttrs cs (builtins.filter
+           (n: builtins.substring 0 7 n != "nanofil") (builtins.attrNames cs)))')
+[ ${#names[@]} -gt 0 ] || mapfile -t names < <(jq -r 'keys[]' <<<"$drvs")
+
+log=${NANOFIL_CHECKS_LOG:-.amp/in/nanofil-checks.log}
+mkdir -p "$(dirname "$log")"
+targets=()
+for n in "${names[@]}"; do
+  d=$(jq -r --arg n "$n" '.[$n] // empty' <<<"$drvs")
+  [ -n "$d" ] || { echo "no check named $n" >&2; exit 2; }
+  targets+=("$d^*")
+done
+
+start=$(date +%s)
+echo "building ${#names[@]} checks at $(git rev-parse --short HEAD), log in $log"
+nix build --no-link --keep-going -L --cores "${NANOFIL_CHECKS_CORES:-4}" \
+  "${extra[@]}" "${targets[@]}" >"$log" 2>&1 || true
+
+fail=0
+for n in "${names[@]}"; do
+  d=$(jq -r --arg n "$n" '.[$n]' <<<"$drvs")
+  out=$(nix-store -q --outputs "$d" | head -1)
+  if nix-store -q --hash "$out" >/dev/null 2>&1; then
+    printf 'pass  %s\n' "$n"
+  else
+    printf 'FAIL  %s   (nix log %s)\n' "$n" "$d"; fail=1
+  fi
+done
+echo "$(( $(date +%s) - start )) s wall"
+exit $fail

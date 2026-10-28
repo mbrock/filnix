@@ -154,3 +154,30 @@ covers incomplete results, output validity/deduplication and a 300-root view.
 Publisher tests cover the new feed's validation and switching from SQLite
 without losing receipts. The existing browser suite was exercised through the
 public prefix and the canonical root before launching the fresh campaign.
+
+## Distributed builds: nanofil checks and the ports survey
+
+swa's nix-daemon sends builds to the remote builders in `/etc/nix/machines`
+(root-owned; earlier versions are kept beside it as `machines.before-*`):
+
+| Builder | CPU | Jobs | Notes |
+|---|---|---|---|
+| swa (local) | Ryzen 9 7950X3D, 32 threads, 124 GB | `max-jobs = 32` | |
+| igloo | i5-13500, 20 threads, 62 GB | 5 | |
+| chapel | i7-10700K, 16 threads, 31 GB | 3 | sqlite -O peaks at about 2.3 GB per compile |
+| squire | aarch64 | 1 | cannot build x86_64 Fil-C |
+
+Jobs × `--cores` must not oversubscribe a builder. At 8 jobs × 8 cores,
+igloo ran at load 38: nanofil's 8-thread atomic progtests went from 3 s to
+26 s and hit their run timeout. Orbs cannot reach these builders, so run
+the costly work from swa:
+
+```sh
+scripts/nanofil-checks                         # all nanofil* checks, pass/FAIL each
+python3 nanofil/survey/run.py --jobs 16 --cores 4
+```
+
+A check that compares against a reference must run both sides in one
+derivation whenever the result depends on the machine, because the
+reference may have been built on a different builder (nanofil-bash's test
+suite statuses do).

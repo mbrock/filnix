@@ -39,8 +39,10 @@ let
     make -j$NIX_BUILD_CORES >make.log 2>&1 || { cat make.log; exit 1; }
     mkdir $out
     (mkdir ../w.ref && cd ../w.ref && bash ${workload} ../bash/bash >$out/ref.out)
-    bash ${tests} . >$out/tests.log
-    grep -v '^    |' $out/tests.log >$out/tests
+    # The test suite's statuses depend on the machine (a remote builder
+    # may pass scripts the reference's machine did not), so each
+    # configuration runs filcc's bash's tests itself, next to its own.
+    cp -r . $out/tree
   '';
 in
 import ./configurations.nix { inherit pkgs; } "nanofil-bash"
@@ -69,9 +71,12 @@ import ./configurations.nix { inherit pkgs; } "nanofil-bash"
         diff -u $ref/ref.out ../nf.out
         echo "bash matches filcc's bash on $(grep -c '^### script' $ref/ref.out) scripts ($env)"
       done
+      cp -r --preserve=timestamps $ref/tree ../ref-tree && chmod -R u+w ../ref-tree
+      (cd ../ref-tree && bash ${tests} . >../ref-tests.log)
+      grep -v '^    |' ../ref-tests.log >../ref-tests
       bash ${tests} . >../tests.log
       grep -v '^    |' ../tests.log >../tests
-      diff -u $ref/tests ../tests || { cat $ref/tests.log ../tests.log; exit 1; }
+      diff -u ../ref-tests ../tests || { cat ../ref-tests.log ../tests.log; exit 1; }
       echo "bash's test suite: $(grep -c ' ok$' ../tests) of $(wc -l <../tests) scripts pass, as with filcc's bash"
       touch $out
     ''

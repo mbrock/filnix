@@ -27,7 +27,7 @@ succeeds) with nanofil, and writes [survey/survey.tsv](../survey/survey.tsv)
 and the table below. Rerun it from the repository root:
 
 ```sh
-python3 nanofil/survey/run.py --jobs 6 --cores 3        # all of them
+python3 nanofil/survey/run.py --jobs 16 --cores 4       # all of them, on swa
 python3 nanofil/survey/run.py zlib xz                   # some
 nix build -f nanofil/survey nf.zlib                     # one, by hand
 python3 nanofil/survey/run.py --report                  # tables from survey.tsv

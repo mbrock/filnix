@@ -45,6 +45,14 @@ nix build .#checks.x86_64-linux.nanofil-bzip2  # bzip2 built only by nanofil, vs
 nix build --impure -f nanofil/bench -o nanofil/bench/out && (cd nanofil/bench && python3 run.py)  # speed vs filcc -O2 (docs/perf.md)
 ```
 
+All the Nix checks at once: `scripts/nanofil-checks` (or name some) builds
+them in one `nix build --keep-going` and prints pass/FAIL per check. On
+swa that spreads them over swa and its remote builders (igloo, chapel;
+`/etc/nix/machines`), which an orb cannot reach. The ports survey
+(docs/survey.md) is the same: run it on swa. An orb thread that needs the
+full set or a survey rerun after a push asks the orchestrating thread, or
+a thread on runner swa, to run it at the pushed commit.
+
 For many runs, `bin/nanofil --save-state /tmp/nanofil.state` and
 `export NANOFIL_STATE=/tmp/nanofil.state` skip compiling `src/` each time
 (0.26 s to 0.05 s); rebuild the state after editing `src/`, or unset it.
