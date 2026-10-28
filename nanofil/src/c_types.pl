@@ -73,7 +73,7 @@
                     vm_type/1, vla_type/1, unsupported_type/3, value_type/2,
                     generic_selection/5, reflect_type/4, reflect_params/4,
                     conditional_type/3, unqualified/2,
-                    overflow_builtin/3, bit_builtin/3, builtin_type/2, binary_operands/6,
+                    overflow_builtin/3, bit_builtin/3, rotate_builtin/3, builtin_type/2, binary_operands/6,
                     unary_operand/3, assigned/4,
                     castable/2, expression_category/3, modifiable_lvalue/2,
                     integer_type/4, elaborate/3, tree_type/2, value/2,
@@ -3067,6 +3067,12 @@ atomic_operands(P, O, Env, Orders, T, V) :-
     catch(const_value(O, Env, V, _), not_constant, fail),
     memberchk(V, Orders).
 
+% rotate_builtin(?Name, ?Dir, ?Type): Name rotates a Type left or right.
+rotate_builtin(Name, Dir, Type) :-
+    member(Dir-Prefix, [left-'__builtin_rotateleft', right-'__builtin_rotateright']),
+    member(Bits-Type, [8-uchar, 16-ushort, 32-uint, 64-ulong]),
+    atom_concat(Prefix, Bits, Name).
+
 doc(builtin_type(?(Name), ?(Type)), nondet, [
     Name: "a builtin's name",
     Type: "the type of a call of it",
@@ -3078,6 +3084,13 @@ doc(builtin_type(?(Name), ?(Type)), nondet, [
     example(builtin_type('__builtin_ctzll', T), T = int),
     example(builtin_type('__builtin_bswap16', T), T = ushort),
     example(builtin_type('__builtin_bswap64', T), T = ulong),
+    "clang's rotates __builtin_rotateleftN and __builtin_rotaterightN",
+    "(N 8, 16, 32 or 64) give the unsigned type of width N, as their",
+    "operands are.",
+    cites('Clang Language Extensions, Builtin rotation functions'),
+    example(builtin_type('__builtin_rotateleft8', T), T = uchar),
+    example(builtin_type('__builtin_rotateright64', T), T = ulong),
+    fails(builtin_type('__builtin_rotateleft128', _)),
     "__builtin_isnan(x) is nonzero for a NaN of any floating type (an",
     "integer converts to double first). __builtin_flt_rounds() is",
     "FLT_ROUNDS, the current rounding direction: 0 toward zero, 1 to",
@@ -3103,6 +3116,7 @@ builtin_type(Name, int) :- bit_builtin(Name, _, _).
 builtin_type('__builtin_bswap16', ushort).
 builtin_type('__builtin_bswap32', uint).
 builtin_type('__builtin_bswap64', ulong).
+builtin_type(Name, Type) :- rotate_builtin(Name, _, Type).
 builtin_type(Name, double) :- libm_builtin(Name, _).
 builtin_type('__builtin_isnan', int).
 builtin_type('__builtin_flt_rounds', int).

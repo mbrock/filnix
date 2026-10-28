@@ -2776,6 +2776,20 @@ builtin(Name, [A], Ctx, R) -->
     swapped_bytes([0|Is], X, Last, none, Y),
     convert(v(Y, ulong), Type, R).
 
+% A rotate by N of a W-bit X is (X << (N & W-1)) | (X >> (-N & W-1)),
+% shifted the other way for a right rotate, so N = 0 shifts by nothing.
+builtin(Name, [A, B], Ctx, R) -->
+    { rotate_builtin(Name, Dir, Type) }, !,
+    rval(A, Ctx, VA0), rval(B, Ctx, VB0),
+    { ctx_loc(Ctx, Loc), int_info(Type, Bytes, _), Mask is 8 * Bytes - 1 },
+    assign_convert(A, VA0, Type, Loc, VA), assign_convert(B, VB0, Type, Loc, VB),
+    convert(VA, ulong, v(X, _)), convert(VB, ulong, v(N, _)),
+    let(l, and, [N, const(Mask)], S),
+    let(l, neg, [N], M), let(l, and, [M, const(Mask)], T),
+    { Dir == left -> First = shl, Second = shr ; First = shr, Second = shl },
+    let(l, First, [X, S], Y1), let(l, Second, [X, T], Y2),
+    let(l, or, [Y1, Y2], Y),
+    convert(v(Y, ulong), Type, R).
 builtin(Name, _, Ctx, _) -->
     { ctx_loc(Ctx, Loc), sema_error(Loc, 'wrong arguments to ~w', [Name]) }.
 
