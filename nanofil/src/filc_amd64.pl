@@ -1249,8 +1249,20 @@ local_check(Name, Off, Kind, I, B, Ctx) -->
      ins(mov, q, [reg(rax), reg(rdi)]), ins(mov, q, [reg(rcx), reg(rsi)]),
      ins(lea, q, [rip(Origin), reg(rdx)]),
      ins(call, none, [plt(filc_optimized_stack_access_check_fail)]),
-     ins(ud2, none, []), label(Good),
-     ins(lea, q, [mem(A, rbp, rax), reg(rdx)]),
+     ins(ud2, none, []), label(Good)],
+    local_address(Off, Limit, Mask, A, P).
+
+% The addresses of the access's aux word and payload byte. The check
+% has passed, so an offset outside 0..Limit or misaligned never gets
+% here; any other offset is a constant displacement, which the register
+% checker sees exactly (docs/perf.md item 3c). Otherwise index by %rax.
+local_address(Off, Limit, Mask, A, P) -->
+    { integer(Off), Off >= 0, Off =< Limit, Off /\ Mask =:= 0 }, !,
+    { A1 is A + Off, P1 is P + Off },
+    [ins(lea, q, [mem(A1, rbp), reg(rdx)]),
+     ins(lea, q, [mem(P1, rbp), reg(rax)])].
+local_address(_, _, _, A, P) -->
+    [ins(lea, q, [mem(A, rbp, rax), reg(rdx)]),
      ins(lea, q, [mem(P, rbp, rax), reg(rax)])].
 
 % kind_inst(+Kind, +K, +Op, +Args, +D, +Index, +Block, +Ctx)//: as

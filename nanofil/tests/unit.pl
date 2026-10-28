@@ -105,6 +105,20 @@ test(scalar_cache) :- scalar_cache.
 test(cache_checker) :- cache_checker.
 test(regs_checker) :- regs_checker.
 test(operands_checker) :- operands_checker.
+% A function that indexes a local array still gets register homes: the
+% local's address is a constant-offset lea after its range check
+% (docs/perf.md item 3c), not an indexed frame operand, which 3a's
+% preflight rejects. LZ4HC_InsertAndGetWiderMatch had none.
+test(local_array_registers) :-
+    c_tokens("int f(int n) { union { unsigned u; unsigned char c[4]; } one = { 1 };
+              int s = 0;
+              for (int i = 0; i < n; i++) s += one.c[0] + i;
+              return s; }", 'local.c', Ts),
+    c_parse(Ts, C), c_module(C, M), optimize(o1, M, O), pizlonate_module(O, P),
+    forall(member(R, [function, operands]),
+           ( filc_module_asm(P, emit(R, selected), Lines, Reports),
+             memberchk(function(f, allocated(N, _)), Reports), N > 0,
+             \+ ( member(ins(_,_,Os), Lines), member(mem(_,rbp,_), Os) ) )).
 test(local_storage_semantics) :- local_semantics.
 test(local_storage_lifetime) :- local_lifetime.
 test(local_storage_validation) :- local_validation.
