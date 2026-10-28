@@ -300,12 +300,17 @@ builtins, a C23 mode and the GNU extensions gnulib uses
 ([`36039eb`](https://github.com/mbrock/filnix/commit/36039eb)).
 Refused with a message: `_Complex`, K&R definitions, inline
 asm other than the empty barrier (in a function that is compiled),
-GNU case ranges, alignment stronger than natural except up to 16 on a
-struct or union definition, vector types, `_Float16` and `__bf16`,
+GNU case ranges, alignments above 4096, aligned bit-fields, pointer
+members aligned below 8, vector types, `_Float16` and `__bf16`,
 pointer-to-`bool` in static initializers, variable and
 variadic function aliases, and long double classification other than
 by sign ([docs/m4.md](docs/m4.md), *Linux userland additions* and *xz
-additions*). Constructors and destructors run as clang's do
+additions*). Alignments up to 4096 on objects, members and typedefs
+(filc_allocate_with_alignment and a padded data object, as filcc's),
+GCC's generic `__atomic` builtins, `__builtin_types_compatible_p`,
+`__builtin_choose_expr` and hint builtins follow the package survey
+([docs/survey.md](docs/survey.md)); incompatible redeclarations are
+refused as clang refuses them (C11 6.7p4). Constructors and destructors run as clang's do
 ([`41da3be`](https://github.com/mbrock/filnix/commit/41da3be)).
 `_Thread_local` and `__thread` variables are per-thread objects, created
 lazily through clang's getter protocol and interoperating with clang's
