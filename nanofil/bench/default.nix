@@ -25,7 +25,7 @@ let
     off = "";
     O = "-O";
     O-reuse = "-O --checks=reuse";
-    O-inline = "-O --inline=small";
+    O-noinline = "-O --inline=none";
     O-local = "-O --registers=local";
     O-refbranches = "-O --branches=reference";
     O-stack = "-O --registers=stack";

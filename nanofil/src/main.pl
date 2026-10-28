@@ -71,10 +71,11 @@
 
     `--inline=none|small` independently selects no inlining, or, with
     `-O`, inlining of small static functions before promotion
-    (src/inline.pl, docs/perf.md item 4). The default is none;
-    NANOFIL_INLINE supplies the same choice. Under small a trap inside an
-    inlined function reports its caller's name, as filcc -O2 does
-    without -g.
+    (src/inline.pl, docs/perf.md item 4). The default is small with
+    `-O`; without `-O` nothing inlines. NANOFIL_INLINE supplies the
+    same choice, and nanofil-cc passes none for -fno-inline and -O0.
+    Under small a trap inside an inlined function reports its caller's
+    name, as filcc -O2 does without -g.
 
     `--checks=reference|reuse` independently selects the reference checked
     IR, a check before every access, or check reuse after pizlonation
@@ -174,17 +175,20 @@ inline_options([A|As], I0, I, Args) :-
     ->  inline_mode(I1), inline_options(As, I1, I, Args)
     ;   Args = [A|Args1], inline_options(As, I0, I, Args1)
     ).
+% inline_default(?Inline): NANOFIL_INLINE, or unbound until -O decides.
 inline_default(Inline) :-
-    ( getenv('NANOFIL_INLINE',I) -> Inline = I ; Inline = none ),
-    inline_mode(Inline).
+    ( getenv('NANOFIL_INLINE',I) -> inline_mode(I), Inline = I ; true ).
 inline_mode(I) :-
     ( memberchk(I,[none,small]) -> true
     ; throw(nanofil_error('inline must be none or small')) ).
-% opt_selection(+Level, +Inline, -Opt): the middle end's selection
-% (opt.pl); inlining needs -O.
+% opt_selection(+Level, ?Inline, -Opt): the middle end's selection
+% (opt.pl). Inlining needs -O, where it is small unless chosen otherwise.
 opt_selection(o0, _, o0).
-opt_selection(o1, none, o1).
-opt_selection(o1, small, o1(small)).
+opt_selection(o1, Inline, Opt) :-
+    ( var(Inline) -> Inline = small ; true ),
+    inline_selection(Inline, Opt).
+inline_selection(none, o1).
+inline_selection(small, o1(small)).
 % opt_level(+Opt, -Level): o0 or o1, for difftest's validation.
 opt_level(o0, o0).
 opt_level(o1, o1).

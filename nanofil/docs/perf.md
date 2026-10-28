@@ -722,7 +722,7 @@ middle end's run-by-run refinement (`-O` difftest) and the gates. It
 changes panic origins and stack traces (the inlined access reports the
 caller's frame), an observation change to state and review with it.
 
-#### 4. Contract (approved; implemented as `--inline=small`, opt-in)
+#### 4. Contract (approved; implemented as `--inline=small`, the `-O` default)
 
 **What inlining buys, measured.** filcc's own `-O2` against
 `-O2 -fno-inline`, user instructions: lz4 `-9` 2.84G / 5.19G, lz4 `-1`
@@ -799,8 +799,12 @@ without `-O` it is off. nanofil-cc maps `-fno-inline` and `-O0` to
 selection, and inlined temporaries would be live across returns-twice.
 Not in a call-graph cycle: inlining into a recursive caller grows every
 recursive frame, so stack overflow would come at a smaller depth
-(*review*). At most 2000 instructions before inlining, and at most 1.5×
-its own size after. A variadic caller is fine.
+(*review*). At most 2000 instructions, and growing by at most half its
+size or 120 instructions, whichever is more (*amended*: exactly 1.5×
+would forbid inlining into any caller under 240 instructions). Both
+caps are on the caller's size before the first round (*amended*: per
+round, the second round would grant another half). A variadic caller
+is fine. Both amendments were accepted with the implementation.
 
 **Transformation.** Split the calling block at the call. Copy the
 arguments into renamed parameters, rename every temporary and label of
@@ -915,7 +919,7 @@ Dropping static functions left unreferenced is out of scope.
     temporary collisions in IR text;
   - a phi successor of the calling block; void and valued returns; a
     callee with a loop;
-  - both sides of the 120, 2000 and 1.5× caps; a recursive caller;
+  - both sides of the 120, 2000 and growth caps; a recursive caller;
     `passes([inline])` alone;
   - an inlined out-of-bounds access, its function lines compared with
     filcc `-O2`'s in a panic-text harness (progtest reduces every
@@ -923,7 +927,7 @@ Dropping static functions left unreferenced is out of scope.
 - Native: progtests and run-c under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`.
 - Plants: no phi rename, admitting an escaping allocation to
   non-entry promotion, promoting without the alloc's zero, admitting
-  recursion or setjmp callers, no 1.5× cap, fixed-prefix names. Each
+  recursion or setjmp callers, no growth cap, fixed-prefix names. Each
   must be caught.
 - **Review.** Oracle reviewed this contract and the prototype: block
   placement, polls, function identity, GC roots and frame sizes, and
@@ -934,17 +938,19 @@ Dropping static functions left unreferenced is out of scope.
   its trial range, SQLite included), the ten checks, and sqlite3.c's
   `-O` compile within 25% of its time and memory.
 
-#### 4: result (`--inline=small`, opt-in)
+#### 4: result (`--inline=small`, the `-O` default)
 
 `src/inline.pl` is the pass, first in `o1(small)` (opt.pl);
 `--inline=none|small` and `NANOFIL_INLINE` select it (main.pl), and
 without `-O` it is off. nanofil-cc passes `--inline=none` for
-`-fno-inline` and `-O0`; the bench has an `O-inline` mode; the Nix check
-runs the `-O` difftests, ABI+GC run-c and progtests (GC stress) with it.
-The snapshot unsets `NANOFIL_INLINE`, so its `-O` outputs stay
-uninlined; it pins `--inline=none` once both revisions know the option.
+`-fno-inline` and `-O0`. It is the `-O` default; `--inline=none` keeps
+the uninlined path, which the bench's `O-noinline` mode and the Nix
+check's `-O inline=none` difftests, ABI+GC run-c and progtests (GC
+stress) run. The snapshot pins `--inline=none` in its four existing `-O`
+modes and adds `I.`, frame cells with `--inline=small`.
 
-Departures from the contract, none of them a safety rule:
+Departures from the contract, none of them a safety rule (the first
+two are now in the contract's caller rule):
 
 - *Growth cap*: a caller may grow by half its size **or by 120
   instructions, whichever is more**. Exactly 1.5× forbids inlining
@@ -1048,11 +1054,9 @@ counts as allocated (collected between rounds, as main.pl does between
 stages; peak RSS was 2.14 GB without it).
 
 
-**Default.** The conditions for proposing it as the `-O` default hold:
+**Default.** It became the `-O` default once the conditions held:
 SQLite within its range, the compile within 25%, every other workload
-faster or unchanged in instructions (bzip2 `-d`'s time is layout). It
-stays opt-in until that is agreed; making it the default changes every
-`-O` C output, so the snapshot would then pin `--inline=none`.
+faster or unchanged in instructions (bzip2 `-d`'s time is layout).
 
 Not inlined yet, measured: `escape.pl` classes a `d` load as escaping,
 so `double` and struct-with-`double` locals stay heap objects with or
