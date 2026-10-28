@@ -2248,18 +2248,28 @@ saved_generic([cell(I,K,Data,none)|Cells]) -->
 % lower not 0, lower =< ptr =< upper - Size, the object's flags
 % permitting a write if Write is 1, and ptr 8-aligned if Align is 8.
 access_check(k(Size, Write, Align), Ctx) -->
-    { check_fail_label(Ctx, k(Size, Write, Align), Fail) },
+    { check_fail_label(Ctx, k(Size, Write, Align), Fail),
+      ctx_selection(Ctx, Selection) },
     [ins(test, q, [reg(rcx), reg(rcx)]),
      ins(jz, none, [sym(Fail)]),
      ins(cmp, q, [reg(rcx), reg(rax)]),
      ins(jb, none, [sym(Fail)]),
      ins(mov, q, [mem(-16, rcx), reg(rdx)]),
-     ins(sub, q, [imm(Size), reg(rdx)]),
-     ins(jb, none, [sym(Fail)]),
-     ins(cmp, q, [reg(rdx), reg(rax)]),
+     ins(sub, q, [imm(Size), reg(rdx)])],
+    borrow_check(Selection, Size, Fail),
+    [ins(cmp, q, [reg(rdx), reg(rax)]),
      ins(ja, none, [sym(Fail)])],
     write_check(Write, Fail),
     align_check(Align, Fail).
+
+% The borrow test of upper - Size. Local selection drops it for Size =<
+% 16: a nonnull lower has its 16-byte header below it and upper >= lower,
+% so upper >= 16 >= Size (docs/perf.md, item 6a). Checked IR may state
+% larger sizes (tests/filc/check-range.ir), which keep it.
+borrow_check(Selection, Size, Fail) -->
+    (   { Selection == local, Size =< 16 } -> []
+    ;   [ins(jb, none, [sym(Fail)])]
+    ).
 
 % For a write (Write = 1), a check of the object's read-only flags.
 write_check(0, _) --> [].

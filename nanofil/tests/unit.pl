@@ -2221,6 +2221,27 @@ test(native_check_range) :-
           ; catch((filc_module_asm(M, _), fail), nanofil_error(_), true)
           ) )).
 
+% Item 6a (docs/perf.md): with local selection a check of Size =< 16
+% has no borrow test after `sub $Size` (upper >= lower >= 16); larger
+% checks keep it, and so does the reference (stack) selection.
+test(borrow_test_sizes) :-
+    forall(member(Size-Mode-Borrow,
+                  [1-cells-no, 8-cells-no, 10-cells-no, 10-local-no,
+                   17-cells-yes, 2147483647-cells-yes,
+                   1-stack-yes, 8-stack-yes, 10-stack-yes]),
+        ( M = module([func(f, export, l, [param(p, tmp(p))], [
+              block(s, [], [
+                  let(tmp(q), a, check(0, Size, read, 1), [tmp(p)]),
+                  let(tmp(r), l, raw_load(l, 0), [tmp(q)])
+              ], ret(tmp(r)))])]),
+          filc_module_asm(M, Mode, Lines, _),
+          once(append(_, [ins(sub,q,[imm(Size),reg(rdx)])|After], Lines)),
+          After = [Next|_],
+          ( Next = ins(jb,none,_) -> Borrow == yes ; Borrow == no ),
+          % The remaining tests stay: null, lower and upper.
+          memberchk(ins(jz,none,_), Lines),
+          memberchk(ins(ja,none,_), Lines) )).
+
 % Only the immediately preceding function check authorizes a raw call.
 % Neither a memory proof nor a proof carried across an effect qualifies.
 test(checked_call_rules) :-

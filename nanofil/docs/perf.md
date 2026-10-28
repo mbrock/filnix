@@ -1148,6 +1148,31 @@ bytes, not 16. The size guard, the must-pass boundary cases, the
 plant that drops the `jb` everywhere and the rooting assumption come
 from its review.
 
+**Result.** Implemented as `borrow_check//3` in `filc_amd64.pl`,
+tested by unit `borrow_test_sizes` and `tests/checks.sh` (70 cases,
+in `check.nix` by default and per registers mode); the three plants
+were caught as stated (18 and 25 matrix cases, and `check-range.ir`).
+Snapshot: 513 of 3312 outputs differ, all in the allocating `-O`
+modes. Gate on swa, ratio to filcc, time (instructions), before → after:
+
+| Workload | before | after |
+| --- | ---: | ---: |
+| zlib `-6` | 2.60 (4.36) | 2.57 (4.21) |
+| zlib `-d` | 2.04 (3.48) | 2.05 (3.38) |
+| bzip2 `-9` | 2.12 (2.78) | 2.04 (2.66) |
+| bzip2 `-d` | 3.55 (3.49) | 3.66 (3.40) |
+| lz4 `-1` | 2.42 (13.01) | 2.43 (12.90) |
+| lz4 `-9` | 3.96 (4.77) | 3.91 (4.71) |
+| lz4 `-d` | 3.19 (8.41) | 3.18 (8.39) |
+| Lua int | 2.28 (2.54) | 2.26 (2.49) |
+| Lua tab | 2.15 (2.46) | 2.11 (2.40) |
+| Lua str | 1.58 (1.74) | 1.57 (1.71) |
+| SQLite | 2.12 (2.13) | 2.09 (2.07) |
+| geomean | 2.46 (3.70) | 2.44 (3.62) |
+
+Instructions fall 0.2–4.3%, as estimated. bzip2 `-d`'s time rose
+while its instructions fell, which is layout (the M7 noise floor).
+
 #### 6b and 6c (not proposed yet)
 
 - **6b, null tests of a lower already tested in the stretch:** at most
