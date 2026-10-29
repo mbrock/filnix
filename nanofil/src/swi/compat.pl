@@ -32,11 +32,20 @@ user:utf8_streams :-
 % NANOFIL_STACK_LIMIT=BYTES raises SWI's 1 GB stack limit, from source or
 % a saved state alike (a state ignores --stack-limit): the SQLite
 % amalgamation with FTS5 needs about 3 GB.
+%
+% SWI collects the global stack when it holds more than factor(F) times
+% what the last collection left, else grows it, and raises an overflow
+% when growing would pass the limit, without collecting first. With the
+% default factor 3 a compile overflowed 1 GB with a third of that live:
+% GLib's resource blobs (gtk3's 11 MB gtkresources.c, 256 MB live while
+% lexing) and SQLite with nixpkgs' and the shell's flags. Factor 2 uses
+% the limit; their compile times are unchanged.
 user:nanofil_stack_limit :-
     (   getenv('NANOFIL_STACK_LIMIT', A), atom_number(A, N)
     ->  set_prolog_flag(stack_limit, N)
     ;   true
-    ).
+    ),
+    set_prolog_stack(global, factor(2)).
 :- user:nanofil_stack_limit.
 :- initialization(user:nanofil_stack_limit, restore).
 

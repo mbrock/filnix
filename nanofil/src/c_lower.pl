@@ -847,9 +847,10 @@ global_data(Env0, Data) :-
 global_items(Env0, Done, Data, Env) :-
     env_defs(Env0, Defs),
     assoc_to_list(Defs, Pairs),
-    findall(Sym-G,
-            ( member(gdef(Sym)-G, Pairs), \+ memberchk(Sym, Done) ),
-            New),
+    % include/3, not findall/3, which would copy each initializer (gtk3's
+    % 1.5 MB resource blob, 150 MB of syntax).
+    include(new_gdef(Done), Pairs, NewPairs),
+    maplist(gdef_pair, NewPairs, New),
     (   New == []
     ->  Data = [], Env = Env0
     ;   foldl(global_item, New, Data0, Env0, Env1),
@@ -858,6 +859,9 @@ global_items(Env0, Done, Data, Env) :-
         global_items(Env1, Done1, Data1, Env),
         append(Data0, Data1, Data)
     ).
+
+new_gdef(Done, gdef(Sym)-_) :- \+ memberchk(Sym, Done).
+gdef_pair(gdef(Sym)-G, Sym-G).
 
 % global_item(+Sym-G, -Data, +Env0, -Env): Data is the data item of
 % global definition G.
