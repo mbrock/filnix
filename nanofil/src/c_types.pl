@@ -161,7 +161,7 @@ sema_error(Loc, Fmt, Args) :-
 
 decl_types(Specs0, Inits, Decls, Env0, Env) :-
     decl_storage(Specs0, Storage),
-    partition(alignment_request, Specs0, Requests, Specs),
+    alignment_requests(Specs0, Requests, Specs),
     specs_type(Specs, Base, Env0, Env1),
     foldl(declarator_type(Specs, Requests, Base, Storage), Inits, Decls0, Env1, Env),
     exclude(==(none), Decls0, Decls).
@@ -1204,7 +1204,7 @@ member_decl(static_assert(Loc, Expr, _), [], [], Env, Env) :-    % C11 6.7.10p2
     ).
 member_decl(field(Specs0, dcl(Name, SyntaxType, _), Width), Fields,
             Reflected, Env0, Env) :-
-    partition(alignment_request, Specs0, Requests, Specs),
+    alignment_requests(Specs0, Requests, Specs),
     specs_type(Specs, Base, Env0, Env1),
     apply_declarator(SyntaxType, Base, Type, Env1, Env),
     inherited_alignment(Specs, SyntaxType, Env, Inherited),
@@ -1266,8 +1266,53 @@ member_alignment(Requests, Inherited, Env, MA) :-
     ;   MA = bad('alignment attributes')
     ).
 
-alignment_request(alignas(_)).
-alignment_request(attr(Tokens)) :- aligned_attr(Tokens).
+doc(alignment_requests(+Specs0, -Requests, -Specs), det, [
+    Specs0: "a declaration's specifiers and attributes",
+    Requests: "its alignment requests: each _Alignas, and each aligned attribute as attr([group(Item)])",
+    Specs: "Specs0 without them",
+    "One __attribute__((...)) may list several attributes, separated by",
+    "commas, each applying as if alone: GLib's resources declare their",
+    "data with section(...), aligned(...) together. An aligned item is a",
+    "request and the group's other items stay with the specifiers, so",
+    "the section still places the object.",
+    cites('GCC manual, Attribute Syntax'),
+    example(alignment_requests([attr([group([id(section), group([str(`.r`)]), p(','),
+                                             id(aligned), group([int(8, none-dec)])])]),
+                                tspec(int)], R, S),
+            ( R = [attr([group([id(aligned), group([int(8, none-dec)])])])],
+              S = [attr([group([id(section), group([str(`.r`)])])]), tspec(int)] )),
+    example(alignment_requests([attr([group([id('__aligned__')])]), alignas(expr(num(4, none-dec)))], R, S),
+            ( R = [attr([group([id('__aligned__')])]), alignas(expr(num(4, none-dec)))], S = [] )),
+    example(alignment_requests([attr([group([id(packed)])]), tspec(char)], R, S),
+            ( R = [], S = [attr([group([id(packed)])]), tspec(char)] ))
+]).
+alignment_requests([], [], []).
+alignment_requests([alignas(A)|Ss0], [alignas(A)|Rs], Ss) :- !,
+    alignment_requests(Ss0, Rs, Ss).
+alignment_requests([attr([group(Tokens)])|Ss0], Rs, Ss) :-
+    aligned_attr(Tokens), !,
+    attr_items(Tokens, Items),
+    partition(aligned_attr, Items, Aligned, Others),
+    findall(attr([group(I)]), member(I, Aligned), Rs1),
+    (   Others == [] -> Ss = Ss1
+    ;   attr_items(Rest, Others), Ss = [attr([group(Rest)])|Ss1]
+    ),
+    append(Rs1, Rs2, Rs),
+    alignment_requests(Ss0, Rs2, Ss1).
+alignment_requests([attr(Tokens)|Ss0], [attr(Tokens)|Rs], Ss) :-
+    aligned_attr(Tokens), !,
+    alignment_requests(Ss0, Rs, Ss).
+alignment_requests([S|Ss0], Rs, [S|Ss]) :-
+    alignment_requests(Ss0, Rs, Ss).
+
+% attr_items(?Tokens, ?Items): Tokens are the Items joined by commas.
+attr_items(Tokens, [I|Is]) :-
+    nonvar(Tokens), !,
+    (   append(I, [p(',')|Rest], Tokens) -> attr_items(Rest, Is)
+    ;   I = Tokens, Is = []
+    ).
+attr_items(Tokens, [I]) :- !, Tokens = I.
+attr_items(Tokens, [I|Is]) :- attr_items(Rest, Is), append(I, [p(',')|Rest], Tokens).
 
 % attribute_expression(+Flat, +Env, -E): E is the constant expression the
 % attribute argument tokens Flat are, read with the typedef names of Env
