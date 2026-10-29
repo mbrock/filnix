@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nanofil: where it stands · Filnix</title>
+<meta property="og:title" content="nanofil: a Fil-C compiler in Prolog, where it stands">
+<meta property="og:description" content="A C compiler written in Prolog that emits memory-safe Fil-C code. What it is, what it builds, how fast its code runs and how fast it compiles, as of October 2026.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap">
+<link rel="stylesheet" href="../style.css">
+<style>
+.explainer { --measure: 72ch; }
+.explainer > h1 { font-size: 2.5rem; margin: 0.3rem 0 0.8rem; }
+.sub { color: var(--muted); font-size: 1.15em; line-height: 1.4; margin: 0 0 1.4em; text-align: start; }
+.meta { font: 13px/1.5 var(--mono-font); color: var(--muted); text-align: start; }
+table { border-collapse: collapse; font-size: 0.92em; width: 100%; margin: 1rem 0; text-align: start; }
+td, th { padding: 6px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; text-align: start; }
+th { color: var(--muted); font-weight: 600; }
+td.n, th.n { text-align: end; font-variant-numeric: tabular-nums; }
+.note { background: #f4f1ea; border-radius: 8px; padding: 12px 16px; margin: 1.2rem 0; text-align: start; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.8rem; margin: 1.2rem 0 1.6rem; }
+.fact { border: 1px solid var(--rule); border-radius: 8px; padding: 10px 14px; background: #fff; }
+.fact b { display: block; font-size: 1.6rem; font-weight: 800; letter-spacing: -0.02em; }
+.fact span { color: var(--muted); font-size: 0.85rem; line-height: 1.3; display: block; }
+.bar { display: inline-block; height: 0.7em; background: #2f6fb3; opacity: 0.75; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+</style>
+</head>
+<body>
+<header class="library"><div class="page-frame library-frame">
+  <div class="library-heading"><p class="eyebrow">Fil-C on Nix</p><h1><a href="../index.html">Filnix wiki</a></h1></div>
+  <nav class="doors">
+    <a class="door" href="../docs/">Docs</a>
+    <a class="door" href="../index.html#explainers">Explainers</a>
+    <a class="door selected" href="../nanofil/">nanofil</a>
+    <a class="door" href="https://nix.swa.sh/">Campaigns</a>
+    <a class="door" href="https://github.com/mbrock/filnix">Source</a>
+  </nav>
+</div></header>
+<div class="status"><div class="page-frame status-frame">
+  <nav class="crumbs" aria-label="Breadcrumb"><a class="crumb" href="../index.html#nanofil">nanofil</a><span class="crumb-sep">›</span><span class="crumb current">Where it stands</span></nav>
+  <span class="status-right"><a href="https://github.com/mbrock/filnix/tree/main/nanofil">nanofil/</a></span>
+</div></div>
+<main class="page-frame reading explainer">
+
+<p class="meta">nanofil at main · SWI-Prolog 10 · Fil-C 0.686 reference · October 2026</p>
+<h1>nanofil: where it stands</h1>
+<p class="sub">nanofil is a C compiler written in Prolog that emits <a href="https://github.com/pizlonator/fil-c">Fil-C</a> code: x86-64 assembly in which every pointer carries a capability, every access is checked, and the collector sees every pointer. Its objects link with filcc's, the clang-based Fil-C compiler. This page says what it can do today and what it costs, as far as we have measured.</p>
+
+<div class="facts">
+  <div class="fact"><b>27.6k</b><span>lines of Prolog, from preprocessor to assembly</span></div>
+  <div class="fact"><b>130 / 202</b><span>nixpkgs C packages filcc builds that nanofil builds alone</span></div>
+  <div class="fact"><b>~2.2×</b><span>filcc -O2's run time with <code>-O</code>, geomean of 11 workloads</span></div>
+  <div class="fact"><b>~1.5×</b><span>filcc -O2's compile time with <code>-O</code>, for SQLite</span></div>
+</div>
+
+<h2>What it is</h2>
+<p>The pipeline is ordinary in shape: preprocess, parse, type, lower to an IR of Prolog terms, optionally optimize, then <em>pizlonate</em> (insert Fil-C's checks, as filcc's LLVM pass does), validate, and emit assembly. Two things are unusual.</p>
+<ul>
+<li><b>The IR has a meaning you can run.</b> An interpreter defines what each instruction does, including what happens when a check fails. Tests compare that meaning against the native code and against filcc's programs.</li>
+<li><b>Safety rests on one validator.</b> After pizlonation, a checker re-derives every fact a check depends on: which values are pointers, which proofs are still valid, where the collector may run. The optimizer can be wrong; if its output would be unsafe, compilation stops. A code review in October 2026 tried to break that and found no way through.</li>
+</ul>
+<p>The point of the project is a compiler whose safety argument can be read and worked on directly, not a faster Fil-C. You can <a href="../nanofil/">read its source drawn as terms</a> or <a href="../nanofil/play/">run it in your browser</a>.</p>
+
+<h2>What it can build</h2>
+<p>nanofil accepts C17 with the GNU extensions real packages use: statement expressions, <code>typeof</code>, <code>__attribute__((cleanup))</code>, computed goto, VLAs, transparent unions, weak symbols and aliases, <code>.symver</code>, K&amp;R definitions, C11 atomics and <code>setjmp</code>. Unknown attributes are refused rather than ignored. The rule throughout is to refuse loudly instead of miscompiling.</p>
+<p>The <b>survey</b> builds every C package in filnix's port list with nanofil in place of the compiler. Of the 202 that filcc builds, nanofil builds <b>130</b>, compiling about 32,000 objects with no fallback to clang. The 44 among them whose ports run tests pass them, as filcc's builds do. They include GTK 3, GLib, SQLite, CPython, Lua, bash, coreutils, gmp, libsodium and netcdf.</p>
+<p>Sixteen <b>workload checks</b> build programs like bash, CPython, SQLite, coreutils, xz and jq with nanofil, plain and with <code>-O</code>, and require their output, and often their own test suites, to match filcc's builds, also under the collector's stress mode.</p>
+<p>What stops the other 72, roughly in order:</p>
+<table>
+<tr><th>Cause</th><th class="n">Packages</th><th>Examples</th></tr>
+<tr><td>Inline assembly that filcc accepts and nanofil doesn't yet (cpuid, rdtsc, register constraints)</td><td class="n">20</td><td>openssl, openssh, flac, libdeflate</td></tr>
+<tr><td>Assorted syntax and typing gaps</td><td class="n">20</td><td>binutils, gnupg, btrfs-progs</td></tr>
+<tr><td>Vector types, SIMD intrinsics and alignment</td><td class="n">12</td><td>gtk4, zstd, redis, xz</td></tr>
+<tr><td>Constant expressions nanofil doesn't fold yet</td><td class="n">4</td><td>libffi, nettle, ruby</td></tr>
+<tr><td>Missing builtins</td><td class="n">4</td><td>gnutls, mesa's libgbm</td></tr>
+<tr><td>Link-time symbols, internal failures and others</td><td class="n">12</td><td>bison, nspr, trealla</td></tr>
+</table>
+<p>The full table is in <a href="https://github.com/mbrock/filnix/blob/main/nanofil/docs/survey.md">survey.md</a>.</p>
+
+<h2>How fast its code runs</h2>
+<p>The benchmark gate runs eleven workloads: zlib, bzip2 and lz4 compressing and decompressing 4 MiB, three Lua scripts, and an SQLite session with joins, window functions, JSON and full-text search. Each nanofil build must print exactly what filcc's does; then each runs seven times, pinned to one core. Ratios are run time against filcc <code>-O2</code>; lower is better. The plain column is from an earlier measurement over ten of the workloads.</p>
+<table>
+<tr><th>Workload</th><th class="n">plain</th><th class="n"><code>-O</code></th><th></th></tr>
+<tr><td>zlib -6</td><td class="n">8.5×</td><td class="n">2.5×</td><td><span class="bar" style="width:125px"></span></td></tr>
+<tr><td>bzip2 -9</td><td class="n">9.4×</td><td class="n">2.0×</td><td><span class="bar" style="width:100px"></span></td></tr>
+<tr><td>lz4 -d</td><td class="n">14×</td><td class="n">3.0×</td><td><span class="bar" style="width:150px"></span></td></tr>
+<tr><td>Lua, strings</td><td class="n">11×</td><td class="n">1.5×</td><td><span class="bar" style="width:75px"></span></td></tr>
+<tr><td>SQLite</td><td class="n">—</td><td class="n">2.0×</td><td><span class="bar" style="width:98px"></span></td></tr>
+<tr><td><b>Geomean, all eleven</b></td><td class="n">~11×</td><td class="n"><b>2.2×</b></td><td><span class="bar" style="width:109px"></span></td></tr>
+</table>
+<p>Plain nanofil keeps every value in a stack slot and checks every access: it exists to be obviously right. <code>-O</code> adds inlining of small functions, register allocation with a checker that verifies the allocation, better branches and small inline copies; it went from 4.6× to 2.2× over one round of work, and every step is checked against the plain path.</p>
+<p>The remaining gap is mostly deliberate. filcc merges and hoists checks out of loops; nanofil runs every check where the C access is, so a bad access traps at the same place and with the same message. Moving checks safely needs a separation of spatial and temporal proofs that is still being designed. Pointers are also reloaded from the frame more than filcc does. The full account is in <a href="https://github.com/mbrock/filnix/blob/main/nanofil/docs/perf.md">perf.md</a>.</p>
+
+<h2>How fast it compiles</h2>
+<p>SQLite's amalgamation, <code>sqlite3.c</code>: 266,000 lines, 123,000 after preprocessing. Measured on one machine (Ryzen 9 7950X3D) while it was also running other builds, so treat the numbers as rough; the ratios between them held in earlier quiet runs.</p>
+<table>
+<tr><th>Compiler</th><th class="n">Time</th><th class="n">Peak memory</th><th class="n">Object</th></tr>
+<tr><td>filcc -O0</td><td class="n">54 s</td><td class="n">1.8 GB</td><td class="n">—</td></tr>
+<tr><td>filcc -O2</td><td class="n">139 s</td><td class="n">1.4 GB</td><td class="n">11.3 MB</td></tr>
+<tr><td>nanofil, plain</td><td class="n">87 s</td><td class="n">1.1 GB</td><td class="n">23.8 MB</td></tr>
+<tr><td>nanofil <code>-O</code></td><td class="n">210 s</td><td class="n">1.2 GB</td><td class="n">12.2 MB</td></tr>
+</table>
+<p>So nanofil compiles in the same range as filcc: plain nanofil sits between filcc <code>-O0</code> and <code>-O2</code>, and <code>-O</code> takes about 1.5× filcc <code>-O2</code>, producing an object of about the same size. Ordinary files compile in well under a second; the saved Prolog state starts in 0.05 s.</p>
+<p>The limit that matters is memory, not time. nanofil holds a whole translation unit through every stage, and SWI-Prolog runs with a 1 GB stack. Files with megabytes of initializers, such as GLib's generated resource blobs, or very large amalgamations sit near that limit. Garbage-collector tuning brought SQLite down to 650–800 MB; streaming one function at a time through the back end is the real fix, and it is planned.</p>
+
+<h2>What it does not do yet</h2>
+<ul>
+<li><b>C++</b>, <code>__int128</code>, vector types, <code>_Complex</code>, and most non-empty inline assembly.</li>
+<li><b>Other targets.</b> x86-64 Linux only, as Fil-C itself.</li>
+<li><b>Its own preprocessor in package builds.</b> nanofil has a preprocessor and tests it, but package builds currently preprocess with filcc's to match its headers and predefined macros exactly.</li>
+<li><b>A proof.</b> nanofil has executable semantics, a validator, differential tests and bounded symbolic comparisons, not a correctness proof. A review in October 2026 found attribute-placement bugs in the frontend, such as attributes written in C23 <code>[[gnu::…]]</code> form being dropped; they are being fixed, and random differential testing against filcc is next.</li>
+</ul>
+
+<div class="note">The source is <a href="https://github.com/mbrock/filnix/tree/main/nanofil">nanofil/</a> in the filnix repository. Start with its <a href="https://github.com/mbrock/filnix/blob/main/nanofil/README.md">README</a>, then the <a href="https://github.com/mbrock/filnix/blob/main/nanofil/docs/campaign.md">foundation and direction</a>, which separates what exists from what the project wants to establish.</div>
+
+</main>
+</body>
+</html>
