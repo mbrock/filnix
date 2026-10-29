@@ -805,10 +805,12 @@ local_decl(Env0, Env, decl(Loc, Specs1, Inits)) -->
     }.
 
 % statement(+Env, -Stmt)//: a statement at(Loc, S). The cut commits to
-% the first parse; if there is none, it is a syntax error.
+% the first parse; if there is none, it is a syntax error. GNU
+% attributes may begin a statement too, as in a label's
+% `__attribute__((fallthrough));` (an attributed null statement).
 statement(Env, at(Loc, S)) -->
     loc(Loc),
-    c23_attrs,
+    attrs,
     statement_body(Env, S), !.
 statement(_, _) --> parse_error('expected a statement').
 
