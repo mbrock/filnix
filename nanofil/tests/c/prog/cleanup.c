@@ -101,6 +101,23 @@ static int several(int k) {
     return a + b + c;
 }
 
+/* libapparmor's merge macro: a goto out of a cleanup scope to a label
+   that is the statement expression's last item. */
+static int stmt_expr_label(int n) {
+    __attribute__((cleanup(drop))) int a = 80;
+    int r = ({
+        int rc = 0;
+        for (int y = 0; y < 3; y++) {
+            __attribute__((cleanup(drop))) int c = 81 + y;
+            if (y == n) { rc = y + 1; goto fail; }
+        }
+    fail:
+        rc;
+    });
+    note("after ");
+    return r;
+}
+
 int main(void) {
     block_exit(); printf("%s\n", trace); trace[0] = 0;
     printf("%d ", early(1)); printf("%d ", early(0)); printf("%s\n", trace); trace[0] = 0;
@@ -111,6 +128,7 @@ int main(void) {
     printf("%d %d\n", lose(), refs);
     printf("%d %s\n", stmt_expr(), trace); trace[0] = 0;
     printf("%d %s\n", for_init(), trace); trace[0] = 0;
-    printf("%d ", several(0)); printf("%d %s\n", several(1), trace);
+    printf("%d ", several(0)); printf("%d %s\n", several(1), trace); trace[0] = 0;
+    printf("%d ", stmt_expr_label(1)); printf("%d %s\n", stmt_expr_label(5), trace);
     return 0;
 }

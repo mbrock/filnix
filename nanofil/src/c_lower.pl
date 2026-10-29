@@ -2503,7 +2503,10 @@ statement_expression_items([Item|Items], Ctx, R) -->
 statement_expression_last(at(Loc, expr(Expr)), Ctx0, R) --> !,
     { ctx_at(Ctx0, Loc, Ctx) }, judged_rval(Expr, Ctx, R).
 statement_expression_last(at(_, label(Name, Body)), Ctx, R) --> !,
-    goto_label(Name, Label), start(Label),
+    vm_label(label(Name)),
+    goto_label(Name, Label),
+    label_cleanups(Name, Label),
+    start(Label),
     statement_expression_last(Body, Ctx, R).
 statement_expression_last(Item, Ctx, v(const(0), void)) --> item(Item, Ctx).
 
