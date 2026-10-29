@@ -1432,9 +1432,15 @@ flight_store(D, Ctx) -->
 % of Block from index Index on.
 insts([], _, _, _) --> [].
 insts([Inst|Insts], Index, Block, Ctx) -->
-    inst(Inst, Index, Block, Ctx),
+    inst_once(Inst, Index, Block, Ctx),
     { Index1 is Index + 1 },
     insts(Insts, Index1, Block, Ctx).
+
+% An instruction's code is its first, as a block's is (block_once/5):
+% inst//4's clauses leave choicepoints (shared first-argument functors,
+% reg_name/3), which would keep every earlier instruction of a long
+% block's frames alive (libaom: 30k instructions overflowed 1 GB).
+inst_once(Inst, Index, Block, Ctx, S0, S) :- once(inst(Inst, Index, Block, Ctx, S0, S)).
 
 % inst(+Inst, +Index, +Block, +Ctx)//: the code of instruction Inst,
 % the Indexth of block Block. Instructions go by their op's kind (ir.pl),

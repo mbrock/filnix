@@ -2769,6 +2769,24 @@ test(reuse_emission) :-
               let(tmp(a), p, raw_load_pointer(0, Es), [tmp(q)]), L], Loaded),
     catch(( filc_module_asm(Loaded, _), fail ), nanofil_error(_), true).
 
+% Emitting a block's instructions and a data object's items leaves no
+% choicepoint: one per instruction kept a 30k-instruction block's frames
+% (libaom) past the 1 GB stack, and one per item an 800k-item table's.
+test(emission_deterministic) :-
+    list_to_assoc([tmp(a)-8, tmp(b)-16, tmp(p)-24, lower(tmp(p))-32,
+                   tmp(q)-40, lower(tmp(q))-48], Slots),
+    Is = [let(tmp(a), w, add, [tmp(b), const(2)]),
+          let(tmp(b), l, ext(sw), [tmp(a)]),
+          flight(tmp(q), add, [address(tmp(p)), const(8)], lower(tmp(p)))],
+    filc_amd64:function_ctx(f, void, Slots, [block(b, [], Is, ret)], 64, 64,
+                            sel(none, reference), Ctx),
+    call_cleanup(phrase(filc_amd64:insts(Is, 0, b, Ctx), Lines), Det = true),
+    Det == true, Lines = [_|_],
+    call_cleanup(foldl(filc_amd64:payload_item,
+                       [item(b, const(1)), item(h, const(2)), item(w, const(3))],
+                       _, 0-[], Size-[]), Det1 = true),
+    Det1 == true, Size == 7.
+
 % The IR can describe wider proofs than subq's signed immediate. Native
 % compilation must refuse them, never emit an immediate that changes size.
 test(native_check_range) :-

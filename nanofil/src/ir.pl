@@ -365,9 +365,13 @@ half_modulus(K, Half) :-
 
 width_bytes(b, 1).
 width_bytes(h, 2).
-width_bytes(K, Size) :-
-    class(K, _, Bits),
-    Size is Bits // 8.
+% class/3's widths, Bits // 8, as facts so that a call is deterministic.
+width_bytes(w, 4).
+width_bytes(l, 8).
+width_bytes(p, 8).
+width_bytes(s, 4).
+width_bytes(d, 8).
+width_bytes(x, 10).
 
 %! addr_class(+Mode, ?K) is semidet.
 %
