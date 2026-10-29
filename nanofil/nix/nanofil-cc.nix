@@ -57,9 +57,25 @@ pkgs.writeShellScript "nanofil-cc" ''
   input=$(realpath "$out.i")
   # Trealla resolves transitive module imports relative to the working
   # directory. Keep package builds usable on either Prolog host.
-  (cd ${nanofil}/src && ../bin/nanofil ''${NANOFIL_OPT:-} $copies $inline cc "$input" \
-    </dev/null) >"$out.s"
+  compile() {
+    (cd ${nanofil}/src && ../bin/nanofil ''${NANOFIL_OPT:-} $copies $inline cc "$input" \
+      </dev/null) >"$out.s" 2>"$out.err"
+  }
+  # Every compile gets SWI's default 1 GB stack first, so parallel
+  # builds meet a larger one only where it is needed. One that overflows
+  # it (gettext's 34 MB tree-sitter OCaml parser, about 11M tokens) is
+  # compiled again, once, with a 4 GB limit.
+  if ! compile; then
+    if [ -n "''${NANOFIL_STACK_LIMIT:-}" ] || ! grep -q 'resource_error(stack)' "$out.err"; then
+      cat "$out.err" >&2
+      exit 1
+    fi
+    echo "nanofil-cc: $src overflowed the 1 GB stack; compiling it again with NANOFIL_STACK_LIMIT=4000000000" >&2
+    export NANOFIL_STACK_LIMIT=4000000000
+    compile || { cat "$out.err" >&2; exit 1; }
+  fi
+  cat "$out.err" >&2
   as -o "$out" "$out.s"
-  rm "$out.i" "$out.s"
+  rm "$out.i" "$out.s" "$out.err"
   echo "$out" >>"''${NANOFIL_LOG:-/dev/null}"
 ''

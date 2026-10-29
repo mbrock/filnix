@@ -31,7 +31,8 @@ user:utf8_streams :-
 
 % NANOFIL_STACK_LIMIT=BYTES raises SWI's 1 GB stack limit, from source or
 % a saved state alike (a state ignores --stack-limit): the SQLite
-% amalgamation with FTS5 needs about 3 GB.
+% amalgamation with FTS5 needs about 3 GB. nanofil-cc sets it to 4 GB
+% only to compile again a file that overflowed the default.
 %
 % SWI collects the global stack when it holds more than factor(F) times
 % what the last collection left, else grows it, and raises an overflow
