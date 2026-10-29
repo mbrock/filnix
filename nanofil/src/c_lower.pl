@@ -4848,23 +4848,19 @@ store_pieces([p(Off, _, _, Store)|Pieces], W, P) -->
    chunk(Offset, Bytes, Item), a later one replacing an earlier one at
    the same offset, then the gaps are zero-filled. A pointer is
    item(p, sym(S, Off)); string literals in initializers become data of
-   their own. */
+   their own. The chunks are kept by offset as they are made, so that a
+   designator that goes back (each row of tree-sitter's parse tables
+   starts with a high index) overrides in time logarithmic in their
+   number rather than linear. */
 static_items(Type, Init, Loc, Env0, Env, Items) :-
     type_size_align(Type, Env0, Size, _),
     (   Init == none -> Leaves = []
     ;   init_leaves(Type, Init, c(Env0, none, Loc), Leaves)
     ),
-    foldl(static_leaf_once(Loc), Leaves, s(Env0, [], 0)-no, s(Env, Chunks0, _)-_),
-    reverse(Chunks0, Chunks),
-    empty_assoc(ByOffset0),
-    foldl(put_chunk, Chunks, ByOffset0, ByOffset),
-    assoc_to_values(ByOffset, Sorted),
+    empty_assoc(Chunks0),
+    foldl(static_leaf_once(Loc), Leaves, s(Env0, Chunks0, 0)-no, s(Env, Chunks, _)-_),
+    assoc_to_values(Chunks, Sorted),
     fill_items(Sorted, 0, Size, Loc, Items).
-
-% put_chunk(+Chunk, +ByOffset0, -ByOffset): ByOffset maps Chunk's offset
-% to Chunk, replacing any earlier one there.
-put_chunk(chunk(Off, N, Item), ByOffset0, ByOffset) :-
-    put_assoc(Off, ByOffset0, chunk(Off, N, Item), ByOffset).
 
 % fill_items(+Chunks, +Pos, +Size, +Loc, -Items): Items are the items of
 % Chunks, sorted by offset, with zero(N) filling the gaps from Pos to
@@ -4903,29 +4899,55 @@ static_leaf_once(Loc, Leaf, s(Env, Chunks0, End)-Str0, S-Str) :-
     ;   Chunks1 = Chunks0, Str1 = Str0
     ),
     once(static_leaf(Loc, Leaf, s(Env, Chunks1, End), S0)),
-    (   Off < End, S0 = s(Env1, [chunk(O, N, I)|Chunks2], End1), N > 1,
-        ( functor(Leaf, val, 3) ; functor(Leaf, expr, 3) )
+    (   Off < End, ( functor(Leaf, val, 3) ; functor(Leaf, expr, 3) ),
+        S0 = s(Env1, Chunks2, End1), get_assoc(Off, Chunks2, chunk(_, N, _)), N > 1
     ->  % It overrides the split bytes of a wider table element.
-        O1 is O + 1, Hi is O + N,
-        exclude(chunk_within(O1, Hi), Chunks2, Chunks3),
-        S = s(Env1, [chunk(O, N, I)|Chunks3], End1)
+        O1 is Off + 1, Hi is Off + N,
+        drop_chunks(O1, Hi, Chunks2, Chunks3),
+        S = s(Env1, Chunks3, End1)
     ;   S = S0
     ),
     ( functor(Leaf, vals, 3) -> Str = yes ; Str = Str1 ).
 
-split_strs([], []).
-split_strs([chunk(Off, _, item(b, str(Cs)))|Chunks0], Chunks) :- !,
-    str_byte_chunks(Cs, Off, Chunks, Chunks1),
-    split_strs(Chunks0, Chunks1).
-split_strs([Chunk|Chunks0], [Chunk|Chunks]) :- split_strs(Chunks0, Chunks).
+% split_strs(+Chunks0, -Chunks): Chunks is Chunks0 with each string
+% chunk split into a chunk per byte. Nothing after a string's bytes
+% overrides them before they are split, so they replace only older
+% chunks.
+split_strs(Chunks0, Chunks) :-
+    assoc_to_values(Chunks0, Cs),
+    foldl(split_str, Cs, Chunks0, Chunks).
 
-str_byte_chunks([], _, Chunks, Chunks).
-str_byte_chunks([C|Cs], Off, [chunk(Off, 1, item(b, const(N)))|Chunks], Chunks0) :-
+split_str(chunk(Off, _, item(b, str(Cs))), Chunks0, Chunks) :- !,
+    foldl(str_byte_chunk, Cs, Off-Chunks0, _-Chunks).
+split_str(_, Chunks, Chunks).
+
+str_byte_chunk(C, Off-Chunks0, Off1-Chunks) :-
     char_code(C, N), Off1 is Off + 1,
-    str_byte_chunks(Cs, Off1, Chunks, Chunks0).
+    put_assoc(Off, Chunks0, chunk(Off, 1, item(b, const(N))), Chunks).
+
+% drop_chunks(+Lo, +Hi, +Chunks0, -Chunks): Chunks is Chunks0 without
+% the chunks that start in [Lo, Hi): looked up one offset at a time in
+% a short range, else by scanning the offsets that are there.
+drop_chunks(Lo, Hi, Chunks0, Chunks) :-
+    (   Hi - Lo =< 64
+    ->  Top is Hi - 1, numlist(Lo, Top, Offs)
+    ;   assoc_to_keys(Chunks0, Keys),
+        include(within(Lo, Hi), Keys, Offs)
+    ),
+    foldl(drop_chunk, Offs, Chunks0, Chunks).
+
+within(Lo, Hi, Off) :- Off >= Lo, Off < Hi.
+
+drop_chunk(Off, Chunks0, Chunks) :-
+    (   del_assoc(Off, Chunks0, _, Chunks1) -> Chunks = Chunks1 ; Chunks = Chunks0 ).
+
+% put_chunk(+Chunk, +Chunks0, -Chunks): Chunks maps Chunk's offset to
+% Chunk, replacing any earlier one there.
+put_chunk(chunk(Off, N, Item), Chunks0, Chunks) :-
+    put_assoc(Off, Chunks0, chunk(Off, N, Item), Chunks).
 
 /* static_leaf(+Loc, +Leaf, +S0, -S): S = s(Env, Chunks, End) adds the
-   chunk of Leaf to the reversed Chunks of S0; End is where the chunks
+   chunk of Leaf to the Chunks of S0, by offset; End is where the chunks
    end so far. A zero leaf drops the chunks it covers, which only a
    designator that goes back can have made. */
 static_leaf(_, zero(Off, Type), s(Env, Chunks0, End), s(Env, Chunks, End)) :-
@@ -4933,23 +4955,26 @@ static_leaf(_, zero(Off, Type), s(Env, Chunks0, End), s(Env, Chunks, End)) :-
     ->  Chunks = Chunks0
     ;   type_size_align(Type, Env, Size, _),
         Hi is Off + Size,
-        exclude(chunk_within(Off, Hi), Chunks0, Chunks)
+        drop_chunks(Off, Hi, Chunks0, Chunks)
     ).
 static_leaf(_, vals(_, _, []), S, S) :- !.
-static_leaf(_, vals(Off, Type, Vs), s(Env, Chunks, End0),
-            s(Env, [Chunk|Chunks], End)) :-
+static_leaf(_, vals(Off, Type, Vs), s(Env, Chunks0, End0),
+            s(Env, Chunks, End)) :-
     int_info(Type, Size, _),
     phrase(vals_chars(Vs, Type, Size), Cs),
     length(Cs, N),
     Chunk = chunk(Off, N, item(b, str(Cs))),
+    put_chunk(Chunk, Chunks0, Chunks),
     chunk_end(Chunk, End0, End).
-static_leaf(_, val(Off, Type, V), s(Env, Chunks, End0),
-            s(Env, [Chunk|Chunks], End)) :-
+static_leaf(_, val(Off, Type, V), s(Env, Chunks0, End0),
+            s(Env, Chunks, End)) :-
     int_chunk(Off, Type, V, Chunk),
+    put_chunk(Chunk, Chunks0, Chunks),
     chunk_end(Chunk, End0, End).
-static_leaf(Loc, expr(Off, Type, Expr), s(Env0, Chunks, End0),
-            s(Env, [Chunk|Chunks], End)) :-
+static_leaf(Loc, expr(Off, Type, Expr), s(Env0, Chunks0, End0),
+            s(Env, Chunks, End)) :-
     expr_chunk(Type, Off, Expr, Loc, Env0, Env, Chunk),
+    put_chunk(Chunk, Chunks0, Chunks),
     chunk_end(Chunk, End0, End).
 
 static_leaf(Loc, bits(Off, Type, Pos, W, Expr), s(Env, Chunks0, End0),
@@ -4962,24 +4987,22 @@ static_leaf(Loc, bits(Off, Type, Pos, W, Expr), s(Env, Chunks0, End0),
     Start is 8 * Off + Pos,
     First is Start // 8, Last is (Start + W - 1) // 8,
     numlist(First, Last, Bytes),
-    foldl(bitfield_byte(Start, W, V, End0), Bytes, Chunks0, Chunks),
+    foldl(bitfield_byte(Start, W, V), Bytes, Chunks0, Chunks),
     End is max(End0, Last + 1).
 
-% bitfield_byte(+Start, +W, +V, +End0, +Byte, +Chunks0, -Chunks): Chunks
-% adds to Chunks0 the byte at offset Byte with its bits of the W-bit
-% field V, starting at bit Start, merged into the bits an earlier
-% bit-field put there. No chunk reaches End0, so a byte from there on
-% is not looked up: the lookup would make a table of bit-field structs
-% quadratic (gettext's uninames.h has 39274 of them).
-bitfield_byte(Start, W, V, End0, Byte, Chunks0, [chunk(Byte, 1, item(b, const(New)))|Chunks0]) :-
-    (   Byte < End0, member(chunk(Byte, N, Item), Chunks0)
+% bitfield_byte(+Start, +W, +V, +Byte, +Chunks0, -Chunks): Chunks maps
+% the byte at offset Byte to its bits of the W-bit field V, starting at
+% bit Start, merged into the bits an earlier bit-field put there.
+bitfield_byte(Start, W, V, Byte, Chunks0, Chunks) :-
+    (   get_assoc(Byte, Chunks0, chunk(_, N, Item))
     ->  ( N =:= 1, Item = item(b, const(Old)) -> true ; Old = 0 )
     ;   Old = 0
     ),
     Shift is Start - 8 * Byte,
     Mask is (((1 << W) - 1) << (Shift + 64)) >> 64 /\ 255,
     Bits is ((V /\ ((1 << W) - 1)) << (Shift + 64)) >> 64 /\ 255,
-    New is (Old /\ \Mask /\ 255) \/ Bits.
+    New is (Old /\ \Mask /\ 255) \/ Bits,
+    put_chunk(chunk(Byte, 1, item(b, const(New))), Chunks0, Chunks).
 
 % vals_chars(+Vs, +Type, +Size)//: the bytes of the elements Vs of
 % integer Type and Size, little-endian, as characters.
@@ -4994,8 +5017,6 @@ le_chars(K, U) -->
     { N is U /\ 255, char_code(C, N), U1 is U >> 8, K1 is K - 1 },
     [C],
     le_chars(K1, U1).
-
-chunk_within(Lo, Hi, chunk(Off, _, _)) :- Off >= Lo, Off < Hi.
 
 chunk_end(chunk(Off, N, _), End0, End) :- End is max(End0, Off + N).
 
