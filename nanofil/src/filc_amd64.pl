@@ -2679,8 +2679,12 @@ data_object(Name, Linkage0, Align, Items) -->
       relocs_aux_word(Rs, Flags, DA, AuxWord),
       Total is 16 + Size,
       PayloadAlign is max(Align, 16), Front is PayloadAlign - 16,
-      Log is msb(PayloadAlign) },
-    [section(data), p2align(Log)],
+      Log is msb(PayloadAlign),
+      % clang's section: a const object or string literal is relocated
+      % once and then read-only (.data.rel.ro); glibc's fortified printf
+      % refuses a %n format it finds in writable memory.
+      ( memberchk(readonly, Flags) -> Section = data_rel_ro ; Section = data ) },
+    [section(Section), p2align(Log)],
     (   { Front > 0 }
     ->  [zero(Front)]
     ;   []

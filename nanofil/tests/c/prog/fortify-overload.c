@@ -16,6 +16,11 @@ int main(void)
     int n = sprintf(b, "%d-%s", 42, "x");
     snprintf(b + n, sizeof b - n, "!%d", 7);
     printf("%s %zu\n", b, strlen(b));
+    /* A string literal is in read-only memory (.data.rel.ro), where the
+       fortified printf accepts a %n format (gnupg's mkdefsinc). */
+    int at = -1;
+    snprintf(b, sizeof b, "%d %n%s", 7, &at, "x");
+    printf("%s %d\n", b, at);
     fprintf(stdout, "%d\n", dprintf(1, "lvl %d\n", 1));
     int (*own)(int, const char *, ...) = dprintf;
     printf("via pointer %d\n", own(1, "own %d\n", 2));
