@@ -29,14 +29,18 @@ def nix_build(drvs, log, a):
     """Build drvs (keep going) and return the set that timed out."""
     if not drvs:
         return set()
-    args = ["nix", "build", "--no-link", "--keep-going", "-L", "-j", str(a.jobs),
+    # No -L: streaming every build's log through the daemon connection
+    # is the suspect in its losses at dd2ffee and with -O (163 and 39
+    # minutes in); each outcome is read from `nix log` anyway.
+    args = ["nix", "build", "--no-link", "--keep-going", "-j", str(a.jobs),
             "--cores", str(a.cores), "--option", "timeout", str(a.timeout)]
     # If the client loses the daemon ("Nix daemon out of memory", or
     # "Nix daemon disconnected unexpectedly", as at aa60443), every build
     # still running is reported as failed without having failed: build
-    # what is left again, at most twice.
+    # what is left again, as long as each attempt builds something.
     todo = drvs
-    for _ in range(3):
+    for _ in range(8):
+        before = len(todo)
         start = os.path.getsize(log) if os.path.exists(log) else 0
         with open(log, "a") as f:
             subprocess.run(args + [d + "^*" for d in todo], stdout=f,
@@ -47,7 +51,7 @@ def nix_build(drvs, log, a):
             lost = (b"Nix daemon out of memory" in tail
                     or b"Nix daemon disconnected unexpectedly" in tail)
         todo = [d for d in todo if not built(d)]
-        if not lost or not todo:
+        if not lost or not todo or len(todo) == before:
             break
         print(f"nix daemon lost; building {len(todo)} again", file=sys.stderr)
     text = open(log, errors="replace").read()
