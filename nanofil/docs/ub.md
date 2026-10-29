@@ -129,6 +129,20 @@ Differences worth closing or keeping in mind:
   6.6p4 requires a diagnostic. This matches clang's default folding of
   static initializers; making it `ub` would refuse initializers clang
   accepts with a warning.
+- **A pointer rebuilt from integers.** An integer cast to a pointer
+  has no capability in Fil-C, unless nanofil or clang sees the source
+  pointer directly in the cast's operand (abi-findings.md, *A pointer
+  cast through a 64-bit integer*). filcc keeps the capability in more
+  cases, but only when LLVM's optimizer folds the round trip into a
+  pointer operation before pizlonation, so the outcome depends on the
+  optimization level. libgcrypt's `sexp_null_cond` masks
+  `(uintptr_t)w` with masks read from volatiles, through inline
+  functions, and casts back: filcc `-O1` and `-O2` keep `w`'s
+  capability, but filcc `-O0` traps in `gcry_pk_decrypt`, and so does
+  nanofil at any level. The libgcrypt port selects the pointer as a
+  pointer under `__FILC__` (ports/patch/libgcrypt-1.12.2.patch).
+  nanofil does not imitate the fold. tests/c/prog/uintptr-masked.c
+  shows the trap against a `-O0` reference.
 - Not probed: infinite loops without side effects (KillUB removes
   `mustprogress`, so C11 6.8.5p6 is not exploited), signed overflow in
   `++` on a pointer-sized index, `ctlz`/`cttz` of zero from

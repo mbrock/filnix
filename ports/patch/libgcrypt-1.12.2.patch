@@ -38,7 +38,7 @@ index 46de33a..8cfcce0 100644
  /* We sometimes need to clobber "cc" with gcc2, but that would not be
     understood by gcc1.	Use cpp to avoid major code duplication.  */
 diff --git a/src/const-time.h b/src/const-time.h
-index 03a47d6..45531b5 100644
+index 03a47d6..f3a846a 100644
 --- a/src/const-time.h
 +++ b/src/const-time.h
 @@ -99,7 +99,7 @@ unsigned int _gcry_ct_memequal (const void *b1, const void *b2, size_t len);
@@ -59,6 +59,23 @@ index 03a47d6..45531b5 100644
         return mask; \
       }
  #else
+@@ -166,8 +166,16 @@ DEFINE_CT_TYPE_SELECT_FUNC(u64, u64)
+ static inline gcry_sexp_t
+ sexp_null_cond (gcry_sexp_t w, unsigned long op_enable)
+ {
++#ifdef __FILC__
++  /* A pointer rebuilt from integer arithmetic has no capability in
++     Fil-C; filcc keeps W's only when LLVM folds the round trip away,
++     so its -O0 build trapped in gcry_pk_decrypt.  Select the pointer
++     as a pointer.  */
++  return op_enable ? NULL : w;
++#else
+   uintptr_t o = ct_uintptr_select((uintptr_t)NULL, (uintptr_t)w, op_enable);
+   return (gcry_sexp_t)(void *)o;
++#endif
+ }
+ 
+ /*
 diff --git a/src/g10lib.h b/src/g10lib.h
 index bb735e7..d25afeb 100644
 --- a/src/g10lib.h

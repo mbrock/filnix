@@ -12,6 +12,8 @@
 # a "// signatures" line, nanofil must also give each function the
 # fast-entry signature clang gives it (exported pizlonatedFI<Sig>_<name>): a
 # wrong one still works through the generic entries, so only this sees it.
+# A "// reference-opt: -O0" line builds the reference at that level
+# instead of -O1, for behaviour filcc has only without optimization.
 # A "// cflags: ..." line passes those flags to clang, and nanofil
 # compiles clang's preprocessing with them, as nanofil-cc does (with
 # NANOFIL_STD=c23 for -std=c23 or gnu23, gnu89 for C90 modes). NANOFIL_OPT=-O turns on nanofil's
@@ -69,6 +71,7 @@ for f in "$@"; do
   link=$(sed -n 's|^// link: ||p' "$f")
   nlink=$(sed -n 's|^// nanofil-link: ||p' "$f")
   read -r -a cflags <<<"$(sed -n 's|^// cflags: ||p' "$f")"
+  ropt=$(sed -n 's|^// reference-opt: ||p' "$f"); ropt=${ropt:--O1}
   input=$f std=c17
   if [[ " ${cflags[*]} " =~ \ -std=(c|gnu)(23|2x)\  ]]; then std=c23; fi
   if [[ " ${cflags[*]} " =~ \ (-std=(c|gnu)(89|90)|-ansi|-fgnu89-inline)\  ]]; then std=gnu89; fi
@@ -92,7 +95,7 @@ for f in "$@"; do
     as -o "$d/nlib.o" "$d/nlib.s"
     clibs=("$d/nlib-clang.o") nlibs=("$d/nlib.o")
   fi
-  if ! "$filcc" "${cflags[@]}" -O1 -w -o "$d/clang" "$f" "${libs[@]}" "${clibs[@]}" -lm; then reference_failed=1; fi
+  if ! "$filcc" "${cflags[@]}" "$ropt" -w -o "$d/clang" "$f" "${libs[@]}" "${clibs[@]}" -lm; then reference_failed=1; fi
   outcome=reject
   if (cd "$src" && NANOFIL_STD=$std timeout "${COMPILE_TIMEOUT:-20}" "$nanofil" ${NANOFIL_OPT:-} cc "$input" </dev/null) >"$d/n.s"; then
     :

@@ -1717,7 +1717,10 @@ in
     # Upstream's port, rebased: --disable-asm alone leaves inline asm in
     # mpi/longlong.h (bsrq in _gcry_mpi_get_nbits, used by RSA), OCB's
     # ocb_get_l (rep;bsf, which gnupg's t-protect reached) and Keccak,
-    # all of which Fil-C traps on.
+    # all of which Fil-C traps on. sexp_null_cond selects its pointer as
+    # a pointer: rebuilt from masked integers it had no capability
+    # unless LLVM folded the round trip (filcc -O0 and nanofil trapped
+    # in gcry_pk_decrypt; nanofil/docs/ub.md).
     (patch ./ports/patch/libgcrypt-1.12.2.patch)
     # configure's probe mlocks malloc'ed memory, which Fil-C stops as a
     # safety error, so it concluded mlock is broken and secure memory was
