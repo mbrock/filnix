@@ -50,7 +50,7 @@ td.n, th.n { text-align: end; font-variant-numeric: tabular-nums; }
 
 <div class="facts">
   <div class="fact"><b>27.6k</b><span>lines of Prolog, from preprocessor to assembly</span></div>
-  <div class="fact"><b>136 / 202</b><span>nixpkgs C packages filcc builds that nanofil builds alone</span></div>
+  <div class="fact"><b>137 / 202</b><span>nixpkgs C packages filcc builds that nanofil builds alone</span></div>
   <div class="fact"><b>~2.2×</b><span>filcc -O2's run time with <code>-O</code>, geomean of 11 workloads</span></div>
   <div class="fact"><b>~1.5×</b><span>filcc -O2's compile time with <code>-O</code>, for SQLite</span></div>
 </div>
@@ -65,17 +65,17 @@ td.n, th.n { text-align: end; font-variant-numeric: tabular-nums; }
 
 <h2>What it can build</h2>
 <p>nanofil accepts C17 with the GNU extensions real packages use: statement expressions, <code>typeof</code>, <code>__attribute__((cleanup))</code>, computed goto, VLAs, transparent unions, weak symbols and aliases, <code>.symver</code>, K&amp;R definitions, C11 atomics and <code>setjmp</code>. Unknown attributes are refused rather than ignored. The rule throughout is to refuse loudly instead of miscompiling.</p>
-<p>The <b>survey</b> builds every C package in filnix's port list with nanofil in place of the compiler. Of the 202 that filcc builds, nanofil builds <b>136</b>, compiling about 33,000 objects with no fallback to clang. The 49 among them whose ports run tests pass them, as filcc's builds do. They include GTK 3, GLib, SQLite, CPython, Lua, bash, coreutils, gmp, libsodium and netcdf.</p>
+<p>The <b>survey</b> builds every C package in filnix's port list with nanofil in place of the compiler. Of the 202 that filcc builds, nanofil builds <b>137</b>, compiling about 35,000 objects with no fallback to clang. The 49 among them whose ports run tests pass them, as filcc's builds do. They include GTK 3, GLib, SQLite, CPython, Lua, bash, coreutils, gmp, libsodium and netcdf.</p>
 <p>Sixteen <b>workload checks</b> build programs like bash, CPython, SQLite, coreutils, xz and jq with nanofil, plain and with <code>-O</code>, and require their output, and often their own test suites, to match filcc's builds, also under the collector's stress mode.</p>
-<p>What stops the other 66, roughly in order:</p>
+<p>What stops the other 65, roughly in order:</p>
 <table>
 <tr><th>Cause</th><th class="n">Packages</th><th>Examples</th></tr>
-<tr><td>Inline assembly that filcc accepts and nanofil doesn't yet (cpuid, rdtsc, register constraints)</td><td class="n">21</td><td>openssl, openssh, flac, elfutils</td></tr>
-<tr><td>Assorted syntax and typing gaps</td><td class="n">19</td><td>binutils, emacs, cryptsetup</td></tr>
-<tr><td>Vector types, SIMD intrinsics and alignment</td><td class="n">13</td><td>gtk4, zstd, redis, libtiff</td></tr>
+<tr><td>Assorted syntax and typing gaps</td><td class="n">23</td><td>binutils, gnupg, cryptsetup</td></tr>
+<tr><td>Inline assembly that filcc accepts and nanofil doesn't yet (cpuid, rdtsc, register constraints)</td><td class="n">17</td><td>flac, fftw, libgcrypt, nettle</td></tr>
+<tr><td>Vector types, SIMD intrinsics and alignment</td><td class="n">14</td><td>gtk4, libtiff, bind</td></tr>
 <tr><td>Missing builtins</td><td class="n">4</td><td>gnutls, mesa's libgbm</td></tr>
-<tr><td>Aliases of objects and variadic functions</td><td class="n">3</td><td>fontconfig, gettext, gtk2</td></tr>
-<tr><td>Link-time symbols, constant folding, a timing-dependent test</td><td class="n">6</td><td>bison, libffi, libressl</td></tr>
+<tr><td>A nanofil-built tool trapped during the build (both since fixed)</td><td class="n">2</td><td>emacs, gobject-introspection</td></tr>
+<tr><td>Link-time symbols, constant folding, a timing-dependent test</td><td class="n">5</td><td>bison, libffi, libressl</td></tr>
 </table>
 <p>The full table is in <a href="https://github.com/mbrock/filnix/blob/main/nanofil/docs/survey.md">survey.md</a>.</p>
 
