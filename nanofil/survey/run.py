@@ -31,9 +31,10 @@ def nix_build(drvs, log, a):
         return set()
     args = ["nix", "build", "--no-link", "--keep-going", "-L", "-j", str(a.jobs),
             "--cores", str(a.cores), "--option", "timeout", str(a.timeout)]
-    # If the client loses the daemon ("Nix daemon out of memory"), every
-    # build still running is reported as failed without having failed:
-    # build what is left again, at most twice.
+    # If the client loses the daemon ("Nix daemon out of memory", or
+    # "Nix daemon disconnected unexpectedly", as at aa60443), every build
+    # still running is reported as failed without having failed: build
+    # what is left again, at most twice.
     todo = drvs
     for _ in range(3):
         start = os.path.getsize(log) if os.path.exists(log) else 0
@@ -42,7 +43,9 @@ def nix_build(drvs, log, a):
                            stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
         with open(log, "rb") as f:
             f.seek(start)
-            lost = b"Nix daemon out of memory" in f.read()
+            tail = f.read()
+            lost = (b"Nix daemon out of memory" in tail
+                    or b"Nix daemon disconnected unexpectedly" in tail)
         todo = [d for d in todo if not built(d)]
         if not lost or not todo:
             break
