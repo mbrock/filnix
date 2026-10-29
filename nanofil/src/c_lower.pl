@@ -2037,7 +2037,7 @@ anonymous_member(SU, F, c(Env, _, _), I) :-
     \+ ( member(M, Members), member_slot(M, some(F), _, _) ),
     nth0(I, Members, M),
     member_slot(M, none, _, AT),
-    catch(member_type_offset(AT, F, Env, _, _), _, fail), !.
+    catch(member_layout(AT, F, Env, _, _, _), _, fail), !.
 
 % range_indexes(+E1, +E2, +V, +C, -Is): the GNU range designator
 % [E1 ... E2] designates the elements Is, each initialized by V as if it
