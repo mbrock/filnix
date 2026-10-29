@@ -74,6 +74,7 @@
                     generic_selection/5, reflect_type/4, reflect_params/4,
                     conditional_type/3, unqualified/2,
                     overflow_builtin/3, bit_builtin/3, rotate_builtin/3, builtin_type/2, binary_operands/6,
+                    builtin_constant_p/3,
                     unary_operand/3, assigned/4, transparent_argument/4, expression_tags/3,
                     builtin_declarations/1,
                     castable/2, expression_category/3, modifiable_lvalue/2,
@@ -2985,6 +2986,10 @@ elab(member(E, F), Env, X) :-
     ).
 elab(arrow(E, F), Env, X) :-                                % 6.5.2.3p4
     elab(member(un(deref, E), F), Env, X).
+elab(call(id('__builtin_constant_p'), [E]), Env, X) :-
+    \+ lookup_ordinary(Env, '__builtin_constant_p', _), !,
+    builtin_constant_p(E, Env, V),
+    elab(num(V, none-dec), Env, X).
 elab(call(id(Name), Args), Env, X) :-
     \+ lookup_ordinary(Env, Name, _),
     checking_builtin(Name, Chk, Plain), !,
@@ -4271,6 +4276,58 @@ target(U, [], U).
 pointed_type(A, B, Qs, T) :- ( A == void ; B == void ), !, qualify(Qs, void, T).
 pointed_type(A, B, Qs, T) :- composite_type(A, B, C), !, qualify(Qs, C, T).
 pointed_type(_, _, _, void).
+
+doc(builtin_constant_p(+E, +Env, -V), det, [
+    E: "the operand of __builtin_constant_p, unevaluated",
+    Env: "the environment the call is in",
+    V: "1 if clang folds E to a constant, else 0",
+    "__builtin_constant_p(E) is an integer constant expression of type",
+    "int, so __builtin_choose_expr and array sizes can test it (gnulib's",
+    "string-desc.h picks a const or a mutable overload by it, systemd's",
+    "CONST_MAX and LOG2U a constant form). It is 1 for an arithmetic",
+    "constant expression and, as clang's evaluator gives it, for what",
+    "folds to a pointer with no object (an integer constant cast to a",
+    "pointer) or to the start of a string literal, under any casts, and",
+    "for an element of a string literal read by * or a constant index",
+    "within it. Anything else is 0: a variable, even one the program",
+    "could fold, an address of an object, or a literal plus an offset.",
+    cites('GCC manual, Other Built-in Functions, __builtin_constant_p'),
+    cites('clang, lib/AST/ExprConstant.cpp, EvaluateBuiltinConstantP'),
+    example(( empty_env(E), builtin_constant_p(bin(add, num(3, none-dec), num(4, none-dec)), E, V) ), V = 1),
+    example(( empty_env(E), builtin_constant_p(str("x"), E, V) ), V = 1),
+    example(( empty_env(E), builtin_constant_p(cast(type([tspec(long)], base), str("x")), E, V) ), V = 1),
+    example(( empty_env(E), builtin_constant_p(cast(type([tspec(void)], ptr(base, [])), num(0, none-dec)), E, V) ), V = 1),
+    example(( empty_env(E), builtin_constant_p(index(str("ab"), num(2, none-dec)), E, V) ), V = 1),
+    example(( empty_env(E), builtin_constant_p(index(str("ab"), num(3, none-dec)), E, V) ), V = 0),
+    example(( empty_env(E), builtin_constant_p(bin(add, str("ab"), num(1, none-dec)), E, V) ), V = 0),
+    example(( empty_env(E0), bind_ordinary(n, var(l(0), int), E0, E),
+              builtin_constant_p(id(n), E, V) ), V = 0),
+    example(( empty_env(E0), bind_ordinary(n, enumconst(4, int), E0, E),
+              builtin_constant_p(id(n), E, V) ), V = 1)
+]).
+builtin_constant_p(E, Env, V) :-
+    (   catch(constant_value(E, Env, _, _), not_constant, fail) -> V = 1
+    ;   constant_pointer(E, Env) -> V = 1
+    ;   ( E = un(deref, S), I = num(0, none-dec) ; E = index(S, I) ),
+        literal_length(S, N),
+        catch(const_value(I, Env, K, _), not_constant, fail), K >= 0, K =< N
+    ->  V = 1
+    ;   V = 0
+    ).
+
+% constant_pointer(+E, +Env): E, under casts, is a string literal or an
+% integer constant: clang's pointer with no object or a literal's start.
+constant_pointer(cast(_, E), Env) :- !,
+    (   constant_pointer(E, Env) -> true
+    ;   catch(const_value(E, Env, _, _), not_constant, fail)
+    ).
+constant_pointer(E, _) :- literal_length(E, _).
+
+% literal_length(+E, -N): E, under casts, is a string literal of N
+% characters before its terminating null.
+literal_length(cast(_, E), N) :- !, literal_length(E, N).
+literal_length(str(Bytes), N) :- length(Bytes, N).
+literal_length(wstr(_, Codes), N) :- length(Codes, N).
 
 doc(type_class_number(+T, -N), semidet, [
     T: "the unqualified type of the operand of __builtin_classify_type",

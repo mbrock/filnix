@@ -4,7 +4,9 @@
    their underlying type but not with each other, typedefs, character
    and long types, arrays and pointers; _Generic on an enum; and the
    hints __builtin_assume, __builtin_prefetch and _mm_pause's builtin,
-   which change no result. */
+   which change no result; __builtin_constant_p as an integer constant
+   expression, 1 for a string literal and 0 for a variable, choosing an
+   overload as gnulib's string-desc.h does in gettext. */
 #include <stdio.h>
 enum E { X }; enum F { Y = -1 }; enum G { Z };
 typedef enum { A1, A2 } Anon;
@@ -14,6 +16,9 @@ typedef int I;
 _Static_assert(__builtin_types_compatible_p(I, int), "typedef");
 static int calls;
 static int bump(void) { return ++calls; }
+static int ro(const char *s) { return 10 + s[0]; }
+static int rw(char *s) { return 20 + s[0]; }
+#define PICK(addr) __builtin_choose_expr(__builtin_constant_p(addr), ro(addr), rw(addr))
 int main(void)
 {
     int a[3] = { 1, 2, 3 }, *p = a;
@@ -33,6 +38,16 @@ int main(void)
     int r = __builtin_choose_expr(SAME(a[0], int), a[1], (void)0);
     printf("choose %d %zu %zu\n", r, sizeof(__builtin_choose_expr(0, 1, 'c')),
            sizeof(__builtin_choose_expr(1, l, 'c')));
+    char buf[2] = "b", *bp = buf;
+    int cp[__builtin_constant_p("x") > __builtin_constant_p(calls) ? 2 : -1];
+    printf("constant_p %d %d %d %zu %d %d %d\n", PICK("a") - 'a', PICK(bp) - 'b', PICK(buf) - 'b',
+           sizeof cp, __builtin_constant_p(3 * 4), __builtin_constant_p(calls++),
+           __builtin_choose_expr(__builtin_constant_p(2.5), 1, 2));
+    static const int K = 7;
+    printf("constant_p %d %d %d %d %d %d %d %d %d\n", __builtin_constant_p(K), __builtin_constant_p((long)"y"),
+           __builtin_constant_p((const void *)"y"), __builtin_constant_p(*"y"), __builtin_constant_p("ab"[2]),
+           __builtin_constant_p("ab"[3]), __builtin_constant_p((void *)0), __builtin_constant_p(&buf[1]),
+           __builtin_constant_p(&"ab"[1]));
     __builtin_assume(bump() > 0);
     __builtin_prefetch(p + 1000, 0, 3);
     __builtin_prefetch(&a[bump()]);

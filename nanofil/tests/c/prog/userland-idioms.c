@@ -5,7 +5,10 @@
    the type name defines) and stackblock() + n (GNU void pointer
    arithmetic), and gnulib's max_align_t unions (alignment attributes
    no stronger than the member's own alignment), and gnulib's
-   _GL_UNUSED_LABEL (a label's attributes). */
+   _GL_UNUSED_LABEL (a label's attributes), and liburcu's
+   rcu_dereference, whose __typeof__ names the type of an expression
+   that starts with __extension__, and PureDOOM's binary constants
+   (a GNU extension, C23 6.4.4.1), typed as octal and hexadecimal ones. */
 #include <stddef.h>
 #include <stdio.h>
 #include <math.h>
@@ -76,5 +79,13 @@ int main(int argc, char **argv)
     printf("%d %d %d\n", __builtin_signbitl(-3), __builtin_signbitf(-0.0), __builtin_signbitf(-1e-60));
     /* gnulib's countof tests: sizeof of a compound literal, unevaluated. */
     printf("%zu %zu\n", sizeof (int[]) { suppressint++, 2, 3 }, sizeof (char[]){"abc"});
+    struct node { struct node *next; int v; } n2 = { 0, 9 }, n1 = { &n2, 4 }, *head = &n1;
+    __typeof__(__extension__ ({ __typeof__(head->next) _p1 = head->next; (_p1); })) r = head->next;
+    __typeof__(__extension__ len) wide = 1L << 40;
+    printf("%d %zu %ld\n", r->v, sizeof(__extension__ ({ (char)len; })), wide >> 39);
+    int event = 0x5b + argc;
+    printf("%d %d %zu %zu %lu %d\n", (event & 0b01110000) >> 4, event & 0B00001111,
+           sizeof(0b11111111111111111111111111111111), sizeof(0b100000000000000000000000000000000),
+           (unsigned long)-0b1u, 0b0);
     return 0;
 }

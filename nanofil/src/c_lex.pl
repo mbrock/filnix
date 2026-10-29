@@ -237,6 +237,12 @@ integer_literal(V, Suffix-Radix) -->
     (   ['0', X], { memberchk(X, [x, 'X']) }
     ->  hex_digits(Ds),
         { Ds \== [], base_value(Ds, 16, V), Radix = other }
+    ;   ['0', X], { memberchk(X, [b, 'B']) }
+    ->  % A binary constant (C23 6.4.4.1, a GNU extension before it;
+        % PureDOOM's MUS decoder masks events with 0b01110000) is typed
+        % as an octal or hexadecimal one is.
+        bin_digits(Ds),
+        { Ds \== [], base_value(Ds, 2, V), Radix = other }
     ;   ['0']
     ->  oct_digits(Ds),
         { base_value(Ds, 8, V), Radix = other }
@@ -249,6 +255,11 @@ hex_digits([D|Ds]) -->
     [D], { digit_weight(D, _) }, !,
     hex_digits(Ds).
 hex_digits([]) --> [].
+
+bin_digits([D|Ds]) -->
+    [D], { memberchk(D, ['0', '1']) }, !,
+    bin_digits(Ds).
+bin_digits([]) --> [].
 
 oct_digits([D|Ds]) -->
     [D], { decimal(D), D @< '8' }, !,

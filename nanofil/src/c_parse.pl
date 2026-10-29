@@ -375,7 +375,9 @@ specifier(Env, _, Spec) -->
 specifier(Env, _, typeof(A)) -->
     kw(typeof), !,
     expect('('),
-    (   type_name(Env, T)
+    % starts_type//1 reads __typeof__(__extension__ ({...})) (liburcu's
+    % rcu_dereference) as an expression.
+    (   starts_type(Env), type_name(Env, T)
     ->  { A = type(T) }
     ;   expr(Env, E),
         { A = expr(E) }

@@ -1729,6 +1729,11 @@ stmt_(computed_goto(E), Ctx) -->
     (   { Ks == [] } -> []
     ;   { sema_error(Loc, 'goto * in the scope of a variable with a cleanup attribute is not supported', []) }
     ),
+    % Each address-taken label is a target of this goto, from the
+    % scopes open here (alsa-lib's goto * among labels inside a VLA's
+    % scope), not from the dispatch block's.
+    { ( lookup_ordinary(Env, 'labels.taken', Targets) -> true ; Targets = [] ) },
+    foldl(vm_goto_from(Loc), Targets),
     state(st(_, _, _, _, _, Labels0, _, _)),
     (   { get_assoc(computed(goto), Labels0, dispatch(LDispatch, Slot, _)) } -> []
     ;   label(LDispatch), local_slot(ulong, Slot),
@@ -1928,8 +1933,9 @@ case_constant(Expr, Env, Loc, Value) :-
 
 % computed_dispatch//: the dispatch block of the function's goto *, if
 % any: among its address-taken labels by number, any other value
-% reaching unreachable, a Fil-C panic. Each such label is a goto
-% target, so none may be in a variably modified scope the jump is not.
+% reaching unreachable, a Fil-C panic. Each such label is a target of
+% every goto *, so none may be in a variably modified scope one of
+% them is not (stmt_//2 records them).
 computed_dispatch -->
     state(st(Env, _, _, _, _, Labels, _, _)),
     (   { get_assoc(computed(goto), Labels, dispatch(LDispatch, Slot, Loc)) }
@@ -1945,7 +1951,7 @@ computed_dispatch -->
 
 label_cases([], _, _, []) --> [].
 label_cases([Name|Names], N, Loc, [case(N, Label)|Cases]) -->
-    vm_goto(Name, Loc), goto_label(Name, Label),
+    goto_label(Name, Label),
     { N1 is N + 1 },
     label_cases(Names, N1, Loc, Cases).
 
@@ -3046,10 +3052,7 @@ builtin(Name, [], _, v(const(V), Type)) -->
     { float_builtin(Name, Type, V) }, !.
 builtin('__builtin_constant_p', [Expr], _, v(const(V), int)) --> !,
     env(Env),
-    { ( catch(constant_value(Expr, Env, _, _), not_constant, fail)
-      -> V = 1
-      ; V = 0
-      ) }.
+    { builtin_constant_p(Expr, Env, V) }.
 builtin(Name, Args, _, v(const(V), ulong)) -->
     env(Env), { object_size(Name, Args, Env, V) }, !.
 builtin('__builtin_unreachable', [], _, v(const(0), void)) --> !,
@@ -3637,6 +3640,8 @@ vm_goto(Name, Loc) -->
     state(st(E, C, I, B, N, Labels0, Cs, A), st(E, C, I, B, N, Labels, Cs, A)),
     { ( get_assoc(vm_gotos, Labels0, Gs) -> true ; Gs = [] ),
       put_assoc(vm_gotos, Labels0, [goto(Name, Scopes, Loc)|Gs], Labels) }.
+
+vm_goto_from(Loc, Name) --> vm_goto(Name, Loc).
 
 % vm_jumps//: no goto of the function enters a scope it is not in.
 vm_jumps -->
@@ -4797,6 +4802,15 @@ address_constant(val(_, cast(TypeName, XV)), Loc, Env0, Env, R) :- !,
         lowered(XV, ptr(_))
     ->  address_constant(XV, Loc, Env0, Env, R)
     ;   sema_error(Loc, 'initializer is not a constant', [])
+    ).
+address_constant(val(ptr(_), cond(XC, XA, XB)), Loc, Env0, Env, R) :-
+    % c ? a : b with an integer constant c is the address constant its
+    % chosen arm is, as clang accepts it (6.6p10; nettle's curve tables
+    % pick a reduction function by USE_REDC ? f : g).
+    lowered(XC, TC), int_type(TC), folded(XC, Env0, C), integer(C),
+    !,
+    (   C =\= 0 -> address_constant(XA, Loc, Env0, Env, R)
+    ;   address_constant(XB, Loc, Env0, Env, R)
     ).
 address_constant(val(ptr(_), bin(Op, XA, XB)), Loc, Env0, Env, R) :-
     memberchk(Op, [add, sub]),
