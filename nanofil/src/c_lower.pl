@@ -1301,14 +1301,17 @@ vla_slot(Type, Min, Ctx, Addr) -->
       Align is max(4, max(Min, Align0)) },
     let(p, alloc(Align), [Size], Addr).
 
-/* laundered(+XV, -XP, -Hole, -XV1): the integer value tree XV, cast to
+/* laundered(+XV, +Env, -XP, -Hole, -XV1): the integer value tree XV, cast to
    a pointer, takes the capability of the one pointer XP that a cast to
    an integer inside it converts, as Fil-C's pointer-as-int laundering
    does: XV1 is XV with that pointer replaced by val(T, lowered(Hole)),
    Hole the value XP lowers to. The pointer is the capability source
    through integer conversions, unary -, + and ~, and arithmetic and
    bitwise binary operators; a load, call, comparison, constant or
-   anything else contributes none. The same pointer named more than
+   anything else contributes none. A pointer built from an integer
+   constant (folded/3: (uintptr_t)(T *)1, offsetof's old spelling) is a
+   constant, as clang folds its conversion back to an integer: glib's
+   (uintptr_t)G_TYPE_ERROR | (uintptr_t)G_SIGNAL_TYPE_STATIC_SCOPE. The same pointer named more than
    once, without side effects (Fil-C sees one SSA value), is one source
    and is read once. (An integer ?: that is the cast's own operand is
    cast arm by arm first, lower_node//3.) Two different sources, or a
@@ -1318,8 +1321,8 @@ vla_slot(Type, Min, Ctx, Addr) -->
    that is an order C allows. Fil-C infers on SSA, after the optimizer
    has made locals values, so a source flowing through a local variable
    is not found here. */
-laundered(XV, XP, Hole, XV1) :-
-    launder_source(XV, XV1, [XP-Hole|Sources]),
+laundered(XV, Env, XP, Hole, XV1) :-
+    launder_source(XV, Env, XV1, [XP-Hole|Sources]),
     XP \== top,
     (   Sources == [] -> true
     ;   pure_tree(XP),
@@ -1328,27 +1331,29 @@ laundered(XV, XP, Hole, XV1) :-
 
 same_source(XP, Hole, S-Hole) :- S == XP.
 
-% launder_source(+XV, -XV1, -Sources): Sources are the XP-Hole pairs of
-% the capability sources in integer tree XV, each replaced in XV1, with
-% top-_ for a source Fil-C would merge into TOP.
-launder_source(val(T, cast(TN, X)), val(T, cast(TN, XH)), Sources) :-
+% launder_source(+XV, +Env, -XV1, -Sources): Sources are the XP-Hole
+% pairs of the capability sources in integer tree XV, each replaced in
+% XV1, with top-_ for a source Fil-C would merge into TOP.
+launder_source(val(T, cast(TN, X)), Env, val(T, cast(TN, XH)), Sources) :-
     \+ unqualified(T, bool), !,
-    (   lowered(X, ptr(_))
+    (   lowered(X, ptr(_)), folded(val(T, cast(TN, X)), Env, _)
+    ->  XH = X, Sources = []
+    ;   lowered(X, ptr(_))
     ->  tree_type(X, PT), XH = val(PT, lowered(Hole)), Sources = [X-Hole]
     ;   lowered(X, IT), int_type(IT)
-    ->  launder_source(X, XH, Sources)
+    ->  launder_source(X, Env, XH, Sources)
     ;   XH = X, Sources = []
     ).
-launder_source(val(T, bin(Op, A, B)), val(T, bin(Op, A1, B1)), Sources) :-
+launder_source(val(T, bin(Op, A, B)), Env, val(T, bin(Op, A1, B1)), Sources) :-
     memberchk(Op, [add, sub, mul, div, mod, and, or, xor, shl, shr]),
     lowered(A, TA), int_type(TA), lowered(B, TB), int_type(TB), !,
-    launder_source(A, A1, SA),
-    launder_source(B, B1, SB),
+    launder_source(A, Env, A1, SA),
+    launder_source(B, Env, B1, SB),
     append(SA, SB, Sources).
-launder_source(val(T, un(Op, A)), val(T, un(Op, A1)), Sources) :-
+launder_source(val(T, un(Op, A)), Env, val(T, un(Op, A1)), Sources) :-
     memberchk(Op, [neg, plus, bnot]), !,
-    launder_source(A, A1, Sources).
-launder_source(X, X, Sources) :-
+    launder_source(A, Env, A1, Sources).
+launder_source(X, _, X, Sources) :-
     (   passes_pointer_int(X) -> Sources = [top-_] ; Sources = [] ).
 
 % distributable_arm(+U, +X): converting integer arm X to the ?:'s type U
@@ -2803,8 +2808,9 @@ lower_node(val(T, cast(TN, XV)), Ctx, R) -->              % 6.5.4
       distributable_arm(U, XA), distributable_arm(U, XB) }, !,
     lower(val(T, cond(XC, val(T, cast(TN, XA)), val(T, cast(TN, XB)))), Ctx, R).
 lower_node(val(T, cast(TN, XV)), Ctx, R) -->              % 6.5.4
+    env(Env),
     { unqualified(T, ptr(_)), lowered(XV, IT), int_type(IT),
-      laundered(XV, XP, Hole, XV1) }, !,
+      laundered(XV, Env, XP, Hole, XV1) }, !,
     evaluated_type(TN, Ctx, Type),
     lower(XP, Ctx, VP),
     { Hole = VP, VP = v(P, _) },

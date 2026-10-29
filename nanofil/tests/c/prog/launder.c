@@ -47,6 +47,14 @@ int main(void)
     struct node *pn = &n;
     long *via = (long *)((uintptr_t)pn->tagged - ((uintptr_t)pn->tagged & 1));
     printf("named twice %d %d %ld\n", *down2, *up2, via[1]);
+    /* A pointer built from an integer constant is a constant, not a
+       second source (clang folds its conversion back to an integer):
+       glib's (GType)((uintptr_t)G_TYPE_ERROR | (uintptr_t)
+       G_SIGNAL_TYPE_STATIC_SCOPE), where that flag is (GType)1. */
+    long *flagged = (long *)((uintptr_t)x | (uintptr_t)(long *)1);
+    long *flag_off = (long *)((uintptr_t)flagged & ~(uintptr_t)(long *)1);
+    long *at_member = (long *)((uintptr_t)x + (uintptr_t)&((struct node *)8)->tagged);
+    printf("constant pointers %ld %ld\n", *flag_off, *at_member);
     fflush(stdout);
     char *two = (char *)(((uintptr_t)str & ~(uintptr_t)0xfff) | ((uintptr_t)x & 0xfff));
     printf("%c\n", *two);
