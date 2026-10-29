@@ -151,7 +151,11 @@ module_prepared(M0, prep(Fns, Globals, Mode, Mem0)) :-
                       ),
                       LabelBlocks),
               list_to_assoc(LabelBlocks, BlockMap) ),
-            NameFns),
+            NameFns0),
+    % An alias of a function is called as its target.
+    findall(Alias-Fn, ( member(alias(Alias, _, Target), Items),
+                        memberchk(Target-Fn, NameFns0) ), AliasFns),
+    append(NameFns0, AliasFns, NameFns),
     list_to_assoc(NameFns, Fns).
 
 %! run_prepared(+Prepared, +Fn, ?Args, +Fuel, ?Outcome) is nondet.
@@ -1410,7 +1414,8 @@ initial_memory(plain, module(Items), Globals, mem(Bytes, Rs, Stack, Aux)) :-
 initial_memory(filc, module(Items), Globals, mem(Bytes, Rs, Stack, Aux)) :-
     data_base(DataBase),
     empty_assoc(Globals0),
-    foldl(filc_layout, Items, DataBase-Globals0-[], _-Globals-Rs),
+    foldl(filc_layout, Items, DataBase-Globals0-[], _-Globals1-Rs),
+    foldl(alias_global, Items, Globals1, Globals),
     empty_assoc(Bytes0),
     empty_assoc(Aux0),
     foldl(filc_contents(Globals), Items, Bytes0-Aux0, Bytes-Aux),
@@ -1452,6 +1457,7 @@ filc_layout(data(Name, Linkage, Align0, Items), A0-Globals0-Rs0,
     data_cap(Linkage, Base, Cap),
     put_assoc(Name, Globals0, ptr(Base, Cap), Globals),
     A is End + 16.
+filc_layout(alias(_, _, _), State, State).
 filc_layout(func(Name, _, _, _, _), A0-Globals0-Rs, A-Globals-Rs) :-
     Base is (A0 + 15) // 16 * 16,
     put_assoc(Name, Globals0, ptr(Base, fn(Name)), Globals),
@@ -1470,6 +1476,13 @@ filc_contents(Globals, data(Name, _, _, Items), Bytes0-Aux0, Bytes-Aux) :-
     get_assoc(Name, Globals, ptr(Base, _)),
     foldl(filc_item_contents(Globals), Items, Base-Bytes0-Aux0, _-Bytes-Aux).
 filc_contents(_, func(_, _, _, _, _), State, State).
+filc_contents(_, alias(_, _, _), State, State).
+
+% alias_global(+Item, +Globals0, -Globals): an alias's address is its
+% target's, the same pointer.
+alias_global(alias(Name, _, Target), Globals0, Globals) :- !,
+    get_assoc(Target, Globals0, P), put_assoc(Name, Globals0, P, Globals).
+alias_global(_, Globals, Globals).
 
 % filc_item_contents(+Globals, +Item, +At0-Bytes0-Aux0, -At-Bytes-Aux):
 % Item written at At0; At is the address after it. Data items are IR

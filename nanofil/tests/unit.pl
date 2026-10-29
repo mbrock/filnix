@@ -537,6 +537,18 @@ test(float_arithmetic_ieee) :-
     ieee_binary(s, add, 2147483648, 2147483648, 2147483648),
     ieee_binary(s, add, 2147483648, 0, 0).
 
+test(alias_validator) :-
+    F = func(f, export, w, [], [block(start, [], [], ret(const(1)))]),
+    D = data(d, export, 4, [item(w, const(5))]),
+    Caller = func(c, export, w, [], [block(start, [], [call(result(tmp(r), w), global(a), [])], ret(tmp(r)))]),
+    valid_module(module([F, D, alias(a, export, f), alias(b, weak, d)])),
+    forall(member(Items, [[F, alias(a, export, missing)],      % target undefined
+                          [F, data(w, extern(weak), 1, []), alias(a, export, w)],
+                          [F, alias(f, export, f)],            % name already defined
+                          [F, alias(a, local, f)],             % linkage
+                          [D, Caller, alias(a, export, d)]]),  % a call names a data alias
+           catch((valid_module(module(Items)), fail), nanofil_error(_), true)).
+
 test(float_validator) :-
     forall(member(Op, [rem, urem, udiv, and, or, xor, sar, shr, shl]),
            ( M = module([func(f, local, s, [],

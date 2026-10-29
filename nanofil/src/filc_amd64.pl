@@ -148,6 +148,8 @@ emission(emit(Registers, Branches, Copies), Registers, choices(Branches, Copies)
 emission(emit(Registers, Branches), Registers, Branches) :- !.
 emission(Registers, Registers, reference).
 
+item_placed_lines(Symbols, _, _, alias(Name, Linkage, Target), Lines, data(Name)) :- !,
+    phrase(alias_getter(Symbols, Name, Linkage, Target), Lines).
 item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
     % The allocating modes keep float temporaries out of the scalar
     % slots (frame_slots:temp_slots/9), so integer homes stay eligible.
@@ -2598,6 +2600,26 @@ local_entry(local, Impl, Impl) --> !.
 local_entry(_, Impl, Fast) -->
     { format(atom(Fast), '.L~w.local', [Impl]) },
     [type(Fast, function), set(Fast, Impl)].
+
+% alias_getter(+Symbols, +Name, +Linkage, +Target)//: an alias's getter
+% returns its target's getter's result, so the alias's function or data
+% object is the target's, as Fil-C's (filc_alias_global): it calls the
+% target's getter, directly when the target is local, else through the
+% PLT, with the stack kept 16-aligned.
+alias_getter(Symbols, Name, Linkage, Target) -->
+    { abi_symbol(getter, Name, Getter), abi_symbol(getter, Target, TG),
+      (   ( func_named(Symbols, Target, func(_, local, _, _, _))
+          ; ir:data_item(Symbols, Target, data(_, L, _, _)), memberchk(L, [local, ro(local)]) )
+      ->  Op = sym(TG)
+      ;   Op = plt(TG)
+      ) },
+    [section(text)],
+    linkage_globl(Linkage, Getter),
+    [type(Getter, function), label(Getter),
+     ins(push, q, [reg(rax)]),
+     ins(call, none, [Op]),
+     ins(pop, q, [reg(rcx)]),
+     ins(ret, none, [])].
 
 % The getter of a function object FO: its flight pointer, whose lower is
 % its address, in %rax:%rdx.

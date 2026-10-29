@@ -42,6 +42,7 @@ local_item(All, F0, Items) :-
     F0 = func(N, _, _, _, _), !, context_records(All, N, Rs0),
     local_context(F0, Rs0, F, Rs), with_context(F, Rs, Items).
 local_item(_, data(N, L, A, Is), [data(N, L, A, Is)]).
+local_item(_, alias(N, L, T), [alias(N, L, T)]).
 
 %! local_storage_func(+F0, -F) is det.
 %

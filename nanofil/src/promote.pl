@@ -90,6 +90,7 @@ promote_item(Mode, All, F0, Items) :-
     context_records(All, Name, Rs0),
     promote_context(Mode, F0, Rs0, F, Rs), with_context(F, Rs, Items).
 promote_item(_, _, data(N, L, A, Is), [data(N, L, A, Is)]).
+promote_item(_, _, alias(N, L, T), [alias(N, L, T)]).
 
 %! alloc_count(+M, -N) is det.
 %

@@ -70,6 +70,7 @@ pizlonated_item(Mode, All, func(Name, Linkage, Ret, Params, Blocks0), Items) :-
     checked_origins(Rs0, Rs1, Generated, Rs),
     with_context(func(Name, Linkage, Ret, Params, Blocks), Rs, Items).
 pizlonated_item(_, _, data(N, L, A, Is), [data(N, L, A, Is)]).
+pizlonated_item(_, _, alias(N, L, T), [alias(N, L, T)]).
 
 checked_origins([], Rs, _, Rs) :- !.
 checked_origins(Before, Rs0, Generated, Rs) :-

@@ -98,12 +98,13 @@ c_module(Items00, module(Funcs)) :-
     findall(Name, external_inline_declaration(Items, Name), Names0),
     sort(Names0, ExternalNames),
     foldl(top_item(ExternalNames), Items, Funcss, Env0, Env1),
-    foldl(weak_alias_def(ExternalNames), Aliases, AliasFuncss, Env1, Env),
-    append(Funcss, Funcs0a), append(AliasFuncss, Funcs0b), append(Funcs0a, Funcs0b, Funcs0),
+    foldl(weak_alias_item, Aliases, AliasItems, Env1, Env),
+    append(Funcss, Funcs0a), append(Funcs0a, AliasItems, Funcs0),
     with_used_inlines(Funcs0, Env, Funcs1),
     weak_symbols(Items0, Env, Weak),
     weak_linkage(Weak, Funcs1, Funcs2),
-    unprototyped_calls(Funcs2, Funcs).
+    unprototyped_calls(Funcs2, Funcs3),
+    alias_kinds(Funcs3, Funcs).
 
 /* unprototyped_calls(+Items0, -Items): a direct call made without a
    prototype in scope (callee unproto(S), from lower_node//3's call)
@@ -191,9 +192,9 @@ ma_end([], []).
    it, its uses refer to it through data of linkage extern(weak), so
    that it is null when no object of the program defines it, as clang's
    are (docs/abi-findings.md, *Weak symbols*). A weak alias,
-   `__attribute__((weak, alias("t")))` or `#pragma weak n = t`, is a weak
-   definition of its own name that calls t. Weak static and thread-local
-   names are refused. */
+   `__attribute__((weak, alias("t")))` or `#pragma weak n = t`, is the
+   IR's alias(n, weak, t) (weak_alias_item/4). Weak static and
+   thread-local names are refused. */
 weak_attr(Specs) :-
     member(attr(Tokens), Specs),
     attr_word(Tokens, W), memberchk(W, [weak, '__weak__']), !.
@@ -206,13 +207,14 @@ weak_aliases(_, [], [], []) :- !.
 weak_aliases(All, [decl(Loc, Specs, Inits)|Is0], [decl(Loc, Specs1, Inits)|Is],
              [alias(Loc, Specs1, Inits, Target)|As]) :-
     weak_attr(Specs), alias_target(Specs, Target), !,
-    exclude(alias_attr, Specs, Specs1),
+    exclude(alias_attr, Specs, Specs0),
+    extern_specs(Specs0, Specs1),
     weak_aliases(All, Is0, Is, As).
 weak_aliases(All, [pragma_weak(Loc, Name, Target)|Is0], Is, [Alias|As]) :-
     Target \== none, !,
     (   member(decl(_, Specs0, Inits), All),
         Inits = [init(dcl(some(Name), _, _), none)]
-    ->  exclude(alias_attr, Specs0, Specs),
+    ->  exclude(alias_attr, Specs0, Specs1), extern_specs(Specs1, Specs),
         Alias = alias(Loc, Specs, Inits, Target)
     ;   sema_error(Loc, '#pragma weak ~w = ~w needs a declaration of ~w', [Name, Target, Name])
     ),
@@ -221,31 +223,42 @@ weak_aliases(All, [I|Is0], [I|Is], As) :- weak_aliases(All, Is0, Is, As).
 alias_attr(attr(Tokens)) :-
     attr_word(Tokens, Word), memberchk(Word, [alias, '__alias__']), !.
 
-% weak_alias_def(+ExternalNames, +Alias, -Funcs, +Env0, -Env): Funcs
-% define the alias's own symbol, calling its target with its arguments.
-weak_alias_def(ExternalNames, alias(Loc, Specs, Inits, Target), Funcs, Env0, Env) :-
-    (   Inits = [init(dcl(some(Name), DclType, none), none)] -> true
-    ;   sema_error(Loc, 'alias is supported only for one prototyped, non-variadic function', [])
+% extern_specs(+Specs0, -Specs): an alias declares its name, never
+% defines it, so an object alias is no tentative definition.
+extern_specs(Specs0, Specs) :-
+    (   member(storage(S), Specs0), memberchk(S, [extern, static]) -> Specs = Specs0
+    ;   Specs = [storage(extern)|Specs0]
+    ).
+
+% weak_alias_item(+Alias, -Item, +Env0, -Env): Item is the IR alias of
+% a weak alias: the unit's uses of its name stay references to its own
+% symbol (weak_linkage/3), which a strong definition elsewhere replaces,
+% as clang's do.
+weak_alias_item(alias(Loc, Specs, Inits, Target), alias(Name, weak, Target, Kind-Loc), Env0, Env) :-
+    (   Inits = [init(dcl(some(Name), _, none), none)] -> true
+    ;   sema_error(Loc, 'alias is supported only for one declarator', [])
     ),
-    decl_types(Specs, Inits, [d(_, Type, _, _, _)], Env0, _),
-    (   Type = func(Ret, _, fixed) -> true
-    ;   sema_error(Loc, 'alias is supported only for functions, not ~w', [Name])
+    decl_types(Specs, Inits, [d(_, Type, _, _, _)], Env0, Env),
+    alias_kind(Type, Kind).
+
+alias_kind(func(_, _, _), func) :- !.
+alias_kind(_, data).
+
+% alias_kinds(+Items0, -Items): Items is Items0 with each alias(Name,
+% Linkage, Target, Kind-Loc) the IR's alias(Name, Linkage, Target),
+% once its Target is a definition of the unit of kind Kind, a function
+% for a function and an object for an object, as GCC and clang require.
+alias_kinds(Items0, Items) :- maplist(alias_kind_item(Items0), Items0, Items).
+
+alias_kind_item(Items, alias(Name, Linkage, Target, Kind-Loc), alias(Name, Linkage, Target)) :- !,
+    (   memberchk(func(Target, _, _, _, _), Items) -> Found = func
+    ;   member(data(Target, L, _, _), Items), L \== extern(weak) -> Found = data
+    ;   sema_error(Loc, 'alias ~w must point to a defined variable or function, not ~w', [Name, Target])
     ),
-    alias_wrapper_syntax(Loc, Name, Specs0, DclType, Type, Specs, RetSyntax, Ps, Env0, Env1),
-    findall(param(PSpecs, dcl(some(A), S, PAsm)) - id(A),
-            ( nth0(I, Ps, param(PSpecs, dcl(_, S, PAsm))),
-              format(atom(A), '__nanofil_alias_arg~w', [I]) ),
-            Named),
-    pairs_keys_values(Named, NamedPs, Args),
-    atom_concat('__nanofil_alias_', Name, Self),
-    Call = call(id(Target), Args),
-    (   Ret == void -> Stmt = expr(Call) ; Stmt = return(Call) ),
-    exclude(alias_spec, Specs0, DefSpecs),
-    top_item(ExternalNames,
-             fundef(Loc, DefSpecs,
-                    dcl(some(Self), func(RetSyntax, params(NamedPs, fixed)), asm(Name)),
-                    at(Loc, block([at(Loc, Stmt)]))),
-             Funcs, Env1, Env).
+    (   Found == Kind -> true
+    ;   sema_error(Loc, 'alias ~w of a ~w names the ~w ~w', [Name, Kind, Found, Target])
+    ).
+alias_kind_item(_, Item, Item).
 
 % weak_symbols(+Items, +Env, -Weak): Weak is the ordset of the symbols
 % of the names Items declare weak, each Sym-Kind, Kind fn or data.
@@ -286,6 +299,7 @@ weak_linkage(Weak, Items0, Items) :-
             ( member(Sym-_, Weak),
               \+ memberchk(func(Sym, _, _, _, _), Items0),
               \+ memberchk(data(Sym, _, _, _), Items0),
+              \+ memberchk(alias(Sym, _, _, _), Items0),
               once(item_ref(Items0, Sym)) ),
             Decls),
     append(Items1, Decls, Items).
@@ -294,6 +308,8 @@ weak_item(Weak, func(S, export, R, Ps, Bs), func(S, weak, R, Ps, Bs)) :-
 weak_item(Weak, data(S, export, A, Is), data(S, weak, A, Is)) :-
     memberchk(S-_, Weak), !.
 weak_item(Weak, data(S, ro(export), A, Is), data(S, ro(weak), A, Is)) :-
+    memberchk(S-_, Weak), !.
+weak_item(Weak, alias(S, export, T, K), alias(S, weak, T, K)) :-
     memberchk(S-_, Weak), !.
 weak_item(_, Item, Item).
 
@@ -388,6 +404,7 @@ item_ref(Items, Sym) :-
         )
     ;   Item = data(_, _, _, DataItems),
         member(item(p, sym(Sym, _)), DataItems)
+    ;   Item = alias(_, _, Sym, _)
     ).
 
 % lower_inline(+Sym, -Func, +Env0, -Env): Func is the deferred inline
@@ -450,9 +467,9 @@ top_item(ExternalNames, fundef(Loc, Specs, dcl(some(Name), func(Ret, knr(Names, 
     ).
 top_item(_, fundef(_, Specs, Dcl, _), [], Env, Env) :-
     overload(Specs, Dcl, Env), !.
-top_item(ExternalNames, decl(Loc, Specs, Inits), Funcs, Env0, Env) :-
+top_item(_, decl(Loc, Specs, Inits), Items, Env0, Env) :-
     alias_target(Specs, Target), !,
-    alias_decl(ExternalNames, Loc, Specs, Inits, Target, Funcs, Env0, Env).
+    alias_decl(Loc, Specs, Inits, Target, Items, Env0, Env).
 top_item(_, decl(Loc, Specs, Inits), [], Env0, Env) :- !,
     catch(decl_types(Specs, Inits, Decls, Env0, Env1), not_constant,
           sema_error(Loc, 'array size is not a constant', [])),
@@ -545,12 +562,12 @@ deferrable(nanofil_error(_)).
    (dash's bgcmd). The name is bound to the target's symbol, as if
    declared with asm("fg"), so the translation unit's calls and
    addresses are the target's, as clang's are. An alias with external
-   linkage also needs its own symbol for other translation units: Fil-C
-   gives it only a getter that returns the target's function object;
-   nanofil defines a function of the alias's name that calls the target
-   with its arguments. Its address, seen from another translation unit,
-   is therefore not the target's. Variable aliases, variadic or
-   unprototyped function aliases and several declarators are refused. */
+   linkage also needs its own symbol for other translation units: the
+   IR's alias(Name, export, Target), whose getter is the target's, as
+   Fil-C's is (filc_amd64), so its address there is the target's too.
+   A function alias of any type and an object alias are alike; the
+   target must be a definition of the unit of the same kind
+   (alias_kinds/2). Several declarators are refused. */
 /* GNU's weakref(T), or weakref with alias(T), on a static declaration
    of N: N refers to the symbol T (GCC, Common Function Attributes,
    weakref), so the declaration is an extern one of N with asm label T.
@@ -590,64 +607,17 @@ alias_target(Specs, Target) :-
     memberchk(Word, [alias, '__alias__']), !,
     Arg = [str(Bytes)], atom_codes(Target, Bytes).
 
-alias_decl(ExternalNames, Loc, Specs, Inits, Target, Funcs, Env0, Env) :-
+alias_decl(Loc, Specs, Inits, Target, Items, Env0, Env) :-
     (   Inits = [init(dcl(some(Name), DclType, none), none)] -> true
-    ;   sema_error(Loc, 'alias is supported only for one prototyped, non-variadic function', [])
+    ;   sema_error(Loc, 'alias is supported only for one declarator', [])
     ),
-    decl_types(Specs, [init(dcl(some(Name), DclType, asm(Target)), none)],
+    extern_specs(Specs, Specs1),
+    decl_types(Specs1, [init(dcl(some(Name), DclType, asm(Target)), none)],
                [d(_, Type, Storage, Asm, Init)], Env0, Env1),
-    (   Type = func(Ret, _, fixed) -> true
-    ;   sema_error(Loc, 'alias is supported only for functions, not ~w', [Name])
-    ),
-    global_decl(Loc, d(Name, Type, Storage, Asm, Init), Env1, Env2),
-    (   Storage == static
-    ->  Funcs = [], Env = Env2
-    ;   % The alias's own symbol: a function that calls the target.
-        alias_wrapper_syntax(Loc, Name, Specs0, DclType, Type, Specs, RetSyntax, Ps, Env2, Env3),
-        findall(param(PSpecs, dcl(some(A), S, PAsm)) - id(A),
-                ( nth0(I, Ps, param(PSpecs, dcl(_, S, PAsm))),
-                  format(atom(A), '__nanofil_alias_arg~w', [I]) ),
-                Named),
-        pairs_keys_values(Named, NamedPs, Args),
-        atom_concat('__nanofil_alias_', Name, Self),
-        Call = call(id(Name), Args),
-        (   Ret == void -> Stmt = expr(Call) ; Stmt = return(Call) ),
-        exclude(alias_spec, Specs0, DefSpecs),
-        top_item(ExternalNames,
-                 fundef(Loc, DefSpecs,
-                        dcl(some(Self), func(RetSyntax, params(NamedPs, fixed)), asm(Name)),
-                        at(Loc, block([at(Loc, Stmt)]))),
-                 Funcs, Env3, Env)
+    global_decl(Loc, d(Name, Type, Storage, Asm, Init), Env1, Env),
+    (   Storage == static -> Items = []
+    ;   alias_kind(Type, Kind), Items = [alias(Name, export, Target, Kind-Loc)]
     ).
-
-% alias_wrapper_syntax(+Loc, +Name, -WSpecs, +DclType, +Type, +Specs,
-% -RetSyntax, -Params, +Env0, -Env): the syntax of the function that
-% defines an alias's own symbol. A prototype declarator gives it; an
-% alias declared through typeof (libapparmor's `extern
-% typeof((f)) g __attribute__((alias("f")))`) takes it from its type,
-% Type, each type named by a reserved typedef bound in Env.
-alias_wrapper_syntax(_, _, Specs, func(RetSyntax, params(Ps, fixed)), _, Specs,
-                     RetSyntax, Ps, Env, Env) :- !.
-alias_wrapper_syntax(_, Name, WSpecs, base, func(Ret, PTs, fixed), Specs,
-                     base, Ps, Env0, Env) :- !,
-    exclude(type_spec_syntax, Specs, Others),
-    format(atom(RetTd), '__nanofil_alias_ret_~w', [Name]),
-    bind_ordinary(RetTd, typedef(Ret), Env0, Env1),
-    WSpecs = [tname(RetTd)|Others],
-    foldl(alias_param_syntax(Name), PTs, Ps, 0-Env1, _-Env).
-alias_wrapper_syntax(Loc, _, _, _, _, _, _, _, _, _) :-
-    sema_error(Loc, 'alias is supported only for one prototyped, non-variadic function', []).
-alias_param_syntax(Name, PT, param([tname(Td)], dcl(none, base, none)), I0-Env0, I-Env) :-
-    format(atom(Td), '__nanofil_alias_p~w_~w', [I0, Name]),
-    bind_ordinary(Td, typedef(PT), Env0, Env),
-    I is I0 + 1.
-type_spec_syntax(tspec(_)).
-type_spec_syntax(qual(_)).
-type_spec_syntax(tname(_)).
-type_spec_syntax(su(_, _, _, _)).
-type_spec_syntax(enum(_, _)).
-type_spec_syntax(typeof(_)).
-type_spec_syntax(atomic(_)).
 
 /* clang's overloadable attribute: glibc's _FORTIFY_SOURCE headers add
    overloads of open, open64 and openat chosen by arity, which C cannot
@@ -664,10 +634,6 @@ overload(Specs, dcl(some(Name), DclType, Asm), Env) :-
     decl_types(Specs, [init(dcl(some(Name), DclType, Asm), none)],
                [d(_, Type, _, _, _)], Env, _),
     \+ compatible_type(Visible, Type).
-
-alias_spec(attr(Tokens)) :-
-    attr_word(Tokens, Word), memberchk(Word, [alias, '__alias__']), !.
-alias_spec(storage(extern)).
 
 % static_assert(+Loc, +Expr, +Env): throw a semantic error unless Expr
 % is a nonzero constant.

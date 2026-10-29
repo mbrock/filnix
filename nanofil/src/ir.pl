@@ -43,9 +43,10 @@
 
     | Term | Means |
     |---|---|
-    | `module(Items)` | Items are `func/5`, `data/4` and optional `context/2` terms |
+    | `module(Items)` | Items are `func/5`, `data/4`, `alias/3` and optional `context/2` terms |
     | `func(Name, Linkage, Ret, Params, Blocks)` | a function, fields below |
     | `data(Name, Linkage, Align, Items)` | a data object, fields under Data |
+    | `alias(Name, Linkage, Target)` | a second symbol Name, of linkage `export` or `weak`, for the function or data object Target the module defines (filc mode only; GNU's alias attribute) |
     | `context(Name, Records)` | explanatory binding, typed-origin, value, alias and site records; see provenance.pl |
 
     | Field of func | Is |
@@ -650,6 +651,8 @@ module_symbols(module(Items), symbols(Index)) :-
 symbol_entry(F, func(Name), f(F, V)) :-
     F = func(Name, _, _, _, _),
     ( variadic_func(F) -> V = variadic ; V = fixed ).
+symbol_entry(A, alias(Name), A) :-
+    A = alias(Name, _, _).
 symbol_entry(D, Key, D) :-
     D = data(Name, Linkage, _, _),
     ( Linkage == extern(weak) -> Key = weak(Name) ; Key = data(Name) ).
@@ -713,6 +716,7 @@ pointer_item(func(_, Linkage, Ret, Params, Blocks)) :-
         )
     ),
     !.
+pointer_item(alias(_, _, _)).
 pointer_item(data(_, Linkage, _, Items)) :-
     (   Linkage = ro(_)
     ;   Linkage = tls(_)
@@ -887,6 +891,33 @@ valid_item(_, Mode, _, data(Name, Linkage, Align, Items)) :-
     forall(member(item(_, str(Cs)), Items),
            ( maplist(byte_char, Cs) -> true
            ; fn_error(Name, 'str/1 holds characters of codes 0..255', []) )).
+
+% An alias names a function or a data object the module defines, its
+% target, and no other item defines its name. Its kind is the
+% target's: a call names it only if the target is a function.
+valid_item(Symbols, Mode, _, alias(Name, Linkage, Target)) :-
+    (   Mode == filc -> true
+    ;   fn_error(Name, 'an alias needs a Fil-C module', [])
+    ),
+    (   memberchk(Linkage, [export, weak]) -> true
+    ;   fn_error(Name, 'invalid alias linkage ~w', [Linkage])
+    ),
+    (   ( func_named(Symbols, Name, _) ; data_named(Symbols, Name) )
+    ->  fn_error(Name, 'an alias and a definition share the name ~w', [Name])
+    ;   true
+    ),
+    (   func_named(Symbols, Target, _) -> true
+    ;   data_item(Symbols, Target, data(_, TL, _, _)), \+ memberchk(TL, [export, local, weak, ro(_)])
+    ->  fn_error(Name, 'an alias of ~w data is not supported', [TL])
+    ;   data_named(Symbols, Target)
+    ->  (   Symbols = symbols(Index),
+            gen_assoc(func(F), Index, f(func(_, _, _, _, Bs), _)), F \== Name,
+            member(block(_, _, Is, _), Bs), memberchk(call(_, global(Name), _), Is)
+        ->  fn_error(Name, 'a call names ~w, an alias of the data ~w', [Name, Target])
+        ;   true
+        )
+    ;   fn_error(Name, 'alias target ~w is not defined in the module', [Target])
+    ).
 
 % byte_char(+C): C is a character that stands for one byte.
 byte_char(C) :- atom(C), atom_length(C, 1), char_code(C, N), N =< 255.
