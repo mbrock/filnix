@@ -2656,6 +2656,11 @@ elab(call(id(Name), Args), Env, X) :-
     ).
 elab(call(id(Name), Args), Env, X) :-
     \+ lookup_ordinary(Env, Name, _),
+    variable_orders(Name, Args, Env, Evaluated, Args1), !,
+    foldl(evaluated_first, Evaluated, call(id(Name), Args1), E),
+    elab(E, Env, X).
+elab(call(id(Name), Args), Env, X) :-
+    \+ lookup_ordinary(Env, Name, _),
     atomic_builtin(Name, Args, Env, R), !,
     (   R = expr(E) -> elab(E, Env, X)
     ;   R = builtin(T), X = val(T, builtin(Name, Args))
@@ -2707,6 +2712,14 @@ elab(stmtexpr(at(Loc, block(Items))), Env, val(T, stmtexpr(at(Loc, block(Items))
     block_value_type(Items, Env, T).
 elab(types_compatible(TA, TB), Env, X) :- !,
     types_compatible_value(TA, TB, Env, V),
+    elab(num(V, none-dec), Env, X).
+elab(call(id(Name), [S, P]), Env, X) :-
+    memberchk(Name, ['__atomic_always_lock_free', '__c11_atomic_is_lock_free',
+                     '__atomic_is_lock_free']),
+    \+ lookup_ordinary(Env, Name, _),
+    catch(const_value(S, Env, Size, _), not_constant, fail),
+    operand(P, Env, XP, PT0), unqualified(PT0, PT),
+    lock_free(Name, Size, XP, PT, Env, V), !,
     elab(num(V, none-dec), Env, X).
 elab(call(id('__builtin_choose_expr'), [C, A, B]), Env, X) :-
     \+ lookup_ordinary(Env, '__builtin_choose_expr', _), !,
@@ -3202,6 +3215,48 @@ cas_operands(P, E, Env) :-
     ( int_type(T) ; T = ptr(_) ; memberchk(T, [float, double]) ),
     lowered_type(E, Env, ptr(U0)), unqualified(U0, U),
     ( U == T -> true ; U == void -> true ; T = ptr(_), U = ptr(_) ).
+
+doc(variable_orders(+Name, +Args, +Env, -Orders, -Args1), semidet, [
+    Name: "an __atomic or __c11_atomic builtin",
+    Args: "its arguments",
+    Env: "the scope",
+    Orders: "its memory-order arguments that are not constant, at least one",
+    Args1: "Args with each of those replaced by 5, __ATOMIC_SEQ_CST",
+    "clang accepts a memory order known only at run time and chooses the",
+    "order then; nanofil uses seq_cst, which is at least as strong as any",
+    "order, after evaluating the argument for its effects. liburcu passes",
+    "cmm_to_c11(CMM_RELAXED), a call to a static inline function.",
+    cites('C11 7.17.3p1'),
+    cites('GCC manual, __atomic Builtins: any order may be implemented as the most restrictive, __ATOMIC_SEQ_CST')
+]).
+variable_orders(Name, Args, Env, Orders, Args1) :-
+    order_positions(Name, Args, Ps),
+    findall(I-O, ( member(I, Ps), nth0(I, Args, O),
+                   \+ catch(const_value(O, Env, _, _), not_constant, fail),
+                   catch(expression_type(O, Env, T), nanofil_error(_), fail),
+                   value_type(T, T1), unqualified(T1, T2), int_type(T2) ),
+            Pairs),
+    Pairs \== [],
+    pairs_values(Pairs, Orders),
+    findall(A, ( nth0(I, Args, A0),
+                 ( memberchk(I-_, Pairs) -> A = num(5, none-dec) ; A = A0 ) ),
+            Args1).
+
+% evaluated_first(+O, +E0, -E): E is O, for its effects, then E0.
+evaluated_first(O, E0, comma(cast(type([tspec(void)], base), O), E0)).
+
+% order_positions(+Name, +Args, -Positions): the argument positions of
+% builtin Name's memory orders.
+order_positions(Name, Args, Ps) :-
+    (   sub_atom(Name, 0, _, _, '__atomic_') -> true
+    ;   sub_atom(Name, 0, _, _, '__c11_atomic_')
+    ),
+    \+ memberchk(Name, ['__c11_atomic_init', '__atomic_always_lock_free',
+                        '__atomic_is_lock_free', '__c11_atomic_is_lock_free']),
+    length(Args, N), N >= 1, Last is N - 1,
+    (   sub_atom(Name, _, _, _, compare_exchange) -> N >= 2, Prev is N - 2, Ps = [Prev, Last]
+    ;   Ps = [Last]
+    ).
 
 order_constant(O, Env) :-
     catch(const_value(O, Env, V, _), not_constant, fail),
@@ -3855,6 +3910,40 @@ compared_type_name(Env, TN, T) :-
     (   R = qualified(Qs, R1)
     ->  include(=(enum(_)), Qs, Es), qualify(Es, R1, T)
     ;   T = R
+    ).
+
+doc(lock_free(+Name, +Size, +XP, +PT, +Env, -V), semidet, [
+    Name: "__atomic_always_lock_free, __atomic_is_lock_free or __c11_atomic_is_lock_free",
+    Size: "the constant object size",
+    XP: "the pointer argument's value tree",
+    PT: "its unqualified type",
+    Env: "the scope",
+    V: "1 or 0, the constant clang folds the call to",
+    "filcc's x86-64 target inlines atomics of up to 16 bytes (cmpxchg16b),",
+    "so its clang folds as here. A power-of-two Size up to 16",
+    "is lock-free if it is 1, the pointer is a null pointer constant, the",
+    "builtin is __c11_atomic_is_lock_free, or the pointer's complete",
+    "pointee type is at least Size-aligned. Otherwise",
+    "__atomic_always_lock_free is 0 and the others are not constant (a",
+    "libatomic call, which fails here). liburcu asserts",
+    "_Static_assert(__atomic_always_lock_free(sizeof(*p), 0), ...).",
+    cites('GCC manual, __atomic Builtins'),
+    cites('Clang, ExprConstant.cpp: __atomic_always_lock_free and __atomic_is_lock_free'),
+    example(( empty_env(E), lock_free('__c11_atomic_is_lock_free', 16, val(ptr(void), p), ptr(void), E, V) ), V = 1),
+    example(( empty_env(E), lock_free('__atomic_always_lock_free', 8, val(ptr(long), p), ptr(long), E, V) ), V = 1),
+    example(( empty_env(E), lock_free('__atomic_always_lock_free', 16, val(ptr(long), p), ptr(long), E, V) ), V = 0),
+    example(( empty_env(E), lock_free('__atomic_always_lock_free', 32, val(ptr(long), p), ptr(long), E, V) ), V = 0)
+]).
+lock_free(Name, Size, XP, PT, Env, V) :-
+    (   Size > 0, Size /\ (Size - 1) =:= 0, Size =< 16,
+        (   Size =:= 1 -> true
+        ;   Name == '__c11_atomic_is_lock_free' -> true
+        ;   null_pointer_constant(XP, Env) -> true
+        ;   PT = ptr(T), T \== void,
+            catch(type_size_align(T, Env, _, A), bad(_), fail), A >= Size
+        )
+    ->  V = 1
+    ;   Name == '__atomic_always_lock_free', V = 0
     ).
 
 doc(hint_builtin(+Name, +Args, -E), semidet, [
