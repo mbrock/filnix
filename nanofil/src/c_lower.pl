@@ -1746,6 +1746,13 @@ asm_runtime_reason(_, OutKs, _, _, _, 'inline assembly with pointer return type 
 asm_runtime_reason(_, OutKs, InKs, _, _, 'inline assembly with pointer argument is not supported') :-
     ( memberchk(mem-_, OutKs) ; memberchk(mem-_, InKs) ; memberchk(ptr-_, InKs) ), !,
     \+ memberchk(other-_, OutKs), \+ memberchk(other-_, InKs).
+asm_runtime_reason(_, OutKs, InKs, _, _, Reason) :-
+    forall(member(K-_, OutKs), K == value),
+    forall(member(K-_, InKs), K == value),
+    append(OutKs, InKs, Ks),
+    forall(member(_-C, Ks), asm_known_constraint(C)),
+    member(_-C, Ks), asm_ir_constraint(C, IR), \+ asm_validated_constraint(IR), !,
+    format(atom(Reason), 'unsupported constraint for safe inline asm: ~w', [IR]).
 asm_runtime_reason(_, OutKs, InKs, Clobbers, Template, Reason) :-
     forall(member(K-C, OutKs), ( K == value, memberchk(C, ['=r', '+r', '=a']) )),
     forall(member(K-C, InKs), ( K == value, asm_validated_input(C) )),
@@ -1756,6 +1763,60 @@ asm_runtime_reason(_, OutKs, InKs, Clobbers, Template, Reason) :-
     atomic_list_concat([W|_], ' ', A), downcase_atom(W, M),
     filcc_refused_mnemonic(M),
     format(atom(Reason), 'unsupported mnemonic for safe inline asm: ~w', [M]).
+
+% asm_ir_constraint(+C, -IR): the constraint clang writes in the IR for
+% a value operand's GCC constraint C: + becomes = (its tied input is a
+% digit), a fixed register letter its {reg}, g is imr, the rest as
+% written (lib/CodeGen/CGStmt.cpp, X86's convertConstraint). An operand
+% whose constraint allows memory and is passed by address is a pointer
+% argument, which asm_operand/5 classifies as mem.
+asm_ir_constraint(C, IR) :-
+    atom_chars(C, Cs),
+    asm_constraint_prefix(Cs, Ps0, Body),
+    maplist(asm_ir_prefix, Ps0, Ps),
+    (   Body = [L], asm_fixed_register(L, Reg) -> atom_chars(Reg, BCs)
+    ;   Body == [g] -> BCs = [i, m, r]
+    ;   BCs = Body
+    ),
+    append(Ps, BCs, IRCs), atom_chars(IR, IRCs).
+
+asm_constraint_prefix([P|Cs], [P|Ps], Body) :-
+    memberchk(P, ['=', '+', '&', '%']), !, asm_constraint_prefix(Cs, Ps, Body).
+asm_constraint_prefix(Body, [], Body).
+
+asm_ir_prefix('+', '=') :- !.
+asm_ir_prefix(P, P).
+
+asm_fixed_register(a, '{ax}').
+asm_fixed_register(b, '{bx}').
+asm_fixed_register(c, '{cx}').
+asm_fixed_register(d, '{dx}').
+asm_fixed_register('S', '{si}').
+asm_fixed_register('D', '{di}').
+
+% asm_known_constraint(+C): C's letters are ones whose lowering by clang
+% asm_ir_constraint/2 knows: register classes, fixed registers, r, m, g,
+% i, n and e, digits.
+asm_known_constraint(C) :-
+    atom_chars(C, Cs), asm_constraint_prefix(Cs, _, Body), Body = [_|_],
+    forall(member(L, Body),
+           ( memberchk(L, [r, m, g, i, n, e, q, 'Q', x, y, v, a, b, c, d, 'S', 'D']) ; char_code_digit(L) )).
+
+% asm_validated_constraint(+IR): validateSafeInlineAsm accepts an
+% operand constraint IR in its first loop (FilPizlonator.cpp): after
+% the prefixes =, +, & and %, a register class r, q, Q, x, y, v or Yk, a
+% fixed register of a general-purpose family, or a matching digit
+% string. Every other operand constraint is refused there, first in the
+% IR's order, outputs then inputs, with "unsupported constraint for safe
+% inline asm: IR".
+asm_validated_constraint(IR) :-
+    atom_chars(IR, Cs), asm_constraint_prefix(Cs, _, Rest), atom_chars(R, Rest),
+    (   memberchk(R, [r, q, 'Q', x, y, v, 'Yk']) -> true
+    ;   memberchk(R, ['{ax}', '{bx}', '{cx}', '{dx}', '{si}', '{di}']) -> true
+    ;   Rest = [_|_], forall(member(D, Rest), char_code_digit(D))
+    ).
+
+char_code_digit(D) :- char_code(D, N), N >= 0'0, N =< 0'9.
 
 asm_validated_input(r).
 asm_validated_input(a).

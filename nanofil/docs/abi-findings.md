@@ -1001,8 +1001,15 @@ probe saw pass validation (outputs "=r", "+r", "=a"; inputs "r", "a",
 digits; "memory", "cc") and whose first nonblank line's mnemonic is one
 filcc refuses whatever its operands (c_types `filcc_refused_mnemonic/1`:
 int, int3, syscall, hlt, lock, rep, push, call, .byte and others).
+An asm whose value operands have a constraint the validator's first
+loop refuses becomes the same call with `unsupported constraint for safe
+inline asm: C`, C being the first such constraint in clang's IR spelling
+(outputs, then inputs; `g` is `imr`, a fixed register letter `{ax}`...):
+longlong.h's `umul_ppmm` (`"rm"`) and `sub_ddmmss` (`"rme"`), which
+coreutils' factor reaches above 2^64 and filcc's factor traps on too.
 Everything else is refused at compile time: cpuid, rdtsc and the
-fences, which filcc may pass through; an unknown mnemonic, which only
+fences, which filcc may pass through; a constraint whose lowering nanofil
+does not know (`"=A"`); an unknown mnemonic, which only
 filcc's full table shows to be unknown; asm goto with a pointer operand,
 which crashes clang's Fil-C (SelectionDAGBuilder's getCopyToParts
 assertion). tests/c/prog/asm-refused.c compares the reasons with
