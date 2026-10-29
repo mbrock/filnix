@@ -1358,6 +1358,24 @@ member_takes(M, T, _, _) :- arithmetic_type(M), arithmetic_type(T), !.
 member_takes(ptr(A), ptr(B), _, Env) :-
     ( A == void ; compatible_type(A, B, Env) ), !.
 
+doc(union_cast_member(+Union, +T, +Env, -Name), semidet, [
+    Union: "the union type a cast names",
+    T: "the unqualified value type of the cast's operand",
+    Env: "the scope",
+    Name: "the first named member of type T",
+    "GNU C casts a value to a union one of whose members has its type: the",
+    "result is the union with that member initialized, a compound literal",
+    "(mailutils casts a function to its sieve_op_t this way). Without such",
+    "a member the cast stays refused, as clang refuses it.",
+    cites('GCC manual, Cast to a Union Type'),
+    cites('Clang, SemaCast.cpp: cast to union type from type not present in union')
+]).
+union_cast_member(union(Id), T, Env, Name) :-
+    Env = e(_, _, Defs, _),
+    get_assoc(Id, Defs, def(union, Fields, _, _)),
+    member(m(some(Name), M, _), Fields),
+    compatible_type(M, T), !.
+
 % parameter_accepts(+P, +T, +Null, +Env): an argument of unqualified
 % value type T (and nullness Null) may be passed for a parameter of
 % unqualified type P: assigned to it, or to a transparent union's member.
@@ -2530,6 +2548,11 @@ elab(str(Bytes), _, obj(array(char, N), str(Bytes))) :-
     length(Bytes, M), N is M + 1.
 elab(wstr(T, Values), _, obj(array(T, N), wstr(T, Values))) :-
     length(Values, M), N is M + 1.
+elab(cast(TN, E), Env, X) :-                          % GNU cast to union
+    type_name_type(TN, T0, Env, Env1), unqualified(T0, union(Id)),
+    operand(E, Env, _, F0), unqualified(F0, F), F \= union(Id),
+    union_cast_member(union(Id), F, Env1, Name), !,
+    elab(complit(TN, list([entry([field(Name)], E)])), Env, X).
 elab(cast(TN, E), Env, val(T, cast(TN, XV))) :-
     type_name_type(TN, T0, Env, _),
     operand(E, Env, XV, F0), unqualified(F0, F),
