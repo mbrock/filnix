@@ -3010,13 +3010,22 @@ rmw_operand(xchg, T) :- memberchk(T, [float, double]).
 gnu_operand(_, T) :- int_type(T), !.
 gnu_operand(xchg, ptr(_)).
 
-% cas_operands(+P, +E, +Env): Expected E points to an object of *P's
-% unqualified type, an integer, pointer, float or double.
+doc(cas_operands(+P, +E, +Env), semidet, [
+    P: "a compare-exchange's object pointer, to an integer, pointer, float or double",
+    E: "its expected-value pointer",
+    Env: "the scope",
+    "E points to an object of *P's unqualified type, to any pointer when",
+    "*P is a pointer, or is a void *: clang initializes the parameter",
+    "from E as by assignment, and void * converts to any object pointer",
+    "(GLib's g_atomic_int_compare_and_exchange passes `(void *) &old`).",
+    cites('C11 6.5.16.1p1, 6.3.2.3p1'),
+    cites('Clang, SemaChecking.cpp BuildAtomicExpr: pointer arguments are copy-initialized')
+]).
 cas_operands(P, E, Env) :-
     lowered_type(P, Env, ptr(T0)), unqualified(T0, T),
     ( int_type(T) ; T = ptr(_) ; memberchk(T, [float, double]) ),
     lowered_type(E, Env, ptr(U0)), unqualified(U0, U),
-    ( U == T -> true ; T = ptr(_), U = ptr(_) ).
+    ( U == T -> true ; U == void -> true ; T = ptr(_), U = ptr(_) ).
 
 order_constant(O, Env) :-
     catch(const_value(O, Env, V, _), not_constant, fail),
