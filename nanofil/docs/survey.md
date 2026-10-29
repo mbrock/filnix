@@ -46,21 +46,21 @@ make error, in that order.
 
 ## Results
 
-The survey of 2026-10-29, at `d91dd5e`: of the 300 packages ports.nix
+The survey of 2026-10-29, at `de590c8`: of the 300 packages ports.nix
 names, 209 are C. filcc builds 202 of them. Of those 202, nanofil alone
-builds 130 (64%; 127 at `d2c5a00`, 119 of 201 at `7773472`), compiling
-31,723 objects. The 44 among them whose ports run tests pass them, as
-filcc's builds do. Three build but fail their tests: libressl's DTLS
+builds 136 (67%; 130 at `d91dd5e`, 127 at `d2c5a00`), compiling 33,195
+objects. The 49 among them whose ports run tests pass them, as filcc's
+builds do; installCheck now counts as tests, which moved duktape, jq and
+libinput from "built". Three build but fail their tests: libressl's DTLS
 ssltest, on timing (plain nanofil's bn_mont.c is slow enough that two
 RSA CRT halves exceed DTLS's 1 s retransmit timer; its results are
-correct); nspr (`fegetround` at link); and tpm2-tss, whose tests now
-run (51 pass, 7 unit tests fail, 214 integration tests error).
+correct); nspr (`fegetround` at link); and tpm2-tss, whose 10-byte packed
+command header came out 12 bytes because nanofil ignored `#pragma pack`
+(fixed after this survey, in `e591249`).
 
-New since `d2c5a00`: gtk3 and libapparmor build, and gtksourceview3,
-gtksourceview4 and libhandy now pass their tests. sqlite regressed:
-sqlite-interactive's compile overflowed the 1 GB stack in pizlonate
-(877 MB global in use). gtk3's gtkresources.c overflowed once in
-`convert_int` and built when retried. gtk4 now stops at vector types.
+New since `d91dd5e`: alsa-lib, gmp, liburcu, trealla and x264 build, and
+sqlite builds again: with SWI's global-stack GC factor at 2, sqlite3.c
+fits the 1 GB stack with room to spare.
 
 ### Causes
 
@@ -109,36 +109,31 @@ failure; run.py marks it `timing-dependent test`.
 
 | filcc | nanofil | Packages |
 | --- | --- | ---: |
-| built | built | 86 |
-| tests pass | tests pass | 44 |
-| built | fails in buildPhase | 42 |
-| tests pass | fails in buildPhase | 26 |
+| built | built | 87 |
+| tests pass | tests pass | 49 |
+| tests pass | fails in buildPhase | 33 |
+| built | fails in buildPhase | 30 |
 | dependency fails | not tried | 4 |
+| tests pass | tests fail | 3 |
 | fails in buildPhase | not tried | 2 |
-| tests pass | tests fail | 2 |
-| tests pass | fails in configurePhase | 1 |
 | tests fail | not tried | 1 |
-| built | tests fail | 1 |
 
 | Cause | Packages | Which |
 | --- | ---: | --- |
-| inline or top-level asm | 20 | elfutils, ell, fftw, flac, fstrm, guile_3_0, kbd, libblake3, libdeflate, libgcrypt, openssh, openssl, openssl-sarcasm, pcre2, physfs, quickjs, rdkafka, rhash, util-linux, zlib-ng |
-| other syntax or typing gaps | 20 | alsa-lib, binutils-unwrapped, btrfs-progs, emacs30, finit, gnupg, gobject-introspection-unwrapped, imagemagick, kittydoom, kronosnet, libaom, libjpeg_turbo, libmbim, liburcu, mbedtls, nss, sqlite, tpm2-tss, x264, zix |
-| alignment attributes | 6 | bind, ghostscript, libcdio, libtiff, libwebp, xz |
+| inline or top-level asm | 21 | elfutils, ell, fftw, flac, fstrm, guile_3_0, kbd, libblake3, libdeflate, libgcrypt, nettle, openssh, openssl, openssl-sarcasm, pcre2, physfs, quickjs, rdkafka, rhash, util-linux, zlib-ng |
+| other syntax or typing gaps | 19 | binutils-unwrapped, btrfs-progs, cryptsetup, cyrus_sasl, emacs30, finit, gnupg, gobject-introspection-unwrapped, imagemagick, kronosnet, libaom, libjpeg_turbo, libmbim, mbedtls, nss, ruby_3_3, systemd, tpm2-tss, zix |
+| alignment attributes | 7 | bind, ghostscript, kittydoom, libcdio, libtiff, libwebp, xz |
 | vector types | 6 | gtk4, libopus, libpq, redis, tor, zstd |
-| constant expressions not folded | 4 | libffi, nettle, parted, ruby_3_3 |
 | other builtins | 4 | cogl, gnutls, isa-l, libgbm |
-| nanofil internal failure | 3 | cryptsetup, cyrus_sasl, trealla |
+| aliases beyond one prototyped function | 3 | fontconfig, gettext, gtk2 |
 | unresolved Fil-C symbol at link | 3 | bison, keyutils, nspr |
-| __builtin_types_compatible_p, __builtin_choose_expr | 2 | gettext, systemd |
-| aliases beyond one prototyped function | 2 | fontconfig, gtk2 |
-| calls passing arguments to a () function | 1 | gmp |
+| constant expressions not folded | 2 | libffi, parted |
 | timing-dependent test | 1 | libressl |
 
 | Package | Version | filcc | nanofil | nanofil objects | Cause | First error |
 | --- | --- | --- | --- | ---: | --- | --- |
 | a2ps | 4.15.7 | tests pass | tests pass | 319 |  |  |
-| alsa-lib | 1.2.15.3 | built | fails in buildPhase | 105 | other syntax or typing gaps | `nanofil: pcm_route.c:317: goto into the scope of a variably modified identifier` |
+| alsa-lib | 1.2.15.3 | built | built | 172 |  |  |
 | at-spi2-core | 2.60.5 | built | built | 224 |  |  |
 | bash | 5.3p9 | built | built | 568 |  |  |
 | bashNonInteractive | 5.3p9 | built | built | 573 |  |  |
@@ -146,17 +141,17 @@ failure; run.py marks it `timing-dependent test`.
 | binutils-unwrapped | 2.43.1 | built | fails in buildPhase | 656 | other syntax or typing gaps | `nanofil: /build/binutils-2.43.1/libiberty/hashtab.c:238: expected an expression, at typedef` |
 | bison | 3.8.2 | built | fails in buildPhase | 449 | unresolved Fil-C symbol at link | `src/bison-getargs.o:function pizlonatedFI12770_rpl_printf:(.text+0x436fd): error: undefined reference to 'pizlonated_rpl_printf'` |
 | bluez | 5.86 | fails in buildPhase | not tried |  |  |  |
-| btrfs-progs | 6.19.1 | tests pass | fails in buildPhase | 135 | other syntax or typing gaps | `nanofil: kernel-shared/print-tree.c:582: unknown escape \(` |
+| btrfs-progs | 6.19.1 | tests pass | fails in buildPhase | 134 | other syntax or typing gaps | `nanofil: kernel-shared/print-tree.c:582: unknown escape \(` |
 | busybox | 1.37.0 | built | built | 30 |  |  |
 | cairo | 1.18.4 | built | built | 275 |  |  |
 | capstone | 5.0.7 | tests pass | tests pass | 128 |  |  |
 | cmocka | 2.0.1 | built | built | 82 |  |  |
 | cogl | 1.22.8 | built | fails in buildPhase | 193 | other builtins | `nanofil: deprecated/cogl-fixed.c:744: undeclared identifier __builtin_sqrt` |
 | coreutils | 9.11 | built | built | 1248 |  |  |
-| cryptsetup | 2.8.6 | tests pass | fails in buildPhase | 163 | nanofil internal failure | `nanofil: failed` |
+| cryptsetup | 2.8.6 | tests pass | fails in buildPhase | 170 | other syntax or typing gaps | `nanofil: lib/crypto_backend/utf8.c:214: a case range of more than 4096 values is not supported` |
 | cups | 2.4.19 | built | built | 244 |  |  |
 | curl | 8.22.0 | built | built | 466 |  |  |
-| cyrus_sasl | 2.1.28 | built | fails in buildPhase | 225 | nanofil internal failure | `nanofil: failed` |
+| cyrus_sasl | 2.1.28 | built | fails in buildPhase | 225 | other syntax or typing gaps | `nanofil: error(domain_error(unique_key_pairs,[sprintf-([p,p]-variadic),snprintf-([p,l,p]-variadic),fprintf-([p,p]-variadic),printf-([p]-variadic),dprintf-([w,p]-variadic),asprintf-([p,p]-variadic),'__asprintf'-([p,p]-variadic),obstack_printf-([p,p]-variadic),send_string-([p,p,w]-fixed),recv_string-(` |
 | dash | 0.5.12 | built | built | 96 |  |  |
 | dav1d | 1.5.3 | tests pass | tests pass | 87 |  |  |
 | db53 | 5.3.28 | tests pass | tests pass | 512 |  |  |
@@ -164,10 +159,10 @@ failure; run.py marks it `timing-dependent test`.
 | dbus-glib | 0.114 | built | built | 68 |  |  |
 | dconf | 0.49.0 | tests pass | tests pass | 84 |  |  |
 | diffutils | 3.12 | built | built | 565 |  |  |
-| duktape | 2.7.0 | built | built | 8 |  |  |
+| duktape | 2.7.0 | tests pass | tests pass | 8 |  |  |
 | e2fsprogs | 1.47.4 | built | built | 557 |  |  |
 | elfutils | 0.194 | built | fails in buildPhase | 326 | inline or top-level asm | `nanofil: ./i386_disasm.c:471: the asm output constraint "=mr" is not supported` |
-| ell | 0.83 | built | fails in buildPhase | 51 | inline or top-level asm | `nanofil: ell/util.c:794: the asm input constraint "0" is not supported` |
+| ell | 0.83 | built | fails in buildPhase | 52 | inline or top-level asm | `nanofil: ell/util.c:794: the asm input constraint "0" is not supported` |
 | emacs30 | 30.1 | built | fails in buildPhase | 519 | other syntax or typing gaps | `filc safety error: cannot write pointer with null object.` |
 | expat | 2.7.1 | tests pass | tests pass | 89 |  |  |
 | ffmpeg-headless | 8.1.2 | dependency fails | not tried |  |  |  |
@@ -175,48 +170,48 @@ failure; run.py marks it `timing-dependent test`.
 | file | 5.47 | built | built | 141 |  |  |
 | finit | 4.17 | built | fails in buildPhase | 56 | other syntax or typing gaps | `nanofil: getty.c:407: bad number 1i` |
 | flac | 1.5.0 | tests pass | fails in buildPhase | 38 | inline or top-level asm | `nanofil: /build/flac-1.5.0/src/libFLAC/cpu.c:80: inline asm "xgetbv" is not supported: nanofil cannot check its instructions` |
-| fontconfig | 2.17.1 | built | fails in buildPhase | 128 | aliases beyond one prototyped function | `nanofil: ./fcaliastail.h:260: alias is supported only for functions, not FcObjectSetBuild` |
+| fontconfig | 2.17.1 | built | fails in buildPhase | 130 | aliases beyond one prototyped function | `nanofil: ./fcaliastail.h:260: alias is supported only for functions, not FcObjectSetBuild` |
 | freetype | 2.14.3 | tests pass | tests pass | 138 |  |  |
 | fstrm | 0.6.1 | tests pass | fails in buildPhase | 60 | inline or top-level asm | `nanofil: libmy/my_queue_mb.c:132: inline asm "mfence" is not supported: nanofil cannot check its instructions` |
 | gawk | 5.4.1 | built | built | 275 |  |  |
 | gd | 2.3.3 | built | built | 112 |  |  |
 | gdk-pixbuf | 2.44.7 | built | built | 91 |  |  |
-| gettext | 1.0 | built | fails in buildPhase | 1582 | __builtin_types_compatible_p, __builtin_choose_expr | `nanofil: __builtin_choose_expr needs a constant condition` |
-| ghostscript | 10.07.1 | built | fails in buildPhase | 352 | alignment attributes | `nanofil: ./brotli/c/enc/matching_tag_mask.h:24: alignment attributes is not supported` |
+| gettext | 1.0 | built | fails in buildPhase | 2404 | aliases beyond one prototyped function | `nanofil: libxml/elfgcchack.h:7633: alias is supported only for functions, not xmlParserError` |
+| ghostscript | 10.07.1 | tests pass | fails in buildPhase | 362 | alignment attributes | `nanofil: ./brotli/c/enc/matching_tag_mask.h:24: alignment attributes is not supported` |
 | git | 2.46.0 | built | built | 596 |  |  |
 | glib | 2.80.4 | built | built | 879 |  |  |
-| gmp | 6.3.0 | tests pass | fails in configurePhase | 30 | calls passing arguments to a () function | `configure: error: could not find a working compiler, see config.log for details` |
+| gmp | 6.3.0 | tests pass | tests pass | 860 |  |  |
 | gnu-shepherd | 1.0.9 | built | built | 240 |  |  |
 | gnugrep | 3.12 | built | built | 528 |  |  |
 | gnum4 | 1.4.21 | built | built | 645 |  |  |
 | gnumake | 4.4.1 | tests pass | tests pass | 153 |  |  |
-| gnupg | 2.4.9 | tests pass | fails in buildPhase | 361 | other syntax or typing gaps | `nanofil: keyring.c:274: cannot assign struct(176) to struct(177)` |
+| gnupg | 2.4.9 | tests pass | fails in buildPhase | 362 | other syntax or typing gaps | `nanofil: keyring.c:274: cannot assign struct(176) to struct(177)` |
 | gnused | 4.10 | built | built | 493 |  |  |
 | gnutar | 1.35 | tests pass | tests pass | 593 |  |  |
-| gnutls | 3.8.13 | built | fails in buildPhase | 673 | other builtins | `nanofil: key_share.c:256: undeclared identifier __builtin_return_address` |
+| gnutls | 3.8.13 | built | fails in buildPhase | 664 | other builtins | `nanofil: key_share.c:256: undeclared identifier __builtin_return_address` |
 | gobject-introspection-unwrapped | 1.80.1 | tests pass | fails in buildPhase | 160 | other syntax or typing gaps | `filc safety error: cannot read pointer with null object.` |
 | graphene | 1.10.8 | tests pass | tests pass | 66 |  |  |
 | gsl | 2.8 | tests pass | tests pass | 1060 |  |  |
 | gssdp_1_6 | 1.6.6 | tests pass | tests pass | 32 |  |  |
-| gtk2 | 2.24.33 | built | fails in buildPhase | 101 | aliases beyond one prototyped function | `nanofil: ../../gdk/gdkaliasdef.c:2748: alias is supported only for functions, not gdk_x11_display_broadcast_startup_message` |
+| gtk2 | 2.24.33 | built | fails in buildPhase | 103 | aliases beyond one prototyped function | `nanofil: ../../gdk/gdkaliasdef.c:2748: alias is supported only for functions, not gdk_x11_display_broadcast_startup_message` |
 | gtk3 | 3.24.52 | built | built | 846 |  |  |
-| gtk4 | 4.14.5 | built | fails in buildPhase | 224 | vector types | `nanofil: ../gsk/gskpath.c:521: member contour of a type nanofil does not support (vector types)` |
+| gtk4 | 4.14.5 | built | fails in buildPhase | 225 | vector types | `nanofil: ../gsk/gskpath.c:521: member contour of a type nanofil does not support (vector types)` |
 | gtksourceview3 | 3.24.11 | tests pass | tests pass | 181 |  |  |
 | gtksourceview4 | 4.8.4 | tests pass | tests pass | 183 |  |  |
 | guile-avahi | 0.4.1 | tests pass | tests pass | 49 |  |  |
-| guile_3_0 | 3.0.11 | built | fails in buildPhase | 672 | inline or top-level asm | `nanofil: deprecated.c:591: an asm operand must have integer or floating type` |
+| guile_3_0 | 3.0.11 | tests pass | fails in buildPhase | 672 | inline or top-level asm | `nanofil: deprecated.c:591: an asm operand must have integer or floating type` |
 | gupnp_1_6 | 1.6.10 | tests pass | tests pass | 57 |  |  |
-| imagemagick | 7.1.2-31 | built | fails in buildPhase | 337 | other syntax or typing gaps | `nanofil: MagickCore/fourier.c:1295: bad number 1.0iF` |
+| imagemagick | 7.1.2-31 | tests pass | fails in buildPhase | 336 | other syntax or typing gaps | `nanofil: MagickCore/fourier.c:1295: bad number 1.0iF` |
 | imlib2 | 1.12.6 | built | built | 133 |  |  |
 | isa-l | 2.32.0 | tests pass | fails in buildPhase | 51 | other builtins | `nanofil: /nix/store/asx904awk86a38cr62zyxqq1zf10603m-filc0-resource-dir/lib/clang/20/include/crc32intrin.h:73: undeclared identifier __builtin_ia32_crc32si` |
-| jq | 1.8.2 | built | built | 152 |  |  |
+| jq | 1.8.2 | tests pass | tests pass | 152 |  |  |
 | json-glib | 1.10.8 | tests pass | tests pass | 81 |  |  |
-| kbd | 2.9.0 | built | fails in buildPhase | 153 | inline or top-level asm | `nanofil: resizecons.c:400: inline asm "inb %1,%0" is not supported: nanofil cannot check its instructions` |
+| kbd | 2.9.0 | built | fails in buildPhase | 155 | inline or top-level asm | `nanofil: resizecons.c:400: inline asm "inb %1,%0" is not supported: nanofil cannot check its instructions` |
 | keyutils | 1.6.3 | built | fails in buildPhase | 8 | unresolved Fil-C symbol at link | `./libkeyutils.so: error: undefined reference to 'pizlonated_zargs'` |
-| kittydoom | git | built | fails in buildPhase | 1 | other syntax or typing gaps | `nanofil: src/PureDOOM.h:16108: invalid operands to and: int and double` |
+| kittydoom | git | built | fails in buildPhase | 3 | alignment attributes | `nanofil: src/arch/sse-base64.h:118: alignment attributes is not supported` |
 | krb5 | 1.22.2 | built | built | 1020 |  |  |
 | kronosnet | 1.33 | built | fails in buildPhase | 95 | other syntax or typing gaps | `nanofil: /nix/store/l9vcwpxmi9a255r27cgn9gwf8j0d356g-filc-glibc-2.44/include/bits/link.h:99: expected a member declaration, at __int128_t` |
-| libaom | 3.12.1 | built | fails in buildPhase | 172 | other syntax or typing gaps | `nanofil: error(resource_error(stack),stack_overflow{choicepoints:12,depth:23370,environments:22,globalused:1046267,localused:5,stack:[frame(23370,ir:evidence_names(v16001,live/6),[]),frame(23369,apply:exclude_([4267],(:)/2,_164),[]),frame(21249,ir:checked_insts([83146],prepare_tf_workers,filc,[6382]` |
+| libaom | 3.12.1 | built | fails in buildPhase |  | other syntax or typing gaps | `[ 86%] Built target aom_av1_decoder` |
 | libapparmor | 4.1.7 | built | built | 63 |  |  |
 | libarchive | 3.7.4 | built | built | 425 |  |  |
 | libblake3 | 1.8.5 | built | fails in buildPhase | 4 | inline or top-level asm | `nanofil: /build/source/c/blake3_dispatch.c:70: inline asm "cpuid` |
@@ -225,14 +220,14 @@ failure; run.py marks it `timing-dependent test`.
 | libcbor | 0.13.0 | tests pass | tests pass | 134 |  |  |
 | libcdio | 2.3.0 | tests pass | fails in buildPhase | 137 | alignment attributes | `nanofil: image/nrg.c:195: buf has a type nanofil does not support (alignment attributes)` |
 | libdbusmenu | 16.04.0 | built | built | 55 |  |  |
-| libdeflate | 1.25 | tests pass | fails in buildPhase | 22 | inline or top-level asm | `nanofil: /build/source/lib/x86/cpu_features.c:47: inline asm "cpuid" is not supported: nanofil cannot check its instructions` |
+| libdeflate | 1.25 | tests pass | fails in buildPhase | 21 | inline or top-level asm | `nanofil: /build/source/lib/x86/cpu_features.c:47: inline asm "cpuid" is not supported: nanofil cannot check its instructions` |
 | libedit | 20240808-3.1 | built | built | 115 |  |  |
 | libepoxy | 1.5.10 | tests pass | tests pass | 71 |  |  |
 | libev | 4.33 | built | built | 56 |  |  |
 | libevdev | 1.11.0 | built | built | 60 |  |  |
 | libevent | 2.1.13 | built | built | 254 |  |  |
-| libffi | 3.8.0 | tests pass | fails in buildPhase | 64 | constant expressions not folded | `nanofil: ../src/types.c:126: initializer is not a constant` |
-| libgbm | 26.0.3 | built | fails in buildPhase | 148 | other builtins | `nanofil: ../src/util/cache_ops_x86_clflushopt.c:44: undeclared identifier __builtin_ia32_clflushopt` |
+| libffi | 3.8.0 | tests pass | fails in buildPhase | 62 | constant expressions not folded | `nanofil: ../src/types.c:126: initializer is not a constant` |
+| libgbm | 26.0.3 | built | fails in buildPhase | 148 | other builtins | `nanofil: ../src/util/cache_ops_x86.c:68: undeclared identifier __builtin_ia32_mfence` |
 | libgcrypt | 1.12.2 | tests pass | fails in buildPhase | 123 | inline or top-level asm | `nanofil: mpiutil.c:150: an asm operand must have integer or floating type` |
 | libgit2 | 1.9.7 | tests pass | tests pass | 698 |  |  |
 | libglvnd | 1.7.0 | built | built | 85 |  |  |
@@ -244,10 +239,10 @@ failure; run.py marks it `timing-dependent test`.
 | libical | 3.0.20 | built | built | 228 |  |  |
 | libiconv | 1.19 | built | built | 266 |  |  |
 | libidn2 | 2.3.8 | built | built | 229 |  |  |
-| libinput | 1.29.1 | built | built | 125 |  |  |
-| libjpeg_turbo | 3.1.4 | built | fails in buildPhase | 22 | other syntax or typing gaps | `nanofil: /nix/store/10xdyb6i0ahryz4a85xp747zwkh7g7xw-simde-0.8.2/include/simde/arm/neon/movl.h:54: expected an expression, at typeof` |
+| libinput | 1.29.1 | tests pass | tests pass | 125 |  |  |
+| libjpeg_turbo | 3.1.4 | tests pass | fails in buildPhase | 22 | other syntax or typing gaps | `nanofil: /nix/store/10xdyb6i0ahryz4a85xp747zwkh7g7xw-simde-0.8.2/include/simde/arm/neon/movl.h:54: expected an expression, at typeof` |
 | liblc3 | 1.1.3 | built | built | 15 |  |  |
-| libmbim | 1.34.0 | tests pass | fails in buildPhase | 56 | other syntax or typing gaps | `nanofil: ../src/libmbim-glib/mbim-device.c:2447: pointer arithmetic on struct(627) (packed pointers)` |
+| libmbim | 1.34.0 | tests pass | fails in buildPhase | 52 | other syntax or typing gaps | `nanofil: ../src/libmbim-glib/mbim-device.c:2447: pointer arithmetic on struct(627) (packed pointers)` |
 | libmhash | 0.9.9.9 | tests pass | tests pass | 140 |  |  |
 | libmicrohttpd | 1.0.2 | built | built | 278 |  |  |
 | libmpdclient | 2.24 | tests pass | tests pass | 98 |  |  |
@@ -264,13 +259,13 @@ failure; run.py marks it `timing-dependent test`.
 | libsoup_3 | 3.6.6 | built | built | 235 |  |  |
 | libssh2 | 1.11.1 | built | built | 88 |  |  |
 | libtasn1 | 4.21.0 | built | built | 224 |  |  |
-| libtiff | 4.7.2 | tests pass | fails in buildPhase | 61 | alignment attributes | `nanofil: /build/source/libtiff/tif_predict.c:605: alignment attributes is not supported` |
+| libtiff | 4.7.2 | tests pass | fails in buildPhase | 60 | alignment attributes | `nanofil: /build/source/libtiff/tif_predict.c:605: alignment attributes is not supported` |
 | libtirpc | 1.3.7 | tests pass | tests pass | 131 |  |  |
-| liburcu | 0.15.6 | tests pass | fails in buildPhase | 124 | other syntax or typing gaps | `nanofil: cds_hlist_for_each_entry_rcu.c:67: expected a parameter declaration, at {` |
+| liburcu | 0.15.6 | tests pass | tests pass | 242 |  |  |
 | libuv | 1.52.1 | built | built | 94 |  |  |
 | libvmaf | 3.0.0 | tests pass | tests pass | 129 |  |  |
 | libvpx | 1.16.0 | built | built | 225 |  |  |
-| libwebp | 1.6.0 | built | fails in buildPhase | 70 | alignment attributes | `nanofil: /build/source/sharpyuv/sharpyuv_sse2.c:85: alignment attributes is not supported` |
+| libwebp | 1.6.0 | built | fails in buildPhase | 33 | alignment attributes | `nanofil: /build/source/sharpyuv/sharpyuv_sse2.c:85: alignment attributes is not supported` |
 | libxcrypt | 4.5.2 | built | built | 129 |  |  |
 | libxkbcommon | 1.13.1 | built | built | 393 |  |  |
 | libxml2 | 2.15.4 | built | built | 82 |  |  |
@@ -279,27 +274,27 @@ failure; run.py marks it `timing-dependent test`.
 | lzo | 2.10 | built | built | 289 |  |  |
 | mailutils | 3.21 | tests pass | tests pass | 1157 |  |  |
 | mariadb-connector-c_3_3 | 3.3.5 | built | built | 159 |  |  |
-| mbedtls | 3.6.6 | tests pass | fails in buildPhase | 16 | other syntax or typing gaps | `nanofil: /build/source/library/bignum_core.c:480: mode TI (__int128) is not supported` |
+| mbedtls | 3.6.6 | tests pass | fails in buildPhase | 16 | other syntax or typing gaps | `nanofil: /build/source/library/bignum.c:1301: mode TI (__int128) is not supported` |
 | minizip | 1.3.2 | built | built | 35 |  |  |
 | mpdecimal | 4.0.1 | built | built | 44 |  |  |
 | mpfr | 4.2.2 | tests pass | tests pass | 540 |  |  |
 | mpg123 | 1.33.7 | dependency fails | not tried |  |  |  |
 | netcdf | 4.9.3 | tests pass | tests pass | 705 |  |  |
-| nettle | 3.10.2 | tests pass | fails in buildPhase | 443 | constant expressions not folded | `nanofil: ecc-secp224r1.c:212: initializer is not an address constant` |
+| nettle | 3.10.2 | tests pass | fails in buildPhase | 475 | inline or top-level asm | `nanofil: nettle-benchmark.c:888: inline asm "xorl %%eax,%%eax` |
 | nghttp2 | 1.69.0 | built | built | 127 |  |  |
 | nspr | 4.40 | tests pass | tests fail | 98 | unresolved Fil-C symbol at link | `../../dist/lib/libnspr4.so: error: undefined reference to 'pizlonated_fegetround'` |
-| nss | 3.112.5 | tests pass | fails in buildPhase | 365 | other syntax or typing gaps | `nanofil: ../../lib/freebl/gcm.c:135: __int128 is not supported` |
+| nss | 3.112.5 | tests pass | fails in buildPhase | 364 | other syntax or typing gaps | `nanofil: ../../lib/freebl/gcm.c:135: __int128 is not supported` |
 | oniguruma | 6.9.10 | built | built | 104 |  |  |
-| openssh | 10.5p1 | built | fails in buildPhase | 667 | inline or top-level asm | `nanofil: sntrup761.c:62: inline asm "sarw $15,%0" is not supported: nanofil cannot check its instructions` |
-| openssl | 3.5.7 | built | fails in buildPhase | 151 | inline or top-level asm | `nanofil: include/internal/constant_time.h:154: the asm input constraint "0" is not supported` |
-| openssl-sarcasm | 3.6.4 | tests pass | fails in buildPhase | 138 | inline or top-level asm | `nanofil: crypto/bn/bn_div.c:388: inline asm "divq   %4" is not supported: nanofil cannot check its instructions` |
+| openssh | 10.5p1 | tests pass | fails in buildPhase | 661 | inline or top-level asm | `nanofil: sntrup761.c:62: inline asm "sarw $15,%0" is not supported: nanofil cannot check its instructions` |
+| openssl | 3.5.7 | built | fails in buildPhase | 150 | inline or top-level asm | `nanofil: include/internal/constant_time.h:154: the asm input constraint "0" is not supported` |
+| openssl-sarcasm | 3.6.4 | tests pass | fails in buildPhase | 139 | inline or top-level asm | `nanofil: crypto/bn/bn_div.c:388: inline asm "divq   %4" is not supported: nanofil cannot check its instructions` |
 | p11-kit | 0.26.2 | built | built | 289 |  |  |
 | pam | 1.7.2 | built | built | 239 |  |  |
 | pango | 1.56.3 | built | built | 163 |  |  |
-| parted | 3.7 | tests pass | fails in buildPhase | 335 | constant expressions not folded | `nanofil: gpt.c:1944: static assertion is not a constant` |
+| parted | 3.7 | tests pass | fails in buildPhase | 331 | constant expressions not folded | `nanofil: gpt.c:1944: static assertion is not a constant` |
 | pcre2 | 10.48 | built | fails in buildPhase | 73 | inline or top-level asm | `nanofil: src/../deps/sljit/sljit_src/sljitNativeX86_common.c:462: inline asm "cpuid` |
 | perl5 | 5.40.0 | built | built | 745 |  |  |
-| physfs | 3.2.0 | built | fails in buildPhase | 37 | inline or top-level asm | `nanofil: /build/source/src/physfs_lzmasdk.h:1495: inline asm "cpuid" is not supported: nanofil cannot check its instructions` |
+| physfs | 3.2.0 | tests pass | fails in buildPhase | 42 | inline or top-level asm | `nanofil: /build/source/src/physfs_lzmasdk.h:1495: inline asm "cpuid" is not supported: nanofil cannot check its instructions` |
 | pixman | 0.46.4 | built | built | 119 |  |  |
 | polkit | 127 | tests pass | tests pass | 71 |  |  |
 | potrace | 1.16 | tests pass | tests pass | 67 |  |  |
@@ -308,40 +303,40 @@ failure; run.py marks it `timing-dependent test`.
 | pulseaudio | 17.0 | dependency fails | not tried |  |  |  |
 | python312 | 3.12.5 | built | built | 858 |  |  |
 | quickjs | 2026-06-04 | tests pass | fails in buildPhase | 12 | inline or top-level asm | `nanofil: quickjs.c:60630: inline asm "pause" is not supported: nanofil cannot check its instructions` |
-| rdkafka | 2.13.0 | built | fails in buildPhase | 23 | inline or top-level asm | `nanofil: /build/source/src/queue.h:688: an asm operand must have integer or floating type` |
+| rdkafka | 2.13.0 | built | fails in buildPhase | 42 | inline or top-level asm | `nanofil: /build/source/src/queue.h:688: an asm operand must have integer or floating type` |
 | recode | 3.7.15 | tests pass | tests pass | 293 |  |  |
-| redis | 8.8.2 | tests pass | fails in buildPhase | 97 | vector types | `nanofil: ./xxhash.h:5220: vector types is not supported` |
+| redis | 8.8.2 | tests pass | fails in buildPhase | 76 | vector types | `nanofil: ./xxhash.h:5220: vector types is not supported` |
 | rhash | 1.4.6 | tests pass | fails in buildPhase | 6 | inline or top-level asm | `nanofil: calc_sums.c:555: inline asm "rdtsc" is not supported: nanofil cannot check its instructions` |
 | rpcbind | 1.2.6 | built | built | 31 |  |  |
 | rsync | 3.5.0 | tests pass | tests pass | 378 |  |  |
-| ruby_3_3 | 3.3.10 | built | fails in buildPhase | 575 | constant expressions not folded | `nanofil: ./ast.rbinc:15: initializer is not an address constant` |
+| ruby_3_3 | 3.3.10 | tests pass | fails in buildPhase | 581 | other syntax or typing gaps | `nanofil: ./internal/bits.h:249: expected an expression, at static_assert` |
 | runit | 2.3.1 | tests pass | tests pass | 98 |  |  |
 | scrypt | 1.3.3 | built | built | 106 |  |  |
 | seatd | 0.9.3 | built | built | 62 |  |  |
 | spandsp | 0.0.6 | built | built | 93 |  |  |
-| sqlite | 3.51.2 | built | fails in buildPhase | 63 | other syntax or typing gaps | `nanofil: error(resource_error(stack),stack_overflow{choicepoints:7,depth:3568,environments:1176,globalused:877268,localused:311,stack:[frame(3568,provenance:emission_sites('L7897',0,0,[1],_142,_144,_146),[]),frame(3567,pizlonate:checked_insts([1],filc,t/5,2412,_178,[1\|_208],'L7897',0,0,_188,_190),[]` |
+| sqlite | 3.51.2 | built | built | 64 |  |  |
 | strace | 7.2 | fails in buildPhase | not tried |  |  |  |
 | svt-av1 | 3.1.2 | built | built | 148 |  |  |
-| systemd | 256.4 | built | fails in buildPhase | 245 | __builtin_types_compatible_p, __builtin_choose_expr | `nanofil: __builtin_choose_expr needs a constant condition` |
+| systemd | 256.4 | tests pass | fails in buildPhase | 253 | other syntax or typing gaps | `nanofil: /nix/store/l9vcwpxmi9a255r27cgn9gwf8j0d356g-filc-glibc-2.44/include/bits/link.h:99: expected a member declaration, at __int128_t` |
 | timidity | 2.15.0 | dependency fails | not tried |  |  |  |
 | tinycc | 0.9.27-unstable-2025-01-06 | built | built | 14 |  |  |
-| tor | 0.4.9.12 | built | fails in buildPhase | 499 | vector types | `nanofil: src/core/crypto/relay_crypto_cgo.c:55: member kb of a type nanofil does not support (vector types)` |
+| tor | 0.4.9.12 | built | fails in buildPhase | 497 | vector types | `nanofil: src/core/crypto/relay_crypto_cgo.c:55: member kb of a type nanofil does not support (vector types)` |
 | torsocks | 2.5.0 | built | built | 116 |  |  |
 | tpm2-abrmd | 3.0.0 | built | built | 94 |  |  |
-| tpm2-tss | 4.2.0 | built | tests fail | 1278 | other syntax or typing gaps | `make[2]: *** [Makefile:34371: test-suite.log] Error 1` |
-| trealla | unstable-2026-09-05 | built | fails in buildPhase | 41 | nanofil internal failure | `nanofil: failed` |
+| tpm2-tss | 4.2.0 | tests pass | tests fail | 1278 | other syntax or typing gaps | `make[2]: *** [Makefile:34371: test-suite.log] Error 1` |
+| trealla | unstable-2026-09-05 | built | built | 99 |  |  |
 | ttyd | 1.7.7 | built | built | 9 |  |  |
 | unbound | 1.26.0 | tests pass | tests pass | 734 |  |  |
-| util-linux | 2.42.3 | built | fails in buildPhase | 352 | inline or top-level asm | `nanofil: /nix/store/l9vcwpxmi9a255r27cgn9gwf8j0d356g-filc-glibc-2.44/include/sys/io.h:47: inline asm "inb %w1,%0" is not supported: nanofil cannot check its instructions` |
+| util-linux | 2.42.3 | built | fails in buildPhase | 361 | inline or top-level asm | `nanofil: /nix/store/l9vcwpxmi9a255r27cgn9gwf8j0d356g-filc-glibc-2.44/include/sys/io.h:47: inline asm "inb %w1,%0" is not supported: nanofil cannot check its instructions` |
 | uwimap | 2007f | built | built | 38 |  |  |
 | vala | 0.56.19 | built | built | 488 |  |  |
 | wasm3 | 0.5.0 | built | built | 19 |  |  |
 | wavpack | 5.9.0 | built | built | 87 |  |  |
 | wayland | 1.25.0 | built | built | 73 |  |  |
 | weston | 15.0.1 | built | built | 349 |  |  |
-| x264 | 0-unstable-2025-01-03 | built | fails in buildPhase | 51 | other syntax or typing gaps | `nanofil: common/macroblock.c:1521: no member named i` |
+| x264 | 0-unstable-2025-01-03 | built | built | 35 |  |  |
 | xvidcore | 1.3.7 | built | built | 71 |  |  |
-| xz | 5.8.4 | built | fails in buildPhase | 206 | alignment attributes | `nanofil: ../../src/liblzma/lz/lz_decoder.h:243: alignment attributes is not supported` |
+| xz | 5.8.4 | built | fails in buildPhase | 198 | alignment attributes | `nanofil: ../../src/liblzma/lz/lz_decoder.h:243: alignment attributes is not supported` |
 | zix | 0.6.2 | tests pass | fails in buildPhase | 15 | other syntax or typing gaps | `nanofil: ../include/zix/allocator.h:97: expected ;, at malloc` |
 | zlib | 1.3.2 | tests pass | tests pass | 47 |  |  |
 | zlib-ng | 2.2.4 | built | fails in buildPhase | 60 | inline or top-level asm | `nanofil: /build/zlib-ng-2.2.4/arch/x86/x86_features.c:64: inline asm ".byte 0x0f, 0x01, 0xd0" is not supported: nanofil cannot check its instructions` |
