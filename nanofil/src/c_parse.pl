@@ -386,6 +386,22 @@ gnu_attr(A) -->
     expect('('),
     balanced(A0),
     { A = A0 }.
+gnu_attr(A) -->                         % clang -fdeclspec, as ruby builds
+    [tok(id('__declspec'), _)],
+    expect('('),
+    balanced(Ts),
+    (   { declspec_attr(Ts, A) } -> []
+    ;   parse_error('this __declspec is not supported')
+    ).
+
+% declspec_attr(+Tokens, -Attr): __declspec(Tokens) is the GNU
+% attribute Attr, as clang maps it: align(N) is aligned(N), and the
+% ones that do not change code or layout keep their names. Others
+% (thread, selectany, property, ...) are refused.
+declspec_attr([id(align)|Arg], [group([id(aligned)|Arg])]) :- !.
+declspec_attr([id(W)|Arg], [group([id(W)|Arg])]) :-
+    memberchk(W, [noreturn, noinline, noalias, deprecated, nothrow, restrict,
+                  dllexport, dllimport, novtable]).
 
 % balanced(-Toks)//: tokens up to the ')' matching an already-consumed '(';
 % nested parentheses become group(Toks).
