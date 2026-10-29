@@ -9,13 +9,14 @@ instructions, and a ranked plan. It is separate from the semantic
 campaign ([campaign.md](campaign.md)): nothing here weakens a check,
 and safety decisions are flagged for review before implementation.
 
-## Summary (October 2026, at `2ce8b0f`)
+## Summary (October 2026, at `f7197dc`)
 
-**Where we are.** `-O` runs the eleven gate workloads at a geomean of
-**2.13–2.18× filcc `-O2`'s time** (3.2× its instructions; run-to-run
-spread about ±0.03). The round started at **4.61× (6.30×)** on the
-first ten workloads, at `3576b51`. Ten of the eleven are within
-1.5–2.5×. lz4 `-d` is 3.0×, bound by calls. The target was 1.5–2×.
+**Where we are.** `-O` (with `--checks=reference`, where renewal goes
+back to opt-in) runs the eleven gate workloads at a geomean of
+**1.98× filcc `-O2`'s time** (2.89× its instructions; run-to-run
+spread about ±0.03), quiet swa, 7 trials. The round started at
+**4.61× (6.30×)** on the first ten workloads, at `3576b51`. All eleven
+are within 1.45–2.5×. The target was 1.5–2×.
 
 **How.** Each step's gate run, before → after. The workload set gained
 SQLite at 3a's default and the reference pin changed once, so the steps
@@ -37,30 +38,69 @@ chain only approximately:
 | 9 phi shadows shared by position | 2.24 → 2.15 |
 | punned union reads promote | 2.14 → 2.13 |
 | 5b-1 `--registers=flow` (opt-in, not adopted) | 2.12 |
-| 8 cheap middle end (`--simplify=full`, the `-O` default) | 2.14 (3.23) → about 2.0 (2.89) |
+| 8 cheap middle end (`--simplify=full`, the `-O` default) | 2.14 (3.23) → 1.98 (2.89) |
+| M7 check renewal (`--checks=renew`, opt-in; docs/m7.md), measured | 1.98 (2.89) → 2.00 (2.77) |
 
 Every step is translation-validated or checked against the reference
 path, and the reference stays selectable and snapshot-identical. No
 check was weakened, and no root or GC invariant changed except item 9's
 shadow sharing (option A, Oracle-reviewed).
 
-**The gate now** (7 trials, cpu 6, ratio to filcc `-O2`: time
-(instructions), with its min..max time range):
+**The gate now** (at `f7197dc`, quiet swa, 7 trials, cpu 6, ratio to
+filcc `-O2`: time (instructions), with its min..max time range). At
+`f7197dc` `-O` included simplify and check renewal; renewal goes back
+to opt-in (`--checks=renew`) after the measurement below, so
+`-O --checks=reference` is the `-O` that follows:
 
-| Workload | filcc ms | `-O` | `-O --registers=flow` |
+| Workload | filcc ms | `-O --checks=renew` | `-O` (`--checks=reference`) |
 | --- | --: | --: | --: |
-| zlib -6 | 134.0 | 2.51 (4.08) 2.48..2.54 | 2.48 (4.06) |
-| zlib -d | 17.6 | 2.06 (3.19) 1.97..2.13 | 2.04 (3.18) |
-| bzip2 -9 | 273.7 | 2.01 (2.52) 2.00..2.07 | 1.97 (2.49) |
-| bzip2 -d | 93.9 | 2.43 (3.11) 2.40..2.52 | 2.38 (3.09) |
-| lz4 -1 | 13.7 | 2.26 (10.81) 2.08..2.35 | 2.21 (10.76) |
-| lz4 -9 | 162.1 | 2.49 (3.07) 2.45..2.51 | 2.43 (3.06) |
-| lz4 -d | 12.4 | 2.99 (6.84) 2.88..3.21 | 2.98 (6.79) |
-| lua int | 50.1 | 2.14 (2.35) 2.09..2.28 | 2.09 (2.32) |
-| lua tab | 41.9 | 2.00 (2.26) 1.95..2.12 | 2.11 (2.24) |
-| lua str | 263.6 | 1.50 (1.61) 1.49..1.51 | 1.49 (1.61) |
-| sqlite | 661.2 | 1.97 (1.99) 1.97..1.99 | 1.93 (1.98) |
-| geomean | | 2.18 (3.23) | 2.16 (3.21) |
+| zlib -6 | 135.0 | 2.32 (3.50) 2.28..3.98 | 2.36 (3.92) 2.32..2.36 |
+| zlib -d | 19.6 | 1.81 (3.02) 1.79..1.82 | 1.81 (3.03) 1.80..1.85 |
+| bzip2 -9 | 278.5 | 1.67 (2.06) 1.66..1.69 | 1.74 (2.33) 1.73..1.75 |
+| bzip2 -d | 95.0 | 2.83 (2.62) 2.83..2.86 | 2.29 (2.92) 2.29..2.34 |
+| lz4 -1 | 15.0 | 2.11 (10.16) 2.06..2.17 | 2.16 (10.18) 2.13..2.33 |
+| lz4 -9 | 164.1 | 2.04 (2.60) 1.97..2.12 | 2.02 (2.65) 1.98..2.11 |
+| lz4 -d | 13.9 | 2.57 (5.36) 2.49..2.62 | 2.49 (5.36) 2.44..2.61 |
+| lua int | 50.2 | 1.95 (1.83) 1.95..1.96 | 2.00 (1.87) 1.96..2.42 |
+| lua tab | 43.1 | 1.80 (1.77) 1.79..1.80 | 1.80 (1.82) 1.79..1.80 |
+| lua str | 266.3 | 1.45 (1.51) 1.42..1.48 | 1.45 (1.54) 1.41..1.48 |
+| sqlite | 660.0 | 1.84 (1.84) 1.83..1.86 | 1.89 (1.93) 1.89..1.94 |
+| geomean | | 2.00 (2.77) | 1.98 (2.89) |
+
+Renewal removes 4% of instructions (bzip2 `-9` 11%, zlib `-6` 11%) but
+bzip2 `-d` runs 24% slower with it, on 10% fewer instructions (269 ms
+against 218 ms, every trial). Without bzip2 `-d`, renewal is 0.99× in
+time. Pinned down on swa (Ryzen 9 7950X3D, Zen 4), `BZ2_decompress`
+linked alone, `-O` against `-O --checks=reference`:
+
+| | `--checks=reference` | `-O` (renew) |
+| --- | --: | --: |
+| cycles | 1.05G | 1.31–1.37G |
+| instructions | 4.21G | 3.78G |
+| pipeline resyncs (`resyncs_or_nc_redirects`) | 0.03M | 7.1M |
+| op-cache misses | 42M | 88M |
+| branch misses | 5.0M | 5.1M |
+| `BZ2_decompress` size, frame | 213 KB, 1296 B | 184 KB, 1712 B |
+
+It is not layout. Shifting the function by 16–2048 bytes, aligning
+every block to 16, 32 or 64, and moving every frame displacement by up
+to 832 bytes leave both builds where they are (renew 1.28–1.45G, the
+reference 1.04–1.06G). The 7.1M resyncs at roughly 40 cycles each are
+the whole gap. They are memory-dependence mispredictions: with
+speculative store bypass disabled (`prctl`, which on AMD also disables
+predictive store forwarding) they fall to 0.01M in both builds, and
+both run at 1.57G. Their samples sit in the frame-to-frame phi copy
+blocks. Putting the full null and bounds tests back in front of each of
+renew's 716 flag tests, in renew's own code, recovers only a third
+(1.28G, 5.0M resyncs), so most of the cost comes from what renewal does
+to the surrounding code (P1 kept live, a larger frame, different
+copies), not from the flag test. M7's orb measured renewal 4% faster on
+the same builds, so the effect is specific to this microarchitecture's
+predictors. No cheap emission fix was found.
+
+The
+previous table (at `2ce8b0f`, 2.18 (3.23), before simplify and
+renewal) is in git history.
 
 **What remains, and why it stays** (shares of `-O`'s instructions, from
 the profile at `04c7e7c` and the re-measurement under 5b):
@@ -91,8 +131,8 @@ the profile at `04c7e7c` and the re-measurement under 5b):
   the checks' operands. bzip2 `-d`'s `BZ2_decompress` keeps phi shadows
   in the frame (0.69G), and webs (3d) would not change that.
 - Selection (5–15%: boolean tests, constant moves, `setcc`) and copies
-  (4–13%) remain, each spread over many small patterns. The middle end
-  (item 8) was never needed for the target.
+  (4–13%) were each spread over many small patterns; the middle end
+  (item 8) took the largest of them (3.23 → 2.89 instructions).
 
 ## The benchmark gate
 
