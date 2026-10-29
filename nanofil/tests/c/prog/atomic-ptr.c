@@ -10,6 +10,7 @@
    may see the other's flag still 0. Last, pointer loads and stores at
    every order. */
 // link: lib/atomic-ptr.c
+// timeout: 60
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>

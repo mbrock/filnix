@@ -23,7 +23,9 @@
 # A "// cflags: ..." line passes those flags to clang, and nanofil
 # compiles clang's preprocessing with them, as nanofil-cc does (with
 # NANOFIL_STD=c23 for -std=c23 or gnu23, gnu89 for C90 modes). NANOFIL_OPT=-O turns on nanofil's
-# middle end.
+# middle end. Each run gets PROG_TIMEOUT seconds (10); a "// timeout: N"
+# line raises that to N for a program whose threads spin, which crawl
+# when a loaded builder oversubscribes its cores.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 src="$here/../src"
@@ -58,7 +60,7 @@ run() {
   set +e
   # Isolate file-writing tests from the checkout and from the other run.
   # The inner shell reports a fatal signal, so keep its stderr quiet.
-  (cd "$cwd" && bash -c '"$@" >"$0.stdout" 2>"$0.stderr"; exit $?' "$out" "${run_env[@]}" timeout "${PROG_TIMEOUT:-10}" "$exe" "$@" </dev/null) 2>/dev/null
+  (cd "$cwd" && bash -c '"$@" >"$0.stdout" 2>"$0.stderr"; exit $?' "$out" "${run_env[@]}" timeout "$run_timeout" "$exe" "$@" </dev/null) 2>/dev/null
   local rc=$?
   set -e
   if grep -q 'filc safety error' "$out.stderr"; then
@@ -84,6 +86,9 @@ for f in "$@"; do
   read -r -a cflags <<<"$(sed -n 's|^// cflags: ||p' "$f")"
   ropt=$(sed -n 's|^// reference-opt: ||p' "$f"); ropt=${ropt:--O1}
   trap_reason=0; if grep -q '^// trap-reason' "$f"; then trap_reason=1; fi
+  run_timeout=${PROG_TIMEOUT:-10}
+  tmo=$(sed -n 's|^// timeout: ||p' "$f")
+  if [[ -n $tmo ]] && (( tmo > run_timeout )); then run_timeout=$tmo; fi
   input=$f std=c17
   if [[ " ${cflags[*]} " =~ \ -std=(c|gnu)(23|2x)\  ]]; then std=c23; fi
   if [[ " ${cflags[*]} " =~ \ (-std=(c|gnu)(89|90)|-ansi|-fgnu89-inline)\  ]]; then std=gnu89; fi
