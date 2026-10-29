@@ -15,6 +15,12 @@ for x in run-*; do
   case $x in run-all|run-minimal|run-gprof|*.orig|*~) continue ;; esac
   t=$(mktemp -d "$base/bash-test.XXXXXX"); export TMPDIR=$t BASH_TSTOUT=$t/tstout
   timeout 1200 bash "$x" </dev/null >"$t/out" 2>&1; rc=$?
+  # Whether a writer into a closed pipe reports EPIPE is timing: filcc's
+  # bash printed comsub.tests:90's and lastpipe.tests:46's "echo: write
+  # error: Broken pipe" in some runs, beside a nanofil bash that did not.
+  # Drop those lines, and the diff's hunk headers if nothing else is left.
+  sed -E -i '/^< .*: write error: Broken pipe$/d' "$t/out"
+  grep -qvE '^[0-9]+(,[0-9]+)?[acd][0-9]+(,[0-9]+)?$' "$t/out" || : >"$t/out"
   if [ $rc = 124 ]; then r=timeout; elif [ -s "$t/out" ]; then r=differs; else r=ok; fi
   echo "${x#run-} $r"
   # What a failing script printed, its temporary directory, the tree's
