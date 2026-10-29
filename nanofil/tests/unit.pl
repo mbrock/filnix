@@ -2898,6 +2898,211 @@ test(reuse_related) :-
                                              block(d, [], Dead, ret(tmp(z2)))])]),
           valid_module(C), reuse_checks(C, C1), reuse_refines(C, C1) )).
 
+% Renewal (docs/m7.md, round 4): a heap check dominated by a check of
+% the same pointer that covers its bounds and alignment tests only that
+% the object is not freed (and for a write not read-only), across calls
+% and polls. renew_fn(+Blocks, -M): f(a, b, c) with Blocks.
+renew_fn(Blocks, module([func(f, local, l,
+    [param(p, tmp(a)), param(p, tmp(b)), param(w, tmp(c))], Blocks)])).
+
+renew_rejected(M) :-
+    catch(( valid_module(M), fail ), nanofil_error(Msg), true),
+    once(sub_atom(Msg, _, _, _, renew)).
+
+test(renew_validation) :-
+    C = let(tmp(q), a, check(0, 8, read, 1), [tmp(a)]),
+    L = let(tmp(x), l, raw_load(l, 0), [tmp(q)]),
+    Rn = let(tmp(r), a, renew(0, 8, write, 1), [tmp(q)]),
+    W = raw_store(l, 0, const(2), tmp(r)),
+    Call = call(void, global(free), [arg(p, tmp(b))]),
+    R = ret(const(0)),
+    % Accepted: after a call, and across a poll edge (a back edge too).
+    forall(member(Bs, [
+        [block(s, [], [C, L, Call, Rn, W], R)],
+        [block(s, [], [C, L], goto(poll(t))), block(t, [], [Call, Rn, W], R)],
+        [block(s, [], [C, L], goto(h)),
+         block(h, [], [Call, Rn, W], branch(tmp(c), poll(h), e)), block(e, [], [], R)]
+    ]), ( renew_fn(Bs, M), valid_module(M) )),
+    % Rejected: Q1 does not dominate (one arm checks), a second definition
+    % of P1 (a phi) or of Q1, a setjmp, too little range, a weaker
+    % alignment, a renew not followed by its access, an empty range, Q1
+    % later in the block.
+    renew_fn([block(s, [], [], branch(tmp(c), t, u)), block(t, [], [C, L], goto(j)),
+              block(u, [], [], goto(j)), block(j, [], [Rn, W], R)], NoDom),
+    catch(( valid_module(NoDom), fail ), nanofil_error(_), true),
+    renew_fn([block(s, [], [], branch(tmp(c), t, j)), block(t, [], [], goto(j)),
+              block(j, [phi(tmp(a), p, [s-tmp(a), t-tmp(b)])], [C, L, Call, Rn, W], R)], TwoP),
+    renew_rejected(TwoP),
+    renew_fn([block(s, [], [C, L, Call, Rn, W], R),
+              block(u, [], [C, L], R)], TwoQ),
+    renew_rejected(TwoQ),
+    renew_fn([block(s, [], [C, L,
+                  let(tmp(j), w, setjmp('_setjmp'), [tmp(b), const(0)]),
+                  Rn, W], R)], Sj),
+    renew_rejected(Sj),
+    renew_fn([block(s, [], [C, L, Call, let(tmp(r), a, renew(0, 16, write, 1), [tmp(q)]),
+                            raw_store(l, 0, const(2), tmp(r))], R)], Wide),
+    renew_rejected(Wide),
+    renew_fn([block(s, [], [C, L, Call, let(tmp(r), a, renew(0, 8, read, 8), [tmp(q)]),
+                            let(tmp(y), l, raw_load(l, 0), [tmp(r)])], R)], Aligned),
+    renew_rejected(Aligned),
+    renew_fn([block(s, [], [C, L, Call, Rn, Call, W], R)], Apart),
+    renew_rejected(Apart),
+    renew_fn([block(s, [], [C, L, Call, let(tmp(r), a, renew(4, 4, read, 1), [tmp(q)]),
+                            let(tmp(y), l, raw_load(l, 0), [tmp(r)])], R)], Empty),
+    renew_rejected(Empty),
+    % Q1 later in the same block.
+    renew_fn([block(s, [], [Call, Rn, W, C, L], R)], Later),
+    catch(( valid_module(Later), fail ), nanofil_error(_), true),
+    % Q1 starts later than the renew, or at an offset its alignment
+    % does not reach.
+    renew_fn([block(s, [], [let(tmp(q), a, check(4, 12, read, 1), [tmp(a)]),
+                            let(tmp(x), l, raw_load(l, 4), [tmp(q)]), Call,
+                            let(tmp(r), a, renew(0, 8, read, 1), [tmp(q)]),
+                            let(tmp(y), l, raw_load(l, 0), [tmp(r)])], R)], Below),
+    renew_rejected(Below),
+    renew_fn([block(s, [], [let(tmp(q), a, check(0, 16, read, 8), [tmp(a)]),
+                            let(tmp(x), l, raw_load(l, 0), [tmp(q)]), Call,
+                            let(tmp(r), a, renew(4, 12, read, 8), [tmp(q)]),
+                            let(tmp(y), l, raw_load(l, 4), [tmp(r)])], R)], Shifted),
+    renew_rejected(Shifted),
+    % A renew of a renew's proof is not a check's.
+    renew_fn([block(s, [], [C, L, Call, Rn, W, Call,
+                            let(tmp(r2), a, renew(0, 8, write, 1), [tmp(r)]),
+                            raw_store(l, 0, const(3), tmp(r2))], R)], Chain),
+    renew_rejected(Chain),
+    % The emitter refuses the first two as well, rather than reloading
+    % a pointer that may not be the one Q1 checked.
+    forall(member(Bad, [TwoP, TwoQ]),
+           catch(( filc_module_asm(Bad, _), fail ), nanofil_error(_), true)).
+
+% The interpreter runs a renew's whole access test: a free in between
+% traps out_of_bounds and a write to a read-only object traps readonly,
+% as the replaced check does; a span that was never true is unchecked.
+test(renew_semantics) :-
+    Alloc = let(tmp(p), p, alloc(8), [const(8)]),
+    C = let(tmp(q), a, check(0, 8, write, 1), [tmp(p)]),
+    S = raw_store(l, 0, const(5), tmp(q)),
+    Free = call(void, global(free), [arg(p, tmp(p))]),
+    Ld = [let(tmp(x), l, raw_load(l, 0), [tmp(r)])],
+    reuse_l_fn([Alloc, C, S, Free, let(tmp(r), a, check(0, 8, read, 1), [tmp(p)])|Ld], Ref),
+    reuse_l_fn([Alloc, C, S, Free, let(tmp(r), a, renew(0, 8, read, 1), [tmp(q)])|Ld], Ren),
+    valid_module(Ref), valid_module(Ren),
+    once(run(Ref, f, [], 10, trap(out_of_bounds))),
+    once(run(Ren, f, [], 10, trap(out_of_bounds))),
+    reuse_l_fn([Alloc, C, S, let(tmp(r), a, renew(0, 8, read, 1), [tmp(q)])|Ld], Live),
+    valid_module(Live), once(run(Live, f, [], 10, ret(5))),
+    Ro = module([data(msg, ro(local), 1, [item(b, str("h"))]),
+        func(g, local, w, [], [block(s, [], [
+            let(tmp(p), p, copy, [global(msg)]),
+            let(tmp(q), a, check(0, 1, read, 1), [tmp(p)]),
+            let(tmp(x), w, raw_load(ub, 0), [tmp(q)]),
+            let(tmp(r), a, renew(0, 1, write, 1), [tmp(q)]),
+            raw_store(b, 0, const(1), tmp(r))
+        ], ret(tmp(x)))])]),
+    valid_module(Ro), once(run(Ro, g, [], 10, trap(readonly))),
+    % Forged: more range than the object has, or an alignment the
+    % address lacks. The validator rejects both; run anyway, unchecked.
+    reuse_l_fn([Alloc, C, S, let(tmp(r), a, renew(0, 64, read, 1), [tmp(q)]),
+                let(tmp(x), l, raw_load(l, 0), [tmp(r)])], Wide),
+    renew_rejected(Wide), once(run(Wide, f, [], 10, unchecked(span))),
+    reuse_l_fn([Alloc, flight(tmp(o), add, [address(tmp(p)), const(1)], lower(tmp(p))),
+                let(tmp(q), a, check(0, 4, write, 1), [tmp(o)]),
+                raw_store(w, 0, const(5), tmp(q)),
+                let(tmp(r), a, renew(0, 4, read, 4), [tmp(q)]),
+                let(tmp(y), w, raw_load(sw, 0), [tmp(r)]),
+                let(tmp(x), l, ext(sw), [tmp(y)])], Mis),
+    renew_rejected(Mis), once(run(Mis, f, [], 10, unchecked(span))).
+
+% The pass renews a loop's checks after a call when the check before the
+% loop dominates and covers them, keeps those it does not cover, and all
+% modules agree; renew_refines/2 accepts it and refuses a renew of
+% another object's proof. Native: fewer full checks, a flag test each.
+test(renew_pass) :-
+    ir_module([func(f, local, l, [param(w, tmp(k))], [
+        block(s, [], [
+            let(tmp(p), p, alloc(8), [const(16)]),
+            store(l, const(1), tmp(p)),
+            let(tmp(v0), l, load(l), [tmp(p)])
+        ], goto(h)),
+        block(h, [phi(tmp(i), w, [s-const(0), b-tmp(i1)]),
+                  phi(tmp(t), l, [s-tmp(v0), b-tmp(t1)])], [
+            let(tmp(m), w, cmp(slt, w), [tmp(i), tmp(k)])
+        ], branch(tmp(m), b, e)),
+        block(b, [], [
+            let(tmp(o), p, alloc(8), [const(16)]),
+            call(void, global(free), [arg(p, tmp(o))]),
+            let(tmp(v), l, load(l), [tmp(p)]),
+            let(tmp(t1), l, add, [tmp(t), tmp(v)]),
+            store(l, tmp(t1), tmp(p)),
+            let(tmp(p8), p, add, [tmp(p), const(8)]),
+            let(tmp(u), l, load(l), [tmp(p8)]),
+            let(tmp(t2), l, add, [tmp(t1), tmp(u)]),
+            store(l, tmp(t2), tmp(p8)),
+            let(tmp(i1), w, add, [tmp(i), const(1)])
+        ], goto(h)),
+        block(e, [], [], ret(tmp(t)))])], M),
+    pizlonate_module(M, C0), reuse_checks(C0, C1), renew_checks(C1, C2),
+    renew_refines(C1, C2), valid_module(C2),
+    C2 = module([func(f, _, _, _, Bs)|_]), memberchk(block(b, _, Is, _), Bs),
+    findall(Op, member(let(_, a, Op, _), Is), Ops),
+    % p's load and store are renewed after the call (a read never covers
+    % a write, so the store gets its own); p+8 was never checked before
+    % the loop: its load's check stays, and its store renews that.
+    Ops = [renew(0, 8, read, 1), renew(0, 8, write, 1), check(0, 8, read, 1),
+           renew(0, 8, write, 1)],
+    % *p doubles each iteration: 1, 2, 4, 8.
+    forall(member(Mod, [M, C0, C2]),
+           ( once(run(Mod, f, [3], 100, ret(R))), R == 8 )),
+    reuse_fail_jumps(C1, N1), reuse_fail_jumps(C2, N2), N2 < N1,
+    filc_module_asm(C2, Lines), memberchk(ins(test, b, [imm(6), mem(-2, rcx)]), Lines),
+    % Wrong object: the renew reads o's proof.
+    renew_fn([block(s, [], [let(tmp(q), a, check(0, 8, read, 1), [tmp(a)]),
+                            let(tmp(x), l, raw_load(l, 0), [tmp(q)]),
+                            let(tmp(qb), a, check(0, 8, read, 1), [tmp(b)]),
+                            let(tmp(y), l, raw_load(l, 0), [tmp(qb)]),
+                            let(tmp(r), a, check(0, 8, read, 1), [tmp(a)]),
+                            let(tmp(z), l, raw_load(l, 0), [tmp(r)])], ret(tmp(z)))], Two),
+    valid_module(Two), renew_checks(Two, Two1), renew_refines(Two, Two1),
+    Two1 = module([func(_, _, _, _, [block(_, _, [_, _, _, _, let(_, a, renew(_, _, _, _), [tmp(q)]), _], _)])]),
+    renew_fn([block(s, [], [let(tmp(q), a, check(0, 8, read, 1), [tmp(a)]),
+                            let(tmp(x), l, raw_load(l, 0), [tmp(q)]),
+                            let(tmp(qb), a, check(0, 8, read, 1), [tmp(b)]),
+                            let(tmp(y), l, raw_load(l, 0), [tmp(qb)]),
+                            let(tmp(r), a, renew(0, 8, read, 1), [tmp(qb)]),
+                            let(tmp(z), l, raw_load(l, 0), [tmp(r)])], ret(tmp(z)))], Wrong),
+    valid_module(Wrong), \+ renew_refines(Two, Wrong),
+    % Wrong distance: a check of a+8 renewed from a's proof is valid IR,
+    % but reads a's address; only renew_refines refuses it.
+    F8 = flight(tmp(a8), add, [address(tmp(a)), const(8)], lower(tmp(a))),
+    Q16 = [let(tmp(q), a, check(0, 16, read, 1), [tmp(a)]),
+           let(tmp(x), l, raw_load(l, 0), [tmp(q)]),
+           call(void, global(free), [arg(p, tmp(b))]), F8],
+    append(Q16, [let(tmp(k), a, check(0, 8, read, 1), [tmp(a8)]),
+                 let(tmp(y), l, raw_load(l, 0), [tmp(k)])], DIs),
+    renew_fn([block(s, [], DIs, ret(tmp(y)))], Dist),
+    append(Q16, [let(tmp(k), a, renew(0, 8, read, 1), [tmp(q)]),
+                 let(tmp(y), l, raw_load(l, 0), [tmp(k)])], DwIs),
+    renew_fn([block(s, [], DwIs, ret(tmp(y)))], DistWrong),
+    valid_module(Dist), valid_module(DistWrong), \+ renew_refines(Dist, DistWrong),
+    renew_checks(Dist, Dist1), Dist1 == Dist,
+    % The pass's facts end at a redefinition of their pointer.
+    renew_fn([block(s, [], [let(tmp(q), a, check(0, 8, read, 1), [tmp(a)]),
+                            let(tmp(x), l, raw_load(l, 0), [tmp(q)]),
+                            flight(tmp(a), copy, [address(tmp(b))], lower(tmp(b))),
+                            let(tmp(k), a, check(0, 8, read, 1), [tmp(a)]),
+                            let(tmp(y), l, raw_load(l, 0), [tmp(k)])], ret(tmp(y)))], Redef),
+    valid_module(Redef), reuse_checks(Redef, Redef1), Redef1 == Redef,
+    % The emitter refuses a renew whose source pointer has two
+    % definitions, even unvalidated.
+    renew_fn([block(s, [], [let(tmp(q), a, check(0, 8, read, 1), [tmp(a)]),
+                            let(tmp(x), l, raw_load(l, 0), [tmp(q)])], goto(t)),
+              block(t, [], [let(tmp(r), a, renew(0, 8, read, 1), [tmp(q)]),
+                            let(tmp(z), l, raw_load(l, 0), [tmp(r)])], ret(tmp(z))),
+              block(u, [], [flight(tmp(a), copy, [address(tmp(b))], lower(tmp(b)))], goto(t))],
+             TwoDefs),
+    catch(( filc_module_asm(TwoDefs, _), fail ), nanofil_error(_), true).
+
 % Emission reads a reused access at the checked pointer without a
 % check, and refuses one whose pointer was redefined since its check,
 % which only the validator would otherwise catch.

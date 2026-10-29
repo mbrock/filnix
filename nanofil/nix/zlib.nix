@@ -31,6 +31,7 @@ let
     O-stack = "-O --registers=stack";
     reuse = "--checks=reuse";
     O-reuse = "-O --checks=reuse";
+    O-renew = "-O --checks=renew";
   };
 in
 import ./configurations.nix { inherit pkgs; } "nanofil-zlib" configurations (

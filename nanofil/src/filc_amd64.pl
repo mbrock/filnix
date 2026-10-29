@@ -621,7 +621,16 @@ single_proofs(Params, Blocks, Single) :-
                    member(let(tmp(Q), a, check(_, _, _, _), [P]), Is),
                    \+ get_assoc(Q, MultiSet, _),
                    ( P = tmp(N) -> \+ get_assoc(N, MultiSet, _) ; true ) ),
-            Single0),
+            Checks),
+    % A renew's proof stands for its source check's pointer
+    % (docs/m7.md, round 4), when it too has one definition.
+    list_to_assoc(Checks, CheckAssoc),
+    findall(Q-P, ( member(block(_, _, Is, _), Blocks),
+                   member(let(tmp(Q), a, renew(_, _, _, _), [tmp(Q1)]), Is),
+                   \+ get_assoc(Q, MultiSet, _),
+                   get_assoc(Q1, CheckAssoc, P) ),
+            Renews),
+    append(Checks, Renews, Single0),
     % Q has one definition, so each key occurs once.
     list_to_assoc(Single0, Single).
 
@@ -647,6 +656,8 @@ fused_insts([Inst0|Insts0], Fn, Single, Proofs0, [Inst|Insts]) :-
     ),
     (   Inst0 = let(tmp(Q), a, check(_, _, _, _), [P])
     ->  Proofs1 = [Q-P|Proofs]
+    ;   Inst0 = let(tmp(Q), a, renew(_, _, _, _), [tmp(Q1)]), get_assoc(Q1, Single, P)
+    ->  Proofs1 = [Q-P|Proofs]
     ;   Proofs1 = Proofs
     ),
     (   ( Inst0 = let(_, _, raw_load(_, Off), [tmp(Q1)])
@@ -657,6 +668,8 @@ fused_insts([Inst0|Insts0], Fn, Single, Proofs0, [Inst|Insts]) :-
         ->  Inst = reused(Access), Insts1 = Insts0
         ;   throw_fn(Fn, 'a reused proof at an offset beyond 32 bits')
         )
+    ;   Inst0 = let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [tmp(Q1)])
+    ->  renewed_inst(Q, renew(Lo, Hi, Rights, Align), Q1, Insts0, Fn, Single, Inst, Insts1)
     ;   fused_inst(Inst0, Insts0, Fn, Inst, Insts1)
     ),
     % A fused access or call may define Q's pointer too.
@@ -666,6 +679,26 @@ fused_insts([Inst0|Insts0], Fn, Single, Proofs0, [Inst|Insts]) :-
     fused_insts(Insts1, Fn, Single, Proofs2, Insts).
 
 proof_named(Ds, Q-P) :- member(D, Ds), proof_names(D, Q-P), !.
+
+% renewed_inst(+Q, +Renew, +Q1, +Insts0, +Fn, +Single, -Inst, -Insts): a
+% renew of Q1 and the access after it, at Q1's checked pointer P1, which
+% needs Q1 and P1 to have one definition each: with strict SSA, P1's slot
+% then holds the value Q1's check saw. Fusion and offsets as for a check.
+renewed_inst(Q, Renew, Q1, [Access0|Insts], Fn, Single, fused(Renew, Access), Insts) :- !,
+    (   get_assoc(Q1, Single, P1), P1 = tmp(_),
+        proven_access(Access0, Q, P1, Access),
+        Access \= let(_, _, raw_cas(_, _), _)
+    ->  true
+    ;   throw_fn(Fn, 'a renew without a single-definition source, or its access')
+    ),
+    (   Renew = renew(0, Size, _, Align), memberchk(Align, [1, 2, 4, 8]),
+        integer(Size), Size > 0, Size =< 2147483647,
+        access_pointer(Access, _, 0)
+    ->  true
+    ;   throw_fn(Fn, 'a renew or offset access the emitter cannot emit yet')
+    ).
+renewed_inst(_, _, _, [], Fn, _, _, _) :-
+    throw_fn(Fn, 'a renew not followed by its access').
 
 proof_names(D, Q-P) :- ( Q == D ; P == tmp(D) ).
 
@@ -1458,6 +1491,19 @@ inst(fused(check(_, Size, Rights, Align), Access), Index, Block, Ctx) -->
       rights_write(Rights, Write) },
     flight_load(P, Ctx),
     access_check(k(Size, Write, Align), Ctx),
+    raw_access(Access, Index, Block, Ctx).
+% A renew (docs/m7.md, round 4): the check's bounds and alignment still
+% hold, so only its temporal part is tested, the free flag, and for a
+% write the read-only one, in the flags byte write_check//2 tests. A
+% failure goes to the same reporter with the same pointer and origin.
+inst(fused(renew(_, Size, Rights, Align), Access), Index, Block, Ctx) -->
+    { access_pointer(Access, P),
+      rights_write(Rights, Write),
+      renew_mask(Write, Mask),
+      check_fail_label(Ctx, k(Size, Write, Align), Fail) },
+    flight_load(P, Ctx),
+    [ins(test, b, [imm(Mask), mem(-2, rcx)]),
+     ins(jnz, none, [sym(Fail)])],
     raw_access(Access, Index, Block, Ctx).
 inst(reused(Access), Index, Block, Ctx) -->
     { access_pointer(Access, P, Off), ctx_fn(Ctx, Fn), zero_offset(Access, Access0) },
@@ -2457,6 +2503,11 @@ borrow_check(Selection, Size, Fail) -->
     ;   [ins(jb, none, [sym(Fail)])]
     ).
 
+% renew_mask(+Write, -Mask): the flags a renew tests, FREE (4) and, for a
+% write, READONLY (2) (filc_runtime.h).
+renew_mask(0, 4).
+renew_mask(1, 6).
+
 % For a write (Write = 1), a check of the object's read-only flags.
 write_check(0, _) --> [].
 write_check(1, Fail) -->
@@ -2496,6 +2547,8 @@ access_check_kinds(Blocks, Kinds) :-
 % inst_check_kind(+Inst, -Kind): Inst's access needs a check of Kind;
 % fails if Inst does not access memory.
 inst_check_kind(fused(check(_, Size, Rights, Align), _), k(Size, Write, Align)) :-
+    rights_write(Rights, Write).
+inst_check_kind(fused(renew(_, Size, Rights, Align), _), k(Size, Write, Align)) :-
     rights_write(Rights, Write).
 inst_check_kind(fused(check_local(_, _, Size, Rights, Align), _), k(Size, Write, Align)) :-
     rights_write(Rights, Write).

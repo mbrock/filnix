@@ -516,6 +516,18 @@ with it. Measured natively on zlib, bzip2, lz4 and Lua, it saves up to
 hello, zlib, Lua, bzip2, lz4 and SQLite checks also build with
 `--checks=reuse` and must match filcc.
 
+**Round 4, spatial evidence and renewal ([docs/m7.md](docs/m7.md#spatial-evidence-and-renewal-round-4)):**
+an opt-in `--checks=renew` replaces a heap check whose bounds and
+alignment a dominating heap check of the same pointer covers, across
+calls and polls, with a `renew` op. The op tests only the free and
+read-only flags, at the same place, with the same trap text. Oracle
+reviewed the contract before implementation and the result after. Under
+`-O` it removes 9.5% of zlib `-6`'s instructions, 7.5% of bzip2 `-9`'s and
+2.5% of SQLite's. The validator's and pass's evidence is now indexed,
+which takes them from quadratic to near-linear time on large functions.
+It is not the `-O` default; induction ranges for `block[i]` are the
+next contract.
+
 **First deliverable:** one narrowly specified alternative to repeated
 runtime checking, such as reuse for repeated scalar accesses in a
 straight-line region. State the facts, transfer and merge rules,

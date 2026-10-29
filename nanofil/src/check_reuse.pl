@@ -35,12 +35,14 @@
     whose access now reads a proof of the same or a related operand, at
     an offset changed by exactly their distance.
 */
-:- module(check_reuse, [reuse_checks/2, reuse_refines/2]).
+:- module(check_reuse, [reuse_checks/2, reuse_refines/2, renew_checks/2, renew_refines/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
+:- use_module(library(ordsets)).
+:- use_module(library(pairs)).
 :- use_module(ir, [op_kind/2, pointer_memory_effects/2, temp_defs/3]).
-:- use_module(cfg, [inst_def/2, inst_uses/2]).
+:- use_module(cfg, [inst_def/2, inst_uses/2, func_cfg/2, cfg_idoms/2, dominates/3]).
 :- use_module(provenance, [code_items/2, context_records/3, context_index/2, with_context/3,
                            remap_sites/3]).
 
@@ -85,7 +87,8 @@ reused_blocks([block(L, Phis, Insts0, J)|Bs0], Info, Incoming, Exits0,
     common(Sets, Facts0),
     include(single_names(Info), Facts0, Facts1),
     foldl(phi_kills, Phis, Facts1, Facts),
-    reused_insts(Insts0, Info, Facts, L-0-0, Insts, Map0, Reused0, Exit),
+    facts_state(Info, Facts, St),
+    reused_insts(Insts0, Info, St, L-0-0, Insts, Map0, Reused0, st(Exit, _, _)),
     put_assoc(L, Exits0, Exit, Exits),
     reused_blocks(Bs0, Info, Incoming, Exits, Bs, Map1, Reused1),
     append(Map0, Map1, Map), append(Reused0, Reused1, Reused).
@@ -112,8 +115,44 @@ carried(Exits, From-no, Facts) :-
     (   get_assoc(From, Exits, Facts) -> true ; Facts = [] ).
 
 common([], []).
-common([S|Ss], Facts) :- include(everywhere(Ss), S, Facts).
-everywhere(Ss, F) :- forall(member(S, Ss), memberchk(F, S)).
+common([S|Ss], Facts) :- maplist(sort, Ss, Os), include(everywhere(Os), S, Facts).
+everywhere(Os, F) :- forall(member(O, Os), ord_memberchk(F, O)).
+
+/* Within a block the facts are st(Facts, Names, ByRoot): Facts newest
+   first, as before; Names every name a fact mentions (perhaps more);
+   ByRoot the facts of each root (base_of/4), newest first, each with its
+   pointer's offset from the root, K-avail(...). The candidates for a
+   check are exactly ByRoot's list for its pointer's root, in Facts'
+   order, and a definition scans Facts only when Names has its name: a
+   long block costs no more per check than its facts of one root. */
+facts_state(Info, Facts, st(Facts, Names, ByRoot)) :-
+    empty_assoc(E),
+    foldl(avail_names, Facts, E, Names),
+    findall(R-(K-F), ( member(F, Facts), F = avail(P, _, _, _, _, _),
+                       base_of(Info, P, R, K) ), Pairs0),
+    keysort(Pairs0, Pairs),
+    group_pairs_by_key(Pairs, Groups),
+    list_to_assoc(Groups, ByRoot).
+
+avail_names(avail(P, Q, _, _, _, _), N0, N) :-
+    put_assoc(Q, N0, true, N1),
+    ( P = tmp(X) -> put_assoc(X, N1, true, N) ; N = N1 ).
+
+state_add(Info, F, st(Fs, Ns0, B0), st([F|Fs], Ns, B)) :-
+    avail_names(F, Ns0, Ns),
+    F = avail(P, _, _, _, _, _),
+    base_of(Info, P, R, K),
+    ( get_assoc(R, B0, L) -> true ; L = [] ),
+    put_assoc(R, B0, [K-F|L], B).
+
+state_kill(Info, D, St0, St) :-
+    St0 = st(Fs0, Ns, _),
+    (   get_assoc(D, Ns, _)
+    ->  exclude(mentions(D), Fs0, Fs), facts_state(Info, Fs, St)
+    ;   St = St0
+    ).
+
+state_none(Info, St) :- facts_state(Info, [], St).
 
 phi_kills(phi(tmp(D), _, _), Facts0, Facts) :-
     exclude(mentions(D), Facts0, Facts).
@@ -186,8 +225,11 @@ reused_insts([let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Access0|Insts0]
              Info, Facts, L-Old-New, Insts, Map, Reused, Exit) :-
     scalar_access(Access0, Q), !,
     Old1 is Old + 1, Old2 is Old + 2,
-    (   member(avail(P1, Q1, Lo1, Hi1, Rights1, Align1), Facts),
-        related(Info, P, P1, D),
+    base_of(Info, P, R, K),
+    Facts = st(_, _, ByRoot),
+    (   get_assoc(R, ByRoot, Cands),
+        member(K1-avail(_, Q1, Lo1, Hi1, Rights1, Align1), Cands),
+        D is K - K1,
         LoD is Lo + D, HiD is Hi + D,
         subsumes(Lo1, Hi1, Rights1, Align1, LoD, HiD, Rights, Align),
         single_proof(Info, Q)
@@ -197,14 +239,14 @@ reused_insts([let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Access0|Insts0]
     ;   Insts = [let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Access0|Insts1],
         New1 is New + 1, New2 is New + 2,
         Map = [inst(L, Old)-inst(L, New), inst(L, Old1)-inst(L, New1)|Map1],
-        exclude(mentions(Q), Facts, Facts0),
-        Reused = Reused1, Facts1 = [avail(P, Q, Lo, Hi, Rights, Align)|Facts0]
+        state_kill(Info, Q, Facts, Facts0),
+        Reused = Reused1, state_add(Info, avail(P, Q, Lo, Hi, Rights, Align), Facts0, Facts1)
     ),
-    after_def(Access0, Facts1, Facts2),
+    after_def(Info, Access0, Facts1, Facts2),
     reused_insts(Insts0, Info, Facts2, L-Old2-New2, Insts1, Map1, Reused1, Exit).
 reused_insts([Inst|Insts0], Info, Facts0, L-Old-New, [Inst|Insts],
              [inst(L, Old)-inst(L, New)|Map], Reused, Exit) :-
-    (   transparent(Inst) -> after_def(Inst, Facts0, Facts) ; Facts = [] ),
+    (   transparent(Inst) -> after_def(Info, Inst, Facts0, Facts) ; state_none(Info, Facts) ),
     Old1 is Old + 1, New1 is New + 1,
     reused_insts(Insts0, Info, Facts, L-Old1-New1, Insts, Map, Reused, Exit).
 
@@ -279,11 +321,11 @@ subsumes(Lo1, Hi1, Rights1, Align1, Lo, Hi, Rights, Align) :-
 rights_include(write, _).
 rights_include(read, read).
 
-% after_def(+Inst, +Facts0, -Facts): Facts are those of Facts0 that do
+% after_def(+Info, +Inst, +Facts0, -Facts): Facts are those of Facts0 that do
 % not mention the temporary Inst defines.
-after_def(Inst, Facts0, Facts) :-
+after_def(Info, Inst, Facts0, Facts) :-
     (   inst_def(Inst, D)
-    ->  exclude(mentions(D), Facts0, Facts)
+    ->  state_kill(Info, D, Facts0, Facts)
     ;   Facts = Facts0
     ).
 
@@ -317,3 +359,109 @@ transparent_kind(check, _).
 transparent_kind(ld, _).
 transparent_kind(check_local, _).
 transparent_kind(copy, Args) :- \+ memberchk(global(_), Args).
+
+%! renew_checks(+M0, -M) is det.
+%
+%  M is the checked module M0 with each heap check replaced by a renew
+%  (docs/m7.md, round 4) when an earlier heap check of a pointer related
+%  to it at distance 0 dominates it and covers its bounds and alignment,
+%  rights aside, and both that check's proof and pointer have one
+%  definition. The renew reads that proof, the topmost such check on
+%  the dominator chain: no check that covers it dominates it, so it stays
+%  a check. Functions with a setjmp are unchanged. Every instruction keeps
+%  its index, so context sites are unchanged.
+
+renew_checks(module(Items0), module(Items)) :-
+    maplist(renewed_item, Items0, Items).
+
+renewed_item(func(N, L, R, Ps, Bs0), func(N, L, R, Ps, Bs)) :- !,
+    (   member(block(_, _, Is, _), Bs0), member(let(_, _, setjmp(_), _), Is)
+    ->  Bs = Bs0
+    ;   names_info(Ps, Bs0, Info),
+        func_cfg(Bs0, Cfg), cfg_idoms(Cfg, Idom), Cfg = cfg(Entry, _, _, _),
+        renew_sources(Info, Bs0, Entry, Idom, Sources),
+        maplist(renewed_block(Info, Entry, Idom, Sources), Bs0, Bs)
+    ).
+renewed_item(Item, Item).
+
+% renew_sources(+Info, +Blocks, +Entry, +Idom, -Sources): Sources maps
+% Root-K, a root and an offset from it, to s(Depth, L, I, Q1, check) for
+% each reachable heap check of a pointer at K from Root whose proof and
+% pointer have one definition, sorted by dominator depth and index.
+renew_sources(Info, Blocks, Entry, Idom, Sources) :-
+    findall((R-K)-s(Depth, L, I, Q1, check(Lo1, Hi1, Al1)),
+            ( member(block(L, _, Is, _), Blocks),
+              dom_depth(Idom, Entry, L, Depth),
+              nth0(I, Is, let(tmp(Q1), a, check(Lo1, Hi1, _, Al1), [P1])),
+              single_source(Info, Q1, P1),
+              base_of(Info, P1, R, K) ),
+            Pairs0),
+    keysort(Pairs0, Pairs1),
+    group_pairs_by_key(Pairs1, Groups0),
+    findall(Key-Ss, ( member(Key-Ss0, Groups0), msort(Ss0, Ss) ), Groups),
+    list_to_assoc(Groups, Sources).
+
+single_source(info(Defs, _, _), Q1, tmp(N1)) :-
+    count(Defs, Q1, 1), count(Defs, N1, 1).
+
+% dom_depth(+Idom, +Entry, +L, -Depth): L is reachable, at Depth
+% dominators below Entry.
+dom_depth(_, Entry, Entry, 0) :- !.
+dom_depth(Idom, Entry, L, Depth) :-
+    get_assoc(L, Idom, D), dom_depth(Idom, Entry, D, Depth0), Depth is Depth0 + 1.
+
+renewed_block(Info, Entry, Idom, Sources, block(L, Phis, Is0, J), block(L, Phis, Is, J)) :-
+    (   dom_depth(Idom, Entry, L, _)
+    ->  renewed_insts(Is0, 0, L, Info, Idom, Sources, Is)
+    ;   Is = Is0
+    ).
+
+renewed_insts([], _, _, _, _, _, []).
+renewed_insts([Inst0|Is0], I, L, Info, Idom, Sources, [Inst|Is]) :-
+    (   Inst0 = let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]),
+        Is0 = [Access|_], renewable_access(Access, Q),
+        base_of(Info, P, R, K),
+        get_assoc(R-K, Sources, Ss),
+        member(s(_, L1, I1, Q1, check(Lo1, Hi1, Al1)), Ss),
+        (   L1 == L -> I1 < I ; dominates(Idom, L1, L) ),
+        subsumes(Lo1, Hi1, write, Al1, Lo, Hi, Rights, Align)
+    ->  Inst = let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [tmp(Q1)])
+    ;   Inst = Inst0
+    ),
+    I1n is I + 1,
+    renewed_insts(Is0, I1n, L, Info, Idom, Sources, Is).
+
+% A renew's access: scalar or an ordinary pointer access; not a cas.
+renewable_access(Access, Q) :- scalar_access(Access, Q).
+renewable_access(let(_, p, raw_load_pointer(_, Es), [tmp(Q)]), Q) :-
+    pointer_memory_effects(load, Es).
+renewable_access(raw_store_pointer(_, _, tmp(Q), Es), Q) :-
+    pointer_memory_effects(store, Es).
+
+%! renew_refines(+M0, +M) is semidet.
+%
+%  M is M0 except for heap checks replaced by renews of the same range,
+%  rights and alignment, each reading a single-definition heap check's
+%  proof of a single-definition pointer related to the replaced check's
+%  at distance 0. This is identity, not safety: dominance and coverage
+%  are the validator's (ir.pl), which valid_module/1 checks separately.
+
+renew_refines(module(Items0), module(Items)) :-
+    maplist(item_renews, Items0, Items).
+
+item_renews(func(N, L, R, Ps, Bs0), func(N, L, R, Ps, Bs)) :- !,
+    names_info(Ps, Bs0, Info),
+    findall(Q1-P1, ( member(block(_, _, Is, _), Bs0),
+                     member(let(tmp(Q1), a, check(_, _, _, _), [P1]), Is),
+                     single_source(Info, Q1, P1) ), Pairs),
+    list_to_assoc(Pairs, Checks),
+    maplist(block_renews(Info, Checks), Bs0, Bs).
+item_renews(Item, Item).
+
+block_renews(Info, Checks, block(L, Ph, Is0, J), block(L, Ph, Is, J)) :-
+    maplist(inst_renews(Info, Checks), Is0, Is).
+
+inst_renews(_, _, Inst, Inst) :- !.
+inst_renews(Info, Checks, let(tmp(Q), a, check(Lo, Hi, Rs, Al), [P]),
+            let(tmp(Q), a, renew(Lo, Hi, Rs, Al), [tmp(Q1)])) :-
+    get_assoc(Q1, Checks, P1), related(Info, P, P1, 0).

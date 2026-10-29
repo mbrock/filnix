@@ -758,6 +758,16 @@ kind_res(check, check(Lo, Hi, Rights, Align), a, filc, [ptr(A, Cap)],
     Size is Hi - Lo,
     access_res(Mem, B, Cap, Size, Rights, Align, Res0),
     checked_res(Res0, ptr(A, Cap), Res).
+% A renew runs the check's whole access test on its proof's value
+% (docs/m7.md, round 4). Only a freed object or a write to a read-only
+% one is the program's trap, as the reference check's; any other failure
+% means the span the validator relied on was false: unchecked(span).
+kind_res(renew, renew(Lo, Hi, Rights, Align), a, filc, [ptr(A, Cap)],
+         s(Mem, Fuel), Res, s(Mem, Fuel)) :-
+    raw_address(A, Lo, B),
+    Size is Hi - Lo,
+    access_res(Mem, B, Cap, Size, Rights, Align, Res0),
+    renew_res(Res0, ptr(A, Cap), Mem, Res).
 kind_res(ld, raw_load(T, Off), K, filc, [ptr(A, Cap)], S0, Res, S) :-
     raw_address(A, Off, B),
     load_op_res(T, K, filc, [ptr(B, Cap)], S0, Res0, S),
@@ -853,6 +863,15 @@ checked_res(trap(Why), _, trap(Why)).
 
 % raw_res(+Res0, -Res): a raw access is the access its check covers,
 % made again without trapping: what would have trapped is unchecked.
+renew_res(ok, P, _, val(P)).
+renew_res(trap(readonly), _, _, trap(readonly)).
+renew_res(trap(Why), ptr(_, Cap), mem(_, Rs, _, _), Res) :-
+    Why \== readonly,
+    (   Cap = obj(Base), object_region(Base, Rs, region(_, _, _, freed))
+    ->  Res = trap(out_of_bounds)
+    ;   Res = unchecked(span)
+    ).
+
 raw_res(val(X), val(X)).
 raw_res(ok, ok).
 raw_res(ub(Why), ub(Why)).

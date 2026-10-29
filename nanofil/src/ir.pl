@@ -147,6 +147,7 @@
     | `va_arg` | any | `[p]` | filc only: a load through a va_list address, advancing its cursor (reads and writes memory) |
     | `setjmp(Kind)` | `w` | `[p, w]`: Buf, SaveMask | filc only, below |
     | `check(Lo, Hi, Rights, Align)` | `a` | `[p]` | checked stage, below |
+    | `renew(Lo, Hi, Rights, Align)` | `a` | `[a]` | checked stage: renew an earlier heap proof's temporal facts (docs/m7.md, round 4) |
     | `check_local(Name, Off, Bytes, Rights, Align)` | `a` | `[]` | checked stage: prove exact bounds and alignment for the named object, preserving its identity and offset |
     | `atomic_load(p)` | `p` | `[p]` | (filc mode) a single-copy atomic, sequentially consistent pointer load (Fil-C's filc_load_ptr_atomic) |
     | `cas(T)` | as `load(T)` | `[K, K, p]`: Expected, New, Addr | (filc mode) atomic compare-exchange, below; T one of `l` `sw` `uw` `sh` `uh` `sb` `ub` `p` |
@@ -181,6 +182,15 @@
     capability permits Rights (`read` or `write`) on [P+Lo, P+Hi) and
     P+Lo is Align-aligned (Align one of 1, 2, 4, 8, 16); otherwise its
     result is P, proven accessible.
+
+    `renew(Lo, Hi, Rights, Align)` reads `[a Q1]`, the proof of an
+    earlier heap check of P1 that dominates it, whose bounds and
+    alignment still hold since an object's bounds change only when it is
+    freed. It traps as `check(Lo, Hi, Rights, Align)` of P1 would if the
+    object has been freed since, or if Rights is `write` and the object is
+    read-only; otherwise its result is Q1's value. Q1 and P1 have one
+    definition each, Q1's check covers [Lo, Hi) at Align, and the
+    function has no setjmp (stage_func/5).
 
     `check_local` proves [Off, Off+Bytes) within the named object's
     exact size and 16-aligned base. Its adjacent raw access has offset
@@ -311,6 +321,7 @@
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
+:- use_module(library(ordsets)).
 :- use_module(library(dcgs)).
 :- use_module(cfg).
 :- use_module(provenance, [code_items/2, valid_contexts/1]).
@@ -411,6 +422,7 @@ kind_arity(float_to_int, 1).
 kind_arity(int_to_float, 1).
 kind_arity(cast, 1).
 kind_arity(check, 1).
+kind_arity(renew, 1).
 kind_arity(check_local, 0).
 kind_arity(check_function, 1).
 kind_arity(ld, 1).
@@ -428,6 +440,8 @@ valid_op(check(Lo, Hi, Rights, Align)) :- !,
     integer(Lo), integer(Hi), Lo < Hi,
     memberchk(Rights, [read, write]),
     memberchk(Align, [1, 2, 4, 8, 16]).
+valid_op(renew(Lo, Hi, Rights, Align)) :- !,
+    valid_op(check(Lo, Hi, Rights, Align)).
 valid_op(check_local(Name, Off, Bytes, Rights, Align)) :- !,
     ground(Name), local_offset(Off), integer(Bytes), Bytes > 0, Bytes =< 2147483647,
     memberchk(Rights, [read, write]), memberchk(Align, [1, 2, 4, 8, 16]).
@@ -577,6 +591,7 @@ op_kind(cas(_), cas).
 op_kind(raw_cas(_, _), raw_cas).
 op_kind(alloc(_), alloc).
 op_kind(check(_, _, _, _), check).
+op_kind(renew(_, _, _, _), renew).
 op_kind(check_local(_, _, _, _, _), check_local).
 op_kind(check_function, check_function).
 op_kind(raw_load(_, _), ld).
@@ -791,6 +806,7 @@ module_stage(module(Items), Stage) :-
     ).
 
 checked_inst(let(_, _, check(_, _, _, _), _)).
+checked_inst(let(_, _, renew(_, _, _, _), _)).
 checked_inst(let(_, _, check_local(_, _, _, _, _), _)).
 checked_inst(let(_, _, check_function, _)).
 checked_inst(let(_, _, raw_load(_, _), _)).
@@ -857,7 +873,7 @@ valid_item(Symbols, Mode, Stage, func(Name, Linkage, Ret, Params, Blocks)) :-
     proof_class_defs(Name, Params, Blocks),
     definitions_dominate(Name, Params, Blocks),
     valid_locals(Name, Params, Blocks),
-    stage_func(Stage, Name, Mode, Blocks).
+    stage_func(Stage, Name, Mode, Params, Blocks).
 valid_item(_, Mode, _, data(Name, Linkage, Align, Items)) :-
     (   integer(Align), data_align(Align) -> true
     ;   fn_error(Name, 'unsupported data alignment ~w', [Align])
@@ -1169,15 +1185,16 @@ site_dominates(at(D, _), L, _, Intervals) :-
     D \== L,
     dominates_by_interval(Intervals, D, L).
 
-% stage_func(+Stage, +Fn, +Mode, +Blocks): Fn's blocks are well formed
-% for the module's Stage. A checked function accesses memory only by raw
-% accesses, each covered by a check whose evidence still holds, and
-% polls on every cycle.
-stage_func(unchecked, _, _, _).
-stage_func(checked, Fn, Mode, Blocks) :-
+% stage_func(+Stage, +Fn, +Mode, +Params, +Blocks): Fn's blocks are well
+% formed for the module's Stage. A checked function accesses memory only
+% by raw accesses, each covered by a check whose evidence still holds,
+% and polls on every cycle.
+stage_func(unchecked, _, _, _, _).
+stage_func(checked, Fn, Mode, Params, Blocks) :-
+    renew_sources(Params, Blocks, Sources),
     incoming_edges(Blocks, Incoming),
     empty_assoc(Exits0),
-    foldl(checked_block(Fn, Mode, Incoming), Blocks, Exits0, _),
+    foldl(checked_block(Fn-Sources, Mode, Incoming), Blocks, Exits0, _),
     (   polls_every_cycle(Blocks) -> true
     ;   fn_error(Fn, 'a cycle without a poll edge in checked IR', [])
     ).
@@ -1189,12 +1206,13 @@ stage_func(checked, Fn, Mode, Blocks) :-
    processed, none on a poll edge or from a block not yet processed. A
    block with no incoming edge starts with none. Phi destinations then
    end the evidence that names them. */
-checked_block(Fn, Mode, Incoming, block(L, Phis, Insts, _), Exits0, Exits) :-
+checked_block(Fn-Sources, Mode, Incoming, block(L, Phis, Insts, _), Exits0, Exits) :-
     (   get_assoc(L, Incoming, Edges) -> true ; Edges = [] ),
     maplist(edge_evidence(Exits0), Edges, Sets),
     evidence_meet(Sets, Live0),
     foldl(phi_ends_evidence, Phis, Live0, Live1),
-    checked_insts(Insts, Fn, Mode, Live1, Live),
+    evidence_index(Live1, Ev),
+    checked_insts(Insts, Fn-Sources, Mode, Ev, ev(Live, _, _)),
     put_assoc(L, Exits0, Live, Exits).
 
 % incoming_edges(+Blocks, -Incoming): each label's incoming edges as
@@ -1225,9 +1243,39 @@ edge_evidence(Exits, From-plain, Live) :-
 % evidence_meet(+Sets, -Live): the facts in every one of Sets; none for
 % no sets.
 evidence_meet([], []).
-evidence_meet([S|Ss], Live) :- include(in_every(Ss), S, Live).
+evidence_meet([S|Ss], Live) :-
+    maplist(sort, Ss, Os), include(in_every(Os), S, Live).
 
-in_every(Ss, F) :- forall(member(S, Ss), memberchk(F, S)).
+in_every(Os, F) :- forall(member(O, Os), ord_memberchk(F, O)).
+
+/* Within a block evidence is ev(Facts, Names, ByQ): Facts the live/6
+   facts, newest first; Names holds every name a fact mentions (perhaps
+   more); ByQ each fact by its proof. A definition only scans Facts when
+   Names has its name, which strict SSA makes rare, so a long block's
+   validation is not quadratic in its checks. */
+evidence_index(Facts, ev(Facts, Names, ByQ)) :-
+    empty_assoc(E),
+    foldl(fact_names, Facts, E, Names),
+    reverse(Facts, Oldest),
+    foldl(fact_by_proof, Oldest, E, ByQ).
+
+fact_names(live(Q, P, _, _, _, _), N0, N) :-
+    put_assoc(Q, N0, true, N1),
+    ( P = tmp(X) -> put_assoc(X, N1, true, N) ; N = N1 ).
+
+fact_by_proof(F, B0, B) :- F = live(Q, _, _, _, _, _), put_assoc(Q, B0, F, B).
+
+evidence_none(ev([], E, E)) :- empty_assoc(E).
+
+evidence_add(F, ev(Fs, Ns0, B0), ev([F|Fs], Ns, B)) :-
+    fact_names(F, Ns0, Ns), fact_by_proof(F, B0, B).
+
+evidence_kill(D, Ev0, Ev) :-
+    Ev0 = ev(Fs0, Ns, _),
+    (   get_assoc(D, Ns, _)
+    ->  exclude(evidence_names(D), Fs0, Fs), evidence_index(Fs, Ev)
+    ;   Ev = Ev0
+    ).
 
 phi_ends_evidence(phi(tmp(D), _, _), Live0, Live) :-
     exclude(evidence_names(D), Live0, Live).
@@ -1242,38 +1290,90 @@ phi_ends_evidence(phi(tmp(D), _, _), Live0, Live) :-
    at the block's end. Local and function proofs are used once, right
    away. */
 checked_insts([], _, _, Live, Live).
-checked_insts([Inst|Insts], Fn, Mode, Live0, LiveOut) :-
-    checked_inst_rest(Inst, Insts, Fn, Mode, Live0, Rest, Live),
-    checked_insts(Rest, Fn, Mode, Live, LiveOut).
+checked_insts([Inst|Insts], Fn-Sources, Mode, Live0, LiveOut) :-
+    checked_inst_rest(Inst, Insts, Fn-Sources, Mode, Live0, Rest, Live),
+    checked_insts(Rest, Fn-Sources, Mode, Live, LiveOut).
 
-checked_inst_rest(let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Insts, Fn, _,
+/* renew_sources(+Params, +Blocks, -Sources): Sources maps each proof Q1
+   that a renew may read to check(P1, Lo1, Hi1, Align1): Q1 has one
+   definition, a heap check of tmp(P1), and P1 at most one, counting
+   parameters, phis and every instruction form; none when the function
+   has a setjmp, whose second return the CFG does not show. With strict
+   SSA (definitions_dominate/3), Q1's check dominates the renew, so P1
+   and Q1 there hold the values the check saw (docs/m7.md, round 4). */
+renew_sources(Params, Blocks, Sources) :-
+    empty_assoc(E),
+    (   \+ ( member(block(_, _, Is, _), Blocks),
+              member(let(_, _, renew(_, _, _, _), _), Is) )
+    ->  Sources = E
+    ;   member(block(_, _, Is, _), Blocks), member(let(_, _, setjmp(_), _), Is)
+    ->  Sources = E
+    ;   temp_defs(Params, Blocks, Defs),
+        split_pairs(Defs, Names, _), msort(Names, Sorted),
+        once_defined(Sorted, Once0),
+        findall(N-true, member(N, Once0), OncePairs), list_to_assoc(OncePairs, Once),
+        findall(Q1-check(P1, Lo1, Hi1, Al1),
+                ( member(block(_, _, Is, _), Blocks),
+                  member(let(tmp(Q1), a, check(Lo1, Hi1, _, Al1), [tmp(P1)]), Is),
+                  get_assoc(Q1, Once, _), get_assoc(P1, Once, _) ),
+                Pairs),
+        list_to_assoc(Pairs, Sources)
+    ).
+
+% once_defined(+Sorted, -Names): the names that occur exactly once.
+once_defined([], []).
+once_defined([N, M|Ns], Once) :- N == M, !, drop_name(N, Ns, Rest), once_defined(Rest, Once).
+once_defined([N|Ns], [N|Once]) :- once_defined(Ns, Once).
+
+drop_name(N, [M|Ns], Rest) :- N == M, !, drop_name(N, Ns, Rest).
+drop_name(_, Ns, Ns).
+
+checked_inst_rest(let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Insts, Fn-_, _,
                   Live0, Rest, Live) :- !,
     (   Insts = [Access|Rest],
         covered_access(Access, Q, Lo, Hi, Rights, Align),
         access_storage_effects(Access, heap)
     ->  evidence_after(let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Live0, Live1),
-        evidence_after(Access, [live(Q, P, Lo, Hi, Rights, Align)|Live1], Live)
+        evidence_add(live(Q, P, Lo, Hi, Rights, Align), Live1, Live2),
+        evidence_after(Access, Live2, Live)
     ;   fn_error(Fn, 'check tmp(~w) is not followed by an access it covers', [Q])
     ).
 checked_inst_rest(let(tmp(Q), a, check_local(_, _, Bytes, Rights, Align), []),
-                  Insts, Fn, _, Live0, Rest, Live) :- !,
+                  Insts, Fn-_, _, Live0, Rest, Live) :- !,
     (   Insts = [Access|Rest],
         raw_access(Access, Q, _, 0, _),
         covered_access(Access, Q, 0, Bytes, Rights, Align),
         access_storage_effects(Access, local)
-    ->  exclude(evidence_names(Q), Live0, Live1),
+    ->  evidence_kill(Q, Live0, Live1),
         evidence_after(Access, Live1, Live)
     ;   fn_error(Fn, 'local check tmp(~w) is not followed by an access it covers', [Q])
     ).
-checked_inst_rest(let(tmp(Q), f, check_function, _), Insts, Fn, _, _, Rest, []) :- !,
+checked_inst_rest(let(tmp(Q), f, check_function, _), Insts, Fn-_, _, _, Rest, Live) :- !,
+    evidence_none(Live),
     (   Insts = [raw_call(_, tmp(Q), _)|Rest] -> true
     ;   fn_error(Fn, 'function check tmp(~w) is not followed by its raw call', [Q])
     ).
-checked_inst_rest(Inst, Insts, Fn, Mode, Live0, Insts, Live) :-
+checked_inst_rest(let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [Q1]), Insts, Fn-Sources, _,
+                  Live0, Rest, Live) :- !,
+    (   Q1 = tmp(N1), get_assoc(N1, Sources, check(P1, Lo1, Hi1, Al1)),
+        Lo1 =< Lo, Hi =< Hi1, Al1 mod Align =:= 0, (Lo - Lo1) mod Align =:= 0
+    ->  true
+    ;   fn_error(Fn, 'renew tmp(~w) of ~w: no single-definition heap check that covers it, or a setjmp', [Q, Q1])
+    ),
+    (   Insts = [Access|Rest],
+        covered_access(Access, Q, Lo, Hi, Rights, Align),
+        access_storage_effects(Access, heap)
+    ->  evidence_after(let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [Q1]), Live0, Live1),
+        evidence_add(live(Q, tmp(P1), Lo, Hi, Rights, Align), Live1, Live2),
+        evidence_after(Access, Live2, Live)
+    ;   fn_error(Fn, 'renew tmp(~w) is not followed by an access it covers', [Q])
+    ).
+checked_inst_rest(Inst, Insts, Fn-_, Mode, Live0, Insts, Live) :-
     evidence_after(Inst, Live0, Live),
     (   raw_access(Inst, Q, X, _, _)
     ->  (   X \== p, X \= cas(_),
-            member(live(Q, _, Lo, Hi, Rights, Align), Live0),
+            Live0 = ev(_, _, ByQ),
+            get_assoc(Q, ByQ, live(Q, _, Lo, Hi, Rights, Align)),
             covered_access(Inst, Q, Lo, Hi, Rights, Align)
         ->  true
         ;   fn_error(Fn, 'a raw access at tmp(~w) that no live check covers', [Q])
@@ -1292,10 +1392,10 @@ checked_inst_rest(Inst, Insts, Fn, Mode, Live0, Insts, Live) :-
 evidence_after(Inst, Live0, Live) :-
     (   evidence_preserving(Inst)
     ->  (   inst_def(Inst, D)
-        ->  exclude(evidence_names(D), Live0, Live)
+        ->  evidence_kill(D, Live0, Live)
         ;   Live = Live0
         )
-    ;   Live = []
+    ;   evidence_none(Live)
     ).
 
 evidence_names(D, live(Q, P, _, _, _, _)) :- ( Q == D ; P == tmp(D) ).
@@ -1309,6 +1409,7 @@ evidence_names(D, live(Q, P, _, _, _, _)) :- ( Q == D ; P == tmp(D) ).
 evidence_preserving(loc(_, _)).
 evidence_preserving(flight(_, _, _, _)).
 evidence_preserving(let(_, a, check(_, _, _, _), _)).
+evidence_preserving(let(_, a, renew(_, _, _, _), _)).
 evidence_preserving(let(_, _, raw_load(T, _), _)) :- T \== p.
 evidence_preserving(let(_, p, raw_load_pointer(_, Es), _)) :-
     ( pointer_memory_effects(load, Es) ; pointer_memory_effects(local_load, Es) ), !.
@@ -1723,6 +1824,7 @@ kind_result_ok(load, load(T), Mode, K) :- load_result_ok(T, Mode, K).
 kind_result_ok(atomic_load, _, filc, p).
 kind_result_ok(alloc, _, Mode, K) :- addr_class(Mode, K).
 kind_result_ok(check, _, filc, a).
+kind_result_ok(renew, _, filc, a).
 kind_result_ok(check_local, _, filc, a).
 kind_result_ok(check_function, _, filc, f).
 kind_result_ok(ld, raw_load(T, _), filc, K) :- load_result_ok(T, filc, K).
@@ -1790,6 +1892,7 @@ kind_arg_classes(load, _, _, Mode, [A]) :- addr_class(Mode, A).
 kind_arg_classes(atomic_load, _, p, filc, [p]).
 kind_arg_classes(alloc, _, _, _, [l]).
 kind_arg_classes(check, _, _, filc, [p]).
+kind_arg_classes(renew, _, _, filc, [a]).
 kind_arg_classes(check_local, _, _, filc, []).
 kind_arg_classes(check_function, _, _, filc, [p]).
 kind_arg_classes(ld, _, _, filc, [a]).

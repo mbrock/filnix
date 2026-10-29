@@ -83,11 +83,12 @@
     item 8). The default is full; NANOFIL_SIMPLIFY supplies the same
     choice.
 
-    `--checks=reference|reuse` independently selects the reference checked
-    IR, a check before every access, or check reuse after pizlonation
+    `--checks=reference|reuse|renew` independently selects the reference
+    checked IR, a check before every access, check reuse after
+    pizlonation, or reuse followed by renewal of dominated checks
     (src/check_reuse.pl, docs/m7.md). The default is reference;
-    NANOFIL_CHECKS supplies the same choice. With reuse, `cc`, `compile`
-    and difftest's pizlonation comparison use the reused module.
+    NANOFIL_CHECKS supplies the same choice. With reuse or renew, `cc`,
+    `compile` and difftest's pizlonation comparison use that module.
 
     ## difftest
 
@@ -176,8 +177,8 @@ checks_default(Checks) :-
     ( getenv('NANOFIL_CHECKS',C) -> Checks = C ; Checks = reference ),
     checks_mode(Checks).
 checks_mode(C) :-
-    ( memberchk(C,[reference,reuse]) -> true
-    ; throw(nanofil_error('checks must be reference or reuse')) ).
+    ( memberchk(C,[reference,reuse,renew]) -> true
+    ; throw(nanofil_error('checks must be reference, reuse or renew')) ).
 % inline_options(+Argv0, +Inline0, -Inline, -Argv): Argv is Argv0 less
 % its --inline= options, the last of which gives Inline.
 inline_options([], I, I, []).
@@ -449,11 +450,25 @@ checked_module(Checks, Module, Checked) :-
 
 checks_module(reference, Checked, Checked).
 checks_module(reuse, Checked0, Checked) :-
+    reused_module(Checked0, Checked),
+    once(valid_module(Checked)).
+
+% Renew (docs/m7.md, round 4) runs after reuse: what reuse keeps, a
+% dominating check may renew. Only the result is validated: a renew
+% keeps its check's proof and index, so reuse's output is valid if it is.
+checks_module(renew, Checked0, Checked) :-
+    reused_module(Checked0, Checked1),
+    once(renew_checks(Checked1, Checked)),
+    (   renew_refines(Checked1, Checked) -> true
+    ;   throw(nanofil_error('check renewal changed more than checks'))
+    ),
+    once(valid_module(Checked)).
+
+reused_module(Checked0, Checked) :-
     once(reuse_checks(Checked0, Checked)),
     (   reuse_refines(Checked0, Checked) -> true
     ;   throw(nanofil_error('check reuse changed more than proofs'))
-    ),
-    once(valid_module(Checked)).
+    ).
 
 /* mode_pizlonation_agrees(+Mode, +File, +Module-Prepared, +Runs): for a
    filc module, the pizlonated Module has the same outcome as Module on
