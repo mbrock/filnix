@@ -27,7 +27,8 @@ static void run(int i) {
     case 2: *or0(b, 1) = 5; printf("%d\n", ((char *)buf)[3]); break;
     case 3: *nested(b, (char *)other, 1, 0) = 6; printf("%d\n", ((char *)other)[1]); break;
     case 4: { int n = 5; int (*v)[n] = (int (*)[n])(n ? (uintptr_t)buf : (uintptr_t)other);
-              printf("%zu %d\n", sizeof *v, (int)((char *)(v + 1) - (char *)buf)); break; }
+              printf("%zu %d %zu\n", sizeof *v, (int)((char *)(v + 1) - (char *)buf),
+                     sizeof *(int (*)[n])(n ? (uintptr_t)buf : (uintptr_t)other)); break; }
     }
 }
 int main(void) {
