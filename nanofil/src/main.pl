@@ -275,6 +275,10 @@ c_file_module(File, Module, AsmLines) :-
     % and items of a large translation unit (SQLite) alive to the end.
     once(c_module(Items, Module)),
     once(c_toplevel_asm(Items, AsmLines)),
+    % The frontend's garbage is gone once its items are: SQLite with
+    % FTS3, R-Tree and sessions (nixpkgs' flags) has 220 MB live here,
+    % yet without this the validator ran out of the 1 GB stack.
+    release_stacks,
     once(valid_module(Module)).
 
 % c_file_tokens(+File, -Tokens): Tokens are the C tokens of File. A .i

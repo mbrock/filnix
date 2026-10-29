@@ -64,10 +64,25 @@ let
       done
       touch $out
     '';
+  # The port's own flags (nixpkgs' NIX_CFLAGS_COMPILE: FTS3 and FTS4,
+  # R-Tree, Geopoly, sessions, RBU...) compile more of sqlite3.c, as the
+  # survey's build does; once the validator overflowed the default stack
+  # only there. Compiled as the survey compiles it, without -O.
+  # As ports.nix's sqlite, without STMT_SCANSTATUS (rdtsc asm).
+  portFlags =
+    pkgs.lib.replaceStrings [ "-DSQLITE_ENABLE_STMT_SCANSTATUS" ] [ "" ]
+      pkgs.sqlite.NIX_CFLAGS_COMPILE;
+  port = pkgs.runCommandCC "nanofil-sqlite-port-flags" { } ''
+    cc=${import ./nanofil-cc.nix { inherit pkgs filcc; }}
+    cp ${amalgamation}/* .
+    $cc -c ${portFlags} -I. sqlite3.c -o sqlite3.o
+    touch $out
+  '';
   configurations = {
     plain = configuration "plain" "";
     O = configuration "O" "-O";
     reuse = configuration "reuse" "-O --checks=reuse";
+    inherit port;
   };
 in
 pkgs.runCommand "nanofil-sqlite"
