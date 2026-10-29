@@ -995,6 +995,10 @@ statement_body(Env, S) -->
         asm_sections(Env, Outs, Ins, Clobbers),
         punct(')')
     ->  { S = asm_empty(Outs, Ins, Clobbers, Goto) }
+    ;   punct('('), string_bytes(Template),
+        asm_sections(Env, Outs, Ins, Clobbers),
+        punct(')')
+    ->  { S = asm(Template, Outs, Ins, Clobbers, Goto) }
     ;   punct('('), balanced(Toks)
     ->  { asm_kind(Toks, Kind), S = unsupported_asm(Kind) }
     ;   parse_error('expected asm operands in parentheses')

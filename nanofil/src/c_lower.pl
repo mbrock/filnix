@@ -1404,6 +1404,32 @@ stmt_(asm_empty(Outs, Ins, Clobbers, Goto), Ctx) --> !,
     asm_outputs(Outs, Ctx),
     asm_inputs(Ins, Ctx).
 
+/* Any other asm runs instructions nanofil cannot check. filcc's
+   handleInlineAsm compiles some of them to a run-time error and passes
+   the rest through after validateSafeInlineAsm; nanofil passes none
+   through. Where filcc certainly refuses, nanofil calls zsafety_error
+   with filcc's message up to its colon (filcc follows it with the
+   call's LLVM IR, whose attribute and metadata numbers nanofil has no
+   counterpart for; it uses the template), so a program that never runs
+   the asm, such as GLib's G_BREAKPOINT behind a debug flag, behaves as
+   under filcc. Everywhere else, cpuid among them, which filcc may
+   accept, nanofil refuses the asm at compile time
+   (asm_runtime_reason/6). */
+stmt_(asm(Template, Outs, Ins, Clobbers, Goto), Ctx) --> !,
+    env(Env0),
+    { ctx_loc(Ctx, Loc),
+      maplist(asm_operand(out, Env0, Loc), Outs, OutKs),
+      maplist(asm_operand(in, Env0, Loc), Ins, InKs),
+      atom_codes(T, Template),
+      (   asm_runtime_reason(Goto, OutKs, InKs, Clobbers, Template, Reason) -> true
+      ;   sema_error(Loc, 'inline asm "~w" is not supported: nanofil cannot check its instructions', [T])
+      ),
+      format(codes(Msg), 'cannot handle inline asm (~w): ~w', [Reason, T]),
+      new_literal(Msg, Sym, Env0, Env) },
+    set_env(Env),
+    let(p, copy, [global(Sym)], Addr),
+    emit(call(void, global(zsafety_error), [arg(p, Addr)])).
+
 % An asm with a memory operand passes a pointer to code that nothing
 % checks. clang's Fil-C compiles it to a run-time error, which a program
 % reaches only if it runs the asm (gnulib's x87 control-word accesses in
@@ -1608,6 +1634,64 @@ asm_inputs([op(C, E)|Os], Ctx) -->
     asm_inputs(Os, Ctx).
 
 asm_value_type(T) :- arithmetic_type(T), T \== ldouble.
+
+% asm_operand(+Dir, +Env, +Loc, +Op, -Kind): Kind is K-C for an operand
+% with constraint C: K is mem if clang passes its address (an output
+% constraint with m or g, an input "m"), else ptr, value or other by
+% its type after decay.
+asm_operand(Dir, Env, Loc, op(C, E), K-C) :-
+    elaborate(E, Env, Loc, X), tree_type(X, T0), unqualified(T0, T),
+    atom_chars(C, Cs),
+    (   Dir == out, ( memberchk(m, Cs) ; memberchk(g, Cs) ) -> K = mem
+    ;   Dir == in, C == m -> K = mem
+    ;   memberchk(T, [ptr(_), array(_, _), func(_, _, _)]) -> K = ptr
+    ;   asm_value_type(T) -> K = value
+    ;   K = other
+    ).
+
+% asm_runtime_reason(+Goto, +OutKs, +InKs, +Clobbers, +Template, -Reason):
+% filcc certainly compiles the asm to the run-time error "cannot handle
+% inline asm (Reason)". handleInlineAsm refuses asm goto, then a
+% pointer result, then a pointer argument (an address for a memory
+% operand among them); validateSafeInlineAsm then checks constraints
+% and clobbers, and refuses the first line, split at newlines and
+% semicolons, whose mnemonic it does not know. The cases are probed
+% against the pinned filcc at -O0 and -O2 (tests/c/prog/asm-refused.c);
+% nanofil claims a mnemonic refusal only for operands and clobbers the
+% probe saw pass validation and the first nonblank line's mnemonic
+% (c_types filcc_refused_mnemonic/1). asm goto with a pointer operand
+% crashes clang's Fil-C, so it is not claimed.
+asm_runtime_reason(goto, OutKs, InKs, _, _, 'asm goto is not supported') :- !,
+    append(OutKs, InKs, Ks),
+    \+ ( member(K-_, Ks), memberchk(K, [mem, ptr, other]) ).
+asm_runtime_reason(_, OutKs, _, _, _, 'inline assembly with pointer return type is not supported') :-
+    memberchk(ptr-_, OutKs), !,
+    \+ memberchk(mem-_, OutKs).
+asm_runtime_reason(_, OutKs, InKs, _, _, 'inline assembly with pointer argument is not supported') :-
+    ( memberchk(mem-_, OutKs) ; memberchk(mem-_, InKs) ; memberchk(ptr-_, InKs) ), !,
+    \+ memberchk(other-_, OutKs), \+ memberchk(other-_, InKs).
+asm_runtime_reason(_, OutKs, InKs, Clobbers, Template, Reason) :-
+    forall(member(K-C, OutKs), ( K == value, memberchk(C, ['=r', '+r', '=a']) )),
+    forall(member(K-C, InKs), ( K == value, asm_validated_input(C) )),
+    forall(member(C, Clobbers), memberchk(C, [memory, cc])),
+    split_asm_lines(Template, Lines),
+    member(Line, Lines),
+    atom_codes(L, Line), normalize_space(atom(A), L), A \== '', !,
+    atomic_list_concat([W|_], ' ', A), downcase_atom(W, M),
+    filcc_refused_mnemonic(M),
+    format(atom(Reason), 'unsupported mnemonic for safe inline asm: ~w', [M]).
+
+asm_validated_input(r).
+asm_validated_input(a).
+asm_validated_input(C) :- atom_length(C, 1), char_type(C, digit(_)).
+
+split_asm_lines(Template, Lines) :-
+    split_at(Template, [0'\n, 0';], Lines).
+split_at(Cs, Seps, [L|Ls]) :-
+    (   append(L, [Sep|Rest], Cs), memberchk(Sep, Seps)
+    ->  split_at(Rest, Seps, Ls)
+    ;   L = Cs, Ls = []
+    ).
 
 % case_values(+Expr, +Env, +Loc, -Values): the values a case label
 % matches: its constant, or each of a GNU range Lo ... Hi, none when Lo

@@ -14,6 +14,9 @@
 # wrong one still works through the generic entries, so only this sees it.
 # A "// reference-opt: -O0" line builds the reference at that level
 # instead of -O1, for behaviour filcc has only without optimization.
+# With a "// trap-reason" line, a run's safety errors are compared, each
+# up to the parenthesized reason that ends its first clause ("cannot
+# handle inline asm (Reason)"), instead of counting as "trap".
 # A "// cflags: ..." line passes those flags to clang, and nanofil
 # compiles clang's preprocessing with them, as nanofil-cc does (with
 # NANOFIL_STD=c23 for -std=c23 or gnu23, gnu89 for C90 modes). NANOFIL_OPT=-O turns on nanofil's
@@ -56,7 +59,12 @@ run() {
   local rc=$?
   set -e
   if grep -q 'filc safety error' "$out.stderr"; then
-    echo trap >"$out.stderr"
+    if [[ $trap_reason == 1 ]]; then
+      sed -n 's/^\(filc safety error: [^(]*([^)]*)\):.*/\1/p' "$out.stderr" >"$out.reasons"
+      mv "$out.reasons" "$out.stderr"
+    else
+      echo trap >"$out.stderr"
+    fi
     rc='trap'
   fi
   echo "exit $rc" >"$out.status"
@@ -72,6 +80,7 @@ for f in "$@"; do
   nlink=$(sed -n 's|^// nanofil-link: ||p' "$f")
   read -r -a cflags <<<"$(sed -n 's|^// cflags: ||p' "$f")"
   ropt=$(sed -n 's|^// reference-opt: ||p' "$f"); ropt=${ropt:--O1}
+  trap_reason=0; if grep -q '^// trap-reason' "$f"; then trap_reason=1; fi
   input=$f std=c17
   if [[ " ${cflags[*]} " =~ \ -std=(c|gnu)(23|2x)\  ]]; then std=c23; fi
   if [[ " ${cflags[*]} " =~ \ (-std=(c|gnu)(89|90)|-ansi|-fgnu89-inline)\  ]]; then std=gnu89; fi

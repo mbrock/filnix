@@ -80,7 +80,7 @@
                     integer_type/4, elaborate/3, tree_type/2, value/2,
                     lowered/2, folded/3, member_layout/6,
                     bitfield_promotion/3, unaligned_type/2, underaligned_member/4, atomic_qualified/1,
-                    rmw_builtin/4, known_attribute/3]).
+                    rmw_builtin/4, known_attribute/3, filcc_refused_mnemonic/1]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -669,6 +669,75 @@ attribute_entry(reproducible, hint, 'C23 optimizer promise').
 attribute_entry(unsequenced, hint, 'C23 optimizer promise').
 attribute_entry(may_alias, honored, 'nanofil does no type-based alias analysis').
 attribute_entry(bitwise, hint, 'sparse\'s annotation, only under __CHECKER__').
+
+doc(filcc_refused_mnemonic(-M), nondet, [
+    M: "an x86-64 mnemonic, lowercase, as an asm line's first word",
+    "filcc's safe inline asm validator refuses M whatever its operands:",
+    "parseMnemonic fails, and validateSafeInlineAsm's Reason is",
+    "\"unsupported mnemonic for safe inline asm: M\". The list is what the",
+    "pinned filcc answers for `__asm__ volatile(\"M\")`, probed over the",
+    "privileged, control-transfer, I/O, prefix and directive mnemonics",
+    "packages use; a mnemonic not listed may pass or fail for another",
+    "reason (ud2, pause and the fences pass; cpuid, rdtsc and xgetbv need",
+    "their register operands declared), so nanofil refuses its asm at",
+    "compile time rather than guess (c_lower asm_runtime_reason/6).",
+    cites('filc-staging-ref-src, llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp, validateSafeInlineAsm (parseMnemonic) and handleInlineAsm'),
+    example(filcc_refused_mnemonic(int)),
+    example(filcc_refused_mnemonic(syscall)),
+    fails(filcc_refused_mnemonic(cpuid)),
+    fails(filcc_refused_mnemonic(ud2))
+]).
+filcc_refused_mnemonic('.byte').
+filcc_refused_mnemonic(call).
+filcc_refused_mnemonic(clflush).
+filcc_refused_mnemonic(cli).
+filcc_refused_mnemonic(clts).
+filcc_refused_mnemonic(emms).
+filcc_refused_mnemonic(enter).
+filcc_refused_mnemonic(fxsave).
+filcc_refused_mnemonic(hlt).
+filcc_refused_mnemonic(icebp).
+filcc_refused_mnemonic(in).
+filcc_refused_mnemonic(insb).
+filcc_refused_mnemonic(int).
+filcc_refused_mnemonic(int1).
+filcc_refused_mnemonic(int3).
+filcc_refused_mnemonic(into).
+filcc_refused_mnemonic(invd).
+filcc_refused_mnemonic(iret).
+filcc_refused_mnemonic(iretq).
+filcc_refused_mnemonic(jmp).
+filcc_refused_mnemonic(leave).
+filcc_refused_mnemonic(lgdt).
+filcc_refused_mnemonic(lidt).
+filcc_refused_mnemonic(lmsw).
+filcc_refused_mnemonic(lock).
+filcc_refused_mnemonic(monitor).
+filcc_refused_mnemonic(mwait).
+filcc_refused_mnemonic(out).
+filcc_refused_mnemonic(outsb).
+filcc_refused_mnemonic(pop).
+filcc_refused_mnemonic(popf).
+filcc_refused_mnemonic(push).
+filcc_refused_mnemonic(pushf).
+filcc_refused_mnemonic(rdmsr).
+filcc_refused_mnemonic(rdpmc).
+filcc_refused_mnemonic(rdseed).
+filcc_refused_mnemonic(rep).
+filcc_refused_mnemonic(ret).
+filcc_refused_mnemonic(sgdt).
+filcc_refused_mnemonic(sidt).
+filcc_refused_mnemonic(std).
+filcc_refused_mnemonic(sti).
+filcc_refused_mnemonic(swapgs).
+filcc_refused_mnemonic(syscall).
+filcc_refused_mnemonic(sysenter).
+filcc_refused_mnemonic(sysexit).
+filcc_refused_mnemonic(sysret).
+filcc_refused_mnemonic(ud1).
+filcc_refused_mnemonic(wbinvd).
+filcc_refused_mnemonic(wrmsr).
+filcc_refused_mnemonic(xsave).
 
 % mode_attr(+Tokens, -Mode): the attribute is GCC's mode(Mode), its
 % name without GCC's optional underscores.
