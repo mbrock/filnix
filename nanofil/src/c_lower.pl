@@ -78,7 +78,7 @@
 :- use_module(library(pairs)).
 :- use_module(library(dcgs)).
 :- use_module(c_types).
-:- use_module(ir, [op_kind/2, narrow_type/3, width_bytes/2]).
+:- use_module(ir, [op_kind/2, narrow_type/3, width_bytes/2, variadic_func/1]).
 :- use_module(c_parse, [compound_assignment/2]).
 :- use_module(cfg, [inst_def/2]).
 
@@ -101,7 +101,41 @@ c_module(Items00, module(Funcs)) :-
     append(Funcss, Funcs0a), append(AliasFuncss, Funcs0b), append(Funcs0a, Funcs0b, Funcs0),
     with_used_inlines(Funcs0, Env, Funcs1),
     weak_symbols(Items0, Env, Weak),
-    weak_linkage(Weak, Funcs1, Funcs).
+    weak_linkage(Weak, Funcs1, Funcs2),
+    unprototyped_calls(Funcs2, Funcs).
+
+/* unprototyped_calls(+Items0, -Items): a direct call whose arguments
+   do not match the parameters of the function the module defines, which
+   only a declaration without a prototype allows (C11 6.5.2.2p6: gmp's
+   configure calls `void g(){}` with six arguments), calls through the
+   function's address instead, as filcc -O0 does: every argument is
+   passed, and the callee reads the parameters it declares, trapping on
+   one that was not passed. A call ir.pl's validator accepts, matching
+   or past a variadic definition's parameters, is left alone. */
+unprototyped_calls(Items0, Items) :-
+    findall(S-(Ks-V), ( member(F, Items0), F = func(S, _, _, Ps, _),
+                        findall(K, member(param(K, _), Ps), Ks),
+                        ( variadic_func(F) -> V = variadic ; V = fixed ) ), Pairs),
+    list_to_assoc(Pairs, Defs),
+    maplist(unprototyped_item(Defs), Items0, Items).
+
+unprototyped_item(Defs, func(S, L, R, Ps, Bs0), func(S, L, R, Ps, Bs)) :- !,
+    foldl(unprototyped_block(Defs), Bs0, Bs, 0, _).
+unprototyped_item(_, Item, Item).
+
+unprototyped_block(Defs, block(L, Phis, Insts0, J), block(L, Phis, Insts, J), N0, N) :-
+    foldl(unprototyped_inst(Defs), Insts0, Insts1, N0, N),
+    append(Insts1, Insts).
+
+unprototyped_inst(Defs, call(Res, global(S), Args), Insts, N0, N) :-
+    get_assoc(S, Defs, Ks-V),
+    findall(K, member(arg(K, _), Args), Ks1),
+    Ks1 \== Ks,
+    \+ ( V == variadic, append(Ks, _, Ks1) ), !,
+    N is N0 + 1,
+    format(atom(T), 'unproto~w', [N0]),
+    Insts = [let(tmp(T), p, copy, [global(S)]), call(Res, tmp(T), Args)].
+unprototyped_inst(_, Inst, [Inst], N, N).
 
 %! c_toplevel_asm(+Items, -Lines)
 %
@@ -395,7 +429,19 @@ top_item(ExternalNames, fundef(Loc, Specs, dcl(some(Name), func(Ret, knr(Names, 
     knr_definition(Loc, knr(Names, Decls), Prototyped, Env0, Params, Locals),
     append(Locals, Items, Items1),
     top_item(ExternalNames, fundef(Loc, Specs, dcl(some(Name), func(Ret, Params), Asm),
-                                   at(BL, block(Items1))), Funcs, Env0, Env).
+                                   at(BL, block(Items1))), Funcs, Env0, Env1),
+    % An identifier list does not give the function a prototype
+    % (C11 6.9.1p7): calls after it convert their arguments by the
+    % default argument promotions, as clang compiles them.
+    (   Prototyped == false,
+        lookup_ordinary(Env1, Name, fn(func(FRet, _, fixed), Sym, Linkage))
+    ->  bind_ordinary(Name, fn(func(FRet, unspecified, fixed), Sym, Linkage), Env1, Env2),
+        (   lookup_ordinary(Env2, qtype(Name), func(QRet, _, fixed))
+        ->  bind_ordinary(qtype(Name), func(QRet, unspecified, fixed), Env2, Env)
+        ;   Env = Env2
+        )
+    ;   Env = Env1
+    ).
 top_item(_, fundef(_, Specs, Dcl, _), [], Env, Env) :-
     overload(Specs, Dcl, Env), !.
 top_item(ExternalNames, decl(Loc, Specs, Inits), Funcs, Env0, Env) :-
