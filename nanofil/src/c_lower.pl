@@ -1310,8 +1310,9 @@ vla_slot(Type, Min, Ctx, Addr) -->
    bitwise binary operators; a load, call, comparison, constant or
    anything else contributes none. The same pointer named more than
    once, without side effects (Fil-C sees one SSA value), is one source
-   and is read once. Two different sources, or a pointer difference, or
-   a source passed through ?:, a comma, an assignment or a statement
+   and is read once. (An integer ?: that is the cast's own operand is
+   cast arm by arm first, lower_node//3.) Two different sources, or a
+   pointer difference, or a source passed through ?:, a comma, an assignment or a statement
    expression, make it fail (Fil-C's TOP), as does none. XP is
    evaluated first: the operands of those operators are unsequenced, so
    that is an order C allows. Fil-C infers on SSA, after the optimizer
@@ -1349,6 +1350,12 @@ launder_source(val(T, un(Op, A)), val(T, un(Op, A1)), Sources) :-
     launder_source(A, A1, Sources).
 launder_source(X, X, Sources) :-
     (   passes_pointer_int(X) -> Sources = [top-_] ; Sources = [] ).
+
+% distributable_arm(+U, +X): converting integer arm X to the ?:'s type U
+% and then to a pointer gives the pointer converting X does.
+distributable_arm(U, X) :-
+    tree_type(X, A0), unqualified(A0, A), int_type(A),
+    ( A == U -> true ; int_info(U, 8, _) ).
 
 % passes_pointer_int(+X): X is a pointer difference, or passes on a
 % value (?:, comma, assignment, statement expression) whose tree holds
@@ -2783,6 +2790,18 @@ lower_node(val(T, bit_cast(XA)), Ctx, R) --> !,
     local_slot(T, Tmp),
     store_typed(A, V, Tmp),
     loaded(T, Tmp, Ctx, R).
+% An integer ?: converted to a pointer is that conversion of the arm it
+% takes, so each arm finds its own capability source (laundered/4), as
+% Fil-C gives a select the capability of the value it selects: emacs's
+% pointer_align, (void *) ROUNDUP ((uintptr_t) ptr, alignment), whose
+% ROUNDUP tests whether the alignment is a power of two. Converting an
+% arm to the ?:'s type first changes no value when the arm has that
+% type or the type has 8 bytes.
+lower_node(val(T, cast(TN, XV)), Ctx, R) -->              % 6.5.4
+    { unqualified(T, ptr(_)), \+ vm_type(T), XV = val(CT, cond(XC, XA, XB)),
+      unqualified(CT, U), int_type(U),
+      distributable_arm(U, XA), distributable_arm(U, XB) }, !,
+    lower(val(T, cond(XC, val(T, cast(TN, XA)), val(T, cast(TN, XB)))), Ctx, R).
 lower_node(val(T, cast(TN, XV)), Ctx, R) -->              % 6.5.4
     { unqualified(T, ptr(_)), lowered(XV, IT), int_type(IT),
       laundered(XV, XP, Hole, XV1) }, !,
