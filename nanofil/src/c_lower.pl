@@ -1373,8 +1373,9 @@ located(Kind, Loc) --> enter_origin(Loc, statement(Kind), _).
 loop_located(Ctx) --> { ctx_loc(Ctx, Loc) }, located(loop, Loc).
 
 stmt_(block(Items), Ctx) -->
-    save_scope(Scope),
+    save_scope(Scope), env(Env), { cleanup_keys(Env, Outer) },
     items(Items, Ctx),
+    scope_cleanups(Outer),
     restore_scope(Scope).
 stmt_(null, _) --> [].
 % An asm with a memory operand passes a pointer to code that nothing
@@ -1402,7 +1403,7 @@ stmt_(if(Cond, Then, Else), Ctx) -->
     start(LElse), ( { Else == none } -> [] ; stmt(Else, Ctx) ),
     start(LJoin).
 stmt_(while(Cond, Body), Ctx) -->
-    label(LCond), label(LBody), label(LEnd),
+    label(LCond), label(LBody), label(LEnd), cleanup_targets([LEnd, LCond]),
     start(LCond), loop_located(Ctx), judged(Cond, Ctx),
     cond_jump(Cond, Ctx, LBody, LEnd),
     start(LBody),
@@ -1411,7 +1412,7 @@ stmt_(while(Cond, Body), Ctx) -->
     term(goto(LCond)),
     start(LEnd).
 stmt_(do(Body, Cond), Ctx) -->
-    label(LBody), label(LCond), label(LEnd),
+    label(LBody), label(LCond), label(LEnd), cleanup_targets([LEnd, LCond]),
     start(LBody),
     { loop_ctx(Ctx, LEnd, LCond, BodyCtx) },
     stmt(Body, BodyCtx),
@@ -1419,12 +1420,13 @@ stmt_(do(Body, Cond), Ctx) -->
     cond_jump(Cond, Ctx, LBody, LEnd),
     start(LEnd).
 stmt_(for(Init, Cond, Step, Body), Ctx) -->
-    save_scope(Scope),
+    save_scope(Scope), env(Env0), { cleanup_keys(Env0, Outer) },
     (   { Init == none } -> []
     ;   { Init = expr(InitExpr) } -> judged_rval(InitExpr, Ctx, _)
     ;   item(Init, Ctx)
     ),
     label(LCond), label(LBody), label(LStep), label(LEnd),
+    cleanup_targets([LEnd, LStep]),
     start(LCond), loop_located(Ctx),
     (   { Cond == none } -> term(goto(LBody))
     ;   judged(Cond, Ctx), cond_jump(Cond, Ctx, LBody, LEnd)
@@ -1436,6 +1438,7 @@ stmt_(for(Init, Cond, Step, Body), Ctx) -->
     ( { Step == none } -> [] ; judged_rval(Step, Ctx, _) ),
     term(goto(LCond)),
     start(LEnd),
+    scope_cleanups(Outer),
     restore_scope(Scope).
 stmt_(switch(Expr, Body), Ctx) -->
     judged_rval(Expr, Ctx, Value0),
@@ -1444,7 +1447,7 @@ stmt_(switch(Expr, Body), Ctx) -->
     ;   sema_error(Loc, 'switch on a non-integer', [])
     },
     convert(Value0, Type, v(Value, _)),
-    label(LDispatch), label(LEnd),
+    label(LDispatch), label(LEnd), cleanup_targets([LEnd]),
     term(goto(LDispatch)),
     cases(Outer), set_cases([]),
     { switch_ctx(Ctx, LEnd, BodyCtx) },
@@ -1476,28 +1479,35 @@ stmt_(default(Body), Ctx) -->
     cases(Cases), set_cases([default(Label)|Cases]),
     stmt(Body, Ctx).
 stmt_(break, ctx(_, _, Break, _, Loc)) -->
+    jump_cleanups(Break),
     target_jump(Break, Loc, 'break outside a loop or switch').
 stmt_(continue, ctx(_, _, _, Cont, Loc)) -->
+    jump_cleanups(Cont),
     target_jump(Cont, Loc, 'continue outside a loop').
 stmt_(return(none), Ctx) -->
     { Ctx = ctx(_, RetType, _, _, _) },
+    env(Env), { cleanup_keys(Env, Ks) }, run_cleanups(Ks),
     zero_ret(RetType).
 stmt_(return(Expr), Ctx) -->
     { Expr \== none, Ctx = ctx(_, RetType, _, _, Loc) },
     judged_rval(Expr, Ctx, Value0),
-    (   { RetType == void } -> term(ret)
+    env(Env), { cleanup_keys(Env, Ks) },
+    (   { RetType == void } -> run_cleanups(Ks), term(ret)
     ;   { abi_memory(RetType) }
     ->  assign_convert(Expr, Value0, RetType, Loc, v(V, _)),
-        abi_source(RetType, V, Addr),
+        abi_source(RetType, V, Addr0),
+        return_cleanups(RetType, Addr0, Addr),
         return_struct(RetType, Addr, Loc)
     ;   assign_convert(Expr, Value0, RetType, Loc, v(Value, _)),
+        run_cleanups(Ks),
         term(ret(Value))
     ).
 stmt_(goto(Name), Ctx) -->
     { ctx_loc(Ctx, Loc) },
     vm_goto(Name, Loc),
     goto_label(Name, Label),
-    term(goto(Label)).
+    goto_cleanups(Name, Label, Target),
+    term(goto(Target)).
 % GNU goto *E: E is one of the function's label values (c_types'
 % label_value/3), the label's number. Every goto * of the function
 % stores it in one local and jumps to the function's single dispatch
@@ -1510,6 +1520,10 @@ stmt_(computed_goto(E), Ctx) -->
     ;   { sema_error(Loc, 'goto * of a non-pointer', []) }
     ),
     convert(V0, ulong, v(X, _)),
+    env(Env), { cleanup_keys(Env, Ks) },
+    (   { Ks == [] } -> []
+    ;   { sema_error(Loc, 'goto * in the scope of a variable with a cleanup attribute is not supported', []) }
+    ),
     state(st(_, _, _, _, _, Labels0, _, _)),
     (   { get_assoc(computed(goto), Labels0, dispatch(LDispatch, Slot, _)) } -> []
     ;   label(LDispatch), local_slot(ulong, Slot),
@@ -1522,6 +1536,7 @@ stmt_(computed_goto(E), Ctx) -->
 stmt_(label(Name, Body), Ctx) -->
     vm_label(label(Name)),
     goto_label(Name, Label),
+    label_cleanups(Name, Label),
     start(Label),
     stmt(Body, Ctx).
 stmt_(decl(Loc, Specs, Inits), Ctx) -->
@@ -1628,7 +1643,9 @@ item(decl(Loc, Specs, Inits), Ctx0) -->
     { ctx_at(Ctx0, Loc, Ctx) },
     enter_origin(Loc, statement(decl), Parent),
     vm_typedefs(Specs, Inits, Ctx),
-    local_decls(Decls, Ctx), restore_origin(Parent).
+    local_decls(Decls, Ctx),
+    cleanup_decls(Loc, Specs, Decls, Ctx),
+    restore_origin(Parent).
 
 % local_decls(+Decls, +Ctx)//, local_decl(+Decl, +Ctx)//: lower
 % block-scope declarations. Functions and extern objects are global, a
@@ -2427,8 +2444,14 @@ lower_node(val(_, offsetof(TN, Path)), Ctx, v(V, ulong)) --> !,
         runtime_offset(Path, T, Env1, Ctx, const(0), V)
     ).
 lower_node(val(_, stmtexpr(at(_, block(Items)))), Ctx, R) --> % GNU ({ ... })
-    save_scope(Scope),
-    statement_expression_items(Items, Ctx, R),
+    save_scope(Scope), env(Env), { cleanup_keys(Env, Outer) },
+    statement_expression_items(Items, Ctx, R0),
+    leaving(Outer, Ks),
+    (   { Ks \== [], R0 = v(A, T), su(T) }       % the value, before them
+    ->  local_slot(T, A1), copy_object(T, A, A1), { R = v(A1, T) }
+    ;   { R = R0 }
+    ),
+    run_cleanups(Ks),
     restore_scope(Scope).
 
 % converted(+Value0, +Type, -R)//: R is Value0 converted to Type, as
@@ -3229,9 +3252,16 @@ vm_jumps -->
 
 vm_goto_ok(Labels, goto(Name, From, Loc)) :-
     (   get_assoc(vm(label(Name)), Labels, To), \+ append(_, To, From)
-    ->  sema_error(Loc, 'goto into the scope of a variably modified identifier', [])
+    ->  (   entered_cleanup(To, From)
+        ->  sema_error(Loc, 'cannot jump from this goto statement to its label: it bypasses the initialization of a variable with __attribute__((cleanup))', [])
+        ;   sema_error(Loc, 'goto into the scope of a variably modified identifier', [])
+        )
     ;   true
     ).
+
+% entered_cleanup(+To, +From): a jump from scopes From to scopes To
+% enters the scope of a cleanup variable (cleanup_var//4).
+entered_cleanup(To, From) :- member(cleanup(K), To), \+ memberchk(cleanup(K), From), !.
 
 % vm_case(+Ctx)//: a case or default label is in no variably modified
 % scope its switch is not in.
@@ -3240,8 +3270,174 @@ vm_case(Ctx) -->
     { vm_scopes(Env, Scopes),
       ( lookup_ordinary(Env, 'vm.switch', Outer) -> true ; Outer = [] ),
       ( Scopes == Outer -> true
+      ; ctx_loc(Ctx, Loc), entered_cleanup(Scopes, Outer)
+      -> sema_error(Loc, 'cannot jump from switch statement to this case label: it bypasses the initialization of a variable with __attribute__((cleanup))', [])
       ; ctx_loc(Ctx, Loc),
         sema_error(Loc, 'switch jumps into the scope of a variably modified identifier', []) ) }.
+
+/* GNU's cleanup attribute (GCC, Common Variable Attributes): an
+   automatic variable declared with cleanup(F) has F(&v) run when its
+   scope ends, by falling off the end of its block, return (after the
+   returned value is taken), break, continue or goto, in reverse order
+   of declaration; longjmp runs none. Clang ignores it, with a warning,
+   on a variable that is not automatic. Each such variable is a scope
+   cleanup(K) in 'vm.scopes', so jumping into it is refused as clang
+   refuses it, and K's call, F(&v) judged where v is declared, is kept
+   in the label assoc with bindings of its own names, so a scope that
+   shadows F or v cannot change it. A goto out of the scope runs the
+   cleanups it leaves: a backward one before jumping, a forward one
+   through a block emitted at its label. A function returning a struct
+   copies the value before the cleanups run; clang, returning a named
+   local in place (NRVO), lets the cleanup see the returned object. */
+cleanup_decls(Loc, Specs, Decls, Ctx) -->
+    (   { \+ memberchk(storage(typedef), Specs),
+          cleanup_attr(Specs, Fn),
+          include(automatic, Decls, [_|_]) }
+    ->  (   { Decls = [d(Name, _, _, _, _)] }
+        ->  cleanup_var(Loc, Name, Fn, Ctx)
+        ;   { sema_error(Loc, 'a cleanup attribute on a declaration of several declarators is not supported', []) }
+        )
+    ;   []
+    ).
+
+cleanup_attr(Specs, Fn) :-
+    member(attr([group(Tokens)]), Specs),
+    append(_, [id(Word), group(Arg)|_], Tokens),
+    memberchk(Word, [cleanup, '__cleanup__']), !,
+    (   Arg = [id(Fn)] -> true
+    ;   throw(nanofil_error('the cleanup attribute takes one function name'))
+    ).
+
+automatic(d(_, Type, Storage, _, _)) :-
+    Type \= func(_, _, _),
+    \+ memberchk(Storage, [static, extern]), Storage \= thread_local(_).
+
+cleanup_var(Loc, Name, Fn, Ctx) -->
+    env(Env0),
+    { lookup_ordinary(Env0, Name, VarB),
+      (   lookup_ordinary(Env0, Fn, FnB), FnB = fn(_, _, _) -> true
+      ;   sema_error(Loc, '\'cleanup\' argument ~w is not a function', [Fn])
+      ),
+      cleanup_parameter(Loc, Fn, FnB, VarB),
+      next_id(K, Env0, Env1),
+      format(atom(V), 'cleanup.~w.var', [K]),
+      format(atom(F), 'cleanup.~w.fn', [K]),
+      Binds = [V-VarB, F-FnB],
+      foldl(bind_pair, Binds, Env1, Env2),
+      elaborate(call(id(F), [un(addr, id(V))]), Env2, Loc, X), value(X, XV),
+      vm_scopes(Env2, Scopes),
+      bind_ordinary('vm.scopes', [cleanup(K)|Scopes], Env2, Env) },
+    set_env(Env),
+    { ctx_at(Ctx, Loc, Ctx1) },
+    state(st(E, C, I, B, N, Labels0, Cs, A), st(E, C, I, B, N, Labels, Cs, A)),
+    { put_assoc(cleanup(K), Labels0, c(XV, Binds, Ctx1), Labels) }.
+
+% cleanup_parameter(+Loc, +Fn, +FnBinding, +VarBinding): Fn takes one
+% parameter, a pointer that &v converts to without a diagnostic: to
+% void or to a type compatible with v's (clang's 'cleanup' checks; it
+% calls Fn as if by assignment).
+cleanup_parameter(Loc, Fn, fn(func(_, PTs, _), _, _), VarB) :-
+    (   VarB = var(_, VT0) -> unqualified(VT0, VT)
+    ;   sema_error(Loc, 'a cleanup attribute on this variable is not supported', [])
+    ),
+    (   PTs = [PT], unqualified(PT, ptr(Q0)), unqualified(Q0, Q),
+        ( Q == void ; compatible_type(Q, VT) )
+    ->  true
+    ;   PTs = [PT]
+    ->  sema_error(Loc, '\'cleanup\' function ~w parameter has type ~w which is incompatible with type ~w',
+                   [Fn, PT, ptr(VT0)])
+    ;   sema_error(Loc, '\'cleanup\' function ~w must take 1 parameter', [Fn])
+    ).
+
+bind_pair(Name-Binding, Env0, Env) :- bind_ordinary(Name, Binding, Env0, Env).
+
+% cleanup_keys(+Env, -Ks): the cleanup variables in scope, innermost
+% first.
+cleanup_keys(Env, Ks) :-
+    vm_scopes(Env, Scopes), findall(K, member(cleanup(K), Scopes), Ks).
+
+% run_cleanups(+Ks)//: call the cleanups of Ks, in order; none where
+% control cannot reach.
+run_cleanups(Ks) --> cur(Cur), run_cleanups(Cur, Ks).
+
+run_cleanups(none, _) --> !.
+run_cleanups(_, []) --> !.
+run_cleanups(_, [K|Ks]) -->
+    state(st(_, _, _, _, _, Labels, _, _)),
+    { get_assoc(cleanup(K), Labels, c(XV, Binds, Ctx)) },
+    env(Env0), { foldl(bind_pair, Binds, Env0, Env) }, set_env(Env),
+    lower(XV, Ctx, _),
+    run_cleanups(Ks).
+
+% leaving(+Outer, -Ks)//: Ks are the cleanups in scope that Outer, the
+% cleanup keys of an enclosing point, does not have.
+leaving(Outer, Ks) -->
+    env(Env), { cleanup_keys(Env, Ks0), ( append(Ks, Outer, Ks0) -> true ; Ks = [] ) }.
+
+% scope_cleanups(+Outer)//: at the end of a scope entered with cleanup
+% keys Outer, run the scope's own.
+scope_cleanups(Outer) --> leaving(Outer, Ks), run_cleanups(Ks).
+
+% cleanup_targets(+Labels)//: break or continue to each of Labels runs
+% the cleanups declared since.
+cleanup_targets(Labels) -->
+    env(Env0),
+    { cleanup_keys(Env0, Ks),
+      foldl(cleanup_target(Ks), Labels, Env0, Env) },
+    set_env(Env).
+
+cleanup_target(Ks, Label, Env0, Env) :- bind_ordinary(cleanup_at(Label), Ks, Env0, Env).
+
+% jump_cleanups(+Target)//: before break or continue to Target.
+jump_cleanups(none) --> [].
+jump_cleanups(some(Label)) -->
+    env(Env),
+    { lookup_ordinary(Env, cleanup_at(Label), Outer) -> true ; Outer = [] },
+    leaving(Outer, Ks), run_cleanups(Ks).
+
+% return_cleanups(+RetType, +Addr0, -Addr)//: every cleanup in scope,
+% before a return of the value at Addr0, copied first to Addr.
+return_cleanups(RetType, Addr0, Addr) -->
+    env(Env), { cleanup_keys(Env, Ks) },
+    (   { Ks == [] } -> { Addr = Addr0 }
+    ;   local_slot(RetType, Addr), copy_object(RetType, Addr0, Addr),
+        run_cleanups(Ks)
+    ).
+
+% goto_cleanups(+Name, +Label, -Target)//: a goto to Name, whose block
+% is Label, jumps to Target, having run the cleanups it leaves (a
+% backward goto) or through Target, a block emitted at the label.
+goto_cleanups(Name, Label, Target) -->
+    env(Env), { cleanup_keys(Env, From) },
+    state(st(_, _, _, _, _, Labels0, _, _)),
+    (   { From == [] } -> { Target = Label }
+    ;   { get_assoc(vm(label(Name)), Labels0, ToScopes) }
+    ->  { Target = Label, findall(K, member(cleanup(K), ToScopes), To) },
+        leaving(To, Ks), run_cleanups(Ks)
+    ;   label(Target),
+        state(st(E, C, I, B, N, Labels1, Cs, A), st(E, C, I, B, N, Labels, Cs, A)),
+        { ( get_assoc(cleanup_gotos(Name), Labels1, Ps) -> true ; Ps = [] ),
+          put_assoc(cleanup_gotos(Name), Labels1, [p(Target, From)|Ps], Labels) }
+    ).
+
+% label_cleanups(+Name, +Label)//: the blocks of the forward gotos to
+% Name that leave cleanup scopes, each running those it leaves, before
+% Label begins.
+label_cleanups(Name, Label) -->
+    state(st(_, _, _, _, _, Labels, _, _)),
+    (   { get_assoc(cleanup_gotos(Name), Labels, Ps) }
+    ->  term(goto(Label)),
+        env(Env), { cleanup_keys(Env, To) },
+        goto_blocks(Ps, To, Label)
+    ;   []
+    ).
+
+goto_blocks([], _, _) --> [].
+goto_blocks([p(T, From)|Ps], To, Label) -->
+    start(T),
+    { append(Ks, To, From) -> true ; Ks = [] },      % else vm_jumps refuses
+    run_cleanups(Ks), term(goto(Label)),
+    goto_blocks(Ps, To, Label).
 
 %% Conversions
 
