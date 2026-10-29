@@ -2354,7 +2354,7 @@ lower_node(val(_, sizeof(X)), Ctx, v(Size, ulong)) --> !,
         extent(Type, Ctx, Size)
     ;   env(Env),
         { tree_type(X, Type), ctx_loc(Ctx, Loc),
-          catch(type_size_align(Type, Env, Size0, _), bad(Why),
+          catch(sizeof_size(Type, Env, Size0), bad(Why),
                 sema_error(Loc, 'sizeof: ~w', [Why])),
           Size = const(Size0) }
     ).
@@ -3046,7 +3046,7 @@ type_size(TypeName, Env0, Loc, Size) :-
     % SHELL_SIZE), which its own size needs.
     type_name_type(TypeName, Type, Env0, Env),
     supported(Type, Loc),
-    catch(type_size_align(Type, Env, Size, _), bad(Why),
+    catch(sizeof_size(Type, Env, Size), bad(Why),
           sema_error(Loc, 'sizeof: ~w', [Why])).
 
 % type_name(+TypeName, -Type, +Env, +Loc): Type is the type TypeName

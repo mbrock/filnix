@@ -60,7 +60,7 @@
     Env as its last two arguments, so it threads through foldl/4,6.
 */
 :- module(c_types, [empty_env/1, specs_type/4, apply_declarator/5,
-                    type_size_align/4, arith_size/3, classify_builtin/1, complete_type/2, int_type/1, int_info/3,
+                    type_size_align/4, sizeof_size/3, arith_size/3, classify_builtin/1, complete_type/2, int_type/1, int_info/3,
                     integer_promotion/2, usual_arith_conversion/3,
                     float_type/1, arithmetic_type/1, default_promotion/2,
                     constant_value/4, const_convert/4, float_literal/3,
@@ -1492,6 +1492,28 @@ def_size_align(partial(Why, _), _, _) :-
 def_size_align(bad(Why), _, _) :-
     throw(bad(Why)).
 
+doc(sizeof_size(+Type, +Env, -Size), det, [
+    Type: "the type of sizeof's operand",
+    Env: "the scope",
+    Size: "the operand's size in bytes",
+    "GNU C gives a function type and void the size 1 for sizeof, as for",
+    "pointer arithmetic on void * and function pointers; clang accepts it",
+    "with a -Wpointer-arith warning. curl's typecheck-gcc.h applies sizeof",
+    "to a callback's function designator. The types stay incomplete",
+    "everywhere else. Other types are as type_size_align/4, which throws",
+    "bad(Why).",
+    example(sizeof_size(func(int, [], fixed), _, 1)),
+    example(sizeof_size(qualified([const], void), _, 1)),
+    cites('C11 6.5.3.4p1 (the constraint GNU relaxes)'),
+    cites('GCC manual, Pointer Arithmetic: sizeof is also allowed on void and on function types, and returns 1')
+]).
+sizeof_size(Type, Env, Size) :-
+    unqualified(Type, T),
+    (   ( T == void ; T = func(_, _, _) )
+    ->  Size = 1
+    ;   type_size_align(Type, Env, Size, _)
+    ).
+
 %! complete_type(+Type, +Env) is semidet.
 %
 %  Type is complete in Env: it has a size.
@@ -1977,10 +1999,10 @@ folded(val(T0, cast(_, XV)), Env, V) :-                     % 6.6p10
     const_convert(A, ulong, T, V).
 folded(val(_, sizeof(type(Specs, Decl))), Env0, V) :- !,    % 6.5.3.4p2
     type_name_type(type(Specs, Decl), T, Env0, Env),
-    catch(type_size_align(T, Env, V, _), bad(_), fail).
+    catch(sizeof_size(T, Env, V), bad(_), fail).
 folded(val(_, sizeof(X)), Env, V) :-
     tree_type(X, T),
-    catch(type_size_align(T, Env, V, _), bad(_), fail).
+    catch(sizeof_size(T, Env, V), bad(_), fail).
 folded(val(_, alignof(TypeName)), Env, V) :-                % 6.5.3.4p3
     type_name_type(TypeName, T, Env, Env1),
     catch(type_size_align(T, Env1, _, V0), bad(_), fail),
