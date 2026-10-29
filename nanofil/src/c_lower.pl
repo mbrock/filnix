@@ -2213,6 +2213,9 @@ truth(v(V, Type), Ctx, W) -->
                             list or a string literal first clears what
                             it initializes
      val(Off, Type, N)      the integer N, an element of a string literal
+     bytes(Off, Type, Ns)   the integers Ns, the elements of a string
+                            literal of a one-byte Type, from Off: one leaf
+                            for GLib's megabyte resource blobs
      expr(Off, Type, Expr)  the value of the expression Expr, converted
                             to Type: a scalar, or (locals) a whole struct
    Offsets are from the start of the object. A local object stores its
@@ -2240,6 +2243,13 @@ object_init(bits(T, Pos, W), Off, Expr, _) --> !, [bits(Off, T, Pos, W, Expr)].
 object_init(array(T, N), Off, list([entry([], Str)]), C) -->
     { str_elems(Str, T, _) }, !,
     object_init(array(T, N), Off, Str, C).
+object_init(array(T, N), Off, list(Entries), _) -->
+    { integer(N), is_char_type(T), byte_entries(Entries, T, Vs),
+      length(Vs, K), K =< N }, !,
+    % A braced list of integer constants, nothing else, for a byte
+    % array: one leaf, as a string literal is (GLib's resource blobs
+    % for a compiler it does not know by name, gtk3's 1.5 MB of them).
+    [zero(Off, array(T, N)), bytes(Off, T, Vs)].
 object_init(Type, Off, list(Entries), C) --> !,
     [zero(Off, Type)],
     (   { aggregate(Type) }
@@ -2259,10 +2269,21 @@ object_init(array(ElemType, N), Off, Init, C) -->
       C = c(Env, _, _),
       type_size_align(ElemType, Env, Size, _) },
     [zero(Off, array(ElemType, N))],
-    elem_leaves(Values, ElemType, Off, Size).
+    (   { Size =:= 1 } -> [bytes(Off, ElemType, Values)]
+    ;   elem_leaves(Values, ElemType, Off, Size)
+    ).
 object_init(array(_, _), _, _, C) --> !,
     { init_error(C, 'array initializer must be a list', []) }.
 object_init(Type, Off, Expr, _) --> [expr(Off, Type, Expr)].
+
+% byte_entries(+Entries, +Type, -Values): Entries are undesignated
+% integer or character constants, whose values converted to Type are
+% Values.
+byte_entries([], _, []).
+byte_entries([entry([], X)|Es], T, [V|Vs]) :-
+    ( X = num(V0, _) ; X = chr(V0) ), integer(V0), !,
+    convert_int(V0, T, V),
+    byte_entries(Es, T, Vs).
 
 % elem_leaves(+Values, +Type, +Off, +Size)//: a val leaf for each of
 % Values, consecutive elements of Type and Size from Off.
@@ -2452,6 +2473,9 @@ store_leaves([Leaf|Leaves], Addr, Ctx) -->
 store_leaf(zero(Off, Type), Addr, _) -->
     offset(Addr, Off, P),
     zero_object(P, Type).
+store_leaf(bytes(Off, Type, Ns), Addr, Ctx) -->
+    { phrase(elem_leaves(Ns, Type, Off, 1), Leaves) },
+    store_leaves(Leaves, Addr, Ctx).
 store_leaf(val(Off, Type, N), Addr, _) -->
     offset(Addr, Off, P),
     { store_width(Type, Width) },
@@ -4548,7 +4572,7 @@ static_items(Type, Init, Loc, Env0, Env, Items) :-
     (   Init == none -> Leaves = []
     ;   init_leaves(Type, Init, c(Env0, none, Loc), Leaves)
     ),
-    foldl(static_leaf_once(Loc), Leaves, s(Env0, [], 0), s(Env, Chunks0, _)),
+    foldl(static_leaf_once(Loc), Leaves, s(Env0, [], 0)-no, s(Env, Chunks0, _)-_),
     reverse(Chunks0, Chunks),
     empty_assoc(ByOffset0),
     foldl(put_chunk, Chunks, ByOffset0, ByOffset),
@@ -4584,9 +4608,31 @@ int_chunk(Off, Type, V, chunk(Off, N, item(Width, const(U)))) :-
     memberchk(N-Width, [1-b, 2-h, 4-w, 8-l]),
     convert_int(V, Type, U).
 
-% static_leaf_once(+Loc, +Leaf, +S0, -S): static_leaf/4, committed: a
-% choicepoint left per leaf would keep every leaf's state alive.
-static_leaf_once(Loc, Leaf, S0, S) :- once(static_leaf(Loc, Leaf, S0, S)).
+% static_leaf_once(+Loc, +Leaf, +S0-Str0, -S-Str): static_leaf/4,
+% committed: a choicepoint left per leaf would keep every leaf's state
+% alive. Str is yes when the chunks may hold a string's bytes as one
+% chunk; a leaf before the end so far (a designator that goes back)
+% first splits those into a chunk per byte, so that it overrides only
+% the bytes it covers.
+static_leaf_once(Loc, Leaf, s(Env, Chunks0, End)-Str0, S-Str) :-
+    arg(1, Leaf, Off),
+    (   Str0 == yes, Off < End
+    ->  split_strs(Chunks0, Chunks1), Str1 = no
+    ;   Chunks1 = Chunks0, Str1 = Str0
+    ),
+    once(static_leaf(Loc, Leaf, s(Env, Chunks1, End), S)),
+    ( functor(Leaf, bytes, 3) -> Str = yes ; Str = Str1 ).
+
+split_strs([], []).
+split_strs([chunk(Off, _, item(b, str(Cs)))|Chunks0], Chunks) :- !,
+    str_byte_chunks(Cs, Off, Chunks, Chunks1),
+    split_strs(Chunks0, Chunks1).
+split_strs([Chunk|Chunks0], [Chunk|Chunks]) :- split_strs(Chunks0, Chunks).
+
+str_byte_chunks([], _, Chunks, Chunks).
+str_byte_chunks([C|Cs], Off, [chunk(Off, 1, item(b, const(N)))|Chunks], Chunks0) :-
+    char_code(C, N), Off1 is Off + 1,
+    str_byte_chunks(Cs, Off1, Chunks, Chunks0).
 
 /* static_leaf(+Loc, +Leaf, +S0, -S): S = s(Env, Chunks, End) adds the
    chunk of Leaf to the reversed Chunks of S0; End is where the chunks
@@ -4599,6 +4645,13 @@ static_leaf(_, zero(Off, Type), s(Env, Chunks0, End), s(Env, Chunks, End)) :-
         Hi is Off + Size,
         exclude(chunk_within(Off, Hi), Chunks0, Chunks)
     ).
+static_leaf(_, bytes(_, _, []), S, S) :- !.
+static_leaf(_, bytes(Off, Type, Vs), s(Env, Chunks, End0),
+            s(Env, [Chunk|Chunks], End)) :-
+    maplist(byte_char(Type), Vs, Cs),
+    length(Cs, N),
+    Chunk = chunk(Off, N, item(b, str(Cs))),
+    chunk_end(Chunk, End0, End).
 static_leaf(_, val(Off, Type, V), s(Env, Chunks, End0),
             s(Env, [Chunk|Chunks], End)) :-
     int_chunk(Off, Type, V, Chunk),
@@ -4634,6 +4687,8 @@ bitfield_byte(Start, W, V, Byte, Chunks0, [chunk(Byte, 1, item(b, const(New)))|C
     Mask is (((1 << W) - 1) << (Shift + 64)) >> 64 /\ 255,
     Bits is ((V /\ ((1 << W) - 1)) << (Shift + 64)) >> 64 /\ 255,
     New is (Old /\ \Mask /\ 255) \/ Bits.
+
+byte_char(Type, V, C) :- convert_int(V, Type, U), N is U /\ 255, char_code(C, N).
 
 chunk_within(Lo, Hi, chunk(Off, _, _)) :- Off >= Lo, Off < Hi.
 

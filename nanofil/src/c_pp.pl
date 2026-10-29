@@ -49,7 +49,10 @@
 %  Throws nanofil_error/1 on a preprocessing or lexical error.
 pp_file(File, profile(Macros, Paths, Features), Tokens) :-
     retractall(source_cache(_, _)),
-    file_tokens(File, env(Macros, Paths, Features, [], File), _, PpTokens),
+    % once/1: a choicepoint left in expansion would keep the file's
+    % preprocessing tokens alive through lexing (33 MB of 77 MB live at
+    % the end for a 256 KB GLib resource blob).
+    once(file_tokens(File, env(Macros, Paths, Features, [], File), _, PpTokens)),
     phrase(lex_tokens(PpTokens), Tokens).
 
 % lex_tokens(+PpTokens)//: the c_lex tokens of PpTokens. Each
@@ -113,8 +116,36 @@ read_source(File, PpTokens) :-
 % literals. In particular __LINE__ after a continuation is the physical
 % source line, not the number of newlines in the spliced buffer.
 source_tokens(Cs, Loc, PpTokens) :-
-    located_splice(Cs, Loc, Spliced, Locs),
-    phrase(pp_tokens(PpTokens, Locs, yes), Spliced).
+    (   has_splice(Cs)
+    ->  located_splice(Cs, Loc, Spliced, Locs),
+        At = locs(Locs)
+    ;   % Without a splice the characters are their own spliced copy and
+        % a token's line is the newlines before it: two lists fewer of
+        % the file's length (GLib's resource blobs are 10 MB of octal
+        % constants).
+        Spliced = Cs, At = line(Loc)
+    ),
+    phrase(pp_tokens(PpTokens, At, yes), Spliced).
+
+has_splice(['\\'|Cs]) :- ( Cs = ['\n'|_] ; Cs = ['\r', '\n'|_] ), !.
+has_splice([_|Cs]) :- has_splice(Cs).
+
+% at_loc(+At, -Loc), at_skip(+Char, +At0, -At): the location of the
+% next character, and the state after Char. At is locs(Locs), the
+% locations of the remaining characters (located_splice/4), or line(Loc)
+% when the input has no splice, Loc shared by the characters of a line.
+at_loc(locs([Loc|_]), Loc).
+at_loc(line(Loc), Loc).
+
+at_skip(_, locs([_|Locs]), locs(Locs)).
+at_skip(C, line(Loc), At) :-
+    (   C == '\n'
+    ->  Loc = File:N, N1 is N + 1, At = line(File:N1)
+    ;   At = line(Loc)
+    ).
+
+at_skips([], At, At).
+at_skips([C|Cs], At0, At) :- at_skip(C, At0, At1), at_skips(Cs, At1, At).
 
 % located_splice(+Chars, +Loc, -Spliced, -Locs): remove backslash-newline
 % and give each remaining character its physical location.
@@ -135,37 +166,35 @@ located_splice([C|Cs], Loc, [C|Spliced], [Loc|Locs]) :- !,
     located_splice(Cs, Loc1, Spliced, Locs).
 located_splice([], _, [], []).
 
-% pp_tokens(PpTokens, Locs, Space): Locs runs in step with the input
-% characters; Space says whether whitespace precedes the next token.
-pp_tokens([nl|Ts], [_|Locs], _) -->
+% pp_tokens(PpTokens, At, Space): At is the location state of the
+% input (at_loc/2); Space says whether whitespace precedes the next
+% token.
+pp_tokens([nl|Ts], At0, _) -->
     ['\n'], !,
-    pp_tokens(Ts, Locs, yes).
-pp_tokens(Ts, [_|Locs], _) -->
+    { at_skip('\n', At0, At) },
+    pp_tokens(Ts, At, yes).
+pp_tokens(Ts, At0, _) -->
     [C], { space(C) }, !,
-    pp_tokens(Ts, Locs, yes).
-pp_tokens(Ts, [_, _|Locs], _) -->
+    { at_skip(C, At0, At) },
+    pp_tokens(Ts, At, yes).
+pp_tokens(Ts, At0, _) -->
     ['/', '/'], !,
-    line_comment(Locs, Rest),
-    pp_tokens(Ts, Rest, yes).
-pp_tokens(Ts, [_, _|Locs], _) -->
+    { at_skips(['/', '/'], At0, At1) },
+    line_comment(At1, At),
+    pp_tokens(Ts, At, yes).
+pp_tokens(Ts, At0, _) -->
     ['/', '*'], !,
-    block_comment(Locs, Rest),
-    pp_tokens(Ts, Rest, yes).
-pp_tokens([t(A, Loc, Space, [])|Ts], [Loc|Locs], Space) -->
+    { at_skips(['/', '*'], At0, At1) },
+    block_comment(At1, At),
+    pp_tokens(Ts, At, yes).
+pp_tokens([t(A, Loc, Space, [])|Ts], At0, Space) -->
     spelling(Cs), !,
-    {   atom_chars(A, Cs),
-        length(Cs, N),
-        N1 is N - 1,
-        drop(N1, Locs, Rest)
+    {   at_loc(At0, Loc),
+        atom_chars(A, Cs),
+        at_skips(Cs, At0, At)
     },
-    pp_tokens(Ts, Rest, no).
-pp_tokens([], [], _) --> [].
-
-% drop(+N, +Xs, -Rest): Rest is Xs without its first N elements.
-drop(0, Xs, Xs) :- !.
-drop(N, [_|Xs], Rest) :-
-    N1 is N - 1,
-    drop(N1, Xs, Rest).
+    pp_tokens(Ts, At, no).
+pp_tokens([], _, _) --> [].
 
 space(' ').
 space('\t').
@@ -173,19 +202,21 @@ space('\r').
 space('\f').
 space('\v').
 
-% line_comment(+Locs, -Rest)//: the comment's characters, leaving the
-% newline; Rest is Locs without their locations.
-line_comment(Locs, Locs), ['\n'] --> ['\n'], !.
-line_comment([_|Locs], Rest) -->
-    [_], !,
-    line_comment(Locs, Rest).
-line_comment([], []) --> [].
+% line_comment(+At0, -At)//: the comment's characters, leaving the
+% newline; At is At0 past them.
+line_comment(At, At), ['\n'] --> ['\n'], !.
+line_comment(At0, At) -->
+    [C], !,
+    { at_skip(C, At0, At1) },
+    line_comment(At1, At).
+line_comment(At, At) --> [].
 
-% block_comment(+Locs, -Rest)//: like line_comment//2, through the */.
-block_comment([_, _|Locs], Locs) --> ['*', '/'], !.
-block_comment([_|Locs], Rest) -->
-    [_], !,
-    block_comment(Locs, Rest).
+% block_comment(+At0, -At)//: like line_comment//2, through the */.
+block_comment(At0, At) --> ['*', '/'], !, { at_skips(['*', '/'], At0, At) }.
+block_comment(At0, At) -->
+    [C], !,
+    { at_skip(C, At0, At1) },
+    block_comment(At1, At).
 block_comment(_, _) -->
     { throw(nanofil_error('unterminated preprocessing comment')) }.
 

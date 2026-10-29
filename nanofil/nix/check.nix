@@ -84,6 +84,11 @@ pkgs.runCommandCC "nanofil-check"
     step checks tests/checks.sh
     # c-testsuite/00200 (1557 blocks) is the slowest compile (docs/m5.md).
     step corpus env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    # GLib resource blobs of gtk4's size (1.66 MB), in both of
+    # glib-compile-resources' forms: each overflowed the 1 GB stack.
+    python3 -I tests/bigblob.py string 1700000 > bigblob-string.c
+    python3 -I tests/bigblob.py braces 1700000 > bigblob-braces.c
+    step bigblob env COMPILE_TIMEOUT=300 tests/progtest.sh bigblob-string.c bigblob-braces.c
     step "progtest gc-stress" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     step "run-c gc gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc
     # M5: the same suites with the middle end on. difftest -O also runs
