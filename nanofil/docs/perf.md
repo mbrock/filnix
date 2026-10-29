@@ -3583,6 +3583,91 @@ The plants, each restored afterwards:
 - `shadow_across_poll` expected to pass: the register checker refuses
   it, so the regs_check test fails.
 
+### 10. Compile time of `-O` (October 2026)
+
+Whole-package builds use plain mode, partly because `-O` took about 3×
+plain's compile. Measured in `perf stat` user instructions (time varies
+by up to 8% between identical runs; instructions by about 1%, mostly
+garbage collection), with `NANOFIL_STACK_LIMIT=4000000000` as the
+bench and SQLite builds use.
+
+Where `-O` spends it on `sqlite3.c` (a loaded run, seconds): emission
+151 of 269 (plain: 33), the middle end 65 (promote 20, simplify 17,
+inline 16, copy 10), the frontend about 30. `-O --registers=stack` is
+1026G instructions against 2100G for `-O`, so temps' allocation and its
+two translation checkers are about half of `-O`'s compile.
+
+**Output-identical cuts** (snapshot byte-identical each time):
+
+1. `89f557c`, the backend's checks and scans. The register preflight
+   tests each operand once, and `mapped_overlap/3` returns at once on an
+   empty map. `home_facts/6` checks the store form before computing
+   effects, and `forget/3` and `single/2` build no assoc they don't
+   need. cfg's `temps/2` walks values instead of using `findall/3`; it
+   runs in every pass's strict-SSA and liveness checks.
+   `sqlite3.c -O` 2100.5G → 1975.5G (−6.0%), plain 660.5G → 651.6G;
+   `lz4.c -O` 40.00G → 38.19G, plain 18.00G → 17.77G.
+2. `dcd7f4c`, each analysis once per pass. Promote computed
+   `def_counts/2` and `address_temps/2` three times per function, and
+   local storage and the inliner's callee test recomputed them too.
+   `promotable/4` returns them for `strict_ssa/4`, `promote_roots` and
+   escape's `alloc_classes/4`. The middle end on `sqlite3.ir` went from
+   522.3G to 500.8G, but end to end only 1995.7G → 1992.9G
+   (`sqlite3.c -O`) and 29.84G → 29.60G (`lz4.c -O`), within noise.
+   Sharing the CFG across passes (copy and simplify see the same one)
+   would reach about 1 s more; not done.
+
+What remains is flat: the top predicate in emission is under 5%, and
+most of the rest is the translation checkers, which stay.
+
+**Rejected: one lowering for temps' large functions.** Skipping the
+second lowering for functions with over 16 homes would save 14%
+(`sqlite3.c -O` 1799G against 2100G). But it changes frames, and 3d
+measured the recursion depth before the stack-overflow trap halving on a
+function with about 20 temporaries. The orchestrating thread decided
+against it.
+
+**`--registers-limit=N`, opt-in.** A function of more than N checked IR
+instructions is emitted by the reference (stack) emission under temps
+(`filc_amd64.pl`'s `item_placed_lines/6` for `temps(N)`;
+`NANOFIL_REGISTERS_LIMIT`). Sizes in `sqlite3.c`: 3106 functions, 218k
+instructions; 10 over 1000, 3 over 2000, 2 over 4000
+(`sqlite3VdbeExec` 8352, `yy_reduce` 4472). `BZ2_decompress` is 5186.
+
+| Limit | `sqlite3.c -O` compile | gate instructions (geomean) |
+| --- | --: | --: |
+| none | 1992.9G | 2.89 |
+| 4000 | 1890.7G (−5.1%) | 3.14 |
+| 2000 | 1872.1G (−6.1%) | 3.16 |
+| 1000 | 1821.8G (−8.6%) | 3.16 |
+
+`lz4.c` has no function that large: 38.09G against 38.03G at any limit.
+The gate (3 trials, swa loaded, so times are indicative only; the
+instructions do not depend on load), ratio to filcc `-O2`, time
+(instructions):
+
+| Workload | `-O` | limit 1000 | limit 2000 | limit 4000 |
+| --- | --: | --: | --: | --: |
+| zlib -6 | 2.40 (3.92) | 2.32 (3.92) | 2.41 (3.92) | 2.40 (3.92) |
+| zlib -d | 1.80 (3.03) | 1.80 (3.06) | 1.87 (3.06) | 1.79 (3.03) |
+| bzip2 -9 | 1.85 (2.33) | 2.05 (2.46) | 1.94 (2.46) | 1.78 (2.33) |
+| bzip2 -d | 2.46 (2.92) | 5.16 (3.72) | 5.08 (3.72) | 4.87 (3.72) |
+| lz4 -1 | 2.11 (10.17) | 2.18 (10.16) | 2.28 (10.16) | 2.20 (10.17) |
+| lz4 -9 | 2.09 (2.65) | 2.14 (2.65) | 2.20 (2.65) | 2.19 (2.65) |
+| lz4 -d | 2.36 (5.35) | 2.39 (5.35) | 2.47 (5.35) | 2.39 (5.34) |
+| lua int | 1.90 (1.87) | 2.83 (2.47) | 2.83 (2.47) | 2.80 (2.47) |
+| lua tab | 1.84 (1.82) | 2.95 (2.46) | 2.91 (2.46) | 2.80 (2.46) |
+| lua str | 1.40 (1.54) | 1.47 (1.57) | 1.51 (1.57) | 1.47 (1.57) |
+| sqlite | 1.98 (1.93) | 2.34 (2.10) | 2.53 (2.07) | 2.17 (2.07) |
+| geomean | 1.99 (2.89) | 2.38 (3.16) | 2.43 (3.16) | 2.32 (3.14) |
+
+Even at 4000 the limit reaches the hottest functions
+(`luaV_execute`, `BZ2_decompress`, `sqlite3VdbeExec`), and they lose
+their registers: bzip2 `-d` runs 2×, Lua 1.5×. So the limit costs 9% of
+the gate's instructions for 5% of SQLite's compile. It stays opt-in
+(bench mode `O-limit4000`). A useful threshold would need a cheaper
+allocator for those functions rather than none.
+
 ### Projection
 
 From the profile's shares: items 1–4 leave the compressors at about 3–4×

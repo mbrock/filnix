@@ -150,6 +150,15 @@ emission(Registers, Registers, reference).
 
 item_placed_lines(Symbols, _, _, alias(Name, Linkage, Target), Lines, data(Name)) :- !,
     phrase(alias_getter(Symbols, Name, Linkage, Target), Lines).
+% temps(Limit): temps for a function of at most Limit instructions, and
+% the reference emission for a larger one (main.pl's --registers-limit).
+item_placed_lines(Symbols, temps(Limit), Branches, Item, Lines, Report) :- !,
+    (   Item = func(_, _, _, _, Blocks),
+        foldl(block_insts, Blocks, 0, Size), Size > Limit
+    ->  Registers = stack
+    ;   Registers = temps
+    ),
+    item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report).
 item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
     % The allocating modes keep float temporaries out of the scalar
     % slots (frame_slots:temp_slots/9), so integer homes stay eligible.
@@ -176,6 +185,8 @@ item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
     ;   once(( lower_item(shared, Symbols, Item, Product),
                placed_lines(Registers, Branches, Item, Product, Lines, Report) ))
     ).
+
+block_insts(block(_, _, Is, _), N0, N) :- length(Is, K), N is N0 + K.
 
 % temps_first(+Symbols, +Branches, +Item, -First): temps mode's first
 % lowering, with a home per w/l temporary. First is placed(Lines,

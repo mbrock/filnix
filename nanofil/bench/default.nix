@@ -31,6 +31,7 @@ let
     O-stack = "-O --registers=stack";
     O-call = "-O --memcpy=call";
     O-nosimplify = "-O --simplify=none";
+    O-limit4000 = "-O --registers-limit=4000";
   };
   chosen =
     if only == "" then

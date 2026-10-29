@@ -54,6 +54,11 @@
     (docs/perf.md, register modes) and are refused.
     The plain backend is unchanged. Options precede the command.
 
+    `--registers-limit=N` (or NANOFIL_REGISTERS_LIMIT), opt-in, emits
+    each function of more than N checked IR instructions by the
+    reference (stack) emission when registers are temps, to save compile
+    time on very large functions (docs/perf.md, compile time).
+
     `--branches=reference|selected` independently selects the reference
     branch on a stored boolean, or a branch on the flags of a compare
     that only the branch reads, with jumps to the next block left to
@@ -142,7 +147,10 @@ main :-
               inline_options(Argv0,Inline0,Inline,Argv1),
               simplify_default(Simplify0),
               simplify_options(Argv1,Simplify0,Simplify,Argv2),
-              options(Argv2,o0,Default,Checks0,Level,Registers,Checks,Argv),
+              limit_default(Limit0),
+              limit_options(Argv2,Limit0,Limit,Argv3),
+              options(Argv3,o0,Default,Checks0,Level,Registers0,Checks,Argv),
+              limited_registers(Limit,Registers0,Registers),
               opt_selection(Level,Inline,Simplify,Opt),
               command(Opt,Registers,Checks,Argv) )
           ->  Status = 0
@@ -193,6 +201,25 @@ inline_default(Inline) :-
 inline_mode(I) :-
     ( memberchk(I,[none,small]) -> true
     ; throw(nanofil_error('inline must be none or small')) ).
+% limit_options(+Argv0, +Limit0, -Limit, -Argv): as inline_options/4,
+% for --registers-limit=N; Limit is none or a nonnegative integer.
+limit_options([], L, L, []).
+limit_options([A|As], L0, L, Args) :-
+    (   atom(A), atom_concat('--registers-limit=', N, A)
+    ->  limit_mode(N, L1), limit_options(As, L1, L, Args)
+    ;   Args = [A|Args1], limit_options(As, L0, L, Args1)
+    ).
+limit_default(L) :-
+    ( getenv('NANOFIL_REGISTERS_LIMIT',N) -> limit_mode(N, L) ; L = none ).
+limit_mode(A, N) :-
+    (   catch(atom_number(A, N), _, fail), integer(N), N >= 0 -> true
+    ;   throw(nanofil_error('registers-limit must be a nonnegative integer'))
+    ).
+% limited_registers(+Limit, +Emission0, -Emission): temps(N) for temps
+% under a limit (filc_amd64.pl's item_placed_lines/6).
+limited_registers(none, E, E) :- !.
+limited_registers(N, emit(temps,B,M), emit(temps(N),B,M)) :- !.
+limited_registers(_, E, E).
 % simplify_options(+Argv0, +Simplify0, -Simplify, -Argv): as
 % inline_options/4, for --simplify=.
 simplify_options([], S, S, []).
