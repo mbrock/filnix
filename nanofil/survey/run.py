@@ -196,6 +196,8 @@ COLS = ["name", "version", "kind", "c", "cxx", "ref", "nf", "objects", "cxx_obje
 # autoconf's C89 probe has a K&R definition, gnulib's strerror_r and
 # curl's prototype probes expect a conflicting redeclaration to fail.
 CAUSES = [
+    (r"resource_error|stack_overflow", "compiler resource limit"),
+    (r"filc safety error|filc panic", "nanofil-built program traps"),
     (r"__atomic_(load|store|exchange|compare_exchange)\b", "generic __atomic builtins"),
     (r"alignment attributes|pthread|thread support|threads|threading", "alignment attributes"),
     (r"\basm\b", "inline or top-level asm"),
@@ -227,7 +229,8 @@ def cause(row):
     if row.get("nf") == "tests fail" and row.get("name") in TRACED:
         return TRACED[row["name"]]
     err = row.get("error") or ""
-    return next((c for p, c in CAUSES if re.search(p, err)), "other syntax or typing gaps")
+    other = "package tests fail" if row.get("nf") == "tests fail" else "other syntax or typing gaps"
+    return next((c for p, c in CAUSES if re.search(p, err)), other)
 
 
 def write(rows):

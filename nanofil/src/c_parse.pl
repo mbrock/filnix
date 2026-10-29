@@ -300,11 +300,24 @@ knr_decls(_, []) --> [].
 % and apply to the whole declaration.
 init_declarators(Env, Dcl, [init(Dcl, Init)|Inits], Attrs0, Attrs) -->
     ( punct('=') -> initializer(Env, Init) ; { Init = none } ),
-    (   punct(',')
+    (   loc(Loc), punct(',')
     ->  full_declarator(Env, Dcl1, Attrs1),
-        { append(Attrs0, Attrs1, Attrs2) },
+        { append(Attrs0, Attrs1, Attrs2), one_declarator_attrs(Attrs2, Loc) },
         init_declarators(Env, Dcl1, Inits, Attrs2, Attrs)
     ;   { Inits = [], Attrs = Attrs0 }
+    ).
+
+% one_declarator_attrs(+Attrs, +Loc): no attribute of a declaration
+% with several declarators that is written with one of them (before it
+% or after it) is honored. Those apply to the whole declaration here,
+% so `int a = 1, z __attribute__((cleanup(f))) = 5;` would also run
+% f(&a), and `static void a(void), b(void) __attribute__((constructor));`
+% would run a. Hints, and attributes among the specifiers, are fine.
+one_declarator_attrs(Attrs, Loc) :-
+    (   member(A, Attrs), honored_attribute(A, Word)
+    ->  format(atom(M), '~w: attribute ~w on one of several declarators is not supported', [Loc, Word]),
+        throw(nanofil_error(M))
+    ;   true
     ).
 
 %% Declaration specifiers
@@ -488,11 +501,24 @@ c23_known(none, Name0, Loc) :- !,
     (   memberchk(Name, [deprecated, fallthrough, maybe_unused, nodiscard, noreturn,
                          '_Noreturn', reproducible, unsequenced])
     ->  true
-    ;   known_attribute_at(Name, Loc)
+    ;   known_attribute_at(Name, Loc), c23_hint(none, Name, Loc)
     ).
 c23_known(Prefix, Name, Loc) :-
     (   memberchk(Prefix, [gnu, '__gnu__', clang, '_Clang'])
-    ->  attribute_name(id(Name), Word), known_attribute_at(Word, Loc)
+    ->  attribute_name(id(Name), Word), known_attribute_at(Word, Loc),
+        c23_hint(Prefix, Word, Loc)
+    ;   true
+    ).
+
+% c23_hint(+Prefix, +Word, +Loc): nanofil keeps no C23 attribute, so an
+% honored one ([[gnu::constructor]], [[gnu::cleanup(f)]],
+% [[gnu::mode(DI)]], [[gnu::vector_size(16)]]) is refused rather than
+% dropped. struct_spec//3 reads [[gnu::packed]] on a struct itself.
+c23_hint(Prefix, Word, Loc) :-
+    (   c_types:known_attribute(Word, honored, _)
+    ->  ( Prefix == none -> Shown = Word ; format(atom(Shown), '~w::~w', [Prefix, Word]) ),
+        format(atom(M), '~w: the C23 attribute [[~w]] is not supported', [Loc, Shown]),
+        throw(nanofil_error(M))
     ;   true
     ).
 
@@ -522,12 +548,39 @@ attribute_delimiter('(', ')').
 attribute_delimiter('[', ']').
 attribute_delimiter('{', '}').
 
-% attrs//: GNU and C23 attributes, ignored.
+% attrs//: GNU and C23 attributes at a position whose attributes
+% nanofil does not keep: an enum specifier, a pointer's qualifiers, a
+% nested or abstract declarator, a parameter's end, an enumerator, a
+% statement or a label. Only hints may stand there (c23_known/3 refuses
+% honored C23 attributes everywhere): `enum __attribute__((packed))`,
+% `int * __attribute__((aligned(16))) p` or `char *
+% __attribute__((cleanup(f))) p` would otherwise lose their effect.
 attrs -->
-    gnu_attr(_), !,
+    loc(Loc), gnu_attr(A), !,
+    { hint_attributes(A, Loc) },
     attrs.
 attrs --> c23_attr, !, attrs.
 attrs --> [].
+
+% hint_attributes(+Tokens, +Loc): each attribute of __attribute__((...))
+% Tokens only hints (c_types known_attribute/3); an honored one, whose
+% effect this position would drop, is refused.
+hint_attributes(Tokens, Loc) :-
+    forall(( member(group(Inner), Tokens), attribute_items(Inner, Items),
+             member([T|_], Items), attribute_name(T, Word) ),
+           (   c_types:known_attribute(Word, honored, _)
+           ->  format(atom(M), '~w: attribute ~w is not supported in this position', [Loc, Word]),
+               throw(nanofil_error(M))
+           ;   true
+           )).
+
+% honored_attribute(+Attr, -Word): the attr(Tokens) specifier Attr has
+% an attribute Word that nanofil honors.
+honored_attribute(attr(Tokens), Word) :-
+    is_list(Tokens),
+    member(group(Inner), Tokens), attribute_items(Inner, Items),
+    member([T|_], Items), attribute_name(T, Word),
+    c_types:known_attribute(Word, honored, _), !.
 
 struct_spec(Env, Kind, su(Kind, Tag, Members, Attrs)) -->
     attr_list(Attrs0),
@@ -670,7 +723,8 @@ qualifiers(Quals) -->
     { Quals = [Q|Quals1] },
     qualifiers(Quals1).
 qualifiers(Quals) -->
-    gnu_attr(_), !,
+    loc(Loc), gnu_attr(A), !,
+    { hint_attributes(A, Loc) },
     qualifiers(Quals).
 qualifiers(Quals) --> c23_attr, !, qualifiers(Quals).
 qualifiers(Quals) -->                   % clang's nullability, ignored

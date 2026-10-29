@@ -5,7 +5,7 @@
 
     The input is preprocessed text. A line marker `# N "file"` or
     `#line N "file"` sets the location of the next line, and
-    `#pragma weak` is a token; any other directive line, such as
+    `#pragma weak` and `#pragma pack` are tokens; any other directive line, such as
     another `#pragma` or `#ident`, is skipped. Comments
     are skipped too, so hand-written test input works without a
     preprocessor.
@@ -25,9 +25,16 @@
     | `wstr(Type, Codes)` | `L"..."`, `u"..."` or `U"..."`: Type is the element type, `int` (wchar_t), `ushort` (char16_t) or `uint` (char32_t), and Codes the elements without the 0 |
     | `p(Atom)` | a punctuator, such as `p('->')` or `p('<<=')` |
     | `pragma_weak(Name, Target)` | `#pragma weak Name`, Target `none`, or `#pragma weak Name = Target` |
+
+    A `#pragma pack` line is consumed by pack_tokens/2, which c_tokens/3
+    and c_pp apply to a whole token list: each `struct` or `union`
+    keyword under `#pragma pack(N)` is followed by the attribute
+    `__attribute__((__nanofil_pack__(N)))`, which c_types' su_layout/5
+    honors. GCC and clang apply the pragma to the definitions after it.
 */
 :- module(c_lex, [c_tokens/3, c23_tokens/2, keyword/2, decimal/1, ident_start/1,
-                  ident_char/1, ident_rest//1, punctuator/1, digraph/1]).
+                  ident_char/1, ident_rest//1, punctuator/1, digraph/1,
+                  pack_op/2, pack_tokens/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(dcgs)).
@@ -38,10 +45,71 @@
 %  Tokens are the tok(T, File:Line) terms of the C text Chars, read as
 %  file File from line 1. Throws nanofil_error/1 on a lexical error.
 c_tokens(Cs, File, Tokens) :-
-    (   phrase(tokens(Tokens, File:1, bol), Cs)
-    ->  true
+    (   phrase(tokens(Tokens0, File:1, bol), Cs)
+    ->  pack_tokens(Tokens0, Tokens)
     ;   throw(nanofil_error('C lexer failed'))
     ).
+
+%! pack_tokens(+Tokens0, -Tokens) is det.
+%
+%  Tokens are Tokens0 without their pragma_pack(Op) tokens, each struct
+%  or union keyword under a #pragma pack(N) followed by the attribute
+%  __nanofil_pack__(N). Tokens0 is not copied when it has no pragma
+%  (GLib's resource blobs are millions of tokens).
+pack_tokens(Tokens0, Tokens) :-
+    (   memberchk(tok(pragma_pack(_), _), Tokens0)
+    ->  once(phrase(packed_tokens(Tokens0, [none]), Tokens))
+    ;   Tokens = Tokens0
+    ).
+
+packed_tokens([], _) --> [].
+packed_tokens([tok(pragma_pack(Op), _)|Ts], Packs0) --> !,
+    { pack_stack(Op, Packs0, Packs) },
+    packed_tokens(Ts, Packs).
+packed_tokens([tok(kw(K), Loc)|Ts], Packs) -->
+    { Packs = [N|_], integer(N), memberchk(K, [struct, union]) }, !,
+    { format(chars(Cs), '__attribute__((__nanofil_pack__(~w)))', [N]),
+      phrase(tokens(Attr0, Loc, mid), Cs) },
+    [tok(kw(K), Loc)], seq(Attr0),
+    packed_tokens(Ts, Packs).
+packed_tokens([T|Ts], Packs) --> [T], packed_tokens(Ts, Packs).
+
+% pack_stack(+Op, +Packs0, -Packs): the #pragma pack stack after Op:
+% the current value, then the saved entries s(Label, Value), Label none
+% for an unnamed push. A pop restores the latest entry, or with a label
+% the latest entry of that label, dropping those above it; a pop that
+% finds none changes nothing (clang warns), except that an unnamed pop
+% of an empty stack restores the default, as GCC's.
+pack_stack(set(N), [_|S], [N|S]).
+pack_stack(push(L, keep), [C|S], [C, s(L, C)|S]).
+pack_stack(push(L, N), [C|S], [N, s(L, C)|S]) :- N \== keep.
+pack_stack(pop(none), [_|S], Packs) :-
+    ( S = [s(_, V)|S1] -> Packs = [V|S1] ; Packs = [none] ).
+pack_stack(pop(L), [C|S], Packs) :-
+    L \== none,
+    ( append(_, [s(L, V)|S1], S) -> Packs = [V|S1] ; Packs = [C|S] ).
+pack_stack(show, Packs, Packs).
+
+%! pack_op(+Args, -Op) is semidet.
+%
+%  Op is the pragma_pack operation of #pragma pack(Args), Args its
+%  operands as atoms and integers: pack() sets the default, pack(N)
+%  sets N, pack(push[, Label][, N]) saves the current value first,
+%  pack(pop[, Label]) restores it, and pack(show) changes nothing. N is
+%  a power of two up to 16. Fails for any other form, which nanofil
+%  refuses.
+pack_op([], set(none)) :- !.
+pack_op([push], push(none, keep)) :- !.
+pack_op([pop], pop(none)) :- !.
+pack_op([show], show) :- !.
+pack_op([push, ',', N], push(none, N)) :- integer(N), !, pack_value(N).
+pack_op([push, ',', L], push(L, keep)) :- pack_label(L), !.
+pack_op([push, ',', L, ',', N], push(L, N)) :- !, pack_label(L), pack_value(N).
+pack_op([pop, ',', L], pop(L)) :- !, pack_label(L).
+pack_op([N], set(N)) :- pack_value(N).
+
+pack_value(N) :- memberchk(N, [1, 2, 4, 8, 16]).
+pack_label(L) :- atom(L), atom_chars(L, [C|_]), ident_start(C).
 
 %% Lines, blanks and comments
 
@@ -54,6 +122,18 @@ tokens(Ts, Loc, _) -->
     tokens(Ts, Loc1, bol).
 tokens([tok(T, Loc)|Ts], Loc, bol) -->
     ['#'], spaces, pragma_weak(T), !,
+    tokens(Ts, Loc, mid).
+tokens([tok(pragma_pack(Op), Loc)|Ts], Loc, bol) -->
+    ['#'], spaces, "pragma", [C], { blank(C) }, spaces, "pack", !,
+    pack_line(Cs),
+    {   catch(phrase(tokens(Args0, Loc, mid), Cs), _, fail),
+        maplist(pack_arg, Args0, Args),
+        Args = ['('|Rest], append(Inner, [')'], Rest),
+        pack_op(Inner, Op)
+    ->  true
+    ;   format(atom(M), '~w: this #pragma pack is not supported', [Loc]),
+        throw(nanofil_error(M))
+    },
     tokens(Ts, Loc, mid).
 tokens(Ts, Loc, bol) -->
     ['#'], !,
@@ -120,6 +200,15 @@ directive(Loc0, Loc) -->
     ;   { Loc = Loc0 }
     ),
     line_rest.
+
+% pack_line(-Cs)//: the rest of a #pragma pack line, before its newline.
+pack_line([]), ['\n'] --> ['\n'], !.
+pack_line([C|Cs]) --> [C], !, pack_line(Cs).
+pack_line([]) --> [].
+
+pack_arg(tok(id(A), _), A).
+pack_arg(tok(p(A), _), A).
+pack_arg(tok(int(N, _), _), N).
 
 % pragma_weak(-T)//: `pragma weak Name` or `pragma weak Name = Target`
 % after the line's `#`, up to its newline.

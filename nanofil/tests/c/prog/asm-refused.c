@@ -12,6 +12,11 @@
 static int x = 1;
 static unsigned short cw;
 static int *p = &x;
+static int arr[4];
+/* The operands of an asm that traps are evaluated first, as clang's
+   EmitAsmStmt does: case 14 prints h, then g. */
+static int g(void) { printf("g\n"); fflush(stdout); return 1; }
+static int *h(void) { printf("h\n"); fflush(stdout); return &arr[1]; }
 
 static void run(int i) {
     switch (i) {
@@ -35,13 +40,14 @@ static void run(int i) {
         x = (int)(h + l); break; }
     case 12: __asm__ volatile ("nop" : "+r"(x) : "g"(x)); break;
     case 13: __asm__ volatile ("bswap %0" : "=r"(x) : "0"(x), "i"(3)); break;
+    case 14: __asm__ volatile ("hlt" : "=r"(*h()) : "r"(g())); break;
     }
 out:
     printf("case %d ran on\n", i);
 }
 
 int main(void) {
-    for (int i = 0; i < 14; i++) {
+    for (int i = 0; i < 15; i++) {
         fflush(stdout);
         pid_t pid = fork();
         if (pid == 0) { run(i); _exit(0); }

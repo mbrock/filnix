@@ -74,6 +74,14 @@ instruction it cannot run safely (dconf's and mbedtls's test failures
 show that message), where nanofil refuses at compile time. Alignment
 attributes (15) are the next row; gtk4's `gdkresources.c` is one.
 
+Three causes are not syntax: a package whose build runs a program
+nanofil built that traps (`nanofil-built program traps`, emacs30's and
+gobject-introspection's build-time tools), a compile that hits the
+stack or memory limit (`compiler resource limit`), and a test suite that
+fails with no compiler error to point at (`package tests fail`). A
+vector type named through an aligned typedef such as SSE2's `__m128i`
+(xz, brotli in ghostscript) reports vector types, not its alignment.
+
 libressl's one failing test is timing-dependent, not a miscompile.
 Its ssltest runs both ends of each DTLS handshake in one process, and a
 DTLS peer retransmits its flight when its 1 s timer expires; with RSA key

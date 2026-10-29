@@ -80,6 +80,7 @@
 :- use_module(c_types).
 :- use_module(ir, [op_kind/2, narrow_type/3, width_bytes/2, variadic_func/1]).
 :- use_module(c_parse, [compound_assignment/2]).
+:- use_module(c_lex, [ident_start/1, ident_char/1, decimal/1]).
 :- use_module(cfg, [inst_def/2]).
 
 %! c_module(+Items, -Module)
@@ -104,14 +105,17 @@ c_module(Items00, module(Funcs)) :-
     weak_linkage(Weak, Funcs1, Funcs2),
     unprototyped_calls(Funcs2, Funcs).
 
-/* unprototyped_calls(+Items0, -Items): a direct call whose arguments
-   do not match the parameters of the function the module defines, which
-   only a declaration without a prototype allows (C11 6.5.2.2p6: gmp's
+/* unprototyped_calls(+Items0, -Items): a direct call made without a
+   prototype in scope (callee unproto(S), from lower_node//3's call)
+   whose arguments do not match the parameters of the function the
+   module defines, which only such a call allows (C11 6.5.2.2p6: gmp's
    configure calls `void g(){}` with six arguments), calls through the
    function's address instead, as filcc -O0 does: every argument is
    passed, and the callee reads the parameters it declares, trapping on
-   one that was not passed. A call ir.pl's validator accepts, matching
-   or past a variadic definition's parameters, is left alone. */
+   one that was not passed. Any other such call, which ir.pl's validator
+   accepts (matching, or past a variadic definition's parameters), is a
+   direct call. A call made with a prototype is never rewritten: a
+   mismatch there is the validator's error. */
 unprototyped_calls(Items0, Items) :-
     findall(S-(Ks-V), ( member(F, Items0), F = func(S, _, _, Ps, _),
                         findall(K, member(param(K, _), Ps), Ks),
@@ -127,7 +131,7 @@ unprototyped_block(Defs, block(L, Phis, Insts0, J), block(L, Phis, Insts, J), N0
     foldl(unprototyped_inst(Defs), Insts0, Insts1, N0, N),
     append(Insts1, Insts).
 
-unprototyped_inst(Defs, call(Res, global(S), Args), Insts, N0, N) :-
+unprototyped_inst(Defs, call(Res, unproto(S), Args), Insts, N0, N) :-
     get_assoc(S, Defs, Ks-V),
     findall(K, member(arg(K, _), Args), Ks1),
     Ks1 \== Ks,
@@ -135,6 +139,7 @@ unprototyped_inst(Defs, call(Res, global(S), Args), Insts, N0, N) :-
     N is N0 + 1,
     format(atom(T), 'unproto~w', [N0]),
     Insts = [let(tmp(T), p, copy, [global(S)]), call(Res, tmp(T), Args)].
+unprototyped_inst(_, call(Res, unproto(S), Args), [call(Res, global(S), Args)], N, N) :- !.
 unprototyped_inst(_, Inst, [Inst], N, N).
 
 %! c_toplevel_asm(+Items, -Lines)
@@ -170,11 +175,11 @@ module_asm_line(Loc-L, Lines) :-
 
 % MATokenizer's whitespace (but newline) and identifiers: a letter or _
 % and then letters, digits, _, $, @ and dots.
-ma_blank --> [C], { C \== '\n', char_type(C, space) }, !, ma_blank.
+ma_blank --> ma_white, !, ma_blank.
 ma_blank --> [].
-ma_white --> [C], { C \== '\n', char_type(C, space) }.
-ma_id([C|Cs]) --> [C], { char_code(C, N), N < 128, char_type(C, csymf) }, !, ma_id_rest(Cs).
-ma_id_rest([C|Cs]) --> [C], { char_code(C, N), N < 128, ( char_type(C, csym) ; memberchk(C, ['$', '@', '.']) ) }, !, ma_id_rest(Cs).
+ma_white --> [C], { memberchk(C, [' ', '\t', '\v', '\f', '\r']) }.
+ma_id([C|Cs]) --> [C], { C \== '$', ident_start(C) }, !, ma_id_rest(Cs).
+ma_id_rest([C|Cs]) --> [C], { ( ident_char(C) ; memberchk(C, ['@', '.']) ) }, !, ma_id_rest(Cs).
 ma_id_rest([]) --> [].
 ma_end([], []).
 
@@ -190,14 +195,14 @@ ma_end([], []).
    definition of its own name that calls t. Weak static and thread-local
    names are refused. */
 weak_attr(Specs) :-
-    member(attr([group(Tokens)]), Specs),
-    member(id(W), Tokens), memberchk(W, [weak, '__weak__']), !.
+    member(attr(Tokens), Specs),
+    attr_word(Tokens, W), memberchk(W, [weak, '__weak__']), !.
 
 % weak_aliases(+Items0, -Items, -Aliases): Items is Items0 with each weak
 % alias declaration an ordinary declaration of its name, and Aliases its
 % alias(Loc, Specs, Dcl, Target) terms, defined after the last item.
 weak_aliases(Items0, Items, Aliases) :- weak_aliases(Items0, Items0, Items, Aliases).
-weak_aliases(_, [], [], []).
+weak_aliases(_, [], [], []) :- !.
 weak_aliases(All, [decl(Loc, Specs, Inits)|Is0], [decl(Loc, Specs1, Inits)|Is],
              [alias(Loc, Specs1, Inits, Target)|As]) :-
     weak_attr(Specs), alias_target(Specs, Target), !,
@@ -213,8 +218,8 @@ weak_aliases(All, [pragma_weak(Loc, Name, Target)|Is0], Is, [Alias|As]) :-
     ),
     weak_aliases(All, Is0, Is, As).
 weak_aliases(All, [I|Is0], [I|Is], As) :- weak_aliases(All, Is0, Is, As).
-alias_attr(attr([group(Tokens)])) :-
-    member(id(Word), Tokens), memberchk(Word, [alias, '__alias__']), !.
+alias_attr(attr(Tokens)) :-
+    attr_word(Tokens, Word), memberchk(Word, [alias, '__alias__']), !.
 
 % weak_alias_def(+ExternalNames, +Alias, -Funcs, +Env0, -Env): Funcs
 % define the alias's own symbol, calling its target with its arguments.
@@ -312,8 +317,8 @@ external_inline_declaration(Items, Name) :-
 % the GNU rule, as glibc's extern __inline atoi relies on.
 external_inline_body(Specs, Storage, Name, ExternalNames) :-
     (   (   getenv('NANOFIL_STD', gnu89)
-        ;   member(attr([group(Attrs)]), Specs),
-            member(id(Attr), Attrs),
+        ;   member(attr(Attrs), Specs),
+            attr_word(Attrs, Attr),
             memberchk(Attr, [gnu_inline, '__gnu_inline__'])
         )
     ->  Storage \== extern
@@ -379,6 +384,7 @@ item_ref(Items, Sym) :-
         member(Inst, Insts),
         (   Inst = let(_, _, _, Args), member(global(Sym), Args)
         ;   Inst = call(_, global(Sym), _)
+        ;   Inst = call(_, unproto(Sym), _)
         )
     ;   Item = data(_, _, _, DataItems),
         member(item(p, sym(Sym, _)), DataItems)
@@ -513,9 +519,8 @@ init_def(Loc, Sym, Kind-Prio, Env0, Env) :-
 % constructor (Kind ctor) or destructor (dtor) attribute, with
 % Priority an integer, none without one, or bad.
 init_attr(Specs, Kind, Prio) :-
-    member(attr(Tokens), Specs), is_list(Tokens),
-    member(group(Group), Tokens),
-    append(_, [id(Word)|Rest], Group),
+    member(attr(Tokens), Specs),
+    attr_entry(Tokens, Word, Rest),
     init_word(Word, Kind),
     (   Rest = [group(Arg)|_]
     ->  ( Arg = [int(Prio, _)], integer(Prio), between(0, 65535, Prio) -> true ; Prio = bad )
@@ -569,19 +574,19 @@ weakref_item(All, decl(Loc, Specs0, [init(dcl(some(N), Syn, none), none)]),
 weakref_item(_, Item, Item).
 
 weakref_target(Specs, T) :-
-    member(attr([group(Tokens)]), Specs),
-    append(_, [id(W)|Rest], Tokens), memberchk(W, [weakref, '__weakref__']), !,
+    member(attr(Tokens), Specs),
+    attr_entry(Tokens, W, Rest), memberchk(W, [weakref, '__weakref__']), !,
     (   Rest = [group([str(Bytes)])|_] -> atom_codes(T, Bytes)
     ;   alias_target(Specs, T)
     ).
 
 weakref_spec(storage(static)).
-weakref_spec(attr([group(Tokens)])) :-
-    member(id(W), Tokens), memberchk(W, [weakref, '__weakref__', alias, '__alias__']), !.
+weakref_spec(attr(Tokens)) :-
+    attr_word(Tokens, W), memberchk(W, [weakref, '__weakref__', alias, '__alias__']), !.
 
 alias_target(Specs, Target) :-
-    member(attr([group(Tokens)]), Specs),
-    append(_, [id(Word), group(Arg)|_], Tokens),
+    member(attr(Tokens), Specs),
+    attr_entry(Tokens, Word, [group(Arg)|_]),
     memberchk(Word, [alias, '__alias__']), !,
     Arg = [str(Bytes)], atom_codes(Target, Bytes).
 
@@ -653,15 +658,15 @@ type_spec_syntax(atomic(_)).
    it, so a valid program behaves alike. A compatible overloadable
    declaration (glibc's printf wrappers) is an ordinary redeclaration. */
 overload(Specs, dcl(some(Name), DclType, Asm), Env) :-
-    member(attr([group(Tokens)]), Specs),
-    member(id(Word), Tokens), memberchk(Word, [overloadable, '__overloadable__']), !,
+    member(attr(Tokens), Specs),
+    attr_word(Tokens, Word), memberchk(Word, [overloadable, '__overloadable__']), !,
     lookup_ordinary(Env, Name, fn(Visible, _, _)),
     decl_types(Specs, [init(dcl(some(Name), DclType, Asm), none)],
                [d(_, Type, _, _, _)], Env, _),
     \+ compatible_type(Visible, Type).
 
-alias_spec(attr([group(Tokens)])) :-
-    member(id(Word), Tokens), memberchk(Word, [alias, '__alias__']), !.
+alias_spec(attr(Tokens)) :-
+    attr_word(Tokens, Word), memberchk(Word, [alias, '__alias__']), !.
 alias_spec(storage(extern)).
 
 % static_assert(+Loc, +Expr, +Env): throw a semantic error unless Expr
@@ -1532,17 +1537,18 @@ stmt_(block(Items), Ctx) -->
     restore_scope(Scope).
 stmt_(null, _) --> [].
 /* An asm whose template is blank, as filcc's handleInlineAsm counts it,
-   emits no instruction. filcc passes it through when no operand is a
-   pointer, so its operands are values the asm reads or writes in
-   registers: "+r" or "+g" reads the lvalue and writes the same value
-   back, "=r" writes an unspecified value, which leaving the object
-   unchanged is, and "r", "g", "i" or "n" inputs are evaluated. These
-   are libgcrypt's and xxhash's optimization barriers. A "memory" or
+   emits no instruction, so it leaves every operand as it was; its
+   operands are only evaluated (asm_outputs//2, asm_inputs//2): "+r"
+   reads and writes back the same value, a pointer's capability
+   included, "=r" writes an unspecified value, which leaving the object
+   unchanged is, memory-class operands of any complete type are neither
+   read nor written, and inputs are evaluated. These are libgcrypt's,
+   xxhash's and elfutils' optimization barriers. A "memory" or
    "cc" clobber needs nothing: no pass of nanofil keeps a value of
    escaped memory across an instruction (promote takes only locals
    whose address does not escape, copy and the backend's caches only
    temporaries), so every access stays in program order as across a
-   call. A pointer operand, another constraint or clobber, and asm goto
+   call. "=r" on a pointer, another constraint or clobber, and asm goto
    are refused. */
 stmt_(asm_empty(Outs, Ins, Clobbers, Goto), Ctx) --> !,
     { ctx_loc(Ctx, Loc),
@@ -1580,6 +1586,8 @@ stmt_(asm(Template, Outs, Ins, Clobbers, Goto), Ctx) --> !,
       format(codes(Msg), 'cannot handle inline asm (~w): ~w', [Reason, T]),
       new_literal(Msg, Sym, Env0, Env) },
     set_env(Env),
+    foldl(asm_operand_effects(Ctx), Outs, OutKs),
+    foldl(asm_operand_effects(Ctx), Ins, InKs),
     let(p, copy, [global(Sym)], Addr),
     emit(call(void, global(zsafety_error), [arg(p, Addr)])).
 
@@ -1697,6 +1705,7 @@ stmt_(return(Expr), Ctx) -->
     { Expr \== none, Ctx = ctx(_, RetType, _, _, Loc) },
     judged_rval(Expr, Ctx, Value0),
     env(Env), { cleanup_keys(Env, Ks) },
+    returned_cleanup_var(Expr, RetType, Ks, Loc),
     (   { RetType == void } -> run_cleanups(Ks), term(ret)
     ;   { abi_memory(RetType) }
     ->  assign_convert(Expr, Value0, RetType, Loc, v(V, _)),
@@ -1752,32 +1761,77 @@ stmt_(label(Name, Body), Ctx) -->
 stmt_(decl(Loc, Specs, Inits), Ctx) -->
     item(decl(Loc, Specs, Inits), Ctx).
 
+% asm_operand_effects(+Ctx, +Op, +Kind)//: evaluate an operand of an asm
+% that traps, as clang does before the trap: an output's or memory
+% operand's lvalue, an input's value.
+asm_operand_effects(Ctx, op(C, E), K-C) -->
+    (   { K == mem ; sub_atom(C, 0, _, _, '=') ; sub_atom(C, 0, _, _, '+') }
+    ->  env(Env), { ctx_loc(Ctx, Loc), elaborate(E, Env, Loc, X) }, place(X, Ctx, _)
+    ;   judged_rval(E, Ctx, _)
+    ).
+
 % asm_outputs(+Ops, +Ctx)//, asm_inputs(+Ops, +Ctx)//: a blank asm's
 % operands (stmt_//2's asm_empty).
 asm_outputs([], _) --> [].
 asm_outputs([op(C, E)|Os], Ctx) -->
     { ctx_loc(Ctx, Loc),
-      (   memberchk(C, ['+r', '+g', '=r']) -> true
+      (   memberchk(C, ['+r', '=r']) -> Class = reg
+      ;   memberchk(C, ['=m', '+m', '=mr', '+mr', '=rm', '+rm', '=g', '+g']) -> Class = mem
       ;   sema_error(Loc, 'the asm output constraint "~w" is not supported', [C])
       ) },
     env(Env),
     { elaborate(E, Env, Loc, X) },
     place(X, Ctx, P),
-    { (   P = lv(Addr, T0), unqualified(T0, T), asm_value_type(T) -> true
+    { (   P = lv(_, T0), unqualified(T0, T), asm_output_type(Class, C, T, Env) -> true
+      ;   Class == mem
+      ->  sema_error(Loc, 'an asm memory operand must have a complete object type', [])
       ;   sema_error(Loc, 'an asm operand must have integer or floating type', [])
       ) },
-    (   { C == '=r' } -> []
-    ;   load_typed(T, Addr, Ctx, V), store_typed(T, V, Addr)
-    ),
     asm_outputs(Os, Ctx).
+
+% asm_output_type(+Class, +C, +T, +Env): an operand of type T with
+% constraint C, of Class reg or mem, means nothing in a blank asm. Its
+% lvalue is evaluated; nothing is read or written: the asm leaves an
+% object it may read or write unchanged, and "=r" writes an unspecified
+% value, which leaving the object unchanged is. A memory-class operand
+% ("=m", "+m", "=mr", "g") may have any complete object type (but "+g"
+% and "+mr" a scalar, as clang requires), as filcc
+% passes such an asm through; "+r" on a pointer gives the pointer back,
+% capability and all; "=r" on a pointer, whose capability the asm would
+% have to make up, is refused.
+asm_output_type(mem, C, T, Env) :-
+    T \= func(_, _, _), complete_type(T, Env),
+    % clang refuses a read-write operand that may be a register
+    % ("+g", "+mr") of a type no register holds.
+    (   memberchk(C, ['+mr', '+rm', '+g']) -> ( asm_value_type(T) ; T = ptr(_) ) ; true ).
+
+asm_output_type(reg, _, T, _) :- asm_value_type(T), !.
+asm_output_type(reg, '+r', ptr(_), _).
 
 asm_inputs([], _) --> [].
 asm_inputs([op(C, E)|Os], Ctx) -->
     { ctx_loc(Ctx, Loc),
-      (   memberchk(C, [r, g, i, n]) -> true
+      (   memberchk(C, [r, g, i, n, m]) -> true
       ;   sema_error(Loc, 'the asm input constraint "~w" is not supported', [C])
       ) },
     env(Env),
+    (   { memberchk(C, [m, g]) }
+    ->  % A memory-class input of any complete object type: evaluated
+        % (an "m" operand as an lvalue), never read.
+        (   { C == m }
+        ->  { elaborate(E, Env, Loc, X) }, place(X, Ctx, P),
+            { P = lv(_, T0) -> true ; sema_error(Loc, 'an asm "m" operand must be an lvalue', []) }
+        ;   judged_rval(E, Ctx, v(_, T0))
+        ),
+        { unqualified(T0, T),
+          (   T \= func(_, _, _), complete_type(T, Env) -> true
+          ;   sema_error(Loc, 'an asm memory operand must have a complete object type', [])
+          ) }
+    ;   asm_reg_input(C, E, Env, Loc, Ctx)
+    ),
+    asm_inputs(Os, Ctx).
+
+asm_reg_input(C, E, Env, Loc, Ctx) -->
     { (   memberchk(C, [i, n])
       ->  (   catch(const_value(E, Env, _, _), not_constant, fail) -> true
           ;   sema_error(Loc, 'the asm "~w" operand is not an integer constant', [C])
@@ -1788,8 +1842,7 @@ asm_inputs([op(C, E)|Os], Ctx) -->
     { unqualified(T0, T),
       (   asm_value_type(T) -> true
       ;   sema_error(Loc, 'an asm operand must have integer or floating type', [])
-      ) },
-    asm_inputs(Os, Ctx).
+      ) }.
 
 asm_value_type(T) :- arithmetic_type(T), T \== ldouble.
 
@@ -1902,7 +1955,7 @@ char_code_digit(D) :- char_code(D, N), N >= 0'0, N =< 0'9.
 
 asm_validated_input(r).
 asm_validated_input(a).
-asm_validated_input(C) :- atom_length(C, 1), char_type(C, digit(_)).
+asm_validated_input(C) :- atom_length(C, 1), decimal(C).
 
 split_asm_lines(Template, Lines) :-
     split_at(Template, [0'\n, 0';], Lines).
@@ -2269,9 +2322,11 @@ truth(v(V, Type), Ctx, W) -->
                             list or a string literal first clears what
                             it initializes
      val(Off, Type, N)      the integer N, an element of a string literal
-     bytes(Off, Type, Ns)   the integers Ns, the elements of a string
-                            literal of a one-byte Type, from Off: one leaf
-                            for GLib's megabyte resource blobs
+     vals(Off, Type, Ns)    the integers Ns, consecutive elements of
+                            integer Type from Off (a string literal, or
+                            a braced list of integer constants): one
+                            leaf for GLib's megabyte resource blobs and
+                            other large tables
      expr(Off, Type, Expr)  the value of the expression Expr, converted
                             to Type: a scalar, or (locals) a whole struct
    Offsets are from the start of the object. A local object stores its
@@ -2300,12 +2355,12 @@ object_init(array(T, N), Off, list([entry([], Str)]), C) -->
     { str_elems(Str, T, _) }, !,
     object_init(array(T, N), Off, Str, C).
 object_init(array(T, N), Off, list(Entries), _) -->
-    { integer(N), is_char_type(T), byte_entries(Entries, T, Vs),
+    { integer(N), table_type(T), int_entries(Entries, T, Vs),
       length(Vs, K), K =< N }, !,
-    % A braced list of integer constants, nothing else, for a byte
+    % A braced list of integer constants, nothing else, for an integer
     % array: one leaf, as a string literal is (GLib's resource blobs
     % for a compiler it does not know by name, gtk3's 1.5 MB of them).
-    [zero(Off, array(T, N)), bytes(Off, T, Vs)].
+    [zero(Off, array(T, N)), vals(Off, T, Vs)].
 object_init(Type, Off, list(Entries), C) --> !,
     [zero(Off, Type)],
     (   { aggregate(Type) }
@@ -2325,21 +2380,25 @@ object_init(array(ElemType, N), Off, Init, C) -->
       C = c(Env, _, _),
       type_size_align(ElemType, Env, Size, _) },
     [zero(Off, array(ElemType, N))],
-    (   { Size =:= 1 } -> [bytes(Off, ElemType, Values)]
+    (   { table_type(ElemType) } -> [vals(Off, ElemType, Values)]
     ;   elem_leaves(Values, ElemType, Off, Size)
     ).
 object_init(array(_, _), _, _, C) --> !,
     { init_error(C, 'array initializer must be a list', []) }.
 object_init(Type, Off, Expr, _) --> [expr(Off, Type, Expr)].
 
-% byte_entries(+Entries, +Type, -Values): Entries are undesignated
+% table_type(+Type): Type is an integer type whose elements a vals leaf
+% holds (not _Bool, whose conversion is not modular).
+table_type(Type) :- Type \== bool, int_info(Type, _, _).
+
+% int_entries(+Entries, +Type, -Values): Entries are undesignated
 % integer or character constants, whose values converted to Type are
 % Values.
-byte_entries([], _, []).
-byte_entries([entry([], X)|Es], T, [V|Vs]) :-
+int_entries([], _, []).
+int_entries([entry([], X)|Es], T, [V|Vs]) :-
     ( X = num(V0, _) ; X = chr(V0) ), integer(V0), !,
     convert_int(V0, T, V),
-    byte_entries(Es, T, Vs).
+    int_entries(Es, T, Vs).
 
 % elem_leaves(+Values, +Type, +Off, +Size)//: a val leaf for each of
 % Values, consecutive elements of Type and Size from Off.
@@ -2529,8 +2588,8 @@ store_leaves([Leaf|Leaves], Addr, Ctx) -->
 store_leaf(zero(Off, Type), Addr, _) -->
     offset(Addr, Off, P),
     zero_object(P, Type).
-store_leaf(bytes(Off, Type, Ns), Addr, Ctx) -->
-    { phrase(elem_leaves(Ns, Type, Off, 1), Leaves) },
+store_leaf(vals(Off, Type, Ns), Addr, Ctx) -->
+    { int_info(Type, Size, _), phrase(elem_leaves(Ns, Type, Off, Size), Leaves) },
     store_leaves(Leaves, Addr, Ctx).
 store_leaf(val(Off, Type, N), Addr, _) -->
     offset(Addr, Off, P),
@@ -2737,8 +2796,14 @@ lower_node(val(_, incdec(Op, X)), Ctx, R) --> !,           % 6.5.2.4, 6.5.3.1
     place_write(P, Value0, Ctx, New),
     { memberchk(Op, [preinc, predec]) -> R = New ; R = Cur }.
 lower_node(val(_, call(XF, XArgs)), Ctx, R) --> !,         % 6.5.2.2
-    callee(XF, Ctx, Callee, func(RetType, Ps, _)),
-    { Ps == unspecified -> ParamTypes = [] ; ParamTypes = Ps },
+    callee(XF, Ctx, Callee0, func(RetType, Ps, _)),
+    {   Ps == unspecified
+    ->  ParamTypes = [],
+        (   Callee0 = global(S), \+ op_kind(setjmp(S), setjmp) -> Callee = unproto(S)
+        ;   Callee = Callee0
+        )
+    ;   ParamTypes = Ps, Callee = Callee0
+    },
     call_args(XArgs, ParamTypes, Ctx, IRArgs0),
     env(Env),
     { su(RetType), ret_shape(RetType, Env, unknown, sret) -> NSret = 1 ; NSret = 0 },
@@ -3703,8 +3768,8 @@ cleanup_decls([D|Ds], Loc, Fn, Ctx) -->
     cleanup_decls(Ds, Loc, Fn, Ctx).
 
 cleanup_attr(Specs, Fn) :-
-    member(attr([group(Tokens)]), Specs),
-    append(_, [id(Word), group(Arg)|_], Tokens),
+    member(attr(Tokens), Specs),
+    attr_entry(Tokens, Word, [group(Arg)|_]),
     memberchk(Word, [cleanup, '__cleanup__']), !,
     (   Arg = [id(Fn)] -> true
     ;   throw(nanofil_error('the cleanup attribute takes one function name'))
@@ -3772,9 +3837,17 @@ run_cleanups(_, [K|Ks]) -->
     run_cleanups(Ks).
 
 % leaving(+Outer, -Ks)//: Ks are the cleanups in scope that Outer, the
-% cleanup keys of an enclosing point, does not have.
+% cleanup keys of an enclosing point, does not have. Outer is a suffix
+% of those in scope: a jump into a cleanup's scope is refused before
+% (entered_cleanup/2).
 leaving(Outer, Ks) -->
-    env(Env), { cleanup_keys(Env, Ks0), ( append(Ks, Outer, Ks0) -> true ; Ks = [] ) }.
+    env(Env),
+    {   cleanup_keys(Env, Ks0),
+        (   append(Ks, Outer, Ks0) -> true
+        ;   format(atom(Msg), 'cleanup scopes ~w are not enclosed by ~w', [Ks0, Outer]),
+            throw(nanofil_error(Msg))
+        )
+    }.
 
 % scope_cleanups(+Outer)//: at the end of a scope entered with cleanup
 % keys Outer, run the scope's own.
@@ -3804,6 +3877,25 @@ return_cleanups(RetType, Addr0, Addr) -->
     (   { Ks == [] } -> { Addr = Addr0 }
     ;   local_slot(RetType, Addr), copy_object(RetType, Addr0, Addr),
         run_cleanups(Ks)
+    ).
+
+% returned_cleanup_var(+Expr, +RetType, +Ks, +Loc)//: refuse return v
+% of an aggregate v with a cleanup attribute. clang treats v as a
+% named-return-value candidate when every return names it, so the
+% cleanup runs on the returned object itself; otherwise it copies v
+% first. nanofil always copies first, so it refuses instead of
+% returning a different value.
+returned_cleanup_var(Expr, RetType, Ks, Loc) -->
+    (   { Ks \== [], unqualified(RetType, RT), aggregate(RT),
+          Expr = id(Name) }
+    ->  env(Env), state(st(_, _, _, _, _, Labels, _, _)),
+        (   { lookup_ordinary(Env, Name, VarB),
+              member(K, Ks), get_assoc(cleanup(K), Labels, c(_, [_-B|_], _)),
+              B == VarB }
+        ->  { sema_error(Loc, 'returning the aggregate cleanup variable ~w is not supported', [Name]) }
+        ;   []
+        )
+    ;   []
     ).
 
 % goto_cleanups(+Name, +Label, -Target)//: a goto to Name, whose block
@@ -4675,8 +4767,16 @@ static_leaf_once(Loc, Leaf, s(Env, Chunks0, End)-Str0, S-Str) :-
     ->  split_strs(Chunks0, Chunks1), Str1 = no
     ;   Chunks1 = Chunks0, Str1 = Str0
     ),
-    once(static_leaf(Loc, Leaf, s(Env, Chunks1, End), S)),
-    ( functor(Leaf, bytes, 3) -> Str = yes ; Str = Str1 ).
+    once(static_leaf(Loc, Leaf, s(Env, Chunks1, End), S0)),
+    (   Off < End, S0 = s(Env1, [chunk(O, N, I)|Chunks2], End1), N > 1,
+        ( functor(Leaf, val, 3) ; functor(Leaf, expr, 3) )
+    ->  % It overrides the split bytes of a wider table element.
+        O1 is O + 1, Hi is O + N,
+        exclude(chunk_within(O1, Hi), Chunks2, Chunks3),
+        S = s(Env1, [chunk(O, N, I)|Chunks3], End1)
+    ;   S = S0
+    ),
+    ( functor(Leaf, vals, 3) -> Str = yes ; Str = Str1 ).
 
 split_strs([], []).
 split_strs([chunk(Off, _, item(b, str(Cs)))|Chunks0], Chunks) :- !,
@@ -4700,10 +4800,11 @@ static_leaf(_, zero(Off, Type), s(Env, Chunks0, End), s(Env, Chunks, End)) :-
         Hi is Off + Size,
         exclude(chunk_within(Off, Hi), Chunks0, Chunks)
     ).
-static_leaf(_, bytes(_, _, []), S, S) :- !.
-static_leaf(_, bytes(Off, Type, Vs), s(Env, Chunks, End0),
+static_leaf(_, vals(_, _, []), S, S) :- !.
+static_leaf(_, vals(Off, Type, Vs), s(Env, Chunks, End0),
             s(Env, [Chunk|Chunks], End)) :-
-    maplist(byte_char(Type), Vs, Cs),
+    int_info(Type, Size, _),
+    phrase(vals_chars(Vs, Type, Size), Cs),
     length(Cs, N),
     Chunk = chunk(Off, N, item(b, str(Cs))),
     chunk_end(Chunk, End0, End).
@@ -4743,7 +4844,19 @@ bitfield_byte(Start, W, V, Byte, Chunks0, [chunk(Byte, 1, item(b, const(New)))|C
     Bits is ((V /\ ((1 << W) - 1)) << (Shift + 64)) >> 64 /\ 255,
     New is (Old /\ \Mask /\ 255) \/ Bits.
 
-byte_char(Type, V, C) :- convert_int(V, Type, U), N is U /\ 255, char_code(C, N).
+% vals_chars(+Vs, +Type, +Size)//: the bytes of the elements Vs of
+% integer Type and Size, little-endian, as characters.
+vals_chars([], _, _) --> [].
+vals_chars([V|Vs], Type, Size) -->
+    { convert_int(V, Type, U) },
+    le_chars(Size, U),
+    vals_chars(Vs, Type, Size).
+
+le_chars(0, _) --> !.
+le_chars(K, U) -->
+    { N is U /\ 255, char_code(C, N), U1 is U >> 8, K1 is K - 1 },
+    [C],
+    le_chars(K1, U1).
 
 chunk_within(Lo, Hi, chunk(Off, _, _)) :- Off >= Lo, Off < Hi.
 

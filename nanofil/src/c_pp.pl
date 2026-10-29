@@ -53,13 +53,18 @@ pp_file(File, profile(Macros, Paths, Features), Tokens) :-
     % preprocessing tokens alive through lexing (33 MB of 77 MB live at
     % the end for a 256 KB GLib resource blob).
     once(file_tokens(File, env(Macros, Paths, Features, [], File), _, PpTokens)),
-    phrase(lex_tokens(PpTokens), Tokens).
+    phrase(lex_tokens(PpTokens), Tokens0),
+    pack_tokens(Tokens0, Tokens).
 
 % lex_tokens(+PpTokens)//: the c_lex tokens of PpTokens. Each
-% preprocessing token is lexed on its own and keeps its location.
+% preprocessing token is lexed on its own and keeps its location; a
+% #pragma pack is a pragma_pack(Op) token, for c_lex pack_tokens/2.
 lex_tokens([]) --> [].
 lex_tokens([t(pragma_weak(N, T), Loc, _, _)|PpTokens]) --> !,
     [tok(pragma_weak(N, T), Loc)],
+    lex_tokens(PpTokens).
+lex_tokens([t(pragma_pack(Op), Loc, _, _)|PpTokens]) --> !,
+    [tok(pragma_pack(Op), Loc)],
     lex_tokens(PpTokens).
 lex_tokens([t(A, Loc, _, _)|PpTokens]) -->
     {   atom_chars(A, Cs),
@@ -127,8 +132,18 @@ source_tokens(Cs, Loc, PpTokens) :-
     ),
     phrase(pp_tokens(PpTokens, At, yes), Spliced).
 
-has_splice(['\\'|Cs]) :- ( Cs = ['\n'|_] ; Cs = ['\r', '\n'|_] ), !.
+has_splice(['\\'|Cs]) :- splice_rest(Cs, _), !.
 has_splice([_|Cs]) :- has_splice(Cs).
+
+% splice_rest(+Cs, -Rest): Cs, after a backslash, are the rest of a
+% splice and Rest follows it: a newline or CR LF, after any spaces,
+% tabs, form feeds and vertical tabs, as clang and GCC splice
+% (clang's Lexer::getEscapedNewLineSize; C11 5.1.1.2p1 phase 2 names
+% only backslash-newline, but phase 1 may map the line's trailing
+% whitespace away).
+splice_rest(['\n'|Rest], Rest) :- !.
+splice_rest(['\r', '\n'|Rest], Rest) :- !.
+splice_rest([C|Cs], Rest) :- memberchk(C, [' ', '\t', '\f', '\v']), splice_rest(Cs, Rest).
 
 % at_loc(+At, -Loc), at_skip(+Char, +At0, -At): the location of the
 % next character, and the state after Char. At is locs(Locs), the
@@ -149,10 +164,7 @@ at_skips([C|Cs], At0, At) :- at_skip(C, At0, At1), at_skips(Cs, At1, At).
 
 % located_splice(+Chars, +Loc, -Spliced, -Locs): remove backslash-newline
 % and give each remaining character its physical location.
-located_splice(['\\', '\r', '\n'|Cs], File:N, Spliced, Locs) :- !,
-    N1 is N + 1,
-    located_splice(Cs, File:N1, Spliced, Locs).
-located_splice(['\\', '\n'|Cs], File:N, Spliced, Locs) :- !,
+located_splice(['\\'|Cs0], File:N, Spliced, Locs) :- splice_rest(Cs0, Cs), !,
     N1 is N + 1,
     located_splice(Cs, File:N1, Spliced, Locs).
 % Share one location term per physical line, not one per character.
@@ -477,6 +489,11 @@ active_directive(Kind, Loc, Args, File, Env0, Env, Ts, Rest) :-
     append(Included, Rest, Ts).
 active_directive(pragma, Loc, Args, _, Env, Env, [t(pragma_weak(Name, Target), Loc, yes, [])|Ts], Ts) :-
     pragma_weak(Args, Name, Target), !.
+active_directive(pragma, Loc, Args, _, Env, Env, [t(pragma_pack(Op), Loc, yes, [])|Ts], Ts) :-
+    Args = [t(pack, _, _, _)|_], !,
+    (   pragma_pack(Args, Op) -> true
+    ;   pp_error(Loc, 'this #pragma pack is not supported')
+    ).
 active_directive(pragma, _, Args, File, Env0, Env, Ts, Ts) :- !,
     pragma(Args, File, Env0, Env).
 active_directive(error, Loc, Args, _, _, _, _, _) :- !,
@@ -484,6 +501,13 @@ active_directive(error, Loc, Args, _, _, _, _, _) :- !,
 active_directive(ident, _, _, _, Env, Env, Ts, Ts) :- !.
 active_directive(Name, Loc, _, _, _, _, _, _) :-
     pp_error(Loc, unsupported_directive(Name)).
+
+% #pragma pack(...) is the token pragma_pack(Op) (c_lex pack_op/2).
+pragma_pack([t(pack, _, _, _), t('(', _, _, _)|Rest], Op) :-
+    append(Inner0, [t(')', _, _, _)], Rest),
+    findall(A, ( member(t(A0, _, _, _), Inner0),
+                 ( catch(atom_number(A0, A), _, fail) -> true ; A = A0 ) ), Inner),
+    pack_op(Inner, Op).
 
 % #pragma weak Name [= Target] is the c_lex token pragma_weak(Name, Target).
 pragma_weak([t(weak, _, _, _), t(Name, _, _, _)|Rest], Name, Target) :-

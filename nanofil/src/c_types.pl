@@ -74,7 +74,7 @@
                     generic_selection/5, reflect_type/4, reflect_params/4,
                     conditional_type/3, unqualified/2,
                     overflow_builtin/3, bit_builtin/3, rotate_builtin/3, builtin_type/2, binary_operands/6,
-                    builtin_constant_p/3,
+                    builtin_constant_p/3, attr_entry/3, attr_word/2,
                     unary_operand/3, assigned/4, transparent_argument/4, expression_tags/3,
                     builtin_declarations/1,
                     castable/2, expression_category/3, modifiable_lvalue/2,
@@ -259,9 +259,12 @@ doc(object_alignment(+Requests, +Type0, +Env, -Type, -A), det, [
     example(( empty_env(E), object_alignment([alignas(expr(num(64, none-dec)))], int, E, T, A) ),
             (T = int, A = 64)),
     example(( empty_env(E), object_alignment([alignas(expr(num(8192, none-dec)))], int, E, T, _) ),
-            T = bad('an alignment above 4096'))
+            T = bad('an alignment above 4096')),
+    example(( empty_env(E), object_alignment([alignas(expr(num(16, none-dec)))], bad('vector types'), E, T, _) ),
+            T = bad('vector types'))
 ]).
 object_alignment([], Type, _, Type, none) :- !.
+object_alignment(_, bad(R), _, bad(R), none) :- !.    % keep the first reason
 object_alignment(_, func(_, _, _), _, bad('alignment attributes'), none) :- !.
 object_alignment(Requests, Type0, Env, Type, A) :-
     (   innermost_element(Type0, Elem),       % a VLA has no constant size
@@ -525,6 +528,7 @@ known_attribute(Word, Kind, Why) :- attribute_entry(Word, Kind, Why).
 
 attribute_entry(aligned, honored, 'c_types\' layout (object_alignment/5, member alignment)').
 attribute_entry(packed, honored, 'c_types\' layout').
+attribute_entry(nanofil_pack, honored, 'c_pp\'s mark of a struct or union defined under #pragma pack(N): su_layout/5 caps its members\' alignment at N').
 attribute_entry(transparent_union, honored, 'transparent_union/3: a parameter of the union takes any member').
 attribute_entry(cleanup, honored, 'c_lower cleanup_decls//4 runs it on every scope exit').
 attribute_entry(mode, honored, 'mode_type/3').
@@ -585,7 +589,7 @@ attribute_entry(pass_object_size, hint, 'glibc\'s clang fortify wrappers; nanofi
 attribute_entry(pass_dynamic_object_size, hint, 'as pass_object_size').
 attribute_entry(unused, hint, 'a diagnostic').
 attribute_entry(maybe_unused, hint, 'a diagnostic').
-attribute_entry(used, hint, 'keeps an unreferenced definition; only asm, which nanofil refuses, could refer to it').
+attribute_entry(used, hint, 'keeps an unreferenced definition for asm to name; nanofil emits every definition but a static inline one, and the only top-level asm it accepts, .symver, versions symbols of external linkage').
 attribute_entry(retain, hint, 'as used, for the linker').
 attribute_entry(externally_visible, hint, 'whole-program optimization hint').
 attribute_entry(visibility, hint, 'dynamic export; nanofil exports every external symbol, observable only through interposition').
@@ -670,7 +674,7 @@ attribute_entry(musttail, hint, 'a statement attribute; the call means the same'
 attribute_entry(nomerge, hint, 'optimizer hint').
 attribute_entry(reproducible, hint, 'C23 optimizer promise').
 attribute_entry(unsequenced, hint, 'C23 optimizer promise').
-attribute_entry(may_alias, honored, 'nanofil does no type-based alias analysis').
+attribute_entry(may_alias, hint, 'nanofil does no type-based alias analysis, so it means nothing in any position').
 attribute_entry(bitwise, hint, 'sparse\'s annotation, only under __CHECKER__').
 
 doc(filcc_refused_mnemonic(-M), nondet, [
@@ -745,9 +749,7 @@ filcc_refused_mnemonic(xsave).
 % mode_attr(+Tokens, -Mode): the attribute is GCC's mode(Mode), its
 % name without GCC's optional underscores.
 mode_attr(Tokens, Mode) :-
-    is_list(Tokens),
-    member(group(Group), Tokens),
-    append(_, [id(Word), group([id(M0)])|_], Group),
+    attr_entry(Tokens, Word, [group([id(M0)])|_]),
     memberchk(Word, [mode, '__mode__']), !,
     (   atom_concat('__', M1, M0), atom_concat(Mode, '__', M1) -> true ; Mode = M0 ).
 
@@ -832,14 +834,29 @@ aligned_attr(Tokens) :-
     is_list(Tokens), attr_word(Tokens, Word),
     memberchk(Word, [aligned, '__aligned__']), !.
 
-% attr_word(+Tokens, -Word) is nondet: Word is an identifier anywhere in
-% an attribute's tokens, looking into groups.
-attr_word(Tokens, Word) :-
-    member(Token, Tokens),
-    (   Token = id(Word)
-    ;   Token = group(Group),
-        attr_word(Group, Word)
-    ).
+doc(attr_entry(+Tokens, -Word, -Rest), nondet, [
+    Tokens: "an __attribute__((...))'s tokens, [group(Items)], or its Items",
+    Word: "the name of one of its attributes, as written",
+    Rest: "the tokens after that name in its comma-separated entry",
+    "Only the entries' names count, never an identifier among their",
+    "arguments: in __attribute__((cleanup(weak))) weak names a function,",
+    "not the weak attribute. Consumers look attributes up through this.",
+    cites('GCC manual, Attribute Syntax'),
+    example(attr_entry([group([id(weak), p(','), id(alias), group([str(`t`)])])], alias, R),
+            R = [group([str(`t`)])]),
+    example(attr_entry([id('__aligned__'), group([int(8, none-dec)])], W, _), W = '__aligned__'),
+    fails(attr_entry([group([id(cleanup), group([id(weak)])])], weak, _))
+]).
+attr_entry(Tokens, Word, Rest) :-
+    is_list(Tokens),
+    ( Tokens = [group(Inner)] -> true ; Inner = Tokens ),
+    attr_items(Inner, Items),
+    member([T|Rest], Items),
+    ( T = id(Word) ; T = kw(Word) ).
+
+% attr_word(+Tokens, -Word) is nondet: Word names one of the attributes
+% of Tokens (attr_entry/3).
+attr_word(Tokens, Word) :- attr_entry(Tokens, Word, _).
 
 % base_type(+Specs, -Type, +Env0, -Env): Type from the type specifiers
 % alone: either keywords or one named type, never both.
@@ -1024,6 +1041,8 @@ su_definition(Members, Kind, Tag, Attrs, Type, Env0, Env) :-
     append(Fieldss, Fields),
     append(Reflectss, Reflected),
     (   member(Attr, Attrs), packed_attr(Attr) -> Packing = packed
+    ;   member(Attr, Attrs), attr_entry(Attr, '__nanofil_pack__', [group([int(N, _)])|_])
+    ->  Packing = pack(N)
     ;   Packing = natural
     ),
     (   \+ definition_alignment(Attrs, Env2, _)
@@ -1123,15 +1142,12 @@ definition_alignment(Attrs, Env, Align) :-
     foldl(requested_alignment(Env), Requests, 1, Align).
 
 % aligned_entry(+Tokens, -Request) is nondet: Request is bare, or
-% arg(Ts) with the argument tokens Ts, for each aligned in an
-% attribute's Tokens, looking into the __attribute__((...)) groups.
+% arg(Ts) with the argument tokens Ts, for each aligned attribute of an
+% attribute's Tokens (attr_entry/3).
 aligned_entry(Tokens, Request) :-
-    append(_, [id(Word)|Rest], Tokens),
+    attr_entry(Tokens, Word, Rest),
     memberchk(Word, [aligned, '__aligned__']),
     ( Rest = [group(Ts)|_] -> Request = arg(Ts) ; Request = bare ).
-aligned_entry(Tokens, Request) :-
-    member(group(Group), Tokens),
-    aligned_entry(Group, Request).
 
 requested_alignment(_, bare, A0, A) :- A is max(A0, 16).
 requested_alignment(Env, arg(Ts), A0, A) :-
@@ -1343,7 +1359,7 @@ bitfield_width(Expr, Name, Type, Env, W) :-
 
 doc(su_layout(+Kind, +Packing, +Fields, +Env, -Def), det, [
     Kind: "struct or union",
-    Packing: "natural, or packed for GNU's packed attribute",
+    Packing: "natural, packed for GNU's packed attribute, or pack(N) under #pragma pack(N)",
     Fields: "the f(Name, Type) and bit-fields b(Name, Type, Width) in order",
     Env: "the scope defining the members' types",
     Def: "the definition: def(Kind, Members, Size, Align), or bad(Why)",
@@ -1353,8 +1369,16 @@ doc(su_layout(+Kind, +Packing, +Fields, +Env, -Def), det, [
     "cross a boundary of its type's size, where it starts instead; a",
     "zero-width one only moves to that boundary. Unnamed bit-fields do not",
     "align the struct. Packed, every member has alignment 1, and so has",
-    "the struct; nanofil refuses packed bit-fields, and packed pointers,",
-    "whose capabilities Fil-C keeps only at 8-aligned addresses.",
+    "the struct, and a bit-field follows the bits before it across any",
+    "boundary (a zero-width one still moves to one), as GCC and clang lay",
+    "it out; nanofil refuses a packed bit-field that no access of its",
+    "type within the struct covers, and packed pointers, whose",
+    "capabilities Fil-C keeps only at 8-aligned addresses. Under #pragma",
+    "pack(N) (c_pp marks the definition) each member's alignment is at",
+    "most N, as GCC's and clang's; a pointer, a bit-field or an explicitly",
+    "aligned member that N would underalign is refused. C11 leaves the",
+    "alignment of members implementation-defined.",
+    cites('C11 6.7.2.1p14'),
     cites('C11 6.7.2.1p15'),
     example(( empty_env(E), su_layout(struct, natural, [f(some(a), char), f(some(b), int)], E, D) ),
             D = def(struct, [m(some(a), char, 0), m(some(b), int, 4)], 8, 4)),
@@ -1364,8 +1388,18 @@ doc(su_layout(+Kind, +Packing, +Fields, +Env, -Def), det, [
             D = def(union, [m(some(a), char, 0), m(some(b), long, 0)], 8, 1)),
     example(( empty_env(E), su_layout(struct, packed, [f(some(p), ptr(int))], E, D) ),
             D = bad('packed pointers')),
+    example(( empty_env(E), su_layout(struct, packed, [f(some(a), char), b(some(x), int, 30), f(some(b), char)], E, D) ),
+            D = def(struct, [m(some(a), char, 0), m(some(x), int, 1, bits(0, 30)), m(some(b), char, 5)], 6, 1)),
+    example(( empty_env(E), su_layout(struct, packed, [f(some(a), char), b(none, int, 0), f(some(b), char)], E, D) ),
+            D = def(struct, [m(some(a), char, 0), m(some(b), char, 4)], 5, 1)),
+    example(( empty_env(E), su_layout(struct, pack(2), [f(some(a), char), f(some(b), int)], E, D) ),
+            D = def(struct, [m(some(a), char, 0), m(some(b), int, 2)], 6, 2)),
+    example(( empty_env(E), su_layout(struct, pack(8), [f(some(a), char), f(some(p), ptr(int))], E, D) ),
+            D = def(struct, [m(some(a), char, 0), m(some(p), ptr(int), 8)], 16, 8)),
+    example(( empty_env(E), su_layout(struct, pack(4), [f(some(p), ptr(int))], E, D) ),
+            D = bad('packed pointers')),
     example(( empty_env(E), su_layout(struct, packed, [b(some(x), int, 3)], E, D) ),
-            D = bad('packed bit-fields'))
+            D = bad('a packed bit-field that no access of its type covers'))
 ]).
 su_layout(Kind, Packing, Fields, Env, Def) :-
     catch(fields_layout(Kind, Packing, Fields, Env, Layout), bad(Why),
@@ -1375,15 +1409,14 @@ su_layout(Kind, Packing, Fields, Env, Def) :-
 % fields_layout(+Kind, +Packing, +Fields, +Env, -Layout): Layout is
 % placed(Members, End, Align) for Fields laid out in Env, or incomplete
 % when a field has no size. Throws bad(Why) as type_size_align/4.
-fields_layout(_, packed, Fields, _, _) :-
-    member(b(_, _, _), Fields), throw(bad('packed bit-fields')).
 fields_layout(_, packed, Fields, Env, _) :-
     ( member(f(_, T), Fields) ; member(f(_, T, _), Fields) ),
     holds_pointer(T, Env), throw(bad('packed pointers')).
 fields_layout(Kind, Packing, Fields, Env, Layout) :-
     (   foldl(field_member(Kind, Packing, Env), Fields, Memberss, 0-1, EndBits-Align)
-    ->  append(Memberss, Members),
+    ->  append(Memberss, Members0),
         End is (EndBits + 7) // 8,
+        maplist(packed_unit(End, Env), Members0, Members),
         Layout = placed(Members, End, Align)
     ;   Layout = incomplete
     ).
@@ -1408,7 +1441,12 @@ field_member(Kind, Packing, Env, f(Name, Type), [m(Name, Type, Off)], End0-Align
         FieldSize = 0
     ;   type_size_align(Type, Env, FieldSize, NaturalAlign)
     ),
-    ( Packing == packed -> FieldAlign = 1 ; FieldAlign = NaturalAlign ),
+    (   Packing == packed -> FieldAlign = 1
+    ;   Packing = pack(N), N < NaturalAlign
+    ->  FieldAlign = N,
+        ( holds_pointer(Type, Env) -> throw(bad('packed pointers')) ; true )
+    ;   FieldAlign = NaturalAlign
+    ),
     member_offset_end(Kind, End0, FieldSize, FieldAlign, Off, End),
     Align is max(Align0, FieldAlign).
 field_member(Kind, Packing, Env, f(Name, Type, a(Base, Explicit)), [m(Name, Type, Off)],
@@ -1419,6 +1457,10 @@ field_member(Kind, Packing, Env, f(Name, Type, a(Base, Explicit)), [m(Name, Type
     ;   type_size_align(Type, Env, FieldSize, NaturalAlign)
     ),
     ( Base == natural -> BaseAlign = NaturalAlign ; BaseAlign = Base ),
+    (   Packing = pack(N), N < max(BaseAlign, Explicit)
+    ->  throw(bad('#pragma pack of an explicitly aligned member'))
+    ;   true
+    ),
     (   Packing == packed -> FieldAlign = Explicit
     ;   FieldAlign is max(BaseAlign, Explicit)
     ),
@@ -1438,6 +1480,42 @@ field_member(Kind, natural, Env, b(Name, Type, W), Members, End0-Align0, End-Ali
         Members = [m(Name, Type, Unit, bits(Pos, W))],
         Align is max(Align0, FieldAlign)
     ).
+
+field_member(Kind, pack(N), Env, b(Name, Type, W), Members, End0-Align0, End-Align) :- !,
+    type_size_align(Type, Env, _, FieldAlign),
+    (   N >= FieldAlign
+    ->  field_member(Kind, natural, Env, b(Name, Type, W), Members, End0-Align0, End-Align)
+    ;   throw(bad('#pragma pack of a bit-field'))
+    ).
+% A packed bit-field follows the bits before it, crossing any boundary;
+% a zero-width one still moves to its type's boundary (clang's layout).
+% Its unit, placed by packed_unit/4 once the size is known, is a window
+% of its type's size within the struct.
+field_member(Kind, packed, Env, b(Name, Type, W), Members, End0-Align, End-Align) :-
+    type_size_align(Type, Env, Size, _),
+    UnitBits is 8 * Size,
+    (   W =:= 0 -> bitfield_start_end(Kind, End0, 0, UnitBits, Start, End)
+    ;   Kind == union -> Start = 0, End is max(End0, W)
+    ;   Start = End0, End is Start + W
+    ),
+    (   Name == none -> Members = []
+    ;   Members = [packed_bits(Name, Type, Start, W)]
+    ).
+
+% packed_unit(+End, +Env, +Member0, -Member): Member is Member0, a packed
+% bit-field's packed_bits(Name, Type, Start, W) placed in the unit of
+% Type's size that starts at the latest byte at or before bit Start and
+% ends within the struct's End bytes, as an access to it must, or bad
+% when none covers the field (clang accesses such a field in a narrower
+% integer).
+packed_unit(End, Env, packed_bits(Name, Type, Start, W), m(Name, Type, Unit, bits(Pos, W))) :- !,
+    type_size_align(Type, Env, Size, _),
+    Unit is min(Start // 8, End - Size),
+    Pos is Start - 8 * Unit,
+    (   Unit >= 0, Pos + W =< 8 * Size -> true
+    ;   throw(bad('a packed bit-field that no access of its type covers'))
+    ).
+packed_unit(_, _, M, M).
 
 % holds_pointer(+T, +Env): an object of type T holds a pointer.
 holds_pointer(ptr(_), _).
