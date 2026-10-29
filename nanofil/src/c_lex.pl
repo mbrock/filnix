@@ -457,7 +457,11 @@ escape(_, B) -->
     [D], { decimal(D), D @< '8' }, !,
     oct_upto(2, Ds),
     { base_value([D|Ds], 8, V), B is V /\ 255 }.
-escape(Loc, _) --> [C], { loc_error(Loc, 'unknown escape \\~w', [C]) }.
+% An unknown escape is the character itself, as clang has it with only
+% a warning (C11 6.4.4.4p8 leaves it undefined): btrfs-progs prints
+% "\(".
+escape(_, B) --> [C], { C \== '\n', char_code(C, B) }, !.
+escape(Loc, _) --> { loc_error(Loc, 'unterminated literal', []) }.
 
 % ucn(-Code)//: a universal character name after its backslash.
 ucn(K) --> ['u'], hex_exactly(4, Ds), { base_value(Ds, 16, K) }.
@@ -483,7 +487,8 @@ simple_escape('\\', 92).
 simple_escape('\'', 39).
 simple_escape('"', 34).
 simple_escape('?', 63).
-simple_escape(e, 27).
+simple_escape(e, 27).                   % GNU: ESC
+simple_escape('E', 27).
 
 %% Wide literals: elements are code points, not UTF-8 bytes.
 
@@ -529,7 +534,9 @@ wide_escape(_, V) -->
     [D], { decimal(D), D @< '8' }, !,
     oct_upto(2, Ds),
     { base_value([D|Ds], 8, V) }.
-wide_escape(Loc, _) --> [C], { loc_error(Loc, 'unknown escape \\~w', [C]) }.
+wide_escape(_, V) --> utf8_char(V), { V =\= 10 }, !.
+wide_escape(_, V) --> [C], { C \== '\n', char_code(C, V) }, !.
+wide_escape(Loc, _) --> { loc_error(Loc, 'unterminated literal', []) }.
 
 % hex_exactly(+N, -Digits)//: Digits are exactly N hexadecimal digits.
 hex_exactly(0, []) --> !.
