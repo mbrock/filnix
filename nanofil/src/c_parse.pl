@@ -571,7 +571,11 @@ declarator(Env, Name, Type, Base) -->
     declarator(Env, Name, Type, ptr(Base, Quals)).
 declarator(Env, Name, Type, Base) -->
     attrs,
-    direct_declarator(Env, Name, Type, Base).
+    (   punct('*')          % emacs: typedef void (ATTRIBUTE_MAY_ALIAS *f) (void);
+    ->  qualifiers(Quals),
+        declarator(Env, Name, Type, ptr(Base, Quals))
+    ;   direct_declarator(Env, Name, Type, Base)
+    ).
 
 direct_declarator(Env, Name, Type, Base) -->
     token(id(Name)), !,
@@ -590,6 +594,10 @@ qualifiers(Quals) -->
     gnu_attr(_), !,
     qualifiers(Quals).
 qualifiers(Quals) --> c23_attr, !, qualifiers(Quals).
+qualifiers(Quals) -->                   % clang's nullability, ignored
+    [tok(id(N), _)],
+    { memberchk(N, ['_Nullable', '_Nonnull', '_Null_unspecified', '_Nullable_result']) }, !,
+    qualifiers(Quals).
 qualifiers([]) --> [].
 
 % abstract_declarator(+Env, -Type, +Base)//: like declarator//4 without
@@ -718,7 +726,9 @@ initializer(Env, E) --> assignment(Env, E).
 % after its '{', through '}'.
 init_entries(_, []) --> punct('}'), !.
 init_entries(Env, [entry(Designators, Init)|Entries]) -->
-    (   designators(Env, Ds0), { Ds0 \== [] }
+    (   [tok(id(F), _), tok(p(':'), _)]     % GNU's obsolete `field: value`
+    ->  { Designators = [field(F)] }
+    ;   designators(Env, Ds0), { Ds0 \== [] }
     ->  expect('='),
         { Designators = Ds0 }
     ;   { Designators = [] }
