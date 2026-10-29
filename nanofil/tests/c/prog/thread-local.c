@@ -11,6 +11,7 @@
    Taking a thread-local's address in a static initializer is refused
    (C11 6.6p9), as clang refuses it. */
 // link: lib/thread-local.c
+// timeout: 60
 #include <pthread.h>
 #include <stdfil.h>
 #include <stdio.h>

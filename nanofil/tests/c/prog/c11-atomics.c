@@ -10,6 +10,7 @@
    typedefs and members, <stdatomic.h>'s explicit orders, atomic_init,
    fences, and atomic float and double. */
 // link: lib/c11-atomics.c
+// timeout: 60
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>

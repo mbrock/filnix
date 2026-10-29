@@ -11,6 +11,7 @@
    __sync_*, atomic_flag, and pointer fetch_add (filcc gives its result
    no capability, so only its address is used). */
 // link: lib/atomic-rmw.c
+// timeout: 60
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
