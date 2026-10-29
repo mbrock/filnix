@@ -80,7 +80,7 @@
                     integer_type/4, elaborate/3, tree_type/2, value/2,
                     lowered/2, folded/3, member_layout/6,
                     bitfield_promotion/3, unaligned_type/2, underaligned_member/4, atomic_qualified/1,
-                    rmw_builtin/4]).
+                    rmw_builtin/4, known_attribute/3]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -501,6 +501,138 @@ specs_type(Specs, Type, Env0, Env) :-
     ->  Type = bad('alignment attributes')
     ;   Type = Type0
     ).
+
+doc(known_attribute(-Word, -Kind, -Why), nondet, [
+    Word: "a GNU attribute's name, without GCC's optional underscores",
+    Kind: "hint, an attribute that changes nothing nanofil emits, or honored, one nanofil implements",
+    Why: "why: what it does, and why nanofil may ignore it or where it is honored",
+    "nanofil accepts an attribute only if it is listed. One that changes",
+    "layout, lifetime, linkage, calling or values must be honored (and its",
+    "unsupported uses refused there), never dropped: cleanup and mode were",
+    "once ignored and miscompiled. c_parse refuses any other attribute,",
+    "\"attribute X is not supported\", where it reads it; section, ifunc,",
+    "weakref, common, naked, ms_abi, scalar_storage_order and address_space",
+    "are among those.",
+    cites('GCC manual, Attribute Syntax and Common Function, Variable and Type Attributes'),
+    cites('Clang documentation, Attributes in Clang'),
+    example(known_attribute(nonnull, hint, _)),
+    example(known_attribute(cleanup, honored, _)),
+    fails(known_attribute(section, _, _)),
+    fails(known_attribute(ifunc, _, _))
+]).
+known_attribute(Word, Kind, Why) :- attribute_entry(Word, Kind, Why).
+
+attribute_entry(aligned, honored, 'c_types\' layout (object_alignment/5, member alignment)').
+attribute_entry(packed, honored, 'c_types\' layout').
+attribute_entry(transparent_union, honored, 'transparent_union/3: a parameter of the union takes any member').
+attribute_entry(cleanup, honored, 'c_lower cleanup_decls//4 runs it on every scope exit').
+attribute_entry(mode, honored, 'mode_type/3').
+attribute_entry(vector_size, honored, 'the type is refused (bad) where it is used').
+attribute_entry(ext_vector_type, honored, 'as vector_size').
+attribute_entry(weak, honored, 'c_lower weak symbols (weak_attr/1)').
+attribute_entry(alias, honored, 'c_lower alias_decl/8; a variable alias is refused').
+attribute_entry(constructor, honored, 'c_lower init_decl//5').
+attribute_entry(destructor, honored, 'c_lower init_decl//5').
+attribute_entry(always_inline, hint, 'inlining is the optimizer\'s choice; the call means the same').
+attribute_entry(noinline, hint, 'as always_inline').
+attribute_entry(flatten, hint, 'as always_inline').
+attribute_entry(artificial, hint, 'debug information only').
+attribute_entry(nodebug, hint, 'debug information only').
+attribute_entry(gnu_inline, honored, 'c_lower external_inline_body/4 gives the body GNU\'s extern inline rule').
+attribute_entry(hot, hint, 'placement and optimization hint').
+attribute_entry(cold, hint, 'placement and optimization hint').
+attribute_entry(optimize, hint, 'per-function optimization level').
+attribute_entry(target, hint, 'instruction set of the function; nanofil emits baseline x86-64').
+attribute_entry(min_vector_width, hint, 'vector width hint of clang\'s intrinsic headers').
+attribute_entry(noreturn, hint, 'a promise about calls; nanofil does not rely on it').
+attribute_entry(returns_twice, hint, 'glibc marks setjmp, sigsetjmp and vfork; nanofil lowers setjmp\'s family as intrinsics by name').
+attribute_entry(leaf, hint, 'an optimizer promise about calls back into the unit').
+attribute_entry(nothrow, hint, 'no C++ exceptions in C').
+attribute_entry(pure, hint, 'an optimizer promise; nanofil does not rely on it').
+attribute_entry(const, hint, 'an optimizer promise; nanofil does not rely on it').
+attribute_entry(malloc, hint, 'an aliasing promise about the result; nanofil does not rely on it').
+attribute_entry(alloc_size, hint, 'object size hint; nanofil\'s __builtin_object_size answers unknown').
+attribute_entry(alloc_align, hint, 'alignment hint about the result').
+attribute_entry(align_value, hint, 'alignment assumption about a pointer parameter (clang\'s intrinsic headers)').
+attribute_entry(assume_aligned, hint, 'alignment hint about the result').
+attribute_entry(returns_nonnull, hint, 'a promise about the result').
+attribute_entry(nonnull, hint, 'a promise about arguments, for diagnostics and the optimizer').
+attribute_entry(nonnull_if_nonzero, hint, 'as nonnull').
+attribute_entry(format, hint, 'printf and scanf format checking').
+attribute_entry(format_arg, hint, 'format checking').
+attribute_entry(sentinel, hint, 'argument checking').
+attribute_entry(access, hint, 'argument access checking').
+attribute_entry(fd_arg, hint, 'file descriptor checking').
+attribute_entry(fd_arg_read, hint, 'file descriptor checking').
+attribute_entry(fd_arg_write, hint, 'file descriptor checking').
+attribute_entry(null_terminated_string_arg, hint, 'argument checking').
+attribute_entry(tainted_args, hint, 'static analysis only').
+attribute_entry(warn_unused_result, hint, 'a diagnostic').
+attribute_entry(nodiscard, hint, 'a diagnostic').
+attribute_entry(deprecated, hint, 'a diagnostic').
+attribute_entry(unavailable, hint, 'a diagnostic; a use is an error in clang too').
+attribute_entry(error, hint, 'a diagnostic at calls clang cannot remove').
+attribute_entry(warning, hint, 'a diagnostic').
+attribute_entry(diagnose_if, hint, 'a diagnostic (glibc\'s clang fortify)').
+attribute_entry(diagnose_as_builtin, hint, 'a diagnostic (glibc\'s clang fortify)').
+attribute_entry(enable_if, hint, 'only on glibc\'s clang fortify overloads, which nanofil handles as overloadable').
+attribute_entry(overloadable, honored, 'an incompatible redeclaration is skipped (docs/m4.md)').
+attribute_entry(pass_object_size, hint, 'glibc\'s clang fortify wrappers; nanofil\'s object sizes are unknown, so they call the plain function').
+attribute_entry(pass_dynamic_object_size, hint, 'as pass_object_size').
+attribute_entry(unused, hint, 'a diagnostic').
+attribute_entry(maybe_unused, hint, 'a diagnostic').
+attribute_entry(used, hint, 'keeps an unreferenced definition; only asm, which nanofil refuses, could refer to it').
+attribute_entry(retain, hint, 'as used, for the linker').
+attribute_entry(externally_visible, hint, 'whole-program optimization hint').
+attribute_entry(visibility, hint, 'dynamic export; nanofil exports every external symbol, observable only through interposition').
+attribute_entry(noipa, hint, 'optimizer hint').
+attribute_entry(noclone, hint, 'optimizer hint').
+attribute_entry(no_icf, hint, 'optimizer hint').
+attribute_entry(no_reorder, hint, 'optimizer hint').
+attribute_entry(no_instrument_function, hint, 'profiling instrumentation').
+attribute_entry(no_profile_instrument_function, hint, 'profiling instrumentation').
+attribute_entry(no_sanitize, hint, 'sanitizer instrumentation').
+attribute_entry(no_sanitize_address, hint, 'sanitizer instrumentation').
+attribute_entry(no_sanitize_thread, hint, 'sanitizer instrumentation').
+attribute_entry(no_sanitize_undefined, hint, 'sanitizer instrumentation').
+attribute_entry(no_address_safety_analysis, hint, 'sanitizer instrumentation').
+attribute_entry(no_stack_protector, hint, 'stack protector instrumentation').
+attribute_entry(stack_protect, hint, 'stack protector instrumentation').
+attribute_entry(no_split_stack, hint, 'stack splitting').
+attribute_entry(zero_call_used_regs, hint, 'register clearing on return').
+attribute_entry(nocf_check, hint, 'control-flow protection marking').
+attribute_entry(cf_check, hint, 'control-flow protection marking').
+attribute_entry(indirect_return, hint, 'control-flow protection marking').
+attribute_entry(patchable_function_entry, hint, 'padding for live patching').
+attribute_entry(noplt, hint, 'call sequence through the GOT').
+attribute_entry(tls_model, hint, 'thread-local access sequence').
+attribute_entry(uninitialized, hint, 'opts out of -ftrivial-auto-var-init').
+attribute_entry(nocommon, hint, 'nanofil, as clang, never emits common symbols').
+attribute_entry(sysv_abi, hint, 'the x86-64 calling convention nanofil uses').
+attribute_entry(stdcall, hint, 'an i386 calling convention; clang ignores it on x86-64').
+attribute_entry(cdecl, hint, 'an i386 calling convention; clang ignores it on x86-64').
+attribute_entry(fastcall, hint, 'an i386 calling convention; clang ignores it on x86-64').
+attribute_entry(thiscall, hint, 'an i386 calling convention; clang ignores it on x86-64').
+attribute_entry(regparm, hint, 'i386 only; clang ignores it on x86-64').
+attribute_entry(simd, hint, 'declares vector variants of a math function; calls stay scalar').
+attribute_entry(nonstring, hint, 'a diagnostic').
+attribute_entry(counted_by, hint, 'bounds hint for clang\'s sanitizers and object sizes; Fil-C checks every access').
+attribute_entry(strict_flex_array, hint, 'object size hint').
+attribute_entry(designated_init, hint, 'a diagnostic').
+attribute_entry(flag_enum, hint, 'a diagnostic').
+attribute_entry(enum_extensibility, hint, 'a diagnostic').
+attribute_entry(warn_if_not_aligned, hint, 'a diagnostic').
+attribute_entry(copy, hint, 'copies another declaration\'s attributes, which are checked there').
+attribute_entry(fallthrough, hint, 'a diagnostic, as a statement attribute').
+attribute_entry(likely, hint, 'a branch hint, as a statement attribute').
+attribute_entry(unlikely, hint, 'a branch hint, as a statement attribute').
+attribute_entry(assume, hint, 'a statement attribute whose expression is not evaluated').
+attribute_entry(musttail, hint, 'a statement attribute; the call means the same').
+attribute_entry(nomerge, hint, 'optimizer hint').
+attribute_entry(reproducible, hint, 'C23 optimizer promise').
+attribute_entry(unsequenced, hint, 'C23 optimizer promise').
+attribute_entry(may_alias, honored, 'nanofil does no type-based alias analysis').
+attribute_entry(bitwise, hint, 'sparse\'s annotation, only under __CHECKER__').
 
 % mode_attr(+Tokens, -Mode): the attribute is GCC's mode(Mode), its
 % name without GCC's optional underscores.

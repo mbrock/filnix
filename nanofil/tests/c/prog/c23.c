@@ -14,9 +14,11 @@ static thread_local int counter;
 struct s { char c; bool flag; };
 
 static int pick(int k, [[maybe_unused]] int unused) {
+    [[__maybe_unused__]] int spare = 0;     /* gnulib's spellings */
     int r = 0;
     switch (k) {
-    case 0: r += 1; [[fallthrough]];
+    case 0: r += 1; [[__fallthrough__]];
+    case 2: r += 100; [[fallthrough]];
     case 1: r += 10; break;
     default: unreachable();
     }

@@ -382,16 +382,44 @@ specifier(Env, no, tname(N)) -->
 % gnu_attr(-Tokens)//: __attribute__((...)), Tokens its balanced//1
 % contents.
 gnu_attr(A) -->
-    kw(attribute),
+    loc(Loc), kw(attribute),
     expect('('),
     balanced(A0),
-    { A = A0 }.
+    { known_attributes(A0, Loc), A = A0 }.
 gnu_attr(A) -->                         % clang -fdeclspec, as ruby builds
     [tok(id('__declspec'), _)],
     expect('('),
     balanced(Ts),
     (   { declspec_attr(Ts, A) } -> []
     ;   parse_error('this __declspec is not supported')
+    ).
+
+% known_attributes(+Tokens, +Loc): each attribute of __attribute__((...))
+% is one c_types known_attribute/3 lists, whatever its position, so none
+% is dropped unread; any other is refused.
+known_attributes(Tokens, Loc) :-
+    forall(( member(group(Inner), Tokens), attribute_items(Inner, Items),
+             member([T|_], Items), attribute_name(T, Word) ),
+           known_attribute_at(Word, Loc)).
+
+known_attribute_at(Word, Loc) :-
+    (   c_types:known_attribute(Word, _, _) -> true
+    ;   format(atom(M), '~w: attribute ~w is not supported', [Loc, Word]),
+        throw(nanofil_error(M))
+    ).
+
+% attribute_items(+Tokens, -Items): Tokens split at their commas.
+attribute_items(Tokens, Items) :-
+    (   append(Item, [p(',')|Rest], Tokens)
+    ->  Items = [Item|Items1], attribute_items(Rest, Items1)
+    ;   Items = [Tokens]
+    ).
+
+% attribute_name(+Token, -Word): an attribute's name, GCC's __X__ as X.
+attribute_name(T, Word) :-
+    ( T = id(W0) ; T = kw(W0) ), !,
+    (   atom_concat('__', W1, W0), atom_concat(W2, '__', W1), W2 \== '' -> Word = W2
+    ;   Word = W0
     ).
 
 % declspec_attr(+Tokens, -Attr): __declspec(Tokens) is the GNU
@@ -428,17 +456,37 @@ c23_attrs --> c23_attr, !, c23_attrs.
 c23_attrs --> [].
 
 c23_attr_entries -->
-    (   attribute_word(Prefix)
+    (   loc(Loc), attribute_word(Prefix)
     ->  (   punct(':')
         ->  expect(':'),
             attribute_word(Name),
-            c23_attribute_semantics(Prefix, Name)
-        ;   []
+            c23_attribute_semantics(Prefix, Name),
+            { Known = c23_known(Prefix, Name, Loc) }
+        ;   { Known = c23_known(none, Prefix, Loc) }
         ),
-        ( punct('(') -> attribute_argument(')') ; [] )
+        ( punct('(') -> attribute_argument(')') ; [] ),
+        { call(Known) }
     ;   []
     ),
     ( punct(',') -> c23_attr_entries ; [] ).
+
+% c23_known(+Prefix, +Name, +Loc): [[Name]] is a standard attribute or
+% one c_types lists, as is [[gnu::Name]] or [[clang::Name]]; others in
+% those namespaces are refused. An attribute of another namespace
+% (vendor::x, and msvc::x on this target) is ignored, as clang ignores
+% it with a warning, so filcc's program cannot depend on it.
+c23_known(none, Name0, Loc) :- !,
+    attribute_name(id(Name0), Name),
+    (   memberchk(Name, [deprecated, fallthrough, maybe_unused, nodiscard, noreturn,
+                         '_Noreturn', reproducible, unsequenced])
+    ->  true
+    ;   known_attribute_at(Name, Loc)
+    ).
+c23_known(Prefix, Name, Loc) :-
+    (   memberchk(Prefix, [gnu, '__gnu__', clang, '_Clang'])
+    ->  attribute_name(id(Name), Word), known_attribute_at(Word, Loc)
+    ;   true
+    ).
 
 attribute_word(N) --> token(id(N)), !.
 attribute_word(N) --> token(kw(N)).

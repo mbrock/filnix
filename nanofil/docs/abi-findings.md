@@ -1116,3 +1116,27 @@ initializer now does too (c_lower `address_constant/5`), so lighttpd's
 compiles. A round trip through a narrower integer stays refused, as
 clang refuses it ("initializer element is not a compile-time
 constant"). tests/c/prog/uintptr-roundtrip.c.
+
+## Cleanup and a returned struct (NRVO)
+
+`__attribute__((cleanup(F)))` runs F(&v) after a `return`'s value is
+taken. For a function returning a struct, clang returns a named local in
+place (NRVO, into the caller's sret buffer or the return registers), so
+a cleanup on the returned variable itself sees, and can change, the
+object the caller receives: `struct pair p __attribute__((cleanup(zap)))
+= {7, 8}; return p;` returns `{-1, 8}` under filcc when zap sets `p->a =
+-1`. nanofil copies the returned struct before the cleanups run, so the
+caller gets `{7, 8}`. GCC documents neither; code that relies on it is
+mutating the value it returns after returning it. Scalars and pointers
+agree: both compilers read the value first (g_steal_pointer depends on
+that, and tests/c/prog/cleanup.c checks it).
+
+## Attributes
+
+c_types known_attribute/3 lists every GNU attribute nanofil accepts:
+hints that change nothing nanofil emits, and attributes it implements.
+c_parse refuses any other where it reads it, in `__attribute__((...))`
+and in `[[gnu::X]]`, `[[clang::X]]` or a vendor's `[[v::X]]`, with
+"attribute X is not supported". Clang warns about and ignores an
+attribute it does not know; nanofil refuses it too, since an attribute
+it once dropped (cleanup, mode) silently changed what the program did.
