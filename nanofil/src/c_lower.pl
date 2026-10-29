@@ -39,7 +39,7 @@
     | Allocs | `build(RevAllocs, ActiveOrigins, OriginCounter, RevRecords, index(Bindings, Hints, ActiveLoc))`; independent of executable names |
     | N | the counter for fresh temporaries and labels |
     | Labels | an assoc from C goto labels to IR labels |
-    | Cases | the enclosing switch's `case(Value, Label)` and `default(Label)` |
+    | Cases | the enclosing switch's `case(Value, Label)`, `range(Lo, Hi, Label)` (a GNU case range of 4096 values or more) and `default(Label)` |
 
     The context argument Ctx is
     `ctx(Function, ReturnType, Break, Continue, Loc)`, where Break and
@@ -1730,8 +1730,10 @@ stmt_(case(Expr, Body), Ctx) -->
     vm_case(Ctx),
     label(Label), start(Label),
     cases(Cases0),
-    { findall(case(V, Label), member(V, Values), New0), reverse(New0, New),
-      append(New, Cases0, Cases) },
+    {   Values = range(L, H) -> New = [range(L, H, Label)]
+    ;   findall(case(V, Label), member(V, Values), New0), reverse(New0, New)
+    },
+    { append(New, Cases0, Cases) },
     set_cases(Cases),
     stmt(Body, Ctx).
 stmt_(default(Body), Ctx) -->
@@ -2035,13 +2037,12 @@ split_at(Cs, Seps, [L|Ls]) :-
 
 % case_values(+Expr, +Env, +Loc, -Values): the values a case label
 % matches: its constant, or each of a GNU range Lo ... Hi, none when Lo
-% exceeds Hi (GCC, Case Ranges). The range is expanded, so its values
-% meet the other cases' in distinct_cases/3; one of more than 4096
-% values is refused.
+% exceeds Hi (GCC, Case Ranges). A range of fewer than 4096 values is
+% expanded; a longer one is range(Lo, Hi), which dispatch//4 tests as an
+% interval (cryptsetup's utf16_encode_unichar, case 0 ... 0xd7ffU).
 case_values(range(Lo, Hi), Env, Loc, Values) :- !,
     case_constant(Lo, Env, Loc, L), case_constant(Hi, Env, Loc, H),
-    (   H - L >= 4096
-    ->  sema_error(Loc, 'a case range of more than 4096 values is not supported', [])
+    (   H - L >= 4096 -> Values = range(L, H)
     ;   H < L -> Values = []
     ;   numlist(L, H, Values)
     ).
@@ -2279,11 +2280,20 @@ single_value(Type, V, Env, Whole) :-
 % are compared for equality in source order. More are read with Type's
 % signedness and sorted; a binary search compares Value with them in
 % Type's order, down to a few cases compared one by one.
+%
+% A long case range is one pair Lo-to(Hi, Label), its bounds converted to
+% Type, which must hold them unchanged; it matches when Value - Lo,
+% unsigned, is at most Hi - Lo. Cases do not overlap (distinct_cases/3),
+% so the search's test against a pivot's Lo still splits them.
 dispatch([], _, _, LEnd) --> term(goto(LEnd)).
 dispatch(Cases, Value, Type, LEnd) -->
-    { findall(Wrapped-Label,
-              ( member(case(CaseValue, Label), Cases),
-                convert_int(CaseValue, Type, Wrapped) ),
+    { findall(Wrapped-Target,
+              (   member(case(CaseValue, Target), Cases),
+                  convert_int(CaseValue, Type, Wrapped)
+              ;   member(range(L, H, Label), Cases),
+                  convert_int(L, Type, Wrapped), convert_int(H, Type, WH),
+                  Target = to(WH, Label)
+              ),
               Pairs0),
       ( memberchk(default(LDefault), Cases) -> true ; LDefault = LEnd ),
       type_class(Type, Class) },
@@ -2298,10 +2308,16 @@ dispatch(Cases, Value, Type, LEnd) -->
 % are equal once converted to the promoted controlling type Type (C11
 % 6.8.4.2p3).
 distinct_cases(Cases, Type, Loc) :-
-    findall(W, ( member(case(V, _), Cases), convert_int(V, Type, W) ), Ws),
-    msort(Ws, Sorted),
-    (   append(_, [W, W|_], Sorted)
-    ->  sema_error(Loc, 'duplicate case value ~w', [W])
+    forall(member(range(L, H, _), Cases),
+           (   convert_int(L, Type, L), convert_int(H, Type, H) -> true
+           ;   sema_error(Loc, 'case range ~w ... ~w does not fit the switch\'s type', [L, H])
+           )),
+    findall(W-W, ( member(case(V, _), Cases), convert_int(V, Type, W) ), Is0),
+    findall(L-H, member(range(L, H, _), Cases), Rs),
+    append(Is0, Rs, Is),
+    msort(Is, Sorted),
+    (   append(_, [_-H0, L1-_|_], Sorted), L1 =< H0
+    ->  sema_error(Loc, 'duplicate case value ~w', [L1])
     ;   true
     ).
 
@@ -2330,6 +2346,14 @@ less_than(unsigned, ult).
 % dispatch_cases(+Pairs, +Value, +Class, +LDefault)//: compare Value
 % with each case value of Pairs in turn, then jump to LDefault.
 dispatch_cases([], _, _, LDefault) --> term(goto(LDefault)).
+dispatch_cases([Lo-to(Hi, Label)|Pairs], Value, Class, LDefault) --> !,
+    { Span is Hi - Lo },
+    let(Class, sub, [Value, const(Lo)], D),
+    let(w, cmp(ule, Class), [D, const(Span)], Test),
+    label(Next),
+    term(branch(Test, Label, Next)),
+    start(Next),
+    dispatch_cases(Pairs, Value, Class, LDefault).
 dispatch_cases([Wrapped-Label|Pairs], Value, Class, LDefault) -->
     let(w, cmp(eq, Class), [Value, const(Wrapped)], Test),
     label(Next),
