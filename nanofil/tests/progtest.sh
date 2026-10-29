@@ -15,7 +15,8 @@
 # A "// reference-opt: -O0" line builds the reference at that level
 # instead of -O1, for behaviour filcc has only without optimization.
 # An "// asm-lines: REGEX" line requires nanofil's assembly lines that
-# match REGEX to equal those of clang -S (top-level asm's .symver).
+# match REGEX to equal those of clang -S, as sets with blanks squeezed
+# (top-level asm's .symver, function objects' entries).
 # With a "// trap-reason" line, a run's safety errors are compared, each
 # up to the parenthesized reason that ends its first clause ("cannot
 # handle inline asm (Reason)"), instead of counting as "trap".
@@ -137,7 +138,7 @@ for f in "$@"; do
   asm_lines=$(sed -n 's|^// asm-lines: ||p' "$f")
   if [ -n "$asm_lines" ]; then
     "$filcc" "${cflags[@]}" -O1 -w -S -o "$d/c.s" "$f"
-    for s in n c; do grep -E "$asm_lines" "$d/$s.s" | sed 's/^[[:space:]]*//' >"$d/$s.lines" || true; done
+    for s in n c; do grep -E "$asm_lines" "$d/$s.s" | sed 's/^[[:space:]]*//; s/[[:space:]]\{1,\}/ /g' | sort >"$d/$s.lines" || true; done
     if ! diff -u "$d/c.lines" "$d/n.lines" >"$d/lines.diff"; then
       echo "MISMATCH $f (asm lines):"; cat "$d/lines.diff"; status=1; outcome=mismatch
     fi

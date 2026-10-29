@@ -1008,6 +1008,23 @@ which crashes clang's Fil-C (SelectionDAGBuilder's getCopyToParts
 assertion). tests/c/prog/asm-refused.c compares the reasons with
 filcc's ("// trap-reason").
 
+## Function objects name a local alias
+
+A function object's third word is its fast entry. clang writes
+`.quad .LpizlonatedFIP<Sig>_<f>.local`, a local symbol `.set` to the
+entry, for exported and weak functions, and the entry itself only for a
+static one. The global entry symbol is preemptible in a shared object, so
+a word naming it gets a dynamic relocation against the name, which the
+dynamic linker binds to the first definition it loaded. netcdf's NCZarr
+opens every HDF5 plugin with `RTLD_GLOBAL`, each defines
+`H5PLget_plugin_info`, and until nanofil wrote the alias each plugin's
+object called the first plugin's function: every filter had deflate's id
+1, and the tests failed with "undefined filter encountered" where
+filcc's passed. Calls still go through the PLT in both compilers, as C's
+interposition rules allow; only the function object is bound at link
+time. tests/c/prog/function-object-local.c compares the words with clang
+-S ("// asm-lines").
+
 ## Top-level asm
 
 `compileModuleAsm` reads the module asm a line at a time and rewrites

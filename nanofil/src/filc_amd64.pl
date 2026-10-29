@@ -2583,8 +2583,21 @@ function_object(Name, Linkage, Adapter, Sig, Impl) -->
     linkage_alias(Linkage, FI, Impl, Getter),
     object_getter(Getter, FO),
     generic_entry(Generic, Adapter),
+    local_entry(Linkage, Impl, Fast),
     [section(data_rel_ro), p2align(4)],
-    function_object_data(FO, Impl, Generic, Sig).
+    function_object_data(FO, Fast, Generic, Sig).
+
+% local_entry(+Linkage, +Impl, -Fast)//: the symbol a function object
+% names its fast entry by. A global Impl is preemptible, so the dynamic
+% linker would bind the object's word to the first definition of that
+% name it loaded: every HDF5 plugin netcdf opens with RTLD_GLOBAL
+% defines H5PLget_plugin_info, and each one's object called the first
+% one's. clang's names a local alias, .L<Impl>.local, bound at link
+% time (docs/abi-findings.md, *Function objects name a local alias*).
+local_entry(local, Impl, Impl) --> !.
+local_entry(_, Impl, Fast) -->
+    { format(atom(Fast), '.L~w.local', [Impl]) },
+    [type(Fast, function), set(Fast, Impl)].
 
 % The getter of a function object FO: its flight pointer, whose lower is
 % its address, in %rax:%rdx.
