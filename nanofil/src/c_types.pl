@@ -75,6 +75,7 @@
                     conditional_type/3, unqualified/2,
                     overflow_builtin/3, bit_builtin/3, rotate_builtin/3, builtin_type/2, binary_operands/6,
                     unary_operand/3, assigned/4, transparent_argument/4, expression_tags/3,
+                    builtin_declarations/1,
                     castable/2, expression_category/3, modifiable_lvalue/2,
                     integer_type/4, elaborate/3, tree_type/2, value/2,
                     lowered/2, folded/3, member_layout/6,
@@ -2645,10 +2646,6 @@ elab(arrow(E, F), Env, X) :-                                % 6.5.2.3p4
     elab(member(un(deref, E), F), Env, X).
 elab(call(id(Name), Args), Env, X) :-
     \+ lookup_ordinary(Env, Name, _),
-    library_builtin(Name, F), lookup_ordinary(Env, F, _), !,
-    elab(call(id(F), Args), Env, X).
-elab(call(id(Name), Args), Env, X) :-
-    \+ lookup_ordinary(Env, Name, _),
     checking_builtin(Name, Chk, Plain), !,
     (   lookup_ordinary(Env, Chk, _) -> elab(call(id(Chk), Args), Env, X)
     ;   unchecked_call(Plain, Args, Env, Call), lookup_ordinary(Env, Plain, _),
@@ -2870,16 +2867,73 @@ members_type(Members, F, Env, T) :-
 doc(library_builtin(?(Name), ?(F)), nondet, [
     Name: "a GNU builtin spelling of a standard library function",
     F: "that function",
-    "An undeclared Name called is a call of F, when F is declared:",
-    "GCC treats these builtins as the library functions they name.",
+    "GCC and clang declare __builtin_F for these library functions F",
+    "whether or not a header declares F, and a call is a call of F (bison",
+    "parsers call __builtin_memcpy without <string.h>, as netcdf's",
+    "dcetab.c does). builtin_declarations/1 declares each with F's",
+    "prototype, named F in the object.",
     cites('GCC manual, Other Built-in Functions'),
-    cites('C11 7.24.2.1'),
+    cites('C11 7.24, 7.22.3, 7.22.4'),
     example(library_builtin('__builtin_memcpy', F), F = memcpy),
     fails(library_builtin(memcpy, _))
 ]).
-library_builtin('__builtin_memcpy', memcpy).
-library_builtin('__builtin_memmove', memmove).
-library_builtin('__builtin_memset', memset).
+library_builtin(Name, F) :-
+    library_proto(F, _, _),
+    atom_concat('__builtin_', F, Name).
+
+% library_proto(?F, ?Ret, ?Params): library function F's prototype, with
+% types named as proto_type/3 reads them.
+library_proto(memcpy, vp, [vp, cvp, size]).
+library_proto(memmove, vp, [vp, cvp, size]).
+library_proto(memset, vp, [vp, int, size]).
+library_proto(memcmp, int, [cvp, cvp, size]).
+library_proto(memchr, vp, [cvp, int, size]).
+library_proto(strlen, size, [ccp]).
+library_proto(strcmp, int, [ccp, ccp]).
+library_proto(strncmp, int, [ccp, ccp, size]).
+library_proto(strcpy, cp, [cp, ccp]).
+library_proto(strncpy, cp, [cp, ccp, size]).
+library_proto(strcat, cp, [cp, ccp]).
+library_proto(strncat, cp, [cp, ccp, size]).
+library_proto(strchr, cp, [ccp, int]).
+library_proto(strrchr, cp, [ccp, int]).
+library_proto(strstr, cp, [ccp, ccp]).
+library_proto(strdup, cp, [ccp]).
+library_proto(malloc, vp, [size]).
+library_proto(calloc, vp, [size, size]).
+library_proto(realloc, vp, [vp, size]).
+library_proto(free, void, [vp]).
+library_proto(abort, void, []).
+library_proto(abs, int, [int]).
+library_proto(labs, long, [long]).
+
+proto_type(vp, [tspec(void)], ptr(base, [])).
+proto_type(cvp, [qual(const), tspec(void)], ptr(base, [])).
+proto_type(cp, [tspec(char)], ptr(base, [])).
+proto_type(ccp, [qual(const), tspec(char)], ptr(base, [])).
+proto_type(int, [tspec(int)], base).
+proto_type(long, [tspec(long)], base).
+proto_type(size, [tspec(unsigned), tspec(long)], base).
+proto_type(void, [tspec(void)], base).
+
+doc(builtin_declarations(-Items), det, [
+    Items: "top-level declarations of every library_builtin/2 name",
+    "Each declares __builtin_F with F's prototype and the asm label F, as",
+    "if a unit began with void *__builtin_memcpy(void *, const void *,",
+    "size_t) __asm__(\"memcpy\"); and so on.",
+    cites('GCC manual, Other Built-in Functions')
+]).
+builtin_declarations(Items) :-
+    findall(decl(builtin:0, RSpecs,
+                 [init(dcl(some(Name), func(RDecl, params(Ps, fixed)), asm(F)), none)]),
+            (   library_proto(F, R, As),
+                atom_concat('__builtin_', F, Name),
+                proto_type(R, RSpecs, RDecl),
+                findall(param(Specs, dcl(none, D, none)),
+                        ( member(A, As), proto_type(A, Specs, D) ), Ps0),
+                ( Ps0 == [] -> Ps = [] ; Ps = Ps0 )
+            ),
+            Items).
 
 doc(label_value(+Name, +Env, -E), semidet, [
     Name: "a label whose address GNU C's &&Name takes",

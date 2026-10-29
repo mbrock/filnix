@@ -88,8 +88,10 @@
 %  module(Funcs) with the functions followed by the data of every
 %  global and string literal. Throws a semantic error for C that
 %  nanofil cannot lower.
-c_module(Items0, module(Funcs)) :-
+c_module(Items00, module(Funcs)) :-
     empty_env(Env0),
+    builtin_declarations(Builtins),
+    append(Builtins, Items00, Items0),
     weak_aliases(Items0, Items, Aliases),
     findall(Name, external_inline_declaration(Items, Name), Names0),
     sort(Names0, ExternalNames),
