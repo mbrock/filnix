@@ -704,6 +704,16 @@ static_assert(Loc, Expr, Env) :-
     ;   sema_error(Loc, 'static assertion failed', [])
     ).
 
+% readonly_global(+Thread, +Name, +Sym, +Env0, -Env): Env records that
+% static object Sym, declared as Name, is const (c_types
+% readonly_object_type/1), so global_item/4 gives it linkage ro(L), as
+% filcc gives it a read-only capability. A thread-local one is not, as
+% in filcc.
+readonly_global(none, Name, Sym, Env0, Env) :-
+    lookup_ordinary(Env0, qtype(Name), RT), readonly_object_type(RT), !,
+    put_def(readonly(Sym), true, Env0, Env).
+readonly_global(_, _, _, Env, Env).
+
 % global_decl(+Loc, +Decl, +Env0, -Env): Env binds the d/5 declaration
 % Decl of a function or of an object with static or thread storage, and
 % defines the object unless it is an extern without an initializer. A
@@ -731,7 +741,8 @@ global_decl(Loc, d(Name, Type1, Storage0, Asm, Init), Env0, Env) :-
         ->  Env = Env1
         ;   ( Storage == static -> Linkage0 = local ; Linkage0 = export ),
             thread_linkage(Thread, Linkage0, Linkage),
-            define_global(Sym, Type, Linkage, Init, Loc, Env1, Env2),
+            define_global(Sym, Type, Linkage, Init, Loc, Env1, Env2a),
+            readonly_global(Thread, Name, Sym, Env2a, Env2),
             data_alignment(Name, Sym, Env2, Env)
         )
     ).
@@ -844,14 +855,18 @@ str_elems(wstr(WideType, Values), ElemType, Values) :-
 str_elems(list([entry([], Str)]), ElemType, Values) :-
     Str \= list(_), str_elems(Str, ElemType, Values).
 
-% new_complit(+Type0, +Init, +Loc, -Sym, +Env0, -Env): Sym is a fresh
-% symbol that Env defines as a file-scope compound literal, an unnamed
-% static object.
-new_complit(Type0, Init, Loc, Sym, Env0, Env) :-
+% new_complit(+TypeName, +Type0, +Init, +Loc, -Sym, +Env0, -Env): Sym is
+% a fresh symbol that Env defines as a file-scope compound literal, an
+% unnamed static object, read-only if TypeName is const.
+new_complit(TypeName, Type0, Init, Loc, Sym, Env0, Env) :-
     next_id(N, Env0, Env1),
     format(atom(Sym), 'complit.~w', [N]),
     complete_array(Type0, Init, Type, Loc, Env0, none),
-    define_global(Sym, Type, local, Init, Loc, Env1, Env).
+    define_global(Sym, Type, local, Init, Loc, Env1, Env2),
+    (   reflect_type(TypeName, Type0, Env0, RT), readonly_object_type(RT)
+    ->  put_def(readonly(Sym), true, Env2, Env)
+    ;   Env = Env2
+    ).
 
 % global_data(+Env0, -Data): Data are the data items of every global
 % definition and string literal.
@@ -903,8 +918,13 @@ gdef_pair(gdef(Sym)-G, Sym-G).
 
 % global_item(+Sym-G, -Data, +Env0, -Env): Data is the data item of
 % global definition G.
-global_item(Sym-g(Type, Linkage, Init, Loc),
+global_item(Sym-g(Type, Linkage0, Init, Loc),
             data(Sym, Linkage, Align, Items), Env0, Env) :-
+    env_defs(Env0, Defs0),
+    (   get_assoc(readonly(Sym), Defs0, true), memberchk(Linkage0, [export, local])
+    ->  Linkage = ro(Linkage0)
+    ;   Linkage = Linkage0
+    ),
     catch(type_size_align(Type, Env0, _, Align0), bad(Why),
           sema_error(Loc, '~w has an unsupported type (~w)', [Sym, Why])),
     env_defs(Env0, Defs),
@@ -2176,7 +2196,8 @@ local_decl(d(Name, Type0, Storage0, Asm, Init), Ctx) -->
           complete_array(Type1, Init, Type, Loc, Env0, none),
           bind_ordinary(Name, gvar(Type, Sym, Storage0, Init), Env1, Env2),
           thread_linkage(Thread, local, Linkage),
-          define_global(Sym, Type, Linkage, Init, Loc, Env2, Env2a),
+          define_global(Sym, Type, Linkage, Init, Loc, Env2, Env2b),
+          readonly_global(Thread, Name, Sym, Env2b, Env2a),
           data_alignment(Name, Sym, Env2a, Env3),
           % Resolve block-scope names before the scope is restored.
           static_items(Type, Init, Loc, Env3, Env4, Items),
@@ -5090,7 +5111,7 @@ place_constant(obj(_, wstr(WideType, Values)), _, Env0, Env, sym(Sym, 0)) :- !,
     new_literal(w(WideType, Values), Sym, Env0, Env).
 place_constant(obj(_, complit(TypeName, Init)), Loc, Env0, Env, sym(Sym, 0)) :- !,
     type_name(TypeName, Type0, Env0, Loc),
-    new_complit(Type0, Init, Loc, Sym, Env0, Env).
+    new_complit(TypeName, Type0, Init, Loc, Sym, Env0, Env).
 place_constant(obj(_, deref(XV)), Loc, Env0, Env, R) :- !,
     address_constant(XV, Loc, Env0, Env, R0),
     (   R0 = sym(_, _) -> R = R0

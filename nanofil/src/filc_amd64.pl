@@ -2680,10 +2680,14 @@ data_object(Name, Linkage0, Align, Items) -->
       Total is 16 + Size,
       PayloadAlign is max(Align, 16), Front is PayloadAlign - 16,
       Log is msb(PayloadAlign),
-      % clang's section: a const object or string literal is relocated
-      % once and then read-only (.data.rel.ro); glibc's fortified printf
-      % refuses a %n format it finds in writable memory.
-      ( memberchk(readonly, Flags) -> Section = data_rel_ro ; Section = data ) },
+      % clang's section: a const object or string literal without
+      % pointers is read-only (.data.rel.ro), where glibc's fortified
+      % printf accepts a %n format; one with pointers stays in .data, as
+      % the getter's relocations write its payload at run time (the
+      % readonly flag in its aux word still refuses stores).
+      (   memberchk(readonly, Flags), Rs == [] -> Section = data_rel_ro
+      ;   Section = data
+      ) },
     [section(Section), p2align(Log)],
     (   { Front > 0 }
     ->  [zero(Front)]

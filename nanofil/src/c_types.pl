@@ -79,7 +79,7 @@
                     builtin_declarations/1,
                     castable/2, expression_category/3, modifiable_lvalue/2,
                     integer_type/4, elaborate/3, tree_type/2, value/2,
-                    lowered/2, folded/3, member_layout/6,
+                    lowered/2, folded/3, member_layout/6, readonly_object_type/1,
                     bitfield_promotion/3, unaligned_type/2, underaligned_member/4, atomic_qualified/1,
                     rmw_builtin/4, known_attribute/3, filcc_refused_mnemonic/1]).
 
@@ -3366,6 +3366,30 @@ binding_type(var(_, T), T).
 binding_type(gvar(T, _, _, _), T).
 binding_type(fn(T, _, _), T).
 binding_type(enumconst(_, T), T).
+
+doc(readonly_object_type(+RT), semidet, [
+    RT: "an object's reflected type (reflect_type/4), qualifiers kept",
+    "An object of type RT is const: RT is const-qualified, or an array",
+    "whose elements are (an array type's qualifiers are its elements').",
+    "Modifying it is undefined, so Fil-C gives a static one a read-only",
+    "capability and filcc traps a store through a cast (clang marks such",
+    "a global constant, volatile or not). A struct with a const member",
+    "is not itself const, and C has no mutable members, so a const",
+    "struct is read-only as a whole.",
+    cites('C11 6.7.3p6'),
+    cites('C11 6.7.3p9'),
+    example(readonly_object_type(qualified([const], int))),
+    example(readonly_object_type(qualified([const, volatile], int))),
+    example(readonly_object_type(array(qualified([const], int), 3))),
+    example(readonly_object_type(qualified([const], array(int, 3)))),
+    fails(readonly_object_type(int)),
+    fails(readonly_object_type(ptr(qualified([const], char)))),
+    fails(readonly_object_type(qualified([volatile], int))),
+    fails(readonly_object_type(struct(1)))
+]).
+readonly_object_type(qualified(Qs, T)) :-
+    (   memberchk(const, Qs) -> true ; readonly_object_type(T) ).
+readonly_object_type(array(T, _)) :- readonly_object_type(T).
 
 % reflected_shape(+RT, +T, -S): S is reflected type RT with the array
 % dimensions of declared type T, which an initializer may have completed
