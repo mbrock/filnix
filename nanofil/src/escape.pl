@@ -12,8 +12,8 @@
     huge constant gives a huge offset, which promote's bounds check
     refuses.
 */
-:- module(escape, [alloc_classes/2, address_temps/2, load_width/2,
-                   def_counts/2]).
+:- module(escape, [alloc_classes/2, alloc_classes/4, address_temps/2,
+                   load_width/2, def_counts/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -49,10 +49,16 @@ load_width(p, p).
 %      derived from it is defined more than once, so offsets are unknown.
 
 alloc_classes(F, Classes) :-
-    F = func(_, _, _, _, Blocks),
-    findall(I, ( member(block(_, _, Is, _), Blocks), member(I, Is) ), Insts),
     address_temps(F, Addrs),
     def_counts(F, DefCounts),
+    alloc_classes(F, Addrs, DefCounts, Classes).
+
+%! alloc_classes(+Func, +Addrs, +DefCounts, -Classes) is det.
+%
+%  As alloc_classes/2, given Func's address_temps/2 and def_counts/2.
+alloc_classes(F, Addrs, DefCounts, Classes) :-
+    F = func(_, _, _, _, Blocks),
+    findall(I, ( member(block(_, _, Is, _), Blocks), member(I, Is) ), Insts),
     findall(A-Size, member(let(tmp(A), _, alloc(_), [Size]), Insts), Allocs),
     findall(Root-E,
             ( member(I, Insts), inst_event(I, Addrs, Root-E) ),

@@ -22,7 +22,7 @@
 :- use_module(ir).
 :- use_module(cfg).
 :- use_module(escape).
-:- use_module(promote, [strict_ssa/3]).
+:- use_module(promote, [strict_ssa/4]).
 :- use_module(provenance).
 
 %! local_storage_module(+M0, -M) is det.
@@ -55,13 +55,14 @@ local_context(F0, Rs0, F, Rs) :-
     (   \+ setjmp_func(F0),
         local_objects(F0, []),
         % Only a constant alloc in the entry block can become local
-        % (local_objects/3): most functions have none, so look first.
+        % (local_objects/4): most functions have none, so look first.
         Bs0 = [block(_, _, Entry, _)|_],
         memberchk(let(_, p, alloc(_), [const(_)]), Entry),
         func_cfg(Bs0, Cfg), cfg_idoms(Cfg, Idom),
-        strict_ssa(F0, Cfg, Idom),
+        def_counts(F0, Counts),
+        strict_ssa(F0, Counts, Cfg, Idom),
         address_temps(F0, Addresses),
-        local_objects(F0, Addresses, Objects), Objects \== []
+        local_objects(F0, Addresses, Counts, Objects), Objects \== []
     ->  maplist(local_block(Objects, Addresses), Bs0, Bs, Maps), append(Maps, Map),
         remap_sites(Rs0, Map, Rs), F = func(N, L, R, Ps, Bs)
     ;   F = F0, Rs = Rs0
@@ -69,10 +70,10 @@ local_context(F0, Rs0, F, Rs) :-
 
 % Only in-bounds accesses qualify, but not necessarily disjoint ones:
 % those are the objects promote could not turn into SSA values.
-local_objects(F, Addresses, Objects) :-
+local_objects(F, Addresses, Counts, Objects) :-
     F = func(_, _, _, _, Blocks),
     Blocks = [block(_, _, Entry, _)|_],
-    alloc_classes(F, Classes),
+    alloc_classes(F, Addresses, Counts, Classes),
     % escape's fixed-slot vocabulary currently excludes float loads.
     % Missing access events are not evidence that an object is unused.
     findall(A,

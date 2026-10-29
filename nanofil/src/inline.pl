@@ -44,8 +44,7 @@
 :- use_module(library(ordsets)).
 :- use_module(ir, [setjmp_func/1, module_mode/2]).
 :- use_module(cfg, [func_cfg/2, cfg_idoms/2, inst_def/2]).
-:- use_module(escape, [alloc_classes/2]).
-:- use_module(promote, [promotable/3, strict_ssa/3, promote_context/5]).
+:- use_module(promote, [promotable/3, promotable/4, strict_ssa/3, promote_context/5]).
 :- use_module(copy, [copy_context/4]).
 :- use_module(simplify, [simplify_context/5]).
 :- use_module(provenance, [legacy_context/2, code_items/2, context_index/2,
@@ -169,8 +168,7 @@ excluded_inst(_, let(_, p, alloc(_), [V])) :- \+ ( V = const(N), N =< 256 ).
 % per execution as before. In plain mode every alloc promotes: a stack
 % alloc that stayed would live until the caller returns.
 allocs_ok(filc, F) :-
-    alloc_classes(F, Classes),
-    promotable(filc, F, Roots),
+    promotable(filc, F, Roots, an(Classes, _, _)),
     forall(member(A-local(_, _), Classes), memberchk(A-_, Roots)).
 allocs_ok(plain, F) :-
     promotable(plain, F, Roots),

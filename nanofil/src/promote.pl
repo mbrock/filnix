@@ -57,7 +57,7 @@
     slot's width, `l` or `p`, otherwise.
 */
 :- module(promote, [promote_module/2, promote_func/3, promote_context/5, promotable/3,
-                    alloc_count/2, strict_ssa/3]).
+                    promotable/4, alloc_count/2, strict_ssa/3, strict_ssa/4]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -117,12 +117,13 @@ promote_context(Mode, F0, Rs0, F, Rs) :-
     F0 = func(Name, Linkage, Ret, Params, Blocks0),
     % Most functions have nothing to promote: look before building the
     % dominator tree.
-    (   promotable(Mode, F0, Roots),
+    (   promotable(Mode, F0, Roots, an(_, AllAddrs, Counts)),
         Roots \== [],
         func_cfg(Blocks0, Cfg),
         cfg_idoms(Cfg, Idom),
-        strict_ssa(F0, Cfg, Idom)
-    ->  promote_roots(Roots, F0, Cfg, Idom, Blocks, Map, Placed, Addrs, Widths),
+        strict_ssa(F0, Counts, Cfg, Idom)
+    ->  promote_roots(Roots, F0, AllAddrs, Counts, Cfg, Idom, Blocks, Map,
+                      Placed, Addrs, Widths),
         F = func(Name, Linkage, Ret, Params, Blocks),
         remap_sites(Rs0, Map, Rs1),
         promoted_context(Rs0, Rs1, Blocks0, Placed, Addrs, Widths, Rs)
@@ -182,14 +183,22 @@ type_slot(ptr(_), p).
 %  Roots is [A-Slots] for the allocs A of F that can be promoted, in
 %  order, Slots an ordset of acc(Off, Width).
 
-promotable(_, F, []) :- setjmp_func(F), !.
+promotable(Mode, F, Roots) :- promotable(Mode, F, Roots, _).
+
+% promotable(+Mode, +F, -Roots, -An): as promotable/3, with An =
+% an(Classes, Addrs, Counts): F's alloc_classes/2, address_temps/2 and
+% def_counts/2, computed once for escape analysis and the rewrite, or
+% an([], none, none) when F has no alloc or calls setjmp.
+promotable(_, F, [], an([], none, none)) :- setjmp_func(F), !.
 % Without an alloc, skip escape analysis.
-promotable(_, func(_, _, _, _, Blocks), []) :-
+promotable(_, func(_, _, _, _, Blocks), [], an([], none, none)) :-
     \+ ( member(block(_, _, Insts, _), Blocks),
          memberchk(let(_, _, alloc(_), _), Insts) ), !.
-promotable(Mode, F, Roots) :-
-    alloc_classes(F, Classes),
-    stored_accs(F, Stored),
+promotable(Mode, F, Roots, an(Classes, Addrs, Counts)) :-
+    address_temps(F, Addrs),
+    def_counts(F, Counts),
+    alloc_classes(F, Addrs, Counts, Classes),
+    stored_accs(F, Addrs, Stored),
     findall(A-Slots,
             ( member(A-local(const(Size), Accs), Classes),
               ( get_assoc(A, Stored, Ws) -> true ; Ws = [] ),
@@ -197,11 +206,10 @@ promotable(Mode, F, Roots) :-
               slots_ok(Mode, Size, Slots) ),
             Roots).
 
-% stored_accs(+F, -Stored): Stored maps each alloc to the accesses that
+% stored_accs(+F, +Addrs, -Stored): Stored maps each alloc to the accesses that
 % store to it.
-stored_accs(F, Stored) :-
+stored_accs(F, Addrs, Stored) :-
     F = func(_, _, _, _, Blocks),
-    address_temps(F, Addrs),
     findall(A-acc(Off, W),
             ( member(block(_, _, Is, _), Blocks), member(store(W, _, tmp(X)), Is),
               get_assoc(X, Addrs, A-Off) ),
@@ -274,8 +282,13 @@ slots_disjoint_([acc(Off2, Width2)|Accs], acc(Off1, Width1)) :-
 %  phi argument is used at the end of its predecessor). Cfg and Idom are
 %  those of F.
 
-strict_ssa(F, cfg(_, Rpo, _, _), Idom) :-
+strict_ssa(F, Cfg, Idom) :-
     def_counts(F, Counts),
+    strict_ssa(F, Counts, Cfg, Idom).
+
+% strict_ssa(+F, +Counts, +Cfg, +Idom): as strict_ssa/3, given F's
+% def_counts/2.
+strict_ssa(F, Counts, cfg(_, Rpo, _, _), Idom) :-
     \+ ( gen_assoc(_, Counts, N), N > 1 ),
     F = func(_, _, _, Params, Blocks),
     Rpo = [Entry|_],
@@ -341,11 +354,11 @@ at_after(at(N), Pos) :-
 
 %% Rewriting
 
-% promote_roots(+Roots, +F0, +Cfg, +Idom, -Blocks): Blocks are the blocks
-% of F0 with every slot of Roots promoted.
-promote_roots(Roots, F0, Cfg, Idom, Blocks, Map, Placed0, Addrs, Widths) :-
+% promote_roots(+Roots, +F0, +Addrs, +Counts, +Cfg, +Idom, -Blocks): Blocks
+% are the blocks of F0 with every slot of Roots promoted; Addrs and Counts
+% are F0's address_temps/2 and def_counts/2.
+promote_roots(Roots, F0, AllAddrs, Counts, Cfg, Idom, Blocks, Map, Placed0, Addrs, Widths) :-
     F0 = func(_, _, _, _, Blocks0),
-    address_temps(F0, AllAddrs),
     % Only addresses of promoted allocs matter from here on.
     % A punned read's address names its slot; Shifts holds its byte
     % offset in the slot when that is not 0.
@@ -381,7 +394,6 @@ promote_roots(Roots, F0, Cfg, Idom, Blocks, Map, Placed0, Addrs, Widths) :-
     liveness(Cfg, GenKill, NoEdges, LiveIn, _),
     cfg_frontiers(Cfg, Idom, DF),
     Cfg = cfg(Entry, _, Succs, _),
-    def_counts(F0, Counts),
     assoc_to_keys(Counts, Used),
     % Index the reachable stores once, rather than scanning all blocks
     % and instructions again for every slot.
