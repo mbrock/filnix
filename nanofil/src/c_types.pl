@@ -541,7 +541,7 @@ attribute_entry(alias, honored, 'c_lower alias_decl/8; a variable alias is refus
 attribute_entry(weakref, honored, 'c_lower weakref_item/3: an extern reference to its target').
 attribute_entry(constructor, honored, 'c_lower init_decl//5').
 attribute_entry(destructor, honored, 'c_lower init_decl//5').
-attribute_entry(always_inline, hint, 'inlining is the optimizer\'s choice; the call means the same').
+attribute_entry(always_inline, hint, 'inlining is the optimizer\'s choice; the call means the same, except that calls of an inline body that is not the external definition use a local copy, as clang inlines them all (c_lower always_inline/1)').
 attribute_entry(noinline, hint, 'as always_inline').
 attribute_entry(flatten, hint, 'as always_inline').
 attribute_entry(artificial, hint, 'debug information only').
@@ -878,6 +878,7 @@ other_type_spec(su(_, _, _, _)).
 other_type_spec(enum(_, _)).
 other_type_spec(typeof(_)).
 other_type_spec(atomic(_)).
+other_type_spec(auto_type).
 
 % Clang retains the SysV va_list array/record layout; Fil-C stores its
 % capability-bearing cursor in the first word and ignores the rest.
@@ -887,6 +888,9 @@ named_type(tname(Name), Type, Env, Env) :-
     (   lookup_ordinary(Env, Name, typedef(Type0)) -> Type = Type0
     ;   Type = bad('unknown typedef')
     ).
+% c_parse resolves a declaration's __auto_type from its initializer;
+% one left over (a parameter, member or type name) has none.
+named_type(auto_type, bad('__auto_type without an initializer'), Env, Env).
 named_type(typeof(Arg), Type, Env0, Env) :-
     typeof_type(Arg, Type, Env0, Env).
 named_type(atomic(TN), Type, Env0, Env) :-
@@ -3043,6 +3047,13 @@ doc(elaborate(+E, +Env, -X), semidet, [
     "X is E as C reads it: each node typed, and lvalues, function",
     "designators and values told apart. Fails when E cannot be typed.",
     cites('C11 6.5p1'),
+    "__func__ is a static char array holding the enclosing function's",
+    "name, so its size counts the name and the null; the lowerer binds",
+    "function_name to that name for the function's body.",
+    cites('C11 6.4.2.2p1'),
+    example(( empty_env(E0), bind_ordinary(function_name, main, E0, E),
+              elaborate(id('__func__'), E, X) ),
+            X = obj(array(char, 5), predefined('__func__'))),
     example(( empty_env(E0), bind_ordinary(x, var(none, int), E0, E),
               elaborate(un(addr, id(x)), E, X) ),
             X = val(ptr(int), addr(obj(int, id(x))))),
@@ -3081,8 +3092,14 @@ elab(id(Name), Env, X) :-
     lookup_ordinary(Env, Name, Binding), !,
     identifier_type(Binding, Name, Env, T),
     binding_node(Binding, T, Name, X).
-elab(id(Name), _, obj(array(char, none), predefined(Name))) :-   % 6.4.2.2
-    memberchk(Name, ['__func__', '__FUNCTION__', '__PRETTY_FUNCTION__']).
+elab(id(Name), Env, obj(array(char, N), predefined(Name))) :-   % 6.4.2.2
+    memberchk(Name, ['__func__', '__FUNCTION__', '__PRETTY_FUNCTION__']),
+    % clang's __PRETTY_FUNCTION__ spells the declarator, which nanofil's
+    % predefined string does not, so its size stays unknown.
+    (   Name \== '__PRETTY_FUNCTION__', lookup_ordinary(Env, function_name, Func)
+    ->  atom_length(Func, N0), N is N0 + 1
+    ;   N = none
+    ).
 elab(num(V0, S), Env, val(T, int(V))) :-
     num_type(V0, S, T0), env_int_type(Env, T0, T), convert_int(V0, T, V).
 elab(chr(V), Env, val(T, int(V))) :- env_int_type(Env, int, T).

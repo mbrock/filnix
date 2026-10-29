@@ -8,7 +8,9 @@
    "+m", "=mr", "g", input "m") of any complete type mean nothing either
    (elfutils' barriers), and "+r" gives a pointer back with its
    capability; each operand's lvalue is still evaluated, so pick() is
-   called twice. */
+   called twice. An "=r" output with an input of its type tied to it
+   ("0") receives the input's value: ell's DO_NOT_OPTIMIZE(var),
+   asm("" : "=r"(var) : "0"(var)). */
 #include <stdio.h>
 
 struct S { int a; long b; };
@@ -39,8 +41,24 @@ static double dguard(double d) { __asm__ __volatile__("\t" : "+g"(d) :: "memory"
 static int counter;
 static int bump(void) { return ++counter; }
 
+#define DO_NOT_OPTIMIZE(var) __asm__ ("" : "=r" (var) : "0" (var))
+static void tied_inputs(void) {
+    unsigned diff = 0, out = 7;
+    unsigned char b = 200;
+    double d = 1.5;
+    long a[3] = {1, 2, 3};
+    int i = 0;
+    for (int k = 0; k < 4; k++) { diff |= (unsigned)k << k; DO_NOT_OPTIMIZE(diff); }
+    DO_NOT_OPTIMIZE(b);
+    DO_NOT_OPTIMIZE(d);
+    __asm__ ("" : "=r" (out) : "0" ((unsigned)bump() + 40));
+    __asm__ ("" : "=r" (a[i++]) : "0" (a[2]));
+    printf("%u %u %g %u %ld %ld %d\n", diff, b, d, out, a[0], a[1], i);
+}
+
 int main(void) {
     memory_operands();
+    tied_inputs();
     int k = 3, junk = 0;
     __asm__ volatile("" : : "r"(k), "i"(5), "n"(sizeof(int)), "g"(bump()));
     __asm__ volatile("" : "=r"(junk));          /* unspecified: not printed */

@@ -52,7 +52,7 @@
     | `enum(Tag, Enumerators)` | an enum; Enumerators is `packed(Es)` under GNU's packed attribute |
     | `attr(Tokens)` | an attribute |
     | `alignas(type(TypeName))` `alignas(expr(E))` | `_Alignas` |
-    | `typeof(type(TypeName))` `typeof(expr(E))` | `typeof` |
+    | `typeof(type(TypeName))` `typeof(expr(E))` | `typeof`; GNU `__auto_type` with initializer E is `typeof(expr(comma(num(0, none-dec), E)))` |
     | `atomic(TypeName)` | `_Atomic ( TypeName )` |
 
     A Tag is `some(Identifier)` or `none`. Members is `none`, or a list
@@ -240,9 +240,10 @@ external_decl(Env0, Env, [Item|Items], Items) -->
             block(Env, Body)
         ;   init_declarators(Env0, Dcl, Inits, Attrs0, Attrs),
             expect(';'),
-            {   append(Specs, Attrs, Specs1),
+            {   auto_type(Specs, Inits, Loc, SpecsA),
+                append(SpecsA, Attrs, Specs1),
                 Item = decl(Loc, Specs1, Inits),
-                decl_env(Specs, Inits, Env0, Env)
+                decl_env(SpecsA, Inits, Env0, Env)
             }
         )
     ).
@@ -255,6 +256,21 @@ static_assert_rest(Env, Loc, static_assert(Loc, Expr, Msg)) -->
     ( punct(',') -> string_bytes(Msg) ; { Msg = [] } ),
     expect(')'),
     expect(';').
+
+% auto_type(+Specs0, +Inits, +Loc, -Specs): GNU __auto_type among
+% Specs0 is the type of its one declarator's initializer after lvalue
+% conversion, array and function decay, which is the type of
+% (0, Init): typeof of that, not evaluated. GCC refuses it with several
+% declarators or none, or without an expression initializer.
+auto_type(Specs0, Inits, Loc, Specs) :-
+    (   selectchk(auto_type, Specs0, Rest)
+    ->  (   Inits = [init(_, Init)], Init \= none, Init \= list(_)
+        ->  Specs = [typeof(expr(comma(num(0, none-dec), Init)))|Rest]
+        ;   format(atom(M), '~w: __auto_type needs one declarator with an expression initializer', [Loc]),
+            throw(nanofil_error(M))
+        )
+    ;   Specs = Specs0
+    ).
 
 % decl_env(+Specs, +Inits, +Env0, -Env): Env is Env0 with the typedef
 % names the declaration adds or (for ordinary names) hides.
@@ -346,6 +362,7 @@ spec_type_seen(alignas(_), TypeSeen, TypeSeen).
 spec_type_seen(su(_, _, _, _), _, yes).
 spec_type_seen(enum(_, _), _, yes).
 spec_type_seen(typeof(_), _, yes).
+spec_type_seen(auto_type, _, yes).
 spec_type_seen(atomic(_), _, yes).
 spec_type_seen(tname(_), _, yes).
 
@@ -385,6 +402,7 @@ specifier(Env, _, Spec) -->
 specifier(Env, _, Spec) -->
     kw(enum), !,
     enum_spec(Env, Spec).
+specifier(_, _, auto_type) --> kw(auto_type), !.
 specifier(Env, _, typeof(A)) -->
     kw(typeof), !,
     expect('('),
@@ -947,7 +965,7 @@ starts_decl(Env, S, S) :-
     ->  true
     ;   Rest = [tok(kw(K), _)|_],
         memberchk(K, [typedef, extern, static, auto, register, thread_local,
-                      inline, noreturn])
+                      inline, noreturn, auto_type])
     ).
 
 % label_start//: lookahead: the next tokens are an identifier and ':'.
@@ -965,8 +983,9 @@ local_decl(Env0, Env, decl(Loc, Specs1, Inits)) -->
         init_declarators(Env0, Dcl, Inits, Attrs0, Attrs),
         expect(';')
     ),
-    {   append(Specs, Attrs, Specs1),
-        decl_env(Specs, Inits, Env0, Env)
+    {   auto_type(Specs, Inits, Loc, SpecsA),
+        append(SpecsA, Attrs, Specs1),
+        decl_env(SpecsA, Inits, Env0, Env)
     }.
 
 % statement(+Env, -Stmt)//: a statement at(Loc, S). The cut commits to

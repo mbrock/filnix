@@ -51,8 +51,11 @@
 
     - `gdef(Symbol)`: a global definition;
     - `lit(Symbol)`: a string literal;
+    - `func_name(Function)`: the symbol of that function's `__func__`;
     - `deferred(Symbol)`: a static inline function, lowered only if
-      something refers to it.
+      something refers to it;
+    - `inline_copy(Symbol)`, `inline_copy_of(Local)`: the local copy
+      that calls of an always_inline inline-only definition use.
 
     Next numbers string and compound literals as well as struct ids.
 
@@ -331,12 +334,19 @@ external_inline_declaration(Items, Name) :-
 % GNU89 mode (NANOFIL_STD=gnu89: -std=c90, gnu90 or -fgnu89-inline,
 % where clang predefines __GNUC_GNU_INLINE__) gives every inline body
 % the GNU rule, as glibc's extern __inline atoi relies on.
+gnu_inline_rule(Specs) :-
+    (   getenv('NANOFIL_STD', gnu89) -> true
+    ;   member(attr(Attrs), Specs),
+        attr_word(Attrs, Attr),
+        memberchk(Attr, [gnu_inline, '__gnu_inline__']), !
+    ).
+
+always_inline(Specs) :-
+    member(attr(Attrs), Specs), attr_word(Attrs, A),
+    memberchk(A, [always_inline, '__always_inline__']), !.
+
 external_inline_body(Specs, Storage, Name, ExternalNames) :-
-    (   (   getenv('NANOFIL_STD', gnu89)
-        ;   member(attr(Attrs), Specs),
-            attr_word(Attrs, Attr),
-            memberchk(Attr, [gnu_inline, '__gnu_inline__'])
-        )
+    (   gnu_inline_rule(Specs)
     ->  Storage \== extern
     ;   memberchk(Name, ExternalNames)
     ).
@@ -412,7 +422,11 @@ item_ref(Items, Sym) :-
 lower_inline(Sym, Func, Env0, Env) :-
     env_defs(Env0, Defs),
     get_assoc(deferred(Sym), Defs, df(Loc, Name, Type, DclType, Body, Scope)),
-    env_restore(Scope, Env0, Env1),
+    env_restore(Scope, Env0, Env1a),
+    (   get_assoc(inline_copy_of(Sym), Defs, _)
+    ->  bind_ordinary(Name, fn(Type, Sym, local), Env1a, Env1)
+    ;   Env1 = Env1a
+    ),
     function(Loc, Name, Type, DclType, Body, Env1, Env2, Func),
     env_scope(Env0, Scope0, _),
     env_restore(Scope0, Env2, Env).
@@ -492,6 +506,21 @@ top_item(ExternalNames, fundef(Loc, Specs, dcl(some(Name), DclType, Asm), Body),
             env_scope(Env2, Scope, _),
             put_def(deferred(Sym), df(Loc, Name, Type, DclType, Body, Scope),
                     Env2, Env)
+        ;   always_inline(Specs), \+ gnu_inline_rule(Specs)
+        ->  % clang inlines every call to an always_inline C99 inline-only
+            % definition once it optimizes, so no unit need define the
+            % symbol (ell's DEFINE_CLEANUP_FUNC): calls go to a local copy,
+            % lowered if called; the function's address is still the
+            % external one. A GNU extern inline body has an external
+            % definition by contract (glibc's fortify wrappers, which call
+            % it through an asm label), so its calls keep going there.
+            lookup_ordinary(Env2, Name, fn(_, Sym, _)),
+            format(atom(Local), '~w.always_inline', [Sym]),
+            env_scope(Env2, Scope, _),
+            put_def(deferred(Local), df(Loc, Name, Type, DclType, Body, Scope),
+                    Env2, Env3),
+            put_def(inline_copy(Sym), Local, Env3, Env4),
+            put_def(inline_copy_of(Local), Sym, Env4, Env)
         ;   Env = Env2      % GNU extern inline or a C99 inline-only definition
         )
     ;   Storage == static
@@ -759,6 +788,16 @@ define_global(Sym, Type, Linkage, Init, Loc, Env0, Env) :-
 % new_literal(+Lit, -Sym, +Env0, -Env): Sym is a fresh symbol that Env
 % defines as literal Lit, a list of bytes (a char array) or
 % w(ElemType, Values).
+% func_literal(+Func, -Sym, +Env0, -Env): Sym is function Func's
+% __func__, one static array however often it is named (6.4.2.2p1).
+func_literal(Func, Sym, Env0, Env) :-
+    env_defs(Env0, Defs),
+    (   get_assoc(func_name(Func), Defs, Sym) -> Env = Env0
+    ;   atom_codes(Func, Bytes),
+        new_literal(Bytes, Sym, Env0, Env1),
+        put_def(func_name(Func), Sym, Env1, Env)
+    ).
+
 new_literal(Lit, Sym, Env0, Env) :-
     next_id(N, Env0, Env1),
     format(atom(Sym), 'str.~w', [N]),
@@ -871,7 +910,8 @@ function_(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     param_names(DclType, Names),
     param_mins(DclType, Env0, Mins),
     statement_expression_jumps(Body, Loc),
-    reflect_params(DclType, ParamTypes, Env0, ParamEnv0),
+    bind_ordinary(function_name, Name, Env0, FuncEnv),       % 6.4.2.2p1
+    reflect_params(DclType, ParamTypes, FuncEnv, ParamEnv0),
     label_values(Body, ParamEnv0, ParamEnv),
     source_location(Loc, SourceLoc),
     empty_assoc(Empty),
@@ -1519,7 +1559,8 @@ stmt_(null, _) --> [].
    operands are only evaluated (asm_outputs//2, asm_inputs//2): "+r"
    reads and writes back the same value, a pointer's capability
    included, "=r" writes an unspecified value, which leaving the object
-   unchanged is, memory-class operands of any complete type are neither
+   unchanged is, unless an input of its type is tied to it ("0"), whose
+   value it then receives (ell's DO_NOT_OPTIMIZE), memory-class operands of any complete type are neither
    read nor written, and inputs are evaluated. These are libgcrypt's,
    xxhash's and elfutils' optimization barriers. A "memory" or
    "cc" clobber needs nothing: no pass of nanofil keeps a value of
@@ -1538,8 +1579,9 @@ stmt_(asm_empty(Outs, Ins, Clobbers, Goto), Ctx) --> !,
              (   memberchk(C, [memory, cc]) -> true
              ;   sema_error(Loc, 'an asm clobber other than "memory" or "cc" is not supported (~w)', [C])
              )) },
-    asm_outputs(Outs, Ctx),
-    asm_inputs(Ins, Ctx).
+    asm_outputs(Outs, Ctx, Places),
+    asm_inputs(Ins, Outs-Places, Ctx, Ties),
+    asm_ties(Ties).
 
 /* Any other asm runs instructions nanofil cannot check. filcc's
    handleInlineAsm compiles some of them to a run-time error and passes
@@ -1748,10 +1790,12 @@ asm_operand_effects(Ctx, op(C, E), K-C) -->
     ;   judged_rval(E, Ctx, _)
     ).
 
-% asm_outputs(+Ops, +Ctx)//, asm_inputs(+Ops, +Ctx)//: a blank asm's
-% operands (stmt_//2's asm_empty).
-asm_outputs([], _) --> [].
-asm_outputs([op(C, E)|Os], Ctx) -->
+% asm_outputs(+Ops, +Ctx, -Places)//, asm_inputs(+Ops, +Outs-Places,
+% +Ctx, -Ties)//: a blank asm's operands (stmt_//2's asm_empty), Places
+% the outputs' lvalues and Ties the T-V-Addr stores of the values of
+% inputs tied to outputs, made after every input is evaluated.
+asm_outputs([], _, []) --> [].
+asm_outputs([op(C, E)|Os], Ctx, [P|Ps]) -->
     { ctx_loc(Ctx, Loc),
       (   memberchk(C, ['+r', '=r']) -> Class = reg
       ;   memberchk(C, ['=m', '+m', '=mr', '+mr', '=rm', '+rm', '=g', '+g']) -> Class = mem
@@ -1765,7 +1809,7 @@ asm_outputs([op(C, E)|Os], Ctx) -->
       ->  sema_error(Loc, 'an asm memory operand must have a complete object type', [])
       ;   sema_error(Loc, 'an asm operand must have integer or floating type', [])
       ) },
-    asm_outputs(Os, Ctx).
+    asm_outputs(Os, Ctx, Ps).
 
 % asm_output_type(+Class, +C, +T, +Env): an operand of type T with
 % constraint C, of Class reg or mem, means nothing in a blank asm. Its
@@ -1786,13 +1830,32 @@ asm_output_type(mem, C, T, Env) :-
 asm_output_type(reg, _, T, _) :- asm_value_type(T), !.
 asm_output_type(reg, '+r', ptr(_), _).
 
-asm_inputs([], _) --> [].
-asm_inputs([op(C, E)|Os], Ctx) -->
+asm_inputs([], _, _, []) --> [].
+asm_inputs([op(C, E)|Os], OPs, Ctx, Ties) -->
     { ctx_loc(Ctx, Loc),
       (   memberchk(C, [r, g, i, n, m]) -> true
+      ;   atom_number(C, N), integer(N), OPs = Outs-Places,
+          nth0(N, Outs, op('=r', _)), nth0(N, Places, lv(Addr, T))
+      ->  true
       ;   sema_error(Loc, 'the asm input constraint "~w" is not supported', [C])
       ) },
     env(Env),
+    (   { nonvar(Addr) }
+    ->  % Tied to "=r" output N: the asm leaves the input's value in the
+        % output's register, so the output receives it.
+        judged_rval(E, Ctx, v(V, T1)),
+        { unqualified(T1, U), unqualified(T, U), asm_value_type(U) -> true
+        ; sema_error(Loc, 'an asm input tied to an output must have its integer or floating type', []) },
+        { Ties = [U-V-Addr|Ties1] }
+    ;   { Ties = Ties1 },
+        asm_input(C, E, Env, Loc, Ctx)
+    ),
+    asm_inputs(Os, OPs, Ctx, Ties1).
+
+asm_ties([]) --> [].
+asm_ties([T-V-Addr|Ts]) --> store_typed(T, V, Addr), asm_ties(Ts).
+
+asm_input(C, E, Env, Loc, Ctx) -->
     (   { memberchk(C, [m, g]) }
     ->  % A memory-class input of any complete object type: evaluated
         % (an "m" operand as an lvalue), never read.
@@ -1806,8 +1869,7 @@ asm_inputs([op(C, E)|Os], Ctx) -->
           ;   sema_error(Loc, 'an asm memory operand must have a complete object type', [])
           ) }
     ;   asm_reg_input(C, E, Env, Loc, Ctx)
-    ),
-    asm_inputs(Os, Ctx).
+    ).
 
 asm_reg_input(C, E, Env, Loc, Ctx) -->
     { (   memberchk(C, [i, n])
@@ -2948,9 +3010,12 @@ place_node(obj(_, id(Name)), _, P) --> !, env(Env),
 place_node(fun(_, id(Name)), _, P) --> !, env(Env),
     { lookup_ordinary(Env, Name, Binding) },
     binding_obj(Binding, P).
-place_node(obj(_, predefined(_)), Ctx, P) --> !,           % 6.4.2.2
-    { Ctx = ctx(Func, _, _, _, _), atom_codes(Func, Bytes) },
-    place(obj(_, str(Bytes)), Ctx, P).
+place_node(obj(_, predefined(_)), Ctx, lv(Addr, array(char, N))) --> !,  % 6.4.2.2
+    env(Env0),
+    { Ctx = ctx(Func, _, _, _, _), atom_length(Func, N0), N is N0 + 1,
+      func_literal(Func, Sym, Env0, Env) },
+    set_env(Env),
+    let(p, copy, [global(Sym)], Addr).
 place_node(obj(_, str(Bytes)), _, lv(Addr, array(char, N))) --> !,
     env(Env0),
     { new_literal(Bytes, Sym, Env0, Env),
@@ -4204,7 +4269,13 @@ join_arms(Type, LJoin, LA-VA, LB-VB, R) -->
 % designator decayed, else a temp holding the pointer.
 callee(val(_, decay(X)), Ctx, Callee, FuncType) -->
     { X = fun(_, _) }, !,
-    place(X, Ctx, fd(Callee, FuncType)).
+    place(X, Ctx, fd(Callee0, FuncType)),
+    env(Env),
+    { env_defs(Env, Defs),
+      (   Callee0 = global(Sym), get_assoc(inline_copy(Sym), Defs, Local)
+      ->  Callee = global(Local)                % top_item's always_inline copy
+      ;   Callee = Callee0
+      ) }.
 callee(XF, Ctx, Callee, FuncType) -->
     lower(XF, Ctx, v(V, ptr(FuncType))),
     callee_temp(V, Callee).
@@ -4956,6 +5027,13 @@ place_constant(fun(_, id(Name)), _, Env, Env, sym(Sym, 0)) :-
     lookup_ordinary(Env, Name, fn(_, Sym, _)), !.
 place_constant(obj(_, str(Bytes)), _, Env0, Env, sym(Sym, 0)) :- !,
     new_literal(Bytes, Sym, Env0, Env).
+place_constant(obj(_, predefined(_)), _, Env0, Env, sym(Sym, 0)) :-   % 6.4.2.2p1
+    % __func__ is a static array, so its address is a constant in the
+    % initializer of a block-scope static (ell's L_DEBUG_SYMBOL).
+    lookup_ordinary(Env0, function_name, Func), !,
+    func_literal(Func, Sym, Env0, Env).
+place_constant(obj(_, predefined(Name)), Loc, _, _, _) :- !,
+    sema_error(Loc, '~w outside a function', [Name]).
 place_constant(obj(_, wstr(WideType, Values)), _, Env0, Env, sym(Sym, 0)) :- !,
     new_literal(w(WideType, Values), Sym, Env0, Env).
 place_constant(obj(_, complit(TypeName, Init)), Loc, Env0, Env, sym(Sym, 0)) :- !,

@@ -715,6 +715,7 @@ keyword('__asm__', asm).
 keyword('__attribute', attribute).
 keyword('__attribute__', attribute).
 keyword('__extension__', extension).
+keyword('__auto_type', auto_type).
 keyword('__typeof', typeof).
 keyword('__typeof__', typeof).
 keyword(typeof, typeof).
