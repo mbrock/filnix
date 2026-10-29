@@ -185,15 +185,14 @@ alias_attr(attr([group(Tokens)])) :-
 % weak_alias_def(+ExternalNames, +Alias, -Funcs, +Env0, -Env): Funcs
 % define the alias's own symbol, calling its target with its arguments.
 weak_alias_def(ExternalNames, alias(Loc, Specs, Inits, Target), Funcs, Env0, Env) :-
-    (   Inits = [init(dcl(some(Name), DclType, none), none)],
-        DclType = func(RetSyntax, params(Ps, fixed))
-    ->  true
+    (   Inits = [init(dcl(some(Name), DclType, none), none)] -> true
     ;   sema_error(Loc, 'alias is supported only for one prototyped, non-variadic function', [])
     ),
     decl_types(Specs, Inits, [d(_, Type, _, _, _)], Env0, _),
     (   Type = func(Ret, _, fixed) -> true
     ;   sema_error(Loc, 'alias is supported only for functions, not ~w', [Name])
     ),
+    alias_wrapper_syntax(Loc, Name, Specs0, DclType, Type, Specs, RetSyntax, Ps, Env0, Env1),
     findall(param(PSpecs, dcl(some(A), S, PAsm)) - id(A),
             ( nth0(I, Ps, param(PSpecs, dcl(_, S, PAsm))),
               format(atom(A), '__nanofil_alias_arg~w', [I]) ),
@@ -202,12 +201,12 @@ weak_alias_def(ExternalNames, alias(Loc, Specs, Inits, Target), Funcs, Env0, Env
     atom_concat('__nanofil_alias_', Name, Self),
     Call = call(id(Target), Args),
     (   Ret == void -> Stmt = expr(Call) ; Stmt = return(Call) ),
-    exclude(alias_spec, Specs, DefSpecs),
+    exclude(alias_spec, Specs0, DefSpecs),
     top_item(ExternalNames,
              fundef(Loc, DefSpecs,
                     dcl(some(Self), func(RetSyntax, params(NamedPs, fixed)), asm(Name)),
                     at(Loc, block([at(Loc, Stmt)]))),
-             Funcs, Env0, Env).
+             Funcs, Env1, Env).
 
 % weak_symbols(+Items, +Env, -Weak): Weak is the ordset of the symbols
 % of the names Items declare weak, each Sym-Kind, Kind fn or data.
@@ -541,9 +540,7 @@ alias_target(Specs, Target) :-
     Arg = [str(Bytes)], atom_codes(Target, Bytes).
 
 alias_decl(ExternalNames, Loc, Specs, Inits, Target, Funcs, Env0, Env) :-
-    (   Inits = [init(dcl(some(Name), DclType, none), none)],
-        DclType = func(RetSyntax, params(Ps, fixed))
-    ->  true
+    (   Inits = [init(dcl(some(Name), DclType, none), none)] -> true
     ;   sema_error(Loc, 'alias is supported only for one prototyped, non-variadic function', [])
     ),
     decl_types(Specs, [init(dcl(some(Name), DclType, asm(Target)), none)],
@@ -555,6 +552,7 @@ alias_decl(ExternalNames, Loc, Specs, Inits, Target, Funcs, Env0, Env) :-
     (   Storage == static
     ->  Funcs = [], Env = Env2
     ;   % The alias's own symbol: a function that calls the target.
+        alias_wrapper_syntax(Loc, Name, Specs0, DclType, Type, Specs, RetSyntax, Ps, Env2, Env3),
         findall(param(PSpecs, dcl(some(A), S, PAsm)) - id(A),
                 ( nth0(I, Ps, param(PSpecs, dcl(_, S, PAsm))),
                   format(atom(A), '__nanofil_alias_arg~w', [I]) ),
@@ -563,13 +561,42 @@ alias_decl(ExternalNames, Loc, Specs, Inits, Target, Funcs, Env0, Env) :-
         atom_concat('__nanofil_alias_', Name, Self),
         Call = call(id(Name), Args),
         (   Ret == void -> Stmt = expr(Call) ; Stmt = return(Call) ),
-        exclude(alias_spec, Specs, DefSpecs),
+        exclude(alias_spec, Specs0, DefSpecs),
         top_item(ExternalNames,
                  fundef(Loc, DefSpecs,
                         dcl(some(Self), func(RetSyntax, params(NamedPs, fixed)), asm(Name)),
                         at(Loc, block([at(Loc, Stmt)]))),
-                 Funcs, Env2, Env)
+                 Funcs, Env3, Env)
     ).
+
+% alias_wrapper_syntax(+Loc, +Name, -WSpecs, +DclType, +Type, +Specs,
+% -RetSyntax, -Params, +Env0, -Env): the syntax of the function that
+% defines an alias's own symbol. A prototype declarator gives it; an
+% alias declared through typeof (libapparmor's `extern
+% typeof((f)) g __attribute__((alias("f")))`) takes it from its type,
+% Type, each type named by a reserved typedef bound in Env.
+alias_wrapper_syntax(_, _, Specs, func(RetSyntax, params(Ps, fixed)), _, Specs,
+                     RetSyntax, Ps, Env, Env) :- !.
+alias_wrapper_syntax(_, Name, WSpecs, base, func(Ret, PTs, fixed), Specs,
+                     base, Ps, Env0, Env) :- !,
+    exclude(type_spec_syntax, Specs, Others),
+    format(atom(RetTd), '__nanofil_alias_ret_~w', [Name]),
+    bind_ordinary(RetTd, typedef(Ret), Env0, Env1),
+    WSpecs = [tname(RetTd)|Others],
+    foldl(alias_param_syntax(Name), PTs, Ps, 0-Env1, _-Env).
+alias_wrapper_syntax(Loc, _, _, _, _, _, _, _, _, _) :-
+    sema_error(Loc, 'alias is supported only for one prototyped, non-variadic function', []).
+alias_param_syntax(Name, PT, param([tname(Td)], dcl(none, base, none)), I0-Env0, I-Env) :-
+    format(atom(Td), '__nanofil_alias_p~w_~w', [I0, Name]),
+    bind_ordinary(Td, typedef(PT), Env0, Env),
+    I is I0 + 1.
+type_spec_syntax(tspec(_)).
+type_spec_syntax(qual(_)).
+type_spec_syntax(tname(_)).
+type_spec_syntax(su(_, _, _, _)).
+type_spec_syntax(enum(_, _)).
+type_spec_syntax(typeof(_)).
+type_spec_syntax(atomic(_)).
 
 /* clang's overloadable attribute: glibc's _FORTIFY_SOURCE headers add
    overloads of open, open64 and openat chosen by arity, which C cannot
