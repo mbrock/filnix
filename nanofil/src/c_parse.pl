@@ -49,7 +49,7 @@
     | `fspec(F)` | `inline` or `noreturn` |
     | `tname(Name)` | a typedef name |
     | `su(Kind, Tag, Members, Attrs)` | Kind `struct` or `union` |
-    | `enum(Tag, Enumerators)` | an enum |
+    | `enum(Tag, Enumerators)` | an enum; Enumerators is `packed(Es)` under GNU's packed attribute |
     | `attr(Tokens)` | an attribute |
     | `alignas(type(TypeName))` `alignas(expr(E))` | `_Alignas` |
     | `typeof(type(TypeName))` `typeof(expr(E))` | `typeof` |
@@ -649,13 +649,35 @@ field_decls(Env, Specs, [field(FieldSpecs, Dcl, Width)|Fields], Rest) -->
     ).
 
 enum_spec(Env, enum(Tag, Enumerators)) -->
-    attrs,
+    enum_attrs(no, P0),
     ( token(id(Tag0)) -> { Tag = some(Tag0) } ; { Tag = none } ),
     (   punct('{')
-    ->  enumerators(Env, Enumerators)
-    ;   { Tag = some(_), Enumerators = none }
-    ),
-    attrs.
+    ->  enumerators(Env, Es),
+        enum_attrs(P0, P),
+        { P == yes -> Enumerators = packed(Es) ; Enumerators = Es }
+    ;   { Tag = some(_), Enumerators = none },
+        attrs
+    ).
+
+% enum_attrs(+P0, -P)//: an enum definition's attributes, before its
+% tag or after its body. P is yes if one is GNU's packed (c_types
+% enum_type/5); any other must be a hint (attrs//0).
+enum_attrs(P0, P) -->
+    loc(Loc), gnu_attr(A), !,
+    {   select_packed(A, A1) -> P1 = yes ; A1 = A, P1 = P0 },
+    { hint_attributes(A1, Loc) },
+    enum_attrs(P1, P).
+enum_attrs(P0, P) --> c23_attr, !, enum_attrs(P0, P).
+enum_attrs(P, P) --> [].
+
+% select_packed(+Tokens, -Rest): the attribute list Tokens names packed;
+% Rest is the list without it.
+select_packed([group(Inner)], [group(Rest)]) :-
+    attribute_items(Inner, Items),
+    select([T], Items, Others), attribute_name(T, packed), !,
+    foldl(join_items, Others, [], Rest).
+join_items(I, [], I) :- !.
+join_items(I, Acc, Joined) :- append(Acc, [p(',')|I], Joined).
 
 % enumerators(+Env, -Enumerators)//: the enumerators up to the '}'.
 enumerators(_, []) --> punct('}'), !.

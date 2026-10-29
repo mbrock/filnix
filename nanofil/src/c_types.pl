@@ -431,6 +431,7 @@ reflect_type(type(Specs, Syntax), Type, Env, Reflected) :-
 % can declare.
 enum_key(some(Name), _, Name).
 enum_key(none, [enumerator(First, _)|_], anon(First)).
+enum_key(none, packed([enumerator(First, _)|_]), anon(First)).
 
 reflect_declarator(base, Specs, Type, Env, Reflected) :-
     ( memberchk(tname(Name), Specs), lookup_ordinary(Env, qtype(Name), T)
@@ -1054,9 +1055,8 @@ su_definition(Members, Kind, Tag, Attrs, Type, Env0, Env) :-
         ->  Def = partial(Why, Known)
         ;   Def = bad(Why)
         )
-    ;   su_layout(Kind, Packing, Fields, Env2, Def0),
-        definition_alignment(Attrs, Env2, Request),
-        aligned_def(Def0, Request, Def)
+    ;   definition_alignment(Attrs, Env2, Request),
+        su_layout(Kind, Packing, Fields, Request, Env2, Def)
     ),
     Env2 = e(Ords, Tags2, Defs0, Next),
     put_assoc(Id, Defs0, Def, Defs1),
@@ -1372,8 +1372,10 @@ doc(su_layout(+Kind, +Packing, +Fields, +Env, -Def), det, [
     "the struct, and a bit-field follows the bits before it across any",
     "boundary (a zero-width one still moves to one), as GCC and clang lay",
     "it out; nanofil refuses a packed bit-field that no access of its",
-    "type within the struct covers, and packed pointers, whose",
-    "capabilities Fil-C keeps only at 8-aligned addresses. Under #pragma",
+    "type within the struct covers, and a packed pointer, whose capability",
+    "Fil-C keeps only at an 8-aligned address, unless the struct is",
+    "aligned to 8 (su_layout/6) and the pointer is at a multiple of 8 in",
+    "it (parted's packed, aligned(8) GPTDiskData). Under #pragma",
     "pack(N) (c_pp marks the definition) each member's alignment is at",
     "most N, as GCC's and clang's; a pointer, a bit-field or an explicitly",
     "aligned member that N would underalign is refused. C11 leaves the",
@@ -1387,6 +1389,10 @@ doc(su_layout(+Kind, +Packing, +Fields, +Env, -Def), det, [
     example(( empty_env(E), su_layout(union, packed, [f(some(a), char), f(some(b), long)], E, D) ),
             D = def(union, [m(some(a), char, 0), m(some(b), long, 0)], 8, 1)),
     example(( empty_env(E), su_layout(struct, packed, [f(some(p), ptr(int))], E, D) ),
+            D = bad('packed pointers')),
+    example(( empty_env(E), su_layout(struct, packed, [f(some(p), ptr(int)), f(some(c), char)], 8, E, D) ),
+            D = def(struct, [m(some(p), ptr(int), 0), m(some(c), char, 8)], 16, 8)),
+    example(( empty_env(E), su_layout(struct, packed, [f(some(c), char), f(some(p), ptr(int))], 8, E, D) ),
             D = bad('packed pointers')),
     example(( empty_env(E), su_layout(struct, packed, [f(some(a), char), b(some(x), int, 30), f(some(b), char)], E, D) ),
             D = def(struct, [m(some(a), char, 0), m(some(x), int, 1, bits(0, 30)), m(some(b), char, 5)], 6, 1)),
@@ -1402,16 +1408,47 @@ doc(su_layout(+Kind, +Packing, +Fields, +Env, -Def), det, [
             D = bad('a packed bit-field that no access of its type covers'))
 ]).
 su_layout(Kind, Packing, Fields, Env, Def) :-
+    su_layout(Kind, Packing, Fields, 1, Env, Def).
+
+% su_layout(+Kind, +Packing, +Fields, +Request, +Env, -Def): su_layout/5
+% with the definition aligned to at least Request (its aligned
+% attribute). A packed definition may hold a pointer only where every
+% instance has it 8-aligned: the definition is aligned to 8 and each
+% pointer is at a multiple of 8 in it (packed_pointers_aligned/3).
+su_layout(Kind, Packing, Fields, Request, Env, Def) :-
     catch(fields_layout(Kind, Packing, Fields, Env, Layout), bad(Why),
           Layout = bad(Why)),
-    layout_def(Layout, Kind, Def).
+    layout_def(Layout, Kind, Def0),
+    aligned_def(Def0, Request, Def1),
+    (   Packing == packed, Def1 = def(_, Members, _, Align),
+        member(m(_, T, _), Members), holds_pointer(T, Env),
+        \+ ( Align >= 8, packed_pointers_aligned(Members, 0, Env) )
+    ->  Def = bad('packed pointers')
+    ;   Def = Def1
+    ).
+
+% packed_pointers_aligned(+Members, +Base, +Env): every pointer in
+% Members, placed from offset Base, is at a multiple of 8. An array's
+% elements have its element's offsets, so its element's size must be a
+% multiple of 8 too.
+packed_pointers_aligned(Members, Base, Env) :-
+    forall(( member(M, Members), M = m(_, T, Off) ),
+           (   O is Base + Off, pointers_aligned(T, O, Env) )).
+
+pointers_aligned(T, O, Env) :-
+    (   \+ holds_pointer(T, Env) -> true
+    ;   T = ptr(_) -> O mod 8 =:= 0
+    ;   T = array(E, _) -> type_size_align(E, Env, S, _), S mod 8 =:= 0, pointers_aligned(E, O, Env)
+    ;   T = qualified(_, T1) -> pointers_aligned(T1, O, Env)
+    ;   ( T = struct(Id) ; T = union(Id) ), Env = e(_, _, Defs, _),
+        get_assoc(Id, Defs, def(_, Ms, _, _))
+    ->  packed_pointers_aligned(Ms, O, Env)
+    ;   fail
+    ).
 
 % fields_layout(+Kind, +Packing, +Fields, +Env, -Layout): Layout is
 % placed(Members, End, Align) for Fields laid out in Env, or incomplete
 % when a field has no size. Throws bad(Why) as type_size_align/4.
-fields_layout(_, packed, Fields, Env, _) :-
-    ( member(f(_, T), Fields) ; member(f(_, T, _), Fields) ),
-    holds_pointer(T, Env), throw(bad('packed pointers')).
 fields_layout(Kind, Packing, Fields, Env, Layout) :-
     (   foldl(field_member(Kind, Packing, Env), Fields, Memberss, 0-1, EndBits-Align)
     ->  append(Memberss, Members0),
@@ -1604,6 +1641,8 @@ bitfield_start_end(struct, End0, W, UnitBits, Start, End) :-
 % underlying type. Enumerators is none for a reference to Tag, and
 % otherwise the list that defines it; a reference to an unknown enum tag
 % has type uint. Tag is some(Name) or none, as in su_type/7.
+enum_type(packed(Enumerators), Tag, Type, Env0, Env) :- !,
+    enum_definition(packed, Enumerators, Tag, Type, Env0, Env).
 enum_type([], Tag, Type, Env0, Env) :-
     enum_definition([], Tag, Type, Env0, Env).
 enum_type([Enumerator|Enumerators], Tag, Type, Env0, Env) :-
@@ -1617,10 +1656,15 @@ enum_type(none, some(Name), Type, Env, Env) :-
 
 % enum_definition(+Enumerators, +Tag, -Type, +Env0, -Env): Type is the
 % underlying type of the enum Enumerators define; Env binds its
-% constants and its tag.
+% constants and its tag. enum_definition/6 with packed gives it the
+% packed underlying type.
 enum_definition(Enumerators, Tag, Type, Env0, Env) :-
+    enum_definition(natural, Enumerators, Tag, Type, Env0, Env).
+enum_definition(Packing, Enumerators, Tag, Type, Env0, Env) :-
     foldl(enumerator, Enumerators, Values, Env0-0, Env1-_),
-    enum_underlying(Values, Type),
+    (   Packing == packed -> packed_enum_underlying(Values, Type)
+    ;   enum_underlying(Values, Type)
+    ),
     Env1 = e(Ords, Tags0, Defs, Next),
     tag_bound(Tag, enum(Type), Tags0, Tags),
     Env = e(Ords, Tags, Defs, Next).
@@ -1654,6 +1698,32 @@ enum_underlying([V|Vs], Type) :-
     ;   Lo >= 0 -> Type = ulong
     ;   Type = long
     ).
+
+doc(packed_enum_underlying(+Values, -Type), det, [
+    Values: "the values of an enum's constants",
+    Type: "its underlying type under GNU's packed attribute",
+    "The smallest of uchar, ushort, uint and ulong that holds every value",
+    "when none is negative, else of schar, short, int and long, as GCC",
+    "and clang choose (uchar when there are none). C11 leaves the choice",
+    "of an enumerated type's compatible integer type implementation-",
+    "defined, as long as it can represent every member.",
+    cites('C11 6.7.2.2p4'),
+    example(packed_enum_underlying([0, 1, 2], T), T = uchar),
+    example(packed_enum_underlying([0, 256], T), T = ushort),
+    example(packed_enum_underlying([-1, 127], T), T = schar),
+    example(packed_enum_underlying([-1, 128], T), T = short),
+    example(packed_enum_underlying([], T), T = uchar)
+]).
+packed_enum_underlying([], uchar) :- !.
+packed_enum_underlying(Vs, Type) :-
+    min_list(Vs, Lo), max_list(Vs, Hi),
+    (   Lo >= 0
+    ->  member(Type-Max, [uchar-255, ushort-65535, uint-4294967295, ulong-18446744073709551615]),
+        Hi =< Max
+    ;   member(Type-Min-Max, [schar-(-128)-127, short-(-32768)-32767,
+                              int-(-2147483648)-2147483647, long-(-9223372036854775808)-9223372036854775807]),
+        Lo >= Min, Hi =< Max
+    ), !.
 
 %% Declarators
 
