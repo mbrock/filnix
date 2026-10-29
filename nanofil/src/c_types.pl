@@ -3264,8 +3264,10 @@ doc(classify_builtin(?(Name)), nondet, [
     cites('C11 7.12.3'),
     cites('GCC manual, Other Built-in Functions'),
     example(classify_builtin('__builtin_fpclassify')),
-    fails(classify_builtin('__builtin_isinf'))
+    "__builtin_isinf(x) is 1 for either infinity, else 0.",
+    example(classify_builtin('__builtin_isinf'))
 ]).
+classify_builtin('__builtin_isinf').
 classify_builtin('__builtin_isinf_sign').
 classify_builtin('__builtin_isfinite').
 classify_builtin('__builtin_isnormal').
@@ -3292,15 +3294,16 @@ libm_builtin('__builtin_floor', floor).
 
 doc(bit_builtin(?(Name), ?(Op), ?(Type)), nondet, [
     Name: "a bit-counting builtin",
-    Op: "ctz, clz or popcount",
+    Op: "ctz, clz, popcount or ffs (one plus the index of the lowest set bit, 0 for 0)",
     Type: "its operand's type: uint, ulong or ullong",
     cites('GCC manual, Other Built-in Functions'),
     example(bit_builtin('__builtin_clzl', Op, T), (Op, T) = (clz, ulong)),
     example(bit_builtin('__builtin_popcount', Op, T), (Op, T) = (popcount, uint)),
-    fails(bit_builtin('__builtin_ffs', _, _))
+    example(bit_builtin('__builtin_ffsl', Op, T), (Op, T) = (ffs, ulong)),
+    fails(bit_builtin('__builtin_parity', _, _))
 ]).
 bit_builtin(Name, Op, Type) :-
-    member(Op, [ctz, clz, popcount]),
+    member(Op, [ctz, clz, popcount, ffs]),
     member(Suffix-Type, [''-uint, l-ulong, ll-ullong]),
     atomic_list_concat(['__builtin_', Op, Suffix], Name).
 

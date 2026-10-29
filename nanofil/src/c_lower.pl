@@ -2910,6 +2910,8 @@ classified('__builtin_isinf_sign', K, Bits, Abs, InfBits, _, N) -->
     let(w, cmp(slt, K), [Bits, const(0)], Neg),
     let(w, and, [IsInf, Neg], T), let(w, add, [T, T], T2),
     let(w, sub, [IsInf, T2], N).
+classified('__builtin_isinf', K, _, Abs, InfBits, _, N) -->
+    let(w, cmp(eq, K), [Abs, InfBits], N).
 classified('__builtin_isfinite', K, _, Abs, InfBits, _, N) -->
     let(w, cmp(ult, K), [Abs, InfBits], N).
 classified('__builtin_isnormal', K, _, Abs, InfBits, MinNormal, N) -->
@@ -2958,6 +2960,14 @@ bit_count(popcount, _, X, N) --> popcount64(X, N).
 bit_count(ctz, _, X, N) -->
     let(l, neg, [X], M), let(l, and, [X, M], Low),
     let(l, sub, [Low, const(1)], Below), popcount64(Below, N).
+% ffs: popcount of the bits up to the lowest set one, times 1 if X is
+% nonzero (the top bit of X | -X), so 0 for 0.
+bit_count(ffs, _, X, N) -->
+    let(l, neg, [X], M), let(l, and, [X, M], Low),
+    let(l, add, [Low, Low], Low2), let(l, sub, [Low2, const(1)], Upto),
+    popcount64(Upto, P),
+    let(l, or, [X, M], Any), let(l, shr, [Any, const(63)], NZ),
+    let(l, mul, [P, NZ], N).
 bit_count(clz, Bits, X, N) -->
     smear([1, 2, 4, 8, 16, 32], X, S), popcount64(S, P),
     let(l, sub, [P, const(Bits)], NegN), let(l, neg, [NegN], N).
