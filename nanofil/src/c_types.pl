@@ -1402,12 +1402,15 @@ doc(su_layout(+Kind, +Packing, +Fields, +Env, -Def), det, [
     "the struct, and a bit-field follows the bits before it across any",
     "boundary (a zero-width one still moves to one), as GCC and clang lay",
     "it out; nanofil refuses a packed bit-field that no access of its",
-    "type within the struct covers, and a packed pointer, whose capability",
-    "Fil-C keeps only at an 8-aligned address, unless the struct is",
-    "aligned to 8 (su_layout/6) and the pointer is at a multiple of 8 in",
-    "it (parted's packed, aligned(8) GPTDiskData). Under #pragma",
-    "pack(N) (c_pp marks the definition) each member's alignment is at",
-    "most N, as GCC's and clang's; a pointer, a bit-field or an explicitly",
+    "type within the struct covers. A packed pointer is laid out as any",
+    "member: Fil-C keeps a capability only at an 8-aligned address, and",
+    "each access of a pointer checks at run time that its address is",
+    "8-aligned, as filcc's does (\"alignment requirement of 8 bytes not",
+    "met\"), so libmbim's and elfutils' packed structs work where they",
+    "are placed at an 8-aligned address and parted's GPT header, whose",
+    "pointer is at 92, traps where it is accessed. Under #pragma pack(N)",
+    "(c_pp marks the definition) each member's alignment is at most N, as",
+    "GCC's and clang's, a pointer's too; a bit-field or an explicitly",
     "aligned member that N would underalign is refused. C11 leaves the",
     "alignment of members implementation-defined.",
     cites('C11 6.7.2.1p14'),
@@ -1418,12 +1421,12 @@ doc(su_layout(+Kind, +Packing, +Fields, +Env, -Def), det, [
             D = def(struct, [m(some(a), char, 0), m(some(b), int, 1)], 5, 1)),
     example(( empty_env(E), su_layout(union, packed, [f(some(a), char), f(some(b), long)], E, D) ),
             D = def(union, [m(some(a), char, 0), m(some(b), long, 0)], 8, 1)),
-    example(( empty_env(E), su_layout(struct, packed, [f(some(p), ptr(int))], E, D) ),
-            D = bad('packed pointers')),
+    example(( empty_env(E), su_layout(struct, packed, [f(some(c), char), f(some(p), ptr(int))], E, D) ),
+            D = def(struct, [m(some(c), char, 0), m(some(p), ptr(int), 1)], 9, 1)),
     example(( empty_env(E), su_layout(struct, packed, [f(some(p), ptr(int)), f(some(c), char)], 8, E, D) ),
             D = def(struct, [m(some(p), ptr(int), 0), m(some(c), char, 8)], 16, 8)),
     example(( empty_env(E), su_layout(struct, packed, [f(some(c), char), f(some(p), ptr(int))], 8, E, D) ),
-            D = bad('packed pointers')),
+            D = def(struct, [m(some(c), char, 0), m(some(p), ptr(int), 1)], 16, 8)),
     example(( empty_env(E), su_layout(struct, packed, [f(some(a), char), b(some(x), int, 30), f(some(b), char)], E, D) ),
             D = def(struct, [m(some(a), char, 0), m(some(x), int, 1, bits(0, 30)), m(some(b), char, 5)], 6, 1)),
     example(( empty_env(E), su_layout(struct, packed, [f(some(a), char), b(none, int, 0), f(some(b), char)], E, D) ),
@@ -1432,8 +1435,8 @@ doc(su_layout(+Kind, +Packing, +Fields, +Env, -Def), det, [
             D = def(struct, [m(some(a), char, 0), m(some(b), int, 2)], 6, 2)),
     example(( empty_env(E), su_layout(struct, pack(8), [f(some(a), char), f(some(p), ptr(int))], E, D) ),
             D = def(struct, [m(some(a), char, 0), m(some(p), ptr(int), 8)], 16, 8)),
-    example(( empty_env(E), su_layout(struct, pack(4), [f(some(p), ptr(int))], E, D) ),
-            D = bad('packed pointers')),
+    example(( empty_env(E), su_layout(struct, pack(4), [f(some(c), char), f(some(p), ptr(int))], E, D) ),
+            D = def(struct, [m(some(c), char, 0), m(some(p), ptr(int), 4)], 12, 4)),
     example(( empty_env(E), su_layout(struct, packed, [b(some(x), int, 3)], E, D) ),
             D = bad('a packed bit-field that no access of its type covers'))
 ]).
@@ -1442,39 +1445,12 @@ su_layout(Kind, Packing, Fields, Env, Def) :-
 
 % su_layout(+Kind, +Packing, +Fields, +Request, +Env, -Def): su_layout/5
 % with the definition aligned to at least Request (its aligned
-% attribute). A packed definition may hold a pointer only where every
-% instance has it 8-aligned: the definition is aligned to 8 and each
-% pointer is at a multiple of 8 in it (packed_pointers_aligned/3).
+% attribute).
 su_layout(Kind, Packing, Fields, Request, Env, Def) :-
     catch(fields_layout(Kind, Packing, Fields, Env, Layout), bad(Why),
           Layout = bad(Why)),
     layout_def(Layout, Kind, Def0),
-    aligned_def(Def0, Request, Def1),
-    (   Packing == packed, Def1 = def(_, Members, _, Align),
-        member(m(_, T, _), Members), holds_pointer(T, Env),
-        \+ ( Align >= 8, packed_pointers_aligned(Members, 0, Env) )
-    ->  Def = bad('packed pointers')
-    ;   Def = Def1
-    ).
-
-% packed_pointers_aligned(+Members, +Base, +Env): every pointer in
-% Members, placed from offset Base, is at a multiple of 8. An array's
-% elements have its element's offsets, so its element's size must be a
-% multiple of 8 too.
-packed_pointers_aligned(Members, Base, Env) :-
-    forall(( member(M, Members), M = m(_, T, Off) ),
-           (   O is Base + Off, pointers_aligned(T, O, Env) )).
-
-pointers_aligned(T, O, Env) :-
-    (   \+ holds_pointer(T, Env) -> true
-    ;   T = ptr(_) -> O mod 8 =:= 0
-    ;   T = array(E, _) -> type_size_align(E, Env, S, _), S mod 8 =:= 0, pointers_aligned(E, O, Env)
-    ;   T = qualified(_, T1) -> pointers_aligned(T1, O, Env)
-    ;   ( T = struct(Id) ; T = union(Id) ), Env = e(_, _, Defs, _),
-        get_assoc(Id, Defs, def(_, Ms, _, _))
-    ->  packed_pointers_aligned(Ms, O, Env)
-    ;   fail
-    ).
+    aligned_def(Def0, Request, Def).
 
 % fields_layout(+Kind, +Packing, +Fields, +Env, -Layout): Layout is
 % placed(Members, End, Align) for Fields laid out in Env, or incomplete
@@ -1510,8 +1486,7 @@ field_member(Kind, Packing, Env, f(Name, Type), [m(Name, Type, Off)], End0-Align
     ),
     (   Packing == packed -> FieldAlign = 1
     ;   Packing = pack(N), N < NaturalAlign
-    ->  FieldAlign = N,
-        ( holds_pointer(Type, Env) -> throw(bad('packed pointers')) ; true )
+    ->  FieldAlign = N
     ;   FieldAlign = NaturalAlign
     ),
     member_offset_end(Kind, End0, FieldSize, FieldAlign, Off, End),
@@ -1530,10 +1505,6 @@ field_member(Kind, Packing, Env, f(Name, Type, a(Base, Explicit)), [m(Name, Type
     ),
     (   Packing == packed -> FieldAlign = Explicit
     ;   FieldAlign is max(BaseAlign, Explicit)
-    ),
-    (   FieldAlign < 8, holds_pointer(Type, Env)
-    ->  throw(bad('underaligned pointers'))
-    ;   true
     ),
     member_offset_end(Kind, End0, FieldSize, FieldAlign, Off, End),
     Align is max(Align0, FieldAlign).
@@ -1583,14 +1554,6 @@ packed_unit(End, Env, packed_bits(Name, Type, Start, W), m(Name, Type, Unit, bit
     ;   throw(bad('a packed bit-field that no access of its type covers'))
     ).
 packed_unit(_, _, M, M).
-
-% holds_pointer(+T, +Env): an object of type T holds a pointer.
-holds_pointer(ptr(_), _).
-holds_pointer(array(T, _), Env) :- holds_pointer(T, Env).
-holds_pointer(SU, e(_, _, Defs, _)) :-
-    ( SU = struct(Id) ; SU = union(Id) ), !,
-    get_assoc(Id, Defs, def(_, Members, _, _)),
-    member(M, Members), arg(2, M, T), holds_pointer(T, e(_, _, Defs, _)), !.
 
 doc(unaligned_type(+T, +Env), semidet, [
     T: "a struct or union type",

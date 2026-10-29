@@ -2713,7 +2713,12 @@ store_leaf(expr(Off, Type, Expr), Addr, Ctx) -->
     judged_rval(Expr, Ctx, Value0),
     { ctx_loc(Ctx, Loc) },
     assign_convert(Expr, Value0, Type, Loc, v(Value, _)),
-    store_typed(Type, Value, P).
+    (   { Value == const(0), Off mod 8 =\= 0, unqualified(Type, ptr(_)) }
+    ->  % A null pointer in a packed member: clang copies it from a
+        % constant, so it is bytes, not a pointer store that would trap.
+        emit(store(l, const(0), P))
+    ;   store_typed(Type, Value, P)
+    ).
 store_leaf(bits(Off, Type, Pos, W, Expr), Addr, Ctx) -->
     offset(Addr, Off, P),
     judged_rval(Expr, Ctx, Value0),
@@ -4754,11 +4759,21 @@ member_leaves(Env, B, m(_, T, Off), L0, L) :-
 member_leaves(_, B, m(_, _, Off, bits(_, _)), [B1-int|L], L) :- B1 is B + Off.
 
 % copy_object(+Type, +Src, +Dst)//: copy the object of Type at Src to
-% Dst, an eightbyte at a time.
+% Dst, an eightbyte at a time. A type aligned below 8 that holds a
+% pointer (libmbim's, elfutils' and parted's packed structs) may be at
+% any address: load(p) there would trap, and an eightbyte copied as
+% bytes would lose the capability of a pointer that the address happens
+% to align. It is copied by the runtime's zmemmove instead (never a
+% memcpy the program defines), as filcc copies it, which keeps each
+% capability whose word is 8-aligned at both ends.
 copy_object(Type, Src, Dst) -->
     env(Env),
     { eightbytes(Type, Env, unknown, Ebs) },
-    copy_ebs(Ebs, Src, Dst).
+    (   { type_size_align(Type, Env, Size, Align), Align < 8,
+          ptr_offsets(Type, Env, 0, [_|_], []) }
+    ->  emit(call(void, global(zmemmove), [arg(p, Dst), arg(p, Src), arg(l, const(Size))]))
+    ;   copy_ebs(Ebs, Src, Dst)
+    ).
 
 copy_ebs([], _, _) --> [].
 copy_ebs([eb(Off, N, Class)|Ebs], Src, Dst) -->
@@ -5040,7 +5055,9 @@ expr_chunk(ptr(_), Off, Expr, Loc, Env0, Env, Chunk) :- !,
     ;   sema_error(Loc, 'initializer is not an address constant', [])
     ),
     address_constant(XV, Loc, Env0, Env, R),
-    (   R = sym(Sym, SymOff)
+    (   Off mod 8 =\= 0, ( R = sym(_, _) ; R = int(N0), N0 =\= 0 )  % a packed member; null is fine
+    ->  sema_error(Loc, 'Fil-C cannot initialize this object: a pointer in its initializer is not word-aligned', [])
+    ;   R = sym(Sym, SymOff)
     ->  Chunk = chunk(Off, 8, item(p, sym(Sym, SymOff)))
     ;   R = int(N)
     ->  Chunk = chunk(Off, 8, item(l, const(N)))

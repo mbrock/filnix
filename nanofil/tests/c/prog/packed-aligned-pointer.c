@@ -1,7 +1,7 @@
 /* A packed struct may hold a pointer when the struct is aligned to 8
    and the pointer is at a multiple of 8 in it, so every instance has it
    8-aligned: parted's packed, aligned(8) GPTDiskData starts with a
-   PedGeometry. reject/packed-pointer.c has the misaligned case. */
+   PedGeometry. prog/packed-pointer.c has packed pointers at any offset. */
 #include <stdio.h>
 #include <stddef.h>
 typedef struct { void *dev; long start, length, end; } Geom;

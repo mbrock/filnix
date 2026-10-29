@@ -291,6 +291,19 @@ misaligned members) is a `byval` argument, and:
 - **Variadic calls** put a byval struct in the packet the same way:
   `callv(fmt, big24, long, small16)` passes 56 bytes. An aggregate
   `va_arg` reads with `filc_get_next_ptr_bytes_for_va_arg(size)`.
+- **A byval struct with a pointer whose size is not a multiple of 8
+  crashes filcc**: `storeCC` asserts
+  `!(DL.getTypeAllocSize(AI.T) & (WordSize - 1))` before the word-aligned
+  demotion (FilPizlonator.cpp:6804 at the pin), so passing
+  `struct __attribute__((packed)) { char c; int *p; }` (9 bytes) by
+  value aborts clang ("Assertion ... failed" in FilPizlonatorPass),
+  at -O0 and -O1. Only a packed or `#pragma pack` struct can have that
+  size. nanofil compiles it, its eightbytes rounded up as for any byval
+  struct; the pointer at 1 has no capability in the packet (it starts
+  in no eightbyte), as it has none in clang's copy for a 16-byte one
+  (`{ char c; int *p; char d[7]; }`), whose callee traps reading it
+  ("alignment requirement of 8 bytes not met") under both compilers.
+  Not yet reported upstream.
 
 nanofil reaches the same packet without a new IR form. A byval argument
 is lowered as its eightbytes, one IR argument each, with a pointer
