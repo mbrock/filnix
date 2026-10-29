@@ -29,7 +29,7 @@ let
     O-refbranches = "-O --branches=reference";
     O-stack = "-O --registers=stack";
     O-call = "-O --memcpy=call";
-    O-simplify = "-O --simplify=full";
+    O-nosimplify = "-O --simplify=none";
   };
   chosen =
     if only == "" then

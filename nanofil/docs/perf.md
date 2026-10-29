@@ -37,7 +37,7 @@ chain only approximately:
 | 9 phi shadows shared by position | 2.24 → 2.15 |
 | punned union reads promote | 2.14 → 2.13 |
 | 5b-1 `--registers=flow` (opt-in, not adopted) | 2.12 |
-| 8 cheap middle end (`--simplify=full`, opt-in) | 2.14 (3.23) → about 2.0 (2.89) |
+| 8 cheap middle end (`--simplify=full`, the `-O` default) | 2.14 (3.23) → about 2.0 (2.89) |
 
 Every step is translation-validated or checked against the reference
 path, and the reference stays selectable and snapshot-identical. No
@@ -537,6 +537,7 @@ Closed, each the `-O` default unless it says otherwise:
 | inlining | small local leaf functions (`--inline=small`) | item 4 result |
 | 5b-1 | `--registers=flow`: cells across checks' jumps and labels; opt-in, then retired (1–2%, +14% compile) | 5b-1, 5b re-measured |
 | punned reads | promote reads a union through a narrower member (lz4) | punned union reads |
+| 8 | the cheap middle end (`--simplify=full`) | 8: result |
 | retirement | the register modes `local`, `function`, `operands`, `cells` and `flow` removed; `stack` and `temps` remain | register modes |
 
 Rejected or dropped, and why:
@@ -3209,7 +3210,7 @@ existing refinement checks. Expected: small and unmeasured; constant
 moves are 3–11% today, partly removed by immediate operands (M6) and
 item 3. Last because the profile shows little to gain yet.
 
-#### 8: result (`--simplify=full`, opt-in)
+#### 8: result (`--simplify=full`, the `-O` default)
 
 Re-profiled at `2f960d1` first. The shares were still those of
 `04c7e7c` (checks 16–40%, pointer temps and lowers 18–30%, calls
@@ -3337,9 +3338,15 @@ middle end's time on sqlite3.ir, and `inline_simplified` 1.1 s more.
 Less code reaches the backend, which wins most of that back. On lz4.c,
 3.2 s becomes about 4.4 s.
 
-**Open.** Whether `--simplify=full` becomes `-O`'s default is the
-orchestrating thread's decision. It saves 6–8% of time and 10% of
-instructions on the gate, for about 1% more compile time on SQLite.
+**The `-O` default** (decided by the orchestrating thread, after the
+opt-in commit): 6–8% of time and 10% of instructions on the gate, for
+about 1% more compile time on SQLite, and less on lz4.c (40.0G
+instructions to compile against 40.6G without it). `--simplify=none`
+stays selectable (NANOFIL_SIMPLIFY=none), and the Nix check keeps its
+difftest, ABI+GC and program steps under `-O --simplify=none`. The
+snapshot spells out `--simplify=none` for its `-O` modes, so those
+outputs and plain mode's stay identical. The zlib, bzip2, Lua and
+SQLite checks pass in every configuration with it on.
 
 ### 9. Phi shadows shared by position (frame size) — contract (approved, A)
 

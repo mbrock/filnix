@@ -25,9 +25,9 @@ export FILCC=${FILCC:?set FILCC to a filcc clang}
 unset NANOFIL_STATE NANOFIL_REGISTERS NANOFIL_BRANCHES NANOFIL_CHECKS NANOFIL_MEMCPY NANOFIL_INLINE NANOFIL_SIMPLIFY
 # Every mode spelled out, so the -O outputs keep one mode when a
 # default changes.
-OPT="-O --registers=stack --branches=selected --checks=reference --memcpy=inline --inline=none"
-TMP="-O --registers=temps --branches=selected --checks=reference --memcpy=inline --inline=none"
-INL="-O --registers=temps --branches=selected --checks=reference --memcpy=inline --inline=small"
+OPT="-O --registers=stack --branches=selected --checks=reference --memcpy=inline --inline=none --simplify=none"
+TMP="-O --registers=temps --branches=selected --checks=reference --memcpy=inline --inline=none --simplify=none"
+INL="-O --registers=temps --branches=selected --checks=reference --memcpy=inline --inline=small --simplify=none"
 mkdir -p "$cache"
 
 # corpus NAME: the store path of the pinned corpus NAME.

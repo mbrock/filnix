@@ -80,7 +80,7 @@
 
     `--simplify=none|full` independently selects, with `-O`, the cheap
     middle end after copy propagation (src/simplify.pl, docs/perf.md
-    item 8). The default is none; NANOFIL_SIMPLIFY supplies the same
+    item 8). The default is full; NANOFIL_SIMPLIFY supplies the same
     choice.
 
     `--checks=reference|reuse` independently selects the reference checked
@@ -208,11 +208,11 @@ simplify_mode(S) :-
     ; throw(nanofil_error('simplify must be none or full')) ).
 % opt_selection(+Level, ?Inline, ?Simplify, -Opt): the middle end's
 % selection (opt.pl). Inlining and simplification need -O, where
-% inlining is small and simplification none unless chosen otherwise.
+% inlining is small and simplification full unless chosen otherwise.
 opt_selection(o0, _, _, o0).
 opt_selection(o1, Inline, Simplify, Opt) :-
     ( var(Inline) -> Inline = small ; true ),
-    ( var(Simplify) -> Simplify = none ; true ),
+    ( var(Simplify) -> Simplify = full ; true ),
     middle_selection(Simplify, Inline, Opt).
 middle_selection(none, none, o1).
 middle_selection(none, small, o1(small)).
