@@ -1140,3 +1140,20 @@ and in `[[gnu::X]]`, `[[clang::X]]` or a vendor's `[[v::X]]`, with
 "attribute X is not supported". Clang warns about and ignores an
 attribute it does not know; nanofil refuses it too, since an attribute
 it once dropped (cleanup, mode) silently changed what the program did.
+
+## Sections
+
+`__attribute__((section("S")))` changes nothing under filcc. In
+FilPizlonator (filc-staging-ref-src, llvm/lib/Transforms/Instrumentation/
+FilPizlonator.cpp, where it builds `pizlonatedDO_<name>` and the new
+function), neither the data object nor the function gets the original
+global's section: no `setSection`, no `copyAttributesFrom`. For
+tests/c/prog/section.c filcc's object has no `.mydata`, `.myrel`,
+`.myrodata`, `.mybss` or `.text.mine`; `pizlonatedDO_counter` and
+`pizlonatedDO_zeroed` are in `.data` and `pizlonated_bump` is in `.text`.
+nanofil's object places them the same way: data objects in `.data` and
+`.bss`, functions in `.text`. Fil-C code cannot observe a section either:
+`extern int __start_S[]` is the Fil-C symbol `pizlonated___start_S`,
+which nothing defines, so filcc's link fails. nanofil accepts the
+attribute (c_types known_attribute/3, honored) and emits what filcc
+emits. CPython puts `_PyRuntime` in `.PyRuntime` only for debuggers.

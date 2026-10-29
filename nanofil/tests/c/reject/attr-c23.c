@@ -1,2 +1,2 @@
-// error: attribute section is not supported
-[[gnu::section("table")]] int x = 1;
+// error: attribute ifunc is not supported
+[[gnu::ifunc("resolve")]] int f(void);

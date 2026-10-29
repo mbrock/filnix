@@ -510,14 +510,14 @@ doc(known_attribute(-Word, -Kind, -Why), nondet, [
     "layout, lifetime, linkage, calling or values must be honored (and its",
     "unsupported uses refused there), never dropped: cleanup and mode were",
     "once ignored and miscompiled. c_parse refuses any other attribute,",
-    "\"attribute X is not supported\", where it reads it; section, ifunc,",
+    "\"attribute X is not supported\", where it reads it; ifunc,",
     "weakref, common, naked, ms_abi, scalar_storage_order and address_space",
     "are among those.",
     cites('GCC manual, Attribute Syntax and Common Function, Variable and Type Attributes'),
     cites('Clang documentation, Attributes in Clang'),
     example(known_attribute(nonnull, hint, _)),
     example(known_attribute(cleanup, honored, _)),
-    fails(known_attribute(section, _, _)),
+    example(known_attribute(section, honored, _)),
     fails(known_attribute(ifunc, _, _))
 ]).
 known_attribute(Word, Kind, Why) :- attribute_entry(Word, Kind, Why).
@@ -529,6 +529,7 @@ attribute_entry(cleanup, honored, 'c_lower cleanup_decls//4 runs it on every sco
 attribute_entry(mode, honored, 'mode_type/3').
 attribute_entry(vector_size, honored, 'the type is refused (bad) where it is used').
 attribute_entry(ext_vector_type, honored, 'as vector_size').
+attribute_entry(section, honored, 'as filcc: FilPizlonator gives neither pizlonatedDO_X nor a function a section, so the object stays in .data, .bss or .rodata and the function in .text, where nanofil puts them; Fil-C code cannot name __start_X or __stop_X (docs/abi-findings.md, *Sections*)').
 attribute_entry(weak, honored, 'c_lower weak symbols (weak_attr/1)').
 attribute_entry(alias, honored, 'c_lower alias_decl/8; a variable alias is refused').
 attribute_entry(constructor, honored, 'c_lower init_decl//5').
