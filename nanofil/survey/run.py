@@ -130,19 +130,22 @@ def main():
     p.add_argument("--timeout", type=int, default=5400)
     p.add_argument("--classify", action="store_true", help="stop after setting packages aside")
     p.add_argument("--report", action="store_true", help="only rewrite docs/survey.md from survey.tsv")
+    p.add_argument("--opt", default="", help="nanofil options for every compile, e.g. -O; "
+                   "writes survey-OPT.tsv and leaves docs/survey.md alone")
     a = p.parse_args()
     if a.report:
         return report()
     os.makedirs(work, exist_ok=True)
     blog = os.path.join(work, "build.log")
-    r = sh(["nix", "eval", "--json", "-f", here, "names"])
+    ev = ["nix", "eval", "--json", "-f", here] + (["--argstr", "opt", a.opt] if a.opt else [])
+    r = sh(ev + ["names"])
     if r.returncode:
         sys.exit(r.stderr)
     names = a.names or sorted(json.loads(r.stdout))
     # One evaluation per package: a missing attribute is not catchable
     # inside Nix, and one package's must not stop the others'.
     def one(n):
-        r = sh(["nix", "eval", "--json", "-f", here, "meta." + n])
+        r = sh(ev + ["meta." + n])
         if r.returncode:
             err = [l.strip() for l in r.stderr.splitlines() if "error:" in l]
             return n, {"eval_error": err[-1] if err else "?"}
@@ -187,7 +190,7 @@ def main():
              row["fallbacks"]) = outcome(m["nf"], tnf, m["doCheck"])
         else:
             row["nf"] = "not tried"
-    write(rows)
+    write(rows, a.opt)
 
 
 COLS = ["name", "version", "kind", "c", "cxx", "ref", "nf", "objects", "cxx_objects",
@@ -236,13 +239,16 @@ def cause(row):
     return next((c for p, c in CAUSES if re.search(p, err)), other)
 
 
-def write(rows):
+def write(rows, opt=""):
     for r in rows.values():
         r["cause"] = cause(r) if r["kind"] == "C" else ""
-    with open(os.path.join(here, "survey.tsv"), "w") as f:
+    tsv = "survey" + ("-" + opt.strip("-").replace(" ", "") if opt else "") + ".tsv"
+    with open(os.path.join(here, tsv), "w") as f:
         f.write("\t".join(COLS) + "\n")
         for n in sorted(rows):
             f.write("\t".join(str(rows[n].get(c, "")).replace("\t", " ") for c in COLS) + "\n")
+    if opt:
+        return
     c = [r for r in rows.values() if r["kind"] == "C"]
     kinds = collections.Counter(r["kind"] if not r["kind"].startswith("needs") else "needs LLVM, Rust or Go"
                                 for r in rows.values())

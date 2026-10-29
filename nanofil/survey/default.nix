@@ -15,6 +15,8 @@
 # configure, meson or cmake logged.
 {
   repo ? ../..,
+  # nanofil options for every compile, e.g. "-O" (`--argstr opt -O`).
+  opt ? "",
 }:
 let
   flake = builtins.getFlake (toString repo);
@@ -57,7 +59,11 @@ let
     drv.overrideAttrs (old: {
       postHook = (old.postHook or "") + ''
         export NANOFIL_LOG=$NIX_BUILD_TOP/nanofil.log
-        : >$NANOFIL_LOG
+        : >$NANOFIL_LOG${
+          lib.optionalString (
+            opt != ""
+          ) "\nexport NANOFIL_OPT=${lib.escapeShellArg opt}"
+        }
         export PATH=${cc}/bin:$PATH CC=${cc}/bin/cc CXX=${cc}/bin/c++
         ${report}
       '';
