@@ -2923,6 +2923,19 @@ test(renew_validation) :-
         [block(s, [], [C, L], goto(h)),
          block(h, [], [Call, Rn, W], branch(tmp(c), poll(h), e)), block(e, [], [], R)]
     ]), ( renew_fn(Bs, M), valid_module(M) )),
+    % An irreducible loop {a, d, b}, entered at a and at b: d, which
+    % only a enters, may renew a's check; b, which s also enters, not.
+    Irr = [block(s, [], [], branch(tmp(c), a, b)),
+           block(a, [], [C, L], goto(d)),
+           block(d, [], [Call, Rn, W], goto(b)),
+           block(b, [], [], branch(tmp(c), poll(a), e)),
+           block(e, [], [], R)],
+    renew_fn(Irr, IrrM), valid_module(IrrM),
+    renew_fn([block(s, [], [], branch(tmp(c), a, b)),
+              block(a, [], [C, L], goto(b)),
+              block(b, [], [Call, Rn, W], branch(tmp(c), poll(a), e)),
+              block(e, [], [], R)], IrrBad),
+    catch(( valid_module(IrrBad), fail ), nanofil_error(_), true),
     % Rejected: Q1 does not dominate (one arm checks), a second definition
     % of P1 (a phi) or of Q1, a setjmp, too little range, a weaker
     % alignment, a renew not followed by its access, an empty range, Q1

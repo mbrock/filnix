@@ -86,8 +86,8 @@
     `--checks=reference|reuse|renew` independently selects the reference
     checked IR, a check before every access, check reuse after
     pizlonation, or reuse followed by renewal of dominated checks
-    (src/check_reuse.pl, docs/m7.md). The default is reference;
-    NANOFIL_CHECKS supplies the same choice. With reuse or renew, `cc`,
+    (src/check_reuse.pl, docs/m7.md). The default is renew with `-O`
+    and reference without; NANOFIL_CHECKS supplies the same choice. With reuse or renew, `cc`,
     `compile` and difftest's pizlonation comparison use that module.
 
     ## difftest
@@ -173,9 +173,9 @@ branches_mode(B) :-
 memcpy_mode(M) :-
     ( memberchk(M,[call,inline]) -> true
     ; throw(nanofil_error('memcpy must be call or inline')) ).
+% checks_default(?Checks): NANOFIL_CHECKS, or unbound until -O decides.
 checks_default(Checks) :-
-    ( getenv('NANOFIL_CHECKS',C) -> Checks = C ; Checks = reference ),
-    checks_mode(Checks).
+    ( getenv('NANOFIL_CHECKS',C) -> checks_mode(C), Checks = C ; true ).
 checks_mode(C) :-
     ( memberchk(C,[reference,reuse,renew]) -> true
     ; throw(nanofil_error('checks must be reference, reuse or renew')) ).
@@ -238,7 +238,8 @@ options([A|As],O,R,_,Opt,Rs,Cs,Args) :-
     atom_concat('--checks=',C,A), !, checks_mode(C),
     options(As,O,R,C,Opt,Rs,Cs,Args).
 options(Args,O,emit(R,B,M),C,O,emit(R,B,M),C,Args) :-
-    registers_default(O,R), branches_default(O,B), memcpy_default(O,M).
+    registers_default(O,R), branches_default(O,B), memcpy_default(O,M),
+    checks_default(O,C).
 
 % registers_default(+Opt, ?Registers) and branches_default(+Opt,
 % ?Branches): with no option or environment variable, -O selects
@@ -255,6 +256,11 @@ branches_default(o1, selected).
 memcpy_default(_, M) :- nonvar(M), !.
 memcpy_default(o0, call).
 memcpy_default(o1, inline).
+% checks_default(+Opt, ?Checks): -O renews dominated checks (docs/m7.md,
+% round 4); without it every access keeps its full check.
+checks_default(_, C) :- nonvar(C), !.
+checks_default(o0, reference).
+checks_default(o1, renew).
 
 % arg_atom(+Arg, -Atom): Atom is the command-line argument Arg, which
 % is an atom (SWI) or a character list (Trealla).
