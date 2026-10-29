@@ -214,9 +214,18 @@ CAUSES = [
 ]
 
 
+# Test failures traced by hand to a cause the first error cannot show,
+# applied while the package's tests fail (docs/survey.md, Causes).
+TRACED = {
+    "libressl": "timing-dependent test",
+}
+
+
 def cause(row):
     if row.get("nf") in ("built", "tests pass", "not tried", "", None):
         return ""
+    if row.get("nf") == "tests fail" and row.get("name") in TRACED:
+        return TRACED[row["name"]]
     err = row.get("error") or ""
     return next((c for p, c in CAUSES if re.search(p, err)), "other syntax or typing gaps")
 

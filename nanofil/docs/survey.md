@@ -75,6 +75,23 @@ instruction it cannot run safely (dconf's and mbedtls's test failures
 show that message), where nanofil refuses at compile time. Alignment
 attributes (15) are the next row; gtk4's `gdkresources.c` is one.
 
+libressl's one failing test is timing-dependent, not a miscompile.
+Its ssltest runs both ends of each DTLS handshake in one process, and a
+DTLS peer retransmits its flight when its 1 s timer expires; with RSA key
+exchange the server's private-key decryption falls inside that window.
+Without `-O` nanofil's code for libcrypto's Montgomery multiplication
+(`bn/bn_mont.c`, word helpers that return through pointers to locals)
+takes 0.541 s for one 1024-bit CRT half, against 0.139 s for filcc
+`-O0`, 0.044 s for nanofil `-O` and 0.004 s for the port's filcc `-O3`,
+so the two halves overrun the timer and the client reports an unexpected
+message. Every other test passes, TLS and the ECDHE and DHE DTLS ciphers
+included. Swapping object files with a filcc build pins it to
+`bn_mont.c`, whose results are correct (Montgomery products and
+exponentiation checked against `BN_mod_mul` over moduli of 2 to 640
+bits), and ssltest passes when only `bn_mont.o` is built with nanofil
+`-O`. The survey builds with the port's own flags, so this stays a
+failure; run.py marks it `timing-dependent test`.
+
 <!-- survey table -->
 
 | Set aside | Packages |
