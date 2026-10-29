@@ -1401,8 +1401,10 @@ doc(su_layout(+Kind, +Packing, +Fields, +Env, -Def), det, [
     "align the struct. Packed, every member has alignment 1, and so has",
     "the struct, and a bit-field follows the bits before it across any",
     "boundary (a zero-width one still moves to one), as GCC and clang lay",
-    "it out; nanofil refuses a packed bit-field that no access of its",
-    "type within the struct covers. A packed pointer is laid out as any",
+    "it out; a packed bit-field that no access of its type within the",
+    "struct covers is accessed in the narrowest integer of its sign that",
+    "does, as clang's narrower access, when its type is no wider than",
+    "int, else refused. A packed pointer is laid out as any",
     "member: Fil-C keeps a capability only at an 8-aligned address, and",
     "each access of a pointer checks at run time that its address is",
     "8-aligned, as filcc's does (\"alignment requirement of 8 bytes not",
@@ -1413,6 +1415,7 @@ doc(su_layout(+Kind, +Packing, +Fields, +Env, -Def), det, [
     "GCC's and clang's, a pointer's too; a bit-field or an explicitly",
     "aligned member that N would underalign is refused. C11 leaves the",
     "alignment of members implementation-defined.",
+    cites('C11 6.7.2.1p11'),
     cites('C11 6.7.2.1p14'),
     cites('C11 6.7.2.1p15'),
     example(( empty_env(E), su_layout(struct, natural, [f(some(a), char), f(some(b), int)], E, D) ),
@@ -1437,7 +1440,11 @@ doc(su_layout(+Kind, +Packing, +Fields, +Env, -Def), det, [
             D = def(struct, [m(some(a), char, 0), m(some(p), ptr(int), 8)], 16, 8)),
     example(( empty_env(E), su_layout(struct, pack(4), [f(some(c), char), f(some(p), ptr(int))], E, D) ),
             D = def(struct, [m(some(c), char, 0), m(some(p), ptr(int), 4)], 12, 4)),
+    example(( empty_env(E), su_layout(struct, packed, [b(some(x), uint, 6), b(some(f), uint, 2)], E, D) ),
+            D = def(struct, [m(some(x), uchar, 0, bits(0, 6)), m(some(f), uchar, 0, bits(6, 2))], 1, 1)),
     example(( empty_env(E), su_layout(struct, packed, [b(some(x), int, 3)], E, D) ),
+            D = def(struct, [m(some(x), schar, 0, bits(0, 3))], 1, 1)),
+    example(( empty_env(E), su_layout(struct, packed, [b(some(x), long, 3)], E, D) ),
             D = bad('a packed bit-field that no access of its type covers'))
 ]).
 su_layout(Kind, Packing, Fields, Env, Def) :-
@@ -1543,17 +1550,32 @@ field_member(Kind, packed, Env, b(Name, Type, W), Members, End0-Align, End-Align
 % packed_unit(+End, +Env, +Member0, -Member): Member is Member0, a packed
 % bit-field's packed_bits(Name, Type, Start, W) placed in the unit of
 % Type's size that starts at the latest byte at or before bit Start and
-% ends within the struct's End bytes, as an access to it must, or bad
-% when none covers the field (clang accesses such a field in a narrower
-% integer).
-packed_unit(End, Env, packed_bits(Name, Type, Start, W), m(Name, Type, Unit, bits(Pos, W))) :- !,
+% ends within the struct's End bytes, as an access to it must. Where
+% none does (parted's one-byte FatClusterInfo of unsigned int:6 and an
+% enum :2), the unit is the narrowest integer of Type's sign that does,
+% as clang accesses the field in a narrower integer: for a type no wider
+% than int, the field's values and their promotion to int are the
+% same. Else it is bad.
+packed_unit(End, Env, packed_bits(Name, Type, Start, W), m(Name, Unit, Off, bits(Pos, W))) :- !,
     type_size_align(Type, Env, Size, _),
-    Unit is min(Start // 8, End - Size),
-    Pos is Start - 8 * Unit,
-    (   Unit >= 0, Pos + W =< 8 * Size -> true
+    (   packed_window(End, Start, W, Size, Off0, Pos0)
+    ->  Unit = Type, Off = Off0, Pos = Pos0
+    ;   Size =< 4, int_info(Type, _, Sign),
+        member(N-Narrow, [1-uchar, 1-schar, 2-ushort, 2-short]),
+        N < Size, int_info(Narrow, N, Sign),
+        packed_window(End, Start, W, N, Off1, Pos1)
+    ->  Unit = Narrow, Off = Off1, Pos = Pos1
     ;   throw(bad('a packed bit-field that no access of its type covers'))
     ).
 packed_unit(_, _, M, M).
+
+% packed_window(+End, +Start, +W, +Size, -Off, -Pos): the Size bytes at
+% Off, the latest that start at or before bit Start and end within End
+% bytes, hold the W bits from bit Pos.
+packed_window(End, Start, W, Size, Off, Pos) :-
+    Off is min(Start // 8, End - Size),
+    Pos is Start - 8 * Off,
+    Off >= 0, Pos + W =< 8 * Size.
 
 doc(unaligned_type(+T, +Env), semidet, [
     T: "a struct or union type",
