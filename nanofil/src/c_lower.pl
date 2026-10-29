@@ -253,13 +253,17 @@ with_used_inlines(Funcs0, Env0, Items) :-
     findall(Sym, func_symbol(Funcs0, Sym), Defined0),
     sort(Defined0, Defined),
     used_inlines(Funcs0, Defined, Env0, New, Env),
-    global_data(Env, Data),
-    append([Funcs0, New, Data], Items),
-    forall(member(data(_, init(Kind, _), _, [item(p, sym(Sym, _))]), Data),
-           (   memberchk(func(Sym, _, _, _, _), Items) -> true
-           ;   format(atom(Msg), 'the ~w ~w is not defined in this translation unit', [Kind, Sym]),
-               throw(nanofil_error(Msg))
-           )).
+    global_data(Env, Data0),
+    append(Funcs0, New, Funcs),
+    % A constructor or destructor attribute on a function this unit only
+    % declares registers nothing, as in clang, which registers one when
+    % it emits the definition (libgpg-error's header declares
+    % gpg_err_init so in every unit).
+    exclude(undefined_init(Funcs), Data0, Data),
+    append(Funcs, Data, Items).
+
+undefined_init(Funcs, data(_, init(_, _), _, [item(p, sym(Sym, _))])) :-
+    \+ memberchk(func(Sym, _, _, _, _), Funcs).
 
 % used_inlines(+Scan, +Defined, +Env0, -New, -Env): New are the deferred
 % inline functions that the functions Scan or the global data refer to
