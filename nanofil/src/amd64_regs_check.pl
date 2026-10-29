@@ -50,7 +50,7 @@
            operand_roles/3, boundary_line/2, extra_use_def/4]).
 
 :- use_module(amd64_contract,
-              [instruction_effects/2, register/3, explicit_registers/2]).
+              [instruction_effects/2, register/3, operand_register/2]).
 :- use_module(library(assoc)).
 :- use_module(library(lists)).
 :- use_module(library(pairs)).
@@ -149,16 +149,20 @@ preflight_regs(Body, Mapped, Saves, Effects) :-
     maplist(preflight_line(Mapped, SaveOffsets), Rest, RestEffects).
 
 preflight_line(Mapped, Saves, Line, effect(_,_,_,Ms,_)) :-
-    explicit_registers(Line, Rs),
-    \+ (member(R, Rs), allocatable(R)),
-    \+ (Line = ins(_,_,Os), member(O, Os), rbp_register(O)),
-    \+ (Line = ins(_,_,Os), member(mem(_,rbp,_), Os)),
+    \+ (Line = ins(_,_,Os), member(O, Os), named_register(O)),
     \+ (Line = ins(lea,_,[mem(D,rbp),_]), touches(D, 1, Mapped, Saves)),
     \+ (effect_access(Ms, D, N), member(S, Saves), D < S+8, S < D+N),
     (   Line \= ins(lea,_,_), effect_access(Ms, D, N), mapped_overlap(D, N, Mapped)
     ->  once(substitute(Line, Mapped, _))
     ;   true
     ).
+
+% named_register(+O): the operand O names an allocatable register (as
+% amd64_contract's explicit_registers/2 reads operands), or %rbp other
+% than as the base of a mem(D, rbp) operand.
+named_register(O) :- operand_register(O, R), allocatable(R).
+named_register(O) :- rbp_register(O).
+named_register(mem(_,rbp,_)).
 
 rbp_register(reg(R)) :- register(R, rbp, _).
 rbp_register(ind(reg(R))) :- register(R, rbp, _).
@@ -167,6 +171,7 @@ touches(D, N, Mapped, Saves) :-
     ( mapped_overlap(D, N, Mapped) -> true ; member(S, Saves), D < S+8, S < D+N ).
 
 mapped_overlap(D, N, Mapped) :-
+    \+ empty_assoc(Mapped),
     H0 is D-7, H1 is D+N-1, between(H0, H1, H), get_assoc(H, Mapped, _), !.
 
 % rbp_access(+Line, -D, -Bytes): Line reads or writes Bytes at D(%rbp).

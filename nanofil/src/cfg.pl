@@ -569,5 +569,13 @@ jump_uses(unreachable, []).
 % temps(+Values, -Names): Names is the ordset of temp names among
 % Values.
 temps(Vs, Ts) :-
-    findall(T, member(tmp(T), Vs), Ts0),
+    temp_names(Vs, Ts0),
     sort(Ts0, Ts).
+
+% A direct walk, not findall/3: this runs for every instruction of every
+% pass's strict-SSA and liveness checks, and findall's copying was 7% of
+% copy propagation on SQLite. Values are ground.
+temp_names([], []).
+temp_names([V|Vs], Ts) :-
+    (   V = tmp(T) -> Ts = [T|Ts1] ; Ts = Ts1 ),
+    temp_names(Vs, Ts1).

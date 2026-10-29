@@ -174,7 +174,7 @@ line_home_ref(Scalar, Line, Ms, Depth, H, Ref) :-
 line_home_ref(Scalar, ins(lea,_,[mem(D,rbp),_]), _, _, H, bad) :-
     H0 is D-7, scalar_home(Scalar, H0, D, H).
 
-single(H, Map) :- list_to_assoc([H-rbx], Map).
+single(H, Map) :- empty_assoc(E), put_assoc(H, E, rbx, Map).
 
 % depths(+Body, -Depths): for each line, how many backward jumps span it.
 depths(Body, Depths) :-
@@ -204,7 +204,7 @@ take_events(Es, _, D, D, Es).
 home_facts(Index, HomeBits, Line, Out, f(C0,W0)-E0, f(C,W)-E) :-
     (   Line = ins(call,_,_)
     ->  C is C0 \/ Out, W = W0, E = E0
-    ;   rbp_access(Line, D, _), Line = ins(mov,S,[_,mem(D,rbp)]),
+    ;   Line = ins(mov,S,[_,mem(D,rbp)]), rbp_access(Line, D, _),
         get_assoc(D, Index, K)
     ->  C = C0,
         Own is 3 << (2*K),
@@ -406,8 +406,10 @@ forget_written(_, C, C).
 forget(_, C0, C) :- empty_assoc(C0), !, C = C0.
 forget(F, C0, C) :-
     assoc_to_list(C0, Ps),
-    exclude(depends_on(F), Ps, Kept),
-    list_to_assoc(Kept, C).
+    (   member(P, Ps), depends_on(F, P)
+    ->  exclude(depends_on(F), Ps, Kept), list_to_assoc(Kept, C)
+    ;   C = C0
+    ).
 depends_on(F, F-_).
 depends_on(F, _-copy(F,_)).
 

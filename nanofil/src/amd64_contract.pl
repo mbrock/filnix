@@ -7,7 +7,7 @@
    Calls are unconditional cache boundaries; their ABI argument reads are
    not enumerated. Do not use this as a general call-liveness contract. */
 :- module(amd64_contract, [instruction_effects/2, register/3,
-                           explicit_registers/2]).
+                           explicit_registers/2, operand_register/2]).
 :- use_module(library(lists)).
 :- discontiguous(instruction_effects/2).
 
