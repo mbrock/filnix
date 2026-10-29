@@ -4962,15 +4962,17 @@ static_leaf(Loc, bits(Off, Type, Pos, W, Expr), s(Env, Chunks0, End0),
     Start is 8 * Off + Pos,
     First is Start // 8, Last is (Start + W - 1) // 8,
     numlist(First, Last, Bytes),
-    foldl(bitfield_byte(Start, W, V), Bytes, Chunks0, Chunks),
+    foldl(bitfield_byte(Start, W, V, End0), Bytes, Chunks0, Chunks),
     End is max(End0, Last + 1).
 
-% bitfield_byte(+Start, +W, +V, +Byte, +Chunks0, -Chunks): Chunks adds
-% to Chunks0 the byte at offset Byte with its bits of the W-bit field V,
-% starting at bit Start, merged into the bits an earlier bit-field put
-% there.
-bitfield_byte(Start, W, V, Byte, Chunks0, [chunk(Byte, 1, item(b, const(New)))|Chunks0]) :-
-    (   member(chunk(Byte, N, Item), Chunks0)
+% bitfield_byte(+Start, +W, +V, +End0, +Byte, +Chunks0, -Chunks): Chunks
+% adds to Chunks0 the byte at offset Byte with its bits of the W-bit
+% field V, starting at bit Start, merged into the bits an earlier
+% bit-field put there. No chunk reaches End0, so a byte from there on
+% is not looked up: the lookup would make a table of bit-field structs
+% quadratic (gettext's uninames.h has 39274 of them).
+bitfield_byte(Start, W, V, End0, Byte, Chunks0, [chunk(Byte, 1, item(b, const(New)))|Chunks0]) :-
+    (   Byte < End0, member(chunk(Byte, N, Item), Chunks0)
     ->  ( N =:= 1, Item = item(b, const(Old)) -> true ; Old = 0 )
     ;   Old = 0
     ),
