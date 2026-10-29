@@ -4,18 +4,18 @@ SDL_compat	1.2.76	evaluation fails	35	0
 a2ps	4.15.7	C	175	0	tests pass	tests pass	319	0	0			
 abseil-cpp_202601	20260107.1	C++	1	469								
 ada	3.4.4	C++	2	41								
-alsa-lib	1.2.15.3	C	147	0	built	fails in buildPhase	67	0	0	aliases beyond one prototyped function	nanofil: control.c:2974: alias is supported only for one prototyped, non-variadic function	
+alsa-lib	1.2.15.3	C	147	0	built	fails in buildPhase	65	0	0	aliases beyond one prototyped function	nanofil: control.c:2974: alias is supported only for one prototyped, non-variadic function	
 asio	1.36.0	C++	0	562								
 at-spi2-core	2.60.5	C	143	0	built	built	224	0	0			
 bash	5.3p9	C	301	0	built	built	568	0	0			
 bashNonInteractive	5.3p9	C	301	0	built	built	573	0	0			
-bind	9.20.30	C	498	0	tests pass	fails in buildPhase	235	0	0	alignment attributes	nanofil: picohttpparser.c:117: alignment attributes is not supported	
-binutils-unwrapped	2.43.1	C	1820	307	built	fails in buildPhase	606	28	0	other syntax or typing gaps	make[2]: *** [Makefile:1001: md5.o] Error 1	
+bind	9.20.30	C	498	0	tests pass	fails in buildPhase				alignment attributes	nanofil: picohttpparser.c:117: alignment attributes is not supported	
+binutils-unwrapped	2.43.1	C	1820	307	built	fails in buildPhase	662	28	0	other syntax or typing gaps	nanofil: /build/binutils-2.43.1/libiberty/hashtab.c:238: expected an expression, at typedef	
 bison	3.8.2	C	295	6	built	fails in buildPhase	449	4	1	unresolved Fil-C symbol at link	src/bison-getargs.o:function pizlonatedFI12770_rpl_printf:(.text+0x436fd): error: undefined reference to 'pizlonated_rpl_printf'	
 bluez	5.86	C	473	0	fails in buildPhase	not tried						/nix/store/qmb3yj18xmq074bmim7k7v0bg2r817m5-linux-headers-6.18.7/include/linux/uhid.h:180:8: error: cannot compile this unaligned pointer-bearing union storage yet
 boost186	1.86.0	C++	143	17960								
 boost187	1.87.0	C++	200	18426								
-btrfs-progs	6.19.1	C	148	0	tests pass	fails in buildPhase	133	0	0	other syntax or typing gaps	nanofil: kernel-shared/print-tree.c:582: unknown escape \(	
+btrfs-progs	6.19.1	C	148	0	tests pass	fails in buildPhase	135	0	0	other syntax or typing gaps	nanofil: kernel-shared/print-tree.c:582: unknown escape \(	
 busybox	1.37.0	C	685	1	built	built	14	0	16			
 cacert	3.131.1	no C sources found	0	0								
 cairo	1.18.4	C	738	1	built	built	275	0	0			
@@ -31,24 +31,24 @@ coin3d	4.0.7	C++	10	974
 colm	0.13.0.7	evaluation fails	16	31								
 coreutils	9.11	C	1288	0	built	built	1248	6	0			
 cryptopp	8.9.0	C++	0	272								
-cryptsetup	2.8.6	C	103	9	tests pass	fails in buildPhase	164	7	0	nanofil internal failure	nanofil: failed	
+cryptsetup	2.8.6	C	103	9	tests pass	fails in buildPhase	102	7	0	inline or top-level asm	nanofil: lib/keyslot_context.c:807: top-level asm is not supported, at (	
 cups	2.4.19	C	202	27	built	built	244	28	0			
 curl	8.22.0	C	767	2	built	built	466	0	0			
 cyrus_sasl	2.1.28	C	166	0	built	fails in buildPhase	225	0	0	nanofil internal failure	nanofil: failed	
 dash	0.5.12	C	31	0	built	built	96	0	0			
-dav1d	1.5.3	C	83	0	tests pass	fails in buildPhase	65	0	0	inline or top-level asm	nanofil: ../src/recon_tmpl.c:150: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
+dav1d	1.5.3	C	83	0	tests pass	fails in buildPhase	40	0	0	inline or top-level asm	nanofil: ../src/recon_tmpl.c:150: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
 db53	5.3.28	C	694	52	tests pass	tests pass	512	38	0			
 dbus	1.16.2	C	193	1	tests pass	tests pass	291	0	0			
 dbus-glib	0.114	C	58	0	built	built	68	0	0			
-dconf	0.49.0	C	43	0	tests pass	tests fail	84	0	0	inline or top-level asm	filc safety error: cannot handle inline asm (unsupported mnemonic for safe inline asm: int):   call void asm sideeffect "int $$03", "~{dirflag},~{fpsr},~{flags}"() #15, !dbg !631	
+dconf	0.49.0	C	43	0	tests pass	tests pass	84	0	0			
 diffutils	3.12	C	601	0	built	built	565	2	0			
 doctest	2.5.2	C++	0	109								
 doxygen	1.16.1	C++	39	194								
 duktape	2.7.0	C	249	1	built	built	8	0	0			
 e2fsprogs	1.47.4	C	327	3	built	built	557	0	0			
-elfutils	0.194	C	724	4	built	fails in buildPhase	204	4	0	aliases beyond one prototyped function	nanofil: elf_getshdrnum.c:87: alias is supported only for one prototyped, non-variadic function	
-ell	0.83	C	128	0	built	fails in buildPhase	66	0	0	alignment attributes	nanofil: ell/log.c:103: alignment attributes is not supported	
-emacs30	30.1	C	373	23	built	fails in buildPhase	440	0	0	other syntax or typing gaps	nanofil: ./dynlib.h:33: expected a declaration, at typedef	
+elfutils	0.194	C	724	4	built	fails in buildPhase	186	4	0	aliases beyond one prototyped function	nanofil: elf_getshdrnum.c:87: alias is supported only for one prototyped, non-variadic function	
+ell	0.83	C	128	0	built	fails in buildPhase	63	0	0	alignment attributes	nanofil: ell/log.c:103: alignment attributes is not supported	
+emacs30	30.1	C	373	23	built	fails in buildPhase	519	0	0	other syntax or typing gaps	filc safety error: cannot write pointer with null object.	
 expat	2.7.1	C	33	15	tests pass	tests pass	89	26	0			
 fasttext	0.9.2-unstable-2023-11-28	C++	0	19								
 ffado	2.4.9	C++	4	200								
@@ -56,7 +56,7 @@ ffmpeg-headless	8.1.2	C	3355	6	dependency fails	not tried
 fftw	3.3.11	C	4355	0	tests pass	fails in buildPhase	183	0	0	inline or top-level asm	nanofil: ./cycle.h:226: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
 file	5.47	C	38	0	built	built	141	0	0			
 finit	4.17	C	58	0	built	fails in buildPhase	56	0	0	other syntax or typing gaps	nanofil: getty.c:407: bad number 1i	
-flac	1.5.0	C	95	20	tests pass	fails in buildPhase	38	2	0	inline or top-level asm	nanofil: /build/flac-1.5.0/src/libFLAC/cpu.c:80: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
+flac	1.5.0	C	95	20	tests pass	fails in buildPhase	45	2	0	inline or top-level asm	nanofil: /build/flac-1.5.0/src/libFLAC/cpu.c:80: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
 fltk14	1.4.4	C++	123	468								
 fmt	12.1.0	C++	0	46								
 fmt_11	11.2.0	C++	0	46								
@@ -70,7 +70,7 @@ gd	2.3.3	C	304	2	built	built	112	0	0
 gdk-pixbuf	2.44.7	C	105	0	built	built	91	0	0			
 geos	3.14.1	C++	7	829								
 gettext	1.0	C	2227	21	built	fails in buildPhase	1579	41	2	__builtin_types_compatible_p, __builtin_choose_expr	nanofil: __builtin_choose_expr needs a constant condition	
-ghostscript	10.07.1	C	2081	408	built	fails in buildPhase	350	0	0	alignment attributes	nanofil: ./brotli/c/enc/matching_tag_mask.h:24: alignment attributes is not supported	
+ghostscript	10.07.1	C	2081	408	built	fails in buildPhase	423	0	0	constant expressions not folded	nanofil: ./base/gp_unifs.c:274: initializer is not a constant	
 git	2.46.0	C	585	0	built	built	596	0	0			
 glib	2.80.4	C	893	4	built	fails in buildPhase	424	37	0	inline or top-level asm	nanofil: ../glib/gmessages.c:426: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
 glibmm	2.66.8	C++	0	282								
@@ -81,11 +81,11 @@ gnu-shepherd	1.0.9	C	1	0	built	built	240	0	0
 gnugrep	3.12	C	556	0	built	built	528	2	0			
 gnum4	1.4.21	C	733	68	built	built	645	0	1			
 gnumake	4.4.1	C	51	0	tests pass	tests pass	153	0	0			
-gnupg	2.4.9	C	343	0	tests pass	fails in buildPhase	362	0	0	other syntax or typing gaps	nanofil: keyring.c:274: cannot assign struct(176) to struct(177)	
+gnupg	2.4.9	C	343	0	tests pass	fails in buildPhase	370	0	0	other syntax or typing gaps	nanofil: keyring.c:274: cannot assign struct(176) to struct(177)	
 gnused	4.10	C	494	0	built	built	493	6	0			
 gnustep-libobjc	2.3	evaluation fails	23	7								
 gnutar	1.35	C	336	0	tests pass	tests pass	593	0	0			
-gnutls	3.8.13	C	1656	3	built	fails in buildPhase	668	13	0	other builtins	nanofil: key_share.c:256: undeclared identifier __builtin_return_address	
+gnutls	3.8.13	C	1656	3	built	fails in buildPhase	664	13	0	other builtins	nanofil: key_share.c:256: undeclared identifier __builtin_return_address	
 go	1.26.7	evaluation fails	136	2								
 gobject-introspection-unwrapped	1.80.1	C	92	0	tests pass	fails in buildPhase	160	0	0	other syntax or typing gaps	filc safety error: cannot read pointer with null object.	
 graphene	1.10.8	C	37	0	tests pass	tests pass	66	0	0			
@@ -94,10 +94,10 @@ gsl	2.8	C	1367	0	tests pass	tests pass	1060	0	0
 gssdp_1_6	1.6.6	C	19	0	tests pass	tests pass	32	0	0			
 gtk2	2.24.33	C	723	1	built	fails in buildPhase	96	8	0	aliases beyond one prototyped function	nanofil: ../../gdk/gdkaliasdef.c:722: alias is supported only for one prototyped, non-variadic function	
 gtk3	3.24.52	C	1103	1	built	fails in buildPhase	114	0	0	alignment attributes	nanofil: gdk/gdkresources.c:9: alignment attributes is not supported	
-gtk4	4.14.5	C	1406	1	built	fails in buildPhase	152	3	0	alignment attributes	nanofil: gdk/gdkresources.c:9: alignment attributes is not supported	
+gtk4	4.14.5	C	1406	1	built	fails in buildPhase	153	3	0	alignment attributes	nanofil: gdk/gdkresources.c:9: alignment attributes is not supported	
 gtkmm4	4.14.0	C++	0	395								
 gtksourceview3	3.24.11	C	89	1	tests pass	fails in buildPhase	147	0	0	alignment attributes	nanofil: gtksourceview-resources.c:9: alignment attributes is not supported	
-gtksourceview4	4.8.4	C	88	1	tests pass	fails in buildPhase	69	0	0	alignment attributes	nanofil: gtksourceview/gtksourceview-gresources.c:9: alignment attributes is not supported	
+gtksourceview4	4.8.4	C	88	1	tests pass	fails in buildPhase	68	0	0	alignment attributes	nanofil: gtksourceview/gtksourceview-gresources.c:9: alignment attributes is not supported	
 guile-avahi	0.4.1	C	7	0	tests pass	tests pass	49	0	0			
 guile-gcrypt	0.5.0	no C sources found	0	0								
 guile-git	0.10.0	no C sources found	0	0								
@@ -113,17 +113,17 @@ harfbuzz	13.2.1	C++	72	177
 icu76	76.1	C++	122	801								
 icu77	77.1	C++	121	787								
 icu78	78.3	C++	121	792								
-imagemagick	7.1.2-31	C	286	55	built	fails in buildPhase	336	20	0	other syntax or typing gaps	nanofil: MagickCore/fourier.c:1295: bad number 1.0iF	
+imagemagick	7.1.2-31	C	286	55	built	fails in buildPhase	342	20	0	other syntax or typing gaps	nanofil: MagickCore/fourier.c:1295: bad number 1.0iF	
 imlib2	1.12.6	C	86	0	built	built	133	7	0			
 isa-l	2.32.0	C	122	0	tests pass	fails in buildPhase	51	0	0	other builtins	nanofil: /nix/store/asx904awk86a38cr62zyxqq1zf10603m-filc0-resource-dir/lib/clang/20/include/crc32intrin.h:73: undeclared identifier __builtin_ia32_crc32si	
 jq	1.8.2	C	105	0	built	built	152	0	0			
 json-glib	1.10.8	C	33	0	tests pass	tests pass	81	0	0			
-kbd	2.9.0	C	118	0	built	fails in buildPhase	154	0	0	inline or top-level asm	nanofil: resizecons.c:400: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
+kbd	2.9.0	C	118	0	built	fails in buildPhase	159	0	0	inline or top-level asm	nanofil: resizecons.c:400: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
 keyutils	1.6.3	C	7	0	built	fails in buildPhase	8	0	0	unresolved Fil-C symbol at link	./libkeyutils.so: error: undefined reference to 'pizlonated_zargs'	
 kittydoom	git	C	7	0	built	fails in buildPhase	1	0	0	other syntax or typing gaps	nanofil: src/PureDOOM.h:16108: invalid operands to and: int and double	
-krb5	1.22.2	C	1099	31	built	fails in buildPhase	255	16	0	other syntax or typing gaps	nanofil: ../../include/k5-platform.h:698: no member named i	
+krb5	1.22.2	C	1099	31	built	fails in buildPhase	885	16	0	inline or top-level asm	nanofil: ./edwards25519_fiat.h:890: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
 kronosnet	1.33	C	136	0	built	fails in buildPhase	95	0	0	other syntax or typing gaps	nanofil: /nix/store/l9vcwpxmi9a255r27cgn9gwf8j0d356g-filc-glibc-2.44/include/bits/link.h:99: expected a member declaration, at __int128_t	
-libaom	3.12.1	C	492	235	built	fails in buildPhase	172	60	0	other syntax or typing gaps	nanofil: error(resource_error(stack),stack_overflow{choicepoints:11,depth:22033,environments:21,globalused:1046999,localused:4,stack:[frame(22033,apply:exclude_([5608],(:)/2,_138),[]),frame(21254,ir:checked_inst_rest(let/4,[83139],prepare_tf_workers,filc,[6384],[83138],_180),[]),frame(21253,ir:check	
+libaom	3.12.1	C	492	235	built	fails in buildPhase	172	60	0	other syntax or typing gaps	nanofil: error(resource_error(stack),stack_overflow{choicepoints:11,depth:25638,environments:21,globalused:1046071,localused:5,stack:[frame(25638,apply:exclude_([1995],(:)/2,_138),[]),frame(21248,ir:checked_inst_rest(flight/4,[83147],prepare_tf_workers,filc,[6382],[83147],[4387|_210]),[]),frame(2124	
 libapparmor	4.1.7	C	148	20	built	fails in buildPhase	47	6	0	inline or top-level asm	nanofil: kernel.c:832: top-level asm is not supported, at (	
 libarchive	3.7.4	C	599	1	built	built	425	0	0			
 libavif	1.4.1	C++	48	75								
@@ -135,16 +135,16 @@ libcap_ng	0.9.3	C	20	0	tests pass	tests pass	67	0	0
 libcbor	0.13.0	C	59	5	tests pass	tests pass	134	6	0			
 libcdio	2.3.0	C	117	21	tests pass	fails in buildPhase	137	6	0	alignment attributes	nanofil: image/nrg.c:195: buf has a type nanofil does not support (alignment attributes)	
 libdbusmenu	16.04.0	C	47	0	built	built	55	0	0			
-libdeflate	1.25	C	29	0	tests pass	fails in buildPhase	26	0	0	inline or top-level asm	nanofil: /build/source/lib/x86/cpu_features.c:47: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
+libdeflate	1.25	C	29	0	tests pass	fails in buildPhase	21	0	0	inline or top-level asm	nanofil: /build/source/lib/x86/cpu_features.c:47: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
 libedit	20240808-3.1	C	36	0	built	built	115	0	0			
 libepoxy	1.5.10	C	30	0	tests pass	tests pass	71	0	0			
 libev	4.33	C	10	0	built	built	56	0	0			
 libevdev	1.11.0	C	21	0	built	built	60	0	0			
 libevent	2.1.13	C	82	0	built	built	254	0	0			
-libffi	3.8.0	C	271	2	tests pass	fails in buildPhase	62	6	1	constant expressions not folded	nanofil: ../src/types.c:126: initializer is not a constant	
+libffi	3.8.0	C	271	2	tests pass	fails in buildPhase	64	6	1	constant expressions not folded	nanofil: ../src/types.c:126: initializer is not a constant	
 libfolia	2.22	C++	0	11								
 libgbm	26.0.3	C	3401	759	built	fails in buildPhase	148	34	0	other builtins	nanofil: ../src/util/cache_ops_x86.c:68: undeclared identifier __builtin_ia32_mfence	
-libgcrypt	1.12.2	C	233	0	tests pass	tests fail	280	0	2	other syntax or typing gaps	filc safety error: cannot read pointer with null object.	
+libgcrypt	1.12.2	C	233	0	tests pass	tests fail				other syntax or typing gaps	PASS: prime	
 libgit2	1.9.7	C	765	0	tests pass	tests pass	698	0	0			
 libglvnd	1.7.0	C	58	1	built	built	85	0	0			
 libgpg-error	1.59	C	52	0	tests pass	tests pass	162	0	1			
@@ -155,38 +155,38 @@ libhighscore	0-unstable-2026-04-01	C	42	0	tests pass	fails in buildPhase	105	0	0
 libical	3.0.20	C	69	16	built	built	228	20	0			
 libiconv	1.19	C	97	0	built	built	266	3	1			
 libidn2	2.3.8	C	126	0	built	built	228	0	0			
-libinput	1.29.1	C	195	1	built	built	125	4	0			
-libjpeg_turbo	3.1.4	C	240	11	built	fails in buildPhase	22	0	0	other syntax or typing gaps	nanofil: /nix/store/10xdyb6i0ahryz4a85xp747zwkh7g7xw-simde-0.8.2/include/simde/arm/neon/movl.h:54: expected an expression, at typeof	
+libinput	1.29.1	C	195	1	built	fails in buildPhase	120	3	0	other syntax or typing gaps	nanofil: ../tools/libinput-record.c:1354: a cleanup attribute on a declaration of several declarators is not supported	
+libjpeg_turbo	3.1.4	C	240	11	built	fails in buildPhase	23	0	0	other syntax or typing gaps	nanofil: /nix/store/10xdyb6i0ahryz4a85xp747zwkh7g7xw-simde-0.8.2/include/simde/arm/neon/movl.h:54: expected an expression, at typeof	
 liblc3	1.1.3	C	31	2	built	built	15	0	0			
-libmbim	1.34.0	C	52	0	tests pass	fails in buildPhase	52	0	0	other syntax or typing gaps	nanofil: ../src/libmbim-glib/mbim-device.c:2447: pointer arithmetic on struct(627) (packed pointers)	
+libmbim	1.34.0	C	52	0	tests pass	fails in buildPhase	64	0	0	other syntax or typing gaps	nanofil: ../src/libmbim-glib/mbim-message.c:2407: sizeof: packed pointers	
 libmemcached	1.0.18	C++	16	193								
 libmhash	0.9.9.9	C	29	0	tests pass	tests pass	140	6	0			
-libmicrohttpd	1.0.2	C	156	0	built	built	273	0	0			
+libmicrohttpd	1.0.2	C	156	0	built	built	278	0	0			
 libmpdclient	2.24	C	64	0	tests pass	tests pass	98	0	0			
 libopenmpt	0.8.9	C++	6	166								
-libopus	1.6.1	C	260	0	tests pass	fails in buildPhase	23	0	0	alignment attributes	nanofil: ../celt/float_cast.h:68: calls returning bad(alignment attributes) are not supported yet	
+libopus	1.6.1	C	260	0	tests pass	fails in buildPhase	18	0	0	alignment attributes	nanofil: ../celt/float_cast.h:68: calls returning bad(alignment attributes) are not supported yet	
 libpng	1.6.43	C	74	1	built	built	71	0	0			
 libpq	18.6	C	1489	4	built	fails in buildPhase	304	16	0	alignment attributes	nanofil: jsonapi.c:2218: alignment attributes is not supported	
 libraqm	0.10.5	C	2	0	tests pass	tests pass	14	0	0			
 libraw	0.22.1	C++	3	95								
-libressl	4.2.1	C	737	0	tests pass	fails in buildPhase	62	0	0	inline or top-level asm	nanofil: /build/libressl-4.2.1/crypto/crypto_err.c:102: top-level asm is not supported, at (	
-libseccomp	2.6.1	C	99	0	tests pass	fails in buildPhase	40	0	0	other syntax or typing gaps	nanofil: arch.c:267: bad offsetof	
+libressl	4.2.1	C	737	0	tests pass	fails in buildPhase	61	0	0	inline or top-level asm	nanofil: /build/libressl-4.2.1/ssl/bio_ssl.c:106: top-level asm is not supported, at (	
+libseccomp	2.6.1	C	99	0	tests pass	tests pass	161	0	0			
 libselinux	3.10	C	95	0	built	built	151	0	4			
 libsepol	3.10	C	106	0	built	built	140	0	2			
 libshout	2.4.6	C	31	0	built	built	92	0	0			
-libsodium	1.0.22-unstable-2026-04-09	C	242	0	tests pass	fails in buildPhase	195	0	0	inline or top-level asm	nanofil: crypto_ipcrypt/ipcrypt_soft.c:287: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
+libsodium	1.0.22-unstable-2026-04-09	C	242	0	tests pass	fails in buildPhase	193	0	0	inline or top-level asm	nanofil: crypto_ipcrypt/ipcrypt_soft.c:287: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
 libsoup_3	3.6.6	C	133	0	built	built	235	0	0			
 libssh2	1.11.1	C	89	2	built	built	88	7	0			
 libtasn1	4.21.0	C	96	0	built	built	224	2	0			
-libtiff	4.7.2	C	121	5	tests pass	fails in buildPhase	62	1	0	alignment attributes	nanofil: /build/source/libtiff/tif_predict.c:605: alignment attributes is not supported	
+libtiff	4.7.2	C	121	5	tests pass	fails in buildPhase	60	1	0	alignment attributes	nanofil: /build/source/libtiff/tif_predict.c:605: alignment attributes is not supported	
 libtirpc	1.3.7	C	72	0	tests pass	tests pass	131	0	0			
-liburcu	0.15.6	C	94	15	tests pass	fails in buildPhase	91	28	0	constant expressions not folded	nanofil: ../include/urcu/static/wfqueue.h:119: static assertion is not a constant	
+liburcu	0.15.6	C	94	15	tests pass	fails in buildPhase	124	28	0	other syntax or typing gaps	nanofil: cds_hlist_for_each_entry_rcu.c:67: expected a parameter declaration, at {	
 libuv	1.52.1	C	323	0	built	built	94	0	0			
 libvmaf	3.0.0	C	113	1	tests pass	tests pass	129	7	0			
-libvpx	1.16.0	C	519	164	built	fails in buildPhase				other syntax or typing gaps	[CXX] vp8/vp8_ratectrl_rtc.cc.o	
+libvpx	1.16.0	C	519	164	built	built	225	60	0			
 libwebp	1.6.0	C	158	13	built	fails in buildPhase	34	0	0	alignment attributes	nanofil: /build/source/sharpyuv/sharpyuv_sse2.c:85: alignment attributes is not supported	
-libxcrypt	4.5.2	C	76	0	built	built	130	0	0			
-libxkbcommon	1.13.1	C	99	0	built	fails in buildPhase	66	0	0	other syntax or typing gaps	nanofil: ../src/xkbcomp/keycodes.c:306: no member found	
+libxcrypt	4.5.2	C	76	0	built	fails in buildPhase	110	0	0	inline or top-level asm	nanofil: lib/crypt-gensalt-static.c:33: top-level asm is not supported, at (	
+libxkbcommon	1.13.1	C	99	0	built	built	393	0	0			
 libxml2	2.15.4	C	88	0	built	built	82	0	0			
 libyuv	1908	C++	2	81								
 lighttpd	1.4.85	C	130	0	built	fails in buildPhase	270	0	0	inline or top-level asm	nanofil: ./algo_xxhash.h:2987: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
@@ -196,7 +196,7 @@ luajit	2.1.1774638290	evaluation fails	77	0
 lzo	2.10	C	80	0	built	built	289	0	0			
 mailutils	3.21	C	984	32	tests pass	tests pass	1157	6	0			
 mariadb-connector-c_3_3	3.3.5	C	159	1	built	fails in buildPhase	135	0	0	inline or top-level asm	nanofil: /build/source/libmariadb/ma_context.c:201: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
-mbedtls	3.6.6	C	242	0	tests pass	tests fail	483	0	0	inline or top-level asm	AES-128-CBC Encrypt NIST KAT #1 ................................... filc safety error: cannot handle inline asm (inline assembly with pointer argument is not supported):	
+mbedtls	3.6.6	C	242	0	tests pass	fails in buildPhase	19	0	0	other syntax or typing gaps	nanofil: /build/source/library/bignum_core.c:480: mode TI (__int128) is not supported	
 mbt	3.11	C++	0	11								
 mcron	1.2.1	no C sources found	0	0								
 mesa_glu	9.0.3	C++	17	73								
@@ -204,28 +204,28 @@ minizip	1.3.2	C	43	5	built	built	35	0	0
 mpdecimal	4.0.1	C	27	8	built	built	44	3	0			
 mpfr	4.2.2	C	477	0	tests pass	tests pass	540	0	0			
 mpg123	1.33.7	C	124	0	dependency fails	not tried						
-netcdf	4.9.3	C	626	4	tests pass	fails in buildPhase	332	7	0	other builtins	nanofil: dcetab.c:1049: undeclared identifier __builtin_memcpy	
-nettle	3.10.2	C	546	1	tests pass	fails in buildPhase	444	4	0	constant expressions not folded	nanofil: ecc-secp224r1.c:212: initializer is not an address constant	
+netcdf	4.9.3	C	626	4	tests pass	tests fail	691	7	0	other syntax or typing gaps	fail (129): NetCDF: Filter error: undefined filter encountered	
+nettle	3.10.2	C	546	1	tests pass	fails in buildPhase	440	4	0	constant expressions not folded	nanofil: ecc-secp224r1.c:212: initializer is not an address constant	
 nghttp2	1.69.0	C	171	80	built	built	127	15	0			
 nixos-rebuild-ng	26.05	no C sources found	0	0								
 nlohmann_json	3.12.0	C++	1	403								
 nspr	4.40	C	299	0	tests pass	tests fail	98	0	3	unresolved Fil-C symbol at link	../../dist/lib/libnspr4.so: error: undefined reference to 'pizlonated_fegetround'	
-nss	3.112.5	C	672	272	tests pass	fails in buildPhase	37	1	0	inline or top-level asm	nanofil: ../../lib/util/secport.c:870: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
+nss	3.112.5	C	672	272	tests pass	fails in buildPhase	24	0	0	inline or top-level asm	nanofil: ../../lib/util/secport.c:870: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
 ntk	1.3.1001	C++	30	319								
 onetbb	2022.3.0	evaluation fails	2	308								
 oniguruma	6.9.10	C	82	0	built	built	104	0	0			
 openexr	3.4.15	C++	50	352								
 openssh	10.5p1	C	303	12	built	fails in buildPhase	661	0	0	inline or top-level asm	nanofil: sntrup761.c:62: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
-openssl	3.5.7	C	1653	0	built	fails in buildPhase	151	0	0	inline or top-level asm	nanofil: crypto/bn/bn_asm.c:29: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
-openssl-sarcasm	3.6.4	C	1615	0	tests pass	fails in buildPhase	133	0	0	inline or top-level asm	nanofil: crypto/bn/asm/../bn_asm.c:28: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
+openssl	3.5.7	C	1653	0	built	fails in buildPhase	141	0	0	inline or top-level asm	nanofil: crypto/bn/bn_asm.c:29: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
+openssl-sarcasm	3.6.4	C	1615	0	tests pass	fails in buildPhase	132	0	0	inline or top-level asm	nanofil: crypto/bn/asm/../bn_asm.c:28: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
 p11-kit	0.26.2	C	179	0	built	built	289	0	0			
 p7zip	17.06	C++	141	404								
 pam	1.7.2	C	183	0	built	built	239	0	0			
 pango	1.56.3	C	113	2	built	built	163	15	0			
-parted	3.7	C	223	0	tests pass	fails in buildPhase	323	4	0	other syntax or typing gaps	nanofil: aix.c:211: expected }, at :	
+parted	3.7	C	223	0	tests pass	fails in buildPhase	330	4	0	constant expressions not folded	nanofil: gpt.c:1944: static assertion is not a constant	
 pcre2	10.48	C	67	0	built	fails in buildPhase	73	0	0	inline or top-level asm	nanofil: src/../deps/sljit/sljit_src/sljitNativeX86_common.c:462: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
-perl5	5.40.0	C	113	0	built	built	744	0	0			
-physfs	3.2.0	C	28	2	built	fails in buildPhase	37	0	0	inline or top-level asm	nanofil: /build/source/src/physfs_lzmasdk.h:1495: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
+perl5	5.40.0	C	113	0	built	built	745	0	0			
+physfs	3.2.0	C	28	2	built	fails in buildPhase	36	0	0	inline or top-level asm	nanofil: /build/source/src/physfs_lzmasdk.h:1495: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
 pipewire	1.6.6	evaluation fails	524	5								
 pixman	0.46.4	C	104	0	built	built	119	0	0			
 polkit	127	C	47	0	tests pass	tests pass	71	0	0			
@@ -242,15 +242,15 @@ python312	3.12.5	C	366	7	built	built	858	0	0
 python313		evaluation fails	0	0							error: attribute 'libllvm' missing	
 quickjs	2026-06-04	C	13	0	tests pass	fails in buildPhase	12	0	0	inline or top-level asm	nanofil: quickjs.c:60630: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
 ragel	6.10	evaluation fails	5	65								
-rdkafka	2.13.0	C	251	57	built	fails in buildPhase	42	1	0	inline or top-level asm	nanofil: /build/source/src/queue.h:688: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
+rdkafka	2.13.0	C	251	57	built	fails in buildPhase	40	1	0	inline or top-level asm	nanofil: /build/source/src/queue.h:688: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
 recode	3.7.15	C	148	0	tests pass	tests pass	293	0	0			
-redis	8.8.2	C	471	7	tests pass	fails in buildPhase	76	0	0	inline or top-level asm	nanofil: ./xxhash.h:2983: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
+redis	8.8.2	C	471	7	tests pass	fails in buildPhase	69	0	0	other syntax or typing gaps	nanofil: ./xxhash.h:908: attribute noescape is not supported	
 rhash	1.4.6	C	51	0	tests pass	fails in buildPhase	6	0	0	inline or top-level asm	nanofil: calc_sums.c:555: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
 rpcbind	1.2.6	C	12	0	built	built	31	0	0			
 rspamd	4.0.1	evaluation fails	255	186								
-rsync	3.5.0	C	87	1	tests pass	tests pass	378	6	0			
+rsync	3.5.0	C	87	1	tests pass	fails in configurePhase	69	4	0	other syntax or typing gaps	configure.sh: error: Aborting configure run	
 rubberband	4.0.0	C++	5	48								
-ruby_3_3	3.3.10	C	552	4	built	fails in buildPhase	572	5	0	other syntax or typing gaps	nanofil: ./include/ruby/assert.h:132: expected a declaration, at __declspec	
+ruby_3_3	3.3.10	C	552	4	built	fails in buildPhase	572	5	0	other syntax or typing gaps	nanofil: ./include/ruby/internal/anyargs.h:274: attribute weakref is not supported	
 runit	2.3.1	C	101	0	tests pass	tests pass	98	0	0			
 rustc	1.95.0	evaluation fails	19890	22125								
 scrypt	1.3.3	C	65	0	built	built	106	0	0			
@@ -260,27 +260,27 @@ seatd	0.9.3	C	22	0	built	built	62	0	0
 sfml_2	2.6.2	evaluation fails	0	180								
 smpeg	0.4.5	evaluation fails	5	27								
 spandsp	0.0.6	C	181	4	built	built	93	12	0			
-sqlite	3.51.2	C	308	0	built	built	64	0	0			
+sqlite	3.51.2	C	308	0	built	fails in buildPhase	59	0	0	other syntax or typing gaps	nanofil: error(resource_error(stack),stack_overflow{choicepoints:337,depth:676,environments:341,globalused:798209,localused:127,non_terminating:[frame(671,apply:maplist_([423],(:)/2),[]),frame(669,apply:maplist_([425],(:)/2),[])],stack_limit:1048576,trailused:45054})	
 strace	7.2	C	4965	0	fails in buildPhase	not tried						../bundled/linux/include/uapi/linux/videodev2.h:1809:8: error: cannot compile this unaligned pointer-bearing union storage yet
 svt-av1	3.1.2	C	340	150	built	built	148	9	0			
-systemd	256.4	C	1504	1	built	fails in buildPhase	245	15	0	__builtin_types_compatible_p, __builtin_choose_expr	nanofil: __builtin_choose_expr needs a constant condition	
+systemd	256.4	C	1504	1	built	fails in buildPhase	248	15	0	other syntax or typing gaps	nanofil: ../src/core/apparmor-setup.c:27: a cleanup attribute on a declaration of several declarators is not supported	
 ticcutils	0.37	C++	0	15								
 timbl	6.11	C++	0	33								
 timblserver	1.19	C++	0	9								
 timidity	2.15.0	C	208	0	dependency fails	not tried						
 tinycc	0.9.27-unstable-2025-01-06	C	217	0	built	built	13	0	1			
 toml11	4.4.0	C++	0	73								
-tor	0.4.9.12	C	636	0	built	fails in buildPhase	500	0	0	alignment attributes	nanofil: src/core/crypto/relay_crypto_cgo.c:55: member kb of a type nanofil does not support (alignment attributes)	
-torsocks	2.5.0	C	38	0	built	fails in buildPhase	88	0	0	other syntax or typing gaps	nanofil: connect.c:239: conflicting types for 'connect'	
+tor	0.4.9.12	C	636	0	built	fails in buildPhase	510	0	0	alignment attributes	nanofil: src/core/crypto/relay_crypto_cgo.c:55: member kb of a type nanofil does not support (alignment attributes)	
+torsocks	2.5.0	C	38	0	built	built	116	0	0			
 tpm2-abrmd	3.0.0	C	91	0	built	built	94	0	0			
-tpm2-tss	4.2.0	C	609	0	built	built	494	6	0			
-trealla	unstable-2026-09-05	C	103	0	built	fails in buildPhase	41	0	0	nanofil internal failure	nanofil: failed	
+tpm2-tss	4.2.0	C	609	0	built	tests fail	494	6	0	__builtin_types_compatible_p, __builtin_choose_expr	nanofil: __builtin_choose_expr needs a constant condition	
+trealla	unstable-2026-09-05	C	103	0	built	fails in buildPhase	43	0	0	nanofil internal failure	nanofil: failed	
 ttyd	1.7.7	C	5	0	built	built	9	0	0			
 ucto	0.36	C++	0	4								
 uctodata	0.11	no C sources found	0	0								
 unbound	1.26.0	C	175	0	tests pass	tests pass	734	0	0			
 unittest-cpp	2.0.0	C++	0	45								
-util-linux	2.42.3	C	470	0	built	fails in buildPhase	363	7	0	inline or top-level asm	nanofil: /nix/store/l9vcwpxmi9a255r27cgn9gwf8j0d356g-filc-glibc-2.44/include/sys/io.h:47: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
+util-linux	2.42.3	C	470	0	built	fails in buildPhase	361	7	0	inline or top-level asm	nanofil: /nix/store/l9vcwpxmi9a255r27cgn9gwf8j0d356g-filc-glibc-2.44/include/sys/io.h:47: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
 uwimap	2007f	C	303	0	built	built	38	0	0			
 v4l-utils	1.32.0	C++	176	90								
 vala	0.56.19	C	422	0	built	built	488	0	0			
@@ -290,12 +290,12 @@ wavpack	5.9.0	C	51	6	built	built	87	0	0
 wayland	1.25.0	C	47	1	built	built	73	4	0			
 weston	15.0.1	C	245	2	built	built	349	13	0			
 wireplumber	0.5.14	evaluation fails	102	0								
-x264	0-unstable-2025-01-03	C	88	0	built	fails in buildPhase	52	0	0	other syntax or typing gaps	nanofil: common/macroblock.c:1521: no member named i	
+x264	0-unstable-2025-01-03	C	88	0	built	built	35	0	0			
 xapian	1.4.31	C++	7	307								
 xvidcore	1.3.7	C	61	3	built	built	71	0	0			
-xz	5.8.4	C	146	0	built	fails in buildPhase	147	0	0	inline or top-level asm	nanofil: common/common.c:395: top-level asm is not supported, at (	
+xz	5.8.4	C	146	0	built	fails in buildPhase	137	0	0	inline or top-level asm	nanofil: common/common.c:395: top-level asm is not supported, at (	
 z3	4.16.0	C++	3	975								
-zix	0.6.2	C	43	2	tests pass	fails in buildPhase	19	3	0	other syntax or typing gaps	nanofil: ../include/zix/allocator.h:36: expected a parameter declaration, at *	
+zix	0.6.2	C	43	2	tests pass	fails in buildPhase	15	3	0	other syntax or typing gaps	nanofil: ../include/zix/allocator.h:97: expected ;, at malloc	
 zlib	1.3.2	C	43	5	tests pass	tests pass	47	0	0			
-zlib-ng	2.2.4	C	90	43	built	fails in buildPhase	62	1	0	inline or top-level asm	nanofil: /build/zlib-ng-2.2.4/arch/x86/x86_features.c:64: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
-zstd	1.5.7	C	147	14	built	fails in buildPhase	24	9	0	inline or top-level asm	nanofil: /build/source/lib/common/xxhash.h:2908: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
+zlib-ng	2.2.4	C	90	43	built	fails in buildPhase	60	1	0	inline or top-level asm	nanofil: /build/zlib-ng-2.2.4/arch/x86/x86_features.c:64: inline asm is not supported, except the empty barrier asm volatile("" ::: "memory")	
+zstd	1.5.7	C	147	14	built	fails in buildPhase	22	9	0	other syntax or typing gaps	nanofil: /build/source/lib/common/xxhash.h:904: attribute noescape is not supported	
