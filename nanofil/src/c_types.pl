@@ -495,10 +495,67 @@ specs_type(Specs, Type, Env0, Env) :-
     ->  Type = bad('vector types')
     ;   memberchk(qual(atomic), Specs), Type0 \= bad(_), \+ atomic_object_type(Type0)
     ->  Type = bad('_Atomic on a type other than an integer, pointer, float or double')
+    ;   member(attr(Tokens), Specs), mode_attr(Tokens, Mode)
+    ->  mode_type(Type0, Mode, Type)
     ;   member(Spec, Specs), layout_attr(Spec)
     ->  Type = bad('alignment attributes')
     ;   Type = Type0
     ).
+
+% mode_attr(+Tokens, -Mode): the attribute is GCC's mode(Mode), its
+% name without GCC's optional underscores.
+mode_attr(Tokens, Mode) :-
+    is_list(Tokens),
+    member(group(Group), Tokens),
+    append(_, [id(Word), group([id(M0)])|_], Group),
+    memberchk(Word, [mode, '__mode__']), !,
+    (   atom_concat('__', M1, M0), atom_concat(Mode, '__', M1) -> true ; Mode = M0 ).
+
+doc(mode_type(+Type0, +Mode, -Type), det, [
+    Type0: "the type the specifiers name",
+    Mode: "a machine mode, as mode_attr/2 reads it",
+    Type: "the type of that mode, bad(Reason) if nanofil has none",
+    "GCC's mode attribute gives an integer or floating type the width of",
+    "a machine mode, keeping its signedness: QImode is one byte, HImode",
+    "two, SImode four and DImode eight; byte is QI, and word and pointer",
+    "are DI on x86-64; SF is float and DF double. As clang does, nanofil",
+    "picks the first standard type of that width and signedness (long,",
+    "not long long, for DI). gmp's longlong.h declares UQItype, USItype",
+    "and UDItype so. TImode needs __int128, which nanofil refuses. Ignoring",
+    "the attribute would keep int's four bytes.",
+    cites('GCC manual, Common Variable Attributes, mode'),
+    example(mode_type(int, 'DI', long)),
+    example(mode_type(uint, 'QI', uchar)),
+    example(mode_type(int, word, long)),
+    example(mode_type(double, 'SF', float)),
+    example(mode_type(int, 'TI', bad('mode TI (__int128)')))
+]).
+mode_type(bad(Why), _, bad(Why)) :- !.
+mode_type(qualified(Qs, T0), Mode, Type) :- !,
+    mode_type(T0, Mode, T),
+    ( T = bad(_) -> Type = T ; Type = qualified(Qs, T) ).
+mode_type(Type0, Mode, Type) :-
+    (   integer_type(Type0, _, Sign, _), Type0 \== bool, mode_bytes(Mode, Bytes)
+    ->  (   integer_type(Type, Bytes, Sign, _), Type \== bool, Type \== char
+        ->  true
+        ;   Type = bad('mode TI (__int128)')
+        )
+    ;   memberchk(Type0, [float, double]), float_mode(Mode, Type1)
+    ->  Type = Type1
+    ;   format(atom(Why), 'mode ~w on this type', [Mode]), Type = bad(Why)
+    ).
+
+mode_bytes('QI', 1).
+mode_bytes(byte, 1).
+mode_bytes('HI', 2).
+mode_bytes('SI', 4).
+mode_bytes('DI', 8).
+mode_bytes(word, 8).
+mode_bytes(pointer, 8).
+mode_bytes('TI', 16).
+
+float_mode('SF', float).
+float_mode('DF', double).
 
 doc(vector_attr(+Tokens), semidet, [
     Tokens: "the tokens of a GNU attribute",
