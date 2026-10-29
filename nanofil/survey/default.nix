@@ -118,7 +118,9 @@ let
       nf = try (nanofilize p).drvPath;
       src = try (toString (p.src or ""));
       srcDrv = try (p.src.drvPath or "");
-      doCheck = try (p.doCheck or false);
+      # Its checkPhase or installCheckPhase runs (tpm2-tss runs `make
+      # check` as its installCheck).
+      doCheck = try ((p.doCheck or false) || (p.doInstallCheck or false));
       deps = try (depNames p);
     };
 in
