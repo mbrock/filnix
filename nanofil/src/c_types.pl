@@ -4037,14 +4037,20 @@ doc(libm_builtin(?(Name), ?(F)), nondet, [
     "of x converted to double, even with F undeclared. Clang computes",
     "them inline (roundsd); a call of libm's F gives the same exact",
     "result, signed zeros and NaNs included.",
+    "__builtin_sqrt(x) is sqrt(x), correctly rounded either way; for",
+    "x < 0 libm's sets errno to EDOM, as clang's call under the default",
+    "-fmath-errno does (cogl's cogl_sqrti).",
     cites('GCC manual, Other Built-in Functions'),
     cites('C11 7.12.9.1p2'),
     cites('C11 7.12.9.2p2'),
+    cites('C11 7.12.7.5'),
     example(libm_builtin('__builtin_floor', F), F = floor),
+    example(libm_builtin('__builtin_sqrt', F), F = sqrt),
     fails(libm_builtin('__builtin_round', _))
 ]).
 libm_builtin('__builtin_ceil', ceil).
 libm_builtin('__builtin_floor', floor).
+libm_builtin('__builtin_sqrt', sqrt).
 
 doc(bit_builtin(?(Name), ?(Op), ?(Type)), nondet, [
     Name: "a bit-counting builtin",
