@@ -3012,6 +3012,11 @@ elab(call(id(Name), [S, P]), Env, X) :-
     operand(P, Env, XP, PT0), unqualified(PT0, PT),
     lock_free(Name, Size, XP, PT, Env, V), !,
     elab(num(V, none-dec), Env, X).
+elab(call(id('__builtin_classify_type'), [E]), Env, X) :-
+    \+ lookup_ordinary(Env, '__builtin_classify_type', _),
+    expression_type(E, Env, T0), unqualified(T0, T),
+    type_class_number(T, V), !,
+    elab(num(V, none-dec), Env, X).
 elab(call(id('__builtin_choose_expr'), [C, A, B]), Env, X) :-
     \+ lookup_ordinary(Env, '__builtin_choose_expr', _), !,
     (   catch(const_value(C, Env, V, _), not_constant, fail)
@@ -4219,6 +4224,37 @@ target(U, [], U).
 pointed_type(A, B, Qs, T) :- ( A == void ; B == void ), !, qualify(Qs, void, T).
 pointed_type(A, B, Qs, T) :- composite_type(A, B, C), !, qualify(Qs, C, T).
 pointed_type(_, _, _, void).
+
+doc(type_class_number(+T, -N), semidet, [
+    T: "the unqualified type of the operand of __builtin_classify_type",
+    N: "GCC's type class of T after value conversion",
+    "__builtin_classify_type(E) is an integer constant expression of type",
+    "int, E unevaluated: 0 for void, 1 for integer types (char and, in",
+    "C, an enum among them), 4 for bool, 5 for pointers, which arrays",
+    "and functions decay to, 8 for the real floating types, 12 for a",
+    "struct and 13 for a union (GCC's typeclass.h numbering, as clang's",
+    "EvaluateBuiltinClassifyType gives it). Other types (complex,",
+    "vectors) are not classified.",
+    cites('GCC manual, Other Built-in Functions, __builtin_classify_type'),
+    cites('clang, lib/AST/ExprConstant.cpp, EvaluateBuiltinClassifyType'),
+    example(type_class_number(uchar, 1)),
+    example(type_class_number(bool, 4)),
+    example(type_class_number(array(int, 3), 5)),
+    example(type_class_number(func(int, [], fixed), 5)),
+    example(type_class_number(ldouble, 8)),
+    example(type_class_number(union(7), 13)),
+    example(type_class_number(void, 0)),
+    fails(type_class_number(bad(x), _))
+]).
+type_class_number(void, 0).
+type_class_number(bool, 4) :- !.
+type_class_number(T, 1) :- int_type(T), !.
+type_class_number(T, 8) :- float_type(T), !.
+type_class_number(ptr(_), 5).
+type_class_number(array(_, _), 5).
+type_class_number(func(_, _, _), 5).
+type_class_number(struct(_), 12).
+type_class_number(union(_), 13).
 
 doc(types_compatible_value(+TA, +TB, +Env, -V), det, [
     TA: "a type name",
