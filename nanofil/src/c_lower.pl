@@ -1836,8 +1836,10 @@ item(decl(Loc, Specs, Inits), Ctx0) -->
     { ctx_at(Ctx0, Loc, Ctx) },
     enter_origin(Loc, statement(decl), Parent),
     vm_typedefs(Specs, Inits, Ctx),
-    local_decls(Decls, Ctx),
-    cleanup_decls(Loc, Specs, Decls, Ctx),
+    (   { \+ memberchk(storage(typedef), Specs), cleanup_attr(Specs, Fn) }
+    ->  cleanup_decls(Decls, Loc, Fn, Ctx)
+    ;   local_decls(Decls, Ctx)
+    ),
     restore_origin(Parent).
 
 % local_decls(+Decls, +Ctx)//, local_decl(+Decl, +Ctx)//: lower
@@ -3482,16 +3484,19 @@ vm_case(Ctx) -->
    through a block emitted at its label. A function returning a struct
    copies the value before the cleanups run; clang, returning a named
    local in place (NRVO), lets the cleanup see the returned object. */
-cleanup_decls(Loc, Specs, Decls, Ctx) -->
-    (   { \+ memberchk(storage(typedef), Specs),
-          cleanup_attr(Specs, Fn),
-          include(automatic, Decls, [_|_]) }
-    ->  (   { Decls = [d(Name, _, _, _, _)] }
-        ->  cleanup_var(Loc, Name, Fn, Ctx)
-        ;   { sema_error(Loc, 'a cleanup attribute on a declaration of several declarators is not supported', []) }
-        )
+% cleanup_decls(+Decls, +Loc, +Fn, +Ctx)//: a cleanup attribute among a
+% declaration's specifiers applies to each automatic variable it
+% declares, as GCC's attributes in a specifier list apply to every
+% declarator. Each variable's scope, and so its cleanup's, begins after
+% its own declarator, so the cleanups of `T a = .., b = ..;` run b's
+% first (C11 6.2.1p7; GLib's `g_autofree char *a = NULL, *b = NULL;`).
+cleanup_decls([], _, _, _) --> [].
+cleanup_decls([D|Ds], Loc, Fn, Ctx) -->
+    local_decl(D, Ctx),
+    (   { automatic(D), D = d(Name, _, _, _, _) } -> cleanup_var(Loc, Name, Fn, Ctx)
     ;   []
-    ).
+    ),
+    cleanup_decls(Ds, Loc, Fn, Ctx).
 
 cleanup_attr(Specs, Fn) :-
     member(attr([group(Tokens)]), Specs),

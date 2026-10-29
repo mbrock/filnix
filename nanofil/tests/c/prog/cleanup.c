@@ -2,7 +2,10 @@
    out of it (falling off the block, return, break, continue, goto), in
    reverse order of declaration, after a return's value is computed.
    GLib's g_autoptr and g_autofree are built on it (dconf's leak tests
-   leaked a GDBusConnection reference when nanofil ignored it). */
+   leaked a GDBusConnection reference when nanofil ignored it). The
+   attribute among a declaration's specifiers covers each declarator,
+   whose cleanup is in force from the end of its own declarator
+   (several(): libinput's g_autofree char *a = NULL, *b = NULL). */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -91,6 +94,13 @@ static int for_init(void) {
     return n;
 }
 
+static int several(int k) {
+    __attribute__((cleanup(drop))) int a = 1, b = (note("init-b "), 2),
+        c = ({ if (k) return 7; 3; });
+    note("body ");
+    return a + b + c;
+}
+
 int main(void) {
     block_exit(); printf("%s\n", trace); trace[0] = 0;
     printf("%d ", early(1)); printf("%d ", early(0)); printf("%s\n", trace); trace[0] = 0;
@@ -100,6 +110,7 @@ int main(void) {
     printf("%s %d ", k, refs); free(k); refs--;
     printf("%d %d\n", lose(), refs);
     printf("%d %s\n", stmt_expr(), trace); trace[0] = 0;
-    printf("%d %s\n", for_init(), trace);
+    printf("%d %s\n", for_init(), trace); trace[0] = 0;
+    printf("%d ", several(0)); printf("%d %s\n", several(1), trace);
     return 0;
 }
