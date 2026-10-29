@@ -2414,14 +2414,16 @@ lower_node(val(_, alignof(TN)), Ctx, v(const(Align), ulong)) --> !,
       ->  Align = A
       ;   Align = Align0
       ) }.
-lower_node(val(_, offsetof(TN, Path)), Ctx, v(const(V), ulong)) --> !,
+% offsetof with a variable array index (GCC and clang accept
+% offsetof(struct seccomp_data, args[x])) is computed at run time.
+lower_node(val(_, offsetof(TN, Path)), Ctx, v(V, ulong)) --> !,
     env(Env),
-    { ctx_loc(Ctx, Loc),
-      (   catch(const_value(offsetof(TN, Path), Env, V, _),
-                not_constant, fail)
-      ->  true
-      ;   sema_error(Loc, 'bad offsetof', [])
-      ) }.
+    (   { catch(const_value(offsetof(TN, Path), Env, V0, _), not_constant, fail) }
+    ->  { V = const(V0) }
+    ;   { ctx_loc(Ctx, Loc), type_name_type(TN, T, Env, Env1),
+          ( memberchk(index(_), Path) -> true ; sema_error(Loc, 'bad offsetof', []) ) },
+        runtime_offset(Path, T, Env1, Ctx, const(0), V)
+    ).
 lower_node(val(_, stmtexpr(at(_, block(Items)))), Ctx, R) --> % GNU ({ ... })
     save_scope(Scope),
     statement_expression_items(Items, Ctx, R),
@@ -4236,3 +4238,25 @@ member_off(SUType, Field, Env, Loc, Type, Off) :-
     ->  true
     ;   sema_error(Loc, 'no member named ~w', [Field])
     ).
+
+% runtime_offset(+Path, +Type, +Env, +Ctx, +V0, -V)//: V is V0 plus the
+% offset of offsetof's member Path in Type, its indexes evaluated.
+runtime_offset([], _, _, _, V, V) --> [].
+runtime_offset([field(F)|Path], T, Env, Ctx, V0, V) -->
+    { ctx_loc(Ctx, Loc),
+      (   member_type_offset(T, F, Env, FT, Off) -> true
+      ;   sema_error(Loc, 'bad offsetof', [])
+      ) },
+    let(l, add, [V0, const(Off)], V1),
+    runtime_offset(Path, FT, Env, Ctx, V1, V).
+runtime_offset([index(X)|Path], T, Env, Ctx, V0, V) -->
+    { ctx_loc(Ctx, Loc),
+      (   T = array(ET, _), catch(type_size_align(ET, Env, Size, _), bad(_), fail) -> true
+      ;   sema_error(Loc, 'bad offsetof', [])
+      ) },
+    rval(X, Ctx, XV),
+    assign_convert(X, XV, long, Loc, v(I, _)),
+    let(l, mul, [I, const(Size)], D),
+    let(l, add, [V0, D], V1),
+    runtime_offset(Path, ET, Env, Ctx, V1, V).
+
