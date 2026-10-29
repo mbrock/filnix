@@ -74,7 +74,7 @@
                     generic_selection/5, reflect_type/4, reflect_params/4,
                     conditional_type/3, unqualified/2,
                     overflow_builtin/3, bit_builtin/3, rotate_builtin/3, builtin_type/2, binary_operands/6,
-                    unary_operand/3, assigned/4, transparent_argument/4,
+                    unary_operand/3, assigned/4, transparent_argument/4, expression_tags/3,
                     castable/2, expression_category/3, modifiable_lvalue/2,
                     integer_type/4, elaborate/3, tree_type/2, value/2,
                     lowered/2, folded/3, member_layout/6,
@@ -713,6 +713,10 @@ su_type(none, Kind, some(Name), _, Type, Env0, Env) :-
 % su_definition(+Members, +Kind, +Tag, +Attrs, -Type, +Env0, -Env): Type
 % is the struct or union Members define, laid out in Env.
 su_definition(Members, Kind, Tag, Attrs, Type, Env0, Env) :-
+    Env0 = e(_, _, Defs0, _),
+    get_assoc(expr_tag(Kind, Tag, Members, Attrs), Defs0, Id), !,
+    Type =.. [Kind, Id], Env = Env0.
+su_definition(Members, Kind, Tag, Attrs, Type, Env0, Env) :-
     (   forward_declared(Tag, Kind, Env0, Id)
     ->  Env1 = Env0       % completes a forward declaration in this scope
     ;   new_tag(Kind, Tag, Id, Env0, Env1)
@@ -744,7 +748,53 @@ su_definition(Members, Kind, Tag, Attrs, Type, Env0, Env) :-
     ->  put_assoc(transparent(Id), Defs2, t, Defs3)
     ;   Defs3 = Defs2
     ),
-    Env = e(Ords, Tags2, Defs3, Next).
+    (   nb_current(nanofil_expr_tags, true)
+    ->  put_assoc(expr_tag(Kind, Tag, Members, Attrs), Defs3, Id, Defs4)
+    ;   Defs4 = Defs3
+    ),
+    Env = e(Ords, Tags2, Defs4, Next).
+
+doc(expression_tags(+E, +Env0, -Env), det, [
+    E: "a full expression",
+    Env0: "the scope it is in",
+    Env: "Env0 with the structs and unions E's type names define",
+    "A type name in an expression may define a struct or union, as",
+    "krb5's load_16_le reads ((const struct { uint16_t i; }",
+    "__attribute__((packed)) *)p)->i; the tag is in scope from there to",
+    "the end of the block (C11 6.2.1p4, 6.7.2.3p6). Elaboration is pure,",
+    "so the definitions are made first, in Env, and each is recorded",
+    "against its syntax: elaborating the same type name again finds the",
+    "same type.",
+    cites('C11 6.2.1p4'),
+    cites('C11 6.7.2.3p6')
+]).
+expression_tags(E, Env0, Env) :-
+    defining_type_names(E, TNs0, []),
+    (   TNs0 == [] -> Env = Env0
+    ;   b_setval(nanofil_expr_tags, true),
+        foldl(define_type_name, TNs0, Env0, Env),
+        b_setval(nanofil_expr_tags, false)
+    ).
+
+define_type_name(TN, Env0, Env) :-
+    catch(type_name_type(TN, _, Env0, Env1), _, fail), !, Env = Env1.
+define_type_name(_, Env, Env).
+
+% defining_type_names(+E, -TNs, ?Rest): TNs-Rest are the type names in
+% E, in order, whose specifiers define a struct or union; statement
+% expressions declare in their own blocks.
+defining_type_names(E, TNs, TNs) :- \+ compound(E), !.
+defining_type_names(stmtexpr(_), TNs, TNs) :- !.
+defining_type_names(type(Specs, D), [type(Specs, D)|TNs], TNs) :-
+    is_list(Specs), member(su(_, _, Ms, _), Specs), Ms \== none, !.
+defining_type_names(E, TNs, Rest) :-
+    E =.. [_|Args],
+    defining_args(Args, TNs, Rest).
+
+defining_args([], TNs, TNs).
+defining_args([A|As], TNs, Rest) :-
+    defining_type_names(A, TNs, TNs1),
+    defining_args(As, TNs1, Rest).
 
 doc(definition_alignment(+Attrs, +Env, -Align), semidet, [
     Attrs: "the attributes of a struct or union definition",

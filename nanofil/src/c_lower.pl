@@ -1827,13 +1827,20 @@ dispatch_cases([Wrapped-Label|Pairs], Value, Class, LDefault) -->
 % judged(+Expr, +Ctx)//: full expression Expr is typed, or c_types says
 % why not; where it cannot say, lowering reports the fault.
 judged(Expr, Ctx) -->
+    expression_scope(Expr),
     env(Env),
     { ctx_loc(Ctx, Loc), ( elaborate(Expr, Env, Loc, _) -> true ; true ) }.
+
+% expression_scope(+Expr)//: the scope gets the structs and unions full
+% expression Expr's type names define (c_types expression_tags/3).
+expression_scope(Expr) -->
+    env(Env0), { expression_tags(Expr, Env0, Env) }, set_env(Env).
 
 % judged_rval(+Expr, +Ctx, -R)//: judged//2, then rval//3, from one
 % elaboration of Expr: elaborating each full expression twice was a
 % seventh of lowering.
 judged_rval(Expr, Ctx, R) -->
+    expression_scope(Expr),
     env(Env),
     (   { ctx_loc(Ctx, Loc), elaborate(Expr, Env, Loc, X) }
     ->  { value(X, XV) }, lower(XV, Ctx, R)
