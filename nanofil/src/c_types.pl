@@ -74,7 +74,7 @@
                     generic_selection/5, reflect_type/4, reflect_params/4,
                     conditional_type/3, unqualified/2,
                     overflow_builtin/3, bit_builtin/3, rotate_builtin/3, builtin_type/2, binary_operands/6,
-                    unary_operand/3, assigned/4,
+                    unary_operand/3, assigned/4, transparent_argument/4,
                     castable/2, expression_category/3, modifiable_lvalue/2,
                     integer_type/4, elaborate/3, tree_type/2, value/2,
                     lowered/2, folded/3, member_layout/6,
@@ -457,8 +457,7 @@ reflect_param_types(params(Params, _), Ts, Env, RTs) :-
 reflect_param_type(Env, param(Specs, dcl(_, Syntax, _)), T, RT) :-
     parameter_syntax(Syntax, Adjusted),
     reflect_type(type(Specs, Adjusted), T, Env, R0),
-    value_type(R0, R1),
-    ( transparent_first(R1, Env, _, RFirst) -> RT = RFirst ; RT = R1 ).
+    value_type(R0, RT).
 
 parameter_syntax(array(S, _), ptr(S, [])) :- !.
 parameter_syntax(func(S, P), ptr(func(S, P), [])) :- !.
@@ -741,7 +740,11 @@ su_definition(Members, Kind, Tag, Attrs, Type, Env0, Env) :-
     Env2 = e(Ords, Tags2, Defs0, Next),
     put_assoc(Id, Defs0, Def, Defs1),
     put_assoc(qmembers(Id), Defs1, Reflected, Defs2),
-    Env = e(Ords, Tags2, Defs2, Next).
+    (   Kind == union, member(Attr, Attrs), transparent_attr(Attr)
+    ->  put_assoc(transparent(Id), Defs2, t, Defs3)
+    ;   Defs3 = Defs2
+    ),
+    Env = e(Ords, Tags2, Defs3, Next).
 
 doc(definition_alignment(+Attrs, +Env, -Align), semidet, [
     Attrs: "the attributes of a struct or union definition",
@@ -1232,12 +1235,11 @@ param_types(params(Params, Variadic), Types, Variadic, Env0, Env) :-
     foldl(param_type, Params, Types, Env0, Env1),
     env_restore(Scope, Env1, Env).
 
-param_type(param(Specs, dcl(Name, SyntaxType, _)), Type, Env0, Env) :-
+param_type(param(Specs, dcl(Name, SyntaxType, _)), Type1, Env0, Env) :-
     specs_type(Specs, Base, Env0, Env1),
     apply_declarator(SyntaxType, Base, Type0, Env1, Env2),
     type_adjusted(Type0, Type1),
-    ( transparent_first(Type1, Env2, First, _) -> Type = First ; Type = Type1 ),
-    (   Name = some(N) -> bind_ordinary(N, var(none, Type), Env2, Env)
+    (   Name = some(N) -> bind_ordinary(N, var(none, Type1), Env2, Env)
     ;   Env = Env2
     ).
 
@@ -1305,34 +1307,87 @@ knr_param(Loc, Declared, Prototyped, Env, N, Param, Locals) :-
 promoted_specs(int, [tspec(int)]).
 promoted_specs(double, [tspec(double)]).
 
-doc(transparent_first(+Union, +Env, -First, -Reflected), semidet, [
-    Union: "a parameter's type, a union marked transparent_union",
+doc(transparent_union(+Type, +Env, -Members), semidet, [
+    Type: "a parameter's unqualified type",
     Env: "the scope",
-    First: "the type of its first member, which the parameter has instead",
-    Reflected: "First with its qualifiers, as reflection keeps them",
-    "GNU C passes a transparent union argument as its first member, and",
-    "accepts an argument of any member's type. nanofil supports the",
-    "unions glibc's socket functions take with _GNU_SOURCE, whose members",
-    "are all pointers: the parameter is a pointer, and any member's",
-    "pointer converts to it. A union with a non-pointer member stays a",
-    "union, so an argument of a member's type is refused.",
+    Members: "the types of its members, in order",
+    "Type is a union with GNU's transparent_union attribute, on its",
+    "definition or on a typedef of it, that clang keeps transparent: its",
+    "first member is not floating, and every member has the first's size",
+    "and alignment. clang otherwise warns and ignores the attribute, and",
+    "so does nanofil. The parameter keeps the union type, which clang and",
+    "filcc pass as its first member: a union of one eightbyte has the",
+    "Fil-C signature of that member, pointer (p) or integer.",
+    cites('GCC manual, Common Type Attributes, transparent_union'),
+    cites('Clang, SemaDecl.cpp checkTransparentUnion: size, alignment and floating first field')
+]).
+transparent_union(union(Id), Env, Ms) :-
+    Env = e(_, _, Defs, _),
+    get_assoc(transparent(Id), Defs, t),
+    get_assoc(Id, Defs, def(union, Fields, _, _)),
+    findall(T, member(m(_, T, _), Fields), Ms),
+    Ms = [First|_], \+ float_type(First),
+    catch(type_size_align(First, Env, Size, Align), bad(_), fail),
+    forall(member(M, Ms),
+           catch(type_size_align(M, Env, Size, Align), bad(_), fail)).
+
+doc(transparent_member(+Param, +T, +Null, +Env, -Member), semidet, [
+    Param: "a parameter's unqualified type",
+    T: "the unqualified value type of an argument for it, not Param",
+    Null: "null if the argument is a null pointer constant, else value",
+    Env: "the scope",
+    Member: "the type of the member the argument initializes",
+    "An argument for a transparent union parameter initializes the first",
+    "member, in order, that takes it: a pointer member takes a void * or",
+    "a null pointer constant, and any member a value of a compatible",
+    "type, an arithmetic value for an arithmetic member, or a pointer to",
+    "a compatible type or from or to void. The argument is converted to",
+    "that member's type, never reinterpreted as the first member.",
+    cites('GCC manual, Common Type Attributes, transparent_union'),
+    cites('Clang, SemaExpr.cpp CheckTransparentUnionArgumentConstraints')
+]).
+transparent_member(Param, T, N, Env, M) :-
+    transparent_union(Param, Env, Ms),
+    member(M, Ms),
+    member_takes(M, T, N, Env), !.
+
+member_takes(ptr(_), ptr(void), _, _) :- !.
+member_takes(ptr(_), _, null, _) :- !.
+member_takes(M, T, _, _) :- M == T, !.
+member_takes(M, T, _, _) :- arithmetic_type(M), arithmetic_type(T), !.
+member_takes(ptr(A), ptr(B), _, Env) :-
+    ( A == void ; compatible_type(A, B, Env) ), !.
+
+% parameter_accepts(+P, +T, +Null, +Env): an argument of unqualified
+% value type T (and nullness Null) may be passed for a parameter of
+% unqualified type P: assigned to it, or to a transparent union's member.
+parameter_accepts(P, T, N, Env) :- assignable(T, N, P, Env), !.
+parameter_accepts(P, T, N, Env) :- T \== P, transparent_member(P, T, N, Env, _).
+
+doc(transparent_argument(+Param, +XV, +Env, -Member), semidet, [
+    Param: "a parameter's type",
+    XV: "an argument's value tree",
+    Env: "the scope",
+    Member: "the member type XV initializes, when Param is a transparent union and XV is not one",
+    "As transparent_member/5, for the lowering of a call.",
     cites('GCC manual, Common Type Attributes, transparent_union')
 ]).
-transparent_first(union(Id), e(_, _, Defs, _), First, Reflected) :-
-    get_assoc(transparent(Id), Defs, t),
-    get_assoc(Id, Defs, def(union, [m(_, First, 0)|Ms], _, _)),
-    First = ptr(_),
-    \+ ( member(m(_, T, _), Ms), T \= ptr(_) ),
-    get_assoc(qmembers(Id), Defs, [q(_, Reflected0)|_]),
-    value_type(Reflected0, Reflected).
+transparent_argument(Param0, XV, Env, M) :-
+    unqualified(Param0, Param), lowered(XV, T), T \== Param,
+    nullness(XV, Env, N),
+    transparent_member(Param, T, N, Env, M).
 
 % transparent_typedef(+Specs, +Type, +Env0, -Env): a typedef of a union
 % with the transparent_union attribute marks the union so.
 transparent_typedef(Specs, union(Id), e(O, T, Defs0, N), e(O, T, Defs, N)) :-
-    member(attr(Tokens), Specs), is_list(Tokens), attr_word(Tokens, Word),
-    memberchk(Word, [transparent_union, '__transparent_union__']), !,
+    member(attr(Tokens), Specs), transparent_attr(Tokens), !,
     put_assoc(transparent(Id), Defs0, t, Defs).
 transparent_typedef(_, _, Env, Env).
+
+% transparent_attr(+Tokens): the attribute tokens name transparent_union.
+transparent_attr(Tokens) :-
+    is_list(Tokens), attr_word(Tokens, Word),
+    memberchk(Word, [transparent_union, '__transparent_union__']), !.
 
 % type_adjusted(+Type0, -Type): a parameter declared with Type0 has
 % Type. Every other type is its own adjustment: a default case over the
@@ -2287,6 +2342,10 @@ doc(compatible_type(+T, +U), semidet, [
 ]).
 compatible_type(T, U) :- composite_type(T, U, _).
 
+% compatible_type(+T, +U, +Env): as compatible_type/2, where a transparent
+% union parameter is also compatible with its members (composite_param/4).
+compatible_type(T, U, Env) :- composite_type(T, U, _, Env).
+
 doc(composite_type(+T, +U, -C), semidet, [
     T: "a type",
     U: "a type compatible with T",
@@ -2322,20 +2381,25 @@ doc(composite_type(+T, +U, -C), semidet, [
     fails(composite_type(array(int, 2), array(int, 3), _)),
     fails(composite_type(func(int, [], fixed), func(int, [], variadic), _))
 ]).
-composite_type(T, U, T) :- T == U, !.
-composite_type(T, U, C) :- enum_marked(T, K, T1), !,
+composite_type(T, U, C) :- composite_type(T, U, C, none).
+
+% composite_type(+T, +U, -C, +Env): as composite_type/3. With an Env,
+% not none, a transparent union parameter also agrees with each of its
+% members' types (composite_param/4).
+composite_type(T, U, T, _) :- T == U, !.
+composite_type(T, U, C, Env) :- enum_marked(T, K, T1), !,
     ( enum_marked(U, L, U1) -> K == L ; U1 = U ),
-    composite_type(T1, U1, C).
-composite_type(T, U, C) :- enum_marked(U, _, U1), !, composite_type(T, U1, C).
-composite_type(qualified(Qs, T), qualified(Qs, U), qualified(Qs, C)) :-
-    composite_type(T, U, C).
-composite_type(ptr(T), ptr(U), ptr(C)) :- composite_type(T, U, C).
-composite_type(array(T, N), array(U, M), array(C, K)) :-
+    composite_type(T1, U1, C, Env).
+composite_type(T, U, C, Env) :- enum_marked(U, _, U1), !, composite_type(T, U1, C, Env).
+composite_type(qualified(Qs, T), qualified(Qs, U), qualified(Qs, C), Env) :-
+    composite_type(T, U, C, Env).
+composite_type(ptr(T), ptr(U), ptr(C), Env) :- composite_type(T, U, C, Env).
+composite_type(array(T, N), array(U, M), array(C, K), Env) :-
     composite_size(N, M, K),
-    composite_type(T, U, C).
-composite_type(func(R, Ps, V), func(S, Qs, V), func(C, Cs, V)) :-
-    composite_type(R, S, C),
-    composite_params(Ps, Qs, Cs).
+    composite_type(T, U, C, Env).
+composite_type(func(R, Ps, V), func(S, Qs, V), func(C, Cs, V), Env) :-
+    composite_type(R, S, C, Env),
+    composite_params(Ps, Qs, Cs, Env).
 
 % enum_marked(+T, -K, -T1): reflected type T is enum K (enum_key/3),
 % otherwise T1.
@@ -2352,14 +2416,23 @@ composite_size(N, N, N).
 
 % composite_params(+Ps, +Qs, -Cs): parameter lists Ps and Qs, each
 % unspecified without a prototype, agree on Cs.
-composite_params(unspecified, Qs, Qs) :- !.
-composite_params(Ps, unspecified, Ps) :- !.
-composite_params(Ps, Qs, Cs) :- maplist(composite_param, Ps, Qs, Cs).
+composite_params(unspecified, Qs, Qs, _) :- !.
+composite_params(Ps, unspecified, Ps, _) :- !.
+composite_params(Ps, Qs, Cs, Env) :- maplist(composite_param(Env), Ps, Qs, Cs).
 
-composite_param(P, Q, C) :-
+% A transparent union parameter agrees with a member's type, and the
+% composite is that member's type, as clang's mergeTransparentUnionType.
+composite_param(Env, P, Q, C) :-
     ( P = qualified(_, P1) -> true ; P1 = P ),
     ( Q = qualified(_, Q1) -> true ; Q1 = Q ),
-    composite_type(P1, Q1, C).
+    (   composite_type(P1, Q1, C0, Env) -> C = C0
+    ;   Env \== none,
+        (   transparent_union(P1, Env, Ms) -> Other = Q1
+        ;   transparent_union(Q1, Env, Ms) -> Other = P1
+        ),
+        member(M, Ms), composite_type(M, Other, C0, Env)
+    ->  C = C0
+    ).
 
 doc(unqualified(+T0, -T), det, [
     T0: "a reflected type",
@@ -2591,7 +2664,7 @@ lowered(XV, T) :- tree_type(XV, T0), unqualified(T0, T).
 % assigns(+Op, +TA, +B, +TB, +Env): assignment Op stores B, a value of
 % type TB, into an object of unqualified type TA: B as it is (6.5.16.1),
 % or the result of the operator applied to the two (6.5.16.2).
-assigns(=, TA, XB, TB, Env) :- !, nullness(XB, Env, N), assignable(TB, N, TA).
+assigns(=, TA, XB, TB, Env) :- !, nullness(XB, Env, N), assignable(TB, N, TA, Env).
 assigns(Op, TA, _, TB, _) :-
     compound_assignment(Op, BinOp), scalar_type(TA),
     binary_operands(BinOp, TA, TB, _, _, T), assignable(T, value, TA).
@@ -2609,7 +2682,7 @@ passes(unspecified, _, _) :- !.
 passes([], _, _).
 passes([P|Ps], [X|Xs], Env) :-
     lowered(X, T), unqualified(P, TP), nullness(X, Env, N),
-    assignable(T, N, TP),
+    parameter_accepts(TP, T, N, Env),
     passes(Ps, Xs, Env).
 
 doc(identifier_type(+Binding, +Name, +Env, -T), det, [
@@ -3521,12 +3594,16 @@ doc(assignable(+From, +Null, +To), semidet, [
     fails(assignable(ptr(func(int, [], fixed)), value, ptr(func(void, [], fixed)))),
     fails(assignable(struct(1), value, struct(2)))
 ]).
-assignable(From, _, To) :- arithmetic_type(From), arithmetic_type(To), !.
-assignable(T, _, U) :- T == U, !.
-assignable(ptr(_), _, bool) :- !.
-assignable(_, null, ptr(_)) :- !.
-assignable(ptr(A), _, ptr(B)) :-
-    ( A = func(_, _, _), B = func(_, _, _) -> compatible_type(A, B) ; true ).
+assignable(From, Null, To) :- assignable(From, Null, To, none).
+
+% assignable(+From, +Null, +To, +Env): as assignable/3; function pointers
+% are compared with compatible_type/3 in Env.
+assignable(From, _, To, _) :- arithmetic_type(From), arithmetic_type(To), !.
+assignable(T, _, U, _) :- T == U, !.
+assignable(ptr(_), _, bool, _) :- !.
+assignable(_, null, ptr(_), _) :- !.
+assignable(ptr(A), _, ptr(B), Env) :-
+    ( A = func(_, _, _), B = func(_, _, _) -> compatible_type(A, B, Env) ; true ).
 
 doc(conditional_type(+Arms, +Env, -T), semidet, [
     Arms: "A-B, the second and third operands of ?:",
@@ -3573,7 +3650,7 @@ doc(assigned(+E, +Env, +To, +Loc), det, [
 assigned(E, Env, To, Loc) :-
     elaborate(E, Env, X), value(X, XV), lowered(XV, T),
     nullness(XV, Env, N),
-    (   assignable(T, N, To) -> true
+    (   assignable(T, N, To, Env) -> true
     ;   sema_error(Loc, 'cannot assign ~w to ~w', [T, To])
     ).
 
@@ -3982,7 +4059,7 @@ arguments_fault(Ps, [A|Args], Env, F, As) :-
         ->  ( arithmetic_type(T) -> true ; T = ptr(_) ),
             arguments_fault(Ps1, Args, Env, F, As)
         ;   unqualified(P, TP), nullness(XA, Env, N),
-            (   \+ assignable(T, N, TP)
+            (   \+ parameter_accepts(TP, T, N, Env)
             ->  F = 'cannot assign ~w to ~w', As = [T, TP]
             ;   TP \= struct(_), TP \= union(_),
                 arguments_fault(Ps1, Args, Env, F, As)

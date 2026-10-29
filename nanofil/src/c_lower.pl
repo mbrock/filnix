@@ -3509,9 +3509,16 @@ call_args([], _, _, []) --> [].
 call_args([XA|XAs], [ParamType|ParamTypes], Ctx, IRArgs) -->
     { abi_memory(ParamType) }, !,
     lower(XA, Ctx, Value0),
-    converted(Value0, ParamType, v(V, _)),
-    abi_source(ParamType, V, Src),
     env(Env),
+    % An argument for a transparent union initializes the member of its
+    % own type in a temporary union, which is passed.
+    (   { transparent_argument(ParamType, XA, Env, Member) }
+    ->  local_slot(ParamType, V),
+        converted(Value0, Member, v(MV, _)),
+        store_typed(Member, MV, V)
+    ;   converted(Value0, ParamType, v(V, _))
+    ),
+    abi_source(ParamType, V, Src),
     { ctx_loc(Ctx, Loc), arg_words(ParamType, Env, Loc, Ebs) },
     load_words(Ebs, Src, Words),
     { findall(arg(Class, W),
