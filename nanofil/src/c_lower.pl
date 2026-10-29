@@ -1378,6 +1378,32 @@ stmt_(block(Items), Ctx) -->
     scope_cleanups(Outer),
     restore_scope(Scope).
 stmt_(null, _) --> [].
+/* An asm whose template is blank, as filcc's handleInlineAsm counts it,
+   emits no instruction. filcc passes it through when no operand is a
+   pointer, so its operands are values the asm reads or writes in
+   registers: "+r" or "+g" reads the lvalue and writes the same value
+   back, "=r" writes an unspecified value, which leaving the object
+   unchanged is, and "r", "g", "i" or "n" inputs are evaluated. These
+   are libgcrypt's and xxhash's optimization barriers. A "memory" or
+   "cc" clobber needs nothing: no pass of nanofil keeps a value of
+   escaped memory across an instruction (promote takes only locals
+   whose address does not escape, copy and the backend's caches only
+   temporaries), so every access stays in program order as across a
+   call. A pointer operand, another constraint or clobber, and asm goto
+   are refused. */
+stmt_(asm_empty(Outs, Ins, Clobbers, Goto), Ctx) --> !,
+    { ctx_loc(Ctx, Loc),
+      (   Goto == goto
+      ->  sema_error(Loc, 'asm goto is not supported', [])
+      ;   true
+      ),
+      forall(member(C, Clobbers),
+             (   memberchk(C, [memory, cc]) -> true
+             ;   sema_error(Loc, 'an asm clobber other than "memory" or "cc" is not supported (~w)', [C])
+             )) },
+    asm_outputs(Outs, Ctx),
+    asm_inputs(Ins, Ctx).
+
 % An asm with a memory operand passes a pointer to code that nothing
 % checks. clang's Fil-C compiles it to a run-time error, which a program
 % reaches only if it runs the asm (gnulib's x87 control-word accesses in
@@ -1541,6 +1567,47 @@ stmt_(label(Name, Body), Ctx) -->
     stmt(Body, Ctx).
 stmt_(decl(Loc, Specs, Inits), Ctx) -->
     item(decl(Loc, Specs, Inits), Ctx).
+
+% asm_outputs(+Ops, +Ctx)//, asm_inputs(+Ops, +Ctx)//: a blank asm's
+% operands (stmt_//2's asm_empty).
+asm_outputs([], _) --> [].
+asm_outputs([op(C, E)|Os], Ctx) -->
+    { ctx_loc(Ctx, Loc),
+      (   memberchk(C, ['+r', '+g', '=r']) -> true
+      ;   sema_error(Loc, 'the asm output constraint "~w" is not supported', [C])
+      ) },
+    env(Env),
+    { elaborate(E, Env, Loc, X) },
+    place(X, Ctx, P),
+    { (   P = lv(Addr, T0), unqualified(T0, T), asm_value_type(T) -> true
+      ;   sema_error(Loc, 'an asm operand must have integer or floating type', [])
+      ) },
+    (   { C == '=r' } -> []
+    ;   load_typed(T, Addr, Ctx, V), store_typed(T, V, Addr)
+    ),
+    asm_outputs(Os, Ctx).
+
+asm_inputs([], _) --> [].
+asm_inputs([op(C, E)|Os], Ctx) -->
+    { ctx_loc(Ctx, Loc),
+      (   memberchk(C, [r, g, i, n]) -> true
+      ;   sema_error(Loc, 'the asm input constraint "~w" is not supported', [C])
+      ) },
+    env(Env),
+    { (   memberchk(C, [i, n])
+      ->  (   catch(const_value(E, Env, _, _), not_constant, fail) -> true
+          ;   sema_error(Loc, 'the asm "~w" operand is not an integer constant', [C])
+          )
+      ;   true
+      ) },
+    judged_rval(E, Ctx, v(_, T0)),
+    { unqualified(T0, T),
+      (   asm_value_type(T) -> true
+      ;   sema_error(Loc, 'an asm operand must have integer or floating type', [])
+      ) },
+    asm_inputs(Os, Ctx).
+
+asm_value_type(T) :- arithmetic_type(T), T \== ldouble.
 
 % case_values(+Expr, +Env, +Loc, -Values): the values a case label
 % matches: its constant, or each of a GNU range Lo ... Hi, none when Lo

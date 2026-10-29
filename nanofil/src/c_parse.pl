@@ -978,23 +978,23 @@ statement_body(Env, S) -->
     ;   parse_error('expected a label after goto')
     ),
     expect(';').
-% GNU asm: only the empty compiler barrier, asm volatile("" ::: "memory")
-% with no operands, which dash's INTOFF uses. It emits no instruction,
-% and nanofil moves no memory access across a statement anyway. Any
-% other asm would run code nanofil cannot check: it parses as
+% GNU asm. One whose template is blank parses as asm_empty(Outs, Ins,
+% Clobbers, Goto), which emits no instruction (c_lower checks its
+% operands): dash's INTOFF barrier, libgcrypt's and xxhash's operand
+% guards. Any other asm would run code nanofil cannot check: it parses as
 % unsupported_asm(Kind), which c_lower refuses, so only a function that
 % is lowered is refused, not an unused static inline one from a header
 % (immintrin.h's hresetintrin.h), which clang never emits either. Kind
 % is memory(Template) if an operand has a memory constraint, which
 % clang's Fil-C compiles to a run-time error (gnulib's fpucw.h), else
 % other.
-statement_body(_, S) -->
+statement_body(Env, S) -->
     kw(asm), !,
-    asm_qualifiers,
-    (   punct('('), string_bytes([]),
-        asm_operands, asm_operands, asm_clobbers,
+    asm_qualifiers(Goto),
+    (   punct('('), string_bytes(Template), { blank_asm(Template) },
+        asm_sections(Env, Outs, Ins, Clobbers),
         punct(')')
-    ->  { S = null }
+    ->  { S = asm_empty(Outs, Ins, Clobbers, Goto) }
     ;   punct('('), balanced(Toks)
     ->  { asm_kind(Toks, Kind), S = unsupported_asm(Kind) }
     ;   parse_error('expected asm operands in parentheses')
@@ -1023,14 +1023,56 @@ asm_kind(Toks, Kind) :-
     ).
 asm_string(str(Bs), Bs).
 
-asm_qualifiers --> ( kw(volatile) -> asm_qualifiers ; kw(inline) -> asm_qualifiers ; [] ).
+% asm_qualifiers(-Goto)//: volatile, inline and goto, in any order;
+% Goto is goto if goto is among them, else none.
+asm_qualifiers(Goto) -->
+    (   kw(volatile) -> asm_qualifiers(Goto)
+    ;   kw(inline) -> asm_qualifiers(Goto)
+    ;   kw(goto) -> asm_qualifiers(_), { Goto = goto }
+    ;   { Goto = none }
+    ).
 
-% An operand section of an empty barrier: absent, or ':' and no operand.
-asm_operands --> ( punct(':') -> [] ; [] ).
+% blank_asm(+Template): the template has only spaces, tabs, newlines and
+% carriage returns, what filcc's handleInlineAsm counts as empty asm.
+blank_asm(Template) :- forall(member(C, Template), memberchk(C, [0' , 0'\t, 0'\n, 0'\r])).
 
-% The clobbers of an empty barrier: absent, or ':' and "memory" or "cc".
-asm_clobbers --> ( punct(':') -> asm_clobber_list ; [] ).
-asm_clobber_list --> ( string_bytes(Bs) -> { atom_codes(A, Bs), memberchk(A, [memory, cc]) }, ( punct(',') -> asm_clobber_list ; [] ) ; [] ).
+% asm_sections(+Env, -Outs, -Ins, -Clobbers)//: the outputs, inputs and
+% clobbers after the template, each section optional from the right;
+% an asm goto's labels after them are kept as labels(Names) in Clobbers.
+asm_sections(Env, Outs, Ins, Clobbers) -->
+    (   punct(':')
+    ->  asm_ops(Env, Outs),
+        (   punct(':')
+        ->  asm_ops(Env, Ins),
+            (   punct(':')
+            ->  asm_clobbers(Cs),
+                (   punct(':') -> asm_labels(Ls), { append(Cs, [labels(Ls)], Clobbers) }
+                ;   { Clobbers = Cs }
+                )
+            ;   { Clobbers = [] }
+            )
+        ;   { Ins = [], Clobbers = [] }
+        )
+    ;   { Outs = [], Ins = [], Clobbers = [] }
+    ).
+
+% asm_ops(+Env, -Ops)//: operands op(Constraint, E), Constraint an atom;
+% a symbolic name [x] is read and dropped.
+asm_ops(Env, [op(C, E)|Ops]) -->
+    ( punct('[') -> token(id(_)), expect(']') ; [] ),
+    string_bytes(Bs), !,
+    expect('('), expr(Env, E), expect(')'),
+    { atom_codes(C, Bs) },
+    ( punct(',') -> asm_ops(Env, Ops), { Ops \== [] } ; { Ops = [] } ).
+asm_ops(_, []) --> [].
+
+asm_clobbers([C|Cs]) -->
+    string_bytes(Bs), !, { atom_codes(C, Bs) },
+    ( punct(',') -> asm_clobbers(Cs) ; { Cs = [] } ).
+asm_clobbers([]) --> [].
+
+asm_labels([L|Ls]) --> token(id(L)), !, ( punct(',') -> asm_labels(Ls) ; { Ls = [] } ).
+asm_labels([]) --> [].
 
 % opt_expr(+Env, -E)//: an expression, or none before ';' or ')', which
 % stays in the input.
