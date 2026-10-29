@@ -1212,21 +1212,47 @@ new_tag(Kind, Tag, Id, e(Ords, Tags0, Defs0, Id), e(Ords, Tags, Defs, Next)) :-
 tag_bound(none, _, Tags, Tags).
 tag_bound(some(Name), Value, Tags0, Tags) :- put_assoc(Name, Tags0, Value, Tags).
 
-% member_decl(+Decl, -Fields, -Reflected, +Env0, -Env): Fields are the
-% f(Name, Type) or bit-fields b(Name, Type, Width) the member
-% declaration Decl declares ([] for a static assertion), or [bad(Why)];
-% Name is some(Field), or none for an anonymous member or an unnamed
-% bit-field. Reflected are the q(Name, QType) of the named members,
-% QType keeping the qualifiers that Type drops.
+doc(member_decl(+Decl, -Fields, -Reflected, +Env0, -Env), det, [
+    Decl: "a field(Specs, Dcl, Width) of c_parse, or a static_assert",
+    Fields: "the f(Name, Type) or b(Name, Type, Width) it declares, [] for a static assertion, or [bad(Why)]",
+    Reflected: "the q(Name, QType) of a named member, QType keeping the qualifiers Type drops",
+    Env0: "the scope the struct or union is defined in",
+    Env: "Env0 with what the specifiers define and the base type kept",
+    "Name is some(Field), or none for an anonymous member or an unnamed",
+    "bit-field. The declarators of one member declaration share its",
+    "specifiers' type: c_parse marks each after the first shared_base,",
+    "and it takes the base type the previous field kept as",
+    "enclosing(member_base), so struct { ... } a, b; declares one struct",
+    "and a = b assigns.",
+    cites('C11 6.7.2.1p1'),
+    cites('C11 6.7.2.3p5'),
+    example(( empty_env(E0),
+              S = su(struct, none, [field([tspec(int)], dcl(some(k), base, none), none)], []),
+              member_decl(field([S], dcl(some(a), base, none), none), [f(_, TA)], _, E0, E1),
+              member_decl(field([shared_base, S], dcl(some(b), base, none), none), [f(_, TB)], _, E1, _) ),
+            TA == TB),
+    example(( empty_env(E0),
+              S = su(struct, none, [field([tspec(int)], dcl(some(k), base, none), none)], []),
+              member_decl(field([S], dcl(some(a), base, none), none), [f(_, TA)], _, E0, E1),
+              member_decl(field([S], dcl(some(b), base, none), none), [f(_, TB)], _, E1, _) ),
+            TA \== TB)
+]).
 member_decl(static_assert(Loc, Expr, _), [], [], Env, Env) :-    % C11 6.7.10p2
     (   catch(const_value(Expr, Env, V, _), not_constant, fail)
     ->  ( V =\= 0 -> true ; sema_error(Loc, 'static assertion failed', []) )
     ;   sema_error(Loc, 'static assertion is not a constant', [])
     ).
-member_decl(field(Specs0, dcl(Name, SyntaxType, _), Width), Fields,
+member_decl(field(Specs00, dcl(Name, SyntaxType, _), Width), Fields,
             Reflected, Env0, Env) :-
+    (   selectchk(shared_base, Specs00, Specs0)       % 6.7.2.1p1, 6.7.2.3p5
+    ->  lookup_ordinary(Env0, enclosing(member_base), Base), Env1 = Env0
+    ;   Specs0 = Specs00
+    ),
     alignment_requests(Specs0, Requests, Specs),
-    specs_type(Specs, Base, Env0, Env1),
+    (   nonvar(Base) -> true
+    ;   specs_type(Specs, Base, Env0, Env1a),
+        bind_ordinary(enclosing(member_base), Base, Env1a, Env1)
+    ),
     apply_declarator(SyntaxType, Base, Type, Env1, Env),
     inherited_alignment(Specs, SyntaxType, Env, Inherited),
     member_alignment(Requests, Inherited, Env, MA),
@@ -3049,9 +3075,9 @@ doc(elaborate(+E, +Env, -X), semidet, [
     cites('C11 6.5p1'),
     "__func__ is a static char array holding the enclosing function's",
     "name, so its size counts the name and the null; the lowerer binds",
-    "function_name to that name for the function's body.",
+    "enclosing(function) to that name for the function's body.",
     cites('C11 6.4.2.2p1'),
-    example(( empty_env(E0), bind_ordinary(function_name, main, E0, E),
+    example(( empty_env(E0), bind_ordinary(enclosing(function), main, E0, E),
               elaborate(id('__func__'), E, X) ),
             X = obj(array(char, 5), predefined('__func__'))),
     example(( empty_env(E0), bind_ordinary(x, var(none, int), E0, E),
@@ -3096,7 +3122,7 @@ elab(id(Name), Env, obj(array(char, N), predefined(Name))) :-   % 6.4.2.2
     memberchk(Name, ['__func__', '__FUNCTION__', '__PRETTY_FUNCTION__']),
     % clang's __PRETTY_FUNCTION__ spells the declarator, which nanofil's
     % predefined string does not, so its size stays unknown.
-    (   Name \== '__PRETTY_FUNCTION__', lookup_ordinary(Env, function_name, Func)
+    (   Name \== '__PRETTY_FUNCTION__', lookup_ordinary(Env, enclosing(function), Func)
     ->  atom_length(Func, N0), N is N0 + 1
     ;   N = none
     ).

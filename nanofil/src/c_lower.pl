@@ -54,8 +54,9 @@
     - `func_name(Function)`: the symbol of that function's `__func__`;
     - `deferred(Symbol)`: a static inline function, lowered only if
       something refers to it;
-    - `inline_copy(Symbol)`, `inline_copy_of(Local)`: the local copy
-      that calls of an always_inline inline-only definition use.
+    - `inline_copy(Symbol)`, `inline_copy_of(Local)`: the local function
+      that direct calls of Symbol use: an always_inline inline-only
+      definition's copy, or a fortify overload (overload_wrapper/5).
 
     Next numbers string and compound literals as well as struct ids.
 
@@ -481,6 +482,14 @@ top_item(ExternalNames, fundef(Loc, Specs, dcl(some(Name), func(Ret, knr(Names, 
     ).
 top_item(_, fundef(_, Specs, Dcl, _), [], Env, Env) :-
     overload(Specs, Dcl, Env), !.
+top_item(_, fundef(Loc, Specs, Dcl, Body), [], Env0, Env) :-
+    overload_wrapper(Specs, Dcl, Env0, Sym, Type), !,
+    Dcl = dcl(some(Name), DclType, _),
+    format(atom(Local), '~w.overload', [Sym]),
+    env_scope(Env0, Scope, _),
+    put_def(deferred(Local), df(Loc, Name, Type, DclType, Body, Scope), Env0, Env1),
+    put_def(inline_copy(Sym), Local, Env1, Env2),
+    put_def(inline_copy_of(Local), Sym, Env2, Env).
 top_item(_, decl(Loc, Specs, Inits), Items, Env0, Env) :-
     alias_target(Specs, Target), !,
     alias_decl(Loc, Specs, Inits, Target, Items, Env0, Env).
@@ -655,7 +664,8 @@ alias_decl(Loc, Specs, Inits, Target, Items, Env0, Env) :-
    declaration of its name is skipped, and calls reach that function
    (glibc's open). glibc's overloads only check the flags before calling
    it, so a valid program behaves alike. A compatible overloadable
-   declaration (glibc's printf wrappers) is an ordinary redeclaration. */
+   declaration is an ordinary redeclaration, except a static definition
+   of a function with external linkage (overload_wrapper/5). */
 overload(Specs, dcl(some(Name), DclType, Asm), Env) :-
     member(attr(Tokens), Specs),
     attr_word(Tokens, Word), memberchk(Word, [overloadable, '__overloadable__']), !,
@@ -663,6 +673,24 @@ overload(Specs, dcl(some(Name), DclType, Asm), Env) :-
     decl_types(Specs, [init(dcl(some(Name), DclType, Asm), none)],
                [d(_, Type, _, _, _)], Env, _),
     \+ compatible_type(Visible, Type).
+
+/* overload_wrapper(+Specs, +Dcl, +Env, -Sym, -Type): Dcl, with Specs, is
+   a static overloadable definition of function Sym, which has external
+   linkage: glibc's printf family under clang, whose pass_object_size
+   parameter makes clang prefer it at every call while it mangles it as
+   a function of its own. top_item/5 lowers it under its own symbol, as
+   always_inline's local copies are, and direct calls of the name go
+   there even after the program defines the function itself
+   (cyrus-sasl's dprintf, which filcc's calls never reach); the name's
+   address stays the external function's, as in clang. */
+overload_wrapper(Specs, dcl(some(Name), DclType, Asm), Env, Sym, Type) :-
+    member(attr(Tokens), Specs),
+    attr_word(Tokens, Word), memberchk(Word, [overloadable, '__overloadable__']), !,
+    lookup_ordinary(Env, Name, fn(Visible, Sym, Linkage)),
+    Linkage \== local,
+    decl_types(Specs, [init(dcl(some(Name), DclType, Asm), none)],
+               [d(_, Type, static, _, _)], Env, _),
+    compatible_type(Visible, Type).
 
 % static_assert(+Loc, +Expr, +Env): throw a semantic error unless Expr
 % is a nonzero constant.
@@ -910,7 +938,7 @@ function_(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     param_names(DclType, Names),
     param_mins(DclType, Env0, Mins),
     statement_expression_jumps(Body, Loc),
-    bind_ordinary(function_name, Name, Env0, FuncEnv),       % 6.4.2.2p1
+    bind_ordinary(enclosing(function), Name, Env0, FuncEnv),       % 6.4.2.2p1
     reflect_params(DclType, ParamTypes, FuncEnv, ParamEnv0),
     label_values(Body, ParamEnv0, ParamEnv),
     source_location(Loc, SourceLoc),
@@ -4273,7 +4301,7 @@ callee(val(_, decay(X)), Ctx, Callee, FuncType) -->
     env(Env),
     { env_defs(Env, Defs),
       (   Callee0 = global(Sym), get_assoc(inline_copy(Sym), Defs, Local)
-      ->  Callee = global(Local)                % top_item's always_inline copy
+      ->  Callee = global(Local)                % top_item's local copy
       ;   Callee = Callee0
       ) }.
 callee(XF, Ctx, Callee, FuncType) -->
@@ -5030,7 +5058,7 @@ place_constant(obj(_, str(Bytes)), _, Env0, Env, sym(Sym, 0)) :- !,
 place_constant(obj(_, predefined(_)), _, Env0, Env, sym(Sym, 0)) :-   % 6.4.2.2p1
     % __func__ is a static array, so its address is a constant in the
     % initializer of a block-scope static (ell's L_DEBUG_SYMBOL).
-    lookup_ordinary(Env0, function_name, Func), !,
+    lookup_ordinary(Env0, enclosing(function), Func), !,
     func_literal(Func, Sym, Env0, Env).
 place_constant(obj(_, predefined(Name)), Loc, _, _, _) :- !,
     sema_error(Loc, '~w outside a function', [Name]).

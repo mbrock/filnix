@@ -50,7 +50,8 @@
     | `tname(Name)` | a typedef name |
     | `su(Kind, Tag, Members, Attrs)` | Kind `struct` or `union` |
     | `enum(Tag, Enumerators)` | an enum; Enumerators is `packed(Es)` under GNU's packed attribute |
-    | `attr(Tokens)` | an attribute |
+    | `shared_base` | a member declarator after the first, which shares its base type |
+    | `attr(Tokens)` | an attribute; `attr(extension)` and `attr(nullability)` mark an ignored `__extension__` or clang nullability |
     | `alignas(type(TypeName))` `alignas(expr(E))` | `_Alignas` |
     | `typeof(type(TypeName))` `typeof(expr(E))` | `typeof`; GNU `__auto_type` with initializer E is `typeof(expr(comma(num(0, none-dec), E)))` |
     | `atomic(TypeName)` | `_Atomic ( TypeName )` |
@@ -387,6 +388,8 @@ specifier(_, _, fspec(F)) -->
 specifier(_, _, attr(A)) --> gnu_attr(A), !.
 specifier(_, _, attr(c23)) --> c23_attr, !.
 specifier(_, _, attr(extension)) --> kw(extension), !.
+specifier(_, _, attr(nullability)) -->     % clang's, on a pointer typedef (zix)
+    [tok(id(N), _)], { nullability(N) }, !.
 specifier(Env, _, alignas(A)) -->
     kw(alignas), !,
     expect('('),
@@ -642,15 +645,18 @@ members(Env, Members) -->
     decl_specs(Env, Specs), !,
     (   punct(';')
     ->  { Members = [field(Specs, dcl(none, base, none), none)|Members1] }
-    ;   field_decls(Env, Specs, Members, Members1),
+    ;   field_decls(Env, Specs, [], Members, Members1),
         expect(';')
     ),
     members(Env, Members1).
 members(_, _) --> parse_error('expected a member declaration').
 
-% field_decls(+Env, +Specs, -Fields, ?Rest)//: Fields-Rest is the
-% difference list of fields one member declaration declares.
-field_decls(Env, Specs, [field(FieldSpecs, Dcl, Width)|Fields], Rest) -->
+% field_decls(+Env, +Specs, +Mark, -Fields, ?Rest)//: Fields-Rest is
+% the difference list of fields one member declaration declares. Each
+% after the first has its specifiers marked shared_base: c_types gives
+% it the first one's base type, so `struct { ... } a, b;` defines one
+% struct (a = b assigns), not one per declarator.
+field_decls(Env, Specs, Mark, [field(FieldSpecs, Dcl, Width)|Fields], Rest) -->
     (   punct(':')
     ->  { Dcl = dcl(none, base, none), Attrs = [] },
         conditional(Env, Width)
@@ -659,10 +665,10 @@ field_decls(Env, Specs, [field(FieldSpecs, Dcl, Width)|Fields], Rest) -->
     ),
     attr_list(Attrs1),
     {   findall(attr(X), member(X, Attrs1), Attrs2),
-        append([Specs, Attrs, Attrs2], FieldSpecs)
+        append([Mark, Specs, Attrs, Attrs2], FieldSpecs)
     },
     (   punct(',')
-    ->  field_decls(Env, Specs, Fields, Rest)
+    ->  field_decls(Env, Specs, [shared_base], Fields, Rest)
     ;   { Fields = Rest }
     ).
 
@@ -768,10 +774,11 @@ qualifiers(Quals) -->
     qualifiers(Quals).
 qualifiers(Quals) --> c23_attr, !, qualifiers(Quals).
 qualifiers(Quals) -->                   % clang's nullability, ignored
-    [tok(id(N), _)],
-    { memberchk(N, ['_Nullable', '_Nonnull', '_Null_unspecified', '_Nullable_result']) }, !,
+    [tok(id(N), _)], { nullability(N) }, !,
     qualifiers(Quals).
 qualifiers([]) --> [].
+
+nullability(N) :- memberchk(N, ['_Nullable', '_Nonnull', '_Null_unspecified', '_Nullable_result']).
 
 % abstract_declarator(+Env, -Type, +Base)//: like declarator//4 without
 % a name. A '(' starts a nested declarator only before a '*' or '['
@@ -952,9 +959,22 @@ block_item(Env, Env, Item) -->
     kw(static_assert), !,
     static_assert_rest(Env, Loc, Item).
 block_item(Env0, Env, Item) -->
+    % __extension__ before a block-scope declaration or _Static_assert,
+    % as at file scope (binutils' __extension__ typedef, ruby's
+    % __extension__ static_assert); before an expression it stays.
+    extension_decl(Env0), !,
+    kw(extension),
+    block_item(Env0, Env, Item).
+block_item(Env0, Env, Item) -->
     starts_decl(Env0), !,
     local_decl(Env0, Env, Item).
 block_item(Env, Env, Stmt) --> statement(Env, Stmt).
+
+extension_decl(Env, S, S) :-
+    S = [tok(kw(extension), _)|Rest],
+    (   Rest = [tok(kw(K), _)|_], memberchk(K, [static_assert, extension]) -> true
+    ;   phrase(starts_decl(Env), Rest, _)
+    ).
 
 % starts_decl(+Env)//: lookahead only: the next tokens begin a
 % declaration, not a label.
