@@ -181,3 +181,10 @@ A check that compares against a reference must run both sides in one
 derivation whenever the result depends on the machine, because the
 reference may have been built on a different builder (nanofil-bash's test
 suite statuses do).
+
+The survey has twice lost the nix daemon mid-run (`error: Nix daemon out
+of memory` in its build log, with no kernel OOM). Every build still running
+then reports failure, so `run.py` rebuilds what is unbuilt, at most twice,
+when its log shows that line. igloo and chapel set `max-silent-time = 900`,
+and Nix does not forward a client's limit, so a nanofil compile that prints
+nothing for 15 minutes fails there but not on swa.

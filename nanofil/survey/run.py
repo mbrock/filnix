@@ -31,9 +31,22 @@ def nix_build(drvs, log, a):
         return set()
     args = ["nix", "build", "--no-link", "--keep-going", "-L", "-j", str(a.jobs),
             "--cores", str(a.cores), "--option", "timeout", str(a.timeout)]
-    with open(log, "a") as f:
-        subprocess.run(args + [d + "^*" for d in drvs], stdout=f,
-                       stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+    # If the client loses the daemon ("Nix daemon out of memory"), every
+    # build still running is reported as failed without having failed:
+    # build what is left again, at most twice.
+    todo = drvs
+    for _ in range(3):
+        start = os.path.getsize(log) if os.path.exists(log) else 0
+        with open(log, "a") as f:
+            subprocess.run(args + [d + "^*" for d in todo], stdout=f,
+                           stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        with open(log, "rb") as f:
+            f.seek(start)
+            lost = b"Nix daemon out of memory" in f.read()
+        todo = [d for d in todo if not built(d)]
+        if not lost or not todo:
+            break
+        print(f"nix daemon lost; building {len(todo)} again", file=sys.stderr)
     text = open(log, errors="replace").read()
     return set(re.findall(r"building of '(/nix/store/[^']+\.drv)[^']*' timed out", text)) | \
         set(re.findall(r"'(/nix/store/[^']+\.drv)' timed out", text))
