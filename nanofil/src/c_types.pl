@@ -2611,7 +2611,18 @@ doc(folded(+XV, +Env, -V), semidet, [
     fails(( empty_env(E),
             folded(val(int, comma(val(int, incdec(postinc, obj(int, id(c)))),
                                   val(int, int(5)))), E, _) )),
-    fails(( empty_env(E), folded(val(int, load(obj(int, id(c)))), E, _) ))
+    fails(( empty_env(E), folded(val(int, load(obj(int, id(c)))), E, _) )),
+    "Two addresses built from integer constants differ by a constant",
+    "number of elements: ghostscript's offset_of,",
+    "(char *)&((T *)0)->m - (char *)((T *)0), as clang folds it.",
+    cites('C11 6.5.6p9'),
+    example(( empty_env(E),
+              folded(val(long, bin(sub, val(ptr(int), cast(t, val(int, int(20)))),
+                                        val(ptr(int), cast(t, val(int, int(4)))))), E, V) ),
+            V = 4),
+    fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(int)), E0, E),
+            folded(val(long, bin(sub, val(ptr(int), load(obj(ptr(int), id(p)))),
+                                      val(ptr(int), cast(t, val(int, int(0)))))), E, _) ))
 ]).
 folded(val(_, int(V)), _, V).                               % 6.4.4.1, 6.4.4.4
 folded(val(T, float(Cs)), _, V) :- float_literal(Cs, V, T).  % 6.4.4.2
@@ -2626,6 +2637,16 @@ folded(val(T0, un(Op, XV)), Env, V) :-                      % 6.5.3.3p2-4
     operand_value(XV, Env, V0, _),
     unqualified(T0, T),
     defined([V0], V, constant_unary(T, Op, V0, V)).
+folded(val(T0, bin(sub, XA, XB)), Env, V) :-              % 6.5.6p9, 6.6p10
+    lowered(XA, ptr(E0)), lowered(XB, ptr(_)), !,
+    constant_address(XA, Env, A), constant_address(XB, Env, B),
+    unqualified(E0, E),
+    (   E == void -> Size = 1
+    ;   catch(type_size_align(E, Env, Size, _), bad(_), fail)
+    ),
+    Size > 0,
+    unqualified(T0, T),
+    convert_int((A - B) // Size, T, V).
 folded(val(T0, bin(Op, XA, XB)), Env, V) :-
     operand_value(XA, Env, VA, TA),
     operand_value(XB, Env, VB, TB),
