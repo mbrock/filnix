@@ -365,7 +365,8 @@ top_item(_, decl(Loc, Specs, Inits), [], Env0, Env) :- !,
 top_item(ExternalNames, fundef(Loc, Specs, dcl(some(Name), DclType, Asm), Body), Funcs,
          Env0, Env) :-
     decl_types(Specs, [init(dcl(some(Name), DclType, Asm), none)],
-               [d(_, Type, Storage, _, _)], Env0, Env1),
+               [d(_, Type, Storage0, _, _)], Env0, Env1),
+    prior_storage(Name, Storage0, Env1, Storage),
     global_decl(Loc, d(Name, Type, Storage, Asm, none), Env1, Env1a),
     init_decl(Loc, Specs, d(Name, Type, Storage, Asm, none), Env1a, Env2),
     (   memberchk(fspec(inline), Specs),
@@ -537,7 +538,8 @@ global_decl(Loc, d(Name, Type1, Storage0, Asm, Init), Env0, Env) :-
         ->  sema_error(Loc, 'function ~w cannot be _Thread_local', [Name])
         ;   true
         ),
-        ( Storage == static -> Linkage = local ; Linkage = export ),
+        prior_storage(Name, Storage, Env0, Storage1),
+        ( Storage1 == static -> Linkage = local ; Linkage = export ),
         (   Init \== none
         ->  sema_error(Loc, 'function ~w has an initializer', [Name])
         ;   true
@@ -553,6 +555,18 @@ global_decl(Loc, d(Name, Type1, Storage0, Asm, Init), Env0, Env) :-
             define_global(Sym, Type, Linkage, Init, Loc, Env1, Env2),
             data_alignment(Name, Sym, Env2, Env)
         )
+    ).
+
+% prior_storage(+Name, +Storage0, +Env, -Storage): a function declared
+% with Storage0 has Storage: static when Storage0 is not, and a visible
+% declaration gave it internal linkage. A function declared without a
+% storage class, or extern, takes the prior declaration's linkage (C11
+% 6.2.2p4-5): libevent declares min_heap_ctor_ static inline and defines
+% it without static.
+prior_storage(Name, Storage0, Env, Storage) :-
+    (   Storage0 \== static, lookup_ordinary(Env, Name, fn(_, _, local))
+    ->  Storage = static
+    ;   Storage = Storage0
     ).
 
 % redeclared(+Loc, +Name, +Sym, +Type0, +Env, -Type): Type is what a
