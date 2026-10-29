@@ -2554,7 +2554,12 @@ test(reuse_edges) :-
     reuse_cfg([block(s, [], [C, S], goto(t)), block(t, [], [L], goto(u)),
                block(u, [], [Zr], R)], After),
     \+ reuse_refines(Before, After),
-    reuse_checks(Before, Before1), Before1 == Before.
+    reuse_checks(Before, Before1), Before1 == Before,
+    % The pass leaves no choicepoint, even at a poll edge: one per
+    % function kept every function's terms alive, and SQLite's -O
+    % --checks=reuse compile overflowed the 1 GB stack.
+    reuse_cfg([block(s, [], [C, S], goto(h)), block(h, [], [L], goto(poll(h)))], Loop),
+    call_cleanup(reuse_checks(Loop, _), Det = true), Det == true.
 
 % The interpreter re-checks every raw access against the object as it
 % is now: stale evidence after free is unchecked where the reference

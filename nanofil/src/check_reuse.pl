@@ -107,7 +107,7 @@ add_incoming(L-E, I0, I) :-
     (   get_assoc(L, I0, Es) -> true ; Es = [] ),
     put_assoc(L, I0, [E|Es], I).
 
-carried(_, _-yes, []).
+carried(_, _-yes, []) :- !.
 carried(Exits, From-no, Facts) :-
     (   get_assoc(From, Exits, Facts) -> true ; Facts = [] ).
 
