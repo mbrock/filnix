@@ -56,7 +56,7 @@
     A slot's phi has class `w` for widths `b`, `h` and `w`, and the
     slot's width, `l` or `p`, otherwise.
 */
-:- module(promote, [promote_module/2, promote_func/3, promotable/3,
+:- module(promote, [promote_module/2, promote_func/3, promote_context/5, promotable/3,
                     alloc_count/2, strict_ssa/3]).
 
 :- use_module(library(lists)).

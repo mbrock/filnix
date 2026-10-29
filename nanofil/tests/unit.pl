@@ -1436,6 +1436,155 @@ test(inline_contexts) :-
 
 origin_named(origin(_, L, D, Ps), Id, origin(Id, L, D, Ps)).
 
+% The cheap middle end (src/simplify.pl, docs/perf.md item 8). Each
+% function keeps its outcome on inputs where a plausible wrong rewrite
+% differs, and the rewrite it targets happened. Expected values are
+% worked by hand: fold's w sum wraps (2^32 - 1 + 2 = 1) where the l sum
+% does not; -1 <s 0 holds where -1 <u 0 does not; 8x at w loses bit 29.
+test(simplify) :-
+    Fold = func(fold, export, l, [], [block(s, [], [
+        let(tmp(a), w, add, [const(4294967295), const(2)]),
+        let(tmp(b), l, add, [const(4294967295), const(2)]),
+        let(tmp(e), l, ext(uw), [tmp(a)]),
+        let(tmp(r), l, add, [tmp(b), tmp(e)])], ret(tmp(r)))]),
+    Div0 = func(div0, export, w, [param(w, tmp(x))], [block(s, [], [
+        let(tmp(q), w, udiv, [const(5), const(0)]),
+        let(tmp(z), w, add, [tmp(q), tmp(x)])], ret(tmp(z)))]),
+    Bools = func(bools, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+        block(s, [], [let(tmp(c), w, cmp(slt, w), [tmp(a), tmp(b)]),
+                      let(tmp(n), w, cmp(eq, w), [tmp(c), const(0)]),
+                      let(tmp(e), l, ext(sw), [tmp(n)]),
+                      let(tmp(z), w, cmp(ne, l), [tmp(e), const(0)])], branch(tmp(z), t, f)),
+        block(t, [], [], ret(const(1))),
+        block(f, [], [], ret(const(2)))]),
+    Notb = func(notb, export, w, [param(w, tmp(a))], [
+        block(s, [], [let(tmp(c), w, and, [tmp(a), const(1)]),
+                      let(tmp(n), w, cmp(eq, w), [tmp(c), const(0)])], branch(tmp(n), t, f)),
+        block(t, [], [], ret(const(10))),
+        block(f, [], [], ret(const(20)))]),
+    Constbr = func(constbr, export, w, [param(w, tmp(x))], [
+        block(s, [], [let(tmp(k), w, cmp(eq, l), [const(8), const(8)])], branch(tmp(k), a, b)),
+        block(a, [], [let(tmp(y), w, add, [tmp(x), const(1)])], goto(j)),
+        block(b, [], [let(tmp(y2), w, add, [tmp(x), const(2)])], goto(j)),
+        block(j, [phi(tmp(r), w, [a-tmp(y), b-tmp(y2)])], [], ret(tmp(r)))]),
+    Gvn = func(gvn, export, w, [param(w, tmp(c)), param(w, tmp(x))], [
+        block(s, [], [let(tmp(t1), w, add, [tmp(x), const(3)])], branch(tmp(c), a, b)),
+        block(a, [], [let(tmp(u), w, mul, [tmp(x), tmp(x)]),
+                      let(tmp(t2), w, add, [const(3), tmp(x)]),
+                      let(tmp(u2), w, add, [tmp(u), tmp(t2)])], goto(j)),
+        block(b, [], [let(tmp(v), w, mul, [tmp(x), tmp(x)])], goto(j)),
+        block(j, [phi(tmp(r), w, [a-tmp(u2), b-tmp(v)])],
+              [let(tmp(w2), w, mul, [tmp(x), tmp(x)]),
+               let(tmp(r2), w, add, [tmp(r), tmp(w2)]),
+               let(tmp(r3), w, add, [tmp(r2), tmp(t1)])], ret(tmp(r3)))]),
+    Bypass = func(bypass, export, w, [param(w, tmp(c)), param(w, tmp(x))], [
+        block(s, [], [], branch(tmp(c), a, b)),
+        block(a, [], [let(tmp(ya), w, add, [tmp(x), const(1)])], goto(e)),
+        block(b, [], [let(tmp(yb), w, add, [tmp(x), const(2)])], goto(e)),
+        block(e, [phi(tmp(q), w, [a-tmp(ya), b-tmp(yb)])], [], goto(t)),
+        block(t, [phi(tmp(r), w, [e-tmp(q), l-tmp(r2)])],
+              [let(tmp(k), w, cmp(ult, w), [tmp(r), const(30)])], branch(tmp(k), l, done)),
+        block(l, [], [let(tmp(r2), w, add, [tmp(r), const(10)])], goto(t)),
+        block(done, [], [], ret(tmp(r)))]),
+    Strength = func(strength, export, w, [param(w, tmp(x))], [block(s, [], [
+        let(tmp(m), w, mul, [tmp(x), const(8)]),
+        let(tmp(u), w, udiv, [tmp(x), const(16)]),
+        let(tmp(v), w, urem, [tmp(x), const(16)]),
+        let(tmp(s1), w, add, [tmp(m), tmp(u)]),
+        let(tmp(s2), w, add, [tmp(s1), tmp(v)])], ret(tmp(s2)))]),
+    Dead = func(deadload, export, w, [param(l, tmp(x))], [block(s, [], [
+        let(tmp(p), p, itop, [tmp(x)]),
+        let(tmp(v), w, load(sw), [tmp(p)]),
+        let(tmp(d), w, add, [tmp(v), const(1)]),
+        let(tmp(q), l, udiv, [tmp(x), tmp(x)])], ret(const(0)))]),
+    Narrow = func(narrow, export, w, [param(w, tmp(x))], [block(s, [], [
+        let(tmp(a), p, alloc(4), [const(4)]),
+        store(h, tmp(x), tmp(a)),
+        let(tmp(v), w, load(uh), [tmp(a)]),
+        let(tmp(e), w, ext(uh), [tmp(v)]),
+        let(tmp(f), w, ext(sh), [tmp(v)]),
+        let(tmp(g), w, add, [tmp(e), tmp(f)])], ret(tmp(g)))]),
+    ir_module([Fold, Div0, Bools, Notb, Constbr, Gvn, Bypass, Strength, Dead, Narrow], M0),
+    optimize(passes([simplify]), M0, M), once(valid_module(M)),
+    Runs = [fold-[]-ret(4294967298), div0-[1]-ub(division_by_zero),
+            bools-[4294967295, 0]-ret(2), bools-[0, 4294967295]-ret(1),
+            bools-[5, 5]-ret(1), notb-[2]-ret(10), notb-[3]-ret(20),
+            constbr-[4294967295]-ret(0),
+            gvn-[1, 2]-ret(18), gvn-[0, 2]-ret(13),
+            bypass-[1, 5]-ret(36), bypass-[0, 5]-ret(37),
+            strength-[4294967295]-ret(268435462), strength-[536870912]-ret(33554432),
+            deadload-[0]-trap(null_capability),
+            narrow-[65535]-ret(65534), narrow-[4294934528]-ret(0)],
+    forall(member(Fn-Args-Out, Runs),
+           ( module_fn_args_outcome(M0, Fn, Args, Out0), Out0 == Out,
+             module_fn_args_outcome(M, Fn, Args, Out1), Out1 == Out )),
+    M = module(Items),
+    forall(member(F, Items),
+           ( F = func(_, _, _, _, Bs), func_cfg(Bs, Cfg), cfg_idoms(Cfg, Idom),
+             strict_ssa(F, Cfg, Idom) )),
+    func_named(M, fold, func(_, _, _, _, [block(s, [], [], ret(const(4294967298)))])),
+    func_named(M, div0, func(_, _, _, _, [block(s, [], [let(tmp(q), w, udiv, [const(5), const(0)]), _], _)])),
+    % bools: one comparison, its negation, decides the branch.
+    func_named(M, bools, func(_, _, _, _, [block(s, [], [let(tmp(N), w, cmp(sge, w), [tmp(a), tmp(b)])],
+                                                  branch(tmp(N), t, f))|_])),
+    func_named(M, notb, func(_, _, _, _, [block(s, [], [let(tmp(Cn), w, and, _)], branch(tmp(Cn), f, t))|_])),
+    func_named(M, constbr, func(_, _, _, _, [block(s, [], [let(_, w, add, [tmp(x), const(1)])], ret(_))])),
+    % gvn: t2 reuses t1 (a dominating add, operands swapped); w2 stays,
+    % since neither mul dominates j.
+    func_named(M, gvn, func(_, _, _, _, GB)),
+    findall(x, ( member(block(_, _, Is, _), GB), member(let(_, _, add, [_, const(3)]), Is) ), [x]),
+    findall(x, ( member(block(_, _, Is, _), GB), member(let(_, _, mul, _), Is) ), [x, x, x]),
+    func_named(M, bypass, func(_, _, _, _, BB)), \+ memberchk(block(e, _, _, _), BB),
+    func_named(M, strength, func(_, _, _, _, [block(s, [], SI, _)])),
+    findall(Op, member(let(_, _, Op, _), SI), [shl, shr, and, add, add]),
+    func_named(M, deadload, func(_, _, _, _, [block(s, [], DI, _)])),
+    findall(Op, member(let(_, _, Op, _), DI), [itop, load(sw), udiv]),
+    func_named(M, narrow, func(_, _, _, _, [block(s, [], NI, _)])),
+    findall(Op, member(let(_, _, Op, _), NI), [alloc(4), load(uh), ext(sh), add]).
+
+% Simplify's source contexts: a removed instruction's site goes, and an
+% appended block's sites move into its predecessor at its offset.
+test(simplify_contexts) :-
+    O = origin(_, at('t.c', 1), statement(expr), []),
+    F = func(f, export, w, [param(w, tmp(n))], [
+        block(s, [], [let(tmp(d), w, mul, [tmp(n), tmp(n)]),
+                      let(tmp(a), w, add, [tmp(n), const(2)])], goto(t)),
+        block(t, [], [let(tmp(b), w, mul, [tmp(a), tmp(n)])], ret(tmp(b)))]),
+    maplist(origin_named(O), [o0, o1, o2, o3, o4], Os),
+    ir_module([F, context(f, [site(inst(s, 0), [o0]), site(inst(s, 1), [o1]),
+                              site(jump(s), [o2]), site(inst(t, 0), [o3]),
+                              site(jump(t), [o4])|Os])], M0),
+    optimize(passes([simplify]), M0, module(Items)),
+    once(valid_module(module(Items))),
+    memberchk(func(f, _, _, _, [block(s, [], [let(tmp(a), _, _, _), let(tmp(b), _, _, _)], ret(tmp(b)))]), Items),
+    memberchk(context(f, Rs), Items),
+    findall(S-Ids, member(site(S, Ids), Rs), Sites),
+    msort(Sites, Got),
+    msort([inst(s, 0)-[o1], inst(s, 1)-[o3], jump(s)-[o4]], Want),
+    Got == Want,
+    % A block that has absorbed its successor is absorbed in turn by a
+    % block after it: the holder's jump site is the last block's (the
+    % review's case: a stale entry left two jump sites, one for b2).
+    G = func(g, export, w, [param(w, tmp(c)), param(w, tmp(n))], [
+        block(s, [], [], branch(tmp(c), b1, x)),
+        block(b2, [], [let(tmp(y), w, mul, [tmp(n), tmp(n)])], goto(b3)),
+        block(b1, [], [let(tmp(z), w, mul, [tmp(n), tmp(c)])], goto(b2)),
+        block(b3, [], [let(tmp(u), w, add, [tmp(y), tmp(z)])], ret(tmp(u))),
+        block(x, [], [], ret(const(0)))]),
+    maplist(origin_named(O), [p0, p1, p2, p3, p4, p5], Ps),
+    ir_module([G, context(g, [site(jump(b2), [p0]), site(jump(b1), [p1]),
+                              site(jump(b3), [p2]), site(inst(b2, 0), [p3]),
+                              site(inst(b1, 0), [p4]), site(inst(b3, 0), [p5])|Ps])], G0),
+    optimize(passes([simplify]), G0, module(GItems)),
+    once(valid_module(module(GItems))),
+    memberchk(func(g, _, _, _, [_, block(b1, [], [let(tmp(z), _, _, _), let(tmp(y), _, _, _),
+                                                 let(tmp(u), _, _, _)], ret(tmp(u))), _]), GItems),
+    memberchk(context(g, GRs), GItems),
+    findall(S-Ids, member(site(S, Ids), GRs), GSites),
+    msort(GSites, GGot),
+    msort([inst(b1, 0)-[p4], inst(b1, 1)-[p3], inst(b1, 2)-[p5], jump(b1)-[p2]], GWant),
+    GGot == GWant.
+
 % Which allocs promote must remove, and which it must keep, on the
 % fixture and on tests/c/basic.c (only arr's array and ptrs's array have
 % their address passed or stored). A promote that did nothing would still

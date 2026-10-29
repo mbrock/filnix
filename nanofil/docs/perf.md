@@ -37,6 +37,7 @@ chain only approximately:
 | 9 phi shadows shared by position | 2.24 → 2.15 |
 | punned union reads promote | 2.14 → 2.13 |
 | 5b-1 `--registers=flow` (opt-in, not adopted) | 2.12 |
+| 8 cheap middle end (`--simplify=full`, opt-in) | 2.14 (3.23) → about 2.0 (2.89) |
 
 Every step is translation-validated or checked against the reference
 path, and the reference stays selectable and snapshot-identical. No
@@ -3207,6 +3208,138 @@ operations, and dead-code removal on unchecked IR, validated by the
 existing refinement checks. Expected: small and unmeasured; constant
 moves are 3–11% today, partly removed by immediate operands (M6) and
 item 3. Last because the profile shows little to gain yet.
+
+#### 8: result (`--simplify=full`, opt-in)
+
+Re-profiled at `2f960d1` first. The shares were still those of
+`04c7e7c` (checks 16–40%, pointer temps and lowers 18–30%, calls
+11–14% and 36–41% in lz4 `-1`/`-d`, selection 4–16%, copies 4–14%,
+ops 4–19%). Of the user's four candidates:
+
+- **Inlining what the inliner refused.** `2ce8b0f`'s punned-union
+  promotion already inlines lz4's `LZ4_isLittleEndian` chain. What lz4
+  still called was `LZ4_NbCommonBytes`: 105 instructions, over the
+  size limit, but 17 once its `isLittleEndian` branches fold. So this
+  needed folding inside the inliner, and it is part of item 8.
+- **Strength reduction.** Multiplies, unsigned divides and remainders
+  by 2^k are rewritten here (one rule each); indexed addressing is the
+  backend's and stays open.
+- **Copies and zero extensions.** An `ext` of a value that is already
+  narrow (a narrow load or extension, the `fits/2` table) becomes a
+  copy, and copies of constants propagate.
+
+`src/simplify.pl` runs after `copy`, before `local_storage`, on each
+strict-SSA function without `setjmp`:
+
+1. A dominator-tree walk folds constants through interp.pl's own
+   `alu/4` (so folding is the interpreter's arithmetic). It applies
+   identities, strength reduction, booleans and negated compares, and
+   drops narrow `ext`s. It numbers pure operations, scoped to the
+   dominator subtree (a pointer plus a constant only within its
+   block, below), and folds constant branches. Up to three rounds
+   run while a branch folds.
+2. Unreachable blocks are pruned and trivial phis removed (copy.pl's
+   substitution and `copy_reps`).
+3. Dead pure definitions and phis are removed. Loads, stores, calls,
+   allocations, divisions that can trap, and getter copies of globals
+   never are.
+4. Blocks merge: an empty block is bypassed, and a block is appended to
+   its only `goto` predecessor. Joins with phis and over 64 edges are
+   left alone, which keeps the pass linear.
+
+With `--simplify=full`, inlining's second round takes callees that are
+already promoted, copied and simplified (`inline_simplified`,
+inline.pl's `prepared/3`). That is what inlines `LZ4_NbCommonBytes`.
+
+**Safety.** The pass sees unchecked IR, before pizlonation. It removes
+or shares only pure operations, so no check, trap or trap reason
+changes. Polls are placed afterwards by pizlonation's rule (every edge
+to an earlier block), so every cycle still polls. The Oracle review
+found one blocker: a stale merge entry produced an invalid source
+context when merges ran out of block order. It was fixed with a
+regression test. Three large-function costs were also fixed: a
+quadratic dead-phi scan, bypasses into large joins, and a phi chain
+bounded at depth 1000. Validation: difftest refinement over every suite
+corpus (fixtures, `gen.pl` seeds 1–4, backend, float, `filc/*.ir`,
+`c/*.c`) with `NANOFIL_SIMPLIFY=full`; progtest, also under GC stress;
+ABI+GC. The Nix check runs the difftest, ABI+GC and program steps once
+more under `-O --simplify=full`. The default output is
+snapshot-identical.
+
+**One rule came from measurement.** With every pure operation numbered,
+bzip2 `-d` ran 3.11× instead of 2.40×: 4.43G → 4.09G instructions,
+but 1.08G → 1.39G cycles. Disabling numbering alone restored the cycles
+(on `decompress.c` alone: 1.074G, against 1.293G with numbering). Only
+numbering a pointer plus a constant mattered. The likely reason
+(not traced to single moves) is that sharing field addresses in
+`BZ2_decompress` keeps pointers and their capabilities live across its
+state machine. The hottest instructions became frame-slot moves, and
+store-to-load forwards fell from 317M to 190M while failed forwards
+rose from 51M to 76M. Recomputing such an address costs one add, which
+the backend folds into the access.
+
+Two rules were tried. Never numbering a pointer plus a constant (s3)
+gave `decompress.c` alone 1.071G cycles and 4.32G instructions, and it
+fixed bzip2 `-d` on the gate (3.14 → 2.36). But it gave back part of
+the other workloads' gain (Lua int 1.81 → 1.94, bzip2 `-9` 1.75 →
+1.83; geomean 2.01 against 2.04). Numbering it only within its block
+(s4, adopted) keeps the local sharing. `decompress.c` drops to 4.21G
+instructions, and its cycles stay at `-O`'s. On a 3-trial gate while
+swa was loaded, s4 was at or below s3 on every workload, 2.09 (2.89)
+against 2.13 (2.91); `-O` was 2.28 (3.21) in that run.
+
+**Gate.** Quiet (7 trials, cpu 6) for `-O` and the first two rules; the adopted
+rule (s4) only in the 3-trial run while swa was loaded, so its time
+column is noisier and its absolute ratios run higher (that run's `-O`
+geomean was 2.28 (3.21), not 2.14). Time (instructions) against filcc
+`-O2`:
+
+| Workload | `-O` | all numbered | s3: never p+const | s4: p+const in block (loaded) |
+| --- | --: | --: | --: | --: |
+| zlib -6 | 2.45 (4.08) | 2.27 (3.84) | 2.37 (3.98) | 2.79 (3.92) |
+| zlib -d | 2.01 (3.18) | 1.93 (3.02) | 1.89 (3.03) | 1.87 (3.03) |
+| bzip2 -9 | 1.98 (2.52) | 1.75 (2.31) | 1.83 (2.38) | 1.93 (2.33) |
+| bzip2 -d | 2.42 (3.11) | 3.14 (2.87) | 2.36 (2.99) | 2.54 (2.92) |
+| lz4 -1 | 2.19 (10.84) | 2.24 (10.44) | 2.11 (10.45) | 2.47 (10.22) |
+| lz4 -9 | 2.41 (3.07) | 2.15 (2.65) | 2.09 (2.65) | 2.36 (2.65) |
+| lz4 -d | 2.69 (6.82) | 2.62 (5.36) | 2.59 (5.37) | 2.71 (5.35) |
+| lua int | 2.14 (2.35) | 1.81 (1.81) | 1.94 (1.87) | 1.78 (1.87) |
+| lua tab | 2.03 (2.26) | 1.74 (1.78) | 1.85 (1.82) | 1.72 (1.82) |
+| lua str | 1.49 (1.61) | 1.43 (1.53) | 1.45 (1.54) | 1.51 (1.53) |
+| sqlite | 1.97 (1.99) | 1.88 (1.92) | 1.90 (1.94) | 1.80 (1.93) |
+| geomean | 2.14 (3.23) | 2.04 (2.87) | 2.01 (2.92) | 2.09 (2.89); loaded `-O` 2.28 (3.21) |
+
+The instruction columns do not depend on load. s4's are within 1% of
+"all numbered" except Lua (1.87 against 1.81) and bzip2 `-d` (2.92
+against 2.87). In the loaded run s4's time geomean is 0.92× that of
+`-O`; in the quiet runs s3's is 0.94× and all-numbered's 0.95×.
+
+`inline_simplified` is worth its cost. Without it (plain inlining,
+then simplify) the geomean was 2.05 (2.93), against 2.02 (2.87) with
+it. lz4 `-d` falls from 6.39× to 5.36× the instructions. lz4hc's
+`LZ4_count`, `countBack` and `countPattern` are still calls; their
+caller `LZ4HC_InsertAndGetWiderMatch` is probably over the growth
+limit (not checked).
+
+**Profile** (`bench/profile.py` with s3's rule, billions of instructions, `-O` →
+`-O --simplify=full`): zlib `-6` 8.03 → 7.82, bzip2 `-9` 11.79 →
+11.12, bzip2 `-d` 4.45 → 4.28, lz4 `-9` 8.79 → 7.60, lz4 `-d` 0.49 →
+0.39, Lua int 2.78 → 2.22, tab 2.18 → 1.76, str 5.35 → 5.12, SQLite
+21.73 → 21.34. The savings come from selection (lz4 `-9` 1.31 → 1.06,
+Lua int 0.44 → 0.25), ops (bzip2 `-9` 2.29 → 1.93, Lua int 0.52 →
+0.31) and copies (lz4 `-9` 1.24 → 0.90, Lua int 0.26 → 0.13). Checks
+are unchanged except in lz4 `-d` (0.06 → 0.03), whose newly inlined
+callees' accesses fold or disappear (not traced per access).
+
+**Compile time.** `-O cc sqlite3.i` on one core takes 124.4 s user
+without simplify and 125.8 s with it (+1%). The pass costs 7.1 s of the
+middle end's time on sqlite3.ir, and `inline_simplified` 1.1 s more.
+Less code reaches the backend, which wins most of that back. On lz4.c,
+3.2 s becomes about 4.4 s.
+
+**Open.** Whether `--simplify=full` becomes `-O`'s default is the
+orchestrating thread's decision. It saves 6–8% of time and 10% of
+instructions on the gate, for about 1% more compile time on SQLite.
 
 ### 9. Phi shadows shared by position (frame size) — contract (approved, A)
 

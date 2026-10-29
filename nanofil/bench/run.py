@@ -23,6 +23,8 @@ ap.add_argument("--ref", default=f"{HERE}/ref",
                 help="where the filcc builds come from (default ref/, else --out): pin them, filcc is not deterministic")
 ap.add_argument("--modes", default="ref,off,O,O-reuse,O-refbranches,O-stack")
 ap.add_argument("--only", default="")
+ap.add_argument("--busy", type=float, default=0.05,
+                help="wait until the core is below this busy fraction (above 1: never wait; instructions only)")
 ap.add_argument("--json", default="results.json")
 ap.add_argument("--markdown", metavar="JSON", help="print tables of an earlier run's samples and exit")
 ap.add_argument("--compare", metavar="LABEL=JSON[@MODE]", nargs="+",
@@ -163,7 +165,7 @@ waited = 0
 
 def quiet():
     global waited
-    while busy(CORE) > 0.05:
+    while a.busy <= 1 and busy(CORE) > a.busy:
         waited += 1
         time.sleep(1)
 

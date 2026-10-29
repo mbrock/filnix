@@ -78,6 +78,11 @@
     Under small a trap inside an inlined function reports its caller's
     name, as filcc -O2 does without -g.
 
+    `--simplify=none|full` independently selects, with `-O`, the cheap
+    middle end after copy propagation (src/simplify.pl, docs/perf.md
+    item 8). The default is none; NANOFIL_SIMPLIFY supplies the same
+    choice.
+
     `--checks=reference|reuse` independently selects the reference checked
     IR, a check before every access, or check reuse after pizlonation
     (src/check_reuse.pl, docs/m7.md). The default is reference;
@@ -134,8 +139,10 @@ main :-
               checks_default(Checks0),
               inline_default(Inline0),
               inline_options(Argv0,Inline0,Inline,Argv1),
-              options(Argv1,o0,Default,Checks0,Level,Registers,Checks,Argv),
-              opt_selection(Level,Inline,Opt),
+              simplify_default(Simplify0),
+              simplify_options(Argv1,Simplify0,Simplify,Argv2),
+              options(Argv2,o0,Default,Checks0,Level,Registers,Checks,Argv),
+              opt_selection(Level,Inline,Simplify,Opt),
               command(Opt,Registers,Checks,Argv) )
           ->  Status = 0
           ;   format(user_error, "nanofil: failed~n", []),
@@ -185,18 +192,36 @@ inline_default(Inline) :-
 inline_mode(I) :-
     ( memberchk(I,[none,small]) -> true
     ; throw(nanofil_error('inline must be none or small')) ).
-% opt_selection(+Level, ?Inline, -Opt): the middle end's selection
-% (opt.pl). Inlining needs -O, where it is small unless chosen otherwise.
-opt_selection(o0, _, o0).
-opt_selection(o1, Inline, Opt) :-
+% simplify_options(+Argv0, +Simplify0, -Simplify, -Argv): as
+% inline_options/4, for --simplify=.
+simplify_options([], S, S, []).
+simplify_options([A|As], S0, S, Args) :-
+    (   atom(A), atom_concat('--simplify=', S1, A)
+    ->  simplify_mode(S1), simplify_options(As, S1, S, Args)
+    ;   Args = [A|Args1], simplify_options(As, S0, S, Args1)
+    ).
+% simplify_default(?Simplify): NANOFIL_SIMPLIFY, or unbound until -O decides.
+simplify_default(Simplify) :-
+    ( getenv('NANOFIL_SIMPLIFY',S) -> simplify_mode(S), Simplify = S ; true ).
+simplify_mode(S) :-
+    ( memberchk(S,[none,full]) -> true
+    ; throw(nanofil_error('simplify must be none or full')) ).
+% opt_selection(+Level, ?Inline, ?Simplify, -Opt): the middle end's
+% selection (opt.pl). Inlining and simplification need -O, where
+% inlining is small and simplification none unless chosen otherwise.
+opt_selection(o0, _, _, o0).
+opt_selection(o1, Inline, Simplify, Opt) :-
     ( var(Inline) -> Inline = small ; true ),
-    inline_selection(Inline, Opt).
-inline_selection(none, o1).
-inline_selection(small, o1(small)).
+    ( var(Simplify) -> Simplify = none ; true ),
+    middle_selection(Simplify, Inline, Opt).
+middle_selection(none, none, o1).
+middle_selection(none, small, o1(small)).
+middle_selection(full, Inline, o1(Inline, full)).
 % opt_level(+Opt, -Level): o0 or o1, for difftest's validation.
 opt_level(o0, o0).
 opt_level(o1, o1).
 opt_level(o1(_), o1).
+opt_level(o1(_, _), o1).
 
 options(['-O'|As],_,R,C,O,Rs,Cs,Args) :- !, options(As,o1,R,C,O,Rs,Cs,Args).
 options([A|As],O,emit(_,B,M),C,Opt,Rs,Cs,Args) :-
@@ -546,6 +571,7 @@ validated_run(Sel, Original, Optimized, Run, Result, Verdict) :-
 % for each block the original runs.
 optimized_fuel(o1, Fuel, Fuel).
 optimized_fuel(o1(_), Fuel, Fuel1) :- Fuel1 is 2 * Fuel.
+optimized_fuel(o1(_, _), Fuel, Fuel1) :- Fuel1 is 2 * Fuel.
 
 % fuel_step(-Fuel) is multi: Fuel is one of the growing fuel limits,
 % smallest first, ending at max_fuel.

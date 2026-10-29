@@ -37,7 +37,7 @@
     and binding identities wrapped as `inl(R, N, Id)`), and the split
     block's sites are re-indexed.
 */
-:- module(inline, [inline_module/2]).
+:- module(inline, [inline_module/2, inline_module/3]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -45,7 +45,9 @@
 :- use_module(ir, [setjmp_func/1, module_mode/2]).
 :- use_module(cfg, [func_cfg/2, cfg_idoms/2, inst_def/2]).
 :- use_module(escape, [alloc_classes/2]).
-:- use_module(promote, [promotable/3, strict_ssa/3]).
+:- use_module(promote, [promotable/3, strict_ssa/3, promote_context/5]).
+:- use_module(copy, [copy_context/4]).
+:- use_module(simplify, [simplify_context/5]).
 :- use_module(provenance, [legacy_context/2, code_items/2, context_index/2,
                            context_records/3, with_context/3]).
 
@@ -53,16 +55,51 @@ callee_limit(120).
 caller_limit(2000).
 
 %! inline_module(+M0, -M) is det.
+%! inline_module(+Callees, +M0, -M) is det.
 %
-%  M is M0 with two rounds of inlining of eligible calls.
-inline_module(M0, M) :-
+%  M is M0 with two rounds of inlining of eligible calls. With Callees
+%  `simplified`, the functions that may be callees of the second round
+%  are first promoted, copy-propagated and simplified (prepared/4), as
+%  the pipeline does later, so their size and body are what they become.
+inline_module(M0, M) :- inline_module(plain, M0, M).
+inline_module(Callees, M0, M) :-
     legacy_context(M0, M1),
     M1 = module(Items1),
     findall(N-S, ( member(func(N, _, _, _, Bs), Items1), func_size(Bs, S) ), Sizes0),
     list_to_assoc(Sizes0, Sizes),
     inline_round(1, Sizes, M1, M2),
     release_stacks,
-    inline_round(2, Sizes, M2, M).
+    prepared(Callees, M2, M3),
+    inline_round(2, Sizes, M3, M).
+
+% prepared(+Callees, +M0, -M): with `simplified`, M is M0 with each
+% function that could become a callee (local, no call to a function of
+% the module, at most four callee limits) promoted, copy-propagated and
+% simplified. Others are unchanged.
+prepared(plain, M, M).
+prepared(simplified, module(Items0), module(Items)) :-
+    module_mode(module(Items0), Mode),
+    code_items(Items0, Code),
+    context_index(Items0, Contexts),
+    findall(N, member(func(N, _, _, _, _), Code), Ns), name_set(Ns, Defined),
+    maplist(prepared_item(Mode, Defined, Contexts), Code, Groups), append(Groups, Items).
+
+prepared_item(Mode, Defined, Contexts, F0, Items) :-
+    F0 = func(Name, local, _, _, Bs), !,
+    context_records(Contexts, Name, Rs0),
+    (   func_size(Bs, S), callee_limit(Max), S =< 4 * Max,
+        \+ ( member(block(_, _, Is, _), Bs), member(call(_, global(G), _), Is),
+             get_assoc(G, Defined, _) )
+    ->  once(promote_context(Mode, F0, Rs0, F1, Rs1)),
+        once(copy_context(F1, Rs1, F2, Rs2)),
+        once(simplify_context(Mode, F2, Rs2, F, Rs))
+    ;   F = F0, Rs = Rs0
+    ),
+    with_context(F, Rs, Items).
+prepared_item(_, _, Contexts, F, Items) :-
+    F = func(Name, _, _, _, _), !,
+    context_records(Contexts, Name, Rs), with_context(F, Rs, Items).
+prepared_item(_, _, _, Item, [Item]).
 
 % release_stacks: as main.pl's, collect the first round's garbage and
 % return the stack memory before the second. SWI's limit counts what is

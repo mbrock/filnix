@@ -36,7 +36,8 @@
     - Phi simplification counts dead incoming edges too, and leaves
       all-self phis and nontrivial cycles alone.
 */
-:- module(copy, [copy_module/2]).
+:- module(copy, [copy_module/2, copy_context/4, temp_classes/3, reps_block/4, copied_records/4,
+                 copy_reps/4]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).

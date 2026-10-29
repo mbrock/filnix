@@ -110,7 +110,7 @@
 
     Env0/Env and S0/S are the state before and after.
 */
-:- module(interp, [run/5, module_prepared/2, run_prepared/5, outcome_text/2]).
+:- module(interp, [run/5, module_prepared/2, run_prepared/5, outcome_text/2, alu/4]).
 
 :- use_module(library(clpz)).
 :- use_module(library(assoc)).

@@ -4,8 +4,10 @@
     optimize/3 runs the passes at a level, or an explicit ordered subset:
 
     ```diagram
-    o0:  M0 ─────────────────────────────────────▶ M
-    o1:  M0 ─▶ promote ─▶ copy ─▶ local_storage ─▶ M
+    o0:  M0 ─────────────────────────────────────────────────▶ M
+    o1:  M0 ─▶ promote ─▶ copy ─▶ local_storage ─────────────▶ M
+    o1(Inline, Simplify):
+         M0 ─▶ [inline] ─▶ promote ─▶ copy ─▶ [simplify] ─▶ local_storage ─▶ M
     ```
 
     `optimization_passes/2` names that sequence. `optimize_pass/3` runs
@@ -26,15 +28,19 @@
 :- use_module(inline).
 :- use_module(promote).
 :- use_module(copy).
+:- use_module(simplify).
 :- use_module(local_storage).
 :- use_module(ir, [module_stage/2, local_objects/2]).
 :- use_module(library(lists)).
 
 %! optimize(+Options, +M0, -M) is semidet.
 %
-%  Options is o0 (the reference path), o1 (all three passes), o1(small)
-%  (inlining of small static functions first, `--inline=small`), or
-%  passes(Names), an ordered subset of o1(small). Invalid selections fail.
+%  Options is o0 (the reference path), o1 (promote, copy and local
+%  storage), o1(small) (inlining of small static functions first,
+%  `--inline=small`), o1(Inline, Simplify) with Inline none or small and
+%  Simplify none or full (the cheap middle end after copy,
+%  `--simplify=full`), or passes(Names), an ordered subset of all five.
+%  Invalid selections fail.
 %  Checked or already-local IR stays unchanged.
 
 optimize(Options, M0, M) :-
@@ -48,9 +54,23 @@ optimize(Options, M0, M) :-
 optimization_passes(o0, []).
 optimization_passes(o1, [promote, copy, local_storage]).
 optimization_passes(o1(small), [inline, promote, copy, local_storage]).
+optimization_passes(o1(Inline, Simplify), Passes) :-
+    inline_passes(Inline, Simplify, I), simplify_passes(Simplify, S),
+    append([I, [promote, copy], S, [local_storage]], Passes).
 optimization_passes(passes(Passes), Passes) :-
-    optimization_passes(o1(small), All),
-    ordered_passes(Passes, All).
+    (   append(Before, [inline_simplified|After], Passes)
+    ->  append(Before, [inline|After], Ordered)
+    ;   Ordered = Passes
+    ),
+    ordered_passes(Ordered, [inline, promote, copy, simplify, local_storage]).
+
+% With simplification, inlining's second round takes simplified callees
+% (inline.pl's prepared/3).
+inline_passes(none, _, []).
+inline_passes(small, none, [inline]).
+inline_passes(small, full, [inline_simplified]).
+simplify_passes(none, []).
+simplify_passes(full, [simplify]).
 
 ordered_passes([], _).
 ordered_passes([P|Ps], All) :-
@@ -70,8 +90,10 @@ optimize_pass(Name, M0, M) :-
     ).
 
 pass_predicate(inline, inline_module).
+pass_predicate(inline_simplified, inline_module(simplified)).
 pass_predicate(promote, promote_module).
 pass_predicate(copy, copy_module).
+pass_predicate(simplify, simplify_module).
 pass_predicate(local_storage, local_storage_module).
 
 % Named local objects are already the storage pass's product. Earlier

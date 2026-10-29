@@ -22,7 +22,7 @@ cache=${SNAPSHOT_CACHE:-/tmp/nanofil-snapshot}
 export FILCC=${FILCC:?set FILCC to a filcc clang}
 # Both revisions run from their sources; a saved state is one revision.
 # The modes come from the command line only, the same for both.
-unset NANOFIL_STATE NANOFIL_REGISTERS NANOFIL_BRANCHES NANOFIL_CHECKS NANOFIL_MEMCPY NANOFIL_INLINE
+unset NANOFIL_STATE NANOFIL_REGISTERS NANOFIL_BRANCHES NANOFIL_CHECKS NANOFIL_MEMCPY NANOFIL_INLINE NANOFIL_SIMPLIFY
 # Every mode spelled out, so the -O outputs keep one mode when a
 # default changes.
 OPT="-O --registers=stack --branches=selected --checks=reference --memcpy=inline --inline=none"
