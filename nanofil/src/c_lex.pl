@@ -32,13 +32,14 @@
     `__attribute__((__nanofil_pack__(N)))`, which c_types' su_layout/5
     honors. GCC and clang apply the pragma to the definitions after it.
 */
-:- module(c_lex, [c_tokens/3, c23_tokens/2, keyword/2, decimal/1, ident_start/1,
+:- module(c_lex, [c_tokens/3, i_file_tokens/2, c23_tokens/2, keyword/2, decimal/1, ident_start/1,
                   ident_char/1, ident_rest//1, punctuator/1, digraph/1,
                   pack_op/2, pack_tokens/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(dcgs)).
 :- use_module(library(charsio)).
+:- use_module(library(readutil)).
 
 %! c_tokens(+Chars, +File, -Tokens) is det.
 %
@@ -49,6 +50,56 @@ c_tokens(Cs, File, Tokens) :-
     ->  pack_tokens(Tokens0, Tokens)
     ;   throw(nanofil_error('C lexer failed'))
     ).
+
+%! i_file_tokens(+File, -Tokens) is det.
+%
+%  Tokens are c_tokens/3's tokens of the preprocessed (.i) File, lexed
+%  a line at a time, so that a line's characters are garbage once it is
+%  lexed: the characters of a whole file, 24 bytes each, would sit
+%  beside its tokens (a 31 MB tree-sitter parser's are 750 MB). A line
+%  marker sets the next line's location, as in c_tokens/3; a block
+%  comment that spans lines, which `cc -E` never leaves, is lexed with
+%  the lines up to its end.
+i_file_tokens(File, Tokens) :-
+    setup_call_cleanup(open(File, read, S, [encoding(octet)]),
+                       i_lines(S, File:1, Tokens0, []),
+                       close(S)),
+    pack_tokens(Tokens0, Tokens).
+
+i_lines(S, Loc, Ts0, Ts) :-
+    line_chars(S, Cs),
+    (   Cs == []
+    ->  Ts0 = Ts
+    ;   i_line(S, Cs, Loc, Loc1, Ts0, Ts1),
+        i_lines(S, Loc1, Ts1, Ts)
+    ).
+
+% i_line(+S, +Cs, +Loc, -Loc1, -Ts0, ?Ts): Ts0-Ts are the tokens of
+% line Cs at Loc (with the lines after it while a comment is open);
+% Loc1 is the location after them.
+i_line(S, Cs, Loc, Loc1, Ts0, Ts) :-
+    catch(( once(phrase(tokens(LTs, Loc, bol, Loc1), Cs)), Open = no ),
+          nanofil_error(M),
+          (   sub_atom(M, _, _, _, 'unterminated comment')
+          ->  Open = M
+          ;   throw(nanofil_error(M))
+          )),
+    (   Open == no
+    ->  append(LTs, Ts, Ts0)
+    ;   line_chars(S, More),
+        (   More == []
+        ->  throw(nanofil_error(Open))
+        ;   append(Cs, More, Cs1),
+            i_line(S, Cs1, Loc, Loc1, Ts0, Ts)
+        )
+    ).
+
+% line_chars(+S, -Cs): Cs are the characters of S's next line, with its
+% newline; [] at the end of the file.
+line_chars(S, Cs) :-
+    read_line_to_codes(S, Codes, []),
+    string_codes(Str, Codes),
+    string_chars(Str, Cs).
 
 %! pack_tokens(+Tokens0, -Tokens) is det.
 %
@@ -115,15 +166,18 @@ pack_label(L) :- atom(L), atom_chars(L, [C|_]), ident_start(C).
 
 % tokens(-Tokens, +Loc, +Where)//: Tokens are the tokens of the rest of
 % the input, which starts at Loc. Where is bol at the beginning of a
-% line, where `#` starts a directive, and mid elsewhere.
-tokens(Ts, Loc, _) -->
+% line, where `#` starts a directive, and mid elsewhere. tokens//4 also
+% gives the location End at the end of the input.
+tokens(Ts, Loc, Where) --> tokens(Ts, Loc, Where, _).
+
+tokens(Ts, Loc, _, End) -->
     ['\n'], !,
     { loc_next_line(Loc, Loc1) },
-    tokens(Ts, Loc1, bol).
-tokens([tok(T, Loc)|Ts], Loc, bol) -->
+    tokens(Ts, Loc1, bol, End).
+tokens([tok(T, Loc)|Ts], Loc, bol, End) -->
     ['#'], spaces, pragma_weak(T), !,
-    tokens(Ts, Loc, mid).
-tokens([tok(pragma_pack(Op), Loc)|Ts], Loc, bol) -->
+    tokens(Ts, Loc, mid, End).
+tokens([tok(pragma_pack(Op), Loc)|Ts], Loc, bol, End) -->
     ['#'], spaces, "pragma", [C], { blank(C) }, spaces, "pack", !,
     pack_line(Cs),
     {   catch(phrase(tokens(Args0, Loc, mid), Cs), _, fail),
@@ -134,27 +188,27 @@ tokens([tok(pragma_pack(Op), Loc)|Ts], Loc, bol) -->
     ;   format(atom(M), '~w: this #pragma pack is not supported', [Loc]),
         throw(nanofil_error(M))
     },
-    tokens(Ts, Loc, mid).
-tokens(Ts, Loc, bol) -->
+    tokens(Ts, Loc, mid, End).
+tokens(Ts, Loc, bol, End) -->
     ['#'], !,
     directive(Loc, Loc1),
-    tokens(Ts, Loc1, bol).
-tokens(Ts, Loc, Where) -->
+    tokens(Ts, Loc1, bol, End).
+tokens(Ts, Loc, Where, End) -->
     [C], { blank(C) }, !,
-    tokens(Ts, Loc, Where).
-tokens(Ts, Loc, Where) -->
+    tokens(Ts, Loc, Where, End).
+tokens(Ts, Loc, Where, End) -->
     ['/', '*'], !,
     block_comment(Loc, Loc1),
-    tokens(Ts, Loc1, Where).
-tokens(Ts, Loc, _) -->
+    tokens(Ts, Loc1, Where, End).
+tokens(Ts, Loc, _, End) -->
     ['/', '/'], !,
     line_rest,
-    tokens(Ts, Loc, mid).
-tokens([tok(T, Loc)|Ts], Loc, _) -->
+    tokens(Ts, Loc, mid, End).
+tokens([tok(T, Loc)|Ts], Loc, _, End) -->
     token(T, Loc), !,
-    tokens(Ts, Loc, mid).
-tokens([], _, _) --> [].
-tokens(_, Loc, _) -->
+    tokens(Ts, Loc, mid, End).
+tokens([], Loc, _, Loc) --> [].
+tokens(_, Loc, _, _) -->
     [C],
     { loc_error(Loc, 'unexpected character ~q', [C]) }.
 

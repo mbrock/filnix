@@ -312,10 +312,7 @@ c_file_module(File, Module, AsmLines) :-
 % predefined macros and include paths of $FILCC (default filcc).
 c_file_tokens(File, Tokens) :-
     (   atom_concat(_, '.i', File)
-    ->  % once/1: seq//1's last alternative would stay a choicepoint for
-        % the rest of the compile.
-        once(phrase_from_file(seq(Cs), File, [type(binary)])),
-        once(c_tokens(Cs, File, Tokens0))
+    ->  once(i_file_tokens(File, Tokens0))
     ;   ( getenv('FILCC', Clang) -> true ; Clang = filcc ),
         pp_profile(Clang, Profile),
         pp_file(File, Profile, Tokens0)
