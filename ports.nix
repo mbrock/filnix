@@ -1752,6 +1752,10 @@ in
   (for pkgs.libsodium [
     (configure "--disable-ssp")
     (configure "--disable-asm")
+    # sodium_free finds its guard pages from a pointer rebuilt from a
+    # masked integer, which had no capability unless LLVM folded the
+    # round trip (filcc -O0 and nanofil trapped; nanofil/docs/ub.md).
+    (patch ./ports/patch/libsodium-unprotected-ptr.patch)
   ])
 
   (for pkgs.libtasn1 [

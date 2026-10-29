@@ -1,0 +1,16 @@
+--- a/src/libsodium/sodium/utils.c
++++ b/src/libsodium/sodium/utils.c
+@@ -578,7 +578,13 @@
+     if (unprotected_ptr_u <= page_size * 2U) {
+         sodium_misuse(); /* LCOV_EXCL_LINE */
+     }
++#ifdef __FILC__
++    /* An integer cast to a pointer has no capability under Fil-C: step
++       back from canary_ptr to its page instead. */
++    return canary_ptr - ((uintptr_t) canary_ptr & (uintptr_t) page_mask);
++#else
+     return (unsigned char *) unprotected_ptr_u;
++#endif
+ }
+ 
+ #endif /* HAVE_ALIGNED_MALLOC */

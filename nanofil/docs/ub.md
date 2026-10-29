@@ -141,6 +141,11 @@ Differences worth closing or keeping in mind:
   capability, but filcc `-O0` traps in `gcry_pk_decrypt`, and so does
   nanofil at any level. The libgcrypt port selects the pointer as a
   pointer under `__FILC__` (ports/patch/libgcrypt-1.12.2.patch).
+  libsodium's `sodium_free` finds its guard pages with
+  `(unsigned char *)((uintptr_t)p & ~page_mask)`, which LLVM folds to
+  a pointer mask; every libsodium test traps in `sodium_free` under
+  filcc `-O0` and nanofil. Its port steps back from `p` by the page
+  offset instead (ports/patch/libsodium-unprotected-ptr.patch).
   nanofil does not imitate the fold. tests/c/prog/uintptr-masked.c
   shows the trap against a `-O0` reference.
 - Not probed: infinite loops without side effects (KillUB removes
