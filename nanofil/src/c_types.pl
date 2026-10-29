@@ -613,6 +613,41 @@ attribute_entry(stdcall, hint, 'an i386 calling convention; clang ignores it on 
 attribute_entry(cdecl, hint, 'an i386 calling convention; clang ignores it on x86-64').
 attribute_entry(fastcall, hint, 'an i386 calling convention; clang ignores it on x86-64').
 attribute_entry(thiscall, hint, 'an i386 calling convention; clang ignores it on x86-64').
+attribute_entry(capability, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(shared_capability, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(lockable, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(scoped_lockable, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(guarded_by, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(pt_guarded_by, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(guarded_var, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(pt_guarded_var, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(acquired_before, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(acquired_after, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(requires_capability, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(requires_shared_capability, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(exclusive_locks_required, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(shared_locks_required, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(acquire_capability, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(acquire_shared_capability, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(exclusive_lock_function, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(shared_lock_function, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(release_capability, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(release_shared_capability, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(release_generic_capability, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(unlock_function, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(try_acquire_capability, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(try_acquire_shared_capability, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(exclusive_trylock_function, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(shared_trylock_function, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(assert_capability, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(assert_shared_capability, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(assert_exclusive_lock, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(assert_shared_lock, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(locks_excluded, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(lock_returned, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(no_thread_safety_analysis, hint, 'clang thread safety analysis, a static check only').
+attribute_entry(force_align_arg_pointer, hint, 'realigns the stack on entry; Fil-C code is always entered with the ABI\'s 16-byte alignment').
+attribute_entry(analyzer_noreturn, hint, 'clang static analyzer only').
 attribute_entry(regparm, hint, 'i386 only; clang ignores it on x86-64').
 attribute_entry(simd, hint, 'declares vector variants of a math function; calls stay scalar').
 attribute_entry(nonstring, hint, 'a diagnostic').
