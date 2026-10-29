@@ -1442,13 +1442,13 @@ stmt_(switch(Expr, Body), Ctx) -->
     start(LEnd).
 stmt_(case(Expr, Body), Ctx) -->
     env(Env),
-    { ctx_loc(Ctx, Loc),
-      (   catch(const_value(Expr, Env, Value, _), not_constant, fail) -> true
-      ;   sema_error(Loc, 'case label is not a constant', [])
-      ) },
+    { ctx_loc(Ctx, Loc), case_values(Expr, Env, Loc, Values) },
     vm_case(Ctx),
     label(Label), start(Label),
-    cases(Cases), set_cases([case(Value, Label)|Cases]),
+    cases(Cases0),
+    { findall(case(V, Label), member(V, Values), New0), reverse(New0, New),
+      append(New, Cases0, Cases) },
+    set_cases(Cases),
     stmt(Body, Ctx).
 stmt_(default(Body), Ctx) -->
     vm_case(Ctx),
@@ -1506,6 +1506,25 @@ stmt_(label(Name, Body), Ctx) -->
     stmt(Body, Ctx).
 stmt_(decl(Loc, Specs, Inits), Ctx) -->
     item(decl(Loc, Specs, Inits), Ctx).
+
+% case_values(+Expr, +Env, +Loc, -Values): the values a case label
+% matches: its constant, or each of a GNU range Lo ... Hi, none when Lo
+% exceeds Hi (GCC, Case Ranges). The range is expanded, so its values
+% meet the other cases' in distinct_cases/3; one of more than 4096
+% values is refused.
+case_values(range(Lo, Hi), Env, Loc, Values) :- !,
+    case_constant(Lo, Env, Loc, L), case_constant(Hi, Env, Loc, H),
+    (   H - L >= 4096
+    ->  sema_error(Loc, 'a case range of more than 4096 values is not supported', [])
+    ;   H < L -> Values = []
+    ;   numlist(L, H, Values)
+    ).
+case_values(Expr, Env, Loc, [Value]) :- case_constant(Expr, Env, Loc, Value).
+
+case_constant(Expr, Env, Loc, Value) :-
+    (   catch(const_value(Expr, Env, Value, _), not_constant, fail) -> true
+    ;   sema_error(Loc, 'case label is not a constant', [])
+    ).
 
 % computed_dispatch//: the dispatch block of the function's goto *, if
 % any: among its address-taken labels by number, any other value

@@ -72,7 +72,7 @@
     | `if(C, Then, Else)` | Else `none` without an else |
     | `while(C, S)` `do(S, C)` | |
     | `for(Init, C, Step, S)` | Init `none`, `expr(E)` or a `decl` term; C and Step may be `none` |
-    | `switch(E, S)` `case(E, S)` `default(S)` | |
+    | `switch(E, S)` `case(E, S)` `default(S)` | E may be GNU's `range(Lo, Hi)` |
     | `break` `continue` | |
     | `return(E)` | E may be `none` |
     | `goto(L)` `label(L, S)` | |
@@ -867,11 +867,12 @@ statement_body(Env, switch(E, S)) -->
     statement(Env, S).
 statement_body(Env, case(E, S)) -->
     kw(case), !,
-    conditional(Env, E),
-    (   punct('...')
-    ->  parse_error('GNU case ranges are not supported')
-    ;   expect(':')
+    conditional(Env, E0),
+    (   punct('...')                    % GNU case range Lo ... Hi
+    ->  conditional(Env, Hi), { E = range(E0, Hi) }
+    ;   { E = E0 }
     ),
+    expect(':'),
     statement(Env, S).
 statement_body(Env, default(S)) -->
     kw(default), !,
