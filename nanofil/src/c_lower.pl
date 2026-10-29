@@ -587,8 +587,8 @@ redeclared(Loc, Name, Sym, Type0, Env, Type) :-
         ->  true
         ;   sema_error(Loc, 'redefinition of \'~w\' as different kind of symbol', [Name])
         ),
-        (   composite_type(PType, Type0, Type)
-        ->  true
+        (   composite_type(PType, Type0, Type, Env)    % a transparent union
+        ->  true                                       % meets its members
         ;   Type0 = func(_, _, _)
         ->  sema_error(Loc, 'conflicting types for \'~w\'', [Name])
         ;   sema_error(Loc, 'redeclaration of \'~w\' with a different type', [Name])
