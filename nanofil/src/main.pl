@@ -261,8 +261,10 @@ file_module(File, Module) :-
     ).
 
 % c_file_module(+File, -Module): Module is the valid IR module of the C
-% file.
-c_file_module(File, Module) :-
+% file. c_file_module/3 also gives the assembly lines of its top-level
+% asm (c_lower c_toplevel_asm/2), which `cc` prints after the module.
+c_file_module(File, Module) :- c_file_module(File, Module, _).
+c_file_module(File, Module, AsmLines) :-
     c_file_tokens(File, Tokens),
     release_stacks,
     (   c_parse(Tokens, Items) -> true
@@ -272,6 +274,7 @@ c_file_module(File, Module) :-
     % Deterministic stages: a leftover choicepoint would keep the tokens
     % and items of a large translation unit (SQLite) alive to the end.
     once(c_module(Items, Module)),
+    once(c_toplevel_asm(Items, AsmLines)),
     once(valid_module(Module)).
 
 % c_file_tokens(+File, -Tokens): Tokens are the C tokens of File. A .i
@@ -318,11 +321,12 @@ command(Opt, Registers, Checks, [compile, File]) :- !,
     optimize(Opt, Module0, Module),
     mode_print_asm(Mode, Registers, Checks, Module).
 command(Opt, Registers, Checks, [cc, File]) :- !,
-    c_file_module(File, Module0),
+    c_file_module(File, Module0, AsmLines),
     release_stacks,
     once(optimize(Opt, Module0, Module)),
     release_stacks,
-    mode_print_asm(filc, Registers, Checks, Module).
+    mode_print_asm(filc, Registers, Checks, Module),
+    forall(member(Line, AsmLines), format("~w~n", [Line])).
 command(Opt, _, Checks, [difftest, File, Dir]) :- !,
     difftest(Opt, Checks, File, Dir).
 command(Opt, _, _, Args) :- command(Opt,Args).

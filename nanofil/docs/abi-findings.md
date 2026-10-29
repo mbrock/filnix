@@ -979,10 +979,47 @@ memory (`m`) operand, whose operand is a pointer, becomes a call of the
 runtime's error with the message `cannot handle inline asm (inline
 assembly with pointer argument is not supported): ...`, followed by a
 fake load for its result: the program compiles and stops with a safety
-error only if it runs the asm. nanofil accepts the empty barrier,
-compiles an asm with a memory operand to a call of `zsafety_error` with
-the same message (the instruction text instead of clang's IR), and
-refuses any other asm at compile time.
+error only if it runs the asm. The checks run in this order, each
+probed at -O0 and -O2: asm goto (`asm goto is not supported`), a
+pointer result (`inline assembly with pointer return type is not
+supported`, also for `"+r"` on a pointer), a pointer argument (a memory
+operand: an output constraint with `m` or `g`, an input `"m"`; or a
+pointer input), then `validateSafeInlineAsm`'s constraints (an input
+`"g"`, `"rm"`, `"i"` or `"n"` is `unsupported constraint for safe inline
+asm: imr`, LLVM's spelling), clobbers, and each line's mnemonic, lines
+split at newlines and semicolons, blank ones skipped, the mnemonic
+lowercased and a label such as `1:` counting as one. The message goes on
+with the call's LLVM IR, attribute group and `!dbg` numbers included.
+
+nanofil passes no instruction through. The empty asm is compiled when
+its operands are values ("+r", "+g", "=r", "r", "g", "i", "n";
+"memory" and "cc" clobbers). An asm that filcc certainly refuses becomes
+a call of `zsafety_error` with filcc's message up to its colon, then the
+template instead of the IR: asm goto without pointer operands, a pointer
+result, a pointer argument, and an asm whose operands and clobbers the
+probe saw pass validation (outputs "=r", "+r", "=a"; inputs "r", "a",
+digits; "memory", "cc") and whose first nonblank line's mnemonic is one
+filcc refuses whatever its operands (c_types `filcc_refused_mnemonic/1`:
+int, int3, syscall, hlt, lock, rep, push, call, .byte and others).
+Everything else is refused at compile time: cpuid, rdtsc and the
+fences, which filcc may pass through; an unknown mnemonic, which only
+filcc's full table shows to be unknown; asm goto with a pointer operand,
+which crashes clang's Fil-C (SelectionDAGBuilder's getCopyToParts
+assertion). tests/c/prog/asm-refused.c compares the reasons with
+filcc's ("// trap-reason").
+
+## Top-level asm
+
+`compileModuleAsm` reads the module asm a line at a time and rewrites
+`.symver L, V` to `.symver pizlonated_L, pizlonated_V`, versioning the
+getters; blank lines vanish, its own `.filc_*` directives change
+linkage or names, and any other text stops clang (`llvm_unreachable`).
+The survey's packages use only `.symver` (xz's and libapparmor's
+compatibility symbols) and an empty `asm("")` (libressl's
+LCRYPTO_ALIAS). nanofil prints the same `.symver` lines after the
+module (main.pl's `cc`, not an IR item) and refuses every other line at
+compile time. tests/c/prog/asm-symver.c compares the lines with clang
+-S ("// asm-lines").
 
 ## Weak symbols
 

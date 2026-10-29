@@ -207,9 +207,15 @@ external_decl(Env, Env, [Item|Items], Items) -->
     static_assert_rest(Env, Loc, Item).
 external_decl(Env, Env, [pragma_weak(Loc, Name, Target)|Items], Items) -->
     [tok(pragma_weak(Name, Target), Loc)], !.
-external_decl(_, _, _, _) -->
+% A top-level asm is toplevel_asm(Loc, Template); c_lower passes on the
+% directives filcc does and refuses the rest (c_toplevel_asm/2).
+external_decl(Env, Env, [toplevel_asm(Loc, Template)|Items], Items) -->
+    loc(Loc),
     kw(asm), !,
-    parse_error('top-level asm is not supported').
+    (   punct('('), string_bytes(Template), punct(')') -> []
+    ;   parse_error('expected a string in parentheses after top-level asm')
+    ),
+    expect(';').
 external_decl(Env0, Env, [Item|Items], Items) -->
     loc(Loc),
     decl_specs(Env0, Specs), !,

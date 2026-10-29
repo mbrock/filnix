@@ -70,7 +70,7 @@
     | Ebs | eightbytes, `eb(Offset, Bytes, Class)` |
     | S0 ... S | `s(Env, Chunks, End)` in the static initializer predicates |
 */
-:- module(c_lower, [c_module/2]).
+:- module(c_lower, [c_module/2, c_toplevel_asm/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -101,6 +101,47 @@ c_module(Items00, module(Funcs)) :-
     with_used_inlines(Funcs0, Env, Funcs1),
     weak_symbols(Items0, Env, Weak),
     weak_linkage(Weak, Funcs1, Funcs).
+
+%! c_toplevel_asm(+Items, -Lines)
+%
+%  Lines are the assembly lines for the top-level asm among Items, as
+%  clang's Fil-C compiles module asm (FilPizlonator.cpp,
+%  compileModuleAsm): blank lines vanish, and `.symver L, V` becomes
+%  `.symver pizlonated_L, pizlonated_V`, versioning the symbol of L's
+%  getter, as filcc's objects do (docs/abi-findings.md, *Top-level
+%  asm*). filcc also takes its own .filc_* directives and crashes on any
+%  other text; nanofil refuses everything but .symver, the one directive
+%  the survey's packages use (xz's and libapparmor's compatibility
+%  versions; libressl's empty asm("")).
+c_toplevel_asm(Items, Lines) :-
+    findall(Loc-L,
+            ( member(toplevel_asm(Loc, Template), Items),
+              split_at(Template, [0'\n], Ls),
+              member(L, Ls) ),
+            Pairs),
+    maplist(module_asm_line, Pairs, Liness),
+    append(Liness, Lines).
+
+module_asm_line(Loc-L, Lines) :-
+    atom_codes(A, L), atom_chars(A, Cs),
+    (   phrase((ma_blank, ma_end), Cs) -> Lines = []
+    ;   phrase((ma_blank, ".symver", ma_white, ma_blank, ma_id(Local), ma_blank, ",",
+                ma_blank, ma_id(Versioned), ma_blank, ma_end), Cs)
+    ->  atom_chars(LA, Local), atom_chars(VA, Versioned),
+        format(atom(Line), '.symver pizlonated_~w, pizlonated_~w', [LA, VA]),
+        Lines = [Line]
+    ;   sema_error(Loc, 'top-level asm "~w" is not supported; only .symver is', [A])
+    ).
+
+% MATokenizer's whitespace (but newline) and identifiers: a letter or _
+% and then letters, digits, _, $, @ and dots.
+ma_blank --> [C], { C \== '\n', char_type(C, space) }, !, ma_blank.
+ma_blank --> [].
+ma_white --> [C], { C \== '\n', char_type(C, space) }.
+ma_id([C|Cs]) --> [C], { char_code(C, N), N < 128, char_type(C, csymf) }, !, ma_id_rest(Cs).
+ma_id_rest([C|Cs]) --> [C], { char_code(C, N), N < 128, ( char_type(C, csym) ; memberchk(C, ['$', '@', '.']) ) }, !, ma_id_rest(Cs).
+ma_id_rest([]) --> [].
+ma_end([], []).
 
 /* Weak symbols (GCC's weak attribute and #pragma weak; C11 J.5.11 lists
    such extensions as common, not standard). A name declared weak in any
@@ -338,6 +379,7 @@ next_id(Id, e(Ords, Tags, Defs, Id), e(Ords, Tags, Defs, Next)) :-
 % top_item(+ExternalNames, +Item, -Funcs, +Env0, -Env): Funcs are the IR
 % functions a top-level item defines now (a static inline is deferred).
 top_item(_, pragma_weak(_, _, _), [], Env, Env) :- !.
+top_item(_, toplevel_asm(_, _), [], Env, Env) :- !.
 top_item(_, static_assert(Loc, Expr, _), [], Env, Env) :- !,
     static_assert(Loc, Expr, Env).
 top_item(_, decl(_, Specs, [init(Dcl, none)]), [], Env, Env) :-
