@@ -91,7 +91,8 @@
 c_module(Items00, module(Funcs)) :-
     empty_env(Env0),
     builtin_declarations(Builtins),
-    append(Builtins, Items00, Items0),
+    append(Builtins, Items00, ItemsB),
+    maplist(weakref_item(ItemsB), ItemsB, Items0),
     weak_aliases(Items0, Items, Aliases),
     findall(Name, external_inline_declaration(Items, Name), Names0),
     sort(Names0, ExternalNames),
@@ -500,6 +501,39 @@ deferrable(nanofil_error(_)).
    with its arguments. Its address, seen from another translation unit,
    is therefore not the target's. Variable aliases, variadic or
    unprototyped function aliases and several declarators are refused. */
+/* GNU's weakref(T), or weakref with alias(T), on a static declaration
+   of N: N refers to the symbol T (GCC, Common Function Attributes,
+   weakref), so the declaration is an extern one of N with asm label T.
+   clang's reference is weak, null if no object defines T, unless the
+   unit uses T otherwise; nanofil makes it weak when the unit does not
+   declare T, so where it differs a missing T fails to link instead of
+   reading null. Ruby's anyargs.h declares typed weakrefs of
+   rb_define_method this way. */
+weakref_item(All, decl(Loc, Specs0, [init(dcl(some(N), Syn, none), none)]),
+             decl(Loc, Specs, [init(dcl(some(N), Syn, asm(T)), none)])) :-
+    weakref_target(Specs0, T), !,
+    (   memberchk(storage(static), Specs0) -> true
+    ;   sema_error(Loc, 'weakref declaration of ~w must have internal linkage', [N])
+    ),
+    exclude(weakref_spec, Specs0, Specs1),
+    (   member(decl(_, _, Is), All), member(init(dcl(some(T), _, _), _), Is) -> Weak = []
+    ;   member(fundef(_, _, dcl(some(T), _, _), _), All) -> Weak = []
+    ;   Weak = [attr([group([id(weak)])])]
+    ),
+    append([[storage(extern)], Weak, Specs1], Specs).
+weakref_item(_, Item, Item).
+
+weakref_target(Specs, T) :-
+    member(attr([group(Tokens)]), Specs),
+    append(_, [id(W)|Rest], Tokens), memberchk(W, [weakref, '__weakref__']), !,
+    (   Rest = [group([str(Bytes)])|_] -> atom_codes(T, Bytes)
+    ;   alias_target(Specs, T)
+    ).
+
+weakref_spec(storage(static)).
+weakref_spec(attr([group(Tokens)])) :-
+    member(id(W), Tokens), memberchk(W, [weakref, '__weakref__', alias, '__alias__']), !.
+
 alias_target(Specs, Target) :-
     member(attr([group(Tokens)]), Specs),
     append(_, [id(Word), group(Arg)|_], Tokens),

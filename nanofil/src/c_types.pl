@@ -532,6 +532,7 @@ attribute_entry(ext_vector_type, honored, 'as vector_size').
 attribute_entry(section, honored, 'as filcc: FilPizlonator gives neither pizlonatedDO_X nor a function a section, so the object stays in .data, .bss or .rodata and the function in .text, where nanofil puts them; Fil-C code cannot name __start_X or __stop_X (docs/abi-findings.md, *Sections*)').
 attribute_entry(weak, honored, 'c_lower weak symbols (weak_attr/1)').
 attribute_entry(alias, honored, 'c_lower alias_decl/8; a variable alias is refused').
+attribute_entry(weakref, honored, 'c_lower weakref_item/3: an extern reference to its target').
 attribute_entry(constructor, honored, 'c_lower init_decl//5').
 attribute_entry(destructor, honored, 'c_lower init_decl//5').
 attribute_entry(always_inline, hint, 'inlining is the optimizer\'s choice; the call means the same').
@@ -558,6 +559,7 @@ attribute_entry(align_value, hint, 'alignment assumption about a pointer paramet
 attribute_entry(assume_aligned, hint, 'alignment hint about the result').
 attribute_entry(returns_nonnull, hint, 'a promise about the result').
 attribute_entry(nonnull, hint, 'a promise about arguments, for diagnostics and the optimizer').
+attribute_entry(noescape, hint, 'a promise that a pointer argument does not escape; nanofil does not rely on it').
 attribute_entry(nonnull_if_nonzero, hint, 'as nonnull').
 attribute_entry(format, hint, 'printf and scanf format checking').
 attribute_entry(format_arg, hint, 'format checking').
