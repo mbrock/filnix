@@ -108,7 +108,7 @@
 
     A TypeName is `type(Specs, Type)`.
 */
-:- module(c_parse, [c_parse/2, c_constant_expression/2, c_operator/4,
+:- module(c_parse, [c_parse/2, c_constant_expression/2, c_constant_expression/3, c_operator/4,
                     compound_assignment/2]).
 
 :- use_module(library(lists)).
@@ -128,8 +128,15 @@ c_parse(Tokens, Items) :-
 %  Expr is the constant expression, a conditional expression, that the
 %  c_lex Tokens are, as #if reads them. No name is a typedef. Throws
 %  nanofil_error/1 on a syntax error.
-c_constant_expression(Tokens, Expr) :-
-    empty_assoc(Env),
+c_constant_expression(Tokens, Expr) :- c_constant_expression(Tokens, [], Expr).
+
+%! c_constant_expression(+Tokens, +Typedefs, -Expr) is det.
+%
+%  As c_constant_expression/2, where the names Typedefs are typedefs, as
+%  in an attribute's argument (aligned(__alignof__(md5_uint32))).
+c_constant_expression(Tokens, Typedefs, Expr) :-
+    empty_assoc(Env0),
+    foldl(typedef_declared, Typedefs, Env0, Env),
     phrase(constant_expression(Env, Expr), Tokens).
 
 constant_expression(Env, Expr) -->

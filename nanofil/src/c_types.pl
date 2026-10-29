@@ -88,7 +88,7 @@
 % Documentation is a relation of the module, doc(Head, Det, Props)
 % (docs/dterm.md); tests/unit.pl runs every example.
 :- discontiguous(doc/3).
-:- use_module(c_parse, [c_operator/4, compound_assignment/2, c_constant_expression/2]).
+:- use_module(c_parse, [c_operator/4, compound_assignment/2, c_constant_expression/3]).
 
 %% Environment
 
@@ -407,7 +407,7 @@ request_alignment(_, attr([Word]), 16) :-
 request_alignment(Env, attr([Word, group(Ts)]), A) :-
     memberchk(Word, [id(aligned), id('__aligned__')]),
     phrase(flat_tokens(Ts), Flat),
-    catch(c_constant_expression(Flat, E), nanofil_error(_), fail),
+    attribute_expression(Flat, Env, E),
     catch(const_value(E, Env, A, _), not_constant, fail),
     A > 0, A /\ (A - 1) =:= 0.
 
@@ -838,7 +838,7 @@ aligned_entry(Tokens, Request) :-
 requested_alignment(_, bare, A0, A) :- A is max(A0, 16).
 requested_alignment(Env, arg(Ts), A0, A) :-
     phrase(flat_tokens(Ts), Flat),
-    catch(c_constant_expression(Flat, E), nanofil_error(_), fail),
+    attribute_expression(Flat, Env, E),
     catch(const_value(E, Env, N, _), not_constant, fail),
     N > 0, N /\ (N - 1) =:= 0, max_alignment(M), N =< M,
     A is max(A0, N).
@@ -971,6 +971,14 @@ member_alignment(Requests, Inherited, Env, MA) :-
 
 alignment_request(alignas(_)).
 alignment_request(attr(Tokens)) :- aligned_attr(Tokens).
+
+% attribute_expression(+Flat, +Env, -E): E is the constant expression the
+% attribute argument tokens Flat are, read with the typedef names of Env
+% that they use.
+attribute_expression(Flat, Env, E) :-
+    findall(N, ( member(tok(id(N), _), Flat), lookup_ordinary(Env, N, typedef(_)) ), Ns0),
+    sort(Ns0, Ns),
+    catch(c_constant_expression(Flat, Ns, E), nanofil_error(_), fail).
 
 % flat_tokens(+Tokens)//: attribute Tokens, groups parenthesized again,
 % as c_lex tokens.
