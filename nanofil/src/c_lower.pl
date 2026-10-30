@@ -3644,6 +3644,11 @@ builtin('__builtin_isnan', [A], Ctx, v(N, int)) --> !,
 % The classification builtins (c_types' classify_builtin/1) read the
 % float's bits: Abs is them without the sign; Inf and MinNormal are
 % the format's infinity and smallest normal magnitude.
+builtin('__builtin_fpclassify', [Nan, Inf, Normal, Sub, Zero, A], Ctx, v(N, int)) -->
+    rval(A, Ctx, v(X, ldouble)), !,
+    ld_classes(X, Ctx, c(IsNan, IsInf, IsNormal, IsSub, IsZero, _, _)),
+    class_sum([IsNan-Nan, IsInf-Inf, IsNormal-Normal, IsSub-Sub, IsZero-Zero],
+              Ctx, const(0), N).
 builtin('__builtin_fpclassify', [Nan, Inf, Normal, Sub, Zero, A], Ctx, v(N, int)) --> !,
     float_bits(A, Ctx, f(K, _, Abs, InfBits, MinNormal)),
     let(w, cmp(ugt, K), [Abs, InfBits], IsNan),
@@ -3669,6 +3674,11 @@ builtin(Name, [A], Ctx, v(N, int)) -->
     let(p, add, [Slot, const(8)], Top),
     load_typed(ushort, Top, Ctx, Exp),
     let(w, shr, [Exp, const(15)], N).
+builtin(Name, [A], Ctx, v(N, int)) -->
+    { classify_builtin(Name) },
+    rval(A, Ctx, v(X, ldouble)), !,
+    ld_classes(X, Ctx, C),
+    ld_classified(Name, C, N).
 builtin(Name, [A], Ctx, v(N, int)) -->
     { classify_builtin(Name) }, !,
     float_bits(A, Ctx, f(K, Bits, Abs, InfBits, MinNormal)),
@@ -3949,6 +3959,42 @@ classified('__builtin_isnormal', K, _, Abs, InfBits, MinNormal, N) -->
 classified('__builtin_signbit', K, Bits, _, _, _, N) -->
     let(w, cmp(slt, K), [Bits, const(0)], N).
 
+% ld_classes(+X, +Ctx, -C)//: C = c(Nan, Inf, Normal, Sub, Zero, IsNormal,
+% Neg), 0 or 1 each, for the long double X, read from its stored x87
+% bits: E the 15-bit exponent, S the 64-bit significand with its explicit
+% integer bit I. As clang's lowering classifies them (measured against
+% filcc): a NaN has E = 0x7fff and S other than I alone, or E nonzero
+% and no I (an unnormal, pseudo-infinity or pseudo-NaN); an infinity has
+% E = 0x7fff and S = I alone; zero and subnormal have E = 0 and no I;
+% the rest, a pseudo-denormal (E = 0 with I) included, are fpclassify's
+% normal. __builtin_isnormal (IsNormal) wants 0 < E < 0x7fff and I.
+ld_classes(X, Ctx, c(NaN, Inf, Normal, Sub, Zero, IsNormal, Neg)) -->
+    local_slot(ldouble, Slot), store_typed(ldouble, X, Slot),
+    load_typed(ulong, Slot, Ctx, S),
+    let(p, add, [Slot, const(8)], Top), load_typed(ushort, Top, Ctx, SE),
+    let(w, shr, [SE, const(15)], Neg),
+    let(w, and, [SE, const(0x7fff)], E),
+    let(w, cmp(eq, w), [E, const(0)], EZ), let(w, xor, [EZ, const(1)], ENZ),
+    let(w, cmp(eq, w), [E, const(0x7fff)], EMax), let(w, xor, [EMax, const(1)], ENMax),
+    let(w, cmp(slt, l), [S, const(0)], I), let(w, xor, [I, const(1)], NoI),
+    let(w, cmp(eq, l), [S, const(0)], SZ),
+    let(l, shl, [S, const(1)], F), let(w, cmp(ne, l), [F, const(0)], FNZ),
+    let(w, and, [ENZ, NoI], Bad),
+    let(w, and, [EMax, FNZ], HiNaN), let(w, or, [Bad, HiNaN], NaN),
+    let(w, and, [EMax, I], EI), let(w, xor, [FNZ, const(1)], FZ), let(w, and, [EI, FZ], Inf),
+    let(w, and, [EZ, SZ], Zero),
+    let(w, xor, [SZ, const(1)], SNZ), let(w, and, [EZ, NoI], EZNoI), let(w, and, [EZNoI, SNZ], Sub),
+    let(w, add, [NaN, Inf], C1), let(w, add, [C1, Zero], C2), let(w, add, [C2, Sub], C3),
+    let(w, xor, [C3, const(1)], Normal),
+    let(w, and, [ENZ, ENMax], Mid), let(w, and, [Mid, I], IsNormal).
+
+ld_classified('__builtin_isinf', c(_, Inf, _, _, _, _, _), Inf) --> [].
+ld_classified('__builtin_isinf_sign', c(_, Inf, _, _, _, _, Neg), N) -->
+    let(w, and, [Inf, Neg], T), let(w, add, [T, T], T2), let(w, sub, [Inf, T2], N).
+ld_classified('__builtin_isfinite', c(NaN, Inf, _, _, _, _, _), N) -->
+    let(w, or, [NaN, Inf], T), let(w, xor, [T, const(1)], N).
+ld_classified('__builtin_isnormal', c(_, _, _, _, _, IsNormal, _), IsNormal) --> [].
+
 % A normal magnitude is in [MinNormal, Inf): one unsigned compare.
 normal_flag(K, Abs, InfBits, MinNormal, N) -->
     let(K, sub, [Abs, MinNormal], D),
@@ -3973,8 +4019,6 @@ float_bits(A, Ctx, f(K, Bits, Abs, const(Inf), const(MinNormal))) -->
     (   { V0 = v(X, float) }
     ->  { K = w, Inf = 0x7f800000, MinNormal = 0x00800000, Mask = 0x7fffffff },
         let(w, cast, [X], Bits)
-    ;   { V0 = v(_, ldouble) }
-    ->  { sema_error(Loc, 'classifying a long double is not supported', []) }
     ;   assign_convert(A, V0, double, Loc, v(X, _)),
         { K = l, Inf = 0x7ff0000000000000, MinNormal = 0x0010000000000000,
           Mask = 0x7fffffffffffffff },
