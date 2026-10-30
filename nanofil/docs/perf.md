@@ -40,6 +40,7 @@ chain only approximately:
 | 5b-1 `--registers=flow` (opt-in, not adopted) | 2.12 |
 | 8 cheap middle end (`--simplify=full`, the `-O` default) | 2.14 (3.23) → 1.98 (2.89) |
 | M7 check renewal (`--checks=renew`, opt-in; docs/m7.md), measured | 1.98 (2.89) → 2.00 (2.77) |
+| 5b-2a pointer address homes (`--registers=pointers`, the `-O` default; bzip2 `-d` 1.5% slower) | 1.98 (2.89) → 1.86 (2.91) |
 
 Every step is translation-validated or checked against the reference
 path, and the reference stays selectable and snapshot-identical. No
@@ -2292,6 +2293,48 @@ Evidence:
   ABI+GC, ensure-aux exits, memcpy, checks, programs).
 - The snapshot gains a fourth `-O` mode, `P.` (pointers with inlining);
   every other output is identical.
+
+**The implementation, timed** (`607d751` with M7's `49cd76d`, quiet swa,
+load about 1, cpu 6, 7 trials; ratio to filcc `-O2`: time
+(instructions)):
+
+| Workload | `-O` | `--registers=pointers` | `--checks=renew` | `--checks=guard` |
+| --- | --: | --: | --: | --: |
+| zlib -6 | 2.38 (3.92) | 2.16 (3.89) | 2.27 (3.46) | 2.28 (3.34) |
+| zlib -d | 1.79 (3.03) | 1.64 (3.05) | 1.79 (3.02) | 1.78 (3.01) |
+| bzip2 -9 | 1.77 (2.32) | 1.73 (2.45) | 1.70 (2.05) | 1.72 (2.03) |
+| bzip2 -d | 2.30 (2.92) | 2.33 (3.04) | 2.20 (2.61) | 2.22 (2.58) |
+| lz4 -1 | 2.03 (10.16) | 2.14 (10.33) | 2.02 (10.18) | 2.01 (10.19) |
+| lz4 -9 | 2.10 (2.65) | 2.17 (2.69) | 2.08 (2.60) | 2.18 (2.53) |
+| lz4 -d | 2.57 (5.36) | 2.39 (5.41) | 2.46 (5.36) | 2.60 (5.36) |
+| lua int | 2.01 (1.87) | 1.54 (1.80) | 1.95 (1.83) | 1.95 (1.83) |
+| lua tab | 1.84 (1.82) | 1.47 (1.75) | 1.84 (1.77) | 1.85 (1.77) |
+| lua str | 1.42 (1.54) | 1.39 (1.55) | 1.43 (1.50) | 1.45 (1.51) |
+| sqlite | 1.87 (1.93) | 1.84 (1.96) | 1.83 (1.83) | 1.85 (1.84) |
+| geomean | 1.98 (2.89) | 1.86 (2.91) | 1.94 (2.76) | 1.97 (2.74) |
+
+Pointer homes are 6% faster on the geomean and became the `-O` default
+(`--registers=temps` keeps scalar homes only). lz4's two apparent losses
+are noise: rerun with 21 trials, lz4 `-1` is 2.21 → 2.18, `-9` 2.07 →
+2.01 and `-d` 2.64 → 2.54. bzip2 `-d` is slower in every run (2.30 →
+2.33 twice, 2.34 → 2.38 over 21 trials, about 1.5%; cycles 1.060G →
+1.071G, resyncs at baseline, 26k → 22k), on 4% more instructions.
+That is a known regression of the default, not noise, accepted for 6%
+overall and 20–25% on Lua.
+
+bzip2 `-d` (minimum of 5 runs, twice: cycles, instructions, resyncs):
+
+| Build | cycles | instructions | resyncs | frame |
+| --- | --: | --: | --: | --: |
+| `-O` | 1.059–1.060G | 4.212G | 26–27k | 1296 B |
+| `--checks=renew` | 1.016–1.017G | 3.774G | 36–37k | 1312 B |
+| `--checks=guard` | 1.026–1.027G | 3.706G | 34–36k | 1328 B |
+| `--registers=pointers` | 1.070–1.073G | 4.334G | 22–23k | 1328 B |
+
+With `49cd76d` (renew reads the replaced check's pointer, not P1)
+renewal's frame is back near the reference's and its resyncs at
+baseline: renew is now 4% faster than the reference on bzip2 `-d` and
+2% on the geomean, guard 1%.
 
 #### Punned union reads in promote (after 5b-1)
 
