@@ -1026,27 +1026,12 @@ function_(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     bind_ordinary(enclosing(function), Name, Env0, FuncEnv),       % 6.4.2.2p1
     reflect_params(DclType, ParamTypes, FuncEnv, ParamEnv0),
     label_values(Body, ParamEnv0, ParamEnv),
-    source_location(Loc, SourceLoc),
-    empty_assoc(Empty),
-    State0 = st(ParamEnv, cur(start, []), [], [], 0, Labels, [],
-                build([], [0], 1, [origin(0, SourceLoc, statement(function), [])],
-                      index(Empty, Empty, SourceLoc))),
-    empty_assoc(Labels),
     Ctx = ctx(Name, RetType, none, none, Loc),
-    phrase(( sret_param(RetType, SretParams),
-             params(Names, Mins, ParamTypes, Ctx, Params00),
-             { length(SretParams, NSret) },
-             pad_params(Params00, NSret, Params0),
-             variadic_entry(Variadic, RetType-ParamTypes, SretParams, Params0),
-             vm_params(Names, ParamTypes, Ctx),
-             stmt(Body, Ctx),
-             fall_off(RetType),
-             computed_dispatch,
-             vm_jumps
-           ),
-           [State0], [State]),
+    Lower = lowered_body(Loc, RetType, Variadic, Names, Mins, ParamTypes, Body, Ctx),
+    launder_fixpoint([], Lower, ParamEnv, SretParams-Params0, State),
     append(SretParams, Params0, Params),
-    State = st(EnvEnd, none, [], RevBlocks, _, _, _, build(RevAllocs, _, _, RevRecords, _)),
+    State = st(EnvEnd, none, [], RevBlocks, _, _, _, build(RevAllocs, _, _, RevRecords0, _)),
+    exclude(is_launder, RevRecords0, RevRecords),
     env_scope(Env0, Scope, _),
     env_restore(Scope, EnvEnd, Env),
     reverse(RevBlocks, [block(start, [], Insts0, Jump)|Rest]),
@@ -1067,6 +1052,62 @@ function_(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     append([Origins, Values, Sites], Records).
 
 is_hint(hint(_, _)).
+
+% lowered_body(...)(+Laundered, +ParamEnv, -Params, -State): the
+% function's body lowered from ParamEnv, the locals whose keys are in
+% Laundered given capability shadows (launder_local/4).
+lowered_body(Loc, RetType, Variadic, Names, Mins, ParamTypes, Body, Ctx,
+             Laundered, ParamEnv0, SretParams-Params0, State) :-
+    bind_ordinary(launder(set), Laundered, ParamEnv0, ParamEnv),
+    source_location(Loc, SourceLoc),
+    empty_assoc(Empty),
+    State0 = st(ParamEnv, cur(start, []), [], [], 0, Labels, [],
+                build([], [0], 1, [origin(0, SourceLoc, statement(function), [])],
+                      index(Empty, Empty, SourceLoc))),
+    empty_assoc(Labels),
+    phrase(( sret_param(RetType, SretParams),
+             params(Names, Mins, ParamTypes, Ctx, Params00),
+             { length(SretParams, NSret) },
+             pad_params(Params00, NSret, Params0),
+             variadic_entry(Variadic, RetType-ParamTypes, SretParams, Params0),
+             vm_params(Names, ParamTypes, Ctx),
+             stmt(Body, Ctx),
+             fall_off(RetType),
+             computed_dispatch,
+             vm_jumps
+           ),
+           [State0], [State]).
+
+/* launder_fixpoint(+Laundered, +Lower, +ParamEnv, -Params, -State):
+   State is the function lowered with a capability shadow for each
+   local integer variable in the least fixpoint Laundered: the locals,
+   their address never taken, defined once (one initializer or
+   assignment, a parameter's incoming value counting as one), whose
+   definition has a capability source or merges two (launder_rhs//4), a
+   read of a laundered local counting as one. A variable defined twice
+   is, where both reach, a phi or select, which clang -O1 may make an
+   llvm.umin, smax, abs or usub.sat, a call Fil-C gives no capability,
+   from shapes no syntactic rule can follow; one defined once is its
+   definition's value. Whether a read is a source depends on the
+   definitions of the variables it copies, so the body is lowered
+   again until the set is stable; a function with no such definition
+   is lowered once, as before. */
+launder_fixpoint(Laundered, Lower, ParamEnv, Params, State) :-
+    call(Lower, Laundered, ParamEnv, Params1, State1),
+    State1 = st(_, _, _, _, _, _, _, build(_, _, _, Records, _)),
+    findall(K, member(launder(written(K)), Records), Ws0), sort(Ws0, Ws),
+    findall(K, member(launder(addressed(K)), Records), As0),
+    findall(K, member(launder(def(K)), Records), Ds0), msort(Ds0, Ds),
+    findall(K, append(_, [K, K|_], Ds), Redefined),
+    append(As0, Redefined, Barred0), sort(Barred0, Barred),
+    ord_subtract(Ws, Barred, Laundered1),
+    ord_union(Laundered, Laundered1, Laundered2),
+    (   Laundered2 == Laundered
+    ->  Params = Params1, State = State1
+    ;   launder_fixpoint(Laundered2, Lower, ParamEnv, Params, State)
+    ).
+
+is_launder(launder(_)).
 
 context_block(block(L, Ps0, Is0, from(Os, J)), block(L, Ps, Is, J), Rs) :-
     maplist(context_phi, Ps0, Ps, PRs),
@@ -1185,8 +1226,38 @@ param_local(none, _, _, _) --> [].
 param_local(some(Name), Type, Min, P) -->
     local_slot(Type, Min, Addr),
     bind(Name, var(Addr, Type)),
+    launder_local(k(Name, param), Type, Addr),
+    env(Env),
+    { lookup_ordinary(Env, launder(Addr), Info) -> true ; Info = none },
+    launder_def(Info),
     name_value(P, Addr, value),
     store_typed(Type, P, Addr).
+
+/* launder_local(+Key, +Type, +Addr)//: the local variable of Type at
+   Addr, named Key, an integer other than _Bool (6.3.1.2: converting
+   to it compares) neither volatile nor _Atomic, is one a
+   pointer converted to an integer can pass through and keep its
+   capability, as Fil-C's laundering does once the optimizer has made
+   the variable a value: launder(Addr) is info(Key, Shadow). Shadow is
+   none, or, for a key in the function's laundered set, a pointer slot
+   holding the capability of the value last stored (launder_rhs//4),
+   null from the start (allocations are zero), as a parameter's or an
+   uninitialized variable's has none. */
+launder_local(Key, Type, Addr) -->
+    env(Env0),
+    (   { Key = k(Name, _),
+          ( lookup_ordinary(Env0, qtype(Name), QT) -> true ; QT = Type ),
+          \+ qualified_with(QT, volatile), \+ atomic_qualified(QT),
+          unqualified(Type, U), int_type(U), U \== bool }
+    ->  { lookup_ordinary(Env0, launder(set), Set) },
+        (   { ord_memberchk(Key, Set) } -> local_slot(ptr(char), Shadow)
+        ;   { Shadow = none }
+        ),
+        env(Env1),
+        { bind_ordinary(launder(Addr), info(Key, Shadow), Env1, Env) },
+        set_env(Env)
+    ;   []
+    ).
 
 % vm_params(+Names, +Types, +Ctx)//: on entry, the size expressions of
 % each variably modified parameter are evaluated, in order, after every
@@ -1257,6 +1328,7 @@ indexed_record(binding(Id, Name, T, Loc), index(B0, H, O), index(B, H, O)) :- !,
 indexed_record(hint(T, Hint), index(B, H0, O), index(B, H, O)) :- !,
     put_assoc(T, H0, Hint, H).
 indexed_record(origin(_, _, _, _), X, X).
+indexed_record(launder(_), X, X).
 
 % The index's third part is the location of the active origin, the only
 % one a binding asks for; an assoc of every origin's (half a million in
@@ -1472,8 +1544,10 @@ vla_slot(Type, Min, Ctx, Addr) -->
    expression, make it fail (Fil-C's TOP), as does none. XP is
    evaluated first: the operands of those operators are unsequenced, so
    that is an order C allows. Fil-C infers on SSA, after the optimizer
-   has made locals values, so a source flowing through a local variable
-   is not found here. */
+   has made locals values: a read of a local integer variable with a
+   capability shadow (launder_local//3) is a source, shadow(Shadow), the
+   capability of the value last stored in it, as a phi of the stored
+   values' capabilities is. */
 laundered(XV, Env, XP, Hole, XV1) :-
     launder_source(XV, Env, XV1, [XP-Hole|Sources]),
     XP \== top,
@@ -1506,8 +1580,40 @@ launder_source(val(T, bin(Op, A, B)), Env, val(T, bin(Op, A1, B1)), Sources) :-
 launder_source(val(T, un(Op, A)), Env, val(T, un(Op, A1)), Sources) :-
     memberchk(Op, [neg, plus, bnot]), !,
     launder_source(A, Env, A1, Sources).
-launder_source(X, _, X, Sources) :-
-    (   passes_pointer_int(X) -> Sources = [top-_] ; Sources = [] ).
+launder_source(X, Env, X, [shadow(Shadow)-_]) :-
+    X = val(_, load(obj(_, id(_)))),
+    laundering_read(X, Env, Shadow), !.
+launder_source(X, Env, X, Sources) :-
+    (   passes_pointer_int(X, Env) -> Sources = [top-_] ; Sources = [] ).
+
+% laundering_read(+X, +Env, -Shadow): X reads a local variable whose
+% capability shadow is Shadow (launder_local//3).
+laundering_read(val(_, load(obj(_, id(Name)))), Env, Shadow) :-
+    lookup_ordinary(Env, Name, var(Addr, _)),
+    lookup_ordinary(Env, launder(Addr), info(_, Shadow)),
+    Shadow \== none.
+
+% minmax_select(+XC, +XA, +XB): XC ? XA : XB is one clang -O1 makes
+% llvm.umin, smax and the like (each arm one of the values XC compares
+% by < <= > >=, or a constant), llvm.abs (arms X and -X, X compared
+% with 0) or llvm.usub.sat (arms A - B and 0, A and B compared): a call,
+% whose result Fil-C gives no capability.
+minmax_select(val(_, bin(Op, C1, C2)), XA, XB) :-
+    memberchk(Op, [lt, gt, le, ge]),
+    uncast(C1, N1), uncast(C2, N2), uncast(XA, A), uncast(XB, B),
+    (   minmax_arm(A, N1, N2), minmax_arm(B, N1, N2), \+ ( A = int(_), B = int(_) )
+    ;   ( A = un(neg, X0), Y = B ; B = un(neg, X0), Y = A ),
+        uncast(X0, X), X == Y,
+        ( N1 == X, N2 = int(0) ; N2 == X, N1 = int(0) )
+    ;   ( A = bin(sub, P0, Q0), B = int(0) ; B = bin(sub, P0, Q0), A = int(0) ),
+        uncast(P0, P), uncast(Q0, Q),
+        ( P == N1, Q == N2 ; P == N2, Q == N1 )
+    ), !.
+
+minmax_arm(A, N1, N2) :- ( A == N1 ; A == N2 ; A = int(_) ), !.
+
+uncast(val(_, cast(_, X0)), X) :- !, uncast(X0, X).
+uncast(val(_, X), X).
 
 % distributable_arm(+U, +X): converting integer arm X to the ?:'s type U
 % and then to a pointer gives the pointer converting X does.
@@ -1515,21 +1621,23 @@ distributable_arm(U, X) :-
     tree_type(X, A0), unqualified(A0, A), int_type(A),
     ( A == U -> true ; int_info(U, 8, _) ).
 
-% passes_pointer_int(+X): X is a pointer difference, or passes on a
+% passes_pointer_int(+X, +Env): X is a pointer difference, or passes on a
 % value (?:, comma, assignment, statement expression) whose tree holds
-% a pointer converted to an integer or a pointer difference.
-passes_pointer_int(val(_, bin(sub, A, B))) :-
+% a pointer converted to an integer, a pointer difference or a read of
+% a local variable with a capability shadow.
+passes_pointer_int(val(_, bin(sub, A, B)), _) :-
     lowered(A, ptr(_)), lowered(B, ptr(_)), !.
-passes_pointer_int(val(_, Node)) :-
+passes_pointer_int(val(_, Node), Env) :-
     functor(Node, F, _),
     memberchk(F, [cond, gcond, comma, assign, stmtexpr]),
-    pointer_int_within(Node), !.
+    pointer_int_within(Node, Env), !.
 
-pointer_int_within(val(T, cast(_, X))) :-
+pointer_int_within(val(T, cast(_, X)), _) :-
     unqualified(T, IT), int_type(IT), lowered(X, ptr(_)), !.
-pointer_int_within(X) :- passes_pointer_int(X), !.
-pointer_int_within(X) :-
-    compound(X), X =.. [_|Args], member(A, Args), pointer_int_within(A), !.
+pointer_int_within(X, Env) :- laundering_read(X, Env, _), !.
+pointer_int_within(X, Env) :- passes_pointer_int(X, Env), !.
+pointer_int_within(X, Env) :-
+    compound(X), X =.. [_|Args], member(A, Args), pointer_int_within(A, Env), !.
 
 % pure_tree(+X): reading X twice is reading it once: X has no side
 % effects and reads no volatile or _Atomic object.
@@ -1544,6 +1652,8 @@ pure_tree(val(_, un(Op, X))) :- memberchk(Op, [neg, plus, bnot, not]), pure_tree
 pure_tree(val(_, bin(Op, A, B))) :-
     \+ memberchk(Op, [div, mod]), pure_tree(A), pure_tree(B).
 pure_tree(val(_, member(XS, _))) :- pure_tree(XS).
+
+pure_tree(shadow(_)).
 
 pure_place(obj(_, id(_))).
 pure_place(obj(_, member(X, _))) :- pure_place(X).
@@ -2527,9 +2637,10 @@ local_decl(d(Name, Type0, Storage0, Asm, Init), Ctx) -->
         ;   local_slot(Type, A, Addr)
         ),
         bind(Name, var(Addr, Type)),
+        (   { Asm \= asm(_) } -> launder_local(k(Name, Loc), Type, Addr) ; [] ),
         vm_scope(Type),
         (   { Init == none } -> []
-        ;   init(Addr, Type, Init, Ctx)
+        ;   launder_init(Addr, Type, Init, Ctx)
         )
     ).
 
@@ -3134,7 +3245,7 @@ lower_node(val(T, int(V)), _, v(const(V), U)) --> !, { unqualified(T, U) }.
 lower_node(val(_, float(Cs)), _, v(const(V), Type)) --> !,
     { float_literal(Cs, V, Type) }.
 lower_node(val(T, load(X)), Ctx, R) --> !,                 % 6.3.2.1p2
-    place(X, Ctx, P),
+    direct_place(X, Ctx, P, _),
     { unqualified(T, U) },
     (   { tree_type(X, TX), atomic_qualified(TX), P = lv(Addr, ptr(_)) }
     ->  let(p, atomic_load(p), [Addr], D),                 % 6.2.6.1p9
@@ -3229,16 +3340,18 @@ lower_node(val(_, incdec(Op, X)), Ctx, R) -->
     rmw(U, Addr, BinOp, v(const(1), int), Ctx, Old, New),
     { memberchk(Op, [preinc, predec]) -> R = New ; R = Old }.
 lower_node(val(_, assign(Op, X, XB)), Ctx, R) --> !,       % 6.5.16
-    place(X, Ctx, P),
-    (   { Op == (=) } -> lower(XB, Ctx, Value0)
+    direct_place(X, Ctx, P, Info),
+    (   { Op == (=) } -> launder_rhs(Info, XB, Ctx, Value0)
     ;   { compound_assignment(Op, BinOp) },
         place_read(P, Ctx, Cur),
         lower(XB, Ctx, VB),
-        binary(BinOp, Cur, VB, Ctx, Value0)
+        binary(BinOp, Cur, VB, Ctx, Value0),
+        launder_compound(Info, XB)
     ),
     place_write(P, Value0, Ctx, R).
 lower_node(val(_, incdec(Op, X)), Ctx, R) --> !,           % 6.5.2.4, 6.5.3.1
-    place(X, Ctx, P),
+    direct_place(X, Ctx, P, Info),
+    launder_def(Info),
     place_read(P, Ctx, Cur),
     { memberchk(Op, [preinc, postinc]) -> BinOp = add ; BinOp = sub },
     binary(BinOp, Cur, v(const(1), int), Ctx, Value0),
@@ -3287,24 +3400,30 @@ lower_node(val(T, bit_cast(XA)), Ctx, R) --> !,
     store_typed(A, V, Tmp),
     loaded(T, Tmp, Ctx, R).
 % An integer ?: converted to a pointer is that conversion of the arm it
-% takes, so each arm finds its own capability source (laundered/4), as
+% takes, unless an arm reads a laundered variable (launder_local//3),
+% whose select clang may make a min or max no syntax shows (a copy or an
+% inlined comparison in the condition): then the ?: is TOP. Each arm
+% finds its own capability source (laundered/4), as
 % Fil-C gives a select the capability of the value it selects: emacs's
 % pointer_align, (void *) ROUNDUP ((uintptr_t) ptr, alignment), whose
 % ROUNDUP tests whether the alignment is a power of two. Converting an
 % arm to the ?:'s type first changes no value when the arm has that
 % type or the type has 8 bytes.
 lower_node(val(T, cast(TN, XV)), Ctx, R) -->              % 6.5.4
+    env(Env),
     { unqualified(T, ptr(_)), \+ vm_type(T), XV = val(CT, cond(XC, XA, XB)),
       unqualified(CT, U), int_type(U),
-      distributable_arm(U, XA), distributable_arm(U, XB) }, !,
+      distributable_arm(U, XA), distributable_arm(U, XB),
+      \+ minmax_select(XC, XA, XB),
+      \+ ( member(X, [XA, XB]), launder_source(X, Env, _, Sources),
+            memberchk(shadow(_)-_, Sources) ) }, !,
     lower(val(T, cond(XC, val(T, cast(TN, XA)), val(T, cast(TN, XB)))), Ctx, R).
 lower_node(val(T, cast(TN, XV)), Ctx, R) -->              % 6.5.4
     env(Env),
     { unqualified(T, ptr(_)), lowered(XV, IT), int_type(IT),
       laundered(XV, Env, XP, Hole, XV1) }, !,
     evaluated_type(TN, Ctx, Type),
-    lower(XP, Ctx, VP),
-    { Hole = VP, VP = v(P, _) },
+    capability(XP, Hole, Ctx, P),
     lower(XV1, Ctx, VI),
     convert(VI, ulong, v(I, _)),
     let(l, ptoi, [P], IP),
@@ -3435,12 +3554,14 @@ decayed(fd(Callee, Type), _, _, v(Callee, ptr(Type))) --> [].
 place(X, Ctx, P) -->
     typed_origin(X, Ctx, Parent), place_node(X, Ctx, P), restore_origin(Parent).
 
-place_node(obj(_, id(Name)), _, P) --> !, env(Env),
-    { lookup_ordinary(Env, Name, Binding) },
-    binding_obj(Binding, P),
-    ( { Binding = gvar(_, Sym, _, _), P = lv(tmp(T), _) }
-    -> binding_context(Name, Binding), record(hint(T, named(global(Sym), address)))
-    ; [] ).
+place_node(obj(_, id(Name)), _, P) --> !,
+    id_place(Name, P),
+    (   env(Env),
+        { lookup_ordinary(Env, Name, var(Addr, _)),
+          lookup_ordinary(Env, launder(Addr), info(Key, _)) }
+    ->  record(launder(addressed(Key)))
+    ;   []
+    ).
 place_node(fun(_, id(Name)), _, P) --> !, env(Env),
     { lookup_ordinary(Env, Name, Binding) },
     binding_obj(Binding, P).
@@ -3504,6 +3625,112 @@ place_node(obj(_, bitfield(member(XS, F), W)), Ctx, bits(P, T, Pos, W)) --> % 6.
     env(Env),
     { member_layout(SU, F, Env, T, Off, bits(Pos, W)) },
     offset(Addr, Off, P).
+
+id_place(Name, P) -->
+    env(Env),
+    { lookup_ordinary(Env, Name, Binding) },
+    binding_obj(Binding, P),
+    ( { Binding = gvar(_, Sym, _, _), P = lv(tmp(T), _) }
+    -> binding_context(Name, Binding), record(hint(T, named(global(Sym), address)))
+    ; [] ).
+
+% direct_place(+X, +Ctx, -P, -Info)//: P is the place of X read or
+% written as it is, by a load, assignment or increment, which takes no
+% address of a variable; Info is a laundering variable's
+% (launder_local//3) or none. Any other place of one takes its address.
+direct_place(X, Ctx, P, Info) -->
+    { X = obj(_, id(Name)) }, !,
+    typed_origin(X, Ctx, Parent), id_place(Name, P), restore_origin(Parent),
+    env(Env),
+    {   lookup_ordinary(Env, Name, var(Addr, _)),
+        lookup_ordinary(Env, launder(Addr), Info0)
+    ->  Info = Info0
+    ;   Info = none
+    }.
+direct_place(X, Ctx, P, none) --> place(X, Ctx, P).
+
+/* launder_rhs(+Info, +XV, +Ctx, -Value)//: Value is the value of XV, to
+   be stored into a variable whose laundering info is Info
+   (launder_local//3). When XV has a capability source, a pointer it
+   converts or a laundering variable it reads, or merges two (Fil-C's
+   TOP), the variable is written with one (launder_fixpoint/5), and its
+   shadow, if it has one, gets the one source's capability, laundered/5's
+   XP evaluated first as a cast to a pointer does, or else none (null). */
+launder_rhs(none, XV, Ctx, Value) --> !, lower(XV, Ctx, Value).
+launder_rhs(info(Key, Shadow), XV, Ctx, Value) -->
+    record(launder(def(Key))),
+    env(Env),
+    (   { lowered(XV, ptr(_)) }
+    ->  record(launder(written(Key))),
+        lower(XV, Ctx, Value), { Value = v(P, _) },
+        shadow_store(Shadow, P)
+    ;   { launder_sources(XV, Env, Sources), Sources == [] }
+    ->  lower(XV, Ctx, Value), shadow_store(Shadow, const(0))
+    ;   { Shadow \== none, laundered(XV, Env, XP, Hole, XV1) }
+    ->  record(launder(written(Key))),
+        capability(XP, Hole, Ctx, P),
+        lower(XV1, Ctx, Value),
+        shadow_store(Shadow, P)
+    ;   record(launder(written(Key))),
+        lower(XV, Ctx, Value), shadow_store(Shadow, const(0))
+    ).
+
+% launder_compound(+Info, +XB)//: a compound assignment of XB to a
+% laundering variable defines it again; it keeps the variable's
+% capability when XB has no source; with one, the two merge (TOP) and
+% the shadow gets none.
+launder_compound(none, _) --> [].
+launder_compound(info(Key, Shadow), XB) -->
+    record(launder(def(Key))),
+    env(Env),
+    (   { lowered(XB, IT), int_type(IT), launder_sources(XB, Env, Sources), Sources == [] } -> []
+    ;   record(launder(written(Key))), shadow_store(Shadow, const(0))
+    ).
+
+% launder_sources(+XV, +Env, -Sources): the capability sources of
+% integer XV (launder_source/4), none for any other type.
+launder_sources(XV, Env, Sources) :-
+    (   lowered(XV, IT), int_type(IT) -> launder_source(XV, Env, _, Sources)
+    ;   Sources = []
+    ).
+
+% launder_def(+Info)//: a laundering variable is defined (launder_fixpoint/5).
+launder_def(none) --> [].
+launder_def(info(Key, _)) --> record(launder(def(Key))).
+
+shadow_store(none, _) --> !.
+shadow_store(Shadow, P) --> emit(store(p, P, Shadow)).
+
+% capability(+XP, ?Hole, +Ctx, -P)//: P is the pointer whose capability
+% laundered/5's source XP gives: XP's value, which Hole is, or the
+% laundering variable's shadow.
+capability(shadow(Shadow), _, Ctx, P) --> !, load_typed(ptr(char), Shadow, Ctx, P).
+capability(XP, Hole, Ctx, P) --> lower(XP, Ctx, VP), { Hole = VP, VP = v(P, _) }.
+
+% launder_init(+Addr, +Type, +Init, +Ctx)//: initialize the variable of
+% Type at Addr. A laundering one's scalar initializer is stored as an
+% assignment of it would be (6.7.9p11), through launder_rhs//4; any
+% other initializer of one leaves its shadow none.
+launder_init(Addr, Type, Init, Ctx) -->
+    env(Env),
+    { ctx_loc(Ctx, Loc) },
+    (   { lookup_ordinary(Env, launder(Addr), Info) }
+    ->  (   { init_leaves(Type, Init, c(Env, whole, Loc), [expr(0, _, Expr)]) }
+        ->  expression_scope(Expr),
+            env(Env1),
+            (   { elaborate(Expr, Env1, Loc, X) } -> { value(X, XV) }
+            ;   { sema_error(Loc, 'cannot type ~w', [Expr]) }
+            ),
+            launder_rhs(Info, XV, Ctx, Value0),
+            assign_convert(Expr, Value0, Type, Loc, v(V, _)),
+            store_typed(Type, V, Addr)
+        ;   init(Addr, Type, Init, Ctx),
+            launder_def(Info),
+            { Info = info(_, Shadow) },
+            shadow_store(Shadow, const(0))
+        )
+    ;   init(Addr, Type, Init, Ctx)
+    ).
 
 /* An object is read and written through its place: lv(Addr, Type), or
    bits(Addr, Type, Pos, W), a bit-field of W bits from bit Pos of the
