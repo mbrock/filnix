@@ -469,9 +469,11 @@ func(sum, export, w, [param(p, tmp(v0))], [
 
 - `check(0, 4, read, 1)` traps unless `pr.1`'s capability allows
   reading bytes [0, 4) at it. Its proof `chk0` is the only thing the
-  `raw_load(sw, 0)` after it may read. Fil-C requires alignment only
-  for pointer slots, so an int's check has alignment 1
-  (`ir:access_size_align/3`).
+  `raw_load(sw, 0)` after it may read. Like filcc
+  (`needToCheckAlignment`), nanofil checks alignment for pointer slots,
+  atomics and vectors (`access/4` at the least of the ABI alignment,
+  the access size and 8), and checks plain integer and float scalars at
+  alignment 1, as here (`ir:access_size_align/3`).
 - `flight(tmp(v14), add, [address(tmp('pr.1')), const(8)], lower(tmp('pr.1')))`
   is `&n->next`: its address is `pr.1`'s plus 8, and its capability
   ("lower") is `pr.1`'s. Pizlonation states both; the backend emits
@@ -517,8 +519,11 @@ The validator's rule is the centre of nanofil's safety argument. In a
 checked function (`ir:stage_func/5`, `ir:checked_insts/5`), every raw
 access must read a proof that covers its bytes, alignment and rights,
 and that proof must still be valid: no instruction between them may
-free memory or reach a safepoint (`evidence_preserving/1`), and
-evidence crosses a block edge only if every incoming edge carries it.
+free memory or reach a safepoint (`evidence_preserving/1`). Evidence
+crosses a block edge only if every incoming edge carries it; a poll
+edge carries none, and neither does an edge from a block not yet
+processed in block order (`checked_block/6`). Only heap checks make
+live evidence; `check_local` proves its access and nothing after it.
 Weaken one check of `sum` so it covers 2 bytes instead of 4, and the
 validator refuses the module:
 
@@ -845,7 +850,15 @@ native code nanofil emits, and for C files the native code clang emits
 (`nanofil difftest`, `tests/difftest.sh`, `tests/progtest.sh`). A raw
 access whose proof does not cover it runs to `unchecked(Why)`, an
 outcome distinct from both a trap and undefined behaviour, so a missing
-check shows up as a mismatch.
+check shows up as a mismatch. An `asm_fixed` instruction the
+interpreter cannot model stops at `unknown(asm(M, Xs))`, which difftest
+reports as not comparable ([docs/asm-fixed.md](asm-fixed.md)).
+
+The interpreter's trap reasons are coarse: past the end, below the
+start, freed, and a function object all trap as `out_of_bounds`. So
+difftest compares trap kinds, and the exact reason text is compared
+natively: progtest against filcc, and
+[tests/renew-trap.sh](../tests/renew-trap.sh).
 
 ## Ideas to hold
 
@@ -918,13 +931,25 @@ Fil-C's collector runs concurrently and asks each thread to stop at
 may exit to the runtime. Two rules follow, and nanofil enforces both
 structurally:
 
-- **A proof dies at a safepoint.** A safepoint can run code that frees
-  the object, so no raw access may use a proof across one: the
-  validator ends all live evidence at any instruction that is not
-  `evidence_preserving/1`. The one exception is `renew`, which names
-  an earlier dominating check's proof only for its bounds, which
-  cannot change until the object is freed, and tests the freed and
-  read-only flags again.
+- **A proof dies at a safepoint.** A call can run code that frees the
+  object, and so can a pollcheck, through a deferred signal handler
+  (the collector itself never frees a reachable object). So no raw
+  access may use a proof across one: the validator ends all live
+  evidence at any instruction that is not `evidence_preserving/1`.
+  Two forms are exceptions, because they test again what a free
+  changes. An object's bounds change only by free, which sets its
+  upper to its lower, and the flag test catches that.
+  - `renew` names an earlier check's proof for its bounds. The check
+    and its pointer have one definition each and dominate the renew,
+    the renewed pointer has the same base and offset
+    (`same_pointer/3`), and the function has no setjmp. It tests the
+    freed and read-only flags again.
+  - `renew_if` reads a guard's `span_test` result G instead of live
+    evidence. The validator accepts it through `guard_covers/5`
+    (single-definition G and P0, and the access inside the span), so
+    it holds across the calls and polls in the loop. It tests the
+    flags and the alignment, and when G failed it runs the full check
+    out of line.
 - **Every live capability is a root at every safepoint.** The ABI plan
   gives each live `p` a `lowers[]` entry in the frame record. The
   register checker refuses any home that overlaps the record, so
@@ -1092,7 +1117,8 @@ Next: [docs/m5.md](m5.md), *Nonescaping local storage*.
 ### Checked IR
 
 **[pizlonate.pl](../src/pizlonate.pl)**: unchecked to checked IR: one
-check per access, `flight` for pure pointer operations, a poll on every
+check per access (a vector's `access/4` becomes a full-width check and
+a `touch` before its chunks' own checks), `flight` for pure pointer operations, a poll on every
 backward edge. Next: [docs/pizlonation.md](pizlonation.md).
 
 **[check_reuse.pl](../src/check_reuse.pl)**: the evidence passes reuse,
@@ -1190,8 +1216,9 @@ the checked stage.
 (`c_types:elaborate/3`).
 
 **evidence**: whatever discharges an access's requirement. Today, a
-check immediately before it, or an earlier live heap check under reuse,
-renew or guard. `live(Q, P, Lo, Hi, Rights, Align)` is the validator's
+check immediately before it, an earlier live heap check under reuse,
+or, for `renew`, a dominating check of the same pointer, and for
+`renew_if` a guard's span test. `live(Q, P, Lo, Hi, Rights, Align)` is the validator's
 fact for it.
 
 **fast / generic convention**: Fil-C's two ways in to a function. The
@@ -1211,8 +1238,9 @@ safepoint.
 
 **guard**: `--checks=guard`, range guards: a `span_test` before a loop
 proves its accesses' bounds once, and the loop's checks become
-`renew_if`, which tests only the flags when the guard passed
-([docs/m7.md](m7.md), round 5).
+`renew_if`, which tests the flags and alignment when the guard passed
+and runs the full check out of line otherwise ([docs/m7.md](m7.md),
+round 5).
 
 **home**: an 8-byte frame word that holds a temporary, a phi's shadow
 or a pointer's address word in the stack-homed stream amd64_regs
@@ -1264,8 +1292,14 @@ dominating check's bounds and tests only that the object is not freed
 (and, for a write, not read-only) ([docs/m7.md](m7.md), round 4). The
 `-O` default.
 
+**renew_if**: `renew_if(Lo, Hi, Rights, Align)`, reading the pointer P
+and a guard's `span_test` result G: a `renew` whose bounds come from
+the guard (see guard).
+
 **reuse**: `--checks=reuse`, deleting a check whose access an earlier
-live proof already covers, so the access reads that proof.
+live proof already covers, so the access reads that proof. It works
+across plain edges and for related pointers at a constant offset
+([docs/m7.md](m7.md), round 3).
 
 **root**: a frame word the collector scans: an entry of the frame
 record's `lowers[]`, a local's stack aux, or a jmpbuf root.
