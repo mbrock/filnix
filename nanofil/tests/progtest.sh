@@ -23,7 +23,8 @@
 # write 56 bytes when upper - ptr = 48"), instead of counting as "trap".
 # A "// cflags: ..." line passes those flags to clang, and nanofil
 # compiles clang's preprocessing with them, as nanofil-cc does (with
-# NANOFIL_STD=c23 for -std=c23 or gnu23, gnu89 for C90 modes). NANOFIL_OPT=-O turns on nanofil's
+# NANOFIL_STD=c23 for -std=c23 or gnu23, gnu89 for C90 modes, and
+# NANOFIL_COMMON=1 for -fcommon). NANOFIL_OPT=-O turns on nanofil's
 # middle end. Each run gets PROG_TIMEOUT seconds (10); a "// timeout: N"
 # line raises that to N for a program whose threads spin, which crawl
 # when a loaded builder oversubscribes its cores.
@@ -91,7 +92,8 @@ for f in "$@"; do
   run_timeout=${PROG_TIMEOUT:-10}
   tmo=$(sed -n 's|^// timeout: ||p' "$f")
   if [[ -n $tmo ]] && (( tmo > run_timeout )); then run_timeout=$tmo; fi
-  input=$f std=c17
+  input=$f std=c17 common=
+  if [[ " ${cflags[*]} " =~ \ -fcommon\  ]]; then common=1; fi
   if [[ " ${cflags[*]} " =~ \ -std=(c|gnu)(23|2x)\  ]]; then std=c23; fi
   if [[ " ${cflags[*]} " =~ \ (-std=(c|gnu)(89|90)|-ansi|-fgnu89-inline)\  ]]; then std=gnu89; fi
   libs=()
@@ -110,13 +112,13 @@ for f in "$@"; do
   clibs=() nlibs=()
   if [ -n "$nlink" ]; then
     "$filcc" -O1 -w -c -o "$d/nlib-clang.o" "$(dirname "$f")/$nlink"
-    (cd "$src" && timeout "${COMPILE_TIMEOUT:-20}" "$nanofil" ${NANOFIL_OPT:-} cc "$(dirname "$f")/$nlink" </dev/null) >"$d/nlib.s"
+    (cd "$src" && NANOFIL_COMMON=$common timeout "${COMPILE_TIMEOUT:-20}" "$nanofil" ${NANOFIL_OPT:-} cc "$(dirname "$f")/$nlink" </dev/null) >"$d/nlib.s"
     as -o "$d/nlib.o" "$d/nlib.s"
     clibs=("$d/nlib-clang.o") nlibs=("$d/nlib.o")
   fi
   if ! "$filcc" "${cflags[@]}" "$ropt" -w -o "$d/clang" "$f" "${libs[@]}" "${clibs[@]}" -lm; then reference_failed=1; fi
   outcome=reject
-  if (cd "$src" && NANOFIL_STD=$std timeout "${COMPILE_TIMEOUT:-20}" "$nanofil" ${NANOFIL_OPT:-} cc "$input" </dev/null) >"$d/n.s"; then
+  if (cd "$src" && NANOFIL_STD=$std NANOFIL_COMMON=$common timeout "${COMPILE_TIMEOUT:-20}" "$nanofil" ${NANOFIL_OPT:-} cc "$input" </dev/null) >"$d/n.s"; then
     :
   else
     rc=$?

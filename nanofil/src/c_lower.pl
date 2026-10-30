@@ -918,10 +918,11 @@ gdef_pair(gdef(Sym)-G, Sym-G).
 
 % global_item(+Sym-G, -Data, +Env0, -Env): Data is the data item of
 % global definition G.
-global_item(Sym-g(Type, Linkage0, Init, Loc),
+global_item(Sym-g(Type, Linkage00, Init, Loc),
             data(Sym, Linkage, Align, Items), Env0, Env) :-
+    common_linkage(Linkage00, Init, Linkage0),
     env_defs(Env0, Defs0),
-    (   get_assoc(readonly(Sym), Defs0, true), memberchk(Linkage0, [export, local])
+    (   get_assoc(readonly(Sym), Defs0, true), memberchk(Linkage0, [export, local, weak])
     ->  Linkage = ro(Linkage0)
     ;   Linkage = Linkage0
     ),
@@ -934,6 +935,19 @@ global_item(Sym-g(Type, Linkage0, Init, Loc),
     -> Env = Env0
     ; static_items(Type, Init, Loc, Env0, Env, Items)
     ).
+
+% common_linkage(+Linkage0, +Init, -Linkage): under -fcommon (nanofil-cc
+% sets NANOFIL_COMMON=1), an external object that the unit only defines
+% tentatively (C11 6.9.2p2; Init none: no declaration initializes it) is
+% a common symbol, which clang gives Fil-C as a weak definition: the
+% link keeps one, and every unit's uses go through its getter. C11 J.5.11
+% lists this as a common extension; GCC 10 and clang 11 made
+% -fno-common the default, which older packages' duplicate tentative
+% definitions need undone. A const one is common too; a thread-local one
+% (tls) is not, as in clang. clang also keeps one with a section
+% attribute strong, which nanofil ignores.
+common_linkage(export, none, weak) :- getenv('NANOFIL_COMMON', '1'), !.
+common_linkage(Linkage, _, Linkage).
 
 %% Functions
 

@@ -6,7 +6,8 @@
 # -fgnu89-inline set NANOFIL_STD=gnu89, for GNU inline semantics; -fno-builtin,
 # -fno-builtin-memcpy, -fno-builtin-memmove and -ffreestanding keep every
 # memcpy and memmove a call (--memcpy=call); -fno-inline and -O0 select
-# --inline=none. __SIZEOF_INT128__ is not defined, since nanofil
+# --inline=none; -fcommon sets NANOFIL_COMMON=1, so tentative
+# definitions are common (weak) symbols. __SIZEOF_INT128__ is not defined, since nanofil
 # refuses __int128. Anything else
 # (linking, configure probes) goes to filcc unchanged. On SWI, nanofil
 # runs from a saved state built here, which starts in 0.05 s instead of
@@ -43,6 +44,8 @@ pkgs.writeShellScript "nanofil-cc" ''
       -fno-builtin|-fno-builtin-memcpy|-fno-builtin-memmove|-ffreestanding)
         copies=--memcpy=call; args+=("$1") ;;
       -fno-inline|-O0) inline=--inline=none; args+=("$1") ;;
+      -fcommon) export NANOFIL_COMMON=1; args+=("$1") ;;
+      -fno-common) unset NANOFIL_COMMON; args+=("$1") ;;
       *.c) src=$1; args+=("$1") ;;
       *) args+=("$1") ;;
     esac
