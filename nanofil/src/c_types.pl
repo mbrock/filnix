@@ -4386,8 +4386,12 @@ doc(conditional_type(+Arms, +Env, -T), semidet, [
     example(( empty_env(E0), bind_ordinary(p, var(none, ptr(char)), E0, E),
               conditional_type(chr(0)-id(p), E, T) ),
             T = ptr(char)),
-    fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(char)), E0, E),
-            conditional_type(chr(1)-id(p), E, _) ))
+    example(( empty_env(E0), bind_ordinary(p, var(none, ptr(char)), E0, E),
+              conditional_type(chr(1)-id(p), E, T) ),
+            T = ptr(char)),
+    fails(( empty_env(E0), bind_ordinary(p, var(none, ptr(char)), E0, E1),
+            bind_ordinary(d, var(none, double), E1, E),
+            conditional_type(id(d)-id(p), E, _) ))
 ]).
 conditional_type(A-B, Env, T) :- arms(A, B, Env, _, _, T).
 
@@ -4465,8 +4469,10 @@ doc(arms_type(+TA, +NA, +TB, +NB, -T), semidet, [
     "pointer type. Pointer arms point to the composite of their targets,",
     "qualified with both arms' qualifiers, or to void if either does. As",
     "in clang and GCC, a void arm makes the result void whatever the",
-    "other arm, and incompatible pointer arms give void *; a pointer and",
-    "a nonnull integer are rejected.",
+    "other arm, and incompatible pointer arms give void *. A pointer and",
+    "an integer that is not a null pointer constant violate 6.5.15p3;",
+    "clang and GCC only warn, and take the pointer type, converting the",
+    "integer as a cast would (Ruby's error.c, RBOOL(c ? a == b : f())).",
     cites('C11 6.5.15p3'),
     cites('C11 6.5.15p5'),
     cites('C11 6.5.15p6'),
@@ -4479,7 +4485,10 @@ doc(arms_type(+TA, +NA, +TB, +NB, -T), semidet, [
     example(arms_type(ptr(array(int, none)), value, ptr(array(int, 3)), value, T),
             T = ptr(array(int, 3))),
     example(arms_type(ptr(int), value, ptr(long), value, T), T = ptr(void)),
-    fails(arms_type(ptr(int), value, int, value, _)),
+    example(arms_type(ptr(int), value, long, value, T), T = ptr(int)),
+    example(arms_type(uchar, value, ptr(char), value, T), T = ptr(char)),
+    fails(arms_type(ptr(int), value, double, value, _)),
+    fails(arms_type(float, value, ptr(int), value, _)),
     fails(arms_type(struct(1), value, struct(2), value, _))
 ]).
 arms_type(TA, _, TB, _, T) :-
@@ -4490,6 +4499,8 @@ arms_type(_, _, void, _, void) :- !.
 arms_type(T, _, U, _, T) :- T == U, ( T = struct(_) ; T = union(_) ), !.
 arms_type(ptr(P), _, _, null, ptr(P)) :- !.
 arms_type(_, null, ptr(P), _, ptr(P)) :- !.
+arms_type(ptr(P), _, I, _, ptr(P)) :- int_type(I), !.
+arms_type(I, _, ptr(P), _, ptr(P)) :- int_type(I), !.
 arms_type(ptr(A), _, ptr(B), _, ptr(T)) :-
     target(A, QA, A1), target(B, QB, B1), append(QA, QB, Qs),
     pointed_type(A1, B1, Qs, T).
