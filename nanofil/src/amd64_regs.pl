@@ -6,7 +6,8 @@
    r10/r11. Accesses stay the moves the reference emits, with a register
    in place of the slot; no instruction is selected differently.
 
-   A home is a candidate when it is a scalar (w/l) home, every access to
+   A home is a candidate when it is a scalar (w/l) home, or under
+   pointers a pointer's address word (class a), every access to
    it is a whole move of that home (amd64_regs_check:substitute/3), its
    address is never taken, it is not live at entry, and no 32-bit store
    to it leaves its high half live. Homes interfere when one is written
