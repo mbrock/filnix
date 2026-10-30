@@ -3792,9 +3792,9 @@ chunk_addr(tmp(T), Body, A) :- memberchk(let(tmp(T), p, add, [A, const(_)]), Bod
 vec_fn(Name, Insts, Ret, func(Name, local, l, [param(p, tmp(p)), param(l, tmp(l))], [block(s, [], Insts, Ret)])).
 
 test(vector_access_validation) :-
-    forall(( member(K, [read, write]), member(S, [16, 32, 64]), member(Al, [1, 2, 4, 8]) ),
+    forall(( member(K, [read, write]), member(S, [8, 16, 32, 64]), member(Al, [1, 2, 4, 8]) ),
            ( vec_fn(f, [access(K, tmp(p), S, Al)], ret(const(0)), F), valid_module(module([F])) )),
-    forall(member(A, [access(modify, tmp(p), 16, 8), access(read, tmp(p), 8, 8),
+    forall(member(A, [access(modify, tmp(p), 16, 8), access(read, tmp(p), 4, 4),
                       access(read, tmp(p), 24, 8), access(read, tmp(p), 16, 16),
                       access(read, tmp(p), 16, 3), access(read, tmp(l), 16, 8)]),
            ( vec_fn(f, [A], ret(const(0)), F),
@@ -3842,6 +3842,18 @@ test(vector_access_no_partial_write) :-
              once(interp:call_outcome(Fns, Gs, Mode, f, [], s(Mem0, 10), Of, s(MemF, _))),
              once(interp:call_outcome(Fns, Gs, Mode, g, [], s(Mem0, 10), Og, s(MemG, _))),
              Of == trap(out_of_bounds), Og == Of, MemF == MemG )),
+    % Size 8 over two 4-byte float chunks, the first in bounds.
+    Pre8 = [let(tmp(a), p, alloc(8), [const(32)]), let(tmp(b), p, add, [tmp(a), const(28)]),
+            access(write, tmp(b), 8, 4)],
+    append(Pre8, [store(s, const(1065353216), tmp(b)), let(tmp(c), p, add, [tmp(b), const(4)]),
+                  store(s, const(1065353216), tmp(c))], Is8),
+    copy_term(Mk, [f, Is8, F8]), copy_term(Mk, [g, Pre8, G8]),
+    M8 = module([F8, G8]), valid_module(M8), pizlonate_module(M8, P8), valid_module(P8),
+    forall(member(X, [M8, P8]),
+           ( module_prepared(X, prep(Fns, Gs, Mode, Mem0)),
+             once(interp:call_outcome(Fns, Gs, Mode, f, [], s(Mem0, 10), Of, s(MemF, _))),
+             once(interp:call_outcome(Fns, Gs, Mode, g, [], s(Mem0, 10), Og, s(MemG, _))),
+             Of == trap(out_of_bounds), Og == Of, MemF == MemG )),
     % The access's own kind and alignment decide: a misaligned access
     % traps at alignment 8 and runs at 1; a read-only object refuses a
     % write and allows a read; unchecked and pizlonated alike.
@@ -3852,7 +3864,14 @@ test(vector_access_no_partial_write) :-
                    [let(tmp(a), p, alloc(8), [const(32)]), let(tmp(b), p, add, [tmp(a), const(4)]),
                     access(read, tmp(b), 16, 1)]-ret(0),
                    [let(tmp(m), p, copy, [global(msg)]), access(write, tmp(m), 16, 1)]-trap(readonly),
-                   [let(tmp(m), p, copy, [global(msg)]), access(read, tmp(m), 16, 1)]-ret(0)]),
+                   [let(tmp(m), p, copy, [global(msg)]), access(read, tmp(m), 16, 1)]-ret(0),
+                   % Size 8 (an __m64): its own alignment, unlike a long's 1.
+                   [let(tmp(a), p, alloc(8), [const(32)]), let(tmp(b), p, add, [tmp(a), const(4)]),
+                    access(read, tmp(b), 8, 8)]-trap(misaligned),
+                   [let(tmp(a), p, alloc(8), [const(32)]), let(tmp(b), p, add, [tmp(a), const(4)]),
+                    access(write, tmp(b), 8, 4)]-ret(0),
+                   [let(tmp(a), p, alloc(8), [const(32)]), let(tmp(b), p, add, [tmp(a), const(28)]),
+                    access(read, tmp(b), 8, 4)]-trap(out_of_bounds)]),
            ( K = module([Ro, func(k, local, l, [], [block(s, [], Body, ret(const(0)))])]),
              valid_module(K), pizlonate_module(K, PK), valid_module(PK),
              forall(member(X, [K, PK]), ( once(run(X, k, [], 10, O)), O == Want )) )).
@@ -3868,7 +3887,22 @@ test(vector_access_reuse) :-
     findall(C, member(let(_, a, C, _), Is), [check(0, 16, read, 8)]),
     member(let(tmp(Q), a, check(0, 16, read, 8), _), Is), memberchk(touch(tmp(Q)), Is),
     memberchk(let(tmp(x), l, raw_load(l, 0), [tmp(Q)]), Is),
-    memberchk(let(tmp(y), l, raw_load(l, 8), [tmp(Q)]), Is).
+    memberchk(let(tmp(y), l, raw_load(l, 8), [tmp(Q)]), Is),
+    % Size 8 over two float chunks: both read the 8-byte proof.
+    vec_fn(g, [access(read, tmp(p), 8, 4), let(tmp(u), s, load(s), [tmp(p)]),
+               let(tmp(q), p, add, [tmp(p), const(4)]), let(tmp(v), s, load(s), [tmp(q)]),
+               let(tmp(z), s, add, [tmp(u), tmp(v)]), let(tmp(r), l, ptoi, [tmp(q)])], ret(tmp(r)), G),
+    pizlonate_module(module([G]), PG), reuse_checks(PG, RG), reuse_refines(PG, RG), valid_module(RG),
+    RG = module([func(g, _, _, _, [block(s, [], Gs, _)])]),
+    findall(C, member(let(_, a, C, _), Gs), [check(0, 8, read, 4)]),
+    member(let(tmp(Q8), a, check(0, 8, read, 4), _), Gs),
+    memberchk(let(tmp(u), s, raw_load(s, 0), [tmp(Q8)]), Gs),
+    memberchk(let(tmp(v), s, raw_load(s, 4), [tmp(Q8)]), Gs),
+    % Emitted with its own kind: a read of 8 bytes at alignment 8.
+    vec_fn(h, [access(read, tmp(p), 8, 8)], ret(const(0)), H),
+    pizlonate_module(module([H]), PH),
+    filc_module_asm(PH, emit(stack, reference), Lines, _),
+    memberchk(ins(test, b, [imm(7), reg(al)]), Lines).
 
 % -O keeps every access, and its object on the heap, while a dead let
 % goes.

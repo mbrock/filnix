@@ -70,7 +70,7 @@
     | `store(Width, Value, Addr)` | store Value at Addr; Width one of `b` `h` `w` `l` `p` `s` `d` |
     | `atomic_store(p, Value, Addr)` | (filc mode) store the pointer Value at Addr single-copy atomically, sequentially consistent (Fil-C's filc_store_ptr_atomic) |
     | `fence` | a sequentially consistent fence (`mfence`) |
-    | `access(K, Addr, Size, Align)` | trap as a K (`read` or `write`) access of Size (16, 32 or 64) bytes at Addr with alignment Align (1, 2, 4 or 8) would, and access nothing: a vector's full-width check before its chunks (docs/vector-access.md) |
+    | `access(K, Addr, Size, Align)` | trap as a K (`read` or `write`) access of Size (8, 16, 32 or 64) bytes at Addr with alignment Align (1, 2, 4 or 8) would, and access nothing: a vector's full-width check before its chunks (docs/vector-access.md) |
     | `touch(tmp(Q))` | checked stage: use the proof Q of the check just before it, and do nothing else (pizlonated `access`) |
     | `asm_fixed(M, Ins, Outs)` | the fixed-register instruction M (asm_fixed_regs/3) on `w` inputs `R-V` in the registers M reads, defining `w` temporaries `R-tmp(D)` from registers it writes (docs/asm-fixed.md) |
     | `local_alloc(Name, Size)` | create a zeroed, exact-sized invocation-local object, without an address value |
@@ -1791,7 +1791,7 @@ valid_inst(Ctx, atomic_store(W, Value, Addr)) :-
 valid_inst(_, fence).
 valid_inst(Ctx, access(K, Addr, Size, Align)) :-
     Ctx = ctx(_, Fn, _, _, _, _, Mode),
-    (   memberchk(K, [read, write]), integer(Size), memberchk(Size, [16, 32, 64]),
+    (   memberchk(K, [read, write]), integer(Size), memberchk(Size, [8, 16, 32, 64]),
         integer(Align), memberchk(Align, [1, 2, 4, 8])
     ->  addr_class(Mode, AddrClass), valid_use(Ctx, AddrClass, Addr)
     ;   fn_error(Fn, 'bad access ~w', [access(K, Addr, Size, Align)])

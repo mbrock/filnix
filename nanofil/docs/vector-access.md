@@ -1,7 +1,7 @@
 # Full-width vector access checks (V1): contract (reviewed, implemented)
 
 The frontend lowers GCC/clang vector types to scalar IR, in 8-byte
-chunks (element-sized for float elements). filcc checks a 16-, 32- or
+chunks (element-sized for float elements). filcc checks an 8-, 16-, 32- or
 64-byte vector access as one access, with its alignment requirement
 capped at 8: a misaligned `_mm_load_si128` reports "alignment requirement
 of 8 bytes not met", and `_mm_storeu_si128` one byte short reports
@@ -21,11 +21,15 @@ Unchecked IR gains one statement:
 - K is `read` or `write`.
 - Addr is a pointer operand: class `p` in a Fil-C module, the address
   class in a plain one.
-- Size is a constant 16, 32 or 64; Align a constant 1, 2, 4 or 8.
+- Size is a constant 8, 16, 32 or 64; Align a constant 1, 2, 4 or 8.
+  Size 8 is an 8-byte vector such as fftw's `__m64` halves
+  (`_mm_loadl_pi`): filcc checks it as one 8-byte access with the
+  vector's alignment, where a `long` access is checked at alignment 1,
+  and its chunks may be two 4-byte floats.
 
 The frontend emits it immediately before the chunked loads or stores it
 covers, which are ordinary `l` (or `s`/`d`) accesses at Addr, Addr+8,
-and so on.
+and so on (4-byte `s` chunks at Addr+4, ... for a float vector).
 
 Checked IR gains one statement:
 
@@ -212,7 +216,7 @@ the `-O` default (renew) around every vector access:
 ## Tests and plants (planned)
 
 - **Unit, validator:** accepts every K, Size and Align and rejects
-  others (Size 8 or 24, Align 16, a non-constant); rejects `touch` in
+  others (Size 4 or 24, Align 16, a non-constant); rejects `touch` in
   unchecked IR, with no check before it, after `check_local` or
   `check_function`, or as a second use; rejects `access` in a Fil-C
   checked module.
@@ -322,6 +326,17 @@ Plants (unit = the unit tests; native = vector-access.c, plain and `-O`):
 | 14. `copy:inst_reps` does not substitute in `access` | unit (kept), native `-O` |
 | 17. no plain-backend clause | unit (plain module emitted) |
 | 18. `valid_inst(access)` takes any address class | unit (an `l` address refused) |
+| 19. Size 8 refused | unit |
+| 20. pizlonate checks Size 8 at alignment 1, like a `long` | unit (misaligned case, reuse) |
+| 21. pizlonate checks Size 8 as 4 bytes | unit (partial write over float chunks, reuse) |
+| 22. the interpreter skips a Size-8 access | unit (partial write) |
+| 23. the emitter tests a Size-8 check at alignment 1 | unit (emitted alignment test) |
+
+Size 8 (fftw's `__m64` halves) was added later, reviewed by Oracle with
+no blocker; 19–23 are its plants. Size 4 stays out until needed. For
+`_mm_loadl_pi` and friends the frontend must take Align from the
+access, not the vector type: clang reads through a packed struct, so
+filcc checks alignment 1 there.
 
 Oracle reviewed the implementation and found no blocker; 12–18 are its
 plants, and its should-fixes (the tests above, the escape clause's
