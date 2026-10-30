@@ -93,6 +93,10 @@ pkgs.runCommandCC "nanofil-check"
     python3 -I tests/bigblob.py shorts 800000 > bigblob-shorts.c
     step bigblob env COMPILE_TIMEOUT=300 NANOFIL_STACK_LIMIT=734003200 \
       tests/progtest.sh bigblob-string.c bigblob-braces.c bigblob-shorts.c
+    # One basic block of 3000 statements (tor's keccak-tiny-unrolled.c):
+    # block liveness was quadratic in its length (docs/perf.md, item 15).
+    python3 -I tests/longblock.py 1500 > longblock.c
+    step longblock env COMPILE_TIMEOUT=60 tests/progtest.sh longblock.c
     step "progtest gc-stress" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     step "run-c gc gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc
     # M5: the same suites with the middle end on. difftest -O also runs

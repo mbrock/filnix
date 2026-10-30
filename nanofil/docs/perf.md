@@ -4229,6 +4229,33 @@ the Prolog stacks (unexplained; the other TUs are unchanged).
 3% off `pingurl.c`, but `1 << N` makes one bignum per block, so memory
 grows quadratically in the blocks. That is item 13's failure again.
 
+### 15. Block liveness linear in a block's length (October 2026)
+
+tor's `src/ext/keccak-tiny/keccak-tiny-unrolled.c` took over 12 minutes
+to compile plain in the survey. Its `keccakf` is macro-unrolled into a
+single basic block of 95k IR lines. `cfg:block_gen_kill/3`, which every
+liveness computation uses (the emitter's included), grew the block's
+gen and kill sets one instruction at a time with `ord_subtract` and
+`ord_union`. Each step costs the set's size, so a block of n
+instructions cost O(n²): 6.1 billion comparisons, two-thirds of the
+compile. The sets now come from one sorted list of events. A temp is in
+Gen when its first event is a use, ordered with phi definitions first,
+an instruction's uses before its own definitions and the jump's uses
+last. It is in Kill when it has any definition.
+
+| `keccak-tiny-unrolled.c` (tor 0.4.9.12) | before | after |
+| --- | --: | --: |
+| plain | 882 s (profiled) | 12.9 s, 638 MB |
+| `-O` | 69 s | 27.5 s, 702 MB |
+| 6 rounds of 24, plain | 23.4 s | 3.3 s |
+| 12 rounds of 24, plain | 116 s | 6.7 s |
+
+Output is identical: the snapshot (4584 outputs), and the plain and
+`-O` assembly of the file. `tests/longblock.py N` writes one function of
+2N straight-line statements. At N = 1000 it compiles plain in 64 s before
+and 8.6 s after. `nix/check.nix` compiles N = 1500 plain under a 60 s
+timeout: it timed out before (fail-first) and passes now.
+
 ### Projection
 
 From the profile's shares: items 1–4 leave the compressors at about 3–4×

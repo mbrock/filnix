@@ -469,21 +469,28 @@ blocks_gen_kill(Blocks, GenKill) :-
             Pairs),
     list_to_assoc(Pairs, GenKill).
 
+% Each temp's events in block order: phi definitions first, then per
+% instruction its uses before its definitions, then the jump's uses. A
+% temp is in Gen when its first event is a use, and in Kill when it has
+% a definition. Sorting the events once keeps a block linearithmic: a
+% gen and kill set grown per instruction was quadratic in a block's
+% length (tor's keccak-tiny-unrolled.c, one block of 95k lines).
 block_gen_kill(block(_, Phis, Insts, Jump), Gen, Kill) :-
-    findall(D, member(phi(tmp(D), _, _), Phis), PhiDefs),
-    sort(PhiDefs, Kill0),
-    foldl(inst_gen_kill, Insts, []-Kill0, Gen1-Kill),
+    findall(D-e(0, 0, def), member(phi(tmp(D), _, _), Phis), PhiEvents),
+    findall(T-e(I, K, E),
+            ( nth1(I, Insts, Inst),
+              (   inst_uses(Inst, Us), member(T, Us), K = 0, E = use
+              ;   inst_def(Inst, T), K = 1, E = def
+              ) ),
+            InstEvents),
+    length(Insts, N), J is N + 1,
     jump_uses(Jump, JumpUses),
-    ord_subtract(JumpUses, Kill, JumpGen),
-    ord_union(Gen1, JumpGen, Gen).
-
-inst_gen_kill(I, Gen0-Kill0, Gen-Kill) :-
-    inst_uses(I, Us),
-    ord_subtract(Us, Kill0, New),
-    ord_union(Gen0, New, Gen),
-    findall(D, inst_def(I, D), Ds0),
-    sort(Ds0, Ds),
-    ord_union(Kill0, Ds, Kill).
+    findall(T-e(J, 0, use), member(T, JumpUses), JumpEvents),
+    append([PhiEvents, InstEvents, JumpEvents], Events0),
+    msort(Events0, Events),
+    group_pairs_by_key(Events, Groups),
+    findall(T, member(T-[e(_, _, use)|_], Groups), Gen),
+    findall(T, ( member(T-Es, Groups), memberchk(e(_, _, def), Es) ), Kill).
 
 %! phi_edge_uses(+Blocks, -EdgeUses) is det.
 %
