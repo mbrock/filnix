@@ -486,13 +486,17 @@ valid_op(raw_load_pointer(Off, Effects)) :- !,
     ; pointer_memory_effects(atomic_load, Effects) ).
 valid_op(Op) :- op_kind(Op, _).
 
-% pointer_memory_effects(?Access, ?Effects): the closed protocol for an
-% ordinary non-atomic pointer access. aux_read reads the encoded lower
-% (or none); lower_resolve unboxes it without taking the box's address.
-% A store ensures aux (may exit), barriers the value's lower (may call,
-% cannot exit), reloads its destination p pair from rooted storage, then
-% writes the ordinary lower before the primary address. No effect list
-% may omit or reorder these obligations.
+%! pointer_memory_effects(?Access, ?Effects) is nondet.
+%
+%  Effects is the closed, ordered protocol of a pointer access of kind
+%  Access: load, store, local_load, local_store, atomic_load,
+%  atomic_store or cas. For an ordinary heap load, aux_read reads the
+%  encoded lower (or none) and lower_resolve unboxes it without taking
+%  the box's address. A store ensures aux (may exit), barriers the
+%  value's lower (may call, cannot exit), reloads its destination p pair
+%  from rooted storage, then writes the ordinary lower before the
+%  primary address. No effect list may omit or reorder these
+%  obligations; the backend executes the list, it is not an annotation.
 pointer_memory_effects(load, [aux_read, lower_resolve, address_read]).
 pointer_memory_effects(store,
     [aux_ensure, lower_barrier, rooted_reload, lower_write, address_write]).
@@ -715,13 +719,22 @@ first_of_keys([K-V|Ps0], [K-V|Ps]) :- drop_key(K, Ps0, Ps1), first_of_keys(Ps1, 
 drop_key(K, [K1-_|Ps0], Ps) :- K1 == K, !, drop_key(K, Ps0, Ps).
 drop_key(_, Ps, Ps).
 
-% Entry snapshot metadata is retained even if its cursor is unused.
+%! variadic_func(+Func) is semidet.
+%
+%  Func takes the entry argument snapshot (`va_args`) of a variadic
+%  function. The snapshot's metadata is retained even if its cursor is
+%  unused.
 variadic_func(func(_, _, _, _, Blocks)) :-
     member(block(_, _, Insts, _), Blocks),
     member(let(_, p, va_args, _), Insts), !.
 
-% Nonlocal returns restore compiler slots, not mutable local memory.
-% Transformations must retain this boundary even in unreachable blocks.
+%! setjmp_func(+Func) is semidet.
+%
+%  Func calls setjmp somewhere, reachable or not. Nonlocal returns
+%  restore compiler slots, not mutable local memory, so transformations
+%  must keep this boundary even in unreachable blocks: the passes leave
+%  such a function alone and the backend gives it the reference emission
+%  (docs/setjmp.md).
 setjmp_func(func(_, _, _, _, Blocks)) :-
     member(block(_, _, Insts, _), Blocks),
     member(let(_, _, setjmp(_), _), Insts), !.
@@ -827,8 +840,11 @@ valid_module(M) :-
     forall(member(Item, Items), valid_item(Symbols, Mode, Stage, Item)),
     valid_contexts(All).
 
-% module_stage(+M, -Stage): Stage is checked when M uses any word of the
-% checked stage (a check, a raw access, flight or a poll edge), else unchecked.
+%! module_stage(+M, -Stage) is det.
+%
+%  Stage is checked when M uses any word of the checked stage (a check,
+%  renew, span test, raw access, flight or a poll edge), else unchecked.
+%  Like the mode, the stage is read off the vocabulary, never stated.
 module_stage(module(Items), Stage) :-
     (   member(func(_, _, _, _, Blocks), Items),
         member(block(_, _, Insts, Jump), Blocks),
@@ -858,8 +874,9 @@ checked_jump(goto(poll(_))).
 checked_jump(branch(_, poll(_), _)).
 checked_jump(branch(_, _, poll(_))).
 
-% valid_item(+M, +Mode, +Stage, +Item): Item, an item of M, is well
-% formed.
+%! valid_item(+M, +Mode, +Stage, +Item) is semidet.
+%
+%  Item, an item of M, is well formed.
 valid_item(Symbols, Mode, Stage, func(Name, Linkage, Ret, Params, Blocks)) :-
     (   Blocks == [] -> fn_error(Name, 'function has no blocks', []) ; true ),
     (   memberchk(Linkage, [export, local]) -> true
@@ -979,8 +996,11 @@ valid_item(Symbols, Mode, _, alias(Name, Linkage, Target)) :-
 % byte_char(+C): C is a character that stands for one byte.
 byte_char(C) :- atom(C), atom_length(C, 1), char_code(C, N), N =< 255.
 
-% local_objects(+Func, -Objects): declarations, in instruction order.
-% Names belong to a separate namespace: they are never ordinary values.
+%! local_objects(+Func, -Objects) is det.
+%
+%  Objects are Name-Size for Func's local_alloc declarations, in
+%  instruction order. Their names are a namespace of their own, never
+%  ordinary values.
 local_objects(func(_, _, _, _, Blocks), Objects) :-
     findall(Name-Size,
             ( member(block(_, _, Is, _), Blocks),
@@ -1010,8 +1030,10 @@ local_reference(local_load(_, _, _, N, _), N).
 local_reference(local_store(_, _, N, _), N).
 local_reference(let(_, _, check_local(N, _, _, _, _), _), N).
 
-% temp_defs(+Params, +Blocks, -Defs): Name-Class for every definition of
-% a temporary: parameters, then each block's phis and instructions.
+%! temp_defs(+Params, +Blocks, -Defs) is det.
+%
+%  Defs are Name-Class for every definition of a temporary: parameters,
+%  then each block's phis and instructions, duplicates kept.
 temp_defs(Params, Blocks, Defs) :-
     findall(N-K, member(param(K, tmp(N)), Params), ParamDefs),
     % One pass over each block's instructions, not one per form.
@@ -1061,8 +1083,10 @@ add_predecessor(Target-Pred, PredMap0, PredMap) :-
     append(Preds0, [Pred], Preds),
     put_assoc(Target, PredMap0, Preds, PredMap).
 
-% valid_block(+Ctx, +Block): Block's phis cover exactly its predecessors,
-% and its instructions and jump are well formed.
+%! valid_block(+Ctx, +Block) is semidet.
+%
+%  Block's phis cover exactly its predecessors, and its instructions and
+%  jump are well formed.
 valid_block(Ctx, block(Label, Phis, Insts, Jump)) :-
     Ctx = ctx(_, Fn, _, _, _, PredMap, _),
     (   get_assoc(Label, PredMap, Preds) -> true ; Preds = [] ),
@@ -1089,10 +1113,12 @@ temp_class(K) :- proof_class(K).
 proof_class(a).
 proof_class(f).
 
-% proof_class_defs(+Fn, +Params, +Blocks): only a check defines a
-% proof temporary, and nothing passes one as a call argument. Phis,
-% parameters and call results would carry a proof across an edge or a
-% safepoint. (A check's own class is op_result_ok/3's.)
+%! proof_class_defs(+Fn, +Params, +Blocks) is det.
+%
+%  Only a check defines a proof temporary, and nothing passes one as a
+%  call argument. Phis, parameters and call results would carry a proof
+%  across an edge or a safepoint. (A check's own class is
+%  op_result_ok/3's.)
 proof_class_defs(Fn, Params, Blocks) :-
     (   (   member(param(K, _), Params)
         ;   member(block(_, Phis, Insts, _), Blocks),
@@ -1108,13 +1134,15 @@ proof_class_defs(Fn, Params, Blocks) :-
     ;   true
     ).
 
-/* definitions_dominate(+Fn, +Params, +Blocks): in every reachable block,
-   each use of a temporary is dominated by one of its definitions: a
-   parameter, an earlier instruction or phi of the same block, or one in
-   a block that strictly dominates it. A phi reads its value at the end
-   of the predecessor, if that is reachable. A temporary may be defined
-   more than once (tests/fixtures/memory.ir); one dominating definition
-   is enough. Unreachable blocks are not checked. */
+%! definitions_dominate(+Fn, +Params, +Blocks) is det.
+%
+%  In every reachable block, each use of a temporary is dominated by one
+%  of its definitions: a parameter, an earlier instruction or phi of the
+%  same block, or one in a block that strictly dominates it. A phi reads
+%  its value at the end of the predecessor, if that is reachable. A
+%  temporary may be defined more than once (tests/fixtures/memory.ir);
+%  one dominating definition is enough. Unreachable blocks are not
+%  checked.
 definitions_dominate(Fn, Params, Blocks) :-
     func_cfg(Blocks, Cfg),
     cfg_idoms(Cfg, Idom),
@@ -1223,10 +1251,11 @@ site_dominates(at(D, _), L, _, Intervals) :-
     D \== L,
     dominates_by_interval(Intervals, D, L).
 
-% stage_func(+Stage, +Fn, +Mode, +Params, +Blocks): Fn's blocks are well
-% formed for the module's Stage. A checked function accesses memory only
-% by raw accesses, each covered by a check whose evidence still holds,
-% and polls on every cycle.
+%! stage_func(+Stage, +Fn, +Mode, +Params, +Blocks) is det.
+%
+%  Fn's blocks are well formed for the module's Stage. A checked
+%  function accesses memory only by raw accesses, each covered by a
+%  check whose evidence still holds, and polls on every cycle.
 stage_func(unchecked, _, _, _, _).
 stage_func(checked, Fn, Mode, Params, Blocks) :-
     stage_sources(Params, Blocks, Sources),
@@ -1318,15 +1347,16 @@ evidence_kill(D, Ev0, Ev) :-
 phi_ends_evidence(phi(tmp(D), _, _), Live0, Live) :-
     exclude(evidence_names(D), Live0, Live).
 
-/* checked_insts(+Insts, +Fn, +Mode, +Live, -LiveOut): each check in Insts is
-   followed by an access it covers, its first use, so no safepoint can
-   come between them; no other instruction accesses memory unchecked.
-   Live are the heap proofs `live(Q, P, Lo, Hi, Rights, Align)` whose
-   evidence still holds (docs/m7.md): a later scalar raw access may read
-   one that covers it. An instruction that is not evidence_preserving/1
-   ends them all, and redefining Q or P ends that one; LiveOut are those
-   at the block's end. Local and function proofs are used once, right
-   away. */
+%! checked_insts(+Insts, +Fn, +Mode, +Live, -LiveOut) is det.
+%
+%  Each check in Insts is followed by an access it covers, its first
+%  use, so no safepoint can come between them; no other instruction
+%  accesses memory unchecked. Live are the heap proofs `live(Q, P, Lo,
+%  Hi, Rights, Align)` whose evidence still holds (docs/m7.md): a later
+%  scalar raw access may read one that covers it. An instruction that is
+%  not evidence_preserving/1 ends them all, and redefining Q or P ends
+%  that one; LiveOut are those at the block's end. Local and function
+%  proofs are used once, right away.
 checked_insts([], _, _, Live, Live).
 checked_insts([Inst|Insts], Fn-Sources, Mode, Live0, LiveOut) :-
     checked_inst_rest(Inst, Insts, Fn-Sources, Mode, Live0, Rest, Live),
@@ -1388,11 +1418,14 @@ once_pairs([P|Ps], [P|Once]) :- once_pairs(Ps, Once).
 drop_pairs(N, [M-_|Ps], Rest) :- N == M, !, drop_pairs(N, Ps, Rest).
 drop_pairs(_, Ps, Ps).
 
-/* Range guards (docs/m7.md, round 5, slice A). guard_chain(+Once, +P,
-   -Chain): Chain is P-i(0, 0) followed by B-i(Lo, Hi) for each base B
-   of P: P has B's capability and an address congruent modulo 2^64 to
-   B's plus some X with Lo =< X =< Hi, through single-definition flights
-   add, sub and copy whose lower donor is their address operand. */
+%! guard_chain(+Once, +P, -Chain) is det.
+%
+%  Range guards (docs/m7.md, round 5, slice A). Chain is P-i(0, 0)
+%  followed by B-i(Lo, Hi) for each base B of P: P has B's capability
+%  and an address congruent modulo 2^64 to B's plus some X with
+%  Lo =< X =< Hi, through single-definition flights add, sub and copy
+%  whose lower donor is their address operand. Once maps each
+%  single-definition name to its definition (single_definitions/3).
 guard_chain(Once, P, Chain) :- guard_chain(Once, P, 0, 0, 0, Chain).
 
 guard_chain(Once, P, Lo, Hi, Depth, [P-i(Lo, Hi)|Chain]) :-
@@ -1484,13 +1517,15 @@ op_interval(sub, [A, const(C)], K, Once, D, Lo, Hi, M0, M) :- !,
     offset_interval(Once, A, K, D, Lo0, Hi0, M0, M),
     Lo is Lo0 - V, Hi is Hi0 - V.
 
-% same_pointer(+Once, +P, +P1): at any point both P and P1 dominate,
-% they hold the same address and capability: both reach one
-% single-definition base B through guard_chain/3 at point offsets equal
-% modulo 2^64 (P == P1 included). After B's last execution before that
-% point, each definition on either chain ran again, since each dominates
-% it and B dominates each, so both were computed from B's current value
-% (docs/m7.md, round 4 addendum).
+%! same_pointer(+Once, +P, +P1) is semidet.
+%
+%  At any point both P and P1 dominate, they hold the same address and
+%  capability: both reach one single-definition base B through
+%  guard_chain/3 at point offsets equal modulo 2^64 (P == P1 included).
+%  After B's last execution before that point, each definition on either
+%  chain ran again, since each dominates it and B dominates each, so both
+%  were computed from B's current value (docs/m7.md, round 4 addendum).
+%  Once maps each single-definition name to its definition.
 same_pointer(Once, P, P1) :-
     guard_chain(Once, P, Chain), guard_chain(Once, P1, Chain1),
     member(B-i(K, K), Chain), B = tmp(N), get_assoc(N, Once, _),
@@ -1594,12 +1629,14 @@ evidence_after(Inst, Live0, Live) :-
 
 evidence_names(D, live(Q, P, _, _, _, _)) :- ( Q == D ; P == tmp(D) ).
 
-% evidence_preserving(+Inst): Inst reaches no safepoint and cannot free
-% an object or change its bounds or rights: pure arithmetic, comparison
-% and conversion, pure pointer construction, a heap check, a scalar raw
-% access (object headers lie outside every object's bounds) and a raw
-% pointer load (aux and box reads, no helper). Calls, alloc, getters,
-% setjmp, va_arg, pointer stores and the rest are not.
+%! evidence_preserving(+Inst) is semidet.
+%
+%  Inst reaches no safepoint and cannot free an object or change its
+%  bounds or rights: pure arithmetic, comparison and conversion, pure
+%  pointer construction, a heap check, a scalar raw access (object
+%  headers lie outside every object's bounds) and a raw pointer load
+%  (aux and box reads, no helper). Calls, alloc, getters, setjmp,
+%  va_arg, pointer stores and the rest are not.
 evidence_preserving(loc(_, _)).
 evidence_preserving(touch(_)).
 evidence_preserving(flight(_, _, _, _)).
@@ -1620,9 +1657,13 @@ evidence_preserving(let(_, _, cmp(_, _), _)).
 evidence_preserving(let(_, _, ext(_), _)).
 evidence_preserving(let(_, _, copy, Args)) :- \+ memberchk(global(_), Args).
 
-% implicit_flight(+Inst): a pure pointer operation whose address/lower
-% policy must be made explicit before either validation or emission of
-% checked IR. Getter copies are effects, not members of this set.
+%! implicit_flight(+Inst) is semidet.
+%
+%  Inst is a pure pointer operation (`add`, `sub`, `itop`, or a copy of a
+%  temporary or constant at class p) whose address and lower sources
+%  must be made explicit as `flight` before validation or emission of
+%  checked IR. A copy of a symbol is not one: it calls the getter, an
+%  effect.
 implicit_flight(let(_, p, Op, _)) :- memberchk(Op, [add, sub, itop]).
 implicit_flight(let(_, p, copy, [tmp(_)])).
 implicit_flight(let(_, p, copy, [const(_)])).
@@ -1660,18 +1701,21 @@ storage_effect_kind(heap, store, atomic_store).
 storage_effect_kind(local, load, local_load).
 storage_effect_kind(local, store, local_store).
 
-% proof_use(+Access, +Q, +Lo, +Hi, +Rights, +Align): Access, right after
-% the heap check, renew or renew_if that defines Q over [Lo, Hi) with
-% Rights and Align, uses its proof: a heap raw access it covers, or a
-% touch of Q, which accesses nothing (docs/vector-access.md).
+%! proof_use(+Access, +Q, +Lo, +Hi, +Rights, +Align) is semidet.
+%
+%  Access, right after the heap check, renew or renew_if that defines Q
+%  over [Lo, Hi) with Rights and Align, uses its proof: a heap raw
+%  access it covers, or a touch of Q, which accesses nothing
+%  (docs/vector-access.md).
 proof_use(touch(T), Q, _, _, _, _) :- !, T == tmp(Q).
 proof_use(Access, Q, Lo, Hi, Rights, Align) :-
     covered_access(Access, Q, Lo, Hi, Rights, Align),
     access_storage_effects(Access, heap).
 
-% covered_access(+Access, +Q, +Lo, +Hi, +Rights, +Align): Access is a raw
-% access at tmp(Q) within [Q+Lo, Q+Hi), as aligned as it must be, and
-% Rights allow it (write allows reading too).
+%! covered_access(+Access, +Q, +Lo, +Hi, +Rights, +Align) is semidet.
+%
+%  Access is a raw access at tmp(Q) within [Q+Lo, Q+Hi), as aligned as
+%  it must be, and Rights allow it (write allows reading too).
 covered_access(Access, Q, Lo, Hi, Rights, Align) :-
     raw_access(Access, Q, X, Off, Need),
     access_size_align(X, Size, AccessAlign), !,
@@ -1731,10 +1775,12 @@ valid_phi(Ctx, Label, Preds, phi(_, K, Pairs)) :-
 split_pairs([], [], []).
 split_pairs([K-V|Ps], [K|Ks], [V|Vs]) :- split_pairs(Ps, Ks, Vs).
 
-% valid_inst(+Ctx, +Inst): Inst is well formed and reads each operand at
-% a class its definition allows. In filc mode a symbol is an operand only
-% of copy, which yields its pointer; the cut commits to that case before
-% the general clause for ins/4.
+%! valid_inst(+Ctx, +Inst) is semidet.
+%
+%  Inst is well formed and reads each operand at a class its definition
+%  allows. In filc mode a symbol is an operand only of copy, which
+%  yields its pointer; the cut commits to that case before the general
+%  clause for ins/4.
 valid_inst(ctx(_, Fn, _, _, _, _, _), loc(File, Line)) :- !,
     (   atom(File), integer(Line) -> true
     ;   fn_error(Fn, 'bad source location loc(~q, ~q)', [File, Line])
