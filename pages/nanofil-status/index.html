@@ -50,8 +50,8 @@ td.n, th.n { text-align: end; font-variant-numeric: tabular-nums; }
 
 <div class="facts">
   <div class="fact"><b>27.6k</b><span>lines of Prolog, from preprocessor to assembly</span></div>
-  <div class="fact"><b>144 / 202</b><span>nixpkgs C packages filcc builds that nanofil builds alone</span></div>
-  <div class="fact"><b>~2.2×</b><span>filcc -O2's run time with <code>-O</code>, geomean of 11 workloads</span></div>
+  <div class="fact"><b>161 / 202</b><span>nixpkgs C packages filcc builds that nanofil builds alone</span></div>
+  <div class="fact"><b>~1.8×</b><span>filcc -O2's run time with <code>-O</code>, geomean of 11 workloads</span></div>
   <div class="fact"><b>~1.5×</b><span>filcc -O2's compile time with <code>-O</code>, for SQLite</span></div>
 </div>
 
@@ -65,16 +65,16 @@ td.n, th.n { text-align: end; font-variant-numeric: tabular-nums; }
 
 <h2>What it can build</h2>
 <p>nanofil accepts C17 with the GNU extensions real packages use: statement expressions, <code>typeof</code>, <code>__attribute__((cleanup))</code>, computed goto, VLAs, transparent unions, weak symbols and aliases, <code>.symver</code>, K&amp;R definitions, C11 atomics and <code>setjmp</code>. Unknown attributes are refused rather than ignored. The rule throughout is to refuse loudly instead of miscompiling.</p>
-<p>The <b>survey</b> builds every C package in filnix's port list with nanofil in place of the compiler. Of the 202 that filcc builds, nanofil builds <b>144</b>, compiling about 36,700 objects with no fallback to clang. The 53 among them whose ports run tests pass them, as filcc's builds do. They include GTK 3, GLib, SQLite, CPython, Lua, bash, coreutils, gmp, libsodium and netcdf.</p>
+<p>The <b>survey</b> builds every C package in filnix's port list with nanofil in place of the compiler. Of the 202 that filcc builds, nanofil builds <b>161</b>, compiling about 44,900 objects with no fallback to clang. The 60 among them whose ports run tests pass them, as filcc's builds do. They include GTK 3, GLib, SQLite, CPython, Lua, bash, coreutils, gmp, libsodium and netcdf. With <code>-O</code> it built 154, and the four <code>-O</code>-only failures have since been fixed. With vector types turned on (<code>--vectors</code>, still opt-in) seven more build, among them xz, zstd, libtiff and Ghostscript.</p>
 <p>Sixteen <b>workload checks</b> build programs like bash, CPython, SQLite, coreutils, xz and jq with nanofil, plain and with <code>-O</code>, and require their output, and often their own test suites, to match filcc's builds, also under the collector's stress mode.</p>
-<p>What stops the other 65, roughly in order:</p>
+<p>What stops the other 41, roughly in order:</p>
 <table>
 <tr><th>Cause</th><th class="n">Packages</th><th>Examples</th></tr>
-<tr><td>Assorted syntax and typing gaps</td><td class="n">16</td><td>binutils, systemd, x264</td></tr>
-<tr><td>Inline assembly that filcc accepts and nanofil doesn't yet (cpuid, rdtsc, register constraints)</td><td class="n">17</td><td>flac, fftw, libgcrypt, nettle</td></tr>
-<tr><td>Vector types, SIMD intrinsics and alignment</td><td class="n">13</td><td>gtk4, libtiff, zstd</td></tr>
-<tr><td>Missing builtins</td><td class="n">4</td><td>gnutls, mesa's libgbm</td></tr>
-<tr><td>Link-time symbols, failing tests, a build timeout, a compiler stack limit, constant folding</td><td class="n">8</td><td>bison, cryptsetup, emacs, libaom</td></tr>
+<tr><td>Vector types and SIMD intrinsics (seven of these build with <code>--vectors</code>)</td><td class="n">15</td><td>fftw, gtk4, libwebp</td></tr>
+<tr><td>Assorted syntax and typing gaps: <code>__int128</code>, complex literals, glibc's <code>link.h</code></td><td class="n">9</td><td>mbedtls, nss, systemd</td></tr>
+<tr><td>Missing builtins and unresolved Fil-C symbols at link</td><td class="n">8</td><td>bison, gnutls, libaom</td></tr>
+<tr><td>Inline assembly that filcc checks and runs natively</td><td class="n">3</td><td>openssh, openssl</td></tr>
+<tr><td>Build timeouts, constant folding, alignment, a timing-dependent test</td><td class="n">6</td><td>emacs, libgcrypt, libffi, libressl</td></tr>
 </table>
 <p>The full table is in <a href="https://github.com/mbrock/filnix/blob/main/nanofil/docs/survey.md">survey.md</a>.</p>
 
@@ -82,15 +82,15 @@ td.n, th.n { text-align: end; font-variant-numeric: tabular-nums; }
 <p>The benchmark gate runs eleven workloads: zlib, bzip2 and lz4 compressing and decompressing 4 MiB, three Lua scripts, and an SQLite session with joins, window functions, JSON and full-text search. Each nanofil build must print exactly what filcc's does; then each runs seven times, pinned to one core. Ratios are run time against filcc <code>-O2</code>; lower is better. The plain column is from an earlier measurement over ten of the workloads.</p>
 <table>
 <tr><th>Workload</th><th class="n">plain</th><th class="n"><code>-O</code></th><th></th></tr>
-<tr><td>zlib -6</td><td class="n">8.5×</td><td class="n">2.5×</td><td><span class="bar" style="width:125px"></span></td></tr>
-<tr><td>bzip2 -9</td><td class="n">9.4×</td><td class="n">2.0×</td><td><span class="bar" style="width:100px"></span></td></tr>
-<tr><td>lz4 -d</td><td class="n">14×</td><td class="n">3.0×</td><td><span class="bar" style="width:150px"></span></td></tr>
-<tr><td>Lua, strings</td><td class="n">11×</td><td class="n">1.5×</td><td><span class="bar" style="width:75px"></span></td></tr>
-<tr><td>SQLite</td><td class="n">—</td><td class="n">2.0×</td><td><span class="bar" style="width:98px"></span></td></tr>
-<tr><td><b>Geomean, all eleven</b></td><td class="n">~11×</td><td class="n"><b>2.2×</b></td><td><span class="bar" style="width:109px"></span></td></tr>
+<tr><td>zlib -6</td><td class="n">8.5×</td><td class="n">2.2×</td><td><span class="bar" style="width:108px"></span></td></tr>
+<tr><td>bzip2 -9</td><td class="n">9.4×</td><td class="n">1.6×</td><td><span class="bar" style="width:80px"></span></td></tr>
+<tr><td>lz4 -d</td><td class="n">14×</td><td class="n">2.4×</td><td><span class="bar" style="width:118px"></span></td></tr>
+<tr><td>Lua, strings</td><td class="n">11×</td><td class="n">1.4×</td><td><span class="bar" style="width:70px"></span></td></tr>
+<tr><td>SQLite</td><td class="n">—</td><td class="n">1.8×</td><td><span class="bar" style="width:88px"></span></td></tr>
+<tr><td><b>Geomean, all eleven</b></td><td class="n">~11×</td><td class="n"><b>1.8×</b></td><td><span class="bar" style="width:90px"></span></td></tr>
 </table>
-<p>Plain nanofil keeps every value in a stack slot and checks every access: it exists to be obviously right. <code>-O</code> adds inlining of small functions, register allocation with a checker that verifies the allocation, better branches and small inline copies; it went from 4.6× to 2.2× over one round of work, and every step is checked against the plain path.</p>
-<p>The remaining gap is mostly deliberate. filcc merges and hoists checks out of loops; nanofil runs every check where the C access is, so a bad access traps at the same place and with the same message. Moving checks safely needs a separation of spatial and temporal proofs that is still being designed. Pointers are also reloaded from the frame more than filcc does. The full account is in <a href="https://github.com/mbrock/filnix/blob/main/nanofil/docs/perf.md">perf.md</a>.</p>
+<p>Plain nanofil keeps every value in a stack slot and checks every access: it exists to be obviously right. <code>-O</code> adds inlining of small functions, a cheap middle end, register allocation (pointers included) with a checker that verifies the allocation, better branches, small inline copies and check renewal, which reuses a proven check when the same pointer is checked again; it went from 4.6× to 1.8× over two rounds of work, and every step is checked against the plain path.</p>
+<p>The remaining gap is mostly deliberate. filcc merges and hoists checks out of loops; nanofil runs every check where the C access is, so a bad access traps at the same place and with the same message. Moving checks safely needs a separation of spatial and temporal proofs that is still being designed. Calls into the runtime and libc are the next largest share, and they cost the same in filcc's builds. The full account is in <a href="https://github.com/mbrock/filnix/blob/main/nanofil/docs/perf.md">perf.md</a>.</p>
 
 <h2>How fast it compiles</h2>
 <p>SQLite's amalgamation, <code>sqlite3.c</code>: 266,000 lines, 123,000 after preprocessing. Measured on one machine (Ryzen 9 7950X3D) while it was also running other builds, so treat the numbers as rough; the ratios between them held in earlier quiet runs.</p>
@@ -106,7 +106,7 @@ td.n, th.n { text-align: end; font-variant-numeric: tabular-nums; }
 
 <h2>What it does not do yet</h2>
 <ul>
-<li><b>C++</b>, <code>__int128</code>, vector types, <code>_Complex</code>, and most non-empty inline assembly.</li>
+<li><b>C++</b>, <code>__int128</code>, <code>_Complex</code>, 256-bit vectors, and inline assembly beyond cpuid, rdtsc, fences and pause. 128-bit vector types are opt-in.</li>
 <li><b>Other targets.</b> x86-64 Linux only, as Fil-C itself.</li>
 <li><b>Its own preprocessor in package builds.</b> nanofil has a preprocessor and tests it, but package builds currently preprocess with filcc's to match its headers and predefined macros exactly.</li>
 <li><b>A proof.</b> nanofil has executable semantics, a validator, differential tests and bounded symbolic comparisons, not a correctness proof. A review in October 2026 found attribute-placement bugs in the frontend, such as attributes written in C23 <code>[[gnu::…]]</code> form being dropped. Those places now refuse instead; random differential testing against filcc is next.</li>

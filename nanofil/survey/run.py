@@ -55,7 +55,8 @@ def nix_build(drvs, log, a):
             break
         print(f"nix daemon lost; building {len(todo)} again", file=sys.stderr)
     text = open(log, errors="replace").read()
-    return set(re.findall(r"building of '(/nix/store/[^']+\.drv)[^']*' timed out", text)) | \
+    # Nix says "building of 'X.drv' from in-memory derivation timed out".
+    return set(re.findall(r"building of '(/nix/store/[^']+\.drv)[^']*'[^'\n]* timed out", text)) | \
         set(re.findall(r"'(/nix/store/[^']+\.drv)' timed out", text))
 
 
@@ -239,6 +240,8 @@ def cause(row):
     if row.get("nf") == "tests fail" and row.get("name") in TRACED:
         return TRACED[row["name"]]
     err = row.get("error") or ""
+    if row.get("nf") == "timeout":
+        return "build timeout"
     other = "package tests fail" if row.get("nf") == "tests fail" else "other syntax or typing gaps"
     return next((c for p, c in CAUSES if re.search(p, err)), other)
 
