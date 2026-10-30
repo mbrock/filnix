@@ -77,6 +77,12 @@ simplify_item(Mode, All, F0, Items) :-
     once(simplify_context(Mode, F0, Rs0, F, Rs)), with_context(F, Rs, Items).
 simplify_item(_, _, Item, [Item]).
 
+%! simplify_context(+Mode, +F0, +Records0, -F, -Records) is det.
+%
+%  F is the function F0 simplified as the header says, and Records its
+%  context: sites re-indexed, those of removed blocks, instructions and
+%  phis dropped, and removed values kept as history. F0 not in strict
+%  SSA form, or calling setjmp, is left alone.
 simplify_context(_, F, Rs, F, Rs) :- setjmp_func(F), !.
 simplify_context(Mode, F0, Rs0, F, Rs) :-
     (   ssa_cfg(F0, Cfg, Idom)
