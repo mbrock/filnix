@@ -1829,9 +1829,10 @@ stmt_(asm_empty(Outs, Ins, Clobbers, Goto), Ctx) --> !,
    call's LLVM IR, whose attribute and metadata numbers nanofil has no
    counterpart for; it uses the template), so a program that never runs
    the asm, such as GLib's G_BREAKPOINT behind a debug flag, behaves as
-   under filcc. Everywhere else, cpuid among them, which filcc may
-   accept, nanofil refuses the asm at compile time
-   (asm_runtime_reason/6). */
+   under filcc. A fixed-register instruction (cpuid, xgetbv, rdtsc,
+   rdtscp, lfence, sfence, pause, mfence) is lowered to asm_fixed or
+   fence (docs/asm-fixed.md); everywhere else, where filcc may accept
+   the asm, nanofil refuses it at compile time (asm_runtime_reason/6). */
 stmt_(asm(Template, Outs, Ins, Clobbers, Goto), Ctx) --> !,
     env(Env0),
     { ctx_loc(Ctx, Loc),
