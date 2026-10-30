@@ -1,7 +1,11 @@
 // __builtin_cpu_supports, __builtin_cpu_is and __builtin_cpu_init read
 // the runtime's cpuid tables as filcc does; an unknown feature is 0.
+// Before __builtin_cpu_init the tables are still zero in filcc, so every
+// test is 0 there.
 #include <stdio.h>
 int main(void) {
+    printf("before init %d %d %d\n", __builtin_cpu_supports("sse2"),
+           __builtin_cpu_supports("avx2"), __builtin_cpu_is("intel"));
     __builtin_cpu_init();
     printf("supports cmov %d\n", __builtin_cpu_supports("cmov"));
     printf("supports mmx %d\n", __builtin_cpu_supports("mmx"));

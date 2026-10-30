@@ -567,7 +567,7 @@ top_item(ExternalNames, fundef(Loc, Specs, dcl(some(Name), DclType, Asm), Body),
                     Env2, Env)
         ;   Funcs = Funcs0, Env = Env3
         )
-    ;   vector_abi(Type, ctx(Name, none, none, none, Loc)),
+    ;   vector_abi(Type, Env2, ctx(Name, none, none, none, Loc)),
         function(Loc, Name, Type, DclType, Body, Env2, Env, Funcs)
     ).
 
@@ -2004,7 +2004,8 @@ asm_value_type(T) :- arithmetic_type(T), T \== ldouble.
 % asm_operand(+Dir, +Env, +Loc, +Op, -Kind): Kind is K-C for an operand
 % with constraint C: K is mem if clang passes its address (an output
 % constraint with m or g, an input "m"), else ptr, value or other by
-% its type after decay.
+% its type after decay, or vector for a GNU vector, which clang passes
+% as a value (fftw's "=x" output) but no nanofil asm form accepts.
 asm_operand(Dir, Env, Loc, op(C, E), K-C) :-
     elaborate(E, Env, Loc, X), tree_type(X, T0), unqualified(T0, T),
     atom_chars(C, Cs),
@@ -2012,6 +2013,7 @@ asm_operand(Dir, Env, Loc, op(C, E), K-C) :-
     ;   Dir == in, C == m -> K = mem
     ;   memberchk(T, [ptr(_), array(_, _), func(_, _, _)]) -> K = ptr
     ;   asm_value_type(T) -> K = value
+    ;   T = vec(_, _, _) -> K = vector
     ;   K = other
     ).
 
@@ -2176,7 +2178,7 @@ asm_fixed_stores([_|Os], I, [R|Rs], [P|Ps], PlusVals, Ties, IROuts, Ctx) -->
 % crashes clang's Fil-C, so it is not claimed.
 asm_runtime_reason(goto, OutKs, InKs, _, _, 'asm goto is not supported') :- !,
     append(OutKs, InKs, Ks),
-    \+ ( member(K-_, Ks), memberchk(K, [mem, ptr, other]) ).
+    \+ ( member(K-_, Ks), memberchk(K, [mem, ptr, other, vector]) ).
 asm_runtime_reason(_, OutKs, _, _, _, 'inline assembly with pointer return type is not supported') :-
     memberchk(ptr-_, OutKs), !,
     \+ memberchk(mem-_, OutKs).
@@ -3241,11 +3243,8 @@ lower_node(val(_, call(val(_, decay(fun(_, id(Name)))), XArgs)), Ctx, v(const(0)
     (   { memberchk(Name-M, ['_mm_pause'-pause, '_mm_sfence'-sfence]), XArgs == [] }
     ->  emit(asm_fixed(M, [], []))
     ;   { memberchk(Name-M, ['_mm_lfence'-lfence, '_mm_mfence'-mfence]), XArgs == [] }
-    ->  { format(codes(Msg), 'Unhandled intrinsic:   call void @llvm.x86.sse2.~w()', [M]),
-          new_literal(Msg, Sym, Env0, Env) },
-        set_env(Env),
-        let(p, copy, [global(Sym)], Addr),
-        emit(call(void, global(zsafety_error), [arg(p, Addr)]))
+    ->  { format(codes(Msg), 'Unhandled intrinsic:   call void @llvm.x86.sse2.~w()', [M]) },
+        safety_error(Msg)
     ;   { sema_error(Loc, '~w is not supported', [Name]) }
     ).
 lower_node(val(_, call(XF, XArgs)), Ctx, R) --> !,         % 6.5.2.2
@@ -4841,7 +4840,7 @@ callee(val(_, decay(X)), Ctx, Callee, FuncType) -->
     place(X, Ctx, fd(Callee0, FuncType)),
     env(Env),
     { X = fun(_, id(Name)), lookup_ordinary(Env, Name, fn(_, _, Linkage)) -> true ; Linkage = export },
-    { Linkage == local -> true ; vector_abi(FuncType, Ctx) },
+    { Linkage == local -> true ; vector_abi(FuncType, Env, Ctx) },
     { env_defs(Env, Defs),
       (   Callee0 = global(Sym), get_assoc(inline_copy(Sym), Defs, Local)
       ->  Callee = global(Local)                % top_item's local copy
@@ -4849,21 +4848,32 @@ callee(val(_, decay(X)), Ctx, Callee, FuncType) -->
       ) }.
 callee(XF, Ctx, Callee, FuncType) -->
     lower(XF, Ctx, v(V, ptr(FuncType))),
-    { vector_abi(FuncType, Ctx) },
+    env(Env), { vector_abi(FuncType, Env, Ctx) },
     callee_temp(V, Callee).
 
-% vector_abi(+FuncType, +Ctx): a call of FuncType with external linkage
-% or through a pointer, or a definition with external linkage, passes no
-% GNU vector: filcc passes one in vector registers, where nanofil passes
-% it as a struct, so only nanofil's own static functions (immintrin.h's
+% vector_abi(+FuncType, +Env, +Ctx): a call of FuncType with external
+% linkage or through a pointer, or a definition with external linkage,
+% passes no GNU vector, nor a struct, union or array holding one: filcc
+% passes a vector in vector registers and lays a vector-holding struct
+% out at its vector alignment, where nanofil passes them as a struct of
+% words, so only nanofil's own static functions (immintrin.h's
 % intrinsics) take or return one.
-vector_abi(func(Ret, Ps, _), Ctx) :-
-    (   ( Ret = vec(_, _, _) ; is_list(Ps), member(vec(_, _, _), Ps) )
+vector_abi(func(Ret, Ps, _), Env, Ctx) :-
+    (   ( holds_vec(Ret, Env) ; is_list(Ps), member(P, Ps), holds_vec(P, Env) )
     ->  ctx_loc(Ctx, Loc),
         sema_error(Loc, 'a function with external linkage or called through a pointer cannot take or return a vector', [])
     ;   true
     ).
-vector_abi(_, _).
+vector_abi(_, _, _).
+
+% holds_vec(+Type, +Env): Type is a GNU vector or an array, struct or
+% union with one among its elements or members.
+holds_vec(vec(_, _, _), _) :- !.
+holds_vec(array(T, _), Env) :- !, holds_vec(T, Env).
+holds_vec(SU, Env) :-
+    su(SU), SU =.. [_, Id], env_defs(Env, Defs),
+    get_assoc(Id, Defs, def(_, Members, _, _)),
+    member(M, Members), arg(2, M, T), holds_vec(T, Env), !.
 
 % call_result(+Callee, +RetType, +IRArgs, +Ctx, -R)//: R is the result
 % of calling Callee with IRArgs; setjmp and its kin are intrinsics.
@@ -4927,7 +4937,12 @@ call_args([XA|XAs], ParamTypes0, Ctx, IRArgs) -->
     (   { ParamTypes0 == [], Value0 = v(V0, Type0), abi_memory(Type0) }
     ->  env(Env),                       % 6.5.2.2p7: no conversion
         abi_source(Type0, V0, Src),
-        { ctx_loc(Ctx, Loc), variadic_words(Type0, Env, Loc, Ebs) },
+        { ctx_loc(Ctx, Loc),
+          (   holds_vec(Type0, Env)     % filcc aligns it to its vector
+          ->  sema_error(Loc, 'passing a vector to a variadic or unprototyped function is not supported', [])
+          ;   true
+          ),
+          variadic_words(Type0, Env, Loc, Ebs) },
         load_words(Ebs, Src, Words),
         { findall(arg(Class, W),
                   ( nth0(I, Ebs, eb(_, _, Class)), nth0(I, Words, W) ),
@@ -5253,6 +5268,59 @@ pcmp_or([B|Bs], Ctx, R) --> pcmp_or_(Bs, Ctx, B, R).
 pcmp_or_([], _, R, R) --> [].
 pcmp_or_([B|Bs], Ctx, R0, R) --> bop(or, R0, B, Ctx, R1), pcmp_or_(Bs, Ctx, R1, R).
 
+addsub_lanes([], [], _, _, []) --> [].
+addsub_lanes([A|As], [B|Bs], J, Ctx, [O|Os]) -->
+    { J /\ 1 =:= 0 -> Op = sub ; Op = add },
+    bop(Op, A, B, Ctx, O), { J1 is J + 1 },
+    addsub_lanes(As, Bs, J1, Ctx, Os).
+
+fma_lanes([], [], [], _, _, _, []) --> [].
+fma_lanes([A|As], [B|Bs], [C0|Cs], Sub, J, Ctx, [v(D, E)|Os]) -->
+    (   { Sub == even, J /\ 1 =:= 0 } -> unary(neg, C0, Ctx, C) ; { C = C0 } ),
+    { A = v(X, E), B = v(Y, _), C = v(Z, _),
+      ( E == float -> K = s, F = fmaf ; K = d, F = fma ) },
+    fresh(D),
+    emit(call(result(D, K), global(F), [arg(K, X), arg(K, Y), arg(K, Z)])),
+    { J1 is J + 1 },
+    fma_lanes(As, Bs, Cs, Sub, J1, Ctx, Os).
+
+% half_type(+VT, -HT): HT is the 16-byte half of the 32-byte vector VT.
+half_type(vec(E, N, _), vec(E, H, 16)) :- H is N // 2.
+
+% halves(+Vs, +Off, -Hs): Hs are Vs with each 32-byte vector replaced by
+% its half at Off; a 16-byte count vector or a scalar is kept.
+halves([], _, []) --> [].
+halves([V|Vs], Off, [H|Hs]) -->
+    env(Env),
+    (   { V = v(A, VT), VT = vec(_, _, _), type_size_align(VT, Env, 32, _) }
+    ->  { half_type(VT, HT) }, offset(A, Off, B), { H = v(B, HT) }
+    ;   { H = V }
+    ),
+    halves(Vs, Off, Hs).
+
+perm2_half(J, I, VA, VB, C) -->
+    { S is (I >> (4 * J)) /\ 15, Off is 16 * J, HT = vec(ullong, 2, 16) },
+    offset(C, Off, D),
+    (   { S /\ 8 =\= 0 }
+    ->  lanes_stored(HT, D, 0, [const(0), const(0)])
+    ;   { S /\ 2 =:= 0 -> Src0 = VA ; Src0 = VB },
+        { SOff is 16 * (S /\ 1) }, offset(Src0, SOff, Src),
+        copy_object(HT, Src, D)
+    ).
+
+permuted([], _, _, []) --> [].
+permuted([I|Is], VA, Ctx, [L|Ls]) -->
+    { k(7, K7), k(2, K2) },
+    bop(and, I, K7, Ctx, J), bop(shl, J, K2, Ctx, Off0), convert(Off0, long, v(Off, _)),
+    let(p, add, [VA, Off], P), load_typed(uint, P, Ctx, X), { L = v(X, uint) },
+    permuted(Is, VA, Ctx, Ls).
+
+% safety_error(+Msg)//: call zsafety_error with Msg, a Fil-C panic.
+safety_error(Msg) -->
+    env(Env0), { new_literal(Msg, Sym, Env0, Env) }, set_env(Env),
+    let(p, copy, [global(Sym)], Addr),
+    emit(call(void, global(zsafety_error), [arg(p, Addr)])).
+
 cpu_word(Sym, Off, Ctx, W) -->
     let(p, copy, [global(Sym)], G), offset(G, Off, A), load_typed(uint, A, Ctx, W).
 
@@ -5284,6 +5352,90 @@ v2di(vec(llong, 2, 16)).
 
 % vector_op(+Short, +Args, +Vs, +Ret, +Ctx, -R)//: R is the result of
 % __builtin_ia32_Short on argument expressions Args, whose values are Vs.
+% AVX2's per-lane builtins (c_types lane_builtin/2): the SSE builtin
+% on each 16-byte half of the 32-byte operands, with the same immediate
+% and the same 16-byte shift count, the halves joined.
+vector_op(Name, Args, Vs, Ret, Ctx, R) -->
+    { lane_builtin(Name, Name128) }, !,
+    { half_type(Ret, RetH) },
+    halves(Vs, 0, Vs0), halves(Vs, 16, Vs1),
+    vector_op(Name128, Args, Vs0, RetH, Ctx, v(A0, _)),
+    vector_op(Name128, Args, Vs1, RetH, Ctx, v(A1, _)),
+    local_slot(Ret, C),
+    copy_object(RetH, A0, C), offset(C, 16, C1), copy_object(RetH, A1, C1),
+    { R = v(C, Ret) }.
+% VEXTRACTI128 and VEXTRACTF128: imm8 bit 0 picks the half, which a
+% vector value, a copy nothing writes, may share.
+vector_op(Name, [_, A], [v(W, _), _], Ret, Ctx, v(H, Ret)) -->
+    { memberchk(Name, [extract128i256, vextractf128_si256, vextractf128_ps256,
+                       vextractf128_pd256]) }, !,
+    imm(A, Ctx, I), { Off is 16 * (I /\ 1) }, offset(W, Off, H).
+% VINSERTI128 and VINSERTF128: W with the half imm8 bit 0 picks replaced.
+vector_op(Name, [_, _, A], [v(W, _), v(H, HT), _], Ret, Ctx, v(C, Ret)) -->
+    { memberchk(Name, [insert128i256, vinsertf128_si256, vinsertf128_ps256,
+                       vinsertf128_pd256]) }, !,
+    imm(A, Ctx, I), { Off is 16 * (I /\ 1) },
+    local_slot(Ret, C), copy_object(Ret, W, C),
+    offset(C, Off, D), copy_object(HT, H, D).
+% VPERM2I128 and VPERM2F128: each half of the result is the half of A
+% or B that imm8's nibble for it picks (bits 0-1: A's low, A's high, B's
+% low, B's high), or zero where the nibble's bit 3 is set.
+vector_op(Name, [_, _, A], [v(VA, _), v(VB, _), _], Ret, Ctx, v(C, Ret)) -->
+    { memberchk(Name, [permti256, vperm2f128_si256, vperm2f128_ps256,
+                       vperm2f128_pd256]) }, !,
+    imm(A, Ctx, I), local_slot(Ret, C),
+    perm2_half(0, I, VA, VB, C), perm2_half(1, I, VA, VB, C).
+% VPERMD and VPERMPS: element i of the result is A's element at B's
+% element i mod 8, read at that offset in A's copy.
+vector_op(Name, _, [v(VA, _), VB], Ret, Ctx, R) -->
+    { memberchk(Name, [permvarsi256, permvarsf256]) }, !,
+    { Q = vec(uint, 8, 32) }, lanes(VB, Q, Ctx, Is),
+    permuted(Is, VA, Ctx, Out),
+    made(Q, Out, v(Addr, _)), { R = v(Addr, Ret) }.
+vector_op(Name, [_, A], [V, _], E, Ctx, L) -->
+    { memberchk(Name, [vec_ext_v32qi, vec_ext_v16hi, vec_ext_v8si, vec_ext_v4di]) }, !,
+    { V = v(_, VT), VT = vec(_, N, _) },
+    imm(A, Ctx, I), { J is I mod N },
+    lanes(V, VT, Ctx, Ls), { nth0(J, Ls, v(X, _)), L = v(X, E) }.
+% filcc compiles VZEROUPPER and VZEROALL to its run-time "Unhandled
+% intrinsic" error, as _mm_lfence's.
+vector_op(Name, _, [], _, _, v(const(0), void)) -->
+    { memberchk(Name, [vzeroupper, vzeroall]) }, !,
+    { format(codes(Msg), 'Unhandled intrinsic:   call void @llvm.x86.avx.~w()', [Name]) },
+    safety_error(Msg).
+% ADDSUBPS and ADDSUBPD subtract in the even elements and add in the
+% odd; the FMA builtins round a * b + c once (libm's fma), and the
+% fmaddsub ones subtract c in the even elements.
+vector_op(Name, _, [VA, VB], Ret, Ctx, R) -->
+    { memberchk(Name, [addsubps, addsubpd]) }, !,
+    lanes(VA, Ret, Ctx, La), lanes(VB, Ret, Ctx, Lb),
+    addsub_lanes(La, Lb, 0, Ctx, Out),
+    made(Ret, Out, R).
+vector_op(Name, _, [VA, VB, VC], Ret, Ctx, R) -->
+    { memberchk(Name-Sub, [vfmaddps-none, vfmaddpd-none, vfmaddsubps-even, vfmaddsubpd-even]) }, !,
+    lanes(VA, Ret, Ctx, La), lanes(VB, Ret, Ctx, Lb), lanes(VC, Ret, Ctx, Lc),
+    fma_lanes(La, Lb, Lc, Sub, 0, Ctx, Out),
+    made(Ret, Out, R).
+% VPERMILPS picks within each 128-bit lane by imm8's 2-bit fields;
+% VPERMILPD's element i picks by imm8 bit i within its lane.
+vector_op(vpermilps, [_, A], [V, _], Ret, Ctx, R) --> !,
+    imm(A, Ctx, I), { Q = vec(uint, 4, 16) }, lanes(V, Q, Ctx, Ls),
+    { findall(L, ( between(0, 3, J), S is (I >> (2 * J)) /\ 3, nth0(S, Ls, L) ), Out) },
+    made(Q, Out, v(Addr, _)), { R = v(Addr, Ret) }.
+vector_op(Name, [_, A], [V, _], Ret, Ctx, R) -->
+    { memberchk(Name, [vpermilpd, vpermilpd256]) }, !,
+    imm(A, Ctx, I), { Ret = vec(_, N, Al), Q = vec(ullong, N, Al) }, lanes(V, Q, Ctx, Ls),
+    { N1 is N - 1,
+      findall(L, ( between(0, N1, J), S is (J /\ -2) + ((I >> J) /\ 1), nth0(S, Ls, L) ), Out) },
+    made(Q, Out, v(Addr, _)), { R = v(Addr, Ret) }.
+% VSHUFPD on 32 bytes: element j is A's (even j) or B's (odd j) element
+% in j's lane that imm8 bit j picks.
+vector_op(shufpd256, [_, _, C], [VA, VB, _], Ret, Ctx, R) --> !,
+    imm(C, Ctx, I), { Q = vec(ullong, 4, 32) },
+    lanes(VA, Q, Ctx, La), lanes(VB, Q, Ctx, Lb),
+    { findall(L, ( between(0, 3, J), S is (J /\ -2) + ((I >> J) /\ 1),
+                   ( J /\ 1 =:= 0 -> nth0(S, La, L) ; nth0(S, Lb, L) ) ), Out) },
+    made(Q, Out, v(Addr, _)), { R = v(Addr, Ret) }.
 % lddqu is an unaligned 16-byte load, checked as _mm_loadu_si128's.
 vector_op(lddqu, _, [v(P, _)], Ret, _, v(Copy, Ret)) --> !,
     local_slot(Ret, Copy),
@@ -5292,7 +5444,10 @@ vector_op(lddqu, _, [v(P, _)], Ret, _, v(Copy, Ret)) --> !,
 vector_op(Name, _, [V], _, Ctx, v(M, int)) -->
     { memberchk(Name-VT-Bit, [pmovmskb128-vec(uchar, 16, 16)-7,
                               movmskps-vec(uint, 4, 16)-31,
-                              movmskpd-vec(ullong, 2, 16)-63]) }, !,
+                              movmskpd-vec(ullong, 2, 16)-63,
+                              pmovmskb256-vec(uchar, 32, 32)-7,
+                              movmskps256-vec(uint, 8, 32)-31,
+                              movmskpd256-vec(ullong, 4, 32)-63]) }, !,
     lanes(V, VT, Ctx, Ls),
     sign_bits(Ls, 0, Bit, Ctx, v(const(0), int), v(M, _)).
 vector_op(Name, _, [V, C], Ret, Ctx, R) -->
@@ -5326,7 +5481,7 @@ vector_op(Name, [_, A], [V, _], Ret, Ctx, R) -->
     { findall(L, ( nth0(J, Ls, _), shuffled(Name, I, J, S), nth0(S, Ls, L) ), Out) },
     made(Ret, Out, R).
 vector_op(palignr128, [_, _, A], [VA, VB, _], Ret, Ctx, R) --> !,
-    imm(A, Ctx, I),
+    imm(A, Ctx, I0), { I is I0 /\ 255 },
     { v16qu(B) }, lanes(VB, B, Ctx, Lb), lanes(VA, B, Ctx, La),
     { append(Lb, La, T), k(0, Z),
       findall(L, ( between(0, 15, J), S is J + I,
@@ -5631,6 +5786,9 @@ bits_of(v(V, _), From, To, Ctx, R) -->
 
 % generic_vector_op(+Name, +Args, +T, +Ctx, -R)//: a generic vector
 % builtin of result type T.
+generic_vector_op('__builtin_nondeterministic_value', [_], T, _, R) --> !,
+    { T = vec(_, N, _), length(Zs, N), maplist(=(v(const(0), int)), Zs) },
+    made(T, Zs, R).
 generic_vector_op('__builtin_shufflevector', [A, B|Is], T, Ctx, R) --> !,
     rval(A, Ctx, VA), rval(B, Ctx, VB),
     { VA = v(_, VT) }, lanes(VA, VT, Ctx, La), lanes(VB, VT, Ctx, Lb),

@@ -73,7 +73,7 @@
                     vm_type/1, vla_type/1, unsupported_type/3, value_type/2,
                     generic_selection/5, reflect_type/4, reflect_params/4,
                     conditional_type/3, unqualified/2,
-                    overflow_builtin/3, bit_builtin/3, rotate_builtin/3, vector_builtin/3, generic_vector_builtin/1, vector_builtin_type/4, builtin_type/2, binary_operands/6,
+                    overflow_builtin/3, bit_builtin/3, rotate_builtin/3, vector_builtin/3, lane_builtin/2, generic_vector_builtin/1, vector_builtin_type/4, builtin_type/2, binary_operands/6,
                     builtin_constant_p/3, attr_entry/3, attr_word/2,
                     unary_operand/3, assigned/4, transparent_argument/4, expression_tags/3,
                     builtin_declarations/1,
@@ -854,8 +854,8 @@ doc(vector_type(+Specs, +Elem, +Env, -Type), det, [
     "(typedef_alignment/5) becomes its vector type's alignment, since a",
     "vector access is checked against the alignment of the type it is",
     "made through (immintrin.h's __m128i_u is aligned(1), so",
-    "_mm_loadu_si128 checks alignment 1). Only 16-byte vectors are supported (the SSE through",
-    "SSE4.2 intrinsics), and only with NANOFIL_VECTORS=1 until a survey",
+    "_mm_loadu_si128 checks alignment 1). Only 16- and 32-byte vectors are supported (the SSE",
+    "through AVX2 intrinsics), and only with NANOFIL_VECTORS=1 until a survey",
     "with it on; each access is checked as one access of its full width",
     "(docs/vector-access.md).",
     cites('GCC manual, Using Vector Instructions through Built-in Functions'),
@@ -873,7 +873,7 @@ vector_type(Specs, Elem0, Env, Type) :-
     ->  Type = bad('a vector of a type other than an integer, float or double')
     ;   vector_size_value(Specs, Env, Size),
         type_size_align(Elem, Env, ES, _),
-        (   Size =\= 16
+        (   Size =\= 16, Size =\= 32
         ->  format(atom(Why), 'vector types of ~w bytes', [Size]),
             Type = bad(Why)
         ;   N is Size // ES,
@@ -4396,9 +4396,51 @@ vector_abbrev(v4si, vec(int, 4, 16)) :- !.
 vector_abbrev(v2di, vec(llong, 2, 16)) :- !.
 vector_abbrev(v4sf, vec(float, 4, 16)) :- !.
 vector_abbrev(v2df, vec(double, 2, 16)) :- !.
+vector_abbrev(v32qi, vec(char, 32, 32)) :- !.
+vector_abbrev(v16hi, vec(short, 16, 32)) :- !.
+vector_abbrev(v8si, vec(int, 8, 32)) :- !.
+vector_abbrev(v4di, vec(llong, 4, 32)) :- !.
+vector_abbrev(v8sf, vec(float, 8, 32)) :- !.
+vector_abbrev(v4df, vec(double, 4, 32)) :- !.
 vector_abbrev(T, T).
 
 vector_builtin_(pmovmskb128, [v16qi], int).
+vector_builtin_(Name256, Ps, R) :-              % AVX2: per 128-bit lane
+    lane_builtin(Name256, Name128),
+    vector_builtin_(Name128, Ps0, R0),
+    (   shift_count_builtin(Name128)
+    ->  Ps0 = [P0, C], wide_abbrev(P0, P), Ps = [P, C]
+    ;   maplist(wide_abbrev, Ps0, Ps)
+    ),
+    wide_abbrev(R0, R).
+vector_builtin_(pmovmskb256, [v32qi], int).
+vector_builtin_(addsubps, [v4sf, v4sf], v4sf).
+vector_builtin_(addsubpd, [v2df, v2df], v2df).
+vector_builtin_(Name, [V, V, V], V) :-
+    member(V-Ws, [v4sf-[vfmaddps, vfmaddsubps], v2df-[vfmaddpd, vfmaddsubpd]]),
+    member(Name, Ws).
+vector_builtin_(vpermilps, [v4sf, int], v4sf).
+vector_builtin_(vpermilpd, [v2df, int], v2df).
+vector_builtin_(vpermilpd256, [v4df, int], v4df).
+vector_builtin_(shufpd256, [v4df, v4df, int], v4df).
+vector_builtin_(movmskps256, [v8sf], int).
+vector_builtin_(movmskpd256, [v4df], int).
+vector_builtin_(Name, [W, int], H) :-
+    member(Name-W-H, [extract128i256-v4di-v2di, vextractf128_si256-v8si-v4si,
+                      vextractf128_ps256-v8sf-v4sf, vextractf128_pd256-v4df-v2df]).
+vector_builtin_(Name, [W, H, int], W) :-
+    member(Name-W-H, [insert128i256-v4di-v2di, vinsertf128_si256-v8si-v4si,
+                      vinsertf128_ps256-v8sf-v4sf, vinsertf128_pd256-v4df-v2df]).
+vector_builtin_(Name, [W, W, int], W) :-
+    member(Name-W, [permti256-v4di, vperm2f128_si256-v8si,
+                    vperm2f128_ps256-v8sf, vperm2f128_pd256-v4df]).
+vector_builtin_(permvarsi256, [v8si, v8si], v8si).
+vector_builtin_(permvarsf256, [v8sf, v8si], v8sf).
+vector_builtin_(Name, [W, int], E) :-
+    member(Name-W-E, [vec_ext_v32qi-v32qi-char, vec_ext_v16hi-v16hi-short,
+                      vec_ext_v8si-v8si-int, vec_ext_v4di-v4di-llong]).
+vector_builtin_(vzeroupper, [], void).
+vector_builtin_(vzeroall, [], void).
 vector_builtin_(lddqu, [ptr(qualified([const], char))], v16qi).
 vector_builtin_(movmskps, [v4sf], int).
 vector_builtin_(movmskpd, [v2df], int).
@@ -4454,17 +4496,68 @@ vector_builtin_(cvtss2si64, [v4sf], llong).
 vector_builtin_(cvtsd2si, [v2df], int).
 vector_builtin_(cvtsd2si64, [v2df], llong).
 
+doc(lane_builtin(?(Name256), ?(Name128)), nondet, [
+    Name256: "an AVX2 builtin on 32-byte vectors",
+    Name128: "the SSE builtin it applies to each 128-bit lane",
+    "Most AVX2 integer instructions operate on the two 128-bit lanes of",
+    "their 32-byte operands independently, each as the SSE instruction of",
+    "the same name does, with the same immediate; a shift's count vector",
+    "is 16 bytes and applies to both lanes (shift_count_builtin/1).",
+    cites('Intel 64 and IA-32 Architectures Software Developer\'s Manual, Volume 2, VEX.256 encodings'),
+    example(lane_builtin(pshufb256, pshufb128)),
+    example(lane_builtin(psrad256, psrad128)),
+    fails(lane_builtin(permvarsi256, _))
+]).
+lane_builtin(Name256, Name128) :-
+    member(Name128, [packsswb128, packuswb128, packssdw128, packusdw128,
+                     pavgb128, pavgw128, pblendvb128, pblendw128,
+                     pmaddwd128, pmaddubsw128, pmuldq128, pmuludq128,
+                     pmulhw128, pmulhuw128, psadbw128, pshufb128,
+                     psignb128, psignw128, psignd128,
+                     phaddw128, phaddd128, phaddsw128, phsubw128, phsubd128, phsubsw128,
+                     psllwi128, pslldi128, psllqi128, psrlwi128, psrldi128, psrlqi128,
+                     psrawi128, psradi128,
+                     psllw128, pslld128, psllq128, psrlw128, psrld128, psrlq128,
+                     psraw128, psrad128,
+                     pslldqi128_byteshift, psrldqi128_byteshift, palignr128,
+                     pclmulqdq128, shufps, addsubps, addsubpd,
+                     vfmaddps, vfmaddpd, vfmaddsubps, vfmaddsubpd, vpermilps]),
+    (   atom_concat(Stem, '128', Name128) -> true
+    ;   Stem = Name128
+    ),
+    (   sub_atom(Stem, B, _, 0, '128_byteshift')
+    ->  sub_atom(Stem, 0, B, _, S0), atom_concat(S0, '256_byteshift', Name256)
+    ;   atom_concat(Stem, '256', Name256)
+    ).
+lane_builtin(pshufd256, pshufd).
+lane_builtin(pshuflw256, pshuflw).
+lane_builtin(pshufhw256, pshufhw).
+
+shift_count_builtin(Name) :-
+    memberchk(Name, [psllw128, pslld128, psllq128, psrlw128, psrld128,
+                     psrlq128, psraw128, psrad128]).
+
+wide_abbrev(N, W) :-
+    (   memberchk(N-W, [v16qi-v32qi, v8hi-v16hi, v4si-v8si, v2di-v4di,
+                        v4sf-v8sf, v2df-v4df])
+    ->  true
+    ;   W = N
+    ).
+
 doc(generic_vector_builtin(?(Name)), nondet, [
     Name: "a clang builtin whose result type follows its operands",
     "__builtin_shufflevector(A, B, I...) picks elements of A and B, a",
     "vector of as many elements as there are constant indexes I;",
     "__builtin_convertvector(V, T) converts each element of V to T's;",
     "the elementwise builtins apply to each element and have their",
-    "operand's type.",
+    "operand's type. __builtin_nondeterministic_value(V) is some value of",
+    "V's type, V unevaluated (avxintrin.h's undefined upper halves); nanofil",
+    "makes it zero.",
     cites('Clang Language Extensions, __builtin_shufflevector, __builtin_convertvector, Vector Builtins')
 ]).
 generic_vector_builtin('__builtin_shufflevector').
 generic_vector_builtin('__builtin_convertvector').
+generic_vector_builtin('__builtin_nondeterministic_value').
 generic_vector_builtin(Name) :-
     member(Op, [add_sat, sub_sat, min, max, abs]),
     atom_concat('__builtin_elementwise_', Op, Name).
@@ -4472,13 +4565,14 @@ generic_vector_builtin(Name) :-
 % vector_builtin_type(+Name, +Args, +Env, -T): T is the type of a call
 % of the generic vector builtin Name on Args.
 vector_builtin_type('__builtin_shufflevector', [A, B|Is], Env, vec(E, K, Size)) :- !,
-    operand(A, Env, _, vec(E, _, _)), operand(B, Env, _, vec(E2, _, _)), E == E2,
+    operand(A, Env, _, vec(E, N, _)), operand(B, Env, _, vec(E2, N2, _)), E == E2, N == N2,
     length(Is, K), type_size_align(E, Env, ES, _), Size is ES * K.
 vector_builtin_type('__builtin_convertvector', [A, TN], Env, T) :- !,
     operand(A, Env, _, vec(_, N, _)),
     type_name_type(TN, T0, Env, _), unqualified(T0, T), T = vec(_, N, _).
-vector_builtin_type(_, [A|_], Env, T) :-
-    operand(A, Env, _, T), T = vec(_, _, _).
+vector_builtin_type(_, [A|Bs], Env, T) :-
+    operand(A, Env, _, T), T = vec(E, N, _),
+    forall(member(B, Bs), operand(B, Env, _, vec(E, N, _))).
 
 doc(bit_builtin(?(Name), ?(Op), ?(Type)), nondet, [
     Name: "a bit-counting builtin",

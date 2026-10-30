@@ -1,6 +1,6 @@
-// error: vector types of 32 bytes
+// error: vector types of 64 bytes
 // vectors
-/* Only 16-byte vectors (SSE through SSE4.2) are supported; AVX's 32-byte
-   ones come later. */
-typedef int v8si __attribute__((vector_size(32)));
-v8si g;
+/* Only 16- and 32-byte vectors (SSE through AVX2) are supported;
+   AVX-512's 64-byte ones are not. */
+typedef int v16si __attribute__((vector_size(64)));
+v16si g;
