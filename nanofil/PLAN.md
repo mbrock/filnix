@@ -517,18 +517,18 @@ hello, zlib, Lua, bzip2, lz4 and SQLite checks also build with
 `--checks=reuse` and must match filcc.
 
 **Round 4, spatial evidence and renewal ([docs/m7.md](docs/m7.md#spatial-evidence-and-renewal-round-4)):**
-`--checks=renew`, the `-O` default, replaces a heap check whose bounds and
+an opt-in `--checks=renew` replaces a heap check whose bounds and
 alignment a dominating heap check of the same pointer covers, across
 calls and polls, with a `renew` op. The op tests only the free and
 read-only flags, at the same place, with the same trap text. Oracle
-reviewed the contract before implementation and the result after. Before the
-cheap middle end, it removed 9.5% of zlib `-6`'s instructions, 7.5% of
-bzip2 `-9`'s and 2.5% of SQLite's. The validator's and pass's evidence is now indexed,
+reviewed the contract before implementation and the result after. Under
+`-O` it removes 9.5% of zlib `-6`'s instructions, 7.5% of bzip2 `-9`'s and
+2.5% of SQLite's. The validator's and pass's evidence is now indexed,
 which takes them from quadratic to near-linear time on large functions.
-On top of the cheap middle end it removes 10.7%, 11.5% and 6.0%, at
-+4.8% compile time on sqlite3.c, and it is now the `-O` default;
-`--checks=reference` and `reuse` stay selectable. Induction ranges for
-`block[i]` are the next contract.
+It was the `-O` default from `a4351bc` until it measured slower on swa
+(bzip2 `-d` +24% in time on 10% fewer instructions, from
+memory-dependence resyncs around the longer-lived P1). It is opt-in
+again until no gate workload is slower with it.
 
 **First deliverable:** one narrowly specified alternative to repeated
 runtime checking, such as reuse for repeated scalar accesses in a

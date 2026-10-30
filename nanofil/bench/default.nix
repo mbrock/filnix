@@ -25,7 +25,7 @@ let
     off = "";
     O = "-O";
     O-reuse = "-O --checks=reuse";
-    O-refchecks = "-O --checks=reference";
+    O-renew = "-O --checks=renew";
     O-noinline = "-O --inline=none";
     O-refbranches = "-O --branches=reference";
     O-stack = "-O --registers=stack";

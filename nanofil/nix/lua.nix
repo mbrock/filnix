@@ -36,7 +36,7 @@ let
     stack-optimized = "-O --registers=stack";
     reuse-plain = "--checks=reuse";
     reuse-optimized = "-O --checks=reuse";
-    refchecks-optimized = "-O --checks=reference";
+    renew-optimized = "-O --checks=renew";
   };
 in
 (import ./configurations.nix { inherit pkgs; } "nanofil-lua" configurations (

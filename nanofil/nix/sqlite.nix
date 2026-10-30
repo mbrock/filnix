@@ -82,7 +82,7 @@ let
     plain = configuration "plain" "";
     O = configuration "O" "-O";
     reuse = configuration "reuse" "-O --checks=reuse";
-    refchecks = configuration "refchecks" "-O --checks=reference";
+    renew = configuration "renew" "-O --checks=renew";
     inherit port;
   };
 in
