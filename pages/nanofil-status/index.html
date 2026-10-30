@@ -50,7 +50,7 @@ td.n, th.n { text-align: end; font-variant-numeric: tabular-nums; }
 
 <div class="facts">
   <div class="fact"><b>27.6k</b><span>lines of Prolog, from preprocessor to assembly</span></div>
-  <div class="fact"><b>161 / 202</b><span>nixpkgs C packages filcc builds that nanofil builds alone</span></div>
+  <div class="fact"><b>160 / 200</b><span>nixpkgs C packages filcc builds that nanofil builds alone</span></div>
   <div class="fact"><b>~1.8×</b><span>filcc -O2's run time with <code>-O</code>, geomean of 11 workloads</span></div>
   <div class="fact"><b>~1.5×</b><span>filcc -O2's compile time with <code>-O</code>, for SQLite</span></div>
 </div>
@@ -65,16 +65,16 @@ td.n, th.n { text-align: end; font-variant-numeric: tabular-nums; }
 
 <h2>What it can build</h2>
 <p>nanofil accepts C17 with the GNU extensions real packages use: statement expressions, <code>typeof</code>, <code>__attribute__((cleanup))</code>, computed goto, VLAs, transparent unions, weak symbols and aliases, <code>.symver</code>, K&amp;R definitions, C11 atomics and <code>setjmp</code>. Unknown attributes are refused rather than ignored. The rule throughout is to refuse loudly instead of miscompiling.</p>
-<p>The <b>survey</b> builds every C package in filnix's port list with nanofil in place of the compiler. Of the 202 that filcc builds, nanofil builds <b>161</b>, compiling about 44,900 objects with no fallback to clang. The 60 among them whose ports run tests pass them, as filcc's builds do. They include GTK 3, GLib, SQLite, CPython, Lua, bash, coreutils, gmp, libsodium and netcdf. With <code>-O</code> it built 154, and the four <code>-O</code>-only failures have since been fixed. With vector types turned on (<code>--vectors</code>, still opt-in) seven more build, among them xz, zstd, libtiff and Ghostscript.</p>
+<p>The <b>survey</b> builds every C package in filnix's port list with nanofil in place of the compiler. Of the 200 that filcc builds, nanofil builds <b>160</b>, compiling about 44,900 objects with no fallback to clang. The 60 among them whose ports run tests pass them, as filcc's builds do. They include GTK 3, GLib, SQLite, CPython, Lua, bash, coreutils, gmp, libsodium and netcdf. With <code>-O</code> it built 154, and the four <code>-O</code>-only failures have since been fixed. With vector types turned on (<code>--vectors</code>, still opt-in) eight more build, among them xz, x264, zstd, libtiff and Ghostscript.</p>
 <p>Sixteen <b>workload checks</b> build programs like bash, CPython, SQLite, coreutils, xz and jq with nanofil, plain and with <code>-O</code>, and require their output, and often their own test suites, to match filcc's builds, also under the collector's stress mode.</p>
-<p>What stops the other 41, roughly in order:</p>
+<p>What stops the other 40, roughly in order. emacs and libgcrypt are left out of the survey as slow builds and timed separately.</p>
 <table>
 <tr><th>Cause</th><th class="n">Packages</th><th>Examples</th></tr>
-<tr><td>Vector types and SIMD intrinsics (seven of these build with <code>--vectors</code>)</td><td class="n">15</td><td>fftw, gtk4, libwebp</td></tr>
+<tr><td>Vector types and SIMD intrinsics (eight of these build with <code>--vectors</code>)</td><td class="n">17</td><td>fftw, gtk4, libwebp, x264</td></tr>
 <tr><td>Assorted syntax and typing gaps: <code>__int128</code>, complex literals, glibc's <code>link.h</code></td><td class="n">9</td><td>mbedtls, nss, systemd</td></tr>
-<tr><td>Missing builtins and unresolved Fil-C symbols at link</td><td class="n">8</td><td>bison, gnutls, libaom</td></tr>
+<tr><td>Missing builtins and unresolved Fil-C symbols at link</td><td class="n">7</td><td>bison, gnutls, libaom</td></tr>
 <tr><td>Inline assembly that filcc checks and runs natively</td><td class="n">3</td><td>openssh, openssl</td></tr>
-<tr><td>Build timeouts, constant folding, alignment, a timing-dependent test</td><td class="n">6</td><td>emacs, libgcrypt, libffi, libressl</td></tr>
+<tr><td>Constant folding, alignment, a timing-dependent test</td><td class="n">4</td><td>libffi, libcdio, libressl</td></tr>
 </table>
 <p>The full table is in <a href="https://github.com/mbrock/filnix/blob/main/nanofil/docs/survey.md">survey.md</a>.</p>
 

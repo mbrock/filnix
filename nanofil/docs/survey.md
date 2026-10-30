@@ -60,15 +60,20 @@ campaign service
 ([`20261030-1136-nanofil-survey-746154d-plain`](https://nix.swa.sh/c/20261030-1136-nanofil-survey-746154d-plain/survey)),
 sets emacs30 and libgcrypt aside as slow (see above) and covers the
 other 207 C packages. filcc builds 200 of them, and nanofil alone
-builds 160: the 161 of `6bc0f74` less x264, which regressed
-(`common/macroblock.c:1521: no member named i`). btrfs-progs gets
+builds 160, as at `6bc0f74`. x264 is not among them: its
+`common/x86/util.h` declares a union with an `__m128 i` member under
+`#ifdef __SSE__`, so plain mode refuses it
+(`common/macroblock.c:1521: no member named i`) and it builds only with
+`--vectors`. The `6bc0f74` survey counted it as built from an output
+that a vectors-on build had left in the store, so that survey's true
+count is 160, not 161. btrfs-progs gets
 past `__builtin_cpu_init` to its SSE2 BLAKE2b. The table's timings are
 wall-clock seconds on the named builder (igloo or chapel), which are
 not comparable across machines.
 
 The survey of 2026-10-30, at `6bc0f74`: of the 300 packages ports.nix
 names, 209 are C. filcc builds 202 of them. Of those 202, nanofil alone
-builds 161 (80%; 144 at `dd2ffee`, 141 at `a8e17b3`, 137 at `d3f1858`,
+builds 160 (79%, x264 corrected, see above; 144 at `dd2ffee`, 141 at `a8e17b3`, 137 at `d3f1858`,
 130 at `d91dd5e`), compiling 44,903 objects. The 60 among them whose
 ports run tests pass them, as filcc's builds do. Two build but fail
 their tests: libressl's DTLS ssltest, on timing, and nspr
@@ -79,7 +84,7 @@ trap (`4379478`), and cpuid, xgetbv, rdtsc, rdtscp, lfence, sfence and
 pause compile to checked `asm_fixed` (`f20ffe5`, `ba3d7a6`), which takes
 the inline-asm row from 31 to 3. fstrm, nettle, libmbim, parted, physfs
 and rhash build and pass their tests; binutils, cogl, elfutils, gettext,
-kbd, libblake3, pcre2, util-linux, x264 and zlib-ng build; cryptsetup
+kbd, libblake3, pcre2, util-linux and zlib-ng build; cryptsetup
 now passes its tests. libgcrypt gets past its asm and its plain build
 hits the 90-minute timeout in its tests, as emacs30 does in its lisp
 stage (libgcrypt builds and passes at `-O`). No package regressed.
@@ -87,7 +92,7 @@ stage (libgcrypt builds and passes at `-O`). No package regressed.
 With `--vectors` (GNU vector types and the SSE through SSE4.2 and
 PCLMULQDQ intrinsics, off by default; `16620be`), ghostscript, libopus
 and libtiff also pass their tests and kittydoom, libpq, xz and zstd
-build, plain and at `-O`, for 168 of 202. The other vector packages
+build, plain and at `-O`, for 168 of 202 (x264 with them). The other vector packages
 stop at `__builtin_ia32_shufpd` (fftw, flac), the SSE4.2 string
 compares (bind, gtk4), 32-byte vectors (libdeflate, libwebp),
 `long double` classification (redis) and `__int128` (tor).
@@ -105,7 +110,8 @@ Vector types are now the largest row (16); `--vectors` builds seven of
 them (see above), and the release default stays off until the rest are
 measured. The 3 inline-asm packages left need asm filcc checks and runs
 natively (openssh's `sarw`, openssl-sarcasm's `divq`) or openssl's
-`.filc_unsafe_export`. Of the 10 other syntax or typing gaps, x264's is new, four are
+`.filc_unsafe_export`. Of the 10 other syntax or typing gaps, x264's is a vector type
+reported as a missing member, four are
 `__int128` or GNU complex literals (`1.0iF`), two glibc's `link.h`, and
 quickjs's `__builtin_frame_address(0)`, which stays out by decision.
 
