@@ -4167,6 +4167,68 @@ The times were taken on a loaded swa. `tests/manyhomes.py 2000` keeps
 the snapshot is identical (4506 outputs), and so is the `-O` assembly
 of the bench's sources (sqlite3, lua, bzip2, zlib, lz4).
 
+### 14. `-O` compile time across packages (October 2026)
+
+The survey doesn't time objects, so I preprocessed every TU of two
+survey packages from their kept build directories (with the build's
+`NIX_CFLAGS_COMPILE`): netcdf 557 and openssh 297, plus the bench's 55
+sources. Each was compiled plain and `-O` at `c7e94e8`, counted in
+`perf stat` user instructions (`-O`'s defaults: pointers, reference
+checks).
+
+| Set | TUs | `-O` / plain |
+| --- | --: | --: |
+| all | 909 | 2.17 (30.6T against 14.1T) |
+| netcdf | 557 | 2.20 |
+| openssh | 297 | 1.95 |
+| bench (zlib, bzip2, lz4, Lua, SQLite) | 55 | 2.6–3.3 |
+
+Per TU, the median is 1.66, p90 2.89 and the maximum 4.92
+(netcdf's `putget.c`). The extra cost concentrates in a few large
+TUs: `tst_h_atts.c` +1.75T (2.74×), libcrux +1.55T (2.20×), `sqlite3.c`
++1.45T (3.29×), `tst_camrun.c` +0.59T (3.38×). Peak RSS at `-O` stays
+within 1.6 GB.
+
+**Where it goes** (SWI profiler, inclusive ticks):
+
+- TUs with large functions (`putget.c`, `ncx.c`, `servconf.c`,
+  `ssh-keygen.c`): emission is 42–51%. Of that, `regs_asm` is 34–41%:
+  the allocation is 12–19%, its shared `body_analysis` 7–11%, the
+  operand rewrite about 6%, the operand checker about 6%, and the
+  first lowering (`temps_first`) 15–24%. The middle end is 13–17%,
+  `checked_module` (pizlonation, validation, reuse) 12–14%, and garbage
+  collection 7–13%.
+- TUs with one very wide function (netcdf's DAP tests: curl's
+  `curl_easy_setopt` type-check macros, so `timedping` has 8.5k
+  blocks): the middle end is 28%. `cfg:func_cfg` alone is 13% across
+  650 calls, most of it per-edge assoc updates for the predecessor sets
+  and the reverse-postorder search.
+
+No single pass dominates. As item 10 found, the largest shares are the
+allocator and the translation checkers, which stay.
+
+**Taken: predecessors by sorting** (`cfg.pl`). `func_cfg/2` built each
+block's predecessors with one `put_assoc` per edge. It now sorts the
+edges by target and groups them. Output is identical: the snapshot, and
+the `-O` assembly of the TUs below.
+
+| TU | before | after |
+| --- | --: | --: |
+| netcdf `pingurl.c` (8.5k-block function) | 109.0G | 104.1G (−4.5%) |
+| `bzip2/decompress.c` | 64.0G | 62.1G (−3.0%) |
+| `ssh-keygen.c` | 130.7G | 129.0G (−1.3%) |
+| netcdf `putget.c` | 287.5G | 284.8G (−0.9%) |
+| `lua/lvm.c` | 88.1G | 87.4G (−0.8%) |
+| `zlib/inflate.c` | 43.3G | 42.8G (−1.1%) |
+
+Under the same 120 MB stack limit, `decompress.c` compiles either way
+with identical output. Its peak RSS rose from 114 MB to 189 MB, outside
+the Prolog stacks (unexplained; the other TUs are unchanged).
+
+**Not taken: a bitset for the search's visited set.** It took another
+3% off `pingurl.c`, but `1 << N` makes one bignum per block, so memory
+grows quadratically in the blocks. That is item 13's failure again.
+
 ### Projection
 
 From the profile's shares: items 1–4 leave the compressors at about 3–4×

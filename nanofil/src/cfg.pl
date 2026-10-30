@@ -80,32 +80,33 @@ func_cfg(Blocks, cfg(Entry, Rpo, Succs, Preds)) :-
             ),
             SuccPairs),
     list_to_assoc(SuccPairs, Succs),
-    findall(Label-[], member(Label-_, SuccPairs), NoPreds),
-    list_to_assoc(NoPreds, Preds0),
-    foldl(succ_pair_preds, SuccPairs, Preds0, Preds1),
-    assoc_to_list(Preds1, PredPairs0),
-    findall(Label-Ps,
-            ( member(Label-Ps0, PredPairs0),
-              sort(Ps0, Ps)
-            ),
-            PredPairs),
+    % The edges sorted by target, not an assoc updated per edge: on
+    % curl's curl_easy_setopt expansions (8.5k blocks) the updates were
+    % most of the CFG's cost, which every pass pays.
+    findall(Succ-Pred, ( member(Pred-Ss, SuccPairs), member(Succ, Ss) ), Edges0),
+    msort(Edges0, Edges), group_pairs_by_key(Edges, Groups),
+    pairs_keys(SuccPairs, Labels0), msort(Labels0, Labels),
+    label_preds(Labels, Groups, PredPairs),
     list_to_assoc(PredPairs, Preds),
     empty_assoc(Seen0),
     reverse_postorder([Entry], Succs, Seen0, _, [], Rpo).
 
-% succ_pair_preds(+Pred-Ss, +Preds0, -Preds): Preds is Preds0
-% with Pred in the (unsorted) predecessor list of each label in Ss.
-succ_pair_preds(Pred-Ss, Preds0, Preds) :-
-    foldl(pred_succ_preds(Pred), Ss, Preds0, Preds).
+% label_preds(+Labels, +Groups, -PredPairs): each of the sorted Labels
+% with its predecessors from Groups (Succ-Preds, sorted by Succ), or [].
+% Fails when an edge targets a label that is not a block's.
+label_preds([], [], []).
+label_preds([L|Ls], Groups, [L-Ps|PPs]) :-
+    (   Groups = [G-Ps0|Gs], G == L
+    ->  Ps = Ps0, label_preds(Ls, Gs, PPs)
+    ;   ( Groups = [G-_|_] -> L @< G ; true ),
+        Ps = [], label_preds(Ls, Groups, PPs)
+    ).
 
-pred_succ_preds(Pred, Succ, Preds0, Preds) :-
-    get_assoc(Succ, Preds0, Ps),
-    put_assoc(Succ, Preds0, [Pred|Ps], Preds).
-
-% reverse_postorder(+Ls, +Succs, +Seen0, -Seen, +Post0, -Post): Post
-% is a reverse postorder, in front of Post0, of the labels reachable
-% from Ls (depth first, each of Ls in turn) without passing through
-% Seen0; Seen is Seen0 with those labels.
+% reverse_postorder(+Ns, +Succs, +Seen0, -Seen, +Post0, -Post): Post
+% is a reverse postorder, in front of Post0, of the block numbers
+% reachable from Ns (depth first, each of Ns in turn) without passing
+% through the bitset Seen0; Seen is Seen0 with those numbers. Succs is
+% s(Ns1, Ns2, ...), each block's successors' numbers.
 reverse_postorder([], _, Seen, Seen, Post, Post).
 reverse_postorder([L|Ls], Succs, Seen0, Seen, Post0, Post) :-
     (   get_assoc(L, Seen0, _)
