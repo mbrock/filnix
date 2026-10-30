@@ -293,6 +293,10 @@ digits0([]) --> [].
 
 % Character classes as ASCII ranges: char_type/2's classes differ
 % between Prolog hosts, and C and IR source only need these.
+
+%! decimal(+C) is semidet.
+%
+%  C is a decimal digit character, '0' to '9'.
 decimal(D) :- D @>= '0', D @=< '9'.
 
 letter(C) :- ( C @>= a, C @=< z -> true ; C @>= 'A', C @=< 'Z' ).
@@ -333,15 +337,26 @@ token(str(Bs), Loc) -->
     str_body(Loc, Bs).
 token(p(P), _) --> punct(P).
 
+%! ident_start(+C) is semidet.
+%
+%  C may begin an identifier: an ASCII letter, '_' or '$' (a GNU
+%  extension).
 ident_start(C) :- letter(C), !.
 ident_start('_').
 ident_start('$').
 
+%! ident_rest(-Cs)// is det.
+%
+%  Cs is the longest run of identifier characters (ident_char/1) next
+%  in the input.
 ident_rest([C|Cs]) -->
     [C], { ident_char(C) }, !,
     ident_rest(Cs).
 ident_rest([]) --> [].
 
+%! ident_char(+C) is semidet.
+%
+%  C may continue an identifier: an ASCII letter, a digit, '_' or '$'.
 ident_char(C) :- ( letter(C) ; decimal(C) ), !.
 ident_char('_').
 ident_char('$').
