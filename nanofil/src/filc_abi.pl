@@ -40,16 +40,23 @@
 :- use_module(ir).
 :- use_module(frame_slots).
 
-% lower_function(+Symbols, +FusedFunction, +LiveBlocks, -Product):
-% Symbols is the module's ir:module_symbols/2 (or the module itself).
-% Calls and getters look their targets up in it. The frame's pools are
-% shared; lower_function/5 chooses.
+%! lower_function(+Symbols, +FusedFunction, +LiveBlocks, -Product) is det.
+%
+%  Product is the ABI plan, abi_function/10, of the checked function
+%  FusedFunction, whose checks are fused with their accesses
+%  (filc_amd64's fused_blocks/5), LiveBlocks being the same blocks as
+%  liveness reads them: its frame(Plain, Roots, Aliases), entry
+%  actions, lowered blocks, exception exit, public object and origins
+%  (this module's header). Symbols is the module's ir:module_symbols/2
+%  (or the module itself). Calls and getters look their targets up in
+%  it. The frame's pools are shared; lower_function/5 chooses.
 lower_function(Module, Func, LiveBlocks, Product) :-
     lower_function(shared, Module, Func, LiveBlocks, Product).
 
-% lower_function(+Pools, +Symbols, +FusedFunction, +LiveBlocks, -Product):
-% as lower_function/4, with the temporaries' slot pools shared or own
-% (frame_slots:temp_slots/9).
+%! lower_function(+Pools, +Symbols, +FusedFunction, +LiveBlocks, -Product) is det.
+%
+%  As lower_function/4, with the temporaries' slot pools shared or own
+%  (frame_slots:temp_slots/9).
 lower_function(Pools, Module, Func, LiveBlocks,
                abi_function(Name, Linkage, Ret, Sig, Frame, Entry, Blocks,
                             Exit, Object, Origins)) :-
@@ -72,7 +79,14 @@ lower_function(Pools, Module, Func, LiveBlocks,
     Origins = [origin(c, catches, NRoots, NSites, NLocals),
                origin(n, no_catch, NRoots, NSites, NLocals)].
 
-% The bijective base-11 encoding is independent of native locations.
+%! signature(+Ret, +ParamKs, -Sig) is det.
+%
+%  Sig is Fil-C's fast-call signature number for a function returning
+%  Ret (a class, void or tuple([K1, K2])) on parameters of classes
+%  ParamKs: 1 + R + 133 * A, R and A the bijective base-11 encodings of
+%  the return and argument word digits, independent of native
+%  locations. More than 16 argument words have no fast signature, and
+%  get never_signature/1. It names private bodies, pizlonatedFIP<Sig>_F.
 signature(Ret, ParamKs, Sig) :-
     ret_kinds(Ret, RetKs),
     maplist(class_digit, RetKs, RetDigits),
@@ -84,11 +98,13 @@ signature(Ret, ParamKs, Sig) :-
     ;   never_signature(Sig)
     ).
 
-% More than 16 words have no fast signature (clang's is generic, 0). A
-% call site gets one no function object has, the largest 64-bit value
-% (fast signatures stay below 2^63), so it always goes generic; the
-% frontend makes such a definition generic-only, and its private body is
-% named with this one.
+%! never_signature(-Sig) is det.
+%
+%  More than 16 words have no fast signature (clang's is generic, 0). A
+%  call site gets one no function object has, the largest 64-bit value
+%  (fast signatures stay below 2^63), so it always goes generic; the
+%  frontend makes such a definition generic-only, and its private body
+%  is named with this one.
 never_signature(18446744073709551615).
 
 class_digit(w, 0).
@@ -431,6 +447,12 @@ public_object(Func, _, Object) :-
     ; signature(Ret,Ks,Sig), generic_params(Ks,Words),
       Object = fast_and_generic(Sig,adapt(Need,Words,Result)) ).
 
+%! lower_thunks(+Module, -Thunks) is det.
+%
+%  Thunks are the plans of the weak external thunks Module needs: one
+%  per symbol and signature for each direct call to a function the
+%  module does not define, as clang emits one per external callee
+%  (docs/abi-findings.md, Weak thunks are shared by signature).
 lower_thunks(Module, Thunks) :-
     Module = module(Items), module_symbols(Module, Symbols),
     findall(t(F,Sig,Ret,Ks),
