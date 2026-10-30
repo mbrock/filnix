@@ -2336,6 +2336,30 @@ renewal's frame is back near the reference's and its resyncs at
 baseline: renew is now 4% faster than the reference on bzip2 `-d` and
 2% on the geomean, guard 1%.
 
+**Renew and guard on the pointers base** (`fae7737`, `-O` being
+`--registers=pointers`; quiet swa, 7 trials):
+
+| Workload | `-O` | `--checks=renew` | `--checks=guard` |
+| --- | --: | --: | --: |
+| zlib -6 | 2.16 (3.89) | 2.18 (3.50) | 2.03 (3.28) |
+| zlib -d | 1.66 (3.05) | 1.67 (3.04) | 1.65 (3.03) |
+| bzip2 -9 | 1.71 (2.45) | 1.61 (2.17) | 1.63 (2.14) |
+| bzip2 -d | 2.33 (3.04) | 2.25 (2.75) | 2.26 (2.71) |
+| lz4 -1 | 2.13 (10.56) | 2.14 (10.60) | 2.18 (10.57) |
+| lz4 -9 | 2.08 (2.69) | 1.93 (2.64) | 1.85 (2.58) |
+| lz4 -d | 2.41 (5.41) | 2.38 (5.41) | 2.53 (5.41) |
+| lua int | 1.54 (1.80) | 1.50 (1.75) | 1.57 (1.75) |
+| lua tab | 1.47 (1.75) | 1.45 (1.70) | 1.45 (1.70) |
+| lua str | 1.42 (1.54) | 1.39 (1.50) | 1.43 (1.51) |
+| sqlite | 1.84 (1.96) | 1.78 (1.86) | 1.80 (1.87) |
+| geomean | 1.85 (2.92) | 1.81 (2.79) | 1.82 (2.76) |
+
+bzip2 `-d` (minimum of 5 runs, twice): `-O` 1.069–1.071G cycles, 4.334G
+instructions, 22–24k resyncs, frame 1328 B; renew 1.032G, 3.918G,
+41–43k, 1360 B; guard 1.030–1.034G, 3.851G, 41–43k, 1376 B. Renew is 2%
+faster than `-O` on the geomean and slower nowhere beyond noise; guard
+is 1.6% faster but loses on lz4 `-d` (2.41 → 2.53).
+
 #### Punned union reads in promote (after 5b-1)
 
 lz4's `LZ4_isLittleEndian` writes a union as a word and reads a byte, so
@@ -4047,6 +4071,18 @@ extensions are phi and let moves of a `w` home onto itself. Removing
 them needs the operand checker to know the register's high half is dead,
 for about 1.3%. The phi copies between homes need coalescing in the
 allocator, not a local rewrite.
+
+**Coalescing, tried (pointers base, `7c2326c`).** A colouring preference
+in `amd64_regs.pl`: each home first tries the register of a home it is
+copied to or from through a scratch register in the reference stream.
+The checker validates any map, so nothing trusted changes. It works
+locally (`gc.ir`'s loop counter becomes `addq $1, %rbx`), but the gate
+moves by under 0.3% in instructions on every workload (bzip2 `-d`
+4.35G → 4.34G, SQLite 21.84G → 21.82G), and `luaV_execute` loses 19 of
+its 587 register-to-register moves. Those left are two-address
+arithmetic (`movq %r15, %r12; addq %r10, %r12`) and copies through the
+phi shadows, which item 9 shares by position, so they interfere with
+many homes and cannot take one partner's register. Not adopted.
 
 ### Projection
 
