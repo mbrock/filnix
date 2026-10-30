@@ -362,10 +362,10 @@ sequence of passes, each an ordinary relation from module to module:
 
 | Pass | Module | Does |
 |---|---|---|
-| inline | [inline.pl](../src/inline.pl) | inlines small `local` leaf functions (`sum` is exported, so it stays a call in `three`) |
+| inline | [inline.pl](../src/inline.pl) | inlines small `local` leaf functions (`sum` is exported, so it stays a call in `three`), in two rounds, the second with simplified callees (`inline_simplified`) |
 | promote | [promote.pl](../src/promote.pl) | turns allocs whose address never escapes ([escape.pl](../src/escape.pl)) into SSA temporaries with phis |
 | copy | [copy.pl](../src/copy.pl) | removes copies and trivial phis |
-| simplify | [simplify.pl](../src/simplify.pl) | folds constants and branches, removes dead code, merges blocks |
+| simplify | [simplify.pl](../src/simplify.pl) | folds constants and branches, removes dead code, merges blocks, strength-reduces multiplies, divides and remainders by 2^k, and reuses pure values computed in dominating blocks |
 | local_storage | [local_storage.pl](../src/local_storage.pl) | turns remaining non-escaping allocs into named locals with fixed-offset accesses |
 
 After promotion alone, `n` and `s` are phis named `pr.1` and `pr.2`, and
@@ -550,6 +550,8 @@ that does and does not establish is in
 the Fil-C calling convention before any instruction is chosen: the
 frame's slots and GC roots, the entry and exit actions, each call's
 word layout, and the function object and origins the runtime reads.
+The plan below is the `-O` module's: `pr.1` and `pr.2` exist only
+after promotion, so §11's no-`-O` listing has none.
 For `sum`, the frame and entry actions are:
 
 <!-- guide: abi -->
@@ -679,7 +681,18 @@ may get registers, but a lower never does.
 `amd64_regs_check:check_regs/5`, which rebuilds the stream the map implies and
 checks that every mapped register holds its home's value wherever the
 reference could read it. A failed check stops the compile; nanofil never
-falls back to unchecked output. The map for `sum`:
+falls back to unchecked output. A second untrusted step follows the
+map: `amd64_regs:operands_rewrite/4` ([docs/perf.md](perf.md) step 3b)
+forwards values and lets instructions read and write registers
+directly, and `amd64_regs_check:check_operands/4` validates it. The
+loop below shows both steps' work: `movq %rbx, %rax` and
+`movl (%rax), %r10d` are the rewrite's. Two kinds of function keep the
+stack-homed stream: those that call setjmp (`excluded(setjmp)`) and
+those whose stream the preflight refuses (`excluded(unsupported)`). A
+function with more than 16 scalar homes is lowered twice, and the first
+map decides how slots are pooled (`filc_amd64:temps_first/5`). The map
+for `sum`, where `allocated(8,2)` means 8 homes mapped and 2
+callee-saved registers saved (rbx and r12, as the prologue shows):
 
 <!-- guide: homes -->
 ```prolog
@@ -816,8 +829,9 @@ load's check is the same as before, without the borrow test, which
 checks of at most 16 bytes do not need ([docs/perf.md](perf.md) item
 6a). The pointer load reads the aux word at `-8(%rcx)`. If the object
 has an aux array, it takes the loaded pointer's lower from the matching
-aux slot, unboxing it when the low bit says it is boxed. Then it loads
-the address. Before the back edge, `testb $14, 8(%rdi)` asks whether
+aux slot, unboxing it when the low bit says it is boxed. An object
+without aux gives a null lower (the `.nolower` path,
+`xorl %esi, %esi`). Then it loads the address. Before the back edge, `testb $14, 8(%rdi)` asks whether
 the thread has a pending safepoint request and calls
 `filc_pollcheck_slow` if it has.
 
@@ -984,6 +998,8 @@ A refactoring must leave the snapshot unchanged.
 | checked-IR evidence: every raw access covered by a live proof, every cycle polled | the middle end, by interpreter refinement | the emitter's check, pointer-access and call sequences (reviewed against Fil-C's, tested natively and under `FUGC_SCRIBBLE`/`FUGC_VERIFY`) |
 | check passes change only checks (`*_refines/2`) | pizlonation, by agreement of unchecked and checked runs in the interpreter | the ABI facts in [docs/abi-findings.md](abi-findings.md) |
 | register homes hold their values, and no home overlaps a GC root (`check_regs`, `check_operands`) | the emitted code against the interpreter and clang (difftest, progtest, whole programs) | the root ranges the emitter reports to the register checker |
+| | | the emitter's home classes, and that only `%rbp`-relative operands reach a home, so homes and save slots never escape |
+| | | amd64_contract's audited instruction effects (a form it does not know fails) |
 | | | the Prolog host, the assembler, the linker and the Fil-C runtime |
 
 ## The module map
@@ -1192,7 +1208,9 @@ at run time, or refused.
 
 **aux**: an object's auxiliary array, which holds the lowers of the
 pointers stored in the object, slot for slot. A pointer store must
-*ensure* it exists (may call the runtime); a pointer load reads it.
+*ensure* it exists (may call the runtime); a pointer load reads it. An
+entry with its low bit set is boxed, for a pointer accessed atomically,
+and the real lower is at box+8.
 
 **cas**: compare-and-exchange, the one atomic read-modify-write IR term;
 every other atomic operation is a loop of it.
@@ -1224,7 +1242,12 @@ fact for it.
 **fast / generic convention**: Fil-C's two ways in to a function. The
 fast entry takes the arguments in registers when caller and callee
 agree on the signature; the generic entry takes them as a buffer in the
-thread for any caller.
+thread for any caller. A call through a pointer compares the signature
+word at lower+16 with its own and takes the fast entry if they match;
+otherwise it marshals the arguments into thread+128 (data) and
+thread+384 (lowers) and calls the generic entry, which checks the size.
+Functions with over 16 words of arguments and variadic functions are
+generic-only.
 
 **flight**: `flight(D, Op, Args, Lower)`, a pointer built from an
 address computation and an independently named capability source.
@@ -1244,8 +1267,9 @@ round 5).
 
 **home**: an 8-byte frame word that holds a temporary, a phi's shadow
 or a pointer's address word in the stack-homed stream amd64_regs
-starts from (§12). Under `--registers=temps|pointers` a home may be mapped to a
-register.
+starts from (§12). Scalar homes are `w` or `l` only; float temporaries
+are kept out of them. Under `--registers=temps|pointers` a home may be
+mapped to a register.
 
 **launder**: give an integer converted back to a pointer the capability
 of the pointer it came from, as Fil-C does when its analysis can follow
@@ -1256,8 +1280,8 @@ laundering*). Otherwise the pointer gets no capability and
 dereferencing it traps.
 
 **lower**: a capability, kept beside the address: the object's lower
-bound, below which its header holds the upper bound, flags and aux
-pointer.
+bound. The header below it holds the upper bound at lower−16 and the
+aux pointer at lower−8, with the object's flags in its top 16 bits.
 
 **mode**: plain or filc (`ir:module_mode/2`).
 
