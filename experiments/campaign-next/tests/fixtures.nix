@@ -35,6 +35,19 @@ rec {
     printf 'dependency-failed\n' >&2
     exit 13
   '' { };
+  # A failing nanofil survey build: an earlier compiler error, then
+  # nanofil's own message, then the survey's counts line.
+  nanofilish = fixture "campaign-nanofilish" ''
+    printf '@nix {"action":"setPhase","phase":"configurePhase"}\n'
+    printf 'Running phase: configurePhase\n'
+    printf 'nanofil: probe refused in config.log\n'
+    printf '@nix {"action":"setPhase","phase":"buildPhase"}\n'
+    printf 'Running phase: buildPhase\n'
+    printf 'x.c:1:2: error: something\n'
+    printf 'nanofil: unsupported construct at x.c:3\n'
+    printf 'nanofil-survey: 7 objects, 1 C++, 2 fallbacks\n'
+    exit 1
+  '' { };
   blocked = fixture "campaign-blocked" ''
     printf 'consumer-must-not-run\n'
     mkdir -p "$out"
@@ -58,6 +71,11 @@ rec {
   slow = fixture "campaign-slow-x86_64-unknown-linux-gnufilc0-2026.10.03" ''
     printf 'ready-for-cancellation\n'
     sleep 3
+    mkdir -p "$out"
+  '' { };
+  cancelled = fixture "campaign-cancelled" ''
+    printf 'waiting-for-cancel\n'
+    sleep 5
     mkdir -p "$out"
   '' { };
 }

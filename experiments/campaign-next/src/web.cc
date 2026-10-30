@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <ctime>
 #include <iomanip>
 #include <map>
 #include <set>
@@ -412,7 +413,10 @@ const json *session(const json &view, const std::string &run) {
 }
 std::string status(const json &view, const json &s) {
   if (!s.value("complete", false)) {
-    if (text(s, "run") == text(view, "live_run") ||
+    bool listed = false;
+    for (const auto &r : view.value("live_runs", json::array()))
+      listed |= r == s.at("run");
+    if (listed || text(s, "run") == text(view, "live_run") ||
         (view.value("live", false) && view.at("session").is_object() &&
          s.at("run") == view.at("session").at("run")))
       return "observing";
@@ -804,7 +808,8 @@ std::string web_sessions(const json &v, const std::string &run,
         filter.empty() || filter == "all" || filter == st ||
         (filter == "failed" && st == "interrupted") ||
         (filter == "successful" && (st == "built" || st == "already-valid"));
-    if (pass && lower(label(s)).find(lower(find)) != std::string::npos)
+    if (pass && lower(text(s, "root") + " " + label(s)).find(lower(find)) !=
+                    std::string::npos)
       matches.push_back(s);
   }
   if ((filter == "unattempted" || filter.empty() || filter == "all") &&
@@ -853,6 +858,9 @@ std::string web_sessions(const json &v, const std::string &run,
           auto id = text(s, "run"),
                st = id.empty() ? "unattempted" : status(v, s);
           auto n = parse_name(label(s));
+          // A service root's own name (nf.zlib), not its derivation's.
+          if (auto root = text(s, "root"); !root.empty())
+            n.name = root;
           h.tag("tr", {{"data-status", st}}, [&] {
             h.tag("td", {{"class", "pkg-cell"}, {"title", label(s)}}, [&] {
               if (id.empty())
@@ -1101,6 +1109,21 @@ std::string web_overview(const json &v) {
          stopped + campaign_line(v) + "</section>";
 }
 
+// A service campaign links back to the list and, for surveys, its table.
+std::string brand(const json &v) {
+  if (!v.value("service", false))
+    return "<p class=\"brand\">Filnix <span>/</span> campaign</p>";
+  const auto &c = v.at("campaign");
+  auto kind = text(c, "kind");
+  return "<p class=\"brand\"><a href=\"../../\">Filnix</a> <span>/</span> " +
+         escape(text(c, "id")) + " <span>·</span> " + escape(kind) + " · " +
+         escape(text(c, "state")) +
+         (kind == "nanofil-survey" || kind == "bench"
+              ? " · <a href=\"./survey\">survey table</a>"
+              : "") +
+         "</p>";
+}
+
 std::string web_page(const json &v, const std::string &run,
                      const std::string &activity, bool follow) {
   bool overview = run.empty() && !follow;
@@ -1116,8 +1139,7 @@ std::string web_page(const json &v, const std::string &run,
       "href=\"./observatory.css\"></head><body>";
   if (overview)
     return out +
-           "<main class=\"overview\"><p class=\"brand\">Filnix <span>/</span> "
-           "campaign</p>" +
+           "<main class=\"overview\">" + brand(v) +
            web_overview(v) + controls(v) +
            "<div id=\"session-results\" tabindex=\"0\" "
            "role=\"region\" aria-label=\"Campaign roots\">" +
@@ -1167,4 +1189,274 @@ std::string web_page(const json &v, const std::string &run,
          "\" data-activity=\"" + escape(activity) +
          "\"></div></section></div></main></body></html>";
 }
+} // namespace campaign
+
+namespace campaign {
+namespace {
+
+std::string page_head(const std::string &title, const std::string &base) {
+  return "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta "
+         "name=\"viewport\" content=\"width=device-width, "
+         "initial-scale=1\"><title>" +
+         escape(title) + " · Filnix</title><link rel=\"stylesheet\" href=\"" +
+         base + "observatory.css\"></head><body>";
+}
+
+std::string utc(std::int64_t ns) {
+  if (ns <= 0)
+    return "";
+  std::time_t t = ns / 1'000'000'000;
+  std::tm tm{};
+  ::gmtime_r(&t, &tm);
+  char buffer[32];
+  std::strftime(buffer, sizeof buffer, "%Y-%m-%d %H:%M", &tm);
+  return buffer;
+}
+
+std::int64_t integer(const json &j, const char *key) {
+  return j.contains(key) && j.at(key).is_number() ? j.at(key).get<std::int64_t>()
+                                                  : 0;
+}
+
+std::string machine(const json &root) {
+  if (!root.contains("outcome") || !root.at("outcome").is_string())
+    return "";
+  if (!root.contains("build_ns") || !root.at("build_ns").is_number())
+    return "";
+  auto m = text(root, "machine");
+  if (m.empty())
+    return "local";
+  if (auto at = m.find('@'); at != std::string::npos)
+    m.erase(0, at + 1);
+  else if (auto scheme = m.find("://"); scheme != std::string::npos)
+    m.erase(0, scheme + 3);
+  if (auto dot = m.find('.'); dot != std::string::npos)
+    m.resize(dot);
+  return m;
+}
+
+bool has_tag(const json &root, const std::string &tag) {
+  for (const auto &t : root.value("tags", json::array()))
+    if (t == tag)
+      return true;
+  return false;
+}
+
+} // namespace
+
+std::string survey_status(const json &r) {
+  auto state = text(r, "state");
+  if (state == "running")
+    return "building";
+  auto outcome = text(r, "outcome");
+  if (outcome.empty())
+    return state == "pending" ? "pending" : "";
+  bool check = r.value("meta", json::object()).value("doCheck", false);
+  if (outcome == "built" || outcome == "already-valid" ||
+      outcome == "substituted" || outcome == "resolves-to-already-valid")
+    return check ? "tests pass" : "built";
+  if (outcome == "timed-out")
+    return "timeout";
+  if (outcome == "skipped")
+    return "not tried";
+  if (outcome == "cancelled" || outcome == "incomplete")
+    return "interrupted";
+  if (text(r, "native_status") == "DependencyFailed")
+    return "dependency fails";
+  auto phase = text(r, "phase");
+  if (phase == "checkPhase" || phase == "installCheckPhase")
+    return "tests fail";
+  return phase.empty() ? outcome : "fails in " + phase;
+}
+
+std::string web_campaigns(const json &campaigns) {
+  bool live = false;
+  for (const auto &c : campaigns)
+    live |= text(c, "state") == "running";
+  std::string out = page_head("Campaigns", "./");
+  if (live)
+    out.insert(out.find("</head>"),
+               "<meta http-equiv=\"refresh\" content=\"30\">");
+  out += "<main class=\"overview\"><p class=\"brand\">Filnix <span>/</span> "
+         "campaigns</p><header class=\"summary-head\"><h1>Campaigns</h1>"
+         "<span class=\"record-mode\" data-live=\"" +
+         std::string(live ? "1\">Running" : "0\">Idle") +
+         "</span></header><p class=\"campaign-meta\">Every survey-style build "
+         "filnix runs: port campaigns, the nanofil survey, benchmarks. "
+         "Newest first; read-only.</p>";
+  html::Writer h;
+  h.tag("table", {{"class", "ledger"}}, [&] {
+    h.tag("thead", [&] {
+      h.tag("tr", [&] {
+        for (auto name : {"Campaign", "Kind", "Revision", "Options", "State",
+                          "Roots", "OK", "Failed", "Timed out", "Not run",
+                          "Started (UTC)", "Time"})
+          h.tag("th", {{"scope", "col"}}, [&] { h.text(name); });
+      });
+    });
+    h.tag("tbody", [&] {
+      for (const auto &c : campaigns) {
+        auto id = text(c, "id"), state = text(c, "state");
+        h.tag("tr", {{"data-state", state}}, [&] {
+          h.tag("td", {{"class", "pkg-cell"}}, [&] {
+            h.tag("a", {{"href", "c/" + url(id) + "/"}}, [&] { h.text(id); });
+            h.tag("span", {{"class", "sub"}}, [&] { h.text(text(c, "name")); });
+          });
+          h.tag("td", [&] { h.text(text(c, "kind")); });
+          h.tag("td", {{"class", "mono"}},
+                [&] { h.text(text(c, "revision").substr(0, 10)); });
+          h.tag("td", {{"class", "mono"}}, [&] {
+            std::string options;
+            for (const auto &[k, v] :
+                 c.value("options", json::object()).items())
+              options += (options.empty() ? "" : " ") + k + "=" +
+                         (v.is_string() ? v.get<std::string>() : v.dump());
+            h.text(options);
+          });
+          h.tag("td", [&] {
+            h.tag("span", {{"class", "state"}, {"data-state", state}},
+                  [&] { h.text(state); });
+            if (auto why = text(c, "stop_reason"); !why.empty())
+              h.tag("span", {{"class", "sub"}}, [&] { h.text(why); });
+          });
+          for (auto key : {"roots", "succeeded", "failed", "timed_out"})
+            h.tag("td", {{"class", "num"}},
+                  [&] { h.text(std::to_string(integer(c, key))); });
+          h.tag("td", {{"class", "num"}}, [&] {
+            auto n = integer(c, "pending") + integer(c, "running") +
+                     integer(c, "unattempted");
+            h.text(n ? std::to_string(n) : "");
+          });
+          h.tag("td", {{"class", "mono"}},
+                [&] { h.text(utc(integer(c, "started_ns"))); });
+          h.tag("td", {{"class", "duration"}}, [&] {
+            auto start = integer(c, "started_ns"),
+                 end = integer(c, "finished_ns");
+            if (start && state == "running")
+              h.text(span(wall_ns() - start));
+            else if (start && end > start)
+              h.text(span(end - start));
+          });
+        });
+      }
+    });
+  });
+  out += std::move(h).str();
+  if (campaigns.empty())
+    out += "<p class=\"empty\">No campaigns yet</p>";
+  return out + "</main></body></html>";
+}
+
+std::string web_survey(const json &results) {
+  const auto &c = results.at("campaign");
+  struct Pair {
+    std::string version;
+    const json *ref = nullptr, *nf = nullptr;
+  };
+  std::map<std::string, Pair> packages;
+  for (const auto &r : results.at("roots")) {
+    auto name = text(r, "name");
+    auto meta = r.value("meta", json::object());
+    auto package = text(meta, "package");
+    bool nf = has_tag(r, "nf") || name.starts_with("nf.");
+    if (package.empty())
+      package = name.substr(name.find('.') == std::string::npos
+                                ? 0
+                                : name.find('.') + 1);
+    auto &p = packages[package];
+    p.version = text(meta, "version", p.version);
+    (nf ? p.nf : p.ref) = &r;
+  }
+  std::map<std::string, int> tally;
+  for (const auto &[name, p] : packages)
+    if (p.nf)
+      ++tally[survey_status(*p.nf)];
+  auto id = text(c, "id");
+  std::string out = page_head(id + " · survey", "./");
+  out += "<main class=\"overview\"><p class=\"brand\"><a href=\"../../\">"
+         "Filnix</a> <span>/</span> <a href=\"./\">" +
+         escape(id) + "</a> <span>/</span> survey</p><header "
+                      "class=\"summary-head\"><h1>" +
+         escape(text(c, "name", id)) +
+         "</h1><span class=\"record-mode\">" + escape(text(c, "state")) +
+         "</span></header><p class=\"campaign-meta\">" +
+         std::to_string(packages.size()) + " packages · revision " +
+         escape(text(c, "revision").substr(0, 10)) + " · nanofil: ";
+  bool first = true;
+  for (const auto &[status, n] : tally) {
+    out += (first ? "" : ", ") + std::to_string(n) + " " + escape(status);
+    first = false;
+  }
+  out += "</p>";
+  auto cell = [](html::Writer &h, const json *r) {
+    if (!r) {
+      h.tag("td", [] {});
+      h.tag("td", [] {});
+      return;
+    }
+    auto status = survey_status(*r);
+    bool good = status == "built" || status == "tests pass";
+    h.tag("td", [&] {
+      auto run = text(*r, "run");
+      h.tag("span", {{"class", "status"},
+                     {"data-status", good                  ? "built"
+                                     : status == "timeout" ? "timed-out"
+                                     : status == "not tried" ||
+                                             status == "pending"
+                                         ? "unattempted"
+                                     : status == "building" ? "observing"
+                                                            : "failed"}},
+            [&] {
+              if (run.empty())
+                h.text(status);
+              else
+                h.tag("a", {{"href", "./?run=" + url(run)}},
+                      [&] { h.text(status); });
+            });
+    });
+    h.tag("td", {{"class", "duration"}}, [&] {
+      if (r->contains("build_ns") && r->at("build_ns").is_number())
+        h.text(span(r->at("build_ns").get<std::int64_t>()));
+      if (auto m = machine(*r); !m.empty())
+        h.tag("span", {{"class", "sub"}}, [&] { h.text(m); });
+    });
+  };
+  html::Writer h;
+  h.tag("table", {{"class", "ledger survey"}}, [&] {
+    h.tag("thead", [&] {
+      h.tag("tr", [&] {
+        for (auto name : {"Package", "Version", "filcc", "Time", "nanofil",
+                          "Time", "Objects", "C++", "Fallbacks",
+                          "First error"})
+          h.tag("th", {{"scope", "col"}}, [&] { h.text(name); });
+      });
+    });
+    h.tag("tbody", [&] {
+      for (const auto &[name, p] : packages) {
+        h.tag("tr", [&] {
+          h.tag("td", {{"class", "pkg-cell"}}, [&] { h.text(name); });
+          h.tag("td", {{"class", "version"}}, [&] { h.text(p.version); });
+          cell(h, p.ref);
+          cell(h, p.nf);
+          auto counts = p.nf ? p.nf->value("counts", json(nullptr)) : json();
+          for (auto key : {"objects", "cxx", "fallbacks"})
+            h.tag("td", {{"class", "num"}}, [&] {
+              if (counts.is_object())
+                h.text(std::to_string(integer(counts, key)));
+            });
+          h.tag("td", {{"class", "session-observation"}}, [&] {
+            const json *bad = p.nf && !text(*p.nf, "error").empty() ? p.nf
+                              : p.ref && !text(*p.ref, "error").empty()
+                                  ? p.ref
+                                  : nullptr;
+            if (bad)
+              h.text((bad == p.ref ? "filcc: " : "") + text(*bad, "error"));
+          });
+        });
+      }
+    });
+  });
+  return out + std::move(h).str() + "</main></body></html>";
+}
+
 } // namespace campaign

@@ -2,8 +2,11 @@
 
 The public, read-only dashboard is <https://nix.swa.sh/>. `/v2/` URLs redirect
 to it. The native C++/NXT runner owns its DuckDB recording and listens on
-loopback port 8778. `filnix-v2.service` runs the application selected by
-`/opt/filnix-v2`; state lives under `/var/lib/filnix-v2`.
+loopback port 8778. `filnix-campaign.service` runs the campaign service
+selected by `/opt/filnix-campaign`; state lives under `/var/lib/filnix-campaign`
+([the campaign service](campaign-service.md)). The recordings of the former
+`filnix-v2.service` stay in `/var/lib/filnix-v2` and are listed as historical
+campaigns.
 
 See [campaign purpose and selection policy](campaigns.md) before choosing a
 scope. The normal per-revision campaign is `expected`; `ports` is exploration.
@@ -18,8 +21,8 @@ scope. The normal per-revision campaign is `expected`; `ports` is exploration.
    baseline smoke tests. GTK, Emacs and distribution tarballs are not in
    this gate. `--no-publish` explicitly bypasses the cache guarantee and is
    not the normal toolchain rollout path.
-3. Freeze a `scope = "expected"` manifest at the pushed revision and roll the
-   recording as described below. The manifest starts with the wider
+3. Submit an expected campaign at the pushed revision:
+   `campaignctl submit --rev REV world --scope expected`. The manifest starts with the wider
    `scripts/ci-outputs.txt` list, including the foundation and distribution
    artifacts, then the explicit `ports/expected.nix` compatibility list. Keep the
    previous recording and manifest together for comparison and rollback.
@@ -61,39 +64,27 @@ budget leaves remaining roots visibly unattempted.
 
 ## Freeze and launch
 
-Build and check the application before changing the deployed package:
-
 ```sh
-nix build path:./experiments/campaign-next --out-link result-campaign-next
-nix flake check path:./experiments/campaign-next
-revision=$(git rev-parse HEAD)
-manifest=$(nix eval --impure --raw --expr \
-  "import ./experiments/campaign-next/world.nix { source = \"git+file:$PWD?rev=$revision\"; revision = \"$revision\"; scope = \"expected\"; }")
+campaignctl submit --rev REV world --scope expected   # or --scope ports
+campaignctl list
+campaignctl show ID
 ```
 
-Review `roots` and `excluded` in that manifest. Root both the immutable manifest
-and application under `/nix/var/nix/gcroots` before starting the service. The
-manifest retains the frozen source and derivations without realising package
-outputs during evaluation. Install the unit from
-`experiments/campaign-next/deploy/filnix-v2.service` and merge that directory's
-`nix.swa.sh.Caddyfile` with existing site-specific routes. Validate both before
-reloading; keep Caddy's existing configuration permissions and cache routes.
+`submit` evaluates `experiments/campaign-next/world.nix` from
+`github:mbrock/filnix/REV` as the caller, without realising packages, and
+the service roots the manifest beside the campaign and queues it. Review
+`roots` and `excluded` with `campaignctl --json show ID` or the manifest.
+The manifest retains the frozen source and derivations. Campaigns run one at
+a time by priority; a new campaign no longer needs a fresh database, a
+stopped service or an archive step, and the previous campaigns stay listed.
+Transient failures get a new attempt with `campaignctl retry ID`;
+recipe/toolchain changes need a new campaign at a new revision.
 
-The runner deliberately has no implicit resume. Restarting with a nonempty
-database serves its recording without issuing builds. To start another campaign,
-stop the service, preserve the closed database and manifest together under a
-dated archive directory, select the new manifest, and start with a fresh
-`campaign.duckdb`. After stopping, a WAL may already have been checkpointed
-away; archive it only if present. Root both old and new manifests before the
-switch, and retain the application root. Save `/api/state` before stopping and
-verify the new revision/scope, `/api/outputs`, and both publisher statuses after
-starting. Never copy/open a live DuckDB recording from another process;
-its owning process provides the online read APIs. Keep rollback packages rooted.
-
-The Python controller, web, classification, retention and analytics services
-are retired on SWA. Their recordings and GC roots are retained for historical
-analysis. [Legacy operations](experiment-operations.md) describe those records;
-they no longer control the public campaign.
+Deploy a new service build with `nix build path:./experiments/campaign-next`,
+point `/opt/filnix-campaign` at it, root it under `/nix/var/nix/gcroots`, and
+restart the unit: roots in flight end as `service-stopping` and run again
+as new attempts. The unit is `experiments/campaign-next/deploy/filnix-campaign.service`;
+Caddy's `reverse_proxy 127.0.0.1:8778` route is unchanged.
 
 ## Automatic cache publication
 
@@ -111,7 +102,7 @@ incomplete roots do not qualify. Nix/Cachix copy complete reference closures;
 successful dependencies of failed roots are not independently discovered here.
 The publisher retains its previous durable destination receipts, retries,
 credentials and signing keys. Pending old uploads continue to drain. Source
-rollovers retain the same feed URL and do not require new receipt databases.
+campaigns share the same feed URL and do not require new receipt databases.
 
 Unrelated ad hoc `nix build` invocations are not automatically watched. Use
 `filnix-publish-cache TARGET --extra-root OUTPUT` with the publisher service
@@ -125,9 +116,10 @@ before this campaign. See [binary caches](binary-caches.md).
 curl -fsS https://nix.swa.sh/healthz
 curl -fsS http://127.0.0.1:8778/api/outputs
 curl -fsS http://127.0.0.1:8778/api/resources
-systemctl show filnix-v2 -p MemoryCurrent -p MemoryPeak
-systemctl status filnix-v2
-journalctl -u filnix-v2 -f
+campaignctl status
+systemctl show filnix-campaign -p MemoryCurrent -p MemoryPeak
+systemctl status filnix-campaign
+journalctl -u filnix-campaign -f
 sudo /opt/filnix-cache/bin/filnix-publish-cache local --status
 sudo /opt/filnix-cache/bin/filnix-publish-cache cachix --status
 ```
@@ -140,13 +132,12 @@ An output receipt means upload completion, not continuous remote verification
 or test success. Compare cache NAR hashes/sizes/references and restore into a
 fresh store when testing actual cache availability.
 
-The runner sets DuckDB's budget to 1 GiB and its threads to two before opening
-any database. Its 4 GiB service allowance also covers the worker and allocations
-outside DuckDB's budget. New recordings use schema 2 without large raw-journal
+The service sets a running campaign's DuckDB budget to 1 GiB (512 MiB for each
+of at most two archives open for viewing) and two threads. Its 6 GiB service
+allowance also covers the workers and allocations outside DuckDB's budgets. New recordings use schema 2 without large raw-journal
 indexes. Schema 1 recordings remain readable, using a temporary overview cache
-rebuilt at startup. An inactive cohort with incomplete recordings reports
-`recording-interrupted` and does not retry. A restart into the same recording
-can update the viewer but cannot finish the stopped campaign.
+rebuilt when a recording is opened. A restart continues a running campaign;
+attempts it interrupted are recorded and run again as new attempts.
 
 The rollout passed the native dataset and real-build integration checks,
 including successful-root publication and restart behavior. The dataset test
@@ -174,7 +165,8 @@ the costly work from swa:
 
 ```sh
 scripts/nanofil-checks                         # all nanofil* checks, pass/FAIL each
-python3 nanofil/survey/run.py --jobs 16 --cores 4
+campaignctl submit checks --prefix nanofil     # the same, recorded as a campaign
+campaignctl submit nanofil-survey --opt plain  # the survey (eight roots at a time)
 ```
 
 A check that compares against a reference must run both sides in one
@@ -182,9 +174,9 @@ derivation whenever the result depends on the machine, because the
 reference may have been built on a different builder (nanofil-bash's test
 suite statuses do).
 
-The survey has twice lost the nix daemon mid-run (`error: Nix daemon out
-of memory` in its build log, with no kernel OOM). Every build still running
-then reports failure, so `run.py` rebuilds what is unbuilt, at most twice,
-when its log shows that line. igloo and chapel set `max-silent-time = 900`,
+The old `run.py` survey twice lost the nix daemon mid-run (`error: Nix daemon
+out of memory`, with no kernel OOM), failing every build still running. In
+the service each root has its own daemon connection, and a worker error
+gets a new attempt (`retry_infrastructure`), never a package failure. igloo and chapel set `max-silent-time = 900`,
 and Nix does not forward a client's limit, so a nanofil compile that prints
 nothing for 15 minutes fails there but not on swa.

@@ -1,0 +1,39 @@
+[Unit]
+Description=Filnix campaign service: queued survey-style builds and the public read-only viewer
+After=nix-daemon.service network-online.target
+Wants=network-online.target
+
+[Service]
+User=mbrock
+Group=mbrock
+UMask=0077
+WorkingDirectory=/var/lib/filnix-campaign
+ExecStart=/opt/filnix-campaign/bin/filnix-campaign service /var/lib/filnix-campaign --port 8778 --socket /run/filnix-campaign/admin.sock
+# Per-campaign Nix settings (jobs, cores, builders, limits) are appended to
+# this per worker; the daemon's shared configuration is untouched.
+Environment="NIX_CONFIG=max-silent-time = 1800"
+# nix-store, for the GC roots of submitted manifests.
+Environment="PATH=/nix/var/nix/profiles/default/bin:/usr/bin:/bin"
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=60
+# One writer (1 GiB DuckDB budget), two archive readers (512 MiB each),
+# the catalog and the Nix workers.
+MemoryMax=6G
+TasksMax=1024
+ProtectSystem=strict
+ProtectHome=true
+StateDirectory=filnix-campaign
+StateDirectoryMode=0700
+# Only the service user (and root) can enter this directory, so only they
+# can open the admin socket.
+RuntimeDirectory=filnix-campaign
+RuntimeDirectoryMode=0700
+ReadWritePaths=/var/lib/filnix-campaign
+# Earlier recordings, read in place as historical campaigns.
+ReadOnlyPaths=/var/lib/filnix-v2
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

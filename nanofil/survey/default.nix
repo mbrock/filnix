@@ -129,9 +129,17 @@ let
       doCheck = try ((p.doCheck or false) || (p.doInstallCheck or false));
       deps = try (depNames p);
     };
+  # Packages whose builds measure something other than C compilation, or
+  # regularly need more than the survey's 90-minute limit. The default
+  # survey sets them aside; `campaignctl submit bench` builds them, one at
+  # a time on swa, as a compiler-speed benchmark (docs/campaign-service.md).
+  slow = {
+    emacs30 = "mostly Lisp byte-compilation; hits the 90-minute limit";
+    libgcrypt = "its tests time out in the plain survey";
+  };
 in
 {
-  inherit nanofilize cc;
+  inherit nanofilize cc slow;
   names = present;
   meta = lib.genAttrs present info;
   ref = lib.genAttrs present (n: pkgsFilc.${n});

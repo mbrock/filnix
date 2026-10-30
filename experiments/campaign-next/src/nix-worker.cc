@@ -127,8 +127,14 @@ std::string outcome(nix::BuildResultSuccessStatus status) {
 } // namespace
 
 int main(int argc, char **argv) {
-  if (argc != 4)
+  // DRV STORE PARENT [FLAGS]: FLAGS is a comma-separated subset of
+  // "rebuild" (check already-valid roots by building them again) and
+  // "direct" (discover only the root and its direct inputs).
+  if (argc != 4 && argc != 5)
     return 2;
+  std::string flags = argc == 5 ? std::string(",") + argv[4] + "," : "";
+  bool rebuild = flags.find(",rebuild,") != std::string::npos;
+  bool direct = flags.find(",direct,") != std::string::npos;
   // A recorder crash must not leave an unsupervised build client behind.
   auto parent = static_cast<pid_t>(std::stoi(argv[3]));
   if (::prctl(PR_SET_PDEATHSIG, SIGTERM) != 0)
@@ -155,7 +161,8 @@ int main(int argc, char **argv) {
                     {"input_derivation_roots", recipe.inputDrvs.map.size()},
                 });
     std::set<std::string> discovered;
-    auto discover = [&](auto &&self, const nix::StorePath &path) -> void {
+    auto discover = [&](auto &&self, const nix::StorePath &path,
+                        unsigned depth) -> void {
       auto drvPath = store->printStorePath(path);
       if (!discovered.insert(drvPath).second)
         return;
@@ -185,15 +192,26 @@ int main(int argc, char **argv) {
                                         {"system", derivation.platform},
                                         {"inputs", std::move(inputs)}});
 
-      for (const auto &[inputPath, _] : derivation.inputDrvs.map)
-        self(self, inputPath);
+      if (!direct || depth == 0)
+        for (const auto &[inputPath, _] : derivation.inputDrvs.map)
+          self(self, inputPath, depth + 1);
     };
-    discover(discover, drv);
+    discover(discover, drv, 0);
     nix::DerivedPath target = nix::DerivedPath::Built{
         .drvPath = nix::makeConstantStorePathRef(drv),
         .outputs = nix::OutputsSpec::All{},
     };
-    auto results = store->buildPathsWithResults({target});
+    // Checking needs every output present; otherwise build normally.
+    auto mode = nix::bmNormal;
+    if (rebuild) {
+      bool valid = true;
+      for (const auto &[name, path] : recipe.outputsAndOptPaths(*store))
+        valid &= path.second && store->isValidPath(*path.second);
+      if (valid)
+        mode = nix::bmCheck;
+      logger.emit("worker.mode", {{"mode", valid ? "check" : "normal"}});
+    }
+    auto results = store->buildPathsWithResults({target}, mode);
     const auto &result = results.at(0);
     const auto *success = result.tryGetSuccess();
     json outputs = json::array();

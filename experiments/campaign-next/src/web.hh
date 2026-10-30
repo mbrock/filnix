@@ -21,4 +21,12 @@ std::string web_sessions(const json &view, const std::string &run,
 std::string web_graph(const json &view, const std::string &run,
                       std::uint64_t after, const std::string &node);
 
+// The service's campaign list (Catalog::campaigns) at the site root.
+std::string web_campaigns(const json &campaigns);
+// A survey campaign's packages, filcc (`ref`) and nanofil (`nf`) side by
+// side, from {campaign, roots} with each root's latest attempt.
+std::string web_survey(const json &results);
+// The survey's words for one root's latest attempt (nanofil/survey/run.py).
+std::string survey_status(const json &root);
+
 } // namespace campaign

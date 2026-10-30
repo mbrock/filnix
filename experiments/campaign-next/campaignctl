@@ -1,0 +1,299 @@
+#!/usr/bin/env python3
+"""Administer the campaign service (docs/campaign-service.md).
+
+  campaignctl [--json] [--socket PATH] COMMAND ...
+
+  status | list [--all] | show ID | results ID
+  submit KIND [--rev REV] [--priority N] [--id ID] [--set KEY=VALUE ...]
+      world --scope expected|world|ports
+      nanofil-survey [--opt plain|-O|--vectors] [--select default|slow|all]
+      bench [--opt ...]                 the slow survey packages, timed
+      attrs --file FILE | --attr ATTR   flake attribute paths
+      checks --prefix PREFIX            checks.x86_64-linux.PREFIX*
+      manifest PATH                     an already frozen manifest
+  pause|resume|cancel ID | priority ID N
+  retry ID [--root NAME ...] [--outcome OUTCOME ...]
+  export ID DIRECTORY | register PATH [--manifest M] [--id ID] [--label L] [--publish]
+
+The service listens on a Unix socket only its user can open (default
+/run/filnix-campaign/admin.sock, or $CAMPAIGN_SOCKET). Manifests are
+frozen here, as the caller, from github:mbrock/filnix at the revision;
+--rev defaults to origin/main. --json prints the service's JSON."""
+
+import argparse
+import http.client
+import json
+import os
+import re
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+
+REPO = "github:mbrock/filnix"
+GIT = "https://github.com/mbrock/filnix"
+
+# Kind presets; --set overrides any of them (docs/campaign-service.md).
+POLICIES = {
+    "world": dict(parallel_roots=1, max_jobs=2, cores=4, graph="full",
+                  root_timeout=7200, budget=86400, publish=True),
+    "nanofil-survey": dict(parallel_roots=8, max_jobs=1, cores=4, graph="direct",
+                           build_timeout=5400, root_timeout=7200, budget=86400,
+                           retry_infrastructure=2, publish=False),
+    "bench": dict(parallel_roots=1, max_jobs=1, cores=8, builders="local",
+                  rebuild=True, graph="direct", build_timeout=21600,
+                  root_timeout=22000, budget=172800, publish=False),
+    "attrs": dict(parallel_roots=4, max_jobs=2, cores=4, graph="direct",
+                  root_timeout=7200, budget=86400, publish=False),
+}
+POLICIES["checks"] = POLICIES["attrs"]
+POLICIES["manifest"] = {}
+
+
+class UnixConnection(http.client.HTTPConnection):
+    def __init__(self, path):
+        super().__init__("localhost", timeout=3600)
+        self.path = path
+
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.connect(self.path)
+
+
+def call(args, method, path, body=None):
+    connection = UnixConnection(args.socket)
+    try:
+        connection.request(method, path, body=json.dumps(body) if body is not None else None,
+                           headers={"Content-Type": "application/json"})
+        response = connection.getresponse()
+        data = json.loads(response.read() or b"{}")
+    except (FileNotFoundError, ConnectionRefusedError, PermissionError) as e:
+        sys.exit(f"campaignctl: cannot reach {args.socket}: {e}")
+    if response.status != 200:
+        sys.exit(f"campaignctl: {data.get('error', response.status)}")
+    return data
+
+
+def run(command, **kw):
+    r = subprocess.run(command, text=True, capture_output=True, stdin=subprocess.DEVNULL, **kw)
+    if r.returncode:
+        sys.exit(f"campaignctl: {' '.join(command[:4])} ... failed:\n{r.stderr[-4000:]}")
+    return r.stdout
+
+
+def resolve(rev):
+    """A full commit for REV: a sha, a branch of the GitHub repository, or
+    anything the current checkout can name."""
+    if re.fullmatch(r"[0-9a-f]{40}", rev):
+        return rev
+    out = subprocess.run(["git", "ls-remote", GIT, rev, f"refs/heads/{rev}"], text=True,
+                         capture_output=True).stdout.split()
+    if out:
+        return out[0]
+    r = subprocess.run(["git", "rev-parse", "--verify", rev + "^{commit}"], text=True,
+                       capture_output=True)
+    if r.returncode == 0:
+        return r.stdout.strip()
+    sys.exit(f"campaignctl: cannot resolve revision {rev}")
+
+
+def source(rev):
+    ref = f"{REPO}/{rev}"
+    path = json.loads(run(["nix", "flake", "prefetch", "--json", ref]))["storePath"]
+    return ref, path
+
+
+def freeze(manifest):
+    """A store file holding MANIFEST that references its root derivations,
+    so one GC root on it keeps them."""
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        json.dump(manifest, f)
+    try:
+        expr = (f'let m = builtins.fromJSON (builtins.readFile {f.name}); in '
+                'builtins.toFile "filnix-campaign-manifest.json" (builtins.toJSON (m // { '
+                'roots = map (r: r // { drv = builtins.storePath r.drv; }) m.roots; }))')
+        return run(["nix", "eval", "--impure", "--raw", "--expr", expr]).strip()
+    finally:
+        os.unlink(f.name)
+
+
+def produce(args):
+    """Freeze the manifest of KIND at the revision; returns its path."""
+    if args.kind == "manifest":
+        return os.path.abspath(args.path)
+    rev = resolve(args.rev)
+    ref, src = source(rev)
+    print(f"freezing {args.kind} at {rev[:12]} ({src})", file=sys.stderr)
+    if args.kind == "world":
+        expr = (f'import "{src}/experiments/campaign-next/world.nix" {{ source = "{ref}"; '
+                f'revision = "{rev}"; scope = "{args.scope}"; }}')
+        return run(["nix", "eval", "--impure", "--raw", "--expr", expr]).strip()
+    if args.kind in ("nanofil-survey", "bench"):
+        script = os.path.join(src, "nanofil/survey/run.py")
+        if not os.path.exists(script) or "def manifest" not in open(script).read():
+            sys.exit(f"campaignctl: {rev[:12]} has no survey manifest producer")
+        select = "slow" if args.kind == "bench" else args.select
+        out = run([sys.executable, "-I", script, "manifest", "--opt", args.opt,
+                   "--select", select, "--source", ref, "--revision", rev])
+        return freeze(json.loads(out))
+    if args.kind in ("attrs", "checks"):
+        if args.kind == "checks":
+            expr = (f'let f = builtins.getFlake "{ref}"; cs = f.checks.x86_64-linux; in '
+                    f'map (n: "checks.x86_64-linux." + n) (builtins.filter (n: '
+                    f'builtins.substring 0 {len(args.prefix)} n == "{args.prefix}") '
+                    f'(builtins.attrNames cs))')
+            attrs = json.loads(run(["nix", "eval", "--impure", "--json", "--expr", expr]))
+        else:
+            attrs = list(args.attr or [])
+            if args.file:
+                path = args.file if os.path.isabs(args.file) else os.path.join(src, args.file)
+                attrs += [l.strip() for l in open(path)
+                          if l.strip() and not l.lstrip().startswith("#")]
+        if not attrs:
+            sys.exit("campaignctl: no attributes")
+        expr = (f'let f = builtins.getFlake "{ref}"; get = a: builtins.foldl\' '
+                f'(v: k: v.${{k}}) f (builtins.filter builtins.isString (builtins.split '
+                f'"\\\\." a)); in map (a: {{ name = a; drv = (get a).drvPath; }}) '
+                f'(builtins.fromJSON {json.dumps(json.dumps(attrs))})')
+        roots = json.loads(run(["nix", "eval", "--impure", "--json", "--expr", expr]))
+        label = args.file or args.prefix or "attrs"
+        return freeze(dict(id=f"{args.kind}-{rev}", kind=args.kind, name=f"{args.kind} · {label}",
+                           source=ref, revision=rev, options=dict(list=label), roots=roots))
+    sys.exit(f"campaignctl: unknown kind {args.kind}")
+
+
+def value(text):
+    try:
+        return json.loads(text)
+    except ValueError:
+        return text
+
+
+def table(rows, columns):
+    widths = [max(len(c), *(len(str(r.get(c, "") if r.get(c) is not None else "")) for r in rows))
+              for c in columns] if rows else [len(c) for c in columns]
+    lines = ["  ".join(c.ljust(w) for c, w in zip(columns, widths))]
+    for r in rows:
+        lines.append("  ".join(str(r.get(c) if r.get(c) is not None else "").ljust(w)
+                               for c, w in zip(columns, widths)))
+    return "\n".join(lines)
+
+
+def human(command, data):
+    if command == "list":
+        for c in data:
+            c["revision"] = (c.get("revision") or "")[:10]
+            c["not_run"] = sum(c.get(k) or 0 for k in ("pending", "running", "unattempted"))
+        return table(data, ["id", "kind", "revision", "state", "roots", "succeeded", "failed",
+                            "timed_out", "not_run"])
+    if command in ("show", "results"):
+        c = data["campaign"]
+        head = (f"{c['id']}  {c['kind']}  {c['state']}  {(c.get('revision') or '')[:12]}"
+                f"  {c.get('stop_reason') or ''}\n")
+        for r in data["roots"]:
+            r["s"] = f"{r['build_ns'] / 1e9:.0f}" if r.get("build_ns") is not None else ""
+            r["machine"] = (r.get("machine") or ("local" if r.get("build_ns") is not None else ""))
+            r["error"] = (r.get("error") or "")[:80]
+        return head + table(data["roots"], ["name", "state", "outcome", "s", "machine", "error"])
+    if command == "status":
+        lines = [f"running: {data.get('running') or '-'}  load: {data.get('load1')}"]
+        lines += [f"  {i['campaign']}  {i['root']}  {i.get('elapsed_ns', 0) / 1e9:.0f}s"
+                  for i in data["in_flight"]]
+        lines += [f"queued: {q['id']} ({q['state']}, priority {q['priority']})"
+                  for q in data["queue"]]
+        return "\n".join(lines)
+    return json.dumps(data, indent=1)
+
+
+def main():
+    # Nix's profile is not on every login's PATH on swa.
+    os.environ["PATH"] = os.environ.get("PATH", "") + ":/nix/var/nix/profiles/default/bin"
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--socket", default=os.environ.get("CAMPAIGN_SOCKET",
+                                                      "/run/filnix-campaign/admin.sock"))
+    sub = p.add_subparsers(dest="command", required=True)
+    sub.add_parser("status")
+    sub.add_parser("list").add_argument("--all", action="store_true")
+    for name in ("show", "results", "pause", "resume", "cancel"):
+        sub.add_parser(name).add_argument("id")
+    s = sub.add_parser("priority")
+    s.add_argument("id")
+    s.add_argument("priority", type=int)
+    s = sub.add_parser("retry")
+    s.add_argument("id")
+    s.add_argument("--root", action="append", default=[])
+    s.add_argument("--outcome", action="append", default=[])
+    s = sub.add_parser("export")
+    s.add_argument("id")
+    s.add_argument("directory")
+    s = sub.add_parser("register")
+    s.add_argument("path")
+    s.add_argument("--manifest")
+    s.add_argument("--id")
+    s.add_argument("--label")
+    s.add_argument("--publish", action="store_true")
+    s = sub.add_parser("submit")
+    s.add_argument("--rev", default="main")
+    s.add_argument("--priority", type=int, default=0)
+    s.add_argument("--id")
+    s.add_argument("--set", action="append", default=[], metavar="KEY=VALUE")
+    s.add_argument("--dry-run", action="store_true", help="freeze and print, do not submit")
+    kinds = s.add_subparsers(dest="kind", required=True)
+    kinds.add_parser("world").add_argument("--scope", default="expected",
+                                           choices=("expected", "world", "ports"))
+    k = kinds.add_parser("nanofil-survey")
+    k.add_argument("--opt", default="plain")
+    k.add_argument("--select", default="default", choices=("default", "slow", "all"))
+    kinds.add_parser("bench").add_argument("--opt", default="plain")
+    k = kinds.add_parser("attrs")
+    k.add_argument("--file")
+    k.add_argument("--attr", action="append")
+    kinds.add_parser("checks").add_argument("--prefix", default="nanofil")
+    kinds.add_parser("manifest").add_argument("path")
+    args = p.parse_args()
+
+    c = args.command
+    if c == "status":
+        data = call(args, "GET", "/status")
+    elif c == "list":
+        data = call(args, "GET", "/campaigns" + ("?all=1" if args.all else ""))
+    elif c == "show":
+        data = call(args, "GET", f"/campaigns/{args.id}")
+    elif c == "results":
+        data = call(args, "GET", f"/campaigns/{args.id}/results")
+    elif c in ("pause", "resume", "cancel"):
+        data = call(args, "POST", f"/campaigns/{args.id}/{c}", {})
+    elif c == "priority":
+        data = call(args, "POST", f"/campaigns/{args.id}/priority", {"priority": args.priority})
+    elif c == "retry":
+        data = call(args, "POST", f"/campaigns/{args.id}/retry",
+                    {"roots": args.root, "outcomes": args.outcome})
+    elif c == "export":
+        data = call(args, "POST", f"/campaigns/{args.id}/export",
+                    {"directory": os.path.abspath(args.directory)})
+    elif c == "register":
+        body = {"path": os.path.abspath(args.path), "publish": args.publish}
+        for key in ("manifest", "id", "label"):
+            if getattr(args, key):
+                body[key] = getattr(args, key)
+        data = call(args, "POST", "/register", body)
+    elif c == "submit":
+        manifest = produce(args)
+        policy = dict(POLICIES[args.kind])
+        for item in args.set:
+            key, _, text = item.partition("=")
+            policy[key] = value(text)
+        body = {"manifest": manifest, "policy": policy, "priority": args.priority}
+        if args.id:
+            body["id"] = args.id
+        if args.dry_run:
+            data = body
+        else:
+            data = call(args, "POST", "/campaigns", body)
+    print(json.dumps(data, indent=1) if args.json else human(c, data))
+
+
+if __name__ == "__main__":
+    main()

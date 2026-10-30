@@ -36,6 +36,7 @@
           root = ./.;
           fileset = pkgs.lib.fileset.unions [
             ./meson.build
+            ./campaignctl
             ./src
             ./tests
             ./static
@@ -55,6 +56,8 @@
           nix.dev
           pkgs.nlohmann_json
           pkgs.duckdb.dev
+          # campaignctl's interpreter (patchShebangs).
+          pkgs.python3
         ];
         nativeCheckInputs = [
           (pkgs.python3.withPackages (ps: [ ps.duckdb ]))

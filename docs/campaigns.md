@@ -55,12 +55,12 @@ publication is a separate delivery state, not another kind of test success.
 
 Start an expected campaign after a meaningful package/toolchain revision;
 start exploration deliberately when looking for new coverage. Freeze committed
-source and review the manifest before launch. Keep manifests and applications
-GC-rooted. Stop the owner before archiving the closed database with its
-manifest, preserve the previous roots, and start a fresh database. Restarting
-an existing recording intentionally serves history without retrying builds.
-Transient failures can get a fresh bounded attempt; recipe/toolchain changes
-need a new frozen revision. Never overwrite the earlier evidence.
+source and review the manifest before launch: `campaignctl submit world
+--scope expected --rev REV` freezes it, and the service keeps it GC-rooted
+and queues it beside the earlier campaigns ([the campaign
+service](campaign-service.md)). Transient failures can get a fresh attempt
+(`campaignctl retry`); recipe/toolchain changes need a new frozen revision.
+Attempts never overwrite earlier evidence.
 
 Keep publishers independent, on the same outputs feed and durable receipts.
 Drain old publication before switching recordings or explicitly enqueue its

@@ -325,3 +325,24 @@ mark { background: #f1dc8a; color: inherit; border-radius: 2px; }
   .log-row pre { padding: 0 8px; }
   .log-source { padding: 6px 8px 1px; }
 }
+
+/* Campaign list and survey table. */
+.brand a { color: inherit; }
+.ledger { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px; }
+.ledger th, .ledger td { padding: 4px 8px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: baseline; }
+.ledger th {
+  position: sticky; top: 0; z-index: 1; background: var(--paper); font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border-bottom-color: var(--line-strong);
+}
+.ledger td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.ledger td.mono, .ledger td.version { font-family: var(--mono); font-size: 12px; }
+.ledger td.pkg-cell { font-weight: 600; overflow-wrap: anywhere; }
+.ledger td.pkg-cell a { color: var(--ink); }
+.ledger tbody tr:hover { background: var(--hover); }
+.ledger .sub { display: block; font-weight: 400; font-size: 12px; color: var(--muted); }
+.ledger .state[data-state="running"] { color: var(--amber); font-weight: 600; }
+.ledger .state[data-state="queued"], .ledger .state[data-state="paused"] { color: var(--accent); }
+.ledger .state[data-state="historical"] { color: var(--muted); }
+.ledger tr[data-state="historical"] td.pkg-cell a { color: var(--muted); }
+.survey td.session-observation { font-family: var(--mono); font-size: 12px; }
+.status a { color: inherit; }

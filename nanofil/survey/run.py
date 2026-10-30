@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-"""Rerun the nanofil package survey (docs/survey.md).
+"""The nanofil package survey's manifest and report (docs/survey.md).
 
-  python3 nanofil/survey/run.py [--jobs N] [--cores N] [--timeout S] [--report] [NAME...]
+The campaign service on swa (docs/campaign-service.md) builds the
+survey; this script freezes what it builds and reports what it found:
 
-Run from the repository root, after building nothing: it evaluates the
-ports in ports.nix (survey/default.nix), sets aside C++ packages (by
-their sources' file names) and those that build with LLVM, Rust or Go,
-builds each remaining package with filcc (`ref`) and then with nanofil
-alone (`nf`), each with the port's own checkPhase, and writes
-survey/survey.tsv and the table in docs/survey.md between its markers.
-Builds already in the store are not redone, so a rerun after a change to
-nanofil rebuilds only the nanofil builds. Names restrict the survey."""
+  campaignctl submit nanofil-survey --opt plain [--rev REV]
+      runs `run.py manifest` from the frozen revision: evaluates the
+      ports in ports.nix (survey/default.nix), sets aside C++ packages
+      (by their sources' file names), those that build with LLVM, Rust
+      or Go, and the slow ones, and prints a manifest with `ref.NAME`
+      (filcc) and `nf.NAME` (nanofil alone; requires ref.NAME) roots.
+  python3 nanofil/survey/run.py report CAMPAIGN
+      reads the campaign's results from the service and writes
+      survey/survey.tsv (survey-OPT.tsv with an --opt) and, for the
+      plain survey, the table in docs/survey.md between its markers.
+  python3 nanofil/survey/run.py --report
+      rewrites the docs/survey.md tables from survey.tsv alone."""
 
 import argparse, concurrent.futures, json, os, re, subprocess, sys, tarfile, zipfile, collections
 
@@ -25,84 +30,13 @@ def sh(args, **kw):
                           stdin=subprocess.DEVNULL, **kw)
 
 
-def nix_build(drvs, log, a):
-    """Build drvs (keep going) and return the set that timed out."""
+def fetch(drvs, log):
+    """Realise the sources (keep going), to read their file names."""
     if not drvs:
-        return set()
-    # No -L: streaming every build's log through the daemon connection
-    # is the suspect in its losses at dd2ffee and with -O (163 and 39
-    # minutes in); each outcome is read from `nix log` anyway.
-    args = ["nix", "build", "--no-link", "--keep-going", "-j", str(a.jobs),
-            "--cores", str(a.cores), "--option", "timeout", str(a.timeout)]
-    # If the client loses the daemon ("Nix daemon out of memory", or
-    # "Nix daemon disconnected unexpectedly", as at aa60443), every build
-    # still running is reported as failed without having failed: build
-    # what is left again, as long as each attempt builds something.
-    todo = drvs
-    for _ in range(8):
-        before = len(todo)
-        start = os.path.getsize(log) if os.path.exists(log) else 0
-        with open(log, "a") as f:
-            subprocess.run(args + [d + "^*" for d in todo], stdout=f,
-                           stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
-        with open(log, "rb") as f:
-            f.seek(start)
-            tail = f.read()
-            lost = (b"Nix daemon out of memory" in tail
-                    or b"Nix daemon disconnected unexpectedly" in tail)
-        todo = [d for d in todo if not built(d)]
-        if not lost or not todo or len(todo) == before:
-            break
-        print(f"nix daemon lost; building {len(todo)} again", file=sys.stderr)
-    text = open(log, errors="replace").read()
-    # Nix says "building of 'X.drv' from in-memory derivation timed out".
-    return set(re.findall(r"building of '(/nix/store/[^']+\.drv)[^']*'[^'\n]* timed out", text)) | \
-        set(re.findall(r"'(/nix/store/[^']+\.drv)' timed out", text))
-
-
-def built(drv):
-    outs = sh(["nix-store", "-q", "--outputs", drv]).stdout.split()
-    return bool(outs) and all(os.path.exists(o) for o in outs)
-
-
-# The first error, in this order of preference: nanofil's own, the
-# wrapper's refusal, configure's verdict, any compiler or make error; a
-# nanofil error in config.log (a probe's) only when nothing else says why.
-ERR = [re.compile(p) for p in (
-    r"^nanofil: .*", r"^nanofil-survey-cc: .*", r".*configure: error: .*",
-    r".*\berror: .*", r".*Error [0-9]+.*", r".*\bFAIL\b.*", r"^nanofil-survey-config: .*",
-    r".*No such file.*")]
-
-
-def outcome(drv, timedout, docheck):
-    """(status, first error, objects, cxx, fallbacks) of one build."""
-    if built(drv):
-        return ("tests pass" if docheck else "built"), "", *counts(sh(["nix", "log", drv]).stdout)
-    if drv in timedout:
-        return "timeout", "", "", "", ""
-    log = sh(["nix", "log", drv]).stdout
-    if not log:
-        return "dependency fails", "", "", "", ""
-    lines = [re.sub(r"\x1b\[[0-9;]*m", "", l) for l in log.splitlines()]
-    phases = [l for l in lines if l.startswith("Running phase: ")]
-    phase = phases[-1].split(": ", 1)[1] if phases else "?"
-    status = "tests fail" if phase in ("checkPhase", "installCheckPhase") else "fails in " + phase
-    start = max((i for i, l in enumerate(lines) if l == "Running phase: " + phase), default=0)
-    first = ""
-    for pat in ERR:
-        m = next((l for l in lines[start:] if pat.match(l)), None) or \
-            next((l for l in lines if pat.match(l) and pat.pattern.startswith("^nanofil")), None)
-        if m:
-            first = m
-            break
-    if not first:
-        first = next((l for l in reversed(lines) if l.strip()), "")
-    return status, first.strip()[:300], *counts(log)
-
-
-def counts(log):
-    m = re.findall(r"nanofil-survey: (\d+) objects, (\d+) C\+\+, (\d+) fallbacks", log)
-    return m[-1] if m else ("", "", "")
+        return
+    with open(log, "a") as f:
+        subprocess.run(["nix", "build", "--no-link", "--keep-going"] + [d + "^*" for d in drvs],
+                       stdout=f, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
 
 
 def languages(src):
@@ -127,26 +61,8 @@ def languages(src):
     return c, cxx
 
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("names", nargs="*")
-    p.add_argument("--jobs", type=int, default=6)
-    p.add_argument("--cores", type=int, default=4)
-    p.add_argument("--timeout", type=int, default=5400)
-    p.add_argument("--classify", action="store_true", help="stop after setting packages aside")
-    p.add_argument("--report", action="store_true", help="only rewrite docs/survey.md from survey.tsv")
-    p.add_argument("--opt", default="", help="nanofil options for every compile, e.g. -O; "
-                   "writes survey-OPT.tsv and leaves docs/survey.md alone")
-    a = p.parse_args()
-    if a.report:
-        return report()
-    os.makedirs(work, exist_ok=True)
-    blog = os.path.join(work, "build.log")
-    ev = ["nix", "eval", "--json", "-f", here] + (["--argstr", "opt", a.opt] if a.opt else [])
-    r = sh(ev + ["names"])
-    if r.returncode:
-        sys.exit(r.stderr)
-    names = a.names or sorted(json.loads(r.stdout))
+def classify(ev, names):
+    """Evaluate every port and set aside what the survey does not build."""
     # One evaluation per package: a missing attribute is not catchable
     # inside Nix, and one package's must not stop the others'.
     def one(n):
@@ -157,10 +73,10 @@ def main():
         return n, json.loads(r.stdout)
     with concurrent.futures.ThreadPoolExecutor(8) as ex:
         meta = dict(ex.map(one, names))
+    os.makedirs(work, exist_ok=True)
+    fetch([meta[n]["srcDrv"] for n in names if meta[n].get("srcDrv")],
+          os.path.join(work, "src.log"))
     rows = {}
-    todo = []
-    srcs = [meta[n]["srcDrv"] for n in names if meta[n].get("srcDrv")]
-    nix_build(srcs, os.path.join(work, "src.log"), a)
     for n in names:
         m = meta[n]
         row = dict(name=n, version=m.get("version") or "")
@@ -178,28 +94,155 @@ def main():
             row["kind"] = "C++"
         else:
             row["kind"] = "C"
-            todo.append(n)
         rows[n] = row
-    print(f"{len(todo)} C packages of {len(names)}", file=sys.stderr)
-    if a.classify:
-        json.dump({"rows": rows, "meta": meta}, open(os.path.join(work, "classify.json"), "w"), indent=1)
-        return
-    tref = nix_build([meta[n]["ref"] for n in todo], blog, a)
-    nfs = [meta[n]["nf"] for n in todo if built(meta[n]["ref"])]
-    tnf = nix_build(nfs, blog, a)
-    for n in todo:
-        m, row = meta[n], rows[n]
-        row["ref"], row["ref_error"], *_ = outcome(m["ref"], tref, m["doCheck"])
-        if built(m["ref"]):
-            (row["nf"], row["error"], row["objects"], row["cxx_objects"],
-             row["fallbacks"]) = outcome(m["nf"], tnf, m["doCheck"])
-        else:
-            row["nf"] = "not tried"
-    write(rows, a.opt)
+    return rows, meta
+
+
+def manifest(a):
+    """Print the frozen survey's manifest for the campaign service."""
+    ev = ["nix", "eval", "--json", "-f", here] + (["--argstr", "opt", a.opt] if a.opt else [])
+    r = sh(ev + ["names"])
+    if r.returncode:
+        sys.exit(r.stderr)
+    names = a.names or sorted(json.loads(r.stdout))
+    slow = json.loads(sh(ev + ["slow"]).stdout or "{}")
+    rows, meta = classify(ev, names)
+    roots, aside = [], []
+    for n in sorted(rows):
+        row, m = rows[n], meta[n]
+        selected = row["kind"] == "C" and (
+            a.select == "all" or (n in slow) == (a.select == "slow"))
+        if not selected:
+            if row["kind"] == "C":
+                row["kind"] = "slow"
+                row["error"] = slow.get(n, "")
+            aside.append(row)
+            continue
+        info = dict(package=n, version=row["version"], doCheck=bool(m.get("doCheck")),
+                    c=row["c"], cxx=row["cxx"])
+        tags = ["slow"] if n in slow else []
+        roots.append(dict(name="ref." + n, drv=m["ref"], tags=["ref"] + tags, meta=info))
+        roots.append(dict(name="nf." + n, drv=m["nf"], tags=["nf"] + tags,
+                          requires=["ref." + n], meta=info))
+    opt = a.opt or "plain"
+    kind = "bench" if a.select == "slow" else "nanofil-survey"
+    print(f"{len(roots) // 2} packages of {len(names)}", file=sys.stderr)
+    json.dump(dict(id=f"{kind}-{opt}-{a.revision}", kind=kind,
+                   name=f"nanofil survey · {opt}" + (" · slow" if a.select == "slow" else ""),
+                   source=a.source, revision=a.revision,
+                   options=dict(opt=opt, select=a.select),
+                   roots=roots, set_aside=aside), sys.stdout)
+
+
+def status(r):
+    """The survey's words for a root's latest attempt (web.cc survey_status)."""
+    state, outcome = r.get("state"), r.get("outcome")
+    if state == "running":
+        return "building"
+    if not outcome:
+        return "pending" if state == "pending" else ""
+    if outcome in ("built", "already-valid", "substituted", "resolves-to-already-valid"):
+        return "tests pass" if (r.get("meta") or {}).get("doCheck") else "built"
+    if outcome == "timed-out":
+        return "timeout"
+    if outcome == "skipped":
+        return "not tried"
+    if outcome in ("cancelled", "incomplete"):
+        return "interrupted"
+    if r.get("native_status") == "DependencyFailed":
+        return "dependency fails"
+    phase = r.get("phase") or ""
+    if phase in ("checkPhase", "installCheckPhase"):
+        return "tests fail"
+    return "fails in " + phase if phase else outcome
+
+
+def seconds(r):
+    return f"{r['build_ns'] / 1e9:.0f}" if r and r.get("build_ns") is not None else ""
+
+
+def machine(r):
+    if not r or r.get("build_ns") is None:
+        return ""
+    m = r.get("machine") or "local"
+    return m.split("@")[-1].split("://")[-1].split(".")[0]
+
+
+def campaign_report(a):
+    """survey.tsv and the docs/survey.md table from a campaign's results."""
+    if a.results:
+        results = json.load(open(a.results))
+    else:
+        ctl = os.environ.get("CAMPAIGNCTL") or next(
+            (c for c in ("/opt/filnix-campaign/bin/campaignctl",) if os.path.exists(c)),
+            "campaignctl")
+        r = sh([ctl, "--json", "results", a.campaign])
+        if r.returncode:
+            sys.exit(r.stderr)
+        results = json.loads(r.stdout)
+    campaign = results["campaign"]
+    extras = campaign.get("extras") or {}
+    if isinstance(extras, str):
+        extras = json.loads(extras)
+    rows = {r["name"]: r for r in extras.get("set_aside", [])}
+    pairs = collections.defaultdict(dict)
+    for root in results["roots"]:
+        for k in ("meta", "tags", "counts"):
+            if isinstance(root.get(k), str):
+                root[k] = json.loads(root[k])
+        pairs[root["meta"]["package"]]["nf" if "nf" in root["tags"] else "ref"] = root
+    for n, p in pairs.items():
+        ref, nf = p.get("ref"), p.get("nf")
+        m = (ref or nf)["meta"]
+        row = dict(name=n, version=m.get("version", ""), kind="C", c=m.get("c", ""),
+                   cxx=m.get("cxx", ""), ref=status(ref) if ref else "",
+                   ref_error=(ref or {}).get("error") or "",
+                   ref_s=seconds(ref), nf=status(nf) if nf else "",
+                   nf_s=seconds(nf), nf_machine=machine(nf))
+        if nf and nf.get("outcome") not in (None, "skipped"):
+            counts = nf.get("counts") or {}
+            row.update(error=nf.get("error") or "", objects=counts.get("objects", ""),
+                       cxx_objects=counts.get("cxx", ""), fallbacks=counts.get("fallbacks", ""))
+        if row["nf"] == "timeout":
+            row["error"] = ""
+        rows[n] = row
+    opt = (campaign.get("options") or {})
+    if isinstance(opt, str):
+        opt = json.loads(opt)
+    opt = opt.get("opt", "plain")
+    write(rows, "" if opt == "plain" else opt, campaign)
+
+
+def main():
+    p = argparse.ArgumentParser()
+    sub = p.add_subparsers(dest="command")
+    m = sub.add_parser("manifest", help="print the survey's manifest")
+    m.add_argument("names", nargs="*")
+    m.add_argument("--opt", default="", help="nanofil options for every compile, e.g. -O")
+    m.add_argument("--select", choices=("default", "slow", "all"), default="default",
+                   help="leave out (default), only (slow) or keep the slow packages")
+    m.add_argument("--source", default="", help="the frozen flake reference")
+    m.add_argument("--revision", default="", help="the frozen revision")
+    r = sub.add_parser("report", help="write survey.tsv and docs/survey.md from a campaign")
+    r.add_argument("campaign", nargs="?")
+    r.add_argument("--results", help="a `campaignctl --json results` file instead")
+    p.add_argument("--report", action="store_true", help="only rewrite docs/survey.md from survey.tsv")
+    a = p.parse_args()
+    if a.report:
+        return report()
+    if a.command == "manifest":
+        if a.opt == "plain":
+            a.opt = ""
+        return manifest(a)
+    if a.command == "report":
+        if not a.campaign and not a.results:
+            p.error("report needs a campaign or --results")
+        return campaign_report(a)
+    p.print_help()
 
 
 COLS = ["name", "version", "kind", "c", "cxx", "ref", "nf", "objects", "cxx_objects",
-        "fallbacks", "cause", "error", "ref_error"]
+        "fallbacks", "cause", "error", "ref_error", "ref_s", "nf_s", "nf_machine"]
 
 # A failure's cause, from its first error; the first pattern that matches
 # wins. Some configure verdicts are a probe's consequence, traced by hand
@@ -235,7 +278,8 @@ TRACED = {
 
 
 def cause(row):
-    if row.get("nf") in ("built", "tests pass", "not tried", "", None):
+    if row.get("nf") in ("built", "tests pass", "not tried", "", None,
+                         "pending", "building", "interrupted"):
         return ""
     if row.get("nf") == "tests fail" and row.get("name") in TRACED:
         return TRACED[row["name"]]
@@ -246,7 +290,7 @@ def cause(row):
     return next((c for p, c in CAUSES if re.search(p, err)), other)
 
 
-def write(rows, opt=""):
+def write(rows, opt="", campaign=None):
     for r in rows.values():
         r["cause"] = cause(r) if r["kind"] == "C" else ""
     tsv = "survey" + ("-" + opt.strip("-").replace(" ", "") if opt else "") + ".tsv"
@@ -271,12 +315,12 @@ def write(rows, opt=""):
     causes = ["| Cause | Packages | Which |", "| --- | ---: | --- |"] + \
         [f"| {k} | {len(v)} | {', '.join(sorted(v))} |"
          for k, v in sorted(by.items(), key=lambda kv: (-len(kv[1]), kv[0]))]
-    table = ["| Package | Version | filcc | nanofil | nanofil objects | Cause | First error |",
-             "| --- | --- | --- | --- | ---: | --- | --- |"]
+    table = ["| Package | Version | filcc | nanofil | nanofil s | nanofil objects | Cause | First error |",
+             "| --- | --- | --- | --- | ---: | ---: | --- | --- |"]
     for r in sorted(c, key=lambda r: r["name"]):
         err = (r.get("error") or "").replace("|", "\\|").replace("`", "'")
         table.append(f"| {r['name']} | {r['version']} | {r['ref']} | {r['nf']} | "
-                     f"{r.get('objects') or ''} | {r['cause']} | {('`' + err + '`') if err else ''} |")
+                     f"{r.get('nf_s') or ''} | {r.get('objects') or ''} | {r['cause']} | {('`' + err + '`') if err else ''} |")
     doc = os.path.join(here, "..", "docs", "survey.md")
     text = open(doc).read()
     start, end = "<!-- survey table -->", "<!-- end survey table -->"

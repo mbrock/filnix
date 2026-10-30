@@ -7,19 +7,24 @@ nix = dependency('nix-main')
 duckdb = meson.get_compiler('cpp').find_library('duckdb')
 
 campaign = executable('filnix-campaign',
-  ['src/main.cc', 'src/journal.cc', 'src/dataset.cc', 'src/web.cc'],
+  ['src/main.cc', 'src/journal.cc', 'src/dataset.cc', 'src/web.cc',
+   'src/catalog.cc', 'src/analysis.cc'],
   dependencies : [nxt, json, duckdb], install : true)
 
 executable('filnix-nix-worker', 'src/nix-worker.cc',
   cpp_args : ['-DNIX_LIBRARY_VERSION="' + nix.version() + '"'],
   dependencies : [nix, json], install : true)
 
+install_data('campaignctl', install_dir : get_option('bindir'),
+  install_mode : 'rwxr-xr-x')
+
 install_data('static/htmx.js', 'static/HTMX-LICENSE',
   'static/observatory.css', 'static/observatory.js',
   install_dir : get_option('datadir') / 'filnix-campaign')
 
 dataset_test = executable('dataset-test',
-  ['tests/test_dataset.cc', 'src/dataset.cc', 'src/journal.cc', 'src/web.cc'],
+  ['tests/test_dataset.cc', 'src/dataset.cc', 'src/journal.cc', 'src/web.cc',
+   'src/analysis.cc'],
   include_directories : include_directories('src'),
   dependencies : [json, duckdb])
 test('dataset', dataset_test)

@@ -19,23 +19,32 @@ nanofil alone or fails. C++ still goes to filcc and is counted
 the staging set's, built by filcc; each package's own checkPhase and
 installCheckPhase run as the port runs them.
 
-[survey/run.py](../survey/run.py) takes the packages ports.nix names,
-sets aside those that do not evaluate, those whose sources hold more
-than half as many C++ files as C files, and those with no C sources,
-builds each of the rest with filcc and then (where filcc's build
-succeeds) with nanofil, and writes [survey/survey.tsv](../survey/survey.tsv)
-and the table below. Rerun it from the repository root:
+The survey runs on the campaign service at <https://nix.swa.sh/>
+([docs/campaign-service.md](../../docs/campaign-service.md)), which keeps
+every build's time, machine, outcome and complete log.
+[survey/run.py](../survey/run.py) `manifest` takes the packages ports.nix
+names and sets aside those that do not evaluate, those whose sources hold
+more than half as many C++ files as C files, those with no C sources, and
+the slow ones (`slow` in survey/default.nix: emacs30, libgcrypt). Each of
+the rest becomes two roots, `ref.NAME` (filcc) and `nf.NAME` (nanofil),
+which is only tried where filcc's build succeeds. `run.py report` writes
+[survey/survey.tsv](../survey/survey.tsv) and the table below from the
+campaign's results. From swa:
 
 ```sh
-python3 nanofil/survey/run.py --jobs 16 --cores 4       # all of them, on swa
-python3 nanofil/survey/run.py zlib xz                   # some
-nix build -f nanofil/survey nf.zlib                     # one, by hand
-python3 nanofil/survey/run.py --report                  # tables from survey.tsv
+campaignctl submit nanofil-survey --opt plain     # at origin/main; or --rev REV, --opt -O, --opt --vectors
+campaignctl list                                  # or https://nix.swa.sh/
+python3 nanofil/survey/run.py report CAMPAIGN-ID  # survey.tsv, survey-OPT.tsv and the tables below
+nix build -f nanofil/survey nf.zlib               # one, by hand
+python3 nanofil/survey/run.py --report            # tables from survey.tsv
+campaignctl submit bench                          # the slow packages, one at a time, local, rebuilt
 ```
 
-Builds already in the store are reused, and only `bin/` and `src/` of
-nanofil enter the nanofil builds, so a rerun after a compiler change
-rebuilds only those.
+A campaign's page at `/c/ID/survey` shows each package's filcc and
+nanofil builds side by side, with build times and the machine that built
+them; times compare only within one machine. Builds already in the store
+are reused, and only `bin/` and `src/` of nanofil enter the nanofil
+builds, so a survey after a compiler change rebuilds only those.
 
 "filcc" and "nanofil" say `tests pass` when the build ran its own tests
 and they passed, `built` when it has none (or the port skips them),

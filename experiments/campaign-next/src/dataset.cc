@@ -1,4 +1,5 @@
 #include "dataset.hh"
+#include "sql.hh"
 
 #include <filesystem>
 #include <fstream>
@@ -7,17 +8,7 @@
 namespace campaign {
 namespace {
 
-std::string quote(std::string_view value) {
-  std::string result = "'";
-  for (char c : value) {
-    if (!c)
-      throw std::runtime_error("NUL in SQL text value");
-    result += c;
-    if (c == '\'')
-      result += c;
-  }
-  return result + "'";
-}
+using sql::quote;
 
 std::string blob(const std::string &hex_bytes) {
   // Validate before placing encoded arbitrary bytes in SQL. BLOBs, not
@@ -36,18 +27,23 @@ std::string open_path(const std::string &path, bool writable) {
   return path;
 }
 
-duckdb::DBConfig *configure(duckdb::DBConfig &config) {
+duckdb::DBConfig *configure(duckdb::DBConfig &config,
+                            const std::string &memory_limit, bool read_only) {
+  if (read_only)
+    config.SetOptionByName("access_mode", duckdb::Value("READ_ONLY"));
   // Host RAM is not the service's cgroup allowance. Leave room inside the
   // 4 GiB service for the worker, JSON, HTTP and DuckDB's unmanaged memory.
-  config.SetOptionByName("memory_limit", duckdb::Value("1 GiB"));
+  config.SetOptionByName("memory_limit", duckdb::Value(memory_limit));
   config.SetOptionByName("threads", duckdb::Value(2));
   return &config;
 }
 
 } // namespace
 
-Dataset::Dataset(const std::string &path, bool writable)
-    : database_(open_path(path, writable), configure(config_)),
+Dataset::Dataset(const std::string &path, bool writable,
+                 const std::string &memory_limit, bool read_only)
+    : database_(open_path(path, writable),
+                configure(config_, memory_limit, read_only)),
       connection_(database_) {
   // The application owns this database in one process. Offline commands
   // never append; opening normally also permits DuckDB's WAL recovery.
@@ -110,10 +106,8 @@ CREATE UNIQUE INDEX run_info_identity ON run_info(run);
 )SQL");
 }
 
-void Dataset::exec(const std::string &sql) {
-  auto result = connection_.Query(sql);
-  if (result->HasError())
-    throw std::runtime_error(result->GetError());
+void Dataset::exec(const std::string &query) {
+  sql::exec(connection_, query);
 }
 
 json Dataset::resources() {
@@ -142,14 +136,8 @@ json Dataset::publication_outputs() {
   return {{"watermark", watermark_}, {"paths", paths}};
 }
 
-json Dataset::rows(const std::string &sql) {
-  auto result = connection_.Query("SELECT to_json(q) FROM (" + sql + ") q");
-  if (result->HasError())
-    throw std::runtime_error(result->GetError());
-  auto output = json::array();
-  for (duckdb::idx_t i = 0; i < result->RowCount(); ++i)
-    output.push_back(json::parse(result->GetValue(0, i).ToString()));
-  return output;
+json Dataset::rows(const std::string &query) {
+  return sql::rows(connection_, query);
 }
 
 void Dataset::append(const json &batch) {
@@ -308,16 +296,24 @@ json Dataset::logs(std::string run, std::string activity, std::uint64_t after,
   return rows(sql);
 }
 
-json Dataset::view(std::string run, std::string activity, bool detail) {
+json Dataset::view(std::string run, std::string activity, bool detail,
+                   json cohort) {
   run = select_run(std::move(run));
   auto filter = " WHERE run=" + quote(run);
-  auto request = rows("SELECT request AS payload FROM run_info" + filter);
-  json cohort = nullptr;
   std::string session_filter;
-  if (!request.empty() && request[0].at("payload").contains("cohort")) {
-    cohort = request[0].at("payload").at("cohort");
+  if (cohort.is_null()) {
+    auto request = rows("SELECT request AS payload FROM run_info" + filter);
+    if (!request.empty() && request[0].at("payload").contains("cohort"))
+      cohort = request[0].at("payload").at("cohort");
+  }
+  // A root's retried attempts are separate runs; its latest one counts.
+  std::string latest;
+  if (!cohort.is_null()) {
     session_filter = " WHERE json_extract_string(e.request,'$.cohort.id')=" +
                      quote(cohort.at("id").get<std::string>());
+    latest = " QUALIFY row_number() OVER (PARTITION BY coalesce("
+             "json_extract_string(e.request,'$.index'),r.run) ORDER BY "
+             "r.start_wall_ns DESC,r.last_offset DESC)=1";
   }
   const std::string progress = "e.duration_ns,e.cause_hex";
   auto sessions = rows(
@@ -329,9 +325,9 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
       "AS phase_hex,e.native_status,"
       "json_object('index',json_extract(e.request,'$.index'),"
       "'cohort',json_object('id',json_extract(e.request,'$.cohort.id'))) "
-      "AS request FROM runs r LEFT JOIN "
-      "run_info e ON e.run=r.run " +
-      session_filter +
+      "AS request,coalesce(json_extract_string(e.request,'$.name'),'') AS "
+      "root FROM runs r LEFT JOIN run_info e ON e.run=r.run " +
+      session_filter + latest +
       " ORDER BY r.start_wall_ns DESC,r.last_offset DESC LIMIT " +
       std::string(cohort.is_null() ? "256" : "1024"));
   json session = nullptr;
@@ -412,7 +408,10 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
     auto members = " FROM runs r JOIN run_info e ON e.run=r.run WHERE "
                    "json_extract_string(e.request,'$.cohort.id')=" +
                    quote(cohort.at("id").get<std::string>());
-    auto summaries = rows("SELECT r.summary" + members);
+    auto summaries = rows("SELECT r.summary" + members +
+                          " QUALIFY row_number() OVER (PARTITION BY "
+                          "coalesce(json_extract_string(e.request,'$.index'),"
+                          "r.run) ORDER BY r.start_wall_ns DESC)=1");
     unsigned completed = 0, succeeded = 0, failed = 0, timed_out = 0, built = 0;
     bool recorder_error = false;
     for (const auto &item : summaries) {
@@ -467,6 +466,86 @@ json Dataset::view(std::string run, std::string activity, bool detail) {
           {"cursor", output.empty() ? json(0) : output.back().at("seq")},
           {"elapsed_now_ns", time[0].at("elapsed")},
           {"live", false}};
+}
+
+json Dataset::attempt_facts(const std::string &run) {
+  auto r = quote(run);
+  auto found = rows("SELECT r.drv,r.summary,i.duration_ns,i.native_status,"
+                    "i.cause_hex,r.start_wall_ns FROM runs r JOIN run_info i "
+                    "ON i.run=r.run WHERE r.run=" +
+                    r);
+  if (found.empty())
+    throw std::runtime_error("unknown run: " + run);
+  auto facts = found[0];
+  auto build = [&](const std::string &drv) {
+    auto a = rows("SELECT machine,start_elapsed_ns,stop_elapsed_ns,"
+                  "lower(hex(phase)) AS phase_hex FROM activities WHERE run=" +
+                  r + " AND type=105 AND drv=" + quote(drv) +
+                  " ORDER BY start_elapsed_ns DESC LIMIT 1");
+    return a.empty() ? json(nullptr) : a[0];
+  };
+  auto root = facts.at("drv").get<std::string>();
+  facts["root_build"] = build(root);
+  // Some stores report the build failure as an error, not a message.
+  if (!facts.at("cause_hex").is_string()) {
+    auto error = rows("SELECT json_extract_string(payload,'$.text_hex') AS t "
+                      "FROM events WHERE run=" +
+                      r + " AND kind='nix.error' ORDER BY seq LIMIT 1");
+    if (!error.empty())
+      facts["cause_hex"] = error[0].at("t");
+  }
+  // Nix names the derivation that failed in its first top-level error.
+  std::string failed;
+  if (facts.at("cause_hex").is_string()) {
+    auto cause = unhex(facts.at("cause_hex").get<std::string>());
+    if (auto a = cause.find("/nix/store/"); a != std::string::npos)
+      if (auto b = cause.find(".drv", a); b != std::string::npos)
+        failed = cause.substr(a, b + 4 - a);
+  }
+  auto outcome = facts.at("summary").value("outcome", "incomplete");
+  bool success = outcome == "built" || outcome == "already-valid" ||
+                 outcome == "substituted" ||
+                 outcome == "resolves-to-already-valid";
+  if (failed.empty() && !success)
+    failed = root;
+  if (success)
+    failed.clear();
+  facts["failed_drv"] = failed;
+  facts["failed_build"] = failed.empty() ? json(nullptr) : build(failed);
+  auto target = failed.empty() ? root : failed;
+  facts["log_hex"] = json::array();
+  for (const auto &row :
+       rows("SELECT lower(hex(l.bytes)) AS b FROM logs l JOIN activities a "
+            "ON a.run=l.run AND a.id=l.activity WHERE l.run=" +
+            r + " AND a.type=105 AND a.drv=" + quote(target) +
+            " ORDER BY l.seq"))
+    facts["log_hex"].push_back(row.at("b"));
+  return facts;
+}
+
+json Dataset::run_list() {
+  return {
+      {"runs",
+       rows("SELECT r.run,r.drv,r.start_wall_ns,r.summary,i.duration_ns,"
+            "json_extract_string(i.request,'$.name') AS name,"
+            "json_extract(i.request,'$.index')::BIGINT AS idx,"
+            "json_extract_string(i.request,'$.cohort.id') AS cohort FROM runs "
+            "r JOIN run_info i ON i.run=r.run ORDER BY r.start_wall_ns,"
+            "r.last_offset")},
+      {"cohorts",
+       rows("SELECT arg_min(json_extract(request,'$.cohort'),run) AS cohort,"
+            "count(*) AS runs FROM run_info WHERE json_extract(request,"
+            "'$.cohort') IS NOT NULL GROUP BY json_extract_string(request,"
+            "'$.cohort.id')")},
+      {"finished", rows("SELECT finished FROM run_info WHERE finished IS NOT "
+                        "NULL")}};
+}
+
+std::string Dataset::fingerprint() {
+  auto r = rows("SELECT count(*) AS n,coalesce(min(run),'') AS a,"
+                "coalesce(max(run),'') AS b FROM runs")[0];
+  return std::to_string(watermark_) + ":" + r.at("n").dump() + ":" +
+         r.at("a").get<std::string>() + ":" + r.at("b").get<std::string>();
 }
 
 json Dataset::export_to(const std::string &directory) {

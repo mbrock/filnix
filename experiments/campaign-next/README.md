@@ -1,6 +1,10 @@
 # Campaign, again
 
-A C++/NXT campaign runner and the canonical viewer at <https://nix.swa.sh/>.
+A C++/NXT campaign service and the canonical viewer at <https://nix.swa.sh/>.
+It queues and runs every survey-style build filnix does: port campaigns, the
+nanofil survey, benchmarks, lists of flake outputs. Its model, admin CLI and
+deployment are in [docs/campaign-service.md](../../docs/campaign-service.md);
+this file describes the recording and viewer underneath.
 The former Python coordinator and dashboard are retired on SWA; their data
 remains available for historical analysis. This application builds through
 the Nix C++ API, records its observations
@@ -34,7 +38,7 @@ The other commands are:
 
 ```sh
 filnix-campaign record DRV campaign.duckdb [--store URI]
-filnix-campaign cohort manifest.json campaign.duckdb --budget 7200 --root-timeout 900
+filnix-campaign service STATE-DIRECTORY [--port 8080] [--socket PATH]
 filnix-campaign serve campaign.duckdb [--port 8080]
 filnix-campaign inspect campaign.duckdb [--run ID]
 filnix-campaign replay campaign.duckdb [--run ID] [--speed 10] [--json]
@@ -86,29 +90,24 @@ broken reasons where available; exclusions never count as successes. Manifest
 counts vary with the frozen revision. The runner accepts up to 1024 roots, retaining all
 cohort summaries while the table renders 100 rows per page.
 
-`cohort` accepts an immutable JSON manifest with `id`, `name`, and a `roots`
-array of `{name, drv}` objects. It admits one root request at a time; Nix still
-schedules that root's complete dependency graph. Package failures and per-root
-timeouts do not prevent subsequent roots. An overall monotonic deadline stops
-admission and interrupts the active worker. Defaults are two hours overall and
-15 minutes per root, with the normal two-second termination grace. These are
-client-observation/build budgets, not a guarantee that a daemon build shared
-with another client has stopped. Recorder errors stop admission rather than
-pretending the root was observed correctly.
+`service` runs campaigns: frozen manifests of `{name, drv, tags, requires}`
+roots with a policy, queued and controlled over a Unix socket by
+`campaignctl` (installed beside it). Each root admission is an attempt and a
+fresh journal run in that campaign's own recording; the catalog keeps every
+attempt's outcome, times, machine and first error. Nix still schedules each
+root's complete dependency graph. Package failures and per-root timeouts do
+not prevent later roots; a campaign's budget stops admission. Recorder
+errors pause the campaign rather than pretending a root was observed
+correctly. These are client-observation/build budgets, not a guarantee that a
+daemon build shared with another client has stopped.
 
-Intent events retain the manifest, source revision, root index and budgets.
-`run.limit-reached` distinguishes deadlines from operator cancellation;
-`cohort.finished` durably records why admission ended. The viewer shows settled,
-successful, failed/interrupted, timed-out, and unattempted roots. Success includes
-already-valid and substituted results, **not just new compilations**. The default
-page is a campaign overview; `?follow=1` explicitly follows the latest root,
-and `?run=…` links stay pinned. All links and polls work under a stripped
-reverse-proxy prefix such as `/v2/`.
-
-After admission ends, the viewer stays up. Restarting `cohort` against any
-nonempty recording serves it without resuming or retrying builds, including
-after a crash. Starting a new campaign requires a new database; there is no
-batch scheduler, durable work queue, or automatic lease recovery.
+Intent events retain the campaign, root index, attempt, policy and load.
+`run.limit-reached` distinguishes deadlines from cancellation. The viewer shows
+settled, successful, failed/interrupted, timed-out, and unattempted roots.
+Success includes already-valid and substituted results, **not just new
+compilations**. Each campaign's viewer lives under `/c/ID/`; its default page
+is the campaign overview, `?follow=1` follows the latest root, and `?run=…`
+links stay pinned. All links and polls are relative.
 
 Evaluate a frozen source into a store manifest without realising its packages:
 
@@ -120,27 +119,21 @@ nix-store --query --references "$manifest"
 ```
 
 The manifest retains GC references to the source and root derivations, not a
-build dependency on their outputs. Give it a persistent GC root before launch.
-`deploy/filnix-v2.service` documents the SWA deployment: an independently
-installed package at `/opt/filnix-v2`, state under `/var/lib/filnix-v2`, an
-immutable `manifest.json` symlink there, and loopback port 8778. Root both the
-package and manifest under `/nix/var/nix/gcroots/`. The service uses the existing
-trusted Nix user `mbrock` to make its per-client configuration effective:
-two local jobs, four cores per job, the configured remote builders, and thirty
-minutes of silence allowed. The deployed port campaign has a 24-hour overall
-budget and two hours per root. It does not change the daemon's shared configuration. Its 4 GiB
-memory limit bounds the observer, not daemon-owned compiler processes.
-
-`deploy/nix.swa.sh.Caddyfile` routes the root to this viewer, preserves the public
-cache, and redirects `/v2/` URLs to the root while retaining their queries.
-Merge it with existing site-specific routes rather than replacing the entire
-host configuration. Validate Caddy and the unit before reloading/enabling.
-The public viewer exposes only read endpoints, but build output is public too:
-only use intentionally public source/package builds and no secret-bearing jobs.
+build dependency on their outputs. `campaignctl submit` freezes it and the
+service roots it beside the campaign. `deploy/filnix-campaign.service`
+documents the SWA deployment: an independently installed package at
+`/opt/filnix-campaign`, state under `/var/lib/filnix-campaign`, loopback port
+8778 behind Caddy (`deploy/nix.swa.sh.Caddyfile`), and the admin socket in
+`/run/filnix-campaign`. The service uses the trusted Nix user `mbrock` so each
+campaign's per-client settings (jobs, cores, builders, limits) take effect; it
+does not change the daemon's shared configuration. Its memory limit bounds
+the observer, not daemon-owned compiler processes. The public viewer exposes
+only read endpoints, but build output is public too: only use intentionally
+public source/package builds and no secret-bearing jobs.
 
 `/healthz` checks HTTP service availability. `/api/outputs` exposes deduplicated,
-verified output paths from complete successful root recordings at a committed
-watermark. The independent cache timers query it over loopback; they never open
+verified output paths from successful attempts of campaigns whose policy
+publishes. The independent cache timers query it over loopback; they never open
 the live DuckDB file. Publication includes root reference closures. Successful
 dependencies of a failed root are not separately discovered by this feed.
 See [port campaign operations](../../docs/port-campaign-operations.md).
@@ -332,9 +325,9 @@ a different Nix capture boundary or a controlled builder wrapper.
 
 ## Still deliberately absent
 
-There is no general campaign planner, evaluation service, admission/lease
-recovery, new Nix builder, authentication, or online export API. The bounded
-manifest runner deliberately does not copy the existing campaign's batch model.
+There is no evaluation service (manifests are frozen by `campaignctl`, as the
+caller), new Nix builder, or authentication beyond the admin socket's file
+permissions.
 Recordings can contain secrets printed by builds; do not publish databases,
 logs, or archives indiscriminately.
 
@@ -342,9 +335,11 @@ Checks cover transaction rollback across all projections, exact large activity
 IDs and arbitrary bytes, unknown events, real artifacts, cached repeats, shared
 dependencies, failed prerequisites, API errors, cancellation/draining, abrupt
 observer death and WAL recovery, replay pacing, HTTP cursor semantics, HTML
-escaping/OOB row structure, schema rejection, and native/Parquet equality. Cohort
-tests distinguish failure continuation, per-root timeout continuation, overall
-budget cutoff, pinned views, durable stop events, and restart without retries.
+escaping/OOB row structure, schema rejection, and native/Parquet equality.
+Service tests cover requirements and skipped roots, the survey's first-error
+and counts extraction, publication by policy, timeouts, budgets, priority,
+pause/resume/cancel/retry, restart after a service stop, recorder errors,
+registering recordings and duplicate detection, and manifest validation.
 A two-million-event/300-root fixture exercises overview/detail polling, database
 settings, process peak RSS and v1 compatibility. For campaign-scale validation:
 

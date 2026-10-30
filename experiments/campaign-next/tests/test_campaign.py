@@ -1,10 +1,12 @@
 """End-to-end tests for the DuckDB-backed campaign prototype."""
 
+import http.client
 import json
 import os
 from pathlib import Path
 import shutil
 import signal
+import socket
 import selectors
 import subprocess
 import sys
@@ -98,7 +100,7 @@ class CampaignTests(unittest.TestCase):
                 mode,
                 *([str(drv)] if drv else []),
                 str(database or self.db),
-                *(["--store", self.store] if mode in ("watch", "cohort") else []),
+                *(["--store", self.store] if mode == "watch" else []),
                 "--port",
                 "0",
                 *args,
@@ -138,108 +140,225 @@ class CampaignTests(unittest.TestCase):
         with duckdb.connect(str(self.db), read_only=True) as db:
             return db.execute(f"select * from {table} order by all").fetchall()
 
-    def cohort(self, roots, budget=10, root_timeout=5):
-        manifest = self.root / "manifest.json"
-        manifest.write_text(
-            json.dumps(
-                {
-                    "id": "test-cohort",
-                    "name": "Test landmark world",
-                    "roots": [{"name": name, "drv": self.drv(name)} for name in roots],
-                }
-            )
-        )
-        return manifest, self.serve(
-            mode="cohort",
-            drv=manifest,
-            args=("--budget", str(budget), "--root-timeout", str(root_timeout)),
-        )
+    def service(self, binary=None):
+        """Start the campaign service on this test's store; return its
+        process and HTTP base. Admin requests go to self.socket."""
+        self.state_dir = self.root / "service"
+        self.socket = self.state_dir / "admin.sock"
+        return self.serve(database=self.state_dir, mode="service", binary=binary,
+                          args=("--socket", str(self.socket), "--store", self.store))
 
-    def settled_cohort(self, base):
-        deadline = time.monotonic() + 12
+    def admin(self, method, path, body=None, status=200):
+        connection = http.client.HTTPConnection("localhost", timeout=20)
+        connection.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        connection.sock.connect(str(self.socket))
+        connection.request(method, path, body=None if body is None else json.dumps(body))
+        response = connection.getresponse()
+        data = json.loads(response.read())
+        connection.close()
+        self.assertEqual(response.status, status, data)
+        return data
+
+    def submit(self, roots, policy=None, **extra):
+        manifest = self.root / f"manifest-{time.monotonic_ns()}.json"
+        manifest.write_text(json.dumps({
+            "id": "test", "name": "Test campaign", "kind": "test", "revision": "0" * 40,
+            "roots": [{"name": name, "drv": self.drv(fixture), **more}
+                      for name, fixture, more in roots]}))
+        body = {"manifest": str(manifest), "policy": policy or {}, **extra}
+        return self.admin("POST", "/campaigns", body)["id"]
+
+    def settled(self, id, states=("finished", "cancelled", "paused")):
+        deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
-            state = self.state(base=base)
-            if state["cohort"] and state["cohort"]["stop_reason"]:
-                return state
+            shown = self.admin("GET", f"/campaigns/{id}")
+            if shown["campaign"]["state"] in states:
+                return shown
             time.sleep(0.05)
-        self.fail("cohort did not publish its terminal admission event")
+        self.fail(f"campaign {id} did not settle: {shown}")
 
-    def test_cohort_continues_failure_and_restart_never_retries(self):
-        manifest, (proc, base) = self.cohort(["bad", "good"])
+    def test_service_requires_failure_analysis_outputs_and_restart(self):
+        proc, base = self.service()
         try:
-            state = self.settled_cohort(base)
-            self.assertEqual(state["cohort"]["completed"], 2)
-            self.assertEqual(state["cohort"]["succeeded"], 1)
-            self.assertEqual(state["cohort"]["failed"], 1)
-            self.assertEqual(state["cohort"]["unattempted"], 0)
-            self.assertEqual(state["cohort"]["stop_reason"], "all-roots-attempted")
-            published = json.load(urllib.request.urlopen(base + "/api/outputs", timeout=2))
-            verified = sorted({o["path"] for s in state["sessions"]
-                               if s["complete"] and s["outcome"] == "built"
-                               for o in s["outputs"] if o["valid"]})
-            self.assertTrue(verified)
-            self.assertEqual(published["paths"], verified)
-            self.assertEqual(published["watermark"], state["watermark"])
-            good_run = state["session"]["run"]
-            bad_run = next(s["run"] for s in state["sessions"] if s["run"] != good_run)
-            pinned = self.state(bad_run, base)
-            self.assertEqual(pinned["session"]["outcome"], "failed")
-            self.assertEqual(pinned["cohort"]["succeeded"], 1)
-            page = urllib.request.urlopen(base + "/", timeout=2).read()
-            self.assertIn(b'src="./htmx.js"', page)
-            self.assertIn(b'class="campaign-table"', page)
-            self.assertNotIn(b'class="graph-panel"', page)
-            self.assertNotIn(b'class="log-panel"', page)
-            self.assertNotIn(b"every ", page)
-            self.assertIn(b"2 of 2 roots settled", page)
-            failed_roots = urllib.request.urlopen(
-                base + "/sessions?overview=1&filter=failed", timeout=2
-            ).read()
-            self.assertIn(b"campaign-bad", failed_roots)
-            self.assertNotIn(b"campaign-good", failed_roots)
-            follow = urllib.request.urlopen(base + "/?follow=1", timeout=2).read()
-            self.assertIn(b'class="graph-panel"', follow)
-            self.assertIn(good_run.encode(), follow)
-            watermark = state["watermark"]
+            id = self.submit([("bad", "bad", {}),
+                              ("survey", "nanofilish", {"tags": ["nf"]}),
+                              ("good", "good", {"tags": ["ref"]}),
+                              ("after-bad", "graph", {"requires": ["bad"]}),
+                              ("after-good", "left", {"requires": ["good"]})],
+                             {"parallel_roots": 2, "graph": "direct"})
+            unpublished = self.submit([("shared", "shared", {})], {"publish": False})
+            shown = self.settled(id)
+            self.assertEqual(shown["campaign"]["stop_reason"], "all-roots-attempted")
+            roots = {r["name"]: r for r in shown["roots"]}
+            self.assertEqual({n: r["outcome"] for n, r in roots.items()},
+                             {"bad": "failed", "survey": "failed", "good": "built",
+                              "after-bad": "skipped", "after-good": "built"})
+            self.assertEqual(roots["bad"]["native_status"], "PermanentFailure")
+            self.assertEqual(roots["bad"]["phase"], "buildPhase")
+            self.assertEqual(roots["bad"]["error"], "dependency-failed")
+            self.assertEqual(roots["bad"]["failed_drv"], self.drv("bad"))
+            # nanofil's own message wins over an earlier compiler error.
+            self.assertEqual(roots["survey"]["error"], "nanofil: unsupported construct at x.c:3")
+            self.assertEqual(roots["survey"]["counts"],
+                             {"objects": 7, "cxx": 1, "fallbacks": 2})
+            self.assertIsNone(roots["after-bad"]["run"])
+            for name in ("good", "after-good", "bad"):
+                self.assertGreater(roots[name]["wall_ns"], 0)
+                self.assertGreater(roots[name]["build_ns"], 0)
+                self.assertEqual(roots[name]["machine"], "")
+                self.assertGreaterEqual(roots[name]["load1"], 0)
+            self.assertGreater(roots["good"]["wall_ns"], 500_000_000)  # its sleep
+            self.settled(unpublished)
+            listing = self.admin("GET", "/campaigns")
+            row = next(c for c in listing if c["id"] == id)
+            self.assertEqual((row["roots"], row["succeeded"], row["failed"], row["skipped"]),
+                             (5, 2, 2, 1))
+            # Only campaigns whose policy publishes feed the caches.
+            outputs = json.load(urllib.request.urlopen(base + "/api/outputs", timeout=5))
+            attempts = self.admin("GET", f"/campaigns/{id}/results")["attempts"]
+            expected = sorted(o["path"] for a in attempts if a["outcome"] == "built"
+                              for o in a["outputs"])
+            self.assertEqual(len(expected), 2)
+            self.assertEqual(sorted(outputs["paths"]), expected)
+            page = urllib.request.urlopen(base + "/", timeout=5).read()
+            self.assertIn(f'href="c/{id}/"'.encode(), page)
+            self.assertIn(unpublished.encode(), page)
+            state = json.load(urllib.request.urlopen(base + f"/c/{id}/api/state", timeout=5))
+            self.assertEqual((state["cohort"]["succeeded"], state["cohort"]["failed"],
+                              state["cohort"]["unattempted"]), (2, 2, 1))
+            overview = urllib.request.urlopen(base + f"/c/{id}/", timeout=5).read()
+            self.assertIn(b'class="campaign-table"', overview)
+            self.assertIn(b'href="../../"', overview)
+            self.assertIn(b"after-good", urllib.request.urlopen(
+                base + f"/c/{id}/sessions?filter=all", timeout=5).read())
+            old = urllib.request.urlopen(base + f"/?run={roots['good']['run']}", timeout=5)
+            self.assertEqual(old.url, base + f"/c/{id}/?run={roots['good']['run']}")
+            survey = urllib.request.urlopen(base + f"/c/{id}/survey", timeout=5).read()
+            self.assertIn(b"nanofil: unsupported construct", survey)
+            with self.assertRaises(urllib.error.HTTPError) as denied:
+                urllib.request.urlopen(urllib.request.Request(
+                    base + f"/c/{id}/", method="POST", data=b"{}"), timeout=5)
+            self.assertEqual(denied.exception.code, 405)
         finally:
             self.stop(proc)
-        restarted, base = self.serve(mode="cohort", drv=manifest)
+        attempts = self.rows_of("SELECT count(*) FROM attempts")
+        proc, base = self.service()
         try:
-            state = self.settled_cohort(base)
-            self.assertEqual(state["watermark"], watermark)
+            time.sleep(1)
+            self.assertEqual(self.admin("GET", f"/campaigns/{id}")["campaign"]["state"],
+                             "finished")
+            self.assertEqual(self.rows_of("SELECT count(*) FROM attempts"), attempts)
+        finally:
+            self.stop(proc)
+
+    def rows_of(self, query):
+        # The catalog is the service's; read it only while it is stopped
+        # or through a copy.
+        copy = self.root / f"catalog-{time.monotonic_ns()}.duckdb"
+        shutil.copy2(self.state_dir / "catalog.duckdb", copy)
+        wal = self.state_dir / "catalog.duckdb.wal"
+        if wal.exists():
+            shutil.copy2(wal, str(copy) + ".wal")
+        with duckdb.connect(str(copy)) as db:
+            return [r[0] for r in db.execute(query).fetchall()]
+
+    def test_service_timeout_budget_stop_retry_and_controls(self):
+        proc, base = self.service()
+        try:
+            timed = self.submit([("slow", "slow", {}), ("good", "good", {})],
+                                {"root_timeout": 1})
+            shown = self.settled(timed)
+            self.assertEqual([r["outcome"] for r in shown["roots"]], ["timed-out", "built"])
+            budget = self.submit([("slow", "slow", {}), ("shared", "shared", {})],
+                                 {"budget": 1})
+            shown = self.settled(budget)
+            self.assertEqual(shown["campaign"]["stop_reason"], "budget-exhausted")
+            self.assertEqual([r["state"] for r in shown["roots"]], ["settled", "pending"])
+            # Priority orders the queue: the later, higher one runs first.
+            first = self.submit([("bad", "bad", {})], {}, priority=0)
+            self.admin("POST", f"/campaigns/{first}/pause", {})
+            second = self.submit([("graph", "graph", {})], {}, priority=5)
+            self.settled(second)
+            self.admin("POST", f"/campaigns/{first}/resume", {})
+            shown = self.settled(first)
+            self.assertEqual(shown["roots"][0]["outcome"], "failed")
+            retried = self.admin("POST", f"/campaigns/{first}/retry", {})
+            self.assertEqual(retried["retried"], ["bad"])
+            shown = self.settled(first)
+            self.assertEqual(shown["roots"][0]["attempt"], 2)
+            self.admin("POST", f"/campaigns/{first}/resume", {}, status=400)
+            # A service stop interrupts a root; restart runs it again.
+            stopped = self.submit([("slow", "slow", {})], {"root_timeout": 30})
+            deadline = time.monotonic() + 10
+            while not self.admin("GET", "/status")["in_flight"]:
+                self.assertLess(time.monotonic(), deadline)
+                time.sleep(0.05)
+        finally:
+            self.stop(proc)
+        proc, base = self.service()
+        try:
+            shown = self.settled(stopped)
+            self.assertEqual(shown["roots"][0]["outcome"], "built")
+            self.assertEqual(shown["roots"][0]["attempt"], 2)
+            results = self.admin("GET", f"/campaigns/{stopped}/results")
+            self.assertEqual([(a["attempt"], a["outcome"], a["note"]) for a in results["attempts"]],
+                             [(1, "cancelled", "service-stopping"), (2, "built", None)])
+            cancel = self.submit([("cancelled", "cancelled", {})], {"root_timeout": 30})
+            deadline = time.monotonic() + 10
+            while not self.admin("GET", "/status")["in_flight"]:
+                self.assertLess(time.monotonic(), deadline)
+                time.sleep(0.05)
+            self.admin("POST", f"/campaigns/{cancel}/cancel", {})
+            deadline = time.monotonic() + 10
+            while (shown := self.settled(cancel))["roots"][0]["state"] != "settled":
+                self.assertLess(time.monotonic(), deadline)
+                time.sleep(0.05)
+            self.assertEqual(shown["campaign"]["state"], "cancelled")
+            self.assertEqual(shown["roots"][0]["outcome"], "cancelled")
+            exported = self.root / "export"
+            self.admin("POST", f"/campaigns/{timed}/export", {"directory": str(exported)})
+            self.assertEqual(len(json.loads((exported / "results.json").read_text())["roots"]), 2)
+            self.assertTrue((exported / "events.parquet").exists())
+        finally:
+            self.stop(proc)
+
+    def test_service_registers_recordings_and_rejects_invalid_manifests(self):
+        self.assertEqual(self.record(self.drv("good")).returncode, 0)
+        self.assertEqual(self.record(self.drv("bad")).returncode, 1)
+        copy = self.root / "copy.duckdb"
+        shutil.copy2(self.db, copy)
+        proc, base = self.service()
+        try:
+            registered = self.admin("POST", "/register", {"path": str(self.db), "id": "old"})
+            self.assertEqual((registered["roots"], registered["attempts"]), (2, 2))
+            duplicate = self.admin("POST", "/register", {"path": str(copy)})
+            self.assertEqual(duplicate["duplicate_of"], "old")
+            self.assertEqual([c["id"] for c in self.admin("GET", "/campaigns")], ["old"])
+            self.assertEqual(len(self.admin("GET", "/campaigns?all=1")), 2)
+            shown = self.admin("GET", "/campaigns/old")
+            self.assertEqual(sorted(r["outcome"] for r in shown["roots"]), ["built", "failed"])
+            self.assertEqual(shown["campaign"]["state"], "historical")
+            state = json.load(urllib.request.urlopen(base + "/c/old/api/state", timeout=10))
             self.assertEqual(len(state["sessions"]), 2)
-            self.assertEqual(json.load(urllib.request.urlopen(base + "/api/outputs"))["paths"], verified)
-            self.assertFalse(state["live"])
-        finally:
-            self.stop(restarted)
-
-    def test_cohort_root_timeout_continues_but_total_budget_stops_admission(self):
-        _, (proc, base) = self.cohort(["slow", "good"], root_timeout=1)
-        try:
-            state = self.settled_cohort(base)
-            self.assertEqual(state["cohort"]["timed_out"], 1)
-            self.assertEqual(state["cohort"]["succeeded"], 1)
-            self.assertEqual(state["cohort"]["completed"], 2)
-            self.assertEqual(state["cohort"]["stop_reason"], "all-roots-attempted")
-        finally:
-            self.stop(proc)
-        self.db = self.root / "budget.duckdb"
-        _, (proc, base) = self.cohort(["slow", "shared"], budget=1)
-        try:
-            state = self.settled_cohort(base)
-            self.assertEqual(state["cohort"]["completed"], 1)
-            self.assertEqual(state["cohort"]["timed_out"], 1)
-            self.assertEqual(state["cohort"]["unattempted"], 1)
-            self.assertEqual(state["cohort"]["stop_reason"], "budget-exhausted")
-            self.assertFalse(state["live"])
-            self.assertEqual(len(state["sessions"]), 1)
+            self.admin("POST", "/campaigns/old/retry", {}, status=400)
+            manifest = self.root / "invalid.json"
+            root = {"name": "test", "drv": "/store/test.drv"}
+            for roots, message in (([dict(root, name="")], "invalid root"),
+                                   ([dict(root, drv="relative.drv")], "invalid root"),
+                                   ([root, root], "invalid root"),
+                                   ([dict(root, requires=["later"]), dict(root, name="later")],
+                                    "requires an earlier root")):
+                manifest.write_text(json.dumps({"id": "invalid", "name": "invalid",
+                                                "roots": roots}))
+                error = self.admin("POST", "/campaigns", {"manifest": str(manifest)}, status=400)
+                self.assertIn(message, error["error"])
+            manifest.write_text(json.dumps({"id": "valid", "name": "valid", "roots": [root]}))
+            error = self.admin("POST", "/campaigns", {"manifest": str(manifest),
+                                                      "policy": {"parallel_roots": 99}},
+                               status=400)
+            self.assertIn("parallel_roots", error["error"])
         finally:
             self.stop(proc)
-        with duckdb.connect(str(self.db), read_only=True) as db:
-            events = db.execute("select seq,kind from events order by seq").fetchall()
-        self.assertEqual([e[0] for e in events], list(range(1, len(events) + 1)))
-        self.assertEqual(events[-2][1], "run.finished")
-        self.assertEqual(events[-1][1], "cohort.finished")
 
     def test_build_replay_cached_run_http_and_parquet_roundtrip(self):
         drv = self.drv("good")
@@ -525,9 +644,9 @@ class CampaignTests(unittest.TestCase):
             if proc.poll() is None:
                 self.stop(proc, signal.SIGKILL)
 
-    def test_recorder_error_stops_cohort_and_survives_restart(self):
+    def test_recorder_error_pauses_the_campaign(self):
         # A broken worker protocol is an observer failure, not a build failure
-        # eligible for continuation. Keep its committed error visible on reopen.
+        # eligible for continuation. The campaign stops admitting.
         bindir = self.root / "broken-worker"
         bindir.mkdir()
         binary = bindir / BINARY.name
@@ -535,38 +654,16 @@ class CampaignTests(unittest.TestCase):
         worker = bindir / "filnix-nix-worker"
         worker.write_text("#!" + shutil.which("bash") + "\nprintf 'broken protocol\\n' >&3\n")
         worker.chmod(0o755)
-        manifest = self.root / "broken.json"
-        manifest.write_text(json.dumps({"id":"broken", "name":"Broken recorder", "roots":[
-            {"name":"first", "drv":"/store/first.drv"},
-            {"name":"later", "drv":"/store/later.drv"}]}))
-        proc, base = self.serve(mode="cohort", drv=manifest, binary=binary)
+        proc, base = self.service(binary=binary)
         try:
-            state = self.settled_cohort(base)
-            self.assertEqual(state["session"]["outcome"], "recorder-error")
-            self.assertEqual(state["cohort"]["stop_reason"], "recorder-error")
-            self.assertEqual(state["cohort"]["attempted"], 1)
-            self.assertEqual(state["cohort"]["unattempted"], 1)
+            id = self.submit([("first", "good", {}), ("later", "shared", {})])
+            shown = self.settled(id)
+            self.assertEqual(shown["campaign"]["state"], "paused")
+            self.assertEqual(shown["campaign"]["stop_reason"], "recorder-error")
+            self.assertEqual([(r["state"], r["outcome"]) for r in shown["roots"]],
+                             [("settled", "recorder-error"), ("pending", None)])
         finally:
             self.stop(proc)
-        proc, base = self.serve(mode="cohort", drv=manifest, binary=binary)
-        try:
-            state = self.state(base=base)
-            self.assertEqual(state["cohort"]["stop_reason"], "recorder-error")
-            self.assertEqual(state["cohort"]["attempted"], 1)
-            self.assertFalse(state["watch"])
-        finally:
-            self.stop(proc)
-
-    def test_cohort_rejects_invalid_root_identity(self):
-        manifest = self.root / "invalid.json"
-        root = {"name": "test", "drv": "/store/test.drv"}
-        for roots in ([dict(root, name="")], [dict(root, drv="relative.drv")], [root, root]):
-            manifest.write_text(json.dumps({"id":"invalid", "name":"invalid", "roots":roots}))
-            result = invoke("cohort", manifest, self.db, "--port", "0", check=False, env=self.env)
-            self.assertEqual(result.returncode, 2)
-            self.assertIn(b"invalid cohort root", result.stderr)
-            with duckdb.connect(str(self.db), read_only=True) as db:
-                self.assertEqual(db.execute("SELECT count(*) FROM runs").fetchone()[0], 0)
 
     def test_large_journal_budget_and_v1_compatibility(self):
         # Generate a large closed recording quickly, then exercise the real
