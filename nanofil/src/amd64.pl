@@ -366,6 +366,13 @@ store_insn(W, R, ins(mov, S, [reg(RN), mem(0, rax)])) :-
     att_suffix(W, S),
     reg_name(R, W, RN).
 
+%! compute_op(+Selection, +Op, +Class, +Args, +Ctx)// is semidet.
+%
+%  As compute_op//4, but under Selection local (filc_amd64.pl's
+%  immediate selection outside setjmp functions) an integer constant
+%  right operand of add, sub, mul, and, or, xor or a shift is encoded
+%  as an immediate. Selection stack is exactly compute_op//4.
+%
 % Local Fil-C selection can encode an integer RHS directly. The reference
 % selector below stays unchanged. Only RCX's dead scratch result differs;
 % RAX and the operation's defined flags agree, even for a zero shift.
@@ -383,6 +390,12 @@ immediate_instruction(Op,K,N,ins(Op,S,[imm(V),reg(A)])) :-
     ( K == w -> Mask = 31 ; K == l, Mask = 63 ),
     V is N /\ Mask, att_suffix(K,S), reg_name(a,K,A).
 
+%! integer_immediate(+Class, +N, -V) is semidet.
+%
+%  V is the signed imm32 spelling of the Class-wide value N. Always
+%  succeeds for w; for l fails unless N, read as 64 bits, is a
+%  sign-extended imm32.
+%
 % GNU as accepts the signed spelling of every imm32 bit pattern. Qword
 % operations sign-extend that encoding: e.g. +0xffffffff is NOT -1.
 integer_immediate(w,N,V) :- V is (N + 2147483648) mod 4294967296 - 2147483648.
@@ -501,16 +514,20 @@ division_result(rem, K, S) -->
       reg_name(a, K, A) },
     [ins(mov, S, [reg(D), reg(A)])].
 
-% cond_code(?Cond, ?CC): CC is the x86 condition code suffix for the
-% comparison Cond.
+%! cond_code(?Cond, ?CC) is nondet.
+%
+%  CC is the x86 condition code suffix for the integer comparison Cond
+%  (eq, ne, slt, ..., uge).
 cond_code(eq, e).  cond_code(ne, ne).
 cond_code(slt, l). cond_code(sle, le).
 cond_code(sgt, g). cond_code(sge, ge).
 cond_code(ult, b). cond_code(ule, be).
 cond_code(ugt, a). cond_code(uge, ae).
 
-% ext_insn(+Type, +Class, -Ins): Ins extends the low part of %rax that
-% Type names into %rax at Class.
+%! ext_insn(+Type, +Class, -Ins) is semidet.
+%
+%  Ins extends the low part of %rax that Type (sb, ub, sh, uh, sw, uw)
+%  names into %rax at Class.
 ext_insn(Type, K, ins(Op, S, [reg(From), reg(To)])) :-
     ext_op(Type, K, Op, S, To),
     ext_from(Type, From).
@@ -556,8 +573,10 @@ sw_load_op(l, Op, S, To) :- ext_op(sw, l, Op, S, To).
 asm_fixed_inputs([], _) --> [].
 asm_fixed_inputs([R-V|Ins], F) --> load(V, w, R, F), asm_fixed_inputs(Ins, F).
 
-% asm_fixed_out_reg(?R, ?Reg): the register holding result R after the
-% asm line; cpuid's b comes out in rdi (asm.pl), its upper half zeroed.
+%! asm_fixed_out_reg(?R, ?Reg) is nondet.
+%
+%  Reg holds the asm_fixed result R after the asm line; cpuid's b comes
+%  out in rdi (asm.pl), its upper half zeroed.
 asm_fixed_out_reg(a, rax). asm_fixed_out_reg(b, rdi).
 asm_fixed_out_reg(c, rcx). asm_fixed_out_reg(d, rdx).
 
@@ -644,11 +663,21 @@ data_directive(d, U, quad(U), 64).
 
 %% SSE2. Private slots and compute_op's result hold bits, not host floats.
 %% Only ABI boundaries use XMM registers as the persistent value carrier.
+%! float_class(?Class) is nondet.
+%
+%  Class is a float class, s or d.
 float_class(s). float_class(d).
 float_bits(s, w). float_bits(d, l).
 float_suffix(s, ss). float_suffix(d, sd).
 xmm_reg(I, R) :- format(atom(R), 'xmm~d', [I]).
 
+%! bank_locations(+Classes, +Regs, -Locs, -NStack, -NXmm) is det.
+%
+%  Locs places each word of class Classes the SysV way: s and d in
+%  xreg(xmm0..7), the others in reg(R) from Regs, and the rest in
+%  stack(I), counted in order over both banks. NStack and NXmm are the
+%  stack words and XMM registers used.
+%
 % Shared SysV bank allocation for a flattened scalar/flight-word list.
 % Each exhausted bank spills independently; stack positions retain order.
 bank_locations(Ks, Regs, Ls, NS, NX) :-
@@ -676,9 +705,16 @@ plain_register_arg(stack(_),_,_,_) --> [].
 plain_register_arg(reg(R),K,V,Ctx) --> load(V,K,R,Ctx).
 plain_register_arg(xreg(X),K,V,Ctx) --> float_load(V,K,X,Ctx).
 
+%! to_xmm(+Class, +R, +Xmm)// is det.
+%
+%  Moves the float bits of Class s or d from scratch register R (a, c,
+%  ...) to Xmm.
 to_xmm(K, R, X) -->
     { float_bits(K, B), reg_name(R, B, RN), xmm_move(K, Op) },
     [ins(Op, none, [reg(RN), reg(X)])].
+%! from_xmm(+Class, +Xmm, +R)// is det.
+%
+%  Moves the float bits of Class s or d from Xmm to scratch register R.
 from_xmm(K, X, R) -->
     { float_bits(K, B), reg_name(R, B, RN), xmm_move(K, Op) },
     [ins(Op, none, [reg(X), reg(RN)])].
@@ -725,6 +761,12 @@ float_op(Op, F, [X], Ctx) -->
     load(X, K, a, Ctx), integer_float(Sign, K, F), from_xmm(F, xmm0, a).
 
 float_compare(s, ucomiss). float_compare(d, ucomisd).
+%! float_condition(+Cond)// is semidet.
+%
+%  Sets %al to the float comparison Cond (eq, ne, lt, le, gt, ge, o,
+%  uo) after ucomiss or ucomisd compared the operands; eq, ne, lt and le
+%  also consult the parity flag, so an unordered (NaN) compare gives
+%  false, or true for ne. Clobbers %cl.
 float_condition(eq) --> [ins(sete, none, [reg(al)]),ins(setnp, none, [reg(cl)]),ins(and,b,[reg(cl),reg(al)])].
 float_condition(ne) --> [ins(setne, none, [reg(al)]),ins(setp, none, [reg(cl)]),ins(or,b,[reg(cl),reg(al)])].
 float_condition(lt) --> [ins(setb, none, [reg(al)]),ins(setnp, none, [reg(cl)]),ins(and,b,[reg(cl),reg(al)])].
