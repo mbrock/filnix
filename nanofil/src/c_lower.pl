@@ -82,7 +82,7 @@
 :- use_module(library(pairs)).
 :- use_module(library(dcgs)).
 :- use_module(c_types).
-:- use_module(ir, [op_kind/2, narrow_type/3, width_bytes/2, variadic_func/1]).
+:- use_module(ir, [op_kind/2, narrow_type/3, width_bytes/2, variadic_func/1, asm_fixed_regs/3]).
 :- use_module(c_parse, [compound_assignment/2]).
 :- use_module(c_lex, [ident_start/1, ident_char/1, decimal/1]).
 :- use_module(cfg, [inst_def/2]).
@@ -1688,17 +1688,20 @@ stmt_(asm(Template, Outs, Ins, Clobbers, Goto), Ctx) --> !,
     { ctx_loc(Ctx, Loc),
       maplist(asm_operand(out, Env0, Loc), Outs, OutKs),
       maplist(asm_operand(in, Env0, Loc), Ins, InKs),
-      atom_codes(T, Template),
-      (   asm_runtime_reason(Goto, OutKs, InKs, Clobbers, Template, Reason) -> true
-      ;   sema_error(Loc, 'inline asm "~w" is not supported: nanofil cannot check its instructions', [T])
-      ),
-      format(codes(Msg), 'cannot handle inline asm (~w): ~w', [Reason, T]),
-      new_literal(Msg, Sym, Env0, Env) },
-    set_env(Env),
-    foldl(asm_operand_effects(Ctx), Outs, OutKs),
-    foldl(asm_operand_effects(Ctx), Ins, InKs),
-    let(p, copy, [global(Sym)], Addr),
-    emit(call(void, global(zsafety_error), [arg(p, Addr)])).
+      atom_codes(T, Template) },
+    (   { asm_runtime_reason(Goto, OutKs, InKs, Clobbers, Template, Reason) }
+    ->  { format(codes(Msg), 'cannot handle inline asm (~w): ~w', [Reason, T]),
+          new_literal(Msg, Sym, Env0, Env) },
+        set_env(Env),
+        foldl(asm_operand_effects(Ctx), Outs, OutKs),
+        foldl(asm_operand_effects(Ctx), Ins, InKs),
+        let(p, copy, [global(Sym)], Addr),
+        emit(call(void, global(zsafety_error), [arg(p, Addr)]))
+    ;   { Goto \== goto,
+          asm_fixed_form(Template, Outs, Ins, OutKs, InKs, Clobbers, Env0, M, OutRegs, InRegs) }
+    ->  asm_fixed_lowered(M, Outs, OutRegs, Ins, InRegs, Ctx)
+    ;   { sema_error(Loc, 'inline asm "~w" is not supported: nanofil cannot check its instructions', [T]) }
+    ).
 
 % An asm with a memory operand passes a pointer to code that nothing
 % checks. clang's Fil-C compiles it to a run-time error, which a program
@@ -1991,6 +1994,153 @@ asm_operand(Dir, Env, Loc, op(C, E), K-C) :-
     ;   asm_value_type(T) -> K = value
     ;   K = other
     ).
+
+/* asm_fixed_form(+Template, +Outs, +Ins, +OutKs, +InKs, +Clobbers, +Env,
+   -M, -OutRegs, -InRegs): filcc passes the asm through and nanofil
+   runs it as asm_fixed(M, ...) (docs/asm-fixed.md), or as fence for
+   mfence. The template is one nonblank line, split at newlines and
+   semicolons, whose lowercased mnemonic is in ir:asm_fixed_regs/3 or is
+   mfence, with no operands. Every operand is an integer (a pointer
+   operand traps first, asm_runtime_reason/6) in one register: an output
+   "=R" or "+R" ("&" allowed), an input "R" or a digit tied to an "="
+   output, R one of a, b, c, d, S and D, each register named once on
+   each side. Clobbers are memory, cc or general registers other than
+   sp and bp. filcc's coverage rules hold: each register cpuid, rdtsc
+   or rdtscp writes is an output or a clobber, and xgetbv has its c
+   input and its a and d outputs. An output in a register M does not
+   write must be tied to an input, whose value it gets. OutRegs and
+   InRegs are the outputs' and inputs' registers, in order. */
+asm_fixed_form(Template, Outs, Ins, OutKs, InKs, Clobbers, Env, M, OutRegs, InRegs) :-
+    split_asm_lines(Template, Lines0),
+    findall(A, ( member(L0, Lines0), atom_codes(L1, L0), normalize_space(atom(A0), L1),
+                 A0 \== '', downcase_atom(A0, A) ), [M]),
+    ( asm_fixed_regs(M, _, Writes) -> true ; M == mfence, Writes = [] ),
+    forall(member(K-_, OutKs), K == value),
+    forall(member(K-_, InKs), K == value),
+    forall(( member(op(_, E), Outs) ; member(op(_, E), Ins) ),
+           ( catch(expression_type(E, Env, T0), _, fail), value_type(T0, T1),
+             unqualified(T1, T), int_type(T) )),
+    maplist(asm_fixed_output, Outs, OutRegs),
+    length(Outs, NOut),
+    maplist(asm_fixed_input(Outs, OutRegs, NOut), Ins, InRegs),
+    findall(R, ( nth0(I, Outs, op(C, _)), sub_atom(C, 0, 1, _, '+'), nth0(I, OutRegs, R) ), PlusRegs),
+    findall(R, ( nth0(J, InRegs, R0), nth0(J, Ins, op(D, _)),
+                 ( R0 == tied -> atom_number(D, N), nth0(N, OutRegs, R) ; R = R0 ) ),
+            TiedRegs),
+    append(PlusRegs, TiedRegs, AllIns),
+    is_set(OutRegs), is_set(AllIns),
+    forall(member(C, Clobbers), ( asm_clobber_family(C, F), F \== sp, F \== bp )),
+    maplist(asm_clobber_family, Clobbers, ClobFs),
+    findall(F, ( member(R, OutRegs), asm_letter_family(R, F) ), OutFs),
+    append(OutFs, ClobFs, Covered),
+    (   M == xgetbv
+    ->  memberchk(c, AllIns), memberchk(a, OutRegs), memberchk(d, OutRegs)
+    ;   forall(( member(R, Writes), asm_letter_family(R, F) ), memberchk(F, Covered))
+    ),
+    % an output M does not write must receive a tied input's value
+    forall(( nth0(I, Outs, op(C, _)), nth0(I, OutRegs, R), \+ memberchk(R, Writes) ),
+           (   sub_atom(C, 0, 1, _, '+')
+           ;   nth0(J, InRegs, tied), nth0(J, Ins, op(D, _)), atom_number(D, I)
+           )).
+
+asm_fixed_output(op(C, _), R) :-
+    atom_chars(C, [P|Cs]), memberchk(P, ['=', '+']),
+    exclude(==('&'), Cs, [R]), asm_letter_family(R, _).
+
+asm_fixed_input(Outs, _, NOut, op(C, _), R) :-
+    (   atom_number(C, N), integer(N), N >= 0, N < NOut
+    ->  nth0(N, Outs, op(OC, _)), sub_atom(OC, 0, 1, _, '='), R = tied
+    ;   atom_chars(C, [R]), asm_letter_family(R, _)
+    ).
+
+% asm_fixed_lowered(+M, +Outs, +OutRegs, +Ins, +InRegs, +Ctx)//: as clang
+% evaluates an asm: the outputs' lvalues and "+" outputs' values, then
+% the inputs, one tied to a wider output zero-extended to its width; then
+% M on the registers it reads, each the low 32 bits of its input, 0 for one no input names (filcc's is unspecified), an input
+% in a register M does not read being dropped; then each output stored:
+% the 32-bit register M wrote, zero-extended, truncated, or bit 0 for a
+% _Bool (clang's i1 truncation), or, in a register M does not write, its
+% tied input's whole value, converted likewise. An output's type is its
+% place's, a bit-field's included.
+asm_fixed_lowered(M, Outs, OutRegs, Ins, InRegs, Ctx) -->
+    asm_fixed_places(Outs, OutRegs, Ctx, Places, PlusVals),
+    asm_fixed_inputs(Ins, InRegs, OutRegs, Places, Ctx, InVals),
+    { append(PlusVals, InVals, Vals0),
+      tied_values(Ins, InRegs, InVals, Ties),
+      ( M == mfence -> Reads = [], Writes = [] ; asm_fixed_regs(M, Reads, Writes) ) },
+    asm_fixed_reads(Reads, Vals0, IRIns),
+    { findall(R, ( member(R, Writes), memberchk(R, OutRegs) ), Written) },
+    asm_fixed_temps(Written, IROuts),
+    (   { M == mfence } -> emit(fence) ; emit(asm_fixed(M, IRIns, IROuts)) ),
+    asm_fixed_stores(Outs, 0, OutRegs, Places, PlusVals, Ties, IROuts, Ctx).
+
+asm_fixed_places([], [], _, [], []) --> [].
+asm_fixed_places([op(C, E)|Os], [R|Rs], Ctx, [P|Ps], Vals) -->
+    env(Env), { ctx_loc(Ctx, Loc), elaborate(E, Env, Loc, X) },
+    place(X, Ctx, P),
+    (   { sub_atom(C, 0, 1, _, '+') }
+    ->  place_read(P, Ctx, V), { Vals = [R-V|Vals1] }
+    ;   { Vals = Vals1 }
+    ),
+    asm_fixed_places(Os, Rs, Ctx, Ps, Vals1).
+
+asm_fixed_inputs([], [], _, _, _, []) --> [].
+asm_fixed_inputs([op(C, E)|Os], [R0|Rs], OutRegs, Places, Ctx, [R-V|Vs]) -->
+    judged_rval(E, Ctx, V0),
+    (   { R0 == tied }
+    ->  { atom_number(C, N), nth0(N, OutRegs, R), nth0(N, Places, P),
+          place_type(P, TO), V0 = v(_, TI) },
+        env(Env),
+        (   { type_size_align(TI, Env, SI, _), type_size_align(TO, Env, SO, _), SI < SO,
+              unsigned_type(TI, UI) }
+        ->  convert(V0, UI, V)
+        ;   { V = V0 }
+        )
+    ;   { R = R0, V = V0 }
+    ),
+    asm_fixed_inputs(Os, Rs, OutRegs, Places, Ctx, Vs).
+
+place_type(lv(_, T0), T) :- unqualified(T0, T).
+place_type(bits(_, T0, _, _), T) :- unqualified(T0, T).
+
+% tied_values(+Ins, +InRegs, +InVals, -Ties): Ties are N-V, input value
+% V tied to output N.
+tied_values([], [], [], []).
+tied_values([op(C, _)|Os], [R|Rs], [_-V|Vs], Ties) :-
+    (   R == tied -> atom_number(C, N), Ties = [N-V|Ties1] ; Ties = Ties1 ),
+    tied_values(Os, Rs, Vs, Ties1).
+
+asm_fixed_reads([], _, []) --> [].
+asm_fixed_reads([R|Rs], Vals, [R-W|Ins]) -->
+    (   { memberchk(R-V, Vals) }
+    ->  convert(V, uint, v(W0, _)), w_operand(V, W0, W)
+    ;   { W = const(0) }
+    ),
+    asm_fixed_reads(Rs, Vals, Ins).
+
+% w_operand(+V, +W0, -W)//: W is W0 as a w operand: an 8-byte value's
+% low 32 bits.
+w_operand(_, const(N), const(N)) --> !.
+w_operand(v(_, T), W0, W) -->
+    (   { type_class(T, l) } -> let(w, copy, [W0], W) ; { W = W0 } ).
+
+asm_fixed_temps([], []) --> [].
+asm_fixed_temps([R|Rs], [R-T|Ts]) --> fresh(T), asm_fixed_temps(Rs, Ts).
+
+asm_fixed_stores([], _, [], [], _, _, _, _) --> [].
+asm_fixed_stores([_|Os], I, [R|Rs], [P|Ps], PlusVals, Ties, IROuts, Ctx) -->
+    { place_type(P, T) },
+    (   { memberchk(R-Tmp, IROuts) }
+    ->  { V0 = v(Tmp, uint) }
+    ;   { memberchk(R-V0, PlusVals) -> true ; memberchk(I-V0, Ties) }
+    ),
+    (   { T == bool }
+    ->  binary(and, V0, v(const(1), int), Ctx, V1), convert(V1, bool, V)
+    ;   convert(V0, T, V)
+    ),
+    place_write(P, V, Ctx, _),
+    { I1 is I + 1 },
+    asm_fixed_stores(Os, I1, Rs, Ps, PlusVals, Ties, IROuts, Ctx).
 
 % asm_runtime_reason(+Goto, +OutKs, +InKs, +Clobbers, +Template, -Reason):
 % filcc certainly compiles the asm to the run-time error "cannot handle
@@ -3055,6 +3205,29 @@ lower_node(val(_, incdec(Op, X)), Ctx, R) --> !,           % 6.5.2.4, 6.5.3.1
     binary(BinOp, Cur, v(const(1), int), Ctx, Value0),
     place_write(P, Value0, Ctx, New),
     { memberchk(Op, [preinc, predec]) -> R = New ; R = Cur }.
+/* immintrin.h declares a few intrinsics without a body, which clang
+   compiles as builtins (sse2_lfence and the like), not calls. filcc runs
+   _mm_pause and _mm_sfence, and compiles _mm_lfence and _mm_mfence to
+   its run-time "Unhandled intrinsic" error, which nanofil calls
+   zsafety_error with; _mm_clflush, whose error text depends on clang's
+   optimization, and _mm_getcsr and _mm_setcsr, which nanofil cannot
+   express, are refused. */
+lower_node(val(_, call(val(_, decay(fun(_, id(Name)))), XArgs)), Ctx, v(const(0), void)) -->
+    { memberchk(Name, ['_mm_pause', '_mm_sfence', '_mm_lfence', '_mm_mfence',
+                       '_mm_clflush', '_mm_getcsr', '_mm_setcsr']) },
+    env(Env0),
+    { lookup_ordinary(Env0, Name, fn(_, _, export)) }, !,
+    { ctx_loc(Ctx, Loc) },
+    (   { memberchk(Name-M, ['_mm_pause'-pause, '_mm_sfence'-sfence]), XArgs == [] }
+    ->  emit(asm_fixed(M, [], []))
+    ;   { memberchk(Name-M, ['_mm_lfence'-lfence, '_mm_mfence'-mfence]), XArgs == [] }
+    ->  { format(codes(Msg), 'Unhandled intrinsic:   call void @llvm.x86.sse2.~w()', [M]),
+          new_literal(Msg, Sym, Env0, Env) },
+        set_env(Env),
+        let(p, copy, [global(Sym)], Addr),
+        emit(call(void, global(zsafety_error), [arg(p, Addr)]))
+    ;   { sema_error(Loc, '~w is not supported', [Name]) }
+    ).
 lower_node(val(_, call(XF, XArgs)), Ctx, R) --> !,         % 6.5.2.2
     callee(XF, Ctx, Callee0, func(RetType, Ps, _)),
     {   Ps == unspecified
