@@ -6,8 +6,8 @@
   status | list [--all] | show ID | results ID
   submit KIND [--rev REV] [--priority N] [--id ID] [--set KEY=VALUE ...]
       world --scope expected|world|ports
-      nanofil-survey [--opt plain|-O|--vectors] [--select default|slow|all]
-      bench [--opt ...]                 the slow survey packages, timed
+      nanofil-survey [--opt=plain|-O|"-O --no-vectors"] [--select default|slow|all]
+      bench [--opt=...]                 the slow survey packages, timed
       attrs --file FILE | --attr ATTR   flake attribute paths
       checks --prefix PREFIX            checks.x86_64-linux.PREFIX*
       manifest PATH                     an already frozen manifest
@@ -134,7 +134,8 @@ def produce(args):
         if not os.path.exists(script) or "def manifest" not in open(script).read():
             sys.exit(f"campaignctl: {rev[:12]} has no survey manifest producer")
         select = "slow" if args.kind == "bench" else args.select
-        out = run([sys.executable, "-I", script, "manifest", "--opt", args.opt,
+        # --opt=VALUE: as two arguments, argparse takes "-O" for an option.
+        out = run([sys.executable, "-I", script, "manifest", f"--opt={args.opt}",
                    "--select", select, "--source", ref, "--revision", rev])
         return freeze(json.loads(out))
     if args.kind in ("attrs", "checks"):

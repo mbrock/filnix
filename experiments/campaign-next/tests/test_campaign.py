@@ -1,6 +1,8 @@
 """End-to-end tests for the DuckDB-backed campaign prototype."""
 
+import argparse
 import http.client
+import importlib.machinery
 import json
 import os
 from pathlib import Path
@@ -12,7 +14,9 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 import unittest
+import unittest.mock
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -785,6 +789,51 @@ class CampaignTests(unittest.TestCase):
             self.assertNotIn(b"Live ", fragment)
         finally:
             self.stop(viewer)
+
+
+class SurveySubmitTests(unittest.TestCase):
+    """campaignctl freezes a survey through the revision's run.py; nix is
+    faked to record what run.py asks it for."""
+
+    def test_nanofil_options_reach_the_survey(self):
+        repo = Path(__file__).resolve().parents[3]
+        if not (repo / "nanofil/survey/run.py").exists():
+            self.skipTest("needs the filnix checkout (not in the package's sandbox)")
+        loader = importlib.machinery.SourceFileLoader(
+            "campaignctl", str(Path(__file__).parents[1] / "campaignctl"))
+        ctl = types.ModuleType(loader.name)
+        loader.exec_module(ctl)
+        ctl.freeze = lambda manifest: manifest
+        with tempfile.TemporaryDirectory() as temp:
+            calls = Path(temp) / "calls"
+            nix = Path(temp) / "nix"
+            nix.write_text(f"""#!{sys.executable}
+import json, sys
+a = sys.argv[1:]
+if a[:2] == ["flake", "prefetch"]:
+    print(json.dumps({{"storePath": {str(repo)!r}}}))
+else:
+    open({str(calls)!r}, "a").write(json.dumps(a) + "\\n")
+    print("{{}}" if a[-1] == "slow" else "[]")
+""")
+            nix.chmod(0o755)
+            env = {"PATH": f"{temp}:{os.environ['PATH']}", "SURVEY_WORK": temp}
+            for opt in ("-O", "-O --no-vectors", "plain"):
+                calls.unlink(missing_ok=True)
+                args = argparse.Namespace(kind="nanofil-survey", rev="0" * 40,
+                                          opt=opt, select="default")
+                with unittest.mock.patch.dict(os.environ, env):
+                    manifest = ctl.produce(args)
+                self.assertEqual(manifest["options"]["opt"], opt)
+                self.assertEqual(manifest["id"], f"nanofil-survey-{opt}-{'0' * 40}")
+                evals = [json.loads(l) for l in calls.read_text().splitlines()]
+                self.assertTrue(evals)
+                for a in evals:
+                    if opt == "plain":
+                        self.assertNotIn("--argstr", a)
+                    else:
+                        i = a.index("--argstr")
+                        self.assertEqual(a[i + 1:i + 3], ["opt", opt])
 
 
 if __name__ == "__main__":

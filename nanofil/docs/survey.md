@@ -32,7 +32,7 @@ which is only tried where filcc's build succeeds. `run.py report` writes
 campaign's results. From swa:
 
 ```sh
-campaignctl submit nanofil-survey --opt plain     # at origin/main; or --rev REV, --opt -O, --opt --vectors
+campaignctl submit nanofil-survey --opt plain     # at origin/main; or --rev REV, --opt=-O, --opt="-O --no-vectors"
 campaignctl list                                  # or https://nix.swa.sh/
 python3 nanofil/survey/run.py report CAMPAIGN-ID  # survey.tsv, survey-OPT.tsv and the tables below
 nix build -f nanofil/survey nf.zlib               # one, by hand
