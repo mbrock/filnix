@@ -97,6 +97,9 @@ finite_ratio(finite(N, E), A, B) :- scale(N, 1, E, A, B).
 signed_ratio(S, T, N, D) :-
     finite_ratio(T, A, D), N is (1 - 2 * S) * A.
 
+%! ieee_from_int(+K, +N, -B) is det.
+%
+%  B is the format-K bit pattern nearest the integer N, ties to even.
 ieee_from_int(K, N, B) :-
     must_be(integer, N), ( N < 0 -> S = 1 ; S = 0 ),
     magnitude_integer(N, A), round_ratio(K, S, A, 1, B).
@@ -105,13 +108,24 @@ ieee_from_int(K, N, B) :-
 % binary subtraction promotes it to a bignum on both hosts.
 magnitude_integer(N, A) :- ( N < 0 -> A is 0 - N ; A = N ).
 
+%! ieee_to_int(+K, +B, -N) is semidet.
+%
+%  N is the finite float B truncated toward zero. Fails for an infinity
+%  or NaN; the caller checks that N fits the destination integer.
 ieee_to_int(K, B, N) :-
     decode(K, B, S, T), T = finite(_, _),
     finite_ratio(T, A, D), N is (1 - 2 * S) * (A // D).
 
+%! ieee_neg(+K, +A, -B) is det.
+%
+%  B is A with its sign bit flipped, NaNs included.
 ieee_neg(K, A, B) :-
     must_be(integer, A), sign_bits(K, 1, S), B is xor(A, S).
 
+%! ieee_binary(+K, +Op, +A, +B, -R) is det.
+%
+%  R is A Op B in format K, Op add, sub, mul or div, rounded to nearest,
+%  ties to even, with SSE's NaN rules (x87's for K = x, header).
 ieee_binary(K, Op, A, B, R) :-
     decode(K, A, SA, TA), decode(K, B, SB, TB),
     ( TA == nan, TB == nan, K == x -> x87_nan(A, B, R)
@@ -155,6 +169,11 @@ binary(div, K, SA, TA, SB, TB, R) :-
     ; finite_ratio(TA, A, C), finite_ratio(TB, B, D),
       N is A * D, Den is C * B, round_ratio(K, S, N, Den, R) ).
 
+%! ieee_convert(+From, +To, +A, -B) is det.
+%
+%  B is the format-From float A converted to format To, rounded to
+%  nearest; a NaN keeps as much of its payload as fits, aligned at the
+%  top, and is quieted.
 ieee_convert(From, To, A, B) :-
     decode(From, A, S, T),
     ( T == inf -> infinity(To, S, B)
@@ -165,6 +184,11 @@ ieee_convert(From, To, A, B) :-
       infinity(To, S, I), U is I \/ P, quiet(To, U, B)
     ; finite_ratio(T, N, D), round_ratio(To, S, N, D, B) ).
 
+%! ieee_compare(+K, +Cond, +A, +B, -R) is det.
+%
+%  R is 1 when A Cond B holds for format-K floats, else 0. When either
+%  operand is a NaN only ne and uo hold, as C's != and SSE's unordered
+%  compare give.
 ieee_compare(K, Cond, A, B, R) :-
     decode(K, A, SA, TA), decode(K, B, SB, TB),
     ( (TA == nan ; TB == nan) -> Order = unordered
@@ -183,8 +207,11 @@ condition(ge, O) :- memberchk(O, [>, =]).
 condition(o, O) :- O \== unordered.
 condition(uo, unordered).
 
-% Decimal and C hex literals are parsed into a rational before rounding:
-% no double rounding through binary64 for a binary32 literal.
+%! ieee_parse(+K, +Cs, -B) is semidet.
+%
+%  B is the format-K float nearest the decimal or C hexadecimal literal
+%  Cs, without a type suffix. Literals are parsed into a rational before
+%  rounding: no double rounding through binary64 for a binary32 literal.
 ieee_parse(K, Cs, B) :-
     phrase(literal(S, N, Radix, E), Cs),
     ( E >= 0 -> A is N * Radix ^ E, D = 1
@@ -224,8 +251,12 @@ digits_number([], _, N, N).
 digits_number([D|Ds], Base, A, N) :-
     A1 is A * Base + D, digits_number(Ds, Base, A1, N).
 
-% Every finite binary float has a terminating decimal expansion. Writing
-% N*5^k e-k avoids padding and is exactly representable by strtof/strtod.
+%! ieee_decimal(+K, +B, -Cs) is semidet.
+%
+%  Cs is an exact decimal for the finite float B, not necessarily the
+%  shortest; fails for an infinity or NaN. Every finite binary float has
+%  a terminating decimal expansion. Writing N*5^k e-k avoids padding and
+%  is exactly representable by strtof/strtod.
 ieee_decimal(K, B, Cs) :-
     decode(K, B, S, finite(N, E)),
     ( E >= 0 -> M is N << E, P = 0
