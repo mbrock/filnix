@@ -3388,6 +3388,26 @@ builtin(Name, Args, _, v(const(V), ulong)) -->
     env(Env), { object_size(Name, Args, Env, V) }, !.
 builtin('__builtin_unreachable', [], _, v(const(0), void)) --> !,
     term(unreachable).
+% filcc's __builtin_frame_address(0) is the frame's address as an
+% integer, without a capability; at a nonzero level it is a run-time
+% error with the reason below, which nanofil calls zsafety_error with.
+% nanofil cannot express the frame's address (no IR term), so level 0
+% is refused.
+builtin('__builtin_frame_address', [A], Ctx, R) --> !,
+    env(Env0),
+    { ctx_loc(Ctx, Loc),
+      (   catch(const_value(A, Env0, Level, _), not_constant, fail) -> true
+      ;   sema_error(Loc, '__builtin_frame_address needs a constant level', [])
+      ),
+      (   Level =:= 0
+      ->  sema_error(Loc, '__builtin_frame_address(0) is not supported: nanofil cannot express the frame address', [])
+      ;   true
+      ),
+      new_literal(`cannot use __builtin_frame_address with nonzero argument.`, Sym, Env0, Env) },
+    set_env(Env),
+    let(p, copy, [global(Sym)], Addr),
+    emit(call(void, global(zsafety_error), [arg(p, Addr)])),
+    convert(v(const(0), int), ptr(void), R).
 builtin('__builtin_alloca', [Size], Ctx, v(Addr, ptr(void))) --> !,
     rval(Size, Ctx, V0),
     { ctx_loc(Ctx, Loc) },

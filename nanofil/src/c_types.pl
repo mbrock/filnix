@@ -3993,6 +3993,7 @@ builtin_type('__builtin_va_copy', void).
 builtin_type('__builtin_va_end', void).
 builtin_type('__builtin_unreachable', void).
 builtin_type('__builtin_alloca', ptr(void)).
+builtin_type('__builtin_frame_address', ptr(void)).
 builtin_type('__builtin_expect', long).
 builtin_type('__builtin_assume_aligned', ptr(void)).
 builtin_type('__builtin_constant_p', int).
