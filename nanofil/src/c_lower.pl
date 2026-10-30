@@ -267,7 +267,10 @@ alias_kind_item(_, Item, Item).
 % weak_symbols(+Items, +Env, -Weak): Weak is the ordset of the symbols
 % of the names Items declare weak, each Sym-Kind, Kind fn or data.
 weak_symbols(Items, Env, Weak) :-
-    findall(Loc-Name, weak_name(Items, Loc, Name), LNs),
+    findall(Loc-Name, weak_name(Items, Loc, Name), LNs0),
+    findall(Loc-Name, ( common_name(Items, Loc, Name),
+                        lookup_ordinary(Env, Name, gvar(_, _, _, _)) ), LNs1),
+    append(LNs0, LNs1, LNs),
     foldl(weak_symbol(Env), LNs, Weak0, []),
     sort(Weak0, Weak).
 weak_name(Items, Loc, Name) :-
@@ -277,6 +280,23 @@ weak_name(Items, Loc, Name) :-
         member(init(dcl(some(Name), _, _), _), Inits)
     ;   Item = fundef(Loc, Specs, dcl(some(Name), _, _), _), weak_attr(Specs)
     ).
+
+% common_name(+Items, -Loc, -Name): Name, declared common at Loc, has a
+% common symbol, which filcc emits as a weak definition: GCC's common
+% attribute reaches a later declaration of Name, and applies when the
+% unit defines Name only tentatively (C11 6.9.2p2), last by a declaration
+% the attribute reaches. Thread-local and static names are never common
+% (as clang); a function's common attribute is ignored.
+common_name(Items, Loc, Name) :-
+    nth1(I, Items, decl(Loc, Specs, Inits)), common_attr(Specs),
+    member(init(dcl(some(Name), _, _), none), Inits),
+    \+ ( member(decl(_, S, Is), Items), member(init(dcl(some(Name), _, _), V), Is),
+          ( V \== none ; member(storage(C), S), memberchk(C, [static, thread_local, typedef]) ) ),
+    once(( nth1(J, Items, decl(_, S, Is)), J >= I, \+ memberchk(storage(extern), S),
+           memberchk(init(dcl(some(Name), _, _), none), Is) )).
+common_attr(Specs) :-
+    member(attr(Tokens), Specs),
+    attr_word(Tokens, W), memberchk(W, [common, '__common__']), !.
 weak_symbol(Env, Loc-Name) -->
     (   { lookup_ordinary(Env, Name, fn(_, Sym, Linkage)) }
     ->  { weak_public(Loc, Name, Linkage) }, [Sym-fn]
@@ -3788,6 +3808,30 @@ builtin('__builtin_assume_aligned', [P|Rest], Ctx, R) --> !,
     rvals_discarded(Rest, Ctx),
     { ctx_loc(Ctx, Loc) },
     assign_convert(P, VP, ptr(void), Loc, R).
+% x86 CPU dispatch, as clang lowers it: __builtin_cpu_init calls the
+% runtime's __cpu_indicator_init, and __builtin_cpu_supports and
+% __builtin_cpu_is read a 32-bit word of __cpu_model or __cpu_features2
+% (c_types cpu_feature/4, cpu_model_value/3). The argument is a string
+% literal; an unknown feature string is 0, an unknown cpu_is name refused.
+builtin('__builtin_cpu_init', [], _, v(const(0), void)) --> !,
+    fresh(T), emit(call(result(T, w), global('__cpu_indicator_init'), [])).
+builtin(Name, Args, Ctx, v(N, int)) -->
+    { memberchk(Name, ['__builtin_cpu_supports', '__builtin_cpu_is']) }, !,
+    { ctx_loc(Ctx, Loc),
+      (   Args = [str(Bytes)] -> atom_codes(F, Bytes)
+      ;   sema_error(Loc, '~w needs a string literal', [Name])
+      ) },
+    (   { Name == '__builtin_cpu_supports' }
+    ->  (   { cpu_feature(F, Sym, Off, Mask) }
+        ->  cpu_word(Sym, Off, Ctx, W), let(w, and, [W, const(Mask)], M),
+            let(w, cmp(eq, w), [M, const(Mask)], N)
+        ;   { N = const(0) }
+        )
+    ;   { cpu_model_value(F, Off, V) -> true
+        ; sema_error(Loc, 'invalid cpu name ~w for __builtin_cpu_is', [F]) },
+        cpu_word('__cpu_model', Off, Ctx, W),
+        let(w, cmp(eq, w), [W, const(V)], N)
+    ).
 builtin('__builtin_expect', [A, B], Ctx, R) --> !,
     rval(A, Ctx, VA),
     rval(B, Ctx, _),
@@ -5209,6 +5253,9 @@ pcmp_or([B|Bs], Ctx, R) --> pcmp_or_(Bs, Ctx, B, R).
 pcmp_or_([], _, R, R) --> [].
 pcmp_or_([B|Bs], Ctx, R0, R) --> bop(or, R0, B, Ctx, R1), pcmp_or_(Bs, Ctx, R1, R).
 
+cpu_word(Sym, Off, Ctx, W) -->
+    let(p, copy, [global(Sym)], G), offset(G, Off, A), load_typed(uint, A, Ctx, W).
+
 % isel(+C, +A, +B, +T, +Ctx, -R)//: R, of integer type T, is A where the
 % int C is 1 and B where it is 0: B ^ ((A ^ B) & -C).
 isel(C, A, B, T, Ctx, R) -->
@@ -5237,6 +5284,11 @@ v2di(vec(llong, 2, 16)).
 
 % vector_op(+Short, +Args, +Vs, +Ret, +Ctx, -R)//: R is the result of
 % __builtin_ia32_Short on argument expressions Args, whose values are Vs.
+% lddqu is an unaligned 16-byte load, checked as _mm_loadu_si128's.
+vector_op(lddqu, _, [v(P, _)], Ret, _, v(Copy, Ret)) --> !,
+    local_slot(Ret, Copy),
+    vector_access(read, vec(char, 16, 1), P),
+    copy_object(Ret, P, Copy).
 vector_op(Name, _, [V], _, Ctx, v(M, int)) -->
     { memberchk(Name-VT-Bit, [pmovmskb128-vec(uchar, 16, 16)-7,
                               movmskps-vec(uint, 4, 16)-31,

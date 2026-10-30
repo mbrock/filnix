@@ -81,7 +81,8 @@
                     integer_type/4, elaborate/3, tree_type/2, value/2,
                     lowered/2, folded/3, member_layout/6, readonly_object_type/1,
                     bitfield_promotion/3, unaligned_type/2, underaligned_member/4, member_alignment/3, atomic_qualified/1,
-                    rmw_builtin/4, known_attribute/3, filcc_refused_mnemonic/1]).
+                    rmw_builtin/4, known_attribute/3, filcc_refused_mnemonic/1,
+                    cpu_feature/4, cpu_model_value/3]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -524,7 +525,7 @@ doc(known_attribute(-Word, -Kind, -Why), nondet, [
     "unsupported uses refused there), never dropped: cleanup and mode were",
     "once ignored and miscompiled. c_parse refuses any other attribute,",
     "\"attribute X is not supported\", where it reads it; ifunc,",
-    "weakref, common, naked, ms_abi, scalar_storage_order and address_space",
+    "weakref, naked, ms_abi, scalar_storage_order and address_space",
     "are among those.",
     cites('GCC manual, Attribute Syntax and Common Function, Variable and Type Attributes'),
     cites('Clang documentation, Attributes in Clang'),
@@ -625,6 +626,7 @@ attribute_entry(patchable_function_entry, hint, 'padding for live patching').
 attribute_entry(noplt, hint, 'call sequence through the GOT').
 attribute_entry(tls_model, hint, 'thread-local access sequence').
 attribute_entry(uninitialized, hint, 'opts out of -ftrivial-auto-var-init').
+attribute_entry(common, honored, 'c_lower weak_name/3: a tentative definition with it is weak, as filcc emits it').
 attribute_entry(nocommon, hint, 'nanofil, as clang, never emits common symbols').
 attribute_entry(sysv_abi, hint, 'the x86-64 calling convention nanofil uses').
 attribute_entry(stdcall, hint, 'an i386 calling convention; clang ignores it on x86-64').
@@ -4107,6 +4109,9 @@ builtin_type('__builtin_frame_address', ptr(void)).
 builtin_type('__builtin_expect', long).
 builtin_type('__builtin_assume_aligned', ptr(void)).
 builtin_type('__builtin_constant_p', int).
+builtin_type('__builtin_cpu_init', void).
+builtin_type('__builtin_cpu_supports', int).
+builtin_type('__builtin_cpu_is', int).
 builtin_type(Name, bool) :- overflow_builtin(Name, _, _).
 builtin_type(Name, int) :- bit_builtin(Name, _, _).
 builtin_type('__builtin_bswap16', ushort).
@@ -4120,6 +4125,201 @@ builtin_type('__builtin_object_size', ulong).
 builtin_type('__builtin_dynamic_object_size', ulong).
 builtin_type(Name, int) :- classify_builtin(Name).
 builtin_type(Name, T) :- vector_builtin(Name, _, T).
+
+doc(cpu_feature(?(Name), ?(Sym), ?(Off), ?(Mask)), nondet, [
+    Name: "a feature __builtin_cpu_supports(Name) tests",
+    Sym: "the runtime's word array, __cpu_model or __cpu_features2",
+    Off: "the byte offset of the 32-bit word in it",
+    Mask: "the feature's bits in that word",
+    "__builtin_cpu_supports(\"name\") is 1 when the word at Off in Sym,",
+    "which __cpu_indicator_init (__builtin_cpu_init) fills from cpuid, has",
+    "all of Mask set, else 0, as clang's x86 lowering reads it; any other",
+    "string is 0 (clang warns: an invalid cpu feature string). The table",
+    "is measured from the pinned filcc's IR for each name it accepts.",
+    cites('GCC manual, x86 Built-in Functions, __builtin_cpu_supports'),
+    cites('compiler-rt lib/builtins/cpu_model/x86.c, struct __processor_model and __cpu_features2'),
+    example(cpu_feature(avx2, '__cpu_model', 12, 0x400)),
+    example(cpu_feature('x86-64-v3', '__cpu_features2', 8, 0x2)),
+    fails(cpu_feature(lm, _, _, _))
+]).
+cpu_feature('cmov', '__cpu_model', 12, 0x1).
+cpu_feature('mmx', '__cpu_model', 12, 0x2).
+cpu_feature('popcnt', '__cpu_model', 12, 0x4).
+cpu_feature('sse', '__cpu_model', 12, 0x8).
+cpu_feature('sse2', '__cpu_model', 12, 0x10).
+cpu_feature('sse3', '__cpu_model', 12, 0x20).
+cpu_feature('ssse3', '__cpu_model', 12, 0x40).
+cpu_feature('sse4.1', '__cpu_model', 12, 0x80).
+cpu_feature('sse4.2', '__cpu_model', 12, 0x100).
+cpu_feature('avx', '__cpu_model', 12, 0x200).
+cpu_feature('avx2', '__cpu_model', 12, 0x400).
+cpu_feature('sse4a', '__cpu_model', 12, 0x800).
+cpu_feature('fma4', '__cpu_model', 12, 0x1000).
+cpu_feature('xop', '__cpu_model', 12, 0x2000).
+cpu_feature('fma', '__cpu_model', 12, 0x4000).
+cpu_feature('avx512f', '__cpu_model', 12, 0x8000).
+cpu_feature('bmi', '__cpu_model', 12, 0x10000).
+cpu_feature('bmi2', '__cpu_model', 12, 0x20000).
+cpu_feature('aes', '__cpu_model', 12, 0x40000).
+cpu_feature('pclmul', '__cpu_model', 12, 0x80000).
+cpu_feature('avx512vl', '__cpu_model', 12, 0x100000).
+cpu_feature('avx512bw', '__cpu_model', 12, 0x200000).
+cpu_feature('avx512dq', '__cpu_model', 12, 0x400000).
+cpu_feature('avx512cd', '__cpu_model', 12, 0x800000).
+cpu_feature('avx512vbmi', '__cpu_model', 12, 0x4000000).
+cpu_feature('avx512ifma', '__cpu_model', 12, 0x8000000).
+cpu_feature('avx5124vnniw', '__cpu_model', 12, 0x10000000).
+cpu_feature('avx5124fmaps', '__cpu_model', 12, 0x20000000).
+cpu_feature('avx512vpopcntdq', '__cpu_model', 12, 0x40000000).
+cpu_feature('avx512vbmi2', '__cpu_model', 12, 0x80000000).
+cpu_feature('gfni', '__cpu_features2', 0, 0x1).
+cpu_feature('vpclmulqdq', '__cpu_features2', 0, 0x2).
+cpu_feature('avx512vnni', '__cpu_features2', 0, 0x4).
+cpu_feature('avx512bitalg', '__cpu_features2', 0, 0x8).
+cpu_feature('avx512bf16', '__cpu_features2', 0, 0x10).
+cpu_feature('avx512vp2intersect', '__cpu_features2', 0, 0x20).
+cpu_feature('adx', '__cpu_features2', 0, 0x100).
+cpu_feature('cldemote', '__cpu_features2', 0, 0x400).
+cpu_feature('clflushopt', '__cpu_features2', 0, 0x800).
+cpu_feature('clwb', '__cpu_features2', 0, 0x1000).
+cpu_feature('clzero', '__cpu_features2', 0, 0x2000).
+cpu_feature('enqcmd', '__cpu_features2', 0, 0x10000).
+cpu_feature('f16c', '__cpu_features2', 0, 0x20000).
+cpu_feature('fsgsbase', '__cpu_features2', 0, 0x40000).
+cpu_feature('lwp', '__cpu_features2', 0, 0x1000000).
+cpu_feature('lzcnt', '__cpu_features2', 0, 0x2000000).
+cpu_feature('movbe', '__cpu_features2', 0, 0x4000000).
+cpu_feature('movdir64b', '__cpu_features2', 0, 0x8000000).
+cpu_feature('movdiri', '__cpu_features2', 0, 0x10000000).
+cpu_feature('mwaitx', '__cpu_features2', 0, 0x20000000).
+cpu_feature('pconfig', '__cpu_features2', 0, 0x80000000).
+cpu_feature('pku', '__cpu_features2', 4, 0x1).
+cpu_feature('prfchw', '__cpu_features2', 4, 0x4).
+cpu_feature('ptwrite', '__cpu_features2', 4, 0x8).
+cpu_feature('rdpid', '__cpu_features2', 4, 0x10).
+cpu_feature('rdrnd', '__cpu_features2', 4, 0x20).
+cpu_feature('rdseed', '__cpu_features2', 4, 0x40).
+cpu_feature('rtm', '__cpu_features2', 4, 0x80).
+cpu_feature('serialize', '__cpu_features2', 4, 0x100).
+cpu_feature('sgx', '__cpu_features2', 4, 0x200).
+cpu_feature('sha', '__cpu_features2', 4, 0x400).
+cpu_feature('shstk', '__cpu_features2', 4, 0x800).
+cpu_feature('tbm', '__cpu_features2', 4, 0x1000).
+cpu_feature('tsxldtrk', '__cpu_features2', 4, 0x2000).
+cpu_feature('vaes', '__cpu_features2', 4, 0x4000).
+cpu_feature('waitpkg', '__cpu_features2', 4, 0x8000).
+cpu_feature('wbnoinvd', '__cpu_features2', 4, 0x10000).
+cpu_feature('xsave', '__cpu_features2', 4, 0x20000).
+cpu_feature('xsavec', '__cpu_features2', 4, 0x40000).
+cpu_feature('xsaveopt', '__cpu_features2', 4, 0x80000).
+cpu_feature('xsaves', '__cpu_features2', 4, 0x100000).
+cpu_feature('amx-tile', '__cpu_features2', 4, 0x200000).
+cpu_feature('amx-int8', '__cpu_features2', 4, 0x400000).
+cpu_feature('amx-bf16', '__cpu_features2', 4, 0x800000).
+cpu_feature('uintr', '__cpu_features2', 4, 0x1000000).
+cpu_feature('hreset', '__cpu_features2', 4, 0x2000000).
+cpu_feature('kl', '__cpu_features2', 4, 0x4000000).
+cpu_feature('widekl', '__cpu_features2', 4, 0x10000000).
+cpu_feature('avxvnni', '__cpu_features2', 4, 0x20000000).
+cpu_feature('avx512fp16', '__cpu_features2', 4, 0x40000000).
+cpu_feature('x86-64', '__cpu_features2', 4, 0x80000000).
+cpu_feature('x86-64-v2', '__cpu_features2', 8, 0x1).
+cpu_feature('x86-64-v3', '__cpu_features2', 8, 0x2).
+cpu_feature('x86-64-v4', '__cpu_features2', 8, 0x4).
+cpu_feature('avxifma', '__cpu_features2', 8, 0x8).
+cpu_feature('avxvnniint8', '__cpu_features2', 8, 0x10).
+cpu_feature('avxneconvert', '__cpu_features2', 8, 0x20).
+cpu_feature('cmpccxadd', '__cpu_features2', 8, 0x40).
+cpu_feature('amx-fp16', '__cpu_features2', 8, 0x80).
+cpu_feature('prefetchi', '__cpu_features2', 8, 0x100).
+cpu_feature('raoint', '__cpu_features2', 8, 0x200).
+cpu_feature('amx-complex', '__cpu_features2', 8, 0x400).
+cpu_feature('avxvnniint16', '__cpu_features2', 8, 0x800).
+cpu_feature('sm3', '__cpu_features2', 8, 0x1000).
+cpu_feature('sha512', '__cpu_features2', 8, 0x2000).
+cpu_feature('sm4', '__cpu_features2', 8, 0x4000).
+cpu_feature('apxf', '__cpu_features2', 8, 0x8000).
+cpu_feature('usermsr', '__cpu_features2', 8, 0x10000).
+cpu_feature('avx10.1-256', '__cpu_features2', 8, 0x20000).
+cpu_feature('avx10.1-512', '__cpu_features2', 8, 0x40000).
+cpu_feature('avx10.2-256', '__cpu_features2', 8, 0x80000).
+cpu_feature('avx10.2-512', '__cpu_features2', 8, 0x100000).
+
+doc(cpu_model_value(?(Name), ?(Off), ?(Value)), nondet, [
+    Name: "a vendor, processor type or subtype __builtin_cpu_is(Name) tests",
+    Off: "the byte offset in __cpu_model of the vendor (0), type (4) or subtype (8)",
+    Value: "the value that word has for Name",
+    "__builtin_cpu_is(\"name\") is 1 when the 32-bit word at Off in",
+    "__cpu_model equals Value, else 0; clang refuses any other name.",
+    "Measured from the pinned filcc's IR.",
+    cites('GCC manual, x86 Built-in Functions, __builtin_cpu_is'),
+    example(cpu_model_value(intel, 0, 1)),
+    example(cpu_model_value(haswell, 8, 13)),
+    fails(cpu_model_value(k8, _, _))
+]).
+cpu_model_value('intel', 0, 1).
+cpu_model_value('amd', 0, 2).
+cpu_model_value('atom', 4, 1).
+cpu_model_value('core2', 4, 2).
+cpu_model_value('corei7', 4, 3).
+cpu_model_value('amdfam10h', 4, 4).
+cpu_model_value('amdfam15h', 4, 5).
+cpu_model_value('amdfam17h', 4, 10).
+cpu_model_value('amdfam19h', 4, 15).
+cpu_model_value('amdfam1ah', 4, 20).
+cpu_model_value('bonnell', 4, 1).
+cpu_model_value('silvermont', 4, 6).
+cpu_model_value('slm', 4, 6).
+cpu_model_value('knl', 4, 7).
+cpu_model_value('knm', 4, 11).
+cpu_model_value('goldmont', 4, 12).
+cpu_model_value('goldmont-plus', 4, 13).
+cpu_model_value('tremont', 4, 14).
+cpu_model_value('sierraforest', 4, 17).
+cpu_model_value('grandridge', 4, 18).
+cpu_model_value('clearwaterforest', 4, 19).
+cpu_model_value('nehalem', 8, 1).
+cpu_model_value('westmere', 8, 2).
+cpu_model_value('sandybridge', 8, 3).
+cpu_model_value('ivybridge', 8, 12).
+cpu_model_value('haswell', 8, 13).
+cpu_model_value('broadwell', 8, 14).
+cpu_model_value('skylake', 8, 15).
+cpu_model_value('skylake-avx512', 8, 16).
+cpu_model_value('cannonlake', 8, 17).
+cpu_model_value('icelake-client', 8, 18).
+cpu_model_value('icelake-server', 8, 19).
+cpu_model_value('cascadelake', 8, 21).
+cpu_model_value('tigerlake', 8, 22).
+cpu_model_value('cooperlake', 8, 23).
+cpu_model_value('sapphirerapids', 8, 24).
+cpu_model_value('alderlake', 8, 25).
+cpu_model_value('raptorlake', 8, 25).
+cpu_model_value('meteorlake', 8, 25).
+cpu_model_value('rocketlake', 8, 27).
+cpu_model_value('graniterapids', 8, 30).
+cpu_model_value('graniterapids-d', 8, 31).
+cpu_model_value('arrowlake', 8, 32).
+cpu_model_value('arrowlake-s', 8, 33).
+cpu_model_value('lunarlake', 8, 33).
+cpu_model_value('pantherlake', 8, 34).
+cpu_model_value('gracemont', 8, 25).
+cpu_model_value('emeraldrapids', 8, 24).
+cpu_model_value('diamondrapids', 8, 36).
+cpu_model_value('barcelona', 8, 4).
+cpu_model_value('shanghai', 8, 5).
+cpu_model_value('istanbul', 8, 6).
+cpu_model_value('btver1', 4, 8).
+cpu_model_value('btver2', 4, 9).
+cpu_model_value('bdver1', 8, 7).
+cpu_model_value('bdver2', 8, 8).
+cpu_model_value('bdver3', 8, 9).
+cpu_model_value('bdver4', 8, 10).
+cpu_model_value('znver1', 8, 11).
+cpu_model_value('znver2', 8, 20).
+cpu_model_value('znver3', 8, 26).
+cpu_model_value('znver4', 8, 29).
+cpu_model_value('znver5', 8, 35).
 
 doc(classify_builtin(?(Name)), nondet, [
     Name: "a type-generic classification builtin glibc's math.h uses",
@@ -4199,6 +4399,7 @@ vector_abbrev(v2df, vec(double, 2, 16)) :- !.
 vector_abbrev(T, T).
 
 vector_builtin_(pmovmskb128, [v16qi], int).
+vector_builtin_(lddqu, [ptr(qualified([const], char))], v16qi).
 vector_builtin_(movmskps, [v4sf], int).
 vector_builtin_(movmskpd, [v2df], int).
 vector_builtin_(Name, [V, int], V) :-
