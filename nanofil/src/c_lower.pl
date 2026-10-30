@@ -1003,6 +1003,12 @@ common_linkage(Linkage, _, Linkage).
 % A type nanofil refuses (bad/1, from c_types) is reported at the
 % function, unless a caller defers it (deferrable/1).
 function(Loc, Name, Type, DclType, Body, Env0, Env, Func) :-
+    % filcc returns a struct holding an _Atomic struct or union by its own
+    % rules, and may call even a static function, its address escaped.
+    (   Type = func(Ret, _, _), holds_vec(Ret, Env0, K), K \== 'a vector'
+    ->  sema_error(Loc, 'a function returning ~w, or an aggregate holding one, is not supported', [K])
+    ;   true
+    ),
     catch(once(function_(Loc, Name, Type, DclType, Body, Env0, Env, Func)), bad(Why),
           sema_error(Loc, '~w uses a type nanofil does not support (~w)', [Name, Why])).
 
@@ -2772,6 +2778,10 @@ object_init(bits(T, Pos, W), Off, Expr, _) --> !, [bits(Off, T, Pos, W, Expr)].
 object_init(array(T, N), Off, list([entry([], Str)]), C) -->
     { str_elems(Str, T, _) }, !,
     object_init(array(T, N), Off, Str, C).
+object_init(atomic(S, P), Off, Init, C) --> !,        % c_types atomic_su_type/3
+    { Init = list(_) -> init_error(C, 'an _Atomic struct or union cannot be initialized by a braced list', []) ; true },
+    [zero(Off, atomic(S, P))],
+    object_init(S, Off, Init, C).
 object_init(vec(E, N, _), Off, Init, C) -->           % GNU vectors
     { Init = list(_) }, !,
     object_init(array(E, N), Off, Init, C).
@@ -3129,6 +3139,8 @@ lower_node(val(T, load(X)), Ctx, R) --> !,                 % 6.3.2.1p2
     (   { tree_type(X, TX), atomic_qualified(TX), P = lv(Addr, ptr(_)) }
     ->  let(p, atomic_load(p), [Addr], D),                 % 6.2.6.1p9
         { R = v(D, U) }
+    ;   { P = lv(Addr, atomic(S, Size)) }
+    ->  atomic_su_loaded(S, Size, Addr, Ctx, R)
     ;   place_loaded(P, U, Ctx, R)
     ).
 lower_node(val(T0, decay(X)), Ctx, R) --> !,               % 6.3.2.1p3-4
@@ -3190,9 +3202,14 @@ lower_node(val(_, assign(=, X, XB)), Ctx, R) -->           % 6.2.6.1p9
     { tree_type(X, TX), atomic_qualified(TX) }, !,
     place(X, Ctx, lv(Addr, U)),
     lower(XB, Ctx, Value0),
-    converted(Value0, U, R),
-    { R = v(V, _) },
-    atomic_stored(U, V, Addr, 5).
+    (   { U = atomic(S, Size) }
+    ->  converted(Value0, S, R),
+        atomic_su_word(S, Size, R, Ctx, W), { atomic_word(Size, WT) },
+        atomic_stored(WT, W, Addr, 5)
+    ;   converted(Value0, U, R),
+        { R = v(V, _) },
+        atomic_stored(U, V, Addr, 5)
+    ).
 % A compound assignment or increment of an _Atomic object is one atomic
 % read-modify-write (6.5.16.2p3, 6.5.2.4p2): a cas loop, the operand
 % evaluated once before it; a pointer keeps its capability.
@@ -3751,14 +3768,13 @@ builtin(Name, [P, V|_], Ctx, R) -->
     rmw_arg_aligned(P, Ctx),
     rval(P, Ctx, v(Addr, ptr(T0))),
     rval(V, Ctx, V0),
-    { unqualified(T0, T), ctx_loc(Ctx, Loc),
-      ( T = ptr(_), Op \== xchg -> To = long ; To = T ) },
-    assign_convert(V, V0, To, Loc, V1),
-    rmw(T, Addr, Op, V1, Ctx, Old, New),
-    { Which == old -> R0 = Old ; R0 = New },
-    (   { Family == c11, T = ptr(_), Op \== xchg, R0 = v(A, _) }
-    ->  let(l, ptoi, [A], I), let(p, itop, [I], D), { R = v(D, T) }
-    ;   { R = R0 }
+    { unqualified(T0, T), ctx_loc(Ctx, Loc) },
+    (   { T = atomic(S, Size) }                   % exchange (c_types)
+    ->  assign_convert(V, V0, S, Loc, V1),
+        atomic_su_word(S, Size, V1, Ctx, W), { atomic_word(Size, WT) },
+        rmw(WT, Addr, xchg, v(W, WT), Ctx, v(Old, _), _),
+        local_slot(T, Slot), store_typed(WT, Old, Slot), { R = v(Slot, S) }
+    ;   atomic_rmw_value(Family, Op, Which, T, Addr, V, V0, Loc, Ctx, R)
     ).
 builtin(Name, [P, E, D|_], Ctx, v(Eq, bool)) -->
     { memberchk(Name, ['__c11_atomic_compare_exchange_strong',
@@ -3769,13 +3785,24 @@ builtin(Name, [P, E, D|_], Ctx, v(Eq, bool)) -->
     rval(E, Ctx, v(EAddr, _)),
     rval(D, Ctx, D0),
     { unqualified(T0, T), ctx_loc(Ctx, Loc) },
-    assign_convert(D, D0, T, Loc, v(New, _)),
-    load_typed(T, EAddr, Ctx, Expected),
-    cas_once(T, Addr, Expected, New, Got, Eq),
+    (   { T = atomic(S, Size) }                   % c_types atomic_su_type/3
+    ->  assign_convert(D, D0, S, Loc, D1), { atomic_word(Size, WT) },
+        atomic_su_word(S, Size, v(EAddr, S), Ctx, Expected),
+        atomic_su_word(S, Size, D1, Ctx, New),
+        local_slot(T, Slot)
+    ;   assign_convert(D, D0, T, Loc, v(New, _)), { WT = T },
+        load_typed(T, EAddr, Ctx, Expected)
+    ),
+    cas_once(WT, Addr, Expected, New, Got, Eq),
     % *Expected gets *P only on failure (7.17.7.4p2).
     label(LF), label(LJ),
     term(branch(Eq, LJ, LF)),
-    start(LF), store_typed(T, Got, EAddr), term(goto(LJ)),
+    start(LF),
+    (   { T = atomic(S, _) }
+    ->  store_typed(WT, Got, Slot), copy_object(S, Slot, EAddr)
+    ;   store_typed(T, Got, EAddr)
+    ),
+    term(goto(LJ)),
     start(LJ).
 builtin(Name, [P, O, N|_], Ctx, R) -->
     { memberchk(Name-Which, ['__sync_val_compare_and_swap'-val,
@@ -4858,22 +4885,27 @@ callee(XF, Ctx, Callee, FuncType) -->
 % out at its vector alignment, where nanofil passes them as a struct of
 % words, so only nanofil's own static functions (immintrin.h's
 % intrinsics) take or return one.
+% The same holds for an _Atomic struct or union (c_types
+% atomic_su_type/3), which filcc passes by its own rules (a struct
+% holding one is returned through memory).
 vector_abi(func(Ret, Ps, _), Env, Ctx) :-
-    (   ( holds_vec(Ret, Env) ; is_list(Ps), member(P, Ps), holds_vec(P, Env) )
+    (   ( holds_vec(Ret, Env, K) ; is_list(Ps), member(P, Ps), holds_vec(P, Env, K) )
     ->  ctx_loc(Ctx, Loc),
-        sema_error(Loc, 'a function with external linkage or called through a pointer cannot take or return a vector', [])
+        sema_error(Loc, 'a function with external linkage or called through a pointer cannot take or return ~w', [K])
     ;   true
     ).
 vector_abi(_, _, _).
 
-% holds_vec(+Type, +Env): Type is a GNU vector or an array, struct or
-% union with one among its elements or members.
-holds_vec(vec(_, _, _), _) :- !.
-holds_vec(array(T, _), Env) :- !, holds_vec(T, Env).
-holds_vec(SU, Env) :-
+% holds_vec(+Type, +Env, -What): Type is, or is an array, struct or
+% union with among its elements or members, a GNU vector (What is 'a
+% vector') or an _Atomic struct or union.
+holds_vec(vec(_, _, _), _, 'a vector') :- !.
+holds_vec(atomic(_, _), _, 'an _Atomic struct or union') :- !.
+holds_vec(array(T, _), Env, K) :- !, holds_vec(T, Env, K).
+holds_vec(SU, Env, K) :-
     su(SU), SU =.. [_, Id], env_defs(Env, Defs),
     get_assoc(Id, Defs, def(_, Members, _, _)),
-    member(M, Members), arg(2, M, T), holds_vec(T, Env), !.
+    member(M, Members), arg(2, M, T), holds_vec(T, Env, K), !.
 
 % call_result(+Callee, +RetType, +IRArgs, +Ctx, -R)//: R is the result
 % of calling Callee with IRArgs; setjmp and its kin are intrinsics.
@@ -4911,6 +4943,8 @@ setjmp_args('_setjmp', [arg(p, Buf)], [Buf, const(0)]).
 % one word per eightbyte; arguments past the prototype get the default
 % promotions.
 call_args([], _, _, []) --> [].
+call_args([_|_], [atomic(S, P)|_], Ctx, _) --> !,       % c_types atomic_su_type/3
+    { ctx_loc(Ctx, Loc), sema_error(Loc, 'parameter of type ~w is not supported yet', [atomic(S, P)]) }.
 call_args([XA|XAs], [ParamType|ParamTypes], Ctx, IRArgs) -->
     { abi_memory(ParamType) }, !,
     lower(XA, Ctx, Value0),
@@ -4938,8 +4972,8 @@ call_args([XA|XAs], ParamTypes0, Ctx, IRArgs) -->
     ->  env(Env),                       % 6.5.2.2p7: no conversion
         abi_source(Type0, V0, Src),
         { ctx_loc(Ctx, Loc),
-          (   holds_vec(Type0, Env)     % filcc aligns it to its vector
-          ->  sema_error(Loc, 'passing a vector to a variadic or unprototyped function is not supported', [])
+          (   holds_vec(Type0, Env, K)  % filcc aligns it to its vector
+          ->  sema_error(Loc, 'passing ~w to a variadic or unprototyped function is not supported', [K])
           ;   true
           ),
           variadic_words(Type0, Env, Loc, Ebs) },
@@ -5320,6 +5354,37 @@ safety_error(Msg) -->
     env(Env0), { new_literal(Msg, Sym, Env0, Env) }, set_env(Env),
     let(p, copy, [global(Sym)], Addr),
     emit(call(void, global(zsafety_error), [arg(p, Addr)])).
+
+% An _Atomic struct or union of size P (c_types atomic_su_type/3) is
+% accessed as one P-byte unsigned integer, its padding stored as zero.
+atomic_word(P, T) :- memberchk(P-T, [1-uchar, 2-ushort, 4-uint, 8-ulong]).
+
+% atomic_rmw_value(...)//: the result R of an atomic read-modify-write
+% builtin on a scalar T at Addr (builtin//4's rmw_builtin clause).
+atomic_rmw_value(Family, Op, Which, T, Addr, V, V0, Loc, Ctx, R) -->
+    { ( T = ptr(_), Op \== xchg -> To = long ; To = T ) },
+    assign_convert(V, V0, To, Loc, V1),
+    rmw(T, Addr, Op, V1, Ctx, Old, New),
+    { Which == old -> R0 = Old ; R0 = New },
+    (   { Family == c11, T = ptr(_), Op \== xchg, R0 = v(A, _) }
+    ->  let(l, ptoi, [A], I), let(p, itop, [I], D), { R = v(D, T) }
+    ;   { R = R0 }
+    ).
+
+% atomic_su_loaded(+S, +P, +Addr, +Ctx, -R)//: R, an S, is read from the
+% atomic object at Addr by one P-byte load into a P-byte copy.
+atomic_su_loaded(S, P, Addr, Ctx, v(Slot, S)) -->
+    { atomic_word(P, T) },
+    local_slot(atomic(S, P), Slot),
+    load_typed(T, Addr, Ctx, X), store_typed(T, X, Slot).
+
+% atomic_su_word(+S, +P, +V, +Ctx, -W)//: W is the P-byte integer that
+% the S value V is in an atomic object: V's bytes, then zeros.
+atomic_su_word(S, P, v(Src, _), Ctx, W) -->
+    { atomic_word(P, T) },
+    local_slot(atomic(S, P), Slot),
+    store_typed(T, const(0), Slot), copy_object(S, Src, Slot),
+    load_typed(T, Slot, Ctx, W).
 
 cpu_word(Sym, Off, Ctx, W) -->
     let(p, copy, [global(Sym)], G), offset(G, Off, A), load_typed(uint, A, Ctx, W).

@@ -444,18 +444,20 @@ enum_key(none, packed([enumerator(First, _)|_]), anon(First)).
 
 reflect_declarator(base, Specs, Type, Env, Reflected) :-
     ( memberchk(tname(Name), Specs), lookup_ordinary(Env, qtype(Name), T)
-    -> Base = T
+    -> Base0 = T
     ; memberchk(typeof(expr(E)), Specs), expression_type(E, Env, T)
-    -> Base = T
+    -> Base0 = T
     ; memberchk(typeof(type(TN)), Specs), type_name_type(TN, T0, Env, _)
-    -> reflect_type(TN, T0, Env, Base)
+    -> reflect_type(TN, T0, Env, Base0)
     ; memberchk(atomic(TN), Specs), type_name_type(TN, T0, Env, _)
-    -> reflect_type(TN, T0, Env, B0), qualify([atomic], B0, Base)
+    -> reflect_type(TN, T0, Env, B0), qualify([atomic], B0, Base0)
     ; member(enum(Tag, Enumerators), Specs), enum_key(Tag, Enumerators, K)
-    -> Base = qualified([enum(K)], Type)
-    ; Base = Type
+    -> Base0 = qualified([enum(K)], Type)
+    ; Base0 = Type
     ),
+    atomic_su_base(Type, Base0, Base),
     findall(Q, member(qual(Q), Specs), Qs), qualify(Qs, Base, Reflected).
+
 reflect_declarator(ptr(S, Qs), Specs, ptr(T), Env, R) :-
     reflect_declarator(S, Specs, T, Env, RT), qualify(Qs, ptr(RT), R).
 reflect_declarator(array(S, _), Specs, array(T, N), Env, array(RT, N)) :-
@@ -464,6 +466,18 @@ reflect_declarator(func(S, Params), Specs, func(T, Ps, V), Env, func(RT, RPs, V)
     reflect_declarator(S, Specs, T, Env, RT),
     reflect_param_types(Params, Ps, Env, RPs).
 reflect_declarator(_, _, bad(Why), _, bad(Why)).
+
+% atomic_su_base(+Type, +Base0, -Base): when the specifiers name an
+% _Atomic struct or union, Type = atomic(S, P) (atomic_su_type/3), in
+% any spelling (_Atomic(T), or _Atomic on a tag, typedef or typeof
+% name), the reflected Base keeps it under Base0's qualifiers.
+atomic_su_base(atomic(_, P), Base0, Base) :- !,
+    (   Base0 = qualified(Qs, B) -> true ; Qs = [], B = Base0 ),
+    (   B = atomic(_, _) -> Base = Base0
+    ;   Qs == [] -> Base = atomic(B, P)
+    ;   Base = qualified(Qs, atomic(B, P))
+    ).
+atomic_su_base(_, Base, Base).
 
 reflect_param_types(unspecified, unspecified, _, unspecified).
 reflect_param_types(params(Params, _), Ts, Env, RTs) :-
@@ -507,6 +521,8 @@ specs_type(Specs, Type, Env0, Env) :-
     base_type(Specs, Type0, Env0, Env),
     (   member(attr(Tokens), Specs), vector_attr(Tokens)
     ->  vector_type(Specs, Type0, Env, Type)
+    ;   memberchk(qual(atomic), Specs), atomic_su_type(Type0, Env, T)
+    ->  Type = T
     ;   memberchk(qual(atomic), Specs), Type0 \= bad(_), \+ atomic_object_type(Type0)
     ->  Type = bad('_Atomic on a type other than an integer, pointer, float or double')
     ;   member(attr(Tokens), Specs), mode_attr(Tokens, Mode)
@@ -982,6 +998,7 @@ named_type(atomic(TN), Type, Env0, Env) :-
         member(Q, Qs), Q \= enum(_)                       % enum(K): identity
     ->  Type = bad('_Atomic of a qualified type')
     ;   atomic_object_type(Type0) -> Type = Type0
+    ;   atomic_su_type(Type0, Env, T) -> Type = T
     ;   Type = bad('_Atomic of a type other than an integer, pointer, float or double')
     ).
 
@@ -1022,6 +1039,44 @@ atomic_object_type(T) :- int_type(T), !.
 atomic_object_type(ptr(_)).
 atomic_object_type(float).
 atomic_object_type(double).
+
+doc(atomic_su_type(+S, +Env, -T), semidet, [
+    S: "a struct or union type",
+    Env: "the scope S is complete in",
+    T: "atomic(S, P), its atomic version",
+    "_Atomic of a struct or union is a type of its own (6.2.5p27): clang",
+    "rounds a size of at most 8 bytes up to a power of two P and aligns it",
+    "to P, so its atomic loads and stores are one P-byte access (a 3-byte",
+    "struct is 4 bytes, aligned 4; an 8-byte one aligned 4 is aligned 8);",
+    "a store writes the padding as zero. nanofil takes one whose members",
+    "hold no pointer or vector; a larger one, which clang lowers to",
+    "libatomic calls, is refused. Lvalue conversion gives S (6.3.2.1p2);",
+    "a compare-exchange needs S's size to be P already: for a smaller S,",
+    "clang leaves *expected unchanged when it fails, against 7.17.7.4p2",
+    "(its padded copy of *expected is never copied back), so it is refused.",
+    "a member of an atomic struct or union is not accessed (clang refuses",
+    "it, -Watomic-access).",
+    cites('C11 6.2.5p27'),
+    cites('C11 6.2.6.1p9'),
+    cites('C11 6.3.2.1p2'),
+    cites('C11 6.7.2.4p3'),
+    cites('C11 7.17.7.4p2')
+]).
+atomic_su_type(S, Env, atomic(S, P)) :-
+    ( S = struct(_) ; S = union(_) ), !,
+    catch(type_size_align(S, Env, Size, _), bad(_), fail),
+    member(P, [1, 2, 4, 8]), P >= Size, !,
+    \+ holds_ref(S, Env).
+
+% holds_ref(+T, +Env): T is or holds a pointer or GNU vector.
+holds_ref(ptr(_), _) :- !.
+holds_ref(vec(_, _, _), _) :- !.
+holds_ref(array(T, _), Env) :- !, holds_ref(T, Env).
+holds_ref(atomic(T, _), Env) :- !, holds_ref(T, Env).
+holds_ref(SU, e(O, Tg, Defs, N)) :-
+    ( SU = struct(Id) ; SU = union(Id) ), !,
+    get_assoc(Id, Defs, def(_, Members, _, _)),
+    member(M, Members), arg(2, M, T), holds_ref(T, e(O, Tg, Defs, N)), !.
 
 % atomic_qualified(+T): the (reflected) type T is atomic at its top.
 atomic_qualified(qualified(Qs, _)) :- memberchk(atomic, Qs).
@@ -2219,6 +2274,7 @@ size_align_(float, _, 4, 4).
 size_align_(double, _, 8, 8).
 size_align_(ldouble, _, 16, 16).
 size_align_(ptr(_), _, 8, 8).
+size_align_(atomic(_, P), _, P, P).
 size_align_(array(_, N), _, _, _) :-
     variable_size(N),
     throw(bad('variable length array')).
@@ -3426,7 +3482,11 @@ argument(Env, E, XV) :- operand(E, Env, XV, _).
 % for a bit-field, whose value has its promoted type (6.5.16p3).
 assignment_type(obj(T0, bitfield(_, W)), T) :- !,
     value_type(T0, T1), bitfield_promotion(T1, W, T).
-assignment_type(X, T) :- tree_type(X, T).
+assignment_type(X, T) :-
+    tree_type(X, T0),
+    (   unqualified(T0, atomic(S, _)) -> T = S      % 6.5.16p3: lvalue-converted
+    ;   T = T0
+    ).
 
 % lowered(+XV, -T): T is the type of value XV without qualifiers, the
 % type lowering gives it.
@@ -3843,6 +3903,27 @@ atomic_builtin(Name, Args, Env, expr(E)) :-
     generic_atomic(Name, Args, E),
     Args = [P|_], lowered_type(P, Env, ptr(T0)), unqualified(T0, T),
     gnu_operand(xchg, T), !.
+% An _Atomic struct or union (atomic_su_type/3): load, store and init
+% are its lvalue conversion and assignment, and exchange and
+% compare-exchange builtins of its type; the arithmetic ones are refused.
+atomic_builtin('__c11_atomic_load', [P, O], Env, expr(comma(O, un(deref, P)))) :-
+    atomic_su_pointee(P, Env, _), order_in(O, Env, [0, 1, 2, 5]), !.
+atomic_builtin('__c11_atomic_store', [P, V, O], Env,
+               expr(cast(type([tspec(void)], base), comma(O, assign(=, un(deref, P), V))))) :-
+    atomic_su_pointee(P, Env, _), order_in(O, Env, [0, 3, 5]), !.
+atomic_builtin('__c11_atomic_init', [P, V], Env,
+               expr(cast(type([tspec(void)], base), assign(=, un(deref, P), V)))) :-
+    atomic_su_pointee(P, Env, _), !.
+atomic_builtin('__c11_atomic_exchange', [P, _, O], Env, builtin(S)) :-
+    atomic_su_pointee(P, Env, S), order_constant(O, Env), !.
+atomic_builtin(Name, [P, E, _, Os, Of], Env, builtin(bool)) :-
+    memberchk(Name, ['__c11_atomic_compare_exchange_strong',
+                     '__c11_atomic_compare_exchange_weak']),
+    atomic_su_pointee(P, Env, S),
+    lowered_type(P, Env, ptr(T0)), unqualified(T0, atomic(_, Size)),
+    type_size_align(S, Env, Size, _),               % see atomic_su_type/3
+    lowered_type(E, Env, ptr(U0)), unqualified(U0, U), U == S,
+    order_constant(Os, Env), order_constant(Of, Env), !.
 atomic_builtin('__atomic_load_n', [P, O], Env, R) :-
     atomic_operands(P, O, Env, [0, 1, 2, 5], T),
     (   T = ptr(_) -> R = builtin(T)
@@ -4028,6 +4109,15 @@ fence_builtin('__atomic_signal_fence').
 % atomic_pointee(+P, +Env): P points to an _Atomic object.
 atomic_pointee(P, Env) :-
     expression_type(P, Env, T0), value_type(T0, ptr(T)), atomic_qualified(T).
+
+% atomic_su_pointee(+P, +Env, -S): P points to an _Atomic S, a struct
+% or union (atomic_su_type/3).
+atomic_su_pointee(P, Env, S) :-
+    lowered_type(P, Env, ptr(T0)), unqualified(T0, atomic(S, _)).
+
+order_in(O, Env, Orders) :-
+    catch(const_value(O, Env, V, _), not_constant, fail),
+    memberchk(V, Orders).
 
 % c11_operands(+P, +O, +Env, +Orders, -T): as atomic_operands/5, with a
 % float or double *P too.
@@ -4729,6 +4819,7 @@ doc(value_type(+T, -V), det, [
             V = ptr(func(void, unspecified, fixed)))
 ]).
 value_type(qualified(_, T), R) :- !, value_type(T, R).
+value_type(atomic(S, _), S) :- !.
 value_type(array(T, _), ptr(T)) :- !.
 value_type(func(R, P, V), ptr(func(R, P, V))) :- !.
 value_type(T, T).
@@ -5001,6 +5092,7 @@ assignable(From, Null, To) :- assignable(From, Null, To, none).
 % are compared with compatible_type/3 in Env.
 assignable(From, _, To, _) :- arithmetic_type(From), arithmetic_type(To), !.
 assignable(T, _, U, _) :- T == U, !.
+assignable(S, _, atomic(S1, _), _) :- S == S1, !.       % atomic_su_type/3
 assignable(vec(E, N, _), _, vec(F, M, _), _) :- !,       % GNU vectors
     (   E == F, N == M -> true
     ;   int_type(E), int_type(F), vector_bytes(E, N, B), vector_bytes(F, M, B)
