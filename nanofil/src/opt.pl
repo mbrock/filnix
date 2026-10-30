@@ -45,7 +45,17 @@
 
 optimize(Options, M0, M) :-
     optimization_passes(Options, Passes),
-    foldl(optimize_pass, Passes, M0, M).
+    foldl(released_pass, Passes, M0, M).
+
+% released_pass(+Pass, +M0, -M): optimize_pass/3, then the stacks back to
+% what is live. SWI's limit counts what is allocated, and each pass
+% leaves a module's worth of garbage: on SQLite the global stack had grown
+% to 1 GB with 250 MB live, so collections were rare and the trail between
+% them doubled to 0.5 GB, overflowing the 1 GB default.
+released_pass(Pass, M0, M) :-
+    optimize_pass(Pass, M0, M),
+    catch(garbage_collect, error(existence_error(_, _), _), true),
+    catch(trim_stacks, error(existence_error(_, _), _), true).
 
 %! optimization_passes(+Options, -Passes) is semidet.
 %

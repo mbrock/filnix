@@ -47,7 +47,7 @@
            effect_access/3, line_effect/2, body_analysis/4,
            allocatable/1, callee_saved/1, scratch_family/2,
            check_operands/3, check_operands/4, valid_cells/3, operand_lives/4, operand_move/2,
-           operand_roles/3, boundary_line/2, extra_use_def/4]).
+           operand_roles/3, boundary_line/2, extra_use_def/4, home_shift/2]).
 
 :- use_module(amd64_contract,
               [instruction_effects/2, register/3, operand_register/2]).
@@ -301,24 +301,32 @@ noreturn(filc_stack_overflow_failure).
 %! home_liveness(+Body, +Homes, -LiveOut, -LiveIn0) is semidet.
 %  Homes is a list of home offsets. LiveOut lists, per line of Body, the
 %  set of live halves after it as a bitset: bit 2K is home K's low half,
-%  2K+1 its high half. LiveIn0 is the set live at Body's first line.
+%  2K+1 its high half (body_analysis/3's sets shifted down by the eight
+%  scratch and flags bits). LiveIn0 is the set live at Body's first line.
 %  Dataflow runs on basic blocks: a block ends at a line whose only
 %  successor is not the next line, and starts at a label.
 home_liveness(Body, Homes, LiveOut, LiveIn0) :-
     body_analysis(Body, Homes, analysis(_, _, _, _, LiveOut0, LiveIn00, _)),
     length(Homes, N), Mask is (1 << (2*N)) - 1,
-    maplist(and_mask(Mask), LiveOut0, LiveOut), LiveIn0 is LiveIn00 /\ Mask.
+    maplist(and_mask(Mask), LiveOut0, LiveOut), LiveIn0 is (LiveIn00 >> 8) /\ Mask.
 
-and_mask(M, X, Y) :- Y is X /\ M.
+and_mask(M, X, Y) :- Y is (X >> 8) /\ M.
+
+%! home_shift(+K, -S) is det.
+%  Home K's low half is bit S of the analysis's sets, its high half S+1.
+%  Bits 0-7 are the scratch families and the flags, below the homes, so
+%  a set is only as wide as the highest home live in it: with them on
+%  top, every line's set was as wide as all the function's homes.
+home_shift(K, S) :- S is 8 + 2*K.
 
 %! body_analysis(+Body, +Homes, -Analysis) is semidet.
 %  Analysis = analysis(Body, Effects, Homes, Index, LiveOut, LiveIn0, UDs):
 %  each line's audited effects, the home offsets and their bit numbers
 %  (Index), the live sets after each line (LiveOut) and at the first,
-%  and each line's ud(Use, Def). Home K's halves are bits 2K and 2K+1
-%  (home_liveness/4); above them, from bit 2N for N homes, are one bit
-%  per scratch family (scratch_family/2) and one for the flags, which
-%  only the operand checker reads (docs/perf.md, step 3b). Fails when a
+%  and each line's ud(Use, Def). Bits 0-6 are the scratch families
+%  (scratch_family/2) and bit 7 the flags, which only the operand checker
+%  reads (docs/perf.md, step 3b); home K's halves are the two bits from
+%  home_shift/2. Fails when a
 %  line has no audited effects or the CFG is incomplete. The one
 %  whole-function analysis the allocator and both checkers share.
 body_analysis(Body, Homes, Analysis) :-
@@ -331,9 +339,8 @@ body_analysis(Body, Effects, Homes,
               analysis(Body, Effects, Homes, Index, LiveOut, LiveIn0, UDs)) :-
     successors(Body, Effects, Succs),
     numbered(Homes, 0, Pairs), list_to_assoc(Pairs, Index),
-    length(Homes, NH), Base is 2*NH,
     home_lookup(Pairs, Lookup),
-    maplist(line_use_def(Lookup, Base), Body, Effects, UDs),
+    maplist(line_use_def(Lookup), Body, Effects, UDs),
     lines(Body, 0, Succs, UDs, Lines),
     blocks(Lines, Blocks),
     findall(S-B, nth0(B, Blocks, block(S,_,_)), Starts), list_to_assoc(Starts, Ids),
@@ -406,11 +413,11 @@ line_outs([line(_,_,_,ud(U,D))|Ls], Out, Acc, Outs) :-
 
 % Uses and definitions of home halves by one line. A write covering a
 % whole half defines it; a partial write reads it too.
-line_use_def(Lookup, Base, Line, Effect, ud(Use, Def)) :-
+line_use_def(Lookup, Line, Effect, ud(Use, Def)) :-
     Effect = effect(_,_,_,Ms,_),
     foldl(memory_use_def(Lookup), Ms, 0-0, Use0-Def0),
     extra_use_def(Line, Effect, EU, ED),
-    Use is Use0 \/ (EU << Base), Def1 is Def0 \/ (ED << Base),
+    Use is Use0 \/ EU, Def1 is Def0 \/ ED,
     Def is Def1 /\ \ Use.
 
 %! scratch_family(?Family, ?Bit) is nondet.
@@ -492,7 +499,7 @@ home_halves(D, E, H-K, T0-C0, T-C) :-
 half_bits(Half, H, K, D, E, T0, T, C0, C) :-
     S is H + 4*Half,
     (   S < E, D < S+4
-    ->  B is 1 << (2*K+Half), T is T0 \/ B,
+    ->  home_shift(K, S0), B is 1 << (S0+Half), T is T0 \/ B,
         ( D =< S, S+4 =< E -> C is C0 \/ B ; C = C0 )
     ;   T = T0, C = C0
     ).
@@ -502,7 +509,7 @@ half_bits(Half, H, K, D, E, T0, T, C0, C) :-
 obligations(Body, Mapped, analysis(_, _, _, Index, LiveOut, LiveIn0, _)) :-
     assoc_to_list(Mapped, Pairs),
     forall(member(H-_, Pairs), get_assoc(H, Index, _)),
-    findall(B, (member(H-_, Pairs), get_assoc(H, Index, K), B is 3 << (2*K)), Bs),
+    findall(B, (member(H-_, Pairs), get_assoc(H, Index, K), home_shift(K, S), B is 3 << S), Bs),
     foldl(or_bits, Bs, 0, All),
     LiveIn0 /\ All =:= 0,
     register_masks(Pairs, Index, Masks),
@@ -513,11 +520,11 @@ obligations(Body, Mapped, analysis(_, _, _, Index, LiveOut, LiveIn0, _)) :-
 register_masks(Pairs, Index, Masks) :-
     findall(R-M, ( allocatable(R),
                    findall(B, (member(H-R, Pairs), get_assoc(H, Index, K),
-                               B is 3 << (2*K)), Bs),
+                               home_shift(K, S), B is 3 << S), Bs),
                    foldl(or_bits, Bs, 0, M) ), Masks).
 scratch_mask(Pairs, Index, M) :-
     findall(B, (member(H-R, Pairs), memberchk(R, [r10,r11]),
-                get_assoc(H, Index, K), B is 3 << (2*K)), Bs),
+                get_assoc(H, Index, K), home_shift(K, S), B is 3 << S), Bs),
     foldl(or_bits, Bs, 0, M).
 or_bits(B, A0, A) :- A is A0 \/ B.
 
@@ -525,9 +532,9 @@ line_obligation(Mapped, Index, Masks, Scratch, All, Line, Out) :-
     (   substitute(Line, Mapped, _), Line = ins(_,S,[_,mem(D,rbp)])
     ->  get_assoc(D, Mapped, R), get_assoc(D, Index, K),
         memberchk(R-M, Masks),
-        Own is 3 << (2*K),
+        home_shift(K, Sh), Own is 3 << Sh,
         Out /\ (M /\ \ Own) =:= 0,
-        ( S == l -> Out /\ (1 << (2*K+1)) =:= 0 ; true )
+        ( S == l -> Out /\ (2 << Sh) =:= 0 ; true )
     ;   Line = ins(call,_,_)
     ->  Out /\ Scratch =:= 0
     ;   Line = ins(leave,none,[])
@@ -547,20 +554,19 @@ line_obligation(Mapped, Index, Masks, Scratch, All, Line, Out) :-
 %  of Saves inserted (check_regs/5 proved it is exactly that stream);
 %  an inserted line touches neither, so it takes the set live before the
 %  next reference line.
-operand_lives(analysis(Body, Effects, Homes, _, LiveOut, _, UDs), Saves, A, Lives) :-
-    length(Homes, N), Base is 2*N,
-    ref_lives(Body, Effects, LiveOut, UDs, Base, RLives),
+operand_lives(analysis(Body, Effects, _, _, LiveOut, _, UDs), Saves, A, Lives) :-
+    ref_lives(Body, Effects, LiveOut, UDs, RLives),
     a_lives(A, RLives, Saves, Lives).
 
-ref_lives([], [], [], [], _, []).
-ref_lives([R|Rs], [E|Es], [O|Os], [UD|UDs], Base, [Lv|Lvs]) :-
-    line_lives(Base, R, E, O, UD, Lv),
-    ref_lives(Rs, Es, Os, UDs, Base, Lvs).
+ref_lives([], [], [], [], []).
+ref_lives([R|Rs], [E|Es], [O|Os], [UD|UDs], [Lv|Lvs]) :-
+    line_lives(R, E, O, UD, Lv),
+    ref_lives(Rs, Es, Os, UDs, Lvs).
 
 % live(In, Out, R, E): R is the reference line, E its effects.
-line_lives(Base, R, E, Out, ud(U,D), live(I8, O8, R, E)) :-
+line_lives(R, E, Out, ud(U,D), live(I8, O8, R, E)) :-
     In is U \/ (Out /\ \ D),
-    I8 is (In >> Base) /\ 255, O8 is (Out >> Base) /\ 255.
+    I8 is In /\ 255, O8 is Out /\ 255.
 
 % Each line of A gets live(In, Out, Effect): a line equal to its reference
 % line shares its effects; a substituted or inserted one gets its own.

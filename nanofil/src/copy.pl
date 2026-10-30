@@ -65,7 +65,7 @@ copy_module(M0, module(Items)) :-
 copy_item(All, F0, Items) :-
     F0 = func(Name, _, _, _, _), !, context_records(All, Name, Rs0),
     copy_context(F0, Rs0, F, Rs), with_context(F, Rs, Items).
-copy_item(_, data(N, L, A, Is), [data(N, L, A, Is)]).
+copy_item(_, data(N, L, A, Is), [data(N, L, A, Is)]) :- !.
 copy_item(_, alias(N, L, T), [alias(N, L, T)]).
 
 copy_context(F, Rs, F, Rs) :- setjmp_func(F), !.

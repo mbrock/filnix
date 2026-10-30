@@ -131,10 +131,10 @@ allocation(Body, Effects, Homes, Map, Analysis) :-
         numbered(Candidates0, 0, Numbered),
         list_to_assoc(Numbered, Index),
         list_to_assoc(Weighted, Weights),
-        length(Candidates0, NC), HomeBits is (1 << (2*NC)) - 1,
+        length(Candidates0, NC), HomeBits is ((1 << (2*NC)) - 1) << 8,
         foldl(home_facts(Index, HomeBits), Body, Outs, f(0,0)-[], f(Cross,Wide)-Edges),
         Excluded is In0 \/ Wide,
-        findall(W-D, ( member(D-K, Numbered), Excluded /\ (3 << (2*K)) =:= 0,
+        findall(W-D, ( member(D-K, Numbered), home_shift(K, S), Excluded /\ (3 << S) =:= 0,
                        get_assoc(D, Weights, W) ), ByWeight0),
         keysort(ByWeight0, Ascending), reverse(Ascending, ByWeight),
         neighbours(Edges, Neighbours),
@@ -207,8 +207,8 @@ home_facts(Index, HomeBits, Line, Out, f(C0,W0)-E0, f(C,W)-E) :-
     ;   Line = ins(mov,S,[_,mem(D,rbp)]), rbp_access(Line, D, _),
         get_assoc(D, Index, K)
     ->  C = C0,
-        Own is 3 << (2*K),
-        ( S == l, Out /\ (2 << (2*K)) =\= 0 -> W is W0 \/ Own ; W = W0 ),
+        home_shift(K, Sh), Own is 3 << Sh,
+        ( S == l, Out /\ (2 << Sh) =\= 0 -> W is W0 \/ Own ; W = W0 ),
         Others is Out /\ HomeBits /\ \ Own,
         ( Others =:= 0 -> E = E0 ; E = [K-Others|E0] )
     ;   C = C0, W = W0, E = E0
@@ -228,7 +228,7 @@ or_int(B, A0, A) :- A is A0 \/ B.
 
 % halves_homes(+Halves, -Homes): the bitset of homes with a half in Halves.
 halves_homes(Halves, Homes) :-
-    findall(B, (bit_members(Halves, H), K is H >> 1, B is 1 << K), Bs),
+    findall(B, (bit_members(Halves, H), K is (H - 8) >> 1, B is 1 << K), Bs),
     foldl(or_int, Bs, 0, Homes).
 
 bit_members(M, I) :- M > 0, Low is M /\ (-M), I0 is msb(Low),
@@ -236,7 +236,7 @@ bit_members(M, I) :- M > 0, Low is M /\ (-M), I0 is msb(Low),
 
 colour(Index, Owners, Cross, Neighbours, _-D, Colours0, Colours) :-
     get_assoc(D, Index, K),
-    ( Cross /\ (3 << (2*K)) =\= 0
+    ( home_shift(K, S), Cross /\ (3 << S) =\= 0
     -> Registers = [rbx,r12,r13,r14,r15]
     ;  Registers = [r10,r11,rbx,r12,r13,r14,r15] ),
     ( get_assoc(K, Neighbours, N) -> true ; N = 0 ),

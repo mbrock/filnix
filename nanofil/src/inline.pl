@@ -69,6 +69,7 @@ inline_module(Callees, M0, M) :-
     inline_round(1, Sizes, M1, M2),
     release_stacks,
     prepared(Callees, M2, M3),
+    release_stacks,
     inline_round(2, Sizes, M3, M).
 
 % prepared(+Callees, +M0, -M): with `simplified`, M is M0 with each
@@ -100,8 +101,9 @@ prepared_item(_, _, Contexts, F, Items) :-
     context_records(Contexts, Name, Rs), with_context(F, Rs, Items).
 prepared_item(_, _, _, Item, [Item]).
 
-% release_stacks: as main.pl's, collect the first round's garbage and
-% return the stack memory before the second. SWI's limit counts what is
+% release_stacks: as main.pl's, collect the first round's and the
+% preparation's garbage and return the stack memory before the second
+% round (preparing SQLite's callees left 1.1 GB allocated, 200 MB live). SWI's limit counts what is
 % allocated: without it, sqlite3.c overflows 1 GB with 200 MB live, and
 % peaks 0.7 GB above `--inline=none` under the 4 GB limit its builds use.
 release_stacks :-

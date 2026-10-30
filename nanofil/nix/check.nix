@@ -101,6 +101,12 @@ pkgs.runCommandCC "nanofil-check"
     # identity and bounded symbolic before/after equivalence.
     python3 -I tests/bigfn.py 1 300 > big1.c
     export NANOFIL_OPT=-O
+    # A 32 KB struct copied by value (minizip's zipOpen3): one function of
+    # 16k loads and stores, each its own register-home candidate, within
+    # SWI's default 1 GB stack (docs/perf.md, item 11).
+    python3 -I tests/bigcopy.py 32768 > bigcopy.c
+    step "-O bigcopy 1 GB" env COMPILE_TIMEOUT=300 NANOFIL_STACK_LIMIT=1073741824 \
+      tests/progtest.sh bigcopy.c
     step "-O difftest float SSE2" env CC=$CC tests/difftest.sh tests/float/*.ir
     step "-O difftest fixtures+gen1" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir
     step "-O difftest backend" env CC=$CC tests/par.sh tests/difftest.sh tests/backend/*.ir

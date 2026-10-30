@@ -3708,6 +3708,58 @@ the gate's instructions for 5% of SQLite's compile. It stays opt-in
 (bench mode `O-limit4000`). A useful threshold would need a cheaper
 allocator for those functions rather than none.
 
+### 11. `-O` within the default 1 GB stack (October 2026)
+
+The first `-O` survey (at `b6f602f`, before 64488e3's 4 GB retry) built
+137 of 202 packages, against 144 plain. Fourteen failed at `-O` only
+with `resource_error(stack)`: curl, git, libgit2, libvpx, minizip,
+netcdf, perl5, sqlite, svt-av1, tpm2-tss, trealla, xvidcore, libaom and
+emacs30. Their top frames were in amd64_regs_check (`line_use_def`,
+`pass`/`fixpoint`, `body_analysis`, `block_summary`, `compose`), in
+promote, and for libgit2 in filc_amd64's `temp_names`. They were not deep
+recursion. Every report has a local stack of 5–223 KB and a global
+stack of about 1 GB. Three causes, each fixed with identical output (the
+snapshot, and byte-identical `-O` assembly for `sqlite3.c` and minizip's
+`zip.c`):
+
+1. **The register checker's live sets were as wide as the function.**
+   Each line's use, definition and live set is a bitset with two bits
+   per candidate home. The eight scratch and flags bits sat above all of
+   them, so nearly every line's set was as wide as the function's whole
+   candidate count: memory grew with lines × homes. A struct copied by
+   value is the worst case. The frontend copies a pointer-free struct a
+   word at a time, and each loaded word is its own candidate. minizip's
+   `zipOpen3` copies a 64 KB struct (`*zi = ziinit`), so it has 50k
+   instructions. The scratch and flags bits are now bits 0–7, and home
+   K's halves are bits 8 + 2K and 9 + 2K (`home_shift/2`), so a set is
+   only as wide as the highest home live in it. `zip.c` went from an
+   overflow at 2.2 GB RSS to 751 MB. `tests/bigcopy.py 32768`, the same
+   shape with a 32 KB struct, overflowed 1 GB before (fail-first) and
+   now compiles in 747 MB. `nix/check.nix` builds it at `-O` under
+   `NANOFIL_STACK_LIMIT=1073741824` and compares it with filcc.
+2. **Promote, copy and local storage left a choicepoint per data
+   item.** Their item clauses are indexed on the first argument, the
+   same for all items, so each `data` item left the `alias` clause open:
+   2,376 choicepoints on SQLite, each pinning the trail. The `data`
+   clauses now cut, as the function clauses already did.
+3. **SWI counts allocated stacks, not live data.** On SQLite, 200–250 MB
+   is live throughout the middle end. But preparing the inliner's
+   callees left 1.15 GB allocated, so collections were rare, and the
+   trail between them doubled to 0.5 GB. `optimize/3` now collects and
+   trims after each pass, and the inliner does so after preparation as
+   it did after its first round.
+
+`sqlite3.c` at `-O` now compiles under 1 GB (178 s), as does
+`-O --inline=none`, which also overflowed. The compile cost is the
+extra collections: `sqlite3.c -O` takes 1983.1G instructions against
+1970.8G (+0.6%).
+
+Two costs remain, outside this item's files. The emitter's
+`fused_insts` is quadratic in a block's checks: 32% of `bigcopy 16384`'s
+22 s, and 81 s on the 32 KB copy (M7 is changing its proof list to an
+assoc). The frontend's word-by-word struct copy is the root of the
+size; filcc calls `memcpy` for large ones.
+
 ### Projection
 
 From the profile's shares: items 1–4 leave the compressors at about 3–4×
