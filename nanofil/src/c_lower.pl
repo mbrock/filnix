@@ -5024,6 +5024,147 @@ clmul_bits(I, A, B, Ctx, Lo0, Hi0, Lo, Hi) -->
     { I1 is I + 1 },
     clmul_bits(I1, A, B, Ctx, Lo1, Hi1, Lo, Hi).
 
+% pcmpstr(?Name, ?Len, ?Out): Name is a SSE4.2 string compare with
+% lengths Len (e or i) whose result is Out (m, i or a flag ia ... iz).
+pcmpstr(Name, Len, Out) :-
+    member(Len, [i, e]), member(Out, [m, i, ia, ic, io, is, iz]),
+    atomic_list_concat([pcmp, Len, str, Out, '128'], Name).
+
+pcmp_format(I, VT) :-
+    F is I /\ 3,
+    nth0(F, [vec(uchar, 16, 16), vec(ushort, 8, 16), vec(schar, 16, 16), vec(short, 8, 16)], VT).
+
+% pcmp_valid(+Len, +Ls, +LV, +Ctx, -Vs)//: Vs are 1 for each element of
+% Ls within its length, else 0.
+pcmp_valid(i, Ls, _, Ctx, Vs) --> pcmp_nonzero(Ls, v(const(1), int), Ctx, Vs).
+pcmp_valid(e, Ls, LV, Ctx, Vs) -->
+    convert(LV, long, L), bop(lt, L, v(const(0), long), Ctx, Neg),
+    bop(sub, v(const(0), long), L, Ctx, NegL),
+    isel(Neg, NegL, L, long, Ctx, Abs),
+    { numbered(Ls, Js) }, pcmp_below(Js, Abs, Ctx, Vs).
+pcmp_nonzero([], _, _, []) --> [].
+pcmp_nonzero([L|Ls], P, Ctx, [V|Vs]) -->
+    bop(ne, L, v(const(0), int), Ctx, NZ), bop(and, P, NZ, Ctx, V),
+    pcmp_nonzero(Ls, V, Ctx, Vs).
+pcmp_below([], _, _, []) --> [].
+pcmp_below([J|Js], A, Ctx, [V|Vs]) -->
+    bop(lt, v(const(J), long), A, Ctx, V), pcmp_below(Js, A, Ctx, Vs).
+
+% pcmp_aggregated(+Agg, +As, +Bs, +VAs, +VBs, +Ctx, -R1)//: IntRes1,
+% bit j for element j of B, with the SDM's overrides for invalid
+% elements. Where an override makes a pair false, the invalid element is
+% first replaced by 65536, which equals no element and lies in no range
+% of them, so the pair needs no test of its own.
+pcmp_aggregated(0, As0, Bs, VAs, VBs, Ctx, R1) --> !,
+    pcmp_masked(As0, VAs, Ctx, As), { numbered(Bs, Js) },
+    pcmp_bits(Js, 0, As, Bs, VAs, VBs, Ctx, R1).
+pcmp_aggregated(1, As0, Bs, VAs, VBs, Ctx, R1) --> !,
+    pcmp_masked_ranges(As0, VAs, Ctx, As), { numbered(Bs, Js) },
+    pcmp_bits(Js, 1, As, Bs, VAs, VBs, Ctx, R1).
+pcmp_aggregated(3, As, Bs0, VAs, VBs, Ctx, R1) --> !,
+    pcmp_masked(Bs0, VBs, Ctx, Bs), pcmp_nots(VAs, Ctx, NAs), { numbered(Bs, Js) },
+    pcmp_bits(Js, 3, As, Bs, NAs, VBs, Ctx, R1).
+pcmp_aggregated(Agg, As, Bs, VAs, VBs, Ctx, R1) -->
+    { numbered(Bs, Js) }, pcmp_bits(Js, Agg, As, Bs, VAs, VBs, Ctx, R1).
+
+pcmp_masked([], [], _, []) --> [].
+pcmp_masked([X|Xs], [V|Vs], Ctx, [Y|Ys]) -->
+    isel(V, X, v(const(65536), int), int, Ctx, Y), pcmp_masked(Xs, Vs, Ctx, Ys).
+% a range whose bounds are not both valid gets the empty [65536, Hi]
+pcmp_masked_ranges([], [], _, []) --> [].
+pcmp_masked_ranges([Lo, Hi|Xs], [VLo, VHi|Vs], Ctx, [Lo1, Hi1|Ys]) -->
+    bop(and, VLo, VHi, Ctx, V), isel(V, Lo, v(const(65536), int), int, Ctx, Lo1),
+    convert(Hi, int, Hi1), pcmp_masked_ranges(Xs, Vs, Ctx, Ys).
+pcmp_nots([], _, []) --> [].
+pcmp_nots([V|Vs], Ctx, [N|Ns]) --> bop(xor, V, v(const(1), int), Ctx, N), pcmp_nots(Vs, Ctx, Ns).
+pcmp_bits([], _, _, _, _, _, _, []) --> [].
+pcmp_bits([J|Js], Agg, As, Bs, VAs, VBs, Ctx, [R|Rs]) -->
+    pcmp_bit(Agg, J, As, Bs, VAs, VBs, Ctx, R),
+    pcmp_bits(Js, Agg, As, Bs, VAs, VBs, Ctx, Rs).
+
+pcmp_bit(0, J, As, Bs, _, VBs, Ctx, R) -->        % equal any; As masked
+    { nth0(J, Bs, B), nth0(J, VBs, VB) },
+    pcmp_any(As, B, Ctx, v(const(0), int), Any),
+    bop(and, Any, VB, Ctx, R).
+pcmp_bit(1, J, As, Bs, _, VBs, Ctx, R) -->        % ranges; As masked
+    { nth0(J, Bs, B), nth0(J, VBs, VB) },
+    pcmp_ranges(As, B, Ctx, v(const(0), int), Any),
+    bop(and, Any, VB, Ctx, R).
+pcmp_bit(2, J, As, Bs, VAs, VBs, Ctx, R) -->      % equal each
+    { nth0(J, As, A), nth0(J, Bs, B), nth0(J, VAs, VA), nth0(J, VBs, VB) },
+    bop(eq, A, B, Ctx, E), bop(and, VA, VB, Ctx, Both), bop(and, Both, E, Ctx, T),
+    bop(or, VA, VB, Ctx, Either), bop(xor, Either, v(const(1), int), Ctx, Neither),
+    bop(or, T, Neither, Ctx, R).
+pcmp_bit(3, J, As, Bs, NAs, _, Ctx, R) -->        % equal ordered; Bs masked
+    { length(As, N), K1 is N - 1 - J, numlist(0, K1, Ks) },
+    pcmp_ordered(Ks, J, As, Bs, NAs, Ctx, v(const(1), int), R).
+
+pcmp_any([], _, _, Acc, Acc) --> [].
+pcmp_any([A|As], B, Ctx, Acc0, Acc) -->
+    bop(eq, A, B, Ctx, E), bop(or, Acc0, E, Ctx, Acc1),
+    pcmp_any(As, B, Ctx, Acc1, Acc).
+
+pcmp_ranges([], _, _, Acc, Acc) --> [].
+pcmp_ranges([Lo, Hi|As], B, Ctx, Acc0, Acc) -->
+    bop(le, Lo, B, Ctx, C1), bop(le, B, Hi, Ctx, C2),
+    bop(and, C1, C2, Ctx, C), bop(or, Acc0, C, Ctx, Acc1),
+    pcmp_ranges(As, B, Ctx, Acc1, Acc).
+
+% an invalid element of A matches anything (NA, its negated validity, is
+% 1); an invalid element of B, masked, matches no valid one of A
+pcmp_ordered([], _, _, _, _, _, Acc, Acc) --> [].
+pcmp_ordered([K|Ks], J, As, Bs, NAs, Ctx, Acc0, Acc) -->
+    { X is J + K, nth0(K, As, A), nth0(K, NAs, NA), nth0(X, Bs, B) },
+    bop(eq, A, B, Ctx, E), bop(or, NA, E, Ctx, T),
+    bop(and, Acc0, T, Ctx, Acc1),
+    pcmp_ordered(Ks, J, As, Bs, NAs, Ctx, Acc1, Acc).
+
+% pcmp_polarity(+Pol, +R1, +VBs, +Ctx, -R2)//: IntRes2.
+pcmp_polarity(Pol, R1, _, _, R1) --> { Pol /\ 1 =:= 0 }, !.
+pcmp_polarity(1, R1, _, Ctx, R2) --> pcmp_xors(R1, _, Ctx, R2).
+pcmp_polarity(3, R1, VBs, Ctx, R2) --> pcmp_xors(R1, VBs, Ctx, R2).
+pcmp_xors([], _, _, []) --> [].
+pcmp_xors([R|Rs], Ms, Ctx, [X|Xs]) -->
+    { var(Ms) -> M = v(const(1), int), Ms1 = Ms ; Ms = [M|Ms1] },
+    bop(xor, R, M, Ctx, X), pcmp_xors(Rs, Ms1, Ctx, Xs).
+
+% pcmp_result(+Out, +Msb, +VT, +N, +R2, +Js, +R20, +VaN, +VbN, +Ret, +Ctx, -R)//
+% the index of IntRes2's lowest set bit, N if none: ctz of it with bit N
+% set; or of its highest, the bits up to it counted less 1, N if none
+pcmp_result(i, 0, _, N, R2, Js, _, _, _, _, Ctx, v(I, int)) --> !,
+    pcmp_mask(R2, Js, Ctx, v(const(0), int), M0),
+    { Stop is 1 << N }, bop(or, M0, v(const(Stop), int), Ctx, M1),
+    convert(M1, ullong, v(X, _)), bit_count(ctz, 32, X, C), let(w, copy, [C], I).
+pcmp_result(i, 1, _, N, R2, Js, _, _, _, _, Ctx, R) --> !,
+    pcmp_mask(R2, Js, Ctx, v(const(0), int), M),
+    convert(M, ullong, v(X, _)), smear([1, 2, 4, 8, 16], X, S), popcount64(S, P),
+    let(l, sub, [P, const(1)], Hi), let(w, copy, [Hi], HiW),
+    bop(eq, M, v(const(0), int), Ctx, None),
+    isel(None, v(const(N), int), v(HiW, int), int, Ctx, R).
+pcmp_result(m, 0, _, _, R2, Js, _, _, _, Ret, Ctx, R) --> !,
+    pcmp_mask(R2, Js, Ctx, v(const(0), int), M),
+    { Z = v(const(0), int) },
+    made(vec(ushort, 8, 16), [M, Z, Z, Z, Z, Z, Z, Z], v(Addr, _)), { R = v(Addr, Ret) }.
+pcmp_result(m, 1, VT, _, R2, _, _, _, _, Ret, Ctx, R) --> !,
+    pcmp_units(R2, Ctx, Us),
+    made(VT, Us, v(Addr, _)), { R = v(Addr, Ret) }.
+pcmp_result(ic, _, _, _, R2, _, _, _, _, _, Ctx, R) --> !, pcmp_or(R2, Ctx, R).
+pcmp_result(ia, _, _, _, R2, _, _, _, VbN, _, Ctx, R) --> !,
+    pcmp_or(R2, Ctx, C), bop(xor, C, v(const(1), int), Ctx, NC), bop(and, NC, VbN, Ctx, R).
+pcmp_result(io, _, _, _, _, _, R20, _, _, _, _, R20) --> !.
+pcmp_result(is, _, _, _, _, _, _, VaN, _, _, Ctx, R) --> !, bop(xor, VaN, v(const(1), int), Ctx, R).
+pcmp_result(iz, _, _, _, _, _, _, _, VbN, _, Ctx, R) --> bop(xor, VbN, v(const(1), int), Ctx, R).
+
+pcmp_mask([], [], _, M, M) --> [].
+pcmp_mask([B|Bs], [J|Js], Ctx, M0, M) -->
+    bop(shl, B, v(const(J), int), Ctx, S), bop(or, M0, S, Ctx, M1), pcmp_mask(Bs, Js, Ctx, M1, M).
+pcmp_units([], _, []) --> [].
+pcmp_units([B|Bs], Ctx, [U|Us]) -->
+    bop(sub, v(const(0), int), B, Ctx, U), pcmp_units(Bs, Ctx, Us).
+pcmp_or([B|Bs], Ctx, R) --> pcmp_or_(Bs, Ctx, B, R).
+pcmp_or_([], _, R, R) --> [].
+pcmp_or_([B|Bs], Ctx, R0, R) --> bop(or, R0, B, Ctx, R1), pcmp_or_(Bs, Ctx, R1, R).
+
 % isel(+C, +A, +B, +T, +Ctx, -R)//: R, of integer type T, is A where the
 % int C is 1 and B where it is 0: B ^ ((A ^ B) & -C).
 isel(C, A, B, T, Ctx, R) -->
@@ -5122,6 +5263,36 @@ vector_op(pclmulqdq128, [_, _, C], [VA, VB, _], Ret, Ctx, R) --> !,
     { nth0(SA, La, A), nth0(SB, Lb, B), Z = v(const(0), ullong) },
     clmul_bits(0, A, B, Ctx, Z, Z, Lo, Hi),
     made(Ret, [Lo, Hi], R).
+% SHUFPD and SHUFPS: imm8 picks each half's elements, the low half's
+% from A and the high half's from B; done on integer lanes, bit-exact.
+vector_op(Name, [_, _, C], [VA, VB, _], Ret, Ctx, R) -->
+    { memberchk(Name-Q-Bits, [shufpd-vec(ullong, 2, 16)-1, shufps-vec(uint, 4, 16)-2]) }, !,
+    imm(C, Ctx, I),
+    lanes(VA, Q, Ctx, La), lanes(VB, Q, Ctx, Lb),
+    { Q = vec(_, N, _), Half is N // 2, Mask is (1 << Bits) - 1, N1 is N - 1,
+      findall(L, ( between(0, N1, J), S is (I >> (Bits * J)) /\ Mask,
+                   ( J < Half -> nth0(S, La, L) ; nth0(S, Lb, L) ) ), Out) },
+    made(Q, Out, v(Addr, _)), { R = v(Addr, Ret) }.
+% SSE4.2's PCMPESTR* and PCMPISTR* (Intel SDM 4.1): imm8 bits 0-1 give
+% the elements' format, 2-3 the aggregation, 4-5 the polarity, and 6
+% the index's end or the mask's form; the lengths are explicit (e, the
+% absolute value of an int, saturated) or implicit (i, up to the first
+% zero element). IntRes1 and IntRes2 are computed element by element,
+% branch-free, then the index, mask or one flag is the result.
+vector_op(Name, Args, Vs, Ret, Ctx, R) -->
+    { pcmpstr(Name, Len, Out) }, !,
+    { last(Args, IA) }, imm(IA, Ctx, I),
+    { pcmp_format(I, VT), VT = vec(_, N, _) },
+    (   { Len == e } -> { Vs = [VA, LA, VB, LB, _] } ; { Vs = [VA, VB, _], LA = none, LB = none } ),
+    lanes(VA, VT, Ctx, La), lanes(VB, VT, Ctx, Lb),
+    pcmp_valid(Len, La, LA, Ctx, Va), pcmp_valid(Len, Lb, LB, Ctx, Vb),
+    { Agg is (I >> 2) /\ 3, Pol is (I >> 4) /\ 3, Msb is (I >> 6) /\ 1 },
+    (   { memberchk(Out, [is, iz]) } -> { R2 = [none] }   % the lengths alone
+    ;   pcmp_aggregated(Agg, La, Lb, Va, Vb, Ctx, R1),
+        pcmp_polarity(Pol, R1, Vb, Ctx, R2)
+    ),
+    { last(Va, VaN), last(Vb, VbN), R2 = [R20|_], numbered(R2, Js) },
+    pcmp_result(Out, Msb, VT, N, R2, Js, R20, VaN, VbN, Ret, Ctx, R).
 vector_op(pmaddwd128, _, [VA, VB], Ret, Ctx, R) --> !,
     { v8hi(H) }, lanes(VA, H, Ctx, La), lanes(VB, H, Ctx, Lb),
     pair_products(La, Lb, uint, Ctx, Out),

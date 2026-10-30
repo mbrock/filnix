@@ -4223,6 +4223,12 @@ vector_builtin_(pblendw128, [v8hi, v8hi, int], v8hi).
 vector_builtin_(pmuludq128, [v4si, v4si], v2di).
 vector_builtin_(pmuldq128, [v4si, v4si], v2di).
 vector_builtin_(pclmulqdq128, [v2di, v2di, char], v2di).
+vector_builtin_(shufpd, [v2df, v2df, int], v2df).
+vector_builtin_(shufps, [v4sf, v4sf, int], v4sf).
+vector_builtin_(Name, Ps, R) :-                 % SSE4.2 string compares
+    member(L-Ps, [i-[v16qi, v16qi, char], e-[v16qi, int, v16qi, int, char]]),
+    member(O-R, [m-v16qi, i-int, ia-int, ic-int, io-int, is-int, iz-int]),
+    atomic_list_concat([pcmp, L, str, O, '128'], Name).
 vector_builtin_(pmaddwd128, [v8hi, v8hi], v4si).
 vector_builtin_(pmaddubsw128, [v16qi, v16qi], v8hi).
 vector_builtin_(psadbw128, [v16qi, v16qi], v2di).
