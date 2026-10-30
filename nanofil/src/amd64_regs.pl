@@ -1,6 +1,6 @@
 /* Whole-function register homes for scalar temporaries (docs/perf.md
    item 3, step 3a), with step 3b's operand rewrite and 5a-loads' frame
-   cells: `--registers=temps`, the -O default. A fixed map
+   cells: `--registers=temps`, and `--registers=pointers`, the -O default. A fixed map
    puts frame homes in registers for the whole function: homes live
    across a call in the callee-saved rbx and r12-r15, the others also in
    r10/r11. Accesses stay the moves the reference emits, with a register

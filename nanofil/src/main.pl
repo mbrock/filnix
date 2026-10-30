@@ -49,8 +49,9 @@
     per scalar temporary (docs/perf.md items 3, 5a-loads and 3d), in the
     Fil-C backend. Pointers is temps with pointer address words as homes
     too, their lowers staying in the frame record (docs/perf.md 5b-2).
-    The default is temps with `-O` and stack without it;
-    NANOFIL_REGISTERS supplies the same choice to build harnesses, and
+    The default is pointers with `-O` and stack without it;
+    NANOFIL_REGISTERS supplies the same choice to build harnesses,
+    `-O --registers=temps` keeps scalar homes only, and
     `-O --registers=stack` keeps the reference emission. The modes local,
     function, operands, cells and flow were retired in October 2026
     (docs/perf.md, register modes) and are refused.
@@ -275,11 +276,12 @@ options(Args,O,emit(R,B,M),C,O,emit(R,B,M),C,Args) :-
 % registers_default(+Opt, ?Registers) and branches_default(+Opt,
 % ?Branches): with no option or environment variable, -O selects
 % whole-function registers with register operands and frame cells on a
-% frame with a home per scalar temporary (temps), and branch selection,
-% and its absence keeps the reference emission.
+% frame with a home per scalar temporary and pointer address words as
+% homes too (pointers), and branch selection, and its absence keeps the
+% reference emission.
 registers_default(_, R) :- nonvar(R), !.
 registers_default(o0, stack).
-registers_default(o1, temps).
+registers_default(o1, pointers).
 branches_default(_, B) :- nonvar(B), !.
 branches_default(o0, reference).
 branches_default(o1, selected).
