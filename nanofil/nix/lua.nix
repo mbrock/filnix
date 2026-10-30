@@ -36,7 +36,7 @@ let
     stack-optimized = "-O --registers=stack";
     reuse-plain = "--checks=reuse";
     reuse-optimized = "-O --checks=reuse";
-    renew-optimized = "-O --checks=renew";
+    refchecks-optimized = "-O --checks=reference";
     temps-optimized = "-O --registers=temps";
   };
 in

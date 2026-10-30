@@ -557,8 +557,11 @@ bytes, not 1712 (reference 1296), and `luaV_execute`'s and
 resyncs fell to baseline (renew 43k, guard 49k, reference 47k, from
 8.5M), with renewal's instruction savings intact. On quiet swa the gate
 geomean is `-O` 1.98, renew 1.94, guard 1.97 (bzip2 `-d` 2.30 / 2.20 /
-2.22): renewal is a time win, guards are not over renewal. Both stay
-opt-in until the orchestrator decides a default.
+2.22): renewal is a time win, guards are not over renewal. On the
+pointers base the geomean is `-O` 1.85, renew 1.81, guard 1.82, with
+renewal slower nowhere; `-O` selects `--checks=renew` again, guards stay
+opt-in (they lose 5% on lz4 `-d`), and `--checks=reference` stays
+selectable and tested.
 
 **First deliverable:** one narrowly specified alternative to repeated
 runtime checking, such as reuse for repeated scalar accesses in a

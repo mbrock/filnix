@@ -30,7 +30,7 @@ let
     O-stack = "-O --registers=stack";
     reuse = "--checks=reuse";
     O-reuse = "-O --checks=reuse";
-    O-renew = "-O --checks=renew";
+    O-refchecks = "-O --checks=reference";
     O-temps = "-O --registers=temps";
   };
 in
