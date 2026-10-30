@@ -692,6 +692,10 @@ doc(filcc_refused_mnemonic(-M), nondet, [
     cites('filc-staging-ref-src, llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp, validateSafeInlineAsm (parseMnemonic) and handleInlineAsm'),
     example(filcc_refused_mnemonic(int)),
     example(filcc_refused_mnemonic(syscall)),
+    "The port I/O forms with a size suffix are refused too (kbd's",
+    "resizecons, glibc's sys/io.h, util-linux's lscpu-virt).",
+    example(filcc_refused_mnemonic(outb)),
+    example(filcc_refused_mnemonic(inl)),
     fails(filcc_refused_mnemonic(cpuid)),
     fails(filcc_refused_mnemonic(ud2))
 ]).
@@ -706,11 +710,16 @@ filcc_refused_mnemonic(fxsave).
 filcc_refused_mnemonic(hlt).
 filcc_refused_mnemonic(icebp).
 filcc_refused_mnemonic(in).
+filcc_refused_mnemonic(inb).
+filcc_refused_mnemonic(inl).
 filcc_refused_mnemonic(insb).
+filcc_refused_mnemonic(insl).
+filcc_refused_mnemonic(insw).
 filcc_refused_mnemonic(int).
 filcc_refused_mnemonic(int1).
 filcc_refused_mnemonic(int3).
 filcc_refused_mnemonic(into).
+filcc_refused_mnemonic(inw).
 filcc_refused_mnemonic(invd).
 filcc_refused_mnemonic(iret).
 filcc_refused_mnemonic(iretq).
@@ -723,7 +732,12 @@ filcc_refused_mnemonic(lock).
 filcc_refused_mnemonic(monitor).
 filcc_refused_mnemonic(mwait).
 filcc_refused_mnemonic(out).
+filcc_refused_mnemonic(outb).
+filcc_refused_mnemonic(outl).
 filcc_refused_mnemonic(outsb).
+filcc_refused_mnemonic(outsl).
+filcc_refused_mnemonic(outsw).
+filcc_refused_mnemonic(outw).
 filcc_refused_mnemonic(pop).
 filcc_refused_mnemonic(popf).
 filcc_refused_mnemonic(push).

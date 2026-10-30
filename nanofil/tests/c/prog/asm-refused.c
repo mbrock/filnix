@@ -41,13 +41,44 @@ static void run(int i) {
     case 12: __asm__ volatile ("nop" : "+r"(x) : "g"(x)); break;
     case 13: __asm__ volatile ("bswap %0" : "=r"(x) : "0"(x), "i"(3)); break;
     case 14: __asm__ volatile ("hlt" : "=r"(*h()) : "r"(g())); break;
+    /* Port I/O with fixed registers (kbd's resizecons, util-linux's
+       lscpu-virt) and glibc's sys/io.h, whose "Nd" is N{dx} in the IR. */
+    case 15: { unsigned char v = 1; unsigned short port = 0x80;
+        __asm__ volatile ("outb %0,%1" : : "a"(v), "d"(port)); break; }
+    case 16: { unsigned char v; unsigned short port = 0x80;
+        __asm__ volatile ("inb %1,%0" : "=a"(v) : "d"(port)); x = v; break; }
+    case 17: { unsigned char v; unsigned short port = 0x80;
+        __asm__ volatile ("inb %w1,%0" : "=a"(v) : "Nd"(port)); x = v; break; }
+    case 18: { unsigned a = 0x564d5868, b = 0, c = 10, d = 0x5658;
+        __asm__ volatile ("inl (%%dx), %%eax;" : "=b"(b), "=a"(a), "=c"(c), "=d"(d)
+                          : "0"(b), "1"(a), "2"(c), "3"(d) : "memory");
+        x = (int)(a ^ b); break; }
+    /* zlib-ng's xgetbv as bytes, and sljit's (pcre2) with clang's
+       {AT&T|Intel} alternatives. */
+    case 19: { unsigned a, d, c = 0;
+        __asm__ volatile (".byte 0x0f, 0x01, 0xd0" : "=a"(a), "=d"(d) : "c"(c)); x = (int)(a + d); break; }
+    case 20: { unsigned a;
+        __asm__ ("xor{l %%ecx, %%ecx | ecx, ecx}\nxgetbv\n" : "=a"(a) : : "rcx", "rdx"); x = (int)a; break; }
+    /* nettle-benchmark's cycle counter: the xorl and the mov pass, then
+       cpuid writes ebx, which no output or clobber covers. */
+    case 21: { unsigned a, d;
+        __asm__ volatile ("xorl %%eax,%%eax\nmov %%rbx, %%r10\ncpuid\nrdtsc\nmov %%r10, %%rbx\n"
+                          : "=a"(a), "=d"(d) : : "%r10", "%rcx", "cc"); x = (int)(a + d); break; }
+    case 22: { unsigned a, b;
+        __asm__ volatile ("cpuid" : "=a"(a), "=b"(b) : : "edx"); x = (int)(a + b); break; }
+    /* A literal register that the line writes must be covered too; an
+       input does not cover it. */
+    case 23: { unsigned a, c = 0;
+        __asm__ volatile ("xorl %%ecx,%%ecx\nint3" : "=a"(a) : "c"(c)); x = (int)a; break; }
+    case 24: { unsigned a;
+        __asm__ volatile ("movl %%ebx, %%r8d\n\tINB %%dx,%%al" : "=a"(a) : : "r8"); x = (int)a; break; }
     }
 out:
     printf("case %d ran on\n", i);
 }
 
 int main(void) {
-    for (int i = 0; i < 15; i++) {
+    for (int i = 0; i < 25; i++) {
         fflush(stdout);
         pid_t pid = fork();
         if (pid == 0) { run(i); _exit(0); }

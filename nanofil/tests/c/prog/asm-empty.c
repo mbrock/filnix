@@ -10,8 +10,11 @@
    capability; each operand's lvalue is still evaluated, so pick() is
    called twice. An "=r" output with an input of its type tied to it
    ("0") receives the input's value: ell's DO_NOT_OPTIMIZE(var),
-   asm("" : "=r"(var) : "0"(var)). */
+   asm("" : "=r"(var) : "0"(var)). A pointer "r" input is evaluated and
+   nothing else, as filcc passes it: libgcrypt's wipememory barrier,
+   asm volatile("\n" :: "r"(ptr) : "memory"), after a memset. */
 #include <stdio.h>
+#include <string.h>
 
 struct S { int a; long b; };
 static int picks;
@@ -63,6 +66,11 @@ int main(void) {
     __asm__ volatile("" : : "r"(k), "i"(5), "n"(sizeof(int)), "g"(bump()));
     __asm__ volatile("" : "=r"(junk));          /* unspecified: not printed */
     (void)junk;
+    static char secret[8] = "secret";
+    memset(secret, 0, sizeof secret);
+    asm volatile("\n" :: "r"(secret) : "memory");
+    asm volatile("" :: "r"((char *)pick(0)), "r"(&k));
+    printf("%d %d\n", secret[0], picks);
     unsigned long a = 0x1234, b = 0x5678;
     unsigned long sel = (mask_for(1) & a) | (~mask_for(1) & b);
     printf("%u %g %d %lx %lx\n", guard(21), dguard(1.5), counter, sel,

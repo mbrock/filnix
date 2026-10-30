@@ -1647,7 +1647,9 @@ stmt_(null, _) --> [].
    included, "=r" writes an unspecified value, which leaving the object
    unchanged is, unless an input of its type is tied to it ("0"), whose
    value it then receives (ell's DO_NOT_OPTIMIZE), memory-class operands of any complete type are neither
-   read nor written, and inputs are evaluated. These are libgcrypt's,
+   read nor written, and inputs are evaluated, an "r" pointer input too
+   (libgcrypt's wipememory, `asm volatile("\\n" :: "r"(p) : "memory")`;
+   filcc passes the pointer's address and the blank asm uses nothing). These are libgcrypt's,
    xxhash's and elfutils' optimization barriers. A "memory" or
    "cc" clobber needs nothing: no pass of nanofil keeps a value of
    escaped memory across an instruction (promote takes only locals
@@ -1969,6 +1971,7 @@ asm_reg_input(C, E, Env, Loc, Ctx) -->
     judged_rval(E, Ctx, v(_, T0)),
     { unqualified(T0, T),
       (   asm_value_type(T) -> true
+      ;   C == r, T = ptr(_) -> true      % libgcrypt's wipememory barrier
       ;   sema_error(Loc, 'an asm operand must have integer or floating type', [])
       ) }.
 
@@ -2017,15 +2020,102 @@ asm_runtime_reason(_, OutKs, InKs, _, _, Reason) :-
     member(_-C, Ks), asm_ir_constraint(C, IR), \+ asm_validated_constraint(IR), !,
     format(atom(Reason), 'unsupported constraint for safe inline asm: ~w', [IR]).
 asm_runtime_reason(_, OutKs, InKs, Clobbers, Template, Reason) :-
-    forall(member(K-C, OutKs), ( K == value, memberchk(C, ['=r', '+r', '=a']) )),
+    forall(member(K-C, OutKs), ( K == value, asm_register_output(C, _) )),
     forall(member(K-C, InKs), ( K == value, asm_validated_input(C) )),
-    forall(member(C, Clobbers), memberchk(C, [memory, cc])),
+    findall(F, ( member(_-C, OutKs), asm_register_output(C, F), F \== none ), OutFs),
+    maplist(asm_clobber_family, Clobbers, ClobFs0),
+    append(OutFs, ClobFs0, Covered0), exclude(==(none), Covered0, Covered),
     split_asm_lines(Template, Lines),
-    member(Line, Lines),
-    atom_codes(L, Line), normalize_space(atom(A), L), A \== '', !,
-    atomic_list_concat([W|_], ' ', A), downcase_atom(W, M),
-    filcc_refused_mnemonic(M),
-    format(atom(Reason), 'unsupported mnemonic for safe inline asm: ~w', [M]).
+    asm_lines_reason(Lines, Covered, Reason).
+
+% asm_lines_reason(+Lines, +Covered, -Reason): validateSafeInlineAsm
+% checks the lines in order and Reason is the first refusal, given the
+% register families Covered by output constraints and clobbers. A line
+% must be one asm_line/3 knows: one it passes, or the one it refuses;
+% for any other line nanofil cannot tell, and fails (the asm is then
+% refused at compile time).
+asm_lines_reason([Line|Lines], Covered, Reason) :-
+    atom_codes(L, Line), normalize_space(atom(A), L),
+    (   A == '' -> asm_lines_reason(Lines, Covered, Reason)
+    ;   asm_line(A, Covered, Verdict),
+        (   Verdict = refused(Reason) -> true
+        ;   asm_lines_reason(Lines, Covered, Reason)
+        )
+    ).
+
+% asm_line(+A, +Covered, -Verdict): what validateSafeInlineAsm makes of
+% the line A, probed against the pinned filcc (tests/c/prog/asm-refused.c):
+% - a first word with clang's {AT&T|Intel} alternatives, which the IR
+%   writes $( $| $), names no mnemonic: refused with that word;
+% - a mnemonic its table lacks (c_types filcc_refused_mnemonic/1);
+% - cpuid without operands writes eax, ebx, ecx and edx, each of which
+%   an output constraint or a clobber must cover, checked in that order;
+% - xor or mov (l, q or none) of two literal registers of one width
+%   writes the second, which must be covered ("literal register %R not
+%   covered ..."); reading the first needs nothing.
+asm_line(A, Covered, Verdict) :-
+    atomic_list_concat([W0|Ops0], ' ', A), downcase_atom(W0, W),
+    atomic_list_concat(Ops0, '', Ops),
+    (   sub_atom(W, _, _, _, '{')
+    ->  atom_chars(W, WCs), maplist(asm_alternative, WCs, Parts),
+        atomic_list_concat(Parts, M),
+        format(atom(R), 'unsupported mnemonic for safe inline asm: ~w', [M]),
+        Verdict = refused(R)
+    ;   filcc_refused_mnemonic(W)
+    ->  format(atom(R), 'unsupported mnemonic for safe inline asm: ~w', [W]),
+        Verdict = refused(R)
+    ;   W == cpuid, Ops == ''
+    ->  (   member(Reg-F, [eax-ax, ebx-bx, ecx-cx, edx-dx]), \+ memberchk(F, Covered)
+        ->  format(atom(R), 'cpuid output ~w not covered by output constraint or clobber', [Reg]),
+            Verdict = refused(R)
+        ;   Verdict = passed
+        )
+    ;   memberchk(W, [xor, xorl, xorq, mov, movl, movq]),
+        atomic_list_concat(['', S, D], '%%', Ops), atom_concat(S1, ',', S),
+        asm_register(S1, _, Width), asm_register(D, FD, Width),
+        \+ memberchk(FD, [sp, bp])
+    ->  (   memberchk(FD, Covered) -> Verdict = passed
+        ;   format(atom(R), 'literal register %~w not covered by output constraint or clobber', [D]),
+            Verdict = refused(R)
+        )
+    ).
+
+asm_alternative('{', '$(') :- !.
+asm_alternative('|', '$|') :- !.
+asm_alternative('}', '$)') :- !.
+asm_alternative(C, C).
+
+% asm_register_output(+C, -Family): output constraint C is one the
+% validator accepts as a register, = or + and r or a fixed register;
+% Family is the fixed register's (none for r).
+asm_register_output(C, F) :-
+    atom_chars(C, [P, L]), memberchk(P, ['=', '+']),
+    (   L == r -> F = none ; asm_letter_family(L, F) ).
+
+asm_letter_family(a, ax).
+asm_letter_family(b, bx).
+asm_letter_family(c, cx).
+asm_letter_family(d, dx).
+asm_letter_family('S', si).
+asm_letter_family('D', di).
+
+% asm_clobber_family(+C, -F): clobber C is memory or cc (F none) or a
+% general-purpose register other than sp and bp, of family F, which
+% validateSafeInlineAsm accepts; fails for any other.
+asm_clobber_family(C, none) :- memberchk(C, [memory, cc]), !.
+asm_clobber_family(C, F) :-
+    ( atom_concat('%', R, C) -> true ; R = C ),
+    asm_register(R, F, _), \+ memberchk(F, [sp, bp]).
+
+% asm_register(?Name, ?Family, ?Width): a general-purpose register.
+asm_register(Name, F, W) :-
+    member(F-Names, [ax-[rax, eax, ax, al], bx-[rbx, ebx, bx, bl], cx-[rcx, ecx, cx, cl],
+                     dx-[rdx, edx, dx, dl], si-[rsi, esi, si, sil], di-[rdi, edi, di, dil],
+                     sp-[rsp, esp, sp, spl], bp-[rbp, ebp, bp, bpl]]),
+    nth1(I, Names, Name), nth1(I, [64, 32, 16, 8], W).
+asm_register(Name, F, W) :-
+    between(8, 15, N), atom_concat(r, N, F),
+    member(Suffix-W, [''-64, d-32, w-16, b-8]), atom_concat(F, Suffix, Name).
 
 % asm_ir_constraint(+C, -IR): the constraint clang writes in the IR for
 % a value operand's GCC constraint C: + becomes = (its tied input is a
@@ -2037,11 +2127,15 @@ asm_ir_constraint(C, IR) :-
     atom_chars(C, Cs),
     asm_constraint_prefix(Cs, Ps0, Body),
     maplist(asm_ir_prefix, Ps0, Ps),
-    (   Body = [L], asm_fixed_register(L, Reg) -> atom_chars(Reg, BCs)
-    ;   Body == [g] -> BCs = [i, m, r]
-    ;   BCs = Body
-    ),
+    maplist(asm_ir_letter, Body, BCss), append(BCss, BCs),
     append(Ps, BCs, IRCs), atom_chars(IR, IRCs).
+
+% asm_ir_letter(+L, -Cs): clang's SimplifyConstraint writes g as imr
+% and X86's convertConstraint each fixed register letter as its {reg},
+% also within a longer constraint ("Nd" is N{dx}).
+asm_ir_letter(g, [i, m, r]) :- !.
+asm_ir_letter(L, Cs) :- asm_fixed_register(L, Reg), !, atom_chars(Reg, Cs).
+asm_ir_letter(L, [L]).
 
 asm_constraint_prefix([P|Cs], [P|Ps], Body) :-
     memberchk(P, ['=', '+', '&', '%']), !, asm_constraint_prefix(Cs, Ps, Body).
@@ -2059,11 +2153,11 @@ asm_fixed_register('D', '{di}').
 
 % asm_known_constraint(+C): C's letters are ones whose lowering by clang
 % asm_ir_constraint/2 knows: register classes, fixed registers, r, m, g,
-% i, n and e, digits.
+% i, n, e and N, digits.
 asm_known_constraint(C) :-
     atom_chars(C, Cs), asm_constraint_prefix(Cs, _, Body), Body = [_|_],
     forall(member(L, Body),
-           ( memberchk(L, [r, m, g, i, n, e, q, 'Q', x, y, v, a, b, c, d, 'S', 'D']) ; char_code_digit(L) )).
+           ( memberchk(L, [r, m, g, i, n, e, 'N', q, 'Q', x, y, v, a, b, c, d, 'S', 'D']) ; char_code_digit(L) )).
 
 % asm_validated_constraint(+IR): validateSafeInlineAsm accepts an
 % operand constraint IR in its first loop (FilPizlonator.cpp): after
@@ -2082,7 +2176,7 @@ asm_validated_constraint(IR) :-
 char_code_digit(D) :- char_code(D, N), N >= 0'0, N =< 0'9.
 
 asm_validated_input(r).
-asm_validated_input(a).
+asm_validated_input(C) :- asm_letter_family(C, _).
 asm_validated_input(C) :- atom_length(C, 1), decimal(C).
 
 split_asm_lines(Template, Lines) :-
