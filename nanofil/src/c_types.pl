@@ -5535,12 +5535,12 @@ fault_(un(Op, E), Env, F, As) :-
 fault_(member(E, Field), Env, F, As) :-
     (   untyped(E, Env) -> fault_(E, Env, F, As)
     ;   elaborate(E, Env, XS), member_subject(XS)
-    ->  F = 'no member named ~w', As = [Field]
+    ->  tree_type(XS, T), missing_member(T, Field, Env, F, As)
     ;   F = 'member access on a non-lvalue', As = []
     ).
 fault_(arrow(E, Field), Env, F, As) :-
     (   untyped(E, Env) -> fault_(E, Env, F, As)
-    ;   lowered_type(E, Env, ptr(_)) -> F = 'no member named ~w', As = [Field]
+    ;   lowered_type(E, Env, ptr(T)) -> missing_member(T, Field, Env, F, As)
     ;   F = '-> on a non-pointer', As = []
     ).
 fault_(cast(TN, E), Env, F, As) :-
@@ -5716,3 +5716,16 @@ unsupported(E, Env, F, As) :-
 unsupported(E, Env, F, As) :-
     compound(E), E =.. [_|Xs],
     member(X, Xs), unsupported(X, Env, F, As), !.
+
+% missing_member(+SU, +Field, +Env, -F, -As): the fault of naming Field
+% in SU, which has no such usable member: when SU's definition dropped a
+% member nanofil refuses (a vector one without vectors), the refusal's
+% reason, so `x264_union128_sse_t`'s `__m128 i` reads as vector types
+% not being supported rather than as a missing member.
+missing_member(T, Field, Env, F, As) :-
+    (   unqualified(T, SU), ( SU = struct(Id) ; SU = union(Id) ),
+        Env = e(_, _, Defs, _), get_assoc(Id, Defs, Def),
+        ( Def = bad(Why) ; Def = partial(Why, _) )
+    ->  F = '~w is not supported (member ~w)', As = [Why, Field]
+    ;   F = 'no member named ~w', As = [Field]
+    ).
