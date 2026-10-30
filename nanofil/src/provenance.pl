@@ -48,20 +48,28 @@
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
 
+%! code_items(+Items, -Code) is det.
+%
+%  Code is Items without their context/2 items: the executable part of
+%  a module's item list, in order.
 code_items(Items, Code) :- exclude(is_context, Items, Code).
 is_context(context(_, _)).
 
-% context_records(+Items, +Name, -Records): Records are the context of
-% function Name in Items, or [] if it has none. Items may be the
-% contexts(Index) of context_index/2: a pass over every function of a
-% large module (SQLite's 3,000) would otherwise scan its items for each.
+%! context_records(+Items, +Name, -Records) is det.
+%
+%  Records are the context of function Name in Items, or [] if it has
+%  none. Items may be the contexts(Index) of context_index/2: a pass over
+%  every function of a large module (SQLite's 3,000) would otherwise
+%  scan its items for each.
 context_records(contexts(Index), Name, Records) :- !,
     ( get_assoc(Name, Index, Rs) -> Records = Rs ; Records = [] ).
 context_records(Items, Name, Records) :-
     ( memberchk(context(Name, Rs), Items) -> Records = Rs ; Records = [] ).
 
-% context_index(+Items, -Contexts): Contexts indexes the contexts of
-% Items by function name, the first of a name as memberchk/2 finds it.
+%! context_index(+Items, -Contexts) is det.
+%
+%  Contexts indexes the contexts of Items by function name, the first of
+%  a name as memberchk/2 finds it, for context_records/3.
 context_index(Items, contexts(Index)) :-
     empty_assoc(Index0), foldl(index_context, Items, Index0, Index).
 
@@ -71,27 +79,48 @@ index_context(Item, Index0, Index) :-
     ;   Index = Index0
     ).
 
+%! with_context(+Func, +Records, -Items) is det.
+%
+%  Items are the module items for function Func with context Records:
+%  Func and context(Name, Records), or Func alone when Records is [].
 with_context(F, [], [F]) :- !.
 with_context(F, Rs, [F, context(Name, Rs)]) :- F = func(Name, _, _, _, _).
 
+%! site_index(+Records, -Sites) is det.
+%
+%  Sites is the assoc from each site of Records' site(Site, Origins)
+%  records to its Origins.
 site_index(Rs, Sites) :-
     findall(S-Os, member(site(S, Os), Rs), Pairs), list_to_assoc(Pairs, Sites).
 
+%! site_origins(+Sites, +Site, -Origins) is det.
+%
+%  Origins are those Sites (site_index/2) gives Site, or [] if none.
 site_origins(Sites, Site, Os) :-
     ( get_assoc(Site, Sites, Origins) -> Os = Origins ; Os = [] ).
 
+%! origin_ids(+Records, -Ids) is det.
+%
+%  Ids is the assoc of the identities of Records' origin/4 records, each
+%  to true, for fresh_origin/3,4.
 origin_ids(Rs, Ids) :-
     findall(Id-true, member(origin(Id, _, _, _), Rs), Pairs), list_to_assoc(Pairs, Ids).
 
-% Only metadata names consult metadata. Executable fresh names remain
-% exactly what the metadata-free transformation would choose.
+%! fresh_origin(+Base, +Ids0, -Ids, -Id) is det.
+%
+%  Id is a new origin identity: Base when Ids0 does not have it, else
+%  the first derived(Base, N) it does not have. Ids is Ids0 with Id.
+%  Only metadata names consult metadata: executable fresh names stay
+%  exactly what the metadata-free transformation would choose.
 fresh_origin(Base, Ids0, Ids, Id) :-
     ( get_assoc(Base, Ids0, _) -> unused_origin(Base, 0, Ids0, Id) ; Id = Base ),
     put_assoc(Id, Ids0, true, Ids).
-% fresh_origin(+Base, +Ids, -Id): Id is fresh_origin/4's for Base, but
-% Ids is not extended: for a batch of bases that are distinct and so
-% cannot choose the same Id (derived ids keep their base), inserting
-% each one in a function's whole origin assoc only costs time.
+%! fresh_origin(+Base, +Ids, -Id) is det.
+%
+%  Id is fresh_origin/4's for Base, but Ids is not extended: for a batch
+%  of bases that are distinct and so cannot choose the same Id (derived
+%  ids keep their base), inserting each one in a function's whole origin
+%  assoc only costs time.
 fresh_origin(Base, Ids, Id) :-
     ( get_assoc(Base, Ids, _) -> unused_origin(Base, 0, Ids, Id) ; Id = Base ).
 unused_origin(Base, N, Ids, Id) :-
@@ -99,6 +128,16 @@ unused_origin(Base, N, Ids, Id) :-
     ( get_assoc(Candidate, Ids, _) -> N1 is N + 1, unused_origin(Base, N1, Ids, Id)
     ; Id = Candidate ).
 
+%! retire_values(+Records0, +Temps, +Ids0, -Ids, -Records) is det.
+%
+%  Records are Records0 after a pass has given the temporaries Temps new
+%  definitions (pizlonate's chkN proofs, say) whose spellings Records0
+%  already uses: each old value/3 or alias/4 record of such a name
+%  becomes a history/5 record with a fresh origin retired(T), and
+%  references to the old definition become historical(Id), so no record
+%  confuses the old value with the new one. Ids0 are Records0's origin
+%  identities (origin_ids/2); Ids is Ids0, since the retired(T) bases
+%  cannot meet any other base and so need not be added.
 retire_values(Rs0, Temps, Ids0, Ids, Rs) :-
     findall(T-true, member(T, Temps), NewPairs), list_to_assoc(NewPairs, New),
     findall(T-V, member(alias(T, V, _, _), Rs0), APairs), list_to_assoc(APairs, Aliases),
@@ -149,8 +188,12 @@ retired_reference(Ids, history(HId, T, H, Os, replaced(tmp(Old))),
     get_assoc(Old, Ids, Id), !.
 retired_reference(_, R, R).
 
-% Map is OldSite-NewSite, with one pair per emitted instruction. An
-% instruction that expands has several destinations; one erased has none.
+%! remap_sites(+Records0, +Map, -Records) is det.
+%
+%  Records are Records0 with every instruction site moved by Map, a list
+%  of OldSite-NewSite pairs with one pair per emitted instruction: an
+%  instruction that expands has several destinations, one erased has
+%  none. Phi and jump sites are unchanged.
 remap_sites(Rs0, Map, Rs) :-
     site_index(Rs0, Sites),
     exclude(instruction_site, Rs0, Kept),
@@ -160,15 +203,28 @@ remap_sites(Rs0, Map, Rs) :-
 
 instruction_site(site(inst(_, _), _)).
 
-% The rewriting loop calls this with the instructions it just emitted.
-% The cut leaves no choicepoint per instruction (10,000 in SQLite's
-% sqlite3VdbeExec), which would pin the rest of the function's trail.
+%! emission_sites(+Label, +Old, +New, +Emitted, -Map, ?Rest, -Next) is det.
+%
+%  Map, ending in Rest, pairs the site inst(Label, Old) with each of
+%  the instructions Emitted for it, numbered from New in block Label;
+%  Next is the number after the last. A rewriting loop calls this with
+%  the instructions it just emitted, to build remap_sites/3's map. The
+%  cut leaves no choicepoint per instruction (10,000 in SQLite's
+%  sqlite3VdbeExec), which would pin the rest of the function's trail.
 emission_sites(_, _, J, [], Rest, Rest, J) :- !.
 emission_sites(L, I, J, [_|Is], [inst(L, I)-inst(L, J)|Ms], Rest, End) :-
     J1 is J + 1, emission_sites(L, I, J1, Is, Ms, Rest, End).
 
-% Legacy loc markers remain valid input. At unchecked transformation
-% boundaries they become context, never before checked-IR validation.
+%! legacy_context(+M0, -M) is det.
+%
+%  M is M0 with its loc(File, Line) markers turned into context records:
+%  each marker becomes an origin, and the instructions after it, up to
+%  the next, sites of that origin. Legacy loc markers remain valid input
+%  (hand-written IR); they become context at unchecked transformation
+%  boundaries, never before checked-IR validation, so a checked module
+%  is its own result. The frontend writes no loc markers: such a module
+%  is its own result too, shared rather than copied (a copy of SQLite's
+%  contexts is 60 MB, and the caller still holds the original).
 legacy_context(M, M) :- ir:module_stage(M, checked), !.
 % The frontend writes no loc markers: such a module is its own result,
 % shared rather than copied (a copy of SQLite's contexts is 60 MB, and
@@ -221,6 +277,13 @@ legacy_insts([Inst|Is0], L, Old, New, Loc, [Inst|Is], Rs, Last, Ids0, Ids,
     Old1 is Old + 1, New1 is New + 1,
     legacy_insts(Is0, L, Old1, New1, Loc, Is, Rest, Last, Ids0, Ids, Map).
 
+%! valid_contexts(+Items) is semidet.
+%
+%  Every context(Name, Records) of Items is for a function of Items, no
+%  two for the same one, and each record is well formed: its identity
+%  unique among records of its kind, every origin it cites defined,
+%  every hint's binding declared, and every site an instruction, phi or
+%  jump the function has. ir:valid_module/1 calls this last.
 valid_contexts(Items) :-
     findall(N, member(context(N, _), Items), Names),
     sort(Names, Unique), length(Names, Count), length(Unique, Count),
