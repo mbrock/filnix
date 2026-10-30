@@ -27,25 +27,27 @@
 :- use_module(library(pairs)).
 :- use_module(cfg).
 
-% temp_slots(+Params, +Blocks, +Temps, -Aliases, -ScalarCount, -PtrCount,
-% -WideCount). Aliases maps each temp name to physical storage(Pool, Index).
-% The pools are shared: s and d temporaries use scalar slots.
+%! temp_slots(+Params, +Blocks, +Temps, -Aliases, -ScalarCount, -PtrCount, -WideCount) is det.
+%
+%  Aliases maps each temp name to physical storage(Pool, Index). The
+%  pools are shared: s and d temporaries use scalar slots.
 temp_slots(Params, Blocks, Temps, Aliases, NS, NP, NW) :-
     temp_slots(shared, Params, Blocks, Temps, Aliases, NS, NP, NW, 0).
 
-% temp_slots(+Pools, +Params, +Blocks, +Temps, -Aliases, -ScalarCount,
-% -PtrCount, -WideCount, -FloatCount): as temp_slots/7, with Pools shared,
-% own, own(Groups) or own(Groups, Ranges). Own gives s and d
-% temporaries a float pool of their own, so no scalar slot holds both an
-% integer and a float temporary (register allocation, docs/perf.md item
-% 3, takes only w/l homes), and reuses no scalar slot: each w/l
-% temporary has its own home, so a home is one live range (docs/perf.md
-% 3d). Own(Groups), with Groups a list of Temporary-Key pairs, pools each
-% key's w/l temporaries among themselves, as shared pools them; key frame
-% first. (A split choice, own's float pool with shared scalar slots, served
-% the retired function, operands and cells modes.)
-% Own(Groups, Ranges) is own(Groups) that binds Ranges to the live
-% ranges, or takes them when Ranges is bound (temp_ranges/6).
+%! temp_slots(+Pools, +Params, +Blocks, +Temps, -Aliases, -ScalarCount, -PtrCount, -WideCount, -FloatCount) is det.
+%
+%  As temp_slots/7, with Pools shared, own, own(Groups) or own(Groups,
+%  Ranges). Own gives s and d temporaries a float pool of their own, so
+%  no scalar slot holds both an integer and a float temporary (register
+%  allocation, docs/perf.md item 3, takes only w/l homes), and reuses
+%  no scalar slot: each w/l temporary has its own home, so a home is
+%  one live range (docs/perf.md 3d). Own(Groups), with Groups a list of
+%  Temporary-Key pairs, pools each key's w/l temporaries among
+%  themselves, as shared pools them; key frame first. (A split choice,
+%  own's float pool with shared scalar slots, served the retired
+%  function, operands and cells modes.) Own(Groups, Ranges) is
+%  own(Groups) that binds Ranges to the live ranges, or takes them when
+%  Ranges is bound (temp_ranges/6).
 temp_slots(Pools, Params, Blocks, Temps, Aliases, NS, NP, NW, NF) :-
     (   Pools = own(_, Ranges), nonvar(Ranges)
     ->  Ranges = ranges(Wides, Intervals)
