@@ -123,7 +123,8 @@ allocation(Body, Effects, Homes, Map, Analysis) :-
     keysort(Refs, Sorted), group_pairs_by_key(Sorted, Groups),
     findall(D-W, ( member(D-Ws, Groups), \+ memberchk(bad, Ws),
                    sum_list(Ws, W) ), Weighted),
-    pairs_keys(Weighted, Candidates0),
+    length(Body, NL),
+    heaviest(Weighted, NL, Candidates0),
     (   Candidates0 == []
     ->  Map = [], Analysis = none
     ;   body_analysis(Body, Effects, Candidates0, Analysis),
@@ -132,20 +133,38 @@ allocation(Body, Effects, Homes, Map, Analysis) :-
         list_to_assoc(Numbered, Index),
         list_to_assoc(Weighted, Weights),
         length(Candidates0, NC), HomeBits is ((1 << (2*NC)) - 1) << 8,
-        foldl(home_facts(Index, HomeBits), Body, Outs, f(0,0)-[], f(Cross,Wide)-Edges),
+        empty_assoc(Rows0),
+        foldl(home_facts(Index, HomeBits), Body, Outs, f(0,0)-Rows0, f(Cross,Wide)-Rows),
         Excluded is In0 \/ Wide,
         findall(W-D, ( member(D-K, Numbered), home_shift(K, S), Excluded /\ (3 << S) =:= 0,
                        get_assoc(D, Weights, W) ), ByWeight0),
         keysort(ByWeight0, Ascending), reverse(Ascending, ByWeight),
-        neighbours(Edges, Neighbours),
-        findall(K-D, member(D-K, Numbered), Back), list_to_assoc(Back, Owners),
         empty_assoc(Colours0),
-        foldl(colour(Index, Owners, Cross, Neighbours), ByWeight, Colours0, Colours),
+        findall(R-taken(0,0), member(R, [r10,r11,rbx,r12,r13,r14,r15]), Taken0),
+        foldl(colour(Index, Cross, Rows), ByWeight, Colours0-Taken0, Colours-_),
         assoc_to_list(Colours, Map)
     ).
 
 numbered([], _, []).
 numbered([H|Hs], K, [H-K|Ps]) :- K1 is K+1, numbered(Hs, K1, Ps).
+
+% heaviest(+Weighted, +Lines, -Candidates): the homes of Weighted (D-W,
+% by offset) that the allocator considers, by offset. The liveness sets
+% cost a bit per candidate half per line, so a function whose candidates
+% times lines exceeds the budget (2^29 bits, a 64 MB set) keeps only its
+% heaviest homes, ties going to the lower offset. At most seven
+% registers go round, so the light ones seldom get one anyway. No bench
+% function reaches the budget (sqlite3VdbeExec, the largest, is at 0.68);
+% netcdf's tst_h_atts.c main (14156 homes, 285k lines) and openssh's
+% libcrux (3054, 116k) do.
+heaviest(Weighted, Lines, Candidates) :-
+    length(Weighted, N), Cap is max(256, (1 << 29) // max(1, 2*Lines)),
+    (   N =< Cap
+    ->  pairs_keys(Weighted, Candidates)
+    ;   findall(NW-D, (member(D-W, Weighted), NW is -W), ByWeight0),
+        keysort(ByWeight0, ByWeight), length(Top, Cap), append(Top, _, ByWeight),
+        pairs_values(Top, Ds), msort(Ds, Candidates)
+    ).
 
 % home_refs(+Scalar, +Line, +Effect, +Depth, +Refs0, -Refs): each
 % reference to a scalar home gives Home-Weight, or Home-bad when the line
@@ -198,9 +217,10 @@ take_events([E-X|Es], I, D0, D, Rest) :- E =< I, !,
 take_events(Es, _, D, D, Es).
 
 % home_facts: homes live across a call (Cross), homes whose 32-bit store
-% leaves the high half live (Wide), and the interference edges of each
-% write: K-LiveOthers. HomeBits masks off the analysis's scratch and
-% flags bits.
+% leaves the high half live (Wide), and each home's interference row:
+% an assoc from home number K to the halves live at any write of K,
+% K's own excluded. HomeBits masks off the analysis's scratch and flags
+% bits.
 home_facts(Index, HomeBits, Line, Out, f(C0,W0)-E0, f(C,W)-E) :-
     (   Line = ins(call,_,_)
     ->  C is C0 \/ Out, W = W0, E = E0
@@ -210,41 +230,36 @@ home_facts(Index, HomeBits, Line, Out, f(C0,W0)-E0, f(C,W)-E) :-
         home_shift(K, Sh), Own is 3 << Sh,
         ( S == l, Out /\ (2 << Sh) =\= 0 -> W is W0 \/ Own ; W = W0 ),
         Others is Out /\ HomeBits /\ \ Own,
-        ( Others =:= 0 -> E = E0 ; E = [K-Others|E0] )
+        (   Others =:= 0 -> E = E0
+        ;   ( get_assoc(K, E0, Row0) -> true ; Row0 = 0 ),
+            Row is Row0 \/ Others, put_assoc(K, E0, Row, E)
+        )
     ;   C = C0, W = W0, E = E0
     ).
 
-% neighbours(+Edges, +Index, -Neighbours): an assoc from home number to
-% the bitset of home numbers it interferes with (symmetric).
-neighbours(Edges, Neighbours) :-
-    findall(K-M, ( member(K-Others, Edges), halves_homes(Others, M) ), Ps0),
-    findall(M2-B, ( member(K-M, Ps0), bit_members(M, M2), B is 1 << K ), Ps1),
-    findall(K-B, ( member(K-M, Ps0), B = M ), Ps2),
-    append(Ps1, Ps2, Ps), keysort(Ps, Sorted), group_pairs_by_key(Sorted, Groups),
-    findall(K-All, (member(K-Bs, Groups), foldl(or_int, Bs, 0, All)), Pairs),
-    ( Pairs == [] -> empty_assoc(Neighbours) ; list_to_assoc(Pairs, Neighbours) ).
-
-or_int(B, A0, A) :- A is A0 \/ B.
-
-% halves_homes(+Halves, -Homes): the bitset of homes with a half in Halves.
-halves_homes(Halves, Homes) :-
-    findall(B, (bit_members(Halves, H), K is (H - 8) >> 1, B is 1 << K), Bs),
-    foldl(or_int, Bs, 0, Homes).
-
-bit_members(M, I) :- M > 0, Low is M /\ (-M), I0 is msb(Low),
-    ( I = I0 ; Rest is M /\ \ Low, bit_members(Rest, I) ).
-
-colour(Index, Owners, Cross, Neighbours, _-D, Colours0, Colours) :-
-    get_assoc(D, Index, K),
-    ( home_shift(K, S), Cross /\ (3 << S) =\= 0
+% colour(+Index, +Cross, +Rows, +W-D, +Colours0-Taken0, -Colours-Taken):
+% home D gets the first register of its list that no interfering home
+% has. Homes J and K interfere when one's row has a half of the other.
+% Taken holds, per register, the halves of the homes it was given and
+% the union of their rows, so neither direction lists pairs: those are
+% quadratic in the homes (netcdf's tst_h_atts.c had 12 million).
+colour(Index, Cross, Rows, _-D, Colours0-Taken0, Colours-Taken) :-
+    get_assoc(D, Index, K), home_shift(K, S), Own is 3 << S,
+    ( Cross /\ Own =\= 0
     -> Registers = [rbx,r12,r13,r14,r15]
     ;  Registers = [r10,r11,rbx,r12,r13,r14,r15] ),
-    ( get_assoc(K, Neighbours, N) -> true ; N = 0 ),
-    findall(R, ( bit_members(N, J), get_assoc(J, Owners, DJ),
-                 get_assoc(DJ, Colours0, R) ), Taken),
-    (   member(R, Registers), \+ memberchk(R, Taken)
-    ->  put_assoc(D, Colours0, R, Colours)
-    ;   Colours = Colours0
+    ( get_assoc(K, Rows, Row) -> true ; Row = 0 ),
+    (   member(R, Registers), memberchk(R-taken(Set, Union), Taken0),
+        Row /\ Set =:= 0, Union /\ Own =:= 0
+    ->  put_assoc(D, Colours0, R, Colours),
+        Set1 is Set \/ Own, Union1 is Union \/ Row,
+        give(Taken0, R, taken(Set1, Union1), Taken)
+    ;   Colours = Colours0, Taken = Taken0
+    ).
+
+give([R0-T0|Ts0], R, T, Ts) :-
+    (   R0 == R -> Ts = [R-T|Ts0]
+    ;   Ts = [R0-T0|Ts1], give(Ts0, R, T, Ts1)
     ).
 
 %% Step 3b: register operands (docs/perf.md)

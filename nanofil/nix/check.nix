@@ -105,8 +105,12 @@ pkgs.runCommandCC "nanofil-check"
     # 16k loads and stores, each its own register-home candidate, within
     # SWI's default 1 GB stack (docs/perf.md, item 11).
     python3 -I tests/bigcopy.py 32768 > bigcopy.c
-    step "-O bigcopy 1 GB" env COMPILE_TIMEOUT=300 NANOFIL_STACK_LIMIT=1073741824 \
-      tests/progtest.sh bigcopy.c
+    # 2000 ints live together, each written twice: about 2M interference
+    # pairs between register-home candidates (netcdf's tst_h_atts.c,
+    # openssh's libcrux; docs/perf.md, item 13).
+    python3 -I tests/manyhomes.py 2000 > manyhomes.c
+    step "-O bigcopy manyhomes 1 GB" env COMPILE_TIMEOUT=300 NANOFIL_STACK_LIMIT=1073741824 \
+      tests/progtest.sh bigcopy.c manyhomes.c
     step "-O difftest float SSE2" env CC=$CC tests/difftest.sh tests/float/*.ir
     step "-O difftest fixtures+gen1" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir
     step "-O difftest backend" env CC=$CC tests/par.sh tests/difftest.sh tests/backend/*.ir

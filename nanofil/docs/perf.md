@@ -4130,6 +4130,43 @@ the copies before `add`, `sub $imm` and `shl $1..3` can become one
 The rest need coalescing, which did not reach them. Under the 2% bar;
 not taken.
 
+### 13. Interference without pairs (the `-O` survey, October 2026)
+
+Two survey compiles overflowed even the 4 GB retry at `-O`, both in
+the allocator (`amd64_regs.pl`): netcdf's `tst_h_atts.c` (`main`: 14156
+candidate homes over 285k lines) and openssh's
+`libcrux-mlkem-mldsa.c` (3054 homes over 116k lines).
+
+- **Interference pairs.** `neighbours/2` expanded every write's live set
+  into one bignum per interfering pair, then transposed them: 11.8M
+  pairs on libcrux. The allocator now keeps one row per home (the
+  union of the halves live at its writes). Each register carries the
+  halves of the homes it was given and the union of their rows. A home
+  takes a register when neither meets its own row or halves. This is the
+  same symmetric relation without listing pairs, and it gives identical
+  maps (snapshot, below).
+- **A candidate budget.** The liveness sets cost a bit per candidate half
+  per line, so a function whose candidates × lines exceeds 2^29 bits
+  keeps only its heaviest homes (`heaviest/3`; at least 256). At most
+  seven registers go round, so the light ones rarely got one anyway. No
+  bench function reaches the budget (`sqlite3VdbeExec`, the largest, is
+  at 0.68 of it). With pairs gone, the sets alone still overflowed 1 GB
+  on `tst_h_atts.c` (`fixpoint`) and libcrux (`operands_rewrite`).
+  `tst_h_atts.c` keeps 940 of its homes, libcrux 914 in
+  its largest function.
+
+| `-O`, default 1 GB stack | before | after |
+| --- | --- | --- |
+| `tst_h_atts.c` | overflow at 4 GB (survey log, `neighbours`) | 133 s, 2.2 GB (plain: 97 s, 0.4 GB) |
+| libcrux | overflow at 4 GB (222 s, 11.2 GB RSS, `neighbours`) | 247 s, 1.2 GB (plain: 68 s, 1.2 GB) |
+
+The times were taken on a loaded swa. `tests/manyhomes.py 2000` keeps
+2000 ints live together (about 2M pairs). It overflowed 1 GB in
+`neighbours` before (fail-first) and now compiles in 16.5 s and 366 MB.
+`nix/check.nix` builds it at `-O` under 1 GB next to bigcopy. Output:
+the snapshot is identical (4506 outputs), and so is the `-O` assembly
+of the bench's sources (sqlite3, lua, bzip2, zlib, lz4).
+
 ### Projection
 
 From the profile's shares: items 1–4 leave the compressors at about 3–4×
