@@ -2789,9 +2789,11 @@ pp_value(Expr, V) :-
     const_eval(Expr, pp, V, _),
     integer(V).
 
-% const_eval(+Expr, +Env, -V, -T): Expr has value V, an integer, float
-% bits or ub, of unqualified type T in Env: its typed tree, used for its
-% value, folds to V. Fails when Expr is not a constant expression.
+%! const_eval(+Expr, +Env, -V, -T) is semidet.
+%
+%  Expr has value V, an integer, float bits or ub, of unqualified type T
+%  in Env: its typed tree, used for its value, folds to V. Fails when
+%  Expr is not a constant expression.
 const_eval(Expr, Env, V, T) :-
     elaborate(Expr, Env, X), value(X, XV), lowered(XV, T),
     folded(XV, Env, V).
@@ -3706,8 +3708,10 @@ library_builtin(Name, F) :-
     library_proto(F, _, _),
     atom_concat('__builtin_', F, Name).
 
-% library_proto(?F, ?Ret, ?Params): library function F's prototype, with
-% types named as proto_type/3 reads them.
+%! library_proto(?F, ?Ret, ?Params) is nondet.
+%
+%  Library function F's prototype, with types named as proto_type/3
+%  reads them.
 library_proto(memcpy, vp, [vp, cvp, size]).
 library_proto(memmove, vp, [vp, cvp, size]).
 library_proto(memset, vp, [vp, int, size]).
