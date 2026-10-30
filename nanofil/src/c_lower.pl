@@ -721,22 +721,23 @@ readonly_global(_, _, _, Env, Env).
 global_decl(Loc, d(Name, Type1, Storage0, Asm, Init), Env0, Env) :-
     ( Asm = asm(Sym) -> true ; Sym = Name ),
     redeclared(Loc, Name, Sym, Type1, Env0, Type0),
+    qualified_redeclared(Loc, Name, Sym, Type0, Env0, Env00),
     (   Storage0 = thread_local(Storage) -> Thread = tls ; Storage = Storage0, Thread = none ),
     (   Type0 = func(_, _, _)
     ->  (   Thread == tls                                   % 6.7.1p4
         ->  sema_error(Loc, 'function ~w cannot be _Thread_local', [Name])
         ;   true
         ),
-        prior_storage(Name, Storage, Env0, Storage1),
+        prior_storage(Name, Storage, Env00, Storage1),
         ( Storage1 == static -> Linkage = local ; Linkage = export ),
         (   Init \== none
         ->  sema_error(Loc, 'function ~w has an initializer', [Name])
         ;   true
         ),
-        bind_ordinary(Name, fn(Type0, Sym, Linkage), Env0, Env)
+        bind_ordinary(Name, fn(Type0, Sym, Linkage), Env00, Env)
     ;   static_type(Name, Type0, Loc),
-        complete_array(Type0, Init, Type, Loc, Env0, none),
-        bind_ordinary(Name, gvar(Type, Sym, Storage0, Init), Env0, Env1),
+        complete_array(Type0, Init, Type, Loc, Env00, none),
+        bind_ordinary(Name, gvar(Type, Sym, Storage0, Init), Env00, Env1),
         (   Storage == extern, Init == none
         ->  Env = Env1
         ;   ( Storage == static -> Linkage0 = local ; Linkage0 = export ),
@@ -782,6 +783,29 @@ redeclared(Loc, Name, Sym, Type0, Env, Type) :-
         ;   sema_error(Loc, 'redeclaration of \'~w\' with a different type', [Name])
         )
     ;   Type = Type0
+    ).
+
+% qualified_redeclared(+Loc, +Name, +Sym, +Type, +Env0, -Env): Name's
+% declaration, of qualified type qtype(Name) (c_types binds it first),
+% agrees with every earlier declaration of Name as symbol Sym, also one
+% whose scope has ended (a block-scope extern): compatible types have the
+% same qualifiers (C11 6.7.3p10, 6.2.7p2; `extern const int x; int x;`
+% is clang's error). redeclared/6 compares the unqualified types. Env
+% records the composite under qsym(Name, Sym) for the next declaration;
+% an alias, whose Sym is its target's, is not a redeclaration of it.
+qualified_redeclared(Loc, Name, Sym, Type, Env0, Env) :-
+    (   lookup_ordinary(Env0, qtype(Name), QT)
+    ->  env_defs(Env0, Defs),
+        (   get_assoc(qsym(Name, Sym), Defs, PQT)
+        ->  (   composite_type(PQT, QT, C, Env0) -> true
+            ;   Type = func(_, _, _)
+            ->  sema_error(Loc, 'conflicting types for \'~w\'', [Name])
+            ;   sema_error(Loc, 'redeclaration of \'~w\' with a different type', [Name])
+            )
+        ;   C = QT
+        ),
+        put_def(qsym(Name, Sym), C, Env0, Env)
+    ;   Env = Env0
     ).
 
 % thread_linkage(+Thread, +Linkage0, -Linkage): the data linkage of a

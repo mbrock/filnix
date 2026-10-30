@@ -3025,6 +3025,9 @@ composite_params(Ps, Qs, Cs, Env) :- maplist(composite_param(Env), Ps, Qs, Cs).
 
 % A transparent union parameter agrees with a member's type, and the
 % composite is that member's type, as clang's mergeTransparentUnionType.
+% Members are stored unqualified, so the other parameter is compared
+% without its qualifiers (it is a reflected type when c_lower compares
+% qualified redeclarations).
 composite_param(Env, P, Q, C) :-
     ( P = qualified(_, P1) -> true ; P1 = P ),
     ( Q = qualified(_, Q1) -> true ; Q1 = Q ),
@@ -3033,7 +3036,8 @@ composite_param(Env, P, Q, C) :-
         (   transparent_union(P1, Env, Ms) -> Other = Q1
         ;   transparent_union(Q1, Env, Ms) -> Other = P1
         ),
-        member(M, Ms), composite_type(M, Other, C0, Env)
+        unqualified(Other, Other1),
+        member(M, Ms), composite_type(M, Other1, C0, Env)
     ->  C = C0
     ).
 
