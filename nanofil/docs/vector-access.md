@@ -347,6 +347,6 @@ afterwards rewrites everywhere, and its use counts serve only boolean
 rewrites); `transparent(touch)` and the `unchecked_access` entries in
 filc_amd64, which valid IR never reaches (the reuse clause consumes check
 and `touch` together; the validator runs first). The frontend accepts
-16- and 32-byte vectors (tests/c/prog/vector-access.c and
-vector-access-256.c trap natively against filcc); the 64-byte size is
-covered by unit tests only.
+8-, 16- and 32-byte vectors (tests/c/prog/vector-8byte.c,
+vector-access.c and vector-access-256.c trap natively against filcc);
+the 64-byte size is covered by unit tests only.

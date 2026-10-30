@@ -870,8 +870,9 @@ doc(vector_type(+Specs, +Elem, +Env, -Type), det, [
     "(typedef_alignment/5) becomes its vector type's alignment, since a",
     "vector access is checked against the alignment of the type it is",
     "made through (immintrin.h's __m128i_u is aligned(1), so",
-    "_mm_loadu_si128 checks alignment 1). Only 16- and 32-byte vectors are supported (the SSE",
-    "through AVX2 intrinsics), and only with NANOFIL_VECTORS=1 until a survey",
+    "_mm_loadu_si128 checks alignment 1). Only 8-, 16- and 32-byte vectors are supported (the",
+    "SSE through AVX2 intrinsics, and xmmintrin.h's 8-byte loads and stores),",
+    "and only with NANOFIL_VECTORS=1 until a survey",
     "with it on; each access is checked as one access of its full width",
     "(docs/vector-access.md).",
     cites('GCC manual, Using Vector Instructions through Built-in Functions'),
@@ -889,7 +890,7 @@ vector_type(Specs, Elem0, Env, Type) :-
     ->  Type = bad('a vector of a type other than an integer, float or double')
     ;   vector_size_value(Specs, Env, Size),
         type_size_align(Elem, Env, ES, _),
-        (   Size =\= 16, Size =\= 32
+        (   \+ memberchk(Size, [8, 16, 32])
         ->  format(atom(Why), 'vector types of ~w bytes', [Size]),
             Type = bad(Why)
         ;   N is Size // ES,
