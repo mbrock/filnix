@@ -21,8 +21,9 @@
 # up to the parenthesized reason that ends its first clause ("cannot
 # handle inline asm (Reason)"), or else up to the first "(" or "." ("cannot
 # write 56 bytes when upper - ptr = 48"), instead of counting as "trap".
-# A "// vectors" line compiles with NANOFIL_VECTORS=1, which turns on GNU
-# vector types, still off by default (docs/vector-access.md).
+# A "// vectors" line compiles with --vectors, which turns on GNU vector
+# types, still off by default (docs/vector-access.md); reject.sh tests
+# NANOFIL_VECTORS=1, its environment spelling.
 # A "// cflags: ..." line passes those flags to clang, and nanofil
 # compiles clang's preprocessing with them, as nanofil-cc does (with
 # NANOFIL_STD=c23 for -std=c23 or gnu23, gnu89 for C90 modes, and
@@ -121,7 +122,7 @@ for f in "$@"; do
   fi
   if ! "$filcc" "${cflags[@]}" "$ropt" -w -o "$d/clang" "$f" "${libs[@]}" "${clibs[@]}" -lm; then reference_failed=1; fi
   outcome=reject
-  if (cd "$src" && NANOFIL_STD=$std NANOFIL_COMMON=$common NANOFIL_VECTORS=$vectors timeout "${COMPILE_TIMEOUT:-20}" "$nanofil" ${NANOFIL_OPT:-} cc "$input" </dev/null) >"$d/n.s"; then
+  if (cd "$src" && NANOFIL_STD=$std NANOFIL_COMMON=$common timeout "${COMPILE_TIMEOUT:-20}" "$nanofil" ${NANOFIL_OPT:-} ${vectors:+--vectors} cc "$input" </dev/null) >"$d/n.s"; then
     :
   else
     rc=$?

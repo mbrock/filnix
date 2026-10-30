@@ -100,6 +100,10 @@
     NANOFIL_CHECKS supplies the same choice. With reuse, renew or guard, `cc`,
     `compile` and difftest's pizlonation comparison use that module.
 
+    `--vectors` turns on GNU vector types and the SSE intrinsics
+    (docs/vector-access.md), which are off by default; NANOFIL_VECTORS=1
+    supplies the same choice.
+
     ## difftest
 
     expected.txt holds the interpreter's result for every run line whose
@@ -146,10 +150,11 @@ main :-
     current_prolog_flag(argv, RawArgv),
     maplist(arg_atom, RawArgv, Argv0),
     % halt/1 outside catch/3: SWI implements halt as an exception.
-    catch(( ( register_default(Default),
+    catch(( ( vectors_options(Argv0, Argv00),
+              register_default(Default),
               checks_default(Checks0),
               inline_default(Inline0),
-              inline_options(Argv0,Inline0,Inline,Argv1),
+              inline_options(Argv00,Inline0,Inline,Argv1),
               simplify_default(Simplify0),
               simplify_options(Argv1,Simplify0,Simplify,Argv2),
               limit_default(Limit0),
@@ -192,6 +197,14 @@ checks_default(Checks) :-
 checks_mode(C) :-
     ( memberchk(C,[reference,reuse,renew,guard]) -> true
     ; throw(nanofil_error('checks must be reference, reuse, renew or guard')) ).
+% vectors_options(+Argv0, -Argv): Argv is Argv0 less its --vectors
+% options; one turns on GNU vector types, as NANOFIL_VECTORS=1 does
+% (c_types vector_type/4), for drivers that pass only options.
+vectors_options(Argv0, Argv) :-
+    (   select('--vectors', Argv0, _)
+    ->  exclude(==('--vectors'), Argv0, Argv), setenv('NANOFIL_VECTORS', '1')
+    ;   Argv = Argv0
+    ).
 % inline_options(+Argv0, +Inline0, -Inline, -Argv): Argv is Argv0 less
 % its --inline= options, the last of which gives Inline.
 inline_options([], I, I, []).
