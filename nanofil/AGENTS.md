@@ -39,6 +39,7 @@ nanofil/tests/reject.sh                        # unsupported C is refused
 nanofil/tests/arith.sh slice|complete|random SEED COUNT DEPTH  # const_eval vs IR vs clang (docs/arith.md)
 nanofil/tests/snapshot.sh [REV]                # every output identical to REV's (default HEAD)
 nanofil/tests/guide.sh [--check]               # regenerate (or check) the outputs in docs/guide.md and README.md
+swipl nanofil/tests/docs.pl -- nanofil/src     # every module has a header and every export PlDoc
 (cd nanofil/src && ../bin/nanofil --script ../tests/gen.pl SEED COUNT </dev/null) >gen.ir  # random IR corpus
 nix build .#checks.x86_64-linux.nanofil        # everything; must pass before pushing
 nix build .#checks.x86_64-linux.nanofil-hello  # GNU hello built only by nanofil, vs filcc
@@ -161,6 +162,11 @@ pages run them again and mark each ✓ or ✗.
   pipe tables for term forms and their meanings, term forms in
   backticks as valid Prolog so they draw as terms, and a ```` ```diagram ````
   only where a picture helps. `c_types.pl`'s header is the model.
+- Every other module documents each export with a PlDoc comment just
+  above its first clause: `%! name(+In, -Out) is det.`, a blank `%`
+  line, then prose saying what it means. `tests/docs.pl` fails the
+  check when a module lacks a header or an export lacks its doc
+  ([docs/guide.md](docs/guide.md), Conventions).
 
 ## Working alongside other threads
 

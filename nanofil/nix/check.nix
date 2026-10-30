@@ -57,6 +57,9 @@ pkgs.runCommandCC "nanofil-check"
     export NANOFIL_STATE=$TMPDIR/nanofil.state
     step unit bash -c '(cd src && ../bin/nanofil --script ../tests/unit.pl </dev/null) | tee unit.log'
     grep -q 'tests ok$' unit.log
+    # Every module has a header and every export PlDoc (docs/guide.md,
+    # Conventions).
+    step docs swipl tests/docs.pl -- src
     # M9 interpreter against nanofil's SSE2 backend.
     # Integer-bit wrappers preserve NaN payloads and negative zero.
     step "difftest float SSE2" env CC=$CC tests/difftest.sh tests/float/*.ir
