@@ -7,25 +7,31 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap">
-<link rel="stylesheet" href="../style.css">
+<link rel="stylesheet" href="$if(nanofil)$../../$else$../$endif$style.css">
 <style>
 $highlighting-css$
 </style>
 </head>
 <body>
 <header class="library"><div class="page-frame library-frame">
-  <div class="library-heading"><p class="eyebrow">Fil-C on Nix</p><h1><a href="../index.html">Filnix wiki</a></h1></div>
+  <div class="library-heading"><p class="eyebrow">Fil-C on Nix</p><h1><a href="$if(nanofil)$../../$else$../$endif$index.html">Filnix wiki</a></h1></div>
   <nav class="doors">
+$if(nanofil)$
+    <a class="door" href="../../docs/">Docs</a>
+    <a class="door" href="../../index.html#explainers">Explainers</a>
+    <a class="door selected" href="../">nanofil</a>
+$else$
     <a class="door selected" href="index.html">Docs</a>
     <a class="door" href="../index.html#explainers">Explainers</a>
     <a class="door" href="../nanofil/">nanofil</a>
+$endif$
     <a class="door" href="https://nix.swa.sh/">Campaigns</a>
     <a class="door" href="https://github.com/mbrock/filnix">Source</a>
   </nav>
 </div></header>
 <div class="status"><div class="page-frame status-frame">
-  <nav class="crumbs" aria-label="Breadcrumb">$if(index)$<span class="crumb current">Docs</span>$else$<a class="crumb" href="index.html">Docs</a><span class="crumb-sep">›</span><span class="crumb current">$pagetitle$</span>$endif$</nav>
-  <span class="status-right"><a href="https://github.com/mbrock/filnix/blob/main/docs/$source$">$source$</a></span>
+  <nav class="crumbs" aria-label="Breadcrumb">$if(nanofil)$<a class="crumb" href="../">nanofil</a><span class="crumb-sep">›</span><span class="crumb current">$pagetitle$</span>$elseif(index)$<span class="crumb current">Docs</span>$else$<a class="crumb" href="index.html">Docs</a><span class="crumb-sep">›</span><span class="crumb current">$pagetitle$</span>$endif$</nav>
+  <span class="status-right"><a href="https://github.com/mbrock/filnix/blob/main/$if(nanofil)$nanofil/$endif$docs/$source$">$if(nanofil)$nanofil/docs/$endif$$source$</a></span>
 </div></div>
 <main class="page-frame $if(toc)$with-toc$else$reading$endif$">
 $if(toc)$

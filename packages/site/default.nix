@@ -1,6 +1,7 @@
 # The GitHub Pages site: pages/ as is, docs/ rendered with pandoc into
 # docs/*.html, nanofil's Prolog drawn as terms into nanofil/*.html by
-# nanofil/web/dterm.pl, and the nanofil playground in nanofil/play/.
+# nanofil/web/dterm.pl, nanofil's documents (its guide among them) into
+# nanofil/docs/*.html, and the nanofil playground in nanofil/play/.
 # .github/workflows/pages.yml publishes it.
 { pkgs, filcc }:
 let
@@ -14,6 +15,7 @@ let
     fileset = lib.fileset.unions [
       ../../docs
       ../../pages
+      ../../nanofil/docs
       ../../nanofil/src
       ../../nanofil/web
     ];

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # build.sh SRC OUT: render SRC/docs/*.md with pandoc into OUT/docs, copy
-# SRC/pages to OUT, and draw SRC/nanofil/src/*.pl into OUT/nanofil. Fails if a doc is missing from docs/README.md or a page
-# links to a docs file that does not exist.
+# SRC/pages to OUT, draw SRC/nanofil/src/*.pl into OUT/nanofil, and
+# render SRC/nanofil/docs/*.md into OUT/nanofil/docs. Fails if a doc is
+# missing from docs/README.md or a page links to a docs file that does
+# not exist.
 set -euo pipefail
 src=$1
 out=$2
@@ -44,7 +46,30 @@ wb=$src/nanofil/web/workbench
 cp "$wb"/index.html "$wb"/*.css "$wb"/*.js "$out/nanofil/workbench/"
 (cd "$wb" && swipl workbench.pl "$out/nanofil/workbench" "$src/nanofil/src" </dev/null)
 
+# nanofil's own documents, beside its pages: nanofil/docs/NAME.html.
+mkdir -p "$out/nanofil/docs"
+cp -r "$src/nanofil/docs/dterm" "$out/nanofil/docs/"
+for md in "$src"/nanofil/docs/*.md; do
+  name=$(basename "$md" .md)
+  args=()
+  if [ "$(grep -c '^## ' "$md")" -ge 4 ]; then
+    args+=(--toc --toc-depth=3)
+  fi
+  pandoc -f gfm -t html5 --standalone --shift-heading-level-by=-1 \
+    --template "$here/template.html" --lua-filter "$here/nanofil-links.lua" \
+    -V nanofil -V source="$name.md" "${args[@]}" -o "$out/nanofil/docs/$name.html" "$md"
+done
+
 status=0
+for html in "$out"/nanofil/docs/*.html; do
+  for target in $(grep -o 'href="[^"]*"' "$html" | sed 's/^href="//; s/"$//; s/#.*//'); do
+    case $target in "" | *:* | ../../*) continue ;; esac
+    if [ ! -e "$out/nanofil/docs/$target" ]; then
+      echo "nanofil/docs/$(basename "$html"): broken link to $target" >&2
+      status=1
+    fi
+  done
+done
 for html in "$out"/docs/*.html; do
   for target in $(grep -o 'href="[^"]*"' "$html" | sed 's/^href="//; s/"$//; s/#.*//'); do
     case $target in "" | *:* | ../ | ../*) continue ;; esac
