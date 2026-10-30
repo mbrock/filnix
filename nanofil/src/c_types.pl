@@ -2627,6 +2627,7 @@ folded(val(_, int(V)), _, V).                               % 6.4.4.1, 6.4.4.4
 folded(val(T, float(Cs)), _, V) :- float_literal(Cs, V, T).  % 6.4.4.2
 folded(val(_, builtin(Name, [])), _, V) :- float_builtin(Name, _, V).
 folded(val(_, builtin(Name, Args)), Env, V) :- object_size(Name, Args, Env, V).
+folded(val(_, builtin(Name, [A])), Env, V) :- bit_folded(Name, A, Env, V).
 folded(val(_, un(not, XV)), Env, V) :-                      % 6.5.3.3p5
     operand_value(XV, Env, V0, T0),
     const_truth(V0, T0, B),
@@ -4069,6 +4070,35 @@ bit_builtin(Name, Op, Type) :-
     member(Op, [ctz, clz, popcount, ffs]),
     member(Suffix-Type, [''-uint, l-ulong, ll-ullong]),
     atomic_list_concat(['__builtin_', Op, Suffix], Name).
+
+doc(bit_folded(+Name, +A, +Env, -V), semidet, [
+    Name: "a bit-counting builtin (bit_builtin/3)",
+    A: "its argument expression",
+    Env: "the scope",
+    V: "the count, when A is an integer constant expression",
+    "Clang folds a bit-counting builtin of a constant, so it may size an",
+    "array or initialize a static (rhash's rhash_popcount). The operand",
+    "converts to the builtin's unsigned type first. clz and ctz of 0 are",
+    "undefined and do not fold.",
+    cites('C11 6.6p10'), cites('GCC manual, Other Built-in Functions'),
+    example(( empty_env(E), bit_folded('__builtin_popcount', un(neg, num(1, none-dec)), E, V) ), V = 32),
+    example(( empty_env(E), bit_folded('__builtin_clzl', num(1, none-dec), E, V) ), V = 63),
+    example(( empty_env(E), bit_folded('__builtin_ctz', num(8, none-dec), E, V) ), V = 3),
+    example(( empty_env(E), bit_folded('__builtin_ffs', num(0, none-dec), E, V) ), V = 0),
+    fails(( empty_env(E), bit_folded('__builtin_ctz', num(0, none-dec), E, _) ))
+]).
+bit_folded(Name, A, Env, V) :-
+    bit_builtin(Name, Op, Type),
+    catch(const_value(A, Env, V0, _), not_constant, fail),
+    integer(V0),
+    int_info(Type, Bytes, _), Bits is 8 * Bytes,
+    X is V0 mod (1 << Bits),
+    bit_count_value(Op, Bits, X, V).
+
+bit_count_value(popcount, _, X, V) :- V is popcount(X).
+bit_count_value(ffs, _, X, V) :- ( X =:= 0 -> V = 0 ; V is lsb(X) + 1 ).
+bit_count_value(ctz, _, X, V) :- X > 0, V is lsb(X).
+bit_count_value(clz, Bits, X, V) :- X > 0, V is Bits - 1 - msb(X).
 
 % overflow_builtin(?Name, ?Op, ?Fixed): builtin Name checks arithmetic Op
 % on operands of type Fixed, or of any integer types (generic).
