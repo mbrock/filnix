@@ -235,25 +235,34 @@ def main():
     s.add_argument("--id")
     s.add_argument("--label")
     s.add_argument("--publish", action="store_true")
-    s = sub.add_parser("submit")
-    s.add_argument("--rev", default="main")
-    s.add_argument("--priority", type=int, default=0)
-    s.add_argument("--id")
-    s.add_argument("--set", action="append", default=[], metavar="KEY=VALUE")
-    s.add_argument("--dry-run", action="store_true", help="freeze and print, do not submit")
+    # The submit options go before or after the kind; SUPPRESS keeps the
+    # kind's parser from overwriting a value given before it.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--rev", default=argparse.SUPPRESS)
+    common.add_argument("--priority", type=int, default=argparse.SUPPRESS)
+    common.add_argument("--id", default=argparse.SUPPRESS)
+    common.add_argument("--set", action="append", default=argparse.SUPPRESS, metavar="KEY=VALUE")
+    common.add_argument("--dry-run", action="store_true", default=argparse.SUPPRESS,
+                        help="freeze and print, do not submit")
+    s = sub.add_parser("submit", parents=[common])
     kinds = s.add_subparsers(dest="kind", required=True)
-    kinds.add_parser("world").add_argument("--scope", default="expected",
-                                           choices=("expected", "world", "ports"))
-    k = kinds.add_parser("nanofil-survey")
+    kinds.add_parser("world", parents=[common]).add_argument(
+        "--scope", default="expected", choices=("expected", "world", "ports"))
+    k = kinds.add_parser("nanofil-survey", parents=[common])
     k.add_argument("--opt", default="plain")
     k.add_argument("--select", default="default", choices=("default", "slow", "all"))
-    kinds.add_parser("bench").add_argument("--opt", default="plain")
-    k = kinds.add_parser("attrs")
+    kinds.add_parser("bench", parents=[common]).add_argument("--opt", default="plain")
+    k = kinds.add_parser("attrs", parents=[common])
     k.add_argument("--file")
     k.add_argument("--attr", action="append")
-    kinds.add_parser("checks").add_argument("--prefix", default="nanofil")
-    kinds.add_parser("manifest").add_argument("path")
+    kinds.add_parser("checks", parents=[common]).add_argument("--prefix", default="nanofil")
+    kinds.add_parser("manifest", parents=[common]).add_argument("path")
     args = p.parse_args()
+    if args.command == "submit":
+        for key, value in (("rev", "main"), ("priority", 0), ("id", None), ("set", []),
+                           ("dry_run", False)):
+            if not hasattr(args, key):
+                setattr(args, key, value)
 
     c = args.command
     if c == "status":
