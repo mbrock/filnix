@@ -3663,3 +3663,97 @@ test(cas_object_escapes) :-
     O = module([func(_, _, _, _, [block(_, _, Is, _)])]),
     memberchk(let(_, _, alloc(_), _), Is),
     module_fn_args_outcome(O, f, [], ret(10)).
+
+% Fixed-register asm (docs/asm-fixed.md): the validator takes exactly the
+% registers M reads, in order, and an ordered subset of those it writes,
+% all `w`; the interpreter steps over the fences and pause and stops at
+% the others with their inputs, also inside a callee; -O keeps every
+% asm_fixed and the lets its inputs need.
+asm_fn(A, Ret, module([func(f, local, w, [param(w, tmp(x))],
+                            [block(s, [], [let(tmp(y), w, add, [tmp(x), const(1)]), A], Ret)])])).
+
+test(asm_fixed_validation) :-
+    forall(member(A, [asm_fixed(cpuid, [a-tmp(y), c-const(0)], [a-tmp(r), b-tmp(r2), c-tmp(r3), d-tmp(r4)]),
+                      asm_fixed(cpuid, [a-tmp(y), c-tmp(y)], [b-tmp(r)]),
+                      asm_fixed(cpuid, [a-const(7), c-const(0)], []),
+                      asm_fixed(xgetbv, [c-tmp(y)], [a-tmp(r), d-tmp(r2)]),
+                      asm_fixed(rdtsc, [], [d-tmp(r)]),
+                      asm_fixed(rdtscp, [], [a-tmp(r), c-tmp(r2), d-tmp(r3)]),
+                      asm_fixed(lfence, [], []), asm_fixed(sfence, [], []), asm_fixed(pause, [], [])]),
+           ( asm_fn(A, ret(tmp(y)), M), valid_module(M), reads_back(M) )),
+    forall(member(A, [asm_fixed(mfence, [], []),                         % mfence is fence
+                      asm_fixed(rdpid, [], [a-tmp(r)]),                  % not on the list
+                      asm_fixed(cpuid, [a-tmp(y)], [a-tmp(r)]),          % missing c input
+                      asm_fixed(cpuid, [c-const(0), a-tmp(y)], []),      % misordered
+                      asm_fixed(rdtsc, [a-tmp(y)], [a-tmp(r)]),          % extra input
+                      asm_fixed(rdtsc, [], [c-tmp(r)]),                  % rdtsc does not write c
+                      asm_fixed(rdtsc, [], [d-tmp(r), a-tmp(r2)]),       % misordered outputs
+                      asm_fixed(rdtsc, [], [a-tmp(r), a-tmp(r2)]),       % duplicate output
+                      asm_fixed(rdtsc, [], [a-tmp(r), d-tmp(r)]),        % one temp twice
+                      asm_fixed(pause, [], [a-tmp(r)])]),
+           ( asm_fn(A, ret(tmp(y)), M), asm_rejected(M, 'bad fixed-register asm') )),
+    % Inputs of class p and l are refused (the frontend truncates an l
+    % first); outputs are w.
+    forall(member(Cl, [p, l]),
+           ( M = module([func(f, local, w, [param(Cl, tmp(x))],
+                              [block(s, [], [asm_fixed(xgetbv, [c-tmp(x)], [])], ret(const(0)))])]),
+             ( Cl == p -> asm_rejected(M, 'use ptoi') ; asm_rejected(M, 'has class l, not w') ) )),
+    U = module([func(f, local, l, [],
+                     [block(s, [], [asm_fixed(rdtsc, [], [a-tmp(r)])], ret(tmp(r)))])]),
+    asm_rejected(U, 'class w but is used as l').
+
+% asm_rejected(+M, +Why): validating M fails with a message containing Why.
+asm_rejected(M, Why) :-
+    catch(( valid_module(M), fail ), nanofil_error(Msg), true),
+    once(sub_atom(Msg, _, _, _, Why)).
+
+% In plain mode a w input can be a derived address: its object escapes,
+% so promotion keeps the alloc and the let that defines the input.
+test(asm_fixed_escape) :-
+    M0 = module([func(f, local, w, [],
+                      [block(s, [], [let(tmp(a), l, alloc(8), [const(8)]),
+                                     store(w, const(1), tmp(a)),
+                                     let(tmp(x), w, add, [tmp(a), const(4)]),
+                                     asm_fixed(cpuid, [a-tmp(x), c-const(0)], [b-tmp(r)])],
+                             ret(tmp(r)))])]),
+    valid_module(M0),
+    optimize(o1(small, full), M0, M), valid_module(M),
+    M = module([func(f, _, _, _, Bs)]),
+    findall(I, ( member(block(_, _, Is, _), Bs), member(I, Is) ), Is),
+    memberchk(let(tmp(x), _, _, _), Is).
+
+test(asm_fixed_interp) :-
+    forall(member(Mn, [lfence, sfence, pause]),
+           ( asm_fn(asm_fixed(Mn, [], []), ret(tmp(y)), M),
+             once(run(M, f, [41], 10, O)), O == ret(42) )),
+    asm_fn(asm_fixed(cpuid, [a-tmp(y), c-const(3)], [a-tmp(r)]), ret(tmp(r)), C),
+    once(run(C, f, [6], 10, O1)), O1 == unknown(asm(cpuid, [7, 3])),
+    % In a callee, the caller stops with the same outcome.
+    C = module([F]),
+    G = func(g, local, w, [],
+             [block(s, [], [call(result(tmp(v), w), global(f), [arg(w, const(1))])], ret(tmp(v)))]),
+    once(run(module([F, G]), g, [], 10, O2)), O2 == unknown(asm(cpuid, [2, 3])),
+    outcome_text(O2, T), sub_atom(T, 0, _, _, 'unknown asm cpuid').
+
+test(asm_fixed_kept) :-
+    % Neither the pause (no outputs) nor the cpuid with an unused output
+    % goes, nor the let its input reads, while the dead let z does.
+    M0 = module([func(f, local, w, [param(w, tmp(x))],
+                      [block(s, [], [let(tmp(y), w, add, [tmp(x), const(1)]),
+                                     let(tmp(z), w, add, [tmp(x), const(2)]),
+                                     asm_fixed(pause, [], []),
+                                     asm_fixed(cpuid, [a-tmp(y), c-const(0)], [b-tmp(r)])],
+                             ret(const(0)))])]),
+    optimize(o1(small, full), M0, module([func(f, _, _, _, Bs)])),
+    findall(I, ( member(block(_, _, Is, _), Bs), member(I, Is) ), Is),
+    \+ memberchk(let(tmp(z), _, _, _), Is),
+    memberchk(asm_fixed(pause, [], []), Is),
+    memberchk(asm_fixed(cpuid, [a-V, c-const(0)], [b-_]), Is),
+    ( V = tmp(Y) -> memberchk(let(tmp(Y), w, _, _), Is) ; true ).
+
+test(asm_fixed_lines) :-
+    phrase(asm:line_text(asm_fixed(cpuid)), Cs), atom_chars(A, Cs),
+    sub_atom(A, B1, _, _, 'movq %rbx, %rsi'), sub_atom(A, B2, _, _, cpuid),
+    sub_atom(A, B3, _, _, 'movl %ebx, %edi'), sub_atom(A, B4, _, _, 'movq %rsi, %rbx'),
+    B1 < B2, B2 < B3, B3 < B4,
+    phrase(asm:line_text(asm_fixed(rdtscp)), Ds), Ds == ['\t', rdtscp, '\n'].

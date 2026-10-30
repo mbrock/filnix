@@ -631,4 +631,8 @@ matches a filcc-built Lua, like the hello and zlib checks.
 - In-process execution (`tcc -run` style) needs a native host that boots
   the Fil-C runtime. It is out of scope until after M8.
 - Inline asm other than the empty barrier, refused until a milestone
-  claims it.
+  claims it. B1 ([docs/asm-fixed.md](docs/asm-fixed.md)) claims a single
+  fixed-register cpuid, xgetbv, rdtsc, rdtscp, lfence, sfence or pause:
+  the IR term `asm_fixed(M, Ins, Outs)`, its validator, interpreter
+  stop and emission are in, reviewed by Oracle; the frontend's
+  acceptance and lowering follow.

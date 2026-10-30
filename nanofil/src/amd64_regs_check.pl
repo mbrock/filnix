@@ -451,7 +451,8 @@ extra_use_def(Line, effect(Rs,Ws,Fl,_,_), Use, Def) :-
     % rejects.
     (   Fl == read -> U2 is U1 \/ 128 ; U2 = U1 ),
     (   memberchk(Fl, [write,read_write]) -> Def is D0 \/ 128 ; Def = D0 ),
-    (   ( Line = ins(call,_,_) ; Line = ins(jae,none,[plt(filc_stack_overflow_failure)]) )
+    (   ( Line = ins(call,_,_) ; Line = ins(jae,none,[plt(filc_stack_overflow_failure)])
+        ; Line = asm_fixed(_) )
     ->  Use is U2 \/ 127
     ;   Line = ins(ret,none,[])
     ->  Use is U2 \/ 7
@@ -547,6 +548,11 @@ line_obligation(Mapped, Index, Masks, Scratch, All, Line, Out) :-
     ->  Out /\ Scratch =:= 0
     ;   Line = ins(leave,none,[])
     ->  Out /\ All =:= 0
+    ;   Line = asm_fixed(_)
+    ->  % Hardening (docs/asm-fixed.md): its audited effect writes no
+        % allocatable register, so no home can be clobbered.
+        line_effect(Line, effect(_,Ws,_,_,_)),
+        \+ ( member(write(F,_), Ws), allocatable(F) )
     ;   true
     ).
 

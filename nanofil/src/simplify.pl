@@ -248,6 +248,8 @@ inst_subst(store(W, V0, A0), Reps, store(W, V, A)) :-
 inst_subst(atomic_store(W, V0, A0), Reps, atomic_store(W, V, A)) :-
     subst(Reps, V0, V), subst(Reps, A0, A).
 inst_subst(fence, _, fence).
+inst_subst(asm_fixed(M, Ins0, Outs), Reps, asm_fixed(M, Ins, Outs)) :-
+    maplist(subst_pair(Reps), Ins0, Ins).
 inst_subst(call(R, F0, Args0), Reps, call(R, F, Args)) :-
     subst(Reps, F0, F), maplist(arg_subst(Reps), Args0, Args).
 
@@ -611,6 +613,7 @@ same_run(_, Rest, N, N, Rest).
 operand_temp(let(_, _, _, Args), T) :- member(tmp(T), Args).
 operand_temp(store(_, V, A), T) :- member(tmp(T), [V, A]).
 operand_temp(atomic_store(_, V, A), T) :- member(tmp(T), [V, A]).
+operand_temp(asm_fixed(_, Ins, _), T) :- member(_-tmp(T), Ins).
 operand_temp(call(_, F, Args), T) :- ( F = tmp(T) ; member(arg(_, tmp(T)), Args) ).
 
 jump_operand(branch(tmp(T), _, _), T).

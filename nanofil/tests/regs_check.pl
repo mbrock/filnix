@@ -634,6 +634,31 @@ operand_case(fence_moved,
     [ins(mov,q,[reg(r12),mem(-8,rbp)]), ins(mfence,none,[])],
     [ins(mfence,none,[]), ins(mov,q,[reg(r12),mem(-8,rbp)])], no).
 
+% A fixed-register asm line is a boundary that reads and writes every
+% scratch register: nothing is forwarded across it, and its input moves
+% must stay (docs/asm-fixed.md).
+operand_case(asm_fixed_same,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(mov,l,[imm(0),reg(ecx)]), asm_fixed(cpuid),
+     ins(mov,q,[reg(rax),reg(r13)])],
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(mov,l,[imm(0),reg(ecx)]), asm_fixed(cpuid),
+     ins(mov,q,[reg(rax),reg(r13)])], yes).
+operand_case(asm_fixed_forward_rcx,
+    [ins(mov,q,[reg(r12),reg(rcx)]), asm_fixed(cpuid), ins(add,q,[reg(rcx),reg(rbx)])],
+    [ins(mov,q,[reg(r12),reg(rcx)]), asm_fixed(cpuid), ins(add,q,[reg(r12),reg(rbx)])], no).
+operand_case(asm_fixed_forward_rsi,
+    [ins(mov,q,[reg(r12),reg(rsi)]), asm_fixed(cpuid), ins(add,q,[reg(rsi),reg(rbx)])],
+    [ins(mov,q,[reg(r12),reg(rsi)]), asm_fixed(cpuid), ins(add,q,[reg(r12),reg(rbx)])], no).
+operand_case(asm_fixed_rdtscp_rcx,
+    [ins(mov,q,[reg(r12),reg(rcx)]), asm_fixed(rdtscp), ins(add,q,[reg(rcx),reg(rbx)])],
+    [ins(mov,q,[reg(r12),reg(rcx)]), asm_fixed(rdtscp), ins(add,q,[reg(r12),reg(rbx)])], no).
+operand_case(asm_fixed_drops_subleaf,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(mov,l,[imm(0),reg(ecx)]), asm_fixed(cpuid),
+     ins(mov,q,[reg(rax),reg(r13)])],
+    [ins(mov,q,[reg(r12),reg(rax)]), asm_fixed(cpuid), ins(mov,q,[reg(rax),reg(r13)])], no).
+operand_case(asm_fixed_drops_input,
+    [ins(mov,q,[reg(r12),reg(rax)]), asm_fixed(cpuid), ins(mov,q,[reg(rax),reg(r13)])],
+    [asm_fixed(cpuid), ins(mov,q,[reg(rax),reg(r13)])], no).
+
 % Whole bodies: ret uses rax (ob/2 would write it first).
 operand_raw_case(ret_uses_rax,
     [ins(push,q,[reg(rbp)]), ins(mov,q,[reg(rsp),reg(rbp)]), ins(mov,q,[reg(r12),reg(rax)]),

@@ -250,6 +250,7 @@ inst_dest(local_load(tmp(N), K, _, _, _), N, K).
 inst_dest(call(result(tmp(N), K), _, _), N, K).
 inst_dest(call(tuple(Tos), _, _), N, K) :- member(result(tmp(N), K), Tos).
 inst_dest(uses(I, _), N, K) :- inst_dest(I, N, K).
+inst_dest(asm_fixed(_, _, Outs), N, w) :- member(_-tmp(N), Outs).
 
 % No physical locations: these are ordered words and their sources.
 fast_params(Ps, Ts) :- foldl(fast_param, Ps, Ts, []).

@@ -70,6 +70,7 @@
     | `store(Width, Value, Addr)` | store Value at Addr; Width one of `b` `h` `w` `l` `p` `s` `d` |
     | `atomic_store(p, Value, Addr)` | (filc mode) store the pointer Value at Addr single-copy atomically, sequentially consistent (Fil-C's filc_store_ptr_atomic) |
     | `fence` | a sequentially consistent fence (`mfence`) |
+    | `asm_fixed(M, Ins, Outs)` | the fixed-register instruction M (asm_fixed_regs/3) on `w` inputs `R-V` in the registers M reads, defining `w` temporaries `R-tmp(D)` from registers it writes (docs/asm-fixed.md) |
     | `local_alloc(Name, Size)` | create a zeroed, exact-sized invocation-local object, without an address value |
     | `local_load(tmp(D), K, T, Name, Off)` | checked load semantics at the fixed byte offset Off in Name |
     | `local_store(Width, Value, Name, Off)` | checked store semantics at the fixed byte offset Off in Name |
@@ -338,6 +339,7 @@
                narrow_type/3, without_locs/2, access_size_align/3,
                jump_target/2, polls_every_cycle/1, temp_defs/3, implicit_flight/1, local_objects/2,
                pointer_memory_effects/2, single_definitions/3, guard_chain/3,
+               asm_fixed_regs/3,
                same_pointer/3]).
 
 :- use_module(library(lists)).
@@ -1021,6 +1023,7 @@ temp_defs(Params, Blocks, Defs) :-
 inst_temp_def(let(tmp(N), K, _, _), N, K).
 inst_temp_def(local_load(tmp(N), K, _, _, _), N, K).
 inst_temp_def(flight(tmp(N), _, _, _), N, p).
+inst_temp_def(asm_fixed(_, _, Outs), N, w) :- member(_-tmp(N), Outs).
 inst_temp_def(I, N, K) :-
     call_result_args(I, Res, _),
     ( Res = result(tmp(N), K) ; Res = tuple(Tos), member(result(tmp(N), K), Tos) ).
@@ -1773,6 +1776,22 @@ valid_inst(Ctx, atomic_store(W, Value, Addr)) :-
     valid_use(Ctx, p, Value),
     valid_use(Ctx, p, Addr).
 valid_inst(_, fence).
+% Inputs are exactly class w, not an l read as w (docs/asm-fixed.md).
+valid_inst(Ctx, asm_fixed(M, Ins, Outs)) :-
+    Ctx = ctx(_, Fn, _, _, TempClasses, _, _),
+    (   atom(M), asm_fixed_regs(M, Reads, Writes),
+        is_list(Ins), split_pairs(Ins, Reads, Vs),
+        is_list(Outs), split_pairs(Outs, Rs, Ds),
+        ordered_subset(Rs, Writes),
+        forall(member(D, Ds), ( nonvar(D), D = tmp(N), atom(N) )),
+        sort(Ds, Sorted), length(Sorted, L), length(Ds, L)
+    ->  maplist(valid_use(Ctx, w), Vs),
+        (   member(tmp(N), Vs), get_assoc(N, TempClasses, K), K \== w
+        ->  fn_error(Fn, 'fixed-register asm input tmp(~w) has class ~w, not w', [N, K])
+        ;   true
+        )
+    ;   fn_error(Fn, 'bad fixed-register asm ~w', [asm_fixed(M, Ins, Outs)])
+    ).
 valid_inst(Ctx, store(Width, Value, Addr)) :-
     Ctx = ctx(_, Fn, _, _, _, _, Mode),
     (   Width == p, Mode == plain
@@ -2137,3 +2156,23 @@ block_without_locs(block(L, Phis, Insts0, J), block(L, Phis, Insts, J)) :-
     exclude(is_loc, Insts0, Insts).
 
 is_loc(loc(_, _)).
+
+%! asm_fixed_regs(?M, ?Reads, ?Writes) is nondet.
+%
+%  The fixed-register instructions asm_fixed may name (docs/asm-fixed.md),
+%  with the registers each reads and writes (a, b, c, d: rax to rdx, of
+%  which only the low 32 bits are read; every write is 32 bits and
+%  zero-extends). mfence is the fence instruction.
+asm_fixed_regs(cpuid, [a, c], [a, b, c, d]).
+asm_fixed_regs(xgetbv, [c], [a, d]).
+asm_fixed_regs(rdtsc, [], [a, d]).
+asm_fixed_regs(rdtscp, [], [a, c, d]).
+asm_fixed_regs(lfence, [], []).
+asm_fixed_regs(sfence, [], []).
+asm_fixed_regs(pause, [], []).
+
+% ordered_subset(+Sub, +Set): Sub lists distinct elements of Set, in
+% Set's order.
+ordered_subset([], _).
+ordered_subset([X|Xs], [Y|Ys]) :-
+    (   X == Y -> ordered_subset(Xs, Ys) ; ordered_subset([X|Xs], Ys) ).

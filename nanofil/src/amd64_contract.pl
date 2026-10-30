@@ -174,6 +174,19 @@ instruction_effects(ins('lock cmpxchg',S,[reg(R),M]),
                     effect([rax,F|Rs],[write(rax,WA)],write,[read(M,N),write(M,N)],next)) :-
     width(S,W), register(R,F,W), address(M,Rs), N is W//8,
     ( W >= 32 -> WA = 64 ; WA = W ).
+% A fixed-register asm line (docs/asm-fixed.md) is not an ins/3, so the
+% register checker treats it as a region boundary. Its writes are 32
+% bits; cpuid's line saves rbx in rsi and brings its b result out in edi,
+% so rbx is preserved. None of them changes the flags.
+instruction_effects(asm_fixed(cpuid),
+    effect([rax,rcx],[write(rax,32),write(rcx,32),write(rdx,32),write(rsi,64),write(rdi,32)],
+           preserve,[],next)).
+instruction_effects(asm_fixed(xgetbv), effect([rcx],[write(rax,32),write(rdx,32)],preserve,[],next)).
+instruction_effects(asm_fixed(rdtsc), effect([],[write(rax,32),write(rdx,32)],preserve,[],next)).
+instruction_effects(asm_fixed(rdtscp),
+    effect([],[write(rax,32),write(rcx,32),write(rdx,32)],preserve,[],next)).
+instruction_effects(asm_fixed(M), effect([],[],preserve,[],next)) :-
+    memberchk(M, [lfence, sfence, pause]).
 instruction_effects(label(S), effect([],[],preserve,[],label)) :- atom(S).
 instruction_effects(D, effect([],[],preserve,[],directive)) :- directive(D).
 

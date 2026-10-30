@@ -1,4 +1,4 @@
-# Fixed-register inline asm (B1): contract (reviewed)
+# Fixed-register inline asm (B1): contract (reviewed, implemented)
 
 The frontend thread measured the 17 survey packages that inline asm
 blocks. filcc passes through a single instruction that has no operand in
@@ -179,8 +179,10 @@ These defaults are already right for it:
 - `promote:inst_renamed`;
 - `pizlonate:checked_insts`;
 - `filc_abi:lower_inst`;
-- `inline:renamed_temps`;
-- `escape:inst_event`, safe only because operands are `w`.
+- `inline:renamed_temps`.
+
+`escape:inst_event` needs a clause too: in plain mode a `w` input can
+be a derived address, so its object escapes, as at a call.
 
 ## Emission (filc_amd64.pl and amd64.pl)
 
@@ -228,18 +230,21 @@ a non-`ins` line:
   scratch register, so `dead_moves` can never delete an input move
   (Use ∪ 127), and it defines the registers M writes.
 - **Effects.** `amd64_contract:instruction_effects/2` gets one audited
-  entry per M, used by the stack cache and by liveness:
+  entry per M. On a boundary line only its existence, its flow, its
+  empty memory list and the hardening below carry weight: Use ∪ 127
+  clears every scratch Def bit, so its register writes do not affect
+  liveness (Oracle, implementation review):
 
 | M | Reads | Writes | Flags | Memory | Control |
 | --- | --- | --- | --- | --- | --- |
-| `cpuid` | rax, rcx | rax:32, rcx:32, rdx:32, rsi:64, rdi:32 | write | none | next |
-| `xgetbv` | rcx | rax:32, rdx:32 | write | none | next |
-| `rdtsc` | — | rax:32, rdx:32 | write | none | next |
-| `rdtscp` | — | rax:32, rcx:32, rdx:32 | write | none | next |
+| `cpuid` | rax, rcx | rax:32, rcx:32, rdx:32, rsi:64, rdi:32 | preserve | none | next |
+| `xgetbv` | rcx | rax:32, rdx:32 | preserve | none | next |
+| `rdtsc` | — | rax:32, rdx:32 | preserve | none | next |
+| `rdtscp` | — | rax:32, rcx:32, rdx:32 | preserve | none | next |
 | `lfence`, `sfence`, `pause` | — | — | preserve | none | next |
 
-The flags entries are conservative: nothing reads flags across an IR
-instruction.
+None of them changes the flags, so `preserve` is exact, and
+`region_end` compares any flags live across the line.
 
 - **No named register.** The line names no register, so the reference
   stream still names no allocatable register outside the prologue.
@@ -308,7 +313,7 @@ instruction.
   - under `-O`, values live across cpuid in `rbx`, r12–r15, r10 and
     r11, homes that the test arranges with live values around a call.
 
-## Tests and plants (planned)
+## Tests and plants
 
 - **Unit, validator.**
   - Accept every row of the table.
@@ -368,3 +373,77 @@ call-like liveness. Its should-fixes were:
 - plants that the planned tests would not have caught.
 
 All are folded in above.
+
+## As built
+
+The IR side follows the contract. Two points it makes concrete:
+- The validator takes inputs of class exactly `w`; an `l` temporary is
+  refused (the frontend truncates first), as is `p`. Each output defines
+  a distinct temporary.
+- The emitted line is the non-`ins` term `asm_fixed(M)`, which asm.pl
+  prints; `amd64_contract.pl` gives its effect, the register checker
+  treats it as a region boundary whose liveness reads every scratch
+  register (`extra_use_def`, like a call), and `line_obligation`
+  refuses an effect that writes an allocatable register.
+
+Tests:
+- `tests/unit.pl`: `asm_fixed_validation`, `asm_fixed_interp` (no-ops,
+  the stop outcome with its inputs, also from a callee, and its text),
+  `asm_fixed_kept` (`-O` with inlining and simplify keeps a `pause` and
+  a cpuid whose output is unused, and its input's `let`, while a dead
+  `let` goes) and `asm_fixed_lines`.
+- `tests/regs_check.pl`: a stream identical across cpuid is accepted;
+  a value forwarded in rcx or rsi across cpuid, or in rcx across
+  rdtscp, and a dropped eax or ecx input move, are rejected.
+- `tests/filc/asm-fixed.{ir,c,expected}`: seven native cases against
+  filcc's inline asm (vendor string, leaves 1 and 7.0, values live in
+  rbx and r12–r15 across cpuid under `-O`, `xgetbv(0)`, TSC order with
+  `lfence`/`rdtscp`, and a `pause`/`sfence` loop), in check.nix's run-c
+  steps with and without `-O` and in each register mode under
+  `FUGC_SCRIBBLE`/`FUGC_VERIFY`.
+- `tests/filc/asm-fixed-runs.ir`: difftest compares the run whose asm
+  is a no-op and lists the two that reach cpuid (one through a call) as
+  not comparable.
+
+Plants, each one source edit (unit = the unit tests; native = run-c
+asm-fixed, plain and `-O`):
+
+| Plant | Caught by |
+| --- | --- |
+| 1. cpuid without the rbx save | unit (`asm_fixed_lines`), native `-O` |
+| 2. b read from ebx after the restore | unit, native |
+| 4 and 4b together: cpuid's effect omits the rcx read and the line is not call-like | unit (`asm_fixed_drops_subleaf`), native `-O` |
+| 5. the validator accepts `p` | unit |
+| 6. an output from an unwritten register | unit |
+| 7. the interpreter runs cpuid as a no-op | unit |
+| 8. no `inst_uses` clause | unit, native (compile fails) |
+| 9. no `call_outcome_result` clause | unit |
+| 10. simplify drops an `asm_fixed` without outputs | unit |
+| 11. the effect admits a write of rbx | native `-O` ("register home translation check failed") |
+| 12. no `escape:inst_event` clause | unit (`asm_fixed_escape`) |
+| 13. the validator accepts an `l` input | unit |
+| 14. one temp defined by two outputs | unit |
+
+Not caught, and why that is sound: an omitted write in the effect
+(3a, rsi; 3b, rdtscp's rcx) changes nothing because the boundary resets
+the checker's symbolic state, so an omitted write can only make
+liveness more conservative. An omitted read (4 alone) is covered by the
+call-like use of every scratch register, and that use alone (4b) by the
+effect's reads: each guards the other, and the pair is caught. Plant 11
+without the hardening passes because the printed text really preserves
+rbx; the hardening guards the model, not the text. Oracle's
+implementation review confirmed these are equivalent mutants: on a
+boundary line Use ∪ 127 clears every scratch Def bit, and no peephole
+or forwarding runs across it.
+
+Oracle's implementation review found no blocker. It added the escape
+clause (plant 12: in plain `-O`, promotion deleted the `let` defining
+an input that was a derived address; that failed closed, at emission),
+the checked error messages in `asm_fixed_validation`, two checker cases
+whose B stream also dropped the move, `preserve` flags (exact, where
+`write` would let flags live across the line go uncompared), and
+distinct output temporaries.
+
+Limits: the interpreter validates nothing after a cpuid, xgetbv or
+rdtsc(p) in a run; native tests cover what follows. The native r10 and
+r11 cover is incidental (cpuid4's `out` lands in r11 under `-O`).

@@ -519,6 +519,8 @@ inst_uses(store(_, V, A), Us) :-
 inst_uses(atomic_store(_, V, A), Us) :-
     temps([V, A], Us).
 inst_uses(fence, []).
+inst_uses(asm_fixed(_, Ins, _), Us) :-
+    findall(V, member(_-V, Ins), Vs), temps(Vs, Us).
 inst_uses(raw_store(_, _, V, A), Us) :-
     temps([V, A], Us).
 inst_uses(raw_store_pointer(_, V, A, _), Us) :-
@@ -556,6 +558,7 @@ inst_def(call(tuple(Rs), _, _), D) :-
 inst_def(raw_call(Res, F, Args), D) :-
     inst_def(call(Res, F, Args), D).
 inst_def(uses(I, _), D) :- inst_def(I, D).
+inst_def(asm_fixed(_, _, Outs), D) :- member(_-tmp(D), Outs).
 
 %! jump_uses(+Jump, -Uses) is det.
 %

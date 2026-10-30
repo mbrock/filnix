@@ -1,0 +1,7 @@
+vendor same
+leaf 1 same
+leaf 7 same
+live same
+xgetbv same
+tsc 1
+spin 1000

@@ -97,6 +97,14 @@ line_chars(Line, Cs) :-
 line_text(label(S)) -->
     literal(S),
     ":\n".
+% A fixed-register asm (docs/asm-fixed.md) from the emitter's own table.
+% cpuid writes rbx, which may hold a register home: it is kept in rsi,
+% and cpuid's b result is brought out in edi.
+line_text(asm_fixed(cpuid)) --> !,
+    "\tmovq %rbx, %rsi\n\tcpuid\n\tmovl %ebx, %edi\n\tmovq %rsi, %rbx\n".
+line_text(asm_fixed(M)) -->
+    { memberchk(M, [xgetbv, rdtsc, rdtscp, lfence, sfence, pause]) }, !,
+    "\t", literal(M), "\n".
 line_text(ins(Op, Suffix, Operands)) -->
     "\t",
     literal(Op),

@@ -1,0 +1,28 @@
+% difftest of fixed-register asm (docs/asm-fixed.md). A cpuid's results
+% are the machine's, so the interpreter stops there and difftest lists
+% vendor and outer as not comparable; hint, whose pause and lfence change
+% nothing, is compared. asm-fixed.ir covers cpuid natively against filcc.
+run(vendor, [0]).
+run(hint, [5]).
+run(outer, [1]).
+func(vendor, export, w, [param(w, tmp(leaf))], [
+    block(start, [], [
+        asm_fixed(cpuid, [a-tmp(leaf), c-const(0)], [a-tmp(max), b-tmp(ebx), c-tmp(ecx), d-tmp(edx)]),
+        let(tmp(r), w, xor, [tmp(ebx), tmp(edx)])
+    ], ret(tmp(r)))
+]).
+func(hint, export, w, [param(w, tmp(x))], [
+    block(start, [], [
+        asm_fixed(pause, [], []),
+        asm_fixed(lfence, [], []),
+        asm_fixed(sfence, [], []),
+        let(tmp(r), w, add, [tmp(x), const(1)])
+    ], ret(tmp(r)))
+]).
+% A cpuid in a callee stops the caller's run too.
+func(outer, export, w, [param(w, tmp(x))], [
+    block(start, [], [
+        call(result(tmp(v), w), global(vendor), [arg(w, tmp(x))]),
+        let(tmp(r), w, add, [tmp(v), const(1)])
+    ], ret(tmp(r)))
+]).

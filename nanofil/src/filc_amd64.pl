@@ -389,6 +389,7 @@ cache_temp_class(call(result(T,K),_,_),T,K).
 cache_temp_class(raw_call(result(T,K),_,_),T,K).
 cache_temp_class(call(tuple(Rs),_,_),T,K) :- member(result(T,K),Rs).
 cache_temp_class(raw_call(tuple(Rs),_,_),T,K) :- member(result(T,K),Rs).
+cache_temp_class(asm_fixed(_,_,Outs),T,w) :- member(_-T,Outs).
 
 %% ABI facts (docs/abi-findings.md), at the pin
 
@@ -1615,6 +1616,15 @@ inst(fused(check_local(Name, Off, Size, Rights, Align), Access), I, B, Ctx) -->
     local_raw_access(Access, I, B, Ctx).
 inst(abi(Actions), Index, Block, Ctx) --> abi_actions(Actions, Index, Block, Ctx).
 inst(fence, _, _, _) --> [ins(mfence, none, [])].
+inst(asm_fixed(M, Ins, Outs), _, _, Ctx) -->
+    { ctx_fn(Ctx, Fn) },
+    asm_fixed_inputs(Ins, Fn),
+    [asm_fixed(M)],
+    asm_fixed_reg_stores(Outs, Ctx).
+
+asm_fixed_reg_stores([], _) --> [].
+asm_fixed_reg_stores([R-T|Outs], Ctx) -->
+    { asm_fixed_out_reg(R, Reg) }, reg_slot_store(Reg, T, Ctx), asm_fixed_reg_stores(Outs, Ctx).
 
 % Check exact logical bounds without manufacturing a heap lower. Offset
 % and size are the stack reporter's arguments. Address formation happens

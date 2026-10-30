@@ -130,6 +130,11 @@ inst_event(atomic_store(_, V, A), Addrs, Root-esc(atomic)) :-
 inst_event(let(_, _, cas(_), Args), Addrs, Root-esc(atomic)) :-
     member(tmp(X), Args),
     get_assoc(X, Addrs, Root-_).
+% A fixed-register asm reads its inputs' values: in plain mode a w input
+% can be a derived address, whose object then stays (docs/asm-fixed.md).
+inst_event(asm_fixed(_, Ins, _), Addrs, Root-esc(asm)) :-
+    member(_-tmp(X), Ins),
+    get_assoc(X, Addrs, Root-_).
 inst_event(call(_, F, Args), Addrs, Root-esc(call)) :-
     findall(V, member(arg(_, V), Args), Vs),
     member(tmp(X), [F|Vs]),
@@ -241,6 +246,8 @@ def_counts(func(_, _, _, Params, Blocks), Counts) :-
               ;   member(call(result(tmp(N), _), _, _), Insts)
               ;   member(call(tuple(Rs), _, _), Insts),
                   member(result(tmp(N), _), Rs)
+              ;   member(asm_fixed(_, _, Outs), Insts),
+                  member(_-tmp(N), Outs)
               ) ),
             BlockDefs),
     append(ParamDefs, BlockDefs, Defs),

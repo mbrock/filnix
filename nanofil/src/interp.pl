@@ -26,6 +26,7 @@
     | `trap(Reason)` | a Fil-C check failed (filc mode only): `null_capability`, `out_of_bounds`, `misaligned`, `readonly`, `not_a_function`, `argument_size`, `return_size`, `invalid_free`, `double_free` |
     | `unchecked(Reason)` | a raw access (checked stage, ir.pl) that its capability does not allow: a check is missing or too weak, which only a broken pass produces. It is neither ub nor a trap, so it refines nothing. |
     | `out_of_fuel` | executed Fuel blocks without finishing |
+    | `unknown(asm(M, Xs))` | reached the fixed-register asm M (cpuid, xgetbv, rdtsc, rdtscp) on the input values Xs, whose results only the machine knows (docs/asm-fixed.md): native tests cover what follows |
 
     ## Unknown values
 
@@ -420,6 +421,14 @@ inst_result(store(Width, V, A), Ctx, Env, s(Mem0, Fuel), Result) :-
 inst_result(atomic_store(p, V, A), Ctx, Env, S, Result) :- !,
     inst_result(store(p, V, A), Ctx, Env, S, Result).
 inst_result(fence, _, Env, S, cont(Env, S)) :- !.
+% One thread in program order: lfence, sfence and pause change nothing.
+% The others' results are the machine's, so the run stops there.
+inst_result(asm_fixed(M, Ins, _), Ctx, Env, S, Result) :- !,
+    (   memberchk(M, [lfence, sfence, pause])
+    ->  Result = cont(Env, S)
+    ;   maplist(asm_in_x(Ctx, Env), Ins, Xs),
+        Result = stop(unknown(asm(M, Xs)), S)
+    ).
 inst_result(raw_store(Width, Off, V, A), Ctx, Env, s(Mem0, Fuel), Result) :-
     width_value_class(Width, ValueClass),
     value_x(ValueClass, V, Ctx, Env, X),
@@ -661,6 +670,7 @@ call_outcome_result(ub(Why), _, _, S, stop(ub(Why), S)).
 call_outcome_result(trap(Why), _, _, S, stop(trap(Why), S)).
 call_outcome_result(unchecked(Why), _, _, S, stop(unchecked(Why), S)).
 call_outcome_result(out_of_fuel, _, _, S, stop(out_of_fuel, S)).
+call_outcome_result(unknown(Why), _, _, S, stop(unknown(Why), S)).
 
 % ret_env(+Res, +X, +Env0, -Env) and rets_env(+Res, +Xs, +Env0, -Env):
 % Env is Env0 with the returned word X, or words Xs, bound as the call
@@ -890,6 +900,8 @@ va_checked_res(ok, K, P, A, Size-Step, s(Mem0, Fuel), Res, s(Mem, Fuel)) :-
 % yields P, proven, or traps.
 checked_res(ok, P, val(P)).
 checked_res(trap(Why), _, trap(Why)).
+
+asm_in_x(Ctx, Env, _-V, X) :- value_x(w, V, Ctx, Env, X).
 
 % raw_res(+Res0, -Res): a raw access is the access its check covers,
 % made again without trapping: what would have trapped is unchecked.
@@ -1599,6 +1611,7 @@ outcome_text(ub(Why), T) :- format(atom(T), 'ub ~w', [Why]).
 outcome_text(trap(Why), T) :- format(atom(T), 'trap ~w', [Why]).
 outcome_text(unchecked(Why), T) :- format(atom(T), 'unchecked ~w', [Why]).
 outcome_text(out_of_fuel, out_of_fuel).
+outcome_text(unknown(asm(M, Xs)), T) :- format(atom(T), 'unknown asm ~w ~w', [M, Xs]).
 
 ret_text(V, T) :-
     (   integer(V) -> format(atom(T), 'ret ~w', [V])

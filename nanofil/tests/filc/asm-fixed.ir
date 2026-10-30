@@ -1,0 +1,80 @@
+% Fixed-register asm (docs/asm-fixed.md), driven by asm-fixed.c, which
+% runs the same instructions through filcc's inline asm and compares.
+
+% cpuid of leaf/sub, its four words stored at out.
+func(cpuid4, export, void, [param(p, tmp(out)), param(w, tmp(leaf)), param(w, tmp(sub))], [
+    block(start, [], [
+        asm_fixed(cpuid, [a-tmp(leaf), c-tmp(sub)], [a-tmp(ra), b-tmp(rb), c-tmp(rc), d-tmp(rd)]),
+        store(w, tmp(ra), tmp(out)),
+        let(tmp(o4), p, add, [tmp(out), const(4)]),
+        store(w, tmp(rb), tmp(o4)),
+        let(tmp(o8), p, add, [tmp(out), const(8)]),
+        store(w, tmp(rc), tmp(o8)),
+        let(tmp(o12), p, add, [tmp(out), const(12)]),
+        store(w, tmp(rd), tmp(o12))
+    ], ret)
+]).
+
+% Values live across calls and a cpuid: under -O they have register
+% homes in rbx and r12-r15, which cpuid's rbx write must not clobber.
+func(cpuid_live, export, l, [param(l, tmp(x))], [
+    block(start, [], [
+        let(tmp(v1), l, add, [tmp(x), const(1)]),
+        let(tmp(v2), l, mul, [tmp(x), const(3)]),
+        let(tmp(v3), l, add, [tmp(x), const(7)]),
+        let(tmp(v4), l, mul, [tmp(x), const(11)]),
+        let(tmp(v5), l, add, [tmp(x), const(13)]),
+        call(void, global(tick), []),
+        asm_fixed(cpuid, [a-const(0), c-const(0)], [b-tmp(rb)]),
+        call(void, global(tick), []),
+        let(tmp(b), l, ext(uw), [tmp(rb)]),
+        let(tmp(s1), l, add, [tmp(v1), tmp(v2)]),
+        let(tmp(s2), l, add, [tmp(s1), tmp(v3)]),
+        let(tmp(s3), l, add, [tmp(s2), tmp(v4)]),
+        let(tmp(s4), l, add, [tmp(s3), tmp(v5)]),
+        let(tmp(s5), l, mul, [tmp(s4), const(1000003)]),
+        let(tmp(s6), l, add, [tmp(s5), tmp(b)])
+    ], ret(tmp(s6)))
+]).
+
+% xgetbv(0)'s low word.
+func(xgetbv0, export, w, [], [
+    block(start, [], [
+        asm_fixed(xgetbv, [c-const(0)], [a-tmp(a), d-tmp(d)]),
+        let(tmp(r), w, xor, [tmp(a), tmp(d)]),
+        let(tmp(r2), w, xor, [tmp(r), tmp(d)])
+    ], ret(tmp(r2)))
+]).
+
+% 1 when an rdtscp read after an lfence'd rdtsc read is not earlier.
+func(tsc_order, export, w, [], [
+    block(start, [], [
+        asm_fixed(lfence, [], []),
+        asm_fixed(rdtsc, [], [a-tmp(a1), d-tmp(d1)]),
+        asm_fixed(lfence, [], []),
+        asm_fixed(rdtscp, [], [a-tmp(a2), c-tmp(aux), d-tmp(d2)]),
+        let(tmp(la1), l, ext(uw), [tmp(a1)]),
+        let(tmp(ld1), l, ext(uw), [tmp(d1)]),
+        let(tmp(h1), l, shl, [tmp(ld1), const(32)]),
+        let(tmp(t1), l, or, [tmp(h1), tmp(la1)]),
+        let(tmp(la2), l, ext(uw), [tmp(a2)]),
+        let(tmp(ld2), l, ext(uw), [tmp(d2)]),
+        let(tmp(h2), l, shl, [tmp(ld2), const(32)]),
+        let(tmp(t2), l, or, [tmp(h2), tmp(la2)]),
+        let(tmp(r), w, cmp(ule, l), [tmp(t1), tmp(t2)])
+    ], ret(tmp(r)))
+]).
+
+% n iterations of pause and sfence.
+func(spin, export, w, [param(w, tmp(n))], [
+    block(start, [], [], goto(loop)),
+    block(loop, [phi(tmp(i), w, [start-const(0), body-tmp(i1)])], [
+        let(tmp(c), w, cmp(slt, w), [tmp(i), tmp(n)])
+    ], branch(tmp(c), body, done)),
+    block(body, [], [
+        asm_fixed(pause, [], []),
+        asm_fixed(sfence, [], []),
+        let(tmp(i1), w, add, [tmp(i), const(1)])
+    ], goto(loop)),
+    block(done, [], [], ret(tmp(i)))
+]).

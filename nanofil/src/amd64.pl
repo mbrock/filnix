@@ -50,6 +50,7 @@
     | Ctx | the function context, `f(Name, Ret, Slots, Blocks)` |
 */
 :- module(amd64, [module_asm/2, compute_op//4, compute_op//5, load//4, load_slot//4,
+                  asm_fixed_inputs//2, asm_fixed_out_reg/2,
                   store_reg//3, store_insn/3, reg_name/3, load_insn/3, ext_insn/3,
                   cond_code/2, integer_immediate/3,
                   att_suffix/2, float_class/1,
@@ -147,6 +148,7 @@ frame(Params, Blocks, Slots, Size) :-
 % defines(+Inst, -N): Inst writes temporary tmp(N).
 defines(let(tmp(N), _, _, _), N).
 defines(call(result(tmp(N), _), _, _), N).
+defines(asm_fixed(_, _, Outs), N) :- member(_-tmp(N), Outs).
 
 % The next 8-byte slot below %rbp, counting slots in Count.
 assign_slot(Key, Slots0-Count0, Slots-Count) :-
@@ -297,6 +299,11 @@ inst(let(D, Class, Op, Args), Ctx) -->
     compute_op(Op, Class, Args, Ctx),
     store_reg(rax, D, Ctx).
 inst(fence, _) --> [ins(mfence, none, [])].
+inst(asm_fixed(M, Ins, Outs), Ctx) -->
+    asm_fixed_inputs(Ins, Ctx),
+    [asm_fixed(M)],
+    asm_fixed_outputs(Outs, Ctx).
+
 inst(store(Width, V, Addr), Ctx) -->
     { width_class(Width, Class) },
     load(V, Class, c, Ctx),
@@ -539,6 +546,22 @@ load_op(uh, K, Op, S, To) :- ext_op(uh, K, Op, S, To).
 
 sw_load_op(w, mov, l, eax).
 sw_load_op(l, Op, S, To) :- ext_op(sw, l, Op, S, To).
+
+%! asm_fixed_inputs(+Ins, +Frame)//
+%
+%  The moves of a fixed-register asm's w inputs (docs/asm-fixed.md) into
+%  the registers it reads, eax and ecx; each move writes only its own.
+asm_fixed_inputs([], _) --> [].
+asm_fixed_inputs([R-V|Ins], F) --> load(V, w, R, F), asm_fixed_inputs(Ins, F).
+
+% asm_fixed_out_reg(?R, ?Reg): the register holding result R after the
+% asm line; cpuid's b comes out in rdi (asm.pl), its upper half zeroed.
+asm_fixed_out_reg(a, rax). asm_fixed_out_reg(b, rdi).
+asm_fixed_out_reg(c, rcx). asm_fixed_out_reg(d, rdx).
+
+asm_fixed_outputs([], _) --> [].
+asm_fixed_outputs([R-T|Outs], F) -->
+    { asm_fixed_out_reg(R, Reg) }, store_reg(Reg, T, F), asm_fixed_outputs(Outs, F).
 
 %% Operands
 

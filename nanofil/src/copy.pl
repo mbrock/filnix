@@ -121,6 +121,8 @@ temp_classes(Params, Blocks, Classes) :-
               ;   member(call(result(tmp(T), K), _, _), Insts)
               ;   member(call(tuple(Tos), _, _), Insts),
                   member(result(tmp(T), K), Tos)
+              ;   member(asm_fixed(_, _, Outs), Insts),
+                  member(_-tmp(T), Outs), K = w
               ) ),
             BlockPairs),
     append(ParamPairs, BlockPairs, Pairs),
@@ -275,9 +277,13 @@ inst_reps(atomic_store(W, V0, A0), Reps, atomic_store(W, V, A)) :-
     value_reps(V0, Reps, V),
     value_reps(A0, Reps, A).
 inst_reps(fence, _, fence).
+inst_reps(asm_fixed(M, Ins0, Outs), Reps, asm_fixed(M, Ins, Outs)) :-
+    maplist(reps_in(Reps), Ins0, Ins).
 inst_reps(call(R, F0, Args0), Reps, call(R, F, Args)) :-
     value_reps(F0, Reps, F),
     maplist(reps_arg(Reps), Args0, Args).
+
+reps_in(Reps, R-V0, R-V) :- value_reps(V0, Reps, V).
 
 reps_arg(Reps, arg(K, V0), arg(K, V)) :-
     value_reps(V0, Reps, V).
