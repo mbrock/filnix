@@ -103,6 +103,7 @@
     | `va_arg(A, TypeName)` | `__builtin_va_arg` |
     | `bit_cast(TypeName, E)` | `__builtin_bit_cast` |
     | `types_compatible(TypeName, TypeName)` | `__builtin_types_compatible_p` |
+    | `call(id('__builtin_convertvector'), [E, TypeName])` | clang's `__builtin_convertvector` |
     | `stmtexpr(Block)` | a GNU statement expression |
     | `label_addr(L)` | GNU `&&L`, the address of label L |
     | `generic(Control, Associations)` | `_Generic`, Associations a list of `assoc(TypeName, E)` and `assoc(default, E)` |
@@ -1412,6 +1413,10 @@ primary(Env, bit_cast(Type, E)) -->
     token(id('__builtin_bit_cast')), !,
     expect('('), type_name(Env, Type), expect(','),
     assignment(Env, E), expect(')').
+primary(Env, call(id('__builtin_convertvector'), [A, Type])) -->
+    token(id('__builtin_convertvector')), !,
+    expect('('), assignment(Env, A), expect(','),
+    type_name(Env, Type), expect(')').
 primary(Env, types_compatible(A, B)) -->
     token(id('__builtin_types_compatible_p')), !,
     expect('('), type_name(Env, A), expect(','),

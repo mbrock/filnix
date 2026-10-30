@@ -73,7 +73,7 @@
                     vm_type/1, vla_type/1, unsupported_type/3, value_type/2,
                     generic_selection/5, reflect_type/4, reflect_params/4,
                     conditional_type/3, unqualified/2,
-                    overflow_builtin/3, bit_builtin/3, rotate_builtin/3, builtin_type/2, binary_operands/6,
+                    overflow_builtin/3, bit_builtin/3, rotate_builtin/3, vector_builtin/3, generic_vector_builtin/1, vector_builtin_type/4, builtin_type/2, binary_operands/6,
                     builtin_constant_p/3, attr_entry/3, attr_word/2,
                     unary_operand/3, assigned/4, transparent_argument/4, expression_tags/3,
                     builtin_declarations/1,
@@ -497,7 +497,7 @@ reflect_param(_, _, Env, Env).
 specs_type(Specs, Type, Env0, Env) :-
     base_type(Specs, Type0, Env0, Env),
     (   member(attr(Tokens), Specs), vector_attr(Tokens)
-    ->  Type = bad('vector types')
+    ->  vector_type(Specs, Type0, Env, Type)
     ;   memberchk(qual(atomic), Specs), Type0 \= bad(_), \+ atomic_object_type(Type0)
     ->  Type = bad('_Atomic on a type other than an integer, pointer, float or double')
     ;   member(attr(Tokens), Specs), mode_attr(Tokens, Mode)
@@ -831,6 +831,58 @@ vector_attr(Tokens) :-
     is_list(Tokens),
     attr_word(Tokens, Word),
     memberchk(Word, [vector_size, '__vector_size__', ext_vector_type]), !.
+
+doc(vector_type(+Specs, +Elem, +Env, -Type), det, [
+    Specs: "declaration specifiers with a vector_size attribute",
+    Elem: "the type the other specifiers name",
+    Env: "the scope",
+    Type: "vec(Elem, N, Align), or bad(Why)",
+    "GCC's vector_size(Bytes) makes a vector of Bytes / sizeof(Elem)",
+    "elements of an integer type other than _Bool, float or double. Its",
+    "alignment is its size unless an aligned attribute in the same",
+    "specifiers sets it, which may lower it (immintrin.h's __m128i_u is",
+    "aligned(1)). Only 16-byte vectors are supported (the SSE through",
+    "SSE4.2 intrinsics), and only with NANOFIL_VECTORS=1 until a vector",
+    "access is checked as one access of its full width (docs/vector-access.md).",
+    cites('GCC manual, Using Vector Instructions through Built-in Functions'),
+    cites('Clang Language Extensions, Vectors and Extended Vectors')
+]).
+vector_type(Specs, Elem0, Env, Type) :-
+    unqualified(Elem0, Elem),
+    (   \+ getenv('NANOFIL_VECTORS', '1')
+    ->  Type = bad('vector types')
+    ;   Elem = bad(Why)
+    ->  Type = bad(Why)
+    ;   \+ vector_size_value(Specs, Env, _)
+    ->  Type = bad('vector types')                 % ext_vector_type
+    ;   \+ vector_element(Elem)
+    ->  Type = bad('a vector of a type other than an integer, float or double')
+    ;   vector_size_value(Specs, Env, Size),
+        type_size_align(Elem, Env, ES, _),
+        (   Size =\= 16
+        ->  format(atom(Why), 'vector types of ~w bytes', [Size]),
+            Type = bad(Why)
+        ;   N is Size // ES,
+            (   member(attr(Tokens), Specs), attr_entry(Tokens, AW, Arg),
+                memberchk(AW, [aligned, '__aligned__']),
+                request_alignment(Env, attr([id(aligned)|Arg]), A0)
+            ->  A = A0
+            ;   A = Size
+            ),
+            Type = vec(Elem, N, A)
+        )
+    ).
+
+vector_size_value(Specs, Env, Size) :-
+    member(attr(Tokens), Specs), attr_entry(Tokens, W, [group(Ts)]),
+    memberchk(W, [vector_size, '__vector_size__']),
+    phrase(flat_tokens(Ts), Flat),
+    attribute_expression(Flat, Env, E),
+    catch(const_value(E, Env, Size, _), not_constant, fail), !.
+
+vector_element(T) :- int_type(T), T \== bool.
+vector_element(float).
+vector_element(double).
 
 % layout_attr(+Spec): Spec is an attribute that changes layout, which
 % the frontend does not model. The cut commits to the first such word.
@@ -2128,6 +2180,8 @@ size_align_(array(T, N), Env, Size, Align) :-
     integer(N),
     type_size_align(T, Env, ElemSize, Align),
     Size is ElemSize * N.
+size_align_(vec(E, N, A), Env, Size, A) :-
+    type_size_align(E, Env, ES, _), Size is ES * N.
 size_align_(struct(Id), Env, Size, Align) :- su_size(Id, Env, Size, Align).
 size_align_(union(Id), Env, Size, Align) :- su_size(Id, Env, Size, Align).
 size_align_(bad(Why), _, _, _) :- throw(bad(Why)).
@@ -3192,6 +3246,14 @@ elab(un(Op, E), Env, val(T, un(Op, XV))) :-
     memberchk(Op, [plus, neg, bnot, not]),
     operand(E, Env, XV, T1),
     unary_operand(Op, T1, T0), env_int_type(Env, T0, T).
+elab(index(A, I), Env, X) :-                    % GNU vectors
+    elaborate(A, Env, XS), tree_type(XS, T0), unqualified(T0, vec(E, _, _)), !,
+    operand(I, Env, XI, TI), int_type(TI),
+    (   XS = obj(_, _)
+    ->  ( T0 = qualified(Q, _) -> T = qualified(Q, E) ; T = E ),
+        X = obj(T, vlane(XS, XI))
+    ;   value(XS, XV), X = val(E, vlane(XV, XI))
+    ).
 elab(index(A, I), Env, X) :-                                % 6.5.2.1p2
     elab(un(deref, bin(add, A, I)), Env, X).
 elab(member(E, F), Env, X) :-
@@ -3228,6 +3290,10 @@ elab(call(id(Name), Args), Env, X) :-
 elab(call(id(Name), [str([])]), Env, val(T, builtin(Name, []))) :-
     \+ lookup_ordinary(Env, Name, _),
     nan_builtin(Name, T, _), !.
+elab(call(id(Name), Args), Env, val(T, builtin(Name, Args))) :-  % GNU vectors
+    generic_vector_builtin(Name),
+    \+ lookup_ordinary(Env, Name, _), !,
+    vector_builtin_type(Name, Args, Env, T).
 elab(call(id(Name), Args), Env, val(T, builtin(Name, Args))) :-
     \+ lookup_ordinary(Env, Name, _),
     (   Args == [], float_builtin(Name, T, _), \+ nan_builtin(Name, _, _) -> true
@@ -3325,7 +3391,7 @@ lowered(XV, T) :- tree_type(XV, T0), unqualified(T0, T).
 % or the result of the operator applied to the two (6.5.16.2).
 assigns(=, TA, XB, TB, Env) :- !, nullness(XB, Env, N), assignable(TB, N, TA, Env).
 assigns(Op, TA, _, TB, _) :-
-    compound_assignment(Op, BinOp), scalar_type(TA),
+    compound_assignment(Op, BinOp), ( scalar_type(TA) ; TA = vec(_, _, _) ),
     binary_operands(BinOp, TA, TB, _, _, T), assignable(T, value, TA).
 
 % arity_fits(+Ps, +V, +Args): a function with parameters Ps, fixed or
@@ -4010,6 +4076,7 @@ builtin_type('__builtin_flt_rounds', int).
 builtin_type('__builtin_object_size', ulong).
 builtin_type('__builtin_dynamic_object_size', ulong).
 builtin_type(Name, int) :- classify_builtin(Name).
+builtin_type(Name, T) :- vector_builtin(Name, _, T).
 
 doc(classify_builtin(?(Name)), nondet, [
     Name: "a type-generic classification builtin glibc's math.h uses",
@@ -4057,6 +4124,107 @@ doc(libm_builtin(?(Name), ?(F)), nondet, [
 libm_builtin('__builtin_ceil', ceil).
 libm_builtin('__builtin_floor', floor).
 libm_builtin('__builtin_sqrt', sqrt).
+
+doc(vector_builtin(?(Name), ?(Params), ?(Ret)), nondet, [
+    Name: "a clang builtin that immintrin.h's SSE through SSE4.2 intrinsics call",
+    Params: "its parameter types",
+    Ret: "its result type",
+    "c_lower computes each element by element (vector_builtin//4). A",
+    "count, lane or shuffle-control parameter typed int must be a",
+    "constant where the instruction encodes it as an immediate.",
+    cites('Clang Builtins, X86 (clang/include/clang/Basic/BuiltinsX86.td)'),
+    cites('Intel 64 and IA-32 Architectures Software Developer\'s Manual, Volume 2'),
+    example(vector_builtin('__builtin_ia32_pmovmskb128', [vec(char, 16, 16)], int)),
+    example(vector_builtin('__builtin_ia32_psrlwi128', P, R),
+            (P = [vec(short, 8, 16), int], R = vec(short, 8, 16)))
+]).
+vector_builtin(Name, Params, Ret) :-
+    vector_builtin_(Short, Params0, Ret0),
+    atom_concat('__builtin_ia32_', Short, Name),
+    maplist(vector_abbrev, Params0, Params),
+    vector_abbrev(Ret0, Ret).
+
+vector_abbrev(v16qi, vec(char, 16, 16)) :- !.
+vector_abbrev(v8hi, vec(short, 8, 16)) :- !.
+vector_abbrev(v4si, vec(int, 4, 16)) :- !.
+vector_abbrev(v2di, vec(llong, 2, 16)) :- !.
+vector_abbrev(v4sf, vec(float, 4, 16)) :- !.
+vector_abbrev(v2df, vec(double, 2, 16)) :- !.
+vector_abbrev(T, T).
+
+vector_builtin_(pmovmskb128, [v16qi], int).
+vector_builtin_(movmskps, [v4sf], int).
+vector_builtin_(movmskpd, [v2df], int).
+vector_builtin_(Name, [V, int], V) :-
+    member(V-Ws, [v8hi-[psllwi128, psrlwi128, psrawi128],
+                  v4si-[pslldi128, psrldi128, psradi128],
+                  v2di-[psllqi128, psrlqi128, pslldqi128_byteshift, psrldqi128_byteshift]]),
+    member(Name, Ws).
+vector_builtin_(Name, [V, V], V) :-
+    member(V-Ws, [v8hi-[psllw128, psrlw128, psraw128, pmulhuw128, pmulhw128, pavgw128,
+                        psignw128, phaddw128, phsubw128, phaddsw128, phsubsw128],
+                  v4si-[pslld128, psrld128, psrad128, psignd128, phaddd128, phsubd128],
+                  v2di-[psllq128, psrlq128],
+                  v16qi-[pshufb128, pavgb128, psignb128]]),
+    member(Name, Ws).
+vector_builtin_(packsswb128, [v8hi, v8hi], v16qi).
+vector_builtin_(packuswb128, [v8hi, v8hi], v16qi).
+vector_builtin_(packssdw128, [v4si, v4si], v8hi).
+vector_builtin_(packusdw128, [v4si, v4si], v8hi).
+vector_builtin_(pshufd, [v4si, int], v4si).
+vector_builtin_(pshuflw, [v8hi, int], v8hi).
+vector_builtin_(pshufhw, [v8hi, int], v8hi).
+vector_builtin_(palignr128, [v16qi, v16qi, int], v16qi).
+vector_builtin_(pblendvb128, [v16qi, v16qi, v16qi], v16qi).
+vector_builtin_(pblendw128, [v8hi, v8hi, int], v8hi).
+vector_builtin_(pmuludq128, [v4si, v4si], v2di).
+vector_builtin_(pmuldq128, [v4si, v4si], v2di).
+vector_builtin_(pmaddwd128, [v8hi, v8hi], v4si).
+vector_builtin_(pmaddubsw128, [v16qi, v16qi], v8hi).
+vector_builtin_(psadbw128, [v16qi, v16qi], v2di).
+vector_builtin_(ptestz128, [v2di, v2di], int).
+vector_builtin_(ptestc128, [v2di, v2di], int).
+vector_builtin_(ptestnzc128, [v2di, v2di], int).
+vector_builtin_(vec_ext_v16qi, [v16qi, int], char).
+vector_builtin_(vec_ext_v8hi, [v8hi, int], short).
+vector_builtin_(vec_ext_v4si, [v4si, int], int).
+vector_builtin_(vec_ext_v2di, [v2di, int], llong).
+vector_builtin_(vec_ext_v4sf, [v4sf, int], float).
+vector_builtin_(vec_set_v16qi, [v16qi, char, int], v16qi).
+vector_builtin_(vec_set_v8hi, [v8hi, short, int], v8hi).
+vector_builtin_(vec_set_v4si, [v4si, int, int], v4si).
+vector_builtin_(vec_set_v2di, [v2di, llong, int], v2di).
+vector_builtin_(undef128, [], v2df).
+vector_builtin_(cvtss2si, [v4sf], int).
+vector_builtin_(cvtss2si64, [v4sf], llong).
+vector_builtin_(cvtsd2si, [v2df], int).
+vector_builtin_(cvtsd2si64, [v2df], llong).
+
+doc(generic_vector_builtin(?(Name)), nondet, [
+    Name: "a clang builtin whose result type follows its operands",
+    "__builtin_shufflevector(A, B, I...) picks elements of A and B, a",
+    "vector of as many elements as there are constant indexes I;",
+    "__builtin_convertvector(V, T) converts each element of V to T's;",
+    "the elementwise builtins apply to each element and have their",
+    "operand's type.",
+    cites('Clang Language Extensions, __builtin_shufflevector, __builtin_convertvector, Vector Builtins')
+]).
+generic_vector_builtin('__builtin_shufflevector').
+generic_vector_builtin('__builtin_convertvector').
+generic_vector_builtin(Name) :-
+    member(Op, [add_sat, sub_sat, min, max, abs]),
+    atom_concat('__builtin_elementwise_', Op, Name).
+
+% vector_builtin_type(+Name, +Args, +Env, -T): T is the type of a call
+% of the generic vector builtin Name on Args.
+vector_builtin_type('__builtin_shufflevector', [A, B|Is], Env, vec(E, K, Size)) :- !,
+    operand(A, Env, _, vec(E, _, _)), operand(B, Env, _, vec(E2, _, _)), E == E2,
+    length(Is, K), type_size_align(E, Env, ES, _), Size is ES * K.
+vector_builtin_type('__builtin_convertvector', [A, TN], Env, T) :- !,
+    operand(A, Env, _, vec(_, N, _)),
+    type_name_type(TN, T0, Env, _), unqualified(T0, T), T = vec(_, N, _).
+vector_builtin_type(_, [A|_], Env, T) :-
+    operand(A, Env, _, T), T = vec(_, _, _).
 
 doc(bit_builtin(?(Name), ?(Op), ?(Type)), nondet, [
     Name: "a bit-counting builtin",
@@ -4302,6 +4470,9 @@ doc(unary_operand(+Op, +T0, -T), semidet, [
     fails(unary_operand(bnot, double, _)),
     fails(unary_operand(neg, ptr(int), _))
 ]).
+unary_operand(Op, T0, T0) :-                         % GNU vectors
+    T0 = vec(E, _, _), !,
+    ( memberchk(Op, [plus, neg]) -> true ; Op == bnot, int_type(E) ).
 unary_operand(Op, T0, T) :-
     memberchk(Op, [plus, neg]), arithmetic_type(T0), integer_promotion(T0, T).
 unary_operand(bnot, T0, T) :- int_type(T0), integer_promotion(T0, T).
@@ -4313,6 +4484,47 @@ expression_binary_type(Op, A, B, int) :-                  % 6.5.13p2, 6.5.14p2
     memberchk(Op, [land, lor]), !,
     scalar_type(A), scalar_type(B).
 expression_binary_type(Op, A, B, T) :- binary_operands(Op, A, B, _, _, T).
+
+doc(vector_operands(+Op, +TA, +TB, -C, -T), semidet, [
+    Op: "a binary operator other than && and ||",
+    TA: "the left operand's value type",
+    TB: "the right operand's value type, one of the two a vector",
+    C: "the vector type both operands convert to",
+    T: "the result's type",
+    "GNU vector operators apply element by element. Both operands are",
+    "vectors of the same element type and count, or one is a scalar,",
+    "which converts to the element type and is repeated (an integer",
+    "scalar for an integer vector). %, &, |, ^, << and >> need integer",
+    "elements. A comparison gives a vector of signed integers as wide as",
+    "the elements, each -1 where it holds and 0 where it does not.",
+    cites('GCC manual, Using Vector Instructions through Built-in Functions'),
+    cites('Clang Language Extensions, Vector Operations'),
+    example(vector_operands(add, vec(int, 4, 16), vec(int, 4, 16), C, T),
+            (C = vec(int, 4, 16), T = vec(int, 4, 16))),
+    example(vector_operands(shl, vec(short, 8, 16), int, C, _), C = vec(short, 8, 16)),
+    example(vector_operands(eq, vec(float, 4, 16), vec(float, 4, 16), _, T), T = vec(int, 4, 16)),
+    example(vector_operands(lt, vec(uchar, 16, 16), vec(uchar, 16, 16), _, T), T = vec(schar, 16, 16)),
+    fails(vector_operands(add, vec(int, 4, 16), vec(short, 8, 16), _, _)),
+    fails(vector_operands(and, vec(float, 4, 16), vec(float, 4, 16), _, _)),
+    fails(vector_operands(add, vec(int, 4, 16), double, _, _))
+]).
+vector_operands(Op, TA, TB, C, T) :-
+    (   TA = vec(E, N, _), TB = vec(E2, N2, _) -> E == E2, N == N2, C = TA
+    ;   TA = vec(E, _, _) -> vector_scalar(E, TB), C = TA
+    ;   TB = vec(E, _, _), vector_scalar(E, TA), C = TB
+    ),
+    C = vec(E, N, A),
+    (   comparison(Op)
+    ->  type_size_align(E, _, Size, _),
+        memberchk(Size-SE, [1-schar, 2-short, 4-int, 8-llong]),
+        T = vec(SE, N, A)
+    ;   arithmetic_operator(Op, Domain)
+    ->  call(Domain, E), T = C
+    ;   memberchk(Op, [shl, shr]), int_type(E), T = C
+    ).
+
+vector_scalar(E, S) :- int_type(E), !, int_type(S).
+vector_scalar(_, S) :- arithmetic_type(S).
 
 doc(binary_operands(+Op, +TA, +TB, -CA, -CB, -T), semidet, [
     Op: "a binary operator, not && or ||",
@@ -4347,6 +4559,9 @@ doc(binary_operands(+Op, +TA, +TB, -CA, -CB, -T), semidet, [
     fails(binary_operands(mod, double, int, _, _, _)),
     fails(binary_operands(sub, int, ptr(int), _, _, _))
 ]).
+binary_operands(Op, TA, TB, C, C, T) :-
+    ( TA = vec(_, _, _) ; TB = vec(_, _, _) ), !,
+    vector_operands(Op, TA, TB, C, T).
 binary_operands(Op, TA, TB, CA, CB, CA) :- memberchk(Op, [shl, shr]), !,
     int_type(TA), int_type(TB),
     integer_promotion(TA, CA), integer_promotion(TB, CB).
@@ -4385,6 +4600,11 @@ doc(castable(+From, +To), semidet, [
     example(castable(struct(1), void)),
     example(castable(ptr(char), long)),
     example(castable(struct(1), struct(1))),
+    "A GNU vector casts to another of the same size, reinterpreting its",
+    "bytes.",
+    cites('GCC manual, Using Vector Instructions through Built-in Functions'),
+    example(castable(vec(float, 4, 16), vec(llong, 2, 16))),
+    fails(castable(vec(float, 4, 16), int)),
     fails(castable(double, ptr(int))),
     fails(castable(ptr(int), float)),
     fails(castable(int, struct(1)))
@@ -4394,6 +4614,10 @@ castable(A, B) :- arithmetic_type(A), arithmetic_type(B), !.
 castable(ptr(_), B) :- ( B = ptr(_) ; int_type(B) ), !.
 castable(A, ptr(_)) :- int_type(A), !.
 castable(T, U) :- T == U, ( T = struct(_) ; T = union(_) ).
+castable(vec(E, N, _), vec(F, M, _)) :-                 % GNU vectors
+    vector_bytes(E, N, B), vector_bytes(F, M, B).
+
+vector_bytes(E, N, B) :- type_size_align(E, _, S, _), B is S * N.
 
 doc(assignable(+From, +Null, +To), semidet, [
     From: "the value type of the right operand",
@@ -4408,6 +4632,13 @@ doc(assignable(+From, +Null, +To), semidet, [
     "object and function pointers), and they are accepted.",
     cites('C11 6.5.16.1p1'),
     example(assignable(double, value, char)),
+    "GNU vectors assign when their element type and count agree, or,",
+    "as clang's default -flax-vector-conversions=integer allows, when both",
+    "hold integers and have the same size (immintrin.h's __m128i from a",
+    "__v16qi).",
+    cites('Clang command line reference, -flax-vector-conversions'),
+    example(assignable(vec(char, 16, 16), value, vec(llong, 2, 1))),
+    fails(assignable(vec(float, 4, 16), value, vec(int, 4, 16))),
     example(assignable(ptr(int), value, bool)),
     example(assignable(int, null, ptr(int))),
     example(assignable(ptr(int), value, ptr(char))),
@@ -4421,6 +4652,10 @@ assignable(From, Null, To) :- assignable(From, Null, To, none).
 % are compared with compatible_type/3 in Env.
 assignable(From, _, To, _) :- arithmetic_type(From), arithmetic_type(To), !.
 assignable(T, _, U, _) :- T == U, !.
+assignable(vec(E, N, _), _, vec(F, M, _), _) :- !,       % GNU vectors
+    (   E == F, N == M -> true
+    ;   int_type(E), int_type(F), vector_bytes(E, N, B), vector_bytes(F, M, B)
+    ).
 assignable(ptr(_), _, bool, _) :- !.
 assignable(_, null, ptr(_), _) :- !.
 assignable(ptr(A), _, ptr(B), Env) :-

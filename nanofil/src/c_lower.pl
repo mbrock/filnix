@@ -547,7 +547,8 @@ top_item(ExternalNames, fundef(Loc, Specs, dcl(some(Name), DclType, Asm), Body),
                     Env2, Env)
         ;   Funcs = Funcs0, Env = Env3
         )
-    ;   function(Loc, Name, Type, DclType, Body, Env2, Env, Funcs)
+    ;   vector_abi(Type, ctx(Name, none, none, none, Loc)),
+        function(Loc, Name, Type, DclType, Body, Env2, Env, Funcs)
     ).
 
 /* GNU's constructor and destructor attributes, with an optional
@@ -1064,7 +1065,7 @@ variadic_entry(variadic, _, Sret, Params) -->
 variadic_entry(fixed, RetType-Types, Sret, Params) -->
     env(Env),
     (   { (   member(Type, Types), abi_memory(Type), generic_only_type(Type, Env)
-          ;   su(RetType), float_pair_type(RetType, Env)
+          ;   memtype(RetType), float_pair_type(RetType, Env)
           ;   x87_type(RetType, Env)
           ;   append(Sret, Params, All), length(All, NW), NW > 16
           ) }
@@ -1080,7 +1081,7 @@ ret_class(_, ldouble, _, tuple([l, l])) :- !.
 ret_class(_, Type, _, Class) :-
     type_class(Type, Class), !.
 ret_class(Loc, Type, Env, Class) :-
-    su(Type),
+    memtype(Type),
     !,
     ret_shape(Type, Env, Loc, Shape),
     (   Shape = words([eb(_, _, K0)]) -> Class = K0
@@ -1096,7 +1097,7 @@ ret_class(Loc, Type, _, _) :-
 % returns nothing.
 sret_param(RetType, Params) -->
     env(Env),
-    (   { su(RetType), ret_shape(RetType, Env, unknown, sret) }
+    (   { memtype(RetType), ret_shape(RetType, Env, unknown, sret) }
     ->  fresh(P),
         bind('%sret', sret(P)),
         { Params = [param(p, P)] }
@@ -1200,7 +1201,7 @@ zero_ret(RetType) -->
     env(Env),
     (   { RetType == void } -> term(ret)
     ;   { RetType == ldouble } -> term(rets([const(0), const(0)]))
-    ;   { su(RetType), ret_shape(RetType, Env, unknown, Shape) }
+    ;   { memtype(RetType), ret_shape(RetType, Env, unknown, Shape) }
     ->  (   { Shape = words([_, _]) } -> term(rets([const(0), const(0)]))
         ;   { Shape = words(_) } -> term(ret(const(0)))
         ;   term(ret)
@@ -2599,6 +2600,9 @@ object_init(bits(T, Pos, W), Off, Expr, _) --> !, [bits(Off, T, Pos, W, Expr)].
 object_init(array(T, N), Off, list([entry([], Str)]), C) -->
     { str_elems(Str, T, _) }, !,
     object_init(array(T, N), Off, Str, C).
+object_init(vec(E, N, _), Off, Init, C) -->           % GNU vectors
+    { Init = list(_) }, !,
+    object_init(array(E, N), Off, Init, C).
 object_init(array(T, N), Off, list(Entries), _) -->
     { integer(N), table_type(T), int_entries(Entries, T, Vs),
       length(Vs, K), K =< N }, !,
@@ -2969,6 +2973,12 @@ lower_node(val(_, member(XS, F)), Ctx, R) --> !,           % 6.5.2.3p3
     (   { Type = array(E, _) } -> { R = v(P, ptr(E)) }
     ;   loaded(Type, P, Ctx, R)
     ).
+lower_node(val(T, vlane(XV, XI)), Ctx, R) --> !,          % GNU vectors
+    lower(XV, Ctx, v(Addr, _)),
+    { unqualified(T, U) },
+    lower(XI, Ctx, VI),
+    ptr_offset(add, v(Addr, ptr(U)), U, VI, Ctx, v(P, _)),
+    loaded(U, P, Ctx, R).
 lower_node(val(_, comma(XA, XB)), Ctx, R) --> !,           % 6.5.17
     lower(XA, Ctx, _),
     lower(XB, Ctx, R).
@@ -3056,7 +3066,7 @@ lower_node(val(_, call(XF, XArgs)), Ctx, R) --> !,         % 6.5.2.2
     },
     call_args(XArgs, ParamTypes, Ctx, IRArgs0),
     env(Env),
-    { su(RetType), ret_shape(RetType, Env, unknown, sret) -> NSret = 1 ; NSret = 0 },
+    { memtype(RetType), ret_shape(RetType, Env, unknown, sret) -> NSret = 1 ; NSret = 0 },
     pad_args(IRArgs0, NSret, IRArgs),
     call_result(Callee, RetType, IRArgs, Ctx, R).
 lower_node(val(_, builtin(Name, Args)), Ctx, R) --> !,
@@ -3175,7 +3185,7 @@ lower_node(val(_, stmtexpr(at(_, block(Items)))), Ctx, R) --> % GNU ({ ... })
     save_scope(Scope), env(Env), { cleanup_keys(Env, Outer) },
     statement_expression_items(Items, Ctx, R0),
     leaving(Outer, Ks),
-    (   { Ks \== [], R0 = v(A, T), su(T) }       % the value, before them
+    (   { Ks \== [], R0 = v(A, T), memtype(T) }  % the value, before them
     ->  local_slot(T, A1), copy_object(T, A, A1), { R = v(A1, T) }
     ;   { R = R0 }
     ),
@@ -3187,10 +3197,13 @@ lower_node(val(_, stmtexpr(at(_, block(Items)))), Ctx, R) --> % GNU ({ ... })
 % may: to void it is nothing, a struct or union stays its address.
 converted(_, void, v(const(0), void)) --> !.
 converted(v(Addr, _), Type, v(Addr, Type)) --> { su(Type) }, !.
+
 converted(Value0, Type, R) --> convert(Value0, Type, R).
 
 % loaded(+U, +Addr, +Ctx, -R)//: R is the value of type U stored at
 % Addr: a struct or union stands for its address.
+loaded(U, Addr, _, v(Copy, U)) --> { U = vec(_, _, _) }, !,
+    local_slot(U, Copy), copy_object(U, Addr, Copy).
 loaded(U, Addr, _, v(Addr, U)) --> { su(U) }, !.
 loaded(U, Addr, Ctx, v(V, U)) --> load_typed(U, Addr, Ctx, V).
 
@@ -3264,6 +3277,11 @@ place_node(obj(T, member(XS, F)), Ctx, lv(P, U)) -->       % 6.5.2.3p3
     place(XS, Ctx, lv(Addr, SU)),
     member_lv(Addr, SU, F, Ctx, P, _),
     { unqualified(T, U) }.
+place_node(obj(T, vlane(XS, XI)), Ctx, lv(P, U)) -->     % GNU vectors
+    place(XS, Ctx, lv(Addr, _)),
+    { unqualified(T, U) },
+    lower(XI, Ctx, VI),
+    ptr_offset(add, v(Addr, ptr(U)), U, VI, Ctx, v(P, _)).
 place_node(obj(_, bitfield(member(XS, F), W)), Ctx, bits(P, T, Pos, W)) --> % 6.7.2.1p10
     place(XS, Ctx, lv(Addr, SU)),
     env(Env),
@@ -3283,6 +3301,7 @@ place_loaded(bits(Addr, T, Pos, W), _, Ctx, R) -->
     place_read(bits(Addr, T, Pos, W), Ctx, R).
 
 % place_read(+P, +Ctx, -R)//: R is the scalar value at place P.
+place_read(lv(P, U), Ctx, R) --> { U = vec(_, _, _) }, !, loaded(U, P, Ctx, R).
 place_read(lv(P, U), Ctx, v(Cur, U)) --> load_typed(U, P, Ctx, Cur).
 place_read(bits(Addr, T, Pos, W), Ctx, R) -->
     load_typed(T, Addr, Ctx, Unit),
@@ -3346,7 +3365,7 @@ load_op(Type, Class, Class) :- type_class(Type, Class).
 
 % store_typed(+Type, +V, +Addr)//: store value V of Type at Addr; a
 % struct or union V is the address of the value, copied.
-store_typed(Type, V, Addr) --> { su(Type) }, !, copy_object(Type, V, Addr).
+store_typed(Type, V, Addr) --> { memtype(Type) }, !, copy_object(Type, V, Addr).
 store_typed(Type, V, Addr) -->
     { store_width(Type, Width) },
     emit(store(Width, V, Addr)).
@@ -3575,6 +3594,25 @@ builtin('__builtin_expect', [A, B], Ctx, R) --> !,
 builtin(Name, Args, Ctx, R) -->
     { overflow_builtin(Name, Op, Fixed) }, !,
     checked_arithmetic(Args, Op, Fixed, Ctx, R).
+% GNU vector builtins (c_types vector_builtin/3, generic_vector_builtin/1),
+% computed element by element: each operand is converted to its
+% parameter's type, its elements loaded from the copy it is, and the
+% result's elements stored to a new local (vector_op//6).
+builtin(Name, Args, Ctx, R) -->
+    { vector_builtin(Name, Ps, Ret) }, !,
+    { ctx_loc(Ctx, Loc), length(Args, NA), length(Ps, NP),
+      ( NA =:= NP -> true ; sema_error(Loc, 'wrong arguments to ~w', [Name]) ),
+      atom_concat('__builtin_ia32_', Short, Name) },
+    vector_args(Args, Ps, Ctx, Vs),
+    vector_op(Short, Args, Vs, Ret, Ctx, R).
+builtin(Name, Args, Ctx, R) -->
+    { generic_vector_builtin(Name) }, !,
+    env(Env),
+    { ctx_loc(Ctx, Loc),
+      (   vector_builtin_type(Name, Args, Env, T) -> true
+      ;   sema_error(Loc, 'wrong arguments to ~w', [Name])
+      ) },
+    generic_vector_op(Name, Args, T, Ctx, R).
 builtin(Name, [A], Ctx, R) -->
     { bit_builtin(Name, Op, Type) }, !,
     rval(A, Ctx, V0),
@@ -4225,6 +4263,13 @@ goto_blocks([p(T, From)|Ps], To, Label) -->
 % v(V, From) converted to scalar type To (or void). Callers check that
 % the types are scalar first.
 convert(v(V, Type), Type, v(V, Type)) --> !.
+convert(v(V, vec(_, _, _)), To, v(V, To)) --> { To = vec(_, _, _) }, !.  % bitcast
+convert(v(V, From), To, v(Addr, To)) -->                % a scalar repeated
+    { To = vec(E, N, _) }, !,
+    convert(v(V, From), E, v(X, _)),
+    local_slot(To, Addr),
+    { length(Xs, N), maplist(=(X), Xs) },
+    lanes_stored(To, Addr, 0, Xs).
 convert(v(V, _), void, v(V, void)) --> !.
 convert(v(V, From), bool, v(B, bool)) --> !,
     { From \== void },
@@ -4342,6 +4387,12 @@ unary(Op, Value0, Ctx, R) -->
       ) },
     unary_value(Op, Value0, Type, Ctx, R).
 
+unary_value(Op, v(A, T), T, Ctx, v(Addr, T)) -->
+    { T = vec(E, _, _) }, !,                            % GNU vectors
+    lanes_loaded(T, A, Ctx, Xs),
+    lane_unary(Xs, Op, E, Ctx, Zs),
+    local_slot(T, Addr),
+    lanes_stored(T, Addr, 0, Zs).
 unary_value(not, Value0, _, Ctx, v(V, int)) --> !,
     truth(Value0, Ctx, W),
     let(w, cmp(eq, w), [W, const(0)], V).
@@ -4367,6 +4418,14 @@ binary(Op, VA, VB, Ctx, R) -->
 % is Op applied to VA converted to CA and VB converted to CB. Pointer
 % arithmetic scales by the element size. Direct ordered comparisons are
 % essential: !(a < b) is not a >= b when either operand is NaN.
+binary_value(Op, C, _, T, VA, VB, Ctx, v(Addr, T)) -->
+    { C = vec(E, _, _) }, !,                            % GNU vectors
+    convert(VA, C, v(AA, _)), convert(VB, C, v(BA, _)),
+    lanes_loaded(C, AA, Ctx, Xs), lanes_loaded(C, BA, Ctx, Ys),
+    { T = vec(RE, _, _) },
+    lane_results(Xs, Ys, Op, E, RE, Ctx, Zs),
+    local_slot(T, Addr),
+    lanes_stored(T, Addr, 0, Zs).
 binary_value(Op, ptr(E), long, _, VA, VB, Ctx, R) --> !,
     ptr_offset(Op, VA, E, VB, Ctx, R).
 binary_value(add, long, ptr(E), _, VA, VB, Ctx, R) --> !,
@@ -4482,7 +4541,7 @@ join_arms(Type, LJoin, LA-VA, LB-VB, R) -->
         start_phi(LJoin, [phi(A, p, [LA-VA, LB-VB])]),
         let(x, load(x), [A], V),
         { R = v(V, Type) }
-    ;   { su(Type) -> Class = p ; type_class(Type, Class) },
+    ;   { memtype(Type) -> Class = p ; type_class(Type, Class) },
         fresh(V),
         start_phi(LJoin, [phi(V, Class, [LA-VA, LB-VB])]),
         { R = v(V, Type) }
@@ -4501,6 +4560,8 @@ callee(val(_, decay(X)), Ctx, Callee, FuncType) -->
     { X = fun(_, _) }, !,
     place(X, Ctx, fd(Callee0, FuncType)),
     env(Env),
+    { X = fun(_, id(Name)), lookup_ordinary(Env, Name, fn(_, _, Linkage)) -> true ; Linkage = export },
+    { Linkage == local -> true ; vector_abi(FuncType, Ctx) },
     { env_defs(Env, Defs),
       (   Callee0 = global(Sym), get_assoc(inline_copy(Sym), Defs, Local)
       ->  Callee = global(Local)                % top_item's local copy
@@ -4508,7 +4569,21 @@ callee(val(_, decay(X)), Ctx, Callee, FuncType) -->
       ) }.
 callee(XF, Ctx, Callee, FuncType) -->
     lower(XF, Ctx, v(V, ptr(FuncType))),
+    { vector_abi(FuncType, Ctx) },
     callee_temp(V, Callee).
+
+% vector_abi(+FuncType, +Ctx): a call of FuncType with external linkage
+% or through a pointer, or a definition with external linkage, passes no
+% GNU vector: filcc passes one in vector registers, where nanofil passes
+% it as a struct, so only nanofil's own static functions (immintrin.h's
+% intrinsics) take or return one.
+vector_abi(func(Ret, Ps, _), Ctx) :-
+    (   ( Ret = vec(_, _, _) ; is_list(Ps), member(vec(_, _, _), Ps) )
+    ->  ctx_loc(Ctx, Loc),
+        sema_error(Loc, 'a function with external linkage or called through a pointer cannot take or return a vector', [])
+    ;   true
+    ).
+vector_abi(_, _).
 
 % call_result(+Callee, +RetType, +IRArgs, +Ctx, -R)//: R is the result
 % of calling Callee with IRArgs; setjmp and its kin are intrinsics.
@@ -4520,7 +4595,7 @@ call_result(global(Kind), RetType, IRArgs, Ctx, R) -->
     { R = v(V, int) }.
 call_result(Callee, RetType, IRArgs, Ctx, R) -->
     { ctx_loc(Ctx, Loc) },
-    (   { su(RetType) } -> struct_call(RetType, Callee, IRArgs, Loc, R)
+    (   { memtype(RetType) } -> struct_call(RetType, Callee, IRArgs, Loc, R)
     ;   { RetType == ldouble }
     ->  struct_call(RetType, Callee, IRArgs, Loc, v(Tmp, _)),
         let(x, load(x), [Tmp], V),
@@ -4683,6 +4758,506 @@ normalize(Type, V0, V) -->
 su(struct(_)).
 su(union(_)).
 
+% memtype(+Type): a value of Type is the address of a copy of it, as a
+% struct's or union's is, and is passed and returned as one. A GNU
+% vector's is a copy that nothing else writes (vector_value//4).
+memtype(Type) :- su(Type).
+memtype(vec(_, _, _)).
+
+/* GNU vectors are lowered element by element: a vector value is the
+   address of a local slot holding a copy of it, made where an lvalue is
+   loaded (loaded//4) or an operator computes it, and never written
+   again, so a cast to another vector type of the same size keeps the
+   address. An operator loads each element of its operands, applies the
+   scalar operator to them, and stores each result. */
+
+% vector_args(+Args, +Params, +Ctx, -Vs)//: Vs are Args' values, each
+% converted to its parameter's type as for a call.
+vector_args([], [], _, []) --> [].
+vector_args([A|As], [P|Ps], Ctx, [V|Vs]) -->
+    rval(A, Ctx, V0),
+    { ctx_loc(Ctx, Loc) },
+    assign_convert(A, V0, P, Loc, V),
+    vector_args(As, Ps, Ctx, Vs).
+
+% lanes(+V, +VT, +Ctx, -Ls)//: Ls are the elements, v(X, E), of vector
+% value V read as a vector of type VT (the same bytes).
+lanes(v(Addr, _), VT, Ctx, Ls) -->
+    lanes_loaded(VT, Addr, Ctx, Xs),
+    { VT = vec(E, _, _), findall(v(X, E), member(X, Xs), Ls0), Ls = Ls0 }.
+
+% made(+VT, +Ls, -R)//: R is the vector of type VT whose elements are Ls,
+% each converted to VT's element type.
+made(VT, Ls, v(Addr, VT)) -->
+    { VT = vec(E, N, _) },
+    (   { length(Ls, N) } -> [] ; { throw(nanofil_error('vector arity')) } ),
+    lane_converted(Ls, E, Xs),
+    local_slot(VT, Addr),
+    lanes_stored(VT, Addr, 0, Xs).
+
+lane_converted([], _, []) --> [].
+lane_converted([L|Ls], E, [X|Xs]) -->
+    convert(L, E, v(X, _)), lane_converted(Ls, E, Xs).
+
+% imm(+A, +Ctx, -I): argument expression A is an integer constant I, as
+% an instruction's immediate operand must be.
+imm(A, Ctx, I) -->
+    env(Env),
+    { ctx_loc(Ctx, Loc),
+      (   catch(const_value(A, Env, I, _), not_constant, fail) -> true
+      ;   sema_error(Loc, 'this vector builtin needs a constant operand', [])
+      ) }.
+
+% Scalar steps on v(V, Type) values, with C's conversions.
+bop(Op, A, B, Ctx, R) --> binary(Op, A, B, Ctx, R).
+k(N, v(const(N), int)).
+
+% isel(+C, +A, +B, +T, +Ctx, -R)//: R, of integer type T, is A where the
+% int C is 1 and B where it is 0: B ^ ((A ^ B) & -C).
+isel(C, A, B, T, Ctx, R) -->
+    convert(A, T, A1), convert(B, T, B1),
+    { k(0, Z) }, bop(sub, Z, C, Ctx, M0), convert(M0, T, M),
+    bop(xor, A1, B1, Ctx, D), bop(and, D, M, Ctx, D1),
+    bop(xor, B1, D1, Ctx, R0), convert(R0, T, R).
+
+% clamped(+X, +Lo, +Hi, +T, +Ctx, -R)//: R is int X clamped to [Lo, Hi].
+clamped(X, Lo, Hi, T, Ctx, R) -->
+    { k(Lo, VLo), k(Hi, VHi) },
+    bop(lt, X, VLo, Ctx, CLo), isel(CLo, VLo, X, long, Ctx, X1),
+    bop(gt, X1, VHi, Ctx, CHi), isel(CHi, VHi, X1, long, Ctx, X2),
+    convert(X2, T, R).
+
+numbered(Ls, Is) :- length(Ls, N), N1 is N - 1, numlist(0, N1, Is).
+
+v16qu(vec(uchar, 16, 16)).
+v8hu(vec(ushort, 8, 16)).
+v4su(vec(uint, 4, 16)).
+v2du(vec(ullong, 2, 16)).
+v16qi(vec(char, 16, 16)).
+v8hi(vec(short, 8, 16)).
+v4si(vec(int, 4, 16)).
+v2di(vec(llong, 2, 16)).
+
+% vector_op(+Short, +Args, +Vs, +Ret, +Ctx, -R)//: R is the result of
+% __builtin_ia32_Short on argument expressions Args, whose values are Vs.
+vector_op(Name, _, [V], _, Ctx, v(M, int)) -->
+    { memberchk(Name-VT-Bit, [pmovmskb128-vec(uchar, 16, 16)-7,
+                              movmskps-vec(uint, 4, 16)-31,
+                              movmskpd-vec(ullong, 2, 16)-63]) }, !,
+    lanes(V, VT, Ctx, Ls),
+    sign_bits(Ls, 0, Bit, Ctx, v(const(0), int), v(M, _)).
+vector_op(Name, _, [V, C], Ret, Ctx, R) -->
+    { shift_builtin(Name, Kind, imm) }, !,
+    shifted_lanes(Kind, V, C, Ret, Ctx, R).
+vector_op(Name, _, [V, CV], Ret, Ctx, R) -->
+    { shift_builtin(Name, Kind, vector) }, !,
+    { v2du(Q) }, lanes(CV, Q, Ctx, [C|_]),
+    shifted_lanes(Kind, V, C, Ret, Ctx, R).
+vector_op(Name, [_, A], [V, _], Ret, Ctx, R) -->
+    { memberchk(Name-Dir, [pslldqi128_byteshift-left, psrldqi128_byteshift-right]) }, !,
+    imm(A, Ctx, I0), { I is I0 /\ 255 },
+    { v16qu(B) }, lanes(V, B, Ctx, Ls),
+    { numbered(Ls, Is), k(0, Z),
+      findall(L, ( member(J, Is),
+                   ( Dir == left -> S is J - I ; S is J + I ),
+                   ( S >= 0, S < 16 -> nth0(S, Ls, L) ; L = Z ) ), Out) },
+    made(B, Out, v(Addr, _)), { R = v(Addr, Ret) }.
+vector_op(Name, _, [A, B], Ret, Ctx, R) -->
+    { memberchk(Name-Lo-Hi, [packsswb128-(-128)-127, packuswb128-0-255,
+                             packssdw128-(-32768)-32767, packusdw128-0-65535]) }, !,
+    { [A, B] = [v(_, In), _] },
+    lanes(A, In, Ctx, La), lanes(B, In, Ctx, Lb),
+    { append(La, Lb, Ls), Ret = vec(RE, _, _) },
+    clamp_all(Ls, Lo, Hi, RE, Ctx, Out),
+    made(Ret, Out, R).
+vector_op(Name, [_, A], [V, _], Ret, Ctx, R) -->
+    { memberchk(Name, [pshufd, pshuflw, pshufhw]) }, !,
+    imm(A, Ctx, I),
+    lanes(V, Ret, Ctx, Ls),
+    { findall(L, ( nth0(J, Ls, _), shuffled(Name, I, J, S), nth0(S, Ls, L) ), Out) },
+    made(Ret, Out, R).
+vector_op(palignr128, [_, _, A], [VA, VB, _], Ret, Ctx, R) --> !,
+    imm(A, Ctx, I),
+    { v16qu(B) }, lanes(VB, B, Ctx, Lb), lanes(VA, B, Ctx, La),
+    { append(Lb, La, T), k(0, Z),
+      findall(L, ( between(0, 15, J), S is J + I,
+                   ( S < 32 -> nth0(S, T, L) ; L = Z ) ), Out) },
+    made(B, Out, v(Addr, _)), { R = v(Addr, Ret) }.
+vector_op(pblendvb128, _, [VA, VB, VM], Ret, Ctx, R) --> !,
+    lanes(VA, Ret, Ctx, La), lanes(VB, Ret, Ctx, Lb), lanes(VM, Ret, Ctx, Lm),
+    blendv(La, Lb, Lm, Ctx, Out),
+    made(Ret, Out, R).
+vector_op(pblendw128, [_, _, A], [VA, VB, _], Ret, Ctx, R) --> !,
+    imm(A, Ctx, I),
+    lanes(VA, Ret, Ctx, La), lanes(VB, Ret, Ctx, Lb),
+    { findall(L, ( nth0(J, La, X), nth0(J, Lb, Y),
+                   ( I >> J /\ 1 =:= 1 -> L = Y ; L = X ) ), Out) },
+    made(Ret, Out, R).
+vector_op(Name, _, [VA, VB], Ret, Ctx, R) -->
+    { memberchk(Name-In-Wide, [pmuludq128-vec(uint, 4, 16)-ullong,
+                               pmuldq128-vec(int, 4, 16)-llong]) }, !,
+    lanes(VA, In, Ctx, [A0, _, A2, _]), lanes(VB, In, Ctx, [B0, _, B2, _]),
+    convert(A0, Wide, X0), convert(A2, Wide, X2),
+    bop(mul, X0, B0, Ctx, P0), bop(mul, X2, B2, Ctx, P2),
+    made(Ret, [P0, P2], R).
+vector_op(pmaddwd128, _, [VA, VB], Ret, Ctx, R) --> !,
+    { v8hi(H) }, lanes(VA, H, Ctx, La), lanes(VB, H, Ctx, Lb),
+    pair_products(La, Lb, uint, Ctx, Out),
+    made(Ret, Out, R).
+vector_op(pmaddubsw128, _, [VA, VB], Ret, Ctx, R) --> !,
+    { v16qu(U), v16qi(S) }, lanes(VA, U, Ctx, La), lanes(VB, S, Ctx, Lb),
+    pair_products(La, Lb, int, Ctx, Sums),
+    clamp_all(Sums, -32768, 32767, short, Ctx, Out),
+    made(Ret, Out, R).
+vector_op(psadbw128, _, [VA, VB], Ret, Ctx, R) --> !,
+    { v16qu(U) }, lanes(VA, U, Ctx, La), lanes(VB, U, Ctx, Lb),
+    { length(La1, 8), append(La1, La2, La), length(Lb1, 8), append(Lb1, Lb2, Lb) },
+    abs_diff_sum(La1, Lb1, Ctx, v(const(0), int), S1),
+    abs_diff_sum(La2, Lb2, Ctx, v(const(0), int), S2),
+    made(Ret, [S1, S2], R).
+vector_op(Name, _, [VA, VB], Ret, Ctx, R) -->
+    { memberchk(Name-In-Shift, [pmulhuw128-vec(ushort, 8, 16)-16,
+                                pmulhw128-vec(short, 8, 16)-16]) }, !,
+    lanes(VA, In, Ctx, La), lanes(VB, In, Ctx, Lb),
+    mulhi(La, Lb, Shift, Ctx, Out),
+    made(Ret, Out, R).
+vector_op(Name, _, [VA, VB], Ret, Ctx, R) -->
+    { memberchk(Name-In, [pavgb128-vec(uchar, 16, 16), pavgw128-vec(ushort, 8, 16)]) }, !,
+    lanes(VA, In, Ctx, La), lanes(VB, In, Ctx, Lb),
+    averaged(La, Lb, Ctx, Out),
+    made(Ret, Out, R).
+vector_op(Name, _, [VA, VB], Ret, Ctx, R) -->
+    { memberchk(Name, [psignb128, psignw128, psignd128]) }, !,
+    lanes(VA, Ret, Ctx, La), lanes(VB, Ret, Ctx, Lb),
+    signed_lanes(La, Lb, Ctx, Out),
+    made(Ret, Out, R).
+vector_op(Name, _, [VA, VB], Ret, Ctx, R) -->
+    { memberchk(Name-Op-Sat, [phaddw128-add-no, phaddd128-add-no, phsubw128-sub-no,
+                              phsubd128-sub-no, phaddsw128-add-yes, phsubsw128-sub-yes]) }, !,
+    lanes(VA, Ret, Ctx, La), lanes(VB, Ret, Ctx, Lb),
+    { append(La, Lb, Ls), Ret = vec(E, _, _) },
+    horizontal(Ls, Op, Sat, E, Ctx, Out),
+    made(Ret, Out, R).
+vector_op(pshufb128, _, [VA, VB], Ret, Ctx, R) --> !,
+    { v16qu(U), VA = v(AAddr, _) }, lanes(VB, U, Ctx, Lb),
+    shuffled_bytes(Lb, AAddr, Ctx, Out),
+    made(U, Out, v(Addr, _)), { R = v(Addr, Ret) }.
+vector_op(Name, _, [VA, VB], int, Ctx, v(T, int)) -->
+    { memberchk(Name, [ptestz128, ptestc128, ptestnzc128]) }, !,
+    { v2du(Q) }, lanes(VA, Q, Ctx, La), lanes(VB, Q, Ctx, Lb),
+    tested(La, Lb, z, Ctx, Z), tested(La, Lb, c, Ctx, C),
+    (   { Name == ptestz128 } -> { v(T, _) = Z }
+    ;   { Name == ptestc128 } -> { v(T, _) = C }
+    ;   { k(0, K0) }, bop(eq, Z, K0, Ctx, NZ), bop(eq, C, K0, Ctx, NC),
+        bop(and, NZ, NC, Ctx, v(T, _))
+    ).
+vector_op(Name, [_, A], [V, _], Ret, Ctx, R) -->
+    { atom_concat(vec_ext_, _, Name) }, !,
+    imm(A, Ctx, I0),
+    { V = v(_, VT), VT = vec(_, N, _), I is I0 mod N },
+    lanes(V, VT, Ctx, Ls), { nth0(I, Ls, L) },
+    convert(L, Ret, R).
+vector_op(Name, [_, _, A], [V, X, _], Ret, Ctx, R) -->
+    { atom_concat(vec_set_, _, Name) }, !,
+    imm(A, Ctx, I0),
+    { Ret = vec(_, N, _), I is I0 mod N },
+    lanes(V, Ret, Ctx, Ls),
+    { nth0(I, Ls, _, Rest), nth0(I, Out, X, Rest) },
+    made(Ret, Out, R).
+vector_op(undef128, _, [], Ret, _, R) --> !,          % unspecified: zero
+    { Ret = vec(_, N, _), length(Ls, N), maplist(=(v(const(0), int)), Ls) },
+    made(Ret, Ls, R).
+vector_op(Name, _, [V], Ret, Ctx, R) -->
+    { memberchk(Name-F, [cvtss2si-float, cvtss2si64-float, cvtsd2si-double, cvtsd2si64-double]) }, !,
+    { V = v(_, VT) }, lanes(V, VT, Ctx, [X|_]),
+    rounded_even(X, F, Ctx, Y),
+    convert(Y, Ret, R).
+vector_op(Name, _, _, _, Ctx, _) -->
+    { ctx_loc(Ctx, Loc), sema_error(Loc, '__builtin_ia32_~w is not supported', [Name]) }.
+
+% shift_builtin(?Name, ?Kind, ?Count): Name shifts each element, Kind
+% shl, shr (logical) or sar, by an int count or the low quadword of a
+% vector.
+shift_builtin(Name, Kind, Count) :-
+    member(Kind-P, [shl-psll, shr-psrl, sar-psra]),
+    member(W, [w, d, q]),
+    member(Count-S, [imm-'i128', vector-'128']),
+    atomic_list_concat([P, W, S], Name),
+    \+ ( Kind == sar, W == q ).
+
+% shifted_lanes(+Kind, +V, +C, +Ret, +Ctx, -R)//: a count at or above
+% the element width gives 0, or the sign, for sar.
+shifted_lanes(Kind, V, C, Ret, Ctx, R) -->
+    { Ret = vec(E, N, A), int_info(E, Bytes, _), Bits is 8 * Bytes, Max is Bits - 1,
+      unsigned_type(E, UE),
+      ( Kind == sar -> LT = vec(E, N, A) ; LT = vec(UE, N, A) ) },
+    convert(C, ullong, CU),
+    { k(Bits, KB), k(Max, KM) },
+    bop(lt, CU, KB, Ctx, InRange),
+    (   { Kind == sar }
+    ->  isel(InRange, CU, KM, int, Ctx, S)
+    ;   bop(and, CU, KM, Ctx, S0), convert(S0, int, S)
+    ),
+    lanes(V, LT, Ctx, Ls),
+    shift_each(Ls, Kind, S, InRange, UE, Ctx, Out),
+    made(Ret, Out, R).
+
+shift_each([], _, _, _, _, _, []) --> [].
+shift_each([L|Ls], Kind, S, InRange, UE, Ctx, [O|Os]) -->
+    (   { Kind == sar } -> bop(shr, L, S, Ctx, O)
+    ;   { Kind == shl -> Op = shl ; Op = shr },
+        bop(Op, L, S, Ctx, O0), convert(O0, UE, O1),
+        isel(InRange, O1, v(const(0), int), UE, Ctx, O)
+    ),
+    shift_each(Ls, Kind, S, InRange, UE, Ctx, Os).
+
+unsigned_type(E, U) :-
+    int_info(E, Bytes, _),
+    memberchk(Bytes-U, [1-uchar, 2-ushort, 4-uint, 8-ullong]).
+
+sign_bits([], _, _, _, M, M) --> [].
+sign_bits([L|Ls], I, Bit, Ctx, M0, M) -->
+    bop(shr, L, v(const(Bit), int), Ctx, B0), convert(B0, int, B),
+    bop(shl, B, v(const(I), int), Ctx, B1),
+    bop(or, M0, B1, Ctx, M1),
+    { I1 is I + 1 },
+    sign_bits(Ls, I1, Bit, Ctx, M1, M).
+
+clamp_all([], _, _, _, _, []) --> [].
+clamp_all([L|Ls], Lo, Hi, T, Ctx, [O|Os]) -->
+    convert(L, long, L1),
+    clamped(L1, Lo, Hi, T, Ctx, O),
+    clamp_all(Ls, Lo, Hi, T, Ctx, Os).
+
+% shuffled(+Name, +Imm, +J, -S): element J of pshufd, pshuflw or
+% pshufhw's result is element S of its operand.
+shuffled(pshufd, I, J, S) :- S is (I >> (2 * J)) /\ 3.
+shuffled(pshuflw, I, J, S) :- ( J < 4 -> S is (I >> (2 * J)) /\ 3 ; S = J ).
+shuffled(pshufhw, I, J, S) :- ( J >= 4 -> S is 4 + ((I >> (2 * (J - 4))) /\ 3) ; S = J ).
+
+blendv([], [], [], _, []) --> [].
+blendv([A|As], [B|Bs], [M|Ms], Ctx, [O|Os]) -->
+    { M = v(_, T) },
+    bop(lt, M, v(const(0), int), Ctx, C),
+    isel(C, B, A, T, Ctx, O),
+    blendv(As, Bs, Ms, Ctx, Os).
+
+% pair_products(+As, +Bs, +T, +Ctx, -Sums)//: Sums are A0*B0 + A1*B1 for
+% each pair of elements, computed in T.
+pair_products([], [], _, _, []) --> [].
+pair_products([A0, A1|As], [B0, B1|Bs], T, Ctx, [S|Ss]) -->
+    convert(A0, int, X0), convert(A1, int, X1),
+    convert(B0, int, Y0), convert(B1, int, Y1),
+    bop(mul, X0, Y0, Ctx, P0), bop(mul, X1, Y1, Ctx, P1),
+    convert(P0, T, Q0), convert(P1, T, Q1),
+    bop(add, Q0, Q1, Ctx, S),
+    pair_products(As, Bs, T, Ctx, Ss).
+
+abs_diff_sum([], [], _, S, S) --> [].
+abs_diff_sum([A|As], [B|Bs], Ctx, S0, S) -->
+    bop(sub, A, B, Ctx, D),
+    bop(lt, D, v(const(0), int), Ctx, Neg),
+    bop(sub, v(const(0), int), D, Ctx, ND),
+    isel(Neg, ND, D, int, Ctx, AD),
+    bop(add, S0, AD, Ctx, S1),
+    abs_diff_sum(As, Bs, Ctx, S1, S).
+
+mulhi([], [], _, _, []) --> [].
+mulhi([A|As], [B|Bs], Shift, Ctx, [O|Os]) -->
+    bop(mul, A, B, Ctx, P),
+    bop(shr, P, v(const(Shift), int), Ctx, O),
+    mulhi(As, Bs, Shift, Ctx, Os).
+
+horizontal([], _, _, _, _, []) --> [].
+horizontal([A, B|Ls], Op, Sat, E, Ctx, [O|Os]) -->
+    bop(Op, A, B, Ctx, O0),
+    (   { Sat == yes } -> convert(O0, long, O1), clamped(O1, -32768, 32767, E, Ctx, O)
+    ;   { O = O0 }
+    ),
+    horizontal(Ls, Op, Sat, E, Ctx, Os).
+
+averaged([], [], _, []) --> [].
+averaged([A|As], [B|Bs], Ctx, [O|Os]) -->
+    bop(add, A, B, Ctx, S), bop(add, S, v(const(1), int), Ctx, S1),
+    bop(shr, S1, v(const(1), int), Ctx, O),
+    averaged(As, Bs, Ctx, Os).
+
+signed_lanes([], [], _, []) --> [].
+signed_lanes([A|As], [B|Bs], Ctx, [O|Os]) -->
+    { A = v(_, T), k(0, Z) },
+    bop(lt, B, Z, Ctx, Neg), bop(eq, B, Z, Ctx, IsZ),
+    bop(sub, Z, A, Ctx, NA),
+    isel(Neg, NA, A, T, Ctx, O1),
+    isel(IsZ, Z, O1, T, Ctx, O),
+    signed_lanes(As, Bs, Ctx, Os).
+
+% shuffled_bytes(+Idx, +Addr, +Ctx, -Out)//: pshufb: byte J is 0 where
+% control byte J has its top bit set, else byte (control & 15) of the
+% copy at Addr, which is 16 bytes, so no index leaves it.
+shuffled_bytes([], _, _, []) --> [].
+shuffled_bytes([I|Is], Addr, Ctx, [O|Os]) -->
+    bop(and, I, v(const(15), int), Ctx, J), convert(J, long, v(JL, _)),
+    let(p, add, [Addr, JL], P),
+    load_typed(uchar, P, Ctx, X),
+    bop(and, I, v(const(128), int), Ctx, Top),
+    bop(ne, Top, v(const(0), int), Ctx, Zero),
+    isel(Zero, v(const(0), int), v(X, uchar), uchar, Ctx, O),
+    shuffled_bytes(Is, Addr, Ctx, Os).
+
+% tested(+As, +Bs, +Which, +Ctx, -F)//: ptest's ZF (A & B all zero) or
+% CF (~A & B all zero), an int.
+tested(As, Bs, Which, Ctx, F) -->
+    tested_or(As, Bs, Which, Ctx, v(const(0), ullong), Or),
+    bop(eq, Or, v(const(0), int), Ctx, F).
+
+tested_or([], [], _, _, Or, Or) --> [].
+tested_or([A|As], [B|Bs], Which, Ctx, Or0, Or) -->
+    (   { Which == z } -> { A1 = A } ; unary(bnot, A, Ctx, A1) ),
+    bop(and, A1, B, Ctx, X), bop(or, Or0, X, Ctx, Or1),
+    tested_or(As, Bs, Which, Ctx, Or1, Or).
+
+% rounded_even(+X, +F, +Ctx, -Y)//: Y is float or double X rounded to an
+% integer, ties to even, as cvtss2si and cvtsd2si round by default:
+% adding and subtracting 2^23 (2^52) with X's sign rounds a smaller
+% magnitude; a larger one, an infinity or a NaN is kept.
+rounded_even(X, F, Ctx, Y) -->
+    { F == float -> (IT = uint, Sign = 0x80000000, Magic = 0x4B000000, Abs = 0x7fffffff)
+    ; (IT = ullong, Sign = 0x8000000000000000, Magic = 0x4330000000000000, Abs = 0x7fffffffffffffff) },
+    bits_of(X, F, IT, Ctx, XB),
+    bop(and, XB, v(const(Sign), IT), Ctx, S),
+    bop(or, S, v(const(Magic), IT), Ctx, MB),
+    bits_of(MB, IT, F, Ctx, M),
+    bop(add, X, M, Ctx, X1), convert(X1, F, X2),
+    bop(sub, X2, M, Ctx, X3), convert(X3, F, X4),
+    bits_of(X4, F, IT, Ctx, RB),
+    bop(and, XB, v(const(Abs), IT), Ctx, AB),
+    bop(ge, AB, v(const(Magic), IT), Ctx, Big),
+    isel(Big, XB, RB, IT, Ctx, YB),
+    bits_of(YB, IT, F, Ctx, Y).
+
+% bits_of(+V, +From, +To, +Ctx, -R)//: R has V's bytes, read as To.
+bits_of(v(V, _), From, To, Ctx, R) -->
+    local_slot(From, Tmp), store_typed(From, V, Tmp),
+    loaded(To, Tmp, Ctx, R).
+
+% generic_vector_op(+Name, +Args, +T, +Ctx, -R)//: a generic vector
+% builtin of result type T.
+generic_vector_op('__builtin_shufflevector', [A, B|Is], T, Ctx, R) --> !,
+    rval(A, Ctx, VA), rval(B, Ctx, VB),
+    { VA = v(_, VT) }, lanes(VA, VT, Ctx, La), lanes(VB, VT, Ctx, Lb),
+    { append(La, Lb, Ls), length(Ls, NL) },
+    shuffle_picks(Is, Ls, NL, Ctx, Out),
+    made(T, Out, R).
+generic_vector_op('__builtin_convertvector', [A, _], T, Ctx, R) --> !,
+    rval(A, Ctx, VA), { VA = v(_, VT) },
+    lanes(VA, VT, Ctx, Ls),
+    made(T, Ls, R).
+generic_vector_op(Name, Args, T, Ctx, R) -->
+    { atom_concat('__builtin_elementwise_', Op, Name), T = vec(E, _, _) },
+    elementwise_args(Args, T, Ctx, Vs),
+    { ctx_loc(Ctx, Loc),
+      (   int_type(E), int_info(E, Bytes, Sign),
+          ( memberchk(Op, [add_sat, sub_sat]) -> Bytes =< 2 ; true )
+      ->  true
+      ;   sema_error(Loc, '~w of a vector of ~w is not supported', [Name, E])
+      ) },
+    elementwise(Op, Vs, T, E, Sign, Bytes, Ctx, R).
+
+shuffle_picks([], _, _, _, []) --> [].
+shuffle_picks([I|Is], Ls, NL, Ctx, [L|Out]) -->
+    imm(I, Ctx, K),
+    { ctx_loc(Ctx, Loc),
+      (   K =:= -1 -> L = v(const(0), int)                % undefined
+      ;   K >= 0, K < NL -> nth0(K, Ls, L)
+      ;   sema_error(Loc, 'shuffle index ~w out of range', [K])
+      ) },
+    shuffle_picks(Is, Ls, NL, Ctx, Out).
+
+elementwise_args([], _, _, []) --> [].
+elementwise_args([A|As], T, Ctx, [V|Vs]) -->
+    rval(A, Ctx, V0), convert(V0, T, V),
+    elementwise_args(As, T, Ctx, Vs).
+
+elementwise(Op, Vs, T, E, Sign, Bytes, Ctx, R) -->
+    lanes_of(Vs, T, Ctx, Lss),
+    { transpose_lanes(Lss, Rows) },
+    elementwise_rows(Rows, Op, E, Sign, Bytes, Ctx, Out),
+    made(T, Out, R).
+
+lanes_of([], _, _, []) --> [].
+lanes_of([V|Vs], T, Ctx, [Ls|Lss]) --> lanes(V, T, Ctx, Ls), lanes_of(Vs, T, Ctx, Lss).
+
+transpose_lanes([Ls], Rows) :- !, findall([L], member(L, Ls), Rows).
+transpose_lanes([As, Bs], Rows) :- pairs_rows(As, Bs, Rows).
+pairs_rows([], [], []).
+pairs_rows([A|As], [B|Bs], [[A, B]|Rs]) :- pairs_rows(As, Bs, Rs).
+
+elementwise_rows([], _, _, _, _, _, []) --> [].
+elementwise_rows([Row|Rows], Op, E, Sign, Bytes, Ctx, [O|Os]) -->
+    elementwise_one(Op, Row, E, Sign, Bytes, Ctx, O),
+    elementwise_rows(Rows, Op, E, Sign, Bytes, Ctx, Os).
+
+elementwise_one(abs, [A], E, _, _, Ctx, O) -->
+    { k(0, Z) }, bop(lt, A, Z, Ctx, Neg), bop(sub, Z, A, Ctx, NA),
+    isel(Neg, NA, A, E, Ctx, O).
+elementwise_one(min, [A, B], E, _, _, Ctx, O) -->
+    bop(lt, A, B, Ctx, C), isel(C, A, B, E, Ctx, O).
+elementwise_one(max, [A, B], E, _, _, Ctx, O) -->
+    bop(gt, A, B, Ctx, C), isel(C, A, B, E, Ctx, O).
+elementwise_one(Op, [A, B], E, Sign, Bytes, Ctx, O) -->
+    { memberchk(Op-BOp, [add_sat-add, sub_sat-sub]),
+      Bits is 8 * Bytes,
+      (   Sign == signed -> Lo is -(1 << (Bits - 1)), Hi is (1 << (Bits - 1)) - 1
+      ;   Lo = 0, Hi is (1 << Bits) - 1
+      ) },
+    convert(A, int, A1), convert(B, int, B1),
+    bop(BOp, A1, B1, Ctx, S), convert(S, long, S1),
+    clamped(S1, Lo, Hi, E, Ctx, O).
+
+% lanes_loaded(+VT, +Addr, +Ctx, -Xs)//: Xs are the elements of the
+% vector of type VT at Addr.
+lanes_loaded(vec(E, N, _), Addr, Ctx, Xs) -->
+    env(Env),
+    { type_size_align(E, Env, ES, _), N1 is N - 1, numlist(0, N1, Is) },
+    lanes_loaded_(Is, E, ES, Addr, Ctx, Xs).
+
+lanes_loaded_([], _, _, _, _, []) --> [].
+lanes_loaded_([I|Is], E, ES, Addr, Ctx, [X|Xs]) -->
+    { Off is I * ES }, offset(Addr, Off, P),
+    load_typed(E, P, Ctx, X),
+    lanes_loaded_(Is, E, ES, Addr, Ctx, Xs).
+
+% lanes_stored(+VT, +Addr, +I, +Xs)//: store Xs as the elements of the
+% vector of type VT at Addr from element I.
+lanes_stored(_, _, _, []) --> [].
+lanes_stored(VT, Addr, I, [X|Xs]) -->
+    { VT = vec(E, _, _) }, env(Env),
+    { type_size_align(E, Env, ES, _), Off is I * ES },
+    offset(Addr, Off, P),
+    store_typed(E, X, P),
+    { I1 is I + 1 },
+    lanes_stored(VT, Addr, I1, Xs).
+
+% lane_results(+Xs, +Ys, +Op, +E, +RE, +Ctx, -Zs)//: Zs, of element
+% type RE, are Op applied to elements Xs and Ys of type E: a comparison
+% gives -1 where it holds, as GNU C's does, and other operators wrap
+% to the element type.
+lane_results([], [], _, _, _, _, []) --> [].
+lane_results([X|Xs], [Y|Ys], Op, E, RE, Ctx, [Z|Zs]) -->
+    binary(Op, v(X, E), v(Y, E), Ctx, Z0),
+    (   { cmp_op(Op, _, _) }
+    ->  binary(sub, v(const(0), int), Z0, Ctx, Z1)
+    ;   { Z1 = Z0 }
+    ),
+    convert(Z1, RE, v(Z, _)),
+    lane_results(Xs, Ys, Op, E, RE, Ctx, Zs).
+
+lane_unary([], _, _, _, []) --> [].
+lane_unary([X|Xs], Op, E, Ctx, [Z|Zs]) -->
+    unary(Op, v(X, E), Ctx, Z0),
+    convert(Z0, E, v(Z, _)),
+    lane_unary(Xs, Op, E, Ctx, Zs).
+
 % eightbytes(+Type, +Env, +Loc, -Ebs): Ebs are the eightbytes of Type.
 eightbytes(Type, Env, Loc, Ebs) :-
     catch(type_size_align(Type, Env, Size, _), bad(Why),
@@ -4745,7 +5320,7 @@ arg_words(Type, Env, Loc, Ebs) :-
 % words of its bytes (arg_words/4): a struct or union, or a long double,
 % whose 10 bytes and 6 zero bytes of padding go as two l words, as in
 % clang's generic packet (docs/float.md).
-abi_memory(Type) :- su(Type).
+abi_memory(Type) :- memtype(Type).
 abi_memory(ldouble).
 
 % abi_source(+Type, +V, -Addr)//: Addr holds the bytes of the value V of
@@ -4890,6 +5465,7 @@ leaves(float, _, B, [B-float|L], L) :- !.
 leaves(double, _, B, [B-double|L], L) :- !.
 leaves(ldouble, _, B, [B-x87|L], L) :- !.
 leaves(ptr(_), _, B, [B-ptr|L], L) :- !.
+leaves(vec(T, N, _), Env, B, L0, L) :- !, leaves(array(T, N), Env, B, L0, L).
 leaves(array(T, N), Env, B, L0, L) :-
     integer(N), N > 0, !,
     type_size_align(T, Env, Size, _),
