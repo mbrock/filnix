@@ -871,16 +871,16 @@ doc(vector_type(+Specs, +Elem, +Env, -Type), det, [
     "vector access is checked against the alignment of the type it is",
     "made through (immintrin.h's __m128i_u is aligned(1), so",
     "_mm_loadu_si128 checks alignment 1). Only 8-, 16- and 32-byte vectors are supported (the",
-    "SSE through AVX2 intrinsics, and xmmintrin.h's 8-byte loads and stores),",
-    "and only with NANOFIL_VECTORS=1 until a survey",
-    "with it on; each access is checked as one access of its full width",
-    "(docs/vector-access.md).",
+    "SSE through AVX2 intrinsics, and xmmintrin.h's 8-byte loads and stores);",
+    "each access is checked as one access of its full width",
+    "(docs/vector-access.md). They are on unless NANOFIL_VECTORS=0",
+    "(--no-vectors), which refuses every vector type.",
     cites('GCC manual, Using Vector Instructions through Built-in Functions'),
     cites('Clang Language Extensions, Vectors and Extended Vectors')
 ]).
 vector_type(Specs, Elem0, Env, Type) :-
     unqualified(Elem0, Elem),
-    (   \+ getenv('NANOFIL_VECTORS', '1')
+    (   getenv('NANOFIL_VECTORS', '0')
     ->  Type = bad('vector types')
     ;   Elem = bad(Why)
     ->  Type = bad(Why)

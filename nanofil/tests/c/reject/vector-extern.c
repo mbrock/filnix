@@ -1,5 +1,4 @@
-// error: :8: a function with external linkage or called through a pointer cannot take or return a vector
-// vectors
+// error: :7: a function with external linkage or called through a pointer cannot take or return a vector
 /* filcc passes a vector in vector registers, nanofil as a struct, so
    only static functions (immintrin.h's) take or return one. */
 typedef int v4si __attribute__((vector_size(16)));

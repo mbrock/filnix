@@ -1,4 +1,3 @@
-// vectors
 /* immintrin.h's SSE through SSE4.2 intrinsics, computed element by
    element (c_lower vector_op//6): shifts by an immediate and by a
    vector's low quadword, at and above the element width; byte shifts,

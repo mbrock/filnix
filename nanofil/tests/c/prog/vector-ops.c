@@ -1,4 +1,3 @@
-// vectors
 /* GNU vector operators apply element by element: arithmetic wraps to
    the element type, a comparison gives -1 or 0 per element, a scalar
    operand is repeated, a cast to a vector of the same size keeps the

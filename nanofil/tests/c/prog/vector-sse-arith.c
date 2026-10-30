@@ -1,4 +1,3 @@
-// vectors
 /* immintrin.h's SSE through SSE4.2 intrinsics, computed element by
    element (c_lower vector_op//6): multiplies, sums of absolute
    differences, averages, signs, pshufb, ptest, element extracts and

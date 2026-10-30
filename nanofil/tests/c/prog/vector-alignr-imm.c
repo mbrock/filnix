@@ -1,4 +1,3 @@
-// vectors
 /* PALIGNR's immediate is 8 bits: clang's default-error range check aside
    (progtest builds with -w), 256 is 0 and 257 is 1, on 16 and 32 bytes. */
 #include <immintrin.h>

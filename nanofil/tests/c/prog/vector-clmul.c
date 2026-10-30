@@ -1,4 +1,3 @@
-// vectors
 /* PCLMULQDQ (_mm_clmulepi64_si128): the carry-less product of the
    quadwords imm8 bits 0 and 4 select, as xz's, libdeflate's and tor's
    CRC and POLYVAL code uses it, in a function with the pclmul target. */

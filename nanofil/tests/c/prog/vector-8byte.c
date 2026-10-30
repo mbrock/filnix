@@ -1,5 +1,4 @@
 // trap-reason
-// vectors
 /* 8-byte vectors (fftw's single-precision SIMD: xmmintrin.h's
    _mm_loadl_pi, _mm_loadh_pi, _mm_storel_pi and _mm_storeh_pi read and
    write a packed struct of one) are checked as one 8-byte access at the

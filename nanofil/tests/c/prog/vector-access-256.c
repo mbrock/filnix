@@ -1,5 +1,4 @@
 // trap-reason
-// vectors
 /* A 32-byte AVX vector load or store is checked as one access of its
    full width before any byte moves, with filcc's alignment capped at 8:
    the same reason as filcc, and nothing written before a trap

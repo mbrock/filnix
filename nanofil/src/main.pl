@@ -100,9 +100,11 @@
     NANOFIL_CHECKS supplies the same choice. With reuse, renew or guard, `cc`,
     `compile` and difftest's pizlonation comparison use that module.
 
-    `--vectors` turns on GNU vector types and the SSE intrinsics
-    (docs/vector-access.md), which are off by default; NANOFIL_VECTORS=1
-    supplies the same choice.
+    GNU vector types and the SSE through AVX2 intrinsics
+    (docs/vector-access.md) are on; `--no-vectors` (or `--vectors=off`)
+    turns them off, refusing every vector type, and `--vectors` (or
+    `--vectors=on`) turns them back on; the last one given wins.
+    NANOFIL_VECTORS=0 or 1 supplies the same choice.
 
     ## difftest
 
@@ -197,14 +199,22 @@ checks_default(Checks) :-
 checks_mode(C) :-
     ( memberchk(C,[reference,reuse,renew,guard]) -> true
     ; throw(nanofil_error('checks must be reference, reuse, renew or guard')) ).
-% vectors_options(+Argv0, -Argv): Argv is Argv0 less its --vectors
-% options; one turns on GNU vector types, as NANOFIL_VECTORS=1 does
-% (c_types vector_type/4), for drivers that pass only options.
+% vectors_options(+Argv0, -Argv): Argv is Argv0 less its vector
+% options, the last of which sets NANOFIL_VECTORS (c_types
+% vector_type/4), for drivers that pass only options: --vectors and
+% --vectors=on to 1, --no-vectors and --vectors=off to 0.
 vectors_options(Argv0, Argv) :-
-    (   select('--vectors', Argv0, _)
-    ->  exclude(==('--vectors'), Argv0, Argv), setenv('NANOFIL_VECTORS', '1')
-    ;   Argv = Argv0
+    exclude(vectors_option, Argv0, Argv),
+    (   include(vectors_option, Argv0, Opts), last(Opts, Opt)
+    ->  vectors_option(Opt, V), setenv('NANOFIL_VECTORS', V)
+    ;   true
     ).
+
+vectors_option(Opt) :- vectors_option(Opt, _).
+vectors_option('--vectors', '1').
+vectors_option('--vectors=on', '1').
+vectors_option('--no-vectors', '0').
+vectors_option('--vectors=off', '0').
 % inline_options(+Argv0, +Inline0, -Inline, -Argv): Argv is Argv0 less
 % its --inline= options, the last of which gives Inline.
 inline_options([], I, I, []).

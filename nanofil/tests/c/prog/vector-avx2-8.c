@@ -1,4 +1,3 @@
-// vectors
 /* AVX2 on 32-byte vectors (part 8 of 9): each intrinsic on random and
    boundary inputs, hashed, against filcc, which runs the instructions
    natively. Per-lane builtins are the SSE ones on each 16-byte half;

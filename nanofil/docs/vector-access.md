@@ -10,6 +10,10 @@ keep that observation, nanofil needs one check of the full width before
 any chunk is accessed. This is a check-shape change, so it comes as a
 contract and an Oracle review before code, like B1 and M7's rounds.
 
+GNU vector types and the SSE through AVX2 builtins are on by default;
+`--no-vectors` (or `--vectors=off`, or NANOFIL_VECTORS=0) refuses every
+vector type, as nanofil did before.
+
 ## The terms
 
 Unchecked IR gains one statement:

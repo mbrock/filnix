@@ -21,9 +21,8 @@
 # up to the parenthesized reason that ends its first clause ("cannot
 # handle inline asm (Reason)"), or else up to the first "(" or "." ("cannot
 # write 56 bytes when upper - ptr = 48"), instead of counting as "trap".
-# A "// vectors" line compiles with --vectors, which turns on GNU vector
-# types, still off by default (docs/vector-access.md); reject.sh tests
-# NANOFIL_VECTORS=1, its environment spelling.
+# GNU vector types are on (docs/vector-access.md); a "// no-vectors" line
+# compiles with --no-vectors, which refuses them, as in reject.sh.
 # A "// cflags: ..." line passes those flags to clang, and nanofil
 # compiles clang's preprocessing with them, as nanofil-cc does (with
 # NANOFIL_STD=c23 for -std=c23 or gnu23, gnu89 for C90 modes, and
@@ -92,7 +91,7 @@ for f in "$@"; do
   read -r -a cflags <<<"$(sed -n 's|^// cflags: ||p' "$f")"
   ropt=$(sed -n 's|^// reference-opt: ||p' "$f"); ropt=${ropt:--O1}
   trap_reason=0; if grep -q '^// trap-reason' "$f"; then trap_reason=1; fi
-  vectors=; if grep -q '^// vectors' "$f"; then vectors=1; fi
+  vectors=; if grep -q '^// no-vectors' "$f"; then vectors=--no-vectors; fi
   run_timeout=${PROG_TIMEOUT:-10}
   tmo=$(sed -n 's|^// timeout: ||p' "$f")
   if [[ -n $tmo ]] && (( tmo > run_timeout )); then run_timeout=$tmo; fi
@@ -122,7 +121,7 @@ for f in "$@"; do
   fi
   if ! "$filcc" "${cflags[@]}" "$ropt" -w -o "$d/clang" "$f" "${libs[@]}" "${clibs[@]}" -lm; then reference_failed=1; fi
   outcome=reject
-  if (cd "$src" && NANOFIL_STD=$std NANOFIL_COMMON=$common timeout "${COMPILE_TIMEOUT:-20}" "$nanofil" ${NANOFIL_OPT:-} ${vectors:+--vectors} cc "$input" </dev/null) >"$d/n.s"; then
+  if (cd "$src" && NANOFIL_STD=$std NANOFIL_COMMON=$common timeout "${COMPILE_TIMEOUT:-20}" "$nanofil" ${NANOFIL_OPT:-} ${vectors} cc "$input" </dev/null) >"$d/n.s"; then
     :
   else
     rc=$?

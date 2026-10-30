@@ -1,4 +1,3 @@
-// vectors
 /* SSE4.2's explicit-length string compares on 16-bit elements, as an
    index (_mm_cmpestri) and a mask (_mm_cmpestrm), which filcc compiles
    natively, on data from small alphabets (so elements match, and

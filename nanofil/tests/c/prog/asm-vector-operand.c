@@ -1,5 +1,4 @@
 // trap-reason
-// vectors
 /* fftw's simd-avx2.h loads through asm("vmovapd %1, %0" : "=x"(v) :
    "m"(x[0])): a vector output is a value to clang, so filcc compiles
    the memory operand's address to its run-time "pointer argument"

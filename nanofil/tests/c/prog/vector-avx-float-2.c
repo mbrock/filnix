@@ -1,4 +1,3 @@
-// vectors
 /* AVX, FMA and SSE3 floating-point builtins (fftw's simd-avx*.h) (part 2 of 2):
    each on random finite, infinite, zero and subnormal inputs, hashed
    bit for bit against filcc, which runs them natively. FMA rounds once

@@ -1,5 +1,4 @@
 // trap-reason
-// vectors
 /* SSE3's _mm_lddqu_si128 (gtk4's roaring.c) loads 16 bytes at any
    alignment, checked as one 16-byte access with alignment 1, like
    _mm_loadu_si128. Each case runs in its own child; offsets are

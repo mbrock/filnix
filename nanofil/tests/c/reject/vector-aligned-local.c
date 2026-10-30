@@ -1,4 +1,5 @@
 // error: vector types is not supported
+// no-vectors
 // xz's lz_decoder.h and brotli's matching_tag_mask.h: a local of SSE2's
 // __m128i, whose typedef is also aligned, names the vector type, not the
 // alignment, as the reason.

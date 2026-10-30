@@ -1,4 +1,3 @@
-// vectors
 /* SSE4.2's explicit-length string compare on bytes returning a mask
    (_mm_cmpestrm), which filcc compiles natively, on data from small
    alphabets (so elements match, and periodic strings so long runs of

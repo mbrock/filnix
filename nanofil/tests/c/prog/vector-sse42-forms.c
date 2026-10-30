@@ -1,4 +1,3 @@
-// vectors
 /* SSE4.2's implicit-length string compares (_mm_cmpistri, _mm_cmpistrm)
    and the flag forms (_mm_cmp[ei]str[acosz]), which filcc compiles
    natively, on data from small alphabets (so elements match, and

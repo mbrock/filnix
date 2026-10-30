@@ -1,5 +1,4 @@
 // trap-reason
-// vectors
 /* filcc compiles _mm256_zeroupper and _mm256_zeroall to its run-time
    "Unhandled intrinsic" error, which nanofil raises too, after the
    code before them has run. */

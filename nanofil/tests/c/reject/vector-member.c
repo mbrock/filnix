@@ -1,4 +1,5 @@
 // error: vector types is not supported (member i)
+// no-vectors
 // x264's common/x86/util.h: a union whose member i is an __m128. With GNU
 // vector types off the member is refused; naming it said "no member named
 // i", which the survey could not tell from a typing gap.
