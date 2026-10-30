@@ -83,6 +83,7 @@ let
     O = configuration "O" "-O";
     reuse = configuration "reuse" "-O --checks=reuse";
     renew = configuration "renew" "-O --checks=renew";
+    pointers = configuration "pointers" "-O --registers=pointers";
     inherit port;
   };
 in

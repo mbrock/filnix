@@ -20,16 +20,16 @@ refused() { # LABEL WANT [ENV...] -- ARGS...
   rm -f "$err"
 }
 for mode in local function operands cells flow; do
-  want="registers=$mode was retired (docs/perf.md); registers must be stack or temps"
+  want="registers=$mode was retired (docs/perf.md); registers must be stack, temps or pointers"
   refused "--registers=$mode" "$want" "$nanofil" -O "--registers=$mode"
   refused "NANOFIL_REGISTERS=$mode" "$want" NANOFIL_REGISTERS=$mode "$nanofil" -O
 done
-refused "--registers=bogus" "registers must be stack or temps" "$nanofil" --registers=bogus
-for mode in stack temps; do
+refused "--registers=bogus" "registers must be stack, temps or pointers" "$nanofil" --registers=bogus
+for mode in stack temps pointers; do
   if ! (cd "$here/../src" && "$nanofil" -O "--registers=$mode" compile "$input" </dev/null >/dev/null); then
     echo "registers.sh: --registers=$mode failed" >&2
     status=1
   fi
 done
-[ $status -eq 0 ] && echo "registers.sh: retired modes refused, stack and temps accepted"
+[ $status -eq 0 ] && echo "registers.sh: retired modes refused, stack, temps and pointers accepted"
 exit $status

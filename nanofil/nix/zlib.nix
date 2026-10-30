@@ -32,6 +32,7 @@ let
     reuse = "--checks=reuse";
     O-reuse = "-O --checks=reuse";
     O-renew = "-O --checks=renew";
+    O-pointers = "-O --registers=pointers";
   };
 in
 import ./configurations.nix { inherit pkgs; } "nanofil-zlib" configurations (

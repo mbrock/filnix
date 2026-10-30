@@ -36,10 +36,13 @@
    register or %rbp outside the prologue, must not take the address of
    a mapped home or save slot, and must not touch a save slot.
 
-   Trusted, as in M6's retired cache checker: the emitter's home classes, and
-   that only %rbp-relative operands reach a home (homes and save slots
-   never escape; the frame record and local storage the code does expose
-   lie elsewhere in the frame). */
+   Trusted, as in M6's retired cache checker: the emitter's home classes
+   and root ranges (the frame record and local objects, from the layout
+   that places them), and that only %rbp-relative operands reach a home
+   (homes and save slots never escape). Checked: no mapped home overlaps
+   a root range, so every GC root keeps the reference's stores, and a
+   pointer's address word (class a) may be a home but its lower never
+   is (docs/perf.md 5b-2). */
 :- module(amd64_regs_check,
           [check_regs/4, check_regs/5, substitute/3, impl_body/4,
            preflight_regs/3, preflight_regs/4, body_analysis/3,
@@ -58,7 +61,10 @@
 %! check_regs(+Metadata, +Map, +Before, +After) is semidet.
 %
 %  Metadata is regs_metadata(Setjmp, Impl, Homes, Saves): Homes lists
-%  home(Offset, Classes) as for the scalar cache, Saves lists save(R,
+%  home(Offset, Classes) as for the scalar cache, with class a for a
+%  pointer's address word (docs/perf.md 5b-2), and root(Offset, Bytes)
+%  for each frame range holding GC roots, which no mapped home may
+%  overlap: the frame record and local objects. Saves lists save(R,
 %  Offset) for each callee-saved register in Map, in callee_saved/1
 %  order. Map lists Offset-Register. An empty map or a setjmp function
 %  admits only identity.
@@ -99,9 +105,10 @@ allocatable(r11).
 callee_saved(rbx). callee_saved(r12). callee_saved(r13).
 callee_saved(r14). callee_saved(r15).
 
-% Mapped homes are disjoint 8-byte scalar homes, every description of
-% each one scalar; save slots match the callee-saved registers used, in
-% order, and lie outside every home.
+% Mapped homes are disjoint 8-byte homes, every description of each one
+% a scalar (w, l) or a pointer's address word (a), never a pointer (p);
+% no mapped home overlaps a GC root range; save slots match the
+% callee-saved registers used, in order, and lie outside every home.
 valid_map(Map, Homes, Saves) :-
     is_list(Map), Map = [_|_],
     pairs_offsets(Map, Offsets), msort(Offsets, Sorted), sort(Offsets, Sorted),
@@ -109,7 +116,8 @@ valid_map(Map, Homes, Saves) :-
     forall(member(D-R, Map),
            ( memberchk(home(D, _), Homes),
              forall(member(home(D, Ks), Homes),
-                    ( Ks = [_|_], forall(member(K, Ks), memberchk(K, [w,l])) )),
+                    ( Ks = [_|_], forall(member(K, Ks), memberchk(K, [w,l,a])) )),
+             \+ ( member(root(B, N), Homes), D < B+N, B < D+8 ),
              allocatable(R) )),
     findall(R, (callee_saved(R), memberchk(_-R, Map)), Used),
     findall(R, member(save(R,_), Saves), Used),

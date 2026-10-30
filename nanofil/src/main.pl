@@ -43,11 +43,13 @@
     (translation validation), and prints how many allocs promote
     removed.
 
-    `--registers=stack|temps` independently selects reference emission or
-    validated whole-function register homes for scalars with validated
-    register operands and frame cells, on a frame with a home per scalar
-    temporary (docs/perf.md items 3, 5a-loads and 3d), in the Fil-C
-    backend. The default is temps with `-O` and stack without it;
+    `--registers=stack|temps|pointers` independently selects reference
+    emission or validated whole-function register homes for scalars with
+    validated register operands and frame cells, on a frame with a home
+    per scalar temporary (docs/perf.md items 3, 5a-loads and 3d), in the
+    Fil-C backend. Pointers is temps with pointer address words as homes
+    too, their lowers staying in the frame record (docs/perf.md 5b-2).
+    The default is temps with `-O` and stack without it;
     NANOFIL_REGISTERS supplies the same choice to build harnesses, and
     `-O --registers=stack` keeps the reference emission. The modes local,
     function, operands, cells and flow were retired in October 2026
@@ -56,8 +58,9 @@
 
     `--registers-limit=N` (or NANOFIL_REGISTERS_LIMIT), opt-in, emits
     each function of more than N checked IR instructions by the
-    reference (stack) emission when registers are temps, to save compile
-    time on very large functions (docs/perf.md, compile time).
+    reference (stack) emission when registers are temps or pointers, to
+    save compile time on very large functions (docs/perf.md, compile
+    time).
 
     `--branches=reference|selected` independently selects the reference
     branch on a stored boolean, or a branch on the flags of a compare
@@ -171,11 +174,11 @@ register_default(emit(Registers, Branches, Copies)) :-
     ( getenv('NANOFIL_BRANCHES',B) -> branches_mode(B), Branches = B ; true ),
     ( getenv('NANOFIL_MEMCPY',M) -> memcpy_mode(M), Copies = M ; true ).
 register_mode(R) :-
-    ( memberchk(R,[stack,temps]) -> true
+    ( memberchk(R,[stack,temps,pointers]) -> true
     ; memberchk(R,[local,function,operands,cells,flow])
-    -> format(atom(Msg), 'registers=~w was retired (docs/perf.md); registers must be stack or temps', [R]),
+    -> format(atom(Msg), 'registers=~w was retired (docs/perf.md); registers must be stack, temps or pointers', [R]),
        throw(nanofil_error(Msg))
-    ; throw(nanofil_error('registers must be stack or temps')) ).
+    ; throw(nanofil_error('registers must be stack, temps or pointers')) ).
 branches_mode(B) :-
     ( memberchk(B,[reference,selected]) -> true
     ; throw(nanofil_error('branches must be reference or selected')) ).
@@ -216,10 +219,11 @@ limit_mode(A, N) :-
     (   catch(atom_number(A, N), _, fail), integer(N), N >= 0 -> true
     ;   throw(nanofil_error('registers-limit must be a nonnegative integer'))
     ).
-% limited_registers(+Limit, +Emission0, -Emission): temps(N) for temps
-% under a limit (filc_amd64.pl's item_placed_lines/6).
+% limited_registers(+Limit, +Emission0, -Emission): limited(R, N) for
+% temps or pointers registers under a limit (filc_amd64.pl's
+% item_placed_lines/6).
 limited_registers(none, E, E) :- !.
-limited_registers(N, emit(temps,B,M), emit(temps(N),B,M)) :- !.
+limited_registers(N, emit(R,B,M), emit(limited(R,N),B,M)) :- memberchk(R, [temps,pointers]), !.
 limited_registers(_, E, E).
 % simplify_options(+Argv0, +Simplify0, -Simplify, -Argv): as
 % inline_options/4, for --simplify=.

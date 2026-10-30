@@ -208,9 +208,20 @@ regs_case(high_half_access, Hs, [-8-r10], [], B, no) :-
     append([ins(mov,q,[reg(rdx),mem(-8,rbp)]),
             ins(mov,l,[mem(-4,rbp),reg(eax)])], E, B).
 regs_case(pointer_home, [home(-8,[w,p])], [-8-r10], [], B, no) :-
-    exit(E),
-    append([ins(mov,q,[reg(rdx),mem(-8,rbp)]),
-            ins(mov,q,[mem(-8,rbp),reg(rax)])], E, B).
+    store_load(B).
+% A pointer's address word (class a) may be a home (docs/perf.md 5b-2),
+% but no mapped home of any class may overlap a GC root range: the frame
+% record's lowers[] or a local object. Ranges are [Offset, Offset+Bytes).
+regs_case(address_home, [home(-8,[a])], [-8-r10], [], B, yes) :-
+    store_load(B).
+regs_case(address_home_beside_root, [home(-8,[a]), root(-24,16)], [-8-r10], [], B, yes) :-
+    store_load(B).
+regs_case(address_home_in_lowers, [home(-8,[a]), root(-16,16)], [-8-r10], [], B, no) :-
+    store_load(B).
+regs_case(scalar_home_in_lowers, [home(-8,[l]), root(-16,16)], [-8-r10], [], B, no) :-
+    store_load(B).
+regs_case(home_overlapping_local, [home(-8,[a]), root(-4,32)], [-8-r10], [], B, no) :-
+    store_load(B).
 regs_case(missing_save, Hs, [-8-rbx], [], B, no) :-
     homes(Hs), across_call(B).
 
@@ -653,3 +664,8 @@ operand_live_case(dead_register,
 operand_live_case(dead_flags,
     [ins(cmp,q,[imm(0),reg(rbx)]), label(m), ins(sete,none,[reg(al)]),
      ins(movzb,l,[reg(al),reg(eax)]), ins(mov,q,[reg(rax),reg(r13)])], dead(7, m)).
+
+store_load(B) :-
+    exit(E),
+    append([ins(mov,q,[reg(rdx),mem(-8,rbp)]),
+            ins(mov,q,[mem(-8,rbp),reg(rax)])], E, B).

@@ -115,7 +115,7 @@ home_lines([L|Ls], [E|Es], Body, Effects) :-
 % the candidates (a superset of Map's homes), or none when there are none.
 allocation(Body, Effects, Homes, Map, Analysis) :-
     findall(D, (member(home(D,Ks), Homes), Ks = [_|_],
-                forall(member(K,Ks), memberchk(K,[w,l]))), Scalar),
+                forall(member(K,Ks), memberchk(K,[w,l,a]))), Scalar),
     findall(W-H, ( member(H, Scalar), W is H >> 3 ), WHs0),
     keysort(WHs0, WHs), group_pairs_by_key(WHs, Words), list_to_assoc(Words, ScalarSet),
     depths(Body, Depths),

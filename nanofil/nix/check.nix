@@ -140,8 +140,10 @@ pkgs.runCommandCC "nanofil-check"
     # without -O and -O runs the stack reference. The modes local,
     # function, operands, cells and flow were retired (docs/perf.md,
     # register modes); tests/registers.sh shows they are refused.
+    # Pointers (temps with pointer address homes, docs/perf.md 5b-2) runs
+    # with -O, its GC suites under FUGC_SCRIBBLE and FUGC_VERIFY.
     step "retired registers" tests/registers.sh
-    for mode in "temps:" "stack:-O"; do
+    for mode in "temps:" "stack:-O" "pointers:-O"; do
       export NANOFIL_REGISTERS=''${mode%%:*} NANOFIL_OPT=''${mode#*:}
       step "registers $mode difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/filc/branches.ir tests/c/*.c big1.c
       step "registers $mode ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc

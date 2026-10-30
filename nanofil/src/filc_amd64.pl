@@ -150,13 +150,14 @@ emission(Registers, Registers, reference).
 
 item_placed_lines(Symbols, _, _, alias(Name, Linkage, Target), Lines, data(Name)) :- !,
     phrase(alias_getter(Symbols, Name, Linkage, Target), Lines).
-% temps(Limit): temps for a function of at most Limit instructions, and
-% the reference emission for a larger one (main.pl's --registers-limit).
-item_placed_lines(Symbols, temps(Limit), Branches, Item, Lines, Report) :- !,
+% limited(Registers, Limit): Registers (temps or pointers) for a
+% function of at most Limit instructions, and the reference emission for
+% a larger one (main.pl's --registers-limit).
+item_placed_lines(Symbols, limited(Registers0, Limit), Branches, Item, Lines, Report) :- !,
     (   Item = func(_, _, _, _, Blocks),
         foldl(block_insts, Blocks, 0, Size), Size > Limit
     ->  Registers = stack
-    ;   Registers = temps
+    ;   Registers = Registers0
     ),
     item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report).
 item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
@@ -168,8 +169,10 @@ item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
     % them: those left in the frame together, and those given a register
     % with the others given the same one, so the frame stays compact.
     % Both are layout choices; the checkers validate the emitted stream.
-    (   Registers == temps
-    ->  temps_first(Symbols, Branches, Item, First),
+    % Pointers mode is temps with pointer address words as homes too
+    % (docs/perf.md 5b-2).
+    (   memberchk(Registers, [temps, pointers])
+    ->  temps_first(Registers, Symbols, Branches, Item, First),
         (   First = placed(Lines, Report) -> true
         ;   First = again(Groups, Fused, Ranges),
             % The first lowering is garbage now; collect it before the
@@ -180,7 +183,7 @@ item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
             ;   true
             ),
             once(lower_fused(own(Groups, Ranges), Symbols, Fused, Product)),
-            once(placed_lines(temps, Branches, Item, Product, Lines, Report, _))
+            once(placed_lines(temps(Registers), Branches, Item, Product, Lines, Report, _))
         )
     ;   once(( lower_item(shared, Symbols, Item, Product),
                placed_lines(Registers, Branches, Item, Product, Lines, Report) ))
@@ -188,15 +191,16 @@ item_placed_lines(Symbols, Registers, Branches, Item, Lines, Report) :-
 
 block_insts(block(_, _, Is, _), N0, N) :- length(Is, K), N is N0 + K.
 
-% temps_first(+Symbols, +Branches, +Item, -First): temps mode's first
+% temps_first(+Homes, +Symbols, +Branches, +Item, -First): temps mode's first
 % lowering, with a home per w/l temporary. First is placed(Lines,
 % Report) when it has at most own_frame_limit/1 such homes, else
 % again(Groups, Fused, Ranges) with each temporary's group for the
 % second lowering, from a function-mode (3a) allocation of the first,
 % and the fused blocks and live ranges the second reuses (the groups
 % change only which slots the ranges share); the first's lines are
-% dropped, so the second lowering does not hold them.
-temps_first(Symbols, Branches, Item, First) :-
+% dropped, so the second lowering does not hold them. Homes is temps or
+% pointers, as for placed_lines/7.
+temps_first(Homes, Symbols, Branches, Item, First) :-
     fused_item(Item, Fused),
     once(lower_fused(own([], Ranges), Symbols, Fused, Product)),
     own_frame_limit(Limit),
@@ -204,9 +208,9 @@ temps_first(Symbols, Branches, Item, First) :-
         findall(x, member(_-storage(scalar,_), Aliases), Xs), length(Xs, N), N > Limit
     ->  % Only the register map matters here: 3a's allocation, unchecked
         % because these lines are dropped, and no operand rewrite.
-        once(placed_lines(map, Branches, Item, Product, _, _, Groups)),
+        once(placed_lines(map(Homes), Branches, Item, Product, _, _, Groups)),
         First = again(Groups, Fused, Ranges)
-    ;   once(placed_lines(temps, Branches, Item, Product, Lines, Report, _)),
+    ;   once(placed_lines(temps(Homes), Branches, Item, Product, Lines, Report, _)),
         First = placed(Lines, Report)
     ).
 
@@ -263,9 +267,11 @@ item_lines(Selection, Item, Lines) :-
     ).
 
 % placed_lines(+Registers, +Branches, +Item, +Product, -Lines, -Report,
-% -Groups): Groups pairs each temporary in a scalar home with the
-% register the map gave the home, or frame, for temps mode's second
-% lowering; [] for data and the non-allocating modes.
+% -Groups): Registers is stack, temps(Homes) or map(Homes), Homes being
+% temps (scalar homes) or pointers (pointer address words too). Groups
+% pairs each temporary in a scalar home with the register the map gave
+% the home, or frame, for temps mode's second lowering; [] for data and
+% the non-allocating modes.
 placed_lines(R, Br, Item, Product, Lines, Report) :-
     placed_lines(R, Br, Item, Product, Lines, Report, _).
 
@@ -273,14 +279,13 @@ placed_lines(R, Br, Item, Product, Lines, Report) :-
 placed_lines(stack, Branches, Func, Item, Lines, stack, []) :-
     ( setjmp_func(Func) -> B = reference ; B = Branches ),
     item_lines(sel(stack,B),Item,Lines).
-placed_lines(R, _, data(N,L,A,Is), Item, Lines, data(N), []) :-
-    memberchk(R, [temps]),
+placed_lines(temps(_), _, data(N,L,A,Is), Item, Lines, data(N), []) :-
     Item = data(N,L,A,Is), item_lines(sel(stack,reference),Item,Lines).
 % Temps mode reserves a save slot for each callee-saved register, so
 % the stream the checker compares with has the same frame. Map is temps
 % mode's first lowering when it only needs the register map.
 placed_lines(Mode, Branches, Func, Item0, Lines, function(Name,Report), Groups) :-
-    memberchk(Mode, [temps,map]),
+    ( Mode = temps(HomeKind) -> true ; Mode = map(HomeKind) ),
     Func = func(Name,_,_,_,_),
     Item0 = abi_function(Name,Lk,Rt,Sig,frame(Plain,Lowers,Aliases),E,B,X,O,Or),
     (   setjmp_func(Func)
@@ -294,17 +299,29 @@ placed_lines(Mode, Branches, Func, Item0, Lines, function(Name,Report), Groups) 
     abi_symbol(impl(Sig),Name,Impl),
     once(append(Body,[size(Impl)|Rest],Original)),
     Item = abi_function(_,_,_,_,Frame,_,_,_,_,_),
-    layout(Frame,Slots,_,_),
+    layout(Frame,Slots,FrameBase,_),
     scalar_homes(Func, Aliases, Slots, Homes0),
     % Phi shadows are homes too. Phis of different blocks may share a
     % shadow slot (filc_abi.pl's shadow_storage/8): one home each, with
-    % the classes of the phis sharing it.
+    % the classes of the phis sharing it. A pointer phi's shadow is its
+    % address word, of class p, or a in pointers mode.
     Func = func(_,_,_,_,Bs),
-    findall(D-K, ( member(block(_,Phis,_,_),Bs), member(phi(tmp(N),K,_),Phis),
+    findall(D-K, ( member(block(_,Phis,_,_),Bs), member(phi(tmp(N),K0,_),Phis),
+                   home_class(HomeKind, K0, K),
                    get_assoc(shadow(N),Slots,Off), D is -Off ), DKs0),
     sort(DKs0, DKs), group_pairs_by_key(DKs, ShadowGroups),
     findall(home(D,Ks), member(D-Ks, ShadowGroups), Shadows),
-    append(Homes0, Shadows, Homes),
+    % Pointers mode: each pointer pool slot's address word is a home of
+    % class a; its lower stays in lowers[] (docs/perf.md 5b-2).
+    findall(home(D,[a]), ( HomeKind == pointers,
+                           gen_assoc(storage(pointer,_), Slots, Off), D is -Off ), Pointers),
+    % The GC roots, which no home may overlap: the frame record (parent,
+    % origin and lowers[], stack-aux and jmpbuf roots included) and each
+    % local object's payload and aux words.
+    Frame = frame(_,Lowers1,_), length(Lowers1, NLowers),
+    RecordD is -FrameBase, RecordN is 16 + 8*NLowers,
+    findall(root(D,N), ( gen_assoc(local(L), Slots, V), other_range(local(L), V, D, N) ), Locals),
+    append([Homes0, Shadows, Pointers, [root(RecordD,RecordN)|Locals]], Homes),
     findall(save(R,D), ( callee_saved(R), get_assoc(callee_save(R),Slots,Off),
                          D is -Off ), Saves),
     regs_mode(Mode, Slots, Mode1),
@@ -323,12 +340,18 @@ placed_lines(Mode, Branches, Func, Item0, Lines, function(Name,Report), Groups) 
 % stack-aux roots, as cells(Ds, Others) with the other frame ranges
 % (local storage, wide slots, save slots) the checker keeps them apart
 % from. The header words (parent, origin) are never cells.
-regs_mode(temps, Slots, frame(cells(Ds, Others))) :- !,
+regs_mode(temps(_), Slots, frame(cells(Ds, Others))) :- !,
     assoc_to_list(Slots, Ps),
     findall(D, ( member(K-Off, Ps), integer(Off), cell_key(K), D is -Off ), Ds0),
     sort(Ds0, Ds),
     findall(D-N, ( member(K-V, Ps), other_range(K, V, D, N) ), Others).
-regs_mode(Mode, _, Mode).
+regs_mode(map(_), _, map).
+
+% home_class(+Homes, +Class0, -Class): a pointer phi's shadow is a home
+% of class a (its address word) in pointers mode, and of class p, which
+% no allocation takes, otherwise.
+home_class(pointers, p, a) :- !.
+home_class(_, K, K).
 
 cell_key(lower(_)).
 cell_key(storage(scalar,_)).

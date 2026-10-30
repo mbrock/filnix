@@ -127,6 +127,23 @@ not understood. Sites 0–690 keep all of renewal's instruction savings
 (3.785G against 4.058G) at baseline resyncs, but a cutoff fitted to one
 function on one CPU is not a rule, and renewal stays opt-in without one.
 
+As data points (quiet swa, `f5bbb50`, bzip2 `-d`, minimum of 5 runs,
+twice: cycles, instructions, resyncs):
+
+| Build | cycles | instructions | resyncs |
+| --- | --: | --: | --: |
+| `-O` (`--checks=reference`) | 1.036–1.058G | 4.195G | 22–30k |
+| `--checks=renew` | 1.432G | 3.785G | 8.46M |
+| `--checks=guard` (M7 slice A, `51dd4eb`) | 1.436–1.438G | 3.718G | 8.72M |
+| renew sites 0–690 | 1.017–1.022G | 3.784G | 40k |
+| renew sites 0–716 | 1.322G | 3.785G | 6.08M |
+
+Sites 0–690 run bzip2 `-d` 3–4% faster than the reference. Guard keeps
+renewal's resyncs. On the gate, `-O` is 1.99 (2.90), renew 2.01 (2.77)
+and guard 2.01 (2.75); guard leads on zlib `-6` (2.30 against 2.36) and
+lz4 `-9` (1.97 against 2.16), and bzip2 `-d` (2.84 against 2.30) cancels
+it.
+
 **What remains, and why it stays** (shares of `-O`'s instructions, from
 the profile at `04c7e7c` and the re-measurement under 5b):
 
@@ -2206,6 +2223,75 @@ external write between. It waits for a measured gain from 5b-2a.
 Reviewed by Oracle (October 2026): sound; its two blockers (the
 root-range check above in place of a trusted claim, and citations from
 the staging runtime) are folded in.
+
+#### 5b-2a. Measured on quiet swa, then implemented (`--registers=pointers`)
+
+**The scratch build, timed.** The same scratch build, rebased on
+`f5bbb50` (`-O`, `--checks=reference`), against that `-O`, on quiet
+swa (load under 1, cpu 6, 7 trials, ratio to filcc `-O2`: time
+(instructions)):
+
+| Workload | `-O` | scratch pointer homes |
+| --- | --: | --: |
+| zlib -6 | 2.36 (3.92) | 2.15 (3.89) |
+| zlib -d | 1.79 (3.03) | 1.65 (3.05) |
+| bzip2 -9 | 1.74 (2.33) | 1.71 (2.45) |
+| bzip2 -d | 2.30 (2.92) | 2.33 (3.04) |
+| lz4 -1 | 2.12 (10.40) | 2.08 (10.50) |
+| lz4 -9 | 2.16 (2.65) | 1.99 (2.69) |
+| lz4 -d | 2.50 (5.36) | 2.36 (5.41) |
+| lua int | 2.01 (1.87) | 1.54 (1.80) |
+| lua tab | 1.85 (1.82) | 1.46 (1.75) |
+| lua str | 1.44 (1.54) | 1.41 (1.56) |
+| sqlite | 1.89 (1.93) | 1.85 (1.96) |
+| geomean | 1.99 (2.90) | 1.84 (2.92) |
+
+Time falls 7.5% on 0.7% more instructions. It is latency, not
+instruction count. Lua int's cycles fall 24% (466M → 355M) on 4% fewer
+instructions, with resyncs at about 3.6k in both builds: the hot
+pointers of `luaV_execute` no longer make a loop-carried store → load
+chain through the frame on every use. bzip2 `-d` stays at the
+reference's resyncs (22k, against 22–30k for `-O`), at 4% more
+instructions and 2% more cycles (1.074G against 1.036–1.058G).
+
+**Implementation.** `--registers=pointers` (or `NANOFIL_REGISTERS`),
+opt-in: temps with each pointer pool slot's address word and each
+pointer phi shadow as a home of class `a`. Over the contract, two
+choices:
+
+- It is a register mode rather than a separate option, so it is valid
+  only as temps is, and `--registers=temps` selects temps without it.
+  `--registers-limit` applies to it as to temps.
+- The root ranges reach the checker as `root(Offset, Bytes)` entries in
+  the metadata's home list: the frame record (`[-FrameBase,
+  -FrameBase + 16 + 8·NLowers)`, which holds every root, stack-aux and
+  jmpbuf roots included) and each local object's payload and aux. Temps
+  and pointers both pass them, so the check also guards scalar homes.
+
+Evidence:
+
+- `tests/regs_check.pl`: class `a` accepted, beside a root accepted,
+  and inside `lowers[]` (classes `a` and `l`) or overlapping a local
+  refused. Without the overlap test in `valid_map`, the
+  `address_home_in_lowers` case fails (fail-first).
+- The bug the review named, planted in the emitter: offering
+  `lower(storage(pointer, _))` slots instead of `storage(pointer, _)`
+  makes the compile of `tests/c/basic.c` fail with "register home
+  translation check failed". With the overlap test also removed, the
+  same bug compiles silently.
+- `tests/filc/gc.ir`'s `build`, compiled with `--registers=pointers`:
+  the new node's address stays in `%r12` (callee-saved) across `call
+  pizlonatedFI134_c_gc`, which collects every 2000 iterations, while its
+  lower is stored at `-152(%rbp)`, inside the record (`-176..-129`), at
+  the reference's instructions. Under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`
+  its list of 20000 nodes, reachable only through that frame, sums
+  correctly. This is the contract's C test, already in the suite.
+- run-c (interop, gc, variadic, float, setjmp, pointer-effects,
+  lower-donor, exceptions, reuse-gc) and the 158 progtests under GC
+  stress, and the Nix check's `pointers:-O` register step (difftest,
+  ABI+GC, ensure-aux exits, memcpy, checks, programs).
+- The snapshot gains a fourth `-O` mode, `P.` (pointers with inlining);
+  every other output is identical.
 
 #### Punned union reads in promote (after 5b-1)
 

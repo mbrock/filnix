@@ -37,6 +37,7 @@ let
     reuse-plain = "--checks=reuse";
     reuse-optimized = "-O --checks=reuse";
     renew-optimized = "-O --checks=renew";
+    pointers-optimized = "-O --registers=pointers";
   };
 in
 (import ./configurations.nix { inherit pkgs; } "nanofil-lua" configurations (
