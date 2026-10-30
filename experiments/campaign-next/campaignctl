@@ -11,7 +11,7 @@
       attrs --file FILE | --attr ATTR   flake attribute paths
       checks --prefix PREFIX            checks.x86_64-linux.PREFIX*
       manifest PATH                     an already frozen manifest
-  pause|resume|cancel ID | priority ID N
+  pause|resume|cancel ID | priority ID N | reanalyze ID
   retry ID [--root NAME ...] [--outcome OUTCOME ...]
   export ID DIRECTORY | register PATH [--manifest M] [--id ID] [--label L] [--publish]
 
@@ -216,7 +216,7 @@ def main():
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("status")
     sub.add_parser("list").add_argument("--all", action="store_true")
-    for name in ("show", "results", "pause", "resume", "cancel"):
+    for name in ("show", "results", "pause", "resume", "cancel", "reanalyze"):
         sub.add_parser(name).add_argument("id")
     s = sub.add_parser("priority")
     s.add_argument("id")
@@ -263,7 +263,7 @@ def main():
         data = call(args, "GET", f"/campaigns/{args.id}")
     elif c == "results":
         data = call(args, "GET", f"/campaigns/{args.id}/results")
-    elif c in ("pause", "resume", "cancel"):
+    elif c in ("pause", "resume", "cancel", "reanalyze"):
         data = call(args, "POST", f"/campaigns/{args.id}/{c}", {})
     elif c == "priority":
         data = call(args, "POST", f"/campaigns/{args.id}/priority", {"priority": args.priority})

@@ -202,6 +202,9 @@ class CampaignTests(unittest.TestCase):
             self.assertEqual(roots["survey"]["counts"],
                              {"objects": 7, "cxx": 1, "fallbacks": 2})
             self.assertIsNone(roots["after-bad"]["run"])
+            self.assertEqual(self.admin("POST", f"/campaigns/{id}/reanalyze", {})["reanalyzed"], 4)
+            again = {r["name"]: r for r in self.admin("GET", f"/campaigns/{id}")["roots"]}
+            self.assertEqual(again, roots)
             for name in ("good", "after-good", "bad"):
                 self.assertGreater(roots[name]["wall_ns"], 0)
                 self.assertGreater(roots[name]["build_ns"], 0)
@@ -341,6 +344,7 @@ class CampaignTests(unittest.TestCase):
             state = json.load(urllib.request.urlopen(base + "/c/old/api/state", timeout=10))
             self.assertEqual(len(state["sessions"]), 2)
             self.admin("POST", "/campaigns/old/retry", {}, status=400)
+            self.assertEqual(self.admin("POST", "/campaigns/old/reanalyze", {})["reanalyzed"], 2)
             manifest = self.root / "invalid.json"
             root = {"name": "test", "drv": "/store/test.drv"}
             for roots, message in (([dict(root, name="")], "invalid root"),

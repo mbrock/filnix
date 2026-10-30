@@ -1412,8 +1412,34 @@ nxtrt::task<json> register_recording(Application &app, json body) {
                  {"attempts", attempts.size()}};
 }
 
+// Derives every settled attempt's analysis again from the recording, as
+// the current service would; outcomes and notes stay as recorded.
+nxtrt::task<json> reanalyze(Application &app, Campaign &c) {
+  auto attempts = co_await app.workers.run(
+      [&app, id = c.id] { return app.catalog->attempts(id); });
+  json updated = json::array();
+  for (const auto &a : attempts) {
+    if (!a.at("run").is_string() || !a.at("outcome").is_string())
+      continue;
+    auto facts = co_await with_recording(
+        app, c, [run = a.at("run").get<std::string>()](campaign::Dataset &d) {
+          return d.attempt_facts(run);
+        });
+    auto result = co_await app.readers.run(
+        [facts = std::move(facts)] { return campaign::analyze(facts); });
+    result.erase("outcome");
+    co_await app.workers.run([&app, id = c.id, a, result] {
+      app.catalog->finish_attempt(id, a.at("name"), a.at("attempt"), result);
+    });
+    updated.push_back(a.at("run"));
+  }
+  co_return json{{"id", c.id}, {"reanalyzed", updated.size()}};
+}
+
 nxtrt::task<json> control(Application &app, Campaign &c,
                           const std::string &action, const json &body) {
+  if (action == "reanalyze")
+    co_return co_await reanalyze(app, c);
   if (c.state == "historical")
     throw std::runtime_error("historical campaigns are read-only");
   if (action == "pause") {

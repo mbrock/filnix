@@ -484,8 +484,19 @@ json Dataset::attempt_facts(const std::string &run) {
                   " ORDER BY start_elapsed_ns DESC LIMIT 1");
     return a.empty() ? json(nullptr) : a[0];
   };
+  // A remote build is two actBuild activities: the hook's, which names
+  // the machine, and the remote's own, which carries the build's time,
+  // phases and log. Time the latest; take the machine from either.
+  auto machine = [&](const std::string &drv) {
+    auto m = rows("SELECT machine FROM activities WHERE run=" + r +
+                  " AND type=105 AND drv=" + quote(drv) +
+                  " AND machine<>'' LIMIT 1");
+    return m.empty() ? std::string() : m[0].at("machine").get<std::string>();
+  };
   auto root = facts.at("drv").get<std::string>();
   facts["root_build"] = build(root);
+  if (facts["root_build"].is_object())
+    facts["root_build"]["machine"] = machine(root);
   // Some stores report the build failure as an error, not a message.
   if (!facts.at("cause_hex").is_string()) {
     auto error = rows("SELECT json_extract_string(payload,'$.text_hex') AS t "
@@ -512,6 +523,8 @@ json Dataset::attempt_facts(const std::string &run) {
     failed.clear();
   facts["failed_drv"] = failed;
   facts["failed_build"] = failed.empty() ? json(nullptr) : build(failed);
+  if (facts["failed_build"].is_object())
+    facts["failed_build"]["machine"] = machine(failed);
   auto target = failed.empty() ? root : failed;
   facts["log_hex"] = json::array();
   for (const auto &row :
