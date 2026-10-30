@@ -191,6 +191,24 @@ the `-O` default (renew) around every vector access:
   ...)`. Both are later work, and `subsumes` already keeps a 16-byte
   fact from standing for a 32-byte check.)
 
+## Known differences from filcc
+
+- **Split access under a racing free (accepted by the orchestrator,
+  October 2026).** A `free` or `munmap` by another thread between the
+  full-width check and chunk k traps at chunk k's check after chunks
+  0..k−1 are written; filcc's single vector access completes without a
+  trap. This is the same as filcc's own behaviour for any access it
+  splits, such as a struct copy. It is observable only under a race on
+  the object's lifetime: as a torn record in a `MAP_SHARED` file, or as
+  a partial payload read by a thread that passed its own check before
+  the free. Under `-O` (renew) and `--checks=guard`, reuse rewires
+  well-shaped chunks to the full check, which removes it; the reference
+  path keeps a check per chunk.
+- **Constant offsets are not folded into the base.** filcc at `-O1`
+  reports `b+17` on a 32-byte object as "cannot write 33 bytes when
+  upper - ptr = 32"; nanofil reports the vector's own size, as it does
+  for scalar accesses. Pre-existing, not specific to vectors.
+
 ## Tests and plants (planned)
 
 - **Unit, validator:** accepts every K, Size and Align and rejects
