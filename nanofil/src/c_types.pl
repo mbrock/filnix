@@ -80,7 +80,7 @@
                     castable/2, expression_category/3, modifiable_lvalue/2,
                     integer_type/4, elaborate/3, tree_type/2, value/2,
                     lowered/2, folded/3, member_layout/6, readonly_object_type/1,
-                    bitfield_promotion/3, unaligned_type/2, underaligned_member/4, atomic_qualified/1,
+                    bitfield_promotion/3, unaligned_type/2, underaligned_member/4, member_alignment/3, atomic_qualified/1,
                     rmw_builtin/4, known_attribute/3, filcc_refused_mnemonic/1]).
 
 :- use_module(library(lists)).
@@ -208,8 +208,16 @@ declarator_type(Specs, Requests0, Base, Storage, init(dcl(some(Name), SyntaxType
     inherited_alignment(Specs, SyntaxType, Env2, Inherited),
     (   Storage == typedef
     ->  typedef_alignment(Requests0, Inherited, Type0, Env2, TA),
-        ( TA = bad(Why) -> Type1 = bad(Why), TA1 = none ; Type1 = Type0, TA1 = TA ),
-        bind_ordinary(Name, typedef(Type1), Env2, Env3),
+        (   TA = bad(Why) -> Type1 = bad(Why), TA1 = none
+        ;   Type0 = vec(E, N, _), integer(TA) -> Type1 = vec(E, N, TA), TA1 = TA
+        ;   Type1 = Type0, TA1 = TA
+        ),
+        (   Type1 = vec(_, _, _), Type1 \== Type0
+        ->  ( Reflected = qualified(Qs, _) -> qualify(Qs, Type1, R1) ; R1 = Type1 ),
+            bind_ordinary(qtype(Name), R1, Env2, Env2a)
+        ;   Env2a = Env2
+        ),
+        bind_ordinary(Name, typedef(Type1), Env2a, Env3),
         (   TA1 == none, \+ lookup_ordinary(Env3, talign(Name), _) -> Env4 = Env3
         ;   bind_ordinary(talign(Name), TA1, Env3, Env4)
         ),
@@ -840,8 +848,11 @@ doc(vector_type(+Specs, +Elem, +Env, -Type), det, [
     "GCC's vector_size(Bytes) makes a vector of Bytes / sizeof(Elem)",
     "elements of an integer type other than _Bool, float or double. Its",
     "alignment is its size unless an aligned attribute in the same",
-    "specifiers sets it, which may lower it (immintrin.h's __m128i_u is",
-    "aligned(1)). Only 16-byte vectors are supported (the SSE through",
+    "specifiers sets it, which may lower it. A typedef's aligned attribute",
+    "(typedef_alignment/5) becomes its vector type's alignment, since a",
+    "vector access is checked against the alignment of the type it is",
+    "made through (immintrin.h's __m128i_u is aligned(1), so",
+    "_mm_loadu_si128 checks alignment 1). Only 16-byte vectors are supported (the SSE through",
     "SSE4.2 intrinsics), and only with NANOFIL_VECTORS=1 until a vector",
     "access is checked as one access of its full width (docs/vector-access.md).",
     cites('GCC manual, Using Vector Instructions through Built-in Functions'),
@@ -1696,6 +1707,37 @@ underaligned_member(obj(_, member(XS, F)), Env, W, Name) :-
     ;   member_layout(SU, F, Env, _, Off, _), Off mod W =\= 0 -> Name = F
     ;   underaligned_member(XS, Env, W, Name)
     ).
+
+doc(member_alignment(+X, +Env, -A), semidet, [
+    X: "an object tree that is a member, perhaps nested",
+    Env: "the scope of X",
+    A: "the alignment an access to X is known to have",
+    "A member's alignment is its struct or union's, or its own containing",
+    "member's, at the member's offset: the largest power of two dividing",
+    "the offset, at most that base alignment. A packed struct's members are",
+    "known to be aligned to 1 only. clang gives an access this alignment,",
+    "and filcc checks a vector access against it (capped at 8;",
+    "docs/vector-access.md), so _mm_loadu_si128's member of its packed",
+    "struct is checked at alignment 1.",
+    cites('GCC manual, Common Type Attributes, packed'),
+    cites('C11 6.7.2.1p15'),
+    example(( empty_env(E0), su_definition([field([tspec(char)], dcl(some(c), base, none), none),
+                                            field([tspec(long)], dcl(some(x), base, none), none)],
+                                           struct, none, [[group([id(packed)])]], T, E0, E),
+              member_alignment(obj(long, member(obj(T, id(ps)), x)), E, A) ),
+            A = 1),
+    example(( empty_env(E0), su_definition([field([tspec(int)], dcl(some(c), base, none), none),
+                                            field([tspec(int)], dcl(some(x), base, none), none)],
+                                           struct, none, [], T, E0, E),
+              member_alignment(obj(int, member(obj(T, id(s)), x)), E, A) ),
+            A = 4)
+]).
+member_alignment(obj(_, member(XS, F)), Env, A) :-
+    tree_type(XS, SU0), unqualified(SU0, SU),
+    catch(type_size_align(SU, Env, _, SA), bad(_), fail),
+    (   member_alignment(XS, Env, B0) -> B is min(B0, SA) ; B = SA ),
+    member_layout(SU, F, Env, _, Off, _),
+    (   Off =:= 0 -> A = B ; A is min(B, Off /\ -Off) ).
 
 % member_offset_end(+Kind, +End0, +Size, +Align, -Off, -End): a member of
 % Size and Align after members ending at bit End0 is at byte Off and

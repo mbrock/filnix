@@ -3757,3 +3757,33 @@ test(asm_fixed_lines) :-
     sub_atom(A, B3, _, _, 'movl %ebx, %edi'), sub_atom(A, B4, _, _, 'movq %rsi, %rbx'),
     B1 < B2, B2 < B3, B3 < B4,
     phrase(asm:line_text(asm_fixed(rdtscp)), Ds), Ds == ['\t', rdtscp, '\n'].
+
+% A vector access is checked at its full width before any of its 8-byte
+% chunks (docs/vector-access.md): each access(K, A, 16, Align) comes
+% just before the first chunk at A, and every chunk at A or A + const
+% comes after an access at A. Align is the access's: 1 through __m128i_u or a packed
+% struct's member, the type's capped at 8 otherwise.
+test(vector_access_precedes_chunks) :-
+    setup_call_cleanup(
+        ( setenv('NANOFIL_VECTORS', '1'), setenv('NANOFIL_VECTOR_ACCESS', '1') ),
+        ( c_tokens("typedef long long v2 __attribute__((vector_size(16)));
+                    typedef long long v2u __attribute__((vector_size(16), aligned(1)));
+                    struct P { char c; v2u v; } __attribute__((packed));
+                    void f(v2 *d, const v2 *s, const v2u *u, v2u *w, struct P *p) {
+                        v2u x = *u; *d = *s; *w = x; p->v = *d; }", 'va.c', Ts),
+          c_parse(Ts, C), once(c_module(C, module(Is))) ),
+        ( unsetenv('NANOFIL_VECTORS'), unsetenv('NANOFIL_VECTOR_ACCESS') )),
+    memberchk(func(f, _, _, _, [block(_, _, Body, _)]), Is),
+    findall(K-Al, member(access(K, _, 16, Al), Body), Accesses),
+    forall(member(A, [read-1, read-8, write-8, write-1]), memberchk(A, Accesses)),
+    forall(nth0(I, Body, access(_, A, _, _)),
+           ( I1 is I + 1, nth0(I1, Body, First), chunk_at(First, Body, A) )),
+    forall(( member(access(_, A, _, _), Body), nth0(J, Body, In), chunk_at(In, Body, A) ),
+           ( nth0(I, Body, access(_, A, _, _)), I < J )), !.
+
+% chunk_at(+Inst, +Body, +A): Inst loads or stores an 8-byte chunk at A
+% or at A + const.
+chunk_at(let(_, l, load(l), [Addr]), Body, A) :- chunk_addr(Addr, Body, A).
+chunk_at(store(l, _, Addr), Body, A) :- chunk_addr(Addr, Body, A).
+chunk_addr(A, _, A) :- !.
+chunk_addr(tmp(T), Body, A) :- memberchk(let(tmp(T), p, add, [A, const(_)]), Body).

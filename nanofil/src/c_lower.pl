@@ -3376,7 +3376,9 @@ converted(Value0, Type, R) --> convert(Value0, Type, R).
 % loaded(+U, +Addr, +Ctx, -R)//: R is the value of type U stored at
 % Addr: a struct or union stands for its address.
 loaded(U, Addr, _, v(Copy, U)) --> { U = vec(_, _, _) }, !,
-    local_slot(U, Copy), copy_object(U, Addr, Copy).
+    local_slot(U, Copy),
+    vector_access(read, U, Addr),
+    copy_object(U, Addr, Copy).
 loaded(U, Addr, _, v(Addr, U)) --> { su(U) }, !.
 loaded(U, Addr, Ctx, v(V, U)) --> load_typed(U, Addr, Ctx, V).
 
@@ -3449,7 +3451,13 @@ place_node(fun(T, deref(XV)), Ctx, fd(Callee, U)) --> !,
 place_node(obj(T, member(XS, F)), Ctx, lv(P, U)) -->       % 6.5.2.3p3
     place(XS, Ctx, lv(Addr, SU)),
     member_lv(Addr, SU, F, Ctx, P, _),
-    { unqualified(T, U) }.
+    env(Env),
+    {   unqualified(T, U0),
+        (   U0 = vec(E, N, A0), member_alignment(obj(T, member(XS, F)), Env, A1)
+        ->  A is min(A0, A1), U = vec(E, N, A)      % its accesses' alignment
+        ;   U = U0
+        )
+    }.
 place_node(obj(T, vlane(XS, XI)), Ctx, lv(P, U)) -->     % GNU vectors
     place(XS, Ctx, lv(Addr, _)),
     { unqualified(T, U) },
@@ -3469,6 +3477,8 @@ place_node(obj(_, bitfield(member(XS, F), W)), Ctx, bits(P, T, Pos, W)) --> % 6.
 
 % place_loaded(+P, +U, +Ctx, -R)//: R is the value, of type U, of the
 % object at place P.
+place_loaded(lv(Addr, PU), U, Ctx, v(V, U)) -->         % its access's alignment
+    { PU = vec(_, _, _) }, !, loaded(PU, Addr, Ctx, v(V, _)).
 place_loaded(lv(Addr, _), U, Ctx, R) --> loaded(U, Addr, Ctx, R).
 place_loaded(bits(Addr, T, Pos, W), _, Ctx, R) -->
     place_read(bits(Addr, T, Pos, W), Ctx, R).
@@ -3538,6 +3548,15 @@ load_op(Type, Class, Class) :- type_class(Type, Class).
 
 % store_typed(+Type, +V, +Addr)//: store value V of Type at Addr; a
 % struct or union V is the address of the value, copied.
+store_typed(Type, V, Addr) -->
+    { Type = vec(_, _, _) }, !, env(Env),
+    { eightbytes(Type, Env, unknown, Ebs) },
+    (   { forall(member(eb(_, N, _), Ebs), N =:= 8) }
+    ->  vector_chunks_loaded(Ebs, V, Xs),
+        vector_access(write, Type, Addr),
+        vector_chunks_stored(Ebs, Xs, Addr)
+    ;   vector_access(write, Type, Addr), copy_object(Type, V, Addr)
+    ).
 store_typed(Type, V, Addr) --> { memtype(Type) }, !, copy_object(Type, V, Addr).
 store_typed(Type, V, Addr) -->
     { store_width(Type, Width) },
@@ -5386,6 +5405,32 @@ elementwise_one(Op, [A, B], E, Sign, Bytes, Ctx, O) -->
     convert(A, int, A1), convert(B, int, B1),
     bop(BOp, A1, B1, Ctx, S), convert(S, long, S1),
     clamped(S1, Lo, Hi, E, Ctx, O).
+
+% vector_access(+K, +VT, +Addr)//: a K (read or write) access of a
+% vector of type VT at Addr is checked as one access of its full width,
+% with its alignment capped at 8, before any of its 8-byte chunks
+% (docs/vector-access.md), as filcc checks it; with
+% NANOFIL_VECTOR_ACCESS=1 until M7's access term lands.
+vector_access(K, VT, Addr) -->
+    (   { getenv('NANOFIL_VECTOR_ACCESS', '1') }
+    ->  env(Env),
+        { type_size_align(VT, Env, Size, A), Align is min(A, 8) },
+        emit(access(K, Addr, Size, Align))
+    ;   []
+    ).
+
+% vector_chunks_loaded(+Ebs, +Src, -Xs)//, vector_chunks_stored(+Ebs,
+% +Xs, +Dst)//: a vector store's 8-byte chunks, loaded from the copy
+% that is its value before the full-width check, and stored after it.
+vector_chunks_loaded([], _, []) --> [].
+vector_chunks_loaded([eb(Off, _, _)|Ebs], Src, [X|Xs]) -->
+    offset(Src, Off, S), let(l, load(l), [S], X),
+    vector_chunks_loaded(Ebs, Src, Xs).
+
+vector_chunks_stored([], [], _) --> [].
+vector_chunks_stored([eb(Off, _, _)|Ebs], [X|Xs], Dst) -->
+    offset(Dst, Off, D), emit(store(l, X, D)),
+    vector_chunks_stored(Ebs, Xs, Dst).
 
 % lanes_loaded(+VT, +Addr, +Ctx, -Xs)//: Xs are the elements of the
 % vector of type VT at Addr.
