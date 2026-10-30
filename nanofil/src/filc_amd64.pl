@@ -616,7 +616,8 @@ fused_blocks(Fn, Params, Blocks0, Blocks, LiveBlocks) :-
     maplist(live_block, Blocks, LiveBlocks).
 
 fused_block(Fn, Single, block(L, Phis, Insts0, Jump), block(L, Phis, Insts, Jump)) :-
-    fused_insts(Insts0, Fn, Single, [], Insts).
+    proofs_empty(Proofs),
+    fused_insts(Insts0, Fn, Single, Proofs, Insts).
 
 % single_proofs(+Params, +Blocks, -Single): Q-P for each heap check of P
 % defining tmp(Q) where Q has one definition in the function and P at
@@ -662,18 +663,18 @@ fused_insts([Inst0|Insts0], Fn, Single, Proofs0, [Inst|Insts]) :-
     % Emission reloads P from its slot where the interpreter reads the
     % value Q captured: forget a pair once either name is redefined.
     (   inst_def(Inst0, D)
-    ->  exclude(proof_names(D), Proofs0, Proofs)
+    ->  proofs_kill(D, Proofs0, Proofs)
     ;   Proofs = Proofs0
     ),
     (   Inst0 = let(tmp(Q), a, check(_, _, _, _), [P])
-    ->  Proofs1 = [Q-P|Proofs]
+    ->  proofs_add(Q-P, Proofs, Proofs1)
     ;   Inst0 = let(tmp(Q), a, renew(_, _, _, _), [tmp(Q1)]), get_assoc(Q1, Single, P)
-    ->  Proofs1 = [Q-P|Proofs]
+    ->  proofs_add(Q-P, Proofs, Proofs1)
     ;   Proofs1 = Proofs
     ),
     (   ( Inst0 = let(_, _, raw_load(_, Off), [tmp(Q1)])
         ; Inst0 = raw_store(_, Off, _, tmp(Q1)) ),
-        (   memberchk(Q1-P1, Proofs) -> true ; get_assoc(Q1, Single, P1) )
+        (   Proofs = pr(ByQ, _), get_assoc(Q1, ByQ, P1) -> true ; get_assoc(Q1, Single, P1) )
     ->  (   integer(Off), Off >= -2147483648, Off =< 2147483647,
             proven_access(Inst0, Q1, P1, Access)
         ->  Inst = reused(Access), Insts1 = Insts0
@@ -686,10 +687,34 @@ fused_insts([Inst0|Insts0], Fn, Single, Proofs0, [Inst|Insts]) :-
     % A fused access or call may define Q's pointer too.
     live_inst(Inst, Live),
     findall(LD, inst_def(Live, LD), Ds),
-    exclude(proof_named(Ds), Proofs1, Proofs2),
+    foldl(proofs_kill, Ds, Proofs1, Proofs2),
     fused_insts(Insts1, Fn, Single, Proofs2, Insts).
 
-proof_named(Ds, Q-P) :- member(D, Ds), proof_names(D, Q-P), !.
+/* The block's proofs so far are pr(ByQ, ByP): ByQ maps each proof Q to
+   its checked pointer P, and ByP each name N to the Qs once paired with
+   tmp(N), perhaps since redefined. Q has at most one pair, since its
+   definition drops the old one, so a kill of D is the removal of D's
+   pair and of each pair whose pointer is tmp(D), without scanning the
+   block's other proofs (a struct copy has tens of thousands). */
+proofs_empty(pr(E, E)) :- empty_assoc(E).
+
+proofs_add(Q-P, pr(ByQ0, ByP0), pr(ByQ, ByP)) :-
+    put_assoc(Q, ByQ0, P, ByQ),
+    (   P = tmp(N)
+    ->  ( get_assoc(N, ByP0, Qs) -> true ; Qs = [] ),
+        put_assoc(N, ByP0, [Q|Qs], ByP)
+    ;   ByP = ByP0
+    ).
+
+proofs_kill(D, pr(ByQ0, ByP0), pr(ByQ, ByP)) :-
+    ( del_assoc(D, ByQ0, _, ByQ1) -> true ; ByQ1 = ByQ0 ),
+    (   del_assoc(D, ByP0, Qs, ByP)
+    ->  foldl(proof_of_name(D), Qs, ByQ1, ByQ)
+    ;   ByP = ByP0, ByQ = ByQ1
+    ).
+
+proof_of_name(D, Q, ByQ0, ByQ) :-
+    (   get_assoc(Q, ByQ0, P), P == tmp(D) -> del_assoc(Q, ByQ0, _, ByQ) ; ByQ = ByQ0 ).
 
 % renewed_inst(+Q, +Renew, +Q1, +Insts0, +Fn, +Single, -Inst, -Insts): a
 % renew of Q1 and the access after it, at Q1's checked pointer P1, which
@@ -711,7 +736,6 @@ renewed_inst(Q, Renew, Q1, [Access0|Insts], Fn, Single, fused(Renew, Access), In
 renewed_inst(_, _, _, [], Fn, _, _, _) :-
     throw_fn(Fn, 'a renew not followed by its access').
 
-proof_names(D, Q-P) :- ( Q == D ; P == tmp(D) ).
 
 fused_inst(let(tmp(Q), a, Check, []), [Access0|Insts], Fn,
            fused(Check, Access), Insts) :-
