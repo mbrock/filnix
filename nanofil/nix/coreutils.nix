@@ -47,13 +47,11 @@ let
   # comparison (filcc's build fails some tests too). timeout.sh and
   # seq-epipe.sh measure time (a sleep against a deadline): on a loaded
   # builder filcc's run failed one and skipped the other while nanofil's
-  # passed both, so they are not compared. Nor is pwd-long.sh: filcc's
-  # run failed it three times on a loaded builder (2f960d1, 0484563,
-  # 91746a6) while nanofil's passed, in both plain and -O.
+  # passed both, so they are not compared.
   testSuite = out: ''
     make check -j$NIX_BUILD_CORES >check.log 2>&1 || true
     grep -E '^(PASS|FAIL|SKIP|XFAIL|XPASS|ERROR): tests/.*\.(sh|pl|xpl)$' check.log \
-      | grep -vE ' tests/(timeout/timeout|seq/seq-epipe|pwd/pwd-long)\.sh$' \
+      | grep -vE ' tests/(timeout/timeout|seq/seq-epipe)\.sh$' \
       | sort -k2 >${out}
     test -s ${out}
   '';
@@ -103,8 +101,21 @@ import ./configurations.nix { inherit pkgs; } "nanofil-coreutils"
         done
         (cd $NIX_BUILD_TOP/ref && ${testSuite "$NIX_BUILD_TOP/ref.results"})
         ${testSuite "$NIX_BUILD_TOP/nf.results"}
-        diff -u $NIX_BUILD_TOP/ref.results $NIX_BUILD_TOP/nf.results
-        echo "coreutils' test suite: $(awk '{print $1}' $NIX_BUILD_TOP/nf.results | sort | uniq -c | tr -s ' \n' ' '), as filcc's"
+        # The same tests, and none worse in nanofil's build: FAIL, ERROR,
+        # XPASS or SKIP where filcc's had another result. Under load,
+        # filcc's run fails or skips a test now and then that nanofil's
+        # passes (pwd-long.sh, tail/pipe-f.sh); that is not a difference.
+        awk 'NR == FNR { r[$2] = $1; next } { n[$2] = $1 }
+          END {
+            for (t in r) if (!(t in n)) { print "only in filcc results: " t; bad = 1 }
+            for (t in n) {
+              if (!(t in r)) { print "only in nanofil results: " t; bad = 1 }
+              else if (n[t] != r[t] && n[t] ~ /^(FAIL|ERROR|XPASS|SKIP):$/) { print "nanofil " n[t] " " t ", filcc " r[t]; bad = 1 }
+              else if (n[t] != r[t]) print "filcc " r[t] " " t ", nanofil " n[t] " (not counted)"
+            }
+            exit bad
+          }' $NIX_BUILD_TOP/ref.results $NIX_BUILD_TOP/nf.results
+        echo "coreutils' test suite: $(awk '{print $1}' $NIX_BUILD_TOP/nf.results | sort | uniq -c | tr -s ' \n' ' '), none worse than filcc's"
         # Compare names, not just counts: no object may come from clang.
         find . -name '*.o' -printf '%f\n' | sort >../objects
         sed 's|.*/||' nanofil.log | sort -u >../compiled
