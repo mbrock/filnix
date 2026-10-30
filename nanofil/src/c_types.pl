@@ -425,6 +425,15 @@ request_alignment(Env, attr([Word, group(Ts)]), A) :-
     catch(const_value(E, Env, A, _), not_constant, fail),
     A > 0, A /\ (A - 1) =:= 0.
 
+doc(reflect_type(+TypeName, +Type, +Env, -Reflected), det, [
+    TypeName: "a type name, type(Specs, Syntax)",
+    Type: "the unqualified type code generation gives it",
+    Env: "the scope",
+    Reflected: "Type with its qualifiers kept, qualified(Qs, T) at each level that has any, and enum(K) for an enum",
+    "Reflection is how the frontend knows const, volatile and _Atomic",
+    "without putting qualifiers into the types code generation sees."
+]).
+
 % Keep qualification for type reflection without changing the unqualified
 % code-generation types. These entries share ordinary identifier scope,
 % including shadowing and typedefs. Lvalue conversion removes only the
@@ -499,6 +508,13 @@ qualify(Qs, array(T0, N), array(T, N)) :- Qs \== [], !,   % C11 6.7.3p9
 qualify(Qs0, T, R) :-
     sort(Qs0, Qs), ( Qs == [] -> R = T ; R = qualified(Qs, T) ).
 
+doc(reflect_params(+Declarator, +Types, +Env0, -Env), det, [
+    Declarator: "a function definition's declarator",
+    Types: "its parameters' types",
+    Env0: "the function's scope",
+    Env: "Env0 with each named parameter's reflected type (reflect_type/4)",
+    "A declarator that is not a parameter list leaves Env0 as it is."
+]).
 reflect_params(func(_, params(Params, _)), Types, Env0, Env) :- !,
     foldl(reflect_param, Params, Types, Env0, Env).
 reflect_params(_, _, Env, Env).
@@ -953,8 +969,11 @@ attr_entry(Tokens, Word, Rest) :-
     member([T|Rest], Items),
     ( T = id(Word) ; T = kw(Word) ).
 
-% attr_word(+Tokens, -Word) is nondet: Word names one of the attributes
-% of Tokens (attr_entry/3).
+doc(attr_word(+Tokens, -Word), nondet, [
+    Tokens: "the tokens of a GNU __attribute__((...)) list",
+    Word: "the name of one of its attributes (attr_entry/3)",
+    example(findall(W, attr_word([id(aligned), p(','), id(weak)], W), Ws), Ws == [aligned, weak])
+]).
 attr_word(Tokens, Word) :- attr_entry(Tokens, Word, _).
 
 % base_type(+Specs, -Type, +Env0, -Env): Type from the type specifiers
@@ -1079,7 +1098,12 @@ holds_ref(SU, e(O, Tg, Defs, N)) :-
     get_assoc(Id, Defs, def(_, Members, _, _)),
     member(M, Members), arg(2, M, T), holds_ref(T, e(O, Tg, Defs, N)), !.
 
-% atomic_qualified(+T): the (reflected) type T is atomic at its top.
+doc(atomic_qualified(+T), semidet, [
+    T: "a reflected type (reflect_type/4)",
+    "T is _Atomic at its top level.",
+    example(atomic_qualified(qualified([atomic], int))),
+    fails(atomic_qualified(int))
+]).
 atomic_qualified(qualified(Qs, _)) :- memberchk(atomic, Qs).
 
 doc(typeof_type(+Arg, -Type, +Env0, -Env), det, [
@@ -2647,12 +2671,26 @@ const_value(Expr, Env, V, T) :-
     constant_value(Expr, Env, V, T),
     ( int_type(T) -> true ; throw(not_constant) ).
 
-% Float constants use their unsigned IEEE bits, never a host float.
+doc(constant_value(+Expr, +Env, -Value, -Type), det, [
+    Expr: "an arithmetic constant expression",
+    Env: "the scope",
+    Value: "its value; for a floating Type, its unsigned IEEE bits, never a host float",
+    Type: "its type",
+    "As const_value/4, but Type may be a floating type. Throws not_constant",
+    "when Expr is not a constant expression."
+]).
 constant_value(Expr, Env, V, T) :-
     (   const_eval(Expr, Env, V0, T0), integer(V0) -> V = V0, T = T0
     ;   throw(not_constant)
     ).
 
+doc(float_literal(+Chars, -Bits, -Type), det, [
+    Chars: "a floating constant's characters, as the lexer gives them",
+    Bits: "the IEEE bits of its value, correctly rounded (ieee.pl)",
+    Type: "float for an f or F suffix, ldouble for l or L, else double",
+    cites('C11 6.4.4.2'),
+    example(float_literal(['1', '.', '5', f], B, T), (B, T) = (0x3fc00000, float))
+]).
 float_literal(Cs, Bits, Type) :-
     append(Body, [Suffix], Cs),
     ( memberchk(Suffix, [f, 'F']) -> Type = float, Digits = Body
@@ -2661,8 +2699,17 @@ float_literal(Cs, Bits, Type) :-
     ),
     type_class(Type, K), ieee:ieee_parse(K, Digits, Bits).
 
-% glibc's HUGE_VAL and INFINITY are builtin constant expressions, not
-% libm calls. Keep the value bits exact, including in static storage.
+doc(float_builtin(?(Name), ?(Type), ?(Bits)), nondet, [
+    Name: "a GNU builtin that names a float constant",
+    Type: "float, double or ldouble",
+    Bits: "the IEEE bits of its value",
+    "glibc's HUGE_VAL and INFINITY are builtin constant expressions, not",
+    "libm calls: __builtin_huge_val and __builtin_inf with their f and l",
+    "forms, and the NaNs of nan_builtin/3. The value bits stay exact,",
+    "including in static storage.",
+    cites('GCC manual, Other Built-in Functions'),
+    example(float_builtin('__builtin_huge_valf', T, V), (T, V) = (float, 0x7f800000))
+]).
 float_builtin('__builtin_huge_val', double, 0x7ff0000000000000).
 float_builtin('__builtin_inf', double, 0x7ff0000000000000).
 float_builtin('__builtin_huge_valf', float, 0x7f800000).
@@ -3159,9 +3206,19 @@ doc(composite_type(+T, +U, -C), semidet, [
 ]).
 composite_type(T, U, C) :- composite_type(T, U, C, none).
 
-% composite_type(+T, +U, -C, +Env): as composite_type/3. With an Env,
-% not none, a transparent union parameter also agrees with each of its
-% members' types (composite_param/4).
+doc(composite_type(+T, +U, -C, +Env), semidet, [
+    T: "a type",
+    U: "a type compatible with T",
+    C: "their composite type",
+    Env: "the scope, or none",
+    "As composite_type/3 (compatible_type/2). With an Env, not none, a",
+    "transparent union parameter also agrees with each of its members'",
+    "types (composite_param/4).",
+    cites('C11 6.2.7p3'),
+    example(composite_type(array(int, none), array(int, 3), C, none), C == array(int, 3)),
+    example(composite_type(ptr(func(int, unspecified, fixed)), ptr(func(int, [int], fixed)), C, none),
+            C == ptr(func(int, [int], fixed)))
+]).
 composite_type(T, U, T, _) :- T == U, !.
 composite_type(T, U, C, Env) :- enum_marked(T, K, T1), !,
     ( enum_marked(U, L, U1) -> K == L ; U1 = U ),
@@ -3489,8 +3546,11 @@ assignment_type(X, T) :-
     ;   T = T0
     ).
 
-% lowered(+XV, -T): T is the type of value XV without qualifiers, the
-% type lowering gives it.
+doc(lowered(+XV, -T), det, [
+    XV: "a typed expression tree",
+    T: "its type without qualifiers, the type lowering gives it",
+    example(lowered(val(qualified([const], int), id(x)), T), T == int)
+]).
 lowered(XV, T) :- tree_type(XV, T0), unqualified(T0, T).
 
 % assigns(+Op, +TA, +B, +TB, +Env): assignment Op stores B, a value of
@@ -4002,10 +4062,15 @@ generic_atomic('__atomic_exchange', [P, V, R, O],
 generic_atomic('__atomic_compare_exchange', [P, E, D, W, S, F],
                call(id('__atomic_compare_exchange_n'), [P, E, un(deref, D), W, S, F])).
 
-% rmw_builtin(?Name, ?Family, ?Op, ?Result): Name is a read-modify-write
-% of Family (c11 on an _Atomic object, gnu or sync on a plain one) that
-% combines the old value and its operand by Op (xchg: the operand), and
-% returns the old or the new value (Result).
+doc(rmw_builtin(?(Name), ?(Family), ?(Op), ?(Result)), nondet, [
+    Name: "an atomic read-modify-write builtin",
+    Family: "c11 on an _Atomic object, gnu or sync on a plain one",
+    Op: "how it combines the old value and its operand (xchg: the operand alone)",
+    Result: "old or new: the value it returns",
+    cites('GCC manual, __atomic Builtins'),
+    example(rmw_builtin('__atomic_add_fetch', F, Op, R), (F, Op, R) = (gnu, add, new)),
+    example(rmw_builtin('__sync_fetch_and_or', F, Op, R), (F, Op, R) = (sync, or, old))
+]).
 rmw_builtin('__c11_atomic_exchange', c11, xchg, old).
 rmw_builtin(Name, c11, Op, old) :-
     rmw_op(Op, _), Op \== xchg, atom_concat('__c11_atomic_fetch_', Op, Name).
@@ -4156,7 +4221,12 @@ atomic_operands(P, O, Env, Orders, T, V) :-
     catch(const_value(O, Env, V, _), not_constant, fail),
     memberchk(V, Orders).
 
-% rotate_builtin(?Name, ?Dir, ?Type): Name rotates a Type left or right.
+doc(rotate_builtin(?(Name), ?(Dir), ?(Type)), nondet, [
+    Name: "a clang rotate builtin",
+    Dir: "left or right",
+    Type: "the unsigned type it rotates: uchar, ushort, uint or ulong",
+    example(rotate_builtin('__builtin_rotateleft32', D, T), (D, T) = (left, uint))
+]).
 rotate_builtin(Name, Dir, Type) :-
     member(Dir-Prefix, [left-'__builtin_rotateleft', right-'__builtin_rotateright']),
     member(Bits-Type, [8-uchar, 16-ushort, 32-uint, 64-ulong]),
@@ -4654,8 +4724,13 @@ generic_vector_builtin(Name) :-
     member(Op, [add_sat, sub_sat, min, max, abs]),
     atom_concat('__builtin_elementwise_', Op, Name).
 
-% vector_builtin_type(+Name, +Args, +Env, -T): T is the type of a call
-% of the generic vector builtin Name on Args.
+doc(vector_builtin_type(+Name, +Args, +Env, -T), semidet, [
+    Name: "a generic vector builtin (__builtin_shufflevector, __builtin_convertvector, __builtin_elementwise_*)",
+    Args: "the call's arguments",
+    Env: "the scope",
+    T: "the vec(E, N, Size) type of the call",
+    "Fails when the operands' vector types do not agree as Name needs."
+]).
 vector_builtin_type('__builtin_shufflevector', [A, B|Is], Env, vec(E, K, Size)) :- !,
     operand(A, Env, _, vec(E, N, _)), operand(B, Env, _, vec(E2, N2, _)), E == E2, N == N2,
     length(Is, K), type_size_align(E, Env, ES, _), Size is ES * K.
@@ -4710,8 +4785,14 @@ bit_count_value(ffs, _, X, V) :- ( X =:= 0 -> V = 0 ; V is lsb(X) + 1 ).
 bit_count_value(ctz, _, X, V) :- X > 0, V is lsb(X).
 bit_count_value(clz, Bits, X, V) :- X > 0, V is Bits - 1 - msb(X).
 
-% overflow_builtin(?Name, ?Op, ?Fixed): builtin Name checks arithmetic Op
-% on operands of type Fixed, or of any integer types (generic).
+doc(overflow_builtin(?(Name), ?(Op), ?(Fixed)), nondet, [
+    Name: "a GNU checked-arithmetic builtin",
+    Op: "add, sub or mul",
+    Fixed: "the type of its operands, or generic for any integer types",
+    cites('GCC manual, Integer Overflow Builtins'),
+    example(overflow_builtin('__builtin_saddl_overflow', Op, T), (Op, T) = (add, long)),
+    example(overflow_builtin('__builtin_mul_overflow', Op, T), (Op, T) = (mul, generic))
+]).
 overflow_builtin(Name, Op, Fixed) :-
     member(Op, [add, sub, mul]),
     (   atomic_list_concat(['__builtin_', Op, '_overflow'], Name),
@@ -5418,10 +5499,17 @@ hint_builtin('__builtin_ia32_pause', [], num(0, none-dec)).
 
 %% Generic selection
 
-% The controlling expression undergoes lvalue/array/function conversion,
-% not integer promotion. Only the selected expression is evaluated, and
-% its value category is retained. Association types must be unique even
-% when they do not match the controlling type.
+doc(generic_selection(+ControlType, +Associations, +Env, +Loc, -Selected), det, [
+    ControlType: "the controlling expression's type after lvalue, array and function conversion (no integer promotion)",
+    Associations: "the associations, assoc(TypeName, E) or assoc(default, E)",
+    Env: "the scope",
+    Loc: "where the _Generic is, for errors",
+    Selected: "the expression of the association whose type is compatible with ControlType, else the default's",
+    "Only Selected is evaluated, and it keeps its value category.",
+    "Association types must be unique, even those that do not match;",
+    "a duplicate or no match is an error (sema_error/3).",
+    cites('C11 6.5.1.1')
+]).
 generic_selection(ControlType, Associations, Env, Loc, Selected) :-
     maplist(generic_association(Env, Loc), Associations, Typed),
     generic_unique(Typed, Loc),
