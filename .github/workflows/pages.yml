@@ -12,6 +12,7 @@ on:
       - "docs/**"
       - "packages/site/**"
       - "nanofil/src/**"
+      - "nanofil/docs/**"
       - "nanofil/web/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
