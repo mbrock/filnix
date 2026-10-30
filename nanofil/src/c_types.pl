@@ -853,8 +853,9 @@ doc(vector_type(+Specs, +Elem, +Env, -Type), det, [
     "vector access is checked against the alignment of the type it is",
     "made through (immintrin.h's __m128i_u is aligned(1), so",
     "_mm_loadu_si128 checks alignment 1). Only 16-byte vectors are supported (the SSE through",
-    "SSE4.2 intrinsics), and only with NANOFIL_VECTORS=1 until a vector",
-    "access is checked as one access of its full width (docs/vector-access.md).",
+    "SSE4.2 intrinsics), and only with NANOFIL_VECTORS=1 until a survey",
+    "with it on; each access is checked as one access of its full width",
+    "(docs/vector-access.md).",
     cites('GCC manual, Using Vector Instructions through Built-in Functions'),
     cites('Clang Language Extensions, Vectors and Extended Vectors')
 ]).

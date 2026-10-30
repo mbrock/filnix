@@ -22,8 +22,7 @@
 # handle inline asm (Reason)"), or else up to the first "(" or "." ("cannot
 # write 56 bytes when upper - ptr = 48"), instead of counting as "trap".
 # A "// vectors" line compiles with NANOFIL_VECTORS=1, which turns on GNU
-# vector types until their accesses are checked at full width
-# (docs/vector-access.md).
+# vector types, still off by default (docs/vector-access.md).
 # A "// cflags: ..." line passes those flags to clang, and nanofil
 # compiles clang's preprocessing with them, as nanofil-cc does (with
 # NANOFIL_STD=c23 for -std=c23 or gnu23, gnu89 for C90 modes, and

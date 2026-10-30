@@ -5439,15 +5439,11 @@ elementwise_one(Op, [A, B], E, Sign, Bytes, Ctx, O) -->
 % vector_access(+K, +VT, +Addr)//: a K (read or write) access of a
 % vector of type VT at Addr is checked as one access of its full width,
 % with its alignment capped at 8, before any of its 8-byte chunks
-% (docs/vector-access.md), as filcc checks it; with
-% NANOFIL_VECTOR_ACCESS=1 until M7's access term lands.
+% (docs/vector-access.md), as filcc checks it.
 vector_access(K, VT, Addr) -->
-    (   { getenv('NANOFIL_VECTOR_ACCESS', '1') }
-    ->  env(Env),
-        { type_size_align(VT, Env, Size, A), Align is min(A, 8) },
-        emit(access(K, Addr, Size, Align))
-    ;   []
-    ).
+    env(Env),
+    { type_size_align(VT, Env, Size, A), Align is min(A, 8) },
+    emit(access(K, Addr, Size, Align)).
 
 % vector_chunks_loaded(+Ebs, +Src, -Xs)//, vector_chunks_stored(+Ebs,
 % +Xs, +Dst)//: a vector store's 8-byte chunks, loaded from the copy

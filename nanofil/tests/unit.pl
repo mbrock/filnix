@@ -3765,14 +3765,14 @@ test(asm_fixed_lines) :-
 % struct's member, the type's capped at 8 otherwise.
 test(vector_access_precedes_chunks) :-
     setup_call_cleanup(
-        ( setenv('NANOFIL_VECTORS', '1'), setenv('NANOFIL_VECTOR_ACCESS', '1') ),
+        setenv('NANOFIL_VECTORS', '1'),
         ( c_tokens("typedef long long v2 __attribute__((vector_size(16)));
                     typedef long long v2u __attribute__((vector_size(16), aligned(1)));
                     struct P { char c; v2u v; } __attribute__((packed));
                     void f(v2 *d, const v2 *s, const v2u *u, v2u *w, struct P *p) {
                         v2u x = *u; *d = *s; *w = x; p->v = *d; }", 'va.c', Ts),
           c_parse(Ts, C), once(c_module(C, module(Is))) ),
-        ( unsetenv('NANOFIL_VECTORS'), unsetenv('NANOFIL_VECTOR_ACCESS') )),
+        unsetenv('NANOFIL_VECTORS')),
     memberchk(func(f, _, _, _, [block(_, _, Body, _)]), Is),
     findall(K-Al, member(access(K, _, 16, Al), Body), Accesses),
     forall(member(A, [read-1, read-8, write-8, write-1]), memberchk(A, Accesses)),
