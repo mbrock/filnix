@@ -113,6 +113,13 @@ alloc_count(module(Items), N) :-
 
 promote_func(Mode, F0, F) :- promote_context(Mode, F0, [], F, _).
 
+%! promote_context(+Mode, +F0, +Records0, -F, -Records) is det.
+%
+%  As promote_func/3, carrying F0's context Records0 along (provenance.pl):
+%  the removed loads and stores' values become aliases of the slot's
+%  value, each slot's phis get generated origins citing its declaration
+%  and stores, and instruction sites are re-indexed. A setjmp function
+%  is left alone.
 promote_context(_, F, Rs, F, Rs) :- setjmp_func(F), !.
 promote_context(Mode, F0, Rs0, F, Rs) :-
     F0 = func(Name, Linkage, Ret, Params, Blocks0),
@@ -186,10 +193,12 @@ type_slot(ptr(_), p).
 
 promotable(Mode, F, Roots) :- promotable(Mode, F, Roots, _).
 
-% promotable(+Mode, +F, -Roots, -An): as promotable/3, with An =
-% an(Classes, Addrs, Counts): F's alloc_classes/2, address_temps/2 and
-% def_counts/2, computed once for escape analysis and the rewrite, or
-% an([], none, none) when F has no alloc or calls setjmp.
+%! promotable(+Mode, +F, -Roots, -An) is det.
+%
+%  As promotable/3, with An = an(Classes, Addrs, Counts): F's
+%  alloc_classes/2, address_temps/2 and def_counts/2, computed once for
+%  escape analysis and the rewrite, or an([], none, none) when F has no
+%  alloc or calls setjmp.
 promotable(_, F, [], an([], none, none)) :- setjmp_func(F), !.
 % Without an alloc, skip escape analysis.
 promotable(_, func(_, _, _, _, Blocks), [], an([], none, none)) :-
@@ -287,8 +296,9 @@ strict_ssa(F, Cfg, Idom) :-
     def_counts(F, Counts),
     strict_ssa(F, Counts, Cfg, Idom).
 
-% strict_ssa(+F, +Counts, +Cfg, +Idom): as strict_ssa/3, given F's
-% def_counts/2.
+%! strict_ssa(+F, +Counts, +Cfg, +Idom) is semidet.
+%
+%  As strict_ssa/3, given F's def_counts/2.
 strict_ssa(F, Counts, cfg(_, Rpo, _, _), Idom) :-
     \+ ( gen_assoc(_, Counts, N), N > 1 ),
     F = func(_, _, _, Params, Blocks),
