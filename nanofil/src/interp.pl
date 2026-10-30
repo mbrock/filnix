@@ -762,12 +762,15 @@ kind_res(check, check(Lo, Hi, Rights, Align), a, filc, [ptr(A, Cap)],
 % (docs/m7.md, round 4). Only a freed object or a write to a read-only
 % one is the program's trap, as the reference check's; any other failure
 % means the span the validator relied on was false: unchecked(span).
-kind_res(renew, renew(Lo, Hi, Rights, Align), a, filc, [ptr(A, Cap)],
+kind_res(renew, renew(Lo, Hi, Rights, Align), a, filc, [ptr(A, Cap), PV],
          s(Mem, Fuel), Res, s(Mem, Fuel)) :-
+    PV == ptr(A, Cap), !,
     raw_address(A, Lo, B),
     Size is Hi - Lo,
     access_res(Mem, B, Cap, Size, Rights, Align, Res0),
     renew_res(Res0, ptr(A, Cap), Mem, Res).
+% P is not the pointer Q1's check saw (same_pointer/3 was wrong).
+kind_res(renew, renew(_, _, _, _), a, filc, [_, _], S, unchecked(alias), S).
 % A span test (docs/m7.md, round 5) compares the object's current
 % bounds with the span, addresses modulo 2^64 as native code forms them;
 % it is 0 for any capability that is not an object's, and never traps.

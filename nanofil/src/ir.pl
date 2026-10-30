@@ -147,7 +147,7 @@
     | `va_arg` | any | `[p]` | filc only: a load through a va_list address, advancing its cursor (reads and writes memory) |
     | `setjmp(Kind)` | `w` | `[p, w]`: Buf, SaveMask | filc only, below |
     | `check(Lo, Hi, Rights, Align)` | `a` | `[p]` | checked stage, below |
-    | `renew(Lo, Hi, Rights, Align)` | `a` | `[a]` | checked stage: renew an earlier heap proof's temporal facts (docs/m7.md, round 4) |
+    | `renew(Lo, Hi, Rights, Align)` | `a` | `[a, p]`: Q1, P | checked stage: renew an earlier heap proof's temporal facts (docs/m7.md, round 4) |
     | `span_test(Lo, Hi)` | `w` | `[p]` | checked stage: 1 if the pointer's object contains [P+Lo, P+Hi), else 0; never traps (docs/m7.md, round 5) |
     | `renew_if(Lo, Hi, Rights, Align)` | `a` | `[p, w]`: P, G | checked stage: `check(Lo, Hi, Rights, Align)` of P, whose bounds part a passing span test G proves (docs/m7.md, round 5) |
     | `check_local(Name, Off, Bytes, Rights, Align)` | `a` | `[]` | checked stage: prove exact bounds and alignment for the named object, preserving its identity and offset |
@@ -185,14 +185,16 @@
     P+Lo is Align-aligned (Align one of 1, 2, 4, 8, 16); otherwise its
     result is P, proven accessible.
 
-    `renew(Lo, Hi, Rights, Align)` reads `[a Q1]`, the proof of an
-    earlier heap check of P1 that dominates it, whose bounds and
+    `renew(Lo, Hi, Rights, Align)` reads `[a Q1, p P]`: Q1 is the proof
+    of an earlier heap check of P1 that dominates it, whose bounds and
     alignment still hold since an object's bounds change only when it is
-    freed. It traps as `check(Lo, Hi, Rights, Align)` of P1 would if the
-    object has been freed since, or if Rights is `write` and the object is
-    read-only; otherwise its result is Q1's value. Q1 and P1 have one
-    definition each, Q1's check covers [Lo, Hi) at Align, and the
-    function has no setjmp (stage_func/5).
+    freed, and P the pointer of the check it replaces, with P1's address
+    and capability (same_pointer/3). It traps as `check(Lo, Hi, Rights,
+    Align)` of P would if the object has been freed since, or if Rights
+    is `write` and the object is read-only; otherwise its result is P,
+    proven accessible. Q1 and P1 have one definition each, Q1's check
+    covers [Lo, Hi) at Align, and the function has no setjmp
+    (stage_func/5).
 
     `span_test(Lo, Hi)` reads `[p P0]`, with integers Lo < Hi. It is 1
     when P0's capability is an object's and lower =< P0+Lo < P0+Hi =<
@@ -335,7 +337,8 @@
                module_mode/2, module_stage/2, addr_class/2, variadic_func/1, setjmp_func/1,
                narrow_type/3, without_locs/2, access_size_align/3,
                jump_target/2, polls_every_cycle/1, temp_defs/3, implicit_flight/1, local_objects/2,
-               pointer_memory_effects/2, single_definitions/3, guard_chain/3]).
+               pointer_memory_effects/2, single_definitions/3, guard_chain/3,
+               same_pointer/3]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -440,7 +443,7 @@ kind_arity(float_to_int, 1).
 kind_arity(int_to_float, 1).
 kind_arity(cast, 1).
 kind_arity(check, 1).
-kind_arity(renew, 1).
+kind_arity(renew, 2).
 kind_arity(span_test, 1).
 kind_arity(renew_if, 2).
 kind_arity(check_local, 0).
@@ -1475,6 +1478,19 @@ op_interval(sub, [A, const(C)], K, Once, D, Lo, Hi, M0, M) :- !,
     offset_interval(Once, A, K, D, Lo0, Hi0, M0, M),
     Lo is Lo0 - V, Hi is Hi0 - V.
 
+% same_pointer(+Once, +P, +P1): at any point both P and P1 dominate,
+% they hold the same address and capability: both reach one
+% single-definition base B through guard_chain/3 at point offsets equal
+% modulo 2^64 (P == P1 included). After B's last execution before that
+% point, each definition on either chain ran again, since each dominates
+% it and B dominates each, so both were computed from B's current value
+% (docs/m7.md, round 4 addendum).
+same_pointer(Once, P, P1) :-
+    guard_chain(Once, P, Chain), guard_chain(Once, P1, Chain1),
+    member(B-i(K, K), Chain), B = tmp(N), get_assoc(N, Once, _),
+    member(B1-i(K1, K1), Chain1), B1 == B,
+    (K - K1) mod (1 << 64) =:= 0, !.
+
 % guard_covers(+Once, +P, +G, +Lo, +Hi): G is a single-definition span
 % test of a single-definition P0 whose span contains P's [Lo, Hi) for
 % every offset P can have from P0.
@@ -1510,18 +1526,21 @@ checked_inst_rest(let(tmp(Q), f, check_function, _), Insts, Fn-_, _, _, Rest, Li
     (   Insts = [raw_call(_, tmp(Q), _)|Rest] -> true
     ;   fn_error(Fn, 'function check tmp(~w) is not followed by its raw call', [Q])
     ).
-checked_inst_rest(let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [Q1]), Insts, Fn-src(Sources, _), _,
+checked_inst_rest(let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [Q1, P]), Insts, Fn-src(Sources, Once), _,
                   Live0, Rest, Live) :- !,
     (   Q1 = tmp(N1), get_assoc(N1, Sources, check(P1, Lo1, Hi1, Al1)),
         Lo1 =< Lo, Hi =< Hi1, Al1 mod Align =:= 0, (Lo - Lo1) mod Align =:= 0
     ->  true
     ;   fn_error(Fn, 'renew tmp(~w) of ~w: no single-definition heap check that covers it, or a setjmp', [Q, Q1])
     ),
+    (   same_pointer(Once, P, tmp(P1)) -> true
+    ;   fn_error(Fn, 'renew tmp(~w): ~w is not ~w\'s checked pointer tmp(~w)', [Q, P, Q1, P1])
+    ),
     (   Insts = [Access|Rest],
         covered_access(Access, Q, Lo, Hi, Rights, Align),
         access_storage_effects(Access, heap)
-    ->  evidence_after(let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [Q1]), Live0, Live1),
-        evidence_add(live(Q, tmp(P1), Lo, Hi, Rights, Align), Live1, Live2),
+    ->  evidence_after(let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [Q1, P]), Live0, Live1),
+        evidence_add(live(Q, P, Lo, Hi, Rights, Align), Live1, Live2),
         evidence_after(Access, Live2, Live)
     ;   fn_error(Fn, 'renew tmp(~w) is not followed by an access it covers', [Q])
     ).
@@ -2066,7 +2085,7 @@ kind_arg_classes(load, _, _, Mode, [A]) :- addr_class(Mode, A).
 kind_arg_classes(atomic_load, _, p, filc, [p]).
 kind_arg_classes(alloc, _, _, _, [l]).
 kind_arg_classes(check, _, _, filc, [p]).
-kind_arg_classes(renew, _, _, filc, [a]).
+kind_arg_classes(renew, _, _, filc, [a, p]).
 kind_arg_classes(span_test, _, _, filc, [p]).
 kind_arg_classes(renew_if, _, _, filc, [p, w]).
 kind_arg_classes(check_local, _, _, filc, []).

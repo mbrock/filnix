@@ -546,6 +546,16 @@ on renewal's own bzip2 `-d` time regression, which guards build on.
 Slice B (symbolic and induction spans), versioning and peeling wait on
 that measurement.
 
+On quiet swa, guard keeps renew's bzip2 `-d` penalty (1.44G cycles against
+1.06G, 8.7M resyncs) and ties renew in the gate geomean (2.01 against
+-O's 1.99). The penalty follows renewal's frame: P1 was kept live to
+every renew. A reviewed addendum (docs/m7.md) has renew read the
+replaced check's own pointer P instead, which has P1's address and
+capability (`same_pointer/3`), so `BZ2_decompress`'s frame is 1312
+bytes, not 1712 (reference 1296), and `luaV_execute`'s and
+`sqlite3VdbeExec`'s are the reference's again. Both stay opt-in until
+swa times them.
+
 **First deliverable:** one narrowly specified alternative to repeated
 runtime checking, such as reuse for repeated scalar accesses in a
 straight-line region. State the facts, transfer and merge rules,

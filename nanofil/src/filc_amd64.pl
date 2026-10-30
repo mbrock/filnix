@@ -636,13 +636,14 @@ single_proofs(Params, Blocks, Single) :-
                    \+ get_assoc(Q, MultiSet, _),
                    ( P = tmp(N) -> \+ get_assoc(N, MultiSet, _) ; true ) ),
             Checks),
-    % A renew's proof stands for its source check's pointer
-    % (docs/m7.md, round 4), when it too has one definition.
+    % A renew's proof stands for its own pointer P, the replaced check's
+    % (docs/m7.md, round 4 addendum), when Q and P have one definition.
     list_to_assoc(Checks, CheckAssoc),
     findall(Q-P, ( member(block(_, _, Is, _), Blocks),
-                   member(let(tmp(Q), a, renew(_, _, _, _), [tmp(Q1)]), Is),
+                   member(let(tmp(Q), a, renew(_, _, _, _), [tmp(Q1), P]), Is),
                    \+ get_assoc(Q, MultiSet, _),
-                   get_assoc(Q1, CheckAssoc, P) ),
+                   get_assoc(Q1, CheckAssoc, _),
+                   ( P = tmp(N) -> \+ get_assoc(N, MultiSet, _) ; true ) ),
             Renews),
     append(Checks, Renews, Single0),
     % Q has one definition, so each key occurs once.
@@ -672,7 +673,7 @@ fused_insts([Inst0|Insts0], Fn, Single, Proofs0, [Inst|Insts]) :-
     ->  proofs_add(Q-P, Proofs, Proofs1)
     ;   Inst0 = let(tmp(Q), a, renew_if(_, _, _, _), [P, _])
     ->  proofs_add(Q-P, Proofs, Proofs1)
-    ;   Inst0 = let(tmp(Q), a, renew(_, _, _, _), [tmp(Q1)]), get_assoc(Q1, Single, P)
+    ;   Inst0 = let(tmp(Q), a, renew(_, _, _, _), [tmp(Q1), P]), get_assoc(Q1, Single, _)
     ->  proofs_add(Q-P, Proofs, Proofs1)
     ;   Proofs1 = Proofs
     ),
@@ -684,8 +685,8 @@ fused_insts([Inst0|Insts0], Fn, Single, Proofs0, [Inst|Insts]) :-
         ->  Inst = reused(Access), Insts1 = Insts0
         ;   throw_fn(Fn, 'a reused proof at an offset beyond 32 bits')
         )
-    ;   Inst0 = let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [tmp(Q1)])
-    ->  renewed_inst(Q, renew(Lo, Hi, Rights, Align), Q1, Insts0, Fn, Single, Inst, Insts1)
+    ;   Inst0 = let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [tmp(Q1), P])
+    ->  renewed_inst(Q, renew(Lo, Hi, Rights, Align), Q1-P, Insts0, Fn, Single, Inst, Insts1)
     ;   fused_inst(Inst0, Insts0, Fn, Inst, Insts1)
     ),
     % A fused access or call may define Q's pointer too.
@@ -720,13 +721,14 @@ proofs_kill(D, pr(ByQ0, ByP0), pr(ByQ, ByP)) :-
 proof_of_name(D, Q, ByQ0, ByQ) :-
     (   get_assoc(Q, ByQ0, P), P == tmp(D) -> del_assoc(Q, ByQ0, _, ByQ) ; ByQ = ByQ0 ).
 
-% renewed_inst(+Q, +Renew, +Q1, +Insts0, +Fn, +Single, -Inst, -Insts): a
-% renew of Q1 and the access after it, at Q1's checked pointer P1, which
-% needs Q1 and P1 to have one definition each: with strict SSA, P1's slot
-% then holds the value Q1's check saw. Fusion and offsets as for a check.
-renewed_inst(Q, Renew, Q1, [Access0|Insts], Fn, Single, fused(Renew, Access), Insts) :- !,
-    (   get_assoc(Q1, Single, P1), P1 = tmp(_),
-        proven_access(Access0, Q, P1, Access),
+% renewed_inst(+Q, +Renew, +Q1-P, +Insts0, +Fn, +Single, -Inst, -Insts):
+% a renew of Q1 and the access after it, at P, the replaced check's
+% pointer, which has Q1's checked pointer's address and capability (the
+% validator's same_pointer/3, docs/m7.md round 4 addendum). P1 is not
+% read, so it need not stay live. Fusion and offsets as for a check.
+renewed_inst(Q, Renew, Q1-P, [Access0|Insts], Fn, Single, fused(Renew, Access), Insts) :- !,
+    (   get_assoc(Q1, Single, _), P = tmp(_),
+        proven_access(Access0, Q, P, Access),
         Access \= let(_, _, raw_cas(_, _), _)
     ->  true
     ;   throw_fn(Fn, 'a renew without a single-definition source, or its access')

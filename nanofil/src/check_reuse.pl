@@ -43,7 +43,7 @@
 :- use_module(library(ordsets)).
 :- use_module(library(pairs)).
 :- use_module(ir, [op_kind/2, pointer_memory_effects/2, temp_defs/3, single_definitions/3,
-                   guard_chain/3]).
+                   guard_chain/3, same_pointer/3]).
 :- use_module(cfg, [inst_def/2, inst_uses/2, func_cfg/2, cfg_idoms/2, dominates/3,
                     natural_loops/3]).
 :- use_module(provenance, [code_items/2, context_records/3, context_index/2, with_context/3,
@@ -383,7 +383,8 @@ renewed_item(func(N, L, R, Ps, Bs0), func(N, L, R, Ps, Bs)) :- !,
     ;   names_info(Ps, Bs0, Info),
         func_cfg(Bs0, Cfg), cfg_idoms(Cfg, Idom), Cfg = cfg(Entry, _, _, _),
         renew_sources(Info, Bs0, Entry, Idom, Sources),
-        maplist(renewed_block(Info, Entry, Idom, Sources), Bs0, Bs1),
+        single_definitions(Ps, Bs0, Once),
+        maplist(renewed_block(Info-Once, Entry, Idom, Sources), Bs0, Bs1),
         renew_selection(N, Bs0, Bs1, Bs)
     ).
 renewed_item(Item, Item).
@@ -416,11 +417,11 @@ selected_inst(From, To, I0, I1, I, K0, K) :-
     ).
 
 % renew_sources(+Info, +Blocks, +Entry, +Idom, -Sources): Sources maps
-% Root-K, a root and an offset from it, to s(Depth, L, I, Q1, check) for
+% Root-K, a root and an offset from it, to s(Depth, L, I, Q1, check, P1) for
 % each reachable heap check of a pointer at K from Root whose proof and
 % pointer have one definition, sorted by dominator depth and index.
 renew_sources(Info, Blocks, Entry, Idom, Sources) :-
-    findall((R-K)-s(Depth, L, I, Q1, check(Lo1, Hi1, Al1)),
+    findall((R-K)-s(Depth, L, I, Q1, check(Lo1, Hi1, Al1), P1),
             ( member(block(L, _, Is, _), Blocks),
               dom_depth(Idom, Entry, L, Depth),
               nth0(I, Is, let(tmp(Q1), a, check(Lo1, Hi1, _, Al1), [P1])),
@@ -448,19 +449,22 @@ renewed_block(Info, Entry, Idom, Sources, block(L, Phis, Is0, J), block(L, Phis,
     ).
 
 renewed_insts([], _, _, _, _, _, []).
-renewed_insts([Inst0|Is0], I, L, Info, Idom, Sources, [Inst|Is]) :-
+renewed_insts([Inst0|Is0], I, L, Info-Once, Idom, Sources, [Inst|Is]) :-
     (   Inst0 = let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]),
         Is0 = [Access|_], renewable_access(Access, Q),
         base_of(Info, P, R, K),
         get_assoc(R-K, Sources, Ss),
-        member(s(_, L1, I1, Q1, check(Lo1, Hi1, Al1)), Ss),
+        member(s(_, L1, I1, Q1, check(Lo1, Hi1, Al1), P1), Ss),
         (   L1 == L -> I1 < I ; dominates(Idom, L1, L) ),
-        subsumes(Lo1, Hi1, write, Al1, Lo, Hi, Rights, Align)
-    ->  Inst = let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [tmp(Q1)])
+        subsumes(Lo1, Hi1, write, Al1, Lo, Hi, Rights, Align),
+        % The validator's identity rule (ir.pl), which bounds its walk:
+        % the pass renews only what it accepts.
+        same_pointer(Once, P, P1)
+    ->  Inst = let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [tmp(Q1), P])
     ;   Inst = Inst0
     ),
     I1n is I + 1,
-    renewed_insts(Is0, I1n, L, Info, Idom, Sources, Is).
+    renewed_insts(Is0, I1n, L, Info-Once, Idom, Sources, Is).
 
 % A renew's access: scalar or an ordinary pointer access; not a cas.
 renewable_access(Access, Q) :- scalar_access(Access, Q).
@@ -494,7 +498,7 @@ block_renews(Info, Checks, block(L, Ph, Is0, J), block(L, Ph, Is, J)) :-
 
 inst_renews(_, _, Inst, Inst) :- !.
 inst_renews(Info, Checks, let(tmp(Q), a, check(Lo, Hi, Rs, Al), [P]),
-            let(tmp(Q), a, renew(Lo, Hi, Rs, Al), [tmp(Q1)])) :-
+            let(tmp(Q), a, renew(Lo, Hi, Rs, Al), [tmp(Q1), P])) :-
     get_assoc(Q1, Checks, P1), related(Info, P, P1, 0).
 
 %! guard_checks(+M0, -M) is det.
