@@ -553,7 +553,9 @@ every renew. A reviewed addendum (docs/m7.md) has renew read the
 replaced check's own pointer P instead, which has P1's address and
 capability (`same_pointer/3`), so `BZ2_decompress`'s frame is 1312
 bytes, not 1712 (reference 1296), and `luaV_execute`'s and
-`sqlite3VdbeExec`'s are the reference's again. Both stay opt-in until
+`sqlite3VdbeExec`'s are the reference's again. On swa, bzip2 `-d`'s
+resyncs fell to baseline (renew 43k, guard 49k, reference 47k, from
+8.5M), with renewal's instruction savings intact. Both stay opt-in until
 swa times them.
 
 **First deliverable:** one narrowly specified alternative to repeated
