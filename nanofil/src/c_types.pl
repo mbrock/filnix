@@ -4221,6 +4221,7 @@ vector_builtin_(pblendvb128, [v16qi, v16qi, v16qi], v16qi).
 vector_builtin_(pblendw128, [v8hi, v8hi, int], v8hi).
 vector_builtin_(pmuludq128, [v4si, v4si], v2di).
 vector_builtin_(pmuldq128, [v4si, v4si], v2di).
+vector_builtin_(pclmulqdq128, [v2di, v2di, char], v2di).
 vector_builtin_(pmaddwd128, [v8hi, v8hi], v4si).
 vector_builtin_(pmaddubsw128, [v16qi, v16qi], v8hi).
 vector_builtin_(psadbw128, [v16qi, v16qi], v2di).

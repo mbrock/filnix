@@ -5004,6 +5004,26 @@ imm(A, Ctx, I) -->
 bop(Op, A, B, Ctx, R) --> binary(Op, A, B, Ctx, R).
 k(N, v(const(N), int)).
 
+% clmul_bits(+I, +A, +B, +Ctx, +Lo0, +Hi0, -Lo, -Hi)//: Lo:Hi is
+% Lo0:Hi0 XOR the carry-less product of A by B's bits I to 63, each a
+% mask that keeps or clears A's shifted copies, without a branch.
+clmul_bits(64, _, _, _, Lo, Hi, Lo, Hi) --> !.
+clmul_bits(I, A, B, Ctx, Lo0, Hi0, Lo, Hi) -->
+    bop(shr, B, v(const(I), int), Ctx, B1),
+    bop(and, B1, v(const(1), ullong), Ctx, Bit),
+    bop(sub, v(const(0), ullong), Bit, Ctx, M),
+    bop(shl, A, v(const(I), int), Ctx, AL),
+    bop(and, AL, M, Ctx, TL),
+    bop(xor, Lo0, TL, Ctx, Lo1),
+    (   { I =:= 0 } -> { Hi1 = Hi0 }
+    ;   { S is 64 - I },
+        bop(shr, A, v(const(S), int), Ctx, AH),
+        bop(and, AH, M, Ctx, TH),
+        bop(xor, Hi0, TH, Ctx, Hi1)
+    ),
+    { I1 is I + 1 },
+    clmul_bits(I1, A, B, Ctx, Lo1, Hi1, Lo, Hi).
+
 % isel(+C, +A, +B, +T, +Ctx, -R)//: R, of integer type T, is A where the
 % int C is 1 and B where it is 0: B ^ ((A ^ B) & -C).
 isel(C, A, B, T, Ctx, R) -->
@@ -5092,6 +5112,16 @@ vector_op(Name, _, [VA, VB], Ret, Ctx, R) -->
     convert(A0, Wide, X0), convert(A2, Wide, X2),
     bop(mul, X0, B0, Ctx, P0), bop(mul, X2, B2, Ctx, P2),
     made(Ret, [P0, P2], R).
+% PCLMULQDQ: the carry-less product of A's quadword imm8 bit 0 selects
+% and B's quadword bit 4 selects, as the XOR over each bit i set in b of
+% a shifted left by i (its low quadword) and right by 64 - i (its high).
+vector_op(pclmulqdq128, [_, _, C], [VA, VB, _], Ret, Ctx, R) --> !,
+    imm(C, Ctx, I),
+    { v2du(Q), SA is I /\ 1, SB is (I >> 4) /\ 1 },
+    lanes(VA, Q, Ctx, La), lanes(VB, Q, Ctx, Lb),
+    { nth0(SA, La, A), nth0(SB, Lb, B), Z = v(const(0), ullong) },
+    clmul_bits(0, A, B, Ctx, Z, Z, Lo, Hi),
+    made(Ret, [Lo, Hi], R).
 vector_op(pmaddwd128, _, [VA, VB], Ret, Ctx, R) --> !,
     { v8hi(H) }, lanes(VA, H, Ctx, La), lanes(VB, H, Ctx, Lb),
     pair_products(La, Lb, uint, Ctx, Out),
