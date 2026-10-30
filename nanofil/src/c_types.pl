@@ -550,6 +550,7 @@ attribute_entry(gnu_inline, honored, 'c_lower external_inline_body/4 gives the b
 attribute_entry(hot, hint, 'placement and optimization hint').
 attribute_entry(cold, hint, 'placement and optimization hint').
 attribute_entry(optimize, hint, 'per-function optimization level').
+attribute_entry(optnone, hint, 'clang\'s per-function -O0, as optimize; ghostscript\'s ttinterp.c and sjpege.c').
 attribute_entry(target, hint, 'instruction set of the function; nanofil emits baseline x86-64').
 attribute_entry(min_vector_width, hint, 'vector width hint of clang\'s intrinsic headers').
 attribute_entry(noreturn, hint, 'a promise about calls; nanofil does not rely on it').
