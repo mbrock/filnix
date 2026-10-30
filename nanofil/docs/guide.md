@@ -115,7 +115,9 @@ int three(void) {
 `main/0` reads the options. `-O` selects the middle end, and each of
 `--registers`, `--branches`, `--checks`, `--memcpy`, `--inline` and
 `--simplify` can be chosen on its own, with defaults that depend on
-`-O`. It then calls `command/4`. For `cc FILE` that is:
+`-O`. GNU vector types are on by default; `--no-vectors` (or
+`--vectors=off`, `NANOFIL_VECTORS=0`) refuses them. It then calls
+`command/4`. For `cc FILE` that is:
 
 ```prolog
 command(Opt, Registers, Checks, [cc, File]) :- !,
@@ -268,8 +270,10 @@ constant for static initializers.
 ### 5. Lowering: c_lower.pl
 
 `c_lower:c_module/2` turns the items into an IR module. `function/8`
-lowers one definition: every parameter and local variable gets an
-`alloc`, all of them hoisted into the entry block, and statements and
+lowers one definition: every named parameter and local variable gets
+an `alloc`, hoisted into the entry block, except a variable length
+array's, which is allocated where its declaration is reached (C11
+6.2.4p7); statements and
 expressions become instructions in blocks. The lowering nonterminals
 (`stmt//2`, `lower//3` for values, `place//3` for objects) thread one
 state term, `st/8`, through a DCG as semicontext; the fields are tabled
