@@ -68,6 +68,13 @@ copy_item(All, F0, Items) :-
 copy_item(_, data(N, L, A, Is), [data(N, L, A, Is)]) :- !.
 copy_item(_, alias(N, L, T), [alias(N, L, T)]).
 
+%! copy_context(+F0, +Records0, -F, -Records) is det.
+%
+%  F is the function F0 with its copies and trivial phis removed, as
+%  copy_module/2 removes them, and Records its context Records0 with
+%  each removed value recorded as an alias of its survivor and the
+%  sites re-indexed. F0 not in strict SSA form, or calling setjmp, is
+%  left alone.
 copy_context(F, Rs, F, Rs) :- setjmp_func(F), !.
 copy_context(func(Name, Linkage, Ret, Params, Blocks0), Rs0, F, Rs) :-
     F0 = func(Name, Linkage, Ret, Params, Blocks0),
@@ -95,7 +102,12 @@ copy_context(func(Name, Linkage, Ret, Params, Blocks0), Rs0, F, Rs) :-
     ;   F = F0, Rs = Rs0
     ).
 
-% A substitution is history, not a new primary name for its survivor.
+%! copied_records(+Reps, +Map, +Records0, -Records) is det.
+%
+%  Records are Records0 after the substitution Reps, with sites moved by
+%  Map: removed phis lose their sites, and each alias's value is
+%  substituted too. A substitution is history, not a new primary name
+%  for its survivor.
 copied_records(Reps, Map, Rs0, Rs) :-
     remap_sites(Rs0, Map, Rs1),
     exclude(removed_phi_site(Reps), Rs1, Rs2),
@@ -110,8 +122,9 @@ alias_reps(Reps, alias(T, V0, H, Os), alias(T, V, H, Os)) :- !,
     value_reps(V0, Reps, V).
 alias_reps(_, R, R).
 
-% temp_classes(+Params, +Blocks, -Classes): assoc Temp -> class of its
-% definition.
+%! temp_classes(+Params, +Blocks, -Classes) is det.
+%
+%  Assoc Temp -> class of its definition.
 temp_classes(Params, Blocks, Classes) :-
     findall(T-K, member(param(K, tmp(T)), Params), ParamPairs),
     findall(T-K,
@@ -136,11 +149,12 @@ copy_value(const(N), K, _, const(V)) :-
     modulus(K, M),
     V is N mod M.
 
-% copy_reps(+Copies, +D-_, +Reps0, -Reps): Reps is Reps0 with the
-% value that replaces D, and every link on the way to it, added.
-% Strict dominance rules out cycles among the live copy definitions.
-% copy_chain/6 is tail recursive even when a chain has thousands of
-% links.
+%! copy_reps(+Copies, +D-_, +Reps0, -Reps) is det.
+%
+%  Reps is Reps0 with the value that replaces D, and every link on the
+%  way to it, added. Strict dominance rules out cycles among the live
+%  copy definitions. copy_chain/6 is tail recursive even when a chain
+%  has thousands of links.
 copy_reps(Copies, D-_, Reps0, Reps) :-
     copy_chain(tmp(D), Copies, Reps0, [], Path, V),
     foldl(value_temp_reps(V), Path, Reps0, Reps).
@@ -233,9 +247,11 @@ value_redirected(D, V, V0, R) :-
 
 %% Substitution
 
-% reps_block(+Reps, +Block0, -Block): Block is Block0 without
-% the phis and copies whose temp is in Reps, and with every use of such
-% a temp replaced by its value.
+%! reps_block(+Reps, +Block0, -Block, -Map) is det.
+%
+%  Block is Block0 without the phis and copies whose temp is in Reps,
+%  and with every use of such a temp replaced by its value. Map pairs
+%  each kept instruction's old site with its new one (remap_sites/3).
 reps_block(Reps, block(L, Phis0, Insts0, Jump0),
                   block(L, Phis, Insts, Jump), Map) :-
     phis_reps(Phis0, Reps, Phis),
