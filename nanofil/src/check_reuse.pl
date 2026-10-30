@@ -160,9 +160,13 @@ state_none(Info, St) :- facts_state(Info, [], St).
 phi_kills(phi(tmp(D), _, _), Facts0, Facts) :-
     exclude(mentions(D), Facts0, Facts).
 
-% names_info(+Params, +Blocks, -Info): Info is info(Defs, Uses), each
-% temporary's number of definitions (parameters, phis and every
-% instruction form) and of instructions reading it.
+%! names_info(+Params, +Blocks, -Info) is det.
+%
+%  Info is info(Defs, Uses, Bases): each temporary's number of
+%  definitions (parameters, phis and every instruction form) and of
+%  instructions reading it, and Bases, the assoc from each
+%  single-definition flight X to B-K when X's address is B's plus the
+%  constant K with B's capability, B defined once too (base_of/4).
 names_info(Params, Blocks, info(Defs, Uses, Bases)) :-
     temp_defs(Params, Blocks, DefList),
     findall(N, member(N-_, DefList), Ns), counts(Ns, Defs),
@@ -180,9 +184,11 @@ flight_offset(flight(tmp(X), add, [address(B), const(K)], lower(B1)), X, B, K) :
 flight_offset(flight(tmp(X), sub, [address(B), const(K0)], lower(B1)), X, B, K) :- B == B1, K is -K0.
 flight_offset(flight(tmp(X), copy, [address(B)], lower(B1)), X, B, 0) :- B == B1.
 
-% base_of(+Info, +P, -R, -K): P's address is R's plus K, with R's
-% capability, by single-definition flights; R = P and K = 0 if P is no
-% such flight or its chain has a cycle (possible in unreachable blocks).
+%! base_of(+Info, +P, -R, -K) is det.
+%
+%  P's address is R's plus K, with R's capability, by single-definition
+%  flights; R = P and K = 0 if P is no such flight or its chain has a
+%  cycle (possible in unreachable blocks).
 base_of(Info, P, R, K) :-
     (   base_walk(Info, P, [], R0, K0) -> R = R0, K = K0 ; R = P, K = 0 ).
 
@@ -191,7 +197,9 @@ base_walk(info(_, _, Bases), tmp(N), Seen, R, K) :- get_assoc(N, Bases, B-K0), !
     base_walk(info(_, _, Bases), B, [N|Seen], R, K1), K is K0 + K1.
 base_walk(_, P, _, P, 0).
 
-% related(+Info, +P, +P1, -D): P's address is P1's plus D, same capability.
+%! related(+Info, +P, +P1, -D) is semidet.
+%
+%  P's address is P1's plus D, same capability.
 related(_, P, P1, 0) :- P == P1, !.
 related(Info, P, P1, D) :-
     % Roots are singly defined: names_info/3 records only flights from
@@ -215,14 +223,17 @@ single_names(info(Defs, _, _), avail(P, Q, _, _, _, _)) :-
     count(Defs, Q, 1),
     (   P = tmp(N) -> count(Defs, N, C), C =< 1 ; true ).
 
-% single_proof(+Info, +Q): the proof tmp(Q) has one definition and one
-% reader, the access that follows its check.
+%! single_proof(+Info, +Q) is semidet.
+%
+%  The proof tmp(Q) has one definition and one reader, the access that
+%  follows its check.
 single_proof(info(Defs, Uses, _), Q) :- count(Defs, Q, 1), count(Uses, Q, 1).
 
-% reused_insts(+Insts0, +Facts, +L-Old-New, -Insts, -Map, -Reused): Old
-% and New index the next instruction of block L before and after; Map
-% pairs their sites, and Reused pairs each deleted proof with its
-% replacement.
+%! reused_insts(+Insts0, +Facts, +L-Old-New, -Insts, -Map, -Reused) is det.
+%
+%  Old and New index the next instruction of block L before and after;
+%  Map pairs their sites, and Reused pairs each deleted proof with its
+%  replacement.
 reused_insts([], _, Facts, _, [], [], [], Facts).
 reused_insts([let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Access0|Insts0],
              Info, Facts, L-Old-New, Insts, Map, Reused, Exit) :-
@@ -288,13 +299,15 @@ item_refines(Item, Item).
 block_refines(Info, Global, block(L, Phis, Insts0, J), block(L, Phis, Insts, J)) :-
     insts_refine(Insts0, Insts, r(Info, Global, [])).
 
-% insts_refine(+Insts0, +Insts, +r(Info, Global, Proofs)): Proofs are
-% Q-checked(P, Check) for the heap checks seen so far in the block,
-% newest first; Global the same for every heap check in the function
-% whose proof has one definition and its pointer at most one. A deleted
-% check's proof had one definition and one reader, and the proof that
-% replaces it checks the same operand and subsumes the deleted check.
-% Whether it is available there is the validator's question.
+%! insts_refine(+Insts0, +Insts, +r(Info, Global, Proofs)) is semidet.
+%
+%  Proofs are Q-checked(P, Check) for the heap checks seen so far in the
+%  block, newest first; Global the same for every heap check in the
+%  function whose proof has one definition and its pointer at most one.
+%  A deleted check's proof had one definition and one reader, and the
+%  proof that replaces it checks the same operand and subsumes the
+%  deleted check. Whether it is available there is the validator's
+%  question.
 insts_refine([], [], _).
 insts_refine([Inst|Insts0], [Inst|Insts], r(Info, Global, Proofs)) :- !,
     (   Inst = let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P])
@@ -313,7 +326,9 @@ insts_refine([let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Access0|Insts0]
     single_proof(Info, Q),
     insts_refine(Insts0, Insts, r(Info, Global, Proofs)).
 
-% scalar_access(+Access, +Q): Access is a scalar raw access at tmp(Q).
+%! scalar_access(+Access, +Q) is semidet.
+%
+%  Access is a scalar raw access at tmp(Q).
 scalar_access(let(_, _, raw_load(T, _), [tmp(Q)]), Q) :- T \== p.
 scalar_access(raw_store(W, _, _, tmp(Q)), Q) :- W \== p.
 
@@ -322,11 +337,12 @@ renamed_access(let(R, K, raw_load(T, Off0), [_]), Q, D, let(R, K, raw_load(T, Of
 renamed_access(raw_store(W, Off0, V, _), Q, D, raw_store(W, Off, V, tmp(Q))) :-
     ( var(D) -> D is Off - Off0 ; Off is Off0 + D ).
 
-% subsumes(+Lo1, +Hi1, +Rights1, +Align1, +Lo, +Hi, +Rights, +Align): a
-% check of [Lo1, Hi1) with Rights1 at Align1 that succeeded implies that
-% the check of [Lo, Hi) with Rights at Align, of the same pointer and
-% object state, would succeed. Comparing with the deleted check, not just
-% its access, keeps a wider or stronger check's trap.
+%! subsumes(+Lo1, +Hi1, +Rights1, +Align1, +Lo, +Hi, +Rights, +Align) is semidet.
+%
+%  A check of [Lo1, Hi1) with Rights1 at Align1 that succeeded implies
+%  that the check of [Lo, Hi) with Rights at Align, of the same pointer
+%  and object state, would succeed. Comparing with the deleted check,
+%  not just its access, keeps a wider or stronger check's trap.
 subsumes(Lo1, Hi1, Rights1, Align1, Lo, Hi, Rights, Align) :-
     Lo1 =< Lo, Hi =< Hi1,
     rights_include(Rights1, Rights),
@@ -335,8 +351,10 @@ subsumes(Lo1, Hi1, Rights1, Align1, Lo, Hi, Rights, Align) :-
 rights_include(write, _).
 rights_include(read, read).
 
-% after_def(+Info, +Inst, +Facts0, -Facts): Facts are those of Facts0 that do
-% not mention the temporary Inst defines.
+%! after_def(+Info, +Inst, +Facts0, -Facts) is det.
+%
+%  Facts are those of Facts0 that do not mention the temporary Inst
+%  defines.
 after_def(Info, Inst, Facts0, Facts) :-
     (   inst_def(Inst, D)
     ->  state_kill(Info, D, Facts0, Facts)
@@ -345,10 +363,12 @@ after_def(Info, Inst, Facts0, Facts) :-
 
 mentions(D, avail(P, Q, _, _, _, _)) :- ( Q == D ; P == tmp(D) ).
 
-% transparent(+Inst): Inst cannot free, reallocate or relabel an object,
-% and reaches no safepoint: arithmetic, comparisons, conversions, pure
-% pointer construction, checks, scalar raw accesses and raw pointer loads
-% (which read aux and box words, calling no helper).
+%! transparent(+Inst) is semidet.
+%
+%  Inst cannot free, reallocate or relabel an object, and reaches no
+%  safepoint: arithmetic, comparisons, conversions, pure pointer
+%  construction, checks, scalar raw accesses and raw pointer loads
+%  (which read aux and box words, calling no helper).
 transparent(loc(_, _)).
 transparent(touch(_)).
 transparent(flight(_, _, _, _)).
@@ -428,10 +448,12 @@ selected_inst(From, To, I0, I1, I, K0, K) :-
     ;   K = K0, I = I1
     ).
 
-% renew_sources(+Info, +Blocks, +Entry, +Idom, -Sources): Sources maps
-% Root-K, a root and an offset from it, to s(Depth, L, I, Q1, check, P1) for
-% each reachable heap check of a pointer at K from Root whose proof and
-% pointer have one definition, sorted by dominator depth and index.
+%! renew_sources(+Info, +Blocks, +Entry, +Idom, -Sources) is det.
+%
+%  Sources maps Root-K, a root and an offset from it, to s(Depth, L, I,
+%  Q1, check, P1) for each reachable heap check of a pointer at K from
+%  Root whose proof and pointer have one definition, sorted by dominator
+%  depth and index.
 renew_sources(Info, Blocks, Entry, Idom, Sources) :-
     findall((R-K)-s(Depth, L, I, Q1, check(Lo1, Hi1, Al1), P1),
             ( member(block(L, _, Is, _), Blocks),
@@ -448,8 +470,9 @@ renew_sources(Info, Blocks, Entry, Idom, Sources) :-
 single_source(info(Defs, _, _), Q1, tmp(N1)) :-
     count(Defs, Q1, 1), count(Defs, N1, 1).
 
-% dom_depth(+Idom, +Entry, +L, -Depth): L is reachable, at Depth
-% dominators below Entry.
+%! dom_depth(+Idom, +Entry, +L, -Depth) is semidet.
+%
+%  L is reachable, at Depth dominators below Entry.
 dom_depth(_, Entry, Entry, 0) :- !.
 dom_depth(Idom, Entry, L, Depth) :-
     get_assoc(L, Idom, D), dom_depth(Idom, Entry, D, Depth0), Depth is Depth0 + 1.
@@ -576,12 +599,14 @@ defined_name(D-_, N0, N) :- put_assoc(D, N0, true, N).
 param_name(param(_, tmp(D)), N0, N) :- !, put_assoc(D, N0, true, N).
 param_name(_, N, N).
 
-% guard_candidates(+Insts, +I, +L, +Outward, +Defs, +Idom, -C): C is
-% c(IH, B, K, L, J, Lo, Hi) for a heap check at index J >= I of block L,
-% followed by a renewable access, whose pointer is base B plus an offset
-% whose accesses cover [Lo, Hi) of B, B defined before the loop whose
-% header's immediate dominator is IH: the outermost of the loops around
-% L for which B is. K is const for a constant offset, else ranged.
+%! guard_candidates(+Insts, +I, +L, +Outward, +Defs, +Idom, -C) is nondet.
+%
+%  C is c(IH, B, K, L, J, Lo, Hi) for a heap check at index J >= I of
+%  block L, followed by a renewable access, whose pointer is base B plus
+%  an offset whose accesses cover [Lo, Hi) of B, B defined before the
+%  loop whose header's immediate dominator is IH: the outermost of the
+%  loops around L for which B is. K is const for a constant offset, else
+%  ranged.
 guard_candidates([Inst, Access|Is], I, L, Outward, Defs, Idom, C) :-
     (   Inst = let(tmp(Q), a, check(0, Hi, _, _), [P]),
         renewable_access(Access, Q),
@@ -622,32 +647,37 @@ guard_places(Cs, place(Entry, DefBlocks, LoopOf), Idom, Places) :-
 
 loop_of(LoopOf, L, H) :- ( get_assoc(L, LoopOf, H0) -> H = H0 ; H = none ).
 
-% common_dominator(+Idom, +A, +B, -D): D is the deepest block that
-% dominates both A and B.
+%! common_dominator(+Idom, +A, +B, -D) is det.
+%
+%  D is the deepest block that dominates both A and B.
 common_dominator(Idom, A, B, D) :-
     (   dominates(Idom, B, A) -> D = B
     ;   get_assoc(B, Idom, B1) -> common_dominator(Idom, A, B1, D)
     ;   D = B
     ).
 
-% guard_worth(+Kind, +Lo, +Hi): a guard of [Lo, Hi) may pass. A span
-% test fails as a whole, and then each access it guards pays its full
-% check plus the test of G. A ranged span over 256 KiB is a type's bound
-% times a stride (a byte or short index into a row of a table), which
-% objects rarely hold: bzip2's s->len[t][v], for a byte t, spans 1 MB
-% of a 55 KB state. A table that large (bzip2's ftab, 256 KiB) still fits.
-% A span_test's ends are signed 64-bit (ir.pl's valid_op); a span past
-% them is no guard at all, and merged clusters stay within each part's.
+%! guard_worth(+Kind, +Lo, +Hi) is semidet.
+%
+%  A guard of [Lo, Hi) may pass. A span test fails as a whole, and then
+%  each access it guards pays its full check plus the test of G. A
+%  ranged span over 256 KiB is a type's bound times a stride (a byte or
+%  short index into a row of a table), which objects rarely hold:
+%  bzip2's s->len[t][v], for a byte t, spans 1 MB of a 55 KB state. A
+%  table that large (bzip2's ftab, 256 KiB) still fits. A span_test's
+%  ends are signed 64-bit (ir.pl's valid_op); a span past them is no
+%  guard at all, and merged clusters stay within each part's.
 guard_worth(const, Lo, Hi) :- span_fits(Lo, Hi).
 guard_worth(ranged, Lo, Hi) :- span_fits(Lo, Hi), Hi - Lo =< 262144.
 
 span_fits(Lo, Hi) :- Lo >= -(1 << 63), Hi =< (1 << 63) - 1.
 
-% block_loops(+Loops, +Idom, -BlockLoops): BlockLoops maps each block in
-% some natural loop whose header has an immediate dominator to its
-% loops' H-Body-IH, outermost first (nested loops' bodies are nested).
-% Built by walking the loops outermost first and each body once, so
-% the cost is the bodies' total size, not blocks times loops.
+%! block_loops(+Loops, +Idom, -BlockLoops) is det.
+%
+%  BlockLoops maps each block in some natural loop whose header has an
+%  immediate dominator to its loops' H-Body-IH, outermost first (nested
+%  loops' bodies are nested). Built by walking the loops outermost first
+%  and each body once, so the cost is the bodies' total size, not blocks
+%  times loops.
 block_loops(Loops, Idom, BlockLoops) :-
     findall(N-(H-B-IH), ( member(H-loop(_, B), Loops), get_assoc(H, Idom, IH),
                           length(B, N0), N is -N0 ), Ls),
@@ -678,10 +708,11 @@ merged_spans([Lo1-Hi1|Rest], Lo, Hi, Clusters) :-
     ;   Clusters = [[Lo-Hi]|Clusters1], merged_spans(Rest, Lo1, Hi1, Clusters1)
     ).
 
-% guard_base(+Chain, +Once-DefBlocks, +Body, +Idom, +IH, -B, -OLo, -OHi):
-% B is the farthest base on the chain whose single definition is outside
-% the loop Body and dominates its header's immediate dominator IH, so a
-% guard at IH's end may read it.
+%! guard_base(+Chain, +Once-DefBlocks, +Body, +Idom, +IH, -B, -OLo, -OHi) is semidet.
+%
+%  B is the farthest base on the chain whose single definition is
+%  outside the loop Body and dominates its header's immediate dominator
+%  IH, so a guard at IH's end may read it.
 guard_base(Chain, Once-DefBlocks, Body, Idom, IH, B, OLo, OHi) :-
     reverse(Chain, Far),
     member(B-i(OLo, OHi), Far),
@@ -690,8 +721,10 @@ guard_base(Chain, Once-DefBlocks, Body, Idom, IH, B, OLo, OHi) :-
     ;   get_assoc(N, DefBlocks, DL), \+ ord_memberchk(DL, Body), dominates(Idom, DL, IH)
     ), !.
 
-% fresh_guards(+Groups, +Names, +K, -Guards): a name no instruction or
-% phi defines per group, g(Name, H, B, K, Lo, Hi).
+%! fresh_guards(+Groups, +Names, +K, -Guards) is det.
+%
+%  A name no instruction or phi defines per group, g(Name, H, B, K, Lo,
+%  Hi).
 fresh_guards([], _, _, []).
 fresh_guards([(H-B-K)-Spans|Gs], Names, K0, [g(Name, H, B, K, Lo, Hi)|Guards]) :-
     pairs_keys_values(Spans, Los, His), min_list(Los, Lo), max_list(His, Hi),
