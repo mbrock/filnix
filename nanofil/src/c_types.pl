@@ -978,7 +978,8 @@ named_type(atomic(TN), Type, Env0, Env) :-
     type_name_type(TN, Type0, Env0, Env),
     reflect_type(TN, Type0, Env, Reflected),
     (   Type0 = bad(_) -> Type = Type0
-    ;   Reflected = qualified(_, _)                        % 6.7.2.4p3
+    ;   Reflected = qualified(Qs, _),                      % 6.7.2.4p3
+        member(Q, Qs), Q \= enum(_)                       % enum(K): identity
     ->  Type = bad('_Atomic of a qualified type')
     ;   atomic_object_type(Type0) -> Type = Type0
     ;   Type = bad('_Atomic of a type other than an integer, pointer, float or double')
