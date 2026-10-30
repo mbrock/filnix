@@ -380,9 +380,37 @@ renewed_item(func(N, L, R, Ps, Bs0), func(N, L, R, Ps, Bs)) :- !,
     ;   names_info(Ps, Bs0, Info),
         func_cfg(Bs0, Cfg), cfg_idoms(Cfg, Idom), Cfg = cfg(Entry, _, _, _),
         renew_sources(Info, Bs0, Entry, Idom, Sources),
-        maplist(renewed_block(Info, Entry, Idom, Sources), Bs0, Bs)
+        maplist(renewed_block(Info, Entry, Idom, Sources), Bs0, Bs1),
+        renew_selection(N, Bs0, Bs1, Bs)
     ).
 renewed_item(Item, Item).
+
+/* renew_selection(+Fn, +Blocks0, +Blocks1, -Blocks): for measurement,
+   NANOFIL_RENEW_SITES=Fn:From-To keeps only Fn's renews numbered From to
+   To - 1 in block order (Fn alone keeps all of Fn's), and every other
+   function's checks; unset or empty, Blocks is Blocks1. Any subset of renews is
+   valid IR: a check left in place is the reference. */
+renew_selection(Fn, Bs0, Bs1, Bs) :-
+    (   getenv('NANOFIL_RENEW_SITES', Spec), Spec \== ''
+    ->  (   atomic_list_concat([F, Range], ':', Spec)
+        ->  atomic_list_concat([A, B], '-', Range), atom_number(A, From), atom_number(B, To)
+        ;   F = Spec, From = 0, To = inf
+        ),
+        (   F == Fn
+        ->  foldl(selected_block(From, To), Bs0, Bs1, Bs, 0, _)
+        ;   Bs = Bs0
+        )
+    ;   Bs = Bs1
+    ).
+
+selected_block(From, To, block(L, Ph, Is0, J), block(L, Ph, Is1, J), block(L, Ph, Is, J), K0, K) :-
+    foldl(selected_inst(From, To), Is0, Is1, Is, K0, K).
+
+selected_inst(From, To, I0, I1, I, K0, K) :-
+    (   I1 = let(_, a, renew(_, _, _, _), _)
+    ->  K is K0 + 1, ( K0 >= From, ( To == inf ; K0 < To ) -> I = I1 ; I = I0 )
+    ;   K = K0, I = I1
+    ).
 
 % renew_sources(+Info, +Blocks, +Entry, +Idom, -Sources): Sources maps
 % Root-K, a root and an offset from it, to s(Depth, L, I, Q1, check) for
