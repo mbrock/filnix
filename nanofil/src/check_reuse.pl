@@ -247,6 +247,17 @@ reused_insts([let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Access0|Insts0]
     ),
     after_def(Info, Access0, Facts1, Facts2),
     reused_insts(Insts0, Info, Facts2, L-Old2-New2, Insts1, Map1, Reused1, Exit).
+% A vector's full-width check and its touch (docs/vector-access.md) stay,
+% and make a fact that the chunk accesses after them may reuse. V1 does
+% not reuse the full-width check itself.
+reused_insts([let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), touch(T)|Insts0],
+             Info, Facts0, L-Old-New, [let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), touch(T)|Insts],
+             [inst(L, Old)-inst(L, New), inst(L, Old1)-inst(L, New1)|Map], Reused, Exit) :-
+    T == tmp(Q), !,
+    Old1 is Old + 1, Old2 is Old + 2, New1 is New + 1, New2 is New + 2,
+    state_kill(Info, Q, Facts0, Facts1),
+    state_add(Info, avail(P, Q, Lo, Hi, Rights, Align), Facts1, Facts),
+    reused_insts(Insts0, Info, Facts, L-Old2-New2, Insts, Map, Reused, Exit).
 reused_insts([Inst|Insts0], Info, Facts0, L-Old-New, [Inst|Insts],
              [inst(L, Old)-inst(L, New)|Map], Reused, Exit) :-
     (   transparent(Inst) -> after_def(Info, Inst, Facts0, Facts) ; state_none(Info, Facts) ),
@@ -339,6 +350,7 @@ mentions(D, avail(P, Q, _, _, _, _)) :- ( Q == D ; P == tmp(D) ).
 % pointer construction, checks, scalar raw accesses and raw pointer loads
 % (which read aux and box words, calling no helper).
 transparent(loc(_, _)).
+transparent(touch(_)).
 transparent(flight(_, _, _, _)).
 transparent(raw_store(W, _, _, _)) :- W \== p.
 transparent(let(_, p, raw_load_pointer(_, Es), _)) :-

@@ -70,6 +70,8 @@
     | `store(Width, Value, Addr)` | store Value at Addr; Width one of `b` `h` `w` `l` `p` `s` `d` |
     | `atomic_store(p, Value, Addr)` | (filc mode) store the pointer Value at Addr single-copy atomically, sequentially consistent (Fil-C's filc_store_ptr_atomic) |
     | `fence` | a sequentially consistent fence (`mfence`) |
+    | `access(K, Addr, Size, Align)` | trap as a K (`read` or `write`) access of Size (16, 32 or 64) bytes at Addr with alignment Align (1, 2, 4 or 8) would, and access nothing: a vector's full-width check before its chunks (docs/vector-access.md) |
+    | `touch(tmp(Q))` | checked stage: use the proof Q of the check just before it, and do nothing else (pizlonated `access`) |
     | `asm_fixed(M, Ins, Outs)` | the fixed-register instruction M (asm_fixed_regs/3) on `w` inputs `R-V` in the registers M reads, defining `w` temporaries `R-tmp(D)` from registers it writes (docs/asm-fixed.md) |
     | `local_alloc(Name, Size)` | create a zeroed, exact-sized invocation-local object, without an address value |
     | `local_load(tmp(D), K, T, Name, Off)` | checked load semantics at the fixed byte offset Off in Name |
@@ -850,6 +852,7 @@ checked_inst(raw_store(_, _, _, _)).
 checked_inst(raw_store_pointer(_, _, _, _)).
 checked_inst(raw_call(_, _, _)).
 checked_inst(flight(_, _, _, _)).
+checked_inst(touch(_)).
 
 checked_jump(goto(poll(_))).
 checked_jump(branch(_, poll(_), _)).
@@ -1507,8 +1510,7 @@ guard_covers(Once, P, tmp(GN), Lo, Hi) :-
 checked_inst_rest(let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Insts, Fn-_, _,
                   Live0, Rest, Live) :- !,
     (   Insts = [Access|Rest],
-        covered_access(Access, Q, Lo, Hi, Rights, Align),
-        access_storage_effects(Access, heap)
+        proof_use(Access, Q, Lo, Hi, Rights, Align)
     ->  evidence_after(let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Live0, Live1),
         evidence_add(live(Q, P, Lo, Hi, Rights, Align), Live1, Live2),
         evidence_after(Access, Live2, Live)
@@ -1540,8 +1542,7 @@ checked_inst_rest(let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [Q1, P]), Insts, 
     ;   fn_error(Fn, 'renew tmp(~w): ~w is not ~w\'s checked pointer tmp(~w)', [Q, P, Q1, P1])
     ),
     (   Insts = [Access|Rest],
-        covered_access(Access, Q, Lo, Hi, Rights, Align),
-        access_storage_effects(Access, heap)
+        proof_use(Access, Q, Lo, Hi, Rights, Align)
     ->  evidence_after(let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [Q1, P]), Live0, Live1),
         evidence_add(live(Q, P, Lo, Hi, Rights, Align), Live1, Live2),
         evidence_after(Access, Live2, Live)
@@ -1553,8 +1554,7 @@ checked_inst_rest(let(tmp(Q), a, renew_if(Lo, Hi, Rights, Align), [P, G]), Insts
     ;   fn_error(Fn, 'renew_if tmp(~w): no single-definition span test that covers it, or a setjmp', [Q])
     ),
     (   Insts = [Access|Rest],
-        covered_access(Access, Q, Lo, Hi, Rights, Align),
-        access_storage_effects(Access, heap)
+        proof_use(Access, Q, Lo, Hi, Rights, Align)
     ->  evidence_after(let(tmp(Q), a, renew_if(Lo, Hi, Rights, Align), [P, G]), Live0, Live1),
         evidence_add(live(Q, P, Lo, Hi, Rights, Align), Live1, Live2),
         evidence_after(Access, Live2, Live)
@@ -1572,6 +1572,8 @@ checked_inst_rest(Inst, Insts, Fn-_, Mode, Live0, Insts, Live) :-
         )
     ;   Inst = raw_call(_, _, _)
     ->  fn_error(Fn, 'a raw call whose target is not checked just before it', [])
+    ;   Inst = touch(T)
+    ->  fn_error(Fn, 'touch(~w) is not right after the heap check, renew or renew_if that defines it', [T])
     ;   Mode == filc, unchecked_access(Inst, What)
     ->  fn_error(Fn, '~w in checked IR, where every access is checked', [What])
     ;   implicit_flight(Inst)
@@ -1599,6 +1601,7 @@ evidence_names(D, live(Q, P, _, _, _, _)) :- ( Q == D ; P == tmp(D) ).
 % pointer load (aux and box reads, no helper). Calls, alloc, getters,
 % setjmp, va_arg, pointer stores and the rest are not.
 evidence_preserving(loc(_, _)).
+evidence_preserving(touch(_)).
 evidence_preserving(flight(_, _, _, _)).
 evidence_preserving(let(_, a, check(_, _, _, _), _)).
 evidence_preserving(let(_, a, renew(_, _, _, _), _)).
@@ -1640,6 +1643,7 @@ unchecked_access(let(_, _, cas(T), _), cas(T)).
 unchecked_access(local_load(_, _, T, _, _), local_load(T)).
 unchecked_access(local_store(W, _, _, _), local_store(W)).
 unchecked_access(call(_, tmp(_), _), 'indirect call').
+unchecked_access(access(_, _, _, _), access).
 
 access_storage_effects(let(_, _, raw_load(_, _), _), _).
 access_storage_effects(raw_store(_, _, _, _), _).
@@ -1655,6 +1659,15 @@ storage_effect_kind(heap, load, atomic_load).
 storage_effect_kind(heap, store, atomic_store).
 storage_effect_kind(local, load, local_load).
 storage_effect_kind(local, store, local_store).
+
+% proof_use(+Access, +Q, +Lo, +Hi, +Rights, +Align): Access, right after
+% the heap check, renew or renew_if that defines Q over [Lo, Hi) with
+% Rights and Align, uses its proof: a heap raw access it covers, or a
+% touch of Q, which accesses nothing (docs/vector-access.md).
+proof_use(touch(T), Q, _, _, _, _) :- !, T == tmp(Q).
+proof_use(Access, Q, Lo, Hi, Rights, Align) :-
+    covered_access(Access, Q, Lo, Hi, Rights, Align),
+    access_storage_effects(Access, heap).
 
 % covered_access(+Access, +Q, +Lo, +Hi, +Rights, +Align): Access is a raw
 % access at tmp(Q) within [Q+Lo, Q+Hi), as aligned as it must be, and
@@ -1776,6 +1789,18 @@ valid_inst(Ctx, atomic_store(W, Value, Addr)) :-
     valid_use(Ctx, p, Value),
     valid_use(Ctx, p, Addr).
 valid_inst(_, fence).
+valid_inst(Ctx, access(K, Addr, Size, Align)) :-
+    Ctx = ctx(_, Fn, _, _, _, _, Mode),
+    (   memberchk(K, [read, write]), integer(Size), memberchk(Size, [16, 32, 64]),
+        integer(Align), memberchk(Align, [1, 2, 4, 8])
+    ->  addr_class(Mode, AddrClass), valid_use(Ctx, AddrClass, Addr)
+    ;   fn_error(Fn, 'bad access ~w', [access(K, Addr, Size, Align)])
+    ).
+valid_inst(Ctx, touch(Q)) :-
+    Ctx = ctx(_, Fn, _, _, _, _, _),
+    (   nonvar(Q), Q = tmp(_) -> valid_use(Ctx, a, Q)
+    ;   fn_error(Fn, 'bad touch ~w', [touch(Q)])
+    ).
 % Inputs are exactly class w, not an l read as w (docs/asm-fixed.md).
 valid_inst(Ctx, asm_fixed(M, Ins, Outs)) :-
     Ctx = ctx(_, Fn, _, _, TempClasses, _, _),

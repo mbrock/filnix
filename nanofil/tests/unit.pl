@@ -3787,3 +3787,113 @@ chunk_at(let(_, l, load(l), [Addr]), Body, A) :- chunk_addr(Addr, Body, A).
 chunk_at(store(l, _, Addr), Body, A) :- chunk_addr(Addr, Body, A).
 chunk_addr(A, _, A) :- !.
 chunk_addr(tmp(T), Body, A) :- memberchk(let(tmp(T), p, add, [A, const(_)]), Body).
+
+% Full-width vector checks (docs/vector-access.md).
+vec_fn(Name, Insts, Ret, func(Name, local, l, [param(p, tmp(p)), param(l, tmp(l))], [block(s, [], Insts, Ret)])).
+
+test(vector_access_validation) :-
+    forall(( member(K, [read, write]), member(S, [16, 32, 64]), member(Al, [1, 2, 4, 8]) ),
+           ( vec_fn(f, [access(K, tmp(p), S, Al)], ret(const(0)), F), valid_module(module([F])) )),
+    forall(member(A, [access(modify, tmp(p), 16, 8), access(read, tmp(p), 8, 8),
+                      access(read, tmp(p), 24, 8), access(read, tmp(p), 16, 16),
+                      access(read, tmp(p), 16, 3), access(read, tmp(l), 16, 8)]),
+           ( vec_fn(f, [A], ret(const(0)), F),
+             ( A = access(_, tmp(l), _, _) -> Why = 'used as p' ; Why = 'bad access' ),
+             asm_rejected(module([F]), Why) )),
+    % pizlonate makes the check and touch; the checked module accepts them.
+    vec_fn(f, [access(write, tmp(p), 32, 8)], ret(const(0)), F0),
+    pizlonate_module(module([F0]), P), valid_module(P),
+    P = module([func(f, _, _, _, [block(s, [], [C, T], _)])]),
+    C = let(tmp(Q), a, check(0, 32, write, 8), [tmp(p)]), T == touch(tmp(Q)),
+    Chk = let(tmp(q), a, check(0, 16, read, 8), [tmp(p)]),
+    % Rejected: an access left in checked IR, a touch with no check, of
+    % another proof, a second touch, a touch after a local check.
+    forall(member(Is-Why,
+                  [[Chk, touch(tmp(q)), access(read, tmp(p), 16, 8)]-'access in checked IR',
+                   [Chk, touch(tmp(q)), touch(tmp(q))]-'is not right after',
+                   [Chk, let(tmp(x), l, raw_load(l, 0), [tmp(q)]), touch(tmp(q))]-'is not right after',
+                   [let(tmp(r), a, check(0, 16, read, 8), [tmp(p)]), Chk, touch(tmp(r))]-'is not followed',
+                   [let(tmp(r), a, check(0, 8, read, 8), [tmp(p)]), let(tmp(x), l, raw_load(l, 0), [tmp(r)]),
+                    Chk, touch(tmp(r))]-'check tmp(q) is not followed',
+                   [local_alloc(o, 16),
+                    let(tmp(q), a, check_local(o, 0, 16, read, 8), []), touch(tmp(q))]-'not followed by an access']),
+           ( vec_fn(f, Is, ret(const(0)), F), asm_rejected(module([F]), Why) )),
+    inst_uses(touch(tmp(x)), [x]), inst_uses(access(read, tmp(y), 16, 1), [y]),
+    % In a plain module C's semantics are the chunks': access does nothing.
+    Pl = module([func(f, local, l, [param(l, tmp(x))],
+                      [block(s, [], [access(write, tmp(x), 16, 8)], ret(const(5)))])]),
+    valid_module(Pl), once(run(Pl, f, [3], 10, O)), O == ret(5), amd64:module_asm(Pl, _).
+
+% Nothing is written before the full-width check traps: a store of 16
+% bytes whose first chunk is in bounds and second is not leaves memory as the
+% access alone does, unchecked and pizlonated.
+test(vector_access_no_partial_write) :-
+    Pre = [let(tmp(a), p, alloc(8), [const(32)]), store(l, const(1), tmp(a)),
+           let(tmp(b), p, add, [tmp(a), const(24)]),
+           access(write, tmp(b), 16, 1)],
+    Chunks = [store(l, const(7), tmp(b)), let(tmp(c), p, add, [tmp(b), const(8)]),
+              store(l, const(7), tmp(c))],
+    append(Pre, Chunks, Is),
+    Mk = [N, Body, func(N, local, l, [], [block(s, [], Body, ret(const(0)))])],
+    copy_term(Mk, [f, Is, F]), copy_term(Mk, [g, Pre, G]),
+    M = module([F, G]), valid_module(M), pizlonate_module(M, P), valid_module(P),
+    forall(member(X, [M, P]),
+           ( module_prepared(X, prep(Fns, Gs, Mode, Mem0)),
+             once(interp:call_outcome(Fns, Gs, Mode, f, [], s(Mem0, 10), Of, s(MemF, _))),
+             once(interp:call_outcome(Fns, Gs, Mode, g, [], s(Mem0, 10), Og, s(MemG, _))),
+             Of == trap(out_of_bounds), Og == Of, MemF == MemG )),
+    % The access's own kind and alignment decide: a misaligned access
+    % traps at alignment 8 and runs at 1; a read-only object refuses a
+    % write and allows a read; unchecked and pizlonated alike.
+    Ro = data(msg, ro(local), 8, [item(b, str("0123456789abcdef"))]),
+    forall(member(Body-Want,
+                  [[let(tmp(a), p, alloc(8), [const(32)]), let(tmp(b), p, add, [tmp(a), const(4)]),
+                    access(read, tmp(b), 16, 8)]-trap(misaligned),
+                   [let(tmp(a), p, alloc(8), [const(32)]), let(tmp(b), p, add, [tmp(a), const(4)]),
+                    access(read, tmp(b), 16, 1)]-ret(0),
+                   [let(tmp(m), p, copy, [global(msg)]), access(write, tmp(m), 16, 1)]-trap(readonly),
+                   [let(tmp(m), p, copy, [global(msg)]), access(read, tmp(m), 16, 1)]-ret(0)]),
+           ( K = module([Ro, func(k, local, l, [], [block(s, [], Body, ret(const(0)))])]),
+             valid_module(K), pizlonate_module(K, PK), valid_module(PK),
+             forall(member(X, [K, PK]), ( once(run(X, k, [], 10, O)), O == Want )) )).
+
+% Reuse lets the chunks read the full-width check's proof, through the
+% validator; the full-width check stays.
+test(vector_access_reuse) :-
+    vec_fn(f, [access(read, tmp(p), 16, 8), let(tmp(x), l, load(l), [tmp(p)]),
+               let(tmp(q), p, add, [tmp(p), const(8)]), let(tmp(y), l, load(l), [tmp(q)]),
+               let(tmp(z), l, add, [tmp(x), tmp(y)])], ret(tmp(z)), F),
+    pizlonate_module(module([F]), P), reuse_checks(P, R), reuse_refines(P, R), valid_module(R),
+    R = module([func(f, _, _, _, [block(s, [], Is, _)])]),
+    findall(C, member(let(_, a, C, _), Is), [check(0, 16, read, 8)]),
+    member(let(tmp(Q), a, check(0, 16, read, 8), _), Is), memberchk(touch(tmp(Q)), Is),
+    memberchk(let(tmp(x), l, raw_load(l, 0), [tmp(Q)]), Is),
+    memberchk(let(tmp(y), l, raw_load(l, 8), [tmp(Q)]), Is).
+
+% -O keeps every access, and its object on the heap, while a dead let
+% goes.
+test(vector_access_kept) :-
+    M0 = module([func(f, local, l, [param(l, tmp(y))],
+                      [block(s, [], [let(tmp(a), p, alloc(8), [const(32)]),
+                                     store(l, const(3), tmp(a)),
+                                     let(tmp(z), l, add, [tmp(y), const(2)]),
+                                     access(read, tmp(a), 16, 8),
+                                     let(tmp(b), p, copy, [tmp(a)]),
+                                     access(write, tmp(b), 16, 8),
+                                     let(tmp(c1), p, add, [tmp(a), const(8)]),
+                                     let(tmp(w), l, load(l), [tmp(c1)])],
+                             goto(t)),
+                       % simplify numbers c2 as c1, computed in s.
+                       block(t, [], [let(tmp(c2), p, add, [tmp(a), const(8)]),
+                                     access(read, tmp(c2), 16, 8),
+                                     let(tmp(x), l, load(l), [tmp(a)])],
+                             ret(tmp(x)))])]),
+    valid_module(M0), optimize(o1(small, full), M0, M), valid_module(M),
+    M = module([func(f, _, _, _, Bs)]),
+    findall(I, ( member(block(_, _, Is, _), Bs), member(I, Is) ), Is),
+    \+ memberchk(let(tmp(z), _, _, _), Is),
+    findall(K-A, member(access(K, A, 16, 8), Is), [read-tmp(N), write-tmp(N), read-tmp(C)]),
+    memberchk(let(tmp(N), p, alloc(_), [const(32)]), Is),
+    % c2 became c1, which the load reads too.
+    memberchk(let(tmp(C), p, add, [tmp(N), const(8)]), Is),
+    memberchk(let(_, l, load(l), [tmp(C)]), Is).

@@ -130,6 +130,10 @@ inst_event(atomic_store(_, V, A), Addrs, Root-esc(atomic)) :-
 inst_event(let(_, _, cas(_), Args), Addrs, Root-esc(atomic)) :-
     member(tmp(X), Args),
     get_assoc(X, Addrs, Root-_).
+% A full-width vector check (docs/vector-access.md) keeps its object on
+% the heap: promoting it would need the static bounds to discharge it.
+inst_event(access(_, tmp(X), _, _), Addrs, Root-esc(access)) :-
+    get_assoc(X, Addrs, Root-_).
 % A fixed-register asm reads its inputs' values: in plain mode a w input
 % can be a derived address, whose object then stays (docs/asm-fixed.md).
 inst_event(asm_fixed(_, Ins, _), Addrs, Root-esc(asm)) :-

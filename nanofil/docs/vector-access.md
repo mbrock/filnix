@@ -1,4 +1,4 @@
-# Full-width vector access checks (V1): contract (reviewed)
+# Full-width vector access checks (V1): contract (reviewed, implemented)
 
 The frontend lowers GCC/clang vector types to scalar IR, in 8-byte
 chunks (element-sized for float elements). filcc checks a 16-, 32- or
@@ -266,3 +266,71 @@ equal offsets. All are folded in above. Its second round found the
 blockers resolved, corrected the race paragraph (an added trap, not the
 converse of M7's lost one, and observable through `munmap` and other
 threads' reads) and replaced two vacuous tests; folded in too.
+
+## As built
+
+The IR side follows the contract. `ir:proof_use/6` is the one place a
+check, renew or renew_if accepts what follows it: a covered heap raw
+access or a `touch` of its own proof. `check_reuse` keeps a check and
+its `touch` and adds their fact, so under `--checks=reuse`, `renew` (the
+`-O` default) and `guard` the chunks read the full-width proof at their
+offsets with no checks of their own; the full-width check is never a
+reuse or renew target in V1.
+
+Tests (`tests/unit.pl`):
+- `vector_access_validation`: every K, Size and Align; bad ones refused;
+  pizlonate's check and `touch`; `access` in checked IR, a second
+  `touch`, a `touch` after an access, of another live proof, after a
+  check of another proof, or after a local check, refused; `inst_uses`
+  of both; `access` does nothing in a plain module.
+- `vector_access_no_partial_write`: a 16-byte store whose first chunk is
+  in bounds and second is not leaves memory exactly as the `access`
+  alone does, unchecked and pizlonated.
+- `vector_access_reuse`: through `reuse_refines` and `valid_module`, the
+  chunks read the full-width proof at offsets 0 and 8.
+- `vector_access_kept`: `-O` with inlining and simplify keeps `access`
+  and its object on the heap, while a dead `let` goes.
+
+Natively, the frontend's `tests/c/prog/vector-access.c` matches filcc
+under `--checks=reference`, `reuse`, `renew` and `guard`, with and
+without `-O`, and with `--registers=temps`, under
+`FUGC_SCRIBBLE`/`FUGC_VERIFY`: every reason for loads and stores, ptr >=
+upper, pointer slots keeping their capabilities, and `MAP_SHARED` pages
+unchanged after the trap. Its freed cases call `free` through an opaque
+pointer: clang `-O1` folds a direct free then access into "cannot access
+pointer to free object", for scalars too (pre-existing, like offset
+folding).
+
+Plants (unit = the unit tests; native = vector-access.c, plain and `-O`):
+
+| Plant | Caught by |
+| --- | --- |
+| 1. pizlonate leaves `access` in place | unit, native |
+| 2. pizlonate drops the full-width check | unit (partial write), native |
+| 3. Size taken from the chunk | unit, native |
+| 4. Align dropped to 1 | unit, native |
+| 5. a stray `touch` accepted | unit |
+| 5b. a `touch` of another proof accepted | unit |
+| 6. no `cfg:inst_uses(touch)` | unit, native |
+| 7. no escape clause | unit, native `-O` |
+| 8. `touch` not evidence-preserving | unit (reuse), native `-O` |
+| 8b. check+touch not a reuse source | unit (reuse) |
+| 9. the interpreter's `access` a no-op in Fil-C | unit (partial write) |
+| 10. simplify drops `access` | unit (kept) |
+| 11. reuse lets a narrower fact cover a wider check | existing reuse and renew unit tests, native `-O` |
+| 12. the interpreter's `access` ignores K and Align | unit (misaligned and read-only cases) |
+| 14. `copy:inst_reps` does not substitute in `access` | unit (kept), native `-O` |
+| 17. no plain-backend clause | unit (plain module emitted) |
+| 18. `valid_inst(access)` takes any address class | unit (an `l` address refused) |
+
+Oracle reviewed the implementation and found no blocker; 12–18 are its
+plants, and its should-fixes (the tests above, the escape clause's
+place) are folded in. Equivalent mutants that pass: simplify not
+substituting into `access`, or not counting its operand (simplify turns
+a numbered duplicate into a copy, which the copy propagation it runs
+afterwards rewrites everywhere, and its use counts serve only boolean
+rewrites); `transparent(touch)` and the `unchecked_access` entries in
+filc_amd64, which valid IR never reaches (the reuse clause consumes check
+and `touch` together; the validator runs first). The frontend accepts
+only 16-byte vectors today, so the 32- and 64-byte sizes are covered by
+unit tests, not natively.

@@ -421,6 +421,18 @@ inst_result(store(Width, V, A), Ctx, Env, s(Mem0, Fuel), Result) :-
 inst_result(atomic_store(p, V, A), Ctx, Env, S, Result) :- !,
     inst_result(store(p, V, A), Ctx, Env, S, Result).
 inst_result(fence, _, Env, S, cont(Env, S)) :- !.
+% A vector's full-width check (docs/vector-access.md): in a Fil-C module
+% the access check of Size bytes, which writes nothing; in a plain one
+% nothing, since C's semantics are the chunks'. touch uses a proof.
+inst_result(access(K, A, Size, Align), Ctx, Env, s(Mem, Fuel), Result) :- !,
+    Ctx = ctx(_, _, _, _, Mode, _),
+    (   Mode == filc
+    ->  value_x(p, A, Ctx, Env, ptr(Addr, Cap)),
+        access_res(Mem, Addr, Cap, Size, K, Align, Res),
+        store_res_result(Res, Env, s(Mem, Fuel), Result)
+    ;   Result = cont(Env, s(Mem, Fuel))
+    ).
+inst_result(touch(_), _, Env, S, cont(Env, S)) :- !.
 % One thread in program order: lfence, sfence and pause change nothing.
 % The others' results are the machine's, so the run stops there.
 inst_result(asm_fixed(M, Ins, _), Ctx, Env, S, Result) :- !,

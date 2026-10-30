@@ -832,6 +832,8 @@ proven_access(raw_store_pointer(Off, V, tmp(Q), Es), Q, P,
               raw_store_pointer(Off, V, P, Es)) :-
     pointer_memory_effects(atomic_store, Es).
 
+% A touch (docs/vector-access.md) uses the proof and accesses nothing.
+proven_access(touch(tmp(Q)), Q, P, touch(P)).
 % A cas, heap only too (escape.pl), reads Expected and New beside P.
 proven_access(let(D, K, raw_cas(T, Off), [tmp(Q), E, N]), Q, P,
               let(D, K, raw_cas(T, Off), [P, E, N])).
@@ -853,6 +855,7 @@ access_pointer(raw_store(_, Off, _, P), P, Off).
 access_pointer(let(_, p, raw_load_pointer(Off, _), [P]), P, Off).
 access_pointer(raw_store_pointer(Off, _, P, _), P, Off).
 access_pointer(let(_, _, raw_cas(_, Off), [P|_]), P, Off).
+access_pointer(touch(P), P, 0).
 access_pointer(Access, P) :- access_pointer(Access, P, _).
 
 % zero_offset(+Access, -Access0): Access at offset 0.
@@ -872,6 +875,8 @@ unchecked_access(raw_store_pointer(_, _, _, _)).
 unchecked_access(let(_, _, raw_cas(_, _), _)).
 unchecked_access(local_load(_, _, _, _, _)).
 unchecked_access(local_store(_, _, _, _)).
+unchecked_access(access(_, _, _, _)).
+unchecked_access(touch(_)).
 
 live_block(block(L, Phis, Insts0, Jump), block(L, Phis, Insts, Jump)) :-
     maplist(live_inst, Insts0, Insts).
@@ -1941,6 +1946,7 @@ flight_calculation(Op, [X], Ctx) -->
 % raw_access(+Access, +Index, +Block, +Ctx)//: the code of the raw
 % Access at P, the Indexth instruction of Block, after its check left P
 % in %rax and its lower in %rcx.
+raw_access(touch(_), _, _, _) --> [].
 raw_access(let(tmp(D), K, raw_load(T, 0), [_]), Index, Block, Ctx) -->
     raw_load(T, K, D, Index, Block, Ctx).
 raw_access(raw_store(W, 0, V, P), Index, Block, Ctx) -->

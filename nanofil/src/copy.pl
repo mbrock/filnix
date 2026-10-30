@@ -277,6 +277,7 @@ inst_reps(atomic_store(W, V0, A0), Reps, atomic_store(W, V, A)) :-
     value_reps(V0, Reps, V),
     value_reps(A0, Reps, A).
 inst_reps(fence, _, fence).
+inst_reps(access(K, A0, S, Al), Reps, access(K, A, S, Al)) :- value_reps(A0, Reps, A).
 inst_reps(asm_fixed(M, Ins0, Outs), Reps, asm_fixed(M, Ins, Outs)) :-
     maplist(reps_in(Reps), Ins0, Ins).
 inst_reps(call(R, F0, Args0), Reps, call(R, F, Args)) :-

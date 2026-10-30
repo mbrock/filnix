@@ -519,6 +519,8 @@ inst_uses(store(_, V, A), Us) :-
 inst_uses(atomic_store(_, V, A), Us) :-
     temps([V, A], Us).
 inst_uses(fence, []).
+inst_uses(access(_, A, _, _), Us) :- temps([A], Us).
+inst_uses(touch(Q), Us) :- temps([Q], Us).
 inst_uses(asm_fixed(_, Ins, _), Us) :-
     findall(V, member(_-V, Ins), Vs), temps(Vs, Us).
 inst_uses(raw_store(_, _, V, A), Us) :-

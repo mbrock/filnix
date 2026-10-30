@@ -299,6 +299,8 @@ inst(let(D, Class, Op, Args), Ctx) -->
     compute_op(Op, Class, Args, Ctx),
     store_reg(rax, D, Ctx).
 inst(fence, _) --> [ins(mfence, none, [])].
+% In plain mode C's semantics are the chunks' (docs/vector-access.md).
+inst(access(_, _, _, _), _) --> [].
 inst(asm_fixed(M, Ins, Outs), Ctx) -->
     asm_fixed_inputs(Ins, Ctx),
     [asm_fixed(M)],

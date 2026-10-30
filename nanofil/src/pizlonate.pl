@@ -10,6 +10,7 @@
     |---|---|
     | `let(tmp(D), K, load(T), [A])` | `let(tmp(Q), a, check(0, S, read, Al), [A])`, then `let(tmp(D), K, raw_load(T, 0), [tmp(Q)])` |
     | `store(W, V, A)` | `let(tmp(Q), a, check(0, S, write, Al), [A])`, then `raw_store(W, 0, V, tmp(Q))` |
+    | `access(K, A, S, Al)` | `let(tmp(Q), a, check(0, S, K, Al), [A])`, then `touch(tmp(Q))` |
     | pointer load/store | the same check, then `raw_load_pointer` or `raw_store_pointer` with its explicit `pointer_memory_effects/2` sequence |
     | `atomic_load(p)`, `atomic_store(p, V, A)` | the same check, then the raw pointer access with the atomic effect list (`[atomic_read]`, `[atomic_write]`) |
     | `let(D, K, cas(T), [E, N, A])` | a write check of T's width at that alignment, then `let(D, K, raw_cas(T, 0), [tmp(Q), E, N])` |
@@ -186,6 +187,10 @@ checked_access(store(W, V, A), Q,
                [let(tmp(Q), a, check(0, Size, write, Align), [A]),
                 raw_store(W, 0, V, tmp(Q))|Is], Is) :-
     access_size_align(W, Size, Align), !.
+% A vector's full-width check (docs/vector-access.md): the check, then
+% touch, which uses its proof and accesses nothing.
+checked_access(access(K, A, Size, Align), Q,
+               [let(tmp(Q), a, check(0, Size, K, Align), [A]), touch(tmp(Q))|Is], Is) :- !.
 checked_access(call(Res, tmp(P), Args), Q,
                [let(tmp(Q), f, check_function, [tmp(P)]),
                 raw_call(Res, tmp(Q), Args)|Is], Is).
