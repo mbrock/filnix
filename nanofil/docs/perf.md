@@ -9,6 +9,43 @@ instructions, and a ranked plan. It is separate from the semantic
 campaign ([campaign.md](campaign.md)): nothing here weakens a check,
 and safety decisions are flagged for review before implementation.
 
+## Round closed (October 2026, at `07b2b11`)
+
+**Where `-O` stands.** On the quiet gate (swa, 7 trials, eleven
+workloads) `-O` runs at **1.85× filcc `-O2`'s time** (2.92× its
+instructions), and **1.81× (2.79×)** with `--checks=renew`, which M7 is
+making the `-O` default. Every workload is within 1.4–2.4×. This round
+began at 2.18× (3.23×) (`2ce8b0f`); the whole effort began at 4.61×
+(6.30×) (`3576b51`).
+
+**What this round's items gave** (geomean time, before → after):
+
+- 8, cheap middle end (`--simplify=full`): 2.14 → 1.98.
+- 5b-2a, pointer address words as register homes (`--registers=pointers`,
+  the `-O` default, root ranges now checked): 1.98 → 1.86, Lua 20–25%;
+  bzip2 `-d` is 1.5% slower, a known regression.
+- M7's renewal with the replaced check's own pointer (`49cd76d`), on
+  pointers: 1.85 → 1.81.
+- Compile time and memory, output-identical: backend cuts (`89f557c`),
+  shared analyses (`58ad70e`), `-O` within the 1 GB stack (`a12cc89`,
+  items 10 and 11). `--registers-limit` is opt-in.
+- Measured and not taken: local selection and copy patterns (item 12,
+  none over 2%), phi-copy coalescing (under 0.3%), three-address `lea`
+  selection (the removable part of two-address copies is 0.3–1.8%,
+  mean 0.9%), `--registers=flow`, a renewal site filter.
+
+**What is left, and whose it is.**
+
+- **Check count** (the largest share): hoisting and merging checks
+  needs M7's spatial/temporal split (docs/m7.md). M7's.
+- **Calls** (12–16%, 36–43% in lz4 `-1`/`-d`): the Fil-C runtime's
+  helpers and libc, the same in filcc's builds. The runtime's.
+- **Register pressure and frame traffic**: what remains is two-address
+  arithmetic and phi copies through shared shadows; each local fix
+  measured under 2%.
+
+`-O` now moves on to being a package-build mode (the `-O` survey).
+
 ## Summary (October 2026, at `f7197dc`)
 
 **Where we are.** `-O` (with `--checks=reference`, where renewal goes
@@ -41,6 +78,7 @@ chain only approximately:
 | 8 cheap middle end (`--simplify=full`, the `-O` default) | 2.14 (3.23) → 1.98 (2.89) |
 | M7 check renewal (`--checks=renew`, opt-in; docs/m7.md), measured | 1.98 (2.89) → 2.00 (2.77) |
 | 5b-2a pointer address homes (`--registers=pointers`, the `-O` default; bzip2 `-d` 1.5% slower) | 1.98 (2.89) → 1.86 (2.91) |
+| M7 renewal after `49cd76d`, on pointers (`--checks=renew`) | 1.85 (2.92) → 1.81 (2.79) |
 
 Every step is translation-validated or checked against the reference
 path, and the reference stays selectable and snapshot-identical. No
@@ -4083,6 +4121,14 @@ its 587 register-to-register moves. Those left are two-address
 arithmetic (`movq %r15, %r12; addq %r10, %r12`) and copies through the
 phi shadows, which item 9 shares by position, so they interfere with
 many homes and cannot take one partner's register. Not adopted.
+
+**Two-address copies, measured (pointers + renew, `bench-pb`).** A
+`mov %rA, %rB` followed by an ALU op writing `%rB` from another source
+is 0.9–3.8% of executed instructions (callgrind per instruction). Only
+the copies before `add`, `sub $imm` and `shl $1..3` can become one
+`lea`: 0.3–1.8%, mean 0.9% (lz4 `-9` 1.5%, Lua tab 1.8%, SQLite 0.5%).
+The rest need coalescing, which did not reach them. Under the 2% bar;
+not taken.
 
 ### Projection
 
