@@ -202,10 +202,11 @@ int_arg_in_range(K, X) :-
     Top #= Mod - 1,
     X in 0..Top.
 
-% call_outcome(+Fns, +Globals, +Mode, +Fn, +Xs, +S0, -Out, -S): calling
-% Fn on Xs in state S0 ends with Out in state S. In plain mode a
-% callee's allocations die when it returns; in filc mode every
-% allocation is a heap object that lives until explicitly freed.
+%! call_outcome(+Fns, +Globals, +Mode, +Fn, +Xs, +S0, -Out, -S) is nondet.
+%
+%  Calling Fn on Xs in state S0 ends with Out in state S. In plain mode
+%  a callee's allocations die when it returns; in filc mode every
+%  allocation is a heap object that lives until explicitly freed.
 call_outcome(Fns, Globals, Mode, Fn, Args, S0, Out, S) :-
     (   get_assoc(Fn, Fns, fn(Ret, Params, Entry, Blocks)) -> true
     ;   format(atom(Msg), 'cannot interpret a call to external ~w', [Fn]),
@@ -291,10 +292,11 @@ reify_constraint(X >= Y, B) :- B #<==> (X #>= Y).
 
 %% Blocks
 
-% block_outcome(+Ctx, +Label, +Pred, +Env0, +S0, -Out, -S): Out and S are
-% the outcome and final state of running the block Label, entered from
-% Pred (from(L) or entry), and everything after it. Each block costs one
-% unit of fuel.
+%! block_outcome(+Ctx, +Label, +Pred, +Env0, +S0, -Out, -S) is nondet.
+%
+%  Out and S are the outcome and final state of running the block Label,
+%  entered from Pred (from(L) or entry), and everything after it. Each
+%  block costs one unit of fuel.
 block_outcome(Ctx, Label, Pred, Env0, s(Mem, Fuel0), Out, S) :-
     (   Fuel0 =:= 0
     ->  Out = out_of_fuel,
@@ -324,12 +326,13 @@ result_outcome(cont(Env, S0), Jump, Ctx, Label, Out, S) :-
     jump_outcome(Jump, Ctx, Label, Env, S0, Out, S).
 result_outcome(stop(Out, S), _, _, _, Out, S).
 
-% jump_outcome(+Jump, +Ctx, +From, +Env, +S0, -Out, -S): Out is the
-% outcome of Jump, ending block From, and everything after it. When the
-% jnz condition is unknown, both edges are solutions, each constraining
-% it; a known one takes the fast path.
-% A pollcheck on the edge (poll(L)) changes nothing the interpreter
-% models: explicit free calls run, but there are no asynchronous frees.
+%! jump_outcome(+Jump, +Ctx, +From, +Env, +S0, -Out, -S) is nondet.
+%
+%  Out is the outcome of Jump, ending block From, and everything after
+%  it. When the jnz condition is unknown, both edges are solutions, each
+%  constraining it; a known one takes the fast path. A pollcheck on the
+%  edge (poll(L)) changes nothing the interpreter models: explicit free
+%  calls run, but there are no asynchronous frees.
 jump_outcome(goto(T), Ctx, From, Env, S0, Out, S) :-
     edge_label(T, L),
     block_outcome(Ctx, L, from(From), Env, S0, Out, S).
@@ -352,8 +355,10 @@ jump_outcome(unreachable, _, _, _, S, unreachable, S).
 
 %% Instructions
 
-% insts_result(+Insts, +Ctx, +Env0, +S0, -Result): Result is cont(Env, S)
-% when every instruction ran, or stop(Outcome, S) when one ended the run.
+%! insts_result(+Insts, +Ctx, +Env0, +S0, -Result) is nondet.
+%
+%  Result is cont(Env, S) when every instruction ran, or stop(Outcome,
+%  S) when one ended the run.
 insts_result([], _, Env, S, cont(Env, S)).
 insts_result([Inst|Insts], Ctx, Env0, S0, Result) :-
     inst_result(Inst, Ctx, Env0, S0, Result0),
@@ -365,8 +370,10 @@ rest_result(cont(Env, S), Insts, Ctx, Result) :-
     insts_result(Insts, Ctx, Env, S, Result).
 rest_result(stop(Out, S), _, _, stop(Out, S)).
 
-% inst_result(+Inst, +Ctx, +Env0, +S0, -Result): Result is cont(Env, S)
-% after Inst, or stop(Outcome, S) when it ends the run.
+%! inst_result(+Inst, +Ctx, +Env0, +S0, -Result) is nondet.
+%
+%  Result is cont(Env, S) after Inst, or stop(Outcome, S) when it ends
+%  the run.
 inst_result(loc(_, _), _, Env, S, cont(Env, S)) :- !.
 inst_result(local_alloc(Name, Size), ctx(_, _, _, _, filc, Locals), Env,
             s(Mem0, Fuel), cont(Env, s(Mem, Fuel))) :-
@@ -511,10 +518,12 @@ width_value_class(s, s).
 width_value_class(d, d).
 width_value_class(x, x).
 
-% function_check_res(+P, +Ctx, -Res): P designates a function only when
-% it carries that function's capability at its exact callable address.
-% An unknown address is not proof; an external symbol's kind is unknown
-% to the interpreter, which must not guess that it names a function.
+%! function_check_res(+P, +Ctx, -Res) is det.
+%
+%  P designates a function only when it carries that function's
+%  capability at its exact callable address. An unknown address is not
+%  proof; an external symbol's kind is unknown to the interpreter, which
+%  must not guess that it names a function.
 function_check_res(ptr(A, Cap), ctx(_, Globals, _, _, _, _), Res) :-
     must_be(callable, Cap),
     cap_function_res(Cap, A, Globals, Res).
@@ -753,10 +762,11 @@ flight_cap(lower(P), Ctx, Env, Cap) :- value_x(p, P, Ctx, Env, ptr(_, Cap)).
 
 %% Operations
 
-% op_res(+Op, +K, +Mode, +Args, +S0, -Res, -S): Res is val(X), ub(Why)
-% or trap(Why). Op is an IR term (ir.pl).
-% Commit before integer dispatch: float bits must never get CLP(Z)
-% arithmetic, even if a caller asks for a different result on backtracking.
+%! op_res(+Op, +K, +Mode, +Args, +S0, -Res, -S) is nondet.
+%
+%  Res is val(X), ub(Why) or trap(Why). Op is an IR term (ir.pl). Commit
+%  before integer dispatch: float bits must never get CLP(Z) arithmetic,
+%  even if a caller asks for a different result on backtracking.
 op_res(cmp(C, CK), _, _, [A, B], S, val(R), S) :-
     memberchk(CK, [s, d, x]), !, ieee_compare(CK, C, A, B, R).
 op_res(Op, K, _, Xs, S, val(R), S) :-
@@ -908,15 +918,21 @@ va_checked_res(ok, K, P, A, Size-Step, s(Mem0, Fuel), Res, s(Mem, Fuel)) :-
     ; K == p -> pointer_access_load(ok, Mem1, A, Res, Mem)
     ; load_res(filc, Mem1, A, Size, Res, Mem) ).
 
-% checked_res(+Res0, +P, -Res): a check whose access_res/7 is Res0
-% yields P, proven, or traps.
+%! checked_res(+Res0, +P, -Res) is det.
+%
+%  A check whose access_res/7 is Res0 yields P, proven, or traps.
 checked_res(ok, P, val(P)).
 checked_res(trap(Why), _, trap(Why)).
 
 asm_in_x(Ctx, Env, _-V, X) :- value_x(w, V, Ctx, Env, X).
 
-% raw_res(+Res0, -Res): a raw access is the access its check covers,
-% made again without trapping: what would have trapped is unchecked.
+%! renew_res(+Res0, +P, +Mem, -Res) is det.
+%
+%  A renew (docs/m7.md, round 4) of P whose access_res/7 is Res0 yields
+%  P, proven, or traps as the check it replaced would: a read-only trap
+%  stands, and a freed object traps out of bounds. Any other failure
+%  means the earlier check's bounds did not cover this access, which a
+%  valid renew rules out, so it is unchecked(span), a broken pass.
 renew_res(ok, P, _, val(P)).
 renew_res(trap(readonly), _, _, trap(readonly)).
 renew_res(trap(Why), ptr(_, Cap), mem(_, Rs, _, _), Res) :-
@@ -926,6 +942,10 @@ renew_res(trap(Why), ptr(_, Cap), mem(_, Rs, _, _), Res) :-
     ;   Res = unchecked(span)
     ).
 
+%! raw_res(+Res0, -Res) is det.
+%
+%  A raw access is the access its check covers, made again without
+%  trapping: what would have trapped is unchecked.
 raw_res(val(X), val(X)).
 raw_res(ok, ok).
 raw_res(ub(Why), ub(Why)).
@@ -1097,9 +1117,11 @@ additive_res(l, Op, Xs, Res) :- alu(Op, l, Xs, Res).
 pointer_offset(add, A, X, M, R) :- int_is(R, (A + X) mod M).
 pointer_offset(sub, A, X, M, R) :- int_is(R, (A - X) mod M).
 
-% alu(+Op, +K, +Xs, -Res): Res is the result of the arithmetic Op of
-% class K on Xs; add and sub are integer here (additive_res/4). ptoi
-% drops the capability; itop has none.
+%! alu(+Op, +K, +Xs, -Res) is nondet.
+%
+%  Res is the result of the arithmetic Op of class K on Xs; add and sub
+%  are integer here (additive_res/4). ptoi drops the capability; itop
+%  has none.
 alu(ptoi, _, [ptr(A, _)], val(A)).
 alu(itop, _, [X], val(ptr(X, none))).
 
@@ -1293,11 +1315,13 @@ object_region(Base, Rs, Region) :-
     ;   throw(nanofil_error('capability names an unregistered object'))
     ).
 
-% load_res(+Mode, +Mem0, +A, +Size, -Res, -Mem): Res is val(U), U the
-% little-endian value of the Size bytes at A, or ub(...). In plain mode
-% an access outside every live region is undefined. In filc mode the
-% access was checked against its capability already. Mem is Mem0 with
-% any unwritten byte read now made a fresh variable (plain mode).
+%! load_res(+Mode, +Mem0, +A, +Size, -Res, -Mem) is det.
+%
+%  Res is val(U), U the little-endian value of the Size bytes at A, or
+%  ub(...). In plain mode an access outside every live region is
+%  undefined. In filc mode the access was checked against its capability
+%  already. Mem is Mem0 with any unwritten byte read now made a fresh
+%  variable (plain mode).
 load_res(Mode, mem(Bytes0, Rs, Next, Aux), A, Size, Res,
          mem(Bytes, Rs, Next, Aux)) :-
     must_be(integer, A),
@@ -1310,8 +1334,9 @@ load_res(Mode, mem(Bytes0, Rs, Next, Aux), A, Size, Res,
         Res = ub(out_of_bounds(A, Size))
     ).
 
-% store_res(+Mode, +Width, +Mem0, +Addr, +X, -Res, -Mem): Mem is Mem0
-% with X written at Addr as Width, when Res is ok.
+%! store_res(+Mode, +Width, +Mem0, +Addr, +X, -Res, -Mem) is det.
+%
+%  Mem is Mem0 with X written at Addr as Width, when Res is ok.
 store_res(plain, Width, mem(Bytes0, Rs, Next, Aux), A, X, Res,
           mem(Bytes, Rs, Next, Aux)) :-
     width_bytes(Width, Size),
@@ -1341,8 +1366,9 @@ width_word(d, V, V, 1, none).
 width_word(x, V, V, 8, none).
 width_word(p, ptr(V, C), V, 8, cap(C)).
 
-% access_store(+Res, +Mem0, +A, +Size, +V, +Stored, -Mem): Mem is Mem0
-% after a checked store with result Res.
+%! access_store(+Res, +Mem0, +A, +Size, +V, +Stored, -Mem) is det.
+%
+%  Mem is Mem0 after a checked store with result Res.
 access_store(ok, mem(Bytes0, Rs, Next, Aux0), A, Size, V, Stored,
              mem(Bytes, Rs, Next, Aux)) :-
     le_bytes(Size, V, Written),
@@ -1353,14 +1379,17 @@ access_store(trap(_), Mem, _, _, _, _, Mem).
 stored_aux(none, _, Aux, Aux).
 stored_aux(cap(C), A, Aux0, Aux) :- put_assoc(A, Aux0, C, Aux).
 
-/* access_res(+Mem, +A, +Cap, +Size, +Kind, +Align, -Res): Fil-C's access
-   check, Res ok or trap(Why). Cap is none, obj(Base) for a writable
-   object, ro(Base) for read-only data, fn(F) for a function object
-   (zero size, so every access fails the bounds check) or ext(Name) for
-   a symbol defined outside the module, which the interpreter cannot
-   follow. Cap must be known: an unknown capability (an unknown p
-   argument) raises an instantiation error, as an unknown address does.
-   An unregistered Base is outside the interpreter's domain. */
+%! access_res(+Mem, +A, +Cap, +Size, +Kind, +Align, -Res) is det.
+%
+%  Fil-C's access check, Res ok or trap(Why). Cap is none, obj(Base)
+%  for a writable object, ro(Base) for read-only data, fn(F) for a
+%  function object (zero size, so every access fails the bounds check)
+%  or ext(Name) for a symbol defined outside the module, which the
+%  interpreter cannot follow. Cap must be known: an unknown capability
+%  (an unknown p argument) raises an instantiation error, as an unknown
+%  address does. An unregistered Base is outside the interpreter's
+%  domain. The trap reasons and their order are those of the backend's
+%  access check, so a check and the raw access it covers agree.
 access_res(mem(_, Rs, _, _), A, Cap, Size, Kind, Align, Res) :-
     must_be(integer, A),
     must_be(callable, Cap),
