@@ -99,9 +99,17 @@ check_regs(regs_metadata(Setjmp, Impl, Homes, Saves), Map, Before, After, Analys
         obligations(Body, Mapped, Analysis)
     ).
 
+%! allocatable(?R) is nondet.
+%
+%  R may hold a home: a callee-saved register, or r10 or r11, which only
+%  a home dead across every call may take.
 allocatable(R) :- callee_saved(R).
 allocatable(r10).
 allocatable(r11).
+%! callee_saved(?R) is nondet.
+%
+%  R is a SysV callee-saved register a home live across a call may take:
+%  rbx or r12 to r15. The emitter reserves a save slot for each.
 callee_saved(rbx). callee_saved(r12). callee_saved(r13).
 callee_saved(r14). callee_saved(r15).
 
@@ -182,10 +190,16 @@ mapped_overlap(D, N, Mapped) :-
     \+ empty_assoc(Mapped),
     H0 is D-7, H1 is D+N-1, between(H0, H1, H), get_assoc(H, Mapped, _), !.
 
-% rbp_access(+Line, -D, -Bytes): Line reads or writes Bytes at D(%rbp).
+%! rbp_access(+Line, -D, -Bytes) is nondet.
+%
+%  Line reads or writes Bytes at D(%rbp).
 rbp_access(Line, D, N) :-
     once(instruction_effects(Line, effect(_,_,_,Ms,_))),
     effect_access(Ms, D, N).
+%! effect_access(+Memory, -D, -Bytes) is nondet.
+%
+%  One of the memory effects Memory (instruction_effects/2) reads or
+%  writes Bytes at D(%rbp).
 effect_access(Ms, D, N) :-
     member(M, Ms), ( M = read(mem(D,rbp),N) ; M = write(mem(D,rbp),N) ).
 
@@ -246,14 +260,23 @@ expected_line(Mapped, L, L1) :-
 
 %% Control flow and liveness
 
-% The successors of each line of Body by index, or failure when a
-% transfer is unknown or the last line falls through.
+%! successors(+Body, -Succs) is semidet.
+%
+%  Succs are the successors of each line of Body by index. Fails when a
+%  transfer is unknown or the last line falls through: the checker's
+%  liveness needs the complete control-flow graph.
 successors(Body, Succs) :-
     maplist(line_effect, Body, Effects),
     successors(Body, Effects, Succs).
 
+%! line_effect(+Line, -Effect) is semidet.
+%
+%  Effect is instruction_effects/2's first answer for Line.
 line_effect(Line, Effect) :- once(instruction_effects(Line, Effect)).
 
+%! successors(+Body, +Effects, -Succs) is semidet.
+%
+%  As successors/2, given each line's line_effect/2.
 successors(Body, Effects, Succs) :-
     length(Body, N),
     findall(L-I, nth0(I, Body, label(L)), Ls0), keysort(Ls0, Ls1),
@@ -435,13 +458,14 @@ scratch_family(rax, 0). scratch_family(rcx, 1). scratch_family(rdx, 2).
 scratch_family(rsi, 3). scratch_family(rdi, 4). scratch_family(r8, 5).
 scratch_family(r9, 6).
 
-% extra_use_def(+Line, +Effect, -Use, -Def): the scratch families and
-% flags Line uses and defines, as 8-bit sets. A read at any width uses a
-% family, a 32- or 64-bit write defines it, a narrower one uses and
-% defines it. A call uses every scratch family (its arity is not known
-% here), ret uses rax, rcx and rdx (the fast ABI returns two words in
-% rdx and rcx, filc_amd64.pl's return_registers), and the stack-overflow
-% jump uses all.
+%! extra_use_def(+Line, +Effect, -Use, -Def) is det.
+%
+%  Use and Def are the scratch families and flags Line uses and defines,
+%  as 8-bit sets. A read at any width uses a family, a 32- or 64-bit
+%  write defines it, a narrower one uses and defines it. A flags read
+%  uses bit 7 and a flags write defines it. A call, the stack-overflow
+%  jump and an asm_fixed line use every scratch family (their arity is
+%  not known here); ret uses rax, rcx and rdx, the return registers.
 extra_use_def(Line, effect(Rs,Ws,Fl,_,_), Use, Def) :-
     foldl(read_bit, Rs, 0, U0),
     foldl(write_bits, Ws, U0-0, U1-D0),
@@ -629,8 +653,11 @@ check_operands(A, B, Lives, Cells0) :-
     empty_assoc(None),
     operands_walk(A, B, Lives, 0, S0, S0, None, env(S0, Cells, None)).
 
-% valid_cells(+Cells0, +A, -Cells): the cells are distinct, 8-aligned and
-% outside every other range; Cells maps those no lea in A addresses.
+%! valid_cells(+Cells0, +A, -Cells) is semidet.
+%
+%  The cells of Cells0, cells(Ds, Others), are distinct, 8-aligned frame
+%  words outside every other range in Others; Cells maps those no lea in
+%  the stream A addresses, which the operand rewrite may then use.
 valid_cells(cells(Ds, Others), A, Cells) :-
     msort(Ds, Ds), sort(Ds, Ds),
     % Distinct multiples of 8 are 8 apart.
@@ -765,6 +792,10 @@ imm_halves(32, I, const(Lo), const(0)) :- Lo is I mod (1<<32).
 imm_halves(64, I, const(Lo), const(Hi)) :-
     U is I mod (1<<64), Lo is U /\ 0xffffffff, Hi is U >> 32.
 
+%! boundary_line(+Line, +Effect) is semidet.
+%
+%  Line ends a straight-line run: it transfers control, writes rsp or
+%  rbp, or is not an instruction (a label or directive).
 boundary_line(Line, effect(_,Ws,_,_,Flow)) :-
     (   Flow \== next -> true
     ;   member(write(F,_), Ws), memberchk(F, [rsp,rbp]) -> true
