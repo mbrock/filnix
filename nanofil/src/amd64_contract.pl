@@ -11,8 +11,12 @@
 :- use_module(library(lists)).
 :- discontiguous(instruction_effects/2).
 
-% Concrete names index directly; family/width queries generate the name
-% without searching every family for every operand in a large function.
+%! register(?Name, ?Family, ?Bits) is nondet.
+%
+%  Name is the Bits-wide name of the general-purpose register Family
+%  (rax, ..., r15, rsp, rbp): register(eax, rax, 32). Concrete names
+%  index directly; family and width queries generate the name without
+%  searching every family for every operand in a large function.
 register(rax,rax,64). register(eax,rax,32).
 register(ax,rax,16). register(al,rax,8).
 register(rcx,rcx,64). register(ecx,rcx,32).
@@ -59,9 +63,17 @@ address(mem(D,B,I), [B,I]) :- integer(D), register(B,B,64), register(I,I,64).
 address(rip(E), []) :- expression(E).
 address(gotpcrel(S), []) :- atom(S).
 
+%! explicit_registers(+Line, -Families) is det.
+%
+%  Families are the register families Line's operands name, addressing
+%  registers included, with repeats; [] for a label or directive.
 explicit_registers(ins(_,_,Os), Rs) :- !,
     findall(R, (member(O,Os), operand_register(O,R)), Rs).
 explicit_registers(_, []).
+%! operand_register(+Operand, -Family) is nondet.
+%
+%  Operand names the register Family: as a register, as a base or index
+%  of a memory operand, or under an indirection.
 operand_register(reg(N), F) :- register(N,F,_).
 operand_register(O, R) :- address(O,Rs), member(R,Rs).
 operand_register(ind(O), R) :- operand_register(O,R).
@@ -74,6 +86,16 @@ destination(M, W, Rs, [], [write(M,N)]) :- address(M,Rs), N is W//8.
 % x86 does not admit a memory-to-memory two-operand instruction.
 not_two_memory(A,B) :- \+ (address(A,_), address(B,_)).
 
+%! instruction_effects(+Line, -Effect) is semidet.
+%
+%  Effect is effect(Reads, Writes, Flags, Memory, Flow) for the audited
+%  asm.pl line Line: the register families it reads (addressing
+%  registers included), its writes write(Family, Bits) (32 bits
+%  zero-extend, 8 and 16 preserve the rest), its effect on the flags
+%  (preserve among them), its memory reads and writes read(M, Bytes) and
+%  write(M, Bytes), and its control or frame effect (next for a line
+%  that falls through). Fails for a form not audited here, so a caller
+%  keeps the unchanged implementation rather than guessing its effects.
 instruction_effects(ins(mov,S,[A,B]), effect(Rs,Ws,preserve,Ms,next)) :-
     width(S,W), source(A,W,R1,M1), destination(B,W,R2,Ws,M2),
     not_two_memory(A,B), append(R1,R2,Rs), append(M1,M2,Ms).
