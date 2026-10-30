@@ -19,7 +19,8 @@
 # (top-level asm's .symver, function objects' entries).
 # With a "// trap-reason" line, a run's safety errors are compared, each
 # up to the parenthesized reason that ends its first clause ("cannot
-# handle inline asm (Reason)"), instead of counting as "trap".
+# handle inline asm (Reason)"), or else up to the first "(" or "." ("cannot
+# write 56 bytes when upper - ptr = 48"), instead of counting as "trap".
 # A "// cflags: ..." line passes those flags to clang, and nanofil
 # compiles clang's preprocessing with them, as nanofil-cc does (with
 # NANOFIL_STD=c23 for -std=c23 or gnu23, gnu89 for C90 modes). NANOFIL_OPT=-O turns on nanofil's
@@ -65,7 +66,8 @@ run() {
   set -e
   if grep -q 'filc safety error' "$out.stderr"; then
     if [[ $trap_reason == 1 ]]; then
-      sed -n 's/^\(filc safety error: [^(]*([^)]*)\):.*/\1/p' "$out.stderr" >"$out.reasons"
+      sed -n -e 's/^\(filc safety error: [^(]*([^)]*)\):.*/\1/p;t' \
+        -e 's/^\(filc safety error: [^(.]*[^(. ]\) *[(.].*/\1/p' "$out.stderr" >"$out.reasons"
       mv "$out.reasons" "$out.stderr"
     else
       echo trap >"$out.stderr"

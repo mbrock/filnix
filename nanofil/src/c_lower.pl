@@ -4759,18 +4759,25 @@ member_leaves(Env, B, m(_, T, Off), L0, L) :-
 member_leaves(_, B, m(_, _, Off, bits(_, _)), [B1-int|L], L) :- B1 is B + Off.
 
 % copy_object(+Type, +Src, +Dst)//: copy the object of Type at Src to
-% Dst, an eightbyte at a time. A type aligned below 8 that holds a
-% pointer (libmbim's, elfutils' and parted's packed structs) may be at
-% any address: load(p) there would trap, and an eightbyte copied as
-% bytes would lose the capability of a pointer that the address happens
-% to align. It is copied by the runtime's zmemmove instead (never a
-% memcpy the program defines), as filcc copies it, which keeps each
-% capability whose word is 8-aligned at both ends.
+% Dst, an eightbyte at a time. Two kinds of object are copied by the
+% runtime's zmemmove instead (never a memcpy the program defines), which
+% checks both whole ranges first and keeps each capability whose word is
+% 8-aligned at both ends:
+% - one of more than 40 bytes, as filcc copies it (FilPizlonator's
+%   InlineMemmoveDstSizeLimit): a word at a time, minizip's 64 KB
+%   `*zi = ziinit` was a 16k-word function;
+% - one aligned below 8 that holds a pointer (libmbim's, elfutils' and
+%   parted's packed structs), which may be at any address: load(p) there
+%   would trap, and an eightbyte copied as bytes would lose the
+%   capability of a pointer that the address happens to align.
 copy_object(Type, Src, Dst) -->
     env(Env),
     { eightbytes(Type, Env, unknown, Ebs) },
-    (   { type_size_align(Type, Env, Size, Align), Align < 8,
-          ptr_offsets(Type, Env, 0, [_|_], []) }
+    (   { type_size_align(Type, Env, Size, Align),
+          (   Size > 40
+          ->  true
+          ;   Align < 8, ptr_offsets(Type, Env, 0, [_|_], [])
+          ) }
     ->  emit(call(void, global(zmemmove), [arg(p, Dst), arg(p, Src), arg(l, const(Size))]))
     ;   copy_ebs(Ebs, Src, Dst)
     ).
