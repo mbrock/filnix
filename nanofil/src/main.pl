@@ -147,6 +147,12 @@
 
 :- initialization(main).
 
+%! main is det.
+%
+%  The command line entry point (bin/nanofil): reads the options from
+%  argv and the NANOFIL_* environment variables (options/8 and the
+%  *_default predicates), runs command/4, and halts with 0; or prints
+%  the error, or "failed" when the command fails, and halts with 1.
 main :-
     % Trealla gives argv as character lists, SWI as atoms.
     current_prolog_flag(argv, RawArgv),
@@ -297,12 +303,14 @@ options(Args,O,emit(R,B,M),C,O,emit(R,B,M),C,Args) :-
     registers_default(O,R), branches_default(O,B), memcpy_default(O,M),
     checks_default(O,C).
 
-% registers_default(+Opt, ?Registers) and branches_default(+Opt,
-% ?Branches): with no option or environment variable, -O selects
-% whole-function registers with register operands and frame cells on a
-% frame with a home per scalar temporary and pointer address words as
-% homes too (pointers), and branch selection, and its absence keeps the
-% reference emission.
+%! registers_default(+Opt, ?Registers) is det.
+%
+%  Registers is the register mode for optimization level Opt (o0 or
+%  o1) when no --registers option or NANOFIL_REGISTERS chose one: stack,
+%  the reference emission, without -O, and pointers, a home per scalar
+%  temporary and per pointer address word (amd64_regs.pl), with it.
+%  branches_default/2 does the same for branch selection: reference
+%  without -O, selected with it.
 registers_default(_, R) :- nonvar(R), !.
 registers_default(o0, stack).
 registers_default(o1, pointers).
@@ -402,8 +410,16 @@ release_stacks :-
     catch(garbage_collect, error(existence_error(_, _), _), true),
     catch(trim_stacks, error(existence_error(_, _), _), true).
 
-% Only native emission needs Registers; only the Fil-C checked stage
-% needs Checks (difftest runs it too); other commands consume Opt.
+%! command(+Opt, +Registers, +Checks, +Args) is det.
+%
+%  Runs the command Args, [Command|Operands], such as [cc, File]; the
+%  header comment's table lists the commands. Opt is the middle end's
+%  selection: o0 without -O, else o1, o1(Inline) or o1(Inline, full)
+%  (opt.pl). Registers is the emission choice emit(Registers, Branches,
+%  Copies), and Checks the check passes (checks_module/3). Only native
+%  emission needs Registers and only the Fil-C checked stage needs
+%  Checks (difftest runs it too). Throws nanofil_error(Msg) for a
+%  refused program.
 command(Opt, Registers, Checks, [compile, File]) :- !,
     file_module(File, Module0),
     % Promote can remove every p from a module; the ABI is the original's.
@@ -487,20 +503,23 @@ difftest(Sel, Checks, File, Dir) :-
              format("  ~w = ~w~n", [CallText, Text])
            )).
 
-% mode_print_asm(+Mode, +Registers, +Checks, +Module): print the
-% assembly of Module by the backend for Mode, filc or plain. Fil-C
-% prints one item at a time (filc_module_emit/3), since a large module's
-% lines (SQLite's) need not all be held at once.
+%! mode_print_asm(+Mode, +Registers, +Checks, +Module) is det.
+%
+%  Prints the assembly of Module by the backend for Mode, filc or plain.
+%  Fil-C prints one item at a time (filc_module_emit/3), since a large
+%  module's lines (SQLite's) need not all be held at once.
 mode_print_asm(plain, _, _, Module) :-
     module_asm(Module, Asm), print_asm(Asm).
 mode_print_asm(filc, Registers, Checks, Module) :-
     checked_module(Checks, Module, Checked),
     filc_module_emit(Checked, Registers, print_asm).
 
-% checked_module(+Checks, +Module, -Checked): Checked is Module
-% pizlonated, with check reuse (docs/m7.md) when Checks is reuse, which
-% must be valid checked IR (ir.pl): the validator verifies the passes.
-% Reuse must also change nothing but which proof a covered access reads.
+%! checked_module(+Checks, +Module, -Checked) is det.
+%
+%  Checked is Module pizlonated (pizlonate_module/2), validated as
+%  checked IR (valid_module/1), and then rewritten by the check passes
+%  Checks selects (checks_module/3). Throws if the validator refuses
+%  either.
 checked_module(Checks, Module, Checked) :-
     once(pizlonate_module(Module, Checked0)),
     release_stacks,
@@ -508,6 +527,16 @@ checked_module(Checks, Module, Checked) :-
     release_stacks,
     checks_module(Checks, Checked0, Checked).
 
+%! checks_module(+Checks, +Checked0, -Checked) is det.
+%
+%  Checked is the checked module Checked0 after the check passes of
+%  Checks (--checks; docs/m7.md): reference keeps pizlonate's naive
+%  checks; reuse deletes a check an earlier live one covers; renew, the
+%  -O default, also replaces a dominated check by a test of only the
+%  free and read-only flags; guard also puts a span test before a loop
+%  and makes its checks renew_if. Each pass's result must pass its
+%  *_refines identity check against its input, and the validator
+%  (valid_module/1) then checks the result's evidence again on its own.
 checks_module(reference, Checked, Checked).
 checks_module(reuse, Checked0, Checked) :-
     reused_module(Checked0, Checked),
@@ -543,12 +572,14 @@ reused_module(Checked0, Checked) :-
     ;   throw(nanofil_error('check reuse changed more than proofs'))
     ).
 
-/* mode_pizlonation_agrees(+Mode, +File, +Module-Prepared, +Runs): for a
-   filc module, the pizlonated Module has the same outcome as Module on
-   every run, traps and their reasons included, or the command throws:
-   the explicit checks are exactly the implicit ones. A missing or too
-   weak check shows as the outcome unchecked(Why). Both run with the same
-   fuel, since pizlonate keeps every block. */
+%! mode_pizlonation_agrees(+Mode, +Checks, +File, +Module-Prepared, +Runs) is det.
+%
+%  For a filc module, the checked Module (checked_module/3 with Checks)
+%  has the same outcome as Module on every run of Runs, traps and their
+%  reasons included, or the command throws: the explicit checks are
+%  exactly the implicit ones. A missing or too weak check shows as the
+%  outcome unchecked(Why). Both run with the same fuel, since pizlonate
+%  keeps every block. A plain module has nothing to compare.
 mode_pizlonation_agrees(plain, _, _, _, _).
 mode_pizlonation_agrees(filc, Checks, File, Module-Prepared, Runs) :-
     checked_module(Checks, Module, Checked),
@@ -597,9 +628,11 @@ opt_report_validation(o0, _, _, _, _).
 opt_report_validation(o1, File, Module0, Module, Verdicts) :-
     report_validation(File, Module0, Module, Verdicts).
 
-% report_validation(+File, +Module0, +Module, +Verdicts): print the -O
-% difftest report: promote's effect, then every validation failure,
-% which together make the command throw.
+%! report_validation(+File, +Module0, +Module, +Verdicts) is det.
+%
+%  Prints the -O difftest report: promote's effect, then every
+%  validation failure among Verdicts, which together make the command
+%  throw.
 report_validation(File, Module0, Module, Verdicts) :-
     alloc_count(Module0, Allocs0),
     alloc_count(Module, Allocs),
