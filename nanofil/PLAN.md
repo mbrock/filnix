@@ -555,8 +555,10 @@ capability (`same_pointer/3`), so `BZ2_decompress`'s frame is 1312
 bytes, not 1712 (reference 1296), and `luaV_execute`'s and
 `sqlite3VdbeExec`'s are the reference's again. On swa, bzip2 `-d`'s
 resyncs fell to baseline (renew 43k, guard 49k, reference 47k, from
-8.5M), with renewal's instruction savings intact. Both stay opt-in until
-swa times them.
+8.5M), with renewal's instruction savings intact. On quiet swa the gate
+geomean is `-O` 1.98, renew 1.94, guard 1.97 (bzip2 `-d` 2.30 / 2.20 /
+2.22): renewal is a time win, guards are not over renewal. Both stay
+opt-in until the orchestrator decides a default.
 
 **First deliverable:** one narrowly specified alternative to repeated
 runtime checking, such as reuse for repeated scalar accesses in a
