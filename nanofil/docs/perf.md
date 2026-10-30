@@ -102,6 +102,31 @@ The
 previous table (at `2ce8b0f`, 2.18 (3.23), before simplify and
 renewal) is in git history.
 
+**Measuring a change that grows or reshuffles the frame.** On swa's Zen
+4, bzip2 `-d`'s time follows `BZ2_decompress`'s frame layout through
+the memory-dependence predictor, not only its instruction count. Its
+pipeline resyncs (`perf stat -e resyncs_or_nc_redirects`) were 0.03–0.1M
+in every reference layout tried and 2–8M in renewal's. With speculative
+store bypass disabled (`prctl(PR_SET_SPECULATION_CTRL,
+PR_SPEC_STORE_BYPASS, PR_SPEC_DISABLE)`, which on AMD also disables
+predictive store forwarding) the resyncs vanish in every build, which
+identifies the predictor. So judge such a change by time on quiet swa,
+and report bzip2 `-d`'s resyncs next to its instructions.
+
+The renewal bisect (`NANOFIL_RENEW_SITES`, 2abf006) found no site or
+small set that causes it, and the effect is not additive. Every 90-site
+chunk of sites 0–630 stays at baseline. 630–716 gives 8.2M, but none of
+its quarters does. Inside 673–716 the count jumps between 0.1M and 8.0M
+as single sites are added or dropped. Those renewals barely execute. With
+frame offsets normalized, the executed code equals the reference's
+except for the renew sequences; only the frame differs (1312 → 1712
+bytes, every slot moved). Pure layout changes of the reference build
+(a frame shift, slot permutations, first-fit against other pointer
+pooling, a moved stack) all stay at 0.09M or below, so the trigger is
+not understood. Sites 0–690 keep all of renewal's instruction savings
+(3.785G against 4.058G) at baseline resyncs, but a cutoff fitted to one
+function on one CPU is not a rule, and renewal stays opt-in without one.
+
 **What remains, and why it stays** (shares of `-O`'s instructions, from
 the profile at `04c7e7c` and the re-measurement under 5b):
 
@@ -2068,6 +2093,119 @@ loads also hit L1, so time gains are well below the instruction share.
 **Decision:** no more 5b forwarding work; 5b-1 is the end of that line.
 5b-2 stays deferred. If it is taken up, the last two columns bound it,
 and it needs its own contract and review.
+
+#### 5b-2. Contract (reviewed): pointer addresses as register homes
+
+**Measured first.** A scratch build that adds every pointer address slot
+(`storage(pointer, I)`) and pointer phi shadow to temps' candidates, as
+64-bit homes, at `f7197dc` (with renewal) and against that build's `-O`
+(instructions only, swa loaded): the geomean is 2.78 against 2.77. Lua
+int and tab drop 4% (1.83 → 1.76, 1.77 → 1.70), and lua str 1.51 → 1.49.
+bzip2 `-9` and `-d` rise 5% (2.06 → 2.17, 2.62 → 2.74), and zlib, lz4 and
+SQLite move by ±2%. This is 3d's finding again. A pointer is used
+through rax:rcx (checks, flight loads), so a home in rbx–r15 turns
+`movq D(%rbp), %rax` into `movq %rbx, %rax`: one instruction for one,
+a load become a move. Each pointer home also displaces a scalar home,
+which does cost instructions. Any gain is therefore latency, and the
+item is judged by time on quiet swa, with bzip2 `-d`'s resyncs (above).
+
+**What changes.** The candidate set of temps' allocator (3a), one new
+home class, and one new checker obligation:
+
+- A pointer address slot or pointer phi shadow becomes a home of a new
+  class `a` (a pointer's address word), not a relabelled `l`. Every
+  access to it must be a whole 64-bit move (3a's existing candidate
+  rule; a `lea` of it, or any other width, excludes it). Class `p`
+  stays refused, as `tests/regs_check.pl`'s `pointer_home` asserts.
+- Lowers are never homes. The frame header, the `lowers[]` entries
+  (including `lower(storage(pointer, I))` and `lower(shadow_slot(p,
+  I))`), stack-aux roots and jmpbuf roots keep the reference's stores
+  and loads exactly. `regs_mode`'s cells may still forward their loads
+  within a region (5a-loads), as today.
+- **Checked, not trusted: no mapped home overlaps a root word.** The
+  weight-bearing property is that no home is a root: mapping one would
+  turn its stores into register writes and leave `lowers[]` stale, and
+  the collector would miss the object. Today only class `p`'s refusal
+  keeps pointer-related slots out, and `valid_map` checks classes only.
+  So `regs_metadata` gains the frame record's byte range,
+  `[-FrameBase, -FrameBase + 16 + 8·NLowers)` from `layout/4`, plus the
+  stack-aux root ranges, and `valid_map` rejects any mapped home (any
+  class) that overlaps them, and any class-`a` home anywhere else than
+  a pointer slot the emitter named. A fail-first test: a home at a
+  `lowers[]` offset, of class `l` or `a`, makes `check_regs` fail.
+- Layout. Mapped slots keep their offsets, but in functions over
+  `own_frame_limit` temps lowers twice and pools scalar slots by the
+  first map (filc_amd64.pl's temps lowering), so pointer homes change
+  scalar slot sharing, offsets and frame size there, in
+  `BZ2_decompress` and `luaV_execute` among others. Judge it by time
+  and bzip2 `-d`'s resyncs (the frame-layout note above).
+
+**Why roots and GC do not change** (staging runtime 0.687,
+`filc-staging-ref-src`). `struct filc_frame` is `{parent, origin,
+lowers[]}` (`filc_runtime.h:591`), reached only through `top_frame`;
+nanofil's address slots lie outside it. The collector's frame scan
+(`filc_runtime_inlines.h:413–460`) reads `lowers[]` and the stack-aux
+arrays by value. FUGC is precise and non-moving, so address words are
+never scanned or updated. The only writer of `lowers[]` is `zlongjmp`'s
+restore of the setjmp frame (`filc_runtime.c:8127`, from the snapshot at
+8040–8041), and setjmp functions are excluded (regs_asm's
+`excluded(setjmp)`), which is exactly the hazard the comment at
+8001–8010 names: state in callee saves travels back in time while state
+in spills does not. Unwinding walks `origin` and returns normally;
+`zthread_exit` clears `top_frame`; fiber swaps and signal delivery
+(deferred to `filc_exit` and polls, or restored by sigreturn) keep
+callee-saved registers like any call. Every lower is stored to its
+rooted entry at the same instructions as in the reference, so the root
+set at each safepoint (every call, pollcheck, `filc_allocate`,
+ensure-aux, store-barrier slow path) is the reference's. The address in
+a callee-saved register across a call is preserved by the SysV ABI, as
+scalar homes are (3a's trusted fact). No lower is ever held only in a
+register.
+
+**Checks and traps.** No check, check operand or fail path changes.
+Every fail block passes `%rax`/`%rcx` to its reporter
+(`filc_optimized_access_check_fail`, renew's, and
+`filc_optimized_stack_access_check_fail`), with a static origin, and no
+fail path reloads the pointer from its slot. Renew and reused accesses
+reload P1 through a move the checker proves equal to the slot. So each
+check reads the same address and lower and traps at the same
+instruction with the same origin.
+
+**Validation.** The register checker validates every function as for
+scalar homes, with the root-range obligation above. Its trusted inputs
+are unchanged in kind: the emitter's home classes and frame ranges, now
+including the record range, which `layout/4` computes for the frame
+push itself. Tests: the fail-first checker test above; the snapshot
+with a new mode for the option; the Nix check's `-O` suites run with
+`NANOFIL_OPT='-O --pointer-homes'`, including GC-stress runs
+(`FUGC_SCRIBBLE=1 FUGC_VERIFY=1`) of `run-c.sh gc pointer-effects
+lower-donor exceptions`, with evidence from the `.s` that `gc`'s
+`build`/`sum` hold a pointer home in a callee-saved register across the
+collecting call; a C test where an object is reachable only through a
+pointer held in a home across `zgc_request_and_wait()` and then
+accessed under `FUGC_SCRIBBLE`; and the progtests.
+
+**Delivery.** Opt-in as `--pointer-homes`, valid only with
+`--registers=temps` (refused with other register modes). It becomes the
+`-O` default only if quiet time improves the gate without a regression,
+with bzip2 `-d`'s resyncs reported. Pointer pool slots are pooled, so
+one home covers several pointers' live ranges: a pressure cost on top of
+3d's.
+
+**Not in this contract (5b-2b).** Caching a lower in a second register,
+write-through so `lowers[]` still holds it, would also remove lower
+loads. It needs: `lowers[]` never changes behind the function (true
+outside longjmp, and the collector marks frame lowers by value without
+rewriting them, `filc_runtime_inlines.h:459`); no helper receives a
+`lowers[]` entry's address (today only `filc_jmp_buf_recreate`, in
+setjmp functions); and a cache-style checker obligation, since
+`substitute/3` replaces a slot rather than shadowing it: every read of
+the register follows a store of the same value to the slot, with no
+external write between. It waits for a measured gain from 5b-2a.
+
+Reviewed by Oracle (October 2026): sound; its two blockers (the
+root-range check above in place of a trusted claim, and citations from
+the staging runtime) are folded in.
 
 #### Punned union reads in promote (after 5b-1)
 
