@@ -1,0 +1,39 @@
+% Span tests (docs/m7.md, round 5) whose ends do not fit 32 bits, run
+% natively against the interpreter: hi's span is g's 8 bytes, at
+% 2^32 - 8 past p = g - (2^32 - 8); lo's at -(2^32 + 4) before p = g +
+% 2^32 + 4; inverted's low end wraps below g, so H <= L and it is 0.
+data(g, local, 8, [item(l, const(123))]).
+func(hi, export, l, [], [
+    block(start, [], [
+        let(tmp(base), p, copy, [global(g)]),
+        flight(tmp(p), sub, [address(tmp(base)), const(4294967288)], lower(tmp(base))),
+        let(tmp(t), w, span_test(4294967288, 4294967296), [tmp(p)]),
+        let(tmp(r), l, ext(uw), [tmp(t)])
+    ], ret(tmp(r)))
+]).
+func(lo, export, l, [], [
+    block(start, [], [
+        let(tmp(base), p, copy, [global(g)]),
+        flight(tmp(p), add, [address(tmp(base)), const(4294967300)], lower(tmp(base))),
+        let(tmp(t), w, span_test(-4294967300, -4294967292), [tmp(p)]),
+        let(tmp(r), l, ext(uw), [tmp(t)])
+    ], ret(tmp(r)))
+]).
+func(inverted, export, l, [], [
+    block(start, [], [
+        let(tmp(base), p, copy, [global(g)]),
+        let(tmp(t), w, span_test(-4611686018427387904, 8), [tmp(base)]),
+        let(tmp(r), l, ext(uw), [tmp(t)])
+    ], ret(tmp(r)))
+]).
+func(onemore, export, l, [], [
+    block(start, [], [
+        let(tmp(base), p, copy, [global(g)]),
+        let(tmp(t), w, span_test(0, 9), [tmp(base)]),
+        let(tmp(r), l, ext(uw), [tmp(t)])
+    ], ret(tmp(r)))
+]).
+run(hi, []).
+run(lo, []).
+run(inverted, []).
+run(onemore, []).

@@ -530,6 +530,22 @@ It was the `-O` default from `a4351bc` until it measured slower on swa
 memory-dependence resyncs around the longer-lived P1). It is opt-in
 again until no gate workload is slower with it.
 
+**Round 5, range guards, slice A ([docs/m7.md](docs/m7.md#range-guards-round-5-contract-reviewed)):**
+an opt-in `--checks=guard` runs renewal, then tests once, without
+trapping, whether a loop-invariant base's object holds every byte its
+loops' accesses at constant or narrow-indexed offsets can reach
+(`span_test`), and replaces each such check by `renew_if`, which tests
+only the free and read-only flags and alignment when the test passed and
+runs the full check otherwise. Oracle reviewed the contract before
+implementation and the result after (one blocker, a span end past 32
+bits built wrong, fixed with its regression test). On the gate it
+removes, beyond renewal, 3.5% of zlib `-6`'s instructions, 3.0% of lz4
+`-9`'s, 1.4% of bzip2 `-d`'s and 1.2% of bzip2 `-9`'s; Lua and SQLite
+are within ±0.6% (main thread). A default depends on time on swa, and
+on renewal's own bzip2 `-d` time regression, which guards build on.
+Slice B (symbolic and induction spans), versioning and peeling wait on
+that measurement.
+
 **First deliverable:** one narrowly specified alternative to repeated
 runtime checking, such as reuse for repeated scalar accesses in a
 straight-line region. State the facts, transfer and merge rules,

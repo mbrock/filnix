@@ -588,6 +588,7 @@ function(Selection, abi_function(Name, Linkage, Ret, Sig, Frame, Entry, Blocks,
     [label(Exc)],
     abi_actions(Exit, exit, exit, Ctx),
     check_fail_blocks(CheckKinds, Ctx),
+    guard_slow_blocks(Blocks, Ctx),
     not_function_block(Blocks, Ctx),
     unreachable_block(Blocks, Ctx),
     [size(Impl)],
@@ -630,7 +631,8 @@ single_proofs(Params, Blocks, Single) :-
     multiply_defined(Sorted, Multi0), sort(Multi0, Multi),
     findall(N-true, member(N, Multi), MultiPairs), list_to_assoc(MultiPairs, MultiSet),
     findall(Q-P, ( member(block(_, _, Is, _), Blocks),
-                   member(let(tmp(Q), a, check(_, _, _, _), [P]), Is),
+                   member(let(tmp(Q), a, Op, [P|_]), Is),
+                   ( Op = check(_, _, _, _) ; Op = renew_if(_, _, _, _) ),
                    \+ get_assoc(Q, MultiSet, _),
                    ( P = tmp(N) -> \+ get_assoc(N, MultiSet, _) ; true ) ),
             Checks),
@@ -667,6 +669,8 @@ fused_insts([Inst0|Insts0], Fn, Single, Proofs0, [Inst|Insts]) :-
     ;   Proofs = Proofs0
     ),
     (   Inst0 = let(tmp(Q), a, check(_, _, _, _), [P])
+    ->  proofs_add(Q-P, Proofs, Proofs1)
+    ;   Inst0 = let(tmp(Q), a, renew_if(_, _, _, _), [P, _])
     ->  proofs_add(Q-P, Proofs, Proofs1)
     ;   Inst0 = let(tmp(Q), a, renew(_, _, _, _), [tmp(Q1)]), get_assoc(Q1, Single, P)
     ->  proofs_add(Q-P, Proofs, Proofs1)
@@ -744,6 +748,17 @@ fused_inst(let(tmp(Q), a, Check, []), [Access0|Insts], Fn,
       access_pointer(Access, _, 0)
     -> true
     ; throw_fn(Fn, 'a local check not followed by its local access') ).
+% A guarded renewal (docs/m7.md, round 5) fuses as a check does, and
+% keeps its guard G for emission and liveness.
+fused_inst(let(tmp(Q), a, renew_if(Lo, Hi, Rights, Align), [P, G]), [Access0|Insts], Fn,
+           fused(guarded(G, renew_if(Lo, Hi, Rights, Align)), Access), Insts) :- !,
+    (   G = tmp(_), proven_access(Access0, Q, P, Access),
+        Access \= let(_, _, raw_cas(_, _), _),
+        Lo =:= 0, Size is Hi, Size =< 2147483647, memberchk(Align, [1, 2, 4, 8]),
+        access_pointer(Access, _, 0)
+    ->  true
+    ;   throw_fn(Fn, 'a renew_if or its access the emitter cannot emit yet')
+    ).
 fused_inst(let(tmp(Q), a, Check, [P]), [Access0|Insts], Fn, Inst, Insts) :- !,
     (   proven_access(Access0, Q, P, Access) -> Inst = fused(Check, Access)
     ;   throw_fn(Fn, 'a check not followed by the access it proves')
@@ -837,6 +852,9 @@ live_block(block(L, Phis, Insts0, Jump), block(L, Phis, Insts, Jump)) :-
 
 % Layout sees exactly the former whole-pointer operation at this index.
 % In particular both original p operands survive every internal helper.
+% A guarded access reads its guard too, so G keeps its slot to here.
+live_inst(fused(guarded(G, _), Access), uses(Inst, [G])) :- !,
+    live_inst(fused(none, Access), Inst).
 live_inst(fused(_, let(D, p, raw_load_pointer(Off, _), [P])),
           let(D, p, raw_load(p, Off), [P])) :- !.
 live_inst(fused(_, raw_store_pointer(Off, V, P, _)),
@@ -1540,6 +1558,27 @@ inst(fused(renew(_, Size, Rights, Align), Access), Index, Block, Ctx) -->
     [ins(test, b, [imm(Mask), mem(-2, rcx)]),
      ins(jnz, none, [sym(Fail)])],
     raw_access(Access, Index, Block, Ctx).
+% A guarded renewal (docs/m7.md, round 5): the flight is loaded once.
+% When the span test G passed, the bounds hold, and only the flags a
+% renew tests and the alignment are tested here; otherwise the full
+% check runs out of line (guard_slow_blocks//2). Both fail to the
+% check's label with %rax:%rcx = P, so the report is the check's.
+inst(fused(guarded(tmp(G), renew_if(_, Size, Rights, Align)), Access), Index, Block, Ctx) -->
+    { access_pointer(Access, P),
+      rights_write(Rights, Write),
+      renew_mask(Write, Mask),
+      check_fail_label(Ctx, k(Size, Write, Align), Fail),
+      ctx_slot(Ctx, tmp(G), GOff), GDisp is -GOff,
+      local_label(Ctx, Block, Index, full, Full),
+      local_label(Ctx, Block, Index, access, Here) },
+    flight_load(P, Ctx),
+    [ins(cmp, l, [imm(0), mem(GDisp, rbp)]),
+     ins(je, none, [sym(Full)]),
+     ins(test, b, [imm(Mask), mem(-2, rcx)]),
+     ins(jnz, none, [sym(Fail)])],
+    align_check(Align, Fail),
+    [label(Here)],
+    raw_access(Access, Index, Block, Ctx).
 inst(reused(Access), Index, Block, Ctx) -->
     { access_pointer(Access, P, Off), ctx_fn(Ctx, Fn), zero_offset(Access, Access0) },
     load(P, l, a, Fn),
@@ -1608,6 +1647,29 @@ kind_inst(neg, K, Op, Args, D, _, _, Ctx) -->
     integer_inst(Op, K, Args, D, Ctx).
 kind_inst(copy, K, Op, Args, D, _, _, Ctx) -->
     copy_inst(K, Op, Args, D, Ctx).
+% A span test (docs/m7.md, round 5): 1 when P0's lower is not null and
+% lower =< P0+Lo < P0+Hi =< upper, unsigned, addresses modulo 2^64;
+% else 0. It reads only what a full check reads and never traps.
+kind_inst(span_test, w, span_test(Lo, Hi), [P0], D, Index, Block, Ctx) -->
+    { local_label(Ctx, Block, Index, span0, Zero),
+      local_label(Ctx, Block, Index, span1, Done) },
+    flight_load(P0, Ctx),
+    [ins(test, q, [reg(rcx), reg(rcx)]),
+     ins(jz, none, [sym(Zero)])],
+    span_end(Lo, rdx),
+    [ins(cmp, q, [reg(rcx), reg(rdx)]),
+     ins(jb, none, [sym(Zero)])],
+    span_end(Hi, rax),
+    [ins(cmp, q, [reg(rdx), reg(rax)]),
+     ins(jbe, none, [sym(Zero)]),
+     ins(cmp, q, [mem(-16, rcx), reg(rax)]),
+     ins(ja, none, [sym(Zero)]),
+     ins(mov, l, [imm(1), reg(eax)]),
+     ins(jmp, none, [sym(Done)]),
+     label(Zero),
+     ins(xor, l, [reg(eax), reg(eax)]),
+     label(Done)],
+    reg_slot_store(rax, tmp(D), Ctx).
 kind_inst(ptoi, l, _, [P], D, _, _, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     load(P, l, a, Fn),
@@ -2538,6 +2600,37 @@ borrow_check(Selection, Size, Fail) -->
     ;   [ins(jb, none, [sym(Fail)])]
     ).
 
+% span_end(+Off, +Reg)//: Reg = %rax + Off, modulo 2^64, leaving %rax;
+% an offset beyond 32 bits goes through %rsi, a scratch register no
+% temporary is homed in.
+span_end(Off, Reg) -->
+    (   { Off >= -2147483648, Off =< 2147483647 }
+    ->  [ins(lea, q, [mem(Off, rax), reg(Reg)])]
+    ;   { U is Off mod 18446744073709551616 },
+        [ins(movabs, q, [imm(U), reg(rsi)]),
+         ins(lea, q, [mem(0, rax, rsi), reg(Reg)])]
+    ).
+
+% guard_slow_blocks(+Blocks, +Ctx)//: for each guarded renewal, the full
+% check it runs when its span test failed, out of line, then back to its
+% access. %rax:%rcx still hold P from its flight load.
+guard_slow_blocks(Blocks, Ctx) -->
+    { findall(slow(L, I, K),
+              ( member(block(L, _, Is, _), Blocks),
+                nth0(I, Is, fused(guarded(_, renew_if(_, Size, Rights, Align)), _)),
+                rights_write(Rights, W), K = k(Size, W, Align) ),
+              Slows) },
+    guard_slows(Slows, Ctx).
+
+guard_slows([], _) --> [].
+guard_slows([slow(L, I, K)|Slows], Ctx) -->
+    { local_label(Ctx, L, I, full, Full),
+      local_label(Ctx, L, I, access, Here) },
+    [label(Full)],
+    access_check(K, Ctx),
+    [ins(jmp, none, [sym(Here)])],
+    guard_slows(Slows, Ctx).
+
 % renew_mask(+Write, -Mask): the flags a renew tests, FREE (4) and, for a
 % write, READONLY (2) (filc_runtime.h).
 renew_mask(0, 4).
@@ -2584,6 +2677,8 @@ access_check_kinds(Blocks, Kinds) :-
 inst_check_kind(fused(check(_, Size, Rights, Align), _), k(Size, Write, Align)) :-
     rights_write(Rights, Write).
 inst_check_kind(fused(renew(_, Size, Rights, Align), _), k(Size, Write, Align)) :-
+    rights_write(Rights, Write).
+inst_check_kind(fused(guarded(_, renew_if(_, Size, Rights, Align)), _), k(Size, Write, Align)) :-
     rights_write(Rights, Write).
 inst_check_kind(fused(check_local(_, _, Size, Rights, Align), _), k(Size, Write, Align)) :-
     rights_write(Rights, Write).

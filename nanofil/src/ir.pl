@@ -148,6 +148,8 @@
     | `setjmp(Kind)` | `w` | `[p, w]`: Buf, SaveMask | filc only, below |
     | `check(Lo, Hi, Rights, Align)` | `a` | `[p]` | checked stage, below |
     | `renew(Lo, Hi, Rights, Align)` | `a` | `[a]` | checked stage: renew an earlier heap proof's temporal facts (docs/m7.md, round 4) |
+    | `span_test(Lo, Hi)` | `w` | `[p]` | checked stage: 1 if the pointer's object contains [P+Lo, P+Hi), else 0; never traps (docs/m7.md, round 5) |
+    | `renew_if(Lo, Hi, Rights, Align)` | `a` | `[p, w]`: P, G | checked stage: `check(Lo, Hi, Rights, Align)` of P, whose bounds part a passing span test G proves (docs/m7.md, round 5) |
     | `check_local(Name, Off, Bytes, Rights, Align)` | `a` | `[]` | checked stage: prove exact bounds and alignment for the named object, preserving its identity and offset |
     | `atomic_load(p)` | `p` | `[p]` | (filc mode) a single-copy atomic, sequentially consistent pointer load (Fil-C's filc_load_ptr_atomic) |
     | `cas(T)` | as `load(T)` | `[K, K, p]`: Expected, New, Addr | (filc mode) atomic compare-exchange, below; T one of `l` `sw` `uw` `sh` `uh` `sb` `ub` `p` |
@@ -191,6 +193,22 @@
     read-only; otherwise its result is Q1's value. Q1 and P1 have one
     definition each, Q1's check covers [Lo, Hi) at Align, and the
     function has no setjmp (stage_func/5).
+
+    `span_test(Lo, Hi)` reads `[p P0]`, with integers Lo < Hi. It is 1
+    when P0's capability is an object's and lower =< P0+Lo < P0+Hi =<
+    upper, addresses modulo 2^64 compared unsigned, and 0 otherwise (a
+    null, function or external capability, a freed object). It never
+    traps and reaches no safepoint.
+
+    `renew_if(Lo, Hi, Rights, Align)` reads `[p P, w G]` and is exactly
+    `check(Lo, Hi, Rights, Align)` of P: it traps when the check would,
+    with its reason, and is followed by the access it covers. G has one
+    definition, a span test of P0; P is P0 plus an offset through
+    single-definition `add`, `sub` and `copy` flights with P0's lower;
+    the offset's interval (guard_offset/4) shifted by [Lo, Hi) lies in
+    the span test's [Lo, Hi); every name on the way has one definition
+    and the function has no setjmp. When G is 1 only the free flag, the
+    read-only flag for a write, and alignment are tested natively.
 
     `check_local` proves [Off, Off+Bytes) within the named object's
     exact size and 16-aligned base. Its adjacent raw access has offset
@@ -317,7 +335,7 @@
                module_mode/2, module_stage/2, addr_class/2, variadic_func/1, setjmp_func/1,
                narrow_type/3, without_locs/2, access_size_align/3,
                jump_target/2, polls_every_cycle/1, temp_defs/3, implicit_flight/1, local_objects/2,
-               pointer_memory_effects/2]).
+               pointer_memory_effects/2, single_definitions/3, guard_chain/3]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -423,6 +441,8 @@ kind_arity(int_to_float, 1).
 kind_arity(cast, 1).
 kind_arity(check, 1).
 kind_arity(renew, 1).
+kind_arity(span_test, 1).
+kind_arity(renew_if, 2).
 kind_arity(check_local, 0).
 kind_arity(check_function, 1).
 kind_arity(ld, 1).
@@ -441,6 +461,11 @@ valid_op(check(Lo, Hi, Rights, Align)) :- !,
     memberchk(Rights, [read, write]),
     memberchk(Align, [1, 2, 4, 8, 16]).
 valid_op(renew(Lo, Hi, Rights, Align)) :- !,
+    valid_op(check(Lo, Hi, Rights, Align)).
+valid_op(span_test(Lo, Hi)) :- !,
+    integer(Lo), integer(Hi), Lo < Hi,
+    Lo >= -9223372036854775808, Hi =< 9223372036854775807.
+valid_op(renew_if(Lo, Hi, Rights, Align)) :- !,
     valid_op(check(Lo, Hi, Rights, Align)).
 valid_op(check_local(Name, Off, Bytes, Rights, Align)) :- !,
     ground(Name), local_offset(Off), integer(Bytes), Bytes > 0, Bytes =< 2147483647,
@@ -592,6 +617,8 @@ op_kind(raw_cas(_, _), raw_cas).
 op_kind(alloc(_), alloc).
 op_kind(check(_, _, _, _), check).
 op_kind(renew(_, _, _, _), renew).
+op_kind(span_test(_, _), span_test).
+op_kind(renew_if(_, _, _, _), renew_if).
 op_kind(check_local(_, _, _, _, _), check_local).
 op_kind(check_function, check_function).
 op_kind(raw_load(_, _), ld).
@@ -807,6 +834,8 @@ module_stage(module(Items), Stage) :-
 
 checked_inst(let(_, _, check(_, _, _, _), _)).
 checked_inst(let(_, _, renew(_, _, _, _), _)).
+checked_inst(let(_, _, span_test(_, _), _)).
+checked_inst(let(_, _, renew_if(_, _, _, _), _)).
 checked_inst(let(_, _, check_local(_, _, _, _, _), _)).
 checked_inst(let(_, _, check_function, _)).
 checked_inst(let(_, _, raw_load(_, _), _)).
@@ -1191,7 +1220,7 @@ site_dominates(at(D, _), L, _, Intervals) :-
 % and polls on every cycle.
 stage_func(unchecked, _, _, _, _).
 stage_func(checked, Fn, Mode, Params, Blocks) :-
-    renew_sources(Params, Blocks, Sources),
+    stage_sources(Params, Blocks, Sources),
     incoming_edges(Blocks, Incoming),
     empty_assoc(Exits0),
     foldl(checked_block(Fn-Sources, Mode, Incoming), Blocks, Exits0, _),
@@ -1294,39 +1323,167 @@ checked_insts([Inst|Insts], Fn-Sources, Mode, Live0, LiveOut) :-
     checked_inst_rest(Inst, Insts, Fn-Sources, Mode, Live0, Rest, Live),
     checked_insts(Rest, Fn-Sources, Mode, Live, LiveOut).
 
-/* renew_sources(+Params, +Blocks, -Sources): Sources maps each proof Q1
-   that a renew may read to check(P1, Lo1, Hi1, Align1): Q1 has one
-   definition, a heap check of tmp(P1), and P1 at most one, counting
-   parameters, phis and every instruction form; none when the function
-   has a setjmp, whose second return the CFG does not show. With strict
-   SSA (definitions_dominate/3), Q1's check dominates the renew, so P1
-   and Q1 there hold the values the check saw (docs/m7.md, round 4). */
-renew_sources(Params, Blocks, Sources) :-
+/* stage_sources(+Params, +Blocks, -src(Renews, Once)): Renews maps
+   each proof Q1 that a renew may read to check(P1, Lo1, Hi1, Align1):
+   Q1 has one definition, a heap check or renew_if of tmp(P1), and P1
+   one too, counting parameters, phis and every instruction form. Once
+   maps each name with one definition to it (param for a parameter), for
+   renew_if's guard (round 5). Both are empty when the function has
+   neither op, or has a setjmp, whose second return the CFG does not
+   show. With strict SSA (definitions_dominate/3), Q1's check dominates
+   the renew, so P1 and Q1 there hold the values the check saw
+   (docs/m7.md, round 4); a renew_if proves the same bounds as the
+   check it replaced. */
+stage_sources(Params, Blocks, src(Renews, Once)) :-
     empty_assoc(E),
     (   \+ ( member(block(_, _, Is, _), Blocks),
-              member(let(_, _, renew(_, _, _, _), _), Is) )
-    ->  Sources = E
+              member(let(_, _, Op, _), Is), renewing_op(Op) )
+    ->  Renews = E, Once = E
     ;   member(block(_, _, Is, _), Blocks), member(let(_, _, setjmp(_), _), Is)
-    ->  Sources = E
-    ;   temp_defs(Params, Blocks, Defs),
-        split_pairs(Defs, Names, _), msort(Names, Sorted),
-        once_defined(Sorted, Once0),
-        findall(N-true, member(N, Once0), OncePairs), list_to_assoc(OncePairs, Once),
+    ->  Renews = E, Once = E
+    ;   single_definitions(Params, Blocks, Once),
         findall(Q1-check(P1, Lo1, Hi1, Al1),
                 ( member(block(_, _, Is, _), Blocks),
-                  member(let(tmp(Q1), a, check(Lo1, Hi1, _, Al1), [tmp(P1)]), Is),
+                  member(let(tmp(Q1), a, Op, [tmp(P1)|_]), Is),
+                  renew_source_op(Op, Lo1, Hi1, Al1),
                   get_assoc(Q1, Once, _), get_assoc(P1, Once, _) ),
                 Pairs),
-        list_to_assoc(Pairs, Sources)
+        list_to_assoc(Pairs, Renews)
     ).
 
-% once_defined(+Sorted, -Names): the names that occur exactly once.
-once_defined([], []).
-once_defined([N, M|Ns], Once) :- N == M, !, drop_name(N, Ns, Rest), once_defined(Rest, Once).
-once_defined([N|Ns], [N|Once]) :- once_defined(Ns, Once).
+renewing_op(renew(_, _, _, _)).
+renewing_op(renew_if(_, _, _, _)).
 
-drop_name(N, [M|Ns], Rest) :- N == M, !, drop_name(N, Ns, Rest).
-drop_name(_, Ns, Ns).
+renew_source_op(check(Lo, Hi, _, Al), Lo, Hi, Al).
+renew_source_op(renew_if(Lo, Hi, _, Al), Lo, Hi, Al).
+
+%! single_definitions(+Params, +Blocks, -Once) is det.
+%
+%  Once maps each temporary with exactly one definition (temp_defs/3's
+%  forms) to it: `param`, its phi, or its instruction.
+single_definitions(Params, Blocks, Once) :-
+    findall(N-param, member(param(_, tmp(N)), Params), D0),
+    findall(N-Def,
+            ( member(block(_, Phis, Insts, _), Blocks),
+              (   member(Def, Phis), Def = phi(tmp(N), _, _)
+              ;   member(Def, Insts), inst_temp_def(Def, N, _)
+              ) ),
+            D1),
+    append(D0, D1, D), keysort(D, Sorted),
+    once_pairs(Sorted, Pairs), list_to_assoc(Pairs, Once).
+
+once_pairs([], []).
+once_pairs([N-_, M-_|Ps], Once) :- N == M, !, drop_pairs(N, Ps, Rest), once_pairs(Rest, Once).
+once_pairs([P|Ps], [P|Once]) :- once_pairs(Ps, Once).
+
+drop_pairs(N, [M-_|Ps], Rest) :- N == M, !, drop_pairs(N, Ps, Rest).
+drop_pairs(_, Ps, Ps).
+
+/* Range guards (docs/m7.md, round 5, slice A). guard_chain(+Once, +P,
+   -Chain): Chain is P-i(0, 0) followed by B-i(Lo, Hi) for each base B
+   of P: P has B's capability and an address congruent modulo 2^64 to
+   B's plus some X with Lo =< X =< Hi, through single-definition flights
+   add, sub and copy whose lower donor is their address operand. */
+guard_chain(Once, P, Chain) :- guard_chain(Once, P, 0, 0, 0, Chain).
+
+guard_chain(Once, P, Lo, Hi, Depth, [P-i(Lo, Hi)|Chain]) :-
+    (   Depth < 64, P = tmp(X),
+        get_assoc(X, Once, flight(_, Op, Args, lower(B))),
+        flight_term(Op, Args, B, O, Sign),
+        offset_interval(Once, O, l, 0, OLo, OHi)
+    ->  (   Sign =:= 1 -> Lo1 is Lo + OLo, Hi1 is Hi + OHi
+        ;   Lo1 is Lo - OHi, Hi1 is Hi - OLo
+        ),
+        Depth1 is Depth + 1,
+        guard_chain(Once, B, Lo1, Hi1, Depth1, Chain)
+    ;   Chain = []
+    ).
+
+flight_term(add, [address(B0), O], B, O, 1) :- B0 == B.
+flight_term(sub, [address(B0), O], B, O, -1) :- B0 == B.
+flight_term(copy, [address(B0)], B, const(0), 1) :- B0 == B.
+
+/* offset_interval(+Once, +V, +K, +Depth, -Lo, -Hi): every value V of
+   class K can hold, taken signed in K's width, lies in [Lo, Hi]; for l,
+   the value is congruent modulo 2^64 to one in [Lo, Hi], which is all
+   an address needs. A name needs one definition (Once) of the forms
+   below, each sound for any operand values within their intervals; a w
+   result must lie in [-2^31, 2^31), so no w arithmetic wraps. */
+offset_interval(Once, V, K, D, Lo, Hi) :-
+    empty_assoc(M0), offset_interval(Once, V, K, D, Lo, Hi, M0, _).
+
+% offset_interval(+Once, +V, +K, +Depth, -Lo, -Hi, +Memo0, -Memo): as
+% above, with each name's interval (or none) memoised, so an offset whose
+% terms share names (x = x + x, repeated) is walked once per name.
+offset_interval(_, const(C), K, _, V, V, M, M) :- !, integer(C), signed_value(K, C, V).
+offset_interval(Once, tmp(N), K, Depth, Lo, Hi, M0, M) :-
+    (   get_assoc(N-K, M0, R) -> M = M0
+    ;   (   Depth < 32,
+            get_assoc(N, Once, let(tmp(N), K, Op, Args)),
+            Depth1 is Depth + 1,
+            op_interval(Op, Args, K, Once, Depth1, Lo0, Hi0, M0, M1),
+            interval_fits(K, Lo0, Hi0)
+        ->  R = i(Lo0, Hi0)
+        ;   R = none, M1 = M0
+        ),
+        put_assoc(N-K, M1, R, M)
+    ),
+    R = i(Lo, Hi).
+
+interval_fits(w, Lo, Hi) :- Lo >= -2147483648, Hi =< 2147483647.
+interval_fits(l, _, _).
+
+signed_value(K, C, V) :-
+    class_bits(K, Bits),
+    U is C mod (1 << Bits),
+    (   U >= 1 << (Bits - 1) -> V is U - (1 << Bits) ; V = U ).
+
+narrow_range(ub, 0, 255).
+narrow_range(uh, 0, 65535).
+narrow_range(sb, -128, 127).
+narrow_range(sh, -32768, 32767).
+
+op_interval(ext(T), _, _, _, _, Lo, Hi, M, M) :- narrow_range(T, Lo, Hi), !.
+op_interval(raw_load(T, _), _, _, _, _, Lo, Hi, M, M) :- narrow_range(T, Lo, Hi), !.
+op_interval(ext(sw), [A], _, Once, D, Lo, Hi, M0, M) :- !,
+    offset_interval(Once, A, w, D, Lo, Hi, M0, M).
+op_interval(ext(uw), [A], _, Once, D, Lo, Hi, M0, M) :- !,
+    offset_interval(Once, A, w, D, Lo, Hi, M0, M), Lo >= 0.
+op_interval(copy, [A], K, Once, D, Lo, Hi, M0, M) :- !,
+    offset_interval(Once, A, K, D, Lo, Hi, M0, M).
+op_interval(and, Args, K, _, _, 0, Mask, M, M) :-
+    ( Args = [_, const(C)] ; Args = [const(C), _] ),
+    signed_value(K, C, Mask), Mask >= 0, !.
+op_interval(urem, [_, const(C)], K, _, _, 0, Hi, M, M) :- !,
+    class_bits(K, Bits), U is C mod (1 << Bits),
+    U > 0, U =< 1 << (Bits - 1), Hi is U - 1.
+op_interval(shl, [A, const(S)], K, Once, D, Lo, Hi, M0, M) :- !,
+    class_bits(K, Bits), integer(S), S >= 0, S < Bits,
+    offset_interval(Once, A, K, D, Lo0, Hi0, M0, M),
+    Lo is Lo0 * (1 << S), Hi is Hi0 * (1 << S).
+op_interval(mul, Args, K, Once, D, Lo, Hi, M0, M) :-
+    ( Args = [A, const(C)] ; Args = [const(C), A] ), A \= const(_), !,
+    signed_value(K, C, V),
+    offset_interval(Once, A, K, D, Lo0, Hi0, M0, M),
+    (   V >= 0 -> Lo is Lo0 * V, Hi is Hi0 * V ; Lo is Hi0 * V, Hi is Lo0 * V ).
+op_interval(add, [A, B], K, Once, D, Lo, Hi, M0, M) :- !,
+    offset_interval(Once, A, K, D, Lo1, Hi1, M0, M1),
+    offset_interval(Once, B, K, D, Lo2, Hi2, M1, M),
+    Lo is Lo1 + Lo2, Hi is Hi1 + Hi2.
+op_interval(sub, [A, const(C)], K, Once, D, Lo, Hi, M0, M) :- !,
+    signed_value(K, C, V),
+    offset_interval(Once, A, K, D, Lo0, Hi0, M0, M),
+    Lo is Lo0 - V, Hi is Hi0 - V.
+
+% guard_covers(+Once, +P, +G, +Lo, +Hi): G is a single-definition span
+% test of a single-definition P0 whose span contains P's [Lo, Hi) for
+% every offset P can have from P0.
+guard_covers(Once, P, tmp(GN), Lo, Hi) :-
+    get_assoc(GN, Once, let(tmp(GN), w, span_test(GLo, GHi), [P0])),
+    P0 = tmp(N0), get_assoc(N0, Once, _),
+    guard_chain(Once, P, Chain),
+    member(B-i(OLo, OHi), Chain), B == P0, !,
+    GLo =< OLo + Lo, OHi + Hi =< GHi.
 
 checked_inst_rest(let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Insts, Fn-_, _,
                   Live0, Rest, Live) :- !,
@@ -1353,7 +1510,7 @@ checked_inst_rest(let(tmp(Q), f, check_function, _), Insts, Fn-_, _, _, Rest, Li
     (   Insts = [raw_call(_, tmp(Q), _)|Rest] -> true
     ;   fn_error(Fn, 'function check tmp(~w) is not followed by its raw call', [Q])
     ).
-checked_inst_rest(let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [Q1]), Insts, Fn-Sources, _,
+checked_inst_rest(let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [Q1]), Insts, Fn-src(Sources, _), _,
                   Live0, Rest, Live) :- !,
     (   Q1 = tmp(N1), get_assoc(N1, Sources, check(P1, Lo1, Hi1, Al1)),
         Lo1 =< Lo, Hi =< Hi1, Al1 mod Align =:= 0, (Lo - Lo1) mod Align =:= 0
@@ -1367,6 +1524,19 @@ checked_inst_rest(let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [Q1]), Insts, Fn-
         evidence_add(live(Q, tmp(P1), Lo, Hi, Rights, Align), Live1, Live2),
         evidence_after(Access, Live2, Live)
     ;   fn_error(Fn, 'renew tmp(~w) is not followed by an access it covers', [Q])
+    ).
+checked_inst_rest(let(tmp(Q), a, renew_if(Lo, Hi, Rights, Align), [P, G]), Insts, Fn-src(_, Once), _,
+                  Live0, Rest, Live) :- !,
+    (   guard_covers(Once, P, G, Lo, Hi) -> true
+    ;   fn_error(Fn, 'renew_if tmp(~w): no single-definition span test that covers it, or a setjmp', [Q])
+    ),
+    (   Insts = [Access|Rest],
+        covered_access(Access, Q, Lo, Hi, Rights, Align),
+        access_storage_effects(Access, heap)
+    ->  evidence_after(let(tmp(Q), a, renew_if(Lo, Hi, Rights, Align), [P, G]), Live0, Live1),
+        evidence_add(live(Q, P, Lo, Hi, Rights, Align), Live1, Live2),
+        evidence_after(Access, Live2, Live)
+    ;   fn_error(Fn, 'renew_if tmp(~w) is not followed by an access it covers', [Q])
     ).
 checked_inst_rest(Inst, Insts, Fn-_, Mode, Live0, Insts, Live) :-
     evidence_after(Inst, Live0, Live),
@@ -1410,6 +1580,8 @@ evidence_preserving(loc(_, _)).
 evidence_preserving(flight(_, _, _, _)).
 evidence_preserving(let(_, a, check(_, _, _, _), _)).
 evidence_preserving(let(_, a, renew(_, _, _, _), _)).
+evidence_preserving(let(_, w, span_test(_, _), _)).
+evidence_preserving(let(_, a, renew_if(_, _, _, _), _)).
 evidence_preserving(let(_, _, raw_load(T, _), _)) :- T \== p.
 evidence_preserving(let(_, p, raw_load_pointer(_, Es), _)) :-
     ( pointer_memory_effects(load, Es) ; pointer_memory_effects(local_load, Es) ), !.
@@ -1825,6 +1997,8 @@ kind_result_ok(atomic_load, _, filc, p).
 kind_result_ok(alloc, _, Mode, K) :- addr_class(Mode, K).
 kind_result_ok(check, _, filc, a).
 kind_result_ok(renew, _, filc, a).
+kind_result_ok(span_test, _, filc, w).
+kind_result_ok(renew_if, _, filc, a).
 kind_result_ok(check_local, _, filc, a).
 kind_result_ok(check_function, _, filc, f).
 kind_result_ok(ld, raw_load(T, _), filc, K) :- load_result_ok(T, filc, K).
@@ -1893,6 +2067,8 @@ kind_arg_classes(atomic_load, _, p, filc, [p]).
 kind_arg_classes(alloc, _, _, _, [l]).
 kind_arg_classes(check, _, _, filc, [p]).
 kind_arg_classes(renew, _, _, filc, [a]).
+kind_arg_classes(span_test, _, _, filc, [p]).
+kind_arg_classes(renew_if, _, _, filc, [p, w]).
 kind_arg_classes(check_local, _, _, filc, []).
 kind_arg_classes(check_function, _, _, filc, [p]).
 kind_arg_classes(ld, _, _, filc, [a]).

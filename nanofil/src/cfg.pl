@@ -532,6 +532,10 @@ inst_uses(loc(_, _), []).
 inst_uses(local_alloc(_, _), []).
 inst_uses(local_load(_, _, _, _, _), []).
 inst_uses(local_store(_, V, _, _), Us) :- temps([V], Us).
+% The Fil-C emitter's liveness view of a fused access that also reads
+% Extra (a guarded renewal's guard, filc_amd64.pl).
+inst_uses(uses(I, Extra), Us) :-
+    inst_uses(I, U0), temps(Extra, U1), ord_union(U0, U1, Us).
 
 % Only flight's address projection wraps a value. Do not traverse temp
 % names (opaque ground terms) or mistake a destination for a use.
@@ -551,6 +555,7 @@ inst_def(call(tuple(Rs), _, _), D) :-
     member(result(tmp(D), _), Rs).
 inst_def(raw_call(Res, F, Args), D) :-
     inst_def(call(Res, F, Args), D).
+inst_def(uses(I, _), D) :- inst_def(I, D).
 
 %! jump_uses(+Jump, -Uses) is det.
 %

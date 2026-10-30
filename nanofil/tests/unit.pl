@@ -3116,6 +3116,217 @@ test(renew_pass) :-
              TwoDefs),
     catch(( filc_module_asm(TwoDefs, _), fail ), nanofil_error(_), true).
 
+% Range guards (docs/m7.md, round 5, slice A): a span test before a
+% loop proves the bounds of every access through one base at offsets in
+% a constant interval, and each check becomes renew_if, which tests only
+% the free and read-only flags and alignment when the guard passed.
+% guard_fn(+Pre, +Body, -M): f(a, b, c) with Pre in s, then Body in a
+% loop h that calls free(b) and polls.
+guard_fn(Pre, Body, M) :-
+    append(Body, [call(void, global(free), [arg(p, tmp(b))])], Body1),
+    renew_fn([block(s, [], Pre, goto(h)),
+              block(h, [], Body1, branch(tmp(c), poll(h), e)),
+              block(e, [], [], ret(const(0)))], M).
+
+guard_rejected(M) :-
+    catch(( valid_module(M), fail ), nanofil_error(Msg), true),
+    once(sub_atom(Msg, _, _, _, renew_if)).
+
+% guard_access(+P, +Lo, +Hi, +G, -Insts): a guarded read of [Lo, Hi) at P.
+guard_access(P, Lo, Hi, G, [let(tmp(q), a, renew_if(Lo, Hi, read, 1), [P, tmp(G)]),
+                            let(tmp(x), w, raw_load(ub, Lo), [tmp(q)])]).
+
+test(guard_validation) :-
+    Ok = [Pre, Body]>>( guard_fn(Pre, Body, M), valid_module(M) ),
+    No = [Pre, Body]>>( guard_fn(Pre, Body, M), guard_rejected(M) ),
+    G16 = let(tmp(g), w, span_test(0, 16), [tmp(a)]),
+    F8 = flight(tmp(a8), add, [address(tmp(a)), const(8)], lower(tmp(a))),
+    guard_access(tmp(a8), 0, 8, g, A8),
+    % A constant offset: [8, 16) lies in [0, 16), and not in [0, 15) or
+    % [9, 16) (one byte short at either end).
+    call(Ok, [G16, F8], A8),
+    call(No, [let(tmp(g), w, span_test(0, 15), [tmp(a)]), F8], A8),
+    call(No, [let(tmp(g), w, span_test(9, 16), [tmp(a)]), F8], A8),
+    % A byte index: [0, 256) fits a 256-byte table, and not 255; a
+    % signed byte reaches [-128, 128), not [0, 256).
+    Nub = [let(tmp(n), w, ext(ub), [tmp(c)]), let(tmp(nl), l, ext(uw), [tmp(n)]),
+           flight(tmp(an), add, [address(tmp(a)), tmp(nl)], lower(tmp(a)))],
+    guard_access(tmp(an), 0, 1, g, An),
+    append(Nub, An, NubBody),
+    call(Ok, [let(tmp(g), w, span_test(0, 256), [tmp(a)])], NubBody),
+    call(No, [let(tmp(g), w, span_test(0, 255), [tmp(a)])], NubBody),
+    Nsb = [let(tmp(n), w, ext(sb), [tmp(c)]), let(tmp(nl), l, ext(sw), [tmp(n)]),
+           flight(tmp(an), add, [address(tmp(a)), tmp(nl)], lower(tmp(a)))|An],
+    call(Ok, [let(tmp(g), w, span_test(-128, 128), [tmp(a)])], Nsb),
+    call(No, [let(tmp(g), w, span_test(0, 256), [tmp(a)])], Nsb),
+    % A sub flight negates its term: a - n lies in [-255, 0].
+    Nsub = [let(tmp(n), w, ext(ub), [tmp(c)]), let(tmp(nl), l, ext(uw), [tmp(n)]),
+            flight(tmp(an), sub, [address(tmp(a)), tmp(nl)], lower(tmp(a)))|An],
+    call(Ok, [let(tmp(g), w, span_test(-255, 1), [tmp(a)])], Nsub),
+    call(No, [let(tmp(g), w, span_test(0, 256), [tmp(a)])], Nsub),
+    % Masks and scales: (c & 63) << 2 lies in [0, 252]; c % 10 in [0, 9].
+    Nmask = [let(tmp(n), w, and, [tmp(c), const(63)]), let(tmp(n4), w, shl, [tmp(n), const(2)]),
+             let(tmp(nl), l, ext(sw), [tmp(n4)]),
+             flight(tmp(an), add, [address(tmp(a)), tmp(nl)], lower(tmp(a)))|An],
+    call(Ok, [let(tmp(g), w, span_test(0, 253), [tmp(a)])], Nmask),
+    call(No, [let(tmp(g), w, span_test(0, 252), [tmp(a)])], Nmask),
+    Nrem = [let(tmp(n), w, urem, [tmp(c), const(10)]), let(tmp(nl), l, ext(uw), [tmp(n)]),
+            flight(tmp(an), add, [address(tmp(a)), tmp(nl)], lower(tmp(a)))|An],
+    call(Ok, [let(tmp(g), w, span_test(0, 10), [tmp(a)])], Nrem),
+    call(No, [let(tmp(g), w, span_test(0, 9), [tmp(a)])], Nrem),
+    % ext(uw) only of a w value known non-negative: a signed byte widened
+    % unsigned is near 2^32, not in [-128, 128).
+    Nuw = [let(tmp(n), w, ext(sb), [tmp(c)]), let(tmp(nl), l, ext(uw), [tmp(n)]),
+           flight(tmp(an), add, [address(tmp(a)), tmp(nl)], lower(tmp(a)))|An],
+    call(No, [let(tmp(g), w, span_test(-128, 128), [tmp(a)])], Nuw),
+    % A negative factor swaps the ends: -c lies in [-255, 0], not [0, 8).
+    Nneg = [let(tmp(n0), w, ext(ub), [tmp(c)]), let(tmp(n), w, mul, [tmp(n0), const(-1)]),
+            let(tmp(nl), l, ext(sw), [tmp(n)]),
+            flight(tmp(an), add, [address(tmp(a)), tmp(nl)], lower(tmp(a)))|An],
+    call(Ok, [let(tmp(g), w, span_test(-255, 1), [tmp(a)])], Nneg),
+    call(No, [let(tmp(g), w, span_test(0, 8), [tmp(a)])], Nneg),
+    % A w constant is signed: 0xFFFFFFFF sign-extended is -1, not 2^32-1.
+    Ncst = [let(tmp(nl), l, ext(sw), [const(4294967295)]),
+            flight(tmp(an), add, [address(tmp(a)), tmp(nl)], lower(tmp(a)))|An],
+    call(Ok, [let(tmp(g), w, span_test(-1, 0), [tmp(a)])], Ncst),
+    call(No, [let(tmp(g), w, span_test(4294967295, 4294967303), [tmp(a)])], Ncst),
+    % A shift by the width is no interval, even where 1 << 64 and two
+    % steps of -2^63 would sum to 0.
+    Nshl = [let(tmp(nl), l, shl, [const(1), const(64)]),
+            flight(tmp(a1), add, [address(tmp(a)), tmp(nl)], lower(tmp(a))),
+            flight(tmp(a2), add, [address(tmp(a1)), const(9223372036854775808)], lower(tmp(a1))),
+            flight(tmp(an), add, [address(tmp(a2)), const(9223372036854775808)], lower(tmp(a2)))|An],
+    call(No, [let(tmp(g), w, span_test(0, 1), [tmp(a)])], Nshl),
+    % w arithmetic that may wrap, or masks that do not bound a signed w
+    % value: rejected whatever the span.
+    Big = let(tmp(g), w, span_test(-9223372036854775807, 9223372036854775807), [tmp(a)]),
+    forall(member(Def, [ [let(tmp(n0), w, ext(ub), [tmp(c)]),
+                          let(tmp(n), w, add, [tmp(n0), const(2147483647)])],
+                         [let(tmp(n), w, and, [tmp(c), const(2147483648)])],
+                         [let(tmp(n), w, urem, [tmp(c), const(3000000000)])],
+                         [let(tmp(n0), w, ext(ub), [tmp(c)]), let(tmp(n), w, shl, [tmp(n0), const(32)])],
+                         [let(tmp(n0), w, ext(ub), [tmp(c)]), let(tmp(n), w, mul, [tmp(n0), const(16777216)])] ]),
+           ( append(Def, [let(tmp(nl), l, ext(sw), [tmp(n)]),
+                          flight(tmp(an), add, [address(tmp(a)), tmp(nl)], lower(tmp(a)))|An], B),
+             call(No, [Big], B) )),
+    % Another root, another lower donor, a guard that is not a span
+    % test, an offset name defined twice, a setjmp, no access after it.
+    guard_access(tmp(b), 0, 1, g, Ab), call(No, [G16], Ab),
+    Fx = flight(tmp(ax), add, [address(tmp(a)), const(0)], lower(tmp(b))),
+    guard_access(tmp(ax), 0, 1, g, Ax), call(No, [G16, Fx], Ax),
+    guard_access(tmp(a), 0, 1, g, A0),
+    call(Ok, [G16], A0),
+    call(No, [let(tmp(g), w, copy, [const(1)])], A0),
+    guard_fn([let(tmp(g), w, span_test(0, 256), [tmp(a)])], NubBody, Two0),
+    Two0 = module([func(F, Lk, Rt, Ps, Bs0)]),
+    append(Bs0, [block(u, [], [let(tmp(n), w, ext(ub), [tmp(c)])], goto(h))], Bs1),
+    guard_rejected(module([func(F, Lk, Rt, Ps, Bs1)])),
+    call(No, [G16, let(tmp(j), w, setjmp('_setjmp'), [tmp(b), const(0)])], A0),
+    % The base defined twice (an unreachable copy redefines a).
+    guard_fn([G16], A0, TwoA0), TwoA0 = module([func(F, Lk, Rt, Ps, BsA)]),
+    append(BsA, [block(v, [], [flight(tmp(a), copy, [address(tmp(b))], lower(tmp(b)))], goto(h))], BsA1),
+    guard_rejected(module([func(F, Lk, Rt, Ps, BsA1)])),
+    guard_fn([G16], [let(tmp(q), a, renew_if(0, 1, read, 1), [tmp(a), tmp(g)])], Apart),
+    guard_rejected(Apart),
+    % A guard that does not dominate the loop: one arm defines it.
+    renew_fn([block(s, [], [], branch(tmp(c), t, h)), block(t, [], [G16], goto(h)),
+              block(h, [], A0, ret(const(0)))], NoDom),
+    catch(( valid_module(NoDom), fail ), nanofil_error(_), true).
+
+% The interpreter: a span test is 1 exactly when the object contains
+% the span; renew_if with G = 0 is its check, and with G = 1 traps
+% out_of_bounds after a free, readonly on a write to read-only data and
+% misaligned on a misaligned address, as the check does; a forged guard
+% shows as unchecked(span).
+test(guard_semantics) :-
+    Alloc = let(tmp(p), p, alloc(8), [const(16)]),
+    St = [Lo, Hi, Insts]>>( Insts = [Alloc, let(tmp(g), w, span_test(Lo, Hi), [tmp(p)]),
+                                     let(tmp(x), l, ext(uw), [tmp(g)])] ),
+    forall(member(Lo-Hi-R, [0-16-1, 0-17-0, 8-16-1, -1-8-0, 15-16-1, 16-17-0]),
+           ( call(St, Lo, Hi, Is), reuse_l_fn(Is, M), once(run(M, f, [], 10, ret(R))) )),
+    Free = call(void, global(free), [arg(p, tmp(p))]),
+    reuse_l_fn([Alloc, Free, let(tmp(g), w, span_test(0, 1), [tmp(p)]),
+                let(tmp(x), l, ext(uw), [tmp(g)])], Freed),
+    once(run(Freed, f, [], 10, ret(0))),
+    G = let(tmp(g), w, span_test(0, 16), [tmp(p)]),
+    Ld = [let(tmp(x), l, raw_load(l, 0), [tmp(r)])],
+    reuse_l_fn([Alloc, G, Free, let(tmp(r), a, renew_if(0, 8, read, 1), [tmp(p), tmp(g)])|Ld], AfterFree),
+    valid_module(AfterFree), once(run(AfterFree, f, [], 10, trap(out_of_bounds))),
+    reuse_l_fn([Alloc, G, let(tmp(r), a, renew_if(0, 8, read, 1), [tmp(p), tmp(g)])|Ld], Live),
+    valid_module(Live), once(run(Live, f, [], 10, ret(0))),
+    % G = 0 (the span is wider than the object) runs the full check.
+    G0 = let(tmp(g), w, span_test(0, 32), [tmp(p)]),
+    F16 = flight(tmp(p16), add, [address(tmp(p)), const(16)], lower(tmp(p))),
+    reuse_l_fn([Alloc, G0, F16, let(tmp(r), a, renew_if(0, 8, read, 1), [tmp(p16), tmp(g)])|Ld], Out),
+    valid_module(Out), once(run(Out, f, [], 10, trap(out_of_bounds))),
+    F1 = flight(tmp(p1), add, [address(tmp(p)), const(1)], lower(tmp(p))),
+    reuse_l_fn([Alloc, G, F1, let(tmp(r), a, renew_if(0, 8, read, 8), [tmp(p1), tmp(g)])|Ld], Mis),
+    valid_module(Mis), once(run(Mis, f, [], 10, trap(misaligned))),
+    Ro = module([data(msg, ro(local), 1, [item(b, str("h"))]),
+        func(g, local, w, [], [block(s, [], [
+            let(tmp(p), p, copy, [global(msg)]),
+            let(tmp(g), w, span_test(0, 1), [tmp(p)]),
+            let(tmp(r), a, renew_if(0, 1, write, 1), [tmp(p), tmp(g)]),
+            raw_store(b, 0, const(1), tmp(r))
+        ], ret(tmp(g)))])]),
+    valid_module(Ro), once(run(Ro, g, [], 10, trap(readonly))),
+    reuse_l_fn([Alloc, let(tmp(g), w, copy, [const(1)]),
+                let(tmp(r), a, renew_if(0, 64, read, 1), [tmp(p), tmp(g)])|Ld], Forged),
+    guard_rejected(Forged), once(run(Forged, f, [], 10, unchecked(span))).
+
+% The pass guards the loop's check of p+8, which no check before the
+% loop dominates, with one span test at the end of s; all modules agree,
+% guard_refines/2 accepts the result and refuses a moved check or a
+% guard read from another name. Native: a guard test per access.
+test(guard_pass) :-
+    ir_module([func(f, local, l, [param(w, tmp(k))], [
+        block(s, [], [
+            let(tmp(p), p, alloc(8), [const(16)]),
+            store(l, const(1), tmp(p)),
+            let(tmp(p8), p, add, [tmp(p), const(8)])
+        ], goto(h)),
+        block(h, [phi(tmp(i), w, [s-const(0), b-tmp(i1)]),
+                  phi(tmp(t), l, [s-const(0), b-tmp(t1)])], [
+            let(tmp(m), w, cmp(slt, w), [tmp(i), tmp(k)])
+        ], branch(tmp(m), b, e)),
+        block(b, [], [
+            let(tmp(o), p, alloc(8), [const(16)]),
+            call(void, global(free), [arg(p, tmp(o))]),
+            let(tmp(u), l, load(l), [tmp(p8)]),
+            let(tmp(t1), l, add, [tmp(t), tmp(u)]),
+            store(l, tmp(t1), tmp(p8)),
+            let(tmp(i1), w, add, [tmp(i), const(1)])
+        ], goto(h)),
+        block(e, [], [], ret(tmp(t)))])], M),
+    pizlonate_module(M, C0), reuse_checks(C0, C1), renew_checks(C1, C2),
+    guard_checks(C2, C3), guard_refines(C2, C3), valid_module(C3),
+    C3 = module([func(f, _, _, _, Bs)|_]),
+    memberchk(block(s, _, SIs, _), Bs), last(SIs, let(tmp(G), w, span_test(8, 16), [tmp(p)])),
+    memberchk(block(b, _, Is, _), Bs),
+    findall(Op, member(let(_, a, Op, _), Is), Ops),
+    % The store renews the guarded read's proof (round 4).
+    Ops = [renew_if(0, 8, read, 1), renew(0, 8, write, 1)],
+    forall(member(Mod, [M, C0, C3]),
+           ( once(run(Mod, f, [3], 100, ret(R))), R == 0 )),
+    filc_module_asm(C3, Lines),
+    findall(x, member(ins(cmp, l, [imm(0), mem(_, rbp)]), Lines), Tests), length(Tests, 1),
+    memberchk(ins(test, b, [imm(6), mem(-2, rcx)]), Lines),
+    % A loop with nothing to guard, and a function without loops, are
+    % unchanged.
+    guard_fn([], [], NoChecks), guard_checks(NoChecks, NoChecks1), NoChecks1 == NoChecks,
+    renew_fn([block(s, [], [], ret(const(0)))], NoLoop),
+    guard_checks(NoLoop, NoLoop1), NoLoop1 == NoLoop,
+    % Refused: the guarded check moved, or a renew_if reading another name.
+    C3 = module([func(f, L, Rt, Ps, Bs3)|Rest]),
+    select(block(b, Ph, Is, J), Bs3, block(b, Ph, Moved, J), BsMoved),
+    Is = [I0, I1, I2|IsRest], Moved = [I1, I0, I2|IsRest],
+    \+ guard_refines(C2, module([func(f, L, Rt, Ps, BsMoved)|Rest])),
+    G \== k,
+    select(block(b, Ph, Is, J), Bs3, block(b, Ph, Other, J), BsOther),
+    maplist([I, O]>>( I = let(Q, a, renew_if(A1, A2, A3, A4), [P, _])
+                      -> O = let(Q, a, renew_if(A1, A2, A3, A4), [P, tmp(k)]) ; O = I ), Is, Other),
+    \+ guard_refines(C2, module([func(f, L, Rt, Ps, BsOther)|Rest])).
+
 % Emission reads a reused access at the checked pointer without a
 % check, and refuses one whose pointer was redefined since its check,
 % which only the validator would otherwise catch.

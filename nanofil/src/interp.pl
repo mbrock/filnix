@@ -768,6 +768,33 @@ kind_res(renew, renew(Lo, Hi, Rights, Align), a, filc, [ptr(A, Cap)],
     Size is Hi - Lo,
     access_res(Mem, B, Cap, Size, Rights, Align, Res0),
     renew_res(Res0, ptr(A, Cap), Mem, Res).
+% A span test (docs/m7.md, round 5) compares the object's current
+% bounds with the span, addresses modulo 2^64 as native code forms them;
+% it is 0 for any capability that is not an object's, and never traps.
+kind_res(span_test, span_test(Lo, Hi), w, filc, [ptr(A, Cap)],
+         s(Mem, Fuel), val(G), s(Mem, Fuel)) :-
+    Mem = mem(_, Rs, _, _),
+    (   ( Cap = obj(Base) ; Cap = ro(Base) ),
+        object_region(Base, Rs, region(Base, End, _, _)),
+        raw_address(A, Lo, L), raw_address(A, Hi, H),
+        Base =< L, L < H, H =< End
+    ->  G = 1
+    ;   G = 0
+    ).
+% renew_if is its check when G is 0. When G is 1 it runs the check's
+% whole access test too: a freed object, a write to a read-only one and
+% a misaligned address are the program's traps, which the native fast
+% path tests itself; any other failure means the guard or the interval
+% rules were wrong: unchecked(span).
+kind_res(renew_if, renew_if(Lo, Hi, Rights, Align), a, filc, [ptr(A, Cap), G],
+         s(Mem, Fuel), Res, s(Mem, Fuel)) :-
+    raw_address(A, Lo, B),
+    Size is Hi - Lo,
+    access_res(Mem, B, Cap, Size, Rights, Align, Res0),
+    (   G =:= 0 -> checked_res(Res0, ptr(A, Cap), Res)
+    ;   Res0 = trap(misaligned) -> Res = trap(misaligned)
+    ;   renew_res(Res0, ptr(A, Cap), Mem, Res)
+    ).
 kind_res(ld, raw_load(T, Off), K, filc, [ptr(A, Cap)], S0, Res, S) :-
     raw_address(A, Off, B),
     load_op_res(T, K, filc, [ptr(B, Cap)], S0, Res0, S),

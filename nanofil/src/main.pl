@@ -88,11 +88,12 @@
     item 8). The default is full; NANOFIL_SIMPLIFY supplies the same
     choice.
 
-    `--checks=reference|reuse|renew` independently selects the reference
-    checked IR, a check before every access, check reuse after
-    pizlonation, or reuse followed by renewal of dominated checks
-    (src/check_reuse.pl, docs/m7.md). The default is reference;
-    NANOFIL_CHECKS supplies the same choice. With reuse or renew, `cc`,
+    `--checks=reference|reuse|renew|guard` independently selects the
+    reference checked IR, a check before every access, check reuse after
+    pizlonation, reuse followed by renewal of dominated checks, or both
+    followed by range guards for checks in loops (src/check_reuse.pl,
+    docs/m7.md). The default is reference; NANOFIL_CHECKS supplies the
+    same choice. With reuse, renew or guard, `cc`,
     `compile` and difftest's pizlonation comparison use that module.
 
     ## difftest
@@ -185,8 +186,8 @@ checks_default(Checks) :-
     ( getenv('NANOFIL_CHECKS',C) -> Checks = C ; Checks = reference ),
     checks_mode(Checks).
 checks_mode(C) :-
-    ( memberchk(C,[reference,reuse,renew]) -> true
-    ; throw(nanofil_error('checks must be reference, reuse or renew')) ).
+    ( memberchk(C,[reference,reuse,renew,guard]) -> true
+    ; throw(nanofil_error('checks must be reference, reuse, renew or guard')) ).
 % inline_options(+Argv0, +Inline0, -Inline, -Argv): Argv is Argv0 less
 % its --inline= options, the last of which gives Inline.
 inline_options([], I, I, []).
@@ -481,12 +482,25 @@ checks_module(reuse, Checked0, Checked) :-
 % dominating check may renew. Only the result is validated: a renew
 % keeps its check's proof and index, so reuse's output is valid if it is.
 checks_module(renew, Checked0, Checked) :-
+    renewed_module(Checked0, Checked),
+    once(valid_module(Checked)).
+
+% Guards (docs/m7.md, round 5) run after renewal: a check renewal left
+% in a loop may become a guarded renewal. Only the result is validated.
+checks_module(guard, Checked0, Checked) :-
+    renewed_module(Checked0, Checked1),
+    once(guard_checks(Checked1, Checked)),
+    (   guard_refines(Checked1, Checked) -> true
+    ;   throw(nanofil_error('range guards changed more than checks'))
+    ),
+    once(valid_module(Checked)).
+
+renewed_module(Checked0, Checked) :-
     reused_module(Checked0, Checked1),
     once(renew_checks(Checked1, Checked)),
     (   renew_refines(Checked1, Checked) -> true
     ;   throw(nanofil_error('check renewal changed more than checks'))
-    ),
-    once(valid_module(Checked)).
+    ).
 
 reused_module(Checked0, Checked) :-
     once(reuse_checks(Checked0, Checked)),

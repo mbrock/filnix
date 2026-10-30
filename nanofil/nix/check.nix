@@ -65,7 +65,7 @@ pkgs.runCommandCC "nanofil-check"
     step "difftest backend" env CC=$CC tests/par.sh tests/difftest.sh tests/backend/*.ir
     export FILCC=${filcc}/bin/clang
     step pptest tests/pptest.sh
-    step "difftest filc/*.ir" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/filc/branches.ir
+    step "difftest filc/*.ir" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/filc/guard-span.ir tests/filc/branches.ir
     step "run-c interop gc float" tests/par.sh tests/filc/run-c.sh interop gc float
     step "variadic+float gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh variadic float
     step "setjmp gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh setjmp
@@ -110,7 +110,7 @@ pkgs.runCommandCC "nanofil-check"
     step "-O difftest float SSE2" env CC=$CC tests/difftest.sh tests/float/*.ir
     step "-O difftest fixtures+gen1" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir
     step "-O difftest backend" env CC=$CC tests/par.sh tests/difftest.sh tests/backend/*.ir
-    step "-O difftest filc, c, big1" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
+    step "-O difftest filc, c, big1" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/filc/guard-span.ir tests/c/*.c big1.c
     step "-O run-c interop gc float" tests/par.sh tests/filc/run-c.sh interop gc float
     step "-O variadic+float gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh variadic float
     step "-O setjmp gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh setjmp
@@ -184,7 +184,21 @@ pkgs.runCommandCC "nanofil-check"
     unset NANOFIL_OPT
     step "renew temps ABI+GC" env NANOFIL_REGISTERS=temps RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh gc setjmp pointer-effects reuse-gc
     unset NANOFIL_CHECKS
-    step "renew trap text" tests/renew-trap.sh
+    # M7 round 5, range guards (docs/m7.md): renewal, then a span test
+    # before each loop and renew_if for the loop's checks it covers. The
+    # corpus compiles under -O, where the guards apply, so the validator
+    # sees every guard the pass makes; renew-trap.sh compares guarded
+    # traps with reference too.
+    export NANOFIL_CHECKS=guard
+    for opt in "" -O; do
+      export NANOFIL_OPT=$opt
+      step "guard $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/filc/guard-span.ir tests/c/*.c big1.c
+      step "guard $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
+      step "guard $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    done
+    step "guard -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    unset NANOFIL_OPT NANOFIL_CHECKS
+    step "renew and guard trap text" tests/renew-trap.sh
     # Branch selection (docs/perf.md) is the -O default, so the -O suites
     # above run it; here it runs without -O, and -O runs the reference
     # branches, whose stream temps' checkers validate.
