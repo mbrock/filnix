@@ -996,12 +996,17 @@ common_linkage(Linkage, _, Linkage).
 
 %% Functions
 
-% function(+Loc, +Name, +Type, +DclType, +Body, +Env0, -Env, -Func): Func
-% is the IR function for the definition of Name with body Body.
-% Lowering is deterministic; once/1 keeps a function's choicepoints from
-% holding its states alive while the rest of the file is lowered.
-% A type nanofil refuses (bad/1, from c_types) is reported at the
-% function, unless a caller defers it (deferrable/1).
+%! function(+Loc, +Name, +Type, +DclType, +Body, +Env0, -Env, -Func) is det.
+%
+%  Func is the IR for the definition of function Name, of type Type,
+%  with declarator DclType and body Body: the list [func(Sym, Linkage,
+%  RetClass, Params, Blocks), context(Sym, Records)], the function and
+%  its provenance records (provenance.pl), which function_/8 builds.
+%  Env is Env0 with what the body defined outside its own scope.
+%  Lowering is deterministic; once/1 keeps a function's choicepoints
+%  from holding its states alive while the rest of the file is lowered.
+%  A type nanofil refuses (bad/1, from c_types) is reported at the
+%  function, unless a caller defers it (deferrable/1).
 function(Loc, Name, Type, DclType, Body, Env0, Env, Func) :-
     % filcc returns a struct holding an _Atomic struct or union by its own
     % rules, and may call even a static function, its address escaped.
@@ -1078,20 +1083,21 @@ lowered_body(Loc, RetType, Variadic, Names, Mins, ParamTypes, Body, Ctx,
            ),
            [State0], [State]).
 
-/* launder_fixpoint(+Laundered, +Lower, +ParamEnv, -Params, -State):
-   State is the function lowered with a capability shadow for each
-   local integer variable in the least fixpoint Laundered: the locals,
-   their address never taken, defined once (one initializer or
-   assignment, a parameter's incoming value counting as one), whose
-   definition has a capability source or merges two (launder_rhs//4), a
-   read of a laundered local counting as one. A variable defined twice
-   is, where both reach, a phi or select, which clang -O1 may make an
-   llvm.umin, smax, abs or usub.sat, a call Fil-C gives no capability,
-   from shapes no syntactic rule can follow; one defined once is its
-   definition's value. Whether a read is a source depends on the
-   definitions of the variables it copies, so the body is lowered
-   again until the set is stable; a function with no such definition
-   is lowered once, as before. */
+%! launder_fixpoint(+Laundered, +Lower, +ParamEnv, -Params, -State) is det.
+%
+%  State is the function lowered with a capability shadow for each
+%  local integer variable in the least fixpoint Laundered: the locals,
+%  their address never taken, defined once (one initializer or
+%  assignment, a parameter's incoming value counting as one), whose
+%  definition has a capability source or merges two (launder_rhs//4), a
+%  read of a laundered local counting as one. A variable defined twice
+%  is, where both reach, a phi or select, which clang -O1 may make an
+%  llvm.umin, smax, abs or usub.sat, a call Fil-C gives no capability,
+%  from shapes no syntactic rule can follow; one defined once is its
+%  definition's value. Whether a read is a source depends on the
+%  definitions of the variables it copies, so the body is lowered again
+%  until the set is stable; a function with no such definition is
+%  lowered once.
 launder_fixpoint(Laundered, Lower, ParamEnv, Params, State) :-
     call(Lower, Laundered, ParamEnv, Params1, State1),
     State1 = st(_, _, _, _, _, _, _, build(_, _, _, Records, _)),
@@ -1408,6 +1414,11 @@ result_name(_, _) --> [].
 
 cur(Cur) --> state(st(_, Cur, _, _, _, _, _, _)).
 
+%! env(-Env)// is det.
+%
+%  Env is the lowering state's semantic environment (c_types.pl's
+%  e/4); set_env//1 replaces it. The state is st(Env, Cur, Insts,
+%  Blocks, N, Labels, Cases, Build), the header comment's table.
 env(Env) --> state(st(Env, _, _, _, _, _, _, _)).
 
 set_env(Env) -->
@@ -1752,11 +1763,13 @@ check_case_region(Regions, Switch, Loc) :-
     ;   sema_error(Loc, 'switch dispatch into a statement expression is not allowed', [])
     ).
 
-% stmt(+Stmt, +Ctx)//: lower statement Stmt, an at(Loc, S) term; stmt_//2
-% lowers S itself.
-% Lowering a statement is deterministic: committing to it keeps the
-% choicepoints of a large function (sqlite3WhereCodeOneLoopStart) from
-% holding every earlier state alive.
+%! stmt(+Stmt, +Ctx)// is det.
+%
+%  Lowers statement Stmt, an at(Loc, S) term, in context Ctx; stmt_//2
+%  lowers S itself, and an origin record ties its instructions to Loc.
+%  Lowering a statement is deterministic: committing to it keeps the
+%  choicepoints of a large function (sqlite3WhereCodeOneLoopStart) from
+%  holding every earlier state alive.
 stmt(Stmt, Ctx, S0, S) :- once(stmt_at(Stmt, Ctx, S0, S)).
 
 stmt_at(at(Loc, Stmt), Ctx0) -->
@@ -3233,10 +3246,15 @@ rval(Expr, Ctx, R) -->
     ;   { ctx_loc(Ctx, Loc), sema_error(Loc, 'cannot type ~w', [Expr]) }
     ).
 
-/* lower(+XV, +Ctx, -R)//: R is v(V, Type), the value whose typed tree
-   is XV. Types are unqualified, as code generation has them; a type
-   name the source writes (a cast's, va_arg's, sizeof's) is read again
-   by type_name/4, which refuses one nanofil does not support. */
+%! lower(+XV, +Ctx, -R)// is det.
+%
+%  R is v(V, Type), the IR value of the typed tree XV (elaborate/3),
+%  with the instructions that compute it emitted into the state. Types
+%  are unqualified, as code generation has them; a type name the source
+%  writes (a cast's, va_arg's, sizeof's) is read again by type_name/4,
+%  which refuses one nanofil does not support. lower_node//3 has a
+%  clause per tree form; this wrapper records its origin for the
+%  context records.
 lower(X, Ctx, R) -->
     typed_origin(X, Ctx, Parent), lower_node(X, Ctx, R),
     result_name(X, R), restore_origin(Parent).
@@ -3549,8 +3567,10 @@ decayed(fd(global(Sym), Type), _, _, v(Addr, ptr(Type))) --> !,
     let(p, copy, [global(Sym)], Addr).
 decayed(fd(Callee, Type), _, _, v(Callee, ptr(Type))) --> [].
 
-/* place(+X, +Ctx, -P)//: P is lv(Addr, Type), the object that typed
-   tree X designates, or fd(Callee, Type) for a function. */
+%! place(+X, +Ctx, -P)// is det.
+%
+%  P is lv(Addr, Type), the object that the typed tree X designates, or
+%  fd(Callee, Type) for a function: lower//3's counterpart for lvalues.
 place(X, Ctx, P) -->
     typed_origin(X, Ctx, Parent), place_node(X, Ctx, P), restore_origin(Parent).
 
@@ -3839,8 +3859,13 @@ store_width(Type, Width) :-
 offset(Addr, 0, Addr) --> !.
 offset(Addr, Off, P) --> let(p, add, [Addr, const(Off)], P).
 
-% builtin(+Name, +Args, +Ctx, -R)//: R is the value of a call of
-% builtin Name, which no declaration shadows, on source arguments Args.
+%! builtin(+Name, +Args, +Ctx, -R)// is det.
+%
+%  R is the value of a call of builtin Name, which no declaration
+%  shadows, on source arguments Args. Elaboration (c_types.pl, with
+%  builtin_type/2 and the *_builtin tables) types the call and marks it
+%  val(T, builtin(Name, Args)); the clauses here say what code it
+%  lowers to. Arguments no clause accepts are an error.
 builtin('__builtin_va_start', [A, _], Ctx, v(const(0), void)) --> !,
     env(Env),
     { ctx_loc(Ctx, Loc),
@@ -6762,12 +6787,14 @@ expr_chunk(ptr(_), Off, Expr, Loc, Env0, Env, Chunk) :- !,
 expr_chunk(Type, _, _, Loc, _, _, _) :-
     sema_error(Loc, 'cannot statically initialize a ~w', [Type]).
 
-/* address_constant(+XV, +Loc, +Env0, -Env, -R): the value tree XV is an
-   address constant (C11 6.6p9), R = sym(Symbol, Offset), or a null
-   pointer, R = null, or an integer constant cast to a pointer, R =
-   int(Address). It is the address of a static object or a
-   function, perhaps cast, plus or minus an integer constant; string
-   literals and compound literals become data of their own. */
+%! address_constant(+XV, +Loc, +Env0, -Env, -R) is det.
+%
+%  The value tree XV is an address constant (C11 6.6p9), R =
+%  sym(Symbol, Offset), or a null pointer, R = null, or an integer
+%  constant cast to a pointer, R = int(Address). It is the address of a
+%  static object or a function, perhaps cast, plus or minus an integer
+%  constant; string literals and compound literals become data of their
+%  own (Env). Anything else is an error. Static initializers use it.
 address_constant(val(_, decay(X)), Loc, Env0, Env, R) :- !,
     place_constant(X, Loc, Env0, Env, R).
 address_constant(val(_, addr(X)), Loc, Env0, Env, R) :- !,
