@@ -16,10 +16,15 @@
     `thread->top_frame` and every return and exception exit pops.
     Values are never kept in registers across a call or safepoint, so
     every live capability is always in a slot the GC scans. The prologue
-    zeroes `lowers[]`, so the GC sees no stale lowers. Only function,
-    operands and cells modes (amd64_regs.pl; cells is the -O default) keep
-    scalar `w`/`l` homes in registers, callee-saved ones across calls;
-    pointers never.
+    zeroes `lowers[]`, so the GC sees no stale lowers. Under
+    `--registers=temps` and `pointers` (amd64_regs.pl; pointers is the -O
+    default), scalar `w`/`l` homes, and under pointers a pointer's address
+    word, may live in registers: rbx and r12-r15 across calls, and r10
+    and r11 too otherwise. A lower never does, so every live capability
+    stays in the frame record the GC scans. The register checker refuses
+    any home that overlaps that record or a local object. setjmp
+    functions and `--registers=stack` (plain's default) keep every home
+    in the frame.
 
     Temporaries whose closed live intervals are disjoint share a slot
     (frame_slots.pl). A function that calls setjmp is the exception:
@@ -121,15 +126,21 @@
 %  nanofil_error(Msg) if an item cannot be lowered.
 filc_module_asm(Module, Lines) :- filc_module_asm(Module, stack, Lines, _).
 
-% Emission is emit(Registers, Branches), or just Registers with reference
-% branches. Registers is stack (the reference) or temps (validated
-% whole-function register homes, amd64_regs.pl, with validated register
-% operands and frame cells, on a frame with a home per scalar temporary:
-% docs/perf.md items 3, 5a-loads and 3d); Branches is reference or
-% selected (branch selection, below). emit(Registers, Branches, Copies)
-% also gives Copies: call (the reference) or inline, the small-copy
-% filter of docs/perf.md item 7a; emit/2 means call.
-% Reports records each item's caching result, without driver-side state.
+%! filc_module_asm(+Module, +Emission, -Lines, -Reports) is det.
+%
+%  As filc_module_asm/2, with the emission choices of main.pl's options.
+%  Emission is emit(Registers, Branches), or just Registers with
+%  reference branches. Registers is stack (the reference), temps
+%  (validated whole-function register homes, amd64_regs.pl, with
+%  validated register operands and frame cells, on a frame with a home
+%  per scalar temporary: docs/perf.md items 3, 5a-loads and 3d),
+%  pointers (temps with pointer address words as homes too, 5b-2), or
+%  limited(R, N) for R on functions of at most N instructions;
+%  Branches is reference or selected (branch selection, below).
+%  emit(Registers, Branches, Copies) also gives Copies: call (the
+%  reference) or inline, the small-copy filter of docs/perf.md item 7a;
+%  emit/2 means call. Reports records each item's register result
+%  (amd64_regs:regs_asm/6), without driver-side state.
 filc_module_asm(Module0, Emission, Lines, Reports) :-
     without_locs(Module0, Module),
     Module = module(Items),
