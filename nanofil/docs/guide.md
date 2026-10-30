@@ -51,9 +51,13 @@ the current compiler's.
  asm.pl line terms ── asm:print_asm/1 ──▶ GNU as text
 ```
 
-A module that uses no pointer class (plain mode, below) takes the
-other branch after the middle end: `amd64:module_asm/2`, the plain SysV
-backend. The interpreter, `interp:run/5`, can run any IR module at any
+`nanofil cc` always takes this Fil-C path. IR text read by `nanofil
+compile` may instead be in plain mode (no `p`, no external call;
+`ir:module_mode/2`, below), and then goes to `amd64:module_asm/2`, the
+plain SysV backend. The diagram is the order of the stages, not of the
+calls: filc_amd64 drives the last three, fusing each check with its
+access before it asks filc_abi for the plan, and amd64_regs runs its
+own checker. The interpreter, `interp:run/5`, can run any IR module at any
 point on this path. The tests use it as the oracle the native code is
 compared with.
 
@@ -126,9 +130,11 @@ command(Opt, Registers, Checks, [cc, File]) :- !,
 `mode_print_asm/4` calls `checked_module/3`, which pizlonates the
 module, validates it, and runs the check passes `--checks` selects.
 `filc_module_emit/3` then prints the assembly one item at a time. The
-other commands (`cc-ir`, `tokens`, `print`, `compile`, `run`,
-`difftest`) stop at an earlier stage or start from IR text. They are
-listed at the top of [main.pl](../src/main.pl), the impure driver. It
+other commands (`cc-ir`, `tokens`, `check`, `print`, `compile`,
+`run`, `difftest`) stop at an earlier stage or start from IR text. They are
+listed at the top of [main.pl](../src/main.pl), the impure driver.
+`check FILE` validates hand-edited IR, checked or not, and prints `ok`
+or the validator's complaint. It
 is a plain file, not a module, so it has no exports.
 
 ### 2. Preprocessing and lexing: c_pp.pl, c_lex.pl
@@ -523,6 +529,11 @@ in sum: check tmp(chk0) is not followed by an access it covers
 ```
 <!-- /guide -->
 
+Deleting the check instead fails earlier: the load then reads an
+undefined temporary, and reading the pointer `pr.1` itself is a class
+error (`p` used as `a`). `nanofil check FILE` reports either on
+hand-edited IR.
+
 Whatever produced the checked IR (pizlonation, the check passes, or a
 future proof search), it is accepted only if this rule accepts it. What
 that does and does not establish is in
@@ -598,7 +609,14 @@ pointer slot and its capability in that slot's `lower(...)` root, so
 every live capability is somewhere the GC can see. `zero_roots(3)`
 clears the three roots before `push_frame(c)` links the frame into the
 thread's frame list. `receive(registers, ...)` takes the parameter `n`
-as two words. Temporaries whose live ranges do not overlap share slots
+as two words, `wf(l, tmp(v0))` its address and `wf(l, lower(tmp(v0)))`
+its lower. A pointer argument to a call is laid out the same way,
+`invoke(entry(g, Sig), registers, [wf(l, addr(tmp(P))), wf(l,
+lower(tmp(P)))])`; a direct call to a global needs no `check_function`,
+only a call through a pointer does. `shadow('pr.1')` is the slot of the
+phi `pr.1`'s shadow: each incoming edge first writes every incoming
+value to its phi's shadow and then copies the shadows into the phis, a
+parallel copy. Temporaries whose live ranges do not overlap share slots
 ([frame_slots.pl](../src/frame_slots.pl)): `pr.1`, `v0` and `v15` all
 use `storage(pointer, 0)`.
 
@@ -607,8 +625,9 @@ use `storage(pointer, 0)`.
 [filc_amd64.pl](../src/filc_amd64.pl) places the plan's words in the
 frame and selects instructions, producing a list of
 [asm.pl](../src/asm.pl) line terms (`ins(mov, q, [...])`, `label(S)`,
-directives), which `asm:print_asm/1` prints as AT&T text. Each check is
-emitted fused with the access after it, as one instruction. In the
+directives), which `asm:print_asm/1` prints as AT&T text. Before it
+asks filc_abi for the plan, it fuses each check with the access after
+it (`fused(Check, Access)`), so the two are emitted together. In the
 reference emission (`nanofil cc list.c`, no `-O`), every temporary
 lives in a frame slot. Here is the start of block `L4`, reading `s`
 from its alloc:
@@ -643,12 +662,16 @@ check. For a pointer access, the emitted check also tests alignment
 ### 12. Register homes and their checker: amd64_regs.pl, amd64_regs_check.pl
 
 With `-O`, `--registers=pointers` is the default. The emitter first
-produces the reference stream, in which every temporary has a frame
-*home*. `amd64_regs:regs_asm/6` then proposes a map from homes to
+produces a stack-homed stream, in which every temporary has a frame
+*home*: it has `-O`'s instruction and branch selection and a save slot
+per callee-saved register, so it is not the no-`-O` emission of §11
+(note the missing borrow test below), though amd64_regs_check calls it
+the reference stream. `amd64_regs:regs_asm/6` then proposes a map from homes to
 registers: callee-saved `rbx` and `r12`–`r15` for homes live across a
 call, and `r10` and `r11` as well for the others. Pointer address words
 may get registers, but a lower never does.
-`amd64_regs_check:check_regs/5` rebuilds the stream the map implies and
+`amd64_regs:regs_asm/6` itself calls
+`amd64_regs_check:check_regs/5`, which rebuilds the stream the map implies and
 checks that every mapped register holds its home's value wherever the
 reference could read it. A failed check stops the compile; nanofil never
 falls back to unchecked output. The map for `sum`:
@@ -839,9 +862,10 @@ are worth memorising:
   (`ir_text.pl`), read back, and compare.
 - **Classes.** `w l s d x` are scalars, `p` is a pointer with its
   capability, and the checked stage adds `a` (a proven address) and
-  `f` (a proven function). `a` and `f` exist only between a check and
-  its use: they are never parameters, phis, call arguments or stored
-  values.
+  `f` (a proven function). They are never parameters, phis, call
+  arguments or stored values. A raw access reads a proof only while its
+  evidence is live; a `renew` may also name an earlier dominating
+  check's proof, for its bounds only.
 - **Mode and stage are read off the vocabulary.** A module is in
   *filc* mode if it uses anything Fil-C-specific (a `p`, a call to an
   external function, ...), otherwise in *plain* mode
@@ -895,9 +919,12 @@ may exit to the runtime. Two rules follow, and nanofil enforces both
 structurally:
 
 - **A proof dies at a safepoint.** A safepoint can run code that frees
-  the object, so no proof of class `a` or `f` may be read after one.
-  The validator ends all evidence at any instruction that is not
-  `evidence_preserving/1`.
+  the object, so no raw access may use a proof across one: the
+  validator ends all live evidence at any instruction that is not
+  `evidence_preserving/1`. The one exception is `renew`, which names
+  an earlier dominating check's proof only for its bounds, which
+  cannot change until the object is freed, and tests the freed and
+  read-only flags again.
 - **Every live capability is a root at every safepoint.** The ABI plan
   gives each live `p` a `lowers[]` entry in the frame record. The
   register checker refuses any home that overlaps the record, so
@@ -1130,9 +1157,12 @@ object. The frontend gives every local one; promote and local_storage
 remove most of them under `-O`.
 
 **asm_fixed**: `asm_fixed(M, Ins, Outs)`, an inline asm of one
-fixed-register instruction such as `cpuid` or `rdtsc`, the only inline
-asm nanofil accepts besides an empty barrier
-([docs/asm-fixed.md](asm-fixed.md)).
+fixed-register instruction (`cpuid`, `xgetbv`, `rdtsc`, `rdtscp`, or
+the operand-free `lfence`, `sfence` and `pause`;
+`ir:asm_fixed_regs/3`, [docs/asm-fixed.md](asm-fixed.md)). Other
+inline asm is a blank-template barrier (its operands are evaluated,
+nothing else), a call to `zsafety_error` where filcc would refuse it
+at run time, or refused.
 
 **aux**: an object's auxiliary array, which holds the lowers of the
 pointers stored in the object, slot for slot. A pointer store must
@@ -1184,8 +1214,9 @@ proves its accesses' bounds once, and the loop's checks become
 `renew_if`, which tests only the flags when the guard passed
 ([docs/m7.md](m7.md), round 5).
 
-**home**: an 8-byte frame word that holds a temporary in the reference
-emission. Under `--registers=temps|pointers` a home may be mapped to a
+**home**: an 8-byte frame word that holds a temporary, a phi's shadow
+or a pointer's address word in the stack-homed stream amd64_regs
+starts from (§12). Under `--registers=temps|pointers` a home may be mapped to a
 register.
 
 **launder**: give an integer converted back to a pointer the capability
@@ -1264,8 +1295,17 @@ capability does not allow. Only a broken pass produces it.
 with a `doc/3` example if it adds a case, and lower it in a
 `c_lower:builtin//4` clause, which receives the source arguments. If it
 is a library function under a `__builtin_` name, a `library_proto/3`
-fact is enough. Add a function with `// run:` lines to a file in
-`tests/c` (difftest compares the interpreter, nanofil and clang), and a
+fact is enough. Put the `builtin//4` clause before the catch-all that
+reports "wrong arguments"; that catch-all is also how a wrong argument
+count is refused. If the builtin must work in constant expressions
+(array sizes, static initializers), add a `c_types:folded/3` clause.
+A new c_types helper that c_lower calls must be exported. Pizlonation
+and the validator need nothing as long as the lowering emits existing
+IR ops; a builtin that needs a new op is *Add an IR term or op* below.
+`__has_builtin` is answered by `$FILCC`'s clang, not nanofil. Add a
+function with `// run:` lines to a file in `tests/c` (difftest compares
+the interpreter, nanofil and clang, so clang must know the builtin;
+otherwise test it in IR or with the interpreter), and a
 `tests/c/reject` case if some use must be refused.
 
 **Accept a C construct nanofil refuses.** Find the message in the
