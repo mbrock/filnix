@@ -1,6 +1,8 @@
 # nanofil
 
-A C compiler in Prolog that emits Fil-C ABI assembly. Read
+A C compiler in Prolog that emits Fil-C ABI assembly. Start with
+[docs/guide.md](docs/guide.md): one C function through every stage, a
+map of the modules, a glossary and where to start a change. Read
 [PLAN.md](PLAN.md) for milestones and decisions, then the `docs/mN.md`
 for the area you touch. ABI facts are in
 [docs/abi-findings.md](docs/abi-findings.md); add to it when you verify
@@ -36,6 +38,7 @@ nanofil/tests/progtest.sh                      # whole programs vs filcc
 nanofil/tests/reject.sh                        # unsupported C is refused
 nanofil/tests/arith.sh slice|complete|random SEED COUNT DEPTH  # const_eval vs IR vs clang (docs/arith.md)
 nanofil/tests/snapshot.sh [REV]                # every output identical to REV's (default HEAD)
+nanofil/tests/guide.sh [--check]               # regenerate (or check) the outputs in docs/guide.md and README.md
 (cd nanofil/src && ../bin/nanofil --script ../tests/gen.pl SEED COUNT </dev/null) >gen.ir  # random IR corpus
 nix build .#checks.x86_64-linux.nanofil        # everything; must pass before pushing
 nix build .#checks.x86_64-linux.nanofil-hello  # GNU hello built only by nanofil, vs filcc

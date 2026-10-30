@@ -38,32 +38,34 @@ int sum(int *a, int n) {
 and the pointer class `p`, and [src/interp.pl](src/interp.pl) defines
 what it means:
 
+<!-- guide: readme-sum -->
 ```prolog
 func(sum, export, w, [param(p, tmp(v0)), param(w, tmp(v2))], [
     block(start, [], [], goto('L6')),
     block('L6', [
-        phi(tmp('pr.2'), w, ['L8'-tmp(v22), start-const(0)]),
-        phi(tmp('pr.1'), w, ['L8'-tmp(v20), start-const(0)])
+        phi(tmp('pr.2'), w, ['L7'-tmp(v22), start-const(0)]),
+        phi(tmp('pr.1'), w, ['L7'-tmp(v20), start-const(0)])
     ], [
         let(tmp(v12), w, cmp(slt, w), [tmp('pr.2'), tmp(v2)])
     ], branch(tmp(v12), 'L7', 'L9')),
     block('L7', [], [
         let(tmp(v16), l, ext(sw), [tmp('pr.2')]),
-        let(tmp(v17), l, mul, [tmp(v16), const(4)]),
+        let(tmp(v17), l, shl, [tmp(v16), const(2)]),
         let(tmp(v18), p, add, [tmp(v0), tmp(v17)]),
         let(tmp(v19), w, load(sw), [tmp(v18)]),
-        let(tmp(v20), w, add, [tmp('pr.1'), tmp(v19)])
-    ], goto('L8')),
-    block('L8', [], [
+        let(tmp(v20), w, add, [tmp('pr.1'), tmp(v19)]),
         let(tmp(v22), w, add, [tmp('pr.2'), const(1)])
     ], goto('L6')),
     block('L9', [], [], ret(tmp('pr.1')))
 ]).
 ```
+<!-- /guide -->
 
-Without `-O` the IR also says where its code comes from: each block
-begins with `loc(File, Line)`, and each statement's code follows the
-`loc` of its line. The middle end and the backends drop them for now.
+`cc-ir` also prints a `context(sum, Records)` item, left out above
+([src/provenance.pl](src/provenance.pl)): which declaration and which
+typed source node each temporary and instruction came from, carried
+through the middle end. Hand-written IR may still use `loc(File, Line)`,
+which becomes context.
 
 `nanofil -O cc sum.c` turns that into assembly that checks the load
 against `a`'s capability and polls for the collector on the back edge.
@@ -180,6 +182,9 @@ allocates scalar registers ([docs/perf.md](docs/perf.md)).
 
 ## Reading on
 
+- [docs/guide.md](docs/guide.md): the guide. One C function through
+  every stage, the ideas to hold, a map of the modules, a glossary, and
+  where to start a change.
 - [docs/campaign.md](docs/campaign.md): the semantic foundation, evidence
   and trust boundaries, upstream analyses, and current priorities.
 - [PLAN.md](PLAN.md): milestones, decisions, what is next.
