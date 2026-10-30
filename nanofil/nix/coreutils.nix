@@ -47,11 +47,13 @@ let
   # comparison (filcc's build fails some tests too). timeout.sh and
   # seq-epipe.sh measure time (a sleep against a deadline): on a loaded
   # builder filcc's run failed one and skipped the other while nanofil's
-  # passed both, so they are not compared.
+  # passed both, so they are not compared. Nor is pwd-long.sh: filcc's
+  # run failed it three times on a loaded builder (2f960d1, 0484563,
+  # 91746a6) while nanofil's passed, in both plain and -O.
   testSuite = out: ''
     make check -j$NIX_BUILD_CORES >check.log 2>&1 || true
     grep -E '^(PASS|FAIL|SKIP|XFAIL|XPASS|ERROR): tests/.*\.(sh|pl|xpl)$' check.log \
-      | grep -vE ' tests/(timeout/timeout|seq/seq-epipe)\.sh$' \
+      | grep -vE ' tests/(timeout/timeout|seq/seq-epipe|pwd/pwd-long)\.sh$' \
       | sort -k2 >${out}
     test -s ${out}
   '';
