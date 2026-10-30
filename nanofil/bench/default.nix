@@ -26,6 +26,7 @@ let
     O = "-O";
     O-reuse = "-O --checks=reuse";
     O-renew = "-O --checks=renew";
+    O-guard = "-O --checks=guard";
     O-noinline = "-O --inline=none";
     O-refbranches = "-O --branches=reference";
     O-stack = "-O --registers=stack";

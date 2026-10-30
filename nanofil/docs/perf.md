@@ -3898,6 +3898,27 @@ Two costs remain, outside this item's files. The emitter's
 assoc). The frontend's word-by-word struct copy is the root of the
 size; filcc calls `memcpy` for large ones.
 
+### 12. Selection and copy patterns, measured (a12cc89)
+
+The profile at `a12cc89` (`-O`, reference checks; `bench/profile`, with
+marks.patch refreshed), then the executed share of each pattern by its
+own form and neighbours:
+
+| Pattern | Share of `-O`'s instructions |
+| --- | --- |
+| `setcc`, `movzbl` after it, a test of the boolean | under 0.6% each, everywhere |
+| a test after an op that set the flags | 0.0–0.2% |
+| in-place zero extension (`movl %r13d, %r13d`) | 0.4–2.8% (bzip2 `-d` 2.8%, lz4 `-9` 2.3%, zlib `-6` 2.2%; mean about 1.3%) |
+| constant move to a register | 0.2–3.5% (lz4 `-9` 3.5%, zlib `-6` 3.1%; mean about 1.6%) |
+| register-to-register moves | 3.7–10.4%: phi copies between homes 0.6–3.7%, home to scratch and back around operations 1–5%, ABI moves in lz4 `-1`/`-d` |
+
+The boolean patterns are gone, taken by item 2 and item 8. No local
+pattern clears 2% on average, so none was taken. The in-place
+extensions are phi and let moves of a `w` home onto itself. Removing
+them needs the operand checker to know the register's high half is dead,
+for about 1.3%. The phi copies between homes need coalescing in the
+allocator, not a local rewrite.
+
 ### Projection
 
 From the profile's shares: items 1–4 leave the compressors at about 3–4×
