@@ -268,6 +268,7 @@ gblock(fence("prolog", Lines)) -->
     { atomic_list_concat(Lines, '\n', T0), atom_string(T0, T),
       \+ sub_string(T, _, _, _, "%"), fence_terms(T, Ts), Ts \== [] }, !,
     el(div, "prose-terms", seq(Ts, gclause)).
+gblock(fence("diagram", Lines)) --> !, diagram(Lines, guide).
 gblock(fence(Lang, Lines)) --> gfence(Lang, Lines).
 gblock(output(Name, _, _)) --> { guide_output(Name, Items) }, !,
     el(div, "prose-terms guide-output", ['data-output'=Name], seq(Items, out_item)).
@@ -277,7 +278,7 @@ gblock(output(Name, Lang, Lines)) -->
 
 gfence(Lang, Lines) -->
     { atomic_list_concat(Lines, '\n', T),
-      ( Lang == "" -> C = "fence" ; atom_concat('fence ', Lang, C) ) },
+      ( Lang == "" -> C = "fence" ; atom_concat('fence lang-', Lang, C) ) },
     el(pre, C, esc(T)).
 
 gitem(Bs) --> el(li, none, seq(Bs, gblock)).

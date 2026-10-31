@@ -327,6 +327,24 @@ The Markdown stays the source and reads the same on GitHub. On the page:
 A reference that does not resolve fails the site build and
 `swipl web/dterm.pl --check docs/guide.md src`, which the Nix check runs.
 
+### Diagrams
+
+A ```` ```diagram ```` fence, in a module header or the guide, stays
+box-drawing text in the source and on GitHub.
+[web/dterm_diagram.pl](../web/dterm_diagram.pl) reads it as one of four
+shapes and draws it as HTML that reflows at phone width, with module and
+predicate names linked:
+
+- a frame: one box split by `├` rules, with notes on the right, such as
+  the stack frames in amd64.pl and filc_amd64.pl;
+- a pipeline: data joined by `│`/`▼` steps, such as the guide's;
+- chains: `Label: A ─▶ B` lines, such as opt.pl's pass orders;
+- boxes joined by arrows, such as main.pl and ir.pl.
+
+A shape is used only when it accounts for every line. Anything else stays
+text in a block that scrolls sideways, so an unusual diagram never draws
+wrong.
+
 ## Not yet
 
 - Captions as data (`case/2` in `doc/3`, naming the clauses), so a

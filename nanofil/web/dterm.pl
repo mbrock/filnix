@@ -1344,9 +1344,10 @@ block_(Vars, F, table(Head, Rows)) -->
 block_(_, F, fence("prolog", Lines)) -->
     { atomic_list_concat(Lines, '\n', T0), atom_string(T0, T), fence_terms(T, Ts) }, !,
     el(div, "prose-terms", seq(Ts, fence_term(F))).
+block_(_, F, fence("diagram", Lines)) --> !, diagram(Lines, F).
 block_(_, _, fence(Lang, Lines)) -->
     { dedent(Lines, Ls), atomic_list_concat(Ls, '\n', T),
-      ( Lang == "" -> C = "fence" ; atom_concat('fence ', Lang, C) ) },
+      ( Lang == "" -> C = "fence" ; atom_concat('fence lang-', Lang, C) ) },
     el(pre, C, esc(T)).
 
 row_(Vars, F, Cells) --> el(tr, none, seq(Cells, cell_(td, Vars, F))).
@@ -1424,6 +1425,10 @@ pred_ref(W, Cs0, Ref, PI, Cs) :-
 %% The guide
 
 :- include(dterm_guide).
+
+%% Diagrams
+
+:- include(dterm_diagram).
 
 %% Pages
 

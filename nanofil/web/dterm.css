@@ -658,3 +658,73 @@ aside.guide-links .label { color: var(--muted); font-size: 0.75rem; text-transfo
   .guide-output, .guide-prose .prose-terms { margin-left: 0; padding: 0.4rem 0.5rem; }
   .pref .sigcard { position: fixed; left: 4vw; right: 4vw; top: auto; bottom: 1rem; max-width: none; width: auto; }
 }
+
+/* Diagrams (dterm_diagram.pl): box drawing read into HTML that reflows. */
+.dg { margin: 0.7rem 0 1.1rem; font-size: 0.9rem; line-height: 1.4; }
+.dg a.ref code, .dg code { font-size: 0.88em; }
+.dg a.module { color: var(--accent); }
+/* A frame: regions stacked, edges and words labelled on the right. */
+.dg-frame {
+  display: grid; grid-template-columns: minmax(9rem, 21rem) minmax(0, 1fr);
+  column-gap: 0.7rem; max-width: 40rem;
+}
+.dg-frame > div { display: contents; }
+.dg-frame .dg-rule { border-top: 1.5px solid color-mix(in srgb, var(--ink) 70%, transparent); height: 0; }
+.dg-frame .dg-at {
+  height: 0; overflow: visible; position: relative; top: -0.62em;
+  font-family: var(--mono-font); font-size: 0.76rem; color: var(--accent); white-space: nowrap;
+}
+.dg-frame .dg-cell {
+  border-left: 1.5px solid color-mix(in srgb, var(--ink) 70%, transparent);
+  border-right: 1.5px solid color-mix(in srgb, var(--ink) 70%, transparent);
+  background: color-mix(in srgb, var(--code-bg) 70%, transparent);
+  padding: 0.12rem 0.65rem;
+}
+.dg-frame .dg-row:first-of-type .dg-cell, .dg-frame .dg-edge + .dg-row .dg-cell { padding-top: 0.4rem; }
+.dg-frame .dg-off { font-family: var(--mono-font); font-size: 0.76rem; color: var(--muted); align-self: center; }
+/* A pipeline: data boxes, and the steps between them on a rail. */
+.dg-pipe { max-width: 46rem; }
+.dg-data {
+  display: flex; flex-wrap: wrap; gap: 0.15rem 0.9rem; align-items: baseline; width: fit-content; max-width: 100%;
+  border: 1.5px solid color-mix(in srgb, var(--ink) 65%, transparent); border-radius: 4px;
+  padding: 0.25rem 0.65rem; background: var(--paper);
+}
+.dg-data .dg-name { font-weight: 650; }
+.dg-data .dg-forms { color: var(--muted); font-size: 0.86rem; }
+.dg-step {
+  position: relative; margin-left: 1.2rem; padding: 0.3rem 0 0.3rem 1.1rem;
+  border-left: 2px solid color-mix(in srgb, var(--ink) 35%, transparent);
+  display: grid; grid-template-columns: minmax(11rem, 15rem) minmax(0, 1fr); gap: 0.05rem 1rem;
+}
+.dg-step:has(+ .dg-data) { padding-bottom: 0.75rem; }
+.dg-step:has(+ .dg-data)::after {
+  content: "▼"; position: absolute; left: -0.44rem; bottom: -0.25rem;
+  font-size: 0.72rem; line-height: 1; color: color-mix(in srgb, var(--ink) 55%, transparent);
+}
+.dg-step .dg-call { overflow-wrap: anywhere; }
+.dg-step .dg-what { color: var(--muted); }
+/* Chains and boxes: rows that wrap. */
+.dg-chains { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.45rem 0.9rem; align-items: baseline; }
+.dg-chain { display: contents; }
+.dg-chain .dg-label { font-family: var(--mono-font); font-size: 0.82rem; }
+.dg-links, .dg-flow { display: flex; flex-wrap: wrap; gap: 0.35rem 0.4rem; align-items: center; }
+.dg-chip {
+  border: 1.5px solid color-mix(in srgb, var(--ink) 55%, transparent); border-radius: 999px;
+  padding: 0.05rem 0.6rem; background: var(--paper); white-space: nowrap;
+}
+.dg-chip.dg-opt { border-style: dashed; }
+.dg-hop { display: inline-flex; gap: 0.4rem; align-items: center; white-space: nowrap; }
+.dg-arrow { color: color-mix(in srgb, var(--ink) 55%, transparent); }
+.dg-boxes .dg-title { margin-bottom: 0.4rem; }
+.dg-box {
+  border: 1.5px solid color-mix(in srgb, var(--ink) 65%, transparent); border-radius: 4px;
+  padding: 0.25rem 0.65rem; background: var(--paper); max-width: 100%;
+}
+.dg-brow.dg-kv { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); gap: 0.6rem; }
+.dg-brow .dg-k { color: var(--muted); }
+@media (max-width: 700px) {
+  .dg-frame { grid-template-columns: minmax(0, 1fr) minmax(5.5rem, auto); column-gap: 0.4rem; }
+  .dg-step { grid-template-columns: minmax(0, 1fr); margin-left: 0.8rem; }
+  .dg-chains { grid-template-columns: minmax(0, 1fr); }
+  .dg-chain .dg-label { margin-top: 0.3rem; }
+}
