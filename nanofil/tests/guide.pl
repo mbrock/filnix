@@ -3,14 +3,21 @@
 
     Usage, from the directory of FILE (tests/guide.sh does this):
 
-        bin/nanofil --script tests/guide.pl STAGE FILE
+        bin/nanofil --script tests/guide.pl STAGE FILE [TERMS]
 
     Each STAGE prints one product of compiling FILE, restricted to its
-    function `sum` where the product is a module:
+    function `sum` where the product is a module. With TERMS, it also
+    writes the fact `output(STAGE, Items)` there: the same product as
+    the terms the stage printed, for the guide's page (web/dterm.pl). An
+    item is `term(T)`, a term; `comment(S)`, a `%` line; `text(S)`, a
+    line of text; or `note(T, S)`, a term with words after it. A
+    comment is a term when the stage printed one.
 
     | STAGE | Prints |
     |---|---|
     | `pp` | c_pp's tokens of line 9, with their locations |
+    | `lower` | the IR of `sum`, as `nanofil cc-ir` prints it |
+    | `optimized` | the same after the middle end, as `nanofil -O cc-ir` prints it |
     | `parse` | c_parse's item for `sum` |
     | `elaborate` | the typed trees c_types' elaborate/4 gave lowering for lines 9 and 10 |
     | `context` | the first records of `sum`'s context (provenance.pl) |
@@ -45,10 +52,27 @@
 :- dynamic(seen/2).
 
 main :-
-    current_prolog_flag(argv, [Stage, File]),
-    (   stage(Stage, File) -> halt(0)
+    current_prolog_flag(argv, [Stage, File|Terms]),
+    (   stage(Stage, File, Items)
+    ->  forall(member(Text-_, Items), write(Text)),
+        forall(member(Out, Terms), write_items(Out, Stage, Items)),
+        halt(0)
     ;   format(user_error, "guide: stage ~w failed~n", [Stage]), halt(1)
     ).
+
+% write_items(+Path, +Stage, +Items): output(Stage, Draws), the terms
+% the stage printed, as a clause in Path.
+write_items(Path, Stage, Items) :-
+    pairs_values(Items, Draws),
+    setup_call_cleanup(open(Path, write, S, [encoding(utf8)]),
+                       portray_clause(S, output(Stage, Draws)),
+                       close(S)).
+
+% An item: the text the stage prints for it, and what it is as a term.
+t(T, Text-term(T)) :- with_output_to(string(Text), term(T)).
+q(T, Text-term(T)) :- format(string(Text), "~q~n", [T]).
+c(S, Text-comment(S)) :- format(string(Text), "% ~w~n", [S]).
+cq(T, Text-comment(T)) :- format(string(Text), "% ~q~n", [T]).
 
 tokens(File, Tokens) :-
     ( getenv('FILCC', Clang) -> true ; Clang = filcc ),
@@ -72,80 +96,96 @@ renewed(File, C) :-
     once(renew_checks(C1, C)), renew_refines(C1, C),
     once(valid_module(C)).
 
-stage(pp, File) :-
+stage(pp, File, Items) :-
     tokens(File, Tokens),
-    forall(( member(T, Tokens), T = tok(_, _:9) ), ( writeq(T), nl )).
-stage(parse, File) :-
+    findall(I, ( member(T, Tokens), T = tok(_, _:9), q(T, I) ), Items).
+stage(parse, File, [I]) :-
     tokens(File, Tokens), c_parse(Tokens, Items),
     member(F, Items), F = fundef(_, _, dcl(some(sum), _, _), _), !,
-    term(F).
-stage(elaborate, File) :-
+    t(F, I).
+stage(elaborate, File, Items) :-
     wrap_predicate(c_types:elaborate(E, _, Loc, X), guide, W,
                    ( W, assertz(seen(E-Loc, X)) )),
     c_lowered(File, _),
-    forall(( member(Line, [9, 10]), seen(E-(_:Line), X), E = assign(_, _, _) ),
-           ( format("% ~q~n", [E]), term(X) )).
-stage(context, File) :-
-    c_lowered(File, module(Items)),
-    memberchk(context(sum, Records), Items),
+    findall([C, I],
+            ( member(Line, [9, 10]), seen(E-(_:Line), X), E = assign(_, _, _),
+              cq(E, C), t(X, I) ),
+            Iss),
+    append(Iss, Items).
+stage(context, File, Items) :-
+    c_lowered(File, module(Ms)),
+    memberchk(context(sum, Records), Ms),
     length(Prefix, 8), append(Prefix, _, Records),
-    forall(member(R, Prefix), ( writeq(R), nl )).
-stage(promote, File) :-
+    maplist(q, Prefix, Items).
+stage(lower, File, Items) :-
+    c_lowered(File, M), sum_items(M, Items).
+stage(optimized, File, Items) :-
+    optimized(File, M), sum_items(M, Items).
+stage(promote, File, Items) :-
     c_lowered(File, M0), once(optimize_pass(promote, M0, M)),
-    print_sum(M).
-stage(checked, File) :-
-    checked(File, C), print_sum(C).
-stage(renew, File) :-
+    sum_items(M, Items).
+stage(checked, File, Items) :-
+    checked(File, C), sum_items(C, Items).
+stage(renew, File, Items) :-
     checked(File, C0), renewed(File, C),
-    with_output_to(string(S0), print_sum(C0)),
-    with_output_to(string(S), print_sum(C)),
-    (   S == S0 -> format("% unchanged~n", []) ; write(S) ).
-stage(mutant, File) :-
+    sum_items(C0, Items0), sum_items(C, Items1),
+    (   Items1 == Items0 -> c(unchanged, I), Items = [I] ; Items = Items1 ).
+stage(mutant, File, [C, Verdict-text(Verdict0)]) :-
     checked(File, module(Items0)),
     select(func(sum, L, R, Ps, Bs0), Items0, func(sum, L, R, Ps, Bs), Items),
-    once(weakened_first_check(Bs0, Bs)),
-    catch(( valid_module(module(Items)) -> Verdict = accepted ; Verdict = failed ),
-          nanofil_error(Msg), Verdict = Msg),
-    format("~w~n", [Verdict]).
-stage(abi, File) :-
+    once(weakened_first_check(Bs0, Bs, Weak)),
+    cq(Weak, C),
+    catch(( valid_module(module(Items)) -> Verdict0 = accepted ; Verdict0 = failed ),
+          nanofil_error(Msg), Verdict0 = Msg),
+    format(string(Verdict), "~w~n", [Verdict0]).
+stage(abi, File, [I1, I2]) :-
     wrap_predicate(filc_abi:lower_function(Po, S, F, Li, P), guide, W,
                    ( W, ( F = func(sum, _, _, _, _) -> assertz(seen(abi, P)) ; true ) )),
     checked(File, C),
     once(filc_module_asm(C, stack, _, _)),
     once(seen(abi, abi_function(_, _, _, _, Frame, Entry, _, _, _, _))),
-    term(Frame), term(Entry),
+    t(Frame, I1), t(Entry, I2),
     ignore((Po, S, Li) = (_, _, _)).
-stage(homes, File) :-
+stage(homes, File, Items) :-
     wrap_predicate(amd64_regs:regs_asm(Mode, Meta, B, A, Checked, Report), guide, W,
                    ( W, ( Mode \== map -> assertz(seen(regs, Meta-Checked-Report)) ; true ) )),
     renewed(File, C),
     once(filc_module_asm(C, emit(pointers, selected, inline), _, _)),
     once(seen(regs, regs_metadata(_, Impl, Homes, _)-checked(_, Map)-Report)),
     Impl == pizlonatedFIP1066_sum,
-    format("% ~q~n", [Report]),
-    forall(member(home(D, Ks), Homes),
-           (   memberchk(D-Reg, Map) -> format("~q -> ~w~n", [home(D, Ks), Reg])
-           ;   format("~q stays in the frame~n", [home(D, Ks)])
-           )),
-    forall(member(root(D, N), Homes), format("~q: the frame record, never a home~n", [root(D, N)])),
+    cq(Report, R),
+    findall(I, ( member(home(D, Ks), Homes), home_item(home(D, Ks), Map, I) ), Is),
+    findall(Text-note(root(D, N), 'the frame record, never a home'),
+            ( member(root(D, N), Homes),
+              format(string(Text), "~q: the frame record, never a home~n", [root(D, N)]) ),
+            Rs),
+    append([[R], Is, Rs], Items),
     ignore((B, A) = (_, _)).
 
-% weakened_first_check(+Blocks0, -Blocks): the first check before a raw
-% load covers 2 bytes less than the load reads.
-weakened_first_check(Bs0, Bs) :-
+home_item(H, Map, Text-term(H -> Reg)) :-
+    H = home(D, _), memberchk(D-Reg, Map), !,
+    format(string(Text), "~q -> ~w~n", [H, Reg]).
+home_item(H, _, Text-note(H, 'stays in the frame')) :-
+    format(string(Text), "~q stays in the frame~n", [H]).
+
+% weakened_first_check(+Blocks0, -Blocks, -Weak): the first check before
+% a raw load covers 2 bytes less than the load reads; Weak is the
+% weakened instruction.
+weakened_first_check(Bs0, Bs, let(Q, a, check(Lo, Hi, Rights, Al), [P])) :-
     append(Pre, [block(L, Phis, Is0, J)|Post], Bs0),
     append(Before, [let(Q, a, check(Lo, Hi0, Rights, Al), [P]),
                     Load|After], Is0),
     Load = let(_, _, raw_load(_, _), _),
     !,
     Hi is Hi0 - 2,
-    format("% ~q~n", [let(Q, a, check(Lo, Hi, Rights, Al), [P])]),
     append(Before, [let(Q, a, check(Lo, Hi, Rights, Al), [P]), Load|After], Is),
     append(Pre, [block(L, Phis, Is, J)|Post], Bs).
 
-print_sum(module(Items)) :-
-    include([I]>>( I = func(sum, _, _, _, _) ), Items, Funcs),
-    print_module(module(Funcs)).
+% sum_items(+Module, -Items): Module's function sum, printed as
+% print_module/1 prints it.
+sum_items(module(Items), [Text-term(F)]) :-
+    memberchk(F, Items), F = func(sum, _, _, _, _), !,
+    with_output_to(string(Text), print_module(module([F]))).
 
 term(T) :-
     print_term(T, [right_margin(72), tab_width(0), output(current_output)]),
