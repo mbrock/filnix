@@ -60,6 +60,9 @@ pkgs.runCommandCC "nanofil-check"
     # Every module has a header and every export PlDoc (docs/guide.md,
     # Conventions).
     step docs swipl tests/docs.pl -- src
+    # Every predicate, module, link and glossary reference in the guide
+    # resolves, and each prolog output has its terms (web/dterm_guide.pl).
+    step "guide links" swipl web/dterm.pl --check docs/guide.md src
     # M9 interpreter against nanofil's SSE2 backend.
     # Integer-bit wrappers preserve NaN payloads and negative zero.
     step "difftest float SSE2" env CC=$CC tests/difftest.sh tests/float/*.ir

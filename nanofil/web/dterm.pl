@@ -22,10 +22,17 @@
 
     Calls to predicates defined in the corpus link to their definitions.
 
-    Usage: swipl dterm.pl -- OUT SRC-DIR... Writes OUT/index.html and one
-    OUT/NAME.html per SRC-DIR/NAME.pl; dterm.css and dterm.js are expected
-    beside the pages. Runs on SWI-Prolog only: it relies on read_term/3's
-    comments and subterm_positions options.
+    Usage: swipl dterm.pl -- OUT SRC-DIR... [--guide=GUIDE.md] Writes
+    OUT/index.html and one OUT/NAME.html per SRC-DIR/NAME.pl; dterm.css
+    and dterm.js are expected beside the pages. With --guide, it also
+    draws the guide as OUT/guide.html (dterm_guide.pl), and fails if the
+    guide has a broken reference.
+
+    swipl dterm.pl -- --check GUIDE.md SRC-DIR... writes nothing: it
+    lists the guide's broken references and exits 1 if there are any.
+
+    Runs on SWI-Prolog only: it relies on read_term/3's comments and
+    subterm_positions options.
 */
 :- module(dterm, []).
 :- encoding(utf8).
@@ -63,16 +70,42 @@ github('https://github.com/mbrock/filnix/blob/main/nanofil/').
 :- op(200, fy, dterm_sig:(:)).
 
 main :-
-    current_prolog_flag(argv, [Out|Dirs]),
+    current_prolog_flag(argv, Argv),
+    (   Argv = ['--check', Guide|Dirs] -> Out = none
+    ;   Argv = [Out|Dirs0],
+        (   select(G, Dirs0, Dirs), atom_concat('--guide=', Guide, G) -> true
+        ;   Dirs = Dirs0, Guide = none
+        )
+    ),
     findall(F, (member(D, Dirs), directory_file_path(D, '*.pl', P),
                 expand_file_name(P, Fs), member(F, Fs)), Files0),
     sort(Files0, Files),
     maplist(read_source, Files, Sources),
     maplist(index_source, Sources),
-    maplist(run_examples(Files), Sources),
-    maplist(write_source_page(Out, Sources), Sources),
-    directory_file_path(Out, 'index.html', Index),
-    write_page(Index, index_page(Sources)).
+    (   Guide == none -> true ; guide_render(Guide, Sources, Page) ),
+    (   Out == none -> true
+    ;   maplist(run_examples(Files), Sources),
+        maplist(write_source_page(Out, Sources), Sources),
+        (   Guide == none -> true
+        ;   directory_file_path(Out, 'guide.html', GuidePath), write_page(GuidePath, raw(Page))
+        ),
+        directory_file_path(Out, 'index.html', Index),
+        write_page(Index, index_page(Sources))
+    ),
+    (   Guide == none -> true ; guide_report(Guide) ).
+
+%  guide_report(+Guide): fails, listing them, if Guide has broken
+%  references.
+guide_report(Guide) :-
+    findall(M, guide_broken(M), Ms),
+    (   Ms == []
+    ->  aggregate_all(count, guide_mention(_, _, _, _), N),
+        format("dterm: ~w: ~w references resolved~n", [Guide, N])
+    ;   forall(member(M, Ms), format(user_error, "~w: broken reference: ~w~n", [Guide, M])),
+        length(Ms, N),
+        format(user_error, "dterm: ~w broken references in ~w~n", [N, Guide]),
+        halt(1)
+    ).
 
 %% Reading
 
@@ -449,7 +482,7 @@ term_('$VAR'(N), _, _, _) --> !, var_(N).
 % never reconstructed from the pretty name (which can contain a subscript).
 term_('$IR_VALUE'(Raw, Name, Serial, Role, Scope, Binding, Tip), _, _, _) --> !,
     ir_value(Raw, Name, Serial, Role, Scope, Binding, Tip).
-term_(tmp(Raw), _, _, ctx(play, _)) --> !,
+term_(tmp(Raw), _, _, ctx(F, _)) --> { memberchk(F, [play, guide]), atom(Raw) }, !,
     { format(string(Tip), "tmp(~w): raw IR temporary", [Raw]) },
     ir_value(Raw, Raw, none, temporary, none, none, Tip).
 term_(T, P, _, _) --> { number(T) }, !, { source_text(P, T, Src) }, el(span, n, esc(Src)).
@@ -919,7 +952,7 @@ pred_(Key, Doc, Items, F) -->
     { key_id(Key, Id), key_pred(Key, PI),
       include([clause(_)]>>true, Items, Cs), length(Cs, NC),
       ( NC > 1 -> Class = "pred multi" ; Class = pred ),
-      xrefs(F, PI, Callees, Callers) },
+      xrefs(F, PI, Callees, Callers), guide_pred_sections(F, PI, Guide) },
     el(section, Class, [id=Id],
        ( el(div, "pred-main",
             ( doc_(Doc, Key, F),
@@ -927,7 +960,7 @@ pred_(Key, Doc, Items, F) -->
               ->  facts_table(Items, Key, F)
               ;   seq(Items, item_(F))
               ) )),
-         xref_aside(Callees, Callers) )).
+         xref_aside(Callees, Callers, Guide) )).
 
 %  The predicates in the corpus that PI in File calls, and those that call
 %  it, as Def-Id pairs.
@@ -938,10 +971,23 @@ xrefs(F, PI, Callees, Callers) :-
                      defined(From, F2, Id) ), Callers0),
     sort(Callers0, Callers).
 
-xref_aside([], []) --> !, [].
-xref_aside(Callees, Callers) -->
+xref_aside([], [], []) --> !, [].
+xref_aside(Callees, Callers, Guide) -->
     el(aside, xref,
-       ( xref_list("calls", Callees), xref_list("called by", Callers) )).
+       ( xref_list("calls", Callees), xref_list("called by", Callers),
+         guide_xrefs(Guide) )).
+
+%  The guide's sections that mention the predicate.
+guide_xrefs([]) --> !, [].
+guide_xrefs(Secs) -->
+    { length(Secs, N) },
+    el(div, "xref-group guide-xref",
+       ( el(div, "xref-title", ( "in the guide ", el(span, count, esc(N)) )),
+         el(ul, none, seq(Secs, guide_xref)) )).
+
+guide_xref(Id-T) -->
+    { format(atom(Href), "guide.html#~w", [Id]) },
+    el(li, none, el(a, none, [href=Href], toc_text(T))).
 
 xref_list(_, []) --> !, [].
 xref_list(Title, Refs) -->
@@ -1375,6 +1421,10 @@ pred_ref(W, Cs0, Ref, PI, Cs) :-
     PI = N/A,
     append([W, Slash, Ds], Ref).
 
+%% The guide
+
+:- include(dterm_guide).
+
 %% Pages
 
 write_source_page(Out, Sources, Src) :-
@@ -1393,6 +1443,7 @@ source_page(Sources, src(Base, _, _, Events)) -->
           ( el(nav, "toc dterm-nav", ( el(div, "toc-title", "nanofil/src"),
                                         el(ul, none, seq(Sources, nav_file(Base, Entries))) )),
             el(article, dterm, ( el(h1, "source-title", esc(Title)),
+                                 guide_backlinks(Base),
                                  seq(Entries, entry_(Base)) )) )).
 
 crumbs_source(Title) -->
@@ -1471,7 +1522,7 @@ index_page(Sources) -->
                                     el(a, none, [href="https://github.com/mbrock/filnix/blob/main/nanofil/docs/campaign.md"], "the campaign"),
                                     "). These pages draw its source as terms: clause heads over their goals, ",
                                     "conditionals as tables, fact tables as tables, PlDoc as signatures. ",
-                                    el(a, none, [href="docs/guide.html"], "The guide"),
+                                    el(a, none, [href="guide.html"], "The guide"),
                                     " follows one C function through every stage and maps the modules. ",
                                     el(a, none, [href="play/"], "Compile C with it"),
                                     " in the browser, or compare how terms are set in the ",

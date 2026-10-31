@@ -302,6 +302,31 @@ draws as before. `c_types.pl` was converted first, its type terms, the
 environment and its definitions and members each a table; the other
 modules followed.
 
+## The guide as a page (October 2026)
+
+[guide.md](guide.md) is drawn by [web/dterm_guide.pl](../web/dterm_guide.pl),
+included in dterm.pl, as `nanofil/guide.html` beside the module pages.
+The Markdown stays the source and reads the same on GitHub. On the page:
+
+- Each example output is drawn from its terms, the `output(Name, Items)`
+  facts [tests/guide.sh](../tests/guide.sh) writes to
+  [guide/outputs.pl](guide/outputs.pl) from nanofil's own predicates,
+  never by parsing the text in the fence. Assembly and C stay text.
+- Inline code that reads as a term is drawn as one, and IR temporaries
+  as the playground draws them.
+- `name/N`, `name//N` and `module:name/N` link to the definition, with
+  a card of its PlDoc signature and first paragraph on hover; `name.pl`
+  and `../src/name.pl` links go to the module's page.
+- Glossary entries are anchors, and an emphasized or code mention of a
+  glossary term links to its entry. Each entry must name the predicate
+  or module that defines it.
+- Each module page lists the guide's sections that name it and its
+  module-map entry; each predicate's aside lists the sections that
+  mention it.
+
+A reference that does not resolve fails the site build and
+`swipl web/dterm.pl --check docs/guide.md src`, which the Nix check runs.
+
 ## Not yet
 
 - Captions as data (`case/2` in `doc/3`, naming the clauses), so a

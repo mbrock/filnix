@@ -600,3 +600,61 @@ section.pred.multi .prose.between {
   table.prose-table td:first-child { white-space: normal; min-width: 8rem; }
   .dterm .prose table.prose-table code.term .arg { white-space: normal; }
 }
+
+/* The guide (dterm_guide.pl): docs/guide.md drawn beside the modules. */
+article.dterm.guide { max-width: 50rem; }
+.guide-prose { max-width: none; }
+.guide-prose > p, .guide-prose > ul, .guide-prose li { line-height: 1.55; }
+.guide-prose h2.guide-h { margin-top: 2.6rem; }
+.guide-prose h3.guide-h { margin: 2rem 0 0.6rem; font-size: 1.08rem; }
+.guide-prose h4.guide-h { margin: 1.4rem 0 0.4rem; font-size: 0.98rem; color: var(--muted); }
+.guide-prose :is(h2, h3, h4, p.gloss-entry, p.map-entry):target {
+  box-shadow: -0.9rem 0 0 -0.65rem var(--accent);
+}
+.guide-prose code { font-size: 0.84em; }
+.guide-prose code.term { font: inherit; font-size: 0.96em; background: none; padding: 0; }
+.guide-prose pre.fence {
+  font-size: 0.8rem; background: var(--code-bg); padding: 0.6rem 0.8rem;
+  overflow-x: auto; border-radius: 3px;
+}
+.guide-prose pre.fence.diagram { background: none; line-height: 1.25; }
+.guide-output, .guide-prose .prose-terms {
+  margin: 0.5rem 0 1rem; padding: 0.5rem 0.8rem;
+  border-left: 2px solid var(--rule); background: color-mix(in srgb, var(--code-bg) 45%, transparent);
+}
+.guide-output .clause.item { margin: 0.2rem 0; }
+.out-comment, .out-note { color: var(--note); }
+.out-comment { font-size: 0.88rem; margin: 0.15rem 0; }
+.out-text { font-family: var(--mono-font); font-size: 0.82rem; color: var(--accent); }
+.out-note-line { margin: 0.15rem 0; }
+a.gloss { color: inherit; text-decoration: underline dotted color-mix(in srgb, var(--accent) 60%, transparent); }
+a.gloss:hover { color: var(--accent); }
+.ir-value { color: var(--var); white-space: nowrap; }
+.ir-value .value-role { opacity: 0.55; margin-right: 0.05em; }
+.broken { color: #b00; text-decoration: line-through; }
+
+/* A predicate reference and its signature card, shown on hover or focus. */
+.pref { position: relative; }
+.pref .sigcard {
+  display: none; position: absolute; z-index: 20; left: 0; top: 1.5em;
+  width: max-content; max-width: min(30rem, 86vw);
+  padding: 0.55rem 0.75rem; background: var(--paper);
+  border: 1px solid var(--rule); box-shadow: 0 4px 14px rgb(0 0 0 / 0.12);
+  font-size: 0.86rem; line-height: 1.45; font-weight: normal; white-space: normal;
+}
+.pref:hover .sigcard, .pref:focus-within .sigcard { display: block; }
+.sigcard .card-mod { display: block; color: var(--muted); font-size: 0.75rem; letter-spacing: 0.04em; }
+.sigcard .card-sig { display: block; margin: 0.15rem 0; }
+.sigcard .card-text { display: block; margin-top: 0.3rem; color: var(--ink); }
+
+/* On a module page: where the guide talks about it. */
+aside.guide-links {
+  display: flex; flex-wrap: wrap; gap: 0.3rem 0.9rem; align-items: baseline;
+  margin: -0.4rem 0 1.4rem; font-size: 0.86rem;
+}
+aside.guide-links .label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.guide-nav li.nav-section > a { opacity: 1; }
+@media (max-width: 700px) {
+  .guide-output, .guide-prose .prose-terms { margin-left: 0; padding: 0.4rem 0.5rem; }
+  .pref .sigcard { position: fixed; left: 4vw; right: 4vw; top: auto; bottom: 1rem; max-width: none; width: auto; }
+}

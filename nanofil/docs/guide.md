@@ -276,7 +276,7 @@ array's, which is allocated where its declaration is reached (C11
 6.2.4p7); statements and
 expressions become instructions in blocks. The lowering nonterminals
 (`stmt//2`, `lower//3` for values, `place//3` for objects) thread one
-state term, `st/8`, through a DCG as semicontext; the fields are tabled
+state term, `st(Env, Cur, Insts, Blocks, N, Labels, Cases, Build)`, through a DCG as semicontext; the fields are tabled
 in [c_lower.pl](../src/c_lower.pl)'s header. `nanofil cc-ir list.c`
 prints the result:
 
@@ -475,7 +475,7 @@ func(sum, export, w, [param(p, tmp(v0))], [
   reading bytes [0, 4) at it. Its proof `chk0` is the only thing the
   `raw_load(sw, 0)` after it may read. Like filcc
   (`needToCheckAlignment`), nanofil checks alignment for pointer slots,
-  atomics and vectors (`access/4` at the least of the ABI alignment,
+  atomics and vectors (`access(K, A, Size, Align)` at the least of the ABI alignment,
   the access size and 8), and checks plain integer and float scalars at
   alignment 1, as here (`ir:access_size_align/3`).
 - `flight(tmp(v14), add, [address(tmp('pr.1')), const(8)], lower(tmp('pr.1')))`
@@ -491,7 +491,7 @@ func(sum, export, w, [param(p, tmp(v0))], [
   must contain one.
 
 Pizlonation is deliberately naive: one check right before each access
-(a vector's `access/4` becomes one full-width check and a `touch` before
+(a vector's `access(K, A, Size, Align)` becomes one full-width check and a `touch` before
 its chunks), and a poll on every backward edge.
 [docs/pizlonation.md](pizlonation.md) is the contract.
 
@@ -1033,11 +1033,11 @@ and C23 keywords. Next: c_pp.
 **[c_pp.pl](../src/c_pp.pl)**: the preprocessor. Input is a file and
 a target profile; output is c_lex tokens with source locations. It is
 self-contained: clang is asked only for the profile (`pp_profile/2`),
-never to preprocess. The environment `env/5` holds macros, include
+never to preprocess. The environment `env(Macros, IncludeDirs, Features, Once, File)` holds macros, include
 dirs, feature answers and `#pragma once` files. Next: c_parse.
 
 **[c_parse.pl](../src/c_parse.pl)**: the grammar. Input is tokens;
-output is items (`decl/3`, `fundef/4`, ...). It tracks typedef names
+output is items (`decl(Loc, Specs, Inits)`, `fundef(Loc, Specs, Dcl, Body)`, ...). It tracks typedef names
 only. Its header is the reference for the syntax tree. Next: c_types'
 `specs_type/4` and `apply_declarator/5`.
 
@@ -1050,7 +1050,7 @@ elaborator (`elaborate/3,4`) and constant evaluation (`const_eval/4`,
 read it. Next: c_lower's `lower//3`.
 
 **[c_lower.pl](../src/c_lower.pl)**: lowering to IR, in the style of
-cproc. Input is items; output is a filc-mode module with `context/2`
+cproc. Input is items; output is a filc-mode module with `context(Fn, Records)`
 items. Every local lives in an `alloc`. Expressions are lowered from
 typed trees (`lower//3`, `place//3`), statements by `stmt//2`, static
 initializers by folding trees to data chunks (`address_constant/5`).
@@ -1084,7 +1084,7 @@ for constant folding. No host floats. Next: [docs/float.md](float.md).
 printed with a host-independent printer; also `run(Fn, Args)` facts in
 test files. Next: tests/fixtures.
 
-**[provenance.pl](../src/provenance.pl)**: the `context/2` records
+**[provenance.pl](../src/provenance.pl)**: the `context(Fn, Records)` items
 that explain where IR came from (bindings, typed origins, sites,
 aliases), and the helpers passes use to carry them along. Invariant:
 context never participates in control flow or safety. Next:
@@ -1137,7 +1137,7 @@ Next: [docs/m5.md](m5.md), *Nonescaping local storage*.
 ### Checked IR
 
 **[pizlonate.pl](../src/pizlonate.pl)**: unchecked to checked IR: one
-check per access (a vector's `access/4` becomes a full-width check and
+check per access (a vector's `access(K, A, Size, Align)` becomes a full-width check and
 a `touch` before its chunks' own checks), `flight` for pure pointer operations, a poll on every
 backward edge. Next: [docs/pizlonation.md](pizlonation.md).
 
@@ -1187,7 +1187,7 @@ printer.
 ### Host support
 
 `src/swi/` maps the Trealla dialect nanofil is written in onto
-SWI-Prolog (`compat.pl`) and supplies the small libraries
+SWI-Prolog ([swi/compat.pl](../src/swi/compat.pl)) and supplies the small libraries
 (`dcgs`, `format`, `pio`, `clpz`) under Trealla's names. See
 [docs/hosts.md](hosts.md).
 
@@ -1196,11 +1196,12 @@ SWI-Prolog (`compat.pl`) and supplies the small libraries
 **access**: `access(K, Addr, Size, Align)`, a vector's full-width check
 with no data movement, before its 8-byte chunks
 ([docs/vector-access.md](vector-access.md)). Pizlonated, it becomes a
-check and a `touch`.
+check and a `touch` (`pizlonate:checked_access/4`).
 
 **alloc**: `let(D, p, alloc(Align), [Size])`, a fresh zeroed heap
 object. The frontend gives every local one; promote and local_storage
-remove most of them under `-O`.
+remove most of them under `-O` (`promote:promote_module/2`,
+`local_storage.pl`).
 
 **asm_fixed**: `asm_fixed(M, Ins, Outs)`, an inline asm of one
 fixed-register instruction (`cpuid`, `xgetbv`, `rdtsc`, `rdtscp`, or
@@ -1214,22 +1215,23 @@ at run time, or refused.
 pointers stored in the object, slot for slot. A pointer store must
 *ensure* it exists (may call the runtime); a pointer load reads it. An
 entry with its low bit set is boxed, for a pointer accessed atomically,
-and the real lower is at box+8.
+and the real lower is at box+8 (`ir:pointer_memory_effects/2`,
+`filc_amd64:pointer_load_effects//4`).
 
 **cas**: compare-and-exchange, the one atomic read-modify-write IR term;
-every other atomic operation is a loop of it.
+every other atomic operation is a loop of it (`c_lower:rmw//7`).
 
 **check**: `check(Lo, Hi, Rights, Align)`, the checked stage's access
 check, producing a proof of class `a`. `check_local` does the same for
 a named local, and `check_function` produces a function proof of
-class `f`.
+class `f` (`ir:op_kind/2`, `pizlonate:checked_access/4`).
 
 **checked / unchecked**: the two IR stages. Unchecked IR implies Fil-C's
 checks in every `load` and `store` at a `p` address; checked IR states
-them.
+them (`ir:module_stage/2`).
 
 **class**: a value's machine type: `w l s d x p`, plus `a` and `f` in
-the checked stage.
+the checked stage (`ir:class/3`).
 
 **context**: a `context(Fn, Records)` item, explanatory provenance
 (provenance.pl).
@@ -1241,7 +1243,7 @@ the checked stage.
 check immediately before it, an earlier live heap check under reuse,
 or, for `renew`, a dominating check of the same pointer, and for
 `renew_if` a guard's span test. `live(Q, P, Lo, Hi, Rights, Align)` is the validator's
-fact for it.
+fact for it (`ir:checked_insts/5`).
 
 **fast / generic convention**: Fil-C's two ways in to a function. The
 fast entry takes the arguments in registers when caller and callee
@@ -1251,29 +1253,31 @@ word at lower+16 with its own and takes the fast entry if they match;
 otherwise it marshals the arguments into thread+128 (data) and
 thread+384 (lowers) and calls the generic entry, which checks the size.
 Functions with over 16 words of arguments and variadic functions are
-generic-only.
+generic-only (`filc_abi:signature/3`, `filc_amd64:fast_call//4`,
+`filc_amd64:generic_entry//2`).
 
 **flight**: `flight(D, Op, Args, Lower)`, a pointer built from an
-address computation and an independently named capability source.
+address computation and an independently named capability source
+(`pizlonate:flight_inst/2`).
 
 **fuel**: the interpreter's bound on executed blocks; running out gives
-`out_of_fuel`, which proves nothing.
+`out_of_fuel`, which proves nothing (`interp:run/5`).
 
 **getter**: the function that returns a global's or function's address
 with its capability, initializing it on first use. Calling one is a
-safepoint.
+safepoint (`filc_amd64:object_getter//2`).
 
 **guard**: `--checks=guard`, range guards: a `span_test` before a loop
 proves its accesses' bounds once, and the loop's checks become
 `renew_if`, which tests the flags and alignment when the guard passed
-and runs the full check out of line otherwise ([docs/m7.md](m7.md),
-round 5).
+and runs the full check out of line otherwise
+(`check_reuse:guard_checks/2`, [docs/m7.md](m7.md), round 5).
 
 **home**: an 8-byte frame word that holds a temporary, a phi's shadow
 or a pointer's address word in the stack-homed stream amd64_regs
 starts from (§12). Scalar homes are `w` or `l` only; float temporaries
 are kept out of them. Under `--registers=temps|pointers` a home may be
-mapped to a register.
+mapped to a register (`amd64_regs:regs_asm/6`).
 
 **launder**: give an integer converted back to a pointer the capability
 of the pointer it came from, as Fil-C does when its analysis can follow
@@ -1285,30 +1289,34 @@ dereferencing it traps.
 
 **lower**: a capability, kept beside the address: the object's lower
 bound. The header below it holds the upper bound at lower−16 and the
-aux pointer at lower−8, with the object's flags in its top 16 bits.
+aux pointer at lower−8, with the object's flags in its top 16 bits
+(`filc_abi:lower_function/5` keeps each live one in a root).
 
 **mode**: plain or filc (`ir:module_mode/2`).
 
 **origin**: a static record the runtime reads to name a function and
-location in a trap or backtrace, and in context records, a typed source
-node.
+location in a trap or backtrace (`filc_amd64:function_origins//3`),
+and in context records, a typed source node (provenance.pl).
 
 **pizlonate**: to make Fil-C's checks explicit, turning unchecked IR
-into checked IR (after FilPizlonator, Fil-C's LLVM pass).
+into checked IR (after FilPizlonator, Fil-C's LLVM pass;
+`pizlonate:pizlonate_module/2`).
 
 **poll / pollcheck / safepoint**: `poll(L)` is a jump target that runs a
 pollcheck before going to L. A pollcheck is a safepoint, a point where
 the thread may run signal handlers and answer the collector. Calls,
-allocations and some helpers are safepoints too.
+allocations and some helpers are safepoints too
+(`ir:evidence_preserving/1`, `ir:polls_every_cycle/1`).
 
-**proof**: a temporary of class `a` or `f`, the result of a check.
+**proof**: a temporary of class `a` or `f`, the result of a check
+(`ir:proof_use/6`).
 
 **raw access**: `raw_load`, `raw_store`, `raw_load_pointer`,
 `raw_store_pointer`, `raw_cas` and `raw_call`, which do no checking of
-their own and read a proof.
+their own and read a proof (`ir:covered_access/6`).
 
 **reference path**: the selection without `-O`, against which every
-optimization is compared.
+optimization is compared (`main:registers_default/2`).
 
 **refines**: `opt:refines/2`, the outcome relation that translation
 validation of the middle end uses: undefined behaviour allows anything,
@@ -1317,39 +1325,43 @@ be equal.
 
 **renew**: `renew(Lo, Hi, Rights, Align)`, which reuses an earlier
 dominating check's bounds and tests only that the object is not freed
-(and, for a write, not read-only) ([docs/m7.md](m7.md), round 4). The
-`-O` default.
+(and, for a write, not read-only) (`check_reuse:renew_checks/2`,
+[docs/m7.md](m7.md), round 4). The `-O` default.
 
 **renew_if**: `renew_if(Lo, Hi, Rights, Align)`, reading the pointer P
 and a guard's `span_test` result G: a `renew` whose bounds come from
-the guard (see guard).
+the guard (see guard; `ir:guard_chain/3`).
 
 **reuse**: `--checks=reuse`, deleting a check whose access an earlier
 live proof already covers, so the access reads that proof. It works
 across plain edges and for related pointers at a constant offset
-([docs/m7.md](m7.md), round 3).
+(`check_reuse:reuse_checks/2`, [docs/m7.md](m7.md), round 3).
 
 **root**: a frame word the collector scans: an entry of the frame
-record's `lowers[]`, a local's stack aux, or a jmpbuf root.
+record's `lowers[]`, a local's stack aux, or a jmpbuf root
+(`filc_abi:lower_function/5`, `amd64_regs_check:valid_map/3`).
 
 **shadow**: two meanings. In the backends, a phi's shadow slot, which
 holds the incoming value during a parallel copy. In c_lower, a
 laundering variable's capability shadow, a pointer slot that holds the
-capability of the value last stored in the variable.
+capability of the value last stored in the variable
+(`c_lower:launder_fixpoint/5`).
 
 **snapshot**: `tests/snapshot.sh`, the byte-identity gate across
 revisions. Also the copies of every temporary a setjmp function keeps
-([docs/setjmp.md](setjmp.md)).
+(`filc_amd64:setjmp_snapshots//3`, [docs/setjmp.md](setjmp.md)).
 
 **touch**: `touch(tmp(Q))`, the use of a vector check's proof that
-accesses nothing.
+accesses nothing (`pizlonate:checked_access/4`).
 
 **translation validation**: checking a transformation's result rather
 than proving the transformation: the register checker, `*_refines/2`,
-and the interpreter refinement of `difftest -O`.
+and the interpreter refinement of `difftest -O`
+(`amd64_regs_check:check_regs/5`, `opt:refines/2`).
 
 **unchecked(Why)**: the interpreter outcome of a raw access its
-capability does not allow. Only a broken pass produces it.
+capability does not allow. Only a broken pass produces it
+(`interp:raw_res/2`).
 
 ## Where to start
 
@@ -1468,7 +1480,7 @@ These keep the modules readable and are checked.
   %  M is a well-formed module. ...
   ```
 
-  A module listed in `tests/unit.pl`'s `documented_module/1` (c_types)
+  A module listed in `tests/unit.pl`'s `documented_module` facts (c_types)
   uses `doc/3` facts instead, whose examples are tests. Important
   internal predicates of the large modules have `%!` comments too;
   smaller internal ones have a `%` comment that begins with their head.
@@ -1478,5 +1490,17 @@ These keep the modules readable and are checked.
   a header or an export lacks `%!` or `doc/3`.
   [tests/guide.sh](../tests/guide.sh) `--check` fails when an output in
   this guide differs from what the compiler produces; run it without
-  `--check` to update them. Both run in
+  `--check` to update them. It also writes the outputs' terms to
+  [guide/outputs.pl](guide/outputs.pl), from which the site draws them.
+  `swipl web/dterm.pl --check docs/guide.md src` fails when a predicate
+  reference (`name/N`, `module:name/N`), a module file name, a link or a
+  glossary entry's source does not resolve. All three run in
   `nix build .#checks.x86_64-linux.nanofil`.
+- **On the site.** The guide is a dterm page (`nanofil/guide.html`,
+  [web/dterm_guide.pl](../web/dterm_guide.pl)): its terms are drawn as
+  the source is, predicate references link to their definitions with
+  the signature on hover, glossary terms link to their entries, and each
+  module page links back to the sections that name it. Write a
+  predicate reference in backticks as `name/N` or, when two modules
+  define it, `module:name/N`; give a glossary entry the predicate or
+  module that defines it.
