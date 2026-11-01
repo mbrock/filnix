@@ -740,6 +740,15 @@ let
                   "--disable-huge-code-pages"
                 ];
             }
+            // final.lib.optionalAttrs (is85 && jit) {
+              # Toolchains with Fil-C's LLVM JIT (staging) get the in-process
+              # backend, which needs the program linked with -enable-filc-jit.
+              preConfigure = (old.preConfigure or "") + ''
+                if echo '#include <filc_llvm_jit.h>' | $CC -E -x c - > /dev/null 2>&1; then
+                  export NIX_CFLAGS_LINK="''${NIX_CFLAGS_LINK:-} -enable-filc-jit"
+                fi
+              '';
+            }
             // final.lib.optionalAttrs is85 {
               # Regenerate the VM from the patched generator.
               postPatch =
@@ -762,14 +771,23 @@ let
                   make "PHP_TEST_SETTINGS=-d pcre.backtrack_limit=100000000" test \
                   TESTS="-j$NIX_BUILD_CORES -q --show-diff ext/opcache/tests ext/uri/tests"
               ''
-              # The suites leave the JIT off; check that it compiles and runs code.
+              # The suites leave the JIT off; check that each backend compiles
+              # and runs code (LLVM only where the toolchain has it).
               + final.lib.optionalString jit ''
-                jit_out=$(PHP_JIT_C_DIR=$TMPDIR PHP_JIT_C_STATS=1 sapi/cli/php -n -d opcache.enable_cli=1 -d opcache.jit=function \
-                  -d opcache.jit_buffer_size=16M \
-                  -r 'function fib($n) { return $n < 2 ? $n : fib($n - 1) + fib($n - 2); } echo fib(20), "\n";' 2>&1)
-                echo "$jit_out"
-                echo "$jit_out" | grep -qx 6765
-                echo "$jit_out" | grep -Eq ' [1-9][0-9]* compiled'
+                backends=c
+                if echo '#include <filc_llvm_jit.h>' | $CC -E -x c - > /dev/null 2>&1; then
+                  backends="c llvm"
+                fi
+                for backend in $backends; do
+                  jit_out=$(PHP_JIT_BACKEND=$backend PHP_JIT_C_DIR=$TMPDIR PHP_JIT_C_STATS=1 PHP_JIT_C_VERBOSE=1 \
+                    sapi/cli/php -n -d opcache.enable_cli=1 -d opcache.jit=function \
+                    -d opcache.jit_buffer_size=16M \
+                    -r 'function fib($n) { return $n < 2 ? $n : fib($n - 1) + fib($n - 2); } echo fib(20), "\n";' 2>&1)
+                  echo "$jit_out" | grep -v '^zend_jit_\(c\|llvm\): compiled'
+                  echo "$jit_out" | grep -qx 6765
+                  echo "$jit_out" | grep -Eq ' [1-9][0-9]* compiled'
+                  echo "$jit_out" | grep -q "^zend_jit_$backend: compiled"
+                done
               ''
               + ''
                 runHook postCheck

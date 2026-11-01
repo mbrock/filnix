@@ -217,7 +217,8 @@ built with the staging toolchain, whose compiler the JIT also runs. 8.5's CALL V
 VM, which the JIT cannot use; it is selected only without the JIT. In a
 development build the JIT suite passes 488/488 in function, tracing and 1235
 modes; the Nix build runs the OPcache suite (with the JIT off, its default)
-and a small script with it on.
+and a small script with it on, through each backend (see the LLVM section
+below, which is the default on staging).
 
 Compiled code can be shared between processes. `PHP_JIT_C_CACHE` names
 colon-separated directories of compiled objects; new ones go to the first.
@@ -245,6 +246,69 @@ interpreted: one 650-line PHP function made 1.8 to 3.3 MB of C, and the
 `PHP_JIT_C_STATS=1` prints counts and times at exit and `PHP_JIT_C_LOG=file`
 logs one line per function. The settings are read once,
 so FPM workers use the master's even with `clear_env`.
+
+### PHP 8.5 through the LLVM JIT
+
+The staging toolchain has Fil-C's in-process LLVM JIT (`filc_llvm_jit.h`,
+see [upstream updates](upstream-updates.md#llvm-jit)), and there
+`.#php85-jit` compiles with it by default instead of printing C
+(`ext/opcache/jit/zend_jit_llvm.c` in the same patch). Each IR function
+becomes an LLVM module built in memory and compiled by
+`FilLLVMJIT_CompileModule`, which always runs KillUB and FilPizlonator, so
+the code is checked like compiled C. Nothing is written to disk and no
+compiler process runs. The package links PHP with `-enable-filc-jit`, which
+the JIT API requires.
+
+The backend reuses the C backend's analysis: addresses that are integers
+stay `i64`, the others are LLVM pointers and arithmetic on them is a GEP. A
+registered pointer becomes an external global bound to that pointer with
+`FilLLVMJIT_SetGlobalMapping`, so the code gets its capability. Every IR
+value gets a stack slot of its own and PHIs become IR's de-SSA moves, as
+variables do in the C; LLVM's SROA turns the slots back into SSA values. Trace
+exits, stubs and the fixed VM registers work as in the C backend.
+
+`PHP_JIT_BACKEND=c` selects the C backend (with its persistent cache, which
+the LLVM backend does not use), `PHP_JIT_LLVM_OPT` sets LLVM's opt-level
+(default 2) and `PHP_JIT_LLVM_DUMP=1` prints each module. `PHP_JIT_C_STATS`,
+`PHP_JIT_C_LOG` and `PHP_JIT_C_VERBOSE` cover both backends.
+
+The backend declares intrinsics by name (`llvm.ctlz.i64`, ...) rather than
+looking them up: in the JIT API, `LLVMLookupIntrinsicID`,
+`LLVMIntrinsicIsOverloaded`, `LLVMIsMultithreaded` and
+`LLVMGetUndefMaskElem` lock a context they never set, and crash.
+
+In a development build the JIT suite passes 488/488 with the LLVM backend in
+function, tracing and 1235 modes, in 24 to 26 s per mode with 24 jobs.
+Compile times on `Zend/bench.php` (`opcache.jit=function`, C backend without
+ccache):
+
+| | units | C backend | LLVM |
+| --- | --- | --- | --- |
+| stubs | 25 | 2.36 s (94 ms each) | 0.25 s (10 ms each) |
+| functions | 31 | 11.4 s (368 ms each) | 6.65 s (214 ms each) |
+
+The largest function (the script body, 4166 IR instructions) took 2.3 s
+through C and 2.0 s through LLVM. Across the JIT suite's 1224 functions and
+traces the LLVM backend averaged 130 ms; the slowest, a 19089-instruction
+script body, took 8.7 s.
+
+The code is as fast or faster (seconds, `opcache.jit=function`, run time
+only):
+
+| | interpreter | C backend | LLVM |
+| --- | --- | --- | --- |
+| mandel | 0.109 | 0.004 | 0.004 |
+| ackermann(7) | 0.073 | 0.024 | 0.017 |
+| fibo(30) | 0.234 | 0.081 | 0.061 |
+| heapsort(20000) | 0.067 | 0.015 | 0.012 |
+| matrix(20) | 0.061 | 0.017 | 0.013 |
+| bench.php total | 8.9 | 8.520 | 8.523 |
+
+`strcat` (over 8 s) dominates the totals in every configuration. In tracing mode,
+where traces compile while the benchmark runs, the total was 16.2 s
+through C and 10.6 s through LLVM, and with `opcache.jit=1235` 15.5 s and
+12.1 s. LLVM's opt-level matters little here: `-O1` compiled bench.php's
+functions in 5.5 s and ran them within a few percent of `-O2`.
 
 ## Vulnerable PHP under Fil-C
 

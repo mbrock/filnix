@@ -52,6 +52,18 @@ PHP_JIT_C_STATS (print counts and times at exit), PHP_JIT_C_LOG (append one
 line per function), PHP_JIT_C_KEEP, PHP_JIT_C_VERBOSE. They are read once,
 so FPM workers use the master's even with clear_env.
 
+Where the toolchain has Fil-C's in-process LLVM JIT (filc_llvm_jit.h), a
+second backend (ext/opcache/jit/zend_jit_llvm.c) is the default: it builds
+LLVM IR for each IR function and compiles it with FilLLVMJIT_CompileModule,
+which always runs KillUB and FilPizlonator. It shares the C backend's pointer
+typing, registry, fixed registers and trace exits; a registered pointer
+becomes an external global bound to it with FilLLVMJIT_SetGlobalMapping.
+Every IR value lives in a stack slot that SROA promotes, which also covers
+ENTRY blocks. PHP must be linked with -enable-filc-jit.
+PHP_JIT_BACKEND=c|llvm selects the backend, PHP_JIT_LLVM_OPT its opt-level
+(default 2), PHP_JIT_LLVM_DUMP=1 prints each module. The persistent cache
+applies to the C backend only.
+
 diff --git a/ext/opcache/jit/zend_jit.c b/ext/opcache/jit/zend_jit.c
 index 3ea2536f..c6cc6179 100644
 --- a/ext/opcache/jit/zend_jit.c
@@ -71,10 +83,10 @@ index 3ea2536f..c6cc6179 100644
  #endif
 diff --git a/ext/opcache/jit/zend_jit_c.c b/ext/opcache/jit/zend_jit_c.c
 new file mode 100644
-index 00000000..e4f99bb7
+index 00000000..37d25d25
 --- /dev/null
 +++ b/ext/opcache/jit/zend_jit_c.c
-@@ -0,0 +1,1949 @@
+@@ -0,0 +1,1972 @@
 +/*
 + * Fil-C C backend for the opcache JIT.
 + *
@@ -126,6 +138,7 @@ index 00000000..e4f99bb7
 +	"PHP_JIT_CC", "PHP_JIT_CFLAGS", "PHP_JIT_C_DIR", "PHP_JIT_C_CACHE",
 +	"PHP_JIT_C_CACHE_ONLY", "PHP_JIT_C_MAX_SIZE", "PHP_JIT_C_STATS",
 +	"PHP_JIT_C_LOG", "PHP_JIT_C_KEEP", "PHP_JIT_C_VERBOSE",
++	"PHP_JIT_BACKEND", "PHP_JIT_LLVM_OPT", "PHP_JIT_LLVM_DUMP",
 +};
 +static char *zjc_env_values[sizeof(zjc_env_names) / sizeof(zjc_env_names[0])];
 +
@@ -223,6 +236,7 @@ index 00000000..e4f99bb7
 +static uint32_t  zjc_unit_gen = 1;
 +
 +static double zjc_ir_start;    /* when the JIT began building the current IR */
++static const char *zjc_log_name; /* what is being compiled, for logs */
 +
 +static void zjc_unit_reset(void)
 +{
@@ -1775,6 +1789,18 @@ index 00000000..e4f99bb7
 +	return 0;
 +}
 +
++#if __has_include(<filc_llvm_jit.h>)
++/* The backend when PHP_JIT_BACKEND is unset: 1 for LLVM, where the
++ * toolchain has Fil-C's LLVM JIT (programs must link with -enable-filc-jit). */
++# ifndef ZEND_JIT_DEFAULT_LLVM
++#  define ZEND_JIT_DEFAULT_LLVM 1
++# endif
++# include "jit/zend_jit_llvm.c"
++#else
++# define zjl_enabled() 0
++# define zjl_compile(ctx, comment, entries) NULL
++#endif
++
 +/* Compile ctx (already scheduled) to C, build or find it in the cache and
 + * load it.  Returns the function's main entry, and in *entries (when
 + * non-NULL and the function has ENTRY blocks) a malloc'ed array of the other
@@ -1799,7 +1825,7 @@ index 00000000..e4f99bb7
 +	size_t body_len = 0, text_len = 0;
 +	PHP_SHA256_CTX sha;
 +	unsigned char digest[32];
-+	double t0 = zjc_now(), t1;
++	double t0 = zjc_now(), t1, t_start = t0;
 +	bool found;
 +
 +	if (zjc_ir_start) {
@@ -1821,6 +1847,13 @@ index 00000000..e4f99bb7
 +		if (zjc_env("PHP_JIT_C_STATS")) {
 +			atexit(zjc_print_stats);
 +		}
++	}
++
++	if (zjl_enabled()) {
++		void *r = zjl_compile(ctx, comment, entries);
++
++		zjc_unit_reset();
++		return r;
 +	}
 +
 +	memset(&u, 0, sizeof(u));
@@ -1993,13 +2026,15 @@ index 00000000..e4f99bb7
 +		unlink(sopath);
 +	}
 +	if (zjc_env("PHP_JIT_C_VERBOSE")) {
-+		fprintf(stderr, "zend_jit_c: %s %s (%s)\n", found ? "hit" : "compiled", comment ? comment : name, key);
++		fprintf(stderr, "zend_jit_c: %s %s in %.1f ms (%s)\n", found ? "hit" : "compiled",
++			zjc_log_name ? zjc_log_name : comment ? comment : name, (zjc_now() - t_start) * 1e3, key);
 +	}
 +	if (zjc_env("PHP_JIT_C_LOG")) {
 +		FILE *log = fopen(zjc_env("PHP_JIT_C_LOG"), "a");
 +
 +		if (log) {
-+			fprintf(log, "%d %s %s %s\n", (int)getpid(), found ? "hit" : "compiled", key, comment ? comment : name);
++			fprintf(log, "%d %s %s %.3f %s\n", (int)getpid(), found ? "hit" : "compiled", key,
++				(zjc_now() - t_start) * 1e3, zjc_log_name ? zjc_log_name : comment ? comment : name);
 +			fclose(log);
 +		}
 +	}
@@ -2062,7 +2097,7 @@ index 8732b424..2cd77f9c 100644
  #define Z_REG(addr)      ((zend_reg)(((addr)>>_ZEND_ADDR_REG_SHIFT) & _ZEND_ADDR_REG_MASK))
  
 diff --git a/ext/opcache/jit/zend_jit_ir.c b/ext/opcache/jit/zend_jit_ir.c
-index 301f1535..a5737acf 100644
+index 301f1535..ea5f61cd 100644
 --- a/ext/opcache/jit/zend_jit_ir.c
 +++ b/ext/opcache/jit/zend_jit_ir.c
 @@ -91,9 +91,20 @@
@@ -2264,7 +2299,46 @@ index 301f1535..a5737acf 100644
  				/* Signed DIV by power of 2 may be optimized into SHR only for positive operands */
  				if (HT_IS_PACKED(jumptable)) {
  					ZEND_ASSERT(sizeof(zval) == 16);
-@@ -16869,7 +16919,11 @@ static zend_vm_opcode_handler_t zend_jit_finish(zend_jit_ctx *jit)
+@@ -16793,6 +16843,25 @@ static zend_vm_opcode_handler_t zend_jit_finish(zend_jit_ctx *jit)
+ 			str = zend_jit_func_name(jit->op_array);
+ 		}
+ 	}
++#ifdef ZEND_JIT_C_BACKEND
++	/* A name for the backends' logs, kept out of the generated C, whose
++	 * text is the persistent cache's key. */
++	zend_string *log_name = NULL;
++
++	if (zjc_env("PHP_JIT_C_LOG") || zjc_env("PHP_JIT_C_VERBOSE")) {
++		if (jit->name) {
++			log_name = zend_string_copy(jit->name);
++		} else if (jit->op_array && jit->op_array->filename) {
++			zend_string *fn = zend_jit_func_name(jit->op_array);
++
++			log_name = zend_strpprintf(0, "%s@%s", fn ? ZSTR_VAL(fn) : "?", ZSTR_VAL(jit->op_array->filename));
++			if (fn) {
++				zend_string_release(fn);
++			}
++		}
++	}
++	zjc_log_name = log_name ? ZSTR_VAL(log_name) : NULL;
++#endif
+ 
+ 	if (jit->op_array) {
+ 		/* Only for function JIT */
+@@ -16809,6 +16878,12 @@ static zend_vm_opcode_handler_t zend_jit_finish(zend_jit_ctx *jit)
+ 	}
+ 
+ 	entry = zend_jit_ir_compile(&jit->ctx, &size, str ? ZSTR_VAL(str) : NULL);
++#ifdef ZEND_JIT_C_BACKEND
++	zjc_log_name = NULL;
++	if (log_name) {
++		zend_string_release(log_name);
++	}
++#endif
+ 	if (entry) {
+ 		if (JIT_G(debug) & (ZEND_JIT_DEBUG_ASM|ZEND_JIT_DEBUG_GDB|ZEND_JIT_DEBUG_PERF|ZEND_JIT_DEBUG_PERF_DUMP)) {
+ #ifdef HAVE_CAPSTONE
+@@ -16869,7 +16944,11 @@ static zend_vm_opcode_handler_t zend_jit_finish(zend_jit_ctx *jit)
  				int i = jit->ctx.entries_count;
  				do {
  					ir_insn *insn = &jit->ctx.ir_base[jit->ctx.entries[--i]];
@@ -2276,7 +2350,7 @@ index 301f1535..a5737acf 100644
  				} while (i != 0);
  			}
  		} else {
-@@ -17498,6 +17552,11 @@ static int zend_jit_trace_return(zend_jit_ctx *jit, bool original_handler, const
+@@ -17498,6 +17577,11 @@ static int zend_jit_trace_return(zend_jit_ctx *jit, bool original_handler, const
  
  static int zend_jit_link_side_trace(const void *code, size_t size, uint32_t jmp_table_size, uint32_t exit_num, const void *addr)
  {
@@ -2288,6 +2362,1426 @@ index 301f1535..a5737acf 100644
  	return ir_patch(code, size, jmp_table_size, zend_jit_trace_get_exit_addr(exit_num), addr);
  }
  
+diff --git a/ext/opcache/jit/zend_jit_llvm.c b/ext/opcache/jit/zend_jit_llvm.c
+new file mode 100644
+index 00000000..31a0c322
+--- /dev/null
++++ b/ext/opcache/jit/zend_jit_llvm.c
+@@ -0,0 +1,1414 @@
++/*
++ * Fil-C LLVM backend for the opcache JIT.
++ *
++ * Instead of printing C and running the compiler (zend_jit_c.c), this
++ * backend builds LLVM IR for each IR function with Fil-C's in-process JIT
++ * API (filc_llvm_jit.h) and compiles it with FilLLVMJIT_CompileModule.  That
++ * always runs KillUB and FilPizlonator, so the code is checked like compiled
++ * C: a JIT bug gives a wrong result or a Fil-C panic, not memory corruption.
++ *
++ * It shares the C backend's model (included from zend_jit_c.c):
++ *
++ * - zjc_analyze decides which ADDR values are integers.  The others are LLVM
++ *   pointers and keep their capability through arithmetic (GEPs).
++ * - A pointer the JIT embedded as an integer constant is found in the
++ *   registry (zjc_register) and becomes an external global "zjk<index>"
++ *   bound to the registered pointer with FilLLVMJIT_SetGlobalMapping, which
++ *   gives the code that pointer with its capability.  Addresses derived from
++ *   it are GEPs from it.
++ * - Fixed registers (ZREG_FP, ZREG_IP, SP) are locals; code reached by jumps
++ *   (stubs) gets FP and IP as arguments, and jumps call it with them.
++ * - Failed trace guards hand the snapshot to zjc_trace_exit in a buffer laid
++ *   out like the native exit's register dump.
++ *
++ * Every IR value lives in a stack slot of its own (an alloca), and PHIs are
++ * resolved with IR's de-SSA moves, as the C backend does with variables.
++ * LLVM's SROA turns the slots back into SSA values before FilPizlonator
++ * runs.  This also covers ENTRY blocks, which jump into the middle of a
++ * function without passing the definitions of earlier values.
++ *
++ * Environment: PHP_JIT_BACKEND=llvm|c selects the backend;
++ * PHP_JIT_LLVM_OPT is the opt-level (0..3, default 2);
++ * PHP_JIT_LLVM_DUMP=1 prints each module before it is compiled.
++ */
++
++#include <filc_llvm_jit.h>
++
++enum {
++	ZJL_NONE = 0,
++	ZJL_I1, ZJL_I8, ZJL_I16, ZJL_I32, ZJL_I64,
++	ZJL_PTR, ZJL_DBL, ZJL_FLT, ZJL_VOID,
++	ZJL_KINDS
++};
++
++typedef struct _zjl_v {
++	LLVMValueRef v;
++	uint8_t      k;
++} zjl_v;
++
++typedef struct _zjl_unit {
++	ir_ctx            *ctx;
++	zjc_unit           an;          /* zjc_analyze: ADDR values that are integers */
++	LLVMContextRef     c;
++	LLVMModuleRef      m;
++	LLVMBuilderRef     b;           /* code */
++	LLVMBuilderRef     ab;          /* allocas, at the end of the first block */
++	LLVMTypeRef        ty[ZJL_KINDS];
++	LLVMValueRef       fn;
++	uint8_t            ret_k;
++	LLVMValueRef      *slot;        /* ref -> alloca of the value (or of the VAR) */
++	uint8_t           *slot_k;
++	LLVMValueRef       tmp[IR_LAST_TYPE];
++	uint8_t            tmp_k[IR_LAST_TYPE];
++	LLVMValueRef       fp, ip, sp;  /* allocas holding the fixed registers */
++	LLVMValueRef       exit_buf;
++	LLVMBasicBlockRef *bbs;
++	uint32_t          *k_regs;      /* registry indices declared as globals */
++	uint32_t           k_count, k_cap;
++	bool               terminated;
++	bool               failed;
++} zjl_unit;
++
++static FilLLVMJITModuleRef *zjl_modules;   /* compiled code stays alive */
++static uint32_t             zjl_modules_count, zjl_modules_cap;
++
++static bool zjl_enabled(void)
++{
++	const char *b = zjc_env("PHP_JIT_BACKEND");
++
++	if (b && *b) {
++		return !strcmp(b, "llvm");
++	}
++	return ZEND_JIT_DEFAULT_LLVM;
++}
++
++static void zjl_fail(zjl_unit *u, const char *what)
++{
++	if (!u->failed && zjc_env("PHP_JIT_C_VERBOSE")) {
++		fprintf(stderr, "zend_jit_llvm: %s\n", what);
++	}
++	u->failed = 1;
++}
++
++static uint8_t zjl_kind(ir_type t, bool intlike)
++{
++	switch (t) {
++		case IR_BOOL: return ZJL_I1;
++		case IR_U8: case IR_I8: case IR_CHAR: return ZJL_I8;
++		case IR_U16: case IR_I16: return ZJL_I16;
++		case IR_U32: case IR_I32: return ZJL_I32;
++		case IR_U64: case IR_I64: return ZJL_I64;
++		case IR_ADDR: return intlike ? ZJL_I64 : ZJL_PTR;
++		case IR_DOUBLE: return ZJL_DBL;
++		case IR_FLOAT: return ZJL_FLT;
++		default: return ZJL_VOID;
++	}
++}
++
++static unsigned zjl_bits(uint8_t k)
++{
++	switch (k) {
++		case ZJL_I1: return 1;
++		case ZJL_I8: return 8;
++		case ZJL_I16: return 16;
++		case ZJL_I32: return 32;
++		case ZJL_FLT: return 32;
++		default: return 64;
++	}
++}
++
++static uint8_t zjl_int_kind(unsigned bits)
++{
++	switch (bits) {
++		case 1: return ZJL_I1;
++		case 8: return ZJL_I8;
++		case 16: return ZJL_I16;
++		case 32: return ZJL_I32;
++		default: return ZJL_I64;
++	}
++}
++
++static zjl_v zjl_mk(LLVMValueRef v, uint8_t k)
++{
++	zjl_v r = {v, k};
++	return r;
++}
++
++static LLVMValueRef zjl_iconst(zjl_unit *u, uint8_t k, uint64_t v)
++{
++	return LLVMConstInt(u->ty[k], v, 0);
++}
++
++/* Convert a value to kind k.  Integers widen by "sign"; pointers become
++ * integers by address and integers become pointers without a capability; a
++ * conversion to I1 tests for non-zero, as C does for bool. */
++static LLVMValueRef zjl_conv(zjl_unit *u, zjl_v x, uint8_t k, bool sign)
++{
++	LLVMBuilderRef b = u->b;
++	LLVMValueRef v = x.v;
++	uint8_t from = x.k;
++
++	if (from == k) {
++		return v;
++	}
++	if (k == ZJL_I1) {
++		if (from == ZJL_PTR) {
++			return LLVMBuildIsNotNull(b, v, "");
++		}
++		if (from == ZJL_DBL || from == ZJL_FLT) {
++			return LLVMBuildFCmp(b, LLVMRealUNE, v, LLVMConstReal(u->ty[from], 0.0), "");
++		}
++		return LLVMBuildICmp(b, LLVMIntNE, v, zjl_iconst(u, from, 0), "");
++	}
++	if (from == ZJL_DBL || from == ZJL_FLT) {
++		if (k == ZJL_DBL || k == ZJL_FLT) {
++			return k == ZJL_DBL ? LLVMBuildFPExt(b, v, u->ty[k], "") : LLVMBuildFPTrunc(b, v, u->ty[k], "");
++		}
++		/* reinterpretation; does not occur for well-typed IR */
++		v = LLVMBuildBitCast(b, v, u->ty[zjl_int_kind(zjl_bits(from))], "");
++		from = zjl_int_kind(zjl_bits(from));
++		sign = 0;
++	}
++	if (k == ZJL_DBL || k == ZJL_FLT) {
++		v = zjl_conv(u, zjl_mk(v, from), zjl_int_kind(zjl_bits(k)), sign);
++		return LLVMBuildBitCast(b, v, u->ty[k], "");
++	}
++	if (from == ZJL_PTR) {
++		v = LLVMBuildPtrToInt(b, v, u->ty[ZJL_I64], "");
++		from = ZJL_I64;
++		sign = 0;
++		if (k == ZJL_I64) {
++			return v;
++		}
++	}
++	if (k == ZJL_PTR) {
++		if (from != ZJL_I64) {
++			v = zjl_conv(u, zjl_mk(v, from), ZJL_I64, sign);
++		}
++		return LLVMBuildIntToPtr(b, v, u->ty[ZJL_PTR], "");
++	}
++	if (from == ZJL_I1) {
++		sign = 0;
++	}
++	if (zjl_bits(from) < zjl_bits(k)) {
++		return sign ? LLVMBuildSExt(b, v, u->ty[k], "") : LLVMBuildZExt(b, v, u->ty[k], "");
++	} else if (zjl_bits(from) > zjl_bits(k)) {
++		return LLVMBuildTrunc(b, v, u->ty[k], "");
++	}
++	return v;
++}
++
++static LLVMValueRef zjl_alloca(zjl_unit *u, LLVMTypeRef t)
++{
++	return LLVMBuildAlloca(u->ab, t, "");
++}
++
++/* ---- Constants ---- */
++
++/* The global bound to registry entry idx. */
++static LLVMValueRef zjl_k(zjl_unit *u, uint32_t idx)
++{
++	char name[32];
++	LLVMValueRef g;
++
++	snprintf(name, sizeof(name), "zjk%u", idx);
++	g = LLVMGetNamedGlobal(u->m, name);
++	if (!g) {
++		g = LLVMAddGlobal(u->m, u->ty[ZJL_I8], name);
++		if (u->k_count == u->k_cap) {
++			u->k_cap = u->k_cap ? u->k_cap * 2 : 64;
++			u->k_regs = realloc(u->k_regs, u->k_cap * sizeof(uint32_t));
++		}
++		u->k_regs[u->k_count++] = idx;
++	}
++	return g;
++}
++
++static LLVMValueRef zjl_gep(zjl_unit *u, LLVMValueRef p, LLVMValueRef off)
++{
++	return LLVMBuildGEP2(u->b, u->ty[ZJL_I8], p, &off, 1, "");
++}
++
++/* An address constant: a pointer with the capability of the registered
++ * pointer it is or lies in, or else an integer. */
++static zjl_v zjl_addr(zjl_unit *u, uintptr_t addr)
++{
++	int32_t idx;
++
++	if (addr >= 0x10000) {
++		idx = zjc_reg_find(addr);
++		if (idx >= 0) {
++			return zjl_mk(zjl_k(u, idx), ZJL_PTR);
++		}
++		idx = zjc_unit_find_base(addr);
++		if (idx < 0) {
++			idx = zjc_reg_find_base(addr);
++		}
++		if (idx >= 0) {
++			return zjl_mk(zjl_gep(u, zjl_k(u, idx),
++				zjl_iconst(u, ZJL_I64, (uint64_t)(addr - (uintptr_t)zjc_reg_ptrs[idx]))), ZJL_PTR);
++		}
++	}
++	return zjl_mk(zjl_iconst(u, ZJL_I64, addr), ZJL_I64);
++}
++
++/* A host symbol named in the IR. */
++static zjl_v zjl_sym(zjl_unit *u, const char *name)
++{
++	void *p = dlsym(RTLD_DEFAULT, name);
++
++	if (!p) {
++		zjl_fail(u, "unknown symbol");
++		return zjl_mk(LLVMConstNull(u->ty[ZJL_PTR]), ZJL_PTR);
++	}
++	zjc_register(p);
++	return zjl_addr(u, (uintptr_t)p);
++}
++
++static zjl_v zjl_const(zjl_unit *u, ir_ref ref)
++{
++	ir_ctx *ctx = u->ctx;
++	ir_insn *insn = &ctx->ir_base[ref];
++
++	switch (insn->op) {
++		case IR_FUNC:
++		case IR_SYM:
++			return zjl_sym(u, ir_get_str(ctx, insn->val.name));
++		case IR_STR: {
++			size_t len;
++			const char *s = ir_get_strl(ctx, insn->val.str, &len);
++			LLVMValueRef init = LLVMConstStringInContext(u->c, s, (unsigned)len, 0);
++			LLVMValueRef g = LLVMAddGlobal(u->m, LLVMArrayType(u->ty[ZJL_I8], (unsigned)len + 1), "");
++
++			LLVMSetInitializer(g, init);
++			LLVMSetGlobalConstant(g, 1);
++			LLVMSetLinkage(g, LLVMPrivateLinkage);
++			return zjl_mk(g, ZJL_PTR);
++		}
++		case IR_FUNC_ADDR:
++			return zjl_addr(u, insn->val.addr);
++		case IR_LABEL:
++			zjl_fail(u, "label constant");
++			return zjl_mk(LLVMConstNull(u->ty[ZJL_PTR]), ZJL_PTR);
++		default:
++			break;
++	}
++	switch (insn->type) {
++		case IR_BOOL: return zjl_mk(LLVMConstInt(u->ty[ZJL_I1], insn->val.b != 0, 0), ZJL_I1);
++		case IR_U8:   return zjl_mk(LLVMConstInt(u->ty[ZJL_I8], insn->val.u8, 0), ZJL_I8);
++		case IR_CHAR: return zjl_mk(LLVMConstInt(u->ty[ZJL_I8], (uint8_t)insn->val.c, 0), ZJL_I8);
++		case IR_I8:   return zjl_mk(LLVMConstInt(u->ty[ZJL_I8], (uint8_t)insn->val.i8, 0), ZJL_I8);
++		case IR_U16:  return zjl_mk(LLVMConstInt(u->ty[ZJL_I16], insn->val.u16, 0), ZJL_I16);
++		case IR_I16:  return zjl_mk(LLVMConstInt(u->ty[ZJL_I16], (uint16_t)insn->val.i16, 0), ZJL_I16);
++		case IR_U32:  return zjl_mk(LLVMConstInt(u->ty[ZJL_I32], insn->val.u32, 0), ZJL_I32);
++		case IR_I32:  return zjl_mk(LLVMConstInt(u->ty[ZJL_I32], (uint32_t)insn->val.i32, 0), ZJL_I32);
++		case IR_U64:  return zjl_mk(LLVMConstInt(u->ty[ZJL_I64], insn->val.u64, 0), ZJL_I64);
++		case IR_I64:  return zjl_mk(LLVMConstInt(u->ty[ZJL_I64], (uint64_t)insn->val.i64, 0), ZJL_I64);
++		case IR_DOUBLE: return zjl_mk(LLVMConstReal(u->ty[ZJL_DBL], insn->val.d), ZJL_DBL);
++		case IR_FLOAT:  return zjl_mk(LLVMConstReal(u->ty[ZJL_FLT], insn->val.f), ZJL_FLT);
++		case IR_ADDR:   return zjl_addr(u, insn->val.addr);
++		default:
++			zjl_fail(u, "constant type");
++			return zjl_mk(LLVMConstNull(u->ty[ZJL_I64]), ZJL_I64);
++	}
++}
++
++/* ---- Values ---- */
++
++static LLVMValueRef zjl_slot(zjl_unit *u, ir_ref ref)
++{
++	if (!u->slot[ref]) {
++		ir_insn *insn = &u->ctx->ir_base[ref];
++		uint8_t k = zjl_kind(insn->type, insn->op != IR_VAR && zjc_is_intlike(&u->an, ref));
++
++		u->slot_k[ref] = k;
++		u->slot[ref] = zjl_alloca(u, u->ty[k]);
++	}
++	return u->slot[ref];
++}
++
++static zjl_v zjl_val(zjl_unit *u, ir_ref ref)
++{
++	LLVMValueRef s;
++
++	if (IR_IS_CONST_REF(ref)) {
++		return zjl_const(u, ref);
++	}
++	s = zjl_slot(u, ref);
++	return zjl_mk(LLVMBuildLoad2(u->b, u->ty[u->slot_k[ref]], s, ""), u->slot_k[ref]);
++}
++
++static bool zjl_signed(zjl_unit *u, ir_ref ref)
++{
++	return IR_IS_TYPE_SIGNED(u->ctx->ir_base[ref].type);
++}
++
++/* The value of ref as kind k, widened by ref's own signedness. */
++static LLVMValueRef zjl_get(zjl_unit *u, ir_ref ref, uint8_t k)
++{
++	return zjl_conv(u, zjl_val(u, ref), k, zjl_signed(u, ref));
++}
++
++static bool zjl_has_def(zjl_unit *u, ir_ref ref)
++{
++	return u->ctx->vregs[ref] != 0;
++}
++
++static void zjl_def(zjl_unit *u, ir_ref ref, zjl_v x, bool sign)
++{
++	LLVMValueRef s = zjl_slot(u, ref);
++
++	LLVMBuildStore(u->b, zjl_conv(u, x, u->slot_k[ref], sign), s);
++}
++
++static LLVMValueRef zjl_reg(zjl_unit *u, int8_t reg)
++{
++	switch (reg) {
++		case ZREG_FP: return u->fp;
++		case ZREG_IP: return u->ip;
++		case IR_REG_SP: return u->sp;
++		default:
++			zjl_fail(u, "fixed register");
++			return u->sp;
++	}
++}
++
++static LLVMValueRef zjl_load_reg(zjl_unit *u, LLVMValueRef reg)
++{
++	return LLVMBuildLoad2(u->b, u->ty[ZJL_PTR], reg, "");
++}
++
++/* Call an LLVM intrinsic overloaded on kind k (none for ZJL_VOID), declared
++ * by its name, which LLVM recognizes. */
++static LLVMValueRef zjl_intrinsic(zjl_unit *u, const char *name, uint8_t k, LLVMTypeRef ret, LLVMValueRef *args, unsigned n)
++{
++	static const char *const suffix[ZJL_KINDS] = {
++		"", ".i1", ".i8", ".i16", ".i32", ".i64", ".p0", ".f64", ".f32", ""
++	};
++	char full[64];
++	LLVMTypeRef params[4], fty;
++	LLVMValueRef f;
++	unsigned i;
++
++	snprintf(full, sizeof(full), "%s%s", name, suffix[k]);
++	for (i = 0; i < n; i++) {
++		params[i] = LLVMTypeOf(args[i]);
++	}
++	fty = LLVMFunctionType(ret, params, n, 0);
++	f = LLVMGetNamedFunction(u->m, full);
++	if (!f) {
++		f = LLVMAddFunction(u->m, full, fty);
++	}
++	return LLVMBuildCall2(u->b, fty, f, args, n, "");
++}
++
++/* Call a helper of this file with two pointers, returning a pointer. */
++static LLVMValueRef zjl_call_helper2(zjl_unit *u, void *helper, LLVMValueRef a, LLVMValueRef b)
++{
++	LLVMTypeRef params[2] = {u->ty[ZJL_PTR], u->ty[ZJL_PTR]};
++	LLVMValueRef args[2] = {a, b};
++
++	zjc_register(helper);
++	return LLVMBuildCall2(u->b, LLVMFunctionType(u->ty[ZJL_PTR], params, 2, 0),
++		zjl_addr(u, (uintptr_t)helper).v, args, 2, "");
++}
++
++/* ZJC_ADD and ZJC_CAP of the C backend. */
++static char *zjl_add_helper(char *a, char *b)
++{
++	return zhasvalidcap(a) ? a + (intptr_t)b : b + (intptr_t)a;
++}
++
++static char *zjl_cap_helper(char *a, char *b)
++{
++	return zhasvalidcap(a) ? a : b;
++}
++
++/* ---- Instructions ---- */
++
++static void zjl_addr_binary(zjl_unit *u, ir_ref def, ir_insn *insn)
++{
++	LLVMBuilderRef b = u->b;
++	bool p1 = !zjc_is_intlike(&u->an, insn->op1);
++	bool p2 = !zjc_is_intlike(&u->an, insn->op2);
++	LLVMValueRef r;
++
++	if (insn->op == IR_ADD && p1 && p2) {
++		r = zjl_call_helper2(u, (void*)zjl_add_helper, zjl_get(u, insn->op1, ZJL_PTR), zjl_get(u, insn->op2, ZJL_PTR));
++		zjl_def(u, def, zjl_mk(r, ZJL_PTR), 0);
++	} else if (insn->op == IR_ADD && (p1 || p2)) {
++		ir_ref base = p1 ? insn->op1 : insn->op2;
++		ir_ref other = p1 ? insn->op2 : insn->op1;
++
++		r = zjl_gep(u, zjl_get(u, base, ZJL_PTR), zjl_get(u, other, ZJL_I64));
++		zjl_def(u, def, zjl_mk(r, ZJL_PTR), 0);
++	} else if (insn->op == IR_SUB && p1 && !p2) {
++		r = zjl_gep(u, zjl_get(u, insn->op1, ZJL_PTR), LLVMBuildNeg(b, zjl_get(u, insn->op2, ZJL_I64), ""));
++		zjl_def(u, def, zjl_mk(r, ZJL_PTR), 0);
++	} else {
++		LLVMValueRef a = zjl_get(u, insn->op1, ZJL_I64);
++		LLVMValueRef c = zjl_get(u, insn->op2, ZJL_I64);
++
++		switch (insn->op) {
++			case IR_ADD: r = LLVMBuildAdd(b, a, c, ""); break;
++			case IR_SUB: r = LLVMBuildSub(b, a, c, ""); break;
++			case IR_MUL: r = LLVMBuildMul(b, a, c, ""); break;
++			case IR_AND: r = LLVMBuildAnd(b, a, c, ""); break;
++			case IR_OR:  r = LLVMBuildOr(b, a, c, ""); break;
++			default:     r = LLVMBuildXor(b, a, c, ""); break;
++		}
++		if ((insn->op == IR_AND || insn->op == IR_OR || insn->op == IR_XOR) && (p1 || p2)) {
++			/* Rebase the new address on the pointer to keep its capability. */
++			LLVMValueRef cap = p1 && p2
++				? zjl_call_helper2(u, (void*)zjl_cap_helper, zjl_get(u, insn->op1, ZJL_PTR), zjl_get(u, insn->op2, ZJL_PTR))
++				: zjl_get(u, p1 ? insn->op1 : insn->op2, ZJL_PTR);
++
++			r = zjl_gep(u, cap, LLVMBuildSub(b, r, LLVMBuildPtrToInt(b, cap, u->ty[ZJL_I64], ""), ""));
++			zjl_def(u, def, zjl_mk(r, ZJL_PTR), 0);
++		} else {
++			zjl_def(u, def, zjl_mk(r, ZJL_I64), 0);
++		}
++	}
++}
++
++static void zjl_binary(zjl_unit *u, ir_ref def, ir_insn *insn)
++{
++	LLVMBuilderRef b = u->b;
++	uint8_t k;
++	LLVMValueRef x, y, r;
++	bool fp;
++
++	if (!zjl_has_def(u, def)) {
++		return;
++	}
++	if (insn->type == IR_ADDR && insn->op != IR_DIV && insn->op != IR_MOD
++	 && insn->op != IR_SHL && insn->op != IR_SHR && insn->op != IR_SAR
++	 && insn->op != IR_MIN && insn->op != IR_MAX) {
++		zjl_addr_binary(u, def, insn);
++		return;
++	}
++	fp = IR_IS_TYPE_FP(insn->type);
++	if (insn->op == IR_DIV || insn->op == IR_MOD || insn->op == IR_SHL || insn->op == IR_SHR || insn->op == IR_SAR) {
++		/* computed in op1's width, as the C backend's casts do */
++		k = zjl_kind(u->ctx->ir_base[insn->op1].type, 1);
++	} else {
++		k = zjl_kind(insn->type, 1);
++	}
++	x = zjl_get(u, insn->op1, k);
++	y = zjl_get(u, insn->op2, k);
++	switch (insn->op) {
++		case IR_ADD: r = fp ? LLVMBuildFAdd(b, x, y, "") : LLVMBuildAdd(b, x, y, ""); break;
++		case IR_SUB: r = fp ? LLVMBuildFSub(b, x, y, "") : LLVMBuildSub(b, x, y, ""); break;
++		case IR_MUL: r = fp ? LLVMBuildFMul(b, x, y, "") : LLVMBuildMul(b, x, y, ""); break;
++		case IR_DIV:
++			r = fp ? LLVMBuildFDiv(b, x, y, "")
++				: IR_IS_TYPE_SIGNED(insn->type) ? LLVMBuildSDiv(b, x, y, "") : LLVMBuildUDiv(b, x, y, "");
++			break;
++		case IR_MOD:
++			r = fp ? LLVMBuildFRem(b, x, y, "")
++				: IR_IS_TYPE_SIGNED(insn->type) ? LLVMBuildSRem(b, x, y, "") : LLVMBuildURem(b, x, y, "");
++			break;
++		case IR_AND: r = LLVMBuildAnd(b, x, y, ""); break;
++		case IR_OR:  r = LLVMBuildOr(b, x, y, ""); break;
++		case IR_XOR: r = LLVMBuildXor(b, x, y, ""); break;
++		case IR_SHL:
++		case IR_SHR:
++		case IR_SAR:
++			/* x86 masks the count; keep LLVM from treating large ones as poison */
++			y = LLVMBuildAnd(b, y, zjl_iconst(u, k, zjl_bits(k) - 1), "");
++			r = insn->op == IR_SHL ? LLVMBuildShl(b, x, y, "")
++				: insn->op == IR_SHR ? LLVMBuildLShr(b, x, y, "") : LLVMBuildAShr(b, x, y, "");
++			break;
++		case IR_MIN:
++		case IR_MAX: {
++			LLVMValueRef c;
++
++			if (fp) {
++				c = LLVMBuildFCmp(b, insn->op == IR_MIN ? LLVMRealOLT : LLVMRealOGT, x, y, "");
++			} else if (IR_IS_TYPE_SIGNED(insn->type)) {
++				c = LLVMBuildICmp(b, insn->op == IR_MIN ? LLVMIntSLT : LLVMIntSGT, x, y, "");
++			} else {
++				c = LLVMBuildICmp(b, insn->op == IR_MIN ? LLVMIntULT : LLVMIntUGT, x, y, "");
++			}
++			r = LLVMBuildSelect(b, c, x, y, "");
++			break;
++		}
++		default:
++			zjl_fail(u, "binary op");
++			return;
++	}
++	zjl_def(u, def, zjl_mk(r, k), IR_IS_TYPE_SIGNED(insn->type));
++}
++
++static void zjl_cmp(zjl_unit *u, ir_ref def, ir_insn *insn)
++{
++	ir_ctx *ctx = u->ctx;
++	ir_type t1 = ctx->ir_base[insn->op1].type;
++	ir_type t2 = ctx->ir_base[insn->op2].type;
++	LLVMBuilderRef b = u->b;
++	LLVMValueRef x, y, r;
++	uint8_t k;
++
++	if (!zjl_has_def(u, def)) {
++		return;
++	}
++	if (IR_IS_TYPE_FP(t1)) {
++		LLVMRealPredicate p;
++
++		k = zjl_kind(t1, 1);
++		switch (insn->op) {
++			case IR_EQ: p = LLVMRealOEQ; break;
++			case IR_NE: p = LLVMRealUNE; break;
++			case IR_LT: p = LLVMRealOLT; break;
++			case IR_GE: p = LLVMRealOGE; break;
++			case IR_LE: p = LLVMRealOLE; break;
++			case IR_GT: p = LLVMRealOGT; break;
++			case IR_ULT: p = LLVMRealULT; break;
++			case IR_UGE: p = LLVMRealUGE; break;
++			case IR_ULE: p = LLVMRealULE; break;
++			default: p = LLVMRealUGT; break;
++		}
++		r = LLVMBuildFCmp(b, p, zjl_get(u, insn->op1, k), zjl_get(u, insn->op2, k), "");
++	} else {
++		LLVMIntPredicate p;
++
++		if (insn->op == IR_EQ || insn->op == IR_NE) {
++			/* C's usual conversions: the wider operand's width */
++			uint8_t k1 = zjl_kind(t1, 1), k2 = zjl_kind(t2, 1);
++
++			k = zjl_bits(k1) >= zjl_bits(k2) ? k1 : k2;
++			p = insn->op == IR_EQ ? LLVMIntEQ : LLVMIntNE;
++		} else {
++			/* IR's LT..GT are signed whatever the operands' types */
++			k = t1 == IR_BOOL ? ZJL_I8 : zjl_kind(t1, 1);
++			switch (insn->op) {
++				case IR_LT: p = LLVMIntSLT; break;
++				case IR_GE: p = LLVMIntSGE; break;
++				case IR_LE: p = LLVMIntSLE; break;
++				case IR_GT: p = LLVMIntSGT; break;
++				case IR_ULT: p = LLVMIntULT; break;
++				case IR_UGE: p = LLVMIntUGE; break;
++				case IR_ULE: p = LLVMIntULE; break;
++				default: p = LLVMIntUGT; break;
++			}
++		}
++		x = zjl_get(u, insn->op1, k);
++		y = zjl_get(u, insn->op2, k);
++		r = LLVMBuildICmp(b, p, x, y, "");
++	}
++	zjl_def(u, def, zjl_mk(r, ZJL_I1), 0);
++}
++
++static void zjl_unary(zjl_unit *u, ir_ref def, ir_insn *insn)
++{
++	LLVMBuilderRef b = u->b;
++	uint8_t k = zjl_kind(insn->type, 1);
++	LLVMValueRef x, r;
++
++	if (!zjl_has_def(u, def)) {
++		return;
++	}
++	x = zjl_get(u, insn->op1, k);
++	switch (insn->op) {
++		case IR_NEG:
++			r = IR_IS_TYPE_FP(insn->type) ? LLVMBuildFNeg(b, x, "") : LLVMBuildNeg(b, x, "");
++			break;
++		case IR_NOT:
++			r = LLVMBuildNot(b, x, "");
++			break;
++		case IR_ABS:
++			if (IR_IS_TYPE_FP(insn->type)) {
++				r = zjl_intrinsic(u, "llvm.fabs", k, u->ty[k], &x, 1);
++			} else {
++				r = LLVMBuildSelect(b, LLVMBuildICmp(b, LLVMIntSLT, x, zjl_iconst(u, k, 0), ""),
++					LLVMBuildNeg(b, x, ""), x, "");
++			}
++			break;
++		case IR_BSWAP:
++			r = zjl_intrinsic(u, "llvm.bswap", k, u->ty[k], &x, 1);
++			break;
++		case IR_CTPOP:
++			r = zjl_intrinsic(u, "llvm.ctpop", k, u->ty[k], &x, 1);
++			break;
++		case IR_CTLZ:
++		case IR_CTTZ: {
++			LLVMValueRef args[2] = {x, LLVMConstInt(u->ty[ZJL_I1], 0, 0)};
++
++			r = zjl_intrinsic(u, insn->op == IR_CTLZ ? "llvm.ctlz" : "llvm.cttz", k, u->ty[k], args, 2);
++			break;
++		}
++		default:
++			zjl_fail(u, "unary op");
++			return;
++	}
++	zjl_def(u, def, zjl_mk(r, k), IR_IS_TYPE_SIGNED(insn->type));
++}
++
++static void zjl_conv_insn(zjl_unit *u, ir_ref def, ir_insn *insn)
++{
++	ir_type src = u->ctx->ir_base[insn->op1].type;
++	ir_type dst = insn->type;
++	LLVMBuilderRef b = u->b;
++	zjl_v x;
++	LLVMValueRef r;
++
++	if (!zjl_has_def(u, def)) {
++		return;
++	}
++	x = zjl_val(u, insn->op1);
++	switch (insn->op) {
++		case IR_SEXT:
++		case IR_ZEXT:
++		case IR_TRUNC:
++			/* through an integer of the destination's width (I64 for ADDR) */
++			r = zjl_conv(u, x, zjl_kind(dst, 1), insn->op == IR_SEXT);
++			zjl_def(u, def, zjl_mk(r, zjl_kind(dst, 1)), 0);
++			return;
++		case IR_BITCAST:
++			if (IR_IS_TYPE_INT(dst) && IR_IS_TYPE_INT(src)) {
++				if (src == dst) {
++					zjl_def(u, def, x, IR_IS_TYPE_SIGNED(src));
++				} else {
++					r = zjl_conv(u, x, zjl_kind(dst, 1), IR_IS_TYPE_SIGNED(src));
++					zjl_def(u, def, zjl_mk(r, zjl_kind(dst, 1)), 0);
++				}
++			} else if (IR_IS_TYPE_FP(dst)) {
++				r = zjl_conv(u, x, zjl_int_kind(ir_type_size[dst] * 8), 0);
++				zjl_def(u, def, zjl_mk(LLVMBuildBitCast(b, r, u->ty[zjl_kind(dst, 0)], ""), zjl_kind(dst, 0)), 0);
++			} else {
++				uint8_t ik = zjl_int_kind(ir_type_size[src] * 8);
++
++				r = IR_IS_TYPE_FP(src) ? LLVMBuildBitCast(b, x.v, u->ty[ik], "") : zjl_conv(u, x, ik, 0);
++				zjl_def(u, def, zjl_mk(r, ik), 0);
++			}
++			return;
++		case IR_INT2FP: {
++			uint8_t sk = zjl_kind(src, 1);
++			LLVMValueRef v = zjl_conv(u, x, sk, 0);
++
++			r = IR_IS_TYPE_SIGNED(src) ? LLVMBuildSIToFP(b, v, u->ty[zjl_kind(dst, 0)], "")
++				: LLVMBuildUIToFP(b, v, u->ty[zjl_kind(dst, 0)], "");
++			zjl_def(u, def, zjl_mk(r, zjl_kind(dst, 0)), 0);
++			return;
++		}
++		case IR_FP2INT: {
++			uint8_t dk = zjl_kind(dst, 1);
++
++			r = IR_IS_TYPE_SIGNED(dst) ? LLVMBuildFPToSI(b, x.v, u->ty[dk], "") : LLVMBuildFPToUI(b, x.v, u->ty[dk], "");
++			zjl_def(u, def, zjl_mk(r, dk), IR_IS_TYPE_SIGNED(dst));
++			return;
++		}
++		case IR_FP2FP:
++			zjl_def(u, def, zjl_mk(zjl_conv(u, x, zjl_kind(dst, 0), 0), zjl_kind(dst, 0)), 0);
++			return;
++		default:
++			zjl_fail(u, "conversion");
++	}
++}
++
++static void zjl_overflow_math(zjl_unit *u, ir_ref def, ir_insn *insn)
++{
++	ir_ctx *ctx = u->ctx;
++	ir_use_list *use_list = &ctx->use_lists[def];
++	ir_ref n, *p, overflow = IR_UNUSED;
++	uint8_t k = zjl_kind(insn->type, 1);
++	bool sign = IR_IS_TYPE_SIGNED(insn->type);
++	const char *name;
++	LLVMValueRef args[2], r;
++
++	for (n = use_list->count, p = &ctx->use_edges[use_list->refs]; n > 0; p++, n--) {
++		if (ctx->ir_base[*p].op == IR_OVERFLOW) {
++			overflow = *p;
++			break;
++		}
++	}
++	switch (insn->op) {
++		case IR_ADD_OV: name = sign ? "llvm.sadd.with.overflow" : "llvm.uadd.with.overflow"; break;
++		case IR_SUB_OV: name = sign ? "llvm.ssub.with.overflow" : "llvm.usub.with.overflow"; break;
++		default:        name = sign ? "llvm.smul.with.overflow" : "llvm.umul.with.overflow"; break;
++	}
++	args[0] = zjl_get(u, insn->op1, k);
++	args[1] = zjl_get(u, insn->op2, k);
++	{
++		LLVMTypeRef pair[2] = {u->ty[k], u->ty[ZJL_I1]};
++
++		r = zjl_intrinsic(u, name, k, LLVMStructTypeInContext(u->c, pair, 2, 0), args, 2);
++	}
++	if (zjl_has_def(u, def)) {
++		zjl_def(u, def, zjl_mk(LLVMBuildExtractValue(u->b, r, 0, ""), k), sign);
++	}
++	if (overflow && zjl_has_def(u, overflow)) {
++		zjl_def(u, overflow, zjl_mk(LLVMBuildExtractValue(u->b, r, 1, ""), ZJL_I1), 0);
++	}
++}
++
++/* Return x from the function being built, converted to its return type. */
++static void zjl_ret(zjl_unit *u, zjl_v x)
++{
++	if (u->ret_k == ZJL_VOID) {
++		LLVMBuildRetVoid(u->b);
++	} else if (!x.v) {
++		LLVMBuildRet(u->b, LLVMConstNull(u->ty[u->ret_k]));
++	} else {
++		LLVMBuildRet(u->b, zjl_conv(u, x, u->ret_k, 0));
++	}
++	u->terminated = 1;
++}
++
++static zjl_v zjl_call_expr(zjl_unit *u, ir_insn *insn)
++{
++	ir_ctx *ctx = u->ctx;
++	int j, n = insn->inputs_count, nargs = 0;
++	ir_ref callee = insn->op2;
++	LLVMTypeRef types[64];
++	LLVMValueRef args[64], f, call;
++	uint8_t rk = insn->type == IR_VOID ? ZJL_VOID : zjl_kind(insn->type, 0);
++
++	if (n < 3) {
++		/* An argument-less call may target a stub, which natively reads the
++		 * fixed registers; stubs take them as arguments here.  Fil-C ignores
++		 * arguments a callee does not declare. */
++		types[0] = types[1] = u->ty[ZJL_PTR];
++		args[0] = zjl_load_reg(u, u->fp);
++		args[1] = zjl_load_reg(u, u->ip);
++		nargs = 2;
++	} else if (n - 2 > 64) {
++		zjl_fail(u, "too many arguments");
++		return zjl_mk(NULL, ZJL_VOID);
++	}
++	for (j = 3; j <= n; j++, nargs++) {
++		ir_ref arg = ir_insn_op(insn, j);
++		uint8_t k;
++
++		if (!IR_IS_CONST_REF(arg) && ctx->ir_base[arg].op == IR_ARGVAL) {
++			arg = ctx->ir_base[arg].op1;
++		}
++		k = zjl_kind(ctx->ir_base[arg].type, 0);
++		types[nargs] = u->ty[k];
++		args[nargs] = zjl_get(u, arg, k);
++	}
++	if (!IR_IS_CONST_REF(callee) && ctx->ir_base[callee].op == IR_PROTO) {
++		callee = ctx->ir_base[callee].op1;
++	}
++	f = zjl_get(u, callee, ZJL_PTR);
++	call = LLVMBuildCall2(u->b, LLVMFunctionType(u->ty[rk], types, nargs, 0), f, args, nargs, "");
++	return zjl_mk(rk == ZJL_VOID ? NULL : call, rk);
++}
++
++/* A failed guard of a trace: hand the snapshot's values to zjc_trace_exit
++ * in an emulated register buffer (see zjc_emit_exit). */
++static void zjl_emit_exit(zjl_unit *u, ir_insn *jmp, uintptr_t addr)
++{
++	ir_ctx *ctx = u->ctx;
++	ir_ref snap_ref = jmp->op1;
++	ir_insn *snap = &ctx->ir_base[snap_ref];
++	int gpr = 0, fpr = 0;
++	ir_ref i;
++	LLVMValueRef args[3], buf;
++	LLVMTypeRef params[3];
++
++	if (!u->exit_buf) {
++		u->exit_buf = LLVMBuildAlloca(u->ab, LLVMArrayType(u->ty[ZJL_PTR], 32), "");
++	}
++	buf = u->exit_buf;
++	LLVMBuildStore(u->b, zjl_load_reg(u, u->ip),
++		zjl_gep(u, buf, zjl_iconst(u, ZJL_I64, ZREG_RX * 8)));
++	if (snap->op == IR_SNAPSHOT) {
++		int8_t *regs = ctx->regs[snap_ref];
++
++		for (i = 2; i <= snap->inputs_count; i++) {
++			ir_ref ref = ir_insn_op(snap, i);
++
++			regs[i] = IR_REG_NONE;
++			if (ref > 0) {
++				ir_type t = ctx->ir_base[ref].type;
++
++				if (IR_IS_TYPE_FP(t)) {
++					if (fpr >= 16) {
++						zjl_fail(u, "too many FP values in a snapshot");
++						return;
++					}
++					regs[i] = ZREG_FIRST_FPR + fpr;
++					LLVMBuildStore(u->b, zjl_get(u, ref, ZJL_DBL),
++						zjl_gep(u, buf, zjl_iconst(u, ZJL_I64, 128 + 8 * fpr++)));
++				} else {
++					if (gpr >= ZREG_FP) {
++						zjl_fail(u, "too many values in a snapshot");
++						return;
++					}
++					regs[i] = gpr;
++					LLVMBuildStore(u->b, zjl_get(u, ref, ZJL_PTR),
++						zjl_gep(u, buf, zjl_iconst(u, ZJL_I64, 8 * gpr++)));
++				}
++			}
++		}
++		addr = (uintptr_t)zend_jit_snapshot_handler(ctx, snap_ref, snap, (void*)addr);
++	}
++	zjc_register((void*)zjc_trace_exit);
++	params[0] = params[2] = u->ty[ZJL_PTR];
++	params[1] = u->ty[ZJL_I32];
++	args[0] = zjl_load_reg(u, u->fp);
++	args[1] = zjl_iconst(u, ZJL_I32, (uint32_t)(addr - ZJC_EXIT_BASE));
++	args[2] = buf;
++	zjl_ret(u, zjl_mk(LLVMBuildCall2(u->b, LLVMFunctionType(u->ty[ZJL_PTR], params, 3, 0),
++		zjl_addr(u, (uintptr_t)zjc_trace_exit).v, args, 3, ""), ZJL_PTR));
++}
++
++/* A jump to code outside this function (a stub or a handler): call it with
++ * the fixed registers and return what it returns.  Jumps to trace exits
++ * deoptimize instead. */
++static void zjl_jump_to(zjl_unit *u, ir_insn *jmp, ir_ref target)
++{
++	ir_insn *t = &u->ctx->ir_base[target];
++	LLVMTypeRef params[2] = {u->ty[ZJL_PTR], u->ty[ZJL_PTR]};
++	LLVMValueRef args[2], call;
++
++	if (IR_IS_CONST_REF(target) && t->type == IR_ADDR
++	 && t->val.addr >= ZJC_EXIT_BASE && t->val.addr < ZJC_EXIT_BASE + ZEND_JIT_TRACE_MAX_EXITS) {
++		zjl_emit_exit(u, jmp, t->val.addr);
++		return;
++	}
++	args[0] = zjl_load_reg(u, u->fp);
++	args[1] = zjl_load_reg(u, u->ip);
++	call = LLVMBuildCall2(u->b, LLVMFunctionType(u->ty[u->ret_k], params, 2, 0),
++		zjl_get(u, target, ZJL_PTR), args, 2, "");
++	zjl_ret(u, zjl_mk(u->ret_k == ZJL_VOID ? NULL : call, u->ret_k));
++}
++
++static int zjl_dessa_move(ir_ctx *ctx, uint8_t type, ir_ref from, ir_ref to, void *data)
++{
++	zjl_unit *u = data;
++	zjl_v x;
++
++	if (from) {
++		x = zjl_val(u, from);
++	} else {
++		x = zjl_mk(LLVMBuildLoad2(u->b, u->ty[u->tmp_k[type]], u->tmp[type], ""), u->tmp_k[type]);
++	}
++	if (to) {
++		zjl_def(u, to, x, IR_IS_TYPE_SIGNED(type));
++	} else {
++		if (!u->tmp[type]) {
++			u->tmp_k[type] = zjl_kind(type, 0);
++			u->tmp[type] = zjl_alloca(u, u->ty[u->tmp_k[type]]);
++		}
++		LLVMBuildStore(u->b, zjl_conv(u, x, u->tmp_k[type], IR_IS_TYPE_SIGNED(type)), u->tmp[type]);
++	}
++	return 1;
++}
++
++static void zjl_switch(zjl_unit *u, uint32_t b, ir_insn *insn)
++{
++	ir_ctx *ctx = u->ctx;
++	ir_block *bb = &ctx->cfg_blocks[b];
++	uint32_t n, *p, def_block = 0;
++	uint8_t k = zjl_kind(ctx->ir_base[insn->op2].type, 1);
++	LLVMValueRef sw, x = zjl_get(u, insn->op2, k);
++	LLVMBasicBlockRef dflt;
++
++	for (n = bb->successors_count, p = &ctx->cfg_edges[bb->successors]; n != 0; p++, n--) {
++		if (ctx->ir_base[ctx->cfg_blocks[*p].start].op != IR_CASE_VAL) {
++			def_block = *p;
++		}
++	}
++	if (def_block) {
++		dflt = u->bbs[def_block];
++	} else {
++		dflt = LLVMAppendBasicBlockInContext(u->c, u->fn, "");
++	}
++	sw = LLVMBuildSwitch(u->b, x, dflt, bb->successors_count);
++	for (n = bb->successors_count, p = &ctx->cfg_edges[bb->successors]; n != 0; p++, n--) {
++		ir_insn *use_insn = &ctx->ir_base[ctx->cfg_blocks[*p].start];
++
++		if (use_insn->op == IR_CASE_VAL) {
++			LLVMAddCase(sw, zjl_get(u, use_insn->op2, k), u->bbs[*p]);
++		}
++	}
++	if (!def_block) {
++		LLVMPositionBuilderAtEnd(u->b, dflt);
++		LLVMBuildUnreachable(u->b);
++	}
++	u->terminated = 1;
++}
++
++/* Emit one IR function.  With ENTRY blocks the body is internal and takes
++ * the entry number as an extra argument; exported wrappers "zjl_f_e<k>"
++ * enter it at the START (k=0) or the k-th ENTRY.  Returns the number of
++ * entries or 0. */
++static int zjl_emit_func(zjl_unit *u)
++{
++	ir_ctx *ctx = u->ctx;
++	ir_ref i, n, *p;
++	ir_insn *insn;
++	ir_use_list *use_list;
++	uint32_t b, entries = 0, nparams = 0;
++	ir_block *bb;
++	ir_ref params[32];
++	LLVMTypeRef ptypes[33];
++	LLVMBasicBlockRef alloca_bb, dispatch_bb;
++	bool skip_prologue = 0;
++	ir_type ret = zjc_ret_type(ctx);
++
++	u->ret_k = ret == IR_VOID ? ZJL_VOID : zjl_kind(ret, 0);
++
++	/* Parameters, by number */
++	use_list = &ctx->use_lists[1];
++	for (n = use_list->count, p = &ctx->use_edges[use_list->refs]; n > 0; p++, n--) {
++		insn = &ctx->ir_base[*p];
++		if (insn->op == IR_PARAM) {
++			if (insn->op3 < 1 || insn->op3 > 32) {
++				zjl_fail(u, "parameter number");
++				return 0;
++			}
++			params[insn->op3 - 1] = *p;
++			if ((uint32_t)insn->op3 > nparams) {
++				nparams = insn->op3;
++			}
++		}
++	}
++	for (i = 0; i < (ir_ref)nparams; i++) {
++		ptypes[i] = u->ty[zjl_kind(ctx->ir_base[params[i]].type, 0)];
++	}
++	if (!nparams) {
++		/* Prologue-less code (stubs) gets the fixed registers from its jumper. */
++		skip_prologue = 1;
++		ptypes[0] = ptypes[1] = u->ty[ZJL_PTR];
++		nparams = 2;
++	}
++	for (b = 1, bb = ctx->cfg_blocks + b; b <= ctx->cfg_blocks_count; b++, bb++) {
++		if (bb->flags & IR_BB_ENTRY) {
++			entries++;
++		}
++	}
++	ptypes[nparams] = u->ty[ZJL_I32];
++	u->fn = LLVMAddFunction(u->m, entries ? "zjl_body" : "zjl_f",
++		LLVMFunctionType(u->ty[u->ret_k], ptypes, nparams + (entries ? 1 : 0), 0));
++	if (entries) {
++		LLVMSetLinkage(u->fn, LLVMInternalLinkage);
++	}
++
++	alloca_bb = LLVMAppendBasicBlockInContext(u->c, u->fn, "");
++	dispatch_bb = LLVMAppendBasicBlockInContext(u->c, u->fn, "");
++	u->bbs = ir_mem_calloc(ctx->cfg_blocks_count + 1, sizeof(LLVMBasicBlockRef));
++	for (b = 1; b <= ctx->cfg_blocks_count; b++) {
++		u->bbs[b] = LLVMAppendBasicBlockInContext(u->c, u->fn, "");
++	}
++	LLVMPositionBuilderAtEnd(u->ab, alloca_bb);
++	LLVMPositionBuilderAtEnd(u->b, dispatch_bb);
++
++	u->fp = zjl_alloca(u, u->ty[ZJL_PTR]);
++	u->ip = zjl_alloca(u, u->ty[ZJL_PTR]);
++	u->sp = zjl_alloca(u, u->ty[ZJL_PTR]);
++	{
++		LLVMValueRef area = LLVMBuildAlloca(u->ab, LLVMArrayType(u->ty[ZJL_I8], 1024), "");
++
++		LLVMSetAlignment(area, 16);
++		LLVMBuildStore(u->b, area, u->sp);
++	}
++	if (skip_prologue) {
++		LLVMBuildStore(u->b, LLVMGetParam(u->fn, 0), u->fp);
++		LLVMBuildStore(u->b, LLVMGetParam(u->fn, 1), u->ip);
++	} else {
++		LLVMBuildStore(u->b, LLVMConstNull(u->ty[ZJL_PTR]), u->fp);
++		LLVMBuildStore(u->b, LLVMConstNull(u->ty[ZJL_PTR]), u->ip);
++		for (i = 0; i < (ir_ref)nparams; i++) {
++			if (zjl_has_def(u, params[i])) {
++				zjl_def(u, params[i], zjl_mk(LLVMGetParam(u->fn, i),
++					zjl_kind(ctx->ir_base[params[i]].type, 0)), 0);
++			}
++		}
++	}
++
++	/* Entry dispatch */
++	if (entries) {
++		LLVMValueRef sw = LLVMBuildSwitch(u->b, LLVMGetParam(u->fn, nparams), u->bbs[1], entries);
++		uint32_t e = 0;
++
++		ctx->entries_count = entries;
++		ctx->entries = ir_mem_malloc(entries * sizeof(uint32_t));
++		for (b = 1, bb = ctx->cfg_blocks + b; b <= ctx->cfg_blocks_count; b++, bb++) {
++			if (bb->flags & IR_BB_ENTRY) {
++				LLVMBasicBlockRef osr = LLVMAppendBasicBlockInContext(u->c, u->fn, "");
++
++				ctx->entries[e++] = bb->start;
++				LLVMAddCase(sw, zjl_iconst(u, ZJL_I32, e), osr);
++				LLVMPositionBuilderAtEnd(u->b, osr);
++				if (ctx->binding && !skip_prologue) {
++					/* The interpreter enters here mid-function (OSR): reload
++					 * the values bound to VM frame slots, as the native backend
++					 * does (ir_emit_osr_entry_loads). */
++					ir_ref r;
++					ir_insn *ri;
++					LLVMValueRef frame = zjl_get(u, params[0], ZJL_PTR);
++
++					for (r = 1, ri = ctx->ir_base + 1; r < ctx->insns_count;) {
++						if (ctx->vregs[r] && ri->type != IR_VOID && ri->op != IR_PARAM && ri->op != IR_VAR) {
++							ir_ref off = ir_binding_find(ctx, r);
++
++							if (off < 0) {
++								uint8_t k = zjl_kind(ri->type, 0);
++
++								zjl_def(u, r, zjl_mk(LLVMBuildLoad2(u->b, u->ty[k],
++									zjl_gep(u, frame, zjl_iconst(u, ZJL_I64, -off)), ""), k), 0);
++							}
++						}
++						n = ir_insn_len(ri);
++						r += n;
++						ri += n;
++					}
++				}
++				LLVMBuildBr(u->b, u->bbs[b]);
++			}
++		}
++	} else {
++		LLVMBuildBr(u->b, u->bbs[1]);
++	}
++
++	for (b = 1, bb = ctx->cfg_blocks + b; b <= ctx->cfg_blocks_count; b++, bb++) {
++		LLVMPositionBuilderAtEnd(u->b, u->bbs[b]);
++		u->terminated = 0;
++		for (i = bb->start, insn = ctx->ir_base + i; i <= bb->end;) {
++			if (u->terminated) {
++				/* only UNREACHABLE may follow a terminator in a block */
++				if (insn->op != IR_UNREACHABLE) {
++					zjl_fail(u, "code after a terminator");
++				}
++				break;
++			}
++			switch (insn->op) {
++				case IR_START: case IR_BEGIN: case IR_IF_TRUE: case IR_IF_FALSE:
++				case IR_CASE_VAL: case IR_CASE_DEFAULT: case IR_MERGE: case IR_LOOP_BEGIN:
++				case IR_PARAM: case IR_VAR: case IR_PHI:
++				case IR_ARGVAL: case IR_ENTRY: case IR_SNAPSHOT: case IR_OVERFLOW:
++				case IR_AFREE: case IR_BLOCK_END:
++					break;
++				case IR_UNREACHABLE:
++					LLVMBuildUnreachable(u->b);
++					u->terminated = 1;
++					break;
++				case IR_EQ: case IR_NE: case IR_LT: case IR_GE: case IR_LE: case IR_GT:
++				case IR_ULT: case IR_UGE: case IR_ULE: case IR_UGT:
++					zjl_cmp(u, i, insn);
++					break;
++				case IR_ADD: case IR_SUB: case IR_MUL: case IR_DIV: case IR_MOD:
++				case IR_AND: case IR_OR: case IR_XOR:
++				case IR_SHL: case IR_SHR: case IR_SAR:
++				case IR_MIN: case IR_MAX:
++					zjl_binary(u, i, insn);
++					break;
++				case IR_NEG: case IR_NOT: case IR_ABS:
++				case IR_BSWAP: case IR_CTPOP: case IR_CTLZ: case IR_CTTZ:
++					zjl_unary(u, i, insn);
++					break;
++				case IR_COND:
++					if (zjl_has_def(u, i)) {
++						uint8_t k = zjl_kind(insn->type, zjc_is_intlike(&u->an, i));
++						LLVMValueRef c = zjl_get(u, insn->op1, ZJL_I1);
++						LLVMValueRef x = zjl_get(u, insn->op2, k);
++						LLVMValueRef y = zjl_get(u, insn->op3, k);
++
++						zjl_def(u, i, zjl_mk(LLVMBuildSelect(u->b, c, x, y, ""), k), 0);
++					}
++					break;
++				case IR_SEXT: case IR_ZEXT: case IR_TRUNC: case IR_BITCAST:
++				case IR_INT2FP: case IR_FP2INT: case IR_FP2FP:
++					if (insn->op == IR_BITCAST && insn->type == ctx->ir_base[insn->op1].type) {
++						if (zjl_has_def(u, i)) {
++							zjl_def(u, i, zjl_val(u, insn->op1), zjl_signed(u, insn->op1));
++						}
++					} else {
++						zjl_conv_insn(u, i, insn);
++					}
++					break;
++				case IR_PROTO: case IR_COPY: case IR_PI:
++					if (zjl_has_def(u, i)) {
++						zjl_def(u, i, zjl_val(u, insn->op1), zjl_signed(u, insn->op1));
++					}
++					break;
++				case IR_ADD_OV: case IR_SUB_OV: case IR_MUL_OV:
++					zjl_overflow_math(u, i, insn);
++					break;
++				case IR_RETURN:
++					zjl_ret(u, insn->op2 ? zjl_val(u, insn->op2) : zjl_mk(NULL, ZJL_VOID));
++					break;
++				case IR_END:
++				case IR_LOOP_END:
++					if (bb->flags & IR_BB_DESSA_MOVES) {
++						ir_gen_dessa_moves(ctx, b, zjl_dessa_move, u);
++					}
++					LLVMBuildBr(u->b, u->bbs[ctx->cfg_edges[bb->successors]]);
++					u->terminated = 1;
++					break;
++				case IR_IF: {
++					uint32_t tb, fb;
++
++					ir_get_true_false_blocks(ctx, b, &tb, &fb);
++					LLVMBuildCondBr(u->b, zjl_get(u, insn->op2, ZJL_I1), u->bbs[tb], u->bbs[fb]);
++					u->terminated = 1;
++					break;
++				}
++				case IR_SWITCH:
++					zjl_switch(u, b, insn);
++					break;
++				case IR_CALL: {
++					zjl_v r = zjl_call_expr(u, insn);
++
++					if (r.v && zjl_has_def(u, i)) {
++						zjl_def(u, i, r, IR_IS_TYPE_SIGNED(insn->type));
++					}
++					break;
++				}
++				case IR_TAILCALL:
++					zjl_ret(u, zjl_call_expr(u, insn));
++					break;
++				case IR_IJMP:
++					zjl_jump_to(u, insn, insn->op2);
++					break;
++				case IR_GUARD:
++				case IR_GUARD_NOT: {
++					LLVMBasicBlockRef fail = LLVMAppendBasicBlockInContext(u->c, u->fn, "");
++					LLVMBasicBlockRef cont = LLVMAppendBasicBlockInContext(u->c, u->fn, "");
++					LLVMValueRef c = zjl_get(u, insn->op2, ZJL_I1);
++
++					if (insn->op == IR_GUARD) {
++						LLVMBuildCondBr(u->b, c, cont, fail);
++					} else {
++						LLVMBuildCondBr(u->b, c, fail, cont);
++					}
++					LLVMPositionBuilderAtEnd(u->b, fail);
++					zjl_jump_to(u, insn, insn->op3);
++					LLVMPositionBuilderAtEnd(u->b, cont);
++					u->terminated = 0;
++					break;
++				}
++				case IR_LOAD:
++				case IR_LOAD_v: {
++					uint8_t k = zjl_kind(insn->type, 0);
++					LLVMValueRef l = LLVMBuildLoad2(u->b, u->ty[k], zjl_get(u, insn->op2, ZJL_PTR), "");
++
++					if (insn->op == IR_LOAD_v) {
++						LLVMSetVolatile(l, 1);
++					}
++					if (zjl_has_def(u, i)) {
++						zjl_def(u, i, zjl_mk(l, k), IR_IS_TYPE_SIGNED(insn->type));
++					}
++					break;
++				}
++				case IR_STORE:
++				case IR_STORE_v: {
++					uint8_t k = zjl_kind(ctx->ir_base[insn->op3].type, 0);
++					LLVMValueRef v = zjl_get(u, insn->op3, k);
++					LLVMValueRef s = LLVMBuildStore(u->b, v, zjl_get(u, insn->op2, ZJL_PTR));
++
++					if (insn->op == IR_STORE_v) {
++						LLVMSetVolatile(s, 1);
++					}
++					break;
++				}
++				case IR_VADDR:
++					if (zjl_has_def(u, i)) {
++						zjl_def(u, i, zjl_mk(zjl_slot(u, insn->op1), ZJL_PTR), 0);
++					}
++					break;
++				case IR_VLOAD:
++				case IR_VLOAD_v:
++					if (zjl_has_def(u, i)) {
++						LLVMValueRef var = zjl_slot(u, insn->op2);
++
++						zjl_def(u, i, zjl_mk(LLVMBuildLoad2(u->b, u->ty[u->slot_k[insn->op2]], var, ""),
++							u->slot_k[insn->op2]), IR_IS_TYPE_SIGNED(insn->type));
++					}
++					break;
++				case IR_VSTORE:
++				case IR_VSTORE_v: {
++					LLVMValueRef var = zjl_slot(u, insn->op2);
++
++					LLVMBuildStore(u->b, zjl_get(u, insn->op3, u->slot_k[insn->op2]), var);
++					break;
++				}
++				case IR_ALLOCA:
++					if (zjl_has_def(u, i)) {
++						LLVMValueRef a = LLVMBuildArrayAlloca(u->b, u->ty[ZJL_I8], zjl_get(u, insn->op2, ZJL_I64), "");
++
++						LLVMSetAlignment(a, 16);
++						zjl_def(u, i, zjl_mk(a, ZJL_PTR), 0);
++					}
++					break;
++				case IR_BLOCK_BEGIN:
++					/* Stack memory is reclaimed when the function returns. */
++					if (zjl_has_def(u, i)) {
++						zjl_def(u, i, zjl_mk(LLVMConstNull(u->ty[ZJL_PTR]), ZJL_PTR), 0);
++					}
++					break;
++				case IR_RLOAD:
++					if (zjl_has_def(u, i)) {
++						zjl_def(u, i, zjl_mk(zjl_load_reg(u, zjl_reg(u, insn->op2)), ZJL_PTR), 0);
++					}
++					break;
++				case IR_RSTORE:
++					LLVMBuildStore(u->b, zjl_get(u, insn->op2, ZJL_PTR), zjl_reg(u, insn->op3));
++					break;
++				case IR_TRAP:
++					zjl_intrinsic(u, "llvm.trap", ZJL_VOID, u->ty[ZJL_VOID], NULL, 0);
++					break;
++				default:
++					if (zjc_env("PHP_JIT_C_VERBOSE")) {
++						fprintf(stderr, "zend_jit_llvm: unsupported IR_%s\n", ir_op_name[insn->op]);
++					}
++					u->failed = 1;
++					break;
++			}
++			if (u->failed) {
++				return 0;
++			}
++			n = ir_insn_len(insn);
++			i += n;
++			insn += n;
++		}
++		if (!u->terminated) {
++			LLVMBuildUnreachable(u->b);
++		}
++	}
++	LLVMPositionBuilderAtEnd(u->ab, alloca_bb);
++	LLVMBuildBr(u->ab, dispatch_bb);
++
++	/* Exported entry points */
++	if (entries) {
++		for (b = 0; b <= entries; b++) {
++			char name[32];
++			LLVMValueRef w, args[33], call;
++			LLVMTypeRef wt = LLVMFunctionType(u->ty[u->ret_k], ptypes, nparams, 0);
++
++			snprintf(name, sizeof(name), "zjl_f_e%u", b);
++			w = LLVMAddFunction(u->m, name, wt);
++			LLVMPositionBuilderAtEnd(u->b, LLVMAppendBasicBlockInContext(u->c, w, ""));
++			for (i = 0; i < (ir_ref)nparams; i++) {
++				args[i] = LLVMGetParam(w, i);
++			}
++			args[nparams] = zjl_iconst(u, ZJL_I32, b);
++			call = LLVMBuildCall2(u->b, LLVMFunctionType(u->ty[u->ret_k], ptypes, nparams + 1, 0),
++				u->fn, args, nparams + 1, "");
++			if (u->ret_k == ZJL_VOID) {
++				LLVMBuildRetVoid(u->b);
++			} else {
++				LLVMBuildRet(u->b, call);
++			}
++		}
++	}
++	return entries + 1;
++}
++
++/* Compile ctx (already scheduled) with LLVM.  Same contract as zjc_compile. */
++static void *zjl_compile(ir_ctx *ctx, const char *comment, void ***entries)
++{
++	zjl_unit u;
++	FilLLVMJITRef jit;
++	FilLLVMJITModuleRef mod;
++	const char *opt = zjc_env("PHP_JIT_LLVM_OPT");
++	int nentries;
++	uint32_t i;
++	void *entry = NULL;
++	double t0 = zjc_now(), t1, t_start = t0;
++
++	memset(&u, 0, sizeof(u));
++	u.ctx = ctx;
++	u.an.ctx = ctx;
++	zjc_analyze(&u.an);
++	if (!ctx->regs) {
++		ctx->regs = ir_mem_malloc(sizeof(ir_regs) * ctx->insns_count);
++		memset(ctx->regs, IR_REG_NONE, sizeof(ir_regs) * ctx->insns_count);
++	}
++	u.slot = ir_mem_calloc(ctx->insns_count, sizeof(LLVMValueRef));
++	u.slot_k = ir_mem_calloc(ctx->insns_count, 1);
++
++	u.c = LLVMContextCreate();
++	u.m = LLVMModuleCreateWithNameInContext("zend_jit", u.c);
++	u.b = LLVMCreateBuilderInContext(u.c);
++	u.ab = LLVMCreateBuilderInContext(u.c);
++	u.ty[ZJL_I1] = LLVMInt1TypeInContext(u.c);
++	u.ty[ZJL_I8] = LLVMInt8TypeInContext(u.c);
++	u.ty[ZJL_I16] = LLVMInt16TypeInContext(u.c);
++	u.ty[ZJL_I32] = LLVMInt32TypeInContext(u.c);
++	u.ty[ZJL_I64] = LLVMInt64TypeInContext(u.c);
++	u.ty[ZJL_PTR] = LLVMPointerTypeInContext(u.c, 0);
++	u.ty[ZJL_DBL] = LLVMDoubleTypeInContext(u.c);
++	u.ty[ZJL_FLT] = LLVMFloatTypeInContext(u.c);
++	u.ty[ZJL_VOID] = LLVMVoidTypeInContext(u.c);
++
++	nentries = zjl_emit_func(&u);
++	ir_mem_free(u.slot);
++	ir_mem_free(u.slot_k);
++	ir_mem_free(u.bbs);
++	ir_mem_free(u.an.intlike);
++	if (!nentries || u.failed) {
++		/* The module is dropped with its wrappers; nothing was compiled. */
++		free(u.k_regs);
++		zjc_stats.failed++;
++		return NULL;
++	}
++	if (zjc_env("PHP_JIT_LLVM_DUMP")) {
++		fprintf(stderr, "; %s\n", comment ? comment : "zend_jit");
++		LLVMDumpModule(u.m);
++	}
++
++	jit = FilLLVMJIT_Create();
++	if (opt && *opt) {
++		FilLLVMJIT_SetOption(jit, "opt-level", opt);
++	}
++	for (i = 0; i < u.k_count; i++) {
++		char name[32];
++
++		snprintf(name, sizeof(name), "zjk%u", u.k_regs[i]);
++		FilLLVMJIT_SetGlobalMapping(jit, name, zjc_reg_ptrs[u.k_regs[i]]);
++	}
++	free(u.k_regs);
++	t1 = zjc_now();
++	zjc_stats.t_emit += t1 - t0;
++	t0 = t1;
++
++	mod = FilLLVMJIT_CompileModule(jit, u.m);
++	if (!mod) {
++		zjc_stats.failed++;
++		return NULL;
++	}
++	if (zjl_modules_count == zjl_modules_cap) {
++		zjl_modules_cap = zjl_modules_cap ? zjl_modules_cap * 2 : 256;
++		zjl_modules = realloc(zjl_modules, zjl_modules_cap * sizeof(FilLLVMJITModuleRef));
++	}
++	zjl_modules[zjl_modules_count++] = mod;
++
++	if (nentries == 1) {
++		entry = FilLLVMJIT_GetPointerToGlobal(mod, "zjl_f");
++	} else {
++		entry = FilLLVMJIT_GetPointerToGlobal(mod, "zjl_f_e0");
++	}
++	if (entries) {
++		*entries = NULL;
++		if (nentries > 1) {
++			*entries = malloc((nentries - 1) * sizeof(void*));
++			for (i = 1; i < (uint32_t)nentries; i++) {
++				char name[32];
++
++				snprintf(name, sizeof(name), "zjl_f_e%u", i);
++				(*entries)[i - 1] = FilLLVMJIT_GetPointerToGlobal(mod, name);
++			}
++		}
++	}
++	t1 = zjc_now();
++	zjc_stats.t_compile += t1 - t0;
++	zjc_stats.misses++;
++	if (zjc_env("PHP_JIT_C_VERBOSE")) {
++		fprintf(stderr, "zend_jit_llvm: compiled %s in %.1f ms (LLVM %.1f ms)\n", zjc_log_name ? zjc_log_name : comment ? comment : "?",
++			(t1 - t_start) * 1e3, (t1 - t0) * 1e3);
++	}
++	if (zjc_env("PHP_JIT_C_LOG")) {
++		FILE *log = fopen(zjc_env("PHP_JIT_C_LOG"), "a");
++
++		if (log) {
++			fprintf(log, "%d llvm %u %.3f %s\n", (int)getpid(), ctx->insns_count, (t1 - t_start) * 1e3,
++				zjc_log_name ? zjc_log_name : comment ? comment : "?");
++			fclose(log);
++		}
++	}
++	return entry;
++}
 diff --git a/ext/opcache/jit/zend_jit_trace.c b/ext/opcache/jit/zend_jit_trace.c
 index c9f35683..a9d2f8ac 100644
 --- a/ext/opcache/jit/zend_jit_trace.c
