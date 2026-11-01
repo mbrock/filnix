@@ -483,7 +483,8 @@ lower_thunk(Symbols, t(F,Sig,Ret,Ks),
     adapter_return(Ret,Result), ret_kinds(Ret,RKs), length(RKs,NR), Need is 8*NR.
 
 % Native saves are indexed by flattened word, generic cells by value.
-% The caller, not these saves, roots every incoming capability.
+% These saves are not roots: until the callee's entry records them, an
+% incoming capability is rooted only by its caller (abi-findings.md).
 thunk_cells([], _, _, []).
 thunk_cells([K|Ks], I, W, [cell(I,B,saved(W),Lower)|Cells]) :-
     payload_class(K,B),

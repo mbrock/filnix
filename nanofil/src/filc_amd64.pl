@@ -2514,8 +2514,9 @@ saved_operand(saved(I), mem(Off,rbp)) :- Off is -32-8*I.
    else transports its generic cells and result channels. Every incoming word,
    integer or XMM, is saved below rbp before the getter can exit or
    clobber caller-saved registers; rbx holds the thread (r12 the return
-   buffer) and -24(%rbp) the function object. Pointer authority stays
-   rooted by the caller. */
+   buffer) and -24(%rbp) the function object. The saves are not roots:
+   until the callee's entry records them, pointer authority is rooted
+   only by the caller (abi-findings.md). */
 thunk(thunk(F,Ref,Sig,Ts,Cells,ArgsSize,Result,Need)) -->
     { abi_symbol(entry(Sig),F,FI), abi_symbol(getter,F,Getter),
       atom_concat('.L',FI,G),atom_concat(G,'.generic',Generic),

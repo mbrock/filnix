@@ -3427,6 +3427,9 @@ elab(member(E, F), Env, X) :-
     ).
 elab(arrow(E, F), Env, X) :-                                % 6.5.2.3p4
     elab(member(un(deref, E), F), Env, X).
+% filc_test_support.h's zhas_union(p) only blocks optimizations in
+% filcc, which erases the call (FilPizlonator); no library defines it.
+elab(call(id(zhas_union), [E]), _, val(void, builtin(zhas_union, [E]))) :- !.
 elab(call(id('__builtin_constant_p'), [E]), Env, X) :-
     \+ lookup_ordinary(Env, '__builtin_constant_p', _), !,
     builtin_constant_p(E, Env, V),

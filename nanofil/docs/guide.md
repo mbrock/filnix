@@ -1453,6 +1453,7 @@ code or into the reference documents.
 | [factorings.md](factorings.md) | history | completed refactorings and what each bought |
 | [handoff.md](handoff.md) | history | the original design notes |
 | [corpus.md](corpus.md), [survey.md](survey.md), [lua.md](lua.md) | measurement | what compiles, and why the rest does not |
+| [filc-tests.md](filc-tests.md) | measurement | upstream Fil-C's test suite built by nanofil, failures by kind |
 | [arith.md](arith.md) | measurement | constant folding against the IR and clang |
 | [hosts.md](hosts.md) | measurement | other Prolog hosts |
 

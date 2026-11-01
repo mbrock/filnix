@@ -588,7 +588,8 @@ init_decl(_, _, _, Env, Env).
 init_def(Loc, Sym, Kind-Prio, Env0, Env) :-
     (   Prio = bad
     ->  sema_error(Loc, 'the ~w priority of ~w is not an integer from 0 to 65535', [Kind, Sym])
-    ;   put_def(init(Kind, Sym), Prio, Env0, Env)
+    ;   next_id(N, Env0, Env1),
+        put_def(init(Kind, Sym), N-Prio, Env1, Env)
     ).
 
 % init_attr(+Specs, -Kind, -Priority) is nondet: Specs carry GNU's
@@ -740,7 +741,7 @@ readonly_global(_, _, _, Env, Env).
 % defines the object unless it is an extern without an initializer. A
 % thread-local definition is data of linkage tls(L) (ir.pl).
 global_decl(Loc, d(Name, Type1, Storage0, Asm, Init), Env0, Env) :-
-    ( Asm = asm(Sym) -> true ; Sym = Name ),
+    declared_symbol(Name, Asm, Env0, Sym),
     redeclared(Loc, Name, Sym, Type1, Env0, Type0),
     qualified_redeclared(Loc, Name, Sym, Type0, Env0, Env00),
     (   Storage0 = thread_local(Storage) -> Thread = tls ; Storage = Storage0, Thread = none ),
@@ -767,6 +768,25 @@ global_decl(Loc, d(Name, Type1, Storage0, Asm, Init), Env0, Env) :-
             readonly_global(Thread, Name, Sym, Env2a, Env2),
             data_alignment(Name, Sym, Env2, Env)
         )
+    ).
+
+% declared_symbol(+Name, +Asm, +Env, -Sym): a declaration of Name with
+% Asm (asm(S) or none) names symbol Sym: S, else the symbol of Name's
+% visible declaration with linkage, else Name. GCC applies an asm label
+% to every later declaration and the definition (`void foo(void)
+% asm("bar"); void foo(void) {...}` defines bar, filc/tests asmname). A
+% block-scope static has no linkage, so a later extern does not take
+% its function-qualified symbol. filc_test_support.h's memmoves, which
+% filcc lowers as its builtin memmove and no library defines, are the
+% runtime's zmemmove.
+declared_symbol(_, asm(Sym), _, Sym) :- !.
+declared_symbol(Name, none, Env, Sym) :-
+    (   memberchk(Name, [zmemmove_union, zmemmove_builtin, zmemmove_builtin_volatile])
+    ->  Sym = zmemmove
+    ;   lookup_ordinary(Env, Name, Prev),
+        ( Prev = fn(_, Sym0, _) ; Prev = gvar(_, Sym0, Storage, _), Storage \== static )
+    ->  Sym = Sym0
+    ;   Sym = Name
     ).
 
 % prior_storage(+Name, +Storage0, +Env, -Storage): a function declared
@@ -882,10 +902,18 @@ func_literal(Func, Sym, Env0, Env) :-
         put_def(func_name(Func), Sym, Env1, Env)
     ).
 
+% Equal literals of a unit are one object, as clang merges them (6.4.5p7
+% leaves it unspecified): `p == "hello"` holds when p was set from
+% another "hello" (filc/tests struct).
 new_literal(Lit, Sym, Env0, Env) :-
-    next_id(N, Env0, Env1),
-    format(atom(Sym), 'str.~w', [N]),
-    put_def(lit(Sym), Lit, Env1, Env).
+    env_defs(Env0, Defs),
+    (   get_assoc(lit_of(Lit), Defs, Sym0)
+    ->  Sym = Sym0, Env = Env0
+    ;   next_id(N, Env0, Env1),
+        format(atom(Sym), 'str.~w', [N]),
+        put_def(lit(Sym), Lit, Env1, Env2),
+        put_def(lit_of(Lit), Sym, Env2, Env)
+    ).
 
 % str_elems(+Str, +ElemType, -Elems): string literal term Str can
 % initialize an array of ElemType, and Elems are its elements. Str is
@@ -930,11 +958,14 @@ global_data(Env0, Data) :-
                 findall(item(Width, const(V)), member(V, Values), Items)
             ),
             LiteralData),
-    findall(data(Name, init(Kind, Prio), 8, [item(p, sym(Sym, 0))]),
-            (   member(init(Kind, Sym)-Prio, Pairs),
+    % In declaration order (N), as clang lists them: the runtime runs
+    % .init_array forward and .fini_array backward (filc/tests exittest).
+    findall(N-data(Name, init(Kind, Prio), 8, [item(p, sym(Sym, 0))]),
+            (   member(init(Kind, Sym)-(N-Prio), Pairs),
                 format(atom(Name), '__nanofil_~w_~w', [Kind, Sym])
             ),
-            InitData),
+            Inits),
+    keysort(Inits, SortedInits), pairs_values(SortedInits, InitData),
     append([GlobalData, LiteralData, InitData], Data).
 
 % global_items(+Env0, +Done, -Data, -Env): Data are the data items of
@@ -4082,6 +4113,7 @@ builtin('__atomic_clear', [P, OE], Ctx, v(const(0), void)) --> !,
     env(Env), { const_value(OE, Env, Order, _) },
     atomic_stored(uchar, const(0), Addr, Order).
 
+builtin(zhas_union, [P], Ctx, v(const(0), void)) --> !, rval(P, Ctx, _).
 builtin('__builtin_assume_aligned', [P|Rest], Ctx, R) --> !,
     rval(P, Ctx, VP),
     rvals_discarded(Rest, Ctx),

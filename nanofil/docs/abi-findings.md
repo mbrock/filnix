@@ -113,11 +113,23 @@ a GC stress test. The same argument covers any readonly global whose
 pointers all target other GLOBAL objects. Only globals that can come to
 hold heap pointers need registration.
 
-**Callers root arguments.** The pass states it outright (comment above
-`mustTailArgsRootedByCaller`): "Fil-C callers root the objects they pass
-as arguments; callees do not root their incoming arguments (except byval
-ones)." The callee still stores lowers of values it derives, for example
-`p + i` inside `sum_loop`'s loop.
+**Callees root their arguments (staging since deluge).** Up to 0.687 the
+pass said "Fil-C callers root the objects they pass as arguments; callees
+do not root their incoming arguments (except byval ones)." Upstream
+f565a56df1f, which staging has had since it moved to deluge (November
+2026), turned that around: a callee's prologue records each incoming
+pointer's lower in its frame, and a clang caller need not keep an
+argument's lower once the call is its last use (a frame-popping musttail
+drops it before the call). nanofil's entry already roots its own:
+`receive` runs after `push_frame` and before any safepoint
+(filc_abi.pl's entry sequence) and stores each incoming lower in the
+parameter's `lowers[]` entry. A nanofil caller keeps its arguments' lowers
+in its frame across the call anyway (musttail is an ordinary call), which
+the new rule allows. A thunk's saved words are not roots, so between its
+getter call and the callee's entry an argument is rooted only if the
+caller kept it: a nanofil caller does, a clang caller may not. clang's
+own thunks are alike, and so is the open upstream question whether a
+getter can reach a safepoint there (filnix docs/upstream-updates.md).
 
 ## Sequences observed at the pin
 

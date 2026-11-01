@@ -980,7 +980,7 @@ extension_decl(Env, S, S) :-
 % starts_decl(+Env)//: lookahead only: the next tokens begin a
 % declaration, not a label.
 starts_decl(Env, S, S) :-
-    phrase(c23_attrs, S, Rest),
+    phrase(leading_attrs, S, Rest),
     \+ phrase(label_start, Rest, _),
     (   phrase(starts_type(Env), Rest, _)
     ->  true
@@ -988,6 +988,13 @@ starts_decl(Env, S, S) :-
         memberchk(K, [typedef, extern, static, auto, register, thread_local,
                       inline, noreturn, auto_type])
     ).
+
+% leading_attrs//: the GNU and C23 attributes before a block item, which
+% begin a statement, not a declaration, when no type or storage class
+% follows: `__attribute__((musttail)) return f(x);` (filc/tests musttail).
+leading_attrs --> gnu_attr(_), !, leading_attrs.
+leading_attrs --> c23_attr, !, leading_attrs.
+leading_attrs --> [].
 
 % label_start//: lookahead: the next tokens are an identifier and ':'.
 label_start, [A, B] -->
