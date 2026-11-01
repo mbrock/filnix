@@ -1,11 +1,12 @@
 {
-  "coreRev": "af813053ecb5a5ff27292bfede8d3a9e870d4c8e",
+  "coreRev": "af0c07f5ac35d12d9e657e9647049c3ac97e4eef",
   "hashes": {
     "compiler-rt-src": "sha256-VygV2Ch69c4yezba2KuNvOkTMtnhnpRTsYVgOOwJnrU=",
-    "filc-ref-src": "sha256-/yOZVbHJcxe1guURntNUyf8TnK2688u57IsWBAn4zFM=",
-    "filc0-src": "sha256-RpL6a3AL6Y4mG9mE46CAov8ym25f55BRSNM1sEVRjVk=",
+    "filc-ref-src": "sha256-pGdUn94VYy0qcqFsu8QHfYeYAmKRVR2PpVEVvh2J0Lg=",
+    "filc0-src": "sha256-iAlEGWGbUDTq4YY2kt0+SKRdH6eE4/j9NpugUgCfLT0=",
     "libcxx-src": "sha256-KdY4IetwtWUgUs+KfL8N3RO5HKJTvf6lCHhdjOfAaU8=",
-    "libpas-src": "sha256-0j6oJeyZHiOCyFEvVl8JEh622vyogQLyHYxzWDGxP5M=",
+    "libpas-src": "sha256-mFds3uHVDKuGBZsBWv414P4NtB3btLtaY5KcAkVeVDY=",
+    "llvmjit-src": "sha256-aHt1jVuVvP4AtKbe6ElKAD54ldHrn9BVsGDHQfG3b90=",
     "minilute-src": "sha256-WzBnwHzRWs40bjBEeyXAbZE0ozZi9/JlZ4MbB6MGCX8=",
     "sarcasm-src": "sha256-MyRUOInEZgQRPs6bOb/865e/HDEJ0tfPgxWKzoMHWB8=",
     "user-glibc-src": "sha256-Bc3ZOUhWisz1qH35royObN+w4VaYOazXQ+Anx1MC9sc=",

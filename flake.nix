@@ -186,6 +186,9 @@
             staging-fork-regressions = import ./tests/fork-regressions.nix {
               pkgsFilc = pkgsFilcStaging;
             };
+            staging-llvm-jit = import ./tests/llvm-jit.nix {
+              pkgsFilc = pkgsFilcStaging;
+            };
             staging-cxx-coroutines = import ./tests/cxx-coroutines.nix {
               pkgsFilc = pkgsFilcStaging;
             };

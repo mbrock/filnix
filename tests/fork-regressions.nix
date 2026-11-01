@@ -51,6 +51,10 @@ let
       timeout 300 ./memcmp | tee memcmp.log
       grep -qx 'memcmp noalloc ok' memcmp.log
     '';
+    derived-arg-roots = ''
+      $CC $opt ${./fork-regressions/derived-arg-roots.c} -o roots
+      timeout 300 ./roots | grep -qx ok
+    '';
     scavenge-hold = ''
       $CC $opt ${./fork-regressions/scavenge-hold.c} -o hold
       FUGC_SCAVENGE_HOLD_MS=3000 timeout 120 ./hold | tee hold.log

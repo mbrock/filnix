@@ -29,6 +29,16 @@ let
       ;
   };
 
+  # LLVM JIT shim, for pins that have the JIT
+  llvmjit =
+    if sources.llvmjit-src != null then
+      import ./runtime/llvmjit.nix {
+        inherit pkgs filc0;
+        src = sources.llvmjit-src;
+      }
+    else
+      null;
+
   # Build libpizlo
   libpizlo =
     (import ./runtime/libpizlo.nix {
@@ -37,6 +47,7 @@ let
         sources
         filc
         compiler-rt
+        llvmjit
         ;
     }).libpizlo;
 
@@ -70,7 +81,12 @@ filc-complete.overrideAttrs (old: {
     inherit sources;
     # Expose build components as attributes (metadata only!)
     inherit (yolo) yolo-glibc yolo-glibc-impl;
-    inherit libpizlo filc-libcxx filc0;
+    inherit
+      libpizlo
+      filc-libcxx
+      filc0
+      llvmjit
+      ;
     inherit compiler-rt yolounwind;
 
     # Expose libc with generic name

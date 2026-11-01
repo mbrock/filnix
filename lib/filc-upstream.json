@@ -29,6 +29,10 @@
       "/filc/src/",
       "/filc/main/"
     ],
+    "llvmjit-src": [
+      "/filc/llvmjit/",
+      "/llvm/include/llvm-c/"
+    ],
     "yolo-glibc-src": [
       "/projects/yolo-glibc-2.44/"
     ],

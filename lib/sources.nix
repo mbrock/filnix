@@ -66,6 +66,11 @@ in
   # Just libpas + filc headers
   libpas-src = mkFilcSrc "libpas-src";
 
+  # The LLVM JIT header generator and the LLVM C API headers it reads. Pins
+  # that predate the JIT have no hash for it, and libpizlo then skips it.
+  llvmjit-src =
+    if filcHashes ? llvmjit-src then mkFilcSrc "llvmjit-src" else null;
+
   # Yolo glibc (stage 1 runtime)
   yolo-glibc-src = mkFilcSrc "yolo-glibc-src";
 

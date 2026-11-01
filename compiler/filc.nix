@@ -55,12 +55,17 @@ let
         cp ${yolounwind}/lib/libyolounwind.a $out/
 
         # Add libpizlo if available
-        ${pkgs.lib.optionalString (libpizlo != null) ''
-          cp ${libpizlo}/lib/filc_crt.o $out/ || true
-          cp ${libpizlo}/lib/filc_mincrt.o $out/ || true
-          cp ${libpizlo}/lib/libpizlo.so $out/ || true
-          cp ${libpizlo}/lib/libpizlo.a $out/ || true
-        ''}
+        ${
+          pkgs.lib.optionalString (libpizlo != null) ''
+            cp ${libpizlo}/lib/filc_crt.o $out/ || true
+            cp ${libpizlo}/lib/filc_mincrt.o $out/ || true
+            cp ${libpizlo}/lib/libpizlo.so $out/ || true
+            cp ${libpizlo}/lib/libpizlo.a $out/ || true
+          ''
+          + pkgs.lib.optionalString (libpizlo.llvmjit or null != null) ''
+            cp ${libpizlo}/lib/filc_jit_crt.o ${libpizlo}/lib/filc_jit_mincrt.o $out/
+          ''
+        }
       '';
 
   # Assemble the wrapper with appropriate flags

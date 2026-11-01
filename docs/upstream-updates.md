@@ -70,16 +70,66 @@ capability handling, FP-state preservation/fenv, PI mutex and spinlock fixes,
 mount/prctl compatibility and SaRCAsm improvements. It also fixes ARM64 ordering,
 GC roots and fork-related deadlocks.
 
-**Current staging (2026-10-24):** branch
-[`filnix-staging`](https://github.com/mbrock/fil-c/tree/filnix-staging) of
-`mbrock/fil-c`, the fork's default branch, at
-[af813053ecb5](https://github.com/mbrock/fil-c/commit/af813053ecb5a5ff27292bfede8d3a9e870d4c8e).
-It is upstream's 0.687 versioning commit (a80e32804fd4) with our commits
-rebased on top: the follow-ups described below, the union series squashed into
-one commit, and a fix so `filc_jmp_buf_recreate` sets the saved-signal-mask
+**Current staging (2026-11-01):** branch
+[`staging-deluge`](https://github.com/mbrock/fil-c/tree/staging-deluge) of
+`mbrock/fil-c` at
+[af0c07f5ac35](https://github.com/mbrock/fil-c/commit/af0c07f5ac35d12d9e657e9647049c3ac97e4eef).
+It is upstream `deluge` at
+[7b9ca2bdbb21](https://github.com/pizlonator/fil-c/commit/7b9ca2bdbb21)
+(October 31) with the previous staging commits rebased on top, plus four
+new ones described below. Deluge brings Filip's LLVM JIT and changes the
+Fil-C ABI so that callees root their pointer arguments
+([f565a56df1f](https://github.com/pizlonator/fil-c/commit/f565a56df1fd8ccd57c14d6d82cf9745ed038b24)),
+which lets musttail calls pop the caller's frame. Rebuild every Fil-C object
+for this pin; nothing compiled for the previous staging pin links with it.
+
+Derived-lower sharing (below) conflicted with the ABI change in
+FilPizlonator's liveness. Arguments are now frame-live, so a pointer derived
+from an argument is rooted through the argument's slot, which the callee's
+prologue fills. Oracle reviewed the rebase and found it sound; it also found
+that the getter cache broke JIT modules that take a mapped global's address
+(its miss path referenced a runtime symbol the JIT shim does not resolve),
+so the cache is now off in JIT mode (5050cddc78a7). `sharedlowersargs` in
+the fork and `fork-regressions.tests.derived-arg-roots` here cover pointers
+derived from arguments after a musttail call has popped the caller's frame.
+
+Oracle also raised an unconfirmed upstream question: a frame-popping
+musttail to a function defined in another module calls the target's getter
+after the caller's frame is gone and before the callee's prologue roots the
+arguments. If that getter can reach a safepoint (an ifunc's resolver, for
+example), the arguments are briefly unrooted. Not reproduced; to raise
+with Filip.
+
+### LLVM JIT
+
+The JIT API (`filc_llvm_jit.h`) builds LLVM IR in a Fil-C program and
+compiles it in-process; KillUB and FilPizlonator always run on it, so JIT
+code is checked like compiled C. Programs opt in by linking with
+`-enable-filc-jit`, which selects `filc_jit_crt.o`. The runtime dlopens
+`libfilcllvmjit.so`, a native shim linking filc0's LLVM, built here by
+`runtime/llvmjit.nix` from filc0's `dev` output. Upstream looks for it next
+to libpizlo; Nix keeps them in separate store paths, so libpizlo is built
+with `FILC_LLVMJIT_SO_PATH` (fork commit d7e274cc6073). Upstream's shim
+resolved only some of the runtime symbols that FilPizlonator's output calls,
+so any JIT function with a loop failed to link (`filc_pollcheck_slow`);
+af0c07f5ac35 adds the pollcheck, the store barrier's marking state, pointer
+CAS and the thread-local allocators, found by comparing libpizlo's exports
+with what compiled Fil-C libraries import. The header that
+libpas includes is generated from LLVM's C API headers, which the sparse
+`llvmjit-src` source provides. `checks.staging-llvm-jit` builds two small
+JIT programs: one calls back into the host, the other runs a loop, a mapped
+host global, pointer stores and a pointer CAS across fresh compiles while the
+GC collects. A program linked without `-enable-filc-jit` is refused. Release pins have no `llvmjit-src` hash and build exactly as
+before.
+
+The previous staging pin was branch
+[`filnix-staging`](https://github.com/mbrock/fil-c/tree/filnix-staging) at
+[af813053ecb5](https://github.com/mbrock/fil-c/commit/af813053ecb5a5ff27292bfede8d3a9e870d4c8e),
+upstream's 0.687 versioning commit (a80e32804fd4) with our commits rebased
+on top: the follow-ups described below, the union series squashed into one
+commit, and a fix so `filc_jmp_buf_recreate` sets the saved-signal-mask
 state on every reuse. The pthread cancellation patches were dropped. The
-branch keeps its name across Fil-C releases; move it rather than starting a
-new versioned branch. The rest of this section is the history behind it.
+rest of this section is the history behind it.
 
 Staging preserved the reviewed comparison experiment,
 [`simplify-union-storage` at e4427dbc5b77](https://github.com/mbrock/fil-c/commit/e4427dbc5b7715b8fc079fc60c412a755f9680b9).
