@@ -79,6 +79,12 @@
     same choice, and nanofil-cc passes call for -fno-builtin,
     -fno-builtin-memcpy, -fno-builtin-memmove and -ffreestanding.
 
+    `--bounds=split|merged` selects the bounds check's shape: split, the
+    default, tests ptr < lower and ptr > upper - Size with a branch each;
+    merged tests both with one unsigned comparison of ptr - lower
+    (docs/bounds.md, measured slower). NANOFIL_BOUNDS supplies the same
+    choice.
+
     `--inline=none|small` independently selects no inlining, or, with
     `-O`, inlining of small static functions before promotion
     (src/inline.pl, docs/perf.md item 4). The default is small with
@@ -158,7 +164,8 @@ main :-
     current_prolog_flag(argv, RawArgv),
     maplist(arg_atom, RawArgv, Argv0),
     % halt/1 outside catch/3: SWI implements halt as an exception.
-    catch(( ( vectors_options(Argv0, Argv00),
+    catch(( ( vectors_options(Argv0, ArgvV),
+              bounds_options(ArgvV, Argv00),
               register_default(Default),
               checks_default(Checks0),
               inline_default(Inline0),
@@ -221,6 +228,19 @@ vectors_option('--vectors', '1').
 vectors_option('--vectors=on', '1').
 vectors_option('--no-vectors', '0').
 vectors_option('--vectors=off', '0').
+% bounds_options(+Argv0, -Argv): Argv is Argv0 less its --bounds=
+% options, the last of which sets NANOFIL_BOUNDS, the bounds check's
+% shape (filc_amd64:merged_bounds//2): split, the default, or merged.
+bounds_options(Argv0, Argv) :-
+    exclude(bounds_option, Argv0, Argv),
+    (   include(bounds_option, Argv0, Opts), last(Opts, Opt)
+    ->  atom_concat('--bounds=', B, Opt),
+        (   memberchk(B, [split, merged]) -> setenv('NANOFIL_BOUNDS', B)
+        ;   throw(nanofil_error('bounds must be split or merged'))
+        )
+    ;   true
+    ).
+bounds_option(A) :- atom(A), atom_concat('--bounds=', _, A).
 % inline_options(+Argv0, +Inline0, -Inline, -Argv): Argv is Argv0 less
 % its --inline= options, the last of which gives Inline.
 inline_options([], I, I, []).

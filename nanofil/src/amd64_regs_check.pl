@@ -965,6 +965,7 @@ operand_roles(setne, none, [dst(8)]).
 operand_roles(setz, none, [dst(8)]).
 operand_roles(setnz, none, [dst(8)]).
 operand_roles(setb, none, [dst(8)]).
+operand_roles(cmovb, q, [src(64), srcdst(64)]).
 operand_roles(setbe, none, [dst(8)]).
 operand_roles(seta, none, [dst(8)]).
 operand_roles(setae, none, [dst(8)]).
@@ -1153,9 +1154,10 @@ register_write(reg(N), P, J, S0, S) :- !,
     register(N, F, W), write_value(F, W, res(J,P), S0, S).
 register_write(_, _, _, S, S).
 
-% setcc reads the flags; a shift's flags output depends on its input
-% (flags_after/9), jcc is a boundary.
-flags_read(Op) :- atom_concat(set, _, Op).
+% setcc and cmovcc read the flags; a shift's flags output depends on
+% its input (flags_after/9), jcc is a boundary.
+flags_read(Op) :- atom_concat(set, _, Op), !.
+flags_read(Op) :- atom_concat(cmov, _, Op).
 
 flags_after(Op, S, J, st(_,_,FA0), st(_,_,FB0), st(RA,XA,_), st(RB,XB,_),
             st(RA,XA,FA), st(RB,XB,FB)) :-

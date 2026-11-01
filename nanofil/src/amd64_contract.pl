@@ -126,6 +126,8 @@ instruction_effects(ins(Op,S,[Count,A]), effect(Rs,Ws,read_write,Ms,next)) :-
     append(R1,R2,Rs), append(M1,M2,Ms).
 instruction_effects(ins(Op,none,[reg(R)]), effect([F],[write(F,8)],read,[],next)) :-
     atom_concat(set,CC,Op), condition(CC), register(R,F,8).
+instruction_effects(ins(Op,q,[reg(A),reg(B)]), effect([FA,FB],[write(FB,64)],read,[],next)) :-
+    atom_concat(cmov,CC,Op), condition(CC), register(A,FA,64), register(B,FB,64).
 instruction_effects(ins(cltd,none,[]), effect([rax],[write(rdx,32)],preserve,[],next)).
 instruction_effects(ins(cqto,none,[]), effect([rax],[write(rdx,64)],preserve,[],next)).
 instruction_effects(ins(Op,S,[A]), effect([rax,rdx|Rs],Ws,write,Ms,next)) :-

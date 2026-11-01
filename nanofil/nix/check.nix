@@ -85,6 +85,9 @@ pkgs.runCommandCC "nanofil-check"
     # const_eval, the IR and clang on generated integer expressions (docs/arith.md).
     step "arith slice" tests/arith.sh slice
     step progtest tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    # Every bounds-check shape at both levels against filcc's traps
+    # (docs/bounds.md); thousands of forks, so once, in parallel.
+    step "bounds edges" bash -c 'pids=; for b in split merged; do for o in "" -O; do NANOFIL_BOUNDS=$b NANOFIL_OPT=$o tests/progtest.sh tests/c/bounds/edges.c & pids="$pids $!"; done; done; s=0; for p in $pids; do wait $p || s=1; done; exit $s'
     # Small constant copies (docs/perf.md item 7a): the failing cases,
     # inline filter against --memcpy=call.
     step memcpy tests/memcpy.sh
@@ -135,6 +138,8 @@ pkgs.runCommandCC "nanofil-check"
     step "-O actual ensure-aux exits" tests/filc/trace-pointer-effects.sh
     step "-O progtest" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     step "-O progtest gc-stress" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    # The merged bounds check (docs/bounds.md), opt-in.
+    step "-O merged bounds programs" env NANOFIL_BOUNDS=merged tests/par.sh tests/progtest.sh tests/c/prog/*.c
     step "-O run-c gc gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc
     # Inlining (docs/perf.md item 4) is the -O default, so the -O suites
     # above inline; these keep -O --inline=none, the uninlined path.

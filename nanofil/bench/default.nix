@@ -34,6 +34,7 @@ let
     O-call = "-O --memcpy=call";
     O-nosimplify = "-O --simplify=none";
     O-limit4000 = "-O --registers-limit=4000";
+    O-merged = "-O --bounds=merged";
   };
   chosen =
     if only == "" then

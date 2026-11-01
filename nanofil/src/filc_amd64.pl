@@ -2633,16 +2633,43 @@ access_check(k(Size, Write, Align), Ctx) -->
     { check_fail_label(Ctx, k(Size, Write, Align), Fail),
       ctx_selection(Ctx, Selection) },
     [ins(test, q, [reg(rcx), reg(rcx)]),
-     ins(jz, none, [sym(Fail)]),
-     ins(cmp, q, [reg(rcx), reg(rax)]),
-     ins(jb, none, [sym(Fail)]),
-     ins(mov, q, [mem(-16, rcx), reg(rdx)]),
-     ins(sub, q, [imm(Size), reg(rdx)])],
-    borrow_check(Selection, Size, Fail),
-    [ins(cmp, q, [reg(rdx), reg(rax)]),
-     ins(ja, none, [sym(Fail)])],
+     ins(jz, none, [sym(Fail)])],
+    (   { getenv('NANOFIL_BOUNDS', merged) }
+    ->  merged_bounds(Size, Fail)
+    ;   [ins(cmp, q, [reg(rcx), reg(rax)]),
+         ins(jb, none, [sym(Fail)]),
+         ins(mov, q, [mem(-16, rcx), reg(rdx)]),
+         ins(sub, q, [imm(Size), reg(rdx)])],
+        borrow_check(Selection, Size, Fail),
+        [ins(cmp, q, [reg(rdx), reg(rax)]),
+         ins(ja, none, [sym(Fail)])]
+    ),
     write_check(Write, Fail),
     align_check(Align, Fail).
+
+/* merged_bounds(+Size, +Fail)//: lower =< ptr =< upper - Size as one
+   unsigned comparison (--bounds=merged, docs/bounds.md), after D. J.
+   Bernstein's suggestion: with T = ptr - lower and M = (upper - lower)
+   - (Size - 1), the valid T are exactly 0 =< T < M. A pointer below
+   lower makes T at least 2^64 - 2^48, above any M. M is negative when
+   the object is shorter than Size - 1 bytes (malloc(1) read as 8): the
+   subtraction borrows, and cmovb then makes T = M so that the test
+   fails, where comparing T with upper - Size - lower alone would pass.
+   lower =< upper always, and free sets upper = lower (filc_runtime.c
+   free_impl), so M =< 0 for a freed object. %rsi and %rdx are scratch. */
+merged_bounds(Size, Fail) -->
+    [ins(mov, q, [reg(rax), reg(rsi)]),
+     ins(sub, q, [reg(rcx), reg(rsi)]),
+     ins(mov, q, [mem(-16, rcx), reg(rdx)]),
+     ins(sub, q, [reg(rcx), reg(rdx)])],
+    (   { Size > 1 }
+    ->  { S1 is Size - 1 },
+        [ins(sub, q, [imm(S1), reg(rdx)]),
+         ins(cmovb, q, [reg(rdx), reg(rsi)])]
+    ;   []
+    ),
+    [ins(cmp, q, [reg(rdx), reg(rsi)]),
+     ins(jae, none, [sym(Fail)])].
 
 % The borrow test of upper - Size. Local selection drops it for Size =<
 % 16: a nonnull lower has its 16-byte header below it and upper >= lower,
