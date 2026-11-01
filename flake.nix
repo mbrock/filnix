@@ -79,6 +79,16 @@
                 })
                 (import ./ports/overlay.nix pkgs)
               ]
+              # tzdata's now.ck compares zones from the build date on, so
+              # 2026c fails it from 2026-11-01 (Vancouver and Phoenix agree from
+              # then). It lints the data, not zic or zdump; run the rest. Release
+              # keeps its cached tzdata, built earlier, until its derivation
+              # changes, which would rebuild the baseline.
+              ++ nixlib.optional staging (
+                final: prev: {
+                  tzdata = prev.tzdata.overrideAttrs { checkTarget = "check_mild back.ck"; };
+                }
+              )
               ++ crossOverlays;
 
               overlays = [
