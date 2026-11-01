@@ -141,23 +141,26 @@ Differences worth closing or keeping in mind:
   static initializers; making it `ub` would refuse initializers clang
   accepts with a warning.
 - **A pointer rebuilt from integers.** An integer cast to a pointer
-  has no capability in Fil-C, unless nanofil or clang sees the source
-  pointer directly in the cast's operand (abi-findings.md, *A pointer
-  cast through a 64-bit integer*). filcc keeps the capability in more
-  cases, but only when LLVM's optimizer folds the round trip into a
-  pointer operation before pizlonation, so the outcome depends on the
-  optimization level. libgcrypt's `sexp_null_cond` masks
-  `(uintptr_t)w` with masks read from volatiles, through inline
-  functions, and casts back: filcc `-O1` and `-O2` keep `w`'s
-  capability, but filcc `-O0` traps in `gcry_pk_decrypt`, and so does
-  nanofil at any level. The libgcrypt port selects the pointer as a
+  has the capability of the one pointer it was computed from, and none
+  if it came from no pointer or from two. Fil-C infers this
+  (`inferPointerAsIntLaunderingForFunction`) on LLVM's SSA after
+  clang's optimizer, so filcc's outcome depends on the level: at `-O0`
+  an integer kept in a local comes back from a load and has none, and
+  at `-O1` a select clang makes an `llvm.umin` call has none either.
+  nanofil applies the same rules to the SSA form of the source program
+  at every level ([launder.pl](../src/launder.pl)), so a local
+  variable, a phi or a loop keeps the source, and a min or max keeps
+  the selected value's. What it does not follow is a call: libgcrypt's
+  `sexp_null_cond` masks `(uintptr_t)w` in inline functions and casts
+  back, and filcc `-O1` keeps `w`'s capability only because inlining
+  puts the round trip in one function; filcc `-O0` and nanofil trap in
+  `gcry_pk_decrypt`. The libgcrypt port selects the pointer as a
   pointer under `__FILC__` (ports/patch/libgcrypt-1.12.2.patch).
   libsodium's `sodium_free` finds its guard pages with
-  `(unsigned char *)((uintptr_t)p & ~page_mask)`, which LLVM folds to
-  a pointer mask; every libsodium test traps in `sodium_free` under
-  filcc `-O0` and nanofil. Its port steps back from `p` by the page
-  offset instead (ports/patch/libsodium-unprotected-ptr.patch).
-  nanofil does not imitate the fold. tests/c/prog/uintptr-masked.c
+  `(unsigned char *)((uintptr_t)p & ~page_mask)`; its port steps back
+  from `p` by the page offset instead
+  (ports/patch/libsodium-unprotected-ptr.patch).
+  tests/c/prog/uintptr-masked.c, launder-ssa.c
   shows the trap against a `-O0` reference.
 - Not probed: infinite loops without side effects (KillUB removes
   `mustprogress`, so C11 6.8.5p6 is not exploited), signed overflow in

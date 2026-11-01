@@ -1056,9 +1056,15 @@ typed trees (`lower//3`, `place//3`), statements by `stmt//2`, static
 initializers by folding trees to data chunks (`address_constant/5`).
 It also owns the SysV eightbyte classification of struct arguments and
 returns, builtins (`builtin//4`), atomics as cas loops, vectors as
-8-byte chunks, laundering, VLAs and cleanup attributes. It is the
+8-byte chunks, VLAs and cleanup attributes. It is the
 largest module; its `%%` sections are the way in. Next: ir.pl for what
 it must produce.
+
+**[launder.pl](../src/launder.pl)**: the last step of `c_module/2`.
+Gives each `itop` the capability of the one pointer its integer came
+from (glossary, *launder*): Fil-C's analysis, read on the SSA form
+promote.pl defines, with shadow slots for local integers, so the result
+is the same with and without `-O`.
 
 ### The IR and its meaning
 
@@ -1281,9 +1287,9 @@ mapped to a register (`amd64_regs:regs_asm/6`).
 
 **launder**: give an integer converted back to a pointer the capability
 of the pointer it came from, as Fil-C does when its analysis can follow
-the integer. nanofil does it where the source is visible in the
-expression or in a local variable defined once
-(`c_lower:launder_fixpoint/5`, [docs/m4.md](m4.md), *Pointer-as-int
+the integer: through arithmetic, promotable local variables and phis,
+never through memory or a call, and only from one pointer
+(`launder:launder_func/4`, [docs/m4.md](m4.md), *Pointer-as-int
 laundering*). Otherwise the pointer gets no capability and
 dereferencing it traps.
 
@@ -1342,10 +1348,9 @@ record's `lowers[]`, a local's stack aux, or a jmpbuf root
 (`filc_abi:lower_function/5`, `amd64_regs_check:valid_map/3`).
 
 **shadow**: two meanings. In the backends, a phi's shadow slot, which
-holds the incoming value during a parallel copy. In c_lower, a
-laundering variable's capability shadow, a pointer slot that holds the
-capability of the value last stored in the variable
-(`c_lower:launder_fixpoint/5`).
+holds the incoming value during a parallel copy. In launder.pl, a local
+integer's capability shadow, a pointer slot that holds the capability
+of the value last stored in the integer (`launder:launder_func/4`).
 
 **snapshot**: `tests/snapshot.sh`, the byte-identity gate across
 revisions. Also the copies of every temporary a setjmp function keeps

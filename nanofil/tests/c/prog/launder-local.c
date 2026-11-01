@@ -3,11 +3,12 @@
    local integer variable whose address is never taken, and converted
    back keeps its capability: bind's qp_test stores a key as
    uintptr_t pval = (uintptr_t)str and inserts (void *)pval. nanofil
-   follows a variable defined once; one defined twice may be a min or
-   max clang makes a call (llvm.umin), which has none. What goes through
-   memory (an address-taken or volatile local, a global) or a call, or
-   merges two pointers, has none, and dereferencing it traps. Each case
-   runs in its own child. */
+   reads the same SSA at every level (launder.pl). What goes through
+   memory (an address-taken or volatile local, a global) or a call, or merges two
+   pointers, has none, and dereferencing it traps. These are the cases
+   where filcc -O1 agrees; launder-ssa.c has those where nanofil keeps
+   more. Each case runs in its own child. */
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -96,52 +97,22 @@ __attribute__((noinline)) static char *accumulated(char *a, char *b, int n) {
     return (char *)v;
 }
 __attribute__((noinline)) static char *argument(uintptr_t x) { return (char *)x; }
-/* Defined twice: nanofil gives none, as for these Fil-C does. */
+/* Defined twice, the second time by a call: none on that path. */
 __attribute__((noinline)) static char *reassigned(char *a, int c) {
     uintptr_t v = (uintptr_t)a;
     if (c) v = opaque(v);
     return (char *)v;
 }
-__attribute__((noinline)) static char *param(uintptr_t x, char *a) {
-    if (x > (uintptr_t)a) x = (uintptr_t)a;
-    return (char *)x;
-}
-__attribute__((noinline)) static char *other_dest(char *p, uintptr_t lim) {
-    uintptr_t x = (uintptr_t)p, m;
-    if (x < lim) m = x; else m = lim;
-    return (char *)m;
-}
-/* clang -O1 makes these llvm.umin, umax, smin or usub.sat, calls. */
-__attribute__((noinline)) static char *clamp(char *p, size_t n, size_t len) {
-    uintptr_t cur = (uintptr_t)p + n, end = (uintptr_t)p + len;
-    if (cur > end) cur = end;
-    return (char *)cur;
-}
-__attribute__((noinline)) static char *minimum(char *p, uintptr_t lim) {
-    uintptr_t x = (uintptr_t)p;
-    return (char *)(x < lim ? x : lim);
-}
-__attribute__((noinline)) static char *direct_minimum(char *p, uintptr_t lim) {
-    return (char *)((uintptr_t)p < lim ? (uintptr_t)p : lim);
-}
-__attribute__((noinline)) static char *loop_min(char *p, uintptr_t *a, int n) {
-    uintptr_t x = (uintptr_t)p;
-    for (int i = 0; i < n; i++) if (a[i] < x) x = a[i];
-    return (char *)x;
-}
-__attribute__((noinline)) static char *saturate(char *p, uintptr_t k) {
-    uintptr_t x = (uintptr_t)p + 20;
-    if (x > k) x -= k; else x = 0;
-    return (char *)x;
-}
-static inline int below(uintptr_t a, uintptr_t b) { return a < b; }
-__attribute__((noinline)) static char *inlined_min(char *p, uintptr_t lim) {
-    uintptr_t x = (uintptr_t)p;
-    return (char *)(below(x, lim) ? x : lim);
-}
 /* Not a min or max: Fil-C's select keeps the arm's capability. */
 __attribute__((noinline)) static char *not_min(char *p, uintptr_t lim) {
     return (char *)((uintptr_t)p > lim ? (uintptr_t)p - 8 : (uintptr_t)p);
+}
+/* An atomic fetch-and-add on a pointer returns one without a
+   capability, as filcc's does, though it converts the pointer. */
+static _Atomic(char *) cur;
+__attribute__((noinline)) static char *fetched(char *a) {
+    cur = a;
+    return atomic_fetch_add(&cur, 1);
 }
 /* Converting to _Bool compares. */
 __attribute__((noinline)) static char *boolean(char *p) {
@@ -160,30 +131,22 @@ static void run(int i) {
     case 5: printf("offset %c\n", *offset(buf)); break;
     case 6: printf("scoped %c\n", *scoped(buf, other)); break;
     case 7: printf("addressed %c\n", *addressed(buf)); break;
-    case 8: printf("volatile %c\n", *volatile_local(buf)); break;
-    case 9: printf("memory %c\n", *memory(buf)); break;
-    case 10: printf("called %c\n", *called(buf)); break;
-    case 11: printf("two %c\n", *two(buf, other)); break;
-    case 12: printf("two in local %c\n", *two_in_local(buf, other, buf)); break;
-    case 13: printf("accumulated %c\n", *accumulated(buf, other, 3)); break;
-    case 14: printf("argument %c\n", *argument((uintptr_t)buf)); break;
-    case 15: printf("reassigned %c\n", *reassigned(buf, 1)); break;
-    case 16: printf("param %c\n", *param((uintptr_t)-1, buf)); break;
-    case 17: printf("other dest %c\n", *other_dest(buf, (uintptr_t)-1)); break;
-    case 18: printf("clamp %c\n", *clamp(buf, 8, 16)); break;
-    case 19: printf("minimum %c\n", *minimum(buf + 4, (uintptr_t)-1)); break;
-    case 20: printf("direct minimum %c\n", *direct_minimum(buf + 4, (uintptr_t)-1)); break;
-    case 21: { uintptr_t a[2] = { (uintptr_t)-1, (uintptr_t)-2 };
-               printf("loop min %c\n", *loop_min(buf, a, 2)); break; }
-    case 22: printf("saturate %c\n", *saturate(buf, 10)); break;
-    case 23: printf("boolean %d\n", zgetlower(boolean(buf)) != 0); break;
-    case 24: printf("not min %c\n", *not_min(buf + 8, 0)); break;
-    case 25: printf("inlined min %c\n", *inlined_min(buf, (uintptr_t)-1)); break;
+    case 8: printf("memory %c\n", *memory(buf)); break;
+    case 9: printf("called %c\n", *called(buf)); break;
+    case 10: printf("two %c\n", *two(buf, other)); break;
+    case 11: printf("two in local %c\n", *two_in_local(buf, other, buf)); break;
+    case 12: printf("accumulated %c\n", *accumulated(buf, other, 3)); break;
+    case 13: printf("argument %c\n", *argument((uintptr_t)buf)); break;
+    case 14: printf("reassigned %c\n", *reassigned(buf, 1)); break;
+    case 15: printf("boolean %d\n", zgetlower(boolean(buf)) != 0); break;
+    case 16: printf("not min %c\n", *not_min(buf + 8, 0)); break;
+    case 17: printf("fetched %c\n", *fetched(buf)); break;
+    case 18: printf("volatile %c\n", *volatile_local(buf)); break;
     }
 }
 int main(void) {
     for (int i = 0; i < 64; i++) { buf[i] = 'a' + i % 26; other[i] = 'A' + i % 26; }
-    for (int i = 0; i < 26; i++) {
+    for (int i = 0; i < 19; i++) {
         fflush(stdout);
         if (fork() == 0) {
             int fd = open("/dev/null", O_WRONLY);

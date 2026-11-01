@@ -14,6 +14,9 @@
 # wrong one still works through the generic entries, so only this sees it.
 # A "// reference-opt: -O0" line builds the reference at that level
 # instead of -O1, for behaviour filcc has only without optimization.
+# Where nanofil defines more than filcc at any level, a FILE.c.nanofil
+# beside the program holds nanofil's expected stdout, derived by hand,
+# and replaces clang's stdout in the comparison.
 # An "// asm-lines: REGEX" line requires nanofil's assembly lines that
 # match REGEX to equal those of clang -S, as sets with blanks squeezed
 # (top-level asm's .symver, function objects' entries).
@@ -158,7 +161,9 @@ for f in "$@"; do
   run "$d/nanofil" "$d/n" "${args[@]}"
   run "$d/clang" "$d/c" "${args[@]}"
   for part in stdout stderr status; do
-    if ! diff -u "$d/c.$part" "$d/n.$part" >"$d/$part.diff"; then
+    ref="$d/c.$part"
+    if [[ $part == stdout && -f $f.nanofil ]]; then ref=$f.nanofil; fi
+    if ! diff -u "$ref" "$d/n.$part" >"$d/$part.diff"; then
       echo "MISMATCH $f ($part):"; cat "$d/$part.diff"; status=1; outcome=mismatch
     fi
   done

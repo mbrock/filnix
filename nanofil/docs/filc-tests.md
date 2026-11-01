@@ -35,11 +35,11 @@ with `--modes all` (a test passes only if it passes in all four modes):
 | skipped: another platform (`only-on-platform`) | 506 |
 | skipped: `skip` in the manifest | 4 |
 | run | 5,491 |
-| pass | 4,008 |
+| pass | 4,011 |
 | refused by nanofil | 1,387 |
 | trap with a different message | 38 |
 | link error | 40 |
-| spurious trap | 9 |
+| spurious trap | 6 |
 | wrong output or exit status | 6 |
 | over the time limit when scribbling | 2 |
 | diagnostic differs | 1 |
@@ -107,12 +107,13 @@ are copies that nanofil hands to the runtime's `zmemmove`, which reports
 `stackdumpbug` wants a file and line in the stack trace, which nanofil
 does not emit.
 
-### Spurious traps (9)
+### Spurious traps (6)
 
-- `ptrtointtoptr`, `intcast2`, `intcast2O0`: a pointer rebuilt from an
-  integer has no capability unless the cast sees the source pointer
-  ([ub.md](ub.md), *A pointer rebuilt from integers*). filcc's optimizer
-  folds these round trips first.
+- `ptrtointtoptr`, `intcast2`, `intcast2O0` (fixed): a pointer rebuilt
+  from an integer kept in a local variable, or through a `?:`, had no
+  capability; filcc's optimizer keeps one. launder.pl now follows the
+  integer on the SSA form of the program at every level
+  ([ub.md](ub.md), *A pointer rebuilt from integers*).
 - `unionstoragecopy`: a capability that travels through memory a struct
   or union declares as integers. nanofil copies an object word by word
   as its type declares it (c_lower's `copy_object`), so a pointer stored

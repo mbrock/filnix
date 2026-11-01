@@ -1,0 +1,22 @@
+param a
+case 0: exit
+other dest a
+case 1: exit
+clamp i
+case 2: exit
+minimum e
+case 3: exit
+direct minimum e
+case 4: exit
+loop min a
+case 5: exit
+saturate k
+case 6: exit
+inlined min a
+case 7: exit
+lesser 1
+case 8: exit
+walk 495
+case 9: exit
+case 10: signal
+case 11: signal
