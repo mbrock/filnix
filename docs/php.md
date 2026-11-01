@@ -288,6 +288,19 @@ requests to a WordPress or MediaWiki FPM worker, which compile hundreds of
 traces, failed with "Maximum execution time of 30 seconds exceeded" where
 the interpreter served them.
 
+Two bugs that the JIT suite missed showed up in the applications, in both
+backends. Function JIT adds each `RECV` or OSR entry as an `ENTRY` block
+whose fake input is the preceding `END`, and the backends let that `END`
+jump into the entry, which resets FP and IP to the function's parameters.
+That is harmless until IR turns a direct recursive call into a loop: then
+the "call" restarted the caller's frame. Under `opcache.jit=1235` WordPress
+served truncated pages with status 200 and a clean log, and MediaWiki
+recursed until it ran out of memory and panicked in `FE_FETCH_R`. Both
+backends now skip `ENTRY` successors, as IR's own emitters do. And a trace
+exit into a `__call` trampoline frame read `EG(trampoline)`'s reserved
+slot, which property hooks and FFI reuse for other data, as a trace
+extension; Fil-C stopped the C backend on MediaWiki.
+
 Compiled functions are named after their PHP code (`jit:Class::method@file`,
 `jit:TRACE-12$Class::method$34`), so a Fil-C panic in JIT code says which
 code it was. `PHP_JIT_LLVM_DUMP=text` prints the IR and the LLVM module of
@@ -332,11 +345,121 @@ only):
 | matrix(20) | 0.061 | 0.017 | 0.013 |
 | bench.php total | 8.9 | 8.520 | 8.523 |
 
-`strcat` (over 8 s) dominates the totals in every configuration. In tracing mode,
+These numbers come from a development build whose `strcat` is slow; the
+packaged build's are in [the next section](#the-jit-on-real-applications). `strcat` (over 8 s) dominates the totals in every configuration. In tracing mode,
 where traces compile while the benchmark runs, the total was 16.2 s
 through C and 10.6 s through LLVM, and with `opcache.jit=1235` 15.5 s and
 12.1 s. LLVM's opt-level matters little here: `-O1` compiled bench.php's
 functions in 5.5 s and ran them within a few percent of `-O2`.
+
+### The JIT on real applications
+
+Measured with `php-bench` (`bench/php/README.md`) on the packaged
+`pkgsFilcStaging.php85-jit`, `php -S` with one worker, the fixtures'
+request mixes, three rounds of `php-bench quiet`. Short version: the JIT
+runs WordPress, MediaWiki and DokuWiki correctly in every mode tried. On
+CPU-bound PHP the LLVM tracing JIT is several times faster than Fil-C's
+interpreter and on `Zend/bench.php` slightly faster than the native
+interpreter. The applications gain at most 16% in wall time, because their time goes to
+string handling, arrays, PCRE, the database and the runtime, not to PHP
+opcodes. Each worker pays about two minutes of compiling and 350 to 400 MB
+of memory to get there.
+
+**Compatibility.** `php-bench check` serves each mix after warm-up and
+compares it with the interpreter (`filc-staging`): status, size and body,
+with numbers, hashes and nonces masked, and the error and server logs.
+
+| app | `jit=tracing` LLVM | `jit=tracing` C | `jit=1235` LLVM |
+| --- | --- | --- | --- |
+| DokuWiki (12 requests) | same, 110 compiles, 22 s | same, 92 compiles, 18 s | same, 44 compiles, 12 s |
+| MediaWiki (12) | same, 1188 compiles, 131 s | same, 811 compiles, 233 s | same, 1664 compiles, 768 s |
+| WordPress (11) | same, 1330 compiles, 114 s | same, 920 compiles, 236 s | same, 678 compiles, 344 s |
+
+Every response matched and every log stayed empty. Before the fixes above,
+WordPress under 1235 served truncated pages with status 200 and a clean
+log, which only the body comparison caught, and MediaWiki crashed under 1235
+and, through C, under tracing. `opcache.jit=1235` compiles whole functions,
+which costs far more than traces in big applications (13 minutes for
+MediaWiki); `function` mode would compile every function of every file
+loaded. Use tracing.
+
+**Steady state.** User cycles of all threads, and wall time, for one pass
+over the mix after ten warm-up passes (medians of three rounds):
+
+| app | native | native JIT | Fil-C interpreter | Fil-C LLVM JIT | Fil-C C JIT |
+| --- | --- | --- | --- | --- | --- |
+| DokuWiki Gcycles | 0.049 | 0.043 | 0.252 | 0.324 | 0.364 |
+| DokuWiki wall ms | 22 | 21 | 68 | 57 | 77 |
+| MediaWiki Gcycles | 1.29 | 1.21 | 6.50 | 6.80 | 8.03 |
+| MediaWiki wall ms | 299 | 282 | 1287 | 1339 | 1591 |
+| WordPress Gcycles | 1.54 | 1.26 | 9.93 | 8.59 | 11.53 |
+| WordPress wall ms | 331 | 276 | 1920 | 1654 | 2179 |
+
+Against the Fil-C interpreter the LLVM JIT takes 0.87× the cycles and wall
+time on WordPress, 1.05× and 1.04× on MediaWiki, and on DokuWiki 1.29× the
+cycles but 0.84× the wall time (more of the work lands on Fil-C's GC
+threads). Against native it stays where the interpreter is: 5.3 to 6.6×
+the cycles and 2.6 to 5.0× the wall time, or 5.6 to 7.5× and 2.7 to 6.0×
+against native with its JIT. Native's JIT gains only 4 to 18% on these
+applications too. The C backend is slower than the interpreter everywhere:
+it cannot link side traces, so every side exit deoptimizes.
+
+**Warm-up.** A fresh server's first pass compiles almost everything:
+
+| app | LLVM: compiles, compile s, first pass s | C, cold: compiles, first pass s | C, with its cache: first pass s |
+| --- | --- | --- | --- |
+| DokuWiki | 109, 12.8 s, 8.2 s | 92, 10.1 s | 0.34 s |
+| MediaWiki | 1170, 130 s, 132 s | 811, 235 s | 179 s |
+| WordPress | 1330, 114 s, 117 s | 920, 241 s | 8.7 s |
+
+Steady state follows from the third pass on. MediaWiki's traces mostly miss
+the C backend's cache from one process to the next (543 compiles even with
+a filled cache), WordPress's and DokuWiki's hit. Compiling runs in the
+request that made the code hot, with the execution timer stopped, so the
+first visitors to each worker wait.
+
+**Memory (FPM).** One static FPM worker, the mix repeated, RSS of the
+worker: the LLVM JIT reached 742 MB after WordPress's first pass and stayed
+between 745 and 790 MB through 1617 requests; MediaWiki stayed between 816
+and 864 MB through 360 requests (850 to 910 MB through 1200 in an earlier
+run). The interpreter held about 390 MB (WordPress) and 490 MB (MediaWiki),
+the C backend about 520 MB on WordPress. Compiled code is never freed, but
+nothing new compiles after warm-up, so this is a one-time 350 to 400 MB per
+worker, not a leak. A pass took 1.7 s with the LLVM JIT against 1.9 s for
+the interpreter on WordPress, and 1.4 s on MediaWiki for both. With the C
+backend WordPress's passes slowed from 2.2 s to 7.7 s over 330 requests,
+which we have not explained.
+
+**CPU-bound scripts.** `Zend/bench.php` and `bench/php/micro.php`, served
+warm (seconds; three requests to warm up, median of three):
+
+| | native | native JIT | Fil-C interpreter | Fil-C JIT tracing | Fil-C JIT function | Fil-C C JIT |
+| --- | --- | --- | --- | --- | --- | --- |
+| bench.php | 0.151 | 0.041 | 0.620 | 0.133 | 0.190 | 0.372 |
+| mandel | 0.016 | 0.004 | 0.049 | 0.004 | 0.004 | 0.005 |
+| fibo(30) | 0.026 | 0.011 | 0.149 | 0.045 | 0.072 | 0.193 |
+| heapsort(20000) | 0.010 | 0.003 | 0.042 | 0.008 | 0.012 | 0.035 |
+| strcat(200000) | 0.002 | 0.001 | 0.014 | 0.011 | 0.011 | 0.011 |
+| micro.php | 0.238 | 0.162 | 1.126 | 0.686 | 0.692 | 1.308 |
+| fib(27) | 0.005 | 0.003 | 0.037 | 0.010 | 0.017 | 0.070 |
+| nbody | 0.081 | 0.019 | 0.358 | 0.065 | 0.087 | 0.159 |
+| usort | 0.103 | 0.109 | 0.503 | 0.454 | 0.452 | 0.641 |
+| strings | 0.027 | 0.023 | 0.153 | 0.128 | 0.129 | 0.131 |
+
+On bench.php the LLVM tracing JIT is 4.7× faster than Fil-C's interpreter
+and 0.88× the native interpreter's time, 3.2× native's JIT. Loops over
+numbers run as fast as native's JIT (mandel) or faster than native's
+interpreter (nbody); recursion and arrays take 3 to 4× native's JIT; `usort` and string
+building gain 10 to 20%, since their time is in the runtime. Compiling
+costs more than these scripts run: bench.php's 94 traces took 3.8 s, so a
+single cold run from the command line takes 3.7 s with the JIT against 0.72 s
+without, and `opcache.jit=function` compiles its 56 functions in 7 s before
+it starts.
+
+So the JIT pays for itself in long-running workers with numeric or
+algorithmic PHP, and does little for page rendering, which is what most
+PHP servers do. Fil-C's cost there is the runtime (checked string, array
+and allocator code), which the JIT does not touch.
 
 ## Vulnerable PHP under Fil-C
 

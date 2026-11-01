@@ -112,6 +112,12 @@ php-bench check --apps dokuwiki mediawiki wordpress \
   --variants filc-staging filc-staging-jit filc-staging-jit-1235 filc-staging-jit-c
 ```
 
+Results with these variants, and what they mean, are in
+[`docs/php.md`](../../docs/php.md#the-jit-on-real-applications). In short,
+all three applications render the same pages with the JIT, CPU-bound
+scripts run several times faster than on Fil-C's interpreter, and page
+rendering gains at most 16% after about two minutes of compiling per server.
+
 ## Load
 
 swa is shared with build-heavy jobs, so:

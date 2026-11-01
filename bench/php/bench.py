@@ -375,7 +375,12 @@ def app_config(app):
     if app in SCRIPT_PORTS:
         root = os.path.join(STATE, "scripts")
         os.makedirs(root, exist_ok=True)
-        shutil.copyfile(ENV[SCRIPTS[app]], os.path.join(root, app))
+        # Keep the store's mtime: opcache does not cache a file modified in
+        # the last opcache.file_update_protection (2) seconds.
+        dst = os.path.join(root, app)
+        shutil.copyfile(ENV[SCRIPTS[app]], dst)
+        st = os.stat(ENV[SCRIPTS[app]])
+        os.utime(dst, ns=(st.st_atime_ns, st.st_mtime_ns))
         return root, {}, None, ["/" + app]
     if app == "dokuwiki":
         root = os.path.join(STATE, "dokuwiki")
