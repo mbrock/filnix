@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PHP on Fil-C: memory-safe PHP · Filnix</title>
 <meta property="og:title" content="PHP on Fil-C: memory-safe PHP">
-<meta property="og:description" content="PHP 8.4 — and 8.5, and even 7.4 — compiled with Fil-C, with its extensions and the libraries under them. A memory error in the interpreter or an extension stops the worker instead of corrupting its memory. Docker, tarball, Nix and NixOS.">
+<meta property="og:description" content="PHP 8.4 — and 8.5, and even 7.4 — compiled with Fil-C, with its extensions and the libraries under them. A memory error in the interpreter or an extension stops the worker instead of corrupting its memory. Now with an opcache JIT that Fil-C checks. Docker, tarball, Nix and NixOS.">
 <meta property="og:image" content="https://mbrock.github.io/filnix/php-on-filc/poster.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -44,7 +44,7 @@ th { color: var(--muted); font-weight: 600; }
 </div></div>
 <main class="page-frame reading explainer">
 
-<p class="meta">PHP 8.4.27 · Fil-C 0.686 · also 8.5.12 and 7.4.33 · October 2026</p>
+<p class="meta">PHP 8.4.27 · Fil-C 0.686 · also 8.5.12 (with a checked JIT) and 7.4.33 · November 2026</p>
 <h1>PHP on Fil&#8209;C: memory&#8209;safe PHP</h1>
 <p class="sub">PHP 8.4, its bundled extensions, the common PECL ones, and every C library under them — all compiled with Fil-C. An out-of-bounds access or a use after free in the interpreter or an extension stops the worker with a panic instead of corrupting its memory. Your PHP code doesn't change. This page is the short version; the <a href="../docs/php.html">full notes</a> are in the docs.</p>
 
@@ -99,9 +99,56 @@ s='';x=28;for(i=0;i<w.length;i++){s+='<rect x="'+x+'" y="178" width="'+(w[i]-6)+
 <div class="cap">Why the allocator choice is the whole ballgame: Fil-C can only bound what is actually a separate object.</div>
 </div>
 <p>That is not hypothetical. The <code>var_destroy</code> use after free in <code>unserialize()</code> (<a href="https://github.com/php/php-src/issues/21824">php-src#21824</a>, not yet fixed in a release) runs silently to completion on this build with <code>USE_ZEND_ALLOC=1</code> — and stops with a Fil-C panic on the default allocator. The default costs about 2× on allocation-heavy code versus Zend's; <code>USE_TRACKED_ALLOC=0</code> (plain malloc) is about a third faster but gives up <code>memory_limit</code>.</p>
-<p><b>No native JIT.</b> Fil-C cannot run generated machine code, so opcache's JIT and PCRE's JIT are off. There is an experimental build (<code>#php-jit</code>) whose opcache JIT emits C instead, compiles it with the Fil-C compiler and <code>dlopen</code>s the result: CPU-bound benchmarks run 4–60× faster than the interpreter, but each hot function costs a compiler invocation, so it suits small CPU-bound scripts, not applications.</p>
+<p><b>No JIT by default.</b> Fil-C cannot run machine code it didn't check, so opcache's ordinary JIT and PCRE's JIT are off in the default builds. There is now an opt-in PHP 8.5 whose JIT goes through Fil-C's own compiler instead — see <a href="#jit">the next section</a>.</p>
 <p><b>Opcache is per-worker.</b> Capabilities don't cross processes, so opcache maps its memory privately. FPM workers share what the master compiled before forking, but each has its own cache after that, and <code>opcache_reset()</code> affects only the worker that calls it.</p>
 <p>And the everyday caveats: native extensions must be Fil-C builds (binary PECL downloads won't load), and PHP runs <b>1.5–4× slower</b> and uses more memory than an ordinary build.</p>
+
+<h2 id="jit">A JIT that Fil-C checks</h2>
+<p>Fil-C's compiler can now run in-process: a program hands it LLVM IR and gets back a function, compiled through the same KillUB and FilPizlonator passes as any other Fil-C code. <code>php85-jit</code> plugs opcache's JIT into it. Opcache still decides what is hot and builds its IR as usual; instead of emitting x86 for that IR, the backend builds an LLVM module in memory and gives it to the Fil-C JIT. So the generated code is bounds-checked and garbage-collected like the interpreter around it, and a JIT bug produces a wrong answer or a Fil-C panic naming the PHP function (<code>jit:TRACE-12$Class::method$34</code>), not memory corruption. Nothing is written to disk and no compiler process runs. Side traces link to each other, as in native PHP's tracing JIT.</p>
+<pre><code>nix build github:mbrock/filnix#php85-jit
+result/bin/php -d opcache.enable_cli=1 -d opcache.jit=tracing \
+  -d opcache.jit_buffer_size=64M script.php</code></pre>
+<p>It isn't in the binary cache yet, so the first build compiles the staging toolchain. <code>PHP_JIT_BACKEND=c</code> selects the older backend, which prints C and runs the Fil-C compiler on it.</p>
+<div class="card">
+<svg viewBox="0 0 760 330" font-family="Public Sans, sans-serif" font-size="13" role="img" aria-label="Zend bench.php, served warm: native JIT 0.041 s, Fil-C LLVM JIT 0.133 s, native interpreter 0.151 s, Fil-C C JIT 0.372 s, Fil-C interpreter 0.620 s. WordPress, one pass of the request mix: native JIT 276 ms, native 331 ms, Fil-C LLVM JIT 1654 ms, Fil-C interpreter 1920 ms, Fil-C C JIT 2179 ms.">
+  <text x="20" y="22" font-weight="700" font-size="14" fill="#3d4449">Zend/bench.php, served warm (seconds)</text>
+  <g text-anchor="end" fill="#3d4449">
+    <text x="196" y="50">native, JIT</text><text x="196" y="74">Fil-C, LLVM JIT</text><text x="196" y="98">native, interpreter</text><text x="196" y="122">Fil-C, C JIT</text><text x="196" y="146">Fil-C, interpreter</text>
+  </g>
+  <rect x="206" y="38" width="29" height="16" fill="#9a948a"/>
+  <rect x="206" y="62" width="94" height="16" fill="#2f6fb3"/>
+  <rect x="206" y="86" width="107" height="16" fill="#9a948a"/>
+  <rect x="206" y="110" width="264" height="16" fill="#2f6fb3" opacity="0.45"/>
+  <rect x="206" y="134" width="440" height="16" fill="#d98a1c"/>
+  <g fill="#667078"><text x="241" y="50">0.041</text><text x="306" y="74" font-weight="700" fill="#2f6fb3">0.133 — 4.7× the interpreter</text><text x="319" y="98">0.151</text><text x="476" y="122">0.372</text><text x="652" y="146">0.620</text></g>
+  <text x="20" y="190" font-weight="700" font-size="14" fill="#3d4449">WordPress, one pass of 11 requests, steady state (ms)</text>
+  <g text-anchor="end" fill="#3d4449">
+    <text x="196" y="218">native, JIT</text><text x="196" y="242">native, interpreter</text><text x="196" y="266">Fil-C, LLVM JIT</text><text x="196" y="290">Fil-C, interpreter</text><text x="196" y="314">Fil-C, C JIT</text>
+  </g>
+  <rect x="206" y="206" width="56" height="16" fill="#9a948a"/>
+  <rect x="206" y="230" width="67" height="16" fill="#9a948a"/>
+  <rect x="206" y="254" width="334" height="16" fill="#2f6fb3"/>
+  <rect x="206" y="278" width="388" height="16" fill="#d98a1c"/>
+  <rect x="206" y="302" width="440" height="16" fill="#2f6fb3" opacity="0.45"/>
+  <g fill="#667078"><text x="268" y="218">276</text><text x="279" y="242">331</text><text x="546" y="266" font-weight="700" fill="#2f6fb3">1654 — 0.87×</text><text x="600" y="290">1920</text><text x="652" y="314">2179</text></g>
+</svg>
+<div class="cap">Loops over numbers get much faster; page rendering barely moves, because its time is in the runtime, not in opcodes.</div>
+</div>
+<p><b>It runs real applications.</b> We served WordPress, MediaWiki and DokuWiki through it and compared every response with the interpreter's — status, size and body, with numbers, hashes and nonces masked — and checked the logs. Every response matched and every log stayed empty, with the tracing JIT on either backend and with <code>opcache.jit=1235</code>. That comparison found two real JIT bugs on the way (truncated WordPress pages with status 200; a MediaWiki crash), both fixed in both backends. Opcache's JIT test suite passes 488/488 in function, tracing and 1235 modes.</p>
+<p><b>What it buys.</b> Steady state, after warm-up, against the Fil-C interpreter:</p>
+<table>
+<tr><th>Workload</th><th>Fil-C interpreter</th><th>Fil-C LLVM JIT</th><th>Native</th><th>Native JIT</th></tr>
+<tr><td><code>Zend/bench.php</code></td><td>0.620 s</td><td class="good"><b>0.133 s</b> (4.7× faster)</td><td>0.151 s</td><td>0.041 s</td></tr>
+<tr><td>nbody</td><td>0.358 s</td><td class="good"><b>0.065 s</b> (5.5×)</td><td>0.081 s</td><td>0.019 s</td></tr>
+<tr><td>mandel</td><td>0.049 s</td><td class="good"><b>0.004 s</b></td><td>0.016 s</td><td>0.004 s</td></tr>
+<tr><td>usort</td><td>0.503 s</td><td>0.454 s</td><td>0.103 s</td><td>0.109 s</td></tr>
+<tr><td>WordPress pass</td><td>1920 ms</td><td>1654 ms (0.87×)</td><td>331 ms</td><td>276 ms</td></tr>
+<tr><td>MediaWiki pass</td><td>1287 ms</td><td>1339 ms (1.04×)</td><td>299 ms</td><td>282 ms</td></tr>
+<tr><td>DokuWiki pass</td><td>68 ms</td><td>57 ms (0.84×)</td><td>22 ms</td><td>21 ms</td></tr>
+</table>
+<p>So on loops over numbers, memory-safe PHP now matches or beats ordinary PHP without its JIT; recursion and array-heavy code still take up to 2× native's interpreter. Applications gain at most about 16%: their time goes to strings, arrays, PCRE, the allocator and the database — Fil-C's checked runtime, which the JIT doesn't touch. Native PHP's own JIT gains only 4–18% on the same pages.</p>
+<p><b>What it costs.</b> Compiling happens in the request that made the code hot. A fresh WordPress worker spends about two minutes compiling 1330 traces before it settles (MediaWiki 130 s, DokuWiki 13 s), and keeps 350–400 MB more memory than the interpreter — about 750 MB per FPM worker, flat over 1600 requests, so not a leak. There is no shared code cache yet, so every worker pays again. A one-off CLI script loses: <code>bench.php</code> run cold takes 3.7 s with the JIT against 0.72 s without. Use <code>opcache.jit=tracing</code>; <code>1235</code> compiles whole functions and took 13 minutes on MediaWiki.</p>
+<p>In short: worth trying for long-running workers that compute — queue workers, report generation, parsers, numeric code — and not yet worth it for a typical CMS page. The <a href="../docs/php.html#the-jit-on-real-applications">full measurements</a> include cycle counts, warm-up per app, the C backend and FPM memory.</p>
 
 <h2>Does it actually catch real bugs?</h2>
 <p>PHP 8.4.27 fixed two request-handling memory bugs, CVE-2026-109618 (an OOM unwinding a request mid-construction) and CVE-2026-109619 (request globals surviving into the next request). That gave a clean experiment: run the 235 regression tests PHP shipped with the fixes against the <i>vulnerable</i> version — Fil-C PHP 8.4.25, which filnix keeps for exactly this, marked insecure — and see whether Fil-C notices anything on its own. It stopped two of them dead, at the corrupted accesses the CVEs start from, where native PHP runs on:</p>
@@ -119,12 +166,13 @@ filc panic: thwarted a futile attempt to violate memory safety.</code></pre>
 <tr><th>Build</th><th>Command</th><th>What it is</th></tr>
 <tr><td><b>8.4.27</b> (default)</td><td><code>#pkgsFilc.php</code></td><td>The current 8.4 security release. Also what the tarball and Docker image ship.</td></tr>
 <tr><td><b>8.5.12</b></td><td><code>#pkgsFilc.php85</code></td><td>Opt-in current 8.5, with the same patches and allocator default — and the build all the recent speed work targets (a Fil-C HYBRID VM, patched PCRE2, no quadratic string building).</td></tr>
+<tr><td><b>8.5.12 + JIT</b></td><td><code>#php85-jit</code></td><td>8.5 on the staging toolchain with opcache's JIT compiled through Fil-C's in-process LLVM JIT (<a href="#jit">above</a>). Opt-in and newer than the rest; not yet in the binary cache.</td></tr>
 <tr><td><b>7.4.33</b></td><td><code>#pkgsFilc.php74</code>, <code>#php74-dist</code></td><td>End-of-life since 2022, with PHP's minimal mitigation for the two CVEs above. A mitigation while you migrate to PHP 8, not a supported PHP: the <code>unserialize()</code> UAF panics here, but SQL injection and the rest work exactly as in ordinary 7.4.</td></tr>
 <tr><td>8.4.25</td><td><code>#pkgsFilc.php84_25</code></td><td>The deliberately vulnerable build used above. Marked insecure; exists to reproduce bugs, not to run.</td></tr>
 </table>
 
 <div class="note">
-<p><b>A research artifact.</b> These are not php.net builds and come with no support or warranty. Fil-C turns memory corruption into a crash; it does not help with logic bugs, injection, or anything your PHP code does on purpose. Keep upgrading PHP — and if a killed worker is better than a compromised one, and 1.5–4× the CPU is affordable, this may be worth evaluating. The <a href="../docs/php.html">full notes</a> cover the JIT-through-C experiment, the 8.5 and 7.4 builds, upstream's own Projeny port, and every test count; the build recipe is in <a href="https://github.com/mbrock/filnix">mbrock/filnix</a>.</p>
+<p><b>A research artifact.</b> These are not php.net builds and come with no support or warranty. Fil-C turns memory corruption into a crash; it does not help with logic bugs, injection, or anything your PHP code does on purpose. Keep upgrading PHP — and if a killed worker is better than a compromised one, and 1.5–4× the CPU is affordable, this may be worth evaluating. The <a href="../docs/php.html">full notes</a> cover both JIT backends, the 8.5 and 7.4 builds, upstream's own Projeny port, and every test count; the build recipe is in <a href="https://github.com/mbrock/filnix">mbrock/filnix</a>.</p>
 </div>
 
 </main>
