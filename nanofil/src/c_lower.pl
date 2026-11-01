@@ -1703,6 +1703,11 @@ pure_place(obj(_, deref(XV))) :- pure_tree(XV).
 
 qualified_with(qualified(Qs, _), Q) :- memberchk(Q, Qs).
 
+% atomic_or_volatile(+T): an object of qualified type T is loaded
+% atomically if it is a pointer: _Atomic, or volatile as Fil-C has it.
+atomic_or_volatile(T) :- atomic_qualified(T), !.
+atomic_or_volatile(T) :- qualified_with(T, volatile).
+
 % element_type(+Type, -Elem): Elem is the innermost element type of
 % array Type, or Type itself.
 element_type(array(T, _), E) :- !, element_type(T, E).
@@ -3297,7 +3302,7 @@ lower_node(val(_, float(Cs)), _, v(const(V), Type)) --> !,
 lower_node(val(T, load(X)), Ctx, R) --> !,                 % 6.3.2.1p2
     direct_place(X, Ctx, P, _),
     { unqualified(T, U) },
-    (   { tree_type(X, TX), atomic_qualified(TX), P = lv(Addr, ptr(_)) }
+    (   { tree_type(X, TX), atomic_or_volatile(TX), P = lv(Addr, ptr(_)) }
     ->  let(p, atomic_load(p), [Addr], D),                 % 6.2.6.1p9
         { R = v(D, U) }
     ;   { P = lv(Addr, atomic(S, Size)) }
@@ -3359,6 +3364,18 @@ lower_node(val(T, gcond(XC, XB)), Ctx, R) --> !,           % GNU c ?: b
     arm_value(U, VB0, VB1), here(LB1),
     term(goto(LJoin)),
     join_arms(U, LJoin, LA1-VA1, LB1-VB1, R).
+% Fil-C accesses a volatile pointer as it does an _Atomic one, so its
+% address and capability never tear (FilPizlonator's loadPtr and
+% storePtr; invisicaps_by_example.md, Pointer Races): ptrchaos2 pushes
+% onto a list through a racing `foo *volatile head`.
+lower_node(val(_, assign(=, X, XB)), Ctx, R) -->
+    { tree_type(X, TX), \+ atomic_qualified(TX), qualified_with(TX, volatile),
+      unqualified(TX, ptr(_)) }, !,
+    place(X, Ctx, lv(Addr, U)),
+    lower(XB, Ctx, Value0),
+    converted(Value0, U, R),
+    { R = v(V, _) },
+    atomic_stored(U, V, Addr, 5).
 lower_node(val(_, assign(=, X, XB)), Ctx, R) -->           % 6.2.6.1p9
     { tree_type(X, TX), atomic_qualified(TX) }, !,
     place(X, Ctx, lv(Addr, U)),
@@ -4383,10 +4400,15 @@ float_bits(A, Ctx, f(K, Bits, Abs, const(Inf), const(MinNormal))) -->
 
 % bit_count(+Op, +Bits, +X, -N)//: N is the number of trailing zeros,
 % leading zeros or ones of X, a Bits-wide unsigned value zero-extended
-% to 64 bits; branch-free, so the operand 0 (undefined for ctz and clz)
-% needs no block.
+% to 64 bits; branch-free, so the operand 0 needs no block. ctz and clz
+% of 0 are Bits, as Fil-C defines them since deluge (KillUB): ctz counts
+% X with bit Bits set, so it stops there (filc/tests' clz/ctz probe).
 bit_count(popcount, _, X, N) --> popcount64(X, N).
-bit_count(ctz, _, X, N) -->
+bit_count(ctz, Bits, X0, N) -->
+    (   { Bits < 64 }
+    ->  { Stop is 1 << Bits }, let(l, or, [X0, const(Stop)], X)
+    ;   { X = X0 }
+    ),
     let(l, neg, [X], M), let(l, and, [X, M], Low),
     let(l, sub, [Low, const(1)], Below), popcount64(Below, N).
 % ffs: popcount of the bits up to the lowest set one, times 1 if X is

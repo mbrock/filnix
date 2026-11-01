@@ -14,8 +14,9 @@
     no native trap), so no check is added,
     removed or moved, and no trap changes its time or reason. Constant
     operations are evaluated by the interpreter's own `alu/4`, so a
-    folded value is the one the IR's semantics gives; one that would be
-    undefined (a division by zero) is left alone. Pollchecks are not in
+    folded value is the one the IR's semantics gives (a division by zero
+    is 0, as Fil-C's is since deluge); one that would be undefined (an
+    invalid float conversion) is left alone. Pollchecks are not in
     unchecked IR: pizlonation adds one on every edge to a block at or
     before its source, so every cycle of the result still polls.
 
@@ -339,8 +340,8 @@ is_const(const(N)) :- integer(N).
 arg_number(K, const(N), X) :- modulus(K, M), X is N mod M.
 
 % Integer operations alu/4 evaluates on integers. Division is among
-% them: alu/4 gives ub for a zero divisor or an overflowing quotient,
-% and then the operation stays.
+% them and is total (a zero divisor gives 0, MIN / -1 gives MIN), so it
+% folds like any other.
 foldable(Op) :-
     op_kind(Op, Kind),
     memberchk(Kind, [additive, alu, shift, neg, copy, cmp, ext]),

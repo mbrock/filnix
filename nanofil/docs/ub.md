@@ -42,10 +42,13 @@ killings that have to happen.") does four things to every function:
 | attribute mask | removes `noundef`, `nonnull`, `dereferenceable`, `noalias`, `readonly`/`writeonly`/`memory`, `noreturn`, `willreturn`, `mustprogress`, `nofree`, `nosync`, `range`, `returned` and others from functions, returns and parameters |
 | intrinsics | erases `llvm.assume`, `noalias.scope.decl` and `invariant.start`/`.end`; replaces `launder`/`strip.invariant.group` by their operand |
 
-It does **not** change instruction semantics that are UB in LLVM by
-themselves: `sdiv`/`udiv` by zero, `sdiv MIN, -1`, `shl`/`lshr`/`ashr`
-by at least the width (poison), `fptosi` out of range (poison),
-`unreachable`, `undef` from an uninitialized scalar. A reached
+Since deluge (upstream 2de132744209) it also defines integer division:
+it selects a dividend of 0 and a divisor of 1 for a zero divisor, and a
+divisor of 1 for `sdiv MIN, -1`, so quotient and remainder are 0, or
+`MIN` and 0. It masks shift counts by the width and clears `ctlz` and
+`cttz`'s zero-is-poison flag. It does **not** change the other
+instruction semantics that are UB in LLVM by themselves: `fptosi` out
+of range (poison), `unreachable`, `undef` from an uninitialized scalar. A reached
 `unreachable` that survives to pizlonation becomes a Fil-C panic,
 "llvm unreachable instruction" (`FilPizlonator.cpp`, the
 `UnreachableInst` case), as does `llvm.trap`. Optimizations that run
@@ -72,7 +75,8 @@ filcc `-O1`, which behaved as `-O2` on every probe below.
 | `-INT_MIN` | `neg` | `INT_MIN` | `INT_MIN` | wraps | wraps |
 | shift count ≥ width (6.5.7p3) | `shl`: `1 << 32` | 1 | 1 | LLVM poison; x86 `shl` masks the count | IR masks the count: 1 |
 | check after an oversized shift | `shl-check` | -1 | -1 | the later `n >= 32` test was kept | -1 |
-| `x / 0`, `INT_MIN / -1` (6.5.5p5-6) | `div0`, `min-1`, `div-check` | SIGFPE (136) | SIGFPE (136) | `idiv` faults; not a Fil-C panic. `-O2` did not hoist the `d == 0` test above the division | interpreter `ub(division_by_zero)` / `ub(division_overflow)`; native SIGFPE |
+| `x / 0`, `INT_MIN / -1` (6.5.5p5-6) | `div0`, `min-1`, `div-check` | 0; `INT_MIN` (remainders 0) | same | since deluge KillUB divides 0 by 1 for a zero divisor and `INT_MIN` by 1 for -1, before any optimization; 0.687 raised SIGFPE | the same, in the interpreter and natively (amd64.pl's `division//5` rewrites the operands without branches) |
+| `clz(0)`, `ctz(0)` | `__builtin_clz(0)` | 32 | 32 | KillUB clears the intrinsics' zero-is-poison flag | 32 (the width) |
 | strict aliasing (6.5p7) | `tbaa`: `*i = 1; *f = 2.0f; return *i;` | 0x40000000 | 0x40000000 | `!tbaa` dropped; memory is bytes | bytes: same |
 | uninitialized automatic (6.7.9p10, 6.3.2.1p2) | `uninit`: `int x; if (c) x = 5; return x;`, `c = 0` | 0 | **5** | allocations are zeroed, but SROA makes `x` an SSA `undef` before pizlonation, and the select folds | 0: interpreter zeroes allocations; `promote` starts slots at `initial_zero` |
 | out-of-range float to int (6.3.1.4p1) | `fp`: `(int)1e20` | `INT_MIN` | `INT_MIN` | `cvttsd2si`'s indefinite value; LLVM poison | interpreter `ub(float_conversion)`; native `INT_MIN` |
@@ -105,8 +109,9 @@ pedantic clang rejects it.
 
 nanofil's IR has no poison, `undef` or UB flags. Integer operations
 wrap at their class width, shift counts are masked as on x86, and
-division by zero or `MIN / -1` is the one integer operation the
-interpreter treats as undefined; native code faults, as Fil-C's does.
+division is total, as Fil-C's is since deluge: `x / 0` and `x % 0` are
+0, and `MIN / -1` wraps to `MIN` with remainder 0. Only an invalid float
+to integer conversion is undefined in the interpreter.
 Memory is bytes, with no type-based aliasing. Allocations start zeroed.
 This is Fil-C's behaviour at `-O0`, and it is what KillUB makes of the
 source's UB. Where Fil-C's later optimizations still exploit LLVM's own
@@ -118,6 +123,12 @@ So programs that read an uninitialized scalar or reach
 not a nanofil bug. Such a test is not a valid comparison.
 
 Differences worth closing or keeping in mind:
+
+- **A constant `LONG_MIN / -1L`.** clang folds a division of constants
+  while it emits IR, before KillUB, and the overflowing one becomes
+  poison: filcc prints 0 for `long b = LONG_MIN / -1L;` in a function
+  body, while the same division of run-time values gives `LONG_MIN`.
+  nanofil gives `LONG_MIN` for both.
 
 - **A reached `unreachable` panics as clang `-O0`'s does.**
   `filc_amd64.pl`'s `jump(unreachable, ...)` calls `filc_error` with

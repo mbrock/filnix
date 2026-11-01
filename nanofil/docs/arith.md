@@ -47,7 +47,6 @@ initializer uses the same type.
 |---|---|---|
 | `overlap` | `ice`, and then `const = ir = fold` | clang accepts an ICE: all three agree on the value |
 | `fold_extension` | not `ice`, `const = ir = fold` | nanofil folds what pedantic clang rejects, to clang's GNU-folded value and the IR's |
-| `rejected(traps)` | not `ice`, `const` ub or not constant, `ir` ub | division by zero or `MIN / -1`: undefined (6.5.5p5-6), and the IR traps |
 | `rejected(wraps_as_clang)` | not `ice`, `const` not a value, `ir = fold` | undefined; the IR's wrapped or masked value happens to be clang's |
 | `rejected(differs)` | not `ice`, `const` not a value, `ir ≠ fold` | undefined; IR and clang fold differently |
 
@@ -68,7 +67,8 @@ Outside the overlap the readings differ deliberately:
   and `MIN / -1` or `MIN % -1` (6.5.5p6) make `const_eval` give `ub`, so
   `_Static_assert`, `case`, array sizes and static initializers refuse
   them. The IR is defined there: it masks the shift count to the class
-  width like x86, and its division traps.
+  width like x86, and its division is total, as Fil-C's is since deluge
+  (`x / 0` is 0, `MIN / -1` is `MIN`).
 - **clang folds undefined shifts differently.** clang's folder clamps a
   too-large count to width-1 and turns a negative count into the
   opposite shift (`1 << 32` folds to `INT_MIN`, `8 >> -1` to 16), with
@@ -121,6 +121,10 @@ In the complete space `fold_extension` is only `+`, `-`, `*`, unary `-`
 and `<<`; `rejected(differs)` and `rejected(wraps_as_clang)` are only
 shifts; `rejected(traps)` only `/` and `%`.
 
+Since division became total (November 2026, Fil-C's deluge), the IR no
+longer traps, so the `traps` column's expressions now fall into
+`wraps_as_clang` or `differs`; the counts above predate that.
+
 ## What it found
 
 Before the fixes, the first random run of 300 expressions had 10
@@ -139,7 +143,8 @@ is in `c_types.pl`'s constant folding with a fail-first test.
    `tests/c/constant-ub.c` (`huge_shift`), and `kind_binary/6`'s
    `doc/3` examples.
 2. **`MIN / -1` and `MIN % -1` folded** (C11 6.5.5p6) to `MIN` and 0,
-   while the IR (and x86 `idiv`) traps. `quotient_overflows/4` makes them
+   which the IR now computes too (it trapped, as x86 `idiv` does,
+   before Fil-C's deluge defined division). `quotient_overflows/4` makes them
    `ub`, as division by zero already was. Tests:
    `tests/c/reject/division-overflow.c` and `kind_binary/6`'s examples,
    which include the boundary `-INT_MAX / -1` and the same quotient in

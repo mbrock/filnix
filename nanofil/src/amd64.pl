@@ -484,14 +484,46 @@ shift(Insn, K, [X, Y], Ctx) -->
 
 % division(+Signedness, +Result, +K, +Args, +Ctx)//: the division of
 % that Signedness of the first of Args by the second, leaving in %rax
-% its Result, the quotient (quot) or remainder (rem).
+% its Result, the quotient (quot) or remainder (rem). It is total, as
+% Fil-C's is since deluge (KillUB; docs/ub.md): the operands are first
+% rewritten, without branches, so that the divide cannot fault.
 division(Signedness, Result, K, [X, Y], Ctx) -->
     load(X, K, a, Ctx),
     load(Y, K, c, Ctx),
     { att_suffix(K, S),
-      reg_name(c, K, C) },
+      reg_name(a, K, A),
+      reg_name(c, K, C),
+      reg_name(d, K, D) },
+    zero_divisor(S, A, C, D),
+    minus_one_divisor(Signedness, S, A, C, D),
     divide(Signedness, K, S, C),
     division_result(Result, K, S).
+
+% zero_divisor(+S, +A, +C, +D)//: a zero divisor C becomes 1 and the
+% dividend A 0, so quotient and remainder are 0. With E = (C == 0),
+% C += E and A &= E - 1.
+zero_divisor(S, A, C, D) -->
+    [ins(test, S, [reg(C), reg(C)]),
+     ins(sete, none, [reg(dl)]),
+     ins(movzb, l, [reg(dl), reg(edx)]),
+     ins(add, S, [reg(D), reg(C)]),
+     ins(sub, S, [imm(1), reg(D)]),
+     ins(and, S, [reg(D), reg(A)])].
+
+% minus_one_divisor(+Signedness, +S, +A, +C, +D)//: a signed divisor of
+% -1 becomes 1 and the dividend its negation, which wraps MIN to MIN
+% where idiv would fault; the remainder is 0 either way. With
+% E = (C == -1), C += 2E and A = (A ^ -E) + E.
+minus_one_divisor(unsigned, _, _, _, _) --> [].
+minus_one_divisor(signed, S, A, C, D) -->
+    [ins(cmp, S, [imm(-1), reg(C)]),
+     ins(sete, none, [reg(dl)]),
+     ins(movzb, l, [reg(dl), reg(edx)]),
+     ins(add, S, [reg(D), reg(C)]),
+     ins(add, S, [reg(D), reg(C)]),
+     ins(neg, S, [reg(D)]),
+     ins(xor, S, [reg(D), reg(A)]),
+     ins(sub, S, [reg(D), reg(A)])].
 
 % divide(+Signedness, +K, +S, +C)//: %rdx:%rax (or %edx:%eax) divided
 % by register C, extended from %rax by Signedness.

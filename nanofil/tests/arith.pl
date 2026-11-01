@@ -451,9 +451,9 @@ folded_line(I, V, Line) :-
     | `fold_extension` | const_eval folds what clang -pedantic-errors rejects; the value is clang's folded value and the IR's |
     | `rejected(Ir)` | neither clang -pedantic-errors nor const_eval accepts a constant; Ir says how the IR reads it |
 
-    and Ir is `traps` (the IR's division ub), `wraps_as_clang` (the IR's
-    value is clang's folded value) or `differs` (it is not, or clang
-    does not fold). Both IR readings must always agree. */
+    and Ir is `wraps_as_clang` (the IR's value is clang's folded value)
+    or `differs` (it is not, or clang does not fold). The IR's division
+    is total since deluge, so it never traps. Both IR readings must always agree. */
 agreement(r(_, _, _, IR, IRP), _) :- IR \== IRP, !, fail.
 agreement(r(_, _, error(_), _, _), _) :- !, fail.
 agreement(r(_, _, _, error(_), _), _) :- !, fail.
@@ -463,8 +463,7 @@ agreement(r(not_ice, Fold, v(V), IR, _), fold_extension) :- !,
     Fold = v(V), IR = v(V).
 agreement(r(not_ice, Fold, Const, IR, _), rejected(How)) :-
     memberchk(Const, [ub, not_constant]),
-    (   IR = ub(_) -> How = traps
-    ;   IR = v(V), Fold == v(V) -> How = wraps_as_clang
+    (   IR = v(V), Fold == v(V) -> How = wraps_as_clang
     ;   How = differs
     ).
 

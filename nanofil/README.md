@@ -174,7 +174,7 @@ regrtest, bash) its per-test results equal the clang build's. zlib's
 compressed output is byte-identical, at about five times clang's time.
 Across the C ports in ports.nix, nanofil alone builds 61 of the 201 that
 filcc builds, with the same test results ([docs/survey.md](docs/survey.md)). Of upstream
-Fil-C's own tests, nanofil builds and passes 4,006 of the 5,491 written
+Fil-C's own tests, nanofil builds and passes 4,008 of the 5,491 written
 in C; none that must trap runs to the end, and most of the rest use SIMD
 asm and intrinsics nanofil refuses ([docs/filc-tests.md](docs/filc-tests.md)).
 

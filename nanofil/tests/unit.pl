@@ -307,19 +307,35 @@ test(jnz_tests_low_32_bits) :-
 
 %% Outcomes with no native counterpart
 
-% Division by zero and INT_MIN / -1 are undefined; other division
-% truncates toward zero.
+% Division is total, as Fil-C's is since deluge (docs/ub.md): x / 0 and
+% x % 0 are 0, INT_MIN / -1 wraps to INT_MIN and INT_MIN % -1 is 0;
+% other division truncates toward zero. Expected values by hand.
 test(division_by_zero_and_overflow) :-
     ir_module([
         func(f, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
             block(s, [], [
                 let(tmp(q), w, div, [tmp(a), tmp(b)])
             ], ret(tmp(q)))
+        ]),
+        func(r, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+            block(s, [], [
+                let(tmp(q), w, rem, [tmp(a), tmp(b)])
+            ], ret(tmp(q)))
+        ]),
+        func(u, export, l, [param(l, tmp(a)), param(l, tmp(b))], [
+            block(s, [], [
+                let(tmp(q), l, urem, [tmp(a), tmp(b)])
+            ], ret(tmp(q)))
         ])
     ], M),
-    module_fn_args_outcome(M, f, [5, 0], ub(division_by_zero)),
-    module_fn_args_outcome(M, f, [2147483648, 4294967295],
-                           ub(division_overflow)),
+    module_fn_args_outcome(M, f, [5, 0], ret(0)),
+    module_fn_args_outcome(M, r, [5, 0], ret(0)),
+    module_fn_args_outcome(M, u, [5, 0], ret(0)),
+    module_fn_args_outcome(M, f, [2147483648, 4294967295], ret(2147483648)),
+    module_fn_args_outcome(M, r, [2147483648, 4294967295], ret(0)),
+    % 7 / -1 is -7, and -7 % 2 is -1
+    module_fn_args_outcome(M, f, [7, 4294967295], ret(4294967289)),
+    module_fn_args_outcome(M, r, [4294967289, 2], ret(4294967295)),
     % -7 / 2 truncates to -3
     module_fn_args_outcome(M, f, [4294967289, 2], ret(4294967293)).
 
@@ -1506,7 +1522,7 @@ test(simplify) :-
         let(tmp(g), w, add, [tmp(e), tmp(f)])], ret(tmp(g)))]),
     ir_module([Fold, Div0, Bools, Notb, Constbr, Gvn, Bypass, Strength, Dead, Narrow], M0),
     optimize(passes([simplify]), M0, M), once(valid_module(M)),
-    Runs = [fold-[]-ret(4294967298), div0-[1]-ub(division_by_zero),
+    Runs = [fold-[]-ret(4294967298), div0-[1]-ret(1),
             bools-[4294967295, 0]-ret(2), bools-[0, 4294967295]-ret(1),
             bools-[5, 5]-ret(1), notb-[2]-ret(10), notb-[3]-ret(20),
             constbr-[4294967295]-ret(0),
@@ -1523,7 +1539,8 @@ test(simplify) :-
            ( F = func(_, _, _, _, Bs), func_cfg(Bs, Cfg), cfg_idoms(Cfg, Idom),
              strict_ssa(F, Cfg, Idom) )),
     func_named(M, fold, func(_, _, _, _, [block(s, [], [], ret(const(4294967298)))])),
-    func_named(M, div0, func(_, _, _, _, [block(s, [], [let(tmp(q), w, udiv, [const(5), const(0)]), _], _)])),
+    % div0: division is total, so 5 udiv 0 folds to 0, and 0 + x to x.
+    func_named(M, div0, func(_, _, _, _, [block(s, [], [], ret(tmp(x)))])),
     % bools: one comparison, its negation, decides the branch.
     func_named(M, bools, func(_, _, _, _, [block(s, [], [let(tmp(N), w, cmp(sge, w), [tmp(a), tmp(b)])],
                                                   branch(tmp(N), t, f))|_])),
@@ -1914,7 +1931,7 @@ returns_differ(M0, M, Fn, Args, Fuel) :-
 % Translation validation's comparison: undefined behaviour and unknown
 % bytes allow any outcome they could produce, nothing else differs.
 test(refines) :-
-    refines(ub(division_by_zero), ret(7)),
+    refines(ub(float_conversion), ret(7)),
     V in 0..255,
     refines(ret(V), ret(0)),
     \+ refines(ret(V), ret(256)),
@@ -2199,6 +2216,21 @@ test(context_historical_names) :-
     run(LChecked, g, [], 100, ret(258)),
     LChecked = module([F|_]),
     \+ valid_module(module([F, context(g, [alias(q, historical(missing), none, [])])])).
+
+% A volatile pointer is loaded and stored as an _Atomic one, so a racing
+% reader never pairs one store's address with another's capability
+% (FilPizlonator's loadPtr/storePtr; filc/tests ptrchaos2). A volatile
+% int stays an ordinary access.
+test(volatile_pointer_is_atomic) :-
+    c_tokens("struct n { struct n *volatile next; };
+              struct n *volatile head; volatile int k;
+              void push(struct n *x) { x->next = head; head = x; k = 1; }",
+             'vol.c', Ts),
+    c_parse(Ts, C), c_module(C, M), valid_module(M),
+    M = module(Is), memberchk(func(push, _, _, _, Bs), Is),
+    findall(I, ( member(block(_, _, Insts, _), Bs), member(I, Insts) ), All),
+    aggregate_all(count, member(let(_, p, atomic_load(p), _), All), 1),
+    aggregate_all(count, member(atomic_store(p, _, _), All), 2).
 
 % Completed array bounds are part of the binding type; a struct's
 % first field shares its address, but is not a value of the whole struct.

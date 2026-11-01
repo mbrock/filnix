@@ -25,7 +25,8 @@ script, a packed union clang refuses at -O2).
 
 ## Results
 
-Staging at fil-c `b24cd9552c09` (deluge 7b9ca2bdbb21), November 2026:
+Staging at fil-c `b24cd9552c09` (deluge 7b9ca2bdbb21), November 2026,
+with `--modes all` (a test passes only if it passes in all four modes):
 
 | | tests |
 |---|---:|
@@ -34,12 +35,13 @@ Staging at fil-c `b24cd9552c09` (deluge 7b9ca2bdbb21), November 2026:
 | skipped: another platform (`only-on-platform`) | 506 |
 | skipped: `skip` in the manifest | 4 |
 | run | 5,491 |
-| pass | 4,006 |
+| pass | 4,008 |
 | refused by nanofil | 1,387 |
 | trap with a different message | 38 |
 | link error | 40 |
-| spurious trap | 11 |
-| wrong output or exit status | 8 |
+| spurious trap | 9 |
+| wrong output or exit status | 6 |
+| over the time limit when scribbling | 2 |
 | diagnostic differs | 1 |
 
 **No test that must trap ran to completion.** Every test whose manifest
@@ -56,8 +58,8 @@ suite demands a panic. A different panic where one is due does not.
 scribbling and verifying, stop-the-world, release), there are:
 
 - no missed traps;
-- two crashes of nanofil's: `dividebyzero` and `unsigneddividebyzero`
-  die with SIGFPE (below);
+- no crashes of nanofil's since division became total (below);
+  `dividebyzero` and `unsigneddividebyzero` died with SIGFPE;
 - one crash that is not nanofil's: `jit_hello_loop3` dies with SIGTRAP,
   rarely and only when scribbling, and so does filcc's build of it (1
   in 30 runs);
@@ -105,7 +107,7 @@ are copies that nanofil hands to the runtime's `zmemmove`, which reports
 `stackdumpbug` wants a file and line in the stack trace, which nanofil
 does not emit.
 
-### Spurious traps (11)
+### Spurious traps (9)
 
 - `ptrtointtoptr`, `intcast2`, `intcast2O0`: a pointer rebuilt from an
   integer has no capability unless the cast sees the source pointer
@@ -117,25 +119,28 @@ does not emit.
   in a `long` member loses its capability; filcc copies the words with
   their capabilities. `byval-copy-test` (wrong exit) checks the same for
   by-value struct arguments.
-- `ptrchaos2`, `ptrcaschaos2`: ten threads push onto a list through a
-  racing `foo *volatile head`, and the reader traps with "ptr >= upper".
-  A guess, not yet checked: a racing load pairs one store's address with
-  another's capability, which filcc's pointer stores never let a reader
-  see. filcc runs both to the end.
+- `ptrchaos2`, `ptrcaschaos2` (fixed): ten threads push onto a list
+  through a racing `foo *volatile head`. Fil-C accesses a volatile
+  pointer as an atomic one (`filc_load_ptr_atomic_with_manual_tracking`,
+  `filc_store_ptr_atomic`), so its address and capability never tear;
+  nanofil accessed it as two plain words, and a reader could pair one
+  push's address with another's capability. The checks caught every
+  such pair (a bounds trap, never a wrong access), but the program is
+  correct and must run. nanofil now treats a volatile pointer as filcc
+  does.
 - `musttail`: `__attribute__((musttail))` is an ordinary call in nanofil,
   so ten million mutually recursive tail calls overflow the stack, a
   Fil-C stack-overflow trap.
 - `bug282b` (forced unwinding through a closure) and `hiddenvisibility`
   (`dlopen` of a `-fvisibility=hidden` library fails) are not yet
   diagnosed.
+- `weak4`, `weak6`: a `zweak` must read null after two GC cycles, but
+  its object is still alive. Not yet diagnosed; a likely cause is a
+  stale lower left in nanofil's frame keeping the object reachable,
+  which costs memory but not safety.
 
-### Wrong output or exit status (8)
+### Wrong output or exit status (6)
 
-- `dividebyzero`, `unsigneddividebyzero`: since deluge (upstream
-  2de132744209, *Kill UB harder*), filcc defines `x / 0` and `x % 0` as
-  0, `MIN / -1` as `MIN` and `MIN % -1` as 0. nanofil's `idiv` still
-  raises SIGFPE, as [ub.md](ub.md) records for 0.687. The same commit
-  masks shift amounts and makes `ctlz`/`cttz` of 0 the width.
 - `_longjmpfail1`, `longjmpfail4`, `siglongjmpfail1`: a non-volatile
   local changed between `setjmp` and `longjmp`, whose value C leaves
   indeterminate (7.13.2.1p3); filcc keeps the value at `setjmp`, nanofil
@@ -152,8 +157,7 @@ filcc does, but the message does not name the object.
 
 ## Fixed by this suite
 
-The first run passed 3,747; these fixes, in c_parse, c_types and
-c_lower, add 260:
+The first run passed 3,747; these fixes add 261 (in all four modes):
 
 - `zmemmove_union`, `zmemmove_builtin` and `zmemmove_builtin_volatile`
   from `filc_test_support.h`, which filcc lowers as its builtin memmove,
@@ -170,6 +174,13 @@ c_lower, add 260:
   nanofil callee keeps its arguments alive after a filcc caller has
   popped its frame, as the callee-rooting ABI of deluge requires
   ([abi-findings.md](abi-findings.md), *Callees root their arguments*).
+- Integer division is total, as Fil-C's is since deluge: `x / 0` and
+  `x % 0` are 0 and `MIN / -1` is `MIN` (amd64's `division//5` rewrites
+  the operands without branches; the interpreter agrees), and `ctz(0)`
+  is the width ([ub.md](ub.md)). `dividebyzero` and
+  `unsigneddividebyzero` died with SIGFPE, the suite's only crashes.
+- A `volatile` pointer is loaded and stored atomically, as filcc does
+  (`ptrchaos2`, `ptrcaschaos2`, under *Spurious traps*).
 
 ## Next
 
@@ -178,11 +189,9 @@ In order of tests gained per change:
 1. Report memmove traps with filcc's messages, by checking both ranges
    inline before calling `zmemmove`, as filcc does (about 30 tests).
 2. The intrinsics of *Link errors* (38 tests, IR operations).
-3. Deluge's defined division, shifts and bit counts, in the interpreter,
-   `const_eval` and the backend, with ub.md updated.
-4. Copying capabilities with the words of integer-typed members, if the
+3. Copying capabilities with the words of integer-typed members, if the
    campaign wants filcc's union and struct transport (ub.md).
-5. `__int128` (35 tests) and real `musttail`.
+4. `__int128` (35 tests) and real `musttail`.
 
 The SIMD inline asm and intrinsics (about 1,300 tests) are out of scope
 for now.

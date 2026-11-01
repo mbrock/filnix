@@ -22,7 +22,7 @@
     | `rets([X1, X2])` | returned a tuple |
     | `ret` | returned from a void function |
     | `unreachable` | executed `unreachable` |
-    | `ub(Reason)` | undefined behaviour: `division_by_zero`, `division_overflow`, `float_conversion` (an invalid float-to-integer conversion), or in plain mode `out_of_bounds(A, Size)`, a memory access outside every live allocation |
+    | `ub(Reason)` | undefined behaviour: `float_conversion` (an invalid float-to-integer conversion), or in plain mode `out_of_bounds(A, Size)`, a memory access outside every live allocation |
     | `trap(Reason)` | a Fil-C check failed (filc mode only): `null_capability`, `out_of_bounds`, `misaligned`, `readonly`, `not_a_function`, `argument_size`, `return_size`, `invalid_free`, `double_free` |
     | `unchecked(Reason)` | a raw access (checked stage, ir.pl) that its capability does not allow: a check is missing or too weak, which only a broken pass produces. It is neither ub nor a trap, so it refines nothing. |
     | `out_of_fuel` | executed Fuel blocks without finishing |
@@ -1155,37 +1155,36 @@ alu(ext(T), K, [X], val(R)) :-
     int_is(R, S mod M).
 alu(cmp(Cond, CK), _, [X, Y], val(B)) :- cond_bit(Cond, CK, X, Y, B).
 
-% unsigned_division(+X, +Y, +Expr, -Res): Res is val of Expr, or ub when
-% the divisor Y is zero. An unknown Y gives both cases as solutions; a
-% known one takes the fast path.
+% unsigned_division(+X, +Y, +Expr, -Res): Res is val of Expr, or val(0)
+% when the divisor Y is zero, as Fil-C defines it since deluge (KillUB
+% divides 0 by 1; docs/ub.md). An unknown Y gives both cases as
+% solutions; a known one takes the fast path.
 unsigned_division(_, Y, Expr, Res) :-
     (   integer(Y)
-    ->  (   Y =:= 0 -> Res = ub(division_by_zero)
+    ->  (   Y =:= 0 -> Res = val(0)
         ;   int_is(R, Expr), Res = val(R)
         )
-    ;   Y #= 0, Res = ub(division_by_zero)
+    ;   Y #= 0, Res = val(0)
     ;   Y #\= 0, int_is(R, Expr), Res = val(R)
     ).
 
-% x86 idiv traps on both a zero divisor and the one quotient that
-% overflows, so both are undefined here. Known operands take the fast
-% path; otherwise the three cases are disjoint constraints.
+% Signed division is total too, as Fil-C defines it since deluge: a zero
+% divisor gives 0 (quotient and remainder), and MIN / -1 wraps to MIN
+% with remainder 0, which the general rule gives, since -MIN wraps to
+% MIN at the class width. Known operands take the fast path; otherwise
+% the two cases are disjoint constraints.
 signed_division(K, X, Y, Fn, Res) :-
     signed(K, X, SX),
     signed(K, Y, SY),
-    half_modulus(K, H),
-    Min is -H,
     (   integer(SX), integer(SY)
-    ->  (   SY =:= 0 -> Res = ub(division_by_zero)
-        ;   SY =:= -1, SX =:= Min -> Res = ub(division_overflow)
+    ->  (   SY =:= 0 -> Res = val(0)
         ;   modulus(K, M),
             division(Fn, SX, SY, Q),
             R is Q mod M,
             Res = val(R)
         )
-    ;   SY #= 0, Res = ub(division_by_zero)
-    ;   SY #= -1, SX #= Min, Res = ub(division_overflow)
-    ;   SY #\= 0, #\ (SY #= -1 #/\ SX #= Min),
+    ;   SY #= 0, Res = val(0)
+    ;   SY #\= 0,
         modulus(K, M),
         division(Fn, SX, SY, Q),
         R #= Q mod M,
