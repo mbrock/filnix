@@ -511,6 +511,9 @@
             # The site's SWI-Prolog 10, which nixpkgs does not have; ship
             # publishes it so the Pages build substitutes it.
             site-swipl = import ./nanofil/web/play/swipl.nix { inherit pkgs; };
+            # The site's nanofil playground, built with the staging toolchain;
+            # ship publishes it so Pages does not rebuild staging clang.
+            site-play = self.packages.${system}.site.play;
             php-docker = import ./packages/php-dist/docker.nix {
               inherit pkgs;
               dist = import ./packages/php-dist { inherit pkgs pkgsFilc; };

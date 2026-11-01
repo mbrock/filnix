@@ -27,6 +27,7 @@ pkgs.runCommand "filnix-site"
       pkgs.pandoc
       swipl
     ];
+    passthru = { inherit play; };
   }
   ''
     bash ${./.}/build.sh ${src} $out

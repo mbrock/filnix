@@ -7,3 +7,6 @@ packages.x86_64-linux.baseline
 # SWI-Prolog 10 for the Pages build (.#site), which would otherwise compile
 # it on every run; it changes only with nixpkgs.
 packages.x86_64-linux.site-swipl
+# The site's nanofil playground, built with filcc-staging: without it, every
+# staging pin change makes the Pages build compile staging clang.
+packages.x86_64-linux.site-play
