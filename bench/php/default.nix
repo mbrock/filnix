@@ -1,6 +1,6 @@
 # PHP 8.5 application benchmark: native Nixpkgs PHP against pkgsFilc.php85
-# (release Fil-C) and pkgsFilcStaging.php85 (the staging toolchain)
-# on DokuWiki, MediaWiki and WordPress (see README.md).
+# (release Fil-C), pkgsFilcStaging.php85 (the staging toolchain) and
+# pkgsFilcStaging.php85-jit (opcache's JIT through LLVM or C) on DokuWiki, MediaWiki and WordPress (see README.md).
 {
   pkgs,
   pkgsFilc,
@@ -48,12 +48,14 @@ pkgs.writeShellApplication {
   text = ''
     export PHP_BENCH_NATIVE=${native} PHP_BENCH_FILC=${filc} \
       PHP_BENCH_FILC_STAGING=${pkgsFilcStaging.php85} \
+      PHP_BENCH_FILC_STAGING_JIT=${pkgsFilcStaging.php85-jit} \
       PHP_BENCH_DOKUWIKI=${pkgs.dokuwiki}/share/dokuwiki \
       PHP_BENCH_MEDIAWIKI=${pkgs.mediawiki}/share/mediawiki \
       PHP_BENCH_WORDPRESS=${pkgs.wordpress}/share/wordpress \
       PHP_BENCH_WP_THEME=${pkgs.wordpressPackages.themes.twentytwentyfive} \
       PHP_BENCH_WP_SQLITE=${pkgs.wordpressPackages.plugins.sqlite-database-integration} \
-      PHP_BENCH_ZEND=${zendBench}
+      PHP_BENCH_ZEND=${zendBench} \
+      PHP_BENCH_MICRO=${./micro.php}
     exec python3 -I ${./bench.py} "$@"
   '';
 }

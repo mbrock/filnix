@@ -10,20 +10,34 @@ release (8.5.12):
 - `filc-staging`: `pkgsFilcStaging.php85`, the staging toolchain
   (`lib/filc-staging.json`), which optimization work builds on.
 
+and, with opcache's JIT:
+
+- `native-jit`: native PHP with `opcache.jit=tracing`;
+- `filc-staging-jit`: `pkgsFilcStaging.php85-jit` with `opcache.jit=tracing`
+  through Fil-C's in-process LLVM JIT (`docs/php.md`);
+- `filc-staging-jit-c`: the same build through the C backend, which
+  prints C and runs clang, with its persistent object cache;
+- `-1235` and `-function` forms of `native-jit` and `filc-staging-jit` for
+  the other JIT modes (`function` compiles each file's functions when it
+  loads, so it suits only the scripts below).
+
 The applications are DokuWiki, MediaWiki (SQLite) and WordPress (SQLite
 through the `sqlite-database-integration` drop-in, theme Twenty
-Twenty-Five), all from Nixpkgs, plus `Zend/bench.php` for reference.
+Twenty-Five), all from Nixpkgs, plus two scripts: `Zend/bench.php`, and
+`micro.php` (recursive calls, integer and float loops, n-body, `usort`
+with a closure, string building).
 
 ```sh
 nix build .#php-bench
 result/bin/php-bench setup        # fixtures in ~/.cache/php-bench (PHP_BENCH_STATE)
 result/bin/php-bench run          # counters: native, filc, filc-staging
 result/bin/php-bench profile      # perf record, broken down by category
+result/bin/php-bench check        # compare responses and error logs across variants
 result/bin/php-bench report DIR   # rerender summary.md from results.jsonl
 ```
 
-`run` and `profile` take `--apps` (`dokuwiki mediawiki wordpress
-bench.php`) and `--variants`. Besides the three builds there are allocator
+`run`, `profile` and `check` take `--apps` (`dokuwiki mediawiki wordpress
+bench.php micro.php`) and `--variants`. Besides the three builds there are allocator
 levers (`filc-zendalloc`, `filc-untracked` and their `filc-staging-`
 forms: Zend's allocator, or malloc without `memory_limit` tracking; both
 weaken Fil-C's per-value bounds, see `docs/php.md`) and native ones
@@ -65,6 +79,39 @@ GC marker threads count too, so this is the CPU cost of the work, not just
 the request thread's latency. Kernel cycles, task-clock and wall latency
 are recorded alongside.
 
+## JIT variants
+
+A JIT compiles in the requests that make code hot, so JIT variants get
+`--jit-warmup` passes (default 10) instead of `--warmup`, and every
+warm-up pass is measured: wall time, cycles:u and, for the Fil-C JIT,
+the functions and traces compiled and the seconds spent compiling (from
+the JIT's log, `PHP_JIT_C_LOG`). The report's "JIT warm-up" table gives
+the first pass, the steady state, the pass at which cycles settle within
+10% of steady state, and the compiles; the main tables measure only the
+steady state. Each round starts a fresh server, so each round compiles
+again, except that the C backend's cache (`jit-c-cache` in the results
+directory) persists across the rounds of one run: its first server
+compiles, later ones load.
+
+The scripts run twice per round. First once from the command line, cold:
+with a tracing JIT their sections include the compiles, and their tables
+add the compile count and seconds. Then from a fresh `php -S` server, three
+requests to warm up and three measured: the "warm" tables give the median
+of the measured sections (steady state), the first request's total, and
+the compiles. `opcache.jit=function` compiles before the script runs, so
+its cold and warm sections agree.
+
+`check` serves the mix with each variant after its warm-up and compares
+every response with the first variant's: status, size, and the body with
+numbers, hashes and nonces masked. It also reports each variant's error
+log and Fil-C or JIT messages in the server log, and exits non-zero on any
+difference:
+
+```sh
+php-bench check --apps dokuwiki mediawiki wordpress \
+  --variants filc-staging filc-staging-jit filc-staging-jit-1235 filc-staging-jit-c
+```
+
 ## Load
 
 swa is shared with build-heavy jobs, so:
@@ -87,10 +134,11 @@ For a consolidated cycle comparison in a quiet window:
 
 ```sh
 php-bench quiet mine=/path/to/bin/php other=/path/to/bin/php
+php-bench quiet native-jit filc-staging-jit filc-staging-jit-c --rounds 3
 ```
 
 runs every application with native, filc, filc-staging and the extra
-variants for 10 rounds. Before each measurement it waits until other work
+variants (named ones or `NAME=path`) for 10 rounds. Before each measurement it waits until other work
 keeps at most `--max-busy` (default 15%) of the CPUs busy, gives up after
 `--wait` minutes (default 30), and flags measurements that other work
 disturbed anyway; the report counts them. `run --max-busy` does the same

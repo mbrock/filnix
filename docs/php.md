@@ -183,7 +183,7 @@ What works and what does not:
   processes.
 - Tracing works but is slower than the interpreter: generated code cannot
   be patched, so side traces are never linked and their exits always fall
-  back to the interpreter.
+  back to the interpreter. (The LLVM backend below links them.)
 - Each process compiles its own code; FPM workers do not share it.
 
 On `Zend/bench.php`, function mode ran the CPU-bound benchmarks 4 to 60
@@ -267,15 +267,43 @@ value gets a stack slot of its own and PHIs become IR's de-SSA moves, as
 variables do in the C; LLVM's SROA turns the slots back into SSA values. Trace
 exits, stubs and the fixed VM registers work as in the C backend.
 
+Unlike the C backend, the LLVM backend links side traces. Each trace has an
+exit table, a global array bound with `FilLLVMJIT_SetGlobalMapping`; a
+failed guard writes its snapshot's values to an exit buffer laid out like
+the native exit's register dump and, if `zend_jit_link_side_trace` has
+filled its slot, tail-calls the side trace (`musttail`), which reads its
+parent's registers (`RLOAD`) from that buffer. Unlinked exits deoptimize
+through the C exit stub. Only one kind of exit still fails to compile (the
+`trace_exit` stub's `EXITCALL`, which nothing needs); an earlier count of
+171 "EXITCALL" failures was side traces reading non-VM registers, which now
+work. Linking made no measurable difference on `Zend/bench.php`, where the
+bigger win was allocating the 1 KiB area for the IR's `SP` only in functions
+that use it: Fil-C zeroes stack allocations, and every trace paid for it.
+A branchy loop went from 1.07 s to 0.38 s in tracing mode (interpreter
+0.86 s, function mode 0.12 s).
+
+Both backends stop PHP's execution timer while compiling, so compile time
+does not count against `max_execution_time`. Without that, the first
+requests to a WordPress or MediaWiki FPM worker, which compile hundreds of
+traces, failed with "Maximum execution time of 30 seconds exceeded" where
+the interpreter served them.
+
+Compiled functions are named after their PHP code (`jit:Class::method@file`,
+`jit:TRACE-12$Class::method$34`), so a Fil-C panic in JIT code says which
+code it was. `PHP_JIT_LLVM_DUMP=text` prints the IR and the LLVM module of
+the functions whose name contains `text`. `PHP_JIT_LLVM_MAX_INSNS` (default
+10000) leaves larger IR functions to the interpreter: LLVM's time grows
+faster than the function (49000 IR instructions took 20 to 35 s, most of it
+in FilPizlonator's check scheduling), and it is spent in the request that
+made the code hot. `PHP_JIT_LLVM_OPTIONS=key=value,...` passes further
+`FilLLVMJIT_SetOption` options; `opt-level=1` or `filc-inline=0` compiled
+10 to 30% faster without a clear difference in run time, too little to
+change the defaults on a loaded machine.
+
 `PHP_JIT_BACKEND=c` selects the C backend (with its persistent cache, which
 the LLVM backend does not use), `PHP_JIT_LLVM_OPT` sets LLVM's opt-level
 (default 2) and `PHP_JIT_LLVM_DUMP=1` prints each module. `PHP_JIT_C_STATS`,
 `PHP_JIT_C_LOG` and `PHP_JIT_C_VERBOSE` cover both backends.
-
-The backend declares intrinsics by name (`llvm.ctlz.i64`, ...) rather than
-looking them up: in the JIT API, `LLVMLookupIntrinsicID`,
-`LLVMIntrinsicIsOverloaded`, `LLVMIsMultithreaded` and
-`LLVMGetUndefMaskElem` lock a context they never set, and crash.
 
 In a development build the JIT suite passes 488/488 with the LLVM backend in
 function, tracing and 1235 modes, in 24 to 26 s per mode with 24 jobs.

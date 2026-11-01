@@ -3,6 +3,7 @@
 php-bench setup             build the DokuWiki, MediaWiki and WordPress fixtures
 php-bench run               interleaved, repeated counter measurements
 php-bench profile           perf record a warm server and break cycles down
+php-bench check             compare variants' responses and error logs
 php-bench report DIR        summarize a results directory
 """
 
@@ -28,6 +29,8 @@ STATE = ENV.get("PHP_BENCH_STATE") or os.path.join(
     ENV.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "php-bench"
 )
 PORTS = {"dokuwiki": 18301, "mediawiki": 18302, "wordpress": 18303}
+# Standalone scripts served warm (see warm_script).
+SCRIPT_PORTS = {"bench.php": 18304, "micro.php": 18305}
 FIXTURE_VERSION = "2"
 
 # Production-like settings, the same for every variant. The JIT is off so
@@ -49,6 +52,8 @@ INI = {
     "date.timezone": "UTC",
 }
 
+JIT_INI = {"opcache.jit": "tracing", "opcache.jit_buffer_size": "64M"}
+
 VARIANTS = {
     "native": ("PHP_BENCH_NATIVE", {}, {}),
     "filc": ("PHP_BENCH_FILC", {}, {}),
@@ -63,12 +68,29 @@ VARIANTS = {
     "filc-zendalloc": ("PHP_BENCH_FILC", {"USE_ZEND_ALLOC": "1"}, {}),
     "filc-untracked": ("PHP_BENCH_FILC", {"USE_TRACKED_ALLOC": "0"}, {}),
     "native-nopcrejit": ("PHP_BENCH_NATIVE", {}, {"pcre.jit": "0"}),
-    "native-jit": (
-        "PHP_BENCH_NATIVE",
-        {},
-        {"opcache.jit": "tracing", "opcache.jit_buffer_size": "64M"},
-    ),
+    "native-jit": ("PHP_BENCH_NATIVE", {}, JIT_INI),
+    "native-jit-1235": ("PHP_BENCH_NATIVE", {}, {**JIT_INI, "opcache.jit": "1235"}),
+    "native-jit-function": ("PHP_BENCH_NATIVE", {}, {**JIT_INI, "opcache.jit": "function"}),
+    # pkgsFilcStaging.php85-jit: opcache's JIT compiled in-process through
+    # Fil-C's LLVM JIT, or printed as C and compiled with clang (docs/php.md).
+    "filc-staging-jit": ("PHP_BENCH_FILC_STAGING_JIT", {"PHP_JIT_BACKEND": "llvm"}, JIT_INI),
+    "filc-staging-jit-1235": ("PHP_BENCH_FILC_STAGING_JIT", {"PHP_JIT_BACKEND": "llvm"},
+                              {**JIT_INI, "opcache.jit": "1235"}),
+    # opcache.jit=function compiles every function of a file when it loads,
+    # before the script runs: for bench.php and micro.php.
+    "filc-staging-jit-function": ("PHP_BENCH_FILC_STAGING_JIT", {"PHP_JIT_BACKEND": "llvm"},
+                                  {**JIT_INI, "opcache.jit": "function"}),
+    "filc-staging-jit-c": ("PHP_BENCH_FILC_STAGING_JIT", {"PHP_JIT_BACKEND": "c"}, JIT_INI),
 }
+
+# Variants whose JIT compiles in the request that makes code hot, and so
+# warm up for --jit-warmup passes; the Fil-C ones log each compile.
+def is_jit(name):
+    return "-jit" in name
+
+
+def is_filc_jit(name):
+    return name.startswith("filc") and is_jit(name)
 
 
 def variant(name):
@@ -350,6 +372,11 @@ def cmd_setup(a):
 
 def app_config(app):
     """(document root, extra env, router script, request mix)."""
+    if app in SCRIPT_PORTS:
+        root = os.path.join(STATE, "scripts")
+        os.makedirs(root, exist_ok=True)
+        shutil.copyfile(ENV[SCRIPTS[app]], os.path.join(root, app))
+        return root, {}, None, ["/" + app]
     if app == "dokuwiki":
         root = os.path.join(STATE, "dokuwiki")
         urls = [
@@ -376,7 +403,9 @@ def app_config(app):
             "/index.php?title=Article_12",
             "/index.php?title=Article_2&action=history",
             "/index.php?title=Article_3&action=edit",
-            "/index.php?title=Special:RecentChanges",
+            # RecentChanges shows 7 days by default and answers 404 when it
+            # has nothing to show; the fixture's edits are older.
+            "/index.php?title=Special:RecentChanges&days=90",
             "/index.php?title=Special:Search&search=lorem+tempor&fulltext=1",
             "/index.php?title=Special:AllPages",
             "/index.php?title=Category:Group_1",
@@ -547,9 +576,23 @@ class Server:
         open(os.path.join(STATE, "probe", "probe.php"), "w").write(PROBE)
         if not router:
             open(os.path.join(root, "__bench_probe.php"), "w").write(PROBE)
-        self.port = PORTS[app]
+        self.port = PORTS.get(app) or SCRIPT_PORTS[app]
         os.makedirs(logdir, exist_ok=True)
         self.log = os.path.join(logdir, f"{app}-{self.name}.log")
+        # The Fil-C JIT logs one line per compiled function or trace.
+        self.jit_log = None
+        if is_filc_jit(self.name):
+            self.jit_log = self.log + ".jit"
+            if os.path.exists(self.jit_log):
+                os.unlink(self.jit_log)
+            # The C backend keeps compiled objects in a cache shared by the
+            # servers of one results directory, as servers sharing a cache
+            # would: its first server compiles, later ones load.
+            cache = os.path.join(os.path.dirname(os.path.abspath(logdir)), "jit-c-cache")
+            os.makedirs(os.path.join(STATE, "jit-c"), exist_ok=True)
+            os.makedirs(cache, exist_ok=True)
+            env = {**env, "PHP_JIT_C_LOG": self.jit_log, "PHP_JIT_C_DIR": os.path.join(STATE, "jit-c"),
+                   "PHP_JIT_C_CACHE": cache}
         args = php_args(php, ini, self.log) + ["-S", f"127.0.0.1:{self.port}", "-t", root]
         if router:
             open(router, "w").write(ROUTER)
@@ -579,6 +622,18 @@ class Server:
             raise RuntimeError(f"{self.name} server for {app} did not start")
         assert self.probe_info["opcache"], self.probe_info
 
+    def jit_compiles(self):
+        """(units, seconds) the JIT has compiled so far."""
+        if not self.jit_log or not os.path.exists(self.jit_log):
+            return 0, 0.0
+        n, ms = 0, 0.0
+        for line in open(self.jit_log):
+            f = line.split(None, 4)
+            if len(f) == 5 and f[1] in ("llvm", "compiled"):
+                n += 1
+                ms += float(f[3])
+        return n, ms / 1e3
+
     def request(self, url):
         st, body = get(self.port, url)
         bad = st not in (200, 302) or re.search(rb"Fatal error|Fil-C|filc panic|Uncaught", body[:200000])
@@ -599,11 +654,19 @@ def session(app, var, a, out):
     """Start a server, warm it, then measure each URL in turn."""
     s = Server(app, var, os.path.join(out, "logs"))
     try:
-        for _ in range(a.warmup):
+        # Warm-up passes are measured too: with a JIT they include the
+        # compiles, which happen in the requests that make code hot.
+        ctr = Counters(s.proc.pid)
+        warm = []
+        for _ in range(a.jit_warmup if is_jit(s.name) else a.warmup):
+            c0, t = ctr.read(), time.perf_counter()
             for u in s.urls:
                 s.request(u)
+            d = Counters.delta(c0, ctr.read())
+            units, secs = s.jit_compiles()
+            warm.append({"cycles_u": d["cycles_u"], "task_clock_ns": d["task_clock_ns"],
+                         "wall_s": time.perf_counter() - t, "jit_units": units, "jit_s": secs})
         load0, busy0 = open("/proc/loadavg").read().split()[:3], cpu_busy()
-        ctr = Counters(s.proc.pid)
         res = {}
         for u in s.urls:
             walls = []
@@ -618,8 +681,10 @@ def session(app, var, a, out):
         busy1 = cpu_busy()
         total, idle = busy1[0] - busy0[0], busy1[1] - busy0[1]
         st, body = get(s.port, "/__bench_probe.php")
+        units, secs = s.jit_compiles()
         return {
             "app": app, "variant": s.name, "urls": res, "probe": json.loads(body),
+            "warmup": warm, "jit_units": units, "jit_s": secs,
             "probe_start": s.probe_info, "loadavg_start": load0,
             "loadavg_end": open("/proc/loadavg").read().split()[:3],
             "machine_busy": 1 - idle / total if total else None,
@@ -630,15 +695,26 @@ def session(app, var, a, out):
         s.stop()
 
 
-def zend_bench(var, out):
+# Standalone scripts, run once per round instead of served: Zend/bench.php
+# and micro.php (CPU-bound kernels), each printing per-section seconds.
+SCRIPTS = {"bench.php": "PHP_BENCH_ZEND", "micro.php": "PHP_BENCH_MICRO"}
+
+
+def zend_bench(var, out, app="bench.php"):
     name, php, env, ini = variant(var)
+    jit_log = None
+    if is_filc_jit(name):
+        # The script compiles while it runs; its total includes the compiles.
+        fd, jit_log = tempfile.mkstemp(suffix=".jit", dir=os.path.join(out, "logs"))
+        os.close(fd)
+        env = {**env, "PHP_JIT_C_LOG": jit_log}
     busy0 = cpu_busy()
     with tempfile.NamedTemporaryFile(suffix=".csv") as f:
         t = time.perf_counter()
         p = run(["perf", "stat", "-x,", "-o", f.name, "-e",
                  "cycles:u,instructions:u,cycles:k,task-clock", "--"]
                 + php_args(php, ini, os.path.join(out, "logs", f"bench-{name}.log"))
-                + [ENV["PHP_BENCH_ZEND"]], env={**ENV, **env}, capture_output=True, text=True)
+                + [ENV[SCRIPTS[app]]], env={**ENV, **env}, capture_output=True, text=True)
         wall = time.perf_counter() - t
         ctr = {}
         for line in open(f.name):
@@ -646,13 +722,50 @@ def zend_bench(var, out):
             if len(parts) > 2 and parts[0] and parts[0][0].isdigit():
                 ctr[parts[2].replace(":", "_").replace("-", "_")] = float(parts[0])
     sections = dict(re.findall(r"^(\S+)\s+([\d.]+)$", p.stdout, re.M))
+    units = secs = 0
+    if jit_log:
+        for line in open(jit_log):
+            f = line.split(None, 4)
+            if len(f) == 5:
+                units += 1
+                secs += float(f[3]) / 1e3
+        os.unlink(jit_log)
     busy1 = cpu_busy()
     total, idle = busy1[0] - busy0[0], busy1[1] - busy0[1]
-    return {"app": "bench.php", "variant": name, "wall_s": wall, "counters": ctr,
+    return {"app": app, "variant": name, "wall_s": wall, "counters": ctr,
+            "jit_units": units, "jit_s": secs, "warm": warm_script(var, out, app),
             "machine_busy": 1 - idle / total if total else None,
             "others_busy": others_busy(total, idle, ctr.get("task_clock", 0) / 1e3),
             "sections": {k: float(v) for k, v in sections.items()},
             "loadavg": open("/proc/loadavg").read().split()[:3]}
+
+
+def warm_script(var, out, app, warmup=3, reps=3):
+    """Sections of the script served by a warm server: the JIT compiles in
+    the first requests, so later ones show steady-state speed, which the
+    single cold run above mixes with compile time."""
+    s = Server(app, var, os.path.join(out, "logs"))
+    try:
+        ctr = Counters(s.proc.pid)
+        cold = None
+        for i in range(warmup + reps):
+            if i == warmup:
+                c0 = ctr.read()
+                runs = []
+            _, body = s.request("/" + app)
+            secs = {k: float(v) for k, v in re.findall(rb"^(\S+)\s+([\d.]+)$", body, re.M)}
+            secs = {k.decode(): v for k, v in secs.items()}
+            if cold is None:
+                cold = secs
+            if i >= warmup:
+                runs.append(secs)
+        d = Counters.delta(c0, ctr.read())
+        units, secs = s.jit_compiles()
+        return {"sections": {k: statistics.median([r.get(k, 0) for r in runs]) for k in runs[0]},
+                "first_sections": cold, "cycles_u": d["cycles_u"] / reps,
+                "jit_units": units, "jit_s": secs}
+    finally:
+        s.stop()
 
 
 _LOCK = None
@@ -695,7 +808,7 @@ def cmd_run(a):
         for app in a.apps:
             for var in order:
                 busy_before = wait_quiet(a, f"round {r} {app} {var}")
-                rec = zend_bench(var, out) if app == "bench.php" else session(app, var, a, out)
+                rec = zend_bench(var, out, app) if app in SCRIPTS else session(app, var, a, out)
                 rec["round"] = r
                 rec["busy_before"] = busy_before
                 # Flag a measurement the machine's load disturbed anyway.
@@ -706,9 +819,91 @@ def cmd_run(a):
     cmd_report(argparse.Namespace(dir=out))
 
 
+# Parts of pages that differ between any two requests: times, nonces,
+# tokens, cache-busting versions, generated ids.
+VOLATILE = re.compile(
+    rb"\d+(?:\.\d+)?|[0-9a-f]{8,}|wpnonce[^&\"']*|nonce[\"']?\s*[:=]\s*[\"'][^\"']*|"
+    rb"wgRequestId[^,]*|mw-checkbox-[A-Za-z0-9+/]{4}|"
+    rb"<!--[^>]*(?:Served|Cached|Parsed|NewPP)[^>]*-->", re.S)
+
+
+def cmd_check(a):
+    """Serve the mix with each variant after warm-up passes and compare its
+    responses with the first variant's: status, size, and body with
+    volatile parts (numbers, nonces, hashes) masked. Also report what each
+    variant wrote to its error log."""
+    lock()
+    out = a.out or os.path.join(STATE, "check", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    os.makedirs(os.path.join(out, "logs"), exist_ok=True)
+    md = [f"# php-bench check {os.path.basename(out)}", "",
+          f"Responses after {a.warmup} passes ({a.jit_warmup} for JIT variants), "
+          f"against {a.variants[0]}; bodies compared with numbers, hashes and nonces masked.", ""]
+    ok = True
+
+    def write():
+        tail = ["All responses match and error logs are empty." if ok else "**Differences or errors above.**"]
+        open(os.path.join(out, "check.md"), "w").write("\n".join(md + tail) + "\n")
+
+    for app in [x for x in a.apps if x not in SCRIPTS]:
+        bodies = {}
+        for var in a.variants:
+            s = Server(app, var, os.path.join(out, "logs"))
+            got, failure = {}, None
+            try:
+                for _ in range(a.jit_warmup if is_jit(s.name) else a.warmup):
+                    for u in s.urls:
+                        s.request(u)
+                for i, u in enumerate(s.urls):
+                    st, body = get(s.port, u)
+                    got[u] = (st, body)
+                    d = os.path.join(out, "bodies", app, s.name)
+                    os.makedirs(d, exist_ok=True)
+                    open(os.path.join(d, f"{i:02d}.html"), "wb").write(body)
+            except Exception as e:
+                # A crashed server (a Fil-C panic) or a failed request: report
+                # it with the logs and go on with the next variant.
+                failure = f"{type(e).__name__}: {e}"
+            finally:
+                units, secs = s.jit_compiles()
+                s.stop()
+            log = open(s.log).read() if os.path.exists(s.log) else ""
+            server_log = open(s.log + ".server").read() if os.path.exists(s.log + ".server") else ""
+            bodies[s.name] = got
+            md.append(f"## {app} {s.name}")
+            md.append("")
+            if failure:
+                md.append(f"**Failed:** {failure[:300]}")
+                ok = False
+            if units:
+                md.append(f"JIT: {units} compiles, {secs:.1f} s.")
+            errs = [l for l in log.splitlines() if l.strip()]
+            md.append(f"Error log: {len(errs)} lines" + (":" if errs else "."))
+            md += [f"    {l[:300]}" for l in errs[:10]]
+            panics = [l for l in server_log.splitlines() if re.search(r"filc|panic|Fil-C|zend_jit|jit:", l)]
+            md += [f"    server: {l[:300]}" for l in panics[:20]]
+            ok &= not errs and not panics
+            md.append("")
+            base = bodies.get(a.variants[0] and variant(a.variants[0])[0], got)
+            if got:
+                md.append("| request | status | bytes | base bytes | masked body |")
+                md.append("|---|---|---|---|---|")
+            for u, (st, body) in got.items():
+                bst, bbody = base.get(u, (None, b""))
+                same = VOLATILE.sub(b"#", body) == VOLATILE.sub(b"#", bbody)
+                ok &= st == bst and same
+                md.append(f"| `{u}` | {st}{'' if st == bst else f' (base {bst})'} | {len(body)} | {len(bbody)} | "
+                          f"{'same' if same else '**differs**'} |")
+            md.append("")
+            write()
+    write()
+    print(open(os.path.join(out, "check.md")).read())
+    sys.exit(0 if ok else 1)
+
+
 def summary_line(rec):
-    if rec["app"] == "bench.php":
-        return f"{rec['counters'].get('cycles_u', 0) / 1e9:.2f} Gcycles:u, {rec['sections'].get('Total', 0):.3f} s"
+    if rec["app"] in SCRIPTS:
+        return (f"{rec['counters'].get('cycles_u', 0) / 1e9:.2f} Gcycles:u, {rec['sections'].get('Total', 0):.3f} s cold, "
+                f"{rec.get('warm', {}).get('sections', {}).get('Total', 0):.3f} s warm")
     u = rec["urls"].values()
     return (f"{sum(x['cycles_u'] for x in u) / 1e9:.3f} Gcycles:u/pass, "
             f"{sum(x['wall_s'] for x in u) * 1000:.0f} ms/pass, others busy {rec['others_busy']:.0%}")
@@ -750,7 +945,7 @@ def cmd_report(a):
             rs = [r for r in recs if r["app"] == app and r["variant"] == v]
             if not rs:
                 continue
-            if app == "bench.php":
+            if app in SCRIPTS:
                 tot = [{"cycles_u": r["counters"].get("cycles_u", 0),
                         "instructions_u": r["counters"].get("instructions_u", 0),
                         "cycles_k": r["counters"].get("cycles_k", 0),
@@ -786,7 +981,7 @@ def cmd_report(a):
     md.append("")
     md.append("## Per request (median cycles:u ratio against " + base + ")")
     for app in apps:
-        if app == "bench.php":
+        if app in SCRIPTS:
             continue
         md.append("")
         md.append(f"### {app}")
@@ -805,9 +1000,42 @@ def cmd_report(a):
             md.append(f"| `{u}` | " + " | ".join(f"{med[v] / 1e6:.1f}" for v in variants if v in med) + " | "
                       + " | ".join(f"{med[v] / med[base]:.2f}" for v in variants if v != base and v in med)
                       + f" | {min(sizes)}–{max(sizes)} |")
-    bench = [r for r in recs if r["app"] == "bench.php"]
-    if bench:
-        md += ["", "## Zend/bench.php sections (median seconds)", ""]
+    warm = [r for r in recs if r.get("warmup") and is_jit(r["variant"])]
+    if warm:
+        md += ["", "## JIT warm-up (median across rounds)", "",
+               "Each pass requests the whole mix once, from a fresh server. Steady is a "
+               "measured pass (per-request medians summed over the mix); settled is the first warm-up pass within 10% of it in cycles:u. "
+               "Compiles are the Fil-C JIT's, from its log: units (functions and traces) and "
+               "seconds, during warm-up and then during measurement.", "",
+               "| app | variant | first server's pass 1 wall s | pass 1 wall s | pass 1 Gcycles:u "
+               "| steady wall s | steady Gcycles:u "
+               "| settled at pass | warm-up wall s | compiles | compile s | compiles while measuring |",
+               "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+        for app in apps:
+            for v in variants:
+                rs = [r for r in warm if r["app"] == app and r["variant"] == v]
+                if not rs:
+                    continue
+                med = lambda xs: statistics.median(xs)
+                steady_c = med([sum(u["cycles_u"] for u in r["urls"].values()) for r in rs])
+                steady_w = med([sum(u["wall_s"] for u in r["urls"].values()) for r in rs])
+                settled = med([next((i + 1 for i, w in enumerate(r["warmup"])
+                                     if w["cycles_u"] <= 1.1 * sum(u["cycles_u"] for u in r["urls"].values()) ),
+                                    len(r["warmup"]) + 1) for r in rs])
+                first = min(rs, key=lambda r: r["round"])
+                md.append(f"| {app} | {v} | {first['warmup'][0]['wall_s']:.2f} | "
+                          f"{med([r['warmup'][0]['wall_s'] for r in rs]):.2f} | "
+                          f"{med([r['warmup'][0]['cycles_u'] for r in rs]) / 1e9:.2f} | {steady_w:.3f} | "
+                          f"{steady_c / 1e9:.3f} | {settled:g} | "
+                          f"{med([sum(w['wall_s'] for w in r['warmup']) for r in rs]):.1f} | "
+                          f"{med([r['warmup'][-1]['jit_units'] for r in rs]):g} | "
+                          f"{med([r['warmup'][-1]['jit_s'] for r in rs]):.1f} | "
+                          f"{med([r['jit_units'] - r['warmup'][-1]['jit_units'] for r in rs]):g} |")
+    for script in SCRIPTS:
+        bench = [r for r in recs if r["app"] == script]
+        if not bench:
+            continue
+        md += ["", f"## {script} sections (median seconds)", ""]
         secs = list(bench[0]["sections"])
         md.append("| section | " + " | ".join(variants) + " | " + " | ".join(f"{v}/{base}" for v in variants if v != base) + " |")
         md.append("|---|" + "---|" * (2 * len(variants) - 1))
@@ -816,6 +1044,34 @@ def cmd_report(a):
                    for v in variants if any(r["variant"] == v for r in bench)}
             md.append(f"| {s} | " + " | ".join(f"{med[v]:.3f}" for v in med) + " | "
                       + " | ".join(f"{med[v] / med[base]:.1f}" if med[base] else "" for v in med if v != base) + " |")
+        jit = {v: [r for r in bench if r["variant"] == v and r.get("jit_units")] for v in variants}
+        if any(jit.values()):
+            md.append("| JIT compiles (units, s) | " + " | ".join(
+                f"{statistics.median([r['jit_units'] for r in jit[v]]):g}, "
+                f"{statistics.median([r['jit_s'] for r in jit[v]]):.2f}" if jit[v] else ""
+                for v in variants if any(r["variant"] == v for r in bench)) + " |")
+        warm = [r for r in bench if r.get("warm")]
+        if warm:
+            md += ["", f"## {script} warm (median seconds)", "",
+                   "Served by a fresh server for each round: three requests to warm up, "
+                   "then the median of three. Steady state, without the compiles that the cold "
+                   "run above includes; the last row is the JIT's compiles during warm-up "
+                   "(the C backend's come from the cache after the first round).", ""]
+            vs = [v for v in variants if any(r["variant"] == v for r in warm)]
+            md.append("| section | " + " | ".join(vs) + " | " + " | ".join(f"{v}/{base}" for v in vs if v != base) + " |")
+            md.append("|---|" + "---|" * (2 * len(vs) - 1))
+            for s in warm[0]["warm"]["sections"]:
+                med = {v: statistics.median([r["warm"]["sections"].get(s, 0) for r in warm if r["variant"] == v])
+                       for v in vs}
+                md.append(f"| {s} | " + " | ".join(f"{med[v]:.3f}" for v in vs) + " | "
+                          + " | ".join(f"{med[v] / med[base]:.1f}" if med.get(base) else "" for v in vs if v != base) + " |")
+            md.append("| first request Total | " + " | ".join(
+                f"{statistics.median([r['warm']['first_sections'].get('Total', 0) for r in warm if r['variant'] == v]):.3f}"
+                for v in vs) + " |" + " |" * (len(vs) - 1))
+            md.append("| JIT compiles (units, s) | " + " | ".join(
+                f"{statistics.median([r['warm']['jit_units'] for r in warm if r['variant'] == v]):g}, "
+                f"{statistics.median([r['warm']['jit_s'] for r in warm if r['variant'] == v]):.2f}"
+                if is_filc_jit(v) else "" for v in vs) + " |" + " |" * (len(vs) - 1))
     open(os.path.join(a.dir, "summary.md"), "w").write("\n".join(md) + "\n")
     json.dump(summary, open(os.path.join(a.dir, "summary.json"), "w"), indent=1)
     print("\n".join(md))
@@ -874,10 +1130,10 @@ def cmd_profile(a):
         for var in a.variants:
             name = variant(var)[0]
             data = os.path.join(out, f"{app}-{name}.perf.data")
-            if app == "bench.php":
+            if app in SCRIPTS:
                 _, php, env, ini = variant(var)
                 run(["perf", "record", "-e", "cycles", "-c", str(a.period), "-o", data, "--"]
-                    + php_args(php, ini, os.devnull) + [ENV["PHP_BENCH_ZEND"]],
+                    + php_args(php, ini, os.devnull) + [ENV[SCRIPTS[app]]],
                     env={**ENV, **env}, stdout=subprocess.DEVNULL)
             else:
                 s = Server(app, var, os.path.join(out, "logs"))
@@ -993,27 +1249,31 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("setup")
     s.add_argument("--apps", nargs="+", default=list(PORTS))
-    for name in ("run", "quiet", "profile"):
+    for name in ("run", "quiet", "profile", "check"):
         s = sub.add_parser(name)
         if name == "quiet":
             s.description = ("Consolidated run for a quiet machine: every application, "
                              "native, filc and filc-staging plus the EXTRA variants, 10 rounds, "
                              "each measurement held until the machine is under --max-busy.")
             s.add_argument("extra", nargs="*", metavar="EXTRA", help="NAME=/path/to/bin/php[,INI_DIR]")
-        s.add_argument("--apps", nargs="+", default=list(PORTS) + ["bench.php"])
+        s.add_argument("--apps", nargs="+", default=list(PORTS) + list(SCRIPTS))
         if name != "quiet":
             s.add_argument("--variants", nargs="+", default=["native", "filc", "filc-staging"],
                            help=f"from {', '.join(VARIANTS)} or NAME=/path/to/bin/php[,INI_DIR]")
         s.add_argument("--warmup", type=int, default=3, help="passes over the mix before measuring")
+        s.add_argument("--jit-warmup", type=int, default=10,
+                       help="passes over the mix before measuring a JIT variant")
         s.add_argument("--out")
-        if name in ("run", "quiet"):
+        if name == "check":
+            s.description = cmd_check.__doc__
+        elif name in ("run", "quiet"):
             s.add_argument("--max-busy", type=float, default=0.15 if name == "quiet" else None,
                            help="hold each measurement until at most this share of the CPUs is busy, "
                                 "and flag measurements that ran busier")
             s.add_argument("--wait", type=float, default=30, help="minutes to wait for a quiet machine")
             s.add_argument("--rounds", type=int, default=10 if name == "quiet" else 5)
             s.add_argument("--reps", type=int, default=5, help="requests per URL per round")
-        else:
+        elif name == "profile":
             s.add_argument("--passes", type=int, default=5)
             s.add_argument("--period", type=int, default=200003)
     s = sub.add_parser("report")
@@ -1021,11 +1281,11 @@ def main():
     s = sub.add_parser("profile-report")
     s.add_argument("dir")
     a = p.parse_args()
-    if a.cmd in ("run", "quiet", "profile") and any(x != "bench.php" for x in a.apps):
+    if a.cmd in ("run", "quiet", "profile", "check") and any(x not in SCRIPTS for x in a.apps):
         vf = os.path.join(STATE, "VERSION")
         if not os.path.exists(vf) or open(vf).read().strip() != FIXTURE_VERSION:
             sys.exit(f"no current fixtures in {STATE}; run php-bench setup")
-    {"setup": cmd_setup, "run": cmd_run, "quiet": cmd_run, "profile": cmd_profile, "report": cmd_report,
+    {"setup": cmd_setup, "run": cmd_run, "quiet": cmd_run, "profile": cmd_profile, "check": cmd_check, "report": cmd_report,
      "profile-report": cmd_profile_report}[a.cmd](a)
 
 

@@ -23,9 +23,9 @@ treats addresses as integers:
 Function JIT works as designed. In the tracing JIT a failed guard copies its
 snapshot's values into an emulated register buffer and calls a C version of
 the CALL VM's exit stub around zend_jit_trace_exit(). Generated code cannot be
-patched, so side traces are compiled but never linked, and exits fall back to
-the interpreter; traces also compile synchronously, which makes tracing slower
-than the interpreter on short scripts.
+patched, so with the C backend side traces are compiled but never linked,
+and exits fall back to the interpreter; traces also compile synchronously,
+which makes tracing slower than the interpreter on short scripts.
 
 The JIT buffer stays ordinary memory (no mprotect), and opcache no longer
 picks a mapping hint near PHP's text.
@@ -52,6 +52,11 @@ PHP_JIT_C_STATS (print counts and times at exit), PHP_JIT_C_LOG (append one
 line per function), PHP_JIT_C_KEEP, PHP_JIT_C_VERBOSE. They are read once,
 so FPM workers use the master's even with clear_env.
 
+Both backends stop PHP's execution timer (ITIMER_PROF) while compiling, so
+compile time does not count against max_execution_time: a request that
+makes much code hot at once would otherwise fail where the interpreter
+serves it.
+
 Where the toolchain has Fil-C's in-process LLVM JIT (filc_llvm_jit.h), a
 second backend (ext/opcache/jit/zend_jit_llvm.c) is the default: it builds
 LLVM IR for each IR function and compiles it with FilLLVMJIT_CompileModule,
@@ -60,9 +65,29 @@ typing, registry, fixed registers and trace exits; a registered pointer
 becomes an external global bound to it with FilLLVMJIT_SetGlobalMapping.
 Every IR value lives in a stack slot that SROA promotes, which also covers
 ENTRY blocks. PHP must be linked with -enable-filc-jit.
+
+The LLVM backend links side traces: each trace's exits go through a table
+that zend_jit_link_side_trace fills, and a linked exit tail-calls the side
+trace, which reads its parent's snapshot registers (RLOAD) from the exit
+buffer. Unlinked exits deoptimize through the C exit stub. Exits that land
+in a frame without a trace extension (code opcache did not cache, or a
+__call trampoline, whose shared op_array carries other data in its reserved
+slots) resume at that opline's own handler.
+
+Function JIT adds each RECV/OSR entry as an ENTRY block whose fake input is
+the preceding END; both backends, like IR's own emitters, never let that END
+jump into the ENTRY, which resets FP and IP to the function's parameters and
+broke direct recursive calls that IR turns into loops.
+
 PHP_JIT_BACKEND=c|llvm selects the backend, PHP_JIT_LLVM_OPT its opt-level
-(default 2), PHP_JIT_LLVM_DUMP=1 prints each module. The persistent cache
-applies to the C backend only.
+(default 2), PHP_JIT_LLVM_OPTIONS=key=value,... further FilLLVMJIT_SetOption
+options, PHP_JIT_LLVM_MAX_INSNS the largest IR function compiled (default
+10000; compile time grows faster than size), PHP_JIT_LLVM_NOLINK=1 turns
+side-trace linking off, PHP_JIT_LLVM_DUMP=1 prints each module with its IR
+(PHP_JIT_LLVM_DUMP=text only those whose name contains text). Compiled
+functions are named after the PHP code they come from ("jit:Class::method@
+file", "jit:TRACE-12$..."), so Fil-C panics in JIT code name it. The
+persistent cache applies to the C backend only.
 
 diff --git a/ext/opcache/jit/zend_jit.c b/ext/opcache/jit/zend_jit.c
 index 3ea2536f..c6cc6179 100644
@@ -83,10 +108,10 @@ index 3ea2536f..c6cc6179 100644
  #endif
 diff --git a/ext/opcache/jit/zend_jit_c.c b/ext/opcache/jit/zend_jit_c.c
 new file mode 100644
-index 00000000..37d25d25
+index 00000000..0518e831
 --- /dev/null
 +++ b/ext/opcache/jit/zend_jit_c.c
-@@ -0,0 +1,1972 @@
+@@ -0,0 +1,2034 @@
 +/*
 + * Fil-C C backend for the opcache JIT.
 + *
@@ -138,7 +163,8 @@ index 00000000..37d25d25
 +	"PHP_JIT_CC", "PHP_JIT_CFLAGS", "PHP_JIT_C_DIR", "PHP_JIT_C_CACHE",
 +	"PHP_JIT_C_CACHE_ONLY", "PHP_JIT_C_MAX_SIZE", "PHP_JIT_C_STATS",
 +	"PHP_JIT_C_LOG", "PHP_JIT_C_KEEP", "PHP_JIT_C_VERBOSE",
-+	"PHP_JIT_BACKEND", "PHP_JIT_LLVM_OPT", "PHP_JIT_LLVM_DUMP",
++	"PHP_JIT_BACKEND", "PHP_JIT_LLVM_OPT", "PHP_JIT_LLVM_DUMP", "PHP_JIT_LLVM_NOLINK",
++	"PHP_JIT_LLVM_OPTIONS", "PHP_JIT_LLVM_MAX_INSNS",
 +};
 +static char *zjc_env_values[sizeof(zjc_env_names) / sizeof(zjc_env_names[0])];
 +
@@ -364,6 +390,21 @@ index 00000000..37d25d25
 +	return best;
 +}
 +
++/* The block an END jumps to.  Function JIT inserts each RECV/OSR entry as an
++ * ENTRY whose op1 is a fake edge from the preceding END, so that END has the
++ * ENTRY as a second successor (ir_build_cfg).  Control never flows into it:
++ * the ENTRY resets FP and IP to the function's parameters, which is wrong once
++ * a direct recursive call has become a loop.  Native emitters skip it too. */
++static uint32_t zjc_end_target(ir_ctx *ctx, ir_block *bb)
++{
++	uint32_t target = ctx->cfg_edges[bb->successors];
++
++	if (bb->successors_count == 2 && (ctx->cfg_blocks[target].flags & IR_BB_ENTRY)) {
++		target = ctx->cfg_edges[bb->successors + 1];
++	}
++	return target;
++}
++
 +/* ---- Tracing JIT exits ---- */
 +
 +/* Exit "addresses" of the tracing JIT (zend_jit_trace_get_exit_addr). */
@@ -400,9 +441,22 @@ index 00000000..37d25d25
 +	}
 +	execute_data = EG(current_execute_data);
 +	opline = EX(opline);
-+	jit_extension = (zend_jit_op_array_trace_extension*)ZEND_FUNC_INFO(&EX(func)->op_array);
++	/* A __call/__callStatic trampoline frame is a ZEND_USER_FUNCTION too, but
++	 * EG(trampoline) is shared with internal-function uses (property hooks,
++	 * FFI) that leave other data in its reserved slots, so it has no trace
++	 * extension even when the slot looks set. */
++	jit_extension = ZEND_USER_CODE(EX(func)->type)
++		&& !(EX(func)->common.fn_flags & ZEND_ACC_CALL_VIA_TRAMPOLINE)
++		? (zend_jit_op_array_trace_extension*)ZEND_FUNC_INFO(&EX(func)->op_array) : NULL;
++	if (!jit_extension && zjc_env("PHP_JIT_C_VERBOSE")) {
++		fprintf(stderr, "zend_jit_c: exit %u returned %d into %s %s()\n", exit_num, ret,
++			ZEND_USER_CODE(EX(func)->type) ? "uncached or trampoline" : "internal",
++			EX(func)->common.function_name ? ZSTR_VAL(EX(func)->common.function_name) : "{main}");
++	}
 +	if (ret == 0) {
-+		if (EG(exception)) {
++		/* The frame may belong to a function the tracer never instrumented
++		 * (no trace extension); then its opline cannot enter a trace. */
++		if (EG(exception) || !jit_extension) {
 +			return zjc_vm_enter(opline); /* the VM handles the exception */
 +		}
 +		/* Natively, 0 means "resume at EX(opline)": if that opline enters a
@@ -415,7 +469,11 @@ index 00000000..37d25d25
 +			return zjc_vm_enter(opline);
 +		}
 +	}
-+	opline = ((zend_vm_opcode_handler_t)ZEND_OP_TRACE_INFO(opline, jit_extension->offset)->orig_handler)(execute_data, opline);
++	/* Without a trace extension (code opcache did not cache) the handler
++	 * was never replaced, so it is the original one. */
++	opline = ((zend_vm_opcode_handler_t)(jit_extension
++		? ZEND_OP_TRACE_INFO(opline, jit_extension->offset)->orig_handler
++		: opline->handler))(execute_data, opline);
 +	return zjc_vm_enter(opline);
 +}
 +
@@ -1572,7 +1630,7 @@ index 00000000..37d25d25
 +					if (bb->flags & IR_BB_DESSA_MOVES) {
 +						ir_gen_dessa_moves(ctx, b, zjc_dessa_move, u);
 +					}
-+					target = ir_skip_empty_target_blocks(ctx, ctx->cfg_edges[bb->successors]);
++					target = ir_skip_empty_target_blocks(ctx, zjc_end_target(ctx, bb));
 +					fprintf(f, "\tgoto bb%d;\n", target);
 +					break;
 +				case IR_IF:
@@ -1689,6 +1747,7 @@ index 00000000..37d25d25
 +#include <fcntl.h>
 +#include <stdio_ext.h>
 +#include <time.h>
++#include <sys/time.h>
 +
 +/* Bump when the meaning of generated code changes without its text. */
 +#define ZJC_CACHE_VERSION "zjc-1"
@@ -1799,13 +1858,14 @@ index 00000000..37d25d25
 +#else
 +# define zjl_enabled() 0
 +# define zjl_compile(ctx, comment, entries) NULL
++# define zjl_link_exit(code, exit_num, addr) 0
 +#endif
 +
 +/* Compile ctx (already scheduled) to C, build or find it in the cache and
 + * load it.  Returns the function's main entry, and in *entries (when
 + * non-NULL and the function has ENTRY blocks) a malloc'ed array of the other
 + * entries' addresses. */
-+static void *zjc_compile(ir_ctx *ctx, const char *comment, void ***entries)
++static void *zjc_compile_timed(ir_ctx *ctx, const char *comment, void ***entries)
 +{
 +	static const char name[] = "zjc_f";
 +	zjc_unit u;
@@ -2059,6 +2119,33 @@ index 00000000..37d25d25
 +	zjc_stats.t_load += zjc_now() - t0;
 +	return entry;
 +}
++
++/* Compile time is not the script's: with PHP's execution timer running, a
++ * request that made a lot of code hot at once could exceed
++ * max_execution_time in the compiler, where the interpreter would have
++ * served it.  Stop the timer (ITIMER_PROF in NTS builds without
++ * ZEND_MAX_EXECUTION_TIMERS) while compiling and restore what was left. */
++static void *zjc_compile(ir_ctx *ctx, const char *comment, void ***entries)
++{
++#if !defined(ZTS) && !defined(ZEND_MAX_EXECUTION_TIMERS) && defined(HAVE_SETITIMER)
++	static const struct itimerval off;
++	struct itimerval left;
++	bool timed = !getitimer(ITIMER_PROF, &left)
++		&& (left.it_value.tv_sec || left.it_value.tv_usec);
++	void *r;
++
++	if (timed) {
++		setitimer(ITIMER_PROF, &off, NULL);
++	}
++	r = zjc_compile_timed(ctx, comment, entries);
++	if (timed) {
++		setitimer(ITIMER_PROF, &left, NULL);
++	}
++	return r;
++#else
++	return zjc_compile_timed(ctx, comment, entries);
++#endif
++}
 diff --git a/ext/opcache/jit/zend_jit_internal.h b/ext/opcache/jit/zend_jit_internal.h
 index 8732b424..2cd77f9c 100644
 --- a/ext/opcache/jit/zend_jit_internal.h
@@ -2097,7 +2184,7 @@ index 8732b424..2cd77f9c 100644
  #define Z_REG(addr)      ((zend_reg)(((addr)>>_ZEND_ADDR_REG_SHIFT) & _ZEND_ADDR_REG_MASK))
  
 diff --git a/ext/opcache/jit/zend_jit_ir.c b/ext/opcache/jit/zend_jit_ir.c
-index 301f1535..ea5f61cd 100644
+index 301f1535..e76cfe8f 100644
 --- a/ext/opcache/jit/zend_jit_ir.c
 +++ b/ext/opcache/jit/zend_jit_ir.c
 @@ -91,9 +91,20 @@
@@ -2299,7 +2386,7 @@ index 301f1535..ea5f61cd 100644
  				/* Signed DIV by power of 2 may be optimized into SHR only for positive operands */
  				if (HT_IS_PACKED(jumptable)) {
  					ZEND_ASSERT(sizeof(zval) == 16);
-@@ -16793,6 +16843,25 @@ static zend_vm_opcode_handler_t zend_jit_finish(zend_jit_ctx *jit)
+@@ -16793,6 +16843,26 @@ static zend_vm_opcode_handler_t zend_jit_finish(zend_jit_ctx *jit)
  			str = zend_jit_func_name(jit->op_array);
  		}
  	}
@@ -2308,7 +2395,8 @@ index 301f1535..ea5f61cd 100644
 +	 * text is the persistent cache's key. */
 +	zend_string *log_name = NULL;
 +
-+	if (zjc_env("PHP_JIT_C_LOG") || zjc_env("PHP_JIT_C_VERBOSE")) {
++	/* Logs, and the LLVM backend's symbol names, which Fil-C's panics show */
++	{
 +		if (jit->name) {
 +			log_name = zend_string_copy(jit->name);
 +		} else if (jit->op_array && jit->op_array->filename) {
@@ -2325,7 +2413,7 @@ index 301f1535..ea5f61cd 100644
  
  	if (jit->op_array) {
  		/* Only for function JIT */
-@@ -16809,6 +16878,12 @@ static zend_vm_opcode_handler_t zend_jit_finish(zend_jit_ctx *jit)
+@@ -16809,6 +16879,12 @@ static zend_vm_opcode_handler_t zend_jit_finish(zend_jit_ctx *jit)
  	}
  
  	entry = zend_jit_ir_compile(&jit->ctx, &size, str ? ZSTR_VAL(str) : NULL);
@@ -2338,7 +2426,7 @@ index 301f1535..ea5f61cd 100644
  	if (entry) {
  		if (JIT_G(debug) & (ZEND_JIT_DEBUG_ASM|ZEND_JIT_DEBUG_GDB|ZEND_JIT_DEBUG_PERF|ZEND_JIT_DEBUG_PERF_DUMP)) {
  #ifdef HAVE_CAPSTONE
-@@ -16869,7 +16944,11 @@ static zend_vm_opcode_handler_t zend_jit_finish(zend_jit_ctx *jit)
+@@ -16869,7 +16945,11 @@ static zend_vm_opcode_handler_t zend_jit_finish(zend_jit_ctx *jit)
  				int i = jit->ctx.entries_count;
  				do {
  					ir_insn *insn = &jit->ctx.ir_base[jit->ctx.entries[--i]];
@@ -2350,13 +2438,16 @@ index 301f1535..ea5f61cd 100644
  				} while (i != 0);
  			}
  		} else {
-@@ -17498,6 +17577,11 @@ static int zend_jit_trace_return(zend_jit_ctx *jit, bool original_handler, const
+@@ -17498,6 +17578,14 @@ static int zend_jit_trace_return(zend_jit_ctx *jit, bool original_handler, const
  
  static int zend_jit_link_side_trace(const void *code, size_t size, uint32_t jmp_table_size, uint32_t exit_num, const void *addr)
  {
 +#ifdef ZEND_JIT_C_BACKEND
-+	/* Generated code cannot be patched.  The exit keeps deoptimizing to the
-+	 * interpreter, which is correct but leaves the side trace unused. */
++	/* Code from the LLVM backend reads its exits' targets from a table.
++	 * Code from the C backend cannot be patched: the exit keeps
++	 * deoptimizing to the interpreter, which is correct but leaves the side
++	 * trace unused. */
++	zjl_link_exit(code, exit_num, addr);
 +	return 1;
 +#endif
  	return ir_patch(code, size, jmp_table_size, zend_jit_trace_get_exit_addr(exit_num), addr);
@@ -2364,10 +2455,10 @@ index 301f1535..ea5f61cd 100644
  
 diff --git a/ext/opcache/jit/zend_jit_llvm.c b/ext/opcache/jit/zend_jit_llvm.c
 new file mode 100644
-index 00000000..31a0c322
+index 00000000..e8d905c3
 --- /dev/null
 +++ b/ext/opcache/jit/zend_jit_llvm.c
-@@ -0,0 +1,1414 @@
+@@ -0,0 +1,1587 @@
 +/*
 + * Fil-C LLVM backend for the opcache JIT.
 + *
@@ -2399,7 +2490,10 @@ index 00000000..31a0c322
 + *
 + * Environment: PHP_JIT_BACKEND=llvm|c selects the backend;
 + * PHP_JIT_LLVM_OPT is the opt-level (0..3, default 2);
-+ * PHP_JIT_LLVM_DUMP=1 prints each module before it is compiled.
++ * PHP_JIT_LLVM_OPTIONS=key=value,... passes more FilLLVMJIT_SetOption options;
++ * PHP_JIT_LLVM_MAX_INSNS caps the size of what is compiled (ZJL_MAX_INSNS);
++ * PHP_JIT_LLVM_DUMP=1 prints each module before it is compiled, with the IR
++ * it came from; PHP_JIT_LLVM_DUMP=text only those whose name contains text.
 + */
 +
 +#include <filc_llvm_jit.h>
@@ -2431,16 +2525,61 @@ index 00000000..31a0c322
 +	LLVMValueRef       tmp[IR_LAST_TYPE];
 +	uint8_t            tmp_k[IR_LAST_TYPE];
 +	LLVMValueRef       fp, ip, sp;  /* allocas holding the fixed registers */
-+	LLVMValueRef       exit_buf;
++	LLVMValueRef       exits;       /* the trace's exit table, zjl_exits */
++	uint32_t           exits_count;
++	bool               tail_ok;     /* (ptr, ptr) -> ptr: jumps can be musttail */
 +	LLVMBasicBlockRef *bbs;
 +	uint32_t          *k_regs;      /* registry indices declared as globals */
 +	uint32_t           k_count, k_cap;
 +	bool               terminated;
 +	bool               failed;
++	char               name[200];   /* the function's symbol: Fil-C names it in panics */
 +} zjl_unit;
 +
 +static FilLLVMJITModuleRef *zjl_modules;   /* compiled code stays alive */
 +static uint32_t             zjl_modules_count, zjl_modules_cap;
++
++/* Trace exits pass the snapshot's values here, laid out like the native
++ * exit's register dump (zend_jit_registers_buf): zjc_trace_exit reads them,
++ * and a linked side trace reads them with RLOAD.  Exits and side traces run
++ * on the request's thread, one at a time. */
++static char *zjl_regs[32];
++
++/* Exit tables of compiled traces.  Exit n of a trace calls the code in
++ * slot n of its table when zend_jit_link_side_trace has filled it, and
++ * deoptimizes through zjc_trace_exit otherwise. */
++typedef struct _zjl_exit_table {
++	const void  *code;
++	void       **targets;
++	uint32_t     count;
++} zjl_exit_table;
++static zjl_exit_table *zjl_exit_tables;
++static uint32_t        zjl_exit_tables_count, zjl_exit_tables_cap;
++
++/* Link exit exit_num of the trace at code to addr; false if code has no
++ * exit table (it came from the C backend). */
++static bool zjl_link_exit(const void *code, uint32_t exit_num, const void *addr)
++{
++	uint32_t i;
++	const char *nolink = zjc_env("PHP_JIT_LLVM_NOLINK");
++
++	if (nolink && *nolink && strcmp(nolink, "0")) {
++		return 0;
++	}
++	for (i = zjl_exit_tables_count; i-- > 0;) {
++		if (zjl_exit_tables[i].code == code) {
++			if (exit_num < zjl_exit_tables[i].count) {
++				zjl_exit_tables[i].targets[exit_num] = (void*)addr;
++			}
++			if (zjc_env("PHP_JIT_C_VERBOSE")) {
++				fprintf(stderr, "zend_jit_llvm: linked exit %u of %p%s\n", exit_num, code,
++					exit_num < zjl_exit_tables[i].count ? "" : " (beyond its table)");
++			}
++			return 1;
++		}
++	}
++	return 0;
++}
 +
 +static bool zjl_enabled(void)
 +{
@@ -2731,6 +2870,11 @@ index 00000000..31a0c322
 +	LLVMBuildStore(u->b, zjl_conv(u, x, u->slot_k[ref], sign), s);
 +}
 +
++static bool zjl_is_fixed_reg(int8_t reg)
++{
++	return reg == ZREG_FP || reg == ZREG_IP || reg == IR_REG_SP;
++}
++
 +static LLVMValueRef zjl_reg(zjl_unit *u, int8_t reg)
 +{
 +	switch (reg) {
@@ -2748,28 +2892,15 @@ index 00000000..31a0c322
 +	return LLVMBuildLoad2(u->b, u->ty[ZJL_PTR], reg, "");
 +}
 +
-+/* Call an LLVM intrinsic overloaded on kind k (none for ZJL_VOID), declared
-+ * by its name, which LLVM recognizes. */
-+static LLVMValueRef zjl_intrinsic(zjl_unit *u, const char *name, uint8_t k, LLVMTypeRef ret, LLVMValueRef *args, unsigned n)
++/* Call an LLVM intrinsic, overloaded on kind k (none for ZJL_VOID). */
++static LLVMValueRef zjl_intrinsic(zjl_unit *u, const char *name, uint8_t k, LLVMValueRef *args, unsigned n)
 +{
-+	static const char *const suffix[ZJL_KINDS] = {
-+		"", ".i1", ".i8", ".i16", ".i32", ".i64", ".p0", ".f64", ".f32", ""
-+	};
-+	char full[64];
-+	LLVMTypeRef params[4], fty;
-+	LLVMValueRef f;
-+	unsigned i;
++	unsigned id = LLVMLookupIntrinsicID(name, strlen(name));
++	LLVMTypeRef t = u->ty[k];
++	size_t nt = k == ZJL_VOID ? 0 : 1;
++	LLVMValueRef f = LLVMGetIntrinsicDeclaration(u->m, id, &t, nt);
 +
-+	snprintf(full, sizeof(full), "%s%s", name, suffix[k]);
-+	for (i = 0; i < n; i++) {
-+		params[i] = LLVMTypeOf(args[i]);
-+	}
-+	fty = LLVMFunctionType(ret, params, n, 0);
-+	f = LLVMGetNamedFunction(u->m, full);
-+	if (!f) {
-+		f = LLVMAddFunction(u->m, full, fty);
-+	}
-+	return LLVMBuildCall2(u->b, fty, f, args, n, "");
++	return LLVMBuildCall2(u->b, LLVMIntrinsicGetType(u->c, id, &t, nt), f, args, n, "");
 +}
 +
 +/* Call a helper of this file with two pointers, returning a pointer. */
@@ -2988,23 +3119,23 @@ index 00000000..31a0c322
 +			break;
 +		case IR_ABS:
 +			if (IR_IS_TYPE_FP(insn->type)) {
-+				r = zjl_intrinsic(u, "llvm.fabs", k, u->ty[k], &x, 1);
++				r = zjl_intrinsic(u, "llvm.fabs", k, &x, 1);
 +			} else {
 +				r = LLVMBuildSelect(b, LLVMBuildICmp(b, LLVMIntSLT, x, zjl_iconst(u, k, 0), ""),
 +					LLVMBuildNeg(b, x, ""), x, "");
 +			}
 +			break;
 +		case IR_BSWAP:
-+			r = zjl_intrinsic(u, "llvm.bswap", k, u->ty[k], &x, 1);
++			r = zjl_intrinsic(u, "llvm.bswap", k, &x, 1);
 +			break;
 +		case IR_CTPOP:
-+			r = zjl_intrinsic(u, "llvm.ctpop", k, u->ty[k], &x, 1);
++			r = zjl_intrinsic(u, "llvm.ctpop", k, &x, 1);
 +			break;
 +		case IR_CTLZ:
 +		case IR_CTTZ: {
 +			LLVMValueRef args[2] = {x, LLVMConstInt(u->ty[ZJL_I1], 0, 0)};
 +
-+			r = zjl_intrinsic(u, insn->op == IR_CTLZ ? "llvm.ctlz" : "llvm.cttz", k, u->ty[k], args, 2);
++			r = zjl_intrinsic(u, insn->op == IR_CTLZ ? "llvm.ctlz" : "llvm.cttz", k, args, 2);
 +			break;
 +		}
 +		default:
@@ -3099,11 +3230,7 @@ index 00000000..31a0c322
 +	}
 +	args[0] = zjl_get(u, insn->op1, k);
 +	args[1] = zjl_get(u, insn->op2, k);
-+	{
-+		LLVMTypeRef pair[2] = {u->ty[k], u->ty[ZJL_I1]};
-+
-+		r = zjl_intrinsic(u, name, k, LLVMStructTypeInContext(u->c, pair, 2, 0), args, 2);
-+	}
++	r = zjl_intrinsic(u, name, k, args, 2);
 +	if (zjl_has_def(u, def)) {
 +		zjl_def(u, def, zjl_mk(LLVMBuildExtractValue(u->b, r, 0, ""), k), sign);
 +	}
@@ -3167,6 +3294,26 @@ index 00000000..31a0c322
 +
 +/* A failed guard of a trace: hand the snapshot's values to zjc_trace_exit
 + * in an emulated register buffer (see zjc_emit_exit). */
++static void zjl_ret(zjl_unit *u, zjl_v x);
++
++/* Jump to code outside this function (a stub, a handler, another trace):
++ * call it with the fixed registers and return what it returns.  Between
++ * functions shaped like handlers the call is musttail, so code that keeps
++ * jumping between traces does not grow the stack. */
++static void zjl_tail(zjl_unit *u, LLVMValueRef target)
++{
++	LLVMTypeRef params[2] = {u->ty[ZJL_PTR], u->ty[ZJL_PTR]};
++	LLVMValueRef args[2], call;
++
++	args[0] = zjl_load_reg(u, u->fp);
++	args[1] = zjl_load_reg(u, u->ip);
++	call = LLVMBuildCall2(u->b, LLVMFunctionType(u->ty[u->ret_k], params, 2, 0), target, args, 2, "");
++	if (u->tail_ok) {
++		LLVMSetTailCallKind(call, LLVMTailCallKindMustTail);
++	}
++	zjl_ret(u, zjl_mk(u->ret_k == ZJL_VOID ? NULL : call, u->ret_k));
++}
++
 +static void zjl_emit_exit(zjl_unit *u, ir_insn *jmp, uintptr_t addr)
 +{
 +	ir_ctx *ctx = u->ctx;
@@ -3174,13 +3321,13 @@ index 00000000..31a0c322
 +	ir_insn *snap = &ctx->ir_base[snap_ref];
 +	int gpr = 0, fpr = 0;
 +	ir_ref i;
-+	LLVMValueRef args[3], buf;
++	LLVMValueRef args[3], buf, target, linked;
 +	LLVMTypeRef params[3];
++	LLVMBasicBlockRef taken, deopt;
++	uint32_t exit_num;
 +
-+	if (!u->exit_buf) {
-+		u->exit_buf = LLVMBuildAlloca(u->ab, LLVMArrayType(u->ty[ZJL_PTR], 32), "");
-+	}
-+	buf = u->exit_buf;
++	zjc_register(zjl_regs);
++	buf = zjl_addr(u, (uintptr_t)zjl_regs).v;
 +	LLVMBuildStore(u->b, zjl_load_reg(u, u->ip),
 +		zjl_gep(u, buf, zjl_iconst(u, ZJL_I64, ZREG_RX * 8)));
 +	if (snap->op == IR_SNAPSHOT) {
@@ -3214,11 +3361,31 @@ index 00000000..31a0c322
 +		}
 +		addr = (uintptr_t)zend_jit_snapshot_handler(ctx, snap_ref, snap, (void*)addr);
 +	}
++	exit_num = (uint32_t)(addr - ZJC_EXIT_BASE);
++	if (u->tail_ok) {
++		/* A linked side trace takes over with the fixed registers, as the
++		 * native exit jumps to it. */
++		if (!u->exits) {
++			u->exits = LLVMAddGlobal(u->m, u->ty[ZJL_I8], "zjl_exits");
++		}
++		if (exit_num + 1 > u->exits_count) {
++			u->exits_count = exit_num + 1;
++		}
++		target = LLVMBuildLoad2(u->b, u->ty[ZJL_PTR],
++			zjl_gep(u, u->exits, zjl_iconst(u, ZJL_I64, 8 * (uint64_t)exit_num)), "");
++		linked = LLVMBuildIsNotNull(u->b, target, "");
++		taken = LLVMAppendBasicBlockInContext(u->c, u->fn, "");
++		deopt = LLVMAppendBasicBlockInContext(u->c, u->fn, "");
++		LLVMBuildCondBr(u->b, linked, taken, deopt);
++		LLVMPositionBuilderAtEnd(u->b, taken);
++		zjl_tail(u, target);
++		LLVMPositionBuilderAtEnd(u->b, deopt);
++	}
 +	zjc_register((void*)zjc_trace_exit);
 +	params[0] = params[2] = u->ty[ZJL_PTR];
 +	params[1] = u->ty[ZJL_I32];
 +	args[0] = zjl_load_reg(u, u->fp);
-+	args[1] = zjl_iconst(u, ZJL_I32, (uint32_t)(addr - ZJC_EXIT_BASE));
++	args[1] = zjl_iconst(u, ZJL_I32, exit_num);
 +	args[2] = buf;
 +	zjl_ret(u, zjl_mk(LLVMBuildCall2(u->b, LLVMFunctionType(u->ty[ZJL_PTR], params, 3, 0),
 +		zjl_addr(u, (uintptr_t)zjc_trace_exit).v, args, 3, ""), ZJL_PTR));
@@ -3230,19 +3397,13 @@ index 00000000..31a0c322
 +static void zjl_jump_to(zjl_unit *u, ir_insn *jmp, ir_ref target)
 +{
 +	ir_insn *t = &u->ctx->ir_base[target];
-+	LLVMTypeRef params[2] = {u->ty[ZJL_PTR], u->ty[ZJL_PTR]};
-+	LLVMValueRef args[2], call;
 +
 +	if (IR_IS_CONST_REF(target) && t->type == IR_ADDR
 +	 && t->val.addr >= ZJC_EXIT_BASE && t->val.addr < ZJC_EXIT_BASE + ZEND_JIT_TRACE_MAX_EXITS) {
 +		zjl_emit_exit(u, jmp, t->val.addr);
 +		return;
 +	}
-+	args[0] = zjl_load_reg(u, u->fp);
-+	args[1] = zjl_load_reg(u, u->ip);
-+	call = LLVMBuildCall2(u->b, LLVMFunctionType(u->ty[u->ret_k], params, 2, 0),
-+		zjl_get(u, target, ZJL_PTR), args, 2, "");
-+	zjl_ret(u, zjl_mk(u->ret_k == ZJL_VOID ? NULL : call, u->ret_k));
++	zjl_tail(u, zjl_get(u, target, ZJL_PTR));
 +}
 +
 +static int zjl_dessa_move(ir_ctx *ctx, uint8_t type, ir_ref from, ir_ref to, void *data)
@@ -3351,7 +3512,7 @@ index 00000000..31a0c322
 +		}
 +	}
 +	ptypes[nparams] = u->ty[ZJL_I32];
-+	u->fn = LLVMAddFunction(u->m, entries ? "zjl_body" : "zjl_f",
++	u->fn = LLVMAddFunction(u->m, u->name,
 +		LLVMFunctionType(u->ty[u->ret_k], ptypes, nparams + (entries ? 1 : 0), 0));
 +	if (entries) {
 +		LLVMSetLinkage(u->fn, LLVMInternalLinkage);
@@ -3369,11 +3530,21 @@ index 00000000..31a0c322
 +	u->fp = zjl_alloca(u, u->ty[ZJL_PTR]);
 +	u->ip = zjl_alloca(u, u->ty[ZJL_PTR]);
 +	u->sp = zjl_alloca(u, u->ty[ZJL_PTR]);
-+	{
-+		LLVMValueRef area = LLVMBuildAlloca(u->ab, LLVMArrayType(u->ty[ZJL_I8], 1024), "");
++	/* Stack space for code that addresses the C stack (helpers' results
++	 * passed through memory), only where the IR reads SP: Fil-C clears
++	 * stack allocations on every call. */
++	for (i = 1, insn = ctx->ir_base + 1; i < ctx->insns_count;) {
++		if ((insn->op == IR_RLOAD && insn->op2 == IR_REG_SP)
++		 || (insn->op == IR_RSTORE && insn->op3 == IR_REG_SP)) {
++			LLVMValueRef area = LLVMBuildAlloca(u->ab, LLVMArrayType(u->ty[ZJL_I8], 1024), "");
 +
-+		LLVMSetAlignment(area, 16);
-+		LLVMBuildStore(u->b, area, u->sp);
++			LLVMSetAlignment(area, 16);
++			LLVMBuildStore(u->b, area, u->sp);
++			break;
++		}
++		n = ir_insn_len(insn);
++		i += n;
++		insn += n;
 +	}
 +	if (skip_prologue) {
 +		LLVMBuildStore(u->b, LLVMGetParam(u->fn, 0), u->fp);
@@ -3387,6 +3558,31 @@ index 00000000..31a0c322
 +					zjl_kind(ctx->ir_base[params[i]].type, 0)), 0);
 +			}
 +		}
++	}
++
++	u->tail_ok = !entries && u->ret_k == ZJL_PTR && nparams == 2
++		&& ptypes[0] == u->ty[ZJL_PTR] && ptypes[1] == u->ty[ZJL_PTR];
++
++	/* A side trace starts with the values its parent's exit left in
++	 * registers (zend_jit_trace_start); they are in zjl_regs.  Read them
++	 * all before anything else can reuse the buffer. */
++	for (i = 1, insn = ctx->ir_base + 1; i < ctx->insns_count;) {
++		if (insn->op == IR_RLOAD && !zjl_is_fixed_reg(insn->op2) && zjl_has_def(u, i)) {
++			int8_t reg = insn->op2;
++			uint8_t k = IR_IS_TYPE_FP(insn->type) ? ZJL_DBL : ZJL_PTR;
++			uint64_t off = reg >= ZREG_FIRST_FPR ? 128 + 8 * (uint64_t)(reg - ZREG_FIRST_FPR) : 8 * (uint64_t)reg;
++
++			if (reg < 0 || reg >= ZREG_FIRST_FPR + 16 || (reg >= ZREG_FP && reg < ZREG_FIRST_FPR)) {
++				zjl_fail(u, "register in RLOAD");
++				return 0;
++			}
++			zjc_register(zjl_regs);
++			zjl_def(u, i, zjl_mk(LLVMBuildLoad2(u->b, u->ty[k],
++				zjl_gep(u, zjl_addr(u, (uintptr_t)zjl_regs).v, zjl_iconst(u, ZJL_I64, off)), ""), k), 0);
++		}
++		n = ir_insn_len(insn);
++		i += n;
++		insn += n;
 +	}
 +
 +	/* Entry dispatch */
@@ -3506,7 +3702,7 @@ index 00000000..31a0c322
 +					if (bb->flags & IR_BB_DESSA_MOVES) {
 +						ir_gen_dessa_moves(ctx, b, zjl_dessa_move, u);
 +					}
-+					LLVMBuildBr(u->b, u->bbs[ctx->cfg_edges[bb->successors]]);
++					LLVMBuildBr(u->b, u->bbs[zjc_end_target(ctx, bb)]);
 +					u->terminated = 1;
 +					break;
 +				case IR_IF: {
@@ -3611,7 +3807,8 @@ index 00000000..31a0c322
 +					}
 +					break;
 +				case IR_RLOAD:
-+					if (zjl_has_def(u, i)) {
++					/* Other registers were read in the prologue. */
++					if (zjl_has_def(u, i) && zjl_is_fixed_reg(insn->op2)) {
 +						zjl_def(u, i, zjl_mk(zjl_load_reg(u, zjl_reg(u, insn->op2)), ZJL_PTR), 0);
 +					}
 +					break;
@@ -3619,7 +3816,7 @@ index 00000000..31a0c322
 +					LLVMBuildStore(u->b, zjl_get(u, insn->op2, ZJL_PTR), zjl_reg(u, insn->op3));
 +					break;
 +				case IR_TRAP:
-+					zjl_intrinsic(u, "llvm.trap", ZJL_VOID, u->ty[ZJL_VOID], NULL, 0);
++					zjl_intrinsic(u, "llvm.trap", ZJL_VOID, NULL, 0);
 +					break;
 +				default:
 +					if (zjc_env("PHP_JIT_C_VERBOSE")) {
@@ -3645,11 +3842,11 @@ index 00000000..31a0c322
 +	/* Exported entry points */
 +	if (entries) {
 +		for (b = 0; b <= entries; b++) {
-+			char name[32];
++			char name[sizeof(u->name) + 16];
 +			LLVMValueRef w, args[33], call;
 +			LLVMTypeRef wt = LLVMFunctionType(u->ty[u->ret_k], ptypes, nparams, 0);
 +
-+			snprintf(name, sizeof(name), "zjl_f_e%u", b);
++			snprintf(name, sizeof(name), "%s$e%u", u->name, b);
 +			w = LLVMAddFunction(u->m, name, wt);
 +			LLVMPositionBuilderAtEnd(u->b, LLVMAppendBasicBlockInContext(u->c, w, ""));
 +			for (i = 0; i < (ir_ref)nparams; i++) {
@@ -3668,21 +3865,54 @@ index 00000000..31a0c322
 +	return entries + 1;
 +}
 +
++/* Default PHP_JIT_LLVM_MAX_INSNS: IR functions with more instructions stay
++ * interpreted.  Compile time grows faster than their size (a function of
++ * 49000 instructions took 20 to 35 s), and it is spent in the request that
++ * made the code hot. */
++#define ZJL_MAX_INSNS 10000
++
 +/* Compile ctx (already scheduled) with LLVM.  Same contract as zjc_compile. */
 +static void *zjl_compile(ir_ctx *ctx, const char *comment, void ***entries)
 +{
 +	zjl_unit u;
 +	FilLLVMJITRef jit;
 +	FilLLVMJITModuleRef mod;
-+	const char *opt = zjc_env("PHP_JIT_LLVM_OPT");
++	const char *opt = zjc_env("PHP_JIT_LLVM_OPT"), *max;
 +	int nentries;
 +	uint32_t i;
-+	void *entry = NULL;
++	void *entry = NULL, **exits = NULL;
 +	double t0 = zjc_now(), t1, t_start = t0;
++
++	max = zjc_env("PHP_JIT_LLVM_MAX_INSNS");
++	if (ctx->insns_count > (max && *max ? strtoul(max, NULL, 0) : ZJL_MAX_INSNS)) {
++		zjc_stats.too_big++;
++		if (zjc_env("PHP_JIT_C_VERBOSE")) {
++			fprintf(stderr, "zend_jit_llvm: %u IR instructions, over PHP_JIT_LLVM_MAX_INSNS: %s\n",
++				ctx->insns_count, comment ? comment : "?");
++		}
++		return NULL;
++	}
 +
 +	memset(&u, 0, sizeof(u));
 +	u.ctx = ctx;
 +	u.an.ctx = ctx;
++	{
++		/* "jit:" and the PHP function, e.g. jit:Foo::bar@file or
++		 * jit:TRACE-12$Foo::bar$34, so panics show which code it is */
++		const char *src = zjc_log_name ? zjc_log_name : comment ? comment : "zend_jit";
++		size_t j, n = 0;
++
++		n = snprintf(u.name, sizeof(u.name) - 1, "jit:");
++		if (!strncmp(src, "JIT$", 4)) {
++			src += 4;
++		}
++		for (j = 0; src[j] && n < sizeof(u.name) - 1; j++) {
++			char c = src[j];
++
++			u.name[n++] = (c >= ' ' && c < 127 && c != '"') ? c : '_';
++		}
++		u.name[n] = 0;
++	}
 +	zjc_analyze(&u.an);
 +	if (!ctx->regs) {
 +		ctx->regs = ir_mem_malloc(sizeof(ir_regs) * ctx->insns_count);
@@ -3716,14 +3946,35 @@ index 00000000..31a0c322
 +		zjc_stats.failed++;
 +		return NULL;
 +	}
-+	if (zjc_env("PHP_JIT_LLVM_DUMP")) {
-+		fprintf(stderr, "; %s\n", comment ? comment : "zend_jit");
++	if (zjc_env("PHP_JIT_LLVM_DUMP")
++	 && (!strcmp(zjc_env("PHP_JIT_LLVM_DUMP"), "1") || strstr(u.name, zjc_env("PHP_JIT_LLVM_DUMP")))) {
++		fprintf(stderr, "; %s\n", u.name);
++		ir_save(ctx, IR_SAVE_CFG, stderr);
 +		LLVMDumpModule(u.m);
 +	}
 +
 +	jit = FilLLVMJIT_Create();
 +	if (opt && *opt) {
 +		FilLLVMJIT_SetOption(jit, "opt-level", opt);
++	}
++	if (zjc_env("PHP_JIT_LLVM_OPTIONS")) {
++		/* key=value,key=value: more FilLLVMJIT_SetOption options */
++		char *opts = strdup(zjc_env("PHP_JIT_LLVM_OPTIONS")), *save = NULL, *kv;
++
++		for (kv = strtok_r(opts, ",", &save); kv; kv = strtok_r(NULL, ",", &save)) {
++			char *eq = strchr(kv, '=');
++
++			if (eq) {
++				*eq = 0;
++				FilLLVMJIT_SetOption(jit, kv, eq + 1);
++			}
++		}
++		free(opts);
++	}
++	if (u.exits) {
++		/* Filled in by zend_jit_link_side_trace. */
++		exits = calloc(u.exits_count, sizeof(void*));
++		FilLLVMJIT_SetGlobalMapping(jit, "zjl_exits", exits);
 +	}
 +	for (i = 0; i < u.k_count; i++) {
 +		char name[32];
@@ -3748,18 +3999,31 @@ index 00000000..31a0c322
 +	zjl_modules[zjl_modules_count++] = mod;
 +
 +	if (nentries == 1) {
-+		entry = FilLLVMJIT_GetPointerToGlobal(mod, "zjl_f");
++		entry = FilLLVMJIT_GetPointerToGlobal(mod, u.name);
 +	} else {
-+		entry = FilLLVMJIT_GetPointerToGlobal(mod, "zjl_f_e0");
++		char name[sizeof(u.name) + 16];
++
++		snprintf(name, sizeof(name), "%s$e0", u.name);
++		entry = FilLLVMJIT_GetPointerToGlobal(mod, name);
++	}
++	if (exits) {
++		if (zjl_exit_tables_count == zjl_exit_tables_cap) {
++			zjl_exit_tables_cap = zjl_exit_tables_cap ? zjl_exit_tables_cap * 2 : 64;
++			zjl_exit_tables = realloc(zjl_exit_tables, zjl_exit_tables_cap * sizeof(zjl_exit_table));
++		}
++		zjl_exit_tables[zjl_exit_tables_count].code = entry;
++		zjl_exit_tables[zjl_exit_tables_count].targets = exits;
++		zjl_exit_tables[zjl_exit_tables_count].count = u.exits_count;
++		zjl_exit_tables_count++;
 +	}
 +	if (entries) {
 +		*entries = NULL;
 +		if (nentries > 1) {
 +			*entries = malloc((nentries - 1) * sizeof(void*));
 +			for (i = 1; i < (uint32_t)nentries; i++) {
-+				char name[32];
++				char name[sizeof(u.name) + 16];
 +
-+				snprintf(name, sizeof(name), "zjl_f_e%u", i);
++				snprintf(name, sizeof(name), "%s$e%u", u.name, i);
 +				(*entries)[i - 1] = FilLLVMJIT_GetPointerToGlobal(mod, name);
 +			}
 +		}
