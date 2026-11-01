@@ -73,10 +73,10 @@ GC roots and fork-related deadlocks.
 **Current staging (2026-11-01):** branch
 [`staging-deluge`](https://github.com/mbrock/fil-c/tree/staging-deluge) of
 `mbrock/fil-c` at
-[af0c07f5ac35](https://github.com/mbrock/fil-c/commit/af0c07f5ac35d12d9e657e9647049c3ac97e4eef).
+[b24cd9552c09](https://github.com/mbrock/fil-c/commit/b24cd9552c0957848bacac6ac1abc432035af51d).
 It is upstream `deluge` at
 [7b9ca2bdbb21](https://github.com/pizlonator/fil-c/commit/7b9ca2bdbb21)
-(October 31) with the previous staging commits rebased on top, plus four
+(October 31) with the previous staging commits rebased on top, plus six
 new ones described below. Deluge brings Filip's LLVM JIT and changes the
 Fil-C ABI so that callees root their pointer arguments
 ([f565a56df1f](https://github.com/pizlonator/fil-c/commit/f565a56df1fd8ccd57c14d6d82cf9745ed038b24)),
@@ -119,7 +119,16 @@ libpas includes is generated from LLVM's C API headers, which the sparse
 `llvmjit-src` source provides. `checks.staging-llvm-jit` builds two small
 JIT programs: one calls back into the host, the other runs a loop, a mapped
 host global, pointer stores and a pointer CAS across fresh compiles while the
-GC collects. A program linked without `-enable-filc-jit` is refused. Release pins have no `llvmjit-src` hash and build exactly as
+GC collects. A program linked without `-enable-filc-jit` is refused.
+
+Four context-free wrappers (`LLVMLookupIntrinsicID`,
+`LLVMIntrinsicIsOverloaded`, `LLVMIsMultithreaded`, `LLVMGetUndefMaskElem`)
+locked a NULL context and crashed, and `LLVMLookupIntrinsicID` passed names
+without the `llvm.` prefix to LLVM, which asserts on them. Both are fixed on
+branch
+[`llvm-jit-contextless-locks`](https://github.com/mbrock/fil-c/tree/llvm-jit-contextless-locks),
+which is based on `deluge` for an upstream pull request, and cherry-picked
+onto staging. Release pins have no `llvmjit-src` hash and build exactly as
 before.
 
 The previous staging pin was branch

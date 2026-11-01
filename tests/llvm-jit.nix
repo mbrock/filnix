@@ -13,6 +13,16 @@ pkgsFilc.stdenv.mkDerivation {
       $CC $opt -enable-filc-jit ${./llvm-jit/global.c} -o global
       ./global | grep -qx 'counter 99000 calls 2000 length 20000 sum 9990000'
 
+      $CC $opt -enable-filc-jit ${./llvm-jit/contextless.c} -o contextless
+      ./contextless | grep -qx ok
+
+      $CC $opt -enable-filc-jit ${./llvm-jit/lookup-intrinsic-bad.c} -o badname
+      if ./badname > badname.log 2>&1; then
+        echo "LLVMLookupIntrinsicID accepted a name without llvm." >&2
+        exit 1
+      fi
+      grep -q 'does not start with' badname.log
+
       # Without -enable-filc-jit the runtime refuses the JIT API.
       $CC $opt ${./llvm-jit/hello.c} -o nojit
       if ./nojit > nojit.log 2>&1; then
