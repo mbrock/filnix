@@ -35,6 +35,8 @@ let
     O-nosimplify = "-O --simplify=none";
     O-limit4000 = "-O --registers-limit=4000";
     O-merged = "-O --bounds=merged";
+    O-or = "-O --bounds=or";
+    O-sign = "-O --bounds=sign";
   };
   chosen =
     if only == "" then

@@ -79,10 +79,11 @@
     same choice, and nanofil-cc passes call for -fno-builtin,
     -fno-builtin-memcpy, -fno-builtin-memmove and -ffreestanding.
 
-    `--bounds=split|merged` selects the bounds check's shape: split, the
-    default, tests ptr < lower and ptr > upper - Size with a branch each;
-    merged tests both with one unsigned comparison of ptr - lower
-    (docs/bounds.md, measured slower). NANOFIL_BOUNDS supplies the same
+    `--bounds=split|merged|sign|or` selects the bounds check's shape:
+    split, the default, tests ptr < lower and ptr > upper - Size with a
+    branch each; merged tests both with one unsigned comparison of
+    ptr - lower; sign and or test (ptr - lower) | (upper - Size - ptr)
+    with one branch (docs/bounds.md). NANOFIL_BOUNDS supplies the same
     choice.
 
     `--inline=none|small` independently selects no inlining, or, with
@@ -230,13 +231,14 @@ vectors_option('--no-vectors', '0').
 vectors_option('--vectors=off', '0').
 % bounds_options(+Argv0, -Argv): Argv is Argv0 less its --bounds=
 % options, the last of which sets NANOFIL_BOUNDS, the bounds check's
-% shape (filc_amd64:merged_bounds//2): split, the default, or merged.
+% shape (filc_amd64:bounds_check//4): split, the default, merged, sign
+% or or.
 bounds_options(Argv0, Argv) :-
     exclude(bounds_option, Argv0, Argv),
     (   include(bounds_option, Argv0, Opts), last(Opts, Opt)
     ->  atom_concat('--bounds=', B, Opt),
-        (   memberchk(B, [split, merged]) -> setenv('NANOFIL_BOUNDS', B)
-        ;   throw(nanofil_error('bounds must be split or merged'))
+        (   memberchk(B, [split, merged, sign, or]) -> setenv('NANOFIL_BOUNDS', B)
+        ;   throw(nanofil_error('bounds must be split, merged, sign or or'))
         )
     ;   true
     ).

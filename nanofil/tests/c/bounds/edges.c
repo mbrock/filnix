@@ -3,7 +3,7 @@
    17 bytes and a freed one, at the offsets near its ends from 9 bytes
    below it to 2 past it: one bit per offset, 1 when the access traps
    (writes of 1 and 8 bytes only). The bounds
-   check's shapes (default and --bounds=merged, docs/bounds.md) must
+   check's shapes (every --bounds shape, docs/bounds.md) must
    agree with filcc on each, in particular for an object shorter than
    the access, where a merged comparison without its borrow test would
    pass. Each access runs in its own child. */

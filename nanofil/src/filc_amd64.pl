@@ -2631,21 +2631,55 @@ saved_generic([cell(I,K,Data,none)|Cells]) -->
 % permitting a write if Write is 1, and ptr 8-aligned if Align is 8.
 access_check(k(Size, Write, Align), Ctx) -->
     { check_fail_label(Ctx, k(Size, Write, Align), Fail),
-      ctx_selection(Ctx, Selection) },
-    [ins(test, q, [reg(rcx), reg(rcx)]),
-     ins(jz, none, [sym(Fail)])],
-    (   { getenv('NANOFIL_BOUNDS', merged) }
-    ->  merged_bounds(Size, Fail)
-    ;   [ins(cmp, q, [reg(rcx), reg(rax)]),
-         ins(jb, none, [sym(Fail)]),
-         ins(mov, q, [mem(-16, rcx), reg(rdx)]),
-         ins(sub, q, [imm(Size), reg(rdx)])],
-        borrow_check(Selection, Size, Fail),
-        [ins(cmp, q, [reg(rdx), reg(rax)]),
-         ins(ja, none, [sym(Fail)])]
-    ),
+      ctx_selection(Ctx, Selection),
+      (   getenv('NANOFIL_BOUNDS', Shape) -> true ; Shape = split ) },
+    bounds_check(Shape, Selection, Size, Fail),
     write_check(Write, Fail),
     align_check(Align, Fail).
+
+/* bounds_check(+Shape, +Selection, +Size, +Fail)//: a jump to Fail
+   unless lower (%rcx) is not 0 and lower =< ptr (%rax) and ptr + Size =<
+   upper, in the shape --bounds selects (docs/bounds.md). tests/bounds_smt.py
+   proves each shape's lines equivalent to that condition. */
+bounds_check(Shape, Selection, Size, Fail) -->
+    [ins(test, q, [reg(rcx), reg(rcx)]),
+     ins(jz, none, [sym(Fail)])],
+    bounds_shape(Shape, Selection, Size, Fail).
+
+bounds_shape(split, Selection, Size, Fail) -->
+    [ins(cmp, q, [reg(rcx), reg(rax)]),
+     ins(jb, none, [sym(Fail)]),
+     ins(mov, q, [mem(-16, rcx), reg(rdx)]),
+     ins(sub, q, [imm(Size), reg(rdx)])],
+    borrow_check(Selection, Size, Fail),
+    [ins(cmp, q, [reg(rdx), reg(rax)]),
+     ins(ja, none, [sym(Fail)])].
+bounds_shape(merged, _, Size, Fail) --> merged_bounds(Size, Fail).
+bounds_shape(sign, _, Size, Fail) -->
+    or_bounds(Size),
+    [ins(js, none, [sym(Fail)])].
+bounds_shape(or, _, Size, Fail) -->
+    or_bounds(Size),
+    [ins(shr, q, [imm(56), reg(rdx)]),
+     ins(jnz, none, [sym(Fail)])].
+
+/* or_bounds(+Size)//: %rdx = (ptr - lower) | (upper - Size - ptr), after
+   D. J. Bernstein: both terms are small and non-negative exactly when
+   the access is in bounds, also for a freed object (upper = lower) and
+   one shorter than Size. --bounds=sign then branches on the sign, his
+   proposal; it also passes pointers within Size of 2^63 above lower,
+   whose accesses are non-canonical and fault in hardware instead of
+   trapping in Fil-C. --bounds=or tests bits 56 and up instead, which is
+   exact while objects stay below 2^56 bytes (five-level paging's user
+   space): an out-of-bounds term is at least 2^56 or, negative, at most
+   -(2^56 + Size). %rsi and %rdx are scratch. */
+or_bounds(Size) -->
+    [ins(mov, q, [reg(rax), reg(rsi)]),
+     ins(sub, q, [reg(rcx), reg(rsi)]),
+     ins(mov, q, [mem(-16, rcx), reg(rdx)]),
+     ins(sub, q, [reg(rax), reg(rdx)]),
+     ins(sub, q, [imm(Size), reg(rdx)]),
+     ins(or, q, [reg(rsi), reg(rdx)])].
 
 /* merged_bounds(+Size, +Fail)//: lower =< ptr =< upper - Size as one
    unsigned comparison (--bounds=merged, docs/bounds.md), after D. J.
