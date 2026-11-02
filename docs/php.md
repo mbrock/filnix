@@ -302,8 +302,9 @@ slot, which property hooks and FFI reuse for other data, as a trace
 extension; Fil-C stopped the C backend on MediaWiki.
 
 Compiled functions are named after their PHP code (`jit:Class::method@file`,
-`jit:TRACE-12$Class::method$34`), so a Fil-C panic in JIT code says which
-code it was. `PHP_JIT_LLVM_DUMP=text` prints the IR and the LLVM module of
+`jit:TRACE-$Class::method$34`, without the trace number so that workers
+build identical modules), so a Fil-C panic in JIT code says which code it
+was. `PHP_JIT_LLVM_DUMP=text` prints the IR and the LLVM module of
 the functions whose name contains `text`. `PHP_JIT_LLVM_MAX_INSNS` (default
 10000) leaves larger IR functions to the interpreter: LLVM's time grows
 faster than the function (49000 IR instructions took 20 to 35 s, most of it
@@ -314,7 +315,8 @@ made the code hot. `PHP_JIT_LLVM_OPTIONS=key=value,...` passes further
 change the defaults on a loaded machine.
 
 `PHP_JIT_BACKEND=c` selects the C backend (with its persistent cache, which
-the LLVM backend does not use), `PHP_JIT_LLVM_OPT` sets LLVM's opt-level
+the LLVM backend does not use; it shares code between workers instead, see
+below), `PHP_JIT_LLVM_OPT` sets LLVM's opt-level
 (default 2) and `PHP_JIT_LLVM_DUMP=1` prints each module. `PHP_JIT_C_STATS`,
 `PHP_JIT_C_LOG` and `PHP_JIT_C_VERBOSE` cover both backends.
 
@@ -429,6 +431,42 @@ worker, not a leak. A pass took 1.7 s with the LLVM JIT against 1.9 s for
 the interpreter on WordPress, and 1.4 s on MediaWiki for both. With the C
 backend WordPress's passes slowed from 2.2 s to 7.7 s over 330 requests,
 which we have not explained.
+
+**Sharing code between workers.** Every FPM worker traces and compiles on
+its own, and opcache's shared-memory lock serializes JIT compiles across
+workers, so with four static workers the first pass of the request mix
+spent 625 s compiling WordPress (4952 units) and 730 s compiling MediaWiki
+(4407 units) before steady state. `PHP_JIT_LLVM_CACHE_SIZE=256M` turns on
+Fil-C's shared object cache (`FilLLVMJIT_EnableSharedObjectCache`, see
+[upstream updates](upstream-updates.md#llvm-jit)): the master maps a
+region before forking, and a worker whose module and mappings match one
+another worker compiled links that object (about 1 ms) instead of
+compiling it (tens of ms). For modules to match across workers, the
+backend keeps per-process values out of the IR: pointers into opcache's
+memory (private to each process under Fil-C), each exit's link target and
+the trace number are read from module globals filled in after compiling.
+Four static workers, `opcache.jit=tracing`, the mix repeated:
+
+| | units | hits | compile seconds | first pass | steady pass |
+| --- | --- | --- | --- | --- | --- |
+| WordPress, no cache | 4952 | 0 | 624 s | 625 s | 2.1 s |
+| WordPress, cache | 4945 | 2138 (43%) | 332 s | 333 s | 2.1 s |
+| MediaWiki, no cache | 4407 | 0 | 730 s | 729 s | 1.8 s |
+| MediaWiki, cache | 4452 | 976 (22%) | 602 s | 602 s | 1.8 s |
+
+Worker RSS stays at 750 to 840 MB (WordPress) and 820 to 1030 MB
+(MediaWiki) either way. The hit rate is bounded by tracing itself: most
+misses are traces that only one worker built, because each worker's
+traces follow its own profile, and MediaWiki's vary more. About 10% of
+misses are the same trace in several workers with identical LLVM modules,
+so what differs is a mapped pointer: an object each worker allocated after
+forking (which ones is not yet known; classes linked at run time are a
+guess), bound as a constant. Reading every pointer from a global instead
+cost 60% on `Zend/bench.php`. The cache is off by default: Fil-C code gets no
+capability to the region, but the runtime's refusal of writable
+`/proc/self/mem` opens can be raced by a second thread, and code that
+escaped that way could plant code for every worker instead of only its
+own.
 
 **CPU-bound scripts.** `Zend/bench.php` and `bench/php/micro.php`, served
 warm (seconds; three requests to warm up, median of three):

@@ -73,10 +73,10 @@ GC roots and fork-related deadlocks.
 **Current staging (2026-11-01):** branch
 [`staging-deluge`](https://github.com/mbrock/fil-c/tree/staging-deluge) of
 `mbrock/fil-c` at
-[b24cd9552c09](https://github.com/mbrock/fil-c/commit/b24cd9552c0957848bacac6ac1abc432035af51d).
+[18b6663a2785](https://github.com/mbrock/fil-c/commit/18b6663a2785c8eba6cc2a544a7711e19fc448c7).
 It is upstream `deluge` at
 [7b9ca2bdbb21](https://github.com/pizlonator/fil-c/commit/7b9ca2bdbb21)
-(October 31) with the previous staging commits rebased on top, plus six
+(October 31) with the previous staging commits rebased on top, plus the
 new ones described below. Deluge brings Filip's LLVM JIT and changes the
 Fil-C ABI so that callees root their pointer arguments
 ([f565a56df1f](https://github.com/pizlonator/fil-c/commit/f565a56df1fd8ccd57c14d6d82cf9745ed038b24)),
@@ -130,6 +130,32 @@ branch
 which is based on `deluge` for an upstream pull request, and cherry-picked
 onto staging. Release pins have no `llvmjit-src` hash and build exactly as
 before.
+
+`FilLLVMJIT_EnableSharedObjectCache(bytes)` (65acb385557b, hardened in
+e40ff0ed2aaa and 18b6663a2785) lets processes forked after the call share
+compiled code, so FPM workers stop compiling the same traces each. The shim
+maps a shared anonymous region; `CompileModule` keys each compile with
+BLAKE3 over the verified module's bitcode, the target, the options and every
+global mapping's pointer and lower bound, and on a hit links the object
+another process produced instead of optimizing and generating code. A hit
+therefore only gives a module the capabilities its own session mapped.
+Entries are published lock-free (arena cursor, then a release CAS into a
+slot), copied out before linking, and the cache refuses to start under
+`FILC_LLVM_OPTIONS`. Oracle reviewed the design and the implementation; the
+review caught a size underflow that let an oversized object be written past
+the region, now rejected and covered by `tests/llvm-jit/shared-cache.c`.
+
+It also pointed out that Fil-C code can write its own memory through
+`/proc/self/mem`, with no capability, and with the cache that one escape
+would reach every worker. The runtime now refuses writable opens whose file
+is a procfs `mem` (checked on the opened fd, so symlinks, dirfds and
+`/proc/self/fd` reopens are caught), but a second thread can still race the
+check before the fd is closed, and code that can change the mount table can
+disguise the file. Closing it properly needs the open done where no other
+thread sees the fd (a helper thread with its own fd table) on every
+writable open, which is a runtime change for all programs and is not done.
+So the cache stays opt-in: nothing enables it by default, and PHP turns it
+on only with `PHP_JIT_LLVM_CACHE_SIZE`.
 
 The previous staging pin was branch
 [`filnix-staging`](https://github.com/mbrock/fil-c/tree/filnix-staging) at

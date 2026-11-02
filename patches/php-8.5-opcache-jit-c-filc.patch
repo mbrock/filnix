@@ -86,11 +86,26 @@ options, PHP_JIT_LLVM_MAX_INSNS the largest IR function compiled (default
 side-trace linking off, PHP_JIT_LLVM_DUMP=1 prints each module with its IR
 (PHP_JIT_LLVM_DUMP=text only those whose name contains text). Compiled
 functions are named after the PHP code they come from ("jit:Class::method@
-file", "jit:TRACE-12$..."), so Fil-C panics in JIT code name it. The
+file", "jit:TRACE-$..."), so Fil-C panics in JIT code name it. The
 persistent cache applies to the C backend only.
 
+The LLVM backend shares compiled code between processes forked after
+startup, such as FPM workers, through FilLLVMJIT_EnableSharedObjectCache:
+an identical module with identical mappings links the object another
+worker produced instead of compiling again. For modules to be identical
+across workers, values that differ between them stay out of the IR: a
+pointer into opcache's shared memory (whose address depends on the
+process's mapping), each exit's link target, and the trace number are
+read from externally initialized globals of the module, filled in after
+compiling; trace names leave out the trace number.
+PHP_JIT_LLVM_CACHE_SIZE sets the region's size (e.g. 256M) and turns the
+cache on; it is off by default. Fil-C code has no capability to the region,
+but the runtime's refusal of writable /proc/<pid>/mem opens can be raced,
+and code that escapes that way could plant code for every worker instead of
+only its own process.
+
 diff --git a/ext/opcache/jit/zend_jit.c b/ext/opcache/jit/zend_jit.c
-index 3ea2536f..c6cc6179 100644
+index 3ea2536f..e47838d1 100644
 --- a/ext/opcache/jit/zend_jit.c
 +++ b/ext/opcache/jit/zend_jit.c
 @@ -814,6 +814,12 @@ static bool zend_jit_may_be_modified(const zend_function *func, const zend_op_ar
@@ -106,12 +121,23 @@ index 3ea2536f..c6cc6179 100644
  #if defined(__clang__)
  # pragma clang diagnostic pop
  #endif
+@@ -3823,6 +3829,10 @@ void zend_jit_startup(void *buf, size_t size, bool reattached)
+ 	dasm_size = size;
+ 	dasm_ptr = dasm_end = (void*)(((char*)dasm_buf) + size - sizeof(*dasm_ptr) * 2);
+ 
++#ifdef __FILC__
++	zjl_startup();
++#endif
++
+ #ifdef HAVE_MPROTECT
+ #ifdef HAVE_PTHREAD_JIT_WRITE_PROTECT_NP
+ 	if (zend_write_protect) {
 diff --git a/ext/opcache/jit/zend_jit_c.c b/ext/opcache/jit/zend_jit_c.c
 new file mode 100644
-index 00000000..0518e831
+index 00000000..e0731674
 --- /dev/null
 +++ b/ext/opcache/jit/zend_jit_c.c
-@@ -0,0 +1,2034 @@
+@@ -0,0 +1,2035 @@
 +/*
 + * Fil-C C backend for the opcache JIT.
 + *
@@ -164,7 +190,7 @@ index 00000000..0518e831
 +	"PHP_JIT_C_CACHE_ONLY", "PHP_JIT_C_MAX_SIZE", "PHP_JIT_C_STATS",
 +	"PHP_JIT_C_LOG", "PHP_JIT_C_KEEP", "PHP_JIT_C_VERBOSE",
 +	"PHP_JIT_BACKEND", "PHP_JIT_LLVM_OPT", "PHP_JIT_LLVM_DUMP", "PHP_JIT_LLVM_NOLINK",
-+	"PHP_JIT_LLVM_OPTIONS", "PHP_JIT_LLVM_MAX_INSNS",
++	"PHP_JIT_LLVM_OPTIONS", "PHP_JIT_LLVM_MAX_INSNS", "PHP_JIT_LLVM_CACHE_SIZE",
 +};
 +static char *zjc_env_values[sizeof(zjc_env_names) / sizeof(zjc_env_names[0])];
 +
@@ -1857,6 +1883,7 @@ index 00000000..0518e831
 +# include "jit/zend_jit_llvm.c"
 +#else
 +# define zjl_enabled() 0
++# define zjl_startup()
 +# define zjl_compile(ctx, comment, entries) NULL
 +# define zjl_link_exit(code, exit_num, addr) 0
 +#endif
@@ -2455,10 +2482,10 @@ index 301f1535..e76cfe8f 100644
  
 diff --git a/ext/opcache/jit/zend_jit_llvm.c b/ext/opcache/jit/zend_jit_llvm.c
 new file mode 100644
-index 00000000..e8d905c3
+index 00000000..34d2a656
 --- /dev/null
 +++ b/ext/opcache/jit/zend_jit_llvm.c
-@@ -0,0 +1,1587 @@
+@@ -0,0 +1,1713 @@
 +/*
 + * Fil-C LLVM backend for the opcache JIT.
 + *
@@ -2525,11 +2552,12 @@ index 00000000..e8d905c3
 +	LLVMValueRef       tmp[IR_LAST_TYPE];
 +	uint8_t            tmp_k[IR_LAST_TYPE];
 +	LLVMValueRef       fp, ip, sp;  /* allocas holding the fixed registers */
-+	LLVMValueRef       exits;       /* the trace's exit table, zjl_exits */
-+	uint32_t           exits_count;
++	uint32_t           exits_count; /* 1 + the highest exit with a slot */
++	uint32_t           trace_num;   /* the value of zjl_trace_num, if used */
++	bool               has_trace_num;
 +	bool               tail_ok;     /* (ptr, ptr) -> ptr: jumps can be musttail */
 +	LLVMBasicBlockRef *bbs;
-+	uint32_t          *k_regs;      /* registry indices declared as globals */
++	uint32_t          *k_regs;      /* registry indices of zjk<i> and zjkl<i> */
 +	uint32_t           k_count, k_cap;
 +	bool               terminated;
 +	bool               failed;
@@ -2538,6 +2566,12 @@ index 00000000..e8d905c3
 +
 +static FilLLVMJITModuleRef *zjl_modules;   /* compiled code stays alive */
 +static uint32_t             zjl_modules_count, zjl_modules_cap;
++
++/* PHP_JIT_LLVM_CACHE_SIZE: bytes of compiled code that processes forked
++ * from the one that started the JIT share (only pages in use take memory).
++ * Off unless set: the region is outside every capability, but a program that
++ * escapes through /proc/self/mem (which the runtime only partly blocks)
++ * could plant code there for all workers, not just its own process. */
 +
 +/* Trace exits pass the snapshot's values here, laid out like the native
 + * exit's register dump (zend_jit_registers_buf): zjc_trace_exit reads them,
@@ -2550,7 +2584,7 @@ index 00000000..e8d905c3
 + * deoptimizes through zjc_trace_exit otherwise. */
 +typedef struct _zjl_exit_table {
 +	const void  *code;
-+	void       **targets;
++	void      ***targets;   /* exit -> the module's global zjl_exit<n>, or NULL */
 +	uint32_t     count;
 +} zjl_exit_table;
 +static zjl_exit_table *zjl_exit_tables;
@@ -2568,12 +2602,14 @@ index 00000000..e8d905c3
 +	}
 +	for (i = zjl_exit_tables_count; i-- > 0;) {
 +		if (zjl_exit_tables[i].code == code) {
-+			if (exit_num < zjl_exit_tables[i].count) {
-+				zjl_exit_tables[i].targets[exit_num] = (void*)addr;
++			bool slot = exit_num < zjl_exit_tables[i].count && zjl_exit_tables[i].targets[exit_num];
++
++			if (slot) {
++				*zjl_exit_tables[i].targets[exit_num] = (void*)addr;
 +			}
 +			if (zjc_env("PHP_JIT_C_VERBOSE")) {
 +				fprintf(stderr, "zend_jit_llvm: linked exit %u of %p%s\n", exit_num, code,
-+					exit_num < zjl_exit_tables[i].count ? "" : " (beyond its table)");
++					slot ? "" : " (it does not tail-call)");
 +			}
 +			return 1;
 +		}
@@ -2589,6 +2625,36 @@ index 00000000..e8d905c3
 +		return !strcmp(b, "llvm");
 +	}
 +	return ZEND_JIT_DEFAULT_LLVM;
++}
++
++#ifndef FILC_LLVM_JIT_SHARED_OBJECT_CACHE
++/* A toolchain whose JIT API predates the shared object cache. */
++# define FilLLVMJIT_EnableSharedObjectCache(bytes) 1
++# define FilLLVMJIT_SharedObjectCacheHits() 0ULL
++#endif
++
++/* In the process that starts the JIT (FPM's master), before it forks
++ * workers: let the processes share compiled code. */
++static void zjl_startup(void)
++{
++	const char *size = zjc_env("PHP_JIT_LLVM_CACHE_SIZE");
++	char *end;
++	unsigned long long bytes = 0;
++
++	if (!zjl_enabled()) {
++		return;
++	}
++	if (size && *size) {
++		bytes = strtoull(size, &end, 0);
++		switch (*end) {
++			case 'g': case 'G': bytes <<= 10; ZEND_FALLTHROUGH;
++			case 'm': case 'M': bytes <<= 10; ZEND_FALLTHROUGH;
++			case 'k': case 'K': bytes <<= 10;
++		}
++	}
++	if (bytes && FilLLVMJIT_EnableSharedObjectCache(bytes) && zjc_env("PHP_JIT_C_VERBOSE")) {
++		fprintf(stderr, "zend_jit_llvm: no shared object cache\n");
++	}
 +}
 +
 +static void zjl_fail(zjl_unit *u, const char *what)
@@ -2714,21 +2780,49 @@ index 00000000..e8d905c3
 +
 +/* ---- Constants ---- */
 +
-+/* The global bound to registry entry idx. */
++/* Whether code reads registry entry idx from a global of its module instead
++ * of having the pointer bound to a name.  Opcache's memory is private to
++ * each process under Fil-C, so what a worker caches after forking lies at
++ * different addresses in different workers; reading those pointers keeps
++ * the module, and the code that FilLLVMJIT_EnableSharedObjectCache shares,
++ * the same in every worker. */
++static bool zjl_k_loaded(uint32_t idx)
++{
++	return zend_accel_in_shm(zjc_reg_ptrs[idx]);
++}
++
++/* Registry entry idx: a global bound to it (zjk<i>), or a load from the
++ * global (zjkl<i>) that holds it.  i numbers the unit's entries, so names
++ * do not depend on the order in which the process registered pointers. */
 +static LLVMValueRef zjl_k(zjl_unit *u, uint32_t idx)
 +{
 +	char name[32];
 +	LLVMValueRef g;
++	uint32_t i;
 +
-+	snprintf(name, sizeof(name), "zjk%u", idx);
-+	g = LLVMGetNamedGlobal(u->m, name);
-+	if (!g) {
-+		g = LLVMAddGlobal(u->m, u->ty[ZJL_I8], name);
++	for (i = 0; i < u->k_count && u->k_regs[i] != idx; i++) {
++	}
++	if (i == u->k_count) {
 +		if (u->k_count == u->k_cap) {
 +			u->k_cap = u->k_cap ? u->k_cap * 2 : 64;
 +			u->k_regs = realloc(u->k_regs, u->k_cap * sizeof(uint32_t));
 +		}
 +		u->k_regs[u->k_count++] = idx;
++	}
++	if (zjl_k_loaded(idx)) {
++		snprintf(name, sizeof(name), "zjkl%u", i);
++		g = LLVMGetNamedGlobal(u->m, name);
++		if (!g) {
++			g = LLVMAddGlobal(u->m, u->ty[ZJL_PTR], name);
++			LLVMSetInitializer(g, LLVMConstNull(u->ty[ZJL_PTR]));
++			LLVMSetExternallyInitialized(g, 1);
++		}
++		return LLVMBuildLoad2(u->b, u->ty[ZJL_PTR], g, "");
++	}
++	snprintf(name, sizeof(name), "zjk%u", i);
++	g = LLVMGetNamedGlobal(u->m, name);
++	if (!g) {
++		g = LLVMAddGlobal(u->m, u->ty[ZJL_I8], name);
 +	}
 +	return g;
 +}
@@ -3365,14 +3459,20 @@ index 00000000..e8d905c3
 +	if (u->tail_ok) {
 +		/* A linked side trace takes over with the fixed registers, as the
 +		 * native exit jumps to it. */
-+		if (!u->exits) {
-+			u->exits = LLVMAddGlobal(u->m, u->ty[ZJL_I8], "zjl_exits");
++		char name[32];
++		LLVMValueRef slot;
++
++		snprintf(name, sizeof(name), "zjl_exit%u", exit_num);
++		slot = LLVMGetNamedGlobal(u->m, name);
++		if (!slot) {
++			slot = LLVMAddGlobal(u->m, u->ty[ZJL_PTR], name);
++			LLVMSetInitializer(slot, LLVMConstNull(u->ty[ZJL_PTR]));
++			LLVMSetExternallyInitialized(slot, 1);
 +		}
 +		if (exit_num + 1 > u->exits_count) {
 +			u->exits_count = exit_num + 1;
 +		}
-+		target = LLVMBuildLoad2(u->b, u->ty[ZJL_PTR],
-+			zjl_gep(u, u->exits, zjl_iconst(u, ZJL_I64, 8 * (uint64_t)exit_num)), "");
++		target = LLVMBuildLoad2(u->b, u->ty[ZJL_PTR], slot, "");
 +		linked = LLVMBuildIsNotNull(u->b, target, "");
 +		taken = LLVMAppendBasicBlockInContext(u->c, u->fn, "");
 +		deopt = LLVMAppendBasicBlockInContext(u->c, u->fn, "");
@@ -3763,8 +3863,26 @@ index 00000000..e8d905c3
 +				case IR_STORE:
 +				case IR_STORE_v: {
 +					uint8_t k = zjl_kind(ctx->ir_base[insn->op3].type, 0);
-+					LLVMValueRef v = zjl_get(u, insn->op3, k);
-+					LLVMValueRef s = LLVMBuildStore(u->b, v, zjl_get(u, insn->op2, ZJL_PTR));
++					LLVMValueRef v, s;
++
++					if (IR_IS_CONST_REF(insn->op2) && IR_IS_CONST_REF(insn->op3)
++					 && ctx->ir_base[insn->op2].val.addr == (uintptr_t)&EG(jit_trace_num)) {
++						/* A trace's number differs between processes that
++						 * compile the same trace: read it from the module. */
++						LLVMValueRef g = LLVMGetNamedGlobal(u->m, "zjl_trace_num");
++
++						if (!g) {
++							g = LLVMAddGlobal(u->m, u->ty[ZJL_I32], "zjl_trace_num");
++							LLVMSetInitializer(g, LLVMConstNull(u->ty[ZJL_I32]));
++							LLVMSetExternallyInitialized(g, 1);
++						}
++						u->trace_num = ctx->ir_base[insn->op3].val.u32;
++						u->has_trace_num = 1;
++						v = LLVMBuildLoad2(u->b, u->ty[ZJL_I32], g, "");
++					} else {
++						v = zjl_get(u, insn->op3, k);
++					}
++					s = LLVMBuildStore(u->b, v, zjl_get(u, insn->op2, ZJL_PTR));
 +
 +					if (insn->op == IR_STORE_v) {
 +						LLVMSetVolatile(s, 1);
@@ -3880,7 +3998,9 @@ index 00000000..e8d905c3
 +	const char *opt = zjc_env("PHP_JIT_LLVM_OPT"), *max;
 +	int nentries;
 +	uint32_t i;
-+	void *entry = NULL, **exits = NULL;
++	void *entry = NULL, ***exits = NULL;
++	unsigned long long hits;
++	bool hit;
 +	double t0 = zjc_now(), t1, t_start = t0;
 +
 +	max = zjc_env("PHP_JIT_LLVM_MAX_INSNS");
@@ -3910,6 +4030,13 @@ index 00000000..e8d905c3
 +			char c = src[j];
 +
 +			u.name[n++] = (c >= ' ' && c < 127 && c != '"') ? c : '_';
++			/* Leave out the trace's number (TRACE-12$...): it differs
++			 * between processes that compile the same trace. */
++			if (j == 5 && !strncmp(src, "TRACE-", 6)) {
++				while (src[j + 1] >= '0' && src[j + 1] <= '9') {
++					j++;
++				}
++			}
 +		}
 +		u.name[n] = 0;
 +	}
@@ -3971,26 +4098,48 @@ index 00000000..e8d905c3
 +		}
 +		free(opts);
 +	}
-+	if (u.exits) {
-+		/* Filled in by zend_jit_link_side_trace. */
-+		exits = calloc(u.exits_count, sizeof(void*));
-+		FilLLVMJIT_SetGlobalMapping(jit, "zjl_exits", exits);
-+	}
 +	for (i = 0; i < u.k_count; i++) {
 +		char name[32];
 +
-+		snprintf(name, sizeof(name), "zjk%u", u.k_regs[i]);
-+		FilLLVMJIT_SetGlobalMapping(jit, name, zjc_reg_ptrs[u.k_regs[i]]);
++		if (!zjl_k_loaded(u.k_regs[i])) {
++			snprintf(name, sizeof(name), "zjk%u", i);
++			FilLLVMJIT_SetGlobalMapping(jit, name, zjc_reg_ptrs[u.k_regs[i]]);
++		}
 +	}
-+	free(u.k_regs);
 +	t1 = zjc_now();
 +	zjc_stats.t_emit += t1 - t0;
 +	t0 = t1;
 +
++	hits = FilLLVMJIT_SharedObjectCacheHits();
 +	mod = FilLLVMJIT_CompileModule(jit, u.m);
 +	if (!mod) {
++		free(u.k_regs);
 +		zjc_stats.failed++;
 +		return NULL;
++	}
++	hit = FilLLVMJIT_SharedObjectCacheHits() != hits;
++	/* Fill the globals the code reads before anything runs it. */
++	for (i = 0; i < u.k_count; i++) {
++		char name[32];
++
++		if (zjl_k_loaded(u.k_regs[i])) {
++			snprintf(name, sizeof(name), "zjkl%u", i);
++			*(void**)FilLLVMJIT_GetPointerToGlobal(mod, name) = zjc_reg_ptrs[u.k_regs[i]];
++		}
++	}
++	free(u.k_regs);
++	if (u.has_trace_num) {
++		*(uint32_t*)FilLLVMJIT_GetPointerToGlobal(mod, "zjl_trace_num") = u.trace_num;
++	}
++	if (u.exits_count) {
++		/* Filled in by zend_jit_link_side_trace. */
++		exits = calloc(u.exits_count, sizeof(void**));
++		for (i = 0; i < u.exits_count; i++) {
++			char name[32];
++
++			snprintf(name, sizeof(name), "zjl_exit%u", i);
++			exits[i] = FilLLVMJIT_GetPointerToGlobal(mod, name);
++		}
 +	}
 +	if (zjl_modules_count == zjl_modules_cap) {
 +		zjl_modules_cap = zjl_modules_cap ? zjl_modules_cap * 2 : 256;
@@ -4030,7 +4179,11 @@ index 00000000..e8d905c3
 +	}
 +	t1 = zjc_now();
 +	zjc_stats.t_compile += t1 - t0;
-+	zjc_stats.misses++;
++	if (hit) {
++		zjc_stats.hits++;
++	} else {
++		zjc_stats.misses++;
++	}
 +	if (zjc_env("PHP_JIT_C_VERBOSE")) {
 +		fprintf(stderr, "zend_jit_llvm: compiled %s in %.1f ms (LLVM %.1f ms)\n", zjc_log_name ? zjc_log_name : comment ? comment : "?",
 +			(t1 - t_start) * 1e3, (t1 - t0) * 1e3);
@@ -4039,7 +4192,7 @@ index 00000000..e8d905c3
 +		FILE *log = fopen(zjc_env("PHP_JIT_C_LOG"), "a");
 +
 +		if (log) {
-+			fprintf(log, "%d llvm %u %.3f %s\n", (int)getpid(), ctx->insns_count, (t1 - t_start) * 1e3,
++			fprintf(log, "%d %s %u %.3f %s\n", (int)getpid(), hit ? "llvm-hit" : "llvm", ctx->insns_count, (t1 - t_start) * 1e3,
 +				zjc_log_name ? zjc_log_name : comment ? comment : "?");
 +			fclose(log);
 +		}

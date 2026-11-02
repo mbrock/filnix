@@ -16,6 +16,9 @@ pkgsFilc.stdenv.mkDerivation {
       $CC $opt -enable-filc-jit ${./llvm-jit/contextless.c} -o contextless
       ./contextless | grep -qx ok
 
+      $CC $opt -enable-filc-jit ${./llvm-jit/shared-cache.c} -o shared-cache
+      ./shared-cache | grep -qx ok
+
       $CC $opt -enable-filc-jit ${./llvm-jit/lookup-intrinsic-bad.c} -o badname
       if ./badname > badname.log 2>&1; then
         echo "LLVMLookupIntrinsicID accepted a name without llvm." >&2
