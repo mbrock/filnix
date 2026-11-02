@@ -29,6 +29,10 @@
     instruction (a call, allocation, getter, pointer access, setjmp,
     va_arg, ...) removes them all.
 
+    Renewal (round 4), range guards (round 5) and hoisted bounds
+    (docs/bounds.md: a limit of a loop's invariant root, read by
+    check_limit in the loop) build on these facts below.
+
     The pass is selected with `--checks=reuse`; the reference path keeps
     every check. ir.pl's validator accepts the result by its own rule,
     and `reuse_refines/2` checks that the only change is deleted checks
@@ -36,14 +40,14 @@
     an offset changed by exactly their distance.
 */
 :- module(check_reuse, [reuse_checks/2, reuse_refines/2, renew_checks/2, renew_refines/2,
-                        guard_checks/2, guard_refines/2]).
+                        guard_checks/2, guard_refines/2, hoist_checks/2, hoist_refines/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
 :- use_module(library(ordsets)).
 :- use_module(library(pairs)).
 :- use_module(ir, [op_kind/2, pointer_memory_effects/2, temp_defs/3, single_definitions/3,
-                   guard_chain/3, same_pointer/3]).
+                   guard_chain/3, same_pointer/3, lower_chain/3]).
 :- use_module(cfg, [inst_def/2, inst_uses/2, func_cfg/2, cfg_idoms/2, dominates/3,
                     natural_loops/3]).
 :- use_module(provenance, [code_items/2, context_records/3, context_index/2, with_context/3,
@@ -799,3 +803,158 @@ guard_reads([I0|Is0], [I|Is], Set) :-
     ;   true
     ),
     guard_reads(Is0, Is, Set).
+
+%! hoist_checks(+M0, -M) is det.
+%
+%  Hoisted bounds (docs/bounds.md). M is the checked module M0 with each
+%  heap check in a natural loop, at offset 0 and followed by a renewable
+%  access, whose pointer has the lower of a base defined outside the
+%  loop (lower_chain/3, any address), replaced by check_limit of that
+%  pointer and a limit of the base for the check's size: one limit/1
+%  per base, size and place, appended where guard_places/4 would put a
+%  guard, so it runs once before the loops it serves. Nothing else
+%  moves, so context sites are unchanged; a limit has no site and cannot
+%  trap. Functions with a setjmp are unchanged.
+
+hoist_checks(module(Items0), module(Items)) :-
+    maplist(hoisted_item, Items0, Items).
+
+hoisted_item(func(N, L, R, Ps, Bs0), func(N, L, R, Ps, Bs)) :- !,
+    (   member(block(_, _, Is, _), Bs0), member(let(_, _, setjmp(_), _), Is)
+    ->  Bs = Bs0
+    ;   func_cfg(Bs0, Cfg), cfg_idoms(Cfg, Idom), natural_loops(Cfg, Idom, Loops0),
+        assoc_to_list(Loops0, Loops), Loops \== [],
+        single_definitions(Ps, Bs0, Once),
+        findall(D-L0, ( member(block(L0, Phs, Is, _), Bs0),
+                        ( member(phi(tmp(D), _, _), Phs) ; member(I0, Is), inst_def(I0, D) ) ),
+                DLs0),
+        sort(1, @<, DLs0, DLs), list_to_assoc(DLs, DefBlocks),
+        Cfg = cfg(Entry, _, _, _),
+        block_loops(Loops, Idom, BlockLoops),
+        findall(L0-H0, ( gen_assoc(L0, BlockLoops, Ls0), last(Ls0, H0-_-_) ), LoopOf0),
+        list_to_assoc(LoopOf0, LoopOf),
+        findall(C, ( member(block(L1, _, Is, _), Bs0),
+                     get_assoc(L1, BlockLoops, Outward),
+                     hoist_candidates(Is, 0, L1, Outward, Once-DefBlocks, Idom, C) ),
+                Cs),
+        Cs \== []
+    ->  guard_places(Cs, place(Entry, DefBlocks, LoopOf), Idom, Places),
+        findall(X-B-Size, ( member(c(IH, B, Size, _, _, _, _), Cs),
+                            get_assoc(B-Size-IH, Places, X) ), Keys0),
+        sort(Keys0, Keys),
+        empty_assoc(E),
+        foldl(defined_name, DLs, E, Names0),
+        foldl(param_name, Ps, Names0, Names),
+        fresh_limits(Keys, Names, 0, Limits),
+        foldl(placed_limit, Limits, Bs0, Bs1),
+        findall((L2-I2)-U, ( member(c(IH, B, Size, L2, I2, _, _), Cs),
+                             get_assoc(B-Size-IH, Places, X),
+                             memberchk(u(U, X, B, Size), Limits) ),
+                Sites0),
+        list_to_assoc(Sites0, Sites),
+        maplist(limited_block(Sites), Bs1, Bs)
+    ;   Bs = Bs0
+    ).
+hoisted_item(Item, Item).
+
+%! hoist_candidates(+Insts, +I, +L, +Outward, +Defs, +Idom, -C) is nondet.
+%
+%  C is c(IH, B, Size, L, J, 0, 0) for a heap check of [0, Size) at
+%  index J >= I of block L, followed by a renewable access, whose
+%  pointer has the lower of base B, defined before the loop whose
+%  header's immediate dominator is IH: the outermost of the loops around
+%  L for which some base on the chain is.
+hoist_candidates([Inst, Access|Is], I, L, Outward, Defs, Idom, C) :-
+    (   Inst = let(tmp(Q), a, check(0, Size, _, _), [P]),
+        renewable_access(Access, Q),
+        Defs = Once-_, lower_names(Once, P, Chain),
+        member(_-Body-IH, Outward),
+        guard_base(Chain, Defs, Body, Idom, IH, B, _, _),
+        lower_chain(Once, P, B)
+    ->  (   C = c(IH, B, Size, L, I, 0, 0)
+        ;   I2 is I + 2, hoist_candidates(Is, I2, L, Outward, Defs, Idom, C)
+        )
+    ;   I1 is I + 1, hoist_candidates([Access|Is], I1, L, Outward, Defs, Idom, C)
+    ).
+
+% lower_names(+Once, +P, -Chain): P-i(0, 0) and each lower donor after
+% it through single-definition flights, as guard_base/8 reads a chain.
+lower_names(Once, P, [P-i(0, 0)|Chain]) :-
+    (   P = tmp(X), get_assoc(X, Once, flight(_, _, _, lower(D)))
+    ->  lower_names(Once, D, Chain)
+    ;   Chain = []
+    ).
+
+%! fresh_limits(+Keys, +Names, +K, -Limits) is det.
+%
+%  A name no instruction or phi defines per X-B-Size key, u(Name, X, B,
+%  Size).
+fresh_limits([], _, _, []).
+fresh_limits([X-B-Size|Ks], Names, K0, [u(Name, X, B, Size)|Limits]) :-
+    fresh_limit_name(Names, K0, Name, K1),
+    fresh_limits(Ks, Names, K1, Limits).
+
+fresh_limit_name(Names, K0, Name, K) :-
+    format(atom(Name0), 'limit.~w', [K0]), K1 is K0 + 1,
+    (   get_assoc(Name0, Names, _) -> fresh_limit_name(Names, K1, Name, K)
+    ;   Name = Name0, K = K1
+    ).
+
+placed_limit(u(Name, X, B, Size), Bs0, Bs) :-
+    append(Pre, [block(X, Ph, Is, J)|Post], Bs0), !,
+    append(Is, [let(tmp(Name), l, limit(Size), [B])], Is1),
+    append(Pre, [block(X, Ph, Is1, J)|Post], Bs).
+
+limited_block(Sites, block(L, Ph, Is0, J), block(L, Ph, Is, J)) :-
+    limited_insts(Is0, 0, L, Sites, Is).
+
+limited_insts([], _, _, _, []).
+limited_insts([Inst0|Is0], I, L, Sites, [Inst|Is]) :-
+    (   get_assoc(L-I, Sites, U),
+        Inst0 = let(Q, a, check(Lo, Hi, Rights, Align), [P])
+    ->  Inst = let(Q, a, check_limit(Lo, Hi, Rights, Align), [P, tmp(U)])
+    ;   Inst = Inst0
+    ),
+    I1 is I + 1,
+    limited_insts(Is0, I1, L, Sites, Is).
+
+%! hoist_refines(+M0, +M) is semidet.
+%
+%  M is M0 except for limit lets of fresh names appended at block ends,
+%  and heap checks replaced in place by check_limit of the same pointer,
+%  range, rights and alignment, reading one of those limits. This is
+%  identity, not safety: that the limit is of the pointer's lower and
+%  size is the validator's rule (ir.pl).
+
+hoist_refines(module(Items0), module(Items)) :-
+    maplist(item_limits, Items0, Items).
+
+item_limits(func(N, L, R, Ps, Bs0), func(N, L, R, Ps, Bs)) :- !,
+    maplist(block_limits, Bs0, Bs, Uss), append(Uss, Us),
+    length(Us, NU), sort(Us, Set), length(Set, NU),
+    \+ ( member(U, Set), names_mentioned(Bs0, U) ),
+    \+ ( member(U, Set), member(param(_, tmp(U1)), Ps), U1 == U ),
+    maplist(limit_reads_ok(Set), Bs, Bs0).
+item_limits(Item, Item).
+
+block_limits(block(L, Ph, Is0, J), block(L, Ph, Is, J), Us) :-
+    length(Is0, N), length(Pre, N), append(Pre, Extra, Is),
+    findall(U, member(let(tmp(U), l, limit(_), [_]), Extra), Us),
+    length(Extra, NE), length(Us, NE),
+    maplist(inst_limited, Is0, Pre).
+
+inst_limited(Inst, Inst) :- !.
+inst_limited(let(Q, a, check(Lo, Hi, Rs, Al), [P]),
+             let(Q, a, check_limit(Lo, Hi, Rs, Al), [P, tmp(_)])).
+
+limit_reads_ok(Set, block(_, _, Is, _), block(_, _, Is0, _)) :-
+    limit_reads_from(Is0, Is, Set).
+
+limit_reads_from([], _, _).
+limit_reads_from([I0|Is0], [I|Is], Set) :-
+    (   I0 = let(_, a, check(_, _, _, _), _),
+        I = let(_, a, check_limit(_, _, _, _), [_, tmp(U)])
+    ->  ord_memberchk(U, Set)
+    ;   true
+    ),
+    limit_reads_from(Is0, Is, Set).

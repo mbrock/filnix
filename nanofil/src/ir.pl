@@ -153,6 +153,8 @@
     | `renew(Lo, Hi, Rights, Align)` | `a` | `[a, p]`: Q1, P | checked stage: renew an earlier heap proof's temporal facts (docs/m7.md, round 4) |
     | `span_test(Lo, Hi)` | `w` | `[p]` | checked stage: 1 if the pointer's object contains [P+Lo, P+Hi), else 0; never traps (docs/m7.md, round 5) |
     | `renew_if(Lo, Hi, Rights, Align)` | `a` | `[p, w]`: P, G | checked stage: `check(Lo, Hi, Rights, Align)` of P, whose bounds part a passing span test G proves (docs/m7.md, round 5) |
+    | `limit(Size)` | `l` | `[p]` | checked stage: an opaque snapshot of the pointer's bounds for Size-byte accesses; never traps (docs/bounds.md) |
+    | `check_limit(Lo, Hi, Rights, Align)` | `a` | `[p, l]`: P, U | checked stage: `check(Lo, Hi, Rights, Align)` of P, its bounds tested against the limit U of P's lower (docs/bounds.md) |
     | `check_local(Name, Off, Bytes, Rights, Align)` | `a` | `[]` | checked stage: prove exact bounds and alignment for the named object, preserving its identity and offset |
     | `atomic_load(p)` | `p` | `[p]` | (filc mode) a single-copy atomic, sequentially consistent pointer load (Fil-C's filc_load_ptr_atomic) |
     | `cas(T)` | as `load(T)` | `[K, K, p]`: Expected, New, Addr | (filc mode) atomic compare-exchange, below; T one of `l` `sw` `uw` `sh` `uh` `sb` `ub` `p` |
@@ -214,6 +216,20 @@
     the span test's [Lo, Hi); every name on the way has one definition
     and the function has no setjmp. When G is 1 only the free flag, the
     read-only flag for a write, and alignment are tested natively.
+
+    `limit(Size)` reads `[p P0]`, with 0 < Size < 2^31. Its value is a
+    snapshot of P0's capability and of its object's bounds, in an
+    encoding the backend chooses; it never traps, reaches no safepoint,
+    and is read only as a `check_limit`'s second argument
+    (limit_reads/2). `check_limit(0, Size, Rights, Align)` reads
+    `[p P, l U]` and is exactly `check(0, Size, Rights, Align)` of P,
+    followed by the access it covers. U has one definition, a
+    `limit(Size)` of P0 with one definition, P has P0's lower through
+    single-definition flights (lower_chain/3), with any address, and
+    the function has no setjmp. Natively the bounds are tested against
+    the snapshot and the free flag (and for a write the read-only flag)
+    at the access: an object's bounds change only when it is freed
+    (docs/m7.md, round 4's lifetime lemma), which sets the free flag.
 
     `check_local` proves [Off, Off+Bytes) within the named object's
     exact size and 16-aligned base. Its adjacent raw access has offset
@@ -340,7 +356,7 @@
                module_mode/2, module_stage/2, addr_class/2, variadic_func/1, setjmp_func/1,
                narrow_type/3, without_locs/2, access_size_align/3,
                jump_target/2, polls_every_cycle/1, temp_defs/3, implicit_flight/1, local_objects/2,
-               pointer_memory_effects/2, single_definitions/3, guard_chain/3,
+               pointer_memory_effects/2, single_definitions/3, guard_chain/3, lower_chain/3,
                asm_fixed_regs/3,
                same_pointer/3]).
 
@@ -450,6 +466,8 @@ kind_arity(check, 1).
 kind_arity(renew, 2).
 kind_arity(span_test, 1).
 kind_arity(renew_if, 2).
+kind_arity(limit, 1).
+kind_arity(check_limit, 2).
 kind_arity(check_local, 0).
 kind_arity(check_function, 1).
 kind_arity(ld, 1).
@@ -473,6 +491,10 @@ valid_op(span_test(Lo, Hi)) :- !,
     integer(Lo), integer(Hi), Lo < Hi,
     Lo >= -9223372036854775808, Hi =< 9223372036854775807.
 valid_op(renew_if(Lo, Hi, Rights, Align)) :- !,
+    valid_op(check(Lo, Hi, Rights, Align)).
+valid_op(limit(Size)) :- !,
+    integer(Size), Size > 0, Size =< 2147483647.
+valid_op(check_limit(Lo, Hi, Rights, Align)) :- !,
     valid_op(check(Lo, Hi, Rights, Align)).
 valid_op(check_local(Name, Off, Bytes, Rights, Align)) :- !,
     ground(Name), local_offset(Off), integer(Bytes), Bytes > 0, Bytes =< 2147483647,
@@ -630,6 +652,8 @@ op_kind(check(_, _, _, _), check).
 op_kind(renew(_, _, _, _), renew).
 op_kind(span_test(_, _), span_test).
 op_kind(renew_if(_, _, _, _), renew_if).
+op_kind(limit(_), limit).
+op_kind(check_limit(_, _, _, _), check_limit).
 op_kind(check_local(_, _, _, _, _), check_local).
 op_kind(check_function, check_function).
 op_kind(raw_load(_, _), ld).
@@ -859,6 +883,8 @@ checked_inst(let(_, _, check(_, _, _, _), _)).
 checked_inst(let(_, _, renew(_, _, _, _), _)).
 checked_inst(let(_, _, span_test(_, _), _)).
 checked_inst(let(_, _, renew_if(_, _, _, _), _)).
+checked_inst(let(_, _, limit(_), _)).
+checked_inst(let(_, _, check_limit(_, _, _, _), _)).
 checked_inst(let(_, _, check_local(_, _, _, _, _), _)).
 checked_inst(let(_, _, check_function, _)).
 checked_inst(let(_, _, raw_load(_, _), _)).
@@ -1262,6 +1288,7 @@ stage_func(checked, Fn, Mode, Params, Blocks) :-
     incoming_edges(Blocks, Incoming),
     empty_assoc(Exits0),
     foldl(checked_block(Fn-Sources, Mode, Incoming), Blocks, Exits0, _),
+    limit_reads(Fn, Blocks),
     (   polls_every_cycle(Blocks) -> true
     ;   fn_error(Fn, 'a cycle without a poll edge in checked IR', [])
     ).
@@ -1367,8 +1394,8 @@ checked_insts([Inst|Insts], Fn-Sources, Mode, Live0, LiveOut) :-
    Q1 has one definition, a heap check or renew_if of tmp(P1), and P1
    one too, counting parameters, phis and every instruction form. Once
    maps each name with one definition to it (param for a parameter), for
-   renew_if's guard (round 5). Both are empty when the function has
-   neither op, or has a setjmp, whose second return the CFG does not
+   renew_if's guard (round 5) and check_limit's limit. Both are empty
+   when the function has none of these ops, or has a setjmp, whose second return the CFG does not
    show. With strict SSA (definitions_dominate/3), Q1's check dominates
    the renew, so P1 and Q1 there hold the values the check saw
    (docs/m7.md, round 4); a renew_if proves the same bounds as the
@@ -1392,9 +1419,11 @@ stage_sources(Params, Blocks, src(Renews, Once)) :-
 
 renewing_op(renew(_, _, _, _)).
 renewing_op(renew_if(_, _, _, _)).
+renewing_op(check_limit(_, _, _, _)).
 
 renew_source_op(check(Lo, Hi, _, Al), Lo, Hi, Al).
 renew_source_op(renew_if(Lo, Hi, _, Al), Lo, Hi, Al).
+renew_source_op(check_limit(Lo, Hi, _, Al), Lo, Hi, Al).
 
 %! single_definitions(+Params, +Blocks, -Once) is det.
 %
@@ -1542,6 +1571,61 @@ guard_covers(Once, P, tmp(GN), Lo, Hi) :-
     member(B-i(OLo, OHi), Chain), B == P0, !,
     GLo =< OLo + Lo, OHi + Hi =< GHi.
 
+% limit_covers(+Once, +P, +U, +Lo, +Hi): U is a single-definition
+% limit(Size) of a single-definition P0 whose lower P has (lower_chain/3),
+% for exactly P's accesses [0, Size) (docs/bounds.md, hoisted checks).
+limit_covers(Once, P, tmp(UN), 0, Size) :-
+    get_assoc(UN, Once, let(tmp(UN), l, limit(Size), [P0])),
+    P0 = tmp(N0), get_assoc(N0, Once, _),
+    lower_chain(Once, P, P0).
+
+%! lower_chain(+Once, +P, +B) is semidet.
+%
+%  P has B's lower: P is B, or a single-definition flight whose lower
+%  donor has B's lower, whatever its address. At any point that P's
+%  definitions dominate, P's lower is B's current one, by round 4's
+%  dominance argument (docs/m7.md), since every name on the way has one
+%  definition. Once maps each single-definition name to its definition.
+lower_chain(Once, P, B) :- lower_chain(Once, P, B, 0).
+
+lower_chain(_, P, B, _) :- P == B, !.
+lower_chain(Once, tmp(X), B, Depth) :-
+    Depth < 64,
+    get_assoc(X, Once, flight(_, _, _, lower(D))),
+    Depth1 is Depth + 1,
+    lower_chain(Once, D, B, Depth1).
+
+%! limit_reads(+Fn, +Blocks) is det.
+%
+%  A limit's value is an encoding only check_limit reads (docs/bounds.md):
+%  no phi, jump or other instruction reads a name a limit defines, and a
+%  check_limit reads one only as its second argument. Throws otherwise.
+limit_reads(Fn, Blocks) :-
+    findall(N-true, ( member(block(_, _, Is, _), Blocks),
+                      member(let(tmp(N), _, limit(_), _), Is) ), Ps0),
+    (   Ps0 == [] -> true
+    ;   sort(Ps0, Ps), list_to_assoc(Ps, Limits),
+        forall(member(block(L, Phis, Is, J), Blocks),
+               (   forall(member(I, Is), inst_limit_reads(Fn, L, Limits, I)),
+                   jump_uses(J, JUs), no_limit_read(Fn, L, Limits, JUs),
+                   forall(( member(phi(_, _, PVs), Phis), member(_-tmp(N), PVs) ),
+                          no_limit_read(Fn, L, Limits, [N])) ))
+    ).
+
+inst_limit_reads(Fn, L, Limits, let(_, _, check_limit(_, _, _, _), [P, U])) :- !,
+    ( P = tmp(PN) -> no_limit_read(Fn, L, Limits, [PN]) ; true ),
+    (   U = tmp(N), get_assoc(N, Limits, _) -> true
+    ;   fn_error(Fn, 'a check_limit in block ~w reads ~w, which no limit defines', [L, U])
+    ).
+inst_limit_reads(Fn, L, Limits, I) :-
+    inst_uses(I, Us), no_limit_read(Fn, L, Limits, Us).
+
+no_limit_read(Fn, L, Limits, Us) :-
+    (   member(N, Us), get_assoc(N, Limits, _)
+    ->  fn_error(Fn, 'tmp(~w), a limit, is read in block ~w by other than a check_limit', [N, L])
+    ;   true
+    ).
+
 checked_inst_rest(let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Insts, Fn-_, _,
                   Live0, Rest, Live) :- !,
     (   Insts = [Access|Rest],
@@ -1595,6 +1679,18 @@ checked_inst_rest(let(tmp(Q), a, renew_if(Lo, Hi, Rights, Align), [P, G]), Insts
         evidence_after(Access, Live2, Live)
     ;   fn_error(Fn, 'renew_if tmp(~w) is not followed by an access it covers', [Q])
     ).
+checked_inst_rest(let(tmp(Q), a, check_limit(Lo, Hi, Rights, Align), [P, U]), Insts, Fn-src(_, Once), _,
+                  Live0, Rest, Live) :- !,
+    (   limit_covers(Once, P, U, Lo, Hi) -> true
+    ;   fn_error(Fn, 'check_limit tmp(~w): no single-definition limit of its pointer\'s lower for its size, or a setjmp', [Q])
+    ),
+    (   Insts = [Access|Rest],
+        proof_use(Access, Q, Lo, Hi, Rights, Align)
+    ->  evidence_after(let(tmp(Q), a, check_limit(Lo, Hi, Rights, Align), [P, U]), Live0, Live1),
+        evidence_add(live(Q, P, Lo, Hi, Rights, Align), Live1, Live2),
+        evidence_after(Access, Live2, Live)
+    ;   fn_error(Fn, 'check_limit tmp(~w) is not followed by an access it covers', [Q])
+    ).
 checked_inst_rest(Inst, Insts, Fn-_, Mode, Live0, Insts, Live) :-
     evidence_after(Inst, Live0, Live),
     (   raw_access(Inst, Q, X, _, _)
@@ -1644,6 +1740,8 @@ evidence_preserving(let(_, a, check(_, _, _, _), _)).
 evidence_preserving(let(_, a, renew(_, _, _, _), _)).
 evidence_preserving(let(_, w, span_test(_, _), _)).
 evidence_preserving(let(_, a, renew_if(_, _, _, _), _)).
+evidence_preserving(let(_, l, limit(_), _)).
+evidence_preserving(let(_, a, check_limit(_, _, _, _), _)).
 evidence_preserving(let(_, _, raw_load(T, _), _)) :- T \== p.
 evidence_preserving(let(_, p, raw_load_pointer(_, Es), _)) :-
     ( pointer_memory_effects(load, Es) ; pointer_memory_effects(local_load, Es) ), !.
@@ -2108,6 +2206,8 @@ kind_result_ok(check, _, filc, a).
 kind_result_ok(renew, _, filc, a).
 kind_result_ok(span_test, _, filc, w).
 kind_result_ok(renew_if, _, filc, a).
+kind_result_ok(limit, _, filc, l).
+kind_result_ok(check_limit, _, filc, a).
 kind_result_ok(check_local, _, filc, a).
 kind_result_ok(check_function, _, filc, f).
 kind_result_ok(ld, raw_load(T, _), filc, K) :- load_result_ok(T, filc, K).
@@ -2178,6 +2278,8 @@ kind_arg_classes(check, _, _, filc, [p]).
 kind_arg_classes(renew, _, _, filc, [a, p]).
 kind_arg_classes(span_test, _, _, filc, [p]).
 kind_arg_classes(renew_if, _, _, filc, [p, w]).
+kind_arg_classes(limit, _, _, filc, [p]).
+kind_arg_classes(check_limit, _, _, filc, [p, l]).
 kind_arg_classes(check_local, _, _, filc, []).
 kind_arg_classes(check_function, _, _, filc, [p]).
 kind_arg_classes(ld, _, _, filc, [a]).

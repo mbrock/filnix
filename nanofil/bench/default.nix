@@ -37,6 +37,9 @@ let
     O-merged = "-O --bounds=merged";
     O-or = "-O --bounds=or";
     O-sign = "-O --bounds=sign";
+    O-hoist = "-O --checks=hoist";
+    O-hoist-merged = "-O --checks=hoist --bounds=merged";
+    O-hoist-or = "-O --checks=hoist --bounds=or";
   };
   chosen =
     if only == "" then

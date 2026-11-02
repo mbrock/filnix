@@ -667,7 +667,8 @@ single_proofs(Params, Blocks, Single) :-
     findall(N-true, member(N, Multi), MultiPairs), list_to_assoc(MultiPairs, MultiSet),
     findall(Q-P, ( member(block(_, _, Is, _), Blocks),
                    member(let(tmp(Q), a, Op, [P|_]), Is),
-                   ( Op = check(_, _, _, _) ; Op = renew_if(_, _, _, _) ),
+                   ( Op = check(_, _, _, _) ; Op = renew_if(_, _, _, _)
+                   ; Op = check_limit(_, _, _, _) ),
                    \+ get_assoc(Q, MultiSet, _),
                    ( P = tmp(N) -> \+ get_assoc(N, MultiSet, _) ; true ) ),
             Checks),
@@ -707,6 +708,8 @@ fused_insts([Inst0|Insts0], Fn, Single, Proofs0, [Inst|Insts]) :-
     (   Inst0 = let(tmp(Q), a, check(_, _, _, _), [P])
     ->  proofs_add(Q-P, Proofs, Proofs1)
     ;   Inst0 = let(tmp(Q), a, renew_if(_, _, _, _), [P, _])
+    ->  proofs_add(Q-P, Proofs, Proofs1)
+    ;   Inst0 = let(tmp(Q), a, check_limit(_, _, _, _), [P, _])
     ->  proofs_add(Q-P, Proofs, Proofs1)
     ;   Inst0 = let(tmp(Q), a, renew(_, _, _, _), [tmp(Q1), P]), get_assoc(Q1, Single, _)
     ->  proofs_add(Q-P, Proofs, Proofs1)
@@ -795,6 +798,17 @@ fused_inst(let(tmp(Q), a, renew_if(Lo, Hi, Rights, Align), [P, G]), [Access0|Ins
         access_pointer(Access, _, 0)
     ->  true
     ;   throw_fn(Fn, 'a renew_if or its access the emitter cannot emit yet')
+    ).
+% A hoisted check (docs/bounds.md) fuses as a check does, and keeps its
+% limit U for emission and liveness.
+fused_inst(let(tmp(Q), a, check_limit(Lo, Hi, Rights, Align), [P, U]), [Access0|Insts], Fn,
+           fused(limited(U, check_limit(Lo, Hi, Rights, Align)), Access), Insts) :- !,
+    (   U = tmp(_), proven_access(Access0, Q, P, Access),
+        Access \= let(_, _, raw_cas(_, _), _),
+        Lo =:= 0, Hi =< 2147483647, memberchk(Align, [1, 2, 4, 8]),
+        access_pointer(Access, _, 0)
+    ->  true
+    ;   throw_fn(Fn, 'a check_limit or its access the emitter cannot emit yet')
     ).
 fused_inst(let(tmp(Q), a, Check, [P]), [Access0|Insts], Fn, Inst, Insts) :- !,
     (   proven_access(Access0, Q, P, Access) -> Inst = fused(Check, Access)
@@ -896,6 +910,8 @@ live_block(block(L, Phis, Insts0, Jump), block(L, Phis, Insts, Jump)) :-
 % In particular both original p operands survive every internal helper.
 % A guarded access reads its guard too, so G keeps its slot to here.
 live_inst(fused(guarded(G, _), Access), uses(Inst, [G])) :- !,
+    live_inst(fused(none, Access), Inst).
+live_inst(fused(limited(U, _), Access), uses(Inst, [U])) :- !,
     live_inst(fused(none, Access), Inst).
 live_inst(fused(_, let(D, p, raw_load_pointer(Off, _), [P])),
           let(D, p, raw_load(p, Off), [P])) :- !.
@@ -1621,6 +1637,22 @@ inst(fused(guarded(tmp(G), renew_if(_, Size, Rights, Align)), Access), Index, Bl
     align_check(Align, Fail),
     [label(Here)],
     raw_access(Access, Index, Block, Ctx).
+% A hoisted check (docs/bounds.md): the bounds against the limit U that
+% limit/1 computed before the loop, then the free flag, and for a write
+% the read-only one, as a renewal tests them, and the alignment. Every
+% failure goes to the check's label with %rax:%rcx = P, so the report
+% is the full check's.
+inst(fused(limited(U, check_limit(_, Size, Rights, Align)), Access), Index, Block, Ctx) -->
+    { access_pointer(Access, P),
+      rights_write(Rights, Write),
+      check_fail_label(Ctx, k(Size, Write, Align), Fail),
+      ctx_fn(Ctx, Fn),
+      bounds_shape(Shape) },
+    flight_load(P, Ctx),
+    load(U, l, d, Fn),
+    limit_check(Shape, Write, Fail),
+    align_check(Align, Fail),
+    raw_access(Access, Index, Block, Ctx).
 inst(reused(Access), Index, Block, Ctx) -->
     { access_pointer(Access, P, Off), ctx_fn(Ctx, Fn), zero_offset(Access, Access0) },
     load(P, l, a, Fn),
@@ -1721,6 +1753,14 @@ kind_inst(span_test, w, span_test(Lo, Hi), [P0], D, Index, Block, Ctx) -->
      ins(xor, l, [reg(eax), reg(eax)]),
      label(Done)],
     reg_slot_store(rax, tmp(D), Ctx).
+% A limit (docs/bounds.md): P0's bounds for Size-byte accesses in the
+% encoding the shape's limit_check//3 reads. It never traps.
+kind_inst(limit, l, limit(Size), [P0], D, Index, Block, Ctx) -->
+    { local_label(Ctx, Block, Index, limit, Done),
+      bounds_shape(Shape) },
+    lower_reg_load(P0, rcx, Ctx),
+    limit_value(Shape, Size, Done),
+    reg_slot_store(rdx, tmp(D), Ctx).
 kind_inst(ptoi, l, _, [P], D, _, _, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     load(P, l, a, Fn),
@@ -2632,7 +2672,7 @@ saved_generic([cell(I,K,Data,none)|Cells]) -->
 access_check(k(Size, Write, Align), Ctx) -->
     { check_fail_label(Ctx, k(Size, Write, Align), Fail),
       ctx_selection(Ctx, Selection),
-      (   getenv('NANOFIL_BOUNDS', Shape) -> true ; Shape = split ) },
+      bounds_shape(Shape) },
     bounds_check(Shape, Selection, Size, Fail),
     write_check(Write, Fail),
     align_check(Align, Fail).
@@ -2704,6 +2744,97 @@ merged_bounds(Size, Fail) -->
     ),
     [ins(cmp, q, [reg(rdx), reg(rsi)]),
      ins(jae, none, [sym(Fail)])].
+
+% bounds_shape(-Shape): the shape --bounds selects (NANOFIL_BOUNDS).
+bounds_shape(Shape) :-
+    (   getenv('NANOFIL_BOUNDS', Shape) -> true ; Shape = split ).
+
+/* limit_value(+Shape, +Size, +Done)//: %rdx = the limit of the lower in
+   %rcx for Size-byte accesses (a hoisted check, docs/bounds.md), which
+   limit_check//3 reads in a loop, Done a fresh local label. With L the
+   lower and U the upper now:
+
+   | Shape | L not 0 | L = 0 |
+   |---|---|---|
+   | split | U - Size + 1, or 0 if that borrows | 0 |
+   | merged | U - L - Size + 1, or 0 if that borrows | 0 |
+   | or, sign | U - Size | -1 |
+
+   The header is read only when L is not 0. tests/hoist_smt.py proves
+   each pair of limit_value and limit_check equivalent to Fil-C's
+   condition, given that the object is not freed in between or its free
+   flag is set. */
+limit_value(split, Size, Done) -->
+    { S1 is Size - 1 },
+    [ins(xor, l, [reg(edx), reg(edx)]),
+     ins(test, q, [reg(rcx), reg(rcx)]),
+     ins(jz, none, [sym(Done)]),
+     ins(mov, q, [mem(-16, rcx), reg(rdx)]),
+     ins(sub, q, [imm(S1), reg(rdx)]),
+     ins(jae, none, [sym(Done)]),
+     ins(xor, l, [reg(edx), reg(edx)]),
+     label(Done)].
+limit_value(merged, Size, Done) -->
+    { S1 is Size - 1 },
+    [ins(xor, l, [reg(edx), reg(edx)]),
+     ins(test, q, [reg(rcx), reg(rcx)]),
+     ins(jz, none, [sym(Done)]),
+     ins(mov, q, [mem(-16, rcx), reg(rdx)]),
+     ins(sub, q, [reg(rcx), reg(rdx)]),
+     ins(sub, q, [imm(S1), reg(rdx)]),
+     ins(jae, none, [sym(Done)]),
+     ins(xor, l, [reg(edx), reg(edx)]),
+     label(Done)].
+limit_value(or, Size, Done) --> or_limit_value(Size, Done).
+limit_value(sign, Size, Done) --> or_limit_value(Size, Done).
+
+or_limit_value(Size, Done) -->
+    [ins(mov, q, [imm(-1), reg(rdx)]),
+     ins(test, q, [reg(rcx), reg(rcx)]),
+     ins(jz, none, [sym(Done)]),
+     ins(mov, q, [mem(-16, rcx), reg(rdx)]),
+     ins(sub, q, [imm(Size), reg(rdx)]),
+     label(Done)].
+
+/* limit_check(+Shape, +Write, +Fail)//: a jump to Fail unless the
+   pointer in %rax, with the lower in %rcx, may be accessed by the limit
+   in %rdx (limit_value//3), the object's free flag is clear and, for a
+   write, its read-only flag. The flags byte is read only once the
+   bounds passed, so never at a null lower. %rsi and %rdx are scratch. */
+limit_check(split, Write, Fail) -->
+    [ins(cmp, q, [reg(rcx), reg(rax)]),
+     ins(jb, none, [sym(Fail)]),
+     ins(cmp, q, [reg(rdx), reg(rax)]),
+     ins(jae, none, [sym(Fail)])],
+    flags_check(Write, Fail).
+limit_check(merged, Write, Fail) -->
+    [ins(mov, q, [reg(rax), reg(rsi)]),
+     ins(sub, q, [reg(rcx), reg(rsi)]),
+     ins(cmp, q, [reg(rdx), reg(rsi)]),
+     ins(jae, none, [sym(Fail)])],
+    flags_check(Write, Fail).
+limit_check(or, Write, Fail) -->
+    or_limit_terms,
+    [ins(shr, q, [imm(56), reg(rdx)]),
+     ins(jnz, none, [sym(Fail)])],
+    flags_check(Write, Fail).
+limit_check(sign, Write, Fail) -->
+    or_limit_terms,
+    [ins(js, none, [sym(Fail)])],
+    flags_check(Write, Fail).
+
+% %rdx = (ptr - lower) | (limit - ptr), djb's two terms.
+or_limit_terms -->
+    [ins(mov, q, [reg(rax), reg(rsi)]),
+     ins(sub, q, [reg(rcx), reg(rsi)]),
+     ins(sub, q, [reg(rax), reg(rdx)]),
+     ins(or, q, [reg(rsi), reg(rdx)])].
+
+% The flags a renew tests (renew_mask/2): free, and read-only for a write.
+flags_check(Write, Fail) -->
+    { renew_mask(Write, Mask) },
+    [ins(test, b, [imm(Mask), mem(-2, rcx)]),
+     ins(jnz, none, [sym(Fail)])].
 
 % The borrow test of upper - Size. Local selection drops it for Size =<
 % 16: a nonnull lower has its 16-byte header below it and upper >= lower,
@@ -2793,6 +2924,8 @@ inst_check_kind(fused(check(_, Size, Rights, Align), _), k(Size, Write, Align)) 
 inst_check_kind(fused(renew(_, Size, Rights, Align), _), k(Size, Write, Align)) :-
     rights_write(Rights, Write).
 inst_check_kind(fused(guarded(_, renew_if(_, Size, Rights, Align)), _), k(Size, Write, Align)) :-
+    rights_write(Rights, Write).
+inst_check_kind(fused(limited(_, check_limit(_, Size, Rights, Align)), _), k(Size, Write, Align)) :-
     rights_write(Rights, Write).
 inst_check_kind(fused(check_local(_, _, Size, Rights, Align), _), k(Size, Write, Align)) :-
     rights_write(Rights, Write).

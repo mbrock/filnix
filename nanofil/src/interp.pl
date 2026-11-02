@@ -709,7 +709,12 @@ to_word_env(result(tmp(D), K), X0, Env0, Env) :-
 % word_at_class(+K, ?X0, ?X): X is the word X0 taken at class K, its low
 % bits(K) bits; a p word is itself.
 word_at_class(w, X0, X) :- modulus(w, Mod), int_is(X, X0 mod Mod).
-word_at_class(l, X0, X) :- modulus(l, Mod), int_is(X, X0 mod Mod).
+% A limit's snapshot (docs/bounds.md) is no integer; only check_limit
+% reads it (ir.pl's limit_reads/2).
+word_at_class(l, X0, X) :-
+    (   nonvar(X0), X0 = limit(_, _) -> X = X0
+    ;   modulus(l, Mod), int_is(X, X0 mod Mod)
+    ).
 word_at_class(p, X, X).
 word_at_class(a, X, X).
 word_at_class(f, X, X).
@@ -829,6 +834,24 @@ kind_res(renew_if, renew_if(Lo, Hi, Rights, Align), a, filc, [ptr(A, Cap), G],
     (   G =:= 0 -> checked_res(Res0, ptr(A, Cap), Res)
     ;   Res0 = trap(misaligned) -> Res = trap(misaligned)
     ;   renew_res(Res0, ptr(A, Cap), Mem, Res)
+    ).
+% A limit (docs/bounds.md) is an opaque snapshot, which only check_limit
+% reads (ir.pl's limit_reads/2): the capability and the access size it
+% was taken for. Natively it holds the object's upper bound then, which
+% changes only when the object is freed, and check_limit tests the free
+% flag too; here a free empties the bounds the check reads directly.
+kind_res(limit, limit(Size), l, filc, [ptr(_, Cap)], S, val(limit(Cap, Size)), S).
+% check_limit is its check when its limit was taken of P's capability
+% for its size. A limit of another capability or size means the
+% validator's lower chain or the pass was wrong: unchecked(limit).
+kind_res(check_limit, check_limit(Lo, Hi, Rights, Align), a, filc, [ptr(A, Cap), U],
+         s(Mem, Fuel), Res, s(Mem, Fuel)) :-
+    Size is Hi - Lo,
+    (   U == limit(Cap, Size)
+    ->  raw_address(A, Lo, B),
+        access_res(Mem, B, Cap, Size, Rights, Align, Res0),
+        checked_res(Res0, ptr(A, Cap), Res)
+    ;   Res = unchecked(limit)
     ).
 kind_res(ld, raw_load(T, Off), K, filc, [ptr(A, Cap)], S0, Res, S) :-
     raw_address(A, Off, B),

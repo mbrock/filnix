@@ -88,9 +88,15 @@ pkgs.runCommandCC "nanofil-check"
     # Every bounds-check shape's lines against Fil-C's condition, with Z3
     # (docs/bounds.md).
     step "bounds smt" python3 tests/bounds_smt.py
+    # Every hoisted shape's limit and in-loop lines against Fil-C's full
+    # check at the access, with Z3 (docs/bounds.md, hoisted bounds).
+    step "hoist smt" python3 tests/hoist_smt.py
     # Every bounds-check shape at both levels against filcc's traps
     # (docs/bounds.md); thousands of forks, so once, in parallel.
     step "bounds edges" bash -c 'pids=; for b in split merged sign or; do for o in "" -O; do NANOFIL_BOUNDS=$b NANOFIL_OPT=$o tests/progtest.sh tests/c/bounds/edges.c & pids="$pids $!"; done; done; s=0; for p in $pids; do wait $p || s=1; done; exit $s'
+    # The same matrix with each access in a loop, hoisted (docs/bounds.md;
+    # -O keeps the loop's base in a register, which hoisting needs).
+    step "hoisted bounds edges" bash -c 'pids=; for b in split merged sign or; do NANOFIL_CHECKS=hoist NANOFIL_BOUNDS=$b NANOFIL_OPT=-O tests/progtest.sh tests/c/bounds/hoist-edges.c & pids="$pids $!"; done; s=0; for p in $pids; do wait $p || s=1; done; exit $s'
     # Small constant copies (docs/perf.md item 7a): the failing cases,
     # inline filter against --memcpy=call.
     step memcpy tests/memcpy.sh
@@ -227,7 +233,22 @@ pkgs.runCommandCC "nanofil-check"
     done
     step "guard -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
     unset NANOFIL_OPT NANOFIL_CHECKS
-    step "renew and guard trap text" tests/renew-trap.sh
+    # Hoisted bounds (docs/bounds.md): renewal, then a limit before each
+    # loop and check_limit for the loop's remaining full checks of a root
+    # defined before it. The corpus compiles under -O, so the validator
+    # sees every limit the pass makes; renew-trap.sh compares hoisted
+    # traps with reference too.
+    export NANOFIL_CHECKS=hoist
+    for opt in "" -O; do
+      export NANOFIL_OPT=$opt
+      step "hoist $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
+      step "hoist $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
+      step "hoist $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    done
+    step "hoist -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    unset NANOFIL_OPT NANOFIL_CHECKS
+    step "renew, guard and hoist trap text" tests/renew-trap.sh
+    step "hoist trap text, every shape" bash -c 'for b in merged or sign; do NANOFIL_BOUNDS=$b tests/renew-trap.sh || exit 1; done'
     # Branch selection (docs/perf.md) is the -O default, so the -O suites
     # above run it; here it runs without -O, and -O runs the reference
     # branches, whose stream temps' checkers validate.

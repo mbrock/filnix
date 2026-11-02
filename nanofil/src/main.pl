@@ -99,12 +99,14 @@
     item 8). The default is full; NANOFIL_SIMPLIFY supplies the same
     choice.
 
-    `--checks=reference|reuse|renew|guard` independently selects the
-    reference checked IR, a check before every access, check reuse after
-    pizlonation, reuse followed by renewal of dominated checks, or both
-    followed by range guards for checks in loops (src/check_reuse.pl,
-    docs/m7.md). The default is renew with `-O` and reference without;
-    NANOFIL_CHECKS supplies the same choice. With reuse, renew or guard, `cc`,
+    `--checks=reference|reuse|renew|guard|hoist` independently selects
+    the reference checked IR, a check before every access, check reuse
+    after pizlonation, reuse followed by renewal of dominated checks,
+    both followed by range guards for checks in loops, or both followed
+    by hoisted bounds, a limit taken before a loop for its full checks
+    of a root defined before it (src/check_reuse.pl, docs/m7.md,
+    docs/bounds.md). The default is renew with `-O` and reference without;
+    NANOFIL_CHECKS supplies the same choice. With any but reference, `cc`,
     `compile` and difftest's pizlonation comparison use that module.
 
     GNU vector types and the SSE through AVX2 intrinsics
@@ -211,8 +213,8 @@ memcpy_mode(M) :-
 checks_default(Checks) :-
     ( getenv('NANOFIL_CHECKS',C) -> checks_mode(C), Checks = C ; true ).
 checks_mode(C) :-
-    ( memberchk(C,[reference,reuse,renew,guard]) -> true
-    ; throw(nanofil_error('checks must be reference, reuse, renew or guard')) ).
+    ( memberchk(C,[reference,reuse,renew,guard,hoist]) -> true
+    ; throw(nanofil_error('checks must be reference, reuse, renew, guard or hoist')) ).
 % vectors_options(+Argv0, -Argv): Argv is Argv0 less its vector
 % options, the last of which sets NANOFIL_VECTORS (c_types
 % vector_type/4), for drivers that pass only options: --vectors and
@@ -578,6 +580,17 @@ checks_module(guard, Checked0, Checked) :-
     once(guard_checks(Checked1, Checked)),
     (   guard_refines(Checked1, Checked) -> true
     ;   throw(nanofil_error('range guards changed more than checks'))
+    ),
+    once(valid_module(Checked)).
+
+% Hoisted bounds (docs/bounds.md) run after renewal: a full check
+% renewal left in a loop may test its bounds against a limit taken
+% before the loop. Only the result is validated.
+checks_module(hoist, Checked0, Checked) :-
+    renewed_module(Checked0, Checked1),
+    once(hoist_checks(Checked1, Checked)),
+    (   hoist_refines(Checked1, Checked) -> true
+    ;   throw(nanofil_error('hoisted bounds changed more than checks'))
     ),
     once(valid_module(Checked)).
 

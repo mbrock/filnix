@@ -3411,6 +3411,169 @@ test(guard_pass) :-
                       -> O = let(Q, a, renew_if(A1, A2, A3, A4), [P, tmp(k)]) ; O = I ), Is, Other),
     \+ guard_refines(C2, module([func(f, L, Rt, Ps, BsOther)|Rest])).
 
+% Hoisted bounds (docs/bounds.md). limit_fn(+Pre, +Body, -M): Pre
+% before a loop whose body is Body and a call that may free b.
+limit_fn(Pre, Body, M) :- guard_fn(Pre, Body, M).
+
+limit_rejected(M) :-
+    catch(( valid_module(M), fail ), nanofil_error(Msg), true),
+    once(sub_atom(Msg, _, _, _, limit)).
+
+% limit_access(+P, +U, -Insts): an 8-byte read at P, its bounds tested
+% against the limit tmp(U).
+limit_access(P, U, [let(tmp(q), a, check_limit(0, 8, read, 1), [P, tmp(U)]),
+                    let(tmp(x), l, raw_load(l, 0), [tmp(q)])]).
+
+% The validator accepts a check_limit of a pointer with the limit's
+% root's lower, by any address, and refuses another root or lower donor,
+% another size or offset, a limit that is not one or is defined twice, a
+% root or flight defined twice, a setjmp, a limit read by anything but a
+% check_limit, and a check_limit without its access.
+test(limit_validation) :-
+    Ok = [Pre, Body]>>( limit_fn(Pre, Body, M), valid_module(M) ),
+    No = [Pre, Body]>>( limit_fn(Pre, Body, M), limit_rejected(M) ),
+    U8 = let(tmp(u), l, limit(8), [tmp(a)]),
+    Nl = let(tmp(nl), l, ext(sw), [tmp(c)]),
+    Fv = flight(tmp(av), add, [address(tmp(a)), tmp(nl)], lower(tmp(a))),
+    limit_access(tmp(av), u, Av),
+    call(Ok, [U8], [Nl, Fv|Av]),
+    limit_access(tmp(a), u, A0), call(Ok, [U8], A0),
+    % Two flights; and another pointer's address with a's lower.
+    F1 = flight(tmp(a1), sub, [address(tmp(a)), tmp(nl)], lower(tmp(a))),
+    F2 = flight(tmp(av), add, [address(tmp(a1)), const(3)], lower(tmp(a1))),
+    call(Ok, [U8], [Nl, F1, F2|Av]),
+    call(Ok, [U8], [flight(tmp(av), copy, [address(tmp(b))], lower(tmp(a)))|Av]),
+    % Another root; another lower donor.
+    call(No, [let(tmp(u), l, limit(8), [tmp(b)])], [Nl, Fv|Av]),
+    call(No, [U8], [Nl, flight(tmp(av), add, [address(tmp(a)), tmp(nl)], lower(tmp(b)))|Av]),
+    % Another size, either way, and an offset.
+    call(No, [let(tmp(u), l, limit(4), [tmp(a)])], [Nl, Fv|Av]),
+    call(No, [let(tmp(u), l, limit(16), [tmp(a)])], [Nl, Fv|Av]),
+    call(No, [U8], [Nl, Fv, let(tmp(q), a, check_limit(8, 16, read, 1), [tmp(av), tmp(u)]),
+                    let(tmp(x), l, raw_load(l, 8), [tmp(q)])]),
+    % Not a limit.
+    call(No, [let(tmp(u), l, copy, [const(0)])], A0),
+    % Defined twice: the limit, the root, a flight on the way (each by an
+    % unreachable block).
+    forall(member(Re, [ U8, flight(tmp(a), copy, [address(tmp(b))], lower(tmp(b))),
+                        flight(tmp(av), copy, [address(tmp(b))], lower(tmp(a))) ]),
+           ( limit_fn([U8], [Nl, Fv|Av], M0), M0 = module([func(F, Lk, Rt, Ps, Bs0)]),
+             append(Bs0, [block(v, [], [Re], goto(h))], Bs1),
+             limit_rejected(module([func(F, Lk, Rt, Ps, Bs1)])) )),
+    % A setjmp.
+    call(No, [U8, let(tmp(j), w, setjmp('_setjmp'), [tmp(b), const(0)])], A0),
+    % The limit read as a number, or by a phi.
+    call(No, [U8], [let(tmp(y), l, add, [tmp(u), const(1)])|A0]),
+    renew_fn([block(s, [], [U8], goto(h)),
+              block(h, [phi(tmp(v), l, [s-tmp(u), h-tmp(v)])], A0, branch(tmp(c), poll(h), e)),
+              block(e, [], [], ret(const(0)))], Phi),
+    limit_rejected(Phi),
+    renew_fn([block(s, [], [U8], goto(h)),
+              block(h, [], A0, branch(tmp(c), poll(h), e)),
+              block(e, [], [], ret(tmp(u)))], Ret),
+    limit_rejected(Ret),
+    % No access after it.
+    call(No, [U8], [let(tmp(q), a, check_limit(0, 8, read, 1), [tmp(a), tmp(u)])]),
+    % A limit that does not dominate the check: one arm defines it.
+    renew_fn([block(s, [], [], branch(tmp(c), t, h)), block(t, [], [U8], goto(h)),
+              block(h, [], A0, ret(const(0)))], NoDom),
+    catch(( valid_module(NoDom), fail ), nanofil_error(_), true).
+
+% The interpreter: check_limit is its check, also after a free between
+% the limit and the check; of a null pointer it traps as the check does,
+% and a write to read-only data traps readonly. A limit of another
+% capability or size shows as unchecked(limit).
+test(limit_semantics) :-
+    Alloc = let(tmp(p), p, alloc(8), [const(16)]),
+    U = let(tmp(u), l, limit(8), [tmp(p)]),
+    Ld = [P, Is]>>( Is = [let(tmp(r), a, check_limit(0, 8, read, 1), [P, tmp(u)]),
+                          let(tmp(x), l, raw_load(l, 0), [tmp(r)])] ),
+    call(Ld, tmp(p8), L8), call(Ld, tmp(p9), L9),
+    F8 = flight(tmp(p8), add, [address(tmp(p)), const(8)], lower(tmp(p))),
+    F9 = flight(tmp(p9), add, [address(tmp(p)), const(9)], lower(tmp(p))),
+    reuse_l_fn([Alloc, U, F8|L8], In), valid_module(In), once(run(In, f, [], 10, ret(0))),
+    reuse_l_fn([Alloc, U, F9|L9], Past), valid_module(Past),
+    once(run(Past, f, [], 10, trap(out_of_bounds))),
+    Free = call(void, global(free), [arg(p, tmp(p))]),
+    reuse_l_fn([Alloc, U, Free, F8|L8], Freed), valid_module(Freed),
+    once(run(Freed, f, [], 10, trap(out_of_bounds))),
+    Z = flight(tmp(z), copy, [const(0)], none),
+    call(Ld, tmp(z), Lz),
+    reuse_l_fn([Z, let(tmp(u), l, limit(8), [tmp(z)])|Lz], Null), valid_module(Null),
+    once(run(Null, f, [], 10, trap(null_capability))),
+    Ro = module([data(msg, ro(local), 1, [item(b, str("h"))]),
+        func(g, local, w, [], [block(s, [], [
+            let(tmp(p), p, copy, [global(msg)]),
+            let(tmp(u), l, limit(1), [tmp(p)]),
+            let(tmp(r), a, check_limit(0, 1, write, 1), [tmp(p), tmp(u)]),
+            raw_store(b, 0, const(1), tmp(r))
+        ], ret(const(0)))])]),
+    valid_module(Ro), once(run(Ro, g, [], 10, trap(readonly))),
+    reuse_l_fn([Alloc, let(tmp(o), p, alloc(8), [const(16)]),
+                let(tmp(u), l, limit(8), [tmp(o)]), F8|L8], Other),
+    limit_rejected(Other), once(run(Other, f, [], 10, unchecked(limit))),
+    reuse_l_fn([Alloc, let(tmp(u), l, limit(4), [tmp(p)]), F8|L8], Short),
+    limit_rejected(Short), once(run(Short, f, [], 10, unchecked(limit))).
+
+% The pass gives the loop's read of p + j, j loaded in the loop, a
+% limit of p at the end of s, and the store after it renews the hoisted
+% proof (round 4); all modules agree, hoist_refines/2 accepts the
+% result and refuses a moved check or a limit read from another name.
+% Native: the limit's header read once, and a free-flag test for each
+% read (the renewed one and the hoisted one).
+test(hoist_pass) :-
+    ir_module([func(f, local, l, [param(w, tmp(k))], [
+        block(s, [], [
+            let(tmp(p), p, alloc(8), [const(16)]),
+            store(l, const(8), tmp(p)),
+            let(tmp(p8), p, add, [tmp(p), const(8)]),
+            store(l, const(5), tmp(p8))
+        ], goto(h)),
+        block(h, [phi(tmp(i), w, [s-const(0), b-tmp(i1)]),
+                  phi(tmp(t), l, [s-const(0), b-tmp(t1)])], [
+            let(tmp(m), w, cmp(slt, w), [tmp(i), tmp(k)])
+        ], branch(tmp(m), b, e)),
+        block(b, [], [
+            let(tmp(o), p, alloc(8), [const(16)]),
+            call(void, global(free), [arg(p, tmp(o))]),
+            let(tmp(j), l, load(l), [tmp(p)]),
+            let(tmp(pj), p, add, [tmp(p), tmp(j)]),
+            let(tmp(u), l, load(l), [tmp(pj)]),
+            let(tmp(t1), l, add, [tmp(t), tmp(u)]),
+            store(l, tmp(t1), tmp(pj)),
+            let(tmp(i1), w, add, [tmp(i), const(1)])
+        ], goto(h)),
+        block(e, [], [], ret(tmp(t)))])], M),
+    pizlonate_module(M, C0), reuse_checks(C0, C1), renew_checks(C1, C2),
+    hoist_checks(C2, C3), hoist_refines(C2, C3), valid_module(C3),
+    C3 = module([func(f, _, _, _, Bs)|_]),
+    memberchk(block(s, _, SIs, _), Bs), last(SIs, let(tmp(U), l, limit(8), [tmp(p)])),
+    memberchk(block(b, _, Is, _), Bs),
+    findall(Op-A, member(let(_, a, Op, A), Is), Ops),
+    % The read of p renews the store's check in s; the read of p + j
+    % reads the limit, and the store renews its proof.
+    Ops = [renew(0, 8, read, 1)-_, check_limit(0, 8, read, 1)-[_, tmp(U)],
+           renew(0, 8, write, 1)-[tmp(Q3), _]],
+    memberchk(let(tmp(Q3), a, check_limit(_, _, _, _), _), Is),
+    forall(member(Mod, [M, C0, C3]),
+           ( once(run(Mod, f, [3], 100, ret(R))), R == 20 )),
+    filc_module_asm(C3, Lines),
+    % upper - (8 - 1): the limit's lines (a full check subtracts 8).
+    findall(x, member(ins(sub, q, [imm(7), reg(rdx)]), Lines), Limits), length(Limits, 1),
+    findall(x, member(ins(test, b, [imm(4), mem(-2, rcx)]), Lines), Flags), length(Flags, 2),
+    % A function without loops is unchanged.
+    renew_fn([block(s, [], [], ret(const(0)))], NoLoop),
+    hoist_checks(NoLoop, NoLoop1), NoLoop1 == NoLoop,
+    % Refused: a hoisted check moved, or a check_limit reading another name.
+    C3 = module([func(f, L, Rt, Ps, Bs3)|Rest]),
+    select(block(b, Ph, Is, J), Bs3, block(b, Ph, Moved, J), BsMoved),
+    Is = [I0, I1, I2|IsRest], Moved = [I1, I0, I2|IsRest],
+    \+ hoist_refines(C2, module([func(f, L, Rt, Ps, BsMoved)|Rest])),
+    select(block(b, Ph, Is, J), Bs3, block(b, Ph, Other, J), BsOther),
+    maplist([I, O]>>( I = let(Q, a, check_limit(A1, A2, A3, A4), [P, _])
+                      -> O = let(Q, a, check_limit(A1, A2, A3, A4), [P, tmp(k)]) ; O = I ), Is, Other),
+    \+ hoist_refines(C2, module([func(f, L, Rt, Ps, BsOther)|Rest])).
+
 % Emission reads a reused access at the checked pointer without a
 % check, and refuses one whose pointer was redefined since its check,
 % which only the validator would otherwise catch.
