@@ -4256,6 +4256,279 @@ Output is identical: the snapshot (4584 outputs), and the plain and
 and 8.6 s after. `nix/check.nix` compiles N = 1500 plain under a 60 s
 timeout: it timed out before (fail-first) and passes now.
 
+### 16. Where `-O`'s extra checks come from, per workload (November 2026)
+
+Items 4 and 6d explained the check gap mostly from bzip2. This item
+measures every gate workload against four filcc builds. The goal is to
+tell which part of the gap needs traps to move earlier and which does
+not. All counts are executed instances under callgrind, summed over the
+run, at 227af64. No timings.
+
+**Builds** (`bench/profile/checks.nix`). `ref` is filcc `-O2`. `fwd` adds
+`-mllvm -filc-propagate-checks-backward=false`: scheduleChecks still
+runs its forward pass (removeRedundantChecksUsingForwardAI) but stops
+before backward propagation and merging (FilPizlonator.cpp:71 and
+5994). `nosched` adds `-mllvm -filc-optimize-checks=false`, which
+returns before any forward or backward pass (line 59 and 5937). Every
+build also has a `-fno-inline` twin. nanofil builds `O` (`-O`) and
+`O-refchecks` (`-O --checks=reference`). Their `.s` is assembled with
+`as -L`, so blocks keep their labels.
+
+**Counting** (`checks.py`). A test is an executed conditional jump to a
+block that calls `filc_optimized_access_check_fail`. Its kind (null,
+lower, upper, flags, align) comes from the instruction that set its
+flags and the pointer and lower that the fail block passes. A check is
+a run of tests on one pointer. It counts once if the run has an upper
+test, or if it has no bounds test at all (a flags-only test: filcc's
+known-bounds case, nanofil's renewal). A run with a lower test and no
+upper is counted separately as *lower-only*: filcc emits these where
+forward propagation already knows the upper. nanofil's local checks
+are not counted. Check instructions are the instructions of these runs.
+The rule was checked by hand on the hot loops below. It is a heuristic
+over machine code, so treat filcc's numbers as ±5%. Item 4's 230M for
+bzip2 came from a different count, and this item does not reconcile
+the two. Both sides here are counted the same way.
+
+#### The ladder
+
+Executed checks, millions. trap = fwd − ref: what filcc removes only by
+moving a trap earlier. sched = nosched − fwd: forward redundancy that
+filcc removes without moving traps. llvm = O − nosched: how far
+nanofil's IR is from LLVM's before any check scheduling, which covers
+GVN, LICM, register-held values and inlining. inl = (ref-noinline −
+ref) − (O-noinline − O). The last column is program instructions, O
+over ref.
+
+| Workload | ref | fwd | nosched | O | O−ref | trap | sched | llvm | inl | O G / ref G |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| zlib -6 | 136.2 | 138.6 | 212.7 | 241.0 | 104.8 | 2.4 | 74.1 | 28.3 | 0.1 | 3.52 |
+| zlib -d | 11.7 | 16.8 | 17.8 | 17.6 | 5.9 | 5.1 | 1.0 | -0.2 | -0.3 | 3.20 |
+| bzip2 -9 | 332.9 | 382.8 | 422.4 | 512.8 | 179.9 | 49.8 | 39.6 | 90.4 | 5.8 | 2.17 |
+| bzip2 -d | 86.2 | 87.0 | 122.6 | 118.1 | 32.0 | 0.8 | 35.6 | -4.5 | 0.0 | 2.77 |
+| lz4 -1 | 0.3 | 1.1 | 1.1 | 3.2 | 2.9 | 0.8 | 0.0 | 2.1 | 0.8 | 25.43 |
+| lz4 -9 | 116.2 | 120.8 | 120.6 | 155.8 | 39.6 | 4.5 | -0.2 | 35.2 | 12.6 | 2.56 |
+| lz4 -d | 3.5 | 4.8 | 4.5 | 3.8 | 0.3 | 1.3 | -0.3 | -0.7 | -2.5 | 5.42 |
+| lua int | 48.0 | 44.0 | 68.0 | 68.1 | 20.0 | -4.0 | 24.0 | 0.0 | 6.0 | 1.72 |
+| lua tab | 38.1 | 40.1 | 56.2 | 60.2 | 22.0 | 2.0 | 16.0 | 4.0 | 2.0 | 1.69 |
+| lua str | 59.5 | 60.5 | 79.6 | 85.6 | 26.1 | 1.0 | 19.2 | 6.0 | 6.5 | 1.73 |
+| sqlite | 364.7 | 383.2 | 488.4 | 557.9 | 193.2 | 18.4 | 105.3 | 69.5 | 10.7 | 1.75 |
+| **all** | **1197** | **1280** | **1594** | **1824** | **627** | **82** | **314** | **230** | **42** | |
+
+Check instructions, millions. The last column is filcc's lower-only
+runs (ref / fwd / nosched):
+
+| Workload | ref | fwd | nosched | O | O−ref | trap | sched | llvm | lower-only |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| zlib -6 | 703 | 770 | 1114 | 1299 | 596 | 68 | 344 | 185 | 31 / 47 / 31 |
+| zlib -d | 56 | 65 | 93 | 131 | 75 | 9 | 28 | 38 | 1 / 3 / 2 |
+| bzip2 -9 | 1823 | 1898 | 2205 | 2909 | 1086 | 75 | 307 | 703 | 34 / 34 / 26 |
+| bzip2 -d | 417 | 408 | 524 | 660 | 244 | -9 | 116 | 136 | 13 / 15 / 22 |
+| lz4 -1 | 2 | 4 | 5 | 23 | 20 | 1 | 2 | 18 | 0 / 0 / 0 |
+| lz4 -9 | 647 | 614 | 695 | 1062 | 415 | -33 | 81 | 367 | 23 / 28 / 32 |
+| lz4 -d | 16 | 19 | 27 | 27 | 11 | 3 | 9 | 0 | 0 / 0 / 0 |
+| lua int | 258 | 276 | 368 | 484 | 226 | 18 | 92 | 116 | 16 / 22 / 6 |
+| lua tab | 231 | 229 | 309 | 425 | 195 | -2 | 80 | 116 | 10 / 12 / 2 |
+| lua str | 418 | 376 | 456 | 627 | 209 | -42 | 81 | 171 | 16 / 18 / 8 |
+| sqlite | 2015 | 1966 | 2622 | 3725 | 1710 | -49 | 656 | 1103 | 60 / 74 / 81 |
+| **all** | **6585** | **6625** | **8420** | **11372** | **4787** | **40** | **1795** | **2952** | |
+
+What the ladder says:
+
+- **Moving traps is worth 13% of the check gap and 1% of its
+  instructions.** Backward propagation and merging remove 82M of the
+  627M extra checks. They save only 40M check instructions, because the
+  merged checks are bigger and LLVM optimizes the rest differently
+  (lz4 -9, Lua str and SQLite execute more check instructions with
+  backward propagation than without). Without moving any trap, filcc
+  reaches 1280M checks, so **87% of the gap (544M) is reachable under
+  the current trap rule.** This confirms 6c-2's decision at every
+  workload. The exceptions are zlib -d, where trap moving is 5.1M of a
+  5.9M gap, and bzip2 -9, where it is 28%.
+- **Forward redundancy is half the check gap (314M) and 37% of the
+  check instructions (1.8G).** Lua and bzip2 -d are almost entirely
+  this: nanofil -O already matches filcc's unscheduled build there
+  (Lua int 68.1 against 68.0, bzip2 -d 118 against 123).
+- **The IR before scheduling is the rest: 230M checks, but the biggest
+  share of check instructions (2.95G, 62%).** nanofil executes 6.2
+  instructions per check, against 5.3 to 5.5 for filcc. The extra
+  instructions come from repeated null tests and upper loads (below).
+- **Checks are 17% of the instruction gap.** Over all workloads, nanofil
+  runs 52.9G program instructions against 24.7G, and 4.8G of the 28.2G
+  difference is check instructions.
+
+#### nanofil's checks under filcc's forward rule
+
+`bench/profile/checkclass.pl` compiles each preprocessed TU as `-O` does
+and runs a restatement of removeRedundantChecksUsingForwardAI over
+nanofil's checked IR. That rule works on canonical roots with constant
+offsets, value-numbers variable indexes, keeps spatial facts across
+calls and polls, kills not-freed at calls, allocations and poll edges,
+and meets facts at joins. `checkclass.py` weights each remaining check
+and renewal by its block's executed count. Executed checks, millions:
+
+| Workload | O | covered | flags | partial | first var | first base | first const | first in loops | ins/check |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| zlib -6 | 241.0 | 64.9 | 41.1 | 26.8 | 86.0 | 1.3 | 21.0 | 105.7 | 5.4 |
+| zlib -d | 17.6 | 0.2 | 0.1 | 8.2 | 4.3 | 0.0 | 4.6 | 9.0 | 7.4 |
+| bzip2 -9 | 512.8 | 64.8 | 86.9 | 40.4 | 235.9 | 31.9 | 52.8 | 270.1 | 5.7 |
+| bzip2 -d | 118.1 | 24.1 | 35.4 | 0.0 | 28.3 | 20.0 | 10.3 | 42.8 | 5.6 |
+| lz4 -1 | 3.2 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 3.2 | 0.1 | 7.0 |
+| lz4 -9 | 144.4 | 7.4 | 13.2 | 2.6 | 56.2 | 42.2 | 22.8 | 113.1 | 6.8 |
+| lz4 -d | 3.8 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 3.8 | 0.7 | 7.0 |
+| lua int | 68.1 | 6.0 | 4.0 | 24.0 | 26.0 | 0.0 | 8.0 | 34.0 | 7.1 |
+| lua tab | 60.2 | 6.0 | 2.0 | 22.1 | 16.0 | 0.0 | 14.1 | 30.0 | 7.1 |
+| lua str | 85.6 | 6.8 | 7.9 | 23.1 | 4.2 | 0.4 | 43.3 | 7.5 | 7.3 |
+| sqlite | 557.9 | 91.2 | 75.1 | 137.5 | 66.5 | 16.8 | 170.9 | 134.0 | 6.7 |
+| **all** | **1813** | **271** | **266** | **285** | **523** | **113** | **355** | **747** | |
+
+Covered means filcc's rule deletes the check outright. Of the 271M, 164M
+are nanofil renewals (a flags test), 100M are full checks covered only
+by the hull of several earlier checks of one object (different fields),
+and 8M are full checks one earlier check covers. Flags means filcc's
+rule would test only the flags. 221M of these are already nanofil
+renewals at the same cost, and 45M are full checks that could become
+renewals. Partial means the root was checked at another range, so filcc
+tests only the unknown bound (that is where its lower-only runs come
+from): 217M at constant offsets and 67M at variable ones. First means
+filcc knows nothing either.
+
+**Variable indexes are not where the forward gap is.** Of the
+`first var` checks (523M), filcc's forward pass also checks every one.
+Only 14M covered and 67M partial checks have variable offsets. The
+`block[i]` class needs loop guards (round 5) or hoisting, not reuse.
+
+Why check_reuse.pl misses the covered class: its header says a pointer
+access, a getter or any instruction not `transparent/1` removes every
+fact, an edge from a later block (a back edge) carries none, and only
+scalar accesses reuse a proof. filcc keeps spatial facts across all of
+these and iterates to a fixpoint around loops. Which of these accounts
+for how much of the 271M is not split here (inferred).
+
+#### Hot functions, confirmed in asm (`checks.py --dump`)
+
+Per function, with inlining off on both sides, O-noinline − ref-nosched-noinline
+(this is the llvm column without inlining), millions:
+
+- zlib -6: longest_match +25.5, slide_hash +8.3
+- bzip2 -9: copy_input_until_stop +23.1, mainSort +20.0, mainQSort3
+  +14.5, generateMTFValues +12.5, sendMTFValues +10.4
+- lz4 -9: LZ4HC_InsertAndGetWiderMatch +38.1 and LZ4HC_Insert +16.0
+  against LZ4HC_compress_generic_noDictCtx −50.2. filcc inlines these
+  even under `-fno-inline` (always-inline helpers), so read this per
+  workload, not per function.
+- Lua: luaV_execute −10 (int) and −12 (tab): nanofil beats unscheduled
+  filcc there.
+- sqlite: balance_nonroot +15.3, sqlite3BtreeTableMoveto +11.9,
+  sqlite3VdbeExec +9.2
+
+Confirmed:
+
+- *longest_match* (24M iterations): nanofil reloads `s->window` (+0x60)
+  every iteration, with a flags test and an aux decode, then checks
+  `window[...]` in full. filcc's unscheduled loop has one upper test
+  per iteration. LLVM hoisted the window load and its lower test out of
+  the loop, which has no stores. This is a register-held value, not
+  check scheduling.
+- *copy_input_until_stop* (4.2M iterations): both builds check every
+  field of `s` (nblock at 0x6c, nblockMAX at 0x70, strm, avail_in and
+  so on) every iteration, about as many checks. But filcc's unscheduled
+  build loads `s`'s upper once and has no null test for `s`
+  (`cmp %rdx,%r14; ja` then `cmp %rbx,%r12; jb; cmp %rdx,%r12; ja`).
+  nanofil repeats `test; je; cmp; jb; mov -0x10; sub; cmp; ja` per field
+  and also renews the flags of `s` before the later pointer loads
+  (`testb $0x4,-0x2(%rcx)`). The repeated null and upper make up the
+  extra instructions (confirmed). That the renewals make up the 23M
+  extra checks is inferred from the per-block counts.
+- *mainGtU* and *mainQSort3* (from earlier in this item's work): the
+  null test and upper load are shared across `block[i1]` and
+  `block[i2]`, and `ptr[un]` is reloaded in nanofil's swap.
+- *deflate_slow* is inlined into deflate by filcc and not by nanofil.
+  It doesn't change the zlib -6 total (inl 0.1).
+- *LZ4HC_compress_generic_noDictCtx* under filcc: the chainTable access
+  is checked against an upper that LLVM hoisted into a stack slot. The
+  classifier needed a rule for that (lower against upper by the jump's
+  direction).
+
+Inferred, not confirmed: how the 230M llvm checks split between
+load hoisting and register-held values (longest_match, Lua), inlining
+(the inl column, 42M) and the rest. The inl column is noisy because
+filcc's always-inline helpers stay inlined under `-fno-inline`.
+
+#### Candidates, ranked
+
+Yields are summed over all gate workloads. Checks are millions
+executed. Instructions are estimated: about 7 per full check, 2.5 per
+renewal and 4 per bound test dropped, from the instructions per check
+above. Program instructions will move more than check instructions
+where a removed check also frees a register.
+
+1. **Forward facts as filcc keeps them.** Keep facts across pointer
+   accesses and getters, around back edges (iterate with a meet), for
+   pointer-loading accesses, and over the hull of several proofs of one
+   root. Yield: −271M checks (164M renewals, 108M full checks) and
+   about −1.2G instructions, plus 45M full checks becoming renewals
+   (−0.2G). filcc's own forward pass removes 314M, so that is the upper
+   bound. Files: src/check_reuse.pl (the scheduler thread's file now),
+   the validator in ir.pl, interp.pl, filc_amd64.pl (reading a hull
+   proof). Trap contract: unchanged. It needs a reviewed evidence
+   contract (new kinds of evidence, per AGENTS.md), not a change to
+   trap timing.
+2. **Half checks for partial ranges.** When the root is already checked
+   at another range, test only the bound that isn't known, with no null
+   test. Yield: 285M checks get cheaper, about −1.1G instructions.
+   About half (judging by filcc's 207M lower-only runs) drop out of the
+   check count. Files: ir.pl (a one-sided check form, which needs the
+   orchestrating thread's agreement), interp.pl, check_reuse.pl,
+   filc_amd64.pl. Trap contract: unchanged; it is an evidence and IR
+   change.
+3. **Shared null test and upper load per object.** Within a block, a
+   later check whose lower comes from the same temp as an earlier
+   checked one needs no null test and can reuse the loaded upper.
+   Yield: instructions only, up to about 1G. That is the gap between
+   6.2 and 5.3 instructions per check over 1.8G checks, confirmed in
+   copy_input_until_stop and mainGtU. Files: filc_amd64.pl (emitting
+   checks), possibly opt.pl. Trap contract: unchanged. A null test is
+   dead after an earlier passed check of the same lower temp; that is
+   a small emitter fact to review.
+4. **Loop-invariant loads in loops without stores or calls.** Reuse
+   `s->window` and similar loads across the back edge by rotating the
+   loop: the first iteration loads in place, later iterations reuse
+   the value. Yield inferred at 50–100M checks and 0.5–1G program
+   instructions (longest_match alone is 24M flags tests plus aux
+   decodes). It needs no type-based alias rule, unlike 6d's 2%. Files:
+   opt.pl or a new pass, check_reuse.pl. Trap contract: unchanged with
+   rotation, but it needs a reviewed memory (load-value) evidence
+   rule. Measure first: count loops that have no stores or calls.
+5. **Inlining.** Inline the always-inline-like helpers and
+   deflate_slow-size callees as filcc does. Yield: about 42M checks
+   (inl column; noisy), mostly lz4 -9 (12.6), SQLite (10.7), Lua str and
+   int (6 each). Files: src/inline.pl. Trap contract: none.
+6. **Variable-index value numbering in reuse.** Yield: only the var
+   share of 1 and 2, about 14M covered and 67M partial. The 523M
+   `first var` checks also run under filcc; only guards or hoisting
+   reach them. Files: check_reuse.pl. Evidence contract, as in 1.
+7. **Backward propagation and merged checks (scheduleChecks).** Yield:
+   −82M checks, but only −40M check instructions overall (bzip2 -9:
+   −50M checks, −75M instructions; zlib -d −5M). Files: a new pass,
+   ir.pl, interp.pl and filc_amd64.pl. Trap contract: **changed**,
+   because traps move earlier, so it needs a reviewed contract
+   (6c-2).
+
+#### Tools
+
+All live in `bench/profile`. `nix build --impure -f nanofil/bench/profile/checks.nix -o
+nanofil/bench/profile/checks` builds every variant (`ref`, `ref-fwd`,
+`ref-nosched`, `O`, `O-refchecks`, each with `-noinline`) and keeps
+`.s` and `.i` files. `checks.py --work DIR --variants ...` runs and
+counts the workloads, with `--dump FUNC` for annotated asm. It reads its
+inputs from the gate's `bench/out` and takes valgrind from `$VALGRIND`
+(nixpkgs valgrind 3.26 works; it runs with
+`--aspace-minaddr=0x100000000`). `checkclass.py --work DIR --src I-DIR`
+classifies `-O`'s checks with `checkclass.pl`, where I-DIR is the `.i`
+files of the `src` variant. Set `SWIPL`. `gap.py CHECKS.json
+CHECKCLASS.json` prints the tables above. A full run of all ten
+variants takes about 15 minutes on swa.
+
 ### Projection
 
 From the profile's shares: items 1–4 leave the compressors at about 3–4×
