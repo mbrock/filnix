@@ -86,6 +86,14 @@
     with one branch (docs/bounds.md). NANOFIL_BOUNDS supplies the same
     choice.
 
+    `--share=none|block|null|upper`, opt-in, shares parts of heap checks
+    of one object under split bounds and local selection: block leaves
+    out the null test of a check whose lower an earlier check in its
+    block tested, null also when that check is in a dominating block,
+    and upper also reuses the upper a check of the same object just
+    loaded (src/check_share.pl, docs/perf.md item 17). The default is
+    none; NANOFIL_SHARE supplies the same choice.
+
     `--inline=none|small` independently selects no inlining, or, with
     `-O`, inlining of small static functions before promotion
     (src/inline.pl, docs/perf.md item 4). The default is small with
@@ -172,7 +180,8 @@ main :-
     maplist(arg_atom, RawArgv, Argv0),
     % halt/1 outside catch/3: SWI implements halt as an exception.
     catch(( ( vectors_options(Argv0, ArgvV),
-              bounds_options(ArgvV, Argv00),
+              bounds_options(ArgvV, ArgvB),
+              share_options(ArgvB, Argv00),
               register_default(Default),
               checks_default(Checks0),
               inline_default(Inline0),
@@ -249,6 +258,18 @@ bounds_options(Argv0, Argv) :-
     ;   true
     ).
 bounds_option(A) :- atom(A), atom_concat('--bounds=', _, A).
+% share_options(+Argv0, -Argv): Argv is Argv0 less its --share=
+% options, the last of which sets NANOFIL_SHARE (check_share:share_mode/1).
+share_options(Argv0, Argv) :-
+    exclude(share_option, Argv0, Argv),
+    (   include(share_option, Argv0, Opts), last(Opts, Opt)
+    ->  atom_concat('--share=', S, Opt),
+        (   memberchk(S, [none, block, null, upper]) -> setenv('NANOFIL_SHARE', S)
+        ;   throw(nanofil_error('share must be none, block, null or upper'))
+        )
+    ;   true
+    ).
+share_option(A) :- atom(A), atom_concat('--share=', _, A).
 % inline_options(+Argv0, +Inline0, -Inline, -Argv): Argv is Argv0 less
 % its --inline= options, the last of which gives Inline.
 inline_options([], I, I, []).

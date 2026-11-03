@@ -260,6 +260,22 @@ pkgs.runCommandCC "nanofil-check"
     done
     step "schedule -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
     unset NANOFIL_OPT NANOFIL_CHECKS
+    # Shared check parts (docs/perf.md item 17), opt-in: a check skips the
+    # null test of a lower a dominating check tested, and reuses the upper
+    # the check just before it loaded for the same object. The corpus
+    # compiles under -O, where the register checkers validate every
+    # stream; share-trap.sh compares traps with filcc, and share_smt.py
+    # proves the shortened lines against Fil-C's condition.
+    export NANOFIL_SHARE=upper NANOFIL_OPT=-O
+    step "share difftest" tests/par.sh tests/difftest.sh tests/filc/share.ir tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
+    step "share ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
+    step "share programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    step "share checks" tests/checks.sh
+    step "share temps checks" env NANOFIL_REGISTERS=temps tests/checks.sh
+    step "share -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    unset NANOFIL_OPT NANOFIL_SHARE
+    step "share smt" python3 tests/share_smt.py
+    step "share trap text vs filcc" tests/share-trap.sh
     step "schedule trap text vs filcc -O2" tests/schedule-trap.sh
     step "renew, guard and hoist trap text" tests/renew-trap.sh
     step "hoist trap text, every shape" bash -c 'for b in merged or sign; do NANOFIL_BOUNDS=$b tests/renew-trap.sh || exit 1; done'

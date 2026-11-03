@@ -4529,6 +4529,211 @@ files of the `src` variant. Set `SWIPL`. `gap.py CHECKS.json
 CHECKCLASS.json` prints the tables above. A full run of all ten
 variants takes about 15 minutes on swa.
 
+### 17. Shared null tests and uppers per object (November 2026)
+
+Item 16's candidate 3. A heap check under split bounds and local
+selection is `test lower; jz F; cmp lower, ptr; jb F; mov -16(lower), u;
+sub $Size, u; cmp u, ptr; ja F`. The null test and the upper load
+depend only on the object. LLVM shares them between checks of one
+object (`copy_input_until_stop`: one upper load for every field of `s`,
+no null test); nanofil repeats both per access. This item shares them
+in the emitter, opt-in as `--share=none|block|null|upper`
+(`NANOFIL_SHARE`, src/check_share.pl). No check moves, none is removed,
+and every remaining test, failure label, pointer, lower and origin is
+the reference's.
+
+**What is different from 6b.** 6b measured skipping null tests only,
+within label- and call-free stretches, at 0–2%, keyed by where `%rcx`
+was loaded from. This item keys facts by the IR's lower root, so they
+cross blocks (`null`: any dominating check), and it also reuses the
+upper load, which 6b left out.
+
+#### The rule
+
+**Facts.** R is a *lower root*: a single-definition temporary reached
+from the checked pointer through single-definition flights' lower
+donors (as `ir:lower_chain/3`). A pointer with no root gets no fact.
+Definitions are counted on the checked blocks before fusion: a fused
+access hides its destination's definition (review, below).
+
+| Fact | Holds at a point when |
+| --- | --- |
+| `tested(R)` | a full check of a pointer with root R passed at a point that dominates this one |
+| `upper(R)` | the last check in this block was a full check of root R, and every instruction since is transparent |
+| machine `def(R9, Size)` | %r9 = upper − Size as that check computed it, and no line since wrote %r9 or was a label, call, jump, fence or locked instruction |
+
+**Why `tested` needs no invalidator.** Every name from P to R has one
+definition, so at any point they all dominate, P's lower is R's current
+value (m7.md round 4's dominance argument, which covers loops and phis:
+a path that re-executes R's definition before this point passes the
+dominating check again). A capability's lower never changes, and a
+passed check proved it nonzero. Functions with setjmp are left alone,
+since its second return adds edges the CFG lacks.
+
+**Transfer.** A full check of root R omits its null test under
+`tested(R)`, then adds `tested(R)`. It reuses the upper under
+`upper(R)` when Size ≤ 16, then sets `upper(R)` if its access is
+transparent. Any other check sets no `upper`.
+
+**Merge.** `block`: each block starts empty. `null` and `upper`: a
+block starts with the `tested` facts at the end of its immediate
+dominator, which is a meet over all paths by construction. `upper` never
+crosses a block boundary: every block starts without it, and the
+machine fact dies at every label.
+
+**Invalidators of `upper`** (`check_share:share_transparent/1` at the IR,
+`keeps_upper/2` on the emitted lines). Free sets upper = lower (item 6),
+so the reused upper is ended by everything that could free or run the
+runtime: every call and indirect call, `alloc`, getters (`copy` of a
+global), pointer stores (ensure-aux may exit), atomic pointer accesses,
+cas, fences, `va_arg`, setjmp, ABI actions, fixed asm, poll edges (a
+block boundary) and any line amd64_contract does not audit. This is
+m7.md's Limits list, which trusts the same set. Kept: arithmetic,
+compares, conversions, flights, scalar raw accesses, raw pointer loads
+(they read aux and box words, call nothing), renewals, guarded and
+hoisted checks' fast paths. A free on another thread that races with
+the access may lose its trap, the same tolerated race as every check
+and its access (m7.md, Observation contract). A signal handler runs
+only at a poll.
+
+**Where the upper lives.** In %r9 for a check whose upper a later
+check reuses, because the flight arithmetic between two field accesses
+writes %rdx. %r9 is a scratch register written only by calls, pointer
+stores and cas, none of which keeps the fact, and no register home
+takes it. Every other check keeps the reference's %rdx: with %r9
+everywhere, the register pass could no longer delete moves into %rdx
+that the check used to kill, and the first measurement lost to `null`
+on lz4 `-9` and SQLite.
+Each reuse is `upper_reuse(r9, Size)` in the emitted lines;
+`check_share:shared_uppers/2` turns it into `lea (Size0 − Size)(%r9), %r9`
+from the producer's size, or back into the load where `def` does not
+hold, so both levels must agree.
+
+**Adjustment.** From upper − Size0 to upper − Size, both ≤ 16, by
+subtracting Size − Size0. Neither borrows: a nonnull lower has its
+16-byte header below it and upper ≥ lower (6a's argument).
+
+#### Evidence
+
+- `tests/share_smt.py`: the lines nanofil emits (`share_bounds//4` and
+  `shared_uppers/2`) against `lower ≠ 0 ∧ lower ≤ ptr ∧ ptr + Size ≤
+  upper`, under stated assumptions: the runtime's capability facts for
+  a nonnull lower (16 ≤ lower ≤ upper < 2^47 or 2^56); `known` assumes
+  lower ≠ 0; reuse assumes the same lower, the same upper at both
+  checks and %r9 unchanged, and that the first check passed. Sizes 1,
+  2, 4, 8, 10 and 16 in every pair, both null modes, both registers for
+  full checks (to 2^31−1): 224 equivalent. A control drops the
+  same-upper assumption (freed in between) and must be refuted, and is
+  in every case. Plants: the adjustment's sign flipped, 120 failures;
+  the known check given its null test again still proves (dead code,
+  as expected).
+- `tests/share-trap.sh`: share-free (free between two field reads),
+  share-call (a call that frees between them), share-oob (1, 2, then 8
+  bytes on a 16-byte object, the last one past the end) and share-null
+  (a null pointer whose earlier check does not dominate). Each is built
+  by `-O`, `-O --share=upper` and filcc without check scheduling (whose
+  traps stand where nanofil's do; `-O2`'s scheduler merges the free
+  case's reads and reports "cannot access"): stdout, status and first
+  safety error agree with filcc, and the whole stderr with `-O`.
+  Plants, each caught: calls transparent at both levels (upper reused
+  across the call: share-free and share-call return 3 instead of
+  trapping), the adjustment sign (share-oob passes), and `tested` taken
+  from every walked block rather than the dominator (share-null).
+- `tests/filc/share.ir`, a difftest under `-O --share=upper`: a
+  temporary defined by a flight and again by a pointer load of null
+  (the review's case), a free between two reads, and 1-, 2- and 8-byte
+  reads of one object with the last one past the end. Plants, each
+  caught: definitions counted after fusion (`hid(0)` crashes reading
+  below address 0 instead of trapping), calls transparent (`freed`
+  returns), the adjustment's sign (`sizes(9)` returns).
+- The register checkers validate every emitted stream (a rejection is
+  an error, not a fallback); the Nix check runs difftest, the native
+  ABI and GC suites, programs, `checks.sh` and the corpus under
+  `--share=upper`.
+
+**Review.** A reviewing subagent attacked the rule and the code before
+measurement. It found one blocker, fixed above: `shared_blocks/4`
+counted definitions on the fused blocks, where `fused(_, Access)`
+hides its destination, so a name defined by a flight and again by a
+fused pointer load passed for a single-definition flight, and the
+second check of a null pointer lost its null test (reproduced: a crash
+reading -16 where the reference traps). It also asked for a depth
+bound on `lower_root` (a cycle of flights in unreachable code would
+loop), now 64 as in `lower_chain/4`. It confirmed: phi and
+multiply-defined donors stop the root walk; a phi root in a loop
+header takes facts only from its immediate dominator; every internal
+label (aux decode, guarded and hoisted slow paths, branch selection)
+and every `jmp` and call kills the machine fact; the instructions that
+write %r9 are not transparent; Size > 16 never produces an upper; and
+no register home or rewrite uses %r9.
+
+#### Measured
+
+The gate's builds at this change (`--argstr only
+O,O-share-block,O-share-null,O-share`), outputs byte for byte as
+filcc's. Executed checks, check instructions and program instructions
+from `bench/profile/checks.py --builds bench/out` (callgrind); total
+user instructions from `run.py --busy 2` (one trial; instructions only).
+
+| Workload | checks, M | check ins. `-O` / null / upper, M | program ins. `-O` / upper, G | user ins. `-O` / block / null / upper, G |
+| --- | --: | --: | --: | --: |
+| zlib `-6` | 241.0 | 1299 / 1234 / 1193 | 6.86 / 6.69 | 6.88 / 6.79 / 6.75 / 6.71 |
+| zlib `-d` | 17.6 | 131 / 122 / 118 | 0.57 / 0.55 | 0.59 / 0.57 / 0.57 / 0.57 |
+| bzip2 `-9` | 512.8 | 2909 / 2633 / 2494 | 10.13 / 9.44 | 10.15 / 9.90 / 9.60 / 9.47 |
+| bzip2 `-d` | 118.1 | 660 / 615 / 597 | 3.91 / 3.81 | 3.93 / 3.90 / 3.84 / 3.82 |
+| lz4 `-1` | 3.2 | 23 / 23 / 23 | 0.23 / 0.23 | 0.32 / 0.32 / 0.32 / 0.32 |
+| lz4 `-9` | 155.8 | 1062 / 1009 / 1006 | 7.32 / 7.20 | 7.49 / 7.48 / 7.39 / 7.38 |
+| lz4 `-d` | 3.8 | 27 / 27 / 27 | 0.32 / 0.32 | 0.39 / 0.39 / 0.39 / 0.39 |
+| Lua int | 68.1 | 484 / 446 / 422 | 2.09 / 1.99 | 2.11 / 2.07 / 2.03 / 2.01 |
+| Lua tab | 60.2 | 425 / 391 / 369 | 1.62 / 1.54 | 1.64 / 1.60 / 1.57 / 1.55 |
+| Lua str | 85.6 | 627 / 602 / 599 | 3.23 / 3.17 | 5.38 / 5.35 / 5.32 / 5.30 |
+| SQLite | 557.9 | 3724 / 3495 / 3428 | 16.62 / 16.10 | 21.17 / 20.98 / 20.71 / 20.64 |
+| **all** | **1824** | **11371 / 10597 / 10276** | **52.90 / 51.04** | **60.05 / 59.35 / 58.49 / 58.16** |
+
+- **The check count is unchanged** (Lua str's +0.2M under share is the
+  classifier's), as the rule requires. Null tests fall from 1439M to
+  665M: 54% of them had a dominating check of the same lower root.
+- **Instructions per check fall from 6.23 to 5.63**, against filcc's
+  5.3–5.5 (item 16). Check instructions fall by 1.10G (9.6%), about
+  item 16's estimate of 1G; program instructions by 1.86G (3.5%), since
+  a shorter check also leaves fewer moves around it.
+- **What 6b missed.** Within a block, null tests alone (`block`) save
+  0.70G (1.2%), 6b's range. Across dominating blocks (`null`) they save
+  1.56G (2.6%), and the reused upper another 0.33G (`upper`, 3.1%).
+  The cross-block facts are the larger part: a function's first check of
+  a struct parameter dominates its other blocks.
+
+Time on quiet swa (`run.py --trials 7`, waiting for core 6 and its
+sibling to idle), ratio to filcc `-O2`, time (instructions), range:
+
+| Workload | `-O` | `--share=null` | `--share=upper` |
+| --- | --: | --: | --: |
+| zlib `-6` | 2.09 (3.50) 2.08..2.18 | 2.08 (3.43) 2.07..2.09 | 2.06 (3.41) 2.03..2.09 |
+| zlib `-d` | 1.71 (3.03) 1.65..1.80 | 1.70 (2.95) 1.67..1.76 | 1.69 (2.93) 1.61..1.75 |
+| bzip2 `-9` | 1.63 (2.17) 1.62..1.64 | 1.57 (2.05) 1.56..1.57 | 1.55 (2.02) 1.54..1.55 |
+| bzip2 `-d` | 2.26 (2.75) 2.25..2.31 | 2.24 (2.69) 2.24..2.26 | 2.24 (2.68) 2.24..2.25 |
+| lz4 `-1` | 2.31 (10.35) 2.18..2.36 | 2.39 (10.38) 2.11..2.41 | 2.26 (10.34) 2.09..2.49 |
+| lz4 `-9` | 2.06 (2.68) 2.03..2.08 | 2.06 (2.65) 2.02..2.08 | 2.06 (2.65) 2.01..2.09 |
+| lz4 `-d` | 2.69 (5.52) 2.61..2.75 | 2.67 (5.52) 2.61..2.77 | 2.59 (5.52) 2.56..2.75 |
+| Lua int | 1.45 (1.82) 1.43..1.48 | 1.47 (1.75) 1.43..1.52 | 1.43 (1.73) 1.39..1.47 |
+| Lua tab | 1.39 (1.73) 1.38..1.45 | 1.38 (1.65) 1.35..1.38 | 1.37 (1.63) 1.32..1.39 |
+| Lua str | 1.41 (1.50) 1.40..1.44 | 1.42 (1.49) 1.39..1.42 | 1.42 (1.49) 1.38..1.43 |
+| SQLite | 1.85 (1.89) 1.83..1.90 | 1.81 (1.85) 1.80..1.82 | 1.81 (1.84) 1.80..1.83 |
+| geomean | 1.85 (2.81) | 1.85 (2.75) | 1.82 (2.73) |
+
+`--share=upper` wins time with separated ranges on bzip2 `-9` (5%), and
+nearly on SQLite; elsewhere the ranges overlap; no workload is slower
+with separated ranges.
+
+**Recommendation.** `upper` is eligible to become the `-O` default: it
+changes no check, trap or poll, its rule was reviewed, and its
+instruction gain (3.1%, 9.6% of check instructions) holds on every
+workload but lz4's, where it is neutral. The time gain is small (geomean
+1.85 → 1.82) and clear only on bzip2 `-9`. Making it the default
+changes every `-O` snapshot output, which the orchestrating thread
+should decide with the rest of item 16's candidates; it stays opt-in
+here.
+
 ### Projection
 
 From the profile's shares: items 1–4 leave the compressors at about 3–4×

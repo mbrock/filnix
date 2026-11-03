@@ -1,0 +1,54 @@
+% Shared check parts (docs/perf.md item 17): difftest runs each run line
+% on the unchecked and the pizlonated module; with NANOFIL_SHARE=upper
+% under -O the native code shares null tests and uppers, and must still
+% agree, traps included.
+
+% x is defined twice: by a flight of a, then by a pointer load from a's
+% object, which holds null. The second check of x must keep its null
+% test: x's lower root is not a's. Counting definitions after fusion,
+% which hides the load's, took x for a single-definition flight of a,
+% left the null test out and read the header below address 0.
+run(hid, [0]).
+func(hid, export, l, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(16), [const(16)]),
+        let(tmp(x), p, add, [tmp(a), const(0)]),
+        let(tmp(v1), l, load(l), [tmp(x)]),
+        let(tmp(x), p, load(p), [tmp(a)]),
+        let(tmp(v2), l, load(l), [tmp(x)]),
+        let(tmp(r), l, add, [tmp(v1), tmp(v2)])
+    ], ret(tmp(r)))
+]).
+
+% Two reads of one object with a free between: the second reads the
+% object's upper again, which free set to its lower, and traps.
+run(freed, [0]).
+func(freed, export, l, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(16), [const(16)]),
+        let(tmp(q), p, add, [tmp(p), const(8)]),
+        let(tmp(v1), l, load(l), [tmp(p)]),
+        call(void, global(free), [arg(p, tmp(p))]),
+        let(tmp(v2), l, load(l), [tmp(q)]),
+        let(tmp(r), l, add, [tmp(v1), tmp(v2)])
+    ], ret(tmp(r)))
+]).
+
+% Reads of 1, 2 and 8 bytes of a 16-byte object: the second and third
+% adjust the first's upper. With k = 9 the last reads [9, 17) and traps.
+run(sizes, [8]).
+run(sizes, [9]).
+func(sizes, export, l, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(8), [const(16)]),
+        let(tmp(b), w, load(ub), [tmp(p)]),
+        let(tmp(q), p, add, [tmp(p), const(2)]),
+        let(tmp(h), w, load(uh), [tmp(q)]),
+        let(tmp(kl), l, ext(sw), [tmp(k)]),
+        let(tmp(s), p, add, [tmp(p), tmp(kl)]),
+        let(tmp(d), l, load(l), [tmp(s)]),
+        let(tmp(t), w, add, [tmp(b), tmp(h)]),
+        let(tmp(tl), l, ext(sw), [tmp(t)]),
+        let(tmp(r), l, add, [tmp(d), tmp(tl)])
+    ], ret(tmp(r)))
+]).

@@ -41,6 +41,9 @@ let
     O-hoist-merged = "-O --checks=hoist --bounds=merged";
     O-hoist-or = "-O --checks=hoist --bounds=or";
     O-schedule = "-O --checks=schedule";
+    O-share-block = "-O --share=block";
+    O-share-null = "-O --share=null";
+    O-share = "-O --share=upper";
   };
   chosen =
     if only == "" then

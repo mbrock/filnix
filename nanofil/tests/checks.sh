@@ -25,7 +25,7 @@ build ref -O --registers=stack
 mkdir -p "$work/filcc"
 "$filcc" -O1 -w -o "$work/filcc/bounds" "$src"
 # Upper - Size followed directly by the upper comparison: no borrow test.
-borrowless() { grep -A1 -E '^\s*subq\s+\$(1|2|4|8|10), %rdx' "$1" | grep -c -E '^\s*cmpq\s+%rdx, %rax' || true; }
+borrowless() { grep -A1 -E '^\s*subq\s+\$(1|2|4|8|10), %(rdx|r9)$' "$1" | grep -c -E '^\s*cmpq\s+%(rdx|r9), %rax' || true; }
 opt_n=$(borrowless "$work/opt/t.s") ref_n=$(borrowless "$work/ref/t.s")
 if [[ ${NANOFIL_REGISTERS:-} != stack ]]; then
   [[ $opt_n -ge 5 ]] || { echo "checks: only $opt_n borrowless checks in the -O build" >&2; exit 1; }

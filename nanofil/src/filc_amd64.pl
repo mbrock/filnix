@@ -117,6 +117,7 @@
 :- use_module(amd64_regs_check, [callee_saved/1]).
 :- use_module(filc_abi).
 :- use_module(cfg, [edge_label/2, inst_def/2]).
+:- use_module(check_share, [share_mode/1, shared_blocks/4, share_bounds//4, shared_uppers/2]).
 
 %! filc_module_asm(+Module, -Lines) is det.
 %
@@ -619,7 +620,7 @@ function(Selection, abi_function(Name, Linkage, Ret, Sig, Frame, Entry, Blocks,
     linkage_globl(Linkage, Impl),
     [type(Impl, function), label(Impl)],
     abi_actions(Entry, entry, entry, Ctx),
-    blocks(Blocks, Ctx),
+    shared_body(Blocks, Ctx),
     [label(Exc)],
     abi_actions(Exit, exit, exit, Ctx),
     check_fail_blocks(CheckKinds, Ctx),
@@ -651,7 +652,10 @@ fused_blocks(Fn, Params, Blocks0, Blocks, LiveBlocks) :-
     % range: the early bytes are tested with the access's own.
     maplist(ahead_as_check, Blocks0, Blocks1),
     single_proofs(Params, Blocks1, Single),
-    maplist(fused_block(Fn, Single), Blocks1, Blocks),
+    maplist(fused_block(Fn, Single), Blocks1, Blocks2),
+    % Shared null tests and uppers (check_share.pl, docs/perf.md item 17).
+    share_mode(Share),
+    shared_blocks(Share, Params-Blocks1, Blocks2, Blocks),
     maplist(live_block, Blocks, LiveBlocks).
 
 ahead_as_check(block(L, Phis, Is0, J), block(L, Phis, Is, J)) :-
@@ -1284,6 +1288,13 @@ stack_release(Bytes) -->
 
 %% Blocks and jumps
 
+% The blocks' code, with each shared upper resolved (check_share.pl)
+% when checks share.
+shared_body(Blocks, Ctx) -->
+    (   { share_mode(none) } -> blocks(Blocks, Ctx)
+    ;   { phrase(blocks(Blocks, Ctx), Lines0), shared_uppers(Lines0, Lines) }, Lines
+    ).
+
 % Each block: its label, instructions and jump.
 blocks([], _) --> [].
 blocks([Block|Blocks], Ctx) -->
@@ -1611,6 +1622,24 @@ inst(fused(check(_, Size, Rights, Align), Access), Index, Block, Ctx) -->
       rights_write(Rights, Write) },
     flight_load(P, Ctx),
     access_check(k(Size, Write, Align), Ctx),
+    raw_access(Access, Index, Block, Ctx).
+% A check with shared parts (check_share.pl): with the split bounds
+% under local selection, the null test is left out when an earlier check
+% of the same lower passed, and the upper reused right after one;
+% otherwise the check as above.
+inst(fused(shared(Null, Upper, check(_, Size, Rights, Align)), Access), Index, Block, Ctx) -->
+    { access_pointer(Access, P),
+      rights_write(Rights, Write),
+      ctx_selection(Ctx, Selection),
+      bounds_shape(Shape) },
+    flight_load(P, Ctx),
+    (   { Selection == local, Shape == split }
+    ->  { check_fail_label(Ctx, k(Size, Write, Align), Fail) },
+        share_bounds(Null, Upper, Size, Fail),
+        write_check(Write, Fail),
+        align_check(Align, Fail)
+    ;   access_check(k(Size, Write, Align), Ctx)
+    ),
     raw_access(Access, Index, Block, Ctx).
 % A renew (docs/m7.md, round 4): the check's bounds and alignment still
 % hold, so only its temporal part is tested, the free flag, and for a
@@ -2929,6 +2958,8 @@ access_check_kinds(Blocks, Kinds) :-
 % inst_check_kind(+Inst, -Kind): Inst's access needs a check of Kind;
 % fails if Inst does not access memory.
 inst_check_kind(fused(check(_, Size, Rights, Align), _), k(Size, Write, Align)) :-
+    rights_write(Rights, Write).
+inst_check_kind(fused(shared(_, _, check(_, Size, Rights, Align)), _), k(Size, Write, Align)) :-
     rights_write(Rights, Write).
 inst_check_kind(fused(renew(_, Size, Rights, Align), _), k(Size, Write, Align)) :-
     rights_write(Rights, Write).
