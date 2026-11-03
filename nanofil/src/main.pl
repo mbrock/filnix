@@ -107,7 +107,7 @@
     item 8). The default is full; NANOFIL_SIMPLIFY supplies the same
     choice.
 
-    `--checks=reference|reuse|renew|guard|hoist|schedule` independently
+    `--checks=reference|reuse|renew|guard|hoist|schedule|half` independently
     selects the reference checked IR, a check before every access, check
     reuse after pizlonation, reuse followed by renewal of dominated
     checks, both followed by range guards for checks in loops, both
@@ -115,8 +115,10 @@
     checks of a root defined before it, or both followed by scheduled
     checks, which check early the bytes every path ahead needs and renew
     what they cover; a scheduled check may trap before stores that
-    precede the failing access (src/check_reuse.pl, src/schedule.pl,
-    docs/m7.md, docs/bounds.md, docs/schedule.md). The default is renew with `-O` and reference without;
+    precede the failing access, or both followed by half checks, which
+    test only the bound an earlier check of the object does not already
+    establish (src/check_reuse.pl, src/schedule.pl, src/half_check.pl,
+    docs/m7.md, docs/bounds.md, docs/schedule.md, docs/half.md). The default is renew with `-O` and reference without;
     NANOFIL_CHECKS supplies the same choice. With any but reference, `cc`,
     `compile` and difftest's pizlonation comparison use that module.
 
@@ -160,6 +162,7 @@
 :- use_module(pizlonate).
 :- use_module(check_reuse).
 :- use_module(schedule).
+:- use_module(half_check).
 :- use_module(library(lists)).
 :- use_module(library(format)).
 :- use_module(library(pio)).
@@ -226,8 +229,8 @@ memcpy_mode(M) :-
 checks_default(Checks) :-
     ( getenv('NANOFIL_CHECKS',C) -> checks_mode(C), Checks = C ; true ).
 checks_mode(C) :-
-    ( memberchk(C,[reference,reuse,renew,guard,hoist,schedule]) -> true
-    ; throw(nanofil_error('checks must be reference, reuse, renew, guard, hoist or schedule')) ).
+    ( memberchk(C,[reference,reuse,renew,guard,hoist,schedule,half]) -> true
+    ; throw(nanofil_error('checks must be reference, reuse, renew, guard, hoist, schedule or half')) ).
 % vectors_options(+Argv0, -Argv): Argv is Argv0 less its vector
 % options, the last of which sets NANOFIL_VECTORS (c_types
 % vector_type/4), for drivers that pass only options: --vectors and
@@ -627,6 +630,17 @@ checks_module(schedule, Checked0, Checked) :-
     once(schedule_checks(Checked1, Checked)),
     (   schedule_refines(Checked1, Checked) -> true
     ;   throw(nanofil_error('scheduled checks changed more than checks'))
+    ),
+    once(valid_module(Checked)).
+
+% Half checks (docs/half.md) run after renewal: a full check renewal left
+% whose object an earlier check covers at one end tests only the other.
+% Only the result is validated.
+checks_module(half, Checked0, Checked) :-
+    renewed_module(Checked0, Checked1),
+    once(half_checks(Checked1, Checked)),
+    (   half_refines(Checked1, Checked) -> true
+    ;   throw(nanofil_error('half checks changed more than checks'))
     ),
     once(valid_module(Checked)).
 

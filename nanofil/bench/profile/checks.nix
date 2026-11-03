@@ -80,6 +80,9 @@ let
     # Every access keeps its own full check (no M7 reuse or renewal).
     O-refchecks = "-O --checks=reference";
     O-refchecks-noinline = "-O --checks=reference --inline=none";
+    # Half checks (docs/half.md): one bound tested where an earlier check
+    # of the object proves the other.
+    O-half = "-O --checks=half";
   };
   # The preprocessed sources nanofil compiles (checkclass.py reads them),
   # with filcc compiling the objects so that the program links.

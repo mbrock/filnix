@@ -44,6 +44,7 @@ let
     O-share-block = "-O --share=block";
     O-share-null = "-O --share=null";
     O-share = "-O --share=upper";
+    O-half = "-O --checks=half";
   };
   chosen =
     if only == "" then

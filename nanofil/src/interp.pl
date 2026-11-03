@@ -860,6 +860,22 @@ kind_res(renew, renew(Lo, Hi, Rights, Align), a, filc, [ptr(_, Cap1), ptr(A, Cap
     renew_res(Res0, ptr(A, Cap), Mem, Res).
 % P is not of the object Q1's check saw (pointer_distance/4 was wrong).
 kind_res(renew, renew(_, _, _, _), a, filc, [_, _], S, unchecked(alias), S).
+% A half check (docs/half.md) is its check of P, which has Q1's
+% capability. Natively it tests only Bound, upper or lower, and for
+% lower the free flag, then the read-only flag for a write and the
+% alignment, as the check does. Where that test and the check disagree,
+% the bound the validator took as known was false: unchecked(half).
+kind_res(half_check, half_check(Bound, Lo, Hi, Rights, Align), a, filc, [ptr(_, Cap1), ptr(A, Cap)],
+         s(Mem, Fuel), Res, s(Mem, Fuel)) :-
+    Cap1 == Cap, !,
+    raw_address(A, Lo, B),
+    Size is Hi - Lo,
+    access_res(Mem, B, Cap, Size, Rights, Align, Res0),
+    (   half_passes(Bound, Mem, B, Size, Cap, Rights, Align, Passes)
+    ->  half_res(Res0, Passes, ptr(A, Cap), Res)
+    ;   Res = unchecked(half)
+    ).
+kind_res(half_check, half_check(_, _, _, _, _), a, filc, [_, _], S, unchecked(alias), S).
 % A span test (docs/m7.md, round 5) compares the object's current
 % bounds with the span, addresses modulo 2^64 as native code forms them;
 % it is 0 for any capability that is not an object's, and never traps.
@@ -1016,6 +1032,33 @@ renew_res(trap(Why), ptr(_, Cap), mem(_, Rs, _, _), Res) :-
     ->  Res = trap(out_of_bounds)
     ;   Res = unchecked(span)
     ).
+
+% half_passes(+Bound, +Mem, +B, +Size, +Cap, +Rights, +Align, -Passes):
+% Passes is true when a half check's native test passes at address B
+% (filc_amd64's half_bounds//5): upper, B + Size =< upper; lower, B
+% taken signed at or above lower and the object not freed; then not
+% read-only for a write, and aligned. Fails for a capability that is not
+% an object's, whose header no half check may read.
+half_passes(Bound, mem(_, Rs, _, _), B, Size, Cap, Rights, Align, Passes) :-
+    ( Cap = obj(Base), Ro = false ; Cap = ro(Base), Ro = true ), !,
+    object_region(Base, Rs, region(Base, End, _, Life)),
+    (   half_bound(Bound, B, Size, Base, End, Life),
+        \+ ( Rights == write, Ro == true ),
+        B mod Align =:= 0
+    ->  Passes = true
+    ;   Passes = false
+    ).
+
+half_bound(upper, B, Size, _, End, _) :- B + Size =< End.
+half_bound(lower, B, _, Base, _, Life) :-
+    Life \== freed,
+    ( B >= 1 << 63 -> S is B - (1 << 64) ; S = B ),
+    S >= Base.
+
+half_res(ok, true, P, val(P)).
+half_res(trap(Why), false, _, trap(Why)).
+half_res(ok, false, _, unchecked(half)).
+half_res(trap(_), true, _, unchecked(half)).
 
 %! raw_res(+Res0, -Res) is det.
 %

@@ -37,6 +37,7 @@ let
     reuse-plain = "--checks=reuse";
     reuse-optimized = "-O --checks=reuse";
     refchecks-optimized = "-O --checks=reference";
+    half-optimized = "-O --checks=half";
     temps-optimized = "-O --registers=temps";
   };
 in

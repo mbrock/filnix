@@ -152,6 +152,7 @@
     | `check(Lo, Hi, Rights, Align)` | `a` | `[p]` | checked stage, below |
     | `check_ahead(Lo, Hi, Rights, Align, AHi)` | `a` | `[p]` | checked stage: `check(Lo, Hi, Rights, Align)` of which only [Lo, AHi) is its own access's requirement; the rest is anticipated (docs/schedule.md) |
     | `renew(Lo, Hi, Rights, Align)` | `a` | `[a, p]`: Q1, P | checked stage: renew an earlier heap proof's temporal facts (docs/m7.md, round 4) |
+    | `half_check(Bound, Lo, Hi, Rights, Align)` | `a` | `[a, p]`: Q1, P | checked stage: `check(Lo, Hi, Rights, Align)` of P, which tests only the bound Bound, `upper` or `lower`; Q1's earlier check of the same object proves the other (docs/half.md) |
     | `span_test(Lo, Hi)` | `w` | `[p]` | checked stage: 1 if the pointer's object contains [P+Lo, P+Hi), else 0; never traps (docs/m7.md, round 5) |
     | `renew_if(Lo, Hi, Rights, Align)` | `a` | `[p, w]`: P, G | checked stage: `check(Lo, Hi, Rights, Align)` of P, whose bounds part a passing span test G proves (docs/m7.md, round 5) |
     | `limit(Size)` | `l` | `[p]` | checked stage: an opaque snapshot of the pointer's bounds for Size-byte accesses; never traps (docs/bounds.md) |
@@ -212,6 +213,21 @@
     proven accessible. Q1 and P1 have one definition each, Q1's check
     covers [Lo, Hi) at Align, and the function has no setjmp
     (stage_func/5).
+
+    `half_check(Bound, Lo, Hi, Rights, Align)` reads `[a Q1, p P]` and
+    is exactly `check(Lo, Hi, Rights, Align)` of P: it traps when the
+    check would, with its reason, and is followed by the access it
+    covers. Q1 is a single-definition heap proof of P1 (a renew's
+    sources), P is at a distance D from P1 through one base
+    (pointer_distance/4), taken signed modulo 2^64, and so has Q1's
+    capability. Q1's check passed for [Lo1, Hi1) of P1. Bound `upper`
+    needs Lo1 =< Lo + D: P's capability is not null and P+Lo is not
+    below lower, so only the upper end is tested. Bound `lower` needs
+    Hi + D =< Hi1: P+Hi is not above the upper that check saw, which
+    changes only when the object is freed, so only the lower end and the
+    free flag are tested. D + Lo - Lo1 and D + Hi - Hi1 lie within
+    +-2^62 (near_offset/1) and the function has no setjmp (half_known/6,
+    docs/half.md).
 
     `span_test(Lo, Hi)` reads `[p P0]`, with integers Lo < Hi. It is 1
     when P0's capability is an object's and lower =< P0+Lo < P0+Hi =<
@@ -477,6 +493,7 @@ kind_arity(cast, 1).
 kind_arity(check, 1).
 kind_arity(check_ahead, 1).
 kind_arity(renew, 2).
+kind_arity(half_check, 2).
 kind_arity(span_test, 1).
 kind_arity(renew_if, 2).
 kind_arity(limit, 1).
@@ -502,6 +519,9 @@ valid_op(check_ahead(Lo, Hi, Rights, Align, AHi)) :- !,
     valid_op(check(Lo, Hi, Rights, Align)),
     integer(AHi), Lo < AHi, AHi < Hi.
 valid_op(renew(Lo, Hi, Rights, Align)) :- !,
+    valid_op(check(Lo, Hi, Rights, Align)).
+valid_op(half_check(Bound, Lo, Hi, Rights, Align)) :- !,
+    memberchk(Bound, [upper, lower]),
     valid_op(check(Lo, Hi, Rights, Align)).
 valid_op(span_test(Lo, Hi)) :- !,
     integer(Lo), integer(Hi), Lo < Hi,
@@ -667,6 +687,7 @@ op_kind(alloc(_), alloc).
 op_kind(check(_, _, _, _), check).
 op_kind(check_ahead(_, _, _, _, _), check_ahead).
 op_kind(renew(_, _, _, _), renew).
+op_kind(half_check(_, _, _, _, _), half_check).
 op_kind(span_test(_, _), span_test).
 op_kind(renew_if(_, _, _, _), renew_if).
 op_kind(limit(_), limit).
@@ -899,6 +920,7 @@ module_stage(module(Items), Stage) :-
 checked_inst(let(_, _, check(_, _, _, _), _)).
 checked_inst(let(_, _, check_ahead(_, _, _, _, _), _)).
 checked_inst(let(_, _, renew(_, _, _, _), _)).
+checked_inst(let(_, _, half_check(_, _, _, _, _), _)).
 checked_inst(let(_, _, span_test(_, _), _)).
 checked_inst(let(_, _, renew_if(_, _, _, _), _)).
 checked_inst(let(_, _, limit(_), _)).
@@ -1430,8 +1452,8 @@ stage_sources(Params, Blocks, src(Renews, Once, Ahead)) :-
         ahead_justified(Blocks, Once, Ahead),
         findall(Q1-check(P1, Lo1, Hi1, Al1),
                 ( member(block(_, _, Is, _), Blocks),
-                  member(let(tmp(Q1), a, Op, [tmp(P1)|_]), Is),
-                  renew_source_op(Op, Lo1, Hi1, Al1),
+                  member(let(tmp(Q1), a, Op, Args), Is),
+                  renew_source_op(Op, Args, tmp(P1), Lo1, Hi1, Al1),
                   get_assoc(Q1, Once, _), get_assoc(P1, Once, _) ),
                 Pairs),
         list_to_assoc(Pairs, Renews)
@@ -1443,11 +1465,14 @@ staged_op(check_ahead(_, _, _, _, _)).
 renewing_op(renew(_, _, _, _)).
 renewing_op(renew_if(_, _, _, _)).
 renewing_op(check_limit(_, _, _, _)).
+renewing_op(half_check(_, _, _, _, _)).
 
-renew_source_op(check(Lo, Hi, _, Al), Lo, Hi, Al).
-renew_source_op(check_ahead(Lo, Hi, _, Al, _), Lo, Hi, Al).
-renew_source_op(renew_if(Lo, Hi, _, Al), Lo, Hi, Al).
-renew_source_op(check_limit(Lo, Hi, _, Al), Lo, Hi, Al).
+renew_source_op(check(Lo, Hi, _, Al), [P], P, Lo, Hi, Al).
+renew_source_op(check_ahead(Lo, Hi, _, Al, _), [P], P, Lo, Hi, Al).
+renew_source_op(renew_if(Lo, Hi, _, Al), [P, _], P, Lo, Hi, Al).
+renew_source_op(check_limit(Lo, Hi, _, Al), [P, _], P, Lo, Hi, Al).
+% A half check is its check (docs/half.md).
+renew_source_op(half_check(_, Lo, Hi, _, Al), [_, P], P, Lo, Hi, Al).
 
 /* Scheduled checks (docs/schedule.md). ahead_justified(+Blocks, +Once,
    -Ahead): Ahead holds Q for each single-definition
@@ -1505,6 +1530,7 @@ proof_pointers(Blocks, Once, Ptrs) :-
 proof_pointer(check(_, _, _, _), [P], P).
 proof_pointer(check_ahead(_, _, _, _, _), [P], P).
 proof_pointer(renew(_, _, _, _), [_, P], P).
+proof_pointer(half_check(_, _, _, _, _), [_, P], P).
 proof_pointer(renew_if(_, _, _, _), [P, _], P).
 proof_pointer(check_limit(_, _, _, _), [P, _], P).
 
@@ -1577,6 +1603,26 @@ raise_need(Once, Off, Size, B-i(K, K1), F0, F) :-
 % the signed range, where the integer is the true distance: an access
 % at B + 2^64 - 8 is at B - 8, and must not count as reaching past B.
 near_offset(K) :- K >= -(1 << 62), K =< 1 << 62.
+
+%! half_known(+Bound, +Lo, +Hi, +D0, +Lo1, +Hi1) is semidet.
+%
+%  A check of [Lo, Hi) at P, where P is P1 + D0 modulo 2^64 with P1's
+%  capability, may test only Bound when a passed check of [Lo1, Hi1) at
+%  P1 proves the other end (docs/half.md). D is D0 taken signed modulo
+%  2^64. upper: P+Lo is E = D + Lo - Lo1 >= 0 bytes above P1+Lo1, which
+%  was at or above lower, and with E =< 2^62 that sum cannot wrap, as
+%  P1+Lo1 is a user address. lower: P+Hi is F = D + Hi - Hi1 =< 0 bytes
+%  from P1+Hi1, at or below that check's upper; with F >= -2^62, P+Lo
+%  taken signed is the true address, which the signed lower test reads
+%  (and Hi - Lo =< 2^62 keeps P+Lo above -2^63).
+half_known(Bound, Lo, Hi, D0, Lo1, Hi1) :-
+    D is ((D0 + (1 << 63)) mod (1 << 64)) - (1 << 63),
+    E is D + Lo - Lo1, F is D + Hi - Hi1,
+    near_offset(E), near_offset(F), Hi - Lo =< 1 << 62,
+    half_side(Bound, E, F).
+
+half_side(upper, E, _) :- E >= 0.
+half_side(lower, _, F) :- F =< 0.
 
 phi_ends_need(phi(tmp(D), _, _), F0, F) :-
     ( del_assoc(D, F0, _, F) -> true ; F = F0 ).
@@ -1863,6 +1909,21 @@ checked_inst_rest(let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [Q1, P]), Insts, 
         evidence_after(Access, Live2, Live)
     ;   fn_error(Fn, 'renew tmp(~w) is not followed by an access it covers', [Q])
     ).
+checked_inst_rest(let(tmp(Q), a, half_check(Bound, Lo, Hi, Rights, Align), [Q1, P]), Insts,
+                  Fn-src(Sources, Once, _), _, Live0, Rest, Live) :- !,
+    (   Q1 = tmp(N1), get_assoc(N1, Sources, check(P1, Lo1, Hi1, _)),
+        pointer_distance(Once, P, tmp(P1), D0),
+        half_known(Bound, Lo, Hi, D0, Lo1, Hi1)
+    ->  true
+    ;   fn_error(Fn, 'half_check tmp(~w) of ~w: no single-definition heap check of its object that proves its ~w bound, or a setjmp', [Q, Q1, Bound])
+    ),
+    (   Insts = [Access|Rest],
+        proof_use(Access, Q, Lo, Hi, Rights, Align)
+    ->  evidence_after(let(tmp(Q), a, half_check(Bound, Lo, Hi, Rights, Align), [Q1, P]), Live0, Live1),
+        evidence_add(live(Q, P, Lo, Hi, Rights, Align), Live1, Live2),
+        evidence_after(Access, Live2, Live)
+    ;   fn_error(Fn, 'half_check tmp(~w) is not followed by an access it covers', [Q])
+    ).
 checked_inst_rest(let(tmp(Q), a, renew_if(Lo, Hi, Rights, Align), [P, G]), Insts, Fn-src(_, Once, _), _,
                   Live0, Rest, Live) :- !,
     (   guard_covers(Once, P, G, Lo, Hi) -> true
@@ -1935,6 +1996,7 @@ evidence_preserving(flight(_, _, _, _)).
 evidence_preserving(let(_, a, check(_, _, _, _), _)).
 evidence_preserving(let(_, a, check_ahead(_, _, _, _, _), _)).
 evidence_preserving(let(_, a, renew(_, _, _, _), _)).
+evidence_preserving(let(_, a, half_check(_, _, _, _, _), _)).
 evidence_preserving(let(_, w, span_test(_, _), _)).
 evidence_preserving(let(_, a, renew_if(_, _, _, _), _)).
 evidence_preserving(let(_, l, limit(_), _)).
@@ -2402,6 +2464,7 @@ kind_result_ok(alloc, _, Mode, K) :- addr_class(Mode, K).
 kind_result_ok(check, _, filc, a).
 kind_result_ok(check_ahead, _, filc, a).
 kind_result_ok(renew, _, filc, a).
+kind_result_ok(half_check, _, filc, a).
 kind_result_ok(span_test, _, filc, w).
 kind_result_ok(renew_if, _, filc, a).
 kind_result_ok(limit, _, filc, l).
@@ -2475,6 +2538,7 @@ kind_arg_classes(alloc, _, _, _, [l]).
 kind_arg_classes(check, _, _, filc, [p]).
 kind_arg_classes(check_ahead, _, _, filc, [p]).
 kind_arg_classes(renew, _, _, filc, [a, p]).
+kind_arg_classes(half_check, _, _, filc, [a, p]).
 kind_arg_classes(span_test, _, _, filc, [p]).
 kind_arg_classes(renew_if, _, _, filc, [p, w]).
 kind_arg_classes(limit, _, _, filc, [p]).

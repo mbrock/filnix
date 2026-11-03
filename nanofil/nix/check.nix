@@ -91,6 +91,9 @@ pkgs.runCommandCC "nanofil-check"
     # Every hoisted shape's limit and in-loop lines against Fil-C's full
     # check at the access, with Z3 (docs/bounds.md, hoisted bounds).
     step "hoist smt" python3 tests/hoist_smt.py
+    # Both half checks' lines against Fil-C's full check, given the bound
+    # an earlier check of the object proves, with Z3 (docs/half.md).
+    step "half smt" python3 tests/half_smt.py
     # Every bounds-check shape at both levels against filcc's traps
     # (docs/bounds.md); thousands of forks, so once, in parallel.
     step "bounds edges" bash -c 'pids=; for b in split merged sign or; do for o in "" -O; do NANOFIL_BOUNDS=$b NANOFIL_OPT=$o tests/progtest.sh tests/c/bounds/edges.c & pids="$pids $!"; done; done; s=0; for p in $pids; do wait $p || s=1; done; exit $s'
@@ -276,8 +279,21 @@ pkgs.runCommandCC "nanofil-check"
     unset NANOFIL_OPT NANOFIL_SHARE
     step "share smt" python3 tests/share_smt.py
     step "share trap text vs filcc" tests/share-trap.sh
+    # Half checks (docs/half.md), opt-in: renewal, then each check of an
+    # object an earlier dominating check proved at another range tests only
+    # the bound that check leaves unknown. renew-trap.sh compares their
+    # traps with reference checks, byte for byte.
+    export NANOFIL_CHECKS=half
+    for opt in "" -O; do
+      export NANOFIL_OPT=$opt
+      step "half $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
+      step "half $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
+      step "half $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    done
+    step "half -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    unset NANOFIL_OPT NANOFIL_CHECKS
     step "schedule trap text vs filcc -O2" tests/schedule-trap.sh
-    step "renew, guard and hoist trap text" tests/renew-trap.sh
+    step "renew, guard, hoist and half trap text" tests/renew-trap.sh
     step "hoist trap text, every shape" bash -c 'for b in merged or sign; do NANOFIL_BOUNDS=$b tests/renew-trap.sh || exit 1; done'
     # Branch selection (docs/perf.md) is the -O default, so the -O suites
     # above run it; here it runs without -O, and -O runs the reference

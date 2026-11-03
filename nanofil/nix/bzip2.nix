@@ -31,6 +31,7 @@ let
     reuse = "--checks=reuse";
     O-reuse = "-O --checks=reuse";
     O-refchecks = "-O --checks=reference";
+    O-half = "-O --checks=half";
     O-temps = "-O --registers=temps";
   };
 in

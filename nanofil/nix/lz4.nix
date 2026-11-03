@@ -32,6 +32,7 @@ let
     reuse = "--checks=reuse";
     O-reuse = "-O --checks=reuse";
     O-refchecks = "-O --checks=reference";
+    O-half = "-O --checks=half";
   };
 in
 import ./configurations.nix { inherit pkgs; } "nanofil-lz4" configurations (

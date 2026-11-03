@@ -684,7 +684,14 @@ single_proofs(Params, Blocks, Single) :-
                    ; Op = check_limit(_, _, _, _) ),
                    \+ get_assoc(Q, MultiSet, _),
                    ( P = tmp(N) -> \+ get_assoc(N, MultiSet, _) ; true ) ),
-            Checks),
+            Checks0),
+    % A half check (docs/half.md) is its check of P, its second operand.
+    findall(Q-P, ( member(block(_, _, Is, _), Blocks),
+                   member(let(tmp(Q), a, half_check(_, _, _, _, _), [_, P]), Is),
+                   \+ get_assoc(Q, MultiSet, _),
+                   ( P = tmp(N) -> \+ get_assoc(N, MultiSet, _) ; true ) ),
+            Halves),
+    append(Checks0, Halves, Checks),
     % A renew's proof stands for its own pointer P, the replaced check's
     % (docs/m7.md, round 4 addendum), when Q and P have one definition.
     list_to_assoc(Checks, CheckAssoc),
@@ -723,6 +730,8 @@ fused_insts([Inst0|Insts0], Fn, Single, Proofs0, [Inst|Insts]) :-
     ;   Inst0 = let(tmp(Q), a, renew_if(_, _, _, _), [P, _])
     ->  proofs_add(Q-P, Proofs, Proofs1)
     ;   Inst0 = let(tmp(Q), a, check_limit(_, _, _, _), [P, _])
+    ->  proofs_add(Q-P, Proofs, Proofs1)
+    ;   Inst0 = let(tmp(Q), a, half_check(_, _, _, _, _), [_, P])
     ->  proofs_add(Q-P, Proofs, Proofs1)
     ;   Inst0 = let(tmp(Q), a, renew(_, _, _, _), [tmp(Q1), P]), get_assoc(Q1, Single, _)
     ->  proofs_add(Q-P, Proofs, Proofs1)
@@ -811,6 +820,16 @@ fused_inst(let(tmp(Q), a, renew_if(Lo, Hi, Rights, Align), [P, G]), [Access0|Ins
         access_pointer(Access, _, 0)
     ->  true
     ;   throw_fn(Fn, 'a renew_if or its access the emitter cannot emit yet')
+    ).
+% A half check (docs/half.md) fuses as a check does, at P; its source
+% proof Q1 only justifies it and is not read.
+fused_inst(let(tmp(Q), a, half_check(Bound, Lo, Hi, Rights, Align), [_, P]), [Access0|Insts], Fn,
+           fused(half_check(Bound, Lo, Hi, Rights, Align), Access), Insts) :- !,
+    (   proven_access(Access0, Q, P, Access),
+        Lo =:= 0, Hi > 0, Hi =< 2147483647, memberchk(Align, [1, 2, 4, 8]),
+        access_pointer(Access, _, 0)
+    ->  true
+    ;   throw_fn(Fn, 'a half_check or its access the emitter cannot emit yet')
     ).
 % A hoisted check (docs/bounds.md) fuses as a check does, and keeps its
 % limit U for emission and liveness.
@@ -1653,6 +1672,19 @@ inst(fused(renew(_, Size, Rights, Align), Access), Index, Block, Ctx) -->
     flight_load(P, Ctx),
     [ins(test, b, [imm(Mask), mem(-2, rcx)]),
      ins(jnz, none, [sym(Fail)])],
+    raw_access(Access, Index, Block, Ctx).
+% A half check (docs/half.md): the check with only one bound tested, the
+% other being known from an earlier check of the object, and the same
+% flags and alignment tests. Its failure goes to the check's label with
+% %rax:%rcx = P, so the runtime reports what the full check would.
+inst(fused(half_check(Bound, _, Size, Rights, Align), Access), Index, Block, Ctx) -->
+    { access_pointer(Access, P),
+      rights_write(Rights, Write),
+      check_fail_label(Ctx, k(Size, Write, Align), Fail),
+      ctx_selection(Ctx, Selection) },
+    flight_load(P, Ctx),
+    half_bounds(Bound, Selection, Size, Write, Fail),
+    align_check(Align, Fail),
     raw_access(Access, Index, Block, Ctx).
 % A guarded renewal (docs/m7.md, round 5): the flight is loaded once.
 % When the span test G passed, the bounds hold, and only the flags a
@@ -2868,6 +2900,27 @@ or_limit_terms -->
      ins(sub, q, [reg(rax), reg(rdx)]),
      ins(or, q, [reg(rsi), reg(rdx)])].
 
+/* half_bounds(+Bound, +Selection, +Size, +Write, +Fail)//: a half check's
+   tests (docs/half.md), with ptr in %rax and lower in %rcx, neither
+   null test nor the known bound. upper: split's upper test, then the
+   read-only test for a write as access_check//2 makes it (a freed
+   object has upper = lower, so this fails for it). lower: lower =< ptr
+   compared signed, since an access below a low object may wrap below 0,
+   then the free flag, and for a write the read-only one, as a renew
+   tests them: the upper the earlier check saw holds until a free. %rdx
+   is scratch. tests/half_smt.py proves both equivalent to Fil-C's check. */
+half_bounds(upper, Selection, Size, Write, Fail) -->
+    [ins(mov, q, [mem(-16, rcx), reg(rdx)]),
+     ins(sub, q, [imm(Size), reg(rdx)])],
+    borrow_check(Selection, Size, Fail),
+    [ins(cmp, q, [reg(rdx), reg(rax)]),
+     ins(ja, none, [sym(Fail)])],
+    write_check(Write, Fail).
+half_bounds(lower, _, _, Write, Fail) -->
+    [ins(cmp, q, [reg(rcx), reg(rax)]),
+     ins(jl, none, [sym(Fail)])],
+    flags_check(Write, Fail).
+
 % The flags a renew tests (renew_mask/2): free, and read-only for a write.
 flags_check(Write, Fail) -->
     { renew_mask(Write, Mask) },
@@ -2962,6 +3015,8 @@ inst_check_kind(fused(check(_, Size, Rights, Align), _), k(Size, Write, Align)) 
 inst_check_kind(fused(shared(_, _, check(_, Size, Rights, Align)), _), k(Size, Write, Align)) :-
     rights_write(Rights, Write).
 inst_check_kind(fused(renew(_, Size, Rights, Align), _), k(Size, Write, Align)) :-
+    rights_write(Rights, Write).
+inst_check_kind(fused(half_check(_, _, Size, Rights, Align), _), k(Size, Write, Align)) :-
     rights_write(Rights, Write).
 inst_check_kind(fused(guarded(_, renew_if(_, Size, Rights, Align)), _), k(Size, Write, Align)) :-
     rights_write(Rights, Write).

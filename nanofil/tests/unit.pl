@@ -23,6 +23,7 @@
 :- use_module('../src/pizlonate').
 :- use_module('../src/check_reuse').
 :- use_module('../src/schedule').
+:- use_module('../src/half_check').
 :- use_module('../src/c_lex').
 :- use_module('../src/c_parse').
 :- use_module('../src/c_lower').
@@ -3449,6 +3450,244 @@ test(schedule_pass) :-
     \+ schedule_refines(M0, OtherP),
     M = module([func(N, L, R1, Ps, [Bs_s, Bs_t, Bs_u, block(j, [], [_, _, Xj], Jj)])]),
     \+ schedule_refines(M0, module([func(N, L, R1, Ps, [Bs_s, Bs_t, Bs_u, block(j, [], [Xj], Jj)])])).
+
+% Half checks (docs/half.md): a check whose object an earlier dominating
+% check proved at another range tests only the bound that check does not
+% establish. half_fn/2 is f(a, b, c) of renew_fn/2, after a's check of
+% [0, 8) and its read; a8 is a + 8, am8 a - 8, aw a + (2^64 - 8), which
+% is a - 8 modulo 2^64, aw2 a + (2^63 - 4) + (2^63 - 4), a - 8 too, and
+% a8b a + 8 with b's lower.
+half_pre([let(tmp(q), a, check(0, 8, read, 1), [tmp(a)]),
+          let(tmp(x), l, raw_load(l, 0), [tmp(q)]),
+          call(void, global(free), [arg(p, tmp(b))]),
+          flight(tmp(a8), add, [address(tmp(a)), const(8)], lower(tmp(a))),
+          flight(tmp(am8), sub, [address(tmp(a)), const(8)], lower(tmp(a))),
+          flight(tmp(aw), add, [address(tmp(a)), const(18446744073709551608)], lower(tmp(a))),
+          flight(tmp(a8b), add, [address(tmp(a)), const(8)], lower(tmp(b))),
+          flight(tmp(ah), add, [address(tmp(a)), const(9223372036854775804)], lower(tmp(a))),
+          flight(tmp(aw2), add, [address(tmp(ah)), const(9223372036854775804)], lower(tmp(ah)))]).
+
+half_access(Bound, Rights, P, [let(tmp(h), a, half_check(Bound, 0, 8, Rights, 1), [tmp(q), P]),
+                               Access]) :-
+    (   Rights == read -> Access = let(tmp(y), l, raw_load(l, 0), [tmp(h)])
+    ;   Access = raw_store(l, 0, const(1), tmp(h))
+    ).
+
+half_fn(Insts, M) :-
+    half_pre(Pre), append(Pre, Insts, Is),
+    renew_fn([block(s, [], Is, ret(const(0)))], M).
+
+half_rejected(M) :-
+    catch(( valid_module(M), fail ), nanofil_error(Msg), true),
+    once(sub_atom(Msg, _, _, _, half_check)).
+
+test(half_validation) :-
+    Ok = [B, R, P]>>( half_access(B, R, P, Is), half_fn(Is, M), valid_module(M) ),
+    No = [B, R, P]>>( half_access(B, R, P, Is), half_fn(Is, M), half_rejected(M) ),
+    % After a call: a + 8 needs only its upper bound (it starts at the
+    % end of a's checked range), a - 8 only its lower (it ends at its
+    % start), and so does a + 2^64 - 8, which is a - 8. A write too.
+    call(Ok, upper, read, tmp(a8)), call(Ok, upper, write, tmp(a8)),
+    call(Ok, lower, read, tmp(am8)), call(Ok, lower, write, tmp(am8)),
+    call(Ok, lower, read, tmp(aw)), call(Ok, lower, read, tmp(aw2)),
+    % The wrong side: a + 8 ends past a's range, a - 8 and a + 2^64 - 8
+    % start before it (taken unreduced, 2^64 - 8 would start past it).
+    call(No, lower, read, tmp(a8)), call(No, upper, read, tmp(am8)),
+    call(No, upper, read, tmp(aw)), call(No, upper, read, tmp(aw2)),
+    % Another lower donor is another capability; a itself at distance 0
+    % may test either bound.
+    call(No, upper, read, tmp(a8b)), call(No, lower, read, tmp(a8b)),
+    call(Ok, upper, read, tmp(a)), call(Ok, lower, read, tmp(a)),
+    % Q1 is not a heap check's proof: a renew's, or one defined twice.
+    half_access(upper, read, tmp(a8), Hr),
+    half_fn([let(tmp(r), a, renew(0, 8, read, 1), [tmp(q), tmp(a)]),
+             let(tmp(z), l, raw_load(l, 0), [tmp(r)]),
+             let(tmp(h), a, half_check(upper, 0, 8, read, 1), [tmp(r), tmp(a8)]),
+             let(tmp(y), l, raw_load(l, 0), [tmp(h)])], OfRenew),
+    half_rejected(OfRenew),
+    half_pre(Pre), append(Pre, Hr, Is1),
+    renew_fn([block(s, [], Is1, ret(const(0))),
+              block(u, [], [let(tmp(q), a, check(0, 8, read, 1), [tmp(b)]),
+                            let(tmp(z), l, raw_load(l, 0), [tmp(q)])], ret(const(0)))], TwoQ),
+    half_rejected(TwoQ),
+    % A setjmp; no access after it; Q1 on one arm only (not dominating).
+    half_fn([let(tmp(j), w, setjmp('_setjmp'), [tmp(b), const(0)])|Hr], Sj),
+    half_rejected(Sj),
+    Hr = [Hh|_], half_fn([Hh], NoAccess), half_rejected(NoAccess),
+    Pre = [C, L|PreRest],
+    append(PreRest, Hr, Js),
+    renew_fn([block(s, [], [], branch(tmp(c), t, j)), block(t, [], [C, L], goto(j)),
+              block(j, [], Js, ret(const(0)))], NoDom),
+    catch(( valid_module(NoDom), fail ), nanofil_error(_), true),
+    % A variable offset: (a + n) + 8 after a check of a + n shares the
+    % base a + n; a + n after a check of a does not have a constant
+    % distance.
+    V = [let(tmp(n), l, ext(sw), [tmp(c)]),
+         flight(tmp(an), add, [address(tmp(a)), tmp(n)], lower(tmp(a))),
+         flight(tmp(an8), add, [address(tmp(an)), const(8)], lower(tmp(an))),
+         let(tmp(qn), a, check(0, 8, read, 1), [tmp(an)]),
+         let(tmp(xn), l, raw_load(l, 0), [tmp(qn)])],
+    append(V, [let(tmp(h), a, half_check(upper, 0, 8, read, 1), [tmp(qn), tmp(an8)]),
+               let(tmp(y), l, raw_load(l, 0), [tmp(h)])], VOk),
+    half_fn(VOk, VOkM), valid_module(VOkM),
+    append(V, [let(tmp(h), a, half_check(upper, 0, 8, read, 1), [tmp(q), tmp(an)]),
+               let(tmp(y), l, raw_load(l, 0), [tmp(h)])], VNo),
+    half_fn(VNo, VNoM), half_rejected(VNoM),
+    % Far: a check of p1 = a - 2^62 - 16 at [2^62 + 16, 2^62 + 24), which
+    % is a's [0, 8), then a lower half check of p1 + (2^63 + 8), a's
+    % [-2^62 + 8, ...) taken signed: its start is more than 2^62 below
+    % the earlier start, where a signed test could wrap. Refused.
+    half_fn([flight(tmp(p1), sub, [address(tmp(a)), const(4611686018427387920)], lower(tmp(a))),
+             let(tmp(q1), a, check(4611686018427387920, 4611686018427387928, read, 1), [tmp(p1)]),
+             let(tmp(x1), l, raw_load(l, 4611686018427387920), [tmp(q1)]),
+             flight(tmp(pf), add, [address(tmp(p1)), const(9223372036854775816)], lower(tmp(p1))),
+             let(tmp(h), a, half_check(lower, 0, 8, read, 1), [tmp(q1), tmp(pf)]),
+             let(tmp(y), l, raw_load(l, 0), [tmp(h)])], Far),
+    half_rejected(Far),
+    % A half check is its check: later reads may reuse its proof, and a
+    % renew or another half check may read it.
+    half_fn([let(tmp(h), a, half_check(upper, 0, 8, read, 1), [tmp(q), tmp(a8)]),
+             let(tmp(y), l, raw_load(l, 0), [tmp(h)]),
+             let(tmp(y2), l, raw_load(l, 0), [tmp(h)]),
+             call(void, global(free), [arg(p, tmp(b))]),
+             let(tmp(r), a, renew(0, 8, read, 1), [tmp(h), tmp(a8)]),
+             let(tmp(z), l, raw_load(l, 0), [tmp(r)]),
+             let(tmp(h2), a, half_check(lower, 0, 8, read, 1), [tmp(h), tmp(a)]),
+             let(tmp(z2), l, raw_load(l, 0), [tmp(h2)])], Source),
+    valid_module(Source),
+    Source = module([func(_, _, _, PsS, BsS)]),
+    filc_amd64:fused_blocks(f, PsS, BsS, [block(_, _, IsF, _)], _),
+    memberchk(fused(half_check(upper, _, _, _, _), let(_, _, _, [PF])), IsF), PF == tmp(a8),
+    memberchk(reused(let(tmp(y2), _, _, [PR])), IsF), PR == tmp(a8),
+    % With h defined twice, the reuse in its block still reads a + 8.
+    half_fn([let(tmp(h), a, half_check(upper, 0, 8, read, 1), [tmp(q), tmp(a8)]),
+             let(tmp(y), l, raw_load(l, 0), [tmp(h)]),
+             let(tmp(y2), l, raw_load(l, 0), [tmp(h)])], Once),
+    Once = module([func(_, _, _, PsT, BsO)]),
+    append(BsO, [block(u, [], [let(tmp(h), a, check(0, 8, read, 1), [tmp(a)]),
+                               let(tmp(z3), l, raw_load(l, 0), [tmp(h)])], ret(const(0)))], BsT),
+    filc_amd64:fused_blocks(f, PsT, BsT, [block(_, _, IsT, _)|_], _),
+    memberchk(reused(let(tmp(y2), _, _, [PT])), IsT), PT == tmp(a8).
+
+% The interpreter runs a half check's whole access test on P and the
+% native one-sided test: they agree on every valid half check, a free in
+% between traps out_of_bounds as the check does, and where they differ
+% (a forged known bound) the result is unchecked(half).
+test(half_semantics) :-
+    Alloc = let(tmp(p), p, alloc(8), [const(16)]),
+    C = let(tmp(q), a, check(0, 8, write, 1), [tmp(p)]),
+    S = raw_store(l, 0, const(5), tmp(q)),
+    Free = call(void, global(free), [arg(p, tmp(p))]),
+    F8 = flight(tmp(p8), add, [address(tmp(p)), const(8)], lower(tmp(p))),
+    F16 = flight(tmp(p16), add, [address(tmp(p)), const(16)], lower(tmp(p))),
+    Fm8 = flight(tmp(pm8), sub, [address(tmp(p)), const(8)], lower(tmp(p))),
+    Mk = [_, P, Mid, Op, M]>>(
+            append([Alloc, C, S, F8, F16, Fm8|Mid],
+                   [let(tmp(r), a, Op, [tmp(q), P]),
+                    let(tmp(x), l, raw_load(l, 0), [tmp(r)])], Is),
+            reuse_l_fn(Is, M) ),
+    % In bounds: p + 8 by its upper bound, p by its lower: 0 and 5.
+    call(Mk, upper, tmp(p8), [], half_check(upper, 0, 8, read, 1), U8),
+    valid_module(U8), once(run(U8, f, [], 10, ret(0))),
+    call(Mk, lower, tmp(p), [], half_check(lower, 0, 8, read, 1), L0),
+    valid_module(L0), once(run(L0, f, [], 10, ret(5))),
+    % Past the end and below the start: traps, as the checks do.
+    forall(member(Bound-P, [upper-tmp(p16), lower-tmp(pm8)]),
+           ( call(Mk, Bound, P, [], half_check(Bound, 0, 8, read, 1), Out),
+             valid_module(Out), once(run(Out, f, [], 10, trap(out_of_bounds))),
+             append([Alloc, C, S, F8, F16, Fm8],
+                    [let(tmp(r), a, check(0, 8, read, 1), [P]),
+                     let(tmp(x), l, raw_load(l, 0), [tmp(r)])], IsC),
+             reuse_l_fn(IsC, OutC), once(run(OutC, f, [], 10, trap(out_of_bounds))) )),
+    % Freed in between: both bounds' half checks trap out_of_bounds.
+    forall(member(Bound-P, [upper-tmp(p8), lower-tmp(p)]),
+           ( call(Mk, Bound, P, [Free], half_check(Bound, 0, 8, read, 1), Fr),
+             valid_module(Fr), once(run(Fr, f, [], 10, trap(out_of_bounds))) )),
+    % Forged, which the validator refuses: the wrong side, so that the
+    % bound taken as known fails.
+    forall(member(Bound-P, [lower-tmp(p16), upper-tmp(pm8)]),
+           ( call(Mk, Bound, P, [], half_check(Bound, 0, 8, read, 1), Bad),
+             half_rejected(Bad), once(run(Bad, f, [], 10, O)), O == unchecked(half) )),
+    % Far below a low object: p - 2^40 wraps past 0, so its address is
+    % above lower unsigned; the lower test is signed and traps, as the
+    % check does.
+    call(Mk, lower, tmp(pb), [flight(tmp(pb), sub, [address(tmp(p)), const(1099511627776)], lower(tmp(p)))],
+         half_check(lower, 0, 8, read, 1), Wrap),
+    valid_module(Wrap), once(run(Wrap, f, [], 10, OW)), OW == trap(out_of_bounds),
+    % Another object's pointer: unchecked(alias).
+    call(Mk, upper, tmp(o), [let(tmp(o), p, alloc(8), [const(16)])],
+         half_check(upper, 0, 8, read, 1), Other),
+    half_rejected(Other), once(run(Other, f, [], 10, OA)), OA == unchecked(alias),
+    % A write to read-only data after a read of it: readonly, both bounds.
+    forall(member(Bound, [upper, lower]),
+           ( Ro = module([data(msg, ro(local), 1, [item(b, str("hello"))]),
+                 func(g, local, w, [], [block(s, [], [
+                     let(tmp(p), p, copy, [global(msg)]),
+                     let(tmp(q), a, check(0, 2, read, 1), [tmp(p)]),
+                     let(tmp(x), w, raw_load(ub, 0), [tmp(q)]),
+                     flight(tmp(p1), add, [address(tmp(p)), const(1)], lower(tmp(p))),
+                     let(tmp(r), a, half_check(Bound, 0, 1, write, 1), [tmp(q), tmp(p1)]),
+                     raw_store(b, 0, const(1), tmp(r))
+                 ], ret(tmp(x)))])]),
+             valid_module(Ro), once(run(Ro, g, [], 10, trap(readonly))) )).
+
+% The pass replaces a check by a half check when an earlier check of the
+% same object dominates it at a constant distance, the original, checked
+% and half modules agree, half_refines/2 accepts exactly that, and the
+% native code has fewer null tests.
+test(half_pass) :-
+    ir_module([func(f, local, l, [param(w, tmp(k))], [
+        block(s, [], [
+            let(tmp(p), p, alloc(8), [const(32)]),
+            store(l, const(1), tmp(p)),
+            let(tmp(p8), p, add, [tmp(p), const(8)]),
+            store(l, const(2), tmp(p8)),
+            let(tmp(v0), l, load(l), [tmp(p)])
+        ], goto(h)),
+        block(h, [phi(tmp(i), w, [s-const(0), b-tmp(i1)]),
+                  phi(tmp(t), l, [s-tmp(v0), b-tmp(t1)])], [
+            let(tmp(m), w, cmp(slt, w), [tmp(i), tmp(k)])
+        ], branch(tmp(m), b, e)),
+        block(b, [], [
+            let(tmp(o), p, alloc(8), [const(8)]),
+            call(void, global(free), [arg(p, tmp(o))]),
+            let(tmp(p24), p, add, [tmp(p), const(24)]),
+            let(tmp(u), l, load(l), [tmp(p24)]),
+            let(tmp(p16), p, add, [tmp(p24), const(-8)]),
+            store(l, tmp(u), tmp(p16)),
+            let(tmp(t1), l, add, [tmp(t), tmp(u)]),
+            let(tmp(i1), w, add, [tmp(i), const(1)])
+        ], goto(h)),
+        block(e, [], [], ret(tmp(t)))])], M),
+    pizlonate_module(M, C0), reuse_checks(C0, Ca), renew_checks(Ca, C1),
+    half_checks(C1, C2), half_refines(C1, C2), valid_module(C2),
+    C2 = module([func(f, _, _, _, Bs)|_]), memberchk(block(b, _, Is, _), Bs),
+    findall(Op, member(let(_, a, Op, _), Is), Ops),
+    % p+24 is above p's [0, 8): its upper; p+16 is below p+24's [0, 8)
+    % but would trap only on the call: its lower and the free flag.
+    Ops = [half_check(upper, 0, 8, read, 1), half_check(lower, 0, 8, write, 1)],
+    % The loop adds *(p+24) (0) and copies it to p+16, k times.
+    forall(member(Mod, [M, C0, C1, C2]),
+           ( once(run(Mod, f, [3], 100, ret(V))), V == 1 )),
+    reuse_fail_jumps(C1, N1), reuse_fail_jumps(C2, N2), N2 < N1,
+    filc_module_asm(C2, Lines), memberchk(ins(jl, none, [_]), Lines),
+    % Refused: a half check of another range, or a deleted check.
+    C2 = module([func(Fn, L2, R2, Ps2, Bs2)]),
+    maplist([block(Lb, Ph, Is3, J), block(Lb, Ph, Is4, J)]>>
+                maplist([I3, I4]>>( I3 = let(Q, a, half_check(Bd, 0, 8, Rt, Al), As)
+                                  -> I4 = let(Q, a, half_check(Bd, 0, 4, Rt, Al), As)
+                                  ;  I4 = I3 ), Is3, Is4), Bs2, Bs3),
+    \+ half_refines(C1, module([func(Fn, L2, R2, Ps2, Bs3)])),
+    Bs2 = [B0|BsT], B0 = block(Lb0, Ph0, [_|Is5], J5),
+    \+ half_refines(C1, module([func(Fn, L2, R2, Ps2, [block(Lb0, Ph0, Is5, J5)|BsT])])),
+    % A check on one arm does not dominate the join: its check stays.
+    renew_fn([block(s, [], [], branch(tmp(c), t, j)),
+              block(t, [], [let(tmp(q), a, check(0, 8, read, 1), [tmp(a)]),
+                            let(tmp(x), l, raw_load(l, 0), [tmp(q)])], goto(j)),
+              block(j, [], [flight(tmp(a8), add, [address(tmp(a)), const(8)], lower(tmp(a))),
+                            let(tmp(k), a, check(0, 8, read, 1), [tmp(a8)]),
+                            let(tmp(y), l, raw_load(l, 0), [tmp(k)])], ret(tmp(y)))], Arm),
+    valid_module(Arm), half_checks(Arm, Arm1), Arm1 == Arm.
 
 % Range guards (docs/m7.md, round 5, slice A): a span test before a
 % loop proves the bounds of every access through one base at offsets in

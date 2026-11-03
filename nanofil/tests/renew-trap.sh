@@ -1,25 +1,28 @@
 #!/usr/bin/env bash
-# Check renewal, range guards and hoisted bounds keep each trap's text
-# (docs/m7.md, rounds 4 and 5; docs/bounds.md): every
-# tests/c/prog/renew-*.c, guard-*.c and hoist-*.c is built by nanofil -O
-# with reference checks and with --checks=renew, guard or hoist, and
+# Check renewal, range guards, hoisted bounds and half checks keep each
+# trap's text (docs/m7.md, rounds 4 and 5; docs/bounds.md; docs/half.md):
+# every tests/c/prog/renew-*.c, guard-*.c, hoist-*.c and half-*.c is
+# built by nanofil -O with reference checks and with --checks=renew,
+# guard, hoist or half, and
 # both runs must agree on stdout, the exit
 # status and the whole stderr (the safety error, its pointer's state,
 # expected bytes and origins) with addresses and the pid masked. The
 # renew build must have fewer full checks (renewals), the guard build a
-# guarded access and the hoist build a limit, or the comparison would
-# show nothing.
+# guarded access, the hoist build a limit and the half build fewer null
+# tests than renewal alone, or the comparison would show nothing.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 filcc=${FILCC:?set FILCC to a filcc clang}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 status=0
-for f in "$here"/c/prog/renew-*.c "$here"/c/prog/guard-*.c "$here"/c/prog/hoist-*.c; do
+for f in "$here"/c/prog/renew-*.c "$here"/c/prog/guard-*.c "$here"/c/prog/hoist-*.c "$here"/c/prog/half-*.c; do
   name=$(basename "$f" .c)
   mode=${name%%-*}
   read -r -a args <<<"$(sed -n 's|^// args: ||p' "$f")"
-  for c in reference $mode; do
+  builds="reference $mode"
+  [[ $mode == half ]] && builds="$builds renew"
+  for c in $builds; do
     # The same file name in both, since origins name the executable.
     d=$work/$c; mkdir -p "$d"
     (cd "$here/../src" && ../bin/nanofil -O --checks=$c cc "$f" </dev/null) >"$d/$name.s"
@@ -41,6 +44,8 @@ for f in "$here"/c/prog/renew-*.c "$here"/c/prog/guard-*.c "$here"/c/prog/hoist-
     echo "$name: no guarded access in the guard build"; status=1
   elif [[ $mode == hoist ]] && (( $(limited "$work/hoist/$name.s") == 0 )); then
     echo "$name: no limit in the hoist build"; status=1
+  elif [[ $mode == half ]] && (( $(full "$work/half/$name.s") >= $(full "$work/renew/$name.s") )); then
+    echo "$name: no half check in the half build"; status=1
   elif [[ $mode == renew ]] && (( $(full "$work/renew/$name.s") >= $(full "$work/reference/$name.s") )); then
     echo "$name: no renewal in the $mode build"; status=1
   elif ! grep -q 'filc safety error' "$work/reference/$name.out"; then

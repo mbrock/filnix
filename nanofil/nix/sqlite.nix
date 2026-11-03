@@ -83,6 +83,7 @@ let
     O = configuration "O" "-O";
     reuse = configuration "reuse" "-O --checks=reuse";
     refchecks = configuration "refchecks" "-O --checks=reference";
+    half = configuration "half" "-O --checks=half";
     temps = configuration "temps" "-O --registers=temps";
     inherit port;
   };
