@@ -150,6 +150,7 @@
     | `va_arg` | any | `[p]` | filc only: a load through a va_list address, advancing its cursor (reads and writes memory) |
     | `setjmp(Kind)` | `w` | `[p, w]`: Buf, SaveMask | filc only, below |
     | `check(Lo, Hi, Rights, Align)` | `a` | `[p]` | checked stage, below |
+    | `check_ahead(Lo, Hi, Rights, Align, AHi)` | `a` | `[p]` | checked stage: `check(Lo, Hi, Rights, Align)` of which only [Lo, AHi) is its own access's requirement; the rest is anticipated (docs/schedule.md) |
     | `renew(Lo, Hi, Rights, Align)` | `a` | `[a, p]`: Q1, P | checked stage: renew an earlier heap proof's temporal facts (docs/m7.md, round 4) |
     | `span_test(Lo, Hi)` | `w` | `[p]` | checked stage: 1 if the pointer's object contains [P+Lo, P+Hi), else 0; never traps (docs/m7.md, round 5) |
     | `renew_if(Lo, Hi, Rights, Align)` | `a` | `[p, w]`: P, G | checked stage: `check(Lo, Hi, Rights, Align)` of P, whose bounds part a passing span test G proves (docs/m7.md, round 5) |
@@ -190,11 +191,22 @@
     P+Lo is Align-aligned (Align one of 1, 2, 4, 8, 16); otherwise its
     result is P, proven accessible.
 
+    `check_ahead(Lo, Hi, Rights, Align, AHi)` reads `[p P]`, with
+    Lo < AHi < Hi, and is exactly `check(Lo, Hi, Rights, Align)` of P:
+    its access must lie in [Lo, AHi), and the bytes [AHi, Hi) are
+    checked early. It is valid only where every path from its access
+    reaches an access through P's base that needs those bytes, and
+    reaches it first: before a call or other effect
+    (ahead_transparent/1), a poll edge, an edge back or a return; its
+    own access must be ahead_transparent/1 too (ahead_justified/4, docs/schedule.md). So it traps where the
+    plain check would not only on executions that trap later anyway.
+
     `renew(Lo, Hi, Rights, Align)` reads `[a Q1, p P]`: Q1 is the proof
     of an earlier heap check of P1 that dominates it, whose bounds and
     alignment still hold since an object's bounds change only when it is
-    freed, and P the pointer of the check it replaces, with P1's address
-    and capability (same_pointer/3). It traps as `check(Lo, Hi, Rights,
+    freed, and P the pointer of the check it replaces, at a constant
+    distance D from P1 through one base (pointer_distance/4; 0 is
+    same_pointer/3), with its capability. Q1's check covers [Lo+D, Hi+D). It traps as `check(Lo, Hi, Rights,
     Align)` of P would if the object has been freed since, or if Rights
     is `write` and the object is read-only; otherwise its result is P,
     proven accessible. Q1 and P1 have one definition each, Q1's check
@@ -358,7 +370,7 @@
                jump_target/2, polls_every_cycle/1, temp_defs/3, implicit_flight/1, local_objects/2,
                pointer_memory_effects/2, single_definitions/3, guard_chain/3, lower_chain/3,
                asm_fixed_regs/3,
-               same_pointer/3]).
+               same_pointer/3, pointer_distance/4, ahead_transparent/1]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -463,6 +475,7 @@ kind_arity(float_to_int, 1).
 kind_arity(int_to_float, 1).
 kind_arity(cast, 1).
 kind_arity(check, 1).
+kind_arity(check_ahead, 1).
 kind_arity(renew, 2).
 kind_arity(span_test, 1).
 kind_arity(renew_if, 2).
@@ -485,6 +498,9 @@ valid_op(check(Lo, Hi, Rights, Align)) :- !,
     integer(Lo), integer(Hi), Lo < Hi,
     memberchk(Rights, [read, write]),
     memberchk(Align, [1, 2, 4, 8, 16]).
+valid_op(check_ahead(Lo, Hi, Rights, Align, AHi)) :- !,
+    valid_op(check(Lo, Hi, Rights, Align)),
+    integer(AHi), Lo < AHi, AHi < Hi.
 valid_op(renew(Lo, Hi, Rights, Align)) :- !,
     valid_op(check(Lo, Hi, Rights, Align)).
 valid_op(span_test(Lo, Hi)) :- !,
@@ -649,6 +665,7 @@ op_kind(cas(_), cas).
 op_kind(raw_cas(_, _), raw_cas).
 op_kind(alloc(_), alloc).
 op_kind(check(_, _, _, _), check).
+op_kind(check_ahead(_, _, _, _, _), check_ahead).
 op_kind(renew(_, _, _, _), renew).
 op_kind(span_test(_, _), span_test).
 op_kind(renew_if(_, _, _, _), renew_if).
@@ -880,6 +897,7 @@ module_stage(module(Items), Stage) :-
     ).
 
 checked_inst(let(_, _, check(_, _, _, _), _)).
+checked_inst(let(_, _, check_ahead(_, _, _, _, _), _)).
 checked_inst(let(_, _, renew(_, _, _, _), _)).
 checked_inst(let(_, _, span_test(_, _), _)).
 checked_inst(let(_, _, renew_if(_, _, _, _), _)).
@@ -1389,7 +1407,7 @@ checked_insts([Inst|Insts], Fn-Sources, Mode, Live0, LiveOut) :-
     checked_inst_rest(Inst, Insts, Fn-Sources, Mode, Live0, Rest, Live),
     checked_insts(Rest, Fn-Sources, Mode, Live, LiveOut).
 
-/* stage_sources(+Params, +Blocks, -src(Renews, Once)): Renews maps
+/* stage_sources(+Params, +Blocks, -src(Renews, Once, Ahead)): Renews maps
    each proof Q1 that a renew may read to check(P1, Lo1, Hi1, Align1):
    Q1 has one definition, a heap check or renew_if of tmp(P1), and P1
    one too, counting parameters, phis and every instruction form. Once
@@ -1399,15 +1417,17 @@ checked_insts([Inst|Insts], Fn-Sources, Mode, Live0, LiveOut) :-
    show. With strict SSA (definitions_dominate/3), Q1's check dominates
    the renew, so P1 and Q1 there hold the values the check saw
    (docs/m7.md, round 4); a renew_if proves the same bounds as the
-   check it replaced. */
-stage_sources(Params, Blocks, src(Renews, Once)) :-
+   check it replaced. Ahead holds each check_ahead's proof that
+   ahead_justified/3 accepts, empty with a setjmp too. */
+stage_sources(Params, Blocks, src(Renews, Once, Ahead)) :-
     empty_assoc(E),
     (   \+ ( member(block(_, _, Is, _), Blocks),
-              member(let(_, _, Op, _), Is), renewing_op(Op) )
-    ->  Renews = E, Once = E
+              member(let(_, _, Op, _), Is), staged_op(Op) )
+    ->  Renews = E, Once = E, Ahead = E
     ;   member(block(_, _, Is, _), Blocks), member(let(_, _, setjmp(_), _), Is)
-    ->  Renews = E, Once = E
+    ->  Renews = E, Once = E, Ahead = E
     ;   single_definitions(Params, Blocks, Once),
+        ahead_justified(Blocks, Once, Ahead),
         findall(Q1-check(P1, Lo1, Hi1, Al1),
                 ( member(block(_, _, Is, _), Blocks),
                   member(let(tmp(Q1), a, Op, [tmp(P1)|_]), Is),
@@ -1417,13 +1437,173 @@ stage_sources(Params, Blocks, src(Renews, Once)) :-
         list_to_assoc(Pairs, Renews)
     ).
 
+staged_op(Op) :- renewing_op(Op).
+staged_op(check_ahead(_, _, _, _, _)).
+
 renewing_op(renew(_, _, _, _)).
 renewing_op(renew_if(_, _, _, _)).
 renewing_op(check_limit(_, _, _, _)).
 
 renew_source_op(check(Lo, Hi, _, Al), Lo, Hi, Al).
+renew_source_op(check_ahead(Lo, Hi, _, Al, _), Lo, Hi, Al).
 renew_source_op(renew_if(Lo, Hi, _, Al), Lo, Hi, Al).
 renew_source_op(check_limit(Lo, Hi, _, Al), Lo, Hi, Al).
+
+/* Scheduled checks (docs/schedule.md). ahead_justified(+Blocks, +Once,
+   -Ahead): Ahead holds Q for each single-definition
+   `let(tmp(Q), a, check_ahead(Lo, Hi, _, _, _), [P])` such that, right
+   after its access, P's base B (a single-definition name on
+   guard_chain/3 at an exact offset K) has need(B) >= K + Hi.
+
+   need(B) = H at a point means: every path from it reaches a raw heap
+   access through a pointer at an exact offset from B (well inside the
+   signed range, near_offset/1) whose bytes reach B + H or beyond, and
+   reaches it first: before any instruction that is not
+   ahead_transparent/1, any poll edge, edge to the same or an earlier
+   block, or the function's end (each of which ends the need), and
+   before B is redefined. Computed backward
+   in one pass over the blocks in reverse order:
+   - a block's exit facts are the meet over its jump's edges, both arms
+     of a branch counted: a plain edge to a later block carries that
+     block's entry facts, any other edge none; a base present on every
+     edge keeps the least H, and no edge means no facts;
+   - an instruction that is not ahead_transparent/1 ends every fact;
+     one that defines N ends N's fact; a raw access (not a cas) at a
+     single-definition proof of P, at offset Off, of Size bytes, raises
+     need(B) to at least K + Off + Size for each exact base B-i(K, K)
+     of P;
+   - phi destinations end their facts at the block's entry.
+   Any edge into a later block was walked before, so one pass suffices.
+   In the reference program every such access has its own check, which
+   fails if those bytes are outside the object: so where this check
+   fails early, the reference traps later on every path (unless
+   something else traps first). */
+ahead_justified(Blocks, Once, Ahead) :-
+    empty_assoc(E),
+    (   \+ ( member(block(_, _, Is, _), Blocks),
+              member(let(_, _, check_ahead(_, _, _, _, _), _), Is) )
+    ->  Ahead = E
+    ;   proof_pointers(Blocks, Once, Ptrs),
+        findall(L-N, nth0(N, Blocks, block(L, _, _, _)), OrderPairs),
+        list_to_assoc(OrderPairs, Order),
+        reverse(Blocks, Rev),
+        foldl(ahead_block(Order, Once, Ptrs), Rev, E-[], _-Js),
+        findall(Q-true, member(Q, Js), Pairs0), sort(Pairs0, Pairs),
+        list_to_assoc(Pairs, Ahead)
+    ).
+
+% proof_pointers(+Blocks, +Once, -Ptrs): Q-P for each single-definition
+% heap proof Q and the pointer P it proves.
+proof_pointers(Blocks, Once, Ptrs) :-
+    findall(Q-P, ( member(block(_, _, Is, _), Blocks),
+                   member(let(tmp(Q), a, Op, Args), Is),
+                   proof_pointer(Op, Args, P),
+                   get_assoc(Q, Once, _) ),
+            Pairs0),
+    sort(Pairs0, Pairs), list_to_assoc(Pairs, Ptrs).
+
+proof_pointer(check(_, _, _, _), [P], P).
+proof_pointer(check_ahead(_, _, _, _, _), [P], P).
+proof_pointer(renew(_, _, _, _), [_, P], P).
+proof_pointer(renew_if(_, _, _, _), [P, _], P).
+proof_pointer(check_limit(_, _, _, _), [P, _], P).
+
+ahead_block(Order, Once, Ptrs, block(L, Phis, Is, J), In0-Js0, In-Js) :-
+    get_assoc(L, Order, Pos),
+    findall(F, ( jump_edge(J, T), ahead_edge(T, Pos, Order, In0, F) ), Fs),
+    ahead_meet(Fs, Out),
+    reverse(Is, RIs),
+    empty_assoc(E),
+    ahead_insts(RIs, Once, Ptrs, Out, E, Entry0, Js0, Js),
+    foldl(phi_ends_need, Phis, Entry0, Entry),
+    put_assoc(L, In0, Entry, In).
+
+ahead_edge(poll(_), _, _, _, F) :- !, empty_assoc(F).
+ahead_edge(T, Pos, Order, In0, F) :-
+    (   get_assoc(T, Order, TPos), TPos > Pos, get_assoc(T, In0, F0) -> F = F0
+    ;   empty_assoc(F)
+    ).
+
+% ahead_meet(+Facts, -Meet): the bases in every one of Facts, each with
+% its least need; none for no facts.
+ahead_meet([], E) :- empty_assoc(E).
+ahead_meet([F|Fs], Meet) :-
+    assoc_to_list(F, Ps),
+    findall(B-H, ( member(B-H0, Ps), foldl(least_need(B), Fs, H0, H) ), Ms),
+    list_to_assoc(Ms, Meet).
+
+least_need(B, F, H0, H) :- get_assoc(B, F, H1), H is min(H0, H1).
+
+% ahead_insts(+RevInsts, +Once, +Ptrs, +After, +AfterNext, -Before, +Js0, -Js):
+% After are the facts after the first of RevInsts (the block's last
+% instruction), AfterNext those after the instruction that follows it.
+ahead_insts([], _, _, F, _, F, Js, Js).
+ahead_insts([I|Is], Once, Ptrs, F0, Next, F, Js0, Js) :-
+    (   I = let(tmp(Q), a, check_ahead(_, Hi, _, _, _), [P]),
+        get_assoc(Q, Once, _),
+        guard_chain(Once, P, Chain),
+        member(tmp(N)-i(K, K), Chain), get_assoc(N, Once, _),
+        near_offset(K),
+        get_assoc(N, Next, H), H >= K + Hi
+    ->  Js1 = [Q|Js0]
+    ;   Js1 = Js0
+    ),
+    ahead_step(I, Once, Ptrs, F0, F1),
+    ahead_insts(Is, Once, Ptrs, F1, F0, F, Js1, Js).
+
+ahead_step(I, Once, Ptrs, F0, F) :-
+    (   ahead_transparent(I)
+    ->  (   inst_temp_def(I, D, _), del_assoc(D, F0, _, F1) -> true ; F1 = F0 ),
+        (   raw_access(I, Q, X, Off, _), X \= cas(_),
+            access_size_align(X, Size, _),
+            get_assoc(Q, Ptrs, P)
+        ->  guard_chain(Once, P, Chain),
+            foldl(raise_need(Once, Off, Size), Chain, F1, F)
+        ;   F = F1
+        )
+    ;   empty_assoc(F)
+    ).
+
+raise_need(Once, Off, Size, B-i(K, K1), F0, F) :-
+    (   K == K1, B = tmp(N), get_assoc(N, Once, _),
+        H is K + Off + Size, near_offset(K), near_offset(H)
+    ->  true,
+        (   get_assoc(N, F0, H0), H0 >= H -> F = F0 ; put_assoc(N, F0, H, F) )
+    ;   F = F0
+    ).
+
+% near_offset(+K): guard_chain/3's offsets are exact only modulo 2^64
+% (class l wraps), so a need is counted only for offsets well inside
+% the signed range, where the integer is the true distance: an access
+% at B + 2^64 - 8 is at B - 8, and must not count as reaching past B.
+near_offset(K) :- K >= -(1 << 62), K =< 1 << 62.
+
+phi_ends_need(phi(tmp(D), _, _), F0, F) :-
+    ( del_assoc(D, F0, _, F) -> true ; F = F0 ).
+
+%! ahead_transparent(+Inst) is semidet.
+%
+%  Inst may come between a check_ahead and the access whose need it
+%  checks early (docs/schedule.md): it is evidence_preserving/1, so it
+%  reaches no safepoint, calls nothing and cannot free, and it is not a
+%  division, whose fault would end the program otherwise than a Fil-C
+%  trap. Calls, allocation, getters, pointer stores, atomics, setjmp and
+%  va_arg are not, nor are poll edges, which may run signal handlers.
+ahead_transparent(I) :-
+    evidence_preserving(I),
+    \+ ( I = let(_, _, Op, _), memberchk(Op, [div, udiv, rem, urem]) ).
+
+%! pointer_distance(+Once, +P, +P1, -D) is semidet.
+%
+%  P's address is P1's plus D modulo 2^64, with P1's capability, at any
+%  point both dominate: both reach one single-definition base B through
+%  guard_chain/3 at exact offsets K and K1, and D = K - K1 (the
+%  argument of same_pointer/3, which is the case D = 0 modulo 2^64).
+pointer_distance(Once, P, P1, D) :-
+    guard_chain(Once, P, Chain), guard_chain(Once, P1, Chain1),
+    member(B-i(K, K), Chain), B = tmp(N), get_assoc(N, Once, _),
+    member(B1-i(K1, K1), Chain1), B1 == B, !,
+    D is K - K1.
 
 %! single_definitions(+Params, +Blocks, -Once) is det.
 %
@@ -1635,6 +1815,19 @@ checked_inst_rest(let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Insts, Fn-_
         evidence_after(Access, Live2, Live)
     ;   fn_error(Fn, 'check tmp(~w) is not followed by an access it covers', [Q])
     ).
+checked_inst_rest(let(tmp(Q), a, check_ahead(Lo, Hi, Rights, Align, AHi), [P]), Insts,
+                  Fn-src(_, _, Ahead), _, Live0, Rest, Live) :- !,
+    (   get_assoc(Q, Ahead, _) -> true
+    ;   fn_error(Fn, 'check_ahead tmp(~w): its early bytes are not needed on every path ahead, or a setjmp', [Q])
+    ),
+    (   Insts = [Access|Rest],
+        proof_use(Access, Q, Lo, AHi, Rights, Align),
+        ahead_transparent(Access)
+    ->  evidence_after(let(tmp(Q), a, check_ahead(Lo, Hi, Rights, Align, AHi), [P]), Live0, Live1),
+        evidence_add(live(Q, P, Lo, Hi, Rights, Align), Live1, Live2),
+        evidence_after(Access, Live2, Live)
+    ;   fn_error(Fn, 'check_ahead tmp(~w) is not followed by a transparent access in its own range', [Q])
+    ).
 checked_inst_rest(let(tmp(Q), a, check_local(_, _, Bytes, Rights, Align), []),
                   Insts, Fn-_, _, Live0, Rest, Live) :- !,
     (   Insts = [Access|Rest],
@@ -1650,15 +1843,18 @@ checked_inst_rest(let(tmp(Q), f, check_function, _), Insts, Fn-_, _, _, Rest, Li
     (   Insts = [raw_call(_, tmp(Q), _)|Rest] -> true
     ;   fn_error(Fn, 'function check tmp(~w) is not followed by its raw call', [Q])
     ).
-checked_inst_rest(let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [Q1, P]), Insts, Fn-src(Sources, Once), _,
+checked_inst_rest(let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [Q1, P]), Insts, Fn-src(Sources, Once, _), _,
                   Live0, Rest, Live) :- !,
-    (   Q1 = tmp(N1), get_assoc(N1, Sources, check(P1, Lo1, Hi1, Al1)),
-        Lo1 =< Lo, Hi =< Hi1, Al1 mod Align =:= 0, (Lo - Lo1) mod Align =:= 0
-    ->  true
+    (   Q1 = tmp(N1), get_assoc(N1, Sources, check(P1, Lo1, Hi1, Al1)) -> true
     ;   fn_error(Fn, 'renew tmp(~w) of ~w: no single-definition heap check that covers it, or a setjmp', [Q, Q1])
     ),
-    (   same_pointer(Once, P, tmp(P1)) -> true
+    (   pointer_distance(Once, P, tmp(P1), D) -> true
     ;   fn_error(Fn, 'renew tmp(~w): ~w is not ~w\'s checked pointer tmp(~w)', [Q, P, Q1, P1])
+    ),
+    (   LoD is Lo + D, HiD is Hi + D,
+        Lo1 =< LoD, HiD =< Hi1, Al1 mod Align =:= 0, (LoD - Lo1) mod Align =:= 0
+    ->  true
+    ;   fn_error(Fn, 'renew tmp(~w) of ~w: no single-definition heap check that covers it, or a setjmp', [Q, Q1])
     ),
     (   Insts = [Access|Rest],
         proof_use(Access, Q, Lo, Hi, Rights, Align)
@@ -1667,7 +1863,7 @@ checked_inst_rest(let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [Q1, P]), Insts, 
         evidence_after(Access, Live2, Live)
     ;   fn_error(Fn, 'renew tmp(~w) is not followed by an access it covers', [Q])
     ).
-checked_inst_rest(let(tmp(Q), a, renew_if(Lo, Hi, Rights, Align), [P, G]), Insts, Fn-src(_, Once), _,
+checked_inst_rest(let(tmp(Q), a, renew_if(Lo, Hi, Rights, Align), [P, G]), Insts, Fn-src(_, Once, _), _,
                   Live0, Rest, Live) :- !,
     (   guard_covers(Once, P, G, Lo, Hi) -> true
     ;   fn_error(Fn, 'renew_if tmp(~w): no single-definition span test that covers it, or a setjmp', [Q])
@@ -1679,7 +1875,7 @@ checked_inst_rest(let(tmp(Q), a, renew_if(Lo, Hi, Rights, Align), [P, G]), Insts
         evidence_after(Access, Live2, Live)
     ;   fn_error(Fn, 'renew_if tmp(~w) is not followed by an access it covers', [Q])
     ).
-checked_inst_rest(let(tmp(Q), a, check_limit(Lo, Hi, Rights, Align), [P, U]), Insts, Fn-src(_, Once), _,
+checked_inst_rest(let(tmp(Q), a, check_limit(Lo, Hi, Rights, Align), [P, U]), Insts, Fn-src(_, Once, _), _,
                   Live0, Rest, Live) :- !,
     (   limit_covers(Once, P, U, Lo, Hi) -> true
     ;   fn_error(Fn, 'check_limit tmp(~w): no single-definition limit of its pointer\'s lower for its size, or a setjmp', [Q])
@@ -1737,6 +1933,7 @@ evidence_preserving(loc(_, _)).
 evidence_preserving(touch(_)).
 evidence_preserving(flight(_, _, _, _)).
 evidence_preserving(let(_, a, check(_, _, _, _), _)).
+evidence_preserving(let(_, a, check_ahead(_, _, _, _, _), _)).
 evidence_preserving(let(_, a, renew(_, _, _, _), _)).
 evidence_preserving(let(_, w, span_test(_, _), _)).
 evidence_preserving(let(_, a, renew_if(_, _, _, _), _)).
@@ -2203,6 +2400,7 @@ kind_result_ok(load, load(T), Mode, K) :- load_result_ok(T, Mode, K).
 kind_result_ok(atomic_load, _, filc, p).
 kind_result_ok(alloc, _, Mode, K) :- addr_class(Mode, K).
 kind_result_ok(check, _, filc, a).
+kind_result_ok(check_ahead, _, filc, a).
 kind_result_ok(renew, _, filc, a).
 kind_result_ok(span_test, _, filc, w).
 kind_result_ok(renew_if, _, filc, a).
@@ -2275,6 +2473,7 @@ kind_arg_classes(load, _, _, Mode, [A]) :- addr_class(Mode, A).
 kind_arg_classes(atomic_load, _, p, filc, [p]).
 kind_arg_classes(alloc, _, _, _, [l]).
 kind_arg_classes(check, _, _, filc, [p]).
+kind_arg_classes(check_ahead, _, _, filc, [p]).
 kind_arg_classes(renew, _, _, filc, [a, p]).
 kind_arg_classes(span_test, _, _, filc, [p]).
 kind_arg_classes(renew_if, _, _, filc, [p, w]).

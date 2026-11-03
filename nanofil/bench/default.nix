@@ -40,6 +40,7 @@ let
     O-hoist = "-O --checks=hoist";
     O-hoist-merged = "-O --checks=hoist --bounds=merged";
     O-hoist-or = "-O --checks=hoist --bounds=or";
+    O-schedule = "-O --checks=schedule";
   };
   chosen =
     if only == "" then

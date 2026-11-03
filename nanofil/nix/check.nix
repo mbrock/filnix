@@ -247,6 +247,20 @@ pkgs.runCommandCC "nanofil-check"
     done
     step "hoist -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
     unset NANOFIL_OPT NANOFIL_CHECKS
+    # Scheduled checks (docs/schedule.md), opt-in: renewal, then checks
+    # widened over the bytes every path ahead needs and renewed at a
+    # distance. difftest's oracle accepts an earlier trap only where the
+    # unchecked run traps; schedule-trap.sh compares traps with filcc -O2.
+    export NANOFIL_CHECKS=schedule
+    for opt in "" -O; do
+      export NANOFIL_OPT=$opt
+      step "schedule $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
+      step "schedule $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
+      step "schedule $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    done
+    step "schedule -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    unset NANOFIL_OPT NANOFIL_CHECKS
+    step "schedule trap text vs filcc -O2" tests/schedule-trap.sh
     step "renew, guard and hoist trap text" tests/renew-trap.sh
     step "hoist trap text, every shape" bash -c 'for b in merged or sign; do NANOFIL_BOUNDS=$b tests/renew-trap.sh || exit 1; done'
     # Branch selection (docs/perf.md) is the -O default, so the -O suites

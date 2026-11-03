@@ -647,9 +647,18 @@ fused_blocks(Fn, Params, Blocks0, Blocks, LiveBlocks) :-
     (   polls_every_cycle(Blocks0) -> true
     ;   throw_fn(Fn, 'a cycle without a poll edge; run pizlonate first')
     ),
-    single_proofs(Params, Blocks0, Single),
-    maplist(fused_block(Fn, Single), Blocks0, Blocks),
+    % A check_ahead (docs/schedule.md) emits as the check of its whole
+    % range: the early bytes are tested with the access's own.
+    maplist(ahead_as_check, Blocks0, Blocks1),
+    single_proofs(Params, Blocks1, Single),
+    maplist(fused_block(Fn, Single), Blocks1, Blocks),
     maplist(live_block, Blocks, LiveBlocks).
+
+ahead_as_check(block(L, Phis, Is0, J), block(L, Phis, Is, J)) :-
+    maplist(ahead_check, Is0, Is).
+
+ahead_check(let(Q, a, check_ahead(Lo, Hi, Rights, Align, _), Ps), let(Q, a, check(Lo, Hi, Rights, Align), Ps)) :- !.
+ahead_check(I, I).
 
 fused_block(Fn, Single, block(L, Phis, Insts0, Jump), block(L, Phis, Insts, Jump)) :-
     proofs_empty(Proofs),

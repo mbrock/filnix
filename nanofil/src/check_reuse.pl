@@ -39,7 +39,7 @@
     whose access now reads a proof of the same or a related operand, at
     an offset changed by exactly their distance.
 */
-:- module(check_reuse, [reuse_checks/2, reuse_refines/2, renew_checks/2, renew_refines/2,
+:- module(check_reuse, [reuse_checks/2, reuse_refines/2, renew_checks/2, renew_checks/3, renew_refines/2,
                         guard_checks/2, guard_refines/2, hoist_checks/2, hoist_refines/2]).
 
 :- use_module(library(lists)).
@@ -47,7 +47,7 @@
 :- use_module(library(ordsets)).
 :- use_module(library(pairs)).
 :- use_module(ir, [op_kind/2, pointer_memory_effects/2, temp_defs/3, single_definitions/3,
-                   guard_chain/3, same_pointer/3, lower_chain/3]).
+                   guard_chain/3, same_pointer/3, pointer_distance/4, lower_chain/3]).
 :- use_module(cfg, [inst_def/2, inst_uses/2, func_cfg/2, cfg_idoms/2, dominates/3,
                     natural_loops/3]).
 :- use_module(provenance, [code_items/2, context_records/3, context_index/2, with_context/3,
@@ -410,20 +410,29 @@ transparent_kind(copy, Args) :- \+ memberchk(global(_), Args).
 %  a check. Functions with a setjmp are unchanged. Every instruction keeps
 %  its index, so context sites are unchanged.
 
-renew_checks(module(Items0), module(Items)) :-
-    maplist(renewed_item, Items0, Items).
+renew_checks(M0, M) :- renew_checks(zero, M0, M).
 
-renewed_item(func(N, L, R, Ps, Bs0), func(N, L, R, Ps, Bs)) :- !,
+%! renew_checks(+Distance, +M0, -M) is det.
+%
+%  As renew_checks/2 when Distance is zero. When it is any (scheduled
+%  checks, docs/schedule.md), the earlier check may be of a pointer at
+%  any constant distance D from the same root, if it covers the
+%  replaced check's range shifted by D, and the earlier and replaced
+%  checks may be check_aheads, of their whole range.
+renew_checks(Distance, module(Items0), module(Items)) :-
+    maplist(renewed_item(Distance), Items0, Items).
+
+renewed_item(Distance, func(N, L, R, Ps, Bs0), func(N, L, R, Ps, Bs)) :- !,
     (   member(block(_, _, Is, _), Bs0), member(let(_, _, setjmp(_), _), Is)
     ->  Bs = Bs0
     ;   names_info(Ps, Bs0, Info),
         func_cfg(Bs0, Cfg), cfg_idoms(Cfg, Idom), Cfg = cfg(Entry, _, _, _),
         renew_sources(Info, Bs0, Entry, Idom, Sources),
         single_definitions(Ps, Bs0, Once),
-        maplist(renewed_block(Info-Once, Entry, Idom, Sources), Bs0, Bs1),
+        maplist(renewed_block(Distance, Info-Once, Entry, Idom, Sources), Bs0, Bs1),
         renew_selection(N, Bs0, Bs1, Bs)
     ).
-renewed_item(Item, Item).
+renewed_item(_, Item, Item).
 
 /* renew_selection(+Fn, +Blocks0, +Blocks1, -Blocks): for measurement,
    NANOFIL_RENEW_SITES=Fn:From-To keeps only Fn's renews numbered From to
@@ -454,15 +463,16 @@ selected_inst(From, To, I0, I1, I, K0, K) :-
 
 %! renew_sources(+Info, +Blocks, +Entry, +Idom, -Sources) is det.
 %
-%  Sources maps Root-K, a root and an offset from it, to s(Depth, L, I,
-%  Q1, check, P1) for each reachable heap check of a pointer at K from
-%  Root whose proof and pointer have one definition, sorted by dominator
+%  Sources maps Root to s(Depth, L, I, Q1, check, P1, K) for each
+%  reachable heap check (or check_ahead) of a pointer at K from Root
+%  whose proof and pointer have one definition, sorted by dominator
 %  depth and index.
 renew_sources(Info, Blocks, Entry, Idom, Sources) :-
-    findall((R-K)-s(Depth, L, I, Q1, check(Lo1, Hi1, Al1), P1),
+    findall(R-s(Depth, L, I, Q1, check(Lo1, Hi1, Al1), P1, K),
             ( member(block(L, _, Is, _), Blocks),
               dom_depth(Idom, Entry, L, Depth),
-              nth0(I, Is, let(tmp(Q1), a, check(Lo1, Hi1, _, Al1), [P1])),
+              nth0(I, Is, let(tmp(Q1), a, Op, [P1])),
+              renewal_check(Op, Lo1, Hi1, _, Al1),
               single_source(Info, Q1, P1),
               base_of(Info, P1, R, K) ),
             Pairs0),
@@ -481,29 +491,42 @@ dom_depth(_, Entry, Entry, 0) :- !.
 dom_depth(Idom, Entry, L, Depth) :-
     get_assoc(L, Idom, D), dom_depth(Idom, Entry, D, Depth0), Depth is Depth0 + 1.
 
-renewed_block(Info, Entry, Idom, Sources, block(L, Phis, Is0, J), block(L, Phis, Is, J)) :-
+% renewal_check(+Op, -Lo, -Hi, -Rights, -Align): Op checks [Lo, Hi).
+renewal_check(check(Lo, Hi, Rights, Align), Lo, Hi, Rights, Align).
+renewal_check(check_ahead(Lo, Hi, Rights, Align, _), Lo, Hi, Rights, Align).
+
+renewed_block(Distance, Info, Entry, Idom, Sources, block(L, Phis, Is0, J), block(L, Phis, Is, J)) :-
     (   dom_depth(Idom, Entry, L, _)
-    ->  renewed_insts(Is0, 0, L, Info, Idom, Sources, Is)
+    ->  renewed_insts(Is0, 0, L, Distance, Info, Idom, Sources, Is)
     ;   Is = Is0
     ).
 
-renewed_insts([], _, _, _, _, _, []).
-renewed_insts([Inst0|Is0], I, L, Info-Once, Idom, Sources, [Inst|Is]) :-
-    (   Inst0 = let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]),
+renewed_insts([], _, _, _, _, _, _, []).
+renewed_insts([Inst0|Is0], I, L, Distance, Info-Once, Idom, Sources, [Inst|Is]) :-
+    (   Inst0 = let(tmp(Q), a, Op, [P]),
+        renewal_check(Op, Lo, Hi, Rights, Align),
         Is0 = [Access|_], renewable_access(Access, Q),
         base_of(Info, P, R, K),
-        get_assoc(R-K, Sources, Ss),
-        member(s(_, L1, I1, Q1, check(Lo1, Hi1, Al1), P1), Ss),
+        get_assoc(R, Sources, Ss),
+        member(s(_, L1, I1, Q1, check(Lo1, Hi1, Al1), P1, K1), Ss),
+        renew_distance(Distance, K, K1, D),
         (   L1 == L -> I1 < I ; dominates(Idom, L1, L) ),
-        subsumes(Lo1, Hi1, write, Al1, Lo, Hi, Rights, Align),
+        LoD is Lo + D, HiD is Hi + D,
+        subsumes(Lo1, Hi1, write, Al1, LoD, HiD, Rights, Align),
         % The validator's identity rule (ir.pl), which bounds its walk:
         % the pass renews only what it accepts.
-        same_pointer(Once, P, P1)
+        renew_pointer(Distance, Once, P, P1, D)
     ->  Inst = let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [tmp(Q1), P])
     ;   Inst = Inst0
     ),
     I1n is I + 1,
-    renewed_insts(Is0, I1n, L, Info-Once, Idom, Sources, Is).
+    renewed_insts(Is0, I1n, L, Distance, Info-Once, Idom, Sources, Is).
+
+renew_distance(zero, K, K1, 0) :- K == K1.
+renew_distance(any, K, K1, D) :- D is K - K1.
+
+renew_pointer(zero, Once, P, P1, _) :- same_pointer(Once, P, P1).
+renew_pointer(any, Once, P, P1, D) :- pointer_distance(Once, P, P1, D1), D1 =:= D.
 
 % A renew's access: scalar or an ordinary pointer access; not a cas.
 renewable_access(Access, Q) :- scalar_access(Access, Q).

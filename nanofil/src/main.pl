@@ -99,13 +99,16 @@
     item 8). The default is full; NANOFIL_SIMPLIFY supplies the same
     choice.
 
-    `--checks=reference|reuse|renew|guard|hoist` independently selects
-    the reference checked IR, a check before every access, check reuse
-    after pizlonation, reuse followed by renewal of dominated checks,
-    both followed by range guards for checks in loops, or both followed
-    by hoisted bounds, a limit taken before a loop for its full checks
-    of a root defined before it (src/check_reuse.pl, docs/m7.md,
-    docs/bounds.md). The default is renew with `-O` and reference without;
+    `--checks=reference|reuse|renew|guard|hoist|schedule` independently
+    selects the reference checked IR, a check before every access, check
+    reuse after pizlonation, reuse followed by renewal of dominated
+    checks, both followed by range guards for checks in loops, both
+    followed by hoisted bounds, a limit taken before a loop for its full
+    checks of a root defined before it, or both followed by scheduled
+    checks, which check early the bytes every path ahead needs and renew
+    what they cover; a scheduled check may trap before stores that
+    precede the failing access (src/check_reuse.pl, src/schedule.pl,
+    docs/m7.md, docs/bounds.md, docs/schedule.md). The default is renew with `-O` and reference without;
     NANOFIL_CHECKS supplies the same choice. With any but reference, `cc`,
     `compile` and difftest's pizlonation comparison use that module.
 
@@ -148,6 +151,7 @@
 :- use_module(promote).
 :- use_module(pizlonate).
 :- use_module(check_reuse).
+:- use_module(schedule).
 :- use_module(library(lists)).
 :- use_module(library(format)).
 :- use_module(library(pio)).
@@ -213,8 +217,8 @@ memcpy_mode(M) :-
 checks_default(Checks) :-
     ( getenv('NANOFIL_CHECKS',C) -> checks_mode(C), Checks = C ; true ).
 checks_mode(C) :-
-    ( memberchk(C,[reference,reuse,renew,guard,hoist]) -> true
-    ; throw(nanofil_error('checks must be reference, reuse, renew, guard or hoist')) ).
+    ( memberchk(C,[reference,reuse,renew,guard,hoist,schedule]) -> true
+    ; throw(nanofil_error('checks must be reference, reuse, renew, guard, hoist or schedule')) ).
 % vectors_options(+Argv0, -Argv): Argv is Argv0 less its vector
 % options, the last of which sets NANOFIL_VECTORS (c_types
 % vector_type/4), for drivers that pass only options: --vectors and
@@ -594,6 +598,17 @@ checks_module(hoist, Checked0, Checked) :-
     ),
     once(valid_module(Checked)).
 
+% Scheduled checks (docs/schedule.md) run after renewal: a check widens
+% over the bytes every path ahead needs from its base, and the checks it
+% then covers are renewed at a distance. Only the result is validated.
+checks_module(schedule, Checked0, Checked) :-
+    renewed_module(Checked0, Checked1),
+    once(schedule_checks(Checked1, Checked)),
+    (   schedule_refines(Checked1, Checked) -> true
+    ;   throw(nanofil_error('scheduled checks changed more than checks'))
+    ),
+    once(valid_module(Checked)).
+
 renewed_module(Checked0, Checked) :-
     reused_module(Checked0, Checked1),
     once(renew_checks(Checked1, Checked)),
@@ -645,6 +660,10 @@ pizlonation_verdict(Original, Checked, Run, Verdict) :-
     (   (   ground(Outcome0) -> Outcome0 == Outcome
         ;   \+ \+ Outcome0 = Outcome
         )
+    ->  Verdict = ok
+    % A scheduled check's earlier trap (docs/schedule.md) is accepted
+    % exactly when the reference run traps too, whatever its reason.
+    ;   Outcome = trap(early(_)), nonvar(Outcome0), Outcome0 = trap(_)
     ->  Verdict = ok
     ;   call_text(Fn, Args, CallText),
         outcome_text(Outcome0, Text0),

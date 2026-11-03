@@ -322,8 +322,14 @@ phis_env([phi(tmp(D), K, Pairs)|Phis], Ctx, from(Pred), EntryEnv, Env0, Env) :-
 
 % result_outcome(+Result, +Jump, +Ctx, +Label, -Out, -S): the block's
 % Jump continues the run unless an instruction ended it.
+% A doomed run (a check_ahead's early failure, docs/schedule.md) must
+% reach its trap within the block it is in or past plain edges: a
+% return or a poll edge first means the early check was not anticipated.
 result_outcome(cont(Env, S0), Jump, Ctx, Label, Out, S) :-
-    jump_outcome(Jump, Ctx, Label, Env, S0, Out, S).
+    (   get_assoc(hidden(doomed), Env, Why), \+ Jump = goto(_), \+ Jump = branch(_, _, _)
+    ->  Out = unchecked(ahead(Why)), S = S0
+    ;   jump_outcome(Jump, Ctx, Label, Env, S0, Out, S)
+    ).
 result_outcome(stop(Out, S), _, _, _, Out, S).
 
 %! jump_outcome(+Jump, +Ctx, +From, +Env, +S0, -Out, -S) is nondet.
@@ -334,16 +340,14 @@ result_outcome(stop(Out, S), _, _, _, Out, S).
 %  edge (poll(L)) changes nothing the interpreter models: explicit free
 %  calls run, but there are no asynchronous frees.
 jump_outcome(goto(T), Ctx, From, Env, S0, Out, S) :-
-    edge_label(T, L),
-    block_outcome(Ctx, L, from(From), Env, S0, Out, S).
+    edge_outcome(T, Ctx, From, Env, S0, Out, S).
 jump_outcome(branch(V, T1, T2), Ctx, From, Env, S0, Out, S) :-
     value_x(w, V, Ctx, Env, X),
     (   integer(X) -> ( X =\= 0 -> T = T1 ; T = T2 )
     ;   X #\= 0, T = T1
     ;   X #= 0, T = T2
     ),
-    edge_label(T, L),
-    block_outcome(Ctx, L, from(From), Env, S0, Out, S).
+    edge_outcome(T, Ctx, From, Env, S0, Out, S).
 jump_outcome(ret(V), Ctx, _, Env, S, ret(X), S) :-
     Ctx = ctx(_, _, _, K, _, _),
     value_x(K, V, Ctx, Env, X).
@@ -353,6 +357,13 @@ jump_outcome(rets(Vs), Ctx, _, Env, S, rets(Xs), S) :-
 jump_outcome(ret, _, _, _, S, ret, S).
 jump_outcome(unreachable, _, _, _, S, unreachable, S).
 
+edge_outcome(T, Ctx, From, Env, S0, Out, S) :-
+    (   T = poll(_), get_assoc(hidden(doomed), Env, Why)
+    ->  Out = unchecked(ahead(Why)), S = S0
+    ;   edge_label(T, L),
+        block_outcome(Ctx, L, from(From), Env, S0, Out, S)
+    ).
+
 %% Instructions
 
 %! insts_result(+Insts, +Ctx, +Env0, +S0, -Result) is nondet.
@@ -361,8 +372,32 @@ jump_outcome(unreachable, _, _, _, S, unreachable, S).
 %  S) when one ended the run.
 insts_result([], _, Env, S, cont(Env, S)).
 insts_result([Inst|Insts], Ctx, Env0, S0, Result) :-
-    inst_result(Inst, Ctx, Env0, S0, Result0),
-    rest_result(Result0, Insts, Ctx, Result).
+    (   get_assoc(hidden(doomed), Env0, Why), \+ ahead_transparent(Inst)
+    ->  Result = stop(unchecked(ahead(Why)), S0)
+    ;   inst_result(Inst, Ctx, Env0, S0, Result0),
+        doomed_result(Inst, Ctx, Env0, Result0, Result1),
+        rest_result(Result1, Insts, Ctx, Result)
+    ).
+
+% doomed_result(+Inst, +Ctx, +Env0, +Result0, -Result): a check_ahead
+% whose early bytes fail (docs/schedule.md) yields its pointer and dooms
+% the run: from then on it must reach, through ahead_transparent/1
+% instructions only, an access whose reference check fails, which shows
+% here as a renew's failed span or a raw access's unchecked bounds (a
+% read of the widened proof itself). That is the program's trap, made
+% early(Why); anything else first is unchecked(ahead(Why)). A renew of
+% another object (alias) or a wrong limit stays a broken pass.
+doomed_result(let(tmp(D), a, check_ahead(_, _, _, _, _), [V]), Ctx, Env0,
+              stop(trap(early(Why)), S), cont(Env, S)) :- !,
+    value_x(p, V, Ctx, Env0, P),
+    put_assoc(D, Env0, P, Env1),
+    (   get_assoc(hidden(doomed), Env1, _) -> Env = Env1
+    ;   put_assoc(hidden(doomed), Env1, Why, Env)
+    ).
+doomed_result(_, _, Env0, stop(unchecked(W), S), stop(trap(early(Why)), S)) :-
+    \+ memberchk(W, [alias, limit]),
+    get_assoc(hidden(doomed), Env0, Why), !.
+doomed_result(_, _, _, Result, Result).
 
 % rest_result(+Result0, +Insts, +Ctx, -Result): Result is the result of
 % the instructions Insts after one whose result is Result0.
@@ -795,18 +830,35 @@ kind_res(check, check(Lo, Hi, Rights, Align), a, filc, [ptr(A, Cap)],
     Size is Hi - Lo,
     access_res(Mem, B, Cap, Size, Rights, Align, Res0),
     checked_res(Res0, ptr(A, Cap), Res).
-% A renew runs the check's whole access test on its proof's value
-% (docs/m7.md, round 4). Only a freed object or a write to a read-only
-% one is the program's trap, as the reference check's; any other failure
-% means the span the validator relied on was false: unchecked(span).
-kind_res(renew, renew(Lo, Hi, Rights, Align), a, filc, [ptr(A, Cap), PV],
+% A check_ahead (docs/schedule.md) is its check of [Lo, AHi), the
+% access's own requirement, with that check's trap; when that passes
+% and [Lo, Hi) does not, it traps early(Why): a trap the reference
+% program reaches later, which only the oracle's earlier-trap rule
+% accepts (main.pl's pizlonation_verdict/4).
+kind_res(check_ahead, check_ahead(Lo, Hi, Rights, Align, AHi), a, filc, [ptr(A, Cap)],
          s(Mem, Fuel), Res, s(Mem, Fuel)) :-
-    PV == ptr(A, Cap), !,
+    raw_address(A, Lo, B),
+    Need is AHi - Lo,
+    access_res(Mem, B, Cap, Need, Rights, Align, Res0),
+    (   Res0 = trap(Why) -> Res = trap(Why)
+    ;   Size is Hi - Lo,
+        access_res(Mem, B, Cap, Size, Rights, Align, Res1),
+        (   Res1 = trap(Why) -> Res = trap(early(Why)) ; Res = val(ptr(A, Cap)) )
+    ).
+% A renew runs the check's whole access test on its own pointer P
+% (docs/m7.md, round 4), which has the capability of Q1's: P may lie at
+% a distance from Q1's pointer (docs/schedule.md). Only a freed object
+% or a write to a read-only one is the program's trap, as the reference
+% check's; any other failure means the span the validator relied on was
+% false: unchecked(span).
+kind_res(renew, renew(Lo, Hi, Rights, Align), a, filc, [ptr(_, Cap1), ptr(A, Cap)],
+         s(Mem, Fuel), Res, s(Mem, Fuel)) :-
+    Cap1 == Cap, !,
     raw_address(A, Lo, B),
     Size is Hi - Lo,
     access_res(Mem, B, Cap, Size, Rights, Align, Res0),
     renew_res(Res0, ptr(A, Cap), Mem, Res).
-% P is not the pointer Q1's check saw (same_pointer/3 was wrong).
+% P is not of the object Q1's check saw (pointer_distance/4 was wrong).
 kind_res(renew, renew(_, _, _, _), a, filc, [_, _], S, unchecked(alias), S).
 % A span test (docs/m7.md, round 5) compares the object's current
 % bounds with the span, addresses modulo 2^64 as native code forms them;

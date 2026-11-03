@@ -507,6 +507,7 @@ After pizlonation, `--checks` selects how much of that naivety to undo
 | `renew` | reuse, then replaces a check dominated by an earlier check of the same pointer with a `renew` that tests only the free and read-only flags | with `-O` |
 | `guard` | renew, then puts a `span_test` before a loop and turns its checks into `renew_if` | |
 | `hoist` | renew, then puts a `limit` before a loop and turns its full checks of a root defined before it into `check_limit` ([bounds.md](bounds.md)) | |
+| `schedule` | renew, then widens a check over the bytes every path ahead needs from its base (`check_ahead`) and renews what it covers at a distance; may trap earlier, as filcc -O2 does ([schedule.md](schedule.md)) | |
 
 Each pass's result must pass its `*_refines/2` check, which confirms
 that only checks changed. Then `valid_module/1` checks the evidence

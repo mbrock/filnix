@@ -22,6 +22,7 @@
 :- use_module('../src/opt').
 :- use_module('../src/pizlonate').
 :- use_module('../src/check_reuse').
+:- use_module('../src/schedule').
 :- use_module('../src/c_lex').
 :- use_module('../src/c_parse').
 :- use_module('../src/c_lower').
@@ -3150,21 +3151,28 @@ test(renew_pass) :-
                             let(tmp(r), a, renew(0, 8, read, 1), [tmp(qb), tmp(a)]),
                             let(tmp(z), l, raw_load(l, 0), [tmp(r)])], ret(tmp(z)))], Wrong),
     renew_rejected(Wrong), \+ renew_refines(Two, Wrong),
-    % Wrong distance: a check of a+8 renewed from a's proof. The
-    % validator refuses it (a+8 is not a's address), and so does
-    % renew_refines.
+    % Distance: a check of a+8 renewed from a's proof of [0, 16). The
+    % validator accepts it (docs/schedule.md: a+8's [0, 8) is a's
+    % [8, 16)); renewal at distance 0 neither makes nor accepts it. From
+    % a+12 the shifted range [12, 20) leaves a's proof: refused.
     F8 = flight(tmp(a8), add, [address(tmp(a)), const(8)], lower(tmp(a))),
+    F12 = flight(tmp(a12), add, [address(tmp(a)), const(12)], lower(tmp(a))),
     Q16 = [let(tmp(q), a, check(0, 16, read, 1), [tmp(a)]),
            let(tmp(x), l, raw_load(l, 0), [tmp(q)]),
-           call(void, global(free), [arg(p, tmp(b))]), F8],
+           call(void, global(free), [arg(p, tmp(b))]), F8, F12],
     append(Q16, [let(tmp(k), a, check(0, 8, read, 1), [tmp(a8)]),
                  let(tmp(y), l, raw_load(l, 0), [tmp(k)])], DIs),
     renew_fn([block(s, [], DIs, ret(tmp(y)))], Dist),
     append(Q16, [let(tmp(k), a, renew(0, 8, read, 1), [tmp(q), tmp(a8)]),
                  let(tmp(y), l, raw_load(l, 0), [tmp(k)])], DwIs),
-    renew_fn([block(s, [], DwIs, ret(tmp(y)))], DistWrong),
-    valid_module(Dist), renew_rejected(DistWrong), \+ renew_refines(Dist, DistWrong),
+    renew_fn([block(s, [], DwIs, ret(tmp(y)))], DistRenew),
+    append(Q16, [let(tmp(k), a, renew(0, 8, read, 1), [tmp(q), tmp(a12)]),
+                 let(tmp(y), l, raw_load(l, 0), [tmp(k)])], DfIs),
+    renew_fn([block(s, [], DfIs, ret(tmp(y)))], DistWrong),
+    valid_module(Dist), valid_module(DistRenew), \+ renew_refines(Dist, DistRenew),
+    renew_rejected(DistWrong),
     renew_checks(Dist, Dist1), Dist1 == Dist,
+    renew_checks(any, Dist, Dist2), Dist2 == DistRenew,
     % A chain of +1 flights N links long against a+N: the pass renews only
     % what the validator's bounded walk accepts (65 links is beyond it).
     Chain = [N, Mc]>>( numlist(1, N, Ks),
@@ -3199,6 +3207,248 @@ test(renew_pass) :-
               block(u, [], [flight(tmp(a), copy, [address(tmp(b))], lower(tmp(b)))], goto(t))],
              TwoDefs),
     catch(( filc_module_asm(TwoDefs, _), fail ), nanofil_error(_), true).
+
+% Scheduled checks (docs/schedule.md): a check_ahead checks early the
+% bytes [AHi, Hi) that every path from its access needs through the same
+% base, before any call, allocation, getter, pointer store, division,
+% poll edge or edge back. The validator (ahead_justified/3) recomputes
+% that need on its own; these are its cases, each against a hand-derived
+% expectation. sched_fn/2 is f(a, b, c) of renew_fn/2; a8 is a + 8.
+sched_fn(Blocks, M) :- renew_fn(Blocks, M).
+
+sched_rejected(M) :-
+    catch(( valid_module(M), fail ), nanofil_error(Msg), true),
+    once(sub_atom(Msg, _, _, _, check_ahead)).
+
+sched_ahead(Hi, AHi, [let(tmp(q), a, check_ahead(0, Hi, read, 1, AHi), [tmp(a)]),
+                      let(tmp(x), l, raw_load(l, 0), [tmp(q)])]).
+% The access that needs a's bytes [8, 16): a check of a + 8 and its read.
+sched_need([flight(tmp(a8), add, [address(tmp(a)), const(8)], lower(tmp(a))),
+            let(tmp(k), a, check(0, 8, read, 1), [tmp(a8)]),
+            let(tmp(y), l, raw_load(l, 0), [tmp(k)])]).
+
+test(schedule_validation) :-
+    sched_ahead(16, 8, A16), sched_ahead(17, 8, A17), sched_need(Need),
+    Ret = ret(tmp(x)),
+    % Straight line: [8, 16) is needed after the access.
+    append(A16, Need, Line), sched_fn([block(s, [], Line, Ret)], Ok),
+    valid_module(Ok),
+    % One byte more than the later access needs.
+    append(A17, Need, Line17), sched_fn([block(s, [], Line17, Ret)], Over),
+    sched_rejected(Over),
+    % Both arms of a diamond need it; then only one does.
+    NeedU = [flight(tmp(a8u), add, [address(tmp(a)), const(8)], lower(tmp(a))),
+             let(tmp(ku), a, check(0, 8, read, 1), [tmp(a8u)]),
+             let(tmp(yu), l, raw_load(l, 0), [tmp(ku)])],
+    sched_fn([block(s, [], A16, branch(tmp(c), t, u)),
+              block(t, [], Need, goto(j)),
+              block(u, [], NeedU, goto(j)),
+              block(j, [], [], Ret)], Both),
+    valid_module(Both),
+    sched_fn([block(s, [], A16, branch(tmp(c), t, j)),
+              block(t, [], Need, goto(j)),
+              block(j, [], [], Ret)], One),
+    sched_rejected(One),
+    % The same edge twice (branch(c, t, t)) is still every path.
+    sched_fn([block(s, [], A16, branch(tmp(c), t, t)),
+              block(t, [], Need, Ret)], Twice),
+    valid_module(Twice),
+    % A poll edge to the block that needs it: a signal handler may run.
+    sched_fn([block(s, [], A16, goto(poll(t))), block(t, [], Need, Ret)], Poll),
+    sched_rejected(Poll),
+    % An edge to an earlier block carries nothing: t is before s.
+    sched_fn([block(e, [], [], goto(s)),
+              block(t, [], Need, Ret),
+              block(s, [], A16, goto(poll(t)))], Back),
+    sched_rejected(Back),
+    % A call, an allocation, a getter, a division and a pointer store
+    % in between each end the need.
+    Call = call(void, global(free), [arg(p, tmp(b))]),
+    Alloc = let(tmp(o), p, alloc(8), [const(8)]),
+    Get = let(tmp(o), p, copy, [global(g)]),
+    Div = let(tmp(d), w, div, [tmp(c), const(3)]),
+    PStore = [let(tmp(qb), a, check(0, 8, write, 8), [tmp(b)]),
+              raw_store_pointer(0, tmp(a), tmp(qb),
+                                [aux_ensure, lower_barrier, rooted_reload, lower_write, address_write])],
+    forall(member(Mid, [[Call], [Alloc], [Get], [Div], PStore]),
+           ( append([A16, Mid, Need], Is),
+             M0 = module([data(g, local, 8, [item(l, const(0))])|Fs]),
+             sched_fn([block(s, [], Is, Ret)], module(Fs)),
+             sched_rejected(M0) )),
+    % A scalar store through another pointer may be crossed: a store
+    % does not change an object's bounds, and the trap ends the program.
+    Store = [let(tmp(qb), a, check(0, 4, write, 1), [tmp(b)]),
+             raw_store(w, 0, const(7), tmp(qb))],
+    append([A16, Store, Need], StIs), sched_fn([block(s, [], StIs, Ret)], St),
+    valid_module(St),
+    % Another base's access does not need a's bytes.
+    OtherNeed = [flight(tmp(b8), add, [address(tmp(b)), const(8)], lower(tmp(b))),
+                 let(tmp(k), a, check(0, 8, read, 1), [tmp(b8)]),
+                 let(tmp(y), l, raw_load(l, 0), [tmp(k)])],
+    append(A16, OtherNeed, OIs), sched_fn([block(s, [], OIs, Ret)], Other),
+    sched_rejected(Other),
+    % A phi that redefines the base ends its need: the access in t is
+    % through a2, a new name, so it does not count for a.
+    sched_fn([block(s, [], A16, goto(t)),
+              block(t, [phi(tmp(a2), p, [s-tmp(a)])],
+                    [flight(tmp(a8), add, [address(tmp(a2)), const(8)], lower(tmp(a2))),
+                     let(tmp(k), a, check(0, 8, read, 1), [tmp(a8)]),
+                     let(tmp(y), l, raw_load(l, 0), [tmp(k)])], Ret)], Phi),
+    sched_rejected(Phi),
+    % A later read of the widened proof itself at offset 8 needs the
+    % bytes too: its own check in the reference program reads them.
+    append(A16, [let(tmp(y), l, raw_load(l, 8), [tmp(q)])], Self),
+    sched_fn([block(s, [], Self, Ret)], SelfM), valid_module(SelfM),
+    % Its own access must lie in [Lo, AHi).
+    sched_fn([block(s, [], [let(tmp(q), a, check_ahead(0, 16, read, 1, 4), [tmp(a)]),
+                            let(tmp(x), l, raw_load(l, 0), [tmp(q)])|Need], Ret)], Own),
+    sched_rejected(Own),
+    % Its own access runs after the early trap point, so it must be
+    % transparent: not a pointer store (ensure-aux may exit) or a cas.
+    sched_fn([block(s, [], [let(tmp(q), a, check_ahead(0, 16, write, 8, 8), [tmp(a)]),
+                            raw_store_pointer(0, tmp(b), tmp(q),
+                                              [aux_ensure, lower_barrier, rooted_reload, lower_write, address_write])|Need], ret(tmp(y)))], OwnP),
+    sched_rejected(OwnP),
+    % Offsets are exact only modulo 2^64: a + (2^63-4) + (2^63-4) is
+    % a - 8, which needs nothing past a + 8, though its integer offset
+    % is 2^64 - 8.
+    Big is (1 << 63) - 4,
+    Wrap = [flight(tmp(w1), add, [address(tmp(a)), const(Big)], lower(tmp(a))),
+            flight(tmp(w2), add, [address(tmp(w1)), const(Big)], lower(tmp(w1))),
+            let(tmp(kw), a, check(0, 8, read, 1), [tmp(w2)]),
+            let(tmp(yw), l, raw_load(l, 0), [tmp(kw)])],
+    append(A16, Wrap, WIs), sched_fn([block(s, [], WIs, Ret)], WrapM),
+    sched_rejected(WrapM),
+    % A setjmp anywhere in the function.
+    append(Line, [let(tmp(sj), w, setjmp(setjmp), [tmp(b), const(0)])], SjIs),
+    sched_fn([block(s, [], SjIs, Ret)], Sj), sched_rejected(Sj),
+    % A wide proof's later reuse is covered by the wide range.
+    valid_op(check_ahead(0, 16, read, 1, 8)),
+    \+ valid_op(check_ahead(0, 16, read, 1, 16)),
+    \+ valid_op(check_ahead(0, 16, read, 1, 0)).
+
+% The interpreter: a check_ahead traps as its own check when its
+% access's range fails (no earlier than the reference), early(Why) when
+% only its early bytes fail, and otherwise yields the pointer.
+test(schedule_semantics) :-
+    % (The interpreter's objects are whole 16-byte granules.)
+    Run = [Size, Out]>>(
+        reuse_l_fn([let(tmp(p), p, alloc(8), [const(Size)]),
+                    let(tmp(q), a, check_ahead(0, 32, read, 1, 8), [tmp(p)]),
+                    let(tmp(x), l, raw_load(l, 0), [tmp(q)])], M),
+        once(run(M, f, [], 10, O)), O == Out ),
+    call(Run, 32, ret(0)),
+    % An early failure dooms the run: it must reach the access that
+    % needs those bytes (here a renew at a+16 whose span fails) before
+    % any effect; a return, a call or a poll edge first is unchecked.
+    call(Run, 16, unchecked(ahead(out_of_bounds))),
+    Ahead = [Size, Mid, Out]>>(
+        append([[let(tmp(p), p, alloc(8), [const(Size)]),
+                 let(tmp(q), a, check_ahead(0, 24, read, 1, 8), [tmp(p)]),
+                 let(tmp(x), l, raw_load(l, 0), [tmp(q)]),
+                 raw_store(l, 0, const(1), tmp(q))],
+                Mid,
+                [flight(tmp(p16), add, [address(tmp(p)), const(16)], lower(tmp(p))),
+                 let(tmp(r), a, renew(0, 8, read, 1), [tmp(q), tmp(p16)]),
+                 let(tmp(y), l, raw_load(l, 0), [tmp(r)])]], Is),
+        reuse_l_fn(Is, M),
+        once(run(M, f, [], 10, O)), O == Out ),
+    call(Ahead, 32, [], ret(0)),
+    call(Ahead, 16, [], trap(early(out_of_bounds))),
+    call(Ahead, 16, [let(tmp(z), p, alloc(8), [const(8)])], unchecked(ahead(out_of_bounds))),
+    % A read of the widened proof itself past the end is the access.
+    reuse_l_fn([let(tmp(p), p, alloc(8), [const(16)]),
+                let(tmp(q), a, check_ahead(0, 24, read, 1, 8), [tmp(p)]),
+                let(tmp(x), l, raw_load(l, 0), [tmp(q)]),
+                let(tmp(y), l, raw_load(l, 16), [tmp(q)])], SelfM),
+    once(run(SelfM, f, [], 10, trap(early(out_of_bounds)))),
+    reuse_l_fn([let(tmp(p), p, alloc(8), [const(32)]),
+                call(void, global(free), [arg(p, tmp(p))]),
+                let(tmp(q), a, check_ahead(0, 32, read, 1, 8), [tmp(p)]),
+                let(tmp(x), l, raw_load(l, 0), [tmp(q)])], Freed),
+    once(run(Freed, f, [], 10, trap(out_of_bounds))),
+    % Renewal at a distance: a+8's renew from a's proof of [0, 16) runs
+    % the access test on a+8 itself, and yields its value.
+    reuse_l_fn([let(tmp(p), p, alloc(8), [const(16)]),
+                let(tmp(q), a, check(0, 16, write, 1), [tmp(p)]),
+                raw_store(l, 8, const(5), tmp(q)),
+                flight(tmp(p8), add, [address(tmp(p)), const(8)], lower(tmp(p))),
+                call(void, global(free), [arg(p, tmp(p))]),
+                let(tmp(r), a, renew(0, 8, read, 1), [tmp(q), tmp(p8)]),
+                let(tmp(x), l, raw_load(l, 0), [tmp(r)])], DistFree),
+    valid_module(DistFree), once(run(DistFree, f, [], 10, trap(out_of_bounds))),
+    reuse_l_fn([let(tmp(p), p, alloc(8), [const(16)]),
+                let(tmp(q), a, check(0, 16, write, 1), [tmp(p)]),
+                raw_store(l, 8, const(5), tmp(q)),
+                flight(tmp(p8), add, [address(tmp(p)), const(8)], lower(tmp(p))),
+                let(tmp(r), a, renew(0, 8, read, 1), [tmp(q), tmp(p8)]),
+                let(tmp(x), l, raw_load(l, 0), [tmp(r)])], Dist),
+    valid_module(Dist), once(run(Dist, f, [], 10, ret(5))).
+
+% sched_pass_fn(+Size, -M): f(c) reads a's field 0, then field 16 on
+% either arm, then frees another object on one, and reads field 16
+% again after the join, a being Size bytes.
+sched_pass_fn(Size, module([func(f, local, l, [param(w, tmp(c))], [
+    block(s, [], [
+        let(tmp(a), p, alloc(8), [const(Size)]),
+        let(tmp(b), p, alloc(8), [const(8)]),
+        let(tmp(q0), a, check(0, 8, read, 1), [tmp(a)]),
+        let(tmp(x0), l, raw_load(l, 0), [tmp(q0)])
+    ], branch(tmp(c), t, u)),
+    block(t, [], [
+        flight(tmp(a8), add, [address(tmp(a)), const(16)], lower(tmp(a))),
+        let(tmp(k1), a, check(0, 8, read, 1), [tmp(a8)]),
+        let(tmp(y1), l, raw_load(l, 0), [tmp(k1)])
+    ], goto(j)),
+    block(u, [], [
+        flight(tmp(a8u), add, [address(tmp(a)), const(16)], lower(tmp(a))),
+        let(tmp(k2), a, check(0, 8, read, 1), [tmp(a8u)]),
+        let(tmp(y2), l, raw_load(l, 0), [tmp(k2)]),
+        call(void, global(free), [arg(p, tmp(b))])
+    ], goto(j)),
+    block(j, [], [
+        flight(tmp(a8j), add, [address(tmp(a)), const(16)], lower(tmp(a))),
+        let(tmp(k3), a, check(0, 8, read, 1), [tmp(a8j)]),
+        let(tmp(x), l, raw_load(l, 0), [tmp(k3)])
+    ], ret(tmp(x)))])])).
+
+% The pass widens q0 over field 16, which both arms read before any
+% call, and renews the three field reads from it at distance 16 (the
+% join's after a call: bounds survive it, and the renew tests the free
+% flag). schedule_refines/2 accepts that and refuses a check moved,
+% narrowed or replaced by a check_ahead of another access range.
+test(schedule_pass) :-
+    sched_pass_fn(32, M0), valid_module(M0),
+    schedule_checks(M0, M), schedule_refines(M0, M), valid_module(M),
+    M = module([func(_, _, _, _, Bs)]),
+    findall(Op-Args, ( member(block(_, _, Is, _), Bs), member(let(_, a, Op, Args), Is) ), Ops),
+    Ops == [check_ahead(0, 24, read, 1, 8)-[tmp(a)],
+            renew(0, 8, read, 1)-[tmp(q0), tmp(a8)],
+            renew(0, 8, read, 1)-[tmp(q0), tmp(a8u)],
+            renew(0, 8, read, 1)-[tmp(q0), tmp(a8j)]],
+    % The same outcomes, but an object too short for field 8 traps at
+    % field 0 (early) where the reference traps at field 8.
+    forall(member(Size-C-Out0-Out, [32-1-ret(0)-ret(0), 32-0-ret(0)-ret(0),
+                                    16-1-trap(out_of_bounds)-trap(early(out_of_bounds)),
+                                    16-0-trap(out_of_bounds)-trap(early(out_of_bounds))]),
+           ( sched_pass_fn(Size, R0), schedule_checks(R0, R),
+             once(run(R0, f, [C], 20, O0)), O0 == Out0,
+             once(run(R, f, [C], 20, O)), O == Out )),
+    % Refused: the widened check's own range narrowed, a check deleted,
+    % a renew of another pointer.
+    Swap = [Old, New, MIn, MOut]>>(
+        MIn = module([func(N, L, R1, Ps, Bs1)]),
+        maplist([block(Lb, Ph, Is1, J), block(Lb, Ph, Is2, J)]>>
+                    maplist([I1, I2]>>( I1 == Old -> I2 = New ; I2 = I1 ), Is1, Is2), Bs1, Bs2),
+        MOut = module([func(N, L, R1, Ps, Bs2)]) ),
+    call(Swap, let(tmp(q0), a, check_ahead(0, 24, read, 1, 8), [tmp(a)]),
+               let(tmp(q0), a, check_ahead(0, 24, read, 1, 4), [tmp(a)]), M, Narrow),
+    \+ schedule_refines(M0, Narrow),
+    call(Swap, let(tmp(k3), a, renew(0, 8, read, 1), [tmp(q0), tmp(a8j)]),
+               let(tmp(k3), a, renew(0, 8, read, 1), [tmp(q0), tmp(a8)]), M, OtherP),
+    \+ schedule_refines(M0, OtherP),
+    M = module([func(N, L, R1, Ps, [Bs_s, Bs_t, Bs_u, block(j, [], [_, _, Xj], Jj)])]),
+    \+ schedule_refines(M0, module([func(N, L, R1, Ps, [Bs_s, Bs_t, Bs_u, block(j, [], [Xj], Jj)])])).
 
 % Range guards (docs/m7.md, round 5, slice A): a span test before a
 % loop proves the bounds of every access through one base at offsets in
