@@ -1443,11 +1443,13 @@ checked_insts([Inst|Insts], Fn-Sources, Mode, Live0, LiveOut) :-
    ahead_justified/3 accepts, empty with a setjmp too. */
 stage_sources(Params, Blocks, src(Renews, Once, Ahead)) :-
     empty_assoc(E),
-    (   \+ ( member(block(_, _, Is, _), Blocks),
+    (   member(block(_, _, Is, _), Blocks), member(let(_, _, setjmp(_), _), Is)
+    ->  Renews = E, Once = E, Ahead = E
+    ;   \+ ( member(block(_, _, Is, _), Blocks),
               member(let(_, _, Op, _), Is), staged_op(Op) )
-    ->  Renews = E, Once = E, Ahead = E
-    ;   member(block(_, _, Is, _), Blocks), member(let(_, _, setjmp(_), _), Is)
-    ->  Renews = E, Once = E, Ahead = E
+    ->  Renews = E, Ahead = E,
+        % Hull coverage (docs/forward.md) reads Once for any function.
+        single_definitions(Params, Blocks, Once)
     ;   single_definitions(Params, Blocks, Once),
         ahead_justified(Blocks, Once, Ahead),
         findall(Q1-check(P1, Lo1, Hi1, Al1),
@@ -1948,13 +1950,16 @@ checked_inst_rest(let(tmp(Q), a, check_limit(Lo, Hi, Rights, Align), [P, U]), In
         evidence_after(Access, Live2, Live)
     ;   fn_error(Fn, 'check_limit tmp(~w) is not followed by an access it covers', [Q])
     ).
-checked_inst_rest(Inst, Insts, Fn-_, Mode, Live0, Insts, Live) :-
+checked_inst_rest(Inst, Insts, Fn-Sources, Mode, Live0, Insts, Live) :-
     evidence_after(Inst, Live0, Live),
     (   raw_access(Inst, Q, X, _, _)
-    ->  (   X \== p, X \= cas(_),
+    ->  (   reusing_access(Inst, X),
             Live0 = ev(_, _, ByQ),
-            get_assoc(Q, ByQ, live(Q, _, Lo, Hi, Rights, Align)),
-            covered_access(Inst, Q, Lo, Hi, Rights, Align)
+            get_assoc(Q, ByQ, live(Q, P, Lo, Hi, Rights, Align)),
+            (   covered_access(Inst, Q, Lo, Hi, Rights, Align) -> true
+            ;   Sources = src(_, Once, _),
+                hull_covered(Inst, Q, P, Lo, Align, Live0, Once)
+            )
         ->  true
         ;   fn_error(Fn, 'a raw access at tmp(~w) that no live check covers', [Q])
         )
@@ -1968,6 +1973,42 @@ checked_inst_rest(Inst, Insts, Fn-_, Mode, Live0, Insts, Live) :-
     ->  fn_error(Fn, 'implicit pointer operation in checked IR; use flight', [])
     ;   true
     ).
+
+% reusing_access(+Inst, +X): Inst, a raw access of type or width X, may
+% read a live proof that is not its own check's: a scalar load or store,
+% or a pointer load with the heap load effects, which read aux and box
+% words only (docs/forward.md). A pointer store's ensure-aux may exit,
+% and a cas is atomic; both keep their own check.
+reusing_access(_, X) :- X \== p, X \= cas(_), !.
+reusing_access(let(_, p, raw_load_pointer(_, Es), _), p) :- pointer_memory_effects(load, Es).
+
+/* hull_covered(+Access, +Q, +P, +Lo, +Align, +Live, +Once): Access at
+   proof Q of P, whose live fact's lower end is Lo at alignment Align,
+   lies within the hull of the live facts of P's object
+   (docs/forward.md). Each live fact live(Q1, P1, Lo1, Hi1, R1, _) with
+   P1 at an exact distance D from P through one single-definition base
+   (pointer_distance/4) shows that P+[Lo1+D, Hi1+D) is inside the
+   object; an object is one interval, so every byte between the least
+   such lower end and the greatest upper end is too. All the facts are
+   live, so the object has not been freed since any of their checks; a
+   write needs one of them with write rights (read-only is the
+   object's). Alignment is Q's own, as covered_access/6 has it. Every
+   offset and span end counts only well inside the signed range
+   (near_offset/1): then each passed fact lies in an object far smaller
+   than 2^62, and the integer hull is the true address interval. */
+hull_covered(Access, Q, P, Lo, Align, ev(Facts, _, _), Once) :-
+    raw_access(Access, Q, X, Off, Need),
+    access_size_align(X, Size, AccessAlign), !,
+    Align mod AccessAlign =:= 0, (Off - Lo) mod AccessAlign =:= 0,
+    End is Off + Size, near_offset(Off), near_offset(End),
+    findall(L1-H1-R1,
+            ( member(live(_, P1, Lo1, Hi1, R1, _), Facts),
+              pointer_distance(Once, P1, P, D), near_offset(D),
+              L1 is Lo1 + D, H1 is Hi1 + D, near_offset(L1), near_offset(H1) ),
+            Spans),
+    once(( member(L1-_-_, Spans), L1 =< Off )),
+    once(( member(_-H1-_, Spans), H1 >= End )),
+    (   Need == read -> true ; once(member(_-_-write, Spans)) ).
 
 % evidence_after(+Inst, +Live0, -Live): Live are the proofs of Live0
 % whose evidence still holds after Inst (checked_insts/5).

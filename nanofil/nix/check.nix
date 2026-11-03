@@ -293,7 +293,20 @@ pkgs.runCommandCC "nanofil-check"
     step "half -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
     unset NANOFIL_OPT NANOFIL_CHECKS
     step "schedule trap text vs filcc -O2" tests/schedule-trap.sh
-    step "renew, guard, hoist and half trap text" tests/renew-trap.sh
+    # Forward facts (docs/forward.md), opt-in: reuse that also serves
+    # heap pointer loads and covers a check by the hull of its object's
+    # live facts, then renewal. No trap moves; renew-trap.sh compares
+    # forward-*.c's trap text with reference.
+    export NANOFIL_CHECKS=forward
+    for opt in "" -O; do
+      export NANOFIL_OPT=$opt
+      step "forward $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
+      step "forward $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
+      step "forward $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    done
+    step "forward -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    unset NANOFIL_OPT NANOFIL_CHECKS
+    step "renew, guard, hoist, half and forward trap text" tests/renew-trap.sh
     step "hoist trap text, every shape" bash -c 'for b in merged or sign; do NANOFIL_BOUNDS=$b tests/renew-trap.sh || exit 1; done'
     # Branch selection (docs/perf.md) is the -O default, so the -O suites
     # above run it; here it runs without -O, and -O runs the reference

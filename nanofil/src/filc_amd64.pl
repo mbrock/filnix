@@ -738,7 +738,9 @@ fused_insts([Inst0|Insts0], Fn, Single, Proofs0, [Inst|Insts]) :-
     ;   Proofs1 = Proofs
     ),
     (   ( Inst0 = let(_, _, raw_load(_, Off), [tmp(Q1)])
-        ; Inst0 = raw_store(_, Off, _, tmp(Q1)) ),
+        ; Inst0 = raw_store(_, Off, _, tmp(Q1))
+        % A pointer load reads a reused proof too (docs/forward.md).
+        ; Inst0 = let(_, p, raw_load_pointer(Off, Es), [tmp(Q1)]), pointer_memory_effects(load, Es) ),
         (   Proofs = pr(ByQ, _), get_assoc(Q1, ByQ, P1) -> true ; get_assoc(Q1, Single, P1) )
     ->  (   integer(Off), Off >= -2147483648, Off =< 2147483647,
             proven_access(Inst0, Q1, P1, Access)
@@ -918,6 +920,7 @@ access_pointer(Access, P) :- access_pointer(Access, P, _).
 % zero_offset(+Access, -Access0): Access at offset 0.
 zero_offset(let(D, K, raw_load(T, _), Ps), let(D, K, raw_load(T, 0), Ps)).
 zero_offset(raw_store(W, _, V, P), raw_store(W, 0, V, P)).
+zero_offset(let(D, p, raw_load_pointer(_, Es), Ps), let(D, p, raw_load_pointer(0, Es), Ps)).
 
 unchecked_access(let(_, _, load(_), _)).
 unchecked_access(store(_, _, _)).
@@ -1723,6 +1726,13 @@ inst(fused(limited(U, check_limit(_, Size, Rights, Align)), Access), Index, Bloc
     limit_check(Shape, Write, Fail),
     align_check(Align, Fail),
     raw_access(Access, Index, Block, Ctx).
+% A reused pointer load needs P's lower in %rcx too, for its aux read.
+inst(reused(Access), Index, Block, Ctx) -->
+    { Access = let(_, p, raw_load_pointer(_, _), _), !,
+      access_pointer(Access, P, Off), zero_offset(Access, Access0) },
+    flight_load(P, Ctx),
+    ( { Off =:= 0 } -> [] ; [ins(add, q, [imm(Off), reg(rax)])] ),
+    raw_access(Access0, Index, Block, Ctx).
 inst(reused(Access), Index, Block, Ctx) -->
     { access_pointer(Access, P, Off), ctx_fn(Ctx, Fn), zero_offset(Access, Access0) },
     load(P, l, a, Fn),

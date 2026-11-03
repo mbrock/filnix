@@ -39,14 +39,14 @@
     whose access now reads a proof of the same or a related operand, at
     an offset changed by exactly their distance.
 */
-:- module(check_reuse, [reuse_checks/2, reuse_refines/2, renew_checks/2, renew_checks/3, renew_refines/2,
+:- module(check_reuse, [reuse_checks/2, reuse_checks/3, reuse_refines/2, reuse_refines/3, renew_checks/2, renew_checks/3, renew_refines/2, renew_refines/3,
                         guard_checks/2, guard_refines/2, hoist_checks/2, hoist_refines/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
 :- use_module(library(ordsets)).
 :- use_module(library(pairs)).
-:- use_module(ir, [op_kind/2, pointer_memory_effects/2, temp_defs/3, single_definitions/3,
+:- use_module(ir, [op_kind/2, pointer_memory_effects/2, access_size_align/3, temp_defs/3, single_definitions/3,
                    guard_chain/3, same_pointer/3, pointer_distance/4, lower_chain/3]).
 :- use_module(cfg, [inst_def/2, inst_uses/2, func_cfg/2, cfg_idoms/2, dominates/3,
                     natural_loops/3]).
@@ -60,15 +60,31 @@
 %  sites follow the instructions; `alias(Q, tmp(Q1), none, Os)` records
 %  that the access of the deleted proof Q reads Q1.
 
-reuse_checks(module(Items0), module(Items)) :-
+reuse_checks(M0, M) :- reuse_checks(plain, M0, M).
+
+%! reuse_checks(+Mode, +M0, -M) is det.
+%
+%  Mode `plain` is reuse_checks/2. Mode `forward` (docs/forward.md)
+%  also lets a pointer load with the heap load effects read an earlier
+%  proof, and its own check make a fact, and deletes a check that the
+%  hull of the available facts of its object covers, reading the
+%  first of them whose alignment suffices.
+reuse_checks(Mode, module(Items0), module(Items)) :-
     code_items(Items0, Code),
     context_index(Items0, Contexts),
-    maplist(reused_item(Contexts), Code, Groups), append(Groups, Items).
+    maplist(reused_item(Mode, Contexts), Code, Groups), append(Groups, Items).
 
-reused_item(All, func(N, L, R, Ps, Bs0), Items) :- !,
+reused_item(Mode0, All, func(N, L, R, Ps, Bs0), Items) :- !,
     names_info(Ps, Bs0, Info),
     incoming(Bs0, Incoming), empty_assoc(Exits0),
-    reused_blocks(Bs0, Info, Incoming, Exits0, Bs, Map, Reused),
+    % The validator has no hull in a function with a setjmp (ir.pl's
+    % stage_sources/3), nor does the pass there; pointer loads still.
+    (   Mode0 == forward,
+        member(block(_, _, Is, _), Bs0), member(let(_, _, setjmp(_), _), Is)
+    ->  Mode = pointers
+    ;   Mode = Mode0
+    ),
+    reused_blocks(Bs0, Mode, Info, Incoming, Exits0, Bs, Map, Reused),
     context_records(All, N, Rs0),
     (   Rs0 == [] -> Rs = []
     ;   remap_sites(Rs0, Map, Rs1),
@@ -80,14 +96,14 @@ reused_item(All, func(N, L, R, Ps, Bs0), Items) :- !,
         append(Rs1, Aliases, Rs)
     ),
     with_context(func(N, L, R, Ps, Bs), Rs, Items).
-reused_item(_, Item, [Item]).
+reused_item(_, _, Item, [Item]).
 
 % Blocks in order. Entry facts are those every incoming edge carries
 % (exit facts on a plain edge from a block already walked; none on a
 % poll edge or from a later block), kept only when the proof and its
 % pointer are defined once in the function, less those a phi redefines.
-reused_blocks([], _, _, _, [], [], []).
-reused_blocks([block(L, Phis, Insts0, J)|Bs0], Info, Incoming, Exits0,
+reused_blocks([], _, _, _, _, [], [], []).
+reused_blocks([block(L, Phis, Insts0, J)|Bs0], Mode, Info, Incoming, Exits0,
               [block(L, Phis, Insts, J)|Bs], Map, Reused) :-
     (   get_assoc(L, Incoming, Edges) -> true ; Edges = [] ),
     maplist(carried(Exits0), Edges, Sets),
@@ -95,9 +111,9 @@ reused_blocks([block(L, Phis, Insts0, J)|Bs0], Info, Incoming, Exits0,
     include(single_names(Info), Facts0, Facts1),
     foldl(phi_kills, Phis, Facts1, Facts),
     facts_state(Info, Facts, St),
-    reused_insts(Insts0, Info, St, L-0-0, Insts, Map0, Reused0, st(Exit, _, _)),
+    reused_insts(Insts0, Mode, Info, St, L-0-0, Insts, Map0, Reused0, st(Exit, _, _)),
     put_assoc(L, Exits0, Exit, Exits),
-    reused_blocks(Bs0, Info, Incoming, Exits, Bs, Map1, Reused1),
+    reused_blocks(Bs0, Mode, Info, Incoming, Exits, Bs, Map1, Reused1),
     append(Map0, Map1, Map), append(Reused0, Reused1, Reused).
 
 incoming(Blocks, Incoming) :-
@@ -233,23 +249,20 @@ single_names(info(Defs, _, _), avail(P, Q, _, _, _, _)) :-
 %  follows its check.
 single_proof(info(Defs, Uses, _), Q) :- count(Defs, Q, 1), count(Uses, Q, 1).
 
-%! reused_insts(+Insts0, +Facts, +L-Old-New, -Insts, -Map, -Reused) is det.
+%! reused_insts(+Insts0, +Mode, +Facts, +L-Old-New, -Insts, -Map, -Reused) is det.
 %
 %  Old and New index the next instruction of block L before and after;
 %  Map pairs their sites, and Reused pairs each deleted proof with its
 %  replacement.
-reused_insts([], _, Facts, _, [], [], [], Facts).
+reused_insts([], _, _, Facts, _, [], [], [], Facts).
 reused_insts([let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Access0|Insts0],
-             Info, Facts, L-Old-New, Insts, Map, Reused, Exit) :-
-    scalar_access(Access0, Q), !,
+             Mode, Info, Facts, L-Old-New, Insts, Map, Reused, Exit) :-
+    reuse_access(Mode, Access0, Q), !,
     Old1 is Old + 1, Old2 is Old + 2,
     base_of(Info, P, R, K),
     Facts = st(_, _, ByRoot),
     (   get_assoc(R, ByRoot, Cands),
-        member(K1-avail(_, Q1, Lo1, Hi1, Rights1, Align1), Cands),
-        D is K - K1,
-        LoD is Lo + D, HiD is Hi + D,
-        subsumes(Lo1, Hi1, Rights1, Align1, LoD, HiD, Rights, Align),
+        covering(Mode, Cands, K, Lo, Hi, Rights, Align, Q1, D),
         single_proof(Info, Q)
     ->  renamed_access(Access0, Q1, D, Access), Insts = [Access|Insts1],
         Map = [inst(L, Old1)-inst(L, New)|Map1], New2 is New + 1,
@@ -261,23 +274,23 @@ reused_insts([let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Access0|Insts0]
         Reused = Reused1, state_add(Info, avail(P, Q, Lo, Hi, Rights, Align), Facts0, Facts1)
     ),
     after_def(Info, Access0, Facts1, Facts2),
-    reused_insts(Insts0, Info, Facts2, L-Old2-New2, Insts1, Map1, Reused1, Exit).
+    reused_insts(Insts0, Mode, Info, Facts2, L-Old2-New2, Insts1, Map1, Reused1, Exit).
 % A vector's full-width check and its touch (docs/vector-access.md) stay,
 % and make a fact that the chunk accesses after them may reuse. V1 does
 % not reuse the full-width check itself.
 reused_insts([let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), touch(T)|Insts0],
-             Info, Facts0, L-Old-New, [let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), touch(T)|Insts],
+             Mode, Info, Facts0, L-Old-New, [let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), touch(T)|Insts],
              [inst(L, Old)-inst(L, New), inst(L, Old1)-inst(L, New1)|Map], Reused, Exit) :-
     T == tmp(Q), !,
     Old1 is Old + 1, Old2 is Old + 2, New1 is New + 1, New2 is New + 2,
     state_kill(Info, Q, Facts0, Facts1),
     state_add(Info, avail(P, Q, Lo, Hi, Rights, Align), Facts1, Facts),
-    reused_insts(Insts0, Info, Facts, L-Old2-New2, Insts, Map, Reused, Exit).
-reused_insts([Inst|Insts0], Info, Facts0, L-Old-New, [Inst|Insts],
+    reused_insts(Insts0, Mode, Info, Facts, L-Old2-New2, Insts, Map, Reused, Exit).
+reused_insts([Inst|Insts0], Mode, Info, Facts0, L-Old-New, [Inst|Insts],
              [inst(L, Old)-inst(L, New)|Map], Reused, Exit) :-
     (   transparent(Inst) -> after_def(Info, Inst, Facts0, Facts) ; state_none(Info, Facts) ),
     Old1 is Old + 1, New1 is New + 1,
-    reused_insts(Insts0, Info, Facts, L-Old1-New1, Insts, Map, Reused, Exit).
+    reused_insts(Insts0, Mode, Info, Facts, L-Old1-New1, Insts, Map, Reused, Exit).
 
 %! reuse_refines(+M0, +M) is semidet.
 %
@@ -286,22 +299,30 @@ reused_insts([Inst|Insts0], Info, Facts0, L-Old-New, [Inst|Insts],
 %  identity, not safety: that the earlier proof still covers the access
 %  is ir.pl's rule, which valid_module/1 checks separately.
 
-reuse_refines(module(Items0), module(Items)) :-
-    code_items(Items0, Code0), code_items(Items, Code),
-    maplist(item_refines, Code0, Code).
+reuse_refines(M0, M) :- reuse_refines(plain, M0, M).
 
-item_refines(func(N, L, R, Ps, Bs0), func(N, L, R, Ps, Bs)) :- !,
+%! reuse_refines(+Mode, +M0, +M) is semidet.
+%
+%  reuse_refines/2 for reuse_checks/3's Mode: with `forward` a deleted
+%  check's access may be a heap pointer load, and the proof it reads
+%  need not cover its range by itself (the hull, which is the
+%  validator's question too).
+reuse_refines(Mode, module(Items0), module(Items)) :-
+    code_items(Items0, Code0), code_items(Items, Code),
+    maplist(item_refines(Mode), Code0, Code).
+
+item_refines(Mode, func(N, L, R, Ps, Bs0), func(N, L, R, Ps, Bs)) :- !,
     names_info(Ps, Bs0, Info),
     findall(Q-checked(P, check(Lo, Hi, Rs, Al)),
             ( member(block(_, _, Is, _), Bs0),
               member(let(tmp(Q), a, check(Lo, Hi, Rs, Al), [P]), Is),
               single_names(Info, avail(P, Q, Lo, Hi, Rs, Al)) ),
             Global),
-    maplist(block_refines(Info, Global), Bs0, Bs).
-item_refines(Item, Item).
+    maplist(block_refines(Mode, Info, Global), Bs0, Bs).
+item_refines(_, Item, Item).
 
-block_refines(Info, Global, block(L, Phis, Insts0, J), block(L, Phis, Insts, J)) :-
-    insts_refine(Insts0, Insts, r(Info, Global, [])).
+block_refines(Mode, Info, Global, block(L, Phis, Insts0, J), block(L, Phis, Insts, J)) :-
+    insts_refine(Insts0, Insts, r(Mode, Info, Global, [])).
 
 %! insts_refine(+Insts0, +Insts, +r(Info, Global, Proofs)) is semidet.
 %
@@ -313,22 +334,24 @@ block_refines(Info, Global, block(L, Phis, Insts0, J), block(L, Phis, Insts, J))
 %  deleted check. Whether it is available there is the validator's
 %  question.
 insts_refine([], [], _).
-insts_refine([Inst|Insts0], [Inst|Insts], r(Info, Global, Proofs)) :- !,
+insts_refine([Inst|Insts0], [Inst|Insts], r(Mode, Info, Global, Proofs)) :- !,
     (   Inst = let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P])
     ->  Proofs1 = [Q-checked(P, check(Lo, Hi, Rights, Align))|Proofs]
     ;   Proofs1 = Proofs
     ),
-    insts_refine(Insts0, Insts, r(Info, Global, Proofs1)).
+    insts_refine(Insts0, Insts, r(Mode, Info, Global, Proofs1)).
 insts_refine([let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Access0|Insts0],
-             [Access|Insts], r(Info, Global, Proofs)) :-
-    scalar_access(Access0, Q),
+             [Access|Insts], r(Mode, Info, Global, Proofs)) :-
+    reuse_access(Mode, Access0, Q),
     renamed_access(Access0, Q1, D, Access),
     (   memberchk(Q1-Checked, Proofs) -> true ; memberchk(Q1-Checked, Global) ),
     Checked = checked(P1, check(Lo1, Hi1, Rights1, Align1)), related(Info, P, P1, D),
     LoD is Lo + D, HiD is Hi + D,
-    subsumes(Lo1, Hi1, Rights1, Align1, LoD, HiD, Rights, Align),
+    (   subsumes(Lo1, Hi1, Rights1, Align1, LoD, HiD, Rights, Align) -> true
+    ;   Mode == forward, own_requirement(Access0, Lo, Hi, Rights, Align)
+    ),
     single_proof(Info, Q),
-    insts_refine(Insts0, Insts, r(Info, Global, Proofs)).
+    insts_refine(Insts0, Insts, r(Mode, Info, Global, Proofs)).
 
 %! scalar_access(+Access, +Q) is semidet.
 %
@@ -336,10 +359,70 @@ insts_refine([let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Access0|Insts0]
 scalar_access(let(_, _, raw_load(T, _), [tmp(Q)]), Q) :- T \== p.
 scalar_access(raw_store(W, _, _, tmp(Q)), Q) :- W \== p.
 
-renamed_access(let(R, K, raw_load(T, Off0), [_]), Q, D, let(R, K, raw_load(T, Off), [tmp(Q)])) :-
-    ( var(D) -> D is Off - Off0 ; Off is Off0 + D ).
+renamed_access(let(R, K, Op0, [_]), Q, D, let(R, K, Op, [tmp(Q)])) :-
+    renamed_load(Op0, D, Op).
 renamed_access(raw_store(W, Off0, V, _), Q, D, raw_store(W, Off, V, tmp(Q))) :-
     ( var(D) -> D is Off - Off0 ; Off is Off0 + D ).
+
+renamed_load(raw_load(T, Off0), D, raw_load(T, Off)) :-
+    ( var(D) -> D is Off - Off0 ; Off is Off0 + D ).
+renamed_load(raw_load_pointer(Off0, Es), D, raw_load_pointer(Off, Es)) :-
+    ( var(D) -> D is Off - Off0 ; Off is Off0 + D ).
+
+% own_requirement(+Access, +Lo, +Hi, +Rights, +Align): the check of
+% [Lo, Hi) with Rights at Align is exactly what Access needs (as
+% pizlonation makes it), so the validator's accepting the rewired
+% access shows that the deleted check would have passed: the hull
+% (docs/forward.md) keeps trap timing only for such checks.
+own_requirement(Access, Lo, Hi, Rights, Align) :-
+    access_need(Access, X, Off, Need),
+    access_size_align(X, Size, AccessAlign),
+    Lo =:= Off, Hi =:= Off + Size, Rights == Need, Align =:= AccessAlign.
+
+access_need(let(_, _, raw_load(T, Off), _), T, Off, read).
+access_need(raw_store(W, Off, _, _), W, Off, write).
+access_need(let(_, p, raw_load_pointer(Off, _), _), p, Off, read).
+
+% reuse_access(+Mode, +Access, +Q): Access, at tmp(Q), may read another
+% proof: a scalar access, or in forward mode a heap pointer load too.
+reuse_access(_, Access, Q) :- scalar_access(Access, Q), !.
+reuse_access(Mode, let(_, p, raw_load_pointer(_, Es), [tmp(Q)]), Q) :-
+    Mode \== plain, pointer_memory_effects(load, Es).
+
+/* covering(+Mode, +Cands, +K, +Lo, +Hi, +Rights, +Align, -Q1, -D): of
+   the available facts Cands of a root, K1-avail(...) with their
+   pointer's offset K1 from it, Q1's covers the check of [Lo, Hi) with
+   Rights and Align of the pointer at offset K, at distance D = K - K1:
+   the first that subsumes it, or in forward mode (docs/forward.md) the
+   first whose alignment suffices when the facts together span the
+   check's range (an object is one interval) and one of them has write
+   rights if it needs them. Offsets count only within +-2^62, where the
+   integers are the true distances. */
+covering(_, Cands, K, Lo, Hi, Rights, Align, Q1, D) :-
+    member(K1-avail(_, Q1, Lo1, Hi1, Rights1, Align1), Cands),
+    D is K - K1,
+    LoD is Lo + D, HiD is Hi + D,
+    subsumes(Lo1, Hi1, Rights1, Align1, LoD, HiD, Rights, Align), !.
+covering(forward, Cands, K, Lo, Hi, Rights, Align, Q1, D) :-
+    near(K),
+    findall(L2-H2-R2,
+            ( member(K2-avail(_, _, Lo2, Hi2, R2, _), Cands), near(K2),
+              L2 is Lo2 + K2 - K, H2 is Hi2 + K2 - K, near(L2), near(H2) ),
+            Spans),
+    once(( member(L2-_-_, Spans), L2 =< Lo )),
+    once(( member(_-H2-_, Spans), H2 >= Hi )),
+    ( Rights == read -> true ; once(member(_-_-write, Spans)) ),
+    % The nearest reader whose alignment suffices, within the 32-bit
+    % offset a reused access emits with.
+    findall(AD-(Q1-D),
+            ( member(K1-avail(_, Q1, Lo1, _, _, Align1), Cands), near(K1),
+              D is K - K1, AD is abs(D), AD =< 2147483647 - abs(Lo),
+              LoD is Lo + D,
+              Align1 mod Align =:= 0, (LoD - Lo1) mod Align =:= 0 ),
+            Readers),
+    keysort(Readers, [_-(Q1-D)|_]).
+
+near(K) :- K >= -(1 << 62), K =< 1 << 62.
 
 %! subsumes(+Lo1, +Hi1, +Rights1, +Align1, +Lo, +Hi, +Rights, +Align) is semidet.
 %
@@ -543,25 +626,33 @@ renewable_access(raw_store_pointer(_, _, tmp(Q), Es), Q) :-
 %  at distance 0. This is identity, not safety: dominance and coverage
 %  are the validator's (ir.pl), which valid_module/1 checks separately.
 
-renew_refines(module(Items0), module(Items)) :-
-    maplist(item_renews, Items0, Items).
+renew_refines(M0, M) :- renew_refines(zero, M0, M).
 
-item_renews(func(N, L, R, Ps, Bs0), func(N, L, R, Ps, Bs)) :- !,
+%! renew_refines(+Distance, +M0, +M) is semidet.
+%
+%  renew_refines/2 for renew_checks/3's Distance: with `any` a renew may
+%  read a check of a pointer related to its own at any distance (the
+%  coverage is the validator's question).
+renew_refines(Distance, module(Items0), module(Items)) :-
+    maplist(item_renews(Distance), Items0, Items).
+
+item_renews(Distance, func(N, L, R, Ps, Bs0), func(N, L, R, Ps, Bs)) :- !,
     names_info(Ps, Bs0, Info),
     findall(Q1-P1, ( member(block(_, _, Is, _), Bs0),
                      member(let(tmp(Q1), a, check(_, _, _, _), [P1]), Is),
                      single_source(Info, Q1, P1) ), Pairs),
     list_to_assoc(Pairs, Checks),
-    maplist(block_renews(Info, Checks), Bs0, Bs).
-item_renews(Item, Item).
+    maplist(block_renews(Distance, Info, Checks), Bs0, Bs).
+item_renews(_, Item, Item).
 
-block_renews(Info, Checks, block(L, Ph, Is0, J), block(L, Ph, Is, J)) :-
-    maplist(inst_renews(Info, Checks), Is0, Is).
+block_renews(Distance, Info, Checks, block(L, Ph, Is0, J), block(L, Ph, Is, J)) :-
+    maplist(inst_renews(Distance, Info, Checks), Is0, Is).
 
-inst_renews(_, _, Inst, Inst) :- !.
-inst_renews(Info, Checks, let(tmp(Q), a, check(Lo, Hi, Rs, Al), [P]),
+inst_renews(_, _, _, Inst, Inst) :- !.
+inst_renews(Distance, Info, Checks, let(tmp(Q), a, check(Lo, Hi, Rs, Al), [P]),
             let(tmp(Q), a, renew(Lo, Hi, Rs, Al), [tmp(Q1), P])) :-
-    get_assoc(Q1, Checks, P1), related(Info, P, P1, 0).
+    get_assoc(Q1, Checks, P1), related(Info, P, P1, D),
+    ( Distance == any -> true ; D =:= 0 ).
 
 %! guard_checks(+M0, -M) is det.
 %

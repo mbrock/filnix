@@ -107,7 +107,7 @@
     item 8). The default is full; NANOFIL_SIMPLIFY supplies the same
     choice.
 
-    `--checks=reference|reuse|renew|guard|hoist|schedule|half` independently
+    `--checks=reference|reuse|renew|guard|hoist|schedule|half|forward` independently
     selects the reference checked IR, a check before every access, check
     reuse after pizlonation, reuse followed by renewal of dominated
     checks, both followed by range guards for checks in loops, both
@@ -117,8 +117,11 @@
     what they cover; a scheduled check may trap before stores that
     precede the failing access, or both followed by half checks, which
     test only the bound an earlier check of the object does not already
-    establish (src/check_reuse.pl, src/schedule.pl, src/half_check.pl,
-    docs/m7.md, docs/bounds.md, docs/schedule.md, docs/half.md). The default is renew with `-O` and reference without;
+    establish, or reuse that also serves pointer loads and covers a check
+    by the hull of its object's live facts, then renewal, which moves no
+    trap (src/check_reuse.pl, src/schedule.pl, src/half_check.pl,
+    docs/m7.md, docs/bounds.md, docs/schedule.md, docs/half.md,
+    docs/forward.md). The default is renew with `-O` and reference without;
     NANOFIL_CHECKS supplies the same choice. With any but reference, `cc`,
     `compile` and difftest's pizlonation comparison use that module.
 
@@ -229,8 +232,8 @@ memcpy_mode(M) :-
 checks_default(Checks) :-
     ( getenv('NANOFIL_CHECKS',C) -> checks_mode(C), Checks = C ; true ).
 checks_mode(C) :-
-    ( memberchk(C,[reference,reuse,renew,guard,hoist,schedule,half]) -> true
-    ; throw(nanofil_error('checks must be reference, reuse, renew, guard, hoist, schedule or half')) ).
+    ( memberchk(C,[reference,reuse,renew,guard,hoist,schedule,half,forward]) -> true
+    ; throw(nanofil_error('checks must be reference, reuse, renew, guard, hoist, schedule, half or forward')) ).
 % vectors_options(+Argv0, -Argv): Argv is Argv0 less its vector
 % options, the last of which sets NANOFIL_VECTORS (c_types
 % vector_type/4), for drivers that pass only options: --vectors and
@@ -641,6 +644,21 @@ checks_module(half, Checked0, Checked) :-
     once(half_checks(Checked1, Checked)),
     (   half_refines(Checked1, Checked) -> true
     ;   throw(nanofil_error('half checks changed more than checks'))
+    ),
+    once(valid_module(Checked)).
+
+% Forward facts (docs/forward.md): reuse that also serves heap pointer
+% loads and covers a check by the hull of its object's live facts, then
+% renewal at any distance (docs/schedule.md's renew from a related
+% pointer's check). No trap moves. Only the result is validated.
+checks_module(forward, Checked0, Checked) :-
+    once(reuse_checks(forward, Checked0, Checked1)),
+    (   reuse_refines(forward, Checked0, Checked1) -> true
+    ;   throw(nanofil_error('forward reuse changed more than proofs'))
+    ),
+    once(renew_checks(any, Checked1, Checked)),
+    (   renew_refines(any, Checked1, Checked) -> true
+    ;   throw(nanofil_error('check renewal changed more than checks'))
     ),
     once(valid_module(Checked)).
 

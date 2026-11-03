@@ -2630,14 +2630,18 @@ test(reuse_validation) :-
          raw_store(w, 0, const(3), tmp(q))]
     ]), ( append([[C, S], Between, [L]], Insts), reuse_fn(Insts, M),
           reuse_rejected(M) )),
+    % Accepted since docs/forward.md: a heap pointer load at a live proof.
+    reuse_fn([let(tmp(q), a, check(0, 8, write, 8), [tmp(a)]), S,
+              let(tmp(z), p, raw_load_pointer(0, LoadEs), [tmp(q)])], PL),
+    valid_module(PL),
     % Rejected: too little range, a read proof for a write, a pointer
-    % access at a live proof.
+    % store at a live proof (its ensure-aux may exit).
     forall(member(Insts, [
         [let(tmp(q), a, check(0, 4, write, 1), [tmp(a)]),
          raw_store(w, 0, const(1), tmp(q)), L],
         [let(tmp(q), a, check(0, 8, read, 1), [tmp(a)]), L, S],
         [let(tmp(q), a, check(0, 8, write, 8), [tmp(a)]), S,
-         let(tmp(z), p, raw_load_pointer(0, LoadEs), [tmp(q)])]
+         raw_store_pointer(0, tmp(b), tmp(q), StoreEs)]
     ]), ( reuse_fn(Insts, M), reuse_rejected(M) )),
     % A check on one arm does not dominate the join at all.
     catch(( valid_module(module([func(f, local, w, [param(p, tmp(a)), param(w, tmp(c))], [
@@ -2784,6 +2788,121 @@ test(reuse_semantics) :-
     append([Two, [let(tmp(v), l, raw_load(l, 0), [tmp(qa)])], Tail], WrongInsts),
     reuse_l_fn(WrongInsts, Wrong), valid_module(Wrong), once(run(Wrong, f, [], 10, ret(11))),
     \+ reuse_refines(Ref, Wrong).
+
+% Forward facts (docs/forward.md): an access may read a live proof of
+% its object when the live facts of that object together span it.
+fwd_fn(Insts, M) :- reuse_fn(Insts, M).
+
+test(forward_validation) :-
+    pointer_memory_effects(load, LoadEs),
+    Qa = [let(tmp(q), a, check(0, 4, read, 1), [tmp(a)]),
+          let(tmp(x0), w, raw_load(sw, 0), [tmp(q)])],
+    Fact8 = [flight(tmp(a8), add, [address(tmp(a)), const(8)], lower(tmp(a))),
+             let(tmp(k), a, check(0, 4, read, 1), [tmp(a8)]),
+             let(tmp(x1), w, raw_load(sw, 0), [tmp(k)])],
+    Mid = let(tmp(y), w, raw_load(sw, 4), [tmp(q)]),
+    % [0, 4) and a+8's [0, 4) span a's [4, 8).
+    append([Qa, Fact8, [Mid]], Ok), fwd_fn(Ok, OkM), valid_module(OkM),
+    % One side only; a call between; another object's fact.
+    append(Qa, [Mid], One), fwd_fn(One, OneM), reuse_rejected(OneM),
+    append([Qa, Fact8, [call(void, global(g), []), Mid]], Call), fwd_fn(Call, CallM),
+    reuse_rejected(CallM),
+    Other = [let(tmp(k), a, check(0, 16, read, 1), [tmp(b)]),
+             let(tmp(x1), w, raw_load(sw, 0), [tmp(k)])],
+    append([Qa, Other, [Mid]], Ob), fwd_fn(Ob, ObM), reuse_rejected(ObM),
+    % A write needs a fact with write rights; one suffices.
+    St = raw_store(w, 4, const(1), tmp(q)),
+    append([Qa, Fact8, [St]], RdSt), fwd_fn(RdSt, RdStM), reuse_rejected(RdStM),
+    Fact8w = [flight(tmp(a8), add, [address(tmp(a)), const(8)], lower(tmp(a))),
+              let(tmp(k), a, check(0, 4, write, 1), [tmp(a8)]),
+              raw_store(w, 0, const(2), tmp(k))],
+    append([Qa, Fact8w, [St]], WSt), fwd_fn(WSt, WStM), valid_module(WStM),
+    % Offsets are exact only modulo 2^64: a + (2^63-4) + (2^63-4) is
+    % a - 8, whose fact spans nothing past a + 4.
+    Big is (1 << 63) - 4,
+    Wrap = [flight(tmp(w1), add, [address(tmp(a)), const(Big)], lower(tmp(a))),
+            flight(tmp(w2), add, [address(tmp(w1)), const(Big)], lower(tmp(w1))),
+            let(tmp(k), a, check(0, 4, read, 1), [tmp(w2)]),
+            let(tmp(x1), w, raw_load(sw, 0), [tmp(k)])],
+    append([Qa, Wrap, [Mid]], Wr), fwd_fn(Wr, WrM), reuse_rejected(WrM),
+    % A pointer load reads the hull too; a pointer store does not.
+    PL = let(tmp(z), p, raw_load_pointer(8, LoadEs), [tmp(q)]),
+    Fact16 = [flight(tmp(a16), add, [address(tmp(a)), const(16)], lower(tmp(a))),
+              let(tmp(k), a, check(0, 1, read, 1), [tmp(a16)]),
+              let(tmp(x1), w, raw_load(ub, 0), [tmp(k)])],
+    Qa8 = [let(tmp(q), a, check(0, 8, read, 8), [tmp(a)]),
+           let(tmp(x0), l, raw_load(l, 0), [tmp(q)])],
+    append([Qa8, Fact16, [PL]], PLs), fwd_fn(PLs, PLM), valid_module(PLM),
+    % Alignment is the reading proof's own: 1 does not give a pointer's 8.
+    append([Qa, Fact16, [PL]], PLa), fwd_fn(PLa, PLaM), reuse_rejected(PLaM),
+    % A fact's own range counts only within +-2^62 too: [2^64+8, 2^64+12)
+    % is P+[8, 12) modulo 2^64, not a span reaching past P+1000.
+    Lo2 is (1 << 64) + 8, Hi2 is (1 << 64) + 12,
+    fwd_fn([let(tmp(q), a, check(0, 4, read, 1), [tmp(a)]),
+            let(tmp(x0), w, raw_load(sw, 0), [tmp(q)]),
+            let(tmp(k), a, check(Lo2, Hi2, read, 1), [tmp(a)]),
+            let(tmp(x1), w, raw_load(sw, Lo2), [tmp(k)]),
+            let(tmp(y), l, raw_load(l, 1000), [tmp(q)])], FarM),
+    reuse_rejected(FarM).
+
+% The pass, on pizlonated IR: a[0] and a's pointer field at 16, then
+% a[8] (the hull; the pointer store before ended every fact), and
+% a's pointer field read twice. Plain reuse keeps both later checks
+% (renewal would renew the pointer load's); forward deletes them, the
+% validator accepts, and all three keep the outcome, also when a is
+% freed in between (the check stays and traps as before).
+fwd_pass_fn(Free, module([func(g, local, l, [param(w, tmp(c))], [block(s, [], Is, ret(tmp(r)))])])) :-
+    append([[let(tmp(a), p, alloc(8), [const(24)]),
+             store(w, const(3), tmp(a)),
+             let(tmp(a8), p, add, [tmp(a), const(8)]), store(w, const(4), tmp(a8)),
+             let(tmp(a16), p, add, [tmp(a), const(16)]), store(p, tmp(a), tmp(a16)),
+             let(tmp(x), w, load(sw), [tmp(a)]),
+             let(tmp(p1), p, load(p), [tmp(a16)])],
+            Free,
+            [let(tmp(a4), p, add, [tmp(a), const(8)]),
+             let(tmp(y), w, load(sw), [tmp(a4)]),
+             let(tmp(p2), p, load(p), [tmp(a16)]),
+             let(tmp(z), w, load(sw), [tmp(p2)]),
+             let(tmp(s1), w, add, [tmp(x), tmp(y)]), let(tmp(s2), w, add, [tmp(s1), tmp(z)]),
+             let(tmp(r), l, ext(sw), [tmp(s2)])]], Is).
+
+fwd_checks(M, N) :-
+    M = module(Items),
+    findall(x, ( member(func(_, _, _, _, Bs), Items), member(block(_, _, Is, _), Bs),
+                 member(let(_, a, check(_, _, _, _), _), Is) ), Xs),
+    length(Xs, N).
+
+test(forward_pass) :-
+    fwd_pass_fn([], M), valid_module(M), pizlonate_module(M, Ck),
+    reuse_checks(Ck, Plain), reuse_refines(Ck, Plain), valid_module(Plain),
+    reuse_checks(forward, Ck, Fwd), reuse_refines(forward, Ck, Fwd), valid_module(Fwd),
+    fwd_checks(Plain, NP), fwd_checks(Fwd, NF), NF =:= NP - 2,
+    \+ reuse_refines(Ck, Fwd),
+    forall(member(X, [M, Ck, Plain, Fwd]), once(run(X, g, [0], 20, ret(10)))),
+    fwd_pass_fn([call(void, global(free), [arg(p, tmp(a))])], MF), pizlonate_module(MF, CkF),
+    reuse_checks(forward, CkF, FwdF), valid_module(FwdF),
+    fwd_checks(CkF, NC), fwd_checks(FwdF, NFF), NFF =:= NC,
+    forall(member(X, [MF, CkF, FwdF]), once(run(X, g, [0], 20, trap(out_of_bounds)))),
+    % With a setjmp the validator has no hull, so neither has the pass.
+    SjM = module([func(f, local, w, [param(p, tmp(a)), param(p, tmp(b))],
+        [block(s, [], [
+            let(tmp(x), w, load(sw), [tmp(a)]),
+            let(tmp(a8), p, add, [tmp(a), const(8)]), let(tmp(y), w, load(sw), [tmp(a8)]),
+            let(tmp(a4), p, add, [tmp(a), const(4)]), let(tmp(z), w, load(sw), [tmp(a4)]),
+            let(tmp(sj), w, setjmp('_setjmp'), [tmp(b), const(0)])],
+            ret(const(0)))])]),
+    pizlonate_module(SjM, SjCk), reuse_checks(forward, SjCk, SjF),
+    reuse_refines(forward, SjCk, SjF), valid_module(SjF),
+    % refines checks a deleted check's own trap independently of the
+    % validator: a 64-byte check of an 8-byte object, though its access
+    % is covered, may not be deleted.
+    A = let(tmp(p), p, alloc(8), [const(8)]),
+    C1 = let(tmp(q), a, check(0, 8, read, 1), [tmp(p)]),
+    L1 = let(tmp(x0), l, raw_load(l, 0), [tmp(q)]),
+    reuse_l_fn([A, C1, L1, let(tmp(r), a, check(0, 64, read, 1), [tmp(p)]),
+                let(tmp(x), l, raw_load(l, 0), [tmp(r)])], Wide),
+    reuse_l_fn([A, C1, L1, let(tmp(x), l, raw_load(l, 0), [tmp(q)])], Narrowed),
+    \+ reuse_refines(forward, Wide, Narrowed).
 
 % The pass deletes exactly the covered checks of pizlonated IR, and on
 % hand-written checked IR compares with the deleted check itself, not
