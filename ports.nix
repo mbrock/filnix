@@ -2948,6 +2948,13 @@ in
   (for pkgs.kbd [
     # ports/patch/kbd-2.6.4.patch rebased onto Nixpkgs' 2.9.
     (patch ./patches/kbd-2.9-filc.patch)
+    # dlopen()s zlib, bzip2, xz and zstd for compressed keymaps.
+    dlopenByPath
+    # Only there to act on the .note.dlopen notes. Under Fil-C it found no
+    # notes and replaced the RUNPATH with kbd's own lib directory, dropping
+    # the Fil-C runtime's (it skips libraries beside the interpreter, which
+    # ld-fil1 does not search by default), so loadkeys could not start.
+    (use { dontAutoPatchelf = true; })
   ])
 
   {
