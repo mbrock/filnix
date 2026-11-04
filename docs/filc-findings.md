@@ -270,6 +270,34 @@ start each service straight into its cgroup, and falls back to `fork()` on
 failure; as PID 1 it died starting its first service. The port starts with
 the fallback (ports.nix).
 
+## libbsd: header overlays, `.init_array` and `close_range`
+
+Porting libbsd (for finix's ifupdown-ng) met three things:
+
+- filnix's compiler wrapper (`compiler/filc.nix`) adds filc-glibc's headers
+  with `-isystem`, ahead of the package's own `-isystem` directories. An
+  overlay of system headers that wraps them with `#include_next`, such as
+  libbsd's `-isystem include/bsd`, therefore never applies: `<unistd.h>` is
+  glibc's, and `setproctitle_init` was undeclared. The port switches the
+  overlay to `-I`, also in `libbsd-overlay.pc`, which is searched first. A
+  wrapper that used `-idirafter` for libc, as Nixpkgs' cc-wrapper does,
+  would fix it for every package, but it rebuilds the world.
+- The compiler only runs constructors from `llvm.global_ctors`
+  (`__attribute__((constructor))`), with no arguments. A function pointer
+  placed in `.init_array` by hand, as libbsd-ctor does to receive `argc`,
+  `argv` and `envp`, compiles but is never called. The program gets no
+  warning. setproctitle then warns that it was not initialized; it needs
+  an explicit `setproctitle_init(argc, argv, envp)`. Because the runtime
+  copies argv, it can't change `/proc/PID/cmdline` anyway.
+- `syscall(SYS_close_range, ...)` stops the program (436, like clone3).
+  glibc's `close_range()` goes through the runtime, so libbsd's `closefrom`
+  uses that.
+
+`explicit_bzero`'s test also needs `sigaltstack`, which the runtime doesn't
+support ("sigaltstack not supported"), and `nlist` can't find C names,
+because Fil-C's symbols are `pizlonated_*`. Both tests, and the proctitle
+test, are expected failures in the port.
+
 ## `dlopen` of a bare soname ignores the caller's RUNPATH
 
 `dlopen("libnss_dns.so.6662")` fails in a Fil-C program even though the
