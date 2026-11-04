@@ -1,0 +1,624 @@
+systemd 260 for Fil-C. Rebased from upstream Fil-C's systemd 256.4 patch
+(ports/patch/systemd-256.4.patch), plus what 260 needs:
+
+- meson.build: link with --version-script= (upstream), and pass the
+  src/include/override headers with -I: the Fil-C driver puts
+  -isystem <glibc>/include ahead of the build's flags, which would hide
+  them behind glibc's headers.
+- signal-util.c: skip the signals the runtime reserves when resetting
+  handlers (upstream).
+- sigbus.c: Fil-C reserves SIGBUS, so there is no handler to install; a
+  SIGBUS on a truncated mmap'd journal kills the reader instead.
+- process-util.c: no pidfd_spawn(); the Fil-C glibc's asserts on it. Plain
+  posix_spawn() works.
+- src/libc/*.c: Fil-C's syscall() stops the program on a number it does
+  not support; return ENOSYS instead for the raw wrappers (bpf, ioprio,
+  kcmp, open_tree_attr, pivot_root, quotactl_fd, setxattrat,
+  removexattrat, rt_tgsigqueueinfo), where systemd has fallbacks.
+- capability-util.c, reboot-util.c, raw-clone.c: the same for the raw
+  capget/capset, reboot and clone calls, which PID 1 makes. capget and
+  capset go through glibc's wrappers; reboot through glibc's reboot()
+  (ENOSYS when given a RESTART2 argument; callers fall back); raw_clone
+  forks and unshare()s the child into its new namespaces, and refuses
+  CLONE_NEWPID, which cannot be had that way.
+- random-util.c, osc-context.c, build-path.c: getauxval() returns
+  addresses as plain integers under Fil-C, which cannot be dereferenced.
+  Skip the AT_RANDOM bytes (only mixed into a fallback seed and an ID that
+  the pid and pidfd ID keep unique) and report no runpath instead of
+  walking AT_PHDR.
+- process-util.c: clone_with_nested_stack() returns ENOSYS; glibc's
+  clone() stops a Fil-C program. asynchronous_close() then closes in
+  place.
+- bus-error.c/.h: look the bus error maps up in a static list instead of
+  an ELF section (upstream's approach, simplified).
+
+diff --git a/meson.build b/meson.build
+index 706e961..fceb0bc 100644
+--- a/meson.build
++++ b/meson.build
+@@ -2046,9 +2046,11 @@ dbus_programs = []
+ boot_stubs = []
+ 
+ # This is similar to system_includes below, but for passing custom_target().
++# Fil-C: the compiler driver passes -isystem <glibc>/include ahead of our flags, which would hide the
++# override headers from <unistd.h> etc. -I directories are searched before every -isystem one.
+ system_include_args = [
+-        '-isystem', meson.project_build_root()  / 'src/include/override',
+-        '-isystem', meson.project_source_root() / 'src/include/override',
++        '-I', meson.project_build_root()  / 'src/include/override',
++        '-I', meson.project_source_root() / 'src/include/override',
+         '-isystem', meson.project_build_root()  / 'src/include/uapi',
+         '-isystem', meson.project_source_root() / 'src/include/uapi',
+ ]
+@@ -2060,9 +2062,9 @@ system_includes = [
+                 # and meson puts the directories in the reversed order. Hence, a directory with a lower
+                 # priority must be listed earlier.
+                 'src/include/uapi',
+-                'src/include/override',
+                 is_system : true,
+         ),
++        include_directories('src/include/override'),
+ ]
+ 
+ if get_option('libc') == 'musl'
+@@ -2119,7 +2121,7 @@ libsystemd = shared_library(
+         link_args : ['-shared',
+                      # Make sure our library is never deleted from memory, so that our open logging fds don't leak on dlopen/dlclose cycles.
+                      '-z', 'nodelete',
+-                     '-Wl,--version-script=' + libsystemd_sym_path],
++                     '--version-script=' + libsystemd_sym_path],
+         link_with : [libc_wrapper_static,
+                      libbasic_static],
+         link_whole : [libsystemd_static],
+@@ -2166,7 +2168,7 @@ libudev = shared_library(
+         include_directories : includes,
+         implicit_include_directories : false,
+         link_args : ['-shared',
+-                     '-Wl,--version-script=' + libudev_sym_path],
++                     '--version-script=' + libudev_sym_path],
+         link_with : [libsystemd_static],
+         link_whole : libudev_basic,
+         dependencies : [threads,
+@@ -2680,7 +2682,7 @@ foreach dict : modules
+         kwargs += {
+                 'link_args' : [
+                         kwargs.get('link_args', []),
+-                        '-Wl,--version-script=' + dict.get('version-script'),
++                        '--version-script=' + dict.get('version-script'),
+                 ],
+                 'link_depends' : [
+                         kwargs.get('link_depends', []),
+diff --git a/src/basic/build-path.c b/src/basic/build-path.c
+index ddbaf4e..5530c99 100644
+--- a/src/basic/build-path.c
++++ b/src/basic/build-path.c
+@@ -77,6 +77,12 @@ static int get_runpath(const char **ret) {
+ 
+         /* Finds the rpath/runpath in the program headers of the main executable we are running in */
+ 
++#ifdef __FILC__
++        /* getauxval(AT_PHDR) is a plain integer under Fil-C, which cannot be dereferenced; and Fil-C
++         * programs do not run from a build tree with an $ORIGIN runpath. */
++        return -ENOTRECOVERABLE;
++#endif
++
+         phdr = getauxval(AT_PHDR);      /* Start offset of phdr */
+         if (phdr == 0)
+                 return -ENOTRECOVERABLE;
+diff --git a/src/basic/capability-util.c b/src/basic/capability-util.c
+index 29434dc..5ca5e64 100644
+--- a/src/basic/capability-util.c
++++ b/src/basic/capability-util.c
+@@ -20,6 +20,18 @@
+ #include "stat-util.h"
+ #include "user-util.h"
+ 
++#ifdef __FILC__
++/* Fil-C's syscall() stops the program on capget and capset; glibc's own
++ * wrappers (no public header) go through the runtime. */
++int capget(struct __user_cap_header_struct *hdr, struct __user_cap_data_struct *data);
++int capset(struct __user_cap_header_struct *hdr, const struct __user_cap_data_struct *data);
++#  define CAPGET(hdr, data) capget(hdr, data)
++#  define CAPSET(hdr, data) capset(hdr, data)
++#else
++#  define CAPGET(hdr, data) syscall(SYS_capget, hdr, data)
++#  define CAPSET(hdr, data) syscall(SYS_capset, hdr, data)
++#endif
++
+ int capability_get(CapabilityQuintet *ret) {
+         assert(ret);
+ 
+@@ -30,7 +42,7 @@ int capability_get(CapabilityQuintet *ret) {
+ 
+         assert_cc(_LINUX_CAPABILITY_U32S_3 == 2);
+         struct __user_cap_data_struct data[_LINUX_CAPABILITY_U32S_3];
+-        if (syscall(SYS_capget, &hdr, data) < 0)
++        if (CAPGET(&hdr, data) < 0)
+                 return -errno;
+ 
+         *ret = (CapabilityQuintet) {
+@@ -63,7 +75,7 @@ static int capability_apply(const CapabilityQuintet *q) {
+                         .permitted = (uint32_t) (q->permitted >> 32),
+                 },
+         };
+-        return RET_NERRNO(syscall(SYS_capset, &hdr, data));
++        return RET_NERRNO(CAPSET(&hdr, data));
+ }
+ 
+ unsigned cap_last_cap(void) {
+diff --git a/src/basic/process-util.c b/src/basic/process-util.c
+index e3d6b39..c7b3324 100644
+--- a/src/basic/process-util.c
++++ b/src/basic/process-util.c
+@@ -55,6 +55,13 @@
+ #include "time-util.h"
+ #include "user-util.h"
+ 
++#ifdef __FILC__
++/* Fil-C's glibc stops the program in pidfd_spawn() ("assertion !use_pidfd failed" in __spawnix())
++ * rather than returning an error, so use the posix_spawn() path. */
++#  undef HAVE_PIDFD_SPAWN
++#  define HAVE_PIDFD_SPAWN 0
++#endif
++
+ /* The kernel limits userspace processes to TASK_COMM_LEN (16 bytes), but allows higher values for its own
+  * workers, e.g. "kworker/u9:3-kcryptd/253:0". Let's pick a fixed smallish limit that will work for the kernel.
+  */
+@@ -1330,6 +1337,12 @@ pid_t clone_with_nested_stack(int (*fn)(void *), int flags, void *userdata) {
+          * forwards we'll allocate one more and place the stack address in the middle. Except that we also
+          * want it page aligned, hence we'll allocate one page more. Makes 3. */
+ 
++#ifdef __FILC__
++        /* glibc's clone() stops a Fil-C program ("clone not implemented"). Callers fall back to doing
++         * the work themselves. */
++        return -ENOSYS;
++#endif
++
+         ps = page_size();
+         mystack = alloca(ps*3);
+         mystack = (uint8_t*) mystack + ps; /* move pointer one page ahead since stacks usually grow backwards */
+diff --git a/src/basic/random-util.c b/src/basic/random-util.c
+index d05be6f..04eb747 100644
+--- a/src/basic/random-util.c
++++ b/src/basic/random-util.c
+@@ -46,7 +46,11 @@ static void fallback_random_bytes(void *p, size_t n) {
+         };
+ 
+         memcpy(state.label, "systemd fallback random bytes v1", sizeof(state.label));
++#ifndef __FILC__
++        /* Under Fil-C, getauxval() returns AT_RANDOM's address as a plain integer, which cannot be
++         * dereferenced. */
+         memcpy(state.auxval, ULONG_TO_PTR(getauxval(AT_RANDOM)), sizeof(state.auxval));
++#endif
+         (void) pidfd_get_inode_id_self_cached(&state.pidfdid);
+ 
+         while (n > 0) {
+diff --git a/src/basic/raw-clone.c b/src/basic/raw-clone.c
+index 5f56017..fbfa1e0 100644
+--- a/src/basic/raw-clone.c
++++ b/src/basic/raw-clone.c
+@@ -6,6 +6,8 @@
+ 
+ #include <errno.h>                      /* IWYU pragma: keep */
+ #include <sched.h>
++#include <signal.h>
++#include <stdlib.h>
+ #include <sys/syscall.h>                /* IWYU pragma: keep */
+ #include <unistd.h>
+ 
+@@ -73,6 +75,23 @@ pid_t raw_clone(unsigned long flags) {
+                 } else
+                         ret = in_child ? 0 : child_pid;
+         }
++#elif defined(__FILC__)
++        /* Fil-C's syscall() stops the program on clone, and a raw clone would bypass the runtime's
++         * fork handling anyway. So fork(), then move the child into the new namespaces with
++         * unshare(). A child cannot become PID 1 of a new PID namespace that way: refuse
++         * CLONE_NEWPID. */
++        {
++                const unsigned long ns = CLONE_NEWNS|CLONE_NEWUSER|CLONE_NEWNET|CLONE_NEWIPC|CLONE_NEWUTS|CLONE_NEWCGROUP;
++
++                if ((flags & CSIGNAL) != SIGCHLD || (flags & ~(ns|CSIGNAL)) != 0) {
++                        errno = EOPNOTSUPP;
++                        return -1;
++                }
++
++                ret = fork();
++                if (ret == 0 && (flags & ns) != 0 && unshare((int) (flags & ns)) < 0)
++                        _exit(EXIT_FAILURE);
++        }
+ #else
+         ret = (pid_t) syscall(__NR_clone, flags, NULL);
+ #endif
+diff --git a/src/basic/sigbus.c b/src/basic/sigbus.c
+index a530476..142fdcf 100644
+--- a/src/basic/sigbus.c
++++ b/src/basic/sigbus.c
+@@ -1,6 +1,9 @@
+ /* SPDX-License-Identifier: LGPL-2.1-or-later */
+ 
+ #include <signal.h>
++#ifdef __FILC__
++#include <stdfil.h>
++#endif
+ #include <sys/mman.h>
+ 
+ #include "memory-util.h"
+@@ -125,6 +128,14 @@ void sigbus_install(void) {
+         * it is not guaranteed to be async-signal-safe since POSIX.1-2008 */
+         (void) page_size();
+ 
++#ifdef __FILC__
++        /* Fil-C's runtime owns SIGBUS: sigaction() fails with ENOSYS, and the handler's MAP_FIXED
++         * replacement of the faulting page would not be allowed anyway. A SIGBUS on a truncated
++         * mmap()ed journal file therefore terminates the process instead of reading zeroes. */
++        if (zis_unsafe_signal_for_handlers(SIGBUS))
++                return;
++#endif
++
+         n_installed++;
+ 
+         if (n_installed == 1)
+diff --git a/src/basic/signal-util.c b/src/basic/signal-util.c
+index ae7bfa6..8c2e909 100644
+--- a/src/basic/signal-util.c
++++ b/src/basic/signal-util.c
+@@ -1,5 +1,6 @@
+ /* SPDX-License-Identifier: LGPL-2.1-or-later */
+ 
++#include <stdfil.h>
+ #include <threads.h>
+ #include <unistd.h>
+ 
+@@ -20,6 +21,10 @@ int reset_all_signal_handlers(void) {
+                 if (IN_SET(sig, SIGKILL, SIGSTOP))
+                         continue;
+ 
++                /* Fil-C's runtime owns these signals and refuses to let them be reset. */
++                if (zis_unsafe_signal_for_handlers(sig))
++                        continue;
++
+                 /* On Linux the first two RT signals are reserved by glibc, and sigaction() will return
+                  * EINVAL for them. */
+                 r = RET_NERRNO(sigaction(sig, &sigaction_default, NULL));
+diff --git a/src/libc/bpf.c b/src/libc/bpf.c
+index 4a7498e..339bff2 100644
+--- a/src/libc/bpf.c
++++ b/src/libc/bpf.c
+@@ -1,11 +1,18 @@
+ /* SPDX-License-Identifier: LGPL-2.1-or-later */
+ 
++#include <errno.h>
+ #include <sys/bpf.h>
+ #include <sys/syscall.h>
+ #include <unistd.h>
+ 
+ #if !HAVE_BPF
+ int missing_bpf(int cmd, union bpf_attr *attr, size_t size) {
++#ifdef __FILC__
++        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
++         * syscall"), so report ENOSYS, which callers already handle, instead. */
++        errno = ENOSYS;
++        return -1;
++#endif
+         return syscall(__NR_bpf, cmd, attr, size);
+ }
+ #endif
+diff --git a/src/libc/ioprio.c b/src/libc/ioprio.c
+index 5bb6404..71fcd39 100644
+--- a/src/libc/ioprio.c
++++ b/src/libc/ioprio.c
+@@ -1,17 +1,30 @@
+ /* SPDX-License-Identifier: LGPL-2.1-or-later */
+ 
++#include <errno.h>
+ #include <sys/ioprio.h>
+ #include <sys/syscall.h>
+ #include <unistd.h>
+ 
+ #if !HAVE_IOPRIO_GET
+ int missing_ioprio_get(int which, int who) {
++#ifdef __FILC__
++        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
++         * syscall"), so report ENOSYS, which callers already handle, instead. */
++        errno = ENOSYS;
++        return -1;
++#endif
+         return syscall(__NR_ioprio_get, which, who);
+ }
+ #endif
+ 
+ #if !HAVE_IOPRIO_SET
+ int missing_ioprio_set(int which, int who, int ioprio) {
++#ifdef __FILC__
++        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
++         * syscall"), so report ENOSYS, which callers already handle, instead. */
++        errno = ENOSYS;
++        return -1;
++#endif
+         return syscall(__NR_ioprio_set, which, who, ioprio);
+ }
+ #endif
+diff --git a/src/libc/kcmp.c b/src/libc/kcmp.c
+index aafff99..c89fd7c 100644
+--- a/src/libc/kcmp.c
++++ b/src/libc/kcmp.c
+@@ -1,11 +1,18 @@
+ /* SPDX-License-Identifier: LGPL-2.1-or-later */
+ 
++#include <errno.h>
+ #include <sys/kcmp.h>
+ #include <sys/syscall.h>
+ #include <unistd.h>
+ 
+ #if !HAVE_KCMP
+ int missing_kcmp(pid_t pid1, pid_t pid2, int type, unsigned long idx1, unsigned long idx2) {
++#ifdef __FILC__
++        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
++         * syscall"), so report ENOSYS, which callers already handle, instead. */
++        errno = ENOSYS;
++        return -1;
++#endif
+         return syscall(__NR_kcmp, pid1, pid2, type, idx1, idx2);
+ }
+ #endif
+diff --git a/src/libc/mount.c b/src/libc/mount.c
+index 1d324ef..828a8b8 100644
+--- a/src/libc/mount.c
++++ b/src/libc/mount.c
+@@ -1,5 +1,6 @@
+ /* SPDX-License-Identifier: LGPL-2.1-or-later */
+ 
++#include <errno.h>
+ #include <sys/mount.h>
+ #include <sys/syscall.h>
+ #include <unistd.h>
+@@ -42,6 +43,12 @@ int missing_mount_setattr(int dfd, const char *path, unsigned flags, struct moun
+ 
+ #if !HAVE_OPEN_TREE_ATTR
+ int missing_open_tree_attr(int dfd, const char *filename, unsigned int flags, struct mount_attr *attr, size_t size) {
++#ifdef __FILC__
++        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
++         * syscall"), so report ENOSYS, which callers already handle, instead. */
++        errno = ENOSYS;
++        return -1;
++#endif
+         return syscall(__NR_open_tree_attr, dfd, filename, flags, attr, size);
+ }
+ #endif
+diff --git a/src/libc/quota.c b/src/libc/quota.c
+index 19695df..15e51c9 100644
+--- a/src/libc/quota.c
++++ b/src/libc/quota.c
+@@ -1,11 +1,18 @@
+ /* SPDX-License-Identifier: LGPL-2.1-or-later */
+ 
++#include <errno.h>
+ #include <sys/quota.h>
+ #include <sys/syscall.h>
+ #include <unistd.h>
+ 
+ #if !HAVE_QUOTACTL_FD
+ int missing_quotactl_fd(int fd, int cmd, int id, void *addr) {
++#ifdef __FILC__
++        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
++         * syscall"), so report ENOSYS, which callers already handle, instead. */
++        errno = ENOSYS;
++        return -1;
++#endif
+         return syscall(__NR_quotactl_fd, fd, cmd, id, addr);
+ }
+ #endif
+diff --git a/src/libc/signal.c b/src/libc/signal.c
+index 1908331..9814d41 100644
+--- a/src/libc/signal.c
++++ b/src/libc/signal.c
+@@ -1,11 +1,18 @@
+ /* SPDX-License-Identifier: LGPL-2.1-or-later */
+ 
++#include <errno.h>
+ #include <signal.h>
+ #include <sys/syscall.h>
+ #include <unistd.h>
+ 
+ #if !HAVE_RT_TGSIGQUEUEINFO
+ int missing_rt_tgsigqueueinfo(pid_t tgid, pid_t tid, int sig, siginfo_t *info) {
++#ifdef __FILC__
++        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
++         * syscall"), so report ENOSYS, which callers already handle, instead. */
++        errno = ENOSYS;
++        return -1;
++#endif
+         return syscall(__NR_rt_tgsigqueueinfo, tgid, tid, sig, info);
+ }
+ #endif
+diff --git a/src/libc/unistd.c b/src/libc/unistd.c
+index 8172863..1271bf8 100644
+--- a/src/libc/unistd.c
++++ b/src/libc/unistd.c
+@@ -1,10 +1,17 @@
+ /* SPDX-License-Identifier: LGPL-2.1-or-later */
+ 
++#include <errno.h>
+ #include <sys/syscall.h>
+ #include <unistd.h>
+ 
+ #if !HAVE_PIVOT_ROOT
+ int missing_pivot_root(const char *new_root, const char *put_old) {
++#ifdef __FILC__
++        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
++         * syscall"), so report ENOSYS, which callers already handle, instead. */
++        errno = ENOSYS;
++        return -1;
++#endif
+         return syscall(__NR_pivot_root, new_root, put_old);
+ }
+ #endif
+diff --git a/src/libc/xattr.c b/src/libc/xattr.c
+index 68fa97a..fdfde0a 100644
+--- a/src/libc/xattr.c
++++ b/src/libc/xattr.c
+@@ -1,17 +1,30 @@
+ /* SPDX-License-Identifier: LGPL-2.1-or-later */
+ 
++#include <errno.h>
+ #include <sys/syscall.h>
+ #include <sys/xattr.h>
+ #include <unistd.h>
+ 
+ #if !HAVE_SETXATTRAT
+ int missing_setxattrat(int fd, const char *path, int at_flags, const char *name, const struct xattr_args *args, size_t size) {
++#ifdef __FILC__
++        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
++         * syscall"), so report ENOSYS, which callers already handle, instead. */
++        errno = ENOSYS;
++        return -1;
++#endif
+         return syscall(__NR_setxattrat, fd, path, at_flags, name, args, size);
+ }
+ #endif
+ 
+ #if !HAVE_REMOVEXATTRAT
+ int missing_removexattrat(int fd, const char *path, int at_flags, const char *name) {
++#ifdef __FILC__
++        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
++         * syscall"), so report ENOSYS, which callers already handle, instead. */
++        errno = ENOSYS;
++        return -1;
++#endif
+         return syscall(__NR_removexattrat, fd, path, at_flags, name);
+ }
+ #endif
+diff --git a/src/libsystemd/sd-bus/bus-error.c b/src/libsystemd/sd-bus/bus-error.c
+index bc0164c..b405584 100644
+--- a/src/libsystemd/sd-bus/bus-error.c
++++ b/src/libsystemd/sd-bus/bus-error.c
+@@ -3,6 +3,7 @@
+ #include "sd-bus.h"
+ 
+ #include "alloc-util.h"
++#include "bus-common-errors.h"
+ #include "bus-error.h"
+ #include "errno-list.h"
+ #include "errno-util.h"
+@@ -47,9 +48,12 @@ BUS_ERROR_MAP_ELF_REGISTER const sd_bus_error_map bus_standard_errors[] = {
+         SD_BUS_ERROR_MAP_END
+ };
+ 
+-/* GCC maps this magically to the beginning and end of the BUS_ERROR_MAP section */
+-extern const sd_bus_error_map __start_SYSTEMD_BUS_ERROR_MAP[];
+-extern const sd_bus_error_map __stop_SYSTEMD_BUS_ERROR_MAP[];
++/* Fil-C: the built-in maps, in place of the BUS_ERROR_MAP ELF section. */
++static const sd_bus_error_map* const builtin_error_maps[] = {
++        bus_standard_errors,
++        bus_common_errors,
++        NULL,
++};
+ 
+ /* Additional maps registered with sd_bus_error_add_map() are in this
+  * NULL terminated array */
+@@ -83,23 +87,12 @@ static int bus_error_name_to_errno(const char *name) {
+                                 }
+                         }
+ 
+-        const sd_bus_error_map *elf_map = ALIGN_PTR(__start_SYSTEMD_BUS_ERROR_MAP);
+-        while (elf_map < __stop_SYSTEMD_BUS_ERROR_MAP) {
+-                /* For magic ELF error maps, the end marker might appear in the middle of things, since
+-                 * multiple maps might appear in the same section. Hence, let's skip over it, but realign
+-                 * the pointer to the next 8 byte boundary, which is the selected alignment for the arrays. */
+-                if (elf_map->code == BUS_ERROR_MAP_END_MARKER) {
+-                        elf_map = ALIGN_PTR(elf_map + 1);
+-                        continue;
+-                }
+-
+-                if (streq(elf_map->name, name)) {
+-                        assert(elf_map->code > 0);
+-                        return elf_map->code;
+-                }
+-
+-                elf_map++;
+-        }
++        for (const sd_bus_error_map* const *map = builtin_error_maps; *map; map++)
++                for (const sd_bus_error_map *m = *map; m->code != BUS_ERROR_MAP_END_MARKER; m++)
++                        if (streq(m->name, name)) {
++                                assert(m->code > 0);
++                                return m->code;
++                        }
+ 
+         return EIO;
+ }
+diff --git a/src/libsystemd/sd-bus/bus-error.h b/src/libsystemd/sd-bus/bus-error.h
+index 038af86..959c64c 100644
+--- a/src/libsystemd/sd-bus/bus-error.h
++++ b/src/libsystemd/sd-bus/bus-error.h
+@@ -35,18 +35,13 @@ const char* _bus_error_message(const sd_bus_error *e, int error, char buf[static
+  * warn for the unknown attribute, so just disable -Wattributes.
+  */
+ 
+-#define BUS_ERROR_MAP_ELF_REGISTER                                      \
+-        _Pragma("GCC diagnostic ignored \"-Wattributes\"")              \
+-        _section_("SYSTEMD_BUS_ERROR_MAP")                              \
+-        _used_                                                          \
+-        _retain_                                                        \
+-        _alignptr_                                                      \
+-        _variable_no_sanitize_address_
++/* Fil-C: pointer-carrying data placed in a custom ELF section cannot be enumerated through
++ * __start_/__stop_ symbols, so the two built-in maps are ordinary arrays that
++ * bus_error_name_to_errno() walks explicitly. */
++#define BUS_ERROR_MAP_ELF_REGISTER
+ 
+ #define BUS_ERROR_MAP_ELF_USE(errors)                                   \
+-        extern const sd_bus_error_map errors[];                         \
+-        _used_                                                          \
+-        static const sd_bus_error_map * const CONCATENATE(errors ## _copy_, __COUNTER__) = errors;
++        extern const sd_bus_error_map errors[]
+ 
+ /* We use something exotic as end marker, to ensure people build the
+  * maps using the macros. */
+diff --git a/src/shared/osc-context.c b/src/shared/osc-context.c
+index 00cdd60..be56d6c 100644
+--- a/src/shared/osc-context.c
++++ b/src/shared/osc-context.c
+@@ -103,7 +103,11 @@ static void osc_context_default_id(sd_id128_t *ret_id) {
+ 
+         assert(ret_id);
+ 
++#ifndef __FILC__
++        /* Under Fil-C, getauxval() returns AT_RANDOM's address as a plain integer, which cannot be
++         * dereferenced. The pid and pidfd ID still identify the process. */
+         memcpy(data.auxval, ULONG_TO_PTR(getauxval(AT_RANDOM)), sizeof(data.auxval));
++#endif
+         (void) pidfd_get_inode_id_self_cached(&data.pidfdid);
+ 
+         *ret_id = id128_digest(&data, sizeof(data));
+diff --git a/src/shared/reboot-util.c b/src/shared/reboot-util.c
+index 55ec6c0..2b9131c 100644
+--- a/src/shared/reboot-util.c
++++ b/src/shared/reboot-util.c
+@@ -1,6 +1,7 @@
+ /* SPDX-License-Identifier: LGPL-2.1-or-later */
+ 
+ #include <stdint.h>
++#include <sys/reboot.h>
+ #include <sys/syscall.h>
+ #include <unistd.h>
+ 
+@@ -28,7 +29,18 @@
+ #include "virt.h"
+ 
+ int raw_reboot(int cmd, const void *arg) {
++#ifdef __FILC__
++        /* Fil-C's syscall() stops the program on reboot. glibc's reboot() takes no argument, so with
++         * one (LINUX_REBOOT_CMD_RESTART2's string) report ENOSYS; the callers fall back to plain
++         * reboot(). */
++        if (arg) {
++                errno = ENOSYS;
++                return -1;
++        }
++        return reboot(cmd);
++#else
+         return syscall(SYS_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, cmd, arg);
++#endif
+ }
+ 
+ bool reboot_parameter_is_valid(const char *parameter) {

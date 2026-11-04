@@ -50,6 +50,37 @@ let
     '';
   });
 
+  # For programs that dlopen() optional libraries by soname and declare them
+  # in .note.dlopen ELF notes (systemd, kbd). Natively the notes make
+  # autoPatchelfHook add the libraries to RUNPATH. Under Fil-C neither half
+  # works: section() on globals is dropped, so there are no notes, and
+  # Fil-C's dlopen() does not search the caller's RUNPATH
+  # (docs/filc-findings.md). So rewrite every soname literal in the source
+  # that a build input provides to its absolute path, and put the notes back
+  # (they then carry the same paths), since make-initrd-ng reads them to
+  # copy a binary's dlopen()ed libraries into the initrd.
+  dlopenByPath = use (old: {
+    postPatch = (old.postPatch or "") + ''
+      for soname in $(grep -rhoE '"lib[A-Za-z0-9_+-]+\.so\.[0-9.]+"' src | tr -d '"' | sort -u); do
+        for dir in ${
+          toString (map (p: "${p.lib or p.out or p}/lib") old.buildInputs)
+        }; do
+          if [ -e "$dir/$soname" ]; then
+            grep -rlF "\"$soname\"" src | xargs sed -i "s|\"$soname\"|\"$dir/$soname\"|g"
+            echo "dlopen: $soname -> $dir/$soname"
+            break
+          fi
+        done
+      done
+    '';
+    postFixup = (old.postFixup or "") + ''
+      for output in $(getAllOutputNames); do
+        ${pkgs.buildPackages.python3.interpreter} ${./ports/restore-dlopen-notes.py} \
+          ${pkgs.buildPackages.binutils-unwrapped}/bin/objcopy "''${!output}"
+      done
+    '';
+  });
+
   # Mozilla's root store from NSS 3.131.1, which removes the emSign roots
   # behind the October 2026 eMudhra key compromise (emSign ECC Root CA - G3,
   # emSign Root CA - C1 and emSign ECC Root CA - C3). Used for cacert; the
@@ -2919,79 +2950,38 @@ in
     (patch ./patches/kbd-2.9-filc.patch)
   ])
 
-  (
-    let
-      getent = pkgs.writeShellScriptBin "getent" ''
-        ${final.stdenv.cc.libc}/bin/getent "$@"
-      '';
-    in
-    {
-      # systemdMinimal and systemdLibs derive from this port through .override;
-      # applying the patch here gives all three variants the same ABI fixes.
-      systemd = for pkgs.systemd [
-        (pin "256.4" "sha256-eGHVRBkPk4ysGyQmJNeMlv4uu8e3L4YWboi1BFHG+lg=")
-        (patch ./ports/patch/systemd-256.4.patch)
-        (arg { withKexectools = false; })
-        (arg { withLibseccomp = false; })
-        # EFI/BPF/kexec emit kernel or firmware code, outside Fil-C userspace.
-        (arg {
-          withLibBPF = false;
-          withEfi = false;
-          withBootloader = false;
-        })
-        (link getent)
-        (link final.libcap) # dropped from the recipe once systemd stopped needing it
-        (use (
-          old:
-          {
-            # Nixpkgs stopped rewriting this path for systemd 258+.
-            postPatch = old.postPatch + ''
-              substituteInPlace src/nspawn/nspawn-setuid.c \
-                --replace-fail /usr/bin/getent ${getent}/bin/getent
-            '';
-          }
-          // pkgs.lib.optionalAttrs (old.pname != "systemd-minimal-libs") {
-            # This getent wrapper intentionally calls the target libc at runtime.
-            # Keep rejecting every other accidental native build-tool reference.
-            disallowedReferences = builtins.filter (p: p != getent) (
-              old.disallowedReferences or [ ]
-            );
-          }
-        ))
+  {
+    # Nixpkgs' own systemd (260); systemdMinimal and systemdLibs derive from
+    # this port through .override, so all three get the same fixes.
+    # patches/systemd-260-filc.patch rebases upstream Fil-C's 256.4 patch
+    # (ports/patch/systemd-256.4.patch) and adds what 260 needs; its
+    # header lists each change.
+    systemd = for pkgs.systemd [
+      (patch ./patches/systemd-260-filc.patch)
+      (arg { withKexectools = false; })
+      (arg { withLibseccomp = false; })
+      # EFI/BPF/kexec emit kernel or firmware code, outside Fil-C userspace.
+      (arg {
+        withLibBPF = false;
+        withEfi = false;
+        withBootloader = false;
+      })
+      # 257+ dlopen()s zstd, lz4, xz, kmod, cryptsetup, PAM, ...; without
+      # the notes the initrd gets no libkmod and loads no kernel modules.
+      dlopenByPath
+      (use {
+        # the automatic patchelf hook was segfaulting
+        # while trying to patch some debug info files?!
+        separateDebugInfo = false;
+        # Nixpkgs 26.05 bans bash from the closure; libapparmor's Python
+        # bindings bring the Fil-C interpreter (and its bash) along.
+        disallowedRequisites = [ ];
+      })
 
-        # Nixpkgs' patches target 260; use the 25.05 copies for 256.
-        (skipPatch "Change-usr-share-zoneinfo-to-etc-zoneinfo.patch")
-        (skipPatch "path-util.h-add-placeholder-for-DEFAULT_PATH_NORMAL.patch")
-        (patch ./patches/systemd-256-etc-zoneinfo.patch)
-        (patch ./patches/systemd-256-default-path-placeholder.patch)
-        (patch ./patches/systemd-256-no-statedir.patch)
-        (patch ./patches/systemd-256-no-ssh-dropins.patch)
-        # not in this version
-        (removeMesonFlag "-Dshellprofiledir")
-        (removeMesonFlag "-Dswapon-path")
-        (removeMesonFlag "-Dswapoff-path")
-        (removeMesonFlag "-Dsysupdated")
-        (removeMesonFlag "-Dnspawn")
-        # Options that 260 removed, set as Nixpkgs 25.05 did for 256/257.
-        (addMesonFlag "-Dlibidn=disabled")
-        (addMesonFlag "-Dlibiptc=disabled")
-        (addMesonFlag "-Dsysvinit-path=")
-        (addMesonFlag "-Dsysvrcnd-path=")
-        (addMesonFlag "-Dsshconfdir=no")
-        (use {
-          # the automatic patchelf hook was segfaulting
-          # while trying to patch some debug info files?!
-          separateDebugInfo = false;
-          # Nixpkgs 26.05 bans bash from the closure; libapparmor's Python
-          # bindings bring the Fil-C interpreter (and its bash) along.
-          disallowedRequisites = [ ];
-        })
-
-        # this seems to not be a real problem
-        (use { autoPatchelfIgnoreMissingDeps = [ "*" ]; })
-      ];
-    }
-  )
+      # this seems to not be a real problem
+      (use { autoPatchelfIgnoreMissingDeps = [ "*" ]; })
+    ];
+  }
 
   (for pkgs.go [
     (broken "not yet ported")
