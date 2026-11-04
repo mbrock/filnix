@@ -548,6 +548,13 @@ a box in between left the new address paired with the stale (null) lower.
 The fix re-checks `lower_or_box` and retries. The reproducer is in the fork
 as `filc/tests/casexpectedcap`.
 
+## Found by Fil-C: a one-byte overflow in finit's keventd
+
+keventd reads uevents with `recv(fd, buf, sizeof(buf), ...)` into a
+1024-byte buffer and then writes `buf[len] = 0`, one byte past the end when a
+uevent fills it, which happens during coldplug. Fil-C stopped it on every
+boot of the finix machine. The finit port reads `sizeof(buf) - 1`.
+
 ## Found by Fil-C: a use-after-free in libopenmpt's locale decoding
 
 Not a Fil-C issue, but a bug it caught. libopenmpt 0.8.9's

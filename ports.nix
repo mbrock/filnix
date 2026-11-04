@@ -3040,8 +3040,22 @@ in
         + ''
           substituteInPlace src/clone3.c --replace-fail \
             'static int use_clone3 = 1;' 'static int use_clone3 = 0;'
+        ''
+        # Found by Fil-C: keventd NUL-terminates what recv returned, so a
+        # uevent that fills its 1024-byte buffer (common during coldplug)
+        # wrote one byte past it. Leave room for the terminator.
+        + ''
+          substituteInPlace src/keventd.c --replace-fail \
+            'recv(pfd.fd, buf, sizeof(buf), MSG_DONTWAIT)' \
+            'recv(pfd.fd, buf, sizeof(buf) - 1, MSG_DONTWAIT)'
         '';
     }))
+  ])
+
+  # The upstream port (ports/patch/dhcpcd-10.0.8.patch) predates the move
+  # of compat/rbtree.h to vendor/; without it dhcpcd stopped at startup.
+  (for pkgs.dhcpcd [
+    (patch ./patches/dhcpcd-10.3-rbtree-pointer.patch)
   ])
 
   (for pkgs.strace [
