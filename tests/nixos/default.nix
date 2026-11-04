@@ -98,23 +98,59 @@ lib.mapAttrs (_: withFilc) {
 
   # Where a Nixpkgs test picks a variant of the package, use the same
   # variant of the Fil-C build.
-  openssh = {
-    imports = [ "${upstream}/openssh.nix" ];
-    nodes =
-      let
-        variant = args: {
-          services.openssh.package = lib.mkForce (pkgsFilc.openssh.override args);
-        };
-      in
-      {
-        server-no-openssl = variant { linkOpenssl = false; };
-        server-no-pam = variant { withPAM = false; };
-        server-null-pam = variant { withPAM = false; };
+  openssh =
+    let
+      test = pkgs.testers.runNixOSTest {
+        imports = [ "${upstream}/openssh.nix" ];
+        nodes =
+          let
+            # The switch's sshd, as the server node has it, built the way
+            # the Nixpkgs test asks.
+            variant =
+              args:
+              { nodes, ... }:
+              {
+                services.openssh.package = lib.mkForce (
+                  nodes.server.services.openssh.package.override args
+                );
+              };
+          in
+          {
+            # The Fil-C OpenSSH patch set does ML-KEM key exchange through
+            # OpenSSL, so it can't build without it: this node keeps Nixpkgs'
+            # native sshd, and the check leaves it out.
+            server-no-openssl.filc.openssh.enable = false;
+            server-no-pam = variant { withPAM = false; };
+            server-null-pam = variant { withPAM = false; };
+          };
       };
-  };
+      # The Fil-C sshd runs without PAM, so a session gets no pam_limits:
+      # check that the limit is absent rather than that it is 1024.
+      noLimits =
+        host:
+        let
+          from = "${host} 'ulimit -l' | grep 1024";
+        in
+        assert lib.hasInfix from test.config.testScript;
+        lib.replaceStrings [ from ] [ "${host} 'ulimit -l' | grep -vx 1024" ];
+    in
+    test.extend {
+      modules = [
+        {
+          # Below withFilc's mkForce, which appends the Fil-C check to this.
+          testScript = lib.mkOverride 60 (
+            noLimits "server-lazy" (noLimits "server" test.config.testScript)
+          );
+        }
+      ];
+    };
   unbound = {
     imports = [ "${upstream}/unbound.nix" ];
-    defaults.services.unbound.package = lib.mkForce pkgsFilc.unbound-full;
+    # Without the Python plugin, which the test doesn't use: its configure
+    # runs the host's python, which a cross build can't.
+    defaults.services.unbound.package = lib.mkForce (
+      pkgsFilc.unbound-full.override { withPythonModule = false; }
+    );
   };
   # A service without a switch, the way docs/nixos.md shows: its package
   # option set to the Fil-C build, and its unit listed for the check.

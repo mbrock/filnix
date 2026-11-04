@@ -113,12 +113,19 @@ works too.
 | Where | Cost | Why |
 | --- | --- | --- |
 | everywhere | CPU time is 1.5× to 4× that of the native build, and memory use is higher | bounds checks and the garbage collector |
-| sshd | no PAM: sshd checks passwords and keys itself, so an SSH login gets no logind session (no `XDG_RUNTIME_DIR`, no `loginctl` entry) and no other PAM module, such as limits or two-factor login | a Fil-C sshd can't load the native PAM modules |
+| sshd | no PAM: sshd checks passwords and keys itself, so an SSH login gets no logind session (no `XDG_RUNTIME_DIR`, no `loginctl` entry) and no other PAM module, such as `pam_limits` or two-factor login | a Fil-C sshd can't load the native PAM modules |
+| sshd without OpenSSL | no Fil-C build (`openssh.override { linkOpenssl = false; }`) | the Fil-C OpenSSH patch set does its ML-KEM key exchange through OpenSSL |
 | Nix | no build sandbox | Fil-C has no namespaces or seccomp |
 | PHP-FPM | each worker grows to about 150-250 MB, so a pool needs several GB | the garbage collector keeps more memory alive |
 | nginx | no Fil-C build; use lighttpd | nginx's processes share pointers through shared memory zones, which capabilities don't survive |
 | PHP web apps | apps whose module hard-codes its PHP (privatebin, dolibarr, icingaweb2, …) stay native unless you force their pool's `phpPackage` | the switch can only set the options NixOS has |
 | updates | Fil-C packages follow filnix's Nixpkgs pin, not your channel, so their security fixes arrive when filnix updates | they are built and cached against that pin |
+
+Without PAM, sshd also refuses every account whose password starts with `!`
+as locked, and NixOS gives that password to every user who has none, so
+key-only users couldn't log in. The switch's sshd leaves that check out
+([nixos/openssh-nixos-unlocked.patch](../nixos/openssh-nixos-unlocked.patch)),
+as NixOS's own sshd does by using PAM.
 
 `filc.phpfpm` sets `services.phpfpm.phpPackage`, which pools use unless they
 choose their own PHP. MediaWiki, DokuWiki and Nextcloud have a PHP option of
@@ -152,7 +159,8 @@ runs a native program.
 
 - `nixosConfigurations.filc-demo` ([nixos/demo.nix](../nixos/demo.nix)): a
   QEMU VM at step 2, with the Fil-C sshd, Bash, Unbound, lighttpd, Nix and a
-  set of tools.
+  set of tools. Until Fil-C Nix builds again (see [VM tests](#vm-tests)), it
+  builds only with `filc.nix.enable = false`.
 
   ```sh
   nix run .#nixosConfigurations.filc-demo.config.system.build.vm
@@ -172,22 +180,32 @@ runs a native program.
 ## VM tests
 
 `nixosTests` ([tests/nixos](../tests/nixos/default.nix)) runs NixOS VM tests
-with the module on every node. Most are Nixpkgs' own tests of each service,
-unchanged: openssh, lighttpd, php-fpm, unbound, tor, bind, and mosquitto through
-the general pattern above. So the Fil-C services are held to the tests NixOS
-holds the native ones to, and follow them as Nixpkgs updates. `demo` boots the
-demo machine, runs `filc-status`, logs in through the Fil-C sshd to the Fil-C
-shell and has the Fil-C Nix build a derivation. There is also a Redis test and
-`php-lighttpd`, which serves PHP pages through Fil-C lighttpd and Fil-C
-PHP-FPM over FastCGI.
+with the module on every node. Most are Nixpkgs' own tests of each service, so
+the Fil-C services are held to the tests NixOS holds the native ones to, and
+follow them as Nixpkgs updates.
 
-Nixpkgs' tests of WordPress (five releases behind httpd, nginx and Caddy),
-MediaWiki (MySQL, PostgreSQL, SQLite, nginx and no web server), DokuWiki and
-Nextcloud (35, 35 with MySQL and memcached, and 34 with PostgreSQL and
-Redis, whose notify_push app Nixpkgs ships only up to 34) run the apps on
-Fil-C PHP. These VMs get more memory than the default 1 GB, which a Fil-C
-pool exhausts: 2 GB for WordPress and DokuWiki, 4 GB for Nextcloud, which
-starts 12 workers.
+| Test | What runs Fil-C | Changes to Nixpkgs' test |
+| --- | --- | --- |
+| `lighttpd`, `bind`, `tor` | the server; for Tor, all 13 nodes of a private Tor network with a hidden service | none |
+| `unbound` | three resolvers | `unbound-full` without its Python plugin, which the test doesn't use |
+| `openssh` | sshd on 9 of its nodes | `server-no-openssl` keeps the native sshd; two checks of `pam_limits` instead check that the limit is absent |
+| `mosquitto` | the broker, through the general pattern above | none |
+| `php-fpm` | PHP-FPM, behind native nginx | Fil-C PHP with APCu as the test's `php` |
+| `wordpress`, `dokuwiki`, `mediawiki-*` (5), `nextcloud-*` (3) | the apps' PHP-FPM pools, and Redis for `nextcloud-with-postgresql-and-redis` | more memory |
+| `redis`, `php-lighttpd` | Redis; lighttpd serving PHP-FPM over FastCGI | our own tests |
+| `demo` | the demo machine: sshd, Bash, Unbound, lighttpd, the tools and Nix | our own test |
+
+All of them pass except `demo`, which doesn't build at the moment: Fil-C Nix
+fails its own unit tests at the current toolchain, and the demo has the Fil-C
+Nix build a derivation. With `filc.nix.enable = false` the rest of the demo
+passes.
+
+WordPress runs five releases behind httpd, nginx and Caddy; MediaWiki with
+MySQL, PostgreSQL, SQLite, nginx and no web server; Nextcloud 35, 35 with MySQL
+and memcached, and 34 with PostgreSQL and Redis (Nixpkgs ships its
+notify_push app only up to 34). These VMs get more memory than the default
+1 GB, which a Fil-C pool exhausts: 2 GB for WordPress and DokuWiki, 4 GB for
+Nextcloud, which starts 12 workers.
 
 After a test's own script passes, every unit in `filc.units` that is still
 running must map the Fil-C runtime, so a test can't pass with a native build,

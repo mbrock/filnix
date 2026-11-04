@@ -140,7 +140,7 @@ system memory safe as it can, one whole program at a time:
 }
 ```
 
-The Fil-C services pass Nixpkgs' own NixOS tests, and `filc-status` shows
+The Fil-C services run Nixpkgs' own NixOS tests, and `filc-status` shows
 which programs on the machine are Fil-C. A demo VM runs the Fil-C sshd, Bash,
 Unbound, lighttpd and Nix:
 

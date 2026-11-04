@@ -45,9 +45,12 @@ let
       what = "the OpenSSH daemon (services.openssh)";
       units = lib.optional (openssh.enable && !openssh.startWhenNeeded) "sshd";
       config = {
-        services.openssh.package = fp.openssh;
         # A Fil-C program can't dlopen the system's native PAM modules, so
-        # sshd checks passwords and keys itself (no logind session).
+        # sshd checks passwords and keys itself (no logind session). The
+        # patch lets it in users whose password NixOS sets to "!".
+        services.openssh.package = fp.openssh.overrideAttrs (old: {
+          patches = old.patches ++ [ ./openssh-nixos-unlocked.patch ];
+        });
         services.openssh.settings.UsePAM = mkDefault false;
       };
     };
