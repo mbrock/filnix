@@ -6,12 +6,17 @@
     # filc-aarch64: 118d872 plus aarch64 in the gnufilc0 ABI assertion.
     nixpkgs.url = "github:lessrest/filnixpkgs/e63c68034d742160a48ca80640442337e6356cf4";
     nixpkgs.flake = false;
+    # For the example finix machine and its test (finix/demo.nix). The last
+    # revision before finix required finit 5; filnix's Nixpkgs has finit 4.17.
+    finix.url = "github:finix-community/finix/9fafdc3f091e963585a0dd4df028d58c2d66d815";
+    finix.flake = false;
   };
 
   outputs =
     {
       self,
       nixpkgs,
+      finix,
       ...
     }:
     let
@@ -351,6 +356,11 @@
             runtime-prctl-caps = import ./tests/runtime-prctl-caps.nix {
               inherit pkgsFilc;
             };
+            # Boots finixConfigurations.filc-demo; see finix/test.nix.
+            finix-filc-demo = import ./finix/test.nix {
+              inherit pkgs finix;
+              filnix = self;
+            };
             wrapper-roles = import ./tests/wrapper-roles.nix { inherit pkgsFilc; };
             gc-local-arrays = import ./tests/gc-local-arrays.nix { inherit pkgsFilc; };
             pch-union = import ./tests/pch-union.nix { inherit pkgsFilc; };
@@ -455,6 +465,17 @@
               ec2-filc = machine ./nixos/ec2.nix;
             };
 
+          # The finix machine with a Fil-C userland; see finix/demo.nix.
+          finixConfigurations.filc-demo = (import finix).lib.finixSystem {
+            lib = nixlib;
+            modules = [
+              self.finixModules.filc-userland
+              "${finix}/modules/virtualisation/qemu.nix"
+              ./finix/demo.nix
+              { filc.userland.system = system; }
+            ];
+          };
+
           # Export the full cross-compiled package sets
           legacyPackages.${system} = {
             inherit pkgsFilc pkgsFilcStaging;
@@ -468,6 +489,15 @@
           packages.${system} = {
             default = filcc;
             baseline = baseline.baseline;
+            # Fil-C, runtime and native ELF files in a closure (docs/finix.md).
+            filc-audit = pkgs.writeShellApplication {
+              name = "filc-audit";
+              runtimeInputs = [
+                pkgs.binutils-unwrapped
+                pkgs.findutils
+              ];
+              text = builtins.readFile ./finix/filc-audit.sh;
+            };
             baseline-shell = baseline.shell;
             inherit
               filcc
@@ -734,6 +764,7 @@
         "nixosModules"
         "nixosConfigurations"
         "finixModules"
+        "finixConfigurations"
       ])
       (perSystem "x86_64-linux")
     ];

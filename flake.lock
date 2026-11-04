@@ -1,5 +1,22 @@
 {
   "nodes": {
+    "finix": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1791396781,
+        "narHash": "sha256-ftxhTlFuBHQcXhztoiVQSkQ1aW3j28sZNSosINkZBXk=",
+        "owner": "finix-community",
+        "repo": "finix",
+        "rev": "9fafdc3f091e963585a0dd4df028d58c2d66d815",
+        "type": "github"
+      },
+      "original": {
+        "owner": "finix-community",
+        "repo": "finix",
+        "rev": "9fafdc3f091e963585a0dd4df028d58c2d66d815",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "flake": false,
       "locked": {
@@ -19,6 +36,7 @@
     },
     "root": {
       "inputs": {
+        "finix": "finix",
         "nixpkgs": "nixpkgs"
       }
     }
