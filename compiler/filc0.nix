@@ -61,6 +61,8 @@ in
     ];
 
     #    patches = [ ./filc0-symver.patch ];
+    # Records read from a precompiled header keep their union handling.
+    patches = [ ../patches/fil-c/clang-pch-has-union.patch ];
 
     enableParallelBuilding = true;
 

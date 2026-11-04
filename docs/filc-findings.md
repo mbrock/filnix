@@ -702,6 +702,81 @@ Determinate Nix hit the same bug (its read-only store command, the
 substitution tests and the libutil `invalidDecompression` tests); with
 fa8c296 pinned its port no longer skips them.
 
+## Records from a precompiled header lost their union handling
+
+Fil-C's clang marks a stack temporary whose record contains a union with a
+`zhas_union` call, which keeps SROA from splitting it. The marker depends on
+`RecordDecl::HasUnion`, which Sema sets but `ASTWriter` did not write. So
+every record read from a PCH or module lost it, `std::string` included;
+only unions themselves kept it.
+
+Since 0.686, clang lowers a union that holds a pointer to pointer words, so
+`std::string`'s representation is `<{ ptr, ptr, ptr }>`. Without the
+marker, SROA split a `std::string` temporary built from a literal and
+rewrote the copy into the short-string buffer, which starts at byte 1, as
+`load ptr, ptr (@.str + 7), align 1`. FilPizlonator lowers that to a
+pointer load, which must be 8-byte aligned:
+
+```
+filc safety error: alignment requirement of 8 bytes not met.
+    pointer: 0x55555b9c9397,0x55555b9c9390,0x55555b9c93a8,global,readonly
+    expected 11 bytes with ptr aligned to 8 bytes.
+```
+
+Nix builds its unit tests with a meson precompiled header, and
+nix-util-tests, nix-store-tests and nix-expr-tests trapped in googletest's
+registration constructors (`CodeLocation(__FILE__, __LINE__)`). The same
+translation unit without the PCH emits five `zhas_union` calls and runs.
+With the PCH it emits none and traps. This is unrelated to the misaligned
+pointer initializers above: the literal holds no pointer, and the
+optimizer added the pointer load.
+
+`patches/fil-c/clang-pch-has-union.patch` serializes the bit. It also
+widens the C record abbreviation's packed bits to 15; clang 20.1.8 already
+packed 14 bits into 13. `checks.pch-union` builds a
+`std::string` record through a PCH, and a C record with a union through the
+record abbreviation.
+
+Upstream Fil-C has the same bug: 0.687 does not serialize the bit, and any
+C++ project that builds with a precompiled header or modules is affected.
+The patch applies unchanged to the staging pin too and is applied there,
+but staging has not been rebuilt or tested with it. Upstream may also want
+a PCH written by an unpatched compiler to be rejected instead of being
+misread. `VERSION_MINOR` in `ASTBitCodes.h` would not do that, because the
+reader checks only `VERSION_MAJOR`; a changed repository version string
+(`getClangFullRepositoryVersion`) would. A patched compiler that reads a
+PCH or module written by an unpatched one misreads it silently: the extra
+bit shifts every field after it. Nix builds its PCH in the same derivation,
+so filnix does not need that, but a compiler cache shared across compiler
+builds could hit it.
+
+## SROA can split a copy into a misaligned pointer load without a union
+
+Found in review of the fix above, from the code; not reproduced. SROA gives
+a slice the type of the loads and stores that use it. When it splits a
+`memcpy` between that slice and memory that is not 8-byte aligned, it
+emits the copy as a load or store of the slice type with the other side's
+alignment (`AllocaSliceRewriter::visitMemTransferInst`, "copyload"). A
+struct with a pointer member is enough:
+
+```c
+struct S { char *p; long n; } s;
+memcpy(&s, buf + 1, sizeof s);
+if (s.p) ...
+```
+
+The `s.p` load types the first slice `ptr`, so SROA can emit
+`load ptr, ptr (buf + 1), align 1`, and FilPizlonator turns that into a
+pointer load that must be 8-byte aligned. The program is valid Fil-C:
+`memcpy` copies bytes, and `s.p` just has no capability. `memcpy(buf + 1,
+&s, ...)` gives the mirror case, a misaligned pointer store. Either one
+traps, so it is a spurious safety error rather than a hole. The Fil-C
+skew handling in SROA covers only partitions without a type. A fix for
+upstream: in `visitMemTransferInst`, when the data layout is Fil-C, the
+other side's alignment is below 8 and the slice type contains a pointer,
+emit a `memcpy` instead (`EmitMemCpy = true`). It does not replace the PCH
+fix, which keeps union temporaries whole.
+
 ## Found by Fil-C: pointer rebasing across buffers in FFmpeg's flashsv2
 
 `libavcodec/flashsv2enc.c` copies its frame blocks to key blocks and rebases

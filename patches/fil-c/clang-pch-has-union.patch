@@ -1,0 +1,72 @@
+Subject: Serialize RecordDecl's HasUnion bit in precompiled headers and modules
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Fil-C's clang marks stack temporaries of records that contain a union with
+zhas_union, which keeps SROA from splitting them, keyed on
+RecordDecl::HasUnion. Sema sets that bit, but ASTWriter did not write it,
+so every record read
+from a PCH or module (std::string included) lost it. Since 0.686 lowers
+pointer-bearing unions to pointer words, SROA then split a std::string
+temporary and turned the copy of a string literal into a misaligned pointer
+load, which traps: Nix's unit tests, built with a meson PCH, failed in
+global constructors. Applied to filc0 for every Fil-C variant; the
+regression check is checks.pch-union (tests/pch-union.nix).
+
+The C record abbreviation's packed-bits field grows to 15 bits: 20.1.8
+already packed 14 bits into its 13-bit field, so a C record that can never
+be passed in registers would have been written incorrectly.
+
+From eaa5947bfd9e1368b64927d7407f84fdcab2ee94 Mon Sep 17 00:00:00 2001
+From: Amp <amp@ampcode.com>
+Date: Wed, 4 Nov 2026 21:46:23 +0100
+Subject: [PATCH 1/2] Serialize RecordDecl's HasUnion bit in precompiled
+ headers and modules
+
+Amp-Thread-ID: https://ampcode.com/threads/T-01a1a83f-db70-70ea-9a7b-2baced9ee25c
+Co-authored-by: Amp <amp@ampcode.com>
+---
+ clang/lib/Serialization/ASTReaderDecl.cpp | 1 +
+ clang/lib/Serialization/ASTWriterDecl.cpp | 5 +++--
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/clang/lib/Serialization/ASTReaderDecl.cpp b/clang/lib/Serialization/ASTReaderDecl.cpp
+index b4ff71c8958a..7fb133040c99 100644
+--- a/clang/lib/Serialization/ASTReaderDecl.cpp
++++ b/clang/lib/Serialization/ASTReaderDecl.cpp
+@@ -835,6 +835,7 @@ RedeclarableResult ASTDeclReader::VisitRecordDeclImpl(RecordDecl *RD) {
+       RecordDeclBits.getNextBit());
+   RD->setHasNonTrivialToPrimitiveDestructCUnion(RecordDeclBits.getNextBit());
+   RD->setHasNonTrivialToPrimitiveCopyCUnion(RecordDeclBits.getNextBit());
++  RD->setHasUnion(RecordDeclBits.getNextBit());
+   RD->setHasUninitializedExplicitInitFields(RecordDeclBits.getNextBit());
+   RD->setParamDestroyedInCallee(RecordDeclBits.getNextBit());
+   RD->setArgPassingRestrictions(
+diff --git a/clang/lib/Serialization/ASTWriterDecl.cpp b/clang/lib/Serialization/ASTWriterDecl.cpp
+index a5d8a3f05bc9..ddb36690bf70 100644
+--- a/clang/lib/Serialization/ASTWriterDecl.cpp
++++ b/clang/lib/Serialization/ASTWriterDecl.cpp
+@@ -626,6 +626,7 @@ void ASTDeclWriter::VisitRecordDecl(RecordDecl *D) {
+   RecordDeclBits.addBit(D->hasNonTrivialToPrimitiveDefaultInitializeCUnion());
+   RecordDeclBits.addBit(D->hasNonTrivialToPrimitiveDestructCUnion());
+   RecordDeclBits.addBit(D->hasNonTrivialToPrimitiveCopyCUnion());
++  RecordDeclBits.addBit(D->hasUnion());
+   RecordDeclBits.addBit(D->hasUninitializedExplicitInitFields());
+   RecordDeclBits.addBit(D->isParamDestroyedInCallee());
+   RecordDeclBits.addBits(llvm::to_underlying(D->getArgPassingRestrictions()), 2);
+@@ -2513,13 +2514,13 @@ void ASTWriter::WriteDeclAbbrevs() {
+   // RecordDecl
+   Abv->Add(BitCodeAbbrevOp(
+       BitCodeAbbrevOp::Fixed,
+-      13)); // Packed Record Decl Bits: FlexibleArrayMember,
++      15)); // Packed Record Decl Bits: FlexibleArrayMember,
+             // AnonymousStructUnion, hasObjectMember, hasVolatileMember,
+             // isNonTrivialToPrimitiveDefaultInitialize,
+             // isNonTrivialToPrimitiveCopy, isNonTrivialToPrimitiveDestroy,
+             // hasNonTrivialToPrimitiveDefaultInitializeCUnion,
+             // hasNonTrivialToPrimitiveDestructCUnion,
+-            // hasNonTrivialToPrimitiveCopyCUnion,
++            // hasNonTrivialToPrimitiveCopyCUnion, hasUnion,
+             // hasUninitializedExplicitInitFields, isParamDestroyedInCallee,
+             // getArgPassingRestrictions
+   // ODRHash

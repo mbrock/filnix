@@ -350,6 +350,7 @@
             };
             wrapper-roles = import ./tests/wrapper-roles.nix { inherit pkgsFilc; };
             gc-local-arrays = import ./tests/gc-local-arrays.nix { inherit pkgsFilc; };
+            pch-union = import ./tests/pch-union.nix { inherit pkgsFilc; };
             nix-eval = import ./tests/nix-eval.nix { inherit pkgsFilc; };
             perl-xs-pointers = import ./tests/perl-xs-pointers.nix { inherit pkgsFilc; };
             python-decimal = import ./tests/python-decimal.nix { inherit pkgsFilc; };
