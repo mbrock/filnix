@@ -2,7 +2,10 @@
    clang and GCC fold them (C11 6.6p10): offsetof's old spelling
    (size_t)&((T *)0)->m in static initializers and case labels, a
    gperf string pool's (int)(size_t)&((struct pool *)0)->str, element
-   addresses, pointer arithmetic, and a non-zero base. */
+   addresses, pointer arithmetic, and a non-zero base. The same
+   addresses initialize pointers too (SWI-Prolog's event table holds
+   &((PL_local_data_t *)NULL)->event.hook.name): an address with no
+   capability. */
 #include <stddef.h>
 #include <stdio.h>
 #define OLD_OFFSETOF(T, m) ((size_t)&((T *)0)->m)
@@ -21,6 +24,10 @@ static const size_t offs[] = {
     (size_t)&((struct s *)16)->in, (size_t)((char *)0 + 12), (size_t)((int *)8 - 1),
     (size_t)&((char *)0)[5], (size_t)(void *)&((struct inner *)0)->b,
 };
+struct event { int id; void *hook; };
+static const struct event events[] = {
+    { 1, &((struct s *)0)->in.b }, { 2, &((struct s *)16)->x }, { 3, (char *)0 + 7 },
+};
 static int which(size_t off)
 {
     switch (off) {
@@ -37,6 +44,9 @@ int main(void)
     printf("\n");
     for (unsigned i = 0; i < 3; i++)
         printf("%s=%d ", POOL + words[i].name, words[i].value);
+    printf("\n");
+    for (unsigned i = 0; i < 3; i++)
+        printf("%d:%zu ", events[i].id, (size_t)events[i].hook);
     printf("\n%d %d %d %d\n", which(offsetof(struct s, x)), which(offsetof(struct s, in)),
            which(offsetof(struct s, in.b[1])), which(3));
     return 0;

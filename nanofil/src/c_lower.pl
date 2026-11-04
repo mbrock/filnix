@@ -6516,7 +6516,15 @@ expr_chunk(Type, _, _, Loc, _, _, _) :-
 %  constant cast to a pointer, R = int(Address). It is the address of a
 %  static object or a function, perhaps cast, plus or minus an integer
 %  constant; string literals and compound literals become data of their
-%  own (Env). Anything else is an error. Static initializers use it.
+%  own (Env). An address built from an integer constant, as
+%  &((T *)0)->m (constant_address/3), is int(Address) or null too: an
+%  address with no capability, as clang gives it. Anything else is an
+%  error. Static initializers use it.
+address_constant(XV, _, Env, Env, R) :-
+    constant_address(XV, Env, A),
+    !,
+    U is A mod (1 << 64),
+    ( U =:= 0 -> R = null ; R = int(U) ).
 address_constant(val(_, decay(X)), Loc, Env0, Env, R) :- !,
     place_constant(X, Loc, Env0, Env, R).
 address_constant(val(_, addr(X)), Loc, Env0, Env, R) :- !,

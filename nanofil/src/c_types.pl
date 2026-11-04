@@ -63,7 +63,7 @@
                     type_size_align/4, sizeof_size/3, arith_size/3, classify_builtin/1, complete_type/2, int_type/1, int_info/3,
                     integer_promotion/2, usual_arith_conversion/3,
                     float_type/1, arithmetic_type/1, default_promotion/2,
-                    constant_value/4, const_convert/4, float_literal/3,
+                    constant_value/4, const_convert/4, constant_address/3, float_literal/3,
                     float_builtin/3, libm_builtin/2, object_size/4, compatible_type/2, composite_type/3, composite_type/4, inherited_alignment/4, knr_definition/6,
                     convert_int/3, const_value/4, pp_value/2, num_type/3,
                     scalar_type/1, type_class/2, member_type_offset/5, type_name_type/4,
