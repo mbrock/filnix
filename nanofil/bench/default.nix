@@ -46,6 +46,8 @@ let
     O-share = "-O --share=upper";
     O-half = "-O --checks=half";
     O-forward = "-O --checks=forward";
+    O-combined = "-O --checks=combined";
+    O-all = "-O --checks=combined --share=upper";
   };
   chosen =
     if only == "" then

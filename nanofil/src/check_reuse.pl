@@ -49,7 +49,8 @@
 :- use_module(ir, [op_kind/2, pointer_memory_effects/2, access_size_align/3, temp_defs/3, single_definitions/3,
                    guard_chain/3, same_pointer/3, pointer_distance/4, lower_chain/3]).
 :- use_module(cfg, [inst_def/2, inst_uses/2, func_cfg/2, cfg_idoms/2, dominates/3,
-                    natural_loops/3]).
+                    natural_loops/3, dom_children/3, dom_intervals/3,
+                    dominates_by_interval/3]).
 :- use_module(provenance, [code_items/2, context_records/3, context_index/2, with_context/3,
                            remap_sites/3]).
 
@@ -509,10 +510,11 @@ renewed_item(Distance, func(N, L, R, Ps, Bs0), func(N, L, R, Ps, Bs)) :- !,
     (   member(block(_, _, Is, _), Bs0), member(let(_, _, setjmp(_), _), Is)
     ->  Bs = Bs0
     ;   names_info(Ps, Bs0, Info),
-        func_cfg(Bs0, Cfg), cfg_idoms(Cfg, Idom), Cfg = cfg(Entry, _, _, _),
-        renew_sources(Info, Bs0, Entry, Idom, Sources),
+        func_cfg(Bs0, Cfg), cfg_idoms(Cfg, Idom),
+        dom_depths(Cfg, Idom, Depths), dom_intervals(Cfg, Idom, Dom),
+        renew_sources(Info, Bs0, Depths, Sources),
         single_definitions(Ps, Bs0, Once),
-        maplist(renewed_block(Distance, Info-Once, Entry, Idom, Sources), Bs0, Bs1),
+        maplist(renewed_block(Distance, Info-Once, Depths, Dom, Sources), Bs0, Bs1),
         renew_selection(N, Bs0, Bs1, Bs)
     ).
 renewed_item(_, Item, Item).
@@ -544,16 +546,16 @@ selected_inst(From, To, I0, I1, I, K0, K) :-
     ;   K = K0, I = I1
     ).
 
-%! renew_sources(+Info, +Blocks, +Entry, +Idom, -Sources) is det.
+%! renew_sources(+Info, +Blocks, +Depths, -Sources) is det.
 %
 %  Sources maps Root to s(Depth, L, I, Q1, check, P1, K) for each
 %  reachable heap check (or check_ahead) of a pointer at K from Root
 %  whose proof and pointer have one definition, sorted by dominator
 %  depth and index.
-renew_sources(Info, Blocks, Entry, Idom, Sources) :-
+renew_sources(Info, Blocks, Depths, Sources) :-
     findall(R-s(Depth, L, I, Q1, check(Lo1, Hi1, Al1), P1, K),
             ( member(block(L, _, Is, _), Blocks),
-              dom_depth(Idom, Entry, L, Depth),
+              get_assoc(L, Depths, Depth),
               nth0(I, Is, let(tmp(Q1), a, Op, [P1])),
               renewal_check(Op, Lo1, Hi1, _, Al1),
               single_source(Info, Q1, P1),
@@ -567,25 +569,35 @@ renew_sources(Info, Blocks, Entry, Idom, Sources) :-
 single_source(info(Defs, _, _), Q1, tmp(N1)) :-
     count(Defs, Q1, 1), count(Defs, N1, 1).
 
-%! dom_depth(+Idom, +Entry, +L, -Depth) is semidet.
-%
-%  L is reachable, at Depth dominators below Entry.
-dom_depth(_, Entry, Entry, 0) :- !.
-dom_depth(Idom, Entry, L, Depth) :-
-    get_assoc(L, Idom, D), dom_depth(Idom, Entry, D, Depth0), Depth is Depth0 + 1.
+% dom_depths(+Cfg, +Idom, -Depths): Depths maps each reachable label to
+% its number of dominators below the entry, in one walk of the dominator
+% tree (a walk up the tree per block is quadratic in a long chain).
+dom_depths(Cfg, Idom, Depths) :-
+    Cfg = cfg(Entry, _, _, _),
+    dom_children(Cfg, Idom, Kids),
+    empty_assoc(D0),
+    subtree_depths(Entry, Kids, 0, D0, Depths).
+
+subtree_depths(L, Kids, N, D0, D) :-
+    put_assoc(L, D0, N, D1),
+    get_assoc(L, Kids, Ks),
+    N1 is N + 1,
+    foldl(kid_depths(Kids, N1), Ks, D1, D).
+
+kid_depths(Kids, N, K, D0, D) :- subtree_depths(K, Kids, N, D0, D).
 
 % renewal_check(+Op, -Lo, -Hi, -Rights, -Align): Op checks [Lo, Hi).
 renewal_check(check(Lo, Hi, Rights, Align), Lo, Hi, Rights, Align).
 renewal_check(check_ahead(Lo, Hi, Rights, Align, _), Lo, Hi, Rights, Align).
 
-renewed_block(Distance, Info, Entry, Idom, Sources, block(L, Phis, Is0, J), block(L, Phis, Is, J)) :-
-    (   dom_depth(Idom, Entry, L, _)
-    ->  renewed_insts(Is0, 0, L, Distance, Info, Idom, Sources, Is)
+renewed_block(Distance, Info, Depths, Dom, Sources, block(L, Phis, Is0, J), block(L, Phis, Is, J)) :-
+    (   get_assoc(L, Depths, _)
+    ->  renewed_insts(Is0, 0, L, Distance, Info, Dom, Sources, Is)
     ;   Is = Is0
     ).
 
 renewed_insts([], _, _, _, _, _, _, []).
-renewed_insts([Inst0|Is0], I, L, Distance, Info-Once, Idom, Sources, [Inst|Is]) :-
+renewed_insts([Inst0|Is0], I, L, Distance, Info-Once, Dom, Sources, [Inst|Is]) :-
     (   Inst0 = let(tmp(Q), a, Op, [P]),
         renewal_check(Op, Lo, Hi, Rights, Align),
         Is0 = [Access|_], renewable_access(Access, Q),
@@ -593,7 +605,7 @@ renewed_insts([Inst0|Is0], I, L, Distance, Info-Once, Idom, Sources, [Inst|Is]) 
         get_assoc(R, Sources, Ss),
         member(s(_, L1, I1, Q1, check(Lo1, Hi1, Al1), P1, K1), Ss),
         renew_distance(Distance, K, K1, D),
-        (   L1 == L -> I1 < I ; dominates(Idom, L1, L) ),
+        (   L1 == L -> I1 < I ; dominates_by_interval(Dom, L1, L) ),
         LoD is Lo + D, HiD is Hi + D,
         subsumes(Lo1, Hi1, write, Al1, LoD, HiD, Rights, Align),
         % The validator's identity rule (ir.pl), which bounds its walk:
@@ -603,7 +615,7 @@ renewed_insts([Inst0|Is0], I, L, Distance, Info-Once, Idom, Sources, [Inst|Is]) 
     ;   Inst = Inst0
     ),
     I1n is I + 1,
-    renewed_insts(Is0, I1n, L, Distance, Info-Once, Idom, Sources, Is).
+    renewed_insts(Is0, I1n, L, Distance, Info-Once, Dom, Sources, Is).
 
 renew_distance(zero, K, K1, 0) :- K == K1.
 renew_distance(any, K, K1, D) :- D is K - K1.

@@ -1,7 +1,8 @@
 # Half checks: one bound where the other is known
 
-Status: **opt-in** (`--checks=half`, November 2026). It is candidate 2 of
-perf.md item 16's ranking. The `-O` default stays `renew`; see
+Status: part of the `-O` default since perf.md item 18
+(`--checks=combined`, after forward facts; alone, `--checks=half`,
+November 2026). It is candidate 2 of perf.md item 16's ranking; see
 [Measured](#measured) and [Default](#default).
 
 An access check tests three things: the capability is not null, the
@@ -240,10 +241,9 @@ access.
 
 ## Default
 
-Recommended, not yet made. Half checks win in instructions everywhere
-and in time on the geomean, no workload loses, and the review has no
-open blocker. Making `-O` select `--checks=half` is the user's decision.
-The snapshot pins `--checks=reference`, so it would stay byte-identical.
+Made, together with forward facts and shared check parts
+(`--checks=combined --share=upper`, perf.md item 18). The snapshot pins
+`--checks=reference --share=none`, so it stays byte-identical.
 
 ## Tests and plants
 

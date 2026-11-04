@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Shared check parts (docs/perf.md item 17) keep every trap: each
-# tests/c/prog/share-*.c is built by nanofil -O, by nanofil -O
-# --share=upper and by filcc -O2 without check scheduling
+# tests/c/prog/share-*.c is built by nanofil -O --checks=renew, by the
+# same with --share=upper, by plain nanofil -O (combined checks and
+# shared parts, the default) and by filcc -O2 without check scheduling
 # (-filc-optimize-checks=false), whose traps stand where nanofil's do:
 # -O2's scheduler merges checks and reports "cannot access" for a merged
 # read (docs/perf.md item 16). All three must agree on stdout and the
@@ -9,7 +10,8 @@
 # and its whole stderr (the error, the pointer's state, origins) the -O
 # build's, with addresses and the pid masked. The share build must have
 # fewer null tests or upper loads than the -O build, or the comparison
-# would show nothing.
+# would show nothing. The default build must agree with the share build
+# on stdout, the exit status and the whole stderr.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 filcc=${FILCC:?set FILCC to a filcc clang}
@@ -19,13 +21,17 @@ status=0
 for f in "$here"/c/prog/share-*.c; do
   name=$(basename "$f" .c)
   read -r -a args <<<"$(sed -n 's|^// args: ||p' "$f")"
-  for c in none upper filcc; do
+  for c in none upper default filcc; do
     # The same file name in all, since origins name the executable.
     d=$work/$c; mkdir -p "$d"
     if [[ $c == filcc ]]; then
       "$filcc" -O2 -mllvm -filc-optimize-checks=false -o "$d/$name" "$f"
+    elif [[ $c == default ]]; then
+      (cd "$here/../src" && ../bin/nanofil -O cc "$f" </dev/null) >"$d/$name.s"
+      as -o "$d/$name.o" "$d/$name.s"
+      "$filcc" -o "$d/$name" "$d/$name.o"
     else
-      (cd "$here/../src" && ../bin/nanofil -O --share=$c cc "$f" </dev/null) >"$d/$name.s"
+      (cd "$here/../src" && ../bin/nanofil -O --checks=renew --share=$c cc "$f" </dev/null) >"$d/$name.s"
       as -o "$d/$name.o" "$d/$name.s"
       "$filcc" -o "$d/$name" "$d/$name.o"
     fi
@@ -37,7 +43,7 @@ for f in "$here"/c/prog/share-*.c; do
     grep -m1 'filc safety error' "$d/$name.masked" >"$d/$name.trap" || true
   done
   parts() { grep -cE '^\s*jz\s+\.L.*\.\.fail\.|-16\(%rcx\)' "$1" || true; }
-  n=$work/none/$name u=$work/upper/$name c=$work/filcc/$name
+  n=$work/none/$name u=$work/upper/$name c=$work/filcc/$name o=$work/default/$name
   if (( $(parts "$u.s") >= $(parts "$n.s") )); then
     echo "$name: nothing shared in the share build"; status=1
   elif ! grep -q 'filc safety error' "$n.err"; then
@@ -48,6 +54,8 @@ for f in "$here"/c/prog/share-*.c; do
     echo "$name: share reports '$(cat "$u.trap")', filcc '$(cat "$c.trap")'"; status=1
   elif ! diff -u "$n.masked" "$u.masked"; then
     echo "$name: stderr differs from the -O build's"; status=1
+  elif ! cmp -s "$u.out" "$o.out" || ! diff -u "$u.masked" "$o.masked"; then
+    echo "$name: the default -O build differs from the share build"; status=1
   else
     echo "$name: ok ($(cat "$u.trap"))"
   fi

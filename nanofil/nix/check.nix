@@ -139,6 +139,11 @@ pkgs.runCommandCC "nanofil-check"
     python3 -I tests/manyhomes.py 2000 > manyhomes.c
     step "-O bigcopy manyhomes 1 GB" env COMPILE_TIMEOUT=300 NANOFIL_STACK_LIMIT=1073741824 \
       tests/progtest.sh bigcopy.c manyhomes.c
+    # 600 if arms reading one struct around calls: renewal's dominance
+    # test is an interval lookup, not a walk per (check, source) pair
+    # (docs/perf.md, item 18), 10 s where the walk took 189 s.
+    python3 -I tests/ifchain.py 600 > ifchain.c
+    step "-O ifchain 600 compile time" env COMPILE_TIMEOUT=60 tests/progtest.sh ifchain.c
     step "-O difftest float SSE2" env CC=$CC tests/difftest.sh tests/float/*.ir
     step "-O difftest fixtures+gen1" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir
     step "-O difftest backend" env CC=$CC tests/par.sh tests/difftest.sh tests/backend/*.ir
@@ -206,22 +211,35 @@ pkgs.runCommandCC "nanofil-check"
     step "reuse temps ABI+GC" env NANOFIL_REGISTERS=temps RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh gc setjmp pointer-effects reuse-gc
     unset NANOFIL_CHECKS
     # M7 round 4, check renewal (docs/m7.md): reuse, then a check that a
-    # dominating check covers tests only free and read-only. It is the
-    # -O default, so the -O suites above run it; here it runs without
-    # -O, where reuse-gc.ir's reads after c_gc are renewed (-O promotes
-    # its allocations), so P must stay rooted across collections, and
-    # -O keeps a run with reference checks. renew-trap.sh compares trap
-    # text with reference.
-    export NANOFIL_CHECKS=renew
-    step "renew difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
-    step "renew ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
-    step "renew programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    # dominating check covers tests only free and read-only. It was the
+    # -O default before combined; it runs here without -O, where
+    # reuse-gc.ir's reads after c_gc are renewed (-O promotes its
+    # allocations), so P must stay rooted across collections, and with
+    # -O and nothing shared, the previous default. -O also keeps a run
+    # with reference checks. renew-trap.sh compares trap text with
+    # reference.
+    export NANOFIL_CHECKS=renew NANOFIL_SHARE=none
+    for opt in "" -O; do
+      export NANOFIL_OPT=$opt
+      step "renew $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
+      step "renew $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
+      step "renew $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    done
+    unset NANOFIL_OPT
     step "renew temps ABI+GC" env NANOFIL_REGISTERS=temps RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh gc setjmp pointer-effects reuse-gc
+    # Combined checks (forward facts, then half checks) are the -O
+    # default with shared check parts, so the -O suites above run them;
+    # here they run without -O, where nothing is shared.
+    export NANOFIL_CHECKS=combined
+    step "combined difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
+    step "combined ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
+    step "combined programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    step "combined temps ABI+GC" env NANOFIL_REGISTERS=temps RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh gc setjmp pointer-effects reuse-gc
     export NANOFIL_CHECKS=reference NANOFIL_OPT=-O
     step "-O reference checks difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
     step "-O reference checks ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
     step "-O reference checks programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
-    unset NANOFIL_CHECKS NANOFIL_OPT
+    unset NANOFIL_CHECKS NANOFIL_OPT NANOFIL_SHARE
     # M7 round 5, range guards (docs/m7.md): renewal, then a span test
     # before each loop and renew_if for the loop's checks it covers. The
     # corpus compiles under -O, where the guards apply, so the validator
@@ -263,9 +281,10 @@ pkgs.runCommandCC "nanofil-check"
     done
     step "schedule -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
     unset NANOFIL_OPT NANOFIL_CHECKS
-    # Shared check parts (docs/perf.md item 17), opt-in: a check skips the
-    # null test of a lower a dominating check tested, and reuses the upper
-    # the check just before it loaded for the same object. The corpus
+    # Shared check parts (docs/perf.md item 17), the -O default with
+    # combined checks: a check skips the null test of a lower a dominating
+    # check tested, and reuses the upper the check just before it loaded
+    # for the same object. These are the -O default's own runs: the corpus
     # compiles under -O, where the register checkers validate every
     # stream; share-trap.sh compares traps with filcc, and share_smt.py
     # proves the shortened lines against Fil-C's condition.
@@ -306,7 +325,7 @@ pkgs.runCommandCC "nanofil-check"
     done
     step "forward -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
     unset NANOFIL_OPT NANOFIL_CHECKS
-    step "renew, guard, hoist, half and forward trap text" tests/renew-trap.sh
+    step "renew, guard, hoist, half, forward and combined trap text" tests/renew-trap.sh
     step "hoist trap text, every shape" bash -c 'for b in merged or sign; do NANOFIL_BOUNDS=$b tests/renew-trap.sh || exit 1; done'
     # Branch selection (docs/perf.md) is the -O default, so the -O suites
     # above run it; here it runs without -O, and -O runs the reference

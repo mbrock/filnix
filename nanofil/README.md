@@ -97,8 +97,13 @@ In [checked IR](docs/pizlonation.md), an access cites a proven address
 and the validator checks its coverage. Currently that evidence must come
 from a runtime check, either immediately preceding or, under the opt-in
 `--checks=reuse`, an earlier one still valid ([M7](docs/m7.md)). Under
-`--checks=renew`, the `-O` default, a dominating check's bounds may also stand, with only
-the free and read-only flags tested again at the access. Static
+`--checks=renew` a dominating check's bounds may also stand, with only
+the free and read-only flags tested again at the access. The `-O`
+default, `--checks=combined`, also keeps facts across pointer loads and
+covers a check by the hull of earlier ones ([forward](docs/forward.md)),
+tests only the unknown bound where an earlier check proved the other
+([half](docs/half.md)), and shares null tests and uppers between checks
+of one object; no trap moves. Static
 discharge remains planned. The interpreter distinguishes an invalid raw access
 (`unchecked`) from a program's legitimate safety trap. Keeping access
 safety separate from behavior preservation is the basis for future work.

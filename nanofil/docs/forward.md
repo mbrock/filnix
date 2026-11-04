@@ -1,7 +1,8 @@
 # Forward facts: check evidence kept as filcc's forward pass keeps it
 
-Status: **prototype, opt-in** (`--checks=forward`, November 2026). The
-`-O` default stays `renew`. No trap moves: every check that remains is
+Status: part of the `-O` default since perf.md item 18
+(`--checks=combined`, which runs half checks after it; alone,
+`--checks=forward`, November 2026). No trap moves: every check that remains is
 its access's own reference check, at its place, and every deleted check
 is one that would have passed.
 

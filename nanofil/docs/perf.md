@@ -4734,6 +4734,131 @@ changes every `-O` snapshot output, which the orchestrating thread
 should decide with the rest of item 16's candidates; it stays opt-in
 here.
 
+### 18. Combined checks and shared parts as the `-O` default (November 2026)
+
+Item 16's candidates 1 to 3 together: forward facts
+([forward.md](forward.md)), then half checks ([half.md](half.md)) on
+what forward's renewal leaves, as `--checks=combined`, with item 17's
+`--share=upper` in the emitter. `-O` now selects both; `-O
+--checks=renew --share=none` is the previous default and stays in the
+Nix check. `--checks=reference` stays whole: with it `-O` shares
+nothing unless asked. No trap moves. Each stage keeps its own
+contract: forward deletes only checks that would have passed, a half
+check traps exactly where its check would, and shared parts leave
+every test the reference makes. Each also keeps its own identity check
+(`reuse_refines(forward)` and `renew_refines(any)`, then
+`half_refines/2`) before `valid_module/1` checks the result's evidence
+on its own.
+
+**How they compose.** Half runs after forward. Its sources are the
+checks forward kept, so a deleted check is never a half check's proof,
+and a check that `renew(any)` renewed is no longer a source. A source
+that half turns into a `half_check` still proves its whole range, so
+renewals and reused accesses that read it are unchanged (the
+validator's `renew_source_op` and `hull_covered/7` accept it as a
+check). Share's facts come only from full `fused(check(...))`. Half
+checks, renewals and reused accesses pass `upper` through as
+transparent (none calls or frees) and never set `tested`.
+
+#### Measured
+
+The gate's builds (`--argstr only O,O-forward,O-half,O-share,O-combined,O-all`;
+`O-all` is `--checks=combined --share=upper`, today's `-O`), outputs
+byte for byte as filcc's. Counts are from `bench/profile/checks.py`
+(callgrind), counted as in item 16; `ref` is filcc `-O2`. Each cell is
+ref / `-O` before / forward / half / share / all three.
+
+| Workload | checks, M | check ins., M | program ins., G |
+| --- | --: | --: | --: |
+| zlib `-6` | 136.2 / 241.0 / 193.5 / 193.8 / 241.0 / 171.0 | 703 / 1299 / 1078 / 1122 / 1193 / 969 | 1.95 / 6.86 / 6.57 / 6.63 / 6.69 / 6.42 |
+| zlib `-d` | 11.7 / 17.6 / 17.5 / 16.5 / 17.6 / 16.5 | 56 / 131 / 130 / 105 / 118 / 105 | 0.18 / 0.57 / 0.57 / 0.54 / 0.55 / 0.54 |
+| bzip2 `-9` | 332.9 / 512.8 / 470.2 / 503.0 / 512.8 / 461.3 | 1823 / 2909 / 2823 / 2728 / 2494 / 2355 | 4.66 / 10.13 / 10.03 / 9.89 / 9.44 / 9.30 |
+| bzip2 `-d` | 86.2 / 118.1 / 109.0 / 118.1 / 118.1 / 109.0 | 417 / 660 / 653 / 594 / 597 / 549 | 1.42 / 3.91 / 3.88 / 3.83 / 3.81 / 3.73 |
+| lz4 `-1` | 0.3 / 3.2 / 3.2 / 3.2 / 3.2 / 3.2 | 2 / 23 / 23 / 23 / 23 / 23 | 0.01 / 0.23 / 0.23 / 0.23 / 0.23 / 0.23 |
+| lz4 `-9` | 116.2 / 155.8 / 151.3 / 152.4 / 155.8 / 150.5 | 647 / 1062 / 1040 / 1046 / 1006 / 985 | 2.86 / 7.32 / 7.30 / 7.30 / 7.21 / 7.19 |
+| lz4 `-d` | 3.5 / 3.8 / 3.8 / 3.8 / 3.8 / 3.8 | 16 / 27 / 27 / 27 / 27 / 27 | 0.06 / 0.32 / 0.32 / 0.32 / 0.32 / 0.32 |
+| Lua int | 48.0 / 68.1 / 64.1 / 54.0 / 68.1 / 52.0 | 258 / 484 / 468 / 396 / 422 / 372 | 1.17 / 2.10 / 2.08 / 1.97 / 2.00 / 1.93 |
+| Lua tab | 38.1 / 60.2 / 54.2 / 48.1 / 60.2 / 44.1 | 231 / 425 / 407 / 353 / 369 / 327 | 0.96 / 1.63 / 1.60 / 1.53 / 1.54 / 1.49 |
+| Lua str | 59.3 / 85.8 / 82.8 / 69.3 / 85.6 / 66.3 | 418 / 629 / 624 / 548 / 598 / 542 | 1.86 / 3.23 / 3.22 / 3.13 / 3.17 / 3.09 |
+| SQLite | 364.7 / 557.9 / 521.7 / 480.9 / 557.9 / 451.7 | 2015 / 3725 / 3568 / 3107 / 3428 / 2968 | 9.39 / 16.64 / 16.50 / 15.84 / 16.11 / 15.67 |
+| **all** | **1197 / 1824 / 1672 / 1643 / 1824 / 1530** | **6584 / 11373 / 10841 / 10050 / 10276 / 9221** | **24.5 / 52.9 / 52.3 / 51.2 / 51.1 / 49.9** |
+
+`--checks=combined` without share has the same check count as all
+three (1530M), with 9691M check instructions and 50.7G program
+instructions.
+
+- **Checks fall by 295M** (16%), 47% of the gap to filcc's 1197M.
+  Forward and half do not overlap much: forward alone saves 153M, half
+  alone 181M, together 295M.
+- **Check instructions fall by 2.15G** (19%) and program instructions
+  by 3.0G (5.7%). Share saves 0.47G on top of combined, less than its
+  1.10G alone, since combined leaves fewer full checks to share.
+- **lz4** barely moves: its hot loops index through pointers computed
+  each iteration, which no rule here relates.
+
+Time on quiet swa (`run.py --trials 7`, core 6 and its sibling idle,
+the machine's load average near 0), ratio to filcc `-O2`, median time
+(instructions) and the trials' range:
+
+| Workload | `-O` before | forward | half | share | all three |
+| --- | --: | --: | --: | --: | --: |
+| zlib `-6` | 2.10 (3.50) 2.05..2.10 | 2.06 (3.35) 2.04..2.10 | 2.08 (3.38) 2.07..2.11 | 2.07 (3.42) 2.05..2.10 | 2.03 (3.28) 1.99..2.06 |
+| zlib `-d` | 1.63 (3.04) 1.54..1.65 | 1.64 (3.04) 1.54..1.66 | 1.61 (2.87) 1.54..1.64 | 1.61 (2.93) 1.50..1.63 | 1.61 (2.87) 1.53..1.62 |
+| bzip2 `-9` | 1.64 (2.18) 1.64..1.65 | 1.64 (2.15) 1.62..1.64 | 1.57 (2.12) 1.55..1.59 | 1.56 (2.03) 1.55..1.60 | 1.55 (2.00) 1.54..1.56 |
+| bzip2 `-d` | 2.24 (2.75) 2.24..2.25 | 2.24 (2.73) 2.22..2.25 | 2.23 (2.69) 2.23..2.24 | 2.22 (2.68) 2.21..2.24 | 2.22 (2.63) 2.19..2.27 |
+| lz4 `-1` | 2.03 (10.37) 1.88..2.16 | 2.02 (10.34) 1.87..2.16 | 2.02 (10.37) 1.88..2.18 | 2.02 (10.34) 1.82..2.15 | 2.04 (10.37) 1.98..2.16 |
+| lz4 `-9` | 2.04 (2.64) 1.90..2.08 | 1.92 (2.63) 1.90..2.10 | 2.02 (2.63) 1.91..2.07 | 2.06 (2.60) 1.89..2.07 | 2.00 (2.60) 1.87..2.05 |
+| lz4 `-d` | 2.40 (5.42) 2.35..2.55 | 2.38 (5.42) 2.36..2.51 | 2.40 (5.42) 2.22..2.65 | 2.37 (5.42) 2.33..2.66 | 2.39 (5.42) 2.36..2.48 |
+| Lua int | 1.53 (1.78) 1.53..1.53 | 1.52 (1.76) 1.51..2.31 | 1.54 (1.68) 1.53..1.55 | 1.50 (1.69) 1.49..1.50 | 1.49 (1.65) 1.48..1.50 |
+| Lua tab | 1.40 (1.70) 1.40..1.41 | 1.38 (1.67) 1.38..1.38 | 1.39 (1.60) 1.38..1.40 | 1.38 (1.61) 1.37..1.39 | 1.36 (1.56) 1.35..1.37 |
+| Lua str | 1.40 (1.52) 1.38..1.43 | 1.41 (1.52) 1.40..1.45 | 1.40 (1.49) 1.37..1.43 | 1.42 (1.50) 1.40..1.43 | 1.41 (1.48) 1.37..1.41 |
+| SQLite | 1.82 (1.90) 1.81..1.83 | 1.80 (1.89) 1.80..1.82 | 1.78 (1.83) 1.77..1.78 | 1.81 (1.86) 1.80..1.82 | 1.76 (1.82) 1.75..1.77 |
+| geomean | 1.81 (2.80) | 1.79 (2.77) | 1.79 (2.72) | 1.79 (2.72) | 1.77 (2.67) |
+
+`--checks=combined` without share: geomean 1.80 (2.70). All three
+together have the lowest geomean, 1.81 → 1.77. They win with ranges
+separated from the old `-O` on zlib `-6`, bzip2 `-9`, Lua int, Lua tab
+and SQLite. Every other workload's median lies within the old `-O`'s
+range, so none is slower beyond its trials' range. This held, so
+combined checks with shared parts are the `-O` default.
+
+**Review.** A reviewing subagent attacked the interactions:
+- share's `tested`/`upper` and %r9 facts across forward-deleted checks
+  and half checks;
+- half's justifying proof when forward reused or renewed it;
+- the reused pointer load next to %r9.
+
+It found no change in safety or traps. It built both
+`-O --checks=combined --share=upper` and `-O --checks=reference
+--share=none`, ran them under `FUGC_SCRIBBLE=1`, and compared stdout,
+status and the whole masked stderr. All 192 runnable `tests/c/prog`
+programs agreed, 64 of them trapping. So did ten reproducers aimed at
+the interactions: frees through calls, a hull then an out-of-bounds
+access at a struct end, a null check that does not dominate, loops
+with pointer loads and frees, lower-side half checks, writes to
+read-only data, and setjmp.
+
+It found one blocker for the default, compile time, now fixed.
+`renew_checks` walked up the dominator tree for each (check, source)
+pair, and `renew(any)` makes every source of a root a candidate. A
+chain of 600 `if` arms took 189 s to compile under combined (40 s
+under renew). Dominance is now `dominates_by_interval/3`, and depths
+come from one walk of the tree, as in half_check.pl. The same chain
+now takes 9 s, and every `tests/c/prog` output is byte-identical to
+before under renew, forward and combined. `tests/ifchain.py 600` is in
+the Nix check with a 60 s compile limit, which the old code exceeds.
+
+It also noted that under the first version of the default,
+`-O --checks=reference` shared parts too. The reference now stays
+whole.
+
+**Snapshot.** Against 85a09ae, with the script as it was, 624 of 4956
+outputs differ. All of them are `-O` outputs in the temps, inlining
+and pointers modes (208 each), and the shared parts are what changed
+them. No output without `-O` changed, and none in the stack mode. The
+snapshot's modes now spell out `--share=none`, as they already spell
+out `--checks=reference`, and with that all 4956 are identical.
+
 ### Projection
 
 From the profile's shares: items 1–4 leave the compressors at about 3–4×

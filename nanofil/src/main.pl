@@ -86,13 +86,14 @@
     with one branch (docs/bounds.md). NANOFIL_BOUNDS supplies the same
     choice.
 
-    `--share=none|block|null|upper`, opt-in, shares parts of heap checks
-    of one object under split bounds and local selection: block leaves
-    out the null test of a check whose lower an earlier check in its
-    block tested, null also when that check is in a dominating block,
-    and upper also reuses the upper a check of the same object just
-    loaded (src/check_share.pl, docs/perf.md item 17). The default is
-    none; NANOFIL_SHARE supplies the same choice.
+    `--share=none|block|null|upper` shares parts of heap checks of one
+    object under split bounds and local selection: block leaves out the
+    null test of a check whose lower an earlier check in its block
+    tested, null also when that check is in a dominating block, and
+    upper also reuses the upper a check of the same object just loaded
+    (src/check_share.pl, docs/perf.md item 17). The default is upper
+    with `-O`, except with `--checks=reference`, and none otherwise;
+    NANOFIL_SHARE supplies the same choice.
 
     `--inline=none|small` independently selects no inlining, or, with
     `-O`, inlining of small static functions before promotion
@@ -107,7 +108,7 @@
     item 8). The default is full; NANOFIL_SIMPLIFY supplies the same
     choice.
 
-    `--checks=reference|reuse|renew|guard|hoist|schedule|half|forward` independently
+    `--checks=reference|reuse|renew|guard|hoist|schedule|half|forward|combined` independently
     selects the reference checked IR, a check before every access, check
     reuse after pizlonation, reuse followed by renewal of dominated
     checks, both followed by range guards for checks in loops, both
@@ -119,9 +120,10 @@
     test only the bound an earlier check of the object does not already
     establish, or reuse that also serves pointer loads and covers a check
     by the hull of its object's live facts, then renewal, which moves no
-    trap (src/check_reuse.pl, src/schedule.pl, src/half_check.pl,
-    docs/m7.md, docs/bounds.md, docs/schedule.md, docs/half.md,
-    docs/forward.md). The default is renew with `-O` and reference without;
+    trap, or that followed by half checks (combined) (src/check_reuse.pl,
+    src/schedule.pl, src/half_check.pl, docs/m7.md, docs/bounds.md,
+    docs/schedule.md, docs/half.md, docs/forward.md). The default is
+    combined with `-O` and reference without;
     NANOFIL_CHECKS supplies the same choice. With any but reference, `cc`,
     `compile` and difftest's pizlonation comparison use that module.
 
@@ -232,8 +234,8 @@ memcpy_mode(M) :-
 checks_default(Checks) :-
     ( getenv('NANOFIL_CHECKS',C) -> checks_mode(C), Checks = C ; true ).
 checks_mode(C) :-
-    ( memberchk(C,[reference,reuse,renew,guard,hoist,schedule,half,forward]) -> true
-    ; throw(nanofil_error('checks must be reference, reuse, renew, guard, hoist, schedule, half or forward')) ).
+    ( memberchk(C,[reference,reuse,renew,guard,hoist,schedule,half,forward,combined]) -> true
+    ; throw(nanofil_error('checks must be reference, reuse, renew, guard, hoist, schedule, half, forward or combined')) ).
 % vectors_options(+Argv0, -Argv): Argv is Argv0 less its vector
 % options, the last of which sets NANOFIL_VECTORS (c_types
 % vector_type/4), for drivers that pass only options: --vectors and
@@ -356,7 +358,7 @@ options([A|As],O,R,_,Opt,Rs,Cs,Args) :-
     options(As,O,R,C,Opt,Rs,Cs,Args).
 options(Args,O,emit(R,B,M),C,O,emit(R,B,M),C,Args) :-
     registers_default(O,R), branches_default(O,B), memcpy_default(O,M),
-    checks_default(O,C).
+    checks_default(O,C), share_default(O,C).
 
 %! registers_default(+Opt, ?Registers) is det.
 %
@@ -376,11 +378,20 @@ branches_default(o1, selected).
 memcpy_default(_, M) :- nonvar(M), !.
 memcpy_default(o0, call).
 memcpy_default(o1, inline).
-% checks_default(+Opt, ?Checks): -O renews dominated checks (docs/m7.md,
-% round 4); without it every access keeps its full check.
+% checks_default(+Opt, ?Checks): -O combines forward facts and half
+% checks (docs/forward.md, docs/half.md); without it every access keeps
+% its full check.
 checks_default(_, C) :- nonvar(C), !.
 checks_default(o0, reference).
-checks_default(o1, renew).
+checks_default(o1, combined).
+% share_default(+Opt, +Checks): -O shares null tests and uppers
+% (check_share.pl) unless --share= or NANOFIL_SHARE chose or the checks
+% are the reference's, which stay whole; without -O nothing is shared.
+share_default(o0, _).
+share_default(o1, C) :-
+    (   ( getenv('NANOFIL_SHARE', _) ; C == reference ) -> true
+    ;   setenv('NANOFIL_SHARE', upper)
+    ).
 
 % arg_atom(+Arg, -Atom): Atom is the command-line argument Arg, which
 % is an atom (SWI) or a character list (Trealla).
@@ -586,10 +597,11 @@ checked_module(Checks, Module, Checked) :-
 %
 %  Checked is the checked module Checked0 after the check passes of
 %  Checks (--checks; docs/m7.md): reference keeps pizlonate's naive
-%  checks; reuse deletes a check an earlier live one covers; renew, the
-%  -O default, also replaces a dominated check by a test of only the
+%  checks; reuse deletes a check an earlier live one covers; renew
+%  also replaces a dominated check by a test of only the
 %  free and read-only flags; guard also puts a span test before a loop
-%  and makes its checks renew_if. Each pass's result must pass its
+%  and makes its checks renew_if; combined, the -O default, is forward
+%  facts followed by half checks. Each pass's result must pass its
 %  *_refines identity check against its input, and the validator
 %  (valid_module/1) then checks the result's evidence again on its own.
 checks_module(reference, Checked, Checked).
@@ -652,6 +664,20 @@ checks_module(half, Checked0, Checked) :-
 % renewal at any distance (docs/schedule.md's renew from a related
 % pointer's check). No trap moves. Only the result is validated.
 checks_module(forward, Checked0, Checked) :-
+    forwarded_module(Checked0, Checked),
+    once(valid_module(Checked)).
+
+% Combined: forward facts, then half checks for what renewal left. Each
+% stage keeps its own refines check. Only the result is validated.
+checks_module(combined, Checked0, Checked) :-
+    forwarded_module(Checked0, Checked1),
+    once(half_checks(Checked1, Checked)),
+    (   half_refines(Checked1, Checked) -> true
+    ;   throw(nanofil_error('half checks changed more than checks'))
+    ),
+    once(valid_module(Checked)).
+
+forwarded_module(Checked0, Checked) :-
     once(reuse_checks(forward, Checked0, Checked1)),
     (   reuse_refines(forward, Checked0, Checked1) -> true
     ;   throw(nanofil_error('forward reuse changed more than proofs'))
@@ -659,8 +685,7 @@ checks_module(forward, Checked0, Checked) :-
     once(renew_checks(any, Checked1, Checked)),
     (   renew_refines(any, Checked1, Checked) -> true
     ;   throw(nanofil_error('check renewal changed more than checks'))
-    ),
-    once(valid_module(Checked)).
+    ).
 
 renewed_module(Checked0, Checked) :-
     reused_module(Checked0, Checked1),

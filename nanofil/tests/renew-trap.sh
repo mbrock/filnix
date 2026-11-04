@@ -3,8 +3,9 @@
 # facts keep each trap's text (docs/m7.md, rounds 4 and 5;
 # docs/bounds.md; docs/half.md; docs/forward.md): every
 # tests/c/prog/renew-*.c, guard-*.c, hoist-*.c, half-*.c and forward-*.c
-# is built by nanofil -O with reference checks and with --checks=renew,
-# guard, hoist, half or forward, and
+# is built by nanofil -O, sharing nothing, with reference checks and with
+# --checks=renew, guard, hoist, half or forward, half-*.c and forward-*.c
+# also with combined and -O's default shared check parts, and
 # both runs must agree on stdout, the exit
 # status and the whole stderr (the safety error, its pointer's state,
 # expected bytes and origins) with addresses and the pid masked. The
@@ -23,11 +24,12 @@ for f in "$here"/c/prog/renew-*.c "$here"/c/prog/guard-*.c "$here"/c/prog/hoist-
   mode=${name%%-*}
   read -r -a args <<<"$(sed -n 's|^// args: ||p' "$f")"
   builds="reference $mode"
-  [[ $mode == half || $mode == forward ]] && builds="$builds renew"
+  [[ $mode == half || $mode == forward ]] && builds="$builds renew combined"
   for c in $builds; do
     # The same file name in both, since origins name the executable.
     d=$work/$c; mkdir -p "$d"
-    (cd "$here/../src" && ../bin/nanofil -O --checks=$c cc "$f" </dev/null) >"$d/$name.s"
+    share=--share=none; [[ $c == combined ]] && share=
+    (cd "$here/../src" && ../bin/nanofil -O --checks=$c $share cc "$f" </dev/null) >"$d/$name.s"
     as -o "$d/$name.o" "$d/$name.s"
     "$filcc" -o "$d/$name" "$d/$name.o"
     set +e
@@ -56,7 +58,8 @@ for f in "$here"/c/prog/renew-*.c "$here"/c/prog/guard-*.c "$here"/c/prog/hoist-
     echo "$name: no renewal in the $mode build"; status=1
   elif ! grep -q 'filc safety error' "$work/reference/$name.out"; then
     echo "$name: the reference build does not trap"; status=1
-  elif diff -u "$work/reference/$name.out" "$work/$mode/$name.out"; then
+  elif diff -u "$work/reference/$name.out" "$work/$mode/$name.out" &&
+       { [[ ! -e $work/combined/$name.out ]] || diff -u "$work/reference/$name.out" "$work/combined/$name.out"; }; then
     echo "$name: ok ($(grep -m1 'filc safety error' "$work/$mode/$name.out"))"
   else
     status=1

@@ -22,7 +22,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 nanofil=$here/../bin/nanofil
 export FILCC=${FILCC:?set FILCC to a filcc clang}
 # The outputs are those of the defaults, from the sources.
-unset NANOFIL_STATE NANOFIL_OPT NANOFIL_REGISTERS NANOFIL_BRANCHES NANOFIL_CHECKS \
+unset NANOFIL_STATE NANOFIL_OPT NANOFIL_REGISTERS NANOFIL_BRANCHES NANOFIL_CHECKS NANOFIL_SHARE \
   NANOFIL_MEMCPY NANOFIL_INLINE NANOFIL_SIMPLIFY NANOFIL_VECTORS NANOFIL_STD
 cd "$here/../docs/guide"
 

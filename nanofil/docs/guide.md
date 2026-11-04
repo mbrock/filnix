@@ -504,12 +504,13 @@ After pizlonation, `--checks` selects how much of that naivety to undo
 |---|---|---|
 | `reference` | every check stays | without `-O` |
 | `reuse` | deletes a check whose access an earlier, still-valid heap check already covers | |
-| `renew` | reuse, then replaces a check dominated by an earlier check of the same pointer with a `renew` that tests only the free and read-only flags | with `-O` |
+| `renew` | reuse, then replaces a check dominated by an earlier check of the same pointer with a `renew` that tests only the free and read-only flags | |
 | `guard` | renew, then puts a `span_test` before a loop and turns its checks into `renew_if` | |
 | `hoist` | renew, then puts a `limit` before a loop and turns its full checks of a root defined before it into `check_limit` ([bounds.md](bounds.md)) | |
 | `forward` | reuse that also serves pointer loads and covers a check by the hull of its object's live facts, then renewal at any distance; moves no trap ([forward.md](forward.md)) | |
 | `schedule` | renew, then widens a check over the bytes every path ahead needs from its base (`check_ahead`) and renews what it covers at a distance; may trap earlier, as filcc -O2 does ([schedule.md](schedule.md)) | |
 | `half` | renew, then turns a check whose object an earlier dominating check proved at another range into a `half_check` that tests only the unknown bound ([half.md](half.md)) | |
+| `combined` | forward, then half checks; `-O` also shares null tests and uppers between checks of one object (`--share=upper`, [perf.md](perf.md) item 17) | with `-O` |
 
 Each pass's result must pass its `*_refines/2` check, which confirms
 that only checks changed. Then `valid_module/1` checks the evidence
@@ -785,13 +786,9 @@ follows:
 	movq %rax, %r11
 	movq %rcx, -144(%rbp)
 	movq %r11, %rax
-	testq %rcx, %rcx
-	jz .Lsum..fail.8.0.8
-	cmpq %rcx, %rax
-	jb .Lsum..fail.8.0.8
 	movq -16(%rcx), %rdx
 	subq $8, %rdx
-	cmpq %rdx, %rax
+	cmpq %rdx, %r11
 	ja .Lsum..fail.8.0.8
 	testb $7, %al
 	jnz .Lsum..fail.8.0.8
@@ -835,7 +832,11 @@ follows:
 reloaded from its frame slot at `-152(%rbp)`, which is a root. The int
 load's check is the same as before, without the borrow test, which
 checks of at most 16 bytes do not need ([docs/perf.md](perf.md) item
-6a). The pointer load reads the aux word at `-8(%rcx)`. If the object
+6a). The pointer load's check of `n->next` tests only the upper end:
+the int load's check just before proved `n`'s object not null and its
+address at or above lower, so `-O`'s combined checks make it a half
+check ([docs/half.md](half.md)). The pointer load reads the aux word at
+`-8(%rcx)`. If the object
 has an aux array, it takes the loaded pointer's lower from the matching
 aux slot, unboxing it when the low bit says it is boxed. An object
 without aux gives a null lower (the `.nolower` path,
