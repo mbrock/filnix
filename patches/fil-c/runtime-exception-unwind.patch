@@ -1,8 +1,6 @@
-From bc2b46c2f4e0ae7b204b6d5d2cb373569d5f8efe Mon Sep 17 00:00:00 2001
-From: Amp <amp@ampcode.com>
-Date: Sun, 27 Sep 2026 18:56:50 +0000
-Subject: [PATCH] Runtime: keep each unwind's state when cleanups throw, and
- per fiber
+Subject: Runtime: keep each unwind's state when cleanups throw, and per fiber
+Origin: Filnix (mbrock/fil-c a51b0af4026f, rebased as 20b323fbb19a on staging-deluge)
+Upstream-Status: Not submitted
 
 The unwind state (context, exception, found frame, forced-unwind callback)
 lives in filc_thread, and the compiler's resume does not pass the exception
@@ -28,172 +26,16 @@ back. Two ways to have more than one unwind in flight broke it:
 
 Found by Nix's functional tests (read-only-store, binary-cache,
 multiple-outputs-substitute-failure) and nix-util-tests' decompress test.
+Staging carries this commit; the official releases (0.686, 0.687) do not, so
+runtime/libpizlo.nix applies this copy, cherry-picked onto 0.687 (libpas
+hunks only), to release pins. Regression checks:
+fork-regressions.tests.nested-cleanup and .fiber-unwind.
 
-Amp-Thread-ID: https://ampcode.com/threads/T-01a0e2af-4054-707b-8968-337622993848
-Co-authored-by: Mikael Brockman <mikael@brockman.se>
----
- .../fiberexceptionunwind.cpp                  |  57 +++++++
- filc/tests/fiberexceptionunwind/manifest      |   8 +
- filc/tests/nestedexceptioncleanup/manifest    |   5 +
- .../nestedexceptioncleanup.cpp                |  50 ++++++
- libpas/src/libpas/filc_runtime.c              | 154 +++++++++++++++++-
- libpas/src/libpas/filc_runtime.h              |   8 +
- libpas/src/libpas/filc_runtime_inlines.h      |   2 +
- 7 files changed, 281 insertions(+), 3 deletions(-)
- create mode 100644 filc/tests/fiberexceptionunwind/fiberexceptionunwind.cpp
- create mode 100644 filc/tests/fiberexceptionunwind/manifest
- create mode 100644 filc/tests/nestedexceptioncleanup/manifest
- create mode 100644 filc/tests/nestedexceptioncleanup/nestedexceptioncleanup.cpp
-
-diff --git a/filc/tests/fiberexceptionunwind/fiberexceptionunwind.cpp b/filc/tests/fiberexceptionunwind/fiberexceptionunwind.cpp
-new file mode 100644
-index 00000000000..7ca5f132651
---- /dev/null
-+++ b/filc/tests/fiberexceptionunwind/fiberexceptionunwind.cpp
-@@ -0,0 +1,57 @@
-+// An exception in flight on each of two stacks: main unwinds past a destructor that
-+// switches to a coroutine, which throws and catches its own exception (like boost's
-+// forced_unwind) and switches back. Main's unwind must continue with its own exception.
-+#include <ucontext.h>
-+#include <cstdio>
-+#include <exception>
-+#include <stdexcept>
-+
-+static ucontext_t main_ctx, co_ctx;
-+static char co_stack[256 * 1024];
-+static std::exception_ptr co_error;
-+static bool unwinding_co;
-+struct forced_unwind {};
-+
-+static void co_main() {
-+    try {
-+        try {
-+            throw std::runtime_error("from coroutine");
-+        } catch (...) {
-+            co_error = std::current_exception();
-+        }
-+        swapcontext(&co_ctx, &main_ctx);
-+        if (unwinding_co)
-+            throw forced_unwind();
-+    } catch (forced_unwind const&) {
-+        std::puts("coroutine unwound");
-+    }
-+    swapcontext(&co_ctx, &main_ctx);
-+}
-+
-+struct Coroutine {
-+    ~Coroutine() {
-+        unwinding_co = true;
-+        swapcontext(&main_ctx, &co_ctx);
-+    }
-+};
-+
-+__attribute__((noinline)) static void run() {
-+    Coroutine co;
-+    swapcontext(&main_ctx, &co_ctx);
-+    std::rethrow_exception(co_error);
-+}
-+
-+int main() {
-+    getcontext(&co_ctx);
-+    co_ctx.uc_stack.ss_sp = co_stack;
-+    co_ctx.uc_stack.ss_size = sizeof co_stack;
-+    co_ctx.uc_link = nullptr;
-+    makecontext(&co_ctx, co_main, 0);
-+    try {
-+        run();
-+    } catch (std::exception const& e) {
-+        std::printf("main caught: %s\n", e.what());
-+        return 0;
-+    }
-+    return 1;
-+}
-diff --git a/filc/tests/fiberexceptionunwind/manifest b/filc/tests/fiberexceptionunwind/manifest
-new file mode 100644
-index 00000000000..33f262bcccc
---- /dev/null
-+++ b/filc/tests/fiberexceptionunwind/manifest
-@@ -0,0 +1,8 @@
-+return:
-+  success
-+output-includes:
-+  - "coroutine unwound"
-+  - "main caught: from coroutine"
-+needsGLIBC:
-+  true
-+
-diff --git a/filc/tests/nestedexceptioncleanup/manifest b/filc/tests/nestedexceptioncleanup/manifest
-new file mode 100644
-index 00000000000..9dafdd0f8b2
---- /dev/null
-+++ b/filc/tests/nestedexceptioncleanup/manifest
-@@ -0,0 +1,5 @@
-+return:
-+  success
-+output-includes:
-+  - "outer caught outer after 6 inner catches"
-+  - "again outer"
-diff --git a/filc/tests/nestedexceptioncleanup/nestedexceptioncleanup.cpp b/filc/tests/nestedexceptioncleanup/nestedexceptioncleanup.cpp
-new file mode 100644
-index 00000000000..bd22bc84b20
---- /dev/null
-+++ b/filc/tests/nestedexceptioncleanup/nestedexceptioncleanup.cpp
-@@ -0,0 +1,50 @@
-+// Destructors that run during unwinding throw and catch exceptions of their own, nested
-+// two deep in three frames. Each outer unwind must resume with its own exception.
-+#include <cstdio>
-+#include <exception>
-+#include <stdexcept>
-+#include <string>
-+
-+static int inner_catches;
-+
-+// Throw and catch inside a destructor, itself nested one level deeper.
-+struct Inner {
-+    ~Inner() {
-+        try { throw std::string("inner-inner"); } catch (const std::string&) { inner_catches++; }
-+    }
-+};
-+
-+struct Cleanup {
-+    const char* name;
-+    ~Cleanup() noexcept {
-+        try {
-+            Inner i;
-+            throw std::logic_error(name);
-+        } catch (const std::logic_error&) {
-+            inner_catches++;
-+        }
-+    }
-+};
-+
-+__attribute__((noinline)) static void level3() { Cleanup c{"level3"}; throw std::runtime_error("outer"); }
-+__attribute__((noinline)) static void level2() { Cleanup c{"level2"}; level3(); }
-+__attribute__((noinline)) static void level1() { Cleanup c{"level1"}; level2(); }
-+
-+int main() {
-+    std::exception_ptr saved;
-+    try {
-+        level1();
-+    } catch (...) {
-+        saved = std::current_exception();
-+    }
-+    // Each of the three cleanups caught two exceptions of its own.
-+    if (inner_catches != 6) { std::printf("inner_catches=%d\n", inner_catches); return 1; }
-+    try {
-+        std::rethrow_exception(saved);
-+    } catch (const std::runtime_error& e) {
-+        std::printf("outer caught %s after %d inner catches\n", e.what(), inner_catches);
-+    }
-+    // A later, unrelated exception still unwinds normally.
-+    try { level3(); } catch (const std::runtime_error& e) { std::printf("again %s\n", e.what()); }
-+    return inner_catches == 8 ? 0 : 2;
-+}
 diff --git a/libpas/src/libpas/filc_runtime.c b/libpas/src/libpas/filc_runtime.c
-index 3198137b580..28fd80ab9e5 100644
+index e1c79404c3fe..4d18f4233130 100644
 --- a/libpas/src/libpas/filc_runtime.c
 +++ b/libpas/src/libpas/filc_runtime.c
-@@ -7404,6 +7404,117 @@ static unwind_reason_code call_personality(
+@@ -7443,6 +7443,117 @@ static unwind_reason_code call_personality(
          context_ptr);
  }
  
@@ -311,7 +153,7 @@ index 3198137b580..28fd80ab9e5 100644
  filc_exception_and_int filc_native__Unwind_RaiseException(
      filc_thread* my_thread, filc_ptr exception_object_ptr)
  {
-@@ -7428,6 +7539,7 @@ filc_exception_and_int filc_native__Unwind_RaiseException(
+@@ -7467,6 +7578,7 @@ filc_exception_and_int filc_native__Unwind_RaiseException(
      filc_frame* first_frame = my_frame->parent;
      filc_frame* current_frame;
  
@@ -319,7 +161,7 @@ index 3198137b580..28fd80ab9e5 100644
      my_thread->is_force_unwinding = false;
  
      /* Phase 1 */
-@@ -7437,17 +7549,24 @@ filc_exception_and_int filc_native__Unwind_RaiseException(
+@@ -7476,17 +7588,24 @@ filc_exception_and_int filc_native__Unwind_RaiseException(
              filc_origin_get_function_origin(current_frame->origin);
          
          if (!function_origin->can_catch)
@@ -346,7 +188,7 @@ index 3198137b580..28fd80ab9e5 100644
              my_thread->found_frame_for_unwind = current_frame;
              filc_flight_ptr_store(my_thread, &my_thread->unwind_context_ptr, context_ptr);
              filc_flight_ptr_store(my_thread, &my_thread->exception_object_ptr, exception_object_ptr);
-@@ -7458,9 +7577,13 @@ filc_exception_and_int filc_native__Unwind_RaiseException(
+@@ -7497,9 +7616,13 @@ filc_exception_and_int filc_native__Unwind_RaiseException(
          if (personality_result == unwind_reason_continue_unwind && function_origin->can_throw)
              continue;
  
@@ -361,7 +203,7 @@ index 3198137b580..28fd80ab9e5 100644
      return filc_exception_and_int_with_int(unwind_reason_end_of_stack);
  }
  
-@@ -7591,6 +7714,7 @@ static bool landing_pad_impl(filc_thread* my_thread, filc_ptr context_ptr,
+@@ -7630,6 +7753,7 @@ static bool landing_pad_impl(filc_thread* my_thread, filc_ptr context_ptr,
          if (current_frame != found_frame)
              return false;
          my_thread->found_frame_for_unwind = NULL;
@@ -369,7 +211,7 @@ index 3198137b580..28fd80ab9e5 100644
      } else {
          if (!function_origin->personality_getter)
              return false;
-@@ -7608,6 +7732,11 @@ static bool landing_pad_impl(filc_thread* my_thread, filc_ptr context_ptr,
+@@ -7647,6 +7771,11 @@ static bool landing_pad_impl(filc_thread* my_thread, filc_ptr context_ptr,
              personality_result == unwind_reason_install_context,
              NULL,
              "personality function returned neither continue_unwind nor install_context.");
@@ -381,7 +223,7 @@ index 3198137b580..28fd80ab9e5 100644
      }
  
      check_unwind_context(context_ptr, filc_write_access);
-@@ -8112,6 +8241,9 @@ static filc_thread* finish_switch_to_fiber_context(void)
+@@ -8196,6 +8325,9 @@ static filc_thread* finish_switch_to_fiber_context(void)
      fiber_context->special_signal_deferral_depth = 0;
      my_thread->stack_limit = fiber_context->stack_limit.stack_limit;
      my_thread->stack_top = fiber_context->stack_limit.stack_top;
@@ -391,7 +233,7 @@ index 3198137b580..28fd80ab9e5 100644
      if (my_thread->current_fiber_context) {
          fiber_context_send_sigset_to_user(my_thread->current_fiber_context);
          pas_lock_unlock(&my_thread->current_fiber_context->lock);
-@@ -8207,6 +8339,22 @@ void filc_native_zfiber_context_swapcontext(filc_thread* my_thread, filc_ptr fro
+@@ -8292,6 +8424,22 @@ void filc_native_zfiber_context_swapcontext(filc_thread* my_thread, filc_ptr fro
          "cannot call swapcontext with from == to (from/to fiber context = %s).",
          filc_ptr_to_new_string(from_fiber_context_ptr));
      
@@ -415,10 +257,10 @@ index 3198137b580..28fd80ab9e5 100644
          pas_lock_lock(&from_fiber_context->lock);
          pas_lock_lock(&to_fiber_context->lock);
 diff --git a/libpas/src/libpas/filc_runtime.h b/libpas/src/libpas/filc_runtime.h
-index 56f5ae2b3ec..e62a31240d2 100644
+index f6284bc5fe8f..f2f124d3572d 100644
 --- a/libpas/src/libpas/filc_runtime.h
 +++ b/libpas/src/libpas/filc_runtime.h
-@@ -822,6 +822,12 @@ struct PAS_ALIGNED(FILC_CC_ALIGNMENT) filc_thread {
+@@ -821,6 +821,12 @@ struct PAS_ALIGNED(FILC_CC_ALIGNMENT) filc_thread {
      bool is_force_unwinding;
      filc_ptr force_stop_callback;
      filc_ptr force_stop_arg_ptr;
@@ -432,7 +274,7 @@ index 56f5ae2b3ec..e62a31240d2 100644
      sigset_t initial_blocked_sigs;
  
 @@ -1387,6 +1393,8 @@ struct filc_fiber_context {
-     void* stack;
+     unsigned stack_ref_count;
      filc_ptr closure_ptr;
      filc_ptr bound_sigset_ptr;
 +    /* The unwind state of this context's stack while it's switched out (see swapcontext). */
@@ -441,7 +283,7 @@ index 56f5ae2b3ec..e62a31240d2 100644
      filc_fiber_context* stack_owner;
      bool is_grey;
 diff --git a/libpas/src/libpas/filc_runtime_inlines.h b/libpas/src/libpas/filc_runtime_inlines.h
-index 479506b6846..ac1d7662c8f 100644
+index 45e25157b3b9..9beffa648bb4 100644
 --- a/libpas/src/libpas/filc_runtime_inlines.h
 +++ b/libpas/src/libpas/filc_runtime_inlines.h
 @@ -54,6 +54,7 @@ static PAS_ALWAYS_INLINE void filc_thread_mark_outgoing_ptrs(filc_thread* thread
@@ -460,6 +302,3 @@ index 479506b6846..ac1d7662c8f 100644
      marker.mark(stack, filc_object_for_special_payload(fiber_context->owning_thread));
      marker.mark(stack, filc_object_for_special_payload(fiber_context->stack_owner));
      pas_lock_lock(&fiber_context->lock);
--- 
-2.55.0
-

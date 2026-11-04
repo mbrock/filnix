@@ -702,6 +702,32 @@ Determinate Nix hit the same bug (its read-only store command, the
 substitution tests and the libutil `invalidDecompression` tests); with
 fa8c296 pinned its port no longer skips them.
 
+The fix stayed in the fork. When the default pin moved to the official 0.686
+release (d02f9e3bf9f0, 2026-10-05), the three functional tests failed again,
+and they still did with 0.687. `runtime/libpizlo.nix` now applies the patch,
+cherry-picked onto 0.687 (libpas hunks only), to release pins; staging
+already has the commit.
+
+Two edge cases remain, found in review and not reproduced. Both were broken
+before the patch too, and neither breaks memory safety; report upstream with
+the patch:
+
+- A signal handler that throws and catches while an unwind is between
+  landing pads, inside phase 2's personality call or inside a forced-unwind
+  stop function. `cleanup_frame_for_unwind` is then null or names a frame
+  that has returned, so `finish_unwind` drops the outer state and the next
+  resume fails `PAS_ASSERT(found_frame_for_unwind)`. Keeping that field on
+  the innermost live frame of the unwind (`current_frame` in
+  `landing_pad_impl` and before the stop-function call, its parent in
+  `filc_resume_unwind`) would fix it.
+- `longjmp` out of a cleanup while an unwind is in flight leaves the found
+  frame, cleanup frame and saved chain stale. As far as the review traced,
+  nothing reads them before the next raise overwrites them, but they keep
+  garbage alive and cost an allocation on each `swapcontext`, and
+  `frame_is_live_from` compares addresses, so a reused frame address could
+  revive them. `zlongjmp` could call `finish_unwind` when it pops either
+  frame.
+
 ## Records from a precompiled header lost their union handling
 
 Fil-C's clang marks a stack temporary whose record contains a union with a

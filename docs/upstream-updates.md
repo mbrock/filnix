@@ -258,7 +258,7 @@ Residual work absent from v0.686, established by source comparison:
 | Area | Staging change | Regression |
 | --- | --- | --- |
 | Function descriptors | Local implementation alias prevents wrong-module calls through `dlsym`/`RTLD_LOCAL` | `fork-regressions.tests.descriptors` |
-| Exception unwinding | Save nested cleanup and per-fiber unwind state | `fork-regressions.tests.nested-cleanup`, `.fiber-unwind` |
+| Exception unwinding | Save nested cleanup and per-fiber unwind state; release pins now apply it as `patches/fil-c/runtime-exception-unwind.patch` | `fork-regressions.tests.nested-cleanup`, `.fiber-unwind` |
 | Pointer CAS | Revalidate shadow state after the primary load, with an ARM64 load-load fence | `fork-regressions.tests.cas-expected-cap` |
 | ARM64 glibc | Obtain saved jump-buffer frame identity through `zget_jmp_buf_frame` | staging cancellation C++ cleanup |
 | Cancellation | Local libpizlo, ARM64 gate and glibc patches | `staging-cancellation`, `staging-cancellation-native` (x86-only harness) |

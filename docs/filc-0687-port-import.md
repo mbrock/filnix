@@ -82,6 +82,9 @@ the threaded tile test completes in 723 seconds on the successful run.
 
 Six staging-only `fork-regressions` fail on release, identically to 0.686;
 their assertions and experimental runtime semantics are left unchanged.
+Later, `nested-cleanup` and `fiber-unwind` were fixed on release by applying
+the fork's unwind-state patch to libpizlo, because Nix needs it
+(`patches/fil-c/runtime-exception-unwind.patch`; see docs/filc-findings.md).
 
 The campaign found a PHP zstd test-budget failure: `streams_3.phpt` holds
 two copies of the PHP executable and exceeded PHP's default 128 MiB limit.

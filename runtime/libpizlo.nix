@@ -20,11 +20,14 @@ in
     pname = "libpizlo";
     version = "git";
     src = sources.libpas-src;
-
     patches = [
       # prctl's capability options returned ENOSYS, so systemd could start no service.
       ../patches/filc-runtime-prctl-caps.patch
-    ];
+    ]
+    # Staging already has this fix; the official releases do not.
+    ++ pkgs.lib.optional (
+      sources.variant == "release"
+    ) ../patches/fil-c/runtime-exception-unwind.patch;
 
     nativeBuildInputs = [
       pkgs.gnumake
