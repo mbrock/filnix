@@ -162,3 +162,46 @@ table.opt-facts code.term { font: inherit; background: none; padding: 0; }
 .muted { color: var(--muted); }
 details.more-defs { display: inline; }
 details.more-defs > summary { display: inline; cursor: pointer; color: var(--accent); }
+
+/* Port lists (dterm_ports.pl): each port a table of its steps in the
+   order they apply, verb, arguments and why. */
+.ports .port-index { margin: 1.2rem 0 2rem; }
+.port-filter { padding: 0.4rem 0; }
+.port-filter label { color: var(--muted); font-size: 0.85rem; font-weight: 700; }
+.port-filter input { font: inherit; font-size: 0.95rem; width: min(24rem, 70%); padding: 0.25rem 0.5rem; border: 1px solid var(--rule); border-radius: 4px; }
+.index-group h3 { margin: 1rem 0 0.2rem; font-size: 0.95rem; }
+.index-group h3 a { color: inherit; text-decoration: none; }
+table.port-summary { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+table.port-summary td { padding: 0.18rem 0.6rem 0.18rem 0; vertical-align: baseline; border-top: 1px solid color-mix(in srgb, var(--rule) 45%, transparent); }
+table.port-summary td.ps-name { white-space: nowrap; font-weight: 600; width: 1%; }
+table.port-summary td.ps-name a { text-decoration: none; }
+table.port-summary td.ps-changes { width: 1%; min-width: 14rem; }
+table.port-summary td.ps-why { color: var(--muted); }
+table.port-summary td.ps-why .prose, table.port-summary td.ps-why p { margin: 0; display: inline; }
+.badge { display: inline-block; margin: 0 0.25rem 0.1rem 0; padding: 0 0.35rem; border-radius: 3px; font-family: var(--mono-font); font-size: 0.76rem; line-height: 1.5; white-space: nowrap; background: color-mix(in srgb, var(--rule) 30%, transparent); color: var(--ink); }
+.badge .count { margin-left: 0.15em; color: var(--muted); }
+.badge.pin { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.badge.broken { background: color-mix(in srgb, #c0392b 16%, transparent); white-space: normal; }
+.badge .s { color: inherit; }
+.ports h2 { margin: 2.4rem 0 0.6rem; padding-top: 0.6rem; border-top: 1px solid var(--rule); scroll-margin-top: 3rem; }
+section.port { margin: 1.1rem 0 1.4rem; scroll-margin-top: 3rem; }
+section.port:target { box-shadow: -0.9rem 0 0 -0.65rem var(--accent); }
+.port-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 0.5rem; font-size: 1.02rem; }
+.port-head .f.def { font-weight: 700; }
+.port-head .port-pkg { color: var(--muted); font-size: 0.9rem; }
+.port-lede { margin: 0.2rem 0 0.35rem; max-width: 44rem; font-size: 0.92rem; }
+.port-lede p { margin: 0 0 0.3rem; }
+table.port-steps { border-collapse: collapse; margin: 0.2rem 0 0 0.2rem; font-size: 0.9rem; }
+table.port-steps td { padding: 0.12rem 0.9rem 0.12rem 0; vertical-align: baseline; }
+table.port-steps td.step-verb { white-space: nowrap; font-family: var(--mono-font); font-size: 0.84rem; }
+table.port-steps td.step-verb a { text-decoration: none; }
+table.port-steps td.step-args .goal { display: inline; }
+table.port-steps td.step-args > div.goal { display: block; }
+table.port-steps td.step-why { color: var(--muted); max-width: 30rem; font-size: 0.86rem; }
+table.port-steps td.step-why .reason .s { color: var(--muted); }
+table.port-steps tr.note td { padding-top: 0.45rem; color: var(--muted); }
+table.port-steps tr.note .note { margin: 0; }
+.port-import { margin: 0.6rem 0; }
+.port-local { margin: 0.6rem 0 0.2rem; }
+.port.alias .port-head .goal { font-size: 0.92rem; }
+.port-hidden { display: none !important; }

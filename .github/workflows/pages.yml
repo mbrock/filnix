@@ -15,9 +15,10 @@ on:
       - "nanofil/docs/**"
       - "nanofil/web/**"
       - "dterm-nix/**"
-      - "nixos/filc.nix"
-      - "finix/userland.nix"
-      - "ports/default.nix"
+      - "nixos/**"
+      - "finix/**"
+      - "ports.nix"
+      - "ports/*.nix"
       - "toolchain.nix"
       - ".github/workflows/pages.yml"
   workflow_dispatch:

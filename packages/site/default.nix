@@ -25,6 +25,10 @@ let
     "finix/userland.nix"
     "ports/default.nix"
     "toolchain.nix"
+    "ports.nix"
+    "ports/media.nix"
+    "ports/pipewire-consumers.nix"
+    "ports/tpm2.nix"
   ];
   repoFiles = builtins.toFile "filnix-files" (
     lib.concatMapStrings (

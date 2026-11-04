@@ -354,7 +354,9 @@ Nix grammar written as a DCG reads each file into terms with positions
 and comments, attribute sets and `let` become tables of bindings, and
 dterm.js breaks the inline terms as it breaks Prolog's. It shares
 dterm.js, dterm.css and web/dterm_html.pl (the HTML DCGs and the
-Markdown of comments) with these pages.
+Markdown of comments) with these pages. Two of its pages are facts
+rather than source: ports.nix as a table of steps per port, and an
+option index from evaluating the NixOS and finix modules.
 
 ## Not yet
 

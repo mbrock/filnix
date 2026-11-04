@@ -63,6 +63,7 @@ main :-
     ;   read_options(Json, Index)
     ),
     nb_setval(nix_options, Index),
+    dsl_ids(Pages, Dsl), nb_setval(nix_dsl, Dsl),
     maplist(write_source_page(Out, Pages), Pages),
     (   Index == none -> true
     ;   option_readers(Root, Nixpkgs, Files, Index),
@@ -82,14 +83,11 @@ read_page(Root, File, page(File, Text, Lines, E, Cms)) :-
     directory_file_path(Root, File, Path),
     nix_read_file(Path, Text, nix(E, Cms0)),
     line_starts(Text, Lines),
-    maplist(comment_kind(Text), Cms0, Cms).
+    maplist(comment_kind(Text, Lines), Cms0, Cms).
 
 %  A comment is own (alone on its line) or trailing (after code).
-comment_kind(Text, cm(F, T, S), cm(F, T, S, Kind)) :-
-    (   sub_string(Text, B, _, _, "\n"), B < F, \+ ( sub_string(Text, B2, _, _, "\n"), B2 > B, B2 < F )
-    ->  Start is B + 1
-    ;   Start = 0
-    ),
+comment_kind(Text, ls(Starts), cm(F, T, S), cm(F, T, S, Kind)) :-
+    functor(Starts, _, N), bsearch(Starts, F, 1, N, L), arg(L, Starts, Start),
     Len is F - Start, sub_string(Text, Start, Len, _, Pre),
     ( split_string(Pre, "", " \t", [""]) -> Kind = own ; Kind = trailing ).
 
@@ -810,6 +808,10 @@ span(_, Cs, [], Cs).
 
 :- include(dterm_options).
 
+%% Port lists
+
+:- include(dterm_ports).
+
 %% Pages
 
 page_name(File, Html) :- atomic_list_concat(Parts, '/', File), atomic_list_concat(Parts, '-', B0),
@@ -823,9 +825,12 @@ write_source_page(Out, Pages, page(File, Text, Lines, E, Cms)) :-
     resolve(E),
     node_pos(E, From-_),
     partition([cm(O, _, _, _)]>>(O < From), Cms, Head, Body),
-    nb_setval(nix_notes_all, Body), nb_setval(nix_notes, Body),
-    page_name(File, Name), directory_file_path(Out, Name, Path),
-    write_page(Path, source_page(Pages, File, Head, E)).
+    (   port_file(E)
+    ->  nb_setval(nix_head, Head), write_ports_page(Out, Pages, page(File, Text, Lines, E, Cms), Body, _)
+    ;   nb_setval(nix_notes_all, Body), nb_setval(nix_notes, Body),
+        page_name(File, Name), directory_file_path(Out, Name, Path),
+        write_page(Path, source_page(Pages, File, Head, E))
+    ).
 
 source_page(Pages, File, Head, E) -->
     { note_groups(Head, Gs), top_entries(E, Entries) },

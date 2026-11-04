@@ -79,6 +79,21 @@ module's `config` parameter, in the machine's own files and the
 Nixpkgs modules that declare its options. An interpolated name
 (`cfg.${name}.enable`) reads every option it can stand for.
 
+## Port lists
+
+A file whose value is a list or set of `for pkgs.x [ steps ]`
+(ports.nix, ports/media.nix, …) is drawn by
+[dterm_ports.pl](dterm_ports.pl) as the facts it states rather than as
+one long list: each port is a table of its steps in the order they
+apply (the verb, linked to its definition in ports/default.nix, its
+arguments, and the comment beside it), under the comments written above
+it. `# ━━━ Title ━━━` comments are the sections. An index at the top
+lists every port of the file and of the files it imports with the
+verbs it uses, and a filter finds ports by name, package or verb.
+Port helpers such as `boostPort = boost: for boost [ … ]` are drawn as
+ports with their parameter, and the bindings that apply them
+(`boost186 = boostPort pkgs.boost186`) as one line each.
+
 ## Running it
 
 ```sh
