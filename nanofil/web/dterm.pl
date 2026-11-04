@@ -1365,6 +1365,7 @@ shell(Title, Crumbs, Main) -->
     "  <nav class=\"doors\">\n",
     "    <a class=\"door\" href=\"../docs/\">Docs</a>\n",
     "    <a class=\"door\" href=\"../index.html#explainers\">Explainers</a>\n",
+    "    <a class=\"door\" href=\"../nix/\">Nix</a>\n",
     "    <a class=\"door selected\" href=\"index.html\">nanofil</a>\n",
     "    <a class=\"door\" href=\"https://nix.swa.sh/\">Campaigns</a>\n",
     "    <a class=\"door\" href=\"https://github.com/mbrock/filnix\">Source</a>\n",
