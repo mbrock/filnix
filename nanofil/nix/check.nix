@@ -325,7 +325,22 @@ pkgs.runCommandCC "nanofil-check"
     done
     step "forward -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
     unset NANOFIL_OPT NANOFIL_CHECKS
-    step "renew, guard, hoist, half, forward and combined trap text" tests/renew-trap.sh
+    # Renewal by the hull of two checks and facts kept across repeated
+    # getters (docs/forward.md), opt-in as --checks=extended (both),
+    # hull and getter. renew-trap.sh compares hull-*.c's traps with
+    # reference checks, getter-trap.sh a getter whose ifunc resolver frees.
+    export NANOFIL_CHECKS=extended
+    for opt in "" -O; do
+      export NANOFIL_OPT=$opt
+      step "extended $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
+      step "extended $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
+      step "extended $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    done
+    step "extended -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    step "extended -O ifchain 600 compile time" env NANOFIL_OPT=-O COMPILE_TIMEOUT=60 tests/progtest.sh ifchain.c
+    unset NANOFIL_OPT NANOFIL_CHECKS
+    step "getter trap text" tests/getter-trap.sh
+    step "renew, guard, hoist, half, forward combined and hull trap text" tests/renew-trap.sh
     step "hoist trap text, every shape" bash -c 'for b in merged or sign; do NANOFIL_BOUNDS=$b tests/renew-trap.sh || exit 1; done'
     # Branch selection (docs/perf.md) is the -O default, so the -O suites
     # above run it; here it runs without -O, and -O runs the reference

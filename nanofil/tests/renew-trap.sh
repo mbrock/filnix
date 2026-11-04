@@ -2,10 +2,11 @@
 # Check renewal, range guards, hoisted bounds, half checks and forward
 # facts keep each trap's text (docs/m7.md, rounds 4 and 5;
 # docs/bounds.md; docs/half.md; docs/forward.md): every
-# tests/c/prog/renew-*.c, guard-*.c, hoist-*.c, half-*.c and forward-*.c
+# tests/c/prog/renew-*.c, guard-*.c, hoist-*.c, half-*.c, forward-*.c and hull-*.c
 # is built by nanofil -O, sharing nothing, with reference checks and with
 # --checks=renew, guard, hoist, half or forward, half-*.c and forward-*.c
-# also with combined and -O's default shared check parts, and
+# also with combined and -O's default shared check parts, hull-*.c with
+# --checks=hull, forward and extended (shared parts too), and
 # both runs must agree on stdout, the exit
 # status and the whole stderr (the safety error, its pointer's state,
 # expected bytes and origins) with addresses and the pid masked. The
@@ -19,16 +20,17 @@ filcc=${FILCC:?set FILCC to a filcc clang}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 status=0
-for f in "$here"/c/prog/renew-*.c "$here"/c/prog/guard-*.c "$here"/c/prog/hoist-*.c "$here"/c/prog/half-*.c "$here"/c/prog/forward-*.c; do
+for f in "$here"/c/prog/renew-*.c "$here"/c/prog/guard-*.c "$here"/c/prog/hoist-*.c "$here"/c/prog/half-*.c "$here"/c/prog/forward-*.c "$here"/c/prog/hull-*.c; do
   name=$(basename "$f" .c)
   mode=${name%%-*}
   read -r -a args <<<"$(sed -n 's|^// args: ||p' "$f")"
   builds="reference $mode"
   [[ $mode == half || $mode == forward ]] && builds="$builds renew combined"
+  [[ $mode == hull ]] && builds="$builds forward extended"
   for c in $builds; do
     # The same file name in both, since origins name the executable.
     d=$work/$c; mkdir -p "$d"
-    share=--share=none; [[ $c == combined ]] && share=
+    share=--share=none; [[ $c == combined || $c == extended ]] && share=
     (cd "$here/../src" && ../bin/nanofil -O --checks=$c $share cc "$f" </dev/null) >"$d/$name.s"
     as -o "$d/$name.o" "$d/$name.s"
     "$filcc" -o "$d/$name" "$d/$name.o"
@@ -52,6 +54,8 @@ for f in "$here"/c/prog/renew-*.c "$here"/c/prog/guard-*.c "$here"/c/prog/hoist-
     echo "$name: no limit in the hoist build"; status=1
   elif [[ $mode == half ]] && (( $(full "$work/half/$name.s") >= $(full "$work/renew/$name.s") )); then
     echo "$name: no half check in the half build"; status=1
+  elif [[ $mode == hull ]] && (( $(full "$work/hull/$name.s") >= $(full "$work/forward/$name.s") )); then
+    echo "$name: no renewal by a hull in the hull build"; status=1
   elif [[ $mode == forward ]] && (( $(tests "$work/forward/$name.s") >= $(tests "$work/renew/$name.s") )); then
     echo "$name: no more reuse in the forward build than with renew"; status=1
   elif [[ $mode == renew ]] && (( $(full "$work/renew/$name.s") >= $(full "$work/reference/$name.s") )); then
@@ -59,7 +63,8 @@ for f in "$here"/c/prog/renew-*.c "$here"/c/prog/guard-*.c "$here"/c/prog/hoist-
   elif ! grep -q 'filc safety error' "$work/reference/$name.out"; then
     echo "$name: the reference build does not trap"; status=1
   elif diff -u "$work/reference/$name.out" "$work/$mode/$name.out" &&
-       { [[ ! -e $work/combined/$name.out ]] || diff -u "$work/reference/$name.out" "$work/combined/$name.out"; }; then
+       { [[ ! -e $work/combined/$name.out ]] || diff -u "$work/reference/$name.out" "$work/combined/$name.out"; } &&
+       { [[ ! -e $work/extended/$name.out ]] || diff -u "$work/reference/$name.out" "$work/extended/$name.out"; }; then
     echo "$name: ok ($(grep -m1 'filc safety error' "$work/$mode/$name.out"))"
   else
     status=1

@@ -152,6 +152,7 @@
     | `check(Lo, Hi, Rights, Align)` | `a` | `[p]` | checked stage, below |
     | `check_ahead(Lo, Hi, Rights, Align, AHi)` | `a` | `[p]` | checked stage: `check(Lo, Hi, Rights, Align)` of which only [Lo, AHi) is its own access's requirement; the rest is anticipated (docs/schedule.md) |
     | `renew(Lo, Hi, Rights, Align)` | `a` | `[a, p]`: Q1, P | checked stage: renew an earlier heap proof's temporal facts (docs/m7.md, round 4) |
+    | `renew_hull(Lo, Hi, Rights, Align)` | `a` | `[a, a, p]`: QL, QH, P | checked stage: a renew whose bounds the hull of two earlier heap proofs of P's object covers (docs/forward.md, multi-source renewal) |
     | `half_check(Bound, Lo, Hi, Rights, Align)` | `a` | `[a, p]`: Q1, P | checked stage: `check(Lo, Hi, Rights, Align)` of P, which tests only the bound Bound, `upper` or `lower`; Q1's earlier check of the same object proves the other (docs/half.md) |
     | `span_test(Lo, Hi)` | `w` | `[p]` | checked stage: 1 if the pointer's object contains [P+Lo, P+Hi), else 0; never traps (docs/m7.md, round 5) |
     | `renew_if(Lo, Hi, Rights, Align)` | `a` | `[p, w]`: P, G | checked stage: `check(Lo, Hi, Rights, Align)` of P, whose bounds part a passing span test G proves (docs/m7.md, round 5) |
@@ -213,6 +214,13 @@
     proven accessible. Q1 and P1 have one definition each, Q1's check
     covers [Lo, Hi) at Align, and the function has no setjmp
     (stage_func/5).
+
+    `renew_hull(Lo, Hi, Rights, Align)` reads `[a QL, a QH, p P]` and is
+    a renew of P whose bounds and alignment two earlier heap proofs
+    give together: QL's check proves P's object from at or below P+Lo,
+    QH's to at or above P+Hi, each of a pointer at an exact distance
+    from P through one base (hull_renewable/8, docs/forward.md). It
+    traps as the renew would.
 
     `half_check(Bound, Lo, Hi, Rights, Align)` reads `[a Q1, p P]` and
     is exactly `check(Lo, Hi, Rights, Align)` of P: it traps when the
@@ -378,7 +386,7 @@
     V an IR value, L a label.
 */
 :- module(ir, [class_bits/2, modulus/2, half_modulus/2, op_arity/2,
-               op_kind/2, valid_op/1, valid_module/1, func_named/3, module_symbols/2,
+               op_kind/2, valid_op/1, valid_module/1, repeated_getters/4, func_named/3, module_symbols/2,
                data_named/2, weak_defined/2, weak_declared/2, variadic_named/2, width_bytes/2,
                op_arg_classes/4, op_result_ok/3,
                module_mode/2, module_stage/2, addr_class/2, variadic_func/1, setjmp_func/1,
@@ -493,6 +501,7 @@ kind_arity(cast, 1).
 kind_arity(check, 1).
 kind_arity(check_ahead, 1).
 kind_arity(renew, 2).
+kind_arity(renew_hull, 3).
 kind_arity(half_check, 2).
 kind_arity(span_test, 1).
 kind_arity(renew_if, 2).
@@ -519,6 +528,8 @@ valid_op(check_ahead(Lo, Hi, Rights, Align, AHi)) :- !,
     valid_op(check(Lo, Hi, Rights, Align)),
     integer(AHi), Lo < AHi, AHi < Hi.
 valid_op(renew(Lo, Hi, Rights, Align)) :- !,
+    valid_op(check(Lo, Hi, Rights, Align)).
+valid_op(renew_hull(Lo, Hi, Rights, Align)) :- !,
     valid_op(check(Lo, Hi, Rights, Align)).
 valid_op(half_check(Bound, Lo, Hi, Rights, Align)) :- !,
     memberchk(Bound, [upper, lower]),
@@ -687,6 +698,7 @@ op_kind(alloc(_), alloc).
 op_kind(check(_, _, _, _), check).
 op_kind(check_ahead(_, _, _, _, _), check_ahead).
 op_kind(renew(_, _, _, _), renew).
+op_kind(renew_hull(_, _, _, _), renew_hull).
 op_kind(half_check(_, _, _, _, _), half_check).
 op_kind(span_test(_, _), span_test).
 op_kind(renew_if(_, _, _, _), renew_if).
@@ -920,6 +932,7 @@ module_stage(module(Items), Stage) :-
 checked_inst(let(_, _, check(_, _, _, _), _)).
 checked_inst(let(_, _, check_ahead(_, _, _, _, _), _)).
 checked_inst(let(_, _, renew(_, _, _, _), _)).
+checked_inst(let(_, _, renew_hull(_, _, _, _), _)).
 checked_inst(let(_, _, half_check(_, _, _, _, _), _)).
 checked_inst(let(_, _, span_test(_, _), _)).
 checked_inst(let(_, _, renew_if(_, _, _, _), _)).
@@ -993,7 +1006,7 @@ valid_item(Symbols, Mode, Stage, func(Name, Linkage, Ret, Params, Blocks)) :-
     proof_class_defs(Name, Params, Blocks),
     definitions_dominate(Name, Params, Blocks),
     valid_locals(Name, Params, Blocks),
-    stage_func(Stage, Name, Mode, Params, Blocks).
+    stage_func(Stage, Symbols, Name, Mode, Params, Blocks).
 valid_item(_, Mode, _, data(Name, Linkage, Align, Items)) :-
     (   integer(Align), data_align(Align) -> true
     ;   fn_error(Name, 'unsupported data alignment ~w', [Align])
@@ -1317,14 +1330,14 @@ site_dominates(at(D, _), L, _, Intervals) :-
     D \== L,
     dominates_by_interval(Intervals, D, L).
 
-%! stage_func(+Stage, +Fn, +Mode, +Params, +Blocks) is det.
+%! stage_func(+Stage, +Symbols, +Fn, +Mode, +Params, +Blocks) is det.
 %
 %  Fn's blocks are well formed for the module's Stage. A checked
 %  function accesses memory only by raw accesses, each covered by a
 %  check whose evidence still holds, and polls on every cycle.
-stage_func(unchecked, _, _, _, _).
-stage_func(checked, Fn, Mode, Params, Blocks) :-
-    stage_sources(Params, Blocks, Sources),
+stage_func(unchecked, _, _, _, _, _).
+stage_func(checked, Symbols, Fn, Mode, Params, Blocks) :-
+    stage_sources(Symbols, Params, Blocks, Sources),
     incoming_edges(Blocks, Incoming),
     empty_assoc(Exits0),
     foldl(checked_block(Fn-Sources, Mode, Incoming), Blocks, Exits0, _),
@@ -1429,7 +1442,7 @@ checked_insts([Inst|Insts], Fn-Sources, Mode, Live0, LiveOut) :-
     checked_inst_rest(Inst, Insts, Fn-Sources, Mode, Live0, Rest, Live),
     checked_insts(Rest, Fn-Sources, Mode, Live, LiveOut).
 
-/* stage_sources(+Params, +Blocks, -src(Renews, Once, Ahead)): Renews maps
+/* stage_sources(+Symbols, +Params, +Blocks, -src(Renews, Once, Ahead, Getters)): Renews maps
    each proof Q1 that a renew may read to check(P1, Lo1, Hi1, Align1):
    Q1 has one definition, a heap check or renew_if of tmp(P1), and P1
    one too, counting parameters, phis and every instruction form. Once
@@ -1440,17 +1453,20 @@ checked_insts([Inst|Insts], Fn-Sources, Mode, Live0, LiveOut) :-
    the renew, so P1 and Q1 there hold the values the check saw
    (docs/m7.md, round 4); a renew_if proves the same bounds as the
    check it replaced. Ahead holds each check_ahead's proof that
-   ahead_justified/3 accepts, empty with a setjmp too. */
-stage_sources(Params, Blocks, src(Renews, Once, Ahead)) :-
+   ahead_justified/3 accepts, empty with a setjmp too. Getters holds the
+   repeated getter copies (repeated_getters/4), empty with a setjmp. */
+stage_sources(Symbols, Params, Blocks, src(Renews, Once, Ahead, Getters)) :-
     empty_assoc(E),
     (   member(block(_, _, Is, _), Blocks), member(let(_, _, setjmp(_), _), Is)
-    ->  Renews = E, Once = E, Ahead = E
+    ->  Renews = E, Once = E, Ahead = E, Getters = E
     ;   \+ ( member(block(_, _, Is, _), Blocks),
               member(let(_, _, Op, _), Is), staged_op(Op) )
     ->  Renews = E, Ahead = E,
         % Hull coverage (docs/forward.md) reads Once for any function.
-        single_definitions(Params, Blocks, Once)
+        single_definitions(Params, Blocks, Once),
+        repeated_getters(Symbols, Blocks, Once, Getters)
     ;   single_definitions(Params, Blocks, Once),
+        repeated_getters(Symbols, Blocks, Once, Getters),
         ahead_justified(Blocks, Once, Ahead),
         findall(Q1-check(P1, Lo1, Hi1, Al1),
                 ( member(block(_, _, Is, _), Blocks),
@@ -1461,10 +1477,60 @@ stage_sources(Params, Blocks, src(Renews, Once, Ahead)) :-
         list_to_assoc(Pairs, Renews)
     ).
 
+%! repeated_getters(+Symbols, +Blocks, +Once, -Getters) is det.
+%
+%  Getters maps D to G for each single-definition getter copy of
+%  global(G), G defined in this module with local linkage, that another
+%  copy of G dominates (below).
+
+/* repeated_getters(+Symbols, +Blocks, +Once, -Getters): Getters maps D
+   to G for each single-definition `let(tmp(D), p, copy, [global(G)])`
+   that another copy of global(G) dominates: an earlier one in its
+   block, or one in a block that strictly dominates it
+   (dom_intervals/3). Unreachable blocks have none. G must be defined in
+   this module with local linkage (local_global/2), so its getter is the
+   one nanofil emits and no other module can interpose it. Such a copy
+   is a repeated call of that getter (docs/forward.md, Getters): a call
+   has returned before it in this activation, so it takes the fast path
+   (or, inside an initialization on this thread, the recursive path),
+   and reaches no safepoint, frees nothing and stores nothing. */
+repeated_getters(Symbols, Blocks, Once, Getters) :-
+    empty_assoc(E),
+    findall(G-(L-I-D),
+            ( member(block(L, _, Is, _), Blocks),
+              nth0(I, Is, let(tmp(D), p, copy, [global(G)])),
+              local_global(Symbols, G) ),
+            Sites0),
+    (   Sites0 == [] -> Getters = E
+    ;   func_cfg(Blocks, Cfg), cfg_idoms(Cfg, Idom),
+        dom_intervals(Cfg, Idom, Intervals),
+        findall(D-G,
+                ( member(G-(L-I-D), Sites0),
+                  get_assoc(D, Once, _),
+                  get_assoc(L, Intervals, _),
+                  once(( member(G1-(L1-I1-_), Sites0), G1 == G,
+                         (   L1 == L -> I1 < I
+                         ;   dominates_by_interval(Intervals, L1, L)
+                         ) )) ),
+                Pairs0),
+        sort(Pairs0, Pairs),
+        list_to_assoc(Pairs, Getters)
+    ).
+
+% local_global(+Symbols, +G): G is a function or data item this module
+% defines with local linkage (not exported, weak or extern): its getter
+% is a local symbol only this module calls.
+local_global(Symbols, G) :-
+    (   func_named(Symbols, G, func(_, local, _, _, _)) -> true
+    ;   Symbols = symbols(Index), get_assoc(data(G), Index, data(_, L, _, _)),
+        memberchk(L, [local, ro(local), tls(local)])
+    ).
+
 staged_op(Op) :- renewing_op(Op).
 staged_op(check_ahead(_, _, _, _, _)).
 
 renewing_op(renew(_, _, _, _)).
+renewing_op(renew_hull(_, _, _, _)).
 renewing_op(renew_if(_, _, _, _)).
 renewing_op(check_limit(_, _, _, _)).
 renewing_op(half_check(_, _, _, _, _)).
@@ -1532,6 +1598,7 @@ proof_pointers(Blocks, Once, Ptrs) :-
 proof_pointer(check(_, _, _, _), [P], P).
 proof_pointer(check_ahead(_, _, _, _, _), [P], P).
 proof_pointer(renew(_, _, _, _), [_, P], P).
+proof_pointer(renew_hull(_, _, _, _), [_, _, P], P).
 proof_pointer(half_check(_, _, _, _, _), [_, P], P).
 proof_pointer(renew_if(_, _, _, _), [P, _], P).
 proof_pointer(check_limit(_, _, _, _), [P, _], P).
@@ -1640,6 +1707,38 @@ phi_ends_need(phi(tmp(D), _, _), F0, F) :-
 ahead_transparent(I) :-
     evidence_preserving(I),
     \+ ( I = let(_, _, Op, _), memberchk(Op, [div, udiv, rem, urem]) ).
+
+/* hull_renewable(+Sources, +Once, +P, +Lo, +Hi, +Align, +QL, +QH): a
+   renew_hull of [Lo, Hi) at P may read QL and QH (docs/forward.md,
+   multi-source renewal). Each is a single-definition heap proof in the
+   renew-source table (a check that passed, at a point that dominates
+   this one by strict SSA, in a function without setjmp) of a pointer
+   at an exact distance from P through one base, so of P's object:
+   QL's of [LoL, HiL) at PL, P = PL + DL, and QH's of [LoH, HiH) at PH,
+   P = PH + DH, all modulo 2^64. With E = Lo + DL - LoL and
+   F = HiH - Hi - DH both in [0, 2^62] and Hi - Lo =< 2^62:
+   - P+Lo is E bytes above PL+LoL, which was at or above lower, and as
+     PL+LoL is a user address (below 2^56) the sum does not wrap;
+   - P+Hi is that plus Hi - Lo, and also F bytes below PH+HiH, which was
+     at or below upper; both readings are below 2^63 + 2^62 + 2^56 and
+     above -2^62 and equal modulo 2^64, so they are the same integer.
+   So [P+Lo, P+Hi) lies in the object as both checks saw it. Its bounds
+   change only when it is freed, which the renew's flag test catches;
+   read-only is the object's, which the flag test reads too. Alignment
+   comes from either source, as renew's: P+Lo is (Lo + D - Lo1) bytes
+   from a check's Al1-aligned start. */
+hull_renewable(Sources, Once, P, Lo, Hi, Align, tmp(NL), tmp(NH)) :-
+    get_assoc(NL, Sources, check(PL, LoL, _, AlL)),
+    get_assoc(NH, Sources, check(PH, LoH, HiH, AlH)),
+    pointer_distance(Once, P, tmp(PL), DL),
+    pointer_distance(Once, P, tmp(PH), DH),
+    E is Lo + DL - LoL, F is HiH - Hi - DH, S is Hi - Lo,
+    Limit is 1 << 62,
+    E >= 0, E =< Limit, F >= 0, F =< Limit, S =< Limit,
+    (   AlL mod Align =:= 0, E mod Align =:= 0
+    ->  true
+    ;   AlH mod Align =:= 0, (Lo + DH - LoH) mod Align =:= 0
+    ).
 
 %! pointer_distance(+Once, +P, +P1, -D) is semidet.
 %
@@ -1864,7 +1963,7 @@ checked_inst_rest(let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Insts, Fn-_
     ;   fn_error(Fn, 'check tmp(~w) is not followed by an access it covers', [Q])
     ).
 checked_inst_rest(let(tmp(Q), a, check_ahead(Lo, Hi, Rights, Align, AHi), [P]), Insts,
-                  Fn-src(_, _, Ahead), _, Live0, Rest, Live) :- !,
+                  Fn-src(_, _, Ahead, _), _, Live0, Rest, Live) :- !,
     (   get_assoc(Q, Ahead, _) -> true
     ;   fn_error(Fn, 'check_ahead tmp(~w): its early bytes are not needed on every path ahead, or a setjmp', [Q])
     ),
@@ -1891,7 +1990,7 @@ checked_inst_rest(let(tmp(Q), f, check_function, _), Insts, Fn-_, _, _, Rest, Li
     (   Insts = [raw_call(_, tmp(Q), _)|Rest] -> true
     ;   fn_error(Fn, 'function check tmp(~w) is not followed by its raw call', [Q])
     ).
-checked_inst_rest(let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [Q1, P]), Insts, Fn-src(Sources, Once, _), _,
+checked_inst_rest(let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [Q1, P]), Insts, Fn-src(Sources, Once, _, _), _,
                   Live0, Rest, Live) :- !,
     (   Q1 = tmp(N1), get_assoc(N1, Sources, check(P1, Lo1, Hi1, Al1)) -> true
     ;   fn_error(Fn, 'renew tmp(~w) of ~w: no single-definition heap check that covers it, or a setjmp', [Q, Q1])
@@ -1911,8 +2010,20 @@ checked_inst_rest(let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [Q1, P]), Insts, 
         evidence_after(Access, Live2, Live)
     ;   fn_error(Fn, 'renew tmp(~w) is not followed by an access it covers', [Q])
     ).
+checked_inst_rest(let(tmp(Q), a, renew_hull(Lo, Hi, Rights, Align), [QL, QH, P]), Insts,
+                  Fn-src(Sources, Once, _, _), _, Live0, Rest, Live) :- !,
+    (   hull_renewable(Sources, Once, P, Lo, Hi, Align, QL, QH) -> true
+    ;   fn_error(Fn, 'renew_hull tmp(~w) of ~w and ~w: no two single-definition heap checks of its object whose hull covers it, or a setjmp', [Q, QL, QH])
+    ),
+    (   Insts = [Access|Rest],
+        proof_use(Access, Q, Lo, Hi, Rights, Align)
+    ->  evidence_after(let(tmp(Q), a, renew_hull(Lo, Hi, Rights, Align), [QL, QH, P]), Live0, Live1),
+        evidence_add(live(Q, P, Lo, Hi, Rights, Align), Live1, Live2),
+        evidence_after(Access, Live2, Live)
+    ;   fn_error(Fn, 'renew_hull tmp(~w) is not followed by an access it covers', [Q])
+    ).
 checked_inst_rest(let(tmp(Q), a, half_check(Bound, Lo, Hi, Rights, Align), [Q1, P]), Insts,
-                  Fn-src(Sources, Once, _), _, Live0, Rest, Live) :- !,
+                  Fn-src(Sources, Once, _, _), _, Live0, Rest, Live) :- !,
     (   Q1 = tmp(N1), get_assoc(N1, Sources, check(P1, Lo1, Hi1, _)),
         pointer_distance(Once, P, tmp(P1), D0),
         half_known(Bound, Lo, Hi, D0, Lo1, Hi1)
@@ -1926,7 +2037,7 @@ checked_inst_rest(let(tmp(Q), a, half_check(Bound, Lo, Hi, Rights, Align), [Q1, 
         evidence_after(Access, Live2, Live)
     ;   fn_error(Fn, 'half_check tmp(~w) is not followed by an access it covers', [Q])
     ).
-checked_inst_rest(let(tmp(Q), a, renew_if(Lo, Hi, Rights, Align), [P, G]), Insts, Fn-src(_, Once, _), _,
+checked_inst_rest(let(tmp(Q), a, renew_if(Lo, Hi, Rights, Align), [P, G]), Insts, Fn-src(_, Once, _, _), _,
                   Live0, Rest, Live) :- !,
     (   guard_covers(Once, P, G, Lo, Hi) -> true
     ;   fn_error(Fn, 'renew_if tmp(~w): no single-definition span test that covers it, or a setjmp', [Q])
@@ -1938,7 +2049,7 @@ checked_inst_rest(let(tmp(Q), a, renew_if(Lo, Hi, Rights, Align), [P, G]), Insts
         evidence_after(Access, Live2, Live)
     ;   fn_error(Fn, 'renew_if tmp(~w) is not followed by an access it covers', [Q])
     ).
-checked_inst_rest(let(tmp(Q), a, check_limit(Lo, Hi, Rights, Align), [P, U]), Insts, Fn-src(_, Once, _), _,
+checked_inst_rest(let(tmp(Q), a, check_limit(Lo, Hi, Rights, Align), [P, U]), Insts, Fn-src(_, Once, _, _), _,
                   Live0, Rest, Live) :- !,
     (   limit_covers(Once, P, U, Lo, Hi) -> true
     ;   fn_error(Fn, 'check_limit tmp(~w): no single-definition limit of its pointer\'s lower for its size, or a setjmp', [Q])
@@ -1951,13 +2062,17 @@ checked_inst_rest(let(tmp(Q), a, check_limit(Lo, Hi, Rights, Align), [P, U]), In
     ;   fn_error(Fn, 'check_limit tmp(~w) is not followed by an access it covers', [Q])
     ).
 checked_inst_rest(Inst, Insts, Fn-Sources, Mode, Live0, Insts, Live) :-
-    evidence_after(Inst, Live0, Live),
+    (   Inst = let(tmp(D), p, copy, [global(G)]),
+        Sources = src(_, _, _, Getters), get_assoc(D, Getters, G1), G1 == G
+    ->  evidence_kill(D, Live0, Live)
+    ;   evidence_after(Inst, Live0, Live)
+    ),
     (   raw_access(Inst, Q, X, _, _)
     ->  (   reusing_access(Inst, X),
             Live0 = ev(_, _, ByQ),
             get_assoc(Q, ByQ, live(Q, P, Lo, Hi, Rights, Align)),
             (   covered_access(Inst, Q, Lo, Hi, Rights, Align) -> true
-            ;   Sources = src(_, Once, _),
+            ;   Sources = src(_, Once, _, _),
                 hull_covered(Inst, Q, P, Lo, Align, Live0, Once)
             )
         ->  true
@@ -2037,6 +2152,7 @@ evidence_preserving(flight(_, _, _, _)).
 evidence_preserving(let(_, a, check(_, _, _, _), _)).
 evidence_preserving(let(_, a, check_ahead(_, _, _, _, _), _)).
 evidence_preserving(let(_, a, renew(_, _, _, _), _)).
+evidence_preserving(let(_, a, renew_hull(_, _, _, _), _)).
 evidence_preserving(let(_, a, half_check(_, _, _, _, _), _)).
 evidence_preserving(let(_, w, span_test(_, _), _)).
 evidence_preserving(let(_, a, renew_if(_, _, _, _), _)).
@@ -2505,6 +2621,7 @@ kind_result_ok(alloc, _, Mode, K) :- addr_class(Mode, K).
 kind_result_ok(check, _, filc, a).
 kind_result_ok(check_ahead, _, filc, a).
 kind_result_ok(renew, _, filc, a).
+kind_result_ok(renew_hull, _, filc, a).
 kind_result_ok(half_check, _, filc, a).
 kind_result_ok(span_test, _, filc, w).
 kind_result_ok(renew_if, _, filc, a).
@@ -2579,6 +2696,7 @@ kind_arg_classes(alloc, _, _, _, [l]).
 kind_arg_classes(check, _, _, filc, [p]).
 kind_arg_classes(check_ahead, _, _, filc, [p]).
 kind_arg_classes(renew, _, _, filc, [a, p]).
+kind_arg_classes(renew_hull, _, _, filc, [a, a, p]).
 kind_arg_classes(half_check, _, _, filc, [a, p]).
 kind_arg_classes(span_test, _, _, filc, [p]).
 kind_arg_classes(renew_if, _, _, filc, [p, w]).

@@ -525,7 +525,7 @@ checks in a block cover disjoint bytes.
 <!-- /guide -->
 
 The validator's rule is the centre of nanofil's safety argument. In a
-checked function (`ir:stage_func/5`, `ir:checked_insts/5`), every raw
+checked function (`ir:stage_func/6`, `ir:checked_insts/5`), every raw
 access must read a proof that covers its bytes, alignment and rights,
 and that proof must still be valid: no instruction between them may
 free memory or reach a safepoint (`evidence_preserving/1`). Evidence
@@ -1075,7 +1075,7 @@ is the same with and without `-O`.
 
 **[ir.pl](../src/ir.pl)**: the IR's grammar and validator. Its header
 tables every term; `valid_module/1` checks a module, including the
-checked stage's evidence rules (`stage_func/5`, `checked_insts/5`). It
+checked stage's evidence rules (`stage_func/6`, `checked_insts/5`). It
 also owns the shared facts other modules read (`op_kind/2`,
 `access_size_align/3`, `pointer_memory_effects/2`, `module_mode/2`).
 Changing the grammar needs the orchestrating thread's agreement

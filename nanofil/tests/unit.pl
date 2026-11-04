@@ -3162,7 +3162,7 @@ test(renew_validation) :-
     filc_amd64:fused_blocks(f, Pp, BsP, [block(_, _, IsF, _)], _),
     memberchk(fused(renew(_, _, _, _), let(_, _, _, [PF])), IsF), PF == tmp(a4b),
     BsP = [block(_, _, IsP, _)],
-    ir:stage_sources(Pp, BsP, SrcP), ir:evidence_none(Ev0),
+    ir:module_symbols(Mp, SymP), ir:stage_sources(SymP, Pp, BsP, SrcP), ir:evidence_none(Ev0),
     ir:checked_insts(IsP, f-SrcP, filc, Ev0, ev(FsP, _, _)),
     memberchk(live(r, PL, _, _, _, _), FsP), PL == tmp(a4b),
     % The emitter refuses the first two as well, rather than reloading
@@ -3749,6 +3749,209 @@ test(half_semantics) :-
                      raw_store(b, 0, const(1), tmp(r))
                  ], ret(tmp(x)))])]),
              valid_module(Ro), once(run(Ro, g, [], 10, trap(readonly))) )).
+
+% Renewal by the hull of two checks (docs/forward.md): a renew_hull of
+% a + 92 after a call reads a's check of [0, 8) and a + 108's of [0, 4).
+hull_pre([let(tmp(q), a, check(0, 8, read, 8), [tmp(a)]),
+          let(tmp(x), l, raw_load(l, 0), [tmp(q)]),
+          flight(tmp(a108), add, [address(tmp(a)), const(108)], lower(tmp(a))),
+          let(tmp(q2), a, check(0, 4, read, 1), [tmp(a108)]),
+          let(tmp(x2), w, raw_load(uw, 0), [tmp(q2)]),
+          flight(tmp(ah), add, [address(tmp(a)), const(9223372036854775804)], lower(tmp(a))),
+          flight(tmp(aw), add, [address(tmp(ah)), const(9223372036854775804)], lower(tmp(ah))),
+          let(tmp(qw), a, check(0, 4, read, 1), [tmp(aw)]),
+          let(tmp(xw), w, raw_load(uw, 0), [tmp(qw)]),
+          call(void, global(free), [arg(p, tmp(b))])]).
+
+% hull_fn(+K, +Size, +Rights, +Align, +QL, +QH, -M): a renew_hull of
+% [0, Size) at a + K reading QL and QH, after hull_pre/1.
+hull_fn(K, Size, Rights, Align, QL, QH, M) :-
+    hull_pre(Pre),
+    ( Size == 4 -> T = uw, W = w ; T = l, W = l ),
+    (   Rights == read -> Access = let(tmp(y), l, raw_load(T, 0), [tmp(h)])
+    ;   Access = raw_store(W, 0, const(1), tmp(h))
+    ),
+    append(Pre, [flight(tmp(ak), add, [address(tmp(a)), const(K)], lower(tmp(a))),
+                 let(tmp(h), a, renew_hull(0, Size, Rights, Align), [tmp(QL), tmp(QH), tmp(ak)]),
+                 Access], Is),
+    renew_fn([block(s, [], Is, ret(const(0)))], M).
+
+hull_rejected(M) :-
+    catch(( valid_module(M), fail ), nanofil_error(Msg), true),
+    once(sub_atom(Msg, _, _, _, 'whose hull covers it')).
+
+test(hull_validation) :-
+    % Between the two checks, after a call: reads, writes, the access
+    % touching either end, alignment from the low check (a + 8 at 8) or
+    % from the high one (a + 100, 4 bytes, from a + 108 at 4).
+    hull_fn(92, 4, read, 1, q, q2, M1), valid_module(M1),
+    hull_fn(92, 4, write, 1, q, q2, M2), valid_module(M2),
+    hull_fn(0, 4, read, 1, q, q2, M3), valid_module(M3),
+    hull_fn(108, 4, read, 1, q, q2, M4), valid_module(M4),
+    hull_fn(8, 8, read, 8, q, q2, M5), valid_module(M5),
+    % Below the low check's start, past the high check's end.
+    hull_fn(-4, 4, read, 1, q, q2, B1), hull_rejected(B1),
+    hull_fn(110, 4, read, 1, q, q2, B2), hull_rejected(B2),
+    % The sources swapped: q2 starts above a + 92.
+    hull_fn(92, 4, read, 1, q2, q, B3), hull_rejected(B3),
+    % (a + 2^63 - 4) + 2^63 - 4 is a - 8: taken unreduced, its check
+    % would end past a + 92.
+    hull_fn(92, 4, read, 1, q, qw, B4), hull_rejected(B4),
+    % Alignment from neither: a + 92 at 8 (a's check is 8-aligned, but
+    % 92 is not a multiple of 8; a + 108's check is 1-aligned).
+    hull_fn(92, 8, read, 8, q, q2, B5), hull_rejected(B5),
+    % A source that is a renew's proof, not a check's.
+    hull_pre(Pre),
+    append(Pre, [let(tmp(r), a, renew(0, 8, read, 1), [tmp(q), tmp(a)]),
+                 let(tmp(z), l, raw_load(l, 0), [tmp(r)]),
+                 flight(tmp(ak), add, [address(tmp(a)), const(92)], lower(tmp(a))),
+                 let(tmp(h), a, renew_hull(0, 4, read, 1), [tmp(r), tmp(q2), tmp(ak)]),
+                 let(tmp(y), w, raw_load(uw, 0), [tmp(h)])], RIs),
+    renew_fn([block(s, [], RIs, ret(const(0)))], B6), hull_rejected(B6),
+    % Another lower donor is another object.
+    append(Pre, [flight(tmp(ak), add, [address(tmp(a)), const(92)], lower(tmp(b))),
+                 let(tmp(h), a, renew_hull(0, 4, read, 1), [tmp(q), tmp(q2), tmp(ak)]),
+                 let(tmp(y), w, raw_load(uw, 0), [tmp(h)])], OIs),
+    renew_fn([block(s, [], OIs, ret(const(0)))], B7), hull_rejected(B7),
+    % A setjmp.
+    append([let(tmp(j), w, setjmp('_setjmp'), [tmp(b), const(0)])|Pre],
+           [flight(tmp(ak), add, [address(tmp(a)), const(92)], lower(tmp(a))),
+            let(tmp(h), a, renew_hull(0, 4, read, 1), [tmp(q), tmp(q2), tmp(ak)]),
+            let(tmp(y), w, raw_load(uw, 0), [tmp(h)])], SIs),
+    renew_fn([block(s, [], SIs, ret(const(0)))], B8), hull_rejected(B8).
+
+test(hull_semantics) :-
+    Mk = [K, Size, Rights, Mid, M]>>(
+            (   Rights == read -> Access = let(tmp(x), l, raw_load(l, 0), [tmp(h)])
+            ;   Access = raw_store(l, 0, const(1), tmp(h))
+            ),
+            append([let(tmp(p), p, alloc(8), [const(128)]),
+                    let(tmp(q), a, check(0, 8, write, 1), [tmp(p)]),
+                    raw_store(l, 0, const(5), tmp(q)),
+                    flight(tmp(p100), add, [address(tmp(p)), const(100)], lower(tmp(p))),
+                    let(tmp(q2), a, check(0, 4, read, 1), [tmp(p100)]),
+                    let(tmp(x2), w, raw_load(uw, 0), [tmp(q2)]),
+                    flight(tmp(pk), add, [address(tmp(p)), const(K)], lower(tmp(p)))|Mid],
+                   [let(tmp(h), a, renew_hull(0, Size, Rights, 1), [tmp(q), tmp(q2), tmp(pk)]),
+                    Access, let(tmp(x), l, copy, [const(7)])], Is),
+            reuse_l_fn(Is, M) ),
+    Free = call(void, global(free), [arg(p, tmp(p))]),
+    % In bounds: runs; freed in between: traps as the check would.
+    call(Mk, 48, 8, read, [], In), valid_module(In), once(run(In, f, [], 10, ret(7))),
+    call(Mk, 48, 8, read, [Free], Fr), valid_module(Fr),
+    once(run(Fr, f, [], 10, trap(out_of_bounds))),
+    reuse_l_fn([let(tmp(p), p, alloc(8), [const(128)]), Free,
+                flight(tmp(pk), add, [address(tmp(p)), const(48)], lower(tmp(p))),
+                let(tmp(h), a, check(0, 8, read, 1), [tmp(pk)]),
+                let(tmp(x), l, raw_load(l, 0), [tmp(h)])], FrC),
+    once(run(FrC, f, [], 10, trap(out_of_bounds))),
+    % Forged past the object (the validator refuses it): unchecked(span).
+    call(Mk, 200, 8, read, [], Past), hull_rejected(Past),
+    once(run(Past, f, [], 10, OP)), OP == unchecked(span),
+    % Another object's pointer: unchecked(alias).
+    Other = [let(tmp(o), p, alloc(8), [const(256)]),
+             flight(tmp(ok), add, [address(tmp(o)), const(48)], lower(tmp(o)))],
+    append([let(tmp(p), p, alloc(8), [const(128)]),
+            let(tmp(q), a, check(0, 8, write, 1), [tmp(p)]),
+            raw_store(l, 0, const(5), tmp(q)),
+            flight(tmp(p100), add, [address(tmp(p)), const(100)], lower(tmp(p))),
+            let(tmp(q2), a, check(0, 4, read, 1), [tmp(p100)]),
+            let(tmp(x2), w, raw_load(uw, 0), [tmp(q2)])|Other],
+           [let(tmp(h), a, renew_hull(0, 8, read, 1), [tmp(q), tmp(q2), tmp(ok)]),
+            let(tmp(x), l, raw_load(l, 0), [tmp(h)])], AIs),
+    reuse_l_fn(AIs, Al), hull_rejected(Al),
+    once(run(Al, f, [], 10, OA)), OA == unchecked(alias),
+    % A write to read-only data between two reads of it: readonly.
+    Ro = module([data(msg, ro(local), 1, [item(b, str("hello"))]),
+                 func(g, local, w, [], [block(s, [], [
+                     let(tmp(p), p, copy, [global(msg)]),
+                     let(tmp(q), a, check(0, 1, read, 1), [tmp(p)]),
+                     let(tmp(x), w, raw_load(ub, 0), [tmp(q)]),
+                     flight(tmp(p4), add, [address(tmp(p)), const(4)], lower(tmp(p))),
+                     let(tmp(q4), a, check(0, 1, read, 1), [tmp(p4)]),
+                     let(tmp(y), w, raw_load(ub, 0), [tmp(q4)]),
+                     flight(tmp(p2), add, [address(tmp(p)), const(2)], lower(tmp(p))),
+                     let(tmp(r), a, renew_hull(0, 1, write, 1), [tmp(q), tmp(q4), tmp(p2)]),
+                     raw_store(b, 0, const(1), tmp(r))
+                 ], ret(tmp(x)))])]),
+    valid_module(Ro), once(run(Ro, g, [], 10, trap(readonly))).
+
+% The pass makes a renew_hull where no single check covers and two do,
+% renew_refines(hull) accepts it, and the modules agree.
+test(hull_pass) :-
+    M = module([func(g, local, l, [param(w, tmp(k))], [
+        block(s, [], [
+            let(tmp(p), p, alloc(8), [const(128)]),
+            let(tmp(x0), l, load(l), [tmp(p)]),
+            let(tmp(p100), p, add, [tmp(p), const(100)]),
+            let(tmp(x1), l, load(l), [tmp(p100)]),
+            let(tmp(o), p, alloc(8), [const(8)]), call(void, global(free), [arg(p, tmp(o))]),
+            let(tmp(p48), p, add, [tmp(p), const(48)]),
+            let(tmp(x2), l, load(l), [tmp(p48)]),
+            let(tmp(x), l, add, [tmp(x0), tmp(x2)])
+        ], ret(tmp(x)))])]),
+    valid_module(M), pizlonate_module(M, Ck), valid_module(Ck),
+    reuse_checks(forward, Ck, F), renew_checks(any, F, Any), renew_checks(hull, F, H),
+    renew_refines(hull, F, H), valid_module(H),
+    Any = module(AItems), H = module(HItems),
+    \+ ( member(func(g, _, _, _, Bs), AItems), member(block(_, _, Is, _), Bs),
+         member(let(_, a, renew_hull(_, _, _, _), _), Is) ),
+    once(( member(func(g, _, _, _, HBs), HItems), member(block(_, _, HIs, _), HBs),
+           member(let(_, a, renew_hull(0, 8, read, 1), _), HIs) )),
+    \+ renew_refines(any, F, H),
+    forall(member(X, [M, Ck, H]), once(run(X, g, [0], 20, ret(0)))).
+
+% Getters (docs/forward.md): a copy of global(G) that another copy of
+% G dominates keeps the live facts; the first copy, a copy of another
+% global, or one on one arm only, ends them.
+getter_fn(Before, Arm, M) :-
+    C = let(tmp(q), a, check(0, 16, read, 1), [tmp(a)]),
+    L = let(tmp(x), l, raw_load(l, 0), [tmp(q)]),
+    G1 = let(tmp(g1), p, copy, [global(msg)]),
+    L2 = let(tmp(y), l, raw_load(l, 8), [tmp(q)]),
+    (   Arm == none
+    ->  append(Before, [C, L, G1, L2], Is),
+        Bs = [block(s, [], Is, ret(const(0)))]
+    ;   Bs = [block(s, [], [], branch(tmp(c), t, j)), block(t, [], Arm, goto(j)),
+              block(j, [], [C, L, G1, L2], ret(const(0)))]
+    ),
+    M = module([data(msg, local, 1, [item(b, str("hello"))]),
+                data(other, local, 1, [item(b, str("hello"))]),
+                func(f, local, l, [param(p, tmp(a)), param(p, tmp(b)), param(w, tmp(c))], Bs)]).
+
+test(getter_validation) :-
+    G0 = let(tmp(g0), p, copy, [global(msg)]),
+    getter_fn([G0], none, Ok), valid_module(Ok),
+    Rej = [M]>>( catch(( valid_module(M), fail ), nanofil_error(Msg), true),
+                 once(sub_atom(Msg, _, _, _, 'no live check')) ),
+    getter_fn([], none, First), call(Rej, First),
+    getter_fn([let(tmp(g0), p, copy, [global(other)])], none, Another), call(Rej, Another),
+    getter_fn([], [G0], OneArm), call(Rej, OneArm),
+    getter_fn([let(tmp(j), w, setjmp('_setjmp'), [tmp(b), const(0)]), G0], none, Sj), call(Rej, Sj),
+    % An exported global's getter may be interposed, and an undefined
+    % one's may be an ifunc whose resolver runs at every call: neither
+    % is a repeated getter.
+    getter_fn([G0], none, module([data(msg, local, 1, Its)|Rest])),
+    call(Rej, module([data(msg, export, 1, Its)|Rest])),
+    Rest = [_|Rest1], call(Rej, module(Rest1)).
+
+% The pass keeps facts across a repeated getter in getter mode only.
+test(getter_pass) :-
+    M = module([data(msg, local, 1, [item(b, str("hello"))]),
+                func(g, local, l, [param(p, tmp(a))], [block(s, [], [
+                    let(tmp(g0), p, copy, [global(msg)]),
+                    let(tmp(x0), l, load(l), [tmp(a)]),
+                    let(tmp(g1), p, copy, [global(msg)]),
+                    let(tmp(a8), p, add, [tmp(a), const(8)]),
+                    let(tmp(x1), l, load(l), [tmp(a8)]),
+                    let(tmp(a4), p, add, [tmp(a), const(4)]),
+                    let(tmp(x2), w, load(sw), [tmp(a4)]),
+                    let(tmp(x), l, add, [tmp(x0), tmp(x1)])
+                ], ret(tmp(x)))])]),
+    valid_module(M), pizlonate_module(M, Ck),
+    reuse_checks(forward, Ck, F), reuse_checks(getter, Ck, G),
+    reuse_refines(getter, Ck, G), valid_module(G),
+    fwd_checks(F, NF), fwd_checks(G, NG), NG =:= NF - 1.
 
 % The pass replaces a check by a half check when an earlier check of the
 % same object dominates it at a constant distance, the original, checked

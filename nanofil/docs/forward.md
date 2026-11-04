@@ -167,7 +167,7 @@ a test that fails without the fix:
    fact whose alignment sufficed, which could be 2^32 away
    (`p[0]; p[0x100000000L]; p[5]`), and the emitter refused the offset.
    Fixed: the nearest reader within 32 bits
-   (`tests/c/prog/hull-far.c`, in progtest).
+   (`tests/c/prog/reach-far.c`, in progtest).
 3. **Validator rejection: setjmp.** The validator has no hull with a
    setjmp; the pass did. Fixed: the pass's mode there is pointer loads
    only (forward_pass's setjmp case).
@@ -227,19 +227,186 @@ body), and the 100M of item 16's covered class that are full checks
 covered by a hull become deletions only when their facts are live;
 where a call separates them they need a renew with several sources.
 
+## Getters (November 2026)
+
+Opt-in as `--checks=getter` (forward facts, then renewal and half
+checks, as `combined`) and, with the next section, `--checks=extended`.
+
+**What a getter may do.** `let(tmp(D), p, copy, [global(G)])` calls
+`pizlonated_G(thread, origin)` (abi-findings.md, Globals). Read in
+staging's `filc_runtime.c` and FilPizlonator.cpp:
+
+- *Fast path:* load the two cache words `GP_G`; if both are nonzero,
+  return them. No call, no store, no safepoint. Thread-local getters
+  read their `.tbss` slot the same way.
+- *Slow path:* `filc_global_initialization_start` sets the frame's
+  origin, checks the stack limit (it may trap), and takes the
+  initialization lock with `filc_lock_lock`. Under contention that calls
+  `filc_exit`, which runs deferred signal handlers
+  (`handle_deferred_signals`, filc_runtime.c:1243): arbitrary user code,
+  which may free, store pointers or run the collector. The initializer
+  then runs constant relocations, which call other getters. An ifunc's
+  getter calls `filc_call_ifunc`, which runs the resolver, user code. A
+  thread-local getter's slow path allocates, which is a safepoint.
+
+So a first getter call can reach arbitrary code. `tests/c/getter`
+shows it: an ifunc resolver frees the object whose fields `g` reads
+around `&f`. Reference nanofil and filcc -O0 trap on the read after the
+getter. filcc -O2 does not: its scheduleChecks runs before getter calls
+exist (FilPizlonator.cpp:17591, then optimizeGetters at 17865), so it
+treats the global's address as free of effects.
+
+**Rule.** A getter copy of G keeps every live fact when another copy
+of G dominates it (an earlier one in its block, or one in a strictly
+dominating block) and G is a function or data item this module defines
+with local linkage (`local`, `ro(local)`, `tls(local)`). Its
+destination's facts end, as for any definition. The getter is then the
+one nanofil emits for G, a local symbol no other module can interpose,
+and a call of it has returned in this activation on this thread:
+
+- a data getter has published its cache, so the fast path runs; or this
+  thread is inside an initialization of G's generation, reachable only
+  from a signal handler or an ifunc resolver during an initializer. The
+  slow path then finds G already seen and returns. It holds the lock
+  recursively, so it never reaches `filc_lock_lock`, runs no user code
+  and frees nothing;
+- a function's getter returns its object without a call;
+- a thread-local getter finds this thread's slot set.
+
+Its stack check passed at the first call, and the stack is no deeper.
+Another thread's free in between is the tolerated race of every check
+and its access.
+
+**Why only local globals** (the review, below). An external or
+exported getter may be anything at run time:
+- *Null-returning ifunc resolver.* An ifunc whose resolver returns
+  null leaves the cache half null, so every call of its getter runs the
+  resolver again, user code, even a dominated call.
+- *Interposition.* An exported definition's getter can be interposed by
+  another module's ifunc.
+
+`tests/getter-trap.sh` builds both external cases (lib.c by filcc) and
+a local one:
+- The first call of f's getter frees the object, and the read after it
+  traps.
+- f0's resolver returns null and frees on its second call, so the read
+  after a dominated copy of f0 traps too.
+- A repeated copy of a static function's address keeps the facts.
+
+Planted, each is caught: keeping facts across every getter (in the pass
+and validator both) loses the first trap; dropping the linkage
+restriction loses the second (the program prints 0 and exits 0 where
+the reference traps).
+
+The validator states the rule in `ir:repeated_getters/4`, read in
+`checked_inst_rest/7`. The pass calls the validator's relation, so it
+keeps nothing the validator refuses. The interpreter models a getter as
+the global's pointer with no effect, so it needs no new rule. The
+emitter is unchanged: the getter is still an ordinary call, and every
+register it clobbers is restored from homes and frame slots, as
+renewal across calls already relies on. Share (perf.md item 17) still
+treats the call as opaque.
+
+**Why bzip2 does not gain.** `BZ2_crc32Table` is defined in another
+translation unit (crctable.c), and its getter in copy_input_until_stop
+is also the first copy in each loop iteration, with no copy before the
+loop. Both make it exactly the case that may reach arbitrary code. Keeping facts there would need a fact about the
+program's history (the cache published), not about this activation.
+That would be the user's decision, and is not proposed.
+
+## Renewal by the hull of two checks (November 2026)
+
+Opt-in as `--checks=hull` (and `extended`). One new IR term, approved:
+
+    let(tmp(Q), a, renew_hull(Lo, Hi, Rights, Align), [tmp(QL), tmp(QH), P])
+
+It is `renew(Lo, Hi, Rights, Align)` of P whose bounds and alignment
+come from two earlier heap proofs, so a full check that no single
+dominating check covers, but two do, becomes a flag test across calls.
+It traps where the check would. After a free, both the check and the
+renew fail at the access with the "free object" report. A write to a
+read-only object reports "read-only". Its access and report are the
+replaced check's.
+
+**Validator** (`hull_renewable/8`). QL and QH are in the renew-source
+table: single-definition proofs of check, check_ahead, renew_if,
+check_limit or half_check, of single-definition pointers PL and PH, in
+a function without setjmp. Their checks passed at points that dominate
+this one (strict SSA), and P = PL + DL and P = PH + DH modulo 2^64
+(`pointer_distance/4`), so all three have one capability. With
+
+- E = Lo + DL − LoL and F = HiH − Hi − DH both in [0, 2^62], and
+- Hi − Lo ≤ 2^62:
+
+P+Lo is E bytes above PL+LoL, which was at or above lower, and P+Hi is
+F bytes below PH+HiH, which was at or below upper. Both checks' bytes
+lie in one object below 2^56, so those integer sums do not wrap. An
+object is one interval, and its bounds change only when it is freed,
+which the flag test catches. Read-only is per object. Alignment comes
+from either source: Al1 mod Align = 0 and (Lo + D − Lo1) mod Align = 0.
+
+**Interpreter.** `kind_res(renew_hull, ...)` runs the check's whole
+access test on P, as renew does. A failure other than free or read-only
+is `unchecked(span)`, and a source of another capability is
+`unchecked(alias)`.
+
+**Emitter.** It is emitted as `renew` of QL. The flag test reads only
+P's lower, so no emitted line is new and no SMT proof changes (half's
+and share's are untouched).
+
+**Pass.** `renew_checks(hull, ...)` first runs the single-source
+renewal (`any`). Then, in dominator-tree preorder, it turns each check
+that no renew reads and that no single source covers into a renew_hull
+of two dominating sources (`hull_pair/13`, the validator's bounds),
+never reading a check it has already replaced.
+`renew_refines(hull, ...)` accepts only checks replaced by renew_hull
+of related checks of the same range, rights and alignment.
+
+## Measurements of hull, getter and extended (November 2026)
+
+Callgrind on the gate (`bench/profile/checks.py`). Columns are filcc /
+`-O` (combined, share upper) / `--checks=hull` / `--checks=extended`.
+`getter` alone matches `-O` within 0.1%, because the gate's only hot
+getter is bzip2's extern `BZ2_crc32Table`:
+
+| Workload | checks (M) | check instructions (M) | program instructions (G) |
+|---|--:|--:|--:|
+| zlib -6 | 136.2 / 171.0 / 173.3 / 173.3 | 703 / 969 / 961 / 961 | 1.95 / 6.42 / 6.41 / 6.41 |
+| zlib -d | 11.7 / 16.5 / 16.5 / 16.5 | 56 / 105 / 105 / 105 | 0.18 / 0.54 / 0.54 / 0.54 |
+| bzip2 -9 | 332.9 / 461.3 / 462.2 / 462.2 | 1823 / 2355 / 2309 / 2309 | 4.66 / 9.30 / 9.27 / 9.27 |
+| bzip2 -d | 86.2 / 109.0 / 109.0 / 109.0 | 417 / 549 / 482 / 482 | 1.41 / 3.73 / 3.68 / 3.68 |
+| lz4 -1 | 0.3 / 3.2 / 3.2 / 3.2 | 2 / 23 / 23 / 23 | 0.01 / 0.23 / 0.23 / 0.23 |
+| lz4 -9 | 116.2 / 150.5 / 150.5 / 150.5 | 647 / 985 / 985 / 985 | 2.86 / 7.19 / 7.19 / 7.19 |
+| lz4 -d | 3.5 / 3.8 / 3.8 / 3.8 | 16 / 27 / 27 / 27 | 0.06 / 0.32 / 0.32 / 0.32 |
+| lua int | 48.0 / 52.0 / 52.0 / 52.0 | 258 / 372 / 362 / 362 | 1.22 / 1.95 / 1.94 / 1.94 |
+| lua tab | 38.1 / 44.1 / 44.1 / 44.1 | 231 / 327 / 327 / 327 | 0.96 / 1.49 / 1.49 / 1.49 |
+| lua str | 59.3 / 66.3 / 67.0 / 67.0 | 418 / 542 / 538 / 538 | 1.92 / 3.11 / 3.11 / 3.11 |
+| sqlite | 364.7 / 451.7 / 463.5 / 463.5 | 2015 / 2968 / 2851 / 2851 | 9.50 / 15.67 / 15.58 / 15.56 |
+| **all** | **1197 / 1530 / 1545 / 1545** | **6584 / 9221 / 8969 / 8969** | **24.7 / 49.95 / 49.76 / 49.74** |
+
+A renew_hull counts as one check, just as the full check it replaces
+did. The extra 16M are checks the classifier counts that the
+single-source renewal used to fold into its neighbour; that is a guess,
+not verified. Check instructions fall by 252M (2.7%). Most of that is
+SQLite (−117M), bzip2 -d (−67M) and bzip2 -9 (−46M).
+
+Time, `run.py --modes ref,O,O-hull,O-extended`, 7 trials on cpu 6,
+load 0.07. Geomean ratio to filcc -O2: `-O` 1.78 (instructions 2.67),
+hull 1.78 (2.66), extended 1.77 (2.66). Lua tab is slower under both:
+1.42, outside `-O`'s range of 1.39..1.40. lz4 -9 is faster under
+extended (1.93 against 2.03). Every other workload is within its
+trials' range.
+
+**Decision.** Neither mode clears the bar for the `-O` default: a lower
+geomean, and no workload slower beyond its trials' range. Both stay
+opt-in, and `-O` remains `combined`.
+
 ## Not done, and why
 
-- **Getters.** A getter is a call into the global's getter, which may
-  initialize it and exit, so it ends live facts. copy_input_until_stop's
-  `BZ2_crc32Table` getter in its loop body is the largest remaining
-  case seen. Keeping facts across getters needs a stated rule for what
-  a getter may do (decision below).
+- **First getter calls.** See [Getters](#getters-november-2026): they
+  may run arbitrary code, so they still end every fact.
 - **Calls that write no memory.** filcc keeps `NotFree` across calls
   LLVM proves read-only; nanofil knows nothing about callees.
-- **Hull renewals.** A full check that the hull of several dominating
-  checks covers could become a flag test (item 16's 45M "full checks
-  that could become renewals" are partly this), but a renew names one
-  source. That needs a renew with several sources, an IR grammar change.
 - **Back edges.** Every cycle polls and a poll ends `NotFree` in filcc
   too; bounds facts from before a loop already reach it as renew
   sources. Facts first established inside a loop do not reach its

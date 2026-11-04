@@ -48,6 +48,9 @@ let
     O-forward = "-O --checks=forward";
     O-combined = "-O --checks=combined";
     O-all = "-O --checks=combined --share=upper";
+    O-hull = "-O --checks=hull";
+    O-getter = "-O --checks=getter";
+    O-extended = "-O --checks=extended";
   };
   chosen =
     if only == "" then

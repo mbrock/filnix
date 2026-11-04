@@ -696,7 +696,10 @@ single_proofs(Params, Blocks, Single) :-
     % (docs/m7.md, round 4 addendum), when Q and P have one definition.
     list_to_assoc(Checks, CheckAssoc),
     findall(Q-P, ( member(block(_, _, Is, _), Blocks),
-                   member(let(tmp(Q), a, renew(_, _, _, _), [tmp(Q1), P]), Is),
+                   (   member(let(tmp(Q), a, renew(_, _, _, _), [tmp(Q1), P]), Is)
+                   ;   member(let(tmp(Q), a, renew_hull(_, _, _, _), [tmp(Q1), tmp(QH), P]), Is),
+                       get_assoc(QH, CheckAssoc, _)
+                   ),
                    \+ get_assoc(Q, MultiSet, _),
                    get_assoc(Q1, CheckAssoc, _),
                    ( P = tmp(N) -> \+ get_assoc(N, MultiSet, _) ; true ) ),
@@ -735,6 +738,9 @@ fused_insts([Inst0|Insts0], Fn, Single, Proofs0, [Inst|Insts]) :-
     ->  proofs_add(Q-P, Proofs, Proofs1)
     ;   Inst0 = let(tmp(Q), a, renew(_, _, _, _), [tmp(Q1), P]), get_assoc(Q1, Single, _)
     ->  proofs_add(Q-P, Proofs, Proofs1)
+    ;   Inst0 = let(tmp(Q), a, renew_hull(_, _, _, _), [tmp(Q1), tmp(QH), P]),
+        get_assoc(Q1, Single, _), get_assoc(QH, Single, _)
+    ->  proofs_add(Q-P, Proofs, Proofs1)
     ;   Proofs1 = Proofs
     ),
     (   ( Inst0 = let(_, _, raw_load(_, Off), [tmp(Q1)])
@@ -749,6 +755,12 @@ fused_insts([Inst0|Insts0], Fn, Single, Proofs0, [Inst|Insts]) :-
         )
     ;   Inst0 = let(tmp(Q), a, renew(Lo, Hi, Rights, Align), [tmp(Q1), P])
     ->  renewed_inst(Q, renew(Lo, Hi, Rights, Align), Q1-P, Insts0, Fn, Single, Inst, Insts1)
+    % A renew_hull emits as a renew: the flag test reads only P's lower.
+    ;   Inst0 = let(tmp(Q), a, renew_hull(Lo, Hi, Rights, Align), [tmp(Q1), tmp(QH), P])
+    ->  (   get_assoc(QH, Single, _) -> true
+        ;   throw_fn(Fn, 'a renew_hull without single-definition sources')
+        ),
+        renewed_inst(Q, renew(Lo, Hi, Rights, Align), Q1-P, Insts0, Fn, Single, Inst, Insts1)
     ;   fused_inst(Inst0, Insts0, Fn, Inst, Insts1)
     ),
     % A fused access or call may define Q's pointer too.

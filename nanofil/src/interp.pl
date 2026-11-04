@@ -860,6 +860,17 @@ kind_res(renew, renew(Lo, Hi, Rights, Align), a, filc, [ptr(_, Cap1), ptr(A, Cap
     renew_res(Res0, ptr(A, Cap), Mem, Res).
 % P is not of the object Q1's check saw (pointer_distance/4 was wrong).
 kind_res(renew, renew(_, _, _, _), a, filc, [_, _], S, unchecked(alias), S).
+% A renew_hull (docs/forward.md) is a renew whose two sources both have
+% P's capability: the same access test on P, the same traps; any other
+% failure is unchecked(span), another object's source unchecked(alias).
+kind_res(renew_hull, renew_hull(Lo, Hi, Rights, Align), a, filc,
+         [ptr(_, CapL), ptr(_, CapH), ptr(A, Cap)], s(Mem, Fuel), Res, s(Mem, Fuel)) :-
+    CapL == Cap, CapH == Cap, !,
+    raw_address(A, Lo, B),
+    Size is Hi - Lo,
+    access_res(Mem, B, Cap, Size, Rights, Align, Res0),
+    renew_res(Res0, ptr(A, Cap), Mem, Res).
+kind_res(renew_hull, renew_hull(_, _, _, _), a, filc, [_, _, _], S, unchecked(alias), S).
 % A half check (docs/half.md) is its check of P, which has Q1's
 % capability. Natively it tests only Bound, upper or lower, and for
 % lower the free flag, then the read-only flag for a write and the
