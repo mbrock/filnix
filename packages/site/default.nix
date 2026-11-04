@@ -20,8 +20,11 @@ let
   # The Nix files drawn as pages (dterm-nix), and every path of the
   # repository, which their path links are checked against: a list, so
   # the site does not rebuild for every commit.
-  nixPages = [
+  # The files drawn as pages; one that does not exist yet (a module still
+  # on its way) is left out.
+  nixPages = lib.filter (f: builtins.pathExists (../.. + "/${f}")) [
     "nixos/filc.nix"
+    "nixos/userland.nix"
     "finix/userland.nix"
     "ports/default.nix"
     "toolchain.nix"
@@ -29,6 +32,7 @@ let
     "ports/media.nix"
     "ports/pipewire-consumers.nix"
     "ports/tpm2.nix"
+    "ports/overlay.nix"
   ];
   repoFiles = builtins.toFile "filnix-files" (
     lib.concatMapStrings (
@@ -47,12 +51,7 @@ let
             inherit (pkgs.stdenv.hostPlatform) system;
             inherit modules;
           };
-        nixosModule = filnix.nixosModules.filc;
-        nixosModuleFile = ../../nixos/filc.nix;
-        nixosMachine = ../../nixos/demo.nix;
-        finixModule = filnix.finixModules.filc-userland;
-        finixModuleFile = ../../finix/userland.nix;
-        filnixRoot = ../..;
+        inherit filnix pkgs;
         nixpkgsRoot = nixpkgs;
         nixpkgsRev = nixpkgs.rev or "master";
       }

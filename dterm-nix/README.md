@@ -66,18 +66,32 @@ left-associative fails 8 of this repository's files.
 
 ## The option index
 
-`options.html` lists the options `nixosModules.filc` and
-`finixModules.filc-userland` declare and the ones they set.
-[options.nix](options.nix) evaluates the modules (NixOS with
-`nixos/demo.nix`, finix with the userland enabled) and writes, for each
-option, its declarations, type, default, example, description and the
-files that define it; the site build runs it, so the page follows the
-modules with no hand edits. Who reads an option is not in the
-evaluation, so [dterm_options.pl](dterm_options.pl) finds it in the
-source: a selection followed back through bindings and `with` to the
-module's `config` parameter, in the machine's own files and the
-Nixpkgs modules that declare its options. An interpolated name
-(`cfg.${name}.enable`) reads every option it can stand for.
+`options.html` lists, for each exported module (`nixosModules.filc`,
+`nixosModules.filc-userland` once the flake has it,
+`finixModules.filc-userland`), the options declared in the module's file
+and the options its config sets. [options.nix](options.nix) evaluates
+each module in a machine (NixOS's filc with `nixos/demo.nix`, which only
+supplies definitions) and writes each option's declarations, type,
+default, example, description and defining files; the site build runs
+it, so the page follows the modules with no hand edits.
+
+For an option a module sets, the page shows the definition as written
+in the module (found in its source: a binding whose path, with those of
+the sets around it, is `config` and the option) and the value in the
+machine: each package's derivation name and what builds it. That is the
+attribute of the Fil-C package set, a port of the port lists or an
+override of ports/overlay.nix, with the same derivation; evaluation
+decides it, comparing `drvPath`s. So option, package, port and patches
+are one path of links.
+
+Who reads an option comes from the source, as evaluation does not say:
+a selection followed back through bindings and `with` to the module
+function's own `config` parameter (a submodule's `config` is not it), in
+the machine's files and the Nixpkgs modules that declare its options.
+"Read by" lists selections of the option's exact path; one with an
+interpolated name (`cfg.${name}.enable`) is listed apart, under "may
+read", for each option it can name, and one that names nothing of the
+option (`config.${name}`) is not listed at all.
 
 ## Port lists
 

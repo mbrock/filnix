@@ -138,6 +138,9 @@ write_ports_page(Out, Pages, page(File, _, _, E, _), Body, Path) :-
     subtract(Body, Taken, Rest),
     nb_setval(nix_notes_all, Rest), nb_setval(nix_notes, Rest),
     page_name(File, Name), directory_file_path(Out, Name, Path),
+    forall(( member(Th, Things), ( Th = port(_, N, _, _, _) ; Th = alias(_, N, _, _) ), port_id(N, Id),
+             \+ port_at(N, _, _) ),
+           ( atomic_list_concat([Name, '#', Id], H), assertz(port_at(N, H, Th)) )),
     findall(S, member(sec(S, _), Things), Secs),
     write_page(Path, ports_page(Pages, File, E, Things, Secs)).
 

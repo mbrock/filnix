@@ -205,3 +205,14 @@ table.port-steps tr.note .note { margin: 0; }
 .port-local { margin: 0.6rem 0 0.2rem; }
 .port.alias .port-head .goal { font-size: 0.92rem; }
 .port-hidden { display: none !important; }
+
+/* What a module sets an option to (dterm_options.pl): the definition as
+   written, and each package's derivation and what builds it. */
+.set-def + .set-def { margin-top: 0.5rem; }
+.set-where { font-size: 0.8rem; }
+.set-def .binds .clause.bind { border: 0; padding: 0; }
+.pkg-value + .pkg-value { margin-top: 0.15rem; }
+code.drv-name { font-size: 0.8rem; background: none; padding: 0; }
+.built-by { font-size: 0.88rem; }
+.built-by .badge { font-size: 0.72rem; }
+tr.may-read td.desc > .muted { font-size: 0.8rem; }

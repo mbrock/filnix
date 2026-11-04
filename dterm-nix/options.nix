@@ -10,20 +10,66 @@
   lib,
   # Nixpkgs' eval-config.nix, applied to a system and modules.
   evalNixos,
-  # The NixOS module and the file it is in, and the machine whose
-  # definitions are listed (nixos/demo.nix).
-  nixosModule,
-  nixosModuleFile,
-  nixosMachine,
-  # The finix module and its file, evaluated here with
-  # filc.userland.enable set.
-  finixModule,
-  finixModuleFile,
-  filnixRoot,
+  # The flake, whose exported modules are listed, and the build
+  # platform's package set that ports/overlay.nix is applied with.
+  filnix,
+  pkgs,
   nixpkgsRoot,
   nixpkgsRev,
 }:
 let
+  filnixRoot = filnix.outPath;
+
+  # The exported modules: each with the file it is in and the machine it
+  # is evaluated in. The machine only supplies definitions; the options
+  # listed are the ones declared in the module's file and the ones its
+  # config sets. A module the flake does not export (yet) is left out.
+  here = "dterm-nix/options.nix";
+  modules = lib.filter (m: lib.hasAttrByPath m.attr filnix) [
+    {
+      attr = [
+        "nixosModules"
+        "filc"
+      ];
+      kind = "nixos";
+      file = "${filnixRoot}/nixos/filc.nix";
+      machine = "${filnixRoot}/nixos/demo.nix";
+      machineFile = "${filnixRoot}/nixos/demo.nix";
+    }
+    {
+      attr = [
+        "nixosModules"
+        "filc-userland"
+      ];
+      kind = "nixos";
+      file = "${filnixRoot}/nixos/userland.nix";
+      machine = {
+        _file = here;
+        filc.userland.enable = true;
+        boot.loader.grub.enable = false;
+        fileSystems."/".device = "none";
+        system.stateVersion = "26.05";
+      };
+      machineFile = here;
+    }
+    {
+      attr = [
+        "finixModules"
+        "filc-userland"
+      ];
+      kind = "finix";
+      file = "${filnixRoot}/finix/userland.nix";
+      machine = {
+        _file = here;
+        filc.userland = {
+          enable = true;
+          system = "x86_64-linux";
+        };
+      };
+      machineFile = here;
+    }
+  ];
+
   rel =
     file:
     let
@@ -114,56 +160,141 @@ let
     else
       [ ];
 
-  # The module is a function of filnix, so its file is stated: without it
-  # its definitions would be attributed to the flake.
-  nixos = evalNixos [
-    {
-      _file = nixosModuleFile;
-      imports = [ nixosModule ];
-    }
-    nixosMachine
-  ];
-
-  nixosSet =
+  # Which attributes of the Fil-C package set that ports/overlay.nix makes
+  # (a port or one of its overrides) are a derivation: those of the same
+  # name and derivation, among the names that begin with its first word
+  # (bash for bash-interactive, php for php-with-extensions).
+  pkgsFilc = filnix.legacyPackages.${pkgs.stdenv.hostPlatform.system}.pkgsFilc;
+  overlayNames = builtins.attrNames (
+    import "${filnixRoot}/ports/overlay.nix" pkgs pkgsFilc pkgsFilc
+  );
+  builtBy =
+    v:
     let
-      m = nixosModule (
-        nixos._module.args
+      word = lib.head (
+        lib.splitString "-" (v.pname or (builtins.parseDrvName v.name).name)
+      );
+      same =
+        n:
+        let
+          r = builtins.tryEval (
+            let
+              c = pkgsFilc.${n};
+            in
+            lib.isDerivation c && c.name == v.name && c.drvPath == v.drvPath
+          );
+        in
+        r.success && r.value;
+    in
+    lib.filter same (lib.filter (lib.hasPrefix word) overlayNames);
+
+  # The value of a set option in the evaluated machine, when it is a
+  # package or a list of them: the derivation's name and pname, and the
+  # overlay's attributes that build it.
+  pkgValue =
+    v:
+    if lib.isDerivation v then
+      let
+        attrs = builtBy v;
+        pname = v.pname or null;
+        # Neither a port nor an override builds it: it is the package set's
+        # attribute of that pname, as Nixpkgs builds it, with Fil-C.
+        plain =
+          let
+            r = builtins.tryEval (
+              pname != null
+              && !(lib.elem pname overlayNames)
+              && pkgsFilc ? ${pname}
+              && pkgsFilc.${pname}.drvPath == v.drvPath
+            );
+          in
+          attrs == [ ] && r.success && r.value;
+      in
+      {
+        inherit (v) name;
+        inherit pname attrs plain;
+      }
+    else
+      null;
+  value =
+    v:
+    let
+      r = builtins.tryEval (
+        let
+          x =
+            if lib.isDerivation v then
+              [ (pkgValue v) ]
+            else if builtins.isList v && v != [ ] && lib.all lib.isDerivation v then
+              map pkgValue v
+            else
+              null;
+        in
+        builtins.deepSeq x x
+      );
+    in
+    if r.success then r.value else null;
+
+  # A module is a function of filnix, so its file is stated: without it
+  # its definitions would be attributed to the flake.
+  evaluate =
+    m:
+    let
+      module = lib.getAttrFromPath m.attr filnix;
+      inMachine = [
+        {
+          _file = m.file;
+          imports = [ module ];
+        }
+        m.machine
+      ];
+      eval =
+        if m.kind == "nixos" then
+          evalNixos inMachine
+        else
+          lib.evalModules {
+            modules = inMachine ++ [ { _module.check = false; } ];
+          };
+      declared = lib.filter (
+        o: lib.any (p: rel p.file == rel m.file) (o.declarationPositions or [ ])
+      ) (options eval.options);
+      applied = module (
+        eval._module.args
         // {
-          inherit (nixos) config options;
+          inherit (eval) config options;
           inherit lib;
         }
       );
-      paths = lib.unique (setPaths nixos.options [ ] m.config);
-    in
-    lib.filter (p: lib.head p != "filc") paths;
-
-  finix = lib.evalModules {
-    modules = [
-      {
-        _file = finixModuleFile;
-        imports = [ finixModule ];
-      }
-      {
-        _file = "dterm-nix/options.nix";
-        _module.check = false;
-        filc.userland = {
-          enable = true;
-          system = "x86_64-linux";
+      setPaths' = lib.filter (p: !(lib.any (o: o.loc == p) declared)) (
+        lib.unique (setPaths eval.options [ ] (applied.config or { }))
+      );
+      # The value in the machine; of a list, the module's own elements.
+      setEntry =
+        p:
+        let
+          opt = lib.getAttrFromPath p eval.options;
+          v = lib.attrByPath p null eval.config;
+          own = builtins.tryEval (
+            lib.concatMap (d: lib.toList d.value) (
+              lib.filter (d: rel d.file == rel m.file) opt.definitionsWithLocations
+            )
+          );
+        in
+        entry "set" opt
+        // {
+          value = value (
+            if builtins.isList v then (if own.success then own.value else null) else v
+          );
         };
-      }
-    ];
-  };
+    in
+    {
+      inherit (m) kind;
+      name = lib.concatStringsSep "." m.attr;
+      file = rel m.file;
+      machine = rel m.machineFile;
+      options = map (entry "declared") declared ++ map setEntry setPaths';
+    };
 in
 {
-  inherit nixpkgsRev;
-  nixos = {
-    machine = rel nixosMachine;
-    options =
-      map (entry "declared") (options nixos.options.filc)
-      ++ map (p: entry "set" (lib.getAttrFromPath p nixos.options)) nixosSet;
-  };
-  finix = {
-    machine = "dterm-nix/options.nix";
-    options = map (entry "declared") (options finix.options.filc.userland);
-  };
+  inherit nixpkgsRev overlayNames;
+  modules = map evaluate modules;
 }
