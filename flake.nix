@@ -345,6 +345,9 @@
             glibc-syscall-fallbacks = import ./tests/glibc-syscall-fallbacks.nix {
               inherit pkgsFilc;
             };
+            runtime-prctl-caps = import ./tests/runtime-prctl-caps.nix {
+              inherit pkgsFilc;
+            };
             wrapper-roles = import ./tests/wrapper-roles.nix { inherit pkgsFilc; };
             gc-local-arrays = import ./tests/gc-local-arrays.nix { inherit pkgsFilc; };
             nix-eval = import ./tests/nix-eval.nix { inherit pkgsFilc; };

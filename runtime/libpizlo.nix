@@ -21,6 +21,11 @@ in
     version = "git";
     src = sources.libpas-src;
 
+    patches = [
+      # prctl's capability options returned ENOSYS, so systemd could start no service.
+      ../patches/filc-runtime-prctl-caps.patch
+    ];
+
     nativeBuildInputs = [
       pkgs.gnumake
       pkgs.ruby
