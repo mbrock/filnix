@@ -684,7 +684,6 @@ in
   (for pkgs.busybox [
     (arg {
       enableStatic = false;
-      enableAppletSymlinks = false;
       enableMinimal = false;
       # These assembly implementations lack SaRCAsm capability signatures.
       # Use BusyBox's portable C SHA implementations.
@@ -3033,6 +3032,14 @@ in
         + ''
           substituteInPlace src/sig.c --replace-fail 'if (vfork()) {' \
             'if (({ pid_t p = fork(); if (p > 0) waitpid(p, NULL, 0); p; })) {'
+        ''
+        # Fil-C's syscall() stops the program on clone3 instead of returning
+        # ENOSYS, so PID 1 died starting its first service. Start with
+        # finit's own fork() fallback, which moves the child into its cgroup
+        # after the fork.
+        + ''
+          substituteInPlace src/clone3.c --replace-fail \
+            'static int use_clone3 = 1;' 'static int use_clone3 = 0;'
         '';
     }))
   ])

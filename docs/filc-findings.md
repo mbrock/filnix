@@ -262,6 +262,14 @@ already have a fallback for headers without `__NR_membarrier`; the ports
 use it under Fil-C (`patches/liburcu-filc.patch`,
 `patches/lttng-ust-no-membarrier.patch`).
 
+## `clone3` stops the program
+
+`syscall(__NR_clone3, ...)` (435) also stops the program ("unsupported
+syscall: 435") instead of failing with `ENOSYS`. finit tries clone3 first, to
+start each service straight into its cgroup, and falls back to `fork()` on
+failure; as PID 1 it died starting its first service. The port starts with
+the fallback (ports.nix).
+
 ## `dlopen` of a bare soname ignores the caller's RUNPATH
 
 `dlopen("libnss_dns.so.6662")` fails in a Fil-C program even though the
