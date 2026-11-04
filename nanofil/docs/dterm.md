@@ -345,6 +345,17 @@ A shape is used only when it accounts for every line. Anything else stays
 text in a block that scrolls sideways, so an unusual diagram never draws
 wrong.
 
+## Nix (November 2026)
+
+[dterm-nix](https://github.com/mbrock/filnix/tree/main/dterm-nix) draws
+filnix's Nix the same way, on the wiki at
+[mbrock.github.io/filnix/nix](https://mbrock.github.io/filnix/nix/): a
+Nix grammar written as a DCG reads each file into terms with positions
+and comments, attribute sets and `let` become tables of bindings, and
+dterm.js breaks the inline terms as it breaks Prolog's. It shares
+dterm.js, dterm.css and web/dterm_html.pl (the HTML DCGs and the
+Markdown of comments) with these pages.
+
 ## Not yet
 
 - Captions as data (`case/2` in `doc/3`, naming the clauses), so a

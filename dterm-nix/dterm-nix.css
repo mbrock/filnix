@@ -1,0 +1,149 @@
+/* dterm-nix: Nix drawn as structure (dterm_nix.pl), over nanofil's
+   dterm.css, which sets the terms: an application is its function and its
+   arguments, set and broken as dterm sets a compound; attribute sets and
+   let are tables of bindings. */
+
+article.dterm.nix { max-width: 64rem; }
+.nix-root { margin: 0; }
+
+/* Bindings: a name column and a value column, shared by every row of
+   one set; a value that is itself a block goes under its name. */
+.binds {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  column-gap: 0.75em;
+}
+.binds > .note { grid-column: 1 / -1; margin: 0.55em 0 0.2em; }
+.binds > .note:first-child { margin-top: 0.1em; }
+.clause.bind {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: baseline;
+  margin: 0;
+  padding: 0.16em 0;
+  scroll-margin-top: 3rem;
+}
+.clause.bind + .clause.bind { border-top: 1px solid color-mix(in srgb, var(--rule) 55%, transparent); }
+.clause.bind > .head { grid-column: 1; white-space: nowrap; padding-left: 0; text-indent: 0; }
+.clause.bind > .value { grid-column: 2; min-width: 0; }
+.clause.bind > .xrefs { grid-column: 2; }
+.clause.bind > .aside { grid-column: 2; margin-left: 0; }
+.clause.bind.over > .value, .clause.bind.over > .xrefs { grid-column: 1 / -1; padding-left: 1.1em; }
+.clause.bind.over > .value { margin-top: 0.15em; }
+.clause.bind.wide { display: flex; flex-wrap: wrap; column-gap: 0.75em; align-items: baseline; }
+.clause.bind.wide > .value { flex: 1 1 8em; }
+.clause.bind.wide > .xrefs, .clause.bind.wide > .aside { flex-basis: 100%; padding-left: 1.1em; }
+.clause.bind:target { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.bind .eq { color: var(--muted); margin-left: 0.4em; }
+.eqi, .colon { color: var(--muted); }
+.name.def { color: var(--ink); font-weight: 650; }
+.name { color: var(--atom); }
+.dot { color: var(--muted); }
+.inherit .from { color: var(--muted); }
+.names { display: flex; flex-wrap: wrap; column-gap: 0.8em; }
+.names .name.def { font-weight: 550; }
+.xrefs { font-size: 0.74rem; color: var(--muted); line-height: 1.5; }
+.xref-group + .xref-group { margin-left: 1em; }
+.xref-title { text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; font-size: 0.68rem; }
+.xrefs a { color: var(--accent); }
+
+/* Blocks: an attribute set has a rule for its braces, a list a bracket. */
+.attrs {
+  padding: 0.05em 0 0.05em 0.6em;
+  border-left: 1.5px solid var(--paren);
+  border-radius: 0.6em 0 0 0.6em;
+}
+.attrs > .kw.rec { display: block; margin-bottom: 0.1em; }
+.list-block {
+  display: grid;
+  row-gap: 0.15em;
+  padding: 0.05em 0 0.05em 0.6em;
+  border-left: var(--paren-stroke) solid var(--bracket);
+  background:
+    linear-gradient(var(--bracket) 0 0) left top / 0.35em var(--paren-stroke) no-repeat border-box,
+    linear-gradient(var(--bracket) 0 0) left bottom / 0.35em var(--paren-stroke) no-repeat border-box;
+}
+.list-block > .note { margin: 0.3em 0 0; }
+.list-block > .item { display: flex; flex-wrap: wrap; column-gap: 0.8em; align-items: baseline; }
+.list-block > .item > .aside { margin-left: 0; }
+.let > .kw-row, .kw-line .kw { line-height: 1.9; }
+.let > .let-body { margin-top: 0.1em; }
+.let > .binds { margin-left: 0.2em; }
+.app-block > .app-args { display: grid; row-gap: 0.2em; padding-left: 1.1em; margin-top: 0.1em; }
+.op-stack { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 0.5em; row-gap: 0.25em; }
+.op-row { display: contents; }
+.op-lead { color: color-mix(in srgb, var(--ink) 62%, transparent); text-align: right; }
+.op-stack > .note { grid-column: 1 / -1; }
+.paren.block { padding: 0.1em 0.5em; }
+.with > .kw-line, .assert > .kw-line { margin-bottom: 0.15em; }
+.cases.stack.mkif > .case:not(.plain) > .cond::before { content: "mkIf"; color: var(--accent); text-transform: none; letter-spacing: 0; font-size: 0.85em; }
+.cases .cond .goals, .cases .then .goals { display: block; }
+
+/* Functions: their parameters as a signature. */
+.lam > .sig-block, .lam > .sig { margin-bottom: 0.3em; }
+.goal.sig { font-size: 1.02rem; }
+.lambda { color: var(--accent); font-weight: 700; margin-right: 0.35em; }
+.v.def { color: var(--var); font-weight: 650; }
+.at { color: var(--muted); margin: 0 0.15em; }
+.opt { color: var(--muted); font-size: 0.8em; margin-left: 0.05em; }
+.ellipsis { color: var(--muted); }
+table.formals { display: table; margin: 0.2rem 0 0.4rem 1.5em; font-size: 0.9rem; border-collapse: collapse; }
+table.formals td { padding: 0.1rem 1rem 0.1rem 0; vertical-align: baseline; }
+.lam > .lam-body { margin-left: 0; }
+.lam .lam { margin-top: 0.2em; }
+
+/* Inline terms: application is juxtaposition, its arguments set as
+   dterm sets a compound's but without the parentheses Nix doesn't write;
+   the ones it does write are hairlines. A set inline is in braces. */
+.c.app > .args { border-width: 0; padding-inline: 0; margin-left: 0.3em; border-radius: 0; }
+.args.curly { border-width: 0; padding-inline: 0; }
+.args.curly::before { content: "{"; color: var(--paren); margin-right: 0.25em; }
+.args.curly::after { content: "}"; color: var(--paren); margin-left: 0.25em; }
+.curly-empty { color: var(--paren); }
+.c.set > .kw.rec { margin-right: 0.3em; }
+.sel { white-space: nowrap; }
+.sel > .v, .sel > a.v { color: var(--atom); }
+a.v, a.f.call { text-decoration: none; }
+a.v:hover, a.f.call:hover { text-decoration: underline; }
+.v.builtin { color: var(--muted); }
+.op.colon { margin-left: 0.04em; margin-right: 0.12em; }
+.o.lam > .v.def { font-weight: 500; }
+.interp > .dollar { color: var(--muted); font-size: 0.85em; }
+.s .interp { color: var(--ink); }
+a.path, a.uri { color: var(--str); text-decoration: underline dotted; text-underline-offset: 0.2em; }
+.spath { color: var(--str); }
+.lit-expr > code.term { font: inherit; background: none; padding: 0; }
+.lit-expr .q { color: var(--muted); }
+.nix [data-b].lit-b { background: color-mix(in srgb, var(--var) 14%, transparent); border-radius: 3px; }
+
+/* Indented strings: the text they mean, in the type of code. A
+   description is prose. */
+.istr { font-size: 0.86rem; }
+.istr > .q { color: var(--muted); }
+.istr-text {
+  margin: 0.1em 0 0.1em 0.8em;
+  padding: 0.3em 0.6em;
+  font-family: var(--mono-font);
+  white-space: pre-wrap;
+  background: color-mix(in srgb, var(--str) 6%, transparent);
+  border-radius: 4px;
+  color: var(--str);
+}
+.istr-line { min-height: 1.4em; }
+.istr-text .interp { font-family: var(--body-font, inherit); }
+.prose.described { font-size: 0.9rem; max-width: 40rem; color: var(--ink); }
+.prose.described p { margin: 0 0 0.35rem; }
+
+/* Examples in a header, drawn as the bindings they are. */
+.example { margin: 0.4rem 0 0.8rem 1rem; padding: 0.3rem 0.7rem; border-left: 2px solid var(--rule); }
+.example .clause.bind { padding: 0.05em 0; border: 0; }
+.example .aside { font-size: 0.82em; }
+
+@media (max-width: 700px) {
+  .binds { display: block; }
+  .clause.bind { display: block; }
+  .clause.bind > .value { padding-left: 1.1em; }
+}
+table.formals tr.note td { padding-top: 0.35rem; }
+.binds + .binds > .clause.bind:first-child { border-top: 1px solid color-mix(in srgb, var(--rule) 55%, transparent); }
