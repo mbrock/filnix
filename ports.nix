@@ -3313,6 +3313,80 @@ in
     (skipTests "runtime coverage lives in checks.x86_64-linux.trealla")
   ])
 
+  # SWI-Prolog with the core and its packages that need no further
+  # libraries, plus PCRE, YAML and SSL. Left out: Java (JPL), ODBC/CQL,
+  # Berkeley DB, Python (janus, MQI), xpce and the Qt console, the
+  # archive package, readline and libedit, the C++ interface (cpp) and
+  # tcmalloc. The patch keeps capabilities where SWI stores pointers as
+  # integers (VM code arguments, stack offsets, foreign redo contexts,
+  # PL_put_pointer through an exact ptrtable), rebases pointers into
+  # moved blocks instead of adding the distance moved, reads the
+  # lock-free clause and atom lists atomically (volatile), leaves
+  # objects other threads may still read to Fil-C's collector, and
+  # measures the C stack at the frame setjmp records rather than at a
+  # local's address, which Fil-C may keep in the heap.
+  (for pkgs.swi-prolog [
+    (arg {
+      withDb = false;
+      withJava = false;
+      withOdbc = false;
+      withPython = false;
+      withGui = false;
+      withNativeCompiler = false;
+    })
+    (patch ./patches/swi-prolog-9.2.9-filc.patch)
+    (use (old: {
+      buildInputs = builtins.filter (
+        p:
+        !builtins.elem (p.pname or "") [
+          "gperftools"
+          "libarchive"
+          "readline"
+          "libedit"
+        ]
+      ) old.buildInputs;
+      cmakeFlags = old.cmakeFlags ++ [
+        "-DUSE_TCMALLOC=OFF"
+        "-DINSTALL_DOCUMENTATION=OFF"
+        # Fil-C has no sigaltstack; it catches stack overflow itself.
+        "-DHAVE_SIGALTSTACK="
+        "-DSWIPL_PACKAGE_LIST=chr;clib;clpqr;inclpr;http;nlp;paxos;redis;stomp;pengines;pldoc;plunit;protobufs;RDF;semweb;sgml;table;utf8proc;zlib;pcre;yaml;ssl"
+      ];
+      doCheck = true;
+      checkPhase = ''
+        runHook preCheck
+        ctest -j$NIX_BUILD_CORES --timeout 900 --output-on-failure
+        runHook postCheck
+      '';
+      # A smoke test of the installed swipl and its libraries.
+      doInstallCheck = true;
+      installCheckPhase = ''
+        runHook preInstallCheck
+        cat >smoke.pl <<'EOF'
+        :- use_module(library(clpfd)).
+        :- use_module(library(sgml)).
+        :- use_module(library(crypto)).
+        :- use_module(library(pcre)).
+        :- initialization(main, main).
+        main :-
+            X is 2^200 mod 1000000007, X =:= 499445072,
+            length(L, 8), L ins 1..8, all_different(L), sum(L, #=, 36),
+            once(labeling([], L)), L == [1,2,3,4,5,6,7,8],
+            thread_create(numlist(1, 100000, _), T), thread_join(T, true),
+            load_html(string("<p class=a>hi</p>"), [element(p, [class=a], [hi])], []),
+            crypto_data_hash(abc, H, [algorithm(sha256)]),
+            sub_atom(H, 0, _, _, ba7816bf),
+            re_matchsub("(\\d+)-(\\d+)", "x 12-34 y", Sub, []),
+            get_dict(1, Sub, "12"),
+            garbage_collect, garbage_collect_atoms,
+            writeln('swipl ok').
+        EOF
+        $out/bin/swipl smoke.pl
+        runHook postInstallCheck
+      '';
+    }))
+  ])
+
   (for pkgs.wasm3 [
     markAsNotNecessarilyInsecure
   ])
