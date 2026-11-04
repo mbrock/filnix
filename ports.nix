@@ -1678,6 +1678,16 @@ in
 
   (for pkgs.unbound [
     (configure "ac_cv_type_pthread_spinlock_t=no")
+    # With dnstap (unbound-full), Nixpkgs puts protobuf-c only in
+    # nativeBuildInputs, so a cross build has protoc-c but not the library.
+    (use (
+      old:
+      pkgs.lib.optionalAttrs
+        (pkgs.lib.elem "--enable-dnstap" (old.configureFlags or [ ]))
+        {
+          buildInputs = old.buildInputs ++ [ final.protobufc ];
+        }
+    ))
   ])
 
   (for pkgs.bind [
@@ -3147,6 +3157,9 @@ in
             # Crash reports with stack traces: SIGSEGV handlers again, and
             # the port builds without backtrace support.
             "--skipunit integration/logging"
+            # Waits a fixed time for five nodes to agree on the cluster; on
+            # a loaded builder the Fil-C nodes failed to in one of two builds.
+            ''--skiptest "redis-cli -4 --cluster add-node using localhost with cluster-port"''
           ];
           last = ''--skiptest "Check MEMORY USAGE for embedded key strings with jemalloc"'';
         in
@@ -3202,7 +3215,12 @@ in
     (configure "ac_cv_func_backtrace_symbols_fd=no")
     (configure "ac_cv_search_backtrace=no")
     (addCFlag "-DED25519_NO_INLINE_ASM=1")
-    (skipTests "pass 17, skip 2, fail 6")
+    # dimap_search picked the onion key by masking uintptr_t copies of two
+    # pointers, which drops the capability: every ntor v3 handshake trapped.
+    (patch ./patches/tor-dimap-search-pointer.patch)
+    # 20 pass, 2 skip, 3 fail: test-memwipe reads freed memory on purpose,
+    # and the hashx and equix tests want HashX's JIT, which Fil-C can't run.
+    (skipTests "memwipe reads freed memory; hashx and equix want a JIT")
   ])
 
   (for pkgs.torsocks [

@@ -1,0 +1,33 @@
+--- a/src/lib/ctime/di_ops.c
++++ b/src/lib/ctime/di_ops.c
+@@ -200,6 +200,22 @@
+ dimap_search(const di_digest256_map_t *map, const uint8_t *key,
+              void *dflt_val)
+ {
++#ifdef __FILC__
++  /* Fil-C pointers carry a capability, which masking a uintptr_t made from
++   * two different pointers cannot keep: the result had no object, and the
++   * first read through it trapped. Select the pointer itself instead. This
++   * still visits every entry; whether the select compiles to a branch is
++   * up to the compiler. */
++  void *result = dflt_val;
++
++  while (map) {
++    int eq = tor_memeq(map->key, key, 32);
++    result = eq ? map->val : result;
++    map = map->next;
++  }
++
++  return result;
++#else
+   uintptr_t result = (uintptr_t)dflt_val;
+ 
+   while (map) {
+@@ -214,6 +230,7 @@
+   }
+ 
+   return (void *)result;
++#endif
+ }
+ 
+ /**
