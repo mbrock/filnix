@@ -270,6 +270,12 @@ start each service straight into its cgroup, and falls back to `fork()` on
 failure; as PID 1 it died starting its first service. The port starts with
 the fallback (ports.nix).
 
+The systemd 260 port met the same with `kcmp`, `bpf`, `ioprio_get`/`ioprio_set`,
+`pivot_root`, `quotactl_fd`, `setxattrat`, `rt_tgsigqueueinfo`,
+`pidfd_send_signal` and `epoll_pwait2` through `syscall()`, and patches
+systemd around them. Separately, `fcntl(F_DUPFD_QUERY)` fails with `EINVAL`
+even on a 7.0 kernel.
+
 ## libbsd: header overlays, `.init_array` and `close_range`
 
 Porting libbsd (for finix's ifupdown-ng) met three things:
@@ -297,6 +303,22 @@ Porting libbsd (for finix's ifupdown-ng) met three things:
 support ("sigaltstack not supported"), and `nlist` can't find C names,
 because Fil-C's symbols are `pizlonated_*`. Both tests, and the proctitle
 test, are expected failures in the port.
+
+## `sbrk`, `sched_setattr` and `pidfd_spawn` stop the program
+
+In the user glibc, `__brk` (so `sbrk`, even `sbrk(0)`) and `sched_setattr`
+make raw inline-asm syscalls (12 and 314), and `__spawnix` asserts
+`!use_pidfd`, so `pidfd_spawn` and `pidfd_spawnp` stop the program. The
+runtime has no `zsys_` wrapper for brk or sched_setattr. e2fsck calls
+`sbrk(0)` at startup, so systemd-fsck failed on every boot; systemd starts
+every service with `pidfd_spawn` when glibc has it, and uses `sched_setattr`
+for `CPUSchedulingPolicy=`. `patches/filc-glibc-unsupported-syscalls.patch`
+fails them as glibc does on an unsupported kernel: brk with `ENOMEM` (the
+break never moves; Fil-C allocates from the GC heap), `sched_setattr` with
+`ENOSYS`, and `pidfd_spawn` with `ENOSYS`, as `__spawnix` does without
+pidfd support (regression check `tests/glibc-syscall-fallbacks.nix`).
+systemd 260 does not fall back to `posix_spawn` on that `ENOSYS`; its port
+builds with `HAVE_PIDFD_SPAWN=0` under Fil-C.
 
 ## nftw, scandirat and fts stop the program at a subdirectory
 

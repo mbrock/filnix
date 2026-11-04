@@ -23,6 +23,8 @@ in
       (pkgs.path + "/pkgs/development/libraries/glibc/nix-locale-archive.patch")
       # nftw, scandirat and fts stopped the program on a raw openat syscall.
       ../patches/filc-glibc-openat-nocancel.patch
+      # brk, sched_setattr and pidfd_spawn stopped the program; fail instead.
+      ../patches/filc-glibc-unsupported-syscalls.patch
     ];
 
     enableParallelBuilding = true;

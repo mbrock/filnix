@@ -342,6 +342,9 @@
             pthread-spin = import ./tests/pthread-spin.nix { inherit pkgsFilc; };
             fenv = import ./tests/fenv.nix { inherit pkgsFilc; };
             glibc-dirwalk = import ./tests/glibc-dirwalk.nix { inherit pkgsFilc; };
+            glibc-syscall-fallbacks = import ./tests/glibc-syscall-fallbacks.nix {
+              inherit pkgsFilc;
+            };
             wrapper-roles = import ./tests/wrapper-roles.nix { inherit pkgsFilc; };
             gc-local-arrays = import ./tests/gc-local-arrays.nix { inherit pkgsFilc; };
             nix-eval = import ./tests/nix-eval.nix { inherit pkgsFilc; };

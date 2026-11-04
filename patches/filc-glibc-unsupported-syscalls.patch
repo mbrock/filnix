@@ -1,0 +1,81 @@
+Subject: Fail brk, sched_setattr and pidfd_spawn instead of stopping
+Origin: Filnix
+Upstream-Status: Not submitted
+
+These stopped the program. brk and sched_setattr made raw inline-asm
+syscalls, which Fil-C refuses at run time; the runtime has no zsys_
+wrapper for either. pidfd_spawn hit ZASSERT (!use_pidfd) in __spawnix.
+Fail each one the way glibc documents for an unsupported kernel instead:
+brk with ENOMEM (so sbrk, even sbrk (0), returns (void *) -1), since
+Fil-C allocates from the GC heap and the break never moves;
+sched_setattr with ENOSYS; pidfd_spawn and pidfd_spawnp with ENOSYS, the
+value __spawnix already returns without pidfd support, so callers fall
+back to posix_spawn. e2fsck calls sbrk (0) at startup; systemd uses
+pidfd_spawn for every service and sched_setattr for CPUSchedulingPolicy=.
+The regression check is tests/glibc-syscall-fallbacks.nix.
+
+--- a/sysdeps/unix/sysv/linux/brk.c
++++ b/sysdeps/unix/sysv/linux/brk.c
+@@ -19,7 +19,6 @@
+ #include <errno.h>
+ #include <unistd.h>
+ #include <sysdep.h>
+-#include <brk_call.h>
+ 
+ /* This must be initialized data because commons can't have aliases.  */
+ void *__curbrk = NULL;
+@@ -34,13 +33,10 @@
+ int
+ __brk (void *addr)
+ {
+-  __curbrk = __brk_call (addr);
+-  if (__curbrk < addr)
+-    {
+-      __set_errno (ENOMEM);
+-      return -1;
+-    }
+-
+-  return 0;
++  /* Fil-C programs allocate from the GC heap, and the runtime has no
++     wrapper for the brk syscall; the break never moves.  */
++  (void) addr;
++  __set_errno (ENOMEM);
++  return -1;
+ }
+ weak_alias (__brk, brk)
+--- a/sysdeps/unix/sysv/linux/sched_setattr.c
++++ b/sysdeps/unix/sysv/linux/sched_setattr.c
+@@ -17,10 +17,16 @@
+    <https://www.gnu.org/licenses/>.  */
+ 
+ #include <sched.h>
++#include <errno.h>
+ #include <sysdep.h>
+ 
+ int
+ sched_setattr (pid_t pid, struct sched_attr *attr, unsigned int flags)
+ {
+-  return INLINE_SYSCALL_CALL (sched_setattr, pid, attr, flags);
++  /* The Fil-C runtime has no wrapper for sched_setattr.  */
++  (void) pid;
++  (void) attr;
++  (void) flags;
++  __set_errno (ENOSYS);
++  return -1;
+ }
+--- a/sysdeps/unix/sysv/linux/spawni.c
++++ b/sysdeps/unix/sysv/linux/spawni.c
+@@ -338,8 +338,12 @@
+   struct posix_spawn_args args;
+   int ec = 0;
+ 
++  /* Fil-C spawns with fork, without CLONE_PIDFD.  Report pidfd_spawn as
++     unsupported, as below for kernels without pidfd support, so callers
++     fall back to posix_spawn.  */
+   bool use_pidfd = xflags & SPAWN_XFLAGS_RET_PIDFD;
+-  ZASSERT (!use_pidfd);
++  if (use_pidfd)
++    return ENOSYS;
+ 
+   /* For CLONE_PIDFD, older kernels might not fail with unsupported flags or
+      some versions might not support waitid (P_PIDFD).  So to avoid the need
