@@ -245,6 +245,26 @@ Every lttng-ust-instrumented program crashed in its tracepoint constructor;
 `patches/lttng-ust-tracepoint-ctor-registration.patch` registers each
 tracepoint from its own constructor instead.
 
+## `section()` on globals is dropped, so `.note.dlopen` notes are lost
+
+The compiler ignores `__attribute__((section(...)))` on globals, even ones
+that hold no pointers: each becomes ordinary pizlonated data, reached through
+a `pizlonated_*` getter. So the
+[`.note.dlopen` ELF notes](https://systemd.io/ELF_DLOPEN_METADATA/) that
+systemd 257+ and kbd declare for their dlopen()ed libraries never reach the
+binary. Their JSON payloads are still there as plain data (`strings` finds
+them), but `readelf -n` shows no `FDO_DLOPEN_METADATA` note. Tools that read
+the notes then see nothing. autoPatchelfHook adds nothing to RUNPATH, and
+NixOS's make-initrd-ng leaves the libraries out of the initrd: without
+libkmod there, `systemd-modules-load` failed ("Failed to initialize libkmod
+context: Operation not supported") and the initrd loaded no kernel modules.
+As a port-local workaround, `dlopenByPath` in ports.nix finds the payloads
+after the build and adds them back as a `.note.dlopen` section with objcopy
+(`ports/restore-dlopen-notes.py`). It also rewrites the sonames to absolute
+paths, because of the RUNPATH finding below. The cause is in the compiler,
+and so is the fix: emit section-attributed globals that hold no pointers
+into their section.
+
 ## `get_mempolicy` checks one word too many of the node mask
 
 `zsys_get_mempolicy` checks `ceil(maxnode / 64)` words of the node mask, but
