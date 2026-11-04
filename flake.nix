@@ -553,8 +553,9 @@
             filroot = import ./packages/filroot { inherit pkgs optfil; };
             # The GitHub Pages site: pages/ and the rendered docs/.
             site = import ./packages/site {
-              inherit pkgs;
+              inherit pkgs nixpkgs;
               filcc = filcc-staging;
+              filnix = self;
             };
             # The site's SWI-Prolog 10, which nixpkgs does not have; ship
             # publishes it so the Pages build substitutes it.

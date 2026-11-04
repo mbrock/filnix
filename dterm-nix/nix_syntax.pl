@@ -1,3 +1,4 @@
+:- encoding(utf8).
 /*  nix_syntax: Nix source as Prolog terms, with positions and comments.
 
     A lexer and a DCG for the Nix language, written so that dterm-nix can
@@ -40,7 +41,6 @@
     Comments are `cm(From, To, Text)`, Text with its markers.
 */
 :- module(nix_syntax, [nix_read_file/3, nix_parse_codes/3, node_pos/2]).
-:- encoding(utf8).
 
 :- use_module(library(lists)).
 :- use_module(library(apply)).

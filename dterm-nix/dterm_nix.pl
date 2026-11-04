@@ -1,3 +1,4 @@
+:- encoding(utf8).
 /*  dterm-nix: Nix source as web pages, drawn the way dterm draws Prolog.
 
     nix_syntax.pl reads each file into terms with positions and comments;
@@ -31,7 +32,6 @@
     them, as on the Filnix wiki.
 */
 :- module(dterm_nix, []).
-:- encoding(utf8).
 
 :- use_module(library(lists)).
 :- use_module(library(ordsets)).
@@ -47,19 +47,33 @@ github('https://github.com/mbrock/filnix/blob/main/').
 :- include('../nanofil/web/dterm_html').
 
 main :-
-    current_prolog_flag(argv, [Out, Root|Args]),
-    (   select(A, Args, Files), atom_concat('--files=', List, A)
+    current_prolog_flag(argv, [Out, Root|Args0]),
+    (   option_arg('--files=', Args0, List, Args1)
     ->  read_file_to_string(List, S, []), split_string(S, "\n", "", Ls),
         exclude(==(""), Ls, Ls1), maplist(atom_string, Repo, Ls1), list_to_ord_set(Repo, Set),
         nb_setval(nix_repo, Set)
-    ;   Files = Args, nb_setval(nix_repo, none)
+    ;   Args1 = Args0, nb_setval(nix_repo, none)
     ),
+    ( option_arg('--options=', Args1, Json, Args2) -> true ; Json = none, Args2 = Args1 ),
+    ( option_arg('--nixpkgs=', Args2, Nixpkgs, Files) -> true ; Nixpkgs = none, Files = Args2 ),
     nb_setval(nix_root, Root),
     nb_setval(nix_pages, Files),
     maplist(read_page(Root), Files, Pages),
+    (   Json == none -> Index = none
+    ;   read_options(Json, Index)
+    ),
+    nb_setval(nix_options, Index),
     maplist(write_source_page(Out, Pages), Pages),
-    directory_file_path(Out, 'index.html', Index),
-    write_page(Index, index_page(Pages)).
+    (   Index == none -> true
+    ;   option_readers(Root, Nixpkgs, Files, Index),
+        directory_file_path(Out, 'options.html', OPath),
+        write_page(OPath, options_page(Pages, Index))
+    ),
+    directory_file_path(Out, 'index.html', IPath),
+    write_page(IPath, index_page(Pages)).
+
+option_arg(Prefix, Args0, Value, Args) :-
+    select(A, Args0, Args), atom_concat(Prefix, Value, A), !.
 
 %% Reading
 
@@ -97,7 +111,7 @@ one_line(F-T) :- offset_line(F, L), T1 is max(F, T - 1), offset_line(T1, L1), L1
 
 %% Names: what each identifier refers to
 
-:- dynamic binder/4, ref/2, uses/2.
+:- dynamic binder/4, ref/2, uses/2, binder_value/2, with_ref/2.
 
 %  binder(Id, Name, Kind, Owner): a name bound in the file at anchor Id,
 %  by Kind let, rec, param or inherit; Owner is the let binding it was
@@ -105,6 +119,7 @@ one_line(F-T) :- offset_line(F, L), T1 is max(F, T - 1), offset_line(T1, L1), L1
 %  uses(Owner, Id): the let binding Owner uses the one at Id.
 resolve(E) :-
     retractall(binder(_, _, _, _)), retractall(ref(_, _)), retractall(uses(_, _)),
+    retractall(binder_value(_, _)), retractall(with_ref(_, _)),
     res(E, [], none).
 
 bid(F, Id) :- format(atom(Id), "b~w", [F]).
@@ -116,8 +131,11 @@ res(var(P, X), Env, Own) :- !,
         ->  assertz(uses(Own, Id))
         ;   true
         )
+    ;   member(with(W), Env)
+    ->  assertz(with_ref(P, W))
     ;   true
     ).
+res(with(_, W, B), Env, Own) :- !, res(W, Env, Own), res(B, [with(W)|Env], Own).
 res(let(_, Bs, B), Env0, Own) :- !,
     binds_env(Bs, let, Own, Env0, Env),
     res_binds(Bs, Env, Own, let),
@@ -149,8 +167,9 @@ res_sub(_, _, _).
 binds_env(Bs, Kind, Own, Env0, Env) :-
     foldl(bind_env(Kind, Own), Bs, Env0, Env).
 
-bind_env(Kind, Own, bind(_, [aid(F-_, X)|_], _), Env0, [X-Id|Env0]) :- !,
-    bid(F, Id), assertz(binder(Id, X, Kind, Own)).
+bind_env(Kind, Own, bind(_, [aid(F-_, X)|Path], V), Env0, [X-Id|Env0]) :- !,
+    bid(F, Id), assertz(binder(Id, X, Kind, Own)),
+    ( Path == [] -> assertz(binder_value(Id, V)) ; true ).
 bind_env(Kind, Own, inherit(_, _, Ns), Env0, Env) :- !,
     foldl([N, E0, E]>>( N = aid(F-_, X) -> bid(F, Id), assertz(binder(Id, X, Kind, Own)), E = [X-Id|E0] ; E = E0 ),
           Ns, Env0, Env).
@@ -421,13 +440,18 @@ bind_row(Kind, bind(F-T, Path, V)) -->
     { ( memberchk(X, [description, longDescription]) -> Prose = true ; Prose = false ) },
 
     { ( block(V) -> Class = "clause bind over" ; wide_name(Path) -> Class = "clause bind wide" ; Class = "clause bind" ), offset_line(F, L),
-      ( Id == none -> As = ['data-line'=L] ; As = [id=Id, 'data-line'=L] ) },
+      ( Id == none -> As = ['data-line'=L] ; As = [id=Id, 'data-line'=L] ),
+      ( Id \== none, nb_getval(nix_snippet, false), nb_getval(nix_file, File), \+ line_anchor(File, L, _)
+      ->  assertz(line_anchor(File, L, Id))
+      ;   true
+      ) },
     el(div, Class, As,
        ( el(div, head, ( line_link(L), attrpath(Path, def), el(span, eq, "=") )),
          el(div, value, ( { nb_getval(nix_prose, P0), nb_setval(nix_prose, Prose) },
                           blk(V),
                           { nb_setval(nix_prose, P0) } )),
-         ( { memberchk(Kind, [let, top]), Id \== none } -> xrefs(Id) ; [] ) )),
+         ( { memberchk(Kind, [let, top]), Id \== none } -> xrefs(Id) ; [] ),
+         declared_options(L) )),
     aside_after(T).
 bind_row(_, inherit(F-T, From, Ns)) -->
     notes_before(F),
@@ -444,6 +468,16 @@ wide_name(Path) :- path_name(Path, N), atom_length(N, L), L > 20.
 inherit_name(aid(F-_, X)) --> { bid(F, Id), ( binder(Id, _, _, _) -> As = [id=Id] ; As = [] ) },
     el(span, "name def", As, esc(X)), " ".
 inherit_name(A) --> attr(A, def), " ".
+
+%  The options of the index declared on this line, linked to it.
+declared_options(L) -->
+    { nb_getval(nix_snippet, false), nb_getval(nix_options, Index), Index \== none, nb_getval(nix_file, F),
+      findall(N, ( index_options(Index, Os), member(O, Os), member(D, O.declarations),
+                   D.file == F, D.line == L, N = O.name ), Ns), Ns \== [] }, !,
+    el(div, "xrefs", el(span, "xref-group", ( el(span, "xref-title", "options"), " ", seq(Ns, option_ref) ))).
+declared_options(_) --> [].
+
+option_ref(N) --> { format(atom(H), "options.html#opt-~w", [N]) }, el(a, none, [href=H], esc(N)), " ".
 
 %  Who uses a let binding, and what it uses.
 xrefs(Id) -->
@@ -698,8 +732,23 @@ example_row(inherit(P, F, Ns)-_) --> el(div, "clause bind", el(div, goal, inline
 inline(Text) --> { string_codes(Text, Cs) }, inl(Cs).
 
 inl([]) --> !, [].
+%  A MyST role in an option's description, such as {manpage}`ssh(1)` or
+%  {option}`services.openssh.enable`: its text as code, an option
+%  linked to the index.
+inl([0'{|Cs0]) --> { append(Role, [0'}, 0'`|Cs1], Cs0), Role \== [], maplist([C]>>code_type(C, alpha), Role),
+                     append(Code, [0'`|Cs], Cs1) }, !,
+    (   { Role == `option`, atom_codes(Name, Code), option_href(Name, H) }
+    ->  el(a, ref, [href=H], el(code, none, esc(Code)))
+    ;   el(code, none, esc(Code))
+    ),
+    inl(Cs).
+%  Markdown links: <https://…> and [text](url).
+inl([0'<|Cs0]) --> { append(U, [0'>|Cs], Cs0), append(`http`, _, U), \+ memberchk(0' , U) }, !,
+    el(a, none, [href=U], esc(U)), inl(Cs).
+inl([0'[|Cs0]) --> { append(T, [0'], 0'(|Cs1], Cs0), \+ memberchk(0'], T), append(U, [0')|Cs], Cs1), \+ memberchk(0' , U) }, !,
+    { string_codes(TS, T) }, el(a, none, [href=U], inline(TS)), inl(Cs).
 inl([0'`|Cs0]) --> { append(Code, [0'`|Cs], Cs0) }, !,
-    (   { catch(code_expr(Code, E), _, fail), E \= var(_, _) }
+    (   { \+ call_like(Code), catch(code_expr(Code, E), _, fail), E \= var(_, _) }
     ->  { string_codes(CS, Code) }, el(code, term, snippet(CS, term(E)))
     ;   el(code, none, esc(Code))
     ),
@@ -714,6 +763,16 @@ inl([C|Cs]) --> esc_code(C), inl(Cs).
 
 path_word_char(C) :- code_type(C, csym) ; memberchk(C, `./-`).
 
+%  Code in prose written as f(x), such as sshd_config(5), is not Nix,
+%  which writes an application f x.
+call_like(Code) :- append(_, [C, 0'(|_], Code), code_type(C, csym), !.
+
+%  An option in the index, from any page.
+option_href(Name, H) :-
+    nb_getval(nix_options, Index), Index \== none,
+    index_options(Index, Os), member(O, Os), get_dict(name, O, Name), !,
+    nb_getval(nix_snippet, _), format(atom(H), "options.html#opt-~w", [Name]).
+
 %  A word in prose that names a file of the repository, such as
 %  lib/block-rust-go.nix or tests/nixos.
 prose_path(A0, Href) :-
@@ -725,7 +784,7 @@ prose_path(A0, Href) :-
 %  Inline code that reads as a Nix expression is drawn as one; its
 %  positions are offsets into the code.
 code_expr(Code0, E) :-
-    ( string(Code0) -> string_codes(Code0, Code) ; Code = Code0 ),
+    ( is_list(Code0) -> Code = Code0 ; text_to_string(Code0, S), string_codes(S, Code) ),
     nix_parse_codes(Code, E, []).
 
 %  snippet(Text, Body): Body drawn with Text as the source its positions
@@ -746,6 +805,10 @@ unesc([]) --> [].
 
 span(P, [C|Cs0], [C|W], Cs) :- call(P, C), !, span(P, Cs0, W, Cs).
 span(_, Cs, [], Cs).
+
+%% The option index
+
+:- include(dterm_options).
 
 %% Pages
 
@@ -768,7 +831,7 @@ source_page(Pages, File, Head, E) -->
     { note_groups(Head, Gs), top_entries(E, Entries) },
     shell(File, crumbs(File),
           ( el(nav, "toc dterm-nav", ( el(div, "toc-title", "Nix"),
-                                        el(ul, none, seq(Pages, nav_file(File, Entries))) )),
+                                        el(ul, none, ( seq(Pages, nav_file(File, Entries)), nav_options )) )),
             el(article, "dterm nix", ( el(h1, "source-title", esc(File)),
                                        el(div, "prose lede", seq(Gs, lede_group)),
                                        el(div, "clause nix-root", ( blk(E), rest_notes )) )) )).
@@ -812,6 +875,9 @@ nav_file(Current, Entries, page(File, _, _, _, _)) -->
     ;   el(li, none, el(a, none, [href=Href], esc(File)))
     ).
 
+nav_options --> { nb_getval(nix_options, I), I \== none }, !, el(li, none, el(a, none, [href="options.html"], "Options")).
+nav_options --> [].
+
 nav_entry(group(T)) --> el(li, "nav-section", esc(T)).
 nav_entry(entry(Id, N)) --> { atom_concat('#', Id, H) }, el(li, "nav-pred", el(a, none, [href=H], esc(N))).
 
@@ -846,7 +912,7 @@ shell(Title, Crumbs, Main) -->
 index_page(Pages) -->
     shell("Nix", ( el(a, crumb, [href="../index.html"], "Wiki"), el(span, "crumb-sep", "›"),
                    el(span, "crumb current", "Nix") ),
-          ( el(nav, "toc dterm-nav", ( el(div, "toc-title", "Nix"), el(ul, none, seq(Pages, nav_file(none, []))) )),
+          ( el(nav, "toc dterm-nav", ( el(div, "toc-title", "Nix"), el(ul, none, ( seq(Pages, nav_file(none, [])), nav_options )) )),
             el(article, "dterm index",
                ( el(h1, "source-title", "filnix, read as Nix"),
                  el(div, "prose lede",
@@ -857,7 +923,13 @@ index_page(Pages) -->
                                   "links to where it is bound, and each ", el(code, none, "let"), " binding lists what ",
                                   "uses it. Drawn by ", el(a, none, [href="https://github.com/mbrock/filnix/tree/main/dterm-nix"], "dterm-nix"),
                                   ", after ", el(a, none, [href="../nanofil/"], "nanofil's dterm"), "." ))),
-                 el(div, modules, seq(Pages, page_card)) )) )).
+                 el(div, modules, ( seq(Pages, page_card), options_card )) )) )).
+
+options_card --> { nb_getval(nix_options, I), I \== none }, !,
+    el(a, "card-link module-card", [href="options.html"],
+       ( el(strong, none, "Options"), el(span, meta, "from evaluating the modules"),
+         el(span, summary, "Every option the NixOS and finix modules declare or set: type, default, description, where it is declared and defined, and which modules read it.") )).
+options_card --> [].
 
 page_card(page(File, Text, _, E, Cms)) -->
     { page_name(File, Href), split_string(Text, "\n", "", Ls), length(Ls, NL),

@@ -147,3 +147,18 @@ a.path, a.uri { color: var(--str); text-decoration: underline dotted; text-under
 }
 table.formals tr.note td { padding-top: 0.35rem; }
 .binds + .binds > .clause.bind:first-child { border-top: 1px solid color-mix(in srgb, var(--rule) 55%, transparent); }
+
+/* The option index (dterm_options.pl): each option as dterm draws a
+   documented predicate, its facts in the argument table. */
+.options section.option { margin: 1.3rem 0; scroll-margin-top: 3rem; }
+.options section.option:target > .doc { box-shadow: -0.9rem 0 0 -0.65rem var(--accent); }
+.opt-type { color: var(--muted); font-size: 0.85rem; }
+table.opt-facts td.name { color: var(--muted); font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
+table.opt-facts td.desc { color: var(--ink); }
+table.opt-facts code.term { font: inherit; background: none; padding: 0; }
+.options-note { color: var(--muted); font-size: 0.9rem; }
+.options h3 { margin: 1.8rem 0 0.4rem; font-size: 1rem; }
+.reader + .reader { margin-top: 0.15em; }
+.muted { color: var(--muted); }
+details.more-defs { display: inline; }
+details.more-defs > summary { display: inline; cursor: pointer; color: var(--accent); }

@@ -64,10 +64,25 @@ left-associative fails 8 of this repository's files.
   `inherit`); each `let` binding and each binding of the set the file
   returns lists what it uses and what uses it. Paths link to their files.
 
+## The option index
+
+`options.html` lists the options `nixosModules.filc` and
+`finixModules.filc-userland` declare and the ones they set.
+[options.nix](options.nix) evaluates the modules (NixOS with
+`nixos/demo.nix`, finix with the userland enabled) and writes, for each
+option, its declarations, type, default, example, description and the
+files that define it; the site build runs it, so the page follows the
+modules with no hand edits. Who reads an option is not in the
+evaluation, so [dterm_options.pl](dterm_options.pl) finds it in the
+source: a selection followed back through bindings and `with` to the
+module's `config` parameter, in the machine's own files and the
+Nixpkgs modules that declare its options. An interpolated name
+(`cfg.${name}.enable`) reads every option it can stand for.
+
 ## Running it
 
 ```sh
-swipl dterm-nix/dterm_nix.pl OUT . nixos/filc.nix finix/userland.nix
+swipl dterm-nix/dterm_nix.pl OUT . [--files=LIST --options=JSON --nixpkgs=DIR] nixos/filc.nix finix/userland.nix
 dterm-nix/tests/parse.sh               # every .nix file in the repository
 ```
 

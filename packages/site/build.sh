@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
-# build.sh SRC OUT FILES NIX...: render SRC/docs/*.md with pandoc into
-# OUT/docs, copy SRC/pages to OUT, draw SRC/nanofil/src/*.pl into
-# OUT/nanofil, render SRC/nanofil/docs/*.md into OUT/nanofil/docs, and
-# draw each SRC/NIX file into OUT/nix (FILES lists the repository's
-# paths, for their links). Fails if a doc is missing from docs/README.md
-# or a page links to a docs file that does not exist.
+# build.sh SRC OUT FILES OPTIONS NIXPKGS NIX...: render SRC/docs/*.md with
+# pandoc into OUT/docs, copy SRC/pages to OUT, draw SRC/nanofil/src/*.pl
+# into OUT/nanofil, render SRC/nanofil/docs/*.md into OUT/nanofil/docs,
+# and draw each SRC/NIX file into OUT/nix with the option index (FILES
+# lists the repository's paths, for their links; OPTIONS is
+# dterm-nix/options.nix's JSON; NIXPKGS the Nixpkgs it read). Fails if a
+# doc is missing from docs/README.md or a page links to a docs file that
+# does not exist.
 set -euo pipefail
 src=$1
 out=$2
 files=$3
-shift 3
+options=$4
+nixpkgs=$5
+shift 5
 here=$(cd "$(dirname "$0")" && pwd)
 
 mkdir -p "$out/docs"
@@ -75,7 +79,8 @@ done
 # dterm.js (../nanofil/).
 mkdir -p "$out/nix"
 cp "$src"/dterm-nix/dterm-nix.css "$src"/dterm-nix/dterm-nix.js "$out/nix/"
-(cd "$src" && swipl dterm-nix/dterm_nix.pl "$out/nix" . --files="$files" "$@" </dev/null)
+(cd "$src" && swipl dterm-nix/dterm_nix.pl "$out/nix" . --files="$files" \
+  --options="$options" --nixpkgs="$nixpkgs" "$@" </dev/null)
 
 status=0
 for html in "$out"/nanofil/docs/*.html; do
