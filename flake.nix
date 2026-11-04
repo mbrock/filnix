@@ -81,14 +81,12 @@
               ]
               # tzdata's now.ck compares zones from the build date on, so
               # 2026c fails it from 2026-11-01 (Vancouver and Phoenix agree from
-              # then). It lints the data, not zic or zdump; run the rest. Release
-              # keeps its cached tzdata, built earlier, until its derivation
-              # changes, which would rebuild the baseline.
-              ++ nixlib.optional staging (
-                final: prev: {
+              # then). It lints the data, not zic or zdump; run the rest.
+              ++ [
+                (final: prev: {
                   tzdata = prev.tzdata.overrideAttrs { checkTarget = "check_mild back.ck"; };
-                }
-              )
+                })
+              ]
               ++ crossOverlays;
 
               overlays = [
@@ -343,6 +341,7 @@
             pthread-pi = import ./tests/pthread-pi.nix { inherit pkgsFilc; };
             pthread-spin = import ./tests/pthread-spin.nix { inherit pkgsFilc; };
             fenv = import ./tests/fenv.nix { inherit pkgsFilc; };
+            glibc-dirwalk = import ./tests/glibc-dirwalk.nix { inherit pkgsFilc; };
             wrapper-roles = import ./tests/wrapper-roles.nix { inherit pkgsFilc; };
             gc-local-arrays = import ./tests/gc-local-arrays.nix { inherit pkgsFilc; };
             nix-eval = import ./tests/nix-eval.nix { inherit pkgsFilc; };

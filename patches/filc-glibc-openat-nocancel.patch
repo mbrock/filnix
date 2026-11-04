@@ -1,0 +1,37 @@
+Subject: Route __openat64_nocancel through zsys_openat
+Origin: Filnix
+Upstream-Status: Not submitted
+
+__openat64_nocancel still made the openat syscall with inline asm, which
+Fil-C refuses at run time ("cannot handle inline asm ... syscall"). Its
+callers are nftw/ftw (on the first subdirectory), scandirat and glibc's
+fts through __opendirat, so finit, libmount, libblkid, agetty and login
+stopped the program. open64_nocancel and openat64 already call zsys_open
+and zsys_openat the same way. The regression check is tests/glibc-dirwalk.nix.
+
+--- a/sysdeps/unix/sysv/linux/openat64_nocancel.c	2026-11-04 20:47:43.645122122 +0100
++++ b/sysdeps/unix/sysv/linux/openat64_nocancel.c	2026-11-04 20:47:43.656497344 +0100
+@@ -21,21 +21,12 @@
+ 
+ #include <sysdep-cancel.h>
+ #include <not-cancel.h>
++#include <pizlonated_syscalls.h>
+ 
+ int
+ __openat64_nocancel (int fd, const char *file, int oflag, ...)
+ {
+-  mode_t mode = 0;
+-  if (__OPEN_NEEDS_MODE (oflag))
+-    {
+-      va_list arg;
+-      va_start (arg, oflag);
+-      mode = va_arg (arg, mode_t);
+-      va_end (arg);
+-    }
+-
+-  return INLINE_SYSCALL_CALL (openat, fd, file, oflag | O_LARGEFILE,
+-			      mode);
++  return *(int *) zcall (zsys_openat, zargs ());
+ }
+ hidden_def (__openat64_nocancel)
+ 

@@ -298,6 +298,26 @@ support ("sigaltstack not supported"), and `nlist` can't find C names,
 because Fil-C's symbols are `pizlonated_*`. Both tests, and the proctitle
 test, are expected failures in the port.
 
+## nftw, scandirat and fts stop the program at a subdirectory
+
+The user glibc's `__openat64_nocancel` (also `__openat_nocancel` on 64-bit
+targets) still makes the openat syscall with inline asm, which Fil-C refuses
+at run time:
+
+```
+filc safety error: cannot handle inline asm (unsupported mnemonic for safe inline asm: syscall)
+    (libc.so.6666) ../sysdeps/unix/sysv/linux/openat64_nocancel.c:37:10: __GI___openat64_nocancel
+    (libc.so.6666) ./ftw-common.c:299:13: open_dir_stream (inlined)
+```
+
+Its callers are `nftw`/`ftw`, on the first subdirectory, and through
+`__opendirat`, `scandirat` and glibc's `fts`. In a finix system that is
+finit (switch_root, conditions, tmpfiles), libmount, libblkid, agetty and
+login. `open64_nocancel` and `openat64` already call `zsys_open` and
+`zsys_openat`; `patches/filc-glibc-openat-nocancel.patch` does the same here
+(regression check `tests/glibc-dirwalk.nix`). The same code is in
+pizlonator/fil-c's `deluge` branch.
+
 ## `dlopen` of a bare soname ignores the caller's RUNPATH
 
 `dlopen("libnss_dns.so.6662")` fails in a Fil-C program even though the
