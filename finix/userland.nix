@@ -56,14 +56,16 @@ in
     nativePackages = mkOption {
       type = types.nullOr types.raw;
       default = null;
-      defaultText = lib.literalExpression "pkgsFilc.pkgsBuildBuild";
+      defaultText = lib.literalExpression "import filnix.inputs.nixpkgs { inherit system; }";
       example = lib.literalExpression "import nixpkgs { system = \"aarch64-linux\"; }";
       description = ''
         The native package set that `filc.userland.native` takes packages
-        from. By default, the fully native stage of filnix's own Nixpkgs.
+        from. By default, filnix's own Nixpkgs, imported natively.
         Your usual Nixpkgs works too and gets its binary cache hits.
-        (Not `buildPackages`: its target platform is Fil-C, which matters for
-        anything that is itself a compiler, such as Emacs' native compilation.)
+        (Not `buildPackages` or `pkgsBuildBuild`: the first targets Fil-C,
+        which matters for compilers such as Emacs' native compilation, and
+        both carry the Fil-C `replaceCrossStdenv`, so their `pkgsStatic`
+        builds with filcc and fails.)
       '';
     };
 
@@ -115,7 +117,7 @@ in
               if cfg.nativePackages != null then
                 cfg.nativePackages
               else
-                final.pkgsBuildBuild;
+                import filnix.inputs.nixpkgs { inherit (cfg) system; };
           in
           lib.genAttrs cfg.native (name: native.${name})
         )
