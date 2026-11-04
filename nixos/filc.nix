@@ -108,13 +108,19 @@ let
 
   # `filc-status` answers "what here is Fil-C?" the way the VM tests do: a
   # running unit is Fil-C if its process maps the runtime, libpizlo, and a
-  # program if its file names the Fil-C loader or libpizlo (as
-  # finix/filc-audit.sh checks). It fails if a listed unit runs native.
+  # program if its ELF interpreter is the Fil-C loader or it needs libpizlo
+  # (the rule of finix/filc-audit.sh). It fails if a listed unit runs native.
   status = pkgs.writeShellScriptBin "filc-status" ''
     row() { printf '%-7s %-14s %s\n' "$@"; }
     program() {
-      f=$(readlink -f "$(type -P "$2")") || { row - "$1" "not on PATH"; return; }
-      if grep -qaE 'ld-fil1-|libpizlo\.so' "$f"; then row Fil-C "$1" "$f"; else row native "$1" "$f"; fi
+      f=$(type -P "$2") || { row - "$1" "not on PATH"; return; }
+      f=$(readlink -f "$f")
+      if ${lib.getBin pkgs.binutils-unwrapped}/bin/readelf -l -d "$f" 2>/dev/null |
+        grep -qE 'interpreter: [^]]*/ld-fil1-|\(NEEDED\).*\[libpizlo\.so\]'; then
+        row Fil-C "$1" "$f"
+      else
+        row native "$1" "$f"
+      fi
     }
     bad=0
     for u in ${lib.escapeShellArgs cfg.units}; do

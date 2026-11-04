@@ -142,9 +142,9 @@ Fil-C   curl           /nix/store/…-curl-x86_64-unknown-linux-gnufilc0-8.22.0-
 ```
 
 A running process is Fil-C if it maps the Fil-C runtime, libpizlo, which the
-VM tests check too; a program is Fil-C if its file names the Fil-C loader or
-libpizlo, much as [finix/filc-audit.sh](../finix/filc-audit.sh) checks a
-whole closure. A normal user can't read the processes of root's services, so
+VM tests check too. A program is Fil-C if its ELF headers name the Fil-C
+loader as its interpreter or libpizlo as a needed library, the rule
+[finix/filc-audit.sh](../finix/filc-audit.sh) applies to a whole closure. A normal user can't read the processes of root's services, so
 it shows `?` for them; run it as root. It exits with status 1 if a listed unit
 runs a native program.
 
