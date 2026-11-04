@@ -1618,7 +1618,7 @@ in
 
   # ━━━ Networking ━━━
 
-  (for pkgs.curlMinimal [
+  (for pkgs.curl [
     (arg { idnSupport = true; })
     (arg { pslSupport = true; })
     (arg { zstdSupport = true; })
@@ -3026,12 +3026,6 @@ in
     (patch ./ports/patch/procps-ng-4.0.4.patch)
   ])
 
-  {
-    util-linux = for pkgs.util-linuxMinimal [
-      parallelize
-    ];
-  }
-
   (for pkgs.e2fsprogs [
     (arg { withFuse = false; })
     (skipTests "requires special setup")
@@ -3434,9 +3428,12 @@ in
     (broken "null pointer dereference in bootstrap")
   ])
 
-  (for pkgs.ragelStable [
-    (broken "depends on colm which is broken")
-  ])
+  # Keyed as written: Nixpkgs' ragel is ragelStable, so ragel follows it.
+  {
+    ragelStable = for pkgs.ragelStable [
+      (broken "depends on colm which is broken")
+    ];
+  }
 
   (for pkgs.gnutls [
     # Upstream's 3.8.7.1 fix also applies to Nixpkgs' 3.8.9 release.

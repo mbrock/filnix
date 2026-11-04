@@ -189,6 +189,8 @@
           };
 
           checks.${system} = {
+            # Bare ports that land on another attribute than the one written.
+            port-names = import ./tests/port-names.nix { inherit pkgs pkgsFilc; };
             port-version-refresh = import ./tests/port-version-refresh.nix {
               inherit pkgs pkgsFilc;
             };
