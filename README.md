@@ -122,26 +122,35 @@ Everything in `buildInputs` is compiled with Fil-C.
 
 ### NixOS
 
-`nixosModules.filc` swaps chosen NixOS services and programs for their Fil-C
-builds and leaves the rest of the system alone:
+filnix's NixOS support is a small flavor of NixOS that makes as much of the
+system memory safe as it can, one whole program at a time:
+
+| Step | What is Fil-C | How |
+|----|----|----|
+| Some services | the daemons you choose | `filc.openssh.enable` and other switches, or any `services.X.package = config.filc.packages.X` |
+| Services, shell and tools | also Bash, Nix and the programs on PATH | `filc.enable`, `filc.tools` |
+| Whole userland | all but the kernel, bootloader and listed exceptions | today on [finix](docs/finix.md): `finixModules.filc-userland`; on NixOS in progress |
 
 ``` nix
 {
   imports = [ filnix.nixosModules.filc ];
-  filc.enable = true;                   # sshd, Bash, Tor, Unbound, lighttpd, Nix
+  filc.enable = true;                   # sshd, Bash, Tor, Unbound, lighttpd, Nix, …
   filc.tools = [ "coreutils" "curl" ];  # Fil-C programs on PATH
   services.openssh.enable = true;
 }
 ```
 
-A demo VM runs the Fil-C sshd, Bash, Unbound, lighttpd and Nix:
+The Fil-C services pass Nixpkgs' own NixOS tests, and `filc-status` shows
+which programs on the machine are Fil-C. A demo VM runs the Fil-C sshd, Bash,
+Unbound, lighttpd and Nix:
 
 ``` bash
 nix run github:mbrock/filnix#nixosConfigurations.filc-demo.config.system.build.vm
 ssh -p 2222 demo@localhost   # password "demo"
 ```
 
-See [docs/nixos.md](docs/nixos.md). `pkgsFilc.nix` is Nix itself built
+See [docs/nixos.md](docs/nixos.md), including what you give up (sshd without
+PAM, Nix without a sandbox, no nginx). `pkgsFilc.nix` is Nix itself built
 with Fil-C; it passes Nix's unit and functional tests.
 
 ### PHP

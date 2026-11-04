@@ -8,6 +8,11 @@ finit, busybox, bash, coreutils, util-linux, OpenSSH, sudo, Linux-PAM, D-Bus,
 dhcpcd, mdevd, sysklogd, Python, Perl, git and the rest become Fil-C builds
 without a per-service override.
 
+This is the last step of the scale in [Fil-C on NixOS](nixos.md#how-far-to-go).
+`nixosModules.filc` adds Fil-C services and programs to a native NixOS one at
+a time. Here everything starts as Fil-C, and `filc.userland.native` names the
+exceptions.
+
 ```nix
 nixosConfigurations.host = finix.lib.finixSystem {
   inherit (nixpkgs) lib;

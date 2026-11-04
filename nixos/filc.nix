@@ -10,8 +10,14 @@
 #   filc.tools = [ "coreutils" "curl" ];     # programs on PATH
 #
 # A service switch sets the service's package option to its Fil-C build.
-# `filc.units` lists the systemd units that therefore run Fil-C programs;
-# the NixOS tests in tests/nixos check each of them maps the Fil-C runtime.
+# Any other service works the same way by hand:
+#
+#   services.mosquitto.package = config.filc.packages.mosquitto;
+#   filc.units = [ "mosquitto" ];
+#
+# `filc.units` lists the systemd units that should run Fil-C programs. The
+# NixOS tests in tests/nixos check that each one maps the Fil-C runtime, and
+# so does `filc-status` on the machine.
 { filnix }:
 {
   config,
@@ -100,6 +106,45 @@ let
     _: p: p.phpPackage.stdenv.hostPlatform.isFilc or false
   ) config.services.phpfpm.pools;
 
+  # `filc-status` answers "what here is Fil-C?" the way the VM tests do: a
+  # running unit is Fil-C if its process maps the runtime, libpizlo, and a
+  # program if its file names the Fil-C loader or libpizlo (as
+  # finix/filc-audit.sh checks). It fails if a listed unit runs native.
+  status = pkgs.writeShellScriptBin "filc-status" ''
+    row() { printf '%-7s %-14s %s\n' "$@"; }
+    program() {
+      f=$(readlink -f "$(type -P "$2")") || { row - "$1" "not on PATH"; return; }
+      if grep -qaE 'ld-fil1-|libpizlo\.so' "$f"; then row Fil-C "$1" "$f"; else row native "$1" "$f"; fi
+    }
+    bad=0
+    for u in ${lib.escapeShellArgs cfg.units}; do
+      pid=$(systemctl show -p MainPID --value "$u")
+      if [ "$pid" = 0 ]; then
+        row - "$u" "not running"
+      elif ! maps=$(cat /proc/$pid/maps 2>/dev/null); then
+        row '?' "$u" "run as root to check"
+      elif grep -q libpizlo <<<"$maps"; then
+        row Fil-C "$u" "$(readlink -f /proc/$pid/exe)"
+      else
+        row native "$u" "$(readlink -f /proc/$pid/exe)"
+        bad=1
+      fi
+    done
+    ${lib.optionalString cfg.shell.enable ''program "login shell" "$(getent passwd root | cut -d: -f7)"''}
+    ${lib.optionalString cfg.nix.enable "program nix nix"}
+    ${lib.concatMapStrings (
+      name:
+      let
+        p = fp.${name};
+      in
+      # The tool's main program, or else the first one it has.
+      "program ${name} ${
+        p.meta.mainProgram or ''"$(ls ${lib.getBin p}/bin | head -1)"''
+      }\n"
+    ) cfg.tools}
+    exit $bad
+  '';
+
   # A switch that follows filc.enable unless set explicitly.
   switch =
     what:
@@ -152,10 +197,13 @@ in
 
     units = mkOption {
       type = types.listOf types.str;
-      readOnly = true;
+      default = [ ];
+      example = [ "mosquitto" ];
       description = ''
-        The enabled systemd services whose main process the switches made a
-        Fil-C program.
+        The systemd services whose main process should be a Fil-C program.
+        The switches add their enabled services. Add the services you point
+        at `filc.packages` yourself, and `filc-status` and the VM tests check
+        those too.
       '';
     };
   };
@@ -186,6 +234,13 @@ in
       {
         environment.systemPackages = map (name: lib.hiPrio fp.${name}) cfg.tools;
       }
+
+      (mkIf
+        (cfg.units != [ ] || cfg.tools != [ ] || cfg.shell.enable || cfg.nix.enable)
+        {
+          environment.systemPackages = [ status ];
+        }
+      )
     ]
   );
 }

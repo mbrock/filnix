@@ -116,6 +116,17 @@ lib.mapAttrs (_: withFilc) {
     imports = [ "${upstream}/unbound.nix" ];
     defaults.services.unbound.package = lib.mkForce pkgsFilc.unbound-full;
   };
+  # A service without a switch, the way docs/nixos.md shows: its package
+  # option set to the Fil-C build, and its unit listed for the check.
+  mosquitto = {
+    imports = [ "${upstream}/mosquitto.nix" ];
+    nodes.server =
+      { config, ... }:
+      {
+        services.mosquitto.package = config.filc.packages.mosquitto;
+        filc.units = [ "mosquitto" ];
+      };
+  };
   redis = ./redis.nix;
   php-lighttpd = ./php-lighttpd.nix;
 

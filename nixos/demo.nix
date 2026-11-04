@@ -5,8 +5,6 @@
 # and log in as root (no password) on the console, or `ssh -p 2222 demo@localhost`
 # with password "demo".
 {
-  config,
-  lib,
   modulesPath,
   pkgs,
   ...
@@ -71,23 +69,6 @@
     The OpenSSH daemon, Bash, Unbound, lighttpd, Nix and the tools on PATH
     are Fil-C builds; `filc-status` lists them.
   '';
-
-  environment.systemPackages = [
-    (pkgs.writeShellScriptBin "filc-status" ''
-      # Fil-C programs link the Fil-C runtime, libpizlo.
-      show() {
-        if grep -qa libpizlo "$2"; then k=Fil-C; else k=native; fi
-        printf '%-7s %-9s %s\n' "$k" "$1" "$2"
-      }
-      for u in ${lib.escapeShellArgs config.filc.units}; do
-        pid=$(systemctl show -p MainPID --value $u)
-        [ "$pid" -gt 0 ] && show "$u" "$(readlink -f /proc/$pid/exe)"
-      done
-      for p in bash nix ls curl git python3; do
-        show "$p" "$(readlink -f "$(command -v $p)")"
-      done
-    '')
-  ];
 
   virtualisation = {
     memorySize = 4096;
