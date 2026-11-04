@@ -3217,6 +3217,9 @@ in
     (addCFlag "-DED25519_NO_INLINE_ASM=1")
     # dimap_search picked the onion key by masking uintptr_t copies of two
     # pointers, which drops the capability: every ntor v3 handshake trapped.
+    # The patch selects from a pointer pair by index instead, still without
+    # a branch on the keys; recheck its assembly when the toolchain changes
+    # (docs/filc-findings.md).
     (patch ./patches/tor-dimap-search-pointer.patch)
     # 20 pass, 2 skip, 3 fail: test-memwipe reads freed memory on purpose,
     # and the hashx and equix tests want HashX's JIT, which Fil-C can't run.

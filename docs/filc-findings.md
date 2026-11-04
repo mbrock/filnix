@@ -50,6 +50,39 @@ into `llvm.ptrmask`, but `-O0` builds do not. Boost.Function stored a flag in
 bit 0 of its vtable pointer this way, so every call trapped at `-O0` (Boost.
 Test's runner in the boost check). Use `zorptr`/`zandptr` from `stdfil.h`.
 
+## A constant-time pointer select through integers loses the capability
+
+Constant-time code picks a secret-dependent pointer by masking integers:
+
+```c
+uintptr_t r = (uintptr_t)tor_memeq(a, b, 32) - 1;   /* 0 or all ones */
+result = (result & r) | ((uintptr_t)candidate & ~r);
+return (void *)result;
+```
+
+The result has an address but no object, so the first access through it
+traps ("cannot read pointer with null object"). `zmkptr` can't help: which
+capability to keep is the secret. Tor's `dimap_search`, which picks the onion
+key for every ntor and ntor v3 handshake, does this, so no Fil-C relay could
+bootstrap.
+
+The obvious repair, `result = eq ? candidate : result`, gave up the constant
+time. At -O2, Fil-C 0.687 compiled it to a conditional jump on the comparison
+that loaded the candidate only on a match. `patches/tor-dimap-search-pointer.patch`
+instead writes both candidates to a two-element local array and indexes it
+with the 0/1 result. In the generated x86-64 the index is computed with
+`dec`/`shr`/`and` and used in an indexed load, with no `cmov` or jump on it.
+Each iteration stores both slots, addresses and capability shadows, before the
+load. The compiler places the shadows itself, so C can't put both candidates
+in one cache line (with `_Alignas(64)` they landed in different lines).
+Writing both on every iteration means the same lines are touched whichever
+one matches.
+
+This rests on code generation that a later compiler may change, and has to be
+rechecked when the toolchain moves. A constant-time pointer select in
+`stdfil.h`, choosing address and capability together without branching, would
+make it a guarantee.
+
 ## Unsupported: `sigaltstack`, `llvm.debugtrap`, `ptrace`, `seccomp`
 
 doctest's self-tests use the first two, strace needs `ptrace`, and

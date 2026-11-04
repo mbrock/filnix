@@ -1,20 +1,23 @@
 --- a/src/lib/ctime/di_ops.c
 +++ b/src/lib/ctime/di_ops.c
-@@ -200,6 +200,22 @@
+@@ -200,6 +200,25 @@
  dimap_search(const di_digest256_map_t *map, const uint8_t *key,
               void *dflt_val)
  {
 +#ifdef __FILC__
-+  /* Fil-C pointers carry a capability, which masking a uintptr_t made from
-+   * two different pointers cannot keep: the result had no object, and the
-+   * first read through it trapped. Select the pointer itself instead. This
-+   * still visits every entry; whether the select compiles to a branch is
-+   * up to the compiler. */
++  /* A Fil-C pointer carries a capability that an integer copy of it lacks,
++   * so the masking below returns a pointer with no object, and the first
++   * read through it traps. Select without the round trip, still in constant
++   * time: tor_memeq gives 0 or 1, which indexes a pair of pointers written
++   * just before. Every entry does the same stores and loads, touching the
++   * same memory, and no branch depends on the keys. Checked in the x86-64
++   * output of Fil-C 0.687 at -O2: the index is computed with dec/shr/and and
++   * used in an indexed load, with no cmov or conditional jump on it. */
 +  void *result = dflt_val;
 +
 +  while (map) {
-+    int eq = tor_memeq(map->key, key, 32);
-+    result = eq ? map->val : result;
++    void *pair[2] = { result, map->val };
++    result = pair[tor_memeq(map->key, key, 32) & 1];
 +    map = map->next;
 +  }
 +
@@ -23,7 +26,7 @@
    uintptr_t result = (uintptr_t)dflt_val;
  
    while (map) {
-@@ -214,6 +230,7 @@
+@@ -214,6 +233,7 @@
    }
  
    return (void *)result;

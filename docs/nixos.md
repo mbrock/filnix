@@ -113,7 +113,7 @@ works too.
 | Where | Cost | Why |
 | --- | --- | --- |
 | everywhere | CPU time is 1.5× to 4× that of the native build, and memory use is higher | bounds checks and the garbage collector |
-| sshd | no PAM: sshd checks passwords and keys itself, so an SSH login gets no logind session (no `XDG_RUNTIME_DIR`, no `loginctl` entry) and no other PAM module, such as `pam_limits` or two-factor login | a Fil-C sshd can't load the native PAM modules |
+| sshd | no PAM: sshd checks passwords and keys itself, so an SSH login gets no logind session (no `XDG_RUNTIME_DIR`, no `loginctl` entry) and no other PAM module, such as `pam_limits` or two-factor login. A `!` password doesn't lock an account against keys, as on stock NixOS: to lock one on purpose, use `users.users.<name>.openssh.authorizedKeys.keys = [ ]` or a nologin shell | a Fil-C sshd can't load the native PAM modules |
 | sshd without OpenSSL | no Fil-C build (`openssh.override { linkOpenssl = false; }`) | the Fil-C OpenSSH patch set does its ML-KEM key exchange through OpenSSL |
 | Nix | no build sandbox | Fil-C has no namespaces or seccomp |
 | PHP-FPM | each worker grows to about 150-250 MB, so a pool needs several GB | the garbage collector keeps more memory alive |
