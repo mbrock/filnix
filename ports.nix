@@ -2994,6 +2994,14 @@ in
     (broken "not yet ported")
   ])
 
+  {
+    # The tests run texi2any with the build platform's Perl, which cannot
+    # load the Fil-C build's XS modules (and its headers lack crypt.h).
+    texinfoInteractive = for pkgs.texinfoInteractive [
+      (skipCheck "tests run the build platform's Perl against Fil-C XS modules")
+    ];
+  }
+
   (for pkgs.ttyd [
     (skipCheck "network service tests")
   ])

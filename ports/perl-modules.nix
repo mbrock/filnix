@@ -12,6 +12,13 @@ self: super: {
       '';
   });
 
+  JSON = super.JSON.overrideAttrs {
+    # Nixpkgs pins the JSON::PP backend when cross compiling, assuming the
+    # other backends cannot be loaded; t/00_load_backport_pp.t then fails.
+    # The Fil-C perl loads modules as usual, so keep upstream's choice.
+    preConfigure = "";
+  };
+
   FileShareDir = super.FileShareDir.overrideAttrs {
     # Nixpkgs strips File::ShareDir::Install from Makefile.PL when cross
     # compiling, assuming the build perl cannot load it. Here the Fil-C perl
