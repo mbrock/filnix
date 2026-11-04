@@ -8,7 +8,7 @@ NixOS builds, so memory-safe daemons run next to native ones.
 ```nix
 {
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
-  inputs.filnix.url = "github:mbrock/filnix/next";
+  inputs.filnix.url = "github:mbrock/filnix";
 
   outputs = { nixpkgs, filnix, ... }: {
     nixosConfigurations.host = nixpkgs.lib.nixosSystem {
