@@ -27,7 +27,7 @@ cp "$nanofil"/src/*.pl "$root/nanofil/src/"
 cp "$nanofil"/src/swi/*.pl "$root/nanofil/src/swi/"
 cp "$here/play.pl" "$here/play_view.pl" "$here/load_swi.pl" "$root/nanofil/src/"
 mkdir -p "$root/nanofil/web"
-cp "$nanofil/web/dterm.pl" "$root/nanofil/web/"
+cp "$nanofil/web/dterm.pl" "$nanofil/web/dterm_html.pl" "$root/nanofil/web/"
 mkdir -p "$root/nanofil/play-lib"
 cp "$here/wasm/process.pl" "$root/nanofil/play-lib/"
 

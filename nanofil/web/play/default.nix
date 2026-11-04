@@ -64,6 +64,7 @@ pkgs.runCommand "nanofil-play"
         ../../bin
         ../../src
         ../dterm.pl
+        ../dterm_html.pl
         ../dterm.css
         ../dterm.js
         ./.
