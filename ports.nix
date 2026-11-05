@@ -3196,6 +3196,28 @@ in
     }))
   ])
 
+  # nginx builds, but its worker processes share pointers through shared
+  # memory zones, which Fil-C capabilities do not survive. Refuse it at
+  # evaluation, saying what to do instead.
+  (
+    let
+      refuse = use (old: {
+        meta = (old.meta or { }) // {
+          problems = (old.meta.problems or { }) // {
+            filc = {
+              kind = "broken";
+              message = "nginx does not work as Fil-C: its processes share pointers through shared memory. Use lighttpd, or keep nginx native with filc.native = native: { inherit (native) nginxStable; };";
+            };
+          };
+        };
+      });
+    in
+    {
+      nginxStable = for pkgs.nginxStable [ refuse ];
+      nginxMainline = for pkgs.nginxMainline [ refuse ];
+    }
+  )
+
   (for pkgs.lighttpd [
     (patch ./patches/lighttpd-filc.patch)
     (arg { enableMagnet = true; })

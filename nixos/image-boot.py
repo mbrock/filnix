@@ -22,7 +22,7 @@ qmp_path = os.path.join(out, "qmp.sock")
 accel = ["-enable-kvm", "-cpu", "host"] if os.access("/dev/kvm", os.W_OK) else []
 vm = subprocess.Popen(
     [qemu, *accel, "-m", "2048", "-smp", "2", "-snapshot",
-     "-drive", f"file={image},if=virtio,format=qcow2",
+     "-drive", f"file={image},if=virtio,format={'vpc' if image.endswith('.vhd') else 'qcow2'}",
      "-nic", "user,model=virtio-net-pci",
      "-serial", "stdio", "-display", "none", "-vga", "std",
      "-qmp", f"unix:{qmp_path},server=on,wait=off"],

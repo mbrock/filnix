@@ -1,0 +1,149 @@
+# Registers the base Fil-C NixOS (nixos/amazon.nix) as a public AMI in
+# eu-central-1, from the VHD the campaign built and cached
+# (packages.x86_64-linux.nixos-ami); it builds nothing. release.yml calls
+# it for v* tags; run it by hand on an ami-test-* tag to try a commit:
+#
+#   git tag ami-test-1 COMMIT && git push origin ami-test-1
+#   gh workflow run ami.yml --ref ami-test-1 -f tag=ami-test-1
+#
+# The aws-ami environment holds AWS_REGION, AWS_ROLE_ARN and AMI_BUCKET and
+# admits only v* and ami-test-* tags. Every snapshot and image is tagged
+# project=filnix at creation: the role may make public, deregister and
+# delete only resources with that tag (docs/aws.md).
+name: AMI
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+    outputs:
+      ami:
+        description: The registered AMI ID
+        value: ${{ jobs.ami.outputs.ami }}
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing v* or ami-test-* tag to register
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  NIX_CONFIG: |
+    extra-substituters = https://filc.cachix.org
+    extra-trusted-public-keys = filc.cachix.org-1:8rA7kXyu1HaJuMTsAKfA9fU/+r8YtLv5KiZ5hfDNZMk=
+    max-jobs = 0
+    builders =
+  TAG: ${{ inputs.tag }}
+  # AMIs and snapshots of this project beyond the newest ones are removed.
+  KEEP: 3
+
+jobs:
+  ami:
+    runs-on: ubuntu-24.04
+    environment: aws-ami
+    permissions:
+      contents: write # to add the AMI ID to the release notes
+      id-token: write # for the AWS role
+    outputs:
+      ami: ${{ steps.register.outputs.ami }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: cachix/install-nix-action@v31
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-duration-seconds: 7200
+      - name: Substitute the disk image
+        run: |
+          python3 scripts/ci-cache-check.py packages.x86_64-linux.nixos-ami
+          nix build .#nixos-ami --out-link ami
+          vhd=$(echo ami/*.vhd)
+          rev=$(git rev-parse --short=12 HEAD)
+          {
+            echo "VHD=$vhd"
+            echo "NAME=filnix-nixos-$TAG-$rev"
+            echo "KEY=filnix-nixos-$TAG-$rev.vhd"
+            echo "REV=$rev"
+          } >> "$GITHUB_ENV"
+          jq . ami/nix-support/image-info.json
+      - name: Upload
+        run: aws s3 cp --no-progress "$VHD" "s3://${{ vars.AMI_BUCKET }}/$KEY"
+      - name: Import the snapshot
+        run: |
+          task=$(aws ec2 import-snapshot --role-name vmimport \
+            --description "$NAME" \
+            --disk-container "Format=VHD,UserBucket={S3Bucket=${{ vars.AMI_BUCKET }},S3Key=$KEY}" \
+            --tag-specifications "ResourceType=import-snapshot-task,Tags=[{Key=project,Value=filnix},{Key=release,Value=$TAG}]" \
+            --query ImportTaskId --output text)
+          echo "import task $task"
+          # Usually 10 to 30 minutes.
+          for _ in $(seq 1 180); do
+            read -r status snapshot progress < <(aws ec2 describe-import-snapshot-tasks --import-task-ids "$task" \
+              --query 'ImportSnapshotTasks[0].SnapshotTaskDetail.[Status,SnapshotId,Progress]' --output text)
+            echo "$(date -u +%H:%M:%S) $status ${progress:-} ${snapshot:-}"
+            case $status in
+              completed) break ;;
+              deleting | deleted)
+                aws ec2 describe-import-snapshot-tasks --import-task-ids "$task"
+                exit 1
+                ;;
+            esac
+            sleep 20
+          done
+          [ "$status" = completed ] || { echo "::error::the import did not finish"; exit 1; }
+          # Tag the snapshot itself: the role may delete only tagged ones.
+          aws ec2 create-tags --resources "$snapshot" \
+            --tags Key=project,Value=filnix "Key=release,Value=$TAG" "Key=Name,Value=$NAME"
+          echo "SNAPSHOT=$snapshot" >> "$GITHUB_ENV"
+      - name: Register the image
+        id: register
+        run: |
+          ami=$(aws ec2 register-image --name "$NAME" \
+            --description "NixOS with a Fil-C userland, filnix $TAG ($REV)" \
+            --architecture x86_64 --virtualization-type hvm \
+            --boot-mode legacy-bios --ena-support --imds-support v2.0 \
+            --root-device-name /dev/xvda \
+            --block-device-mappings "DeviceName=/dev/xvda,Ebs={SnapshotId=$SNAPSHOT,VolumeType=gp3,DeleteOnTermination=true}" \
+            --tag-specifications "ResourceType=image,Tags=[{Key=project,Value=filnix},{Key=release,Value=$TAG},{Key=Name,Value=$NAME}]" \
+            --query ImageId --output text)
+          aws ec2 wait image-available --image-ids "$ami"
+          echo "ami=$ami" >> "$GITHUB_OUTPUT"
+          echo "AMI=$ami" >> "$GITHUB_ENV"
+          echo "registered $ami ($NAME)"
+      - name: Make it public
+        run: aws ec2 modify-image-attribute --image-id "$AMI" --launch-permission "Add=[{Group=all}]"
+      - name: Remove old images
+        run: |
+          # This project's images, newest first; only tagged ones are listed.
+          aws ec2 describe-images --owners self --filters Name=tag:project,Values=filnix \
+            --query 'sort_by(Images,&CreationDate)[::-1].[ImageId,BlockDeviceMappings[0].Ebs.SnapshotId,Name]' \
+            --output text | tail -n +$((KEEP + 1)) | while read -r image snapshot name; do
+            echo "removing $image ($name) and $snapshot"
+            aws ec2 deregister-image --image-id "$image"
+            aws ec2 delete-snapshot --snapshot-id "$snapshot"
+          done
+      - name: Delete the upload
+        if: always()
+        run: aws s3 rm "s3://${{ vars.AMI_BUCKET }}/$KEY" || true
+      - name: Add it to the release notes
+        if: startsWith(inputs.tag, 'v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "$TAG" --json body --jq .body > notes.md
+          cat >> notes.md <<EOF
+
+          ### Amazon EC2
+
+          \`$AMI\` in ${{ vars.AWS_REGION }} is the same NixOS as a public AMI (BIOS boot,
+          ENA, IMDSv2). Log in as root with the instance's key pair; give it
+          2 GiB of memory or more (t3.small).
+          EOF
+          gh release edit "$TAG" --notes-file notes.md

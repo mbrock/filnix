@@ -152,6 +152,9 @@ in
     baseName = "filnix-nixos-${config.system.nixos.label}";
     format = "qcow2-compressed";
     partitionTableType = "legacy";
+    # Room for a few rebuilds; free space compresses away. growpart takes
+    # the root file system further on a bigger disk.
+    additionalSpace = "8G";
     copyChannel = false;
     memSize = 2048;
   };

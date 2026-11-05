@@ -25,4 +25,6 @@ packages.x86_64-linux.filcc-staging
 # The base Fil-C NixOS image, a release asset (nixos/base.nix), and its
 # system, which a first nixos-rebuild in the image substitutes.
 packages.x86_64-linux.nixos-image
+# Its EC2 variant, which ami.yml imports as the public AMI.
+packages.x86_64-linux.nixos-ami
 nixosConfigurations.base.config.system.build.toplevel

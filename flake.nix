@@ -515,6 +515,10 @@
           nixosConfigurations.base = self.lib.nixosSystem {
             modules = [ self.nixosModules.base ];
           };
+          # The same machine on EC2, for the public AMI; see nixos/amazon.nix.
+          nixosConfigurations.amazon = self.lib.nixosSystem {
+            modules = [ (import ./nixos/amazon.nix { filnix = self; }) ];
+          };
 
           # The finix machine with a Fil-C userland; see finix/demo.nix.
           finixConfigurations.filc-demo = (import finix).lib.finixSystem {
@@ -543,6 +547,8 @@
               # boots it (nixos/image.nix).
               nixos-image = nixosImage.image;
               nixos-vm = nixosImage.vm;
+              # Its EC2 variant as a VHD, which .github/workflows/ami.yml imports.
+              nixos-ami = self.nixosConfigurations.amazon.config.system.build.ami;
             }
             // {
               default = filcc;

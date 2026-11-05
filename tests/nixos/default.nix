@@ -63,7 +63,9 @@ let
         ];
       };
 
-  # Tests whose nodes use Rust or Go programs keep those native.
+  # Tests whose nodes use Rust or Go programs, or nginx, keep those native.
+  # nginx's processes share pointers through shared memory, which Fil-C
+  # capabilities do not survive; on a Fil-C system the web server is lighttpd.
   native =
     f: test:
     let
@@ -127,33 +129,44 @@ lib.mapAttrs (_: withFilc) {
   redis = ./redis.nix;
   php-lighttpd = ./php-lighttpd.nix;
 
-  # Nixpkgs runs this with PHP and APCu behind nginx.
-  php-fpm = {
+  # Nixpkgs runs this with PHP and APCu behind nginx, here native.
+  php-fpm = native (n: { inherit (n) nginxStable; }) {
     imports = [ "${upstream}/php/fpm.nix" ];
     _module.args.php = pkgsFilc.php.buildEnv {
       extensions = { enabled, all }: enabled ++ [ all.apcu ];
     };
   };
 
-  # Both also run behind Caddy, which is Go.
-  wordpress = native (n: { inherit (n) caddy; }) (
+  # Both also run behind Caddy, which is Go, and nginx.
+  wordpress = native (n: { inherit (n) caddy nginxStable; }) (
     phpApp 2048 "${upstream}/wordpress.nix"
   );
-  dokuwiki = native (n: { inherit (n) caddy; }) (
+  dokuwiki = native (n: { inherit (n) caddy nginxStable; }) (
     phpApp 2048 "${upstream}/dokuwiki.nix"
   );
 }
 # mediawiki-mysql, -postgresql, -sqlite, -nohttpd and -nginx.
-// lib.mapAttrs' (n: t: lib.nameValuePair "mediawiki-${n}" (withFilc t)) (
-  import "${upstream}/mediawiki.nix" {
-    inherit lib;
-    runTest = t: t;
-  }
-)
+//
+  lib.mapAttrs'
+    (
+      n: t:
+      lib.nameValuePair "mediawiki-${n}" (
+        withFilc (
+          if n == "nginx" then native (n: { inherit (n) nginxStable; }) t else t
+        )
+      )
+    )
+    (
+      import "${upstream}/mediawiki.nix" {
+        inherit lib;
+        runTest = t: t;
+      }
+    )
 # Nextcloud's own tests: nextcloud-basic, with Redis and PostgreSQL, and with
 # MySQL and memcached. The Redis one is on 34 because Nixpkgs' notify_push
 # app supports Nextcloud only up to 34, so its 35 test fails on any PHP; its
-# notify_push daemon is Rust, so it stays native.
+# notify_push daemon is Rust, so it stays native, and so does the nginx
+# in front of Nextcloud.
 //
   lib.mapAttrs'
     (
@@ -161,7 +174,9 @@ lib.mapAttrs (_: withFilc) {
       lib.nameValuePair
         "nextcloud-${lib.removeSuffix "34" (lib.removeSuffix "35" n)}"
         (
-          withFilc (native (n: { inherit (n) nextcloud-notify_push; }) (phpApp 4096 t))
+          withFilc (
+            native (n: { inherit (n) nginxStable nextcloud-notify_push; }) (phpApp 4096 t)
+          )
         )
     )
     (
