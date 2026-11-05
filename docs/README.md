@@ -14,6 +14,8 @@ individual ports needed, and how the port campaigns run. The repository's
   a directory that works wherever it is unpacked.
 - [Fil-C services on NixOS](nixos.md): swap chosen NixOS services for their
   Fil-C builds and leave the rest of the system alone.
+- [A Fil-C userland for NixOS](nixos-userland.md): make a NixOS system's
+  `pkgs` the Fil-C set, with systemd, PAM and every service built by Fil-C.
 - [A Fil-C userland for finix](finix.md): build a whole finix userland with
   Fil-C.
 - [PHP on Fil-C](php.md): PHP 7.4, 8.4 and 8.5, distribution tarballs, the
