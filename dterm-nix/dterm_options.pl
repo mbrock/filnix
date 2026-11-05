@@ -145,12 +145,25 @@ module_nav(M) --> el(li, "nav-section", esc(M.name)), seq(M.options, opt_nav(M))
 
 opt_nav(M, O) --> { opt_id(M, O, Id), atom_concat('#', Id, H) }, el(li, "nav-pred", el(a, none, [href=H], esc(O.name))).
 
-%  A declared option is opt-Name, which source pages link to; an option
-%  a module sets is named after the module too, as two modules may set it.
+%  A NixOS module's declared option is opt-Name, which other pages link
+%  to, and a finix module's is finix-opt-Name, as the NixOS and finix
+%  userland modules declare the same names; an option a module sets is
+%  named after the module too, as two modules may set it.
 opt_id(M, O, Id) :-
-    (   O.group == declared -> atom_concat('opt-', O.name, Id)
+    (   O.group == declared, M.kind == nixos -> atom_concat('opt-', O.name, Id)
+    ;   O.group == declared -> atom_concat('finix-opt-', O.name, Id)
     ;   format(atom(Id), "set-~w-~w", [M.name, O.name])
     ).
+
+%  option_href(+Name, -Href): the entry of the option Name declared by
+%  the module of the page being drawn, else by the first module that
+%  declares it, else the first that sets it.
+option_href(Name, H) :-
+    nb_getval(nix_options, Index), Index \== none,
+    ( nb_current(nix_file, F) -> true ; F = none ),
+    findall(K-Id, ( member(M, Index.modules), member(O, M.options), O.name == Name, opt_id(M, O, Id),
+                    ( O.group == declared -> G = 0 ; G = 1 ), ( M.file == F -> K0 = 0 ; K0 = 1 ), K = G-K0 ), Ks),
+    msort(Ks, [_-Id|_]), atom_concat('options.html#', Id, H).
 
 module_section(Pages, M) -->
     { include([O]>>get_dict(group, O, declared), M.options, Decl),

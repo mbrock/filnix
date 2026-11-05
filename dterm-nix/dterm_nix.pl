@@ -475,7 +475,7 @@ declared_options(L) -->
     el(div, "xrefs", el(span, "xref-group", ( el(span, "xref-title", "options"), " ", seq(Ns, option_ref) ))).
 declared_options(_) --> [].
 
-option_ref(N) --> { format(atom(H), "options.html#opt-~w", [N]) }, el(a, none, [href=H], esc(N)), " ".
+option_ref(N) --> { option_href(N, H) }, el(a, none, [href=H], esc(N)), " ".
 
 %  Who uses a let binding, and what it uses.
 xrefs(Id) -->
@@ -764,12 +764,6 @@ path_word_char(C) :- code_type(C, csym) ; memberchk(C, `./-`).
 %  Code in prose written as f(x), such as sshd_config(5), is not Nix,
 %  which writes an application f x.
 call_like(Code) :- append(_, [C, 0'(|_], Code), code_type(C, csym), !.
-
-%  An option in the index, from any page.
-option_href(Name, H) :-
-    nb_getval(nix_options, Index), Index \== none,
-    index_options(Index, Os), member(O, Os), get_dict(name, O, Name), !,
-    nb_getval(nix_snippet, _), format(atom(H), "options.html#opt-~w", [Name]).
 
 %  A word in prose that names a file of the repository, such as
 %  lib/block-rust-go.nix or tests/nixos.
