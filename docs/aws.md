@@ -105,13 +105,14 @@ broken into at no cost:
   `scripts/ci-outputs.txt`). Nothing can push to it;
 - https://filc.less.rest/status/ shows `filc-ps` every 5 minutes.
 
-`scripts/launch-demo-wiki --ami AMI --tag vX --public-key KEY.pub` launches
+`scripts/launch-demo-wiki --ami AMI --ref REF --public-key KEY.pub` launches
 it with an account session that may create instances (the release role
 cannot). Without `--yes` it prints the commands. It creates, tagged
 `project=filnix`: the security group and key pair `filnix-demo-wiki`, the
-instance with user data `#filnix github:mbrock/filnix/vX#demo-wiki`, and an
-Elastic IP. On first boot the AMI's `filnix-first-switch` service switches
-to that configuration. Then point the `filc` A record in less.rest (on
+instance with user data `#filnix github:mbrock/filnix/REF#demo-wiki`, and an
+Elastic IP. REF is a release tag or a commit whose `demo-wiki` toplevel is
+in filc.cachix.org. On first boot the AMI's `filnix-first-switch` service
+switches to that configuration. Then point the `filc` A record in less.rest (on
 DNSimple; the wildcard points elsewhere) at the Elastic IP; ACME succeeds
 once it resolves (`systemctl start acme-order-renew-filc.less.rest` to retry
 at once).

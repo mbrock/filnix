@@ -4,7 +4,7 @@
 # groups, key pairs, instances and Elastic IPs; the release role cannot, on
 # purpose. Without --yes it only prints what it would do.
 #
-#   scripts/launch-demo-wiki --ami ami-0123 --tag v0.9.0 \
+#   scripts/launch-demo-wiki --ami ami-0123 --ref v2026.11.05 \
 #     --public-key ~/.ssh/id_ed25519.pub [--ssh-cidr 0.0.0.0/0] [--yes]
 #
 # What it creates, each tagged project=filnix:
@@ -13,8 +13,10 @@
 #   - key pair filnix-demo-wiki from --public-key (root's SSH key);
 #   - a t3.medium with no instance profile, IMDSv2 required with hop limit
 #     1, a 20 GiB gp3 root volume, and the user data
-#     `#filnix github:mbrock/filnix/TAG#demo-wiki`, which makes the AMI's
-#     first boot switch to demo-wiki (nixos/amazon.nix);
+#     `#filnix github:mbrock/filnix/REF#demo-wiki`, which makes the AMI's
+#     first boot switch to demo-wiki (nixos/amazon.nix). REF is a release
+#     tag or a commit whose demo-wiki is in filc.cachix.org; the machine
+#     then follows the latest release that has demo-wiki;
 #   - an Elastic IP for it, which the filc A record points at.
 # docs/aws.md describes the machine and how to tear it down.
 set -euo pipefail
@@ -23,12 +25,12 @@ region=eu-central-1
 type=t3.medium
 name=filnix-demo-wiki
 ssh_cidr=0.0.0.0/0
-ami= tag= pubkey= yes=
+ami= ref= pubkey= yes=
 
 while [ $# -gt 0 ]; do
   case $1 in
   --ami) ami=$2; shift 2 ;;
-  --tag) tag=$2; shift 2 ;;
+  --ref) ref=$2; shift 2 ;;
   --public-key) pubkey=$2; shift 2 ;;
   --ssh-cidr) ssh_cidr=$2; shift 2 ;;
   --region) region=$2; shift 2 ;;
@@ -37,7 +39,7 @@ while [ $# -gt 0 ]; do
   *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
-[ -n "$ami" ] && [ -n "$tag" ] && [ -n "$pubkey" ] || {
+[ -n "$ami" ] && [ -n "$ref" ] && [ -n "$pubkey" ] || {
   sed -n '7,8p' "$0" >&2
   exit 2
 }
@@ -86,7 +88,7 @@ else
     --tag-specifications "$(tags key-pair)"
 fi
 
-userdata="#filnix github:mbrock/filnix/$tag#demo-wiki"
+userdata="#filnix github:mbrock/filnix/$ref#demo-wiki"
 if [ -n "$yes" ]; then
   instance=$(aws ec2 run-instances --image-id "$ami" --instance-type "$type" \
     --key-name "$name" --security-group-ids "$sg" \
