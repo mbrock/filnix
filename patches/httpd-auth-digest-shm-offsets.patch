@@ -1,0 +1,136 @@
+diff --git a/modules/aaa/mod_auth_digest.c b/modules/aaa/mod_auth_digest.c
+index f10af0d..2299b14 100644
+--- a/modules/aaa/mod_auth_digest.c
++++ b/modules/aaa/mod_auth_digest.c
+@@ -120,13 +120,18 @@ typedef struct digest_config_struct {
+ 
+ typedef struct hash_entry {
+     unsigned long      key;                     /* the key for this entry    */
+-    struct hash_entry *next;                    /* next entry in the bucket  */
++    apr_rmm_off_t      next;                    /* next entry in the bucket  */
+     unsigned long      nonce_count;             /* for nonce-count checking  */
+     char               last_nonce[NONCE_LEN+1]; /* for one-time nonce's      */
+ } client_entry;
+ 
++/* The shared table links its entries by offset, never by pointer: each
++ * process turns an offset into a pointer from its own attachment to the
++ * segment. (A pointer stored by one process need not be usable by another;
++ * under Fil-C its capability stays in the process that stored it.)
++ * Offset 0 is no entry, as apr_rmm_malloc() never returns it. */
+ static struct hash_table {
+-    client_entry  **table;
++    apr_rmm_off_t  *table;
+     unsigned long   tbl_len;
+     unsigned long   num_entries;
+     unsigned long   num_created;
+@@ -258,6 +263,16 @@ static apr_status_t rmm_free(apr_rmm_t *rmm, void *alloc)
+     return apr_rmm_free(rmm, offset);
+ }
+ 
++static client_entry *entry_at(apr_rmm_off_t off)
++{
++    return off ? apr_rmm_addr_get(client_rmm, off) : NULL;
++}
++
++static apr_rmm_off_t entry_off(client_entry *entry)
++{
++    return entry ? apr_rmm_offset_get(client_rmm, entry) : 0;
++}
++
+ #if APR_HAS_SHARED_MEMORY
+ 
+ static int initialize_tables(server_rec *s, apr_pool_t *ctx)
+@@ -312,14 +327,14 @@ static int initialize_tables(server_rec *s, apr_pool_t *ctx)
+     }
+ 
+     client_list = rmm_malloc(client_rmm, sizeof(*client_list) +
+-                                         sizeof(client_entry *) * num_buckets);
++                                         sizeof(apr_rmm_off_t) * num_buckets);
+     if (!client_list) {
+         log_error_and_cleanup("failed to allocate shared memory", -1, s);
+         return !OK;
+     }
+-    client_list->table = (client_entry**) (client_list + 1);
++    client_list->table = (apr_rmm_off_t *) (client_list + 1);
+     for (idx = 0; idx < num_buckets; idx++) {
+-        client_list->table[idx] = NULL;
++        client_list->table[idx] = 0;
+     }
+     client_list->tbl_len     = num_buckets;
+     client_list->num_entries = 0;
+@@ -668,7 +683,7 @@ static const char *set_shmem_size(cmd_parms *cmd, void *config,
+                           size_str, NULL);
+     }
+ 
+-    min = sizeof(*client_list) + sizeof(client_entry*) + sizeof(client_entry);
++    min = sizeof(*client_list) + sizeof(apr_rmm_off_t) + sizeof(client_entry);
+     if (size < min) {
+         return apr_psprintf(cmd->pool, "size in AuthDigestShmemSize too small: "
+                            "%ld < %ld", size, min);
+@@ -776,19 +791,19 @@ static client_entry *get_client(unsigned long key, const request_rec *r)
+     if (!key || !client_shm)  return NULL;
+ 
+     bucket = key % client_list->tbl_len;
+-    entry  = client_list->table[bucket];
++    entry  = entry_at(client_list->table[bucket]);
+ 
+     apr_global_mutex_lock(client_lock);
+ 
+     while (entry && key != entry->key) {
+         prev  = entry;
+-        entry = entry->next;
++        entry = entry_at(entry->next);
+     }
+ 
+     if (entry && prev) {                /* move entry to front of list */
+         prev->next  = entry->next;
+         entry->next = client_list->table[bucket];
+-        client_list->table[bucket] = entry;
++        client_list->table[bucket] = entry_off(entry);
+     }
+ 
+     apr_global_mutex_unlock(client_lock);
+@@ -818,7 +833,7 @@ static long gc(server_rec *s)
+     /* garbage collect all last entries */
+ 
+     for (idx = 0; idx < client_list->tbl_len; idx++) {
+-        entry = client_list->table[idx];
++        entry = entry_at(client_list->table[idx]);
+         prev  = NULL;
+ 
+         if (!entry) {
+@@ -828,13 +843,13 @@ static long gc(server_rec *s)
+ 
+         while (entry->next) {   /* find last entry */
+             prev  = entry;
+-            entry = entry->next;
++            entry = entry_at(entry->next);
+         }
+         if (prev) {
+-            prev->next = NULL;   /* cut list */
++            prev->next = 0;      /* cut list */
+         }
+         else {
+-            client_list->table[idx] = NULL;
++            client_list->table[idx] = 0;
+         }
+         if (entry) {                    /* remove entry */
+             apr_status_t err;
+@@ -903,7 +918,7 @@ static client_entry *add_client(unsigned long key, client_entry *info,
+     memcpy(entry, info, sizeof(client_entry));
+     entry->key  = key;
+     entry->next = client_list->table[bucket];
+-    client_list->table[bucket] = entry;
++    client_list->table[bucket] = entry_off(entry);
+     client_list->num_created++;
+     client_list->num_entries++;
+ 
+@@ -1145,7 +1160,7 @@ static const char *gen_nonce(apr_pool_t *p, apr_time_t now, const char *opaque,
+ static client_entry *gen_client(const request_rec *r)
+ {
+     unsigned long op;
+-    client_entry new_entry = { 0, NULL, 0, "" }, *entry;
++    client_entry new_entry = { 0, 0, 0, "" }, *entry;
+ 
+     if (!opaque_cntr) {
+         return NULL;

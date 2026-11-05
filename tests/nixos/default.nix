@@ -149,6 +149,7 @@ lib.mapAttrs (_: withFilc) {
   };
   mosquitto = "${upstream}/mosquitto.nix";
   redis = ./redis.nix;
+  apache = import ./apache.nix { inherit pkgsFilc; };
   demo-wiki = import ./demo-wiki.nix { inherit filnix; };
   php-lighttpd = ./php-lighttpd.nix;
 

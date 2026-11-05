@@ -3226,6 +3226,26 @@ in
     }
   )
 
+  {
+    apacheHttpd = for pkgs.apacheHttpd [
+      # Nixpkgs links libgcc_s for pthread_cancel, which the Fil-C libc has.
+      (use (old: {
+        env = (old.env or { }) // {
+          NIX_LDFLAGS = "";
+        };
+      }))
+      # Its pointer-size check runs a program, assumed to fail when
+      # cross-compiling.
+      (configure "ap_cv_void_ptr_lt_long=no")
+      # A pointer one process stores in shared memory has no capability in
+      # another. mod_auth_digest's client table links entries by rmm offset
+      # instead; mod_ldap's shared cache, which is pointers and callbacks
+      # throughout, gives way to its per-process cache.
+      (patch ./patches/httpd-auth-digest-shm-offsets.patch)
+      (patch ./patches/httpd-ldap-per-process-cache.patch)
+    ];
+  }
+
   (for pkgs.lighttpd [
     (patch ./patches/lighttpd-filc.patch)
     (patch ./patches/lighttpd-ls-hpack-pointers.patch)
