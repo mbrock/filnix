@@ -12,8 +12,9 @@ individual ports needed, and how the port campaigns run. The repository's
   memory-safe programs in upstream's `/opt/fil` layout.
 - [A relocatable Fil-C root](filroot.md): the same toolchain and programs in
   a directory that works wherever it is unpacked.
-- [Fil-C services on NixOS](nixos.md): swap chosen NixOS services for their
-  Fil-C builds and leave the rest of the system alone.
+- [Fil-C on NixOS](nixos.md): how much of a NixOS system to make Fil-C, from
+  chosen services to the whole userland, what each step costs, and how to
+  check what runs Fil-C.
 - [A Fil-C userland for NixOS](nixos-userland.md): make a NixOS system's
   `pkgs` the Fil-C set, with systemd, PAM and every service built by Fil-C.
 - [A Fil-C userland for finix](finix.md): build a whole finix userland with

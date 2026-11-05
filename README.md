@@ -129,7 +129,7 @@ system memory safe as it can, one whole program at a time:
 |----|----|----|
 | Some services | the daemons you choose | `filc.openssh.enable` and other switches, or any `services.X.package = config.filc.packages.X` |
 | Services, shell and tools | also Bash, Nix and the programs on PATH | `filc.enable`, `filc.tools` |
-| Whole userland | all but the kernel, bootloader and listed exceptions | today on [finix](docs/finix.md): `finixModules.filc-userland`; on NixOS in progress |
+| Whole userland | all but the kernel, bootloader and listed exceptions | `nixosModules.filc-userland` ([docs](docs/nixos-userland.md)), or [finix](docs/finix.md)'s `finixModules.filc-userland` |
 
 ``` nix
 {

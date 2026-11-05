@@ -11,7 +11,8 @@ without a per-service override.
 This is the last step of the scale in [Fil-C on NixOS](nixos.md#how-far-to-go).
 `nixosModules.filc` adds Fil-C services and programs to a native NixOS one at
 a time. Here everything starts as Fil-C, and `filc.userland.native` names the
-exceptions.
+exceptions. `nixosModules.filc-userland` does the same for NixOS, under the
+same `filc.userland` options.
 
 ```nix
 nixosConfigurations.host = finix.lib.finixSystem {

@@ -19,13 +19,23 @@ at a time:
 | 0. Native | nothing | plain NixOS | |
 | 1. Some services | the daemons you choose | `filc.openssh.enable` and the other switches, or any service's package option set to `config.filc.packages.X` | `ec2-filc`: sshd and Tor |
 | 2. Services, shell and tools | also the login shell, Nix and the programs on PATH | `filc.enable = true`, `filc.tools = [ … ]` | `filc-demo` |
-| 3. Whole userland | everything except the kernel, the bootloader and a short exception list | today on [finix](finix.md): `finixModules.filc-userland`, with `filc.userland.native` for the exceptions; on NixOS in progress | |
+| 3. Whole userland | everything except the kernel, the bootloader and a short exception list | `nixosModules.filc-userland` on NixOS, or [finix](finix.md)'s `finixModules.filc-userland`; `filc.userland.native` names the exceptions | |
 
 Steps 1 and 2 add Fil-C programs to an otherwise native NixOS: `pkgs`
 stays your Nixpkgs, and the options name what becomes Fil-C. At step 3 the
-whole of `pkgs` is Fil-C and the options name the exceptions instead. finix
-does this today, since its init and services build from `pkgs` alone; a
-NixOS userland built with Fil-C, systemd included, is in progress.
+whole of `pkgs` is Fil-C and the options name the exceptions instead.
+
+On NixOS, `nixosModules.filc-userland` (`filc.userland.enable = true`,
+[nixos/userland.nix](../nixos/userland.nix)) makes the system's `pkgs` the
+Fil-C package set. systemd 260 (PID 1, journald, udevd, logind), D-Bus,
+util-linux, Linux-PAM, coreutils, OpenSSH and every service a module starts
+are then Fil-C builds, including the initrd's userland. Only the kernel, GRUB,
+kexec-tools, the static setuid wrappers, Nix and NixOS 26.05's Rust boot tools
+(nixos-init, the initrd builder, switch-to-configuration, fish) stay native,
+and [docs/nixos-userland.md](nixos-userland.md) says why for each. The VM test
+`nixosTests.userland` logs in on the console and checks that PID 1 and the
+main services map libpizlo. Open gaps: no NSS modules or nscd, dbus-daemon
+instead of dbus-broker, and no QEMU guest agent.
 
 ## Using it
 
@@ -113,7 +123,7 @@ works too.
 | Where | Cost | Why |
 | --- | --- | --- |
 | everywhere | CPU time is 1.5× to 4× that of the native build, and memory use is higher | bounds checks and the garbage collector |
-| sshd | no PAM: sshd checks passwords and keys itself, so an SSH login gets no logind session (no `XDG_RUNTIME_DIR`, no `loginctl` entry) and no other PAM module, such as `pam_limits` or two-factor login. A `!` password doesn't lock an account against keys, as on stock NixOS: to lock one on purpose, use `users.users.<name>.openssh.authorizedKeys.keys = [ ]` or a nologin shell | a Fil-C sshd can't load the native PAM modules |
+| sshd (steps 1 and 2) | no PAM: sshd checks passwords and keys itself, so an SSH login gets no logind session (no `XDG_RUNTIME_DIR`, no `loginctl` entry) and no other PAM module, such as `pam_limits` or two-factor login. A `!` password doesn't lock an account against keys, as on stock NixOS: to lock one on purpose, use `users.users.<name>.openssh.authorizedKeys.keys = [ ]` or a nologin shell | a Fil-C sshd can't load the native PAM modules; with the whole userland, PAM is Fil-C too and sshd keeps it |
 | sshd without OpenSSL | no Fil-C build (`openssh.override { linkOpenssl = false; }`) | the Fil-C OpenSSH patch set does its ML-KEM key exchange through OpenSSL |
 | Nix | no build sandbox | Fil-C has no namespaces or seccomp |
 | PHP-FPM | each worker grows to about 150-250 MB, so a pool needs several GB | the garbage collector keeps more memory alive |
@@ -159,8 +169,7 @@ runs a native program.
 
 - `nixosConfigurations.filc-demo` ([nixos/demo.nix](../nixos/demo.nix)): a
   QEMU VM at step 2, with the Fil-C sshd, Bash, Unbound, lighttpd, Nix and a
-  set of tools. Until Fil-C Nix builds again (see [VM tests](#vm-tests)), it
-  builds only with `filc.nix.enable = false`.
+  set of tools.
 
   ```sh
   nix run .#nixosConfigurations.filc-demo.config.system.build.vm
@@ -193,12 +202,10 @@ follow them as Nixpkgs updates.
 | `php-fpm` | PHP-FPM, behind native nginx | Fil-C PHP with APCu as the test's `php` |
 | `wordpress`, `dokuwiki`, `mediawiki-*` (5), `nextcloud-*` (3) | the apps' PHP-FPM pools, and Redis for `nextcloud-with-postgresql-and-redis` | more memory |
 | `redis`, `php-lighttpd` | Redis; lighttpd serving PHP-FPM over FastCGI | our own tests |
-| `demo` | the demo machine: sshd, Bash, Unbound, lighttpd, the tools and Nix | our own test |
+| `demo` | the demo machine: sshd, Bash, Unbound, lighttpd, the tools and Nix, which builds a derivation | our own test |
+| `userland` | the whole NixOS userland under `nixosModules.filc-userland` | our own test; see [docs/nixos-userland.md](nixos-userland.md) |
 
-All of them pass except `demo`, which doesn't build at the moment: Fil-C Nix
-fails its own unit tests at the current toolchain, and the demo has the Fil-C
-Nix build a derivation. With `filc.nix.enable = false` the rest of the demo
-passes.
+All of them pass.
 
 WordPress runs five releases behind httpd, nginx and Caddy; MediaWiki with
 MySQL, PostgreSQL, SQLite, nginx and no web server; Nextcloud 35, 35 with MySQL
