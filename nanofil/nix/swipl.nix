@@ -103,6 +103,9 @@ let
   # tests run once more, alone, and that result counts: http:proxy's
   # "unused" port is one it found free and released, which a test running
   # beside it can take (filcc's build fails it so too, now and then).
+  # SWI's lock-free code still has plain pointer reads that race, which
+  # Fil-C stops with a trap, in either build, on a loaded builder (docs/m4.md,
+  # SWI-Prolog additions): the port fixes those seen in swipl:GC.
   ctest = out: ''
     (ulimit -s 32768 && ctest -j$NIX_BUILD_CORES --timeout 1800 --output-on-failure >${out}.log 2>&1 || true)
     (ulimit -s 32768 && ctest --rerun-failed --timeout 1800 --output-on-failure >>${out}.log 2>&1 || true)
