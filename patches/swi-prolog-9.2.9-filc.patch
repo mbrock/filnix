@@ -134,10 +134,52 @@ index 6e541f0..ca7ceb0 100644
  
  
 diff --git a/src/pl-alloc.c b/src/pl-alloc.c
-index 4948fd2..df0fa17 100644
+index 4948fd2..adc24d6 100644
 --- a/src/pl-alloc.c
 +++ b/src/pl-alloc.c
-@@ -762,16 +762,13 @@ f_pushArgumentStack(DECL_LD Word p)
+@@ -231,8 +231,8 @@ linger_always(linger_list** list, void (*unalloc)(void *), void *object)
+     c->unalloc	  = unalloc;
+ 
+     do
+-    { o = *list;
+-      c->next = o;
++    { o = __atomic_load_n(list, __ATOMIC_SEQ_CST);
++      __atomic_store_n(&c->next, o, __ATOMIC_SEQ_CST);
+     } while( !COMPARE_AND_SWAP_PTR(list, o, c) );
+   } else
+   { (*unalloc)(object);
+@@ -242,20 +242,25 @@ linger_always(linger_list** list, void (*unalloc)(void *), void *object)
+ void
+ free_lingering(linger_list **list, gen_t generation)
+ { linger_list **p = list;
+-  linger_list *c = *list;
++  linger_list *c = __atomic_load_n(list, __ATOMIC_SEQ_CST);
++  /* Other threads push onto *list with CAS while this runs: load the
++     links atomically, as a racing plain pointer load can tear under
++     Fil-C. */
++#define LINK(l) __atomic_load_n(&(l)->next, __ATOMIC_SEQ_CST)
+ 
+   while ( c )
+   { if ( c->generation < generation )
+-    { while ( !COMPARE_AND_SWAP_PTR(p, c, c->next) )
+-      { p = &(*p)->next;
++    { while ( !COMPARE_AND_SWAP_PTR(p, c, LINK(c)) )
++      { p = &__atomic_load_n(p, __ATOMIC_SEQ_CST)->next;
+       }
+       (*c->unalloc)(c->object);
+       freeHeap(c, sizeof(*c));
+     } else
+-    { p = &(*p)->next;
++    { p = &__atomic_load_n(p, __ATOMIC_SEQ_CST)->next;
+     }
+-    c = *p;
++    c = __atomic_load_n(p, __ATOMIC_SEQ_CST);
+   }
++#undef LINK
+ }
+ 
+ 		/********************************
+@@ -762,16 +767,13 @@ f_pushArgumentStack(DECL_LD Word p)
    if ( newsize &&
         (newsize = stack_nalloc(newsize)) &&
         (newbase = stack_realloc(aBase, newsize)) )
@@ -826,10 +868,22 @@ index ea426fa..8cf2696 100644
  };
  
 diff --git a/src/pl-index.c b/src/pl-index.c
-index 4f1b370..7a986f7 100644
+index 4f1b370..c213729 100644
 --- a/src/pl-index.c
 +++ b/src/pl-index.c
-@@ -115,7 +115,7 @@ static int	addClauseToIndex(ClauseIndex ci, Clause cl, ClauseRef where);
+@@ -76,6 +76,11 @@
+ 
+ #define DEAD_INDEX   ((ClauseIndex)1)
+ #define ISDEADCI(ci) ((ci) == DEAD_INDEX)
++/* clause_indexes and its entries are read without the predicate lock
++   while a locked writer replaces them: access them atomically, as a
++   racing plain pointer access can tear (and trap) under Fil-C. */
++#define CI_GET(p)    __atomic_load_n((p), __ATOMIC_ACQUIRE)
++#define CI_SET(p, v) __atomic_store_n((p), (v), __ATOMIC_RELEASE)
+ 
+ typedef struct hash_hints
+ { iarg_t	args[MAX_MULTI_INDEX];	/* Hash these arguments */
+@@ -115,7 +120,7 @@ static int	addClauseToIndex(ClauseIndex ci, Clause cl, ClauseRef where);
  static void	addClauseToListIndexes(Definition def, ClauseList cl,
  				       Clause clause, ClauseRef where);
  static void	insertIntoSparseList(ClauseRef cref,
@@ -838,7 +892,35 @@ index 4f1b370..7a986f7 100644
  				     ClauseRef where);
  static ClauseRef first_clause_guarded(Word argv, size_t argc, ClauseList clist,
  				      IndexContext ctx);
-@@ -813,7 +813,7 @@ clauses.  Insert cref into this list.
+@@ -440,11 +445,11 @@ first_clause_guarded(DECL_LD Word argv, size_t argc, ClauseList clist,
+     argc = MAXINDEXARG;
+ 
+ retry:
+-  if ( (cip=clist->clause_indexes) )
++  if ( (cip=CI_GET(&clist->clause_indexes)) )
+   { ClauseIndex best_index = NULL;
+ 
+-    for(; *cip; cip++)
+-    { ClauseIndex ci = *cip;
++    for(; CI_GET(cip); cip++)
++    { ClauseIndex ci = CI_GET(cip);
+       word k;
+ 
+       if ( ISDEADCI(ci) )
+@@ -787,9 +792,9 @@ addClauseToListIndexes(Definition def, ClauseList cl, Clause clause,
+ 		       ClauseRef where)
+ { ClauseIndex *cip;
+ 
+-  if ( (cip=cl->clause_indexes) )
+-  { for(; *cip; cip++)
+-    { ClauseIndex ci = *cip;
++  if ( (cip=CI_GET(&cl->clause_indexes)) )
++  { for(; CI_GET(cip); cip++)
++    { ClauseIndex ci = CI_GET(cip);
+ 
+       if ( ISDEADCI(ci) )
+ 	continue;
+@@ -813,7 +818,7 @@ clauses.  Insert cref into this list.
  
  static void
  insertIntoSparseList(ClauseRef cref,
@@ -847,8 +929,305 @@ index 4f1b370..7a986f7 100644
  		     ClauseRef where)
  { if ( !(*headp) )
    { *headp = *tailp = cref;
+@@ -1212,9 +1217,9 @@ cleanClauseIndexes(Definition def, ClauseList cl, DirtyDefInfo ddi,
+ 		   gen_t start, Buffer tr_starts)
+ { ClauseIndex *cip;
+ 
+-  if ( (cip=cl->clause_indexes) )
+-  { for(; *cip; cip++)
+-    { ClauseIndex ci = *cip;
++  if ( (cip=CI_GET(&cl->clause_indexes)) )
++  { for(; CI_GET(cip); cip++)
++    { ClauseIndex ci = CI_GET(cip);
+ 
+       if ( ISDEADCI(ci) )
+ 	continue;
+@@ -1430,9 +1435,9 @@ deleteActiveClauseFromIndexes(Definition def, Clause cl)
+ 
+   shrunkpow2(def);
+ 
+-  if ( (cip=def->impl.clauses.clause_indexes) )
+-  { for(; *cip; cip++)
+-    { ClauseIndex ci = *cip;
++  if ( (cip=CI_GET(&def->impl.clauses.clause_indexes)) )
++  { for(; CI_GET(cip); cip++)
++    { ClauseIndex ci = CI_GET(cip);
+ 
+       if ( ISDEADCI(ci) )
+ 	continue;
+@@ -1466,11 +1471,11 @@ deleteIndexes(ClauseList clist, int isnew)
+ 
+   assert(isnew);			/* TBD for non-new */
+ 
+-  if ( (cip0=clist->clause_indexes) )
++  if ( (cip0=CI_GET(&clist->clause_indexes)) )
+   { ClauseIndex *cip;
+ 
+-    for(cip = cip0; *cip; cip++)
+-    { ClauseIndex ci = *cip;
++    for(cip = cip0; CI_GET(cip); cip++)
++    { ClauseIndex ci = CI_GET(cip);
+ 
+       if ( ISDEADCI(ci) )
+ 	continue;
+@@ -1479,7 +1484,7 @@ deleteIndexes(ClauseList clist, int isnew)
+     }
+ 
+     unalloc_index_array(cip0);
+-    clist->clause_indexes = NULL;
++    CI_SET(&clist->clause_indexes, NULL);
+   }
+ }
+ 
+@@ -1495,11 +1500,11 @@ deleteIndexesDefinition(Definition def)
+ { ClauseList clist = &def->impl.clauses;
+   ClauseIndex *cip0;
+ 
+-  if ( (cip0=clist->clause_indexes) )
++  if ( (cip0=CI_GET(&clist->clause_indexes)) )
+   { ClauseIndex *cip;
+ 
+-    for(cip = cip0; *cip; cip++)
+-    { ClauseIndex ci = *cip;
++    for(cip = cip0; CI_GET(cip); cip++)
++    { ClauseIndex ci = CI_GET(cip);
+ 
+       if ( ISDEADCI(ci) )
+ 	continue;
+@@ -1508,7 +1513,7 @@ deleteIndexesDefinition(Definition def)
+     }
+ 
+     freeHeap(cip0, 0);
+-    clist->clause_indexes = NULL;
++    CI_SET(&clist->clause_indexes, NULL);
+   }
+ }
+ 
+@@ -1587,8 +1592,8 @@ delClauseFromIndex(Definition def, Clause cl)
+ 
+   shrunkpow2(def);
+ 
+-  for(cip=def->impl.clauses.clause_indexes; *cip; cip++)
+-  { ClauseIndex ci = *cip;
++  for(cip=CI_GET(&def->impl.clauses.clause_indexes); CI_GET(cip); cip++)
++  { ClauseIndex ci = CI_GET(cip);
+     ClauseBucket ch;
+     word key;
+ 
+@@ -1670,9 +1675,9 @@ hashDefinition(ClauseList clist, hash_hints *hints, IndexContext ctx)
+ 
+   canonicalHap(hints->args);
+   LOCKDEF(ctx->predicate);
+-  if ( (cip=clist->clause_indexes) )
+-  { for(; *cip; cip++)
+-    { ClauseIndex cio = *cip;
++  if ( (cip=CI_GET(&clist->clause_indexes)) )
++  { for(; CI_GET(cip); cip++)
++    { ClauseIndex cio = CI_GET(cip);
+ 
+       if ( ISDEADCI(cio) )
+ 	continue;
+@@ -1726,8 +1731,8 @@ copyIndex(ClauseIndex *org, int extra)
+   if ( org )
+   { ClauseIndex *cip;
+ 
+-    for(cip=org; *cip; cip++)
+-    { ClauseIndex ci = *cip;
++    for(cip=org; CI_GET(cip); cip++)
++    { ClauseIndex ci = CI_GET(cip);
+       if ( !ISDEADCI(ci) )
+ 	size++;
+     }
+@@ -1741,8 +1746,8 @@ copyIndex(ClauseIndex *org, int extra)
+     if ( org )
+     { ClauseIndex *cip;
+ 
+-      for(cip=org; *cip; cip++)
+-      { ClauseIndex ci = *cip;
++      for(cip=org; CI_GET(cip); cip++)
++      { ClauseIndex ci = CI_GET(cip);
+ 	if ( !ISDEADCI(ci) )
+ 	  *ncipo++ = ci;
+       }
+@@ -1794,8 +1799,8 @@ isSortedIndexes(ClauseIndex *cip)
+ { if ( cip )
+   { float speedup = (float)PLMAXINT;
+ 
+-    for( ; *cip; cip++)
+-    { ClauseIndex ci = *cip;
++    for( ; CI_GET(cip); cip++)
++    { ClauseIndex ci = CI_GET(cip);
+ 
+       if ( ISDEADCI(ci) )
+ 	continue;
+@@ -1816,10 +1821,10 @@ unalloc_index_array(void *p)
+ 
+ static void
+ setIndexes(Definition def, ClauseList cl, ClauseIndex *cip)
+-{ ClauseIndex *cipo = cl->clause_indexes;
++{ ClauseIndex *cipo = CI_GET(&cl->clause_indexes);
+ 
+   MEMORY_BARRIER();
+-  cl->clause_indexes = cip;
++  CI_SET(&cl->clause_indexes, cip);
+   if ( cipo )
+     linger_always(&def->lingering, unalloc_index_array, cipo);
+ }
+@@ -1835,9 +1840,9 @@ unalloc_ci(void *p)
+ 
+ static void				/* definition must be locked */
+ replaceIndex(Definition def, ClauseList cl, ClauseIndex *cip, ClauseIndex ci)
+-{ ClauseIndex old = *cip;
++{ ClauseIndex old = CI_GET(cip);
+ 
+-  *cip = ci;
++  CI_SET(cip, ci);
+   DEBUG(MSG_JIT, Sdprintf("[%d] replaceIndex(%s) %p-->%p (gen=%lld)\n",
+ 			  PL_thread_self(),
+ 			  predicateName(def),
+@@ -1859,8 +1864,8 @@ replaceIndex(Definition def, ClauseList cl, ClauseIndex *cip, ClauseIndex ci)
+     linger_always(&def->lingering, unalloc_ci, old);
+   }
+ 
+-  if ( !isSortedIndexes(cl->clause_indexes) )
+-  { cip = copyIndex(cl->clause_indexes, 0);
++  if ( !isSortedIndexes(CI_GET(&cl->clause_indexes)) )
++  { cip = copyIndex(CI_GET(&cl->clause_indexes), 0);
+     sortIndexes(cip);
+     setIndexes(def, cl, cip);
+   }
+@@ -1877,9 +1882,9 @@ static void
+ deleteIndex(Definition def, ClauseList clist, ClauseIndex ci)
+ { ClauseIndex *cip;
+ 
+-  if ( (cip=clist->clause_indexes) )
+-  { for(; *cip; cip++)
+-    { if ( *cip == ci )
++  if ( (cip=CI_GET(&clist->clause_indexes)) )
++  { for(; CI_GET(cip); cip++)
++    { if ( CI_GET(cip) == ci )
+       { deleteIndexP(def, clist, cip);
+ 	return;
+       }
+@@ -1894,16 +1899,16 @@ static void
+ insertIndex(Definition def, ClauseList clist, ClauseIndex ci)
+ { ClauseIndex *ocip;
+ 
+-  if ( (ocip=clist->clause_indexes) )
++  if ( (ocip=CI_GET(&clist->clause_indexes)) )
+   { ClauseIndex *cip = ocip;
+     ClauseIndex *ncip;
+ 
+-    for(; *cip; cip++)
+-    { if ( ISDEADCI(*cip) )
+-      { *cip = ci;
++    for(; CI_GET(cip); cip++)
++    { if ( ISDEADCI(CI_GET(cip)) )
++      { CI_SET(cip, ci);
+ 	if ( isSortedIndexes(ocip) )
+ 	  return;
+-	*cip = DEAD_INDEX;
++	CI_SET(cip, DEAD_INDEX);
+       }
+     }
+ 
+@@ -1919,7 +1924,7 @@ insertIndex(Definition def, ClauseList clist, ClauseIndex ci)
+ 
+     cip[0] = ci;
+     cip[1] = NULL;
+-    clist->clause_indexes = cip;
++    CI_SET(&clist->clause_indexes, cip);
+   }
+ }
+ 
+@@ -1935,9 +1940,9 @@ checkClauseIndexSizes(Definition def, int nindexable)
+ { ClauseIndex *cip;
+   int rc = TRUE;
+ 
+-  if ( (cip=def->impl.clauses.clause_indexes) )
+-  { for( ; *cip; cip++ )
+-    { ClauseIndex ci = *cip;
++  if ( (cip=CI_GET(&def->impl.clauses.clause_indexes)) )
++  { for( ; CI_GET(cip); cip++ )
++    { ClauseIndex ci = CI_GET(cip);
+ 
+       if ( ISDEADCI(ci) )
+ 	continue;
+@@ -1958,11 +1963,11 @@ void
+ checkClauseIndexes(Definition def)
+ { ClauseIndex *cip;
+ 
+-  if ( (cip=def->impl.clauses.clause_indexes)  )
++  if ( (cip=CI_GET(&def->impl.clauses.clause_indexes))  )
+   { GET_LD
+ 
+-    for(; *cip; cip++ )
+-    { ClauseIndex ci = *cip;
++    for(; CI_GET(cip); cip++)
++    { ClauseIndex ci = CI_GET(cip);
+       unsigned int i;
+       ClauseBucket cb;
+       unsigned int ci_dirty = 0;	/* # dirty buckets */
+@@ -2025,11 +2030,11 @@ void
+ listIndexGenerations(Definition def, gen_t gen)
+ { ClauseIndex *cip;
+ 
+-  if ( (cip=def->impl.clauses.clause_indexes) )
++  if ( (cip=CI_GET(&def->impl.clauses.clause_indexes)) )
+   { GET_LD
+ 
+-    for(; *cip; cip++)
+-    { ClauseIndex ci = *cip;
++    for(; CI_GET(cip); cip++)
++    { ClauseIndex ci = CI_GET(cip);
+       unsigned int i;
+ 
+       if ( ISDEADCI(ci) )
+@@ -2757,10 +2762,10 @@ sizeofClauseIndexes(Definition def)
+   ClauseIndex *cip;
+   size_t size = 0;
+ 
+-  if ( (cip=def->impl.clauses.clause_indexes) )
++  if ( (cip=CI_GET(&def->impl.clauses.clause_indexes)) )
+   { acquire_def(def);
+-    for(; *cip; cip++)
+-    { ClauseIndex ci = *cip;
++    for(; CI_GET(cip); cip++)
++    { ClauseIndex ci = CI_GET(cip);
+ 
+       if ( ISDEADCI(ci) )
+ 	continue;
+@@ -2847,9 +2852,9 @@ add_deep_indexes(DECL_LD ClauseIndex ci, term_t head, term_t tail)
+       { ClauseList cl = &cref->value.clauses;
+ 	ClauseIndex *cip;
+ 
+-	if ( (cip = cl->clause_indexes) )
+-	{ for(; *cip; cip++)
+-	  { ClauseIndex ci = *cip;
++	if ( (cip = CI_GET(&cl->clause_indexes)) )
++	{ for(; CI_GET(cip); cip++)
++	  { ClauseIndex ci = CI_GET(cip);
+ 
+ 	    if ( ISDEADCI(ci) )
+ 	      continue;
+@@ -2879,12 +2884,12 @@ unify_index_pattern(Procedure proc, term_t value)
+   int found = 0;
+ 
+   acquire_def(def);
+-  if ( (cip=def->impl.clauses.clause_indexes) )
++  if ( (cip=CI_GET(&def->impl.clauses.clause_indexes)) )
+   { term_t tail = PL_copy_term_ref(value);
+     term_t head = PL_new_term_ref();
+ 
+-    for(; *cip; cip++)
+-    { ClauseIndex ci = *cip;
++    for(; CI_GET(cip); cip++)
++    { ClauseIndex ci = CI_GET(cip);
+ 
+       if ( ISDEADCI(ci) )
+ 	continue;
 diff --git a/src/pl-inline.h b/src/pl-inline.h
-index cd0f8ba..f1a7bbc 100644
+index cd0f8ba..38c8f0a 100644
 --- a/src/pl-inline.h
 +++ b/src/pl-inline.h
 @@ -576,7 +576,7 @@ the global stack only once.
@@ -860,7 +1239,34 @@ index cd0f8ba..f1a7bbc 100644
  
    while(isRef(w))
    { //p = unRef(w);
-@@ -803,6 +803,24 @@ it is divided by 4 and the low 2   bits  are placed at the top (they are
+@@ -781,11 +781,23 @@ murmur_key(const void *ptr, size_t n)
+ #define acquire_ldata(info) LDFUNC(acquire_ldata, info)
+ static inline PL_local_data_t *
+ acquire_ldata(DECL_LD PL_thread_info_t *info)
+-{ PL_local_data_t *ld = info->thread_data;
+-  LD->thread.info->access.ldata = ld;
++{ PL_local_data_t *ld, *again;
++  /* Hazard pointer: publish ld in access.ldata, then check that
++     info->thread_data still holds it. freePrologThread() clears
++     thread_data before ldata_in_use() scans the hazards, so a reader
++     that validates cannot be missed by the scan. All of it seq_cst and
++     atomic: a racing plain pointer store can tear under Fil-C. */
++  ld = __atomic_load_n(&info->thread_data, __ATOMIC_SEQ_CST);
++  for(;;)
++  { __atomic_store_n(&LD->thread.info->access.ldata, ld, __ATOMIC_SEQ_CST);
++    again = __atomic_load_n(&info->thread_data, __ATOMIC_SEQ_CST);
++    if ( again == ld )
++      break;
++    ld = again;
++  }
+   if ( ld && ld->magic == LD_MAGIC )
+     return ld;
+-  LD->thread.info->access.ldata = NULL;
++  __atomic_store_n(&LD->thread.info->access.ldata, NULL, __ATOMIC_SEQ_CST);
+   return NULL;
+ }
+ #endif
+@@ -803,6 +815,24 @@ it is divided by 4 and the low 2   bits  are placed at the top (they are
  normally 0). longToPointer() does the inverse operation.
  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
  
@@ -885,7 +1291,7 @@ index cd0f8ba..f1a7bbc 100644
  static inline uintptr_t
  pointerToInt(void *ptr)
  {
-@@ -834,5 +852,6 @@ intToPointer(uintptr_t p)
+@@ -834,5 +864,6 @@ intToPointer(uintptr_t p)
    return (void *) p;
  #endif
  }
@@ -1374,10 +1780,94 @@ index d212dba..251a7ba 100644
  
  	if ( !n && rc && !invalid_deps )
 diff --git a/src/pl-thread.c b/src/pl-thread.c
-index cfa32ce..ea8fad6 100644
+index cfa32ce..ac944bb 100644
 --- a/src/pl-thread.c
 +++ b/src/pl-thread.c
-@@ -8334,7 +8334,7 @@ stack_avail(DECL_LD)
+@@ -469,7 +469,7 @@ ldata_in_use(PL_local_data_t *ld)
+ 
+   for(i=1; i<=GD->thread.highest_id; i++)
+   { PL_thread_info_t *info = GD->thread.threads[i];
+-    if ( info && info->access.ldata == ld )
++    if ( info && __atomic_load_n(&info->access.ldata, __ATOMIC_SEQ_CST) == ld )
+     { return TRUE;
+     }
+   }
+@@ -801,7 +801,7 @@ freePrologThread(PL_local_data_t *ld, int after_fork)
+       GD->statistics.thread_cputime += time;
+     }
+     destroy_thread_message_queue(&ld->thread.messages);
+-    info->thread_data = NULL;		/* avoid a loop */
++    __atomic_store_n(&info->thread_data, NULL, __ATOMIC_SEQ_CST); /* avoid a loop */
+     info->has_tid = FALSE;		/* needed? */
+     info->c_stack = NULL;
+     if ( !after_fork )
+@@ -999,7 +999,7 @@ initPrologThreads(void)
+     info->open_count = 1;
+     info->debug = TRUE;
+     GD->thread.highest_id = 1;
+-    info->thread_data = &PL_local_data;
++    __atomic_store_n(&info->thread_data, &PL_local_data, __ATOMIC_SEQ_CST);
+     info->status = PL_THREAD_RUNNING;
+     PL_local_data.thread.info = info;
+     PL_local_data.thread.magic = PL_THREAD_MAGIC;
+@@ -1415,8 +1415,10 @@ thread_gc_loop(void *closure)
+   { thread_handle *h;
+ 
+     do
+-    { h = gced_threads;
+-    } while ( h && !COMPARE_AND_SWAP_PTR(&gced_threads, h, h->next_free) );
++    { h = __atomic_load_n(&gced_threads, __ATOMIC_SEQ_CST);
++    } while ( h &&
++	      !COMPARE_AND_SWAP_PTR(&gced_threads, h,
++				    __atomic_load_n(&h->next_free, __ATOMIC_SEQ_CST)) );
+ 
+     if ( h )
+     { if ( GD->cleaning == CLN_NORMAL )
+@@ -1461,8 +1463,8 @@ gc_thread(thread_handle *ref)
+     thread_handle *h;
+ 
+     do
+-    { h = gced_threads;
+-      ref->next_free = h;
++    { h = __atomic_load_n(&gced_threads, __ATOMIC_SEQ_CST);
++      __atomic_store_n(&ref->next_free, h, __ATOMIC_SEQ_CST);
+     } while( !COMPARE_AND_SWAP_PTR(&gced_threads, h, ref) );
+ 
+     start_thread_gc_thread();
+@@ -1580,8 +1582,10 @@ alloc_thread(void)
+   memset(ld, 0, sizeof(PL_local_data_t));
+ 
+   do
+-  { info = GD->thread.free;
+-  } while ( info && !COMPARE_AND_SWAP_PTR(&GD->thread.free, info, info->next_free) );
++  { info = __atomic_load_n(&GD->thread.free, __ATOMIC_SEQ_CST);
++  } while ( info &&
++	    !COMPARE_AND_SWAP_PTR(&GD->thread.free, info,
++				  __atomic_load_n(&info->next_free, __ATOMIC_SEQ_CST)) );
+ 
+   if ( info )
+   { int i = info->pl_tid;
+@@ -1608,7 +1612,7 @@ alloc_thread(void)
+ 
+   ld->thread.info = info;
+   ld->thread.magic = PL_THREAD_MAGIC;
+-  info->thread_data = ld;
++  __atomic_store_n(&info->thread_data, ld, __ATOMIC_SEQ_CST);
+   info->status = PL_THREAD_RESERVED;
+   info->debug = TRUE;
+ 
+@@ -2670,8 +2674,8 @@ free_thread_info(PL_thread_info_t *info)
+   PL_UNLOCK(L_THREAD);
+ 
+   do
+-  { freelist = GD->thread.free;
+-    info->next_free = freelist;
++  { freelist = __atomic_load_n(&GD->thread.free, __ATOMIC_SEQ_CST);
++    __atomic_store_n(&info->next_free, freelist, __ATOMIC_SEQ_CST);
+   } while( !COMPARE_AND_SWAP_PTR(&GD->thread.free, freelist, info) );
+ 
+   if ( rec_rv ) PL_erase(rec_rv);
+@@ -8334,7 +8338,7 @@ stack_avail(DECL_LD)
    ssize_t avail = -1;
  
    if ( cinfo && cinfo->base )
@@ -1386,6 +1876,19 @@ index cfa32ce..ea8fad6 100644
  
      avail = (char*)here - (char*)cinfo->base;
      assert(avail > 0);		/* stack grows down */
+diff --git a/src/pl-thread.h b/src/pl-thread.h
+index fd23b2f..0ca05b5 100644
+--- a/src/pl-thread.h
++++ b/src/pl-thread.h
+@@ -500,7 +500,7 @@ void		free_wait_area(thread_wait_area *wa);
+ void		free_thread_wait(PL_local_data_t *ld);
+ 
+ #define acquire_ldata(info)	LDFUNC(acquire_ldata, info)
+-#define release_ldata(ld)	(LD->thread.info->access.ldata = NULL)
++#define release_ldata(ld)	__atomic_store_n(&LD->thread.info->access.ldata, NULL, __ATOMIC_SEQ_CST)
+ /* defined in pl-inline.h */
+ static inline	PL_local_data_t *acquire_ldata(DECL_LD PL_thread_info_t *info);
+ 
 diff --git a/src/pl-trie.c b/src/pl-trie.c
 index ed372b9..6c240bc 100644
 --- a/src/pl-trie.c
