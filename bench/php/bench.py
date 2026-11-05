@@ -1350,7 +1350,7 @@ def categorize(dso, sym):
         if sre and not re.search(sre, s):
             continue
         return cat
-    if re.search(r"/php$|php-", dso):
+    if re.search(r"(^|/)php$|php-", dso):
         return "PHP functions & extensions"
     return "other libraries"
 

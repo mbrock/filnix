@@ -19,7 +19,8 @@ class ProfileReportTests(unittest.TestCase):
                 "period": 1000000, "passes": 1,
                 "symbols": [
                     {"samples": 10, "dso": "libpcre2-8.so", "sym": "match", "cat": "PCRE"},
-                    {"samples": 90, "dso": "[JIT] tid 123", "sym": "0x1234", "cat": "PCRE"},
+                    {"samples": 80, "dso": "[JIT] tid 123", "sym": "0x1234", "cat": "PCRE"},
+                    {"samples": 10, "dso": "php", "sym": "extension_helper", "cat": "PHP functions & extensions"},
                 ],
             }
             (path / "old.profile.json").write_text(json.dumps(profile))
@@ -31,7 +32,8 @@ class ProfileReportTests(unittest.TestCase):
                     cells = [cell.strip() for cell in line.strip("|").split("|")]
                     rows[cells[0]] = cells
             self.assertEqual(float(rows["PCRE"][2]), 10)
-            self.assertEqual(float(rows["generated JIT code (unresolved)"][2]), 90)
+            self.assertEqual(float(rows["generated JIT code (unresolved)"][2]), 80)
+            self.assertEqual(float(rows["PHP functions & extensions"][2]), 10)
 
 
 if __name__ == "__main__":
