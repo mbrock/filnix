@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sealed closures · Fil-C</title>
+<meta property="og:title" content="Sealed closures: callable interfaces without the state behind them">
+<meta property="og:description" content="A staging-only Fil-C proof of concept: zclosure_new_sealed makes a closure its callers can run but cannot read, replace or rebind. Review found an inliner bypass; the compiler now keeps callee reads where they were written.">
+<meta property="og:image" content="https://mbrock.github.io/filnix/sealed-closures/poster.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap">
+<link rel="stylesheet" href="../style.css">
+<style>
+:root { --cap: #2f6fb3; --bad: #9a3248; --good: #3d7a3d; --seal: #6b4fa3; }
+.explainer { --measure: 72ch; }
+.explainer > h1 { font-size: 2.5rem; margin: 0.3rem 0 0.8rem; }
+.sub { color: var(--muted); font-size: 1.15em; line-height: 1.4; margin: 0 0 1.4em; text-align: start; }
+.meta { font: 13px/1.5 var(--mono-font); color: var(--muted); text-align: start; }
+.terms { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 14px 0; padding: 12px 16px; background: #f4f1ea; border-radius: 8px; font-size: 0.93em; text-align: start; }
+.terms dt { font-weight: 600; }
+.terms dd { margin: 0; }
+.card { background: #fff; border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; margin: 18px 0; }
+.card svg { display: block; width: 100%; height: auto; }
+.card .cap { margin-top: 6px; color: var(--muted); font-size: 0.85rem; text-align: center; }
+table { border-collapse: collapse; font-size: 0.92em; width: 100%; margin: 1rem 0; text-align: start; }
+td, th { padding: 6px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; text-align: start; }
+th { color: var(--muted); font-weight: 600; }
+pre .del { color: #a8282f; } pre .add { color: #2e7a3a; } pre .c { color: var(--muted); }
+.bad { color: var(--bad); } .good { color: var(--good); } .seal { color: var(--seal); }
+.demo { background: #fff; border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; margin: 18px 0; text-align: start; }
+.demo .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.demo button { font: 14px/1.3 var(--mono-font); padding: 5px 10px; border: 1px solid var(--rule); border-radius: 5px; background: #f4f1ea; cursor: pointer; }
+.demo button[aria-pressed="true"] { background: #111; color: #fff; border-color: #111; }
+.demo pre { margin: 12px 0 0; white-space: pre-wrap; min-height: 4.5em; }
+.demo .hint { color: var(--muted); font-size: 0.85rem; margin-top: 6px; }
+</style>
+</head>
+<body>
+<header class="library"><div class="page-frame library-frame">
+  <div class="library-heading"><p class="eyebrow">Fil-C on Nix</p><h1><a href="../index.html">Filnix wiki</a></h1></div>
+  <nav class="doors">
+    <a class="door" href="../docs/">Docs</a>
+    <a class="door selected" href="../index.html#explainers">Explainers</a>
+    <a class="door" href="../nix/">Nix</a>
+    <a class="door" href="https://nix.swa.sh/">Campaigns</a>
+    <a class="door" href="https://github.com/mbrock/filnix">Source</a>
+  </nav>
+</div></header>
+<div class="status"><div class="page-frame status-frame">
+  <nav class="crumbs" aria-label="Breadcrumb"><a class="crumb" href="../index.html#explainers">Explainers</a><span class="crumb-sep">›</span><span class="crumb current">Sealed closures</span></nav>
+  <span class="status-right">staging only</span>
+</div></div>
+<main class="page-frame reading explainer">
+
+<p class="meta">Fil-C · runtime and compiler · proof of concept on the filnix staging toolchain (mbrock/fil-c staging-deluge 18b6663a) · <a href="https://github.com/mbrock/filnix/blob/main/patches/fil-c/sealed-closures.patch">sealed-closures.patch</a> + <a href="https://github.com/mbrock/filnix/blob/main/patches/fil-c/noinline-callee-users.patch">noinline-callee-users.patch</a></p>
+<h1>Sealed closures</h1>
+<p class="sub">Fil-C already makes pointers unforgeable. So can several mutually distrusting code chunks share one address space, call each other through closures and share objects, while none of them can see another's private state? Not with upstream closures: whoever holds one can read its data. <code>zclosure_new_sealed</code> makes a closure that callers can run but not open.</p>
+
+<h2>Closures hide nothing today</h2>
+<p>A Fil-C closure is a function pointer with a data pointer attached. The body reads it with <code>zcallee_closure_data()</code>. But the same data is available to anyone holding the closure:</p>
+<pre><code>void* zclosure_new(void* function, void* data);
+void* zclosure_get_data(void* closure);             <span class="bad">// any caller can read it</span>
+void  zclosure_set_data(void* closure, void* data); <span class="bad">// or swap it</span>
+void* zcallee_closure_data(void);                   <span class="c">// the running body</span></code></pre>
+<p>Worse, <code>zclosure_new(closure, forged)</code> copies the <i>code</i> of an existing closure and pairs it with new data, so a caller can run the body on state it built itself. The runtime only checks that the argument is a closure.</p>
+
+<h2>The API</h2>
+<pre><code>void* zclosure_new_sealed(void* function, void* data);</code></pre>
+<p>A sealed closure is called like any other, and its body reads its data with <code>zcallee_closure_data()</code> as before. Every other way to reach the data through the closure is a Fil-C safety error. The seal is set at creation and is permanent. Ordinary closures don't change.</p>
+
+<div class="demo">
+<p style="text-align:start;margin-top:0"><b>Try it.</b> Pick a closure and an operation. The output is what the staging runtime does; the test suite checks each of these at -O0 and -O2.</p>
+<div class="row" id="kinds">
+<button data-k="open" aria-pressed="false">zclosure_new(bump, c)</button>
+<button data-k="sealed" aria-pressed="true">zclosure_new_sealed(bump, c)</button>
+</div>
+<div class="row" id="ops">
+<button data-o="call" aria-pressed="true">f(1)</button>
+<button data-o="get" aria-pressed="false">zclosure_get_data(f)</button>
+<button data-o="set" aria-pressed="false">zclosure_set_data(f, forged)</button>
+<button data-o="rebind" aria-pressed="false">zclosure_new(f, forged)</button>
+<button data-o="read" aria-pressed="false">((int*)f)[8]</button>
+</div>
+<pre id="demo-out"></pre>
+<p class="hint">Reading through a function pointer fails for every function, sealed or not: function objects have no bytes in bounds.</p>
+</div>
+<script>
+(function(){
+var k='sealed',o='call',out=document.getElementById('demo-out');
+var R={
+ open:{call:['ok','returns 1: bump sees its counter'],get:['bad','returns c: the caller now owns the counter'],set:['bad','succeeds: bump now runs on forged'],rebind:['bad','returns a new closure running bump on forged'],read:['good','filc safety error: ... function ... out of bounds']},
+ sealed:{call:['ok','returns 1: bump sees its counter'],get:['good','filc safety error: closure ... is sealed.'],set:['good','filc safety error: closure ... is sealed.'],rebind:['good','filc safety error: cannot make a closure from sealed closure ...'],read:['good','filc safety error: ... function ... out of bounds']}};
+function draw(){var r=R[k][o];out.innerHTML='';var s=document.createElement('span');s.className=r[0]==='bad'?'bad':r[0]==='good'?'good':'';s.textContent=r[1];out.appendChild(s);}
+function wire(id,attr,set){var bs=document.getElementById(id).querySelectorAll('button');bs.forEach(function(b){b.addEventListener('click',function(){bs.forEach(function(x){x.setAttribute('aria-pressed','false');});b.setAttribute('aria-pressed','true');set(b.getAttribute(attr));draw();});});}
+wire('kinds','data-k',function(v){k=v;});wire('ops','data-o',function(v){o=v;});draw();
+})();
+</script>
+
+<h2>Where the seal lives</h2>
+<dl class="terms">
+<dt>function object</dt><dd>What a Fil-C function pointer's capability points to. Its payload holds the entry points and signature; its size is zero, so nothing can load or store through it.</dd>
+<dt>readonly flag</dt><dd>Plain functions are readonly function objects. A function object that is <i>not</i> readonly is a closure. Both runtime and compiler use that to recognize closures.</dd>
+<dt>flight pointer</dt><dd>A pointer with its capability: 16 bytes, 16-byte aligned.</dd>
+</dl>
+<p>The closure payload already had a spare word. The compiler's <code>filc_closure</code> type pads after the 24-byte function payload so that <code>data_ptr</code> lands 16-byte aligned at offset 32. The patch names that padding <code>closure_flags</code> and stores the seal there:</p>
+<div class="card">
+<svg viewBox="0 0 760 170" font-family="Public Sans, sans-serif" font-size="14" role="img" aria-label="filc_closure layout: three function words, closure_flags at offset 24, data_ptr at 32">
+  <g font-family="ui-monospace, monospace" font-size="13">
+    <rect x="20" y="40" width="120" height="56" fill="#2f6fb3" opacity="0.14" stroke="#2f6fb3"/><text x="80" y="73" text-anchor="middle">fast_entry</text>
+    <rect x="140" y="40" width="120" height="56" fill="#2f6fb3" opacity="0.14" stroke="#2f6fb3"/><text x="200" y="73" text-anchor="middle">generic_entry</text>
+    <rect x="260" y="40" width="120" height="56" fill="#2f6fb3" opacity="0.14" stroke="#2f6fb3"/><text x="320" y="73" text-anchor="middle">signature</text>
+    <rect x="380" y="40" width="120" height="56" fill="#6b4fa3" opacity="0.22" stroke="#6b4fa3" stroke-width="2"/><text x="440" y="66" text-anchor="middle" fill="#6b4fa3" font-weight="700">closure_flags</text><text x="440" y="84" text-anchor="middle" fill="#6b4fa3" font-size="11">was padding</text>
+    <rect x="500" y="40" width="240" height="56" fill="#d98a1c" opacity="0.16" stroke="#d98a1c"/><text x="620" y="73" text-anchor="middle">data_ptr (flight pointer)</text>
+  </g>
+  <g fill="#667078" font-size="12" font-family="ui-monospace, monospace">
+    <text x="20" y="30">0</text><text x="140" y="30">8</text><text x="260" y="30">16</text><text x="380" y="30">24</text><text x="500" y="30">32</text><text x="720" y="30">48</text>
+  </g>
+  <text x="200" y="124" text-anchor="middle" fill="#667078">filc_function, copied from the function</text>
+  <text x="440" y="124" text-anchor="middle" fill="#6b4fa3">0, or SEALED</text>
+  <text x="620" y="124" text-anchor="middle" fill="#667078">still at offset 32 (asserted)</text>
+  <text x="380" y="156" text-anchor="middle" fill="#667078" font-size="12">Written once in closure_new before the pointer is returned; never changed. The GC marks only data_ptr.</text>
+</svg>
+<div class="cap">The closure payload. Sealing changes no size, offset or ABI; existing closures get a zero where they had padding.</div>
+</div>
+<p>From there the runtime change is small. <code>closure_new</code> is the only place that makes non-readonly function objects, and it now always writes the flag word. <code>zclosure_get_data</code> and <code>zclosure_set_data</code> refuse sealed closures, and <code>closure_new</code> refuses to copy a sealed closure's code. The body's own read is unchanged: the compiler lowers <code>zcallee_closure_data()</code> inline to a check that the callee is a closure and a load at offset 32, so the seal costs a sealed body nothing.</p>
+
+<h2>The bypass review found: inlining moves the read</h2>
+<p><code>zcallee_closure_data()</code> means “the data of the closure the <i>current function</i> was called through”. FilPizlonator reads it from the function's hidden callee argument. But LLVM's inliner runs <i>before</i> FilPizlonator. If a module calls a closure body directly from some other function, the body can be inlined, and its read then uses the <i>other</i> function's callee:</p>
+<pre><code>static int body(void) { return *(int*)zcallee_closure_data(); }
+
+int helper(void) { return body(); }   <span class="c">// exported, or its pointer leaked</span>
+
+<span class="c">// elsewhere, attacker code:</span>
+int (*evil)(void) = zclosure_new(helper, &amp;forged);
+evil();   <span class="bad">// -O2: body's code runs on forged data</span></code></pre>
+<div class="card">
+<svg viewBox="0 0 760 210" font-family="Public Sans, sans-serif" font-size="14" role="img" aria-label="Without the fix, body's read is inlined into helper and reads the attacker's closure; with the fix, body stays a call and its read panics">
+  <defs><marker id="ah" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="#111"/></marker></defs>
+  <text x="190" y="22" text-anchor="middle" font-weight="700" fill="#9a3248">before: body inlined into helper</text>
+  <rect x="40" y="40" width="300" height="60" fill="#9a3248" opacity="0.1" stroke="#9a3248"/>
+  <text x="190" y="64" text-anchor="middle" font-family="ui-monospace, monospace" font-size="13">closure(helper, &amp;forged)</text>
+  <text x="190" y="84" text-anchor="middle" font-size="12" fill="#667078">callee = attacker's closure</text>
+  <path d="M190 102 L190 130" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <rect x="40" y="134" width="300" height="50" fill="#fff" stroke="#9a3248" stroke-width="2"/>
+  <text x="190" y="156" text-anchor="middle" font-family="ui-monospace, monospace" font-size="13">helper { load data_ptr }</text>
+  <text x="190" y="174" text-anchor="middle" font-size="12" fill="#9a3248">reads &amp;forged → LEAK 7</text>
+  <text x="570" y="22" text-anchor="middle" font-weight="700" fill="#3d7a3d">after: body stays noinline</text>
+  <rect x="420" y="40" width="300" height="60" fill="#3d7a3d" opacity="0.1" stroke="#3d7a3d"/>
+  <text x="570" y="64" text-anchor="middle" font-family="ui-monospace, monospace" font-size="13">helper → call body</text>
+  <text x="570" y="84" text-anchor="middle" font-size="12" fill="#667078">direct call passes body's readonly object</text>
+  <path d="M570 102 L570 130" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <rect x="420" y="134" width="300" height="50" fill="#fff" stroke="#3d7a3d" stroke-width="2"/>
+  <text x="570" y="156" text-anchor="middle" font-family="ui-monospace, monospace" font-size="13">body { callee is a closure? }</text>
+  <text x="570" y="174" text-anchor="middle" font-size="12" fill="#3d7a3d">no → safety error</text>
+</svg>
+<div class="cap">The sealed closure is never touched: the attacker wraps a different function that happens to contain the body's code.</div>
+</div>
+<p>On the staging toolchain without the compiler patch, the <code>inline</code> probe prints <code class="bad">LEAK 7</code> at -O2 and panics at -O0. The fix is a module pass at the start of the Fil-C pipeline. It marks every function that calls <code>zcallee()</code> or <code>zcallee_closure_data()</code> <code>noinline</code>, removing <code>always_inline</code> if present. Upstream's own <code>zcalleedirect</code> tests already mark their functions <code>noinline</code>, for the same reason. This also fixes what an inlined <code>zcallee()</code> returns in programs that don't use sealing.</p>
+
+<h2>What the review found holds</h2>
+<ul>
+<li><b>Calls from the runtime.</b> Signal handlers, <code>pthread_create</code>, fibers, <code>zcall</code>, atexit, ifuncs and unwinder callbacks all pass the target's own capability. None can give a sealed body a different callee.</li>
+<li><b>Reading the object.</b> Function objects have zero size, <code>free</code> refuses them, and <code>closure_new</code> copies only the function part and rejects sealed sources.</li>
+<li><b>Inside the body.</b> <code>zcallee()</code> returns the sealed closure itself, which is still sealed.</li>
+<li><b><code>dlsym</code></b> only returns readonly function objects for exported symbols.</li>
+<li><b>GC and JIT.</b> Marking ignores the flag word, and the JIT shares the compiler's layout.</li>
+</ul>
+
+<h2>What sealing does not do</h2>
+<table>
+<tr><th>Path</th><th>Why the seal doesn't cover it</th></tr>
+<tr><td>another pointer to the data</td><td>The seal guards the closure, not the object. Don't let the body return, store or throw its data.</td></tr>
+<tr><td>the body function itself</td><td>Anyone who can name <code>bump</code> can run <code>zclosure_new(bump, forged)</code>. Keep bodies <code>static</code>. In C++, inline functions, templates and lambdas have linkonce linkage; use an anonymous namespace.</td></tr>
+<tr><td>re-entry and interruption</td><td>Callbacks, signals, threads, <code>longjmp</code> and exceptions can interleave with the body. It must keep its own invariants.</td></tr>
+<tr><td>the operating system</td><td>All chunks share syscalls, files, threads, signals and <code>exit</code>. Readable <code>/proc/self/mem</code> is not refused. Isolating that needs seccomp or similar.</td></tr>
+<tr><td>non-Fil-C code</td><td>One chunk built with <code>-yolo-assembler</code> or native assembly breaks it for all. Whole-program LTO across chunks is untested.</td></tr>
+</table>
+
+<h2>The pattern</h2>
+<pre><code>struct counter { long count; };
+
+static long bump(long by)            <span class="c">// static: only this file can name it</span>
+{
+    struct counter* c = zcallee_closure_data();
+    return c-&gt;count += by;
+}
+
+long (*make_counter(void))(long)     <span class="c">// handed to other chunks</span>
+{
+    return <span class="seal">zclosure_new_sealed</span>(bump, calloc(1, sizeof(struct counter)));
+}</code></pre>
+<p>Each chunk keeps its state in <code>static</code> storage or objects only it points to, and exports sealed closures over that state built from <code>static</code> functions. Shared objects pass as ordinary pointers. For per-instance handles, use sealed closures like this counter, or integers from a private <code>zexact_ptrtable</code>.</p>
+
+<h2>Tests</h2>
+<p><code>checks.x86_64-linux.staging-sealed-closures</code> builds two programs at -O0 and -O2:</p>
+<ul>
+<li><b><code>sealed.c</code></b>: two sealed counters keep separate state over 1000 calls and repeated GC cycles. It also checks that a sealed body's <code>zcallee()</code> is itself, that ordinary closures still read, write and rebind, and that wrapping an ordinary closure seals it.</li>
+<li><b><code>probe.c</code></b>: one mode per way to reach the data (<code>get</code>, <code>set</code>, <code>rebind</code>, <code>rebind-sealed</code>, <code>get-self</code>, <code>read</code>, <code>inline</code>, <code>plain</code>). Each must stop with a Fil-C safety error carrying the expected message and never print <code>LEAK</code>.</li>
+</ul>
+<table>
+<tr><th>Probe <code>inline</code></th><th>-O0</th><th>-O2</th></tr>
+<tr><td>staging, runtime patch only</td><td class="good">safety error</td><td class="bad">LEAK 7</td></tr>
+<tr><td>staging, runtime + compiler patch</td><td class="good">safety error</td><td class="good">safety error</td></tr>
+</table>
+
+<p class="meta">Proof of concept, applied only by filnix's staging toolchain; the release toolchain is unchanged. Details and the review notes are in <a href="../docs/sealed-closures.html">docs/sealed-closures.md</a>. Not proposed upstream yet.</p>
+
+</main>
+</body>
+</html>

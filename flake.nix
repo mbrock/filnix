@@ -243,6 +243,9 @@
             staging-llvm-jit = import ./tests/llvm-jit.nix {
               pkgsFilc = pkgsFilcStaging;
             };
+            staging-sealed-closures = import ./tests/sealed-closures.nix {
+              pkgsFilc = pkgsFilcStaging;
+            };
             staging-cxx-coroutines = import ./tests/cxx-coroutines.nix {
               pkgsFilc = pkgsFilcStaging;
             };

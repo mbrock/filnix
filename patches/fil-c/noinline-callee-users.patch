@@ -1,0 +1,63 @@
+diff --git a/llvm/lib/Passes/RegisterFilPasses.cpp b/llvm/lib/Passes/RegisterFilPasses.cpp
+index 92f4817c08c..292f926d072 100644
+--- a/llvm/lib/Passes/RegisterFilPasses.cpp
++++ b/llvm/lib/Passes/RegisterFilPasses.cpp
+@@ -2,6 +2,7 @@
+ 
+ #include "llvm/Analysis/GlobalsModRef.h"
+ #include "llvm/Analysis/ProfileSummaryInfo.h"
++#include "llvm/IR/InstIterator.h"
+ #include "llvm/Passes/PassBuilder.h"
+ #include "llvm/Transforms/Coroutines/CoroCleanup.h"
+ #include "llvm/Transforms/Coroutines/CoroConditionalWrapper.h"
+@@ -27,6 +28,42 @@
+ 
+ using namespace llvm;
+ 
++namespace {
++
++// zcallee() and zcallee_closure_data() read the closure that the function containing them was
++// called through. Inlined into a caller, they would read the caller's closure instead, and anyone
++// who can make a closure of the caller could run the callee's code on data of their choosing,
++// bypassing a sealed closure. So functions that use them are never inlined.
++struct NoInlineCalleeUsersPass : PassInfoMixin<NoInlineCalleeUsersPass> {
++  PreservedAnalyses run(Module& M, ModuleAnalysisManager&) {
++    bool Changed = false;
++    for (Function& F : M) {
++      if (F.isDeclaration())
++        continue;
++      bool UsesCallee = false;
++      for (Instruction& I : instructions(F)) {
++        if (CallBase* CI = dyn_cast<CallBase>(&I)) {
++          if (Function* Callee = dyn_cast<Function>(CI->getCalledOperand())) {
++            if (Callee->getName() == "zcallee" || Callee->getName() == "zcallee_closure_data") {
++              UsesCallee = true;
++              break;
++            }
++          }
++        }
++      }
++      if (!UsesCallee || F.hasFnAttribute(Attribute::NoInline))
++        continue;
++      F.removeFnAttr(Attribute::AlwaysInline);
++      F.addFnAttr(Attribute::NoInline);
++      Changed = true;
++    }
++    return Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
++  }
++  static bool isRequired() { return true; }
++};
++
++} // anonymous namespace
++
+ static cl::opt<bool> FilCKillUB(
+   "filc-killub", cl::desc("Run the KillUB pass"), cl::Hidden, cl::init(true));
+ static cl::opt<bool> FilCOptimize(
+@@ -72,6 +109,7 @@ static cl::opt<bool> FilCDSE(
+ void llvm::RegisterFilPasses(PassBuilder& PB, FilJITConfiguration* jitConfig) {
+   PB.registerPipelineStartEPCallback(
+     [jitConfig](ModulePassManager &MPM, OptimizationLevel Level) {
++      MPM.addPass(NoInlineCalleeUsersPass());
+       if (FilCKillUB)
+         MPM.addPass(KillUBPass());
+       if (Level != OptimizationLevel::O0 && FilCOptimize) {

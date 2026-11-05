@@ -29,7 +29,9 @@ in
       sources.variant == "release"
     ) ../patches/fil-c/runtime-exception-unwind.patch
     # zsys_brk reports the program break, so sbrk(0) works as it does natively.
-    ++ [ ../patches/filc-runtime-brk-query.patch ];
+    ++ [ ../patches/filc-runtime-brk-query.patch ]
+    # Proof of concept: zclosure_new_sealed (docs/sealed-closures.md).
+    ++ pkgs.lib.optional (sources.variant == "staging") ../patches/fil-c/sealed-closures.patch;
 
     nativeBuildInputs = [
       pkgs.gnumake

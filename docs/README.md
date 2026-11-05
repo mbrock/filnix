@@ -40,6 +40,8 @@ individual ports needed, and how the port campaigns run. The repository's
   package-local integration fixes, and validation results.
 - [Fil-C behaviour found while porting](filc-findings.md): compiler and
   runtime findings to report upstream, each with its filnix workaround.
+- [Sealed closures](sealed-closures.md): a staging-only proof of concept
+  for closures whose callers cannot read or replace their data.
 - [Fil-C symbols and libtool](toolchain-symbols.md): why libtool's `nm` probe
   fails on Fil-C objects.
 - [zstd with SaRCAsm](zstd-sarcasm.md): zstd's BMI2 assembly decoder loops

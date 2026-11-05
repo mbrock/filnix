@@ -62,7 +62,14 @@ in
 
     #    patches = [ ./filc0-symver.patch ];
     # Records read from a precompiled header keep their union handling.
-    patches = [ ../patches/fil-c/clang-pch-has-union.patch ];
+    patches = [
+      ../patches/fil-c/clang-pch-has-union.patch
+    ]
+    # Sealed closures (docs/sealed-closures.md): functions that read their
+    # callee are not inlined, so the read stays in the function it was written in.
+    ++ pkgs.lib.optional (
+      sources.variant == "staging"
+    ) ../patches/fil-c/noinline-callee-users.patch;
 
     enableParallelBuilding = true;
 

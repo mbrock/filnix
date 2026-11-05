@@ -1,0 +1,158 @@
+diff --git a/filc/include/stdfil.h b/filc/include/stdfil.h
+index 051a9a04b6d..5921e9d0f93 100644
+--- a/filc/include/stdfil.h
++++ b/filc/include/stdfil.h
+@@ -727,17 +727,30 @@ void* zcallee(void);
+    awkwardly, `foo_closure == foo`. */
+ void* zclosure_new(void* function, void* data);
+ 
+-/* Get the data for the given closure. If the passed-in pointer is not a closure pointer, then this
+-   panics. */
++/* Create a sealed closure. It is called like any closure, and its function reads the data with
++   zcallee_closure_data(), but nothing else can get to the data through the closure:
++   zclosure_get_data and zclosure_set_data panic on it, and zclosure_new and zclosure_new_sealed
++   refuse to rebind it to other data. The seal is set at creation and cannot be removed.
++
++   This lets a module hand out a callable interface without handing out the state behind it. The
++   seal protects only the path through the closure: the data stays reachable through any other
++   pointer to it, so keep the data private to the module. And if other code can reach `function`
++   itself, it can make its own closure of it with data of its choosing, so keep the function
++   static, or otherwise unexposed, when it must trust its data. */
++void* zclosure_new_sealed(void* function, void* data);
++
++/* Get the data for the given closure. If the passed-in pointer is not a closure pointer, or is a
++   sealed closure, then this panics. */
+ void* zclosure_get_data(void* closure);
+ 
+-/* Set the data for the given closure. If the passed-in pointer is not a closure pointer, then this
+-   panics. */
++/* Set the data for the given closure. If the passed-in pointer is not a closure pointer, or is a
++   sealed closure, then this panics. */
+ void zclosure_set_data(void* closure, void* data);
+ 
+ /* Get the data for the currently called closure. If the callee is not a closure, then this panics.
+  
+-   This is a fast shorthand for zclosure_get_data(zcallee()). */
++   This is a fast shorthand for zclosure_get_data(zcallee()), except that it also works when the
++   callee is a sealed closure. */
+ void* zcallee_closure_data(void);
+ 
+ /* Request and wait for a fresh garbage collection cycle. If a GC cycle is already happening, then this
+diff --git a/libpas/src/libpas/filc_runtime.c b/libpas/src/libpas/filc_runtime.c
+index 01cb7db608f..532f85bc020 100644
+--- a/libpas/src/libpas/filc_runtime.c
++++ b/libpas/src/libpas/filc_runtime.c
+@@ -587,6 +587,7 @@ void filc_initialize(filc_stack_limit stack_limit)
+     PAS_ASSERT(FILC_OBJECT_AUX_FLAGS_SHIFT == 48);
+     PAS_ASSERT(sizeof(filc_object) == 16);
+     PAS_ASSERT(FILC_SPECIAL_TYPE_FUNCTION == 1);
++    PAS_ASSERT(PAS_OFFSETOF(filc_closure, data_ptr) == 32);
+     PAS_ASSERT(FILC_SPECIAL_TYPE_MASK == 15);
+     PAS_ASSERT(FILC_OBJECT_FLAG_GLOBAL == 1);
+     PAS_ASSERT(FILC_OBJECT_FLAG_READONLY == 2);
+@@ -8567,9 +8568,33 @@ void filc_native_zfiber_context_swapcontext(filc_thread* my_thread, filc_ptr fro
+ }
+ #endif /* FILC_HAS_FIBER_CONTEXT -> so end of !FILC_HAS_FIBER_CONTEXT */
+ 
+-filc_ptr filc_native_zclosure_new(filc_thread* my_thread, filc_ptr function_ptr, filc_ptr data_ptr)
++static bool closure_is_sealed(filc_object* object)
++{
++    return !(filc_object_get_flags(object) & FILC_OBJECT_FLAG_READONLY)
++        && (((filc_closure*)filc_object_special_payload_with_manual_tracking(object))->closure_flags
++            & FILC_CLOSURE_FLAG_SEALED);
++}
++
++static void check_unsealed_closure(filc_object* object)
++{
++    check_closure(object, NULL);
++    FILC_CHECK(
++        !closure_is_sealed(object),
++        NULL,
++        "closure %s is sealed.",
++        filc_object_to_new_string(object));
++}
++
++static filc_ptr closure_new(filc_thread* my_thread, filc_ptr function_ptr, filc_ptr data_ptr,
++                            uintptr_t closure_flags)
+ {
+     filc_check_function_call(function_ptr);
++    /* Rebinding a sealed closure to new data would let anyone run its code on forged state. */
++    FILC_CHECK(
++        !closure_is_sealed(filc_ptr_object(function_ptr)),
++        NULL,
++        "cannot make a closure from sealed closure %s.",
++        filc_object_to_new_string(filc_ptr_object(function_ptr)));
+     filc_function* old_function = (filc_function*)filc_ptr_ptr(function_ptr);
+     filc_object* new_object = (filc_object*)filc_thread_allocate(
+         my_thread, sizeof(filc_object) + sizeof(filc_closure)).begin;
+@@ -8580,15 +8605,27 @@ filc_ptr filc_native_zclosure_new(filc_thread* my_thread, filc_ptr function_ptr,
+     filc_closure* new_function = (filc_closure*)
+         filc_object_special_payload_with_manual_tracking(new_object);
+     new_function->base = *old_function;
++    new_function->closure_flags = closure_flags;
+     filc_flight_ptr_store(my_thread, &new_function->data_ptr, data_ptr);
+     return filc_ptr_create_with_object_and_ptr_and_manual_tracking(new_object, new_function);
+ }
+ 
++filc_ptr filc_native_zclosure_new(filc_thread* my_thread, filc_ptr function_ptr, filc_ptr data_ptr)
++{
++    return closure_new(my_thread, function_ptr, data_ptr, 0);
++}
++
++filc_ptr filc_native_zclosure_new_sealed(filc_thread* my_thread, filc_ptr function_ptr,
++                                         filc_ptr data_ptr)
++{
++    return closure_new(my_thread, function_ptr, data_ptr, FILC_CLOSURE_FLAG_SEALED);
++}
++
+ filc_ptr filc_native_zclosure_get_data(filc_thread* my_thread, filc_ptr function_ptr)
+ {
+     PAS_UNUSED_PARAM(my_thread);
+     filc_check_function_call(function_ptr);
+-    check_closure(filc_ptr_object(function_ptr), NULL);
++    check_unsealed_closure(filc_ptr_object(function_ptr));
+     filc_closure* function = (filc_closure*)
+         filc_object_special_payload_with_manual_tracking(filc_ptr_object(function_ptr));
+     return filc_flight_ptr_load_with_manual_tracking(&function->data_ptr);
+@@ -8597,7 +8634,7 @@ filc_ptr filc_native_zclosure_get_data(filc_thread* my_thread, filc_ptr function
+ void filc_native_zclosure_set_data(filc_thread* my_thread, filc_ptr function_ptr, filc_ptr data_ptr)
+ {
+     filc_check_function_call(function_ptr);
+-    check_closure(filc_ptr_object(function_ptr), NULL);
++    check_unsealed_closure(filc_ptr_object(function_ptr));
+     filc_closure* function = (filc_closure*)
+         filc_object_special_payload_with_manual_tracking(filc_ptr_object(function_ptr));
+     filc_flight_ptr_store(my_thread, &function->data_ptr, data_ptr);
+diff --git a/libpas/src/libpas/filc_runtime.h b/libpas/src/libpas/filc_runtime.h
+index e14eb2100a8..2011d77c5e7 100644
+--- a/libpas/src/libpas/filc_runtime.h
++++ b/libpas/src/libpas/filc_runtime.h
+@@ -705,8 +705,16 @@ struct filc_function {
+     filc_signature signature;
+ };
+ 
++#define FILC_CLOSURE_FLAG_SEALED ((uintptr_t)1) /* zclosure_get_data and zclosure_set_data refuse
++                                                  the closure, and zclosure_new refuses to rebind
++                                                  it. Only zcallee_closure_data, which reads the
++                                                  data of the function that is running, sees it. */
++
+ struct filc_closure {
+     filc_function base;
++    uintptr_t closure_flags; /* Set at creation, never changed. Occupies what the compiler's
++                                filc_closure type treats as padding, so data_ptr stays where
++                                zcallee_closure_data loads it. */
+     filc_ptr data_ptr; /* Used by closures. */
+ };
+ 
+diff --git a/libpas/src/libpas/generate_pizlonated_forwarders.rb b/libpas/src/libpas/generate_pizlonated_forwarders.rb
+index 8494345509c..11ad753ba18 100644
+--- a/libpas/src/libpas/generate_pizlonated_forwarders.rb
++++ b/libpas/src/libpas/generate_pizlonated_forwarders.rb
+@@ -173,6 +173,7 @@ addSig nil, "void", "zsafety_error", "filc_ptr"
+ addSig nil, "exception/filc_ptr", "zcall", "filc_ptr", "filc_ptr"
+ addSig nil, "filc_ptr", "zget_jmp_buf_impl_frame", "filc_ptr"
+ addSig nil, "filc_ptr", "zclosure_new", "filc_ptr", "filc_ptr"
++addSig nil, "filc_ptr", "zclosure_new_sealed", "filc_ptr", "filc_ptr"
+ addSig nil, "filc_ptr", "zclosure_get_data", "filc_ptr"
+ addSig nil, "void", "zclosure_set_data", "filc_ptr", "filc_ptr"
+ addSig nil, "bool", "zis_runtime_testing_enabled"
