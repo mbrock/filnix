@@ -1,11 +1,11 @@
-# A NixOS VM whose whole userland is Fil-C (nixos/userland.nix): it boots,
-# a user logs in on the console, and PID 1 and the main services map the
-# Fil-C runtime.
+# A NixOS VM whose whole userland is Fil-C (nixosModules.default): it boots,
+# a user logs in on the console, PID 1 and the main services map the Fil-C
+# runtime, and filc-ps finds no native process but the allowed exceptions.
 #
 #   nix build .#nixosTests.userland
 {
   pkgs,
-  userlandModule,
+  filcModule,
 }:
 pkgs.testers.runNixOSTest {
   name = "filc-userland";
@@ -15,8 +15,8 @@ pkgs.testers.runNixOSTest {
   nodes.machine =
     { lib, ... }:
     {
-      imports = [ userlandModule ];
-      filc.userland.enable = true;
+      imports = [ filcModule ];
+      filc.enable = true;
 
       virtualisation.memorySize = 2048;
       users.users.alice = {
@@ -58,5 +58,12 @@ pkgs.testers.runNixOSTest {
             exe = machine.succeed(f"readlink -f /proc/{pid}/exe").strip()
             machine.succeed(f"grep -q libpizlo /proc/{pid}/maps")
             print("Fil-C %-16s %6s %s" % (what, pid, exe), flush=True)
+
+    with subtest("no native process but the allowed exceptions"):
+        print(machine.succeed("filc-ps"))
+        # The rule has teeth: a native program outside the exceptions fails it.
+        machine.succeed("${pkgs.coreutils}/bin/sleep 600 >/dev/null 2>&1 &")
+        out = machine.fail("filc-ps")
+        assert "not an allowed native exception" in out, out
   '';
 }

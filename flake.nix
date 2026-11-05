@@ -100,6 +100,38 @@
             };
 
           pkgsFilc = mkPkgsFilc { };
+
+          # The package set of a whole Fil-C system (lib/filc-system.nix):
+          # Rust and Go refused, and the native exceptions taken from a
+          # native Nixpkgs, the built-in ones for `os` and those `native`
+          # picks from it.
+          mkPkgsFilcSystem =
+            {
+              os,
+              native ? _: { },
+              nativePackages ? pkgs,
+              nativeNix ? true,
+            }:
+            let
+              builtin = nixlib.filterAttrs (
+                name: e: nixlib.elem os e.os && (name != "nix" || nativeNix)
+              ) (import ./lib/native-exceptions.nix);
+            in
+            mkPkgsFilc {
+              blockRustGo = true;
+              crossOverlays = [
+                (
+                  final: prev:
+                  nixlib.mapAttrs (name: _: nativePackages.${name}) builtin
+                  // native nativePackages
+                )
+              ];
+            };
+          # Shared by every system that adds no exceptions of its own.
+          pkgsFilcSystem = nixlib.genAttrs [ "nixos" "finix" ] (
+            os: mkPkgsFilcSystem { inherit os; }
+          );
+
           # Explicit reproduction outputs only; the ordinary package set still
           # refuses this vulnerable PHP unless the caller opts in.
           pkgsFilcPhp84_25 = mkPkgsFilc {
@@ -177,7 +209,9 @@
         {
           lib.${system} = {
             queryPackage = import ./scripts/query-package.nix pkgs;
-            inherit mkPkgsFilc;
+            inherit mkPkgsFilc mkPkgsFilcSystem;
+            # The native Nixpkgs that a Fil-C system's exceptions come from.
+            nativePackages = pkgs;
             # Fil-C docs, pass and runtime at the pin, for reading
             # (lib/sources.nix): nix build .#lib.x86_64-linux.filc-ref-src
             filc-ref-src = (import ./lib/sources.nix { inherit pkgs; }).filc-ref-src;
@@ -363,6 +397,9 @@
             runtime-prctl-caps = import ./tests/runtime-prctl-caps.nix {
               inherit pkgsFilc;
             };
+            native-exceptions-table = import ./tests/native-exceptions-table.nix {
+              inherit pkgs;
+            };
             # Boots finixConfigurations.filc-demo; see finix/test.nix.
             finix-filc-demo = import ./finix/test.nix {
               inherit pkgs finix;
@@ -443,76 +480,61 @@
 
           overlays.default = import ./ports/overlay.nix pkgs;
 
-          # Run chosen NixOS services and programs as Fil-C builds; see
-          # nixos/filc.nix, docs/nixos.md and the two example machines.
-          nixosModules = rec {
-            filc = import ./nixos/filc.nix { filnix = self; };
-            # The whole userland, systemd included; see docs/nixos-userland.md.
-            filc-userland = import ./nixos/userland.nix { filnix = self; };
-            default = filc;
-          };
-          # A finix system whose whole userland is Fil-C; see finix/userland.nix.
-          finixModules = rec {
-            filc-userland = import ./finix/userland.nix { filnix = self; };
-            default = filc-userland;
-          };
-
-          nixosConfigurations =
-            let
-              machine =
-                module:
-                import "${nixpkgs}/nixos/lib/eval-config.nix" {
-                  inherit system;
-                  modules = [
-                    self.nixosModules.filc
-                    module
-                  ];
-                };
-            in
-            {
-              filc-demo = machine ./nixos/demo.nix;
-              ec2-filc = machine ./nixos/ec2.nix;
-            };
+          # A NixOS or finix system whose `pkgs` is the Fil-C package set;
+          # see lib/filc-system.nix and docs/nixos.md.
+          nixosModules.default = import ./nixos { filnix = self; };
+          finixModules.default = import ./finix { filnix = self; };
+          # A Fil-C NixOS, with the NixOS modules of filnix's own Nixpkgs:
+          # the Fil-C ports (systemd's above all) are built and tested
+          # against those, not against another release's.
+          lib.nixosSystem =
+            args:
+            import "${nixpkgs}/nixos/lib/eval-config.nix" (
+              {
+                system = null;
+              }
+              // args
+              // {
+                modules = [
+                  self.nixosModules.default
+                  { filc.enable = nixlib.mkDefault true; }
+                ]
+                ++ args.modules or [ ];
+              }
+            );
 
           # The finix machine with a Fil-C userland; see finix/demo.nix.
           finixConfigurations.filc-demo = (import finix).lib.finixSystem {
             lib = nixlib;
             modules = [
-              self.finixModules.filc-userland
+              self.finixModules.default
               "${finix}/modules/virtualisation/qemu.nix"
               ./finix/demo.nix
-              { filc.userland.system = system; }
+              { filc.system = system; }
             ];
           };
 
           # Export the full cross-compiled package sets
           legacyPackages.${system} = {
-            inherit pkgsFilc pkgsFilcStaging;
-            # NixOS VM tests of Fil-C services; see tests/nixos/default.nix.
-            nixosTests =
-              import ./tests/nixos {
-                inherit pkgs pkgsFilc;
-                filcModule = self.nixosModules.filc;
-              }
-              // {
-                userland = import ./tests/nixos/userland.nix {
-                  inherit pkgs;
-                  userlandModule = self.nixosModules.filc-userland;
-                };
-              };
+            inherit pkgsFilc pkgsFilcStaging pkgsFilcSystem;
+            # NixOS VM tests of Fil-C systems; see tests/nixos/default.nix.
+            nixosTests = import ./tests/nixos {
+              inherit pkgs pkgsFilc;
+              filcModule = self.nixosModules.default;
+            };
           };
 
           packages.${system} = {
             default = filcc;
             baseline = baseline.baseline;
-            # Fil-C, runtime and native ELF files in a closure (docs/finix.md).
+            # Fil-C, runtime and native ELF files in a closure (docs/nixos.md).
             filc-audit = pkgs.writeShellApplication {
               name = "filc-audit";
               runtimeInputs = [
                 pkgs.binutils-unwrapped
                 pkgs.findutils
               ];
-              text = builtins.readFile ./finix/filc-audit.sh;
+              text = builtins.readFile ./lib/filc-audit.sh;
             };
             baseline-shell = baseline.shell;
             inherit

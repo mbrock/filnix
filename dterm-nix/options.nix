@@ -5,7 +5,7 @@
 # module declares and the ones it sets, so the index follows the modules
 # without being edited by hand.
 #
-# Paths are relative: "nixos/filc.nix" in filnix, "nixpkgs/…" in Nixpkgs.
+# Paths are relative: "lib/filc-system.nix" in filnix, "nixpkgs/…" in Nixpkgs.
 {
   lib,
   # Nixpkgs' eval-config.nix, applied to a system and modules.
@@ -23,49 +23,57 @@ let
   # The exported modules: each with the file it is in and the machine it
   # is evaluated in. The machine only supplies definitions; the options
   # listed are the ones declared in the module's file and the ones its
-  # config sets. A module the flake does not export (yet) is left out.
+  # config sets. Both exported modules import the shared core,
+  # lib/filc-system.nix, which is listed on its own: `module` is the
+  # function in `file` whose config is walked, when it is not the exported
+  # module itself. A module the flake does not export (yet) is left out.
   here = "dterm-nix/options.nix";
+  nixosMachine = {
+    _file = here;
+    filc.enable = true;
+    boot.loader.grub.enable = false;
+    fileSystems."/".device = "none";
+    system.stateVersion = "26.05";
+  };
+  finixMachine = {
+    _file = here;
+    filc.enable = true;
+  };
   modules = lib.filter (m: lib.hasAttrByPath m.attr filnix) [
     {
       attr = [
         "nixosModules"
-        "filc"
+        "default"
       ];
+      name = "filc-system";
+      title = "NixOS and finix: lib/filc-system.nix";
       kind = "nixos";
-      file = "${filnixRoot}/nixos/filc.nix";
-      machine = "${filnixRoot}/nixos/demo.nix";
-      machineFile = "${filnixRoot}/nixos/demo.nix";
+      file = "${filnixRoot}/lib/filc-system.nix";
+      module = import "${filnixRoot}/lib/filc-system.nix" {
+        inherit filnix;
+        os = "nixos";
+      };
+      machine = nixosMachine;
+      machineFile = here;
     }
     {
       attr = [
         "nixosModules"
-        "filc-userland"
+        "default"
       ];
       kind = "nixos";
-      file = "${filnixRoot}/nixos/userland.nix";
-      machine = {
-        _file = here;
-        filc.userland.enable = true;
-        boot.loader.grub.enable = false;
-        fileSystems."/".device = "none";
-        system.stateVersion = "26.05";
-      };
+      file = "${filnixRoot}/nixos/default.nix";
+      machine = nixosMachine;
       machineFile = here;
     }
     {
       attr = [
         "finixModules"
-        "filc-userland"
+        "default"
       ];
       kind = "finix";
-      file = "${filnixRoot}/finix/userland.nix";
-      machine = {
-        _file = here;
-        filc.userland = {
-          enable = true;
-          system = "x86_64-linux";
-        };
-      };
+      file = "${filnixRoot}/finix/default.nix";
+      machine = finixMachine;
       machineFile = here;
     }
   ];
@@ -239,11 +247,12 @@ let
   evaluate =
     m:
     let
-      module = lib.getAttrFromPath m.attr filnix;
+      exported = lib.getAttrFromPath m.attr filnix;
+      module = m.module or exported;
       inMachine = [
         {
           _file = m.file;
-          imports = [ module ];
+          imports = [ exported ];
         }
         m.machine
       ];
@@ -288,7 +297,8 @@ let
     in
     {
       inherit (m) kind;
-      name = lib.concatStringsSep "." m.attr;
+      name = m.name or (lib.concatStringsSep "." m.attr);
+      title = m.title or null;
       file = rel m.file;
       machine = rel m.machineFile;
       options = map (entry "declared") declared ++ map setEntry setPaths';

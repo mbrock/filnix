@@ -1,6 +1,6 @@
 # A small finix machine whose whole userland is Fil-C: finit as PID 1,
 # mdevd, sysklogd, dhcpcd, OpenSSH, the shell and the tools are Fil-C
-# builds; only the kernel and the exceptions in finix/userland.nix are not.
+# builds; only the kernel and the exceptions in lib/native-exceptions.nix are not.
 # Try it:
 #
 #   nix run .#finixConfigurations.filc-demo.config.system.build.vm
@@ -29,7 +29,7 @@ in
     nix-daemon
   ];
 
-  filc.userland.enable = true;
+  filc.enable = true;
 
   networking.hostName = lib.mkDefault "filc-demo";
 

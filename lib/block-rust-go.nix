@@ -38,7 +38,11 @@ stdenvAdapters.overrideMkDerivationArgs (
         // lib.optionalAttrs (blocked != null) {
           filc = {
             kind = "broken";
-            message = "${blocked} has no Fil-C target. Use the native build instead (filc.userland.native in finix), or leave it out.";
+            message =
+              let
+                name = old.pname or (lib.getName (old.name or "it"));
+              in
+              "${blocked} has no Fil-C target. Take the native build instead, with filc.native = native: { inherit (native) ${name}; }; in your system's configuration, or leave it out.";
           };
         };
     };

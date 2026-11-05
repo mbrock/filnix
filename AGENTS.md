@@ -112,6 +112,15 @@ This flake replicates these stages as Nix derivations.
 - Before adopting changes to Fil-C compiler semantics, capability tracking, GC, or glibc/runtime behavior, develop the proposed approach and consult Oracle about soundness and alternatives. Give it the relevant code and invariants while leaving room for independent analysis.
 - Resolve review findings and run targeted regressions before updating the toolchain pin. Passing package tests alone does not establish memory safety. This review requirement does not apply to ordinary package-local build fixes.
 
+### NixOS and finix: the whole system is the product
+
+- The unit is a whole system whose `pkgs` is pkgsFilc (`nixosModules.default`, `finixModules.default`, one core in `lib/filc-system.nix`). Services are Fil-C because modules pick `pkgs.X`, not because filnix names them.
+- Exceptions are the only knob. Each is a whole native package, written as a Nix value (`filc.native = native: { inherit (native) x; }`), never a string list. The built-in ones are data with a reason in `lib/native-exceptions.nix`, and the docs table is generated from it.
+- No per-service or per-tool switches. If a service needs a Fil-C fix, put it in its port.
+- Prove the negative: tests and machines pass when every native process is an allowed exception (`filc-ps`), not when a hand-listed set is Fil-C.
+- Anything a user downloads or boots is a flake output that the campaign builds and caches. CI only substitutes it and smoke-tests it. Images ship their pinned flake and the binary cache.
+- Keep the module small and readable; one Fil-C daemon on a stock NixOS is a docs recipe, not module support.
+
 ### Key Files in This Repo
 
 - **flake.nix**: Main Nix flake exposing fil-c packages

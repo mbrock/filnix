@@ -120,37 +120,29 @@ Projects that use CMake, Meson or Autotools work the same way. Add the tool to
 `nativeBuildInputs` come from `pkgsFilc.buildPackages` and run natively.
 Everything in `buildInputs` is compiled with Fil-C.
 
-### NixOS
+### NixOS and finix
 
-filnix's NixOS support is a small flavor of NixOS that makes as much of the
-system memory safe as it can, one whole program at a time:
-
-| Step | What is Fil-C | How |
-|----|----|----|
-| Some services | the daemons you choose | `filc.openssh.enable` and other switches, or any `services.X.package = config.filc.packages.X` |
-| Services, shell and tools | also Bash, Nix and the programs on PATH | `filc.enable`, `filc.tools` |
-| Whole userland | all but the kernel, bootloader and listed exceptions | `nixosModules.filc-userland` ([docs](docs/nixos-userland.md)), or [finix](docs/finix.md)'s `finixModules.filc-userland` |
+filnix's NixOS is a whole system whose `pkgs` is the Fil-C package set:
+systemd, PAM, D-Bus, OpenSSH and every service you enable are Fil-C builds.
+Only the kernel, the bootloader and a short list of exceptions
+([lib/native-exceptions.nix](lib/native-exceptions.nix)) stay native, and
+you add your own as Nix values:
 
 ``` nix
-{
-  imports = [ filnix.nixosModules.filc ];
-  filc.enable = true;                   # sshd, Bash, Tor, Unbound, lighttpd, Nix, …
-  filc.tools = [ "coreutils" "curl" ];  # Fil-C programs on PATH
-  services.openssh.enable = true;
-}
+nixosConfigurations.host = filnix.lib.nixosSystem {
+  modules = [
+    { filc.native = native: { inherit (native) tailscale; }; }
+    ./configuration.nix
+  ];
+};
 ```
 
-The Fil-C services run Nixpkgs' own NixOS tests, and `filc-status` shows
-which programs on the machine are Fil-C. A demo VM runs the Fil-C sshd, Bash,
-Unbound, lighttpd and Nix:
-
-``` bash
-nix run github:mbrock/filnix#nixosConfigurations.filc-demo.config.system.build.vm
-ssh -p 2222 demo@localhost   # password "demo"
-```
-
-See [docs/nixos.md](docs/nixos.md), including what you give up (sshd without
-PAM, Nix without a sandbox, no nginx). `pkgsFilc.nix` is Nix itself built
+The same module is `nixosModules.default` and, for
+[finix](docs/finix.md), `finixModules.default`. `filc-ps` on the machine
+checks that every running process is Fil-C or an allowed exception; the VM
+tests run it after Nixpkgs' own tests of each service. See
+[docs/nixos.md](docs/nixos.md), including what you give up (no Rust or Go
+unless native, no nscd, more memory). `pkgsFilc.nix` is Nix itself built
 with Fil-C; it passes Nix's unit and functional tests.
 
 ### PHP

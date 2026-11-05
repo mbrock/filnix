@@ -1,8 +1,8 @@
 # Boot the example finix machine (finix/demo.nix) with finix's own VM test
 # driver and check that its userland is Fil-C: PID 1, the shells and sshd map
-# the Fil-C runtime, an ssh login gets a Fil-C shell, no running process is
-# native except the Nix daemon, and every native ELF file in the closure
-# belongs to one of the expected exceptions (finix/filc-audit.sh).
+# the Fil-C runtime, an ssh login gets a Fil-C shell, filc-ps finds no
+# native process but the allowed exceptions, and every native ELF file in
+# the closure belongs to one of them (lib/filc-audit.sh).
 {
   pkgs,
   finix,
@@ -29,12 +29,12 @@ testLib.mkTest {
     { config, lib, ... }:
     {
       imports = [
-        filnix.finixModules.filc-userland
+        filnix.finixModules.default
         ./demo.nix
       ];
-      filc.userland.system = pkgs.stdenv.hostPlatform.system;
+      filc.system = pkgs.stdenv.hostPlatform.system;
       # The test library sets the native package set; the module replaces it.
-      nixpkgs.pkgs = lib.mkForce config.filc.userland.packages;
+      nixpkgs.pkgs = lib.mkForce config.filc.packages;
       # finix's test network brings eth0 up with ifupdown-ng (Fil-C, with
       # libbsd). dhcpcd also runs; it gets no lease, as there is no server.
     };
@@ -44,11 +44,11 @@ testLib.mkTest {
     let
       cfg = nodes.machine.config;
       closure = pkgs.closureInfo { rootPaths = [ cfg.system.topLevel ]; };
-      # The packages finix/userland.nix takes from the native set, with their
+      # The native exceptions the system uses (lib/native-exceptions.nix), with their
       # closures. Fil-C's glibc keeps native bash for the shebangs of its
       # scripts (ldd and friends); the setuid wrappers are added by name below.
       expectedNative = pkgs.closureInfo {
-        rootPaths = with cfg.filc.userland.packages; [
+        rootPaths = with cfg.filc.packages; [
           nix
           userborn
           pkgsBuildBuild.bashNonInteractive
@@ -101,21 +101,10 @@ testLib.mkTest {
           print(out)
           assert int(out.split()[-1]) > 0, out
 
-      with subtest("no running process is native but the Nix daemon"):
-          census = machine.succeed(
-              "for d in /proc/[0-9]*; do "
-              "  grep -q . $d/maps 2>/dev/null || continue; "  # kernel threads map nothing
-              "  if grep -q libpizlo $d/maps; then k=Fil-C; else k=native; fi; "
-              "  echo \"$k ''${d#/proc/} $(readlink $d/exe)\"; "
-              "done"
-          )
-          print(census)
-          rows = [(line.split(" ", 2) + [""])[:3] for line in census.splitlines() if line]
-          native = [r for r in rows if r[0] == "native"]
-          filc = {r[2].rsplit("/", 1)[-1] for r in rows if r[0] == "Fil-C"}
-          assert {"finit", "sshd", "bash"} <= filc, filc
-          unexpected = [r for r in native if not r[2].endswith("/bin/nix-daemon") and not r[2].endswith("/bin/nix")]
-          assert not unexpected, f"native processes: {unexpected}"
+      with subtest("no native process but the allowed exceptions"):
+          # filc-ps reads the exceptions' closures from the Nix database,
+          # which this VM, with the host's store over 9p, does not have.
+          print(machine.succeed("filc-ps --allow ${expectedNative}/store-paths"))
 
       with subtest("native ELF files belong to the expected exceptions"):
           allow = "${expectedNative}/store-paths"

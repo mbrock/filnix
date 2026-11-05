@@ -29,7 +29,7 @@ filnix-native port of the mechanism, not the upstream overlay:
   never overriding it,
 - with a canary/verifier rewritten for pizlonated symbol names,
 - exposed to services through the NixOS module
-  ([`nixos/filc.nix`](../nixos/filc.nix)), starting with PHP-FPM — the
+  ([`lib/filc-system.nix`](../lib/filc-system.nix)), starting with PHP-FPM — the
   service both projects independently chose as their motivating example.
 
 Everything labelled **observed** below was run during this investigation.
@@ -121,11 +121,13 @@ Two filnix-specific facts sharpen the middle rows:
   exists to remove — for native binaries it is the *only* precondition an
   exploit writer needs beyond the bug itself, and under Fil-C it remains
   useful for every residual row in the table.
-- **A filnix system is a mixed system.**
-  [`nixos/filc.nix`](../nixos/filc.nix) swaps chosen services (sshd, tor,
-  unbound, lighttpd, redis, bind, php-fpm, optionally Nix and the login
-  shell) for Fil-C builds and explicitly leaves systemd, glibc, and the
-  kernel native. For those native parts funkyenv applies today, unchanged,
+- **A filnix system still has native parts.** When this was written, the
+  NixOS module swapped chosen services for Fil-C builds and left systemd,
+  glibc and the kernel native. The module is now a whole Fil-C system
+  ([`lib/filc-system.nix`](../lib/filc-system.nix)), but the kernel, the
+  bootloader, Nix and the other packages in
+  [`lib/native-exceptions.nix`](../lib/native-exceptions.nix) stay native.
+  For those native parts funkyenv applies today, unchanged,
   and nothing about Fil-C weakens its case there. A complete "funky
   filnix host" story is two independent switches, not one.
 
@@ -484,7 +486,7 @@ The remaining pieces, each small:
   demangled C names (filnix's patched `nm -C` already strips
   `pizlonated_` unless `FILC_PRESERVE_PREFIX` is set — reuse it).
 - **NixOS surface:** `filc.shuffleSeed` (null or int) in
-  `nixos/filc.nix`, applied by rebuilding `filc.packages` via
+  `lib/filc-system.nix`, applied by rebuilding `filc.packages` via
   `mkPkgsFilc { shuffleSeed = cfg.shuffleSeed; }`, with documentation
   that this (a) forks the world, (b) must not point at the public
   caches, and (c) composes with — does not replace — upstream funkyenv
@@ -567,7 +569,7 @@ Upstream sources consulted: funkyenv `README.md`, `funkyenv.nix`,
 [`toolchain/wrappers.nix`](../toolchain/wrappers.nix),
 [`toolchain/binutils.nix`](../toolchain/binutils.nix),
 [`lib/default.nix`](../lib/default.nix),
-[`nixos/filc.nix`](../nixos/filc.nix),
+[`lib/filc-system.nix`](../lib/filc-system.nix),
 [`docs/toolchain-symbols.md`](toolchain-symbols.md),
 [`tests/link-hygiene.nix`](../tests/link-hygiene.nix),
 [`tests/wrapper-roles.nix`](../tests/wrapper-roles.nix),

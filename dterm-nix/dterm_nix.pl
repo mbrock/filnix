@@ -30,7 +30,7 @@
 
     Usage: swipl dterm_nix.pl OUT ROOT [--files=LIST] FILE... draws
     ROOT/FILE as OUT/PAGE.html for each FILE (a path under ROOT, such as
-    nixos/filc.nix), and OUT/index.html. A path in the code or a comment
+    lib/filc-system.nix), and OUT/index.html. A path in the code or a comment
     links to the repository's file when there is one: in ROOT, or with
     --files, in LIST, one repository path per line. The pages expect dterm.css and
     dterm.js at ../nanofil/ and dterm-nix.css and dterm-nix.js beside

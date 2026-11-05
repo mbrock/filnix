@@ -69,12 +69,12 @@ left-associative fails 8 of this repository's files.
 
 ## The option index
 
-`options.html` lists, for each exported module (`nixosModules.filc`,
-`nixosModules.filc-userland` once the flake has it,
-`finixModules.filc-userland`), the options declared in the module's file
+`options.html` lists, for each exported module (`nixosModules.default`,
+`finixModules.default`, and the shared core `lib/filc-system.nix` that both
+import), the options declared in the module's file
 and the options its config sets. [options.nix](options.nix) evaluates
-each module in a machine (NixOS's filc with `nixos/demo.nix`, which only
-supplies definitions) and writes each option's declarations, type,
+each module in a small machine of its own, which only supplies
+definitions, and writes each option's declarations, type,
 default, example, description and defining files; the site build runs
 it, so the page follows the modules with no hand edits.
 
@@ -131,7 +131,7 @@ links a package to.
 ## Running it
 
 ```sh
-swipl dterm-nix/dterm_nix.pl OUT . [--files=LIST --options=JSON --nixpkgs=DIR] nixos/filc.nix finix/userland.nix
+swipl dterm-nix/dterm_nix.pl OUT . [--files=LIST --options=JSON --nixpkgs=DIR] lib/filc-system.nix nixos/default.nix
 dterm-nix/tests/parse.sh               # every .nix file in the repository
 ```
 

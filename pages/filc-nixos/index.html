@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fil-C NixOS: a memory-safe flavor of NixOS and finix · Filnix</title>
-<meta property="og:title" content="Fil-C NixOS: a memory-safe flavor of NixOS and finix">
-<meta property="og:description" content="One scale from native NixOS to a whole Fil-C userland: a few services, then the shell and tools, then everything but the kernel, on NixOS or finix. What each step costs, what is tested, and how a machine proves which of its programs are Fil-C.">
+<title>Fil-C NixOS: a memory-safe NixOS and finix · Filnix</title>
+<meta property="og:title" content="Fil-C NixOS: a memory-safe NixOS and finix">
+<meta property="og:description" content="A whole NixOS or finix system whose packages are Fil-C builds: systemd, PAM, D-Bus and every service, with the kernel, the bootloader and a short list of exceptions native. One module, what it costs, and how the machine proves nothing else runs native.">
 <meta property="og:image" content="https://mbrock.github.io/filnix/filc-nixos/poster.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -70,254 +70,141 @@ pre.out { font-size: 0.78em; }
 </div></div>
 <main class="page-frame reading explainer">
 
-<p class="meta">NixOS 26.05 · Fil-C 0.687 · nixosModules.filc, nixosModules.filc-userland and finixModules.filc-userland · November 2026</p>
-<h1>Fil&#8209;C NixOS: a memory&#8209;safe flavor of NixOS and finix</h1>
-<p class="sub">filnix builds Nixpkgs packages with Fil-C, so a memory error in them stops the program instead of corrupting its memory. Its NixOS support lets you choose how much of a machine runs those builds: a few daemons, then the shell and the tools, then the whole userland. Each step uses the same Nixpkgs sources and NixOS modules you already have, Nixpkgs' own tests check it, and the machine can tell you which of its programs are Fil-C.</p>
+<p class="meta">NixOS 26.05 · Fil-C 0.687 · nixosModules.default and finixModules.default · November 2026</p>
+<h1>Fil&#8209;C NixOS: a memory&#8209;safe NixOS and finix</h1>
+<p class="sub">filnix builds Nixpkgs packages with Fil-C, so a memory error in them stops the program instead of corrupting its memory. Its NixOS is a whole system built that way: <code>pkgs</code> is the Fil-C package set, so systemd, PAM, D-Bus, OpenSSH and every service you enable are Fil-C builds, from the same Nixpkgs sources and NixOS modules you already know. Only the kernel, the bootloader and a short, written-down list of exceptions stay native, and the machine checks that.</p>
 
-<h2>One scale, four steps</h2>
-<p>A process is either all Fil-C or all native. A Fil-C program can't load a native library, and a native program can't load a Fil-C one. So the unit of choice is a whole program, and a system moves along this scale one program at a time. Pick a step to see what changes:</p>
+<h2>The whole system</h2>
+<p>A process is either all Fil-C or all native. A Fil-C program can't load a native library, and a native program can't load a Fil-C one. So rather than swap programs one at a time, filnix swaps the package set: NixOS modules take their programs from <code>pkgs</code>, and <code>pkgs</code> is Fil-C. The exceptions are whole packages from a native Nixpkgs.</p>
 
 <div class="card" id="scale">
-  <div class="steps" role="group" aria-label="Step">
-    <button data-step="0">0. Native<small>plain NixOS</small></button>
-    <button data-step="1">1. Services<small>the daemons you pick</small></button>
-    <button data-step="2">2. Shell and tools<small>the demo VM</small></button>
-    <button data-step="3">3. Whole userland<small>finix and NixOS</small></button>
+  <div class="steps" role="group" aria-label="Operating system">
+    <button data-step="0">NixOS<small>systemd 260</small></button>
+    <button data-step="1">finix<small>finit, no systemd</small></button>
   </div>
   <div class="layers" id="layers"></div>
   <div class="legend"><span><i style="background:var(--filc)"></i>Fil-C</span><span><i style="background:var(--native)"></i>native</span></div>
   <div class="stepinfo" id="stepinfo"></div>
-  <div class="cap">Steps 1 and 2 add Fil-C programs to a native NixOS. At step 3 everything starts as Fil-C and you list what stays native.</div>
 </div>
 <script>
 (function(){
-var L=[['Kernel, bootloader','k'],['Init, systemd','i'],['glibc, PAM, D-Bus','g'],['Daemons','d'],['Login shell','s'],['Tools on PATH','t'],['Nix','n']];
+var L=[['Kernel, bootloader','k'],['Init','i'],['glibc, PAM, D-Bus','g'],['Daemons','d'],['Login shell','s'],['Programs','t'],['Nix','n'],['Boot and activation tools','b']];
 var S=[
- {k:'native',i:'native',g:'native',d:'native',s:'native',t:'native',n:'native',
-  info:'<p>Ordinary NixOS. Nothing is Fil-C, and nothing costs more.</p>'},
- {k:'native',i:'native',g:'native',d:'filc:sshd, Unbound, lighttpd, Tor, BIND, Redis, PHP-FPM…',s:'native',t:'native',n:'native',
-  info:'<p>The services you choose run their Fil-C builds; everything else stays as it was. Seven services have a switch, and any service with a package option works the same way. <b>Tested</b> with Nixpkgs\' own VM tests of each. <a href="#step-1">Step 1</a></p><pre><code>filc.openssh.enable = true;\nservices.mosquitto.package = config.filc.packages.mosquitto;\nfilc.units = [ "mosquitto" ];</code></pre>'},
- {k:'native',i:'native',g:'native',d:'filc:sshd, Unbound, lighttpd…',s:'filc:Bash',t:'filc:coreutils, grep, curl, git, python3…',n:'filc:Fil-C Nix, without a build sandbox',
-  info:'<p>Add the login shell, the programs on PATH and Nix. The demo VM is this step, and its VM test passes, Fil-C Nix building a derivation included. <a href="#step-2">Step 2</a></p><pre><code>filc.enable = true;\nfilc.tools = [ "coreutils" "curl" "git" ];</code></pre>'},
- {k:'native',i:'filc:finit or systemd 260',g:'filc:glibc, PAM, dbus-daemon',d:'filc:sshd, logind, journald…',s:'filc:Bash',t:'filc:everything',n:'native',
-  info:'<p>Now <code>pkgs</code> itself is Fil-C, and the options name the exceptions: the kernel, the bootloader, Nix and a short list. Both finix (<code>finixModules.filc-userland</code>) and NixOS (<code>nixosModules.filc-userland</code>) boot to a login this way, and their VM tests pass. On finix, 64% of the ELF files are Fil-C programs and libraries, 14% are the Fil-C runtime, and the rest are on the exception list. <a href="#step-3">Step 3</a></p><pre><code>filc.userland.enable = true;\nfilc.userland.native = [ "tailscale" ];</code></pre>'}
+ {k:'native:kernel, GRUB',i:'filc:systemd 260.4, in the initrd and after',g:'filc:glibc, Linux-PAM, dbus-daemon',d:'filc:journald, logind, udevd, sshd, every service',s:'filc:Bash',t:'filc:everything in pkgs',n:'native:Nix, with its build sandbox',b:'native:Rust: nixos-init, the initrd builder, switch-to-configuration',
+  info:'<p><code>nixosModules.default</code>, or <code>filnix.lib.nixosSystem</code>. Its VM test boots through a Fil-C initrd, logs a user in through the Fil-C PAM, and finds no native process outside the exceptions.</p>'},
+ {k:'native:kernel, limine',i:'filc:finit 4.17',g:'filc:glibc, Linux-PAM',d:'filc:mdevd, sysklogd, dhcpcd, sshd',s:'filc:Bash',t:'filc:everything in pkgs',n:'native:Nix, with its build sandbox',b:'native:userborn (Rust)',
+  info:'<p><code>finixModules.default</code>, the same module on <a href="https://github.com/finix-community/finix">finix</a>, a small NixOS-like distribution with finit as init. Its VM test boots, logs in over ssh and audits every ELF file in the system.</p>'}
 ];
 var bs=document.querySelectorAll('#scale .steps button'),ly=document.getElementById('layers'),inf=document.getElementById('stepinfo');
 function show(n){
   var s=S[n],h='';
-  L.forEach(function(l){var v=s[l[1]],c=v.split(':')[0],t=v.indexOf(':')>0?v.slice(v.indexOf(':')+1):(c==='native'?'native':'');
+  L.forEach(function(l){var v=s[l[1]],c=v.split(':')[0],t=v.indexOf(':')>0?v.slice(v.indexOf(':')+1):c;
     h+='<div class="name">'+l[0]+'</div><div class="bar '+c+'">'+t+'</div>';});
   ly.innerHTML=h;inf.innerHTML=s.info;
   bs.forEach(function(b){b.setAttribute('aria-pressed',b.dataset.step==n?'true':'false');});
 }
 bs.forEach(function(b){b.addEventListener('click',function(){show(+b.dataset.step);});});
-show(2);
+show(0);
 })();
 </script>
-<noscript><p>Step 0: plain NixOS. Step 1: chosen daemons are Fil-C. Step 2: also the login shell, the tools on PATH and Nix. Step 3: everything except the kernel, the bootloader and a short exception list.</p></noscript>
+<noscript><p>On NixOS and finix alike, everything is Fil-C except the kernel, the bootloader, Nix and a few Rust boot tools.</p></noscript>
 </div>
 
-<p>Steps 1 and 2 are one module, <code>nixosModules.filc</code> (<a href="../nix/nixos-filc.html">nixos/filc.nix</a>), on your own NixOS. <code>pkgs</code> stays your Nixpkgs, and the Fil-C packages come from filnix's pinned Nixpkgs and its binary cache, so most of a rebuild is downloads. Step 3 is a second pair of modules with the same options: <code>nixosModules.filc-userland</code> (<a href="../nix/nixos-userland.html">nixos/userland.nix</a>) on NixOS, and <code>finixModules.filc-userland</code> (<a href="../nix/finix-userland.html">finix/userland.nix</a>) on <a href="https://github.com/finix-community/finix">finix</a>. Every option is in the <a href="../nix/options.html">options reference</a>.</p>
-<pre><code><span class="c"># flake.nix</span>
-inputs.filnix.url = "github:mbrock/filnix";
-
-nixosConfigurations.host = nixpkgs.lib.nixosSystem {
-  system = "x86_64-linux";
-  modules = [ filnix.nixosModules.filc ./configuration.nix ];
-};</code></pre>
-<pre><code><span class="c"># nix.conf: skip most of the build</span>
-extra-substituters = https://filc.cachix.org
-extra-trusted-public-keys = filc.cachix.org-1:8rA7kXyu1HaJuMTsAKfA9fU/+r8YtLv5KiZ5hfDNZMk=</code></pre>
-
-<h2 id="step-1">Step 1: services</h2>
-<p>A switch sets one service's package option to the Fil-C build. Enable the service as usual: the switch only chooses the package. It sets the package at normal priority, so if your configuration also sets it, you get a conflict, not a silent choice.</p>
-<table>
-<tr><th>Switch</th><th>Sets</th></tr>
-<tr><td><a href="../nix/options.html#opt-filc.openssh.enable"><code>filc.<wbr>openssh.<wbr>enable</code></a></td><td><code>services.<wbr>openssh.<wbr>package</code>, with <code>UsePAM = false</code></td></tr>
-<tr><td><code>filc.tor.enable</code>, <code>filc.<wbr>unbound.<wbr>enable</code>, <code>filc.<wbr>lighttpd.<wbr>enable</code>, <code>filc.<wbr>redis.<wbr>enable</code></td><td>that service's <code>package</code></td></tr>
-<tr><td><a href="../nix/options.html#opt-filc.bind.enable"><code>filc.<wbr>bind.<wbr>enable</code></a></td><td><code>services.<wbr>bind.<wbr>package</code>: see <a href="../fil-bind/">Fil-BIND</a></td></tr>
-<tr><td><a href="../nix/options.html#opt-filc.phpfpm.enable"><code>filc.<wbr>phpfpm.<wbr>enable</code></a></td><td><code>services.<wbr>phpfpm.<wbr>phpPackage</code>, and the PHP of MediaWiki, DokuWiki and Nextcloud: see <a href="../php-on-filc/">PHP on Fil-C</a></td></tr>
-</table>
-<p>The switches are the services filnix tests on every change, not the only ones you can use. Any NixOS service with a package option can run a Fil-C build. Set the option yourself, and list the unit in <a href="../nix/options.html#opt-filc.units"><code>filc.units</code></a> so it gets checked:</p>
-<pre><code>{ config, ... }: {
-  services.mosquitto.enable = true;
-  services.mosquitto.package = config.filc.packages.mosquitto;
-  filc.units = [ "mosquitto" ];
-}</code></pre>
-<p>Whether a package builds with Fil-C and passes its own tests is on the <a href="https://nix.swa.sh/">campaign dashboard</a>.</p>
-<p><b>Tested with Nixpkgs' own tests.</b> The VM tests (<a href="https://github.com/mbrock/filnix/blob/main/tests/nixos/default.nix">tests/nixos</a>) take Nixpkgs' test of each service, unchanged, and add the module to every node. Then, after the test's own script passes, they check that every unit in <code>filc.units</code> that is still running maps the Fil-C runtime, <code>libpizlo.so</code>, into its memory. A test therefore can't pass on a native build by accident. The log ends with a table of what it found. These are from today's runs of Nixpkgs' lighttpd and mosquitto tests on swa (store hashes shortened here). Mosquitto has no switch; it is the general pattern above:</p>
-<pre class="out"><code><span class="c"># vm-test-run-filc-lighttpd</span>
-Fil-C server       lighttpd         /nix/store/…-lighttpd-x86_64-unknown-linux-gnufilc0-1.4.85/bin/lighttpd
-<span class="c"># vm-test-run-filc-mosquitto</span>
-Fil-C server       mosquitto        /nix/store/…-mosquitto-x86_64-unknown-linux-gnufilc0-2.1.2/bin/mosquitto</code></pre>
-<p id="tests-status">There are 20 such tests, and all 20 ran on swa at this revision:</p>
-<table>
-<tr><th>Test</th><th>What runs Fil-C</th><th>Result</th></tr>
-<tr><td>lighttpd, bind, tor</td><td>the server; for Tor, all 13 nodes of a private Tor network with a hidden service</td><td class="good">pass, unchanged</td></tr>
-<tr><td>unbound</td><td>three resolvers</td><td class="good">pass; <code>unbound-full</code> without its Python plugin, which the test doesn't use</td></tr>
-<tr><td>openssh</td><td>sshd on 9 of its nodes</td><td class="good">pass; the node without OpenSSL keeps the native sshd, and two <code>pam_limits</code> checks instead check that the limit is absent</td></tr>
-<tr><td>mosquitto</td><td>the broker, through the general pattern above</td><td class="good">pass, unchanged</td></tr>
-<tr><td>php-fpm</td><td>PHP-FPM, behind native nginx</td><td class="good">pass</td></tr>
-<tr><td>WordPress, DokuWiki, MediaWiki (5 setups), Nextcloud (3 setups)</td><td>the apps' PHP-FPM pools, and Redis for Nextcloud with PostgreSQL and Redis</td><td class="good">pass, with more memory</td></tr>
-<tr><td>redis, php-lighttpd</td><td>Redis; lighttpd serving PHP-FPM over FastCGI</td><td class="good">pass (our own tests); the Redis build skips redis-cli's timing-bound cluster tests</td></tr>
-<tr><td>demo (step 2, below)</td><td>sshd, Bash, Unbound, lighttpd, the tools and Nix</td><td class="good">pass (our own test), Fil-C Nix included</td></tr>
-</table>
-<p>Getting there found two things worth knowing. Fil-C Tor stopped in every ntor v3 handshake: its constant-time key lookup picks between two pointers by masking their integer values, and an integer made that way has no capability, so the first read through it trapped and the relays never bootstrapped. Its port now puts both pointers in a two-element array and indexes it with the comparison's 0 or 1, which keeps the capability and no longer branches on which key matched; that rests on the code Fil-C generates, with each pointer's capability in a separate shadow area, so it has to be rechecked when the toolchain changes (see the <a href="../docs/filc-findings.html#a-constant-time-pointer-select-through-integers-loses-the-capability">findings</a>). And without PAM, sshd treats every account whose password starts with <code>!</code> as locked, which NixOS sets for every user without a password, so key-only users couldn't log in. The switch's sshd leaves that check out, as NixOS's own sshd does by using PAM.</p>
-
-<h2 id="step-2">Step 2: the shell and the tools</h2>
-<p><code>filc.enable = true</code> turns on every switch. It also makes Bash the login shell of root and normal users (<code>filc.shell</code>), and uses the Fil-C Nix for the daemon and the CLI (<code>filc.nix</code>). <a href="../nix/options.html#opt-filc.tools"><code>filc.tools</code></a> puts Fil-C programs on PATH, ahead of native programs with the same name. Any switch can be turned off again.</p>
-<p>The demo machine, <code>nixosConfigurations.filc-demo</code> (<a href="https://github.com/mbrock/filnix/blob/main/nixos/demo.nix">nixos/demo.nix</a>), is this step: the Fil-C sshd, Unbound, lighttpd and Bash, and nineteen tools from coreutils to Python. It ships <code>filc-status</code>, which lists each unit in <code>filc.units</code> with the program it runs, then the login shell, Nix and each tool. Here it is as root in the demo VM, from a run of its VM test on main (store hashes shortened):</p>
-<pre class="out"><code>Fil-C   lighttpd       /nix/store/…-lighttpd-x86_64-unknown-linux-gnufilc0-1.4.85/bin/lighttpd
-Fil-C   sshd           /nix/store/…-openssh-x86_64-unknown-linux-gnufilc0-10.5p1/bin/sshd
-Fil-C   unbound        /nix/store/…-unbound-x86_64-unknown-linux-gnufilc0-1.26.0/bin/unbound
--       nix-daemon     not running
-Fil-C   login shell    /nix/store/…-bash-interactive-x86_64-unknown-linux-gnufilc0-5.3p9/bin/bash
-Fil-C   nix            /nix/store/…-nix-x86_64-unknown-linux-gnufilc0-2.34.8/bin/nix
-Fil-C   coreutils      /nix/store/…-coreutils-x86_64-unknown-linux-gnufilc0-9.11/bin/coreutils
-Fil-C   findutils      /nix/store/…-findutils-x86_64-unknown-linux-gnufilc0-4.10.0/bin/find
-Fil-C   gnugrep        /nix/store/…-gnugrep-x86_64-unknown-linux-gnufilc0-3.12/bin/grep
-Fil-C   gnused         /nix/store/…-gnused-x86_64-unknown-linux-gnufilc0-4.10/bin/sed
-Fil-C   gawk           /nix/store/…-gawk-x86_64-unknown-linux-gnufilc0-5.4.1/bin/gawk
-Fil-C   diffutils      /nix/store/…-diffutils-x86_64-unknown-linux-gnufilc0-3.12/bin/cmp
-Fil-C   gnutar         /nix/store/…-gnutar-x86_64-unknown-linux-gnufilc0-1.35/bin/tar
-Fil-C   xz             /nix/store/…-xz-x86_64-unknown-linux-gnufilc0-5.8.4-bin/bin/xz
-Fil-C   zstd           /nix/store/…-zstd-x86_64-unknown-linux-gnufilc0-1.5.7-bin/bin/zstd
-Fil-C   file           /nix/store/…-file-x86_64-unknown-linux-gnufilc0-5.47/bin/file
-Fil-C   less           /nix/store/…-less-x86_64-unknown-linux-gnufilc0-692/bin/less
-Fil-C   nano           /nix/store/…-nano-x86_64-unknown-linux-gnufilc0-9.2/bin/nano
-Fil-C   tmux           /nix/store/…-tmux-x86_64-unknown-linux-gnufilc0-3.6a/bin/tmux
-Fil-C   curl           /nix/store/…-curl-x86_64-unknown-linux-gnufilc0-8.22.0-bin/bin/curl
-Fil-C   git            /nix/store/…-git-2.46.0-x86_64-unknown-linux-gnufilc0/bin/git
-Fil-C   jq             /nix/store/…-jq-x86_64-unknown-linux-gnufilc0-1.8.2-bin/bin/jq
-Fil-C   sqlite         /nix/store/…-sqlite-interactive-x86_64-unknown-linux-gnufilc0-3.51.2-bin/bin/sqlite3
-Fil-C   python3        /nix/store/…-python3-3.12.5-x86_64-unknown-linux-gnufilc0/bin/python3.12
-Fil-C   perl           /nix/store/…-perl-x86_64-unknown-linux-gnufilc0-5.40.0/bin/perl</code></pre>
-<p>The Nix daemon starts on its socket's first connection, and the test's builds run as root, which uses the store directly, so it shows <code>-</code>, "not running". The <code>nix</code> row is the Fil-C Nix that built a derivation in the same test. A unit counts as Fil-C if its running process maps libpizlo. A program counts as Fil-C if its ELF headers name the Fil-C loader as its interpreter or libpizlo as a needed library, the same rule the finix audit applies to a whole closure. A normal user can't read the memory maps of root's services, so for <code>demo</code> the three daemons come out as <code>?</code>, which means "run as root to check", not "native":</p>
-<pre class="out"><code>?       lighttpd       run as root to check
-?       sshd           run as root to check
-?       unbound        run as root to check
--       nix-daemon     not running
-Fil-C   login shell    /nix/store/…-bash-interactive-x86_64-unknown-linux-gnufilc0-5.3p9/bin/bash
-…</code></pre>
-<p><code>filc-status</code> exits with status 1 if a listed unit runs a native program. In the same run the test logged in through the Fil-C sshd, and the shell it got was Bash 5.3 with the runtime in its own memory map:</p>
-<pre class="out"><code>5.3.9(1)-release
-7098bb623000-7098bb682000 r--p 00000000 00:22 1093556587                 /nix/store/…-filc-crt-lib/libpizlo.so</code></pre>
-<p>To try the demo yourself:</p>
-<pre><code>nix run github:mbrock/filnix#nixosConfigurations.filc-demo.config.system.build.vm
-ssh -p 2222 demo@localhost        <span class="c"># password "demo"</span>
-curl localhost:8080               <span class="c"># Served by Fil-C lighttpd</span></code></pre>
-
-<h2 id="step-3">Step 3: the whole userland</h2>
-<p>At step 3, <code>pkgs</code> itself is the Fil-C package set. NixOS modules take their packages from <code>pkgs</code>, so init, the shell, OpenSSH, sudo, PAM, D-Bus, Python and the rest become Fil-C without an override each. The options switch from "what becomes Fil-C" to "what stays native".</p>
-<p>There is a module for each: <a href="../nix/options.html#opt-filc.userland.enable"><code>nixosModules.filc-userland</code></a> (<a href="../nix/nixos-userland.html">nixos/userland.nix</a>) for NixOS, and <a href="../nix/options.html#finix-opt-filc.userland.enable"><code>finixModules.filc-userland</code></a> for <a href="https://github.com/finix-community/finix">finix</a>, a small NixOS-like distribution with finit as init and no systemd. Both take the same <code>filc.userland</code> options. Both machines boot to a login and pass their VM tests. That took a batch of fixes to Fil-C's glibc and runtime: directory walks, <code>brk</code>, <code>settimeofday</code> and a few other calls used raw <code>syscall</code> instructions, which Fil-C stops a program on rather than run machine code it hasn't checked, and the runtime refused the <code>prctl</code> calls that set a service's capabilities.</p>
-<pre><code><span class="c"># NixOS</span>
-nixosConfigurations.host = nixpkgs.lib.nixosSystem {
-  system = "x86_64-linux";
+<h2 id="module">One module</h2>
+<p>One small module does it for both systems: <a href="../nix/lib-filc-system.html">lib/filc-system.nix</a>, exported as <code>nixosModules.default</code> and <code>finixModules.default</code> through two thin wrappers. It has no per-service switches and no lists of names. The only knob is the exceptions, written as Nix values, so a typo fails evaluation:</p>
+<pre><code><span class="c"># NixOS, with the NixOS modules of filnix's pinned Nixpkgs</span>
+nixosConfigurations.host = filnix.lib.nixosSystem {
   modules = [
-    filnix.nixosModules.filc-userland
-    { filc.userland.enable = true;
-      filc.userland.native = [ "tailscale" ]; }
+    { filc.native = native: { inherit (native) tailscale; }; }
     ./configuration.nix
   ];
 };
 
 <span class="c"># finix</span>
-nixosConfigurations.host = finix.lib.finixSystem {
+finixConfigurations.host = finix.lib.finixSystem {
   inherit (nixpkgs) lib;
   modules = [
-    filnix.finixModules.filc-userland
-    { filc.userland = { enable = true; system = "x86_64-linux";
-                        native = [ "tailscale" ]; }; }
+    filnix.finixModules.default
+    { filc.enable = true; filc.native = native: { inherit (native) tailscale; }; }
     ./configuration.nix
   ];
 };</code></pre>
-<p>What always stays native, and why:</p>
-<table>
-<tr><th>Package</th><th>Why</th></tr>
-<tr><td>the kernel and its modules</td><td>Fil-C can't build the kernel</td></tr>
-<tr><td><code>grub2</code>, <code>kexec-tools</code> (NixOS); <code>limine</code>, <code>sbctl</code>, <code>efibootmgr</code> (finix)</td><td>the bootloader and its install hook run before any userland, and kexec loads freestanding code</td></tr>
-<tr><td><code>pkgsStatic</code>, <code>glibc</code></td><td>setuid wrappers are static, and Fil-C doesn't link statically; glibc only for a header they use</td></tr>
-<tr><td><code>nix</code></td><td>unless <code>nativeNix = false</code>: the Fil-C Nix can't sandbox builds</td></tr>
-<tr><td><code>nixos-init</code>, <code>makeInitrdNGTool</code>, <code>switch-to-configuration-ng</code>, <code>fish</code> (NixOS); <code>userborn</code> (finix)</td><td>Rust: NixOS 26.05 boots and activates with these, and finix creates users with userborn</td></tr>
-</table>
-<p>Rust and Go have no Fil-C target, and nothing written in them gets in unnoticed: evaluation stops with</p>
+<pre><code><span class="c"># nix.conf: substitute instead of compiling the Fil-C world</span>
+extra-substituters = https://filc.cachix.org
+extra-trusted-public-keys = filc.cachix.org-1:8rA7kXyu1HaJuMTsAKfA9fU/+r8YtLv5KiZ5hfDNZMk=</code></pre>
+<p>If a service needs a fix to run as Fil-C, the fix goes in its port, where every system gets it. Every option is in the <a href="../nix/options.html">options reference</a>.</p>
+
+<h2 id="native">What stays native</h2>
+<p>The built-in exceptions are data, <a href="../nix/lib-native-exceptions.html">lib/native-exceptions.nix</a>, each with the systems that need it and why; the table in the <a href="../docs/nixos.html#what-stays-native">NixOS notes</a> is generated from it. In short: the kernel and the bootloader, Nix (whose Fil-C build can't sandbox), the static setuid wrappers, and the Rust tools that NixOS 26.05 boots and activates with. The module asserts that each exists in the native Nixpkgs, so a rename there fails evaluation instead of quietly building a Fil-C package.</p>
+<p>Rust and Go have no Fil-C target, and nothing written in them gets in unnoticed. Evaluation stops, and says what to write instead:</p>
 <pre class="out"><code>error: Refusing to evaluate package 'ripgrep-15.1.0' … because it has problems:
-- filc (kind "broken"): Rust has no Fil-C target. Use the native build instead (filc.userland.native in finix), or leave it out.</code></pre>
-<p>and you add the package to <code>native</code> or leave it out. This only changes <code>meta</code>, so derivations hash the same as in the plain Fil-C set. Haskell and Zig aren't detected yet.</p>
-<p><b>The finix example machine.</b> <code>finixConfigurations.filc-demo</code> is a QEMU VM at step 3, and its VM test, <code>checks.x86_64-linux.finix-filc-demo</code>, boots it and logs in. Here is the init system's view in a run on main, every daemon a Fil-C build except the Nix daemon, and the static address the Fil-C ifupdown-ng gave eth0:</p>
-<pre class="out"><code>PID   IDENT               STATUS   RUNLEVELS     DESCRIPTION
-2891  keventd             running  [S-12345-789] Finit kernel event daemon
-3839  dhcpcd              running  [---234-----] dhcp client
-2896  mdevd               running  [S-12345-789] device event daemon (mdevd)
-3856  nix-daemon          running  [---234-----] nix daemon
-4100  sshd                running  [---234-----] openssh daemon
-3044  syslogd             running  [S0123456789] system logging daemon
+- filc (kind "broken"): Rust has no Fil-C target. Take the native build instead, with filc.native = native: { inherit (native) ripgrep; }; in your system's configuration, or leave it out.</code></pre>
+<p>This only changes <code>meta</code>, so derivations hash the same as in the plain Fil-C set. Haskell and Zig aren't detected yet.</p>
+
+<h2 id="know">Proving the negative</h2>
+<p>A whole system has too many programs to list, so the checks work the other way round: anything native must be an allowed exception.</p>
+<table>
+<tr><th>Check</th><th>Looks at</th><th>Where</th></tr>
+<tr><td><code>filc-ps</code></td><td>every running process: it must map libpizlo, the Fil-C runtime, unless its program is in the closure of a native exception; exit 1 otherwise</td><td>installed on every machine; the VM tests run it on every node</td></tr>
+<tr><td><code>filc-audit</code></td><td>every ELF file in the system closure: Fil-C (the Fil-C loader as interpreter, libpizlo as a needed library), runtime, kernel, or native and allowed</td><td><a href="https://github.com/mbrock/filnix/blob/main/lib/filc-audit.sh">lib/filc-audit.sh</a>; the finix test runs it</td></tr>
+</table>
+<p>Here is <code>filc-ps</code> at the end of the NixOS VM test, after <code>alice</code> logged in on tty1 through the Fil-C Linux-PAM (store hashes shortened). The Nix daemon starts on its socket's first connection, so nothing native is running at all:</p>
+<pre class="out"><code>Fil-C         1  /nix/store/…-systemd-x86_64-unknown-linux-gnufilc0-260.4/lib/systemd/systemd
+Fil-C      1215  /nix/store/…-systemd-x86_64-unknown-linux-gnufilc0-260.4/lib/systemd/systemd-journald
+Fil-C      1231  /nix/store/…-systemd-x86_64-unknown-linux-gnufilc0-260.4/lib/systemd/systemd-oomd
+Fil-C      1382  /nix/store/…-systemd-x86_64-unknown-linux-gnufilc0-260.4/bin/udevadm
+Fil-C      2785  /nix/store/…-systemd-x86_64-unknown-linux-gnufilc0-260.4/lib/systemd/systemd-logind
+Fil-C      2808  /nix/store/…-dbus-x86_64-unknown-linux-gnufilc0-1.16.2/bin/dbus-daemon
+Fil-C      3507  /nix/store/…-dhcpcd-x86_64-unknown-linux-gnufilc0-10.3.1/bin/dhcpcd
+Fil-C      3818  /nix/store/…-shadow-x86_64-unknown-linux-gnufilc0-4.19.4/bin/login
+Fil-C      4063  /nix/store/…-openssh-x86_64-unknown-linux-gnufilc0-10.5p1/bin/sshd
+Fil-C      4969  /nix/store/…-systemd-x86_64-unknown-linux-gnufilc0-260.4/lib/systemd/systemd
+Fil-C      5040  /nix/store/…-bash-interactive-x86_64-unknown-linux-gnufilc0-5.3p9/bin/bash
 …
-2: eth0    inet 192.168.1.1/24 scope global eth0</code></pre>
-<p>PID 1 is <code>/nix/store/…-finit-x86_64-unknown-linux-gnufilc0-4.17/bin/finit</code>, and an ssh login gets <code>/nix/store/…-bash-interactive-x86_64-unknown-linux-gnufilc0-5.3p9/bin/bash</code>. On the way there, finit's keventd stopped on a real bug that Fil-C caught: it NUL-terminates what <code>recv</code> returned, so a uevent that filled its 1024-byte buffer, which is common during coldplug, wrote one byte past the end. Its port now leaves room for the terminator.</p>
-<p><b>The audit.</b> A whole system has too many programs to list, so the test also audits the closure: <a href="https://github.com/mbrock/filnix/blob/main/finix/filc-audit.sh">finix/filc-audit.sh</a> reads each ELF file's program headers and dynamic section, and classifies it by whether it uses the Fil-C loader and needs libpizlo. The test fails if a native file isn't on the exception list. From the same run:</p>
+15 Fil-C, 0 allowed native, 0 not allowed, 0 unreadable</code></pre>
+<p>The test then starts a native <code>sleep</code> and checks that <code>filc-ps</code> fails. On finix the Nix daemon runs from boot, and it is the one allowed native process:</p>
+<pre class="out"><code>Fil-C         1  /nix/store/…-finit-x86_64-unknown-linux-gnufilc0-4.17/bin/finit
+Fil-C      2900  /nix/store/…-mdevd-x86_64-unknown-linux-gnufilc0-0.1.8.2-bin/bin/mdevd
+Fil-C      3063  /nix/store/…-sysklogd-x86_64-unknown-linux-gnufilc0-2.7.2/bin/syslogd
+Fil-C      4180  /nix/store/…-dhcpcd-x86_64-unknown-linux-gnufilc0-10.3.1/bin/dhcpcd
+Fil-C      4434  /nix/store/…-openssh-x86_64-unknown-linux-gnufilc0-10.5p1/bin/sshd
+…
+native     4204  /nix/store/…-nix-2.34.8/bin/nix</code></pre>
+<p>And the finix audit of the whole closure, from the same run:</p>
 <pre class="out"><code>ELF files: 2242 (plus 7296 kernel modules)
   Fil-C:          1452 (64%)
   Fil-C runtime:  304
-  native:         486 (0 unexpected)
+  native:         486 (0 unexpected)</code></pre>
+<p>The 304 runtime files are libpizlo, the loader and the glibc beneath them: native code that only Fil-C programs load. The 486 native files are almost all native Nix and its dependencies, plus userborn and the static setuid wrappers.</p>
 
-Native files by package:
-   278  glibc-2.42-84
-    41  bash-5.3p9
-    40  boost-1.89.0
-    17  krb5-1.22.2-lib
-    11  gcc-15.3.0-lib
-     7  openssl-3.6.4
-…</code></pre>
-<p>The 304 runtime files are libpizlo, the loader and the glibc beneath them: native code that only Fil-C programs load. The 486 native files are the exception list. They are almost all native Nix and its dependencies (that's where the native glibc, Bash and Boost come from), plus userborn and 13 static setuid wrappers.</p>
-<p><b>The NixOS userland machine.</b> Its VM test, <code>nixosTests.userland</code>, boots a NixOS whose <code>pkgs</code> is the Fil-C set: through a Fil-C initrd with Fil-C systemd 260.4 as PID 1, into stage 2, and to a login. <code>alice</code> logs in on tty1 through the Fil-C Linux-PAM, no unit fails, and then the test checks what is running. From a run on main:</p>
-<pre class="out"><code>Fil-C systemd (PID 1)       1 /nix/store/…-systemd-x86_64-unknown-linux-gnufilc0-260.4/lib/systemd/systemd
-Fil-C journald           1213 /nix/store/…-systemd-x86_64-unknown-linux-gnufilc0-260.4/lib/systemd/systemd-journald
-Fil-C udevd              1390 /nix/store/…-systemd-x86_64-unknown-linux-gnufilc0-260.4/bin/udevadm
-Fil-C logind             2774 /nix/store/…-systemd-x86_64-unknown-linux-gnufilc0-260.4/lib/systemd/systemd-logind
-Fil-C dbus               2786 /nix/store/…-dbus-x86_64-unknown-linux-gnufilc0-1.16.2/bin/dbus-daemon
-Fil-C sshd               3835 /nix/store/…-openssh-x86_64-unknown-linux-gnufilc0-10.5p1/bin/sshd
-Fil-C alice's bash       5073 /nix/store/…-bash-interactive-x86_64-unknown-linux-gnufilc0-5.3p9/bin/bash</code></pre>
-<p>Each line means the process maps libpizlo. PAM works again here: the programs that load PAM modules are Fil-C, like the modules, so a login gets a real PAM session, which a Fil-C sshd on a native NixOS gives up. The systemd port is Nixpkgs' own 260.4, not upstream Fil-C's 256.4, because NixOS's modules expect 260. Getting it to run as PID 1 took a list of changes, among them plain <code>posix_spawn</code> instead of <code>pidfd_spawn</code>, ENOSYS from raw syscall wrappers so systemd's fallbacks run, no SIGBUS handler, and restoring the <code>.note.dlopen</code> notes the compiler drops, without which the initrd lacked libkmod and loaded no modules. The <a href="../docs/nixos-userland.html">NixOS userland notes</a> list them all, with what is still open.</p>
-
-<h2 id="know">How you know it's Fil-C</h2>
-<p>Three checks, from cheap to thorough. Each looks at what the machine actually runs, not at what the configuration says:</p>
-<table>
-<tr><th>Check</th><th>Looks at</th><th>Where</th></tr>
-<tr><td><code>filc-status</code></td><td>each listed unit's running process (does it map libpizlo?), the login shell, Nix and each tool on PATH</td><td>installed by <code>nixosModules.<wbr>filc</code> on any machine it changes</td></tr>
-<tr><td>VM tests</td><td>the same check on every listed unit, after Nixpkgs' own test of the service passes; the test fails if any is native</td><td><code>nix build .<wbr>#nixosTests.<wbr>lighttpd</code>, needs KVM</td></tr>
-<tr><td><code>filc-audit</code></td><td>every ELF file in the system closure: Fil-C, runtime, kernel, or native and allowed</td><td><a href="https://github.com/mbrock/filnix/blob/main/finix/filc-audit.sh">finix/filc-audit.sh</a></td></tr>
-</table>
+<h2 id="getting-there">What it took</h2>
+<p>The systemd port is Nixpkgs' own 260.4, not upstream Fil-C's 256.4, because NixOS's modules expect 260. Getting it to run as PID 1 took plain <code>posix_spawn</code> instead of <code>pidfd_spawn</code>, ENOSYS from raw syscall wrappers so systemd's fallbacks run, no SIGBUS handler, and restoring the <code>.note.dlopen</code> notes the compiler drops, without which the initrd lacked libkmod and loaded no modules. Fil-C's glibc and runtime needed a reviewed batch of fixes too: directory walks, <code>brk</code>, <code>settimeofday</code> and a few other calls used raw <code>syscall</code> instructions, which Fil-C stops a program on rather than run machine code it hasn't checked, and the runtime refused the <code>prctl</code> calls that set a service's capabilities. On finix, keventd stopped on a real bug that Fil-C caught: it NUL-terminated what <code>recv</code> returned, so a uevent that filled its 1024-byte buffer wrote one byte past the end. The <a href="../docs/nixos-userland.html">NixOS userland notes</a> list it all, with what is still open.</p>
+<p>Because PAM, its modules and every program that loads them are Fil-C together, a login gets a real PAM session, and sshd keeps PAM: no special cases for locked passwords or missing <code>pam_limits</code>.</p>
 
 <h2 id="cost">What it costs</h2>
 <table>
 <tr><th>Where</th><th>Cost</th><th>Why</th></tr>
-<tr><td>everywhere</td><td>1.5–4× the CPU time of the native build, and more memory</td><td>bounds checks and the garbage collector</td></tr>
-<tr><td>sshd, steps 1 and 2</td><td>no PAM: sshd checks passwords and keys itself, so a login gets no logind session (no <code>XDG_RUNTIME_DIR</code>) and no PAM module such as limits or two-factor</td><td>a Fil-C sshd can't load the native PAM modules</td></tr>
-<tr><td>sshd without OpenSSL</td><td>no Fil-C build (<code>openssh.override { linkOpenssl = false; }</code>)</td><td>the Fil-C OpenSSH patches do the ML-KEM key exchange through OpenSSL</td></tr>
-<tr><td>Nix</td><td>no build sandbox</td><td>Fil-C has no namespaces or seccomp</td></tr>
-<tr><td>PHP-FPM</td><td>each worker grows to about 150–250 MB, so a pool needs several GB</td><td>the garbage collector keeps more memory alive</td></tr>
-<tr><td>nginx</td><td>no Fil-C build: use lighttpd, or a native nginx in front</td><td>nginx's processes share pointers through shared memory, which capabilities don't survive</td></tr>
-<tr><td>updates</td><td>security fixes to Fil-C packages arrive when filnix updates its Nixpkgs pin, not with your channel</td><td>they are built and cached against that pin</td></tr>
-<tr><td>step 3</td><td>no Rust, Go, Haskell or Zig unless native; anything not yet ported needs building or an exception</td><td>Fil-C compiles C and C++ only</td></tr>
-<tr><td>step 3 on NixOS</td><td>no nscd, so names resolve from <code>/etc</code> files only (no <code>nss-systemd</code> or <code>myhostname</code>); dbus-daemon instead of dbus-broker; no QEMU guest agent</td><td>the Fil-C glibc has no nscd and nsncd is Rust; dbus-broker's Fil-C build fails its tests on real findings; the agent's dependencies don't build yet</td></tr>
+<tr><td>everywhere</td><td>1.5–4× the CPU time of the native build, and more memory: give a machine at least 2 GiB</td><td>bounds checks and the garbage collector</td></tr>
+<tr><td>Rust, Go, Haskell, Zig</td><td>no Fil-C build; keep them native with <code>filc.native</code></td><td>Fil-C compiles C and C++ only</td></tr>
+<tr><td>NSS</td><td>no nscd, so names resolve from <code>/etc</code> files only (no <code>nss-systemd</code> or <code>myhostname</code>)</td><td>the Fil-C glibc has no nscd, and nsncd is Rust</td></tr>
+<tr><td>D-Bus</td><td>dbus-daemon instead of dbus-broker</td><td>dbus-broker's Fil-C build fails its tests on real findings</td></tr>
+<tr><td>QEMU guest agent</td><td>none</td><td>its dependencies don't build yet</td></tr>
+<tr><td>PHP-FPM</td><td>each worker grows to about 150–250 MB</td><td>the garbage collector keeps more memory alive</td></tr>
+<tr><td>nginx</td><td>no Fil-C build: use lighttpd</td><td>nginx's processes share pointers through shared memory, which capabilities don't survive</td></tr>
+<tr><td>updates</td><td>security fixes arrive when filnix updates its Nixpkgs pin, not with your channel</td><td>packages are built and cached against that pin</td></tr>
 </table>
 <p>And a trap is still a crash. Fil-C turns an out-of-bounds write or a use after free into a stopped process, so an attacker who can trigger one can still restart your daemon in a loop. They just can't take it over.</p>
 
-<h2 id="status">Status, November 2026</h2>
-<table>
-<tr><th>Piece</th><th>State</th></tr>
-<tr><td>Step 1: the seven switches, and any service through <code>filc.packages</code></td><td class="good" id="st-1">all 19 of their VM tests pass (<a href="#tests-status">table</a>)</td></tr>
-<tr><td>Step 2: <code>filc.shell</code>, <code>filc.nix</code>, <code>filc.tools</code>, <code>filc-status</code></td><td class="good">the demo VM test passes, with the Fil-C Nix building a derivation</td></tr>
-<tr><td>Step 3 on finix</td><td class="good">the example machine boots to a login with ifupdown-ng networking, and its VM test passes with 0 unexpected native files</td></tr>
-<tr><td>Step 3 on NixOS: <code>nixosModules.filc-userland</code></td><td class="good">boots to a login through Fil-C systemd and PAM, and its VM test passes</td></tr>
-</table>
+<h2 id="one-daemon">One Fil-C daemon on a stock NixOS</h2>
+<p>There is no module support for mixing, but a service's package option can still point at a Fil-C build:</p>
+<pre><code>services.tor.package = filnix.legacyPackages.x86_64-linux.pkgsFilc.tor;</code></pre>
+<p>That suits daemons that load nothing from the rest of the system. A Fil-C program can't load the native PAM or NSS modules, so it is not for sshd or anything that authenticates users, and nothing checks it for you.</p>
 
 <h2>Read the modules</h2>
-<p>The modules are short, and the wiki draws them as structure rather than text: <a href="../nix/nixos-filc.html">nixos/filc.nix</a> with its table of services, <a href="../nix/nixos-userland.html">nixos/userland.nix</a> and <a href="../nix/finix-userland.html">finix/userland.nix</a> with their exception lists, and the <a href="../nix/options.html">options reference</a> for both. The <a href="../docs/nixos.html">NixOS notes</a>, the <a href="../docs/nixos-userland.html">NixOS userland notes</a> and the <a href="../docs/finix.html">finix notes</a> have the rest: the example machines, how to run the VM tests without KVM, and how to add a service.</p>
+<p>The modules are short, and the wiki draws them as structure rather than text: <a href="../nix/lib-filc-system.html">lib/filc-system.nix</a>, <a href="../nix/lib-native-exceptions.html">lib/native-exceptions.nix</a>, the wrappers <a href="../nix/nixos-default.html">nixos/default.nix</a> and <a href="../nix/finix-default.html">finix/default.nix</a>, and the <a href="../nix/options.html">options reference</a>. The <a href="../docs/nixos.html">NixOS notes</a>, the <a href="../docs/nixos-userland.html">NixOS userland notes</a> and the <a href="../docs/finix.html">finix notes</a> have the rest.</p>
 
 <div class="note">
-<p><b>A research project.</b> Fil-C stops memory corruption in C and C++; it doesn't help with logic bugs, misconfiguration or the kernel. Steps 1 and 2 are the practical ones today: a few internet-facing daemons on Fil-C, for 1.5–4× their CPU, with Nixpkgs' tests behind them. Step 3 now boots on both NixOS and finix, but it is new: expect packages that still need porting. The build recipes are in <a href="https://github.com/mbrock/filnix">mbrock/filnix</a>.</p>
+<p><b>A research project.</b> Fil-C stops memory corruption in C and C++; it doesn't help with logic bugs, misconfiguration or the kernel. A whole Fil-C system now boots on both NixOS and finix, but it is new: expect packages that still need porting. The build recipes are in <a href="https://github.com/mbrock/filnix">mbrock/filnix</a>.</p>
 </div>
 
 </main>

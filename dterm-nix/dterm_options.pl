@@ -141,6 +141,7 @@ options_page(Pages, Index) -->
                                   el(code, none, "config"), "." ))),
                  seq(Index.modules, module_section(Pages)) )) )).
 
+module_title(M, Title) :- string(M.title), !, Title = M.title.
 module_title(M, Title) :-
     ( M.kind == nixos -> Kind = "NixOS" ; Kind = "finix" ), format(string(Title), "~w: ~w", [Kind, M.name]).
 
@@ -330,7 +331,7 @@ reader_href(F, L, _, H) :- file_href(F, L, H).
 
 decl_link(D) --> file_link(D.file, D.line).
 
-%  file_link(+File, +Line): File in filnix ("nixos/filc.nix") or Nixpkgs
+%  file_link(+File, +Line): File in filnix ("lib/filc-system.nix") or Nixpkgs
 %  ("nixpkgs/…"), at Line or none.
 file_link(F, L) --> { file_href(F, L, H), ( L == none -> T = F ; format(atom(T), "~w:~w", [F, L]) ) },
     el(a, path, [href=H], esc(T)).

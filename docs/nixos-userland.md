@@ -1,60 +1,42 @@
-# A Fil-C userland for NixOS
+# A Fil-C userland for NixOS: the record
 
-`nixosModules.filc-userland` ([nixos/userland.nix](../nixos/userland.nix))
-makes a NixOS system's `pkgs` the Fil-C package set, the same way
-[finix/userland.nix](../finix/userland.nix) does for finix. systemd, D-Bus,
+`nixosModules.default` ([lib/filc-system.nix](../lib/filc-system.nix), with
+[nixos/default.nix](../nixos/default.nix)) makes a NixOS system's `pkgs` the
+Fil-C package set, the same way it does for finix. systemd, D-Bus,
 util-linux, Linux-PAM, coreutils, OpenSSH and every service a module starts
-become Fil-C builds without per-service overrides. The kernel, the bootloader
-and a short list of packages stay native.
+become Fil-C builds without per-service overrides. The kernel, the
+bootloader and the packages in
+[lib/native-exceptions.nix](../lib/native-exceptions.nix) stay native;
+[docs/nixos.md](nixos.md) says how to use it and has the table of
+exceptions.
 
-```nix
-imports = [ filnix.nixosModules.filc-userland ];
-filc.userland.enable = true;
-filc.userland.native = [ "tailscale" ];   # anything you want native anyway
-```
+This page is the running record of the work: what had to change to get a
+NixOS to boot this way, and what is still open.
 
-The VM test [tests/nixos/userland.nix](../tests/nixos/userland.nix)
-(`nix build .#legacyPackages.x86_64-linux.nixosTests.userland`) boots such a
-machine, logs in on the console and checks that PID 1 and the main services
-map libpizlo.
+Status (2026-11-05): the VM test [tests/nixos/userland.nix](../tests/nixos/userland.nix)
+(`nix build .#nixosTests.userland`) passes. The machine boots through a
+Fil-C initrd and stage 2, `alice` logs in on tty1 through the Fil-C PAM,
+PID 1, journald, udevd, logind, dbus-daemon, sshd and the login shell all
+map libpizlo, no unit fails, and `filc-ps` finds no native process outside
+the exceptions.
 
-Status (2026-11-05): the test passes. The machine boots through a Fil-C
-initrd and stage 2, `alice` logs in on tty1 through the Fil-C PAM, and PID 1,
-journald, udevd, logind, dbus-daemon, sshd and the login shell all map
-libpizlo; no unit fails. It needs the runtime and glibc fixes below.
+## Why the exceptions are what they are
 
-This page is also the running record of the work: what stays native and why,
-what had to change, and what is still open.
-
-## What stays native
-
-A process is either all Fil-C or all native, so exceptions are whole
-packages. The module adds these to `filc.userland.native`:
-
-| Attribute | Why |
-| --- | --- |
-| `linuxKernel`, `linuxPackages*` | Fil-C cannot build the kernel |
-| `grub2` | the bootloader runs before any userland; its package holds the boot images as well as the tools that install them |
-| `kexec-tools` | kexec loads a kernel with its purgatory, freestanding code that runs between the two kernels |
-| `pkgsStatic` | the setuid wrappers are small static programs; Fil-C does not link statically |
-| `glibc` | only the wrappers use it, for a header from its source |
-| `nix` | unless `nativeNix = false`: the Fil-C Nix cannot sandbox builds |
-| `nixos-init` | Rust: the initrd's `initrd-find-nixos-closure`, and stage 2 with `system.nixos-init` |
-| `makeInitrdNGTool` | Rust: builds the initrd, and `generate-shutdown-ramfs` runs it on the machine |
-| `switch-to-configuration-ng` | Rust: `switch-to-configuration`, which talks to systemd over D-Bus |
-| `fish` | Rust (fish 4). `users-groups.nix` compares every user's shell with `pkgs.fish`, so it must evaluate; a user who picks fish gets the native one |
-
-The Rust entries are there because `mkPkgsFilc { blockRustGo = true; }`
-refuses to evaluate Rust and Go packages, and NixOS 26.05 has rewritten
-several of its own boot and activation tools in Rust.
+The Rust entries are there because the package set refuses to evaluate Rust
+and Go packages ([lib/block-rust-go.nix](../lib/block-rust-go.nix)), and
+NixOS 26.05 has rewritten several of its own boot and activation tools in
+Rust: `nixos-init`, `makeInitrdNGTool`, `switch-to-configuration-ng`, and
+fish 4, which `users-groups.nix` compares every user's shell with.
 
 The native packages come from a separate, plain import of filnix's Nixpkgs
-(`filc.userland.nativePackages` to choose another). Not
+(`filc.nativePackages` to choose another). Not
 `pkgsFilc.pkgsBuildBuild`: the variants it derives, such as `pkgsStatic`,
 inherit the Fil-C crossSystem's `replaceCrossStdenv`, so the "static native"
 setuid wrappers were built by filcc and failed to link
-(`ld: --no-dynamic-linker: unknown option`). The finix module had the same
-bug.
+(`ld: --no-dynamic-linker: unknown option`). Not `buildPackages` either: its
+target platform is Fil-C, which matters for any package that is itself a
+compiler (Emacs' native compilation pulled in a Fil-C-targeted libgccjit
+that way).
 
 ## Obstacles and decisions
 
@@ -209,7 +191,7 @@ ported. Porting dbus-broker (and c-rbtree) is open.
 
 The test framework turns on `services.qemuGuest`, whose agent comes from the
 full QEMU build. Its Fil-C dependencies dtc (a test data file in assembly)
-and libiscsi (`-Werror=cast-align`) do not build yet. The test turns the
+and libiscsi (`-Werror=cast-align`) do not build yet. The tests turn the
 agent off; the driver does not use it.
 
 ### Package fixes
