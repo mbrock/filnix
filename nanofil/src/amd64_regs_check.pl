@@ -50,7 +50,10 @@
            effect_access/3, line_effect/2, body_analysis/4,
            allocatable/1, callee_saved/1, scratch_family/2,
            check_operands/3, check_operands/4, valid_cells/3, operand_lives/4, operand_move/2,
-           operand_roles/3, boundary_line/2, extra_use_def/4, home_shift/2]).
+           operand_roles/3, boundary_line/2, extra_use_def/4, home_shift/2,
+           operand_lives/5, home_register_bit/2, shared_state/1, region_start/4,
+           paired/7, move_state/3, stream_move/4, cell_writes/7, reg_get/3,
+           read_value/4, no_fallthrough/2]).
 
 :- use_module(amd64_contract,
               [instruction_effects/2, register/3, operand_register/2]).
@@ -592,30 +595,81 @@ line_obligation(Mapped, Index, Masks, Scratch, All, Line, Out) :-
 %  of Saves inserted (check_regs/5 proved it is exactly that stream);
 %  an inserted line touches neither, so it takes the set live before the
 %  next reference line.
-operand_lives(analysis(Body, Effects, _, _, LiveOut, _, UDs), Saves, A, Lives) :-
-    ref_lives(Body, Effects, LiveOut, UDs, RLives),
-    a_lives(A, RLives, Saves, Lives).
+operand_lives(Analysis, Saves, A, Lives) :-
+    findall(R, home_register_bit(R, _), All),
+    operand_lives(Analysis, all(All), Saves, A, Lives).
 
-ref_lives([], [], [], [], []).
-ref_lives([R|Rs], [E|Es], [O|Os], [UD|UDs], [Lv|Lvs]) :-
-    line_lives(R, E, O, UD, Lv),
-    ref_lives(Rs, Es, Os, UDs, Lvs).
+%! operand_lives(+Analysis, +Map, +Saves, +A, -Lives) is det.
+%
+%  As operand_lives/4, with the home registers' liveness in bits 8-14
+%  of each set (home_register_bit/2) from the map 3a's checker
+%  validated (docs/perf.md item 19). A home register is live where a
+%  half of a home mapped to it is live in the reference. A callee-saved
+%  register is also live wherever it holds the caller's value: always
+%  when Saves does not save it, and, when it does, from the body's start
+%  through the saves and at every `leave` and `ret` (the restores write
+%  it just before). Map is Offset-Register pairs, or all(Registers) to
+%  keep those registers live everywhere (operand_lives/4).
+operand_lives(analysis(Body, Effects, _, Index, LiveOut, _, UDs), Map, Saves, A, Lives) :-
+    findall(R, member(save(R,_), Saves), Used),
+    findall(B, ( callee_saved(R), home_register_bit(R, Bit), B is 1 << Bit ), CBs),
+    foldl(or_bits, CBs, 0, Callee),
+    (   Map = all(Rs)
+    ->  Masks = [], findall(B, ( member(R, Rs), home_register_bit(R, Bit), B is 1 << Bit ), Bs),
+        foldl(or_bits, Bs, 0, Always)
+    ;   findall(B-M, ( home_register_bit(R, Bit), B is 1 << Bit,
+                       findall(X, ( member(H-R, Map), get_assoc(H, Index, K),
+                                    home_shift(K, S), X is 3 << S ), Xs),
+                       foldl(or_bits, Xs, 0, M), M =\= 0 ), Masks),
+        findall(B, ( callee_saved(R), \+ memberchk(R, Used),
+                     home_register_bit(R, Bit), B is 1 << Bit ), Bs),
+        foldl(or_bits, Bs, 0, Always)
+    ),
+    ref_lives(Body, Effects, LiveOut, UDs, Masks, Always, RLives),
+    a_lives(A, RLives, Saves, Callee, pre, Lives).
+
+%! home_register_bit(?R, ?Bit) is nondet.
+%  Bit of the operand checker's live sets that stands for home register R.
+home_register_bit(rbx, 8). home_register_bit(r10, 9). home_register_bit(r11, 10).
+home_register_bit(r12, 11). home_register_bit(r13, 12). home_register_bit(r14, 13).
+home_register_bit(r15, 14).
+
+ref_lives([], [], [], [], _, _, []).
+ref_lives([R|Rs], [E|Es], [O|Os], [UD|UDs], Masks, Always, [Lv|Lvs]) :-
+    line_lives(R, E, O, UD, Masks, Always, Lv),
+    ref_lives(Rs, Es, Os, UDs, Masks, Always, Lvs).
 
 % live(In, Out, R, E): R is the reference line, E its effects.
-line_lives(R, E, Out, ud(U,D), live(I8, O8, R, E)) :-
+line_lives(R, E, Out, ud(U,D), Masks, Always, live(I8, O8, R, E)) :-
     In is U \/ (Out /\ \ D),
-    I8 is In /\ 255, O8 is Out /\ 255.
+    home_bits(Masks, In, Always, HI), home_bits(Masks, Out, Always, HO),
+    I8 is (In /\ 255) \/ HI, O8 is (Out /\ 255) \/ HO.
+
+home_bits([], _, H, H).
+home_bits([B-M|Ms], Set, H0, H) :-
+    ( Set /\ M =\= 0 -> H1 is H0 \/ B ; H1 = H0 ),
+    home_bits(Ms, Set, H1, H).
 
 % Each line of A gets live(In, Out, Effect): a line equal to its reference
 % line shares its effects; a substituted or inserted one gets its own.
-a_lives([], [], _, []).
-a_lives([L|As], RLs, Saves, [live(I,I,E)|Ls]) :-
+% Phase is pre until the saves are done (the callee-saved registers
+% hold the caller's values and are live), then post.
+a_lives([], [], _, _, _, []).
+a_lives([L|As], RLs, Saves, C, _, [live(I1,I1,E)|Ls]) :-
     save_move(L, Saves), !,
     RLs = [live(I,_,_,_)|_], line_effect(L, E),
-    a_lives(As, RLs, Saves, Ls).
-a_lives([L|As], [live(I,O,R,E0)|RLs], Saves, [live(I,O,E)|Ls]) :-
+    ( L = ins(_,_,[reg(_),_]) -> I1 is I \/ C, Phase = saves ; I1 = I, Phase = post ),
+    a_lives(As, RLs, Saves, C, Phase, Ls).
+a_lives([L|As], [live(I,O,R,E0)|RLs], Saves, C, Phase0, [live(I1,O1,E)|Ls]) :-
     ( L == R -> E = E0 ; line_effect(L, E) ),
-    a_lives(As, RLs, Saves, Ls).
+    (   Phase0 == pre -> Phase = pre
+    ;   Phase = post
+    ),
+    (   ( Phase == pre ; memberchk(L, [ins(leave,none,[]), ins(ret,none,[])]) )
+    ->  I1 is I \/ C, O1 is O \/ C
+    ;   I1 = I, O1 = O
+    ),
+    a_lives(As, RLs, Saves, C, Phase, Ls).
 
 save_move(ins(mov,q,[reg(R),mem(S,rbp)]), Saves) :- memberchk(save(R,S), Saves).
 save_move(ins(mov,q,[mem(S,rbp),reg(R)]), Saves) :- memberchk(save(R,S), Saves).
@@ -701,7 +755,8 @@ operands_walk([LA|As], [LB|Bs], [live(In,Out,EA)|Ls], J, SA, SB, CS, Env) :-
     J1 is J+1,
     operands_walk(As, Bs, Ls, J1, SA1, SB1, CS1, Env).
 
-% stream_move(+Line, +Env, +CS, -Move): Line is a move (operand_move/2)
+%! stream_move(+Line, +Env, +CS, -Move) is semidet.
+%  Line is a move (operand_move/2)
 % or a whole load of a cell into a general register other than rsp or
 % rbp, as a move of the cell's value.
 stream_move(Line, _, _, M) :- operand_move(Line, M), !.
@@ -718,7 +773,8 @@ cell_value(D, CS, V) :-
     ;   V = v(in(cell(D),lo,shared), in(cell(D),hi,shared))
     ).
 
-% cell_writes(+Effect, +Line, +J, +SA0, +Cells, +CS0, -CS): the paired
+%! cell_writes(+Effect, +Line, +J, +SA0, +Cells, +CS0, -CS) is det.
+%  The paired
 % line J writes the same memory in A and B. A whole store of a register
 % or immediate sets the cell from A's source (equal to B's): 64 bits
 % both halves, 32 bits the low half, keeping the high half. Any other
@@ -744,6 +800,8 @@ cell_store(_, J, _, _, _, C, CS0, CS) :-
 store_source(reg(N), W, SA0, V) :- register(N, F, W), gpr(F), read_value(F, W, SA0, V).
 store_source(imm(I), W, _, V) :- integer(I), imm_range(W, I), imm_value(I, W, V).
 
+%! no_fallthrough(+Line, +Effect) is semidet.
+%  Line (a boundary) does not fall through: ret, ud2 or jmp.
 no_fallthrough(_, effect(_,_,_,_,terminal)).
 no_fallthrough(ins(jmp,_,_), _).
 
@@ -774,7 +832,9 @@ imm_range(16, I) :- I >= -32768, I < 65536.
 imm_range(32, I) :- I >= -(1<<31), I < 1<<32.
 imm_range(64, I) :- I >= -(1<<31), I < 1<<31.
 
-% The state: st(GPRs, XMMs, Flags); a GPR is v(Low, High).
+%! move_state(+Move, +S0, -S) is det.
+%  S is the symbolic state S0 after Move (operand_move/2, stream_move/4).
+%  The state is st(GPRs, XMMs, Flags); a GPR is v(Low, High).
 move_state(_, none, none) :- !.
 move_state(move(F, reg(G), 64), st(R0,X,Fl), st(R,X,Fl)) :- !,
     reg_get(G, R0, V), reg_put(F, R0, V, R).
@@ -802,6 +862,8 @@ boundary_line(Line, effect(_,Ws,_,_,Flow)) :-
     ;   Line \= ins(_,_,_)
     ).
 
+%! shared_state(-S) is det.
+%  S is the state in which every register and the flags hold shared values.
 shared_state(st(R, X, in(flags,shared))) :-
     findall(v(in(F,lo,shared),in(F,hi,shared)), gpr(F), Rs), R =.. [r|Rs],
     findall(in(F,shared), xmm(F), Xs), X =.. [x|Xs].
@@ -809,6 +871,8 @@ shared_state(st(R, X, in(flags,shared))) :-
 % The registers of a state are the arguments of r/16 and x/8, in gpr/1's
 % and xmm/1's order. put_slot/4 (r/16) and put_xslot/4 (x/8) are
 % separate so that a bound index leaves no choicepoint.
+%! reg_get(+F, +Registers, -V) is det.
+%  V is register F's value in a state's r/16 (v(Lo,Hi)) or x/8 term.
 reg_get(F, T, V) :- reg_index(F, I), arg(I, T, V).
 reg_put(F, T0, V, T) :- reg_index(F, I), put_slot(I, T0, V, T).
 put_slot(1, r(_,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16), V, r(V,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16)).
@@ -843,36 +907,44 @@ reg_index(r12,13). reg_index(r13,14). reg_index(r14,15). reg_index(r15,16).
 reg_index(xmm0,1). reg_index(xmm1,2). reg_index(xmm2,3). reg_index(xmm3,4).
 reg_index(xmm4,5). reg_index(xmm5,6). reg_index(xmm6,7). reg_index(xmm7,8).
 
-% region_start(+Out, +Shared, -SA, -SB): after a boundary, live scratch families
-% and live flags are shared, dead ones distinct per stream; the rest is
-% shared.
+%! region_start(+Out, +Shared, -SA, -SB) is det.
+%  After a boundary, live scratch
+% families, live home registers (bits 8-14, home_register_bit/2) and live
+% flags are shared, dead ones distinct per stream; the rest is shared.
 region_start(Out, st(R0,X,_), st(RA,X,FA), st(RB,X,FB)) :-
-    foldl(dead_scratch(Out), [rax,rcx,rdx,rsi,rdi,r8,r9], R0-R0, RA-RB),
+    foldl(dead_scratch(Out), [rax,rcx,rdx,rsi,rdi,r8,r9,rbx,r10,r11,r12,r13,r14,r15],
+          R0-R0, RA-RB),
     (   Out /\ 128 =\= 0
     ->  FA = in(flags,shared), FB = FA
     ;   FA = in(flags,a), FB = in(flags,b)
     ).
 dead_scratch(Out, F, RA0-RB0, RA-RB) :-
-    scratch_family(F, Bit),
+    live_bit(F, Bit),
     (   Out /\ (1 << Bit) =\= 0
     ->  RA = RA0, RB = RB0
     ;   reg_put(F, RA0, v(in(F,lo,a),in(F,hi,a)), RA),
         reg_put(F, RB0, v(In,Hi), RB), In = in(F,lo,b), Hi = in(F,hi,b)
     ).
 
+% Facts, so a bound query is deterministic and an unbound one enumerates.
+live_bit(rax, 0). live_bit(rcx, 1). live_bit(rdx, 2). live_bit(rsi, 3).
+live_bit(rdi, 4). live_bit(r8, 5). live_bit(r9, 6).
+live_bit(rbx, 8). live_bit(r10, 9). live_bit(r11, 10). live_bit(r12, 11).
+live_bit(r13, 12). live_bit(r14, 13). live_bit(r15, 14).
+
 % region_end(+In, +SA, +SB): at a boundary, A and B agree on both halves
-% of every home register, rsp and rbp, every XMM register, each live
-% scratch family, and the flags if live.
+% of rsp and rbp, every XMM register, each live scratch family and home
+% register, and the flags if live.
 region_end(In, st(RA,XA,FA), st(RB,XB,FB)) :-
     RA == RB, XA == XB, !,
     ( In /\ 128 =\= 0 -> FA == FB ; true ).
 region_end(In, st(RA,XA,FA), st(RB,XB,FB)) :-
     XA == XB,
-    % rbx, rsp, rbp and r10-r15 (arguments 4-6 and 11-16) always.
-    RA = r(_,_,_,X4,X5,X6,_,_,_,_,X11,X12,X13,X14,X15,X16),
-    RB = r(_,_,_,Y4,Y5,Y6,_,_,_,_,Y11,Y12,Y13,Y14,Y15,Y16),
-    f(X4,X5,X6,X11,X12,X13,X14,X15,X16) == f(Y4,Y5,Y6,Y11,Y12,Y13,Y14,Y15,Y16),
-    forall(( scratch_family(F, Bit), In /\ (1 << Bit) =\= 0 ),
+    % rsp and rbp (arguments 5 and 6) always.
+    RA = r(_,_,_,_,X5,X6,_,_,_,_,_,_,_,_,_,_),
+    RB = r(_,_,_,_,Y5,Y6,_,_,_,_,_,_,_,_,_,_),
+    f(X5,X6) == f(Y5,Y6),
+    forall(( live_bit(F, Bit), In /\ (1 << Bit) =\= 0 ),
            ( reg_get(F, RA, V), reg_get(F, RB, W), V == W )),
     ( In /\ 128 =\= 0 -> FA == FB ; true ).
 
@@ -908,6 +980,7 @@ operand_roles(movsl, w, [src(32), dst(16)]).
 operand_roles(movsl, l, [src(32), dst(32)]).
 operand_roles(movsl, q, [src(32), dst(64)]).
 operand_roles(lea, q, [addr, dst(64)]).
+operand_roles(lea, l, [addr, dst(32)]).
 operand_roles(add, b, [src(8), srcdst(8)]).
 operand_roles(add, w, [src(16), srcdst(16)]).
 operand_roles(add, l, [src(32), srcdst(32)]).
@@ -1115,9 +1188,80 @@ flags_out('lock cmpxchg', l, defined).
 flags_out('lock cmpxchg', q, defined).
 
 %! paired(+LA, +LB, +J, +SA0, +SB0, -SA, -SB) is semidet.
-paired(ins(Op,S,OsA), ins(Op,S,OsB), J, SA0, SB0, SA, SB) :-
+%
+%  A's line LA and B's line LB, the J-th paired line, compute the same
+%  outputs from the pre-states SA0 and SB0; SA and SB are the
+%  post-states. Besides the same form on equal operand values
+%  (docs/perf.md, step 3b), three pairings are accepted (item 19):
+%
+%  - a zero idiom, `xor` or `sub` of a register with itself at 32 or 64
+%    bits, in any register: both write 0 and the same flags, whatever
+%    the register held;
+%  - `add`, `and`, `or`, `xor` or `imul` of two registers with B's
+%    operands swapped: the result and the flags are symmetric;
+%  - `add` of a register or an immediate, or `sub` of an immediate, as
+%    a `lea` of the same width into any register (a register addend that
+%    holds a constant may be the displacement): the same result, but
+%    B's flags keep their old value, so A's differ from them after it.
+paired(LA, LB, J, SA0, SB0, SA, SB) :-
+    (   zero_idiom(LA, Op, S, FA), zero_idiom(LB, Op, S, FB)
+    ->  zero_write(FA, J, SA0, SA), zero_write(FB, J, SB0, SB)
+    ;   LA = ins(Op,S,_), LB = ins(lea,S,_), memberchk(Op, [add,sub])
+    ->  lea_pair(LA, LB, J, SA0, SB0, SA, SB)
+    ;   paired_same(LA, LB, J, SA0, SB0, SA, SB)
+    ).
+
+zero_idiom(ins(Op,S,[reg(X),reg(X)]), Op, S, F) :-
+    memberchk(Op, [xor,sub]), memberchk(S-W, [l-32,q-64]),
+    register(X, F, W), \+ memberchk(F, [rsp,rbp]).
+
+zero_write(F, J, st(R0,X,_), st(R,X,res(J,flags))) :-
+    reg_put(F, R0, v(const(0),const(0)), R).
+
+% lea_pair: A's add or sub writes res(J,2) to its destination and
+% defines the flags; B's lea writes res(J,2) to its own and keeps them.
+lea_pair(ins(Op,S,[Src,reg(Y)]), ins(lea,S,[M,reg(T)]), J, SA0, SB0, SA, SB) :-
+    memberchk(S-W, [l-32,q-64]),
+    register(Y, FY, W), register(T, FT, W),
+    \+ memberchk(FY, [rsp,rbp]), \+ memberchk(FT, [rsp,rbp]),
+    read_value(FY, W, SA0, VY),
+    lea_inputs(Op, Src, M, W, SA0, SB0, VY),
+    write_value(FY, W, res(J,2), SA0, st(RA,XA,_)),
+    SA = st(RA,XA,res(J,flags)),
+    write_value(FT, W, res(J,2), SB0, SB).
+
+% lea's base and index registers, read at the operation's width, are
+% A's two addends in either order; a displacement is A's immediate
+% (negated for sub) within disp32.
+lea_inputs(add, reg(X), mem(0,B,I), W, SA0, SB0, VY) :-
+    register(X, FX, W), read_value(FX, W, SA0, VX),
+    lea_register(B, W, SB0, V1), lea_register(I, W, SB0, V2),
+    ( V1 == VX, V2 == VY -> true ; V1 == VY, V2 == VX ).
+% A register addend holding a constant (in A) may be the displacement.
+lea_inputs(add, reg(X), mem(D,B), W, SA0, SB0, VY) :-
+    integer(D), D >= -(1<<31), D < 1<<31,
+    register(X, FX, W), read_value(FX, W, SA0, VX),
+    imm_value(D, W, VD), VX == VD,
+    lea_register(B, W, SB0, V), V == VY.
+lea_inputs(add, imm(D), mem(D,B), W, _, SB0, VY) :-
+    integer(D), D >= -(1<<31), D < 1<<31,
+    lea_register(B, W, SB0, V), V == VY.
+lea_inputs(sub, imm(D), mem(ND,B), W, _, SB0, VY) :-
+    integer(D), integer(ND), ND =:= -D, ND >= -(1<<31), ND < 1<<31,
+    lea_register(B, W, SB0, V), V == VY.
+
+lea_register(N, W, S, V) :-
+    register(N, F, 64), \+ memberchk(F, [rsp,rbp]), read_value(F, W, S, V).
+
+commutative(add). commutative(and). commutative(or). commutative(xor). commutative(imul).
+
+paired_same(ins(Op,S,OsA), ins(Op,S,OsB), J, SA0, SB0, SA, SB) :-
     once(operand_roles(Op, S, Roles)),
-    sources(Roles, OsA, OsB, Op, SA0, SB0),
+    (   sources(Roles, OsA, OsB, Op, SA0, SB0) -> true
+    ;   commutative(Op), memberchk(S, [l,q]),
+        OsA = [reg(_),reg(_)], OsB = [reg(B1),reg(B2)],
+        sources(Roles, OsA, [reg(B2),reg(B1)], Op, SA0, SB0)
+    ),
     (   implicit(Op, S, Reads, _)
     ->  forall(member(F-W, Reads), ( read_value(F, W, SA0, V), read_value(F, W, SB0, V1), V == V1 ))
     ;   true
@@ -1204,7 +1348,8 @@ imm_value(I, 64, [const(Lo),const(Hi)]) :- !,
     U is I mod (1<<64), Lo is U /\ 0xffffffff, Hi is U >> 32.
 imm_value(I, W, [const(V)]) :- V is I mod (1<<W).
 
-% read_value(+F, +W, +S, -V): register family F read at W bits.
+%! read_value(+F, +W, +S, -V) is semidet.
+%  V is register family F read at W bits in state S.
 read_value(F, W, S, V) :- width_read(W, F, S, V).
 
 width_read(128, F, st(_,X,_), [V]) :- reg_get(F, X, V).

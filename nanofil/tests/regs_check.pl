@@ -300,6 +300,8 @@ operands_checker :-
     forall(operand_live_case(Name, A0, Edit),
            ( ob(A0, A), operand_run(Name, A, A, no, Edit) )),
     saves_case,
+    forall(home_case(Name, Homes, Map, Saves, Ref, A, B, Expected),
+           home_run(Name, Homes, Map, Saves, Ref, A, B, Expected)),
     forall(cell_case(Name, Cells, A0, B0, Expected),
            ( ob(A0, A), ob(B0, B), cell_run(Name, Cells, A, B, Expected) )).
 
@@ -411,6 +413,70 @@ operand_case(forward_base,
     [ins(mov,q,[reg(r12),reg(rcx)]), ins(mov,q,[mem(8,rcx),reg(rax)]), ins(add,q,[reg(rax),reg(rbx)]),
      ins(mov,l,[imm(0),reg(ecx)])],
     [ins(mov,q,[mem(8,r12),reg(rax)]), ins(add,q,[reg(rax),reg(rbx)]), ins(mov,l,[imm(0),reg(ecx)])], yes).
+% docs/perf.md item 19: a zero idiom in any register, a commutative form
+% with its operands swapped, and an add (or a sub of an immediate) as a
+% lea when the flags it leaves are dead.
+operand_case(zero_elsewhere,
+    [ins(xor,l,[reg(eax),reg(eax)]), ins(mov,q,[reg(rax),reg(rbx)])],
+    [ins(xor,l,[reg(esi),reg(esi)]), ins(mov,q,[reg(rsi),reg(rbx)])], yes).
+operand_case(zero_not_idiom,
+    [ins(xor,l,[reg(eax),reg(eax)]), ins(mov,q,[reg(rax),reg(rbx)])],
+    [ins(xor,l,[reg(esi),reg(edi)]), ins(mov,q,[reg(rdi),reg(rbx)])], no).
+operand_case(zero_wrong_width,
+    [ins(xor,q,[reg(rax),reg(rax)]), ins(mov,q,[reg(r12),reg(rax)]),
+     ins(mov,q,[reg(rax),reg(rbx)])],
+    [ins(xor,q,[reg(rsi),reg(rsi)]), ins(movabs,q,[imm(-1),reg(rsi)]),
+     ins(mov,l,[reg(r12d),reg(esi)]), ins(mov,q,[reg(rsi),reg(rbx)])], no).
+operand_case(swap_add,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(add,q,[reg(rbx),reg(rax)]), ins(mov,q,[reg(rax),reg(r13)])],
+    [ins(mov,q,[reg(rbx),reg(rax)]), ins(add,q,[reg(r12),reg(rax)]), ins(mov,q,[reg(rax),reg(r13)])], yes).
+operand_case(swap_sub,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(sub,q,[reg(rbx),reg(rax)]), ins(mov,q,[reg(rax),reg(r13)])],
+    [ins(mov,q,[reg(rbx),reg(rax)]), ins(sub,q,[reg(r12),reg(rax)]), ins(mov,q,[reg(rax),reg(r13)])], no).
+operand_case(lea_imm,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(add,q,[imm(8),reg(rax)]), ins(mov,q,[reg(rax),reg(r13)])],
+    [ins(lea,q,[mem(8,r12),reg(r13)])], yes).
+operand_case(lea_sub_imm,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(sub,q,[imm(8),reg(rax)]), ins(mov,q,[reg(rax),reg(r13)])],
+    [ins(lea,q,[mem(-8,r12),reg(r13)])], yes).
+operand_case(lea_sub_not_negated,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(sub,q,[imm(8),reg(rax)]), ins(mov,q,[reg(rax),reg(r13)])],
+    [ins(lea,q,[mem(8,r12),reg(r13)])], no).
+operand_case(lea_regs,
+    [ins(mov,l,[reg(r12d),reg(eax)]), ins(add,l,[reg(ebx),reg(eax)]), ins(mov,q,[reg(rax),reg(r13)])],
+    [ins(lea,l,[mem(0,rbx,r12),reg(r13d)])], yes).
+operand_case(lea_const_reg,
+    [ins(mov,l,[imm(8),reg(ecx)]), ins(mov,q,[reg(r12),reg(rax)]), ins(add,q,[reg(rcx),reg(rax)]),
+     ins(mov,q,[reg(rax),reg(r13)]), ins(mov,l,[imm(0),reg(ecx)])],
+    [ins(lea,q,[mem(8,r12),reg(r13)]), ins(mov,l,[imm(0),reg(ecx)])], yes).
+operand_case(lea_const_reg_wrong,
+    [ins(mov,l,[imm(8),reg(ecx)]), ins(mov,q,[reg(r12),reg(rax)]), ins(add,q,[reg(rcx),reg(rax)]),
+     ins(mov,q,[reg(rax),reg(r13)]), ins(mov,l,[imm(0),reg(ecx)])],
+    [ins(lea,q,[mem(16,r12),reg(r13)]), ins(mov,l,[imm(0),reg(ecx)])], no).
+% movl $-1 zero-extends: the addend is 2^32-1, not -1, at 64 bits.
+operand_case(lea_const_reg_zext,
+    [ins(mov,l,[imm(-1),reg(ecx)]), ins(mov,q,[reg(r12),reg(rax)]), ins(add,q,[reg(rcx),reg(rax)]),
+     ins(mov,q,[reg(rax),reg(r13)]), ins(mov,l,[imm(0),reg(ecx)])],
+    [ins(lea,q,[mem(-1,r12),reg(r13)]), ins(mov,l,[imm(0),reg(ecx)])], no).
+operand_case(lea_wrong_disp,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(add,q,[imm(8),reg(rax)]), ins(mov,q,[reg(rax),reg(r13)])],
+    [ins(lea,q,[mem(16,r12),reg(r13)])], no).
+operand_case(lea_wrong_base,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(add,q,[imm(8),reg(rax)]), ins(mov,q,[reg(rax),reg(r13)])],
+    [ins(lea,q,[mem(8,rbx),reg(r13)])], no).
+operand_case(lea_regs_disp,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(add,q,[reg(rbx),reg(rax)]), ins(mov,q,[reg(rax),reg(r13)])],
+    [ins(lea,q,[mem(4,rbx,r12),reg(r13)])], no).
+% A lea keeps the flags, so they differ from A's where they are read.
+operand_case(lea_flags_read,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(add,q,[imm(8),reg(rax)]), ins(mov,q,[reg(rax),reg(r13)]),
+     ins(sete,none,[reg(cl)]), ins(movzb,l,[reg(cl),reg(ecx)]), ins(mov,q,[reg(rcx),reg(r14)])],
+    [ins(lea,q,[mem(8,r12),reg(r13)]),
+     ins(sete,none,[reg(cl)]), ins(movzb,l,[reg(cl),reg(ecx)]), ins(mov,q,[reg(rcx),reg(r14)])], no).
+operand_case(lea_flags_at_branch,
+    [ins(mov,q,[reg(r12),reg(rax)]), ins(add,q,[imm(8),reg(rax)]), ins(mov,q,[reg(rax),reg(r13)]),
+     ins(je,none,[sym(z)]), label(z)],
+    [ins(lea,q,[mem(8,r12),reg(r13)]), ins(je,none,[sym(z)]), label(z)], no).
 operand_case(setcc_elsewhere,
     [ins(mov,q,[reg(r12),reg(rax)]), ins(cmp,q,[imm(0),reg(rbx)]), ins(sete,none,[reg(al)]),
      ins(movzb,l,[reg(al),reg(eax)]), ins(mov,q,[reg(rax),reg(r13)]), ins(mov,l,[imm(0),reg(ecx)])],
@@ -680,6 +746,87 @@ saves_case :-
     (   operand_lives(An, [save(rbx,-8)], A, Lives), check_operands(A, B, Lives) -> true
     ;   throw(error(operands_checker(saves, yes), operands_checker/0))
     ).
+
+% Home registers' liveness (operand_lives/5, docs/perf.md item 19).
+% home_case(Name, Homes, Map, Saves, Ref, A, B, Expected): Ref is the
+% reference body, A its 3a stream under Map and Saves.
+home_run(Name, Homes, Map, Saves, Ref, A, B, Expected) :-
+    body_analysis(Ref, Homes, An), operand_lives(An, Map, Saves, A, Lives),
+    ( check_operands(A, B, Lives) -> Got = yes ; Got = no ),
+    (   Got == Expected -> true
+    ;   throw(error(operands_checker(Name, Expected), operands_checker/0))
+    ).
+
+% rbx is saved and holds no home: B may use it between the save and the
+% restore, across a label.
+home_case(saved_unmapped_scratch, [], [], [save(rbx,-8)], Ref, A, B, yes) :-
+    home_bodies(rbx, Ref, A, B).
+% Not saved, it holds the caller's value everywhere.
+home_case(unsaved_clobbered, [], [], [], Ref, Ref, B, no) :-
+    home_bodies(rbx, Ref, _, B0), exclude(save_line, B0, B).
+% A mapped home's register is live where the home is.
+home_case(mapped_live, [-16], [(-16)-r12], [save(r12,-8)], Ref, A, B, no) :-
+    mapped_bodies(after_label, Ref, A, B).
+home_case(mapped_dead, [-16], [(-16)-r12], [save(r12,-8)], Ref, A, B, yes) :-
+    mapped_bodies(before_label, Ref, A, B).
+
+% A saved callee-saved register is the caller's again from its restore
+% through leave and ret: a write after either is a miscompile.
+home_case(clobber_after_restore, [], [], [save(rbx,-8)], Ref, A, B, no) :-
+    restore_bodies(after_restore, Ref, A, B).
+home_case(clobber_after_leave, [], [], [save(rbx,-8)], Ref, A, B, no) :-
+    restore_bodies(after_leave, Ref, A, B).
+% The mapped home's register is live across the label: identical
+% streams pass only because the mask makes r12 shared there.
+home_case(mapped_live_same, [-16], [(-16)-r12], [save(r12,-8)], Ref, A, A, yes) :-
+    mapped_bodies(after_label, Ref, A, _).
+
+restore_bodies(Where, Ref, A, B) :-
+    Pro = [ins(push,q,[reg(rbp)]), ins(mov,q,[reg(rsp),reg(rbp)])],
+    Save = ins(mov,q,[reg(rbx),mem(-8,rbp)]), Restore = ins(mov,q,[mem(-8,rbp),reg(rbx)]),
+    Zero = ins(mov,l,[imm(0),reg(eax)]), Clobber = ins(mov,l,[imm(5),reg(ebx)]),
+    Leave = ins(leave,none,[]), Ret = ins(ret,none,[]),
+    Ref = [ins(push,q,[reg(rbp)]), ins(mov,q,[reg(rsp),reg(rbp)]), Zero, Leave, Ret],
+    append(Pro, [Save, Zero, Restore, Leave, Ret], A),
+    (   Where == after_restore
+    ->  append(Pro, [Save, Zero, Restore, Clobber, Leave, Ret], B)
+    ;   append(Pro, [Save, Zero, Restore, Leave, Clobber, Ret], B)
+    ).
+
+save_line(ins(mov,q,[_,mem(-8,rbp)])).
+save_line(ins(mov,q,[mem(-8,rbp),_])).
+
+home_bodies(R, Ref, A, B) :-
+    Pro = [ins(push,q,[reg(rbp)]), ins(mov,q,[reg(rsp),reg(rbp)])],
+    Epi = [ins(mov,l,[imm(0),reg(eax)]), ins(leave,none,[]), ins(ret,none,[])],
+    Save = ins(mov,q,[reg(R),mem(-8,rbp)]), Restore = ins(mov,q,[mem(-8,rbp),reg(R)]),
+    Mid = [ins(mov,q,[reg(r12),reg(rax)]), ins(add,q,[imm(1),reg(rax)]),
+           ins(mov,q,[reg(rax),reg(r13)]), label(m)],
+    MidB = [ins(mov,q,[reg(r12),reg(rbx)]), ins(add,q,[imm(1),reg(rbx)]),
+            ins(mov,q,[reg(rbx),reg(r13)]), label(m)],
+    append([Pro, Mid, Epi], Ref),
+    append([Pro, [Save], Mid, [Restore], Epi], A),
+    append([Pro, [Save], MidB, [Restore], Epi], B).
+
+% The home at -16 is written from rax and read into rdx, after the label
+% (live across it) or before it (dead at it); B then clobbers r12 before
+% the label.
+mapped_bodies(Where, Ref, A, B) :-
+    Pro = [ins(push,q,[reg(rbp)]), ins(mov,q,[reg(rsp),reg(rbp)])],
+    Epi = [ins(mov,l,[imm(0),reg(eax)]), ins(leave,none,[]), ins(ret,none,[])],
+    Save = ins(mov,q,[reg(r12),mem(-8,rbp)]), Restore = ins(mov,q,[mem(-8,rbp),reg(r12)]),
+    Write = ins(mov,q,[reg(rax),mem(-16,rbp)]), Read = ins(mov,q,[mem(-16,rbp),reg(rdx)]),
+    WriteA = ins(mov,q,[reg(rax),reg(r12)]), ReadA = ins(mov,q,[reg(r12),reg(rdx)]),
+    Clobber = ins(mov,l,[imm(5),reg(r12d)]),
+    (   Where == after_label
+    ->  RMid = [Write, label(m), Read], AMid = [WriteA, label(m), ReadA],
+        BMid = [WriteA, Clobber, label(m), ReadA]
+    ;   RMid = [Write, Read, label(m)], AMid = [WriteA, ReadA, label(m)],
+        BMid = [WriteA, ReadA, Clobber, label(m)]
+    ),
+    append([Pro, RMid, Epi], Ref),
+    append([Pro, [Save], AMid, [Restore], Epi], A),
+    append([Pro, [Save], BMid, [Restore], Epi], B).
 
 % Identical streams under wrong liveness: a register read after a region
 % start where it is said dead, and the flags likewise (both start

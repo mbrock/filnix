@@ -2989,7 +2989,8 @@ test(reuse_related) :-
     append(_, [F8, let(tmp(x), l, raw_load(l, 8), [tmp(q)])], RIs),
     % It emits as a reload of p plus 8, with one check.
     once(( filc_module_asm(R, emit(temps, selected), Lines, _),
-           memberchk(ins(add, q, [imm(8), reg(rax)]), Lines) )),
+           ( memberchk(ins(add, q, [imm(8), reg(_)]), Lines)
+           ; memberchk(ins(lea, q, [mem(8, _), reg(_)]), Lines) ) )),
     reuse_fail_jumps(R, 1),
     % The same flight read at the wrong distance (offset 0) is valid and
     % reads 5; only refines tells.

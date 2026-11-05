@@ -57,6 +57,15 @@
     (docs/perf.md, register modes) and are refused.
     The plain backend is unchanged. Options precede the command.
 
+    `--operands=rewrite|regions` selects, under temps or pointers, how
+    each straight-line region's operands are chosen once the homes are
+    in registers: rewrite, step 3b's forwarding of copies, or regions,
+    which selects each region's registers again from the values the
+    validated stream computes, operating on homes directly, with `lea`
+    and three-address forms (docs/perf.md item 19). Both are checked by
+    the same operand checker. The default is regions;
+    NANOFIL_OPERANDS supplies the same choice.
+
     `--registers-limit=N` (or NANOFIL_REGISTERS_LIMIT), opt-in, emits
     each function of more than N checked IR instructions by the
     reference (stack) emission when registers are temps or pointers, to
@@ -200,7 +209,8 @@ main :-
     catch(( ( vectors_options(Argv0, ArgvV),
               bounds_options(ArgvV, ArgvB),
               share_options(ArgvB, ArgvS),
-              lowers_options(ArgvS, Argv00),
+              lowers_options(ArgvS, ArgvL),
+              operands_options(ArgvL, Argv00),
               register_default(Default),
               checks_default(Checks0),
               inline_default(Inline0),
@@ -302,6 +312,19 @@ lowers_options(Argv0, Argv) :-
     ;   true
     ).
 lowers_option(A) :- atom(A), atom_concat('--lowers=', _, A).
+% operands_options(+Argv0, -Argv): Argv is Argv0 less its --operands=
+% options, the last of which sets NANOFIL_OPERANDS
+% (amd64_regs:operand_selection/1).
+operands_options(Argv0, Argv) :-
+    exclude(operands_option, Argv0, Argv),
+    (   include(operands_option, Argv0, Opts), last(Opts, Opt)
+    ->  atom_concat('--operands=', S, Opt),
+        (   memberchk(S, [rewrite, regions]) -> setenv('NANOFIL_OPERANDS', S)
+        ;   throw(nanofil_error('operands must be rewrite or regions'))
+        )
+    ;   true
+    ).
+operands_option(A) :- atom(A), atom_concat('--operands=', _, A).
 % inline_options(+Argv0, +Inline0, -Inline, -Argv): Argv is Argv0 less
 % its --inline= options, the last of which gives Inline.
 inline_options([], I, I, []).

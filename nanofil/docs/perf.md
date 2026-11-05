@@ -909,7 +909,9 @@ region's start state:
   `in(R,H,shared)` in A and B; dead ones get `in(R,H,a)` in A and
   `in(R,H,b)` in B, so a read B makes of a register that A treats as
   dead is caught. Home registers (`rbx`, `r12`–`r15`, `r10`, `r11`),
-  `rsp`, `rbp` and XMM registers always start shared.
+  `rsp`, `rbp` and XMM registers always start shared. (Amended by
+  item 19, [below](#amendment-home-register-liveness-and-three-pairings-item-19):
+  home registers follow liveness too.)
 - The flags start shared if live, else as distinct symbols in A and B.
 - After a boundary that does not fall through (`ret`, `ud2`, `jmp`), the
   lines up to the next boundary are unreachable: control enters the body
@@ -1012,6 +1014,66 @@ should-fix items are folded in too: B's lines must be audited with A's
 effect shape, partial writes merge per stream, both halves of every
 compared register, preserved or undefined flags are not shared, and
 liveness is computed by the checker, once per function.
+
+#### Amendment: home-register liveness and three pairings (item 19)
+
+*Implemented with item 19's lever 1; reviewed before it became the
+default (below).* Two changes to the contract above, both in
+`amd64_regs_check.pl`:
+
+**Home registers follow liveness.** The liveness sets gain one bit per
+home register (bits 8–14, `home_register_bit/2`), computed from the map
+3a's checker validated (`operand_lives/5`). A home register is live
+where a half of a home mapped to it is live in the reference. A
+callee-saved register is also live wherever it holds the caller's
+value: everywhere if the map does not save it; if it does, from the
+body's start through its save (the *pre* phase) and at every `leave`
+and `ret`, which come right after the restores. At a region start a
+dead home register gets stream-distinct symbols, as a dead scratch
+family does, and at a region end only live ones are compared. This lets
+B use a free home register as scratch within a region. It is sound for
+the same reason as for scratch families: a dead register is never
+assumed equal, so any compared read of it rejects, and the reference
+names no allocatable register (`preflight_regs`), so only substituted
+moves, saves and restores reach them in A. `r10`/`r11` may hold garbage
+at a call or `ret`; 3a's obligation already keeps homes out of them
+across calls.
+
+**Three more pairings** (`paired/7`), each the same result from equal
+inputs:
+
+| A | B | flags |
+| --- | --- | --- |
+| `xor`/`sub` of a register with itself, `l` or `q` | the same in any register | defined, shared |
+| `add`, `and`, `or`, `xor`, `imul` of two registers | the operands swapped | as the form's (symmetric) |
+| `add` of a register or imm32, `sub` of an imm32 | `lea` of the same size (`leal` is audited as a 32-bit write) whose base and index read A's two addends, or whose displacement is A's immediate (negated for `sub`) or the constant A's register addend holds | B's are kept, A's become new: any later read rejects |
+
+A `leal` reads 64-bit base and index registers, but the low 32 bits of
+the sum depend only on their low 32 bits, which the checker compares.
+`rsp` and `rbp` are excluded as base, index and destination.
+
+**Fixtures** (`tests/regs_check.pl`): `zero_*`, `swap_*` and `lea_*`
+operand cases, and `home_case`s for a saved, unmapped register used as
+scratch, an unsaved one clobbered, a mapped home live or dead at a
+label, identical streams with a mapped home live across one, and a
+callee-saved register clobbered after its restore or after `leave`.
+Each of eleven planted checker bugs fails at least one: a zero idiom of
+two registers, `sub` as commutative, `lea` defining the flags, an
+unnegated `sub` displacement, an ignored displacement (base, and base
+plus index), a constant register addend's value unchecked, unsaved
+registers not live, mapped homes not live, and the callee-saved bits
+dropped at `leave`/`ret` or at `ret` only.
+
+**Review.** A reviewing subagent attacked the trusted side with about
+30 streams of its own and twelve planted bugs. It found no stream B
+the checker accepts that differs from A, and no GC or ABI assumption
+broken (homes hold only `w`/`l`/`a` words; the collector reads no
+register). It found two should-fix items: no fixture caught dropping
+the callee-saved bits at `leave`/`ret` (a write to `rbx` after its
+restore was then accepted), and this text was missing. Both are fixed
+above. (The constant-addend displacement was added after the review,
+with its own fixtures.) Notes, not fixed: `and`/`or`/`xor`'s undefined AF is modelled
+as defined, as before this change, and nothing reads AF.
 
 #### Step 3b: result
 
@@ -5262,6 +5324,124 @@ python3 run.py --modes ref,O,native --metrics PipelineL1    # and PipelineL2
 VALGRIND=… taskset -c 8-15,24-31 python3 profile/checks.py --builds out --variants native,ref,O --categories
 python3 profile/hot.py
 ```
+
+#### Levers 1 and 8: selection into homes, and what keeps homes in the frame
+
+**What is different at scale.** Item 12 measured single local patterns
+(each under 2%). Classifying every executed register-to-register move
+by its straight-line context (bzip2 `-9`, zlib `-6`; a scratch script
+over callgrind) shows why no one rewrite reached them. Most moves are
+not one pattern but the same cause in many forms: an operation's
+operands and result go through the reference stream's scratch
+registers, and step 3b's rewrite can only forward a copy within its
+shape. It never chooses another register for a result, never makes an
+add a `lea`, and must keep every home register equal at every region
+end, so a home register free for a while is never used as scratch.
+bzip2 `-9` (2.13G moves, 22.9% of its instructions): scratch → home
+read by another move 0.41G, home → scratch already holding it 0.33G,
+copies before a two-address add 0.29G, home → scratch live at a
+boundary 0.28G, in-place zero extensions 0.13G. zlib `-6` (1.39G,
+21.6%) has the same classes in a different order.
+
+**The change.** Under `-O` each straight-line region of the validated
+3a stream is allocated again (`amd64_regs.pl`, `alloc_rewrite/5`;
+`--operands=regions`, the default, `--operands=rewrite` keeps step
+3b). It runs A's region on the operand checker's own symbolic values
+(`paired/7`, `move_state/3`) and builds B line by line: each register
+source reads any register that holds A's value (or an immediate); a
+result goes where it is needed at the region's end, else into A's
+register, else into any register whose value is not needed; a
+two-address destination is a register already holding the input (or
+the other input of a commutative form), a `lea` when the flags are
+dead, or a copy; live values reach their end registers by a parallel
+move. Home registers that hold no live home are free. Lines it does
+not model (division, partial writes, SSE, `%cl` shifts, `setcc`) keep
+A's registers. A region falls back to step 3b's rewrite when the
+allocation fails or is longer. The trusted change is the checker
+amendment in step 3b above, reviewed before this became the default.
+
+`mainGtU`'s byte compare goes from eight register moves to three;
+`XXH32_round` no longer stages operands through `%eax`
+(`movl (%rax),%eax; imull %ebx,%eax; addl %r12d,%eax`).
+
+**Gate**, final build against the previous `-O` (`b23af4e`), 11 trials
+on core 14 after `run.py` waited 718 s for it to idle (cycles and
+instructions are user counts), ratio to filcc `-O2`, with the trials'
+range of time ratios:
+
+| Workload | instructions, ratio | instructions, G | cycles, G | time ratio (range) |
+| --- | --: | --: | --: | --: |
+| zlib -6 | 3.28 → 2.73 | 6.43 → 5.35 | 1.197 → 1.084 | 1.89 (1.85..1.93) → 1.71 (1.69..1.92) |
+| zlib -d | 2.86 → 2.36 | 0.555 → 0.458 | 0.127 → 0.114 | 1.59 (1.57..1.67) → 1.46 (1.45..1.49) |
+| bzip2 -9 | 1.99 → 1.68 | 9.32 → 7.89 | 2.047 → 1.880 | 1.54 (1.52..1.57) → 1.42 (1.41..1.47) |
+| bzip2 -d | 2.62 → 2.43 | 3.75 → 3.47 | 0.976 → 0.958 | 2.20 (2.14..2.30) → 2.17 (2.14..2.25) |
+| lz4 -1 | 10.10 → 9.48 | 0.316 → 0.297 | 0.0807 → 0.0806 | 2.03 (1.97..2.48) → 2.03 (1.93..2.20) |
+| lz4 -9 | 2.54 → 2.26 | 7.36 → 6.56 | 1.407 → 1.326 | 1.98 (1.95..2.02) → 1.87 (1.85..1.91) |
+| lz4 -d | 5.40 → 4.95 | 0.392 → 0.360 | 0.0886 → 0.0871 | 2.31 (2.21..2.43) → 2.28 (2.24..2.57) |
+| lua int | 1.68 → 1.48 | 1.95 → 1.72 | 0.327 → 0.300 | 1.51 (1.47..1.57) → 1.41 (1.39..1.47) |
+| lua tab | 1.58 → 1.39 | 1.50 → 1.32 | 0.251 → 0.231 | 1.41 (1.39..1.48) → 1.30 (1.27..1.38) |
+| lua str | 1.48 → 1.40 | 5.25 → 4.97 | 1.776 → 1.680 | 1.44 (1.33..2.72) → 1.38 (1.32..2.00) |
+| sqlite | 1.81 → 1.69 | 20.20 → 18.77 | 5.77 → 5.54 | 1.77 (1.70..2.45) → 1.70 (1.65..1.81) |
+| geomean | 2.67 → 2.38 | | | 1.76 → 1.67 |
+
+(These ratios are on core 14, against item 19's core 6, so filcc's
+times differ from item 19's table.) Instructions fall 11% (geomean),
+4–18% per workload; the gate's excess over filcc falls by 5.6G
+instructions, the size item 19 estimated. Cycles fall on every
+workload (lz4 `-1` by 0.1%), time by 5% geomean, and no workload is
+slower, so `--operands=regions` is the `-O` default.
+
+SWI-Prolog's suite (`bench/swipl.nix`, 0.02 of its counts, 3 trials on
+core 13 under a load average of 45–65; the previous `-O` is the
+stocktake's build, whose `nanofil/src` is `b23af4e`'s): user
+instructions 239.4G → 231.5G (−3.3%), cycles 149.9G → 127.2G,
+task-clock 1.61 → 1.38 of filcc's. Its output equals filcc's. The time
+and cycle drops are larger than the instructions explain and the
+baseline's trials ranged 1.08..3.42 under that load, so only the
+instruction count is firm. (The filcc `ref` build of `swipl.nix` failed
+at this commit with `gmp.h` not found, a build-environment failure
+outside nanofil; the run used the `ref` built an hour earlier from the
+same sources and flags.)
+
+**Compile time.** `lvm.i` with `-O`: 68.7G user instructions before,
+80.5G after (+17%; a first version was +25%, cut by skipping regions
+without moves, not building step 3b's rewrite when the allocation is
+already minimal, and finding a frame cell by its value instead of
+scanning). `sqlite3.c -O` measured +32% user time on the first version
+under load (279 s → 370 s), peak RSS unchanged (2.16 GB). The check
+compiles within its timeouts; under swa's load of 70–80 some vector
+progtests' 20 s compile limit was reached and passed on rerun.
+
+**Lever 8: why scalar homes stay in the frame.** The allocator's
+reason for each home of the hottest files, joined with callgrind's
+per-instruction counts of the frame accesses (share of each workload's
+instructions):
+
+| Workload | crossing a call (callee-saved only) | pressure, no call | given a register |
+| --- | --: | --: | --: |
+| zlib -6 | 8.8% | 1.5% | |
+| lz4 -9 | 11.3% | 1.2% | |
+| lua int | 5.2% | 0% | |
+| bzip2 -9 | 3.1% | 0.3% | |
+
+No home stayed in the frame because of setjmp, an unsupported
+function, a value live at entry or a 32-bit store: all of it is homes
+competing for the five callee-saved registers because they are live
+across a call. In `longest_match` the only calls are cold slow paths
+(two `filc_pollcheck_slow`, two `filc_allocate`). Treating poll, store
+barrier and ensure-aux slow paths as not clobbering `r10`/`r11`
+(scratch experiment, checks off, not emitted) moves zlib `-6`'s
+crossing share from 8.8% to 0.7% and gives 2.6% of its instructions a
+register; 7.5% then stays as plain pressure. lz4 `-9` gains 4.5% and
+keeps 8.6% crossing real calls. In
+`LZ4HC_InsertAndGetWiderMatch` the calls are real (`LZ4_count`,
+`LZ4HC_countBack`, `LZ4HC_countPattern`, `LZ4HC_Insert`); the inlining
+thread removes them. So lever 8's next step is not live-range
+splitting but a slow-path convention: the cold runtime calls save the
+caller-saved registers they use, and the checker's call rule exempts
+them. That changes what the register checker assumes about those
+calls (a contract, with the runtime's save code to audit), and is left
+for a reviewed proposal. Splitting reaches only the pressure column.
 
 ### Projection
 

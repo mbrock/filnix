@@ -746,8 +746,8 @@ pizlonatedFIP1066_sum:
 	movq %rax, -160(%rbp)
 	leaq -168(%rbp), %rax
 	movq %rax, 16(%rdi)
-	movq %rdx, %rbx
 	movq %rcx, -152(%rbp)
+	movq %rdx, %rbx
 .Lsum.start:
 ```
 <!-- /guide -->
@@ -761,9 +761,8 @@ follows:
 <!-- guide: asm-loop -->
 ```asm
 .Lsum.L3:
-	movq %rbx, %r10
-	movq %rbx, %rax
 	cmpq $0, %rbx
+	movq %rbx, %rax
 	je .Lsum.L5
 .Lsum.L4:
 	movq %rbx, %rax
@@ -776,19 +775,14 @@ follows:
 	subq $4, %rdx
 	cmpq %rdx, %rax
 	ja .Lsum..fail.4.0.1
-	movl (%rax), %r10d
-	movl %r12d, %eax
-	addl %r10d, %eax
-	movq %rax, %r10
-	movq %rbx, %rax
+	movl (%rax), %eax
+	leal (%rax,%r12), %r10d
+	leaq 8(%rbx), %rax
 	movq -152(%rbp), %rcx
-	addq $8, %rax
-	movq %rax, %r11
 	movq %rcx, -144(%rbp)
-	movq %r11, %rax
 	movq -16(%rcx), %rdx
 	subq $8, %rdx
-	cmpq %rdx, %r11
+	cmpq %rdx, %rax
 	ja .Lsum..fail.8.0.8
 	testb $7, %al
 	jnz .Lsum..fail.8.0.8
@@ -807,18 +801,16 @@ follows:
 .Lsum.L4..3.nolower:
 	xorl %esi, %esi
 .Lsum.L4..3.have:
-	movq (%rax), %rax
-	movq %rsi, %rcx
-	movq %rax, %rbx
+	movq (%rax), %rbx
 	movq %rsi, -152(%rbp)
-	movl %r10d, %r10d
-	movq %rbx, %r11
 	movq %rsi, -136(%rbp)
-	movq %r10, %r12
-	movq -136(%rbp), %rax
-	movq %rax, -152(%rbp)
-	movq -80(%rbp), %rdi
-	testb $14, 8(%rdi)
+	movq %rsi, -152(%rbp)
+	movq -80(%rbp), %rax
+	testb $14, 8(%rax)
+	movq %rsi, %rcx
+	movq %rax, %rdi
+	movq %rcx, %rax
+	movl %r10d, %r12d
 	jz .Lsum.L4..j.poll
 	leaq .Lsum..origin_n(%rip), %rsi
 	call filc_pollcheck_slow@PLT

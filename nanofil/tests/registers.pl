@@ -6,6 +6,7 @@
    retired in October 2026, docs/m6.md.) */
 :- module(register_tests, [scalar_cache/0]).
 :- use_module('../src/filc_amd64').
+:- use_module('../src/amd64_contract', [register/3]).
 :- use_module('../src/filc_abi', [lower_function/4]).
 :- use_module('../src/ir').
 :- use_module('../src/opt').
@@ -68,15 +69,29 @@ immediate_selection :-
                       9223372036854775807])),
            (immediate_module(Op,l,N,M),
             filc_module_asm(M,temps,Lines,_),
-            memberchk(ins(movabs,q,[imm(N),reg(rcx)]),Lines))).
+            % A register gets N whole (movabs, or movl zero-extending
+            % N < 2^32), and no q operation takes it as an imm32.
+            (   memberchk(ins(movabs,q,[imm(N),reg(_)]),Lines) -> true
+            ;   N >= 0, N < 1 << 32, member(ins(mov,l,[imm(I),reg(_)]),Lines),
+                I mod (1 << 32) =:= N
+            ),
+            \+ ( member(ins(Insn,q,[imm(J),_]),Lines),
+                 memberchk(Insn,[add,sub,imul,and,or,xor]),
+                 J mod (1 << 32) =:= N mod (1 << 32) ))).
 
 selected_immediate(Op,Insn,K,N,V) :-
     immediate_module(Op,K,N,M),
     filc_module_asm(M,stack,Stack,_),
     filc_module_asm(M,temps,Local,[function(immediate,_)]),
-    ( K == w -> S = l, R = eax ; S = q, R = rax ),
-    memberchk(ins(Insn,S,[imm(V),reg(R)]),Local),
-    \+ memberchk(ins(Insn,S,[imm(V),reg(R)]),Stack),
+    % The register is the allocator's choice (docs/perf.md item 19).
+    ( K == w -> S = l, W = 32 ; S = q, W = 64 ),
+    % An add or sub of a constant may be a lea of it into another register.
+    (   member(ins(Insn,S,[imm(V),reg(R)]),Local)
+    ;   Insn == add, member(ins(lea,S,[mem(V,_),reg(R)]),Local)
+    ;   Insn == sub, NV is -V, member(ins(lea,S,[mem(NV,_),reg(R)]),Local)
+    ),
+    register(R,_,W), !,
+    \+ memberchk(ins(Insn,S,[imm(V),_]),Stack),
     \+ memberchk(ins(movabs,q,[_,reg(rcx)]),Local),
     \+ memberchk(ins(mov,l,[_,reg(ecx)]),Local).
 

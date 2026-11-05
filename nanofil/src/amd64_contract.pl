@@ -107,6 +107,10 @@ instruction_effects(ins(Op,S,[A,reg(R)]), effect(Rs,[write(F,W)],preserve,Ms,nex
     source(A,From,Rs,Ms), A \= imm(_), register(R,F,W).
 instruction_effects(ins(lea,q,[M,reg(R)]), effect(Rs,[write(F,64)],preserve,[],next)) :-
     address(M,Rs), register(R,F,64).
+% leal computes the 64-bit address and writes its low 32 bits,
+% zero-extended, like any 32-bit write.
+instruction_effects(ins(lea,l,[M,reg(R)]), effect(Rs,[write(F,32)],preserve,[],next)) :-
+    address(M,Rs), register(R,F,32).
 instruction_effects(ins(Op,S,[A,B]), effect(Rs,Ws,write,Ms,next)) :-
     memberchk(Op,[add,sub,and,or,xor,imul,btc]), width(S,W),
     ( memberchk(Op,[imul,btc]) -> W >= 16, B = reg(_) ; true ),
