@@ -1,0 +1,127 @@
+acl 2.4 for Fil-C: libmisc's *xattrat and openat2 used raw syscall(), which
+stops a Fil-C program (setfacl died with "unsupported syscall: 464").
+
+diff -ru a/libmisc/openat2.c b/libmisc/openat2.c
+--- a/libmisc/openat2.c	2026-11-05 01:22:24.719627936 +0100
++++ b/libmisc/openat2.c	2026-11-05 01:22:24.744435141 +0100
+@@ -20,11 +20,18 @@
+ #include "config.h"
+ #include <sys/syscall.h>
+ #include <unistd.h>
++#include <errno.h>
+ 
+ #include "openat2.h"
+ 
+ int openat2(int dirfd, const char *pathname, const struct open_how *how,
+ 	    size_t size)
+ {
++#ifdef __FILC__
++	/* Fil-C's syscall() stops the program on openat2. */
++	errno = ENOSYS;
++	return -1;
++#else
+ 	return syscall(__NR_openat2, dirfd, pathname, how, size);
++#endif
+ }
+diff -ru a/libmisc/xattrat.c b/libmisc/xattrat.c
+--- a/libmisc/xattrat.c	2026-11-05 01:22:24.719610042 +0100
++++ b/libmisc/xattrat.c	2026-11-05 01:22:32.299360587 +0100
+@@ -29,6 +29,93 @@
+ 
+ #include "xattrat.h"
+ 
++#ifdef __FILC__
++/* Fil-C's syscall() stops the program on numbers it does not support,
++   which include the *xattrat calls (and their struct xattr_args carries the
++   value pointer as an integer). Use the path-based calls instead: an empty
++   path with AT_EMPTY_PATH is the fd itself, and a relative path under a
++   directory fd resolves through /proc/self/fd, as the kernel would. */
++#include <fcntl.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/xattr.h>
++
++static char *
++at_path(int dirfd, const char *path, int at_flags, int *fd)
++{
++	char *p;
++
++	*fd = -1;
++	if (at_flags & ~(AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW)) {
++		errno = EINVAL;
++		return NULL;
++	}
++	if (!path || !*path) {
++		if (!(at_flags & AT_EMPTY_PATH)) {
++			errno = ENOENT;
++			return NULL;
++		}
++		*fd = dirfd;
++		return NULL;
++	}
++	if (*path == '/' || dirfd == AT_FDCWD)
++		p = strdup(path);
++	else if (asprintf(&p, "/proc/self/fd/%d/%s", dirfd, path) < 0)
++		p = NULL;
++	if (!p)
++		errno = ENOMEM;
++	return p;
++}
++
++#define AT_CALL(fcall, lcall, call) do {				\
++	int fd;								\
++	char *p = at_path(dirfd, path, at_flags, &fd);			\
++	ssize_t r;							\
++	if (fd >= 0)							\
++		return fcall;						\
++	if (!p)								\
++		return -1;						\
++	r = (at_flags & AT_SYMLINK_NOFOLLOW) ? lcall : call;		\
++	free(p);							\
++	return r;							\
++} while (0)
++
++ssize_t
++getxattrat(int dirfd, const char *path, int at_flags, const char *name,
++	   void *value, size_t size)
++{
++	AT_CALL(fgetxattr(fd, name, value, size),
++		lgetxattr(p, name, value, size),
++		getxattr(p, name, value, size));
++}
++
++int
++setxattrat(int dirfd, const char *path, int at_flags, const char *name,
++	   const void *value, size_t size, int flags)
++{
++	AT_CALL(fsetxattr(fd, name, value, size, flags),
++		lsetxattr(p, name, value, size, flags),
++		setxattr(p, name, value, size, flags));
++}
++
++ssize_t listxattrat(int dirfd, const char *path, int at_flags, char *list,
++		    size_t size)
++{
++	AT_CALL(flistxattr(fd, list, size),
++		llistxattr(p, list, size),
++		listxattr(p, list, size));
++}
++
++int
++removexattrat(int dirfd, const char *path, int at_flags, const char *name)
++{
++	AT_CALL(fremovexattr(fd, name),
++		lremovexattr(p, name),
++		removexattr(p, name));
++}
++#else
++
+ ssize_t
+ getxattrat(int dirfd, const char *path, int at_flags, const char *name,
+ 	   void *value, size_t size)
+@@ -87,3 +174,4 @@
+ 	return -1;
+ #endif
+ }
++#endif

@@ -3006,6 +3006,12 @@ in
     (skipCheck "network service tests")
   ])
 
+  (for pkgs.acl [
+    # The *xattrat calls and openat2 went through raw syscall(), which stops
+    # a Fil-C program; setfacl died in NixOS's resolvconf service.
+    (patch ./patches/acl-2.4-filc.patch)
+  ])
+
   (for pkgs.procps [
     (patch ./ports/patch/procps-ng-4.0.4.patch)
   ])
