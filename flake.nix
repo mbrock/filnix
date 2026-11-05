@@ -440,6 +440,8 @@
           # nixos/filc.nix, docs/nixos.md and the two example machines.
           nixosModules = rec {
             filc = import ./nixos/filc.nix { filnix = self; };
+            # The whole userland, systemd included; see docs/nixos-userland.md.
+            filc-userland = import ./nixos/userland.nix { filnix = self; };
             default = filc;
           };
           # A finix system whose whole userland is Fil-C; see finix/userland.nix.
@@ -480,10 +482,17 @@
           legacyPackages.${system} = {
             inherit pkgsFilc pkgsFilcStaging;
             # NixOS VM tests of Fil-C services; see tests/nixos/default.nix.
-            nixosTests = import ./tests/nixos {
-              inherit pkgs pkgsFilc;
-              filcModule = self.nixosModules.filc;
-            };
+            nixosTests =
+              import ./tests/nixos {
+                inherit pkgs pkgsFilc;
+                filcModule = self.nixosModules.filc;
+              }
+              // {
+                userland = import ./tests/nixos/userland.nix {
+                  inherit pkgs;
+                  userlandModule = self.nixosModules.filc-userland;
+                };
+              };
           };
 
           packages.${system} = {
