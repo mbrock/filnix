@@ -11,6 +11,44 @@ One module does it for both operating systems: `nixosModules.default` and
 [finix/default.nix](../finix/default.nix)) around one core,
 [lib/filc-system.nix](../lib/filc-system.nix).
 
+## Trying it
+
+The quickest way in is the base image, [nixos/base.nix](../nixos/base.nix):
+
+```sh
+nix run github:mbrock/filnix#nixos-vm      # with Nix, on x86-64 Linux
+```
+
+or the compressed qcow2 from a [release](https://github.com/mbrock/filnix/releases),
+without Nix:
+
+```sh
+qemu-system-x86_64 -enable-kvm -m 2048 -nographic \
+  -drive file=filnix-nixos-v….qcow2,if=virtio \
+  -nic user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:2222-:22
+```
+
+It boots with BIOS and GRUB and logs `demo` in on the console and the
+serial line; `demo` has sudo without a password. SSH takes keys only: add
+yours to `users.users.demo.openssh.authorizedKeys.keys` in
+`/etc/nixos/configuration.nix`. `/etc/nixos` is a flake pinned to the filnix
+revision the image was built from, with filc.cachix.org as a substituter,
+so `sudo nixos-rebuild switch` downloads instead of compiling the Fil-C
+world. Give the machine at least 2 GiB of memory. `nix run .#nixos-vm`
+keeps its changes in `./filnix-nixos.qcow2`, an overlay on the image in the
+store; delete it to start over.
+
+The image is `packages.x86_64-linux.nixos-image`, about 1.5 GB compressed.
+Its disk image tools (rsync, parted, e2fsprogs, lkl, qemu-img) are native,
+since Nixpkgs' make-disk-image takes them from `pkgs`, which is Fil-C here.
+The campaign builds it with the rest of `scripts/ci-outputs.txt`, and
+`checks.x86_64-linux.nixos-image-boot` boots that exact file with
+`-snapshot` ([nixos/image-boot.py](../nixos/image-boot.py)): it waits for the
+serial autologin, then checks that PID 1 and the shell map libpizlo, that no
+unit failed, that `filc-ps` passes, that sshd takes keys only, and that the
+flake and the cache are there. A release substitutes the image, never
+builds it, and boots it again when the runner has KVM.
+
 ## Using it
 
 ```nix

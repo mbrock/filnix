@@ -1045,6 +1045,13 @@ in
     (skipTests "too slow")
   ])
 
+  # qemu-img is only on the PATH of cloud-localds and the other image tools
+  # in $out, and the Fil-C QEMU does not build yet. growpart, in the guest
+  # output that NixOS's boot.growPartition uses, does not need it.
+  (for pkgs.cloud-utils [
+    (arg { qemu-utils = pkgs.emptyDirectory; })
+  ])
+
   (for pkgs.cmake [
     # No Fil-C source patch; Nixpkgs 26.05's patches only apply to 4.x.
     (skipCheck "some tests fail")

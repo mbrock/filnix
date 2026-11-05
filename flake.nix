@@ -201,6 +201,11 @@
             filc-emacs = emacs-safe.filc-emacs;
           };
 
+          nixosImage = import ./nixos/image.nix {
+            inherit pkgs;
+            inherit (self.nixosConfigurations.base) config;
+          };
+
           # Ruby with individual gems for testing - auto-generated for all available gems
           rubyWithGem = pkgs.lib.mapAttrs (
             name: _: pkgsFilc.ruby.withPackages (ps: [ ps.${name} ])
@@ -397,6 +402,8 @@
             runtime-prctl-caps = import ./tests/runtime-prctl-caps.nix {
               inherit pkgsFilc;
             };
+            # Boots the exact nixos-image file and checks its userland.
+            nixos-image-boot = nixosImage.check;
             native-exceptions-table = import ./tests/native-exceptions-table.nix {
               inherit pkgs;
             };
@@ -503,6 +510,12 @@
               }
             );
 
+          # The base machine of the images; see nixos/base.nix.
+          nixosModules.base = import ./nixos/base.nix { filnix = self; };
+          nixosConfigurations.base = self.lib.nixosSystem {
+            modules = [ self.nixosModules.base ];
+          };
+
           # The finix machine with a Fil-C userland; see finix/demo.nix.
           finixConfigurations.filc-demo = (import finix).lib.finixSystem {
             lib = nixlib;
@@ -524,168 +537,175 @@
             };
           };
 
-          packages.${system} = {
-            default = filcc;
-            baseline = baseline.baseline;
-            # Fil-C, runtime and native ELF files in a closure (docs/nixos.md).
-            filc-audit = pkgs.writeShellApplication {
-              name = "filc-audit";
-              runtimeInputs = [
-                pkgs.binutils-unwrapped
-                pkgs.findutils
-              ];
-              text = builtins.readFile ./lib/filc-audit.sh;
-            };
-            baseline-shell = baseline.shell;
-            inherit
-              filcc
-              filcc-staging
-              projeny
-              sarcasm
-              sarcasm-prolog
-              zstd-sarcasm
-              ;
-            inherit (sarcasm) minilute;
-            inherit (pkgsFilc) openssl-sarcasm;
-            php-dist = import ./packages/php-dist { inherit pkgs pkgsFilc; };
-            # Vulnerable PHP for reproductions, never the default or :latest.
-            php84_25 = pkgsFilcPhp84_25.php84_25;
-            php84_25-dist = import ./packages/php-dist {
-              inherit pkgs;
-              pkgsFilc = pkgsFilcPhp84_25;
-              base = pkgsFilcPhp84_25.php84_25;
-            };
-            php84_25-docker = import ./packages/php-dist/docker.nix {
-              inherit pkgs;
-              dist = self.packages.${system}.php84_25-dist;
-            };
-            # Experimental: opcache's JIT, compiled through C (docs/php.md).
-            php-jit = pkgsFilc.php84-jit;
-            # Native against Fil-C PHP 8.5 on real applications (bench/php).
-            php-bench = import ./bench/php { inherit pkgs pkgsFilc pkgsFilcStaging; };
-            # PHP 8.5 with the same JIT, on the staging toolchain.
-            php85-jit = pkgsFilcStaging.php85-jit;
-            php74-dist = import ./packages/php-dist {
-              inherit pkgs pkgsFilc;
-              php = pkgsFilc.php74.withExtensions (
-                { enabled, all }:
-                enabled
-                ++ (with all; [
-                  bz2
-                  shmop
-                  sysvmsg
-                  sysvshm
-                ])
-              );
-            };
-            inherit optfil;
-            filroot = import ./packages/filroot { inherit pkgs optfil; };
-            # The GitHub Pages site: pages/ and the rendered docs/.
-            site = import ./packages/site {
-              inherit pkgs nixpkgs;
-              filcc = filcc-staging;
-              filnix = self;
-            };
-            # The site's SWI-Prolog 10, which nixpkgs does not have; ship
-            # publishes it so the Pages build substitutes it.
-            site-swipl = import ./nanofil/web/play/swipl.nix { inherit pkgs; };
-            # The site's nanofil playground, built with the staging toolchain;
-            # ship publishes it so Pages does not rebuild staging clang.
-            site-play = self.packages.${system}.site.play;
-            php-docker = import ./packages/php-dist/docker.nix {
-              inherit pkgs;
-              dist = import ./packages/php-dist { inherit pkgs pkgsFilc; };
-            };
-            bind-dist = import ./packages/bind-dist { inherit pkgs pkgsFilc; };
-            bind-docker = import ./packages/bind-dist/docker.nix {
-              inherit pkgs;
-              dist = import ./packages/bind-dist { inherit pkgs pkgsFilc; };
-            };
-            # Release alternates on the staging toolchain: unreleased compiler
-            # and runtime changes, faster but less reviewed (docs/php.md).
-            php85-staging-dist = import ./packages/php-dist {
-              inherit pkgs;
-              pkgsFilc = pkgsFilcStaging;
-              base = pkgsFilcStaging.php85;
-              suffix = "-staging";
-            };
-            php85-staging-docker = import ./packages/php-dist/docker.nix {
-              inherit pkgs;
-              dist = import ./packages/php-dist {
+          packages.${system} =
+            nixlib.optionalAttrs (system == "x86_64-linux") {
+              # The base Fil-C NixOS as a compressed qcow2, and a VM that
+              # boots it (nixos/image.nix).
+              nixos-image = nixosImage.image;
+              nixos-vm = nixosImage.vm;
+            }
+            // {
+              default = filcc;
+              baseline = baseline.baseline;
+              # Fil-C, runtime and native ELF files in a closure (docs/nixos.md).
+              filc-audit = pkgs.writeShellApplication {
+                name = "filc-audit";
+                runtimeInputs = [
+                  pkgs.binutils-unwrapped
+                  pkgs.findutils
+                ];
+                text = builtins.readFile ./lib/filc-audit.sh;
+              };
+              baseline-shell = baseline.shell;
+              inherit
+                filcc
+                filcc-staging
+                projeny
+                sarcasm
+                sarcasm-prolog
+                zstd-sarcasm
+                ;
+              inherit (sarcasm) minilute;
+              inherit (pkgsFilc) openssl-sarcasm;
+              php-dist = import ./packages/php-dist { inherit pkgs pkgsFilc; };
+              # Vulnerable PHP for reproductions, never the default or :latest.
+              php84_25 = pkgsFilcPhp84_25.php84_25;
+              php84_25-dist = import ./packages/php-dist {
+                inherit pkgs;
+                pkgsFilc = pkgsFilcPhp84_25;
+                base = pkgsFilcPhp84_25.php84_25;
+              };
+              php84_25-docker = import ./packages/php-dist/docker.nix {
+                inherit pkgs;
+                dist = self.packages.${system}.php84_25-dist;
+              };
+              # Experimental: opcache's JIT, compiled through C (docs/php.md).
+              php-jit = pkgsFilc.php84-jit;
+              # Native against Fil-C PHP 8.5 on real applications (bench/php).
+              php-bench = import ./bench/php { inherit pkgs pkgsFilc pkgsFilcStaging; };
+              # PHP 8.5 with the same JIT, on the staging toolchain.
+              php85-jit = pkgsFilcStaging.php85-jit;
+              php74-dist = import ./packages/php-dist {
+                inherit pkgs pkgsFilc;
+                php = pkgsFilc.php74.withExtensions (
+                  { enabled, all }:
+                  enabled
+                  ++ (with all; [
+                    bz2
+                    shmop
+                    sysvmsg
+                    sysvshm
+                  ])
+                );
+              };
+              inherit optfil;
+              filroot = import ./packages/filroot { inherit pkgs optfil; };
+              # The GitHub Pages site: pages/ and the rendered docs/.
+              site = import ./packages/site {
+                inherit pkgs nixpkgs;
+                filcc = filcc-staging;
+                filnix = self;
+              };
+              # The site's SWI-Prolog 10, which nixpkgs does not have; ship
+              # publishes it so the Pages build substitutes it.
+              site-swipl = import ./nanofil/web/play/swipl.nix { inherit pkgs; };
+              # The site's nanofil playground, built with the staging toolchain;
+              # ship publishes it so Pages does not rebuild staging clang.
+              site-play = self.packages.${system}.site.play;
+              php-docker = import ./packages/php-dist/docker.nix {
+                inherit pkgs;
+                dist = import ./packages/php-dist { inherit pkgs pkgsFilc; };
+              };
+              bind-dist = import ./packages/bind-dist { inherit pkgs pkgsFilc; };
+              bind-docker = import ./packages/bind-dist/docker.nix {
+                inherit pkgs;
+                dist = import ./packages/bind-dist { inherit pkgs pkgsFilc; };
+              };
+              # Release alternates on the staging toolchain: unreleased compiler
+              # and runtime changes, faster but less reviewed (docs/php.md).
+              php85-staging-dist = import ./packages/php-dist {
                 inherit pkgs;
                 pkgsFilc = pkgsFilcStaging;
                 base = pkgsFilcStaging.php85;
                 suffix = "-staging";
               };
-            };
-            bind-staging-dist = import ./packages/bind-dist {
-              inherit pkgs;
-              pkgsFilc = pkgsFilcStaging;
-              suffix = "-staging";
-            };
-            bind-staging-docker = import ./packages/bind-dist/docker.nix {
-              inherit pkgs;
-              dist = import ./packages/bind-dist {
+              php85-staging-docker = import ./packages/php-dist/docker.nix {
+                inherit pkgs;
+                dist = import ./packages/php-dist {
+                  inherit pkgs;
+                  pkgsFilc = pkgsFilcStaging;
+                  base = pkgsFilcStaging.php85;
+                  suffix = "-staging";
+                };
+              };
+              bind-staging-dist = import ./packages/bind-dist {
                 inherit pkgs;
                 pkgsFilc = pkgsFilcStaging;
                 suffix = "-staging";
               };
+              bind-staging-docker = import ./packages/bind-dist/docker.nix {
+                inherit pkgs;
+                dist = import ./packages/bind-dist {
+                  inherit pkgs;
+                  pkgsFilc = pkgsFilcStaging;
+                  suffix = "-staging";
+                };
+              };
+              inherit
+                libei
+                libei_27
+                libei_28
+                ;
+
+              inherit filc-world-shell;
+              inherit (virt) filc-nspawn filc-qemu filc-docker;
+              inherit (demo)
+                lighttpd-demo
+                ttyd-emacs-demo
+                lua-with-stuff
+                python-with-stuff
+                python-web-demo
+                perl-demos
+                perl-with-stuff
+                libei-ping-demo
+                sinatra-demo
+                ;
+
+              push-baseline = pkgs.writeShellApplication {
+                name = "filc-push-baseline";
+                runtimeInputs = [
+                  pkgs.nix
+                  pkgs.cachix
+                  pkgs.coreutils
+                  (pkgs.writeScriptBin "filc-verify-cache" (
+                    "#!${pkgs.python3}/bin/python3\n"
+                    + builtins.readFile ./scripts/verify-cache.py
+                  ))
+                ];
+                text = builtins.readFile ./scripts/push-baseline.sh;
+              };
+
+              devtools = devtoolsFor pkgs;
+
+              push-filcc = pkgs.writeShellScriptBin "push-filcc" ''
+                ${pkgs.cachix}/bin/cachix push filc ${filcc}
+              '';
+
+              push-pkg = pkgs.writeShellScriptBin "push-pkg" ''
+                for pkg in "$@"; do
+                  ${pkgs.cachix}/bin/cachix push filc $(${pkgs.nix}/bin/nix build .#"$pkg" --print-out-paths --no-link)
+                done
+              '';
+
+              inherit runfilc;
+
+              inherit rubyWithGem;
+
+              inherit (emacs-safe) filc-emacs;
+              emacs30 = pkgsFilc.emacs30;
+              emacs = emacs-safe.filc-emacs;
+              emacs-unsafe = emacs-unsafe.filc-emacs;
             };
-            inherit
-              libei
-              libei_27
-              libei_28
-              ;
-
-            inherit filc-world-shell;
-            inherit (virt) filc-nspawn filc-qemu filc-docker;
-            inherit (demo)
-              lighttpd-demo
-              ttyd-emacs-demo
-              lua-with-stuff
-              python-with-stuff
-              python-web-demo
-              perl-demos
-              perl-with-stuff
-              libei-ping-demo
-              sinatra-demo
-              ;
-
-            push-baseline = pkgs.writeShellApplication {
-              name = "filc-push-baseline";
-              runtimeInputs = [
-                pkgs.nix
-                pkgs.cachix
-                pkgs.coreutils
-                (pkgs.writeScriptBin "filc-verify-cache" (
-                  "#!${pkgs.python3}/bin/python3\n"
-                  + builtins.readFile ./scripts/verify-cache.py
-                ))
-              ];
-              text = builtins.readFile ./scripts/push-baseline.sh;
-            };
-
-            devtools = devtoolsFor pkgs;
-
-            push-filcc = pkgs.writeShellScriptBin "push-filcc" ''
-              ${pkgs.cachix}/bin/cachix push filc ${filcc}
-            '';
-
-            push-pkg = pkgs.writeShellScriptBin "push-pkg" ''
-              for pkg in "$@"; do
-                ${pkgs.cachix}/bin/cachix push filc $(${pkgs.nix}/bin/nix build .#"$pkg" --print-out-paths --no-link)
-              done
-            '';
-
-            inherit runfilc;
-
-            inherit rubyWithGem;
-
-            inherit (emacs-safe) filc-emacs;
-            emacs30 = pkgsFilc.emacs30;
-            emacs = emacs-safe.filc-emacs;
-            emacs-unsafe = emacs-unsafe.filc-emacs;
-          };
 
           apps.${system} = virt.apps // {
             zstd-sarcasm = {

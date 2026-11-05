@@ -110,6 +110,12 @@ show(0);
 <noscript><p>On NixOS and finix alike, everything is Fil-C except the kernel, the bootloader, Nix and a few Rust boot tools.</p></noscript>
 </div>
 
+<h2 id="try">Try it</h2>
+<p>The base image is a whole Fil-C NixOS that logs <code>demo</code> in on the console and the serial line, with sudo; SSH takes keys only. With Nix on x86-64 Linux:</p>
+<pre><code>nix run github:mbrock/filnix#nixos-vm</code></pre>
+<p>Without Nix, each <a href="https://github.com/mbrock/filnix/releases">release</a> has it as a compressed qcow2 of about 1.3 GB for QEMU, with <code>-m 2048</code> or more. Its <code>/etc/nixos</code> is a flake pinned to the filnix revision it was built from, with the binary cache configured, so the first <code>sudo nixos-rebuild switch</code> downloads instead of compiling. A check boots that exact file before it ships; this is its console, after <code>sudo filc-ps</code>:</p>
+<div class="card"><img src="console.png" alt="The Fil-C NixOS console: demo logged in automatically, the message of the day, and filc-ps listing only Fil-C processes" style="width:100%;height:auto"></div>
+
 <h2 id="module">One module</h2>
 <p>One small module does it for both systems: <a href="../nix/lib-filc-system.html">lib/filc-system.nix</a>, exported as <code>nixosModules.default</code> and <code>finixModules.default</code> through two thin wrappers. It has no per-service switches and no lists of names. The only knob is the exceptions, written as Nix values, so a typo fails evaluation:</p>
 <pre><code><span class="c"># NixOS, with the NixOS modules of filnix's pinned Nixpkgs</span>

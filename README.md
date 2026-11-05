@@ -137,6 +137,13 @@ nixosConfigurations.host = filnix.lib.nixosSystem {
 };
 ```
 
+To try it, boot the base image (it logs `demo` in on the console; SSH takes
+keys only), or take its qcow2 from a release:
+
+``` bash
+nix run github:mbrock/filnix#nixos-vm
+```
+
 The same module is `nixosModules.default` and, for
 [finix](docs/finix.md), `finixModules.default`. `filc-ps` on the machine
 checks that every running process is Fil-C or an allowed exception; the VM

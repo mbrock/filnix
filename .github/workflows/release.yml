@@ -1,6 +1,7 @@
 # Publishes a GitHub release for a v* tag (scripts/release makes one): the
 # PHP and BIND tarballs, their container images as docker-archives, the
-# /opt/fil tarball, the relocatable filroot tarball and their SHA-256 sums,
+# /opt/fil tarball, the relocatable filroot tarball, the base Fil-C NixOS
+# disk image and their SHA-256 sums,
 # and pushes the images to ghcr.io under their versions and the release tag.
 # PHP 8.5 and BIND are also published built with the staging toolchain,
 # marked -staging in their file names and image tags.
@@ -55,6 +56,7 @@ jobs:
           nix build .#php85-staging-docker --out-link php85-staging-docker
           nix build .#bind-staging-dist --out-link bind-staging-dist
           nix build .#bind-staging-docker --out-link bind-staging-docker
+          nix build .#nixos-image --out-link nixos-image
           {
             echo "PHP_VERSION=$(nix eval --raw .#php-docker.imageTag)"
             echo "PHP_84_25=$(nix eval --raw .#php84_25-docker.imageTag)"
@@ -72,6 +74,22 @@ jobs:
           packages/bind-dist/test/run.sh bind-dist debian:13 alpine:3
           packages/php-dist/test/run.sh php85-staging-dist debian:13 alpine:3
           packages/bind-dist/test/run.sh bind-staging-dist debian:13 alpine:3
+      - name: The NixOS image boots to a Fil-C userland
+        run: |
+          # Hosted Linux runners have /dev/kvm, usable after this udev rule.
+          # Without it, booting a whole Fil-C NixOS under emulation takes
+          # too long, and the campaign's checks.x86_64-linux.nixos-image-boot
+          # has booted this exact file already.
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
+            sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+          if [ -w /dev/kvm ]; then
+            qemu=$(nix build --no-link --print-out-paths .#lib.x86_64-linux.nativePackages.qemu_kvm)
+            python3 nixos/image-boot.py "$qemu/bin/qemu-system-x86_64" nixos-image/*.qcow2 nixos-boot
+          else
+            echo "::warning::no KVM on this runner; relying on checks.x86_64-linux.nixos-image-boot"
+          fi
       - name: The images serve PHP
         run: |
           for image in php-docker:$PHP_VERSION php84_25-docker:$PHP_84_25 php85-staging-docker:$PHP_STAGING; do
@@ -105,9 +123,18 @@ jobs:
           cp -L php85-staging-docker "assets/filnix-php-$PHP_STAGING-docker.tar.gz"
           cp -L bind-staging-dist "assets/$(basename "$(readlink bind-staging-dist)" | cut -d- -f2-)"
           cp -L bind-staging-docker "assets/filnix-bind-$BIND_STAGING-docker.tar.gz"
+          cp -L nixos-image/*.qcow2 "assets/filnix-nixos-$RELEASE-x86_64-linux.qcow2"
           # Each output has its own file name.
           assets=(assets/*)
-          test "${#assets[@]}" = 12
+          test "${#assets[@]}" = 13
+          # GitHub refuses release assets of 2 GiB or more.
+          for a in "${assets[@]}"; do
+            size=$(stat -c %s "$a")
+            if [ "$size" -ge 2147483648 ]; then
+              echo "::error::$a is $size bytes, over GitHub's 2 GiB asset limit"
+              exit 1
+            fi
+          done
           (cd assets && sha256sum -- * > SHA256SUMS)
           cat assets/SHA256SUMS
       - name: Push the images to ghcr.io
@@ -153,6 +180,13 @@ jobs:
           - \`filnix-bind-$BIND_VERSION-docker.tar.gz\`: a BIND image laid out
             like ISC's internetsystemsconsortium/bind9, also
             \`docker pull $BIND_IMAGE:$BIND_VERSION-$RELEASE\`.
+
+          - \`filnix-nixos-$RELEASE-x86_64-linux.qcow2\`: NixOS with a Fil-C
+            userland (systemd, PAM, OpenSSH and every service), as a compressed
+            qcow2 that boots with BIOS. It logs \`demo\` in on the console and the
+            serial line, with sudo; SSH takes keys only. Give it 2 GiB of memory:
+            \`qemu-system-x86_64 -enable-kvm -m 2048 -drive file=filnix-nixos-$RELEASE-x86_64-linux.qcow2,if=virtio -nographic\`.
+            With Nix, \`nix run github:mbrock/filnix/$RELEASE#nixos-vm\`.
 
           ### Vulnerable PHP for reproductions
 
