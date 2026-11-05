@@ -4,14 +4,21 @@
 # commit's full distribution outputs must be in the public caches, beyond
 # the foundation gate published by scripts/ship.
 #
-#   scripts/release [TAG]
+#   scripts/release [TAG] [REV]
+#
+# REV (default origin/main) releases an earlier commit of origin/main, for a
+# coherent point that later pushes have moved past.
 set -euo pipefail
 # shellcheck source=scripts/git-hooks/lib.sh
 . "$(dirname "$0")/git-hooks/lib.sh"
 cd "$filnix_root"
 
 git fetch -q --tags origin
-sha=$(git rev-parse origin/main)
+sha=$(git rev-parse "${2:-origin/main}^{commit}")
+git merge-base --is-ancestor "$sha" origin/main || {
+  echo "release: ${sha:0:12} is not on origin/main" >&2
+  exit 2
+}
 tag=${1:-}
 if [ -z "$tag" ]; then
   tag=v$(date -u +%Y.%m.%d)
