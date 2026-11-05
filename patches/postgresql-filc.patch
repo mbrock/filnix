@@ -1,0 +1,255 @@
+diff --git a/src/backend/access/transam/xlogprefetcher.c b/src/backend/access/transam/xlogprefetcher.c
+index 7735562..f364aab 100644
+--- a/src/backend/access/transam/xlogprefetcher.c
++++ b/src/backend/access/transam/xlogprefetcher.c
+@@ -91,7 +91,7 @@ typedef enum
+  * Type of callback that can decide which block to prefetch next.  For now
+  * there is only one.
+  */
+-typedef LsnReadQueueNextStatus (*LsnReadQueueNextFun) (uintptr_t lrq_private,
++typedef LsnReadQueueNextStatus (*LsnReadQueueNextFun) (void *lrq_private,
+ 													   XLogRecPtr *lsn);
+ 
+ /*
+@@ -103,7 +103,7 @@ typedef LsnReadQueueNextStatus (*LsnReadQueueNextFun) (uintptr_t lrq_private,
+ typedef struct LsnReadQueue
+ {
+ 	LsnReadQueueNextFun next;
+-	uintptr_t	lrq_private;
++	void	   *lrq_private;
+ 	uint32		max_inflight;
+ 	uint32		inflight;
+ 	uint32		completed;
+@@ -193,7 +193,7 @@ static inline bool XLogPrefetcherIsFiltered(XLogPrefetcher *prefetcher,
+ 											BlockNumber blockno);
+ static inline void XLogPrefetcherCompleteFilters(XLogPrefetcher *prefetcher,
+ 												 XLogRecPtr replaying_lsn);
+-static LsnReadQueueNextStatus XLogPrefetcherNextBlock(uintptr_t pgsr_private,
++static LsnReadQueueNextStatus XLogPrefetcherNextBlock(void *pgsr_private,
+ 													  XLogRecPtr *lsn);
+ 
+ static XLogPrefetchStats *SharedStats;
+@@ -201,7 +201,7 @@ static XLogPrefetchStats *SharedStats;
+ static inline LsnReadQueue *
+ lrq_alloc(uint32 max_distance,
+ 		  uint32 max_inflight,
+-		  uintptr_t lrq_private,
++		  void *lrq_private,
+ 		  LsnReadQueueNextFun next)
+ {
+ 	LsnReadQueue *lrq;
+@@ -456,7 +456,7 @@ XLogPrefetcherComputeStats(XLogPrefetcher *prefetcher)
+  * not to prefetch.
+  */
+ static LsnReadQueueNextStatus
+-XLogPrefetcherNextBlock(uintptr_t pgsr_private, XLogRecPtr *lsn)
++XLogPrefetcherNextBlock(void *pgsr_private, XLogRecPtr *lsn)
+ {
+ 	XLogPrefetcher *prefetcher = (XLogPrefetcher *) pgsr_private;
+ 	XLogReaderState *reader = prefetcher->reader;
+@@ -1009,7 +1009,7 @@ XLogPrefetcherReadRecord(XLogPrefetcher *prefetcher, char **errmsg)
+ 
+ 		prefetcher->streaming_read = lrq_alloc(max_distance,
+ 											   max_inflight,
+-											   (uintptr_t) prefetcher,
++											   prefetcher,
+ 											   XLogPrefetcherNextBlock);
+ 
+ 		prefetcher->reconfigure_count = XLogPrefetchReconfigureCount;
+diff --git a/src/backend/utils/adt/network.c b/src/backend/utils/adt/network.c
+index f03fcc1..0c3ef12 100644
+--- a/src/backend/utils/adt/network.c
++++ b/src/backend/utils/adt/network.c
+@@ -618,7 +618,7 @@ network_abbrev_convert(Datum original, SortSupport ssup)
+ {
+ 	network_sortsupport_state *uss = ssup->ssup_extra;
+ 	inet	   *authoritative = DatumGetInetPP(original);
+-	Datum		res,
++	uintptr_t	res,
+ 				ipaddr_datum,
+ 				subnet_bitmask,
+ 				network;
+@@ -661,7 +661,7 @@ network_abbrev_convert(Datum original, SortSupport ssup)
+ 		ipaddr_datum = DatumBigEndianToNative(ipaddr_datum);
+ 
+ 		/* Initialize result with ipfamily (most significant) bit set */
+-		res = ((Datum) 1) << (SIZEOF_DATUM * BITS_PER_BYTE - 1);
++		res = ((uintptr_t) 1) << (SIZEOF_DATUM * BITS_PER_BYTE - 1);
+ 	}
+ 
+ 	/*
+@@ -687,13 +687,13 @@ network_abbrev_convert(Datum original, SortSupport ssup)
+ 	if (ip_bits(authoritative) == 0)
+ 	{
+ 		/* Fit as many ipaddr bits as possible into subnet */
+-		subnet_bitmask = ((Datum) 0) - 1;
++		subnet_bitmask = ((uintptr_t) 0) - 1;
+ 		network = 0;
+ 	}
+ 	else if (ip_bits(authoritative) < SIZEOF_DATUM * BITS_PER_BYTE)
+ 	{
+ 		/* Split ipaddr bits between network and subnet */
+-		subnet_bitmask = (((Datum) 1) << subnet_size) - 1;
++		subnet_bitmask = (((uintptr_t) 1) << subnet_size) - 1;
+ 		network = ipaddr_datum & ~subnet_bitmask;
+ 	}
+ 	else
+@@ -710,8 +710,8 @@ network_abbrev_convert(Datum original, SortSupport ssup)
+ 		 * IPv4 with 8 byte datums: keep all 32 netmasked bits, netmask size,
+ 		 * and most significant 25 subnet bits
+ 		 */
+-		Datum		netmask_size = (Datum) ip_bits(authoritative);
+-		Datum		subnet;
++		uintptr_t	netmask_size = (Datum) ip_bits(authoritative);
++		uintptr_t	subnet;
+ 
+ 		/*
+ 		 * Shift left 31 bits: 6 bits netmask size + 25 subnet bits.
+diff --git a/src/backend/utils/adt/numeric.c b/src/backend/utils/adt/numeric.c
+index a372237..42a07fb 100644
+--- a/src/backend/utils/adt/numeric.c
++++ b/src/backend/utils/adt/numeric.c
+@@ -2889,7 +2889,7 @@ hash_numeric(PG_FUNCTION_ARGS)
+ 						  hash_len * sizeof(NumericDigit));
+ 
+ 	/* Mix in the weight, via XOR */
+-	result = digit_hash ^ weight;
++	result = (uintptr_t) digit_hash ^ weight;
+ 
+ 	PG_RETURN_DATUM(result);
+ }
+diff --git a/src/backend/utils/adt/varlena.c b/src/backend/utils/adt/varlena.c
+index 6a589fc..f3425a1 100644
+--- a/src/backend/utils/adt/varlena.c
++++ b/src/backend/utils/adt/varlena.c
+@@ -2507,7 +2507,7 @@ varstr_abbrev_convert(Datum original, SortSupport ssup)
+ 					hihalf;
+ 
+ 		lohalf = (uint32) res;
+-		hihalf = (uint32) (res >> 32);
++		hihalf = (uint32) ((uintptr_t) res >> 32);
+ 		hash = DatumGetUInt32(hash_uint32(lohalf ^ hihalf));
+ 	}
+ #else							/* SIZEOF_DATUM != 8 */
+diff --git a/src/include/lib/sort_template.h b/src/include/lib/sort_template.h
+index 11e136c..c4ae66e 100644
+--- a/src/include/lib/sort_template.h
++++ b/src/include/lib/sort_template.h
+@@ -281,8 +281,32 @@ ST_SWAP(ST_POINTER_TYPE * a, ST_POINTER_TYPE * b)
+ static inline void
+ ST_SWAPN(ST_POINTER_TYPE * a, ST_POINTER_TYPE * b, size_t n)
+ {
++#ifdef __FILC__
++	/*
++	 * Swapped byte by byte, each pointer in an element would keep its old
++	 * capability with the other element's address, which Fil-C refuses.
++	 * memcpy moves whole pointers with their capabilities.
++	 */
++	char		tmp[64] __attribute__((aligned(16)));
++	char	   *pa = (char *) a;
++	char	   *pb = (char *) b;
++	size_t		left = n * sizeof(*a);
++
++	while (left > 0)
++	{
++		size_t		k = left < sizeof(tmp) ? left : sizeof(tmp);
++
++		memcpy(tmp, pa, k);
++		memcpy(pa, pb, k);
++		memcpy(pb, tmp, k);
++		pa += k;
++		pb += k;
++		left -= k;
++	}
++#else
+ 	for (size_t i = 0; i < n; ++i)
+ 		ST_SWAP(&a[i], &b[i]);
++#endif
+ }
+ 
+ /*
+diff --git a/src/include/nodes/nodes.h b/src/include/nodes/nodes.h
+index fbe333d..f3743b8 100644
+--- a/src/include/nodes/nodes.h
++++ b/src/include/nodes/nodes.h
+@@ -198,7 +198,13 @@ extern void outNode(struct StringInfoData *str, const void *obj);
+ extern void outToken(struct StringInfoData *str, const char *s);
+ extern void outBitmapset(struct StringInfoData *str,
+ 						 const struct Bitmapset *bms);
+-extern void outDatum(struct StringInfoData *str, uintptr_t value,
++/* Datum, which postgres.h defines: a pointer under Fil-C. */
++#ifdef __FILC__
++typedef char *NodeDatum;
++#else
++typedef uintptr_t NodeDatum;
++#endif
++extern void outDatum(struct StringInfoData *str, NodeDatum value,
+ 					 int typlen, bool typbyval);
+ extern char *nodeToString(const void *obj);
+ extern char *nodeToStringWithLocations(const void *obj);
+@@ -212,7 +218,7 @@ extern void *stringToNode(const char *str);
+ extern void *stringToNodeWithLocations(const char *str);
+ #endif
+ extern struct Bitmapset *readBitmapset(void);
+-extern uintptr_t readDatum(bool typbyval);
++extern NodeDatum readDatum(bool typbyval);
+ extern bool *readBoolCols(int numCols);
+ extern int *readIntCols(int numCols);
+ extern Oid *readOidCols(int numCols);
+diff --git a/src/include/port/atomics.h b/src/include/port/atomics.h
+index 074136f..eab1f84 100644
+--- a/src/include/port/atomics.h
++++ b/src/include/port/atomics.h
+@@ -65,7 +65,7 @@
+  */
+ #if defined(__arm__) || defined(__arm) || defined(__aarch64__)
+ #include "port/atomics/arch-arm.h"
+-#elif defined(__i386__) || defined(__i386) || defined(__x86_64__)
++#elif (defined(__i386__) || defined(__i386) || defined(__x86_64__)) && !defined(__FILC__)
+ #include "port/atomics/arch-x86.h"
+ #elif defined(__ppc__) || defined(__powerpc__) || defined(__ppc64__) || defined(__powerpc64__)
+ #include "port/atomics/arch-ppc.h"
+diff --git a/src/include/port/pg_bitutils.h b/src/include/port/pg_bitutils.h
+index c7901bf..37dc90a 100644
+--- a/src/include/port/pg_bitutils.h
++++ b/src/include/port/pg_bitutils.h
+@@ -292,7 +292,7 @@ pg_ceil_log2_64(uint64 num)
+  *
+  * Otherwise, we fall back to a hand-rolled implementation.
+  */
+-#ifdef HAVE_X86_64_POPCNTQ
++#if defined(HAVE_X86_64_POPCNTQ) && !defined(__FILC__)
+ #if defined(HAVE__GET_CPUID) || defined(HAVE__CPUID)
+ #define TRY_POPCNT_X86_64 1
+ #endif
+diff --git a/src/include/postgres.h b/src/include/postgres.h
+index 8a41a66..814093e 100644
+--- a/src/include/postgres.h
++++ b/src/include/postgres.h
+@@ -66,7 +66,12 @@
+  * convert between a Datum and the appropriate C type.
+  */
+ 
++#ifdef __FILC__
++/* Fil-C: an integer does not carry a pointer's capability. */
++typedef char *Datum;
++#else
+ typedef uintptr_t Datum;
++#endif
+ 
+ /*
+  * A NullableDatum is used in places where both a Datum and its nullness needs
+diff --git a/src/include/storage/s_lock.h b/src/include/storage/s_lock.h
+index 2f73f9f..3d41848 100644
+--- a/src/include/storage/s_lock.h
++++ b/src/include/storage/s_lock.h
+@@ -193,7 +193,8 @@ spin_delay(void)
+ #endif	 /* __i386__ */
+ 
+ 
+-#ifdef __x86_64__		/* AMD Opteron, Intel EM64T */
++/* Fil-C stops at inline assembly that takes a pointer; use __sync below. */
++#if defined(__x86_64__) && !defined(__FILC__)		/* AMD Opteron, Intel EM64T */
+ #define HAS_TEST_AND_SET
+ 
+ typedef unsigned char slock_t;

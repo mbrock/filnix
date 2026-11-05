@@ -3244,6 +3244,43 @@ in
       (patch ./patches/httpd-auth-digest-shm-offsets.patch)
       (patch ./patches/httpd-ldap-per-process-cache.patch)
     ];
+
+    postgresql_18 = for pkgs.postgresql_18 [
+      # x86 inline asm (spinlock, atomics, popcnt) becomes __sync builtins;
+      # Datum, which carries pointers, becomes a pointer type; and sorts
+      # swap elements whole, so their pointers keep their capabilities.
+      (patch ./patches/postgresql-filc.patch)
+      # Its libpq, as in the libpq port: Fil-C's
+      # filc_allocate_without_exiting is not exit.
+      (use (old: {
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace src/interfaces/libpq/Makefile \
+            --replace-fail '-e __tsan_func_exit' '-e __tsan_func_exit -e _without_exiting'
+        '';
+      }))
+      # No LTO linker plugin for Fil-C; see libpq. Setting CFLAGS drops
+      # configure's -O2, and at -O0 Fil-C takes over 15 silent minutes on the
+      # grammar (gram.c), which builders stop. Datum is a pointer here, so
+      # int-to-Datum conversions are implicit.
+      (use (old: {
+        env = old.env // {
+          CFLAGS = "-O2 -Wno-int-conversion -fdata-sections -ffunction-sections -Wl,--gc-sections";
+        };
+      }))
+      # Configure assumes a cross build's linker lacks it, and the server's
+      # modules need its symbols.
+      (configure "LDFLAGS_EX_BE=-Wl,--export-dynamic")
+      # Glibc's sync_file_range makes its system call with inline asm.
+      (configure "ac_cv_func_sync_file_range=no")
+      # Its tests run a server, whose backends share pointers.
+      (skipTests "the server's processes share pointers")
+      (arg {
+        jitSupport = false;
+        perlSupport = false;
+        pythonSupport = false;
+        tclSupport = false;
+      })
+    ];
   }
 
   (for pkgs.lighttpd [
