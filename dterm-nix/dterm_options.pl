@@ -25,7 +25,7 @@ index_options(Index, Os) :- findall(O, ( member(M, Index.modules), member(O, M.o
 
 %% Who reads an option
 
-%  option_readers(+Root, +Nixpkgs, +Files, +Index): option_read(Option,
+%  option_readers(+Root, +Nixpkgs, +Files, +Index): option_read(Module/Option,
 %  Kind, File, Line, Owner, OwnerId) for each read, Kind exact or interpolated
 %  (reads_option/3), in the drawn Files and in
 %  the Nixpkgs modules that declare the options. Each machine's options
@@ -33,9 +33,9 @@ index_options(Index, Os) :- findall(O, ( member(M, Index.modules), member(O, M.o
 %  so finix's cfg.${name} does not read NixOS's filc.* and back.
 option_readers(Root, Nixpkgs, Files, Index) :-
     retractall(option_read(_, _, _, _, _, _)),
-    forall(member(M, Index.modules), machine_readers(Root, Nixpkgs, Files, M.options)).
+    forall(member(M, Index.modules), machine_readers(Root, Nixpkgs, Files, M.name, M.options)).
 
-machine_readers(Root, Nixpkgs, Files, Os) :-
+machine_readers(Root, Nixpkgs, Files, MN, Os) :-
     findall(F, ( member(O, Os), member(D, O.declarations), atom_concat('nixpkgs/', F, D.file) ), Np0),
     sort(Np0, Np),
     findall(F-Path, ( member(F, Files),
@@ -45,9 +45,9 @@ machine_readers(Root, Nixpkgs, Files, Os) :-
     ;   findall(NF-Path, ( member(F, Np), atom_concat('nixpkgs/', F, NF), directory_file_path(Nixpkgs, F, Path) ), Theirs)
     ),
     append(Ours, Theirs, All),
-    forall(member(F-Path, All), file_option_reads(F, Path, Os)).
+    forall(member(F-Path, All), file_option_reads(F, Path, MN, Os)).
 
-file_option_reads(F, Path, Os) :-
+file_option_reads(F, Path, MN, Os) :-
     (   catch(nix_read_file(Path, Text, nix(E, _)), _, fail)
     ->  line_starts(Text, Lines), nb_setval(nix_lines, Lines), nb_setval(nix_text, Text),
         ( top_body(E, Top) -> node_pos(Top, TP), nb_setval(nix_top, TP) ; nb_setval(nix_top, none) ),
@@ -55,15 +55,15 @@ file_option_reads(F, Path, Os) :-
         ( module_config(E, CId) -> true ; CId = none ), nb_setval(nix_config, CId),
         findall(B, ( sub_term(B, E), compound(B), B = bind(_, _, _) ), Binds),
         forall(( sub_term(S, E), compound(S), S = select(P, _, _, _), config_path(S, 8, RP) ),
-               record_reads(F, P, RP, Os, Binds))
+               record_reads(F, P, RP, MN, Os, Binds))
     ;   format(user_error, "dterm-nix: cannot read ~w for its option reads~n", [Path])
     ).
 
-record_reads(F, From-_, RP, Os, Binds) :-
+record_reads(F, From-_, RP, MN, Os, Binds) :-
     offset_line(From, Line),
     owner(From, Binds, Owner, OwnerId),
-    forall(( member(O, Os), reads_option(RP, O.loc, Kind), \+ option_read(O.name, Kind, F, _, Owner, _) ),
-           assertz(option_read(O.name, Kind, F, Line, Owner, OwnerId))).
+    forall(( member(O, Os), reads_option(RP, O.loc, Kind), \+ option_read(MN/O.name, Kind, F, _, Owner, _) ),
+           assertz(option_read(MN/O.name, Kind, F, Line, Owner, OwnerId))).
 
 %  The innermost binding around offset O, other than an option's own
 %  fields (a read in `default = cfg.enable` is the read of the binding
@@ -188,7 +188,7 @@ option_(Pages, M, O) -->
                  opt_value_row("example", O.example),
                  el(tr, none, ( el(td, name, "declared"), el(td, desc, seq_sep(O.declarations, decl_link)) )),
                  el(tr, none, ( el(td, name, "defined"), el(td, desc, defined(O.definitions)) )),
-                 readers(O.name) ))),
+                 readers(M.name/O.name) ))),
             description(O.description) ))).
 
 %% What a module sets an option to
