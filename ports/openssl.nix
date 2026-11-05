@@ -1,6 +1,7 @@
 {
   lib,
   fetchurl,
+  path,
   perl,
   stdenv,
   zlib,
@@ -17,8 +18,10 @@ stdenv.mkDerivation rec {
     hash = "sha256-qMDSilKcpID582z1eS4s0hmEVSo8jkqhGiSqMa6smOg=";
   };
 
+  # NIX_SSL_CERT_FILE overrides the default CA file, as in Nixpkgs.
   patches = [
     ./patch/openssl-3.5.7.patch
+    "${path}/pkgs/development/libraries/openssl/3.0/nix-ssl-cert-file.patch"
   ];
 
   outputs = [
@@ -81,6 +84,10 @@ stdenv.mkDerivation rec {
 
     rm -rf $out/etc/ssl/misc
     rmdir $out/etc/ssl/{certs,private}
+    # OPENSSLDIR is this store path. Its default CA file is the system's,
+    # as Nixpkgs' use-etc-ssl-certs.patch makes it; a relocated tree such
+    # as optfil puts its own bundle here instead.
+    ln -s /etc/ssl/certs/ca-certificates.crt $out/etc/ssl/cert.pem
     rm -rf $dev/lib/cmake
   '';
 

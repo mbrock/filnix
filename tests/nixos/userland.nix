@@ -7,13 +7,28 @@
   pkgs,
   filcModule,
 }:
+let
+  # A CA the machine trusts through security.pki, and a localhost
+  # certificate it signed, for the HTTPS subtest.
+  tls =
+    pkgs.runCommand "userland-test-tls" { nativeBuildInputs = [ pkgs.openssl ]; }
+      ''
+        mkdir $out && cd $out
+        openssl req -x509 -newkey rsa:2048 -nodes -days 36500 -subj /CN=test-ca \
+          -keyout ca.key -out ca.crt
+        openssl req -newkey rsa:2048 -nodes -subj /CN=localhost -keyout key.pem -out req.csr
+        printf 'subjectAltName=DNS:localhost\n' > ext
+        openssl x509 -req -in req.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
+          -days 36500 -extfile ext -out cert.pem
+      '';
+in
 pkgs.testers.runNixOSTest {
   name = "filc-userland";
   # The module chooses the package set.
   node.pkgsReadOnly = false;
 
   nodes.machine =
-    { lib, ... }:
+    { lib, pkgs, ... }:
     {
       imports = [ filcModule ];
       filc.enable = true;
@@ -29,6 +44,18 @@ pkgs.testers.runNixOSTest {
       # The test driver talks to the VM over its backdoor, not the guest
       # agent, and the agent comes from a QEMU build Fil-C cannot do yet.
       services.qemuGuest.enable = lib.mkForce false;
+
+      # OpenSSL finds the system's CAs with no SSL_CERT_FILE: the unit
+      # runs curl with an empty environment against a local TLS server.
+      security.pki.certificateFiles = [ "${tls}/ca.crt" ];
+      systemd.services.tls-server = {
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig.ExecStart = "${pkgs.openssl.bin}/bin/openssl s_server -accept 4433 -cert ${tls}/cert.pem -key ${tls}/key.pem -www";
+      };
+      systemd.services.https-fetch.serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${pkgs.coreutils}/bin/env -i ${pkgs.curl}/bin/curl -fsS -o /dev/null https://localhost:4433/";
+      };
     };
 
   testScript = ''
@@ -69,6 +96,10 @@ pkgs.testers.runNixOSTest {
     with subtest("a unit with an IO scheduling class runs"):
         # logrotate sets IOSchedulingClass; ioprio_set has no Fil-C wrapper.
         machine.succeed("systemctl start logrotate.service")
+
+    with subtest("a unit with no environment fetches over HTTPS"):
+        machine.wait_for_open_port(4433)
+        machine.succeed("systemctl start https-fetch.service")
 
     with subtest("no native process but the allowed exceptions"):
         print(machine.succeed("filc-ps"))

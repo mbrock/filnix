@@ -6,7 +6,8 @@
     url = "https://www.openssl.org/source/openssl-3.6.4.tar.gz";
     hash = "sha256-m/+qGtHgezVMIb0zJOwC+hVXn0Wn0ElLPnS8RJtzM+8=";
   };
-  patches = [ ./patch/openssl-3.6.4.patch ];
+  # Keep openssl.nix's NIX_SSL_CERT_FILE patch; Nixpkgs uses it for 3.6 too.
+  patches = [ ./patch/openssl-3.6.4.patch ] ++ builtins.tail old.patches;
   # The upstream perlasm generators emit Fil-C annotations with this enabled.
   # clang's default assembler is SaRCAsm; never use -yolo-assembler here.
   SARCASM = "1";
