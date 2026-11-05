@@ -289,20 +289,56 @@ sec_id(Title, Id) :-
     atom_codes(A, Ws), atomic_list_concat(Parts, ' ', A), exclude(==(''), Parts, Ps),
     atomic_list_concat([sec|Ps], '-', Id).
 
-%  Comments are often written as lines rather than sentences: a line
-%  that ends without punctuation before one that starts a sentence is a
-%  paragraph of its own.
-line_breaks([A, B|Ls0], [A, ""|Ls]) :-
-    \+ blank(A), \+ blank(B), indent(A, 0), indent(B, 0),
-    ( numbered(B) -> true ; unended(A), string_code(1, B, C), C >= 0'A, C =< 0'Z ), !,
-    line_breaks([B|Ls0], Ls).
-line_breaks([A|Ls0], [A|Ls]) :- !, line_breaks(Ls0, Ls).
-line_breaks([], []).
+%  Comments are read as dterm's little Markdown: consecutive lines are
+%  one paragraph, a blank line ends it, and list items, indented blocks,
+%  headings and tables are blocks of their own (blocks/2). A line that
+%  was written as a line stays one, a line break within its paragraph:
+%  a numbered line (1. …), each line of a run of label lines (Each
+%  port: …, Usage: …), and a short line without end punctuation before
+%  one that starts a sentence, such as a title over its explanation.
+line_breaks(Ls0, Ls) :-
+    maplist(label_line, Ls0, Labels),
+    run_marks(Labels, none, Marks),
+    pairs_keys_values(Ps, Ls0, Marks),
+    break_pairs(Ps, Ls).
 
-%  A short line that ends without punctuation, and a numbered line.
+break_pairs([A-MA, B-MB|Ps], [A1|Ls]) :-
+    \+ blank(A), \+ blank(B), indent(A, 0), indent(B, 0),
+    (   numbered(B) -> true
+    ;   MA == run, MB == run -> true
+    ;   unended(A), string_code(1, B, C), C >= 0'A, C =< 0'Z
+    ), !,
+    soft_break(A, A1),
+    break_pairs([B-MB|Ps], Ls).
+break_pairs([A-_|Ps], [A|Ls]) :- !, break_pairs(Ps, Ls).
+break_pairs([], []).
+
+%  A line break within a paragraph, which block_//1 draws as <br>.
+soft_break(A, A1) :- string_concat(A, "\u001E", A1).
+
+%  A short line without punctuation at its end or a comma in it, as a
+%  title is; "…, which omits" is a sentence that goes on.
 unended(A) :-
-    split_string(A, "", " ", [A1]), string_length(A1, N), N < 56,
+    split_string(A, "", " ", [A1]), string_length(A1, N), N < 56, \+ sub_string(A1, _, _, _, ","),
     sub_string(A1, _, 1, 0, E), \+ sub_string(".,:;!?(", _, _, _, E).
+
+%  run for a label line next to another label line.
+run_marks([], _, []).
+run_marks([L|Ls], Prev, [M|Ms]) :-
+    ( Ls = [Next|_] -> true ; Next = none ),
+    ( L == label, ( Prev == label ; Next == label ) -> M = run ; M = none ),
+    run_marks(Ls, L, Ms).
+
+%  A label line: up to three words, the first capitalized, then ": ".
+label_line(L, Kind) :-
+    (   indent(L, 0), once(sub_string(L, B, _, _, ": ")), B > 0,
+        sub_string(L, 0, B, _, Pre), split_string(Pre, " ", "", Ws), length(Ws, N), N =< 3,
+        string_code(1, Pre, C), C >= 0'A, C =< 0'Z,
+        forall(member(W, Ws), ( W \== "", string_codes(W, Cs), forall(member(X, Cs), ( code_type(X, alpha) ; X == 0'- )) ))
+    ->  Kind = label
+    ;   Kind = none
+    ).
+
 numbered(B) :- string_codes(B, Cs), phrase((digits, ". "), Cs, _).
 digits --> [C], { C >= 0'0, C =< 0'9 }, ( digits -> [] ; [] ).
 
@@ -751,7 +787,7 @@ op_glyph('-', "−").
 
 prose_lines(Lines0) --> { dedent(Lines0, Lines), blocks(Lines, Bs) }, el(div, prose, seq(Bs, block_)).
 
-block_(p(T)) --> el(p, none, inline(T)).
+block_(p(T)) --> { split_string(T, "\u001E", " ", Ls) }, el(p, none, soft_lines(Ls)).
 block_(ul(Items)) --> el(ul, none, seq(Items, li_)).
 block_(pre(Lines)) --> { dedent(Lines, Ls) }, pre_block(Ls).
 block_(h(N, T)) --> { format(atom(H), "h~d", [N]) }, el(H, "prose-h", inline(T)).
@@ -762,7 +798,10 @@ block_(fence(_, Lines)) --> { dedent(Lines, Ls), atomic_list_concat(Ls, '\n', T)
 
 row_(Cells) --> el(tr, none, seq(Cells, cell_(td))).
 cell_(Tag, T) --> el(Tag, none, inline(T)).
-li_(T) --> el(li, none, inline(T)).
+li_(T) --> { split_string(T, "\u001E", " ", Ls) }, el(li, none, soft_lines(Ls)).
+
+soft_lines([L]) --> !, inline(L).
+soft_lines([L|Ls]) --> inline(L), "<br>", soft_lines(Ls).
 
 %  Indented text in a comment, such as an example of the module's use,
 %  is drawn as Nix when it reads as bindings or an expression.
@@ -923,7 +962,8 @@ top_body(T, T) :- T = list(_, _).
 
 summarize(File, Text, Head) :-
     split_string(Text, "\n", "", Ls), length(Ls, NL),
-    (   note_groups(Head, [G|_]), group_lines(G, GLs), dedent(GLs, D), blocks(D, [p(S0)|_])
+    (   note_groups(Head, [G|_]), group_lines(G, GLs0), line_breaks(GLs0, GLs), dedent(GLs, D),
+        blocks(D, [p(P)|_]), split_string(P, "\u001E", " ", [S0|_])
     ->  first_sentence(S0, Sum)
     ;   Sum = ""
     ),
