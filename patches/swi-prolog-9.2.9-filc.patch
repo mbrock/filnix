@@ -1,5 +1,29 @@
+diff --git a/packages/semweb/deferfree.h b/packages/semweb/deferfree.h
+index a758cbe..1e2b527 100644
+--- a/packages/semweb/deferfree.h
++++ b/packages/semweb/deferfree.h
+@@ -87,7 +87,7 @@ TODO:
+ */
+ 
+ typedef struct defer_cell
+-{ struct defer_cell *next;
++{ _Atomic(struct defer_cell *) next;	/* see ATOMIC_PTR, pl-incl.h */
+   void		    *mem;			/* guarded memory */
+   void		   (*finalizer)(void*mem, void*client_data);
+   void		    *client_data;
+@@ -95,8 +95,8 @@ typedef struct defer_cell
+ 
+ typedef struct defer_free
+ { unsigned int	active;				/* Active users */
+-  defer_cell   *free_cells;			/* List if free cells */
+-  defer_cell   *freed;				/* Freed objects */
++  _Atomic(defer_cell *) free_cells;		/* List if free cells */
++  _Atomic(defer_cell *) freed;			/* Freed objects */
+   size_t	allocated;			/* Allocated free cells */
+ } defer_free;
+ 
 diff --git a/packages/semweb/rdf_db.h b/packages/semweb/rdf_db.h
-index a122ff8..233d97e 100644
+index a122ff8..f3edd9f 100644
 --- a/packages/semweb/rdf_db.h
 +++ b/packages/semweb/rdf_db.h
 @@ -188,7 +188,7 @@ typedef struct bitmatrix
@@ -29,6 +53,75 @@ index a122ff8..233d97e 100644
    predicate   **members;		/* member predicates */
    size_t	size;			/* size of the cloud */
    size_t	deleted;		/* See erase_predicates() */
+@@ -390,13 +390,13 @@ typedef struct triple_bucket
+ #define TRIPLE_ARRAY_PREINIT 512
+ 
+ typedef union triple_element
+-{ triple *triple;			/* points to a triple */
+-  union triple_element *fnext;		/* poins to another free */
+-} triple_element;
++{ _Atomic(triple *) triple;		/* points to a triple */
++  _Atomic(union triple_element *) fnext; /* poins to another free */
++} triple_element;			/* (_Atomic: see ATOMIC_PTR, pl-incl.h) */
+ 
+ typedef struct triple_array
+ { triple_element *blocks[MAX_TBLOCKS];	/* Dynamic array starts */
+-  triple_element *freelist;		/* free buckets */
++  _Atomic(triple_element *) freelist;	/* free buckets */
+   size_t	size;			/* current (allocated) size */
+ } triple_array;
+ #endif /*COMPACT*/
+diff --git a/packages/sgml/quote.c b/packages/sgml/quote.c
+index c8e48c4..d0389c9 100644
+--- a/packages/sgml/quote.c
++++ b/packages/sgml/quote.c
+@@ -328,7 +328,7 @@ library.
+ 
+ static foreign_t
+ xml_quote_attribute(term_t in, term_t out, term_t encoding)
+-{ static char **map;
++{ static _Atomic(char **) map;	/* see ATOMIC_PTR, pl-incl.h */
+   int maxchr;
+ 
+   if ( !map )
+@@ -360,7 +360,7 @@ xml_quote_attribute(term_t in, term_t out, term_t encoding)
+ 
+ static foreign_t
+ xml_quote_cdata(term_t in, term_t out, term_t encoding)
+-{ static char **map;
++{ static _Atomic(char **) map;	/* see ATOMIC_PTR, pl-incl.h */
+   int maxchr;
+ 
+   if ( !map )
+diff --git a/packages/ssl/ssl4pl.c b/packages/ssl/ssl4pl.c
+index d187d3b..030a8fc 100644
+--- a/packages/ssl/ssl4pl.c
++++ b/packages/ssl/ssl4pl.c
+@@ -3662,7 +3662,7 @@ get_ssl_method(term_t method)
+ }
+ 
+ 
+-static cacert_stack *root_cacert_stack = NULL;
++static _Atomic(cacert_stack *) root_cacert_stack = NULL; /* see ATOMIC_PTR, pl-incl.h */
+ 
+ static int
+ add_system_root_certificates(cacert_stack *stack)
+diff --git a/src/os/SWI-Stream.h b/src/os/SWI-Stream.h
+index 5924a76..338b7f8 100644
+--- a/src/os/SWI-Stream.h
++++ b/src/os/SWI-Stream.h
+@@ -241,7 +241,11 @@ typedef struct io_stream
+   int			io_errno;	/* Save errno value */
+   char *		message;	/* error/warning message */
+   void *		exception;	/* pending exception (record_t) */
++#if defined(__FILC__) && !defined(__cplusplus)
++  _Atomic(void *)	context;	/* getStreamContext(); set by CAS (see ATOMIC_PTR, pl-incl.h) */
++#else
+   void *		context;	/* getStreamContext() */
++#endif
+   struct PL_locale *	locale;		/* Locale associated to stream */
+   intptr_t		fileno;		/* File number if this is associated to a file */
+   intptr_t		reserved[3];	/* reserved for extension */
 diff --git a/src/os/pl-buffer.h b/src/os/pl-buffer.h
 index 1127521..78ba862 100644
 --- a/src/os/pl-buffer.h
@@ -133,53 +226,61 @@ index 6e541f0..ca7ceb0 100644
  }
  
  
+diff --git a/src/os/pl-table.h b/src/os/pl-table.h
+index 40fcca0..3993231 100644
+--- a/src/os/pl-table.h
++++ b/src/os/pl-table.h
+@@ -47,21 +47,21 @@ struct table
+   int		cleanup;	/* TRUE when KVS cleanup in progress */
+   void		(*copy_symbol)(void *n, void **v);
+   void		(*free_symbol)(void *n, void *v);
+-  KVS		kvs;		/* map of key-value pairs */
++  ATOMIC_PTR(KVS) kvs;		/* map of key-value pairs */
+ };
+ 
+ struct kvs
+ { int len;			/* size of key-value map */
+   int resizing;			/* TRUE while resizing */
+   int accesses;			/* number of accesses */
+-  KVS next;			/* next map */
++  ATOMIC_PTR(KVS) next;		/* next map */
+   KVS prev;			/* last map */
+   Symbol entries;		/* array of hash symbols */
+ };
+ 
+ struct symbol
+-{ void *	name;		/* name entry of symbol */
+-  void *	value;		/* associated value with name */
++{ ATOMIC_PTR(void *) name;	/* name entry of symbol */
++  ATOMIC_PTR(void *) value;	/* associated value with name */
+ };
+ 
+ struct table_enum
 diff --git a/src/pl-alloc.c b/src/pl-alloc.c
-index 4948fd2..adc24d6 100644
+index 4948fd2..03680a7 100644
 --- a/src/pl-alloc.c
 +++ b/src/pl-alloc.c
-@@ -231,8 +231,8 @@ linger_always(linger_list** list, void (*unalloc)(void *), void *object)
-     c->unalloc	  = unalloc;
+@@ -221,7 +221,7 @@ freeHeap(void *mem, size_t n)
+ 		 *******************************/
  
-     do
--    { o = *list;
--      c->next = o;
-+    { o = __atomic_load_n(list, __ATOMIC_SEQ_CST);
-+      __atomic_store_n(&c->next, o, __ATOMIC_SEQ_CST);
-     } while( !COMPARE_AND_SWAP_PTR(list, o, c) );
-   } else
-   { (*unalloc)(object);
-@@ -242,20 +242,25 @@ linger_always(linger_list** list, void (*unalloc)(void *), void *object)
  void
- free_lingering(linger_list **list, gen_t generation)
- { linger_list **p = list;
--  linger_list *c = *list;
-+  linger_list *c = __atomic_load_n(list, __ATOMIC_SEQ_CST);
-+  /* Other threads push onto *list with CAS while this runs: load the
-+     links atomically, as a racing plain pointer load can tear under
-+     Fil-C. */
-+#define LINK(l) __atomic_load_n(&(l)->next, __ATOMIC_SEQ_CST)
- 
-   while ( c )
-   { if ( c->generation < generation )
--    { while ( !COMPARE_AND_SWAP_PTR(p, c, c->next) )
--      { p = &(*p)->next;
-+    { while ( !COMPARE_AND_SWAP_PTR(p, c, LINK(c)) )
-+      { p = &__atomic_load_n(p, __ATOMIC_SEQ_CST)->next;
-       }
-       (*c->unalloc)(c->object);
-       freeHeap(c, sizeof(*c));
-     } else
--    { p = &(*p)->next;
-+    { p = &__atomic_load_n(p, __ATOMIC_SEQ_CST)->next;
-     }
--    c = *p;
-+    c = __atomic_load_n(p, __ATOMIC_SEQ_CST);
-   }
-+#undef LINK
+-linger_always(linger_list** list, void (*unalloc)(void *), void *object)
++linger_always(ATOMIC_PTR(linger_list *) *list, void (*unalloc)(void *), void *object)
+ { if ( GD->cleaning != CLN_DATA )
+   { linger_list *c = allocHeapOrHalt(sizeof(*c));
+     linger_list *o;
+@@ -240,8 +240,8 @@ linger_always(linger_list** list, void (*unalloc)(void *), void *object)
  }
  
- 		/********************************
-@@ -762,16 +767,13 @@ f_pushArgumentStack(DECL_LD Word p)
+ void
+-free_lingering(linger_list **list, gen_t generation)
+-{ linger_list **p = list;
++free_lingering(ATOMIC_PTR(linger_list *) *list, gen_t generation)
++{ ATOMIC_PTR(linger_list *) *p = list;
+   linger_list *c = *list;
+ 
+   while ( c )
+@@ -762,16 +762,13 @@ f_pushArgumentStack(DECL_LD Word p)
    if ( newsize &&
         (newsize = stack_nalloc(newsize)) &&
         (newbase = stack_realloc(aBase, newsize)) )
@@ -200,6 +301,28 @@ index 4948fd2..adc24d6 100644
      }
      aMax  = addPointer(newbase,  newsize);
      *aTop++ = p;
+diff --git a/src/pl-alloc.h b/src/pl-alloc.h
+index 70c749c..533a297 100644
+--- a/src/pl-alloc.h
++++ b/src/pl-alloc.h
+@@ -64,14 +64,14 @@ needed for multi-threading.
+ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+ 
+ typedef struct linger_list
+-{ struct linger_list *next;		/* Next lingering object */
++{ ATOMIC_PTR(struct linger_list *) next; /* Next lingering object */
+   gen_t		generation;		/* Linger generation */
+   void		*object;		/* The lingering data */
+   void	       (*unalloc)(void* obj);   /* actually free the object */
+ } linger_list;
+ 
+-void	free_lingering(linger_list **list, gen_t generation);
+-void	linger_always(linger_list** list, void (*func)(void *), void *obj);
++void	free_lingering(ATOMIC_PTR(linger_list *) *list, gen_t generation);
++void	linger_always(ATOMIC_PTR(linger_list *) *list, void (*func)(void *), void *obj);
+ 
+ #ifdef O_PLMT
+ #define linger(list, func, obj) linger_always(list, func, obj)
 diff --git a/src/pl-arith.c b/src/pl-arith.c
 index c3ea256..a8ba096 100644
 --- a/src/pl-arith.c
@@ -230,7 +353,7 @@ index c3ea256..a8ba096 100644
  
  int
 diff --git a/src/pl-atom.c b/src/pl-atom.c
-index 74b9ca8..3863a55 100644
+index 74b9ca8..f792a92 100644
 --- a/src/pl-atom.c
 +++ b/src/pl-atom.c
 @@ -530,7 +530,7 @@ same_name(const Atom a, const char *s, size_t length, const PL_blob_t *type)
@@ -238,7 +361,7 @@ index 74b9ca8..3863a55 100644
  lookupBlob(DECL_LD const char *s, size_t length, PL_blob_t *type, int *new)
  { unsigned int v0, v, ref;
 -  Atom *table;
-+  Atom volatile *table;
++  ATOMIC_PTR(Atom) *table;
    int buckets;
    Atom a, head;
  
@@ -247,7 +370,7 @@ index 74b9ca8..3863a55 100644
  static int
  invalidateAtom(Atom a, unsigned int ref)
 -{ Atom *ap;
-+{ Atom volatile *ap;
++{ ATOMIC_PTR(Atom) *ap;
  
  #define ATOM_PRE_DESTROY_REFERENCE \
  	(ATOM_DESTROY_REFERENCE|ATOM_RESERVED_REFERENCE)
@@ -263,6 +386,15 @@ index 74b9ca8..3863a55 100644
    }
    invalid_atoms = a;
    a->length = 0;
+@@ -900,7 +900,7 @@ invalidateAtom(Atom a, unsigned int ref)
+ }
+ 
+ static int
+-destroyAtom(Atom a, Atom **buckets)
++destroyAtom(Atom a, ATOMIC_PTR(Atom) **buckets)
+ { unsigned int v;
+   AtomTable t;
+   size_t index;
 @@ -923,7 +923,7 @@ destroyAtom(Atom a, Atom **buckets)
      Sfprintf(atomLogFd, "Deleted `%s'\n", a->name);
  #endif
@@ -272,7 +404,12 @@ index 74b9ca8..3863a55 100644
    { PL_free(a->name);
    }
  
-@@ -980,7 +980,7 @@ collectAtoms(void)
+@@ -976,11 +976,11 @@ collectAtoms(void)
+     }
+   }
+ 
+-  Atom** buckets = pl_atom_buckets_in_use();
++  ATOMIC_PTR(Atom)** buckets = pl_atom_buckets_in_use();
  
    temp = invalid_atoms;
    while ( temp && temp == invalid_atoms )
@@ -299,7 +436,7 @@ index 74b9ca8..3863a55 100644
  findAtomSelf(Atom a)
  { GET_LD
 -  Atom *table;
-+  Atom volatile *table;
++  ATOMIC_PTR(Atom) *table;
    int buckets;
    Atom head, ap;
    unsigned int v;
@@ -308,7 +445,7 @@ index 74b9ca8..3863a55 100644
    long i, m;
    int buckets;
 -  Atom *table;
-+  Atom volatile *table;
++  ATOMIC_PTR(Atom) *table;
    Atom a;
  
    acquire_atom_table(table, buckets);
@@ -317,7 +454,7 @@ index 74b9ca8..3863a55 100644
  
    if ( strcmp(a->name, ".") != 0 )
 -  { Atom *ap2 = &GD->atoms.table->table[a->hash_value & (GD->atoms.table->buckets-1)];
-+  { Atom volatile *ap2 = &GD->atoms.table->table[a->hash_value & (GD->atoms.table->buckets-1)];
++  { ATOMIC_PTR(Atom) *ap2 = &GD->atoms.table->table[a->hash_value & (GD->atoms.table->buckets-1)];
      unsigned int v;
      static char *s = ".";
  
@@ -634,6 +771,28 @@ index cd70ea5..157658d 100644
  }
  
  intptr_t
+diff --git a/src/pl-funct.c b/src/pl-funct.c
+index af98b79..0f5e9d1 100644
+--- a/src/pl-funct.c
++++ b/src/pl-funct.c
+@@ -124,7 +124,7 @@ registerFunctor(FunctorDef fd)
+ functor_t
+ lookupFunctorDef(DECL_LD atom_t atom, size_t arity)
+ { int v;
+-  FunctorDef *table;
++  ATOMIC_PTR(FunctorDef) *table;
+   int buckets;
+   FunctorDef f, head;
+ 
+@@ -256,7 +256,7 @@ isCurrentFunctor(atom_t atom, size_t arity)
+ { GET_LD
+   unsigned int v;
+   int buckets;
+-  FunctorDef *table;
++  ATOMIC_PTR(FunctorDef) *table;
+   FunctorDef f;
+   functor_t rc = 0;
+ 
 diff --git a/src/pl-gc.c b/src/pl-gc.c
 index 128451c..69ddcab 100644
 --- a/src/pl-gc.c
@@ -750,9 +909,79 @@ index 128451c..69ddcab 100644
      update_stacks(&state, lb, gb, tb);
      gBase--; gb--;
 diff --git a/src/pl-global.h b/src/pl-global.h
-index 0749064..724c113 100644
+index 0749064..cfb66e6 100644
 --- a/src/pl-global.h
 +++ b/src/pl-global.h
+@@ -183,15 +183,15 @@ struct PL_global_data
+ 
+ #if O_PLMT
+   struct				/* Shared table data */
+-  { struct trie *variant_table;		/* Variant --> table */
+-    alloc_pool *node_pool;		/* Node allocation pool for tries */
++  { ATOMIC_PTR(struct trie *) variant_table; /* Variant --> table */
++    ATOMIC_PTR(alloc_pool *) node_pool;	/* Node allocation pool for tries */
+     counting_mutex  mutex;		/* Sync completion */
+ #ifdef __WINDOWS__
+     CONDITION_VARIABLE cvar;
+ #else
+     pthread_cond_t cvar;
+ #endif
+-    struct trie_array *waiting;		/* thread --> trie we are waiting for */
++    ATOMIC_PTR(struct trie_array *) waiting; /* thread --> trie we are waiting for */
+   } tabling;
+ #endif
+ 
+@@ -207,7 +207,7 @@ struct PL_global_data
+   struct
+   { size_t	highest;		/* Highest atom index */
+     atom_array	array;
+-    AtomTable	table;			/* hash-table */
++    ATOMIC_PTR(AtomTable) table;		/* hash-table */
+     int		lookups;		/* # atom lookups */
+     int		cmps;			/* # string compares for lookup */
+     int		initialised;		/* atoms have been initialised */
+@@ -268,7 +268,7 @@ struct PL_global_data
+   struct
+   { size_t	highest;		/* Next index to handout */
+     functor_array array;		/* index --> functor */
+-    FunctorTable table;			/* hash-table */
++    ATOMIC_PTR(FunctorTable) table;	/* hash-table */
+     int		 rehashing;		/* Table is being rehashed */
+   } functors;
+ 
+@@ -374,7 +374,7 @@ struct PL_global_data
+   } inference_limit;
+ 
+   struct
+-  { ClauseRef	lingering;		/* Unlinked clause refs */
++  { ATOMIC_PTR(ClauseRef) lingering;	/* Unlinked clause refs */
+     size_t	lingering_count;	/* # Unlinked clause refs */
+     int		cgc_active;		/* CGC is running */
+     int64_t	cgc_count;		/* # clause GC calls */
+@@ -417,12 +417,12 @@ struct PL_global_data
+ 
+ #ifdef O_ENGINES
+   struct
+-  { PL_thread_info_t   *free;		/* Free threads */
++  { ATOMIC_PTR(PL_thread_info_t *) free;	/* Free threads */
+     int			highest_allocated; /* Highest with info struct */
+     int			thread_max;	/* Size of threads array */
+     int			highest_id;	/* Highest Id of life thread  */
+     int			peak_id;	/* Highest Id of any thread  */
+-    PL_thread_info_t  **threads;	/* Pointers to thread-info */
++    ATOMIC_PTR(PL_thread_info_t *) *threads; /* Pointers to thread-info */
+ #ifdef __WINDOWS__
+     HINSTANCE		instance;	/* Win32 process instance */
+ #endif
+@@ -441,7 +441,7 @@ struct PL_global_data
+     { pthread_mutex_t	mutex;
+       pthread_cond_t	cond;
+     } index;
+-    linger_list	       *lingering;
++    ATOMIC_PTR(linger_list *) lingering;
+ #endif
+   } thread;
+ #endif /*O_ENGINES*/
 @@ -483,7 +483,8 @@ struct PL_local_data
  #endif
    Code		fast_condition;		/* Fast condition support */
@@ -763,11 +992,40 @@ index 0749064..724c113 100644
    int		alerted;		/* Special mode. See updateAlerted() */
    int		slow_unify;		/* do not use inline unification */
    int		critical;		/* heap is being modified */
+@@ -674,8 +675,8 @@ struct PL_local_data
+ 
+   struct
+   { struct tbl_component *component;    /* active component */
+-    struct trie *variant_table;		/* Variant --> table */
+-    alloc_pool *node_pool;		/* Node allocation pool for tries */
++    ATOMIC_PTR(struct trie *) variant_table; /* Variant --> table */
++    ATOMIC_PTR(alloc_pool *) node_pool;	/* Node allocation pool for tries */
+     int	has_scheduling_component;	/* A leader was created */
+     int in_answer_completion;		/* Running answer completion */
+     int in_assert_propagation;		/* Running propagate_assert/1 */
+@@ -770,7 +771,7 @@ struct PL_local_data
+     message_queue messages;		/* Message queue */
+     struct _thread_sig   *sig_head;	/* Head of signal queue */
+     struct _thread_sig   *sig_tail;	/* Tail of signal queue */
+-    DefinitionChain local_definitions;	/* P_THREAD_LOCAL predicates */
++    ATOMIC_PTR(DefinitionChain) local_definitions; /* P_THREAD_LOCAL predicates */
+     int magic;				/* PL_THREAD_MAGIC (checking) */
+     int exit_requested;			/* Thread is asked to exit */
+ #ifdef O_PLMT
+@@ -812,7 +813,7 @@ struct PL_local_data
+ 
+ #ifdef O_COVERAGE
+   struct
+-  { struct coverage *data;		/* Data for the coverage collection */
++  { ATOMIC_PTR(struct coverage *) data;	/* Data for the coverage collection */
+     int		     active;		/* This thread is recording */
+   } coverage;
+ #endif
 diff --git a/src/pl-incl.h b/src/pl-incl.h
-index ea426fa..8cf2696 100644
+index ea426fa..4ca38fd 100644
 --- a/src/pl-incl.h
 +++ b/src/pl-incl.h
-@@ -550,7 +550,13 @@ typedef void *			caddress;
+@@ -550,9 +550,27 @@ typedef void *			caddress;
  
  				/* n is 2^m !!! */
  #define ROUND(p, n)		((((p) + (n) - 1) & ~((n) - 1)))
@@ -781,8 +1039,22 @@ index ea426fa..8cf2696 100644
 +	((void *) ((char *)(nbase) + ((char *)(p) - (char *)(obase))))
  #define diffPointers(p1, p2)	((intptr_t)(p1) - (intptr_t)(p2))
  
++/* ATOMIC_PTR(T) declares a pointer that other threads replace, by CAS
++   or by assignment, while this one reads it without a lock. Under Fil-C
++   a plain pointer load reads the address and the capability separately,
++   so it can tear against a racing store and trap (volatile does not
++   prevent that); every access to an _Atomic pointer is atomic.
++*/
++#if defined(O_PLMT) && !defined(__cplusplus)
++#define ATOMIC_PTR(T)		_Atomic(T)
++#else
++#define ATOMIC_PTR(T)		T
++#endif
++
  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-@@ -792,6 +798,14 @@ typedef word			atom_t;		/* encoded atom */
+ 			     LIMITS
+ 
+@@ -792,6 +810,14 @@ typedef word			atom_t;		/* encoded atom */
  typedef word			functor_t;	/* encoded functor */
  typedef uintptr_t		code WORD_ALIGNED; /* bytes codes */
  typedef code *			Code;		/* pointer to byte codes */
@@ -797,7 +1069,7 @@ index ea426fa..8cf2696 100644
  typedef int			Char;		/* char that can pass EOF */
  typedef foreign_t		(*Func)();	/* foreign functions */
  typedef int			(*ArithF)();	/* arithmetic function */
-@@ -1117,7 +1131,7 @@ Macros for environment frames (local stack frames)
+@@ -1117,7 +1143,7 @@ Macros for environment frames (local stack frames)
  #define refFliP(f, n)		((Word)((f)+1) + (n))
  #define parentFrame(f)		((f)->parent \
  				  ? (f)->parent \
@@ -806,16 +1078,16 @@ index ea426fa..8cf2696 100644
  				    (f), -QF_PARENT_ENV_OFFSET))
  #define slotsFrame(f)		(true((f)->predicate, P_FOREIGN) ? \
  				      (f)->predicate->functor->arity : \
-@@ -1281,7 +1295,7 @@ Structure declarations that must be shared across multiple files.
+@@ -1281,7 +1307,7 @@ Structure declarations that must be shared across multiple files.
  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
  
  struct atom
 -{ Atom		next;		/* next in chain */
-+{ Atom volatile	next;		/* next in chain (volatile: see clause_list) */
++{ ATOMIC_PTR(Atom) next;	/* next in chain */
    word		atom;		/* as appearing on the global stack */
  #ifdef O_TERMHASH
    unsigned int  hash_value;	/* hash-key value */
-@@ -1291,7 +1305,7 @@ struct atom
+@@ -1291,7 +1317,7 @@ struct atom
  #endif
    union
    { struct PL_blob_t * type;	/* blob-extension */
@@ -824,51 +1096,167 @@ index ea426fa..8cf2696 100644
    };
    size_t	length;		/* length of the atom */
    char *	name;		/* name associated with atom */
-@@ -1307,7 +1321,7 @@ typedef struct atom_table * AtomTable;
+@@ -1299,7 +1325,7 @@ struct atom
+ 
+ 
+ typedef struct atom_array
+-{ Atom blocks[8*sizeof(void*)];
++{ ATOMIC_PTR(Atom) blocks[8*sizeof(void*)];
+ } atom_array;
+ 
+ typedef struct atom_table * AtomTable;
+@@ -1307,7 +1333,7 @@ typedef struct atom_table * AtomTable;
  typedef struct atom_table
  { AtomTable	prev;
    int		buckets;
 -  Atom *	table;
-+  Atom volatile *table;		/* (volatile: see clause_list) */
++  ATOMIC_PTR(Atom) *table;	/* hash buckets */
  } atom_table;
  
  
-@@ -1434,8 +1448,11 @@ typedef struct impl_local
+@@ -1343,7 +1369,7 @@ extern IOSTREAM *atomLogFd;
+ #endif
+ 
+ struct functorDef
+-{ FunctorDef	next;		/* next in chain */
++{ ATOMIC_PTR(FunctorDef) next;	/* next in chain */
+   word		functor;	/* as appearing on the global stack */
+   word		name;		/* Name of functor */
+   size_t	arity;		/* arity of functor */
+@@ -1363,7 +1389,7 @@ typedef struct functor_table * FunctorTable;
+ typedef struct functor_table
+ { FunctorTable	prev;
+   int		buckets;
+-  FunctorDef *	table;
++  ATOMIC_PTR(FunctorDef) *table;
+ } functor_table;
+ 
+ #define FUNCTOR_IS_VALID(flags)		((flags) & VALID_F)
+@@ -1423,7 +1449,7 @@ typedef struct impl_foreign
+ typedef struct impl_wrapped
+ { arg_info     *args;			/* Meta and indexing info */
+   Definition	predicate;		/* Wrapped predicate */
+-  Code		supervisor;		/* Supervisor to use */
++  ATOMIC_PTR(Code) supervisor;	/* Supervisor to use */
+ } impl_wrapped, *ImplWrapped;
+ 
+ typedef struct impl_local
+@@ -1433,9 +1459,9 @@ typedef struct impl_local
+ 
  
  typedef struct clause_list
- { arg_info     *args;			/* Meta and indexing info */
+-{ arg_info     *args;			/* Meta and indexing info */
 -  ClauseRef	first_clause;		/* clause list of procedure */
 -  ClauseRef	last_clause;		/* last clause of list */
-+  /* Lists that are read without locks are volatile: Fil-C accesses a
-+     volatile pointer atomically, so a racing reader never sees an
-+     address with another pointer's capability. */
-+  ClauseRef volatile first_clause;	/* clause list of procedure */
-+  ClauseRef volatile last_clause;	/* last clause of list */
++{ ATOMIC_PTR(arg_info *) args;		/* Meta and indexing info */
++  ATOMIC_PTR(ClauseRef) first_clause;	/* clause list of procedure */
++  ATOMIC_PTR(ClauseRef) last_clause;	/* last clause of list */
    ClauseIndex  *clause_indexes;		/* Hash index(es) */
    unsigned int	number_of_clauses;	/* number of associated clauses */
    unsigned int	erased_clauses;		/* number of erased clauses in set */
-@@ -1444,7 +1461,7 @@ typedef struct clause_list
+@@ -1444,7 +1470,7 @@ typedef struct clause_list
  } clause_list, *ClauseList;
  
  typedef struct clause_ref
 -{ ClauseRef	next;			/* Next in list */
-+{ ClauseRef volatile next;		/* Next in list (volatile: see clause_list) */
++{ ATOMIC_PTR(ClauseRef) next;		/* Next in list */
    union
    { word	key;			/* Index key */
      ClauseRef	gnext;			/* Next garbage clause reference */
-@@ -1571,8 +1588,8 @@ struct functor
+@@ -1571,8 +1597,8 @@ struct functor
  };
  
  struct clause_bucket
 -{ ClauseRef	head;
 -  ClauseRef	tail;
-+{ ClauseRef volatile head;		/* (volatile: see clause_list) */
-+  ClauseRef volatile tail;
++{ ATOMIC_PTR(ClauseRef) head;
++  ATOMIC_PTR(ClauseRef) tail;
    unsigned int	dirty;			/* # of garbage clauses */
  };
  
+@@ -1601,14 +1627,14 @@ struct clause_index
+ #define MAX_BLOCKS 20			/* allows for 2M threads */
+ 
+ typedef struct local_definitions
+-{ Definition *blocks[MAX_BLOCKS];
++{ ATOMIC_PTR(Definition *) blocks[MAX_BLOCKS];
+   Definition preallocated[7];
+ } local_definitions;
+ 
+ struct definition
+ { FunctorDef	functor;		/* Name/Arity of procedure */
+   Module	module;			/* module of the predicate */
+-  Code		codes;			/* Executable code */
++  ATOMIC_PTR(Code) codes;	/* Executable code */
+   union
+   { impl_any	any;			/* has some value */
+     clause_list	clauses;		/* (Indexed) list of clauses */
+@@ -1618,10 +1644,10 @@ struct definition
+   } impl;
+   uint64_t	flags;			/* booleans (P_*) */
+   unsigned int  shared;			/* #procedures sharing this def */
+-  struct linger_list  *lingering;	/* Assocated lingering objects */
++  ATOMIC_PTR(struct linger_list *) lingering; /* Assocated lingering objects */
+   gen_t		last_modified;		/* Generation I was last modified */
+   struct event_list  *events;		/* Forward update events */
+-  struct table_props *tabling;		/* Extended properties for tabling */
++  ATOMIC_PTR(struct table_props *) tabling; /* Extended properties for tabling */
+ #if defined(__SANITIZE_ADDRESS__)
+   char	       *name;			/* Name for debugging */
+ #endif
+@@ -1632,7 +1658,7 @@ struct definition
+ };
+ 
+ struct definition_chain
+-{ Definition		definition;	/* chain on definition */
++{ ATOMIC_PTR(Definition) definition;	/* chain on definition */
+   DefinitionChain	next;		/* next in chain */
+ };
+ 
+@@ -1651,7 +1677,7 @@ typedef struct definition_ref
+ } definition_ref;
+ 
+ typedef struct definition_refs
+-{ definition_ref *blocks[MAX_BLOCKS];
++{ ATOMIC_PTR(definition_ref *) blocks[MAX_BLOCKS];
+   definition_ref preallocated[7];
+   size_t     top;
+ } definition_refs;
+@@ -1661,7 +1687,7 @@ typedef struct definition_refs
+ #define PROC_IMPORTED	 (0x0004)	/* Procedure is imported */
+ 
+ struct procedure
+-{ Definition	definition;		/* definition of procedure */
++{ ATOMIC_PTR(Definition) definition;	/* definition of procedure */
+   unsigned int  flags;			/* PROC_WEAK */
+   unsigned int	source_no;		/* Source I'm assigned to */
+ };
+@@ -1971,12 +1997,12 @@ struct module
+   Table		public;		/* public predicates associated */
+   Table		operators;	/* local operator declarations */
+   ListCell	supers;		/* Import predicates from here */
+-  ListCell	lingering;	/* Lingering definitions */
++  ATOMIC_PTR(ListCell) lingering; /* Lingering definitions */
+   size_t	code_size;	/* #Bytes used for its procedures */
+   size_t	code_limit;	/* Limit for code_size */
+ #ifdef O_PLMT
+   counting_mutex *mutex;	/* Mutex to guard module modifications */
+-  struct thread_wait_area *wait;/* Manage waiting threads */
++  ATOMIC_PTR(struct thread_wait_area *) wait; /* Manage waiting threads */
+ #endif
+ #ifdef O_PROLOG_HOOK
+   Procedure	hook;		/* Hooked module */
+@@ -2809,7 +2835,7 @@ typedef struct
+ 
+ #define INIT_DYN_ARRAY(t)						\
+   static_assertion(sizeof(t->preallocated)/sizeof(t->preallocated[0]) == 7); \
+-  t->blocks[0] = t->preallocated; t->blocks[0]--;			\
++  t->blocks[0] = t->preallocated - 1; /* no RMW of an atomic pointer */ \
+   t->blocks[1] = t->blocks[0];						\
+   t->blocks[2] = t->blocks[0];						\
+ 
 diff --git a/src/pl-index.c b/src/pl-index.c
-index 4f1b370..c213729 100644
+index 4f1b370..d4ad7d5 100644
 --- a/src/pl-index.c
 +++ b/src/pl-index.c
 @@ -76,6 +76,11 @@
@@ -888,7 +1276,7 @@ index 4f1b370..c213729 100644
  				       Clause clause, ClauseRef where);
  static void	insertIntoSparseList(ClauseRef cref,
 -				     ClauseRef *headp, ClauseRef *tailp,
-+				     ClauseRef volatile *headp, ClauseRef volatile *tailp,
++				     ATOMIC_PTR(ClauseRef) *headp, ATOMIC_PTR(ClauseRef) *tailp,
  				     ClauseRef where);
  static ClauseRef first_clause_guarded(Word argv, size_t argc, ClauseList clist,
  				      IndexContext ctx);
@@ -925,7 +1313,7 @@ index 4f1b370..c213729 100644
  static void
  insertIntoSparseList(ClauseRef cref,
 -		     ClauseRef *headp, ClauseRef *tailp,
-+		     ClauseRef volatile *headp, ClauseRef volatile *tailp,
++		     ATOMIC_PTR(ClauseRef) *headp, ATOMIC_PTR(ClauseRef) *tailp,
  		     ClauseRef where)
  { if ( !(*headp) )
    { *headp = *tailp = cref;
@@ -1226,8 +1614,28 @@ index 4f1b370..c213729 100644
  
        if ( ISDEADCI(ci) )
  	continue;
+diff --git a/src/pl-indirect.h b/src/pl-indirect.h
+index 4709a8d..f16752a 100644
+--- a/src/pl-indirect.h
++++ b/src/pl-indirect.h
+@@ -58,13 +58,13 @@ typedef struct indirect_array		/* dynamic array of indirects */
+ 
+ typedef struct indirect_buckets		/* The actual buckets */
+ { unsigned int	size;
+-  indirect    **buckets;
++  ATOMIC_PTR(indirect *) *buckets;
+   struct indirect_buckets *prev;
+ } indirect_buckets;
+ 
+ typedef struct
+ { indirect_array    array;		/* dynamic array of indirects */
+-  indirect_buckets *table;		/* the current table */
++  ATOMIC_PTR(indirect_buckets *) table; /* the current table */
+   size_t	    no_hole_before;	/* find free place */
+   size_t	    highest;		/* highest returned indirect */
+   size_t	    count;		/* number of indirects in table */
 diff --git a/src/pl-inline.h b/src/pl-inline.h
-index cd0f8ba..38c8f0a 100644
+index cd0f8ba..e090e51 100644
 --- a/src/pl-inline.h
 +++ b/src/pl-inline.h
 @@ -576,7 +576,7 @@ the global stack only once.
@@ -1239,7 +1647,7 @@ index cd0f8ba..38c8f0a 100644
  
    while(isRef(w))
    { //p = unRef(w);
-@@ -781,11 +781,23 @@ murmur_key(const void *ptr, size_t n)
+@@ -781,8 +781,20 @@ murmur_key(const void *ptr, size_t n)
  #define acquire_ldata(info) LDFUNC(acquire_ldata, info)
  static inline PL_local_data_t *
  acquire_ldata(DECL_LD PL_thread_info_t *info)
@@ -1249,23 +1657,19 @@ index cd0f8ba..38c8f0a 100644
 +  /* Hazard pointer: publish ld in access.ldata, then check that
 +     info->thread_data still holds it. freePrologThread() clears
 +     thread_data before ldata_in_use() scans the hazards, so a reader
-+     that validates cannot be missed by the scan. All of it seq_cst and
-+     atomic: a racing plain pointer store can tear under Fil-C. */
-+  ld = __atomic_load_n(&info->thread_data, __ATOMIC_SEQ_CST);
++     that validates cannot be missed by the scan. Both are ATOMIC_PTR,
++     so these accesses are seq_cst atomics. */
++  ld = info->thread_data;
 +  for(;;)
-+  { __atomic_store_n(&LD->thread.info->access.ldata, ld, __ATOMIC_SEQ_CST);
-+    again = __atomic_load_n(&info->thread_data, __ATOMIC_SEQ_CST);
++  { LD->thread.info->access.ldata = ld;
++    again = info->thread_data;
 +    if ( again == ld )
 +      break;
 +    ld = again;
 +  }
    if ( ld && ld->magic == LD_MAGIC )
      return ld;
--  LD->thread.info->access.ldata = NULL;
-+  __atomic_store_n(&LD->thread.info->access.ldata, NULL, __ATOMIC_SEQ_CST);
-   return NULL;
- }
- #endif
+   LD->thread.info->access.ldata = NULL;
 @@ -803,6 +815,24 @@ it is divided by 4 and the low 2   bits  are placed at the top (they are
  normally 0). longToPointer() does the inverse operation.
  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
@@ -1299,7 +1703,7 @@ index cd0f8ba..38c8f0a 100644
  
  #endif /*PL_INLINE_H_INCLUDED*/
 diff --git a/src/pl-proc.c b/src/pl-proc.c
-index 6b4e79c..b69064c 100644
+index 6b4e79c..2f9323f 100644
 --- a/src/pl-proc.c
 +++ b/src/pl-proc.c
 @@ -271,7 +271,11 @@ unallocDefinition(Definition def)
@@ -1314,6 +1718,15 @@ index 6b4e79c..b69064c 100644
    ATOMIC_DEC(&GD->statistics.predicates);
  }
  
+@@ -2538,7 +2542,7 @@ ddi_oldest_generation(DirtyDefInfo ddi)
+ }
+ 
+ #ifdef O_DEBUG
+-static Table protectedCRefs = NULL;
++static ATOMIC_PTR(Table) protectedCRefs = NULL;
+ 
+ static void
+ protectCRef(ClauseRef cref)
 @@ -4038,18 +4042,18 @@ remoduleClause(Clause cl, Module old, Module new)
        for(an=0; ats[an]; an++)
        { switch(ats[an])
@@ -1722,9 +2135,27 @@ index 055c9a8..86892b6 100644
  
        return codes;
 diff --git a/src/pl-tabling.c b/src/pl-tabling.c
-index d212dba..251a7ba 100644
+index d212dba..04eaa9e 100644
 --- a/src/pl-tabling.c
 +++ b/src/pl-tabling.c
+@@ -2222,7 +2222,7 @@ static void release_variant_table_node(trie *trie, trie_node *node);
+ #define variant_table(shared) LDFUNC(variant_table, shared)
+ static trie *
+ variant_table(DECL_LD int shared)
+-{ trie **tp;
++{ ATOMIC_PTR(trie *) *tp;
+   alloc_pool *pool;
+ 
+ #ifdef O_PLMT
+@@ -2329,7 +2329,7 @@ is_variant_trie(trie *trie)
+ 
+ 
+ static void
+-clear_variant_table(trie **vtriep)
++clear_variant_table(ATOMIC_PTR(trie *) *vtriep)
+ { trie *vtrie;
+ 
+   if ( (vtrie=*vtriep) )
 @@ -7357,7 +7357,7 @@ mdep_unify_answers(term_t t, idg_mdep *mdep)
  	count++;
        }
@@ -1779,95 +2210,101 @@ index d212dba..251a7ba 100644
  	}
  
  	if ( !n && rc && !invalid_deps )
+diff --git a/src/pl-tabling.h b/src/pl-tabling.h
+index 6244396..ef65b02 100644
+--- a/src/pl-tabling.h
++++ b/src/pl-tabling.h
+@@ -194,8 +194,8 @@ typedef struct delay_info
+ typedef struct idg_node
+ { int           magic;			/* IDG_NODE_MAGIC */
+   trie	       *atrie;			/* answer trie */
+-  Table		affected;		/* parent IDG nodes */
+-  Table		dependent;		/* child IDG nodes */
++  ATOMIC_PTR(Table) affected;		/* parent IDG nodes */
++  ATOMIC_PTR(Table) dependent;		/* child IDG nodes */
+   size_t	answer_count;		/* #answers in previous complete state */
+   unsigned	new_answer : 1;		/* Update generated a new answer */
+   unsigned	reevaluating : 1;	/* currently re-evaluating */
+@@ -237,7 +237,7 @@ typedef struct idg_mdep
+ #define TRIE_ARRAY_PREALLOCATED 7
+ 
+ typedef struct trie_array
+-{ trie **blocks[MAX_BLOCKS];
++{ ATOMIC_PTR(trie **) blocks[MAX_BLOCKS];
+   trie *preallocated[TRIE_ARRAY_PREALLOCATED];
+ } trie_array;
+ 
 diff --git a/src/pl-thread.c b/src/pl-thread.c
-index cfa32ce..ac944bb 100644
+index cfa32ce..b3ec6c6 100644
 --- a/src/pl-thread.c
 +++ b/src/pl-thread.c
-@@ -469,7 +469,7 @@ ldata_in_use(PL_local_data_t *ld)
+@@ -1357,7 +1357,7 @@ fully reclaimed, we have several situations:
+   - The engine has completed.  Join it.
+ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+ 
+-static thread_handle *gced_threads = NULL;
++static ATOMIC_PTR(thread_handle *) gced_threads = NULL;
+ static int       thread_gc_running = FALSE;
+ 
+ static void
+@@ -1554,7 +1554,7 @@ locking.
+ static int
+ resizeThreadMax(void)
+ { int newmax = GD->thread.thread_max*2;
+-  PL_thread_info_t **newinfo, **oldinfo;
++  ATOMIC_PTR(PL_thread_info_t *) *newinfo, *oldinfo;
+   size_t dsize = GD->thread.thread_max * sizeof(*GD->thread.threads);
+ 
+   oldinfo = GD->thread.threads;
+@@ -4184,7 +4184,7 @@ are not equal and there are multiple waiters we must be using broadcast.
+ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+ 
+ typedef struct thread_message
+-{ struct thread_message *next;		/* next in queue */
++{ ATOMIC_PTR(struct thread_message *) next; /* next in queue */
+   record_t            message;		/* message in queue */
+   word		      key;		/* Indexing key */
+   uint64_t	      sequence_id;	/* Numbered sequence */
+@@ -8020,7 +8020,7 @@ pl_atom_table_in_use(AtomTable atom_table)
+ 
+ 
+ int
+-pl_atom_bucket_in_use(Atom *bucket)
++pl_atom_bucket_in_use(ATOMIC_PTR(Atom) *bucket)
+ {
+ #ifdef O_PLMT
+   int i;
+@@ -8037,15 +8037,15 @@ pl_atom_bucket_in_use(Atom *bucket)
+ }
+ 
+ 
+-Atom**
++ATOMIC_PTR(Atom)**
+ pl_atom_buckets_in_use(void)
+ {
+ #ifdef O_PLMT
+   int i, index=0;
+   size_t sz = 32;
+ 
+-  Atom **buckets = allocHeapOrHalt(sz * sizeof(Atom*));
+-  memset(buckets, 0, sz * sizeof(Atom*));
++  ATOMIC_PTR(Atom) **buckets = allocHeapOrHalt(sz * sizeof(*buckets));
++  memset(buckets, 0, sz * sizeof(*buckets));
  
    for(i=1; i<=GD->thread.highest_id; i++)
    { PL_thread_info_t *info = GD->thread.threads[i];
--    if ( info && info->access.ldata == ld )
-+    if ( info && __atomic_load_n(&info->access.ldata, __ATOMIC_SEQ_CST) == ld )
-     { return TRUE;
-     }
-   }
-@@ -801,7 +801,7 @@ freePrologThread(PL_local_data_t *ld, int after_fork)
-       GD->statistics.thread_cputime += time;
-     }
-     destroy_thread_message_queue(&ld->thread.messages);
--    info->thread_data = NULL;		/* avoid a loop */
-+    __atomic_store_n(&info->thread_data, NULL, __ATOMIC_SEQ_CST); /* avoid a loop */
-     info->has_tid = FALSE;		/* needed? */
-     info->c_stack = NULL;
-     if ( !after_fork )
-@@ -999,7 +999,7 @@ initPrologThreads(void)
-     info->open_count = 1;
-     info->debug = TRUE;
-     GD->thread.highest_id = 1;
--    info->thread_data = &PL_local_data;
-+    __atomic_store_n(&info->thread_data, &PL_local_data, __ATOMIC_SEQ_CST);
-     info->status = PL_THREAD_RUNNING;
-     PL_local_data.thread.info = info;
-     PL_local_data.thread.magic = PL_THREAD_MAGIC;
-@@ -1415,8 +1415,10 @@ thread_gc_loop(void *closure)
-   { thread_handle *h;
- 
-     do
--    { h = gced_threads;
--    } while ( h && !COMPARE_AND_SWAP_PTR(&gced_threads, h, h->next_free) );
-+    { h = __atomic_load_n(&gced_threads, __ATOMIC_SEQ_CST);
-+    } while ( h &&
-+	      !COMPARE_AND_SWAP_PTR(&gced_threads, h,
-+				    __atomic_load_n(&h->next_free, __ATOMIC_SEQ_CST)) );
- 
-     if ( h )
-     { if ( GD->cleaning == CLN_NORMAL )
-@@ -1461,8 +1463,8 @@ gc_thread(thread_handle *ref)
-     thread_handle *h;
- 
-     do
--    { h = gced_threads;
--      ref->next_free = h;
-+    { h = __atomic_load_n(&gced_threads, __ATOMIC_SEQ_CST);
-+      __atomic_store_n(&ref->next_free, h, __ATOMIC_SEQ_CST);
-     } while( !COMPARE_AND_SWAP_PTR(&gced_threads, h, ref) );
- 
-     start_thread_gc_thread();
-@@ -1580,8 +1582,10 @@ alloc_thread(void)
-   memset(ld, 0, sizeof(PL_local_data_t));
- 
-   do
--  { info = GD->thread.free;
--  } while ( info && !COMPARE_AND_SWAP_PTR(&GD->thread.free, info, info->next_free) );
-+  { info = __atomic_load_n(&GD->thread.free, __ATOMIC_SEQ_CST);
-+  } while ( info &&
-+	    !COMPARE_AND_SWAP_PTR(&GD->thread.free, info,
-+				  __atomic_load_n(&info->next_free, __ATOMIC_SEQ_CST)) );
- 
-   if ( info )
-   { int i = info->pl_tid;
-@@ -1608,7 +1612,7 @@ alloc_thread(void)
- 
-   ld->thread.info = info;
-   ld->thread.magic = PL_THREAD_MAGIC;
--  info->thread_data = ld;
-+  __atomic_store_n(&info->thread_data, ld, __ATOMIC_SEQ_CST);
-   info->status = PL_THREAD_RESERVED;
-   info->debug = TRUE;
- 
-@@ -2670,8 +2674,8 @@ free_thread_info(PL_thread_info_t *info)
-   PL_UNLOCK(L_THREAD);
- 
-   do
--  { freelist = GD->thread.free;
--    info->next_free = freelist;
-+  { freelist = __atomic_load_n(&GD->thread.free, __ATOMIC_SEQ_CST);
-+    __atomic_store_n(&info->next_free, freelist, __ATOMIC_SEQ_CST);
-   } while( !COMPARE_AND_SWAP_PTR(&GD->thread.free, freelist, info) );
- 
-   if ( rec_rv ) PL_erase(rec_rv);
-@@ -8334,7 +8338,7 @@ stack_avail(DECL_LD)
+@@ -8054,8 +8054,8 @@ pl_atom_buckets_in_use(void)
+       { int j = 0;
+ 	size_t oldsz = sz;
+ 	sz *= 2;
+-	Atom **newbuckets = allocHeapOrHalt(sz * sizeof(Atom*));
+-	memset(newbuckets, 0, sz * sizeof(Atom*));
++	ATOMIC_PTR(Atom) **newbuckets = allocHeapOrHalt(sz * sizeof(*newbuckets));
++	memset(newbuckets, 0, sz * sizeof(*newbuckets));
+ 	for ( ; j < oldsz; j++ )
+ 	{ newbuckets[j] = buckets[j];
+ 	}
+@@ -8334,7 +8334,7 @@ stack_avail(DECL_LD)
    ssize_t avail = -1;
  
    if ( cinfo && cinfo->base )
@@ -1877,22 +2314,165 @@ index cfa32ce..ac944bb 100644
      avail = (char*)here - (char*)cinfo->base;
      assert(avail > 0);		/* stack grows down */
 diff --git a/src/pl-thread.h b/src/pl-thread.h
-index fd23b2f..0ca05b5 100644
+index fd23b2f..2a93446 100644
 --- a/src/pl-thread.h
 +++ b/src/pl-thread.h
-@@ -500,7 +500,7 @@ void		free_wait_area(thread_wait_area *wa);
- void		free_thread_wait(PL_local_data_t *ld);
+@@ -126,24 +126,24 @@ typedef struct _PL_thread_info_t
+ #ifdef __WINDOWS__
+   DWORD		    w32id;		/* Win32 thread HANDLE */
+ #endif
+-  struct PL_local_data  *thread_data;	/* The thread-local data  */
++  ATOMIC_PTR(struct PL_local_data *) thread_data; /* The thread-local data  */
+   module_t	    module;		/* Module for starting goal */
+   record_t	    goal;		/* Goal to start thread */
+   record_t	    return_value;	/* Value (term) returned */
+   atom_t	    symbol;		/* thread_handle symbol */
+-  struct _PL_thread_info_t *next_free;	/* Next in free list */
++  ATOMIC_PTR(struct _PL_thread_info_t *) next_free; /* Next in free list */
+   struct
+   { double cputime;			/* Final CPU time */
+     uint64_t inferences;		/* Final inferences */
+   } statistics;
+ 					/* lock-free access to data */
+   struct
+-  { KVS		    kvs;		/* current hash-table map accessed */
+-    AtomTable	    atom_table;		/* current atom-table accessed */
+-    Atom *	    atom_bucket;	/* current atom bucket-list accessed */
+-    FunctorTable    functor_table;	/* current atom-table accessed */
+-    Definition	    predicate;		/* current predicate walked */
+-    struct PL_local_data *ldata;	/* current ldata accessed */
++  { ATOMIC_PTR(KVS) kvs;		/* current hash-table map accessed */
++    ATOMIC_PTR(AtomTable) atom_table;	/* current atom-table accessed */
++    ATOMIC_PTR(ATOMIC_PTR(Atom) *) atom_bucket; /* current atom bucket-list accessed */
++    ATOMIC_PTR(FunctorTable) functor_table; /* current atom-table accessed */
++    ATOMIC_PTR(Definition) predicate;	/* current predicate walked */
++    ATOMIC_PTR(struct PL_local_data *) ldata; /* current ldata accessed */
+   } access;
+ } PL_thread_info_t;
  
- #define acquire_ldata(info)	LDFUNC(acquire_ldata, info)
--#define release_ldata(ld)	(LD->thread.info->access.ldata = NULL)
-+#define release_ldata(ld)	__atomic_store_n(&LD->thread.info->access.ldata, NULL, __ATOMIC_SEQ_CST)
- /* defined in pl-inline.h */
- static inline	PL_local_data_t *acquire_ldata(DECL_LD PL_thread_info_t *info);
+@@ -167,7 +167,7 @@ typedef struct thread_handle
+ #endif
+     atom_t thread;			/* Associated thread */
+   } interactor;
+-  struct thread_handle *next_free;	/* Free for GC */
++  ATOMIC_PTR(struct thread_handle *) next_free; /* Free for GC */
+ } thread_handle;
  
+ 
+@@ -175,7 +175,7 @@ typedef struct thread_handle
+ #define QTYPE_QUEUE	1
+ 
+ typedef struct message_queue
+-{ struct thread_message   *head;	/* Head of message queue */
++{ ATOMIC_PTR(struct thread_message *) head; /* Head of message queue */
+   struct thread_message   *tail;	/* Tail of message queue */
+   uint64_t	       sequence_next;	/* next for sequence id */
+   word		       id;		/* Id of the queue */
+@@ -624,8 +624,8 @@ int		get_prop_def(term_t t, atom_t expected,
+ 			     const tprop *list, const tprop **def);
+ void		initPrologThreads(void);
+ int		pl_atom_table_in_use(AtomTable atom_table);
+-int		pl_atom_bucket_in_use(Atom *atom_bucket);
+-Atom**		pl_atom_buckets_in_use(void);
++int		pl_atom_bucket_in_use(ATOMIC_PTR(Atom) *atom_bucket);
++ATOMIC_PTR(Atom)** pl_atom_buckets_in_use(void);
+ Definition*	predicates_in_use(void);
+ int		pl_functor_table_in_use(FunctorTable functor_table);
+ int		pl_kvs_in_use(KVS kvs);
 diff --git a/src/pl-trie.c b/src/pl-trie.c
-index ed372b9..6c240bc 100644
+index ed372b9..0455b14 100644
 --- a/src/pl-trie.c
 +++ b/src/pl-trie.c
+@@ -125,7 +125,7 @@ static void	trie_destroy(trie *trie);
+ 		 *******************************/
+ 
+ typedef struct tref
+-{ trie *trie;				/* represented trie */
++{ ATOMIC_PTR(trie *) trie;		/* represented trie */
+ } tref;
+ 
+ static int
+@@ -280,7 +280,7 @@ trie_clean(trie *trie)
+ #define get_child(n, key) LDFUNC(get_child, n, key)
+ static trie_node *
+ get_child(DECL_LD trie_node *n, word key)
+-{ trie_children children = n->children;
++{ trie_children children = { .any = n->children.any };
+ 
+   if ( children.any )
+   { switch( children.any->type )
+@@ -301,7 +301,7 @@ get_child(DECL_LD trie_node *n, word key)
+ 
+ int
+ is_leaf_trie_node(trie_node *n)
+-{ trie_children children = n->children;
++{ trie_children children = { .any = n->children.any };
+ 
+   if ( children.any )
+   { switch( children.any->type )
+@@ -338,7 +338,7 @@ clear_node(trie *trie, trie_node *n, int dealloc)
+ { trie_children children;
+ 
+ next:
+-  children = n->children;
++  children.any = n->children.any;
+ 
+   if ( trie->release_node )
+     (*trie->release_node)(trie, n);
+@@ -408,7 +408,7 @@ prune_node(trie *trie, trie_node *n)
+   { trie_children children;
+ 
+     p = n->parent;
+-    children = p->children;
++    children.any = p->children.any;
+ 
+     if ( children.any )
+     { switch( children.any->type )
+@@ -455,7 +455,7 @@ prune_trie(trie *trie, trie_node *root,
+   initSegStack(&stack, sizeof(prune_state), sizeof(buffer), buffer);
+ 
+   for(;;)
+-  { children = n->children;
++  { children.any = n->children.any;
+ 
+     if ( children.any )
+     { switch( children.any->type )
+@@ -493,7 +493,7 @@ prune_trie(trie *trie, trie_node *root,
+       int choice = FALSE;
+ 
+       p = n->parent;
+-      children = p->children;
++      children.any = p->children.any;
+ 
+       if ( children.any )
+       { switch( children.any->type )
+@@ -573,7 +573,7 @@ options:
+ static trie_node *
+ insert_child(DECL_LD trie *trie, trie_node *n, word key)
+ { for(;;)
+-  { trie_children children = n->children;
++  { trie_children children = { .any = n->children.any };
+     trie_node *new = new_trie_node(trie, key);
+ 
+     if ( !new )
+@@ -983,7 +983,7 @@ map_trie_node(trie_node *n,
+   void *rc;
+ 
+ next:
+-  children = n->children;
++  children.any = n->children.any;
+ 
+   if ( (rc=(*map)(n, ctx)) != NULL )
+     return rc;
+@@ -1027,7 +1027,7 @@ typedef struct trie_stats
+ static void *
+ stat_node(trie_node *n, void *ctx)
+ { trie_stats *stats = ctx;
+-  trie_children children = n->children;
++  trie_children children = { .any = n->children.any };
+ 
+   stats->nodes++;
+   stats->bytes += sizeof(*n);
 @@ -1233,7 +1233,7 @@ intern_value(DECL_LD term_t value)
      if ( isAtom(*vp) || isTaggedInt(*vp) )
        return *vp;
@@ -1965,6 +2545,15 @@ index ed372b9..6c240bc 100644
  
  	  return FALSE;
  	}
+@@ -1988,7 +1988,7 @@ enumerating the entire table.
+ #define add_choice(state, dstate, node) LDFUNC(add_choice, state, dstate, node)
+ static trie_choice *
+ add_choice(DECL_LD trie_gen_state *state, descent_state *dstate, trie_node *node)
+-{ trie_children children = node->children;
++{ trie_children children = { .any = node->children.any };
+   trie_choice *ch;
+   int has_key;
+   word k=0;
 @@ -2636,6 +2636,12 @@ add_vmi_d(trie_compile_state *state, vmi c, code d)
    addBuffer(&state->codes, d, code);
  }
@@ -1978,6 +2567,15 @@ index ed372b9..6c240bc 100644
  static void
  add_vmi_else_d(trie_compile_state *state, vmi c, code d)
  { size_t el;
+@@ -2783,7 +2789,7 @@ compile_trie_node(DECL_LD trie_node *n, trie_compile_state *state)
+   int rc;
+ 
+ next:
+-  children = n->children;
++  children.any = n->children.any;
+   if ( n == &state->trie->root )
+     goto children;
+   key = n->key;
 @@ -2928,7 +2934,7 @@ children:
    } else
    { if ( n->value )			/* what if we have none? */
@@ -1996,6 +2594,41 @@ index ed372b9..6c240bc 100644
  	  { Word p = valTermRef(t2);
  
  	    deRef(p);
+diff --git a/src/pl-trie.h b/src/pl-trie.h
+index da1d728..c35cf99 100644
+--- a/src/pl-trie.h
++++ b/src/pl-trie.h
+@@ -89,7 +89,11 @@ typedef struct trie_node
+ { word			value;
+   word			key;
+   struct trie_node     *parent;
+-  trie_children		children;
++  union				/* trie_children, replaced by CAS */
++  { ATOMIC_PTR(try_children_any *)     any;
++    ATOMIC_PTR(trie_children_key *)    key;
++    ATOMIC_PTR(trie_children_hashed *) hash;
++  }			children;
+   struct
+   { struct delay_info  *delayinfo;	/* can be unified with children */
+   } data;
+@@ -114,7 +118,7 @@ typedef struct trie
+   int			tid;		/* thread id doing completion or re-evaluation */
+ #endif
+   trie_node	        root;		/* the root node */
+-  indirect_table       *indirects;	/* indirect values */
++  ATOMIC_PTR(indirect_table *) indirects; /* indirect values */
+   void		      (*release_node)(struct trie *, trie_node *);
+   alloc_pool	       *alloc_pool;	/* Node allocation pool */
+   atom_t		clause;		/* Compiled representation */
+@@ -131,7 +135,7 @@ typedef struct trie
+   struct
+   { struct worklist *worklist;		/* tabling worklist */
+     trie_node	    *variant;		/* node in variant trie */
+-    struct idg_node *IDG;		/* Node in the IDG graph */
++    ATOMIC_PTR(struct idg_node *) IDG;	/* Node in the IDG graph */
+     Definition	     predicate;		/* Associated predicate */
+   } data;
+ } trie;
 diff --git a/src/pl-vmi.c b/src/pl-vmi.c
 index 5d3e99c..40920e7 100644
 --- a/src/pl-vmi.c
@@ -2297,7 +2930,7 @@ index ef6faf0..82d2b51 100644
  #if 0					/* What to do if we have multiple */
  	  if ( exception_term )		/* handlers and multiple exceptions? */
 diff --git a/src/pl-wrap.c b/src/pl-wrap.c
-index 7cde9b1..db36ddb 100644
+index 7cde9b1..6401dd9 100644
 --- a/src/pl-wrap.c
 +++ b/src/pl-wrap.c
 @@ -313,9 +313,9 @@ PRED_IMPL("$c_wrap_predicate", 5, c_wrap_predicate, PL_FA_TRANSPARENT)
@@ -2334,7 +2967,12 @@ index 7cde9b1..db36ddb 100644
  
  	if ( !PL_put_clref(ct, cref->value.clause) ||
  	     !PL_unify_list(tail, head, tail) ||
-@@ -457,7 +457,7 @@ PRED_IMPL("unwrap_predicate", 2, uwrap_predicate, PL_FA_TRANSPARENT)
+@@ -453,11 +453,11 @@ PRED_IMPL("unwrap_predicate", 2, uwrap_predicate, PL_FA_TRANSPARENT)
+ 
+   if ( get_procedure(A1, &proc, 0, GP_NAMEARITY|GP_RESOLVE) )
+   { Definition def = proc->definition;
+-    Code *cp = &def->codes;
++    ATOMIC_PTR(Code) *cp = &def->codes;
      Code codes = *cp;
  
      while ( codes[0] == encode(S_CALLWRAPPER) )

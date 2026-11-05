@@ -99,23 +99,37 @@ let
   # is 32 MB: analyseVariables2 (pl-comp.c) recurses 10,000 levels into a
   # cyclic term before it checks for a cycle, and its frame is 216 bytes
   # from clang, 512 from nanofil -O and 864 plain, past 8 MB (Fil-C stops
-  # the overflow safely; test_db's cyclic_head and test_gc trap). Failed
-  # tests run once more, alone, and that result counts: http:proxy's
-  # "unused" port is one it found free and released, which a test running
-  # beside it can take (filcc's build fails it so too, now and then).
+  # the overflow safely; test_db's cyclic_head and test_gc trap). Only
+  # http:proxy, if it failed, runs once more, alone, and that result
+  # counts: its "unused" port is one it found free and released, which a
+  # test running beside it can take (filcc's build fails it so too, now
+  # and then). Any other failure stands.
   ctest = out: ''
     (ulimit -s 32768 && ctest -j$NIX_BUILD_CORES --timeout 1800 --output-on-failure >${out}.log 2>&1 || true)
-    (ulimit -s 32768 && ctest --rerun-failed --timeout 1800 --output-on-failure >>${out}.log 2>&1 || true)
+    # (ctest ignores -R beside --rerun-failed, so name the test.)
+    if grep -q ':http:proxy$' Testing/Temporary/LastTestsFailed.log 2>/dev/null; then
+      (ulimit -s 32768 && ctest -R '^http:proxy$' --timeout 1800 --output-on-failure >>${out}.log 2>&1 || true)
+    fi
     grep -E '^ *[0-9]+/[0-9]+ Test +#' ${out}.log \
       | sed -E 's/.*Test +#[0-9]+: ([^ ]+) \.*[* ]*([A-Za-z]+).*/\1 \2/' \
       | awk '{ r[$1] = $2 } END { for (t in r) print t, r[t] }' | sort >${out}
     test -s ${out}
+  '';
+  # A QLF file's bytes depend on which library INDEX.pl files exist when
+  # it is compiled (autoloading reads them, which changes the order its
+  # functors are made), and ninja does not order the two: compile the
+  # QLF files again, one at a time, once everything else is built.
+  qlfAgain = ''
+    qlfs=$(find home -name '*.qlf')
+    rm $qlfs
+    ninja -j1 $qlfs >>ninja.log 2>&1 || { tail -50 ninja.log; exit 1; }
   '';
   reference =
     pkgs.runCommandCC "nanofil-swipl-reference" { inherit nativeBuildInputs; }
       ''
         ${configure}
         ninja -j$NIX_BUILD_CORES >ninja.log 2>&1 || { tail -50 ninja.log; exit 1; }
+        ${qlfAgain}
         ${ctest "ctest.results"}
         mkdir $out
         cp ctest.results ctest.results.log $out/
@@ -148,6 +162,7 @@ import ./configurations.nix { inherit pkgs; } "nanofil-swipl"
       start=$SECONDS
       ninja -j$NIX_BUILD_CORES >ninja.log 2>&1 || { grep -B2 -A20 FAILED ninja.log | head -80; exit 1; }
       echo "built in $((SECONDS - start)) s"
+      ${qlfAgain}
       # Compare paths, not just counts: no object may come from clang.
       find . -name '*.o' -not -path './CMakeFiles/*' -printf '%P\n' | sort >../objects
       sort -u nanofil.log >../compiled
@@ -188,17 +203,10 @@ import ./configurations.nix { inherit pkgs; } "nanofil-swipl"
       done
       ${ctest "ctest.results"}
       cp ctest.results ctest.results.log $out/
-      # swipl:signals and swipl:thread are left out of the comparison:
-      # SWI's lock-free code still reads some pointers plainly while
-      # other threads replace them, and under Fil-C such a read can tear
-      # and trap, in filcc's build as in nanofil's, on a loaded builder
-      # (docs/m4.md, SWI-Prolog additions). This check is about nanofil
-      # matching filcc, and those two tests now and then fail in both.
-      racy='^swipl:(signals|thread) '
-      diff -u <(grep -Ev "$racy" ${reference}/ctest.results) <(grep -Ev "$racy" ctest.results) || {
+      diff -u ${reference}/ctest.results ctest.results || {
         grep -a -B3 -A40 -E 'filc (safety error|panic)|\*\*FAILED' ctest.results.log | head -300
         exit 1
       }
-      echo "ctest: $(grep -Ev "$racy" ctest.results | awk '{print $2}' | sort | uniq -c | tr -s ' \n' ' '), as filcc's"
+      echo "ctest: $(awk '{print $2}' ctest.results | sort | uniq -c | tr -s ' \n' ' '), as filcc's"
     ''
   )
