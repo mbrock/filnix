@@ -1,0 +1,545 @@
+Subject: Runtime: zmark_shared, shared mappings that hold addresses only
+Origin: Filnix
+Upstream-Status: Not submitted
+
+A MAP_SHARED or shmat mapping shares its bytes, but a pointer stored in it
+keeps its capability in the storing process's private aux, so other processes
+read it without one and trap. zmark_shared(p) marks a fresh shared mapping
+(no aux yet) with FILC_OBJECT_FLAG_SHARED. A marked object never gets an aux.
+Pointer loads from it, atomic or not, give a non-null address the object's
+own capability and a null one none; pointer stores, CAS and exchange write the
+address only and panic unless the pointer is null or has the object's
+capability. memmove out of it gives each fully copied word the capability a
+load would; memmove into it copies bytes only. ensure_aux panics for a marked object, so code
+that does not know about the flag (other compilers, older outlines) fails
+safe; compiled code calls filc_object_ensure_aux_ptr_or_shared_outline, which
+returns NULL instead.
+
+Design, invariants and review: filnix docs/zmark-shared.md. Regressions:
+filnix tests/zmark-shared.nix (checks.staging-zmark-shared).
+
+diff --git a/filc/include/stdfil.h b/filc/include/stdfil.h
+index 051a9a04b6dc..6b106f236d3b 100644
+--- a/filc/include/stdfil.h
++++ b/filc/include/stdfil.h
+@@ -213,6 +213,30 @@ filc_bool zis_readonly(void* ptr);
+ /* Tells if the pointer has a capability and that capability is not free. */
+ filc_bool zhasvalidcap(void* ptr);
+ 
++/* Marks the shared mapping that starts at ptr, as returned by mmap(MAP_SHARED) or shmat, so that
++   processes sharing it can share pointers into it.
++
++   A shared mapping's bytes are visible to other processes, but the capabilities of pointers stored
++   in it are private to the storing process, so other processes read such pointers without one.
++   After zmark_shared, the mapping holds addresses only:
++
++   - A pointer loaded from the mapping (by any load, atomic, compare-and-swap, exchange, or memcpy
++     out of it) gets the mapping's capability, or none if it is null. Whatever another process, a
++     native process, or a stray integer write put there, the loaded pointer can only reach this
++     mapping.
++   - A pointer stored into the mapping must be null or have this same mapping's capability; storing
++     any other pointer (private memory, another mapping, a function) panics, since no process,
++     the storing one included, could use it after reading it back. memcpy and memmove into the
++     mapping copy bytes only and check nothing, because integer data in Fil-C can keep a stale
++     capability from a pointer once stored in the same word.
++   - va_arg from a va_list kept in the mapping gives pointers no capability.
++
++   The mapping must start at ptr, come from mmap with MAP_SHARED or from shmat, and have had no
++   pointer stored into it yet; anything else panics. Marking an already marked mapping does
++   nothing. The mark is inherited across fork, so mark before forking. munmap of the whole mapping
++   frees it as usual, and mremap returns an unmarked mapping. */
++void zmark_shared(void* ptr);
++
+ /* Tells if the pointer is in bounds of lower/upper. This is a guarantee that a 1 byte access will
+    succeed on this pointer. */
+ static inline __attribute__((__always_inline__)) filc_bool zinbounds(void* ptr)
+diff --git a/libpas/src/libpas/filc_runtime.c b/libpas/src/libpas/filc_runtime.c
+index 2f457645a779..19c44327d002 100644
+--- a/libpas/src/libpas/filc_runtime.c
++++ b/libpas/src/libpas/filc_runtime.c
+@@ -2126,6 +2126,13 @@ bool filc_weak_cas_ptr(filc_thread* my_thread, filc_ptr ptr, ptrdiff_t offset,
+ {
+     ptr = filc_ptr_with_offset(ptr, offset);
+     filc_check_native_access(ptr, sizeof(void*), filc_write_access);
++    if (PAS_UNLIKELY(filc_object_is_shared(filc_ptr_object(ptr)))) {
++        filc_check_shared_store(filc_ptr_object(ptr), new_value);
++        void* expected_raw_ptr = filc_ptr_ptr(expected);
++        return __atomic_compare_exchange_n(
++            (void**)filc_ptr_ptr(ptr), &expected_raw_ptr, filc_ptr_ptr(new_value), true,
++            __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
++    }
+     filc_lower_or_box* lower_or_box_ptr = filc_ptr_ensure_lower_or_box_ptr(my_thread, ptr);
+     filc_store_barrier(my_thread, filc_ptr_object(new_value));
+     for (;;) {
+@@ -2157,6 +2164,15 @@ filc_ptr filc_strong_cas_ptr_with_manual_tracking(
+ {
+     ptr = filc_ptr_with_offset(ptr, offset);
+     filc_check_native_access(ptr, sizeof(void*), filc_write_access);
++    if (PAS_UNLIKELY(filc_object_is_shared(filc_ptr_object(ptr)))) {
++        filc_check_shared_store(filc_ptr_object(ptr), new_value);
++        void* old_raw_ptr = filc_ptr_ptr(expected);
++        __atomic_compare_exchange_n(
++            (void**)filc_ptr_ptr(ptr), &old_raw_ptr, filc_ptr_ptr(new_value), false,
++            __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
++        return filc_ptr_create_with_lower_and_ptr_and_manual_tracking(
++            filc_shared_object_lower_for_ptr(filc_ptr_object(ptr), old_raw_ptr), old_raw_ptr);
++    }
+     filc_lower_or_box* lower_or_box_ptr = filc_ptr_ensure_lower_or_box_ptr(my_thread, ptr);
+     filc_store_barrier(my_thread, filc_ptr_object(new_value));
+     for (;;) {
+@@ -2552,6 +2568,14 @@ static PAS_NO_RETURN PAS_NEVER_INLINE void ensure_aux_ptr_free_fail(filc_object*
+                       filc_object_to_new_string(object));
+ }
+ 
++static PAS_NO_RETURN PAS_NEVER_INLINE void ensure_aux_ptr_shared_fail(filc_object* object)
++{
++    filc_safety_panic(NULL,
++                      "attempt to store a capability into zmark_shared object %s; only null or "
++                      "pointers into the same object may be stored there.\n",
++                      filc_object_to_new_string(object));
++}
++
+ static PAS_ALWAYS_INLINE char* ensure_aux_ptr_slow_size_specialized(
+     filc_thread* my_thread, filc_object* object, filc_exit_allowed_mode exit_allowed_mode,
+     size_t size, filc_size_mode size_mode)
+@@ -2606,6 +2630,10 @@ static PAS_ALWAYS_INLINE char* ensure_aux_ptr_slow_size_specialized(
+         }
+         if (PAS_UNLIKELY(filc_aux_get_flags(aux) & FILC_OBJECT_FLAG_FREE))
+             ensure_aux_ptr_free_fail(object);
++        /* A zmark_shared object never gets an aux: its readers derive capabilities from its own
++           header, so an aux here would be private state that other processes never see. */
++        if (PAS_UNLIKELY(filc_aux_get_flags(aux) & FILC_OBJECT_FLAG_SHARED))
++            ensure_aux_ptr_shared_fail(object);
+         if (not_atomic_hack) {
+             object->aux = filc_aux_create(filc_aux_get_flags(aux), (char*)aux_ptr_result.begin);
+             return (char*)aux_ptr_result.begin;
+@@ -2661,6 +2689,8 @@ static PAS_ALWAYS_INLINE char* ensure_aux_ptr_slow_impl(filc_thread* my_thread,
+        freed). */
+     if (PAS_UNLIKELY(!size))
+         ensure_aux_ptr_zero_size(object);
++    if (PAS_UNLIKELY(filc_object_get_flags(object) & FILC_OBJECT_FLAG_SHARED))
++        ensure_aux_ptr_shared_fail(object);
+     if (PAS_LIKELY(size <= FILC_MAX_BYTES_BETWEEN_POLLCHECKS)) {
+         return ensure_aux_ptr_slow_size_specialized(
+             my_thread, object, exit_allowed_mode, size, filc_small_size);
+@@ -2686,6 +2716,24 @@ char* filc_object_ensure_aux_ptr_outline(filc_thread* my_thread, filc_object* ob
+     return ensure_aux_ptr_slow_impl(my_thread, object, filc_exit_allowed);
+ }
+ 
++char* filc_object_ensure_aux_ptr_or_shared_outline(filc_thread* my_thread, filc_object* object)
++{
++    uintptr_t aux = filc_object_aux(object);
++    if (filc_aux_get_ptr(aux))
++        return filc_aux_get_ptr(aux);
++    if (filc_aux_get_flags(aux) & FILC_OBJECT_FLAG_SHARED)
++        return NULL;
++    return ensure_aux_ptr_slow_impl(my_thread, object, filc_exit_allowed);
++}
++
++void filc_shared_store_fail(filc_object* object, filc_ptr value)
++{
++    filc_safety_panic(NULL,
++                      "cannot store pointer %s into zmark_shared object %s; only null or pointers "
++                      "into the same object may be stored there.\n",
++                      filc_ptr_to_new_string(value), filc_object_to_new_string(object));
++}
++
+ filc_atomic_box* filc_atomic_box_create_for_ptr_store(filc_thread* my_thread, filc_ptr value)
+ {
+     filc_atomic_box* result = (filc_atomic_box*)filc_thread_allocate(my_thread,
+@@ -3997,6 +4045,113 @@ bool filc_native_zhasvalidcap(filc_thread* my_thread, filc_ptr ptr)
+         && !(filc_object_get_flags(filc_ptr_object(ptr)) & FILC_OBJECT_FLAG_FREE);
+ }
+ 
++/* zmark_shared(p): see stdfil.h and filnix docs/zmark-shared.md. */
++static bool range_is_shared_mapping(char* begin, char* end)
++{
++    int fd = open("/proc/self/maps", O_RDONLY | O_CLOEXEC);
++    if (fd < 0)
++        return false;
++    size_t capacity = 65536;
++    size_t size = 0;
++    char* buffer = (char*)bmalloc_allocate(capacity);
++    for (;;) {
++        if (size + 1 >= capacity) {
++            char* new_buffer = (char*)bmalloc_allocate(capacity * 2);
++            memcpy(new_buffer, buffer, size);
++            bmalloc_deallocate(buffer);
++            buffer = new_buffer;
++            capacity *= 2;
++        }
++        ssize_t result = read(fd, buffer + size, capacity - 1 - size);
++        if (result < 0 && errno == EINTR)
++            continue;
++        if (result <= 0)
++            break;
++        size += result;
++    }
++    close(fd);
++    buffer[size] = 0;
++    /* The lines are sorted by address and do not overlap. Walk them, requiring that they cover
++       begin..end without a gap and that each is a shared mapping. */
++    char* covered = begin;
++    char* line = buffer;
++    while (covered < end && *line) {
++        char* next;
++        uintptr_t start = strtoull(line, &next, 16);
++        if (*next != '-')
++            break;
++        uintptr_t stop = strtoull(next + 1, &next, 16);
++        while (*next == ' ')
++            next++;
++        bool shared = next[0] && next[1] && next[2] && next[3] == 's';
++        if ((char*)stop > covered) {
++            if ((char*)start > covered || !shared)
++                break;
++            covered = (char*)stop;
++        }
++        char* newline = strchr(next, '\n');
++        if (!newline)
++            break;
++        line = newline + 1;
++    }
++    bmalloc_deallocate(buffer);
++    return covered >= end;
++}
++
++void filc_native_zmark_shared(filc_thread* my_thread, filc_ptr ptr)
++{
++    filc_object* object = filc_ptr_object(ptr);
++    FILC_CHECK(
++        object && filc_ptr_ptr(ptr) == filc_ptr_lower(ptr),
++        NULL,
++        "zmark_shared needs a pointer to the start of a mapping (ptr = %s).",
++        filc_ptr_to_new_string(ptr));
++    filc_object_flags flags = filc_object_get_flags(object);
++    FILC_CHECK(
++        (flags & FILC_OBJECT_FLAG_MMAP) && !(flags & FILC_OBJECT_FLAG_FREE)
++        && !(flags & FILC_OBJECT_FLAGS_SPECIAL_MASK) && filc_object_size(object),
++        NULL,
++        "zmark_shared needs a live mapping from mmap or shmat (ptr = %s).",
++        filc_ptr_to_new_string(ptr));
++    if (flags & FILC_OBJECT_FLAG_SHARED)
++        return;
++    FILC_CHECK(
++        !filc_object_aux_ptr(object),
++        NULL,
++        "zmark_shared needs a mapping that no pointer has been stored into (ptr = %s).",
++        filc_ptr_to_new_string(ptr));
++    /* A usage guard, not a safety check: the mapping can be replaced right after this (MAP_FIXED,
++       mremap), and the rule is sound for any mmap object, since loads never trust its bytes. */
++    filc_exit(my_thread);
++    bool is_shared_mapping = range_is_shared_mapping(
++        (char*)filc_object_lower(object), (char*)filc_object_upper(object));
++    filc_enter(my_thread);
++    FILC_CHECK(
++        is_shared_mapping,
++        NULL,
++        "zmark_shared needs a MAP_SHARED or shmat mapping (ptr = %s).",
++        filc_ptr_to_new_string(ptr));
++    for (;;) {
++        uintptr_t aux = object->aux;
++        FILC_CHECK(
++            !filc_aux_get_ptr(aux),
++            NULL,
++            "zmark_shared needs a mapping that no pointer has been stored into (ptr = %s).",
++            filc_ptr_to_new_string(ptr));
++        FILC_CHECK(
++            !(filc_aux_get_flags(aux) & FILC_OBJECT_FLAG_FREE),
++            NULL,
++            "zmark_shared needs a live mapping from mmap or shmat (ptr = %s).",
++            filc_ptr_to_new_string(ptr));
++        if (filc_aux_get_flags(aux) & FILC_OBJECT_FLAG_SHARED)
++            return;
++        if (pas_compare_and_swap_uintptr_weak(
++                &object->aux, aux,
++                filc_aux_create(filc_aux_get_flags(aux) | FILC_OBJECT_FLAG_SHARED, NULL)))
++            return;
++    }
++}
++
+ filc_ptr filc_native_zptrtable_new(filc_thread* my_thread)
+ {
+     return filc_ptr_for_special_payload_with_manual_tracking(filc_ptr_table_create(my_thread));
+@@ -5518,6 +5673,69 @@ PAS_ALWAYS_INLINE static void memmove_aux_with_ptrs(
+     }
+ }
+ 
++/* The aux side of a copy whose source or destination is a zmark_shared object; the payload has
++   been copied already. dst_payload is where the copy starts, and dst_aux the aux address for those
++   bytes (NULL when there is no aux). dst_object is the heap destination or NULL for a stack one,
++   and src_object the heap source or NULL.
++
++   Into a shared object only the bytes go. Out of a shared object, each fully copied word gets the
++   source's capability when its address is non-null, as a pointer load would give it, and partially
++   copied words lose theirs. */
++static PAS_NEVER_INLINE void memmove_aux_shared(
++    filc_thread* my_thread, char* dst_payload, char* dst_aux, filc_object* dst_object,
++    filc_object* src_object, size_t count, filc_exit_allowed_mode exit_allowed,
++    const filc_origin* origin)
++{
++    char* full_begin = (char*)pas_round_up_to_power_of_2((uintptr_t)dst_payload, FILC_WORD_SIZE);
++    char* full_end = (char*)pas_round_down_to_power_of_2((uintptr_t)dst_payload + count,
++                                                         FILC_WORD_SIZE);
++    char* word;
++
++    /* Only bytes go into a shared object. A source word's capability is not checked: Fil-C keeps a
++       word's capability across integer stores, so ordinary integer data often carries a stale one
++       (a heap tuple whose first word was once a freelist link), and loads from the shared object
++       never trust its bytes anyway. */
++    if (dst_object && filc_object_is_shared(dst_object))
++        return;
++
++    PAS_ASSERT(src_object && filc_object_is_shared(src_object));
++    if (!dst_aux) {
++        bool need_aux = false;
++        PAS_ASSERT(dst_object);
++        for (word = full_begin; word < full_end; word += FILC_WORD_SIZE) {
++            if (filc_shared_object_lower_for_ptr(
++                    src_object, __atomic_load_n((void**)word, __ATOMIC_RELAXED))) {
++                need_aux = true;
++                break;
++            }
++        }
++        if (!need_aux)
++            return;
++        char* aux_base = exit_allowed
++            ? filc_object_ensure_aux_ptr(my_thread, dst_object)
++            : filc_object_ensure_aux_ptr_without_exiting(my_thread, dst_object);
++        dst_aux = aux_base + (dst_payload - (char*)filc_object_lower(dst_object));
++    }
++    if (dst_object)
++        filc_store_barrier(my_thread, src_object);
++    char* first = (char*)pas_round_down_to_power_of_2((uintptr_t)dst_payload, FILC_WORD_SIZE);
++    char* last = (char*)pas_round_up_to_power_of_2((uintptr_t)dst_payload + count, FILC_WORD_SIZE);
++    for (word = first; word < last; word += FILC_WORD_SIZE) {
++        void* lower = NULL;
++        if (word >= full_begin && word < full_end) {
++            lower = filc_shared_object_lower_for_ptr(
++                src_object, __atomic_load_n((void**)word, __ATOMIC_RELAXED));
++        }
++        filc_lower_or_box_store_unfenced_unbarriered(
++            (filc_lower_or_box*)(dst_aux + (word - dst_payload)),
++            filc_lower_or_box_create_lower(lower));
++        if (exit_allowed
++            && !((uintptr_t)(word - first + FILC_WORD_SIZE) % FILC_MAX_BYTES_BETWEEN_POLLCHECKS)
++            && filc_pollcheck(my_thread, origin) && dst_object)
++            filc_store_barrier(my_thread, src_object);
++    }
++}
++
+ /* Assumes that the dst/src are tracked by GC. Assumes that count is nonzero. */
+ PAS_ALWAYS_INLINE static void memmove_size_specialized(
+     filc_thread* my_thread, filc_ptr dst,
+@@ -5602,6 +5820,11 @@ PAS_ALWAYS_INLINE static void memmove_size_specialized(
+     char* src_aux_ptr = filc_object_aux_ptr(src_object);
+     size_t dst_start_offset = dst_start - dst_lower;
+     size_t src_start_offset = src_start - src_lower;
++    if (PAS_UNLIKELY(filc_object_is_shared(dst_object) || filc_object_is_shared(src_object))) {
++        memmove_aux_shared(my_thread, dst_start, dst_aux_ptr ? dst_aux_ptr + dst_start_offset : NULL,
++                           dst_object, src_object, count, exit_allowed, origin);
++        return;
++    }
+     size_t dst_end_offset = dst_start_offset + count;
+     memmove_aux_with_ptrs(my_thread, dst_aux_ptr, src_aux_ptr, dst_start_offset, src_start_offset,
+                           dst_end_offset, dst_object, src_object, size_mode, dst_word_alignment_mode,
+@@ -5861,6 +6084,12 @@ static PAS_ALWAYS_INLINE void copy_stack_to_heap_already_checked(
+     else
+         filc_memcpy_small_up(dst_start, src_payload, count);
+ 
++    if (PAS_UNLIKELY(filc_object_is_shared(dst_object))) {
++        memmove_aux_shared(my_thread, dst_start, NULL, dst_object, NULL, count, exit_allowed,
++                           passed_origin);
++        return;
++    }
++
+     char* dst_aux_ptr = filc_object_aux_ptr(dst_object);
+     char* src_aux_ptr = src_word_alignment_mode ? (char*)src_aux
+         : (char*)pas_round_down_to_power_of_2((uintptr_t)src_aux, FILC_WORD_SIZE);
+@@ -5908,6 +6137,12 @@ static PAS_ALWAYS_INLINE void copy_heap_to_stack_already_checked(
+     else
+         filc_memcpy_small_up(dst_payload, src_start, count);
+ 
++    if (PAS_UNLIKELY(filc_object_is_shared(src_object))) {
++        memmove_aux_shared(my_thread, (char*)dst_payload, (char*)dst_aux, NULL, src_object, count,
++                           exit_allowed, passed_origin);
++        return;
++    }
++
+     char* src_aux_ptr = filc_object_aux_ptr(src_object);
+     char* dst_aux_ptr = dst_word_alignment_mode ? (char*)dst_aux
+         : (char*)pas_round_down_to_power_of_2((uintptr_t)dst_aux, FILC_WORD_SIZE);
+@@ -6308,9 +6543,14 @@ static size_t demote_cc_from_heap(filc_thread* my_thread, filc_ptr ptr, const fi
+     }
+ 
+     char* aux_ptr = filc_ptr_aux_ptr(ptr);
++    bool is_shared = filc_object_is_shared(filc_ptr_object(ptr));
+     for (offset = 0; offset < available; offset += FILC_WORD_SIZE) {
+         void* lower;
+-        if (aux_ptr) {
++        if (is_shared) {
++            lower = filc_shared_object_lower_for_ptr(
++                filc_ptr_object(ptr),
++                *(void**)filc_thread_cc_slot_at_offset(my_thread, offset));
++        } else if (aux_ptr) {
+             lower = filc_lower_or_box_extract_lower(
+                 filc_lower_or_box_load_unfenced((filc_lower_or_box*)(
+                                                     aux_ptr + filc_ptr_offset(ptr) + offset)));
+diff --git a/libpas/src/libpas/filc_runtime.h b/libpas/src/libpas/filc_runtime.h
+index e14eb2100a8b..4b2812c76062 100644
+--- a/libpas/src/libpas/filc_runtime.h
++++ b/libpas/src/libpas/filc_runtime.h
+@@ -203,7 +203,17 @@ typedef uintptr_t filc_word;
+                                                                      marked. */
+ #define FILC_OBJECT_FLAG_WEAK_KEY         ((filc_object_flags)32) /* The object is being used as a key
+                                                                      in one or more weak maps. */
+-/* We have flag bit value 64 available. */
++#define FILC_OBJECT_FLAG_SHARED           ((filc_object_flags)64) /* zmark_shared: a shared mapping
++                                                                     whose bytes no process trusts.
++                                                                     It never has an aux. A pointer
++                                                                     loaded from it gets this object's
++                                                                     capability if its address is
++                                                                     within lower..upper, else none; a
++                                                                     pointer stored into it must be
++                                                                     null or have this object's
++                                                                     capability, and only its address
++                                                                     is written. Set only by
++                                                                     zmark_shared, never cleared. */
+ #define FILC_OBJECT_FLAGS_SPECIAL_SHIFT   ((filc_object_flags)7)  /* The shift amount to get to the
+                                                                      special type. */
+ #define FILC_OBJECT_FLAGS_MASK            ((1 << FILC_OBJECT_FLAGS_SPECIAL_SHIFT) - 1)
+@@ -2495,6 +2505,11 @@ static PAS_ALWAYS_INLINE char* filc_object_ensure_aux_ptr_without_exiting(filc_t
+ }
+ 
+ char* filc_object_ensure_aux_ptr_outline(filc_thread* my_thread, filc_object* object);
++/* Like filc_object_ensure_aux_ptr_outline, but returns NULL for a zmark_shared object instead of
++   panicking. Compiled code that calls this checks for NULL and stores through
++   filc_store_ptr_atomic_outline, which handles shared objects. */
++PAS_API char* filc_object_ensure_aux_ptr_or_shared_outline(filc_thread* my_thread,
++                                                           filc_object* object);
+ 
+ static inline filc_lower_or_box* filc_object_lower_or_box_ptr_at_offset(filc_object* object,
+                                                                         size_t offset)
+@@ -2605,6 +2620,18 @@ static inline filc_object_flags filc_object_get_flags(filc_object* object)
+     return filc_aux_get_flags(filc_object_aux(object));
+ }
+ 
++/* True for a zmark_shared object. Such an object never gets an aux (ensure_aux panics), so the
++   aux word of a shared object always has a null aux pointer. */
++static inline bool filc_aux_is_shared(uintptr_t aux)
++{
++    return !filc_aux_get_ptr(aux) && !!(filc_aux_get_flags(aux) & FILC_OBJECT_FLAG_SHARED);
++}
++
++static inline bool filc_object_is_shared(filc_object* object)
++{
++    return filc_aux_is_shared(filc_object_aux(object));
++}
++
+ static inline bool filc_object_is_markable(filc_object* object)
+ {
+     return object
+@@ -2782,6 +2809,18 @@ static inline void* filc_object_upper(filc_object* object)
+     return filc_object_upper_not_null(object);
+ }
+ 
++/* The capability that a pointer word loaded from the zmark_shared object gets: none for a null
++   address, the object's own for any other. The capability never comes from the shared bytes, only
++   from the loader's own header for the object, so a loaded pointer never has more authority than
++   the loader already used to load it. Out-of-range addresses keep it too, since every access is
++   bounds-checked against it anyway; that keeps tagged and offset pointers working. */
++static inline void* filc_shared_object_lower_for_ptr(filc_object* object, void* raw_ptr)
++{
++    if (!raw_ptr)
++        return NULL;
++    return filc_object_lower(object);
++}
++
+ static inline size_t filc_object_size_not_null(filc_object* object)
+ {
+     PAS_TESTING_ASSERT(object);
+@@ -3455,10 +3494,41 @@ static inline filc_ptr filc_atomic_box_cas_strong_without_barrier(filc_atomic_bo
+     return filc_flight_ptr_unbarriered_strong_cas(&box->ptr, expected, new_value);
+ }
+ 
++
++PAS_API PAS_NO_RETURN PAS_NEVER_INLINE void filc_shared_store_fail(filc_object* object,
++                                                                   filc_ptr value);
++
++/* A pointer stored into a zmark_shared object must be null or have the object's own capability:
++   only its address is written, and readers give it back that capability. */
++static inline void filc_check_shared_store(filc_object* object, filc_ptr value)
++{
++    void* lower = filc_ptr_lower(value);
++    if (PAS_LIKELY(!lower || lower == filc_object_lower(object)))
++        return;
++    filc_shared_store_fail(object, value);
++}
++
++/* Pointer access to a zmark_shared object. The caller has checked the access. Only the address
++   word is read or written; the shared bytes never supply a capability. */
++static inline filc_ptr filc_load_ptr_shared_with_manual_tracking(filc_ptr ptr)
++{
++    void* raw_ptr = __atomic_load_n((void**)filc_ptr_ptr(ptr), __ATOMIC_SEQ_CST);
++    return filc_ptr_create_with_lower_and_ptr_and_manual_tracking(
++        filc_shared_object_lower_for_ptr(filc_ptr_object(ptr), raw_ptr), raw_ptr);
++}
++
++static inline void filc_store_ptr_shared(filc_ptr ptr, filc_ptr value, int memory_order)
++{
++    filc_check_shared_store(filc_ptr_object(ptr), value);
++    __atomic_store_n((void**)filc_ptr_ptr(ptr), filc_ptr_ptr(value), memory_order);
++}
++
+ static inline filc_ptr filc_load_ptr_with_manual_tracking(filc_ptr ptr, ptrdiff_t offset)
+ {
+     ptr = filc_ptr_with_offset(ptr, offset);
+     filc_check_native_access(ptr, sizeof(void*), filc_read_access);
++    if (PAS_UNLIKELY(filc_object_is_shared(filc_ptr_object(ptr))))
++        return filc_load_ptr_shared_with_manual_tracking(ptr);
+     filc_lower_or_box lower_or_box = filc_ptr_load_lower_or_box_unfenced(ptr);
+     void* lower;
+     if (filc_lower_or_box_is_box(lower_or_box)) {
+@@ -3485,6 +3555,8 @@ static inline filc_ptr filc_load_ptr_atomic_with_manual_tracking(filc_ptr ptr, p
+ {
+     ptr = filc_ptr_with_offset(ptr, offset);
+     filc_check_native_access(ptr, sizeof(void*), filc_read_access);
++    if (PAS_UNLIKELY(filc_object_is_shared(filc_ptr_object(ptr))))
++        return filc_load_ptr_shared_with_manual_tracking(ptr);
+     void* raw_ptr = *(void**)filc_ptr_ptr(ptr);
+     pas_load_load_fence();
+     filc_lower_or_box lower_or_box = filc_ptr_load_lower_or_box(ptr);
+@@ -3501,6 +3573,10 @@ static inline void filc_store_ptr(filc_thread* my_thread, filc_ptr ptr, ptrdiff_
+ {
+     ptr = filc_ptr_with_offset(ptr, offset);
+     filc_check_native_access(ptr, sizeof(void*), filc_write_access);
++    if (PAS_UNLIKELY(filc_object_is_shared(filc_ptr_object(ptr)))) {
++        filc_store_ptr_shared(ptr, value, __ATOMIC_RELAXED);
++        return;
++    }
+     filc_lower_or_box* lower_or_box_ptr = filc_ptr_ensure_lower_or_box_ptr(my_thread, ptr);
+     filc_store_barrier(my_thread, filc_ptr_object(value));
+     filc_lower_or_box_store_unfenced_unbarriered(
+@@ -3538,6 +3614,10 @@ static inline void filc_store_ptr_atomic(filc_thread* my_thread, filc_ptr ptr, p
+ {
+     ptr = filc_ptr_with_offset(ptr, offset);
+     filc_check_native_access(ptr, sizeof(void*), filc_write_access);
++    if (PAS_UNLIKELY(filc_object_is_shared(filc_ptr_object(ptr)))) {
++        filc_store_ptr_shared(ptr, value, __ATOMIC_SEQ_CST);
++        return;
++    }
+     filc_lower_or_box* lower_or_box_ptr = filc_ptr_ensure_lower_or_box_ptr(my_thread, ptr);
+     filc_store_ptr_atomic_with_ptr_pair(my_thread, (void**)filc_ptr_ptr(ptr), lower_or_box_ptr,
+                                         value);
+diff --git a/libpas/src/libpas/generate_pizlonated_forwarders.rb b/libpas/src/libpas/generate_pizlonated_forwarders.rb
+index 952bfcb04f4e..1c26e3b9e5ac 100644
+--- a/libpas/src/libpas/generate_pizlonated_forwarders.rb
++++ b/libpas/src/libpas/generate_pizlonated_forwarders.rb
+@@ -141,6 +141,7 @@ addSig nil, "filc_ptr", "zgc_finq_aligned_alloc", "filc_ptr", "size_t", "size_t"
+ addSig nil, "filc_ptr", "zgetlower", "filc_ptr"
+ addSig nil, "filc_ptr", "zgetupper", "filc_ptr"
+ addSig nil, "bool", "zhasvalidcap", "filc_ptr"
++addSig nil, "void", "zmark_shared", "filc_ptr"
+ addSig nil, "filc_ptr", "zptrtable_new"
+ addSig nil, "size_t", "zptrtable_encode", "filc_ptr", "filc_ptr"
+ addSig nil, "filc_ptr", "zptrtable_decode", "filc_ptr", "size_t"

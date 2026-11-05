@@ -1,0 +1,264 @@
+Subject: FilPizlonator: pointer loads, stores and small copies for zmark_shared objects
+Origin: Filnix
+Upstream-Status: Not submitted
+
+The runtime half (patches/fil-c/runtime-zmark-shared.patch) marks a shared
+mapping with FILC_OBJECT_FLAG_SHARED; such an object never has an aux. The
+pass's inline paths assume a null aux means "no pointers here", so:
+
+- Pointer loads: when the aux base is null, load the aux word (monotonic) and
+  test the flag; for a marked object a non-null address gets the object's own
+  capability (a select, no call).
+- Pointer stores: EnsureAuxPtr calls filc_object_ensure_aux_ptr_or_shared_outline,
+  which returns null for a shared object; the store then goes through
+  filc_store_ptr_atomic_outline, which checks the value and writes the address.
+- Inline memmove: a heap side with a null aux and the flag goes to the runtime
+  copy, before any byte is copied, so overlapping copies stay correct.
+
+Loads from objects with an aux are unchanged (the address load moves into the
+edge's block); loads from objects without one pay a header load, a test and a
+select. Stores pay a null test of the aux base. Design, review and
+measurements: filnix docs/zmark-shared.md.
+
+diff --git a/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp b/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp
+index 74c379488e83..b5520b745b5c 100644
+--- a/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp
++++ b/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp
+@@ -98,6 +98,7 @@ static constexpr uint16_t ObjectFlagGlobal = 1;
+ static constexpr uint16_t ObjectFlagReadonly = 2;
+ static constexpr uint16_t ObjectFlagFree = 4;
+ static constexpr uint16_t ObjectFlagGlobalAux = 16;
++static constexpr uint16_t ObjectFlagShared = 64;
+ static constexpr uint16_t ObjectFlagsSpecialShift = 7;
+ static constexpr uint16_t ObjectFlagsAlignShift = 11;
+ 
+@@ -2236,6 +2237,43 @@ class Pizlonator {
+     return Word;
+   }
+ 
++  // True when the heap object whose aux base is AuxBaseP is a zmark_shared object. Such an object
++  // never has an aux, so the flags are loaded only when AuxBaseP is null, and code that touches
++  // ordinary objects with an aux pays only the null test it already does.
++  // The flags of the object at Lower, loaded monotonic, since zmark_shared, ensure-aux and free
++  // CAS the aux word concurrently.
++  Value* sharedFlagForLower(Value* Lower, Instruction* InsertBefore) {
++    DebugLoc DL = InsertBefore->getDebugLoc();
++    Instruction* Aux = new LoadInst(
++      IntPtrTy, ptrToAuxForLower(Lower, InsertBefore), "filc_object_aux_load_atomic", false,
++      Align(WordSize), AtomicOrdering::Monotonic, SyncScope::System, InsertBefore);
++    Aux->setDebugLoc(DL);
++    Instruction* Masked = BinaryOperator::Create(
++      Instruction::And, Aux,
++      ConstantInt::get(IntPtrTy, static_cast<uint64_t>(ObjectFlagShared) << ObjectAuxFlagsShift),
++      "filc_shared_flag", InsertBefore);
++    Masked->setDebugLoc(DL);
++    Instruction* IsShared = new ICmpInst(
++      InsertBefore, ICmpInst::ICMP_NE, Masked, ConstantInt::get(IntPtrTy, 0), "filc_is_shared");
++    IsShared->setDebugLoc(DL);
++    return IsShared;
++  }
++
++  Value* isSharedNullAux(Value* AuxBaseP, Value* Lower, Instruction* InsertBefore) {
++    DebugLoc DL = InsertBefore->getDebugLoc();
++    Instruction* AuxIsNull = new ICmpInst(
++      InsertBefore, ICmpInst::ICMP_EQ, AuxBaseP, RawNull, "filc_shared_aux_is_null");
++    AuxIsNull->setDebugLoc(DL);
++    BasicBlock* OrigB = InsertBefore->getParent();
++    Instruction* NullTerm = SplitBlockAndInsertIfThen(AuxIsNull, InsertBefore, false);
++    Value* IsShared = sharedFlagForLower(Lower, NullTerm);
++    PHINode* Result = PHINode::Create(Int1Ty, 2, "filc_is_shared_phi", InsertBefore);
++    Result->setDebugLoc(DL);
++    Result->addIncoming(ConstantInt::getFalse(Int1Ty), OrigB);
++    Result->addIncoming(IsShared, NullTerm->getParent());
++    return Result;
++  }
++
+   Value* loadFlightPtr(Value* P, Instruction* InsertBefore) {
+     Instruction* Lower = new LoadInst(
+       RawPtrTy, flightPtrLowerPtr(P, InsertBefore), "filc_flight_load_lower", false, Align(8),
+@@ -2289,6 +2327,7 @@ class Pizlonator {
+     } else
+       BaseAuxPIsNull = ConstantInt::getBool(Int1Ty, false);
+     Instruction* NotNullCase = SplitBlockAndInsertIfElse(BaseAuxPIsNull, InsertBefore, false);
++    BasicBlock* NullAuxJoinB = InsertBefore->getParent();
+     Instruction* LowerAsIntLoad = new LoadInst(
+       IntPtrTy, MAD.AuxP, "filc_load_lower", isVolatile, Align(WordSize),
+       MAD.MK == MemoryKind::Heap ? getMergedAtomicOrdering(AtomicOrdering::Monotonic, AO) : AO,
+@@ -2298,15 +2337,22 @@ class Pizlonator {
+     LowerAsInt->setDebugLoc(InsertBefore->getDebugLoc());
+     LowerAsInt->addIncoming(ConstantInt::get(IntPtrTy, 0), OriginalB);
+     LowerAsInt->addIncoming(LowerAsIntLoad, LowerAsIntLoad->getParent());
++    PHINode* NullAuxLowerAsInt = LowerAsInt;
++    // The address, when it is loaded before the join; see the end of this function.
++    PHINode* RawPhi = nullptr;
+ 
+     auto FinishCreatingFlight = [&] (Instruction* Where) {
+       Instruction* LowerToPtr = new IntToPtrInst(
+         LowerAsInt, RawPtrTy, "filc_lower_as_ptr", Where);
+       LowerToPtr->setDebugLoc(InsertBefore->getDebugLoc());
+-      Instruction* RawPtrLoad = new LoadInst(
+-        RawPtrTy, MAD.P, "filc_atomic_case_load_raw_ptr", isVolatile, std::max(A, Align(WordSize)), AO,
+-        SyncScope::System, Where);
+-      RawPtrLoad->setDebugLoc(InsertBefore->getDebugLoc());
++      Value* RawPtrLoad = RawPhi;
++      if (!RawPtrLoad) {
++        Instruction* RawPtrLoadInst = new LoadInst(
++          RawPtrTy, MAD.P, "filc_atomic_case_load_raw_ptr", isVolatile, std::max(A, Align(WordSize)),
++          AO, SyncScope::System, Where);
++        RawPtrLoadInst->setDebugLoc(InsertBefore->getDebugLoc());
++        RawPtrLoad = RawPtrLoadInst;
++      }
+       return createFlightPtr(LowerToPtr, RawPtrLoad, Where);
+     };
+     
+@@ -2342,6 +2388,44 @@ class Pizlonator {
+       NewLowerAsInt->addIncoming(LowerFromBoxLoadInt, ElseTerm->getParent());
+       LowerAsInt = NewLowerAsInt;
+     }
++    if (MAD.MK == MemoryKind::Heap && MAD.Lower) {
++      // An object without aux may be zmark_shared. Then the loaded address gets the object's own
++      // capability, or none when it is null, computed without a call: the flags are in the aux
++      // word. The address is loaded once on each edge into the join and the null test uses the
++      // address the program gets, so a racing writer cannot make a valid address come back
++      // without a capability, and loads from objects with an aux do no extra work.
++      assert(!isVolatile && AO == AtomicOrdering::NotAtomic);
++      DebugLoc DL = InsertBefore->getDebugLoc();
++      Align RawAlign = std::max(A, Align(WordSize));
++      BasicBlock* NullB = BasicBlock::Create(C, "filc_load_null_aux", NewF, NullAuxJoinB);
++      OriginalB->getTerminator()->replaceSuccessorWith(NullAuxJoinB, NullB);
++      Instruction* NullTerm = BranchInst::Create(NullAuxJoinB, NullB);
++      Value* IsShared = sharedFlagForLower(MAD.Lower, NullTerm);
++      Instruction* NullRaw = new LoadInst(RawPtrTy, MAD.P, "filc_load_raw_ptr", NullTerm);
++      cast<LoadInst>(NullRaw)->setAlignment(RawAlign);
++      NullRaw->setDebugLoc(DL);
++      Instruction* RawNotNull = new ICmpInst(
++        NullTerm, ICmpInst::ICMP_NE, NullRaw, RawNull, "filc_shared_raw_not_null");
++      RawNotNull->setDebugLoc(DL);
++      Instruction* UseLower = BinaryOperator::Create(
++        Instruction::And, IsShared, RawNotNull, "filc_shared_use_lower", NullTerm);
++      UseLower->setDebugLoc(DL);
++      Instruction* LowerInt = new PtrToIntInst(MAD.Lower, IntPtrTy, "filc_shared_lower", NullTerm);
++      LowerInt->setDebugLoc(DL);
++      Instruction* SharedLower = SelectInst::Create(
++        UseLower, LowerInt, ConstantInt::get(IntPtrTy, 0), "filc_shared_lower_or_null", NullTerm);
++      SharedLower->setDebugLoc(DL);
++      NullAuxLowerAsInt->setIncomingValueForBlock(OriginalB, SharedLower);
++      NullAuxLowerAsInt->replaceIncomingBlockWith(OriginalB, NullB);
++      Instruction* AuxRaw = new LoadInst(
++        RawPtrTy, MAD.P, "filc_load_raw_ptr", LowerAsIntLoad->getParent()->getTerminator());
++      cast<LoadInst>(AuxRaw)->setAlignment(RawAlign);
++      AuxRaw->setDebugLoc(DL);
++      RawPhi = PHINode::Create(RawPtrTy, 2, "filc_raw_ptr_phi", NullAuxLowerAsInt->getNextNode());
++      RawPhi->setDebugLoc(DL);
++      RawPhi->addIncoming(NullRaw, NullB);
++      RawPhi->addIncoming(AuxRaw, AuxRaw->getParent());
++    }
+     return FinishCreatingFlight(InsertBefore);
+   }
+ 
+@@ -2402,6 +2486,23 @@ class Pizlonator {
+       return;
+     }
+     
++    if (MAD.MK == MemoryKind::Heap && MAD.Lower) {
++      // EnsureAuxPtr leaves the aux base null only for a zmark_shared object. The runtime checks
++      // that the pointer is null or into that object and stores its address only.
++      Instruction* AuxIsNull = new ICmpInst(
++        InsertBefore, ICmpInst::ICMP_EQ, MAD.AuxBaseP, RawNull, "filc_store_aux_is_null");
++      AuxIsNull->setDebugLoc(InsertBefore->getDebugLoc());
++      Instruction* SharedTerm;
++      Instruction* NormalTerm;
++      SplitBlockAndInsertIfThenElse(
++        expectFalse(AuxIsNull, InsertBefore), InsertBefore, &SharedTerm, &NormalTerm);
++      storeOrigin(getOrigin(InsertBefore->getDebugLoc()), SharedTerm);
++      CallInst::Create(
++        StorePtrAtomicOutline, { MyThread, createFlightPtr(MAD.Lower, MAD.P, SharedTerm), V }, "",
++        SharedTerm)->setDebugLoc(InsertBefore->getDebugLoc());
++      InsertBefore = NormalTerm;
++    }
++
+     if (MAD.MK == MemoryKind::Heap || MAD.MK == MemoryKind::ThreadLocalInit)
+       storeBarrierForValue(V, InsertBefore);
+ 
+@@ -4157,7 +4258,7 @@ class Pizlonator {
+           Instruction* CreatedAuxBase = CallInst::Create(
+             ObjectEnsureAuxPtrOutline,
+             { MyThread, objectForLower(flightPtrLower(FlightPtr, ThenTerm), ThenTerm) },
+-            "filc_object_ensure_aux_ptr_outline", ThenTerm);
++            "filc_object_ensure_aux_ptr_or_shared_outline", ThenTerm);
+           CreatedAuxBase->setDebugLoc(Inst->getDebugLoc());
+           (new StoreInst(CreatedAuxBase, AuxBaseVar, ThenTerm))->setDebugLoc(Inst->getDebugLoc());
+           break;
+@@ -7873,6 +7974,16 @@ class Pizlonator {
+       //     store extra null above
+       // done:
+ 
++      // A heap side without aux may be a zmark_shared object, whose copies the runtime does: it
++      // refuses foreign capabilities going in and derives the object's own coming out. The inline
++      // copy below goes in InlineB; the test is put in front of it once it is emitted.
++      BasicBlock* SharedTestB = nullptr;
++      BasicBlock* InlineB = nullptr;
++      if (DstFMAD.MAD.MK == MemoryKind::Heap || SrcFMAD.MAD.MK == MemoryKind::Heap) {
++        SharedTestB = I->getParent();
++        InlineB = SplitBlock(SharedTestB, I);
++      }
++
+       // Copy the payload.
+       Value* DstP = flightPtrPtr(Dst, I);
+       Value* SrcP = flightPtrPtr(Src, I);
+@@ -8155,6 +8266,46 @@ class Pizlonator {
+       BaseGEP->setDebugLoc(I->getDebugLoc());
+       (new StoreInst(RawNull, BaseGEP, false, Align(WordSize), AtomicOrdering::Monotonic,
+                      SyncScope::System, ReallyStoreExtraTerm))->setDebugLoc(I->getDebugLoc());
++      if (SharedTestB) {
++        DebugLoc DL = I->getDebugLoc();
++        BasicBlock* JoinB = SplitBlock(I->getParent(), I);
++        Instruction* TestTerm = SharedTestB->getTerminator();
++        Value* IsShared = ConstantInt::getFalse(Int1Ty);
++        if (DstFMAD.MAD.MK == MemoryKind::Heap)
++          IsShared = isSharedNullAux(DstFMAD.MAD.AuxBaseP, DstFMAD.MAD.Lower, TestTerm);
++        if (SrcFMAD.MAD.MK == MemoryKind::Heap) {
++          Value* SrcShared = isSharedNullAux(SrcFMAD.MAD.AuxBaseP, SrcFMAD.MAD.Lower, TestTerm);
++          Instruction* Or = BinaryOperator::Create(
++            Instruction::Or, IsShared, SrcShared, "filc_memmove_is_shared", TestTerm);
++          Or->setDebugLoc(DL);
++          IsShared = Or;
++        }
++        BasicBlock* SharedB = BasicBlock::Create(C, "filc_memmove_shared", NewF, InlineB);
++        Instruction* SharedTerm = BranchInst::Create(JoinB, SharedB);
++        storeOrigin(getOrigin(DL), SharedTerm);
++        Instruction* Call;
++        if (DstFMAD.MAD.MK == MemoryKind::Heap && SrcFMAD.MAD.MK == MemoryKind::Heap) {
++          Call = CallInst::Create(
++            MemmoveAlreadyCheckedSmall,
++            { MyThread, Dst, Src, ConstantInt::get(IntPtrTy, Count), getOrigin(DL) }, "",
++            SharedTerm);
++        } else if (DstFMAD.MAD.MK == MemoryKind::Heap) {
++          Call = CallInst::Create(
++            MemmoveAlreadyCheckedStackToHeap,
++            { MyThread, Dst, flightPtrPtr(Src, SharedTerm), SrcFMAD.MAD.AuxP,
++              ConstantInt::get(IntPtrTy, Count), getOrigin(DL) }, "", SharedTerm);
++        } else {
++          Call = CallInst::Create(
++            MemmoveAlreadyCheckedHeapToStack,
++            { MyThread, flightPtrPtr(Dst, SharedTerm), DstFMAD.MAD.AuxP, Src,
++              ConstantInt::get(IntPtrTy, Count) }, "", SharedTerm);
++        }
++        Call->setDebugLoc(DL);
++        Instruction* TestTermNow = cast<BasicBlock>(cast<Instruction>(IsShared)->getParent())
++          ->getTerminator();
++        ReplaceInstWithInst(
++          TestTermNow, BranchInst::Create(SharedB, InlineB, expectFalse(IsShared, TestTermNow)));
++      }
+       if (DstFMAD.MAD.MK == MemoryKind::LocalNaked) {
+         assert(!(DstFMAD.MAD.Size % WordSize));
+         assert(DstFMAD.MAD.LocalOffset != INT64_MIN);
+@@ -16833,7 +16984,7 @@ public:
+     LoadPtrAtomicOutline = M.getOrInsertFunction(
+       "filc_load_ptr_atomic_with_manual_tracking_outline", FlightPtrTy, FlightPtrTy);
+     ObjectEnsureAuxPtrOutline = M.getOrInsertFunction(
+-      "filc_object_ensure_aux_ptr_outline", RawPtrTy, RawPtrTy, RawPtrTy);
++      "filc_object_ensure_aux_ptr_or_shared_outline", RawPtrTy, RawPtrTy, RawPtrTy);
+     ThreadEnsureCCOutlineBufferSlow = M.getOrInsertFunction(
+       "filc_thread_ensure_cc_outline_buffer_slow", VoidTy, RawPtrTy, IntPtrTy);
+     StrongCasPtr = M.getOrInsertFunction(

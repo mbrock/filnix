@@ -1,0 +1,915 @@
+Subject: PostgreSQL 18.6 on Fil-C staging with a zmark_shared main segment
+Origin: Filnix (prototype evidence for docs/zmark-shared.md, not used by a Nix build)
+
+Applies to pristine PostgreSQL 18.6. Build with filcc-staging from the
+zmark-shared branch, CFLAGS="-O2 -g -Wno-int-conversion", and run with
+huge_pages=off. See docs/zmark-shared.md, section PostgreSQL.
+
+zmark_shared changes:
+- sysv_shmem.c: zmark_shared(ptr) after the main segment's mmap.
+- shm_mq.c: sender and receiver as ProcNumber + 1, not PGPROC *.
+- parallel.c: the leader as parallel_leader_proc_number, and the
+  SERIALIZABLEXACT as an offset from ProcGlobal, not pointers, in the DSM.
+- aio.c, aio_init.c, aio_internal.h: the issuer's resowner, resowner_node
+  and report_return in a backend-private array indexed by handle id.
+- aio_io.c: iovecs of IOs on local buffers in backend-private memory.
+
+Single-process Fil-C porting, shared with the release-toolchain port
+(T-01a1ac20): no x86 asm in atomics.h, s_lock.h and pg_bitutils.h; Datum as
+char * (postgres.h, nodes.h, network.c, numeric.c, varlena.c); xlogprefetcher's
+private pointer as void *; sort_template.h's ST_SWAPN through memcpy;
+ExpandedObjectHeader padding so its TOAST pointers are 8-byte aligned; and
+libpq's exit check allowing filc_allocate_without_exiting.
+
+diff --git a/src/backend/access/transam/parallel.c b/src/backend/access/transam/parallel.c
+index 5e6d219..f5201c3 100644
+--- a/src/backend/access/transam/parallel.c
++++ b/src/backend/access/transam/parallel.c
+@@ -92,12 +92,18 @@ typedef struct FixedParallelState
+ 	int			sec_context;
+ 	bool		session_user_is_superuser;
+ 	bool		role_is_superuser;
+-	PGPROC	   *parallel_leader_pgproc;
++	/* Fil-C: no PGPROC * here; DSM is not zmark_shared. Use the proc number. */
+ 	pid_t		parallel_leader_pid;
+ 	ProcNumber	parallel_leader_proc_number;
+ 	TimestampTz xact_ts;
+ 	TimestampTz stmt_ts;
+-	SerializableXactHandle serializable_xact_handle;
++	/*
++	 * Fil-C: the leader's SERIALIZABLEXACT lives in the main shared segment,
++	 * but this struct is in a DSM segment, so pass it as an offset from
++	 * ProcGlobal (also in the main segment) rather than as a pointer.
++	 * 0 means InvalidSerializableXact.
++	 */
++	ptrdiff_t	serializable_xact_offset;
+ 
+ 	/* Mutex protects remaining fields. */
+ 	slock_t		mutex;
+@@ -349,12 +355,16 @@ InitializeParallelDSM(ParallelContext *pcxt)
+ 	fps->role_is_superuser = current_role_is_superuser;
+ 	GetTempNamespaceState(&fps->temp_namespace_id,
+ 						  &fps->temp_toast_namespace_id);
+-	fps->parallel_leader_pgproc = MyProc;
+ 	fps->parallel_leader_pid = MyProcPid;
+ 	fps->parallel_leader_proc_number = MyProcNumber;
+ 	fps->xact_ts = GetCurrentTransactionStartTimestamp();
+ 	fps->stmt_ts = GetCurrentStatementStartTimestamp();
+-	fps->serializable_xact_handle = ShareSerializableXact();
++	{
++		SerializableXactHandle sxact = ShareSerializableXact();
++
++		fps->serializable_xact_offset =
++			sxact ? (char *) sxact - (char *) ProcGlobal : 0;
++	}
+ 	SpinLockInit(&fps->mutex);
+ 	fps->last_xlog_end = 0;
+ 	shm_toc_insert(pcxt->toc, PARALLEL_KEY_FIXED, fps);
+@@ -1397,7 +1407,7 @@ ParallelWorkerMain(Datum main_arg)
+ 	 * deadlock.  (If we can't join the lock group, the leader has gone away,
+ 	 * so just exit quietly.)
+ 	 */
+-	if (!BecomeLockGroupMember(fps->parallel_leader_pgproc,
++	if (!BecomeLockGroupMember(GetPGProcByNumber(fps->parallel_leader_proc_number),
+ 							   fps->parallel_leader_pid))
+ 		return;
+ 
+@@ -1503,7 +1513,7 @@ ParallelWorkerMain(Datum main_arg)
+ 	asnapshot = RestoreSnapshot(asnapspace);
+ 	tsnapshot = tsnapspace ? RestoreSnapshot(tsnapspace) : asnapshot;
+ 	RestoreTransactionSnapshot(tsnapshot,
+-							   fps->parallel_leader_pgproc);
++							   GetPGProcByNumber(fps->parallel_leader_proc_number));
+ 	PushActiveSnapshot(asnapshot);
+ 
+ 	/*
+@@ -1555,7 +1565,9 @@ ParallelWorkerMain(Datum main_arg)
+ 							 hba_authname(MyClientConnectionInfo.auth_method));
+ 
+ 	/* Attach to the leader's serializable transaction, if SERIALIZABLE. */
+-	AttachSerializableXact(fps->serializable_xact_handle);
++	AttachSerializableXact(fps->serializable_xact_offset ?
++						   (SerializableXactHandle) ((char *) ProcGlobal + fps->serializable_xact_offset) :
++						   NULL);
+ 
+ 	/*
+ 	 * We've initialized all of our state now; nothing should change
+diff --git a/src/backend/access/transam/xlogprefetcher.c b/src/backend/access/transam/xlogprefetcher.c
+index 7735562..f364aab 100644
+--- a/src/backend/access/transam/xlogprefetcher.c
++++ b/src/backend/access/transam/xlogprefetcher.c
+@@ -91,7 +91,7 @@ typedef enum
+  * Type of callback that can decide which block to prefetch next.  For now
+  * there is only one.
+  */
+-typedef LsnReadQueueNextStatus (*LsnReadQueueNextFun) (uintptr_t lrq_private,
++typedef LsnReadQueueNextStatus (*LsnReadQueueNextFun) (void *lrq_private,
+ 													   XLogRecPtr *lsn);
+ 
+ /*
+@@ -103,7 +103,7 @@ typedef LsnReadQueueNextStatus (*LsnReadQueueNextFun) (uintptr_t lrq_private,
+ typedef struct LsnReadQueue
+ {
+ 	LsnReadQueueNextFun next;
+-	uintptr_t	lrq_private;
++	void	   *lrq_private;
+ 	uint32		max_inflight;
+ 	uint32		inflight;
+ 	uint32		completed;
+@@ -193,7 +193,7 @@ static inline bool XLogPrefetcherIsFiltered(XLogPrefetcher *prefetcher,
+ 											BlockNumber blockno);
+ static inline void XLogPrefetcherCompleteFilters(XLogPrefetcher *prefetcher,
+ 												 XLogRecPtr replaying_lsn);
+-static LsnReadQueueNextStatus XLogPrefetcherNextBlock(uintptr_t pgsr_private,
++static LsnReadQueueNextStatus XLogPrefetcherNextBlock(void *pgsr_private,
+ 													  XLogRecPtr *lsn);
+ 
+ static XLogPrefetchStats *SharedStats;
+@@ -201,7 +201,7 @@ static XLogPrefetchStats *SharedStats;
+ static inline LsnReadQueue *
+ lrq_alloc(uint32 max_distance,
+ 		  uint32 max_inflight,
+-		  uintptr_t lrq_private,
++		  void *lrq_private,
+ 		  LsnReadQueueNextFun next)
+ {
+ 	LsnReadQueue *lrq;
+@@ -456,7 +456,7 @@ XLogPrefetcherComputeStats(XLogPrefetcher *prefetcher)
+  * not to prefetch.
+  */
+ static LsnReadQueueNextStatus
+-XLogPrefetcherNextBlock(uintptr_t pgsr_private, XLogRecPtr *lsn)
++XLogPrefetcherNextBlock(void *pgsr_private, XLogRecPtr *lsn)
+ {
+ 	XLogPrefetcher *prefetcher = (XLogPrefetcher *) pgsr_private;
+ 	XLogReaderState *reader = prefetcher->reader;
+@@ -1009,7 +1009,7 @@ XLogPrefetcherReadRecord(XLogPrefetcher *prefetcher, char **errmsg)
+ 
+ 		prefetcher->streaming_read = lrq_alloc(max_distance,
+ 											   max_inflight,
+-											   (uintptr_t) prefetcher,
++											   prefetcher,
+ 											   XLogPrefetcherNextBlock);
+ 
+ 		prefetcher->reconfigure_count = XLogPrefetchReconfigureCount;
+diff --git a/src/backend/port/sysv_shmem.c b/src/backend/port/sysv_shmem.c
+index 197926d..c845140 100644
+--- a/src/backend/port/sysv_shmem.c
++++ b/src/backend/port/sysv_shmem.c
+@@ -19,6 +19,10 @@
+  */
+ #include "postgres.h"
+ 
++#ifdef __FILC__
++#include <stdfil.h>
++#endif
++
+ #include <signal.h>
+ #include <unistd.h>
+ #include <sys/file.h>
+@@ -663,6 +667,15 @@ CreateAnonymousSegment(Size *size)
+ 						 allocsize) : 0));
+ 	}
+ 
++#ifdef __FILC__
++	/*
++	 * Backends store pointers into this segment after fork.  Mark it so that
++	 * Fil-C keeps addresses only in it and gives every pointer loaded from it
++	 * the segment's own capability.
++	 */
++	zmark_shared(ptr);
++#endif
++
+ 	*size = allocsize;
+ 	return ptr;
+ }
+diff --git a/src/backend/storage/aio/aio.c b/src/backend/storage/aio/aio.c
+index e64afe6..7049dc2 100644
+--- a/src/backend/storage/aio/aio.c
++++ b/src/backend/storage/aio/aio.c
+@@ -47,6 +47,7 @@
+ #include "utils/guc.h"
+ #include "utils/guc_hooks.h"
+ #include "utils/injection_point.h"
++#include "utils/memutils.h"
+ #include "utils/resowner.h"
+ #include "utils/wait_event_types.h"
+ 
+@@ -77,6 +78,9 @@ int			io_max_concurrency = -1;
+ /* global control for AIO */
+ PgAioCtl   *pgaio_ctl;
+ 
++/* this backend's private part of every handle, indexed like io_handles */
++static PgAioHandleLocal *pgaio_local;
++
+ /* current backend's per-backend state */
+ PgAioBackend *pgaio_my_backend;
+ 
+@@ -221,7 +225,7 @@ pgaio_io_acquire_nb(struct ResourceOwnerData *resowner, PgAioReturn *ret)
+ 
+ 		if (ret)
+ 		{
+-			ioh->report_return = ret;
++			pgaio_io_local(ioh)->report_return = ret;
+ 			ret->result.status = PGAIO_RS_UNKNOWN;
+ 		}
+ 	}
+@@ -242,7 +246,7 @@ pgaio_io_release(PgAioHandle *ioh)
+ 	if (ioh == pgaio_my_backend->handed_out_io)
+ 	{
+ 		Assert(ioh->state == PGAIO_HS_HANDED_OUT);
+-		Assert(ioh->resowner);
++		Assert(pgaio_io_local(ioh)->resowner);
+ 
+ 		pgaio_my_backend->handed_out_io = NULL;
+ 
+@@ -265,9 +269,10 @@ pgaio_io_release(PgAioHandle *ioh)
+ void
+ pgaio_io_release_resowner(dlist_node *ioh_node, bool on_error)
+ {
+-	PgAioHandle *ioh = dlist_container(PgAioHandle, resowner_node, ioh_node);
++	PgAioHandleLocal *local = dlist_container(PgAioHandleLocal, resowner_node, ioh_node);
++	PgAioHandle *ioh = &pgaio_ctl->io_handles[local - pgaio_local];
+ 
+-	Assert(ioh->resowner);
++	Assert(pgaio_io_local(ioh)->resowner);
+ 
+ 	/*
+ 	 * Otherwise an interrupt, in the middle of releasing the IO, could end up
+@@ -275,8 +280,8 @@ pgaio_io_release_resowner(dlist_node *ioh_node, bool on_error)
+ 	 */
+ 	HOLD_INTERRUPTS();
+ 
+-	ResourceOwnerForgetAioHandle(ioh->resowner, &ioh->resowner_node);
+-	ioh->resowner = NULL;
++	ResourceOwnerForgetAioHandle(pgaio_io_local(ioh)->resowner, &pgaio_io_local(ioh)->resowner_node);
++	pgaio_io_local(ioh)->resowner = NULL;
+ 
+ 	switch ((PgAioHandleState) ioh->state)
+ 	{
+@@ -313,8 +318,8 @@ pgaio_io_release_resowner(dlist_node *ioh_node, bool on_error)
+ 	 * Need to unregister the reporting of the IO's result, the memory it's
+ 	 * referencing likely has gone away.
+ 	 */
+-	if (ioh->report_return)
+-		ioh->report_return = NULL;
++	if (pgaio_io_local(ioh)->report_return)
++		pgaio_io_local(ioh)->report_return = NULL;
+ 
+ 	RESUME_INTERRUPTS();
+ }
+@@ -334,6 +339,18 @@ pgaio_io_set_flag(PgAioHandle *ioh, PgAioHandleFlags flag)
+ 	ioh->flags |= flag;
+ }
+ 
++/*
++ * Returns the issuing backend's private part of an IO handle.
++ */
++PgAioHandleLocal *
++pgaio_io_local(PgAioHandle *ioh)
++{
++	if (pgaio_local == NULL)
++		pgaio_local = MemoryContextAllocZero(TopMemoryContext,
++											 sizeof(PgAioHandleLocal) * pgaio_ctl->io_handle_count);
++	return &pgaio_local[pgaio_io_get_id(ioh)];
++}
++
+ /*
+  * Returns an ID uniquely identifying the IO handle. This is only really
+  * useful for logging, as handles are reused across multiple IOs.
+@@ -408,11 +425,11 @@ pgaio_io_update_state(PgAioHandle *ioh, PgAioHandleState new_state)
+ static void
+ pgaio_io_resowner_register(PgAioHandle *ioh, struct ResourceOwnerData *resowner)
+ {
+-	Assert(!ioh->resowner);
++	Assert(!pgaio_io_local(ioh)->resowner);
+ 	Assert(resowner);
+ 
+-	ResourceOwnerRememberAioHandle(resowner, &ioh->resowner_node);
+-	ioh->resowner = resowner;
++	ResourceOwnerRememberAioHandle(resowner, &pgaio_io_local(ioh)->resowner_node);
++	pgaio_io_local(ioh)->resowner = resowner;
+ }
+ 
+ /*
+@@ -693,10 +710,10 @@ pgaio_io_reclaim(PgAioHandle *ioh)
+ 		local_result = pgaio_io_call_complete_local(ioh);
+ 		pgaio_io_update_state(ioh, PGAIO_HS_COMPLETED_LOCAL);
+ 
+-		if (ioh->report_return)
++		if (pgaio_io_local(ioh)->report_return)
+ 		{
+-			ioh->report_return->result = local_result;
+-			ioh->report_return->target_data = ioh->target_data;
++			pgaio_io_local(ioh)->report_return->result = local_result;
++			pgaio_io_local(ioh)->report_return->target_data = ioh->target_data;
+ 		}
+ 	}
+ 
+@@ -711,13 +728,13 @@ pgaio_io_reclaim(PgAioHandle *ioh)
+ 	if (ioh->state != PGAIO_HS_HANDED_OUT)
+ 		dclist_delete_from(&pgaio_my_backend->in_flight_ios, &ioh->node);
+ 
+-	if (ioh->resowner)
++	if (pgaio_io_local(ioh)->resowner)
+ 	{
+-		ResourceOwnerForgetAioHandle(ioh->resowner, &ioh->resowner_node);
+-		ioh->resowner = NULL;
++		ResourceOwnerForgetAioHandle(pgaio_io_local(ioh)->resowner, &pgaio_io_local(ioh)->resowner_node);
++		pgaio_io_local(ioh)->resowner = NULL;
+ 	}
+ 
+-	Assert(!ioh->resowner);
++	Assert(!pgaio_io_local(ioh)->resowner);
+ 
+ 	/*
+ 	 * Update generation & state first, before resetting the IO's fields,
+@@ -739,7 +756,7 @@ pgaio_io_reclaim(PgAioHandle *ioh)
+ 	ioh->flags = 0;
+ 	ioh->num_callbacks = 0;
+ 	ioh->handle_data_len = 0;
+-	ioh->report_return = NULL;
++	pgaio_io_local(ioh)->report_return = NULL;
+ 	ioh->result = 0;
+ 	ioh->distilled_result.status = PGAIO_RS_UNKNOWN;
+ 
+diff --git a/src/backend/storage/aio/aio_init.c b/src/backend/storage/aio/aio_init.c
+index 54ab84d..670cdbd 100644
+--- a/src/backend/storage/aio/aio_init.c
++++ b/src/backend/storage/aio/aio_init.c
+@@ -195,8 +195,6 @@ AioShmemInit(void)
+ 			ioh->owner_procno = procno;
+ 			ioh->iovec_off = iovec_off;
+ 			ioh->handle_data_len = 0;
+-			ioh->report_return = NULL;
+-			ioh->resowner = NULL;
+ 			ioh->num_callbacks = 0;
+ 			ioh->distilled_result.status = PGAIO_RS_UNKNOWN;
+ 			ioh->flags = 0;
+@@ -228,6 +226,9 @@ pgaio_init_backend(void)
+ 
+ 	pgaio_my_backend = &pgaio_ctl->backend_state[MyProcNumber];
+ 
++	/* allocate the private part of the handles now, outside any critical section */
++	(void) pgaio_io_local(&pgaio_ctl->io_handles[0]);
++
+ 	if (pgaio_method_ops->init_backend)
+ 		pgaio_method_ops->init_backend();
+ 
+diff --git a/src/backend/storage/aio/aio_io.c b/src/backend/storage/aio/aio_io.c
+index 7d11d40..b1f9bfb 100644
+--- a/src/backend/storage/aio/aio_io.c
++++ b/src/backend/storage/aio/aio_io.c
+@@ -22,6 +22,7 @@
+ #include "storage/aio.h"
+ #include "storage/aio_internal.h"
+ #include "storage/fd.h"
++#include "utils/memutils.h"
+ #include "utils/wait_event.h"
+ 
+ 
+@@ -34,6 +35,27 @@ static void pgaio_io_before_start(PgAioHandle *ioh);
+  * --------------------------------------------------------------------------------
+  */
+ 
++/*
++ * Fil-C: an IO on local (temporary) buffers puts pointers to backend-private
++ * memory in its iovecs, and only the issuing backend executes it, so its
++ * iovecs live in backend-private memory. Pointers stored in the zmark_shared
++ * main segment carry only the segment's capability.
++ */
++static struct iovec *pgaio_local_iovecs;
++
++static struct iovec *
++pgaio_io_iovecs(PgAioHandle *ioh)
++{
++	if (ioh->flags & PGAIO_HF_REFERENCES_LOCAL)
++	{
++		if (pgaio_local_iovecs == NULL)
++			pgaio_local_iovecs = MemoryContextAllocZero(TopMemoryContext,
++														sizeof(struct iovec) * pgaio_ctl->iovec_count);
++		return &pgaio_local_iovecs[ioh->iovec_off];
++	}
++	return &pgaio_ctl->iovecs[ioh->iovec_off];
++}
++
+ /*
+  * Scatter/gather IO needs to associate an iovec with the Handle. To support
+  * worker mode this data needs to be in shared memory.
+@@ -43,7 +65,7 @@ pgaio_io_get_iovec(PgAioHandle *ioh, struct iovec **iov)
+ {
+ 	Assert(ioh->state == PGAIO_HS_HANDED_OUT);
+ 
+-	*iov = &pgaio_ctl->iovecs[ioh->iovec_off];
++	*iov = pgaio_io_iovecs(ioh);
+ 
+ 	return PG_IOV_MAX;
+ }
+@@ -116,7 +138,7 @@ void
+ pgaio_io_perform_synchronously(PgAioHandle *ioh)
+ {
+ 	ssize_t		result = 0;
+-	struct iovec *iov = &pgaio_ctl->iovecs[ioh->iovec_off];
++	struct iovec *iov = pgaio_io_iovecs(ioh);
+ 
+ 	START_CRIT_SECTION();
+ 
+@@ -220,7 +242,7 @@ pgaio_io_get_iovec_length(PgAioHandle *ioh, struct iovec **iov)
+ {
+ 	Assert(ioh->state >= PGAIO_HS_DEFINED);
+ 
+-	*iov = &pgaio_ctl->iovecs[ioh->iovec_off];
++	*iov = pgaio_io_iovecs(ioh);
+ 
+ 	switch ((PgAioOp) ioh->op)
+ 	{
+diff --git a/src/backend/storage/ipc/shm_mq.c b/src/backend/storage/ipc/shm_mq.c
+index 2c79a64..521ae4d 100644
+--- a/src/backend/storage/ipc/shm_mq.c
++++ b/src/backend/storage/ipc/shm_mq.c
+@@ -71,8 +71,13 @@
+ struct shm_mq
+ {
+ 	slock_t		mq_mutex;
+-	PGPROC	   *mq_receiver;
+-	PGPROC	   *mq_sender;
++	/*
++	 * Proc numbers plus one (0 means not set) rather than PGPROC pointers:
++	 * the queue usually lives in a DSM segment, and under Fil-C a pointer into
++	 * the main segment stored there is unusable by other processes.
++	 */
++	ProcNumber	mq_receiver;
++	ProcNumber	mq_sender;
+ 	pg_atomic_uint64 mq_bytes_read;
+ 	pg_atomic_uint64 mq_bytes_written;
+ 	Size		mq_ring_size;
+@@ -81,6 +86,9 @@ struct shm_mq
+ 	char		mq_ring[FLEXIBLE_ARRAY_MEMBER];
+ };
+ 
++#define MQ_PROC(n) ((n) == 0 ? (PGPROC *) NULL : GetPGProcByNumber((n) - 1))
++#define MQ_NUMBER(proc) ((proc) == NULL ? 0 : (ProcNumber) GetNumberFromPGProc(proc) + 1)
++
+ /*
+  * This structure is a backend-private handle for access to a queue.
+  *
+@@ -158,7 +166,7 @@ static shm_mq_result shm_mq_receive_bytes(shm_mq_handle *mqh,
+ 										  void **datap);
+ static bool shm_mq_counterparty_gone(shm_mq *mq,
+ 									 BackgroundWorkerHandle *handle);
+-static bool shm_mq_wait_internal(shm_mq *mq, PGPROC **ptr,
++static bool shm_mq_wait_internal(shm_mq *mq, ProcNumber *ptr,
+ 								 BackgroundWorkerHandle *handle);
+ static void shm_mq_inc_bytes_read(shm_mq *mq, Size n);
+ static void shm_mq_inc_bytes_written(shm_mq *mq, Size n);
+@@ -187,8 +195,8 @@ shm_mq_create(void *address, Size size)
+ 
+ 	/* Initialize queue header. */
+ 	SpinLockInit(&mq->mq_mutex);
+-	mq->mq_receiver = NULL;
+-	mq->mq_sender = NULL;
++	mq->mq_receiver = 0;
++	mq->mq_sender = 0;
+ 	pg_atomic_init_u64(&mq->mq_bytes_read, 0);
+ 	pg_atomic_init_u64(&mq->mq_bytes_written, 0);
+ 	mq->mq_ring_size = size - data_offset;
+@@ -208,9 +216,9 @@ shm_mq_set_receiver(shm_mq *mq, PGPROC *proc)
+ 	PGPROC	   *sender;
+ 
+ 	SpinLockAcquire(&mq->mq_mutex);
+-	Assert(mq->mq_receiver == NULL);
+-	mq->mq_receiver = proc;
+-	sender = mq->mq_sender;
++	Assert(mq->mq_receiver == 0);
++	mq->mq_receiver = MQ_NUMBER(proc);
++	sender = MQ_PROC(mq->mq_sender);
+ 	SpinLockRelease(&mq->mq_mutex);
+ 
+ 	if (sender != NULL)
+@@ -226,9 +234,9 @@ shm_mq_set_sender(shm_mq *mq, PGPROC *proc)
+ 	PGPROC	   *receiver;
+ 
+ 	SpinLockAcquire(&mq->mq_mutex);
+-	Assert(mq->mq_sender == NULL);
+-	mq->mq_sender = proc;
+-	receiver = mq->mq_receiver;
++	Assert(mq->mq_sender == 0);
++	mq->mq_sender = MQ_NUMBER(proc);
++	receiver = MQ_PROC(mq->mq_receiver);
+ 	SpinLockRelease(&mq->mq_mutex);
+ 
+ 	if (receiver != NULL)
+@@ -244,7 +252,7 @@ shm_mq_get_receiver(shm_mq *mq)
+ 	PGPROC	   *receiver;
+ 
+ 	SpinLockAcquire(&mq->mq_mutex);
+-	receiver = mq->mq_receiver;
++	receiver = MQ_PROC(mq->mq_receiver);
+ 	SpinLockRelease(&mq->mq_mutex);
+ 
+ 	return receiver;
+@@ -259,7 +267,7 @@ shm_mq_get_sender(shm_mq *mq)
+ 	PGPROC	   *sender;
+ 
+ 	SpinLockAcquire(&mq->mq_mutex);
+-	sender = mq->mq_sender;
++	sender = MQ_PROC(mq->mq_sender);
+ 	SpinLockRelease(&mq->mq_mutex);
+ 
+ 	return sender;
+@@ -291,7 +299,7 @@ shm_mq_attach(shm_mq *mq, dsm_segment *seg, BackgroundWorkerHandle *handle)
+ {
+ 	shm_mq_handle *mqh = palloc(sizeof(shm_mq_handle));
+ 
+-	Assert(mq->mq_receiver == MyProc || mq->mq_sender == MyProc);
++	Assert(MQ_PROC(mq->mq_receiver) == MyProc || MQ_PROC(mq->mq_sender) == MyProc);
+ 	mqh->mqh_queue = mq;
+ 	mqh->mqh_segment = seg;
+ 	mqh->mqh_handle = handle;
+@@ -370,7 +378,7 @@ shm_mq_sendv(shm_mq_handle *mqh, shm_mq_iovec *iov, int iovcnt, bool nowait,
+ 	int			which_iov = 0;
+ 	Size		offset;
+ 
+-	Assert(mq->mq_sender == MyProc);
++	Assert(MQ_PROC(mq->mq_sender) == MyProc);
+ 
+ 	/* Compute total size of write. */
+ 	for (i = 0; i < iovcnt; ++i)
+@@ -520,11 +528,11 @@ shm_mq_sendv(shm_mq_handle *mqh, shm_mq_iovec *iov, int iovcnt, bool nowait,
+ 	 * without acquiring the spinlock.  Otherwise, more caution is needed.
+ 	 */
+ 	if (mqh->mqh_counterparty_attached)
+-		receiver = mq->mq_receiver;
++		receiver = MQ_PROC(mq->mq_receiver);
+ 	else
+ 	{
+ 		SpinLockAcquire(&mq->mq_mutex);
+-		receiver = mq->mq_receiver;
++		receiver = MQ_PROC(mq->mq_receiver);
+ 		SpinLockRelease(&mq->mq_mutex);
+ 		if (receiver != NULL)
+ 			mqh->mqh_counterparty_attached = true;
+@@ -577,7 +585,7 @@ shm_mq_receive(shm_mq_handle *mqh, Size *nbytesp, void **datap, bool nowait)
+ 	Size		nbytes;
+ 	void	   *rawdata;
+ 
+-	Assert(mq->mq_receiver == MyProc);
++	Assert(MQ_PROC(mq->mq_receiver) == MyProc);
+ 
+ 	/* We can't receive data until the sender has attached. */
+ 	if (!mqh->mqh_counterparty_attached)
+@@ -820,7 +828,7 @@ shm_mq_result
+ shm_mq_wait_for_attach(shm_mq_handle *mqh)
+ {
+ 	shm_mq	   *mq = mqh->mqh_queue;
+-	PGPROC	  **victim;
++	ProcNumber *victim;
+ 
+ 	if (shm_mq_get_receiver(mq) == MyProc)
+ 		victim = &mq->mq_sender;
+@@ -884,12 +892,12 @@ shm_mq_detach_internal(shm_mq *mq)
+ 	PGPROC	   *victim;
+ 
+ 	SpinLockAcquire(&mq->mq_mutex);
+-	if (mq->mq_sender == MyProc)
+-		victim = mq->mq_receiver;
++	if (MQ_PROC(mq->mq_sender) == MyProc)
++		victim = MQ_PROC(mq->mq_receiver);
+ 	else
+ 	{
+-		Assert(mq->mq_receiver == MyProc);
+-		victim = mq->mq_sender;
++		Assert(MQ_PROC(mq->mq_receiver) == MyProc);
++		victim = MQ_PROC(mq->mq_sender);
+ 	}
+ 	mq->mq_detached = true;
+ 	SpinLockRelease(&mq->mq_mutex);
+@@ -993,7 +1001,7 @@ shm_mq_send_bytes(shm_mq_handle *mqh, Size nbytes, const void *data,
+ 			 * Therefore, we can read it without acquiring the spinlock.
+ 			 */
+ 			Assert(mqh->mqh_counterparty_attached);
+-			SetLatch(&mq->mq_receiver->procLatch);
++			SetLatch(&MQ_PROC(mq->mq_receiver)->procLatch);
+ 
+ 			/*
+ 			 * We have just updated the mqh_send_pending bytes in the shared
+@@ -1215,7 +1223,7 @@ shm_mq_counterparty_gone(shm_mq *mq, BackgroundWorkerHandle *handle)
+  * non-NULL when our counterpart attaches to the queue.
+  */
+ static bool
+-shm_mq_wait_internal(shm_mq *mq, PGPROC **ptr, BackgroundWorkerHandle *handle)
++shm_mq_wait_internal(shm_mq *mq, ProcNumber *ptr, BackgroundWorkerHandle *handle)
+ {
+ 	bool		result = false;
+ 
+@@ -1226,7 +1234,7 @@ shm_mq_wait_internal(shm_mq *mq, PGPROC **ptr, BackgroundWorkerHandle *handle)
+ 
+ 		/* Acquire the lock just long enough to check the pointer. */
+ 		SpinLockAcquire(&mq->mq_mutex);
+-		result = (*ptr != NULL);
++		result = (*ptr != 0);
+ 		SpinLockRelease(&mq->mq_mutex);
+ 
+ 		/* Fail if detached; else succeed if initialized. */
+@@ -1291,7 +1299,7 @@ shm_mq_inc_bytes_read(shm_mq *mq, Size n)
+ 	 * We shouldn't have any bytes to read without a sender, so we can read
+ 	 * mq_sender here without a lock.  Once it's initialized, it can't change.
+ 	 */
+-	sender = mq->mq_sender;
++	sender = MQ_PROC(mq->mq_sender);
+ 	Assert(sender != NULL);
+ 	SetLatch(&sender->procLatch);
+ }
+diff --git a/src/backend/utils/adt/network.c b/src/backend/utils/adt/network.c
+index f03fcc1..0c3ef12 100644
+--- a/src/backend/utils/adt/network.c
++++ b/src/backend/utils/adt/network.c
+@@ -618,7 +618,7 @@ network_abbrev_convert(Datum original, SortSupport ssup)
+ {
+ 	network_sortsupport_state *uss = ssup->ssup_extra;
+ 	inet	   *authoritative = DatumGetInetPP(original);
+-	Datum		res,
++	uintptr_t	res,
+ 				ipaddr_datum,
+ 				subnet_bitmask,
+ 				network;
+@@ -661,7 +661,7 @@ network_abbrev_convert(Datum original, SortSupport ssup)
+ 		ipaddr_datum = DatumBigEndianToNative(ipaddr_datum);
+ 
+ 		/* Initialize result with ipfamily (most significant) bit set */
+-		res = ((Datum) 1) << (SIZEOF_DATUM * BITS_PER_BYTE - 1);
++		res = ((uintptr_t) 1) << (SIZEOF_DATUM * BITS_PER_BYTE - 1);
+ 	}
+ 
+ 	/*
+@@ -687,13 +687,13 @@ network_abbrev_convert(Datum original, SortSupport ssup)
+ 	if (ip_bits(authoritative) == 0)
+ 	{
+ 		/* Fit as many ipaddr bits as possible into subnet */
+-		subnet_bitmask = ((Datum) 0) - 1;
++		subnet_bitmask = ((uintptr_t) 0) - 1;
+ 		network = 0;
+ 	}
+ 	else if (ip_bits(authoritative) < SIZEOF_DATUM * BITS_PER_BYTE)
+ 	{
+ 		/* Split ipaddr bits between network and subnet */
+-		subnet_bitmask = (((Datum) 1) << subnet_size) - 1;
++		subnet_bitmask = (((uintptr_t) 1) << subnet_size) - 1;
+ 		network = ipaddr_datum & ~subnet_bitmask;
+ 	}
+ 	else
+@@ -710,8 +710,8 @@ network_abbrev_convert(Datum original, SortSupport ssup)
+ 		 * IPv4 with 8 byte datums: keep all 32 netmasked bits, netmask size,
+ 		 * and most significant 25 subnet bits
+ 		 */
+-		Datum		netmask_size = (Datum) ip_bits(authoritative);
+-		Datum		subnet;
++		uintptr_t	netmask_size = (Datum) ip_bits(authoritative);
++		uintptr_t	subnet;
+ 
+ 		/*
+ 		 * Shift left 31 bits: 6 bits netmask size + 25 subnet bits.
+diff --git a/src/backend/utils/adt/numeric.c b/src/backend/utils/adt/numeric.c
+index a372237..42a07fb 100644
+--- a/src/backend/utils/adt/numeric.c
++++ b/src/backend/utils/adt/numeric.c
+@@ -2889,7 +2889,7 @@ hash_numeric(PG_FUNCTION_ARGS)
+ 						  hash_len * sizeof(NumericDigit));
+ 
+ 	/* Mix in the weight, via XOR */
+-	result = digit_hash ^ weight;
++	result = (uintptr_t) digit_hash ^ weight;
+ 
+ 	PG_RETURN_DATUM(result);
+ }
+diff --git a/src/backend/utils/adt/varlena.c b/src/backend/utils/adt/varlena.c
+index 6a589fc..f3425a1 100644
+--- a/src/backend/utils/adt/varlena.c
++++ b/src/backend/utils/adt/varlena.c
+@@ -2507,7 +2507,7 @@ varstr_abbrev_convert(Datum original, SortSupport ssup)
+ 					hihalf;
+ 
+ 		lohalf = (uint32) res;
+-		hihalf = (uint32) (res >> 32);
++		hihalf = (uint32) ((uintptr_t) res >> 32);
+ 		hash = DatumGetUInt32(hash_uint32(lohalf ^ hihalf));
+ 	}
+ #else							/* SIZEOF_DATUM != 8 */
+diff --git a/src/include/lib/sort_template.h b/src/include/lib/sort_template.h
+index 11e136c..9a241ca 100644
+--- a/src/include/lib/sort_template.h
++++ b/src/include/lib/sort_template.h
+@@ -281,8 +281,32 @@ ST_SWAP(ST_POINTER_TYPE * a, ST_POINTER_TYPE * b)
+ static inline void
+ ST_SWAPN(ST_POINTER_TYPE * a, ST_POINTER_TYPE * b, size_t n)
+ {
++#ifdef __FILC__
++	/*
++	 * Elements swapped byte by byte keep each pointer's old capability with
++	 * the other element's address, which Fil-C then refuses.  memcpy moves
++	 * capabilities along with whole pointer words.
++	 */
++	char		tmp[64] __attribute__((aligned(16)));
++	char	   *pa = (char *) a;
++	char	   *pb = (char *) b;
++	size_t		left = n * sizeof(*a);
++
++	while (left > 0)
++	{
++		size_t		k = left < sizeof(tmp) ? left : sizeof(tmp);
++
++		memcpy(tmp, pa, k);
++		memcpy(pa, pb, k);
++		memcpy(pb, tmp, k);
++		pa += k;
++		pb += k;
++		left -= k;
++	}
++#else
+ 	for (size_t i = 0; i < n; ++i)
+ 		ST_SWAP(&a[i], &b[i]);
++#endif
+ }
+ 
+ /*
+diff --git a/src/include/nodes/nodes.h b/src/include/nodes/nodes.h
+index fbe333d..f3743b8 100644
+--- a/src/include/nodes/nodes.h
++++ b/src/include/nodes/nodes.h
+@@ -198,7 +198,13 @@ extern void outNode(struct StringInfoData *str, const void *obj);
+ extern void outToken(struct StringInfoData *str, const char *s);
+ extern void outBitmapset(struct StringInfoData *str,
+ 						 const struct Bitmapset *bms);
+-extern void outDatum(struct StringInfoData *str, uintptr_t value,
++/* Datum, which postgres.h defines: a pointer under Fil-C. */
++#ifdef __FILC__
++typedef char *NodeDatum;
++#else
++typedef uintptr_t NodeDatum;
++#endif
++extern void outDatum(struct StringInfoData *str, NodeDatum value,
+ 					 int typlen, bool typbyval);
+ extern char *nodeToString(const void *obj);
+ extern char *nodeToStringWithLocations(const void *obj);
+@@ -212,7 +218,7 @@ extern void *stringToNode(const char *str);
+ extern void *stringToNodeWithLocations(const char *str);
+ #endif
+ extern struct Bitmapset *readBitmapset(void);
+-extern uintptr_t readDatum(bool typbyval);
++extern NodeDatum readDatum(bool typbyval);
+ extern bool *readBoolCols(int numCols);
+ extern int *readIntCols(int numCols);
+ extern Oid *readOidCols(int numCols);
+diff --git a/src/include/port/atomics.h b/src/include/port/atomics.h
+index 074136f..eab1f84 100644
+--- a/src/include/port/atomics.h
++++ b/src/include/port/atomics.h
+@@ -65,7 +65,7 @@
+  */
+ #if defined(__arm__) || defined(__arm) || defined(__aarch64__)
+ #include "port/atomics/arch-arm.h"
+-#elif defined(__i386__) || defined(__i386) || defined(__x86_64__)
++#elif (defined(__i386__) || defined(__i386) || defined(__x86_64__)) && !defined(__FILC__)
+ #include "port/atomics/arch-x86.h"
+ #elif defined(__ppc__) || defined(__powerpc__) || defined(__ppc64__) || defined(__powerpc64__)
+ #include "port/atomics/arch-ppc.h"
+diff --git a/src/include/port/pg_bitutils.h b/src/include/port/pg_bitutils.h
+index c7901bf..37dc90a 100644
+--- a/src/include/port/pg_bitutils.h
++++ b/src/include/port/pg_bitutils.h
+@@ -292,7 +292,7 @@ pg_ceil_log2_64(uint64 num)
+  *
+  * Otherwise, we fall back to a hand-rolled implementation.
+  */
+-#ifdef HAVE_X86_64_POPCNTQ
++#if defined(HAVE_X86_64_POPCNTQ) && !defined(__FILC__)
+ #if defined(HAVE__GET_CPUID) || defined(HAVE__CPUID)
+ #define TRY_POPCNT_X86_64 1
+ #endif
+diff --git a/src/include/postgres.h b/src/include/postgres.h
+index 8a41a66..814093e 100644
+--- a/src/include/postgres.h
++++ b/src/include/postgres.h
+@@ -66,7 +66,12 @@
+  * convert between a Datum and the appropriate C type.
+  */
+ 
++#ifdef __FILC__
++/* Fil-C: an integer does not carry a pointer's capability. */
++typedef char *Datum;
++#else
+ typedef uintptr_t Datum;
++#endif
+ 
+ /*
+  * A NullableDatum is used in places where both a Datum and its nullness needs
+diff --git a/src/include/storage/aio_internal.h b/src/include/storage/aio_internal.h
+index b4de30f..c99227c 100644
+--- a/src/include/storage/aio_internal.h
++++ b/src/include/storage/aio_internal.h
+@@ -145,8 +145,12 @@ struct PgAioHandle
+ 	 **/
+ 	dlist_node	node;
+ 
+-	struct ResourceOwnerData *resowner;
+-	dlist_node	resowner_node;
++	/*
++	 * Fil-C: the issuer's process-local bookkeeping (resource owner, its list
++	 * node, and report_return) is in PgAioHandleLocal, in backend-private
++	 * memory. Pointers stored in the zmark_shared main segment carry only the
++	 * segment's capability, so pointers to private memory cannot live here.
++	 */
+ 
+ 	/* incremented every time the IO handle is reused */
+ 	uint64		generation;
+@@ -169,13 +173,6 @@ struct PgAioHandle
+ 	 */
+ 	uint32		iovec_off;
+ 
+-	/*
+-	 * If not NULL, this memory location will be updated with information
+-	 * about the IOs completion iff the issuing backend learns about the IOs
+-	 * completion.
+-	 */
+-	PgAioReturn *report_return;
+-
+ 	/* Data necessary for the IO to be performed */
+ 	PgAioOpData op_data;
+ 
+@@ -187,6 +184,22 @@ struct PgAioHandle
+ 	PgAioTargetData target_data;
+ };
+ 
++/* The issuing backend's private part of a PgAioHandle (see above). */
++typedef struct PgAioHandleLocal
++{
++	struct ResourceOwnerData *resowner;
++	dlist_node	resowner_node;
++
++	/*
++	 * If not NULL, this memory location will be updated with information
++	 * about the IOs completion iff the issuing backend learns about the IOs
++	 * completion.
++	 */
++	PgAioReturn *report_return;
++} PgAioHandleLocal;
++
++extern PgAioHandleLocal *pgaio_io_local(PgAioHandle *ioh);
++
+ 
+ typedef struct PgAioBackend
+ {
+diff --git a/src/include/storage/s_lock.h b/src/include/storage/s_lock.h
+index 2f73f9f..3d41848 100644
+--- a/src/include/storage/s_lock.h
++++ b/src/include/storage/s_lock.h
+@@ -193,7 +193,8 @@ spin_delay(void)
+ #endif	 /* __i386__ */
+ 
+ 
+-#ifdef __x86_64__		/* AMD Opteron, Intel EM64T */
++/* Fil-C stops at inline assembly that takes a pointer; use __sync below. */
++#if defined(__x86_64__) && !defined(__FILC__)		/* AMD Opteron, Intel EM64T */
+ #define HAS_TEST_AND_SET
+ 
+ typedef unsigned char slock_t;
+diff --git a/src/include/utils/expandeddatum.h b/src/include/utils/expandeddatum.h
+index cde9a0c..d590dda 100644
+--- a/src/include/utils/expandeddatum.h
++++ b/src/include/utils/expandeddatum.h
+@@ -108,9 +108,22 @@ struct ExpandedObjectHeader
+ 	/* Memory context containing this header and subsidiary data */
+ 	MemoryContext eoh_context;
+ 
++#ifdef __FILC__
++	/*
++	 * Fil-C keeps a pointer's capability only in whole, aligned words, so pad
++	 * the TOAST pointers to put their varatt_expanded (at offset
++	 * VARHDRSZ_EXTERNAL == 2) on an 8-byte boundary: data at 32 and 48.
++	 */
++	char		eoh_pad_rw[6];
++#endif
++
+ 	/* Standard R/W TOAST pointer for this object is kept here */
+ 	char		eoh_rw_ptr[EXPANDED_POINTER_SIZE];
+ 
++#ifdef __FILC__
++	char		eoh_pad_ro[6];
++#endif
++
+ 	/* Standard R/O TOAST pointer for this object is kept here */
+ 	char		eoh_ro_ptr[EXPANDED_POINTER_SIZE];
+ };
+diff --git a/src/interfaces/libpq/Makefile b/src/interfaces/libpq/Makefile
+index da66500..adff866 100644
+--- a/src/interfaces/libpq/Makefile
++++ b/src/interfaces/libpq/Makefile
+@@ -144,7 +144,7 @@ $(stlib): $(OBJS_STATIC)
+ libpq-refs-stamp: $(shlib)
+ ifneq ($(enable_coverage), yes)
+ ifeq (,$(filter solaris,$(PORTNAME)))
+-	@if nm -A -u $< 2>/dev/null | grep -v -e __cxa_atexit -e __tsan_func_exit | grep exit; then \
++	@if nm -A -u $< 2>/dev/null | grep -v -e __cxa_atexit -e __tsan_func_exit -e filc_allocate_without_exiting | grep exit; then \
+ 		echo 'libpq must not be calling any function which invokes exit'; exit 1; \
+ 	fi
+ endif

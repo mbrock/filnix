@@ -272,6 +272,10 @@
             staging-wrapper-roles = import ./tests/wrapper-roles.nix {
               pkgsFilc = pkgsFilcStaging;
             };
+            staging-zmark-shared = import ./tests/zmark-shared.nix {
+              inherit pkgs;
+              pkgsFilc = pkgsFilcStaging;
+            };
             staging-sarcasm = import ./tests/sarcasm.nix {
               inherit pkgs;
               filcc = filcc-staging;

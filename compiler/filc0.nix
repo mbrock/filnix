@@ -69,7 +69,12 @@ in
     # callee are not inlined, so the read stays in the function it was written in.
     ++ pkgs.lib.optional (
       sources.variant == "staging"
-    ) ../patches/fil-c/noinline-callee-users.patch;
+    ) ../patches/fil-c/noinline-callee-users.patch
+    # zmark_shared's pass half (docs/zmark-shared.md); the runtime half is in
+    # runtime/libpizlo.nix. Staging only.
+    ++ pkgs.lib.optional (
+      sources.variant == "staging"
+    ) ../patches/fil-c/filpizlonator-zmark-shared.patch;
 
     enableParallelBuilding = true;
 
