@@ -9,6 +9,16 @@ instructions, and a ranked plan. It is separate from the semantic
 campaign ([campaign.md](campaign.md)): nothing here weakens a check,
 and safety decisions are flagged for review before implementation.
 
+## Stocktake (November 2026, at `edfeb0c`)
+
+Item 19 profiles `-O` against filcc `-O2` and against plain clang
+`-O2`. On the gate, `-O` runs at 1.79× filcc's time with 2.67× its
+instructions; filcc runs at 2.69× native's. SWI-Prolog's suite runs at
+1.64× filcc. nanofil's excess is extra instructions at high IPC, not
+stalls. Of those instructions, register-to-register moves are 29%,
+frame traffic 27%, branch selection 11%, the runtime 10% and checks 9%.
+Item 19 ranks the levers.
+
 ## Round closed (October 2026, at `07b2b11`)
 
 **Where `-O` stands.** On the quiet gate (swa, 7 trials, eleven
@@ -4858,6 +4868,400 @@ and pointers modes (208 each), and the shared parts are what changed
 them. No output without `-O` changed, and none in the stack mode. The
 snapshot's modes now spell out `--share=none`, as they already spell
 out `--checks=reference`, and with that all 4956 are identical.
+
+### 19. Where `-O` stands (November 2026)
+
+A stocktake at `edfeb0c`, after `-O` became `--checks=combined
+--share=upper` (item 18), with real profiles of three builds of each
+program:
+
+- `native`: plain clang 20.1.8 `-O2` (nixpkgs `llvmPackages_20`, the
+  LLVM Fil-C is built from), the same sources, flags and Nix wrapper as
+  filcc. `bench/default.nix` builds it beside `ref`. Its output is
+  filcc's byte for byte on every workload (run.py checks).
+- `ref`: filcc `-O2`.
+- `O`: nanofil `-O` at today's default.
+
+**Programs.** The eleven gate workloads, plus SWI-Prolog 9.2.9's core
+(no packages) running its own benchmark suite: the van Roy programs and
+later additions, 35 programs, each at 0.02 of its calibrated iteration
+count (`bench/swipl.nix`, `bench/swipl.pl`). SWI is the larger program:
+its `libswipl` is 9.3 MB of text under filcc. It is configured with
+`-O2`, GMP and no tcmalloc. The Fil-C builds apply filnix's port
+(`patches/swi-prolog-9.2.9-filc.patch`). The native build does not,
+because the patched atom GC crashes without Fil-C. The patch's changes
+to the VM are casts that keep pointer provenance (`CODE_PTR`). That
+they compile to the same native code is inferred, not checked. The
+suite prints only program names and counts, so all three builds print
+the same thing. Other programs that nanofil builds (CPython, bash, jq)
+were skipped: none has a benchmark ready, and SWI already covers a
+large interpreter.
+
+**Method.** Everything ran on swa's core 6 (CCD0), load average
+0.1–0.3. `run.py` waited for core 6 and its sibling to idle before each
+run. Callgrind ran pinned to CCD1 (cores 8–15 and 24–31) while timings
+ran. The tools are in `bench/` and `bench/profile/`:
+
+- `run.py --events E,... --metrics GROUP` counts more PMU events, or
+  AMD's pipeline metrics, beside its time.
+- `checks.py --categories --variants native,ref,O` sorts every executed
+  instruction into a category of its form (below), native builds and
+  SWI's `libswipl` included.
+- `hot.py` runs `perf record -e {cycles:u,instructions:u}` and reports
+  cycles and IPC per function, with names reduced to their C names so
+  the three builds line up.
+
+Time and PMU numbers are medians of 11 trials (time) and 7 trials
+(counters; the counter passes run separately, so they are not
+multiplexed together); SWI's are 5 trials. The callgrind counts include
+the Fil-C runtime. Time is task-clock, which also counts the GC
+threads, since they share the pinned core.
+
+#### The numbers
+
+| Workload | time ms, native / filcc / nanofil | Gcycles | G instructions | IPC | nanofil ÷ filcc: time (cycles, ins.) | filcc ÷ native: time (cycles, ins.) |
+|---|--:|--:|--:|--:|--:|--:|
+| zlib `-6` | 93.8 / 134.7 / 272.2 | 0.46 / 0.63 / 1.29 | 0.58 / 1.96 / 6.43 | 1.27 / 3.13 / 5.00 | 2.02 (2.05, 3.28) | 1.44 (1.37, 3.36) |
+| zlib `-d` | 9.3 / 18.4 / 32.0 | 0.04 / 0.07 / 0.13 | 0.07 / 0.19 / 0.55 | 1.71 / 2.96 / 4.36 | 1.74 (1.94, 2.86) | 1.97 (1.52, 2.62) |
+| bzip2 `-9` | 166.4 / 274.9 / 424.9 | 0.80 / 1.29 / 2.00 | 1.37 / 4.69 / 9.32 | 1.72 / 3.64 / 4.66 | 1.55 (1.55, 1.99) | 1.65 (1.62, 3.42) |
+| bzip2 `-d` | 62.1 / 95.2 / 208.8 | 0.30 / 0.42 / 0.98 | 0.46 / 1.43 / 3.75 | 1.57 / 3.37 / 3.82 | 2.19 (2.31, 2.62) | 1.53 (1.44, 3.09) |
+| lz4 `-1` | 5.0 / 15.2 / 31.9 | 0.004 / 0.02 / 0.08 | 0.01 / 0.03 / 0.32 | 1.55 / 1.66 / 3.90 | 2.11 (4.31, 10.14) | 3.00 (4.85, 5.19) |
+| lz4 `-9` | 104.2 / 159.4 / 319.4 | 0.49 / 0.74 / 1.51 | 1.19 / 2.90 / 7.36 | 2.42 / 3.94 / 4.89 | 2.00 (2.05, 2.54) | 1.53 (1.50, 2.44) |
+| lz4 `-d` | 4.3 / 14.1 / 33.9 | 0.007 / 0.03 / 0.09 | 0.02 / 0.07 / 0.39 | 2.32 / 2.73 / 4.20 | 2.40 (3.50, 5.40) | 3.31 (3.69, 4.34) |
+| Lua int | 13.7 / 48.8 / 74.6 | 0.07 / 0.23 / 0.35 | 0.35 / 1.16 / 1.95 | 5.35 / 5.12 / 5.63 | 1.53 (1.53, 1.68) | 3.55 (3.49, 3.34) |
+| Lua tab | 11.6 / 42.2 / 58.4 | 0.05 / 0.18 / 0.26 | 0.26 / 0.95 / 1.50 | 4.80 / 5.35 / 5.77 | 1.38 (1.46, 1.58) | 3.64 (3.31, 3.70) |
+| Lua str | 33.8 / 274.3 / 372.3 | 0.16 / 1.07 / 1.57 | 0.58 / 3.54 / 5.23 | 3.64 / 3.30 / 3.33 | 1.36 (1.47, 1.48) | 8.13 (6.75, 6.12) |
+| SQLite | 145.2 / 665.7 / 1174.0 | 0.67 / 2.87 / 5.25 | 2.15 / 11.12 / 20.19 | 3.23 / 3.88 / 3.85 | 1.76 (1.83, 1.82) | 4.58 (4.32, 5.18) |
+| **gate geomean** | | | | | **1.79 (2.05, 2.67)** | **2.69 (2.64, 3.74)** |
+| SWI suite | 736 / 11746 / 19248 | 3.45 / 49.3 / 83.5 | 12.7 / 142.3 / 238.0 | 3.69 / 2.89 / 2.85 | 1.64 (1.69, 1.67) | 16.0 (14.3, 11.2) |
+
+The gate's ratio to filcc, 1.79, matches item 18's 1.77 within noise;
+`-O` has not moved since.
+
+SWI's own clock (`run.pl`'s per-program times at 0.05, the main thread
+only, so without the GC threads' time) gives a mean of 0.037 s per
+program native, 0.316 s filcc and 0.624 s nanofil: filcc is 8.5× native
+and nanofil 1.97× filcc. Per program, nanofil ÷ filcc ranges from 1.66
+(sendmore) to 2.36 (divide10), and filcc ÷ native from 4.2 (eval) to
+17.7 (sendmore).
+
+Pipeline counters (AMD's PipelineL1/L2 metric groups; percent of
+dispatch slots; per thousand instructions), native / filcc / nanofil:
+
+| Workload | branch misses /K | L1d misses /K | frontend % | backend % (memory) | bad spec. % | retiring % |
+|---|--:|--:|--:|--:|--:|--:|
+| zlib `-6` | 9.4 / 2.8 / 1.0 | 48.9 / 15.3 / 4.7 | 24 / 14 / 7 | 41 (31) / 33 (24) / 14 (11) | 15 / 12 / 7 | 19 / 41 / 72 |
+| zlib `-d` | 16.4 / 6.5 / 2.3 | 5.4 / 3.3 / 1.2 | 41 / 37 / 21 | 9 (6) / 14 (12) / 12 (11) | 20 / 12 / 8 | 28 / 33 / 58 |
+| bzip2 `-9` | 12.4 / 3.6 / 1.8 | 18.0 / 5.2 / 2.7 | 31 / 15 / 12 | 13 (11) / 15 (12) / 7 (6) | 27 / 19 / 12 | 29 / 51 / 67 |
+| bzip2 `-d` | 9.4 / 3.1 / 1.2 | 9.5 / 3.3 / 1.3 | 19 / 14 / 13 | 39 (36) / 26 (21) / 23 (21) | 17 / 14 / 7 | 26 / 46 / 58 |
+| lz4 `-9` | 4.1 / 1.6 / 0.7 | 27.0 / 11.2 / 5.0 | 18 / 12 / 9 | 30 (25) / 16 (17) / 7 (13) | 16 / 12 / 6 | 38 / 60 / 76 |
+| Lua int | 0.0 / 0.1 / 0.0 | 0.0 / 0.2 / 0.1 | 5 / 9 / 9 | 7 (7) / 11 (14) / 7 (12) | 0 / 0 / 0 | 81 / 79 / 83 |
+| Lua str | 1.3 / 1.4 / 1.1 | 3.1 / 13.0 / 10.8 | 15 / 30 / 31 | 12 (17) / 20 (19) / 17 (16) | 11 / 5 / 4 | 58 / 44 / 47 |
+| SQLite | 1.0 / 0.4 / 0.2 | 4.9 / 5.3 / 4.1 | 21 / 22 / 31 | 23 (17) / 22 (19) / 12 (10) | 6 / 2 / 1 | 51 / 54 / 55 |
+| SWI suite | 0.4 / 1.6 / 1.4 | 3.4 / 13.8 / 10.8 | 11 / 29 / 35 | 25 / 25 / 21 | 3 / 5 / 5 | 61 / 40 / 40 |
+
+(lz4 `-1`/`-d` and Lua tab are left out: they say the same.
+`bench/run.py --metrics PipelineL1` reproduces them.)
+
+What the counters say (measured):
+
+- **nanofil's excess is instructions, not stalls.** The three builds
+  take about the same number of branch misses and L1 misses in absolute
+  terms (zlib `-6`: 5.5M / 5.5M / 6.3M branch misses), so per
+  instruction they fall as instructions grow. nanofil's extra
+  instructions fill dispatch slots that filcc leaves stalled. Retiring
+  rises from 41% to 72% on zlib `-6` and from 60% to 76% on lz4 `-9`;
+  IPC reaches 4.4–5.8. Over the gate, nanofil runs 28.9G more
+  instructions for 5.98G more cycles: **0.21 cycles per extra
+  instruction** (0.15 on zlib `-6`, bzip2 `-9`, Lua; 0.24–0.30 on
+  bzip2 `-d`, Lua str, SQLite). The levers below are ranked by
+  instructions and converted to time at that rate (inferred: it assumes
+  the removed instructions cost what the average extra one does).
+- **SQLite and SWI are where nanofil's frontend gets worse** (SQLite
+  22% → 31% of slots, bandwidth 10% → 18%; SWI 29% → 35%). SQLite's
+  text grows from 8.9 MB to 9.7 MB, `libswipl`'s from 9.3 MB to 13.7 MB. The other binaries grow 1.1–1.8× (zlib 305 KB → 560 KB),
+  but their hot loops fit, and their frontend share falls.
+- **Fil-C's own cost is also mostly instructions on the compressors**
+  (2.4–3.4× native's instructions at 1.4–2.0× native's time: native
+  code is stalled on memory and mispredicts, and filcc fills those
+  slots). Lua str, SQLite and SWI are different: their cost is the
+  runtime (below).
+
+#### Where nanofil's extra instructions go
+
+`checks.py --categories` sorts each executed instruction by its form.
+A check is one of item 16's check runs. A Fil-C fast path is a
+conditional jump to a block that calls the runtime (poll, store
+barrier, ensure-aux, calling-convention check, global initialization),
+together with the compare that sets its flags. Header/aux is any other
+read of an object's header, or the 48-bit aux mask: pointer loads
+decoding the aux word. Frame is any memory operand off `%rbp`/`%rsp`,
+plus push/pop. Moves are register-to-register `mov`s. Branch
+selection is compares, jumps, `setcc` booleans and constants. Runtime
+is everything outside the program's object (`libpizlo`, libc, the
+loader). G instructions, nanofil − filcc:
+
+| Workload | total | checks | moves | frame | runtime | alu, extend | branch selection | loads, stores | fast paths, aux | calls |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| zlib `-6` | +4.47 | +0.27 | +1.35 | +1.47 | 0.00 | +0.34 | +0.76 | +0.13 | +0.15 | +0.01 |
+| zlib `-d` | +0.36 | +0.05 | +0.12 | +0.12 | 0.00 | +0.03 | +0.01 | +0.01 | +0.01 | +0.01 |
+| bzip2 `-9` | +4.66 | +0.53 | +2.03 | +1.21 | +0.03 | +0.44 | +0.18 | +0.15 | +0.08 | +0.02 |
+| bzip2 `-d` | +2.32 | +0.13 | +0.43 | +1.46 | 0.00 | +0.17 | +0.05 | +0.02 | +0.05 | +0.01 |
+| lz4 `-1` | +0.30 | +0.02 | +0.05 | +0.05 | +0.08 | +0.02 | +0.04 | +0.01 | +0.02 | +0.01 |
+| lz4 `-9` | +4.47 | +0.33 | +1.28 | +1.14 | +0.15 | +0.42 | +0.87 | +0.12 | +0.13 | +0.04 |
+| lz4 `-d` | +0.32 | +0.01 | +0.06 | +0.07 | +0.06 | +0.02 | +0.05 | +0.02 | +0.03 | +0.01 |
+| Lua int | +0.79 | +0.12 | +0.24 | +0.18 | 0.00 | +0.10 | +0.13 | −0.01 | +0.03 | 0.00 |
+| Lua tab | +0.55 | +0.10 | +0.17 | +0.11 | 0.00 | +0.06 | +0.08 | 0.00 | +0.02 | 0.00 |
+| Lua str | +1.17 | +0.12 | +0.32 | +0.39 | −0.01 | +0.13 | +0.13 | +0.03 | +0.07 | 0.00 |
+| SQLite | +8.66 | +0.95 | +2.00 | +1.27 | +2.37 | +0.71 | +0.74 | +0.23 | +0.34 | +0.12 |
+| **gate** | **+28.08** | **+2.63** | **+8.04** | **+7.47** | **+2.68** | **+2.45** | **+3.04** | **+0.72** | **+0.93** | **+0.24** |
+| share | | 9% | 29% | 27% | 10% | 9% | 11% | 3% | 3% | 1% |
+| SWI suite | +33.88 | +4.81 | +5.68 | +10.11 | +2.73 | +3.35 | +2.97 | +1.32 | +3.02 | +0.24 |
+
+Callgrind totals: native 7.07G, filcc 27.32G, nanofil 55.40G on the
+gate; native 6.01G, filcc 46.30G, nanofil 80.18G on SWI's suite at
+0.005 of its counts. Vectorized instructions are 0.10G (0.4%) of
+filcc's gate total and 0.01G of native's: **vectorization is not a
+factor** in any of these workloads.
+
+For comparison, the same table for Fil-C itself (filcc − native):
+
+| | total | checks | moves | frame | runtime | alu, extend | branch selection | loads, stores | fast paths, aux | calls |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| gate | +20.25 | +6.59 | +0.60 | +5.51 | +2.57 | +1.33 | +1.44 | +0.75 | +1.30 | +0.05 |
+| share | | 33% | 3% | 27% | 13% | 7% | 7% | 4% | 6% | 0% |
+| SWI suite | +40.29 | +8.42 | +2.22 | +6.24 | +11.51 | +2.30 | +3.71 | +2.12 | +3.00 | +0.45 |
+
+Fil-C's own cost is checks first (a third), then frame traffic (its
+frame records, lowers and spills), then the runtime. Lua str's runtime
+is 1.10G and SQLite's 1.26G of their 2.54G and 8.57G. nanofil's excess
+on top of that is a different mix: **moves and frame traffic are 56%
+of it, checks only 9%.**
+
+#### The causes, one by one
+
+**1. Register-to-register moves: +8.0G (29%); SWI +5.7G.** Measured:
+nanofil executes 9.25G moves against filcc's 1.21G. `shapes.py` splits
+nanofil's moves on zlib `-6`, bzip2 `-9`, lz4 `-9`, Lua int and SQLite:
+3.46G copy a home into a scratch register, 2.33G copy a result back
+into a home, and 1.81G copy between homes. In-place zero extensions
+(`mov %eax,%eax`) are 0.80G, and moves that are immediately undone
+(`A→B, B→A`) only 0.10G. Confirmed in asm: in `mainGtU` (bzip2 `-9`,
+5.3M calls), each `block[i1]` access is
+`mov %r11d,%r10d` (dead) `; mov %r15,%rax ; mov %r11d,%edx ; add %rdx,%rax ;
+mov %rax,%r10 ; … ; mov %r10,%rax`, where filcc has `mov %ecx,%r10d ;
+add %r8,%r10`. `XXH32_round` stages every operand through `%eax`
+(`mov %ebx,%eax ; imul %r10d,%eax ; mov %rax,%r10 ; mov %r12d,%eax ;
+add %r10d,%eax ; mov %rax,%r10`). This is the selection model: each IR
+operation computes in the reference stream's scratch registers, and the
+register pass maps homes around it. Item 12 found no single local
+pattern over 2%. The cause is the model, not a peephole.
+
+**2. Frame traffic: +7.5G (27%); SWI +10.1G.** Measured: nanofil
+executes 13.6G frame loads and stores against filcc's 5.5G. The marked
+profile (`bench/profile`, `profile.py`) splits nanofil's: 7.8G are
+lowers, 3.7G scalar homes left in the frame, 1.5G pointer temporaries,
+and the rest prologues. Of the lowers, at least 3.4G are loads and
+stores around pointer arithmetic (a flight reads its donor's entry and
+writes its own), 2.0G reload a lower for an access, and 1.6G are phis
+(subcategories over 1% of a workload only, so lower bounds). Confirmed in asm:
+`mainGtU` reloads `block`'s lower (`mov -0xf0(%rbp),%rcx`) and stores
+it to `&block[i]`'s entry (`mov %rcx,-0xe0(%rbp)`) on every byte
+compared. In `longest_match` (24M iterations) the same lower is stored
+three times per iteration (`-0x158`, `-0x160`, `-0x158`), and the
+loop-carried scalars (`chain_length`, `cur_match`, `wmask`, `prev`'s
+address) live in the frame. filcc keeps them in registers. Prologues
+add to it: `mainGtU`'s is 35 instructions against filcc's 22. Its five
+callee-saved registers are saved with frame stores, four root slots are
+zeroed, and its five stack arguments are copied into frame slots.
+filcc's prologue has its frame record and pushes. How much of filcc's
+5.5G is lowers is not measured (it has no marks).
+
+**3. Branch selection: +3.0G (11%).** Measured as compares +0.81G,
+jumps +1.28G, constants +0.68G and booleans +0.27G. In asm,
+`longest_match`'s `if (a != b || c != d || …) continue;` becomes, per
+term, `mov $0x1,%r10d ; mov $0x1,%r10d ; jmp ; test %r10d,%r10d ; je`.
+The constant is set twice and then tested, where filcc jumps straight
+from the compare. `--chain_length != 0` becomes `cmp $0x0 ; setne ;
+movzbl ; mov ; test ; je`. Item 2's branch selection does not reach a
+chain that merges constants into a phi before the test (seen in this
+asm; not counted separately).
+
+**4. Runtime: +2.7G (10%), almost all SQLite (+2.37G).** Measured from
+callgrind's callers:
+
+- **Allocation.** nanofil's SQLite calls `filc_allocate` 17.6M times,
+  against filcc's 57k. These are address-taken locals passed to callees
+  that are not inlined, so they escape and become heap objects. For
+  example, `sqlite3VdbeRecordCompareWithSkip` has seven allocation sites
+  (3.5M calls), among them `u32 serial_type`, whose address
+  `getVarint32` passes to `sqlite3GetVarint32`. LLVM inlines those
+  callees and FilPizlonator then finds the allocas non-escaping.
+  `filc_allocate`, `verse_local_allocator_allocate` and
+  `filc_thread_track_object` take 1.29G against filcc's 0.16G.
+- **memcpy.** nanofil's calls to `memcpy` reach libc's pizlonated
+  `memcpy` → `zmemmove` → `native_thunk_zmemmove` →
+  `filc_native_zmemmove`: 19.2M calls into the chain, 1.32G. filcc
+  calls `filc_memmove` directly (3.7M calls, 0.41G).
+
+**5. Checks: +2.6G (9%); SWI +4.8G.** 1530M checks against filcc's
+1175M, at 6.0 instructions per check against 5.6. This filcc build
+differs from item 16's (filcc is not deterministic and the gate has no
+`ref/` pin), so its lz4 `-9` has 101M checks rather than 116M. Item 16's
+candidates and M7 own the rest.
+
+**6. ALU and extensions: +2.45G (9%).** Address arithmetic that filcc
+folds into addressing modes or `lea` (`mov %r15,%rax ; add %rdx,%rax`
+for `lea (%r15,%rdx),%rax`), and 32-bit values extended before use.
+This is part of cause 1's selection model. Measured only as a
+category; not split further.
+
+**7. Global getters: about 0.8G on the gate, 1.6G on SWI (inferred from
+measured parts).** nanofil reaches every global through its getter
+function. filcc addresses a global defined in the same unit directly
+when it needs no initialization (`lea pizlonatedDO_crc_braid_table+0x10(%rip)`).
+Measured: 40M getter calls on the gate, among them zlib's
+`crc_braid_table` (4.2M), bzip2's `BZ2_crc32Table` (4.2M), SQLite's
+`sqlite3SmallTypeSizes` (4.3M) and lz4's `PRIME32_1`/`PRIME32_2` (2.1M,
+a `static const U32` read in `XXH32_round`). SWI makes 55M calls of
+`jmp_table` (VM dispatch) and 22M of `PL_global_data` at 0.005 of its
+counts (from the 7-instruction getter body's count). The getter
+bodies execute 0.28G (gate) and 0.56G (SWI). Each call also costs about
+13 instructions at the call site: arguments, origin, and a full check
+of the returned pointer (from the asm of `XXH32_round`), so ≈0.5G more
+on the gate (inferred). In the table they are spread over fast paths,
+loads, calls, moves and checks.
+
+**8. Calls that filcc inlines: +53M program calls on the gate (bzip2
+`-9` +2.2M, lz4 `-9` +15.9M, lz4 `-1`/`-d` +2.1M each, Lua +2M,
+SQLite +27M).** Measured: call/ret instructions themselves are only
++0.24G. The cost is in the prologues, epilogues and argument traffic,
+which the frame and move categories count: `XXH32_round`'s prologue is
+20 instructions and its epilogue 8, and `mainGtU`'s are 35 and 12.
+**≈2G at about 40 instructions a call (inferred from those two
+functions).** A larger effect is what inlining enables: filcc's
+`LZ4HC_compress_generic_noDictCtx` has everything inlined, while
+nanofil's `LZ4HC_InsertAndGetWiderMatch` (53% of lz4 `-9`'s cycles),
+`LZ4HC_countBack`, `LZ4_count`, `XXH32_round` and `XXH_readLE32` are
+calls. All of them are `LZ4_FORCE_INLINE` (`always_inline`). bzip2's
+`mainQSort3`, `mainSort`, `mainSimpleSort`, `copy_input_until_stop` and
+`generateMTFValues` are static functions with one call site. SWI's
+`pl-inline.h` helpers (`QueryFromQid`, `newChoice`, `linkValI`,
+`setGenerationFrame`, `__do_undo`) execute 4.3G in nanofil and nothing
+in filcc, where they are inlined. `inline.pl` takes only leaf callees of
+at most 120 instructions, and `always_inline` is only a hint to it
+(`c_types.pl`). Cause 4's
+allocations are also a consequence of calls that were not inlined.
+
+**Not causes.** Vectorization: 0.4% of filcc's instructions, see above.
+Layout: only SQLite's and SWI's frontends get worse (above), by 6–9
+points of slots. Polls: 0.7G in
+nanofil (marked profile), against 0.64G of fast paths of every kind in
+filcc. SWI's
+**Fil-C** cost is the runtime: on the pinned core, `libpizlo` takes 65%
+of filcc's cycles (32.0G of 49.6G per run at 0.02). Of that,
+`mark_parallel_worker` (GC marking, on the same core as the mutator) is
+43%, allocation 8%, and `_Atomic` pointer loads and stores (the port
+makes SWI's lock-free pointers atomic) 6%. nanofil's SWI spends 45.4G
+there, because it allocates more (cause 4: `filc_allocate` is 7.7% of
+its cycles). Its own code takes 39.3G against filcc's 16.8G (2.34×).
+
+#### Hottest functions
+
+`hot.py`, per build: share of cycles, Mcycles per run, IPC. A dash means
+the function was inlined, or for the runtime, absent.
+
+| Workload | function | native | filcc | nanofil |
+|---|---|--:|--:|--:|
+| zlib `-6` | longest_match | 74%, 340, 1.16 | 62%, 387, 2.77 | 63%, 790, 5.24 |
+| | deflate_slow | 18%, 84, 1.43 | 24%, 148, 3.41 | 21%, 264, 5.06 |
+| zlib `-d` | inflate_fast | 85%, 37, 1.49 | 68%, 45, 2.52 | 58%, 72, 4.15 |
+| | crc32_z (+ getter `crc_braid_table`) | 9%, 4, 4.03 | 15%, 10, 5.99 | 27%, 34, 5.47 (+5%, 6) |
+| bzip2 `-9` | BZ2_blockSort (nanofil: mainQSort3 / mainSort / mainSimpleSort) | 58%, 463, 1.48 | 42%, 546, 3.13 | 19% + 11% + 10%, 797 |
+| | mainGtU | 15%, 116, 1.72 | 21%, 270, 3.27 | 16%, 329, 4.70 |
+| | copy_input_until_stop | – | – | 14%, 274, 6.50 |
+| bzip2 `-d` | BZ2_decompress | 58%, 172, 1.92 | 67%, 282, 3.89 | 82%, 799, 3.86 |
+| lz4 `-9` | LZ4HC_compress_generic_noDictCtx (nanofil: callees) | 99%, 488, 2.42 | 98%, 719, 3.99 | – |
+| | LZ4HC_InsertAndGetWiderMatch / countBack / LZ4_count | – | – | 53% / 16% / 14%, 805 / 241 / 207 |
+| lz4 `-1` | XXH32_round / XXH_readLE32 | – | – | 26% / 25%, 22 / 21 |
+| | `[libpizlo]` and the loader | – | 50%, 9 | 22%, 19 |
+| Lua int | luaV_execute | 99%, 65, 5.33 | 96%, 226, 5.05 | 92%, 320, 5.59 |
+| | luaV_mod | – | – | 5%, 19, 7.70 |
+| Lua str | `[libpizlo]` | – | 50%, 545, 2.32 | 43%, 674, 2.37 |
+| | `[libc]` | 14%, 23, 4.02 | 9%, 94, 4.71 | 8%, 131, 3.91 |
+| SQLite | sqlite3VdbeExec | 25%, 172, 2.93 | 41%, 1195, 3.80 | 21%, 1124, 3.87 |
+| | `[libpizlo]` | – | 14%, 396, 3.47 | 21%, 1119, 3.68 |
+| | `[libc]` | 13%, 92, 3.56 | 2%, 57, 4.88 | 4%, 214, 3.78 |
+| SWI suite | `[libpizlo]` (mark_parallel_worker) | – | 65% (43%), 31988 | 53% (33%), 45442 |
+| | PL_next_solution | 5%, 167, 3.85 | 3%, 1373, 4.43 | 7%, 6130, 3.50 |
+
+`sqlite3VdbeExec` costs nanofil no more cycles than filcc. filcc inlines
+more into it, and nanofil's extra time is in the callees and the
+runtime. In `luaV_execute`, nanofil runs at 1.42× filcc's cycles and
+higher IPC.
+
+#### Levers, ranked
+
+Yields are on the gate. "Instructions" is the measured excess the lever
+addresses; that bounds it. "Cycles" converts at 0.21 cycles per
+instruction, against nanofil's 13.5G gate cycles per run of all eleven
+workloads (inferred). "Contract" says whether the lever needs a reviewed
+change to the trap, evidence or GC-root contract.
+
+| # | Lever | Instructions (bound) | Cycles, share of nanofil's | Contract |
+|---|---|--:|--:|---|
+| 1 | **Selection into homes**: select each operation with its operands' and destination's homes known (three-address forms, `lea`, operate on homes), not through `%rax`/`%rcx` and copies | moves +8.0G, part of alu +2.45G; half of it ≈ 5G | ≈1.0G, 7% | none (emitter and register pass; the register checker must accept the forms) |
+| 2 | **Inlining beyond small leaves**: honour `always_inline`, inline static functions with one call site and non-leaf callees within a budget; escape analysis then keeps SQLite's out-parameter locals off the heap | ≈2G call overhead + 1.1G allocation runtime, plus what inlining enables (lz4 `-9`, bzip2 `-9`, SWI's 4.3G of helpers) | ≥0.6G, ≥5% | none for traps (inline.pl already keeps polls by block order); compile time needs a budget |
+| 3 | **Lowers in the frame**: one `lowers[]` entry for a flight and its single-definition donor (item 17's lower root), stores only where the entry changes | flights' lower stores 3.4G, part of the 2.0G reloads | ≈0.7G, 5% | **GC-root contract**: which entries hold a live pointer's lower at a safepoint; needs review |
+| 4 | **Short-circuit and loop conditions**: branch on the compare where a chain of `||`/`&&` merges constants into a phi that is then tested | branch selection +3.0G; the chains are the part shown in asm (not split) | ≤0.6G, ≤5% | none |
+| 5 | **Globals without getters**: address a same-unit global that needs no initialization directly, as filcc does; fold reads of `static const` scalars | ≈0.8G (0.28G bodies measured, call sites inferred); SWI ≈1.6G | ≈0.17G, 1%; zlib `-d` and lz4 `-1`/`-d` 10–15% of their instructions | none for traps; an ABI fact to establish (when filcc skips the getter) in abi-findings.md |
+| 6 | **memcpy straight to `filc_memmove`**, as filcc calls it | SQLite 0.9G | ≈0.2G (SQLite 4%) | the error a bad copy reports may change; check the observation contract |
+| 7 | **Remaining checks** (item 16's list: loop guards, hoisting, backward propagation) | +2.6G (+355M checks) | ≤0.55G, ≤4% | trap timing for hoisting and merging (6c-2); evidence for the rest |
+| 8 | **Scalar homes left in the frame** (live-range splitting, 3d) | 3.7G scalar frame traffic in nanofil | ≤0.8G, ≤6% | none |
+
+Levers 1, 3 and 8 overlap: all three are register allocation seen from
+different sides. Lever 2 also shrinks 1 and 3 where inlined callees
+lose their prologues. Item 12's local measurements (each pattern under
+2%) do not contradict lever 1. Moves are 17% of nanofil's instructions
+in aggregate, but no single local rewrite reaches more than a sliver,
+so the selection model has to change.
+
+**Measured and inferred.**
+
+Measured:
+- times, counters and categories;
+- the per-function cycles;
+- the call, getter and allocation counts (callgrind's call records);
+- the move shapes;
+- the marked profile's frame split.
+
+Confirmed by reading asm:
+- the moves and frame traffic in `mainGtU`, `XXH32_round` and
+  `longest_match`;
+- the branch chains in `longest_match`;
+- the getter calls (`XXH32_round`) and filcc's direct global address
+  (`crc32_z`);
+- the allocation sites in `sqlite3VdbeRecordCompareWithSkip`.
+
+Inferred:
+- the 0.21 cycles-per-instruction conversion;
+- the call-site cost of getters and the per-call overhead of calls
+  that are not inlined (from two functions' prologues);
+- that SWI's patched VM casts compile to the same native code;
+- every yield in the levers table beyond its measured bound.
+
+**Reproduce.**
+
+```sh
+nix build --impure -f nanofil/bench -o nanofil/bench/out --argstr only O
+nix build --impure -f nanofil/bench/swipl.nix -o nanofil/bench/swipl
+cd nanofil/bench
+python3 run.py --modes ref,O,native --trials 11
+python3 run.py --modes ref,O,native --events cycles:u,branches:u,branch-misses:u,L1-dcache-load-misses:u
+python3 run.py --modes ref,O,native --metrics PipelineL1    # and PipelineL2
+VALGRIND=… taskset -c 8-15,24-31 python3 profile/checks.py --builds out --variants native,ref,O --categories
+python3 profile/hot.py
+```
 
 ### Projection
 

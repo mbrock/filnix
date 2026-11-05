@@ -1,5 +1,6 @@
 # The runtime benchmark's binaries and inputs (docs/perf.md). Each program
-# is built by filcc -O2 (`ref`) and by nanofil in every mode below, through
+# is built by filcc -O2 (`ref`), by plain clang without Fil-C (`native`)
+# and by nanofil in every mode below, through
 # the same nanofil-cc wrapper the Nix checks use, and kept unstripped for
 # perf. Build with
 #
@@ -19,6 +20,9 @@ let
   programs = import "${flake}/nanofil/bench/programs.nix" {
     inherit pkgs filcc;
   };
+  # Plain clang, no Fil-C (`native`): the LLVM version Fil-C is built
+  # from, behind the same kind of Nix wrapper and with the same flags.
+  native = pkgs.llvmPackages_20.clang;
   # NANOFIL_OPT for each nanofil mode. `off` is the reference backend
   # without the middle end; the others are what a user would choose.
   modes = {
@@ -99,6 +103,10 @@ pkgs.linkFarm "nanofil-bench" (
         {
           name = "${name}/ref";
           path = programs.build name "ref" "${filcc}/bin/clang" "" "";
+        }
+        {
+          name = "${name}/native";
+          path = programs.build name "native" "${native}/bin/clang" "" "";
         }
       ]
       ++ pkgs.lib.mapAttrsToList (mode: opt: {

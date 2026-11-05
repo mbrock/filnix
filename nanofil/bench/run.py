@@ -9,8 +9,15 @@ order (seeded), pinned to one CPU under `perf stat`, which counts user
 instructions and task-clock. Before each run it waits until the pinned
 core and its SMT sibling are idle. Prints medians, ranges and ratios to
 ref, and writes the samples to results.json in the current directory.
+When --swipl (default swipl/, built by swipl.nix) has a build for every
+mode, SWI-Prolog's benchmark suite (swipl.pl) is one more workload.
+
+With --events and --metrics, perf also counts those events or metric
+groups (e.g. `--events cycles:u,branch-misses:u --metrics PipelineL1`),
+and their medians are printed and saved under "events".
 
 usage: run.py [--trials N] [--cpu C] [--out DIR] [--modes a,b] [--only SUBSTR]
+              [--events E,E] [--metrics GROUP]
 """
 import argparse, hashlib, json, os, random, statistics, subprocess, sys, tempfile, time
 
@@ -23,9 +30,14 @@ ap.add_argument("--ref", default=f"{HERE}/ref",
                 help="where the filcc builds come from (default ref/, else --out): pin them, filcc is not deterministic")
 ap.add_argument("--modes", default="ref,off,O,O-reuse,O-refbranches,O-stack")
 ap.add_argument("--only", default="")
+ap.add_argument("--swipl", default=f"{HERE}/swipl",
+                help="SWI-Prolog builds (swipl.nix); its benchmark suite runs when every mode has one")
+ap.add_argument("--swipl-factor", default="0.02", help="scales the suite's iteration counts")
 ap.add_argument("--busy", type=float, default=0.05,
                 help="wait until the core is below this busy fraction (above 1: never wait; instructions only)")
 ap.add_argument("--json", default="results.json")
+ap.add_argument("--events", default="", help="more perf events to count (perf stat -e)")
+ap.add_argument("--metrics", default="", help="perf metric groups to count (perf stat -M)")
 ap.add_argument("--markdown", metavar="JSON", help="print tables of an earlier run's samples and exit")
 ap.add_argument("--compare", metavar="LABEL=JSON[@MODE]", nargs="+",
                 help="print each run's MODE (default --mode) ratios to ref and exit")
@@ -112,11 +124,15 @@ W = {
     "lua str": ("lua", "lua", LUA("str"), None),
     "sqlite": ("sqlite", "sqlite3", [], f"{HERE}/sqlite.sql"),
 }
+if all(os.path.isdir(f"{a.swipl}/{m}") for m in MODES):
+    W["swipl bench"] = ("swipl", "swipl", [f"{HERE}/swipl.pl", f"{a.swipl}/bench", a.swipl_factor], None)
 W = {k: v for k, v in W.items() if a.only in k}
 
 
 def cmd(w, m):
     prog, exe, args, _ = W[w]
+    if prog == "swipl":
+        return [f"{a.swipl}/{m}/{exe}", *args]
     return [f"{ref_dir(prog) if m == 'ref' else O}/{prog}/{m}/{exe}", *args]
 
 
@@ -172,31 +188,37 @@ def quiet():
 
 def measure(w, m):
     quiet()
-    c = ["taskset", "-c", str(a.cpu), "perf", "stat", "-x,", "-e", "instructions:u,task-clock", *cmd(w, m)]
+    extra = (["-e", a.events] if a.events else []) + (["-M", a.metrics] if a.metrics else [])
+    c = ["taskset", "-c", str(a.cpu), "perf", "stat", "-x,", "-e", "instructions:u,task-clock", *extra, *cmd(w, m)]
     with stdin(w) as i:
         p = subprocess.run(c, stdin=i, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, check=True)
-    v = {}
+    v, ev = {}, {}
     for line in p.stderr.splitlines():
         f = line.split(",")
         if len(f) > 2 and f[0][:1].isdigit():
-            v[f[2].split(":")[0]] = float(f[0])
-    return v["instructions"], v["task-clock"]
+            v.setdefault(f[2].split(":")[0], float(f[0]))
+            ev[f[2]] = float(f[0])
+        if len(f) > 6 and f[5] and f[6]:
+            ev[f[6].replace("%", "").strip()] = float(f[5])  # a metric, in percent
+    return (v["instructions"], v["task-clock"]), ev
 
 
 print(f"ref {os.path.realpath(REF)}", file=sys.stderr)
 print(f"loadavg {open('/proc/loadavg').read().split()[:3]}, cpu {a.cpu} (siblings {sorted(CORE)})", file=sys.stderr)
 rng = random.Random(1)
 res = {w: {m: [] for m in MODES} for w in W}
+evs = {w: {m: [] for m in MODES} for w in W}
 for trial in range(a.trials + 1):  # round 0 warms up and is discarded
     for w in W:
         order = MODES[:]
         rng.shuffle(order)
         for m in order:
-            s = measure(w, m)
+            s, ev = measure(w, m)
             if trial:
                 res[w][m].append(s)
+                evs[w][m].append(ev)
     print(f"round {trial}/{a.trials} done", file=sys.stderr)
-json.dump({"trials": a.trials, "cpu": a.cpu, "samples": res}, open(a.json, "w"), indent=1)
+json.dump({"trials": a.trials, "cpu": a.cpu, "samples": res, "events": evs}, open(a.json, "w"), indent=1)
 
 med = statistics.median
 print(f"median task-clock ms and user instructions (G), {a.trials} trials, cpu {a.cpu}; waited {waited} s for a quiet core")
@@ -222,3 +244,10 @@ print(f"{'geomean':15}" + "".join(
     f"{geo([med(t for _, t in res[w][m]) / med(t for _, t in res[w]['ref']) for w in W]):6.2f} "
     f"({geo([med(i for i, _ in res[w][m]) / med(i for i, _ in res[w]['ref']) for w in W]):5.2f}){'':12}"
     for m in MODES if m != "ref"))
+if a.events or a.metrics:
+    keys = sorted({k for w in W for m in MODES for e in evs[w][m] for k in e})
+    print("\nmedians of the events and metrics (metrics in percent)")
+    for k in keys:
+        print(f"\n{k}\n{'workload':15}" + "".join(f"{m:>16}" for m in MODES))
+        for w in W:
+            print(f"{w:15}" + "".join(f"{med(e.get(k, float('nan')) for e in evs[w][m]):16.4g}" for m in MODES))

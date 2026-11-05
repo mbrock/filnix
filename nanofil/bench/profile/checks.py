@@ -29,11 +29,17 @@ Valgrind attributes by address, so inlined code counts in its caller.
 nanofil's builds keep their block labels as symbols (`as -L`), so its
 counts are also given per block.
 
+With --categories it also sorts every executed instruction of each
+build into a coarse category of its form (categorize) and prints them
+per workload and variant, with the functions whose instruction counts
+differ most between the last two variants. Native builds (no Fil-C)
+work too: `--builds bench/out --variants native,ref,O`.
+
 usage: checks.py [--builds DIR] [--bench DIR] [--work DIR] [--only SUBSTR]
-                 [--variants a,b] [--top N] [--json FILE]
+                 [--variants a,b] [--top N] [--json FILE] [--categories]
 Needs valgrind on PATH or in $VALGRIND, and objdump.
 """
-import argparse, collections, json, os, re, subprocess
+import argparse, collections, glob, json, os, re, subprocess
 from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -41,10 +47,15 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--builds", default=f"{HERE}/checks")
 ap.add_argument("--bench", default=f"{HERE}/../out", help="the gate's build, for its inputs")
 ap.add_argument("--work", default="checks-work")
+ap.add_argument("--swipl", default=f"{HERE}/../swipl",
+                help="SWI-Prolog builds (../swipl.nix): its benchmark suite is a workload when every variant has one")
+ap.add_argument("--swipl-factor", default="0.005")
 ap.add_argument("--only", default="")
 ap.add_argument("--variants", default="ref,ref-noinline,ref-fwd,ref-fwd-noinline,ref-nosched,O,O-noinline")
 ap.add_argument("--top", type=int, default=12, help="functions per workload in the tables")
 ap.add_argument("--json", default="checks.json")
+ap.add_argument("--categories", action="store_true",
+                help="print executed instructions by category (categorize) per workload and variant, and the hottest functions' differences")
 ap.add_argument("--dump", metavar="FUNCTION",
                 help="print FUNCTION's executed instructions with counts, check runs and test kinds, and exit")
 a = ap.parse_args()
@@ -76,6 +87,8 @@ W = {
     "lua str": ("lua", [f"{L}/str.lua"], None),
     "sqlite": ("sqlite", [], f"{L}/sqlite.sql"),
 }
+if all(os.path.isdir(f"{a.swipl}/{v}") for v in VARIANTS):
+    W["swipl bench"] = ("swipl", [f"{L}/swipl.pl", f"{a.swipl}/bench", a.swipl_factor], None)
 W = {k: v for k, v in W.items() if a.only in k}
 key = lambda w: re.sub(r"\W+", "-", w)
 
@@ -86,7 +99,7 @@ def callgrind(w, variant):
     out = f"{a.work}/cg.{variant}.{key(w)}"
     # The store path of the binary, so a later rebuild (filcc's output
     # differs from build to build) cannot be paired with these counts.
-    exe = os.path.realpath(f"{D}/{prog}/{variant}/{EXE[prog]}")
+    exe = os.path.realpath(f"{a.swipl}/{variant}/swipl" if prog == "swipl" else f"{D}/{prog}/{variant}/{EXE[prog]}")
     if os.path.exists(out) and exe_of(out) != exe:
         os.remove(out)
     if not os.path.exists(out):
@@ -101,12 +114,30 @@ def callgrind(w, variant):
     return out
 
 
+def program_object(exe):
+    """The object that holds the program's code: the executable, or for
+    SWI-Prolog its libswipl."""
+    if os.path.basename(exe) != "swipl":
+        return exe
+    lib = os.path.normpath(f"{os.path.dirname(exe)}/../../lib/x86_64-linux")
+    return os.path.realpath(sorted(glob.glob(f"{lib}/libswipl.so.*"), key=len)[-1])
+
+
 def exe_of(path):
     """The binary a callgrind file ran."""
     for line in open(path):
         if line.startswith("cmd:"):
             return line.split()[1]
     return None
+
+
+def other_objects(path, exe):
+    """Ir executed outside `exe` (the Fil-C runtime, libc, the loader)."""
+    total, own = 0, sum(executed(path, exe).values())
+    for line in open(path):
+        if line.startswith(("summary:", "totals:")):
+            total = int(line.split()[1])
+    return total - own
 
 
 def executed(path, exe):
@@ -384,7 +415,108 @@ def analyse(exe):
         mem = re.search(r"-?(0x[0-9a-f]+)?\(%(\w+)(,%\w+)?(,\d)?\)", args)
         if mem and mem.group(2) not in ("rbp", "rsp", "rip") and not HEADER.search(args):
             access.add(addr)
-    return info, kinds, first, access
+    return info, kinds, first, access, categorize(insns, index, info)
+
+
+def callee(insns, index, addr):
+    """The function a block calls first, straight on or through direct
+    jumps, within 16 instructions; None if it branches or returns first."""
+    i, budget = index.get(addr), 16
+    while i is not None and budget:
+        _, op, args, _, _ = insns[i]
+        if op.startswith("call"):
+            m = re.search(r"<([^>@+]+)", args)
+            return m.group(1) if m else "indirect"
+        if op in ("jmp", "jmpq") and (m := TARGET.match(args)):
+            i = index.get(int(m.group(1), 16))
+        elif op.startswith("j") or op.startswith("ret") or op == "ud2":
+            return None
+        else:
+            i += 1
+        budget -= 1
+    return None
+
+
+VEC = re.compile(r"%[xyz]mm")
+PACKED = re.compile(r"^v?p|ps$|pd$|^v?movdq|^vmovu|^vmova|^v?shuf|^v?unpck|^vbroadcast|^vperm|^vinsert|^vextract|^kmov")
+CATEGORIES = ["check", "fil-c fast path", "header/aux", "frame load", "frame store", "frame other",
+              "push/pop", "call/ret", "move", "constant", "boolean", "compare", "branch",
+              "load", "store", "extend", "alu", "simd", "float", "other"]
+
+
+def categorize(insns, index, info):
+    """Per address, a coarse category (CATEGORIES) of the instruction's
+    form, for comparing builds by more than checks (docs/perf.md item 19).
+    Checks come from analyse. A conditional jump to a block that calls a
+    Fil-C runtime function other than the check failure (pollcheck, store
+    barrier, ensure-aux, calling-convention and function-call checks,
+    global initialization), with the compare that sets its flags, is a
+    fil-c fast path. Any other read of an object's header (-0x10, -0x8 or
+    -0x2 off a register) or a 48-bit aux mask is header/aux: pointer loads
+    and stores decoding the aux word. Frame categories are memory operands
+    off %rbp or %rsp (locals, spills, saves, Fil-C's frame record)."""
+    cats, slow = {}, {}
+    for i, (addr, op, args, fn, block) in enumerate(insns):
+        if info[addr][4]:
+            cats[addr] = "check"
+            continue
+        ops = operands(args)
+        if op.startswith("j") and op not in ("jmp", "jmpq") and (m := TARGET.match(args)):
+            for t in (int(m.group(1), 16), insns[i + 1][0] if i + 1 < len(insns) else None):
+                if t is not None and t not in slow:
+                    plt = re.search(r"<([^>@+]+)@plt>", args) if t == int(m.group(1), 16) else None
+                    c = plt.group(1) if plt else callee(insns, index, t)
+                    slow[t] = c if c and c.startswith("filc_") and c != "filc_optimized_access_check_fail" else None
+                if t is not None and slow[t]:
+                    cats[addr] = "fil-c fast path"
+                    p = insns[i - 1]
+                    if p[1].startswith(("cmp", "test", "and")) and cats.get(p[0]) != "check":
+                        cats[p[0]] = "fil-c fast path"
+                    break
+            else:
+                cats[addr] = "branch"
+            continue
+        mem = re.search(r"\((%\w+)?(,%\w+)?(,\d)?\)", args)
+        base = mem.group(1) if mem and not op.startswith(("lea", "nop")) else None
+        if HEADER.search(args) or (op == "movabs" and ops and ops[0].startswith("$") and
+                                   (int(ops[0][1:], 0) == AUX_MASK or int(ops[0][1:], 0) >> 48)):
+            c = "header/aux"
+        elif op.startswith(("push", "pop", "leave")):
+            c = "push/pop"
+        elif op.startswith(("call", "ret")):
+            c = "call/ret"
+        elif op.startswith("j"):
+            c = "branch"
+        elif VEC.search(args) and (PACKED.search(op) or re.search(r"%[yz]mm", args)):
+            c = "simd"
+        elif VEC.search(args):
+            c = "float"
+        elif base in ("%rbp", "%rsp"):
+            if op.startswith("mov") and len(ops) == 2:
+                c = "frame store" if "(%rbp)" in ops[1] or "(%rsp)" in ops[1] else "frame load"
+            else:
+                c = "frame other"
+        elif op.startswith("set"):
+            c = "boolean"
+        elif op.startswith(("cmp", "test", "bt")):
+            c = "compare"
+        elif base:
+            c = "store" if len(ops) == 2 and "(" in ops[1] else "load"
+        elif op.startswith(("movz", "movs", "cltq", "cqto", "cltd", "cwtl")) or op in ("movslq", "cdqe"):
+            prev = insns[i - 1][1] if i else ""
+            c = "boolean" if prev.startswith("set") else "extend"
+        elif op.startswith("mov") and len(ops) == 2 and ops[0].startswith("$"):
+            c = "constant"
+        elif op.startswith("xor") and len(ops) == 2 and ops[0] == ops[1]:
+            c = "constant"
+        elif op.startswith("mov") and len(ops) == 2 and REG.match(ops[0]) and REG.match(ops[1]):
+            c = "move"
+        elif op.startswith("nop") or op in ("ud2", "endbr64"):
+            c = "other"
+        else:
+            c = "alu"
+        cats[addr] = c
+    return cats
 
 
 def name(fn):
@@ -400,17 +532,20 @@ def by_name(fns):
         if not d["ir"]:
             continue
         o = out.setdefault(name(f), {"ir": 0, "checks": 0, "local": 0, "lower_only": 0, "check_ins": 0, "accesses": 0,
-                                     "tests": collections.Counter(), "shapes": collections.Counter()})
+                                     "tests": collections.Counter(), "shapes": collections.Counter(),
+                                     "cats": collections.Counter()})
         for k in ("ir", "checks", "local", "lower_only", "check_ins", "accesses"):
             o[k] += d[k]
         o["tests"] += d["tests"]
         o["shapes"] += d["shapes"]
-    return {f: dict(o, tests=dict(o["tests"]), shapes=dict(o["shapes"])) for f, o in out.items()}
+        o["cats"] += d["cats"]
+    return {f: dict(o, tests=dict(o["tests"]), shapes=dict(o["shapes"]), cats=dict(o["cats"])) for f, o in out.items()}
 
 
-def tally(info, kinds, first, access, ir):
-    """Per function and per block: Ir, checks by kind set, tests by kind, check instructions."""
-    z = lambda: {"ir": 0, "checks": 0, "local": 0, "lower_only": 0, "check_ins": 0, "accesses": 0, "tests": collections.Counter(), "shapes": collections.Counter()}
+def tally(info, kinds, first, access, cats, ir):
+    """Per function and per block: Ir, checks by kind set, tests by kind, check instructions, categories."""
+    z = lambda: {"ir": 0, "checks": 0, "local": 0, "lower_only": 0, "check_ins": 0, "accesses": 0, "tests": collections.Counter(),
+                 "shapes": collections.Counter(), "cats": collections.Counter()}
     fns, blocks = collections.defaultdict(z), collections.defaultdict(z)
     for addr, n in ir.items():
         if addr not in info:
@@ -418,6 +553,7 @@ def tally(info, kinds, first, access, ir):
         fn, block, run, kind, ins = info[addr]
         for d in (fns[fn], blocks[(fn, block)]):
             d["ir"] += n
+            d["cats"][cats[addr]] += n
             if ins:
                 d["check_ins"] += n
             if addr in access:
@@ -450,10 +586,10 @@ with ThreadPoolExecutor(max_workers=max(1, (os.cpu_count() or 2) // 2)) as ex:
 analyses = {}
 results = {}
 for (w, v), path in files.items():
-    exe = exe_of(path)
+    exe = program_object(exe_of(path))
     if exe not in analyses:
         analyses[exe] = analyse(exe)
-    info, kinds, first, access = analyses[exe]
+    info, kinds, first, access, cats = analyses[exe]
     ir = executed(path, exe)
     if a.dump:
         dis = subprocess.run(["objdump", "-d", "--no-show-raw-insn", "-M", "att", exe],
@@ -471,11 +607,13 @@ for (w, v), path in files.items():
                 fn, block, run, kind, ins = info.get(addr, (0, 0, None, None, False))
                 n = ir.get(addr, 0)
                 tag = f"c{run}{'*' if first.get(run) == addr else ''} {kind or ''}" if ins else ""
-                print(f"{n / 1e6:10.2f}M {tag:14} {m.group(2):8} {m.group(3)}")
+                print(f"{n / 1e6:10.2f}M {tag:14} {cats.get(addr, ''):15} {m.group(2):8} {m.group(3)}")
         continue
-    fns, blocks = tally(info, kinds, first, access, ir)
+    fns, blocks = tally(info, kinds, first, access, cats, ir)
     total = sum(d["ir"] for d in fns.values())
-    piz = {f: d for f, d in fns.items() if f.startswith("pizlonated")}
+    # The program's own code: Fil-C's pizlonated functions, or every
+    # function of a native build's executable.
+    piz = {f: d for f, d in fns.items() if f.startswith("pizlonated")} or dict(fns)
     results[(w, v)] = {
         "ir_program": total,
         "checks": sum(d["checks"] for d in piz.values()),
@@ -485,6 +623,8 @@ for (w, v), path in files.items():
         "check_ins": sum(d["check_ins"] for d in piz.values()),
         "tests": dict(sum((d["tests"] for d in piz.values()), collections.Counter())),
         "shapes": dict(sum((d["shapes"] for d in piz.values()), collections.Counter())),
+        "cats": dict(sum((d["cats"] for d in piz.values()), collections.Counter())),
+        "ir_other": other_objects(path, exe),
         "functions": by_name(piz),
         "blocks": {f"{name(f)} {b}": {"ir": d["ir"], "checks": d["checks"], "check_ins": d["check_ins"],
                                       "tests": dict(d["tests"])}
@@ -518,3 +658,31 @@ for w in W:
     for f, _ in agg.most_common(a.top):
         print(f"  {f:36} " + " ".join(f"{results[(w, v)]['functions'].get(f, {}).get('checks', 0) / M:8.1f}"
                                       for v in VARIANTS))
+if a.categories:
+    G = 1e9
+    print("\nExecuted instructions by category, G. `other objects` is the Fil-C runtime, libc and the loader;")
+    print("the last columns are the differences between consecutive variants.")
+    for w in list(W) + ["all"]:
+        ws = list(W) if w == "all" else [w]
+        cell = lambda c, v: sum(results[(x, v)]["cats"].get(c, 0) for x in ws) / G
+        other = lambda v: sum(results[(x, v)]["ir_other"] for x in ws) / G
+        pairs = list(zip(VARIANTS, VARIANTS[1:]))
+        print(f"\n{w}\n\n| category | " + " | ".join(VARIANTS) + " | " +
+              " | ".join(f"{b} − {a_}" for a_, b in pairs) + " |\n|---|" + "--:|" * (len(VARIANTS) + len(pairs)))
+        rows = [(c, {v: cell(c, v) for v in VARIANTS}) for c in CATEGORIES] + [("other objects", {v: other(v) for v in VARIANTS})]
+        rows.append(("total", {v: sum(r[v] for _, r in rows) for v in VARIANTS}))
+        for c, r in rows:
+            if any(abs(x) >= 0.005 for x in r.values()):
+                print(f"| {c} | " + " | ".join(f"{r[v]:.2f}" for v in VARIANTS) + " | " +
+                      " | ".join(f"{r[b] - r[a_]:+.2f}" for a_, b in pairs) + " |")
+    if len(VARIANTS) >= 2:
+        lo, hi = VARIANTS[-2], VARIANTS[-1]
+        for w in W:
+            fa, fb = results[(w, lo)]["functions"], results[(w, hi)]["functions"]
+            diff = {f: fb.get(f, {}).get("ir", 0) - fa.get(f, {}).get("ir", 0) for f in set(fa) | set(fb)}
+            print(f"\n{w}: functions by {hi} − {lo} instructions, M (Ir {lo} / {hi}; the difference by category)")
+            for f, d in sorted(diff.items(), key=lambda kv: -abs(kv[1]))[:a.top]:
+                ca, cb = fa.get(f, {}).get("cats", {}), fb.get(f, {}).get("cats", {})
+                dc = sorted(((c, cb.get(c, 0) - ca.get(c, 0)) for c in CATEGORIES), key=lambda kv: -abs(kv[1]))
+                print(f"  {f:34} {d / M:+9.1f} ({fa.get(f, {}).get('ir', 0) / M:.1f} / {fb.get(f, {}).get('ir', 0) / M:.1f}): " +
+                      ", ".join(f"{c} {x / M:+.1f}" for c, x in dc[:6] if abs(x) >= 0.05 * M))
