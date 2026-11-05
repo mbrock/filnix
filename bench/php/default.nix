@@ -44,6 +44,7 @@ pkgs.writeShellApplication {
     pkgs.python3
     pkgs.perf
     pkgs.util-linux
+    pkgs.nginx
   ];
   text = ''
     export PHP_BENCH_NATIVE=${native} PHP_BENCH_FILC=${filc} \

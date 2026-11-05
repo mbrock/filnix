@@ -155,7 +155,7 @@ with Fil-C; it passes Nix's unit and functional tests.
 
 ### PHP
 
-`pkgsFilc.php` is PHP 8.4 with its bundled and common PECL extensions.
+`pkgsFilc.php` is PHP 8.5 with its bundled and common PECL extensions.
 `nix build .#php-dist` makes a relocatable tarball that runs on any x86-64
 Linux without Nix, and `.#php-docker` an OCI image of it. See
 [docs/php.md](docs/php.md).

@@ -57,9 +57,67 @@ Results go to `~/.cache/php-bench/results/<timestamp>/` (or `--out`): `results.j
 with every measurement, `summary.md`, and the servers' logs. `profile`
 leaves `*.perf.data` for `perf report` alongside `profile.md`.
 
-## What is measured
+## HTTP service latency and throughput
 
-Each variant serves the application with PHP's built-in server
+`service` answers a different question from the counter comparison: how
+long does a complete HTTP response take, and how many requests does a
+warmed FPM pool finish per second?
+
+```sh
+PHP_BENCH_CPUS=0-3 result/bin/php-bench service \
+  --apps mediawiki wordpress \
+  --variants native filc filc-staging-jit \
+  --workers 2 --concurrency 4 --requests 120 --rounds 3 \
+  --out /absolute/path/to/new-results
+```
+
+Choose CPUs for the actual host; the counter benchmark's default affinity
+is specific to swa. `service` uses the same fixtures and PHP settings, but
+starts **native nginx in front of a static PHP-FPM pool**, with no full-page
+FastCGI cache. It needs no perf permissions. Run as an ordinary user. The
+ports are the fixtures' fixed loopback ports, so the usual benchmark lock
+applies. `PHP_BENCH_NGINX` can select another nginx executable.
+
+Each variant/round starts fresh workers. Warm-up is three passes of the
+mix per worker, ten for JIT variants, with `--workers` concurrent clients.
+The first pass includes cold OPcache/JIT costs and is recorded separately;
+it is not counted in steady-state latency. The LLVM shared object cache
+stays off unless explicitly enabled in the environment. Do not enable it
+without reviewing its security caveat in `docs/upstream-updates.md`.
+
+After warm-up, every URL's body is compared with the first variant using
+`check`'s volatility mask; a mismatch fails the run. Then three independent
+loads each complete `--requests` requests:
+
+- an ordinary article (`Article_1` / the fixture's chosen WordPress post),
+  one client;
+- the request mix, one client;
+- the same mix, `--concurrency` clients with one request in flight each.
+
+Latency includes HTTP request/response transfer over loopback, nginx,
+FastCGI and PHP/database execution. It excludes browser asset fetching,
+TLS and Internet latency. Throughput is completed requests divided by the
+actual elapsed duration of that load, **not the reciprocal of a sum of
+per-URL medians**. Four closed-loop clients demonstrate capacity at that
+concurrency, not a sustainable arrival rate with a latency SLA.
+
+`service-meta.json` records binaries, settings, fixture paths, hardware
+and affinity. `service.jsonl` records each load's p50/p95 (nearest-rank p95),
+all latency samples, elapsed time, throughput, warm-up passes, host busy
+share and worker RSS. JIT log line counts before/after each load reveal
+whether compilation continued during measurement. It refuses to append
+to an existing results file. Subdirectories preserve configs, application
+bodies and nginx/FPM/PHP/JIT logs. Variant order reverses each round.
+
+Do not call a run quiet merely because the machine was expected to be idle.
+Inspect host busy share and run-to-run spread. Worker RSS contains shared
+pages and cannot be summed as unique memory. Small local SQLite fixtures
+are not production MySQL sites; report the setup and do not extrapolate
+these results to a VM or a plugin-heavy installation without measuring it.
+
+## Counter measurements (`run`)
+
+For `run`, each variant serves the application with PHP's built-in server
 (`php -S`, one worker), opcache on with production settings and the JIT
 off (`INI` in `bench.py`). After `--warmup` passes over the request mix,
 every request is repeated `--reps` times. Responses must be 200 or 302,
@@ -113,10 +171,12 @@ php-bench check --apps dokuwiki mediawiki wordpress \
 ```
 
 Results with these variants, and what they mean, are in
-[`docs/php.md`](../../docs/php.md#the-jit-on-real-applications). In short,
-all three applications render the same pages with the JIT, CPU-bound
-scripts run several times faster than on Fil-C's interpreter, and page
-rendering gains at most 16% after about two minutes of compiling per server.
+[`the port notes`](../../docs/php-port-notes.md#the-jit-on-real-applications). In short,
+in those earlier single-worker experiments all three applications rendered
+the same pages with the JIT, CPU-bound scripts ran several times faster
+than on Fil-C's interpreter, and page rendering gained at most 16% after
+about two minutes of compiling per server. Those are not FPM pool startup
+or concurrent throughput measurements.
 
 ## Load
 

@@ -1,10 +1,12 @@
 # PHP extensions on Fil-C
 
-`pkgsFilc.php` (PHP 8.4) builds with Nixpkgs' default extensions. The
+`pkgsFilc.php` (PHP 8.5) builds with Nixpkgs' default extensions. The
 extensions below are the commonly enabled ones beyond that set: PECL
-extensions from `phpPackages.extensions` and bundled extensions Nixpkgs leaves
-out. Their overrides are in the `php84` block of `ports/overlay.nix`;
-library fixes are in `ports.nix`.
+extensions from `php.extensions` and bundled extensions Nixpkgs leaves
+out. Their overrides are in `mkFilcPhp` in `ports/overlay.nix`;
+library fixes are in `ports.nix`. The default distribution leaves out
+igbinary 3.2.14, which does not build on PHP 8.5; it remains included for
+PHP 8.4.
 
 ## How they are tested
 
@@ -13,7 +15,7 @@ default extensions and the extension's dependencies loaded, twice:
 
 - on Zend's allocator (`USE_ZEND_ALLOC=1`), as PHP normally runs, and
 - on the system allocator, which this PHP uses by default
-  ([php.md](php.md#differences-from-other-php-builds)). Zend's allocator
+  ([php.md](php.md#security-and-operational-differences)). Zend's allocator
   hands out request memory from 2 MiB chunks, so Fil-C bounds a PHP value
   only by its chunk. On the system allocator every allocation has its own
   bounds, and overflows or use after free between values trap. Most of the
@@ -41,6 +43,7 @@ busy loop to be all CPU time.
 
 ## Status
 
+The PHP 8.4 results below are historical, not a PHP 8.5 test report.
 Passing their test suites on both allocators; counts are tests run on
 Zend's allocator, the rest skip (most for want of a server or service):
 

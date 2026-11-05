@@ -19,8 +19,10 @@ individual ports needed, and how the port campaigns run. The repository's
   `pkgs` the Fil-C set, with systemd, PAM and every service built by Fil-C.
 - [A Fil-C userland for finix](finix.md): build a whole finix userland with
   Fil-C.
-- [PHP on Fil-C](php.md): PHP 7.4, 8.4 and 8.5, distribution tarballs, the
-  Docker image, and the experimental opcache JIT compiled through C.
+- [PHP on Fil-C](php.md): PHP 8.5, practical server performance, distributions
+  and the experimental LLVM JIT.
+- [PHP port notes](php-port-notes.md): implementation details, historical
+  benchmarks and version-specific tests, including the early C-emitting JIT.
 - [PHP extensions on Fil-C](php-extensions.md): PECL and bundled extensions
   beyond Nixpkgs' default set.
 - [Determinate Nix under Fil-C](determinate-nix.md): Determinate Systems' Nix

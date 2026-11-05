@@ -5,7 +5,7 @@
 # A Fil-C program's interpreter must be an absolute path, so each bin/ entry
 # is a small static launcher that starts libexec/ through lib/ld-fil1-*.so.
 #
-# php is PHP with the extensions to load; the default is PHP 8.4 (base) with
+# php is PHP with the extensions to load; the default is PHP 8.5 (base) with
 # the extensions below. suffix marks an alternate build in the tarball and
 # image names, as in php-8.5.12-staging-filc-x86_64-linux.
 {
@@ -140,10 +140,10 @@ pkgs.runCommand "${name}.tar.xz"
     # Without a configuration file, openssl_pkey_new() and friends fail.
     install -m644 ${pkgsFilc.openssl.out}/etc/ssl/openssl.cnf $root/etc/ssl/
     ${
-      if pkgs.lib.versions.majorMinor php.version == "8.4" then
+      if pkgs.lib.versions.majorMinor php.version == "8.5" then
         "install -m644 ${./README.md} $root/README.md"
       else
-        "sed 's/^PHP 8\\.4 compiled/PHP ${pkgs.lib.versions.majorMinor php.version} compiled/' ${./README.md} > $root/README.md"
+        "sed 's/^PHP 8\\.5 compiled/PHP ${pkgs.lib.versions.majorMinor php.version} compiled/' ${./README.md} > $root/README.md"
     }
 
     chmod -R u+w,go-w $root

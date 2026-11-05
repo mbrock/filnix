@@ -4,15 +4,18 @@ php-bench setup             build the DokuWiki, MediaWiki and WordPress fixtures
 php-bench run               interleaved, repeated counter measurements
 php-bench profile           perf record a warm server and break cycles down
 php-bench check             compare variants' responses and error logs
+php-bench service           HTTP latency and throughput through nginx/FPM
 php-bench report DIR        summarize a results directory
 """
 
 import argparse
+import concurrent.futures
 import ctypes
 import datetime
 import hashlib
 import http.client
 import json
+import math
 import os
 import re
 import shutil
@@ -905,6 +908,171 @@ def cmd_check(a):
     sys.exit(0 if ok else 1)
 
 
+def cmd_service(a):
+    """HTTP latency and throughput through nginx and a static FPM pool.
+
+    No perf permissions required. Reuses the fixtures and PHP settings of
+    run/check, but measures completed HTTP responses, not sums of medians.
+    """
+    lock()
+    out = os.path.abspath(a.out)
+    os.makedirs(out, exist_ok=True)
+    meta = {"argv": sys.argv, "host": os.uname().nodename, "cpus": CPUS,
+            "cpu": next(l.split(":", 1)[1].strip() for l in open("/proc/cpuinfo") if l.startswith("model name")),
+            "variants": {v: variant(v)[1:] for v in a.variants}, "ini": INI,
+            "driver_sha256": hashlib.sha256(open(__file__, "rb").read()).hexdigest(),
+            "workers": a.workers, "fixture_version": FIXTURE_VERSION,
+            "applications": {k: ENV[k] for k in ENV if k.startswith("PHP_BENCH_")}}
+    baseline = {}
+    with open(f"{out}/service.jsonl", "x") as results:
+        json.dump(meta, open(f"{out}/service-meta.json", "w"), indent=2)
+        for rnd in range(a.rounds):
+            for app in a.apps:
+                order = a.variants if rnd % 2 == 0 else a.variants[::-1]
+                for var in order:
+                    wait_quiet(a, f"{app} {var} startup")
+                    name, php, env, ini = variant(var)
+                    root, appenv, _, urls = app_config(app)
+                    port = PORTS[app]
+                    d = f"{out}/{rnd}-{app}-{name}"
+                    os.makedirs(d, exist_ok=True)
+                    # Short socket path even when --out is deeply nested.
+                    with tempfile.TemporaryDirectory(prefix="php-http-") as tmp:
+                        sock = f"{tmp}/fpm.sock"
+                        jitlog = f"{d}/jit.log"
+                        open(f"{d}/fpm.conf", "w").write(
+                            f"[global]\ndaemonize = no\nerror_log = {d}/fpm.log\n"
+                            f"[www]\nlisten = {sock}\npm = static\npm.max_children = {a.workers}\n"
+                            "pm.max_requests = 0\nclear_env = no\ncatch_workers_output = yes\n")
+                        args = php_args(os.path.join(os.path.dirname(php), "php-fpm"), ini, f"{d}/php.log")
+                        fpm = subprocess.Popen(args + ["-y", f"{d}/fpm.conf", "-F"],
+                            env={**ENV, **appenv, **env, "PHP_JIT_C_LOG": jitlog},
+                            stdout=open(f"{d}/fpm.stdout", "w"), stderr=subprocess.STDOUT)
+                        nginx = None
+                        try:
+                            for _ in range(300):
+                                if os.path.exists(sock):
+                                    break
+                                if fpm.poll() is not None:
+                                    raise RuntimeError(f"FPM exited; see {d}/fpm.stdout")
+                                time.sleep(0.1)
+                            else:
+                                raise RuntimeError(f"FPM did not start; see {d}")
+                            token = hashlib.sha256(d.encode()).hexdigest()
+                            open(f"{d}/nginx.conf", "w").write(f"""
+daemon off;
+pid {d}/nginx.pid;
+error_log {d}/nginx.log;
+events {{ worker_connections 128; }}
+http {{
+  access_log off;
+  client_body_temp_path {tmp}/body;
+  fastcgi_temp_path {tmp}/fastcgi;
+  server {{
+    listen 127.0.0.1:{port};
+    root {root};
+    index index.php;
+    location = /__bench_ready {{ return 200 "{token}"; }}
+    location / {{ try_files $uri $uri/ /index.php?$query_string; }}
+    location ~ \\.php$ {{
+      fastcgi_pass unix:{sock};
+      fastcgi_read_timeout 1200s;
+      fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+      fastcgi_param SCRIPT_NAME $fastcgi_script_name;
+      fastcgi_param QUERY_STRING $query_string;
+      fastcgi_param REQUEST_METHOD $request_method;
+      fastcgi_param REQUEST_URI $request_uri;
+      fastcgi_param SERVER_PROTOCOL $server_protocol;
+      fastcgi_param SERVER_NAME $host;
+      fastcgi_param SERVER_PORT $server_port;
+      fastcgi_param HTTP_HOST $http_host;
+      fastcgi_param REMOTE_ADDR $remote_addr;
+      fastcgi_param REDIRECT_STATUS 200;
+    }}
+  }}
+}}
+""")
+                            nginx = subprocess.Popen([ENV.get("PHP_BENCH_NGINX", "nginx"), "-p", tmp,
+                                "-c", f"{d}/nginx.conf"], stdout=open(f"{d}/nginx.stdout", "w"), stderr=subprocess.STDOUT)
+                            for _ in range(100):
+                                try:
+                                    # Verify our nginx without warming any PHP code.
+                                    status, body = get(port, "/__bench_ready", timeout=1)
+                                    if status == 200 and body == token.encode():
+                                        break
+                                except (OSError, http.client.HTTPException):
+                                    pass
+                                if nginx.poll() is not None:
+                                    raise RuntimeError(f"nginx exited; see {d}/nginx.stdout")
+                                time.sleep(0.1)
+                            else:
+                                raise RuntimeError(f"nginx did not start; see {d}")
+                            def request(u):
+                                t = time.perf_counter()
+                                status, body = get(port, u, timeout=1200)
+                                elapsed = time.perf_counter() - t
+                                if status != 200 or re.search(rb"Fatal error|filc panic|Uncaught", body):
+                                    raise RuntimeError(f"{app} {name} {u}: {status} {body[:100]!r}")
+                                return elapsed, body
+
+                            warm = []
+                            with concurrent.futures.ThreadPoolExecutor(max_workers=a.workers) as pool:
+                                for _ in range(a.jit_warmup if is_jit(name) else a.warmup):
+                                    t = time.perf_counter()
+                                    list(pool.map(request, urls * a.workers))
+                                    warm.append(time.perf_counter() - t)
+                                    print(f"{rnd} {app} {name} warm-up {len(warm)}: {warm[-1]:.2f} s", flush=True)
+                            # A 200 alone can hide truncated output. Compare every URL
+                            # with the first variant, using check's volatility mask.
+                            for i, u in enumerate(urls):
+                                _, body = request(u)
+                                open(f"{d}/body-{i:02d}.html", "wb").write(body)
+                                key = app, u
+                                masked = VOLATILE.sub(b"#", body)
+                                if key in baseline and baseline[key] != masked:
+                                    raise RuntimeError(f"response differs from baseline: {app} {name} {u}")
+                                baseline[key] = masked
+                            article = urls[2] if app == "dokuwiki" else urls[1]
+                            for label, mix, concurrency in [("article", [article], 1), ("mix", urls, 1),
+                                                            ("mix", urls, a.concurrency)]:
+                                work = (mix * math.ceil(a.requests / len(mix)))[:a.requests]
+                                busy_before = wait_quiet(a, f"{app} {name} {label} c={concurrency}")
+                                jit_before = len(open(jitlog).readlines()) if os.path.exists(jitlog) else 0
+                                busy0 = cpu_busy()
+                                t = time.perf_counter()
+                                with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
+                                    samples = list(pool.map(request, work))
+                                elapsed = time.perf_counter() - t
+                                busy1 = cpu_busy()
+                                latencies = sorted(x[0] for x in samples)
+                                pids = open(f"/proc/{fpm.pid}/task/{fpm.pid}/children").read().split()
+                                rss = [int(re.search(r"VmRSS:\s+(\d+)", open(f"/proc/{p}/status").read())[1]) for p in pids]
+                                rec = {"round": rnd, "app": app, "variant": name, "workload": label,
+                                    "url": article if label == "article" else None, "concurrency": concurrency,
+                                    "requests": len(samples), "elapsed_s": elapsed, "rps": len(samples) / elapsed,
+                                    "p50_ms": statistics.median(latencies) * 1000,
+                                    "p95_ms": latencies[math.ceil(len(latencies) * .95) - 1] * 1000,
+                                    "latencies_s": latencies, "worker_rss_kib": rss, "warmup_s": warm,
+                                    "jit_log_lines_before": jit_before,
+                                    "jit_log_lines_after": len(open(jitlog).readlines()) if os.path.exists(jitlog) else 0,
+                                    "busy_before": busy_before,
+                                    "machine_busy": 1 - (busy1[1] - busy0[1]) / (busy1[0] - busy0[0]),
+                                    "time": datetime.datetime.now().isoformat(timespec="seconds")}
+                                results.write(json.dumps(rec) + "\n")
+                                results.flush()
+                                print(f"{rnd} {app} {name} {label} c={concurrency}: "
+                                      f"{rec['p50_ms']:.1f}/{rec['p95_ms']:.1f} ms p50/p95, {rec['rps']:.1f} req/s", flush=True)
+                            for logfile in (f"{d}/php.log", f"{d}/fpm.log", f"{d}/fpm.stdout"):
+                                log = open(logfile).read() if os.path.exists(logfile) else ""
+                                if re.search(r"PHP (?:Warning|Fatal|Parse)|filc panic|safety error|exited on signal", log):
+                                    raise RuntimeError(f"errors during service test: {logfile}")
+                        finally:
+                            for proc in (nginx, fpm):
+                                if proc and proc.poll() is None:
+                                    proc.terminate()
+                                    proc.wait(timeout=30)
+
+
 def summary_line(rec):
     if rec["app"] in SCRIPTS:
         return (f"{rec['counters'].get('cycles_u', 0) / 1e9:.2f} Gcycles:u, {rec['sections'].get('Total', 0):.3f} s cold, "
@@ -1254,6 +1422,19 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("setup")
     s.add_argument("--apps", nargs="+", default=list(PORTS))
+    s = sub.add_parser("service", description=cmd_service.__doc__)
+    s.add_argument("--apps", nargs="+", choices=list(PORTS), default=["mediawiki", "wordpress"])
+    s.add_argument("--variants", nargs="+", default=["native", "filc", "filc-staging-jit"])
+    s.add_argument("--workers", type=int, default=2)
+    s.add_argument("--concurrency", type=int, default=4)
+    s.add_argument("--requests", type=int, default=120)
+    s.add_argument("--rounds", type=int, default=3)
+    s.add_argument("--warmup", type=int, default=3)
+    s.add_argument("--jit-warmup", type=int, default=10)
+    s.add_argument("--max-busy", type=float, default=0.15,
+                   help="wait until at most this CPU share is busy before startup and each measured load")
+    s.add_argument("--wait", type=float, default=30, help="minutes to wait for a quiet machine")
+    s.add_argument("--out", required=True)
     for name in ("run", "quiet", "profile", "check"):
         s = sub.add_parser(name)
         if name == "quiet":
@@ -1286,11 +1467,13 @@ def main():
     s = sub.add_parser("profile-report")
     s.add_argument("dir")
     a = p.parse_args()
-    if a.cmd in ("run", "quiet", "profile", "check") and any(x not in SCRIPTS for x in a.apps):
+    if a.cmd == "service" and (min(a.workers, a.requests, a.rounds, a.warmup, a.jit_warmup) < 1 or a.concurrency < 2):
+        p.error("service counts must be positive and concurrency at least 2")
+    if a.cmd in ("run", "quiet", "profile", "check", "service") and any(x not in SCRIPTS for x in a.apps):
         vf = os.path.join(STATE, "VERSION")
         if not os.path.exists(vf) or open(vf).read().strip() != FIXTURE_VERSION:
             sys.exit(f"no current fixtures in {STATE}; run php-bench setup")
-    {"setup": cmd_setup, "run": cmd_run, "quiet": cmd_run, "profile": cmd_profile, "check": cmd_check, "report": cmd_report,
+    {"setup": cmd_setup, "service": cmd_service, "run": cmd_run, "quiet": cmd_run, "profile": cmd_profile, "check": cmd_check, "report": cmd_report,
      "profile-report": cmd_profile_report}[a.cmd](a)
 
 

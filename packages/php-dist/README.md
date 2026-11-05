@@ -1,14 +1,14 @@
 # PHP built with Fil-C
 
-PHP 8.4 compiled with [Fil-C](https://github.com/pizlonator/fil-c), a
+PHP 8.5 compiled with [Fil-C](https://github.com/pizlonator/fil-c), a
 memory-safe implementation of C. It covers PHP and every library it uses:
 out-of-bounds accesses, use-after-free and other memory errors stop the
 process with a Fil-C panic instead of corrupting memory.
 
 This directory is self-contained and relocatable. It carries its own C
-runtime and libraries, so it runs on x86-64 Linux whatever its C library
-(tested on Debian 12 and 13, Ubuntu 22.04 and Alpine 3.24) and needs nothing
-from Nix. Put it anywhere and run the programs in `bin/`:
+runtime and libraries, so it runs on x86-64 Linux independently of the
+host's C library and needs nothing from Nix. Put it anywhere and run the
+programs in `bin/`:
 
     bin/php -v
     bin/php -S 127.0.0.1:8000 -t public/
@@ -39,11 +39,14 @@ using their own character sets and locales.
 
 ## Differences from other PHP builds
 
-- No JIT: Fil-C cannot run generated machine code, so the opcache JIT and
-  PCRE's JIT are disabled. Opcache itself works.
+- No JIT in this distribution: native OPcache and PCRE machine-code JITs
+  are disabled. OPcache itself works. The experimental checked LLVM JIT is
+  a separate staging build; see the [PHP guide](https://mbrock.github.io/filnix/docs/php.html).
 - Each FPM worker has a private opcache. Workers share what the master
   cached before forking; `opcache_reset()` affects only the calling worker.
-- Code runs 1.5 to 4 times slower than ordinary PHP and uses more memory.
+- More CPU and memory than ordinary PHP. The [server measurements](https://mbrock.github.io/filnix/docs/php.html#the-jit-on-real-applications)
+  separate warmed page latency, throughput and startup costs; there is no
+  universal slowdown factor or production capacity guarantee.
 - PHP allocates each value with malloc instead of from Zend's 2 MiB chunks,
   so that Fil-C catches use after free and overflows between values. This
   costs about half the speed of allocation-heavy code; `memory_limit` still

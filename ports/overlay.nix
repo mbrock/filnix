@@ -121,9 +121,9 @@ let
       ln -s ${final.stdenv.cc.libc}/bin/${name} $out/bin/${name}
     '';
 
-  # Fil-C PHP 8.4 or 8.5 at a given release; see php84 below. jit builds
-  # opcache with the JIT, whose code it compiles as C with Fil-C
-  # (docs/php.md).
+  # Fil-C PHP 8.4 or 8.5 at a given release. Opt-in JIT builds use the
+  # in-process LLVM API on staging, or the early C-emitting backend on the
+  # released toolchain (docs/php.md and docs/php-port-notes.md).
   mkFilcPhp =
     {
       version,
@@ -814,14 +814,14 @@ portDSL.makeOverlay portList final prev
   # default 1.89 builds its assembly fcontext and fails.
   boost = final.boost187;
 
-  # PHP 8.5, opt-in; php stays on 8.4 (see below and docs/php.md).
+  # Default PHP; versioned packages remain available (docs/php.md).
+  php = final.php85;
   php85 = mkFilcPhp {
     version = "8.5.12";
     hash = "sha256-/7YO3EN87WO1E35JhNs3moERxQBJxxFRDYuVgnfvwag=";
   };
-  # Opt-in: PHP 8.5 with opcache's JIT compiled through C (docs/php.md).
-  # Build it from pkgsFilcStaging, whose compiler fixes slow -O0 compiles of
-  # JIT-shaped code; the JIT runs this package set's clang.
+  # Opt-in: use pkgsFilcStaging for the in-process LLVM JIT. The required
+  # API is not in the released Fil-C toolchain yet (docs/php.md).
   php85-jit = mkFilcPhp {
     version = "8.5.12";
     hash = "sha256-/7YO3EN87WO1E35JhNs3moERxQBJxxFRDYuVgnfvwag=";

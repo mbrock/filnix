@@ -159,7 +159,7 @@ jobs:
           - \`php-$PHP_84_25-filc-x86_64-linux.tar.xz\` and
             \`filnix-php-$PHP_84_25-docker.tar.gz\`: PHP $PHP_84_25 before the
             CVE-2026-109618 and CVE-2026-109619 fixes, with the same Fil-C
-            hardening and extensions as the default PHP. For isolated exploit
+            hardening and the extensions supported by PHP 8.4. For isolated exploit
             reproductions only, not production. Also
             \`docker pull $IMAGE:$PHP_84_25-$RELEASE\`; never tagged latest.
 
@@ -176,8 +176,7 @@ jobs:
 
           - \`php-$PHP_STAGING-filc-x86_64-linux.tar.xz\` and
             \`filnix-php-$PHP_STAGING-docker.tar.gz\`: PHP ${PHP_STAGING%-staging}
-            with the same programs, layout and extensions as the default PHP,
-            except igbinary, which does not build on PHP 8.5. Also
+            with the same programs, layout and extensions as the default PHP. Also
             \`docker pull $IMAGE:$PHP_STAGING-$RELEASE\`.
           - \`bind-$BIND_STAGING-filc-x86_64-linux.tar.xz\` and
             \`filnix-bind-$BIND_STAGING-docker.tar.gz\`: BIND ${BIND_STAGING%-staging}
