@@ -289,6 +289,7 @@ check compared with a filcc build:
 | `nanofil-coreutils` | GNU coreutils 9.11, 107 programs and its test suite | [`616b3ac`](https://github.com/mbrock/filnix/commit/616b3ac), [docs/m4.md](docs/m4.md), *coreutils additions* |
 | `nanofil-python`, `nanofil-python-regrtest-plain` | CPython 3.12.5, 62 extension modules, a regrtest subset | [`f351f1c`](https://github.com/mbrock/filnix/commit/f351f1c), [`a1a5306`](https://github.com/mbrock/filnix/commit/a1a5306), [docs/m4.md](docs/m4.md), *CPython additions* |
 | `nanofil-bash` | GNU bash 5.3 with its bundled readline: job control, traps, coprocesses, its test suite | no frontend change needed |
+| `nanofil-swipl` | SWI-Prolog 9.2.9 with 22 packages (ports.nix's port); the nanofil-built swipl compiles its own boot file, library and CHR; its test suite; it runs nanofil | pointer static initializers from `&((T *)0)->m` |
 
 Since the steps below were planned, M4 gained VLAs and variably
 modified types ([`4822471`](https://github.com/mbrock/filnix/commit/4822471)),

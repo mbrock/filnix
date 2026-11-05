@@ -286,6 +286,11 @@
               inherit pkgs;
               filcc = filcc-staging;
             };
+            nanofil-swipl = import ./nanofil/nix/swipl.nix {
+              inherit pkgs;
+              filcc = filcc-staging;
+              pkgsFilc = pkgsFilcStaging;
+            };
             inherit
               (import ./nanofil/nix/python.nix {
                 inherit pkgs;
