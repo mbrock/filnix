@@ -1,0 +1,33 @@
+% Shared lowers (docs/lowers.md): each flight below derives from a
+% pointer that is dead, or written again, while the flight is still live
+% across a collection. Under --lowers=shared the flight in dead_root
+% shares its root's lowers[] entry, which must stay the root's until the
+% flight's last use; redefined_root's root has two definitions, so its
+% flight keeps an entry of its own.
+func(dead_root, export, l, [], [
+    block(start, [], [
+        call(result(tmp(root), p), global(c_pair), []),
+        flight(tmp(d), add, [address(tmp(root)), const(8)], lower(tmp(root))),
+        call(result(tmp(other), p), global(c_other), []),
+        let(tmp(op), a, check(0, 8, read, 1), [tmp(other)]),
+        let(tmp(ov), l, raw_load(l, 0), [tmp(op)]),
+        call(void, global(c_collect), []),
+        let(tmp(proof), a, check(0, 8, read, 1), [tmp(d)]),
+        let(tmp(value), l, raw_load(l, 0), [tmp(proof)]),
+        let(tmp(sum), l, add, [tmp(value), tmp(ov)])
+    ], ret(tmp(sum)))
+]).
+
+func(redefined_root, export, l, [], [
+    block(start, [], [
+        call(result(tmp(r), p), global(c_pair), []),
+        flight(tmp(d), add, [address(tmp(r)), const(8)], lower(tmp(r))),
+        call(result(tmp(r), p), global(c_other), []),
+        let(tmp(op), a, check(0, 8, read, 1), [tmp(r)]),
+        let(tmp(ov), l, raw_load(l, 0), [tmp(op)]),
+        call(void, global(c_collect), []),
+        let(tmp(proof), a, check(0, 8, read, 1), [tmp(d)]),
+        let(tmp(value), l, raw_load(l, 0), [tmp(proof)]),
+        let(tmp(sum), l, add, [tmp(value), tmp(ov)])
+    ], ret(tmp(sum)))
+]).

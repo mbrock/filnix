@@ -12,6 +12,7 @@
     | Pool | Holds |
     |---|---|
     | `pointer` | `p` temporaries: each slot is a payload slot and its lower, allocated together |
+    | `address` | derived `p` temporaries (lower_roots.pl): a payload slot only; the lower is their root's |
     | `scalar` | `w` and `l` temporaries, and `s` and `d` ones when the pools are `shared`; they never use the pointer pool. With pools `own`, never reused |
     | `float` | `s` and `d` temporaries when the pools are `own` |
     | `wide` | `x` temporaries: 16-byte slots for the 10 bytes of a long double |
@@ -20,7 +21,7 @@
     the whole invocation. Functions that call setjmp must not use this
     allocator (docs/setjmp.md).
 */
-:- module(frame_slots, [temp_slots/7, temp_slots/9]).
+:- module(frame_slots, [temp_slots/7, temp_slots/9, temp_slots/11]).
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
 :- use_module(library(ordsets)).
@@ -49,9 +50,20 @@ temp_slots(Params, Blocks, Temps, Aliases, NS, NP, NW) :-
 %  own(Groups) that binds Ranges to the live ranges, or takes them when
 %  Ranges is bound (temp_ranges/6).
 temp_slots(Pools, Params, Blocks, Temps, Aliases, NS, NP, NW, NF) :-
+    empty_assoc(Derived),
+    temp_slots(Pools, Derived, Params, Blocks, Temps, Aliases, NS, NP, NW, NF, _).
+
+%! temp_slots(+Pools, +Derived, +Params, +Blocks, +Temps, -Aliases, -ScalarCount, -PtrCount, -WideCount, -FloatCount, -AddressCount) is det.
+%
+%  As temp_slots/9, with Derived mapping each derived pointer D to its
+%  lower root R (lower_roots:derived_lowers/3): D takes an address slot,
+%  storage(address, I), with no lower of its own, and R's pointer slot,
+%  address and lower together, stays R's until D's live range ends too,
+%  so R's lowers[] entry is never reused while D is live (docs/lowers.md).
+temp_slots(Pools, Derived, Params, Blocks, Temps, Aliases, NS, NP, NW, NF, NA) :-
     (   Pools = own(_, Ranges), nonvar(Ranges)
     ->  Ranges = ranges(Wides, Intervals)
-    ;   temp_ranges(Pools, Params, Blocks, Temps, Wides, Intervals),
+    ;   temp_ranges(Pools, Derived, Params, Blocks, Temps, Wides, Intervals),
         ( Pools = own(_, Ranges) -> Ranges = ranges(Wides, Intervals) ; true )
     ),
     own_groups(Pools, Groups),
@@ -60,20 +72,20 @@ temp_slots(Pools, Params, Blocks, Temps, Aliases, NS, NP, NW, NF) :-
     % temporaries share slots among themselves, and ungrouped ones
     % (own) have homes of their own.
     partition(frame_range(Groups), Intervals, Frame, Rest0),
-    allocate(Frame, all, st([]-0, []-0, []-0), St1, Pairs, Pairs1),
+    allocate(Frame, all, st([]-0, []-0, []-0, []-0), St1, Pairs, Pairs1),
     group_ranges(Rest0, Groups, Grouped, Owns),
     foldl(group_allocate, Grouped, St1-Pairs1, St2-Pairs2),
-    allocate(Owns, own, St2, st(_-NS, _-NP, _-NF), Pairs2, WidePairs),
+    allocate(Owns, own, St2, st(_-NS, _-NP, _-NF, _-NA), Pairs2, WidePairs),
     foldl(wide_slot, Wides, []-0-WidePairs, _-NW-[]),
     % Each temporary has one interval, so the pairs have distinct keys
     % and make the assoc at once, not by an insertion per temporary.
     list_to_assoc(Pairs, Aliases).
 
-% temp_ranges(+Pools, +Params, +Blocks, +Temps, -Wides, -Intervals): each
+% temp_ranges(+Pools, +Derived, +Params, +Blocks, +Temps, -Wides, -Intervals): each
 % temporary's live range, wide ones apart. They do not depend on the
 % scalar groups, so own(Groups, Ranges) lowers again with the ranges of
 % an earlier lowering (temps mode, docs/perf.md 3d).
-temp_ranges(Pools, Params, Blocks, Temps, Wides, Intervals) :-
+temp_ranges(Pools, Derived, Params, Blocks, Temps, Wides, Intervals) :-
     temp_liveness(Blocks, In, Out),
     findall(N, member(param(_, tmp(N)), Params), ParamNs),
     block_ranges(Blocks, In, Out, [], 1, End, Touches1, Touches2),
@@ -98,9 +110,31 @@ temp_ranges(Pools, Params, Blocks, Temps, Wides, Intervals) :-
     % one live into the block after: block_ranges/8 leaves them out.
     first_touches(out, Touches, Lo),
     reverse(Touches, Backwards), first_touches(in, Backwards, Hi),
-    maplist(temp_interval(Pools, Lo, Hi), Temps, Intervals0),
+    maplist(temp_interval(Pools, Lo, Hi), Temps, Intervals00),
+    derived_ranges(Derived, Intervals00, Intervals0),
     sort(Intervals0, Intervals1),
     partition(wide_range, Intervals1, Wides, Intervals).
+
+% derived_ranges(+Derived, +Ranges0, -Ranges): each derived pointer's
+% range moves to the address pool, and each root's pointer range grows
+% to the hull of its own and its derived pointers' ranges. A derived
+% pointer is live only inside its range, so no other temporary shares
+% the root's slot, and so writes its lowers[] entry, while it is live.
+derived_ranges(Derived, Rs0, Rs) :-
+    (   empty_assoc(Derived) -> Rs = Rs0
+    ;   findall(R-(S-E), ( member(range(S, E, _, D), Rs0), get_assoc(D, Derived, R) ), Ext0),
+        keysort(Ext0, Ext1), group_pairs_by_key(Ext1, Ext2), list_to_assoc(Ext2, Ext),
+        maplist(derived_range(Derived, Ext), Rs0, Rs)
+    ).
+
+derived_range(Derived, _, range(S, E, pointer, D), range(S, E, address, D)) :-
+    get_assoc(D, Derived, _), !.
+derived_range(_, Ext, range(S0, E0, pointer, R), range(S, E, pointer, R)) :-
+    get_assoc(R, Ext, SEs), !,
+    foldl(hull, SEs, S0-E0, S-E).
+derived_range(_, _, Range, Range).
+
+hull(S1-E1, S0-E0, S-E) :- S is min(S0, S1), E is max(E0, E1).
 
 % own_groups(+Pools, -Groups): all when every scalar temporary is
 % pooled (shared), else an assoc from temporary to its group
@@ -125,8 +159,8 @@ group_ranges(Rs, G, Grouped, Owns) :-
     keysort(KRs, Sorted), group_pairs_by_key(Sorted, Grouped).
 
 % A group's temporaries reuse each other's slots, not other groups'.
-group_allocate(_-Rs, st(_-N0, P, F)-Ps0, St-Ps) :-
-    allocate(Rs, all, st([]-N0, P, F), St, Ps0, Ps).
+group_allocate(_-Rs, st(_-N0, P, F, A)-Ps0, St-Ps) :-
+    allocate(Rs, all, st([]-N0, P, F, A), St, Ps0, Ps).
 
 wide_range(range(_, _, wide, _)).
 
@@ -195,7 +229,7 @@ class_pool(s, own(_,_), float).
 class_pool(d, own(_,_), float).
 class_pool(x, _, wide).
 
-% The pools' states st(Scalar, Pointer, Float), each Slots-Count.
+% The pools' states st(Scalar, Pointer, Float, Address), each Slots-Count.
 allocate([], _, St, St, Ps, Ps).
 allocate([range(Start, End, Pool, N)|Rs], Pooled, St0, St,
          [N-storage(Pool, I)|Ps0], Ps) :-
@@ -204,14 +238,16 @@ allocate([range(Start, End, Pool, N)|Rs], Pooled, St0, St,
 
 % An own scalar temporary gets a new slot that nothing reuses: only
 % pooled temporaries are entered in the reuse list.
-pool_slot(scalar, own, _, _, st(SS-N0, P, F), st(SS-N, P, F), N0) :- !,
+pool_slot(scalar, own, _, _, st(SS-N0, P, F, A), st(SS-N, P, F, A), N0) :- !,
     N is N0 + 1.
-pool_slot(scalar, all, S, E, st(SS0-N0, P, F), st(SS-N, P, F), I) :-
+pool_slot(scalar, all, S, E, st(SS0-N0, P, F, A), st(SS-N, P, F, A), I) :-
     reuse_slot(SS0, S, E, N0, N, SS, I).
-pool_slot(pointer, _, S, E, st(C, PS0-N0, F), st(C, PS-N, F), I) :-
+pool_slot(pointer, _, S, E, st(C, PS0-N0, F, A), st(C, PS-N, F, A), I) :-
     reuse_slot(PS0, S, E, N0, N, PS, I).
-pool_slot(float, _, S, E, st(C, P, FS0-N0), st(C, P, FS-N), I) :-
+pool_slot(float, _, S, E, st(C, P, FS0-N0, A), st(C, P, FS-N, A), I) :-
     reuse_slot(FS0, S, E, N0, N, FS, I).
+pool_slot(address, _, S, E, st(C, P, F, AS0-N0), st(C, P, F, AS-N), I) :-
+    reuse_slot(AS0, S, E, N0, N, AS, I).
 
 % One end point per physical slot, not an interference graph. Reuse only
 % strictly disjoint intervals: results cannot overwrite their operands.

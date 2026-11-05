@@ -118,6 +118,7 @@
 :- use_module(filc_abi).
 :- use_module(cfg, [edge_label/2, inst_def/2]).
 :- use_module(check_share, [share_mode/1, shared_blocks/4, share_bounds//4, shared_uppers/2]).
+:- use_module(lower_roots, [lowers_mode/1]).
 
 %! filc_module_asm(+Module, -Lines) is det.
 %
@@ -324,9 +325,11 @@ placed_lines(Mode, Branches, Func, Item0, Lines, function(Name,Report), Groups) 
     sort(DKs0, DKs), group_pairs_by_key(DKs, ShadowGroups),
     findall(home(D,Ks), member(D-Ks, ShadowGroups), Shadows),
     % Pointers mode: each pointer pool slot's address word is a home of
-    % class a; its lower stays in lowers[] (docs/perf.md 5b-2).
+    % class a; its lower stays in lowers[] (docs/perf.md 5b-2). So is a
+    % derived pointer's address slot (docs/lowers.md).
     findall(home(D,[a]), ( HomeKind == pointers,
-                           gen_assoc(storage(pointer,_), Slots, Off), D is -Off ), Pointers),
+                           ( gen_assoc(storage(pointer,_), Slots, Off)
+                           ; gen_assoc(storage(address,_), Slots, Off) ), D is -Off ), Pointers),
     % The GC roots, which no home may overlap: the frame record (parent,
     % origin and lowers[], stack-aux and jmpbuf roots included) and each
     % local object's payload and aux words.
@@ -369,6 +372,7 @@ cell_key(lower(_)).
 cell_key(storage(scalar,_)).
 cell_key(storage(float,_)).
 cell_key(storage(pointer,_)).
+cell_key(storage(address,_)).
 cell_key(shadow(_)).
 cell_key(shadow_slot(_,_)).
 cell_key(thread).
@@ -1570,44 +1574,49 @@ pollcheck(Ctx, Block, Tag) -->
 phi_reads([], _, _) --> [].
 phi_reads([phi(tmp(D), K, Pairs)|Phis], From, Ctx) -->
     { memberchk(From-V, Pairs) },
-    phi_read(K, V, D, Ctx),
+    phi_read(K, V, D, Pairs, Ctx),
     phi_reads(Phis, From, Ctx).
 
 % The incoming value V, of class K, into the shadow slots of phi tmp(D).
-phi_read(p, V, D, Ctx) -->
+% A shared phi's lower is already in its entry (shared_phi/3).
+phi_read(p, V, D, Pairs, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     load(V, l, a, Fn),
     reg_slot_store(rax, shadow(D), Ctx),
-    lower_reg_load(V, rax, Ctx),
-    reg_slot_store(rax, lower(shadow(D)), Ctx).
-phi_read(w, V, D, Ctx) -->
+    (   { shared_phi_lower(D, Pairs, Ctx) } -> []
+    ;   lower_reg_load(V, rax, Ctx),
+        reg_slot_store(rax, lower(shadow(D)), Ctx)
+    ).
+phi_read(w, V, D, _, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     load(V, w, a, Fn),
     reg_slot_store(rax, shadow(D), Ctx).
-phi_read(l, V, D, Ctx) -->
+phi_read(l, V, D, _, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     load(V, l, a, Fn),
     reg_slot_store(rax, shadow(D), Ctx).
-phi_read(K,V,D,Ctx) -->
+phi_read(K,V,D,_,Ctx) -->
     { float_class(K), ctx_fn(Ctx,Fn) },
     load(V,K,a,Fn), reg_slot_store(rax,shadow(D),Ctx).
 
 % The second half of the parallel copy: each phi's shadow into the phi.
 phi_writes([], _) --> [].
-phi_writes([phi(tmp(D), K, _)|Phis], Ctx) -->
+phi_writes([phi(tmp(D), K, Pairs)|Phis], Ctx) -->
     slot_reg_load(shadow(D), rax, Ctx),
     reg_slot_store(rax, tmp(D), Ctx),
-    phi_lower_write(K, D, Ctx),
+    phi_lower_write(K, D, Pairs, Ctx),
     phi_writes(Phis, Ctx).
 
-% For a p phi tmp(D), its shadow lower into its lower.
-phi_lower_write(p, D, Ctx) -->
-    slot_reg_load(lower(shadow(D)), rax, Ctx),
-    reg_slot_store(rax, lower(tmp(D)), Ctx).
-phi_lower_write(w, _, _) --> [].
-phi_lower_write(l, _, _) --> [].
-phi_lower_write(s, _, _) --> [].
-phi_lower_write(d, _, _) --> [].
+% For a p phi tmp(D), its shadow lower into its lower, unless it is shared.
+phi_lower_write(p, D, Pairs, Ctx) -->
+    (   { shared_phi_lower(D, Pairs, Ctx) } -> []
+    ;   slot_reg_load(lower(shadow(D)), rax, Ctx),
+        reg_slot_store(rax, lower(tmp(D)), Ctx)
+    ).
+phi_lower_write(w, _, _, _) --> [].
+phi_lower_write(l, _, _, _) --> [].
+phi_lower_write(s, _, _, _) --> [].
+phi_lower_write(d, _, _, _) --> [].
 
 % The lower of a p value: its lowers[] entry, or 0 for a constant.
 lower_reg_load(tmp(N), Reg, Ctx) --> slot_reg_load(lower(tmp(N)), Reg, Ctx).
@@ -1623,6 +1632,22 @@ flight_load(V, Ctx) -->
 flight_store(D, Ctx) -->
     reg_slot_store(rax, tmp(D), Ctx),
     reg_slot_store(rcx, lower(tmp(D)), Ctx).
+
+% shared_lower(+Lower, +D, +Ctx): the flight tmp(D)'s lower is its donor
+% P's lowers[] entry (--lowers=shared, docs/lowers.md), which already
+% holds it, so the flight neither loads nor stores a lower
+% (lowers_check.pl validates that the entry does hold it).
+shared_lower(lower(tmp(P)), D, Ctx) :-
+    P \== D, ctx_slot(Ctx, lower(tmp(P)), Off), ctx_slot(Ctx, lower(tmp(D)), Off).
+
+% shared_phi_lower(+D, +Pairs, +Ctx): under --lowers=shared, every input
+% in Pairs of the p phi tmp(D) is a temporary whose lowers[] entry is
+% the phi's, so the edge copies no lower (lowers_check.pl validates that
+% the entry holds the input's lower at the end of each predecessor).
+shared_phi_lower(D, Pairs, Ctx) :-
+    lowers_mode(shared),
+    ctx_slot(Ctx, lower(tmp(D)), Off),
+    forall(member(_-V, Pairs), ( V = tmp(N), ctx_slot(Ctx, lower(tmp(N)), Off) )).
 
 %% Instructions
 
@@ -1647,10 +1672,15 @@ inst(let(tmp(D), K, Op, Args), Index, Block, Ctx) -->
     { op_kind(Op, Kind) },
     kind_inst(Kind, K, Op, Args, D, Index, Block, Ctx).
 inst(flight(tmp(D), Op, [A|Args], Lower), _, _, Ctx) -->
-    flight_address_load(A, a, Ctx),
-    flight_lower_load(Lower, Ctx),
-    flight_calculation(Op, Args, Ctx),
-    flight_store(D, Ctx).
+    (   { shared_lower(Lower, D, Ctx) }
+    ->  flight_address_load(A, a, Ctx),
+        flight_calculation(Op, Args, Ctx),
+        reg_slot_store(rax, tmp(D), Ctx)
+    ;   flight_address_load(A, a, Ctx),
+        flight_lower_load(Lower, Ctx),
+        flight_calculation(Op, Args, Ctx),
+        flight_store(D, Ctx)
+    ).
 inst(fused(check(_, Size, Rights, Align), Access), Index, Block, Ctx) -->
     { access_pointer(Access, P),
       rights_write(Rights, Write) },

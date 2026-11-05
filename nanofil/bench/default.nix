@@ -55,6 +55,7 @@ let
     O-hull = "-O --checks=hull";
     O-getter = "-O --checks=getter";
     O-extended = "-O --checks=extended";
+    O-lowers = "-O --lowers=shared";
   };
   chosen =
     if only == "" then

@@ -78,7 +78,7 @@ pkgs.runCommandCC "nanofil-check"
     step "run-c interop gc float" tests/par.sh tests/filc/run-c.sh interop gc float asm-fixed
     step "variadic+float gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh variadic float
     step "setjmp gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh setjmp
-    step "pointer+exception gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh pointer-effects lower-donor exceptions reuse-gc
+    step "pointer+exception gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh pointer-effects lower-donor exceptions reuse-gc lowers
     step "actual ensure-aux exits" tests/filc/trace-pointer-effects.sh
     step "difftest c/*.c" tests/par.sh tests/difftest.sh tests/c/*.c
     step reject tests/reject.sh
@@ -151,7 +151,7 @@ pkgs.runCommandCC "nanofil-check"
     step "-O run-c interop gc float" tests/par.sh tests/filc/run-c.sh interop gc float asm-fixed
     step "-O variadic+float gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh variadic float
     step "-O setjmp gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh setjmp
-    step "-O pointer+exception gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh pointer-effects lower-donor exceptions
+    step "-O pointer+exception gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh pointer-effects lower-donor exceptions lowers
     step "-O actual ensure-aux exits" tests/filc/trace-pointer-effects.sh
     step "-O progtest" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     step "-O progtest gc-stress" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
@@ -297,6 +297,23 @@ pkgs.runCommandCC "nanofil-check"
     step "share -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
     unset NANOFIL_OPT NANOFIL_SHARE
     step "share smt" python3 tests/share_smt.py
+    # Shared lowers (docs/lowers.md), opt-in: a flight or phi uses its
+    # lower root's lowers[] entry, kept while it is live, and
+    # lowers_check validates every frame (a rejection fails the
+    # compile). The corpus compiles under -O, so the checker sees every
+    # frame the producer makes; lowers.ir has a root dead, and one
+    # written again, while its flight is live across a collection.
+    export NANOFIL_LOWERS=shared
+    for opt in "" -O; do
+      export NANOFIL_OPT=$opt
+      step "lowers $opt difftest" tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir tests/backend/*.ir tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/filc/share.ir tests/filc/branches.ir tests/c/*.c big1.c
+      step "lowers $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc lowers asm-fixed
+      step "lowers $opt actual ensure-aux exits" tests/filc/trace-pointer-effects.sh
+      step "lowers $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    done
+    step "lowers -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    step "lowers temps ABI+GC" env NANOFIL_REGISTERS=temps RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh gc setjmp pointer-effects reuse-gc lowers
+    unset NANOFIL_OPT NANOFIL_LOWERS
     step "share trap text vs filcc" tests/share-trap.sh
     # Half checks (docs/half.md), opt-in: renewal, then each check of an
     # object an earlier dominating check proved at another range tests only

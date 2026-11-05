@@ -95,6 +95,13 @@
     with `-O`, except with `--checks=reference`, and none otherwise;
     NANOFIL_SHARE supplies the same choice.
 
+    `--lowers=own|shared` selects the frame's GC roots: own, the
+    default, gives every pointer temporary its own `lowers[]` entry;
+    shared lets a flight use its lower root's entry, kept while the
+    flight is live, and validates every frame (src/lower_roots.pl,
+    src/lowers_check.pl, docs/lowers.md). NANOFIL_LOWERS supplies the
+    same choice.
+
     `--inline=none|small` independently selects no inlining, or, with
     `-O`, inlining of small static functions before promotion
     (src/inline.pl, docs/perf.md item 4). The default is small with
@@ -192,7 +199,8 @@ main :-
     % halt/1 outside catch/3: SWI implements halt as an exception.
     catch(( ( vectors_options(Argv0, ArgvV),
               bounds_options(ArgvV, ArgvB),
-              share_options(ArgvB, Argv00),
+              share_options(ArgvB, ArgvS),
+              lowers_options(ArgvS, Argv00),
               register_default(Default),
               checks_default(Checks0),
               inline_default(Inline0),
@@ -282,6 +290,18 @@ share_options(Argv0, Argv) :-
     ;   true
     ).
 share_option(A) :- atom(A), atom_concat('--share=', _, A).
+% lowers_options(+Argv0, -Argv): Argv is Argv0 less its --lowers=
+% options, the last of which sets NANOFIL_LOWERS (lower_roots:lowers_mode/1).
+lowers_options(Argv0, Argv) :-
+    exclude(lowers_option, Argv0, Argv),
+    (   include(lowers_option, Argv0, Opts), last(Opts, Opt)
+    ->  atom_concat('--lowers=', S, Opt),
+        (   memberchk(S, [own, shared]) -> setenv('NANOFIL_LOWERS', S)
+        ;   throw(nanofil_error('lowers must be own or shared'))
+        )
+    ;   true
+    ).
+lowers_option(A) :- atom(A), atom_concat('--lowers=', _, A).
 % inline_options(+Argv0, +Inline0, -Inline, -Argv): Argv is Argv0 less
 % its --inline= options, the last of which gives Inline.
 inline_options([], I, I, []).

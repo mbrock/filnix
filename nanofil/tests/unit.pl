@@ -34,6 +34,7 @@
 :- use_module('local_storage').
 :- use_module('registers').
 :- use_module('regs_check').
+:- use_module('lowers_check').
 :- use_module(library(assoc)).
 :- use_module(library(pio)).
 :- use_module(library(clpz)).
@@ -105,6 +106,7 @@ test(local_storage_selection) :- local_selection.
 test(scalar_cache) :- scalar_cache.
 test(regs_checker) :- regs_checker.
 test(operands_checker) :- operands_checker.
+test(lowers_checker) :- lowers_checker.
 % A function that indexes a local array still gets register homes: the
 % local's address is a constant-offset lea after its range check
 % (docs/perf.md item 3c), not an indexed frame operand, which 3a's

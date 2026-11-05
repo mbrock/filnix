@@ -1164,7 +1164,14 @@ fast and generic entries, setjmp snapshots, origins and signatures. It
 never inserts instructions. Next: filc_amd64's *Functions* section.
 
 **[frame_slots.pl](../src/frame_slots.pl)**: slot sharing by disjoint
-closed live intervals, in pools (pointer, scalar, float, wide).
+closed live intervals, in pools (pointer, scalar, float, wide, and
+address for derived pointers).
+
+**[lower_roots.pl](../src/lower_roots.pl)** and
+**[lowers_check.pl](../src/lowers_check.pl)**: opt-in shared lowers, a
+flight or phi rooted through its lower root's `lowers[]` entry, and the
+checker that validates every such frame against the GC-root contract.
+Next: [docs/lowers.md](lowers.md).
 
 **[filc_amd64.pl](../src/filc_amd64.pl)**: places the plan and emits
 instructions. Its `%%` sections are the map: ABI facts, frame layout,

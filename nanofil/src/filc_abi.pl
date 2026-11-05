@@ -39,6 +39,8 @@
 :- use_module(library(ordsets)).
 :- use_module(ir).
 :- use_module(frame_slots).
+:- use_module(lower_roots, [lowers_mode/1, derived_lowers/3]).
+:- use_module(lowers_check, [check_lowers/4]).
 
 %! lower_function(+Symbols, +FusedFunction, +LiveBlocks, -Product) is det.
 %
@@ -65,6 +67,8 @@ lower_function(Pools, Module, Func, LiveBlocks,
     return_protocol(Ret, Return),
     body_params(Func, Params, BodyParams),
     frame(Pools, BodyParams, LiveBlocks, Return, Frame, Snapshots),
+    % Shared lowers (docs/lowers.md) are validated, not trusted.
+    (   lowers_mode(shared) -> check_lowers(Name, BodyParams, LiveBlocks, Frame) ; true ),
     Frame = frame(Plain, Roots, _), length(Roots, NRoots),
     findall(N, member(local(N, _), Plain), LocalNames), length(LocalNames, NLocals),
     fast_params(BodyParams, Incoming),
@@ -238,12 +242,17 @@ class_count(PerBlock, C, [C-M|Cs], Cs) :-
     max_list([0|Ls], M), M > 0, !.
 class_count(_, _, Cs, Cs).
 
+% Under --lowers=shared a derived flight's address has a slot of its
+% own and its lower is its root's lowers[] entry (lower_roots.pl).
 temp_storage([], Pools, Ps, Bs, Temps, Keys, Lowers, Aliases) :-
-    temp_slots(Pools, Ps, Bs, Temps, Map, NS, NP, NW, NF),
+    (   lowers_mode(shared) -> derived_lowers(Ps, Bs, Derived) ; empty_assoc(Derived) ),
+    temp_slots(Pools, Derived, Ps, Bs, Temps, Map, NS, NP, NW, NF, NA),
     storage_keys(scalar, NS, Scalars), storage_keys(float, NF, Floats),
     storage_keys(pointer, NP, Pointers), storage_keys(wide, NW, Wides),
-    append([Scalars, Floats, Pointers, Wides], Keys), maplist(storage_lower, Pointers, Lowers),
-    assoc_to_list(Map, Pairs), foldl(storage_alias, Pairs, Aliases, []).
+    storage_keys(address, NA, Addresses),
+    append([Scalars, Floats, Pointers, Addresses, Wides], Keys),
+    maplist(storage_lower, Pointers, Lowers),
+    assoc_to_list(Map, Pairs), foldl(storage_alias(Map, Derived), Pairs, Aliases, []).
 temp_storage([_|_], _, _, _, Temps, _, _, _) :-
     memberchk(_-x, Temps), !,
     throw(nanofil_error('long double in a function that calls setjmp is not supported')).
@@ -253,11 +262,14 @@ temp_storage([_|_], _, _, _, Temps, Keys, Lowers, []) :-
 storage_keys(Pool, N, Keys) :-
     Last is N - 1, findall(storage(Pool, I), between(0, Last, I), Keys).
 storage_lower(Key, lower(Key)).
-storage_alias(N-storage(pointer,I),
+storage_alias(_, _, N-storage(pointer,I),
               [tmp(N)-storage(pointer,I),lower(tmp(N))-lower(storage(pointer,I))|As], As) :- !.
-storage_alias(N-storage(scalar,I), [tmp(N)-storage(scalar,I)|As], As) :- !.
-storage_alias(N-storage(float,I), [tmp(N)-storage(float,I)|As], As) :- !.
-storage_alias(N-storage(wide,I), [tmp(N)-storage(wide,I)|As], As).
+storage_alias(Map, Derived, N-storage(address,I),
+              [tmp(N)-storage(address,I),lower(tmp(N))-lower(storage(pointer,J))|As], As) :- !,
+    get_assoc(N, Derived, R), get_assoc(R, Map, storage(pointer,J)).
+storage_alias(_, _, N-storage(scalar,I), [tmp(N)-storage(scalar,I)|As], As) :- !.
+storage_alias(_, _, N-storage(float,I), [tmp(N)-storage(float,I)|As], As) :- !.
+storage_alias(_, _, N-storage(wide,I), [tmp(N)-storage(wide,I)|As], As).
 return_storage(registers, []).
 return_storage(buffer(_), [retbuf]).
 inst_dest(let(tmp(N), K, _, _), N, K).
