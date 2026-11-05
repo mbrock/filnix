@@ -519,6 +519,10 @@
           nixosConfigurations.amazon = self.lib.nixosSystem {
             modules = [ (import ./nixos/amazon.nix { filnix = self; }) ];
           };
+          # https://filc.less.rest, on that AMI; see nixos/demo-wiki.nix.
+          nixosConfigurations.demo-wiki = self.lib.nixosSystem {
+            modules = [ (import ./nixos/demo-wiki.nix { filnix = self; }) ];
+          };
 
           # The finix machine with a Fil-C userland; see finix/demo.nix.
           finixConfigurations.filc-demo = (import finix).lib.finixSystem {
@@ -538,6 +542,7 @@
             nixosTests = import ./tests/nixos {
               inherit pkgs pkgsFilc;
               filcModule = self.nixosModules.default;
+              filnix = self;
             };
           };
 

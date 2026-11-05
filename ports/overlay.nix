@@ -814,6 +814,32 @@ portDSL.makeOverlay portList final prev
   # default 1.89 builds its assembly fcontext and fails.
   boost = final.boost187;
 
+  # mount(8) stopped in libmount's NULL-argument probes. Only the full
+  # util-linux has mount(8); util-linuxMinimal (libuuid and libblkid for
+  # nearly everything) is made from this one, so leave its pname alone.
+  util-linux = prev.util-linux.overrideAttrs (
+    old:
+    pkgs.lib.optionalAttrs (old.pname == "util-linux") {
+      patches = (old.patches or [ ]) ++ [
+        ../patches/util-linux-libmount-probe-null.patch
+      ];
+    }
+  );
+
+  # Nixpkgs' `openssh` is `opensshPackages.openssh` with /etc/ssh, and its
+  # tests build variants with `opensshPackages.openssh.override`. Port that
+  # one, so the variants keep the port, and derive `openssh` from it as
+  # Nixpkgs does (`prev.openssh` reads this set, and would be ported twice).
+  openssh = final.opensshPackages.openssh.override { etcDir = "/etc/ssh"; };
+  opensshPackages = prev.opensshPackages // {
+    inherit
+      (portDSL.makeOverlay portList final (
+        prev // { inherit (prev.opensshPackages) openssh; }
+      ))
+      openssh
+      ;
+  };
+
   # Default PHP; versioned packages remain available (docs/php.md).
   php = final.php85;
   php85 = mkFilcPhp {

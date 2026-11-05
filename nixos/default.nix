@@ -5,7 +5,12 @@
 #   imports = [ filnix.nixosModules.default ];
 #   filc.enable = true;
 { filnix }:
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 {
   imports = [
     (import ../lib/filc-system.nix {
@@ -25,5 +30,30 @@
     system.nssModules = lib.mkIf (!config.services.nscd.enable) (lib.mkForce [ ]);
 
     nix.settings.sandbox = lib.mkIf (!config.filc.nativeNix) false;
+
+    # PrivateUsers= makes systemd unshare(CLONE_NEWUSER), which the kernel
+    # refuses a multithreaded process, and the Fil-C runtime always runs
+    # threads of its own: every unit with it (mosquitto, redis, tor, ...)
+    # failed at step USER. Turn it off; their other sandboxing stays. Since
+    # "no" is the default, a drop-in for all services changes just the units
+    # that set it, upstream unit files included. The name sorts after units'
+    # own drop-ins. docs/filc-findings.md has the runtime side.
+    systemd.packages = [
+      (pkgs.writeTextDir "etc/systemd/system/service.d/zz-filc-no-private-users.conf" ''
+        [Service]
+        PrivateUsers=no
+      '')
+      # Mount units run systemd's mount(8), from util-linux-minimal, whose
+      # libmount probes the new mount API with fsopen(NULL) when it uses a
+      # helper (mount.davfs, mount.nfs, FUSE), and the Fil-C runtime stops
+      # it there. Patching util-linux-minimal would rebuild nearly every
+      # package, so these use the classic mount(2) instead; the full
+      # util-linux, whose mount(8) is on PATH, carries the fix
+      # (docs/filc-findings.md).
+      (pkgs.writeTextDir "etc/systemd/system/mount.d/zz-filc-classic-mount.conf" ''
+        [Mount]
+        Environment=LIBMOUNT_FORCE_MOUNT2=always
+      '')
+    ];
   };
 }

@@ -86,3 +86,35 @@ To remove everything:
 3. Delete the roles `filnix-release-ami` and `vmimport`, and the OIDC
    provider if nothing else uses it.
 4. Delete the `aws-ami` environment in the repository settings.
+
+## filc.less.rest
+
+`nixosConfigurations.demo-wiki` (nixos/demo-wiki.nix) is a public Fil-C
+server: MediaWiki on Fil-C PHP-FPM behind Fil-C lighttpd, with SQLite, on
+one t3.medium in this account, booted from the AMI. It is built to be
+broken into at no cost:
+
+- no IAM instance profile, and IMDSv2 required with a hop limit of 1;
+- no tokens or private keys on the machine but its own TLS key, which
+  lego (Go, a `filc.native` exception) gets from Let's Encrypt over HTTP-01;
+- ports 80 and 443 open, 22 with keys only (root, the owner's key pair);
+- the wiki is read-only for anonymous users, with account creation off;
+- updates are pulled: `filnix-update.timer` switches to `demo-wiki` at the
+  latest `v*` release every 6 hours with `max-jobs 0`, so it only
+  substitutes from filc.cachix.org (the toplevel is in
+  `scripts/ci-outputs.txt`). Nothing can push to it;
+- https://filc.less.rest/status/ shows `filc-ps` every 5 minutes.
+
+`scripts/launch-demo-wiki --ami AMI --tag vX --public-key KEY.pub` launches
+it with an account session that may create instances (the release role
+cannot). Without `--yes` it prints the commands. It creates, tagged
+`project=filnix`: the security group and key pair `filnix-demo-wiki`, the
+instance with user data `#filnix github:mbrock/filnix/vX#demo-wiki`, and an
+Elastic IP. On first boot the AMI's `filnix-first-switch` service switches
+to that configuration. Then point the `filc` A record in less.rest (on
+DNSimple; the wildcard points elsewhere) at the Elastic IP; ACME succeeds
+once it resolves (`systemctl start acme-order-renew-filc.less.rest` to retry
+at once).
+
+To take it down: terminate the instance, release the Elastic IP, delete the
+security group and key pair `filnix-demo-wiki`, and remove the A record.

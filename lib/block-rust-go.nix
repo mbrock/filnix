@@ -7,6 +7,13 @@
 # in rustc's or Go's platform tables. Native tools used at build time are
 # unaffected: they come from buildPackages, whose stdenv this adapter does not
 # touch.
+#
+# Servers whose processes share memory that holds pointers are refused the
+# same way: the PostgreSQL server and Apache here, nginx in ports.nix. Fil-C
+# keeps each pointer's capability in the process's own shadow memory, so a
+# pointer one process stores in shared memory has none in another
+# (docs/nixos-userland.md). Their client libraries, such as libpq, are
+# separate packages and stay Fil-C.
 { lib, stdenvAdapters }:
 let
   compiler =
@@ -17,7 +24,11 @@ let
       );
       isRust = n: n == "rustc" || n == "cargo" || lib.hasSuffix "-cargo" n;
     in
-    if lib.any isRust names || (attrs.cargoDeps or null) != null then
+    if (attrs.pname or null) == "postgresql" then
+      "PostgreSQL"
+    else if (attrs.pname or null) == "apache-httpd" then
+      "Apache"
+    else if lib.any isRust names || (attrs.cargoDeps or null) != null then
       "Rust"
     else if lib.elem "go" names then
       "Go"
@@ -40,9 +51,20 @@ stdenvAdapters.overrideMkDerivationArgs (
             kind = "broken";
             message =
               let
-                name = old.pname or (lib.getName (old.name or "it"));
+                name =
+                  if blocked == "PostgreSQL" then
+                    "postgresql_${lib.versions.major old.version}"
+                  else if blocked == "Apache" then
+                    "apacheHttpd"
+                  else
+                    old.pname or (lib.getName (old.name or "it"));
+                why =
+                  if blocked == "PostgreSQL" || blocked == "Apache" then
+                    "${blocked} cannot be Fil-C: its processes share memory that holds pointers, and a Fil-C pointer's capability does not cross processes."
+                  else
+                    "${blocked} has no Fil-C target.";
               in
-              "${blocked} has no Fil-C target. Take the native build instead, with filc.native = native: { inherit (native) ${name}; }; in your system's configuration, or leave it out.";
+              "${why} Take the native build instead, with filc.native = native: { inherit (native) ${name}; }; in your system's configuration, or leave it out.";
           };
         };
     };

@@ -24,6 +24,7 @@ in
     "${modulesPath}/virtualisation/amazon-image.nix"
   ];
 
+  filnix.configuration = lib.mkDefault "amazon";
   # EC2 names the host otherwise; /etc/nixos/flake.nix names the
   # configuration after it.
   networking.hostName = "filc";
@@ -34,6 +35,41 @@ in
   # It turns user data into /etc/nixos/configuration.nix for channels, and
   # brings in git; this machine's configuration is the flake in /etc/nixos.
   virtualisation.amazon-init.enable = false;
+
+  # Instead, user data of the form `#filnix FLAKE#CONFIGURATION` switches
+  # the machine to that configuration once, at first boot, substituting
+  # everything (scripts/launch-demo-wiki uses it). Other user data is ignored.
+  systemd.services.filnix-first-switch = {
+    description = "Switch to the configuration named in the user data";
+    wantedBy = [ "multi-user.target" ];
+    wants = [ "network-online.target" ];
+    after = [
+      "network-online.target"
+      "fetch-ec2-metadata.service"
+    ];
+    unitConfig.ConditionPathExists = "!/var/lib/filnix-first-switch/done";
+    path = [
+      config.nix.package
+      config.system.build.nixos-rebuild
+    ];
+    serviceConfig = {
+      Type = "oneshot";
+      StateDirectory = "filnix-first-switch";
+      # Switching restarts other units; this one must not be restarted.
+      RemainAfterExit = true;
+    };
+    restartIfChanged = false;
+    script = ''
+      ref=$(sed -n '1s/^#filnix \([^ ]*\)$/\1/p' /etc/ec2-metadata/user-data 2>/dev/null || true)
+      if [ -z "$ref" ]; then
+        echo "no #filnix line in the user data"
+      else
+        echo "switching to $ref"
+        nixos-rebuild switch --flake "$ref" --option max-jobs 0 --option builders ""
+      fi
+      touch /var/lib/filnix-first-switch/done
+    '';
+  };
 
   system.build.ami = import "${native.path}/nixos/lib/make-disk-image.nix" {
     pkgs = native;

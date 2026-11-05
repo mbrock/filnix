@@ -1,0 +1,27 @@
+libmount probes the new mount API with fsopen(NULL, ...) and
+mount_setattr(-1, NULL, ...), expecting the kernel to fail with ENOSYS when
+it lacks them. The Fil-C runtime reads its string arguments before the
+system call, so the NULL stopped every mount(8) ("cannot read pointer with
+null object" in zsys_fsopen). An empty string gets the same answer from
+the kernel: an error other than ENOSYS where the call exists.
+
+--- a/libmount/src/hook_mount.c
++++ b/libmount/src/hook_mount.c
+@@ -587,7 +587,7 @@
+ 	int dummy, rc = 1;
+ 
+ 	errno = 0;
+-	dummy = fsopen(NULL, FSOPEN_CLOEXEC);
++	dummy = fsopen("", FSOPEN_CLOEXEC);
+ 
+ 	if (errno == ENOSYS)
+ 		rc = 0;
+@@ -601,7 +601,7 @@
+ 	int rc;
+ 
+ 	errno = 0;
+-	rc = mount_setattr(-1, NULL, 0, NULL, 0);
++	rc = mount_setattr(-1, "", 0, NULL, 0);
+ 	return !(rc == -1 && errno == ENOSYS);
+ }
+ 

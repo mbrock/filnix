@@ -28,3 +28,5 @@ packages.x86_64-linux.nixos-image
 # Its EC2 variant, which ami.yml imports as the public AMI.
 packages.x86_64-linux.nixos-ami
 nixosConfigurations.base.config.system.build.toplevel
+# https://filc.less.rest pulls this at each release (nixos/demo-wiki.nix).
+nixosConfigurations.demo-wiki.config.system.build.toplevel

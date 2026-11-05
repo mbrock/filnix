@@ -15,6 +15,7 @@
   pkgs,
   pkgsFilc,
   filcModule,
+  filnix,
 }:
 let
   inherit (pkgs) lib;
@@ -63,6 +64,14 @@ let
         ];
       };
 
+  mediawikiPhp =
+    { pkgs, ... }:
+    {
+      services.mediawiki.phpPackage = pkgs.php84.buildEnv {
+        extensions = { all, enabled }: enabled ++ [ all.apcu ];
+      };
+    };
+
   # Tests whose nodes use Rust or Go programs, or nginx, keep those native.
   # nginx's processes share pointers through shared memory, which Fil-C
   # capabilities do not survive; on a Fil-C system the web server is lighttpd.
@@ -109,11 +118,24 @@ let
 in
 lib.mapAttrs (_: withFilc) {
   lighttpd = "${upstream}/lighttpd.nix";
-  # Its hidden service is served by Caddy, which is Go.
-  tor = native (n: { inherit (n) caddy; }) "${upstream}/tor.nix";
+  # Its hidden service is served by Caddy, which is Go, and its client
+  # side runs arti, the Rust Tor.
+  tor = native (n: { inherit (n) caddy arti; }) "${upstream}/tor.nix";
   bind = "${upstream}/bind.nix";
-  openssh = "${upstream}/openssh.nix";
-  unbound = {
+  openssh = {
+    imports = [ "${upstream}/openssh.nix" ];
+    # Its OpenSSH without OpenSSL can't use the Fil-C PAM: pam_unix's
+    # crypt_r from libxcrypt doesn't resolve in that sshd (an open issue).
+    # The node runs the regular Fil-C OpenSSH instead.
+    nodes.server-no-openssl =
+      { pkgs, lib, ... }:
+      {
+        services.openssh.package = lib.mkForce pkgs.openssh;
+      };
+  };
+  # Its DNS client is knot-dns's kdig; the Fil-C knot-dns stops in its own
+  # test suite (open, docs/nixos-userland.md).
+  unbound = native (n: { inherit (n) knot-dns; }) {
     imports = [ "${upstream}/unbound.nix" ];
     # Without the Python plugin, which the test doesn't use: its configure
     # runs the host's python, which a cross build can't.
@@ -127,6 +149,7 @@ lib.mapAttrs (_: withFilc) {
   };
   mosquitto = "${upstream}/mosquitto.nix";
   redis = ./redis.nix;
+  demo-wiki = import ./demo-wiki.nix { inherit filnix; };
   php-lighttpd = ./php-lighttpd.nix;
 
   # Nixpkgs runs this with PHP and APCu behind nginx, here native.
@@ -137,22 +160,48 @@ lib.mapAttrs (_: withFilc) {
     };
   };
 
-  # Both also run behind Caddy, which is Go, and nginx.
-  wordpress = native (n: { inherit (n) caddy nginxStable; }) (
-    phpApp 2048 "${upstream}/wordpress.nix"
-  );
+  # Both also run behind Caddy, which is Go, and nginx; WordPress also
+  # behind Apache, which isn't ported. Each talks to Fil-C PHP-FPM.
+  wordpress = native (n: {
+    inherit (n)
+      caddy
+      nginxStable
+      apacheHttpd
+      mariadb
+      ;
+  }) (phpApp 2048 "${upstream}/wordpress.nix");
   dokuwiki = native (n: { inherit (n) caddy nginxStable; }) (
     phpApp 2048 "${upstream}/dokuwiki.nix"
   );
 }
-# mediawiki-mysql, -postgresql, -sqlite, -nohttpd and -nginx.
+# mediawiki-mysql, -postgresql, -sqlite, -nohttpd and -nginx, on Fil-C PHP
+# 8.4: the module's default is 8.3, which is not ported. Their Apache and
+# nginx, in front of PHP-FPM, are native.
 //
   lib.mapAttrs'
     (
-      n: t:
-      lib.nameValuePair "mediawiki-${n}" (
+      n': t:
+      lib.nameValuePair "mediawiki-${n'}" (
         withFilc (
-          if n == "nginx" then native (n: { inherit (n) nginxStable; }) t else t
+          let
+            t' = {
+              imports = [ t ];
+              defaults = mediawikiPhp;
+            };
+          in
+          # MariaDB, the default database, is not ported yet; Apache and
+          # nginx are not either.
+          native (
+            n:
+            {
+              inherit (n) mariadb;
+            }
+            // lib.optionalAttrs (n' != "nohttpd" && n' != "nginx") {
+              inherit (n) apacheHttpd;
+            }
+            // lib.optionalAttrs (n' == "nginx") { inherit (n) nginxStable; }
+            // lib.optionalAttrs (n' == "postgresql") { inherit (n) postgresql_17; }
+          ) t'
         )
       )
     )
@@ -170,12 +219,27 @@ lib.mapAttrs (_: withFilc) {
 //
   lib.mapAttrs'
     (
-      n: t:
+      test: t:
       lib.nameValuePair
-        "nextcloud-${lib.removeSuffix "34" (lib.removeSuffix "35" n)}"
+        "nextcloud-${lib.removeSuffix "34" (lib.removeSuffix "35" test)}"
         (
           withFilc (
-            native (n: { inherit (n) nginxStable nextcloud-notify_push; }) (phpApp 4096 t)
+            native (
+              n:
+              {
+                inherit (n) nginxStable nextcloud-notify_push;
+                # The test's WebDAV client: the Fil-C mount.davfs daemon
+                # stops after it forks (open, docs/nixos-userland.md).
+                inherit (n) davfs2;
+              }
+              # MariaDB is not ported yet.
+              // lib.optionalAttrs (lib.hasInfix "mysql" test) { inherit (n) mariadb; }
+              # This one also runs notify_push's (Rust) test client.
+              // lib.optionalAttrs (lib.hasInfix "postgresql" test) {
+                inherit (n) postgresql_17;
+                notify_push-test_client = n.nextcloud-notify_push.passthru.test_client;
+              }
+            ) (phpApp 4096 t)
           )
         )
     )

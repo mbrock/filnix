@@ -1893,3 +1893,45 @@ not atomically boxed without testing its slot. Both are core InvisiCap
 design questions; this is the evidence, not a proposal to change the
 runtime. Benchmarks: `a.c` and `k.c` in
 [this thread](https://ampcode.com/threads/T-01a1634e-c1c9-7582-9f19-79f3956e749f).
+
+## `unshare(CLONE_NEWUSER)` fails: a Fil-C process is never single-threaded
+
+The kernel refuses `unshare(CLONE_NEWUSER)` with `EINVAL` to a process that
+has more than one thread, and every Fil-C process runs the runtime's own
+threads (the collector's), even right after `fork`. So nothing compiled with
+Fil-C can enter a new user namespace. PHP's `pcntl_unshare_01` test fails
+this way, and so does systemd's `PrivateUsers=`: on a Fil-C NixOS, mosquitto,
+redis and tor stopped at step USER ("Failed to set up user namespacing:
+Invalid argument") until the module turned `PrivateUsers=` off for every
+service (nixos/default.nix). That is a sandboxing loss, listed in
+docs/nixos.md.
+
+A possible fix is a single-threaded window in the runtime: stop its threads,
+make the call, and start them again, at least for `unshare` and `setns` with
+`CLONE_NEWUSER` in a freshly forked child. It touches the collector's thread
+lifecycle, so it needs a soundness review before anyone starts it.
+
+## A NULL string argument to `fsopen` stops the program
+
+The runtime reads a system call's string arguments before making the call,
+and stops the program on a NULL one where the kernel would return `EFAULT`.
+libmount probes for the new mount API with `fsopen(NULL, FSOPEN_CLOEXEC)`
+and `mount_setattr(-1, NULL, …)` and only looks for `ENOSYS`, so `mount(8)`
+with a helper (`mount.davfs`, `mount.nfs`, FUSE) or a list of types
+stopped in `zsys_fsopen`. `patches/util-linux-libmount-probe-null.patch`
+passes `""`, which the kernel answers the same way; the userland VM test
+mounts with `-t tmpfs,ramfs` to keep it so. It patches only the full
+util-linux: systemd runs util-linux-minimal's mount(8), and patching that
+would rebuild nearly every package, so the NixOS module gives mount units
+`LIBMOUNT_FORCE_MOUNT2=always` (the classic `mount(2)`) instead. Passing a
+NULL string through as `EFAULT` in the runtime would fix both.
+
+## The Fil-C glibc's `preadv2` stops the program
+
+`preadv64v2` goes through glibc's cancellation path, which issues the
+system call with an inline `syscall` instruction; Fil-C refuses that
+assembly ("unsupported mnemonic for safe inline asm: syscall") and stops
+the program. lighttpd reads static files for HTTP/2 with `preadv2`, so the
+demo-wiki VM test's first static page stopped it. `pwritev2` likely shares
+the path. lighttpd is built with `ac_cv_func_preadv2=no` and falls back to
+`pread`; the fix belongs in the glibc port's system call wrappers.

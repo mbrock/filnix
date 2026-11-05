@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# Launch https://filc.less.rest (nixosConfigurations.demo-wiki) on EC2 from
+# the filnix AMI. Run it with an AWS session that may create security
+# groups, key pairs, instances and Elastic IPs; the release role cannot, on
+# purpose. Without --yes it only prints what it would do.
+#
+#   scripts/launch-demo-wiki --ami ami-0123 --tag v0.9.0 \
+#     --public-key ~/.ssh/id_ed25519.pub [--ssh-cidr 0.0.0.0/0] [--yes]
+#
+# What it creates, each tagged project=filnix:
+#   - security group filnix-demo-wiki: 80 and 443 from anywhere, 22 from
+#     --ssh-cidr (default anywhere; sshd takes keys only);
+#   - key pair filnix-demo-wiki from --public-key (root's SSH key);
+#   - a t3.medium with no instance profile, IMDSv2 required with hop limit
+#     1, a 20 GiB gp3 root volume, and the user data
+#     `#filnix github:mbrock/filnix/TAG#demo-wiki`, which makes the AMI's
+#     first boot switch to demo-wiki (nixos/amazon.nix);
+#   - an Elastic IP for it, which the filc A record points at.
+# docs/aws.md describes the machine and how to tear it down.
+set -euo pipefail
+
+region=eu-central-1
+type=t3.medium
+name=filnix-demo-wiki
+ssh_cidr=0.0.0.0/0
+ami= tag= pubkey= yes=
+
+while [ $# -gt 0 ]; do
+  case $1 in
+  --ami) ami=$2; shift 2 ;;
+  --tag) tag=$2; shift 2 ;;
+  --public-key) pubkey=$2; shift 2 ;;
+  --ssh-cidr) ssh_cidr=$2; shift 2 ;;
+  --region) region=$2; shift 2 ;;
+  --type) type=$2; shift 2 ;;
+  --yes) yes=1; shift ;;
+  *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
+[ -n "$ami" ] && [ -n "$tag" ] && [ -n "$pubkey" ] || {
+  sed -n '7,8p' "$0" >&2
+  exit 2
+}
+grep -q '^ssh-' "$pubkey" || { echo "$pubkey is not an SSH public key" >&2; exit 2; }
+
+export AWS_REGION=$region AWS_PAGER=
+tags() { echo "ResourceType=$1,Tags=[{Key=project,Value=filnix},{Key=Name,Value=$name}]"; }
+run() {
+  if [ -n "$yes" ]; then "$@"; else printf '+ %q' "$1"; shift; printf ' %q' "$@"; echo; fi
+}
+
+echo "account: $(aws sts get-caller-identity --query Account --output text), region $region"
+aws ec2 describe-images --image-ids "$ami" \
+  --query 'Images[0].[Name,Public,Tags[?Key==`project`].Value|[0]]' --output text
+
+vpc=$(aws ec2 describe-vpcs --filters Name=is-default,Values=true --query 'Vpcs[0].VpcId' --output text)
+[ "$vpc" != None ] || { echo "no default VPC in $region" >&2; exit 1; }
+echo "default VPC: $vpc"
+
+sg=$(aws ec2 describe-security-groups --filters Name=vpc-id,Values="$vpc" Name=group-name,Values="$name" \
+  --query 'SecurityGroups[0].GroupId' --output text)
+if [ "$sg" = None ]; then
+  if [ -n "$yes" ]; then
+    sg=$(aws ec2 create-security-group --vpc-id "$vpc" --group-name "$name" \
+      --description "filc.less.rest: HTTP, HTTPS, SSH with keys" \
+      --tag-specifications "$(tags security-group)" --query GroupId --output text)
+  else
+    run aws ec2 create-security-group --vpc-id "$vpc" --group-name "$name" \
+      --description "filc.less.rest: HTTP, HTTPS, SSH with keys" --tag-specifications "$(tags security-group)"
+    sg=SG_ID
+  fi
+  for port in 80 443; do
+    run aws ec2 authorize-security-group-ingress --group-id "$sg" --ip-permissions \
+      "IpProtocol=tcp,FromPort=$port,ToPort=$port,IpRanges=[{CidrIp=0.0.0.0/0}],Ipv6Ranges=[{CidrIpv6=::/0}]"
+  done
+  run aws ec2 authorize-security-group-ingress --group-id "$sg" --ip-permissions \
+    "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=$ssh_cidr}]"
+else
+  echo "security group $name exists: $sg"
+fi
+
+if aws ec2 describe-key-pairs --key-names "$name" >/dev/null 2>&1; then
+  echo "key pair $name exists"
+else
+  run aws ec2 import-key-pair --key-name "$name" --public-key-material "fileb://$pubkey" \
+    --tag-specifications "$(tags key-pair)"
+fi
+
+userdata="#filnix github:mbrock/filnix/$tag#demo-wiki"
+if [ -n "$yes" ]; then
+  instance=$(aws ec2 run-instances --image-id "$ami" --instance-type "$type" \
+    --key-name "$name" --security-group-ids "$sg" \
+    --metadata-options HttpEndpoint=enabled,HttpTokens=required,HttpPutResponseHopLimit=1 \
+    --block-device-mappings 'DeviceName=/dev/xvda,Ebs={VolumeSize=20,VolumeType=gp3,DeleteOnTermination=true}' \
+    --user-data "$userdata" \
+    --tag-specifications "$(tags instance)" "$(tags volume)" \
+    --query 'Instances[0].InstanceId' --output text)
+  echo "instance: $instance"
+  aws ec2 wait instance-running --instance-ids "$instance"
+  alloc=$(aws ec2 allocate-address --domain vpc --tag-specifications "$(tags elastic-ip)" \
+    --query AllocationId --output text)
+  aws ec2 associate-address --instance-id "$instance" --allocation-id "$alloc" >/dev/null
+  ip=$(aws ec2 describe-addresses --allocation-ids "$alloc" --query 'Addresses[0].PublicIp' --output text)
+  echo "Elastic IP: $ip ($alloc)"
+  echo "Point filc.less.rest's A record at $ip. The first boot switches to"
+  echo "demo-wiki (journalctl -u filnix-first-switch); ACME retries until the record resolves."
+else
+  run aws ec2 run-instances --image-id "$ami" --instance-type "$type" \
+    --key-name "$name" --security-group-ids "$sg" \
+    --metadata-options HttpEndpoint=enabled,HttpTokens=required,HttpPutResponseHopLimit=1 \
+    --block-device-mappings 'DeviceName=/dev/xvda,Ebs={VolumeSize=20,VolumeType=gp3,DeleteOnTermination=true}' \
+    --user-data "$userdata" --tag-specifications "$(tags instance)" "$(tags volume)"
+  run aws ec2 allocate-address --domain vpc --tag-specifications "$(tags elastic-ip)"
+  run aws ec2 associate-address --instance-id INSTANCE_ID --allocation-id ALLOCATION_ID
+  echo "(dry run: pass --yes to create these)"
+fi

@@ -20,6 +20,7 @@
   ...
 }:
 let
+  cfg = config.filnix;
   rev = filnix.rev or "main";
   cache = {
     substituter = "https://filc.cachix.org";
@@ -41,13 +42,12 @@ let
       nixConfig.extra-substituters = [ "${cache.substituter}" ];
       nixConfig.extra-trusted-public-keys = [ "${cache.key}" ];
 
+      # filnix's ${cfg.configuration} configuration, with your changes.
       outputs = { filnix, ... }: {
-        nixosConfigurations.${config.networking.hostName} = filnix.lib.nixosSystem {
-          modules = [
-            filnix.nixosModules.base
-            ./configuration.nix
-          ];
-        };
+        nixosConfigurations.${config.networking.hostName} =
+          filnix.nixosConfigurations.${cfg.configuration}.extendModules {
+            modules = [ ./configuration.nix ];
+          };
       };
     }
   '';
@@ -71,91 +71,103 @@ in
 {
   imports = [ "${modulesPath}/profiles/qemu-guest.nix" ];
 
-  filc.enable = true;
-
-  boot.loader.grub.device = lib.mkDefault "/dev/vda";
-  boot.loader.timeout = 1;
-  boot.growPartition = true;
-  fileSystems."/" = {
-    device = "/dev/disk/by-label/nixos";
-    fsType = "ext4";
-    autoResize = true;
+  options.filnix.configuration = lib.mkOption {
+    type = lib.types.str;
+    default = "base";
+    description = ''
+      The attribute of filnix's nixosConfigurations this machine is, which
+      the flake in /etc/nixos extends with configuration.nix. Unchanged, a
+      first rebuild then makes the same system, which is in the cache.
+    '';
   };
-  # The serial console last, so it gets the kernel's and systemd's output.
-  boot.kernelParams = [
-    "console=tty0"
-    "console=ttyS0,115200n8"
-  ];
 
-  networking.hostName = lib.mkDefault "filc";
+  config = {
+    filc.enable = true;
 
-  users.users.demo = {
-    isNormalUser = true;
-    extraGroups = [ "wheel" ];
-  };
-  services.getty.autologinUser = "demo";
-  security.sudo.wheelNeedsPassword = false;
-
-  services.openssh = {
-    enable = true;
-    settings = {
-      PasswordAuthentication = false;
-      KbdInteractiveAuthentication = false;
-      PermitRootLogin = "no";
+    boot.loader.grub.device = lib.mkDefault "/dev/vda";
+    boot.loader.timeout = 1;
+    boot.growPartition = true;
+    fileSystems."/" = {
+      device = "/dev/disk/by-label/nixos";
+      fsType = "ext4";
+      autoResize = true;
     };
-  };
-
-  users.motd = ''
-
-    This is NixOS with a Fil-C userland: systemd, PAM, OpenSSH, Bash and
-    every service are memory-safe Fil-C builds. `sudo filc-ps` shows that
-    nothing else runs native but the allowed exceptions.
-
-    You are logged in as demo, with sudo and no password. SSH takes keys
-    only. /etc/nixos is a flake pinned to filnix ${builtins.substring 0 12 rev}; edit
-    configuration.nix there and run `sudo nixos-rebuild switch`. Give the
-    machine at least 2 GiB of memory.
-
-  '';
-
-  nix.settings = {
-    experimental-features = [
-      "nix-command"
-      "flakes"
+    # The serial console last, so it gets the kernel's and systemd's output.
+    boot.kernelParams = [
+      "console=tty0"
+      "console=ttyS0,115200n8"
     ];
-    extra-substituters = [ cache.substituter ];
-    extra-trusted-public-keys = [ cache.key ];
-  };
 
-  # Copied once, so that they can be edited.
-  systemd.tmpfiles.rules = [
-    "d /etc/nixos 0755 root root -"
-    "C /etc/nixos/flake.nix - - - - ${flake}"
-    "C /etc/nixos/configuration.nix - - - - ${configuration}"
-    "z /etc/nixos/flake.nix 0644 root root -"
-    "z /etc/nixos/configuration.nix 0644 root root -"
-  ];
+    networking.hostName = lib.mkDefault "filc";
 
-  # Not git: `github:` flake inputs come as tarballs, and the Fil-C git
-  # with its Perl, Python and GnuPG would double the image.
-  environment.systemPackages = with pkgs; [
-    nano
-    curl
-  ];
+    users.users.demo = {
+      isNormalUser = true;
+      extraGroups = [ "wheel" ];
+    };
+    services.getty.autologinUser = "demo";
+    security.sudo.wheelNeedsPassword = false;
 
-  system.stateVersion = "26.05";
+    services.openssh = {
+      enable = true;
+      settings = {
+        PasswordAuthentication = false;
+        KbdInteractiveAuthentication = false;
+        PermitRootLogin = "no";
+      };
+    };
 
-  system.build.qcow2 = import "${native.path}/nixos/lib/make-disk-image.nix" {
-    pkgs = native;
-    inherit lib config;
-    name = "filnix-nixos-image";
-    baseName = "filnix-nixos-${config.system.nixos.label}";
-    format = "qcow2-compressed";
-    partitionTableType = "legacy";
-    # Room for a few rebuilds; free space compresses away. growpart takes
-    # the root file system further on a bigger disk.
-    additionalSpace = "8G";
-    copyChannel = false;
-    memSize = 2048;
+    users.motd = ''
+
+      This is NixOS with a Fil-C userland: systemd, PAM, OpenSSH, Bash and
+      every service are memory-safe Fil-C builds. `sudo filc-ps` shows that
+      nothing else runs native but the allowed exceptions.
+
+      You are logged in as demo, with sudo and no password. SSH takes keys
+      only. /etc/nixos is a flake pinned to filnix ${builtins.substring 0 12 rev}; edit
+      configuration.nix there and run `sudo nixos-rebuild switch`. Give the
+      machine at least 2 GiB of memory.
+
+    '';
+
+    nix.settings = {
+      experimental-features = [
+        "nix-command"
+        "flakes"
+      ];
+      extra-substituters = [ cache.substituter ];
+      extra-trusted-public-keys = [ cache.key ];
+    };
+
+    # Copied once, so that they can be edited.
+    systemd.tmpfiles.rules = [
+      "d /etc/nixos 0755 root root -"
+      "C /etc/nixos/flake.nix - - - - ${flake}"
+      "C /etc/nixos/configuration.nix - - - - ${configuration}"
+      "z /etc/nixos/flake.nix 0644 root root -"
+      "z /etc/nixos/configuration.nix 0644 root root -"
+    ];
+
+    # Not git: `github:` flake inputs come as tarballs, and the Fil-C git
+    # with its Perl, Python and GnuPG would double the image.
+    environment.systemPackages = with pkgs; [
+      nano
+      curl
+    ];
+
+    system.stateVersion = "26.05";
+
+    system.build.qcow2 = import "${native.path}/nixos/lib/make-disk-image.nix" {
+      pkgs = native;
+      inherit lib config;
+      name = "filnix-nixos-image";
+      baseName = "filnix-nixos-${config.system.nixos.label}";
+      format = "qcow2-compressed";
+      partitionTableType = "legacy";
+      # Room for a few rebuilds; free space compresses away. growpart takes
+      # the root file system further on a bigger disk.
+      additionalSpace = "8G";
+      copyChannel = false;
+      memSize = 2048;
+    };
   };
 }

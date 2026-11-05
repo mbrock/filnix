@@ -49,6 +49,12 @@ unit failed, that `filc-ps` passes, that sshd takes keys only, and that the
 flake and the cache are there. A release substitutes the image, never
 builds it, and boots it again when the runner has KVM.
 
+On EC2, each release registers a public AMI in eu-central-1 from
+`packages.x86_64-linux.nixos-ami` ([nixos/amazon.nix](../nixos/amazon.nix));
+its ID is in the release notes. Root logs in with the instance's key pair.
+https://filc.less.rest runs `nixosConfigurations.demo-wiki` on it: MediaWiki
+on Fil-C PHP-FPM and lighttpd. [docs/aws.md](aws.md) covers both.
+
 ## Using it
 
 ```nix
@@ -136,6 +142,15 @@ error: Refusing to evaluate package 'ripgrep-15.1.0' … because it has problems
 - filc (kind "broken"): Rust has no Fil-C target. Take the native build instead, with filc.native = native: { inherit (native) ripgrep; }; in your system's configuration, or leave it out.
 ```
 
+Servers whose processes share memory that holds pointers are refused the
+same way: PostgreSQL, nginx and Apache. Fil-C keeps each pointer's
+capability in its process's own shadow memory, so a pointer that one
+process stores in shared memory has no capability in another. Keep them
+native with `filc.native`, or use lighttpd as the Fil-C web server. Their
+client libraries, such as libpq, are separate packages and stay Fil-C. Take `postgresql_17` (or whichever
+version the module picks) with `filc.native`; libpq, the client library that
+PHP and others link, is a separate package and is Fil-C.
+
 The adapter only touches `meta`, so derivations hash the same as in plain
 `pkgsFilc`. Haskell (cachix, pandoc) and Zig (ghostty) are not detected;
 name them in `filc.native` too.
@@ -189,7 +204,8 @@ build that runs plain `cc` can pick up the build platform's compiler.
 | D-Bus | dbus-daemon instead of dbus-broker | dbus-broker's port is not done |
 | QEMU guest agent | none | the full QEMU does not build with Fil-C yet |
 | PHP-FPM | each worker grows to about 150-250 MB | the garbage collector keeps more memory alive |
-| nginx | no Fil-C build; use lighttpd | nginx's processes share pointers through shared memory, which capabilities don't survive |
+| multi-process servers that share pointers | PostgreSQL, nginx and Apache stay native with `filc.native`; lighttpd is the Fil-C web server | a pointer's capability lives in its process's shadow memory, so a pointer stored in memory shared with another process has none there |
+| systemd sandboxing | `PrivateUsers=` is off for every service | systemd sets it up with `unshare(CLONE_NEWUSER)`, which the kernel refuses a multithreaded process, and the Fil-C runtime always runs threads |
 | updates | packages follow filnix's Nixpkgs pin, not your channel | they are built and cached against that pin |
 
 [docs/nixos-userland.md](nixos-userland.md) is the running record of what it
@@ -226,6 +242,27 @@ program outside the exceptions runs.
 own tests of services with the module on every node, then `filc-ps` on every
 machine still up, so a test passes only when no native process outside the
 exceptions ran.
+
+| Test | Kept native in it |
+| --- | --- |
+| `userland`, `lighttpd`, `bind`, `openssh`, `mosquitto`, `redis`, `php-lighttpd` | nothing |
+| `unbound` | knot-dns, for its client kdig |
+| `mediawiki-sqlite` | Apache |
+| `mediawiki-nohttpd` | MariaDB |
+| `tor` | Caddy (Go) for its hidden service, arti (Rust) as a client |
+| `php-fpm` | nginx |
+| `mediawiki-nginx` | nginx, MariaDB |
+| `wordpress` | Caddy, nginx, Apache, MariaDB |
+| `dokuwiki` | Caddy, nginx |
+| `mediawiki-mysql` | Apache, MariaDB |
+| `mediawiki-postgresql` | Apache, the PostgreSQL server |
+| `nextcloud-basic` | nginx, notify_push (Rust), davfs2 (the WebDAV client) |
+| `nextcloud-with-mysql-and-memcached` | nginx, notify_push, davfs2, MariaDB |
+| `nextcloud-with-postgresql-and-redis` | nginx, notify_push and its test client, davfs2, the PostgreSQL server |
+| `demo-wiki` | lego and minica (Go), as on the machine |
+
+Each node gets 2 GiB of memory (4 GiB for Nextcloud and the demo wiki),
+so a test with five nodes wants 10 GiB.
 
 ```sh
 nix build .#nixosTests.userland -L          # needs the kvm system feature

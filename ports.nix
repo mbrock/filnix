@@ -1678,6 +1678,13 @@ in
     (arg { withFIDO = false; })
   ])
 
+  # Cross autoconf can't run its malloc(0) test and assumes the worst,
+  # defining malloc as an rpl_malloc nobody provides. glibc's is fine.
+  (for pkgs.davfs2 [
+    (configure "ac_cv_func_malloc_0_nonnull=yes")
+    (configure "ac_cv_func_realloc_0_nonnull=yes")
+  ])
+
   (for pkgs.libssh2 [
     (skipCheck "network tests flaky")
     (configure "--disable-examples-build")
@@ -3197,8 +3204,9 @@ in
   ])
 
   # nginx builds, but its worker processes share pointers through shared
-  # memory zones, which Fil-C capabilities do not survive. Refuse it at
-  # evaluation, saying what to do instead.
+  # memory zones, which Fil-C capabilities do not survive; the same rule
+  # refuses PostgreSQL and Apache on Fil-C systems (lib/block-rust-go.nix).
+  # Refuse it at evaluation, saying what to do instead.
   (
     let
       refuse = use (old: {
@@ -3206,7 +3214,7 @@ in
           problems = (old.meta.problems or { }) // {
             filc = {
               kind = "broken";
-              message = "nginx does not work as Fil-C: its processes share pointers through shared memory. Use lighttpd, or keep nginx native with filc.native = native: { inherit (native) nginxStable; };";
+              message = "nginx cannot be Fil-C: its processes share memory that holds pointers, and a Fil-C pointer's capability does not cross processes. Use lighttpd, or keep nginx native with filc.native = native: { inherit (native) nginxStable; };";
             };
           };
         };
@@ -3220,6 +3228,11 @@ in
 
   (for pkgs.lighttpd [
     (patch ./patches/lighttpd-filc.patch)
+    (patch ./patches/lighttpd-ls-hpack-pointers.patch)
+    # The Fil-C glibc's preadv2 makes the system call with inline assembly,
+    # which stops the program; lighttpd reads static files for HTTP/2 with
+    # it. Without it, lighttpd uses pread.
+    (configure "ac_cv_func_preadv2=no")
     (arg { enableMagnet = true; })
     (arg { enableWebDAV = true; })
     (arg { enablePam = true; })

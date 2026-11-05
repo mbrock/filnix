@@ -1,0 +1,64 @@
+ls-hpack kept its HPACK decoder's dynamic table entries in an array of
+uintptr_t. Under Fil-C a pointer converted to an integer loses its
+capability, so freeing the entries when an HTTP/2 connection closed stopped
+lighttpd ("cannot free ptr with no object" in lshpack_dec_cleanup). The
+array only ever holds those pointers; make it an array of void *.
+
+--- a/src/ls-hpack/lshpack.c
++++ b/src/ls-hpack/lshpack.c
+@@ -226,9 +226,9 @@
+ #define lshpack_arr_count(a) (+(a)->nelem)
+ 
+ static int
+-lshpack_arr_push (struct lshpack_arr *arr, uintptr_t val)
++lshpack_arr_push (struct lshpack_arr *arr, void *val)
+ {
+-    uintptr_t *new_els;
++    void **new_els;
+     unsigned n;
+ 
+     if (arr->off + arr->nelem < arr->nalloc)
+@@ -1305,12 +1305,12 @@
+ void
+ lshpack_dec_cleanup (struct lshpack_dec *dec)
+ {
+-    uintptr_t val;
++    void *val;
+ 
+     while (lshpack_arr_count(&dec->hpd_dyn_table) > 0)
+     {
+         val = lshpack_arr_pop(&dec->hpd_dyn_table);
+-        free((struct dec_table_entry *) val);
++        free(val);
+     }
+     lshpack_arr_cleanup(&dec->hpd_dyn_table);
+ }
+@@ -1526,7 +1526,7 @@
+ static struct dec_table_entry *
+ hdec_get_table_entry (struct lshpack_dec *dec, uint32_t index)
+ {
+-    uintptr_t val;
++    void *val;
+ 
+     index -= HPACK_STATIC_TABLE_SIZE;
+     if (index == 0 || index > lshpack_arr_count(&dec->hpd_dyn_table))
+@@ -1557,7 +1557,7 @@
+     if (!entry)
+         return -1;
+ 
+-    if (0 != lshpack_arr_push(&dec->hpd_dyn_table, (uintptr_t) entry))
++    if (0 != lshpack_arr_push(&dec->hpd_dyn_table, entry))
+     {
+         free(entry);
+         return -1;
+--- a/src/ls-hpack/lshpack.h
++++ b/src/ls-hpack/lshpack.h
+@@ -294,7 +294,7 @@
+     unsigned        nalloc,
+                     nelem,
+                     off;
+-    uintptr_t      *els;
++    void          **els;
+ };
+ 
+ struct lshpack_dec

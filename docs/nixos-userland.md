@@ -194,6 +194,77 @@ full QEMU build. Its Fil-C dependencies dtc (a test data file in assembly)
 and libiscsi (`-Werror=cast-align`) do not build yet. The tests turn the
 agent off; the driver does not use it.
 
+### PrivateUsers=
+
+Nixpkgs' service tests (`nixosTests`) found that every unit with
+`PrivateUsers=` (mosquitto, redis, tor) failed at step USER: "Failed to set
+up user namespacing: Invalid argument". systemd sets it up with
+`unshare(CLONE_NEWUSER)` in the forked child, and the kernel refuses that to
+a multithreaded process; a Fil-C process always runs the runtime's own
+threads (PHP's `pcntl_unshare_01` fails for the same reason,
+docs/php-port-notes.md). The module turns `PrivateUsers=` off for every
+service with a top-level drop-in, `service.d/zz-filc-no-private-users.conf`.
+Making it work would need a single-threaded window in the runtime around
+`unshare`, which is open.
+
+### Servers that share pointers between processes
+
+Fil-C keeps each pointer's capability in per-process shadow memory. A
+pointer that one process stores in memory it shares with another process
+arrives there as a bare address, with no capability, and using it stops the
+program. Servers built around shared memory that holds pointers cannot be
+Fil-C, and are refused at evaluation:
+
+- PostgreSQL: its backends share buffers and state that hold pointers.
+  Filip Pizlo tried to port it for a long time and concluded that this is
+  a fundamental problem. (The builds here also showed Nixpkgs turning on
+  JIT, which needs an LLVM that isn't ported, and `-flto`, which Fil-C
+  can't link; those were fixable, the sharing is not.)
+- nginx: its workers share pointers through shared memory zones.
+- Apache: its multi-process modules share memory the same way. (Its
+  configure here also failed to link a test program.)
+
+Keep them native with `filc.native`; for a Fil-C web server or reverse
+proxy, use lighttpd, which is one process. Client libraries such as libpq
+stay Fil-C.
+
+### Service tests
+
+Fixes and exceptions the `nixosTests` matrix needed:
+
+- PHP 8.3 is not ported, and MediaWiki's module defaults to it; the tests
+  and demo-wiki set `services.mediawiki.phpPackage` to PHP 8.4.
+- Apache, nginx and the PostgreSQL server (above) are native in the tests
+  that use them.
+- MariaDB is not ported yet: its client library's linker version script
+  names the C symbols, which Fil-C prefixes with `pizlonated_` ("undefined
+  symbol 'mysql_affected_rows' referenced in expression"). The MySQL tests
+  keep the server native; PHP's MySQL drivers use mysqlnd, not libmariadb.
+- knot-dns (the unbound test's client, kdig) needs xdp-tools, whose BPF
+  programs need a cross compiler that doesn't build; without XDP it builds
+  but fails 161 of its 211 tests with Fil-C safety stops ("cannot read pointer with
+  null object"); the test keeps it native. Porting it is open.
+- lighttpd's HTTP/2 module: ls-hpack kept decoder table entries as
+  `uintptr_t`, so closing an HTTP/2 connection freed pointers without
+  capabilities and Fil-C stopped lighttpd (found by the demo-wiki test);
+  [patches/lighttpd-ls-hpack-pointers.patch](../patches/lighttpd-ls-hpack-pointers.patch).
+  The same test found that serving a static file over HTTP/2 stopped it in
+  the Fil-C glibc's `preadv2` (docs/filc-findings.md); lighttpd is built
+  without `preadv2`.
+- davfs2 (Nextcloud's test client): cross autoconf assumed a broken
+  `malloc(0)` and substituted an `rpl_malloc` nobody defines. It builds
+  with that fixed, but its `mount.davfs` daemon stops with a Fil-C trap
+  after it forks and closes stderr, so the trace is lost; the Nextcloud
+  tests keep davfs2 native. Open.
+- `mount(8)` with a helper stopped in libmount's `fsopen(NULL)` probe
+  (docs/filc-findings.md); fixed in util-linux, and mount units use the
+  classic `mount(2)`.
+- `opensshPackages.openssh` is ported too, so Nixpkgs' variants made with
+  `.override` (no PAM, null PAM) keep the patch. Its variant without
+  OpenSSL cannot use the Fil-C PAM: pam_unix's `crypt_r` from libxcrypt does
+  not resolve in that sshd. That test node runs the regular Fil-C OpenSSH;
+  why is open.
+
 ### Package fixes
 
 These came up once PID 1 reached multi-user.target:

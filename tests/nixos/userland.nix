@@ -59,6 +59,11 @@ pkgs.testers.runNixOSTest {
             machine.succeed(f"grep -q libpizlo /proc/{pid}/maps")
             print("Fil-C %-16s %6s %s" % (what, pid, exe), flush=True)
 
+    with subtest("mount(8) mounts"):
+        # With a list of types (or a helper such as mount.davfs), libmount
+        # probes the new mount API with fsopen(NULL), which used to stop it.
+        machine.succeed("mkdir -p /mnt/t && mount -t tmpfs,ramfs none /mnt/t && findmnt /mnt/t && umount /mnt/t")
+
     with subtest("no native process but the allowed exceptions"):
         print(machine.succeed("filc-ps"))
         # The rule has teeth: a native program outside the exceptions fails it.

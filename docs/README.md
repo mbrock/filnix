@@ -12,11 +12,13 @@ individual ports needed, and how the port campaigns run. The repository's
   memory-safe programs in upstream's `/opt/fil` layout.
 - [A relocatable Fil-C root](filroot.md): the same toolchain and programs in
   a directory that works wherever it is unpacked.
-- [Fil-C on NixOS](nixos.md): how much of a NixOS system to make Fil-C, from
-  chosen services to the whole userland, what each step costs, and how to
-  check what runs Fil-C.
-- [A Fil-C userland for NixOS](nixos-userland.md): make a NixOS system's
-  `pkgs` the Fil-C set, with systemd, PAM and every service built by Fil-C.
+- [Fil-C NixOS and finix](nixos.md): the module that makes a whole system's
+  `pkgs` the Fil-C set, the base images, what stays native and what it
+  costs, and how to check what runs Fil-C.
+- [A Fil-C userland for NixOS: the record](nixos-userland.md): what it took,
+  and what is still open.
+- [The public AMI and its AWS account](aws.md): how releases register the
+  AMI, the account's setup, and https://filc.less.rest.
 - [A Fil-C userland for finix](finix.md): build a whole finix userland with
   Fil-C.
 - [PHP on Fil-C](php.md): PHP 8.5, practical server performance, distributions
