@@ -24,6 +24,8 @@ pkgs.testers.runNixOSTest {
         password = "foobar";
       };
       services.openssh.enable = true;
+      # Its unit sets IOSchedulingClass (see the test below).
+      services.logrotate.enable = true;
       # The test driver talks to the VM over its backdoor, not the guest
       # agent, and the agent comes from a QEMU build Fil-C cannot do yet.
       services.qemuGuest.enable = lib.mkForce false;
@@ -63,6 +65,10 @@ pkgs.testers.runNixOSTest {
         # With a list of types (or a helper such as mount.davfs), libmount
         # probes the new mount API with fsopen(NULL), which used to stop it.
         machine.succeed("mkdir -p /mnt/t && mount -t tmpfs,ramfs none /mnt/t && findmnt /mnt/t && umount /mnt/t")
+
+    with subtest("a unit with an IO scheduling class runs"):
+        # logrotate sets IOSchedulingClass; ioprio_set has no Fil-C wrapper.
+        machine.succeed("systemctl start logrotate.service")
 
     with subtest("no native process but the allowed exceptions"):
         print(machine.succeed("filc-ps"))

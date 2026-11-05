@@ -43,6 +43,15 @@
         [Service]
         PrivateUsers=no
       '')
+      # IOSchedulingClass= and IOSchedulingPriority= call ioprio_set, a
+      # system call the Fil-C runtime has no wrapper for; Fil-C systemd gets
+      # ENOSYS and the unit fails at step IOPRIO (logrotate did). Empty
+      # values unset them, so services run at the default IO priority.
+      (pkgs.writeTextDir "etc/systemd/system/service.d/zz-filc-no-ioprio.conf" ''
+        [Service]
+        IOSchedulingClass=
+        IOSchedulingPriority=
+      '')
       # Mount units run systemd's mount(8), from util-linux-minimal, whose
       # libmount probes the new mount API with fsopen(NULL) when it uses a
       # helper (mount.davfs, mount.nfs, FUSE), and the Fil-C runtime stops

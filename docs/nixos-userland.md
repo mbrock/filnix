@@ -221,12 +221,36 @@ Fil-C, and are refused at evaluation:
   JIT, which needs an LLVM that isn't ported, and `-flto`, which Fil-C
   can't link; those were fixable, the sharing is not.)
 - nginx: its workers share pointers through shared memory zones.
-- Apache: its multi-process modules share memory the same way. (Its
-  configure here also failed to link a test program.)
-
 Keep them native with `filc.native`; for a Fil-C web server or reverse
-proxy, use lighttpd, which is one process. Client libraries such as libpq
+proxy, use lighttpd, which is one process, or Apache.
+
+Apache is ported: its scoreboard, the shmcb TLS session and socache
+caches and its mutexes hold integers, strings and offsets, which cross
+processes fine (`nixosTests.apache` runs prefork and event under load).
+Two modules kept pointers there: the port moves mod_auth_digest's client
+table to apr_rmm offsets, and makes mod_ldap ignore its shared cache
+(`LDAPSharedCacheSize`), so each process keeps its own. Client libraries such as libpq
 stay Fil-C.
+
+### First boot on EC2
+
+The first launch of filc.less.rest found two bugs that the VM boot check
+could not, since it boots without user data:
+
+- `filnix-first-switch` was a oneshot wanted by multi-user.target, and a
+  target is ordered after the units it wants. switch-to-configuration
+  started multi-user.target and waited for that job, which waited for the
+  unit running the switch. It is a simple service now, and
+  `nixosTests.first-switch` boots with `#filnix` user data naming another
+  system and checks that it switches and boot finishes.
+- `nixos-rebuild --option max-jobs 0` planned to build 78 derivations,
+  although their outputs were cached, and failed. NixOS marks the system
+  and its small generated files `allowSubstitutes = false`, which Nix
+  honours unless `always-allow-substitutes` is set; `nix build` of the
+  store path worked because substituting a path by name ignores it. The
+  base image sets `always-allow-substitutes = true`. It was not the cache
+  or the native Nix: the same command against an empty store, with that
+  option, fetches all 806 paths and builds nothing.
 
 ### Service tests
 
@@ -234,8 +258,8 @@ Fixes and exceptions the `nixosTests` matrix needed:
 
 - PHP 8.3 is not ported, and MediaWiki's module defaults to it; the tests
   and demo-wiki set `services.mediawiki.phpPackage` to PHP 8.4.
-- Apache, nginx and the PostgreSQL server (above) are native in the tests
-  that use them.
+- nginx and the PostgreSQL server (above) are native in the tests that
+  use them; MediaWiki and WordPress run behind Fil-C Apache.
 - MariaDB is not ported yet: its client library's linker version script
   names the C symbols, which Fil-C prefixes with `pizlonated_` ("undefined
   symbol 'mysql_affected_rows' referenced in expression"). The MySQL tests

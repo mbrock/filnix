@@ -149,8 +149,9 @@ lib.mapAttrs (_: withFilc) {
   };
   mosquitto = "${upstream}/mosquitto.nix";
   redis = ./redis.nix;
-  apache = import ./apache.nix { inherit pkgsFilc; };
+  apache = ./apache.nix;
   demo-wiki = import ./demo-wiki.nix { inherit filnix; };
+  first-switch = import ./first-switch.nix { inherit filnix; };
   php-lighttpd = ./php-lighttpd.nix;
 
   # Nixpkgs runs this with PHP and APCu behind nginx, here native.
@@ -162,12 +163,11 @@ lib.mapAttrs (_: withFilc) {
   };
 
   # Both also run behind Caddy, which is Go, and nginx; WordPress also
-  # behind Apache, which isn't ported. Each talks to Fil-C PHP-FPM.
+  # behind Fil-C Apache. Each talks to Fil-C PHP-FPM.
   wordpress = native (n: {
     inherit (n)
       caddy
       nginxStable
-      apacheHttpd
       mariadb
       ;
   }) (phpApp 2048 "${upstream}/wordpress.nix");
@@ -176,8 +176,8 @@ lib.mapAttrs (_: withFilc) {
   );
 }
 # mediawiki-mysql, -postgresql, -sqlite, -nohttpd and -nginx, on Fil-C PHP
-# 8.4: the module's default is 8.3, which is not ported. Their Apache and
-# nginx, in front of PHP-FPM, are native.
+# 8.4: the module's default is 8.3, which is not ported. Apache is Fil-C;
+# nginx, in front of PHP-FPM in one of them, is native.
 //
   lib.mapAttrs'
     (
@@ -190,15 +190,11 @@ lib.mapAttrs (_: withFilc) {
               defaults = mediawikiPhp;
             };
           in
-          # MariaDB, the default database, is not ported yet; Apache and
-          # nginx are not either.
+          # MariaDB, the default database, is not ported yet; nginx can't be.
           native (
             n:
             {
               inherit (n) mariadb;
-            }
-            // lib.optionalAttrs (n' != "nohttpd" && n' != "nginx") {
-              inherit (n) apacheHttpd;
             }
             // lib.optionalAttrs (n' == "nginx") { inherit (n) nginxStable; }
             // lib.optionalAttrs (n' == "postgresql") { inherit (n) postgresql_17; }

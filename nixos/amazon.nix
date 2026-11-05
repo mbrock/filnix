@@ -38,7 +38,9 @@ in
 
   # Instead, user data of the form `#filnix FLAKE#CONFIGURATION` switches
   # the machine to that configuration once, at first boot, substituting
-  # everything (scripts/launch-demo-wiki uses it). Other user data is ignored.
+  # everything (scripts/launch-demo-wiki uses it). `#filnix /nix/store/...`
+  # switches to a system already in the store or a cache. Other user data
+  # is ignored.
   systemd.services.filnix-first-switch = {
     description = "Switch to the configuration named in the user data";
     wantedBy = [ "multi-user.target" ];
@@ -53,20 +55,31 @@ in
       config.system.build.nixos-rebuild
     ];
     serviceConfig = {
-      Type = "oneshot";
+      # Not oneshot: multi-user.target is ordered after the units it wants,
+      # so a oneshot would hold the target's start job until the switch
+      # ends, while switch-to-configuration waits for that same job. A
+      # simple service counts as started at once.
+      Type = "simple";
       StateDirectory = "filnix-first-switch";
-      # Switching restarts other units; this one must not be restarted.
-      RemainAfterExit = true;
     };
+    # Switching must not stop or restart the unit that runs it.
     restartIfChanged = false;
     script = ''
       ref=$(sed -n '1s/^#filnix \([^ ]*\)$/\1/p' /etc/ec2-metadata/user-data 2>/dev/null || true)
-      if [ -z "$ref" ]; then
-        echo "no #filnix line in the user data"
-      else
-        echo "switching to $ref"
-        nixos-rebuild switch --flake "$ref" --option max-jobs 0 --option builders ""
-      fi
+      set -- --option max-jobs 0 --option builders ""
+      case $ref in
+        "") echo "no #filnix line in the user data" ;;
+        /nix/store/*)
+          echo "switching to $ref"
+          nix-store --realise "$ref" "$@"
+          # There is no flake to take a newer nixos-rebuild from.
+          nixos-rebuild switch --no-reexec --store-path "$ref" "$@"
+          ;;
+        *)
+          echo "switching to $ref"
+          nixos-rebuild switch --flake "$ref" "$@"
+          ;;
+      esac
       touch /var/lib/filnix-first-switch/done
     '';
   };

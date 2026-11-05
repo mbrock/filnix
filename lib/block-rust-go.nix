@@ -9,7 +9,7 @@
 # touch.
 #
 # Servers whose processes share memory that holds pointers are refused the
-# same way: the PostgreSQL server and Apache here, nginx in ports.nix. Fil-C
+# same way: the PostgreSQL server here, nginx in ports.nix. Fil-C
 # keeps each pointer's capability in the process's own shadow memory, so a
 # pointer one process stores in shared memory has none in another
 # (docs/nixos-userland.md). Their client libraries, such as libpq, are
@@ -26,8 +26,6 @@ let
     in
     if (attrs.pname or null) == "postgresql" then
       "PostgreSQL"
-    else if (attrs.pname or null) == "apache-httpd" then
-      "Apache"
     else if lib.any isRust names || (attrs.cargoDeps or null) != null then
       "Rust"
     else if lib.elem "go" names then
@@ -54,12 +52,10 @@ stdenvAdapters.overrideMkDerivationArgs (
                 name =
                   if blocked == "PostgreSQL" then
                     "postgresql_${lib.versions.major old.version}"
-                  else if blocked == "Apache" then
-                    "apacheHttpd"
                   else
                     old.pname or (lib.getName (old.name or "it"));
                 why =
-                  if blocked == "PostgreSQL" || blocked == "Apache" then
+                  if blocked == "PostgreSQL" then
                     "${blocked} cannot be Fil-C: its processes share memory that holds pointers, and a Fil-C pointer's capability does not cross processes."
                   else
                     "${blocked} has no Fil-C target.";

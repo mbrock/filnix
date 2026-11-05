@@ -143,7 +143,7 @@ error: Refusing to evaluate package 'ripgrep-15.1.0' … because it has problems
 ```
 
 Servers whose processes share memory that holds pointers are refused the
-same way: PostgreSQL, nginx and Apache. Fil-C keeps each pointer's
+same way: the PostgreSQL server and nginx. Fil-C keeps each pointer's
 capability in its process's own shadow memory, so a pointer that one
 process stores in shared memory has no capability in another. Keep them
 native with `filc.native`, or use lighttpd as the Fil-C web server. Their
@@ -204,7 +204,9 @@ build that runs plain `cc` can pick up the build platform's compiler.
 | D-Bus | dbus-daemon instead of dbus-broker | dbus-broker's port is not done |
 | QEMU guest agent | none | the full QEMU does not build with Fil-C yet |
 | PHP-FPM | each worker grows to about 150-250 MB | the garbage collector keeps more memory alive |
-| multi-process servers that share pointers | PostgreSQL, nginx and Apache stay native with `filc.native`; lighttpd is the Fil-C web server | a pointer's capability lives in its process's shadow memory, so a pointer stored in memory shared with another process has none there |
+| mod_ldap's shared cache | Fil-C Apache ignores `LDAPSharedCacheSize` with a warning; each process keeps its own LDAP cache | the shared cache holds pointers (the port moved mod_auth_digest's to offsets instead) |
+| multi-process servers that share pointers | the PostgreSQL server and nginx stay native with `filc.native`; lighttpd and Apache are Fil-C web servers | a pointer's capability lives in its process's shadow memory, so a pointer stored in memory shared with another process has none there |
+| IO priority | `IOSchedulingClass=` and `IOSchedulingPriority=` are unset for every service, which runs at the default priority | the Fil-C runtime has no `ioprio_set` wrapper, so systemd gets `ENOSYS` and the unit failed (logrotate did) |
 | systemd sandboxing | `PrivateUsers=` is off for every service | systemd sets it up with `unshare(CLONE_NEWUSER)`, which the kernel refuses a multithreaded process, and the Fil-C runtime always runs threads |
 | updates | packages follow filnix's Nixpkgs pin, not your channel | they are built and cached against that pin |
 
@@ -245,17 +247,16 @@ exceptions ran.
 
 | Test | Kept native in it |
 | --- | --- |
-| `userland`, `lighttpd`, `bind`, `openssh`, `mosquitto`, `redis`, `php-lighttpd` | nothing |
+| `userland`, `lighttpd`, `apache`, `bind`, `openssh`, `mosquitto`, `redis`, `php-lighttpd`, `mediawiki-sqlite`, `first-switch` | nothing |
 | `unbound` | knot-dns, for its client kdig |
-| `mediawiki-sqlite` | Apache |
 | `mediawiki-nohttpd` | MariaDB |
 | `tor` | Caddy (Go) for its hidden service, arti (Rust) as a client |
 | `php-fpm` | nginx |
 | `mediawiki-nginx` | nginx, MariaDB |
-| `wordpress` | Caddy, nginx, Apache, MariaDB |
+| `wordpress` | Caddy, nginx, MariaDB |
 | `dokuwiki` | Caddy, nginx |
-| `mediawiki-mysql` | Apache, MariaDB |
-| `mediawiki-postgresql` | Apache, the PostgreSQL server |
+| `mediawiki-mysql` | MariaDB |
+| `mediawiki-postgresql` | the PostgreSQL server |
 | `nextcloud-basic` | nginx, notify_push (Rust), davfs2 (the WebDAV client) |
 | `nextcloud-with-mysql-and-memcached` | nginx, notify_push, davfs2, MariaDB |
 | `nextcloud-with-postgresql-and-redis` | nginx, notify_push and its test client, davfs2, the PostgreSQL server |

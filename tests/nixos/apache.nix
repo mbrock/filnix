@@ -4,10 +4,6 @@
 # server's processes. A pointer one process stores in shared memory has no
 # capability in another; Apache keeps integers, strings and offsets there,
 # and the port moves mod_auth_digest's pointers to offsets.
-#
-# The system refuses apacheHttpd for now, so the nodes take pkgsFilc's,
-# the same derivation without the refusal.
-{ pkgsFilc }:
 { pkgs, lib, ... }:
 let
   cert =
@@ -37,13 +33,12 @@ let
     virtualisation.memorySize = 3072;
     virtualisation.cores = 4;
     environment.systemPackages = [
-      pkgsFilc.apacheHttpd # ab
+      pkgs.apacheHttpd # ab
       pkgs.curl
       pkgs.openssl
     ];
     services.httpd = {
       enable = true;
-      package = pkgsFilc.apacheHttpd;
       inherit mpm;
       adminAddr = "root@localhost";
       maxClients = 64;

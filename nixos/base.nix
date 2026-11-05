@@ -136,6 +136,11 @@ in
       ];
       extra-substituters = [ cache.substituter ];
       extra-trusted-public-keys = [ cache.key ];
+      # NixOS marks the system itself and its small generated files
+      # allowSubstitutes = false, so with max-jobs 0 (filnix-first-switch,
+      # filnix-update) Nix planned to build them although the cache has them,
+      # and failed. Substitute whatever the caches have.
+      always-allow-substitutes = true;
     };
 
     # Copied once, so that they can be edited.

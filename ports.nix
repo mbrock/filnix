@@ -3205,7 +3205,7 @@ in
 
   # nginx builds, but its worker processes share pointers through shared
   # memory zones, which Fil-C capabilities do not survive; the same rule
-  # refuses PostgreSQL and Apache on Fil-C systems (lib/block-rust-go.nix).
+  # refuses the PostgreSQL server on Fil-C systems (lib/block-rust-go.nix).
   # Refuse it at evaluation, saying what to do instead.
   (
     let

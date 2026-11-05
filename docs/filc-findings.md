@@ -1935,3 +1935,14 @@ the program. lighttpd reads static files for HTTP/2 with `preadv2`, so the
 demo-wiki VM test's first static page stopped it. `pwritev2` likely shares
 the path. lighttpd is built with `ac_cv_func_preadv2=no` and falls back to
 `pread`; the fix belongs in the glibc port's system call wrappers.
+
+## `ioprio_set` and `ioprio_get` have no wrapper
+
+The runtime has no wrapper for the IO priority system calls, and refuses
+the raw `syscall()`; filnix's systemd patch returns `ENOSYS` instead. systemd
+treats a failed `ioprio_set` as fatal, so every unit with
+`IOSchedulingClass=` or `IOSchedulingPriority=` failed at step IOPRIO
+("Failed to set up IO scheduling priority: Function not implemented");
+logrotate did on filc.less.rest. The NixOS module unsets both for every
+service. A wrapper in the runtime would fix it; that is runtime work, so it
+needs a soundness review first.
