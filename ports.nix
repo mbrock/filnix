@@ -3331,7 +3331,9 @@ in
   # lists, the lingering lists and a predicate's clause_indexes. Under
   # Fil-C a plain pointer load that races a store or CAS can tear, and
   # traps; upstream's other lock-free readers are left as they are
-  # (nanofil/docs/m4.md, SWI-Prolog).
+  # (nanofil/docs/m4.md, SWI-Prolog). Until they are atomic too, a
+  # multithreaded program may now and then stop with a Fil-C trap from
+  # one of these races.
   (for pkgs.swi-prolog [
     (arg {
       withDb = false;
