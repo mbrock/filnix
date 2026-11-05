@@ -308,12 +308,18 @@ class UpstreamTests(unittest.TestCase):
             self.assertEqual(data["release"]["coreRev"], release_pin["coreRev"])
             self.assertEqual(data["staging"]["coreRev"], staging_pin["coreRev"])
             self.assertNotEqual(data["release"]["coreRev"], data["staging"]["coreRev"])
-            self.assertEqual(data["release"]["runtimePatches"], [])
-            self.assertEqual(data["release"]["libcPatches"], ["nix-locale-archive.patch"])
+            # filnix's own runtime and glibc fixes apply to both pins; only
+            # release needs the unwind fix, which staging already has.
+            runtime = ["filc-runtime-prctl-caps.patch", "filc-runtime-brk-query.patch"]
+            libc = ["nix-locale-archive.patch", "filc-glibc-openat-nocancel.patch",
+                    "filc-glibc-unsupported-syscalls.patch",
+                    "filc-glibc-settimezone.patch"]
+            self.assertEqual(data["release"]["runtimePatches"],
+                             [runtime[0], "runtime-exception-unwind.patch", runtime[1]])
+            self.assertEqual(data["release"]["libcPatches"], libc)
             self.assertEqual(data["release"]["libcPostPatch"], "")
-            self.assertEqual(data["staging"]["runtimePatches"], [])
-            self.assertEqual(data["staging"]["libcPatches"],
-                             ["nix-locale-archive.patch"])
+            self.assertEqual(data["staging"]["runtimePatches"], runtime)
+            self.assertEqual(data["staging"]["libcPatches"], libc)
 
     def test_component_hashes_and_store_identity(self):
         config = json.loads((self.filnix / "lib/filc-upstream.json").read_text())

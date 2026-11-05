@@ -38,7 +38,9 @@ while read -r _local_ref sha _remote_ref remote_sha; do
     fi
     if grep -q -E '^(ports/|scripts/update-ports-pin\.py|tests/upstream-sources\.py|packages/projeny\.nix)' <<<"$changed"; then
       projeny=$(nix build --no-link --print-out-paths .#projeny)
-      PATH="$projeny/bin:$PATH" python3 tests/upstream-sources.py
+      # set -e does not apply inside this subshell, because its status is
+      # tested with ||, so fail explicitly.
+      PATH="$projeny/bin:$PATH" python3 tests/upstream-sources.py || exit 1
     fi
     # Evaluate the foundation gate; wider distribution readiness is separate.
     mapfile -t attrs < <(grep -v -e '^#' -e '^$' scripts/ship-outputs.txt)
