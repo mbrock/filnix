@@ -28,7 +28,7 @@
     | `abi` | filc_abi's frame for `sum`, and its entry actions |
     | `homes` | the register map amd64_regs proposed and its checker accepted |
 
-    The -O stages use the -O defaults (inlining small, simplification
+    The -O stages use the -O defaults (inlining wide, simplification
     full). SWI-Prolog only: it prints with print_term/2 and wraps
     predicates to see what they were given.
 */
@@ -84,7 +84,7 @@ c_lowered(File, M) :-
     once(c_module(Items, M)), once(valid_module(M)).
 
 optimized(File, M) :-
-    c_lowered(File, M0), once(optimize(o1(small, full), M0, M)).
+    c_lowered(File, M0), once(optimize(o1(wide, full), M0, M)).
 
 checked(File, C) :-
     optimized(File, M), once(pizlonate_module(M, C)), once(valid_module(C)).

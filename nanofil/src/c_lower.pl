@@ -74,7 +74,7 @@
     | Ebs | eightbytes, `eb(Offset, Bytes, Class)` |
     | S0 ... S | `s(Env, Chunks, End)` in the static initializer predicates |
 */
-:- module(c_lower, [c_module/2, c_toplevel_asm/2]).
+:- module(c_lower, [c_module/2, c_module/3, c_toplevel_asm/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -94,7 +94,15 @@
 %  module(Funcs) with the functions followed by the data of every
 %  global and string literal. Throws a semantic error for C that
 %  nanofil cannot lower.
-c_module(Items00, module(Funcs)) :-
+c_module(Items, Module) :- c_module(Items, Module, _).
+
+%! c_module(+Items, -Module, -Attributes)
+%
+%  As c_module/2; Attributes lists Sym-A for each function Sym of
+%  Module whose definition has the attribute A, always_inline or
+%  noinline. Only -O's inlining reads them (main.pl, inline.pl): the IR
+%  has no field for them, so they are not in Module.
+c_module(Items00, module(Funcs), Attributes) :-
     empty_env(Env0),
     builtin_declarations(Builtins),
     append(Builtins, Items00, ItemsB),
@@ -110,7 +118,14 @@ c_module(Items00, module(Funcs)) :-
     weak_linkage(Weak, Funcs1, Funcs2),
     unprototyped_calls(Funcs2, Funcs3),
     alias_kinds(Funcs3, Funcs4),
-    launder_module(Funcs4, Funcs).
+    launder_module(Funcs4, Funcs),
+    env_defs(Env, Defs),
+    findall(S-always_inline, ( gen_assoc(inline_attribute(S), Defs, always_inline),
+                               memberchk(func(S, _, _, _, _), Funcs) ), Always),
+    findall(S-noinline, ( noinline_name(Items0, N), lookup_ordinary(Env, N, fn(_, S, _)),
+                          memberchk(func(S, _, _, _, _), Funcs) ), Never0),
+    sort(Never0, Never),
+    append(Never, Always, Attributes).
 
 /* unprototyped_calls(+Items0, -Items): a direct call made without a
    prototype in scope (callee unproto(S), from lower_node//3's call)
@@ -368,6 +383,26 @@ always_inline(Specs) :-
     member(attr(Attrs), Specs), attr_word(Attrs, A),
     memberchk(A, [always_inline, '__always_inline__']), !.
 
+% inline_attribute(+Specs, +Sym, +Env0, -Env): Env records a definition's
+% always_inline attribute for c_module/3, which -O's wide inlining
+% honours (inline.pl). Without it, Env is Env0.
+inline_attribute(Specs, Sym, Env0, Env) :-
+    (   always_inline(Specs) -> put_def(inline_attribute(Sym), always_inline, Env0, Env)
+    ;   Env = Env0
+    ).
+
+% noinline_name(+Items, -Name): GNU's noinline attribute is on some
+% declaration or the definition of the function Name, as weak_name/3
+% finds weak. (A C23 [[gnu::noinline]] is not seen: c_parse keeps no
+% C23 attribute.)
+noinline_name(Items, Name) :-
+    member(Item, Items),
+    (   Item = decl(_, Specs, Inits), member(init(dcl(some(Name), _, _), _), Inits)
+    ;   Item = fundef(_, Specs, dcl(some(Name), _, _), _)
+    ),
+    member(attr(Attrs), Specs), attr_word(Attrs, A),
+    memberchk(A, [noinline, '__noinline__']).
+
 external_inline_body(Specs, Storage, Name, ExternalNames) :-
     (   gnu_inline_rule(Specs)
     ->  Storage \== extern
@@ -526,7 +561,9 @@ top_item(ExternalNames, fundef(Loc, Specs, dcl(some(Name), DclType, Asm), Body),
                [d(_, Type, Storage0, _, _)], Env0, Env1),
     prior_storage(Name, Storage0, Env1, Storage),
     global_decl(Loc, d(Name, Type, Storage, Asm, none), Env1, Env1a),
-    init_decl(Loc, Specs, d(Name, Type, Storage, Asm, none), Env1a, Env2),
+    init_decl(Loc, Specs, d(Name, Type, Storage, Asm, none), Env1a, Env1b),
+    lookup_ordinary(Env1b, Name, fn(_, DefSym, _)),
+    inline_attribute(Specs, DefSym, Env1b, Env2),
     (   memberchk(fspec(inline), Specs),
         (   Storage == static
         ;   \+ external_inline_body(Specs, Storage, Name, ExternalNames)
@@ -551,7 +588,8 @@ top_item(ExternalNames, fundef(Loc, Specs, dcl(some(Name), DclType, Asm), Body),
             put_def(deferred(Local), df(Loc, Name, Type, DclType, Body, Scope),
                     Env2, Env3),
             put_def(inline_copy(Sym), Local, Env3, Env4),
-            put_def(inline_copy_of(Local), Sym, Env4, Env)
+            put_def(inline_copy_of(Local), Sym, Env4, Env5),
+            put_def(inline_attribute(Local), always_inline, Env5, Env)
         ;   Env = Env2      % GNU extern inline or a C99 inline-only definition
         )
     ;   Storage == static

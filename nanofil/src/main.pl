@@ -111,13 +111,14 @@
     src/lowers_check.pl, docs/lowers.md). NANOFIL_LOWERS supplies the
     same choice.
 
-    `--inline=none|small` independently selects no inlining, or, with
-    `-O`, inlining of small static functions before promotion
-    (src/inline.pl, docs/perf.md item 4). The default is small with
-    `-O`; without `-O` nothing inlines. NANOFIL_INLINE supplies the
-    same choice, and nanofil-cc passes none for -fno-inline and -O0.
-    Under small a trap inside an inlined function reports its caller's
-    name, as filcc -O2 does without -g.
+    `--inline=none|small|wide` independently selects no inlining, or,
+    with `-O`, inlining of small static functions before promotion
+    (src/inline.pl, docs/perf.md item 4), or that and more:
+    always_inline, single-call-site and non-leaf callees, callees first
+    (item 20). The default is wide with `-O`; without `-O` nothing
+    inlines. NANOFIL_INLINE supplies the same choice, and nanofil-cc
+    passes none for -fno-inline and -O0. A trap inside an inlined
+    function reports its caller's name, as filcc -O2 does without -g.
 
     `--simplify=none|full` independently selects, with `-O`, the cheap
     middle end after copy propagation (src/simplify.pl, docs/perf.md
@@ -337,8 +338,8 @@ inline_options([A|As], I0, I, Args) :-
 inline_default(Inline) :-
     ( getenv('NANOFIL_INLINE',I) -> inline_mode(I), Inline = I ; true ).
 inline_mode(I) :-
-    ( memberchk(I,[none,small]) -> true
-    ; throw(nanofil_error('inline must be none or small')) ).
+    ( memberchk(I,[none,small,wide]) -> true
+    ; throw(nanofil_error('inline must be none, small or wide')) ).
 % limit_options(+Argv0, +Limit0, -Limit, -Argv): as inline_options/4,
 % for --registers-limit=N; Limit is none or a nonnegative integer.
 limit_options([], L, L, []).
@@ -375,14 +376,15 @@ simplify_mode(S) :-
     ; throw(nanofil_error('simplify must be none or full')) ).
 % opt_selection(+Level, ?Inline, ?Simplify, -Opt): the middle end's
 % selection (opt.pl). Inlining and simplification need -O, where
-% inlining is small and simplification full unless chosen otherwise.
+% inlining is wide and simplification full unless chosen otherwise.
 opt_selection(o0, _, _, o0).
 opt_selection(o1, Inline, Simplify, Opt) :-
-    ( var(Inline) -> Inline = small ; true ),
+    ( var(Inline) -> Inline = wide ; true ),
     ( var(Simplify) -> Simplify = full ; true ),
     middle_selection(Simplify, Inline, Opt).
 middle_selection(none, none, o1).
 middle_selection(none, small, o1(small)).
+middle_selection(none, wide, o1(wide, none)).
 middle_selection(full, Inline, o1(Inline, full)).
 % opt_level(+Opt, -Level): o0 or o1, for difftest's validation.
 opt_level(o0, o0).
@@ -471,10 +473,11 @@ file_module(File, Module) :-
     ).
 
 % c_file_module(+File, -Module): Module is the valid IR module of the C
-% file. c_file_module/3 also gives the assembly lines of its top-level
-% asm (c_lower c_toplevel_asm/2), which `cc` prints after the module.
-c_file_module(File, Module) :- c_file_module(File, Module, _).
-c_file_module(File, Module, AsmLines) :-
+% file. c_file_module/4 also gives the assembly lines of its top-level
+% asm (c_lower c_toplevel_asm/2), which `cc` prints after the module,
+% and its functions' inlining attributes (c_lower c_module/3).
+c_file_module(File, Module) :- c_file_module(File, Module, _, _).
+c_file_module(File, Module, AsmLines, Attributes) :-
     c_file_tokens(File, Tokens),
     release_stacks,
     (   c_parse(Tokens, Items) -> true
@@ -483,7 +486,7 @@ c_file_module(File, Module, AsmLines) :-
     release_stacks,
     % Deterministic stages: a leftover choicepoint would keep the tokens
     % and items of a large translation unit (SQLite) alive to the end.
-    once(c_module(Items, Module)),
+    once(c_module(Items, Module, Attributes)),
     once(c_toplevel_asm(Items, AsmLines)),
     % The frontend's garbage is gone once its items are: SQLite with
     % FTS3, R-Tree and sessions (nixpkgs' flags) has 220 MB live here,
@@ -539,8 +542,9 @@ command(Opt, Registers, Checks, [compile, File]) :- !,
     module_mode(Module0, Mode),
     optimize(Opt, Module0, Module),
     mode_print_asm(Mode, Registers, Checks, Module).
-command(Opt, Registers, Checks, [cc, File]) :- !,
-    c_file_module(File, Module0, AsmLines),
+command(Opt0, Registers, Checks, [cc, File]) :- !,
+    c_file_module(File, Module0, AsmLines, Attributes),
+    inline_attributes(Opt0, Attributes, Opt),
     release_stacks,
     once(optimize(Opt, Module0, Module)),
     release_stacks,
@@ -549,6 +553,12 @@ command(Opt, Registers, Checks, [cc, File]) :- !,
 command(Opt, _, Checks, [difftest, File, Dir]) :- !,
     difftest(Opt, Checks, File, Dir).
 command(Opt, _, _, Args) :- command(Opt,Args).
+
+% inline_attributes(+Opt0, +Attributes, -Opt): wide inlining takes the C
+% file's always_inline and noinline functions (c_module/3), which the IR
+% does not carry, in its selection. Other selections are unchanged.
+inline_attributes(o1(wide, S), Attributes, o1(wide(Attributes), S)) :- !.
+inline_attributes(Opt, _, Opt).
 
 % command(+Opt, +Args): carry out the command line Args (without options),
 % running the middle end when Opt is o1 (-O given) and not when o0.
@@ -564,8 +574,9 @@ command(Opt, [print, File]) :-
     file_module(File, Module0),
     optimize(Opt, Module0, Module),
     print_module(Module).
-command(Opt, ['cc-ir', File]) :-
-    c_file_module(File, Module0),
+command(Opt0, ['cc-ir', File]) :-
+    c_file_module(File, Module0, _, Attributes),
+    inline_attributes(Opt0, Attributes, Opt),
     optimize(Opt, Module0, Module),
     print_module(Module).
 command(Opt, [run, File, Fn|ArgAtoms]) :-

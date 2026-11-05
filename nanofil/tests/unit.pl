@@ -20,6 +20,7 @@
 :- use_module('../src/promote').
 :- use_module('../src/copy').
 :- use_module('../src/opt').
+:- use_module('../src/inline').
 :- use_module('../src/pizlonate').
 :- use_module('../src/check_reuse').
 :- use_module('../src/schedule').
@@ -1166,7 +1167,9 @@ test(promote_punned_reads) :-
     module_fn_args_outcome(M, bytes, [], ret(67305985)),
     func_named(M, bytes, B), alloc_count(module([B]), 1),
     % Only h and w slots are punned: a pointer's bytes are no value of a
-    % w slot, and an l slot would need l shifts. Both stay memory.
+    % w slot, so pb stays memory. An l slot read through a narrower member
+    % is split into words first (split_words/8), so lb's byte 4 is the
+    % high word's low byte, 1.
     ir_module([func(pb, export, w, [], [block(s, [], [
                    let(tmp(a), p, alloc(8), [const(8)]),
                    let(tmp(g), p, alloc(8), [const(8)]),
@@ -1180,9 +1183,121 @@ test(promote_punned_reads) :-
                    let(tmp(v), w, load(ub), [tmp(q)])
                ], ret(tmp(v)))])], P0),
     optimize(passes([promote]), P0, P), once(valid_module(P)),
+    module_fn_args_outcome(P0, lb, [], ret(1)),
     module_fn_args_outcome(P, lb, [], ret(1)),
-    func_named(P, lb, LB), alloc_count(module([LB]), 1),
+    func_named(P, lb, LB), alloc_count(module([LB]), 0),
     func_named(P, pb, PB), alloc_count(module([PB]), 2).
+
+% Float slots (perf.md item 20) promote when every load of them follows
+% a store on every path: one store (1.5 is 0x3FF8000000000000), stores
+% on both arms of a branch, an accumulator stored before its loop (1.0
+% added three times to 0.0 is 3.0, 0x4008000000000000). A load of the
+% initial zero (fzero), one that only the branch's test guards
+% (fguard: the store's arm and the load's test agree at run time, but
+% not in the CFG) and a pun of an integer store keep their memory.
+test(promote_float_slots) :-
+    D15 = 4609434218613702656, D1 = 4607182418800017408, D3 = 4613937818241073152,
+    Fs = [func(fone, export, d, [], [block(s, [], [
+              let(tmp(a), p, alloc(8), [const(8)]),
+              store(d, const(D15), tmp(a)),
+              let(tmp(x), d, load(d), [tmp(a)])], ret(tmp(x)))]),
+          func(fzero, export, d, [], [block(s, [], [
+              let(tmp(a), p, alloc(8), [const(8)]),
+              let(tmp(x), d, load(d), [tmp(a)])], ret(tmp(x)))]),
+          func(fjoin, export, d, [param(w, tmp(c))], [
+              block(s, [], [let(tmp(a), p, alloc(8), [const(8)])], branch(tmp(c), t, e)),
+              block(t, [], [store(d, const(D15), tmp(a))], goto(j)),
+              block(e, [], [store(d, const(D1), tmp(a))], goto(j)),
+              block(j, [], [let(tmp(x), d, load(d), [tmp(a)])], ret(tmp(x)))]),
+          func(fguard, export, d, [param(w, tmp(c))], [
+              block(s, [], [let(tmp(a), p, alloc(8), [const(8)])], branch(tmp(c), t, j)),
+              block(t, [], [store(d, const(D15), tmp(a))], goto(j)),
+              block(j, [], [], branch(tmp(c), u, z)),
+              block(u, [], [let(tmp(x), d, load(d), [tmp(a)])], ret(tmp(x))),
+              block(z, [], [], ret(const(D1)))]),
+          func(facc, export, d, [], [
+              block(s, [], [let(tmp(a), p, alloc(8), [const(8)]),
+                            store(d, const(0), tmp(a))], goto(h)),
+              block(h, [phi(tmp(i), w, [s-const(0), b-tmp(i1)])],
+                    [let(tmp(c), w, cmp(slt, w), [tmp(i), const(3)])], branch(tmp(c), b, e)),
+              block(b, [], [let(tmp(x), d, load(d), [tmp(a)]),
+                            let(tmp(y), d, add, [tmp(x), const(D1)]),
+                            store(d, tmp(y), tmp(a)),
+                            let(tmp(i1), w, add, [tmp(i), const(1)])], goto(h)),
+              block(e, [], [let(tmp(r), d, load(d), [tmp(a)])], ret(tmp(r)))]),
+          func(fpun, export, d, [], [block(s, [], [
+              let(tmp(a), p, alloc(8), [const(8)]),
+              store(l, const(D15), tmp(a)),
+              let(tmp(x), d, load(d), [tmp(a)])], ret(tmp(x)))])],
+    ir_module(Fs, M0),
+    optimize(passes([promote]), M0, M), once(valid_module(M)),
+    forall(member(F-Args-Want-N, [fone-[]-ret(D15)-0, fzero-[]-ret(0)-1,
+                                  fjoin-[1]-ret(D15)-0, fjoin-[0]-ret(D1)-0,
+                                  fguard-[1]-ret(D15)-1, fguard-[0]-ret(D1)-1,
+                                  facc-[]-ret(D3)-0, fpun-[]-ret(D15)-1]),
+           ( module_fn_args_outcome(M0, F, Args, Want),
+             module_fn_args_outcome(M, F, Args, Want),
+             func_named(M, F, Fn), alloc_count(module([Fn]), N) )).
+
+% A struct of words copied as a long and a word and read as words
+% promotes once the long is split (perf.md item 20): V = 7 * 2^32 + 5
+% at 0 and 11 at 8 read as 5, 7 and 11 gives 5*100 + 7*10 + 11 = 581;
+% a word 9 stored at 4 then read back as a long gives 9 * 2^32 + 5. A
+% pointer under the words keeps its memory.
+test(promote_split_words) :-
+    V = 30064771077,
+    Fs = [func(sw3, export, w, [], [block(s, [], [
+              let(tmp(a), p, alloc(4), [const(12)]),
+              store(l, const(V), tmp(a)),
+              let(tmp(a8), p, add, [tmp(a), const(8)]),
+              store(w, const(11), tmp(a8)),
+              let(tmp(x), w, load(uw), [tmp(a)]),
+              let(tmp(a4), p, add, [tmp(a), const(4)]),
+              let(tmp(y), w, load(uw), [tmp(a4)]),
+              let(tmp(z), w, load(uw), [tmp(a8)]),
+              let(tmp(x1), w, mul, [tmp(x), const(100)]),
+              let(tmp(y1), w, mul, [tmp(y), const(10)]),
+              let(tmp(s1), w, add, [tmp(x1), tmp(y1)]),
+              let(tmp(r), w, add, [tmp(s1), tmp(z)])], ret(tmp(r)))]),
+          func(swl, export, l, [], [block(s, [], [
+              let(tmp(a), p, alloc(8), [const(8)]),
+              store(l, const(V), tmp(a)),
+              let(tmp(a4), p, add, [tmp(a), const(4)]),
+              store(w, const(9), tmp(a4)),
+              let(tmp(x), l, load(l), [tmp(a)])], ret(tmp(x)))]),
+          func(swp, export, w, [param(p, tmp(g))], [block(s, [], [
+              let(tmp(a), p, alloc(8), [const(16)]),
+              store(p, tmp(g), tmp(a)),
+              let(tmp(x), w, load(uw), [tmp(a)])], ret(const(1)))])],
+    ir_module(Fs, M0),
+    optimize(passes([promote]), M0, M), once(valid_module(M)),
+    forall(member(F-Want-N, [sw3-ret(581)-0, swl-ret(38654705669)-0]),
+           ( module_fn_args_outcome(M0, F, [], Want),
+             module_fn_args_outcome(M, F, [], Want),
+             func_named(M, F, Fn), alloc_count(module([Fn]), N) )),
+    func_named(M, swp, P), alloc_count(module([P]), 1),
+    % Not split: in plain mode a global stored as an l (it has no w
+    % reading), and an alloc whose double slot is read before any store,
+    % so it would not promote after the split either; each keeps its one
+    % l store.
+    ir_module([data(tab, export, 8, [item(l, const(5))]),
+               func(pg, export, l, [], [block(s, [], [
+                   let(tmp(a), l, alloc(8), [const(8)]),
+                   store(l, global(tab), tmp(a)),
+                   let(tmp(x), w, load(uw), [tmp(a)]),
+                   let(tmp(y), l, load(l), [tmp(a)])], ret(tmp(y)))])], G0),
+    optimize(passes([promote]), G0, G), once(valid_module(G)),
+    func_named(G, pg, PG),
+    PG = func(_, _, _, _, [block(_, _, PGIs, _)]), memberchk(store(l, global(tab), _), PGIs),
+    ir_module([func(fd, export, d, [param(w, tmp(c))], [
+                   block(s, [], [let(tmp(a), p, alloc(8), [const(16)]),
+                                 store(l, const(V), tmp(a)),
+                                 let(tmp(x), w, load(uw), [tmp(a)]),
+                                 let(tmp(a8), p, add, [tmp(a), const(8)])],
+                         branch(tmp(c), t, j)),
+                   block(t, [], [store(d, const(0), tmp(a8))], goto(j)),
+                   block(j, [], [let(tmp(y), d, load(d), [tmp(a8)])], ret(tmp(y)))])], D0),
+    optimize(passes([promote]), D0, D), once(valid_module(D)), D == D0.
 
 % An alloc outside the entry block (an inlined callee's local, perf.md
 % item 4) is a fresh zeroed object at each execution. Promoted, each
@@ -1420,6 +1535,109 @@ caller_func(Name, N, Callees, func(Name, export, w, [param(w, tmp(x0))],
 callee_call(G, call(result(tmp(R), w), global(G), [arg(w, V)]), K0-V, K-tmp(R)) :-
     K is K0 + 1, format(atom(R), 'r~w', [K]).
 
+% --inline=wide (src/inline.pl, docs/perf.md item 20): callees before
+% callers, non-leaf callees, a single call site at any size up to 500,
+% always_inline anywhere up to 4000, noinline never, tuple returns;
+% local functions left unreferenced leave the module. Every run keeps
+% its outcome under the pass alone and under o1(wide(Attrs), full).
+test(inline_wide) :-
+    Add1 = func(add1, local, w, [param(w, tmp(x))],
+                [block(s, [], [let(tmp(y), w, add, [tmp(x), const(1)])], ret(tmp(y)))]),
+    % Not a leaf: it calls add1 twice, and two calls it twice.
+    Twice = func(twice, local, w, [param(w, tmp(x))], [
+        block(s, [], [call(result(tmp(a), w), global(add1), [arg(w, tmp(x))]),
+                      call(result(tmp(b), w), global(add1), [arg(w, tmp(a))])], ret(tmp(b)))]),
+    Two = func(two, export, w, [param(w, tmp(n))], [
+        block(s, [], [call(result(tmp(r1), w), global(twice), [arg(w, tmp(n))]),
+                      call(result(tmp(r2), w), global(twice), [arg(w, tmp(r1))])], ret(tmp(r2)))]),
+    % One call site: 500 inlines, 501 does not; nor does a 300 whose
+    % address a data object holds, nor one into a caller over 2000.
+    chain_func(s1000, local, 499, S1000), chain_func(s1001, local, 500, S1001),
+    chain_func(s300t, local, 299, S300T), chain_func(s300k, local, 299, S300K),
+    caller_func(ones, 0, [s1000, s1001, s300t], Ones),
+    caller_func(k2001s, 1999, [s300k], K2001S),
+    % Single callees grow a caller to 2000 at most: of three 500s into
+    % a 994 (990 adds, three calls, a ret), the first two inline.
+    chain_func(g1, local, 499, G1), chain_func(g2, local, 499, G2),
+    chain_func(g3, local, 499, G3), caller_func(grow, 990, [g1, g2, g3], Grow),
+    Tab = data(tab, local, 8, [item(p, sym(s300t, 0))]),
+    Tabs = func(tabs, export, p, [], [block(s, [], [let(tmp(t), p, copy, [global(tab)])], ret(tmp(t)))]),
+    % always_inline: inlined at two sites and into a caller over 2000.
+    chain_func(a300, local, 299, A300),
+    caller_func(aa, 0, [a300, a300], AA), caller_func(k2001a, 1999, [a300], K2001A),
+    % noinline: never, small as it is.
+    Inc = func(inc, local, w, [param(w, tmp(x))],
+               [block(s, [], [let(tmp(y), w, add, [tmp(x), const(1)])], ret(tmp(y)))]),
+    caller_func(nn, 0, [inc], NN),
+    % A tuple return joins in two phis: (x+1) - 2x, or 7 - 9 for a
+    % negative x, from two returns (results are unsigned 64-bit).
+    Tup = func(tup, local, tuple([l, l]), [param(l, tmp(x))], [
+        block(s, [], [let(tmp(c), w, cmp(slt, l), [tmp(x), const(0)])], branch(tmp(c), neg, pos)),
+        block(neg, [], [], rets([const(7), const(9)])),
+        block(pos, [], [let(tmp(a), l, add, [tmp(x), const(1)]),
+                        let(tmp(b), l, mul, [tmp(x), const(2)])], rets([tmp(a), tmp(b)]))]),
+    Tups = func(tups, export, l, [param(l, tmp(n))], [
+        block(s, [], [call(tuple([result(tmp(a), l), result(tmp(b), l)]), global(tup),
+                           [arg(l, tmp(n))]),
+                      let(tmp(d), l, sub, [tmp(a), tmp(b)])], ret(tmp(d)))]),
+    % Recursion: neither inlined nor inlined into.
+    Rec = func(rec, local, w, [param(w, tmp(n))], [
+        block(s, [], [], branch(tmp(n), d, z)),
+        block(d, [], [let(tmp(m), w, sub, [tmp(n), const(1)]),
+                      call(result(tmp(r), w), global(rec), [arg(w, tmp(m))]),
+                      call(result(tmp(q), w), global(inc2), [arg(w, tmp(r))])], ret(tmp(q))),
+        block(z, [], [], ret(const(4)))]),
+    Inc2 = func(inc2, local, w, [param(w, tmp(x))],
+                [block(s, [], [let(tmp(y), w, add, [tmp(x), const(2)])], ret(tmp(y)))]),
+    caller_func(recs, 0, [rec], Recs),
+    % A setjmp caller keeps its call.
+    SjCaller = func(sjc, export, w, [param(p, tmp(buf))], [
+        block(s, [], [let(tmp(x), w, setjmp('_setjmp'), [tmp(buf), const(0)]),
+                      call(result(tmp(r), w), global(inc3), [arg(w, tmp(x))])], ret(tmp(r)))]),
+    Inc3 = func(inc3, local, w, [param(w, tmp(x))],
+                [block(s, [], [let(tmp(y), w, add, [tmp(x), const(3)])], ret(tmp(y)))]),
+    % Never referenced: leaves.
+    Dead = func(dead, local, w, [], [block(s, [], [], ret(const(1)))]),
+    Items = [Add1, Twice, Two, S1000, S1001, S300T, S300K, Ones, K2001S, G1, G2, G3, Grow,
+             Tab, Tabs,
+             A300, AA, K2001A, Inc, NN, Tup, Tups, Rec, Inc2, Recs, SjCaller, Inc3, Dead],
+    ir_module(Items, M0),
+    Attrs = [a300-always_inline, inc-noinline],
+    inline_module(wide(plain, Attrs), M0, MI), once(valid_module(MI)), reads_back(MI),
+    optimize(o1(wide(Attrs), full), M0, M), once(valid_module(M)),
+    forall(member(Caller-Callee, [two-twice, two-add1, ones-s1000, aa-a300, k2001a-a300,
+                                  tups-tup, grow-g1, grow-g2]),
+           \+ calls_in(MI, Caller, Callee)),
+    forall(member(Caller-Callee-N, [ones-s1001-1, ones-s300t-1, k2001s-s300k-1, nn-inc-1,
+                                    recs-rec-1, rec-rec-1, sjc-inc3-1, grow-g3-1]),
+           ( findall(x, call_in(MI, Caller, Callee), Xs), length(Xs, N) )),
+    % rec is on a cycle, so inc2 is not inlined into it, nor rec into
+    % recs, which is unchanged.
+    calls_in(MI, rec, inc2),
+    func_named(M0, recs, Recs), func_named(MI, recs, Recs),
+    forall(member(F, [twice, add1, s1000, a300, tup, dead]), \+ func_named(MI, F, _)),
+    forall(member(F, [s1001, s300t, s300k, inc, rec, inc2, inc3]), func_named(MI, F, _)),
+    forall(member(F-Args-Want, [two-[5]-ret(9), ones-[1]-ret(_), aa-[0]-ret(598),
+                                k2001a-[0]-ret(_), k2001s-[0]-ret(_), grow-[0]-ret(2487),
+                                nn-[2]-ret(3),
+                                tups-[5]-ret(18446744073709551612),
+                                tups-[18446744073709551613]-ret(18446744073709551614), recs-[0]-ret(_)]),
+           ( module_fn_args_outcome(M0, F, Args, Want),
+             module_fn_args_outcome(MI, F, Args, Want),
+             module_fn_args_outcome(M, F, Args, Want) )).
+
+% The frontend reports always_inline on a definition and noinline on
+% any declaration of a function (c_module/3), for wide inlining.
+test(inline_attributes) :-
+    c_tokens("static int a(int) __attribute__((noinline));
+              static int a(int x) { return x * 3; }
+              __attribute__((noinline)) static int b(int x) { return x + 5; }
+              static inline __attribute__((always_inline)) int c(int x) { return x - 1; }
+              static int d(int x) { return x; }
+              int f(int x) { return a(x) + b(x) + c(x) + d(x); }", 'attrs.c', Ts),
+    c_parse(Ts, C), c_module(C, _, As), msort(As, Got),
+    Got == [a-noinline, b-noinline, c-always_inline].
+
 % Source contexts follow an inlined call: the calling block's sites
 % before the call stay, the call's origins go to the parameter copies,
 % later sites and the jump move to the join, shifted, and the callee's
@@ -1615,9 +1833,9 @@ test(promote_removes_allocs) :-
     alloc_count(M0, 12),
     optimize(o1, M0, M),
     once(valid_module(M)),
-    alloc_count(M, 3),
+    alloc_count(M, 1),
     func_named(M, kept, K),
-    alloc_count(module([K]), 3),
+    alloc_count(module([K]), 1),
     c_file_module('../tests/c/basic.c', C0),
     alloc_count(C0, 23),
     optimize(o1, C0, C),

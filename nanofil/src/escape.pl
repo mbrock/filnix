@@ -34,6 +34,13 @@ load_width(sb, b).
 load_width(ub, b).
 load_width(p, p).
 
+% slot_load_width(?LoadType, ?Width): as load_width/2, and a float load
+% reads a slot of its own width, s or d. local_storage.pl keeps float
+% loads out of named locals through load_width/2; promotion takes them.
+slot_load_width(T, W) :- load_width(T, W).
+slot_load_width(s, s).
+slot_load_width(d, d).
+
 %! alloc_classes(+Func, -Classes) is det.
 %
 %  Classes is [A-Class] for every alloc temp A of Func, in order, with
@@ -42,7 +49,7 @@ load_width(p, p).
 %    - local(Size, Accesses): every use of A's address is the address of
 %      a load or store at a fixed offset, possibly through add/sub of
 %      constants or copy. Accesses is an ordset of acc(Off, Width),
-%      Width in b h w l p. Size is the alloc's operand.
+%      Width in b h w l p s d. Size is the alloc's operand.
 %    - escapes(Why): the address is used any other way (stored, passed,
 %      returned, compared, converted, merged in a phi, offset by a
 %      variable, loaded with an unsupported type), or it or a temp
@@ -152,7 +159,7 @@ inst_event(call(_, F, Args), Addrs, Root-esc(call)) :-
 kind_event(load, let(_, _, load(T), [tmp(X)]), Addrs,
            Root-Event) :-
     get_assoc(X, Addrs, Root-Off),
-    (   load_width(T, W)
+    (   slot_load_width(T, W)
     ->  Event = acc(acc(Off, W))
     ;   Event = esc(load(T))
     ).

@@ -8,6 +8,7 @@
 :- use_module('../src/ir_text').
 :- use_module('../src/interp').
 :- use_module('../src/opt').
+:- use_module('../src/promote', [alloc_count/2]).
 :- use_module('../src/pizlonate').
 :- use_module(library(clpz)).
 :- use_module(library(lists)).
@@ -19,8 +20,8 @@ local_selection :-
     nonentry_unchanged,
     redefinition_unchanged,
     dead_float_unchanged,
-    forall(float_heap_case(_, _, M, Expected),
-           optimized_float_heap(M, Expected)),
+    forall(float_heap_case(_, Case, M, Expected),
+           optimized_float_heap(Case, M, Expected)),
     storage_budget,
     zero_size,
     over_aligned_unchanged.
@@ -115,6 +116,10 @@ dead_float_unchanged :-
 % unsupported-load guard. Each allocation is large enough that bounds
 % alone cannot keep it on the heap. Fil-C zeroes new memory; the integer
 % bit patterns below encode 1.0 in binary32 and binary64, not conversions.
+% Promotion takes a float slot that every reachable load reads after a
+% store (dead: its only load is unreachable), not one read before any
+% store (zero) nor a pun of an integer store and a float load at one
+% offset; local storage then leaves those on the heap.
 float_heap_case(T, zero, module([func(f, export, T, [], [
     block(s, [], [let(tmp(a), p, alloc(8), [const(Size)]),
                   let(tmp(x), T, load(T), [tmp(a)])], ret(tmp(x)))
@@ -139,10 +144,11 @@ float_heap_case(T, dead, module([func(f, export, w, [], [
 float_layout(s, 4, w, 1065353216).
 float_layout(d, 8, l, 4607182418800017408).
 
-optimized_float_heap(M0, Expected) :-
+optimized_float_heap(Case, M0, Expected) :-
     valid_module(M0), once(run(M0, f, [], 100, Expected)),
     optimize(o0, M0, Unoptimized), Unoptimized == M0,
-    optimize(o1, M0, M), valid_module(M), M == M0,
+    optimize(o1, M0, M), valid_module(M),
+    ( Case == dead -> alloc_count(M, 0) ; M == M0 ),
     once(run(M, f, [], 100, Expected)),
     pizlonate_module(M, Checked), valid_module(Checked),
     once(run(Checked, f, [], 100, Expected)).

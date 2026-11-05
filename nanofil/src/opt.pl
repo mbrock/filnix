@@ -37,7 +37,8 @@
 %
 %  Options is o0 (the reference path), o1 (promote, copy and local
 %  storage), o1(small) (inlining of small static functions first,
-%  `--inline=small`), o1(Inline, Simplify) with Inline none or small and
+%  `--inline=small`), o1(Inline, Simplify) with Inline none, small, wide
+%  or wide(Attributes) (`--inline=wide`, Attributes from c_module/3) and
 %  Simplify none or full (the cheap middle end after copy,
 %  `--simplify=full`), or passes(Names), an ordered subset of all five.
 %  Invalid selections fail.
@@ -79,6 +80,9 @@ optimization_passes(passes(Passes), Passes) :-
 inline_passes(none, _, []).
 inline_passes(small, none, [inline]).
 inline_passes(small, full, [inline_simplified]).
+inline_passes(wide, Simplify, Passes) :- inline_passes(wide([]), Simplify, Passes).
+inline_passes(wide(As), none, [inline_wide(plain, As)]).
+inline_passes(wide(As), full, [inline_wide(simplified, As)]).
 simplify_passes(none, []).
 simplify_passes(full, [simplify]).
 
@@ -101,6 +105,7 @@ optimize_pass(Name, M0, M) :-
 
 pass_predicate(inline, inline_module).
 pass_predicate(inline_simplified, inline_module(simplified)).
+pass_predicate(inline_wide(Callees, As), inline_module(wide(Callees, As))).
 pass_predicate(promote, promote_module).
 pass_predicate(copy, copy_module).
 pass_predicate(simplify, simplify_module).

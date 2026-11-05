@@ -33,6 +33,7 @@ let
     O-guard = "-O --checks=guard";
     O-temps = "-O --registers=temps";
     O-noinline = "-O --inline=none";
+    O-small = "-O --inline=small";
     O-refbranches = "-O --branches=reference";
     O-stack = "-O --registers=stack";
     O-call = "-O --memcpy=call";

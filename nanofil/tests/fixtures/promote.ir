@@ -115,9 +115,10 @@ run(fields, [3, 0]).
 run(fields, [3, 9]).
 run(fields, [18446744073709551615, 4294967295]).
 
-% Not promoted: the address is passed to a call (escapes), two widths
-% at one offset, and a word stored into the high half of a long (both
-% overlaps). The alloc outside the entry block is promoted (since perf.md
+% Not promoted: the address is passed to a call (escapes). Two widths
+% at one offset (o) and a word stored into the high half of a long (h)
+% are promoted once the long is split into words (since perf.md item
+% 20). The alloc outside the entry block is promoted (since perf.md
 % item 4): it is a fresh zeroed object each time round the loop, written
 % before it is read. The results must not change either.
 func(peek, local, l, [param(l, tmp(p))], [

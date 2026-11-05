@@ -159,12 +159,16 @@ pkgs.runCommandCC "nanofil-check"
     step "-O merged bounds programs" env NANOFIL_BOUNDS=merged tests/par.sh tests/progtest.sh tests/c/prog/*.c
     step "-O or bounds programs" env NANOFIL_BOUNDS=or tests/par.sh tests/progtest.sh tests/c/prog/*.c
     step "-O run-c gc gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc
-    # Inlining (docs/perf.md item 4) is the -O default, so the -O suites
-    # above inline; these keep -O --inline=none, the uninlined path.
+    # Wide inlining (docs/perf.md items 4 and 20) is the -O default, so
+    # the -O suites above inline; these keep -O --inline=none, the
+    # uninlined path, and then small, item 4's leaves.
     export NANOFIL_INLINE=none
     step "-O inline=none difftest" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
     step "-O inline=none ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
     step "-O inline=none programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    export NANOFIL_INLINE=small
+    step "-O inline=small difftest" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir tests/c/*.c big1.c
+    step "-O inline=small programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     unset NANOFIL_INLINE
     # The cheap middle end (docs/perf.md item 8) is the -O default, so the
     # -O suites above simplify; these keep -O --simplify=none.

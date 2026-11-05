@@ -24,7 +24,16 @@
       shifted right by 8 times its byte offset (little-endian), then
       extended as any narrow load. `l` and `p` slots are never punned;
     - in filc mode, its `p` slots are 8-aligned (allocs are 16-aligned),
-      so no `load(p)` or `store(p, V, A)` could trap as misaligned.
+      so no `load(p)` or `store(p, V, A)` could trap as misaligned;
+    - its float (`s` or `d`) slots are read only after a store to them on
+      every path from the alloc (float_roots_stored/4): a slot read
+      where the CFG, not the program, allows its initial zero would carry
+      phis round a loop (Lua's luaV_execute).
+
+    An `l` access that another access overlaps (a struct of words copied
+    as a long, read as words) is first split into two `w` accesses, the
+    low word at its offset (split_words/8), when the alloc then
+    promotes. The memory read and written is the same either way.
 
     The function must also be in strict SSA form: each temp defined
     once, every definition dominating its uses. Otherwise a stored temp
@@ -48,13 +57,14 @@
 
     | A load of | Becomes, on the slot's value |
     |---|---|
-    | `l` or `p` | `copy` |
+    | `l`, `p`, `s` or `d` | `copy` |
     | `sw` or `uw`, at class `w` | `copy` |
     | `sw` or `uw`, at class `l` | `ext(sw)` or `ext(uw)` |
     | `sh`, `uh`, `sb` or `ub` | the extension of that type, such as `ext(sb)` |
 
     A slot's phi has class `w` for widths `b`, `h` and `w`, and the
-    slot's width, `l` or `p`, otherwise.
+    slot's width, `l`, `p`, `s` or `d`, otherwise. A float slot's 0 is
+    the bit pattern of +0.0, which is what a zeroed object reads.
 */
 :- module(promote, [promote_module/2, promote_func/3, promote_context/5, promotable/3,
                     promotable/4, alloc_count/2, strict_ssa/3, strict_ssa/4]).
@@ -121,11 +131,29 @@ promote_func(Mode, F0, F) :- promote_context(Mode, F0, [], F, _).
 %  and stores, and instruction sites are re-indexed. A setjmp function
 %  is left alone.
 promote_context(_, F, Rs, F, Rs) :- setjmp_func(F), !.
-promote_context(Mode, F0, Rs0, F, Rs) :-
+promote_context(Mode, F00, Rs00, F, Rs) :-
+    promotable(Mode, F00, Roots0, An0),
+    % An alloc whose l accesses w accesses overlap promotes once those l
+    % accesses are split into words (split_words/8).
+    (   An0 = an(Classes, Addrs0, Counts0),
+        split_roots(Mode, F00, Roots0, Classes, Addrs0, Splits), Splits \== [],
+        F00 = func(_, _, _, _, Blocks00),
+        func_cfg(Blocks00, Cfg0), cfg_idoms(Cfg0, Idom0),
+        strict_ssa(F00, Counts0, Cfg0, Idom0)
+    ->  split_words(Mode, Splits, Addrs0, Counts0, F00, Rs00, F01, Rs01),
+        promotable(Mode, F01, Roots1, An1)
+    ;   F01 = F00
+    ),
+    % The split stays only if every split alloc then promotes: an alloc
+    % left in memory would take two checked accesses for each one.
+    (   F01 \== F00, forall(member(A-_, Splits), memberchk(A-_, Roots1))
+    ->  F0 = F01, Rs0 = Rs01, Roots = Roots1, An = An1
+    ;   F0 = F00, Rs0 = Rs00, Roots = Roots0, An = An0
+    ),
     F0 = func(Name, Linkage, Ret, Params, Blocks0),
     % Most functions have nothing to promote: look before building the
     % dominator tree.
-    (   promotable(Mode, F0, Roots, an(_, AllAddrs, Counts)),
+    (   An = an(_, AllAddrs, Counts),
         Roots \== [],
         func_cfg(Blocks0, Cfg),
         cfg_idoms(Cfg, Idom),
@@ -136,6 +164,109 @@ promote_context(Mode, F0, Rs0, F, Rs) :-
         remap_sites(Rs0, Map, Rs1),
         promoted_context(Rs0, Rs1, Blocks0, Placed, Addrs, Widths, Rs)
     ;   F = F0, Rs = Rs0
+    ).
+
+%% Word splitting
+
+% split_roots(+Mode, +F, +Roots, +Classes, +Addrs, -Splits): Splits is
+% A-Offs for each local alloc A that Roots lacks and that would promote
+% if each of its l accesses at an offset of Offs, which another access
+% overlaps, were two w accesses, at the offset and 4 past it (a struct
+% of words copied as a long and read as words: lz4's LZ4HC_match_t).
+split_roots(Mode, F, Roots, Classes, Addrs, Splits) :-
+    findall(A-Size-Accs,
+            ( member(A-local(const(Size), Accs), Classes), \+ memberchk(A-_, Roots),
+              memberchk(acc(_, l), Accs) ),
+            Cands),
+    Cands \== [],
+    stored_accs(F, Addrs, Stored),
+    split_values_ok(F, Addrs, Bad),
+    findall(A-Offs,
+            ( member(A-Size-Accs, Cands), \+ memberchk(A, Bad),
+              split_offsets(Accs, Offs), Offs \== [],
+              split_accs(Offs, Accs, Accs1),
+              ( get_assoc(A, Stored, Ws0) -> split_accs(Offs, Ws0, Ws) ; Ws = [] ),
+              punned_slots(Accs1, Ws, Slots),
+              slots_ok(Mode, Size, Slots) ),
+            Splits).
+
+% split_values_ok(+F, +Addrs, -Bad): Bad lists the allocs that an l store
+% of a value other than a temp or a constant writes (in plain mode a
+% global(G) is read only at l, so its low word cannot be stored at w).
+split_values_ok(func(_, _, _, _, Blocks), Addrs, Bad) :-
+    findall(A, ( member(block(_, _, Is, _), Blocks), member(store(l, V, tmp(X)), Is),
+                 V \= tmp(_), V \= const(_), get_assoc(X, Addrs, A-_) ), Bad0),
+    sort(Bad0, Bad).
+
+split_offsets(Accs, Offs) :-
+    findall(O, ( member(acc(O, l), Accs), member(Other, Accs), Other \== acc(O, l),
+                 accs_overlap(acc(O, l), Other) ), Os),
+    sort(Os, Offs).
+
+accs_overlap(acc(O1, W1), acc(O2, W2)) :-
+    width_bytes(W1, B1), width_bytes(W2, B2),
+    O1 < O2 + B2, O2 < O1 + B1.
+
+split_accs(Offs, Accs0, Accs) :-
+    findall(Acc,
+            ( member(Acc0, Accs0),
+              (   Acc0 = acc(O, l), memberchk(O, Offs)
+              ->  ( Acc = acc(O, w) ; O4 is O + 4, Acc = acc(O4, w) )
+              ;   Acc = Acc0
+              ) ),
+            Accs1),
+    sort(Accs1, Accs).
+
+% split_words(+Mode, +Splits, +Addrs, +Counts, +F0, +Rs0, -F, -Rs): F is
+% F0 with each l access of Splits split, little-endian: a store of V
+% stores V's low word (a w store reads V at w) and then V shifted right
+% by 32 at 4 past it; a load reads both words unsigned and joins them.
+% The memory written and read is the same, so F is F0 whether or not
+% promotion follows. New temps are `sw.N`, fresh against Counts.
+split_words(Mode, Splits, Addrs, Counts, func(N, L, R, Ps, Bs0), Rs0,
+            func(N, L, R, Ps, Bs), Rs) :-
+    ( Mode == filc -> K = p ; K = l ),
+    foldl(split_block(sp(Splits, Addrs, Counts, K)), Bs0, Bs, Maps, 0, _),
+    append(Maps, Map),
+    remap_sites(Rs0, Map, Rs).
+
+split_block(Env, block(L, Phis, Is0, J), block(L, Phis, Is, J), Map, N0, N) :-
+    split_insts(Is0, Env, L, 0, 0, Is, Map, N0, N).
+
+split_insts([], _, _, _, _, [], [], N, N).
+split_insts([I|Is0], Env, L, Old, New, Is, Map, N0, N) :-
+    split_inst(I, Env, Out, N0, N1),
+    append(Out, Rest, Is),
+    emission_sites(L, Old, New, Out, Map, Maps, Next), Old1 is Old + 1,
+    split_insts(Is0, Env, L, Old1, Next, Rest, Maps, N1, N).
+
+split_inst(I, sp(Splits, Addrs, Counts, K), Out, N0, N) :-
+    (   I = store(l, V, tmp(X)), split_address(X, Splits, Addrs)
+    ->  fresh_temps(Counts, [H, X4], N0, N),
+        Out = [let(tmp(H), l, shr, [V, const(32)]),
+               store(w, V, tmp(X)),
+               let(tmp(X4), K, add, [tmp(X), const(4)]),
+               store(w, tmp(H), tmp(X4))]
+    ;   I = let(D, l, load(l), [tmp(X)]), split_address(X, Splits, Addrs)
+    ->  fresh_temps(Counts, [Lo, X4, Hi, Hs], N0, N),
+        Out = [let(tmp(Lo), l, load(uw), [tmp(X)]),
+               let(tmp(X4), K, add, [tmp(X), const(4)]),
+               let(tmp(Hi), l, load(uw), [tmp(X4)]),
+               let(tmp(Hs), l, shl, [tmp(Hi), const(32)]),
+               let(D, l, or, [tmp(Hs), tmp(Lo)])]
+    ;   Out = [I], N = N0
+    ).
+
+split_address(X, Splits, Addrs) :-
+    get_assoc(X, Addrs, A-O), memberchk(A-Offs, Splits), memberchk(O, Offs).
+
+% fresh_temps(+Counts, -Names, +N0, -N): Names are `sw.K` for the next
+% K from N0 that Counts does not define.
+fresh_temps(_, [], N, N).
+fresh_temps(Counts, [T|Ts], N0, N) :-
+    format(atom(T0), 'sw.~w', [N0]), N1 is N0 + 1,
+    (   get_assoc(T0, Counts, _) -> fresh_temps(Counts, [T|Ts], N1, N)
+    ;   T = T0, fresh_temps(Counts, Ts, N1, N)
     ).
 
 promoted_context([], Rs, _, _, _, _, Rs) :- !.
@@ -214,7 +345,83 @@ promotable(Mode, F, Roots, an(Classes, Addrs, Counts)) :-
               ( get_assoc(A, Stored, Ws) -> true ; Ws = [] ),
               punned_slots(Accs, Ws, Slots),
               slots_ok(Mode, Size, Slots) ),
-            Roots).
+            Roots0),
+    float_roots_stored(F, Addrs, Roots0, Roots).
+
+% float_roots_stored(+F, +Addrs, +Roots0, -Roots): Roots is Roots0 less
+% the allocs with a float (s or d) slot that a load may read before any
+% store to it, along some path from its alloc. Promotion reads such a
+% slot's initial zero through phis, and a path the program never takes
+% (a load guarded by the test that a store happened, as in Lua's
+% op_arithf) would carry the slot round a loop: luaV_execute took 166 d
+% phis at its dispatch and doubled in size. Integer slots are
+% promoted as before.
+float_roots_stored(F, Addrs, Roots0, Roots) :-
+    (   member(_-Slots, Roots0), member(acc(_, W), Slots), float_width(W)
+    ->  F = func(_, _, _, _, Blocks),
+        func_cfg(Blocks, Cfg),
+        blocks_by_label(Blocks, ByLabel),
+        include(float_slots_stored(Cfg, ByLabel, Addrs), Roots0, Roots)
+    ;   Roots = Roots0
+    ).
+
+float_width(s).
+float_width(d).
+
+% float_slots_stored(+Cfg, +ByLabel, +Addrs, +A-Slots): every load of a
+% float slot of A, in a reachable block, follows a store to that slot on
+% every path from the entry: a forward must analysis whose state is the
+% ordset of A's float offsets stored, emptied by A's alloc.
+float_slots_stored(Cfg, ByLabel, Addrs, A-Slots) :-
+    findall(O, ( member(acc(O, W), Slots), float_width(W) ), Os0), sort(Os0, Os),
+    (   Os == [] -> true
+    ;   Cfg = cfg(Entry, Rpo, _, Preds),
+        empty_assoc(Out0),
+        stored_fixpoint(Rpo, Entry, Preds, ByLabel, Addrs, A-Os, Out0, Out),
+        forall(member(L, Rpo),
+               ( block_in(L, Entry, Preds, Out, In),
+                 get_assoc(L, ByLabel, block(_, _, Is, _)),
+                 foldl(stored_checked(Addrs, A-Os), Is, In, _) ))
+    ).
+
+stored_fixpoint(Rpo, Entry, Preds, ByLabel, Addrs, AOs, Out0, Out) :-
+    foldl(stored_block(Entry, Preds, ByLabel, Addrs, AOs), Rpo, Out0-same, Out1-Changed),
+    (   Changed == same -> Out = Out1
+    ;   stored_fixpoint(Rpo, Entry, Preds, ByLabel, Addrs, AOs, Out1, Out)
+    ).
+
+stored_block(Entry, Preds, ByLabel, Addrs, AOs, L, Out0-C0, Out-C) :-
+    block_in(L, Entry, Preds, Out0, In),
+    get_assoc(L, ByLabel, block(_, _, Is, _)),
+    foldl(stored_transfer(Addrs, AOs), Is, In, New),
+    (   get_assoc(L, Out0, Old), Old == New -> Out = Out0, C = C0
+    ;   put_assoc(L, Out0, New, Out), C = changed
+    ).
+
+% block_in(+L, +Entry, +Preds, +Out, -In): the offsets stored on every
+% path into L, over the predecessors analysed so far (an unanalysed one
+% is optimistic: it constrains nothing until it is).
+block_in(Entry, Entry, _, _, []) :- !.
+block_in(L, _, Preds, Out, In) :-
+    get_assoc(L, Preds, Ps),
+    findall(S, ( member(P, Ps), get_assoc(P, Out, S) ), Ss),
+    (   Ss = [S0|Rest] -> foldl(ord_intersection_, Rest, S0, In) ; In = [] ).
+
+ord_intersection_(S, Acc0, Acc) :- ord_intersection(Acc0, S, Acc).
+
+stored_transfer(Addrs, A-Os, I, S0, S) :-
+    (   I = let(tmp(A), _, alloc(_), _) -> S = []
+    ;   I = store(_, _, tmp(X)), get_assoc(X, Addrs, A-O), ord_memberchk(O, Os)
+    ->  ord_add_element(S0, O, S)
+    ;   S = S0
+    ).
+
+stored_checked(Addrs, A-Os, I, S0, S) :-
+    (   I = let(_, _, load(_), [tmp(X)]), get_assoc(X, Addrs, A-O), ord_memberchk(O, Os)
+    ->  ord_memberchk(O, S0)
+    ;   true
+    ),
+    stored_transfer(Addrs, A-Os, I, S0, S).
 
 % stored_accs(+F, +Addrs, -Stored): Stored maps each alloc to the accesses that
 % store to it.
@@ -264,6 +471,8 @@ width_mode_aligned(b, _, _).
 width_mode_aligned(h, _, _).
 width_mode_aligned(w, _, _).
 width_mode_aligned(l, _, _).
+width_mode_aligned(s, _, _).
+width_mode_aligned(d, _, _).
 width_mode_aligned(p, Mode, Off) :-
     mode_pointer_aligned(Mode, Off).
 
@@ -640,6 +849,8 @@ slot_zero(Var, Cur0, Cur) :- put_assoc(Var, Cur0, const(0), Cur).
 % at its width (see the header).
 load_op(l, _, copy).
 load_op(p, _, copy).
+load_op(s, _, copy).
+load_op(d, _, copy).
 load_op(sw, K, Op) :-
     class_word_load_op(K, sw, Op).
 load_op(uw, K, Op) :-
@@ -657,6 +868,8 @@ class_word_load_op(l, T, ext(T)).
 % The class of a slot's phi, from the slot's width.
 slot_class(l, l).
 slot_class(p, p).
+slot_class(s, s).
+slot_class(d, d).
 slot_class(w, w).
 slot_class(h, w).
 slot_class(b, w).

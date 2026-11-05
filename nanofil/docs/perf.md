@@ -17,7 +17,9 @@ instructions; filcc runs at 2.69× native's. SWI-Prolog's suite runs at
 1.64× filcc. nanofil's excess is extra instructions at high IPC, not
 stalls. Of those instructions, register-to-register moves are 29%,
 frame traffic 27%, branch selection 11%, the runtime 10% and checks 9%.
-Item 19 ranks the levers.
+Item 19 ranks the levers. Item 20 takes lever 2: `-O` now inlines
+always_inline, single-call-site and non-leaf callees, and the gate goes
+from 1.78× to 1.69× filcc (lz4 −13 to −18%, SQLite −7%).
 
 ## Round closed (October 2026, at `07b2b11`)
 
@@ -5450,6 +5452,215 @@ filcc's instructions and Lua at about 3×; items 5 and 6 bring them to
 about 2–3×. Reaching 1.5–2× in instructions also needs check hoisting
 and better addressing. Time should improve more than instructions where
 phi chains and frame traffic limit IPC.
+
+### 20. Inlining beyond small leaves (`--inline=wide`, November 2026)
+
+Item 19's lever 2. `--inline=wide` replaces item 4's two rounds of
+small leaves with one walk of the call graph, callees before callers.
+Each function takes its admitted calls; with `--simplify=full` (the
+`-O` default) it is then promoted, copy-propagated and simplified, and
+that body is what its callers inline. Depth is unbounded and sizes are
+measured after preparation. It runs where `small` runs, first in `o1`,
+on unchecked IR before promotion, so pizlonation, checked-IR
+validation, check reuse, emission and the register checkers see
+ordinary code. No checked-IR contract changes. Output without `-O` is
+byte-identical (snapshot). The promotion changes below are shared by
+every `-O` mode, so `-O --inline=small` and `none` change too: float
+locals and split structs promote there as well.
+
+#### Contract, extending item 4's
+
+Item 4's contract holds: the transformation, renaming, source
+contexts, panic origins (A), block placement and polls, function
+identity, allocations that stay fresh per execution, and the
+`allocs_ok/2` rule (a callee's local alloc must promote or escape). What
+changes is which callees and callers are eligible.
+
+| Case | Rule | Why |
+|---|---|---|
+| Recursion | A function on a cycle of direct calls (a self-call included) is neither a callee nor a caller (`cyclic_functions/3`) | recursion depth before stack overflow is unchanged; a recursive frame never grows |
+| Non-leaf callees | admitted: the callee's own calls were already inlined or left as calls, its body is final when its callers see it | the walk is a post-order of an acyclic graph, so every callee is complete before its callers |
+| setjmp | no returns-twice callee (`setjmp_func/1`) and no setjmp caller | as item 4 |
+| Variadics | no callee with `va_args` (its entry's argument snapshot); a variadic caller is fine | as item 4 |
+| VLAs and `alloca` | no callee with a dynamic-size `alloc` | inlined, it would allocate per call in the caller's frame |
+| Constant allocs | any size, if each promotes or escapes (`allocs_ok/2`) | an escaping one is a heap object per execution inlined or not; a non-escaping one that could not promote would become a per-call heap object |
+| Static locals | unaffected: a `static` local is a module data item reached through `global(S)`, the same symbol from every inlined copy | no copy of the data is made |
+| Address-taken functions | inlinable at direct call sites; the function, its getter and entries stay while anything refers to them (data item, alias, operand), so its address and indirect calls are unchanged. A `single` callee must have no reference other than its one call | address identity |
+| `noinline` | honoured from any declaration of the function: never a callee. The frontend keeps the attribute out of the IR (`c_lower:c_module/3`), which needs no grammar change. The C23 spelling `[[gnu::noinline]]` is not recognised yet | as filcc |
+| Recursion through function pointers | not seen: only direct calls form cycles, as in `small` | an inlined callee that calls back through a pointer grows that frame once per level, bounded by the caps |
+| `always_inline` | admitted into any eligible caller, ignoring the caller caps, up to 4000 instructions | as clang, which inlines them all |
+| Tuple returns | admitted: each `rets([A, B])` jumps to the join, which takes one phi per word | `LZ4HC_InsertAndGetWiderMatch` returns a 12-byte struct |
+| Unreferenced statics | a local function that no exported or weak function, data item or alias reaches afterwards is dropped, with its context | nothing can observe it; a `single` callee would otherwise be emitted twice |
+
+Budgets (`inline.pl`):
+
+| Callee class | Admitted when |
+|---|---|
+| `always_inline` | callee at most 4000 instructions; any eligible caller |
+| `single` (one direct call site, no other reference) | callee at most 500; caller at most 2000 before inlining and at most 2000 after |
+| `plain` | as `small`: callee at most 120, caller at most 2000, growth at most half the caller or 120 |
+
+Item 4 found that without a caller cap SQLite got slower
+(`sqlite3VdbeExec`'s frame grew). `sqlite3VdbeExec` (13k instructions)
+stays outside every cap but `always_inline`, and SQLite has only one
+`always_inline` function. A first version allowed `single` callees up
+to 1000 instructions, growing callers to 4000: sqlite3.c's middle end
+took 108 s against 77 s, and `selectExpander` grew from 925 to 2654
+instructions. The 500/2000 caps cost lz4 and SQLite nothing measurable
+(table below).
+
+#### Promotion changes it needs
+
+Inlining only helps an out-parameter if the inlined local then promotes.
+Three locals in the hot callees did not:
+
+1. **Float slots** (`escape.pl`). A `load(s)` or `load(d)` made its
+   alloc escape, so `double` locals stayed heap objects (item 4's
+   "Not inlined yet"). Now a float load is a slot access of width `s`
+   or `d`. Promotion takes a float slot only when every reachable load
+   of it follows a store to it on every path from the alloc
+   (`float_roots_stored/4`, a forward must-analysis). Without that
+   rule, Lua's `luaV_execute` took 166 `d` phis at its dispatch, which
+   carried the initial zero of `op_arithf`'s locals round the loop
+   (their reads are guarded by the test that a store happened, which
+   the CFG does not see). The function doubled in size, and Lua int and
+   tab doubled in instructions. `local_storage.pl` still keeps float
+   loads out of named locals (`load_width/2`).
+2. **Long-and-word structs** (`promote.pl`, `split_words/8`). A 12-byte
+   struct of three words copied as an `l` and a `w` and read as words
+   (`LZ4HC_match_t`) had overlapping slots. When splitting each
+   overlapped `l` access into two `w` accesses (the low word at the
+   offset) makes the alloc promotable, promote rewrites them first. The
+   bytes read and written are the same, so the rewrite needs no
+   promotion after it.
+3. **Escape through calls** is item 19's cause 4: an address passed to
+   a call escapes. Inlining is the fix. `escape.pl` could also keep a
+   local unescaped across a call to a callee known not to retain or
+   compare the pointer, but that needs an interprocedural summary
+   (callee parameter: only loaded and stored through, at offsets within
+   the object, never stored, returned, compared or passed on). It also
+   needs promotion across the call to keep the memory, since the callee
+   writes it. That means named local storage for the object and a
+   lowering that passes it to the callee, which local storage forbids
+   today: a local object's address is never a value. It is a
+   checked-IR contract change for review, not part of this item. For
+   SQLite's `sqlite3GetVarint32` and `getVarint32` the callee is small
+   and inlining removes the call, which is simpler.
+
+#### Results: the `-O` default
+
+Gate on swa's core 6 under load (`--busy 0.1`, 11 trials, `run.py
+--events cycles:u`). The baseline `O` is b23af4e3daa4's `-O`, and
+`O-wide` is this change's `-O --inline=wide`, now `-O`. Time ratio to
+filcc `-O2` (instruction ratio), with the trials' range:
+
+| Workload | `O` | `O-wide` | instructions | cycles |
+|---|--:|--:|--:|--:|
+| zlib -6 | 2.00 (3.28) 1.97..2.04 | 2.03 (3.28) 1.99..2.07 | 6.435G = | 1.260G → 1.284G |
+| zlib -d | 1.70 (2.86) | 1.69 (2.86) | = | = |
+| bzip2 -9 | 1.54 (1.99) | 1.54 (1.97) | −1.1% | = |
+| bzip2 -d | 2.19 (2.62) | 2.19 (2.62) | = | = |
+| lz4 -1 | 2.20 (10.14) | **1.89** (7.22) | −29% | −25% |
+| lz4 -9 | 2.02 (2.54) | **1.65** (1.89) | 7.365G → 5.487G | 1.485G → 1.210G |
+| lz4 -d | 2.53 (5.40) | **2.21** (4.14) | −23% | −23% |
+| lua int | 1.40 (1.68) | 1.38 (1.68) | = | −2% |
+| lua tab | 1.33 (1.58) | 1.32 (1.58) | = | = |
+| lua str | 1.37 (1.47) | 1.35 (1.43) | −2.7% | −2.4% |
+| sqlite | 1.77 (1.82) | **1.64** (1.71) | 20.19G → 19.05G | 5.263G → 4.916G |
+| **geomean** | **1.78 (2.67)** | **1.69 (2.44)** | | |
+
+zlib's instructions are identical, so its 1.5% is noise; its ranges
+overlap. No workload is slower beyond its range.
+
+**Allocations** (`filc_allocate` calls, callgrind):
+
+| Workload | `O` | `O-wide` |
+|---|--:|--:|
+| sqlite | 17.59M | **11.03M** |
+| lz4 -9 | 2.47M | 2.47M |
+| bzip2 -9 | 31k | 31k |
+| SWI suite at 0.005 | 48.87M | 48.13M |
+
+The SWI `O-wide` build counted here predates the review's fixes below;
+the others are the final code.
+
+- On SQLite, `sqlite3VdbeRecordCompareWithSkip` falls from 3.50M to
+  1.77M. `vdbeSorterCompareText`, `fillInCell`, `dekkerMul2` and
+  `insertCellFast` leave the top callers.
+- What remains in `sqlite3VdbeRecordCompareWithSkip`:
+  - its 56-byte `Mem`, passed to `sqlite3VdbeSerialGet` (197
+    instructions) and to `vdbeCompareMemStringWithEncodingChange`,
+    which is `noinline`;
+  - `u64` out-parameters of `sqlite3GetVarint` (142 instructions, over
+    the plain cap of 120), from inlined copies of `sqlite3GetVarint32`,
+    and one `u32` for a `sqlite3GetVarint32` call left outside the
+    caller's growth budget;
+  - six 8-byte locals whose only escape is an 8-byte `memcpy` call
+    (such as `memcpy(&pMem->u.r, &x, sizeof(x))`). If escape and
+    promotion read a constant-size `memcpy` as a load and a store, they
+    would stay local.
+- `sqlite3BtreeInsert` (2.89M) keeps its `int` out-parameters for
+  `btreeMoveto`, `ptrmapPut` and `allocateBtreePage`, and 24- to
+  48-byte structs passed to `sqlite3BtreeIndexMoveto`,
+  `btreeOverwriteContent` and `clearCellOverflow`. These are the cases
+  point 3 above describes.
+- lz4's 2.47M are `LZ4HC_compress_hashChain`'s; their call sites moved
+  there.
+- On SWI, the largest allocating caller is `valueExpression` (8.95M of
+  48M), whose allocation is the exception frame of `EXCEPTION_GUARDED`
+  (pl-incl.h): a `setjmp` buffer whose address goes into the thread's
+  state. It escapes by design, and inlining cannot help. The next ones,
+  `do_unify` (6.0M) and `evalExpression` (3.3M), are not examined yet.
+
+**SWI-Prolog** (bench/swipl.nix, `swipl.pl` at 0.02, core 6, 7
+trials): 1.60× filcc (1.54..1.68) → 1.58× (1.54..1.66), within range.
+Instructions 238.22G → 235.68G (−1.1%), cycles 85.79G → 85.29G
+(−0.6%). The `O` build is b23af4e3daa4's.
+
+**Compile time and memory.**
+
+- sqlite3.c, three compiles at once under the 4 GB limit:
+  - b23af4e's `-O`: 263.8 s user, 2.16 GB peak.
+  - This change's `-O --inline=small`: 267.6 s, 2.16 GB.
+  - Wide: 350.4 s (+33%), 2.19 GB (+1.4%).
+  - The middle end costs the same, 77 s under wide and under small. The
+    extra time is the backend's, on 14% more assembly (59 MB against
+    52 MB) in larger functions.
+- Under SWI's default 1 GB stack, sqlite3.c overflows in both: b23af4e's
+  `-O` after 70 s, wide after 164 s. nanofil-cc retries both with 4 GB.
+  Item 11's result for sqlite3.c no longer held before this change.
+- The SWI-Prolog build (103 files, both on chapel): 686.9 s → 730.9 s
+  user (+6.4%). The largest file's peak goes from 386 MB to 586 MB.
+  `swipl.nix` builds now write the sum to `compile-time`, and `--argstr
+  only O,ref` builds only the builds named.
+
+**Review.** A reviewing subagent attacked the change. It found:
+
+1. Promotion changes alter `-O --inline=small` and `none` output. They
+   are kept, and the text above now says so. Output without `-O` is
+   byte-identical: the snapshot against b23af4e3daa4 differs in 252 of
+   4974 outputs, all in the `-O` modes.
+2. Splitting a `store(l, global(G))` in plain mode made invalid IR.
+   Fixed: only temporaries and constants split.
+3. A split was kept when the alloc then failed to promote, doubling
+   its checked accesses. Fixed: a split stands only if every split
+   alloc promotes.
+4. `noinline` on a prototype was missed. Fixed: the attribute is merged
+   from every declaration. The C23 `[[gnu::noinline]]` spelling is
+   still unseen.
+5. Dropping a function could change the module's mode. Fixed: the drop
+   is skipped then.
+
+It confirmed the split arithmetic, the float-slot must-analysis, name
+and context nesting, call-site counting and the post-order. Each of the
+new unit tests fails with its bug planted (16 planted bugs).
+
+**Default.** `-O` now means `--inline=wide`. The gate geomean improved
+5% (1.78 → 1.69) with no workload slower beyond its range. Compile time
+is +33% on sqlite3.c and +6% on SWI-Prolog, with flat memory except one
+SWI file. `-O --inline=small` stays selectable. `nix/check.nix` runs
+its difftest and programs, and the snapshot's `I.`/`P.` modes pin it.
+
 
 ## Results of this round
 

@@ -1,5 +1,8 @@
-/*  Inlining of small static functions (docs/perf.md item 4), on
-    unchecked IR before promotion, selected with `--inline=small`.
+/*  Inlining of static functions on unchecked IR before promotion:
+    `--inline=small` (docs/perf.md item 4) takes small leaves in two
+    rounds; `--inline=wide` (item 20) goes callees first through the
+    call graph and takes non-leaf callees, callees with one call site,
+    and always_inline ones.
 
     A call `call(Res, global(F), Args)` to a function F of the module is
     replaced by F's blocks when F is eligible and so is the caller. The
@@ -30,8 +33,29 @@
     | in no cycle of direct calls | recursion depth before stack overflow is unchanged |
     | at most 2000 instructions, growing by at most half its size or 120, whichever is more | frame size and compile time |
 
-    Function objects, getters and entries of inlined functions stay, so
-    their addresses are unchanged. Names are fresh in the caller:
+    ## Wide
+
+    Each function, callees first, takes its admitted calls; then, with
+    `simplified` callees, it is promoted, copy-propagated and simplified,
+    and that body is what its callers inline (so depth is unbounded and
+    sizes are the prepared ones). A callee is local, on no cycle of
+    direct calls, not noinline, and inlinable/3 (as small, but calls of
+    the module's functions, tuple returns and constant allocs of any
+    size are fine). Its class decides admitted/5:
+
+    | Class | Admitted into |
+    |---|---|
+    | `always_inline` (c_lower c_module/3) | any caller on no cycle and without setjmp, up to 4000 instructions |
+    | `single`: one direct call site, no other reference | a caller of at most 2000 instructions before inlining that stays within 2000, up to 500 |
+    | `plain` | as small: at most 120, within the caller's budget and the 2000 cap |
+
+    Afterwards a local function that no exported or weak function, data
+    object or alias reaches is dropped, with its context: nothing can
+    observe it, and a single-site callee's body would otherwise be
+    emitted twice.
+
+    Function objects, getters and entries of inlined functions stay
+    while anything refers to them, so their addresses are unchanged. Names are fresh in the caller:
     `iR_N.X` for round R and instance N, with N raised past any
     collision. Source contexts follow: callee records are renamed (origin
     and binding identities wrapped as `inl(R, N, Id)`), and the split
@@ -52,6 +76,9 @@
 
 callee_limit(120).
 caller_limit(2000).
+single_limit(500).
+always_limit(4000).
+grown_limit(2000).
 
 %! inline_module(+M0, -M) is det.
 %! inline_module(+Callees, +M0, -M) is det.
@@ -60,7 +87,11 @@ caller_limit(2000).
 %  `simplified`, the functions that may be callees of the second round
 %  are first promoted, copy-propagated and simplified (prepared/4), as
 %  the pipeline does later, so their size and body are what they become.
+%  With Callees `wide(Prep, Attributes)`, M is M0 with wide inlining
+%  (the header's Wide), Prep `plain` or `simplified` as above.
 inline_module(M0, M) :- inline_module(plain, M0, M).
+inline_module(wide(Prep, Attributes), M0, M) :- !,
+    wide_module(Prep, Attributes, M0, M).
 inline_module(Callees, M0, M) :-
     legacy_context(M0, M1),
     M1 = module(Items1),
@@ -71,6 +102,197 @@ inline_module(Callees, M0, M) :-
     prepared(Callees, M2, M3),
     release_stacks,
     inline_round(2, Sizes, M3, M).
+
+%% Wide inlining (--inline=wide)
+
+% inline_module(wide(Prep, Attributes), M0, M): each function, callees
+% before callers, takes its admitted calls (admitted/5), and the result,
+% prepared as prepared/3 prepares callees when Prep is `simplified`, is
+% what its own callers inline. Functions on a cycle of direct calls take
+% none and give none. Attributes are Sym-A pairs, A always_inline or
+% noinline (c_lower c_module/3). Local functions that nothing refers to
+% afterwards leave the module.
+wide_module(Prep, Attributes, M0, M) :-
+    legacy_context(M0, M1),
+    M1 = module(Items1),
+    module_mode(M1, Mode),
+    code_items(Items1, Code),
+    context_index(Items1, Contexts),
+    findall(N, member(func(N, _, _, _, _), Code), Ns), name_set(Ns, Defined),
+    cyclic_functions(Code, Defined, Cyclic0), name_set(Cyclic0, Cyclic),
+    findall(S-A, member(S-A, Attributes), Pairs0), sort(1, @<, Pairs0, Pairs),
+    ord_list_to_assoc(Pairs, Attrs),
+    % maplist/3 shares the functions; findall/3 would copy them.
+    include(is_func, Code, Fs), maplist(func_pair, Fs, Pairs1),
+    sort(1, @<, Pairs1, FPairs), ord_list_to_assoc(FPairs, Funcs),
+    findall(N-Cs, ( member(func(N, _, _, _, Bs), Code), direct_calls(Defined, Bs, Cs) ),
+            Calls),
+    call_sites(Calls, Sites),
+    other_references(Items1, Others),
+    findall(N-Cs, ( member(N-Cs0, Calls), sort(Cs0, Cs) ), Graph0),
+    list_to_assoc(Graph0, Graph),
+    post_order(Ns, Graph, Order),
+    Env = env(Mode, Prep, Cyclic, Attrs, Sites, Others, Funcs, Contexts),
+    empty_assoc(E),
+    foldl(wide_function_released(Env), Order, E-E-0, _-Out-_),
+    maplist(wide_item(Out), Code, Groups), append(Groups, Items2),
+    referenced_items(Items2, Items3),
+    % A module's mode is filc if any item needs it (ir:module_mode/2):
+    % dropping the only such function must not make it plain.
+    (   module_mode(module(Items3), Mode) -> Items = Items3 ; Items = Items2 ),
+    M = module(Items).
+
+% wide_function_released(+Env, +Name, +S0, -S): wide_function/4, and
+% release_stacks/0 after every 256th function: SWI's limit counts what
+% is allocated, and one pass over SQLite's 3,000 functions otherwise
+% leaves the garbage of all of them (sqlite3.c peaked 1.4 GB higher).
+wide_function_released(Env, Name, C0-O0-N0, C-O-N) :-
+    wide_function(Env, Name, C0-O0, C-O),
+    N is N0 + 1,
+    ( N mod 256 =:= 0 -> release_stacks ; true ).
+
+% wide_function(+Env, +Name, +Callees0-Out0, -Callees-Out): Name's
+% calls inlined, its result in Out, and in Callees when it can be a
+% callee: local, on no cycle, called, not noinline. Its class is
+% always_inline, single (one call site and no other reference) or
+% plain.
+wide_function(Env, Name, Callees0-Out0, Callees-Out) :-
+    Env = env(Mode, Prep, Cyclic, Attrs, Sites, Others, Funcs, Contexts),
+    get_assoc(Name, Funcs, F0),
+    context_records(Contexts, Name, Rs0),
+    F0 = func(_, Linkage, _, _, Bs0), func_size(Bs0, Orig),
+    (   \+ setjmp_func(F0), \+ get_assoc(Name, Cyclic, _)
+    ->  inline_func(w, wide(Orig), Orig, Callees0, F0, Rs0, F1, Rs1)
+    ;   F1 = F0, Rs1 = Rs0
+    ),
+    (   Linkage == local, \+ get_assoc(Name, Cyclic, _),
+        get_assoc(Name, Sites, NSites),
+        callee_class(Name, Attrs, NSites, Others, Class),
+        F1 = func(_, _, _, _, Bs1), func_size(Bs1, S1), prepare_limit(Class, S1)
+    ->  prepared_func(Prep, Mode, F1, Rs1, F, Rs),
+        (   inlinable(Mode, any, F)
+        ->  F = func(_, _, _, _, Bs), func_size(Bs, CS),
+            put_assoc(Name, Callees0, callee(F, Rs, CS, Class), Callees)
+        ;   Callees = Callees0
+        )
+    ;   F = F1, Rs = Rs1, Callees = Callees0
+    ),
+    put_assoc(Name, Out0, F-Rs, Out).
+
+is_func(func(_, _, _, _, _)).
+func_pair(F, N-F) :- F = func(N, _, _, _, _).
+
+callee_class(Name, Attrs, NSites, Others, Class) :-
+    (   get_assoc(Name, Attrs, A) -> A == always_inline, Class = always_inline
+    ;   NSites =:= 1, \+ get_assoc(Name, Others, _) -> Class = single
+    ;   Class = plain
+    ).
+
+% prepare_limit(+Class, +Size): a function of Size before preparation
+% may be admitted as a callee of Class once prepared. Preparation
+% shrinks a body (its parameters' and locals' allocs, loads and stores
+% go), so the limits are four times the admitted sizes, as for small's
+% second round.
+prepare_limit(always_inline, _).
+prepare_limit(single, S) :- single_limit(Max), S =< 4 * Max.
+prepare_limit(plain, S) :- callee_limit(Max), S =< 4 * Max.
+
+prepared_func(plain, _, F, Rs, F, Rs).
+prepared_func(simplified, Mode, F0, Rs0, F, Rs) :-
+    once(promote_context(Mode, F0, Rs0, F1, Rs1)),
+    once(copy_context(F1, Rs1, F2, Rs2)),
+    once(simplify_context(Mode, F2, Rs2, F, Rs)).
+
+wide_item(Out, F0, Items) :-
+    F0 = func(Name, _, _, _, _), !,
+    get_assoc(Name, Out, F-Rs), with_context(F, Rs, Items).
+wide_item(_, Item, [Item]).
+
+% direct_calls(+Defined, +Bs, -Cs): Cs lists the module's functions that
+% Bs call directly, once per call.
+direct_calls(Defined, Bs, Cs) :-
+    findall(G, ( member(block(_, _, Is, _), Bs), member(call(_, global(G), _), Is),
+                 get_assoc(G, Defined, _) ), Cs).
+
+% call_sites(+Calls, -Sites): Sites maps each function called directly
+% to its number of call sites.
+call_sites(Calls, Sites) :-
+    findall(G, ( member(_-Cs, Calls), member(G, Cs) ), Gs0), msort(Gs0, Gs),
+    clumped_counts(Gs, Pairs), ord_list_to_assoc(Pairs, Sites).
+
+clumped_counts([], []).
+clumped_counts([X|Xs], [X-N|Ps]) :- same_run(X, Xs, 1, N, Rest), clumped_counts(Rest, Ps).
+same_run(X, [Y|Ys], N0, N, Rest) :- X == Y, !, N1 is N0 + 1, same_run(X, Ys, N1, N, Rest).
+same_run(_, Rest, N, N, Rest).
+
+% other_references(+Items, -Others): Others holds every symbol that
+% Items refer to other than as the callee of a direct call: an operand
+% global(S), a data item's sym(S, _), an alias's target.
+other_references(Items, Others) :-
+    findall(S, ( member(Item, Items), item_reference(Item, operand, S) ), Ss),
+    name_set(Ss, Others).
+
+% item_reference(+Item, +Calls, -S): Item refers to symbol S; with
+% Calls `operand`, not counting a direct call's callee.
+item_reference(func(_, _, _, _, Bs), Calls, S) :-
+    member(block(_, Phis, Is, J), Bs),
+    (   member(I, Is),
+        (   I = call(_, Callee, Args)
+        ->  ( Calls == all, Callee = global(S) ; term_global(Args, S) )
+        ;   term_global(I, S)
+        )
+    ;   term_global(Phis, S)
+    ;   term_global(J, S)
+    ).
+item_reference(data(_, _, _, Ds), _, S) :- member(item(_, sym(S, _)), Ds).
+item_reference(alias(_, _, S), _, S).
+
+term_global(global(S), S) :- atom(S), !.
+term_global(T, S) :- compound(T), arg(_, T, A), term_global(A, S).
+
+% referenced_items(+Items0, -Items): Items0 less the local functions,
+% with their contexts, that no exported or weak function, data object or
+% alias refers to, directly or through other functions.
+referenced_items(Items0, Items) :-
+    findall(N-F, ( member(F, Items0), F = func(N, local, _, _, _) ), Pairs0),
+    sort(1, @<, Pairs0, Pairs), ord_list_to_assoc(Pairs, Locals),
+    findall(S, ( member(Item, Items0), Item \= func(_, local, _, _, _),
+                 Item \= context(_, _), item_reference(Item, all, S) ), Roots),
+    empty_assoc(Seen0),
+    reach(Roots, Locals, Seen0, Seen),
+    exclude(unreferenced(Locals, Seen), Items0, Items).
+
+reach([], _, Seen, Seen).
+reach([S|Ss], Locals, Seen0, Seen) :-
+    (   get_assoc(S, Seen0, _) -> reach(Ss, Locals, Seen0, Seen)
+    ;   put_assoc(S, Seen0, true, Seen1),
+        (   get_assoc(S, Locals, F)
+        ->  findall(T, item_reference(F, all, T), Ts), append(Ts, Ss, Work)
+        ;   Work = Ss
+        ),
+        reach(Work, Locals, Seen1, Seen)
+    ).
+
+unreferenced(Locals, Seen, Item) :-
+    ( Item = func(N, local, _, _, _) ; Item = context(N, _) ),
+    get_assoc(N, Locals, _), \+ get_assoc(N, Seen, _).
+
+% post_order(+Names, +Graph, -Order): Order holds each of Names after
+% every function it reaches in Graph (name to callees), except along a
+% cycle.
+post_order(Names, Graph, Order) :-
+    empty_assoc(Seen0),
+    foldl(visit(Graph), Names, Seen0-Order, _-[]).
+
+% visit(+Graph, +N, +Seen0-Order0, -Seen-Order): difference list Order0
+% gains, after what is already there, N's unseen callees' visits, then N.
+visit(Graph, N, Seen0-Order0, Seen-Order) :-
+    (   get_assoc(N, Seen0, _) -> Seen = Seen0, Order = Order0
+    ;   put_assoc(N, Seen0, true, Seen1),
+        ( get_assoc(N, Graph, Cs) -> true ; Cs = [] ),
+        foldl(visit(Graph), Cs, Seen1-Order0, Seen-Order1),
+        Order1 = [N|Order]
+    ).
 
 % prepared(+Callees, +M0, -M): with `simplified`, M is M0 with each
 % function that could become a callee (local, no call to a function of
@@ -132,15 +354,15 @@ name_set(Names, Set) :-
     sort(Names, Sorted), findall(N-true, member(N, Sorted), Pairs),
     ord_list_to_assoc(Pairs, Set).
 
-callee_pair(Contexts, F, N-callee(F, Rs)) :-
-    F = func(N, _, _, _, _), context_records(Contexts, N, Rs).
+callee_pair(Contexts, F, N-callee(F, Rs, S, plain)) :-
+    F = func(N, _, _, _, Bs), context_records(Contexts, N, Rs), func_size(Bs, S).
 
 inlined_item(Round, Sizes, Callees, Cyclic, Contexts, F0, Items) :-
     F0 = func(Name, _, _, _, _), !,
     context_records(Contexts, Name, Rs0),
     get_assoc(Name, Sizes, Orig),
     (   eligible_caller(Cyclic, Orig, F0)
-    ->  inline_func(Round, Orig, Callees, F0, Rs0, F, Rs)
+    ->  inline_func(Round, small, Orig, Callees, F0, Rs0, F, Rs)
     ;   F = F0, Rs = Rs0
     ),
     with_context(F, Rs, Items).
@@ -149,22 +371,35 @@ inlined_item(_, _, _, _, _, Item, [Item]).
 %% Eligibility
 
 eligible_callee(Mode, Defined, F) :-
-    F = func(_, local, Ret, _, Bs),
+    F = func(_, _, Ret, _, Bs),
     Ret \= tuple(_),
-    \+ setjmp_func(F),
     func_size(Bs, S), callee_limit(Max), S =< Max,
+    \+ ( member(block(_, _, Is, _), Bs), member(call(_, global(G), _), Is),
+         get_assoc(G, Defined, _) ),
+    inlinable(Mode, 256, F).
+
+% inlinable(+Mode, +Max, +F): F's body can replace a call of it, whatever
+% its size and its calls: local, no setjmp, a return, no va_args,
+% constant allocs of at most Max bytes (any, with Max `any`) that
+% promote or escape (allocs_ok/2), strict SSA. Small inlining takes 256
+% and also refuses a tuple return. Wide takes any size: an alloc that
+% escapes is a heap object per execution inlined or not, and allocs_ok/2
+% refuses a local one that would not promote.
+inlinable(Mode, Max, F) :-
+    F = func(_, local, _, _, Bs),
+    \+ setjmp_func(F),
     member(block(_, _, _, J), Bs), returns(J), !,
-    \+ ( member(block(_, _, Is, J1), Bs),
-         ( J1 = rets(_) ; member(I, Is), excluded_inst(Defined, I) ) ),
+    \+ ( member(block(_, _, Is, _), Bs), member(I, Is), excluded_inst(Max, I) ),
     allocs_ok(Mode, F),
     func_cfg(Bs, Cfg), cfg_idoms(Cfg, Idom), strict_ssa(F, Cfg, Idom).
 
 returns(ret).
 returns(ret(_)).
+returns(rets(_)).
 
-excluded_inst(Defined, call(_, global(G), _)) :- get_assoc(G, Defined, _).
 excluded_inst(_, let(_, _, va_args, _)).
-excluded_inst(_, let(_, p, alloc(_), [V])) :- \+ ( V = const(N), N =< 256 ).
+excluded_inst(Max, let(_, p, alloc(_), [V])) :-
+    \+ ( V = const(N), ( Max == any -> true ; N =< Max ) ).
 
 % In filc mode every alloc either promotes or escapes, to a heap object
 % per execution as before. In plain mode every alloc promotes: a stack
@@ -238,20 +473,23 @@ reaches(Graph, [C|Cs], N, Seen) :-
 
 %% The transformation
 
-% inline_func(+Round, +Orig, +Callees, +F0, +Rs0, -F, -Rs): F is F0 with
-% its eligible calls inlined while it stays within its original size
-% Orig plus half of Orig, or plus one callee limit for a small caller.
+% inline_func(+Round, +Policy, +Orig, +Callees, +F0, +Rs0, -F, -Rs): F
+% is F0 with its eligible calls inlined, as admitted/5 admits each
+% under Policy. A callee that the budget counts (all of them under
+% small) is admitted while F stays within its original size Orig plus
+% half of Orig, or plus one callee limit for a small caller.
 % Splits and callee records are collected as the blocks are walked and
 % applied to the caller's records once at the end: SQLite's largest
 % functions inline hundreds of calls over tens of thousands of records.
-inline_func(Round, Orig, Callees, F0, Rs0, F, Rs) :-
+inline_func(Round, Policy, Orig, Callees, F0, Rs0, F, Rs) :-
     F0 = func(Name, L, R, Ps, Bs0),
     (   once(( member(block(_, _, Is, _), Bs0), member(call(_, global(G), _), Is),
                get_assoc(G, Callees, _) ))
     ->  used_names(F0, Used0), name_set(Used0, Used),
         func_size(Bs0, S0), callee_limit(Floor),
-        Budget is max(Orig // 2, Floor) - (S0 - Orig),
-        blocks_inlined(Bs0, Callees, Used, Bs1, Moves,
+        Budget0 is max(Orig // 2, Floor) - (S0 - Orig),
+        policy_budget(Policy, Budget0, S0, Budget),
+        blocks_inlined(Bs0, Policy-Callees, Used, Bs1, Moves,
                        st(Round, 1, Budget, [], []), st(_, _, _, Splits, Ctxs)),
         list_to_assoc(Moves, MoveIndex),
         maplist(moved_phis(MoveIndex), Bs1, Bs),
@@ -263,6 +501,31 @@ inline_func(Round, Orig, Callees, F0, Rs0, F, Rs) :-
     ;   F = F0, Rs = Rs0
     ).
 
+% admitted(+Policy, +Class, +Size, +Budget0, -Budget): a callee of Class
+% and Size may be inlined under Policy with Budget0 left, which leaves
+% Budget. Under small every callee counts against the budget. Under
+% wide(Orig), for a caller of original size Orig, an always_inline
+% callee is admitted whatever the caller (up to a size that only guards
+% against pathological headers), a callee called from one site only
+% (its body then leaves the module) into a caller within the caller
+% limit while the caller stays within grown_limit/1, and any other one
+% as small would admit it.
+admitted(small, _, CS, B0, B) :- CS =< B0, B is B0 - CS.
+admitted(wide(_), always_inline, CS, b(B, S0), b(B, S)) :-
+    always_limit(Max), CS =< Max, S is S0 + CS.
+admitted(wide(Orig), single, CS, b(B, S0), b(B, S)) :-
+    caller_limit(C), Orig =< C, single_limit(Max), CS =< Max,
+    S is S0 + CS, grown_limit(G), S =< G.
+admitted(wide(Orig), plain, CS, b(B0, S0), b(B, S)) :-
+    caller_limit(C), Orig =< C, callee_limit(Max), CS =< Max, CS =< B0,
+    B is B0 - CS, S is S0 + CS.
+
+% policy_budget(+Policy, +Budget0, +Size, -Budget): small counts the
+% budget; wide also the caller's current size, which single callees may
+% grow to grown_limit/1.
+policy_budget(small, B, _, B).
+policy_budget(wide(_), B, S, b(B, S)).
+
 used_names(func(_, _, _, Ps, Bs), Used) :-
     findall(X, ( member(param(_, tmp(X)), Ps)
                ; member(block(X, _, _, _), Bs)
@@ -270,7 +533,7 @@ used_names(func(_, _, _, Ps, Bs), Used) :-
                ; member(block(_, _, Is, _), Bs), member(I, Is), inst_def(I, X) ), Xs),
     list_to_ord_set(Xs, Used).
 
-% blocks_inlined(+Bs0, +Callees, +Used, -Bs, -Moves, +St0, -St): Moves
+% blocks_inlined(+Bs0, +Policy-Callees, +Used, -Bs, -Moves, +St0, -St): Moves
 % pairs each split block's label with the label of its last piece, which
 % its successors' phis must now name. Used holds the caller's names
 % before this round; the round's own names cannot collide with each
@@ -283,18 +546,17 @@ blocks_inlined([B|Bs0], Callees, Used, Bs, Moves, St0, St) :-
     blocks_inlined(Bs0, Callees, Used, Bs1, Moves1, St1, St),
     append(Out, Bs1, Bs).
 
-% block_inlined(+Block, +Callees, +Used, -Blocks, -Last, +St0, -St):
+% block_inlined(+Block, +Policy-Callees, +Used, -Blocks, -Last, +St0, -St):
 % Block with its first eligible call inlined, and the rest of it
 % recursively; Last is the label of the last piece. St collects each
 % split as L-split(NPre, NCopies, Join) and each instance's records.
 block_inlined(block(L, Phis, Is, J), Callees, Used, Out, Last, St0, St) :-
     St0 = st(Round, N0, Budget0, Splits0, Ctxs0),
+    Callees = Policy-Index,
     (   append(Pre, [call(Res, global(G), Args)|Post], Is),
-        get_assoc(G, Callees, callee(Callee, CRs)),
-        Callee = func(_, _, _, _, CBs0),
-        func_size(CBs0, CS), CS =< Budget0
-    ->  Budget is Budget0 - CS,
-        fresh_prefix(Round, N0, Callee, Used, N, P, Join),
+        get_assoc(G, Index, callee(Callee, CRs, CS, Class)),
+        admitted(Policy, Class, CS, Budget0, Budget)
+    ->  fresh_prefix(Round, N0, Callee, Used, N, P, Join),
         renamed_callee(P, Join, Callee, CBs, CPs, Rets),
         CBs = [block(Entry, _, _, _)|_],
         maplist(param_copy, CPs, Args, Copies),
@@ -346,6 +608,7 @@ renamed_block(P, Join, block(L, Phis, Is, J0), block(L1, Phis1, Is1, J), Rets) :
     maplist(renamed_phi(P), Phis, Phis1),
     maplist(renamed_temps(P), Is, Is1),
     (   J0 = ret(V) -> renamed_temps(P, V, V1), J = goto(Join), Rets = [L1-V1]
+    ;   J0 = rets(Vs) -> renamed_temps(P, Vs, Vs1), J = goto(Join), Rets = [L1-Vs1]
     ;   J0 == ret -> J = goto(Join), Rets = [L1-none]
     ;   renamed_jump(P, J0, J), Rets = []
     ).
@@ -372,6 +635,11 @@ renamed_temps(_, T, T).
 % A void callee's returns give no values: no phi.
 join_phis(void, _, []).
 join_phis(result(D, K), Rets, [phi(D, K, Rets)]).
+join_phis(tuple(Rs), Rets, Phis) :-
+    foldl(tuple_phi(Rets), Rs, Phis, 1, _).
+
+tuple_phi(Rets, result(D, K), phi(D, K, Ins), I, I1) :-
+    findall(L-V, ( member(L-Vs, Rets), nth1(I, Vs, V) ), Ins), I1 is I + 1.
 
 moved_phis(Moves, block(L, Phis0, Is, J), block(L, Phis, Is, J)) :-
     maplist(moved_phi(Moves), Phis0, Phis).

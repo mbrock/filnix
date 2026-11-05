@@ -14,6 +14,8 @@
   pkgs ? import flake.inputs.nixpkgs { system = "x86_64-linux"; },
   filcc ? flake.packages.x86_64-linux.filcc-staging,
   pkgsFilc ? flake.legacyPackages.x86_64-linux.pkgsFilcStaging,
+  # `--argstr only O,ref` builds just those (and bench/).
+  only ? "",
 }:
 let
   src = pkgs.swi-prolog.src;
@@ -35,7 +37,8 @@ let
           label != "native"
         ) "patch -d swipl -p1 <${flake}/patches/swi-prolog-9.2.9-filc.patch"}
         mkdir swipl/build && cd swipl/build
-        printf '#!${pkgs.runtimeShell}\nshift\nexec ${nanofil} "$@"\n' >../launcher
+        # Each nanofil compile appends its user seconds and peak KB to ../ctimes.
+        printf '#!${pkgs.runtimeShell}\nshift\nexec ${pkgs.time}/bin/time -f "%%U %%M" -a -o %s ${nanofil} "$@"\n' $PWD/../ctimes >../launcher
         chmod +x ../launcher
         export CC=${cc} NANOFIL_OPT=-O NANOFIL_STACK_LIMIT=4000000000
         cmake -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_C_FLAGS_RELEASE=-O2 -DNDEBUG" \
@@ -49,27 +52,39 @@ let
         ${pkgs.lib.optionalString launcher "cmake -DCMAKE_C_COMPILER_LAUNCHER=$PWD/../launcher . >>cmake.log"}
         ninja -j$NIX_BUILD_CORES >ninja.log 2>&1 || { grep -B2 -A20 FAILED ninja.log | head -80; exit 1; }
         ninja install >/dev/null
+        ${pkgs.lib.optionalString launcher ''
+          awk '{u += $1; if ($2 > m) m = $2} END {printf "%d compiles, %.1f s user, max %d KB\n", NR, u, m}' ../ctimes >$out/compile-time
+        ''}
         ln -s $(find $out -path '*/bin/*' -name swipl -type f) $out/swipl
       '';
 in
-pkgs.linkFarm "nanofil-bench-swipl" [
-  {
-    name = "native";
-    path = build "native" "${pkgs.llvmPackages_20.clang}/bin/clang" [
-      pkgs.gmp
-      pkgs.zlib
-    ] false;
-  }
-  {
-    name = "ref";
-    path = build "ref" "${filcc}/bin/clang" [ pkgsFilc.gmp pkgsFilc.zlib ] false;
-  }
-  {
-    name = "O";
-    path = build "O" "${filcc}/bin/clang" [ pkgsFilc.gmp pkgsFilc.zlib ] true;
-  }
-  {
-    name = "bench";
-    path = "${src}/bench";
-  }
-]
+pkgs.linkFarm "nanofil-bench-swipl" (
+  builtins.filter
+    (
+      e:
+      only == ""
+      || e.name == "bench"
+      || builtins.elem e.name (pkgs.lib.splitString "," only)
+    )
+    [
+      {
+        name = "native";
+        path = build "native" "${pkgs.llvmPackages_20.clang}/bin/clang" [
+          pkgs.gmp
+          pkgs.zlib
+        ] false;
+      }
+      {
+        name = "ref";
+        path = build "ref" "${filcc}/bin/clang" [ pkgsFilc.gmp pkgsFilc.zlib ] false;
+      }
+      {
+        name = "O";
+        path = build "O" "${filcc}/bin/clang" [ pkgsFilc.gmp pkgsFilc.zlib ] true;
+      }
+      {
+        name = "bench";
+        path = "${src}/bench";
+      }
+    ]
+)
