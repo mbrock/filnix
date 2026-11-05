@@ -342,6 +342,9 @@
             pthread-spin = import ./tests/pthread-spin.nix { inherit pkgsFilc; };
             fenv = import ./tests/fenv.nix { inherit pkgsFilc; };
             glibc-dirwalk = import ./tests/glibc-dirwalk.nix { inherit pkgsFilc; };
+            glibc-settimezone = import ./tests/glibc-settimezone.nix {
+              inherit pkgsFilc;
+            };
             glibc-syscall-fallbacks = import ./tests/glibc-syscall-fallbacks.nix {
               inherit pkgsFilc;
             };

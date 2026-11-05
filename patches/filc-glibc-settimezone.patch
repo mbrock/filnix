@@ -1,0 +1,33 @@
+Subject: Route __settimezone through zsys_settimeofday
+Origin: Filnix
+Upstream-Status: Not submitted
+
+settimeofday(NULL, tz) (glibc's __settimezone) still made the settimeofday
+syscall with inline asm, which Fil-C refuses at run time ("cannot handle
+inline asm ... syscall"). systemd PID 1 calls it from
+clock_reset_timewarp() right after switch-root, so a Fil-C NixOS died
+there. The runtime's zsys_settimeofday already checks and passes a
+timezone pointer. The regression check is tests/glibc-settimezone.nix.
+
+--- a/sysdeps/unix/sysv/linux/settimezone.c	2026-11-05 01:14:11.973431632 +0100
++++ b/sysdeps/unix/sysv/linux/settimezone.c	2026-11-05 01:14:11.984831023 +0100
+@@ -20,6 +20,7 @@
+ #include <sys/time.h>
+ #include <stddef.h>
+ #include <sysdep.h>
++#include <pizlonated_syscalls.h>
+ 
+ /* Set the system-wide timezone.
+    This call is restricted to the super-user.
+@@ -28,10 +29,5 @@
+ int
+ __settimezone (const struct timezone *tz)
+ {
+-#ifdef __NR_settimeofday
+-  return INLINE_SYSCALL_CALL (settimeofday, NULL, tz);
+-#else
+-  __set_errno (ENOSYS);
+-  return -1;
+-#endif
++  return zsys_settimeofday (NULL, tz);
+ }

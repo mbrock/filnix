@@ -25,6 +25,8 @@ in
       ../patches/filc-glibc-openat-nocancel.patch
       # brk, sched_setattr and pidfd_spawn stopped the program; fail instead.
       ../patches/filc-glibc-unsupported-syscalls.patch
+      # settimeofday(NULL, tz) stopped the program (systemd after switch-root).
+      ../patches/filc-glibc-settimezone.patch
     ];
 
     enableParallelBuilding = true;
