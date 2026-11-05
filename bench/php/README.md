@@ -21,6 +21,10 @@ and, with opcache's JIT:
   the other JIT modes (`function` compiles each file's functions when it
   loads, so it suits only the scripts below).
 
+`filc-staging-call` runs the **same JIT-enabled binary with the JIT off**.
+Use it alongside `filc-staging` (HYBRID dispatch) and `filc-staging-jit`
+(CALL dispatch with LLVM tracing) to separate dispatch from tracing gains.
+
 The applications are DokuWiki, MediaWiki (SQLite) and WordPress (SQLite
 through the `sqlite-database-integration` drop-in, theme Twenty
 Twenty-Five), all from Nixpkgs, plus two scripts: `Zend/bench.php`, and
@@ -39,8 +43,8 @@ result/bin/php-bench report DIR   # rerender summary.md from results.jsonl
 `run`, `profile` and `check` take `--apps` (`dokuwiki mediawiki wordpress
 bench.php micro.php`) and `--variants`. Besides the three builds there are allocator
 levers (`filc-zendalloc`, `filc-untracked` and their `filc-staging-`
-forms: Zend's allocator, or malloc without `memory_limit` tracking; both
-weaken Fil-C's per-value bounds, see `docs/php.md`) and native ones
+forms: Zend's allocator weakens per-value bounds; untracked malloc keeps
+those bounds but loses PHP's memory accounting and `memory_limit`, see `docs/php.md`) and native ones
 (`native-jit`, `native-nopcrejit`). `NAME=/path/to/bin/php` adds any other
 build, such as one from a branch under test:
 
@@ -74,9 +78,24 @@ PHP_BENCH_CPUS=0-3 result/bin/php-bench service \
 Choose CPUs for the actual host; the counter benchmark's default affinity
 is specific to swa. `service` uses the same fixtures and PHP settings, but
 starts **native nginx in front of a static PHP-FPM pool**, with no full-page
-FastCGI cache. It needs no perf permissions. Run as an ordinary user. The
-ports are the fixtures' fixed loopback ports, so the usual benchmark lock
-applies. `PHP_BENCH_NGINX` can select another nginx executable.
+FastCGI cache. Without `--perf` it needs no perf permissions. Run as an
+ordinary user. The ports are the fixtures' fixed loopback ports, so the
+usual benchmark lock applies. `PHP_BENCH_NGINX` can select another nginx
+executable.
+
+For attribution, add `--perf`: each measured load records user cycles and
+DWARF call stacks on all FPM workers, including their existing threads.
+This requires permission to attach perf. It leaves per-load `*.perf.data`,
+recorder logs and `*.profile.json` under the variant's directory; each
+`service.jsonl` record links its capture. Sampling uses a period of
+10,000,019 cycles. perf starts disabled, and the workload waits for its
+enable acknowledgement rather than a fixed sleep. Captures with no
+samples fail the run. Re-render category tables with
+`php-bench profile-report DIR` on a variant directory. Use `perf report
+-i FILE --stdio --children` for inclusive stacks: the category tables are
+**self samples**, so allocation/copy costs can be charged outside their
+calling subsystem. Profiled latency is not an uninstrumented capacity
+measurement; collect that separately without `--perf`.
 
 Each variant/round starts fresh workers. Warm-up is three passes of the
 mix per worker, ten for JIT variants, with `--workers` concurrent clients.
@@ -217,11 +236,27 @@ for an ordinary run.
 category by DSO and name (`CATEGORIES` in `bench.py`; first match wins):
 VM handlers and dispatch, Zend hash tables, strings, values and
 refcounting, the cycle collector, other Zend runtime, zend_alloc and the
-tracked allocator, PCRE (native's includes its JIT code), SQLite, libc,
-Fil-C's allocator (libpas), FUGC, Fil-C memcpy/memmove/memset, other
-Fil-C runtime, kernel memory work (faults, zeroing, mmap), other kernel
-work (syscalls and I/O), and PHP functions and extensions.
+tracked allocator, PCRE's named functions, unresolved generated JIT code,
+SQLite, libc, Fil-C's allocator (libpas), FUGC, Fil-C memcpy/memmove/memset,
+other Fil-C runtime, kernel memory work (faults, zeroing, mmap), other
+kernel work (syscalls and I/O), and PHP functions and extensions.
+
+perf's anonymous `[JIT]` mappings can contain PCRE machine code **or**
+checked PHP LLVM traces. They are not attributed to either engine without
+an executable symbol map. Older reports incorrectly counted all of them
+as PCRE; `profile-report` reclassifies saved symbols using the current
+rules. `native-nopcrejit` is a useful whole-application control, not a
+prediction of a checked regex compiler's benefit.
 
 Fil-C's inline bounds and capability checks execute inside the functions
 that contain them, so they appear as a larger share for those functions
 (and in the instruction ratio), not as a category of their own.
+
+The staging runtime's optional `FILC_SAMPLING_PROFILER_ENABLED=1` frame
+sampler can name generated `jit:` trace families. Its histogram is
+inclusive, safepoint-biased and accumulated over the process lifetime,
+including blocked frames; it is **not** a CPU-cycle breakdown. Reports
+require runtime exit hooks. `service` gracefully shuts down with SIGQUIT,
+but verify that worker reports actually arrived: a master-only report
+does not describe request execution. PHP's native perf-map debug flag
+does not currently register the checked LLVM bodies' real address ranges.

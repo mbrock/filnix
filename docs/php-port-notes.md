@@ -331,9 +331,13 @@ the functions whose name contains `text`. `PHP_JIT_LLVM_MAX_INSNS` (default
 faster than the function (49000 IR instructions took 20 to 35 s, most of it
 in FilPizlonator's check scheduling), and it is spent in the request that
 made the code hot. `PHP_JIT_LLVM_OPTIONS=key=value,...` passes further
-`FilLLVMJIT_SetOption` options; `opt-level=1` or `filc-inline=0` compiled
-10 to 30% faster without a clear difference in run time, too little to
-change the defaults on a loaded machine.
+`FilLLVMJIT_SetOption` options. At staging `18b6663`, only `opt-level` is
+consumed from that per-session map. O1 reduced compilation time in the
+early experiments without a clear warm-runtime result, so O2 remains the
+default. The earlier `filc-inline=0` and `verify=0` experiments used this
+map too: those options were ignored, so their timing differences do not
+demonstrate an inlining or verification benefit. The separate global
+`FILC_LLVM_OPTIONS` parser is available only with the testing runtime.
 
 `PHP_JIT_BACKEND=c` selects the C backend (with its persistent cache, which
 the LLVM backend does not use; it shares code between workers instead, see

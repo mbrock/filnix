@@ -10,6 +10,7 @@ php-bench report DIR        summarize a results directory
 
 import argparse
 import concurrent.futures
+import contextlib
 import ctypes
 import datetime
 import hashlib
@@ -18,6 +19,7 @@ import json
 import math
 import os
 import re
+import select
 import shutil
 import signal
 import statistics
@@ -65,9 +67,9 @@ VARIANTS = {
     "filc-staging": ("PHP_BENCH_FILC_STAGING", {}, {}),
     "filc-staging-zendalloc": ("PHP_BENCH_FILC_STAGING", {"USE_ZEND_ALLOC": "1"}, {}),
     "filc-staging-untracked": ("PHP_BENCH_FILC_STAGING", {"USE_TRACKED_ALLOC": "0"}, {}),
-    # Levers: what Zend's allocator or an untracked malloc would buy Fil-C
-    # (both give up per-value bounds, see docs/php.md), and what native
-    # loses without its PCRE JIT or gains with opcache's JIT.
+    # Levers: Zend's allocator gives up per-value bounds; untracked malloc
+    # retains them but loses PHP's memory accounting/limit (docs/php.md).
+    # Also measure what native loses without PCRE JIT or gains with opcache JIT.
     "filc-zendalloc": ("PHP_BENCH_FILC", {"USE_ZEND_ALLOC": "1"}, {}),
     "filc-untracked": ("PHP_BENCH_FILC", {"USE_TRACKED_ALLOC": "0"}, {}),
     "native-nopcrejit": ("PHP_BENCH_NATIVE", {}, {"pcre.jit": "0"}),
@@ -76,6 +78,9 @@ VARIANTS = {
     "native-jit-function": ("PHP_BENCH_NATIVE", {}, {**JIT_INI, "opcache.jit": "function"}),
     # pkgsFilcStaging.php85-jit: opcache's JIT compiled in-process through
     # Fil-C's LLVM JIT, or printed as C and compiled with clang (docs/php.md).
+    # Same binary with JIT off: separates CALL dispatch from the ordinary
+    # interpreter's HYBRID dispatch when measuring the benefit of tracing.
+    "filc-staging-call": ("PHP_BENCH_FILC_STAGING_JIT", {}, {}),
     "filc-staging-jit": ("PHP_BENCH_FILC_STAGING_JIT", {"PHP_JIT_BACKEND": "llvm"}, JIT_INI),
     "filc-staging-jit-1235": ("PHP_BENCH_FILC_STAGING_JIT", {"PHP_JIT_BACKEND": "llvm"},
                               {**JIT_INI, "opcache.jit": "1235"}),
@@ -908,11 +913,53 @@ def cmd_check(a):
     sys.exit(0 if ok else 1)
 
 
+@contextlib.contextmanager
+def record_perf(data, pids, period, *, event="cycles", callgraph=False):
+    """Attach disabled, then wait for perf's enable acknowledgement.
+
+    JIT processes can have thousands of mappings. A fixed sleep can end
+    the entire workload before perf has finished synthesizing those maps.
+    FIFO control also works when perf is invoked through sudo.
+    """
+    with tempfile.TemporaryDirectory(prefix="php-perf-") as tmp:
+        ctlpath, ackpath = f"{tmp}/control", f"{tmp}/ack"
+        os.mkfifo(ctlpath)
+        os.mkfifo(ackpath)
+        ctl = os.open(ctlpath, os.O_RDWR)
+        ack = os.open(ackpath, os.O_RDWR | os.O_NONBLOCK)
+        prof = None
+        try:
+            with open(data + ".log", "a") as log:
+                args = ["perf", "record", "-e", event, "-c", str(period), "-D", "-1",
+                        "--control", f"fifo:{ctlpath},{ackpath}", "-p", ",".join(map(str, pids)), "-o", data]
+                if callgraph:
+                    args += ["--call-graph", "dwarf,8192"]
+                prof = subprocess.Popen(args, stderr=log)
+            os.write(ctl, b"enable\n")
+            deadline = time.monotonic() + 60
+            while not select.select([ack], [], [], 0.1)[0]:
+                if prof.poll() is not None or time.monotonic() >= deadline:
+                    raise RuntimeError(f"perf did not attach; see {data}.log")
+            if os.read(ack, 128).rstrip(b"\n\0") != b"ack":
+                raise RuntimeError(f"unexpected perf acknowledgement; see {data}.log")
+            yield
+        finally:
+            if prof and prof.poll() is None:
+                prof.send_signal(signal.SIGINT)
+                prof.wait(timeout=30)
+            os.close(ctl)
+            os.close(ack)
+        # perf/sudo can report a signal after successfully flushing a capture.
+        if prof.returncode not in (0, -signal.SIGINT, -signal.SIGTERM,
+                                   128 + signal.SIGINT, 128 + signal.SIGTERM):
+            raise RuntimeError(f"perf failed; see {data}.log")
+
+
 def cmd_service(a):
     """HTTP latency and throughput through nginx and a static FPM pool.
 
-    No perf permissions required. Reuses the fixtures and PHP settings of
-    run/check, but measures completed HTTP responses, not sums of medians.
+    Without --perf, no perf permissions are required. Reuses the fixtures
+    and settings of run/check, but measures complete HTTP responses.
     """
     lock()
     out = os.path.abspath(a.out)
@@ -921,6 +968,7 @@ def cmd_service(a):
             "cpu": next(l.split(":", 1)[1].strip() for l in open("/proc/cpuinfo") if l.startswith("model name")),
             "variants": {v: variant(v)[1:] for v in a.variants}, "ini": INI,
             "driver_sha256": hashlib.sha256(open(__file__, "rb").read()).hexdigest(),
+            "perf_period": 10000019 if a.perf else None,
             "workers": a.workers, "fixture_version": FIXTURE_VERSION,
             "applications": {k: ENV[k] for k in ENV if k.startswith("PHP_BENCH_")}}
     baseline = {}
@@ -1038,17 +1086,26 @@ http {{
                                 work = (mix * math.ceil(a.requests / len(mix)))[:a.requests]
                                 busy_before = wait_quiet(a, f"{app} {name} {label} c={concurrency}")
                                 jit_before = len(open(jitlog).readlines()) if os.path.exists(jitlog) else 0
-                                busy0 = cpu_busy()
-                                t = time.perf_counter()
-                                with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
-                                    samples = list(pool.map(request, work))
-                                elapsed = time.perf_counter() - t
-                                busy1 = cpu_busy()
-                                latencies = sorted(x[0] for x in samples)
                                 pids = open(f"/proc/{fpm.pid}/task/{fpm.pid}/children").read().split()
+                                data = f"{d}/{label}-c{concurrency}.perf.data"
+                                capture = (record_perf(data, pids, meta["perf_period"], event="cycles:u", callgraph=True)
+                                           if a.perf else contextlib.nullcontext())
+                                with capture:
+                                    busy0 = cpu_busy()
+                                    t = time.perf_counter()
+                                    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
+                                        samples = list(pool.map(request, work))
+                                    elapsed = time.perf_counter() - t
+                                    busy1 = cpu_busy()
+                                if a.perf:
+                                    if not breakdown(data, d, f"{app}-{label}-c{concurrency}", name,
+                                                     meta["perf_period"], 1, event="cycles:u"):
+                                        raise RuntimeError(f"perf recorded no samples; see {data}.log")
+                                latencies = sorted(x[0] for x in samples)
                                 rss = [int(re.search(r"VmRSS:\s+(\d+)", open(f"/proc/{p}/status").read())[1]) for p in pids]
                                 rec = {"round": rnd, "app": app, "variant": name, "workload": label,
                                     "url": article if label == "article" else None, "concurrency": concurrency,
+                                    "perf_data": os.path.relpath(data, out) if a.perf else None,
                                     "requests": len(samples), "elapsed_s": elapsed, "rps": len(samples) / elapsed,
                                     "p50_ms": statistics.median(latencies) * 1000,
                                     "p95_ms": latencies[math.ceil(len(latencies) * .95) - 1] * 1000,
@@ -1069,7 +1126,9 @@ http {{
                         finally:
                             for proc in (nginx, fpm):
                                 if proc and proc.poll() is None:
-                                    proc.terminate()
+                                    # Gracefully finish requests before stopping
+                                    # the pool, rather than killing workers.
+                                    proc.send_signal(signal.SIGQUIT)
                                     proc.wait(timeout=30)
 
 
@@ -1261,8 +1320,9 @@ CATEGORIES = [
      r"page|folio|clear_|_pte|pmd|pud|mmap|munmap|madvise|vma|tlb|zap_|lru|memcg|mm_|mmu|rmap|anon|alloc_pages|free_pages|unmap|irqentry|exc_|kernel_init|fault|rmqueue|freelist"),
     ("kernel syscalls & I/O", r"^\[kernel\]$", None),
     ("PCRE", r"pcre", None),
-    # Native PCRE's JIT-compiled patterns (perf names their mapping [JIT]).
-    ("PCRE", r"^\[JIT\]", None),
+    # perf uses [JIT] for both PCRE patterns and checked PHP traces. Without
+    # a symbol map these cannot be attributed to either engine by DSO alone.
+    ("generated JIT code (unresolved)", r"^\[JIT\]", None),
     ("PCRE", None, r"^(php_pcre|pcre_get_compiled|pcre2_)"),
     ("SQLite", r"sqlite", None),
     ("FUGC (GC)", r"libpizlo", r"fugc|mark|sweep|scan|verse_heap_.*(sweep|mark|collect)|pas_.*(scaven|decommit)|stop_the_world|soft_handshake|safepoint|pollcheck"),
@@ -1314,22 +1374,12 @@ def cmd_profile(a):
                     for _ in range(a.warmup):
                         for u in s.urls:
                             s.request(u)
-                    # perf record -p sometimes wrote only its header for
-                    # Fil-C MediaWiki (threads coming and going while it
-                    # attaches); record again when it got no samples.
-                    for attempt in range(3):
-                        rec = subprocess.Popen(["perf", "record", "-e", "cycles", "-c", str(a.period),
-                                                "-p", str(s.proc.pid), "-o", data],
-                                               stderr=open(data + ".log", "a"))
-                        time.sleep(1)
+                    with record_perf(data, [s.proc.pid], a.period):
                         for _ in range(a.passes):
                             for u in s.urls:
                                 s.request(u)
-                        rec.send_signal(signal.SIGINT)
-                        rec.wait()
-                        if breakdown(data, out, app, name, a.period, a.passes):
-                            break
-                        print(f"no samples for {app} {name}, recording again", flush=True)
+                    if not breakdown(data, out, app, name, a.period, a.passes):
+                        raise RuntimeError(f"perf recorded no samples; see {data}.log")
                 finally:
                     s.stop()
                 continue
@@ -1337,7 +1387,7 @@ def cmd_profile(a):
     cmd_profile_report(argparse.Namespace(dir=out))
 
 
-def breakdown(data, out, app, name, period, passes):
+def breakdown(data, out, app, name, period, passes, *, event="cycles"):
     rep = subprocess.run(["perf", "report", "-i", data, "--stdio", "--no-children", "-F", "sample,dso,sym",
                           "--sort", "dso,sym", "-g", "none", "--percent-limit", "0", "-t", "\t"],
                          capture_output=True, text=True).stdout
@@ -1355,7 +1405,7 @@ def breakdown(data, out, app, name, period, passes):
             dso = "[kernel]"
         syms.append({"samples": samples, "dso": os.path.basename(dso), "sym": STRIP.sub("", sym),
                      "cat": categorize(dso, sym)})
-    json.dump({"app": app, "variant": name, "period": period, "passes": passes, "symbols": syms},
+    json.dump({"app": app, "variant": name, "event": event, "period": period, "passes": passes, "symbols": syms},
               open(os.path.join(out, f"{app}-{name}.profile.json"), "w"))
     return sum(s["samples"] for s in syms)
 
@@ -1364,16 +1414,20 @@ def cmd_profile_report(a):
     profs = [json.load(open(os.path.join(a.dir, f))) for f in sorted(os.listdir(a.dir)) if f.endswith(".profile.json")]
     profs = [p for p in profs if p["symbols"]]
     md = [f"# PHP profile {os.path.basename(os.path.abspath(a.dir))}", "",
-          "Self cycles (user and kernel) by category, from `perf record -e cycles -c PERIOD` on the "
-          "warm server over the whole request mix. Gcycles are absolute, so categories compare "
-          "directly between variants. Fil-C's inline bounds and capability checks are inside the "
-          "functions that execute them and are not a separate category.", ""]
+          "Self cycle estimates by category (samples × period), divided by the recorded pass count. "
+          "`profile` captures user and kernel cycles over request-mix passes; `service --perf` captures "
+          "user cycles, with one pass representing the entire measured load. Compare only matching "
+          "events and workloads. Fil-C's inline bounds and capability checks are inside the functions "
+          "that execute them and are not a separate category.", ""]
     apps = list(dict.fromkeys(p["app"] for p in profs))
     for app in apps:
         ps = [p for p in profs if p["app"] == app]
         cats = {}
         for p in ps:
             for s in p["symbols"]:
+                # Reclassify saved profiles too: older reports attributed
+                # every anonymous JIT mapping to PCRE.
+                s["cat"] = categorize(s["dso"], s["sym"])
                 cats.setdefault(s["cat"], {}).setdefault(p["variant"], 0)
                 cats[s["cat"]][p["variant"]] += s["samples"] * p["period"]
         # Gcycles per pass over the request mix, so runs with different
@@ -1387,7 +1441,8 @@ def cmd_profile_report(a):
         vs = sorted((p["variant"] for p in ps), key=lambda v: (v != "native", v))
         ps.sort(key=lambda p: vs.index(p["variant"]))
         base, others = vs[0], vs[1:]
-        md += [f"## {app}", "", "Gcycles per pass over the request mix; Δ is against "
+        events = ", ".join(sorted({p.get("event", "cycles") for p in ps}))
+        md += [f"## {app}", "", f"Events: `{events}`. Gcycles per recorded pass; Δ is against "
                f"{base}, and share is Δ as a part of the whole gap.", "",
                "| category | " + " | ".join(f"{v} Gcyc | {v} %" for v in vs) + " | "
                + " | ".join(f"Δ {v} | share" for v in others) + " |",
@@ -1431,6 +1486,8 @@ def main():
     s.add_argument("--rounds", type=int, default=3)
     s.add_argument("--warmup", type=int, default=3)
     s.add_argument("--jit-warmup", type=int, default=10)
+    s.add_argument("--perf", action="store_true",
+                   help="record user cycles and DWARF call stacks on all FPM workers; requires perf permissions")
     s.add_argument("--max-busy", type=float, default=0.15,
                    help="wait until at most this CPU share is busy before startup and each measured load")
     s.add_argument("--wait", type=float, default=30, help="minutes to wait for a quiet machine")
