@@ -312,11 +312,17 @@ make raw inline-asm syscalls (12 and 314), and `__spawnix` asserts
 runtime has no `zsys_` wrapper for brk or sched_setattr. e2fsck calls
 `sbrk(0)` at startup, so systemd-fsck failed on every boot; systemd starts
 every service with `pidfd_spawn` when glibc has it, and uses `sched_setattr`
-for `CPUSchedulingPolicy=`. `patches/filc-glibc-unsupported-syscalls.patch`
-fails them as glibc does on an unsupported kernel: brk with `ENOMEM` (the
-break never moves; Fil-C allocates from the GC heap), `sched_setattr` with
+for `CPUSchedulingPolicy=`. For brk, `patches/filc-runtime-brk-query.patch` adds `zsys_brk` to the
+runtime. It returns the kernel's `brk(0)`, which only queries the break, as
+an integer, so a pointer made from it has no capability.
+`patches/filc-glibc-unsupported-syscalls.patch` makes `__brk` use it:
+`sbrk(0)` returns the break, as natively, which allocators and language
+runtimes probe for. Moving the break fails with `ENOMEM`, because Fil-C
+allocates from the GC heap. The same patch fails `sched_setattr` with
 `ENOSYS`, and `pidfd_spawn` with `ENOSYS`, as `__spawnix` does without
-pidfd support (regression check `tests/glibc-syscall-fallbacks.nix`).
+pidfd support. The regression check, `tests/glibc-syscall-fallbacks.nix`,
+compares `sbrk(0)` with the break the kernel shows in `/proc/self/stat`
+and `/proc/self/maps`.
 systemd 260 does not fall back to `posix_spawn` on that `ENOSYS`; its port
 builds with `HAVE_PIDFD_SPAWN=0` under Fil-C.
 

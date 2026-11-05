@@ -1,0 +1,55 @@
+Subject: Add zsys_brk, a query-only program break
+Origin: Filnix
+Upstream-Status: Not submitted
+
+The user glibc's __brk made a raw inline-asm syscall, which Fil-C refuses,
+so sbrk (0) stopped the program. Natively sbrk (0) never fails: it reports
+the break. zsys_brk returns the kernel's answer to brk (0), which queries
+without moving anything, as an integer; Fil-C code that makes a pointer of
+it gets no capability. Fil-C code cannot move the break, since its memory
+comes from the GC heap (the runtime's native allocator still does). patches/filc-glibc-unsupported-syscalls.patch uses
+it; tests/glibc-syscall-fallbacks.nix checks sbrk (0) against the break the
+kernel shows in /proc/self/stat and /proc/self/maps.
+
+--- a/filc/include/pizlonated_syscalls.h
++++ b/filc/include/pizlonated_syscalls.h
+@@ -60,6 +60,8 @@
+ unsigned zsys_getegid(void);
+ int zsys_open(const char* path, int flags, ...);
+ int zsys_getpid(void);
++/* The current program break, as brk(0) reports it; it never moves the break. */
++unsigned long zsys_brk(void);
+ int zsys_clock_gettime(int clock_id, void* timespec_ptr);
+ int zsys_fstatat(int fd, const char* path, void* buf, int flag);
+ int zsys_fstat(int fd, void* buf);
+--- a/libpas/src/libpas/filc_runtime.c
++++ b/libpas/src/libpas/filc_runtime.c
+@@ -8928,6 +8928,18 @@
+     return result;
+ }
+ 
++/* Reports the program break without moving it. brk(0) only queries, never fails, and moves
++   nothing, so it is the native answer to sbrk(0). The result is an integer: Fil-C code that
++   turns it into a pointer gets one without a capability. Fil-C code cannot move the break: its
++   memory comes from the GC heap. */
++unsigned long filc_native_zsys_brk(filc_thread* my_thread)
++{
++    filc_exit(my_thread);
++    unsigned long result = (unsigned long)syscall(SYS_brk, 0);
++    filc_enter(my_thread);
++    return result;
++}
++
+ int filc_native_zsys_clock_gettime(filc_thread* my_thread, int clock_id, filc_ptr timespec_ptr)
+ {
+     /* Fun fact: this syscall is often extremely cheap, like it's a vdso thing.
+--- a/libpas/src/libpas/generate_pizlonated_forwarders.rb
++++ b/libpas/src/libpas/generate_pizlonated_forwarders.rb
+@@ -232,6 +232,7 @@
+ addSig nil, "unsigned", "zsys_getegid"
+ addSig nil, "int", "zsys_open", "filc_ptr", "int", "..."
+ addSig nil, "int", "zsys_getpid"
++addSig nil, "unsigned long", "zsys_brk"
+ addSig nil, "int", "zsys_clock_gettime", "int", "filc_ptr"
+ addSig nil, "int", "zsys_fstatat", "int", "filc_ptr", "filc_ptr", "int"
+ addSig nil, "int", "zsys_fstat", "int", "filc_ptr"
