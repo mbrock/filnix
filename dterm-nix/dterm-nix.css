@@ -70,7 +70,7 @@ article.dterm.nix { max-width: 64rem; }
 .let > .kw-row, .kw-line .kw { line-height: 1.9; }
 .let > .let-body { margin-top: 0.1em; }
 .let > .binds { margin-left: 0.2em; }
-.app-block > .app-args { display: grid; row-gap: 0.2em; padding-left: 1.1em; margin-top: 0.1em; }
+.app-block > .app-args { display: grid; grid-template-columns: minmax(0, 1fr); row-gap: 0.2em; padding-left: 1.1em; margin-top: 0.1em; }
 .op-stack { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 0.5em; row-gap: 0.25em; }
 .op-row { display: contents; }
 .op-lead { color: color-mix(in srgb, var(--ink) 62%, transparent); text-align: right; }
@@ -117,21 +117,23 @@ a.path, a.uri { color: var(--str); text-decoration: underline dotted; text-under
 .lit-expr .q { color: var(--muted); }
 .nix [data-b].lit-b { background: color-mix(in srgb, var(--var) 14%, transparent); border-radius: 3px; }
 
-/* Indented strings: the text they mean, in the type of code. A
+/* Indented strings: the text they mean, as a block of code marked as
+   a string by its rule and tint rather than set between its quotes. A
    description is prose. */
-.istr { font-size: 0.86rem; }
-.istr > .q { color: var(--muted); }
 .istr-text {
-  margin: 0.1em 0 0.1em 0.8em;
+  margin: 0.15em 0;
   padding: 0.3em 0.6em;
   font-family: var(--mono-font);
+  font-size: 0.86rem;
   white-space: pre-wrap;
   background: color-mix(in srgb, var(--str) 6%, transparent);
-  border-radius: 4px;
+  border-left: 2px solid color-mix(in srgb, var(--str) 45%, transparent);
+  border-radius: 0 4px 4px 0;
   color: var(--str);
 }
 .istr-line { min-height: 1.4em; }
 .istr-text .interp { font-family: var(--body-font, inherit); }
+.clause.bind.over > .value:has(> .istr) { padding-left: 0; }
 .prose.described { font-size: 0.9rem; max-width: 40rem; color: var(--ink); }
 .prose.described p { margin: 0 0 0.35rem; }
 
@@ -163,48 +165,71 @@ table.opt-facts code.term { font: inherit; background: none; padding: 0; }
 details.more-defs { display: inline; }
 details.more-defs > summary { display: inline; cursor: pointer; color: var(--accent); }
 
-/* Port lists (dterm_ports.pl): each port a table of its steps in the
-   order they apply, verb, arguments and why. */
-.ports .port-index { margin: 1.2rem 0 2rem; }
-.port-filter { padding: 0.4rem 0; }
-.port-filter label { color: var(--muted); font-size: 0.85rem; font-weight: 700; }
-.port-filter input { font: inherit; font-size: 0.95rem; width: min(24rem, 70%); padding: 0.25rem 0.5rem; border: 1px solid var(--rule); border-radius: 4px; }
-.index-group h3 { margin: 1rem 0 0.2rem; font-size: 0.95rem; }
-.index-group h3 a { color: inherit; text-decoration: none; }
-table.port-summary { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
-table.port-summary td { padding: 0.18rem 0.6rem 0.18rem 0; vertical-align: baseline; border-top: 1px solid color-mix(in srgb, var(--rule) 45%, transparent); }
-table.port-summary td.ps-name { white-space: nowrap; font-weight: 600; width: 1%; }
-table.port-summary td.ps-name a { text-decoration: none; }
-table.port-summary td.ps-changes { width: 1%; min-width: 14rem; }
-table.port-summary td.ps-why { color: var(--muted); }
-table.port-summary td.ps-why .prose, table.port-summary td.ps-why p { margin: 0; display: inline; }
-.badge { display: inline-block; margin: 0 0.25rem 0.1rem 0; padding: 0 0.35rem; border-radius: 3px; font-family: var(--mono-font); font-size: 0.76rem; line-height: 1.5; white-space: nowrap; background: color-mix(in srgb, var(--rule) 30%, transparent); color: var(--ink); }
-.badge .count { margin-left: 0.15em; color: var(--muted); }
-.badge.pin { background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.badge.broken { background: color-mix(in srgb, #c0392b 16%, transparent); white-space: normal; }
-.badge .s { color: inherit; }
-.ports h2 { margin: 2.4rem 0 0.6rem; padding-top: 0.6rem; border-top: 1px solid var(--rule); scroll-margin-top: 3rem; }
-section.port { margin: 1.1rem 0 1.4rem; scroll-margin-top: 3rem; }
-section.port:target { box-shadow: -0.9rem 0 0 -0.65rem var(--accent); }
+/* Ports (dterm_ports.pl): `for Pkg Steps` as a table of its steps in
+   the order they apply: verb, arguments and why. */
+.port { margin: 0.5rem 0 0.9rem; scroll-margin-top: 3rem; }
+.port:target { box-shadow: -0.9rem 0 0 -0.65rem var(--accent); }
 .port-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 0.5rem; font-size: 1.02rem; }
 .port-head .f.def { font-weight: 700; }
 .port-head .port-pkg { color: var(--muted); font-size: 0.9rem; }
-.port-lede { margin: 0.2rem 0 0.35rem; max-width: 44rem; font-size: 0.92rem; }
-.port-lede p { margin: 0 0 0.3rem; }
-table.port-steps { border-collapse: collapse; margin: 0.2rem 0 0 0.2rem; font-size: 0.9rem; }
+table.port-steps { border-collapse: collapse; margin: 0.2rem 0 0 0.2rem; }
 table.port-steps td { padding: 0.12rem 0.9rem 0.12rem 0; vertical-align: baseline; }
-table.port-steps td.step-verb { white-space: nowrap; font-family: var(--mono-font); font-size: 0.84rem; }
+table.port-steps td.step-verb { white-space: nowrap; font-weight: 600; }
 table.port-steps td.step-verb a { text-decoration: none; }
 table.port-steps td.step-args .goal { display: inline; }
 table.port-steps td.step-args > div.goal { display: block; }
-table.port-steps td.step-why { color: var(--muted); max-width: 30rem; font-size: 0.86rem; }
+table.port-steps td.step-why { color: var(--muted); max-width: 30rem; }
 table.port-steps td.step-why .reason .s { color: var(--muted); }
-table.port-steps tr.note td { padding-top: 0.45rem; color: var(--muted); }
+table.port-steps tr.note td { padding-top: 0.45rem; }
 table.port-steps tr.note .note { margin: 0; }
-.port-import { margin: 0.6rem 0; }
-.port-local { margin: 0.6rem 0 0.2rem; }
-.port.alias .port-head .goal { font-size: 0.92rem; }
-.port-hidden { display: none !important; }
+.list-block.top { border: 0; background: none; padding-left: 0; row-gap: 0.4em; }
+.list-block.top > .item { display: block; }
+.port-verbs { color: var(--muted); }
+
+/* Sections: a section comment, # ━━━ Title ━━━, as a heading. */
+article.dterm.nix h2.nix-sec { margin: 2.2rem 0 0.6rem; font-size: 1.3rem; }
+
+/* The sidebar: this page's contents, by its own sections, then the
+   files by directory. Both fold. */
+.nix-nav { position: sticky; top: 2.4rem; align-self: start; max-height: calc(100vh - 3rem); overflow-y: auto; }
+.nix-nav details > summary { cursor: pointer; list-style: none; }
+.nix-nav details > summary::-webkit-details-marker { display: none; }
+.nix-nav details > summary::before { content: "▸"; display: inline-block; width: 0.9em; color: var(--muted); font-size: 0.85em; }
+.nix-nav details[open] > summary::before { content: "▾"; }
+.nix-nav .nav-block + .nav-block { margin-top: 1.2rem; }
+.nix-nav .nav-block > summary.toc-title { margin-bottom: 0.4rem; }
+.nix-nav .nav-group { margin: 0.35rem 0; }
+.nix-nav .nav-group-title { font-weight: 700; color: var(--ink); }
+.nix-nav ul.nav-names {
+  margin: 0.15rem 0 0.4rem 0.9em; padding: 0; list-style: none;
+  columns: 2 5.5rem; column-gap: 0.8rem;
+}
+.nix-nav ul.nav-names.long { columns: 1; }
+main.dterm-page:has(> .nix-nav) { grid-template-columns: 16rem minmax(0, 1fr); }
+.nix-nav ul.nav-names li { margin: 0; break-inside: avoid; overflow-wrap: anywhere; line-height: 1.45; }
+.nix-nav ul.nav-names a { opacity: 0.75; }
+.nix-nav .nav-dir { margin: 0.15rem 0; }
+.nix-nav .nav-dir > ul, .nix-nav ul.nav-top { margin: 0.1rem 0 0.3rem 0.9em; padding: 0; list-style: none; }
+.nix-nav .nav-dir li, .nix-nav ul.nav-top li { margin: 0.05rem 0; }
+.nix-nav li.current > a { color: var(--accent); font-weight: 700; opacity: 1; }
+
+/* The index: the files by directory, a row each. */
+.index section.dir h2.nix-sec { margin-top: 1.8rem; }
+table.files { border-collapse: collapse; width: 100%; }
+table.files td { padding: 0.2rem 0.9rem 0.2rem 0; vertical-align: baseline; border-top: 1px solid color-mix(in srgb, var(--rule) 45%, transparent); }
+table.files td.file-name { white-space: nowrap; font-weight: 600; width: 1%; }
+table.files td.file-name a { text-decoration: none; }
+table.files td.file-sum { color: var(--ink); opacity: 0.85; }
+table.files td.file-lines { white-space: nowrap; color: var(--muted); text-align: right; font-size: 0.85em; width: 1%; }
+
+@media (max-width: 900px) {
+  .nix-nav.toc { display: block; }
+  .nix-nav { position: static; max-height: none; margin-bottom: 1.5rem; padding-bottom: 0.8rem; border-bottom: 1px solid var(--rule); }
+  table.files td.file-sum { display: block; padding-top: 0; border-top: 0; }
+  table.files tr { display: block; padding: 0.2rem 0; border-top: 1px solid color-mix(in srgb, var(--rule) 45%, transparent); }
+  table.files td { border-top: 0; }
+  table.files td.file-lines { display: none; }
+}
 
 /* What a module sets an option to (dterm_options.pl): the definition as
    written, and each package's derivation and what builds it. */
@@ -212,7 +237,18 @@ table.port-steps tr.note .note { margin: 0; }
 .set-where { font-size: 0.8rem; }
 .set-def .binds .clause.bind { border: 0; padding: 0; }
 .pkg-value + .pkg-value { margin-top: 0.15rem; }
-code.drv-name { font-size: 0.8rem; background: none; padding: 0; }
+code.drv-name { font-family: var(--mono-font); font-size: 0.8rem; background: none; padding: 0; }
 .built-by { font-size: 0.88rem; }
-.built-by .badge { font-size: 0.72rem; }
 tr.may-read td.desc > .muted { font-size: 0.8rem; }
+
+/* Comments at the size of the code they are among; monospace only for
+   strings of code. */
+.nix .note, .nix .aside { font-size: 1em; font-style: normal; }
+.nix table.facts tr.note td { font-size: 1em; font-style: normal; }
+.nix code { font-family: inherit; font-size: 0.95em; }
+/* A long path as a page's title breaks at its slashes. */
+.nix h1.source-title { overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .istr-text { white-space: pre; overflow-x: auto; max-width: 100%; }
+  .istr, .app-arg, .value, .operand { min-width: 0; }
+}

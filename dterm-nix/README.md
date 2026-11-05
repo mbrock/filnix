@@ -55,8 +55,11 @@ left-associative fails 8 of this repository's files.
   compound but without parentheses; when an argument is a block it goes
   under the function, so `mkOption { … }` is the option's table.
 - `description` is prose, `lib.literalExpression "…"` shows the
-  expression as Nix, an indented string is the text it means.
-- Comments are where they were written: the header is the page's lede,
+  expression as Nix, an indented string is the text it means: a block of
+  code, marked as a string by its rule and tint rather than its quotes.
+  Monospace is kept for these blocks only.
+- Comments are where they were written, at the size of the code around
+  them: the header is the page's lede,
   comments between bindings are notes, a comment at the end of a line
   sits beside its row. Indented examples in comments are drawn as the
   bindings they are; backquoted Nix in prose is drawn as Nix.
@@ -93,20 +96,37 @@ interpolated name (`cfg.${name}.enable`) is listed apart, under "may
 read", for each option it can name, and one that names nothing of the
 option (`config.${name}`) is not listed at all.
 
-## Port lists
+## Pages and their contents
 
-A file whose value is a list or set of `for pkgs.x [ steps ]`
-(ports.nix, ports/media.nix, …) is drawn by
-[dterm_ports.pl](dterm_ports.pl) as the facts it states rather than as
-one long list: each port is a table of its steps in the order they
-apply (the verb, linked to its definition in ports/default.nix, its
-arguments, and the comment beside it), under the comments written above
-it. `# ━━━ Title ━━━` comments are the sections. An index at the top
-lists every port of the file and of the files it imports with the
-verbs it uses, and a filter finds ports by name, package or verb.
-Port helpers such as `boostPort = boost: for boost [ … ]` are drawn as
-ports with their parameter, and the bindings that apply them
-(`boost186 = boostPort pkgs.boost186`) as one line each.
+Every Nix file of the repository is a page, drawn by the same rules: the
+site build takes the repository's `.nix` files (all but `experiments/`,
+scratch projects with their own flakes, and build results), and a file
+that does not parse fails the build. The index lists them by directory.
+
+A page's structure is its source's own:
+
+- `# ━━━ Title ━━━` comments (or `───`, `===`, `---`) are headings, as
+  they are sections of the file;
+- the sidebar is the page's contents: the names the file binds at its
+  top (its `let`, the set it makes, and the ports, bindings and imports
+  of the list it makes), grouped by those sections, or by what binds
+  them in a file without sections. Under it are the files, by
+  directory. The option index uses the same sidebar, with a group per
+  module.
+
+A path, an `import ./x.nix` or a `callPackage ./y.nix` links to the
+page of the file it names, a directory to its `default.nix`, and any
+other file to GitHub.
+
+## Ports
+
+`for Pkg Steps`, the call of ports/default.nix's DSL that ports.nix and
+the files of ports/ are lists of, is drawn by
+[dterm_ports.pl](dterm_ports.pl) wherever it is written as the fact it
+states: a table of its steps in the order they apply (the verb, linked
+to its definition in ports/default.nix, its arguments, and the comment
+beside it). Each is anchored as `port-Name`, which the option index
+links a package to.
 
 ## Running it
 
@@ -117,5 +137,5 @@ dterm-nix/tests/parse.sh               # every .nix file in the repository
 
 The pages expect `../nanofil/dterm.css`, `../nanofil/dterm.js` and
 `dterm-nix.css`/`.js` beside them. The site build
-([packages/site](../packages/site/default.nix)) lists the files it draws
-in `nixPages`.
+([packages/site](../packages/site/default.nix)) finds the files it draws
+by the rule above.

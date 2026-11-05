@@ -13,13 +13,18 @@
     - `inherit (x) a b` is a row of the names it binds;
     - a `mkOption` call is drawn as its type, default and example, with
       its description as prose;
-    - paths link to the files they name;
+    - `for pkgs.x [ steps ]`, a port, is a table of its steps
+      (dterm_ports.pl);
+    - paths link to the files they name, a drawn .nix file to its page;
     - each `let` binding lists the bindings that use it and those it
       uses, and a name links to the binding it refers to.
 
     Comments are drawn where they were written: a file's header is the
-    page's lede, comments between bindings are notes, and a comment at
-    the end of a line sits beside it. Inline terms are set as dterm sets
+    page's lede, comments between bindings are notes, a section comment
+    (# ━━━ Title ━━━) is a heading, and a comment at the end of a line
+    sits beside it. The sidebar is the page's contents, the names bound
+    at the file's top grouped by its sections (outline/3), over the
+    files by directory. Inline terms are set as dterm sets
     Prolog: dterm.js (nanofil/web) breaks their lines at the width they
     get, reading the same data-d=args and data-d=op markup.
 
@@ -58,12 +63,18 @@ main :-
     ( option_arg('--nixpkgs=', Args2, Nixpkgs, Files) -> true ; Nixpkgs = none, Files = Args2 ),
     nb_setval(nix_root, Root),
     nb_setval(nix_pages, Files),
-    maplist(read_page(Root), Files, Pages),
+    check_page_names(Files),
+    maplist(read_or_report(Root), Files, Read),
+    (   memberchk(failed, Read)
+    ->  format(user_error, "dterm-nix: a file above does not parse~n", []), halt(1)
+    ;   Pages = Read
+    ),
     (   Json == none -> Index = none
     ;   read_options(Json, Index)
     ),
     nb_setval(nix_options, Index),
     dsl_ids(Pages, Dsl), nb_setval(nix_dsl, Dsl),
+    port_sites(Pages),
     maplist(write_source_page(Out, Pages), Pages),
     (   Index == none -> true
     ;   option_readers(Root, Nixpkgs, Files, Index),
@@ -71,12 +82,27 @@ main :-
         write_page(OPath, options_page(Pages, Index))
     ),
     directory_file_path(Out, 'index.html', IPath),
-    write_page(IPath, index_page(Pages)).
+    write_page(IPath, index_page).
 
 option_arg(Prefix, Args0, Value, Args) :-
     select(A, Args0, Args), atom_concat(Prefix, Value, A), !.
 
 %% Reading
+
+%  Every file is drawn, or the build fails: one that does not parse is
+%  reported, and so are two whose pages would have the same name.
+read_or_report(Root, File, Page) :-
+    (   catch(read_page(Root, File, Page0), E, ( print_message(error, E), fail ))
+    ->  Page = Page0
+    ;   format(user_error, "dterm-nix: cannot read ~w~n", [File]), Page = failed
+    ).
+
+check_page_names(Files) :-
+    maplist(page_name, Files, Names), msort(['index.html', 'options.html'|Names], Sorted),
+    (   append(_, [X, X|_], Sorted)
+    ->  format(user_error, "dterm-nix: two pages would be ~w~n", [X]), halt(1)
+    ;   true
+    ).
 
 %  page(File, Text, Lines, Expr, Comments)
 read_page(Root, File, page(File, Text, Lines, E, Cms)) :-
@@ -208,6 +234,7 @@ block(list(P, Es)) :- !, ( member(E, Es), block(E) -> true ; comments_inside(P) 
 block(lam(_, Param, B)) :- !, ( block(B) -> true ; Param = pset(Fs, _, _), member(formal(_, _, D), Fs), D \== none ).
 block(with(_, _, B)) :- !, block(B).
 block(assert(_, _, B)) :- !, block(B).
+block(app(_, var(_, for), [_, _])) :- !.
 block(app(_, _, As)) :- !, member(A, As), block(A), !.
 block(paren(_, E)) :- !, block(E).
 block(bin(_, _, L, R)) :- !, ( block(L) -> true ; block(R) ).
@@ -229,18 +256,38 @@ notes_before(From) -->
       note_groups(Now, Gs) },
     seq(Gs, note_).
 
-%  Consecutive line comments form one group.
+%  Consecutive line comments form one group; a section comment starts
+%  one.
 note_groups([], []).
 note_groups([C|Cs0], [[C|G]|Gs]) :-
     group_more(C, Cs0, G, Cs), note_groups(Cs, Gs).
 
 group_more(cm(O, _, T, own), [cm(O1, To1, T1, own)|Cs0], [cm(O1, To1, T1, own)|G], Cs) :-
     \+ string_concat("/*", _, T), \+ string_concat("/*", _, T1),
+    \+ section_title(cm(O1, To1, T1, own), _),
     offset_line(O, L), offset_line(O1, L1), L1 =:= L + 1, !,
     group_more(cm(O1, To1, T1, own), Cs0, G, Cs).
 group_more(_, Cs, [], Cs).
 
+%  A section comment, # ━━━ Title ━━━, is the heading of the section
+%  that follows it, and of its names in the page's contents.
+note_([C|G]) --> { section_title(C, T) }, !,
+    { sec_id(T, Id) }, el(h2, "nix-sec", [id=Id], esc(T)),
+    ( { G == [] } -> [] ; note_(G) ).
 note_(G) --> { group_lines(G, Lines0), line_breaks(Lines0, Lines) }, el(div, note, prose_lines(Lines)).
+
+section_title(cm(_, _, Text, own), Title) :-
+    string_concat("#", R0, Text), split_string(R0, "", " ", [R]),
+    member(Fr-Cs, ["━━━"-" ━", "───"-" ─", "==="-" =", "---"-" -"]),
+    string_concat(Fr, _, R), string_concat(_, Fr, R), !,
+    split_string(R, "", Cs, [T]), T \== "", atom_string(Title, T).
+
+%  Its words, lower-case and joined by dashes: sec-core-libraries.
+sec_id(Title, Id) :-
+    downcase_atom(Title, D), atom_codes(D, Cs),
+    maplist([C, W]>>( code_type(C, alnum) -> W = C ; W = 0'  ), Cs, Ws),
+    atom_codes(A, Ws), atomic_list_concat(Parts, ' ', A), exclude(==(''), Parts, Ps),
+    atomic_list_concat([sec|Ps], '-', Id).
 
 %  Comments are often written as lines rather than sentences: a line
 %  that ends without punctuation before one that starts a sentence is a
@@ -296,6 +343,8 @@ blk_(let(_, Bs, B)) -->
 blk_(attrs(P, Rec, Bs)) -->
     { nb_getval(nix_top, P) -> Kind = top ; Kind = Rec },
     el(div, "attrs", ( ( { Rec == rec } -> el(span, "kw rec", "rec") ; [] ), binds(Bs, Kind) )).
+%  The list a file makes, such as ports.nix's, is its page's body.
+blk_(list(P, Es)) --> { nb_getval(nix_top, P) }, !, el(div, "list-block top", seq(Es, list_row)).
 blk_(list(_, Es)) --> el(div, "list-block", seq(Es, list_row)).
 blk_(lam(F-_, pid(X), B0)) --> !,
     { curried(B0, Ps, B) },
@@ -306,8 +355,10 @@ blk_(with(_, W, B)) -->
     el(div, "with", ( el(div, "goal kw-line", ( el(span, kw, "with"), " ", term(W) )), blk(B) )).
 blk_(assert(_, C, B)) -->
     el(div, "assert", ( el(div, "goal kw-line", ( el(span, kw, "assert"), " ", term(C) )), blk(B) )).
+blk_(paren(_, E)) --> { for_app(E, _, _) }, !, blk(E).
 blk_(paren(_, E)) --> el(div, "paren block", blk(E)).
 blk_(if(P, C, T, E)) --> { if_chain(if(P, C, T, E), Cases) }, cases(Cases, "").
+blk_(app(P, var(_, for), [Pkg, S])) --> !, port_block(P, Pkg, S).
 blk_(app(_, F, [C, X])) --> { is_fn(F, mkIf) }, !, cases([if(C, X)], "mkif").
 blk_(app(_, F, As)) -->
     { append(Inline, [B|Rest], As), block(B), !, nb_getval(nix_option, Opt0),
@@ -363,14 +414,15 @@ case_rows([else(E)|Cs], Extra) -->
                             el(div, then, el(div, goals, blk(E))) )),
     case_rows(Cs, Extra).
 
-%  An indented string as the text it means: its common indentation gone,
-%  interpolations drawn as terms. A description is prose.
+%  An indented string as the text it means, a block of code marked as a
+%  string rather than set between its quotes: its common indentation
+%  gone, interpolations drawn as terms. A description is prose.
 istr_block(Ps) -->
     { nb_getval(nix_prose, true), \+ member(interp(_, _), Ps), istr_text(Ps, Lines) }, !,
     el(div, "prose described", prose_lines(Lines)).
 istr_block(Ps) -->
     { istr_lines(Ps, Lines) },
-    el(div, istr, ( el(span, "q", "''"), el(div, "istr-text", seq(Lines, istr_line)), el(span, "q", "''") )).
+    el(div, "istr", [title="an indented string, ''…''"], el(div, "istr-text", seq(Lines, istr_line))).
 
 istr_text(Ps, Lines) :-
     findall(S, member(lit(S), Ps), Ss), atomic_list_concat(Ss, A), split_string(A, "\n", "", Ls0),
@@ -594,13 +646,22 @@ items([E|Es]) --> el(span, arg, term(E)), " ", items(Es).
 seq_sp([X], G) --> !, el(span, arg, call(G, X)).
 seq_sp([X|Xs], G) --> el(span, arg, call(G, X)), " ", seq_sp(Xs, G).
 
+%  A name bound inline is anchored like one bound in a table, so its uses
+%  and readers can link to it.
+inline_bind(bind(_, Path, V)) -->
+    { Path = [aid(F-_, _)|_], nb_getval(nix_snippet, false), bid(F, Id) }, !,
+    el(span, "inline-def", [id=Id], attrpath(Path, use)), "\u00A0", el(span, eqi, "="), " ", term(V), el(span, sep, ";").
 inline_bind(bind(_, Path, V)) --> attrpath(Path, use), "\u00A0", el(span, eqi, "="), " ", term(V), el(span, sep, ";").
 inline_bind(inherit(_, From, Ns)) -->
     el(span, kw, "inherit"), " ", ( { From == none } -> [] ; el(span, paren, term(From)), " " ),
     seq_names(Ns), el(span, sep, ";").
 
-seq_names([N]) --> !, attr(N, use).
-seq_names([N|Ns]) --> attr(N, use), " ", seq_names(Ns).
+seq_names([N]) --> !, inline_name(N).
+seq_names([N|Ns]) --> inline_name(N), " ", seq_names(Ns).
+
+inline_name(aid(F-_, X)) --> { nb_getval(nix_snippet, false), bid(F, Id), binder(Id, _, _, _) }, !,
+    el(span, "name inline-def", [id=Id], esc(X)).
+inline_name(N) --> attr(N, use).
 
 param_inline(pset(Fs, Ell, At), F) --> at_before(At, F), formals_inline(Fs, Ell), at_after(At).
 
@@ -650,6 +711,10 @@ path_target(S, Href) :-
 %  repository; Href is its page, or its place on GitHub.
 repo_href(Rel, Href) :-
     nb_getval(nix_pages, Pages), memberchk(Rel, Pages), !, page_name(Rel, Href).
+%  A directory imported as Nix is its default.nix.
+repo_href(Rel, Href) :-
+    nb_getval(nix_pages, Pages), atom_concat(Rel, '/default.nix', D), memberchk(D, Pages), !,
+    page_name(D, Href).
 repo_href(Rel, Href) :-
     repo_entry(Rel, Kind),
     (   Kind == dir -> atom_concat('https://github.com/mbrock/filnix/tree/main/', Rel, Href)
@@ -808,10 +873,14 @@ span(_, Cs, [], Cs).
 
 %% Pages
 
+%  Every file is one page, drawn the same way: its header comment the
+%  lede, its expression the body, and its contents the sections and
+%  names of its own source (outline/3) in the sidebar, over the files.
+
 page_name(File, Html) :- atomic_list_concat(Parts, '/', File), atomic_list_concat(Parts, '-', B0),
     file_name_extension(B, _, B0), file_name_extension(B, html, Html).
 
-write_source_page(Out, Pages, page(File, Text, Lines, E, Cms)) :-
+write_source_page(Out, _, page(File, Text, Lines, E, Cms)) :-
     nb_setval(nix_text, Text), nb_setval(nix_lines, Lines), nb_setval(nix_file, File),
     nb_setval(nix_prose, false), nb_setval(nix_option, false),
     nb_setval(nix_snippet, false),
@@ -819,18 +888,16 @@ write_source_page(Out, Pages, page(File, Text, Lines, E, Cms)) :-
     resolve(E),
     node_pos(E, From-_),
     partition([cm(O, _, _, _)]>>(O < From), Cms, Head, Body),
-    (   port_file(E)
-    ->  nb_setval(nix_head, Head), write_ports_page(Out, Pages, page(File, Text, Lines, E, Cms), Body, _)
-    ;   nb_setval(nix_notes_all, Body), nb_setval(nix_notes, Body),
-        page_name(File, Name), directory_file_path(Out, Name, Path),
-        write_page(Path, source_page(Pages, File, Head, E))
-    ).
+    nb_setval(nix_notes_all, Body), nb_setval(nix_notes, Body),
+    summarize(File, Text, Head),
+    outline(E, Body, Groups),
+    page_name(File, Name), directory_file_path(Out, Name, Path),
+    write_page(Path, source_page(File, Head, E, Groups)).
 
-source_page(Pages, File, Head, E) -->
-    { note_groups(Head, Gs), top_entries(E, Entries) },
+source_page(File, Head, E, Groups) -->
+    { note_groups(Head, Gs) },
     shell(File, crumbs(File),
-          ( el(nav, "toc dterm-nav", ( el(div, "toc-title", "Nix"),
-                                        el(ul, none, ( seq(Pages, nav_file(File, Entries)), nav_options )) )),
+          ( sidebar(File, Groups),
             el(article, "dterm nix", ( el(h1, "source-title", esc(File)),
                                        el(div, "prose lede", seq(Gs, lede_group)),
                                        el(div, "clause nix-root", ( blk(E), rest_notes )) )) )).
@@ -844,41 +911,149 @@ crumbs(Title) -->
     el(a, crumb, [href="index.html"], "Nix"), el(span, "crumb-sep", "›"),
     el(span, "crumb current", esc(Title)).
 
-%  The set a file makes, through its functions and lets.
+%  The value a file makes, through its functions and lets.
 top_body(lam(_, _, B), T) :- !, top_body(B, T).
 top_body(let(_, _, B), T) :- !, top_body(B, T).
 top_body(with(_, _, B), T) :- !, top_body(B, T).
-top_body(T, T) :- T = attrs(_, plain, _).
+top_body(T, T) :- T = attrs(_, plain, _), !.
+top_body(T, T) :- T = list(_, _).
 
-%  The sidebar's entries for a file: its let bindings and the top-level
-%  names of the set it makes, through its functions.
-top_entries(lam(_, _, B), Es) :- !, top_entries(B, Es).
-top_entries(let(_, Bs, B), [group("let")|Es]) :- !,
-    bind_entries(Bs, Es1), top_entries(B, Es2), append(Es1, Es2, Es).
-top_entries(with(_, _, B), Es) :- !, top_entries(B, Es).
-top_entries(attrs(_, _, Bs), Es) :- !, bind_entries(Bs, Es0), ( Es0 == [] -> Es = [] ; Es = [group("returns")|Es0] ).
-top_entries(bin(_, '//', L, R), Es) :- !, top_entries(L, E1), top_entries(R, E2), append(E1, E2, Es).
-top_entries(_, []).
+%  The first sentence of a file's header, and its length, for the index.
+:- dynamic page_summary/3.
 
-bind_entries(Bs, Es) :-
-    findall(entry(Id, Name), ( member(bind(_, Path, _), Bs), Path = [aid(F-_, _)|_], bid(F, Id),
-                               path_name(Path, Name) ), Es).
+summarize(File, Text, Head) :-
+    split_string(Text, "\n", "", Ls), length(Ls, NL),
+    (   note_groups(Head, [G|_]), group_lines(G, GLs), dedent(GLs, D), blocks(D, [p(S0)|_])
+    ->  first_sentence(S0, Sum)
+    ;   Sum = ""
+    ),
+    retractall(page_summary(File, _, _)), assertz(page_summary(File, Sum, NL)).
+
+first_sentence(S0, S) :-
+    (   sub_string(S0, B, _, _, ". "), B > 20 -> B1 is B + 1, sub_string(S0, 0, B1, _, S1) ; S1 = S0 ),
+    (   string_length(S1, N), N > 160 -> sub_string(S1, 0, 157, _, S2), string_concat(S2, "…", S) ; S = S1 ).
+
+%% Contents: a page's sections and the names in them
+
+%  outline(+E, +Cms, -Groups): g(Title, Href, Entries) in source order.
+%  The names are those the file binds at its top, through its functions
+%  and lets: let bindings, the attributes of the set it makes, and the
+%  ports, bindings and imports of the list it makes. A section comment
+%  starts a group of the names after it; before the first, names are
+%  grouped by what binds them.
+outline(E, Cms, Groups) :-
+    top_items(E, Es),
+    findall(O-s(T), ( member(C, Cms), C = cm(O, _, _, _), section_title(C, T) ), Ss),
+    findall(O-X, ( member(X, Es), X = e(O, _, _, _) ), Ps),
+    append(Ps, Ss, Xs0), keysort(Xs0, Xs1), pairs_values(Xs1, Xs),
+    outline_groups(Xs, Groups).
+
+outline_groups(Xs, Gs) :-
+    (   append(Pre, [s(T)|Post], Xs), \+ memberchk(s(_), Pre)
+    ->  kind_groups(Pre, G1), section_groups([s(T)|Post], G2), append(G1, G2, Gs)
+    ;   kind_groups(Xs, Gs)
+    ).
+
+kind_groups([], []).
+kind_groups([e(O, K, N, H)|Xs], [g(k(K), none, [e(O, K, N, H)|Same])|Gs]) :-
+    same_kind(K, Xs, Same, Rest), kind_groups(Rest, Gs).
+
+same_kind(K, [e(O, K, N, H)|Xs], [e(O, K, N, H)|S], R) :- !, same_kind(K, Xs, S, R).
+same_kind(_, Xs, [], Xs).
+
+section_groups([], []).
+section_groups([s(T)|Xs], [g(T, H, Es)|Gs]) :-
+    sec_id(T, Id), atom_concat('#', Id, H),
+    (   append(Es, [s(T1)|Rest], Xs), \+ memberchk(s(_), Es)
+    ->  section_groups([s(T1)|Rest], Gs)
+    ;   Es = Xs, Gs = []
+    ).
+
+%  e(Offset, Kind, Name, Href)
+top_items(lam(_, _, B), Es) :- !, top_items(B, Es).
+top_items(with(_, _, B), Es) :- !, top_items(B, Es).
+top_items(assert(_, _, B), Es) :- !, top_items(B, Es).
+top_items(paren(_, B), Es) :- !, top_items(B, Es).
+top_items(let(_, Bs, B), Es) :- !, bind_items(let, Bs, E1), top_items(B, E2), append(E1, E2, Es).
+top_items(attrs(_, _, Bs), Es) :- !, bind_items(returns, Bs, Es).
+top_items(bin(_, '//', L, R), Es) :- !, top_items(L, E1), top_items(R, E2), append(E1, E2, Es).
+top_items(list(_, Is), Es) :- !, foldl([I, A0, A]>>( list_items(I, E), append(A0, E, A) ), Is, [], Es).
+top_items(_, []).
+
+list_items(paren(_, E), Es) :- !, list_items(E, Es).
+list_items(app(F-_, var(_, for), [Pkg, _]), [e(F, item, N, H)]) :- !,
+    pkg_name(Pkg, N), nb_getval(nix_file, File),
+    ( port_site(File, F, Id) -> atom_concat('#', Id, H) ; H = none ).
+list_items(let(_, Bs, B), Es) :- !, bind_items(item, Bs, E1), list_items(B, E2), append(E1, E2, Es).
+list_items(attrs(_, _, Bs), Es) :- !, bind_items(item, Bs, Es).
+list_items(app(F-_, var(_, import), [path(_, [lit(S)])|_]), [e(F, import, N, H)]) :-
+    path_target(S, H), !, ( atom_concat('./', N, S) -> true ; atom_string(N, S) ).
+list_items(_, []).
+
+bind_items(Kind, Bs, Es) :-
+    findall(e(F, Kind, Name, H), ( member(bind(_, Path, _), Bs), Path = [aid(F-_, _)|_], bid(F, Id),
+                                   atom_concat('#', Id, H), path_name(Path, Name) ), Es).
 
 path_name(Path, Name) :-
     maplist([A, N]>>( A = aid(_, N) -> true ; N = '…' ), Path, Ns), atomic_list_concat(Ns, '.', Name).
 
-nav_file(Current, Entries, page(File, _, _, _, _)) -->
-    { page_name(File, Href) },
-    (   { File == Current }
-    ->  el(li, current, ( el(a, none, [href=Href], esc(File)), el(ul, none, seq(Entries, nav_entry)) ))
-    ;   el(li, none, el(a, none, [href=Href], esc(File)))
-    ).
+%% The sidebar: this page's contents, then the files
 
-nav_options --> { nb_getval(nix_options, I), I \== none }, !, el(li, none, el(a, none, [href="options.html"], "Options")).
-nav_options --> [].
+sidebar(Current, Groups) -->
+    el(nav, "toc dterm-nav nix-nav", ['aria-label'="Contents"],
+       ( ( { Groups == [] } -> []
+         ; el(details, "nav-block contents", [open=open], ( el(summary, "toc-title", "Contents"), seq(Groups, nav_group) )) ),
+         ( { Current == index } -> [] ; files_nav(Current) ) )).
 
-nav_entry(group(T)) --> el(li, "nav-section", esc(T)).
-nav_entry(entry(Id, N)) --> { atom_concat('#', Id, H) }, el(li, "nav-pred", el(a, none, [href=H], esc(N))).
+nav_group(g(T, H, [])) --> !, el(div, "nav-group", nav_title(T, H)).
+%  Short names are set in two columns, long ones in one.
+nav_group(g(T, H, Es)) -->
+    { ( member(e(_, _, N, _), Es), atom_length(N, L), L > 13 -> C = "nav-names long" ; C = "nav-names" ) },
+    el(details, "nav-group", [open=open], ( el(summary, none, nav_title(T, H)), el(ul, C, seq(Es, nav_name)) )).
+
+nav_title(T, H) --> { group_title(T, S) },
+    ( { H == none } -> el(span, "nav-group-title", esc(S)) ; el(a, "nav-group-title", [href=H], esc(S)) ).
+
+group_title(k(let), "let") :- !.
+group_title(k(returns), "returns") :- !.
+group_title(k(item), "list") :- !.
+group_title(k(import), "imports") :- !.
+group_title(T, T).
+
+nav_name(e(_, _, N, none)) --> !, el(li, none, esc(N)).
+nav_name(e(_, _, N, H)) --> el(li, none, el(a, none, [href=H], esc(N))).
+
+files_nav(Current) -->
+    { nb_getval(nix_pages, Files), dir_groups(Files, Ds), ( Current == options -> OC = current ; OC = none ) },
+    el(details, "nav-block files", [open=open],
+       ( el(summary, "toc-title", "Files"),
+         el(ul, "nav-top", ( el(li, none, el(a, none, [href="index.html"], "Index")),
+                             ( { nb_getval(nix_options, I), I \== none }
+                             -> el(li, OC, el(a, none, [href="options.html"], "Options"))
+                             ;  [] ) )),
+         seq(Ds, dir_nav(Current)) )).
+
+dir_nav(Current, D-Fs) -->
+    { dir_title(D, T), ( memberchk(Current, Fs) -> As = [open=open] ; As = [] ) },
+    el(details, "nav-dir", As, ( el(summary, none, esc(T)), el(ul, none, seq(Fs, file_nav(D, Current))) )).
+
+file_nav(D, Current, F) --> { page_name(F, H), rel_to(D, F, R), ( F == Current -> C = current ; C = none ) },
+    el(li, C, el(a, none, [href=H], esc(R))).
+
+%  The files by the directory they are in at the top of the repository,
+%  the files at the top first.
+dir_groups(Files, Ds) :-
+    maplist([F, D-F]>>( once(sub_atom(F, B, _, _, '/')) -> sub_atom(F, 0, B, _, D) ; D = '' ), Files, Ps0),
+    keysort(Ps0, Ps), group_pairs_by_key(Ps, Ds).
+
+dir_title('', "top level") :- !.
+dir_title(D, T) :- atom_concat(D, '/', T).
+
+dir_id('', 'dir-top') :- !.
+dir_id(D, Id) :- atom_concat('dir-', D, Id).
+
+rel_to('', F, F) :- !.
+rel_to(D, F, R) :- atom_concat(D, '/', P), atom_concat(P, R, F).
 
 shell(Title, Crumbs, Main) -->
     "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n",
@@ -908,31 +1083,45 @@ shell(Title, Crumbs, Main) -->
     el(main, "page-frame dterm-page", Main),
     "\n<script src=\"../nanofil/dterm.js\"></script>\n<script src=\"dterm-nix.js\"></script>\n</body>\n</html>\n".
 
-index_page(Pages) -->
+
+%% The index: every page, by directory
+
+index_page -->
+    { nb_getval(nix_pages, Files), dir_groups(Files, Ds),
+      findall(g(T, H, []), ( member(D-_, Ds), dir_title(D, T), dir_id(D, Id), atom_concat('#', Id, H) ), Gs0),
+      ( nb_getval(nix_options, I), I \== none -> Gs = [g("Evaluated", '#evaluated', [])|Gs0] ; Gs = Gs0 ) },
     shell("Nix", ( el(a, crumb, [href="../index.html"], "Wiki"), el(span, "crumb-sep", "›"),
                    el(span, "crumb current", "Nix") ),
-          ( el(nav, "toc dterm-nav", ( el(div, "toc-title", "Nix"), el(ul, none, ( seq(Pages, nav_file(none, [])), nav_options )) )),
-            el(article, "dterm index",
+          ( sidebar(index, Gs),
+            el(article, "dterm nix index",
                ( el(h1, "source-title", "filnix, read as Nix"),
                  el(div, "prose lede",
-                    el(p, none, ( "Filnix's Nix drawn by what it is rather than how it was typed: attribute sets as ",
+                    el(p, none, ( "Every Nix file of filnix, drawn by what it is rather than how it was typed: attribute sets as ",
                                   "tables of bindings, ", el(code, none, "let"), " as bindings over a body, function ",
                                   "arguments as signatures, ", el(code, none, "if"), " and ", el(code, none, "mkIf"),
-                                  " as tables of conditions, options with their descriptions as prose. Each name ",
+                                  " as tables of conditions, ports as tables of their steps, options with their descriptions as prose. Each name ",
                                   "links to where it is bound, and each ", el(code, none, "let"), " binding lists what ",
                                   "uses it. Drawn by ", el(a, none, [href="https://github.com/mbrock/filnix/tree/main/dterm-nix"], "dterm-nix"),
                                   ", after ", el(a, none, [href="../nanofil/"], "nanofil's dterm"), "." ))),
-                 el(div, modules, ( seq(Pages, page_card), options_card )) )) )).
+                 options_entry,
+                 seq(Ds, dir_section) )) )).
 
-options_card --> { nb_getval(nix_options, I), I \== none }, !,
-    el(a, "card-link module-card", [href="options.html"],
-       ( el(strong, none, "Options"), el(span, meta, "from evaluating the modules"),
-         el(span, summary, "Every option the NixOS and finix modules declare or set: type, default, description, where it is declared and defined, and which modules read it.") )).
-options_card --> [].
+options_entry --> { nb_getval(nix_options, I), I \== none }, !,
+    el(section, "dir",
+       ( el(h2, "nix-sec", [id=evaluated], "Evaluated"),
+         el(table, "files", el(tbody, none,
+            el(tr, none, ( el(td, "file-name", el(a, none, [href="options.html"], "Options")),
+                           el(td, "file-sum", "Every option the exported NixOS and finix modules declare or set: type, default, description, where it is declared and defined, its value and the port that builds it, and which modules read it."),
+                           el(td, "file-lines", []) )))) )).
+options_entry --> [].
 
-page_card(page(File, Text, _, E, Cms)) -->
-    { page_name(File, Href), split_string(Text, "\n", "", Ls), length(Ls, NL),
-      node_pos(E, From-_), include([cm(O, _, _, _)]>>(O < From), Cms, Head), note_groups(Head, Gs),
-      ( Gs = [G|_], group_lines(G, GLs), dedent(GLs, D), blocks(D, [p(Sum)|_]) -> true ; Sum = "" ) },
-    el(a, "card-link module-card", [href=Href],
-       ( el(strong, none, esc(File)), el(span, meta, ( esc(NL), " lines" )), el(span, summary, esc(Sum)) )).
+dir_section(D-Fs) -->
+    { dir_title(D, T), dir_id(D, Id) },
+    el(section, "dir", ( el(h2, "nix-sec", [id=Id], esc(T)),
+                         el(table, "files", el(tbody, none, seq(Fs, file_row(D)))) )).
+
+file_row(D, F) -->
+    { page_name(F, H), rel_to(D, F, R), ( page_summary(F, S, N) -> true ; S = "", N = 0 ) },
+    el(tr, none, ( el(td, "file-name", el(a, none, [href=H], esc(R))),
+                   el(td, "file-sum", inline(S)),
+                   el(td, "file-lines", ( esc(N), " lines" )) )).

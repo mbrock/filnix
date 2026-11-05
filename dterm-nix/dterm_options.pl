@@ -122,13 +122,13 @@ attr_key(_, '*').
 %% The page
 
 options_page(Pages, Index) -->
+    { findall(g(T, H, Es), ( member(M, Index.modules), module_title(M, T), module_id(M, Id), atom_concat('#', Id, H),
+                             findall(e(0, option, ON, OH), ( member(O, M.options), get_dict(name, O, ON), opt_id(M, O, OId), atom_concat('#', OId, OH) ), Es) ),
+              Groups) },
     shell("Options", ( el(a, crumb, [href="../index.html"], "Wiki"), el(span, "crumb-sep", "›"),
                        el(a, crumb, [href="index.html"], "Nix"), el(span, "crumb-sep", "›"),
                        el(span, "crumb current", "Options") ),
-          ( el(nav, "toc dterm-nav", ( el(div, "toc-title", "Nix"),
-                                        el(ul, none, ( seq(Pages, nav_file(none, [])),
-                                                       el(li, current, ( el(a, none, [href="options.html"], "Options"),
-                                                                         el(ul, none, seq(Index.modules, module_nav)) )) )) )),
+          ( sidebar(options, Groups),
             el(article, "dterm nix options",
                ( el(h1, "source-title", "Options"),
                  el(div, "prose lede",
@@ -141,9 +141,10 @@ options_page(Pages, Index) -->
                                   el(code, none, "config"), "." ))),
                  seq(Index.modules, module_section(Pages)) )) )).
 
-module_nav(M) --> el(li, "nav-section", esc(M.name)), seq(M.options, opt_nav(M)).
+module_title(M, Title) :-
+    ( M.kind == nixos -> Kind = "NixOS" ; Kind = "finix" ), format(string(Title), "~w: ~w", [Kind, M.name]).
 
-opt_nav(M, O) --> { opt_id(M, O, Id), atom_concat('#', Id, H) }, el(li, "nav-pred", el(a, none, [href=H], esc(O.name))).
+module_id(M, Id) :- atom_concat('module-', M.name, Id).
 
 %  A NixOS module's declared option is opt-Name, which other pages link
 %  to, and a finix module's is finix-opt-Name, as the NixOS and finix
@@ -168,9 +169,8 @@ option_href(Name, H) :-
 module_section(Pages, M) -->
     { include([O]>>get_dict(group, O, declared), M.options, Decl),
       include([O]>>get_dict(group, O, set), M.options, Set),
-      File = M.file, ( M.kind == nixos -> Kind = "NixOS" ; Kind = "finix" ),
-      format(string(Title), "~w: ~w", [Kind, M.name]) },
-    el(h2, none, esc(Title)),
+      File = M.file, module_title(M, Title), module_id(M, Id) },
+    el(h2, none, [id=Id], esc(Title)),
     el(p, "options-note", ( "Evaluated in ", file_link(M.machine, none), " with ", file_link(File, none), "." )),
     ( { Decl == [] } -> [] ; el(h3, none, ( "Declared by ", file_link(File, none) )), seq(Decl, option_(Pages, M)) ),
     ( { Set == [] } -> [] ; el(h3, none, ( "Set by ", file_link(File, none) )), seq(Set, option_(Pages, M)) ).
@@ -223,7 +223,7 @@ pkg_value(Pages, Sel, V) -->
     el(div, "pkg-value", ( el(code, "drv-name", esc(V.name)), " ", built_by(Pages, Sel, V) )).
 
 built_by(_, _, V) --> { member(A, V.attrs), port_at(A, H, Th) }, !,
-    el(span, "built-by", ( el(span, muted, "port "), el(a, "f", [href=H], esc(A)), " ", thing_summary(Th) )).
+    el(span, "built-by", ( el(span, muted, "port "), el(a, "f", [href=H], esc(A)), " ", port_verbs(Th) )).
 built_by(Pages, _, V) --> { member(A, V.attrs), overlay_href(Pages, A, H) }, !,
     el(span, "built-by", ( el(span, muted, "override "), el(a, "f", [href=H], esc(A)),
                            el(span, muted, " in ports/overlay.nix") )).

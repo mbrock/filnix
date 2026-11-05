@@ -2,7 +2,7 @@
 # docs/*.html, nanofil's Prolog drawn as terms into nanofil/*.html by
 # nanofil/web/dterm.pl, nanofil's documents (its guide among them) into
 # nanofil/docs/*.html, the nanofil playground in nanofil/play/, and
-# filnix's own Nix drawn by dterm-nix into nix/*.html.
+# every Nix file of filnix drawn by dterm-nix into nix/*.html.
 # .github/workflows/pages.yml publishes it.
 {
   pkgs,
@@ -17,27 +17,25 @@ let
   # playground in the browser (swipl-wasm is 10.1.19).
   swipl = import ../../nanofil/web/play/swipl.nix { inherit pkgs; };
   play = import ../../nanofil/web/play { inherit pkgs filcc swipl; };
-  # The Nix files drawn as pages (dterm-nix), and every path of the
-  # repository, which their path links are checked against: a list, so
-  # the site does not rebuild for every commit.
-  # The files drawn as pages; one that does not exist yet (a module still
-  # on its way) is left out.
-  nixPages = lib.filter (f: builtins.pathExists (../.. + "/${f}")) [
-    "nixos/filc.nix"
-    "nixos/userland.nix"
-    "finix/userland.nix"
-    "ports/default.nix"
-    "toolchain.nix"
-    "ports.nix"
-    "ports/media.nix"
-    "ports/pipewire-consumers.nix"
-    "ports/tpm2.nix"
-    "ports/overlay.nix"
-  ];
+  # The Nix files drawn as pages (dterm-nix): every Nix file of the
+  # repository, but for the trees that are not filnix's own Nix: build
+  # results (result*) and experiments/, scratch projects with their own
+  # flakes. One that does not parse fails the build. The repository's
+  # paths are listed for the links of the others.
+  rel = f: lib.removePrefix "./" (lib.path.removePrefix ../.. f);
+  drawn =
+    f:
+    let
+      parts = lib.splitString "/" f;
+    in
+    lib.head parts != "experiments" && !lib.any (lib.hasPrefix "result") parts;
+  nixPages = lib.filter drawn (
+    map rel (
+      lib.fileset.toList (lib.fileset.fileFilter (f: f.hasExt "nix") ../..)
+    )
+  );
   repoFiles = builtins.toFile "filnix-files" (
-    lib.concatMapStrings (
-      f: lib.removePrefix "./" (lib.path.removePrefix ../.. f) + "\n"
-    ) (lib.fileset.toList ../..)
+    lib.concatMapStrings (f: rel f + "\n") (lib.fileset.toList ../..)
   );
   # The option index of the NixOS and finix modules, from evaluating them
   # (dterm-nix/options.nix), as JSON.

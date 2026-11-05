@@ -15,11 +15,9 @@ on:
       - "nanofil/docs/**"
       - "nanofil/web/**"
       - "dterm-nix/**"
-      - "nixos/**"
-      - "finix/**"
-      - "ports.nix"
-      - "ports/*.nix"
-      - "toolchain.nix"
+      # Every Nix file is a page (dterm-nix), and the option index
+      # evaluates the modules.
+      - "**.nix"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
