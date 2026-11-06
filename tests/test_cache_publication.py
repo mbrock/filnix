@@ -1,5 +1,6 @@
 import importlib.util
 import json
+from contextlib import closing
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -116,7 +117,7 @@ class PublicationTests(unittest.TestCase):
         config.write_text(json.dumps(dict(native_outputs_url='http://fixture/outputs',
                                           state=str(state),cachix=dict(cache='filc'))))
         for target in ('local','cachix'):
-            with publisher.connect(state / (target + '.sqlite')) as db:
+            with closing(publisher.connect(state / (target + '.sqlite'))) as db, db:
                 publisher.enqueue(db,[output('a'),output('b')],1)
                 publisher.record(db,[output('a'),output('b')],None,2)
                 # A root with a stale receipt and a retry delay still needs repair.
@@ -133,14 +134,14 @@ class PublicationTests(unittest.TestCase):
             with patch('sys.argv',argv[:-2]+['--extra-root',output('b')]):
                 publisher.main()
         self.assertEqual(pushed,[output('b')])
-        with sqlite3.connect(state / 'cachix.sqlite') as db:
+        with closing(sqlite3.connect(state / 'cachix.sqlite')) as db:
             self.assertEqual(db.execute('select published from outputs where path=?',
                                         (output('a'),)).fetchone()[0],2)
             published,retry = db.execute('select published,retry_after from outputs where path=?',
                                          (output('b'),)).fetchone()
             self.assertGreater(published,2)
             self.assertEqual(retry,0)
-        with sqlite3.connect(state / 'local.sqlite') as db:
+        with closing(sqlite3.connect(state / 'local.sqlite')) as db:
             self.assertEqual(db.execute('select published,retry_after from outputs where path=?',
                                         (output('b'),)).fetchone(),(2,1e30))
 
