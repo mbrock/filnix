@@ -20,7 +20,32 @@ written in [formal.md](../../docs/formal.md) is drawn the same way on
 Shared with dterm and dterm-nix: `dterm.js`, the printer that breaks
 inline terms at the width they get (it reads only `data-d=args` and
 `data-d=op`), `dterm.css`, which sets the terms, and `dterm_html.pl`, the
-HTML DCGs and the Markdown of comments. None of them changed.
+HTML DCGs and the Markdown of comments. The shared printer also accepts
+`data-case-layout="stack"` or `"table"` on the root to override its automatic
+case fitting. It measures nested terms against their grid or table cell,
+not just the enclosing clause, so a deeply nested result breaks in the room
+it actually has. Other pages keep automatic case fitting.
+
+## Layout choices
+
+The **Rocq layout** selector appears on source pages and on Rocq documents
+such as `formal.html`. Its choice is remembered across those pages:
+
+- **Adaptive** (default): matches use columns only when they fit; constructor
+  and record tables become rows with their comments underneath when their
+  container is narrower than 40rem. The Rocq comparison table in the formal
+  campaign becomes labeled cards on narrow screens.
+- **Stacked**: patterns above results, constructor and record comments below
+  their code, and comparison tables as cards, even on desktop.
+- **Side by side**: preserve aligned columns, with local horizontal scrolling
+  for wide blocks. This is useful for comparing cases; it is deliberately
+  not the phone default.
+
+Signatures and quantified expressions expose breaks between binders, and
+constructor arguments and field types use the same term printer as definition
+bodies. Nested matches spend less of a narrow screen on indentation. Comments
+remain visible in every layout. Without JavaScript, source tables still adapt
+to their container and the nonfunctional selector stays hidden.
 
 ## Reading Rocq
 
@@ -91,7 +116,11 @@ sentences.
 ```sh
 swipl nanofil/web/rocq/dterm_rocq.pl OUT . --prolog=nanofil/src $(find nanofil -name '*.v')
 nanofil/web/rocq/tests/parse.sh        # every .v file under nanofil
+node nanofil/web/rocq/tests/layout.mjs http://localhost:8765
 ```
 
 The site build ([packages/site](../../../packages/site/build.sh)) draws
 every `.v` file under `nanofil/` into `nanofil/rocq/`.
+The browser check takes the HTTP base URL of a served site build and needs
+`agent-browser`. It exercises the real model and formal campaign at 320,
+390, 768 and 1280px, including the layout selector and its saved preference.

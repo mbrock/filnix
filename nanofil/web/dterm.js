@@ -338,13 +338,16 @@ document.addEventListener("mouseover", (event) => {
   }
 
   // Where a thing in a clause may reach: the clause's content edge, less
-  // what each box between takes on its right.
+  // what each box between takes on its right. A grid cell or table cell
+  // can give a nested term less room than the enclosing clause.
   function rightEdge(el, clause) {
     const cc = getComputedStyle(clause), cr = clause.getBoundingClientRect();
     let right = cr.left + clause.clientLeft + clause.clientWidth - px(cc.paddingRight);
     for (let a = el.parentElement; a && a !== clause && clause.contains(a); a = a.parentElement) {
       const as = getComputedStyle(a);
       right -= px(as.marginRight) + px(as.borderRightWidth) + px(as.paddingRight);
+      if (a.clientWidth && as.display !== "inline" && as.display !== "contents")
+        right = Math.min(right, a.getBoundingClientRect().left + a.clientLeft + a.clientWidth - px(as.paddingRight));
     }
     return right;
   }
@@ -467,6 +470,9 @@ document.addEventListener("mouseover", (event) => {
       for (const el of terms) if (tables.some((c) => c.contains(el))) unplan(el);
     }
     const fits = todo.map(({ clause, tables }) => tables.map((c) => {
+      const layout = c.closest("[data-case-layout]")?.dataset.caseLayout;
+      if (layout === "stack") return false;
+      if (layout === "table") return true;
       const r = c.getBoundingClientRect(), cs = getComputedStyle(c);
       return r.width <= rightEdge(c, clause) - px(cs.marginRight) - r.left - SAFETY;
     }));
@@ -520,7 +526,7 @@ document.addEventListener("mouseover", (event) => {
     for (const r of records) for (const n of r.addedNodes) if (n.nodeType === 1 && !n.matches(".zbr, .zin")) scan(n);
   }).observe(document.body, { childList: true, subtree: true });
   new MutationObserver(() => { styles = new Map(); all(); })
-    .observe(root, { attributes: true, attributeFilter: ["style", "data-planner", "data-parens", "data-brackets", "data-layout"] });
+    .observe(root, { attributes: true, attributeFilter: ["style", "data-planner", "data-parens", "data-brackets", "data-layout", "data-case-layout"] });
   document.fonts?.addEventListener("loadingdone", () => { widths = new Map(); styles = new Map(); all(); });
   (document.fonts?.ready ?? Promise.resolve()).then(() => scan(document));
 })();

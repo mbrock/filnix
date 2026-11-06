@@ -5,6 +5,17 @@
    under their statements. */
 
 article.dterm-rocq { max-width: 64rem; }
+.dterm-rocq { container-type: inline-size; }
+article.guide:has(.rq-layout) { container-type: inline-size; }
+.rq-layout:not([hidden]) {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem;
+  margin: 0 0 1.2rem; padding: 0.65rem 0;
+  border-block: 1px solid var(--rule); font-size: 0.85rem;
+}
+.rq-layout label { font-weight: 650; }
+.rq-layout select { font: inherit; color: var(--ink); background: var(--paper, white); padding: 0.4rem; border: 1px solid var(--muted); border-radius: 4px; }
+.rq-layout select:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#rq-layout-help { color: var(--muted); }
 /* A long path as a page's title breaks where it must. */
 .dterm-rocq h1.source-title { overflow-wrap: anywhere; }
 :is(.dterm-rocq, code.rq) { --ty: #6b3d7a; --lem: #7a4a14; }
@@ -25,6 +36,7 @@ article.dterm-rocq { max-width: 64rem; }
 :is(.dterm-rocq, code.rq) .module-name { font-weight: 700; color: var(--ink); }
 :is(.dterm-rocq, code.rq) .binder { white-space: nowrap; }
 .dterm-rocq .c.sig > .args.binders { border-width: 0; padding-inline: 0; margin-left: 0.3em; }
+:is(.dterm-rocq, code.rq) .c.quant > .args { border: 0; padding: 0; margin-left: 0.2em; }
 :is(.dterm-rocq, code.rq) .paren.binder, :is(.dterm-rocq, code.rq) .braces.binder { margin: 0 0.05em; }
 :is(.dterm-rocq, code.rq) .c.app > .args { border-width: 0; padding-inline: 0; margin-left: 0.3em; border-radius: 0; }
 :is(.dterm-rocq, code.rq) .args.recbr { border-width: 0; padding-inline: 0; }
@@ -37,6 +49,7 @@ article.dterm-rocq { max-width: 64rem; }
 :is(.dterm-rocq, code.rq) .kw { font-size: 0.72em; }
 /* Inline in a document's prose, a term keeps to its line. */
 code.rq .c, code.rq .args, code.rq .arg { white-space: nowrap; }
+.dterm .prose code.rq :is(.c.quant, .c.quant > .args, .c.quant > .args > .arg) { white-space: normal; }
 .dterm-rocq [data-v].lit { background: color-mix(in srgb, var(--var) 14%, transparent); border-radius: 3px; }
 
 /* Directives: a quiet line each. */
@@ -57,7 +70,7 @@ code.rq .c, code.rq .args, code.rq .arg { white-space: nowrap; }
 .dterm-rocq .clause { margin: 0.4rem 0 0.9rem; }
 .rq-ind { margin: 0.4rem 0 1rem; scroll-margin-top: 3rem; }
 .dterm-rocq .rq-ind-head { margin: 0 0 0.15rem; }
-table.rq-ctors, table.rq-fields { border-collapse: collapse; margin: 0 0 0 1.2em; font-size: 0.95rem; }
+table.rq-ctors, table.rq-fields { border-collapse: collapse; margin: 0 0 0 0.6em; font-size: 0.95rem; max-width: 100%; }
 table.rq-ctors td, table.rq-fields td { padding: 0.1rem 0.8rem 0.1rem 0; vertical-align: baseline; }
 table.rq-ctors td.bar { color: var(--muted); padding-right: 0.5rem; }
 table.rq-ctors td.ctor, table.rq-fields td.field-name { white-space: nowrap; }
@@ -67,16 +80,18 @@ table.rq-ctors tr:target, table.rq-fields tr:target, .rq-rule:target, .clause:ta
   background: color-mix(in srgb, var(--accent) 7%, transparent);
 }
 table.rq-ctors tr.note td, table.rq-fields tr.note td { padding-top: 0.4rem; }
-.rq-body { margin: 0.15rem 0 0 1.5em; }
+.rq-body { margin: 0.15rem 0 0 0.8em; max-width: 100%; overflow-x: auto; }
 .dterm-rocq .aside { font-style: normal; }
 
 /* match as a table of patterns and results; let as a binding over its body. */
 .rq-match .match-head { margin-bottom: 0.1em; }
 .dterm-rocq .cases { width: max-content; max-width: 100%; }
+.dterm-rocq .cases.ztry { max-width: none; }
+.dterm-rocq .cases.stack { width: auto; grid-template-columns: max-content minmax(0, 1fr); }
 .cases.match { margin-left: 0.6em; }
 /* A match too wide for its table (dterm.js stacks it) is each pattern
    over its result, the result led by ⇒, not a conditional's labels. */
-.dterm-rocq .cases.match.stack { grid-template-columns: 1.3em minmax(0, max-content); column-gap: 0.4em; }
+.dterm-rocq .cases.match.stack { grid-template-columns: 1em minmax(0, 1fr); column-gap: 0.3em; }
 .dterm-rocq .cases.match.stack > .case:not(.plain) > .cond::before { content: none; }
 .dterm-rocq .cases.match.stack > .case > .cond > .goals { grid-column: 1 / -1; }
 .dterm-rocq .cases.match.stack > .case:not(.plain) > .then::before {
@@ -87,11 +102,13 @@ table.rq-ctors tr.note td, table.rq-fields tr.note td { padding-top: 0.4rem; }
 .rq-let > .let-value { margin-left: 1.5em; }
 .rq-app > .app-args { display: grid; row-gap: 0.2em; padding-left: 1.2em; margin-top: 0.1em; }
 .rq-fun > .fun-body { margin-left: 1.2em; }
+.rq-tuple { border-inline: var(--paren-stroke) solid var(--paren); border-radius: 0.6em; padding-inline: 0.4em; }
+.tuple-part + .tuple-part::before { content: ","; color: var(--muted); }
 
 /* Inference rules: premises over a line, the conclusion under it, the
    rule's name beside the line. */
 .rules { display: grid; gap: 0.9rem; margin: 0.3rem 0 0 1.2em; }
-.rule { display: inline-grid; grid-template-columns: max-content; max-width: 100%; }
+.rule { display: inline-grid; grid-template-columns: minmax(0, 1fr); max-width: 100%; }
 .rule-vars { color: var(--muted); font-size: 0.88rem; margin-bottom: 0.15rem; }
 .rule-vars .v.def { color: var(--var); font-weight: 500; }
 .premises { display: grid; row-gap: 0.1em; padding: 0 0.6em; }
@@ -100,7 +117,7 @@ table.rq-ctors tr.note td, table.rq-fields tr.note td { padding-top: 0.4rem; }
   margin: 0.15em 0; min-height: 0.3em;
 }
 .rule-line::before { content: ""; flex: 1 1 auto; border-top: 1.2px solid var(--ink); opacity: 0.7; }
-.rule-name { font-size: 0.85rem; white-space: nowrap; }
+.rule-name { font-size: 0.85rem; overflow-wrap: anywhere; }
 .rule-concl { padding: 0 0.6em; }
 .rule-concl.alone { display: flex; flex-wrap: wrap; gap: 0.8em; align-items: baseline; padding: 0; }
 .rule .goal { min-width: 0; }
@@ -133,13 +150,68 @@ pre.rq-raw { font-size: 0.82rem; position: relative; }
 
 .rq-nav li.type > a { color: var(--ty); }
 .rq-nav li.lemma > a, .rq-nav li.axiom > a { color: var(--lem); }
+
+/* Rows become readable cards, not squeezed columns with lost comments.
+   Variables let the container default and the explicit choice share a layout. */
+:is(table.rq-ctors, table.rq-fields, table.rq-comparison) { display: var(--rq-table, table); }
+:is(table.rq-ctors, table.rq-fields, table.rq-comparison) tbody { display: var(--rq-body, table-row-group); }
+:is(table.rq-ctors, table.rq-fields, table.rq-comparison) tr {
+  display: var(--rq-row, table-row); grid-template-columns: minmax(0, 1fr);
+  padding-block: var(--rq-row-pad, 0); border-bottom: var(--rq-row-border, 0);
+}
+:is(table.rq-ctors, table.rq-fields, table.rq-comparison) td {
+  display: var(--rq-cell, table-cell); min-width: 0;
+  white-space: var(--rq-space, normal); border-bottom: 0;
+}
+table.rq-ctors td.bar { display: var(--rq-bar, table-cell); }
+:is(table.rq-ctors, table.rq-fields) td:is(.ctor, .field-name) { white-space: var(--rq-space, nowrap); }
+:is(table.rq-ctors, table.rq-fields) td:is(.ctor-aside, .field-aside) { max-width: none; color: var(--muted); }
+.rq-comparison td::before {
+  content: attr(data-label); display: var(--rq-label-display, none); font-size: 0.7rem;
+  color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 0.3rem;
+}
+.rq-comparison thead { display: var(--rq-thead, table-header-group); }
+.rq-comparison td:first-child { min-width: 0; white-space: var(--rq-space, normal); }
+.dterm .prose .rq-comparison code.rq :is(.c, .args, .arg) { white-space: normal; }
+
+@container (max-width: 40rem) {
+  :is(table.rq-ctors, table.rq-fields) {
+    --rq-table: block; --rq-body: block; --rq-row: grid; --rq-cell: block;
+    --rq-bar: none; --rq-space: normal; --rq-row-pad: 0.5rem;
+    --rq-row-border: 1px solid var(--rule);
+  }
+  :is(.dterm-rocq, code.rq) .binder { white-space: normal; }
+  .dterm-rocq .cases.stack { padding-inline: 0.2em; margin-left: 0; border: 0; border-radius: 0; }
+  .dterm-rocq .cases.match.stack { grid-template-columns: 0.8em minmax(0, 1fr); }
+  .rq-app > .app-args, .rq-fun > .fun-body, .rq-let > .let-value { padding-left: 0.4em; margin-left: 0; }
+  .rules, .rq-thm > .rule { margin-left: 0.4em; }
+}
+@container (max-width: 55rem) {
+  .rq-comparison {
+    --rq-table: block; --rq-body: block; --rq-row: grid; --rq-cell: block;
+    --rq-space: normal; --rq-row-pad: 0.7rem; --rq-row-border: 1px solid var(--rule);
+    --rq-thead: none; --rq-label-display: block;
+  }
+}
+html[data-case-layout="stack"] :is(table.rq-ctors, table.rq-fields, table.rq-comparison) {
+  --rq-table: block; --rq-body: block; --rq-row: grid; --rq-cell: block;
+  --rq-bar: none; --rq-space: normal; --rq-row-pad: 0.5rem;
+  --rq-row-border: 1px solid var(--rule); --rq-thead: none; --rq-label-display: block;
+}
+html[data-case-layout="table"] :is(table.rq-ctors, table.rq-fields, table.rq-comparison) {
+  --rq-table: block; --rq-body: table-row-group; --rq-row: table-row; --rq-cell: table-cell;
+  --rq-bar: table-cell; --rq-space: nowrap; --rq-row-pad: 0;
+  --rq-row-border: 0; --rq-thead: table-header-group; --rq-label-display: none;
+  overflow-x: auto;
+}
 @media (max-width: 700px) {
-  /* A match nested deep scrolls rather than push the page sideways, and
-     a long path in the breadcrumb wraps. */
-  .rq-body { overflow-x: auto; }
-  body:has(.dterm-rocq) .status nav.crumbs { min-width: 0; white-space: normal; }
-  body:has(.dterm-rocq) .status .crumb.current { overflow-wrap: anywhere; min-width: 0; }
-  body:has(.dterm-rocq) .status .status-right { display: none; }
-  table.rq-ctors td.ctor-aside, table.rq-fields td.field-aside { display: none; }
+  body:has(.rq-layout) .status nav.crumbs { min-width: 0; white-space: normal; overflow: visible; }
+  body:has(.rq-layout) .status .crumb.current { display: inline-block; max-width: 100%; overflow-wrap: anywhere; vertical-align: top; }
+  body:has(.rq-layout) .status .status-right { display: none; }
+  /* The formal campaign compares Rocq with Prolog terms in the same
+     paragraphs. Both need to wrap on a phone. */
+  .guide:has(.rq-layout) .prose code.term :is(.c, .args, .arg, .binder) { white-space: normal; }
+  .rq-comparison td:first-child { min-width: 0; }
+  .rq-layout #rq-layout-help { flex-basis: 100%; }
   .rule { display: grid; }
 }

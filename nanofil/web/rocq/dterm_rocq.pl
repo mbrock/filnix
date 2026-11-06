@@ -108,6 +108,7 @@ source_page(File0, Head, Items, Groups) -->
           ( sidebar(File0, Groups),
             el(article, "dterm dterm-rocq", ( el(h1, "source-title", esc(File)),
                                               el(div, "prose lede", seq(Head, lede_)),
+                                              rocq_layout,
                                               el(div, "rq-root", rocq_items(Items)) )) )).
 
 %  The header: its first coqdoc comment's title is the page's subtitle,

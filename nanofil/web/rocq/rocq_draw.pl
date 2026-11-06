@@ -31,7 +31,7 @@
       or asides beside the line they end. `name/N` and `module.pl` link to
       nanofil's Prolog.
 */
-:- module(rocq_draw, [rocq_items//1, rocq_inline//1, rocq_fence//1, rocq_prose//1,
+:- module(rocq_draw, [rocq_items//1, rocq_inline//1, rocq_fence//1, rocq_prose//1, rocq_layout//0,
                       rocq_set_source/2, rocq_index_items/3, rocq_items_names/2,
                       rocq_global/5, rocq_prolog_pred/2, comment_heading/3, comment_prose_lines/2,
                       note_kind/3]).
@@ -218,7 +218,8 @@ term_(sig(_, n(_, X), T, Q), Env) -->
                              el(span, "op wide", "|"), " ", term(Q, [X|Env]) )).
 
 bar_items([P], Env) --> !, term(P, Env).
-bar_items([P|Ps], Env) --> term(P, Env), " ", el(span, "op wide bar", "|"), " ", bar_items(Ps, Env).
+bar_items([P|Ps], Env) -->
+    el(span, o, ['data-d'=op], ( term(P, Env), " ", el(span, "op wide bar", [title="|"], "|"), " ", bar_items(Ps, Env) )).
 
 items([E], Env) --> !, el(span, arg, term(E, Env)).
 items([E|Es], Env) --> el(span, arg, term(E, Env)), " ", items(Es, Env).
@@ -236,7 +237,14 @@ kw(S) --> el(span, kw, esc(S)).
 
 quant(Sym, Title, Bs, Sep, B, Env) -->
     { binders_env(Bs, Env, Env1) },
-    el(span, "o quant", ( el(span, q, [title=Title], esc(Sym)), binders_(Bs, Env), el(span, "sep qsep", esc(Sep)), " ", term(B, Env1) )).
+    el(span, "c quant", ['data-d'=args],
+       ( el(span, q, [title=Title], esc(Sym)),
+         el(span, args, ( quant_binders(Bs, Env, Sep), el(span, arg, term(B, Env1)) )) )).
+
+quant_binders([], _, _) --> [].
+quant_binders([B|Bs], Env, Sep) -->
+    el(span, arg, ( binder_(B, Env), ( { Bs == [] } -> el(span, "sep qsep", esc(Sep)) ; [] ) )),
+    " ", quant_binders(Bs, Env, Sep).
 
 head_(id(_, X), Env) --> !, name_ref(X, Env, head).
 head_(E, Env) --> term(E, Env).
@@ -281,14 +289,18 @@ op_glyph('-', "−").
 op_glyph('=>', "⇒").
 
 %  Binders: (x y : T) as a box, {x} in braces, bare names as they are.
-%  A name and its binders, a group dterm.js may break between binders, as
-%  it breaks a compound between its arguments.
-sig_(Class, N, []) --> !, el(span, Class, esc(N)).
-sig_(Class, N, Bs) -->
-    el(span, "c sig", ['data-d'=args], ( el(span, Class, esc(N)), el(span, "args binders", sig_items(Bs)) )).
+%  A name, binders and result type: the result can move below a long
+%  signature instead of forcing its own continuations beyond the page.
+sig_(Class, N, [], none, _) --> !, el(span, Class, esc(N)).
+sig_(Class, N, Bs, Ty, Env) -->
+    el(span, "c sig", ['data-d'=args],
+       ( el(span, Class, esc(N)), el(span, "args binders", sig_items(Bs, Ty, Env)) )).
 
-sig_items([B]) --> !, el(span, arg, binder_(B, [])).
-sig_items([B|Bs]) --> el(span, arg, binder_(B, [])), " ", sig_items(Bs).
+sig_items([], none, _) --> !, [].
+sig_items([], Ty, Env) --> el(span, arg, ( el(span, "op wide colon", [title=":"], ":"), " ", term(Ty, Env) )).
+sig_items([B|Bs], Ty, Env) -->
+    el(span, arg, binder_(B, Env)),
+    ( { Bs == [], Ty == none } -> [] ; " ", sig_items(Bs, Ty, Env) ).
 
 binders_([], _) --> [].
 binders_([B|Bs], Env) --> " ", binder_(B, Env), binders_(Bs, Env).
@@ -329,7 +341,8 @@ inline_branches([br(Alts, R)|Bs], Env) -->
     ( { Bs == [] } -> [] ; " ", el(span, "op wide bar", "|"), " ", inline_branches(Bs, Env) ).
 
 alts_([A], Env) --> !, pats_(A, Env).
-alts_([A|As], Env) --> pats_(A, Env), " ", el(span, "op wide bar", "|"), " ", alts_(As, Env).
+alts_([A|As], Env) -->
+    el(span, o, ['data-d'=op], ( pats_(A, Env), " ", el(span, "op wide bar", [title="|"], "|"), " ", alts_(As, Env) )).
 
 pats_([P], Env) --> !, term(P, Env).
 pats_([P|Ps], Env) --> term(P, Env), el(span, sep, ","), " ", pats_(Ps, Env).
@@ -361,9 +374,11 @@ block(letpat(_, _, _, _)).
 block(letfix(_, _, _, _, _, _)).
 block(fun(_, _, B)) :- block(B).
 block(app(_, _, As)) :- member(A, As), block(A), !.
+block(tuple(_, Es)) :- member(E, Es), block(E), !.
 block(paren(_, E)) :- block(E).
 
 blk_(paren(_, E), Env) --> blk(E, Env).
+blk_(tuple(_, Es), Env) --> el(div, "rq-tuple", seq(Es, tuple_part(Env))).
 %  An application with a block among its arguments, such as fold_left over
 %  a λ whose body is a match: the function and the arguments before the
 %  block on a line, the rest under it, a row each.
@@ -405,6 +420,8 @@ let_block(Head, V, EnvV, B, EnvB) -->
          ),
          el(div, "let-body", blk(B, EnvB)) )).
 app_arg(Env, A) --> el(div, "app-arg", blk(A, Env)).
+
+tuple_part(Env, E) --> el(div, "tuple-part", blk(E, Env)).
 
 branch_rows([], _) --> [].
 branch_rows([br(Alts, R)|Bs], Env) -->
@@ -502,14 +519,14 @@ item_(ind(_, _, Bodies)) --> !, seq(Bodies, ind_body).
 item_(rec(F-T, Kw, n(_, N), Bs, Sort, Ctor, Fs)) --> !,
     { anchor(N, Id), binders_env(Bs, [], Env) },
     el(div, "clause rq-rec", [id=Id],
-       ( el(div, head, ( line_link(F), kw(Kw), " ", el(span, "ty def", esc(N)), binders_(Bs, []), opt_type(Sort, []),
+       ( el(div, head, ( line_link(F), kw(Kw), " ", sig_("ty def", N, Bs, Sort, Env),
                          ( { Ctor = n(_, C) } -> "\u00A0", defeq, " ", ctor_def(C) ; [] ) )),
          el(table, "rq-fields", el(tbody, none, seq(Fs, field_row(Env)))) )),
     notes_upto(T).
 item_(def(F-T, Kw, n(_, N), Bs, Ty, Body)) --> !,
     { anchor(N, Id), binders_env(Bs, [], Env) },
     el(div, "clause rq-def", [id=Id],
-       ( el(div, head, ( line_link(F), kw(Kw), " ", sig_("f def", N, Bs), opt_type(Ty, Env),
+       ( el(div, head, ( line_link(F), kw(Kw), " ", sig_("f def", N, Bs, Ty, Env),
                          ( { Body == none } -> [] ; "\u00A0", defeq ) )),
          ( { Body == none } -> [] ; el(div, "rq-body", blk(Body, Env)) ) )),
     notes_upto(T).
@@ -549,10 +566,9 @@ ctor_def(C) --> { anchor(C, Id) }, el(span, "a def", [id=Id], esc(C)).
 %  premises, a column of rules.
 ind_body(ib(n(F-_, N), Bs, Ty, Cs)) -->
     { anchor(N, Id), binders_env(Bs, [], Env) },
-    el(div, "rq-ind", [id=Id],
-       ( el(div, "clause rq-ind-head",
-            el(div, head, ( line_link(F), kw("Inductive"), " ", el(span, "ty def", esc(N)), binders_(Bs, []), opt_type(Ty, []),
-                            "\u00A0", defeq ))),
+    el(div, "clause rq-ind", [id=Id],
+       ( el(div, "head rq-ind-head",
+            ( line_link(F), kw("Inductive"), " ", sig_("ty def", N, Bs, Ty, Env), "\u00A0", defeq )),
          (   { member(ctor(_, _, _, CT), Cs), CT \== none, rule_parts(CT, _, [_|_], _) }
          ->  el(div, rules, seq(Cs, ctor_rule(Env)))
          ;   el(table, "rq-ctors", el(tbody, none, seq(Cs, ctor_row(Env))))
@@ -564,7 +580,7 @@ ctor_row(Env, ctor(F-T, C, Bs, Ty)) -->
     el(tr, none, [id=Id],
        ( el(td, bar, "|"),
          el(td, ctor, el(span, "a def", esc(C))),
-         el(td, "ctor-args", ( binders_(Bs, Env), opt_type(Ty, Env) )),
+         el(td, "ctor-args", el(div, goal, ( binders_(Bs, Env), opt_type(Ty, Env) ))),
          el(td, "ctor-aside", ( { Aside == none } -> [] ; el(span, aside, rocq_prose_inline(Aside)) )) )).
 
 ctor_rule(Env, ctor(F-T, C, Bs, Ty)) -->
@@ -582,7 +598,7 @@ field_row(Env, field(F-T, N, Bs, Ty, D)) -->
     { anchor(N, Id), aside_text(T, Aside) },
     el(tr, none, [id=Id],
        ( el(td, "field-name", el(span, "f def", esc(N))),
-         el(td, "field-type", ( binders_(Bs, Env), opt_type(Ty, Env), ( { D == none } -> [] ; "\u00A0", defeq, " ", term(D, Env) ) )),
+         el(td, "field-type", el(div, goal, ( binders_(Bs, Env), opt_type(Ty, Env), ( { D == none } -> [] ; "\u00A0", defeq, " ", term(D, Env) ) ))),
          el(td, "field-aside", ( { Aside == none } -> [] ; el(span, aside, rocq_prose_inline(Aside)) )) )).
 
 axiom_(F, Kw, g(Ns, Ty)) -->
@@ -807,6 +823,17 @@ code_(Code) --> { rocq_fragment_codes(Code, Frag) }, !, el(code, "term rq", frag
 code_(Code) --> el(code, none, esc(Code)).
 
 %% Rocq in documents
+
+%  The same layout choice on source pages and documents containing Rocq.
+%  Hidden until the enhancement is available; without JS, CSS stays adaptive.
+rocq_layout -->
+    el(div, "rq-layout", [hidden=hidden],
+       ( el(label, none, [for="rq-layout"], "Rocq layout"),
+         el(select, none, [id="rq-layout", 'aria-describedby'="rq-layout-help"],
+            ( el(option, none, [value=auto], "Adaptive"),
+              el(option, none, [value=stack], "Stacked"),
+              el(option, none, [value=table], "Side by side") )),
+         el(span, none, [id="rq-layout-help"], "Fits each block to its available width.") )).
 
 %  rocq_inline(+Codes): inline code of a document that is Rocq: a
 %  sentence (Theorem t : …), a type's constructors (cap := None | Obj b),

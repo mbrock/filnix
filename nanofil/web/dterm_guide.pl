@@ -40,7 +40,7 @@
 */
 
 %  Rocq in the documents (formal.md) is drawn by dterm-rocq.
-:- use_module(rocq/rocq_draw, [rocq_inline//1, rocq_fence//1]).
+:- use_module(rocq/rocq_draw, [rocq_inline//1, rocq_fence//1, rocq_layout//0]).
 
 %  guide_rocq(Doc): Doc is about Rocq (names it), so its inline code may
 %  be Rocq.
@@ -252,11 +252,14 @@ guide_page(Doc, Blocks) -->
             el(nav, "toc dterm-nav guide-nav",
                ( el(div, "toc-title", esc(Label)), guide_toc(Doc) )),
             el(article, "dterm guide",
-               el(div, "prose guide-prose", gblocks(Blocks))) )).
+               ( ( { guide_rocq(Doc) } -> rocq_layout ; [] ),
+                 el(div, "prose guide-prose", gblocks(Blocks)) )) )).
 
 %  A document about Rocq sets its Rocq with dterm-rocq's stylesheet
 %  (rocq/, beside the pages).
-rocq_style(Doc) --> { guide_rocq(Doc) }, !, "<link rel=\"stylesheet\" href=\"rocq/dterm-rocq.css\">\n".
+rocq_style(Doc) --> { guide_rocq(Doc) }, !,
+    "<link rel=\"stylesheet\" href=\"rocq/dterm-rocq.css\">\n",
+    "<script defer src=\"rocq/dterm-rocq.js\"></script>\n".
 rocq_style(_) --> [].
 
 guide_toc(Doc) -->
