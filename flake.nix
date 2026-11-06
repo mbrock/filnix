@@ -148,7 +148,22 @@
               sarcasm
               ;
           };
-          pkgsFilcStaging = mkPkgsFilc { staging = true; };
+          # On staging, the PostgreSQL server marks its main segment with
+          # zmark_shared and is built with -fzmark-shared (docs/zmark-shared.md).
+          # Release systems still refuse it (lib/block-rust-go.nix).
+          pkgsFilcStaging = mkPkgsFilc {
+            staging = true;
+            crossOverlays = [
+              (final: prev: {
+                postgresql_18 = prev.postgresql_18.overrideAttrs (old: {
+                  patches = old.patches ++ [ ./patches/postgresql-filc-zmark-shared.patch ];
+                  env = old.env // {
+                    CFLAGS = old.env.CFLAGS + " -fzmark-shared";
+                  };
+                });
+              })
+            ];
+          };
 
           filc-shell-stuff = import ./shells/world.nix {
             inherit
@@ -654,6 +669,9 @@
                 inherit pkgs;
                 dist = import ./packages/bind-dist { inherit pkgs pkgsFilc; };
               };
+              # The PostgreSQL server with -fzmark-shared (docs/zmark-shared.md),
+              # staging only; the campaign builds it (scripts/ci-outputs.txt).
+              postgresql-staging-zmark = pkgsFilcStaging.postgresql_18;
               # Release alternates on the staging toolchain: unreleased compiler
               # and runtime changes, faster but less reviewed (docs/php.md).
               php85-staging-dist = import ./packages/php-dist {

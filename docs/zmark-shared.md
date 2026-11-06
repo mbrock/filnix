@@ -13,7 +13,7 @@ approach B.
 - Regressions: `tests/zmark-shared.nix` (`checks.staging-zmark-shared`)
 - Opt-in at compile time: code that loads or stores pointers in a marked
   mapping is compiled with `-fzmark-shared`. Everything else, including the
-  whole staging world, is compiled as before (see "Opt-in: -fzmark-shared").
+  staging world apart from its PostgreSQL server, is compiled as before (see "Opt-in: -fzmark-shared").
 
 ## The problem
 
@@ -280,11 +280,21 @@ The stock column uses the staging compiler without the patch and
 
 ## PostgreSQL
 
-PostgreSQL 18.6, built outside Nix with `filcc-staging` from this branch
-(`patches/postgresql-filc-zmark-shared.patch`, against pristine 18.6) and
+`.#postgresql-staging-zmark` is `pkgsFilcStaging.postgresql_18`. The staging
+package set adds `patches/postgresql-filc-zmark-shared.patch` and
+`-fzmark-shared` to the Fil-C PostgreSQL port (`ports.nix`,
+`patches/postgresql-filc.patch`) in an overlay in `flake.nix`. The release
+package set is unchanged, and release systems still refuse the server. The
+campaign builds and caches it with the regressions (`scripts/ci-outputs.txt`).
+All of PostgreSQL is compiled with the flag, since most backend files touch the
+main segment. That build, run under `pgbench -c 8 -j 8 -T 60` at scale 10 with
+`huge_pages=off` and `*_flush_after=0`, processed 625,338 transactions with 0
+failed (10,425 tps), with no Fil-C panics in the server log.
+
+The measurements below used PostgreSQL 18.6 built outside Nix from the same
+changes with `filcc-staging` and
 `CFLAGS="-O2 -g -Wno-int-conversion -fzmark-shared"`, run with
-`huge_pages=off` and the default `io_method=worker`. All of PostgreSQL is
-compiled with the flag, since most backend files touch the main segment.
+`huge_pages=off` and the default `io_method=worker`.
 
 The zmark-specific changes are small:
 

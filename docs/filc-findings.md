@@ -1946,3 +1946,23 @@ treats a failed `ioprio_set` as fatal, so every unit with
 logrotate did on filc.less.rest. The NixOS module unsets both for every
 service. A wrapper in the runtime would fix it; that is runtime work, so it
 needs a soundness review first.
+
+## Pointers stored in shared memory have no capability in other processes
+
+`mmap(MAP_SHARED)` and `shmat` share only an object's payload. Its header
+and aux array, which hold the capabilities of the pointers stored in it,
+stay private to each process. After `fork`, a pointer that one process stores
+into the mapping reaches the others without a capability, or with a stale
+one, and reading it traps. Servers that link structures in shared memory
+cannot run on Fil-C: PostgreSQL, nginx, and Apache's shared caches. The
+release toolchain refuses the PostgreSQL server and nginx on Fil-C systems
+(`lib/block-rust-go.nix`, `ports.nix`).
+
+The staging toolchain only has an opt-in rule, `zmark_shared`
+([zmark-shared.md](zmark-shared.md)). `zmark_shared(p)` marks a fresh shared
+mapping. Code compiled with `-fzmark-shared` then stores only addresses into
+it, and gives every non-null pointer loaded from it the mapping's own
+capability. Unflagged code fails safe on a marked mapping. The release
+compiler and runtime are unchanged, and nothing in the staging world is
+compiled with the flag except `postgresql-staging-zmark`. Upstream has no
+equivalent.

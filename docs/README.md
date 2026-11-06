@@ -42,6 +42,9 @@ individual ports needed, and how the port campaigns run. The repository's
   runtime findings to report upstream, each with its filnix workaround.
 - [Sealed closures](sealed-closures.md): a staging-only proof of concept
   for closures whose callers cannot read or replace their data.
+- [zmark_shared: pointers inside shared mappings](zmark-shared.md): a
+  staging-only rule, opted into with `-fzmark-shared`, that lets
+  multi-process servers such as PostgreSQL keep pointers in shared memory.
 - [Fil-C symbols and libtool](toolchain-symbols.md): why libtool's `nm` probe
   fails on Fil-C objects.
 - [zstd with SaRCAsm](zstd-sarcasm.md): zstd's BMI2 assembly decoder loops
