@@ -149,22 +149,26 @@ extraction, and agrees with the Prolog interpreter on the Lua test
 suite.
 
 The model is a transcription, not a design: the interpreter already made
-the choices. What goes over, and from where:
+the choices. What went over, and from where; the last column links each
+definition to its page in [the model](../rocq/theories/Values.v), drawn
+by dterm-rocq:
 
-| Rocq definition | Source | Notes |
-| --- | --- | --- |
-| `cap := None \| Obj base \| Ro base \| Fn f \| Ext name` | `cap_access_res/7`: `none`, `obj(Base)`, `ro(Base)`, `fn(F)`, `ext(N)` | identity, never bounds |
-| `ptr := { addr : Z; cap : cap }` | `ptr(Addr, Cap)` | the indivisible flight pair |
-| `region := { base; end_; kind; life }` | `region(Base, End, Kind, Life)` | bounds live here, looked up by identity |
-| `mem := { bytes; regions; aux }` | `mem(Bytes, Regions, Next, Aux)` | aux maps slot address to stored capability; Next becomes an existential freshness condition |
-| `access_res` | `cap_access_res/7` | the trap reasons in the backend's order |
-| syntax: func, block, phi, let, store, flight, check, `raw_*`, jumps, poll | ir.pl's header tables | core subset only; one constructor per IR functor |
-| small-step `step : config -> config + outcome` | `interp:run/5` | fuel-indexed; one outcome per interpreter outcome |
-| `valid : module -> bool` | `ir:valid_module/1` | computable, reflection-ready; mirrors the coverage and evidence rules |
+| Rocq definition | Source | Notes | In the model |
+| --- | --- | --- | --- |
+| `cap := CNone \| Obj base \| Ro base \| Fn f \| External n` | `cap_access_res/7`: `none`, `obj(Base)`, `ro(Base)`, `fn(F)`, `ext(N)` | identity, never bounds | [cap](../rocq/theories/Values.v#cap) |
+| `ptr := { ptr_addr : Z; ptr_cap : cap }` | `ptr(Addr, Cap)` | the indivisible flight pair | [ptr](../rocq/theories/Values.v#ptr) |
+| `region := { r_base; r_end; r_kind; r_life }` | `region(Base, End, Kind, Life)` | bounds live here, looked up by identity | [region](../rocq/theories/Memory.v#region) |
+| `mem := { m_bytes; m_regions; m_aux }` | `mem(Bytes, Regions, Next, Aux)` | aux maps slot address to stored capability; Next became the freshness condition `fresh` | [mem](../rocq/theories/Memory.v#mem), [fresh](../rocq/theories/Memory.v#fresh) |
+| `cap_access_res`, `access_res` | `cap_access_res/7` | the trap reasons in the backend's order | [cap_access_res](../rocq/theories/Memory.v#cap_access_res), [access_res](../rocq/theories/Memory.v#access_res) |
+| syntax: func, block, inst, value, module | ir.pl's header tables | core subset only; one constructor per IR functor | [inst](../rocq/theories/Syntax.v#inst), [func](../rocq/theories/Syntax.v#func), [module](../rocq/theories/Syntax.v#module) |
+| small-step `step : genv -> config -> step_result`, and `step_rel` | `interp:run/5` | fuel-indexed; `step_rel` takes any fresh base where `step` asks for one | [config](../rocq/theories/Semantics.v#config), [step](../rocq/theories/Semantics.v#step), [step_rel](../rocq/theories/Semantics.v#step_rel) |
+| `valid : module -> bool` | `ir:valid_module/1` | computable, reflection-ready; mirrors the coverage and evidence rules | not yet |
 
-The outcomes are the interpreter's: `Ret v`, `Trap r`, `UB r`,
-`Unchecked r` and `OutOfFuel` for `ret(V)`, `trap(Reason)`, `ub(Reason)`,
-`unchecked(Reason)` and `out_of_fuel`.
+The [outcomes](../rocq/theories/Semantics.v#outcome) are the
+interpreter's: `Ret x`, `Trap why`, `UB why`, `Unchecked why` and
+`OutOfFuel` for `ret(V)`, `trap(Reason)`, `ub(Reason)`,
+`unchecked(Reason)` and `out_of_fuel`. [rocq.md](rocq.md) records the
+decisions below as they were made.
 
 Design decisions to make early and write down:
 

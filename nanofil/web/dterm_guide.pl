@@ -511,6 +511,9 @@ link_target(Url, Href, none) :-
         )
     ;   file_name_extension(_, nix, Path), nix_page(Path, Page)
     ->  format(atom(Href), "../nix/~w~w", [Page, Frag])
+    ;   file_name_extension(_, v, Path), rocq_page(Path, Page)
+    ->  rocq_anchor(Abs, Path, Frag),
+        format(atom(Href), "rocq/~w~w", [Page, Frag])
     ;   github(G),
         (   atom_concat('../', Rel, Path) -> true ; atom_concat('docs/', Path, Rel) ),
         format(atom(Href), "~w~w~w", [G, Rel, Frag])
@@ -525,6 +528,35 @@ nix_page(Path, Page) :-
     Parts \== [], Parts \= [experiments|_],
     atomic_list_concat(Parts, '-', B0),
     file_name_extension(B, nix, B0), file_name_extension(B, html, Page).
+
+%  rocq_page(+Path, -Page): the dterm-rocq page of a .v file a link from
+%  nanofil/docs names: ../rocq/theories/Values.v is
+%  rocq-theories-Values.html, in the site's nanofil/rocq/.
+rocq_page(Path, Page) :-
+    atomic_list_concat(Parts0, '/', Path),
+    append([nanofil, docs], Parts0, Parts1),
+    foldl(rel_part, Parts1, [], RevParts), reverse(RevParts, [nanofil|Parts]),
+    atomic_list_concat(Parts, '-', B0),
+    file_name_extension(B, v, B0), file_name_extension(B, html, Page).
+
+%  rocq_anchor(+Abs, +Path, +Frag): a link's #Name is a name the .v file
+%  defines at its top level (dterm-rocq's anchor for it), so a renamed
+%  definition breaks the link. Where the file is not in the sources (the
+%  site has only some of nanofil), it is left to the Nix check.
+rocq_anchor(_, _, '') :- !.
+rocq_anchor(Abs, _, Frag) :- \+ exists_file(Abs), !, Frag \== ''.
+rocq_anchor(Abs, _, Frag) :-
+    atom_concat('#', Name, Frag),
+    read_file_to_string(Abs, Text, [encoding(utf8)]),
+    split_string(Text, "\n", "", Lines),
+    member(L, Lines), split_string(L, " ", "", [W, N|_]),
+    (   memberchk(W, ["Inductive", "Variant", "Record", "Structure", "Definition", "Fixpoint",
+                      "Lemma", "Theorem", "Notation", "Module", "Class"])
+    ->  atom_string(Name, N)
+    ;   W == "|", atom_string(Name, N)
+    ), !.
+rocq_anchor(_, Path, Frag) :-
+    broken("~w does not define ~w", [Path, Frag]).
 
 rel_part('..', [_|Ps], Ps) :- !.
 rel_part('.', Ps, Ps) :- !.
