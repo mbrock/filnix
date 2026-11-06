@@ -260,3 +260,18 @@ for the socket, and a 6 GiB memory limit for one writer and two readers.
 The application is installed at `/opt/filnix-campaign` and rooted under
 `/nix/var/nix/gcroots`. The old unit is stopped and disabled, not
 deleted.
+
+## Known issues
+
+- **worker-error under load (2026-11-06).** In campaign
+  `20261106-1045-attrs-fcd0b0e` (24 `scripts/ci-outputs.txt` roots at
+  fcd0b0e, four roots in parallel), `pkgsFilc.php74` and `php74-dist`
+  ended as `worker-error` on both attempts, with load1 61.7 and 62.9 and
+  four roots in flight. Runs `e1e85cc1…` and `346212aa…` (php74), and
+  `4a26d93a…` and `2be96a5e…` (php74-dist). No failed build or kernel OOM
+  was recorded. The only `cause` was Nix's "download buffer is full"
+  warning, which is normally harmless. A manual `nix build` of the same
+  derivations was used to tell a worker problem from a build failure. The
+  worker's last log lines were not available: `campaignctl results`
+  carries no output tail, and the run pages (`/?run=ID`) were empty. Next
+  steps: keep the worker's stderr tail in the result, then find the cause.
