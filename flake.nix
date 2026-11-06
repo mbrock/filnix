@@ -225,6 +225,17 @@
                 inherit pkgs;
                 variant = "staging";
               }).filc-ref-src;
+            # checks.nanofil with arguments, such as { shard = "2/6"; } or
+            # { withTrealla = true; } (scripts/nanofil-fleet).
+            nanofil-check =
+              args:
+              import ./nanofil/nix/check.nix (
+                {
+                  inherit pkgs;
+                  filcc = filcc-staging;
+                }
+                // args
+              );
           };
 
           checks.${system} = {

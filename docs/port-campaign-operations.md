@@ -173,6 +173,11 @@ campaignctl submit checks --prefix nanofil     # the same, recorded as a campaig
 campaignctl submit nanofil-survey --opt plain  # the survey (eight roots at a time)
 ```
 
+An orb cannot reach those builders but can start other orbs:
+`scripts/nanofil-fleet run --roots all` builds `checks.nanofil` in six
+shards and every other `nanofil-*` check in its own orb, at the current
+commit, and aggregates pass/FAIL with each step's time (nanofil/AGENTS.md).
+
 A check that compares against a reference must run both sides in one
 derivation whenever the result depends on the machine, because the
 reference may have been built on a different builder (nanofil-bash's test

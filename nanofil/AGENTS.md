@@ -58,6 +58,20 @@ swa that spreads them over swa and its remote builders (igloo, chapel;
 full set or a survey rerun after a push asks the orchestrating thread, or
 a thread on runner swa, to run it at the pushed commit.
 
+From an orb, `scripts/nanofil-fleet run` runs the same checks in a fleet
+of new orbs (`amp -ox`, one thread per job) and aggregates the results
+in `.amp/in/nanofil-fleet/`. It splits `checks.nanofil` into
+`--shards N` (default 6) fixed shards of its steps
+(`lib.x86_64-linux.nanofil-check { shard = "I/N"; }`, balanced by
+`tests/check-times.tsv`) and with `--roots all` (or a list such as
+`nanofil-lua,nanofil-hello+nanofil-zlib`) builds the other checks, one
+worker each. Workers check out the exact commit; an unpushed one goes
+as a git bundle, so it works before pushing. The summary fails unless
+every job passed and the shards ran each step of the list exactly once.
+Its `times.tsv` is the new `tests/check-times.tsv` when the split has
+drifted. Steps live in `nix/check.nix`'s `steps` function; give each
+a unique label, since labels select a step's shard.
+
 For many runs, `bin/nanofil --save-state /tmp/nanofil.state` and
 `export NANOFIL_STATE=/tmp/nanofil.state` skip compiling `src/` each time
 (0.26 s to 0.05 s); rebuild the state after editing `src/`, or unset it.

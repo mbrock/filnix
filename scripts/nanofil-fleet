@@ -1,0 +1,420 @@
+#!/usr/bin/env python3
+"""Run nanofil's expensive Nix checks in parallel Amp orbs, then aggregate.
+
+  scripts/nanofil-fleet run [--shards N] [--roots LIST|all] [--trealla]
+                            [--rev REV] [--size SIZE] [--mode MODE] [--dry-run]
+  scripts/nanofil-fleet collect DIR      # aggregate a run's results again
+  scripts/nanofil-fleet worker JOB       # inside a worker orb (the prompt runs it)
+
+Three kinds of parallelism, from the inside out:
+
+- Programs within a step: tests/par.sh runs a step's files NANOFIL_JOBS
+  (default nproc) at a time. Workers keep it; it is why an orb with more
+  CPUs finishes its shard sooner.
+- Steps of checks.nanofil: nix/check.nix runs about 170 independent
+  steps after a shared setup. lib.x86_64-linux.nanofil-check
+  { shard = "I/N"; } runs shard I of N, a fixed split balanced by
+  tests/check-times.tsv; each worker builds one shard. Shards keep going
+  past a failing step and print a "@@nanofil-step" line per step, so the
+  aggregate shows every failure and checks that the N shards ran each step
+  of the list exactly once.
+- Independent Nix roots: checks.nanofil-hello, -lua, -python, ... are
+  separate derivations. --roots puts each (or each "a+b" group) in its own
+  worker, built with nix build --keep-going.
+
+Each job is an `amp -ox` execute-mode thread in a fresh orb of the
+project. Its agent runs one command: fetch the exact commit, check it
+out, and run `scripts/nanofil-fleet worker JOB`, which builds the job with
+Nix (the orb's binary caches substitute the toolchain) and prints one
+NANOFIL-FLEET-RESULT line of JSON. The commit is the input: one on origin
+is fetched by hash; an unpushed one travels as an attached git bundle of
+the commits since origin/main, so a check can run before pushing.
+Uncommitted changes are not included. `run` streams each thread's events
+to DIR/JOB.jsonl and writes DIR/summary.md, results.json and times.tsv
+(the measured step times, the format of tests/check-times.tsv).
+Trealla is opt-in (--trealla), as in check.nix.
+"""
+
+import argparse
+import concurrent.futures
+import datetime
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+import time
+
+MARK = "NANOFIL-FLEET-RESULT"
+SYSTEM = "x86_64-linux"
+
+
+def sh(*args, **kw):
+    return subprocess.run(args, check=True, text=True, capture_output=True, **kw).stdout.strip()
+
+
+def toplevel():
+    return sh("git", "rev-parse", "--show-toplevel")
+
+
+# ---------------------------------------------------------------- jobs
+
+
+def parse_job(job):
+    """nanofil@I/N[+trealla] is a shard; anything else is +-joined roots."""
+    m = re.fullmatch(r"nanofil@(\d+)/(\d+)(\+trealla)?", job)
+    if m:
+        i, n = int(m[1]), int(m[2])
+        if not 1 <= i <= n:
+            raise SystemExit(f"bad shard {job}")
+        return {"kind": "shard", "shard": f"{i}/{n}", "trealla": bool(m[3])}
+    roots = job.split("+")
+    for r in roots:
+        if not re.fullmatch(r"nanofil-[a-z0-9-]+", r):
+            raise SystemExit(f"bad job {job}: a shard nanofil@I/N or nanofil-* check names")
+    return {"kind": "roots", "roots": roots}
+
+
+def nanofil_roots():
+    out = sh("nix", "eval", "--json", f".#checks.{SYSTEM}", "--apply",
+             'cs: builtins.filter (n: builtins.substring 0 8 n == "nanofil-") (builtins.attrNames cs)')
+    return json.loads(out)
+
+
+# ---------------------------------------------------------------- worker
+
+
+def worker(args):
+    job = args.job
+    spec = parse_job(job)
+    os.chdir(toplevel())
+    rev = sh("git", "rev-parse", "HEAD")
+    logdir = os.path.expanduser("~/nanofil-fleet")
+    os.makedirs(logdir, exist_ok=True)
+    log = os.path.join(logdir, re.sub(r"[^A-Za-z0-9.+-]", "_", job) + ".log")
+    if spec["kind"] == "shard":
+        trealla = " withTrealla = true;" if spec["trealla"] else ""
+        expr = (f'(builtins.getFlake (toString ./.)).lib.{SYSTEM}.nanofil-check '
+                f'{{ shard = "{spec["shard"]}";{trealla} }}')
+        cmd = ["nix", "build", "-L", "--no-link", "--impure", "--expr", expr]
+    else:
+        cmd = ["nix", "build", "-L", "--no-link", "--keep-going"] + [
+            f".#checks.{SYSTEM}.{r}" for r in spec["roots"]]
+    env = dict(os.environ)
+    env["PATH"] = os.pathsep.join([os.path.expanduser("~/.nix-profile/bin"),
+                                   "/nix/var/nix/profiles/default/bin", env.get("PATH", "")])
+    print(f"nanofil-fleet worker: {job} at {rev[:12]}, {os.cpu_count()} CPUs, log {log}", flush=True)
+    t0 = time.time()
+    for attempt in range(1, 4):
+        code, lines = build(cmd, env, log, t0)
+        if code == 0 or not infrastructure_failure(lines):
+            break
+        print(f"nanofil-fleet worker: attempt {attempt} lost to substitution errors; retrying", flush=True)
+        time.sleep(30)
+    result = summarize(job, spec, rev, code, time.time() - t0, lines)
+    result["attempts"] = attempt
+    if code != 0 and infrastructure_failure(lines):
+        result["status"] = "error"
+        result["error"] = "binary cache downloads failed before any check ran"
+    print(MARK + " " + json.dumps(result, separators=(",", ":")), flush=True)
+    return 0 if result["status"] == "pass" else 1
+
+
+def build(cmd, env, log, t0):
+    """Run cmd with its output in log, echoing each finished step (or a
+    heartbeat every two minutes) for the agent watching; return the exit
+    code and the log's lines."""
+    with open(log, "w") as f:
+        p = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, env=env)
+        last, tail = time.time(), ""
+        with open(log, errors="replace") as follow:
+            while True:
+                done = p.poll() is not None
+                for l in follow.read().splitlines():
+                    tail = l or tail
+                    if "@@nanofil-step " in l:
+                        print(l[l.index("@@"):], flush=True)
+                        last = time.time()
+                if done:
+                    break
+                if time.time() - last > 120:
+                    print(f"[{int(time.time() - t0)}s] building: {tail[:120]}", flush=True)
+                    last = time.time()
+                time.sleep(5)
+    return p.returncode, open(log, errors="replace").read().splitlines()
+
+
+def infrastructure_failure(lines):
+    """Substitution from the binary caches failed, and no builder or check
+    step did: worth another attempt, not a check failure."""
+    text = "\n".join(lines)
+    return (re.search(r"unable to download|usually happens due to networking issues"
+                      r"|is required, but there is no substituter", text) is not None
+            and "@@nanofil-step " not in text
+            and re.search(r"builder failed|builder for '[^']*' failed", text) is None)
+
+
+def summarize(job, spec, rev, code, wall, lines):
+    steps, total, failed_roots = [], None, []
+    for l in lines:
+        m = re.search(r"@@nanofil-step (ok|FAIL) (\d+) (.*)$", l)
+        if m:
+            steps.append([m[1], int(m[2]), m[3]])
+        m = re.search(r"@@nanofil-steps (\d+) ([0-9a-f]+)", l)
+        if m:
+            total = {"count": int(m[1]), "hash": m[2]}
+        m = re.search(r"error: (?:builder for|Cannot build) '([^']+)'", l)
+        if m:
+            failed_roots.append(m[1])
+    r = {"job": job, "rev": rev, "status": "pass" if code == 0 else "fail",
+         "wall_s": round(wall), "cpus": os.cpu_count(),
+         "thread": os.environ.get("AMP_THREAD_ID", "")}
+    if spec["kind"] == "shard":
+        r["shard"] = spec["shard"]
+        r["steps"] = steps
+        r["all_steps"] = total
+    if code != 0:
+        r["failed_steps"] = [s[2] for s in steps if s[0] == "FAIL"]
+        r["failed_drvs"] = failed_roots[:20]
+        r["log_tail"] = [l[-200:] for l in lines[-60:]]
+    return r
+
+
+# ---------------------------------------------------------------- orchestrator
+
+
+def rev_input(rev, outdir):
+    """The commit and how a worker gets it: (sha, base, bundle or None)."""
+    sha = sh("git", "rev-parse", "--verify", rev + "^{commit}")
+    subprocess.run(["git", "fetch", "-q", "origin"], check=True)
+    if sh("git", "branch", "-r", "--contains", sha):
+        return sha, None, None
+    # The bundle holds the commits since the fork point, which is on
+    # origin, so a worker can fetch it by hash.
+    base = subprocess.run(["git", "merge-base", sha, "origin/main"], text=True,
+                          capture_output=True).stdout.strip()
+    if not base:
+        raise SystemExit(f"{sha[:12]} shares no history with origin/main here (shallow clone?): "
+                         "git fetch --unshallow origin main")
+    ref = f"refs/nanofil-fleet/{sha}-{os.getpid()}"
+    bundle = os.path.join(outdir, "rev.bundle")
+    subprocess.run(["git", "update-ref", ref, sha], check=True)
+    try:
+        subprocess.run(["git", "bundle", "create", "-q", bundle, ref, "^" + base], check=True)
+    finally:
+        subprocess.run(["git", "update-ref", "-d", ref], check=True)
+    return sha, base, bundle
+
+
+def prompt(job, sha, base, bundle):
+    if bundle:
+        fetch = (f"git fetch -q origin {base} && amp files get BUNDLE_URL -o /tmp/nanofil-fleet.bundle"
+                 " && git fetch -q /tmp/nanofil-fleet.bundle 'refs/nanofil-fleet/*:refs/nanofil-fleet/*'")
+        attach = ("\nThis message has one attachment, rev.bundle. Replace BUNDLE_URL in the command "
+                  "with its attachment URL; change nothing else.\n")
+    else:
+        fetch, attach = f"git fetch -q origin {sha}", ""
+    command = (f'cd "$(git rev-parse --show-toplevel)" && {fetch} && '
+               f"git -c advice.detachedHead=false checkout -q --detach {sha} && "
+               f"scripts/nanofil-fleet worker {shlex.quote(job)}")
+    return f"""You are one worker of a nanofil check fleet (scripts/nanofil-fleet). Run this one shell command in the repository, unchanged, and wait until it exits:
+
+```bash
+{command}
+```
+{attach}
+It prints a line per finished check step or a heartbeat every two minutes, and can take up to 90 minutes. Start it once, in the background if your shell tool times out, and keep checking it until it exits. Do not edit files, investigate or fix failures, rerun anything, commit, push, or create threads.
+
+When it exits, end your turn with exactly the last line it printed that starts with {MARK}, verbatim, and nothing else. If the command could not run at all, end with: {MARK} {{"job":"{job}","status":"error","error":"<one sentence on what happened>"}}
+"""
+
+
+def run(args):
+    os.chdir(toplevel())
+    jobs = [f"nanofil@{i}/{args.shards}" + ("+trealla" if args.trealla else "")
+            for i in range(1, args.shards + 1)]
+    if args.roots == "all":
+        jobs += nanofil_roots()
+    elif args.roots:
+        jobs += args.roots.split(",")
+    for j in jobs:
+        parse_job(j)
+    if subprocess.run(["git", "diff", "--quiet", "HEAD"]).returncode != 0 and args.rev == "HEAD":
+        print("nanofil-fleet: uncommitted changes are not checked; workers get the commit only",
+              file=sys.stderr)
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    sha = sh("git", "rev-parse", "--verify", args.rev + "^{commit}")
+    outdir = args.out or os.path.join(".amp/in/nanofil-fleet", f"{stamp}-{sha[:12]}")
+    os.makedirs(outdir, exist_ok=True)
+    sha, base, bundle = rev_input(args.rev, outdir)
+    meta = {"rev": sha, "base": base, "bundle": bool(bundle), "jobs": jobs,
+            "size": args.size, "mode": args.mode, "started": stamp}
+    json.dump(meta, open(os.path.join(outdir, "fleet.json"), "w"), indent=1)
+    via = f"bundle on {base[:12]}" if bundle else "origin"
+    print(f"nanofil-fleet: {len(jobs)} jobs at {sha[:12]} (via {via}) on {args.size}, results in {outdir}",
+          flush=True)
+    if args.dry_run:
+        for j in jobs:
+            print(f"--- {j}\n{prompt(j, sha, base, bundle)}")
+        return 0
+
+    def launch(job):
+        name = re.sub(r"[^A-Za-z0-9.+-]", "_", job)
+        cmd = ["amp", "-ox", prompt(job, sha, base, bundle), "--stream-json",
+               "--orb-size", args.size, "--mode", args.mode,
+               "--title", f"nanofil-fleet {sha[:8]} {job}"]
+        if bundle:
+            cmd += ["--attach", bundle]
+        t0 = time.time()
+        with open(os.path.join(outdir, name + ".jsonl"), "w") as out, \
+             open(os.path.join(outdir, name + ".err"), "w") as err:
+            p = subprocess.Popen(cmd, stdout=out, stderr=err, stdin=subprocess.DEVNULL)
+            try:
+                p.wait(timeout=args.timeout * 60)
+            except subprocess.TimeoutExpired:
+                p.kill()
+        r = job_result(outdir, job)
+        print(f"  {r['status']:5} {job:28} {int(time.time() - t0):5}s  {r.get('thread_url', '')}", flush=True)
+        return r
+
+    with concurrent.futures.ThreadPoolExecutor(len(jobs)) as pool:
+        list(pool.map(launch, jobs))
+    return collect_dir(outdir)
+
+
+def job_result(outdir, job, recover=False):
+    """The job's result line from its event stream (tool output or the
+    agent's last message), else what is known about it."""
+    name = re.sub(r"[^A-Za-z0-9.+-]", "_", job)
+    thread, found, final = "", None, None
+    path = os.path.join(outdir, name + ".jsonl")
+    for line in open(path, errors="replace") if os.path.exists(path) else []:
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        thread = ev.get("session_id", thread)
+        if ev.get("type") == "result":
+            final = ev
+        # The prompt quotes the marker; only output and replies count.
+        if ev.get("type") == "user":
+            ev = [c for c in ev.get("message", {}).get("content", []) if c.get("type") == "tool_result"]
+        for text in strings(ev):
+            for m in re.finditer(MARK + r" (\{.*\})", text):
+                try:
+                    r = json.loads(m[1])
+                except ValueError:
+                    continue
+                if r.get("job") == job:
+                    found = r
+    if found is None and thread and recover:
+        # The stream was cut short (the orchestrator stopped); the thread
+        # still has the worker's output.
+        md = subprocess.run(["amp", "threads", "markdown", thread], text=True,
+                            capture_output=True).stdout
+        for m in re.finditer(MARK + r" (\{.*\})", md):
+            try:
+                r = json.loads(m[1])
+            except ValueError:
+                continue
+            if r.get("job") == job and "<" not in r.get("error", ""):
+                found = r
+    if found is None:
+        found = {"job": job, "status": "lost",
+                 "error": (final or {}).get("error") or (final or {}).get("result", "no result line")[:300]}
+    if thread:
+        found["thread_url"] = f"https://ampcode.com/threads/{thread}"
+    return found
+
+
+def strings(x):
+    if isinstance(x, str):
+        yield x
+    elif isinstance(x, dict):
+        for v in x.values():
+            yield from strings(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from strings(v)
+
+
+def collect_dir(outdir, recover=False):
+    meta = json.load(open(os.path.join(outdir, "fleet.json")))
+    results = [job_result(outdir, j, recover) for j in meta["jobs"]]
+    for r in results:
+        if r.get("rev") and r["rev"] != meta["rev"]:
+            r["status"], r["error"] = "error", f"ran {r['rev'][:12]}, not {meta['rev'][:12]}"
+    # Coverage: every shard saw the same step list, and together they ran
+    # each of its steps once.
+    shards = [r for r in results if "shard" in r or r["job"].startswith("nanofil@")]
+    coverage = None
+    if shards:
+        lists = {json.dumps(r.get("all_steps"), sort_keys=True) for r in shards}
+        ran = [s[2] for r in shards for s in r.get("steps", [])]
+        expected = shards[0].get("all_steps") or {}
+        coverage = {"steps": expected.get("count"), "ran": len(ran), "distinct": len(set(ran)),
+                    "lists_agree": len(lists) == 1,
+                    "complete": len(lists) == 1 and expected.get("count") == len(ran) == len(set(ran))}
+    ok = all(r["status"] == "pass" for r in results) and (coverage is None or coverage["complete"])
+    times = sorted(((s[1], s[2]) for r in shards for s in r.get("steps", [])), key=lambda t: (-t[0], t[1]))
+    with open(os.path.join(outdir, "times.tsv"), "w") as f:
+        f.writelines(f"{t}\t{label}\n" for t, label in times)
+    json.dump({"fleet": meta, "ok": ok, "coverage": coverage, "results": results},
+              open(os.path.join(outdir, "results.json"), "w"), indent=1)
+    md = [f"# nanofil fleet at {meta['rev'][:12]}: {'PASS' if ok else 'FAIL'}", "",
+          f"{len(results)} jobs on {meta['size']}; commit via {'bundle' if meta['bundle'] else 'origin'}.", ""]
+    if coverage:
+        md += [f"Shard coverage: {coverage['ran']} step runs, {coverage['distinct']} distinct, "
+               f"of {coverage['steps']} listed; step lists agree: {coverage['lists_agree']}.", ""]
+    md += ["| job | status | wall | steps | slowest step | thread |", "|---|---|---|---|---|---|"]
+    for r in results:
+        st = r.get("steps") or []
+        slow = max(st, key=lambda s: s[1]) if st else None
+        md.append(f"| {r['job']} | {r['status']} | {str(r['wall_s']) + 's' if 'wall_s' in r else ''} | {len(st) or ''} | "
+                  f"{f'{slow[2]} ({slow[1]}s)' if slow else ''} | {r.get('thread_url', '')} |")
+    for r in results:
+        if r["status"] != "pass":
+            md += ["", f"## {r['job']}: {r['status']}", ""]
+            if r.get("error"):
+                md.append(r["error"])
+            if r.get("failed_steps"):
+                md.append("Failed steps: " + "; ".join(r["failed_steps"]))
+            if r.get("failed_drvs"):
+                md.append("Failed derivations: " + " ".join(r["failed_drvs"]))
+            if r.get("log_tail"):
+                md += ["", "```", *r["log_tail"][-30:], "```"]
+    open(os.path.join(outdir, "summary.md"), "w").write("\n".join(md) + "\n")
+    print("\n".join(md))
+    return 0 if ok else 1
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("run", help="start workers and aggregate their results")
+    r.add_argument("--shards", type=int, default=6, help="shards of checks.nanofil (default 6; 0 runs only --roots)")
+    r.add_argument("--roots", default="", help="comma-separated nanofil-* checks (a+b shares a worker), or all")
+    r.add_argument("--trealla", action="store_true", help="include the paused Trealla step")
+    r.add_argument("--rev", default="HEAD")
+    r.add_argument("--size", default="a1.xxlarge", help="orb size (default a1.xxlarge, 16 CPUs)")
+    r.add_argument("--mode", default="low", help="worker agent mode (default low)")
+    r.add_argument("--timeout", type=int, default=150, help="minutes per worker (default 150)")
+    r.add_argument("--out", help="result directory (default .amp/in/nanofil-fleet/STAMP-REV)")
+    r.add_argument("--dry-run", action="store_true", help="print the jobs and prompts only")
+    c = sub.add_parser("collect", help="aggregate a run directory again")
+    c.add_argument("dir")
+    w = sub.add_parser("worker", help="build one job here and print its result line")
+    w.add_argument("job")
+    a = ap.parse_args()
+    if a.cmd == "run":
+        if a.shards < 0 or a.shards == 0 and not a.roots:
+            raise SystemExit("nothing to run: --shards 0 needs --roots")
+        return run(a)
+    if a.cmd == "collect":
+        return collect_dir(a.dir, recover=True)
+    return worker(a)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

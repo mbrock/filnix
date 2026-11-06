@@ -13,16 +13,27 @@
 # (October 2026): with withTrealla = true a last step repeats the unit
 # tests, the C difftests and the programs on it, and checks that it
 # generates the same random corpus.
+#
+# The steps are independent once the setup below has run: each needs
+# only the saved state, the generated inputs and its own exports. With
+# shard = "I/N" the derivation runs shard I of N (1-based), a fixed
+# split of the step list balanced by tests/check-times.tsv, and keeps
+# going past a failing step; the N shards together run every step once
+# (scripts/nanofil-fleet runs them in parallel orbs). Each step prints
+# a "@@nanofil-step ok|FAIL SECONDS LABEL" line for aggregation.
 {
   pkgs,
   filcc,
   withTrealla ? false,
+  shard ? null,
 }:
 let
   trealla = import ./trealla.nix { inherit pkgs; };
   corpus = import ./corpus.nix { inherit pkgs; };
+  shardName = builtins.replaceStrings [ "/" ] [ "-of-" ] shard;
 in
-pkgs.runCommandCC "nanofil-check"
+pkgs.runCommandCC
+  (if shard == null then "nanofil-check" else "nanofil-check-${shardName}")
   {
     nativeBuildInputs = [
       pkgs.swi-prolog
@@ -34,15 +45,28 @@ pkgs.runCommandCC "nanofil-check"
   ''
     # step LABEL CMD...: run CMD, printing when it starts and how long it
     # took as soon as it ends (watch with nix build -L); the table at the
-    # end sums it up.
-    check_t0=$SECONDS
+    # end sums it up. With $listing set it only prints LABEL; with
+    # $selected set it skips steps not listed in that file.
+    check_t0=$SECONDS failed=
     step() {
-      local label=$1 t0=$SECONDS
+      local label=$1 t0=$SECONDS status=ok mark=
       shift
+      if [ -n "''${listing-}" ]; then
+        printf '%s\n' "$label"
+        return
+      fi
+      if [ -n "''${selected-}" ] && ! grep -Fxq -- "$label" "$selected"; then
+        return
+      fi
       echo ">>> [$((SECONDS - check_t0))s] start: $label"
-      "$@"
-      echo "<<< [$((SECONDS - check_t0))s] done in $((SECONDS - t0))s: $label"
-      printf '%5ds  %s\n' $((SECONDS - t0)) "$label" >>"$TMPDIR/timings"
+      "$@" || status=FAIL mark=" FAILED"
+      echo "<<< [$((SECONDS - check_t0))s] done in $((SECONDS - t0))s: $label$mark"
+      printf '%5ds  %s\n' $((SECONDS - t0)) "$label$mark" >>"$TMPDIR/timings"
+      echo "@@nanofil-step $status $((SECONDS - t0)) $label"
+      if [ $status = FAIL ]; then
+        failed="$failed''${failed:+, }$label"
+        ${if shard == null then "exit 1" else "return 0"}
+      fi
     }
     cp -r ${../.} nanofil
     chmod -R u+w nanofil
@@ -55,8 +79,20 @@ pkgs.runCommandCC "nanofil-check"
     # src/, so both paths are tested.
     bin/nanofil --save-state "$TMPDIR/nanofil.state"
     export NANOFIL_STATE=$TMPDIR/nanofil.state
-    step unit bash -c '(cd src && ../bin/nanofil --script ../tests/unit.pl </dev/null) | tee unit.log'
-    grep -q 'tests ok$' unit.log
+    # Generated inputs, described at the steps that use them.
+    (cd src && ../bin/nanofil --script ../tests/gen.pl 1 200 </dev/null) > gen1.ir
+    python3 -I tests/bigblob.py string 1700000 > bigblob-string.c
+    python3 -I tests/bigblob.py braces 1700000 > bigblob-braces.c
+    # A non-byte table (800k unsigned shorts) is one data chunk too.
+    python3 -I tests/bigblob.py shorts 800000 > bigblob-shorts.c
+    python3 -I tests/longblock.py 1500 > longblock.c
+    python3 -I tests/bigfn.py 1 300 > big1.c
+    python3 -I tests/bigcopy.py 32768 > bigcopy.c
+    python3 -I tests/manyhomes.py 2000 > manyhomes.c
+    python3 -I tests/ifchain.py 600 > ifchain.c
+    python3 -I tests/bigfn.py 2 100 > big2.c
+    steps() {
+    step unit bash -c '(cd src && ../bin/nanofil --script ../tests/unit.pl </dev/null) | tee unit.log && grep -q "tests ok$" unit.log'
     # Every module has a header and every export PlDoc (docs/guide.md,
     # Conventions).
     step docs swipl tests/docs.pl -- src
@@ -67,7 +103,6 @@ pkgs.runCommandCC "nanofil-check"
     # M9 interpreter against nanofil's SSE2 backend.
     # Integer-bit wrappers preserve NaN payloads and negative zero.
     step "difftest float SSE2" env CC=$CC tests/difftest.sh tests/float/*.ir
-    (cd src && ../bin/nanofil --script ../tests/gen.pl 1 200 </dev/null) > gen1.ir
     step "difftest fixtures+gen1" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir
     step "difftest backend" env CC=$CC tests/par.sh tests/difftest.sh tests/backend/*.ir
     export FILCC=${filcc}/bin/clang
@@ -112,15 +147,10 @@ pkgs.runCommandCC "nanofil-check"
     # GLib resource blobs of gtk4's size (1.66 MB), in both of
     # glib-compile-resources' forms: each overflowed the 1 GB stack. They
     # compile within 700 MB, so a real one (with its headers) has room.
-    python3 -I tests/bigblob.py string 1700000 > bigblob-string.c
-    python3 -I tests/bigblob.py braces 1700000 > bigblob-braces.c
-    # A non-byte table (800k unsigned shorts) is one data chunk too.
-    python3 -I tests/bigblob.py shorts 800000 > bigblob-shorts.c
     step bigblob env COMPILE_TIMEOUT=300 NANOFIL_STACK_LIMIT=734003200 \
       tests/progtest.sh bigblob-string.c bigblob-braces.c bigblob-shorts.c
     # One basic block of 3000 statements (tor's keccak-tiny-unrolled.c):
     # block liveness was quadratic in its length (docs/perf.md, item 15).
-    python3 -I tests/longblock.py 1500 > longblock.c
     step longblock env COMPILE_TIMEOUT=60 tests/progtest.sh longblock.c
     step "progtest gc-stress" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
     step "run-c gc gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc
@@ -128,22 +158,18 @@ pkgs.runCommandCC "nanofil-check"
     # every run line on the unoptimized module and checks that each result
     # refines it; unit.pl checks promotion, copy removal, exact pointer
     # identity and bounded symbolic before/after equivalence.
-    python3 -I tests/bigfn.py 1 300 > big1.c
     export NANOFIL_OPT=-O
     # A 32 KB struct copied by value (minizip's zipOpen3): one function of
     # 16k loads and stores, each its own register-home candidate, within
     # SWI's default 1 GB stack (docs/perf.md, item 11).
-    python3 -I tests/bigcopy.py 32768 > bigcopy.c
     # 2000 ints live together, each written twice: about 2M interference
     # pairs between register-home candidates (netcdf's tst_h_atts.c,
     # openssh's libcrux; docs/perf.md, item 13).
-    python3 -I tests/manyhomes.py 2000 > manyhomes.c
     step "-O bigcopy manyhomes 1 GB" env COMPILE_TIMEOUT=300 NANOFIL_STACK_LIMIT=1073741824 \
       tests/progtest.sh bigcopy.c manyhomes.c
     # 600 if arms reading one struct around calls: renewal's dominance
     # test is an interval lookup, not a walk per (check, source) pair
     # (docs/perf.md, item 18), 10 s where the walk took 189 s.
-    python3 -I tests/ifchain.py 600 > ifchain.c
     step "-O ifchain 600 compile time" env COMPILE_TIMEOUT=60 tests/progtest.sh ifchain.c
     step "-O difftest float SSE2" env CC=$CC tests/difftest.sh tests/float/*.ir
     step "-O difftest fixtures+gen1" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir
@@ -378,7 +404,6 @@ pkgs.runCommandCC "nanofil-check"
     step "branches corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
     unset NANOFIL_BRANCHES
     # The functional, versioned-fact and incremental analyses must agree.
-    python3 -I tests/bigfn.py 2 100 > big2.c
     step bench-cfg bash -c '(cd src && ../bin/nanofil --script ../tests/bench-cfg.pl ../big2.c </dev/null)'
     ${pkgs.lib.optionalString withTrealla ''
       export NANOFIL_HOST=trealla
@@ -398,7 +423,25 @@ pkgs.runCommandCC "nanofil-check"
         tests/par.sh tests/progtest.sh tests/c/prog/*.c'
     ''}
     unset NANOFIL_HOST
+    }
+    (listing=1 steps) >"$TMPDIR/steps"
+    # A label names its step in a shard's selection, so each is unique.
+    if sort "$TMPDIR/steps" | uniq -d | grep .; then
+      echo "nanofil check: duplicate step labels above" >&2
+      exit 1
+    fi
+    echo "@@nanofil-steps $(wc -l <"$TMPDIR/steps") $(sha256sum <"$TMPDIR/steps" | cut -c1-16)"
+    ${pkgs.lib.optionalString (shard != null) ''
+      selected=$TMPDIR/selected
+      tests/check-plan.sh ${shard} <"$TMPDIR/steps" >"$selected"
+      echo "@@nanofil-shard ${shard} $(wc -l <"$selected") steps"
+    ''}
+    steps
     echo "== nanofil check timings"
     cat "$TMPDIR/timings"
+    if [ -n "$failed" ]; then
+      echo "@@nanofil-failed $failed"
+      exit 1
+    fi
     touch $out
   ''
