@@ -61,7 +61,7 @@ read_or_report(Root, File, Page) :-
     ).
 
 %  Commands drawn as their text on purpose.
-shown_as_text(K) :- memberchk(K, ['Extraction', 'Ltac', 'Check', 'Compute', 'Print', 'Eval', 'Search']).
+shown_as_text(K) :- memberchk(K, ['Extraction', 'Extract', 'Ltac', 'Check', 'Compute', 'Print', 'Eval', 'Search']).
 
 raw_item(Items, I) :- member(I0, Items), ( I0 = raw(_, _), I = I0 ; I0 = block(_, B, _), raw_item(B, I) ).
 
