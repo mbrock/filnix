@@ -42,7 +42,8 @@ nanofil/tests/guide.sh [--check]               # regenerate (or check) the outpu
 swipl nanofil/tests/docs.pl -- nanofil/src     # every module has a header and every export PlDoc
 (cd nanofil && swipl web/dterm.pl --check docs/guide.md docs/formal.md src)  # the guide's and formal.md's references resolve
 (cd nanofil/src && ../bin/nanofil --script ../tests/gen.pl SEED COUNT </dev/null) >gen.ir  # random IR corpus
-nix build .#checks.x86_64-linux.nanofil        # everything; must pass before pushing
+scripts/nanofil-fleet run [--roots ...]       # everything, sharded over orbs; must pass before pushing
+nix build .#checks.x86_64-linux.nanofil        # the same, unsharded in one build (about 45 min)
 nix build .#checks.x86_64-linux.nanofil-hello  # GNU hello built only by nanofil, vs filcc
 nix build .#checks.x86_64-linux.nanofil-zlib   # zlib built only by nanofil, vs filcc
 nix build .#checks.x86_64-linux.nanofil-lua    # Lua built only by nanofil, vs filcc
@@ -58,8 +59,14 @@ swa that spreads them over swa and its remote builders (igloo, chapel;
 full set or a survey rerun after a push asks the orchestrating thread, or
 a thread on runner swa, to run it at the pushed commit.
 
-From an orb, `scripts/nanofil-fleet run` runs the same checks in a fleet
-of new orbs (`amp -ox`, one thread per job) and aggregates the results
+The pre-push check is `scripts/nanofil-fleet run`, from an orb or a
+runner: it must pass at the commit you push. Add `--roots` for the other
+nanofil-* checks your change can affect (`nanofil-rocq` for `rocq/`,
+`nanofil-lua` and the package builds for frontend and backend changes,
+`--roots all` when unsure). Run the unsharded
+`nix build .#checks.x86_64-linux.nanofil` only when the fleet cannot
+start, and say so. The fleet runs the checks in
+new orbs (`amp -ox`, one thread per job) and aggregates the results
 in `.amp/in/nanofil-fleet/`. It splits `checks.nanofil` into
 `--shards N` (default 6) fixed shards of its steps
 (`lib.x86_64-linux.nanofil-check { shard = "I/N"; }`, balanced by
@@ -197,9 +204,13 @@ Several threads may work on nanofil at once, each owning one workstream.
 - The IR term grammar in `ir.pl` is the contract between the frontend,
   interpreter and backends. Changing it needs the orchestrating thread's
   agreement first.
-- Commit to main and push with `scripts/ship` when the Nix check passes
-  (root AGENTS.md). From an orb it rebases and pushes without publishing;
-  nanofil changes leave every CI output cached, so CI stays green. If the
+- Commit to main and push with `scripts/ship` when the fleet passes
+  (root AGENTS.md). From an orb it rebases and pushes without publishing.
+  Most nanofil changes leave every CI output cached, so CI stays green;
+  a change to `src/`, `bin/` or the dterm files in `web/` changes
+  `site-play` (scripts/ship-outputs.txt), which only a ship on swa
+  publishes, so push it from a thread on runner swa or ask one to ship
+  it. If the
   rebase conflicts in a shared file, resolve it keeping both sides'
   intent and rerun the check.
 - Nothing under nanofil should change the toolchain. If the pre-push hook
