@@ -325,7 +325,16 @@ The Markdown stays the source and reads the same on GitHub. On the page:
   mention it.
 
 A reference that does not resolve fails the site build and
-`swipl web/dterm.pl --check docs/guide.md src`, which the Nix check runs.
+`swipl web/dterm.pl --check docs/guide.md docs/formal.md src`, which the
+Nix check runs.
+
+[formal.md](formal.md), the formal campaign, is drawn the same way as
+`nanofil/formal.html` (dterm.pl takes any number of `--doc=` documents).
+Each module page lists every document's sections that name it; a
+document without a module map, like formal.md, lists the sections that
+mention the module. A glossary term mentioned in one document links to
+its entry in another, and a link to a `.nix` file goes to its
+[dterm-nix](#nix-november-2026) page.
 
 ### Diagrams
 

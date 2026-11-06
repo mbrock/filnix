@@ -40,7 +40,7 @@ nanofil/tests/arith.sh slice|complete|random SEED COUNT DEPTH  # const_eval vs I
 nanofil/tests/snapshot.sh [REV]                # every output identical to REV's (default HEAD)
 nanofil/tests/guide.sh [--check]               # regenerate (or check) the outputs in docs/guide.md and README.md
 swipl nanofil/tests/docs.pl -- nanofil/src     # every module has a header and every export PlDoc
-(cd nanofil && swipl web/dterm.pl --check docs/guide.md src)  # the guide's references resolve
+(cd nanofil && swipl web/dterm.pl --check docs/guide.md docs/formal.md src)  # the guide's and formal.md's references resolve
 (cd nanofil/src && ../bin/nanofil --script ../tests/gen.pl SEED COUNT </dev/null) >gen.ir  # random IR corpus
 nix build .#checks.x86_64-linux.nanofil        # everything; must pass before pushing
 nix build .#checks.x86_64-linux.nanofil-hello  # GNU hello built only by nanofil, vs filcc
@@ -98,6 +98,9 @@ SWI, `swipl ... -g 'profile(Goal)'` shows where time goes.
 nanofil is a working compiler and an executable account of capability
 semantics. [docs/campaign.md](docs/campaign.md) states its foundation and
 current priorities; read it before semantic or structural work.
+[docs/formal.md](docs/formal.md) is the formal campaign built on it:
+a Rocq model of the checked IR, the runtime as axioms, and certificates
+that discharge checks; work in it follows that page's working method.
 [PLAN.md](PLAN.md) tracks milestones and [docs/factorings.md](docs/factorings.md)
 records completed refactorings. The old frontend roadmap is a record,
 not a request to repeat completed work.

@@ -195,6 +195,9 @@ allocates scalar registers ([docs/perf.md](docs/perf.md)).
   where to start a change.
 - [docs/campaign.md](docs/campaign.md): the semantic foundation, evidence
   and trust boundaries, upstream analyses, and current priorities.
+- [docs/formal.md](docs/formal.md): the formal campaign built on it,
+  checked IR in Rocq, the runtime as axioms, and certificates that
+  discharge checks.
 - [PLAN.md](PLAN.md): milestones, decisions, what is next.
 - [docs/pizlonation.md](docs/pizlonation.md) and
   [docs/lifetime.md](docs/lifetime.md): the current check/effect contract

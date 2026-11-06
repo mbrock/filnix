@@ -1,5 +1,6 @@
-/*  The guide as a dterm page: docs/guide.md, drawn beside the module
-    pages it explains (included by dterm.pl, docs/dterm.md).
+/*  Documents as dterm pages: docs/guide.md and docs/formal.md, each
+    drawn beside the module pages it explains as NAME.html (included by
+    dterm.pl, docs/dterm.md).
 
     The Markdown stays the source and reads as it is on GitHub. Here it
     is read as blocks (headings, paragraphs, lists, tables, fences) and
@@ -16,10 +17,13 @@
       links to its definition, with its PlDoc signature in a card shown
       on hover; `name.pl` links to the module's page;
     - glossary entries get anchors, and an emphasized or code mention of
-      a glossary term links to its entry;
-    - each module page links back to the guide's sections that name it
-      and its module-map entry, and each predicate to the sections that
-      mention it.
+      a glossary term, in any of the documents, links to its entry;
+    - a link to a .nix file goes to its dterm-nix page (../nix/), and a
+      link to another of the documents to its page;
+    - each module page links back to each document's sections that name
+      it, its module-map entry, or, in a document without one, the
+      sections that mention it; each predicate links to the sections
+      that mention it.
 
     A reference that does not resolve is broken: an unknown predicate,
     one defined in several modules that its section does not choose
@@ -27,37 +31,65 @@
     output with no terms, or a glossary entry that names no source.
     Broken references fail the site build and `dterm.pl --check`, which
     the Nix check runs.
+
+    Every fact below names its document first, by its file name without
+    `.md`: guide, formal.
 */
 
-:- dynamic guide_slug/2, guide_broken/1, guide_mention/4, guide_heading/4, guide_gloss/2,
+:- dynamic guide_slug/2, guide_broken/1, guide_mention/5, guide_heading/5, guide_gloss/3,
            guide_output/2, guide_module/1, pred_doc/4, guide_entry_ref/1.
 
-%  guide_heading(Id, Level, Title, Modules): a heading of the guide, its
+%  guide_heading(Doc, Id, Level, Title, Modules): a heading of Doc, its
 %  anchor, and the modules (name.pl) it names.
-%  guide_gloss(Key, Id): a glossary entry's term (lower case) and anchor.
-%  guide_mention(Module, What, SecId, SecTitle): the section SecId names
-%  Module's predicate What (Name/Arity), or Module itself (module).
+%  guide_gloss(Doc, Key, Id): a glossary entry's term (lower case) and
+%  anchor.
+%  guide_mention(Doc, Module, What, SecId, SecTitle): the section SecId
+%  names Module's predicate What (Name/Arity), or Module itself (module).
 %  pred_doc(File, PI, Key, Doc): the documentation dterm draws for PI.
 
 %% Reading
 
-%  guide_render(+Guide, +Sources, -Page): Page is the guide's page, its
-%  references resolved against the indexed Sources.
-guide_render(Guide, Sources, Page) :-
+%  guide_render(+Paths, +Sources, -Pages): Pages are Doc-Page for each
+%  document, its references resolved against the indexed Sources and
+%  against every document's headings and glossary.
+guide_render(Paths, Sources, Pages) :-
     forall(member(src(Base, _, _, _), Sources), assertz(guide_module(Base))),
     forall(member(Src, Sources), index_docs(Src)),
-    file_directory_name(Guide, Dir),
-    nb_setval(guide_dir, Dir),
-    directory_file_path(Dir, 'guide/outputs.pl', Outputs),
-    load_outputs(Outputs),
-    read_file_to_string(Guide, Text, [encoding(utf8)]),
+    maplist(doc_name, Paths, Docs),
+    nb_setval(guide_docs, Docs),
+    maplist(read_doc, Paths, Read),
+    maplist(render_doc, Read, Pages).
+
+%  doc_name(+Path, -Doc): docs/formal.md is formal.
+doc_name(Path, Doc) :- file_base_name(Path, F), file_name_extension(Doc, _, F).
+
+%  doc_label(+Doc, -Label): how a module page names the document.
+doc_label(guide, "the guide") :- !.
+doc_label(formal, "the formal campaign") :- !.
+doc_label(Doc, Doc).
+
+read_doc(Path, doc(Doc, Dir, Blocks)) :-
+    doc_name(Path, Doc),
+    file_directory_name(Path, Dir),
+    read_file_to_string(Path, Text, [encoding(utf8)]),
     split_string(Text, "\n", "", Lines),
     md_blocks(Lines, Blocks),
-    guide_prepass(Blocks),
+    nb_setval(guide_doc, Doc),
+    retractall(guide_slug(_, _)),
+    guide_prepass(Blocks).
+
+render_doc(doc(Doc, Dir, Blocks), Doc-Page) :-
+    nb_setval(guide_doc, Doc),
+    nb_setval(guide_dir, Dir),
+    retractall(guide_output(_, _)),
+    directory_file_path(Dir, Doc, OutDir),
+    directory_file_path(OutDir, 'outputs.pl', Outputs),
+    load_outputs(Outputs),
     nb_setval(dterm_file, guide),
+    nb_setval(guide_h2, ""),
     nb_setval(guide_sec, sec(top, "", [])),
     nb_setval(guide_entry, none),
-    phrase(guide_page(Blocks), Page).
+    phrase(guide_page(Doc, Blocks), Page).
 
 index_docs(src(Base, _, _, Events)) :-
     entries(Events, Es),
@@ -79,8 +111,8 @@ read_outputs(S) :-
 
 broken(Fmt, Args) :-
     format(string(M), Fmt, Args),
-    nb_getval(guide_sec, sec(_, Title, _)),
-    format(string(Msg), "~w (in \"~w\")", [M, Title]),
+    nb_getval(guide_sec, sec(_, Title, _)), nb_getval(guide_doc, Doc),
+    format(string(Msg), "~w.md: ~w (in \"~w\")", [Doc, M, Title]),
     (   guide_broken(Msg) -> true ; assertz(guide_broken(Msg)) ).
 
 %% Blocks: a little of GitHub's Markdown
@@ -163,12 +195,12 @@ prepass([]).
 prepass([B|Bs]) :- prepass_(B), prepass(Bs).
 
 prepass_(h(N, T)) :- !,
-    heading_id(T, Id), heading_modules(T, Mods),
-    assertz(guide_heading(Id, N, T, Mods)),
+    heading_id(T, Id), heading_modules(T, Mods), nb_getval(guide_doc, D),
+    assertz(guide_heading(D, Id, N, T, Mods)),
     ( N =:= 2 -> nb_setval(guide_h2, T) ; true ).
 prepass_(p(T)) :- nb_getval(guide_h2, "Glossary"), gloss_names(T, Names), !,
-    Names = [First|_], gloss_id(First, Id),
-    forall(member(N, Names), ( string_lower(N, K), assertz(guide_gloss(K, Id)) )).
+    Names = [First|_], gloss_id(First, Id), nb_getval(guide_doc, D),
+    forall(member(N, Names), ( string_lower(N, K), assertz(guide_gloss(D, K, Id)) )).
 prepass_(ul(Items)) :- !, maplist(prepass, Items).
 prepass_(_).
 
@@ -202,18 +234,18 @@ heading_modules(T, Mods) :-
 
 %% The page
 
-guide_page(Blocks) -->
-    { findall(Id-T, guide_heading(Id, 1, T, _), [_-Title|_]) },
+guide_page(Doc, Blocks) -->
+    { findall(Id-T, guide_heading(Doc, Id, 1, T, _), [_-Title|_]), doc_label(Doc, Label) },
     shell(Title, ( el(a, crumb, [href="../index.html"], "Wiki"), el(span, "crumb-sep", "›"),
                    el(a, crumb, [href="index.html"], "nanofil"), el(span, "crumb-sep", "›"),
-                   el(span, "crumb current", "guide") ),
+                   el(span, "crumb current", esc(Doc)) ),
           ( el(nav, "toc dterm-nav guide-nav",
-               ( el(div, "toc-title", "the guide"), guide_toc )),
+               ( el(div, "toc-title", esc(Label)), guide_toc(Doc) )),
             el(article, "dterm guide",
                el(div, "prose guide-prose", gblocks(Blocks))) )).
 
-guide_toc -->
-    { findall(N-(Id-T), ( guide_heading(Id, N, T, _), N >= 2, N =< 3 ), Hs) },
+guide_toc(Doc) -->
+    { findall(N-(Id-T), ( guide_heading(Doc, Id, N, T, _), N >= 2, N =< 3 ), Hs) },
     el(ul, none, toc_items(Hs)).
 
 toc_items([]) --> [].
@@ -235,7 +267,7 @@ gblocks([]) --> [].
 gblocks([B|Bs]) --> gblock(B), gblocks(Bs).
 
 gblock(h(N, T)) -->
-    { guide_heading(Id, N, T, Mods), !,
+    { nb_getval(guide_doc, D), guide_heading(D, Id, N, T, Mods), !,
       ( N >= 2 -> nb_setval(guide_sec, sec(Id, T, Mods)) ; true ),
       ( N =:= 2 -> nb_setval(guide_h2, T) ; true ),
       format(atom(H), "h~d", [N]),
@@ -254,7 +286,7 @@ gblock(p(T)) -->
     { atom_concat('map-', M, Id),
       nb_getval(guide_sec, Sec), Sec = sec(SId, ST, Mods),
       nb_setval(guide_sec, sec(SId, ST, [M|Mods])),
-      assertz(guide_mention(M, map, Id, "the module map")),
+      nb_getval(guide_doc, D), assertz(guide_mention(D, M, map, Id, "the module map")),
       string_codes(T, Cs), phrase(gi(Cs), Body),
       nb_setval(guide_sec, Sec) },
     el(p, "map-entry", [id=Id], raw(Body)).
@@ -351,8 +383,8 @@ gword(W, Cs) --> esc(W), gi(Cs).
 gcode(Code) --> { code_pred(Code, M, PI) }, !, gpred(M, PI, Code).
 gcode(Code) --> { append(W, `.pl`, Code), W \== [], maplist(word_char, W) }, !,
     gmodule(W, el(code, none, esc(Code))).
-gcode(Code) --> { atom_codes(A, Code), gloss_link(A, Id) }, !,
-    { atom_concat('#', Id, Href) }, el(a, gloss, [href=Href], el(code, none, esc(Code))).
+gcode(Code) --> { atom_codes(A, Code), gloss_link(A, Href) }, !,
+    el(a, gloss, [href=Href], el(code, none, esc(Code))).
 gcode(Code) --> { code_term(Code, T) }, !, el(code, term, term(T, _, 999, ctx(guide, data))).
 gcode(Code) --> el(code, none, esc(Code)).
 
@@ -366,24 +398,38 @@ code_pred(Code, M, PI) :-
     word(Rest, W, Cs1), W \== [], pred_ref(W, Cs1, _, PI, []).
 
 gem(In) -->
-    { atom_codes(A, In), gloss_link(A, Id) }, !,
-    { atom_concat('#', Id, Href) }, el(a, gloss, [href=Href], el(em, none, gt(In))).
+    { atom_codes(A, In), gloss_link(A, Href) }, !,
+    el(a, gloss, [href=Href], el(em, none, gt(In))).
 gem(In) --> el(em, none, gi(In)).
 
-%  gloss_link(+Word, -Id): Word, or its singular, is a glossary term,
-%  outside that term's own entry.
-gloss_link(A, Id) :-
+%  mention(+Module, +What): the current section names Module's
+%  predicate What, or Module itself (module).
+mention(M, What) :-
+    nb_getval(guide_doc, D), nb_getval(guide_sec, sec(SId, ST, _)),
+    assertz(guide_mention(D, M, What, SId, ST)).
+
+%  gloss_link(+Word, -Href): Word, or its singular, is a glossary term of
+%  this document or another, outside that term's own entry.
+gloss_link(A, Href) :-
     downcase_atom(A, L), atom_string(L, S),
-    (   guide_gloss(S, Id) -> true
-    ;   string_concat(S1, "s", S), guide_gloss(S1, Id)
+    (   gloss_entry(S, D, Id) -> true
+    ;   string_concat(S1, "s", S), gloss_entry(S1, D, Id)
     ),
-    \+ nb_getval(guide_entry, Id).
+    nb_getval(guide_doc, Here),
+    (   D == Here -> \+ nb_getval(guide_entry, Id), atom_concat('#', Id, Href)
+    ;   format(atom(Href), "~w.html#~w", [D, Id])
+    ).
+
+gloss_entry(S, D, Id) :-
+    nb_getval(guide_doc, Here),
+    (   guide_gloss(Here, S, Id) -> D = Here
+    ;   guide_gloss(D, S, Id)
+    ), !.
 
 %  gpred(?Module, +PI, +Ref): a link to PI's definition with its
 %  signature card; a library predicate is plain code.
 gpred(M0, PI, Ref) --> { guide_resolve(M0, PI, M, Id) }, !,
-    { nb_getval(guide_sec, sec(SId, ST, _)),
-      assertz(guide_mention(M, PI, SId, ST)), assertz(guide_entry_ref(M)),
+    { mention(M, PI), assertz(guide_entry_ref(M)),
       uri_encoded(fragment, Id, Frag), format(atom(Href), "~w.html#~w", [M, Frag]) },
     el(span, pref, ( el(a, ref, [href=Href], el(code, none, esc(Ref))), card(M, PI) )).
 gpred(M0, N/A, Ref) --> { var(M0), library_pred(N, A) }, !, el(code, none, esc(Ref)).
@@ -412,8 +458,7 @@ library_pred(N, A) :-
 gmodule(W, Text) -->
     { atom_codes(M, W) },
     (   { guide_module(M) }
-    ->  { nb_getval(guide_sec, sec(SId, ST, _)),
-          assertz(guide_mention(M, module, SId, ST)), assertz(guide_entry_ref(M)),
+    ->  { mention(M, module), assertz(guide_entry_ref(M)),
           atom_concat(M, '.html', Href) },
         el(a, "ref module", [href=Href], Text)
     ;   { broken("~w.pl is not a module of nanofil/src", [M]) },
@@ -424,15 +469,15 @@ gmodule(W, Text) -->
 glink(Txt, Url0) -->
     { atom_codes(Url, Url0), link_target(Url, Href, Mod) }, !,
     (   { Mod == none } -> [] 
-    ;   { nb_getval(guide_sec, sec(SId, ST, _)),
-          assertz(guide_mention(Mod, module, SId, ST)), assertz(guide_entry_ref(Mod)) }
+    ;   { mention(Mod, module), assertz(guide_entry_ref(Mod)) }
     ),
     el(a, none, [href=Href], gt(Txt)).
 glink(Txt, Url0) --> { broken("link to ~s does not resolve", [Url0]) }, el(span, broken, gt(Txt)).
 
 link_target(Url, Url, none) :- sub_atom(Url, B, _, _, ':'), B > 0, !.
 link_target(Url, Url, none) :- atom_concat('#', Frag, Url), !,
-    ( guide_heading(Frag, _, _, _) ; guide_gloss(_, Frag) ), !.
+    nb_getval(guide_doc, D),
+    ( guide_heading(D, Frag, _, _, _) ; guide_gloss(D, _, Frag) ), !.
 link_target(Url, Href, M) :-
     atom_concat('../src/', F, Url), file_name_extension(M, pl, F), guide_module(M), !,
     atom_concat(M, '.html', Href).
@@ -441,11 +486,30 @@ link_target(Url, Href, none) :-
     nb_getval(guide_dir, Dir), directory_file_path(Dir, Path, Abs),
     linked_file(Dir, Path, Abs),
     (   \+ sub_atom(Path, _, _, _, '/'), file_name_extension(Name, md, Path)
-    ->  format(atom(Href), "docs/~w.html~w", [Name, Frag])
+    ->  (   nb_getval(guide_docs, Docs), memberchk(Name, Docs)
+        ->  format(atom(Href), "~w.html~w", [Name, Frag])
+        ;   format(atom(Href), "docs/~w.html~w", [Name, Frag])
+        )
+    ;   file_name_extension(_, nix, Path), nix_page(Path, Page)
+    ->  format(atom(Href), "../nix/~w~w", [Page, Frag])
     ;   github(G),
         (   atom_concat('../', Rel, Path) -> true ; atom_concat('docs/', Path, Rel) ),
         format(atom(Href), "~w~w~w", [G, Rel, Frag])
     ).
+
+%  nix_page(+Path, -Page): the dterm-nix page of a .nix file a link from
+%  nanofil/docs names: ../nix/check.nix is nanofil-nix-check.html.
+nix_page(Path, Page) :-
+    atomic_list_concat(Parts0, '/', Path),
+    append([nanofil, docs], Parts0, Parts1),
+    foldl(rel_part, Parts1, [], RevParts), reverse(RevParts, Parts),
+    Parts \== [], Parts \= [experiments|_],
+    atomic_list_concat(Parts, '-', B0),
+    file_name_extension(B, nix, B0), file_name_extension(B, html, Page).
+
+rel_part('..', [_|Ps], Ps) :- !.
+rel_part('.', Ps, Ps) :- !.
+rel_part(P, Ps, [P|Ps]).
 
 %  linked_file(+Dir, +Path, +Abs): the file a link names exists. The
 %  site's sources hold only nanofil's docs, src and web (no bin/nanofil),
@@ -518,23 +582,36 @@ ct([C|Cs]) --> esc_code(C), ct(Cs).
 
 %% Links from the module pages back to the guide
 
-%  guide_backlinks(+Base): the guide's sections that name Base.pl in
-%  their heading, and its module-map entry.
+%  guide_backlinks(+Base): for each document, its sections that name
+%  Base.pl in their heading and its module-map entry, or, in a document
+%  without a module map, the sections that mention the module.
 guide_backlinks(Base) -->
-    { findall(Id-T, ( guide_heading(Id, N, T, Mods), N >= 2, memberchk(Base, Mods) ), Hs),
-      ( guide_mention(Base, map, MapId, _) -> Map = [MapId] ; Map = [] ) },
+    { ( nb_current(guide_docs, Docs) -> true ; Docs = [] ) },
+    seq(Docs, doc_backlinks(Base)).
+
+doc_backlinks(Base, D) -->
+    { findall(Id-T, ( guide_heading(D, Id, N, T, Mods), N >= 2, memberchk(Base, Mods) ), Hs0),
+      ( guide_mention(D, Base, map, MapId, _) -> Map = [MapId] ; Map = [] ),
+      (   \+ guide_mention(D, _, map, _, _)
+      ->  findall(Id-T, guide_mention(D, Base, module, Id, T), Hs1), list_to_set(Hs1, Hs)
+      ;   Hs = Hs0
+      ),
+      doc_label(D, Label) },
     (   { Hs == [], Map == [] } -> []
     ;   el(aside, "guide-links",
-           ( el(span, label, "in the guide"), seq(Hs, guide_section_link),
-             seq(Map, guide_map_link) ))
+           ( el(span, label, ( "in ", esc(Label) )), seq(Hs, guide_section_link(D)),
+             seq(Map, guide_map_link(D)) ))
     ).
 
-guide_section_link(Id-T) -->
-    { format(atom(Href), "guide.html#~w", [Id]) }, el(a, none, [href=Href], toc_text(T)).
-guide_map_link(Id) -->
-    { format(atom(Href), "guide.html#~w", [Id]) }, el(a, none, [href=Href], "the module map").
+guide_section_link(D, Id-T) -->
+    { format(atom(Href), "~w.html#~w", [D, Id]) }, el(a, none, [href=Href], toc_text(T)).
+guide_map_link(D, Id) -->
+    { format(atom(Href), "~w.html#~w", [D, Id]) }, el(a, none, [href=Href], "the module map").
 
-%  The guide's sections that mention predicate PI of File, as Id-Title.
-guide_pred_sections(File, PI, Secs) :-
-    findall(Id-T, guide_mention(File, PI, Id, T), Secs0),
-    list_to_set(Secs0, Secs).
+%  The sections of each document that mention predicate PI of File, as
+%  Doc-Secs with Secs a list of Id-Title, in the order of the documents.
+guide_pred_sections(File, PI, DocSecs) :-
+    ( nb_current(guide_docs, Docs) -> true ; Docs = [] ),
+    findall(D-Secs, ( member(D, Docs),
+                      findall(Id-T, guide_mention(D, File, PI, Id, T), Secs0),
+                      list_to_set(Secs0, Secs), Secs \== [] ), DocSecs).

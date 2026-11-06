@@ -46,10 +46,11 @@ done
 
 mkdir -p "$out/nanofil"
 cp "$src"/nanofil/web/dterm.css "$src"/nanofil/web/dterm.js "$out/nanofil/"
-# The guide is a dterm page too (nanofil/guide.html); a broken reference
-# in it fails the build.
+# The guide and the formal campaign are dterm pages too
+# (nanofil/guide.html, nanofil/formal.html); a broken reference in either
+# fails the build.
 swipl "$src/nanofil/web/dterm.pl" "$out/nanofil" "$src/nanofil/src" \
-  --guide="$src/nanofil/docs/guide.md" </dev/null
+  --doc="$src/nanofil/docs/guide.md" --doc="$src/nanofil/docs/formal.md" </dev/null
 # The dterm workbench: the samples drawn by dterm, set side by side.
 mkdir -p "$out/nanofil/workbench"
 wb=$src/nanofil/web/workbench
@@ -61,9 +62,10 @@ mkdir -p "$out/nanofil/docs"
 cp -r "$src/nanofil/docs/dterm" "$out/nanofil/docs/"
 for md in "$src"/nanofil/docs/*.md; do
   name=$(basename "$md" .md)
-  if [ "$name" = guide ]; then
-    # Drawn by dterm beside the modules; the old address forwards there.
-    printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=../guide.html"><link rel="canonical" href="../guide.html"><a href="../guide.html">The guide</a>\n' >"$out/nanofil/docs/guide.html"
+  if [ "$name" = guide ] || [ "$name" = formal ]; then
+    # Drawn by dterm beside the modules; this address forwards there.
+    printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=../%s.html"><link rel="canonical" href="../%s.html"><a href="../%s.html">%s</a>\n' \
+      "$name" "$name" "$name" "$name" >"$out/nanofil/docs/$name.html"
     continue
   fi
   args=()

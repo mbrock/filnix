@@ -401,3 +401,8 @@ These are research directions, not additional acceptance claims:
   abstract execution. State the object correspondence and environmental
   assumptions each comparison needs. These provide small candidates for
   formalization without claiming a verified C frontend or native backend.
+- **A formal campaign.** [formal.md](formal.md) plans the step beyond
+  them: the core of ir.pl and interp.pl transcribed into Rocq, the
+  runtime's promises as one page of axioms, a machine-checked theorem
+  that a valid checked module never reaches `unchecked`, and checks
+  removed only where an extracted checker replays a certificate.

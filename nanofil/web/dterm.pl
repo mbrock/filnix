@@ -22,14 +22,14 @@
 
     Calls to predicates defined in the corpus link to their definitions.
 
-    Usage: swipl dterm.pl -- OUT SRC-DIR... [--guide=GUIDE.md] Writes
+    Usage: swipl dterm.pl -- OUT SRC-DIR... [--doc=DOC.md]... Writes
     OUT/index.html and one OUT/NAME.html per SRC-DIR/NAME.pl; dterm.css
-    and dterm.js are expected beside the pages. With --guide, it also
-    draws the guide as OUT/guide.html (dterm_guide.pl), and fails if the
-    guide has a broken reference.
+    and dterm.js are expected beside the pages. Each --doc, such as the
+    guide, is also drawn as OUT/DOC.html (dterm_guide.pl), and the run
+    fails if a document has a broken reference.
 
-    swipl dterm.pl -- --check GUIDE.md SRC-DIR... writes nothing: it
-    lists the guide's broken references and exits 1 if there are any.
+    swipl dterm.pl -- --check DOC.md... SRC-DIR... writes nothing: it
+    lists the documents' broken references and exits 1 if there are any.
 
     Runs on SWI-Prolog only: it relies on read_term/3's comments and
     subterm_positions options.
@@ -71,39 +71,41 @@ github('https://github.com/mbrock/filnix/blob/main/nanofil/').
 
 main :-
     current_prolog_flag(argv, Argv),
-    (   Argv = ['--check', Guide|Dirs] -> Out = none
-    ;   Argv = [Out|Dirs0],
-        (   select(G, Dirs0, Dirs), atom_concat('--guide=', Guide, G) -> true
-        ;   Dirs = Dirs0, Guide = none
-        )
+    (   Argv = ['--check'|Args] -> Out = none, partition(is_doc, Args, Docs, Dirs)
+    ;   Argv = [Out|Args],
+        partition([A]>>atom_concat('--doc=', _, A), Args, DocArgs, Dirs),
+        maplist([A, D]>>atom_concat('--doc=', D, A), DocArgs, Docs)
     ),
     findall(F, (member(D, Dirs), directory_file_path(D, '*.pl', P),
                 expand_file_name(P, Fs), member(F, Fs)), Files0),
     sort(Files0, Files),
     maplist(read_source, Files, Sources),
     maplist(index_source, Sources),
-    (   Guide == none -> true ; guide_render(Guide, Sources, Page) ),
+    guide_render(Docs, Sources, Pages),
     (   Out == none -> true
     ;   maplist(run_examples(Files), Sources),
         maplist(write_source_page(Out, Sources), Sources),
-        (   Guide == none -> true
-        ;   directory_file_path(Out, 'guide.html', GuidePath), write_page(GuidePath, raw(Page))
-        ),
+        forall(member(Name-Page, Pages),
+               ( file_name_extension(Name, html, H), directory_file_path(Out, H, Path),
+                 write_page(Path, raw(Page)) )),
         directory_file_path(Out, 'index.html', Index),
         write_page(Index, index_page(Sources))
     ),
-    (   Guide == none -> true ; guide_report(Guide) ).
+    guide_report(Docs).
 
-%  guide_report(+Guide): fails, listing them, if Guide has broken
+is_doc(A) :- file_name_extension(_, md, A).
+
+%  guide_report(+Docs): fails, listing them, if a document has broken
 %  references.
-guide_report(Guide) :-
+guide_report(Docs) :-
     findall(M, guide_broken(M), Ms),
     (   Ms == []
-    ->  aggregate_all(count, guide_mention(_, _, _, _), N),
-        format("dterm: ~w: ~w references resolved~n", [Guide, N])
-    ;   forall(member(M, Ms), format(user_error, "~w: broken reference: ~w~n", [Guide, M])),
+    ->  forall(( member(Path, Docs), doc_name(Path, D) ),
+               ( aggregate_all(count, guide_mention(D, _, _, _, _), N),
+                 format("dterm: ~w: ~w references resolved~n", [Path, N]) ))
+    ;   forall(member(M, Ms), format(user_error, "broken reference: ~w~n", [M])),
         length(Ms, N),
-        format(user_error, "dterm: ~w broken references in ~w~n", [N, Guide]),
+        format(user_error, "dterm: ~w broken references~n", [N]),
         halt(1)
     ).
 
@@ -930,16 +932,18 @@ xref_aside(Callees, Callers, Guide) -->
        ( xref_list("calls", Callees), xref_list("called by", Callers),
          guide_xrefs(Guide) )).
 
-%  The guide's sections that mention the predicate.
+%  The sections of each document (the guide, the formal campaign) that
+%  mention the predicate, as Doc-Secs.
 guide_xrefs([]) --> !, [].
-guide_xrefs(Secs) -->
-    { length(Secs, N) },
+guide_xrefs([Doc-Secs|DSs]) -->
+    { length(Secs, N), doc_label(Doc, Label) },
     el(div, "xref-group guide-xref",
-       ( el(div, "xref-title", ( "in the guide ", el(span, count, esc(N)) )),
-         el(ul, none, seq(Secs, guide_xref)) )).
+       ( el(div, "xref-title", ( "in ", esc(Label), " ", el(span, count, esc(N)) )),
+         el(ul, none, seq(Secs, guide_xref(Doc))) )),
+    guide_xrefs(DSs).
 
-guide_xref(Id-T) -->
-    { format(atom(Href), "guide.html#~w", [Id]) },
+guide_xref(Doc, Id-T) -->
+    { format(atom(Href), "~w.html#~w", [Doc, Id]) },
     el(li, none, el(a, none, [href=Href], toc_text(T))).
 
 xref_list(_, []) --> !, [].
@@ -1393,7 +1397,9 @@ index_page(Sources) -->
                                     "). These pages draw its source as terms: clause heads over their goals, ",
                                     "conditionals as tables, fact tables as tables, PlDoc as signatures. ",
                                     el(a, none, [href="guide.html"], "The guide"),
-                                    " follows one C function through every stage and maps the modules. ",
+                                    " follows one C function through every stage and maps the modules; ",
+                                    el(a, none, [href="formal.html"], "the formal campaign"),
+                                    " plans a Rocq model of the checked IR and checks removed by certificate. ",
                                     el(a, none, [href="play/"], "Compile C with it"),
                                     " in the browser, or compare how terms are set in the ",
                                     el(a, none, [href="workbench/"], "workbench"), "." )) )),

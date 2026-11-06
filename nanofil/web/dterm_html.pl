@@ -137,11 +137,18 @@ table_line(L, Cells) :-
 
 cells(Cs, [Cell|Cells]) :- cell(Cs, Cell, Rest), ( Rest = [0'||More] -> cells(More, Cells) ; Cells = [] ).
 
+%  As in GitHub's tables, \| is a | in the cell, inside backticks too.
 cell([], [], []).
+cell([0'\\, 0'||Cs], [0'||Cell], Rest) :- !, cell(Cs, Cell, Rest).
 cell([0'||Cs], [], [0'||Cs]) :- !.
-cell([0'`|Cs0], [0'`|Cell], Rest) :- append(Code, [0'`|Cs1], Cs0), !,
+cell([0'`|Cs0], [0'`|Cell], Rest) :- append(Code0, [0'`|Cs1], Cs0), !,
+    unescape_pipes(Code0, Code),
     cell(Cs1, Cell0, Rest), append(Code, [0'`|Cell0], Cell).
 cell([C|Cs0], [C|Cell], Rest) :- cell(Cs0, Cell, Rest).
+
+unescape_pipes([], []).
+unescape_pipes([0'\\, 0'||Cs0], [0'||Cs]) :- !, unescape_pipes(Cs0, Cs).
+unescape_pipes([C|Cs0], [C|Cs]) :- unescape_pipes(Cs0, Cs).
 
 rule_cell(C) :- string_codes(C, Cs), Cs \== [], forall(member(X, Cs), memberchk(X, `-:`)).
 
