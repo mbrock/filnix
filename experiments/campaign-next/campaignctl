@@ -259,10 +259,10 @@ def main():
     kinds.add_parser("manifest", parents=[common]).add_argument("path")
     args = p.parse_args()
     if args.command == "submit":
-        for key, value in (("rev", "main"), ("priority", 0), ("id", None), ("set", []),
+        for key, default in (("rev", "main"), ("priority", 0), ("id", None), ("set", []),
                            ("dry_run", False)):
             if not hasattr(args, key):
-                setattr(args, key, value)
+                setattr(args, key, default)
 
     c = args.command
     if c == "status":

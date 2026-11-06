@@ -31,7 +31,11 @@ scope. The normal per-revision campaign is `expected`; `ports` is exploration.
    push is not a claim that the broader campaign passed.
 5. Once the needed distribution artifacts are cached, rerun their CI job.
    A tagged Filnix release is a separate, explicitly requested operation;
-   its full distribution cache gate is unchanged.
+   its full distribution cache gate is unchanged. To build that gate's
+   outputs for a revision, submit
+   `campaignctl submit attrs --rev REV --file scripts/ci-outputs.txt --set publish=true`:
+   `attrs` campaigns do not publish by default, and the cache publishers
+   only see outputs of campaigns that do.
 
 The campaign executes package builds, including each package's enabled
 checks. It does not automatically execute every `flake.nix` check: those
