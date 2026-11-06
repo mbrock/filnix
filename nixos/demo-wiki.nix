@@ -161,7 +161,9 @@ in
       {
         echo "filc.less.rest at $(date -u '+%Y-%m-%d %H:%M UTC'), up $(awk '{ printf "%d days %d hours", $1 / 86400, $1 % 86400 / 3600 }' /proc/uptime)"
         echo "system: $(readlink /run/current-system)"
-        echo "filnix: $(cat /var/lib/filnix-update/tag 2>/dev/null || echo '${filnix.rev or "local"}')"
+        # The revision this system was built from, not the updater's tag
+        # file, which lags when a switch fails before writing it.
+        echo "filnix: ${filnix.rev or "local"}$(tag=$(cat /var/lib/filnix-update/tag 2>/dev/null) && echo " (filnix-update: $tag)")"
         echo "kernel: $(uname -r)"
         echo
         echo "Every running process, by whether it maps libpizlo, the Fil-C runtime."
@@ -191,9 +193,13 @@ in
       curl
       jq
       coreutils
+      config.systemd.package
     ];
     serviceConfig.Type = "oneshot";
     serviceConfig.StateDirectory = "filnix-update";
+    # The switch changes this unit too; restarting it would kill the switch's
+    # caller before it writes the tag, and the rerun collides with the switch.
+    restartIfChanged = false;
     script = ''
       tag=$(curl -fsS https://api.github.com/repos/mbrock/filnix/releases/latest | jq -er .tag_name)
       case $tag in v*) ;; *) echo "unexpected tag: $tag"; exit 1 ;; esac
@@ -205,6 +211,7 @@ in
       nixos-rebuild switch --flake "github:mbrock/filnix/$tag#demo-wiki" \
         --option max-jobs 0 --option builders ""
       echo "$tag" > /var/lib/filnix-update/tag
+      systemctl start --no-block filc-status.service
     '';
   };
   systemd.timers.filnix-update = {
