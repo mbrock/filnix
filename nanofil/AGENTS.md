@@ -80,6 +80,12 @@ Its `times.tsv` is the new `tests/check-times.tsv` when the split has
 drifted. Steps live in `nix/check.nix`'s `steps` function; give each
 a unique label, since labels select a step's shard.
 
+Before launching workers the fleet checks the candidate's `filcc-staging`
+closure through Cachix + cache.nixos.org; missing paths or check errors
+start zero workers. Ask the swa lander to repair a staging miss. A missing
+candidate `site-play` does not block testing: it gates landing instead.
+`--dry-run` shows the preflight and prompts without checking or launching.
+
 For many runs, `bin/nanofil --save-state /tmp/nanofil.state` and
 `export NANOFIL_STATE=/tmp/nanofil.state` skip compiling `src/` each time
 (0.26 s to 0.05 s); rebuild the state after editing `src/`, or unset it.
@@ -205,15 +211,29 @@ Several threads may work on nanofil at once, each owning one workstream.
 - The IR term grammar in `ir.pl` is the contract between the frontend,
   interpreter and backends. Changing it needs the orchestrating thread's
   agreement first.
-- Commit to main and push with `scripts/ship` when the fleet passes
-  (root AGENTS.md). From an orb it rebases and pushes without publishing.
-  Most nanofil changes leave every CI output cached, so CI stays green;
-  a change to `src/`, `bin/` or the dterm files in `web/` changes
-  `site-play` (scripts/ship-outputs.txt), which only a ship on swa
-  publishes, so push it from a thread on runner swa or ask one to ship
-  it. If the
-  rebase conflicts in a shared file, resolve it keeping both sides'
-  intent and rerun the check.
+- Rebase onto current main before the final commit X and run
+  `scripts/nanofil-fleet run --rev X --shards 6 --roots nanofil-rocq`,
+  adding other affected roots (or `--roots all`). Freeze the candidate
+  ref and hand the swa lander its branch/bundle, full X, observed main,
+  exact command, pass/coverage, and `results.json`; retain `fleet.json`,
+  `summary.md`, and worker logs as supporting evidence. Transfer the files
+  explicitly: an orb path is not a path on swa. Never commit receipts
+  after testing, since that would create a new SHA.
+- The lander fetches the branch/bundle, confirms it is X, checks out X,
+  and runs `scripts/ship --exact X --fleet-results FILE`. Six complete
+  shards plus Rocq are required; `--roots LIST` adds other required roots
+  and `--roots all` requires all. The existing receipt is verified; do not
+  rerun its fleet just because ownership changed. Main must be an ancestor
+  of X. If main diverges, stop, rebase, resolve any conflicts preserving
+  both sides' intent, and rerun at the new SHA. No cherry-pick, implicit
+  rebase, cross-SHA receipt reuse, or force-push in the landing path.
+- Shipping checks all foundations in `scripts/ship-outputs.txt` and
+  publishes only missing outputs through swa before main advances. A
+  `src/`, `bin/`, or playground/dterm change can invalidate `site-play`.
+  No publisher with missing outputs means no push; `--no-publish` is not
+  a waiver. Keep one normal main lander on swa; feature branches can be
+  pushed from orbs before publication. `scripts/ship --publish-only --rev X`
+  repairs caches even if X is already main, without changing refs.
 - Nothing under nanofil should change the toolchain. If the pre-push hook
   says "CI will fail until these are published", stop, do not push with
   --no-verify, and report what changed it.

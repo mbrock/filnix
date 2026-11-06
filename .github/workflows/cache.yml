@@ -41,6 +41,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Shipping and publication contracts
+        run: |
+          python3 -m unittest discover -s tests -p test_ship.py
+          python3 -m unittest discover -s tests -p test_cache_publication.py
       - uses: cachix/install-nix-action@v31
       - name: Closures are in the public caches
         run: |

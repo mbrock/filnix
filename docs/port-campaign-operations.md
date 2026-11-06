@@ -19,8 +19,12 @@ scope. The normal per-revision campaign is `expected`; `ports` is exploration.
 2. Run `scripts/ship`. Its cache gate is `scripts/ship-outputs.txt`: the
    compiler and the curated `baseline`, with their complete closures and
    baseline smoke tests. GTK, Emacs and distribution tarballs are not in
-   this gate. `--no-publish` explicitly bypasses the cache guarantee and is
-   not the normal toolchain rollout path.
+   this gate. Shipping checks first and publishes only incomplete outputs.
+   `--no-publish` skips publication, not the consumer-cache guarantee:
+   missing outputs without a publisher stop main. There is no cache bypass.
+   `scripts/ship --publish-only --rev REV` repairs the same gate without
+   changing refs, including when REV already equals main. Publishing uses
+   swa's existing service and requires its updated `--republish-root` support.
 3. Submit an expected campaign at the pushed revision:
    `campaignctl submit --rev REV world --scope expected`. The manifest starts with the wider
    `scripts/ci-outputs.txt` list, including the foundation and distribution
@@ -177,6 +181,17 @@ An orb cannot reach those builders but can start other orbs:
 `scripts/nanofil-fleet run --roots all` builds `checks.nanofil` in six
 shards and every other `nanofil-*` check in its own orb, at the current
 commit, and aggregates pass/FAIL with each step's time (nanofil/AGENTS.md).
+Staging's consumer-cache closure is checked before workers start; candidate
+`site-play` is checked before landing, not before testing. For an exact-head
+handoff, rebase before testing, run with `--rev X --shards 6 --roots nanofil-rocq`
+(plus other affected roots), then transfer branch/bundle at full X and
+`results.json` to the swa lander. It checks out X and runs
+`scripts/ship --exact X --fleet-results FILE` (adding required roots with
+`--roots LIST` or `--roots all`), reusing the pass and pushing exactly X.
+If main diverges, stop and obtain a new fleet at the rebased SHA; never rebase
+silently or force-push. Keep one normal swa lander, not a new queue service.
+See [binary caches](binary-caches.md#exact-head-nanofil-handoffs) for the
+receipt and transfer contract.
 
 A check that compares against a reference must run both sides in one
 derivation whenever the result depends on the machine, because the

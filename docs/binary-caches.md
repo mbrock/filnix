@@ -85,6 +85,13 @@ for explicit Cachix publication outside the campaign.
 For either cache, `filnix-publish-cache TARGET --extra-root /nix/store/OUTPUT`
 explicitly adds an ad hoc output to the same durable queue. Run it with the
 publisher's service identity; Cachix also needs its systemd-loaded credential.
+For a root whose closure is confirmed missing now, use `--republish-root`
+instead: it clears only that destination's receipt and retry delay for the
+named root and queues its closure again. Ordinary `--extra-root` preserves
+receipts. `scripts/ship` uses targeted retries for consumer-cache misses;
+it does not clear unrelated receipts or audit independent swa-cache losses.
+Install an updated publisher package on swa before using this option;
+shipping detects an older publisher and stops rather than pushing uncached.
 
 Each target keeps its own durable SQLite receipts under `/var/lib/filnix-cache`.
 Only a successful upload records publication. Upload failures and timeouts
@@ -124,9 +131,13 @@ There are two readiness levels:
 Two things publish them:
 
 - `scripts/ship`, which agents and people use to push to `main`. On swa it
-  builds the foundation at the commit being pushed, queues it with
-  `filnix-publish-cache TARGET --extra-root` for both caches, waits until
-  `scripts/ci-cache-check.py` passes for that explicit list, and then pushes.
+  checks the candidate revision first, builds only attributes with incomplete
+  closures, queues only their missing outputs with both publishers, waits for
+  consumer-cache availability, and then pushes. Cachix gets targeted retries
+  for those roots even if an old success receipt exists; the local publisher
+  gets ordinary idempotent submissions. A complete cache hit needs no build
+  or publisher access. Hosts with SSH/sudo access may publish through swa;
+  other hosts stop on a miss rather than silently pushing without publication.
 - Campaign manifests (`experiments/campaign-next/world.nix`), which start with
   the wider distribution list ahead of the package roots. See the
   [operations workflow](port-campaign-operations.md).
@@ -155,6 +166,59 @@ Rerun the workflow after the campaign publishes pending artifacts (the daily
 run also rechecks readiness). A skipped distribution job is not a claim that
 the artifacts passed. Calling `scripts/ci-cache-check.py` without attributes still
 checks the full distribution list, as required by the release workflow.
+
+### Strict main and publish-only repair
+
+The gate is **consumer availability through Cachix + cache.nixos.org**,
+not independently complete copies in both filnix caches. It covers complete
+closures of all five foundation attributes, including `filcc-staging` and
+`site-play`. Fresh narinfo queries, not upload receipts, establish readiness.
+Missing paths fail main pushes; evaluation/network errors are errors, not
+pending publication. The pre-push hook checks the committed tip in a clean
+worktree and is strict for destination `refs/heads/main`; feature branches
+can carry unpublished candidates. Local hooks guard accidental pushes, not
+deliberate bypasses; do not use Git's `--no-verify` to evade them.
+
+`scripts/ship --no-publish` skips publication but still requires complete
+caches. There is no uncached-main override. To repair a revision already
+pushed, or publish a candidate without landing it, use
+`scripts/ship --publish-only --rev REV`. This reads the manifest and evaluates
+outputs at REV, builds/publishes only incomplete outputs, and changes no refs.
+Repeating it on a cache hit performs no foundation build or publication.
+`scripts/ci-cache-check.py --json --flake FLAKE ATTR...` exposes the output
+paths and each output's missing closure paths; exit codes remain 0 ready,
+1 missing, and 2 evaluation/checker failure.
+
+### Exact-head Nanofil handoffs
+
+Rebase before the final candidate X, then run
+`scripts/nanofil-fleet run --rev X --shards 6 --roots nanofil-rocq`, adding
+other affected roots (or `--roots all`). The fleet checks staging's public
+closure before launching any worker. It does not require cached test results
+or candidate `site-play`; the latter gates landing instead.
+
+Hand the swa lander the repository/branch and full X, observed main, command,
+pass/coverage and `results.json`. Retain `fleet.json`, `summary.md`, worker
+links and raw event logs. Transfer a feature branch or Git bundle and the
+receipt files explicitly; paths in an orb do not exist on swa. Keep the
+candidate ref frozen, and do not commit receipts after testing.
+
+The lander fetches and confirms the branch/bundle resolves to X, checks it out
+cleanly, and runs `scripts/ship --exact X --fleet-results FILE`. This verifies
+the worker revisions, six distinct complete shards and successful exactly-once
+coverage, plus Rocq. `--roots LIST` adds required checks; `--roots all` requires
+all candidate roots. The standalone `scripts/nanofil-fleet verify FILE --rev X`
+checks the same receipt without launching workers. Receipts are evidence from
+trusted workers, not cryptographic attestations.
+
+Exact landing never rebases or cherry-picks. It requires main to be an ancestor
+of X, repairs X's foundation caches, rechecks main, and normally fast-forwards
+exactly X with no second fleet. Diverging main means stop, rebase and obtain a
+new pass at the new SHA. A concurrent conflicting push is rejected, never
+forced. Keep one normal lander on swa without locking main for an entire
+fleet. Plain `scripts/ship` still rebases for non-handoff work; a pre-rebase
+receipt does not apply to its new SHA. Subscribe to CI for the actual landed
+SHA, separately from the fleet and cache results.
 
 `scripts/release` tags `origin/main` as `vYYYY.MM.DD` once it is cached, and
 `.github/workflows/release.yml` publishes a GitHub release with the PHP

@@ -246,6 +246,9 @@ def main():
     parser.add_argument("--extra-root", action="append", default=[],
                         help="store path to publish in addition to campaign outputs; "
                         "the newest one of each name has its closure verified in Cachix")
+    parser.add_argument("--republish-root", action="append", default=[],
+                        help="enqueue a confirmed missing root/closure again, clearing only "
+                        "that root's receipt and retry delay in this destination")
     parser.add_argument("--verify-roots", type=int, default=50,
                         help="published roots whose Cachix narinfo each run checks")
     parser.add_argument("--verify-paths", type=int, default=800,
@@ -253,9 +256,12 @@ def main():
     args = parser.parse_args()
     if args.batch_size < 1 or args.batches < 1:
         parser.error("batch sizes must be positive")
+    args.extra_root += args.republish_root
     for root in args.extra_root:
         if not STORE_PATH.fullmatch(root) or root.endswith(".drv"):
             parser.error(f"invalid extra root: {root}")
+    if args.target == "cachix" and any(SWA_ONLY.fullmatch(p) for p in args.republish_root):
+        parser.error("swa-only outputs cannot be republished to Cachix")
     config = json.loads(Path(args.config).read_text())
     state = Path(config["state"])
     if args.status:
@@ -293,6 +299,9 @@ def main():
                                    [(p,) for p in skipped])
             enqueue(db, sorted(paths), time.time())
             with db:
+                db.executemany("""UPDATE outputs SET published=NULL, attempts=0,
+                    retry_after=0, error=NULL WHERE path=?""",
+                               [(p,) for p in args.republish_root])
                 # The newest root of each name (filc-cc-wrapper-,
                 # filc-cache-baseline, nixos-system-filc-wiki-...) is current.
                 db.executemany("INSERT OR REPLACE INTO current VALUES(?,?)",

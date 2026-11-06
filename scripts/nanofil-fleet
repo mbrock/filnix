@@ -4,6 +4,7 @@
   scripts/nanofil-fleet run [--shards N] [--roots LIST|all] [--trealla]
                             [--rev REV] [--size SIZE] [--mode MODE] [--dry-run]
   scripts/nanofil-fleet collect DIR      # aggregate a run's results again
+  scripts/nanofil-fleet verify RESULTS --rev SHA [--shards N] [--roots LIST|all]
   scripts/nanofil-fleet worker JOB       # inside a worker orb (the prompt runs it)
 
 Three kinds of parallelism, from the inside out:
@@ -76,8 +77,8 @@ def parse_job(job):
     return {"kind": "roots", "roots": roots}
 
 
-def nanofil_roots():
-    out = sh("nix", "eval", "--json", f".#checks.{SYSTEM}", "--apply",
+def nanofil_roots(flake):
+    out = sh("nix", "eval", "--json", f"{flake}#checks.{SYSTEM}", "--apply",
              'cs: builtins.filter (n: builtins.substring 0 8 n == "nanofil-") (builtins.attrNames cs)')
     return json.loads(out)
 
@@ -232,10 +233,12 @@ When it exits, end your turn with exactly the last line it printed that starts w
 
 def run(args):
     os.chdir(toplevel())
+    sha = sh("git", "rev-parse", "--verify", args.rev + "^{commit}")
+    flake = f"git+file://{toplevel()}?rev={sha}"
     jobs = [f"nanofil@{i}/{args.shards}" + ("+trealla" if args.trealla else "")
             for i in range(1, args.shards + 1)]
     if args.roots == "all":
-        jobs += nanofil_roots()
+        jobs += nanofil_roots(flake)
     elif args.roots:
         jobs += args.roots.split(",")
     for j in jobs:
@@ -244,20 +247,29 @@ def run(args):
         print("nanofil-fleet: uncommitted changes are not checked; workers get the commit only",
               file=sys.stderr)
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    sha = sh("git", "rev-parse", "--verify", args.rev + "^{commit}")
     outdir = args.out or os.path.join(".amp/in/nanofil-fleet", f"{stamp}-{sha[:12]}")
     os.makedirs(outdir, exist_ok=True)
-    sha, base, bundle = rev_input(args.rev, outdir)
+    sha, base, bundle = rev_input(sha, outdir)
     meta = {"rev": sha, "base": base, "bundle": bool(bundle), "jobs": jobs,
+            "main": sh("git", "rev-parse", "origin/main"),
+            "command": shlex.join(sys.argv),
             "size": args.size, "mode": args.mode, "started": stamp}
     json.dump(meta, open(os.path.join(outdir, "fleet.json"), "w"), indent=1)
     via = f"bundle on {base[:12]}" if bundle else "origin"
-    print(f"nanofil-fleet: {len(jobs)} jobs at {sha[:12]} (via {via}) on {args.size}, results in {outdir}",
+    print(f"nanofil-fleet: {len(jobs)} jobs at {sha} (via {via}) on {args.size}, results in {outdir}",
           flush=True)
+    preflight = [sys.executable, "scripts/ci-cache-check.py", "--flake", flake,
+                 f"packages.{SYSTEM}.filcc-staging"]
     if args.dry_run:
+        print("Preflight before launch: " + shlex.join(preflight))
         for j in jobs:
             print(f"--- {j}\n{prompt(j, sha, base, bundle)}")
         return 0
+    checked = subprocess.run(preflight)
+    if checked.returncode:
+        print(f"nanofil-fleet: staging preflight failed at {sha}; no workers launched; "
+              "ask the swa lander to repair missing caches", file=sys.stderr)
+        return checked.returncode
 
     def launch(job):
         name = re.sub(r"[^A-Za-z0-9.+-]", "_", job)
@@ -339,30 +351,73 @@ def strings(x):
             yield from strings(v)
 
 
-def collect_dir(outdir, recover=False):
-    meta = json.load(open(os.path.join(outdir, "fleet.json")))
-    results = [job_result(outdir, j, recover) for j in meta["jobs"]]
+def assess(meta, results):
+    """The same pass/coverage contract for collection and landing evidence."""
+    jobs = meta["jobs"]
+    inventory = (bool(jobs) and len(set(jobs)) == len(jobs)
+                 and sorted(r["job"] for r in results) == sorted(jobs))
     for r in results:
-        if r.get("rev") and r["rev"] != meta["rev"]:
-            r["status"], r["error"] = "error", f"ran {r['rev'][:12]}, not {meta['rev'][:12]}"
+        if r.get("rev") != meta["rev"]:
+            r["status"], r["error"] = "error", f"missing/wrong revision; expected {meta['rev']}"
     # Coverage: every shard saw the same step list, and together they ran
     # each of its steps once.
-    shards = [r for r in results if "shard" in r or r["job"].startswith("nanofil@")]
+    shards = [r for r in results if parse_job(r["job"])["kind"] == "shard"]
     coverage = None
     if shards:
+        specs = [parse_job(r["job"]) for r in shards]
+        n = int(specs[0]["shard"].split("/")[1])
+        inventory = inventory and {s["shard"] for s in specs} == {f"{i}/{n}" for i in range(1, n + 1)}
+        inventory = inventory and len(specs) == n and len({s["trealla"] for s in specs}) == 1
         lists = {json.dumps(r.get("all_steps"), sort_keys=True) for r in shards}
         ran = [s[2] for r in shards for s in r.get("steps", [])]
         expected = shards[0].get("all_steps") or {}
+        valid_list = (isinstance(expected.get("count"), int) and expected["count"] > 0
+                      and isinstance(expected.get("hash"), str)
+                      and re.fullmatch(r"[0-9a-f]{16}", expected["hash"]) is not None)
         coverage = {"steps": expected.get("count"), "ran": len(ran), "distinct": len(set(ran)),
                     "lists_agree": len(lists) == 1,
-                    "complete": len(lists) == 1 and expected.get("count") == len(ran) == len(set(ran))}
-    ok = all(r["status"] == "pass" for r in results) and (coverage is None or coverage["complete"])
+                    "complete": bool(inventory and valid_list and len(lists) == 1
+                                     and expected["count"] == len(ran) == len(set(ran))
+                                     and all(s[0] == "ok" for r in shards for s in r.get("steps", [])))}
+    ok = bool(inventory and all(r["status"] == "pass" for r in results)
+              and (coverage is None or coverage["complete"]))
+    return ok, coverage
+
+
+def verify(args):
+    try:
+        evidence = json.load(open(args.results))
+        meta, results = evidence["fleet"], evidence["results"]
+        if not re.fullmatch(r"[0-9a-f]{40}", args.rev) or meta["rev"] != args.rev:
+            raise ValueError("receipt is not for the full tested SHA")
+        ok, _ = assess(meta, results)
+        specs = [parse_job(j) for j in meta["jobs"]]
+        shards = [s for s in specs if s["kind"] == "shard"]
+        if len(shards) != args.shards or any(s["shard"].split("/")[1] != str(args.shards) for s in shards):
+            raise ValueError(f"need {args.shards} complete shards")
+        required = nanofil_roots(f"git+file://{toplevel()}?rev={args.rev}") if args.roots == "all" else args.roots.split(",")
+        required = {r for group in required if group for r in parse_job(group)["roots"]}
+        passed = {r for s in specs if s["kind"] == "roots" for r in s["roots"]}
+        if not ok or not required <= passed:
+            raise ValueError("failed/incomplete fleet or missing required roots")
+    except (OSError, ValueError, KeyError, TypeError, IndexError) as error:
+        print(f"nanofil-fleet: evidence rejected: {error}", file=sys.stderr)
+        return 1
+    print(f"nanofil-fleet: verified {args.rev}; {args.shards} shards; roots {','.join(sorted(required))}")
+    return 0
+
+
+def collect_dir(outdir, recover=False):
+    meta = json.load(open(os.path.join(outdir, "fleet.json")))
+    results = [job_result(outdir, j, recover) for j in meta["jobs"]]
+    ok, coverage = assess(meta, results)
+    shards = [r for r in results if parse_job(r["job"])["kind"] == "shard"]
     times = sorted(((s[1], s[2]) for r in shards for s in r.get("steps", [])), key=lambda t: (-t[0], t[1]))
     with open(os.path.join(outdir, "times.tsv"), "w") as f:
         f.writelines(f"{t}\t{label}\n" for t, label in times)
     json.dump({"fleet": meta, "ok": ok, "coverage": coverage, "results": results},
               open(os.path.join(outdir, "results.json"), "w"), indent=1)
-    md = [f"# nanofil fleet at {meta['rev'][:12]}: {'PASS' if ok else 'FAIL'}", "",
+    md = [f"# nanofil fleet at {meta['rev']}: {'PASS' if ok else 'FAIL'}", "",
           f"{len(results)} jobs on {meta['size']}; commit via {'bundle' if meta['bundle'] else 'origin'}.", ""]
     if coverage:
         md += [f"Shard coverage: {coverage['ran']} step runs, {coverage['distinct']} distinct, "
@@ -404,6 +459,11 @@ def main():
     r.add_argument("--dry-run", action="store_true", help="print the jobs and prompts only")
     c = sub.add_parser("collect", help="aggregate a run directory again")
     c.add_argument("dir")
+    v = sub.add_parser("verify", help="verify an exact-head landing receipt without launching workers")
+    v.add_argument("results")
+    v.add_argument("--rev", required=True, help="full tested commit SHA")
+    v.add_argument("--shards", type=int, default=6)
+    v.add_argument("--roots", default="nanofil-rocq")
     w = sub.add_parser("worker", help="build one job here and print its result line")
     w.add_argument("job")
     a = ap.parse_args()
@@ -413,6 +473,8 @@ def main():
         return run(a)
     if a.cmd == "collect":
         return collect_dir(a.dir, recover=True)
+    if a.cmd == "verify":
+        return verify(a)
     return worker(a)
 
 

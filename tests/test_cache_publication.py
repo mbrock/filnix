@@ -108,6 +108,42 @@ class PublicationTests(unittest.TestCase):
         publisher.enqueue(other,[output('a')],1)
         self.assertEqual(publisher.report(other)['pending'],1)
 
+    @patch.dict('os.environ',CREDENTIALS_DIRECTORY='/private/credentials')
+    def test_republish_root_repairs_only_selected_destination_despite_stale_receipt(self):
+        state = self.directory / 'state'
+        state.mkdir()
+        config = self.directory / 'config.json'
+        config.write_text(json.dumps(dict(native_outputs_url='http://fixture/outputs',
+                                          state=str(state),cachix=dict(cache='filc'))))
+        for target in ('local','cachix'):
+            with publisher.connect(state / (target + '.sqlite')) as db:
+                publisher.enqueue(db,[output('a'),output('b')],1)
+                publisher.record(db,[output('a'),output('b')],None,2)
+                # A root with a stale receipt and a retry delay still needs repair.
+                db.execute('update outputs set retry_after=1e30 where path=?',(output('b'),))
+        pushed = []
+        original = publisher.publish
+        def run(cmd,**kwargs):
+            pushed.extend(kwargs['input'].split())
+        argv = ['publish','cachix','--config',str(config),'--republish-root',output('b')]
+        with patch.object(publisher,'discover_native',return_value=[]), \
+             patch.object(publisher,'publish',lambda *a,**k: original(*a,run=run,**k)):
+            with patch('sys.argv',argv):
+                publisher.main()
+            with patch('sys.argv',argv[:-2]+['--extra-root',output('b')]):
+                publisher.main()
+        self.assertEqual(pushed,[output('b')])
+        with sqlite3.connect(state / 'cachix.sqlite') as db:
+            self.assertEqual(db.execute('select published from outputs where path=?',
+                                        (output('a'),)).fetchone()[0],2)
+            published,retry = db.execute('select published,retry_after from outputs where path=?',
+                                         (output('b'),)).fetchone()
+            self.assertGreater(published,2)
+            self.assertEqual(retry,0)
+        with sqlite3.connect(state / 'local.sqlite') as db:
+            self.assertEqual(db.execute('select published,retry_after from outputs where path=?',
+                                        (output('b'),)).fetchone(),(2,1e30))
+
     def test_disk_reserve_prevents_local_copy(self):
         publisher.enqueue(self.db,[output('a')],1)
         calls=[]

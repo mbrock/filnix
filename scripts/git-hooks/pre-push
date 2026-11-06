@@ -2,16 +2,15 @@
 # Verifies each pushed commit as committed, in a temporary worktree, not the
 # working tree: the foundation outputs evaluate, changed workflows lint, changed
 # Python compiles, and importer changes pass tests/upstream-sources.py.
-# Reports whether the foundation outputs are in the public caches; with
-# FILNIX_REQUIRE_CACHE=1 (as scripts/ship sets after publishing) that is
-# required too. Skip with git push --no-verify.
+# Main requires complete foundation closures in the consumer caches.
+# Feature branches report misses but remain transferable before publication.
 set -euo pipefail
 # shellcheck source=scripts/git-hooks/lib.sh
 . "$(dirname "$0")/lib.sh"
 
 zero=0000000000000000000000000000000000000000
 status=0
-while read -r _local_ref sha _remote_ref remote_sha; do
+while read -r _local_ref sha remote_ref remote_sha; do
   [ "$sha" = "$zero" ] && continue # deleting a ref
   if [ "$remote_sha" = "$zero" ] || ! git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
     base=$(git merge-base "$sha" origin/main 2>/dev/null || echo "$sha^")
@@ -42,6 +41,10 @@ while read -r _local_ref sha _remote_ref remote_sha; do
       # tested with ||, so fail explicitly.
       PATH="$projeny/bin:$PATH" python3 tests/upstream-sources.py || exit 1
     fi
+    if grep -q -E '^(scripts/(ship|ci-cache-check\.py|publish-cache\.py|nanofil-fleet|git-hooks/)|tests/test_(ship|cache_publication)\.py)' <<<"$changed"; then
+      python3 -m unittest discover -s tests -p test_ship.py || exit 1
+      python3 -m unittest discover -s tests -p test_cache_publication.py || exit 1
+    fi
     # Evaluate the foundation gate; wider distribution readiness is separate.
     mapfile -t attrs < <(grep -v -e '^#' -e '^$' scripts/ship-outputs.txt)
     set +e
@@ -50,7 +53,7 @@ while read -r _local_ref sha _remote_ref remote_sha; do
     set -e
     if [ $check = 1 ]; then
       echo "pre-push: CI will fail until these are published; scripts/ship publishes them" >&2
-      if [ "${FILNIX_REQUIRE_CACHE:-0}" = 1 ]; then
+      if [ "$remote_ref" = refs/heads/main ]; then
         exit 1
       fi
     elif [ $check != 0 ]; then

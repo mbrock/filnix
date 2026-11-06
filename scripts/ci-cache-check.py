@@ -11,7 +11,7 @@ not. Nothing is downloaded or built.
 Exits 1 naming the roots whose closures are incomplete, 2 if evaluation
 or the cache check itself fails. Only missing paths count as incomplete.
 
-    scripts/ci-cache-check.py [--flake .] [ATTR...]
+    scripts/ci-cache-check.py [--flake .] [--json] [ATTR...]
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor
@@ -104,6 +104,7 @@ def descendants(roots, known):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--flake", default=".")
+    parser.add_argument("--json", action="store_true", help="report output paths and missing closures as JSON")
     parser.add_argument("attrs", nargs="*",
                         help="flake attributes; default: those in scripts/ci-outputs.txt")
     args = parser.parse_args()
@@ -112,19 +113,25 @@ def main():
         args.attrs = [line for line in listing if line and not line.startswith("#")]
     listing = Path(__file__).with_name("swa-cache-outputs.txt").read_text().splitlines()
     swa_only = {line for line in listing if line and not line.startswith("#")}
-    known, missing, rows, failed = {}, set(), [], []
+    known, missing, rows, failed, report = {}, set(), [], [], []
     for attr in args.attrs:
         roots = outputs(args.flake, attr)
         missing |= closure(roots, known, (SWA_CACHE,) if attr in swa_only else CACHES)
         paths = descendants(roots, known)
         absent = sorted(paths & missing)
         rows.append((attr, len(paths), absent))
+        report.append({"attr": attr, "outputs": [
+            {"path": root, "missing": sorted(descendants([root], known) & missing)}
+            for root in roots], "closure_size": len(paths), "missing": absent})
         if absent:
             failed.append(attr)
         status = "missing " + str(len(absent)) if absent else "ok"
-        print(f"{attr}: {len(paths)} paths, {status}", flush=True)
+        stream = sys.stderr if args.json else sys.stdout
+        print(f"{attr}: {len(paths)} paths, {status}", file=stream, flush=True)
         for path in absent[:20]:
-            print(f"  not cached: {path}", flush=True)
+            print(f"  not cached: {path}", file=stream, flush=True)
+    if args.json:
+        print(json.dumps(report), flush=True)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a") as out:
