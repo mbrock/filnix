@@ -4,7 +4,10 @@
 CI cannot build the Fil-C toolchain, so it requires the campaign to have
 published it: for each attribute, evaluate its output paths and walk their
 references through narinfo lookups on filc.cachix.org, falling back to
-cache.nixos.org for ordinary dependencies. Nothing is downloaded or built.
+cache.nixos.org for ordinary dependencies. The outputs themselves of the
+attributes in scripts/swa-cache-outputs.txt (disk images, container
+tarballs) are looked up in the swa cache instead; their dependencies are
+not. Nothing is downloaded or built.
 Exits 1 naming the roots whose closures are incomplete, 2 if evaluation
 or the cache check itself fails. Only missing paths count as incomplete.
 
@@ -22,6 +25,7 @@ import urllib.error
 import urllib.request
 
 CACHES = ("https://filc.cachix.org", "https://cache.nixos.org")
+SWA_CACHE = "https://nix.swa.sh/cache"
 STORE = "/nix/store/"
 
 
@@ -69,19 +73,21 @@ def lookup(cache, paths):
     return {path: refs for path, refs in results.items() if refs is not None}
 
 
-def closure(roots, known):
+def closure(roots, known, caches=CACHES):
     """Walk references from roots, recording them in known; return the
-    paths no cache has."""
+    paths no cache has. The roots are looked up in caches, the rest in
+    CACHES."""
     missing, frontier = set(), set(roots) - known.keys()
     while frontier:
         remaining = set(frontier)
-        for cache in CACHES:
+        for cache in caches:
             hits = lookup(cache, remaining)
             known.update(hits)
             remaining -= hits.keys()
         missing |= remaining
         known.update((path, []) for path in remaining)
         frontier = {ref for path in frontier for ref in known[path]} - known.keys()
+        caches = CACHES
     return missing
 
 
@@ -104,10 +110,12 @@ def main():
     if not args.attrs:
         listing = Path(__file__).with_name("ci-outputs.txt").read_text().splitlines()
         args.attrs = [line for line in listing if line and not line.startswith("#")]
+    listing = Path(__file__).with_name("swa-cache-outputs.txt").read_text().splitlines()
+    swa_only = {line for line in listing if line and not line.startswith("#")}
     known, missing, rows, failed = {}, set(), [], []
     for attr in args.attrs:
         roots = outputs(args.flake, attr)
-        missing |= closure(roots, known)
+        missing |= closure(roots, known, (SWA_CACHE,) if attr in swa_only else CACHES)
         paths = descendants(roots, known)
         absent = sorted(paths & missing)
         rows.append((attr, len(paths), absent))

@@ -28,6 +28,14 @@ availability; it does not establish tests passed or comprehensive POSIX
 cancellation support. Source revisions, compiler choices, profiles, and test
 evidence remain in the campaign records.
 
+Disk images and container tarballs (`scripts/swa-cache-outputs.txt`: the
+NixOS qcow2 and AMI image, the `*-docker` archives) go to this server's cache
+only. No machine substitutes them, and at gigabytes each they evicted the
+toolchain and the NixOS closures from Cachix's free plan on 2026-11-06. Their
+dependencies, the toplevels and packages, still go to Cachix. Release and CI
+workflows add `https://nix.swa.sh/cache` as a substituter for them, and
+`scripts/ci-cache-check.py` looks for those outputs there.
+
 ## Automatic publication
 
 `filnix-cache@local.timer` and `filnix-cache@cachix.timer` independently run the

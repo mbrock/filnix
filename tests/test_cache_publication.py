@@ -152,6 +152,26 @@ class PublicationTests(unittest.TestCase):
                           lambda *a,original=publisher.publish,**k: original(*a,run=run,**k)):
             publisher.main()
         self.assertEqual(sorted(pushed),[output('a'),output('b'),output('t')])
+        # Disk images and container tarballs go to the local cache only.
+        image='/nix/store/'+'i'*32+'-filnix-nixos-ami'
+        tarball='/nix/store/'+'d'*32+'-filnix-php.tar.gz'
+        dist='/nix/store/'+'o'*32+'-optfil-0.687-filnix-x86_64-linux.tar.xz'
+        with patch('sys.argv',argv), \
+             patch.object(publisher,'discover_native',return_value=[image,tarball,dist]), \
+             patch.object(publisher,'publish',
+                          lambda *a,original=publisher.publish,**k: original(*a,run=run,**k)):
+            publisher.main()
+        self.assertEqual(sorted(pushed),[output('a'),output('b'),dist,output('t')])
+        with patch('sys.argv',['publish','local','--config',str(config)]), \
+             patch.object(publisher,'discover_native',return_value=[image]):
+            config.write_text(json.dumps(dict(native_outputs_url='http://x',
+                                              state=str(self.directory/'state'),
+                                              local=dict(directory=str(self.directory/'cache'),
+                                                         secret_key='k',min_free_bytes=0))))
+            with patch.object(publisher,'publish',
+                              lambda *a,original=publisher.publish,**k: original(*a,run=run,**k)):
+                publisher.main()
+        self.assertIn(image,pushed)
         with patch('sys.argv',argv[:-1]+['/nix/store/x.drv']), \
              self.assertRaises(SystemExit):
             publisher.main()

@@ -1,0 +1,13 @@
+# Release artifacts that no machine substitutes: disk images and container
+# tarballs, gigabytes each. They are published to the swa cache
+# (https://nix.swa.sh/cache) only, so that they cannot push the closures
+# machines do substitute out of Cachix (scripts/publish-cache.py SWA_ONLY).
+# scripts/ci-cache-check.py looks for these outputs there; their
+# dependencies, like everything else, must be in Cachix or cache.nixos.org.
+packages.x86_64-linux.php-docker
+packages.x86_64-linux.php84_25-docker
+packages.x86_64-linux.bind-docker
+packages.x86_64-linux.php85-staging-docker
+packages.x86_64-linux.bind-staging-docker
+packages.x86_64-linux.nixos-image
+packages.x86_64-linux.nixos-ami

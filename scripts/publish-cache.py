@@ -15,6 +15,12 @@ import time
 import urllib.request
 
 STORE_PATH = re.compile(r"/nix/store/[0-9a-z]{32}-[^/\s]+\Z")
+# Release artifacts that no machine substitutes: the NixOS disk images and
+# the container tarballs (scripts/swa-cache-outputs.txt). Gigabytes each,
+# they would push the closures machines do substitute out of Cachix, so
+# they go to the local cache only. Their closures still reach Cachix
+# through the toplevels and packages that are roots of their own.
+SWA_ONLY = re.compile(r"/nix/store/[0-9a-z]{32}-filnix-(nixos-image|nixos-ami|[a-z0-9_-]+\.tar\.gz)\Z")
 
 
 def discover_native(url):
@@ -178,7 +184,14 @@ def main():
             paths = (discover_native(config["native_outputs_url"])
                      if "native_outputs_url" in config else
                      discover(Path(config["experiment"]) / "experiment.sqlite", config["campaign"]))
-            enqueue(db, sorted(set(paths) | set(args.extra_root)), time.time())
+            paths = set(paths) | set(args.extra_root)
+            if args.target == "cachix":
+                skipped = {p for p in paths if SWA_ONLY.fullmatch(p)}
+                paths -= skipped
+                with db:
+                    db.executemany("DELETE FROM outputs WHERE path=? AND published IS NULL",
+                                   [(p,) for p in skipped])
+            enqueue(db, sorted(paths), time.time())
             for _ in range(args.batches):
                 if not publish(db, config[args.target], args.target, args.batch_size):
                     break
