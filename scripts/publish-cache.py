@@ -2,8 +2,10 @@
 """Publish observed campaign outputs without joining the build/controller loop."""
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import contextlib
 import fcntl
+import itertools
 import json
 import os
 from pathlib import Path
@@ -12,6 +14,7 @@ import shutil
 import sqlite3
 import subprocess
 import time
+import urllib.error
 import urllib.request
 
 STORE_PATH = re.compile(r"/nix/store/[0-9a-z]{32}-[^/\s]+\Z")
@@ -58,6 +61,84 @@ def discover(database, campaign):
     return sorted(paths)
 
 
+UPSTREAM = "https://cache.nixos.org"
+
+
+def narinfo_exists(cache, path):
+    request = urllib.request.Request(
+        f"{cache}/{path.removeprefix('/nix/store/').split('-', 1)[0]}.narinfo",
+        method="HEAD", headers={"User-Agent": "filnix-publish-cache"})
+    try:
+        with urllib.request.urlopen(request, timeout=30):
+            return True
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return False
+        return None
+    except (OSError, ValueError):
+        # Rate limits, timeouts: unknown, so neither lost nor checked.
+        return None
+
+
+def store_closure(root):
+    return subprocess.run(["nix-store", "--query", "--requisites", root], check=True,
+                          text=True, stdout=subprocess.PIPE).stdout.split()
+
+
+def verify(db, config, rotation, closure_paths, now, max_age=7 * 86400,
+           exists=narinfo_exists, requisites=store_closure):
+    """Clear the receipts of roots that Cachix has lost.
+
+    A receipt records only that a push once succeeded; Cachix may evict
+    paths later. Each run checks the narinfos of the `rotation` least
+    recently checked published roots, and `closure_paths` of the least
+    recently checked paths in the closures of the current extra roots (the
+    toolchain, the baseline, the release toplevels), which machines and CI
+    substitute. A path missing from Cachix and cache.nixos.org clears the
+    receipt of its root, so the next push re-sends the closure. Rotated
+    roots published more than max_age ago are only counted: on 2026-11-06
+    Cachix had lost nearly all of the 46k older ones, and re-sending them
+    would exceed the cache and evict the closures that matter."""
+    cache = config.get("url", f"https://{config['cache']}.cachix.org")
+
+    def present(path):
+        found = exists(cache, path)
+        return found if found is not False else exists(UPSTREAM, path)
+
+    candidates = (r[0] for r in db.execute("""SELECT path FROM outputs
+        WHERE published IS NOT NULL ORDER BY checked NULLS FIRST, path"""))
+    roots = list(itertools.islice((p for p in candidates if not SWA_ONLY.fullmatch(p)),
+                                  rotation))
+    owners = {}
+    for (root,) in db.execute("SELECT path FROM current"):
+        try:
+            for path in requisites(root):
+                owners.setdefault(path, root)
+        except (OSError, subprocess.SubprocessError) as exc:
+            print(json.dumps({"verify": root, "error": str(exc)}), flush=True)
+    last = dict(db.execute("SELECT path,checked FROM closure_checks"))
+    paths = sorted(owners, key=lambda p: (last.get(p, 0), p))[:closure_paths]
+    with ThreadPoolExecutor(16) as pool:
+        found = dict(zip(roots + paths, pool.map(present, roots + paths)))
+    published = dict(db.execute("SELECT path,published FROM outputs WHERE published IS NOT NULL"))
+    gone = [p for p in roots if found[p] is False]
+    old = [p for p in gone if now - published[p] > max_age]
+    lost = sorted((set(gone) - set(old)) |
+                  {owners[p] for p in paths if found[p] is False and owners[p] in published})
+    with db:
+        # Unknown answers count as checked too, or one path that keeps
+        # failing would hold the front of the rotation; it comes round again.
+        db.executemany("UPDATE outputs SET checked=? WHERE path=?", [(now, p) for p in roots])
+        db.executemany("INSERT OR REPLACE INTO closure_checks VALUES(?,?)",
+                       [(p, now) for p in paths])
+        db.executemany("UPDATE outputs SET published=NULL WHERE path=?", [(p,) for p in lost])
+    print(json.dumps({"verify": len(roots) + len(paths),
+                      "missing": sum(found[p] is False for p in roots + paths),
+                      "unknown": sum(found[p] is None for p in roots + paths),
+                      "old_roots_lost": len(old), "republish": lost[:20]}), flush=True)
+    return lost
+
+
 def connect(path):
     db = sqlite3.connect(path, timeout=10)
     db.row_factory = sqlite3.Row
@@ -69,7 +150,11 @@ def connect(path):
             path TEXT PRIMARY KEY, discovered REAL NOT NULL,
             published REAL, attempts INTEGER NOT NULL DEFAULT 0,
             retry_after REAL NOT NULL DEFAULT 0, error TEXT);
+        CREATE TABLE IF NOT EXISTS current (name TEXT PRIMARY KEY, path TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS closure_checks (path TEXT PRIMARY KEY, checked REAL);
     """)
+    if "checked" not in {r[1] for r in db.execute("PRAGMA table_info(outputs)")}:
+        db.execute("ALTER TABLE outputs ADD COLUMN checked REAL")
     return db
 
 
@@ -154,7 +239,12 @@ def main():
     # Campaign outputs never reference the compiler at run time, so their
     # closures omit it. The deployed application names the toolchain here.
     parser.add_argument("--extra-root", action="append", default=[],
-                        help="store path to publish in addition to campaign outputs")
+                        help="store path to publish in addition to campaign outputs; "
+                        "the newest one of each name has its closure verified in Cachix")
+    parser.add_argument("--verify-roots", type=int, default=50,
+                        help="published roots whose Cachix narinfo each run checks")
+    parser.add_argument("--verify-paths", type=int, default=800,
+                        help="paths of the extra roots' closures each run checks")
     args = parser.parse_args()
     if args.batch_size < 1 or args.batches < 1:
         parser.error("batch sizes must be positive")
@@ -192,6 +282,14 @@ def main():
                     db.executemany("DELETE FROM outputs WHERE path=? AND published IS NULL",
                                    [(p,) for p in skipped])
             enqueue(db, sorted(paths), time.time())
+            with db:
+                # The newest root of each name (filc-cc-wrapper-,
+                # filc-cache-baseline, nixos-system-filc-wiki-...) is current.
+                db.executemany("INSERT OR REPLACE INTO current VALUES(?,?)",
+                               [(p.split("-", 1)[1], p) for p in args.extra_root
+                                if not SWA_ONLY.fullmatch(p)])
+            if args.target == "cachix":
+                verify(db, config["cachix"], args.verify_roots, args.verify_paths, time.time())
             for _ in range(args.batches):
                 if not publish(db, config[args.target], args.target, args.batch_size):
                     break

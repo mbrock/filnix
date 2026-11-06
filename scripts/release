@@ -37,6 +37,18 @@ git worktree add -q --detach "$work/tree" "$sha"
   echo "release: ${sha:0:12} is not fully cached; finish distribution publication through the campaign first" >&2
   exit 1
 }
+# Machines switch to the release's toplevels, so the publisher keeps their
+# closures in Cachix (scripts/publish-cache.py verify). Only where it runs.
+publisher=/opt/filnix-cache/bin/filnix-publish-cache
+if [ -x $publisher ] && sudo -n true 2>/dev/null; then
+  roots=()
+  for name in base demo-wiki; do
+    roots+=(--extra-root "$(nix eval --raw "$work/tree#nixosConfigurations.$name.config.system.build.toplevel.outPath")")
+  done
+  sudo systemd-run --quiet --wait --pipe --collect -p User=filnix-cache -p Group=filnix-observe \
+    -p LoadCredential=cachix.dhall:/etc/filnix-cache/cachix.dhall $publisher cachix "${roots[@]}" ||
+    echo "release: could not register the toplevels with the publisher; pass them to it with --extra-root" >&2
+fi
 git tag -a "$tag" -m "Filnix $tag" "$sha"
 git push origin "refs/tags/$tag"
 echo "release: pushed $tag at ${sha:0:12}; https://github.com/mbrock/filnix/actions/workflows/release.yml"

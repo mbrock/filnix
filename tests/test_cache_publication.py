@@ -19,6 +19,8 @@ def output(letter):
 
 
 class PublicationTests(unittest.TestCase):
+    real_verify = staticmethod(publisher.verify)
+
     def test_native_discovery_validates_and_deduplicates_verified_feed(self):
         response = io.BytesIO(json.dumps(dict(watermark=42,paths=[output('b'),output('a'),output('a')])).encode())
         with patch.object(publisher.urllib.request,'urlopen',return_value=response):
@@ -36,6 +38,10 @@ class PublicationTests(unittest.TestCase):
         self.directory = Path(self.tmp.name)
         self.db = publisher.connect(self.directory / "publisher.sqlite")
         self.addCleanup(self.db.close)
+        # main() checks Cachix; test_verify_* cover that without the network.
+        verify = patch.object(publisher, 'verify', return_value=[])
+        verify.start()
+        self.addCleanup(verify.stop)
 
     def test_discovery_includes_successful_dependency_of_failed_batch_only(self):
         source = self.directory / "experiment.sqlite"
@@ -175,6 +181,42 @@ class PublicationTests(unittest.TestCase):
         with patch('sys.argv',argv[:-1]+['/nix/store/x.drv']), \
              self.assertRaises(SystemExit):
             publisher.main()
+
+    def test_verify_clears_receipts_of_roots_cachix_lost(self):
+        real = PublicationTests.real_verify
+        kept, lost, image = output('k'), output('l'), '/nix/store/'+'i'*32+'-filnix-nixos-ami'
+        pinned, dep_upstream, dep_lost = output('p'), output('u'), output('d')
+        old, flaky = output('o'), output('f')
+        publisher.enqueue(self.db,[kept,lost,image,pinned,old,flaky],1)
+        publisher.record(self.db,[kept,lost,image,pinned,flaky],None,2)
+        # Lost too, but published long ago: counted, not re-sent.
+        publisher.record(self.db,[old],None,2-8*86400)
+        with self.db:
+            self.db.execute("INSERT INTO current VALUES('package',?)",(pinned,))
+        cachix = {kept, pinned}
+        upstream = {dep_upstream}
+        checked = []
+        def exists(cache, path):
+            checked.append((cache, path))
+            if path == flaky:
+                return None  # a 429 or a timeout
+            return path in (upstream if cache == publisher.UPSTREAM else cachix)
+        closure = lambda root: [root, dep_upstream, dep_lost]
+        config = dict(cache='filc')
+        # One root and two closure paths per run, least recently checked first.
+        cleared = set()
+        for now in range(10, 70, 10):
+            cleared |= set(real(self.db, config, 1, 2, now, exists=exists, requisites=closure))
+        # The lost root and the root whose dependency no cache has; not the
+        # dependency Cachix leaves to cache.nixos.org, nor the swa-only image.
+        self.assertEqual(cleared, {lost, pinned})
+        self.assertNotIn(image, {p for _, p in checked})
+        published = {r[0] for r in self.db.execute(
+            "SELECT path FROM outputs WHERE published IS NOT NULL")}
+        self.assertEqual(published, {kept, image, old, flaky})
+        # The rotation went past the unknown root to all the others.
+        self.assertTrue({kept, lost, old} <= {p for _, p in checked})
+
 
 if __name__ == '__main__':
     unittest.main()

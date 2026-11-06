@@ -38,6 +38,18 @@ workflows add `https://nix.swa.sh/cache` as a substituter for them, and
 
 ## Automatic publication
 
+A receipt records only that a push once succeeded, and Cachix evicts paths
+later (in November 2026 it had lost nearly every root older than a week).
+So each Cachix run also checks narinfos. It checks the 50 least recently
+checked published roots, and 800 paths of the closures of the current extra
+roots (the newest of each name: the toolchain, the baseline from
+`scripts/ship`, and the release toplevels from `scripts/release`), which
+cover the ~1000 paths machines and CI substitute in two runs. A path that
+neither Cachix nor cache.nixos.org has clears the receipt of its root, and
+the normal queue pushes its closure again. Lost roots published more than a
+week ago are only counted (`old_roots_lost`): re-sending all of them would
+not fit the cache.
+
 `filnix-cache@local.timer` and `filnix-cache@cachix.timer` independently run the
 publisher, initially on activation and again one minute after each run finishes.
 Each run discovers outputs from the configured campaign and submits at most
