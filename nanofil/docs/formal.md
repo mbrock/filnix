@@ -138,8 +138,7 @@ on the native benchmarks ([perf.md](perf.md)), since a check that costs
 nothing is not worth a proof.
 
 Deliverable: `docs/residual.md` with the table, the query that produced
-it, and a one-line decision. Effort: days, not weeks; agents can do all
-of it.
+it, and a one-line decision.
 
 ## Campaign 1: the core model in Rocq
 
@@ -194,11 +193,9 @@ trap reason); `valid` and `ir:valid_module/1` agree on every module in
 the snapshot corpus, with and without `-O` and under every `--checks`
 mode. Disagreement is a finding, not a failure, and gets a fixture.
 
-Effort: the syntax and semantics are a few hundred lines of Gallina; the
-validator transcription is the larger part because ir.pl's evidence
-rules are intricate. Agents can transcribe; a person should review the
-two or three places where the Prolog relies on cut order or ground-term
-assumptions that have no Gallina counterpart.
+The places where the Prolog relies on cut order or ground-term
+assumptions have no direct Gallina counterpart; each is transcribed
+deliberately and recorded in [rocq.md](rocq.md).
 
 ## Campaign 2: the runtime as axioms
 
@@ -278,10 +275,9 @@ the validator could accept and currently refuses.
 
 Gates: the theorem closes for the core subset with no admits; every
 reuse rule either has its corollary or is marked out of scope in the
-validator transcription (and `valid` rejects it). Effort: this is the
-campaign that takes months, and the one where agents do well on the
-arithmetic lemmas and badly on choosing the invariant; a person states
-the invariant for proof persistence before agents are turned loose.
+validator transcription (and `valid` rejects it). The invariant for
+proof persistence is stated first, since every reuse rule's corollary
+rests on it.
 
 ## Campaign 4: observations, refinement, and the environment
 
@@ -335,9 +331,8 @@ campaign and is listed under inquiries, not scheduled.
 Gates: `opt:refines/2` restated as trace inclusion and difftest passing
 under it with no special cases; the oracle runs every Lua test that
 calls libc; each contract has a native test that would fail if its
-footprint were too small. Effort: the trace semantics is a week of
-design that should not be rushed; the contract table grows one function
-at a time and agents can drive it from the corpus.
+footprint were too small. The contract table grows one function at a
+time, driven by the calls the corpus makes.
 
 ## Campaign 5: static discharge by certificate
 
@@ -393,9 +388,8 @@ native suite, the extracted checker accepts every certificate nanofil
 emits, and a deliberately wrong certificate (off by one in the
 invariant) is rejected by the checker and by nothing else. Measure the
 cycle savings against Campaign 0's histogram; if the discharged class
-was cheap, say so. Effort: the checker and its soundness proof are a
-month of focused work once Campaign 3's lemmas exist; the finder is a
-Prolog afternoon per invariant shape.
+was cheap, say so. The checker's soundness proof builds on Campaign 3's
+lemmas; the finder grows one invariant shape at a time.
 
 ## Campaign 6: integration
 
@@ -474,10 +468,6 @@ scheduled; each has a cheap first step.
 - **Transcribe before designing.** Campaign 1 copies the interpreter's
   choices; a disagreement between Gallina and Prolog is a fixture, and
   the Prolog is presumed right until the native tests say otherwise.
-- **People state invariants; agents prove lemmas.** Agents are strong at
-  arithmetic lemmas, transcription, test generation and certificate
-  finders, and weak at choosing the inductive invariant for Campaign 3's
-  persistence lemma. State that invariant by hand before fanning out.
 - **Every theorem has a counterexample test first.** Before a rule is
   proved, a native or symbolic test shows what breaks when it is wrong:
   alias frees, wrong allocation identity, misalignment, rights, helper
