@@ -8,7 +8,11 @@
     With `filc`, the round trip through memory addresses its slot with
     `p` values, so the module is a Fil-C one that the check passes
     pizlonate, and its offsets may reach up to four bytes outside the
-    slot, so some runs trap (the Rocq model's gates, docs/rocq.md).
+    slot, so some runs trap (the Rocq model's gates, docs/rocq.md). A
+    Fil-C function may also run a memory loop (`memory_loop//5`), whose
+    shapes are the ones the check passes' reuse forms need, and which
+    calls a helper function of its own; plain modules draw nothing for
+    it, so their corpus is unchanged.
 
     Each function mixes straight-line integer ops at both classes, an
     optional diamond with a phi, an optional counted loop, and an
@@ -68,14 +72,26 @@ atom_or_chars(X, A) :- ( atom(X) -> A = X ; atom_chars(A, X) ).
 % module, p in a Fil-C one.
 addr_class(K) :- ( gen_mode(filc) -> K = p ; K = l ).
 
-% print_function(+I, +Rng0, -Rng): print the runs and the function gI.
+% print_function(+I, +Rng0, -Rng): print the runs and the function gI,
+% after its helper gI_h in a Fil-C module.
 print_function(I, Rng0, Rng) :-
     format(atom(Name), "g~d", [I]),
     function(Name, Func, Runs, g(Rng0, 0, []), g(Rng, _, _)),
-    valid_module(module([Func])),
+    (   gen_mode(filc)
+    ->  helper(Name, Helper, _), Funcs = [Helper, Func]
+    ;   Funcs = [Func]
+    ),
+    valid_module(module(Funcs)),
     maplist(print_run, Runs),
-    print_module(module([Func])),
+    print_module(module(Funcs)),
     nl.
+
+% helper(+Name, -Func, -HName): HName, the helper Name's memory loop
+% calls, an l function of one l parameter.
+helper(Name, func(H, local, l, [param(l, tmp(x))],
+                  [block(start, [], [let(tmp(y), l, xor, [tmp(x), const(85)])], ret(tmp(y)))]),
+       H) :-
+    format(atom(H), "~w_h", [Name]).
 
 print_run(Run) :-
     phrase(item_text(Run), Cs),
@@ -91,7 +107,7 @@ function(Name, func(Name, export, Ret, Params, Blocks), Runs, S0, S) :-
     numlist(0, NP1, Ps),
     foldl(param, Ps, Params, S1, S2),
     choose([w, l], Ret, S2, S3),
-    phrase(blocks(Ret, S3, S4), Blocks),
+    phrase(blocks(Name, Ret, S3, S4), Blocks),
     length(Runs, 6),
     foldl(run(Name, Params), Runs, S4, S).
 
@@ -103,15 +119,25 @@ param(I, param(K, tmp(T)), S0, S) :-
     S1 = g(R, N, Pool),
     S = g(R, N, [T-K|Pool]).
 
-% blocks(+Ret, +S0, -S)//: the blocks of a function returning Ret: the
-% entry block, maybe a diamond, maybe a loop, and a block that returns.
-blocks(Ret, S0, S) -->
-    { phrase(entry(S0, S1), Is0) },
+% blocks(+Name, +Ret, +S0, -S)//: the blocks of a function Name
+% returning Ret: the entry block, in a Fil-C module maybe a memory loop,
+% maybe a diamond, maybe a loop, and a block that returns.
+blocks(Name, Ret, S0, S) -->
+    { phrase(entry(S0, S1a), Is0a) },
+    (   { gen_mode(filc) }
+    ->  { chance(50, MemLoop, S1a, S1b) },
+        (   { MemLoop == true }
+        ->  memory_loop(Name, Is0a, Is0, S1b, S1),
+            { L00 = mexit }
+        ;   { L00 = start, Is0 = Is0a, S1 = S1b }
+        )
+    ;   { L00 = start, Is0 = Is0a, S1 = S1a }
+    ),
     { chance(50, Diamond, S1, S2) },
     (   { Diamond == true }
-    ->  diamond(Ret, start, [], Is0, L0, Phis0, S2, S3),
+    ->  diamond(Ret, L00, [], Is0, L0, Phis0, S2, S3),
         { Is1 = [] }
-    ;   { L0 = start, Phis0 = [], Is1 = Is0, S3 = S2 }
+    ;   { L0 = L00, Phis0 = [], Is1 = Is0, S3 = S2 }
     ),
     { chance(40, Loop, S3, S4) },
     (   { Loop == true }
@@ -171,6 +197,83 @@ loop(Ret, L, Phis, Is0, S0, S) -->
           let(tmp(I1), w, add, [tmp(I), const(1)]),
           let(tmp(C), w, cmp(slt, w), [tmp(I1), tmp(N)])],
          branch(tmp(C), loop, exit))].
+
+%% A memory loop (Fil-C modules only)
+
+% memory_loop(+Name, +Is0, -Is, +S0, -S)//: the entry block (with Is0)
+% allocates a 32-byte slot and enters a loop of 0 to 7 trips, whose
+% exit block starts with Is. Each trip loads at a fixed offset, stores
+% the accumulator at an offset that grows with the trip count, and may
+% call Name's helper or free the slot, so that a later trip's renewal
+% traps: the guard pass then puts a span_test before the
+% loop and renews its checks with renew_if, and the hoist pass checks
+% the growing offset with limit and check_limit. The exit block loads
+% at two offsets 8 apart, calls the helper or frees the slot, and loads
+% between them, which the hull pass renews with renew_hull: after the
+% free, that renewal traps. Offsets may run past the slot, so some runs
+% trap too. The slot reads as zero until stored to. The
+% accumulator and the last load join the pool.
+memory_loop(Name, Is0, Is, S0, S) -->
+    { helper(Name, _, H),
+      fresh_hidden(P, S0, S1),
+      operand(w, C0, S1, S2), fresh_hidden(N, S2, S3),
+      operand(l, Init, S3, S4),
+      fresh_hidden(I, S4, S5), fresh_hidden(I1, S5, S6),
+      fresh_hidden(A, S6, S7), fresh_hidden(A1, S7, S8),
+      fresh_hidden(C, S8, S9),
+      between_(0, 28, FOff, S9, S10),
+      fresh_hidden(FQ, S10, S11), fresh_hidden(FV, S11, S12),
+      choose([4, 8], Step, S12, S13), between_(0, 8, GOff, S13, S14),
+      fresh_hidden(GX, S14, S15), fresh_hidden(GO, S15, S16),
+      fresh_hidden(GO1, S16, S17), fresh_hidden(GQ, S17, S18),
+      weighted([50-helper, 20-free, 30-none], Call, S18, S19), fresh_hidden(D, S19, S20),
+      between_(0, 20, HOff, S20, S21),
+      fresh_hidden(HQ0, S21, S22), fresh_hidden(HV0, S22, S23),
+      fresh_hidden(HQ8, S23, S24), fresh_hidden(HV8, S24, S25),
+      fresh_hidden(HD, S25, S26), fresh_hidden(HQ4, S26, S27a),
+      chance(30, Free, S27a, S27),
+      g(R, M, Pool) = S27,
+      fresh(l, HV4, g(R, M, [A1-l|Pool]), S),
+      HOff8 is HOff + 8, HOff4 is HOff + 4,
+      (   Free == true
+      ->  HCall = call(void, global(free), [arg(p, tmp(P))])
+      ;   HCall = call(result(tmp(HD), l), global(H), [arg(l, tmp(HV0))])
+      ),
+      append(Is0, [let(tmp(P), p, alloc(8), [const(32)]),
+                   let(tmp(N), w, and, [C0, const(7)])], Entry),
+      called(Call, H, P, FV, D, A, A1, Called),
+      append([[let(tmp(FQ), p, add, [tmp(P), const(FOff)]),
+               let(tmp(FV), l, load(l), [tmp(FQ)]),
+               let(tmp(GX), l, ext(uw), [tmp(I)]),
+               let(tmp(GO), l, mul, [tmp(GX), const(Step)]),
+               let(tmp(GO1), l, add, [tmp(GO), const(GOff)]),
+               let(tmp(GQ), p, add, [tmp(P), tmp(GO1)]),
+               store(l, tmp(A), tmp(GQ))],
+              Called,
+              [let(tmp(I1), w, add, [tmp(I), const(1)]),
+               let(tmp(C), w, cmp(slt, w), [tmp(I1), tmp(N)])]], Body),
+      Is = [let(tmp(HQ0), p, add, [tmp(P), const(HOff)]),
+            let(tmp(HV0), l, load(l), [tmp(HQ0)]),
+            let(tmp(HQ8), p, add, [tmp(P), const(HOff8)]),
+            let(tmp(HV8), l, load(l), [tmp(HQ8)]),
+            HCall,
+            let(tmp(HQ4), p, add, [tmp(P), const(HOff4)]),
+            let(tmp(HV4), l, load(l), [tmp(HQ4)])] },
+    [block(start, [], Entry, goto(mloop)),
+     block(mloop, [phi(tmp(I), w, [start-const(0), mloop-tmp(I1)]),
+                   phi(tmp(A), l, [start-Init, mloop-tmp(A1)])],
+           Body, branch(tmp(C), mloop, mexit))].
+
+% called(+Call, +H, +P, +FV, +D, +A, +A1, -Is): the end of a trip: a
+% call of the helper H on the loaded FV, a free of the slot P, or
+% neither, then the accumulator A1.
+called(helper, H, _, FV, D, A, A1,
+       [call(result(tmp(D), l), global(H), [arg(l, tmp(FV))]),
+        let(tmp(A1), l, add, [tmp(A), tmp(D)])]).
+called(free, _, P, FV, _, A, A1,
+       [call(void, global(free), [arg(p, tmp(P))]),
+        let(tmp(A1), l, add, [tmp(A), tmp(FV)])]).
+called(none, _, _, FV, _, A, A1, [let(tmp(A1), l, add, [tmp(A), tmp(FV)])]).
 
 %% Straight-line ops
 

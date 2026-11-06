@@ -62,14 +62,13 @@ for each; the script fails on any disagreement.
 The Nix check runs `rocq/tests/*.ir` once with the reference checks.
 It then runs `tests/filc/*.ir`, `tests/c/*.c` and forty generated Fil-C
 modules (`tests/gen.pl SEED 10 filc`, seeds 1 to 40) with and without
-`-O`, under each of the twelve `--checks` modes. Thirty-nine of the
-generated modules are Fil-C ones (seed 21 draws no memory, so it is
-plain and skipped), and 882 of their 2,340 runs trap.
+`-O`, under each of the twelve `--checks` modes. All forty generated
+modules are Fil-C ones, and 1,291 of their 2,400 runs trap.
 
 | Corpus | Lines that agree | Outside the subset | Disagree |
 | --- | --- | --- | --- |
 | filc fixtures and C tests, with and without `-O` (each `--checks` mode) | 488 | 0 | 0 |
-| the gen modules, with and without `-O` (each mode) | 2,340 | 0 | 0 |
+| the gen modules, with and without `-O` (each mode) | 2,400 | 0 | 0 |
 | Lua's own functions (`rocq/lua.sh`, with and without `-O`, each mode) | 27 | 0 | 0 |
 | `rocq/tests/reuse.ir` (`renew_if`, `renew_hull`, each with and without a free) | 4 | 0 | 0 |
 | `rocq/tests/snapshot.ir` (the variadic snapshot read, written, empty, freed) | 5 | 0 | 0 |
@@ -122,12 +121,33 @@ string hash, UTF-8 escapes and `luaO_ceillog2`.
 [rocq/lua.sh](../rocq/lua.sh) preprocesses it against the Lua source
 `nix/lua.nix` builds, with the same flags.
 
-Gaps in coverage: pizlonate's output never contains `renew_if` or
-`renew_hull` in the corpus. `reuse.ir` covers them by hand, so it runs
-only with the reference checks, because the check passes take only
-pizlonate's output. A `--checks=schedule` run over it is rejected by
-the validator, which is the expected result for input outside a pass's
-precondition, not a finding.
+Every reuse form is reached by the check passes over the corpus, but
+the C tests reach `renew_hull` (6 times) and `renew_if` (9) rarely,
+and seldom on a run that traps. So the `filc` mode of tests/gen.pl also draws a
+memory loop whose shapes are the ones the passes
+need: an access at a fixed offset in a loop with a call (the guard
+pass makes it `span_test` and `renew_if`), an access at an offset that
+grows with the trip count (the hoist pass makes it `limit` and
+`check_limit`), and after the loop two loads 8 bytes apart, a call and
+a load between them (the hull pass makes it `renew_hull`). The call is
+sometimes libc `free` of the slot, so a later renewal traps on a freed
+object, and offsets run past the slot. Over the forty modules the
+passes now emit 179 `renew_if`, 179 `limit` with 358 `check_limit`,
+222 `renew_hull` and 412 `check_ahead`; before, none of the first
+three. Plain modules draw nothing new, so their corpus (nix/check.nix
+compares seed 1 byte for byte) is unchanged.
+
+Four bugs planted in these forms are each caught by the gen modules
+alone: a failed guard's `renew_if` answering `unchecked(span)` (96
+disagreements), a passed guard skipping the flag test (41, only after
+the free inside the loop came in), `check_limit` skipping its access
+test (269), and `renew_hull` skipping its access test (96).
+
+`reuse.ir`, `snapshot.ir` and `floats.ir` are hand-written checked IR,
+so they run only with the reference checks: the check passes take only
+pizlonate's output, and a `--checks=schedule` run over `reuse.ir` is
+rejected by the validator, the expected result for input outside a
+pass's precondition, not a finding.
 
 ## The validator and its gate
 
@@ -177,9 +197,9 @@ the model must reach the same verdict. Plain modules are skipped, and
 so is a mutant that would make its module plain.
 
 The corpus is the matrix's Fil-C fixtures and C tests; forty modules of
-ten random functions each from [tests/gen.pl](../tests/gen.pl), which
-now has a `filc` mode that addresses its memory through `p` values and
-reaches up to four bytes outside its slot; and, with the reference
+ten random functions each from [tests/gen.pl](../tests/gen.pl), whose
+`filc` mode addresses its memory through `p` values, reaches outside
+its slot and draws the memory loop above; and, with the reference
 checks only, the 16 C programs of `tests/c/prog` that declare an alias,
 a weak symbol, thread-local data or a constructor, which bring the
 corpus's aliases and its kinds of data linkage. Programs with a
@@ -190,8 +210,8 @@ over 169 of them agreed on all 73,330 verdicts it could judge.
 
 | Corpus | Verdicts that agree | Outside the subset | Disagree |
 | --- | --- | --- | --- |
-| filc fixtures, C tests and gen modules, without `-O` (each `--checks` mode) | 52,801–57,179 | 253 | 0 |
-| the same with `-O` | 34,940–37,855 | 253–256 | 0 |
+| filc fixtures, C tests and gen modules, without `-O` (each `--checks` mode) | 64,589–68,260 | 253–256 | 0 |
+| the same with `-O` | 45,541–48,193 | 253–256 | 0 |
 | the 16 `tests/c/prog` programs (reference checks) | 9,505 | 3,012 | 0 |
 | Lua's own functions, `rocq/lua.sh` (reference checks) | 6,345 | 0 | 0 |
 | `rocq/tests/reuse.ir`, `snapshot.ir`, `floats.ir` (reference checks) | 111, 145, 46 | 0 | 0 |
@@ -254,6 +274,10 @@ These are formal.md's early decisions as they turned out in the code:
   `Fresh` step like `alloc`, before the entry block. The snapshot's
   pointer lives in the environment under `hidden(va_snapshot)`, the
   interpreter's key.
+- **`nat` extracts to OCaml's `int`.** The model's `nat`s count list
+  elements and fixpoint rounds. Unary, the bound of `dominators` (the
+  square of the reachable block count) overflowed the stack on Lua's
+  `luaV_execute`, which has 995 blocks.
 - **Prolog's `//` on non-negative operands is `Z.div`.** ieee.pl's
   `//` truncates; `Z.quot` says that, but its extraction divides bit
   by bit and took minutes on the 16,000-bit ratios of an `x` denormal.
@@ -357,8 +381,13 @@ ends a run first), and atoms containing UTF-8 bytes in a reader.
 
 ## Next
 
-1. More of the generator's shapes in its `filc` mode (pointer loads and
-   stores, calls), so the generated corpus reaches the reuse forms.
+1. Transcribe `cfg_idoms/2` (Cooper, Harvey and Kennedy) and
+   `dom_intervals/3` for `dominators`, with maps instead of lists for
+   environments and label sets. The present fixpoint over label sets
+   is roughly cubic in the block count: the validator does not finish
+   Lua's lvm.c (`luaV_execute`, 995 blocks) in half an hour, though
+   valid_module/1 judges it in a second. The gate's corpus has no such
+   function, so this is speed, not agreement.
 2. The Campaign 2 `Module Type Runtime`: `fresh` and the lifetime facts
    of `Memory.v` are the first candidates to move into it.
 

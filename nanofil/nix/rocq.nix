@@ -53,7 +53,8 @@ pkgs.runCommandCC "nanofil-rocq-check"
     # passes take pizlonate's output, never renew_hull or renew_if.
     NANOFIL_CHECKS=reference rocq/agree.sh rocq/tests/*.ir
     # Forty Fil-C modules of ten random functions (tests/gen.pl's filc
-    # mode), which trap often, join the matrix below.
+    # mode), which trap often and reach every reuse form, join the
+    # matrix below.
     mkdir gen
     for seed in $(seq 1 40); do
       (cd src && ../bin/nanofil --script ../tests/gen.pl $seed 10 filc </dev/null) > gen/gen-$seed.ir
