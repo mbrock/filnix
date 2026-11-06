@@ -7,7 +7,8 @@
     Decoding is partial in one deliberate way: a function that uses
     anything outside the core subset (a float class, `store`, `cas`,
     `setjmp`, `va_arg`, `asm_fixed`, `touch` ...) decodes to
-    `IOutside Name`. It keeps its address, so calls to it and pointers
+    `IOutside Name Term`. It keeps its address and its term (the
+    validator reads its signature), so calls to it and pointers
     to it behave as the interpreter's do, but running it is stuck.
 
     ## Judgments
@@ -20,10 +21,18 @@
     | `agree(Outcome)` | the model and the interpreter have the same outcome |
     | `disagree(Model, Prolog)` | they differ: a finding, presumed the model's fault |
     | `outside(Fn, Why)` | the run leaves the core subset, so it is not compared |
-    | `stuck_both(Fn, Why)` | the interpreter threw or failed, and the model is stuck too | *)
+    | `stuck_both(Fn, Why)` | the interpreter threw or failed, and the model is stuck too |
+
+    `judge_valid` reads one `verdict(Fn, Id, Func, Verdict)` line that
+    rocq/mutants.pl printed, puts Func in place of Fn in the module, and
+    compares `valid_funcs` of the whole module (a mutant can change what
+    its callers may pass it) with `ir:valid_module/1`'s Verdict:
+    `agree(Fn, Id, V)`, `disagree(Fn, Id, Model, Prolog)` or
+    `outside(Fn, Id)`. A mutant is outside when it is, or when it changes
+    its signature and a function outside the subset refers to it. *)
 
 From Stdlib Require Import String ZArith List Bool Ascii.
-From Nanofil Require Import Term Syntax Values Memory Ops Semantics Run.
+From Nanofil Require Import Term Syntax Values Memory Ops Semantics Run Validate.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -328,13 +337,13 @@ Definition ddata_item (t : term) : option data_item :=
   | _ => None
   end.
 
-(** An item of the module; None for an explanatory `context/2`. *)
+(** An item of the module; None for an explanatory `context(_, _)` item. *)
 Definition ditem (t : term) : option (option item) :=
   match t with
   | TApp "func" [n; lk; r; ps; bs] =>
       Some (Some (match dfunc n lk r ps bs with
                   | Some f => IFunc f
-                  | None => IOutside n
+                  | None => IOutside n t
                   end))
   | TApp "data" [n; lk; TInt al; TList its] =>
       let* lk' := dlinkage lk in let* its' := map_option ddata_item its in
@@ -432,6 +441,55 @@ Definition judge (md : module) (line : term) : term :=
           | Halted why => TApp "stuck_both" [fn; TList args; TAtom why]
           | Finished o => TApp "disagree" [fn; TList args; eoutcome o; TApp "error" [e]]
           end
+      end
+  | _ => TApp "bad_line" [line]
+  end.
+
+(** The module with the function named n replaced by it. *)
+Definition replace_item (n : name) (it : item) (md : module) : module :=
+  map (fun i => match i with
+                | IFunc g => if name_eqb (fn_name g) n then it else i
+                | IOutside g _ => if name_eqb g n then it else i
+                | _ => i
+                end) md.
+
+Definition everdict (b : bool) : term := TAtom (if b then "valid" else "invalid").
+
+(** t mentions `global(N)`. *)
+Fixpoint mentions (n : name) (t : term) : bool :=
+  match t with
+  | TApp "global" [m] => term_eqb m n
+  | TApp _ ts | TList ts => existsb (mentions n) ts
+  | _ => false
+  end.
+
+Definition sig_eqb (a b : sig) : bool :=
+  ((length (sig_params a) =? length (sig_params b))%nat
+   && forallb (fun p => term_eqb (fst p) (snd p)) (combine (sig_params a) (sig_params b)))
+  && term_eqb (sig_ret a) (sig_ret b) && Bool.eqb (sig_variadic a) (sig_variadic b).
+
+(** A mutant that changes its function's signature, in a module where a
+    function outside the subset refers to it: what that function may
+    now pass or read cannot be judged by the model. *)
+Definition unjudged_callers (md : module) (fn : name) (f : func) : bool :=
+  match func_sig fn md, func_sig fn [IFunc f] with
+  | Some old, Some new =>
+      negb (sig_eqb old new) &&
+      existsb (fun it => match it with IOutside _ t => mentions fn t | _ => false end) md
+  | _, _ => false
+  end.
+
+Definition judge_valid (md : module) (line : term) : term :=
+  match line with
+  | TApp "verdict" [fn; id; ft; expected] =>
+      match ditem ft with
+      | Some (Some (IFunc f)) =>
+          if unjudged_callers md fn f then TApp "outside" [fn; id] else
+          let got := everdict (valid_funcs (replace_item fn (IFunc f) md)) in
+          if term_eqb got expected then TApp "agree" [fn; id; got]
+          else TApp "disagree" [fn; id; got; expected]
+      | Some (Some (IOutside _ _)) => TApp "outside" [fn; id]
+      | _ => TApp "bad_line" [line]
       end
   | _ => TApp "bad_line" [line]
   end.

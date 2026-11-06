@@ -1,7 +1,8 @@
 (* The driver of the extracted model: reads the terms `nanofil outcomes
    FILE` prints (main.pl's outcomes/3) from stdin, decodes the first as
    the checked module, and judges each following line (Transport.v's
-   judge). Prints one judgment per line and a summary, and exits 1 if
+   judge). With --valid it reads rocq/mutants.pl's output instead and
+   judges each verdict (judge_valid). Prints one judgment per line and a summary, and exits 1 if
    any line disagrees.
 
    The terms are SWI-Prolog's write_canonical form (format's ~k):
@@ -154,6 +155,7 @@ let () =
       | None -> prerr_endline "nanofil-model: the module does not decode"; exit 2
       | Some md ->
           let count = Hashtbl.create 8 in
+          let judge = if Array.exists (( = ) "--valid") Sys.argv then judge_valid else judge in
           List.iter (fun line ->
               let j = judge md line in
               let k = match j with TApp (k, _) -> k | _ -> "?" in

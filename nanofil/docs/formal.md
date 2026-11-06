@@ -35,7 +35,7 @@ package in Filnix rather than only what nanofil compiles.
 | Campaign | Goal | Deliverable | State |
 | --- | --- | --- | --- |
 | 0 | Measure which checks survive `-O --checks=combined` | `docs/residual.md` | not started |
-| 1 | The core model in Rocq, agreeing with the interpreter | Gallina syntax, semantics, `valid` | under way: syntax, memory and small-step semantics in `nanofil/rocq/`, agreeing with `interp:run/5` on every core-subset run line under every `--checks` mode ([rocq.md](rocq.md)); `valid` not started |
+| 1 | The core model in Rocq, agreeing with the interpreter | Gallina syntax, semantics, `valid` | under way: syntax, memory and small-step semantics in `nanofil/rocq/`, agreeing with `interp:run/5` on every core-subset run line, and `valid` for code, agreeing with `ir:valid_module/1` on every core-subset mutant of the corpus, both under every `--checks` mode with and without `-O` ([rocq.md](rocq.md)); data items and aliases in `valid` not started |
 | 2 | The runtime as one page of axioms, each probed natively | `docs/runtime-axioms.md` | not started |
 | 3 | The soundness theorem for the validator | `valid_no_unchecked`, no admits | not started |
 | 4 | Observations, refinement, and libc contracts | a trace semantics; `opt:refines/2` as trace inclusion | not started |

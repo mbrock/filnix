@@ -6,5 +6,6 @@ theories/Memory.v
 theories/Ops.v
 theories/Semantics.v
 theories/Run.v
+theories/Validate.v
 theories/Transport.v
 theories/Extract.v

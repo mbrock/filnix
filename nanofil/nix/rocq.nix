@@ -4,7 +4,9 @@
 # does not exist yet), extract and link the model, then check that it
 # agrees with interp:run/5 on every run line of rocq/tests, the Fil-C
 # IR fixtures and the C tests, the last two with and without -O and
-# under every --checks mode (rocq/agree.sh).
+# under every --checks mode (rocq/agree.sh); and that its validator
+# reaches ir:valid_module/1's verdict on mutants of every checked module
+# in the same matrix (rocq/valid.sh).
 { pkgs, filcc }:
 let
   rocq = pkgs.rocqPackages;
@@ -54,5 +56,18 @@ pkgs.runCommandCC "nanofil-rocq-check"
         NANOFIL_OPT=$opt NANOFIL_CHECKS=$checks rocq/agree.sh tests/filc/*.ir tests/c/*.c
       done
     done
+    # The validator against ir:valid_module/1 on mutants of every checked
+    # module (rocq/valid.sh, rocq/mutants.pl), in every mode at once.
+    NANOFIL_CHECKS=reference rocq/valid.sh rocq/tests/*.ir
+    # (xargs drops empty words, so "plain" stands for no -O.)
+    for opt in plain -O; do
+      for checks in reference reuse renew guard hoist schedule half forward combined hull getter extended; do
+        echo "$opt $checks"
+      done
+    done | xargs -P "$NIX_BUILD_CORES" -L 1 sh -c '
+      opt=$0; [ "$opt" = plain ] && opt=
+      NANOFIL_OPT=$opt NANOFIL_CHECKS=$1 rocq/valid.sh tests/filc/*.ir tests/c/*.c \
+        >"$TMPDIR/valid-$0-$1.log" 2>&1 || { echo "### valid NANOFIL_OPT=$opt NANOFIL_CHECKS=$1"; cat "$TMPDIR/valid-$0-$1.log"; exit 1; }
+      echo "valid NANOFIL_OPT=$opt NANOFIL_CHECKS=$1: $(grep -c "^/" "$TMPDIR/valid-$0-$1.log") files agree"'
     touch $out
   ''

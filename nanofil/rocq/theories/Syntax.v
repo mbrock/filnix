@@ -25,7 +25,7 @@
     | Gallina | ir.pl |
     |---|---|
     | `IFunc f` | `func(Name, Linkage, Ret, Params, Blocks)` |
-    | `IOutside n` | a `func` named n outside the core subset |
+    | `IOutside n t` | a `func` named n outside the core subset, kept as its term t |
     | `IData n lk al items` | `data(Name, Linkage, Align, Items)` |
     | `IAlias n lk t` | `alias(Name, Linkage, Target)` |
     | `Phi d k pairs` | `phi(tmp(D), K, [Pred-Value])` |
@@ -255,7 +255,7 @@ Inductive data_item : Type :=
 
 Inductive item : Type :=
 | IFunc (f : func)
-| IOutside (n : name)
+| IOutside (n : name) (t : term)
 | IData (n : name) (lk : linkage) (align : Z) (items : list data_item)
 | IAlias (n : name) (lk : term) (target : name).
 

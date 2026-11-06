@@ -77,7 +77,7 @@ Definition layout (st : option (Z * list (name * ptr) * list region)) (it : item
   | IFunc f =>
       let base := align_up a0 16 in
       Some (base + 16, put (fn_name f) (mkPtr base (Fn (fn_name f))) globals, rs)
-  | IOutside n =>
+  | IOutside n _ =>
       let base := align_up a0 16 in
       Some (base + 16, put n (mkPtr base (Fn n)) globals, rs)
   end.

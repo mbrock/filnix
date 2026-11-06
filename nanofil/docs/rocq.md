@@ -1,9 +1,9 @@
-# Campaign 1, first milestone: the core model in Rocq
+# Campaign 1: the core model in Rocq
 
 November 2026. This note reports on Campaign 1 of [formal.md](formal.md),
 which builds on [campaign.md](campaign.md): what exists, the decisions
 taken, what the transcription clarified, and what is left. The
-development is in [rocq/](../rocq/) and is checked by
+development is in `nanofil/rocq/` and is checked by
 `nix build .#checks.x86_64-linux.nanofil-rocq`.
 
 ## What exists
@@ -22,7 +22,8 @@ the interpreter and cites the predicate it copies.
 | `Ops.v` | `alu/4`, `additive_res/4`, `kind_res/8` | integer ops, `check` and the reuse vocabulary, raw loads, pointer-load and pointer-store protocols |
 | `Semantics.v` | `run/5`'s blocks, instructions, jumps, calls | the configuration, `step`, `step_rel`, `reachable` |
 | `Run.v` | `initial_memory/4`, `alloc_base/6` | module preparation, the interpreter's allocator as one fresh choice, a driver |
-| `Transport.v` | — | decoding a printed checked module, encoding outcomes, `judge` |
+| `Validate.v` | ir.pl's `valid_module/1` for code | `valid_func`, `valid_funcs`, `valid`: uses, ops, instructions, dominance, locals, the evidence pass, the reuse rules, `polls_every_cycle` |
+| `Transport.v` | — | decoding a printed checked module, encoding outcomes, `judge`, `judge_valid` |
 | `Extract.v`, `extraction/main.ml` | — | OCaml extraction, and a reader of Prolog terms |
 
 Covered: filc mode, the checked stage, classes `w`, `l`, `p`, `a` and
@@ -33,12 +34,14 @@ and named locals, `check_function` with `raw_call` (including the
 generic entry's argument and result conversions), `raw_load`,
 `raw_load_pointer`, `raw_store`, `raw_store_pointer` with their effect
 lists, `flight`, poll edges, direct `call`, and libc `free`. A function
-that uses anything else decodes to `IOutside`. It keeps its address and
-its `fn` capability, but running or calling it is stuck, and the
+that uses anything else decodes to `IOutside`. It keeps its address,
+its `fn` capability and its term (so the validator can read its
+signature and its calls), but running or calling it is stuck, and the
 comparison reports such a run as `outside`.
 
-Not yet done: the validator `valid` and its gate against
-`ir:valid_module/1`. This is the larger half of Campaign 1.
+The validator covers the code of a module: every function in the
+subset. Data items, aliases and contexts are not transcribed; `valid`
+is `None` for a module with a function outside the subset.
 
 ## The gate
 
@@ -77,6 +80,53 @@ only with the reference checks, because the check passes take only
 pizlonate's output. A `--checks=schedule` run over it is rejected by
 the validator, which is the expected result for input outside a pass's
 precondition, not a finding.
+
+## The validator and its gate
+
+`Validate.v` transcribes `valid_module/1` for code, clause group by
+clause group. A function is valid when its uses, ops, instructions,
+jumps and phis are well formed, every use has a dominating definition
+(dominators by fixpoint), named locals are declared once in the entry
+block, and, in a checked module, `stage_func/6` holds: the evidence
+pass over the blocks in order, `limit_reads/2`, and
+`polls_every_cycle/1` (by repeatedly removing blocks with no unpolled
+edge into what is left). ir.pl throws at the first problem; the model
+returns `false`, so it follows ir.pl's clause groups and not its order
+of evaluation.
+
+Three places in ir.pl depend on how Prolog evaluates, and the model
+copies them, as `Validate.v`'s header records: `offset_interval/8`
+memoises successes but not failures under a depth limit of 32;
+`pointer_distance/4` commits to the first shared base (a cut); and
+`op_interval/9` commits after its heads, so `and` with a constant
+tries its left operand first.
+
+The gate is [rocq/valid.sh](../rocq/valid.sh). For each file,
+`nanofil outcomes` prints the checked module, and
+[rocq/mutants.pl](../rocq/mutants.pl) prints, for each function, the
+function as it is and up to 150 mutants: a check deleted or moved, a
+check's bounds, rights or alignment changed, a raw access's offset
+moved by one, a free inserted between evidence and its use, a reuse
+form given another proof, a poll edge removed. `valid_module/1` judges
+each mutant in place of its function, and the model, given the whole
+module, must reach the same verdict. Plain modules are skipped.
+
+| Corpus | Verdicts that agree | Outside the subset | Disagree |
+| --- | --- | --- | --- |
+| filc fixtures and C tests, without `-O` (each `--checks` mode) | 19,003–20,321 | 6,435–6,757 | 0 |
+| the same with `-O` | 9,484–9,559 | 4,516–4,904 | 0 |
+| `rocq/tests/reuse.ir` (reference checks) | 87 | 0 | 0 |
+
+The mutants test rejection as well as acceptance: on basic.ir,
+`valid_module/1` judged 413 of them invalid and 210 valid. A mutant is
+`outside` when it is itself outside the subset, or when it changes its
+function's signature and a function outside the subset calls it, since
+the model cannot judge that caller.
+
+The gate can fail. I planted four bugs in `Validate.v`, each found by
+the gate and then reverted: a covered access that ignored its size;
+evidence that survived an instruction that does not preserve it; a
+hull allowed below its lower proof; and cycles that needed no poll.
 
 ## Decisions
 
@@ -141,22 +191,39 @@ These are formal.md's early decisions as they turned out in the code:
   the first candidate for one when variadics come in, and Campaign 3's
   renew lemma must state which objects can be freed.
 
+## What transcribing the validator made clearer
+
+- **The stage belongs to the module.** `module_stage` reads the whole
+  module: it is checked if any function uses a word of the checked
+  stage (a check, a reuse form, a raw access, a flight or a poll
+  edge). A mutant that removes the only poll edge of a
+  module that has nothing else checked makes the module unchecked, and
+  so valid, though it now has an unpolled cycle. The model reads the
+  stage from every function, including those outside the subset.
+- **Validity is a property of the module, not the function.** Deleting
+  a function's `va_args` changes its signature, and that invalidates
+  every caller. So the gate replaces one function and judges the whole
+  module, and the model cannot judge a mutant whose callers are outside
+  the subset.
+- **Entry evidence depends on block order.** An edge from a block not
+  yet processed carries no evidence, the same as a poll edge. Block
+  order is therefore part of the checked IR's meaning for the
+  validator, and Campaign 3's soundness statement must be about the
+  blocks in that order.
+
 ## Disagreements
 
-None so far. No fixture was needed, and the Prolog has not yet been
-contradicted. Making the comparison work needed two changes on the
+None so far, in the outcome gate or the validator gate. No fixture was
+needed, and the Prolog has not yet been contradicted. Making the comparison work needed two changes on the
 OCaml side, neither of them semantic: a gas limit in the driver that
 was too small for loops (now 2^60 steps, so the run's own fuel always
 ends a run first), and atoms containing UTF-8 bytes in a reader.
 
 ## Next
 
-1. `valid : module -> bool`, transcribing `ir:valid_module/1` for the
-   checked stage: coverage, evidence persistence and each reuse rule's
-   side conditions. Then the gate against the validator over the
-   snapshot corpus, with and without `-O` and under every `--checks`
-   mode.
-2. A larger corpus for the outcome gate: `gen.pl` modules pizlonated,
+1. Data items, aliases and contexts in `valid`, so it judges whole
+   modules and not only their code.
+2. A larger corpus for both gates: [tests/gen.pl](../tests/gen.pl) modules pizlonated,
    and the Lua test suite once its functions fit the subset.
 3. The Campaign 2 `Module Type Runtime`: `fresh` and the lifetime facts
    of `Memory.v` are the first candidates to move into it.

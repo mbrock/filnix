@@ -7,12 +7,10 @@ all: nanofil-model
 Makefile.rocq: _RocqProject
 	rocq makefile -f _RocqProject -o Makefile.rocq
 
-theories: Makefile.rocq
+# Compiling theories/ also extracts; the driver is relinked every time
+# (two seconds), so it can never lag behind the extraction.
+nanofil-model: Makefile.rocq
 	$(MAKE) -f Makefile.rocq
-
-extraction/nanofil_model.ml: theories
-
-nanofil-model: extraction/nanofil_model.ml extraction/main.ml
 	cd extraction && ocamlfind ocamlopt -w -a -package zarith -linkpkg \
 	  nanofil_model.mli nanofil_model.ml main.ml -o ../nanofil-model
 
@@ -21,4 +19,4 @@ clean:
 	rm -f Makefile.rocq Makefile.rocq.conf .Makefile.rocq.d nanofil-model
 	rm -f extraction/nanofil_model.ml extraction/nanofil_model.mli extraction/*.cm* extraction/*.o
 
-.PHONY: all theories clean
+.PHONY: all nanofil-model clean

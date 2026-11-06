@@ -44,7 +44,7 @@ swipl nanofil/tests/docs.pl -- nanofil/src     # every module has a header and e
 (cd nanofil/src && ../bin/nanofil --script ../tests/gen.pl SEED COUNT </dev/null) >gen.ir  # random IR corpus
 scripts/nanofil-fleet run [--roots ...]       # everything, sharded over orbs; must pass before pushing
 nix build .#checks.x86_64-linux.nanofil        # the same, unsharded in one build (about 45 min)
-nix build .#checks.x86_64-linux.nanofil-rocq   # the Rocq model (rocq/) builds and agrees with interp (docs/rocq.md)
+nix build .#checks.x86_64-linux.nanofil-rocq   # the Rocq model (rocq/) builds and agrees with interp and valid_module (docs/rocq.md)
 nix build .#checks.x86_64-linux.nanofil-hello  # GNU hello built only by nanofil, vs filcc
 nix build .#checks.x86_64-linux.nanofil-zlib   # zlib built only by nanofil, vs filcc
 nix build .#checks.x86_64-linux.nanofil-lua    # Lua built only by nanofil, vs filcc

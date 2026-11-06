@@ -12,7 +12,7 @@
 
     | Part | Is | interp.pl |
     |---|---|---|
-    | `c_frame` | the running invocation | the `ctx/6`, Env and the block being run |
+    | `c_frame` | the running invocation | the `ctx(...)` term, Env and the block being run |
     | `c_callers` | the suspended callers, each with how it reads the result | Prolog's own stack |
     | `c_mem` | memory | `s(Mem, Fuel)`'s Mem, less Next |
     | `c_fuel` | blocks left to run | `s(Mem, Fuel)`'s Fuel |
@@ -78,7 +78,7 @@ Fixpoint find_direct (n : name) (items : module) : option fn_def :=
   match items with
   | [] => None
   | IFunc f :: rest => if name_eqb (fn_name f) n then Some (Defined f) else find_direct n rest
-  | IOutside f :: rest => if name_eqb f n then Some (Outside f) else find_direct n rest
+  | IOutside f _ :: rest => if name_eqb f n then Some (Outside f) else find_direct n rest
   | _ :: rest => find_direct n rest
   end.
 
