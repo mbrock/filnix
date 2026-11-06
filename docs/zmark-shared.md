@@ -404,6 +404,19 @@ the rebase onto origin/main (nanofil,
 nanofil-bash, -bzip2, -coreutils, -dash, -hello, -jq, -lua, -lz4, -make,
 -python, -python-regrtest-plain, -sed, -sqlite, -swipl, -xz, -zlib).
 
+At the `-fzmark-shared` opt-in (549e53f11256), 15 of 17 passed on the first
+run across swa's builders. Both failures went away when rerun locally on swa:
+- `nanofil`: 2 or 4 of 204 progtest programs ran out of time. In the last,
+  loaded pass every program took 50–62 s, while the same programs passed in
+  13–25 s in the earlier passes of the same build. A local rerun passed.
+- `nanofil-swipl`: in one run, the nanofil-built swipl trapped once in
+  `swipl:core`. The trap was in atom GC's `scanSegStack`, which reads
+  another thread's findall stack while that thread pushes to it. SWI does
+  this unsynchronised on purpose (pl-segstack.c: "completely asynchronous …
+  TBD: Avoid instruction/cache write reordering"). swipl marks no mapping,
+  so no zmark path is involved. A local rerun passed: ctest 74 passed, as
+  filcc's.
+
 nanofil needs no change for programs that never call `zmark_shared`, since
 the runtime is unchanged for unmarked objects. Code that nanofil compiles does
 not know the shared flag, so on a marked object it fails safe rather than
