@@ -1039,7 +1039,8 @@ renew_res(ok, P, _, val(P)).
 renew_res(trap(readonly), _, _, trap(readonly)).
 renew_res(trap(Why), ptr(_, Cap), mem(_, Rs, _, _), Res) :-
     Why \== readonly,
-    (   Cap = obj(Base), object_region(Base, Rs, region(_, _, _, freed))
+    (   ( Cap = obj(Base) ; Cap = ro(Base) ),
+        object_region(Base, Rs, region(_, _, _, freed))
     ->  Res = trap(out_of_bounds)
     ;   Res = unchecked(span)
     ).

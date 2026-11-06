@@ -280,18 +280,11 @@ These are formal.md's early decisions as they turned out in the code:
 - **Phis read the entry environment.** `phis_env/6` binds every phi
   from the environment as it was on entry, which the model states by
   passing the old environment explicitly.
-- **`renew_res/4` asks only about `obj`.** It answers "freed, so it
-  traps" for an `obj(Base)` capability only. A renewal of read-only
-  object that fails for another reason is `unchecked(span)`, even if
-  the object was freed. `object_free_res` does free a read-only heap
-  object, and the variadic snapshot (`args_snapshot`) is one. A renew
-  through a freed snapshot would therefore be reported as a broken pass
-  instead of the reference check's `trap(out_of_bounds)`. With
-  variadics in the subset this now has a fixture,
-  `rocq/tests/snapshot.ir`'s `freed_snapshot`: `valid_module/1`
-  accepts it, and both the interpreter and the model end it
-  `unchecked(span)`, where `freed_snapshot_check` traps. See the next
-  section.
+- **`renew_res/4` asked only about `obj`.** It answered "freed, so it
+  traps" for an `obj(Base)` capability only, though `object_free_res`
+  frees read-only heap objects too, and the variadic snapshot
+  (`args_snapshot`) is one. `rocq/tests/snapshot.ir`'s `freed_snapshot`
+  showed it: see the next section, which records the fix.
 
 ## What transcribing the validator made clearer
 
@@ -328,20 +321,30 @@ These are formal.md's early decisions as they turned out in the code:
   validator, and Campaign 3's soundness statement must be about the
   blocks in that order.
 
-## A valid module can reach unchecked
+## A freed snapshot traps at its renew
 
 `freed_snapshot` frees the variadic snapshot (`free` of `va_args` at
 offset 0) between a check of it and a `renew` of that check. ir.pl
-accepts the module, and the run ends `unchecked(span)`: a valid module
-whose run is unchecked, which Campaign 3's theorem `valid_no_unchecked`
-says cannot happen. The model agrees with the interpreter, so this is
-not a disagreement but a counterexample to the theorem as stated, found
-in the Prolog itself. Either `renew_res/4` should treat a freed `ro`
-object as it treats a freed `obj` one (the run would then trap, as the
-check does), or freeing the snapshot should be excluded: native Fil-C's
-snapshot is a runtime object a program never names, so whether `free`
-of it can happen at all is a question for Campaign 2. Nanofil's C
-frontend never frees `va_args`, so no C program reaches it.
+accepts the module, and the run ended `unchecked(span)`: a valid module
+whose run is unchecked, a counterexample to Campaign 3's
+`valid_no_unchecked` as stated, found in the Prolog itself. The model
+agreed with the interpreter, so it was not a disagreement.
+
+The interpreter was stricter than native code, not the other way round.
+The emitted renew (`filc_amd64.pl`'s `fused(renew(...))`, which
+`renew_hull` and `renew_if`'s fast path share) tests the free flag in
+the object's flags byte through its lower, whatever the capability's
+kind, and the pinned runtime's `object_for_deallocate` refuses special,
+global and mmap objects and interior pointers but not READONLY ones. So
+native Fil-C frees the snapshot and traps at the renew. `renew_res/4`
+now treats a freed `ro` object as it treats a freed `obj` one, and
+`Ops.v`'s `renew_res` says the same: the run traps out of bounds, as
+`freed_snapshot_check` does. An Oracle review of the change found the
+callers (renew, renew_hull, renew_if) consistent, the trap order
+unchanged (a freed object fails its bounds before read-only is tested,
+as native reports FREE first), and no other `obj`-only assumption about
+freeing; only the snapshot is a freeable `ro` object, since read-only
+data is not heap and its free is `invalid_free`.
 
 ## Disagreements
 
@@ -354,11 +357,9 @@ ends a run first), and atoms containing UTF-8 bytes in a reader.
 
 ## Next
 
-1. Decide the freed-snapshot case above (ir.pl, interp.pl or
-   Campaign 2's axioms), before Campaign 3 states its theorem.
-2. More of the generator's shapes in its `filc` mode (pointer loads and
+1. More of the generator's shapes in its `filc` mode (pointer loads and
    stores, calls), so the generated corpus reaches the reuse forms.
-3. The Campaign 2 `Module Type Runtime`: `fresh` and the lifetime facts
+2. The Campaign 2 `Module Type Runtime`: `fresh` and the lifetime facts
    of `Memory.v` are the first candidates to move into it.
 
 Inquiries touched: none closed. The integer-at-`p` case is a small

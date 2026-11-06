@@ -3,9 +3,8 @@
 % holds every argument, the fixed ones first, and is read-only, so a
 % store through it traps; a call with no arguments at all has a null
 % snapshot. And free frees it, after which a renew of an earlier proof
-% is unchecked(span), not the trap a check gives (docs/rocq.md, "A
-% valid module can reach unchecked"): renew_res/4 knows only obj
-% capabilities to be freed.
+% traps out of bounds, as a check does and as native code's flags test
+% does (docs/rocq.md, "A freed snapshot traps at its renew").
 
 % The extra argument, 8 bytes past the one fixed argument.
 run(snapshot_read, [5]).
@@ -54,7 +53,7 @@ func(nothing, local, l, [], [
 ]).
 
 % A free of the snapshot between a proof and its renewal: valid_module/1
-% accepts this, and the run ends unchecked(span).
+% accepts this, and the renew traps out of bounds.
 run(freed_snapshot, [5]).
 func(freed_snapshot, export, l, [param(l, tmp(n))], [
     block(start, [], [

@@ -149,7 +149,7 @@ Definition renew_res (r : res unit) (p : ptr) (m : mem) : option (res word) :=
   | RTrap Readonly => Some (RTrap Readonly)
   | RTrap _ =>
       match ptr_cap p with
-      | Obj base =>
+      | Obj base | Ro base =>
           let* reg := object_region base (m_regions m) in
           Some (match r_life reg with
                 | Freed => RTrap OutOfBounds
