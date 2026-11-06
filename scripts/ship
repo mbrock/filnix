@@ -29,7 +29,7 @@ publish_only=0
 rev=HEAD
 exact=
 fleet_results=
-roots=nanofil-rocq
+roots=auto
 while [ $# -gt 0 ]; do
   case "$1" in
     --no-publish) publish=0; shift ;;
@@ -41,7 +41,7 @@ while [ $# -gt 0 ]; do
         --exact) exact=$2 ;;
         --fleet-results) fleet_results=$2 ;;
         --roots)
-          if [ "$2" = all ]; then roots=all; else roots="nanofil-rocq,$2"; fi
+          if [ "$2" = all ]; then roots=all; else roots="auto,$2"; fi
           ;;
       esac
       shift 2
@@ -51,7 +51,7 @@ while [ $# -gt 0 ]; do
 done
 if { [ "$rev" != HEAD ] && [ $publish_only = 0 ]; } ||
    { [ -n "$exact" ] && { [ $publish_only = 1 ] || [ -z "$fleet_results" ]; }; } ||
-   { [ -z "$exact" ] && { [ -n "$fleet_results" ] || [ "$roots" != nanofil-rocq ]; }; }; then
+   { [ -z "$exact" ] && { [ -n "$fleet_results" ] || [ "$roots" != auto ]; }; }; then
   echo "ship: --rev requires --publish-only; --exact requires --fleet-results and cannot publish-only" >&2
   exit 2
 fi
@@ -202,5 +202,14 @@ git merge-base --is-ancestor origin/main "$sha" || {
 if [ "$sha" = "$(git rev-parse origin/main)" ]; then
   echo "ship: $sha already on main; foundations cached"
   exit 0
+fi
+if [ -z "$exact" ]; then
+  # Exact-head landing already verified this evidence above. Ordinary
+  # shipping runs only the quick gate, never the opt-in mutation campaign.
+  required=$(python3 scripts/nanofil-fleet required-roots --rev "$sha")
+  if [ -n "$required" ]; then
+    python3 nanofil/tests/watch.py --label nanofil-rocq --warn-after 120 --timeout 300 -- \
+      nix build -L --no-link "$flake#checks.x86_64-linux.nanofil-rocq"
+  fi
 fi
 git push origin "$sha:refs/heads/main"

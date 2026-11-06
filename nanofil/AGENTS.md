@@ -44,7 +44,8 @@ swipl nanofil/tests/docs.pl -- nanofil/src     # every module has a header and e
 (cd nanofil/src && ../bin/nanofil --script ../tests/gen.pl SEED COUNT </dev/null) >gen.ir  # random IR corpus
 scripts/nanofil-fleet run [--roots ...]       # everything, sharded over orbs; must pass before pushing
 nix build .#checks.x86_64-linux.nanofil        # the same, unsharded in one build (about 45 min)
-nix build .#checks.x86_64-linux.nanofil-rocq   # the Rocq model (rocq/) builds and agrees with interp and valid_module (docs/rocq.md)
+nix build .#checks.x86_64-linux.nanofil-rocq   # quick: model, parse.sh, small corpus; base verdicts only
+nix build .#checks.x86_64-linux.nanofil-rocq-full # deliberate full mutation campaign (docs/rocq.md)
 nix build .#checks.x86_64-linux.nanofil-hello  # GNU hello built only by nanofil, vs filcc
 nix build .#checks.x86_64-linux.nanofil-zlib   # zlib built only by nanofil, vs filcc
 nix build .#checks.x86_64-linux.nanofil-lua    # Lua built only by nanofil, vs filcc
@@ -61,10 +62,18 @@ full set or a survey rerun after a push asks the orchestrating thread, or
 a thread on runner swa, to run it at the pushed commit.
 
 The pre-push check is `scripts/nanofil-fleet run`, from an orb or a
-runner: it must pass at the commit you push. Add `--roots` for the other
-nanofil-* checks your change can affect (`nanofil-rocq` for `rocq/`,
-`nanofil-lua` and the package builds for frontend and backend changes,
-`--roots all` when unsure). Run the unsharded
+runner: it must pass at the commit you push. Its default `--roots auto`
+adds the quick Rocq root for model/compiler/validator or gate-input
+changes relative to origin/main, not unrelated web/docs changes. CI and
+exact-head ship verification use the same selector. Add `--roots auto,...`
+for other affected checks (`nanofil-lua` and package builds for frontend
+and backend changes, `--roots all` when unsure). `all` excludes the full
+mutation campaign: select `nanofil-rocq-full` explicitly before releases
+and for soundness-relevant changes. Ordinary iteration needs only the
+quick model build, parse.sh and small-corpus outcomes/base verdicts,
+without mutants, targeted at 1–2 minutes. Full evidence is not proof and
+does not belong on every experimental edit. No nightly run is configured.
+Run the unsharded
 `nix build .#checks.x86_64-linux.nanofil` only when the fleet cannot
 start, and say so. The fleet runs the checks in
 new orbs (`amp -ox`, one thread per job) and aggregates the results
@@ -85,6 +94,49 @@ closure through Cachix + cache.nixos.org; missing paths or check errors
 start zero workers. Ask the swa lander to repair a staging miss. A missing
 candidate `site-play` does not block testing: it gates landing instead.
 `--dry-run` shows the preflight and prompts without checking or launching.
+
+## Check budgets and visible progress
+
+Slow checks are bugs. Do not introduce a slow push gate or normalize one
+by silently waiting longer. Measure the largest cases under the actual
+parallel workload, then split independent work, fix its algorithm or
+cache immutable inputs without reducing coverage.
+
+| Work | Soft budget (warning) | Hard deadline (failure) |
+| --- | --- | --- |
+| A main-check step or one corpus file | 60 s | 300 s |
+| Quick Rocq root, including Nix dependencies | 120 s | 300 s |
+| Other fleet shards/roots, including the full mutation campaign | 600 s | 1800 s |
+| Explicit full-package campaign (`scripts/nanofil-checks`, not a push receipt) | 600 s | 5400 s |
+
+`tests/watch.py --label LABEL -- COMMAND...` enforces the first row by
+default; the fleet enforces root budgets. It emits UTC timestamps, elapsed
+time, the work's label and its latest output every 15 seconds even if the
+child is silent. It warns as soon as the soft budget is crossed and kills
+the process group on a hard timeout (exit 124). Main-check steps and
+`tests/par.sh` files use it; the Rocq matrix uses that same file runner.
+A timeout is a failure, never a skipped case or a successful receipt.
+
+- Run long experiments through the watchdog too. Do not launch a job
+  redirected solely to a log, wait silently, or poll less often than every
+  30 seconds. Show the latest real step/file/mode, time and warning, not
+  just "still running". A heartbeat with no indication of the active work
+  is not meaningful progress.
+- Preserve complete logs and per-step/per-file timings. The fleet relays
+  sampled worker progress and reports slow-check warnings in its summary;
+  Rocq's output retains the full per-mode and program logs. Worker agents
+  must surface those updates in commentary, including failures and budget
+  warnings, while waiting on the same process.
+- Investigate a warning before adding more work to that check. Do not
+  rerun a timeout unchanged, extend a limit, increase orb size, delete
+  cases or hide output to get a green gate. A deliberately slower
+  diagnostic/campaign must state its purpose and finite budget up front,
+  remain observable, and cannot replace exact-head fleet evidence.
+- Check performance after changing parallelism: wall time under CPU or
+  memory contention, not just the isolated fastest case. Keep reference
+  behavior, all modes, mutants and exactly-once shard coverage intact.
+
+## Local iteration
 
 For many runs, `bin/nanofil --save-state /tmp/nanofil.state` and
 `export NANOFIL_STATE=/tmp/nanofil.state` skip compiling `src/` each time
@@ -212,8 +264,10 @@ Several threads may work on nanofil at once, each owning one workstream.
   interpreter and backends. Changing it needs the orchestrating thread's
   agreement first.
 - Rebase onto current main before the final commit X and run
-  `scripts/nanofil-fleet run --rev X --shards 6 --roots nanofil-rocq`,
-  adding other affected roots (or `--roots all`). Freeze the candidate
+  `scripts/nanofil-fleet run --rev X --shards 6`,
+  adding other affected roots (`--roots auto,LIST` or `--roots all`).
+  The full mutation root is opt-in, not a routine landing requirement.
+  Freeze the candidate
   ref and hand the swa lander its branch/bundle, full X, observed main,
   exact command, pass/coverage, and `results.json`; retain `fleet.json`,
   `summary.md`, and worker logs as supporting evidence. Transfer the files
@@ -221,8 +275,11 @@ Several threads may work on nanofil at once, each owning one workstream.
   after testing, since that would create a new SHA.
 - The lander fetches the branch/bundle, confirms it is X, checks out X,
   and runs `scripts/ship --exact X --fleet-results FILE`. Six complete
-  shards plus Rocq are required; `--roots LIST` adds other required roots
-  and `--roots all` requires all. The existing receipt is verified; do not
+  shards plus the change-selected quick Rocq root are required;
+  unrelated web-only changes need no Rocq receipt. `--roots LIST` adds
+  other required roots and `--roots all` excludes the full campaign.
+  Releases require a separate exact-head `nanofil-rocq-full` receipt via
+  `scripts/release --fleet-results FILE`. The existing receipt is verified; do not
   rerun its fleet just because ownership changed. Main must be an ancestor
   of X. If main diverges, stop, rebase, resolve any conflicts preserving
   both sides' intent, and rerun at the new SHA. No cherry-pick, implicit

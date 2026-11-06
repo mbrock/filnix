@@ -52,7 +52,56 @@ function outside the subset. The `context(Name, Records)` items are not transcri
 they are provenance's records, which `valid_contexts/1` checks and
 `run/5` never reads, and the module the gates compare has none.
 
-## The gate
+## Routine smoke check and opt-in campaign
+
+Rocq is experimental work, not a reason to turn every edit into a long
+release qualification. `checks.x86_64-linux.nanofil-rocq` is the quick
+push check, targeted at 1–2 minutes: build/extract/link the model, run
+`web/rocq/tests/parse.sh` on every theory, then compare outcomes and base
+validator verdicts on `rocq/tests/*.ir`, `tests/filc/basic.ir`,
+`tests/c/ldouble.c` and `tests/c/prog/alias.c`, with reference checks.
+`NANOFIL_MUTANTS=0` selects `mutants.pl --base`: it generates no mutations,
+only the unchanged items' whole-module verdicts. This is a smoke check,
+not rejection coverage or a soundness proof.
+In particular, `dominance.ir`'s one-sweep-idom and always-true-dominance
+plants are detected by its mutant verdicts, not its unchanged base
+verdict. They are covered only by the full campaign, not the routine
+no-mutants smoke check. This tradeoff is deliberate; a dominance or
+other soundness-relevant change calls for the opt-in evidence.
+
+The fleet's default `--roots auto`, ship's evidence verifier and CI share
+the change selector in `scripts/nanofil-fleet required-roots`. Model,
+compiler/validator and gate-input changes need the quick root; unrelated
+web styling, rendering and documentation edits skip it. Parser/grammar
+changes still need parse.sh. Plain ship runs the relevant quick check;
+exact-head ship reuses its receipt instead of rerunning it.
+
+The complete outcome and mutation matrix described below is now
+`checks.x86_64-linux.nanofil-rocq-full`. Run it deliberately before a
+release or for a soundness-relevant change:
+
+```sh
+scripts/nanofil-fleet run --rev HEAD --shards 6 --roots auto,nanofil-rocq-full
+```
+
+Even `--roots all` excludes it. CI runs quick checks on relevant pushes
+and pull requests; its manual `full` input selects the campaign. No
+nightly campaign is enabled. `scripts/release --fleet-results FILE`
+requires exact-head full-campaign evidence, not a quick receipt.
+
+All jobs retain timestamped progress and budget warnings. Quick Rocq
+warns at 120 seconds and fails at 300; the full fleet root warns at 600
+and fails at 1800. A corpus file warns at 60 seconds and fails at 300.
+Timeouts fail, never omit coverage. Independent outcome modes run in
+parallel, as the validator modes already did. Lua's whole-module mutant
+generation/judging uses independent item-index partitions after the
+program cases finish; every changed module is still judged whole, and
+inserted-item mutants occur only in partition zero. The union is checked
+against the serial stream. Model inputs exclude fixtures/harnesses/docs;
+the check excludes unrelated web/docs inputs. Outputs retain full logs
+per mode/program, with file/mode/seconds progress visible through the fleet.
+
+## The full outcome gate
 
 `nanofil outcomes FILE` (main.pl, a new command) prints the checked
 module that `difftest` would compare, then `interp:run/5`'s outcome on
@@ -61,7 +110,7 @@ output into the extracted model. The model decodes the module, runs
 every line, and prints `agree`, `disagree`, `outside` or `stuck_both`
 for each; the script fails on any disagreement.
 
-The Nix check runs `rocq/tests/*.ir` once with the reference checks.
+The full Nix campaign runs `rocq/tests/*.ir` once with the reference checks.
 It then runs `tests/filc/*.ir`, `tests/c/*.c` and forty generated Fil-C
 modules (`tests/gen.pl SEED 10 filc`, seeds 1 to 40) with and without
 `-O`, under each of the twelve `--checks` modes. All forty generated

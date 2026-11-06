@@ -4,7 +4,7 @@
 # commit's full distribution outputs must be in the public caches, beyond
 # the foundation gate published by scripts/ship.
 #
-#   scripts/release [TAG] [REV]
+#   scripts/release --fleet-results FILE [TAG] [REV]
 #
 # REV (default origin/main) releases an earlier commit of origin/main, for a
 # coherent point that later pushes have moved past.
@@ -13,12 +13,22 @@ set -euo pipefail
 . "$(dirname "$0")/git-hooks/lib.sh"
 cd "$filnix_root"
 
+fleet_results=
+if [ "${1:-}" = --fleet-results ] && [ $# -ge 2 ]; then
+  fleet_results=$2
+  shift 2
+fi
+[ -n "$fleet_results" ] || {
+  echo "release: require --fleet-results FILE with six shards and nanofil-rocq-full at the release SHA" >&2
+  exit 2
+}
 git fetch -q --tags origin
 sha=$(git rev-parse "${2:-origin/main}^{commit}")
 git merge-base --is-ancestor "$sha" origin/main || {
   echo "release: ${sha:0:12} is not on origin/main" >&2
   exit 2
 }
+python3 scripts/nanofil-fleet verify "$fleet_results" --rev "$sha" --shards 6 --roots nanofil-rocq-full
 tag=${1:-}
 if [ -z "$tag" ]; then
   tag=v$(date -u +%Y.%m.%d)

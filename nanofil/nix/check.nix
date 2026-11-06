@@ -59,7 +59,7 @@ pkgs.runCommandCC
         return
       fi
       echo ">>> [$((SECONDS - check_t0))s] start: $label"
-      "$@" || status=FAIL mark=" FAILED"
+      python3 tests/watch.py --label "$label" -- "$@" || status=FAIL mark=" FAILED"
       echo "<<< [$((SECONDS - check_t0))s] done in $((SECONDS - t0))s: $label$mark"
       printf '%5ds  %s\n' $((SECONDS - t0)) "$label$mark" >>"$TMPDIR/timings"
       echo "@@nanofil-step $status $((SECONDS - t0)) $label"
@@ -92,6 +92,7 @@ pkgs.runCommandCC
     python3 -I tests/ifchain.py 600 > ifchain.c
     python3 -I tests/bigfn.py 2 100 > big2.c
     steps() {
+    step "check watchdog" python3 tests/watch_test.py
     step unit bash -c '(cd src && ../bin/nanofil --script ../tests/unit.pl </dev/null) | tee unit.log && grep -q "tests ok$" unit.log'
     # Every module has a header and every export PlDoc (docs/guide.md,
     # Conventions).

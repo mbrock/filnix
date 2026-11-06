@@ -26,7 +26,7 @@ drvs=$(nix eval --json .#checks.x86_64-linux --apply \
   'cs: builtins.mapAttrs (_: c: c.drvPath)
          (builtins.removeAttrs cs (builtins.filter
            (n: builtins.substring 0 7 n != "nanofil") (builtins.attrNames cs)))')
-[ ${#names[@]} -gt 0 ] || mapfile -t names < <(jq -r 'keys[]' <<<"$drvs")
+[ ${#names[@]} -gt 0 ] || mapfile -t names < <(jq -r 'keys[] | select(. != "nanofil-rocq-full")' <<<"$drvs")
 
 log=${NANOFIL_CHECKS_LOG:-.amp/in/nanofil-checks.log}
 mkdir -p "$(dirname "$log")"
@@ -39,10 +39,14 @@ done
 
 start=$(date +%s)
 echo "building ${#names[@]} checks at $(git rev-parse --short HEAD), log in $log"
-nix build --no-link --keep-going -L --cores "${NANOFIL_CHECKS_CORES:-4}" \
-  "${extra[@]}" "${targets[@]}" >"$log" 2>&1 || true
+code=0
+# This is an explicit multi-root campaign, not an exact-head push receipt.
+python3 nanofil/tests/watch.py --label "nanofil campaign: ${names[*]}" \
+  --warn-after 600 --timeout 5400 -- \
+  nix build --no-link --keep-going -L --cores "${NANOFIL_CHECKS_CORES:-4}" \
+  "${extra[@]}" "${targets[@]}" 2>&1 | tee "$log" || code=$?
 
-fail=0
+fail=$code
 for n in "${names[@]}"; do
   d=$(jq -r --arg n "$n" '.[$n]' <<<"$drvs")
   out=$(nix-store -q --outputs "$d" | head -1)

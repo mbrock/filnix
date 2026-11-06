@@ -83,6 +83,25 @@ def nanofil_roots(flake):
     return json.loads(out)
 
 
+def required_roots(rev, base="origin/main"):
+    """Only model/compiler/test-input changes need the quick Rocq gate."""
+    changed = sh("git", "diff", "--name-only", f"{base}...{rev}").splitlines()
+    relevant = re.compile(r"^(flake\.(nix|lock)$|nanofil/(rocq/|src/|bin/|nix/rocq\.nix$|"
+                          r"tests/(par\.sh|watch\.py|filc/|c/)|"
+                          r"web/rocq/(rocq_syntax\.pl|tests/(parse\.sh|reprint\.pl))$))")
+    return ["nanofil-rocq"] if any(relevant.search(p) for p in changed) else []
+
+
+def selected_roots(value, rev, base="origin/main"):
+    if value == "all":
+        # Expensive mutation evidence is always deliberate, even with all.
+        return [r for r in nanofil_roots(f"git+file://{toplevel()}?rev={rev}")
+                if r != "nanofil-rocq-full"]
+    groups = value.split(",") if value else []
+    return list(dict.fromkeys(r for group in groups
+                             for r in (required_roots(rev, base) if group == "auto" else [group]) if r))
+
+
 # ---------------------------------------------------------------- worker
 
 
@@ -108,35 +127,46 @@ def worker(args):
     print(f"nanofil-fleet worker: {job} at {rev[:12]}, {os.cpu_count()} CPUs, log {log}", flush=True)
     t0 = time.time()
     for attempt in range(1, 4):
-        code, lines = build(cmd, env, log, t0)
-        if code == 0 or not infrastructure_failure(lines):
+        code, lines = build(cmd, env, log, t0, job)
+        if code in (0, 124) or not infrastructure_failure(lines):
             break
         print(f"nanofil-fleet worker: attempt {attempt} lost to substitution errors; retrying", flush=True)
         time.sleep(30)
     result = summarize(job, spec, rev, code, time.time() - t0, lines)
     result["attempts"] = attempt
-    if code != 0 and infrastructure_failure(lines):
+    if code not in (0, 124) and infrastructure_failure(lines):
         result["status"] = "error"
         result["error"] = "binary cache downloads failed before any check ran"
     print(MARK + " " + json.dumps(result, separators=(",", ":")), flush=True)
     return 0 if result["status"] == "pass" else 1
 
 
-def build(cmd, env, log, t0):
+def build(cmd, env, log, t0, job):
     """Run cmd with its output in log, echoing each finished step (or a
-    heartbeat every two minutes) for the agent watching; return the exit
-    code and the log's lines."""
+    sampled Rocq file every 15s, or a heartbeat every two minutes) for the
+    agent watching; return the exit code and the log's lines."""
+    soft, hard = (120, 300) if job == "nanofil-rocq" else (600, 1800)
+    remaining = max(1, hard - (time.time() - t0))
+    cmd = [sys.executable, "nanofil/tests/watch.py", "--label", job,
+           "--warn-after", str(min(soft, remaining)), "--timeout", str(remaining), "--", *cmd]
     with open(log, "w") as f:
         p = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, env=env)
-        last, tail = time.time(), ""
+        last, tail, rocq = time.time(), "", ""
         with open(log, errors="replace") as follow:
             while True:
                 done = p.poll() is not None
                 for l in follow.read().splitlines():
                     tail = l or tail
-                    if "@@nanofil-step " in l:
+                    if "@@nanofil-step " in l or (
+                            "@@nanofil-progress " in l and re.search(r" WARNING | TIMEOUT ", l)):
                         print(l[l.index("@@"):], flush=True)
                         last = time.time()
+                    m = re.search(r"@@nanofil-(?:rocq|progress) .*", l)
+                    if m:
+                        rocq = m[0]
+                if rocq and (done or time.time() - last >= 15):
+                    print(rocq, flush=True)
+                    last, rocq = time.time(), ""
                 if done:
                     break
                 if time.time() - last > 120:
@@ -171,6 +201,9 @@ def summarize(job, spec, rev, code, wall, lines):
     r = {"job": job, "rev": rev, "status": "pass" if code == 0 else "fail",
          "wall_s": round(wall), "cpus": os.cpu_count(),
          "thread": os.environ.get("AMP_THREAD_ID", "")}
+    r["budget_warnings"] = [l for l in lines if "@@nanofil-progress " in l and " WARNING " in l]
+    if code == 124:
+        r["error"] = "check exceeded its hard time budget (see timestamped TIMEOUT in log)"
     if spec["kind"] == "shard":
         r["shard"] = spec["shard"]
         r["steps"] = steps
@@ -219,13 +252,14 @@ def prompt(job, sha, base, bundle):
     command = (f'cd "$(git rev-parse --show-toplevel)" && {fetch} && '
                f"git -c advice.detachedHead=false checkout -q --detach {sha} && "
                f"scripts/nanofil-fleet worker {shlex.quote(job)}")
+    budget = "warns after 2 minutes and fails after 5 minutes" if job == "nanofil-rocq" else "warns after 10 minutes and fails after 30 minutes"
     return f"""You are one worker of a nanofil check fleet (scripts/nanofil-fleet). Run this one shell command in the repository, unchanged, and wait until it exits:
 
 ```bash
 {command}
 ```
 {attach}
-It prints a line per finished check step or a heartbeat every two minutes, and can take up to 90 minutes. Start it once, in the background if your shell tool times out, and keep checking it until it exits. Do not edit files, investigate or fix failures, rerun anything, commit, push, or create threads.
+It prints timestamped progress at least every 15 seconds, {budget}. Start it once, in the background if your shell tool times out, and check that same process at intervals of at most 30 seconds until it exits. Surface the latest timestamped progress (job, active step/file/mode, elapsed time and any budget warning) in your commentary; do not just say it is still running. Never hide its output behind a silent wait, restart it to get output, or extend a deadline. Do not edit files, investigate or fix failures, rerun anything, commit, push, or create threads.
 
 When it exits, end your turn with exactly the last line it printed that starts with {MARK}, verbatim, and nothing else. If the command could not run at all, end with: {MARK} {{"job":"{job}","status":"error","error":"<one sentence on what happened>"}}
 """
@@ -237,10 +271,10 @@ def run(args):
     flake = f"git+file://{toplevel()}?rev={sha}"
     jobs = [f"nanofil@{i}/{args.shards}" + ("+trealla" if args.trealla else "")
             for i in range(1, args.shards + 1)]
-    if args.roots == "all":
-        jobs += nanofil_roots(flake)
-    elif args.roots:
-        jobs += args.roots.split(",")
+    jobs += selected_roots(args.roots, sha)
+    if not jobs:
+        print("nanofil-fleet: no relevant roots changed; no workers needed", flush=True)
+        return 0
     for j in jobs:
         parse_job(j)
     if subprocess.run(["git", "diff", "--quiet", "HEAD"]).returncode != 0 and args.rev == "HEAD":
@@ -265,7 +299,8 @@ def run(args):
         for j in jobs:
             print(f"--- {j}\n{prompt(j, sha, base, bundle)}")
         return 0
-    checked = subprocess.run(preflight)
+    checked = subprocess.run([sys.executable, "nanofil/tests/watch.py", "--label",
+                              "staging cache preflight", "--", *preflight])
     if checked.returncode:
         print(f"nanofil-fleet: staging preflight failed at {sha}; no workers launched; "
               "ask the swa lander to repair missing caches", file=sys.stderr)
@@ -279,13 +314,50 @@ def run(args):
         if bundle:
             cmd += ["--attach", bundle]
         t0 = time.time()
+        print(f"[{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}] {job}: starting worker", flush=True)
         with open(os.path.join(outdir, name + ".jsonl"), "w") as out, \
              open(os.path.join(outdir, name + ".err"), "w") as err:
             p = subprocess.Popen(cmd, stdout=out, stderr=err, stdin=subprocess.DEVNULL)
-            try:
-                p.wait(timeout=args.timeout * 60)
-            except subprocess.TimeoutExpired:
-                p.kill()
+            # Relay actual tool output while the worker is running, not
+            # just its final result. Keep the complete event stream on disk.
+            with open(out.name) as follow:
+                pending, seen = "", set()
+                last_status, latest = t0, "waiting for worker startup/checkout"
+                while True:
+                    done = p.poll() is not None
+                    pending += follow.read()
+                    lines = pending.split("\n")
+                    pending = lines.pop()
+                    for line in lines:
+                        try:
+                            ev = json.loads(line)
+                        except ValueError:
+                            continue
+                        if ev.get("type") == "user":
+                            ev = [c for c in ev.get("message", {}).get("content", [])
+                                  if c.get("type") == "tool_result"]
+                        for text in strings(ev):
+                            # Receipts quote warnings/log tails; they are not
+                            # fresh progress and must not be replayed as such.
+                            text = "\n".join(l for l in text.splitlines() if not l.startswith(MARK + " "))
+                            for m in re.finditer(r"@@nanofil-(?:rocq|progress|step) [^\n]+|\[\d+s\] building: [^\n]+", text):
+                                message = m[0]
+                                if message not in seen:
+                                    seen.add(message)
+                                    stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                                    print(f"[{stamp}] {job}: {message}", flush=True)
+                                    last_status, latest = time.time(), message
+                    if done:
+                        break
+                    if time.time() - last_status >= 30:
+                        stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                        print(f"[{stamp}] {job}: elapsed={int(time.time() - t0)}s; last: {latest}", flush=True)
+                        last_status = time.time()
+                    if time.time() - t0 > args.timeout * 60:
+                        p.kill()
+                        p.wait()
+                    else:
+                        time.sleep(1)
         r = job_result(outdir, job)
         print(f"  {r['status']:5} {job:28} {int(time.time() - t0):5}s  {r.get('thread_url', '')}", flush=True)
         return r
@@ -342,7 +414,17 @@ def job_result(outdir, job, recover=False):
 
 def strings(x):
     if isinstance(x, str):
-        yield x
+        # Tool results can contain a JSON-encoded shell response. Decode
+        # it before extracting lines, rather than relaying escaped output
+        # together with shell metadata or counting it twice.
+        try:
+            decoded = json.loads(x)
+        except ValueError:
+            decoded = None
+        if isinstance(decoded, (dict, list)):
+            yield from strings(decoded)
+        else:
+            yield x
     elif isinstance(x, dict):
         for v in x.values():
             yield from strings(v)
@@ -395,7 +477,7 @@ def verify(args):
         shards = [s for s in specs if s["kind"] == "shard"]
         if len(shards) != args.shards or any(s["shard"].split("/")[1] != str(args.shards) for s in shards):
             raise ValueError(f"need {args.shards} complete shards")
-        required = nanofil_roots(f"git+file://{toplevel()}?rev={args.rev}") if args.roots == "all" else args.roots.split(",")
+        required = selected_roots(args.roots, args.rev)
         required = {r for group in required if group for r in parse_job(group)["roots"]}
         passed = {r for s in specs if s["kind"] == "roots" for r in s["roots"]}
         if not ok or not required <= passed:
@@ -429,6 +511,8 @@ def collect_dir(outdir, recover=False):
         md.append(f"| {r['job']} | {r['status']} | {str(r['wall_s']) + 's' if 'wall_s' in r else ''} | {len(st) or ''} | "
                   f"{f'{slow[2]} ({slow[1]}s)' if slow else ''} | {r.get('thread_url', '')} |")
     for r in results:
+        if r.get("budget_warnings"):
+            md += ["", f"## {r['job']}: slow-check warnings", "", *r["budget_warnings"]]
         if r["status"] != "pass":
             md += ["", f"## {r['job']}: {r['status']}", ""]
             if r.get("error"):
@@ -449,12 +533,12 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run", help="start workers and aggregate their results")
     r.add_argument("--shards", type=int, default=6, help="shards of checks.nanofil (default 6; 0 runs only --roots)")
-    r.add_argument("--roots", default="", help="comma-separated nanofil-* checks (a+b shares a worker), or all")
+    r.add_argument("--roots", default="auto", help="auto (default): quick Rocq for relevant changes; comma-separated checks, or all (excludes opt-in nanofil-rocq-full)")
     r.add_argument("--trealla", action="store_true", help="include the paused Trealla step")
     r.add_argument("--rev", default="HEAD")
     r.add_argument("--size", default="a1.xxlarge", help="orb size (default a1.xxlarge, 16 CPUs)")
     r.add_argument("--mode", default="low", help="worker agent mode (default low)")
-    r.add_argument("--timeout", type=int, default=150, help="minutes per worker (default 150)")
+    r.add_argument("--timeout", type=int, default=35, help="launcher minutes per worker, including startup (default 35; build hard limit stays 30)")
     r.add_argument("--out", help="result directory (default .amp/in/nanofil-fleet/STAMP-REV)")
     r.add_argument("--dry-run", action="store_true", help="print the jobs and prompts only")
     c = sub.add_parser("collect", help="aggregate a run directory again")
@@ -463,7 +547,10 @@ def main():
     v.add_argument("results")
     v.add_argument("--rev", required=True, help="full tested commit SHA")
     v.add_argument("--shards", type=int, default=6)
-    v.add_argument("--roots", default="nanofil-rocq")
+    v.add_argument("--roots", default="auto")
+    q = sub.add_parser("required-roots", help="print the change-aware quick roots (also used by CI)")
+    q.add_argument("--rev", default="HEAD")
+    q.add_argument("--base", default="origin/main")
     w = sub.add_parser("worker", help="build one job here and print its result line")
     w.add_argument("job")
     a = ap.parse_args()
@@ -475,6 +562,9 @@ def main():
         return collect_dir(a.dir, recover=True)
     if a.cmd == "verify":
         return verify(a)
+    if a.cmd == "required-roots":
+        print(",".join(required_roots(a.rev, a.base)))
+        return 0
     return worker(a)
 
 

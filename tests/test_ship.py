@@ -62,10 +62,17 @@ if name == 'nix':
         else:
             target = next(a for a in args if '#' in a)
             attr = target.split('#', 1)[1]
-            print(json.dumps(['nanofil-rocq', 'nanofil-lua'] if attr == 'checks.x86_64-linux' else outputs[attr]))
+            print(json.dumps(['nanofil-rocq', 'nanofil-rocq-full', 'nanofil-lua'] if attr == 'checks.x86_64-linux' else outputs[attr]))
     elif 'build' in args:
         attr = next(a for a in args if '#' in a).split('#', 1)[1].removesuffix('^*')
-        print('\n'.join(outputs[attr]))
+        if attr == 'checks.x86_64-linux.nanofil-rocq':
+            if (p / 'quick-fails').exists(): sys.exit(1)
+            if (p / 'worker-warnings').exists():
+                print('@@nanofil-progress 2026-11-06T20:00:00Z WARNING budget=60s label=slow')
+                print('@@nanofil-progress 2026-11-06T20:00:01Z TIMEOUT budget=300s label=slow')
+                print('@@nanofil-rocq 2026-11-06T20:00:02Z start validator file=next.ir')
+        else:
+            print('\n'.join(outputs[attr]))
     elif 'copy' not in args:
         sys.exit('unexpected nix invocation')
 elif name == 'ssh':
@@ -95,6 +102,19 @@ elif name == 'amp':
     job = args[args.index('--title') + 1].split()[-1]
     data = json.loads((p / 'worker-results.json').read_text())
     result = next(r for r in data['results'] if r['job'] == job)
+    if job == 'nanofil-rocq' and (p / 'stream-progress').exists():
+        import time
+        progress = '@@nanofil-rocq 2026-11-06T20:00:00Z done validator opt=plain checks=reference file=/build/ldouble.c seconds=12'
+        print(json.dumps({'type': 'user', 'message': {'content': [{'type': 'text', 'text': '@@nanofil-rocq prompt-only'}]}}), flush=True)
+        response = json.dumps({'output': progress + '\n[120s] building: still working\n' + progress, 'running': True})
+        event = json.dumps({'type': 'user', 'message': {'content': [{'type': 'tool_result', 'content': response}]}})
+        sys.stdout.write(event[:10]); sys.stdout.flush()
+        time.sleep(1.2)
+        print(event[10:], flush=True)
+        deadline = time.time() + 15
+        while not (p / 'resume-worker').exists() and time.time() < deadline:
+            time.sleep(.05)
+        result['log_tail'] = [progress]
     print(json.dumps({'type': 'result', 'result': 'NANOFIL-FLEET-RESULT ' + json.dumps(result)}))
 elif name == 'sudo':
     sys.exit(1)  # force the SSH path, never invoke a real publisher
@@ -158,9 +178,10 @@ class ShippingTests(unittest.TestCase):
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
         url = f"http://127.0.0.1:{server.server_port}"
-        for file in ("scripts/ship", "scripts/nanofil-fleet", "scripts/ship-outputs.txt",
+        for file in ("scripts/ship", "scripts/release", "scripts/nanofil-fleet", "scripts/ship-outputs.txt",
                      "scripts/swa-cache-outputs.txt", "scripts/ci-outputs.txt",
-                     "scripts/git-hooks/lib.sh", "scripts/git-hooks/pre-push"):
+                     "scripts/git-hooks/lib.sh", "scripts/git-hooks/pre-push",
+                     "nanofil/tests/watch.py"):
             target = self.repo / file
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(ROOT / file, target)
@@ -180,8 +201,9 @@ class ShippingTests(unittest.TestCase):
         self.base = self.git("rev-parse", "HEAD").stdout.strip()
         self.git("remote", "add", "origin", str(self.remote))
         self.git("push", "-q", "origin", "HEAD:main")
-        (self.repo / "change").write_text("candidate\n")
-        self.git("add", "change")
+        (self.repo / "nanofil/src").mkdir(parents=True)
+        (self.repo / "nanofil/src/ir.pl").write_text("candidate\n")
+        self.git("add", "nanofil/src/ir.pl")
         self.git("commit", "-qm", "candidate")
         self.sha = self.git("rev-parse", "HEAD").stdout.strip()
         self.evidence = self.tmp / "results.json"
@@ -348,6 +370,54 @@ class ShippingTests(unittest.TestCase):
         self.run_command(sys.executable, "scripts/nanofil-fleet", "verify", str(directory / "results.json"), "--rev", self.sha)
         self.assertTrue(json.loads((directory / "results.json").read_text())["coverage"]["complete"])
 
+    def test_rocq_selection_and_evidence_distinguish_web_quick_and_full(self):
+        quick = self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--dry-run")
+        self.assertIn("--- nanofil-rocq\n", quick.stdout)
+        all_roots = self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--roots", "all", "--dry-run")
+        self.assertNotIn("--- nanofil-rocq-full\n", all_roots.stdout)
+        full = self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--roots", "nanofil-rocq-full", "--dry-run")
+        self.assertIn("--- nanofil-rocq-full\n", full.stdout)
+        # A quick receipt is not release/soundness mutation evidence.
+        rejected = self.run_command(sys.executable, "scripts/nanofil-fleet", "verify", str(self.evidence),
+                                    "--rev", self.sha, "--roots", "nanofil-rocq-full", check=False)
+        self.assertNotEqual(rejected.returncode, 0)
+        full_evidence = receipt(self.sha)
+        full_evidence["fleet"]["jobs"][-1] = "nanofil-rocq-full"
+        full_evidence["results"][-1]["job"] = "nanofil-rocq-full"
+        self.evidence.write_text(json.dumps(full_evidence))
+        self.run_command(sys.executable, "scripts/nanofil-fleet", "verify", str(self.evidence),
+                         "--rev", self.sha, "--roots", "nanofil-rocq-full")
+        self.git("checkout", "-q", "--detach", self.base)
+        (self.repo / "nanofil/web").mkdir(parents=True)
+        (self.repo / "nanofil/web/style.css").write_text("body {}\n")
+        self.git("add", ".")
+        self.git("commit", "-qm", "web only")
+        web = self.git("rev-parse", "HEAD").stdout.strip()
+        selected = self.run_command(sys.executable, "scripts/nanofil-fleet", "required-roots")
+        self.assertEqual(selected.stdout.strip(), "")
+        evidence = receipt(web)
+        evidence["fleet"]["jobs"].pop()
+        evidence["results"].pop()
+        self.evidence.write_text(json.dumps(evidence))
+        self.run_command(sys.executable, "scripts/nanofil-fleet", "verify", str(self.evidence), "--rev", web)
+        self.run_command("scripts/ship", "--exact", web, "--fleet-results", str(self.evidence))
+        self.assertEqual(self.main(), web)
+
+    def test_ordinary_ship_blocks_on_failed_quick_gate(self):
+        (self.tmp / "quick-fails").touch()
+        failed = self.ship("--no-publish", check=False)
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertEqual(self.main(), self.base)
+        self.assertIn("checks.x86_64-linux.nanofil-rocq", " ".join(" ".join(c) for c in self.commands("nix")))
+
+    def test_release_rejects_quick_receipt_before_creating_tag(self):
+        self.git("push", "-q", "origin", self.sha + ":main")
+        failed = self.run_command("scripts/release", "--fleet-results", str(self.evidence), "v-test", check=False)
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertIn("missing required roots", failed.stderr)
+        self.assertEqual(self.git("tag", "-l").stdout.strip(), "")
+        self.assertFalse(self.commands("nix"))
+
     def test_fleet_preflight_uses_candidate_and_stops_before_any_workers(self):
         self.lose(self.child)
         failed = self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--rev", self.sha,
@@ -380,6 +450,54 @@ class ShippingTests(unittest.TestCase):
         self.assertEqual(result["fleet"]["rev"], self.sha)
         self.assertEqual(result["fleet"]["main"], self.base)
         self.assertEqual(len(self.commands("amp")), 7)
+
+    def test_fleet_relays_timestamped_progress_before_worker_finishes(self):
+        import queue
+        (self.tmp / "stream-progress").touch()
+        directory = self.tmp / "fleet"
+        process = subprocess.Popen(
+            [sys.executable, "scripts/nanofil-fleet", "run", "--rev", self.sha,
+             "--roots", "nanofil-rocq", "--out", str(directory)],
+            cwd=self.repo, env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        lines, arrived = [], queue.Queue()
+
+        def read():
+            for line in process.stdout:
+                lines.append(line)
+                arrived.put(line)
+
+        reader = threading.Thread(target=read)
+        reader.start()
+        try:
+            while "building: still working" not in arrived.get(timeout=15):
+                pass
+            self.assertIsNone(process.poll(), "progress must arrive before completion")
+        finally:
+            (self.tmp / "resume-worker").touch()
+            process.wait(timeout=15)
+            reader.join(timeout=5)
+            errors = process.stderr.read()
+            process.stdout.close()
+            process.stderr.close()
+        self.assertEqual(process.returncode, 0, errors)
+        output = "".join(lines)
+        self.assertRegex(output, r"\[\d{4}-\d\d-\d\dT[^]]+Z\] nanofil-rocq: @@nanofil-rocq")
+        self.assertEqual(output.count("file=/build/ldouble.c seconds=12"), 1)
+        self.assertNotIn("prompt-only", output)
+        self.assertNotIn('"running":', output)
+        self.assertTrue(json.loads((directory / "results.json").read_text())["ok"])
+
+    def test_worker_never_samples_away_budget_warnings(self):
+        (self.tmp / "worker-warnings").touch()
+        self.env["HOME"] = str(self.tmp)
+        (self.tmp / ".nix-profile").mkdir()
+        (self.tmp / ".nix-profile/bin").symlink_to(self.bin)
+        result = self.run_command(sys.executable, "scripts/nanofil-fleet", "worker", "nanofil-rocq")
+        # The receipt retains warnings too, but they must reach the live output
+        # even when later ordinary progress arrives in the same log read.
+        live = result.stdout.split("NANOFIL-FLEET-RESULT ")[0]
+        self.assertIn("@@nanofil-progress 2026-11-06T20:00:00Z WARNING ", live)
+        self.assertIn("@@nanofil-progress 2026-11-06T20:00:01Z TIMEOUT ", live)
 
     def test_json_report_tracks_transitive_misses_and_upstream_fallback(self):
         self.lose(self.child)

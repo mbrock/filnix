@@ -20,7 +20,9 @@ trap 'rm -rf "$work"' EXIT
 
 status=0
 for f in "$@"; do
+  t0=$SECONDS
   f=$(cd "$(dirname "$f")" && pwd)/$(basename "$f")
+  echo "@@nanofil-rocq $(date -u +%FT%TZ) start outcomes opt=${NANOFIL_OPT:-plain} checks=${NANOFIL_CHECKS:-reference} file=$f"
   ir=$f
   if [[ $f == *.c ]]; then
     ir="$work/c.ir"
@@ -42,5 +44,6 @@ for f in "$@"; do
   else
     echo "$f $(tail -1 "$work/judged")"
   fi
+  echo "@@nanofil-rocq $(date -u +%FT%TZ) done outcomes opt=${NANOFIL_OPT:-plain} checks=${NANOFIL_CHECKS:-reference} file=$f seconds=$((SECONDS - t0))"
 done
 exit $status

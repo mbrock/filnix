@@ -12,6 +12,13 @@
 
       ../bin/nanofil outcomes FILE | ../bin/nanofil --script ../rocq/mutants.pl
 
+    Optional arguments I N select item indices congruent to I modulo N
+    (0 <= I < N). Every partition still validates the whole changed
+    module; partition 0 also emits the inserted-item verdicts. Joining
+    the partitions' verdicts gives the unpartitioned stream exactly once.
+    --base instead emits only unchanged-item verdicts, generating no
+    mutations, for the routine quick gate.
+
     The mutations aim at what the validator decides. In a function: a
     check deleted or moved from its access, a check narrowed or its
     rights or alignment changed, a raw access moved, a poll edge
@@ -31,12 +38,30 @@
 :- initialization(main).
 
 main :-
+    current_prolog_flag(argv, Args),
+    (   Args = ['--base'] -> Base = true, Parts = []
+    ;   Base = false, Parts = Args
+    ),
+    (   Parts = []
+    ->  Shard = 0, Shards = 1
+    ;   catch((Parts = [I, N], atom_number(I, Shard), atom_number(N, Shards),
+               integer(Shard), integer(Shards), Shards > 0,
+               Shard >= 0, Shard < Shards), _, fail)
+    ->  true
+    ;   format(user_error, 'mutants.pl: expected I N, 0 <= I < N~n', []), halt(2)
+    ),
     read_term(user_input, module(All), []),
     code_items(All, Items),
     format("~k.~n", [module(Items)]),
-    forall(nth0(At, Items, Item), item_verdicts(Items, At, Item)),
-    thinned(inserted(Items, Name, Id, Change),
-            emit(Items, Name, 0, Id, Change)),
+    forall((nth0(At, Items, Item), At mod Shards =:= Shard),
+           ( Base == true
+           -> item_name(Item, Name), emit(Items, Name, At, base, replace(Item))
+           ;  item_verdicts(Items, At, Item) )),
+    (   Base == false, Shard =:= 0
+    ->  thinned(inserted(Items, Name, Id, Change),
+                emit(Items, Name, 0, Id, Change))
+    ;   true
+    ),
     halt.
 
 item_verdicts(Items, At, Item) :-

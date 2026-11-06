@@ -6,20 +6,23 @@
 set -uo pipefail
 script=$1
 shift
+here=$(cd "$(dirname "$0")" && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-export PAR_WORK=$work PAR_SCRIPT=$script
+export PAR_WORK=$work PAR_SCRIPT=$script PAR_WATCH=$here/watch.py
 i=0
 for f in "$@"; do
   printf '%s\0%s\0' "$i" "$f"
   i=$((i + 1))
 done | xargs -0 -n2 -P "${NANOFIL_JOBS:-$(nproc)}" bash -c '
+  set -o pipefail
   out=$PAR_WORK/$0
   t0=${EPOCHREALTIME/./}
-  "$PAR_SCRIPT" "$1" >"$out" 2>&1 || touch "$out.failed"
+  python3 "$PAR_WATCH" --label "$(basename "$PAR_SCRIPT") $1" -- "$PAR_SCRIPT" "$1" 2>&1 \
+    | tee "$out" | grep --line-buffered "^@@nanofil-" || touch "$out.failed"
   ms=$(( (${EPOCHREALTIME/./} - t0) / 1000 ))
   [ -e "$out.failed" ] && r=FAILED || r=ok
-  cat "$out"
+  sed "/^@@nanofil-/d" "$out"
   printf "  [%4d.%01ds] %s %s %s\n" $((ms / 1000)) $((ms % 1000 / 100)) "$(basename "$PAR_SCRIPT")" "$(basename "$1")" "$r"
 '
 # A plain glob, not compgen: Nix's non-interactive bash has no compgen.

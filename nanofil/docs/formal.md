@@ -5,6 +5,13 @@ nanofil's foundation; read that first. The campaign below is a plan,
 and each campaign ends with a note in `docs/` that says what it found;
 the table below says what is built.
 
+Routine pushes prioritize iteration: the relevant Rocq gate builds the
+model, runs parse.sh and compares base verdicts on a small corpus without
+mutations. The full multi-mode mutation matrix is deliberate evidence
+for a release or soundness-relevant change, not the cost of every edit.
+Unrelated web/docs changes skip Rocq. See [rocq.md](rocq.md) for the quick
+and full commands, budgets and what each does and does not establish.
+
 ## The ambition
 
 nanofil becomes a Fil-C whose safety checks are removed exactly where a
