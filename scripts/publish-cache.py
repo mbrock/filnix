@@ -21,8 +21,8 @@ STORE_PATH = re.compile(r"/nix/store/[0-9a-z]{32}-[^/\s]+\Z")
 # Release artifacts that no machine substitutes: the NixOS disk images and
 # the container tarballs (scripts/swa-cache-outputs.txt). Gigabytes each,
 # they would push the closures machines do substitute out of Cachix, so
-# they go to the local cache only. Their closures still reach Cachix
-# through the toplevels and packages that are roots of their own.
+# they go to the local cache only, and their references go to Cachix in
+# their place (the AMI's NixOS system is not a root of its own).
 SWA_ONLY = re.compile(r"/nix/store/[0-9a-z]{32}-filnix-(nixos-image|nixos-ami|[a-z0-9_-]+\.tar\.gz)\Z")
 
 
@@ -78,6 +78,11 @@ def narinfo_exists(cache, path):
     except (OSError, ValueError):
         # Rate limits, timeouts: unknown, so neither lost nor checked.
         return None
+
+
+def references(path):
+    return subprocess.run(["nix-store", "--query", "--references", path], check=True,
+                          text=True, stdout=subprocess.PIPE).stdout.split()
 
 
 def store_closure(root):
@@ -278,6 +283,11 @@ def main():
             if args.target == "cachix":
                 skipped = {p for p in paths if SWA_ONLY.fullmatch(p)}
                 paths -= skipped
+                for p in skipped:
+                    try:
+                        paths |= set(references(p)) - {p}
+                    except (OSError, subprocess.SubprocessError) as exc:
+                        print(json.dumps({"references": p, "error": str(exc)}), flush=True)
                 with db:
                     db.executemany("DELETE FROM outputs WHERE path=? AND published IS NULL",
                                    [(p,) for p in skipped])

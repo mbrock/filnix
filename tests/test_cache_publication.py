@@ -162,12 +162,16 @@ class PublicationTests(unittest.TestCase):
         image='/nix/store/'+'i'*32+'-filnix-nixos-ami'
         tarball='/nix/store/'+'d'*32+'-filnix-php.tar.gz'
         dist='/nix/store/'+'o'*32+'-optfil-0.687-filnix-x86_64-linux.tar.xz'
+        system='/nix/store/'+'s'*32+'-nixos-system-filc'
         with patch('sys.argv',argv), \
+             patch.object(publisher,'references',
+                          lambda p: [p, system] if p == image else []), \
              patch.object(publisher,'discover_native',return_value=[image,tarball,dist]), \
              patch.object(publisher,'publish',
                           lambda *a,original=publisher.publish,**k: original(*a,run=run,**k)):
             publisher.main()
-        self.assertEqual(sorted(pushed),[output('a'),output('b'),dist,output('t')])
+        # The image stays off Cachix; the system it contains does not.
+        self.assertEqual(sorted(pushed),[output('a'),output('b'),dist,system,output('t')])
         with patch('sys.argv',['publish','local','--config',str(config)]), \
              patch.object(publisher,'discover_native',return_value=[image]):
             config.write_text(json.dumps(dict(native_outputs_url='http://x',
