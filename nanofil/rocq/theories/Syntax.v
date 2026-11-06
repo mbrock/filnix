@@ -241,7 +241,10 @@ Inductive linkage : Type :=
 | LExport | LLocal | LWeak
 | LRo (l : term) | LTls (l : term)
 | LInit (which prio : term)
-| LExternWeak.
+| LExternWeak
+| LOther (t : term).
+(** `LOther` is any other Linkage term: valid_module/1 rejects it, so
+    only the validator meets it. *)
 
 (** A data Item. `item(l, sym(Name, Off))` is plain mode's, outside the
     subset; `item(p, sym(Name, Off))` is `Sym`. *)
@@ -249,7 +252,13 @@ Inductive data_item : Type :=
 | Item (w : width) (n : Z)
 | Str (codes : list Z)
 | Sym (s : name) (off : Z)
-| Zero (n : Z).
+| Zero (n : Z)
+| ItemOther (t : term).
+(** `ItemOther` is a data item the interpreter does not lay out, kept
+    as its term: valid_module/1 does not check the shape of data items,
+    only that float items are in range, that strings hold bytes and
+    that a Fil-C module has no `item(l, sym(_, _))`, so the validator
+    reads these terms and the interpreter's layout is stuck on them. *)
 
 (** ## Modules *)
 

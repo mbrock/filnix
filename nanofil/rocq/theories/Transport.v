@@ -23,13 +23,16 @@
     | `outside(Fn, Why)` | the run leaves the core subset, so it is not compared |
     | `stuck_both(Fn, Why)` | the interpreter threw or failed, and the model is stuck too |
 
-    `judge_valid` reads one `verdict(Fn, Id, Func, Verdict)` line that
-    rocq/mutants.pl printed, puts Func in place of Fn in the module, and
-    compares `valid_funcs` of the whole module (a mutant can change what
-    its callers may pass it) with `ir:valid_module/1`'s Verdict:
-    `agree(Fn, Id, V)`, `disagree(Fn, Id, Model, Prolog)` or
-    `outside(Fn, Id)`. A mutant is outside when it is, or when it changes
-    its signature and a function outside the subset refers to it. *)
+    `judge_valid` reads one `verdict(Name, At, Id, Change, Verdict)` line
+    that rocq/mutants.pl printed, makes the Change to the module's item
+    at index At (replace it, delete it, or insert an item before it),
+    and compares `valid_items` of the whole module (a mutant can change
+    what its callers may pass it) with `ir:valid_module/1`'s Verdict:
+    `agree(Name, Id, V)`, `disagree(Name, Id, Model, Prolog)` or
+    `outside(Name, Id)`. A mutant is outside when it is, when it changes
+    a function's signature and a function outside the subset refers to
+    it, or when it changes data or an alias that a function outside the
+    subset refers to by name. *)
 
 From Stdlib Require Import String ZArith List Bool Ascii.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics Run Validate.
@@ -314,27 +317,18 @@ Definition dlinkage (t : term) : option linkage :=
   | TApp "tls" [l] => Some (LTls l)
   | TApp "init" [w; p] => Some (LInit w p)
   | TApp "extern" [TAtom "weak"] => Some LExternWeak
-  | _ => None
-  end.
-
-(** The code of a one-character atom, as `char_code/2` gives it: one
-    byte, or a two-byte UTF-8 sequence for the codes 128 to 255. *)
-Definition char_code (t : term) : option Z :=
-  match t with
-  | TAtom (String c EmptyString) => Some (Z.of_nat (nat_of_ascii c))
-  | TAtom (String c1 (String c2 EmptyString)) =>
-      Some ((Z.of_nat (nat_of_ascii c1) - 192) * 64 + (Z.of_nat (nat_of_ascii c2) - 128))
-  | _ => None
+  | _ => Some (LOther t)
   end.
 
 Definition ddata_item (t : term) : option data_item :=
   match t with
   | TApp "item" [TAtom "b"; TApp "str" [TList cs]] =>
-      let* codes := map_option char_code cs in Some (Str codes)
+      Some (match map_option char_code cs with Some codes => Str codes | None => ItemOther t end)
   | TApp "item" [TAtom "p"; TApp "sym" [s; TInt off]] => Some (Sym s off)
-  | TApp "item" [w; TApp "const" [TInt n]] => let* w' := dwidth w in Some (Item w' n)
+  | TApp "item" [w; TApp "const" [TInt n]] =>
+      Some (match dwidth w with Some w' => Item w' n | None => ItemOther t end)
   | TApp "zero" [TInt n] => Some (Zero n)
-  | _ => None
+  | _ => Some (ItemOther t)
   end.
 
 (** An item of the module; None for an explanatory `context(_, _)` item. *)
@@ -445,13 +439,16 @@ Definition judge (md : module) (line : term) : term :=
   | _ => TApp "bad_line" [line]
   end.
 
-(** The module with the function named n replaced by it. *)
-Definition replace_item (n : name) (it : item) (md : module) : module :=
-  map (fun i => match i with
-                | IFunc g => if name_eqb (fn_name g) n then it else i
-                | IOutside g _ => if name_eqb g n then it else i
-                | _ => i
-                end) md.
+(** The module with its item at index i (0-based, without contexts)
+    replaced by the items xs: none deletes it, one replaces it, the
+    new item and then the old one insert before it. *)
+Fixpoint splice_at (i : nat) (xs : list item) (md : module) : module :=
+  match i, md with
+  | O, _ :: rest => app xs rest
+  | O, [] => xs
+  | S i', it :: rest => it :: splice_at i' xs rest
+  | S _, [] => []
+  end.
 
 Definition everdict (b : bool) : term := TAtom (if b then "valid" else "invalid").
 
@@ -479,17 +476,53 @@ Definition unjudged_callers (md : module) (fn : name) (f : func) : bool :=
   | _, _ => false
   end.
 
+(** The name an item defines. *)
+Definition defined_name (it : item) : name :=
+  match it with
+  | IFunc f => fn_name f
+  | IOutside n _ | IData n _ _ _ | IAlias n _ _ => n
+  end.
+
+(** A change to a data object or an alias that a function outside the
+    subset refers to by the old or the new name: whether that function
+    is still valid cannot be judged by the model. *)
+Definition unjudged_users (md : module) (olds news : list item) : bool :=
+  let names := map defined_name (app olds news) in
+  existsb (fun it => match it with
+                     | IOutside _ t => existsb (fun n => mentions n t) names
+                     | _ => false
+                     end) md.
+
+(** `verdict(Name, At, Id, Change, V)` from rocq/mutants.pl: Change is
+    `replace(Item)`, `delete` or `insert(Item)` at the index At of the
+    module's items. *)
 Definition judge_valid (md : module) (line : term) : term :=
   match line with
-  | TApp "verdict" [fn; id; ft; expected] =>
-      match ditem ft with
-      | Some (Some (IFunc f)) =>
-          if unjudged_callers md fn f then TApp "outside" [fn; id] else
-          let got := everdict (valid_funcs (replace_item fn (IFunc f) md)) in
-          if term_eqb got expected then TApp "agree" [fn; id; got]
-          else TApp "disagree" [fn; id; got; expected]
-      | Some (Some (IOutside _ _)) => TApp "outside" [fn; id]
-      | _ => TApp "bad_line" [line]
+  | TApp "verdict" [nm; TInt at_; id; change; expected] =>
+      let i := Z.to_nat at_ in
+      let old := firstn 1 (skipn i md) in
+      (* What replaces the item, what is removed and what is added. *)
+      let new :=
+        match change with
+        | TApp "replace" [t] => let* it := ditem t in let* it := it in Some ([it], old, [it])
+        | TAtom "delete" => Some ([], old, [])
+        | TApp "insert" [t] => let* it := ditem t in let* it := it in Some (it :: old, [], [it])
+        | _ => None
+        end in
+      match new with
+      | None => TApp "bad_line" [line]
+      | Some (xs, removed, added) =>
+          let outside :=
+            existsb (fun it => match it with IOutside _ _ => true | _ => false end) added
+            || match removed, added with
+               | [IFunc _], [IFunc f] => unjudged_callers md (fn_name f) f
+               | [IFunc _], _ | _, [IFunc _] => true
+               | _, _ => unjudged_users md removed added
+               end in
+          if outside then TApp "outside" [nm; id] else
+          let got := everdict (valid_items (splice_at i xs md)) in
+          if term_eqb got expected then TApp "agree" [nm; id; got]
+          else TApp "disagree" [nm; id; got; expected]
       end
   | _ => TApp "bad_line" [line]
   end.

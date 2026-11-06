@@ -44,7 +44,7 @@ Definition data_cap (lk : linkage) (base : Z) : option cap :=
   match lk with
   | LExport | LLocal | LWeak | LTls _ => Some (Obj base)
   | LRo _ | LInit _ _ => Some (Ro base)
-  | LExternWeak => None
+  | LExternWeak | LOther _ => None
   end.
 
 (** `item_size(Item, Size0, Size)`. *)
@@ -54,6 +54,7 @@ Definition item_size (it : data_item) : Z :=
   | Str cs => Z.of_nat (length cs)
   | Sym _ _ => 8
   | Zero n => n
+  | ItemOther _ => 0
   end.
 
 Definition items_size (its : list data_item) : Z :=
@@ -115,6 +116,7 @@ Definition item_contents (globals : list (name * ptr)) (st : option (Z * mem))
                               let (m', i) := mi in (store_bytes m' (at_ + i) 1 c, i + 1))
                            cs (m, 0)))
   | Zero n => Some (at_ + n, m)
+  | ItemOther _ => None
   end.
 
 (** `filc_contents(Globals, Item, Bytes0-Aux0, Bytes-Aux)`. *)

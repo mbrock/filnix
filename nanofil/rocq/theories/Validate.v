@@ -1,7 +1,8 @@
 (** The validator of checked IR, transcribed from ir.pl's
     `valid_module/1` for the core subset: `valid_func md f` is true
     exactly when ir.pl accepts the function f of the module md, checked
-    stage, filc mode.
+    stage, filc mode; `valid_data` and `valid_alias` do the same for
+    the module's data objects and aliases.
 
     ir.pl's validator throws `nanofil_error(Message)` at the first
     problem and fails on a few terms outside the grammar; both are
@@ -19,6 +20,8 @@
     | `definitions_dominate` | the same | strict SSA: every use has a dominating definition |
     | `valid_locals` | the same | named locals declared once, in the entry block, before use |
     | `stage_func` | the same | every access covered by evidence that still holds; a poll on every cycle |
+    | `valid_data` | `valid_item/4` for data | alignment, linkage, float and string items |
+    | `valid_alias` | `valid_item/4` for aliases | linkage, a name of its own, a target the module defines |
 
     `stage_func` is the part Campaign 3 is about. A block's entry
     evidence is the meet over its incoming edges of what each carries
@@ -1542,13 +1545,141 @@ Definition valid_func (md : module) (f : func) : bool :=
       && (negb (module_checked md) || stage_func md f doms)
   end.
 
-(** The functions of the module that the model can judge are valid. *)
-Definition valid_funcs (md : module) : bool :=
-  forallb (fun it => match it with IFunc f => valid_func md f | _ => true end) md.
+(** ## Data *)
 
-(** `valid md`: the module is valid; None when a function is outside
-    the core subset, which the model cannot judge. Data, aliases and
-    contexts are not transcribed (docs/rocq.md). *)
+(** `data_align(Align)`: a power of two from 1 to 4096. *)
+Definition data_align (a : Z) : bool :=
+  (1 <=? a) && (a <=? 4096) && (Z.land a (a - 1) =? 0).
+
+(** The linkage clauses of `valid_item(_, filc, _, data(...))`: the
+    linkages data of a Fil-C module may have, and what `extern(weak)`
+    and `init(Kind, Prio)` ask of the items. *)
+Definition data_linkage_ok (lk : linkage) (its : list data_item) : bool :=
+  match lk with
+  | LExport | LLocal | LWeak => true
+  | LRo (TAtom ("export" | "local" | "weak")) => true
+  | LTls (TAtom ("export" | "local")) => true
+  | LExternWeak => match its with [] => true | _ => false end
+  | LInit k prio =>
+      match k with TAtom ("ctor" | "dtor") => true | _ => false end
+      && match prio with
+         | TAtom "none" => true
+         | TInt n => (0 <=? n) && (n <=? 65535)
+         | _ => false
+         end
+      && match its with [Sym _ off] => off =? 0 | _ => false end
+  | _ => false
+  end.
+
+(** `byte_char(C)`: an atom of one character, of code 0 to 255. *)
+Definition byte_char (c : term) : bool :=
+  match char_code c with Some n => n <=? 255 | None => false end.
+
+(** What `valid_item` asks of each item: a float item is `const(N)`
+    with N below the class's modulus, a string holds bytes, and a
+    Fil-C module writes a pointer as `item(p, sym(_, _))`, never
+    `item(l, sym(_, _))`. Any other shape passes. *)
+Definition data_item_ok (it : data_item) : bool :=
+  match it with
+  | Item Ws n => (0 <=? n) && (n <? 2 ^ 32)
+  | Item Wd n => (0 <=? n) && (n <? 2 ^ 64)
+  | Item Wx n => (0 <=? n) && (n <? 2 ^ 80)
+  | Str cs => forallb (fun c => c <=? 255) cs
+  | ItemOther (TApp "item" [TAtom ("s" | "d" | "x"); _]) => false
+  | ItemOther (TApp "item" [TAtom "l"; TApp "sym" [_; _]]) => false
+  | ItemOther (TApp "item" [_; TApp "str" [TList cs]]) => forallb byte_char cs
+  | ItemOther (TApp "item" [_; TApp "str" [_]]) => false
+  | _ => true
+  end.
+
+(** `valid_item(Symbols, filc, Stage, data(Name, Linkage, Align, Items))`. *)
+Definition valid_data (lk : linkage) (align : Z) (its : list data_item) : bool :=
+  data_align align && data_linkage_ok lk its && forallb data_item_ok its.
+
+(** ## Aliases *)
+
+(** `func_named(Symbols, Name, _)`: the module defines a function Name,
+    in the subset or not. *)
+Definition func_named (md : module) (n : name) : bool :=
+  match first_func_linkage n md with Some _ => true | None => false end.
+
+(** `data_named(Symbols, Name)`: the module defines data Name, that is
+    data of that name not declared `extern(weak)`. *)
+Definition data_named (md : module) (n : name) : bool :=
+  match first_data_linkage n md with Some _ => true | None => false end.
+
+(** The first function of each name, as `module_symbols/2` indexes
+    them. *)
+Fixpoint first_funcs (seen : list name) (md : module) : list item :=
+  match md with
+  | [] => []
+  | IFunc f :: rest =>
+      if mem (fn_name f) seen then first_funcs seen rest
+      else IFunc f :: first_funcs (fn_name f :: seen) rest
+  | IOutside n t :: rest =>
+      if mem n seen then first_funcs seen rest
+      else IOutside n t :: first_funcs (n :: seen) rest
+  | _ :: rest => first_funcs seen rest
+  end.
+
+(** `memberchk(call(_, global(Name), _), Is)` for some block of F: read
+    off its blocks in the subset, off its term outside it. *)
+Definition calls_global (it : item) (n : name) : bool :=
+  match it with
+  | IFunc f =>
+      existsb (fun b => existsb (fun i => match i with
+                                          | Call _ (Global g) _ => name_eqb g n
+                                          | _ => false
+                                          end) (b_insts b)) (fn_blocks f)
+  | IOutside _ (TApp "func" [_; _; _; _; TList bs]) =>
+      existsb (fun b => match b with
+                        | TApp "block" [_; _; TList is; _] =>
+                            existsb (fun i => match i with
+                                              | TApp "call" [_; TApp "global" [g]; _] => term_eqb g n
+                                              | _ => false
+                                              end) is
+                        | _ => false
+                        end) bs
+  | _ => false
+  end.
+
+Definition item_name (it : item) : option name :=
+  match it with IFunc f => Some (fn_name f) | IOutside n _ => Some n | _ => None end.
+
+(** `valid_item(Symbols, filc, Stage, alias(Name, Linkage, Target))`:
+    the linkage is `export` or `weak`, no function or data shares the
+    alias's name, and the target is a function the module defines, or
+    data of a linkage an alias may name (`export`, `local`, `weak` or
+    `ro(_)`) that no other function calls through the alias. *)
+Definition valid_alias (md : module) (n : name) (lk : term) (target : name) : bool :=
+  match lk with TAtom ("export" | "weak") => true | _ => false end
+  && negb (func_named md n || data_named md n)
+  && (func_named md target
+      || match first_data_linkage target md with
+         | Some (LExport | LLocal | LWeak | LRo _) =>
+             negb (existsb (fun it => match item_name it with
+                                      | Some g => negb (name_eqb g n) && calls_global it n
+                                      | None => false
+                                      end) (first_funcs [] md))
+         | _ => false
+         end).
+
+(** ## Modules *)
+
+(** The items of the module that the model can judge are valid. *)
+Definition valid_items (md : module) : bool :=
+  forallb (fun it => match it with
+                     | IFunc f => valid_func md f
+                     | IData _ lk al its => valid_data lk al its
+                     | IAlias n lk t => valid_alias md n lk t
+                     | IOutside _ _ => true
+                     end) md.
+
+(** `valid md`, ir:valid_module/1 for a Fil-C module without its
+    contexts: None when a function is outside the core subset, which the
+    model cannot judge. The `context/2` items are provenance's records,
+    which `valid_contexts/1` checks and run/5 never reads; the model
+    has none (docs/rocq.md). *)
 Definition valid (md : module) : option bool :=
   if existsb (fun it => match it with IOutside _ _ => true | _ => false end) md then None
-  else Some (valid_funcs md).
+  else Some (valid_items md).

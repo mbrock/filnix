@@ -20,7 +20,7 @@
     A list is its own form rather than nested `'[|]'/2` compounds, so
     that decoding a list of blocks or instructions is a map. *)
 
-From Stdlib Require Import String ZArith List Bool.
+From Stdlib Require Import String ZArith List Bool Ascii.
 Import ListNotations.
 
 Inductive term : Type :=
@@ -63,3 +63,20 @@ Fixpoint lookup {A : Type} (k : name) (ps : list (name * A)) : option A :=
 Definition put {A : Type} (k : name) (v : A) (ps : list (name * A))
   : list (name * A) :=
   (k, v) :: filter (fun p => negb (name_eqb k (fst p))) ps.
+
+Local Open Scope Z_scope.
+
+(** The code of a one-character atom, as `char_code/2` gives it, for
+    the codes 0 to 2047: one byte below 128, or a two-byte UTF-8
+    sequence. Any other atom is not one character of these codes. *)
+Definition char_code (t : term) : option Z :=
+  match t with
+  | TAtom (String c EmptyString) =>
+      let a := Z.of_nat (nat_of_ascii c) in if a <? 128 then Some a else None
+  | TAtom (String c1 (String c2 EmptyString)) =>
+      let a := Z.of_nat (nat_of_ascii c1) in
+      let b := Z.of_nat (nat_of_ascii c2) in
+      if (192 <=? a) && (a <? 224) && (128 <=? b) && (b <? 192)
+      then Some ((a - 192) * 64 + (b - 128)) else None
+  | _ => None
+  end.

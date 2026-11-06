@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # The extracted Rocq validator against ir:valid_module/1 (docs/formal.md,
 # Campaign 1): for each Fil-C IR or C file, `nanofil outcomes` prints its
-# checked module, rocq/mutants.pl mutates each function and has
-# valid_module/1 judge every mutant, and the model (MODEL --valid) must
-# reach the same verdict. Plain modules are skipped. Fails if any
-# verdict disagrees.
+# checked module, rocq/mutants.pl mutates each function, data object
+# and alias (and inserts some) and has valid_module/1 judge every
+# mutant, and the model (MODEL --valid) must reach the same verdict.
+# Plain modules are skipped. Fails if any verdict disagrees.
 #
 #   MODEL=.../bin/nanofil-model valid.sh FILE...
 #   NANOFIL_OPT=-O NANOFIL_CHECKS=combined valid.sh FILE...

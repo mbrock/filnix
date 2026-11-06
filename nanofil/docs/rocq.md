@@ -15,14 +15,14 @@ the interpreter and cites the predicate it copies.
 
 | File | Transcribes | Contents |
 | --- | --- | --- |
-| `Term.v` | ground Prolog terms | names (temporaries, labels, symbols) as terms compared by `==` |
+| `Term.v` | ground Prolog terms | names (temporaries, labels, symbols) as terms compared by `==`; `char_code/2` |
 | `Syntax.v` | ir.pl's header tables | classes, ops, values, instructions, jumps, blocks, functions, data, modules; `op_arg_classes/4`, `evidence_preserving/1`, `ahead_transparent/1`, `local_objects/2` |
 | `Values.v` | interp.pl's values | `cap` (`none`, `obj`, `ro`, `fn`, `ext`), `ptr`, `word`; `word_at_class/3` |
 | `Memory.v` | interp.pl's Memory section | regions, `mem`, `cap_access_res/7`, `free_res/4`, bytes and aux, `fresh` |
 | `Ops.v` | `alu/4`, `additive_res/4`, `kind_res/8` | integer ops, `check` and the reuse vocabulary, raw loads, pointer-load and pointer-store protocols |
 | `Semantics.v` | `run/5`'s blocks, instructions, jumps, calls | the configuration, `step`, `step_rel`, `reachable` |
 | `Run.v` | `initial_memory/4`, `alloc_base/6` | module preparation, the interpreter's allocator as one fresh choice, a driver |
-| `Validate.v` | ir.pl's `valid_module/1` for code | `valid_func`, `valid_funcs`, `valid`: uses, ops, instructions, dominance, locals, the evidence pass, the reuse rules, `polls_every_cycle` |
+| `Validate.v` | ir.pl's `valid_module/1` | `valid_func`, `valid_data`, `valid_alias`, `valid_items`, `valid`: uses, ops, instructions, dominance, locals, the evidence pass, the reuse rules, `polls_every_cycle`, data linkage and items, aliases |
 | `Transport.v` | — | decoding a printed checked module, encoding outcomes, `judge`, `judge_valid` |
 | `Extract.v`, `extraction/main.ml` | — | OCaml extraction, and a reader of Prolog terms |
 
@@ -39,9 +39,11 @@ its `fn` capability and its term (so the validator can read its
 signature and its calls), but running or calling it is stuck, and the
 comparison reports such a run as `outside`.
 
-The validator covers the code of a module: every function in the
-subset. Data items, aliases and contexts are not transcribed; `valid`
-is `None` for a module with a function outside the subset.
+The validator covers every item of a Fil-C module: functions in the
+subset, data objects and aliases. `valid` is `None` for a module with a
+function outside the subset. The `context(Name, Records)` items are not transcribed:
+they are provenance's records, which `valid_contexts/1` checks and
+`run/5` never reads, and the module the gates compare has none.
 
 ## The gate
 
@@ -53,13 +55,17 @@ every line, and prints `agree`, `disagree`, `outside` or `stuck_both`
 for each; the script fails on any disagreement.
 
 The Nix check runs `rocq/tests/*.ir` once with the reference checks.
-It then runs `tests/filc/*.ir` and `tests/c/*.c` with and without `-O`,
-under each of the twelve `--checks` modes.
+It then runs `tests/filc/*.ir`, `tests/c/*.c` and forty generated Fil-C
+modules (`tests/gen.pl SEED 10 filc`, seeds 1 to 40) with and without
+`-O`, under each of the twelve `--checks` modes. Thirty-nine of the
+generated modules are Fil-C ones (seed 21 draws no memory, so it is
+plain and skipped), and 882 of their 2,340 runs trap.
 
 | Corpus | Lines that agree | Outside the subset | Disagree |
 | --- | --- | --- | --- |
 | filc fixtures and C tests, without `-O` (each `--checks` mode) | 447 | 41 | 0 |
 | the same with `-O` | 449 | 39 | 0 |
+| the gen modules, with and without `-O` (each mode) | 2,340 | 0 | 0 |
 | `rocq/tests/reuse.ir` (`renew_if`, `renew_hull`, each with and without a free) | 4 | 0 | 0 |
 
 The lines outside the subset are floats, `long double`, variadics and
@@ -90,9 +96,20 @@ jumps and phis are well formed, every use has a dominating definition
 block, and, in a checked module, `stage_func/6` holds: the evidence
 pass over the blocks in order, `limit_reads/2`, and
 `polls_every_cycle/1` (by repeatedly removing blocks with no unpolled
-edge into what is left). ir.pl throws at the first problem; the model
-returns `false`, so it follows ir.pl's clause groups and not its order
-of evaluation.
+edge into what is left). A data object is valid when its alignment is
+a power of two up to 4096, its linkage is one a Fil-C module allows
+(with the items `extern(weak)` and `init(Kind, Prio)` ask for), its
+float items are in range, its strings hold bytes, and it has no
+`item(l, sym(_, _))`. An alias is valid when its linkage is `export` or
+`weak`, no function or data shares its name, and its target is a
+function, or data of a linkage an alias may name that no function calls
+through the alias. ir.pl throws at the first problem; the model returns
+`false`, so it follows ir.pl's clause groups and not its order of
+evaluation.
+
+Data items the interpreter does not lay out decode to `ItemOther`, and
+linkages it does not know to `LOther`, each keeping its term: the
+validator reads them, and the interpreter's layout is stuck on them.
 
 Three places in ir.pl depend on how Prolog evaluates, and the model
 copies them, as `Validate.v`'s header records: `offset_interval/8`
@@ -103,30 +120,55 @@ tries its left operand first.
 
 The gate is [rocq/valid.sh](../rocq/valid.sh). For each file,
 `nanofil outcomes` prints the checked module, and
-[rocq/mutants.pl](../rocq/mutants.pl) prints, for each function, the
-function as it is and up to 150 mutants: a check deleted or moved, a
-check's bounds, rights or alignment changed, a raw access's offset
+[rocq/mutants.pl](../rocq/mutants.pl) prints, for each item, the item
+as it is and up to 150 mutants. A function's: a check deleted or moved,
+a check's bounds, rights or alignment changed, a raw access's offset
 moved by one, a free inserted between evidence and its use, a reuse
-form given another proof, a poll edge removed. `valid_module/1` judges
-each mutant in place of its function, and the model, given the whole
-module, must reach the same verdict. Plain modules are skipped.
+form given another proof, a poll edge removed. A data object's: its
+alignment, its linkage, an item of each shape the validator looks at
+appended, the object renamed or deleted. An alias's: its linkage, its
+target and its name changed, or the alias deleted. And up to 150 items
+inserted: an alias of each kind of target, under a fresh name and under
+the name of a function the module calls without defining, and a data
+object of each linkage. `valid_module/1` judges each changed module, and
+the model must reach the same verdict. Plain modules are skipped, and
+so is a mutant that would make its module plain.
+
+The corpus is the matrix's Fil-C fixtures and C tests; forty modules of
+ten random functions each from [tests/gen.pl](../tests/gen.pl), which
+now has a `filc` mode that addresses its memory through `p` values and
+reaches up to four bytes outside its slot; and, with the reference
+checks only, the 16 C programs of `tests/c/prog` that declare an alias,
+a weak symbol, thread-local data or a constructor, which bring the
+corpus's aliases and its kinds of data linkage. Programs with a
+`// cflags:` line are left out, since they compile as progtest.sh does
+and not as `cc-ir` does. The other programs are too slow for the
+check, because each mutant is judged on its whole module; one run
+over 169 of them agreed on all 73,330 verdicts it could judge.
 
 | Corpus | Verdicts that agree | Outside the subset | Disagree |
 | --- | --- | --- | --- |
-| filc fixtures and C tests, without `-O` (each `--checks` mode) | 19,003–20,321 | 6,435–6,757 | 0 |
-| the same with `-O` | 9,484–9,559 | 4,516–4,904 | 0 |
-| `rocq/tests/reuse.ir` (reference checks) | 87 | 0 | 0 |
+| filc fixtures, C tests and gen modules, without `-O` (each `--checks` mode) | 45,988–50,044 | 7,066–7,388 | 0 |
+| the same with `-O` | 30,032–32,572 | 5,148–5,536 | 0 |
+| the 16 `tests/c/prog` programs (reference checks) | 8,926 | 3,591 | 0 |
+| `rocq/tests/reuse.ir` (reference checks) | 111 | 0 | 0 |
 
 The mutants test rejection as well as acceptance: on basic.ir,
-`valid_module/1` judged 413 of them invalid and 210 valid. A mutant is
-`outside` when it is itself outside the subset, or when it changes its
-function's signature and a function outside the subset calls it, since
-the model cannot judge that caller.
+`valid_module/1` judged 413 of them invalid and 210 valid. In the four
+C programs with aliases or weak symbols, every kind of data and alias
+mutation met both verdicts; for instance 38 retargeted aliases were
+invalid and 35 valid, and 296 changed data linkages invalid and 363
+valid. A mutant is `outside` when it is itself outside the subset, when
+it changes its function's signature and a function outside the subset
+calls it, or when it changes data or an alias that a function outside
+the subset names, since the model cannot judge that function.
 
-The gate can fail. I planted four bugs in `Validate.v`, each found by
+The gate can fail. I planted eight bugs in `Validate.v`, each found by
 the gate and then reverted: a covered access that ignored its size;
 evidence that survived an instruction that does not preserve it; a
-hull allowed below its lower proof; and cycles that needed no poll.
+hull allowed below its lower proof; cycles that needed no poll; data
+aligned up to 8192; `item(l, sym(_, _))` allowed; calls through an
+alias of data allowed; and an `extern(weak)` declaration with items.
 
 ## Decisions
 
@@ -205,6 +247,21 @@ These are formal.md's early decisions as they turned out in the code:
   every caller. So the gate replaces one function and judges the whole
   module, and the model cannot judge a mutant whose callers are outside
   the subset.
+- **ir.pl does not check the shape of a data item.** Only three
+  things about items are checked: float items are `const(N)` in range,
+  strings hold bytes, and a Fil-C module has no `item(l, sym(_, _))`.
+  `data(x, export, 8, [item(w, foo), bar])` is valid. The model accepts
+  the same, so its `ItemOther` items are valid and stuck. Campaign 3's
+  statement about data needs the interpreter's layout to be total on
+  valid modules, or the validator to check the shapes the layout reads.
+- **A data object's name is not checked against its uses.** Deleting
+  or renaming a data object is valid unless an alias targets it or
+  has its new name: a symbol the module does not define is external,
+  which a Fil-C module may name. So `valid` says nothing about whether a global names data
+  or a function; the runtime decides.
+- **The symbol table keeps the first item of each name.** An alias's
+  call check reads only the first function of each name, as
+  `module_symbols/2` indexes them; the model does the same.
 - **Entry evidence depends on block order.** An edge from a block not
   yet processed carries no evidence, the same as a poll edge. Block
   order is therefore part of the checked IR's meaning for the
@@ -221,10 +278,11 @@ ends a run first), and atoms containing UTF-8 bytes in a reader.
 
 ## Next
 
-1. Data items, aliases and contexts in `valid`, so it judges whole
-   modules and not only their code.
-2. A larger corpus for both gates: [tests/gen.pl](../tests/gen.pl) modules pizlonated,
-   and the Lua test suite once its functions fit the subset.
+1. The Lua test suite, Campaign 1's goal: its functions need floats
+   and variadics in the subset, which are most of what is now
+   `outside`.
+2. More of the generator's shapes in its `filc` mode (pointer loads and
+   stores, calls), so the generated corpus reaches the reuse forms.
 3. The Campaign 2 `Module Type Runtime`: `fresh` and the lifetime facts
    of `Memory.v` are the first candidates to move into it.
 

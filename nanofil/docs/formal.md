@@ -35,7 +35,7 @@ package in Filnix rather than only what nanofil compiles.
 | Campaign | Goal | Deliverable | State |
 | --- | --- | --- | --- |
 | 0 | Measure which checks survive `-O --checks=combined` | `docs/residual.md` | not started |
-| 1 | The core model in Rocq, agreeing with the interpreter | Gallina syntax, semantics, `valid` | under way: syntax, memory and small-step semantics in `nanofil/rocq/`, agreeing with `interp:run/5` on every core-subset run line, and `valid` for code, agreeing with `ir:valid_module/1` on every core-subset mutant of the corpus, both under every `--checks` mode with and without `-O` ([rocq.md](rocq.md)); data items and aliases in `valid` not started |
+| 1 | The core model in Rocq, agreeing with the interpreter | Gallina syntax, semantics, `valid` | under way: syntax, memory and small-step semantics in `nanofil/rocq/`, agreeing with `interp:run/5` on every core-subset run line, and `valid` for functions, data and aliases, agreeing with `ir:valid_module/1` on every core-subset mutant of the corpus and of tests/gen.pl's Fil-C modules, both under every `--checks` mode with and without `-O`, and of the tests/c/prog programs with aliases and weak, thread-local or constructor data ([rocq.md](rocq.md)); next: the Lua test suite, which needs floats and variadics in the subset |
 | 2 | The runtime as one page of axioms, each probed natively | `docs/runtime-axioms.md` | not started |
 | 3 | The soundness theorem for the validator | `valid_no_unchecked`, no admits | not started |
 | 4 | Observations, refinement, and libc contracts | a trace semantics; `opt:refines/2` as trace inclusion | not started |
@@ -161,7 +161,7 @@ by dterm-rocq:
 | `cap_access_res`, `access_res` | `cap_access_res/7` | the trap reasons in the backend's order | [cap_access_res](../rocq/theories/Memory.v#cap_access_res), [access_res](../rocq/theories/Memory.v#access_res) |
 | syntax: func, block, inst, value, module | ir.pl's header tables | core subset only; one constructor per IR functor | [inst](../rocq/theories/Syntax.v#inst), [func](../rocq/theories/Syntax.v#func), [module](../rocq/theories/Syntax.v#module) |
 | small-step `step : genv -> config -> step_result`, and `step_rel` | `interp:run/5` | fuel-indexed; `step_rel` takes any fresh base where `step` asks for one | [config](../rocq/theories/Semantics.v#config), [step](../rocq/theories/Semantics.v#step), [step_rel](../rocq/theories/Semantics.v#step_rel) |
-| `valid : module -> bool` | `ir:valid_module/1` | computable, reflection-ready; mirrors the coverage and evidence rules | not yet |
+| `valid : module -> option bool` | `ir:valid_module/1` | computable, reflection-ready; mirrors the coverage and evidence rules, data and aliases; `None` when a function is outside the subset | [valid](../rocq/theories/Validate.v#valid), [valid_func](../rocq/theories/Validate.v#valid_func), [valid_data](../rocq/theories/Validate.v#valid_data), [valid_alias](../rocq/theories/Validate.v#valid_alias) |
 
 The [outcomes](../rocq/theories/Semantics.v#outcome) are the
 interpreter's: `Ret x`, `Trap why`, `UB why`, `Unchecked why` and
@@ -184,7 +184,7 @@ Design decisions to make early and write down:
 - **Externals.** A call to a symbol the module does not define is stuck
   until Campaign 4 gives it a contract.
 
-The decisions as taken, and what the first milestone found, are in
+The decisions as taken, and what each milestone found, are in
 [rocq.md](rocq.md).
 
 Gates: the extracted interpreter and `interp:run/5` agree on every test
