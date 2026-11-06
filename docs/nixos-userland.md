@@ -252,6 +252,13 @@ could not, since it boots without user data:
   or the native Nix: the same command against an empty store, with that
   option, fetches all 806 paths and builds nothing.
 
+The release AMI's check found one more: a unit that fails after the switch
+(ACME, while the name points elsewhere) makes switch-to-configuration exit
+with 4, and the service then left its done marker unwritten and would switch
+again on every boot. Status 4 means the new system is active, so the service
+now logs the failed units and writes the marker; the test's target has a
+unit that fails.
+
 ### Service tests
 
 Fixes and exceptions the `nixosTests` matrix needed:

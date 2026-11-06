@@ -67,19 +67,28 @@ in
     script = ''
       ref=$(sed -n '1s/^#filnix \([^ ]*\)$/\1/p' /etc/ec2-metadata/user-data 2>/dev/null || true)
       set -- --option max-jobs 0 --option builders ""
+      rc=0
       case $ref in
         "") echo "no #filnix line in the user data" ;;
         /nix/store/*)
           echo "switching to $ref"
           nix-store --realise "$ref" "$@"
           # There is no flake to take a newer nixos-rebuild from.
-          nixos-rebuild switch --no-reexec --store-path "$ref" "$@"
+          nixos-rebuild switch --no-reexec --store-path "$ref" "$@" || rc=$?
           ;;
         *)
           echo "switching to $ref"
-          nixos-rebuild switch --flake "$ref" "$@"
+          nixos-rebuild switch --flake "$ref" "$@" || rc=$?
           ;;
       esac
+      # 4: the new system is active but some of its units failed, such as
+      # ACME before DNS points here. Switching again would not help them.
+      if [ "$rc" = 4 ]; then
+        echo "switched, but these units failed:"
+        systemctl --failed --no-legend --plain
+      elif [ "$rc" != 0 ]; then
+        exit "$rc"
+      fi
       touch /var/lib/filnix-first-switch/done
     '';
   };

@@ -33,6 +33,13 @@ in
       serviceConfig.RemainAfterExit = true;
       script = "true";
     };
+    # A unit that fails after the switch, as ACME does while the name
+    # points elsewhere: the switch still counts and does not run again.
+    systemd.services.filnix-switch-broken = {
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig.Type = "oneshot";
+      script = "exit 1";
+    };
   };
   nodes.machine =
     { nodes, ... }:
@@ -58,6 +65,7 @@ in
       # It runs once.
       machine.systemctl("restart filnix-first-switch")
       machine.succeed("journalctl -u filnix-first-switch | grep -q 'switching to'")
+      machine.succeed("journalctl -u filnix-first-switch -o cat | grep -A3 'units failed' | grep -q filnix-switch-broken")
       print(machine.succeed("journalctl -u filnix-first-switch -o cat"))
     '';
 }
