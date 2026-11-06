@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # build.sh SRC OUT FILES OPTIONS NIXPKGS NIX...: render SRC/docs/*.md with
 # pandoc into OUT/docs, copy SRC/pages to OUT, draw SRC/nanofil/src/*.pl
-# into OUT/nanofil, render SRC/nanofil/docs/*.md into OUT/nanofil/docs,
+# into OUT/nanofil and SRC/nanofil's .v files into OUT/nanofil/rocq,
+# render SRC/nanofil/docs/*.md into OUT/nanofil/docs,
 # and draw each SRC/NIX file into OUT/nix with the option index (FILES
 # lists the repository's paths, for their links; OPTIONS is
 # dterm-nix/options.nix's JSON; NIXPKGS the Nixpkgs it read). Fails if a
@@ -51,6 +52,13 @@ cp "$src"/nanofil/web/dterm.css "$src"/nanofil/web/dterm.js "$out/nanofil/"
 # fails the build.
 swipl "$src/nanofil/web/dterm.pl" "$out/nanofil" "$src/nanofil/src" \
   --doc="$src/nanofil/docs/guide.md" --doc="$src/nanofil/docs/formal.md" </dev/null
+# nanofil's Rocq, drawn by dterm-rocq (nanofil/web/rocq) into
+# nanofil/rocq/: every .v file under nanofil (the model in nanofil/rocq).
+mkdir -p "$out/nanofil/rocq"
+cp "$src"/nanofil/web/rocq/dterm-rocq.css "$src"/nanofil/web/rocq/dterm-rocq.js "$out/nanofil/rocq/"
+mapfile -t rocq < <(cd "$src" && find nanofil -name '*.v' | sort)
+swipl "$src/nanofil/web/rocq/dterm_rocq.pl" "$out/nanofil/rocq" "$src" \
+  --prolog="$src/nanofil/src" "${rocq[@]}" </dev/null
 # The dterm workbench: the samples drawn by dterm, set side by side.
 mkdir -p "$out/nanofil/workbench"
 wb=$src/nanofil/web/workbench

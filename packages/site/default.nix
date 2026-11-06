@@ -1,6 +1,7 @@
 # The GitHub Pages site: pages/ as is, docs/ rendered with pandoc into
 # docs/*.html, nanofil's Prolog drawn as terms into nanofil/*.html by
-# nanofil/web/dterm.pl, nanofil's documents (its guide among them) into
+# nanofil/web/dterm.pl, nanofil's Rocq into nanofil/rocq/*.html by
+# nanofil/web/rocq, nanofil's documents (its guide among them) into
 # nanofil/docs/*.html, the nanofil playground in nanofil/play/, and
 # every Nix file of filnix drawn by dterm-nix into nix/*.html.
 # .github/workflows/pages.yml publishes it.
@@ -63,6 +64,8 @@ let
       ../../nanofil/docs
       ../../nanofil/src
       ../../nanofil/web
+      # nanofil's Rocq, wherever the development puts it (dterm-rocq).
+      (lib.fileset.fileFilter (f: f.hasExt "v") ../../nanofil)
       ../../dterm-nix
       (lib.fileset.unions (map (f: ../.. + "/${f}") nixPages))
     ];

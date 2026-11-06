@@ -367,6 +367,19 @@ Markdown of comments) with these pages. Two of its pages are facts
 rather than source: ports.nix as a table of steps per port, and an
 option index from evaluating the NixOS and finix modules.
 
+## Rocq (November 2026)
+
+[web/rocq](../web/rocq/README.md), dterm-rocq, draws the formal
+campaign's Rocq ([formal.md](formal.md)) the same way, on the wiki at
+[mbrock.github.io/filnix/nanofil/rocq](https://mbrock.github.io/filnix/nanofil/rocq/):
+a Rocq grammar written as a DCG reads each `.v` file into terms with
+positions and comments; inductive types become tables of constructors,
+step relations and theorems inference rules with their proofs folded
+under them, and dterm.js breaks the inline terms as it breaks Prolog's.
+Rocq in formal.md's prose (`cap := None | Obj base`, `Ret v`, the
+`Theorem`) is drawn as Rocq, beside the Prolog it transcribes drawn as
+Prolog. It draws the Campaign 1 development in [rocq/](../rocq/).
+
 ## Not yet
 
 - Captions as data (`case/2` in `doc/3`, naming the clauses), so a

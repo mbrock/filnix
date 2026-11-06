@@ -1,0 +1,908 @@
+:- encoding(utf8).
+/*  rocq_draw: Rocq drawn as dterm draws Prolog, by what it is.
+
+    rocq_syntax.pl reads Rocq into terms; this module draws them, for the
+    pages of dterm_rocq.pl and for Rocq written inside nanofil's documents
+    (dterm_guide.pl's formal.md):
+
+    - an inductive type is a table of its constructors, each with its
+      arguments; a relation whose constructors have premises (a step
+      relation) is a column of inference rules, premises over a line over
+      the conclusion, named by the constructor;
+    - a record is a table of its fields;
+    - a theorem, an axiom and a lemma are their statement as a rule:
+      what is quantified, the hypotheses over the line, the conclusion
+      under it; the proof folds under it, a row per tactic, indented by
+      its bullets;
+    - a definition is its signature over its body; `match` is a table of
+      patterns and results, `if` a table of conditions, `let` a binding
+      over its body;
+    - inline, a term is set as dterm sets Prolog: an application is its
+      function and arguments, and dterm.js breaks it at the width it gets
+      (data-d=args and data-d=op, as for Prolog and Nix). Rocq's ASCII
+      notations are drawn as their glyphs (∀ λ → ∧ ≠ ≤ ×), and a file's
+      own infix notation folds the application it abbreviates back into
+      it, as Rocq prints it;
+    - a bound variable is a variable (hovering it lights up its other
+      uses), a name the corpus defines links to its definition, and a
+      constructor is drawn as one;
+    - comments are where they were written: (** coqdoc *) is prose, its
+      `* Heading` a heading and `[term]` a term; (* comments *) are notes,
+      or asides beside the line they end. `name/N` and `module.pl` link to
+      nanofil's Prolog.
+*/
+:- module(rocq_draw, [rocq_items//1, rocq_inline//1, rocq_fence//1, rocq_prose//1,
+                      rocq_set_source/2, rocq_index_items/3, rocq_items_names/2,
+                      rocq_global/5, rocq_prolog_pred/2, comment_heading/3, comment_prose_lines/2,
+                      note_kind/3]).
+
+:- use_module(library(lists)).
+:- use_module(library(apply)).
+:- use_module(library(uri)).
+:- use_module(rocq_syntax).
+
+:- include('../dterm_html').
+
+github('https://github.com/mbrock/filnix/blob/main/').
+
+%  rocq_global(Short, Qualified, Page, Kind, File): a name the drawn files
+%  define, on Page (Page.html) at the anchor Qualified. Kind is type,
+%  ctor, field, def, lemma, axiom, param or module.
+%  rocq_prolog_pred(Name, Module): nanofil's Prolog defines Name in
+%  Module.pl, for links from comments (prefix in rq_prolog).
+:- dynamic rocq_global/5, rocq_prolog_pred/2.
+
+%% State
+
+%  rocq_set_source(+Text, +Comments): the source the positions are in and
+%  the comments still to draw, cm(From, To, Text, Kind).
+rocq_set_source(Text, Cms) :-
+    nb_setval(rq_text, Text), nb_setval(rq_notes, Cms), nb_setval(rq_mod, []),
+    ( nb_current(rq_page, _) -> true ; nb_setval(rq_page, none) ),
+    ( nb_current(rq_file, _) -> true ; nb_setval(rq_file, none) ).
+
+src_text(F-T, S) :- nb_getval(rq_text, Text), L is T - F, sub_string(Text, F, L, _, S).
+
+line_of(O, L) :- nb_getval(rq_text, Text), sub_string(Text, 0, O, _, Pre),
+    split_string(Pre, "\n", "", Ls), length(Ls, L).
+
+note_kind(Text, cm(F, T, S), cm(F, T, S, Kind)) :-
+    sub_string(Text, 0, F, _, Pre),
+    (   sub_string(Pre, B, 1, _, "\n"), \+ ( sub_string(Pre, B1, 1, _, "\n"), B1 > B )
+    ->  B2 is B + 1, sub_string(Pre, B2, _, 0, Line)
+    ;   Line = Pre
+    ),
+    ( split_string(Line, "", " \t", [""]) -> Kind = own ; Kind = trailing ).
+
+%% The index of names
+
+%  rocq_index_items(+Page, +File, +Items): assert rocq_global/5 for each
+%  name Items define, qualified by the modules they are in.
+rocq_index_items(Page, File, Items) :- index_items(Items, [], Page, File).
+
+index_items(Is, Mod, Page, File) :- forall(member(I, Is), index_item(I, Mod, Page, File)).
+
+index_item(proved(S, _), Mod, Page, File) :- !, index_item(S, Mod, Page, File).
+index_item(block(module(_, Kind, n(_, N), _, _), Body, _), Mod, Page, File) :- !,
+    add_global(N, Mod, Page, module, File),
+    ( Kind == section -> Mod1 = Mod ; append(Mod, [N], Mod1) ),
+    index_items(Body, Mod1, Page, File).
+index_item(S, Mod, Page, File) :-
+    forall(defines(S, N, K), add_global(N, Mod, Page, K, File)).
+
+add_global(N, Mod, Page, K, File) :-
+    qualify(Mod, N, Q),
+    ( rocq_global(N, Q, Page, _, _) -> true ; assertz(rocq_global(N, Q, Page, K, File)) ).
+
+qualify([], N, N) :- !.
+qualify(Mod, N, Q) :- append(Mod, [N], Ps), atomic_list_concat(Ps, '.', Q).
+
+defines(ind(_, _, Bs), N, K) :- member(ib(n(_, T), _, _, Cs), Bs),
+    ( N = T, K = type ; member(ctor(_, N, _, _), Cs), K = ctor ).
+defines(rec(_, _, n(_, T), _, _, C, Fs), N, K) :-
+    ( N = T, K = type ; C = n(_, N), K = ctor ; member(field(_, N, _, _, _), Fs), K = field ).
+defines(def(_, _, n(_, N), _, _, _), N, def).
+defines(thm(_, _, n(_, N), _, _), N, lemma).
+defines(decl(_, Kw, Gs), N, K) :- member(g(Ns, _), Gs), member(n(_, N), Ns),
+    ( axiom_kw(Kw) -> K = axiom ; K = param ).
+
+axiom_kw(Kw) :- memberchk(Kw, ['Axiom', 'Axioms', 'Conjecture', 'Hypothesis', 'Hypotheses']).
+
+%  rocq_items_names(+Items, -Names): n(Offset, Name, Anchor, Kind) for the
+%  names a page's contents list, in source order.
+rocq_items_names(Items, Ns) :- phrase(item_names(Items, []), Ns).
+
+item_names([], _) --> [].
+item_names([I|Is], Mod) --> item_name(I, Mod), item_names(Is, Mod).
+
+item_name(proved(S, _), Mod) --> !, item_name(S, Mod).
+item_name(block(module(F-_, Kind, n(_, N), _, _), Body, _), Mod) --> !,
+    { qualify(Mod, N, Q), ( Kind == section -> Mod1 = Mod ; append(Mod, [N], Mod1) ) },
+    [n(F, N, Q, module)], item_names(Body, Mod1).
+item_name(S, Mod) --> { arg(1, S, F-_), findall(N-K, ( defines(S, N, K), K \== ctor, K \== field ), NKs) },
+    seq_names(NKs, F, Mod).
+
+seq_names([], _, _) --> [].
+seq_names([N-K|Ns], F, Mod) --> { qualify(Mod, N, Q) }, [n(F, N, Q, K)], seq_names(Ns, F, Mod).
+
+%  global_href(+Name, -Href, -Kind): Name, as written (maybe qualified),
+%  is defined in the corpus.
+global_ref(X, Href, Kind) :-
+    nb_getval(rq_page, Page), Page \== none,
+    (   nb_getval(rq_mod, Mod), qualify(Mod, X, Q0), rocq_global(_, Q0, Page, Kind, _) -> Q = Q0, P = Page
+    ;   rocq_global(_, X, P0, Kind, _) -> Q = X, P = P0
+    ;   last_part(X, S), findall(Q1-P1-K1, rocq_global(S, Q1, P1, K1, _), Hits), Hits \== [],
+        ( member(Q-Page-Kind, Hits) -> P = Page ; Hits = [Q-P-Kind] )
+    ),
+    uri_encoded(fragment, Q, Frag),
+    ( P == Page -> format(atom(Href), "#~w", [Frag]) ; format(atom(Href), "~w.html#~w", [P, Frag]) ).
+
+last_part(X, S) :- atomic_list_concat(Ps, '.', X), last(Ps, S).
+
+%  Constructors of Rocq's library, drawn as constructors.
+std_ctor(X) :- memberchk(X, ['None', 'Some', true, false, nil, cons, inl, inr, pair, 'O', 'S', tt, 'I',
+                            left, right, 'Eq', 'Lt', 'Gt', 'Z0', 'Zpos', 'Zneg', exist, existT, conj, eq_refl]).
+std_type(X) :- memberchk(X, ['Type', 'Prop', 'Set', 'Z', nat, bool, list, option, string, prod, sum, unit,
+                            'N', positive, 'True', 'False', eq]).
+
+name_kind(X, K) :- nb_getval(rq_page, P), P \== none, global_ref(X, _, K), !.
+name_kind(X, ctor) :- std_ctor(X), !.
+name_kind(X, type) :- std_type(X), !.
+name_kind(X, ctor) :- nb_getval(rq_page, none), atom_codes(X, [C|_]), between(0'A, 0'Z, C), \+ sub_atom(X, _, _, _, '.'), !.
+name_kind(_, other).
+
+is_ctor(X) :- name_kind(X, ctor).
+
+kind_class(ctor, "a").
+kind_class(type, "ty").
+kind_class(field, "f").
+kind_class(def, "f").
+kind_class(param, "f").
+kind_class(lemma, "lem").
+kind_class(axiom, "lem").
+kind_class(module, "module").
+kind_class(other, "g").
+
+%% Terms
+
+%  term(+E, +Env): E inline; Env the names bound around it.
+term(E, Env) --> term_(E, Env), !.
+
+term_(id(_, X), Env) --> name_ref(X, Env).
+term_(hole(_), _) --> el(span, "v anon", [title="_"], "_").
+term_(num(_, N), _) --> el(span, n, esc(N)).
+term_(str(_, S), _) --> el(span, s, ( "\"", esc(S), "\"" )).
+term_(explicit(_, X), Env) --> el(span, explicit, ( el(span, at, "@"), name_ref(X, Env) )).
+term_(app(P, id(_, F), [A, B]), Env) --> { notation_fold(F, 2, Op) }, !, term(bin(P, Op, A, B), Env).
+term_(app(_, F, As), Env) -->
+    el(span, "c app", ['data-d'=args], ( head_(F, Env), el(span, args, items(As, Env)) )).
+term_(bin(_, Op, L, R), Env) -->
+    el(span, o, ['data-d'=op], ( term(L, Env), "\u00A0", op_(Op), " ", term(R, Env) )).
+term_(chain(_, [O1, O2], [A, B, C]), Env) -->
+    el(span, o, ['data-d'=op], ( term(A, Env), "\u00A0", op_(O1), " ", term(B, Env), "\u00A0", op_(O2), " ", term(C, Env) )).
+term_(pre(_, Op, E), Env) --> el(span, "o pre", ( op_(Op), term(E, Env) )).
+term_(paren(_, E), Env) --> el(span, paren, term(E, Env)).
+term_(cast(_, E, T), Env) -->
+    el(span, paren, ( term(E, Env), "\u00A0", el(span, "op wide", [title=":"], ":"), " ", term(T, Env) )).
+term_(tuple(_, Es), Env) --> el(span, "c tuple", ['data-d'=args], el(span, args, sep_items(Es, Env, ","))).
+term_(forall(_, Bs, B), Env) --> quant("∀", forall, Bs, ",", B, Env).
+term_(exists(_, Bs, B), Env) --> quant("∃", exists, Bs, ",", B, Env).
+term_(fun(_, Bs, B), Env) --> quant("λ", fun, Bs, "\u00A0⇒", B, Env).
+term_(let(_, Lhs, Ty, V, B), Env) -->
+    { lhs_names(Lhs, Ns), append(Ns, Env, Env1) },
+    el(span, "o let", ( kw("let"), " ", lhs_(Lhs, Env, Env1), opt_type(Ty, Env), "\u00A0", defeq, " ", term(V, Env), " ",
+                        kw("in"), " ", term(B, Env1) )).
+term_(letstar(_, n(_, X), V, B), Env) -->
+    el(span, "o let", ( kw("let*"), " ", var_def(X), "\u00A0", defeq, " ", term(V, Env), " ", kw("in"), " ", term(B, [X|Env]) )).
+term_(letpat(_, Pat, V, B), Env) -->
+    { alts_vars([[Pat]], Vs), append(Vs, Env, Env1) },
+    el(span, "o let", ( kw("let"), " ", el(span, tick, "'"), term(Pat, Env1), "\u00A0", defeq, " ", term(V, Env), " ",
+                        kw("in"), " ", term(B, Env1) )).
+term_(letfix(_, n(_, F), Bs, Ty, V, B), Env) -->
+    { binders_env(Bs, [F|Env], EnvV) },
+    el(span, "o let", ( kw("let fix"), " ", var_def(F), binders_(Bs, Env), opt_type(Ty, EnvV), "\u00A0", defeq, " ",
+                        term(V, EnvV), " ", kw("in"), " ", term(B, [F|Env]) )).
+term_(orpat(_, Ps), Env) --> el(span, paren, bar_items(Ps, Env)).
+term_(if(_, C, T, E), Env) -->
+    el(span, "o if", ( kw("if"), " ", term(C, Env), " ", kw("then"), " ", term(T, Env), " ", kw("else"), " ", term(E, Env) )).
+term_(match(_, Ss, _, Brs), Env) -->
+    el(span, "o match", ( kw("match"), " ", scrutinees(Ss, Env), " ", kw("with"), " ",
+                          inline_branches(Brs, Env), " ", kw("end") )).
+term_(list(_, []), _) --> el(span, "l empty", "[ ]").
+term_(list(_, Es), Env) --> el(span, l, ['data-d'=args], sep_items(Es, Env, ";")).
+term_(record(_, Fs), Env) --> el(span, "c rec", ['data-d'=args], el(span, "args recbr", rec_fields(Fs, Env))).
+term_(scope(_, E, K), Env) --> term(E, Env), el(span, scope, [title="scope"], ( "%", esc(K) )).
+term_(braces(_, E), Env) --> el(span, braces, term(E, Env)).
+term_(sig(_, n(_, X), T, Q), Env) -->
+    el(span, "braces sig", ( var_def(X), "\u00A0", el(span, "op wide", ":"), " ", term(T, Env), " ",
+                             el(span, "op wide", "|"), " ", term(Q, [X|Env]) )).
+
+bar_items([P], Env) --> !, term(P, Env).
+bar_items([P|Ps], Env) --> term(P, Env), " ", el(span, "op wide bar", "|"), " ", bar_items(Ps, Env).
+
+items([E], Env) --> !, el(span, arg, term(E, Env)).
+items([E|Es], Env) --> el(span, arg, term(E, Env)), " ", items(Es, Env).
+
+sep_items([E], Env, _) --> !, el(span, arg, term(E, Env)).
+sep_items([E|Es], Env, Sep) --> el(span, arg, ( term(E, Env), el(span, sep, esc(Sep)) )), " ", sep_items(Es, Env, Sep).
+
+rec_fields([], _) --> [].
+rec_fields([fld(_, N, E)|Fs], Env) -->
+    el(span, arg, ( name_ref(N, []), "\u00A0", defeq, " ", term(E, Env), ( { Fs == [] } -> [] ; el(span, sep, ";") ) )),
+    ( { Fs == [] } -> [] ; " " ), rec_fields(Fs, Env).
+
+defeq --> el(span, "op wide defeq", [title=":="], "≔").
+kw(S) --> el(span, kw, esc(S)).
+
+quant(Sym, Title, Bs, Sep, B, Env) -->
+    { binders_env(Bs, Env, Env1) },
+    el(span, "o quant", ( el(span, q, [title=Title], esc(Sym)), binders_(Bs, Env), el(span, "sep qsep", esc(Sep)), " ", term(B, Env1) )).
+
+head_(id(_, X), Env) --> !, name_ref(X, Env, head).
+head_(E, Env) --> term(E, Env).
+
+%  A name: a bound variable, a name the corpus defines (linked), a
+%  constructor or type of Rocq's library, or any other name.
+name_ref(X, Env) --> name_ref(X, Env, arg).
+name_ref(X, Env, _) --> { memberchk(X, Env) }, !, var_(X).
+name_ref(X, _, Pos) -->
+    { name_kind(X, K), kind_class(K, C0), ( Pos == head, K == other -> C = "f" ; C = C0 ) },
+    (   { global_ref(X, Href, _) } -> el(a, C, [href=Href], esc(X))
+    ;   el(span, C, esc(X))
+    ).
+
+%  A variable, with its digits as a subscript (r0 is r₀) and ' as a prime.
+var_(X) --> el(span, v, ['data-v'=X], var_text(X)).
+var_def(X) --> el(span, "v def", ['data-v'=X], var_text(X)).
+
+var_text(X) -->
+    { atom_codes(X, Cs), reverse(Cs, R0), span(==(0''), R0, Ps, R1), length(Ps, NP),
+      span([C]>>code_type(C, digit), R1, RD, RS),
+      ( RS == [] -> reverse(R1, Stem), Ds = [] ; reverse(RS, Stem), reverse(RD, Ds) ) },
+    esc(Stem), ( { Ds == [] } -> [] ; el(sub, none, esc(Ds)) ), primes(NP).
+
+primes(0) --> !, [].
+primes(N) --> "′", { N1 is N - 1 }, primes(N1).
+
+op_(Op) --> { op_glyph(Op, G) -> true ; atom_codes(Op, G) }, el(span, "op wide", [title=Op], esc(G)).
+
+op_glyph('->', "→").
+op_glyph('<->', "↔").
+op_glyph('/\\', "∧").
+op_glyph('\\/', "∨").
+op_glyph('~', "¬").
+op_glyph('<>', "≠").
+op_glyph('<=', "≤").
+op_glyph('>=', "≥").
+op_glyph('<=?', "≤?").
+op_glyph('>=?', "≥?").
+op_glyph('*', "×").
+op_glyph('-', "−").
+op_glyph('=>', "⇒").
+
+%  Binders: (x y : T) as a box, {x} in braces, bare names as they are.
+%  A name and its binders, a group dterm.js may break between binders, as
+%  it breaks a compound between its arguments.
+sig_(Class, N, []) --> !, el(span, Class, esc(N)).
+sig_(Class, N, Bs) -->
+    el(span, "c sig", ['data-d'=args], ( el(span, Class, esc(N)), el(span, "args binders", sig_items(Bs)) )).
+
+sig_items([B]) --> !, el(span, arg, binder_(B, [])).
+sig_items([B|Bs]) --> el(span, arg, binder_(B, [])), " ", sig_items(Bs).
+
+binders_([], _) --> [].
+binders_([B|Bs], Env) --> " ", binder_(B, Env), binders_(Bs, Env).
+
+binder_(b(_, struct, [n(_, X)], _), _) --> !, el(span, "struct", ( "{", kw("struct"), " ", esc(X), "}" )).
+binder_(b(_, brace, Ns, Ty), Env) --> !, el(span, "braces binder", ( vars(Ns), opt_type(Ty, Env) )).
+binder_(b(_, _, Ns, none), _) --> !, vars(Ns).
+binder_(b(_, bare, Ns, Ty), Env) --> !, vars(Ns), opt_type(Ty, Env).
+binder_(b(_, paren, Ns, Ty), Env) --> el(span, "paren binder", ( vars(Ns), opt_type(Ty, Env) )).
+
+vars([n(_, X)]) --> !, var_def(X).
+vars([n(_, X)|Ns]) --> var_def(X), " ", vars(Ns).
+
+opt_type(none, _) --> !, [].
+opt_type(T, Env) --> "\u00A0", el(span, "op wide colon", [title=":"], ":"), " ", term(T, Env).
+
+binders_env(Bs, Env0, Env) :-
+    foldl([b(_, _, Ns, _), E0, E]>>foldl([n(_, X), A0, A]>>( X == '_' -> A = A0 ; A = [X|A0] ), Ns, E0, E), Bs, Env0, Env).
+
+lhs_names(name(n(_, X), _), [X]).
+lhs_names(tuple(Ns), Xs) :- maplist([n(_, X), X]>>true, Ns, Xs).
+
+lhs_(name(n(_, X), Bs), Env, _) --> var_def(X), binders_(Bs, Env).
+lhs_(tuple(Ns), _, _) --> el(span, "c tuple", el(span, args, tuple_vars(Ns))).
+
+tuple_vars([n(_, X)]) --> !, el(span, arg, var_def(X)).
+tuple_vars([n(_, X)|Ns]) --> el(span, arg, ( var_def(X), el(span, sep, ",") )), " ", tuple_vars(Ns).
+
+scrutinees([S], Env) --> !, scrutinee(S, Env).
+scrutinees([S|Ss], Env) --> scrutinee(S, Env), el(span, sep, ","), " ", scrutinees(Ss, Env).
+scrutinee(as(E, n(_, X)), Env) --> !, term(E, Env), " ", kw("as"), " ", var_def(X).
+scrutinee(E, Env) --> term(E, Env).
+
+inline_branches([], _) --> [].
+inline_branches([br(Alts, R)|Bs], Env) -->
+    { alts_vars(Alts, Vs), append(Vs, Env, Env1) },
+    el(span, branch, ( alts_(Alts, Env1), "\u00A0", el(span, "op wide", [title="=>"], "⇒"), " ", term(R, Env1) )),
+    ( { Bs == [] } -> [] ; " ", el(span, "op wide bar", "|"), " ", inline_branches(Bs, Env) ).
+
+alts_([A], Env) --> !, pats_(A, Env).
+alts_([A|As], Env) --> pats_(A, Env), " ", el(span, "op wide bar", "|"), " ", alts_(As, Env).
+
+pats_([P], Env) --> !, term(P, Env).
+pats_([P|Ps], Env) --> term(P, Env), el(span, sep, ","), " ", pats_(Ps, Env).
+
+%  The variables a pattern binds: its names that are not constructors.
+alts_vars(Alts, Vs) :- findall(V, ( member(A, Alts), member(P, A), pat_var(P, V) ), Vs0), sort(Vs0, Vs).
+
+pat_var(id(_, X), X) :- X \== '_', \+ is_ctor(X), \+ sub_atom(X, _, _, _, '.').
+pat_var(app(_, _, As), V) :- member(A, As), pat_var(A, V).
+pat_var(paren(_, E), V) :- pat_var(E, V).
+pat_var(orpat(_, Es), V) :- member(E, Es), pat_var(E, V).
+pat_var(tuple(_, Es), V) :- member(E, Es), pat_var(E, V).
+pat_var(bin(_, _, L, R), V) :- ( pat_var(L, V) ; pat_var(R, V) ).
+pat_var(list(_, Es), V) :- member(E, Es), pat_var(E, V).
+pat_var(scope(_, E, _), V) :- pat_var(E, V).
+
+%% Blocks
+
+%  blk(+E, +Env): E as a block: match, if and let as tables and rows,
+%  anything else as one goal.
+blk(E, Env) --> { block(E) }, !, blk_(E, Env).
+blk(E, Env) --> { node_pos(E, _-T) }, el(div, goal, term(E, Env)), aside_after(T).
+
+block(match(_, _, _, _)).
+block(if(_, _, _, _)).
+block(let(_, _, _, _, _)).
+block(letstar(_, _, _, _)).
+block(letpat(_, _, _, _)).
+block(letfix(_, _, _, _, _, _)).
+block(fun(_, _, B)) :- block(B).
+block(app(_, _, As)) :- member(A, As), block(A), !.
+block(paren(_, E)) :- block(E).
+
+blk_(paren(_, E), Env) --> blk(E, Env).
+%  An application with a block among its arguments, such as fold_left over
+%  a λ whose body is a match: the function and the arguments before the
+%  block on a line, the rest under it, a row each.
+blk_(app(_, F, As), Env) -->
+    { append(Inline, [B|Rest], As), block(B), ! },
+    el(div, "rq-app",
+       ( el(div, "goal app-head", ( { Inline == [] } -> head_(F, Env)
+                                  ; el(span, "c app", ['data-d'=args], ( head_(F, Env), el(span, args, items(Inline, Env)) )) )),
+         el(div, "app-args", seq([B|Rest], app_arg(Env))) )).
+blk_(match(_, Ss, _, Brs), Env) -->
+    el(div, "rq-match",
+       ( el(div, "goal match-head", ( kw("match"), " ", scrutinees(Ss, Env), " ", kw("with") )),
+         el(div, "cases match", branch_rows(Brs, Env)) )).
+blk_(if(P, C, T, E), Env) --> { if_chain(if(P, C, T, E), Cases) }, el(div, "cases stack rq-if", if_rows(Cases, Env)).
+blk_(let(_, Lhs, Ty, V, B), Env) -->
+    { lhs_names(Lhs, Ns), append(Ns, Env, Env1) },
+    let_block(( kw("let"), " ", lhs_(Lhs, Env, Env1), opt_type(Ty, Env) ), V, Env, B, Env1).
+blk_(letstar(_, n(_, X), V, B), Env) --> let_block(( kw("let*"), " ", var_def(X) ), V, Env, B, [X|Env]).
+blk_(letpat(_, Pat, V, B), Env) -->
+    { alts_vars([[Pat]], Vs), append(Vs, Env, Env1) },
+    let_block(( kw("let"), " ", el(span, tick, "'"), term(Pat, Env1) ), V, Env, B, Env1).
+blk_(letfix(_, n(_, F), Bs, Ty, V, B), Env) -->
+    { binders_env(Bs, [F|Env], EnvV) },
+    let_block(( kw("let fix"), " ", var_def(F), binders_(Bs, Env), opt_type(Ty, EnvV) ), V, EnvV, B, [F|Env]).
+
+blk_(fun(_, Bs, B), Env) -->
+    { binders_env(Bs, Env, Env1) },
+    el(div, "rq-fun", ( el(div, "goal fun-head", ( el(span, q, "λ"), binders_(Bs, Env), " ", "\u00A0", el(span, "sep qsep", "⇒") )),
+                        el(div, "fun-body", blk(B, Env1)) )).
+
+%  A binding over its body: its value on the line, or under it when the
+%  value is a block.
+let_block(Head, V, EnvV, B, EnvB) -->
+    el(div, "rq-let",
+       ( (   { block(V) }
+         ->  el(div, "goal let-head", ( Head, "\u00A0", defeq )),
+             el(div, "let-value", blk(V, EnvV)), el(div, "goal let-in", kw("in"))
+         ;   el(div, "goal let-head", ( Head, "\u00A0", defeq, " ", term(V, EnvV), " ", kw("in") ))
+         ),
+         el(div, "let-body", blk(B, EnvB)) )).
+app_arg(Env, A) --> el(div, "app-arg", blk(A, Env)).
+
+branch_rows([], _) --> [].
+branch_rows([br(Alts, R)|Bs], Env) -->
+    { Alts = [[P|_]|_], node_pos(P, F-_), alts_vars(Alts, Vs), append(Vs, Env, Env1) },
+    notes_before(F),
+    el(div, case, ( el(div, cond, el(div, goals, el(div, goal, alts_(Alts, Env1)))),
+                    el(div, arrow, [title="=>"], "⇒"),
+                    el(div, then, el(div, goals, blk(R, Env1))) )),
+    branch_rows(Bs, Env).
+
+if_chain(if(_, C, T, E), [if(C, T)|Cs]) :- !, ( E = if(_, _, _, _) -> if_chain(E, Cs) ; Cs = [else(E)] ).
+
+if_rows([], _) --> [].
+if_rows([if(C, T)|Cs], Env) -->
+    el(div, case, ( el(div, cond, el(div, goals, blk(C, Env))), el(div, arrow, "→"),
+                    el(div, then, el(div, goals, blk(T, Env))) )),
+    if_rows(Cs, Env).
+if_rows([else(E)|Cs], Env) -->
+    el(div, "case plain", ( el(div, cond, kw("else")), el(div, arrow, []), el(div, then, el(div, goals, blk(E, Env))) )),
+    if_rows(Cs, Env).
+
+%% Statements as rules
+
+%  rule_parts(+T, -Binders, -Premises, -Conclusion): T is
+%  forall Binders, P1 -> … -> Pn -> C, foralls between the premises
+%  gathered with the first.
+rule_parts(T, Bs, Ps, C) :- rule_parts_(T, Bs, Ps, C).
+
+rule_parts_(forall(_, Bs0, B), Bs, Ps, C) :- !, rule_parts_(B, Bs1, Ps, C), append(Bs0, Bs1, Bs).
+rule_parts_(bin(_, Op, L, R), Bs, [L|Ps], C) :- memberchk(Op, ['->', '→']), !, rule_parts_(R, Bs, Ps, C).
+rule_parts_(paren(_, E), Bs, Ps, C) :- E = forall(_, _, _), !, rule_parts_(E, Bs, Ps, C).
+rule_parts_(C, [], [], C).
+
+%  rule(+Name, +Binders, +Type, +Env): Type as a rule: its variables, its
+%  premises over a line, its conclusion. Name is drawn beside the line.
+rule(Label, Bs0, T, Env0) -->
+    { rule_parts(T, Bs1, Ps, C), append(Bs0, Bs1, Bs), binders_env(Bs, Env0, Env) },
+    el(div, rule,
+       ( ( { Bs == [] } -> [] ; el(div, "rule-vars", ( el(span, q, [title=forall], "∀"), binders_(Bs, Env0) )) ),
+         (   { Ps == [] }
+         ->  el(div, "rule-concl alone", ( el(div, goal, term(C, Env)), Label ))
+         ;   el(div, premises, seq(Ps, premise(Env))),
+             el(div, "rule-line", Label),
+             el(div, "rule-concl", el(div, goal, term(C, Env)))
+         ) )).
+
+premise(Env, P) --> { node_pos(P, F-T) }, notes_before(F), el(div, goal, term(P, Env)), aside_after(T).
+
+%% Sentences
+
+%  rocq_items(+Items): a page's sentences, from the source set by
+%  rocq_set_source/2, each with the comments before it.
+rocq_items(Items) --> { runs(Items, Runs) }, seq(Runs, run_).
+
+%  Consecutive directives (Require, Import, Open Scope) are one block.
+runs([], []).
+runs([dir(P, W)|Is0], [dirs([dir(P, W)|Ds])|Rs]) :- !, take_dirs(Is0, Ds, Is), runs(Is, Rs).
+runs([I|Is], [I|Rs]) :- runs(Is, Rs).
+
+take_dirs([dir(P, W)|Is0], [dir(P, W)|Ds], Is) :- !, take_dirs(Is0, Ds, Is).
+take_dirs(Is, [], Is).
+
+run_(dirs(Ds)) --> !, { Ds = [dir(F-_, _)|_] }, notes_before(F), el(div, "rq-dirs", seq(Ds, dir_)).
+run_(I) --> { item_from(I, F) }, notes_before(F), item_(I).
+
+item_from(proved(S, _), F) :- !, item_from(S, F).
+item_from(block(S, _, _), F) :- !, item_from(S, F).
+item_from(S, F) :- arg(1, S, F-_).
+
+dir_(dir(_-T, Ws)) --> el(div, "rq-dir", dir_words(Ws)), aside_after(T).
+
+dir_words([]) --> [].
+dir_words([W|Ws]) -->
+    ( { dir_keyword(W) } -> kw(W) ; el(span, "module", esc(W)) ),
+    ( { Ws == [] } -> [] ; " " ), dir_words(Ws).
+
+dir_keyword(W) :- memberchk(W, ['From', 'Require', 'Import', 'Export', 'Open', 'Close', 'Scope', 'Set', 'Unset',
+                                'Arguments', 'Hint', 'Local', 'Global', 'Declare', 'Delimit', 'Bind', 'Implicit',
+                                'Types', 'Generalizable', 'Create', 'HintDb', 'Opaque', 'Transparent', 'Coercion']).
+
+item_(block(module(F-_, Kind, n(_, N), Bs, Open), Body, End)) --> !,
+    { nb_getval(rq_mod, Mod0), qualify(Mod0, N, Q), ( Kind == section -> Mod1 = Mod0 ; append(Mod0, [N], Mod1) ),
+      module_kw(Kind, KwS), binders_env(Bs, [], Env) },
+    el(section, "rq-module", [id=Q],
+       ( el(div, "clause rq-module-head",
+            el(div, head, ( line_link(F), kw(KwS), " ", el(span, "module-name", esc(N)), binders_(Bs, []),
+                            ( { Open = open(Sig) } -> "\u00A0", el(span, "op wide colon", ":"), " ", name_ref(Sig, Env) ; [] ) ))),
+         { nb_setval(rq_mod, Mod1) },
+         el(div, "rq-module-body", rocq_items(Body)),
+         { nb_setval(rq_mod, Mod0) },
+         ( { End = endm(_-T, _) } -> notes_upto(T) ; [] ) )).
+item_(proved(S, Pf)) --> !, item_(S), proof_(Pf).
+item_(proof_start(_)) --> !, [].
+item_(ind(_, _, Bodies)) --> !, seq(Bodies, ind_body).
+item_(rec(F-T, Kw, n(_, N), Bs, Sort, Ctor, Fs)) --> !,
+    { anchor(N, Id), binders_env(Bs, [], Env) },
+    el(div, "clause rq-rec", [id=Id],
+       ( el(div, head, ( line_link(F), kw(Kw), " ", el(span, "ty def", esc(N)), binders_(Bs, []), opt_type(Sort, []),
+                         ( { Ctor = n(_, C) } -> "\u00A0", defeq, " ", ctor_def(C) ; [] ) )),
+         el(table, "rq-fields", el(tbody, none, seq(Fs, field_row(Env)))) )),
+    notes_upto(T).
+item_(def(F-T, Kw, n(_, N), Bs, Ty, Body)) --> !,
+    { anchor(N, Id), binders_env(Bs, [], Env) },
+    el(div, "clause rq-def", [id=Id],
+       ( el(div, head, ( line_link(F), kw(Kw), " ", sig_("f def", N, Bs), opt_type(Ty, Env),
+                         ( { Body == none } -> [] ; "\u00A0", defeq ) )),
+         ( { Body == none } -> [] ; el(div, "rq-body", blk(Body, Env)) ) )),
+    notes_upto(T).
+item_(thm(F-T, Kw, Name, Bs, Ty)) --> !,
+    { Name = n(_, N) -> anchor(N, Id), As = [id=Id] ; N = '', As = [] },
+    el(div, "clause rq-thm", As,
+       ( el(div, "rq-thm-head", ( line_link(F), kw(Kw), " ", el(span, "lem def", esc(N)) )),
+         rule([], Bs, Ty, []) )),
+    notes_upto(T).
+item_(decl(F-T, Kw, Gs)) --> { axiom_kw(Kw) }, !,
+    seq(Gs, axiom_(F, Kw)), notes_upto(T).
+item_(decl(F-T, Kw, Gs)) --> !,
+    seq(Gs, param_(F, Kw)), notes_upto(T).
+item_(notation(F-T, Kw, S, E, Mods)) --> !,
+    el(div, "clause rq-notation",
+       el(div, head, ( line_link(F), kw(Kw), " ", notation_pattern(S, E), "\u00A0", defeq, " ", term(E, []),
+                       ( { Mods == [] } -> [] ; " ", el(span, "rq-mods", esc_words(Mods)) ) ))),
+    notes_upto(T).
+item_(endm(P, _)) --> !, raw_(P).
+item_(S) --> { arg(1, S, P) }, raw_(P).
+
+module_kw(module_type, "Module Type").
+module_kw(module, "Module").
+module_kw(section, "Section").
+
+raw_(F-T) --> { src_text(F-T, S) }, el(pre, "rq-raw", ( line_link(F), esc(S) )), notes_upto(T).
+
+esc_words(Ws) --> { atomic_list_concat(Ws, ' ', A0), atom_string(A0, A1),
+                    foldl([X-Y, S0, S]>>( atomic_list_concat(Parts, X, S0), atomic_list_concat(Parts, Y, S) ),
+                          ["( "-"(", " )"-")"], A1, A) }, esc(A).
+
+anchor(N, Id) :- nb_getval(rq_mod, Mod), qualify(Mod, N, Id).
+
+ctor_def(C) --> { anchor(C, Id) }, el(span, "a def", [id=Id], esc(C)).
+
+%  An inductive type: a table of its constructors, or, when they have
+%  premises, a column of rules.
+ind_body(ib(n(F-_, N), Bs, Ty, Cs)) -->
+    { anchor(N, Id), binders_env(Bs, [], Env) },
+    el(div, "rq-ind", [id=Id],
+       ( el(div, "clause rq-ind-head",
+            el(div, head, ( line_link(F), kw("Inductive"), " ", el(span, "ty def", esc(N)), binders_(Bs, []), opt_type(Ty, []),
+                            "\u00A0", defeq ))),
+         (   { member(ctor(_, _, _, CT), Cs), CT \== none, rule_parts(CT, _, [_|_], _) }
+         ->  el(div, rules, seq(Cs, ctor_rule(Env)))
+         ;   el(table, "rq-ctors", el(tbody, none, seq(Cs, ctor_row(Env))))
+         ) )).
+
+ctor_row(Env, ctor(F-T, C, Bs, Ty)) -->
+    notes_rows(F, 4),
+    { anchor(C, Id), aside_text(T, Aside) },
+    el(tr, none, [id=Id],
+       ( el(td, bar, "|"),
+         el(td, ctor, el(span, "a def", esc(C))),
+         el(td, "ctor-args", ( binders_(Bs, Env), opt_type(Ty, Env) )),
+         el(td, "ctor-aside", ( { Aside == none } -> [] ; el(span, aside, rocq_prose_inline(Aside)) )) )).
+
+ctor_rule(Env, ctor(F-T, C, Bs, Ty)) -->
+    notes_before(F),
+    { anchor(C, Id) },
+    el(div, "clause rq-rule", [id=Id],
+       (   { Ty == none }
+       ->  el(div, "rule-concl alone", ( el(div, goal, ( el(span, "a def", esc(C)), binders_(Bs, Env) )) ))
+       ;   rule(el(span, "rule-name", el(span, "a def", esc(C))), Bs, Ty, Env)
+       )),
+    aside_after(T).
+
+field_row(Env, field(F-T, N, Bs, Ty, D)) -->
+    notes_rows(F, 3),
+    { anchor(N, Id), aside_text(T, Aside) },
+    el(tr, none, [id=Id],
+       ( el(td, "field-name", el(span, "f def", esc(N))),
+         el(td, "field-type", ( binders_(Bs, Env), opt_type(Ty, Env), ( { D == none } -> [] ; "\u00A0", defeq, " ", term(D, Env) ) )),
+         el(td, "field-aside", ( { Aside == none } -> [] ; el(span, aside, rocq_prose_inline(Aside)) )) )).
+
+axiom_(F, Kw, g(Ns, Ty)) -->
+    { Ns = [n(_, N)|_], anchor(N, Id) },
+    el(div, "clause rq-thm rq-axiom", [id=Id],
+       ( el(div, "rq-thm-head", ( line_link(F), kw(Kw), " ", el(span, "lem def", esc(N)) )),
+         rule([], [], Ty, []) )).
+
+param_(F, Kw, g(Ns, Ty)) -->
+    { Ns = [n(_, N)|_], anchor(N, Id) },
+    el(div, "clause rq-param", [id=Id],
+       el(div, head, ( line_link(F), kw(Kw), " ", seq_defs(Ns), opt_type(Ty, []) ))).
+
+seq_defs([n(_, N)]) --> !, el(span, "f def", esc(N)).
+seq_defs([n(_, N)|Ns]) --> el(span, "f def", esc(N)), " ", seq_defs(Ns).
+
+%  "c ⟶ r": the words of the pattern that the meaning binds are its
+%  variables.
+notation_pattern(S, E) -->
+    { split_string(S, " ", "", Ws), findall(X, sub_id(E, X), Xs) },
+    el(span, "notation", [title=S], seq_sp(Ws, notation_word(Xs))).
+
+notation_word(Xs, W) --> { atom_string(A, W), memberchk(A, Xs) }, !, var_(A).
+notation_word(_, W) --> el(span, "op wide", esc(W)).
+
+seq_sp([], _) --> [].
+seq_sp([X], G) --> !, call(G, X).
+seq_sp([X|Xs], G) --> call(G, X), " ", seq_sp(Xs, G).
+
+sub_id(id(_, X), X).
+sub_id(E, X) :- compound(E), E =.. [_, _|As], member(A, As), ( is_list(A) -> member(A1, A) ; A1 = A ), compound(A1), sub_id(A1, X).
+
+line_link(F) -->
+    { nb_getval(rq_file, File), File \== none, !, line_of(F, L), github(G),
+      format(atom(Href), "~w~w#L~w", [G, File, L]) },
+    el(a, ln, [href=Href, title="source line"], esc(L)).
+line_link(_) --> [].
+
+%% Proofs
+
+%  A proof folds under its statement: a row per tactic, indented by the
+%  bullets that focus it.
+proof_(pf(Steps, End)) -->
+    { include([S]>>(S = step(_, _, _)), Steps, Tacs), length(Tacs, N),
+      ( End = qed(_, Kw) -> true ; Kw = '' ),
+      ( N =:= 1 -> Count = "1 step" ; format(string(Count), "~d steps", [N]) ),
+      foldl(step_depth, Steps, Rows, [], _) },
+    el(details, "rq-proof",
+       ( el(summary, none, ( kw("Proof"), " ", el(span, "proof-count", esc(Count)), " ", kw(Kw) )),
+         el(div, "proof-steps", seq(Rows, tac_row)) )).
+
+%  The focus stack after each step's bullets, as Rocq keeps it: a bullet
+%  closes the goals focused since the last bullet of its kind, { opens a
+%  goal and } closes it.
+step_depth(step(P, Bs, Ts), row(D, Bs, P, Ts), S0, S) :- foldl(bullet_focus, Bs, S0, S), length(S, D).
+step_depth(bullets(Bs), row(close, Bs, none, []), S0, S) :- foldl(bullet_focus, Bs, S0, S).
+
+bullet_focus('}', S0, S) :- !, ( append(_, ['{'|S], S0) -> true ; S = [] ).
+bullet_focus(B, S0, [B|S]) :- ( append(_, [B|S1], S0) -> S = S1 ; S = S0 ).
+
+tac_row(row(close, _, _, _)) --> !, [].
+tac_row(row(D, Bs, F-T, Ts)) -->
+    { format(atom(Style), "--depth:~d", [D]), exclude(==('}'), Bs, Shown) },
+    notes_before(F),
+    el(div, tac, [style=Style],
+       ( el(span, bullet, seq(Shown, bullet_)),
+         el(span, tactic, tactic_text(F, T, Ts)) )),
+    aside_after(T).
+
+bullet_(B) --> { bullet_glyph(B, G) }, esc(G).
+
+bullet_glyph('-', "–") :- !.
+bullet_glyph('+', "+") :- !.
+bullet_glyph('*', "∗") :- !.
+bullet_glyph(B, B).
+
+%  A tactic as written, a name the corpus defines linked to it.
+tactic_text(F, T, Ts) --> tac_tokens(Ts, F, T).
+
+tac_tokens([], O, T) --> { src_text(O-T, S) }, esc(S).
+tac_tokens([t(K, F, To)|Ts], O, T) -->
+    { src_text(O-F, Gap) }, esc(Gap),
+    (   { K = id(X), global_ref(X, Href, Kind), kind_class(Kind, C) } -> el(a, C, [href=Href], esc(X))
+    ;   { src_text(F-To, S) }, esc(S)
+    ),
+    tac_tokens(Ts, To, T).
+
+%% Comments
+
+notes_before(From) -->
+    { nb_getval(rq_notes, Q0), partition([cm(O, _, _, _)]>>(O < From), Q0, Now, Q), nb_setval(rq_notes, Q) },
+    seq(Now, note_).
+
+%  The comments inside a sentence that nothing above drew, after it.
+notes_upto(To) --> notes_before(To).
+
+%  Comments among table rows: a row of their own.
+notes_rows(From, Cols) -->
+    { nb_getval(rq_notes, Q0), partition([cm(O, _, _, _)]>>(O < From), Q0, Now, Q), nb_setval(rq_notes, Q) },
+    seq(Now, [C]>>el(tr, note, el(td, none, [colspan=Cols], note_(C)))).
+
+note_(cm(_, _, Text, _)) -->
+    { comment_heading(Text, Level, Title) }, !,
+    { heading_id(Title, Id), format(atom(H), "h~d", [Level]), comment_prose_lines(Text, Lines0),
+      ( Lines0 = [_|Rest] -> true ; Rest = [] ) },
+    el(H, "rq-sec", [id=Id], rocq_prose_inline(Title)),
+    ( { exclude(blank, Rest, []) } -> [] ; el(div, "rq-doc", rocq_prose(Rest)) ).
+note_(cm(_, _, Text, _)) --> { sub_atom(Text, 0, _, _, '(**') }, !,
+    { comment_prose_lines(Text, Lines) }, el(div, "rq-doc", rocq_prose(Lines)).
+note_(cm(_, _, Text, _)) --> { comment_prose_lines(Text, Lines) }, el(div, note, rocq_prose(Lines)).
+
+%  A trailing comment at the end of the line where a row ends sits
+%  beside it.
+aside_after(To) -->
+    { aside_text(To, S), S \== none }, !, el(span, aside, rocq_prose_inline(S)), aside_after(To).
+aside_after(_) --> [].
+
+aside_text(To, S) :-
+    nb_getval(rq_notes, [cm(O, _, Text, trailing)|Q]), O >= To,
+    nb_getval(rq_text, Src), L is O - To, sub_string(Src, To, L, _, Gap), \+ sub_string(Gap, _, _, _, "\n"),
+    \+ sub_string(Gap, _, _, _, "|"), !,
+    nb_setval(rq_notes, Q), comment_prose_lines(Text, Ls), atomic_list_concat(Ls, ' ', A), atom_string(A, S).
+aside_text(_, none).
+
+%  comment_heading(+Text, -Level, -Title): (** * Title *) is a section,
+%  h2; ** a subsection, h3; *** h4. In Markdown, (** ## Title *) is a
+%  section and ### a subsection (# is the file's own title).
+comment_heading(Text, Level, Title) :-
+    sub_atom(Text, 0, _, _, '(**'), sub_string(Text, 3, _, 2, Body0),
+    split_string(Body0, "\n", "", [First|_]), split_string(First, "", " ", [L0]),
+    string_codes(L0, Cs), append(Marks, [0' |Rest], Cs), Marks = [M|_], memberchk(M, `*#`),
+    forall(member(S, Marks), S == M), !,
+    length(Marks, N0), ( M == 0'# -> N is N0 - 1, N >= 1 ; N = N0 ),
+    Level is N + 1, Level =< 4,
+    string_codes(Title0, Rest), split_string(Title0, "", " ", [Title]).
+
+heading_id(Title, Id) :-
+    downcase_atom(Title, D), atom_codes(D, Cs),
+    maplist([C, W]>>( code_type(C, alnum) -> W = C ; W = 0'  ), Cs, Ws),
+    atom_codes(A, Ws), atomic_list_concat(Parts, ' ', A), exclude(==(''), Parts, Ps),
+    atomic_list_concat([sec|Ps], '-', Id).
+
+%  comment_prose_lines(+Text, -Lines): a comment's text, without its
+%  markers and common indentation.
+comment_prose_lines(Text, Lines) :-
+    ( sub_atom(Text, 0, _, _, '(**') -> K = 3 ; K = 2 ),
+    sub_string(Text, K, _, 2, Body),
+    split_string(Body, "\n", "", Ls00),
+    maplist(rtrim, Ls00, Ls0),
+    (   Ls0 = [First0|More], split_string(First0, "", " ", [First]), First \== ""
+    ->  dedent(More, More1), Ls1 = [First|More1]
+    ;   Ls1 = Ls0
+    ),
+    trim_blank_ends(Ls1, Ls2), dedent(Ls2, Lines).
+
+rtrim(S0, S) :- string_codes(S0, Cs0), reverse(Cs0, R0), span([C]>>memberchk(C, ` \t`), R0, _, R), reverse(R, Cs),
+    string_codes(S, Cs).
+
+%% Prose
+
+%  rocq_prose(+Lines): a comment's lines in dterm's little Markdown, with
+%  coqdoc's [term] drawn as Rocq.
+rocq_prose(Lines0) --> { dedent(Lines0, Lines), blocks(Lines, Bs) }, el(div, prose, seq(Bs, block_)).
+
+block_(p(T)) --> el(p, none, rocq_prose_inline(T)).
+block_(ul(Items)) --> el(ul, none, seq(Items, [T]>>el(li, none, rocq_prose_inline(T)))).
+block_(pre(Lines)) --> { dedent(Lines, Ls), atomic_list_concat(Ls, '\n', T) }, el(pre, none, esc(T)).
+block_(h(N, T)) --> { format(atom(H), "h~d", [N]) }, el(H, "prose-h", rocq_prose_inline(T)).
+block_(table(Head, Rows)) -->
+    el(table, "prose-table", ( el(thead, none, el(tr, none, seq(Head, [C]>>el(th, none, rocq_prose_inline(C))))),
+                               el(tbody, none, seq(Rows, [R]>>el(tr, none, seq(R, [C]>>el(td, none, rocq_prose_inline(C)))))) )).
+block_(fence(Lang, Lines)) --> { memberchk(Lang, ["rocq", "coq", ""]) }, !, rocq_fence(Lines).
+block_(fence(_, Lines)) --> { atomic_list_concat(Lines, '\n', T) }, el(pre, fence, esc(T)).
+
+rocq_prose_inline(Text) --> { text_codes(Text, Cs) }, pi(Cs).
+
+pi([]) --> !, [].
+%  [text](url) is a link; [term] is Rocq (coqdoc), or code.
+pi([0'[|Cs0]) --> { append(T, [0'], 0'(|Cs1], Cs0), \+ memberchk(0'], T), append(U, [0')|Cs], Cs1), \+ memberchk(0' , U) }, !,
+    { string_codes(TS, T) }, el(a, none, [href=U], rocq_prose_inline(TS)), pi(Cs).
+pi([0'[|Cs0]) --> { bracketed(Cs0, 1, Code, Cs) }, !, code_(Code), pi(Cs).
+pi([0'`|Cs0]) --> { append(Code, [0'`|Cs], Cs0) }, !, code_(Code), pi(Cs).
+pi(Cs0) --> { word(Cs0, W, Cs1), W \== [] }, !, word_(W, Cs1).
+pi([C|Cs]) --> esc_code(C), pi(Cs).
+
+%  The text up to the ] that closes a [.
+bracketed([0']|Cs], 1, [], Cs) :- !.
+bracketed([0']|Cs0], D, [0']|B], Cs) :- !, D1 is D - 1, bracketed(Cs0, D1, B, Cs).
+bracketed([0'[|Cs0], D, [0'[|B], Cs) :- !, D1 is D + 1, bracketed(Cs0, D1, B, Cs).
+bracketed([C|Cs0], D, [C|B], Cs) :- C \== 0'\n, bracketed(Cs0, D, B, Cs).
+
+word(Cs0, W, Cs) :- span([C]>>code_type(C, csym), Cs0, W, Cs).
+
+span(P, [C|Cs0], [C|W], Cs) :- call(P, C), !, span(P, Cs0, W, Cs).
+span(_, Cs, [], Cs).
+
+%  name/N, module:name/N and name.pl link to nanofil's Prolog.
+word_(M, [0':|Cs0]) --> { word(Cs0, W, [0'/|Cs1]), W \== [], span([C]>>code_type(C, digit), Cs1, Ds, Cs), Ds \== [],
+                          atom_codes(MA, M), atom_codes(N, W), prolog_href(MA, N, Ds, Href) }, !,
+    { append([M, `:`, W, `/`, Ds], Text) }, el(a, "ref pl", [href=Href], el(code, none, esc(Text))), pi(Cs).
+word_(W, [0'/|Cs1]) --> { span([C]>>code_type(C, digit), Cs1, Ds, Cs), Ds \== [], atom_codes(N, W),
+                          rocq_prolog_pred(N, M), prolog_href(M, N, Ds, Href) }, !,
+    { append([W, `/`, Ds], Text) }, el(a, "ref pl", [href=Href], el(code, none, esc(Text))), pi(Cs).
+word_(W, [0'., 0'p, 0'l|Cs]) --> { \+ ( Cs = [C|_], code_type(C, csym) ), atom_codes(M, W), rocq_prolog_pred(_, M),
+                                   nb_current(rq_prolog, Pre), Pre \== none, format(atom(Href), "~w~w.html", [Pre, M]) }, !,
+    el(a, "ref pl", [href=Href], ( esc(W), ".pl" )), pi(Cs).
+word_(W, Cs) --> esc(W), pi(Cs).
+
+prolog_href(M, N, Ds, Href) :-
+    rocq_prolog_pred(N, M), nb_current(rq_prolog, Pre), Pre \== none,
+    atom_codes(A, Ds), format(atom(Id), "~w/~w", [N, A]), uri_encoded(fragment, Id, Frag),
+    format(atom(Href), "~w~w.html#~w", [Pre, M, Frag]).
+
+%  Code in prose: a reference to nanofil's Prolog, Rocq when it reads as
+%  Rocq, else code.
+code_(Code) --> { prolog_ref(Code, Href) }, !, el(a, "ref pl", [href=Href], el(code, none, esc(Code))).
+%  name(Args) without a space is Prolog, as the comments quote it.
+code_(Code) --> { append(_, [C, 0'(|_], Code), code_type(C, csym) }, !, el(code, none, esc(Code)).
+%  name/N that is not nanofil's (ctx/6 of a fact) stays code.
+code_(Code) --> { \+ memberchk(0' , Code), memberchk(0'/, Code) }, !, el(code, none, esc(Code)).
+code_(Code) --> { rocq_fragment_codes(Code, Frag) }, !, el(code, "term rq", fragment_(Frag)).
+code_(Code) --> el(code, none, esc(Code)).
+
+%% Rocq in documents
+
+%  rocq_inline(+Codes): inline code of a document that is Rocq: a
+%  sentence (Theorem t : …), a type's constructors (cap := None | Obj b),
+%  a record's fields (ptr := { addr : Z; … }), a typed name
+%  (step : config -> outcome), or a term that only Rocq writes: an
+%  application of a constructor (Trap r) or a proposition (f x = true).
+%  Rocq in prose is spaced, so code without a space (module:name/N) is
+%  not. Fails otherwise, so the document draws the code as it would.
+rocq_inline(Codes) -->
+    { memberchk(0' , Codes), rocq_fragment_codes(Codes, Frag), prose_fragment(Frag) },
+    { nb_current(rq_page, P0) -> true ; P0 = none },
+    { nb_setval(rq_page, none), ( nb_current(rq_mod, M0) -> true ; M0 = [] ), nb_setval(rq_mod, []) },
+    el(code, "term rq", fragment_(Frag)),
+    { nb_setval(rq_page, P0), nb_setval(rq_mod, M0) }.
+
+prose_fragment(sentence(S)) :- S \= raw(_, _), S \= dir(_, _).
+prose_fragment(alts(_, _)).
+prose_fragment(fields(_, _)).
+prose_fragment(typed(_, _)).
+prose_fragment(term(E)) :- rocq_only(E).
+
+rocq_only(app(_, id(_, F), _)) :- atom_codes(F, [C|_]), between(0'A, 0'Z, C), \+ sub_atom(F, _, _, _, '.').
+rocq_only(bin(_, Op, _, _)) :- memberchk(Op, [=, '<>', '->', '<->', '/\\', '\\/', '=?', '<=?', '::']).
+rocq_only(chain(_, _, _)).
+rocq_only(forall(_, _, _)).
+rocq_only(exists(_, _, _)).
+rocq_only(fun(_, _, _)).
+rocq_only(match(_, _, _, _)).
+
+fragment_(term(E)) --> term(E, []).
+fragment_(typed(n(_, N), T)) --> el(span, "f def", esc(N)), opt_type(T, []).
+fragment_(alts(n(_, N), Cs)) -->
+    el(span, "ty def", esc(N)), "\u00A0", defeq, " ", alt_terms(Cs).
+fragment_(fields(n(_, N), Fs)) -->
+    el(span, "ty def", esc(N)), "\u00A0", defeq, " ",
+    el(span, "c rec", ['data-d'=args], el(span, "args recbr curly", inline_fields(Fs))).
+fragment_(sentence(S)) --> sentence_inline(S).
+
+alt_terms([C]) --> !, alt_term(C).
+alt_terms([C|Cs]) --> alt_term(C), " ", el(span, "op wide bar", "|"), " ", alt_terms(Cs).
+
+%  A constructor written with its argument names: Obj base.
+alt_term(app(_, id(_, C), As)) --> !,
+    el(span, "c app", ['data-d'=args], ( el(span, a, esc(C)), el(span, args, items_vars(As)) )).
+alt_term(E) --> term(E, []).
+
+items_vars([E]) --> !, el(span, arg, var_or_term(E)).
+items_vars([E|Es]) --> el(span, arg, var_or_term(E)), " ", items_vars(Es).
+var_or_term(id(_, X)) --> { \+ is_ctor(X) }, !, var_(X).
+var_or_term(E) --> term(E, []).
+
+inline_fields([field(_, N, _, Ty, _)|Fs]) -->
+    el(span, arg, ( el(span, "f def", esc(N)), opt_type(Ty, []), ( { Fs == [] } -> [] ; el(span, sep, ";") ) )),
+    ( { Fs == [] } -> [] ; " ", inline_fields(Fs) ).
+inline_fields([]) --> [].
+
+sentence_inline(thm(_, Kw, n(_, N), Bs, Ty)) --> !,
+    { binders_env(Bs, [], Env) },
+    kw(Kw), " ", el(span, "lem def", esc(N)), binders_(Bs, []), "\u00A0", el(span, "op wide colon", ":"), " ", term(Ty, Env).
+sentence_inline(def(_, Kw, n(_, N), Bs, Ty, B)) --> !,
+    { binders_env(Bs, [], Env) },
+    kw(Kw), " ", el(span, "f def", esc(N)), binders_(Bs, []), opt_type(Ty, Env),
+    ( { B == none } -> [] ; "\u00A0", defeq, " ", term(B, Env) ).
+sentence_inline(module(_, Kind, n(_, N), Bs, _)) --> !,
+    { module_kw(Kind, K) }, kw(K), " ", el(span, "module-name", esc(N)), binders_(Bs, []).
+sentence_inline(decl(_, Kw, [g(Ns, Ty)])) --> !, kw(Kw), " ", seq_defs(Ns), opt_type(Ty, []).
+sentence_inline(ind(_, Kw, [ib(n(_, N), Bs, Ty, Cs)])) --> !,
+    kw(Kw), " ", el(span, "ty def", esc(N)), binders_(Bs, []), opt_type(Ty, []), "\u00A0", defeq, " ",
+    seq_bar(Cs).
+sentence_inline(rec(_, Kw, n(_, N), Bs, _, _, Fs)) --> !,
+    kw(Kw), " ", el(span, "ty def", esc(N)), binders_(Bs, []), "\u00A0", defeq, " ",
+    el(span, "c rec", el(span, "args recbr curly", inline_fields(Fs))).
+sentence_inline(notation(_, Kw, S, E, _)) --> kw(Kw), " ", notation_pattern(S, E), "\u00A0", defeq, " ", term(E, []).
+
+seq_bar([ctor(_, C, Bs, Ty)]) --> !, el(span, a, esc(C)), binders_(Bs, []), opt_type(Ty, []).
+seq_bar([ctor(_, C, Bs, Ty)|Cs]) --> el(span, a, esc(C)), binders_(Bs, []), opt_type(Ty, []), " ", el(span, "op wide bar", "|"), " ", seq_bar(Cs).
+
+%  rocq_fence(+Lines): a ```rocq fence of a document, drawn as a page
+%  draws its sentences. A fence that does not read stays text.
+rocq_fence(Lines) -->
+    { atomic_list_concat(Lines, '\n', A), atom_string(A, Text), string_codes(Text, Cs),
+      catch(rocq_parse_codes(Cs, Items, Cms0), _, fail), \+ ( member(raw(_, _), Items) ),
+      maplist(note_kind(Text), Cms0, Cms),
+      ( nb_current(rq_page, P0) -> true ; P0 = none ),
+      ( nb_current(rq_file, F0) -> true ; F0 = none ),
+      ( nb_current(rq_text, T0) -> true ; T0 = "" ),
+      ( nb_current(rq_notes, N0) -> true ; N0 = [] ),
+      nb_setval(rq_page, none), nb_setval(rq_file, none), rocq_set_source(Text, Cms) }, !,
+    el(div, "dterm-rocq rq-fence", rocq_items(Items)),
+    { nb_setval(rq_page, P0), nb_setval(rq_file, F0), nb_setval(rq_text, T0), nb_setval(rq_notes, N0) }.
+rocq_fence(Lines) --> { atomic_list_concat(Lines, '\n', T) }, el(pre, "fence lang-rocq", esc(T)).
+
+%  prolog_ref(+Code, -Href): Code is name/N or module:name/N of nanofil's
+%  Prolog.
+prolog_ref(Code, Href) :-
+    (   append(MW, [0':|Rest], Code), MW \== [], atom_codes(M, MW) -> true ; Rest = Code ),
+    append(W, [0'/|Ds], Rest), W \== [], Ds \== [], forall(member(D, Ds), code_type(D, digit)),
+    atom_codes(N, W), ( var(M) -> rocq_prolog_pred(N, M) ; true ),
+    prolog_href(M, N, Ds, Href).

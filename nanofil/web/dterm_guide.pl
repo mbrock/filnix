@@ -12,7 +12,10 @@
       text in the fence; outputs that are not terms (assembly, C) stay
       text;
     - inline code that reads as a term is drawn as one, and IR
-      temporaries as the playground draws them;
+      temporaries as the playground draws them; in a document that
+      names Rocq, Rocq that only Rocq writes (`Ret v`,
+      `cap := None | Obj base`, a `Theorem`) and ```rocq fences are
+      drawn by dterm-rocq (rocq/rocq_draw.pl);
     - a predicate reference, `name/N`, `name//N` or `module:name/N`,
       links to its definition, with its PlDoc signature in a card shown
       on hover; `name.pl` links to the module's page;
@@ -36,7 +39,12 @@
     `.md`: guide, formal.
 */
 
-:- dynamic guide_slug/2, guide_broken/1, guide_mention/5, guide_heading/5, guide_gloss/3,
+%  Rocq in the documents (formal.md) is drawn by dterm-rocq.
+:- use_module(rocq/rocq_draw, [rocq_inline//1, rocq_fence//1]).
+
+%  guide_rocq(Doc): Doc is about Rocq (names it), so its inline code may
+%  be Rocq.
+:- dynamic guide_rocq/1, guide_slug/2, guide_broken/1, guide_mention/5, guide_heading/5, guide_gloss/3,
            guide_output/2, guide_module/1, pred_doc/4, guide_entry_ref/1.
 
 %  guide_heading(Doc, Id, Level, Title, Modules): a heading of Doc, its
@@ -74,6 +82,7 @@ read_doc(Path, doc(Doc, Dir, Blocks)) :-
     read_file_to_string(Path, Text, [encoding(utf8)]),
     split_string(Text, "\n", "", Lines),
     md_blocks(Lines, Blocks),
+    ( sub_string(Text, _, _, _, "Rocq") -> assertz(guide_rocq(Doc)) ; true ),
     nb_setval(guide_doc, Doc),
     retractall(guide_slug(_, _)),
     guide_prepass(Blocks).
@@ -239,10 +248,16 @@ guide_page(Doc, Blocks) -->
     shell(Title, ( el(a, crumb, [href="../index.html"], "Wiki"), el(span, "crumb-sep", "›"),
                    el(a, crumb, [href="index.html"], "nanofil"), el(span, "crumb-sep", "›"),
                    el(span, "crumb current", esc(Doc)) ),
-          ( el(nav, "toc dterm-nav guide-nav",
+          ( rocq_style(Doc),
+            el(nav, "toc dterm-nav guide-nav",
                ( el(div, "toc-title", esc(Label)), guide_toc(Doc) )),
             el(article, "dterm guide",
                el(div, "prose guide-prose", gblocks(Blocks))) )).
+
+%  A document about Rocq sets its Rocq with dterm-rocq's stylesheet
+%  (rocq/, beside the pages).
+rocq_style(Doc) --> { guide_rocq(Doc) }, !, "<link rel=\"stylesheet\" href=\"rocq/dterm-rocq.css\">\n".
+rocq_style(_) --> [].
 
 guide_toc(Doc) -->
     { findall(N-(Id-T), ( guide_heading(Doc, Id, N, T, _), N >= 2, N =< 3 ), Hs) },
@@ -301,6 +316,7 @@ gblock(fence("prolog", Lines)) -->
       \+ sub_string(T, _, _, _, "%"), fence_terms(T, Ts), Ts \== [] }, !,
     el(div, "prose-terms", seq(Ts, gclause)).
 gblock(fence("diagram", Lines)) --> !, diagram(Lines, guide).
+gblock(fence(Lang, Lines)) --> { memberchk(Lang, ["rocq", "coq"]) }, !, rocq_fence(Lines).
 gblock(fence(Lang, Lines)) --> gfence(Lang, Lines).
 gblock(output(Name, _, _)) --> { guide_output(Name, Items) }, !,
     el(div, "prose-terms guide-output", ['data-output'=Name], seq(Items, out_item)).
@@ -385,6 +401,9 @@ gcode(Code) --> { append(W, `.pl`, Code), W \== [], maplist(word_char, W) }, !,
     gmodule(W, el(code, none, esc(Code))).
 gcode(Code) --> { atom_codes(A, Code), gloss_link(A, Href) }, !,
     el(a, gloss, [href=Href], el(code, none, esc(Code))).
+%  Rocq that only Rocq writes (Ret v, cap := None | Obj base, a Theorem)
+%  is drawn as Rocq; a Prolog term as a term.
+gcode(Code) --> { nb_getval(guide_doc, D), guide_rocq(D) }, rocq_inline(Code), !.
 gcode(Code) --> { code_term(Code, T) }, !, el(code, term, term(T, _, 999, ctx(guide, data))).
 gcode(Code) --> el(code, none, esc(Code)).
 

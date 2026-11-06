@@ -1,0 +1,145 @@
+/* dterm-rocq: Rocq drawn as structure (rocq_draw.pl), over nanofil's
+   dterm.css, which sets the terms; formal.html loads it too, for the
+   Rocq in its prose (code.rq). Inductive types are tables of their
+   constructors, relations and theorems are inference rules, proofs fold
+   under their statements. */
+
+article.dterm-rocq { max-width: 64rem; }
+/* A long path as a page's title breaks where it must. */
+.dterm-rocq h1.source-title { overflow-wrap: anywhere; }
+:is(.dterm-rocq, code.rq) { --ty: #6b3d7a; --lem: #7a4a14; }
+
+:is(.dterm-rocq, code.rq) .ty { color: var(--ty); }
+:is(.dterm-rocq, code.rq) .ty.def, :is(.dterm-rocq, code.rq) .lem.def, :is(.dterm-rocq, code.rq) .a.def, :is(.dterm-rocq, code.rq) .f.def { font-weight: 700; }
+:is(.dterm-rocq, code.rq) .ty.def { color: var(--ty); }
+:is(.dterm-rocq, code.rq) .lem { color: var(--lem); }
+:is(.dterm-rocq, code.rq) .lem.def { color: var(--ink); }
+:is(.dterm-rocq, code.rq) .g { color: var(--ink); }
+.dterm-rocq a.a, .dterm-rocq a.ty, .dterm-rocq a.f, .dterm-rocq a.lem, .dterm-rocq a.g { text-decoration: none; }
+.dterm-rocq a.a:hover, .dterm-rocq a.ty:hover, .dterm-rocq a.f:hover, .dterm-rocq a.lem:hover { text-decoration: underline; }
+:is(.dterm-rocq, code.rq) .q { color: var(--accent); font-weight: 600; margin-right: 0.12em; }
+:is(.dterm-rocq, code.rq) .qsep { margin-left: 0.02em; }
+:is(.dterm-rocq, code.rq) .defeq { color: var(--muted); }
+:is(.dterm-rocq, code.rq) .scope { color: var(--muted); font-size: 0.8em; }
+:is(.dterm-rocq, code.rq) .explicit > .at { color: var(--muted); }
+:is(.dterm-rocq, code.rq) .module-name { font-weight: 700; color: var(--ink); }
+:is(.dterm-rocq, code.rq) .binder { white-space: nowrap; }
+.dterm-rocq .c.sig > .args.binders { border-width: 0; padding-inline: 0; margin-left: 0.3em; }
+:is(.dterm-rocq, code.rq) .paren.binder, :is(.dterm-rocq, code.rq) .braces.binder { margin: 0 0.05em; }
+:is(.dterm-rocq, code.rq) .c.app > .args { border-width: 0; padding-inline: 0; margin-left: 0.3em; border-radius: 0; }
+:is(.dterm-rocq, code.rq) .args.recbr { border-width: 0; padding-inline: 0; }
+:is(.dterm-rocq, code.rq) .args.recbr::before { content: "{|"; color: var(--paren); margin-right: 0.25em; }
+:is(.dterm-rocq, code.rq) .args.recbr::after { content: "|}"; color: var(--paren); margin-left: 0.25em; }
+:is(.dterm-rocq, code.rq) .args.recbr.curly::before { content: "{"; }
+:is(.dterm-rocq, code.rq) .args.recbr.curly::after { content: "}"; }
+:is(.dterm-rocq, code.rq) .c.tuple > .args { border-width: 0 var(--paren-stroke); }
+:is(.dterm-rocq, code.rq) .bar { color: var(--muted); }
+:is(.dterm-rocq, code.rq) .kw { font-size: 0.72em; }
+/* Inline in a document's prose, a term keeps to its line. */
+code.rq .c, code.rq .args, code.rq .arg { white-space: nowrap; }
+.dterm-rocq [data-v].lit { background: color-mix(in srgb, var(--var) 14%, transparent); border-radius: 3px; }
+
+/* Directives: a quiet line each. */
+.rq-dirs { margin: 0.6rem 0 1rem; font-size: 0.86rem; color: var(--muted); }
+.rq-dir .module { color: var(--atom); }
+
+/* Headings from (** * Title *). */
+.dterm-rocq h2.rq-sec { margin: 2.2rem 0 0.6rem; font-size: 1.3rem; }
+.dterm-rocq h3.rq-sec { margin: 1.6rem 0 0.4rem; font-size: 1.05rem; }
+.rq-subtitle { font-size: 1.15rem; font-weight: 650; margin: 0 0 0.4rem; }
+.rq-doc { margin: 0.9rem 0 0.3rem; max-width: 44rem; }
+.rq-doc .prose p { margin: 0 0 0.4rem; }
+.dterm-rocq .note { font-style: normal; }
+.dterm-rocq code.term.rq { font: inherit; font-size: 0.96em; background: none; padding: 0; }
+.dterm-rocq a.ref.pl code { color: var(--accent); }
+
+/* Sentences. */
+.dterm-rocq .clause { margin: 0.4rem 0 0.9rem; }
+.rq-ind { margin: 0.4rem 0 1rem; scroll-margin-top: 3rem; }
+.dterm-rocq .rq-ind-head { margin: 0 0 0.15rem; }
+table.rq-ctors, table.rq-fields { border-collapse: collapse; margin: 0 0 0 1.2em; font-size: 0.95rem; }
+table.rq-ctors td, table.rq-fields td { padding: 0.1rem 0.8rem 0.1rem 0; vertical-align: baseline; }
+table.rq-ctors td.bar { color: var(--muted); padding-right: 0.5rem; }
+table.rq-ctors td.ctor, table.rq-fields td.field-name { white-space: nowrap; }
+table.rq-ctors td.ctor-aside, table.rq-fields td.field-aside { max-width: 24rem; }
+table.rq-ctors td.ctor-aside .aside, table.rq-fields td.field-aside .aside { margin: 0; }
+table.rq-ctors tr:target, table.rq-fields tr:target, .rq-rule:target, .clause:target {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+table.rq-ctors tr.note td, table.rq-fields tr.note td { padding-top: 0.4rem; }
+.rq-body { margin: 0.15rem 0 0 1.5em; }
+.dterm-rocq .aside { font-style: normal; }
+
+/* match as a table of patterns and results; let as a binding over its body. */
+.rq-match .match-head { margin-bottom: 0.1em; }
+.dterm-rocq .cases { width: max-content; max-width: 100%; }
+.cases.match { margin-left: 0.6em; }
+/* A match too wide for its table (dterm.js stacks it) is each pattern
+   over its result, the result led by ⇒, not a conditional's labels. */
+.dterm-rocq .cases.match.stack { grid-template-columns: 1.3em minmax(0, max-content); column-gap: 0.4em; }
+.dterm-rocq .cases.match.stack > .case:not(.plain) > .cond::before { content: none; }
+.dterm-rocq .cases.match.stack > .case > .cond > .goals { grid-column: 1 / -1; }
+.dterm-rocq .cases.match.stack > .case:not(.plain) > .then::before {
+  content: "⇒"; color: var(--accent); font-size: 1em; text-transform: none; letter-spacing: 0;
+}
+.cases.match > .case > .arrow { font-weight: 500; }
+.rq-let > .let-body, .rq-fun > .fun-body { margin-top: 0.1em; }
+.rq-let > .let-value { margin-left: 1.5em; }
+.rq-app > .app-args { display: grid; row-gap: 0.2em; padding-left: 1.2em; margin-top: 0.1em; }
+.rq-fun > .fun-body { margin-left: 1.2em; }
+
+/* Inference rules: premises over a line, the conclusion under it, the
+   rule's name beside the line. */
+.rules { display: grid; gap: 0.9rem; margin: 0.3rem 0 0 1.2em; }
+.rule { display: inline-grid; grid-template-columns: max-content; max-width: 100%; }
+.rule-vars { color: var(--muted); font-size: 0.88rem; margin-bottom: 0.15rem; }
+.rule-vars .v.def { color: var(--var); font-weight: 500; }
+.premises { display: grid; row-gap: 0.1em; padding: 0 0.6em; }
+.rule-line {
+  display: flex; align-items: center; gap: 0.6em;
+  margin: 0.15em 0; min-height: 0.3em;
+}
+.rule-line::before { content: ""; flex: 1 1 auto; border-top: 1.2px solid var(--ink); opacity: 0.7; }
+.rule-name { font-size: 0.85rem; white-space: nowrap; }
+.rule-concl { padding: 0 0.6em; }
+.rule-concl.alone { display: flex; flex-wrap: wrap; gap: 0.8em; align-items: baseline; padding: 0; }
+.rule .goal { min-width: 0; }
+.rq-thm { margin: 0.8rem 0 1.2rem; scroll-margin-top: 3rem; }
+.rq-thm-head { margin-bottom: 0.2rem; }
+.rq-thm > .rule { margin-left: 1.2em; }
+.rq-axiom > .rq-thm-head .kw { color: var(--accent); }
+
+/* Proofs fold under their statements. */
+details.rq-proof { margin: 0.25rem 0 0 1.2em; font-size: 0.85rem; }
+details.rq-proof > summary { cursor: pointer; color: var(--muted); list-style: none; }
+details.rq-proof > summary::-webkit-details-marker { display: none; }
+details.rq-proof > summary::before { content: "▸ "; }
+details.rq-proof[open] > summary::before { content: "▾ "; }
+.proof-count { font-size: 0.85em; }
+.proof-steps { margin: 0.2rem 0 0 0.9em; padding-left: 0.6em; border-left: 2px solid var(--rule); }
+.tac { padding-left: calc(var(--depth, 0) * 1.1em); font-family: var(--mono-font); font-size: 0.82rem; line-height: 1.55; }
+.tac .bullet { display: inline-block; min-width: 1.1em; color: var(--accent); }
+.tac .tactic { white-space: pre-wrap; }
+
+/* Modules: their sentences under a rule. */
+section.rq-module { margin: 1.2rem 0; scroll-margin-top: 3rem; }
+.rq-module-body { margin-left: 0.5em; padding-left: 0.9em; border-left: 2px solid var(--rule); }
+.rq-notation .notation .op { color: var(--ink); }
+.rq-mods { color: var(--muted); font-size: 0.82em; }
+pre.rq-raw { font-size: 0.82rem; position: relative; }
+
+/* Rocq in documents. */
+.rq-fence { margin: 0.5rem 0 0.9rem 1rem; }
+
+.rq-nav li.type > a { color: var(--ty); }
+.rq-nav li.lemma > a, .rq-nav li.axiom > a { color: var(--lem); }
+@media (max-width: 700px) {
+  /* A match nested deep scrolls rather than push the page sideways, and
+     a long path in the breadcrumb wraps. */
+  .rq-body { overflow-x: auto; }
+  body:has(.dterm-rocq) .status nav.crumbs { min-width: 0; white-space: normal; }
+  body:has(.dterm-rocq) .status .crumb.current { overflow-wrap: anywhere; min-width: 0; }
+  body:has(.dterm-rocq) .status .status-right { display: none; }
+  table.rq-ctors td.ctor-aside, table.rq-fields td.field-aside { display: none; }
+  .rule { display: grid; }
+}
