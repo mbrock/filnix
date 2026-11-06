@@ -1,0 +1,38 @@
+% Checked IR for float behaviour the corpus does not reach
+% (rocq/agree.sh): rounding a tie to the even neighbour, and an integer
+% word read as a float through a function's generic entry.
+
+% 2^24 + 1 is halfway between the singles 2^24 and 2^24 + 2: the tie
+% goes to 2^24, whose significand is even. The result is its bits.
+run(tie_single, [16777217]).
+func(tie_single, export, w, [param(w, tmp(n))], [
+    block(start, [], [
+        let(tmp(f), s, swtof, [tmp(n)]),
+        let(tmp(b), w, cast, [tmp(f)])
+    ], ret(tmp(b)))
+]).
+
+% 2^53 + 1 is halfway between the doubles 2^53 and 2^53 + 2.
+run(tie_double, [9007199254740993]).
+func(tie_double, export, l, [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(f), d, sltof, [tmp(n)]),
+        let(tmp(b), l, cast, [tmp(f)])
+    ], ret(tmp(b)))
+]).
+
+% A raw_call passes an l word to an s parameter: the generic entry
+% reads its low 32 bits as the single's bits.
+run(generic_single, [0]).
+func(generic_single, export, w, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(p), p, copy, [global(bits)]),
+        let(tmp(f), f, check_function, [tmp(p)]),
+        raw_call(result(tmp(r), w), tmp(f), [arg(l, const(4294967297))])
+    ], ret(tmp(r)))
+]).
+func(bits, local, w, [param(s, tmp(x))], [
+    block(start, [], [
+        let(tmp(b), w, cast, [tmp(x)])
+    ], ret(tmp(b)))
+]).

@@ -266,9 +266,11 @@ Definition temp_classes_ok (defs : list (name * class)) : bool :=
 
 Definition proof_class (k : class) : bool := match k with A | F => true | _ => false end.
 
-(** `valid_use(Ctx, K, V)`: V may be read at class K. A `p` temporary is
-    read only at `p` and the reverse; a long may be read as a word; only
-    a check makes a proof; in filc mode only `copy` reads a symbol. *)
+(** `valid_use(Ctx, K, V)`: V may be read at class K. A proof or float
+    temporary is read only at its own class, and the reverse; a `p`
+    temporary only at `p`, and the reverse; a long may be read as a
+    word; a float constant is a bit pattern of its class; only a check
+    makes a proof; in filc mode only `copy` reads a symbol. *)
 Definition valid_use (classes : list (name * class)) (k : class) (v : value) : bool :=
   match v with
   | Tmp n =>
@@ -276,12 +278,15 @@ Definition valid_use (classes : list (name * class)) (k : class) (v : value) : b
       | None => false
       | Some k0 =>
           if proof_class k || proof_class k0 then class_eqb k k0
+          else if float_class k || float_class k0 then class_eqb k k0
           else if class_eqb k L && class_eqb k0 W then false
           else if class_eqb k0 P then class_eqb k P
           else if class_eqb k P then false
           else true
       end
-  | Const _ => negb (proof_class k)
+  | Const n =>
+      if float_class k then match modulus k with Some m => (0 <=? n) && (n <? m) | None => false end
+      else negb (proof_class k)
   | Global _ => false
   end.
 
@@ -304,9 +309,20 @@ Definition local_store_effects : list effect := [LowerWrite; AddressWrite].
 Definition atomic_load_effects : list effect := [AtomicRead].
 Definition atomic_store_effects : list effect := [AtomicWrite].
 
+(** `comparison(Cond, K)`: the signed and unsigned orders at an
+    integer class, the float conditions at a float class, `eq` and `ne`
+    at both. *)
+Definition comparison (c : cond) (k : class) : bool :=
+  match c with
+  | Eq | Ne => int_class k || float_class k
+  | Sle | Slt | Sge | Sgt | Ule | Ult | Uge | Ugt => int_class k
+  | Le | Lt | Ge | Gt | Ord | Unord => float_class k
+  end.
+
 (** `valid_op(Op)` for the core subset's ops. *)
 Definition valid_op (o : op) : bool :=
   match o with
+  | Cmp c k => comparison c k
   | Alloc al => alloc_align al
   | Check lo hi _ al | Renew lo hi _ al | RenewHull lo hi _ al | RenewIf lo hi _ al
   | CheckLimit lo hi _ al | HalfCheck _ lo hi _ al => check_ok lo hi al
@@ -321,19 +337,29 @@ Definition valid_op (o : op) : bool :=
   | _ => true
   end.
 
-Definition int_class (k : class) : bool := match k with W | L => true | _ => false end.
-
-Definition value_class (k : class) : bool := match k with W | L | P => true | _ => false end.
+(** `any_class(K)`: a class a value may have, every class but the
+    proofs'. *)
+Definition any_class (k : class) : bool := negb (proof_class k).
 
 (** `op_result_ok(filc, Op, K)`. *)
 Definition op_result_ok (o : op) (k : class) : bool :=
   match o with
-  | Add | Sub | Copy => value_class k
-  | Mul | Div | Udiv | Rem | Urem | And | Or | Xor | Sar | Shr | Shl | Neg => int_class k
+  | Add | Sub | Copy => any_class k
+  | Mul | Div => int_class k || float_class k
+  | Udiv | Rem | Urem | And | Or | Xor | Sar | Shr | Shl => int_class k
+  | Neg => int_class k || float_class k
   | Ptoi => class_eqb k L
   | Itop => class_eqb k P
-  | Cmp _ _ => int_class k
+  | Cmp _ ck => if float_class ck then class_eqb k W else int_class k
   | Ext t => match t with Sw | Uw => class_eqb k L | _ => int_class k end
+  | ExtF Single => class_eqb k Double || class_eqb k Extended
+  | ExtF Double => class_eqb k Extended
+  | ExtF _ => false
+  | Truncd => class_eqb k Single
+  | Truncx => class_eqb k Single || class_eqb k Double
+  | FloatToInt _ _ => int_class k
+  | IntToFloat _ _ => float_class k
+  | Cast => int_class k || float_class k
   | Alloc _ => class_eqb k P
   | Check _ _ _ _ | CheckAhead _ _ _ _ _ | Renew _ _ _ _ | RenewHull _ _ _ _
   | HalfCheck _ _ _ _ _ | RenewIf _ _ _ _ | CheckLimit _ _ _ _ | CheckLocal _ _ _ _ _ =>
@@ -342,14 +368,22 @@ Definition op_result_ok (o : op) (k : class) : bool :=
   | Limit _ => class_eqb k L
   | CheckFunction => class_eqb k F
   | RawLoad LdL _ => class_eqb k L
+  | RawLoad LdS _ => class_eqb k Single
+  | RawLoad LdD _ => class_eqb k Double
+  | RawLoad LdX _ => class_eqb k Extended
   | RawLoad (LdNarrow _) _ => int_class k
   | RawLoadPointer _ _ => class_eqb k P
+  | VaArgs => class_eqb k P
+  | VaArg => any_class k
   end.
 
 (** ## Signatures *)
 
 Definition eclass (k : class) : term :=
-  TAtom (match k with W => "w" | L => "l" | P => "p" | A => "a" | F => "f" end).
+  TAtom (match k with
+         | W => "w" | L => "l" | P => "p" | A => "a" | F => "f"
+         | Single => "s" | Double => "d" | Extended => "x"
+         end).
 
 Definition eret (r : ret_type) : term :=
   match r with
@@ -392,7 +426,7 @@ Fixpoint func_sig (n : name) (md : module) : option sig :=
   | IFunc f :: rest =>
       if name_eqb (fn_name f) n
       then Some (mkSig (fn_linkage f) (map (fun p => eclass (fst p)) (fn_params f))
-                       (eret (fn_ret f)) false)
+                       (eret (fn_ret f)) (variadic_func f))
       else func_sig n rest
   | IOutside f t :: rest => if name_eqb f n then term_sig t else func_sig n rest
   | _ :: rest => func_sig n rest
@@ -411,9 +445,10 @@ Definition call_result_ok (r : call_result) (ret : term) : bool :=
   | CTuple rs => term_eqb ret (TApp "tuple" [TList (map (fun x => eclass (snd x)) rs)])
   | CResult _ k =>
       (* to_result_ok/4 and class_result_ok/4 *)
-      class_atom ret && negb (float_atom ret)
-      && negb (class_eqb k L && term_eqb ret (TAtom "w"))
-      && Bool.eqb (class_eqb k P) (term_eqb ret (TAtom "p"))
+      class_atom ret &&
+      if float_atom ret || float_class k then term_eqb ret (eclass k)
+      else negb (class_eqb k L && term_eqb ret (TAtom "w"))
+           && Bool.eqb (class_eqb k P) (term_eqb ret (TAtom "p"))
   end.
 
 Fixpoint prefix_eqb (ps xs : list term) : bool :=
@@ -427,8 +462,14 @@ Fixpoint prefix_eqb (ps xs : list term) : bool :=
 
 Definition labels (f : func) : list name := map b_label (fn_blocks f).
 
+(** `store_value_class(Width, K)` for a raw store, which is never of a
+    pointer. *)
 Definition width_value_ok (w : width) : option class :=
-  match w with Wb | Wh | Ww => Some W | Wl => Some L | _ => None end.
+  match w with
+  | Wb | Wh | Ww => Some W | Wl => Some L
+  | Ws => Some Single | Wd => Some Double | Wx => Some Extended
+  | Wp => None
+  end.
 
 (** `valid_inst(Ctx, Inst)`. *)
 Definition valid_inst (md : module) (classes : list (name * class)) (i : inst) : bool :=
@@ -446,6 +487,12 @@ Definition valid_inst (md : module) (classes : list (name * class)) (i : inst) :
   | Let _ P Copy [Global _] => true
   | Let _ k o args =>
       valid_op o && op_result_ok o k &&
+      (* `va_args needs a non-negative constant` *)
+      match o, args with
+      | VaArgs, [Const off] => 0 <=? off
+      | VaArgs, _ => false
+      | _, _ => true
+      end &&
       match op_arg_classes o k with
       | Some cs => (length cs =? length args)%nat
                    && forallb (fun ca => use (fst ca) (snd ca)) (combine cs args)
@@ -607,7 +654,9 @@ Definition raw_access (i : inst) : option (name * access_type * Z * rights) :=
 (** `access_size_align(X, Size, Align)`, its first solution. *)
 Definition access_size_align (x : access_type) : Z * Z :=
   match x with
-  | XLoad LdL => (8, 1)
+  | XLoad (LdL | LdD) => (8, 1)
+  | XLoad LdS => (4, 1)
+  | XLoad LdX => (10, 8)
   | XLoad (LdNarrow t) => (fst (narrow_type t), 1)
   | XWidth Wp | XPtr => (8, 8)
   | XWidth Wx => (10, 8)
@@ -1523,6 +1572,21 @@ Definition module_checked (md : module) : bool :=
 
 (** ## Functions and modules *)
 
+(** The `x` rule of `valid_item(_, _, _, func(...))`: an `x` value is
+    never a parameter, a result, a call's argument or result, or a phi. *)
+Definition extended_crosses (f : func) : bool :=
+  let ext k := class_eqb k Extended in
+  match fn_ret f with RClass k => ext k | _ => false end
+  || existsb (fun p => ext (fst p)) (fn_params f)
+  || existsb (fun b =>
+                existsb (fun ph => match ph with Phi _ k _ => ext k end) (b_phis b)
+                || existsb (fun i => match i with
+                                     | Call r _ args =>
+                                         match r with CResult _ k => ext k | _ => false end
+                                         || existsb (fun a => ext (arg_class a)) args
+                                     | _ => false
+                                     end) (b_insts b)) (fn_blocks f).
+
 (** `valid_item(Symbols, filc, Stage, func(...))` for a function of
     the core subset. In the unchecked stage there is no evidence to
     check; the core subset then has no memory access at all. *)
@@ -1534,7 +1598,14 @@ Definition valid_func (md : module) (f : func) : bool :=
   | [] => false
   | entry :: _ =>
       match fn_linkage f with TAtom ("export" | "local" | "weak") => true | _ => false end
-      && match fn_ret f with RTuple ks => (length ks =? 2)%nat | _ => true end
+      && match fn_ret f with
+         | RTuple ks =>
+             (length ks =? 2)%nat
+             && forallb (fun k => existsb (class_eqb k) [L; P; Single; Double]) ks
+         | RClass k => any_class k
+         | RVoid => true
+         end
+      && negb (extended_crosses f)
       && no_dups (map b_label bs)
       && temp_classes_ok defs
       && negb (existsb (fun b => mem (b_label entry) (succ_labels (b_jump b))) bs)

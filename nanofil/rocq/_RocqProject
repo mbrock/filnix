@@ -1,5 +1,6 @@
 -R theories Nanofil
 theories/Term.v
+theories/Ieee.v
 theories/Syntax.v
 theories/Values.v
 theories/Memory.v

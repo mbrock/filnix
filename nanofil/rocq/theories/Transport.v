@@ -5,8 +5,8 @@
     `==`.
 
     Decoding is partial in one deliberate way: a function that uses
-    anything outside the core subset (a float class, `store`, `cas`,
-    `setjmp`, `va_arg`, `asm_fixed`, `touch` ...) decodes to
+    anything outside the core subset (a vector class, `store`, `cas`,
+    `setjmp`, `asm_fixed`, `touch` ...) decodes to
     `IOutside Name Term`. It keeps its address and its term (the
     validator reads its signature), so calls to it and pointers
     to it behave as the interpreter's do, but running it is stuck.
@@ -60,7 +60,9 @@ Definition dapp (f : string) (n : nat) (t : term) : option (list term) :=
 Definition dclass (t : term) : option class :=
   let* a := datom t in
   if a == "w" then Some W else if a == "l" then Some L else if a == "p" then Some P
-  else if a == "a" then Some A else if a == "f" then Some F else None.
+  else if a == "a" then Some A else if a == "f" then Some F
+  else if a == "s" then Some Single else if a == "d" then Some Double
+  else if a == "x" then Some Extended else None.
 
 Definition dtmp (t : term) : option name :=
   let* xs := dapp "tmp" 1 t in match xs with [n] => Some n | _ => None end.
@@ -88,7 +90,10 @@ Definition dnarrow (t : term) : option narrow :=
   else if a == "sb" then Some Sb else if a == "ub" then Some Ub else None.
 
 Definition dload_type (t : term) : option load_type :=
-  if term_eqb t (TAtom "l") then Some LdL else let* n := dnarrow t in Some (LdNarrow n).
+  let* a := datom t in
+  if a == "l" then Some LdL else if a == "s" then Some LdS
+  else if a == "d" then Some LdD else if a == "x" then Some LdX
+  else let* n := dnarrow t in Some (LdNarrow n).
 
 Definition dcond (t : term) : option cond :=
   let* a := datom t in
@@ -96,7 +101,10 @@ Definition dcond (t : term) : option cond :=
   else if a == "sle" then Some Sle else if a == "slt" then Some Slt
   else if a == "sge" then Some Sge else if a == "sgt" then Some Sgt
   else if a == "ule" then Some Ule else if a == "ult" then Some Ult
-  else if a == "uge" then Some Uge else if a == "ugt" then Some Ugt else None.
+  else if a == "uge" then Some Uge else if a == "ugt" then Some Ugt
+  else if a == "le" then Some Le else if a == "lt" then Some Lt
+  else if a == "ge" then Some Ge else if a == "gt" then Some Gt
+  else if a == "o" then Some Ord else if a == "uo" then Some Unord else None.
 
 Definition deffect (t : term) : option effect :=
   let* a := datom t in
@@ -138,14 +146,31 @@ Definition dop (t : term) : option op :=
       else if a == "shl" then Some Shl else if a == "neg" then Some Neg
       else if a == "copy" then Some Copy else if a == "ptoi" then Some Ptoi
       else if a == "itop" then Some Itop
+      else if a == "truncd" then Some Truncd else if a == "truncx" then Some Truncx
+      else if a == "stosi" then Some (FloatToInt Single Signed)
+      else if a == "stoui" then Some (FloatToInt Single Unsigned)
+      else if a == "dtosi" then Some (FloatToInt Double Signed)
+      else if a == "dtoui" then Some (FloatToInt Double Unsigned)
+      else if a == "xtosi" then Some (FloatToInt Extended Signed)
+      else if a == "xtoui" then Some (FloatToInt Extended Unsigned)
+      else if a == "swtof" then Some (IntToFloat W Signed)
+      else if a == "uwtof" then Some (IntToFloat W Unsigned)
+      else if a == "sltof" then Some (IntToFloat L Signed)
+      else if a == "ultof" then Some (IntToFloat L Unsigned)
+      else if a == "cast" then Some Cast
+      else if a == "va_args" then Some VaArgs else if a == "va_arg" then Some VaArg
       else if a == "check_function" then Some CheckFunction else None
   | TApp f xs =>
       if f == "cmp" then
-        match xs with [c; k] => let* c' := dcond c in let* k' := dclass k in
-                                match k' with W | L => Some (Cmp c' k') | _ => None end
+        match xs with [c; k] => let* c' := dcond c in let* k' := dclass k in Some (Cmp c' k')
                     | _ => None end
       else if f == "ext" then
-        match xs with [n] => let* n' := dnarrow n in Some (Ext n') | _ => None end
+        match xs with
+        | [TAtom "s"] => Some (ExtF Single)
+        | [TAtom "d"] => Some (ExtF Double)
+        | [n] => let* n' := dnarrow n in Some (Ext n')
+        | _ => None
+        end
       else if f == "alloc" then
         match xs with [al] => let* al' := dz al in Some (Alloc al') | _ => None end
       else if f == "check" then dcheck4 xs Check
@@ -230,7 +255,7 @@ Definition dinst (t : term) : option inst :=
   | TApp "raw_store" [w; off; v; a] =>
       let* w' := dwidth w in
       match w' with
-      | Wb | Wh | Ww | Wl =>
+      | Wb | Wh | Ww | Wl | Ws | Wd | Wx =>
           let* off' := dz off in let* v' := dvalue v in let* a' := dvalue a in
           Some (RawStore w' off' v' a')
       | _ => None
@@ -293,9 +318,10 @@ Definition dret (t : term) : option ret_type :=
   | TAtom "void" => Some RVoid
   | TApp "tuple" [TList ks] =>
       let* ks' := map_option dclass ks in
-      if forallb (fun k => match k with L | P => true | _ => false end) ks'
+      if forallb (fun k => match k with L | P | Single | Double => true | _ => false end) ks'
       then Some (RTuple ks') else None
-  | _ => let* k := dclass t in match k with W | L | P => Some (RClass k) | _ => None end
+  | _ => let* k := dclass t in
+         match k with W | L | P | Single | Double => Some (RClass k) | _ => None end
   end.
 
 Definition dparam (t : term) : option (class * name) :=

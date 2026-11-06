@@ -63,14 +63,17 @@ Inductive word : Type :=
 | WLimit (c : cap) (size : Z).
 
 (** `word_at_class(K, X0, X)`: X is the word X0 taken at class K, its
-    low bits(K) bits; a pointer or proof word is itself. A limit stays a
-    limit at `l`; any other mismatch is the interpreter's type error,
-    here no word. *)
+    low bits(K) bits; a pointer or proof word is itself. A float word
+    is its bit pattern, an integer. A limit stays a limit at `l`; any
+    other mismatch is the interpreter's type error, here no word. *)
 Definition word_at_class (k : class) (x : word) : option word :=
   match k, x with
   | W, WInt n => Some (WInt (n mod 2 ^ 32))
   | L, WInt n => Some (WInt (n mod 2 ^ 64))
   | L, WLimit _ _ => Some x
+  | Single, WInt n => Some (WInt (n mod 2 ^ 32))
+  | Double, WInt n => Some (WInt (n mod 2 ^ 64))
+  | Extended, WInt n => Some (WInt (n mod 2 ^ 80))
   | (P | A | F), _ => Some x
   | _, _ => None
   end.

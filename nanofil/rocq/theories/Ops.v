@@ -12,7 +12,7 @@
     base of its object (Memory.v's `fresh`). *)
 
 From Stdlib Require Import String ZArith List Bool.
-From Nanofil Require Import Term Syntax Values Memory.
+From Nanofil Require Import Term Ieee Syntax Values Memory.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -59,6 +59,7 @@ Definition cond_bit (c : cond) (k : class) (x y : Z) : option Z :=
   | Sle => let* sx := signed k x in let* sy := signed k y in bit (sx <=? sy)
   | Sgt => let* sx := signed k x in let* sy := signed k y in bit (sy <? sx)
   | Sge => let* sx := signed k x in let* sy := signed k y in bit (sy <=? sx)
+  | Le | Lt | Ge | Gt | Ord | Unord => None
   end.
 
 (** `shift_factor(K, Y, P)`: the count is taken modulo the class width. *)
@@ -206,14 +207,17 @@ Definition extended (t : narrow) (k : class) (u : Z) : option word :=
     access check (read, alignment 1), then the bytes, extended. *)
 Definition int_load_res (t : load_type) (k : class) (m : mem) (a : Z) (c : cap)
   : option (res word) :=
-  let size := match t with LdL => 8 | LdNarrow n => fst (narrow_type n) end in
+  let size := match t with
+              | LdL | LdD => 8 | LdS => 4 | LdX => 10
+              | LdNarrow n => fst (narrow_type n)
+              end in
   let* chk := access_res m a c size Read 1 in
   match chk with
   | RVal _ =>
       let u := load_bytes m a size in
       match t with
-      | LdL => Some (RVal (WInt u))
       | LdNarrow n => let* x := extended n k u in Some (RVal x)
+      | _ => Some (RVal (WInt u))
       end
   | RTrap why => Some (RTrap why)
   | RUnchecked why => Some (RUnchecked why)
@@ -256,17 +260,162 @@ Definition pointer_store_effects (a : Z) (x : ptr) (m : mem) (es : list effect)
   : option mem :=
   fold_left (fun m e => let* m' := m in pointer_store_effect a x m' e) es (Some m).
 
+(** ## Stores *)
+
+(** `store_res(filc, Width, Mem0, ptr(A, Cap), X, Res, Mem)`: the access
+    check of a store (alignment 8 for a pointer and for `x`, else 1,
+    `width_word/5`), then its bytes, and for a pointer its capability
+    in aux. *)
+Definition store_res (w : width) (m : mem) (a : Z) (c : cap) (x : word)
+  : option (res unit * mem) :=
+  let size := width_bytes w in
+  match w, x with
+  | Wp, WPtr v =>
+      let* chk := access_res m a c size Write 8 in
+      Some (chk, match chk with
+                 | RVal _ => store_aux (store_bytes m a size (ptr_addr v)) a (ptr_cap v)
+                 | _ => m
+                 end)
+  | (Wb | Wh | Ww | Wl | Ws | Wd | Wx), WInt v =>
+      let align := match w with Wx => 8 | _ => 1 end in
+      let* chk := access_res m a c size Write align in
+      Some (chk, match chk with RVal _ => store_bytes m a size v | _ => m end)
+  | _, _ => None
+  end.
+
+(** ## Variadic arguments *)
+
+(** `width_bytes(K, Size)` of a value class K, the width a store of K
+    writes. *)
+Definition class_width (k : class) : option width :=
+  match k with
+  | W => Some Ww | L => Some Wl | P => Some Wp
+  | Single => Some Ws | Double => Some Wd | Extended => Some Wx
+  | _ => None
+  end.
+
+(** `va_cell(K, Step, Align)`: a `va_arg` of class K takes Step bytes
+    at an Align-aligned cursor, as Fil-C's runtime does: a long
+    double's cell is 16 bytes at 16, of which it reads its 10. *)
+Definition va_cell (k : class) : option (Z * Z) :=
+  match k with
+  | Extended => Some (16, 16)
+  | _ => let* w := class_width k in Some (width_bytes w, 8)
+  end.
+
+(** `kind_res(va_arg, _, K, filc, [P], S0, Res, S)`: the cursor is the
+    pointer stored at the va_list P (`pointer_load_res/5`); its cell is
+    checked for reading, the cursor moves past it with an `l` store at
+    P, and the value is the cell's bytes, a pointer with its stored
+    capability for `p` (`va_cursor_res/6` and `va_checked_res/8`). *)
+Definition va_arg_res (k : class) (p : ptr) (m : mem) : option (res word * mem) :=
+  let* chk := access_res m (ptr_addr p) (ptr_cap p) 8 Read 8 in
+  match chk with
+  | RTrap why => Some (RTrap why, m)
+  | RUnchecked _ => None
+  | RVal _ =>
+      let cursor := mkPtr (load_bytes m (ptr_addr p) 8) (aux_at m (ptr_addr p)) in
+      let* cell := va_cell k in
+      let (step, align) := cell in
+      let* w := class_width k in
+      let a := (ptr_addr cursor + align - 1) / align * align in
+      let* chk' := access_res m a (ptr_cap cursor) step Read 8 in
+      match chk' with
+      | RTrap why => Some (RTrap why, m)
+      | RUnchecked _ => None
+      | RVal _ =>
+          let* stored := store_res Wl m (ptr_addr p) (ptr_cap p) (WInt (a + step)) in
+          let (r, m1) := stored in
+          match r, k with
+          | RTrap why, _ => Some (RTrap why, m1)
+          | RUnchecked _, _ => None
+          | RVal _, P => Some (RVal (WPtr (mkPtr (load_bytes m1 a 8) (aux_at m1 a))), m1)
+          | RVal _, _ => Some (RVal (WInt (load_bytes m1 a (width_bytes w))), m1)
+          end
+      end
+  end.
+
 (** ## Ops *)
 
-(** What an op yields: a partial result and the memory after it, or a
-    request for a fresh object and what follows from its base. *)
+(** What an op yields: a partial result and the memory after it,
+    undefined behaviour (`ub(Why)`, only an invalid float-to-integer
+    conversion here), or a request for a fresh object and what follows
+    from its base. *)
 Inductive op_out : Type :=
 | OpRes (r : res word) (m : mem)
+| OpUB (why : term)
 | OpAlloc (q : alloc_req) (k : Z -> word * mem).
 
-(** `op_res(Op, K, filc, Args, S0, Res, S)` and `kind_res/8` for the
-    core subset. *)
-Definition op_res (o : op) (k : class) (xs : list word) (m : mem) : option op_out :=
+(** ## Floats *)
+
+(** The ieee.pl format of a float class. *)
+Definition fmt_of (k : class) : option fmt :=
+  match k with
+  | Single => Some FmtS | Double => Some FmtD | Extended => Some FmtX
+  | _ => None
+  end.
+
+(** A float comparison's condition; none for the integer orders, which
+    `condition/2` never holds. *)
+Definition fcond_of (c : cond) : option fcond :=
+  match c with
+  | Eq => Some FEq | Ne => Some FNe | Le => Some FLe | Lt => Some FLt
+  | Ge => Some FGe | Gt => Some FGt | Ord => Some FOrd | Unord => Some FUnord
+  | _ => None
+  end.
+
+(** `op_res(cmp(C, CK), ...)` at a float CK: `ieee_compare/5`. *)
+Definition float_compare (c : cond) (ck : fmt) (a b : Z) : Z :=
+  match fcond_of c with Some fc => ieee_compare ck fc a b | None => 0 end.
+
+(** `float_arithmetic(Op, K, Xs, R)`: add, sub, mul, div, neg and copy
+    at a float class. A copy only checks that its word is an integer. *)
+Definition float_arithmetic (o : op) (k : fmt) (xs : list word) : option Z :=
+  match o, xs with
+  | Copy, [WInt x] => Some x
+  | Neg, [WInt x] => Some (ieee_neg k x)
+  | Add, [WInt x; WInt y] => Some (ieee_binary k FAdd x y)
+  | Sub, [WInt x; WInt y] => Some (ieee_binary k FSub x y)
+  | Mul, [WInt x; WInt y] => Some (ieee_binary k FMul x y)
+  | Div, [WInt x; WInt y] => Some (ieee_binary k FDiv x y)
+  | _, _ => None
+  end.
+
+(** `kind_res(float_convert, Op, K, ...)`: `ext(s)` to any float class,
+    `ext(d)` to `x`, `truncd` to `s`, `truncx` to any float class. *)
+Definition float_convert (o : op) (k : class) (x : Z) : option Z :=
+  let* to := fmt_of k in
+  match o, k with
+  | ExtF Single, _ => Some (ieee_convert FmtS to x)
+  | ExtF Double, Extended => Some (ieee_convert FmtD FmtX x)
+  | Truncd, Single => Some (ieee_convert FmtD FmtS x)
+  | Truncx, _ => Some (ieee_convert FmtX to x)
+  | _, _ => None
+  end.
+
+(** `float_integer(Op, K, X, Res)`: the float X truncated toward zero,
+    if it is finite and fits K signed or unsigned, else undefined
+    behaviour. *)
+Definition float_integer (from : fmt) (sg : signedness) (k : class) (x : Z) (m0 : mem)
+  : option op_out :=
+  let* m := modulus k in
+  let '(lo, hi) := match sg with
+                   | Signed => (- (m / 2), m / 2 - 1)
+                   | Unsigned => (0, m - 1)
+                   end in
+  match ieee_to_int from x with
+  | Some n => if (lo <=? n) && (n <=? hi) then Some (OpRes (RVal (WInt (n mod m))) m0)
+              else Some (OpUB (TAtom "float_conversion"))
+  | None => Some (OpUB (TAtom "float_conversion"))
+  end.
+
+(** `integer_source(Op, X, N)`: the integer an int-to-float op reads. *)
+Definition integer_source (ik : class) (sg : signedness) (x : Z) : option Z :=
+  match sg with Signed => signed ik x | Unsigned => Some x end.
+
+(** `kind_res/8` for the core subset's integer, pointer and checked
+    ops. *)
+Definition op_res_int (o : op) (k : class) (xs : list word) (m : mem) : option op_out :=
   let pure (x : option word) := let* w := x in Some (OpRes (RVal w) m) in
   let with_mem (r : option (res word)) := let* r' := r in Some (OpRes r' m) in
   match o, k, xs with
@@ -362,4 +511,29 @@ Definition op_res (o : op) (k : class) (xs : list word) (m : mem) : option op_ou
   | (Mul | Div | Udiv | Rem | Urem | And | Or | Xor | Sar | Shr | Shl
      | Neg | Copy | Ptoi | Itop | Cmp _ _ | Ext _), _, _ => pure (alu o k xs)
   | _, _, _ => None
+  end.
+
+(** `op_res(Op, K, filc, Args, S0, Res, S)` and `kind_res/8` for the
+    core subset. A float comparison and float arithmetic come first, as
+    `op_res/7` commits to them before the integer dispatch. *)
+Definition op_res (o : op) (k : class) (xs : list word) (m : mem) : option op_out :=
+  match o, fmt_of k, xs with
+  | Cmp c ck, _, [WInt a; WInt b] =>
+      match fmt_of ck with
+      | Some f => Some (OpRes (RVal (WInt (float_compare c f a b))) m)
+      | None => op_res_int o k xs m
+      end
+  | Cmp _ ck, _, _ => match fmt_of ck with Some _ => None | None => op_res_int o k xs m end
+  | (Add | Sub | Mul | Div | Neg | Copy), Some f, _ =>
+      let* r := float_arithmetic o f xs in Some (OpRes (RVal (WInt r)) m)
+  | (ExtF _ | Truncd | Truncx), _, [WInt x] =>
+      let* r := float_convert o k x in Some (OpRes (RVal (WInt r)) m)
+  | FloatToInt fk sg, _, [WInt x] =>
+      let* from := fmt_of fk in
+      float_integer from sg k x m
+  | IntToFloat ik sg, Some f, [WInt x] =>
+      let* n := integer_source ik sg x in Some (OpRes (RVal (WInt (ieee_from_int f n))) m)
+  | Cast, _, [WInt x] => Some (OpRes (RVal (WInt x)) m)
+  | VaArg, _, [WPtr p] => let* rm := va_arg_res k p m in Some (OpRes (fst rm) (snd rm))
+  | _, _, _ => op_res_int o k xs m
   end.

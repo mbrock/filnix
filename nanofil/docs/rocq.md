@@ -16,25 +16,30 @@ the interpreter and cites the predicate it copies.
 | File | Transcribes | Contents |
 | --- | --- | --- |
 | `Term.v` | ground Prolog terms | names (temporaries, labels, symbols) as terms compared by `==`; `char_code/2` |
+| `Ieee.v` | ieee.pl | binary32, binary64 and x87 extended as bit patterns: `decode/4`, `round_ratio/5`, `ieee_binary/5`, `ieee_convert/4`, `ieee_compare/5`, `ieee_from_int/3`, `ieee_to_int/3` |
 | `Syntax.v` | ir.pl's header tables | classes, ops, values, instructions, jumps, blocks, functions, data, modules; `op_arg_classes/4`, `evidence_preserving/1`, `ahead_transparent/1`, `local_objects/2` |
 | `Values.v` | interp.pl's values | `cap` (`none`, `obj`, `ro`, `fn`, `ext`), `ptr`, `word`; `word_at_class/3` |
 | `Memory.v` | interp.pl's Memory section | regions, `mem`, `cap_access_res/7`, `free_res/4`, bytes and aux, `fresh` |
-| `Ops.v` | `alu/4`, `additive_res/4`, `kind_res/8` | integer ops, `check` and the reuse vocabulary, raw loads, pointer-load and pointer-store protocols |
-| `Semantics.v` | `run/5`'s blocks, instructions, jumps, calls | the configuration, `step`, `step_rel`, `reachable` |
+| `Ops.v` | `alu/4`, `additive_res/4`, `kind_res/8` | integer and float ops, `check` and the reuse vocabulary, raw loads and stores, pointer-load and pointer-store protocols, `va_arg` |
+| `Semantics.v` | `run/5`'s blocks, instructions, jumps, calls | the configuration, `step`, `step_rel`, `reachable`; the variadic entry snapshot |
 | `Run.v` | `initial_memory/4`, `alloc_base/6` | module preparation, the interpreter's allocator as one fresh choice, a driver |
 | `Validate.v` | ir.pl's `valid_module/1` | `valid_func`, `valid_data`, `valid_alias`, `valid_items`, `valid`: uses, ops, instructions, dominance, locals, the evidence pass, the reuse rules, `polls_every_cycle`, data linkage and items, aliases |
 | `Transport.v` | — | decoding a printed checked module, encoding outcomes, `judge`, `judge_valid` |
 | `Extract.v`, `extraction/main.ml` | — | OCaml extraction, and a reader of Prolog terms |
 
 Covered: filc mode, the checked stage, classes `w`, `l`, `p`, `a` and
-`f`; `check`, `check_ahead` (with the doomed state of
+`f`, and the float classes `s`, `d` and `x` with their arithmetic,
+comparisons and conversions; `check`, `check_ahead` (with the doomed state of
 [schedule.md](schedule.md)), `renew`, `renew_hull`, `half_check`,
 `span_test` with `renew_if`, `limit` with `check_limit`, `check_local`
 and named locals, `check_function` with `raw_call` (including the
 generic entry's argument and result conversions), `raw_load`,
 `raw_load_pointer`, `raw_store`, `raw_store_pointer` with their effect
-lists, `flight`, poll edges, direct `call`, and libc `free`. A function
-that uses anything else decodes to `IOutside`. It keeps its address,
+lists, `flight`, poll edges, direct `call`, libc `free`, and variadic
+functions (`va_args`, `va_arg`, the entry snapshot and the extra
+arguments of a call through the generic entry). What is left out is
+vectors, `store`, `cas` and atomics, `setjmp`, `asm_fixed` and `touch`.
+A function that uses anything else decodes to `IOutside`. It keeps its address,
 its `fn` capability and its term (so the validator can read its
 signature and its calls), but running or calling it is stuck, and the
 comparison reports such a run as `outside`.
@@ -63,15 +68,19 @@ plain and skipped), and 882 of their 2,340 runs trap.
 
 | Corpus | Lines that agree | Outside the subset | Disagree |
 | --- | --- | --- | --- |
-| filc fixtures and C tests, without `-O` (each `--checks` mode) | 447 | 41 | 0 |
-| the same with `-O` | 449 | 39 | 0 |
+| filc fixtures and C tests, with and without `-O` (each `--checks` mode) | 488 | 0 | 0 |
 | the gen modules, with and without `-O` (each mode) | 2,340 | 0 | 0 |
+| Lua's own functions (`rocq/lua.sh`, with and without `-O`, each mode) | 27 | 0 | 0 |
 | `rocq/tests/reuse.ir` (`renew_if`, `renew_hull`, each with and without a free) | 4 | 0 | 0 |
+| `rocq/tests/snapshot.ir` (the variadic snapshot read, written, empty, freed) | 5 | 0 | 0 |
+| `rocq/tests/floats.ir` (ties to even, a float read through the generic entry) | 3 | 0 | 0 |
 
-The lines outside the subset are floats, `long double`, variadics and
-float structs.
+Before floats and variadics came in, 41 lines without `-O` were
+outside: floats, `long double`, variadics and float structs. None is
+now.
 
-The gate can fail. I planted three bugs, each found by the gate and then
+The gate can fail. I planted three bugs in the integer model, and later
+five in floats and variadics, each found by the gate and then
 reverted:
 
 - A freed renewal returned `unchecked(span)` instead of the check's
@@ -79,6 +88,39 @@ reverted:
 - The null test came after the bounds test. `forged` and `nullread`
   in basic.ir disagreed.
 - `sar` was computed as `shr`. `immediate_shiftw` disagreed.
+- A `long double` `va_arg` cell aligned to 8, not 16: `variadic` in
+  ldouble.c disagreed.
+- The va_list cursor advanced by 8, not by the cell: the same.
+- The snapshot's capability was `obj`, not `ro`: `snapshot_write`
+  returned instead of trapping `readonly`.
+- A variadic callee reached through the generic entry lost its extra
+  arguments: `variadic_fixed_pointers` disagreed.
+- Rounding broke ties upward, not to even: no corpus line noticed, so
+  `rocq/tests/floats.ir` adds two ties, which then disagreed.
+
+One planted bug is still not caught: `generic_word` keeping all 64 bits
+of an integer word read as `s` or `d`, instead of its low bits. The
+receiving function reads its parameter at its class, which takes the
+low bits again (`value_x/5` calls `word_at_class/3`), and so does a
+caller reading a result. The difference could show only through a
+variadic callee with an `s` or `d` parameter reached through the
+generic entry, whose snapshot stores the parameter word as passed; no
+fixture has one yet.
+
+The Lua test suite itself cannot run in the interpreter: Lua's
+functions take a `lua_State` and call libc (allocation, strings,
+`setjmp` for errors), which the interpreter does not model, and Lua's
+tests run natively in `nix/lua.nix`. What the gate takes instead is
+Lua's source in two ways. Lowered file by file, every one of Lua's
+1,096 functions but one decodes into the subset; the one is
+`luaD_rawrunprotected`, which calls `_setjmp`. And
+[rocq/tests/lua.c](../rocq/tests/lua.c) includes lctype.c, lobject.c
+and lstring.c, as Lua's onelua.c does, and runs the functions of theirs
+that need neither a state nor libc on the path taken: integer and float
+arithmetic (`luaO_rawarith`), integer numerals (`luaO_str2num`), the
+string hash, UTF-8 escapes and `luaO_ceillog2`.
+[rocq/lua.sh](../rocq/lua.sh) preprocesses it against the Lua source
+`nix/lua.nix` builds, with the same flags.
 
 Gaps in coverage: pizlonate's output never contains `renew_if` or
 `renew_hull` in the corpus. `reuse.ir` covers them by hand, so it runs
@@ -148,10 +190,11 @@ over 169 of them agreed on all 73,330 verdicts it could judge.
 
 | Corpus | Verdicts that agree | Outside the subset | Disagree |
 | --- | --- | --- | --- |
-| filc fixtures, C tests and gen modules, without `-O` (each `--checks` mode) | 45,988–50,044 | 7,066–7,388 | 0 |
-| the same with `-O` | 30,032–32,572 | 5,148–5,536 | 0 |
-| the 16 `tests/c/prog` programs (reference checks) | 8,926 | 3,591 | 0 |
-| `rocq/tests/reuse.ir` (reference checks) | 111 | 0 | 0 |
+| filc fixtures, C tests and gen modules, without `-O` (each `--checks` mode) | 52,801–57,179 | 253 | 0 |
+| the same with `-O` | 34,940–37,855 | 253–256 | 0 |
+| the 16 `tests/c/prog` programs (reference checks) | 9,505 | 3,012 | 0 |
+| Lua's own functions, `rocq/lua.sh` (reference checks) | 6,345 | 0 | 0 |
+| `rocq/tests/reuse.ir`, `snapshot.ir`, `floats.ir` (reference checks) | 111, 145, 46 | 0 | 0 |
 
 The mutants test rejection as well as acceptance: on basic.ir,
 `valid_module/1` judged 413 of them invalid and 210 valid. In the four
@@ -201,6 +244,21 @@ These are formal.md's early decisions as they turned out in the code:
   decoding error would show as a disagreement or as `bad_line`, never as
   a silent agreement, because `judge` compares the model's encoded
   outcome with the interpreter's term by `==`.
+- **Floats are bit patterns, rounded in one place.** As in interp.pl,
+  an `s`, `d` or `x` word is the unsigned integer of its bits, never a
+  host float, and `Ieee.v` computes with exact rationals and rounds in
+  `round_ratio` alone. The classes are `Single`, `Double` and
+  `Extended`, since a constructor `S` would shadow `nat`'s.
+- **The variadic snapshot is a step of its own.** A variadic callee
+  starts at `Snapshot xs l`: taking the snapshot allocates, so it is a
+  `Fresh` step like `alloc`, before the entry block. The snapshot's
+  pointer lives in the environment under `hidden(va_snapshot)`, the
+  interpreter's key.
+- **Prolog's `//` on non-negative operands is `Z.div`.** ieee.pl's
+  `//` truncates; `Z.quot` says that, but its extraction divides bit
+  by bit and took minutes on the 16,000-bit ratios of an `x` denormal.
+  Where both operands are non-negative the model uses `Z.div`, which
+  extracts to zarith's division and agrees.
 
 ## What the transcription made clearer
 
@@ -228,10 +286,12 @@ These are formal.md's early decisions as they turned out in the code:
   the object was freed. `object_free_res` does free a read-only heap
   object, and the variadic snapshot (`args_snapshot`) is one. A renew
   through a freed snapshot would therefore be reported as a broken pass
-  instead of the reference check's `trap(out_of_bounds)`. This is
-  outside the core subset (`va_arg`), so it has no fixture yet; it is
-  the first candidate for one when variadics come in, and Campaign 3's
-  renew lemma must state which objects can be freed.
+  instead of the reference check's `trap(out_of_bounds)`. With
+  variadics in the subset this now has a fixture,
+  `rocq/tests/snapshot.ir`'s `freed_snapshot`: `valid_module/1`
+  accepts it, and both the interpreter and the model end it
+  `unchecked(span)`, where `freed_snapshot_check` traps. See the next
+  section.
 
 ## What transcribing the validator made clearer
 
@@ -268,9 +328,25 @@ These are formal.md's early decisions as they turned out in the code:
   validator, and Campaign 3's soundness statement must be about the
   blocks in that order.
 
+## A valid module can reach unchecked
+
+`freed_snapshot` frees the variadic snapshot (`free` of `va_args` at
+offset 0) between a check of it and a `renew` of that check. ir.pl
+accepts the module, and the run ends `unchecked(span)`: a valid module
+whose run is unchecked, which Campaign 3's theorem `valid_no_unchecked`
+says cannot happen. The model agrees with the interpreter, so this is
+not a disagreement but a counterexample to the theorem as stated, found
+in the Prolog itself. Either `renew_res/4` should treat a freed `ro`
+object as it treats a freed `obj` one (the run would then trap, as the
+check does), or freeing the snapshot should be excluded: native Fil-C's
+snapshot is a runtime object a program never names, so whether `free`
+of it can happen at all is a question for Campaign 2. Nanofil's C
+frontend never frees `va_args`, so no C program reaches it.
+
 ## Disagreements
 
-None so far, in the outcome gate or the validator gate. No fixture was
+None so far, in the outcome gate or the validator gate, floats and
+variadics included. No fixture was
 needed, and the Prolog has not yet been contradicted. Making the comparison work needed two changes on the
 OCaml side, neither of them semantic: a gas limit in the driver that
 was too small for loops (now 2^60 steps, so the run's own fuel always
@@ -278,9 +354,8 @@ ends a run first), and atoms containing UTF-8 bytes in a reader.
 
 ## Next
 
-1. The Lua test suite, Campaign 1's goal: its functions need floats
-   and variadics in the subset, which are most of what is now
-   `outside`.
+1. Decide the freed-snapshot case above (ir.pl, interp.pl or
+   Campaign 2's axioms), before Campaign 3 states its theorem.
 2. More of the generator's shapes in its `filc` mode (pointer loads and
    stores, calls), so the generated corpus reaches the reuse forms.
 3. The Campaign 2 `Module Type Runtime`: `fresh` and the lifetime facts

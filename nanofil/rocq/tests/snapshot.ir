@@ -1,0 +1,92 @@
+% Checked IR that reaches a variadic callee's entry argument snapshot
+% directly (rocq/agree.sh), as C cannot: va_args points into it. It
+% holds every argument, the fixed ones first, and is read-only, so a
+% store through it traps; a call with no arguments at all has a null
+% snapshot. And free frees it, after which a renew of an earlier proof
+% is unchecked(span), not the trap a check gives (docs/rocq.md, "A
+% valid module can reach unchecked"): renew_res/4 knows only obj
+% capabilities to be freed.
+
+% The extra argument, 8 bytes past the one fixed argument.
+run(snapshot_read, [5]).
+func(snapshot_read, export, l, [param(l, tmp(n))], [
+    block(start, [], [
+        call(result(tmp(r), l), global(extra), [arg(l, tmp(n)), arg(l, const(7))])
+    ], ret(tmp(r)))
+]).
+func(extra, local, l, [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(va), p, va_args, [const(8)]),
+        let(tmp(c), a, check(0, 8, read, 1), [tmp(va)]),
+        let(tmp(v), l, raw_load(l, 0), [tmp(c)]),
+        let(tmp(r), l, add, [tmp(v), tmp(n)])
+    ], ret(tmp(r)))
+]).
+
+% A store through the snapshot.
+run(snapshot_write, [5]).
+func(snapshot_write, export, l, [param(l, tmp(n))], [
+    block(start, [], [
+        call(result(tmp(r), l), global(overwrite), [arg(l, tmp(n)), arg(l, const(7))])
+    ], ret(tmp(r)))
+]).
+func(overwrite, local, l, [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(va), p, va_args, [const(0)]),
+        let(tmp(c), a, check(0, 8, write, 1), [tmp(va)]),
+        raw_store(l, 0, const(1), tmp(c))
+    ], ret(tmp(n)))
+]).
+
+% No arguments: the snapshot is null.
+run(snapshot_empty, [0]).
+func(snapshot_empty, export, l, [param(l, tmp(n))], [
+    block(start, [], [
+        call(result(tmp(r), l), global(nothing), [])
+    ], ret(tmp(r)))
+]).
+func(nothing, local, l, [], [
+    block(start, [], [
+        let(tmp(va), p, va_args, [const(0)]),
+        let(tmp(c), a, check(0, 8, read, 1), [tmp(va)]),
+        let(tmp(v), l, raw_load(l, 0), [tmp(c)])
+    ], ret(tmp(v)))
+]).
+
+% A free of the snapshot between a proof and its renewal: valid_module/1
+% accepts this, and the run ends unchecked(span).
+run(freed_snapshot, [5]).
+func(freed_snapshot, export, l, [param(l, tmp(n))], [
+    block(start, [], [
+        call(result(tmp(r), l), global(reread), [arg(l, tmp(n)), arg(l, const(7))])
+    ], ret(tmp(r)))
+]).
+func(reread, local, l, [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(va), p, va_args, [const(8)]),
+        let(tmp(c0), a, check(0, 8, read, 1), [tmp(va)]),
+        let(tmp(v), l, raw_load(l, 0), [tmp(c0)]),
+        let(tmp(base), p, va_args, [const(0)]),
+        call(void, global(free), [arg(p, tmp(base))]),
+        let(tmp(c1), a, renew(0, 8, read, 1), [tmp(c0), tmp(va)]),
+        let(tmp(w), l, raw_load(l, 0), [tmp(c1)]),
+        let(tmp(r), l, add, [tmp(v), tmp(w)])
+    ], ret(tmp(r)))
+]).
+
+% The same access after the free with a check: trap(out_of_bounds).
+run(freed_snapshot_check, [5]).
+func(freed_snapshot_check, export, l, [param(l, tmp(n))], [
+    block(start, [], [
+        call(result(tmp(r), l), global(recheck), [arg(l, tmp(n)), arg(l, const(7))])
+    ], ret(tmp(r)))
+]).
+func(recheck, local, l, [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(va), p, va_args, [const(8)]),
+        let(tmp(base), p, va_args, [const(0)]),
+        call(void, global(free), [arg(p, tmp(base))]),
+        let(tmp(c1), a, check(0, 8, read, 1), [tmp(va)]),
+        let(tmp(w), l, raw_load(l, 0), [tmp(c1)])
+    ], ret(tmp(w)))
+]).

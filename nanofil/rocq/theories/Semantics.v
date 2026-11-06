@@ -19,7 +19,9 @@
 
     A frame is at `Enter l from`, about to run block l entered from
     `from` (None for the entry), or at `Exec l insts jump`, inside block
-    l with insts left to run. Entering a block costs one unit of fuel;
+    l with insts left to run. A variadic callee starts at `Snapshot xs
+    l`, where it takes the snapshot of its arguments xs, an allocation,
+    before entering its entry block l. Entering a block costs one unit of fuel;
     with none left the run is `OutOfFuel`, as `block_outcome/7` says.
 
     ## Steps
@@ -41,7 +43,7 @@
     | `Rets xs` | `rets([X1, X2])` |
     | `RetVoid` | `ret` |
     | `Unreachable` | `unreachable` |
-    | `UB why` | `ub(Reason)`, never reached in the core subset |
+    | `UB why` | `ub(Reason)`: here only `float_conversion`, an invalid float-to-integer conversion |
     | `Trap why` | `trap(Reason)` |
     | `Unchecked why` | `unchecked(Reason)` |
     | `OutOfFuel` | `out_of_fuel` | *)
@@ -160,6 +162,7 @@ Definition flight_cap (ge : genv) (e : env) (lw : flight_lower) : option cap :=
 (** ## Frames and configurations *)
 
 Inductive point : Type :=
+| Snapshot (xs : list word) (l : name)
 | Enter (l : name) (from : option name)
 | Exec (l : name) (insts : list inst) (j : jump).
 
@@ -192,7 +195,8 @@ Definition with_point (fr : frame) (pt : point) : frame :=
 
 (** `call_outcome/8`'s callee invocation: parameters bound to the first
     arguments as they are, each local declared and not yet allocated,
-    at the entry block. *)
+    at the entry block; a variadic callee first takes the snapshot of
+    all its arguments (`entry_snapshot/6`). *)
 Definition call_frame (f : func) (xs : list word) : option frame :=
   let params := fn_params f in
   if (length xs <? length params)%nat then None else
@@ -202,8 +206,32 @@ Definition call_frame (f : func) (xs : list word) : option frame :=
   | [] => None
   | b :: _ =>
       Some (mkFrame f e (map (fun xs => (fst xs, None)) (local_objects f)) None
-                    (Enter (b_label b) None))
+                    (if variadic_func f then Snapshot xs (b_label b)
+                     else Enter (b_label b) None))
   end.
+
+(** ## The entry argument snapshot *)
+
+(** The environment's hidden `va_snapshot` entry: the snapshot's
+    pointer, for `va_args`. *)
+Definition va_snapshot : name := TApp "hidden" [TAtom "va_snapshot"].
+
+(** `snapshot_values(Xs, A, Base, Mem0, Mem)`: each argument stored as
+    `p` if it is a pointer, else as `l`, 8 bytes apart. The stores are
+    into a fresh object of 8 bytes per argument, so their checks
+    pass. *)
+Fixpoint snapshot_values (xs : list word) (a : Z) (m : mem) : mem :=
+  match xs with
+  | [] => m
+  | WPtr p :: rest =>
+      snapshot_values rest (a + 8) (store_aux (store_bytes m a 8 (ptr_addr p)) a (ptr_cap p))
+  | WInt n :: rest => snapshot_values rest (a + 8) (store_bytes m a 8 n)
+  | _ :: rest => snapshot_values rest (a + 8) m
+  end.
+
+(** The words `snapshot_values/5` can store: integers and pointers. *)
+Definition snapshot_word (x : word) : bool :=
+  match x with WInt _ | WPtr _ => true | _ => false end.
 
 Fixpoint find_block (l : name) (bs : list block) : option block :=
   match bs with
@@ -278,14 +306,24 @@ Definition return_words (t : ret_type) : list class :=
   | RClass k => [k]
   end.
 
-(** `word_class(K, Class)`: w and l are the same word. *)
-Inductive word_kind : Type := IntWord | PtrWord.
+(** `word_class(K, Class)`: w and l are the same word; p, s and d are
+    each their own. *)
+Inductive word_kind : Type := IntWord | PtrWord | SingleWord | DoubleWord.
 
 Definition word_class (k : class) : option word_kind :=
-  match k with W | L => Some IntWord | P => Some PtrWord | _ => None end.
+  match k with
+  | W | L => Some IntWord
+  | P => Some PtrWord
+  | Single => Some SingleWord
+  | Double => Some DoubleWord
+  | _ => None
+  end.
 
 Definition word_kind_eqb (a b : word_kind) : bool :=
-  match a, b with IntWord, IntWord | PtrWord, PtrWord => true | _, _ => false end.
+  match a, b with
+  | IntWord, IntWord | PtrWord, PtrWord | SingleWord, SingleWord | DoubleWord, DoubleWord => true
+  | _, _ => false
+  end.
 
 (** The `->` condition of `indirect_call_conv/7`: both lists of words
     have word classes, and the same ones. *)
@@ -300,10 +338,12 @@ Definition same_words (ks ks' : list class) : bool :=
     From and read at class To through the generic entry. *)
 Definition generic_word (from to : class) (x : word) : option word :=
   match from, to with
-  | (W | L), (W | L) => Some x
-  | (W | L), P => match x with WInt n => Some (WPtr (mkPtr n CNone)) | _ => None end
+  | (W | L | Single | Double), (W | L) => Some x
+  | (W | L | Single | Double), P => match x with WInt n => Some (WPtr (mkPtr n CNone)) | _ => None end
+  | (W | L | Single | Double), (Single | Double) => word_at_class to x
   | P, (W | L) => let* a := pointer_address x in Some (WInt a)
   | P, P => Some x
+  | P, (Single | Double) => let* a := pointer_address x in word_at_class to (WInt a)
   | _, _ => None
   end.
 
@@ -401,32 +441,15 @@ Definition store_out (r : res unit) (e : env) locals (m : mem) : inst_out :=
   | RUnchecked why => IStop (Unchecked why)
   end.
 
-(** `width_value_class(Width, K)` for the core subset's widths. *)
+(** `width_value_class(Width, K)`. *)
 Definition width_value_class (w : width) : option class :=
   match w with
   | Wb | Wh | Ww => Some W
   | Wl => Some L
   | Wp => Some P
-  | _ => None
-  end.
-
-(** `store_res(filc, Width, Mem0, ptr(A, Cap), X, Res, Mem)`: the access
-    check of a store (alignment 8 for a pointer, else 1), then its
-    bytes, and for a pointer its capability in aux. *)
-Definition store_res (w : width) (m : mem) (a : Z) (c : cap) (x : word)
-  : option (res unit * mem) :=
-  let size := width_bytes w in
-  match w, x with
-  | Wp, WPtr v =>
-      let* chk := access_res m a c size Write 8 in
-      Some (chk, match chk with
-                 | RVal _ => store_aux (store_bytes m a size (ptr_addr v)) a (ptr_cap v)
-                 | _ => m
-                 end)
-  | (Wb | Wh | Ww | Wl), WInt v =>
-      let* chk := access_res m a c size Write 1 in
-      Some (chk, match chk with RVal _ => store_bytes m a size v | _ => m end)
-  | _, _ => None
+  | Ws => Some Single
+  | Wd => Some Double
+  | Wx => Some Extended
   end.
 
 (** `external_call_outcome/9`: only libc's `void free(p)` is modeled; a
@@ -479,6 +502,13 @@ Definition inst_step (ge : genv) (fr : frame) (m : mem) (i : inst) : option inst
       | WInt n => Some (IContinue (put d (WPtr (mkPtr n c)) e) locals m)
       | _ => None
       end
+  | Let d P VaArgs [Const off] =>
+      let* x := lookup va_snapshot e in
+      match x with
+      | WPtr p => Some (IContinue (put d (WPtr (mkPtr ((ptr_addr p + off) mod 2 ^ 64) (ptr_cap p))) e)
+                                  locals m)
+      | _ => None
+      end
   | Let d F CheckFunction [v] =>
       let* x := value_x ge e P v in
       match x with
@@ -487,12 +517,13 @@ Definition inst_step (ge : genv) (fr : frame) (m : mem) (i : inst) : option inst
       | _ => None
       end
   | Let d k o args =>
-      match o with CheckLocal _ _ _ _ _ | CheckFunction => None | _ =>
+      match o with CheckLocal _ _ _ _ _ | CheckFunction | VaArgs => None | _ =>
       let* classes := op_arg_classes o k in
       let* xs := map2_option (value_x ge e) classes args in
       let* out := op_res o k xs m in
       match out with
       | OpRes r m' => Some (bind_res d r e locals m')
+      | OpUB why => Some (IStop (UB why))
       | OpAlloc q kont =>
           Some (IFresh q (fun base => let (x, m') := kont base in (put d x e, locals, m')))
       end
@@ -550,7 +581,12 @@ Definition inst_step (ge : genv) (fr : frame) (m : mem) (i : inst) : option inst
                       let* cv := indirect_call_conv gf r args xs in
                       match cv with
                       | ConvTrap why => Some (IStop (Trap why))
-                      | Converted ys words => Some (ICall gf ys (mkPending r words))
+                      | Converted ys words =>
+                          (* a variadic callee gets the extra arguments
+                             unconverted after its parameters *)
+                          let extra := if variadic_func gf
+                                       then skipn (length (fn_params gf)) xs else [] in
+                          Some (ICall gf (ys ++ extra) (mkPending r words))
                       end
                   | Some (Outside g') => Some (ICallOutside g')
                   | None => None
@@ -691,6 +727,21 @@ Definition step (ge : genv) (c : config) : step_result :=
   let fr := c_frame c in
   let m := c_mem c in
   match fr_at fr with
+  | Snapshot xs l =>
+      (* entry_snapshot/6 and args_snapshot/4: no arguments is a null
+         pointer; otherwise a fresh 16-aligned object holds them, and
+         its pointer is read-only. *)
+      let enter e m' := mkConfig (mkFrame (fr_fn fr) (put va_snapshot e (fr_env fr)) (fr_locals fr)
+                                          (fr_doomed fr) (Enter l None))
+                                 (c_callers c) m' (c_fuel c) in
+      match xs with
+      | [] => Next (enter (WPtr (mkPtr 0 CNone)) m)
+      | _ =>
+          if negb (forallb snapshot_word xs) then Stuck "snapshot" else
+          let q := heap_req 16 (8 * Z.of_nat (length xs)) in
+          Fresh q (fun base => enter (WPtr (mkPtr base (Ro base)))
+                                     (snapshot_values xs base (allocated m q base)))
+      end
   | Enter l from =>
       (* block_outcome/7: fuel first, then the block's phis. *)
       if c_fuel c =? 0 then Done OutOfFuel else

@@ -5,8 +5,8 @@
 # agrees with interp:run/5 on every run line of rocq/tests, the Fil-C
 # IR fixtures, the C tests and Fil-C modules from tests/gen.pl, the
 # last three with and without -O and under every --checks mode
-# (rocq/agree.sh); and that its validator
-# reaches ir:valid_module/1's verdict on mutants of every checked module
+# (rocq/agree.sh), and Lua's own functions (rocq/lua.sh); and that its
+# validator reaches ir:valid_module/1's verdict on mutants of every checked module
 # in the same matrix, and of the tests/c/prog programs with aliases and
 # weak, thread-local or constructor data (rocq/valid.sh).
 { pkgs, filcc }:
@@ -58,10 +58,17 @@ pkgs.runCommandCC "nanofil-rocq-check"
     for seed in $(seq 1 40); do
       (cd src && ../bin/nanofil --script ../tests/gen.pl $seed 10 filc </dev/null) > gen/gen-$seed.ir
     done
+    # Lua 5.4.7's lctype.c, lobject.c and lstring.c, the source nix/lua.nix
+    # builds, with the run lines of rocq/tests/lua.c, join the outcome
+    # matrix; the validator judges their mutants once, below, since each
+    # is judged on the whole module.
+    mkdir luasrc
+    tar -xf ${pkgs.lua5_4.src} -C luasrc --strip-components=1
+    rocq/lua.sh luasrc/src >lua.ir
     for opt in "" -O; do
       for checks in reference reuse renew guard hoist schedule half forward combined hull getter extended; do
         echo "### NANOFIL_OPT=$opt NANOFIL_CHECKS=$checks"
-        NANOFIL_OPT=$opt NANOFIL_CHECKS=$checks rocq/agree.sh tests/filc/*.ir tests/c/*.c gen/*.ir
+        NANOFIL_OPT=$opt NANOFIL_CHECKS=$checks rocq/agree.sh tests/filc/*.ir tests/c/*.c gen/*.ir lua.ir
       done
     done
     # The validator against ir:valid_module/1 on mutants of every checked
@@ -84,9 +91,10 @@ pkgs.runCommandCC "nanofil-rocq-check"
     # progtest.sh does and not as cc-ir does.
     grep -lE 'alias *\(|weak|_Thread_local|__thread|thread_local|constructor|destructor' \
       $(grep -L '^// cflags:' tests/c/prog/*.c) >prog.list
+    echo lua.ir >>prog.list
     xargs -P "$NIX_BUILD_CORES" -n 1 sh -c '
       NANOFIL_CHECKS=reference rocq/valid.sh "$0" >"$TMPDIR/prog-$$.log" 2>&1 \
         || { echo "### valid $0"; cat "$TMPDIR/prog-$$.log"; exit 1; }' <prog.list
-    echo "valid tests/c/prog: $(wc -l <prog.list) programs agree"
+    echo "valid tests/c/prog and lua.ir: $(wc -l <prog.list) modules agree"
     touch $out
   ''

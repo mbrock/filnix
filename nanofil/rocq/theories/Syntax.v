@@ -5,10 +5,11 @@
     The subset is formal.md's: filc mode, the checked stage, the integer
     and pointer classes, `check` and its reuse vocabulary, the `raw_*`
     accesses, `flight`, poll edges, `call`, `raw_call` and `free`, and
-    named locals. Floats, x87, vectors, `cas` and atomics, `setjmp`,
-    `va_arg`, `asm_fixed` and plain mode are deferred: a function that
-    uses them is `IOutside`, which has an address but no body
-    (Transport.v decides).
+    named locals; and, for the Lua suite, the float classes with their
+    conversions (Ieee.v) and variadic functions (`va_args`, `va_arg`).
+    Vectors, `cas` and atomics, `setjmp`, `asm_fixed` and plain mode
+    are deferred: a function that uses them is `IOutside`, which has an
+    address but no body (Transport.v decides).
 
     ## Classes
 
@@ -19,6 +20,9 @@
     | `P` | `p`, a pointer: an address with its capability |
     | `A` | `a`, a proven address, the result of a check |
     | `F` | `f`, a proven function, the result of `check_function` |
+    | `Single` | `s`, an IEEE single, held as its 32-bit pattern |
+    | `Double` | `d`, an IEEE double, held as its 64-bit pattern |
+    | `Extended` | `x`, an x87 extended double, held as its 80-bit pattern |
 
     ## Items, blocks and instructions
 
@@ -47,22 +51,36 @@ Open Scope Z_scope.
 
 (** ## Classes and widths *)
 
-(** `class(K, Kind, Bits)` for the integer and pointer classes, and the
-    proof classes `a` and `f` of the checked stage. *)
-Inductive class : Type := W | L | P | A | F.
+(** `class(K, Kind, Bits)` for the integer, pointer and float
+    classes, and the proof classes `a` and `f` of the checked stage.
+    `Single`, `Double` and `Extended` are `s`, `d` and `x`: binary32,
+    binary64 and the x87 extended format
+    (C's `long double`, never a parameter, result, call argument or
+    phi). *)
+Inductive class : Type := W | L | P | A | F | Single | Double | Extended.
 
 Definition class_eqb (k k' : class) : bool :=
   match k, k' with
-  | W, W | L, L | P, P | A, A | F, F => true
+  | W, W | L, L | P, P | A, A | F, F
+  | Single, Single | Double, Double | Extended, Extended => true
   | _, _ => false
   end.
+
+(** `float_class(K)`. *)
+Definition float_class (k : class) : bool :=
+  match k with Single | Double | Extended => true | _ => false end.
+
+(** `int_class(K)`. *)
+Definition int_class (k : class) : bool :=
+  match k with W | L => true | _ => false end.
 
 (** `modulus(K, Mod)`: values of class K are 0..Mod-1; a p value's
     address has the modulus of l. The proof classes have none. *)
 Definition modulus (k : class) : option Z :=
   match k with
-  | W => Some (2 ^ 32)
-  | L | P => Some (2 ^ 64)
+  | W | Single => Some (2 ^ 32)
+  | L | P | Double => Some (2 ^ 64)
+  | Extended => Some (2 ^ 80)
   | A | F => None
   end.
 
@@ -82,8 +100,7 @@ Definition half_modulus (k : class) : option Z :=
   | _ => None
   end.
 
-(** A store's or data item's width: a class, or `b` and `h`. The float
-    widths `s`, `d` and `x` occur only in data items here. *)
+(** A store's or data item's width: a class, or `b` and `h`. *)
 Inductive width : Type := Wb | Wh | Ww | Wl | Wp | Ws | Wd | Wx.
 
 (** `width_bytes(Width, Size)`. *)
@@ -105,13 +122,18 @@ Definition narrow_type (t : narrow) : Z * signedness :=
   | Sb => (1, Signed) | Ub => (1, Unsigned)
   end.
 
-(** A raw load's type: `l` or a narrow type (`load_type/1` without `p`,
-    which `raw_load_pointer` reads, and without the floats). *)
-Inductive load_type : Type := LdL | LdNarrow (t : narrow).
+(** A raw load's type: `l`, a float class or a narrow type
+    (`load_type/1` without `p`, which `raw_load_pointer` reads). *)
+Inductive load_type : Type := LdL | LdS | LdD | LdX | LdNarrow (t : narrow).
 
 (** ## Ops *)
 
-Inductive cond : Type := Eq | Ne | Sle | Slt | Sge | Sgt | Ule | Ult | Uge | Ugt.
+(** A comparison's Cond: `eq` and `ne` at any numeric class, the signed
+    and unsigned orders at `w` and `l`, and `le` `lt` `ge` `gt` `o`
+    (ordered) and `uo` (unordered) at a float class. *)
+Inductive cond : Type :=
+| Eq | Ne | Sle | Slt | Sge | Sgt | Ule | Ult | Uge | Ugt
+| Le | Lt | Ge | Gt | Ord | Unord.
 
 Inductive rights : Type := Read | Write.
 
@@ -149,6 +171,15 @@ Inductive op : Type :=
 | Sar | Shr | Shl | Neg | Copy | Ptoi | Itop
 | Cmp (c : cond) (k : class)
 | Ext (t : narrow)
+(* The float conversions: `ext(s)` and `ext(d)` name their source
+   class; `stosi` is `FloatToInt Single Signed`, `dtoui` is
+   `FloatToInt Double Unsigned`; `swtof` is `IntToFloat W Signed`, `ultof`
+   is `IntToFloat L Unsigned`. *)
+| ExtF (k : class)
+| Truncd | Truncx
+| FloatToInt (k : class) (sg : signedness)
+| IntToFloat (k : class) (sg : signedness)
+| Cast
 | Alloc (align : Z)
 | Check (lo hi : Z) (r : rights) (align : Z)
 | CheckAhead (lo hi : Z) (r : rights) (align ahi : Z)
@@ -162,7 +193,11 @@ Inductive op : Type :=
 | CheckLocal (x : name) (off bytes : Z) (r : rights) (align : Z)
 | CheckFunction
 | RawLoad (t : load_type) (off : Z)
-| RawLoadPointer (off : Z) (es : list effect).
+| RawLoadPointer (off : Z) (es : list effect)
+(* `va_args` takes a variadic function's entry argument snapshot at a
+   byte offset; `va_arg` loads the next argument through a va_list. *)
+| VaArgs
+| VaArg.
 
 (** ## Values, instructions and jumps *)
 
@@ -234,6 +269,14 @@ Record func : Type := mkFunc {
   fn_blocks : list block
 }.
 
+(** `variadic_func(Func)`: Func takes the entry argument snapshot of a
+    variadic function, with a `va_args` anywhere in its blocks. *)
+Definition variadic_func (f : func) : bool :=
+  existsb (fun b => existsb (fun i => match i with
+                                      | Let _ P VaArgs _ => true
+                                      | _ => false
+                                      end) (b_insts b)) (fn_blocks f).
+
 (** ## Data *)
 
 (** A data object's Linkage (ir.pl's Data section). *)
@@ -280,6 +323,8 @@ Definition op_arg_classes (o : op) (k : class) : option (list class) :=
       (* additive_arg_classes/2 *)
       match k with
       | W => Some [W; W] | L => Some [L; L] | P => Some [P; L]
+      | Single => Some [Single; Single] | Double => Some [Double; Double]
+      | Extended => Some [Extended; Extended]
       | _ => None
       end
   | Mul | Div | Udiv | Rem | Urem | And | Or | Xor => Some [k; k]
@@ -289,6 +334,17 @@ Definition op_arg_classes (o : op) (k : class) : option (list class) :=
   | Itop => Some [L]
   | Cmp _ ck => Some [ck; ck]
   | Ext _ => Some [W]
+  | ExtF fk => Some [fk]
+  | Truncd => Some [Double]
+  | Truncx => Some [Extended]
+  | FloatToInt fk _ => Some [fk]
+  | IntToFloat ik _ => Some [ik]
+  | Cast =>
+      (* cast_classes/2 *)
+      match k with
+      | W => Some [Single] | Single => Some [W] | L => Some [Double] | Double => Some [L]
+      | _ => None
+      end
   | Alloc _ => Some [L]
   | Check _ _ _ _ | CheckAhead _ _ _ _ _ => Some [P]
   | Renew _ _ _ _ => Some [A; P]
@@ -302,6 +358,8 @@ Definition op_arg_classes (o : op) (k : class) : option (list class) :=
   | CheckFunction => Some [P]
   | RawLoad _ _ => Some [A]
   | RawLoadPointer _ _ => Some [A]
+  | VaArgs => Some [L]
+  | VaArg => Some [P]
   end.
 
 Definition is_global (v : value) : bool :=
@@ -326,6 +384,7 @@ Definition evidence_preserving (i : inst) : bool :=
              | Sar | Shr | Shl | Neg | Ptoi) _ => true
   | Let _ _ (Cmp _ _) _ => true
   | Let _ _ (Ext _) _ => true
+  | Let _ _ (ExtF _ | Truncd | Truncx | FloatToInt _ _ | IntToFloat _ _ | Cast) _ => true
   | Let _ _ Copy args => negb (existsb is_global args)
   | _ => false
   end.
