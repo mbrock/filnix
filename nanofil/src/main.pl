@@ -13,6 +13,7 @@
     | `tokens FILE` | print C token terms, without locations |
     | `run FILE FN ARG...` | interpret FN on integer arguments |
     | `difftest FILE OUTDIR` | write `OUTDIR/expected.txt`, `OUTDIR/harness.c` and `OUTDIR/mode` for the file's `run(Fn, Args)` facts |
+    | `outcomes FILE` | print the checked module of a Fil-C IR file and the interpreter's outcome of each run line, as terms (rocq/) |
 
     A FILE ending in `.c` or `.i` goes through the C frontend; any other
     FILE is IR text. A `.c` file is preprocessed with the predefined
@@ -552,6 +553,8 @@ command(Opt0, Registers, Checks, [cc, File]) :- !,
     forall(member(Line, AsmLines), format("~w~n", [Line])).
 command(Opt, _, Checks, [difftest, File, Dir]) :- !,
     difftest(Opt, Checks, File, Dir).
+command(Opt, _, Checks, [outcomes, File]) :- !,
+    outcomes(Opt, Checks, File).
 command(Opt, _, _, Args) :- command(Opt,Args).
 
 % inline_attributes(+Opt0, +Attributes, -Opt): wide inlining takes the C
@@ -626,6 +629,35 @@ difftest(Sel, Checks, File, Dir) :-
              call_text(Fn, Args, CallText),
              format("  ~w = ~w~n", [CallText, Text])
            )).
+
+%! outcomes(+Opt, +Checks, +File) is det.
+%
+%  Prints, as Prolog terms, the checked module of the Fil-C IR File
+%  (after the middle end when Opt is o1, and the check passes Checks)
+%  and then, for each run line, outcome(Fn, Args, Fuel, Outcome), the
+%  interpreter's outcome on that module, or error(Fn, Args, Fuel, E)
+%  when the run throws E or finds no outcome. An independent model of
+%  the checked IR (rocq/, docs/formal.md) reads them.
+outcomes(Sel, Checks, File) :-
+    file_module(File, Module0),
+    module_mode(Module0, Mode),
+    (   Mode == filc -> true
+    ;   throw(nanofil_error('outcomes needs a Fil-C module'))
+    ),
+    optimize(Sel, Module0, Module),
+    checked_module(Checks, Module, Checked),
+    format("~k.~n", [Checked]),
+    file_runs(File, Runs),
+    module_prepared(Checked, Prepared),
+    max_fuel(Fuel),
+    forall(member(run(Fn, Args0), Runs),
+           ( catch(( module_run_result(Checked-Prepared, run(Fn, Args0), Fuel,
+                                       r(_, Args, Outcome))
+                   -> Line = outcome(Fn, Args, Fuel, Outcome)
+                   ;  Line = error(Fn, Args0, Fuel, failed)
+                   ),
+                   E, Line = error(Fn, Args0, Fuel, E)),
+             format("~k.~n", [Line]) )).
 
 %! mode_print_asm(+Mode, +Registers, +Checks, +Module) is det.
 %

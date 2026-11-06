@@ -1,0 +1,47 @@
+% Checked IR that runs the reuse vocabulary the corpus's checked output
+% does not reach (rocq/agree.sh): renew_if after a span test, and
+% renew_hull from two earlier proofs, each with a free through the same
+% object between the evidence and its reuse when k is nonzero, so the
+% renewal's flag test traps.
+
+% renew_if: g is 1 for p0's 16 bytes, q = p0 + 8 is within them.
+run(guarded, [0]).
+run(guarded, [1]).
+func(guarded, export, l, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(p0), p, alloc(16), [const(16)]),
+        let(tmp(c0), a, check(0, 8, write, 1), [tmp(p0)]),
+        raw_store(l, 0, const(5), tmp(c0)),
+        flight(tmp(q), add, [address(tmp(p0)), const(8)], lower(tmp(p0))),
+        let(tmp(c1), a, check(0, 8, write, 1), [tmp(q)]),
+        raw_store(l, 0, const(7), tmp(c1)),
+        let(tmp(g), w, span_test(0, 16), [tmp(p0)])
+    ], branch(tmp(k), freeing, reading)),
+    block(freeing, [], [
+        call(void, global(free), [arg(p, tmp(p0))])
+    ], goto(reading)),
+    block(reading, [], [
+        let(tmp(c2), a, renew_if(0, 8, read, 1), [tmp(q), tmp(g)]),
+        let(tmp(v), l, raw_load(l, 0), [tmp(c2)])
+    ], ret(tmp(v)))
+]).
+
+% renew_hull: one proof of [0, 8), another of [8, 16), cover [4, 12).
+run(hull, [0]).
+run(hull, [1]).
+func(hull, export, l, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(16), [const(16)]),
+        let(tmp(ql), a, check(0, 8, write, 1), [tmp(p)]),
+        raw_store(l, 0, const(-1), tmp(ql)),
+        let(tmp(qh), a, check(8, 16, write, 1), [tmp(p)]),
+        raw_store(l, 8, const(2), tmp(qh))
+    ], branch(tmp(k), freeing, reading)),
+    block(freeing, [], [
+        call(void, global(free), [arg(p, tmp(p))])
+    ], goto(reading)),
+    block(reading, [], [
+        let(tmp(c), a, renew_hull(4, 12, read, 1), [tmp(ql), tmp(qh), tmp(p)]),
+        let(tmp(v), l, raw_load(l, 4), [tmp(c)])
+    ], ret(tmp(v)))
+]).

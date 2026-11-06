@@ -1,9 +1,9 @@
 # The formal campaign: checked IR, certificates, and Rocq
 
 November 2026. This extends [campaign.md](campaign.md), which states
-nanofil's foundation; read that first. The campaign below is a plan:
-nothing in it is built yet, and each campaign ends with a note in
-`docs/` that says what it found.
+nanofil's foundation; read that first. The campaign below is a plan,
+and each campaign ends with a note in `docs/` that says what it found;
+the table below says what is built.
 
 ## The ambition
 
@@ -35,7 +35,7 @@ package in Filnix rather than only what nanofil compiles.
 | Campaign | Goal | Deliverable | State |
 | --- | --- | --- | --- |
 | 0 | Measure which checks survive `-O --checks=combined` | `docs/residual.md` | not started |
-| 1 | The core model in Rocq, agreeing with the interpreter | Gallina syntax, semantics, `valid` | not started |
+| 1 | The core model in Rocq, agreeing with the interpreter | Gallina syntax, semantics, `valid` | under way: syntax, memory and small-step semantics in `nanofil/rocq/`, agreeing with `interp:run/5` on every core-subset run line under every `--checks` mode ([rocq.md](rocq.md)); `valid` not started |
 | 2 | The runtime as one page of axioms, each probed natively | `docs/runtime-axioms.md` | not started |
 | 3 | The soundness theorem for the validator | `valid_no_unchecked`, no admits | not started |
 | 4 | Observations, refinement, and libc contracts | a trace semantics; `opt:refines/2` as trace inclusion | not started |
@@ -180,6 +180,9 @@ Design decisions to make early and write down:
   Next is one instance; proofs may not rely on it.
 - **Externals.** A call to a symbol the module does not define is stuck
   until Campaign 4 gives it a contract.
+
+The decisions as taken, and what the first milestone found, are in
+[rocq.md](rocq.md).
 
 Gates: the extracted interpreter and `interp:run/5` agree on every test
 input and every corpus function (same outcome, same return value, same

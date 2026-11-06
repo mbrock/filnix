@@ -1,0 +1,15 @@
+# Built by rocq/Makefile (or nix/rocq.nix); the extraction is generated.
+*.vo
+*.vok
+*.vos
+*.glob
+.*.aux
+.lia.cache
+Makefile.rocq
+Makefile.rocq.conf
+.Makefile.rocq.d
+extraction/nanofil_model.ml
+extraction/nanofil_model.mli
+extraction/*.cm*
+extraction/*.o
+nanofil-model
