@@ -357,6 +357,34 @@ static int memmove_in_private(int mode)
     return 0;
 }
 
+void *unflagged_load(void **slot);
+void unflagged_store(void **slot, void *value);
+void unflagged_copy_out(void **dst, void **src, unsigned long n);
+
+/* Mixed builds: unflagged.c is compiled without -fzmark-shared. Its loads from a marked
+   segment get no capability (never a wrong one), and its pointer stores panic and name the
+   flag. Runtime calls it makes (memcpy, atomics) follow the rule, as in flagged code. In the same process, flagged code keeps working on the same segment. */
+static int unflagged(int store)
+{
+    struct seg *s = map_seg(1);
+    s->p = s->data;                          /* flagged store */
+    CHECK(zgetlower(s->p) == (void *)s);     /* flagged load */
+    void *v = unflagged_load((void **)&s->p);
+    CHECK(v == s->data && !zhasvalidcap(v));
+    void *out[2] = { 0, 0 };
+    unflagged_copy_out(out, (void **)&s->p, 1);
+    /* A runtime copy follows the rule whatever the caller was compiled with: O's capability or
+       none, never another. */
+    CHECK(out[0] == s->data && (!zhasvalidcap(out[0]) || zgetlower(out[0]) == (void *)s));
+    if (store) {
+        unflagged_store((void **)&s->q, s->data);
+        puts("unflagged stored");
+        return 0;
+    }
+    puts("unflagged ok");
+    return 0;
+}
+
 static int unmap_then_access(int which)
 {
     struct seg *s = map_seg(1);
@@ -504,6 +532,8 @@ int main(int argc, char **argv)
     if (!strcmp(c, "hostile-private")) return hostile(1);
     if (!strcmp(c, "hostile-end")) return hostile(2);
     if (!strcmp(c, "hostile-call")) return hostile(3);
+    if (!strcmp(c, "unflagged-load")) return unflagged(0);
+    if (!strcmp(c, "unflagged-store")) return unflagged(1);
     if (!strcmp(c, "native")) return native(argv[2]);
     return 2;
 }

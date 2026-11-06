@@ -19,10 +19,10 @@ Design, invariants and review: filnix docs/zmark-shared.md. Regressions:
 filnix tests/zmark-shared.nix (checks.staging-zmark-shared).
 
 diff --git a/filc/include/stdfil.h b/filc/include/stdfil.h
-index 051a9a04b6dc..6b106f236d3b 100644
+index 051a9a04b6dc..bc4d4e5ca339 100644
 --- a/filc/include/stdfil.h
 +++ b/filc/include/stdfil.h
-@@ -213,6 +213,30 @@ filc_bool zis_readonly(void* ptr);
+@@ -213,6 +213,37 @@ filc_bool zis_readonly(void* ptr);
  /* Tells if the pointer has a capability and that capability is not free. */
  filc_bool zhasvalidcap(void* ptr);
  
@@ -44,6 +44,13 @@ index 051a9a04b6dc..6b106f236d3b 100644
 +     capability from a pointer once stored in the same word.
 +   - va_arg from a va_list kept in the mapping gives pointers no capability.
 +
++   These rules hold for code compiled with -fzmark-shared. Code compiled without it is unchanged
++   and fails safe on a marked mapping: pointers it loads from the mapping have no capability, and
++   pointer stores into the mapping panic. So can small inlined copies (memcpy, memmove, struct
++   assignment) into the mapping, even of plain data, when a source word still carries a stale
++   capability. Compile every file, including libraries, that loads, stores or copies into a marked
++   mapping with -fzmark-shared.
++
 +   The mapping must start at ptr, come from mmap with MAP_SHARED or from shmat, and have had no
 +   pointer stored into it yet; anything else panics. Marking an already marked mapping does
 +   nothing. The mark is inherited across fork, so mark before forking. munmap of the whole mapping
@@ -54,7 +61,7 @@ index 051a9a04b6dc..6b106f236d3b 100644
     succeed on this pointer. */
  static inline __attribute__((__always_inline__)) filc_bool zinbounds(void* ptr)
 diff --git a/libpas/src/libpas/filc_runtime.c b/libpas/src/libpas/filc_runtime.c
-index 2f457645a779..19c44327d002 100644
+index 2f457645a779..d3d089fe5e40 100644
 --- a/libpas/src/libpas/filc_runtime.c
 +++ b/libpas/src/libpas/filc_runtime.c
 @@ -2126,6 +2126,13 @@ bool filc_weak_cas_ptr(filc_thread* my_thread, filc_ptr ptr, ptrdiff_t offset,
@@ -87,7 +94,7 @@ index 2f457645a779..19c44327d002 100644
      filc_lower_or_box* lower_or_box_ptr = filc_ptr_ensure_lower_or_box_ptr(my_thread, ptr);
      filc_store_barrier(my_thread, filc_ptr_object(new_value));
      for (;;) {
-@@ -2552,6 +2568,14 @@ static PAS_NO_RETURN PAS_NEVER_INLINE void ensure_aux_ptr_free_fail(filc_object*
+@@ -2552,6 +2568,17 @@ static PAS_NO_RETURN PAS_NEVER_INLINE void ensure_aux_ptr_free_fail(filc_object*
                        filc_object_to_new_string(object));
  }
  
@@ -95,14 +102,17 @@ index 2f457645a779..19c44327d002 100644
 +{
 +    filc_safety_panic(NULL,
 +                      "attempt to store a capability into zmark_shared object %s; only null or "
-+                      "pointers into the same object may be stored there.\n",
++                      "pointers into the same object may be stored there. Code that stores or "
++                      "copies (memcpy, memmove, struct assignment) into a zmark_shared object must "
++                      "be compiled with -fzmark-shared; without it, pointer stores and small "
++                      "copies of words that carry a capability land here.\n",
 +                      filc_object_to_new_string(object));
 +}
 +
  static PAS_ALWAYS_INLINE char* ensure_aux_ptr_slow_size_specialized(
      filc_thread* my_thread, filc_object* object, filc_exit_allowed_mode exit_allowed_mode,
      size_t size, filc_size_mode size_mode)
-@@ -2606,6 +2630,10 @@ static PAS_ALWAYS_INLINE char* ensure_aux_ptr_slow_size_specialized(
+@@ -2606,6 +2633,10 @@ static PAS_ALWAYS_INLINE char* ensure_aux_ptr_slow_size_specialized(
          }
          if (PAS_UNLIKELY(filc_aux_get_flags(aux) & FILC_OBJECT_FLAG_FREE))
              ensure_aux_ptr_free_fail(object);
@@ -113,7 +123,7 @@ index 2f457645a779..19c44327d002 100644
          if (not_atomic_hack) {
              object->aux = filc_aux_create(filc_aux_get_flags(aux), (char*)aux_ptr_result.begin);
              return (char*)aux_ptr_result.begin;
-@@ -2661,6 +2689,8 @@ static PAS_ALWAYS_INLINE char* ensure_aux_ptr_slow_impl(filc_thread* my_thread,
+@@ -2661,6 +2692,8 @@ static PAS_ALWAYS_INLINE char* ensure_aux_ptr_slow_impl(filc_thread* my_thread,
         freed). */
      if (PAS_UNLIKELY(!size))
          ensure_aux_ptr_zero_size(object);
@@ -122,7 +132,7 @@ index 2f457645a779..19c44327d002 100644
      if (PAS_LIKELY(size <= FILC_MAX_BYTES_BETWEEN_POLLCHECKS)) {
          return ensure_aux_ptr_slow_size_specialized(
              my_thread, object, exit_allowed_mode, size, filc_small_size);
-@@ -2686,6 +2716,24 @@ char* filc_object_ensure_aux_ptr_outline(filc_thread* my_thread, filc_object* ob
+@@ -2686,6 +2719,24 @@ char* filc_object_ensure_aux_ptr_outline(filc_thread* my_thread, filc_object* ob
      return ensure_aux_ptr_slow_impl(my_thread, object, filc_exit_allowed);
  }
  
@@ -147,7 +157,7 @@ index 2f457645a779..19c44327d002 100644
  filc_atomic_box* filc_atomic_box_create_for_ptr_store(filc_thread* my_thread, filc_ptr value)
  {
      filc_atomic_box* result = (filc_atomic_box*)filc_thread_allocate(my_thread,
-@@ -3997,6 +4045,113 @@ bool filc_native_zhasvalidcap(filc_thread* my_thread, filc_ptr ptr)
+@@ -3997,6 +4048,113 @@ bool filc_native_zhasvalidcap(filc_thread* my_thread, filc_ptr ptr)
          && !(filc_object_get_flags(filc_ptr_object(ptr)) & FILC_OBJECT_FLAG_FREE);
  }
  
@@ -261,7 +271,7 @@ index 2f457645a779..19c44327d002 100644
  filc_ptr filc_native_zptrtable_new(filc_thread* my_thread)
  {
      return filc_ptr_for_special_payload_with_manual_tracking(filc_ptr_table_create(my_thread));
-@@ -5518,6 +5673,69 @@ PAS_ALWAYS_INLINE static void memmove_aux_with_ptrs(
+@@ -5518,6 +5676,69 @@ PAS_ALWAYS_INLINE static void memmove_aux_with_ptrs(
      }
  }
  
@@ -331,7 +341,7 @@ index 2f457645a779..19c44327d002 100644
  /* Assumes that the dst/src are tracked by GC. Assumes that count is nonzero. */
  PAS_ALWAYS_INLINE static void memmove_size_specialized(
      filc_thread* my_thread, filc_ptr dst,
-@@ -5602,6 +5820,11 @@ PAS_ALWAYS_INLINE static void memmove_size_specialized(
+@@ -5602,6 +5823,11 @@ PAS_ALWAYS_INLINE static void memmove_size_specialized(
      char* src_aux_ptr = filc_object_aux_ptr(src_object);
      size_t dst_start_offset = dst_start - dst_lower;
      size_t src_start_offset = src_start - src_lower;
@@ -343,7 +353,7 @@ index 2f457645a779..19c44327d002 100644
      size_t dst_end_offset = dst_start_offset + count;
      memmove_aux_with_ptrs(my_thread, dst_aux_ptr, src_aux_ptr, dst_start_offset, src_start_offset,
                            dst_end_offset, dst_object, src_object, size_mode, dst_word_alignment_mode,
-@@ -5861,6 +6084,12 @@ static PAS_ALWAYS_INLINE void copy_stack_to_heap_already_checked(
+@@ -5861,6 +6087,12 @@ static PAS_ALWAYS_INLINE void copy_stack_to_heap_already_checked(
      else
          filc_memcpy_small_up(dst_start, src_payload, count);
  
@@ -356,7 +366,7 @@ index 2f457645a779..19c44327d002 100644
      char* dst_aux_ptr = filc_object_aux_ptr(dst_object);
      char* src_aux_ptr = src_word_alignment_mode ? (char*)src_aux
          : (char*)pas_round_down_to_power_of_2((uintptr_t)src_aux, FILC_WORD_SIZE);
-@@ -5908,6 +6137,12 @@ static PAS_ALWAYS_INLINE void copy_heap_to_stack_already_checked(
+@@ -5908,6 +6140,12 @@ static PAS_ALWAYS_INLINE void copy_heap_to_stack_already_checked(
      else
          filc_memcpy_small_up(dst_payload, src_start, count);
  
@@ -369,7 +379,7 @@ index 2f457645a779..19c44327d002 100644
      char* src_aux_ptr = filc_object_aux_ptr(src_object);
      char* dst_aux_ptr = dst_word_alignment_mode ? (char*)dst_aux
          : (char*)pas_round_down_to_power_of_2((uintptr_t)dst_aux, FILC_WORD_SIZE);
-@@ -6308,9 +6543,14 @@ static size_t demote_cc_from_heap(filc_thread* my_thread, filc_ptr ptr, const fi
+@@ -6308,9 +6546,14 @@ static size_t demote_cc_from_heap(filc_thread* my_thread, filc_ptr ptr, const fi
      }
  
      char* aux_ptr = filc_ptr_aux_ptr(ptr);

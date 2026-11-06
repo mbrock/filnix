@@ -11,6 +11,9 @@ approach B.
 - Both apply only when `sources.variant == "staging"` (`runtime/libpizlo.nix`,
   `compiler/filc0.nix`). The release toolchain is unchanged.
 - Regressions: `tests/zmark-shared.nix` (`checks.staging-zmark-shared`)
+- Opt-in at compile time: code that loads or stores pointers in a marked
+  mapping is compiled with `-fzmark-shared`. Everything else, including the
+  whole staging world, is compiled as before (see "Opt-in: -fzmark-shared").
 
 ## The problem
 
@@ -129,7 +132,44 @@ before the munmap then refers to a freed object and traps.
   up the capability from the address among all shared mappings would allow
   them, but it relaxes provenance. Not done.
 
+## Opt-in: -fzmark-shared
+
+The compiler half is opt-in per function, so ordinary code pays nothing:
+
+- `clang -fzmark-shared` gives every function it emits the string attribute
+  `filc-zmark-shared`. FilPizlonator emits the paths in "Compiler cost" only in
+  functions with the attribute (`-mllvm -filc-zmark-shared` forces them
+  everywhere). It strips the attribute from the lowered function. Helpers the
+  pass makes itself never get the paths.
+- A function without the attribute is lowered exactly as before the zmark
+  patch: it never tests the shared flag and calls the ordinary ensure-aux.
+- The pass runs in the compile step (Fil-C's PipelineStart callback, after its
+  own inliner), so the choice is fixed per function before LTO. An inlined
+  callee is lowered as part of its caller and follows the caller's flag.
+- The runtime half is always present in the staging runtime. `zmark_shared()`
+  stays the per-mapping runtime opt-in. There is no environment toggle.
+
+**Mixed programs are sound.** Code compiled without the flag that touches a
+marked object fails safe:
+
+- Its inline pointer loads find a null aux and give no capability.
+- Its inline pointer stores and capability-carrying inline copies call the
+  ordinary ensure-aux, which panics on a marked object. The message says that
+  such code must be compiled with `-fzmark-shared`. This includes small
+  inlined copies of plain data whose source words carry stale capabilities
+  (the heap-tuple pattern), so every file that loads, stores or copies into a
+  marked mapping needs the flag (Oracle D1).
+- Runtime entry points it calls (out-of-line memmove, atomic and CAS outlines,
+  zcall) follow the rule whatever the caller was compiled with: O's capability
+  or none.
+
+None of these can produce a capability other than O's, because the runtime
+invariants (a marked object never has an aux; capabilities come only from the
+loader's header for O) do not depend on how any caller was compiled.
+
 ## Compiler cost
+
+These paths exist only in functions compiled with `-fzmark-shared`.
 
 The aux word that the inline paths already load holds the flags.
 
@@ -192,6 +232,21 @@ unchanged, and a race with `zmark_shared` still panics in `ensure_aux`.
 | --- | --- | --- | --- |
 | Q2 | If an LLVM pass rewrote a memcpy into O as pointer-typed loads and stores, a stale capability on integer data could hit the typed-store check | quality, unverified, fail-safe | Not seen in PostgreSQL. The store-side decision below would cover it |
 
+A fifth review covered the compile-time opt-in (fork 2257aff0d3e1,
+12d3effc7903). Verdict: sound. Each function gets either the reviewed zmark
+lowering or the original one, and each is sound against the patched runtime,
+so mixing them on one marked object (other files, libraries, nanofil code,
+inlining before the pass, LTO) cannot give a load any capability other than
+O's or none, nor read shared bytes as metadata. `AuxBaseVar` is per function,
+so nothing is cached across the boundary. Pass-generated helpers touch no heap
+pointers in O, so keeping them unflagged is correct. Functions clang emits
+without the attribute (thunks, outlined clones) are lowered unflagged, which
+costs availability only. Its own mixed-build reproducers at -O0 and -O2 matched.
+
+| # | Finding | Kind | Resolution |
+| --- | --- | --- | --- |
+| D1 | An unflagged file's small inlined memcpy of plain data into O panics when a source word carries a stale capability, though the file stores no pointer | availability, docs | stdfil.h and the panic message now say that stores and copies need the flag (fork ec3c00ea4da2) |
+
 The Oracle also noted that the store-side check is a diagnostic: readers never trust
 the bytes, so writing the address only, without the cold outline call, would
 be equally sound and much smaller. That is an owner decision; see
@@ -200,7 +255,8 @@ Measurements.
 ## Regressions
 
 `checks.staging-zmark-shared` runs `tests/zmark-shared/run.sh` at -O0 and
--O2, plus the hash-table stress test. Case by case:
+-O2, plus the hash-table stress test. `zmark.c` and `hashtable.c` are compiled
+with `-fzmark-shared`; `unflagged.c` is compiled without it and linked in. Case by case:
 
 | Case | What it shows | Patched (-O0, -O2) | Stock staging |
 | --- | --- | --- | --- |
@@ -217,6 +273,7 @@ Measurements.
 | hostile, hostile-private, hostile-end, hostile-call | raw byte writes of arbitrary addresses load with O's capability only, and using them outside O or as a function traps | pass | fails |
 | native | a native (gcc) process writes arbitrary words into the segment; loads get O's capability or none | pass | fails |
 | hashtable 8 20000 | 8 processes insert and delete in a chained hash table under a lock | pass | traps (null object) |
+| unflagged-load, unflagged-store | a file compiled without `-fzmark-shared`, linked into the same program: its loads from O get no capability, its stores panic naming the flag, and flagged code keeps working on the same O | pass | n/a (new flag) |
 
 The stock column uses the staging compiler without the patch and
 `-Dzmark_shared(p)=((void)(p))`.
@@ -224,8 +281,10 @@ The stock column uses the staging compiler without the patch and
 ## PostgreSQL
 
 PostgreSQL 18.6, built outside Nix with `filcc-staging` from this branch
-(`patches/postgresql-filc-zmark-shared.patch`, against pristine 18.6), run
-with `huge_pages=off` and the default `io_method=worker`.
+(`patches/postgresql-filc-zmark-shared.patch`, against pristine 18.6) and
+`CFLAGS="-O2 -g -Wno-int-conversion -fzmark-shared"`, run with
+`huge_pages=off` and the default `io_method=worker`. All of PostgreSQL is
+compiled with the flag, since most backend files touch the main segment.
 
 The zmark-specific changes are small:
 
@@ -267,6 +326,8 @@ Results with the main segment marked (staging toolchain from this branch):
 | `pgbench -i -s 10`, including parallel index builds | passes |
 | `pgbench -c 8 -j 8 -T 60`, `io_method=worker` | 309207 transactions, 0 failed, 5154 tps, no Fil-C safety errors |
 | `make -C src/test/isolation check` | 122 of 122 pass |
+| With `-fzmark-shared` (after the opt-in): `pgbench -c 8 -j 8 -T 60` | 309462 transactions, 0 failed, 5158 tps, no Fil-C safety errors |
+| With `-fzmark-shared`: isolation | 122 of 122 pass |
 | Control: same build, `zmark_shared` call commented out | `initdb` passes (one process); the server's first pointer read across processes traps (`SetLatch` from `pgaio_worker_submit`: "cannot read pointer with null object") |
 
 Each port change above was found by a trap during these runs. None of
@@ -318,6 +379,23 @@ instead of panicking. PostgreSQL hit the typed-store panic twice, both in
 AIO (resource-owner bookkeeping and local-buffer iovecs). Both were genuine
 private pointers and needed a port change either way, since the owner could
 not have used them after reading them back. The prototype keeps the panic.
+
+### No zmark code without the flag
+
+A slice of the staging world built from this branch without the flag
+(`pkgsFilcStaging.{zlib,openssl,sqlite,curl,lua,bash,coreutils,python3,libxml2}`,
+56 store paths and 1500 ELF files in their runtime closure, including glibc and
+libc++) was scanned for both zmark markers (`.amp`-local script, not committed):
+
+| Marker | World without the flag | postgres with `-fzmark-shared` |
+| --- | --- | --- |
+| references to `filc_object_ensure_aux_ptr_or_shared_outline` (store path) | 0 | 2 |
+| shared-flag tests (`shr $54` of the header word, then `and $1`; load path) | 0 | 13323 |
+
+The only other files that mention the symbol are libpizlo (which defines it)
+and the compiler and JIT (which contain the pass). The compiler is not
+deterministic from run to run, so a byte comparison with the pre-zmark pass was
+not possible. The Oracle checked flag-off equivalence by reading the diff.
 
 ### nanofil
 

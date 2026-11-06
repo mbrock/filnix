@@ -1,4 +1,5 @@
-# Runs zmark.c's cases. Expects ./zmark (Fil-C) and ./native-writer (native).
+# Runs zmark.c's cases. Expects ./zmark (Fil-C, zmark.c built with -fzmark-shared and
+# unflagged.c without it) and ./native-writer (native).
 set -u
 failures=0
 
@@ -15,7 +16,7 @@ traps() { # case pattern: must not finish, and stderr must match pattern
   out=$(./zmark "$c" 2>&1 | tr -d '\000'; exit "${PIPESTATUS[0]}")
   st=$?
   if [ $st -ne 0 ] && echo "$out" | grep -q "filc" && echo "$out" | grep -qE "$pat" \
-      && ! echo "$out" | grep -qE "^$c (stored|marked|accessed)|^memmove-in ok|^hostile ok"; then
+      && ! echo "$out" | grep -qE "^$c (stored|marked|accessed)|^memmove-in ok|^unflagged stored|^hostile ok"; then
     echo "PASS $c traps: $(echo "$out" | grep -m1 -E "$pat" | cut -c1-140)"
   else
     echo "FAIL $c (exit $st, wanted /$pat/)"; echo "$out" | tail -8; failures=$((failures + 1))
@@ -48,6 +49,8 @@ traps mark-aux "no pointer has been stored"
 traps mark-private "MAP_SHARED"
 traps mark-malloc "mapping"
 traps mark-interior "start of a mapping"
+ok unflagged-load
+traps unflagged-store "compiled with -fzmark-shared"
 ok hostile
 traps hostile-private "lower|upper|bounds"
 traps hostile-end "upper|bounds"
