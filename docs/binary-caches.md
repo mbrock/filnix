@@ -110,8 +110,9 @@ No change to the Nix daemon or shared compiler derivations is necessary.
 
 There are two readiness levels:
 
-- **Foundation / push gate:** `scripts/ship-outputs.txt` lists `filcc` and
-  `baseline`. The baseline retains every output of the curated packages in
+- **Foundation / push gate:** `scripts/ship-outputs.txt` lists `filcc`,
+  `filcc-staging` (nanofil and its pre-push fleet need it) and `baseline`,
+  with the site's `site-swipl` and `site-play`. The baseline retains every output of the curated packages in
   `shells/baseline.nix`, including Bash, Perl, Python, build tools, shared
   libraries and development headers. Publishing the complete closures means
   a toolchain update does not make ordinary consumers rebuild LLVM or these
