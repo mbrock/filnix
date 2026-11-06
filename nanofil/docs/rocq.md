@@ -16,6 +16,7 @@ the interpreter and cites the predicate it copies.
 | File | Transcribes | Contents |
 | --- | --- | --- |
 | `Term.v` | ground Prolog terms | names (temporaries, labels, symbols) as terms compared by `==`; `char_code/2` |
+| `Maps.v` | library(assoc) | name maps: a hash of the name, then an association list per hash, so a lookup's answer never depends on the hash |
 | `Ieee.v` | ieee.pl | binary32, binary64 and x87 extended as bit patterns: `decode/4`, `round_ratio/5`, `ieee_binary/5`, `ieee_convert/4`, `ieee_compare/5`, `ieee_from_int/3`, `ieee_to_int/3` |
 | `Syntax.v` | ir.pl's header tables | classes, ops, values, instructions, jumps, blocks, functions, data, modules; `op_arg_classes/4`, `evidence_preserving/1`, `ahead_transparent/1`, `local_objects/2` |
 | `Values.v` | interp.pl's values | `cap` (`none`, `obj`, `ro`, `fn`, `ext`), `ptr`, `word`; `word_at_class/3` |
@@ -23,6 +24,7 @@ the interpreter and cites the predicate it copies.
 | `Ops.v` | `alu/4`, `additive_res/4`, `kind_res/8` | integer and float ops, `check` and the reuse vocabulary, raw loads and stores, pointer-load and pointer-store protocols, `va_arg` |
 | `Semantics.v` | `run/5`'s blocks, instructions, jumps, calls | the configuration, `step`, `step_rel`, `reachable`; the variadic entry snapshot |
 | `Run.v` | `initial_memory/4`, `alloc_base/6` | module preparation, the interpreter's allocator as one fresh choice, a driver |
+| `Cfg.v` | cfg.pl | `func_cfg/2`, `cfg_idoms/2` (Cooper, Harvey and Kennedy), `dom_children/3`, `dom_intervals/3`, `dominates_by_interval/3` |
 | `Validate.v` | ir.pl's `valid_module/1` | `valid_func`, `valid_data`, `valid_alias`, `valid_items`, `valid`: uses, ops, instructions, dominance, locals, the evidence pass, the reuse rules, `polls_every_cycle`, data linkage and items, aliases |
 | `Transport.v` | — | decoding a printed checked module, encoding outcomes, `judge`, `judge_valid` |
 | `Extract.v`, `extraction/main.ml` | — | OCaml extraction, and a reader of Prolog terms |
@@ -154,7 +156,7 @@ pass's precondition, not a finding.
 `Validate.v` transcribes `valid_module/1` for code, clause group by
 clause group. A function is valid when its uses, ops, instructions,
 jumps and phis are well formed, every use has a dominating definition
-(dominators by fixpoint), named locals are declared once in the entry
+(by the dominator tree's intervals, Cfg.v), named locals are declared once in the entry
 block, and, in a checked module, `stage_func/6` holds: the evidence
 pass over the blocks in order, `limit_reads/2`, and
 `polls_every_cycle/1` (by repeatedly removing blocks with no unpolled
@@ -214,7 +216,7 @@ over 169 of them agreed on all 73,330 verdicts it could judge.
 | the same with `-O` | 45,541–48,193 | 253–256 | 0 |
 | the 16 `tests/c/prog` programs (reference checks) | 9,505 | 3,012 | 0 |
 | Lua's own functions, `rocq/lua.sh` (reference checks) | 6,345 | 0 | 0 |
-| `rocq/tests/reuse.ir`, `snapshot.ir`, `floats.ir` (reference checks) | 111, 145, 46 | 0 | 0 |
+| `rocq/tests/reuse.ir`, `snapshot.ir`, `floats.ir`, `dominance.ir` (reference checks) | 111, 145, 46, 41 | 0 | 0 |
 
 The mutants test rejection as well as acceptance: on basic.ir,
 `valid_module/1` judged 413 of them invalid and 210 valid. In the four
@@ -274,6 +276,31 @@ These are formal.md's early decisions as they turned out in the code:
   `Fresh` step like `alloc`, before the entry block. The snapshot's
   pointer lives in the environment under `hidden(va_snapshot)`, the
   interpreter's key.
+- **Dominance is cfg.pl's, by intervals.** The validator first
+  computed dominator sets by a fixpoint of its own, roughly cubic in
+  the number of blocks, and found each use's definitions by scanning
+  the whole function. It now transcribes `cfg_idoms/2` and
+  `dom_intervals/3`, and ir.pl's table of definition sites, over the
+  name maps of `Maps.v`. cfg.pl sorts successors and predecessors in
+  the standard order of terms; the model keeps each jump's order,
+  which changes the reverse postorder and the preorder numbers but not
+  the immediate dominators or the dominance relation. Lua's
+  `luaV_execute` (995 blocks) went from over half an hour, unfinished,
+  to under half a second for its dominance, and lvm.c's whole module
+  takes 2.7 s against about a second for `valid_module/1`; the evidence
+  pass (`stage_func`) is now most of that. A name's hash decides only
+  its bucket, so the extraction computes it with OCaml's string hash:
+  the Gallina one, eight integer operations per character, made small
+  functions twice as slow as with lists.
+
+  The gate did not at first notice a model that stopped `cfg_idoms`
+  after one sweep, which settles every reducible graph.
+  `rocq/tests/dominance.ir` is an irreducible graph, found by search,
+  on which one sweep leaves a wrong idom; a mutant that deletes a
+  definition then separates the two. That planted bug, and one where
+  every reachable label dominates every other, are caught there; one
+  that took each block's first processed predecessor as its idom was
+  caught 121 times over the fixtures and gen modules.
 - **`nat` extracts to OCaml's `int`.** The model's `nat`s count list
   elements and fixpoint rounds. Unary, the bound of `dominators` (the
   square of the reachable block count) overflowed the stack on Lua's
@@ -381,14 +408,7 @@ ends a run first), and atoms containing UTF-8 bytes in a reader.
 
 ## Next
 
-1. Transcribe `cfg_idoms/2` (Cooper, Harvey and Kennedy) and
-   `dom_intervals/3` for `dominators`, with maps instead of lists for
-   environments and label sets. The present fixpoint over label sets
-   is roughly cubic in the block count: the validator does not finish
-   Lua's lvm.c (`luaV_execute`, 995 blocks) in half an hour, though
-   valid_module/1 judges it in a second. The gate's corpus has no such
-   function, so this is speed, not agreement.
-2. The Campaign 2 `Module Type Runtime`: `fresh` and the lifetime facts
+1. The Campaign 2 `Module Type Runtime`: `fresh` and the lifetime facts
    of `Memory.v` are the first candidates to move into it.
 
 Inquiries touched: none closed. The integer-at-`p` case is a small

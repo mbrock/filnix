@@ -1,0 +1,25 @@
+% An irreducible control-flow graph whose immediate dominators take more
+% than one sweep of cfg_idoms/2 to settle, for the validator's gate
+% (rocq/valid.sh; docs/rocq.md). Over the blocks in this order, one
+% sweep in the model's reverse postorder makes b3 the idom of b2, though
+% b1 -> b2 reaches b2 without b3; only the next sweep moves it to b0.
+%
+% tmp(d) is defined in b0 and again in b3, and used in b2. The mutant
+% that deletes b0's definition leaves b3's alone, which does not
+% dominate b2: valid_module/1 rejects it, and so must the model. There
+% are no run lines: b4 and the other loops need not end. The
+% allocation makes it a Fil-C module.
+func(irreducible, export, w, [param(w, tmp(k))], [
+    block(b0, [], [
+        let(tmp(d), w, add, [tmp(k), const(0)]),
+        let(tmp(m), p, alloc(8), [const(8)])
+    ], branch(tmp(k), poll(b3), poll(b4))),
+    block(b3, [], [
+        let(tmp(d), w, add, [tmp(k), const(1)])
+    ], branch(tmp(k), poll(b2), poll(b1))),
+    block(b2, [], [
+        let(tmp(e), w, add, [tmp(d), const(1)])
+    ], branch(tmp(e), poll(b1), poll(b4))),
+    block(b4, [], [], branch(tmp(k), poll(b4), poll(b1))),
+    block(b1, [], [], branch(tmp(k), poll(b2), poll(b3)))
+]).

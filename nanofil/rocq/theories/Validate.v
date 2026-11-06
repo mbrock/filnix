@@ -53,7 +53,7 @@
       and a failed `ext(sw)` does not fall through to a later clause. *)
 
 From Stdlib Require Import String ZArith List Bool.
-From Nanofil Require Import Term Syntax Values Memory Ops Semantics.
+From Nanofil Require Import Term Maps Syntax Values Memory Ops Semantics Cfg.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -128,108 +128,68 @@ Definition is_poll (t : target) : bool := match t with Poll _ => true | To _ => 
 Definition preds_of (bs : list block) (l : name) : list name :=
   map b_label (filter (fun b => mem l (succ_labels (b_jump b))) bs).
 
-Fixpoint reach (fuel : nat) (bs : list block) (seen todo : list name) : list name :=
-  match fuel with
-  | O => seen
-  | S f =>
-      match todo with
-      | [] => seen
-      | l :: rest =>
-          if mem l seen then reach f bs seen rest
-          else let ss := match find_block l bs with
-                         | Some b => succ_labels (b_jump b)
-                         | None => []
-                         end in
-               reach f bs (l :: seen) (ss ++ rest)
-      end
-  end.
-
-(** The labels reachable from the entry (func_cfg/2's Rpo, as a set). *)
-Definition reachable_labels (bs : list block) : list name :=
-  match bs with
-  | [] => []
-  | b :: _ => reach (3 * length bs + 2) bs [] [b_label b]
-  end.
-
-Definition inter (a b : list name) : list name := filter (fun x => mem x b) a.
-
+(** The same labels, in any order and number. *)
 Definition sets_eqb (a b : list name) : bool :=
   forallb (fun x => mem x b) a && forallb (fun x => mem x a) b.
 
-(** One round of the dominator equations: an entry dominates only
-    itself; any other reachable label is dominated by itself and by
-    what dominates all its reachable predecessors. *)
-Definition dom_round (bs : list block) (rs : list name) (entry : name)
-    (doms : list (name * list name)) : list (name * list name) :=
-  map (fun l =>
-         if name_eqb l entry then (l, [l]) else
-         let ps := filter (fun p => mem p rs) (preds_of bs l) in
-         let common := fold_left (fun acc p => match lookup p doms with
-                                               | Some d => inter acc d
-                                               | None => acc
-                                               end) ps rs in
-         (l, if mem l common then common else l :: common)) rs.
+(** `dominates_by_interval(Intervals, A, B)` over the intervals of
+    Cfg.v's `block_intervals`. *)
+Definition dominates (doms : nmap (Z * Z)) (a b : name) : bool := dominates_by_interval doms a b.
 
-Fixpoint dom_fix (fuel : nat) (bs : list block) (rs : list name) (entry : name)
-    (doms : list (name * list name)) : list (name * list name) :=
-  match fuel with
-  | O => doms
-  | S f =>
-      let doms' := dom_round bs rs entry doms in
-      if forallb (fun ld => match lookup (fst ld) doms with
-                            | Some d => sets_eqb d (snd ld)
-                            | None => false
-                            end) doms'
-      then doms' else dom_fix f bs rs entry doms'
+(** A label is reachable when it has an interval. *)
+Definition is_reachable (doms : nmap (Z * Z)) (l : name) : bool := nm_mem l doms.
+
+(** A definition site of a temporary: `param`, or `at(L, I)`, index I of
+    block L, a phi's at -1. *)
+Inductive site : Type := SParam | SAt (l : name) (i : Z).
+
+(** `block_sites(Blocks)` with the parameters' sites: each temporary
+    with its definition sites. *)
+Definition temp_sites (f : func) : nmap (list site) :=
+  let add (m : nmap (list site)) (n : name) (s : site) :=
+    nm_add n (s :: match nm_find n m with Some ss => ss | None => [] end) m in
+  let m0 := fold_left (fun m p => add m (snd p) SParam) (fn_params f) nm_empty in
+  fold_left (fun m b =>
+               let m1 := fold_left (fun m ph => match ph with Phi d _ _ => add m d (SAt (b_label b) (-1)) end)
+                                   (b_phis b) m in
+               fst (fold_left (fun (acc : nmap (list site) * Z) ins =>
+                                 let (m, j) := acc in
+                                 (fold_left (fun m dk => add m (fst dk) (SAt (b_label b) j))
+                                            (inst_temp_defs ins) m, j + 1))
+                              (b_insts b) (m1, 0)))
+            (fn_blocks f) m0.
+
+(** `site_dominates(Def, L, I, Intervals)`: the definition comes before
+    position I of block L on every path from the entry. *)
+Definition site_dominates (doms : nmap (Z * Z)) (l : name) (i : Z) (s : site) : bool :=
+  match s with
+  | SParam => true
+  | SAt d j => if name_eqb d l then j <? i else dominates doms d l
   end.
 
-(** Each reachable label with the labels that dominate it
-    (cfg_idoms/2 and dom_intervals/3, as sets). *)
-Definition dominators (bs : list block) : list (name * list name) :=
-  match bs with
-  | [] => []
-  | b :: _ =>
-      let rs := reachable_labels bs in
-      dom_fix (length rs * length rs + 2) bs rs (b_label b) (map (fun l => (l, rs)) rs)
-  end.
-
-(** `dominates_by_interval(Intervals, A, B)`: A dominates B, both
-    reachable; every label dominates itself. *)
-Definition dominates (doms : list (name * list name)) (a b : name) : bool :=
-  match lookup b doms with Some d => mem a d | None => false end.
-
-Definition is_reachable (doms : list (name * list name)) (l : name) : bool :=
-  match lookup l doms with Some _ => true | None => false end.
-
-(** `dominated_use(D, L, I, N)`: some definition of N comes before
-    position I of block L on every path: a parameter, an earlier phi or
-    instruction of L (a phi is at -1), or one in a block that strictly
-    dominates L. *)
-Definition dominated_use (f : func) (doms : list (name * list name)) (l : name) (i : Z)
+(** `dominated_use(D, L, I, N)`: some definition of N dominates
+    position I of block L. *)
+Definition dominated_use (sites : nmap (list site)) (doms : nmap (Z * Z)) (l : name) (i : Z)
     (n : name) : bool :=
-  existsb (fun p => name_eqb (snd p) n) (fn_params f) ||
-  existsb (fun b =>
-             let at_ (j : Z) := if name_eqb (b_label b) l then j <? i
-                                else dominates doms (b_label b) l in
-             (existsb (fun ph => match ph with Phi d _ _ => name_eqb d n end) (b_phis b)
-              && at_ (-1)) ||
-             fst (fold_left (fun (acc : bool * Z) (ins : inst) =>
-                               let (found, j) := acc in
-                               (found || (mem n (map fst (inst_temp_defs ins)) && at_ j), j + 1))
-                            (b_insts b) (false, 0)))
-          (fn_blocks f).
+  match nm_find n sites with
+  | Some defs => existsb (site_dominates doms l i) defs
+  | None => false
+  end.
 
 (** `definitions_dominate(Fn, Params, Blocks)`: in every reachable
     block, each use is dominated by a definition; a phi's operand is
     used at the end of its predecessor, if that is reachable. *)
-Definition definitions_dominate (f : func) (doms : list (name * list name)) : bool :=
+Definition definitions_dominate (f : func) (doms : nmap (Z * Z)) : bool :=
+  let sites := temp_sites f in
+  let ends := nm_of_list (map (fun b => (b_label b, Z.of_nat (length (b_insts b)))) (fn_blocks f)) in
+  let dominated_use := dominated_use sites in
   forallb (fun b =>
              if negb (is_reachable doms (b_label b)) then true else
              let l := b_label b in
              let fix insts (is : list inst) (i : Z) : bool :=
                match is with
-               | [] => forallb (dominated_use f doms l i) (jump_uses (b_jump b))
-               | ins :: rest => forallb (dominated_use f doms l i) (inst_uses ins)
+               | [] => forallb (dominated_use doms l i) (jump_uses (b_jump b))
+               | ins :: rest => forallb (dominated_use doms l i) (inst_uses ins)
                                 && insts rest (i + 1)
                end in
              insts (b_insts b) 0 &&
@@ -240,9 +200,8 @@ Definition definitions_dominate (f : func) (doms : list (name * list name)) : bo
                                        match snd pv with
                                        | Tmp n =>
                                            if is_reachable doms (fst pv) then
-                                             match find_block (fst pv) (fn_blocks f) with
-                                             | Some pb => dominated_use f doms (fst pv)
-                                                            (Z.of_nat (length (b_insts pb))) n
+                                             match nm_find (fst pv) ends with
+                                             | Some e => dominated_use doms (fst pv) e n
                                              | None => true
                                              end
                                            else true
@@ -259,10 +218,15 @@ Definition temp_defs (f : func) : list (name * class) :=
   flat_map (fun b => map (fun ph => match ph with Phi d k _ => (d, k) end) (b_phis b)
                      ++ flat_map inst_temp_defs (b_insts b)) (fn_blocks f).
 
-(** `check_temp_classes(Fn, Defs)`: one class per temporary. *)
+(** `check_temp_classes(Fn, Defs)`: one class per temporary, that is,
+    every definition has the class of the temporary's first one. *)
 Definition temp_classes_ok (defs : list (name * class)) : bool :=
-  forallb (fun d => forallb (fun d' => negb (name_eqb (fst d) (fst d')) || class_eqb (snd d) (snd d'))
-                            defs) defs.
+  let first := fold_left (fun m d => if nm_mem (fst d) m then m else nm_add (fst d) (snd d) m)
+                         defs nm_empty in
+  forallb (fun d => match nm_find (fst d) first with
+                    | Some k => class_eqb k (snd d)
+                    | None => false
+                    end) defs.
 
 Definition proof_class (k : class) : bool := match k with A | F => true | _ => false end.
 
@@ -1250,7 +1214,7 @@ Definition local_global (md : module) (g : name) : bool :=
     single-definition getter copy of a local symbol that another copy of
     the same symbol dominates (earlier in its block, or in a block that
     strictly dominates it). *)
-Definition repeated_getters (md : module) (f : func) (doms : list (name * list name))
+Definition repeated_getters (md : module) (f : func) (doms : nmap (Z * Z))
     (once : list (name * def)) : list (name * name) :=
   let sites := flat_map (fun b =>
                            snd (fold_left (fun (acc : Z * list (name * Z * name * name)) (i : inst) =>
@@ -1281,7 +1245,7 @@ Record src : Type := mkSrc {
   s_getters : list (name * name)
 }.
 
-Definition stage_sources (md : module) (f : func) (doms : list (name * list name)) : src :=
+Definition stage_sources (md : module) (f : func) (doms : nmap (Z * Z)) : src :=
   let once := single_definitions f in
   mkSrc (flat_map (fun b => flat_map (fun i => match renew_source once i with
                                                | Some r => [r]
@@ -1500,7 +1464,7 @@ Definition polls_every_cycle (f : func) : bool :=
   && peel (S (length g)) g.
 
 (** `stage_func(checked, ...)`. *)
-Definition stage_func (md : module) (f : func) (doms : list (name * list name)) : bool :=
+Definition stage_func (md : module) (f : func) (doms : nmap (Z * Z)) : bool :=
   evidence_pass (stage_sources md f doms) f && limit_reads f && polls_every_cycle f.
 
 (** ## Functions and modules *)
@@ -1593,10 +1557,9 @@ Definition extended_crosses (f : func) : bool :=
 Definition valid_func (md : module) (f : func) : bool :=
   let bs := fn_blocks f in
   let defs := temp_defs f in
-  let doms := dominators bs in
-  match bs with
-  | [] => false
-  | entry :: _ =>
+  match bs, block_intervals bs with
+  | [], _ | _, None => false
+  | entry :: _, Some doms =>
       match fn_linkage f with TAtom ("export" | "local" | "weak") => true | _ => false end
       && match fn_ret f with
          | RTuple ks =>

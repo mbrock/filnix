@@ -10,7 +10,16 @@
 
 From Stdlib Require Extraction ExtrOcamlBasic ExtrOcamlNativeString ExtrOcamlZBigInt
   ExtrOcamlNatInt.
-From Nanofil Require Import Term Transport.
+From Nanofil Require Import Term Maps Transport.
+
+(** Maps.v's `string_hash` decides which bucket a name goes in, never
+    an answer: a lookup compares the names in its bucket with
+    `name_eqb`. So the extraction may use OCaml's own string hash; the
+    Gallina one goes through eight integer operations per character,
+    which made the validator twice as slow on small functions. *)
+Extract Constant Maps.string_hash =>
+  "(fun s h -> Big_int_Z.big_int_of_int
+     ((Hashtbl.hash s + 31 * Big_int_Z.int_of_big_int h) land 0xFFFFF))".
 
 Set Extraction Output Directory "extraction".
 Extraction "nanofil_model.ml" term_eqb decode_module judge judge_valid.
