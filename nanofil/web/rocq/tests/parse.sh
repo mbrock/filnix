@@ -23,6 +23,49 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 status=0
 
+# Compile the Ltac tree too: asymmetric branches expose a wrong scope for
+# repeat/try, sequence, choice or dispatch even if a simple proof passes.
+mkdir "$tmp/tactics"
+cat >"$tmp/tactics/Tactics.v" <<'ROCQ'
+From Stdlib Require Import Arith.
+Ltac cases H :=
+  repeat match type of H with
+  | context [match ?x with _ => _ end] => destruct x eqn:?; cbv beta iota zeta in H; try discriminate H
+  end.
+Ltac finish H :=
+  lazymatch type of H with
+  | ?P /\ ?Q => destruct H as [Hp Hq]; first [exact Hq | exact Hp]
+  | _ => exact H
+  end.
+Ltac from_context :=
+  multimatch goal with
+  | [ H : ?P /\ ?Q |- ?Q ] => exact (proj2 H)
+  end.
+Goal forall P Q : Prop, P /\ Q -> Q.
+Proof. intros P Q H. finish H. Qed.
+Goal forall P Q : Prop, P /\ Q -> Q.
+Proof. intros P Q H. from_context. Qed.
+Goal True /\ (True /\ True).
+Proof. repeat split; exact I. Qed.
+Goal True /\ True.
+Proof. split || fail; exact I. Qed.
+Goal forall n : nat, n = n.
+Proof.
+  fix IH 1. intros n. assert (Ha := Nat.add_0_r n).
+  all: try (rewrite Ha by reflexivity).
+  destruct n as [|k] eqn:En; cbn -[Nat.add] in Ha; [reflexivity|].
+  (* A comment after a focus bullet. *)
+  - reflexivity.
+Qed.
+Goal forall a b : nat, S a = S b -> a = b.
+Proof. intros a b E. injection E as <-. reflexivity. Qed.
+Goal forall P : Prop, P -> P /\ True.
+Proof. intros P H. split; [exact H|exact I]. Qed.
+Goal forall n : nat, n + 0 = n.
+Proof. intro n. assert (n + 0 = n) by (apply Nat.add_0_r; auto). assumption. Qed.
+ROCQ
+set -- "$@" "$tmp/tactics/Tactics.v"
+
 # project FILE: the directory of the project file above FILE, or FILE's own.
 project() {
   local d

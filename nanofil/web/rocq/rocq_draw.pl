@@ -107,6 +107,7 @@ defines(ind(_, _, Bs), N, K) :- member(ib(n(_, T), _, _, Cs), Bs),
 defines(rec(_, _, n(_, T), _, _, C, Fs), N, K) :-
     ( N = T, K = type ; C = n(_, N), K = ctor ; member(field(_, N, _, _, _), Fs), K = field ).
 defines(def(_, _, n(_, N), _, _, _), N, def).
+defines(tacdef(_, n(_, N), _, _), N, def).
 defines(thm(_, _, n(_, N), _, _), N, lemma).
 defines(decl(_, Kw, Gs), N, K) :- member(g(Ns, _), Gs), member(n(_, N), Ns),
     ( axiom_kw(Kw) -> K = axiom ; K = param ).
@@ -175,6 +176,8 @@ term(E, Env) --> term_(E, Env), !.
 
 term_(id(_, X), Env) --> name_ref(X, Env).
 term_(hole(_), _) --> el(span, "v anon", [title="_"], "_").
+term_(meta(_, X), _) --> el(span, "rq-meta", ( "?", var_def(X) )).
+term_(ltac(_, T), Env) --> kw("ltac:"), "(", tactic_block(T, Env), ")".
 term_(num(_, N), _) --> el(span, n, esc(N)).
 term_(str(_, S), _) --> el(span, s, ( "\"", esc(S), "\"" )).
 term_(explicit(_, X), Env) --> el(span, explicit, ( el(span, at, "@"), name_ref(X, Env) )).
@@ -260,7 +263,7 @@ name_ref(X, Env) --> name_ref(X, Env, arg).
 name_ref(X, Env, _) --> { memberchk(X, Env) }, !, var_(X).
 name_ref(X, _, Pos) -->
     { name_kind(X, K), kind_class(K, C0), ( Pos == head, K == other -> C = "f" ; C = C0 ) },
-    (   { global_ref(X, Href, _) } -> el(a, C, [href=Href], esc(X))
+    (   { \+ nb_current(rq_button, true), global_ref(X, Href, _) } -> el(a, C, [href=Href], esc(X))
     ;   el(span, C, esc(X))
     ).
 
@@ -316,6 +319,7 @@ binder_(b(_, _, Ns, none), _) --> !, vars(Ns).
 binder_(b(_, bare, Ns, Ty), Env) --> !, vars(Ns), opt_type(Ty, Env).
 binder_(b(_, paren, Ns, Ty), Env) --> el(span, "paren binder", ( vars(Ns), opt_type(Ty, Env) )).
 
+vars([]) --> [].
 vars([n(_, X)]) --> !, var_def(X).
 vars([n(_, X)|Ns]) --> var_def(X), " ", vars(Ns).
 
@@ -378,11 +382,16 @@ block(letstar(_, _, _, _)).
 block(letpat(_, _, _, _)).
 block(letfix(_, _, _, _, _, _)).
 block(fun(_, _, B)) :- block(B).
+block(forall(_, _, B)) :- block(B).
+block(exists(_, _, B)) :- block(B).
 block(app(_, _, As)) :- member(A, As), block(A), !.
 block(tuple(_, Es)) :- member(E, Es), block(E), !.
+block(bin(_, _, L, R)) :- ( block(L) ; block(R) ), !.
 block(paren(_, E)) :- block(E).
 
 blk_(paren(_, E), Env) --> blk(E, Env).
+blk_(bin(_, Op, L, R), Env) -->
+    el(div, "rq-equation", ( blk(L, Env), el(div, "goal", op_(Op)), blk(R, Env) )).
 blk_(tuple(_, Es), Env) --> el(div, "rq-tuple", seq(Es, tuple_part(Env))).
 %  An application with a block among its arguments, such as fold_left over
 %  a λ whose body is a match: the function and the arguments before the
@@ -409,9 +418,13 @@ blk_(letfix(_, n(_, F), Bs, Ty, V, B), Env) -->
     { binders_env(Bs, [F|Env], EnvV) },
     let_block(( kw("let fix"), " ", var_def(F), binders_(Bs, Env), opt_type(Ty, EnvV) ), V, EnvV, B, [F|Env]).
 
-blk_(fun(_, Bs, B), Env) -->
+blk_(fun(_, Bs, B), Env) --> quant_block("λ", Bs, "⇒", B, Env).
+blk_(forall(_, Bs, B), Env) --> quant_block("∀", Bs, ",", B, Env).
+blk_(exists(_, Bs, B), Env) --> quant_block("∃", Bs, ",", B, Env).
+
+quant_block(Symbol, Bs, Sep, B, Env) -->
     { binders_env(Bs, Env, Env1) },
-    el(div, "rq-fun", ( el(div, "goal fun-head", ( el(span, q, "λ"), binders_(Bs, Env), " ", "\u00A0", el(span, "sep qsep", "⇒") )),
+    el(div, "rq-fun", ( el(div, "goal fun-head", ( el(span, q, esc(Symbol)), binders_(Bs, Env), " ", "\u00A0", el(span, "sep qsep", esc(Sep)) )),
                         el(div, "fun-body", blk(B, Env1)) )).
 
 %  A binding over its body: its value on the line, or under it when the
@@ -467,10 +480,10 @@ rule(Label, Bs0, T, Env0) -->
     el(div, rule,
        ( ( { Bs == [] } -> [] ; el(div, "rule-vars", ( el(span, q, [title=forall], "∀"), binders_(Bs, Env0) )) ),
          (   { Ps == [] }
-         ->  el(div, "rule-concl alone", ( el(div, goal, term(C, Env)), Label ))
+         ->  el(div, "rule-concl alone", ( blk(C, Env), Label ))
          ;   el(div, premises, seq(Ps, premise(Env))),
              el(div, "rule-line", Label),
-             el(div, "rule-concl", el(div, goal, term(C, Env)))
+             el(div, "rule-concl", blk(C, Env))
          ) )).
 
 premise(Env, P) --> { node_pos(P, F-T) }, notes_before(F), el(div, goal, term(P, Env)), aside_after(T).
@@ -534,6 +547,13 @@ item_(def(F-T, Kw, n(_, N), Bs, Ty, Body)) --> !,
        ( el(div, head, ( line_link(F), kw(Kw), " ", sig_("f def", N, Bs, Ty, Env),
                          ( { Body == none } -> [] ; "\u00A0", defeq ) )),
          ( { Body == none } -> [] ; el(div, "rq-body", blk(Body, Env)) ) )),
+    notes_upto(T).
+item_(tacdef(F-T, n(_, N), Args, Body)) --> !,
+    { anchor(N, Id), maplist([n(_, X), X]>>true, Args, Env) },
+    el(div, "clause rq-ltac", [id=Id],
+       ( el(div, head, ( line_link(F), kw("Ltac"), " ", el(span, "f def", esc(N)),
+                         " ", vars(Args), "\u00A0", defeq )),
+         el(div, "rq-body", tactic_block(Body, Env)) )),
     notes_upto(T).
 item_(thm(F-T, Kw, Name, Bs, Ty)) --> !,
     { Name = n(_, N) -> anchor(N, Id), As = [id=Id] ; N = '', As = [] },
@@ -682,12 +702,15 @@ seq_tail([_|Ss], Id, States) --> seq(Ss, snapshot_lookup(Id, States)).
 proof_link(Id, Snap) -->
     { Snap = snap(T, D, _, F, _), format(atom(Target), "~w-~d", [Id, T]), format(atom(Style), "--depth:~d", [D]),
       ( integer(F) -> src_text(F-T, Label) ; F = end(Kw) -> Label = Kw ; Label = "Initial goal" ) },
-    el(button, "rq-step-link", [type=button, 'data-target'=Target, style=Style], esc(Label)).
+    % A navigation button must not contain another interactive target.
+    { nb_setval(rq_button, true) },
+    el(button, "rq-step-link clause", [type=button, 'data-target'=Target, style=Style, 'aria-label'=Label], step_label(Snap)),
+    { nb_setval(rq_button, false) }.
 
 step_label(snap(_, _, _, none, _)) --> !, esc("Initial goal").
 step_label(snap(_, _, _, end(Kw), _)) --> !, esc(Kw).
 step_label(snap(T, _, Bs, F, Ts)) -->
-    el(span, bullet, seq(Bs, bullet_)), el(span, tactic, tactic_text(F, T, Ts)).
+    el(span, bullet, seq(Bs, bullet_)), tactic_text(F, T, Ts).
 
 snapshot_lookup(Id, States, Snap) -->
     { Snap = snap(T, _, _, _, _), atom_number(Key, T),
@@ -699,7 +722,7 @@ snapshot(Id, _, Snap, Goals) -->
       ( is_list(Goals) -> length(Goals, N) ; N = 0 ),
       format(string(Count), "~d open", [N]) },
     el(section, "rq-snapshot", [id=Sid],
-       ( el(header, "rq-state-heading", ( el(h3, none, step_label(Snap)), el(span, "rq-goal-count", esc(Count)) )),
+       ( el(header, "rq-state-heading", ( el(h3, clause, step_label(Snap)), el(span, "rq-goal-count", esc(Count)) )),
          el(p, "rq-changes", ['aria-live'=polite], []),
          ( { Goals == null }
          -> ( { F = end(Kw), memberchk(Kw, ['Qed', 'Defined']) }
@@ -740,14 +763,17 @@ captured_hyp(Env, hyp(Ns, Body, Ty, Raw)) -->
     el(div, "rq-hyp", ['data-hyp'=Key, 'data-raw'=Raw],
        ( { Ty == none } -> el(code, "rq-unparsed", esc(Raw))
        ; el(div, "rq-hyp-names", ( sep_vars(Ns), ( { Body == none } -> " :" ; " :=" ) )),
-         el(div, "rq-hyp-type goal", ( ( { Body == none } -> [] ; term(Body, Env), " : " ), term(Ty, Env) )) )).
+         el(div, "rq-hyp-type goal",
+            ( { Body == none } -> blk(Ty, Env)
+            ; { block(Body) ; block(Ty) } -> blk(Body, Env), " : ", blk(Ty, Env)
+            ; term(Body, Env), " : ", term(Ty, Env) )) )).
 
 sep_vars([]) --> [].
 sep_vars([N]) --> !, var_def(N).
 sep_vars([N|Ns]) --> var_def(N), ", ", sep_vars(Ns).
 
 captured_term(Text, Env) -->
-    { string_codes(Text, Cs), rocq_fragment_codes(Cs, term(E)) }, !, term(E, Env).
+    { string_codes(Text, Cs), rocq_fragment_codes(Cs, term(E)) }, !, blk(E, Env).
 captured_term(Text, _) --> el(code, "rq-unparsed", [title="Rocq output; notation not yet supported by dterm"], esc(Text)).
 
 %  The focus stack after each step's bullets, as Rocq keeps it: a bullet
@@ -763,9 +789,9 @@ tac_row(row(close, _, _, _)) --> !, [].
 tac_row(row(D, Bs, F-T, Ts)) -->
     { format(atom(Style), "--depth:~d", [D]), exclude(==('}'), Bs, Shown) },
     notes_before(F),
-    el(div, tac, [style=Style],
+    el(div, "tac clause", [style=Style],
        ( el(span, bullet, seq(Shown, bullet_)),
-         el(span, tactic, tactic_text(F, T, Ts)) )),
+         tactic_text(F, T, Ts) )),
     aside_after(T).
 
 bullet_(B) --> { bullet_glyph(B, G) }, esc(G).
@@ -775,8 +801,82 @@ bullet_glyph('+', "+") :- !.
 bullet_glyph('*', "∗") :- !.
 bullet_glyph(B, B).
 
-%  A tactic as written, a name the corpus defines linked to it.
-tactic_text(F, T, Ts) --> tac_tokens(Ts, F, T).
+% One tactic tree for the source, timeline and snapshot heading. The raw
+% source remains available when a tactic extension is not understood.
+tactic_text(F, To, Ts) --> { rocq_tactic_tokens(Ts, T), src_text(F-To, Raw) }, !,
+    el(span, "tactic", [title=Raw], tactic_block(T, [])).
+tactic_text(F, T, Ts) --> el(span, "tactic rq-unparsed", tac_tokens(Ts, F, T)).
+
+tactic_block(tmatch(K, Subject, Bs), Env) --> !,
+    el(span, "rq-tac-match", ( el(span, "goal rq-tac-head", ( kw(K), " ", tactic_subject(Subject, Env), " ", kw("with") )),
+        el(span, "cases match", tactic_branches(Bs, Env)), el(span, "rq-tac-end", kw("end")) )).
+tactic_block(tbin(Op, L, R), Env) -->
+    { tactic_structural(L) ; tactic_structural(R) }, !,
+    el(span, "rq-tac-seq", ( tactic_block(L, Env), el(span, "rq-tac-sep", esc(Op)), " ", tactic_block(R, Env) )).
+tactic_block(prefix(K, T), Env) --> { tactic_structural(T) }, !,
+    el(span, "rq-tac-prefix", ( kw(K), " ", tactic_block(T, Env) )).
+tactic_block(select(S, T), Env) --> !,
+    el(span, "rq-tac-select", ( el(span, "rq-selector", ( esc(S), ":" )), " ", tactic_block(T, Env) )).
+tactic_block(choices(K, Ts), Env) --> !,
+    el(span, "rq-tac-choices", ( kw(K), " [", el(span, "rq-tac-options", tactic_options(Ts, Env)), "]" )).
+tactic_block(dispatch(T, Ts), Env) --> !,
+    el(span, "rq-tac-seq", ( tactic_block(T, Env), "; [", el(span, "rq-tac-options", tactic_options(Ts, Env)), "]" )).
+tactic_block(tgroup(T), Env) --> { tactic_structural(T) }, !,
+    el(span, "rq-tac-group", ( "(", tactic_block(T, Env), ")" )).
+tactic_block(T, Env) --> el(span, "goal rq-tac-inline", tactic_inline(T, Env)).
+
+tactic_structural(tmatch(_, _, _)).
+tactic_structural(choices(_, _)).
+tactic_structural(dispatch(_, _)).
+tactic_structural(select(_, _)).
+tactic_structural(prefix(_, T)) :- tactic_structural(T).
+tactic_structural(tgroup(T)) :- tactic_structural(T).
+tactic_structural(tbin(_, L, R)) :- ( tactic_structural(L) ; tactic_structural(R) ).
+
+tactic_inline(tbin(Op, L, R), Env) -->
+    el(span, o, ['data-d'=op], ( tactic_inline(L, Env), " ",
+        el(span, "op wide", [title=Op], esc(Op)), " ", tactic_inline(R, Env) )).
+tactic_inline(prefix(K, T), Env) -->
+    el(span, "c app", ['data-d'=args], ( kw(K), el(span, args, el(span, arg, tactic_inline(T, Env))) )).
+tactic_inline(tgroup(T), Env) --> el(span, paren, tactic_inline(T, Env)).
+tactic_inline(call(N, []), Env) --> !, name_ref(N, Env, head).
+tactic_inline(call(N, Ps), Env) -->
+    el(span, "c app", ['data-d'=args], ( name_ref(N, Env, head), el(span, args, tactic_parts(Ps, Env)) )).
+tactic_inline(empty, _) --> el(span, "rq-empty", []).
+
+tactic_parts([], _) --> [].
+tactic_parts([P|Ps], Env) --> el(span, arg, tactic_part(P, Env)),
+    ( { Ps == [] } -> [] ; " ", tactic_parts(Ps, Env) ).
+
+tactic_part(term(E), Env) --> term(E, Env).
+tactic_part(tactic(T), Env) --> el(span, paren, tactic_block(T, Env)).
+tactic_part(binding(n(_, N), Op, E), Env) -->
+    el(span, paren, ( var_def(N), "\u00A0", el(span, "op wide", [title=Op], esc(Op)), " ", term(E, Env) )).
+tactic_part(context(E), Env) --> kw("context"), " [", term(E, Env), "]".
+tactic_part(hyp(n(_, N), E), Env) -->
+    var_def(N), " : ", term(E, Env).
+tactic_part(group(Open, Ps, Close), Env) -->
+    el(span, "l rq-pattern", ['data-d'=args], ( el(span, sep, esc(Open)), " ", tactic_parts(Ps, Env), " ", el(span, sep, esc(Close)) )).
+tactic_part(token(id(X)), Env) --> !, name_ref(X, Env).
+tactic_part(token(kw(X)), _) --> !, kw(X).
+tactic_part(token(str(S)), Env) --> !, term(str(0-0, S), Env).
+tactic_part(token(K), _) --> { rocq_syntax:tok_text(K, S) }, el(span, "rq-token", esc(S)).
+
+tactic_subject(goal, _) --> kw("goal").
+tactic_subject(type(E), Env) --> kw("type of"), " ", term(E, Env).
+tactic_subject(term(E), Env) --> term(E, Env).
+
+tactic_branches([], _) --> [].
+tactic_branches([tbr(Ps, T)|Bs], Env) -->
+    { findall(X, ( sub_term(meta(_, X), Ps) ; sub_term(hyp(n(_, X), _), Ps) ), Ns), append(Ns, Env, Env1) },
+    el(span, case, ( el(span, cond, el(span, goals, el(span, "goal rq-tac-pattern",
+                        el(span, "c app", ['data-d'=args], el(span, args, tactic_parts(Ps, Env1)))))),
+                    el(span, arrow, "⇒"), el(span, then, el(span, goals, tactic_block(T, Env1))) )),
+    tactic_branches(Bs, Env).
+
+tactic_options([], _) --> [].
+tactic_options([T|Ts], Env) -->
+    el(span, "rq-tac-option", ( el(span, "rq-choice-bar", "|"), tactic_block(T, Env) )), tactic_options(Ts, Env).
 
 tac_tokens([], O, T) --> { src_text(O-T, S) }, esc(S).
 tac_tokens([t(K, F, To)|Ts], O, T) -->

@@ -13,7 +13,7 @@ function check(body) {
   browser("eval", `(async () => {
     const assert = (ok, message) => { if (!ok) throw new Error(message); };
     await document.fonts.ready;
-    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    for (let i = 0; i < 4; i++) await new Promise(requestAnimationFrame);
     ${body}
     return "ok";
   })()`);
@@ -30,8 +30,49 @@ const contextRows = `
 `;
 
 try {
-  browser("open", source("Ops"));
+  browser("open", `${base}/nanofil/rocq/index.html`);
   browser("eval", 'localStorage.removeItem("dterm-rocq-layout")');
+  // Discover from the generated index: new theories join the phone gate
+  // automatically, instead of silently falling outside a fixed file list.
+  const pages = JSON.parse(browser("eval", `[...new Set([...document.querySelectorAll('a[href]')]
+    .map(a => a.getAttribute('href')).filter(h => /^[^/]+[.]html$/.test(h) && h !== 'index.html'))]`));
+  if (!pages.some(p => p.includes("Machine"))) throw new Error("missing Machine page in index");
+  for (const width of [320, 390]) {
+    browser("set", "viewport", String(width), "900", "2");
+    for (const page of ["index.html", ...pages]) {
+      console.log(`${new Date().toISOString()} checking ${page} and its proof steps at ${width}px`);
+      browser("open", `${base}/nanofil/rocq/${page}`);
+      check(fitsPage);
+      const count = JSON.parse(browser("eval", "document.querySelectorAll('.rq-proof').length"));
+      // Bound each command to four snapshots: large captured states can
+      // spend real time in layout, even in a short proof.
+      for (let i = 0; i < count; i++) {
+        check(`
+          const proof = document.querySelectorAll('.rq-proof')[${i}];
+          proof.open = true;
+          const script = proof.querySelector('.rq-script');
+          if (script) script.open = true;
+          for (let i = 0; i < 4; i++) await new Promise(requestAnimationFrame);
+          ${fitsPage}
+        `);
+        const steps = JSON.parse(browser("eval", `document.querySelectorAll('.rq-proof')[${i}].querySelectorAll('.rq-step-link').length`));
+        for (let start = 0; start < steps; start += 4) {
+          check(`
+            const links = [...document.querySelectorAll('.rq-proof')[${i}].querySelectorAll('.rq-step-link')];
+            for (const link of links.slice(${start}, ${start + 4})) {
+              link.click();
+              for (let i = 0; i < 4; i++) await new Promise(requestAnimationFrame);
+              assert(document.documentElement.scrollWidth <= innerWidth + 1,
+                ${JSON.stringify(page)} + ' overflows at ' + link.getAttribute('aria-label'));
+            }
+          `);
+        }
+        browser("eval", `document.querySelectorAll('.rq-proof')[${i}].open = false`);
+        console.log(`${new Date().toISOString()} ok ${page} proof ${i + 1}/${count}, ${steps} steps at ${width}px`);
+      }
+      console.log(`ok no overflow ${page}, including all proof steps, at ${width}px`);
+    }
+  }
   for (const width of [320, 390, 768, 1280]) {
     browser("set", "viewport", String(width), "900", "2");
     for (const file of ["Syntax", "Memory", "Ops", "Run", "Semantics", "Validate"]) {
@@ -80,7 +121,9 @@ try {
     browser("click", `${proof} .rq-step-link:nth-child(5)`);
     check(`${fitsPage}
       const state = document.querySelector(${JSON.stringify(proof)}).querySelector('.rq-snapshot:not([hidden])');
-      assert(state.querySelector('h3').textContent.includes('apply Z.eqb_eq in E.'), "wrong selected tactic");
+      assert(state.querySelector('h3 .tactic').title === 'apply Z.eqb_eq in E.', "wrong selected tactic");
+      assert(state.querySelector('h3 .tactic [data-d]'), "selected tactic not typeset");
+      assert(document.querySelector(${JSON.stringify(proof)}).querySelector('.rq-step-link .tactic [data-d]'), "timeline tactic not typeset");
       assert(state.querySelector('[data-role="deferred"]'), "pending branch lost");
       assert(state.querySelector('.rq-hyp[data-change="changed"]'), "rewrite in hypothesis not highlighted");
     `);
@@ -121,6 +164,23 @@ try {
       check(`${fitsPage} ${contextRows}
         assert(document.querySelector('#object_region_remove + .rq-captured').querySelectorAll('.rq-snapshot:not([hidden])').length === 2, "comparison missing in selected layout");
       `);
+      browser("open", source("Machine"));
+      check(`${fitsPage}
+        assert(document.querySelectorAll('.rq-ltac').length === 3, "Ltac definitions not parsed");
+        assert(document.querySelector('#cases .rq-tac-match [data-d]'), "Ltac pattern not typeset");
+        const proof = document.querySelector('#store_res_kept + .rq-captured');
+        proof.open = true;
+        const step = proof.querySelector('.rq-step-link:has(.rq-tac-match)');
+        assert(step && !step.querySelector('a'), "compound tactic missing or nested interactive link");
+        step.click();
+        for (let i = 0; i < 4; i++) await new Promise(requestAnimationFrame);
+        ${fitsPage}
+        assert(proof.querySelector('.rq-snapshot:not([hidden]) h3 .rq-tac-match'), "selected match not typeset");
+        const row = step.getBoundingClientRect(), timeline = proof.querySelector('.rq-timeline').getBoundingClientRect();
+        assert(row.top >= timeline.top - 1, "selected tactic starts above the timeline");
+        assert(row.bottom <= timeline.bottom + 1 || row.top <= timeline.top + 1,
+          "long selected tactic should start at the timeline's top");
+      `);
       browser("open", source("Ops"));
       console.log(`ok ${layout} selection and persistence at ${width}px`);
     }
@@ -129,6 +189,18 @@ try {
   browser("close");
   browser("open", "about:blank");
   browser("network", "route", "*", "--abort", "--resource-type", "script");
+  for (const width of [320, 390]) {
+    browser("set", "viewport", String(width), "900", "2");
+    for (const page of ["index.html", ...pages]) {
+      browser("open", `${base}/nanofil/rocq/${page}`);
+      check(`
+        for (const proof of document.querySelectorAll('.rq-proof, .rq-script')) proof.open = true;
+        ${fitsPage}
+        assert(!document.querySelector('.rq-snapshot[hidden]'), "static states hidden");
+      `);
+      console.log(`ok no-script overflow ${page} at ${width}px`);
+    }
+  }
   for (const width of [320, 1280]) {
     browser("set", "viewport", String(width), "900", "2");
     browser("open", source("Runtime"));

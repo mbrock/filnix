@@ -22,6 +22,7 @@ main :-
     current_prolog_flag(argv, [File|Opts]),
     rocq_read_file(File, Text, rocq(Items, _)),
     nb_setval(text, Text),
+    nb_setval(strict, Opts),
     (   memberchk('--strict', Opts), raws(Items, Raws), Raws \== []
     ->  forall(member(raw(F-_, Kw), Raws),
                ( sub_string(Text, 0, F, _, Pre), split_string(Pre, "\n", "", Ls), length(Ls, L),
@@ -32,7 +33,7 @@ main :-
     maplist(item, Items).
 
 %  Commands that are copied as text on purpose.
-copied(K) :- memberchk(K, ['Ltac', 'Check', 'Compute', 'Print', 'Eval', 'Search', 'About', 'Locate',
+copied(K) :- memberchk(K, ['Check', 'Compute', 'Print', 'Eval', 'Search', 'About', 'Locate',
                            'Extraction', 'Extract', 'Recursive', 'Next', 'Obligation', 'Opaque', 'Transparent']).
 
 raws(Items, Raws) :-
@@ -47,7 +48,12 @@ item(proved(S, pf(Steps, End))) :- !,
     sent(S), maplist(step, Steps), ( End = qed(P, _) -> src(P) ; true ).
 item(S) :- sent(S).
 
-step(step(P, Bs, _)) :- maplist([B]>>format("~w ", [B]), Bs), src(P).
+step(step(P, Bs, Ts)) :-
+    maplist([B]>>format("~w ", [B]), Bs),
+    ( rocq_tactic_tokens(Ts, T) -> pt(T), write(".\n")
+    ; nb_getval(strict, Opts), memberchk('--strict', Opts)
+    -> format(user_error, "unparsed tactic at ~w~n", [P]), halt(1)
+    ; src(P) ).
 step(bullets(Bs)) :- maplist([B]>>format("~w ", [B]), Bs), nl.
 
 sent(ind(_, Kw, Bodies)) :- !, format("~w ", [Kw]), bodies(Bodies), write(".\n").
@@ -61,6 +67,8 @@ sent(def(_, Kw, n(_, N), Bs, Ty, Body)) :- !,
 sent(thm(_, 'Goal', none, [], Ty)) :- !, write("Goal "), pr(Ty), write(".\n").
 sent(thm(_, Kw, n(_, N), Bs, Ty)) :- !,
     format("~w ~w", [Kw, N]), binders(Bs), write(" : "), pr(Ty), write(".\n").
+sent(tacdef(_, n(_, N), Args, T)) :- !,
+    format("Ltac ~w ", [N]), names(Args), write(" := "), pt(T), write(".\n").
 sent(decl(_, Kw, [g(Ns, Ty)])) :- !,
     format("~w ", [Kw]), names(Ns), write(" : "), pr(Ty), write(".\n").
 sent(decl(_, Kw, Gs)) :- !,
@@ -83,6 +91,7 @@ fields([field(_, N, Bs, Ty, D)|Fs]) :-
 opt_type(none) :- !.
 opt_type(T) :- write(" : "), pr(T).
 
+names([]).
 names([n(_, N)]) :- !, write(N).
 names([n(_, N)|Ns]) :- format("~w ", [N]), names(Ns).
 
@@ -96,6 +105,8 @@ binder(b(_, _, Ns, T)) :- write("("), names(Ns), write(" : "), pr(T), write(")")
 
 pr(id(_, X)) :- !, write(X).
 pr(hole(_)) :- !, write("_").
+pr(meta(_, X)) :- !, format("?~w", [X]).
+pr(ltac(_, T)) :- !, write("ltac:("), pt(T), write(")").
 pr(num(_, N)) :- !, write(N).
 pr(str(_, S)) :- !, format("\"~w\"", [S]).
 pr(explicit(_, X)) :- !, format("@~w", [X]).
@@ -148,3 +159,35 @@ scrut(E) :- pr(E).
 
 alts([A]) :- !, sep(A, ", ").
 alts([A|As]) :- sep(A, ", "), write(" | "), alts(As).
+
+% Tactic grouping is made explicit too, so coqc checks its precedence
+% and the embedded Gallina, not just the untouched source script.
+pt(tbin(Op, L, R)) :- format("("), pt(L), format(" ~w ", [Op]), pt(R), write(")").
+pt(prefix(K, T)) :- format("(~w ", [K]), pt(T), write(")").
+pt(select(S, T)) :- format("~w: ", [S]), pt(T).
+pt(tgroup(T)) :- write("("), pt(T), write(")").
+pt(choices(K, Ts)) :- format("~w [", [K]), pt_choices(Ts), write("]").
+pt(dispatch(T, Ts)) :- write("("), pt(T), write("; ["), pt_choices(Ts), write("])").
+pt(tmatch(K, Subject, Bs)) :-
+    format("~w ", [K]), pt_subject(Subject), write(" with "),
+    forall(member(tbr(Ps, T), Bs), ( write(" | "), pt_parts(Ps), write(" => "), pt(T) )), write(" end").
+pt(call(N, Ps)) :- format("~w ", [N]), pt_parts(Ps).
+pt(empty).
+
+pt_subject(goal) :- write("goal").
+pt_subject(type(E)) :- write("type of "), pr(E).
+pt_subject(term(E)) :- pr(E).
+
+pt_choices([T]) :- !, pt(T).
+pt_choices([T|Ts]) :- pt(T), write(" | "), pt_choices(Ts).
+
+pt_parts([]).
+pt_parts([P|Ps]) :- pt_part(P), write(" "), pt_parts(Ps).
+pt_part(term(E)) :- pr(E).
+pt_part(tactic(T)) :- write("("), pt(T), write(")").
+pt_part(binding(n(_, N), Op, E)) :- format("(~w ~w ", [N, Op]), pr(E), write(")").
+pt_part(context(E)) :- write("context ["), pr(E), write("]").
+pt_part(hyp(n(_, N), E)) :- format("~w : ", [N]), pr(E).
+pt_part(group(Open, Ps, Close)) :- write(Open), pt_parts(Ps), write(Close).
+pt_part(token(str(S))) :- !, format('"~w"', [S]).
+pt_part(token(K)) :- rocq_syntax:tok_text(K, S), write(S).

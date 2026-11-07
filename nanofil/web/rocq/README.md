@@ -59,18 +59,24 @@ formal campaign writes: `Inductive` (with `with`), `Record`,
 `fun`, `exists`, `let` (with `let fix`, `let '(a, b)` and the development's
 `let*`), `if`, `match` (several scrutinees, `|` alternatives and
 or-patterns `(W | L)`), records `{| … |}`, sigma types, scopes, chained
-comparisons `a <= b < c` and Rocq's standard operator levels. A proof is kept as its tactics, each with the bullets
-that focus it; tactics are not parsed. A sentence it does not read is
-drawn as its text.
+comparisons `a <= b < c` and Rocq's standard operator levels. A proof keeps
+its focus bullets and tactic sentences. Ltac definitions and scripts parse
+sequencing, choice, dispatch, `first`/`solve`, prefixes such as `try` and
+`repeat`, goal selectors, and `match`/`lazymatch`/`multimatch`. Match patterns,
+parenthesized expressions, assertions and `ltac:(…)` use the Gallina grammar;
+intro patterns remain distinct from terms. Atomic tactic extensions keep
+their tokens; an unsupported control form stays verbatim, never disappears.
 
 `tests/parse.sh` compiles each `.v` file, then reprints its tree with
 every subterm in parentheses (`tests/reprint.pl`) and compiles that: if
 the definitions still type-check and the proofs still go through, every
 operator was read at Rocq's precedence and every binder where Rocq puts
-it. It passes on the nine files of the Campaign 1 development
-([nanofil/rocq/theories](../../rocq/theories)), compiled with their
-`_RocqProject`'s flags in its order. Making `->` left-associative fails
-four of them and `::` left-associative fails Semantics.v.
+it. The reprint also groups Ltac control flow and embedded terms, and a
+temporary proof fixture distinguishes choice from sequencing and exercises
+dispatch, match patterns and assertions. All files in the development are
+compiled with their `_RocqProject`'s flags in its order. Unparsed definitions
+or tactics fail this check. Making `->` left-associative fails four Campaign
+1 files and `::` left-associative fails Semantics.v.
 
 ## Drawing rules
 
@@ -83,6 +89,12 @@ four of them and `::` left-associative fails Semantics.v.
   constructor sits beside it.
 - A theorem, lemma or axiom is its statement drawn as a rule, and its
   proof folds under it, a row per tactic indented by its bullets.
+- Ltac matches use the same adaptive pattern/result layout as Gallina.
+  Dispatch and choice have one branch per row; atomic tactics and their
+  embedded terms use dterm's application/operator printer. Source scripts,
+  timeline buttons and selected-step headings share that drawing. Buttons
+  keep the original command as their accessible name; typeset steps expose
+  it in their tooltip. Unknown syntax remains monospace.
 - A definition is its signature over its body. `match` is a table of
   patterns and results, `if` a table of conditions, `let` a binding over
   its body; anything else is one term, broken by dterm.js.
@@ -124,6 +136,17 @@ every `.v` file under `nanofil/` into `nanofil/rocq/`.
 The browser check takes the HTTP base URL of a served site build and needs
 `agent-browser`. It exercises the real model and formal campaign at 320,
 390, 768 and 1280px, including the layout selector and its saved preference.
+At 320 and 390px it discovers every Rocq page from the generated index and
+checks for document overflow, including expanded scripts and every captured
+proof step. New theories join this check without editing a file list.
+
+Rendering collects completed pages' temporary DCG output explicitly. On the
+site's SWI 10.1.19, automatic collection let the global stack accumulate to
+more than 600 MiB across files and exhaust the default 1 GiB limit, although
+the live source/index/capture data took only about 5 MiB after collection.
+Each page now logs its UTC completion time, elapsed seconds, and global
+stack use before/after collection. The site keeps the default stack limit;
+it does not need separate processes that would rebuild the cross-file index.
 
 ## Reading proofs, not just tactics
 

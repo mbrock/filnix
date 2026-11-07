@@ -133,9 +133,25 @@ details.rq-proof > summary::before { content: "▸ "; }
 details.rq-proof[open] > summary::before { content: "▾ "; }
 .proof-count { font-size: 0.85em; }
 .proof-steps { margin: 0.2rem 0 0 0.9em; padding-left: 0.6em; border-left: 2px solid var(--rule); }
-.tac { padding-left: calc(var(--depth, 0) * 1.1em); font-family: var(--mono-font); font-size: 0.82rem; line-height: 1.55; }
+.dterm-rocq .tac { padding-left: calc(min(var(--depth, 0), 4) * 0.6em); margin: 0.15rem 0; font-size: 0.9rem; line-height: 1.5; }
 .tac .bullet { display: inline-block; min-width: 1.1em; color: var(--accent); }
-.tac .tactic { white-space: pre-wrap; }
+.tactic { white-space: normal; }
+/* Tactic control flow is structure; each atomic tactic uses dterm's
+   existing application/operator printer, including its Gallina terms. */
+.rq-ltac { scroll-margin-top: 3rem; }
+.rq-tac-inline { display: block; }
+.tactic .c.app > .args { padding-block: 0; }
+.rq-tac-match, .rq-tac-choices, .rq-tac-group, .rq-tac-seq { display: block; min-width: 0; }
+.rq-tac-head, .rq-tac-end { display: block; }
+.rq-tac-options { display: grid; margin-left: 0.4em; }
+.rq-tac-option { display: grid; grid-template-columns: 0.7em minmax(0, 1fr); gap: 0.2em; }
+.rq-tac-option:first-child > .rq-choice-bar { visibility: hidden; }
+.rq-choice-bar, .rq-tac-sep, .rq-selector { color: var(--muted); }
+.rq-tac-pattern { display: block; }
+.rq-tac-pattern > .arg { margin-right: 0.2em; }
+.rq-pattern { border: 0; padding: 0; }
+.rq-pattern::before, .rq-pattern::after { content: none; }
+.rq-equation { min-width: 0; max-width: 100%; }
 
 /* The proof is a reading surface, not an embedded IDE. The existing
    term printer still owns every goal's line breaks and name links. */
@@ -154,14 +170,14 @@ details.rq-captured { margin: 0.25rem 0 1rem; font-size: 0.9rem; }
 .rq-walk { display: grid; grid-template-columns: minmax(0, 13rem) minmax(0, 1fr); gap: 0.6rem; align-items: start; }
 .rq-walk:has(.rq-timeline[hidden]) { grid-template-columns: minmax(0, 1fr); }
 .rq-timeline { max-height: 26rem; overflow: auto; overscroll-behavior: contain; padding: 0 0.4rem 0 0; border-right: 1px solid var(--rule); }
-.rq-step-link { display: block; width: 100%; border: 0; border-left: 2px solid transparent; border-radius: 0; background: transparent; color: var(--muted); text-align: left; padding: 0.2rem 0.3rem 0.2rem calc(0.3rem + min(var(--depth), 4) * 0.35rem); font: 0.75rem/1.5 var(--mono-font); overflow-wrap: anywhere; white-space: pre-wrap; cursor: pointer; }
-.rq-step-link:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); color: var(--ink); }
-.rq-step-link[aria-current=step] { color: var(--accent); border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.dterm-rocq .rq-step-link { display: block; width: 100%; margin: 0; border: 0; border-left: 2px solid transparent; border-radius: 0; background: transparent; color: var(--muted); text-align: left; padding: 0.2rem 0.3rem 0.2rem calc(0.3rem + min(var(--depth), 4) * 0.35rem); font: inherit; font-size: 0.85rem; line-height: 1.5; overflow-wrap: anywhere; white-space: normal; cursor: pointer; }
+.dterm-rocq .rq-step-link:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); color: var(--ink); }
+.dterm-rocq .rq-step-link[aria-current=step] { color: var(--accent); border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .rq-states, .rq-snapshot { min-width: 0; }
 .rq-snapshot { scroll-margin-top: 5rem; }
 .rq-snapshot + .rq-snapshot:not([hidden]) { margin-top: 0.6rem; }
 .rq-state-heading { display: flex; align-items: baseline; gap: 0.4rem; padding-bottom: 0.2rem; border-bottom: 1px solid var(--rule); }
-.rq-state-heading h3 { flex: 1; min-width: 0; margin: 0; font: 500 0.8rem/1.6 var(--mono-font); overflow-wrap: anywhere; }
+.rq-state-heading h3.clause { flex: 1; min-width: 0; margin: 0; font: inherit; font-size: 0.9rem; line-height: 1.5; overflow-wrap: anywhere; }
 .rq-state-heading .bullet { color: var(--accent); margin-right: 0.4em; }
 .rq-goal-count { flex-shrink: 0; font-size: 0.72rem; color: var(--muted); }
 .rq-changes { margin: 0.2rem 0; color: #38664d; font-size: 0.75rem; }
@@ -169,6 +185,7 @@ details.rq-captured { margin: 0.25rem 0 1rem; font-size: 0.9rem; }
 .rq-proof-goal.clause { padding: 0; margin: 0.3rem 0; min-width: 0; }
 .rq-context { display: grid; grid-template-columns: fit-content(40%) minmax(0, 1fr); row-gap: 0.1rem; column-gap: 0.5rem; }
 .rq-hyp { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: baseline; padding: 0 0.25rem; border-left: 2px solid transparent; }
+.rq-hyp:has(.rq-hyp-type > div) { align-items: start; }
 .rq-hyp-names { font-size: 0.85rem; }
 .rq-hyp-names, .rq-hyp .rq-unparsed { overflow-wrap: anywhere; }
 .rq-hyp > .rq-unparsed { grid-column: 1 / -1; }
@@ -263,6 +280,7 @@ html[data-case-layout="table"] :is(table.rq-ctors, table.rq-fields, table.rq-com
   --rq-row-border: 0; --rq-thead: table-header-group; --rq-label-display: none;
   overflow-x: auto;
 }
+html[data-case-layout="table"] .tactic { display: block; max-width: 100%; overflow-x: auto; }
 @media (max-width: 700px) {
   body:has(.rq-layout) .status nav.crumbs { min-width: 0; white-space: normal; overflow: visible; }
   body:has(.rq-layout) .status .crumb.current { display: inline-block; max-width: 100%; overflow-wrap: anywhere; vertical-align: top; }

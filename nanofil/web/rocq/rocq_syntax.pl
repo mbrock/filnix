@@ -7,8 +7,9 @@
     way dterm draws Prolog. Nothing is desugared: every node keeps the
     character span it came from, numbers and strings keep their spelling,
     and comments are returned beside the sentences, so the drawing can put
-    each where it was written. Proof scripts are not parsed: a tactic is
-    kept as its tokens, with the bullets that focus it.
+    each where it was written. Tactics keep their control structure and
+    use Gallina terms for embedded expressions; unfamiliar atomic syntax
+    keeps its tokens, rather than being guessed or dropped.
 
     Every node's first argument is its span From-To (character offsets,
     To exclusive). Terms:
@@ -43,7 +44,7 @@
     Comments are `cm(From, To, Text)`, Text with its markers.
 */
 :- module(rocq_syntax, [rocq_read_file/3, rocq_parse_codes/3, rocq_fragment_codes/2,
-                        rocq_lex/3, node_pos/2, binop/3, notation_fold/3]).
+                        rocq_tactic_tokens/2, rocq_lex/3, node_pos/2, binop/3, notation_fold/3]).
 
 :- use_module(library(lists)).
 :- use_module(library(apply)).
@@ -290,6 +291,8 @@ vernac(P, thm(P, Kw, N, Bs, Ty)) -->
     tk(id(Kw)), { memberchk(Kw, ['Theorem', 'Lemma', 'Corollary', 'Fact', 'Remark', 'Proposition', 'Property']) }, !,
     name(N), binders0(Bs), tk(sym(':')), term(Ty).
 vernac(P, thm(P, 'Goal', none, [], Ty)) --> tk(id('Goal')), !, term(Ty).
+vernac(P, tacdef(P, N, Args, Body)) -->
+    tk(id('Ltac')), !, name(N), tactic_params(Args), tk(sym(':=')), tactic(Body).
 vernac(P, decl(P, Kw, Gs)) -->
     tk(id(Kw)), { memberchk(Kw, ['Axiom', 'Axioms', 'Parameter', 'Parameters', 'Conjecture', 'Hypothesis',
                                  'Hypotheses', 'Variable', 'Variables', 'Context']) }, !,
@@ -469,10 +472,14 @@ atom_start(id(X)) :- \+ op_word(X).
 atom_start(num(_)). atom_start(str(_)).
 atom_start(p('(')). atom_start(p('[')). atom_start(p('{|')).
 atom_start(kw(match)). atom_start(sym('@')).
+atom_start(sym('?')).
 
 atom(E) --> atom0(E0), ( tk(sym('%')), tk(id(K), _, T) -> { start(E0, F), E = scope(F-T, E0, K) } ; { E = E0 } ).
 
 atom0(hole(F-T)) --> tk(id('_'), F, T), !.
+atom0(meta(F-T, X)) --> tk(sym('?'), F, _), tk(id(X), _, T), !.
+atom0(ltac(F-T, Tac)) --> tk(id(ltac), F, _), tk(sym(':')), tk(p('(')), !,
+    tactic(Tac), tk(p(')'), _, T).
 atom0(id(F-T, X)) --> tk(id(X), F, T), { \+ op_word(X) }, !.
 atom0(num(F-T, N)) --> tk(num(N), F, T), !.
 atom0(str(F-T, S)) --> tk(str(S), F, T), !.
@@ -514,6 +521,87 @@ branches([]) --> [].
 
 alternatives([Ps|As]) --> patterns(Ps), ( tk(sym('|')) -> alternatives(As) ; { As = [] } ).
 patterns([P|Ps]) --> expr(99, P), ( tk(p(',')) -> patterns(Ps) ; { Ps = [] } ).
+
+%% Ltac
+
+% rocq_tactic_tokens(+Tokens, -Tactic): control structure of a tactic
+% sentence (without its full stop). Atomic arguments are Gallina where
+% unambiguous, otherwise balanced token groups. No source tokens vanish.
+rocq_tactic_tokens(Ts, T) :- phrase(tactic(T), Ts), !.
+
+tactic_params([N|Ns]) --> name(N), !, tactic_params(Ns).
+tactic_params([]) --> [].
+
+% Choice binds more tightly than sequencing; prefixes bind more tightly
+% than either. Parentheses and dispatch brackets retain that scope.
+tactic(T) --> tactic_choice(L), tactic_then(L, T).
+tactic_choice(T) --> tactic_unit(L),
+    ( tk(sym('||')) -> tactic_choice(R), { T = tbin('||', L, R) } ; { T = L } ).
+tactic_then(L, T) --> tk(p(';')), !,
+    ( tk(p('[')) -> tactic_choices(Ts), tk(p(']')), { Next = dispatch(L, Ts) }
+    ; tactic_choice(R), { Next = tbin(';', L, R) } ),
+    tactic_then(Next, T).
+tactic_then(T, T) --> [].
+
+tactic_unit(select(S, T)) --> [t(K, _, _)], { K = num(S) ; K = id(S), S == all }, tk(sym(':')), !, tactic(T).
+tactic_unit(prefix(K, T)) --> tk(id(K)), { memberchk(K, [try, repeat, progress, now, once, timeout, do]) },
+    !, tactic_unit(T).
+tactic_unit(choices(K, Ts)) --> tk(id(K)), { memberchk(K, [first, solve]) }, tk(p('[')), !,
+    tactic_choices(Ts), tk(p(']')).
+tactic_unit(tmatch(K, Subject, Bs)) -->
+    [t(Tok, _, _)], { Tok = kw(match), K = match ; Tok = id(K), memberchk(K, [lazymatch, multimatch]) },
+    !, tactic_subject(Subject), tk(kw(with)),
+    ( tk(sym('|')) -> [] ; [] ), tactic_branches(Bs), tk(kw(end)).
+tactic_unit(tgroup(T)) --> tk(p('(')), !, tactic(T), tk(p(')')).
+tactic_unit(call(N, Ps)) --> tactic_name(N), !, tactic_parts(Ps).
+
+tactic_name(N) --> tk(id(N)).
+tactic_name(exists) --> tk(kw(exists)).
+tactic_name(fix) --> tk(kw(fix)).
+tactic_name(cofix) --> tk(kw(cofix)).
+
+tactic_subject(goal) --> tk(id(goal)), !.
+tactic_subject(type(E)) --> tk(id(type)), tk(id(of)), !, term(E).
+tactic_subject(term(E)) --> term(E).
+
+tactic_choices([T|Ts]) -->
+    ( tactic(T) -> [] ; { T = empty } ),
+    ( tk(sym('|')) -> tactic_choices(Ts) ; { Ts = [] } ).
+tactic_branches([tbr(Ps, T)|Bs]) --> tactic_match_pattern(Ps), tk(sym('=>')), tactic(T),
+    ( tk(sym('|')) -> tactic_branches(Bs) ; { Bs = [] } ).
+
+tactic_match_pattern([group('[', Ps, ']')]) --> tk(p('[')), tactic_match_pattern(Ps), tk(p(']')), !.
+tactic_match_pattern([context(E)]) --> tk(id(context)), tk(p('[')), term(E), tk(p(']')), !.
+tactic_match_pattern([hyp(N, E)|Ps]) --> name(N), tk(sym(':')), term(E), !,
+    ( tk(p(',')) -> tactic_match_pattern(Rest), { Ps = [token(p(','))|Rest] }
+    ; tk(sym('|-')), term(G), { Ps = [token(sym('|-')), term(G)] } ).
+tactic_match_pattern([token(sym('|-')), term(E)]) --> tk(sym('|-')), !, term(E).
+tactic_match_pattern([term(E)]) --> term(E).
+
+tactic_parts([P|Ps]) --> tactic_part(P), !, tactic_parts(Ps).
+tactic_parts([]) --> [].
+
+% Parenthesized expressions and named assertions go through the very
+% same term grammar as definitions and goals. Intro/destruct patterns do
+% not: [a | b] is not a Gallina list, nor (a & b) a Gallina application.
+tactic_part(binding(N, Op, E)) --> tk(p('(')), name(N), tk(sym(Op)), { memberchk(Op, [':=', ':']) },
+    term(E), tk(p(')')), !.
+tactic_part(term(E)) --> peek(p('(')), atom(E), !.
+tactic_part(tactic(T)) --> tk(p('(')), tactic(T), tk(p(')')), !.
+tactic_part(context(E)) --> tk(id(context)), tk(p('[')), term(E), tk(p(']')), !.
+tactic_part(group(Open, Ps, Close)) -->
+    [t(p(Open), _, _)], { matching(Open, Close) }, tactic_pattern(Ps), tk(p(Close)), !.
+tactic_part(token(K)) --> [t(K, _, _)], { tactic_token(K) }.
+
+tactic_token(K) :- \+ memberchk(K, [p(';'), p('('), p(')'), p('['), p(']'),
+                                    sym('|'), sym('=>'), sym('||'), kw(end)]).
+matching('(', ')').
+matching('[', ']').
+matching('{', '}').
+
+tactic_pattern([P|Ps]) -->
+    ( tactic_part(P) -> [] ; tk(sym('|')), { P = token(sym('|')) } ), !, tactic_pattern(Ps).
+tactic_pattern([]) --> [].
 
 %% Notations
 

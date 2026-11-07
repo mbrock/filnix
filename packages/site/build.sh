@@ -57,8 +57,7 @@ swipl "$src/nanofil/web/dterm.pl" "$out/nanofil" "$src/nanofil/src" \
 mkdir -p "$out/nanofil/rocq"
 cp "$src"/nanofil/web/rocq/dterm-rocq.css "$src"/nanofil/web/rocq/dterm-rocq.js "$out/nanofil/rocq/"
 mapfile -t rocq < <(cd "$src" && find nanofil -name '*.v' | sort)
-# The combined Campaign 3 pages exceed SWI's default 1 GB stack limit.
-swipl --stack_limit=2g "$src/nanofil/web/rocq/dterm_rocq.pl" "$out/nanofil/rocq" "$src" \
+swipl "$src/nanofil/web/rocq/dterm_rocq.pl" "$out/nanofil/rocq" "$src" \
   --states="${ROCQ_PROOF_STATES:?the site needs real Rocq proof states}" \
   --prolog="$src/nanofil/src" "${rocq[@]}" </dev/null
 # The dterm workbench: the samples drawn by dterm, set side by side.

@@ -93,7 +93,8 @@ for (const proof of document.querySelectorAll(".rq-captured")) {
       const row = links[selected].getBoundingClientRect();
       const viewport = timeline.getBoundingClientRect();
       if (row.top < viewport.top) timeline.scrollTop += row.top - viewport.top;
-      else if (row.bottom > viewport.bottom) timeline.scrollTop += row.bottom - viewport.bottom;
+      else if (row.bottom > viewport.bottom)
+        timeline.scrollTop += Math.min(row.bottom - viewport.bottom, row.top - viewport.top);
     }
   }
   links.forEach((link, i) => link.addEventListener("click", () => show(i)));

@@ -52,7 +52,7 @@ document.addEventListener("mouseover", (event) => {
 // space, so the browser draws exactly the plan. A conditional set as a
 // table stays one only while it fits; otherwise it is stacked.
 (() => {
-  const TERMS = ".clause > .head, div.goal, .clause.item, details.clause > summary";
+  const TERMS = ".clause > .head, .goal, .clause.item, details.clause > summary";
   const SAFETY = 3; // canvas and the page disagree by a pixel or so
   const EPS = 0.5; // widths this close are the same width
   const MAX_NODES = 8000; // bigger terms flow as text
@@ -354,7 +354,7 @@ document.addEventListener("mouseover", (event) => {
 
   // A term: where it starts, how wide it may run, its document.
   function measure(el, clause) {
-    if (!el.getClientRects().length || el.querySelector("div")) return null;
+    if (!el.getClientRects().length || el.querySelector("div, .goal")) return null;
     const cs = getComputedStyle(el), r = el.getBoundingClientRect();
     const origin = r.left + el.clientLeft;
     let right = rightEdge(el, clause);
@@ -456,6 +456,12 @@ document.addEventListener("mouseover", (event) => {
       if (!clause.isConnected) { clauses.delete(clause); continue; }
       const terms = clause.matches(".clause.item") ? [clause]
         : [...clause.querySelectorAll(TERMS)].filter((e) => e.closest(".clause") === clause);
+      // Splitting a huge expanded goal into blocks must not bypass the
+      // document budget. Such clauses keep their CSS/text-flow layout.
+      if (terms.length > MAX_NODES) {
+        terms.forEach(unplan);
+        continue;
+      }
       const tables = [...clause.querySelectorAll(".cases")].filter((c) => {
         if (!original.has(c)) remember(c);
         return !original.get(c).split(" ").includes("stack");

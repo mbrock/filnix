@@ -68,7 +68,7 @@ read_or_report(Root, File, Page) :-
     ).
 
 %  Commands drawn as their text on purpose.
-shown_as_text(K) :- memberchk(K, ['Extraction', 'Extract', 'Ltac', 'Check', 'Compute', 'Print', 'Eval', 'Search']).
+shown_as_text(K) :- memberchk(K, ['Extraction', 'Extract', 'Check', 'Compute', 'Print', 'Eval', 'Search']).
 
 raw_item(Items, I) :- member(I0, Items), ( I0 = raw(_, _), I = I0 ; I0 = block(_, B, _), raw_item(B, I) ).
 
@@ -98,6 +98,7 @@ span_csym(Cs, [], Cs).
 %% Pages
 
 write_source_page(Out, page(File, Text, Items, Cms)) :-
+    get_time(T0),
     page_name(File, Page), nb_setval(rq_page, Page), nb_setval(rq_file, File),
     (   Items = [I|_], first_offset(I, From) -> true ; string_length(Text, From) ),
     partition([cm(O, _, _, _)]>>(O < From), Cms, Head, Body),
@@ -106,7 +107,14 @@ write_source_page(Out, page(File, Text, Items, Cms)) :-
     contents(Items, Body, Groups),
     summarize(File, Text, Head),
     file_name_extension(Page, html, Name), directory_file_path(Out, Name, Path),
-    write_page(Path, source_page(File, Head, Items, Groups)).
+    once(write_page(Path, source_page(File, Head, Items, Groups))),
+    % Completed HTML is disposable. SWI 10's adaptive collection can let
+    % several pages' temporary DCG lists hit the stack limit before GC.
+    statistics(globalused, Before), garbage_collect, statistics(globalused, Live),
+    get_time(T1), Elapsed is T1 - T0, MB is Before / 1048576, LiveMB is Live / 1048576,
+    stamp_date_time(T1, Date, 'UTC'), format_time(atom(Stamp), '%FT%TZ', Date),
+    format(user_error, '~w rocq render: ~w ~2fs, global ~1f MiB -> ~1f MiB after GC~n',
+           [Stamp, File, Elapsed, MB, LiveMB]).
 
 % Captures belong to the exact source, never a nearby revision's offsets.
 source_states(File, Text) :-
