@@ -6,6 +6,7 @@ theories/Syntax.v
 theories/Cfg.v
 theories/Values.v
 theories/Memory.v
+theories/Runtime.v
 theories/Ops.v
 theories/Semantics.v
 theories/Run.v

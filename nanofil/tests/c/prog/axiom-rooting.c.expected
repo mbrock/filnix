@@ -1,0 +1,1 @@
+objects reachable from a frame survive collection: yes

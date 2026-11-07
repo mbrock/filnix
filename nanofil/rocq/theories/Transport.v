@@ -35,7 +35,7 @@
     subset refers to by name. *)
 
 From Stdlib Require Import String ZArith List Bool Ascii.
-From Nanofil Require Import Term Syntax Values Memory Ops Semantics Run Validate.
+From Nanofil Require Import Term Syntax Values Memory Ops Semantics Runtime Run Validate.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -435,6 +435,9 @@ Definition eoutcome (o : outcome) : term :=
 
 Definition is_outside (why : string) : bool := why == "outside the core subset".
 
+(** The model the gates run: the driver with the interpreter's runtime. *)
+Module Model := Driver InterpRuntime.
+
 (** `judge md line`: the model's run of one `outcome(Fn, Args, Fuel,
     Outcome)` or `error(Fn, Args, Fuel, E)` line, compared. *)
 Definition judge (md : module) (line : term) : term :=
@@ -443,7 +446,7 @@ Definition judge (md : module) (line : term) : term :=
       match map_option dz args with
       | None => TApp "bad_line" [line]
       | Some ns =>
-          match run md fn (map WInt ns) fuel with
+          match Model.run md fn (map WInt ns) fuel with
           | Finished o =>
               let got := eoutcome o in
               if term_eqb got expected then TApp "agree" [fn; TList args; got]
@@ -457,7 +460,7 @@ Definition judge (md : module) (line : term) : term :=
       match map_option dz args with
       | None => TApp "bad_line" [line]
       | Some ns =>
-          match run md fn (map WInt ns) fuel with
+          match Model.run md fn (map WInt ns) fuel with
           | Halted why => TApp "stuck_both" [fn; TList args; TAtom why]
           | Finished o => TApp "disagree" [fn; TList args; eoutcome o; TApp "error" [e]]
           end

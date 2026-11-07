@@ -6,7 +6,10 @@
     allocation address, is not part of the state. An allocation instead
     takes any base that is `fresh` for the memory (formal.md's
     decision): the interpreter's monotone Next is one such choice
-    (Semantics.v's `interp_alloc`), and nothing may rely on it.
+    (Run.v's `interp_alloc`), and nothing may rely on it. Which bases
+    a runtime may choose, and what it may do to memory at a safepoint,
+    are Runtime.v's module type; this file states the interpreter's
+    memory and its free.
 
     ## Parts
 
@@ -94,6 +97,13 @@ Fixpoint object_region (base : Z) (rs : list region) : option region :=
   | r :: rs' => if Z.eqb (r_base r) base then Some r else object_region base rs'
   end.
 
+(** The regions without the first one of identity Base. *)
+Fixpoint remove_region (base : Z) (rs : list region) : list region :=
+  match rs with
+  | [] => []
+  | r' :: rs' => if Z.eqb (r_base r') base then rs' else r' :: remove_region base rs'
+  end.
+
 (** `select(Region, Rs0, Rest)` on the first region of identity Base,
     with Region replaced by R at the front, as free and the end of an
     invocation do. *)
@@ -101,13 +111,7 @@ Definition replace_region (base : Z) (r : region) (rs : list region)
   : option (list region) :=
   match object_region base rs with
   | None => None
-  | Some _ =>
-      let fix remove (rs : list region) :=
-        match rs with
-        | [] => []
-        | r' :: rs' => if Z.eqb (r_base r') base then rs' else r' :: remove rs'
-        end in
-      Some (r :: remove rs)
+  | Some _ => Some (r :: remove_region base rs)
   end.
 
 (** ## The access check *)
@@ -218,7 +222,8 @@ Definition cap_free_res (c : cap) (a : Z) (m : mem) : option (res unit * mem) :=
   end.
 
 (** `free_res(P, Mem0, Res, Mem)`: the pinned runtime's free. An integer
-    held at `p` has no capability. *)
+    held at `p` has no capability. Runtime.v proves that it changes a
+    region only as the lifetime axiom allows (`free_lifetime`). *)
 Definition free_res (x : word) (m : mem) : option (res unit * mem) :=
   match x with
   | WInt a => cap_free_res CNone a m
@@ -241,7 +246,8 @@ Record alloc_req : Type := mkReq {
     region's identity, live or freed; the new bytes overlap no region's
     current bounds; and they read as zero with no stored capability,
     as Fil-C's allocations do. The interpreter never reuses an address;
-    the model allows any choice that satisfies this. *)
+    the model allows any choice that satisfies this. Runtime.v's
+    `fresh_allocation` asks every runtime's choice to satisfy it. *)
 Definition fresh (m : mem) (q : alloc_req) (base : Z) : Prop :=
   0 < base /\
   base mod req_align q = 0 /\
@@ -250,6 +256,9 @@ Definition fresh (m : mem) (q : alloc_req) (base : Z) : Prop :=
          (m_regions m) /\
   (forall a, base <= a < base + req_extent q ->
              m_bytes m a = 0 /\ m_aux m a = CNone).
+
+(** a rounded up to a multiple of align. *)
+Definition align_up (a align : Z) : Z := (a + align - 1) / align * align.
 
 (** The memory after allocating q at base: its region, live. *)
 Definition allocated (m : mem) (q : alloc_req) (base : Z) : mem :=

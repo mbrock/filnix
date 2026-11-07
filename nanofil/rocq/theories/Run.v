@@ -13,13 +13,15 @@
     undefined. Then each data object's items are written: bytes, and
     for a pointer item its symbol's capability in aux.
 
-    ## The interpreter's allocator
+    ## The runtime
 
-    `alloc_base/6` takes the next address aligned for the request, and
-    moves Next past the object, rounded up to 16, plus a 16-byte gap;
-    it starts at 2^32 (`stack_base/1`). `interp_alloc` is that choice.
-    It is one instance of `fresh` allocation, not part of the
-    semantics: Semantics.v's `step_rel` allows any fresh base.
+    A run takes its allocations' bases from a `Runtime` (Runtime.v):
+    `Driver R` runs with R's choices. The gates run
+    `Driver InterpRuntime` (Transport.v), whose `alloc` is
+    `alloc_base/6`: the next address aligned for the request, starting
+    at 2^32 (`stack_base/1`). That is one instance of `fresh`
+    allocation, not part of the semantics: Semantics.v's `step_rel`
+    allows any fresh base.
 
     ## The driver
 
@@ -28,16 +30,13 @@
     (blocks entered) ends every run first. *)
 
 From Stdlib Require Import String ZArith List Bool.
-From Nanofil Require Import Term Syntax Values Memory Ops Semantics.
+From Nanofil Require Import Term Syntax Values Memory Ops Semantics Runtime.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
 
-(** `data_base/1` and `stack_base/1`. *)
+(** `data_base/1`. *)
 Definition data_base : Z := 65536.
-Definition stack_base : Z := 2 ^ 32.
-
-Definition align_up (a align : Z) : Z := (a + align - 1) / align * align.
 
 (** `data_cap(Linkage, Base, Cap)`: the capability of data at Base. *)
 Definition data_cap (lk : linkage) (base : Z) : option cap :=
@@ -143,31 +142,29 @@ Definition initial_memory (md : module) : option (list (name * ptr) * mem) :=
                       (Some (mkMem (m_bytes empty_mem) rs (m_aux empty_mem))) in
   Some (globals, m).
 
-(** `alloc_base/6`'s choice: the request's alignment above Next; Next
-    then moves past the object, rounded up to 16, and a 16-byte gap. *)
-Definition interp_alloc (next : Z) (q : alloc_req) : Z * Z :=
-  let base := align_up next (req_align q) in
-  (base, base + (req_extent q + 15) / 16 * 16 + 16).
-
 (** What a run ends with: an outcome, or stuck where the interpreter
     throws or fails, with the step that was stuck. *)
 Inductive run_result : Type :=
 | Finished (o : outcome)
 | Halted (why : string).
 
-(** One step of the interpreter's instance: the configuration with
-    the allocator's Next. *)
-Definition run_step (ge : genv) (s : config * Z) : (config * Z) + run_result :=
-  let (c, next) := s in
+(** ## The driver *)
+
+Module Driver (R : Runtime).
+
+(** One step, with the runtime's state beside the configuration. *)
+Definition run_step (ge : genv) (s : config * R.state) : (config * R.state) + run_result :=
+  let (c, rt) := s in
   match step ge c with
-  | Next c' => inl (c', next)
+  | Next c' => inl (c', rt)
   | Done o => inr (Finished o)
-  | Fresh q k => let (base, next') := interp_alloc next q in inl (k base, next')
+  | Fresh q k => let (base, rt') := R.alloc rt q in inl (k base, rt')
   | Stuck why => inr (Halted why)
   end.
 
 (** Up to 2^p steps (the halving makes the recursion depth p). *)
-Fixpoint run_steps (ge : genv) (p : positive) (s : config * Z) : (config * Z) + run_result :=
+Fixpoint run_steps (ge : genv) (p : positive) (s : config * R.state)
+  : (config * R.state) + run_result :=
   match p with
   | xH => run_step ge s
   | xO p' => match run_steps ge p' s with inl s' => run_steps ge p' s' | r => r end
@@ -188,7 +185,7 @@ Definition run (md : module) (fn : name) (args : list word) (fuel : Z) : run_res
       | Some (Defined f) =>
           match call_frame f args with
           | Some fr =>
-              match run_steps ge (2 ^ 60)%positive (mkConfig fr [] m fuel, stack_base) with
+              match run_steps ge (2 ^ 60)%positive (mkConfig fr [] m fuel, R.start) with
               | inr r => r
               | inl _ => Halted "driver gas"
               end
@@ -198,3 +195,5 @@ Definition run (md : module) (fn : name) (args : list word) (fuel : Z) : run_res
       | None => Halted "no such function"
       end
   end.
+
+End Driver.

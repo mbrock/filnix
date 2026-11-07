@@ -1,0 +1,3 @@
+a live pointer loads back and reads: yes
+a freed pointer loads back at its address: yes
+and traps: yes

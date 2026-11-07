@@ -9,8 +9,10 @@ development is in `nanofil/rocq/` and is checked by
 ## What exists
 
 A Rocq 9.1 development, built with the Rocq and stdlib of the flake's
-pinned nixpkgs. It contains no `Admitted`, no `Axiom` and no `Parameter`,
-and the Nix check fails if any appears. Each file is a transcription of
+pinned nixpkgs. It contains no `Admitted`, and no `Axiom` or `Parameter`
+outside `Runtime.v`'s module type, which the interpreter's instance
+discharges; the Nix check fails otherwise, and `Print Assumptions` of
+`judge` is closed. Each file is a transcription of
 the interpreter and cites the predicate it copies.
 
 | File | Transcribes | Contents |
@@ -21,9 +23,10 @@ the interpreter and cites the predicate it copies.
 | `Syntax.v` | ir.pl's header tables | classes, ops, values, instructions, jumps, blocks, functions, data, modules; `op_arg_classes/4`, `evidence_preserving/1`, `ahead_transparent/1`, `local_objects/2` |
 | `Values.v` | interp.pl's values | `cap` (`none`, `obj`, `ro`, `fn`, `ext`), `ptr`, `word`; `word_at_class/3` |
 | `Memory.v` | interp.pl's Memory section | regions, `mem`, `cap_access_res/7`, `free_res/4`, bytes and aux, `fresh` |
+| `Runtime.v` | `alloc_base/6`, `free_res/4`; [runtime-axioms.md](runtime-axioms.md) | Campaign 2's `Module Type Runtime`, seven axioms, and `InterpRuntime`, which proves them |
 | `Ops.v` | `alu/4`, `additive_res/4`, `kind_res/8` | integer and float ops, `check` and the reuse vocabulary, raw loads and stores, pointer-load and pointer-store protocols, `va_arg` |
 | `Semantics.v` | `run/5`'s blocks, instructions, jumps, calls | the configuration, `step`, `step_rel`, `reachable`; the variadic entry snapshot |
-| `Run.v` | `initial_memory/4`, `alloc_base/6` | module preparation, the interpreter's allocator as one fresh choice, a driver |
+| `Run.v` | `initial_memory/4` | module preparation, and `Driver`, a run over any `Runtime`'s allocations |
 | `Cfg.v` | cfg.pl | `func_cfg/2`, `cfg_idoms/2` (Cooper, Harvey and Kennedy), `dom_children/3`, `dom_intervals/3`, `dominates_by_interval/3` |
 | `Validate.v` | ir.pl's `valid_module/1` | `valid_func`, `valid_data`, `valid_alias`, `valid_items`, `valid`: uses, ops, instructions, dominance, locals, the evidence pass, the reuse rules, `polls_every_cycle`, data linkage and items, aliases |
 | `Transport.v` | — | decoding a printed checked module, encoding outcomes, `judge`, `judge_valid` |
@@ -64,8 +67,8 @@ validator verdicts on `rocq/tests/*.ir`, `tests/filc/basic.ir`,
 only the unchanged items' whole-module verdicts. This is a smoke check,
 not rejection coverage or a soundness proof.
 In particular, `dominance.ir`'s one-sweep-idom and always-true-dominance
-plants are detected by its mutant verdicts, not its unchanged base
-verdict. They are covered only by the full campaign, not the routine
+plants, and `interval.ir`'s same-index plant, are detected by their
+mutant verdicts, not their unchanged base verdicts. They are covered only by the full campaign, not the routine
 no-mutants smoke check. This tradeoff is deliberate; a dominance or
 other soundness-relevant change calls for the opt-in evidence.
 
@@ -265,7 +268,7 @@ over 169 of them agreed on all 73,330 verdicts it could judge.
 | the same with `-O` | 45,541–48,193 | 253–256 | 0 |
 | the 16 `tests/c/prog` programs (reference checks) | 9,505 | 3,012 | 0 |
 | Lua's own functions, `rocq/lua.sh` (reference checks) | 6,345 | 0 | 0 |
-| `rocq/tests/reuse.ir`, `snapshot.ir`, `floats.ir`, `dominance.ir` (reference checks) | 111, 145, 46, 41 | 0 | 0 |
+| `rocq/tests/reuse.ir`, `snapshot.ir`, `floats.ir`, `dominance.ir`, `interval.ir` (reference checks) | 111, 145, 46, 41, 30 | 0 | 0 |
 
 The mutants test rejection as well as acceptance: on basic.ir,
 `valid_module/1` judged 413 of them invalid and 210 valid. In the four
@@ -350,10 +353,36 @@ These are formal.md's early decisions as they turned out in the code:
   every reachable label dominates every other, are caught there; one
   that took each block's first processed predecessor as its idom was
   caught 121 times over the fixtures and gen modules.
+
+  Three off-by-one plants at the intervals' comparisons:
+  `rocq/tests/interval.ir` defines a temporary twice in one block, the
+  second time from itself, so deleting the first definition leaves a
+  use at its own definition's index; `site_dominates/4` compares
+  indices strictly, and a model comparing them with `=<` accepts that
+  mutant (caught twice, by the full campaign only). A strict upper
+  bound in `dominates_by_interval` makes a leaf dominate nothing below
+  it, caught by 24 base verdicts of the smoke corpus. A strict lower
+  bound changes only whether a label dominates itself, which the
+  validator never asks: a use in its definition's block compares
+  indices, so that plant is equivalent and no fixture can catch it.
 - **`nat` extracts to OCaml's `int`.** The model's `nat`s count list
-  elements and fixpoint rounds. Unary, the bound of `dominators` (the
-  square of the reachable block count) overflowed the stack on Lua's
-  `luaV_execute`, which has 995 blocks.
+  elements and fixpoint rounds. Unary, the bound of the old dominator
+  fixpoint (the square of the reachable block count) overflowed the
+  stack on Lua's `luaV_execute`, which has 995 blocks.
+- **The runtime is a module type.** `Runtime.v` states what the model
+  takes from the Fil-C runtime: where a new object goes, what free
+  does, and what may change at a safepoint, as seven axioms
+  ([runtime-axioms.md](runtime-axioms.md)). The model has one thread
+  and no collector, so other threads and the collector show up only
+  as the `safepoint` relation. `InterpRuntime` is interp.pl's
+  (`alloc_base/6`, `free_res/4`, nothing at a safepoint) and proves
+  every axiom, so the module type is consistent; `Run.v`'s `Driver` is
+  a functor over `Runtime`, and the gates run `Driver InterpRuntime`.
+  Semantics.v still calls `free_res` itself, and `step_rel` takes any
+  `fresh` base, which every runtime's `alloc` gives; making the step
+  take a runtime's `free` and `safepoint` is Campaign 3's first step,
+  with the invariant `ready` (every object below Next, nothing above
+  it written) that `fresh_allocation` assumes.
 - **Prolog's `//` on non-negative operands is `Z.div`.** ieee.pl's
   `//` truncates; `Z.quot` says that, but its extraction divides bit
   by bit and took minutes on the 16,000-bit ratios of an `x` denormal.
@@ -457,8 +486,12 @@ ends a run first), and atoms containing UTF-8 bytes in a reader.
 
 ## Next
 
-1. The Campaign 2 `Module Type Runtime`: `fresh` and the lifetime facts
-   of `Memory.v` are the first candidates to move into it.
+1. Campaign 3's first steps: a step relation over a `Runtime`, taking
+   its `free` and its `safepoint` transitions at `at_safepoint`
+   instructions and poll edges, and the invariant that `ready` holds
+   initially and after every step. Before that, mbrock's rulings on the
+   three data findings above, since each changes ir.pl or the theorem's
+   hypotheses.
 
 Inquiries touched: none closed. The integer-at-`p` case is a small
 input to the integer-to-pointer inquiry.

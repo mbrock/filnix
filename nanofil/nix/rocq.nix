@@ -2,8 +2,8 @@
 # default: model + parse.sh + a small outcome/base-verdict smoke corpus.
 # full=true opts into the complete outcome and mutation campaign below:
 # compile it with the pinned nixpkgs' Rocq, refuse any Admitted or Axiom
-# (none is allowed outside the Campaign 2 runtime module type, which
-# does not exist yet), extract and link the model, then check that it
+# (none is allowed outside the Campaign 2 runtime module type in
+# Runtime.v), extract and link the model, then check that it
 # agrees with interp:run/5 on every run line of rocq/tests, the Fil-C
 # IR fixtures, the C tests and Fil-C modules from tests/gen.pl, the
 # last three with and without -O and under every --checks mode
@@ -40,8 +40,13 @@ let
     ];
     buildInputs = [ ocamlPackages.zarith ];
     buildPhase = ''
-      if grep -rnwE 'Admitted|Axiom|Axioms|Parameter|Conjecture' theories; then
-        echo "rocq: no Admitted or Axiom outside the runtime module type" >&2
+      # Axioms and parameters only inside Runtime.v's module type, which
+      # InterpRuntime discharges; no Admitted anywhere.
+      if grep -rnw Admitted theories ||
+        grep -rnwE 'Axiom|Axioms|Parameter|Conjecture' --exclude=Runtime.v theories ||
+        sed '/^Module Type Runtime\./,/^End Runtime\./d' theories/Runtime.v |
+        grep -nwE 'Axiom|Axioms|Parameter|Conjecture'; then
+        echo "rocq: no Admitted, and no Axiom outside the runtime module type" >&2
         exit 1
       fi
       start=$SECONDS

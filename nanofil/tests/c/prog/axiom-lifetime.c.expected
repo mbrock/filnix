@@ -1,0 +1,2 @@
+a read after a free through its alias traps: yes
+freeing one object leaves another intact: yes

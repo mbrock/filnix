@@ -13,3 +13,6 @@ extraction/nanofil_model.mli
 extraction/*.cm*
 extraction/*.o
 nanofil-model
+# nia/lia proof cache (Runtime.v)
+.nia.cache
+.lia.cache
