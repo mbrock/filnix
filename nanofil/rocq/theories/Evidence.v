@@ -29,15 +29,12 @@
     check passing; and the facts the pass drops at a definition
     (`evidence_kill/3`) are exactly those whose Q or P it redefines.
 
-    Not yet here: the run as a whole. These are statements about one
-    instruction and one edge; carrying them along `Machine R`'s runs
-    needs the pass's exit map (each block's facts as the pass left
-    them, in block order), the doomed state of a `check_ahead` whose
-    wider check failed (`inst_step` then traps early, and the step
-    continues doomed, so its fact does not hold), calls and safepoints,
-    which end every fact, and a `check_local`'s access. The reuse forms'
-    own rules (that a renew finds its bounds, and `hull_covered`) are
-    Campaign 3's corollaries. *)
+    These are statements about one instruction and one edge;
+    Persistence.v carries them along `Machine R`'s runs. A
+    `check_ahead` whose wider check failed dooms its frame (`inst_step`
+    traps early and the step continues doomed), and its fact then does
+    not hold; that, and the reuse forms' own rules (that a renew finds
+    its bounds, and `hull_covered`), are Campaign 3's corollaries. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Machine Validate Coverage.

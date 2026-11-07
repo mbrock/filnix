@@ -270,7 +270,12 @@ Qed.
 Lemma align_up_mod : forall a align, 0 < align -> align_up a align mod align = 0.
 Proof. intros a align H. unfold align_up. apply Z.mod_mul. lia. Qed.
 
-Module InterpRuntime : Runtime.
+(** The interpreter's runtime is left unsealed, so that what it does
+    at a safepoint (nothing) can be read off it (Persistence.v's
+    `interp_spares`); Transport.v's `Driver InterpRuntime` and
+    Persistence.v's `Persistence InterpRuntime` check it against
+    `Runtime`. *)
+Module InterpRuntime.
 
   (** interp.pl's Next. *)
   Definition state := Z.

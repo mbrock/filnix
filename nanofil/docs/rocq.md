@@ -32,6 +32,10 @@ the interpreter and cites the predicate it copies.
 | `Validate.v` | ir.pl's `valid_module/1` | `valid_func`, `valid_data`, `valid_alias`, `valid_items`, `valid`: uses, ops, instructions, dominance, locals, the evidence pass, the reuse rules, `polls_every_cycle`, data linkage and items, aliases |
 | `Coverage.v` | — (Campaign 3) | the coverage lemma: a raw access that `covered_access/6` puts inside a passed check gives no `unchecked` |
 | `Evidence.v` | — (Campaign 3) | the evidence invariant at an instruction and an edge: what a live fact means, every case of `checked_inst_rest/7` keeps the pass's facts true, block entry keeps the meet, accesses the pass accepts give no `unchecked` |
+| `Walk.v` | — (Campaign 3) | the evidence pass read back for the run-level invariant: block by block (`pass_fold`), position by position (`walks`), where it keeps facts (`relies`), a `check_local`'s own fact |
+| `Steps.v` | — (Campaign 3) | what one step does to the running frame, point by point: snapshot, block entry, instruction, return |
+| `Invariant.v` | — (Campaign 3) | the run-level invariant stated: what holds at each point of a frame (`at_pos`, `point_ok`, `inv`), the runtime hypothesis `spares`, and what each kind of step needs of it |
+| `Persistence.v` | — (Campaign 3) | the evidence invariant over whole runs: every machine step keeps `inv` (one lemma per kind of step), and in every state of a run no raw access or raw call of a frame that is not doomed is `unchecked`, but by `hull_covered` |
 | `Transport.v` | — | decoding a printed checked module, encoding outcomes, `judge`, `judge_valid` |
 | `Extract.v`, `extraction/main.ml` | — | OCaml extraction, and a reader of Prolog terms |
 
@@ -671,11 +675,87 @@ Decisions and findings:
   reprints wrongly, so the tactics use `match type of H with context`;
   `N: { tac.` on one line is avoided, as before.
 
-Not yet: the run as a whole. Carrying these along `Machine R`'s runs
-needs the pass's exit map (each block's facts as the pass left them, in
-block order), the doomed state, calls and safepoints (which end every
-fact), and the access after a `check_local`. `hull_covered` and the
-reuse forms' own rules are the corollaries still to come.
+Persistence.v carries these along whole runs (next section).
+
+### The evidence invariant over runs
+
+`Persistence.v` proves, with no admits, that in every state a run of
+`Machine R` reaches from a checked module's function, started ready,
+the facts the pass computed for the running frame's position hold.
+Its theorem `run_access_not_unchecked`: a frame that is not doomed runs
+no raw access and no raw call to an `unchecked` outcome, unless the pass
+accepted the access by `hull_covered`. With Walk.v, Steps.v and
+Invariant.v it checks in about 5 seconds.
+
+- **The pass block by block.** `pass_fold` reads `evidence_pass`'s fold:
+  each block was passed from the exit facts the fold had when it reached
+  the block, all kept to the end. A block reached by a back edge saw
+  nothing on that edge (the fold had not reached its source), and the
+  meet over an empty set is empty, so a back edge without a poll gives
+  no facts the proof needs to justify.
+- **Where the pass is.** `checked_inst_rest/7` takes a check and its
+  access in one step, so the pass's positions are a subset of the
+  instructions. `at_pos` says which: between two of the pass's steps,
+  the live facts the next instruction relies on hold (`relies`: an
+  evidence-preserving instruction, a raw access, a `check_local`, a
+  repeated getter; before anything else the pass keeps no fact); at a
+  block's end, those the unpolled edge carries; between a check and the
+  access taken with it, the covering fact (`pair_claim`); after a
+  `check_function`, that its function check passed.
+- **The invariant** (`inv`): the running frame is a function of the
+  module, its named locals lie above 0 (a `check_local`'s fact needs its
+  address not to wrap), and, unless a `check_ahead` doomed it,
+  `point_ok`; every waiting caller is `parked`, with no fact, after its
+  call. `mstep_inv` proves every machine step keeps it: a step that
+  allocates nothing (`next_inv`: snapshot, block entry, jump or return,
+  an instruction or a call), an allocation (`alloc_inv`), and the
+  runtime's action at a safepoint (`safepoint_inv`).
+- **A `check_local`'s access** is now covered: the access check of the
+  local passed and its fact holds (`check_local_fact`).
+
+Decisions and findings:
+
+- **The runtime's safepoints.** The module type lets a runtime act
+  before any instruction that is not `evidence_preserving/1`
+  (`safepoints`). The pass keeps facts across three such instructions:
+  a pointer store taken with its check (its ensure-aux may exit), a
+  `check_local`, and a repeated getter (`repeated_getters/4`). Natively
+  none reaches a safepoint where a free could show: the ensure-aux exit
+  comes after the inline check and the write lands in the checked
+  object, a local check is inline, and a repeated getter takes the fast
+  path because the same getter returned earlier in this activation. The
+  module type does not say so, and a runtime that frees there would run
+  a valid module to `unchecked`. The theorem takes this as a hypothesis,
+  `spares`: at a safepoint before an instruction the pass relies on
+  facts for, the runtime changes no region. The interpreter's runtime
+  changes nothing at a safepoint (`interp_spares`), so
+  `interp_access_not_unchecked` has no such hypothesis. Narrowing the
+  module type (no safepoint at raw accesses or `check_local`, and a
+  machine that knows which getters have returned) would make `spares`
+  a lemma; that is a decision for the module type's owners, and needs
+  an Oracle review.
+- **A runtime's free may be `unchecked`.** The module type's `free`
+  returns any result; `free_res` never returns `unchecked`, and native
+  free traps. The theorem is about accesses, so it claims nothing for a
+  free; a later axiom (free gives no `unchecked`) would close it.
+- **`InterpRuntime` is unsealed.** It was `: Runtime`, which hides that
+  its safepoint changes nothing; `Driver InterpRuntime` and
+  `Persistence InterpRuntime` still check it against the module type.
+  The extracted model is unchanged (the gates agree).
+- **A doomed frame claims nothing.** Its `check_ahead`'s fact does not
+  hold; what it may do is the `check_ahead` corollary's.
+- **The renderer's grammar and memory.** `do N tac` and `Module X <: T`
+  do not parse yet; the files avoid them. Drawn as one 1360-line file
+  the proof needed 1.7 GiB of dterm-rocq's 1 GiB stack: the drawn proof
+  states grow with every name the other pages define, so it is four
+  files (Walk.v, Steps.v, Invariant.v, Persistence.v) and one lemma per
+  kind of step, each page below Machine.v's 777 MiB (Persistence.v 709
+  MiB in the full site run).
+
+Not yet: `hull_covered`, the reuse forms' own rules (a renew's
+`unchecked(span)`, a half check's, a limit's, `unchecked(alias)`), the
+doomed frame (`check_ahead`), and then `valid_no_unchecked` itself,
+which assembles these with the initial readiness hypothesis.
 
 ## An object past 2^64
 
@@ -769,13 +849,12 @@ and the module type's `start`, so it needs an Oracle review.
 
 ## Next
 
-1. The evidence invariant over runs: from `evidence_pass` succeeding,
-   the facts the pass computes hold at every point of every run of
-   `Machine R`, with the doomed state, calls and safepoints, and then
-   `valid_no_unchecked` for the checked accesses outside the reuse
-   forms.
-2. The reuse forms as corollaries, each with ir.pl's side conditions as
-   hypotheses.
+1. The reuse forms as corollaries, each with ir.pl's side conditions as
+   hypotheses: `hull_covered`, renew, half check, `renew_if`,
+   `check_limit`, and `check_ahead`'s doomed frame; then
+   `valid_no_unchecked`, assembled from Persistence.v's invariant.
+2. A decision on the runtime's safepoints (`spares`, above): narrow
+   the module type, or keep the hypothesis.
 3. Starting the heap above the module's data, so that the initial
    readiness hypothesis becomes a lemma.
 
