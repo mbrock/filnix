@@ -31,7 +31,9 @@ the interpreter and cites the predicate it copies.
 | `Cfg.v` | cfg.pl | `func_cfg/2`, `cfg_idoms/2` (Cooper, Harvey and Kennedy), `dom_children/3`, `dom_intervals/3`, `dominates_by_interval/3` |
 | `Validate.v` | ir.pl's `valid_module/1` | `valid_func`, `valid_data`, `valid_alias`, `valid_items`, `valid`: uses, ops, instructions, dominance, locals, the evidence pass, the reuse rules, `polls_every_cycle`, data linkage and items, aliases |
 | `Dominance.v` | — (Campaign 3) | what Cfg.v's dominator intervals mean: the entry is reachable, reachable blocks' successors are, and what dominates a successor dominates its predecessor, but for the successor itself; only the entry dominates the entry; dominance is antisymmetric |
-| `Interval.v` | `offset_interval/8`, `op_interval/9` (ir.pl) | the derivations of an offset interval as an inductive relation; every interval the walk answers is derived, and a derived interval holds of the values a run reads wherever the names it walks hold their definitions |
+| `Interval.v` | `offset_interval/8`, `op_interval/9` (ir.pl) | the derivations of an offset interval as an inductive relation; every interval the walk answers is derived, and a derived interval holds of the values a run reads wherever the names it walks hold what their definitions computed and their single-definition operands are unchanged |
+| `Sites.v` | `single_definitions/3`, `block_sites//1`, `definitions_dominate/3` (ir.pl) | every definition with its site; a single definition has one; a use is dominated by its single definition, and no single-definition operand of a definition is defined again where the definition's site dominates |
+| `Identity.v` | — (Campaign 3) | no step of a run loses an object: each is as it was, or freed, given that the runtime's free keeps identities; a check that passed then passes again, or traps out of bounds |
 | `Coverage.v` | — (Campaign 3) | the coverage lemma: a raw access that `covered_access/6` puts inside a passed check gives no `unchecked` |
 | `Evidence.v` | — (Campaign 3) | the evidence invariant at an instruction and an edge: what a live fact means, every case of `checked_inst_rest/7` keeps the pass's facts true, block entry keeps the meet, accesses the pass accepts give no `unchecked` |
 | `Walk.v` | — (Campaign 3) | the evidence pass read back for the run-level invariant: block by block (`pass_fold`), position by position (`walks`), where it keeps facts (`relies`), a `check_local`'s own fact |
@@ -843,9 +845,58 @@ Decisions and findings:
 - **A narrow load's relation does not mention memory.** Any loaded
   value, extended, lies in the narrow range, so the relation survives
   every store.
+- **An operand is read where the definition ran.** `iv_sound` takes
+  each walked name's value to be what its definition computed in the
+  environment it ran in, with its single-definition operands unchanged
+  since. An operand that is not a single definition may have been
+  defined again; the clauses that walk an operand walk only single
+  definitions, and the others (`and`, `urem`, a narrow `ext`) bound the
+  result whatever the operand held.
 - **The walk is not refactored.** The derivation is a second statement
   of the same clauses beside Validate.v's transcription, which the gates
   compare, as Evidence.v does for the evidence pass.
+
+### Where a name is defined
+
+`Sites.v` joins the two ways ir.pl reads a function's definitions: the
+list `single_definitions/3` filters, and the sites `block_sites//1`
+records for `definitions_dominate/3`. No admits.
+
+- `once_position`: a name with a single definition has one position.
+- `use_dominated`: in a function whose definitions dominate their uses,
+  a single-definition name used by an instruction of a reachable block
+  is defined at a site that dominates the instruction.
+- `no_use_redefined`: where a single definition's site dominates a point
+  of a reachable block, none of its single-definition operands is
+  defined at that point, so running the point leaves the values the
+  definition read. With `dom_edge` this is what keeps a definition's
+  relation to its operands true along a run.
+
+### Identities persist
+
+The reuse forms trust a check that passed earlier. That is sound only
+if the checked object is still there at the reuse: as it was, so the
+check passes again, or freed, so it traps (`persists_access`).
+`Identity.v` proves it of every run that starts ready
+(`mreachable_persists`): a step that allocates nothing keeps every
+region or frees it in place, an allocation adds an object at a base no
+object had, and the runtime's safepoint keeps every identity
+(`rooting`). No admits.
+
+Decisions and findings:
+
+- **The runtime's free is not promised to keep identities.** The module
+  type's `free_lifetime` says every identity after a free was one
+  before, not that every one before is still there. A runtime whose free
+  dropped a region could give its base to a later allocation, and a
+  renew that names the old object would then check the new one: a
+  valid module run to `unchecked(span)`. The theorem takes `free_ids`
+  as a hypothesis. The interpreter's free keeps the identity, freeing
+  in place (`free_res_ids`), so `interp_persists` has no hypothesis.
+  Natively a freed object's address may be reused only once nothing
+  names it (Runtime.v's header), which is what `free_ids` says in the
+  model. Making it an axiom of the module type needs a native test and
+  an Oracle review; until then it stays a hypothesis, like `spares`.
 
 ## An object past 2^64
 
@@ -944,13 +995,15 @@ and the module type's `start`, so it needs an Oracle review.
    states holds (a flight's capability and offset from its base, an
    integer's value, which `iv_sound` turns into its interval, a
    proof's pointer and passed check, a span test's or a limit's
-   reading), on Dominance.v and Interval.v. Then the reuse forms as corollaries, each
+   reading), on Dominance.v, Interval.v, Sites.v and Identity.v. Then the reuse forms as corollaries, each
    with ir.pl's side conditions as hypotheses: `hull_covered`, renew,
    half check, `renew_if`, `check_limit`, and `check_ahead`'s doomed
    frame; then `valid_no_unchecked`, assembled from Persistence.v's
    invariant.
 2. A decision on the runtime's safepoints (`spares`, above): narrow
-   the module type, or keep the hypothesis.
+   the module type, or keep the hypothesis; and on its free
+   (`free_ids`, "Identities persist"): an axiom with a native test, or a
+   hypothesis.
 3. Starting the heap above the module's data, so that the initial
    readiness hypothesis becomes a lemma.
 

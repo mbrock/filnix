@@ -12,16 +12,17 @@
       `oi`'s memo and depth limit need no further thought;
     - an `iv` interval holds of the value a run reads, wherever each
       name the derivation walks holds what its definition computes from
-      its operands (`iv_sound`). Which names do, at a point of a run,
-      is the run-level invariant's to say; here it is any predicate
-      `ok` closed under operands.
+      its operands' values where it ran, and each single-definition
+      operand still holds that value (`iv_sound`). Which names do, at a
+      point of a run, is the run-level invariant's to say; here it is
+      any predicate `ok` closed under single-definition operands.
 
     | Gallina | ir.pl | Says |
     |---|---|---|
     | `iv once v k lo hi` | `offset_interval/8`'s clauses | the derivations of an interval for v at class k |
     | `memo_ok` | the memo's invariant | each interval the memo keeps is derived |
     | `oi_sound`, `offset_interval_iv` | `offset_interval/8` | an interval `oi` answers is derived |
-    | `let_holds` | `inst_result/5` of a `let` | a name's value is what its definition computes now |
+    | `let_holds` | `inst_result/5` of a `let` | a name's value is what its definition computed in the environment it ran in |
     | `in_iv` | | the value read at the class is some x in [lo, hi], modulo the class |
     | `iv_sound` | | a derived interval holds where its names hold their definitions |
 
@@ -33,7 +34,8 @@
     | the depth limit and the memo are not in `iv` | a memo keeps only answers derived earlier, so they need no depth; `oi_sound` carries the memo's invariant |
     | `mul` names its scaled operand, with the two orders as a premise | an `iv` under a disjunction gets no induction hypothesis |
     | an interval holds modulo the class | an `l` interval is not wrapped (`interval_fits/3` accepts any), so it bounds some integer congruent to the value; a `w` interval fits, so it bounds the signed word itself |
-    | a narrow load's relation does not mention memory | any loaded value, extended, lies in the narrow range, so the relation survives every store | *)
+    | a narrow load's relation does not mention memory | any loaded value, extended, lies in the narrow range, so the relation survives every store |
+    | an operand that is not a single definition is read where the definition ran | it may be defined again after; the clauses that walk an operand walk only single definitions, and the others (`and`'s, `urem`'s, a narrow `ext`'s) bound the result whatever the operand holds | *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Maps Syntax Values Memory Ops Semantics Machine Validate Dominance.
@@ -334,14 +336,15 @@ Qed.
     point of a run is the run-level invariant's to say; here it is a
     predicate `ok` closed under operands. *)
 
-(** `let_holds ge e n k o args`: n's value in e is what `let(tmp(n), k,
-    o, args)` computes from the operands' values in e (`alu/4`), or,
-    for a narrow load, some loaded value extended (`extended_res/4`). *)
-Definition let_holds (ge : genv) (e : env) (n : name) (k : class) (o : op) (args : list value) : Prop :=
+(** `let_holds ge e0 e n k o args`: n's value in e is what `let(tmp(n),
+    k, o, args)` computes from the operands' values in e0, the
+    environment it ran in (`alu/4`), or, for a narrow load, some loaded
+    value extended (`extended_res/4`). *)
+Definition let_holds (ge : genv) (e0 e : env) (n : name) (k : class) (o : op) (args : list value) : Prop :=
   match o with
   | RawLoad (LdNarrow t) _ => exists u x, extended t k u = Some x /\ lookup n e = Some x
   | _ => exists classes xs x, op_arg_classes o k = Some classes /\
-           map2_option (value_x ge e) classes args = Some xs /\ alu o k xs = Some x /\
+           map2_option (value_x ge e0) classes args = Some xs /\ alu o k xs = Some x /\
            lookup n e = Some x
   end.
 
@@ -454,9 +457,32 @@ Section Sound.
 
 Variables (ge : genv) (e : env) (ok : name -> Prop).
 
-(** Each name `ok` holds its definition, and its operands are `ok`. *)
+(** Each name `ok` holds what its definition computed in some
+    environment e0; its single-definition operands are `ok` and hold
+    there what they hold now. *)
 Hypothesis Hok : forall n k o args, defined n k o args -> ok n ->
-  let_holds ge e n k o args /\ forall a, In (Tmp a) args -> ok a.
+  exists e0, let_holds ge e0 e n k o args /\
+    forall a, In (Tmp a) args -> once_has once a = true -> ok a /\ lookup a e0 = lookup a e.
+
+Lemma iv_once : forall v k lo hi, iv v k lo hi -> forall n, v = Tmp n -> once_has once n = true.
+Proof.
+  intros v k lo hi H n E. destruct H; try discriminate E; injection E as ->;
+    match goal with Hd : defined _ _ _ _ |- _ => destruct Hd as (n' & Hl & _) end;
+    unfold once_has; rewrite Hl; reflexivity.
+Qed.
+
+(** An operand the derivation walks is `ok`, and reads in e0 as in e. *)
+Lemma walked : forall e0 args a k' lo hi,
+  (forall a, In (Tmp a) args -> once_has once a = true -> ok a /\ lookup a e0 = lookup a e) ->
+  In a args -> iv a k' lo hi ->
+  (forall n, a = Tmp n -> ok n) /\ forall k'', value_x ge e0 k'' a = value_x ge e k'' a.
+Proof.
+  intros e0 args a k' lo hi Ha Hin Hiv.
+  assert (Hag : forall n, a = Tmp n -> ok n /\ lookup n e0 = lookup n e)
+    by (intros n E; subst a; exact (Ha _ Hin (iv_once _ _ _ _ Hiv _ eq_refl))).
+  split; [intros n E; exact (proj1 (Hag _ E))|].
+  intros k''. destruct a as [n | c | g]; simpl; [rewrite (proj2 (Hag _ eq_refl)) | |]; reflexivity.
+Qed.
 
 Ltac opens H :=
   repeat match type of H with
@@ -474,7 +500,7 @@ Proof.
     destruct Hb as [bits Hb]. destruct (signed_value_mod _ _ _ _ H Hb) as [Hm _].
     exists bits, (c mod 2 ^ bits), x. rewrite (const_read _ _ _ _ _ Hb). auto with zarith.
   - (* ext to a narrow type *)
-    destruct (fits_bits _ _ _ H1) as (bits & Hb & Hm & Hp). destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as [Hl _].
+    destruct (fits_bits _ _ _ H1) as (bits & Hb & Hm & Hp). destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as (e0 & Hl & _).
     destruct Hl as (cls & xs & x & Hc & Hx & Ha & Hn). simpl in Hc. injection Hc as <-.
     destruct args as [|a [|a' args]]; simpl in Hx; opens Hx; injection Hx as <-; simpl in Ha; opens Ha.
     injection Hm as ->. injection Ha as <-.
@@ -482,36 +508,39 @@ Proof.
       apply (in_iv_tmp _ _ _ _ _ _ (extension t y) _ _ Hb Hn) end;
       [apply Z.mod_mod; lia | exact (narrow_extension _ _ _ _ H0)].
   - (* ext(sw) *)
-    destruct (fits_bits _ _ _ H1) as (bits & Hb & Hm & Hp). destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as [Hl Ha'].
-    destruct (IHiv (fun n0 E => Ha' _ (or_introl E))) as (b32 & ua & xa & Hb32 & Hua & Hxa & ->).
+    destruct (fits_bits _ _ _ H1) as (bits & Hb & Hm & Hp). destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as (e0 & Hl & Ha').
+    destruct (walked _ _ _ _ _ _ Ha' (or_introl eq_refl) H0) as [Hoka Hra].
+    destruct (IHiv Hoka) as (b32 & ua & xa & Hb32 & Hua & Hxa & ->).
     simpl in Hb32. injection Hb32 as <-. pose proof (iv_fits _ _ _ _ H0) as Hf. simpl in Hf.
     apply andb_true_iff in Hf as [Hf1 Hf2]. apply Z.leb_le in Hf1. apply Z.leb_le in Hf2.
     destruct Hl as (cls & xs & x & Hc & Hx & Ha & Hn). simpl in Hc. injection Hc as <-.
-    simpl in Hx. rewrite Hua in Hx. injection Hx as <-. simpl in Ha. rewrite Hm in Ha. injection Ha as <-.
+    simpl in Hx. rewrite Hra, Hua in Hx. injection Hx as <-. simpl in Ha. rewrite Hm in Ha. injection Ha as <-.
     apply (in_iv_tmp _ _ _ _ _ _ xa _ _ Hb Hn); [|lia]. rewrite Z.mod_mod by lia. f_equal.
     apply sign_extension_mod. lia.
   - (* ext(uw) *)
-    destruct (fits_bits _ _ _ H2) as (bits & Hb & Hm & Hp). destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as [Hl Ha'].
-    destruct (IHiv (fun n0 E => Ha' _ (or_introl E))) as (b32 & ua & xa & Hb32 & Hua & Hxa & ->).
+    destruct (fits_bits _ _ _ H2) as (bits & Hb & Hm & Hp). destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as (e0 & Hl & Ha').
+    destruct (walked _ _ _ _ _ _ Ha' (or_introl eq_refl) H0) as [Hoka Hra].
+    destruct (IHiv Hoka) as (b32 & ua & xa & Hb32 & Hua & Hxa & ->).
     simpl in Hb32. injection Hb32 as <-. pose proof (iv_fits _ _ _ _ H0) as Hf. simpl in Hf.
     apply andb_true_iff in Hf as [Hf1 Hf2]. apply Z.leb_le in Hf1. apply Z.leb_le in Hf2.
     destruct Hl as (cls & xs & x & Hc & Hx & Ha & Hn). simpl in Hc. injection Hc as <-.
-    simpl in Hx. rewrite Hua in Hx. injection Hx as <-. simpl in Ha. rewrite Hm in Ha. injection Ha as <-.
+    simpl in Hx. rewrite Hra, Hua in Hx. injection Hx as <-. simpl in Ha. rewrite Hm in Ha. injection Ha as <-.
     apply (in_iv_tmp _ _ _ _ _ _ xa _ _ Hb Hn); [|lia]. rewrite Z.mod_mod by lia. f_equal. simpl.
     rewrite Z.mod_mod by lia. apply Z.mod_small. lia.
   - (* a narrow load *)
-    destruct (fits_bits _ _ _ H1) as (bits & Hb & Hm & Hp). destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as [Hl _].
+    destruct (fits_bits _ _ _ H1) as (bits & Hb & Hm & Hp). destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as (e0 & Hl & _).
     destruct Hl as (u & x & Hx & Hn). unfold extended in Hx. rewrite Hm in Hx. injection Hx as <-.
     apply (in_iv_tmp _ _ _ _ _ _ (extension t u) _ _ Hb Hn); [apply Z.mod_mod; lia | exact (narrow_extension _ _ _ _ H0)].
   - (* copy *)
-    destruct (fits_bits _ _ _ H1) as (bits & Hb & Hm & Hp). destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as [Hl Ha'].
-    destruct (IHiv (fun n0 E => Ha' _ (or_introl E))) as (b' & ua & xa & Hb' & Hua & Hxa & ->).
+    destruct (fits_bits _ _ _ H1) as (bits & Hb & Hm & Hp). destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as (e0 & Hl & Ha').
+    destruct (walked _ _ _ _ _ _ Ha' (or_introl eq_refl) H0) as [Hoka Hra].
+    destruct (IHiv Hoka) as (b' & ua & xa & Hb' & Hua & Hxa & ->).
     rewrite Hb in Hb'. injection Hb' as <-.
     destruct Hl as (cls & xs & x & Hc & Hx & Ha & Hn). simpl in Hc. injection Hc as <-.
-    simpl in Hx. rewrite Hua in Hx. injection Hx as <-. simpl in Ha. injection Ha as <-.
+    simpl in Hx. rewrite Hra, Hua in Hx. injection Hx as <-. simpl in Ha. injection Ha as <-.
     apply (in_iv_tmp _ _ _ _ _ _ xa _ _ Hb Hn); [apply Z.mod_mod; lia | exact Hxa].
   - (* and with a mask *)
-    destruct (fits_bits _ _ _ H3) as (bits & Hb & Hm & Hp). destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as [Hl _].
+    destruct (fits_bits _ _ _ H3) as (bits & Hb & Hm & Hp). destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as (e0 & Hl & _).
     destruct (signed_value_mod _ _ _ _ H1 Hb) as [Hcv Hr].
     assert (Hh : 2 ^ bits = 2 * 2 ^ (bits - 1)) by (destruct k; try discriminate Hb; injection Hb as <-; reflexivity).
     assert (Hcu : c mod 2 ^ bits = v) by (rewrite <- Hcv; apply Z.mod_small; lia).
@@ -528,7 +557,7 @@ Proof.
     apply (in_iv_tmp _ _ _ _ _ _ (Z.land ya yb) _ _ Hb Hn); [reflexivity | lia].
   - (* urem by a constant *)
     destruct (fits_bits _ _ _ H3) as (bits' & Hb' & Hm & Hp). rewrite H0 in Hb'. injection Hb' as <-.
-    destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as [Hl _].
+    destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as (e0 & Hl & _).
     destruct Hl as (cls & xs & x & Hc & Hx & Ha & Hn). simpl in Hc. injection Hc as <-.
     destruct (map2_two _ _ _ _ _ _ _ _ _ Hx) as (xa & xb & Ea & Eb & ->).
     rewrite (const_read _ _ _ _ _ H0) in Eb. injection Eb as <-.
@@ -538,12 +567,13 @@ Proof.
     apply (in_iv_tmp _ _ _ _ _ _ (ya mod (c mod 2 ^ bits)) _ _ H0 Hn); [reflexivity | lia].
   - (* shl by a constant *)
     destruct (fits_bits _ _ _ H4) as (bits' & Hb' & Hm & Hp). rewrite H0 in Hb'. injection Hb' as <-.
-    destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as [Hl Ha'].
-    destruct (IHiv (fun n0 E => Ha' _ (or_introl E))) as (b' & ua & xa & Hb' & Hua & Hxa & ->).
+    destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as (e0 & Hl & Ha').
+    destruct (walked _ _ _ _ _ _ Ha' (or_introl eq_refl) H3) as [Hoka Hra].
+    destruct (IHiv Hoka) as (b' & ua & xa & Hb' & Hua & Hxa & ->).
     rewrite H0 in Hb'. injection Hb' as <-.
     destruct Hl as (cls & xs & x & Hc & Hx & Ha & Hn). simpl in Hc. injection Hc as <-.
     assert (Hbits : bits = 32 \/ bits = 64) by (destruct k; try discriminate H0; injection H0 as <-; auto).
-    simpl in Hx. rewrite Hua in Hx. simpl in Hx. injection Hx as <-.
+    simpl in Hx. rewrite Hra, Hua in Hx. simpl in Hx. injection Hx as <-.
     simpl in Ha. unfold shift_factor in Ha. rewrite H0 in Ha. simpl in Ha. rewrite Hm in Ha. injection Ha as <-.
     change (Z.pow_pos 2 32) with (2 ^ 32) in Hn.
     rewrite (Z.mod_small s (2 ^ 32)) in Hn by (destruct Hbits; subst; lia).
@@ -552,43 +582,46 @@ Proof.
     + rewrite Z.mod_mod by lia. apply Z.mul_mod_idemp_l. lia.
     + assert (0 < 2 ^ s) by (apply Z.pow_pos_nonneg; lia). nia.
   - (* mul by a constant *)
-    destruct (fits_bits _ _ _ H4) as (bits & Hb & Hm & Hp). destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as [Hl Ha'].
+    destruct (fits_bits _ _ _ H4) as (bits & Hb & Hm & Hp). destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as (e0 & Hl & Ha').
     destruct (signed_value_mod _ _ _ _ H2 Hb) as [Hcv _].
-    assert (Hx' : forall n0, x = Tmp n0 -> ok n0)
-      by (intros n0 E; apply Ha'; destruct H0 as [-> | ->]; simpl; auto).
-    destruct (IHiv Hx') as (b' & ua & xa & Hb' & Hua & Hxa & ->). rewrite Hb in Hb'. injection Hb' as <-.
+    assert (Hin : In x args) by (destruct H0 as [-> | ->]; simpl; auto).
+    destruct (walked _ _ _ _ _ _ Ha' Hin H1) as [Hoka Hra].
+    destruct (IHiv Hoka) as (b' & ua & xa & Hb' & Hua & Hxa & ->). rewrite Hb in Hb'. injection Hb' as <-.
     destruct Hl as (cls & xs & y & Hc & Hy & Ha & Hn). simpl in Hc. injection Hc as <-.
     assert (Hprod : (lo0 <= hi0 -> lo <= xa * v <= hi))
       by (intros _; destruct (0 <=? v) eqn:Ez; [apply Z.leb_le in Ez | apply Z.leb_gt in Ez];
           injection H3 as <- <-; nia).
     destruct H0 as [-> | ->]; destruct (map2_two _ _ _ _ _ _ _ _ _ Hy) as (y1 & y2 & E1 & E2 & ->).
-    + rewrite Hua in E1. injection E1 as <-. rewrite (const_read _ _ _ _ _ Hb) in E2. injection E2 as <-.
+    + rewrite Hra, Hua in E1. injection E1 as <-. rewrite (const_read _ _ _ _ _ Hb) in E2. injection E2 as <-.
       simpl in Ha. rewrite Hm in Ha. injection Ha as <-.
       apply (in_iv_tmp _ _ _ _ _ _ (xa * v) _ _ Hb Hn); [|apply Hprod; lia].
       rewrite Z.mod_mod by lia. rewrite <- Hcv. rewrite <- Z.mul_mod by lia. reflexivity.
-    + rewrite Hua in E2. injection E2 as <-. rewrite (const_read _ _ _ _ _ Hb) in E1. injection E1 as <-.
+    + rewrite Hra, Hua in E2. injection E2 as <-. rewrite (const_read _ _ _ _ _ Hb) in E1. injection E1 as <-.
       simpl in Ha. rewrite Hm in Ha. injection Ha as <-.
       apply (in_iv_tmp _ _ _ _ _ _ (xa * v) _ _ Hb Hn); [|apply Hprod; lia].
       rewrite Z.mod_mod by lia. rewrite <- Hcv, (Z.mul_comm xa). rewrite <- Z.mul_mod by lia. reflexivity.
   - (* add *)
-    destruct (fits_bits _ _ _ H2) as (bits & Hb & Hm & Hp). destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as [Hl Ha'].
-    destruct (IHiv1 (fun n0 E => Ha' _ (or_introl E))) as (b1 & ua & xa & Hb1 & Hua & Hxa & ->).
-    destruct (IHiv2 (fun n0 E => Ha' _ (or_intror (or_introl E)))) as (b2 & ub & xb & Hb2 & Hub & Hxb & ->).
+    destruct (fits_bits _ _ _ H2) as (bits & Hb & Hm & Hp). destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as (e0 & Hl & Ha').
+    destruct (walked _ _ _ _ _ _ Ha' (or_introl eq_refl) H0) as [Hoka Hra].
+    destruct (walked _ _ _ _ _ _ Ha' (or_intror (or_introl eq_refl)) H1) as [Hokb Hrb].
+    destruct (IHiv1 Hoka) as (b1 & ua & xa & Hb1 & Hua & Hxa & ->).
+    destruct (IHiv2 Hokb) as (b2 & ub & xb & Hb2 & Hub & Hxb & ->).
     rewrite Hb in Hb1, Hb2. injection Hb1 as <-. injection Hb2 as <-.
     destruct Hl as (cls & xs & x & Hc & Hx & Ha & Hn).
     assert (Hcl : cls = [k; k]) by (destruct k; try discriminate Hb; simpl in Hc; injection Hc as <-; reflexivity).
-    subst cls. simpl in Hx. rewrite Hua, Hub in Hx. injection Hx as <-. simpl in Ha. rewrite Hm in Ha. injection Ha as <-.
+    subst cls. simpl in Hx. rewrite Hra, Hrb, Hua, Hub in Hx. injection Hx as <-. simpl in Ha. rewrite Hm in Ha. injection Ha as <-.
     apply (in_iv_tmp _ _ _ _ _ _ (xa + xb) _ _ Hb Hn); [|lia].
     rewrite Z.mod_mod by lia. rewrite <- Z.add_mod by lia. reflexivity.
   - (* sub a constant *)
-    destruct (fits_bits _ _ _ H2) as (bits & Hb & Hm & Hp). destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as [Hl Ha'].
+    destruct (fits_bits _ _ _ H2) as (bits & Hb & Hm & Hp). destruct (Hok _ _ _ _ H (Hv _ eq_refl)) as (e0 & Hl & Ha').
     destruct (signed_value_mod _ _ _ _ H0 Hb) as [Hcv _].
-    destruct (IHiv (fun n0 E => Ha' _ (or_introl E))) as (b' & ua & xa & Hb' & Hua & Hxa & ->).
+    destruct (walked _ _ _ _ _ _ Ha' (or_introl eq_refl) H1) as [Hoka Hra].
+    destruct (IHiv Hoka) as (b' & ua & xa & Hb' & Hua & Hxa & ->).
     rewrite Hb in Hb'. injection Hb' as <-.
     destruct Hl as (cls & xs & x & Hc & Hx & Ha & Hn).
     assert (Hcl : cls = [k; k]) by (destruct k; try discriminate Hb; simpl in Hc; injection Hc as <-; reflexivity).
     subst cls. destruct (map2_two _ _ _ _ _ _ _ _ _ Hx) as (y1 & y2 & E1 & E2 & ->).
-    rewrite Hua in E1. injection E1 as <-. rewrite (const_read _ _ _ _ _ Hb) in E2. injection E2 as <-.
+    rewrite Hra, Hua in E1. injection E1 as <-. rewrite (const_read _ _ _ _ _ Hb) in E2. injection E2 as <-.
     simpl in Ha. rewrite Hm in Ha. injection Ha as <-.
     apply (in_iv_tmp _ _ _ _ _ _ (xa - v) _ _ Hb Hn); [|lia].
     rewrite Z.mod_mod by lia. rewrite <- Hcv. rewrite <- Zminus_mod. reflexivity.
