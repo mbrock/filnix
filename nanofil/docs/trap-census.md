@@ -231,3 +231,7 @@ Next is still Campaign 7's closed-module proof (step 1), and Campaign
 4's external-call/trace contracts before `hi.c` (step 2). This census
 does not prove UB/unreachable absent, discharge any checks, link the
 81 modules in Rocq, or supply the native libc-contract probe suite.
+
+The subsequent [libc contracts and native probes](libc-contracts.md)
+state that trusted boundary separately; they do not change these census
+counts or establish trap-freedom.

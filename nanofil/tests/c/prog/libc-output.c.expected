@@ -1,0 +1,10 @@
+hello
+format writes NUL and percent-n count: yes
+stream output changes stream state: yes
+I/O errors are results not traps: yes
+wide stream formatting: yes
+printf:xy:7
+puts needs in-object NUL: yes
+sprintf needs room for NUL: yes
+percent-n needs writable destination: yes
+libc-probe: probe

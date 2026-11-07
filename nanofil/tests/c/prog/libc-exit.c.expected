@@ -1,0 +1,6 @@
+finalize calls matching handlers once in reverse order: yes
+exit runs registered handlers: yes
+underscore-exit skips handlers: yes
+abort stops without handlers: yes
+assert failure stops without handlers: yes
+callback argument must outlive registration: yes

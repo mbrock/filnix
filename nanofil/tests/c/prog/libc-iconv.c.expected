@@ -1,0 +1,6 @@
+unknown encoding is EINVAL: yes
+E2BIG preserves partial conversion: yes
+conversion advances cursors without NUL: yes
+null input resets descriptor: yes
+EILSEQ leaves offending input: yes
+incomplete sequence is EINVAL: yes

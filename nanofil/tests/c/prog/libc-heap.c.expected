@@ -1,0 +1,9 @@
+calloc product is zeroed: yes
+realloc preserves old prefix: yes
+reallocarray shrink preserves prefix: yes
+overflow refusal keeps old allocation: yes
+calloc overflow refuses: yes
+realloc null allocates: yes
+free needs allocation base: yes
+free consumes lifetime: yes
+successful realloc ends old aliases: yes

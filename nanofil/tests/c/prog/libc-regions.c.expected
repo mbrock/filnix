@@ -1,0 +1,9 @@
+bounded scans need no NUL: yes
+copy returns end and preserves neighbours: yes
+memcpy and memset return destination: yes
+string results and comparison signs: yes
+memcpy preserves stored pointer authority: yes
+unbounded scan needs in-object NUL: yes
+copy needs entire writable destination: yes
+search result dies with source: yes
+memset clears touched word authority: yes

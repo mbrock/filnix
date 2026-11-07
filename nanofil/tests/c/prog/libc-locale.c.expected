@@ -1,0 +1,8 @@
+locale query and refusal: yes
+langinfo returns readable string: yes
+ctype table includes negative indices: yes
+wide character domains: yes
+conversion writes output and state: yes
+empty input is incomplete not NUL: yes
+invalid byte is EILSEQ not panic: yes
+null conversion input resets: yes

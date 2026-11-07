@@ -1,0 +1,4 @@
+getopt aliases arguments and permutes cells: yes
+unknown option is a result: yes
+fcntl command selects optional argument: yes
+bad fd is EBADF not panic: yes
