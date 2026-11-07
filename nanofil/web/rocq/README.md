@@ -154,6 +154,12 @@ rendering Evidence alone misses. A fresh narrow load can also fit when the
 resize plan does not. The browser check was previously manual, so adding a
 theory did not automatically run it in CI.
 
+The planner keeps the available width as a hard constraint. When even its
+least ribbon-constrained plan cannot fit a deeply nested term, it restores
+the ordinary wrapping markup rather than forcing wide indents and no-break
+spaces. The browser sweep also rejects JavaScript exceptions: a crashed
+planner can leave a fitting but unplanned page and conceal a reflow bug.
+
 The pinned agent-browser 0.38.1 has a fixed 25-second navigation load wait,
 independent of its advertised default timeout. If only that wait expires,
 the checker waits up to another 60 seconds for the same URL to finish

@@ -231,8 +231,9 @@ one), computed once per piece since a layout's measures do not depend on
 where it starts. A layout wider than the width, or a single line longer
 than `--ribbon` (34em: how much one line may hold however wide the
 page), is dropped when it is made. The printer takes the fewest lines,
-then the least bad; if nothing fits it lets the ribbon go, then the
-width.
+then the least bad; if nothing fits it lets the ribbon go, but keeps the
+available width. If no plan fits even then, the term keeps its natural
+wrapping markup rather than forcing an oversized no-break layout.
 
 A conditional is a table only while it fits and every branch is one
 goal; otherwise it is a stack whose IF, THEN and ELSE share one column,

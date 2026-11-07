@@ -948,7 +948,8 @@ intro_pattern(Env, ip_and(Ps)) -->
     el(span, "paren rq-pattern rq-intro-and", tactic_chain(Ps, '&', intro_operand, Env)).
 intro_pattern(Env, ip_or(Arms)) -->
     el(span, "l rq-pattern rq-intro-or", tactic_chain(Arms, '|', intro_sequence, Env)).
-intro_operand(P, Env) --> intro_pattern(Env, P).
+% A rewrite arrow is an operand here, not the chain's infix operator.
+intro_operand(P, Env) --> el(span, arg, intro_pattern(Env, P)).
 intro_sequence([], _) --> el(span, "rq-empty", []).
 intro_sequence(Ps, Env) --> { Ps \== [] },
     el(span, "c rq-intros", ['data-d'=args], el(span, "args rq-tac-args", intro_items(Ps, Env))).

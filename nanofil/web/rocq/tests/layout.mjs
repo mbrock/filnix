@@ -72,6 +72,10 @@ try {
       check("");
       browser("set", "viewport", String(width), "900", "2");
       check(fitsPage);
+      // A crashed planner can leave an apparently fitting CSS fallback.
+      // Reject that too, rather than passing an unexercised printer.
+      const errors = JSON.parse(browser("--json", "errors")).data.errors;
+      if (errors.length) throw new Error(`${page}: ${errors.map(e => e.text).join("\n")}`);
       if (pagesOnly) {
         console.log(`ok no overflow ${page} at ${width}px, on load and after desktop reflow`);
         continue;

@@ -45,7 +45,8 @@ document.addEventListener("mouseover", (event) => {
 // than --ribbon (the measure: how much one line may hold however wide the
 // page), is dropped as soon as it is made. The printer takes the shortest
 // layout left, then the least bad, then the narrowest; when none fits it
-// lets the ribbon go, then the width.
+// lets the ribbon go, but never the width. A term with no fitting plan
+// keeps its natural text flow instead of forcing oversized indents.
 //
 // The plan is written as kpre (mbrock/kpre) writes a paragraph: a break
 // is a <br class="zbr"> and an indent, every other separator a no-break
@@ -143,7 +144,7 @@ document.addEventListener("mouseover", (event) => {
   }
 
   // A simple item: no group inside, or one as short as [tmp(Q)].
-  const simple = (el) => !el.querySelector("[data-d]") || el.textContent.length <= 10;
+  const simple = (el) => el.nodeType !== 1 || !el.querySelector("[data-d]") || el.textContent.length <= 10;
 
   // A compound or list: its opening (functor and parenthesis, or bracket),
   // its items, and the separators between them.
@@ -178,7 +179,9 @@ document.addEventListener("mouseover", (event) => {
       st.marks.push(items[0].el);
       return CAT([FLUSH(O, items[0].el), step, body, close, T(0, false, 2)]);
     };
-    const deep = box !== el && items.some((it) => !it.simple) && items[0].el.nodeType === 1;
+    // Headless argument groups (intro patterns, for example) have no
+    // opening to put on its own line in the Lisp alternative.
+    const deep = box !== el && O !== null && items.some((it) => !it.simple) && items[0].el.nodeType === 1;
     if (n < 2) return deep ? OR(CAT([O, line(0, n), close]), lisp(items[0].d)) : CAT([O, line(0, n), close]);
     // A group set on one line is all on one line.
     // A list of terms (instructions, say) is a column once it is longer
@@ -239,7 +242,9 @@ document.addEventListener("mouseover", (event) => {
     for (let i = 0; i < parts.length; i++) {
       const p = parts[i];
       if (!p.op) {
-        const d = doc(p, e, st);
+        // Empty tactic/intro alternatives are real zero-width operands,
+        // not absent documents for FLUSH to try to evaluate.
+        const d = doc(p, e, st) ?? T(0);
         flat.push(d);
         cur.push(d);
         continue;
@@ -319,22 +324,21 @@ document.addEventListener("mouseover", (event) => {
   }
 
   function plan(t) {
-    const tries = [[t.W, t.R], [t.W, Infinity], [Infinity, Infinity]];
+    const tries = [[t.W, t.R], [t.W, Infinity]];
     for (const [W, R] of tries) {
       const F = evaluate(t.doc, { W, R, memo: new Map() });
       if (!F.length) continue;
-      const wide = W === Infinity;
       let best = F[0];
       for (const c of F) {
-        const key = wide ? [c.mw, c.h, c.b] : [c.h, c.b, c.mw];
-        const bk = wide ? [best.mw, best.h, best.b] : [best.h, best.b, best.mw];
+        const key = [c.h, c.b, c.mw];
+        const bk = [best.h, best.b, best.mw];
         if (key[0] < bk[0] || (key[0] === bk[0] && (key[1] < bk[1] || (key[1] === bk[1] && key[2] < bk[2])))) best = c;
       }
       const out = { breaks: new Map(), open: null };
       walk(best.r, t.start, out);
       return out.breaks;
     }
-    return new Map();
+    return null;
   }
 
   // Where a thing in a clause may reach: the clause's content edge, less
@@ -504,7 +508,7 @@ document.addEventListener("mouseover", (event) => {
     }
     loose.forEach(unplan);
     const plans = work.map(plan);
-    work.forEach((t, i) => write(t, plans[i]));
+    work.forEach((t, i) => plans[i] ? write(t, plans[i]) : unplan(t.el));
   }
 
   const resized = new ResizeObserver((entries) => {
