@@ -1,0 +1,12 @@
+% SWI's canonical printer leaves semicolon and exclamation bare in str's
+% character list. The extracted driver's reader must accept it, as
+% encountered in GNU Hello's unictype tables.
+data(punctuation, ro(local), 1, [item(b, str("a;!z"))]).
+run(semicolon, []).
+func(semicolon, export, w, [], [
+    block(start, [], [
+        let(tmp(p), p, copy, [global(punctuation)]),
+        let(tmp(c), a, check(1, 2, read, 1), [tmp(p)]),
+        let(tmp(v), w, raw_load(ub, 1), [tmp(c)])
+    ], ret(tmp(v)))
+]).

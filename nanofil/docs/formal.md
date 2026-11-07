@@ -63,7 +63,7 @@ package in Filnix rather than only what nanofil compiles.
 | 4 | Observations, refinement, and libc contracts | a trace semantics; `opt:refines/2` as trace inclusion | not started |
 | 5 | Static discharge by certificate | `discharged(Cert)`, `discharge_ok`, a Prolog finder | not started |
 | 6 | Integration with Filnix and the playground | the `nanofil-check` gate | not started |
-| 7 | Trap-freedom of a pinned Nix closure: a program that never panics | `never_panics` of one closure: a closed module, then a one-call libc program, then GNU Hello (`nanofil-hello-O`); `ls` next; this build of OpenSSH's server as the stretch | stated (below); not started |
+| 7 | Trap-freedom of a pinned Nix closure: a program that never panics | `never_panics` of one closure: a closed module, then a one-call libc program, then GNU Hello (`nanofil-hello-O`); `ls` next; this build of OpenSSH's server as the stretch | [step 0 measured](trap-census.md): Hello has 1,398 class-`a` sites, 360 flag-only renewals; all 178 functions in 81 objects inside the subset, `valid = Some true`; no trap-freedom proof yet |
 
 ## The claims, kept apart
 
@@ -543,10 +543,11 @@ here as in Campaign 3.
 - **`Unchecked` is excluded for free.** Every module of the closure is
   valid, so `valid_no_unchecked` rules out the one outcome whose native
   meaning is unknown. What is left are explicit points of the IR: each
-  `check` and reuse form's retest, each `free`, each function check,
-  each `alloc`. Never panics is the claim that none of them fails: every
-  check site discharged, in Campaign 5's sense, across the whole
-  closure.
+  `check` and reuse form's retest, each `free`, each function check and
+  each varargs or external-call precondition. Never panics is the claim
+  that none of them fails: every check site discharged, in Campaign 5's
+  sense, across the whole closure. Allocation refusal is not an
+  obligation, as the panic table above specifies.
 - **The proof may take the compiled IR as it is.** A reused or renewed
   check stands for the original one only because soundness of checking
   says the evidence is real; without Campaign 3, a proof about the
@@ -592,8 +593,9 @@ here as in Campaign 3.
 
 ### Worked first target: GNU Hello
 
-This is a sketch for discussion; nothing below is built yet. GNU Hello
-is the right first closure: [nix/hello.nix](../nix/hello.nix) already
+The proof below is still a sketch; [step 0's census](trap-census.md) is
+now measured, with a reproducible query. GNU Hello is the right first
+closure: [nix/hello.nix](../nix/hello.nix) already
 builds it with every object compiled by nanofil, once per configuration
 (`plain`, `O`, `O-reuse` and the rest), and checks it against filcc's
 build. So the pinned unit exists: the derivation `nanofil-hello-O`, which
@@ -606,8 +608,14 @@ entry contract, the heap, and a loop over strings.
 
 #### What Hello asks of libc
 
-Hello imports 66 libc symbols (from `nm -D` of nixpkgs' hello-2.12.3).
-They fall into a few kinds of contract:
+The original sketch said 66 libc symbols. At this pin, `nm -D` of
+nixpkgs' hello-2.12.3 instead gives 61 GLIBC symbols plus three non-libc
+weak hooks. The actual nanofil build has 56 distinct libc names after
+normalizing its ABI prefixes and startup duplicates. The
+[census](trap-census.md) lists all 61 stock names by contract kind and
+the exact delta for nanofil. These are requirements for trusted,
+natively probed contracts, not contracts already proved. The broad
+kinds are:
 
 | Kind | Hello's calls | What the contract says |
 | --- | --- | --- |
@@ -668,7 +676,7 @@ They fall into a few kinds of contract:
 | Linking several modules | missing | Run.v takes one module |
 | Program logic and adequacy | missing | new. Separation logic in Rocq is the first option; whether to instantiate Iris is the temporal-discharge inquiry |
 | libc contract table | missing | about 60 entries for Hello, each with a native test like the runtime axioms' |
-| Hello inside the model's subset | unknown | Validate.v's `valid` returns `None` outside the core subset. Running it over Hello's objects is the cheapest first measurement |
+| Hello inside the model's subset | measured: all 178 functions in 81 objects inside; every object `Some true` | [step 0](trap-census.md) calls the extracted Validate.v `valid` directly; no `None` or `Some false`; this is not execution through the still-missing libc contracts |
 
 #### Where the per-function obligations come from
 
@@ -705,7 +713,7 @@ discharge.
 
 | Step | Program | Needs |
 | --- | --- | --- |
-| 0 | the obligation census of `hi.c` and `nanofil-hello-O`, plus `valid` over Hello's objects | Campaign 0's query over Hello; no proof |
+| 0 | [measured: obligation census](trap-census.md) of `hi.c` and `nanofil-hello-O`, plus `valid` over all Hello objects | Campaign 0's query over Hello; no proof |
 | 1 | a closed corpus module with no external calls, such as tests/filc/gc.ir's list `sum` | Campaign 3 complete; `never_panics` stated in Rocq; the program logic and its adequacy |
 | 2 | `hi.c`, built by nanofil against the pinned libc | the external-call step; contracts for `puts` and the `exit` path; linking |
 | 3 | GNU Hello, `nanofil-hello-O` | the entry contract; about 60 libc contracts; triples for gnulib's string code; temporal reasoning for `quotearg` |

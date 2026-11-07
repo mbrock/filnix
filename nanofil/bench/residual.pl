@@ -1,6 +1,8 @@
 /* Campaign 0's read-only query over provenance-bearing checked modules.
    Run from src: ../bin/nanofil --script ../bench/residual.pl FILE.term...
    Each input is outcomes' single module/1 term, with no run lines.
+   --sites-only skips the cost model (Cost is unmeasured), including
+   named-local sites whose emitter sequence has no Campaign 0 cost.
    The classifications are syntactic observations, not discharge proofs.
    docs/residual.md defines the precedence, limitations and cost model. */
 :- use_module('../src/ir', [single_definitions/3, pointer_distance/4]).
@@ -13,8 +15,12 @@
 :- initialization(main).
 
 main :-
-    current_prolog_flag(argv, Files),
-    maplist(file_sites, Files, Groups), append(Groups, Sites),
+    catch((census -> halt(0) ; halt(1)), E, (print_message(error, E), halt(1))).
+
+census :-
+    current_prolog_flag(argv, Args),
+    ( Args = ['--sites-only'|Files] -> Mode = sites ; Files = Args, Mode = costs ),
+    maplist(file_sites(Mode), Files, Groups), append(Groups, Sites),
     forall(member(S, Sites), (write_canonical(S), write('.'), nl)),
     findall(form(F), member(site(_, _, _, _, F, _, _, _, _, _), Sites), Forms),
     findall(shape(S), member(site(_, _, _, _, _, S, _, _, _, _), Sites), Shapes),
@@ -24,15 +30,20 @@ main :-
     append([Forms, Shapes, Cross, Loops, After], Keys),
     msort(Keys, Sorted), clumped(Sorted, Counts),
     forall(member(K-N, Counts), format('~q.~n', [count(K, N)])),
+    ( Mode == costs -> cost_totals(Sites) ; true ),
+    length(Files, NF), length(Sites, NS), format('total(~d,~d).~n', [NF, NS]).
+
+cost_totals(Sites) :-
     findall(shape(S)-C, member(site(_, _, _, _, _, S, _, _, _, C), Sites), SCosts),
     findall(form(F)-C, member(site(_, _, _, _, F, _, _, _, _, C), Sites), FCosts),
     append(SCosts, FCosts, Costs), keysort(Costs, SortedCosts),
     group_pairs_by_key(SortedCosts, CostGroups),
-    forall(member(K-Cs, CostGroups), (sum_list(Cs, Sum), format('~q.~n', [instructions(K, Sum)]))),
-    length(Files, NF), length(Sites, NS), format('total(~d,~d).~n', [NF, NS]),
-    halt.
+    forall(member(K-Cs, CostGroups), (sum_list(Cs, Sum), format('~q.~n', [instructions(K, Sum)]))).
 
 file_sites(File, Sites) :-
+    file_sites(costs, File, Sites).
+
+file_sites(Mode, File, Sites) :-
     setup_call_cleanup(open(File, read, S),
                        (read_term(S, M, []), read_term(S, end_of_file, [])), close(S)),
     M = module(Items), context_index(Items, Contexts),
@@ -47,7 +58,7 @@ file_sites(File, Sites) :-
               findall(site(File, N, L, I, Form, Shape, Loop, After, Locs, Cost),
                       ( member(block(L, _, Is, _), Bs), nth0(I, Is, Inst),
                         check_form(Inst, Form, P),
-                        core_instructions(Inst, Cost),
+                        site_cost(Mode, Inst, Cost),
                         shape(Form, P, Defs, Items, Shape),
                         loop_shape(L, P, Natural, Bs, Defs, Loop),
                         after_event(L, I, Is, Bs, After),
@@ -61,6 +72,9 @@ file_sites(File, Sites) :-
     findall(1, (member(func(_, _, _, _, Bs), Items), member(block(_, _, Is, _), Bs),
                 member(let(_, a, _, _), Is)), Checks),
     length(Checks, Count), length(Sites, Count).
+
+site_cost(sites, _, unmeasured).
+site_cost(costs, Inst, Cost) :- core_instructions(Inst, Cost).
 
 check_form(let(_, a, check(_, _, _, _), [P]), full, P).
 check_form(let(_, a, renew(_, _, _, _), [_, P]), renew, P).

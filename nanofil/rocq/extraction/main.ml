@@ -33,7 +33,7 @@ let parse (s : string) : term list =
     (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c = '_' || c >= '\128'
   in
   let is_digit c = c >= '0' && c <= '9' in
-  let is_symbol c = String.contains "+-*/\\^<>=~:.?@#&$" c in
+  let is_symbol c = String.contains "+-*/\\^<>=~:.?@#&$;!" c in
   let quoted () =
     (* after the opening quote *)
     let b = Buffer.create 16 in
