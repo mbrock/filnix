@@ -502,8 +502,8 @@ runs([I|Is], [I|Rs]) :- runs(Is, Rs).
 take_dirs([dir(P, W)|Is0], [dir(P, W)|Ds], Is) :- !, take_dirs(Is0, Ds, Is).
 take_dirs(Is, [], Is).
 
-run_(dirs(Ds)) --> !, { Ds = [dir(F-_, _)|_] }, notes_before(F), el(div, "rq-dirs", seq(Ds, dir_)).
-run_(I) --> { item_from(I, F) }, notes_before(F), item_(I).
+run_(dirs(Ds)) --> !, { Ds = [dir(F-_, _)|_] }, notes_before(F), el(div, "rq-dirs", seq(Ds, dir_)), html_flush.
+run_(I) --> { item_from(I, F) }, notes_before(F), item_(I), html_flush.
 
 item_from(proved(S, _), F) :- !, item_from(S, F).
 item_from(block(S, _, _), F) :- !, item_from(S, F).
@@ -729,7 +729,7 @@ proof_link(Id, Snap) -->
     % A navigation button must not contain another interactive target.
     { nb_setval(rq_button, true) },
     el(button, "rq-step-link clause", [type=button, 'data-target'=Target, style=Style, 'aria-label'=Label], step_label(Snap)),
-    { nb_setval(rq_button, false) }.
+    { nb_setval(rq_button, false) }, html_flush.
 
 step_label(snap(_, _, _, none, _)) --> !, el(span, "rq-step-name", esc("Initial goal")).
 step_label(snap(_, _, _, end(Kw), _)) --> !, el(span, "rq-step-name", esc(Kw)).
@@ -755,7 +755,7 @@ snapshot(Id, _, Snap, Goals) -->
             ; el(p, "rq-incomplete", "Proof ended without a checked closure.") )
          ; { Goals == [] }
          -> el(p, "rq-complete", "No remaining goals.")
-         ; captured_goals(Goals) ) )).
+         ; captured_goals(Goals) ) )), html_flush.
 
 captured_goals([G|Gs]) --> captured_goal(G), seq(Gs, secondary_goal).
 
@@ -774,7 +774,7 @@ goal_contents(G) -->
     ( { Hyps == [] } -> []
     ; el(div, "rq-context", seq(Hyps, captured_hyp(Env))) ),
     el(div, "rq-conclusion", ['data-raw'=G.conclusion],
-       ( el(span, "rq-turnstile", ['aria-label'="Goal"], "⊢"), el(div, goal, captured_term(G.conclusion, Env)) )).
+       ( el(span, "rq-turnstile", ['aria-label'="Goal"], "⊢"), el(div, goal, captured_term(G.conclusion, Env)) )), html_flush.
 
 % Parse the context with the same Gallina grammar, including newlines
 % after colons and types containing colons, strings or record fields.
@@ -791,7 +791,7 @@ captured_hyp(Env, hyp(Ns, Body, Ty, Raw)) -->
          el(div, "rq-hyp-type goal",
             ( { Body == none } -> blk(Ty, Env)
             ; { block(Body) ; block(Ty) } -> blk(Body, Env), " : ", blk(Ty, Env)
-            ; term(Body, Env), " : ", term(Ty, Env) )) )).
+            ; term(Body, Env), " : ", term(Ty, Env) )) )), html_flush.
 
 sep_vars([]) --> [].
 sep_vars([N]) --> !, var_def(N).

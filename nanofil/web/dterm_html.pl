@@ -14,6 +14,38 @@ write_page(Path, Body) :-
                        format(S, "~s", [Cs]),
                        close(S)).
 
+% A deterministic drawer releases fragments with html_flush//0. Closing
+% the current difference list and resuming with a fresh one keeps enclosing
+% elements without retaining their already-written children. Checkpoint
+% observes allocation before writing/collection; phrase/2 callers stay pure.
+write_streamed_page(Path, Body, Checkpoint) :-
+    current_prolog_flag(stack_limit, Limit), Budget is Limit // 8,
+    statistics(globalused, Used), GCAt is Used + Budget,
+    setup_call_cleanup(open(Path, write, S, [encoding(utf8)]),
+      setup_call_cleanup(nb_setval(dterm_streaming, true),
+                         write_html_chunks(phrase(Body, Cs), Cs, S, Budget, GCAt, Checkpoint),
+                         nb_delete(dterm_streaming)),
+      close(S)).
+
+write_html_chunks(Goal, Cs, S, Budget, GCAt, Checkpoint) :-
+    once(reset(Goal, Signal, Cont)),
+    call(Checkpoint),
+    (   Cont == 0 -> format(S, "~s", [Cs])
+    ;   Signal = dterm_html_chunk(Tail, Next), Tail = [],
+        format(S, "~s", [Cs]),
+        % SWI's adaptive GC otherwise lets disposable fragments accumulate
+        % almost to the limit. Batch collection, not one GC per hypothesis.
+        statistics(globalused, Used),
+        (   Used >= GCAt
+        ->  garbage_collect, statistics(globalused, Live), NextGC is Live + Budget
+        ;   NextGC = GCAt
+        ),
+        write_html_chunks(Cont, Next, S, Budget, NextGC, Checkpoint)
+    ).
+
+html_flush(Cs, Next) :-
+    ( nb_current(dterm_streaming, true) -> shift(dterm_html_chunk(Cs, Next)) ; Cs = Next ).
+
 esc(X) --> { text_codes(X, Cs) }, esc_codes(Cs).
 
 text_codes(X, Cs) :- string(X), !, string_codes(X, Cs).

@@ -145,13 +145,29 @@ proof step, in the page and the open dialog. It also checks modal navigation,
 focus restoration, local typography, tactic counts and the single vertical
 scroll flow. New theories join this check without editing a file list.
 
-Rendering collects completed pages' temporary DCG output explicitly. On the
-site's SWI 10.1.19, automatic collection let the global stack accumulate to
-more than 600 MiB across files and exhaust the default 1 GiB limit, although
-the live source/index/capture data took only about 5 MiB after collection.
-Each page now logs its UTC completion time, elapsed seconds, and global
-stack use before/after collection. The site keeps the default stack limit;
-it does not need separate processes that would rebuild the cross-file index.
+Rendering streams completed declarations, timeline entries, hypotheses,
+goals and snapshots instead of retaining a page-sized list of HTML codes.
+`write_streamed_page/3` resumes the existing DCG after each `html_flush/2`
+checkpoint with a fresh difference list; enclosing elements and module/local
+environments survive the checkpoint. Ordinary `phrase/2` users, including
+Rocq snippets in the guide, still receive the same pure code list.
+
+SWI 10's adaptive GC can also accumulate discarded fragments almost to the
+stack limit. The writer collects after another eighth of the actual limit
+has been allocated since the preceding collection (128 MiB at the default
+1 GiB), rather than collecting every hypothesis. It also collects between
+pages. The source/index/capture and an individual fragment must still fit;
+no snapshots, hypotheses or pending goals are truncated or skipped, and
+the cross-file name index is built once, not once per output page.
+
+Each page logs UTC completion time, elapsed seconds, sampled maximum total
+stack usage against the actual limit, and global usage before/after final
+collection. Samples run every 50ms and before fragments are released, so
+the maximum is observed, not an exact high-water mark. A UTC warning names
+the page the first time a sample reaches 60% of the limit. The site keeps
+the default 1 GiB limit. `tests/capture.py` checks 200 coqc-verified lemmas
+and all 1,600 snapshots on one page under 64 MiB; the whole-page writer at
+517909a exhausts that limit on the same input.
 
 ## Reading proofs, not just tactics
 

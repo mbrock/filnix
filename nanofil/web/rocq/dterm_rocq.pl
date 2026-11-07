@@ -26,6 +26,7 @@
 :- use_module(library(uri)).
 :- use_module(library(http/json)).
 :- use_module(library(crypto)).
+:- use_module(library(time)).
 :- use_module(rocq_syntax).
 :- use_module(rocq_draw).
 
@@ -107,14 +108,44 @@ write_source_page(Out, page(File, Text, Items, Cms)) :-
     contents(Items, Body, Groups),
     summarize(File, Text, Head),
     file_name_extension(Page, html, Name), directory_file_path(Out, Name, Path),
-    once(write_page(Path, source_page(File, Head, Items, Groups))),
-    % Completed HTML is disposable. SWI 10's adaptive collection can let
-    % several pages' temporary DCG lists hit the stack limit before GC.
+    setup_call_cleanup(start_stack_watch(Alarm),
+      once(write_streamed_page(Path, source_page(File, Head, Items, Groups), sample_render_stack)),
+      remove_alarm(Alarm)),
+    % Keep the next page independent of this one's disposable fragments.
     statistics(globalused, Before), garbage_collect, statistics(globalused, Live),
     get_time(T1), Elapsed is T1 - T0, MB is Before / 1048576, LiveMB is Live / 1048576,
-    stamp_date_time(T1, Date, 'UTC'), format_time(atom(Stamp), '%FT%TZ', Date),
-    format(user_error, '~w rocq render: ~w ~2fs, global ~1f MiB -> ~1f MiB after GC~n',
-           [Stamp, File, Elapsed, MB, LiveMB]).
+    nb_getval(rq_stack_peak, Peak), PeakMB is Peak / 1048576,
+    current_prolog_flag(stack_limit, Limit), LimitMB is Limit / 1048576,
+    utc_stamp(T1, Stamp),
+    format(user_error, '~w rocq render: ~w ~2fs, sampled stack max ~1f/~1f MiB, global ~1f MiB -> ~1f MiB after GC~n',
+           [Stamp, File, Elapsed, PeakMB, LimitMB, MB, LiveMB]).
+
+% Sample at fragment boundaries and every 50ms during a large term, not
+% just after the page returns. This is not an exact high-water mark.
+start_stack_watch(Alarm) :-
+    nb_setval(rq_stack_peak, 0), nb_setval(rq_stack_warned, false),
+    sample_render_stack,
+    alarm(0.05, watch_render_stack, Alarm, [install(false), remove(false)]),
+    nb_setval(rq_stack_alarm, Alarm), install_alarm(Alarm, 0.05).
+
+watch_render_stack :-
+    sample_render_stack,
+    nb_getval(rq_stack_alarm, Alarm), uninstall_alarm(Alarm), install_alarm(Alarm, 0.05).
+
+sample_render_stack :-
+    statistics(globalused, G), statistics(localused, L), statistics(trailused, T), Used is G + L + T,
+    nb_getval(rq_stack_peak, Old), Peak is max(Old, Used), nb_setval(rq_stack_peak, Peak),
+    current_prolog_flag(stack_limit, Limit),
+    (   Used * 5 >= Limit * 3, nb_getval(rq_stack_warned, false)
+    ->  nb_setval(rq_stack_warned, true), nb_getval(rq_file, File),
+        get_time(Now), utc_stamp(Now, Stamp), MB is Used / 1048576, LimitMB is Limit / 1048576,
+        format(user_error, '~w rocq render WARNING: ~w crossed 60% of stack limit (~1f/~1f MiB sampled)~n',
+               [Stamp, File, MB, LimitMB])
+    ;   true
+    ).
+
+utc_stamp(Time, Stamp) :-
+    stamp_date_time(Time, Date, 'UTC'), format_time(atom(Stamp), '%FT%TZ', Date).
 
 % Captures belong to the exact source, never a nearby revision's offsets.
 source_states(File, Text) :-
