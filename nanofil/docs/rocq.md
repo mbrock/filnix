@@ -34,6 +34,7 @@ the interpreter and cites the predicate it copies.
 | `Interval.v` | `offset_interval/8`, `op_interval/9` (ir.pl) | the derivations of an offset interval as an inductive relation; every interval the walk answers is derived, and a derived interval holds of the values a run reads wherever the names it walks hold what their definitions computed and their single-definition operands are unchanged |
 | `Sites.v` | `single_definitions/3`, `block_sites//1`, `definitions_dominate/3` (ir.pl) | every definition with its site; a single definition has one; a use is dominated by its single definition, and no single-definition operand of a definition is defined again where the definition's site dominates |
 | `Identity.v` | — (Campaign 3) | no step of a run loses an object: each is as it was, or freed, given that the runtime's free keeps identities; a check that passed then passes again, or traps out of bounds |
+| `Single.v` | `single_definitions/3`, `definitions_dominate/3` (ir.pl); the steps of interp.pl | in every frame of every run, each single definition whose site dominates the frame's point replays: its name holds what its instruction made from its operands' current values, in a memory the current one persists from |
 | `Coverage.v` | — (Campaign 3) | the coverage lemma: a raw access that `covered_access/6` puts inside a passed check gives no `unchecked` |
 | `Evidence.v` | — (Campaign 3) | the evidence invariant at an instruction and an edge: what a live fact means, every case of `checked_inst_rest/7` keeps the pass's facts true, block entry keeps the meet, accesses the pass accepts give no `unchecked` |
 | `Walk.v` | — (Campaign 3) | the evidence pass read back for the run-level invariant: block by block (`pass_fold`), position by position (`walks`), where it keeps facts (`relies`), a `check_local`'s own fact |
@@ -895,8 +896,43 @@ Decisions and findings:
   in place (`free_res_ids`), so `interp_persists` has no hypothesis.
   Natively a freed object's address may be reused only once nothing
   names it (Runtime.v's header), which is what `free_ids` says in the
-  model. Making it an axiom of the module type needs a native test and
-  an Oracle review; until then it stays a hypothesis, like `spares`.
+  model. mbrock's decision: `free_ids` stays a named hypothesis, like
+  `spares`. Once the reuse forms are done, both go to him together, with
+  a recommendation after an Oracle review; an axiom would need a native
+  test.
+
+### The single-definition invariant
+
+Each reuse form reads a relation between single-definition names: a
+flight and its base, a proof and the pointer it checked, a span test or
+a limit and the pointer it read. `Single.v` proves the relation holds
+along every run. In every frame (the running one unless doomed, and each
+waiting caller), each single definition whose site dominates the
+frame's point *replays* (`replays`). Its name holds what its
+instruction's own step made, in some earlier frame that agrees with the
+current environment on the instruction's single-definition operands, and
+the current memory persists from the memory that step left. A check
+that passed then passes again or traps (`persists_access`). A flight's
+capability is its lower donor's. `mreachable_sinv` proves this for any
+runtime whose free keeps identities, and `interp_sinv` proves it for the
+interpreter with no hypothesis but a ready start. No admits.
+
+Decisions:
+
+- **The relation is the instruction's own step, replayed.** There is no
+  per-op relation table: each reuse form reads what it needs off
+  `inst_step` for the op it trusts.
+- **Only `let`s that are not `alloc`, and flights, replay.** A call's or
+  an allocation's step does not continue with a value, and no reuse rule
+  reads through one. Their names still move scope correctly
+  (`scope_after` for a call's result on return).
+- **Memory is handled once.** Every machine step's memory persists from
+  the last (`mstep_persists`), so the step lemmas carry frames only, and
+  a replay's memory follows by `scope_mem`. This is where `free_ids`
+  enters.
+- **A doomed frame claims nothing.** Its `check_ahead` did not pass, so
+  nothing after it is trusted. A doomed frame never returns to a caller
+  or calls one, so every waiting caller is undoomed.
 
 ## An object past 2^64
 
@@ -990,20 +1026,17 @@ and the module type's `start`, so it needs an Oracle review.
 
 ## Next
 
-1. The single-definition invariant over runs: where a name's one
-   definition dominates the running point, the relation its definition
-   states holds (a flight's capability and offset from its base, an
-   integer's value, which `iv_sound` turns into its interval, a
-   proof's pointer and passed check, a span test's or a limit's
-   reading), on Dominance.v, Interval.v, Sites.v and Identity.v. Then the reuse forms as corollaries, each
+1. The reuse forms as corollaries of `Single.v`'s invariant and
+   Interval.v's `iv_sound`, each
    with ir.pl's side conditions as hypotheses: `hull_covered`, renew,
    half check, `renew_if`, `check_limit`, and `check_ahead`'s doomed
    frame; then `valid_no_unchecked`, assembled from Persistence.v's
    invariant.
-2. A decision on the runtime's safepoints (`spares`, above): narrow
-   the module type, or keep the hypothesis; and on its free
-   (`free_ids`, "Identities persist"): an axiom with a native test, or a
-   hypothesis.
+2. After the reuse forms, a decision on the runtime's safepoints
+   (`spares`, above) and its free (`free_ids`, "Identities persist"),
+   brought to mbrock together with a recommendation after an Oracle
+   review: narrow the module type or add axioms with native tests, or
+   keep the hypotheses.
 3. Starting the heap above the module's data, so that the initial
    readiness hypothesis becomes a lemma.
 
