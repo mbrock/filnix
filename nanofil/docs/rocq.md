@@ -23,10 +23,11 @@ the interpreter and cites the predicate it copies.
 | `Syntax.v` | ir.pl's header tables | classes, ops, values, instructions, jumps, blocks, functions, data, modules; `op_arg_classes/4`, `evidence_preserving/1`, `ahead_transparent/1`, `local_objects/2` |
 | `Values.v` | interp.pl's values | `cap` (`none`, `obj`, `ro`, `fn`, `ext`), `ptr`, `word`; `word_at_class/3` |
 | `Memory.v` | interp.pl's Memory section | regions, `mem`, `cap_access_res/7`, `free_res/4`, bytes and aux, `fresh` |
-| `Runtime.v` | `alloc_base/6`, `free_res/4`; [runtime-axioms.md](runtime-axioms.md) | Campaign 2's `Module Type Runtime`, seven axioms, and `InterpRuntime`, which proves them |
+| `Runtime.v` | `alloc_base/6`, `free_res/4`; [runtime-axioms.md](runtime-axioms.md) | Campaign 2's `Module Type Runtime`, seven axioms and two readiness obligations, and `InterpRuntime`, which proves them |
 | `Ops.v` | `alu/4`, `additive_res/4`, `kind_res/8` | integer and float ops, `check` and the reuse vocabulary, raw loads and stores, pointer-load and pointer-store protocols, `va_arg` |
 | `Semantics.v` | `run/5`'s blocks, instructions, jumps, calls | the configuration, `step`, `step_rel`, `reachable`; the variadic entry snapshot |
-| `Run.v` | `initial_memory/4` | module preparation, and `Driver`, a run over any `Runtime`'s allocations |
+| `Run.v` | `initial_memory/4` | module preparation, and `Driver`, a run over any `Runtime`'s allocations and free |
+| `Machine.v` | — (Campaign 3) | the machine of a `Runtime`: steps, the runtime's allocations, its actions at safepoints; `ready` kept by every step; each step a `step_rel` step or a safepoint action |
 | `Cfg.v` | cfg.pl | `func_cfg/2`, `cfg_idoms/2` (Cooper, Harvey and Kennedy), `dom_children/3`, `dom_intervals/3`, `dominates_by_interval/3` |
 | `Validate.v` | ir.pl's `valid_module/1` | `valid_func`, `valid_data`, `valid_alias`, `valid_items`, `valid`: uses, ops, instructions, dominance, locals, the evidence pass, the reuse rules, `polls_every_cycle`, data linkage and items, aliases |
 | `Transport.v` | — | decoding a printed checked module, encoding outcomes, `judge`, `judge_valid` |
@@ -386,11 +387,9 @@ These are formal.md's early decisions as they turned out in the code:
   (`alloc_base/6`, `free_res/4`, nothing at a safepoint) and proves
   every axiom, so the module type is consistent; `Run.v`'s `Driver` is
   a functor over `Runtime`, and the gates run `Driver InterpRuntime`.
-  Semantics.v still calls `free_res` itself, and `step_rel` takes any
-  `fresh` base, which every runtime's `alloc` gives; making the step
-  take a runtime's `free` and `safepoint` is Campaign 3's first step,
-  with the invariant `ready` (every object below Next, nothing above
-  it written) that `fresh_allocation` assumes.
+  The step's `free` is the genv's `ge_free`, the runtime's, and
+  `step_rel` takes any `fresh` base, which every runtime's `alloc`
+  gives; Machine.v runs the steps over a runtime (Campaign 3, below).
 - **Prolog's `//` on non-negative operands is `Z.div`.** ieee.pl's
   `//` truncates; `Z.quot` says that, but its extraction divides bit
   by bit and took minutes on the 16,000-bit ratios of an `x` denormal.
@@ -539,12 +538,66 @@ OCaml side, neither of them semantic: a gas limit in the driver that
 was too small for loops (now 2^60 steps, so the run's own fuel always
 ends a run first), and atoms containing UTF-8 bytes in a reader.
 
+## Campaign 3: the machine of a runtime
+
+`Machine.v` is Campaign 3's first milestone. `Machine R` runs
+Semantics.v's steps over a runtime R: a step that allocates nothing, an
+allocation at R's `alloc`, or R's `safepoint` action, which may happen
+before an instruction where `R.at_safepoint` holds and before a poll
+edge, and nowhere else. A call of `free` is the genv's `ge_free`, which
+Run.v's `Driver` sets to R's `free`. Two theorems, no admits:
+
+- `mreachable_ready`: if R is ready to allocate in the first state, it
+  is in every state a run reaches. Each step that allocates nothing
+  writes only inside objects (its writes passed an access check) and
+  only ends objects (`free`, an invocation's locals), which R's
+  `ready_kept` allows; an allocation is R's `fresh_allocation`, and the
+  variadic snapshot it may write lies inside the new object; a
+  safepoint is R's `safepoint_ready`.
+- `mstep_refines`: from a ready state each machine step is a
+  `step_rel` step, its allocation's base fresh, or a safepoint action.
+  What the soundness theorem proves of `step_rel` and `R.safepoint`
+  therefore holds of every run of every runtime.
+
+Decisions and findings:
+
+- **Two readiness obligations join the module type.** `ready_kept`
+  (the program's own writes inside objects and its ending of objects
+  keep the runtime ready) and `safepoint_ready` (so do the runtime's
+  actions) are about the runtime's own bookkeeping, not Fil-C, so they
+  have no native test. `InterpRuntime` proves both.
+- **`fresh` speaks of objects as `object_region` finds them.** It
+  quantified over every region in the list, including one behind
+  another of the same identity, which no access ever reads. Stated over
+  `object_region`, as everything else is, `ready` and `fresh` follow
+  from each other without a lemma about the region list's shape. No
+  extracted function uses `fresh`, so the gates are unchanged.
+- **Ending a local is not the runtime's free.** `lifetime_step` lets
+  only heap objects end; an invocation's locals are stack objects that
+  the program ends itself. Machine.v's `region_step` is the weaker
+  relation the program's own steps satisfy.
+- **The runtime acts before the instruction.** At an `at_safepoint`
+  instruction or a poll edge the safepoint action comes first, and the
+  instruction runs on what the runtime left, as native code runs after
+  its pollcheck.
+- **A negative extent has no machine step.** `fresh_allocation` covers
+  extents from 0. Only a named local's constant size could be negative,
+  and `valid` refuses that (0 to 2^31-1); heap sizes are read at `l`.
+- **Proofs are kept fast.** Machine.v checks in about 4 seconds.
+  `inversion` on an equation between large terms (the words a
+  `va_arg` loads) took 17 seconds; `congruence` takes milliseconds, and
+  `inst_step_let` states the generic `let` once instead of letting a
+  case split unfold every op.
+
 ## Next
 
-1. Campaign 3's first steps: a step relation over a `Runtime`, taking
-   its `free` and its `safepoint` transitions at `at_safepoint`
-   instructions and poll edges, and the invariant that `ready` holds
-   initially and after every step.
+1. Campaign 3's coverage lemma: a raw access whose address a passed
+   check covers, with the validator's offset, size, rights and
+   alignment, does not give `unchecked`.
+2. The evidence invariant for proof persistence, stated over
+   `Machine R`'s steps: between a check and its use, only
+   `evidence_preserving/1` instructions and unpolled edges, so no
+   safepoint action and no free.
 
 Inquiries touched: none closed. The integer-at-`p` case is a small
 input to the integer-to-pointer inquiry.

@@ -33,7 +33,8 @@
     fails (a call to an external symbol, an access through an external
     capability, a temporary read before it is assigned, an ill-classed
     word); the relation has no step there. Externals stay stuck until
-    Campaign 4 gives them contracts; only `free` is modeled.
+    Campaign 4 gives them contracts; only `free` is modeled, as the
+    genv's `ge_free`, the runtime's.
 
     ## Outcomes
 
@@ -70,10 +71,14 @@ Inductive outcome : Type :=
     one outside it. *)
 Inductive fn_def : Type := Defined (f : func) | Outside (n : name).
 
-(** The module ready to run (`module_prepared/2`'s Fns and Globals). *)
+(** The module ready to run (`module_prepared/2`'s Fns and Globals),
+    and the runtime's free that a call of libc's `free` runs: Memory.v's
+    `free_res` in the interpreter, `R.free` of a `Runtime` R (Run.v's
+    `Driver`, Machine.v). *)
 Record genv : Type := mkGenv {
   ge_module : module;
-  ge_globals : list (name * ptr)
+  ge_globals : list (name * ptr);
+  ge_free : word -> mem -> option (res unit * mem)
 }.
 
 Fixpoint find_direct (n : name) (items : module) : option fn_def :=
@@ -456,7 +461,7 @@ Definition width_value_class (w : width) : option class :=
     `inst_result/5`'s call of `global(F)`. Data the module defines is
     not a function, and the call traps, as native code's function check
     does. Otherwise it is `external_call_outcome/9`: only libc's
-    `void free(p)` is modeled. *)
+    `void free(p)` is modeled, through the runtime's free. *)
 Definition free_name : name := TAtom "free".
 
 Definition external_call (ge : genv) (f : name) (r : call_result) (args : list arg)
@@ -467,7 +472,7 @@ Definition external_call (ge : genv) (f : name) (r : call_result) (args : list a
       if negb (name_eqb f free_name) then None
       else match r, args, xs with
            | CVoid, [Arg P _], [x] =>
-               let* rm := free_res x m in
+               let* rm := ge_free ge x m in
                let (r', m') := rm in
                Some (match r' with
                      | RVal _ => IContinue e locals m'

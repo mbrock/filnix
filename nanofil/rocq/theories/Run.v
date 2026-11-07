@@ -167,7 +167,7 @@ Definition run (md : module) (fn : name) (args : list word) (fuel : Z) : run_res
   match initial_memory md with
   | None => Halted "initial memory"
   | Some (globals, m) =>
-      let ge := mkGenv md globals in
+      let ge := mkGenv md globals R.free in
       match find_fn ge fn with
       | Some (Defined f) =>
           match call_frame f args with

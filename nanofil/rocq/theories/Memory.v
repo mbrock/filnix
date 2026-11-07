@@ -243,17 +243,20 @@ Record alloc_req : Type := mkReq {
 
 (** `fresh m q base`: base may be the identity and address of a new
     object of q in m. It is a positive, aligned address; it is no
-    region's identity, live or freed; the new bytes overlap no region's
+    object's identity, live or freed; the new bytes overlap no object's
     current bounds; and they read as zero with no stored capability,
     as Fil-C's allocations do. The interpreter never reuses an address;
     the model allows any choice that satisfies this. Runtime.v's
-    `fresh_allocation` asks every runtime's choice to satisfy it. *)
+    `fresh_allocation` asks every runtime's choice to satisfy it.
+
+    Objects are what `object_region` finds, as everywhere else: a
+    region behind another of the same identity is no object. *)
 Definition fresh (m : mem) (q : alloc_req) (base : Z) : Prop :=
   0 < base /\
   base mod req_align q = 0 /\
-  Forall (fun r => r_base r <> base /\
-                   ~ (base < r_end r /\ r_base r < base + req_extent q))
-         (m_regions m) /\
+  object_region base (m_regions m) = None /\
+  (forall b reg, object_region b (m_regions m) = Some reg ->
+                 ~ (base < r_end reg /\ b < base + req_extent q)) /\
   (forall a, base <= a < base + req_extent q ->
              m_bytes m a = 0 /\ m_aux m a = CNone).
 

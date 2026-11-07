@@ -24,6 +24,13 @@
     | `aux_round_trip` | a stored capability stays, or becomes one that traps as the freed object does | axiom-aux.c |
     | `rooting` | no identity the program can name is reclaimed | axiom-rooting.c |
 
+    Two more obligations are about the runtime's own state, not about
+    Fil-C, so they have no native test: `ready_kept`, the program's own
+    writes inside objects and its emptying of bounds leave the runtime
+    ready to allocate; and `safepoint_ready`, the runtime's actions at a
+    safepoint do too. With `fresh_allocation` they make `ready` an
+    invariant of every run (Machine.v).
+
     ## One thread's view
 
     The model has one thread and no collector. Another thread's free and
@@ -52,9 +59,8 @@
 
     `fresh_allocation` holds of a runtime's state that is `ready` for
     the memory: for the interpreter, every object lies below Next and
-    nothing above it has been written. That `ready` holds of the
-    initial memory and is kept by every step is Campaign 3's to prove,
-    with its invariants. *)
+    nothing above it has been written. Machine.v proves that every step
+    keeps it. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory.
@@ -84,6 +90,27 @@ Definition freed_in (rs : list region) (c : cap) : Prop :=
 Definition traps_as_freed (rs : list region) (c : cap) : Prop :=
   forall a size r align, 0 < size -> cap_access_res c rs a size r align = Some (RTrap OutOfBounds).
 
+(** `in_object m a`: a is inside the current bounds of an object of m. *)
+Definition in_object (m : mem) (a : Z) : Prop :=
+  exists b reg, object_region b (m_regions m) = Some reg /\ b <= a < r_end reg.
+
+(** `region_step m m'`: every identity of m' was one of m, unchanged,
+    or live and now ended, its bounds empty: a free, or the end of an
+    invocation's locals. *)
+Definition region_step (m m' : mem) : Prop :=
+  forall b reg',
+    object_region b (m_regions m') = Some reg' ->
+    exists reg,
+      object_region b (m_regions m) = Some reg /\
+      (reg' = reg \/ (r_life reg = Live /\ reg' = mkRegion b b (r_kind reg) Freed)).
+
+(** `kept m m'`: what the program itself may do to memory between
+    allocations: end objects, and write bytes and stored capabilities
+    inside objects' bounds. *)
+Definition kept (m m' : mem) : Prop :=
+  region_step m m' /\
+  forall a, ~ in_object m a -> m_bytes m' a = m_bytes m a /\ m_aux m' a = m_aux m a.
+
 (** ## The module type *)
 
 Module Type Runtime.
@@ -105,6 +132,9 @@ Module Type Runtime.
     0 <= req_extent q ->
     fresh m q (fst (alloc s q)) /\
     ready (snd (alloc s q)) (allocated m q (fst (alloc s q))).
+
+  (** The program's own changes keep the runtime ready. *)
+  Axiom ready_kept : forall s m m', ready s m -> kept m m' -> ready s m'.
 
   (** Free of a pointer word: its result, and the memory after it. *)
   Parameter free : word -> mem -> option (res unit * mem).
@@ -141,6 +171,9 @@ Module Type Runtime.
   Axiom rooting : forall s m s' m',
     safepoint s m s' m' ->
     forall b, object_region b (m_regions m) <> None -> object_region b (m_regions m') <> None.
+
+  (** The runtime's actions keep it ready. *)
+  Axiom safepoint_ready : forall s m s' m', safepoint s m s' m' -> ready s m -> ready s' m'.
 
 End Runtime.
 
@@ -238,7 +271,7 @@ Module InterpRuntime : Runtime.
       written. *)
   Definition ready (next : state) (m : mem) : Prop :=
     0 < next /\
-    Forall (fun r => r_base r < next /\ r_end r <= next) (m_regions m) /\
+    (forall b reg, object_region b (m_regions m) = Some reg -> b < next /\ r_end reg <= next) /\
     (forall a, next <= a -> m_bytes m a = 0 /\ m_aux m a = CNone).
 
   (** `alloc_base/6`: the request's alignment above Next; Next then
@@ -254,24 +287,34 @@ Module InterpRuntime : Runtime.
     fresh m q (fst (alloc s q)) /\
     ready (snd (alloc s q)) (allocated m q (fst (alloc s q))).
   Proof.
-    intros next m q (Hpos & Hrs & Hbytes) Ha He. simpl.
+    intros next m q (Hpos & Hobj & Hbytes) Ha He. simpl.
     pose proof (align_up_ge next (req_align q) Ha) as Hb.
     pose proof (align_up_ge (req_extent q) 16 ltac:(lia)) as Hx.
     set (base := align_up next (req_align q)) in *.
     split.
-    - unfold fresh. repeat split.
-      + lia.
-      + apply align_up_mod; auto.
-      + eapply Forall_impl; [|exact Hrs]. intros r [H1 H2]. split; lia.
-      + apply Hbytes. lia.
-      + apply Hbytes. lia.
-    - unfold ready, allocated. simpl. repeat split.
-      + lia.
-      + constructor.
-        * simpl. lia.
-        * eapply Forall_impl; [|exact Hrs]. intros r [H1 H2]. lia.
-      + apply Hbytes. lia.
-      + apply Hbytes. lia.
+    - unfold fresh. split; [lia|]. split; [apply align_up_mod; auto|]. split.
+      { destruct (object_region base (m_regions m)) as [reg|] eqn:E; auto.
+        destruct (Hobj _ _ E). lia. }
+      split.
+      { intros b reg E [H1 H2]. destruct (Hobj _ _ E). lia. }
+      intros a Hr. apply Hbytes. lia.
+    - unfold ready, allocated. simpl. split; [lia|]. split.
+      + intros b reg E. destruct (Z.eqb base b) eqn:Eb.
+        * inversion E; subst. simpl. apply Z.eqb_eq in Eb. lia.
+        * destruct (Hobj _ _ E). lia.
+      + intros a Hr. apply Hbytes. lia.
+  Qed.
+
+  (** Objects stay below Next as they end, and the program writes only
+      inside them. *)
+  Lemma ready_kept : forall s m m', ready s m -> kept m m' -> ready s m'.
+  Proof.
+    intros next m m' (Hpos & Hobj & Hbytes) (Hreg & Hout). split; [lia|]. split.
+    - intros b reg' E. destruct (Hreg _ _ E) as (reg & E0 & Hr).
+      destruct (Hobj _ _ E0). destruct Hr as [-> | (_ & ->)]; simpl; lia.
+    - intros a Ha. assert (Hn : ~ in_object m a).
+      { intros (b & reg & E & Hr). destruct (Hobj _ _ E). lia. }
+      destruct (Hout a Hn) as [-> ->]. apply Hbytes. auto.
   Qed.
 
   (** Memory.v's free, the pinned runtime's as the interpreter has it. *)
@@ -307,5 +350,8 @@ Module InterpRuntime : Runtime.
     safepoint s m s' m' ->
     forall b, object_region b (m_regions m) <> None -> object_region b (m_regions m') <> None.
   Proof. intros s m s' m' [_ ->]. auto. Qed.
+
+  Lemma safepoint_ready : forall s m s' m', safepoint s m s' m' -> ready s m -> ready s' m'.
+  Proof. intros s m s' m' [-> ->]. auto. Qed.
 
 End InterpRuntime.

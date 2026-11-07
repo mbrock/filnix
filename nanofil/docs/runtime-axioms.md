@@ -56,15 +56,21 @@ old pointer alive, and why it does not ask that addresses never recur.
 changes at a safepoint. It proves every axiom, so the module type is
 consistent and `Print Assumptions` of the extracted `judge` is closed.
 Its `ready` says every object lies below Next and nothing at or above it
-has been written; that this holds initially and after every step is
-Campaign 3's to prove. Run.v's `Driver` runs over any `Runtime`, and the
+has been written. Run.v's `Driver` runs over any `Runtime`, and the
 gates run `Driver InterpRuntime`.
+
+## Readiness
+
+Two more obligations of the module type are about the runtime's own
+bookkeeping rather than Fil-C, so they have no native test:
+`ready_kept`, the program's writes inside objects and its ending of
+objects leave the runtime ready to allocate, and `safepoint_ready`, the
+runtime's actions at a safepoint do too. With `fresh_allocation` they
+make `ready` an invariant of every run: Machine.v's `mreachable_ready`
+proves it for every runtime, and `InterpRuntime` proves both.
 
 ## What is not yet stated
 
-- Semantics.v's step still calls `free_res` and has no safepoint
-  transitions; Campaign 3 makes it take a runtime's `free` and its
-  `safepoint` at `at_safepoint` instructions and poll edges.
 - Other threads' ordinary writes to shared objects are not modeled;
   they belong to Campaign 4's environment contracts.
 - The fresh test cannot observe that a capability is a new identity
