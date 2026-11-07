@@ -587,10 +587,10 @@ tactic_parts([]) --> [].
 tactic_part(binding(N, Op, E)) --> tk(p('(')), name(N), tk(sym(Op)), { memberchk(Op, [':=', ':']) },
     term(E), tk(p(')')), !.
 tactic_part(term(E)) --> peek(p('(')), atom(E), !.
-tactic_part(tactic(T)) --> tk(p('(')), tactic(T), tk(p(')')), !.
 tactic_part(context(E)) --> tk(id(context)), tk(p('[')), term(E), tk(p(']')), !.
 tactic_part(group(Open, Ps, Close)) -->
     [t(p(Open), _, _)], { matching(Open, Close) }, tactic_pattern(Ps), tk(p(Close)), !.
+tactic_part(tactic(T)) --> tk(p('(')), tactic(T), tk(p(')')), !.
 tactic_part(token(K)) --> [t(K, _, _)], { tactic_token(K) }.
 
 tactic_token(K) :- \+ memberchk(K, [p(';'), p('('), p(')'), p('['), p(']'),

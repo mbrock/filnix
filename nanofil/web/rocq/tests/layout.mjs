@@ -1,10 +1,12 @@
 // Browser regression check against the generated site, served over HTTP.
-// node nanofil/web/rocq/tests/layout.mjs http://localhost:8765
+// node nanofil/web/rocq/tests/layout.mjs http://localhost:8765 [320 390 768 1280]
 // Requires agent-browser; uses the real model, not simplified UI fixtures.
 import { execFileSync } from "node:child_process";
 
 const base = process.argv[2];
 if (!base) throw new Error("Pass the generated site's HTTP base URL");
+const widths = process.argv.length > 3 ? process.argv.slice(3).map(Number) : [320, 390, 768, 1280];
+if (widths.some(w => ![320, 390, 768, 1280].includes(w))) throw new Error("Unknown test width");
 const session = `rocq-test-${process.pid}`;
 function browser(...args) {
   return execFileSync("agent-browser", ["--session", session, ...args], { encoding: "utf8" });
@@ -19,7 +21,9 @@ function check(body) {
   })()`);
 }
 const source = (name) => `${base}/nanofil/rocq/rocq-theories-${name}.html`;
-const fitsPage = `assert(document.documentElement.scrollWidth <= innerWidth + 1, "page overflows");`;
+const fitsPage = `assert(document.documentElement.scrollWidth <= innerWidth + 1, "page overflows");
+  for (const dialog of document.querySelectorAll('dialog[open]'))
+    assert(dialog.scrollWidth <= dialog.clientWidth + 1, "proof dialog overflows");`;
 const contextRows = `
   for (const row of document.querySelectorAll('.rq-snapshot:not([hidden]) .rq-hyp')) {
     const name = row.querySelector('.rq-hyp-names').getBoundingClientRect();
@@ -37,7 +41,7 @@ try {
   const pages = JSON.parse(browser("eval", `[...new Set([...document.querySelectorAll('a[href]')]
     .map(a => a.getAttribute('href')).filter(h => /^[^/]+[.]html$/.test(h) && h !== 'index.html'))]`));
   if (!pages.some(p => p.includes("Machine"))) throw new Error("missing Machine page in index");
-  for (const width of [320, 390]) {
+  for (const width of widths.filter(w => w <= 390)) {
     browser("set", "viewport", String(width), "900", "2");
     for (const page of ["index.html", ...pages]) {
       console.log(`${new Date().toISOString()} checking ${page} and its proof steps at ${width}px`);
@@ -64,6 +68,7 @@ try {
               for (let i = 0; i < 4; i++) await new Promise(requestAnimationFrame);
               assert(document.documentElement.scrollWidth <= innerWidth + 1,
                 ${JSON.stringify(page)} + ' overflows at ' + link.getAttribute('aria-label'));
+              ${fitsPage}
             }
           `);
         }
@@ -73,7 +78,7 @@ try {
       console.log(`ok no overflow ${page}, including all proof steps, at ${width}px`);
     }
   }
-  for (const width of [320, 390, 768, 1280]) {
+  for (const width of widths) {
     browser("set", "viewport", String(width), "900", "2");
     for (const file of ["Syntax", "Memory", "Ops", "Run", "Semantics", "Validate"]) {
       browser("open", source(file));
@@ -138,7 +143,7 @@ try {
     check(`assert(document.activeElement.getAttribute('aria-current') === 'step', "keyboard selection loses focus");`);
     console.log(`ok proof navigation, context changes, pending goals and comparison at ${width}px`);
   }
-  for (const width of [320, 1280]) {
+  for (const width of widths.filter(w => w === 320 || w === 1280)) {
     browser("set", "viewport", String(width), "900", "2");
     browser("open", source("Ops"));
     for (const layout of ["stack", "table", "auto"]) {
@@ -176,20 +181,55 @@ try {
         for (let i = 0; i < 4; i++) await new Promise(requestAnimationFrame);
         ${fitsPage}
         assert(proof.querySelector('.rq-snapshot:not([hidden]) h3 .rq-tac-match'), "selected match not typeset");
-        const row = step.getBoundingClientRect(), timeline = proof.querySelector('.rq-timeline').getBoundingClientRect();
-        assert(row.top >= timeline.top - 1, "selected tactic starts above the timeline");
-        assert(row.bottom <= timeline.bottom + 1 || row.top <= timeline.top + 1,
-          "long selected tactic should start at the timeline's top");
+        assert(proof.querySelector('dialog:modal'), "proof did not open modally");
+        assert(getComputedStyle(proof.querySelector('.rq-timeline')).overflowY === 'visible',
+          "timeline has a nested scroll area");
       `);
       browser("open", source("Ops"));
       console.log(`ok ${layout} selection and persistence at ${width}px`);
     }
+    browser("open", source("Machine"));
+    browser("scrollintoview", '#kept_trans + .rq-captured > summary');
+    const pageY = JSON.parse(browser('eval', 'scrollY'));
+    browser("click", '#kept_trans + .rq-captured > summary');
+    check(`${fitsPage}
+      const proof = document.querySelector('#kept_trans + .rq-captured');
+      assert(proof.querySelector('dialog:modal'), "dialog not modal");
+      assert(proof.querySelector('.rq-position').textContent === 'Initial goal', "initial state counted as tactic");
+      const link = [...proof.querySelectorAll('.rq-step-link')].find(e => e.getAttribute('aria-label').startsWith('intros (b & reg2'));
+      link.click();
+      for (let i=0; i<4; i++) await new Promise(requestAnimationFrame);
+      assert(link.querySelector('.rq-pattern').getClientRects().length === 1, "short intro pattern breaks across lines");
+      assert(link.querySelector('[data-v="reg2"] sub')?.textContent === '2', "tactic local not subscripted");
+      assert(proof.querySelector('.rq-position').textContent.endsWith('/ 20'), "tactic count disagrees with source");
+      const dialog = proof.querySelector('dialog');
+      for (const el of dialog.querySelectorAll('*'))
+        if (el.getClientRects().length && ['auto','scroll'].includes(getComputedStyle(el).overflowY))
+          assert(el.scrollHeight <= el.clientHeight + 1, "nested vertical scrolling in proof");
+      if (innerWidth === 320) {
+        const row = link.getBoundingClientRect(), state = proof.querySelector('.rq-states').getBoundingClientRect();
+        assert(state.top >= row.bottom - 1 && state.top <= row.bottom + 10, "phone goal not beside selected tactic in flow");
+      }
+    `);
+    browser('eval', `document.querySelector('#kept_trans + .rq-captured dialog select').focus()`);
+    browser('press', 'Shift+Tab');
+    check(`assert(document.querySelector('dialog:modal').contains(document.activeElement), "modal focus escaped");`);
+    browser('press', 'Escape');
+    check(`assert(!document.querySelector('dialog[open]'), "Escape did not close proof");
+      assert(document.activeElement === document.querySelector('#kept_trans + .rq-captured > summary'), "close did not restore focus");
+      assert(Math.abs(scrollY - ${pageY}) < 2, "modal moved underlying page");`);
+    browser('click', '#kept_trans + .rq-captured > summary');
+    browser('select', '#kept_trans + .rq-captured dialog select', 'stack');
+    check(`assert(document.documentElement.dataset.caseLayout === 'stack', "dialog layout selector disconnected");`);
+    browser('click', '#kept_trans + .rq-captured [aria-label="Close proof"]');
+    check(`assert(!document.querySelector('dialog[open]'), "close button did not close proof");`);
+    console.log(`ok modal, intro patterns, local typography, counts, single scroll and close at ${width}px`);
   }
   // Use a fresh browser so cached scripts cannot bypass request blocking.
   browser("close");
   browser("open", "about:blank");
   browser("network", "route", "*", "--abort", "--resource-type", "script");
-  for (const width of [320, 390]) {
+  for (const width of widths.filter(w => w <= 390)) {
     browser("set", "viewport", String(width), "900", "2");
     for (const page of ["index.html", ...pages]) {
       browser("open", `${base}/nanofil/rocq/${page}`);
@@ -201,7 +241,7 @@ try {
       console.log(`ok no-script overflow ${page} at ${width}px`);
     }
   }
-  for (const width of [320, 1280]) {
+  for (const width of widths.filter(w => w === 320 || w === 1280)) {
     browser("set", "viewport", String(width), "900", "2");
     browser("open", source("Runtime"));
     check(fitsPage);

@@ -803,9 +803,24 @@ bullet_glyph(B, B).
 
 % One tactic tree for the source, timeline and snapshot heading. The raw
 % source remains available when a tactic extension is not understood.
-tactic_text(F, To, Ts) --> { rocq_tactic_tokens(Ts, T), src_text(F-To, Raw) }, !,
-    el(span, "tactic", [title=Raw], tactic_block(T, [])).
+tactic_text(F, To, Ts) -->
+    { rocq_tactic_tokens(Ts, T), src_text(F-To, Raw),
+      ( tactic_env(F, To, Env) -> true ; Env = [] ) }, !,
+    el(span, "tactic", [title=Raw], tactic_block(T, Env)).
 tactic_text(F, T, Ts) --> el(span, "tactic rq-unparsed", tac_tokens(Ts, F, T)).
+
+% Locals before and after the command include both consumed hypotheses
+% and newly introduced patterns. Read only their names, not their types.
+tactic_env(F, T, Env) :-
+    nb_getval(rq_states, States), States \== none,
+    dict_pairs(States, _, Pairs),
+    findall(O, ( member(K-_, Pairs), atom_number(K, O), O =< F ), Earlier),
+    max_list(Earlier, Previous), atom_number(PrevKey, Previous), get_dict(PrevKey, States, Before),
+    atom_number(Key, T), get_dict(Key, States, After), append(Before, After, Goals),
+    findall(N, ( member(G, Goals), member(H, G.hypotheses),
+                 once(sub_string(H, I, 1, _, ":")), sub_string(H, 0, I, _, Head),
+                 split_string(Head, ", \n\t", "", Ns), member(S, Ns), S \== "", atom_string(N, S) ), Names),
+    sort(Names, Env).
 
 tactic_block(tmatch(K, Subject, Bs), Env) --> !,
     el(span, "rq-tac-match", ( el(span, "goal rq-tac-head", ( kw(K), " ", tactic_subject(Subject, Env), " ", kw("with") )),

@@ -160,6 +160,18 @@ details.rq-captured { margin: 0.25rem 0 1rem; font-size: 0.9rem; }
 .rq-captured .proof-invite { color: var(--accent); font-weight: 650; }
 .rq-captured .proof-count { margin-left: 0.4rem; }
 .rq-explorer { border-block: 1px solid var(--rule); padding: 0.4rem 0; }
+html:has(.rq-dialog[open]) { overflow: hidden; }
+.rq-dialog { box-sizing: border-box; width: calc(100vw - 2rem); max-width: none; height: calc(100dvh - 2rem); max-height: none; padding: 0 0.8rem 0.8rem; border: 1px solid var(--rule); color: var(--ink); background: var(--paper, white); container-type: inline-size; overflow: auto; overscroll-behavior: contain; }
+.rq-dialog::backdrop { background: #0008; }
+.rq-dialog-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.5rem; padding-top: 0.4rem; position: sticky; top: 0; z-index: 3; background: var(--paper, white); }
+.dterm-rocq .rq-dialog-head h2 { flex: 1; margin: 0; padding: 0; border: 0; min-width: 0; font-family: inherit; font-size: 1rem; font-weight: 650; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rq-dialog-head :is(button, select) { font: inherit; font-size: 0.8rem; padding: 0.2rem 0.4rem; background: transparent; color: var(--ink); border: 1px solid var(--rule); cursor: pointer; }
+.rq-dialog-head button { font-size: 1.2rem; line-height: 1; }
+.rq-dialog .rq-explorer { border: 0; padding-top: 0; }
+.rq-dialog .rq-proof-controls { flex-basis: 100%; padding-block: 0.4rem; }
+.rq-dialog .rq-walk { grid-template-columns: minmax(16rem, 0.45fr) minmax(0, 1fr); }
+.rq-dialog .rq-states { position: sticky; top: 5.5rem; }
+.rq-dialog .rq-step-link { scroll-margin-block: 8rem 1rem; }
 .rq-proof-controls:not([hidden]) { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem; padding-bottom: 0.4rem; }
 .rq-proof-controls button { font: inherit; font-size: 0.8rem; padding: 0.25rem 0.4rem; background: var(--paper, white); color: var(--ink); border: 1px solid var(--rule); border-radius: 0; cursor: pointer; }
 .rq-proof-controls button:hover:not(:disabled), .rq-proof-controls button[aria-pressed=true] { border-color: var(--accent); color: var(--accent); }
@@ -169,7 +181,7 @@ details.rq-captured { margin: 0.25rem 0 1rem; font-size: 0.9rem; }
 .rq-captured :is(button, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rq-walk { display: grid; grid-template-columns: minmax(0, 13rem) minmax(0, 1fr); gap: 0.6rem; align-items: start; }
 .rq-walk:has(.rq-timeline[hidden]) { grid-template-columns: minmax(0, 1fr); }
-.rq-timeline { max-height: 26rem; overflow: auto; overscroll-behavior: contain; padding: 0 0.4rem 0 0; border-right: 1px solid var(--rule); }
+.rq-timeline { padding: 0 0.4rem 0 0; border-right: 1px solid var(--rule); }
 .dterm-rocq .rq-step-link { display: block; width: 100%; margin: 0; border: 0; border-left: 2px solid transparent; border-radius: 0; background: transparent; color: var(--muted); text-align: left; padding: 0.2rem 0.3rem 0.2rem calc(0.3rem + min(var(--depth), 4) * 0.35rem); font: inherit; font-size: 0.85rem; line-height: 1.5; overflow-wrap: anywhere; white-space: normal; cursor: pointer; }
 .dterm-rocq .rq-step-link:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); color: var(--ink); }
 .dterm-rocq .rq-step-link[aria-current=step] { color: var(--accent); border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
@@ -210,8 +222,14 @@ details.rq-captured { margin: 0.25rem 0 1rem; font-size: 0.9rem; }
 .rq-script > summary { font-size: 0.75rem; color: var(--muted); cursor: pointer; }
 @container (max-width: 45rem) {
   .rq-walk { grid-template-columns: minmax(0, 1fr); gap: 0.4rem; }
-  .rq-timeline { max-height: 7rem; border-right: 0; border-bottom: 1px solid var(--rule); padding: 0 0 0.2rem; }
+  .rq-dialog .rq-walk { display: flex; flex-direction: column; align-items: stretch; }
+  .rq-dialog .rq-timeline { display: contents; }
+  .rq-dialog .rq-states { position: static; padding: 0.3rem 0; border-block: 1px solid var(--rule); }
+  .rq-dialog .rq-state-heading h3 { display: none; }
   .rq-proof-controls .rq-compare { margin-left: 0; }
+}
+@media (max-width: 48rem) {
+  .rq-dialog { width: 100vw; height: 100dvh; border: 0; padding-inline: 0.6rem; }
 }
 
 /* Modules: their sentences under a rule. */

@@ -136,9 +136,14 @@ every `.v` file under `nanofil/` into `nanofil/rocq/`.
 The browser check takes the HTTP base URL of a served site build and needs
 `agent-browser`. It exercises the real model and formal campaign at 320,
 390, 768 and 1280px, including the layout selector and its saved preference.
+Pass one or more widths after the URL to split the run into bounded jobs;
+the default still covers all four. For example, run 320 and 390 separately,
+then 768 and 1280 together, each under the usual watchdog.
 At 320 and 390px it discovers every Rocq page from the generated index and
 checks for document overflow, including expanded scripts and every captured
-proof step. New theories join this check without editing a file list.
+proof step, in the page and the open dialog. It also checks modal navigation,
+focus restoration, local typography, tactic counts and the single vertical
+scroll flow. New theories join this check without editing a file list.
 
 Rendering collects completed pages' temporary DCG output explicitly. On the
 site's SWI 10.1.19, automatic collection let the global stack accumulate to
@@ -150,21 +155,31 @@ it does not need separate processes that would rebuild the cross-file index.
 
 ## Reading proofs, not just tactics
 
-The source pages offer **Explore proof**. A tactic timeline sits beside
-the current context and conclusion; on narrow screens it sits above them.
+The source pages offer **Explore proof**, opening a wide native dialog
+(full-screen on narrow screens). The source disclosure stays a single row.
+A tactic timeline sits beside the current context and conclusion on desktop;
+on narrow screens the selected context follows its tactic in the script.
 Previous/Next, arrow keys and Home/End navigate the proof. **Compare before**
 keeps the preceding source state visible. Added/changed context entries and
 changed conclusions have both a green accent and a symbol (+ or ↻);
 only removed context entries need a separate count. These are textual
 differences in Rocq's output, not claims of semantic equivalence. Pending
 branches and shelved goals remain available; solving the focused goal is
-not the same as closing the proof. The source script and name links remain.
-Without JavaScript, all snapshots are readable in order.
+not the same as closing the proof. Initial goals and checked closure are
+named separately from the tactic count. Escape or the close button returns
+focus to the source disclosure without moving the page. The source script
+and name links remain. Without JavaScript, all snapshots are readable inline
+in order, with no dialog or nonfunctional controls.
 
 The explorer uses dterm's compact rows and rules rather than nested cards:
 hypothesis names and types share aligned rows even on narrow screens, and
-⊢ separates the conclusion from its context. The timeline scrolls locally;
-controls, comparison states and source disclosure use only a small gutter.
+⊢ separates the conclusion from its context. Only the dialog scrolls vertically;
+its title, layout choice and navigation stay visible, without independently
+scrolling script or goal panes. All three layouts still use the same printer.
+Tactic locals come from captured contexts before and after each command,
+so newly introduced and consumed names share the goals' variable typography.
+Intro patterns keep their delimiters inline, rather than looking like nested
+tactic blocks. Controls, comparison states and source disclosure use a small gutter.
 Empty contexts and repeated explanatory hints are omitted. “No remaining
 goals” is still distinct from a checked closure, without a reminder to type
 `Qed` at every solved state.

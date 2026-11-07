@@ -47,6 +47,58 @@ for (const proof of document.querySelectorAll(".rq-captured")) {
   controls.append(compare);
   let selected = 0;
   let comparing = false;
+  let dialog;
+  const explorer = proof.querySelector('.rq-explorer');
+  const stateList = proof.querySelector('.rq-states');
+  // On narrow screens the chosen state follows its tactic in the same
+  // scroll flow. display:contents promotes the timeline's ordered rows.
+  links.forEach((link, i) => { link.style.order = i * 2; });
+
+  function open() {
+    if (!dialog) {
+      dialog = document.createElement('dialog');
+      dialog.className = 'rq-dialog';
+      const heading = document.createElement('header');
+      heading.className = 'rq-dialog-head';
+      const title = document.createElement('h2');
+      title.id = `${proof.id}-title`;
+      title.textContent = proof.previousElementSibling?.querySelector('.def')?.textContent || 'Proof';
+      title.title = title.textContent;
+      dialog.setAttribute('aria-labelledby', title.id);
+      heading.append(title);
+      if (selectLayout) {
+        const layout = selectLayout.cloneNode(true);
+        layout.removeAttribute('id');
+        layout.setAttribute('aria-label', 'Rocq layout');
+        layout.addEventListener('change', () => {
+          selectLayout.value = layout.value;
+          selectLayout.dispatchEvent(new Event('change'));
+        });
+        heading.append(layout);
+      }
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.textContent = '×';
+      close.setAttribute('aria-label', 'Close proof');
+      close.addEventListener('click', () => dialog.close());
+      heading.append(close, controls);
+      dialog.append(heading, explorer);
+      proof.append(dialog);
+      dialog.addEventListener('click', event => {
+        if (event.target.closest('a[href]')) dialog.close();
+      });
+      dialog.addEventListener('close', () => {
+        proof.open = false;
+        proof.querySelector(':scope > summary').focus({ preventScroll: true });
+      });
+    }
+    const layout = dialog.querySelector('select');
+    if (layout) layout.value = selectLayout.value;
+    if (!dialog.open) dialog.showModal();
+    show(selected);
+    links[selected].focus({ preventScroll: true });
+  }
+  const selectLayout = document.querySelector('#rq-layout');
 
   // Compare against the preceding source step, not the last one clicked.
   // These are textual changes in Rocq's output, not semantic equivalence.
@@ -84,18 +136,18 @@ for (const proof of document.querySelectorAll(".rq-captured")) {
     previous.disabled = selected === 0;
     next.disabled = selected === states.length - 1;
     compare.disabled = selected === 0;
-    controls.querySelector(".rq-position").textContent = `${selected} / ${states.length - 1}`;
-    controls.querySelector(".rq-position").setAttribute("aria-label", `Proof step ${selected} of ${states.length - 1}`);
+    const position = selected === 0 ? 'Initial goal' : selected === states.length - 1
+      ? links[selected].getAttribute('aria-label') : `${selected} / ${states.length - 2}`;
+    controls.querySelector(".rq-position").textContent = position;
+    controls.querySelector(".rq-position").setAttribute("aria-label", selected > 0 && selected < states.length - 1
+      ? `Tactic ${selected} of ${states.length - 2}` : position);
+    stateList.style.order = selected * 2 + 1;
     if (focus) links[selected].focus({ preventScroll: true });
     // dterm.js's ResizeObserver remeasures newly visible clauses.
-    // Scroll only the timeline, never move the reader's page position.
-    if (proof.open) {
-      const row = links[selected].getBoundingClientRect();
-      const viewport = timeline.getBoundingClientRect();
-      if (row.top < viewport.top) timeline.scrollTop += row.top - viewport.top;
-      else if (row.bottom > viewport.bottom)
-        timeline.scrollTop += Math.min(row.bottom - viewport.bottom, row.top - viewport.top);
-    }
+    // Only the dialog scrolls; the underlying source stays where it was.
+    if (dialog?.open) requestAnimationFrame(() => requestAnimationFrame(() => {
+      links[selected].scrollIntoView({ block: getComputedStyle(timeline).display === 'contents' ? 'start' : 'nearest' });
+    }));
   }
   links.forEach((link, i) => link.addEventListener("click", () => show(i)));
   controls.addEventListener("click", event => {
@@ -116,5 +168,8 @@ for (const proof of document.querySelectorAll(".rq-captured")) {
   controls.hidden = false;
   timeline.hidden = false;
   show(0);
-  proof.addEventListener("toggle", () => { if (proof.open) show(selected); });
+  proof.addEventListener("toggle", () => {
+    if (proof.open) open();
+    else if (dialog?.open) dialog.close();
+  });
 }
