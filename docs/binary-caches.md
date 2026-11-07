@@ -192,7 +192,7 @@ paths and each output's missing closure paths; exit codes remain 0 ready,
 ### Exact-head Nanofil handoffs
 
 Rebase before the final candidate X, then run
-`scripts/nanofil-fleet run --rev X --shards 6`, adding
+`scripts/nanofil-fleet run --rev X --shards 12`, adding
 other affected roots (`--roots auto,LIST` or `--roots all`). The fleet checks staging's public
 closure before launching any worker. It does not require cached test results
 or candidate `site-play`; the latter gates landing instead.
@@ -205,7 +205,7 @@ candidate ref frozen, and do not commit receipts after testing.
 
 The lander fetches and confirms the branch/bundle resolves to X, checks it out
 cleanly, and runs `scripts/ship --exact X --fleet-results FILE`. This verifies
-the worker revisions, six distinct complete shards and successful exactly-once
+the worker revisions, twelve distinct complete shards and successful exactly-once
 coverage, plus the quick Rocq root when model/compiler/validator or gate inputs
 changed. Unrelated web/docs changes skip Rocq. `--roots LIST` adds required
 checks; `--roots all` requires normal candidate roots, excluding the deliberate
@@ -222,7 +222,7 @@ fleet. Plain `scripts/ship` still rebases for non-handoff work; a pre-rebase
 receipt does not apply to its new SHA. Subscribe to CI for the actual landed
 SHA, separately from the fleet and cache results.
 
-`scripts/release --fleet-results FILE` requires six complete shards and
+`scripts/release --fleet-results FILE` requires twelve complete shards and
 `nanofil-rocq-full` at the exact release SHA, then tags `origin/main` as
 `vYYYY.MM.DD` once it is cached. The mutation campaign is selected explicitly
 before a release or a soundness-relevant change, not on every push. Routine

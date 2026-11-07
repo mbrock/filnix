@@ -96,7 +96,7 @@ The complete outcome and mutation matrix described below is now
 release or for a soundness-relevant change:
 
 ```sh
-scripts/nanofil-fleet run --rev HEAD --shards 6 --roots auto,nanofil-rocq-full
+scripts/nanofil-fleet run --rev HEAD --shards 12 --roots auto,nanofil-rocq-full
 ```
 
 Even `--roots all` excludes it. CI runs quick checks on relevant pushes

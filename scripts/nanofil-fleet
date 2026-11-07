@@ -49,6 +49,7 @@ import time
 
 MARK = "NANOFIL-FLEET-RESULT"
 SYSTEM = "x86_64-linux"
+DEFAULT_SHARDS = 12
 
 
 def sh(*args, **kw):
@@ -544,7 +545,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run", help="start workers and aggregate their results")
-    r.add_argument("--shards", type=int, default=6, help="shards of checks.nanofil (default 6; 0 runs only --roots)")
+    r.add_argument("--shards", type=int, default=DEFAULT_SHARDS, help=f"shards of checks.nanofil (default {DEFAULT_SHARDS}; 0 runs only --roots)")
     r.add_argument("--roots", default="auto", help="auto (default): quick Rocq for relevant changes; comma-separated checks, or all (excludes opt-in nanofil-rocq-full)")
     r.add_argument("--trealla", action="store_true", help="include the paused Trealla step")
     r.add_argument("--rev", default="HEAD")
@@ -558,7 +559,7 @@ def main():
     v = sub.add_parser("verify", help="verify an exact-head landing receipt without launching workers")
     v.add_argument("results")
     v.add_argument("--rev", required=True, help="full tested commit SHA")
-    v.add_argument("--shards", type=int, default=6)
+    v.add_argument("--shards", type=int, default=DEFAULT_SHARDS)
     v.add_argument("--roots", default="auto")
     q = sub.add_parser("required-roots", help="print the change-aware quick roots (also used by CI)")
     q.add_argument("--rev", default="HEAD")

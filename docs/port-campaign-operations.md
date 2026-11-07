@@ -178,12 +178,12 @@ campaignctl submit nanofil-survey --opt plain  # the survey (eight roots at a ti
 ```
 
 An orb cannot reach those builders but can start other orbs:
-`scripts/nanofil-fleet run --roots all` builds `checks.nanofil` in six
+`scripts/nanofil-fleet run --roots all` builds `checks.nanofil` in twelve
 shards and every other `nanofil-*` check in its own orb, at the current
 commit, and aggregates pass/FAIL with each step's time (nanofil/AGENTS.md).
 Staging's consumer-cache closure is checked before workers start; candidate
 `site-play` is checked before landing, not before testing. For an exact-head
-handoff, rebase before testing, run with `--rev X --shards 6 --roots nanofil-rocq`
+handoff, rebase before testing, run with `--rev X --shards 12 --roots nanofil-rocq`
 (plus other affected roots), then transfer branch/bundle at full X and
 `results.json` to the swa lander. It checks out X and runs
 `scripts/ship --exact X --fleet-results FILE` (adding required roots with

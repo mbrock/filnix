@@ -69,7 +69,7 @@ if [ $publish_only = 0 ]; then git fetch -q origin; fi
 if [ -n "$exact" ]; then
   sha=$(git rev-parse --verify "$exact^{commit}")
   [ "$(git rev-parse HEAD)" = "$sha" ] || { echo "ship: HEAD is not tested commit $sha" >&2; exit 1; }
-  python3 scripts/nanofil-fleet verify "$fleet_results" --rev "$sha" --shards 6 --roots "$roots"
+  python3 scripts/nanofil-fleet verify "$fleet_results" --rev "$sha" --roots "$roots"
   git merge-base --is-ancestor origin/main "$sha" || {
     echo "ship: main diverged from $sha; stop, rebase and rerun the fleet" >&2; exit 1;
   }

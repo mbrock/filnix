@@ -19,7 +19,7 @@ if [ "${1:-}" = --fleet-results ] && [ $# -ge 2 ]; then
   shift 2
 fi
 [ -n "$fleet_results" ] || {
-  echo "release: require --fleet-results FILE with six shards and nanofil-rocq-full at the release SHA" >&2
+  echo "release: require --fleet-results FILE with the routine shard count and nanofil-rocq-full at the release SHA" >&2
   exit 2
 }
 git fetch -q --tags origin
@@ -28,7 +28,7 @@ git merge-base --is-ancestor "$sha" origin/main || {
   echo "release: ${sha:0:12} is not on origin/main" >&2
   exit 2
 }
-python3 scripts/nanofil-fleet verify "$fleet_results" --rev "$sha" --shards 6 --roots nanofil-rocq-full
+python3 scripts/nanofil-fleet verify "$fleet_results" --rev "$sha" --roots nanofil-rocq-full
 tag=${1:-}
 if [ -z "$tag" ]; then
   tag=v$(date -u +%Y.%m.%d)

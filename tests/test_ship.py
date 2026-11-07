@@ -23,11 +23,11 @@ STAGING = "packages.x86_64-linux.filcc-staging"
 PLAY = "packages.x86_64-linux.site-play"
 
 
-def receipt(sha):
-    jobs = [f"nanofil@{i}/6" for i in range(1, 7)] + ["nanofil-rocq"]
+def receipt(sha, shards=12):
+    jobs = [f"nanofil@{i}/{shards}" for i in range(1, shards + 1)] + ["nanofil-rocq"]
     results = [{"job": job, "rev": sha, "status": "pass"} for job in jobs]
-    for i, result in enumerate(results[:6]):
-        result.update(shard=f"{i + 1}/6", all_steps={"count": 8, "hash": "0123456789abcdef"},
+    for i, result in enumerate(results[:shards]):
+        result.update(shard=f"{i + 1}/{shards}", all_steps={"count": shards + 2, "hash": "0123456789abcdef"},
                       steps=[["ok", i + 1, f"step-{i}"]])
     results[0]["steps"] += [["ok", 13, "extra-a"], ["ok", 2, "extra-b"]]
     return {"fleet": {"rev": sha, "jobs": jobs, "size": "fixture", "bundle": False},
@@ -345,6 +345,13 @@ class ShippingTests(unittest.TestCase):
                 self.evidence.write_text(json.dumps(evidence))
                 self.assertNotEqual(self.exact(check=False).returncode, 0)
                 self.assertEqual(self.main(), self.base)
+        for shards in (6, 11, 13):
+            with self.subTest(shards=shards):
+                self.evidence.write_text(json.dumps(receipt(self.sha, shards)))
+                failed = self.exact(check=False)
+                self.assertNotEqual(failed.returncode, 0)
+                self.assertIn("need 12 complete shards", failed.stderr)
+                self.assertEqual(self.main(), self.base)
         self.evidence.write_text('{"ok":true,')
         self.assertNotEqual(self.exact(check=False).returncode, 0)
         # Requesting an additional root must not replace mandatory Rocq.
@@ -377,6 +384,7 @@ class ShippingTests(unittest.TestCase):
 
     def test_rocq_selection_and_evidence_distinguish_web_quick_and_full(self):
         quick = self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--dry-run")
+        self.assertEqual(quick.stdout.count("--- nanofil@"), 12)
         self.assertIn("--- nanofil-rocq\n", quick.stdout)
         all_roots = self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--roots", "all", "--dry-run")
         self.assertNotIn("--- nanofil-rocq-full\n", all_roots.stdout)
@@ -454,7 +462,9 @@ class ShippingTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["fleet"]["rev"], self.sha)
         self.assertEqual(result["fleet"]["main"], self.base)
-        self.assertEqual(len(self.commands("amp")), 7)
+        self.assertEqual(len(self.commands("amp")), 13)
+        self.assertEqual(result["coverage"], {"steps": 14, "ran": 14, "distinct": 14,
+                                               "lists_agree": True, "complete": True})
 
     def test_fleet_relays_timestamped_progress_before_worker_finishes(self):
         import queue

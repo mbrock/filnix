@@ -78,7 +78,7 @@ Run the unsharded
 start, and say so. The fleet runs the checks in
 new orbs (`amp -ox`, one thread per job) and aggregates the results
 in `.amp/in/nanofil-fleet/`. It splits `checks.nanofil` into
-`--shards N` (default 6) fixed shards of its steps
+`--shards N` (default 12) fixed shards of its steps
 (`lib.x86_64-linux.nanofil-check { shard = "I/N"; }`, balanced by
 `tests/check-times.tsv`) and with `--roots all` (or a list such as
 `nanofil-lua,nanofil-hello+nanofil-zlib`) builds the other checks, one
@@ -264,7 +264,7 @@ Several threads may work on nanofil at once, each owning one workstream.
   interpreter and backends. Changing it needs the orchestrating thread's
   agreement first.
 - Rebase onto current main before the final commit X and run
-  `scripts/nanofil-fleet run --rev X --shards 6`,
+  `scripts/nanofil-fleet run --rev X --shards 12`,
   adding other affected roots (`--roots auto,LIST` or `--roots all`).
   The full mutation root is opt-in, not a routine landing requirement.
   Freeze the candidate
@@ -274,7 +274,7 @@ Several threads may work on nanofil at once, each owning one workstream.
   explicitly: an orb path is not a path on swa. Never commit receipts
   after testing, since that would create a new SHA.
 - The lander fetches the branch/bundle, confirms it is X, checks out X,
-  and runs `scripts/ship --exact X --fleet-results FILE`. Six complete
+  and runs `scripts/ship --exact X --fleet-results FILE`. Twelve complete
   shards plus the change-selected quick Rocq root are required;
   unrelated web-only changes need no Rocq receipt. `--roots LIST` adds
   other required roots and `--roots all` excludes the full campaign.
