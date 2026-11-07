@@ -486,7 +486,7 @@ rule(Label, Bs0, T, Env0) -->
              el(div, "rule-concl", blk(C, Env))
          ) )).
 
-premise(Env, P) --> { node_pos(P, F-T) }, notes_before(F), el(div, goal, term(P, Env)), aside_after(T).
+premise(Env, P) --> { node_pos(P, F-T) }, notes_before(F), blk(P, Env), aside_after(T).
 
 %% Sentences
 

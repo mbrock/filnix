@@ -14,6 +14,7 @@ on:
       - "nanofil/src/**"
       - "nanofil/docs/**"
       - "nanofil/web/**"
+      - "nanofil/rocq/**"
       - "dterm-nix/**"
       # Every Nix file is a page (dterm-nix), and the option index
       # evaluates the modules.
@@ -50,6 +51,41 @@ jobs:
         run: |
           nix build -L .#site
           cp -rL result _site
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install the browser
+        run: |
+          python3 nanofil/tests/watch.py --label 'Browser install' -- \
+            npm install --global agent-browser@0.38.1
+          python3 nanofil/tests/watch.py --label 'Chromium install' -- \
+            agent-browser install --with-deps
+      - name: Check every Rocq page at phone widths
+        run: |
+          set -o pipefail
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory _site >/tmp/rocq-http.log 2>&1 &
+          server=$!
+          trap 'kill "$server"' EXIT
+          curl --retry 10 --retry-connrefused --retry-delay 1 --silent --fail \
+            http://127.0.0.1:8765/nanofil/rocq/index.html -o /dev/null
+          pids=()
+          for width in 320 390; do
+            (
+              python3 nanofil/tests/watch.py --label "Rocq phone pages ${width}px" -- \
+                node nanofil/web/rocq/tests/layout.mjs http://127.0.0.1:8765 --pages-only "$width" \
+                2>&1 | tee "rocq-phone-${width}.log"
+            ) &
+            pids+=("$!")
+          done
+          failed=0
+          for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+          exit "$failed"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rocq-phone-layout
+          path: rocq-phone-*.log
+          if-no-files-found: ignore
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

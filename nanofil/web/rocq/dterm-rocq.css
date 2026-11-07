@@ -99,7 +99,7 @@ table.rq-ctors tr.note td, table.rq-fields tr.note td { padding-top: 0.4rem; }
 .cases.match > .case > .arrow { font-weight: 500; }
 .rq-let > .let-body, .rq-fun > .fun-body { margin-top: 0.1em; }
 .rq-let > .let-value { margin-left: 1.5em; }
-.rq-app > .app-args { display: grid; row-gap: 0.2em; padding-left: 1.2em; margin-top: 0.1em; }
+.rq-app > .app-args { display: grid; grid-template-columns: minmax(0, 1fr); row-gap: 0.2em; padding-left: 1.2em; margin-top: 0.1em; }
 .rq-fun > .fun-body { margin-left: 1.2em; }
 .rq-tuple { border-inline: var(--paren-stroke) solid var(--paren); border-radius: 0.6em; padding-inline: 0.4em; }
 .tuple-part + .tuple-part::before { content: ","; color: var(--muted); }

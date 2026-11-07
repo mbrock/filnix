@@ -1,13 +1,16 @@
 // Browser regression check against the generated site, served over HTTP.
-// node nanofil/web/rocq/tests/layout.mjs http://localhost:8765 [320 390 768 1280]
+// node nanofil/web/rocq/tests/layout.mjs http://localhost:8765 [--pages-only] [320 390 768 1280]
 // Requires agent-browser; uses the real model, not simplified UI fixtures.
 import { execFileSync } from "node:child_process";
 
 const base = process.argv[2];
 if (!base) throw new Error("Pass the generated site's HTTP base URL");
-const widths = process.argv.length > 3 ? process.argv.slice(3).map(Number) : [320, 390, 768, 1280];
+const pagesOnly = process.argv.includes("--pages-only");
+const args = process.argv.slice(3).filter(a => a !== "--pages-only");
+const widths = args.length ? args.map(Number) : [320, 390, 768, 1280];
 if (widths.some(w => ![320, 390, 768, 1280].includes(w))) throw new Error("Unknown test width");
-const session = `rocq-test-${process.pid}`;
+const detailWidths = pagesOnly ? [] : widths;
+let session = `rocq-test-${process.pid}`;
 function browser(...args) {
   return execFileSync("agent-browser", ["--session", session, ...args], { encoding: "utf8" });
 }
@@ -21,7 +24,8 @@ function check(body) {
   })()`);
 }
 const source = (name) => `${base}/nanofil/rocq/rocq-theories-${name}.html`;
-const fitsPage = `assert(document.documentElement.scrollWidth <= innerWidth + 1, "page overflows");
+const fitsPage = `assert(document.documentElement.scrollWidth <= innerWidth + 1,
+    'page overflows: ' + document.documentElement.scrollWidth + 'px at ' + innerWidth + 'px');
   for (const dialog of document.querySelectorAll('dialog[open]'))
     assert(dialog.scrollWidth <= dialog.clientWidth + 1, "proof dialog overflows");`;
 const contextRows = `
@@ -44,9 +48,23 @@ try {
   for (const width of widths.filter(w => w <= 390)) {
     browser("set", "viewport", String(width), "900", "2");
     for (const page of ["index.html", ...pages]) {
-      console.log(`${new Date().toISOString()} checking ${page} and its proof steps at ${width}px`);
+      console.log(`${new Date().toISOString()} checking ${page}${pagesOnly ? "" : " and its proof steps"} at ${width}px`);
       browser("open", `${base}/nanofil/rocq/${page}`);
       check(fitsPage);
+      if (page === "rocq-theories-Evidence.html") check(`
+        assert(document.querySelector('#phis_env_agree a[href="rocq-theories-Term.html#lookup"]'),
+          "Evidence regression needs the full cross-link index");
+      `);
+      // A fresh narrow load can wrap differently from dterm's resize plan.
+      // Exercise both, including returning from a desktop-sized viewport.
+      browser("set", "viewport", "1280", "900", "2");
+      check("");
+      browser("set", "viewport", String(width), "900", "2");
+      check(fitsPage);
+      if (pagesOnly) {
+        console.log(`ok no overflow ${page} at ${width}px, on load and after desktop reflow`);
+        continue;
+      }
       const count = JSON.parse(browser("eval", "document.querySelectorAll('.rq-proof').length"));
       // Bound each command to four snapshots: large captured states can
       // spend real time in layout, even in a short proof.
@@ -78,7 +96,7 @@ try {
       console.log(`ok no overflow ${page}, including all proof steps, at ${width}px`);
     }
   }
-  for (const width of widths) {
+  for (const width of detailWidths) {
     browser("set", "viewport", String(width), "900", "2");
     for (const file of ["Syntax", "Memory", "Ops", "Run", "Semantics", "Validate"]) {
       browser("open", source(file));
@@ -143,7 +161,7 @@ try {
     check(`assert(document.activeElement.getAttribute('aria-current') === 'step', "keyboard selection loses focus");`);
     console.log(`ok proof navigation, context changes, pending goals and comparison at ${width}px`);
   }
-  for (const width of widths.filter(w => w === 320 || w === 1280)) {
+  for (const width of detailWidths.filter(w => w === 320 || w === 1280)) {
     browser("set", "viewport", String(width), "900", "2");
     browser("open", source("Ops"));
     for (const layout of ["stack", "table", "auto"]) {
@@ -270,6 +288,7 @@ try {
   }
   // Use a fresh browser so cached scripts cannot bypass request blocking.
   browser("close");
+  session = `rocq-static-${process.pid}`;
   browser("open", "about:blank");
   browser("network", "route", "*", "--abort", "--resource-type", "script");
   for (const width of widths.filter(w => w <= 390)) {
@@ -277,14 +296,19 @@ try {
     for (const page of ["index.html", ...pages]) {
       browser("open", `${base}/nanofil/rocq/${page}`);
       check(`
-        for (const proof of document.querySelectorAll('.rq-proof, .rq-script')) proof.open = true;
+        if (!${pagesOnly})
+          for (const proof of document.querySelectorAll('.rq-proof, .rq-script')) proof.open = true;
         ${fitsPage}
         assert(!document.querySelector('.rq-snapshot[hidden]'), "static states hidden");
       `);
-      console.log(`ok no-script overflow ${page} at ${width}px`);
+      browser("set", "viewport", "1280", "900", "2");
+      check("");
+      browser("set", "viewport", String(width), "900", "2");
+      check(fitsPage);
+      console.log(`ok no-script overflow ${page} at ${width}px, on load and after desktop reflow`);
     }
   }
-  for (const width of widths.filter(w => w === 320 || w === 1280)) {
+  for (const width of detailWidths.filter(w => w === 320 || w === 1280)) {
     browser("set", "viewport", String(width), "900", "2");
     browser("open", source("Runtime"));
     check(fitsPage);

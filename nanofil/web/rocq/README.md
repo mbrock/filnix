@@ -145,6 +145,15 @@ proof step, in the page and the open dialog. It also checks modal navigation,
 focus restoration, local typography, tactic counts and the single vertical
 scroll flow. New theories join this check without editing a file list.
 
+Pages runs `layout.mjs URL --pages-only 320 390` on the actual full site
+before deploying. This bounded sweep checks every source page with and
+without JavaScript, both on narrow loads and after desktop-to-phone reflow;
+the default command retains the exhaustive proof checks above. It must use
+the full cross-link index: Evidence's linked names expose an overflow that
+rendering Evidence alone misses. A fresh narrow load can also fit when the
+resize plan does not. The browser check was previously manual, so adding a
+theory did not automatically run it in CI.
+
 Rendering streams completed declarations, timeline entries, hypotheses,
 goals and snapshots instead of retaining a page-sized list of HTML codes.
 `write_streamed_page/3` resumes the existing DCG after each `html_flush/2`
