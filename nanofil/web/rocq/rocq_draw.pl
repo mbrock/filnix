@@ -655,12 +655,11 @@ proof_(S, pf(Steps, End)) -->
       format(atom(Id), "proof-~d", [Start]),
       findall(snap(T, D, Bs, F, Ts), member(row(D, Bs, F-T, Ts), Rows), Snaps),
       append([snap(Start, 0, [], none, [])|Snaps], [snap(Finish, 0, [], end(Kw), [])], All),
-      format(string(Count), "~d tactics · captured by Rocq", [N]) },
+      format(string(Count), "~d tactics", [N]) },
     el(details, "rq-proof rq-captured", [id=Id],
        ( el(summary, none, ( el(span, "proof-invite", "Explore proof"), " ", el(span, "proof-count", esc(Count)) )),
          el(div, "rq-explorer",
-            ( el(p, "rq-proof-help", "Actual Rocq states, captured at build time. Green marks changes from the preceding step."),
-              el(div, "rq-proof-controls", [hidden=hidden],
+            ( el(div, "rq-proof-controls", [hidden=hidden],
                  ( el(button, none, [type=button, 'data-move'= -1, 'aria-label'="Previous proof step"], "← Previous"),
                    el(output, "rq-position", ['aria-live'=polite], "Initial goal"),
                    el(button, none, [type=button, 'data-move'=1, 'aria-label'="Next proof step"], "Next →") )),
@@ -707,7 +706,7 @@ snapshot(Id, _, Snap, Goals) -->
             -> el(p, "rq-complete", "✓ Proof checked and closed by Rocq.")
             ; el(p, "rq-incomplete", "Proof ended without a checked closure.") )
          ; { Goals == [] }
-         -> el(p, "rq-complete", "✓ No remaining goals. Qed or Defined must still close the proof.")
+         -> el(p, "rq-complete", "No remaining goals.")
          ; captured_goals(Goals) ) )).
 
 captured_goals([G|Gs]) --> captured_goal(G), seq(Gs, secondary_goal).
@@ -724,10 +723,10 @@ secondary_goal(G) -->
 
 goal_contents(G) -->
     { maplist(hyp_parts, G.hypotheses, Hyps), findall(N, ( member(hyp(Ns, _, _, _), Hyps), member(N, Ns) ), Env) },
-    ( { Hyps == [] } -> el(p, "rq-context-empty", "No local assumptions yet.")
-    ; el(div, "rq-context", ( el(p, "rq-state-label", "In context"), seq(Hyps, captured_hyp(Env)) )) ),
+    ( { Hyps == [] } -> []
+    ; el(div, "rq-context", seq(Hyps, captured_hyp(Env))) ),
     el(div, "rq-conclusion", ['data-raw'=G.conclusion],
-       ( el(p, "rq-state-label", "To prove"), el(div, goal, captured_term(G.conclusion, Env)) )).
+       ( el(span, "rq-turnstile", ['aria-label'="Goal"], "⊢"), el(div, goal, captured_term(G.conclusion, Env)) )).
 
 % Parse the context with the same Gallina grammar, including newlines
 % after colons and types containing colons, strings or record fields.
@@ -930,11 +929,10 @@ code_(Code) --> el(code, none, esc(Code)).
 rocq_layout -->
     el(div, "rq-layout", [hidden=hidden],
        ( el(label, none, [for="rq-layout"], "Rocq layout"),
-         el(select, none, [id="rq-layout", 'aria-describedby'="rq-layout-help"],
+         el(select, none, [id="rq-layout"],
             ( el(option, none, [value=auto], "Adaptive"),
               el(option, none, [value=stack], "Stacked"),
-              el(option, none, [value=table], "Side by side") )),
-         el(span, none, [id="rq-layout-help"], "Fits each block to its available width.") )).
+              el(option, none, [value=table], "Side by side") )) )).
 
 %  rocq_inline(+Codes): inline code of a document that is Rocq: a
 %  sentence (Theorem t : …), a type's constructors (cap := None | Obj b),

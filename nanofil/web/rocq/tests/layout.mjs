@@ -20,6 +20,14 @@ function check(body) {
 }
 const source = (name) => `${base}/nanofil/rocq/rocq-theories-${name}.html`;
 const fitsPage = `assert(document.documentElement.scrollWidth <= innerWidth + 1, "page overflows");`;
+const contextRows = `
+  for (const row of document.querySelectorAll('.rq-snapshot:not([hidden]) .rq-hyp')) {
+    const name = row.querySelector('.rq-hyp-names').getBoundingClientRect();
+    const type = row.querySelector('.rq-hyp-type').getBoundingClientRect();
+    assert(type.left >= name.right - 1, "hypothesis type not beside its name");
+    assert(Math.abs(type.top - name.top) < 4, "hypothesis row not aligned");
+  }
+`;
 
 try {
   browser("open", source("Ops"));
@@ -49,14 +57,17 @@ try {
 
     browser("open", source("Runtime"));
     const proof = "#object_region_remove + .rq-captured";
+    check(fitsPage);
+    browser("scrollintoview", `${proof} > summary`);
     browser("click", `${proof} > summary`);
     check(`${fitsPage}
       const proof = document.querySelector(${JSON.stringify(proof)});
+      assert(proof.open, "proof did not open");
       assert(proof.querySelector('[data-move="-1"]').disabled, "initial previous enabled");
       assert(proof.querySelectorAll('.rq-snapshot:not([hidden])').length === 1, "multiple selected states");
     `);
     browser("click", `${proof} [data-move="1"]`);
-    check(`${fitsPage}
+    check(`${fitsPage} ${contextRows}
       const state = document.querySelector(${JSON.stringify(proof)}).querySelector('.rq-snapshot:not([hidden])');
       assert(state.querySelector('.rq-conclusion').dataset.raw === 'object_region b (remove_region base rs) = object_region b rs', "wrong intros goal");
       assert(state.querySelectorAll('.rq-hyp[data-change="added"]').length === 3, "missing introduced context");
@@ -100,9 +111,38 @@ try {
       check(`${fitsPage}
         assert(document.querySelector("#rq-layout").value === ${JSON.stringify(layout)}, "choice not remembered");
       `);
+      browser("open", source("Runtime"));
+      check(fitsPage);
+      browser("scrollintoview", "#object_region_remove + .rq-captured > summary");
+      browser("click", "#object_region_remove + .rq-captured > summary");
+      check(`assert(document.querySelector('#object_region_remove + .rq-captured').open, "proof did not open");`);
+      browser("click", '#object_region_remove + .rq-captured [data-move="1"]');
+      browser("click", "#object_region_remove + .rq-captured .rq-compare");
+      check(`${fitsPage} ${contextRows}
+        assert(document.querySelector('#object_region_remove + .rq-captured').querySelectorAll('.rq-snapshot:not([hidden])').length === 2, "comparison missing in selected layout");
+      `);
       browser("open", source("Ops"));
       console.log(`ok ${layout} selection and persistence at ${width}px`);
     }
+  }
+  // Use a fresh browser so cached scripts cannot bypass request blocking.
+  browser("close");
+  browser("open", "about:blank");
+  browser("network", "route", "*", "--abort", "--resource-type", "script");
+  for (const width of [320, 1280]) {
+    browser("set", "viewport", String(width), "900", "2");
+    browser("open", source("Runtime"));
+    check(fitsPage);
+    browser("scrollintoview", "#object_region_remove + .rq-captured > summary");
+    browser("click", "#object_region_remove + .rq-captured > summary");
+    check(`${fitsPage} ${contextRows}
+      const proof = document.querySelector('#object_region_remove + .rq-captured');
+      assert(proof.open, "static proof did not open");
+      assert(proof.querySelector('.rq-proof-controls').hidden, "nonfunctional controls shown");
+      assert(proof.querySelectorAll('.rq-snapshot:not([hidden])').length === 11, "static proof states lost");
+      assert(proof.textContent.includes('No remaining goals.') && proof.textContent.includes('checked and closed'), "closure distinction lost");
+    `);
+    console.log(`ok all snapshots readable without scripts at ${width}px`);
   }
 } finally {
   browser("close");

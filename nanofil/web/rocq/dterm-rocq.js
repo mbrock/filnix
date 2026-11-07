@@ -7,12 +7,6 @@ if (matchMedia("(max-width: 900px)").matches)
   const select = document.querySelector("#rq-layout");
   if (!select) return;
   const root = document.documentElement;
-  const help = document.querySelector("#rq-layout-help");
-  const descriptions = {
-    auto: "Fits each block to its available width.",
-    stack: "Patterns above results; comments below code.",
-    table: "Aligned columns; wide blocks scroll locally.",
-  };
   // Label the Rocq comparison tables when their columns become cards.
   for (const table of document.querySelectorAll(".prose-table:has(code.rq)")) {
     table.classList.add("rq-comparison");
@@ -22,14 +16,13 @@ if (matchMedia("(max-width: 900px)").matches)
   }
   function apply(layout) {
     select.value = layout;
-    help.textContent = descriptions[layout];
     // dterm.js owns match fitting and term breaking, including after a
     // preference change. No second printer in the Rocq enhancement.
     root.dataset.caseLayout = layout;
   }
   let saved;
   try { saved = localStorage.getItem("dterm-rocq-layout"); } catch { /* private/blocked storage */ }
-  apply(Object.hasOwn(descriptions, saved) ? saved : "auto");
+  apply(["auto", "stack", "table"].includes(saved) ? saved : "auto");
   select.addEventListener("change", () => {
     apply(select.value);
     try { localStorage.setItem("dterm-rocq-layout", select.value); } catch { /* still works this page */ }
@@ -62,24 +55,23 @@ for (const proof of document.querySelectorAll(".rq-captured")) {
     const after = states[i].querySelector('.rq-proof-goal[data-role="focused"]');
     if (!before || !after) continue;
     const oldHyps = new Map([...before.querySelectorAll(".rq-hyp")].map(h => [h.dataset.hyp, h.dataset.raw]));
-    let added = 0, changed = 0;
     for (const h of after.querySelectorAll(".rq-hyp")) {
       if (oldHyps.get(h.dataset.hyp) !== h.dataset.raw) {
         const isNew = !oldHyps.has(h.dataset.hyp);
         h.dataset.change = isNew ? "added" : "changed";
         h.title = isNew ? "Added since preceding step" : "Changed since preceding step";
-        if (isNew) added++; else changed++;
       }
       oldHyps.delete(h.dataset.hyp);
     }
     const conclusion = after.querySelector(".rq-conclusion");
     const goalChanged = conclusion.dataset.raw !== before.querySelector(".rq-conclusion").dataset.raw;
-    if (goalChanged) conclusion.dataset.change = "changed";
-    const parts = [goalChanged ? "Goal changed" : "Goal unchanged"];
-    if (added) parts.push(`${added} context ${added === 1 ? "entry" : "entries"} added`);
-    if (changed) parts.push(`${changed} changed`);
-    if (oldHyps.size) parts.push(`${oldHyps.size} removed`);
-    states[i].querySelector(".rq-changes").textContent = parts.join(" · ");
+    if (goalChanged) {
+      conclusion.dataset.change = "changed";
+      conclusion.title = "Changed since preceding step";
+    }
+    // Additions and rewrites are marked in place; only removals need prose.
+    if (oldHyps.size) states[i].querySelector(".rq-changes").textContent =
+      `${oldHyps.size} context ${oldHyps.size === 1 ? "entry" : "entries"} removed`;
   }
 
   function show(index, focus = false) {
@@ -92,9 +84,8 @@ for (const proof of document.querySelectorAll(".rq-captured")) {
     previous.disabled = selected === 0;
     next.disabled = selected === states.length - 1;
     compare.disabled = selected === 0;
-    controls.querySelector(".rq-position").textContent = selected === 0
-      ? `Initial goal · ${states.length - 2} tactics`
-      : selected === states.length - 1 ? "Proof closed" : `Tactic ${selected} of ${states.length - 2}`;
+    controls.querySelector(".rq-position").textContent = `${selected} / ${states.length - 1}`;
+    controls.querySelector(".rq-position").setAttribute("aria-label", `Proof step ${selected} of ${states.length - 1}`);
     if (focus) links[selected].focus({ preventScroll: true });
     // dterm.js's ResizeObserver remeasures newly visible clauses.
     // Scroll only the timeline, never move the reader's page position.

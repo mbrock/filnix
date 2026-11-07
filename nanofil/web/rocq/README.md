@@ -131,12 +131,20 @@ The source pages offer **Explore proof**. A tactic timeline sits beside
 the current context and conclusion; on narrow screens it sits above them.
 Previous/Next, arrow keys and Home/End navigate the proof. **Compare before**
 keeps the preceding source state visible. Added/changed context entries and
-changed conclusions have both a green accent and a textual marker; the
-change summary also counts removed context entries. These are textual
+changed conclusions have both a green accent and a symbol (+ or ↻);
+only removed context entries need a separate count. These are textual
 differences in Rocq's output, not claims of semantic equivalence. Pending
 branches and shelved goals remain available; solving the focused goal is
 not the same as closing the proof. The source script and name links remain.
 Without JavaScript, all snapshots are readable in order.
+
+The explorer uses dterm's compact rows and rules rather than nested cards:
+hypothesis names and types share aligned rows even on narrow screens, and
+⊢ separates the conclusion from its context. The timeline scrolls locally;
+controls, comparison states and source disclosure use only a small gutter.
+Empty contexts and repeated explanatory hints are omitted. “No remaining
+goals” is still distinct from a checked closure, without a reminder to type
+`Qed` at every solved state.
 
 ### Prior art and the choice
 
