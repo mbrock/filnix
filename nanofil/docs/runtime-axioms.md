@@ -20,7 +20,7 @@ the runtime paths below are relative to `libpas/src/libpas/` there.
 | Axiom | Statement | Native test | Source |
 | --- | --- | --- | --- |
 | `fresh_allocation` | an allocation the runtime makes has a `fresh` base: no identity the memory has, live or freed, aligned, overlapping no object, ending at or below 2^64, reading as zero with no stored capability; for a runtime state `ready` for the memory | [axiom-fresh.c](../tests/c/prog/axiom-fresh.c): new objects read zero; a freed object's capability, still held, traps after collections and thousands of allocations of its size | `filc_runtime.c` `finish_allocate_small`/`_large` (zero mode), `fugc.h:170–181` |
-| `address_space` | where the runtime is `ready`, no object ends past 2^48 (`objects_fit`), so no address inside one wraps, and two addresses of one object are less than 2^63 apart; the runtime's `alloc` may refuse, and the run then traps `out_of_memory` | [axiom-address.c](../tests/c/prog/axiom-address.c): heap objects of 1 byte to 1 GiB, static and initialized data and an address-taken local end below 2^48; `malloc(2^48)` traps as too big, and `malloc(2^48 - 1)`, within the size limit, traps out of memory | `filc_runtime.h` `filc_prepare_allocate_object` (`FILC_MAX_ALLOCATION_SIZE`, `PAS_MAX_ADDRESS`), `FILC_OBJECT_AUX_PTR_MASK` (object addresses stored in 48 bits), `pas_config.h` `PAS_ADDRESS_BITS` 48 |
+| `address_space` | where the runtime is `ready`, every object lies in [0, 2^48] (`objects_fit`), so no address inside one wraps, two addresses of one object are less than 2^63 apart, and an address that wrapped below 0, read signed, is below every object; the runtime's `alloc` may refuse, and the run then traps `out_of_memory` | [axiom-address.c](../tests/c/prog/axiom-address.c): heap objects of 1 byte to 1 GiB, static and initialized data and an address-taken local end below 2^48; `malloc(2^48)` traps as too big, and `malloc(2^48 - 1)`, within the size limit, traps out of memory | `filc_runtime.h` `filc_prepare_allocate_object` (`FILC_MAX_ALLOCATION_SIZE`, `PAS_MAX_ADDRESS`), `FILC_OBJECT_AUX_PTR_MASK` (object addresses stored in 48 bits), `pas_config.h` `PAS_ADDRESS_BITS` 48 |
 | `non_moving` | at a safepoint no byte moves or changes: the collector writes no object's contents and no address word | [axiom-nonmoving.c](../tests/c/prog/axiom-nonmoving.c): addresses of live and freed objects, and live contents, unchanged across six collections | Manifesto.md, "Non-moving" |
 | `free_lifetime`, `safepoint_lifetime` | an object's bounds change only by free, which empties a live heap object's for every alias at once; nothing else changes a region, and no identity appears | [axiom-lifetime.c](../tests/c/prog/axiom-lifetime.c): a read after a free through an alias traps; another object is untouched | `filc_runtime.c:3160–3183` (`free_impl`: `upper = lower`, then FREE), `3869–3917` |
 | `safepoints` | the runtime acts, and another thread's effects become visible, only at instructions that are not `evidence_preserving/1`: calls, polls, alloc and the rest | [axiom-safepoint.c](../tests/c/prog/axiom-safepoint.c): a timer's handler frees the object a loop reads; the loop reads only its bytes, then traps | Manifesto.md, "FUGC relies on safepoints"; `filc_runtime.c:1191` (`handle_deferred_signals`) |
@@ -57,19 +57,23 @@ that would pass 2^48 (`address_space/2`), `free` is `free_res/4`,
 `at_safepoint` is the negation of `evidence_preserving/1`, and nothing
 changes at a safepoint. It proves every axiom, so the module type is
 consistent and `Print Assumptions` of the extracted `judge` is closed.
-Its `ready` says every object lies below Next, Next is at most 2^48,
-and nothing at or above Next has been written. Run.v's `Driver` runs over any `Runtime`, and the
+Its `ready` says every object lies between 0 and Next, empty if freed,
+Next is at most 2^48, and nothing at or above Next has been written. Run.v's `Driver` runs over any `Runtime`, and the
 gates run `Driver InterpRuntime`.
 
 ## Readiness
 
-Two more obligations of the module type are about the runtime's own
-bookkeeping rather than Fil-C, so they have no native test:
-`ready_kept`, the program's writes inside objects and its ending of
-objects leave the runtime ready to allocate, and `safepoint_ready`, the
-runtime's actions at a safepoint do too. With `fresh_allocation` they
-make `ready` an invariant of every run: Machine.v's `mreachable_ready`
-proves it for every runtime, and `InterpRuntime` proves both.
+Three more obligations of the module type are about the runtime's own
+bookkeeping rather than Fil-C, so they have no native test.
+`freed_bounds`: no freed object of a memory the runtime is ready in has
+bounds (`freed_empty`). Every free and the end of every invocation
+already empty them (`lifetime_step`, `region_step`), so it constrains
+only the memory a run starts in. `ready_kept`: the program's writes
+inside objects and its ending of objects leave the runtime ready to
+allocate. `safepoint_ready`: the runtime's actions at a safepoint do
+too. With `fresh_allocation` the last two make `ready` an invariant of
+every run: Machine.v's `mreachable_ready` proves it for every runtime,
+and `InterpRuntime` proves all three.
 
 ## The address space
 
@@ -107,6 +111,16 @@ wrap and the access between them outside the object
 address is a user address below 2^56. axiom-address.c tests that heap
 objects, static and initialized data and an address-taken local end
 below 2^48, and the interpreter's instance keeps Next at most 2^48.
+
+A lower half check (`half_bound/6`) reads its address signed and fails
+on any freed object, where the whole check fails only on an address
+outside the object's bounds. The two agree because objects start at or
+above 0, which native addresses, being unsigned, always do, and because
+a freed object's bounds are empty (`freed_bounds`). Free and the end of
+an invocation always empty them (`lifetime_step`, `region_step`); the
+obligation says no memory the runtime is ready in holds a freed object
+with bounds, natively because `free_impl` sets `upper = lower` before it
+marks the object FREE ([rocq.md](rocq.md), "Renew and the half check").
 
 The axioms speak of states the runtime is ready in. Whether a valid
 module's initial memory is one is open: its data has no size limit

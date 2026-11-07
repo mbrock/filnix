@@ -25,6 +25,7 @@ theories/Invariant.v
 theories/Persistence.v
 theories/Single.v
 theories/Chain.v
+theories/Renew.v
 theories/ExternalMachine.v
 theories/Transport.v
 theories/Extract.v

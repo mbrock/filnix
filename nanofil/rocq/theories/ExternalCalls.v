@@ -546,11 +546,11 @@ Proof.
   intros next Hnext. split; [lia|]. split.
   - intros b reg E. cbn -[Z.eqb] in E.
     destruct (1024 =? b) eqn:E1.
-    + apply Z.eqb_eq in E1. injection E as <-. simpl. lia.
+    + apply Z.eqb_eq in E1. injection E as <-. simpl. split; [lia|]. split; [lia | discriminate].
     + destruct (2048 =? b) eqn:E2.
-      * apply Z.eqb_eq in E2. injection E as <-. simpl. lia.
+      * apply Z.eqb_eq in E2. injection E as <-. simpl. split; [lia|]. split; [lia | discriminate].
       * destruct (3072 =? b) eqn:E3; [|discriminate E].
-        apply Z.eqb_eq in E3. injection E as <-. simpl. lia.
+        apply Z.eqb_eq in E3. injection E as <-. simpl. split; [lia|]. split; [lia | discriminate].
   - intros a Ha. simpl. split; [|reflexivity].
     destruct (a =? 1024) eqn:E1; [apply Z.eqb_eq in E1; lia|].
     destruct (a =? 1025) eqn:E2; [apply Z.eqb_eq in E2; lia|].

@@ -15,13 +15,14 @@
     in some earlier frame and memory, that frame agrees with the current
     environment on the instruction's single-definition operands, and the
     current memory persists from the memory the instruction left
-    (Identity.v). A check that passed then passes again or traps; a
-    flight's capability is its lower donor's.
+    (Identity.v), which lay in the address space. A check that passed
+    then passes again or traps; a flight's capability is its lower
+    donor's.
 
     | Name | Says |
     |---|---|
     | `replayable` | the instructions a replay speaks of: a `let` that is not an `alloc`, and a flight |
-    | `replays` | a name holds what its defining instruction made from its operands' current values, in a memory the current one persists from |
+    | `replays` | a name holds what its defining instruction made from its operands' current values, in a memory that fit the address space and that the current one persists from |
     | `point_site` | the block and index of a frame's point, as `site_dominates/4` reads them |
     | `scope_holds` | every replayable single definition whose site dominates the point replays |
     | `shaped`, `waits` | a frame's point is in a reachable block of its function; a caller waits just after the call that made its callee |
@@ -39,6 +40,7 @@
     | a call and an `alloc` do not replay | their step is not one that continues; no reuse rule reads through them |
     | a doomed frame claims nothing | its `check_ahead` did not pass; a doomed frame never returns to a caller or calls one |
     | memory is handled once, for every step | each step's memory persists (`mstep_persists`), so the step lemmas carry frames and a replay's memory follows by `scope_mem` |
+    | a replay keeps that the memory it left fit the address space (`objects_fit`) | the object of a check that passed then ended below 2^48; once the object is freed, the current memory no longer says where it ended |
     | `free_ids` is a hypothesis | mbrock's decision (docs/rocq.md, "Identities persist") | *)
 
 From Stdlib Require Import String ZArith List Bool Lia Relations.
@@ -59,13 +61,13 @@ Definition replayable (i : inst) : bool :=
 
 (** `replays ge once e m n i`: n holds what i made in a frame that
     agrees with e on i's single-definition operands, and m persists from
-    the memory i left. *)
+    the memory i left, whose objects fit the address space. *)
 Definition replays (ge : genv) (once : list (name * def)) (e : env) (m : Memory.mem) (n : name) (i : inst)
   : Prop :=
   exists fr0 m0 e1 l1 m1,
     inst_step ge fr0 m0 i = Some (IContinue e1 l1 m1) /\ lookup n e1 = lookup n e /\
     (forall a, In a (inst_uses i) -> once_has once a = true -> lookup a (fr_env fr0) = lookup a e) /\
-    persists m1 m.
+    persists m1 m /\ objects_fit (m_regions m1).
 
 (** `point_site f pt`: the block and index of pt, a block's entry
     being before its phis, at -1. *)
@@ -356,9 +358,10 @@ Lemma replays_change : forall ge once e e' m m' n i,
   (forall a, In a (inst_uses i) -> once_has once a = true -> lookup a e' = lookup a e) ->
   persists m m' -> replays ge once e' m' n i.
 Proof.
-  intros ge once e e' m m' n i (fr0 & m0 & e1 & l1 & m1 & Hs & Hn & Ha & Hp) Hn' Ha' Hp'.
+  intros ge once e e' m m' n i (fr0 & m0 & e1 & l1 & m1 & Hs & Hn & Ha & Hp & Hfit) Hn' Ha' Hp'.
   exists fr0, m0, e1, l1, m1. split; [exact Hs|]. split; [congruence|].
-  split; [intros a Hu Ho; rewrite (Ha' _ Hu Ho); exact (Ha _ Hu Ho) | exact (persists_trans _ _ _ Hp Hp')].
+  split; [intros a Hu Ho; rewrite (Ha' _ Hu Ho); exact (Ha _ Hu Ho)|].
+  exact (conj (persists_trans _ _ _ Hp Hp') Hfit).
 Qed.
 
 Lemma scope_mem : forall ge fr m m', scope_holds ge fr m -> persists m m' -> scope_holds ge fr m'.
@@ -691,9 +694,10 @@ Qed.
     replays from where it ran; or it calls, and the caller waits. *)
 Lemma next_sinv_inst : forall ge md c c' l i rest j,
   ge_module ge = md -> checked_module md -> fr_at (c_frame c) = Exec l (i :: rest) j ->
-  step ge c = Next c' -> persists (c_mem c) (c_mem c') -> sinv ge md c -> sinv ge md c'.
+  step ge c = Next c' -> persists (c_mem c) (c_mem c') -> objects_fit (m_regions (c_mem c')) ->
+  sinv ge md c -> sinv ge md c'.
 Proof.
-  intros ge md c c' l i rest j Hge Hmd Ha Hs Hp [[Hsh Hsc] Hcall].
+  intros ge md c c' l i rest j Hge Hmd Ha Hs Hp Hfit [[Hsh Hsc] Hcall].
   destruct (step_exec_cons _ _ _ _ _ _ _ Ha Hs ltac:(discriminate) ltac:(discriminate))
     as (Hdoom & out0 & od & Hi & Hdr & Hn).
   unfold shaped in Hsh. cbv zeta in Hsh. rewrite Ha in Hsh.
@@ -716,7 +720,7 @@ Proof.
     refine (scope_step _ _ (c_frame c) (mkFrame (fr_fn (c_frame c)) e1 l1 None (Exec l rest j)) _ _ _ _ _ i
               Hmd Hin eq_refl Hr Hb Hki Hpt0 Hpt1 (inst_step_env _ _ _ _ _ _ _ Hi) Hp _ Hsc).
     intros n Hrp Hn1. exists (c_frame c), (c_mem c), e1, l1, m1.
-    split; [exact Hi|]. split; [reflexivity|]. split; [|apply persists_refl].
+    split; [exact Hi|]. split; [reflexivity|]. split; [|exact (conj (persists_refl _) Hfit)].
     intros a Hu Ho1. symmetry. apply (inst_step_env _ _ _ _ _ _ _ Hi).
     rewrite <- Hl in Hr. exact (operand_not_defined _ _ _ _ _ _ _ Hf Hd Hdd Hbin Hr Hki Hu Ho1).
   - assert (Hd : fr_doomed (c_frame c) = None /\ out0 = ICall g xs pd /\ snd od = None).
@@ -751,14 +755,14 @@ Qed.
 (** A step that allocates nothing. *)
 Lemma next_sinv : forall ge md c c',
   ge_module ge = md -> checked_module md -> step ge c = Next c' ->
-  persists (c_mem c) (c_mem c') -> sinv ge md c -> sinv ge md c'.
+  persists (c_mem c) (c_mem c') -> objects_fit (m_regions (c_mem c')) -> sinv ge md c -> sinv ge md c'.
 Proof.
-  intros ge md c c' Hge Hmd Hs Hp H.
+  intros ge md c c' Hge Hmd Hs Hp Hfit H.
   destruct (fr_at (c_frame c)) as [xs l | l from | l [|i rest] j] eqn:Ha.
   - exact (next_sinv_snapshot _ _ _ _ _ _ Hmd Ha Hs Hp H).
   - exact (next_sinv_enter _ _ _ _ _ _ Hmd Ha Hs Hp H).
   - exact (next_sinv_jump _ _ _ _ _ _ Hmd Ha Hs Hp H).
-  - exact (next_sinv_inst _ _ _ _ _ _ _ _ Hge Hmd Ha Hs Hp H).
+  - exact (next_sinv_inst _ _ _ _ _ _ _ _ Hge Hmd Ha Hs Hp Hfit H).
 Qed.
 
 (** `fresh_sinv`: an allocation defines names that do not replay. *)
@@ -814,8 +818,9 @@ Theorem mstep_sinv : forall ge md st st',
 Proof.
   intros ge md st st' Hge Hmd Hfree Hfi Hr Hs H.
   pose proof (mstep_persists _ _ _ Hfree Hfi Hr Hs) as Hp.
+  pose proof (R.address_space _ _ (mstep_ready _ _ _ Hfree Hs Hr)) as Hfit.
   destruct Hs as [c c' s E | c q k s base s' E He Hal | c s s' m' Hd Hact]; simpl in *.
-  - exact (next_sinv _ _ _ _ Hge Hmd E Hp H).
+  - exact (next_sinv _ _ _ _ Hge Hmd E Hp Hfit H).
   - exact (fresh_sinv _ _ _ _ _ base Hmd E Hp H).
   - exact (mem_sinv _ _ _ _ Hp H).
 Qed.

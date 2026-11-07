@@ -23,7 +23,7 @@ the interpreter and cites the predicate it copies.
 | `Syntax.v` | ir.pl's header tables | classes, ops, values, instructions, jumps, blocks, functions, data, modules; `op_arg_classes/4`, `evidence_preserving/1`, `ahead_transparent/1`, `local_objects/2` |
 | `Values.v` | interp.pl's values | `cap` (`none`, `obj`, `ro`, `fn`, `ext`), `ptr`, `word`; `word_at_class/3` |
 | `Memory.v` | interp.pl's Memory section | regions, `mem`, `cap_access_res/7`, `free_res/4`, bytes and aux, `fresh` |
-| `Runtime.v` | `alloc_base/6`, `free_res/4`; [runtime-axioms.md](runtime-axioms.md) | Campaign 2's `Module Type Runtime`, eight axioms and two readiness obligations, and `InterpRuntime`, which proves them |
+| `Runtime.v` | `alloc_base/6`, `free_res/4`; [runtime-axioms.md](runtime-axioms.md) | Campaign 2's `Module Type Runtime`, eight axioms and three readiness obligations, and `InterpRuntime`, which proves them |
 | `Ops.v` | `alu/4`, `additive_res/4`, `kind_res/8` | integer and float ops, `check` and the reuse vocabulary, raw loads and stores, pointer-load and pointer-store protocols, `va_arg` |
 | `Semantics.v` | `run/5`'s blocks, instructions, jumps, calls | the configuration, `step`, `step_rel`, `reachable`; the variadic entry snapshot |
 | `Run.v` | `initial_memory/4` | module preparation, and `Driver`, a run over any `Runtime`'s allocations and free |
@@ -34,13 +34,15 @@ the interpreter and cites the predicate it copies.
 | `Interval.v` | `offset_interval/8`, `op_interval/9` (ir.pl) | the derivations of an offset interval as an inductive relation; every interval the walk answers is derived, and a derived interval holds of the values a run reads wherever the names it walks hold what their definitions computed and their single-definition operands are unchanged |
 | `Sites.v` | `single_definitions/3`, `block_sites//1`, `definitions_dominate/3` (ir.pl) | every definition with its site; a single definition has one; a use is dominated by its single definition, and no single-definition operand of a definition is defined again where the definition's site dominates |
 | `Identity.v` | — (Campaign 3) | no step of a run loses an object: each is as it was, or freed, given that the runtime's free keeps identities; a check that passed then passes again, or traps out of bounds |
-| `Single.v` | `single_definitions/3`, `definitions_dominate/3` (ir.pl); the steps of interp.pl | in every frame of every run, each single definition whose site dominates the frame's point replays: its name holds what its instruction made from its operands' current values, in a memory the current one persists from |
+| `Single.v` | `single_definitions/3`, `definitions_dominate/3` (ir.pl); the steps of interp.pl | in every frame of every run, each single definition whose site dominates the frame's point replays: its name holds what its instruction made from its operands' current values, in a memory that lay in the address space and that the current one persists from |
 | `Coverage.v` | — (Campaign 3) | the coverage lemma: a raw access that `covered_access/6` puts inside a passed check gives no `unchecked` |
 | `Evidence.v` | — (Campaign 3) | the evidence invariant at an instruction and an edge: what a live fact means, every case of `checked_inst_rest/7` keeps the pass's facts true, block entry keeps the meet, accesses the pass accepts give no `unchecked` |
 | `Walk.v` | — (Campaign 3) | the evidence pass read back for the run-level invariant: block by block (`pass_fold`), position by position (`walks`), where it keeps facts (`relies`), a `check_local`'s own fact |
 | `Steps.v` | — (Campaign 3) | what one step does to the running frame, point by point: snapshot, block entry, instruction, return |
 | `Invariant.v` | — (Campaign 3) | the run-level invariant stated: what holds at each point of a frame (`at_pos`, `point_ok`, `inv`), the runtime hypothesis `spares`, and what each kind of step needs of it |
 | `Persistence.v` | — (Campaign 3) | the evidence invariant over whole runs: every machine step keeps `inv` (one lemma per kind of step), and in every state of a run no raw access or raw call of a frame that is not doomed is `unchecked`, but by `hull_covered` |
+| `Chain.v` | `offset_interval/8`, `guard_chain/3`, `pointer_distance/4`, `hull_covered/7` (ir.pl) | what a frame reads off the single definitions that dominate its point; along every run, no access `hull_covered` accepts gives `unchecked` |
+| `Renew.v` | `renew_source_op/6`, `half_known/6` (ir.pl); `renew_res/4`, `half_bound/6`, `half_res/4` (interp.pl) | along every run, no renew or half check the pass accepts gives `unchecked` |
 | `Transport.v` | — | decoding a printed checked module, encoding outcomes, `judge`, `judge_valid` |
 | `Extract.v`, `extraction/main.ml` | — | OCaml extraction, and a reader of Prolog terms |
 
@@ -1000,6 +1002,72 @@ Decisions:
   Both `covered_access` and `hull_covered` end at the same step: the raw
   access's own check passes, so `inst_step` does not give `unchecked`.
 
+### Renew and the half check
+
+`Renew.v` proves the next two reuse forms. Both trust Q1, the proof of
+an earlier check of P1, a single definition that the pass records as a
+renew source (`renew_source_op/6`). A renew of P checks the whole span
+of P only if P's span lies inside Q1's at the distance
+`pointer_distance/4` finds. A half check tests one bound natively and
+takes the other from Q1's span (`half_known/6`). The interpreter makes
+the run `unchecked` where that trust was false: Q1 of another
+capability is `unchecked(alias)`; a renew whose access check fails, but
+not on a freed object, is `unchecked(span)`; and a half check whose
+native test (`half_bound/6`) disagrees with the whole check is
+`unchecked(half)`. Along every run, a frame that is not doomed runs
+neither instruction to `unchecked` (`run_reuse_checked`, and
+`interp_reuse_checked` for the interpreter, closed).
+
+The proof has three steps:
+
+- Q1 is an operand of the instruction, so its single definition
+  dominates the point and replays (Single.v). Q1 holds the pointer P1
+  held when the check passed, and memory has persisted since, so the
+  object is as it was or freed (`renew_source_holds`).
+- P is a known distance from P1. Its guard chain starts at the shared
+  exact base or at a flight, so P reads as a pointer
+  (`distance_pointer`), with P1's capability (`pointer_distance_sound`).
+  That excludes `unchecked(alias)`.
+- What is left is arithmetic over `cap_access_res/7`. A renew's span
+  lies inside the source's, so its check passes, traps read-only, or
+  finds the object freed, and `renew_res/4` keeps each as the program's
+  outcome (`renew_access`). A half check's native bound says what both
+  bounds of the whole check say (`half_bound_agrees`, `half_access`).
+
+The half check needed three facts that nothing stated before:
+
+- **The source's memory lay in the address space.** `half_known/6`
+  bounds the distance by 2^62 from the source's span, and the argument
+  needs that span below 2^48. Once the object is freed, the current
+  memory no longer records where it ended. Single.v's `replays` now
+  also keeps `objects_fit` of the memory the replayed instruction left,
+  which every step's readiness supplies.
+- **Objects start at or above 0.** A lower half check reads its
+  address signed, `base =< B` with B above 2^63 taken as negative. An
+  address that wrapped below 0 then fails the native test, as the
+  whole check fails. Native addresses are unsigned, so `objects_fit`
+  now says each object lies in [0, 2^48], and InterpRuntime's `ready`
+  says so of every object below Next.
+- **A freed object is empty.** A lower half check fails on any freed
+  object, while the whole check fails there only if the bounds are
+  empty. Free and the end of an invocation always empty them
+  (`lifetime_step`, `region_step`), but a memory the runtime is ready
+  in could hold a freed object with bounds, if a run started in one.
+  A new readiness obligation, `freed_bounds`, says it does not
+  (runtime-axioms.md, "Readiness").
+
+No admits. Decisions:
+
+- **A renew does not need the source's rights.** A renew asks for its
+  own rights; on a read-only object a write traps `readonly`, which
+  `renew_res/4` keeps as the program's trap.
+- **A malformed instruction is not the pass's concern.** A renew or
+  half check of another class or arity does not step (`reuse_shape`),
+  so the run theorem covers every instruction of either op.
+- **`Reuse R` builds on Chain.v's `Hull R`.** It reuses its two
+  instances and `mreachable_same`, so no new instance of the machine is
+  needed.
+
 ## An object past 2^64
 
 `rocq/tests/huge-object.ir` allocates an object of 2^64 - 2^32 - 80
@@ -1132,10 +1200,9 @@ with this bound it also keeps a ready module's data below 2^48.
 
 1. The other reuse forms as corollaries of `Single.v`'s invariant and
    Interval.v's `iv_sound`, each
-   with ir.pl's side conditions as hypotheses: renew,
-   half check, `renew_if`, `check_limit`, and `check_ahead`'s doomed
-   frame; then `valid_no_unchecked`, assembled from Persistence.v's
-   invariant.
+   with ir.pl's side conditions as hypotheses: `renew_if`,
+   `check_limit`, and `check_ahead`'s doomed frame; then
+   `valid_no_unchecked`, assembled from Persistence.v's invariant.
 2. After the reuse forms, a decision on the runtime's safepoints
    (`spares`, above) and its free (`free_ids`, "Identities persist"),
    brought to mbrock together with a recommendation after an Oracle

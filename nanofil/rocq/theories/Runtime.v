@@ -17,7 +17,7 @@
     | Fact | Statement | Native test |
     |---|---|---|
     | `fresh_allocation` | an allocation's base is `fresh`: a new identity, aligned, overlapping no object, ending at or below 2^64, reading as zero | axiom-fresh.c |
-    | `address_space` | every object ends at or below 2^48, native Fil-C's address space; an allocation the runtime cannot hold is refused, a trap | axiom-address.c |
+    | `address_space` | every object lies in [0, 2^48], native Fil-C's address space; an allocation the runtime cannot hold is refused, a trap | axiom-address.c |
     | `non_moving` | at a safepoint no byte moves or changes: the collector writes no object's contents | axiom-nonmoving.c |
     | `free_lifetime`, `safepoint_lifetime` | bounds change only by free, which empties a live heap object's | axiom-lifetime.c |
     | `safepoints` | the runtime acts only at instructions that are not evidence preserving | axiom-safepoint.c |
@@ -25,12 +25,15 @@
     | `aux_round_trip` | a stored capability stays, or becomes one that traps as the freed object does | axiom-aux.c |
     | `rooting` | no identity the program can name is reclaimed | axiom-rooting.c |
 
-    Two more obligations are about the runtime's own state, not about
-    Fil-C, so they have no native test: `ready_kept`, the program's own
-    writes inside objects and its emptying of bounds leave the runtime
-    ready to allocate; and `safepoint_ready`, the runtime's actions at a
-    safepoint do too. With `fresh_allocation` they make `ready` an
-    invariant of every run (Machine.v).
+    Three more obligations are about the runtime's own state, not about
+    Fil-C, so they have no native test. `freed_bounds`: no freed object
+    of a memory the runtime is ready in has bounds; every free and the
+    end of every invocation empty them (`lifetime_step`, `region_step`),
+    so it constrains only the memory a run starts in. `ready_kept`: the
+    program's own writes inside objects and its emptying of bounds leave
+    the runtime ready to allocate. `safepoint_ready`: the runtime's
+    actions at a safepoint do too. With `fresh_allocation` the last two
+    make `ready` an invariant of every run (Machine.v).
 
     ## One thread's view
 
@@ -91,13 +94,22 @@ Definition freed_in (rs : list region) (c : cap) : Prop :=
 Definition traps_as_freed (rs : list region) (c : cap) : Prop :=
   forall a size r align, 0 < size -> cap_access_res c rs a size r align = Some (RTrap OutOfBounds).
 
-(** `objects_fit rs`: every object of rs ends at or below 2^48, native
-    Fil-C's address space (`PAS_ADDRESS_BITS`). An address inside one
-    never wraps (`raw_address/3`), and two addresses of one object are
-    less than 2^63 apart, so a near offset between them does not wrap
-    either (`hull_covered/7`). *)
+(** `objects_fit rs`: every object of rs lies in [0, 2^48], native
+    Fil-C's address space (`PAS_ADDRESS_BITS`); a native address is
+    unsigned, so no object starts below 0. An address inside one never
+    wraps (`raw_address/3`), and two addresses of one object are less
+    than 2^63 apart, so a near offset between them does not wrap either
+    (`hull_covered/7`). A lower half check compares its address, read
+    signed, with the object's base (`half_bound/6`), so an address that
+    wrapped below 0 fails it. *)
 Definition objects_fit (rs : list region) : Prop :=
-  forall b reg, object_region b rs = Some reg -> r_end reg <= 2 ^ 48.
+  forall b reg, object_region b rs = Some reg -> 0 <= b /\ r_end reg <= 2 ^ 48.
+
+(** `freed_empty rs`: every freed object of rs is empty. Free and the
+    end of an invocation end an object's life and empty its bounds
+    together (`lifetime_step`, `region_step`). *)
+Definition freed_empty (rs : list region) : Prop :=
+  forall b reg, object_region b rs = Some reg -> r_life reg = Freed -> r_end reg = b.
 
 (** `in_object m a`: a is inside the current bounds of an object of m. *)
 Definition in_object (m : mem) (a : Z) : Prop :=
@@ -144,8 +156,12 @@ Module Type Runtime.
     alloc s q = Some (base, s') ->
     fresh m q base /\ ready s' (allocated m q base).
 
-  (** No object of a memory the runtime is ready in ends past 2^48. *)
+  (** Every object of a memory the runtime is ready in lies in
+      [0, 2^48]. *)
   Axiom address_space : forall s m, ready s m -> objects_fit (m_regions m).
+
+  (** No freed object of a memory the runtime is ready in has bounds. *)
+  Axiom freed_bounds : forall s m, ready s m -> freed_empty (m_regions m).
 
   (** The program's own changes keep the runtime ready. *)
   Axiom ready_kept : forall s m m', ready s m -> kept m m' -> ready s m'.
@@ -290,11 +306,12 @@ Module InterpRuntime.
       space (PAS_ADDRESS_BITS). *)
   Definition address_end : Z := 2 ^ 48.
 
-  (** Every object lies below Next, Next within the address space, and
-      nothing at or above Next has been written. *)
+  (** Every object lies between 0 and Next, empty if freed, Next within
+      the address space, and nothing at or above Next has been written. *)
   Definition ready (next : state) (m : mem) : Prop :=
     0 < next <= address_end /\
-    (forall b reg, object_region b (m_regions m) = Some reg -> b < next /\ r_end reg <= next) /\
+    (forall b reg, object_region b (m_regions m) = Some reg ->
+       0 <= b < next /\ r_end reg <= next /\ (r_life reg = Freed -> r_end reg = b)) /\
     (forall a, next <= a -> m_bytes m a = 0 /\ m_aux m a = CNone).
 
   (** `alloc_base/6`: the request's alignment above Next; Next then
@@ -328,16 +345,19 @@ Module InterpRuntime.
       intros a Hr. apply Hbytes. lia.
     - unfold ready, allocated, address_end. simpl. split; [lia|]. split.
       + intros b reg E. destruct (Z.eqb base b) eqn:Eb.
-        * injection E as <-. simpl. apply Z.eqb_eq in Eb. lia.
-        * destruct (Hobj _ _ E). lia.
+        * injection E as <-. simpl. apply Z.eqb_eq in Eb. split; [lia|]. split; [lia | discriminate].
+        * destruct (Hobj _ _ E) as (? & ? & Hf). split; [lia|]. split; [lia | exact Hf].
       + intros a Hr. apply Hbytes. lia.
   Qed.
 
-  (** Objects end below Next, which is within 2^48. *)
+  (** Objects lie between 0 and Next, which is within 2^48. *)
   Lemma address_space : forall s m, ready s m -> objects_fit (m_regions m).
   Proof.
-    intros next m (Hpos & Hobj & _) b reg E. destruct (Hobj _ _ E). unfold address_end in *. lia.
+    intros next m (Hpos & Hobj & _) b reg E. destruct (Hobj _ _ E) as (? & ? & _). unfold address_end in *. lia.
   Qed.
+
+  Lemma freed_bounds : forall s m, ready s m -> freed_empty (m_regions m).
+  Proof. intros next m (_ & Hobj & _) b reg E. exact (proj2 (proj2 (Hobj _ _ E))). Qed.
 
   (** Objects stay below Next as they end, and the program writes only
       inside them. *)
@@ -345,7 +365,9 @@ Module InterpRuntime.
   Proof.
     intros next m m' (Hpos & Hobj & Hbytes) (Hreg & Hout). split; [lia|]. split.
     - intros b reg' E. destruct (Hreg _ _ E) as (reg & E0 & Hr).
-      destruct (Hobj _ _ E0). destruct Hr as [-> | (_ & ->)]; simpl; lia.
+      destruct (Hobj _ _ E0) as (? & ? & Hf). destruct Hr as [-> | (_ & ->)]; simpl.
+      + split; [lia|]. split; [lia | exact Hf].
+      + split; [lia|]. split; [lia | reflexivity].
     - intros a Ha. assert (Hn : ~ in_object m a).
       { intros (b & reg & E & Hr). destruct (Hobj _ _ E). lia. }
       destruct (Hout a Hn) as [-> ->]. apply Hbytes. auto.
