@@ -100,6 +100,21 @@ elif name == 'ssh':
         sys.exit('unexpected ssh invocation: ' + repr(args))
 elif name == 'amp':
     job = args[args.index('--title') + 1].split()[-1]
+    if (p / 'startup-fails').exists() and job == 'nanofil@1/12':
+        sys.exit('Failed to attach rev.bundle: fixture upload unavailable')
+    if (p / 'rate-limit-after-start').exists() and job == 'nanofil@1/12':
+        print(json.dumps({'type': 'system', 'session_id': 'T-started-fixture'}), flush=True)
+        sys.exit('Too many attachment upload attempts. Try again in a minute.')
+    if '--attach' in args:
+        if (p / 'rate-limit-once').exists():
+            (p / 'rate-limit-once').unlink()
+            sys.exit('Failed to attach rev.bundle: Too many attachment upload attempts. Try again in a minute.')
+        uploads = [json.loads(line) for line in (p / 'commands').read_text().splitlines()
+                   if '--attach' in json.loads(line)]
+        if (p / 'upload-quota').exists() and len(uploads) > 6:
+            sys.exit('Failed to attach rev.bundle: Too many attachment upload attempts. Try again in a minute.')
+        print(json.dumps({'type': 'user', 'message': {'content': [{'type': 'text',
+              'text': 'https://ampcode.com/user-content/attachments/fixture-rev.bundle'}]}}), flush=True)
     data = json.loads((p / 'worker-results.json').read_text())
     result = next(r for r in data['results'] if r['job'] == job)
     if job == 'nanofil-rocq' and (p / 'stream-progress').exists():
@@ -465,6 +480,88 @@ class ShippingTests(unittest.TestCase):
         self.assertEqual(len(self.commands("amp")), 13)
         self.assertEqual(result["coverage"], {"steps": 14, "ran": 14, "distinct": 14,
                                                "lists_agree": True, "complete": True})
+
+    def test_fleet_shares_one_upload_across_twelve_shards(self):
+        (self.tmp / "upload-quota").touch()
+        directory = self.tmp / "fleet"
+        self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--rev", self.sha,
+                         "--roots", "nanofil-rocq", "--out", str(directory))
+        result = json.loads((directory / "results.json").read_text())
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["coverage"]["complete"])
+        workers = self.commands("amp")
+        self.assertEqual(len(workers), 13)
+        self.assertEqual(sum("--attach" in worker for worker in workers), 1)
+        for worker in workers:
+            if "--attach" not in worker:
+                self.assertIn("amp files get https://ampcode.com/user-content/attachments/fixture-rev.bundle",
+                              worker[2])
+
+    def test_fleet_retries_upload_rejection_before_any_worker_started(self):
+        (self.tmp / "rate-limit-once").touch()
+        directory = self.tmp / "fleet"
+        # Keep real subprocesses and streaming, but do not spend a minute in
+        # the simulated service's backoff. Ordinary stream polling stays real.
+        self.run_command(sys.executable, "-c",
+                         "import runpy, sys, time; sleep = time.sleep; "
+                         "time.sleep = lambda s: None if s >= 15 else sleep(s); "
+                         "sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')",
+                         "scripts/nanofil-fleet", "run", "--rev", self.sha,
+                         "--roots", "nanofil-rocq", "--out", str(directory))
+        result = json.loads((directory / "results.json").read_text())
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["coverage"]["complete"])
+        self.assertEqual(len(self.commands("amp")), 14)  # one rejected upload, then thirteen workers
+        self.assertEqual(sum("--attach" in worker for worker in self.commands("amp")), 2)
+        self.assertIn("Too many attachment upload attempts",
+                      (directory / "nanofil_1_12.attempt-1.err").read_text())
+        # Even that same error must not retry a thread that already exists.
+        (self.tmp / "rate-limit-after-start").touch()
+        directory = self.tmp / "started-without-receipt"
+        failed = self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--rev", self.sha,
+                                  "--roots", "nanofil-rocq", "--out", str(directory), check=False)
+        self.assertNotEqual(failed.returncode, 0)
+        result = json.loads((directory / "results.json").read_text())
+        self.assertEqual(result["results"][0]["status"], "lost")
+        self.assertIn("T-started-fixture", result["results"][0]["thread_url"])
+        self.assertEqual(len(self.commands("amp")), 15)  # no retry and no waiting workers launched
+
+    def test_fleet_reports_shared_upload_failure_as_not_started(self):
+        (self.tmp / "startup-fails").touch()
+        directory = self.tmp / "fleet"
+        failed = self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--rev", self.sha,
+                                  "--roots", "nanofil-rocq", "--out", str(directory), check=False)
+        self.assertNotEqual(failed.returncode, 0)
+        result = json.loads((directory / "results.json").read_text())
+        self.assertFalse(result["ok"])
+        self.assertEqual(len(result["results"]), 13)
+        for job in result["results"]:
+            self.assertEqual(job["status"], "not_started")
+            self.assertIn("upload unavailable", job["error"])
+        self.assertEqual(len(self.commands("amp")), 1)
+        # A check that actually ran and failed must still be reported as fail.
+        (self.tmp / "startup-fails").unlink()
+        evidence = receipt(self.sha)
+        evidence["results"][0]["status"] = "fail"
+        (self.tmp / "worker-results.json").write_text(json.dumps(evidence))
+        directory = self.tmp / "failed-check"
+        failed = self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--rev", self.sha,
+                                  "--roots", "nanofil-rocq", "--out", str(directory), check=False)
+        self.assertNotEqual(failed.returncode, 0)
+        result = json.loads((directory / "results.json").read_text())
+        self.assertEqual(result["results"][0]["status"], "fail")
+        self.assertTrue(all(job["status"] == "pass" for job in result["results"][1:]))
+
+    def test_pushed_fleet_fetches_origin_without_any_attachments(self):
+        self.git("push", "-q", "origin", "HEAD:refs/heads/candidate")
+        directory = self.tmp / "fleet"
+        self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--rev", self.sha,
+                         "--roots", "nanofil-rocq", "--out", str(directory))
+        self.assertTrue(json.loads((directory / "results.json").read_text())["ok"])
+        self.assertEqual(len(self.commands("amp")), 13)
+        for worker in self.commands("amp"):
+            self.assertNotIn("--attach", worker)
+            self.assertIn(f"git fetch -q origin {self.sha}", worker[2])
 
     def test_fleet_relays_timestamped_progress_before_worker_finishes(self):
         import queue

@@ -28,8 +28,9 @@ project. Its agent runs one command: fetch the exact commit, check it
 out, and run `scripts/nanofil-fleet worker JOB`, which builds the job with
 Nix (the orb's binary caches substitute the toolchain) and prints one
 NANOFIL-FLEET-RESULT line of JSON. The commit is the input: one on origin
-is fetched by hash; an unpushed one travels as an attached git bundle of
-the commits since origin/main, so a check can run before pushing.
+is fetched by hash; an unpushed one travels as a git bundle of the commits
+since origin/main. Only the first worker uploads it; the rest reuse its
+attachment URL, so a twelve-shard launch needs one upload, not twelve.
 Uncommitted changes are not included. `run` streams each thread's events
 to DIR/JOB.jsonl and writes DIR/summary.md, results.json and times.tsv
 (the measured step times, the format of tests/check-times.tsv).
@@ -242,12 +243,13 @@ def rev_input(rev, outdir):
     return sha, base, bundle
 
 
-def prompt(job, sha, base, bundle):
+def prompt(job, sha, base, bundle, bundle_url=None):
     if bundle:
-        fetch = (f"git fetch -q origin {base} && amp files get BUNDLE_URL -o /tmp/nanofil-fleet.bundle"
+        source = shlex.quote(bundle_url) if bundle_url else "BUNDLE_URL"
+        fetch = (f"git fetch -q origin {base} && amp files get {source} -o /tmp/nanofil-fleet.bundle"
                  " && git fetch -q /tmp/nanofil-fleet.bundle 'refs/nanofil-fleet/*:refs/nanofil-fleet/*'")
         attach = ("\nThis message has one attachment, rev.bundle. Replace BUNDLE_URL in the command "
-                  "with its attachment URL; change nothing else.\n")
+                  "with its attachment URL; change nothing else.\n") if not bundle_url else ""
     else:
         fetch, attach = f"git fetch -q origin {sha}", ""
     command = (f'cd "$(git rev-parse --show-toplevel)" && {fetch} && '
@@ -307,12 +309,14 @@ def run(args):
               "ask the swa lander to repair missing caches", file=sys.stderr)
         return checked.returncode
 
-    def launch(job):
+    shared_bundle = concurrent.futures.Future()
+
+    def launch_once(job, bundle_url=None):
         name = re.sub(r"[^A-Za-z0-9.+-]", "_", job)
-        cmd = ["amp", "-ox", prompt(job, sha, base, bundle), "--stream-json",
+        cmd = ["amp", "-ox", prompt(job, sha, base, bundle, bundle_url), "--stream-json",
                "--orb-size", args.size, "--mode", args.mode,
                "--title", f"nanofil-fleet {sha[:8]} {job}"]
-        if bundle:
+        if bundle and not bundle_url:
             cmd += ["--attach", bundle]
         t0 = time.time()
         print(f"[{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}] {job}: starting worker", flush=True)
@@ -335,8 +339,20 @@ def run(args):
                         except ValueError:
                             continue
                         if ev.get("type") == "user":
-                            ev = [c for c in ev.get("message", {}).get("content", [])
-                                  if c.get("type") == "tool_result"]
+                            parts = ev.get("message", {}).get("content", [])
+                            if bundle and not bundle_url and not shared_bundle.done():
+                                # The CLI appends the uploaded URL to the initial
+                                # user message, before the worker starts its checks.
+                                for part in parts:
+                                    if part.get("type") == "text":
+                                        url = re.search(r"(?m)^https://\S+/user-content/attachments/\S+-rev\.bundle$",
+                                                        part.get("text", ""))
+                                        if url:
+                                            shared_bundle.set_result(url[0])
+                                            print(f"[{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}] "
+                                                  "bundle uploaded once; releasing remaining workers", flush=True)
+                                            break
+                            ev = [c for c in parts if c.get("type") == "tool_result"]
                         for text in strings(ev):
                             # Receipts quote warnings/log tails; they are not
                             # fresh progress and must not be replayed as such.
@@ -362,6 +378,43 @@ def run(args):
         r = job_result(outdir, job)
         print(f"  {r['status']:5} {job:28} {int(time.time() - t0):5}s  {r.get('thread_url', '')}", flush=True)
         return r
+
+    def launch(job):
+        name = re.sub(r"[^A-Za-z0-9.+-]", "_", job)
+        uploader = bool(bundle and job == jobs[0])
+        try:
+            bundle_url = None
+            if bundle and not uploader:
+                while True:
+                    try:
+                        bundle_url = shared_bundle.result(timeout=15)
+                        break
+                    except concurrent.futures.TimeoutError:
+                        print(f"[{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}] "
+                              f"{job}: waiting for first worker's shared bundle upload", flush=True)
+            for attempt in range(3):
+                result = launch_once(job, bundle_url)
+                # Retry only the known pre-thread upload rejection. Once a
+                # thread exists, never relaunch it or repeat any of its checks.
+                if (result["status"] != "not_started" or attempt == 2
+                        or "Too many attachment upload attempts" not in result.get("error", "")):
+                    return result
+                for suffix in (".jsonl", ".err"):
+                    os.rename(os.path.join(outdir, name + suffix),
+                              os.path.join(outdir, name + f".attempt-{attempt + 1}" + suffix))
+                for remaining in range(60 * (attempt + 1), 0, -15):
+                    print(f"[{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}] {job}: "
+                          f"upload rate limited before startup; retry {attempt + 2}/3 in {remaining}s", flush=True)
+                    time.sleep(15)
+        except (OSError, RuntimeError) as error:
+            with open(os.path.join(outdir, name + ".err"), "a") as err:
+                err.write(str(error) + "\n")
+            return job_result(outdir, job)
+        finally:
+            if uploader and not shared_bundle.done():
+                result = job_result(outdir, job)
+                shared_bundle.set_exception(RuntimeError("shared bundle upload failed: "
+                                                        + result.get("error", "no attachment URL in worker stream")))
 
     with concurrent.futures.ThreadPoolExecutor(len(jobs)) as pool:
         list(pool.map(launch, jobs))
@@ -406,8 +459,11 @@ def job_result(outdir, job, recover=False):
             if r.get("job") == job and "<" not in r.get("error", ""):
                 found = r
     if found is None:
-        found = {"job": job, "status": "lost",
-                 "error": (final or {}).get("error") or (final or {}).get("result", "no result line")[:300]}
+        errpath = os.path.join(outdir, name + ".err")
+        stderr = open(errpath, errors="replace").read()[-2000:] if os.path.exists(errpath) else ""
+        found = {"job": job, "status": "lost" if thread else "not_started",
+                 "error": ((final or {}).get("error") or (final or {}).get("result")
+                           or stderr or "no result line")[:2000]}
     if thread:
         found["thread_url"] = f"https://ampcode.com/threads/{thread}"
     return found
@@ -440,7 +496,7 @@ def assess(meta, results):
     inventory = (bool(jobs) and len(set(jobs)) == len(jobs)
                  and sorted(r["job"] for r in results) == sorted(jobs))
     for r in results:
-        if r.get("rev") != meta["rev"]:
+        if r["status"] not in ("not_started", "lost") and r.get("rev") != meta["rev"]:
             r["status"], r["error"] = "error", f"missing/wrong revision; expected {meta['rev']}"
     # Coverage: every shard saw the same step list, and together they ran
     # each of its steps once.
