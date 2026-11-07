@@ -620,10 +620,11 @@ Decisions and findings:
   does not say why; that is the evidence invariant's job, from the
   check having passed earlier and nothing between it and the use having
   freed or moved the object.
-- **Objects end at or below 2^64: `objects_fit`.** Addresses wrap
+- **Objects end in the address space: `objects_fit`.** Addresses wrap
   modulo 2^64 (`raw_address/3`) while bounds are unbounded integers, so
   the lemma is false for an object ending above 2^64. The lemma takes
-  `objects_fit` as a hypothesis, and the runtime's `address_space`
+  `objects_fit` as a hypothesis (since "Objects end below 2^48", every
+  object ends at or below 2^48, more than this lemma needs), and the runtime's `address_space`
   axiom supplies it wherever the runtime is ready: Machine.v's
   `mreachable_objects_fit` gives it in every state of a run that starts
   ready. See "An object past 2^64" below.
@@ -973,7 +974,7 @@ milestone, follows native code:
 - **The axioms bound the object.** `fresh` asks that the object end at
   or below 2^64, and the new axiom `address_space` that no object of a
   memory the runtime is ready in ends past it (`objects_fit`, now in
-  Runtime.v). `InterpRuntime` proves both: its `ready` keeps Next at
+  Runtime.v; since tightened to 2^48, below). `InterpRuntime` proves both: its `ready` keeps Next at
   most 2^48. The native test is
   [axiom-address.c](../tests/c/prog/axiom-address.c): objects end below
   2^48, `malloc(2^48)` traps, and so does `malloc(2^48 - 1)`, which is
@@ -1023,6 +1024,44 @@ fits the address space starts ready, and the hypothesis becomes a lemma.
 Data past the address space would then be refused as the runtime
 refuses an allocation it cannot hold. That changes interpreter semantics
 and the module type's `start`, so it needs an Oracle review.
+
+### Objects end below 2^48
+
+`objects_fit` said every object ends at or below 2^64. That is enough
+for one check: a covered access does not wrap (Coverage.v). It is not
+enough for `hull_covered/7`, which joins the spans of several checks of
+one object, related through `pointer_distance/4`, with each offset
+within 2^62 of the access's base (`near_offset/1`), all modulo 2^64. Two
+spans of an object are on the same side of the wrap only if the object
+is smaller than about 2^63. So a runtime could be ready in a memory with
+an object [2^16, 2^64 - 2^20), such as a large `zero(N)` data item, and
+p 8 bytes below its end. Then a check of p+[0, 8) passes, a check of
+[0, 8) through a flight at p + 2^62 - 8 passes after the address wraps,
+inside the object, and an access at p+8, between the two spans, lands at
+the object's end: `hull_covered` accepts it, and the run is
+`unchecked(out_of_bounds)`. `valid_no_unchecked` over every runtime was
+false as the axioms stood. The counterexample cannot arise in the
+interpreter, whose `ready` keeps every object below 2^48, nor natively.
+An end bound below 2^63 is enough for the hull, even for spans whose hi
+is below their lo.
+
+The same bound supplies what `half_known/6` and `hull_renewable/8`
+assume of a checked address, that it is a user address below 2^56: under
+the old axiom, a half check testing only the upper bound of a huge object
+could have wrapped below its lower.
+
+mbrock's decision: tighten the axiom to native's bound.
+`objects_fit` now says every object ends at or below 2^48, libpas's
+address space (`PAS_ADDRESS_BITS`), which is what
+[axiom-address.c](../tests/c/prog/axiom-address.c) tests, for heap
+objects, static and initialized data and an address-taken local; native
+Fil-C also stores object addresses in 48 bits
+(`FILC_OBJECT_AUX_PTR_MASK`).
+`InterpRuntime` proves it unchanged: Next is at most 2^48. The
+coverage lemma holds a fortiori. The alternatives were a hypothesis
+on the hull theorem, and a width bound in ir.pl's hull rule, a validator
+change with no native motivation. Initial readiness stays a hypothesis;
+with this bound it also keeps a ready module's data below 2^48.
 
 ## Next
 

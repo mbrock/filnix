@@ -1,3 +1,4 @@
 objects end below 2^48: yes
+data and locals end below 2^48: yes
 malloc(2^48) traps as too big: yes
 malloc(2^48 - 1) traps out of memory: yes

@@ -246,8 +246,9 @@ Record alloc_req : Type := mkReq {
 (** `fresh m q base`: base may be the identity and address of a new
     object of q in m. It is a positive, aligned address; it is no
     object's identity, live or freed; the new bytes overlap no object's
-    current bounds; they end at or below 2^64, so that no address
-    inside the object wraps (`raw_address/3`); and they read as zero with
+    current bounds; they end at or below 2^64 (Runtime.v's
+    `address_space` then bounds them by 2^48, native's address space);
+    and they read as zero with
     no stored capability, as Fil-C's allocations do. The interpreter
     never reuses an address; the model allows any choice that satisfies
     this. Runtime.v's

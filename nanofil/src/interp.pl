@@ -1647,8 +1647,9 @@ alloc_base(Mode, mem(Bytes, Rs, Next0, Aux), Align0, Size, Base,
 
 % address_space(+Mode, +Next): Next is within the address space. Fil-C's
 % objects lie below 2^48, libpas's address space (PAS_ADDRESS_BITS), so
-% no object ends past 2^64 and an address never wraps inside one. Plain
-% mode sets no limit.
+% an address never wraps inside one, and two addresses of one object are
+% less than 2^63 apart (the Rocq model's objects_fit). Plain mode sets no
+% limit.
 address_space(plain, _).
 address_space(filc, Next) :- Next =< 281474976710656.
 address_space(local, Next) :- Next =< 281474976710656.

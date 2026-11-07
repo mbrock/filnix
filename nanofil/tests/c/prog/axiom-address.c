@@ -1,6 +1,7 @@
 // Runtime axiom "Address space" (docs/runtime-axioms.md): no object ends
-// past 2^64, so no address inside one wraps. Natively every object lies
-// below 2^48, libpas's address space. An allocation of more than
+// past 2^48, libpas's address space, so no address inside one wraps and
+// two addresses of one object are less than 2^63 apart. Heap objects,
+// static and initialized data, and an address-taken local are checked. An allocation of more than
 // 2^48 - 1 bytes traps ("attempt to allocate object that is too big"),
 // and so may one below that limit that the address space cannot hold
 // ("out of memory"): the obvious wrong strengthening, that every
@@ -15,6 +16,8 @@
 #include <unistd.h>
 #include <sys/wait.h>
 static volatile unsigned long size;
+static char zeroed[1 << 20];
+static char initialized[256] = {1};
 static void allocate(void) { volatile char *p = malloc(size); (void)p; }
 // trapped_with(f, text): f, run in a child, ends in a Fil-C trap
 // (SIGTRAP) whose safety error, on the child's stderr, says text.
@@ -43,6 +46,12 @@ int main(void) {
         free(p);
     }
     printf("objects end below 2^48: %s\n", below ? "yes" : "no");
+    char local[4096];
+    char *volatile taken = local;
+    int data = (uintptr_t)zeroed + sizeof zeroed <= 1ul << 48 &&
+               (uintptr_t)initialized + sizeof initialized <= 1ul << 48 &&
+               (uintptr_t)taken + sizeof local <= 1ul << 48;
+    printf("data and locals end below 2^48: %s\n", data ? "yes" : "no");
     size = 1ul << 48;
     printf("malloc(2^48) traps as too big: %s\n",
            trapped_with(allocate, "attempt to allocate object that is too big") ? "yes" : "no");

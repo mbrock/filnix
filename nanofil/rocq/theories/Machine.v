@@ -33,7 +33,7 @@
       object (`step_fresh_kept`);
     - a safepoint is R's `safepoint_ready`.
 
-    Where R is ready no object ends past 2^64 (R's `address_space`), so
+    Where R is ready no object ends past 2^48 (R's `address_space`), so
     `mreachable_objects_fit` gives the coverage lemma's hypothesis
     (Coverage.v) in every state of a run that starts ready.
 
@@ -565,7 +565,7 @@ Proof.
 Qed.
 
 (** Ready initially, no object of any state a run reaches ends past
-    2^64: the coverage lemma's `objects_fit` (Coverage.v). *)
+    2^48: the coverage lemma's `objects_fit` (Coverage.v). *)
 Corollary mreachable_objects_fit : forall ge st st',
   ge_free ge = R.free -> mreachable ge st st' -> ready_state st ->
   objects_fit (m_regions (c_mem (fst st'))).

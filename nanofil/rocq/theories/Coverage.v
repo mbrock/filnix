@@ -21,19 +21,20 @@
     | `covered_access_checked` | the raw access's own check passes |
     | `covered_access_not_unchecked` | the raw access instruction gives no `unchecked` |
 
-    ## One more hypothesis: objects end at 2^64
+    ## One more hypothesis: objects end in the address space
 
     An address is `raw_address/3`'s sum modulo 2^64, while the model's
     bounds are unbounded integers. An object ending above 2^64 would let
     a check of [2^64-64, 2^64+64) pass and the covered access at offset
-    64 wrap to address 0, outside it. The runtime excludes that for the
-    objects it allocates: `objects_fit` (Runtime.v) holds wherever a
-    runtime is ready, its `address_space` axiom, so of every state of a
-    run that starts ready (Machine.v's `mreachable_objects_fit`).
-    Whether a valid module's initial memory is ready is not yet proved:
-    its data has no size limit (docs/rocq.md, "An object past 2^64").
-    Native Fil-C keeps every object below 2^48
-    (docs/runtime-axioms.md).
+    64 wrap to address 0, outside it. The runtime excludes that:
+    `objects_fit` (Runtime.v), every object ending at or below 2^48 as
+    natively, holds wherever a runtime is ready, its `address_space`
+    axiom, so of every state of a run that starts ready (Machine.v's
+    `mreachable_objects_fit`). This lemma needs only the weaker 2^64;
+    the reuse forms' hulls need the rest (docs/rocq.md, "Objects end
+    below 2^48"). Whether a valid module's initial memory is ready is
+    not yet proved: its data has no size limit (docs/rocq.md, "An
+    object past 2^64").
 
     The lemma is stated over the memory the access runs in: that the
     check passed there is what the evidence invariant, the next lemma,

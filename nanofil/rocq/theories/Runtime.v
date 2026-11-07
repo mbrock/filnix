@@ -17,7 +17,7 @@
     | Fact | Statement | Native test |
     |---|---|---|
     | `fresh_allocation` | an allocation's base is `fresh`: a new identity, aligned, overlapping no object, ending at or below 2^64, reading as zero | axiom-fresh.c |
-    | `address_space` | every object ends at or below 2^64 (natively below 2^48); an allocation the runtime cannot hold is refused, a trap | axiom-address.c |
+    | `address_space` | every object ends at or below 2^48, native Fil-C's address space; an allocation the runtime cannot hold is refused, a trap | axiom-address.c |
     | `non_moving` | at a safepoint no byte moves or changes: the collector writes no object's contents | axiom-nonmoving.c |
     | `free_lifetime`, `safepoint_lifetime` | bounds change only by free, which empties a live heap object's | axiom-lifetime.c |
     | `safepoints` | the runtime acts only at instructions that are not evidence preserving | axiom-safepoint.c |
@@ -91,10 +91,13 @@ Definition freed_in (rs : list region) (c : cap) : Prop :=
 Definition traps_as_freed (rs : list region) (c : cap) : Prop :=
   forall a size r align, 0 < size -> cap_access_res c rs a size r align = Some (RTrap OutOfBounds).
 
-(** `objects_fit rs`: every object of rs ends at or below 2^64, so an
-    address inside one never wraps (`raw_address/3`). *)
+(** `objects_fit rs`: every object of rs ends at or below 2^48, native
+    Fil-C's address space (`PAS_ADDRESS_BITS`). An address inside one
+    never wraps (`raw_address/3`), and two addresses of one object are
+    less than 2^63 apart, so a near offset between them does not wrap
+    either (`hull_covered/7`). *)
 Definition objects_fit (rs : list region) : Prop :=
-  forall b reg, object_region b rs = Some reg -> r_end reg <= 2 ^ 64.
+  forall b reg, object_region b rs = Some reg -> r_end reg <= 2 ^ 48.
 
 (** `in_object m a`: a is inside the current bounds of an object of m. *)
 Definition in_object (m : mem) (a : Z) : Prop :=
@@ -141,7 +144,7 @@ Module Type Runtime.
     alloc s q = Some (base, s') ->
     fresh m q base /\ ready s' (allocated m q base).
 
-  (** No object of a memory the runtime is ready in ends past 2^64. *)
+  (** No object of a memory the runtime is ready in ends past 2^48. *)
   Axiom address_space : forall s m, ready s m -> objects_fit (m_regions m).
 
   (** The program's own changes keep the runtime ready. *)
