@@ -31,6 +31,7 @@ the interpreter and cites the predicate it copies.
 | `Cfg.v` | cfg.pl | `func_cfg/2`, `cfg_idoms/2` (Cooper, Harvey and Kennedy), `dom_children/3`, `dom_intervals/3`, `dominates_by_interval/3` |
 | `Validate.v` | ir.pl's `valid_module/1` | `valid_func`, `valid_data`, `valid_alias`, `valid_items`, `valid`: uses, ops, instructions, dominance, locals, the evidence pass, the reuse rules, `polls_every_cycle`, data linkage and items, aliases |
 | `Dominance.v` | — (Campaign 3) | what Cfg.v's dominator intervals mean: the entry is reachable, reachable blocks' successors are, and what dominates a successor dominates its predecessor, but for the successor itself; only the entry dominates the entry; dominance is antisymmetric |
+| `Interval.v` | `offset_interval/8`, `op_interval/9` (ir.pl) | the derivations of an offset interval as an inductive relation; every interval the walk answers is derived, and a derived interval holds of the values a run reads wherever the names it walks hold their definitions |
 | `Coverage.v` | — (Campaign 3) | the coverage lemma: a raw access that `covered_access/6` puts inside a passed check gives no `unchecked` |
 | `Evidence.v` | — (Campaign 3) | the evidence invariant at an instruction and an edge: what a live fact means, every case of `checked_inst_rest/7` keeps the pass's facts true, block entry keeps the meet, accesses the pass accepts give no `unchecked` |
 | `Walk.v` | — (Campaign 3) | the evidence pass read back for the run-level invariant: block by block (`pass_fold`), position by position (`walks`), where it keeps facts (`relies`), a `check_local`'s own fact |
@@ -813,6 +814,39 @@ Decisions and findings:
 - `term_eqb_refl` moved from Evidence.v to Term.v, next to
   `term_eqb_eq`, for Maps.v's lemmas.
 
+### Offset intervals
+
+The reuse forms bound a flight's offset from its base by
+`offset_interval/8`, a memoized walk with a depth limit through the
+single definitions of integer names: a narrow `ext` or load, `copy`,
+`and` with a mask, `urem`, `shl` and `mul` by a constant, `add`, and
+`sub` of a constant. `Interval.v` proves, with no admits, in under two
+seconds:
+
+- `offset_interval_iv`: an interval the walk answers is an `iv`
+  derivation, an inductive relation with one constructor per clause of
+  `op_interval/9`. The memo keeps only derived answers (`memo_ok`), so
+  neither it nor the depth limit appears in the relation.
+- `iv_sound`: a derived interval holds of the value a run reads, modulo
+  the class, wherever each name the derivation walks holds what its
+  definition computes from its operands' current values (`let_holds`).
+  Which names do is the run-level invariant's to say; the lemma takes
+  any set of names closed under operands.
+
+Decisions and findings:
+
+- **An interval holds modulo the class.** `interval_fits/3` accepts any
+  `l` interval, so `add` and `mul` may leave the range of a 64-bit
+  word; such an interval bounds some integer congruent to the value,
+  which is what a flight's address arithmetic needs. A `w` interval
+  fits, so it bounds the signed word itself, as `ext(sw)` needs.
+- **A narrow load's relation does not mention memory.** Any loaded
+  value, extended, lies in the narrow range, so the relation survives
+  every store.
+- **The walk is not refactored.** The derivation is a second statement
+  of the same clauses beside Validate.v's transcription, which the gates
+  compare, as Evidence.v does for the evidence pass.
+
 ## An object past 2^64
 
 `rocq/tests/huge-object.ir` allocates an object of 2^64 - 2^32 - 80
@@ -907,9 +941,10 @@ and the module type's `start`, so it needs an Oracle review.
 
 1. The single-definition invariant over runs: where a name's one
    definition dominates the running point, the relation its definition
-   states holds (a flight's capability and offset from its base, a
+   states holds (a flight's capability and offset from its base, an
+   integer's value, which `iv_sound` turns into its interval, a
    proof's pointer and passed check, a span test's or a limit's
-   reading), on Dominance.v. Then the reuse forms as corollaries, each
+   reading), on Dominance.v and Interval.v. Then the reuse forms as corollaries, each
    with ir.pl's side conditions as hypotheses: `hull_covered`, renew,
    half check, `renew_if`, `check_limit`, and `check_ahead`'s doomed
    frame; then `valid_no_unchecked`, assembled from Persistence.v's
