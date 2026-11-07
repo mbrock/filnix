@@ -133,6 +133,10 @@ linkage(_, extern(weak), _, []).
 linkage(Items, init(K, P), _, [item(p, sym(F, Off))]) :-
     once(member(func(F, _, _, _, _), Items)),
     member(K-P-Off, [ctor-none-0, dtor-101-0, ctor-65535-0, ctor-70000-0, ctor-none-8]).
+linkage(Items, init(ctor, none), _, [item(p, sym(D, 0))]) :-
+    findall(D1, ( member(data(D1, Lk, _, _), Items), Lk \== extern(weak) ), Ds0),
+    ( Ds0 = [D0|_] -> Ds = [rocq_undefined, D0] ; Ds = [rocq_undefined] ),
+    member(D, Ds).
 
 % data_item(+Items, +N, -I): an item of each shape the validator reads.
 data_item(Items, N, I) :-
@@ -145,6 +149,7 @@ data_item(Items, N, I) :-
                    item(w, foo), zero(3), bar, zero(-1), item(q, const(1)),
                    item(p, sym(N, x)), item(p, sym(3, 0))])
     ;   once(member(func(F, _, _, _, _), Items)), I = item(p, sym(F, 8))
+    ;   once(member(data(E, init(_, _), _, _), Items)), I = item(p, sym(E, 0))
     ).
 
 % other_name(+Items, +N, -N1): a fresh name, or the name of another item.
@@ -177,7 +182,8 @@ target(_, rocq_undefined).
 % inserted(+Items, -Name, -Id, -Change): a data object or an alias
 % inserted at the front: an alias of each target under a fresh name and
 % under the name of a function the module calls without defining; a
-% data object of each linkage, and one under the first function's name.
+% data object of each linkage, one under the first function's name, and
+% a weak declaration of a name the module defines.
 inserted(Items, Name, alias(Name, T), insert(alias(Name, export, T))) :-
     findall(T, target(Items, T), Ts0), sort(Ts0, Ts),
     member(T, Ts),
@@ -190,6 +196,12 @@ inserted(Items, rocq_data, data(Lk1), insert(data(rocq_data, Lk1, 8, Is1))) :-
     linkage(Items, Lk1, [item(w, const(1))], Is1).
 inserted(Items, F, data_named_as(F), insert(data(F, export, 8, [item(w, const(1))]))) :-
     once(member(func(F, _, _, _, _), Items)).
+inserted(Items, N, weak_declaration_of(N), insert(data(N, extern(weak), 1, []))) :-
+    (   once(member(func(N, export, _, _, _), Items))
+    ;   once(member(func(N, local, _, _, _), Items))
+    ;   member(Lk, [export, local, ro(local), tls(local)]),
+        once(member(data(N, Lk, _, _), Items))
+    ).
 
 % mutant(+F, -Id, -F1): F1 is F mutated as Id says.
 mutant(F, Id, F1) :-

@@ -298,12 +298,16 @@
     `item(p, sym(F, 0))` of a function F defined in the module, and
     Priority an integer from 0 to 65535, lower first, or `none`, after
     those with one. It is not an object: nothing may take its address,
-    and the interpreter does not run it. Linkage `weak` or `ro(weak)`
+    neither `global(Name)` nor another item's `sym(Name, _)`, and the
+    interpreter does not run it. Linkage `weak` or `ro(weak)`
     (filc mode only) is `export` that a strong definition elsewhere
     replaces. Linkage `extern(weak)` (filc mode only), with Items `[]`,
     declares that Name, which the module does not define, is weak: if no
     object of the program defines it, `global(Name)` is a null pointer.
-    It is not an object. Align is 1, 2, 4, 8 or 16. Items is a list of:
+    It is not an object. Beside a definition of Name, `global(Name)` is
+    the definition, which may not have local linkage: the declaration
+    would make its symbols weak and global, and another object's Name
+    could replace them. Align is 1, 2, 4, 8 or 16. Items is a list of:
 
     | Item | Means |
     |---|---|
@@ -1034,7 +1038,7 @@ valid_item(Symbols, Mode, Stage, func(Name, Linkage, Ret, Params, Blocks)) :-
     definitions_dominate(Name, Params, Blocks),
     valid_locals(Name, Params, Blocks),
     stage_func(Stage, Symbols, Name, Mode, Params, Blocks).
-valid_item(_, Mode, _, data(Name, Linkage, Align, Items)) :-
+valid_item(Symbols, Mode, _, data(Name, Linkage, Align, Items)) :-
     (   integer(Align), data_align(Align) -> true
     ;   fn_error(Name, 'unsupported data alignment ~w', [Align])
     ),
@@ -1046,6 +1050,10 @@ valid_item(_, Mode, _, data(Name, Linkage, Align, Items)) :-
     ;   Linkage == extern(weak)
     ->  (   Mode == filc, Items == [] -> true
         ;   fn_error(Name, 'a weak declaration has no items, in a Fil-C module', [])
+        ),
+        (   local_global(Symbols, Name)
+        ->  fn_error(Name, 'a weak declaration of ~w, which the module defines with local linkage', [Name])
+        ;   true
         )
     ;   memberchk(Linkage, [tls(export), tls(local)])
     ->  (   Mode == filc -> true
@@ -1053,8 +1061,11 @@ valid_item(_, Mode, _, data(Name, Linkage, Align, Items)) :-
         )
     ;   Linkage = init(Kind, Prio), memberchk(Kind, [ctor, dtor]),
         ( Prio == none -> true ; integer(Prio), between(0, 65535, Prio) )
-    ->  (   Mode == filc, Items = [item(p, sym(_, 0))] -> true
+    ->  (   Mode == filc, Items = [item(p, sym(F, 0))] -> true
         ;   fn_error(Name, 'a ~w entry is one function in a Fil-C module', [Kind])
+        ),
+        (   func_named(Symbols, F, _) -> true
+        ;   fn_error(Name, 'a ~w entry names ~w, which is no function of the module', [Kind, F])
         )
     ;   fn_error(Name, 'invalid data linkage ~w', [Linkage])
     ),
@@ -1074,6 +1085,10 @@ valid_item(_, Mode, _, data(Name, Linkage, Align, Items)) :-
     forall(member(Item, Items),
            ( data_item_shape(Item) -> true
            ; fn_error(Name, 'invalid data item ~w', [Item]) )),
+    forall(member(item(_, sym(S, _)), Items),
+           ( data_item(Symbols, S, data(_, init(_, _), _, _))
+           -> fn_error(Name, 'sym(~w, _) names a constructor or destructor table entry', [S])
+           ; true )),
     pointer_items_aligned(Name, Items, 0).
 
 % An alias names a function or a data object the module defines, its

@@ -20,7 +20,7 @@
     | `definitions_dominate` | the same | strict SSA: every use has a dominating definition |
     | `valid_locals` | the same | named locals declared once, in the entry block, before use |
     | `stage_func` | the same | every access covered by evidence that still holds; a poll on every cycle |
-    | `valid_data` | `valid_item/4` for data | alignment, linkage, float and string items |
+    | `valid_data` | `valid_item/4` for data | alignment, linkage, item shapes; a table entry names a function, a weak declaration no local definition, no pointer a table entry |
     | `valid_alias` | `valid_item/4` for aliases | linkage, a name of its own, a target the module defines |
 
     `stage_func` is the part Campaign 3 is about. A block's entry
@@ -1639,13 +1639,6 @@ Fixpoint pointer_items_aligned (off : Z) (its : list data_item) : bool :=
       && pointer_items_aligned (off + item_size it) rest
   end.
 
-(** `valid_item(Symbols, filc, Stage, data(Name, Linkage, Align, Items))`. *)
-Definition valid_data (lk : linkage) (align : Z) (its : list data_item) : bool :=
-  data_align align && data_linkage_ok lk its && forallb data_item_ok its
-  && pointer_items_aligned 0 its.
-
-(** ## Aliases *)
-
 (** `func_named(Symbols, Name, _)`: the module defines a function Name,
     in the subset or not. *)
 Definition func_named (md : module) (n : name) : bool :=
@@ -1655,6 +1648,28 @@ Definition func_named (md : module) (n : name) : bool :=
     data of that name not declared `extern(weak)`. *)
 Definition data_named (md : module) (n : name) : bool :=
   match first_data_linkage n md with Some _ => true | None => false end.
+
+(** What data asks of the rest of the module: a constructor or
+    destructor table entry names a function the module defines; a weak
+    declaration is of no name the module defines with local linkage
+    (`local_global(Symbols, Name)`), whose symbols it would make weak and
+    global; and no pointer item names a table entry, which has no
+    address. *)
+Definition data_names_ok (md : module) (n : name) (lk : linkage) (its : list data_item) : bool :=
+  match lk, its with
+  | LInit _ _, [Sym f _] => func_named md f
+  | LExternWeak, _ => negb (local_global md n)
+  | _, _ => true
+  end
+  && forallb (fun it => match it with Sym s _ => negb (init_entry_named md s) | _ => true end) its.
+
+(** `valid_item(Symbols, filc, Stage, data(Name, Linkage, Align, Items))`. *)
+Definition valid_data (md : module) (n : name) (lk : linkage) (align : Z) (its : list data_item)
+  : bool :=
+  data_align align && data_linkage_ok lk its && forallb data_item_ok its
+  && pointer_items_aligned 0 its && data_names_ok md n lk its.
+
+(** ## Aliases *)
 
 (** The first function of each name, as `module_symbols/2` indexes
     them. *)
@@ -1743,7 +1758,7 @@ Definition valid_items (md : module) : bool :=
   unique_names md &&
   forallb (fun it => match it with
                      | IFunc f => valid_func md f
-                     | IData _ lk al its => valid_data lk al its
+                     | IData n lk al its => valid_data md n lk al its
                      | IAlias n lk t => valid_alias md n lk t
                      | IOutside _ _ => true
                      end) md.

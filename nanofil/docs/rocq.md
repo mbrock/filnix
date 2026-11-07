@@ -470,7 +470,21 @@ These are formal.md's early decisions as they turned out in the code:
     weak thunk that another object's function of the same name
     replaced, which a two-object link showed running that function, so
     filc_abi.pl's `lower_thunk` now keeps it local, as it does for a
-    local function's.
+    local function's. A second review of those two fixes, which also
+    showed that a call of `tls(_)` data traps natively, found three more
+    valid modules that got around them, each run natively; all three
+    are now invalid (`valid_item/4` for data, `data_names_ok` in the
+    model):
+    - another data object's `item(p, sym(E, _))` took the address of
+      a table entry E; natively that is an undefined getter, or
+      another object's function E;
+    - a table entry's item named something other than a function of
+      the module (another entry, or data), which the header already
+      forbade and which left an undefined function object;
+    - an `extern(weak)` declaration beside a `local` definition of the
+      same name made the definition's getter and thunk weak and
+      global, so another object's function of that name ran. The C
+      frontend declares weak only names it does not define.
   - *Names are unique.* `module_symbols/2` keeps the first item of each
     name, the interpreter's layout the last, and the assembler refuses
     both; with two functions of one name the interpreter crashed.
@@ -481,8 +495,10 @@ These are formal.md's early decisions as they turned out in the code:
   unique names (25 disagreements on three files), no pointer alignment
   (16), `zero(-1)` accepted (11), unknown items accepted (110), a
   non-atom symbol accepted (4), `x` taken as 16 bytes (1), the call
-  stuck instead of trapping (2), and a copy of a table entry accepted
-  (30).
+  stuck instead of trapping (2), a copy of a table entry accepted
+  (30), a table entry naming data accepted (18), a weak declaration of
+  a local definition accepted (14), and a pointer item naming a table
+  entry accepted (5).
 - **Entry evidence depends on block order.** An edge from a block not
   yet processed carries no evidence, the same as a poll edge. Block
   order is therefore part of the checked IR's meaning for the

@@ -612,7 +612,25 @@ test(init_entry_validator) :-
     rejected_with([F, E, func(c, export, w, [], [block(start, [], [let(tmp(q), p, copy, [global(e)])], ret(const(0)))])],
                   "constructor or destructor table entry"),
     rejected_with([F, E, func(k, export, w, [], [block(start, [], [call(void, global(e), [])], ret(const(0)))])],
-                  "constructor or destructor table entry").
+                  "constructor or destructor table entry"),
+    rejected_with([F, E, data(t, export, 8, [item(p, sym(e, 0))])],
+                  "constructor or destructor table entry"),
+    rejected_with([F, E, data(e2, init(ctor, none), 8, [item(p, sym(e, 0))])],
+                  "no function of the module"),
+    rejected_with([F, data(d, export, 8, [item(l, const(1))]), data(e2, init(dtor, 7), 8, [item(p, sym(d, 0))])],
+                  "no function of the module").
+
+% A weak declaration beside a local definition would make the
+% definition's symbols weak and global; beside an exported one it is
+% harmless.
+test(weak_declaration_of_local_validator) :-
+    F = func(f, export, w, [], [block(start, [], [let(tmp(m), p, alloc(8), [const(8)])], ret(const(0)))]),
+    valid_module(module([F, data(d, extern(weak), 1, []), data(d, export, 8, [item(l, const(1))]),
+                         data(f, extern(weak), 1, [])])),
+    forall(member(D, [data(d, local, 8, [item(l, const(1))]), data(d, ro(local), 8, [item(l, const(1))]),
+                      data(d, tls(local), 8, [item(l, const(1))]),
+                      func(d, local, w, [], [block(start, [], [], ret(const(0)))])]),
+           rejected_with([F, data(d, extern(weak), 1, []), D], "with local linkage")).
 
 % A direct call of data the module defines traps, as native code's
 % function check does; memory is unchanged and nothing after it runs.
