@@ -675,6 +675,8 @@ proof_(S, pf(Steps, End)) -->
       format(atom(Id), "proof-~d", [Start]),
       findall(snap(T, D, Bs, F, Ts), member(row(D, Bs, F-T, Ts), Rows), Snaps),
       append([snap(Start, 0, [], none, [])|Snaps], [snap(Finish, 0, [], end(Kw), [])], All),
+      focus_tree(0, All, Timeline),
+      exclude([R]>>(R = row(close, _, _, _)), Rows, OpenRows), focus_tree(0, OpenRows, Script),
       format(string(Count), "~d tactics", [N]) },
     el(details, "rq-proof rq-captured", [id=Id],
        ( el(summary, none, ( el(span, "proof-invite", "Explore proof"), " ", el(span, "proof-count", esc(Count)) )),
@@ -684,18 +686,40 @@ proof_(S, pf(Steps, End)) -->
                    el(output, "rq-position", ['aria-live'=polite], "Initial goal"),
                    el(button, none, [type=button, 'data-move'=1, 'aria-label'="Next proof step"], "Next →") )),
               el(div, "rq-walk",
-                 ( el(nav, "rq-timeline", [hidden=hidden, 'aria-label'="Proof steps"], seq(All, proof_link(Id))),
+                 ( el(nav, "rq-timeline", [hidden=hidden, 'aria-label'="Proof steps"], focus_nodes(Timeline, proof_link(Id))),
                    el(div, "rq-states", ( snapshot(Id, States, snap(Start, 0, [], none, []), Initial),
                                           seq_tail(All, Id, States) )) )),
-              el(details, "rq-script", ( el(summary, none, "Source script"), el(div, "proof-steps", seq(Rows, tac_row)) )) )) )).
+              el(details, "rq-script", ( el(summary, none, "Source script"), el(div, "proof-steps", focus_nodes(Script, tac_row)) )) )) )).
 proof_(_, pf(Steps, End)) -->
     { include([S]>>(S = step(_, _, _)), Steps, Tacs), length(Tacs, N),
       ( End = qed(_, Kw) -> true ; Kw = '' ),
       ( N =:= 1 -> Count = "1 step" ; format(string(Count), "~d steps", [N]) ),
-      foldl(step_depth, Steps, Rows, [], _) },
+      foldl(step_depth, Steps, Rows, [], _),
+      exclude([R]>>(R = row(close, _, _, _)), Rows, OpenRows), focus_tree(0, OpenRows, Script) },
     el(details, "rq-proof",
        ( el(summary, none, ( kw("Proof"), " ", el(span, "proof-count", esc(Count)), " ", kw(Kw) )),
-         el(div, "proof-steps", seq(Rows, tac_row)) )).
+         el(div, "proof-steps", focus_nodes(Script, tac_row)) )).
+
+% Source focus is a tree, independently of the captured command count.
+% A repeated bullet starts a sibling; braces and deeper bullets nest.
+focus_tree(_, [], []).
+focus_tree(Level, [X|Xs], [focus(Kind, Children)|Tree]) :-
+    focus_depth(X, D, Bs), D > Level, !,
+    ( memberchk('{', Bs) -> Kind = 'rq-focus rq-braced' ; Kind = 'rq-focus' ),
+    focus_members(Xs, D, More, Rest), focus_tree(D, [X|More], Children), focus_tree(Level, Rest, Tree).
+focus_tree(Level, [X|Xs], [X|Tree]) :- focus_tree(Level, Xs, Tree).
+
+focus_depth(snap(_, D, Bs, _, _), D, Bs).
+focus_depth(row(D, Bs, _, _), D, Bs).
+focus_members([X|Xs], D, [X|More], Rest) :-
+    focus_depth(X, DX, Bs), ( DX > D ; DX =:= D, exclude(==('}'), Bs, []) ), !,
+    focus_members(Xs, D, More, Rest).
+focus_members(Rest, _, [], Rest).
+
+focus_nodes([], _) --> [].
+focus_nodes([focus(Kind, Children)|Tree], Draw) --> !,
+    el(div, Kind, focus_nodes(Children, Draw)), focus_nodes(Tree, Draw).
+focus_nodes([X|Tree], Draw) --> call(Draw, X), focus_nodes(Tree, Draw).
 
 seq_tail([_|Ss], Id, States) --> seq(Ss, snapshot_lookup(Id, States)).
 
@@ -707,10 +731,11 @@ proof_link(Id, Snap) -->
     el(button, "rq-step-link clause", [type=button, 'data-target'=Target, style=Style, 'aria-label'=Label], step_label(Snap)),
     { nb_setval(rq_button, false) }.
 
-step_label(snap(_, _, _, none, _)) --> !, esc("Initial goal").
-step_label(snap(_, _, _, end(Kw), _)) --> !, esc(Kw).
+step_label(snap(_, _, _, none, _)) --> !, el(span, "rq-step-name", esc("Initial goal")).
+step_label(snap(_, _, _, end(Kw), _)) --> !, el(span, "rq-step-name", esc(Kw)).
 step_label(snap(T, _, Bs, F, Ts)) -->
-    el(span, bullet, seq(Bs, bullet_)), tactic_text(F, T, Ts).
+    { exclude(==('}'), Bs, Shown) },
+    el(span, bullet, seq(Shown, bullet_)), tactic_text(F, T, Ts).
 
 snapshot_lookup(Id, States, Snap) -->
     { Snap = snap(T, _, _, _, _), atom_number(Key, T),
@@ -827,55 +852,99 @@ tactic_block(tmatch(K, Subject, Bs), Env) --> !,
         el(span, "cases match", tactic_branches(Bs, Env)), el(span, "rq-tac-end", kw("end")) )).
 tactic_block(tbin(Op, L, R), Env) -->
     { tactic_structural(L) ; tactic_structural(R) }, !,
-    el(span, "rq-tac-seq", ( tactic_block(L, Env), el(span, "rq-tac-sep", esc(Op)), " ", tactic_block(R, Env) )).
+    el(span, "rq-tac-seq", ( el(span, "rq-tac-left", tactic_block(L, Env)),
+        el(span, "rq-tac-sep", esc(Op)), el(span, "rq-tac-right", tactic_block(R, Env)) )).
 tactic_block(prefix(K, T), Env) --> { tactic_structural(T) }, !,
     el(span, "rq-tac-prefix", ( kw(K), " ", tactic_block(T, Env) )).
 tactic_block(select(S, T), Env) --> !,
     el(span, "rq-tac-select", ( el(span, "rq-selector", ( esc(S), ":" )), " ", tactic_block(T, Env) )).
-tactic_block(choices(K, Ts), Env) --> !,
-    el(span, "rq-tac-choices", ( kw(K), " [", el(span, "rq-tac-options", tactic_options(Ts, Env)), "]" )).
-tactic_block(dispatch(T, Ts), Env) --> !,
-    el(span, "rq-tac-seq", ( tactic_block(T, Env), "; [", el(span, "rq-tac-options", tactic_options(Ts, Env)), "]" )).
+tactic_block(choices(K, Ts), Env) --> { member(T, Ts), tactic_structural(T) }, !,
+    el(span, "rq-tac-choices", ( kw(K), el(span, "l rq-tac-options", tactic_options(Ts, Env)) )).
+tactic_block(dispatch(T, Ts), Env) --> { tactic_structural(T) ; member(B, Ts), tactic_structural(B) }, !,
+    el(span, "rq-tac-seq", ( el(span, "rq-tac-left", tactic_block(T, Env)),
+        el(span, "rq-tac-sep", ";"), el(span, "l rq-tac-options", tactic_options(Ts, Env)) )).
 tactic_block(tgroup(T), Env) --> { tactic_structural(T) }, !,
     el(span, "rq-tac-group", ( "(", tactic_block(T, Env), ")" )).
 tactic_block(T, Env) --> el(span, "goal rq-tac-inline", tactic_inline(T, Env)).
 
 tactic_structural(tmatch(_, _, _)).
-tactic_structural(choices(_, _)).
-tactic_structural(dispatch(_, _)).
+tactic_structural(choices(_, Ts)) :- member(T, Ts), tactic_structural(T).
+tactic_structural(dispatch(T, Ts)) :- ( tactic_structural(T) ; member(B, Ts), tactic_structural(B) ).
 tactic_structural(select(_, _)).
 tactic_structural(prefix(_, T)) :- tactic_structural(T).
 tactic_structural(tgroup(T)) :- tactic_structural(T).
 tactic_structural(tbin(_, L, R)) :- ( tactic_structural(L) ; tactic_structural(R) ).
 
 tactic_inline(tbin(Op, L, R), Env) -->
-    el(span, o, ['data-d'=op], ( tactic_inline(L, Env), " ",
+    el(span, "o rq-tac-chain", ['data-d'=op], ( tactic_inline(L, Env), " ",
         el(span, "op wide", [title=Op], esc(Op)), " ", tactic_inline(R, Env) )).
 tactic_inline(prefix(K, T), Env) -->
-    el(span, "c app", ['data-d'=args], ( kw(K), el(span, args, el(span, arg, tactic_inline(T, Env))) )).
+    el(span, "c rq-tac-call", ['data-d'=args], ( kw(K), " ", el(span, "args rq-tac-args", el(span, arg, tactic_inline(T, Env))) )).
 tactic_inline(tgroup(T), Env) --> el(span, paren, tactic_inline(T, Env)).
+tactic_inline(choices(K, Ts), Env) -->
+    el(span, "c rq-tac-call", ['data-d'=args], ( kw(K), " ",
+        el(span, "args rq-tac-args", el(span, arg, tactic_alternatives(Ts, Env))) )).
+tactic_inline(dispatch(T, Ts), Env) -->
+    el(span, "o rq-tac-chain", ['data-d'=op], ( tactic_inline(T, Env), " ",
+        el(span, "op wide", [title=";"], ";"), " ", tactic_alternatives(Ts, Env) )).
 tactic_inline(call(N, []), Env) --> !, name_ref(N, Env, head).
 tactic_inline(call(N, Ps), Env) -->
-    el(span, "c app", ['data-d'=args], ( name_ref(N, Env, head), el(span, args, tactic_parts(Ps, Env)) )).
+    el(span, "c rq-tac-call", ['data-d'=args], ( name_ref(N, Env, head), " ", el(span, "args rq-tac-args", tactic_parts(Ps, Env)) )).
 tactic_inline(empty, _) --> el(span, "rq-empty", []).
+
+tactic_alternatives(Ts, Env) -->
+    el(span, "l rq-tac-alternatives", tactic_chain(Ts, '|', tactic_inline, Env)).
+
+% The same operator/argument groups as Gallina: short patterns stay a
+% phrase, long sums and products break at their actual tree boundaries.
+tactic_chain([T], _, Draw, Env) --> !, call(Draw, T, Env).
+tactic_chain([T|Ts], Op, Draw, Env) -->
+    el(span, o, ['data-d'=op], ( call(Draw, T, Env), " ",
+        el(span, "op wide", [title=Op], esc(Op)), " ", tactic_chain(Ts, Op, Draw, Env) )).
 
 tactic_parts([], _) --> [].
 tactic_parts([P|Ps], Env) --> el(span, arg, tactic_part(P, Env)),
     ( { Ps == [] } -> [] ; " ", tactic_parts(Ps, Env) ).
 
+tactic_part(intro(Ps), Env) -->
+    el(span, "c rq-intros", ['data-d'=args], el(span, "args rq-tac-args", intro_items(Ps, Env))).
+tactic_part(clause(by, [tactic(T)]), Env) --> !,
+    el(span, "c rq-tac-clause", ['data-d'=args], ( kw(by), " ", el(span, "args rq-tac-args", el(span, arg,
+        ( { tactic_structural(T) } -> tactic_block(T, Env) ; tactic_inline(T, Env) ))) )).
+tactic_part(clause(K, Ps), Env) -->
+    el(span, "c rq-tac-clause", ['data-d'=args], ( kw(K), ( { K == eqn } -> ":" ; [] ), " ",
+        el(span, "args rq-tac-args", tactic_parts(Ps, Env)) )).
 tactic_part(term(E), Env) --> term(E, Env).
 tactic_part(tactic(T), Env) --> el(span, paren, tactic_block(T, Env)).
 tactic_part(binding(n(_, N), Op, E), Env) -->
     el(span, paren, ( var_def(N), "\u00A0", el(span, "op wide", [title=Op], esc(Op)), " ", term(E, Env) )).
 tactic_part(context(E), Env) --> kw("context"), " [", term(E, Env), "]".
+tactic_part(hyp(n(_, N), context(E)), Env) --> !,
+    var_def(N), " : ", tactic_part(context(E), Env).
 tactic_part(hyp(n(_, N), E), Env) -->
     var_def(N), " : ", term(E, Env).
 tactic_part(group(Open, Ps, Close), Env) -->
-    el(span, "l rq-pattern", ['data-d'=args], ( el(span, sep, esc(Open)), " ", tactic_parts(Ps, Env), " ", el(span, sep, esc(Close)) )).
+    el(span, "l rq-token-group", ['data-d'=args], ( el(span, sep, esc(Open)), " ", tactic_parts(Ps, Env), " ", el(span, sep, esc(Close)) )).
 tactic_part(token(id(X)), Env) --> !, name_ref(X, Env).
 tactic_part(token(kw(X)), _) --> !, kw(X).
 tactic_part(token(str(S)), Env) --> !, term(str(0-0, S), Env).
 tactic_part(token(K), _) --> { rocq_syntax:tok_text(K, S) }, el(span, "rq-token", esc(S)).
+
+intro_pattern(_, ip_name(n(_, '_'))) --> !, term(hole(0-0), []).
+intro_pattern(_, ip_name(n(_, N))) --> var_(N).
+intro_pattern(_, ip_rewrite(Op)) -->
+    { ( Op == '->' -> G = '→' ; G = '←' ) }, el(span, "op rq-rewrite", [title=Op], esc(G)).
+intro_pattern(_, ip_auto(K)) --> el(span, "v anon", esc(K)).
+intro_pattern(Env, ip_and(Ps)) -->
+    el(span, "paren rq-pattern rq-intro-and", tactic_chain(Ps, '&', intro_operand, Env)).
+intro_pattern(Env, ip_or(Arms)) -->
+    el(span, "l rq-pattern rq-intro-or", tactic_chain(Arms, '|', intro_sequence, Env)).
+intro_operand(P, Env) --> intro_pattern(Env, P).
+intro_sequence([], _) --> el(span, "rq-empty", []).
+intro_sequence(Ps, Env) --> { Ps \== [] },
+    el(span, "c rq-intros", ['data-d'=args], el(span, "args rq-tac-args", intro_items(Ps, Env))).
+intro_items([P|Ps], Env) --> el(span, arg, intro_pattern(Env, P)),
+    ( { Ps == [] } -> [] ; " ", intro_items(Ps, Env) ).
 
 tactic_subject(goal, _) --> kw("goal").
 tactic_subject(type(E), Env) --> kw("type of"), " ", term(E, Env).
@@ -885,7 +954,7 @@ tactic_branches([], _) --> [].
 tactic_branches([tbr(Ps, T)|Bs], Env) -->
     { findall(X, ( sub_term(meta(_, X), Ps) ; sub_term(hyp(n(_, X), _), Ps) ), Ns), append(Ns, Env, Env1) },
     el(span, case, ( el(span, cond, el(span, goals, el(span, "goal rq-tac-pattern",
-                        el(span, "c app", ['data-d'=args], el(span, args, tactic_parts(Ps, Env1)))))),
+                        el(span, "c rq-tac-call", ['data-d'=args], el(span, "args rq-tac-args", tactic_parts(Ps, Env1)))))),
                     el(span, arrow, "⇒"), el(span, then, el(span, goals, tactic_block(T, Env1))) )),
     tactic_branches(Bs, Env).
 

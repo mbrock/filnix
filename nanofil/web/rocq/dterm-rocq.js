@@ -87,6 +87,18 @@ for (const proof of document.querySelectorAll(".rq-captured")) {
       dialog.addEventListener('click', event => {
         if (event.target.closest('a[href]')) dialog.close();
       });
+      // The former scrollable dialog was itself a tab stop. With the
+      // content scroller after the header, wrap at the modal boundaries
+      // rather than handing Shift+Tab from the layout choice to Chrome.
+      dialog.addEventListener('keydown', event => {
+        if (event.key !== 'Tab') return;
+        const targets = [...dialog.querySelectorAll('button, select, a[href], summary')]
+          .filter(el => !el.disabled && el.getClientRects().length);
+        const boundary = event.shiftKey ? targets[0] : targets.at(-1);
+        if (document.activeElement !== boundary) return;
+        event.preventDefault();
+        (event.shiftKey ? targets.at(-1) : targets[0]).focus();
+      });
       dialog.addEventListener('close', () => {
         proof.open = false;
         proof.querySelector(':scope > summary').focus({ preventScroll: true });
@@ -144,9 +156,15 @@ for (const proof of document.querySelectorAll(".rq-captured")) {
     stateList.style.order = selected * 2 + 1;
     if (focus) links[selected].focus({ preventScroll: true });
     // dterm.js's ResizeObserver remeasures newly visible clauses.
-    // Only the dialog scrolls; the underlying source stays where it was.
+    // The header has its own grid row, outside the one content scroller:
+    // large contexts cannot slide underneath it. Never scroll the page.
     if (dialog?.open) requestAnimationFrame(() => requestAnimationFrame(() => {
-      links[selected].scrollIntoView({ block: getComputedStyle(timeline).display === 'contents' ? 'start' : 'nearest' });
+      const row = links[selected].getBoundingClientRect();
+      const view = explorer.getBoundingClientRect();
+      const narrow = getComputedStyle(timeline).display === 'contents';
+      const delta = narrow || row.top < view.top ? row.top - view.top - 4
+        : row.bottom > view.bottom ? row.bottom - view.bottom + 4 : 0;
+      explorer.scrollTop += delta;
     }));
   }
   links.forEach((link, i) => link.addEventListener("click", () => show(i)));

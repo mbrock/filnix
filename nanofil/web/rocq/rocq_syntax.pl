@@ -553,6 +553,8 @@ tactic_unit(tmatch(K, Subject, Bs)) -->
     !, tactic_subject(Subject), tk(kw(with)),
     ( tk(sym('|')) -> [] ; [] ), tactic_branches(Bs), tk(kw(end)).
 tactic_unit(tgroup(T)) --> tk(p('(')), !, tactic(T), tk(p(')')).
+tactic_unit(call(N, [intro(Ps)|Rest])) --> tactic_name(N), { memberchk(N, [intro, intros]) },
+    intro_patterns(Ps), { Ps \== [] }, tactic_parts(Rest), !.
 tactic_unit(call(N, Ps)) --> tactic_name(N), !, tactic_parts(Ps).
 
 tactic_name(N) --> tk(id(N)).
@@ -572,11 +574,14 @@ tactic_branches([tbr(Ps, T)|Bs]) --> tactic_match_pattern(Ps), tk(sym('=>')), ta
 
 tactic_match_pattern([group('[', Ps, ']')]) --> tk(p('[')), tactic_match_pattern(Ps), tk(p(']')), !.
 tactic_match_pattern([context(E)]) --> tk(id(context)), tk(p('[')), term(E), tk(p(']')), !.
-tactic_match_pattern([hyp(N, E)|Ps]) --> name(N), tk(sym(':')), term(E), !,
+tactic_match_pattern([hyp(N, E)|Ps]) --> name(N), tk(sym(':')), tactic_match_type(E), !,
     ( tk(p(',')) -> tactic_match_pattern(Rest), { Ps = [token(p(','))|Rest] }
     ; tk(sym('|-')), term(G), { Ps = [token(sym('|-')), term(G)] } ).
 tactic_match_pattern([token(sym('|-')), term(E)]) --> tk(sym('|-')), !, term(E).
 tactic_match_pattern([term(E)]) --> term(E).
+
+tactic_match_type(context(E)) --> tk(id(context)), tk(p('[')), term(E), tk(p(']')), !.
+tactic_match_type(E) --> term(E).
 
 tactic_parts([P|Ps]) --> tactic_part(P), !, tactic_parts(Ps).
 tactic_parts([]) --> [].
@@ -584,14 +589,44 @@ tactic_parts([]) --> [].
 % Parenthesized expressions and named assertions go through the very
 % same term grammar as definitions and goals. Intro/destruct patterns do
 % not: [a | b] is not a Gallina list, nor (a & b) a Gallina application.
-tactic_part(binding(N, Op, E)) --> tk(p('(')), name(N), tk(sym(Op)), { memberchk(Op, [':=', ':']) },
+tactic_part(clause(as, [intro(Ps)])) --> tk(kw(as)), intro_patterns(Ps), { Ps \== [] }, !.
+tactic_part(clause(by, [tactic(T)])) --> tk(id(by)), tactic_unit(T), !.
+tactic_part(clause(K, Ps)) --> tactic_clause(K), tactic_arguments(Ps), { Ps \== [] }, !.
+tactic_part(P) --> tactic_argument(P).
+
+tactic_clause(in) --> tk(kw(in)).
+tactic_clause(with) --> tk(kw(with)).
+tactic_clause(using) --> tk(id(using)).
+tactic_clause(eqn) --> tk(id(eqn)), tk(sym(':')).
+
+tactic_arguments([P|Ps]) -->
+    \+ tactic_clause(_), \+ tk(kw(as)), \+ tk(id(by)),
+    tactic_argument(P), !, tactic_arguments(Ps).
+tactic_arguments([]) --> [].
+
+tactic_argument(binding(N, Op, E)) --> tk(p('(')), name(N), tk(sym(Op)), { memberchk(Op, [':=', ':']) },
     term(E), tk(p(')')), !.
-tactic_part(term(E)) --> peek(p('(')), atom(E), !.
-tactic_part(context(E)) --> tk(id(context)), tk(p('[')), term(E), tk(p(']')), !.
-tactic_part(group(Open, Ps, Close)) -->
+tactic_argument(term(E)) --> peek(p('(')), atom(E), !.
+tactic_argument(context(E)) --> tk(id(context)), tk(p('[')), term(E), tk(p(']')), !.
+tactic_argument(group(Open, Ps, Close)) -->
     [t(p(Open), _, _)], { matching(Open, Close) }, tactic_pattern(Ps), tk(p(Close)), !.
-tactic_part(tactic(T)) --> tk(p('(')), tactic(T), tk(p(')')), !.
-tactic_part(token(K)) --> [t(K, _, _)], { tactic_token(K) }.
+tactic_argument(tactic(T)) --> tk(p('(')), tactic(T), tk(p(')')), !.
+tactic_argument(token(K)) --> [t(K, _, _)], { tactic_token(K) }.
+
+% Intro patterns bind names, branch, pair, discard or rewrite. In
+% particular [a b | (c & ->)] is a sum of sequences, not a token list.
+intro_patterns([P|Ps]) --> intro_pattern(P), !, intro_patterns(Ps).
+intro_patterns([]) --> [].
+intro_pattern(ip_or(Arms)) --> tk(p('[')), intro_arms(Arms), tk(p(']')), !.
+intro_pattern(ip_and([P|Ps])) --> tk(p('(')), intro_pattern(P), intro_pairs(Ps), tk(p(')')), !.
+intro_pattern(ip_name(N)) --> name_or_hole(N), { N = n(_, X), \+ memberchk(X, [eqn, using, by, until]) }, !.
+intro_pattern(ip_rewrite(Op)) --> tk(sym(Op)), { memberchk(Op, ['->', '<-']) }, !.
+intro_pattern(ip_auto(K)) --> tk(sym(K)), { memberchk(K, ['?', '*', '**']) }.
+
+intro_arms([Ps|Arms]) --> intro_patterns(Ps),
+    ( tk(sym('|')) -> intro_arms(Arms) ; { Arms = [] } ).
+intro_pairs([P|Ps]) --> tk(sym('&')), intro_pattern(P), !, intro_pairs(Ps).
+intro_pairs([]) --> [].
 
 tactic_token(K) :- \+ memberchk(K, [p(';'), p('('), p(')'), p('['), p(']'),
                                     sym('|'), sym('=>'), sym('||'), kw(end)]).

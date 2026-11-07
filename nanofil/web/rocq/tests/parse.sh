@@ -32,6 +32,10 @@ Ltac cases H :=
   repeat match type of H with
   | context [match ?x with _ => _ end] => destruct x eqn:?; cbv beta iota zeta in H; try discriminate H
   end.
+Ltac context_case :=
+  match goal with
+  | H : context [match ?x with _ => _ end] |- _ => destruct x; simpl in H; try discriminate H
+  end.
 Ltac finish H :=
   lazymatch type of H with
   | ?P /\ ?Q => destruct H as [Hp Hq]; first [exact Hq | exact Hp]
@@ -45,6 +49,10 @@ Goal forall P Q : Prop, P /\ Q -> Q.
 Proof. intros P Q H. finish H. Qed.
 Goal forall P Q : Prop, P /\ Q -> Q.
 Proof. intros P Q H. from_context. Qed.
+Goal forall b : bool, (if b then 1 else 2) = 1 -> b = true.
+Proof. intros b H. context_case. reflexivity. Qed.
+Goal forall P Q : Prop, P \/ (True /\ Q) -> Q \/ P.
+Proof. intros P Q [Hp | (_ & Hq)]; [right; exact Hp | left; exact Hq]. Qed.
 Goal True /\ (True /\ True).
 Proof. repeat split; exact I. Qed.
 Goal True /\ True.

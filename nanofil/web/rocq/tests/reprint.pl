@@ -183,11 +183,26 @@ pt_choices([T|Ts]) :- pt(T), write(" | "), pt_choices(Ts).
 
 pt_parts([]).
 pt_parts([P|Ps]) :- pt_part(P), write(" "), pt_parts(Ps).
+pt_part(intro(Ps)) :- pt_intro_seq(Ps).
+pt_part(clause(K, Ps)) :- write(K), ( K == eqn -> write(": ") ; write(" ") ), pt_parts(Ps).
 pt_part(term(E)) :- pr(E).
 pt_part(tactic(T)) :- write("("), pt(T), write(")").
 pt_part(binding(n(_, N), Op, E)) :- format("(~w ~w ", [N, Op]), pr(E), write(")").
 pt_part(context(E)) :- write("context ["), pr(E), write("]").
+pt_part(hyp(n(_, N), context(E))) :- !, format("~w : ", [N]), pt_part(context(E)).
 pt_part(hyp(n(_, N), E)) :- format("~w : ", [N]), pr(E).
 pt_part(group(Open, Ps, Close)) :- write(Open), pt_parts(Ps), write(Close).
 pt_part(token(str(S))) :- !, format('"~w"', [S]).
 pt_part(token(K)) :- rocq_syntax:tok_text(K, S), write(S).
+
+pt_intro(ip_name(n(_, N))) :- write(N).
+pt_intro(ip_rewrite(Op)) :- write(Op).
+pt_intro(ip_auto(K)) :- write(K).
+pt_intro(ip_and(Ps)) :- write("("), pt_intro_sep(Ps, " & "), write(")").
+pt_intro(ip_or(Arms)) :- write("["), pt_intro_arms(Arms), write("]").
+pt_intro_seq(Ps) :- pt_intro_sep(Ps, " ").
+pt_intro_sep([], _).
+pt_intro_sep([P], _) :- !, pt_intro(P).
+pt_intro_sep([P|Ps], S) :- pt_intro(P), write(S), pt_intro_sep(Ps, S).
+pt_intro_arms([Ps]) :- !, pt_intro_seq(Ps).
+pt_intro_arms([Ps|Arms]) :- pt_intro_seq(Ps), write(" | "), pt_intro_arms(Arms).

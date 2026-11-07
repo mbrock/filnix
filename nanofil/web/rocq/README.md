@@ -173,8 +173,9 @@ in order, with no dialog or nonfunctional controls.
 
 The explorer uses dterm's compact rows and rules rather than nested cards:
 hypothesis names and types share aligned rows even on narrow screens, and
-⊢ separates the conclusion from its context. Only the dialog scrolls vertically;
-its title, layout choice and navigation stay visible, without independently
+⊢ separates the conclusion from its context. One content area scrolls vertically;
+the title, layout choice and navigation occupy a separate grid row, not a
+sticky overlay that can cover hypothesis lines. There are no independently
 scrolling script or goal panes. All three layouts still use the same printer.
 Tactic locals come from captured contexts before and after each command,
 so newly introduced and consumed names share the goals' variable typography.
@@ -183,6 +184,25 @@ tactic blocks. Controls, comparison states and source disclosure use a small gut
 Empty contexts and repeated explanatory hints are omitted. “No remaining
 goals” is still distinct from a checked closure, without a reminder to type
 `Qed` at every solved state.
+
+### Patterns and tactic control flow
+
+Intro patterns are trees of alternatives, sequences and pairs, with bound
+names, wildcards and rewrite arrows, rather than generic bracket tokens.
+`as`, `in`, `with`, `using`, `eqn:` and `by` own their arguments. Parenthesized
+expressions and assertions still use the same Gallina grammar and printer
+as goals. `context […]` in a match hypothesis is a tactic pattern, not a
+Gallina application; the reprint must not parenthesize it as one.
+
+Short tactic chains, prefixes and choices use dterm's operator and argument
+groups: they stay a phrase when they fit and break at tree boundaries when
+they do not. Tactic arguments do not acquire Gallina's application brackets.
+Chains containing match arms become indented control flow; their separators
+stay beside the continuation, not alone on a line. Match arms use the shared
+Adaptive/Stacked/Side-by-side fitting. Focus bullets start sibling groups and
+braces nest groups, with compact rows and the bullet beside its first tactic.
+On narrow screens the selected state still follows the actual compound
+command; the renderer never invents intermediate execution states.
 
 ### Prior art and the choice
 

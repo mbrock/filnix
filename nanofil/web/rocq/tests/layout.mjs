@@ -122,8 +122,8 @@ try {
     browser("click", `${proof} .rq-compare`);
     check(`assert(document.querySelector(${JSON.stringify(proof)}).querySelectorAll('.rq-snapshot:not([hidden])').length === 2, "before/after unavailable");`);
     browser("click", `${proof} .rq-compare`);
-    browser("scrollintoview", `${proof} .rq-step-link:nth-child(5)`);
-    browser("click", `${proof} .rq-step-link:nth-child(5)`);
+    browser("scrollintoview", `${proof} .rq-step-link[aria-label="apply Z.eqb_eq in E."]`);
+    browser("click", `${proof} .rq-step-link[aria-label="apply Z.eqb_eq in E."]`);
     check(`${fitsPage}
       const state = document.querySelector(${JSON.stringify(proof)}).querySelector('.rq-snapshot:not([hidden])');
       assert(state.querySelector('h3 .tactic').title === 'apply Z.eqb_eq in E.', "wrong selected tactic");
@@ -204,7 +204,7 @@ try {
       assert(proof.querySelector('.rq-position').textContent.endsWith('/ 20'), "tactic count disagrees with source");
       const dialog = proof.querySelector('dialog');
       for (const el of dialog.querySelectorAll('*'))
-        if (el.getClientRects().length && ['auto','scroll'].includes(getComputedStyle(el).overflowY))
+        if (!el.matches('.rq-explorer') && el.getClientRects().length && ['auto','scroll'].includes(getComputedStyle(el).overflowY))
           assert(el.scrollHeight <= el.clientHeight + 1, "nested vertical scrolling in proof");
       if (innerWidth === 320) {
         const row = link.getBoundingClientRect(), state = proof.querySelector('.rq-states').getBoundingClientRect();
@@ -224,6 +224,49 @@ try {
     browser('click', '#kept_trans + .rq-captured [aria-label="Close proof"]');
     check(`assert(!document.querySelector('dialog[open]'), "close button did not close proof");`);
     console.log(`ok modal, intro patterns, local typography, counts, single scroll and close at ${width}px`);
+
+    // A short viewport makes this real proof scroll on desktop too.
+    // At 900px high its compact script and context can fit entirely.
+    browser('set', 'viewport', String(width), '600', '2');
+    browser('open', source('Runtime'));
+    check(`
+      const proof = document.getElementById('InterpRuntime.ready_kept').nextElementSibling;
+      proof.open = true;
+      for (let i=0; i<4; i++) await new Promise(requestAnimationFrame);
+      const links = [...proof.querySelectorAll('.rq-step-link')];
+      const rewrite = links.find(e => e.getAttribute('aria-label').startsWith('destruct Hr as'));
+      rewrite.click();
+      for (let i=0; i<4; i++) await new Promise(requestAnimationFrame);
+      ${fitsPage}
+      assert(rewrite.querySelector('.rq-intro-or .rq-intro-and'), "nested sum/product intro pattern lost");
+      assert([...rewrite.querySelectorAll('[title="->"]')].map(e => e.textContent).join('') === '→→', "rewrite pattern printed as loose source tokens");
+      const short = links.find(e => e.getAttribute('aria-label') === 'intros a Ha.');
+      const bullet = short.querySelector('.bullet').getBoundingClientRect();
+      const tactic = short.querySelector('.tactic').getBoundingClientRect();
+      assert(Math.abs(bullet.top - tactic.top) < 2, "bullet isolated from its tactic");
+      assert(short.getBoundingClientRect().height < 30, "short tactic row too tall");
+      const brace = links.find(e => e.getAttribute('aria-label').startsWith('intros (b & reg & E & Hr)'));
+      assert(brace.closest('.rq-braced'), "braced proof lost its focus group");
+      if (innerWidth > 720)
+        assert(brace.getBoundingClientRect().left > short.getBoundingClientRect().left + 3, "focus group not indented");
+      // The chain closes the focused branch; its preceding state has
+      // the large context that must scroll without obscuring the header.
+      links[links.indexOf(rewrite) - 1].click();
+      for (let i=0; i<4; i++) await new Promise(requestAnimationFrame);
+      const header = proof.querySelector('.rq-dialog-head');
+      const content = proof.querySelector('.rq-explorer');
+      const top = header.getBoundingClientRect().top;
+      content.scrollTop = 500;
+      await new Promise(requestAnimationFrame);
+      assert(content.scrollTop > 0, "long proof content not scrollable");
+      assert(content.getBoundingClientRect().top >= header.getBoundingClientRect().bottom - 1,
+        "scrolling context slides underneath header");
+      assert(Math.abs(header.getBoundingClientRect().top - top) < 1, "header scrolled away");
+      const scrollers = [...proof.querySelectorAll('dialog *')].filter(e =>
+        e.getClientRects().length && ['auto','scroll'].includes(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight + 1);
+      assert(scrollers.length === 1 && scrollers[0] === content, "proof has multiple vertical scroll areas");
+    `);
+    console.log(`ok nested patterns, compact bullets, braced focus and non-overlapping header at ${width}px`);
   }
   // Use a fresh browser so cached scripts cannot bypass request blocking.
   browser("close");
