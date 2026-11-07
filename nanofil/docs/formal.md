@@ -44,7 +44,7 @@ package in Filnix rather than only what nanofil compiles.
 | 0 | Measure which checks survive `-O --checks=combined` | [docs/residual.md](residual.md) | measured: 10,353 Lua data-check sites, 24.49% flag-only renewals; cycle costs estimated from native benchmark calibration; spatial-certificate pilot before ownership |
 | 1 | The core model in Rocq, agreeing with the interpreter | Gallina syntax, semantics, `valid` | under way: syntax, memory and small-step semantics in `nanofil/rocq/`, agreeing with `interp:run/5` on every core-subset run line, and `valid` for functions, data and aliases, agreeing with `ir:valid_module/1` on every core-subset mutant of the corpus and of tests/gen.pl's Fil-C modules, both under every `--checks` mode with and without `-O`, and of the tests/c/prog programs with aliases and weak, thread-local or constructor data; floats (`Ieee.v`) and variadics are in the subset, so every corpus run line is compared and all of Lua 5.4.7's functions but `luaD_rawrunprotected` (`setjmp`) decode into it, with Lua's state-free functions run by the gate ([rocq.md](rocq.md)); tests/gen.pl's Fil-C modules now reach `renew_if`, `limit` with `check_limit`, and `renew_hull`, with frees and traps; found and fixed: a renew of a freed variadic snapshot was `unchecked(span)`, now a trap as native renew gives; dominance now transcribes cfg.pl's `cfg_idoms/2` and `dom_intervals/3`, so the validator judges Lua's lvm.c; the model's runtime is Campaign 2's module type; the three data findings are decided (data items have the header's shapes, a call of data traps, names are unique) |
 | 2 | The runtime as one page of axioms, each probed natively | `docs/runtime-axioms.md` | first version: [runtime-axioms.md](runtime-axioms.md) and `Module Type Runtime` in `nanofil/rocq/theories/Runtime.v`, eight axioms read against staging `18b6663`, each with a native test in tests/c/prog/axiom-*.c (the eighth, `address_space`, from Campaign 3's coverage lemma); the interpreter's instance proves them all, and two readiness obligations without a native test; Campaign 3's machine runs over any instance |
-| 3 | The soundness theorem for the validator | `valid_no_unchecked`, no admits | started: [Machine.v](../rocq/theories/Machine.v) runs the steps over any `Runtime` and proves `ready` an invariant of every run, and every step a `step_rel` step or a safepoint action; [Coverage.v](../rocq/theories/Coverage.v) proves the coverage lemma, given objects that end at or below 2^64; the interpreter broke that (`rocq/tests/huge-object.ir`, a valid module run unchecked), and now traps where native Fil-C refuses an allocation, with the runtime axiom `address_space` supplying the hypothesis in every state of a run that starts ready; a valid module's initial data has no size limit, so that it starts ready is open (a validator decision); next: the evidence invariant |
+| 3 | The soundness theorem for the validator | `valid_no_unchecked`, no admits | started: [Machine.v](../rocq/theories/Machine.v) runs the steps over any `Runtime` and proves `ready` an invariant of every run, and every step a `step_rel` step or a safepoint action; [Coverage.v](../rocq/theories/Coverage.v) proves the coverage lemma, given objects that end at or below 2^64; the interpreter broke that (`rocq/tests/huge-object.ir`, a valid module run unchecked), and now traps where native Fil-C refuses an allocation, with the runtime axiom `address_space` supplying the hypothesis in every state of a run that starts ready; a valid module's initial data has no size limit, so the theorem takes "the run starts ready" as a hypothesis (mbrock's decision; starting the heap above the data is the planned fix); [Evidence.v](../rocq/theories/Evidence.v) proves the evidence pass sound instruction by instruction and across an edge (every case of `checked_inst_rest/7` keeps its facts true; checked and covered accesses never unchecked); next: the invariant over whole runs, then the reuse forms |
 | 4 | Observations, refinement, and libc contracts | a trace semantics; `opt:refines/2` as trace inclusion | not started |
 | 5 | Static discharge by certificate | `discharged(Cert)`, `discharge_ok`, a Prolog finder | not started |
 | 6 | Integration with Filnix and the playground | the `nanofil-check` gate | not started |
@@ -244,7 +244,9 @@ whenever Filnix bumps Fil-C.
 
 Goal:
 `Theorem valid_no_unchecked : forall m, valid m = true -> forall exec, reachable m exec -> outcome exec <> Unchecked _`,
-under the Campaign 2 axioms, for the core subset and every reuse rule in
+for runs that start ready (the runtime's start state is `ready` for the
+module's initial memory, an explicit hypothesis; [rocq.md](rocq.md),
+"An object past 2^64"), under the Campaign 2 axioms, for the core subset and every reuse rule in
 scope.
 
 This is the theorem [campaign.md](campaign.md) names as "checked-IR
@@ -260,14 +262,16 @@ Proof plan, in the order the dependencies run:
   Pure arithmetic over `cap_access_res/7`. Proved in
   [Coverage.v](../rocq/theories/Coverage.v), given that objects end at
   or below 2^64, which the runtime axiom `address_space` promises in
-  every state of a run that starts ready; whether a valid module's
-  initial memory is ready is open ([rocq.md](rocq.md), "An object past
-  2^64").
+  every state of a run that starts ready, which the theorem assumes
+  ([rocq.md](rocq.md), "An object past 2^64").
 - **Proof persistence.** Between a check and a raw use with only
   `evidence_preserving/1` instructions and unpolled edges on every path,
   no free occurred, so the capability still permits the same range.
   Needs the safepoint and lifetime axioms and an induction over the
   paths the validator inspects.
+  Proved per instruction and per edge in
+  [Evidence.v](../rocq/theories/Evidence.v); the induction over runs
+  is next.
 - **Each reuse rule as a corollary.** `renew` (bounds persist, flags
   retested), `renew_hull(Lo, Hi, Rights, Align)` (interval hull),
   `half_check(Bound, Lo, Hi, Rights, Align)` (one bound persists),

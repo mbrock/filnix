@@ -31,6 +31,7 @@ the interpreter and cites the predicate it copies.
 | `Cfg.v` | cfg.pl | `func_cfg/2`, `cfg_idoms/2` (Cooper, Harvey and Kennedy), `dom_children/3`, `dom_intervals/3`, `dominates_by_interval/3` |
 | `Validate.v` | ir.pl's `valid_module/1` | `valid_func`, `valid_data`, `valid_alias`, `valid_items`, `valid`: uses, ops, instructions, dominance, locals, the evidence pass, the reuse rules, `polls_every_cycle`, data linkage and items, aliases |
 | `Coverage.v` | — (Campaign 3) | the coverage lemma: a raw access that `covered_access/6` puts inside a passed check gives no `unchecked` |
+| `Evidence.v` | — (Campaign 3) | the evidence invariant at an instruction and an edge: what a live fact means, every case of `checked_inst_rest/7` keeps the pass's facts true, block entry keeps the meet, accesses the pass accepts give no `unchecked` |
 | `Transport.v` | — | decoding a printed checked module, encoding outcomes, `judge`, `judge_valid` |
 | `Extract.v`, `extraction/main.ml` | — | OCaml extraction, and a reader of Prolog terms |
 
@@ -621,6 +622,61 @@ Decisions and findings:
   line is two sentences to Rocq but one to the proof-state capture's
   plan, which then drops `tac`; Coverage.v uses bullets instead.
 
+### The evidence invariant, instruction by instruction
+
+`Evidence.v` proves ir.pl's evidence pass sound one instruction and
+one edge at a time. No admits; it checks in about 7 seconds, most of it
+the two case splits over the check-like ops. A live fact
+`live(Q, P, Lo, Hi, Rights, Align)` means at run time (`fact_holds`): Q
+holds a pointer word, P evaluates to the same word, and the access check
+of that pointer passes in the current memory. A check reads only the
+memory's regions, so any step that changes no region keeps it.
+
+- `let_step`, `preserving_step`: a `let` that continues, and any
+  `evidence_preserving/1` instruction, changes no region and no
+  temporary but the one it defines.
+- `evidence_after_holds`: `evidence_after/3` keeps every fact true.
+  The pass's kill of a redefined Q or P is exactly what the proof needs.
+- `check_like_holds`: each check-like op (`check`, `check_ahead`,
+  `renew`, `renew_hull`, `half_check`, `renew_if`, `check_limit`)
+  continues only where the access check of its pointer passed, so the
+  fact the pass adds after it holds, and so does a `check_ahead`'s wider
+  range.
+- `checked_inst_holds`: every case of `checked_inst_rest/7` keeps the
+  pass's facts true: a check-like instruction with its access
+  (`after_check`), a `check_local` (its Q killed), a `check_function`
+  (no facts), a repeated getter (its temporary killed), and every other
+  instruction.
+- `entry_holds`: an unpolled edge changes neither memory nor
+  temporaries; a fact of the pass's meet at a block's entry is a fact
+  of every set it meets, so of the predecessor's exit facts; the phis
+  change only their own temporaries, whose facts the pass drops.
+- `checked_access_not_unchecked`, `generic_access_not_unchecked`: the
+  access a check-like instruction is checked for gives no `unchecked`,
+  and neither does a raw access the pass accepts by a live fact that
+  covers it, given `objects_fit`.
+
+Decisions and findings:
+
+- **The model's validator is not refactored for the proof.** The last
+  case of `checked_inst_rest` is copied as `generic_rest`, and
+  `checked_inst_rest_generic` proves the two equal by computation, so
+  Validate.v, the transcription the gates compare, is unchanged.
+- **A `check_ahead` that dooms the frame has no fact.** When its wider
+  check fails, `inst_step` traps early and the step continues doomed
+  (`doomed_result`); its fact then does not hold. The instruction-level
+  lemmas are about `inst_step`, where the doomed case does not
+  continue; the run-level invariant must treat a doomed frame apart.
+- **The renderer's grammar.** `H : context [...] |- _` in `match goal`
+  reprints wrongly, so the tactics use `match type of H with context`;
+  `N: { tac.` on one line is avoided, as before.
+
+Not yet: the run as a whole. Carrying these along `Machine R`'s runs
+needs the pass's exit map (each block's facts as the pass left them, in
+block order), the doomed state, calls and safepoints (which end every
+fact), and the access after a `check_local`. `hull_covered` and the
+reuse forms' own rules are the corollaries still to come.
+
 ## An object past 2^64
 
 `rocq/tests/huge-object.ir` allocates an object of 2^64 - 2^32 - 80
@@ -685,31 +741,43 @@ milestone, follows native code:
   the open gap below; a second review of the fixes found promote still
   removing an alloc of a negative size.
 
-Still open: a valid module's initial memory need not be ready. ir.pl
-accepts `zero(N)` data of any size, and `initial_memory/4` lays data
-out from 65536 with no limit, so data can reach past 2^32, where heap
-objects start and overlap it, or past 2^64, where a covered access
-wraps again: with `data(big, export, 16, [zero(2^64)])` and a flight to
-64 bytes below 2^64, `valid` accepts the module and the model runs it
-`unchecked(out_of_bounds)`, as the review showed. The interpreter
-cannot build such data (`item_bytes/3` makes every zero byte and
-overflows its stack), so the gates do not see it. Natively an 8 GiB
-global compiles and runs. The machine's theorems already assume a run
-that starts ready; closing the gap means either bounding filc data in
-`valid_module/1` so the layout ends at or below 2^32 (`stack_base/1`),
-and proving the initial state ready, which refuses static data the
-native toolchain accepts, or starting the heap above the data, which
-needs the runtime's start to depend on the module. That is a validator
-decision, left to mbrock before the soundness theorem is stated.
+Initial readiness is a hypothesis. A valid module's initial memory need
+not be ready. ir.pl accepts `zero(N)` data of any size, and
+`initial_memory/4` lays data out from 65536 with no limit, so data can
+reach past 2^32, where heap objects start and overlap it, or past 2^64,
+where a covered access wraps again: with `data(big, export, 16,
+[zero(2^64)])` and a flight to 64 bytes below 2^64, `valid` accepts the
+module and the model runs it `unchecked(out_of_bounds)`, as the review
+showed. The interpreter cannot build such data (`item_bytes/3` makes
+every zero byte and overflows its stack), so the gates do not see it.
+Natively an 8 GiB global compiles and runs.
+
+mbrock's decision: `valid_no_unchecked` takes "the run starts ready"
+(`R.ready` of the runtime's start and the initial memory) as an explicit
+hypothesis, as the machine's theorems already do, and the IR is
+unchanged. Bounding filc data in `valid_module/1` at 2^32 was rejected:
+it refuses static data the native toolchain accepts.
+
+The planned long-term fix is to start the heap above the module's data:
+the runtime's start state would depend on the module (for the
+interpreter, Next from the end of the data layout, rounded up, rather
+than `stack_base/1`'s fixed 2^32), so that every valid module whose data
+fits the address space starts ready, and the hypothesis becomes a lemma.
+Data past the address space would then be refused as the runtime
+refuses an allocation it cannot hold. That changes interpreter semantics
+and the module type's `start`, so it needs an Oracle review.
 
 ## Next
 
-1. Initial readiness, once the data question above is decided: the
-   initial memory of a valid module is `ready` for `InterpRuntime`.
-2. The evidence invariant for proof persistence, stated over
-   `Machine R`'s steps: between a check and its use, only
-   `evidence_preserving/1` instructions and unpolled edges, so no
-   safepoint action and no free.
+1. The evidence invariant over runs: from `evidence_pass` succeeding,
+   the facts the pass computes hold at every point of every run of
+   `Machine R`, with the doomed state, calls and safepoints, and then
+   `valid_no_unchecked` for the checked accesses outside the reuse
+   forms.
+2. The reuse forms as corollaries, each with ir.pl's side conditions as
+   hypotheses.
+3. Starting the heap above the module's data, so that the initial
+   readiness hypothesis becomes a lemma.
 
 Inquiries touched: none closed. The integer-at-`p` case is a small
 input to the integer-to-pointer inquiry.
