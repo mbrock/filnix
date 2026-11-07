@@ -123,14 +123,14 @@ pkgs.runCommandCC
     step "arith slice" tests/arith.sh slice
     step progtest tests/par.sh tests/progtest.sh tests/c/prog/*.c
     # Every bounds-check shape's lines against Fil-C's condition, with Z3
-    # (docs/bounds.md).
-    step "bounds smt" python3 tests/bounds_smt.py
+    # (docs/bounds.md). Partition by size, not shape: merged dominates.
+    step "bounds smt" python3 tests/bounds_smt.py --parallel
     # Every hoisted shape's limit and in-loop lines against Fil-C's full
     # check at the access, with Z3 (docs/bounds.md, hoisted bounds).
-    step "hoist smt" python3 tests/hoist_smt.py
+    step "hoist smt" python3 tests/hoist_smt.py --parallel
     # Both half checks' lines against Fil-C's full check, given the bound
     # an earlier check of the object proves, with Z3 (docs/half.md).
-    step "half smt" python3 tests/half_smt.py
+    step "half smt" python3 tests/half_smt.py --parallel
     # Every bounds-check shape at both levels against filcc's traps
     # (docs/bounds.md); thousands of forks, so once, in parallel.
     step "bounds edges" bash -c 'pids=; for b in split merged sign or; do for o in "" -O; do NANOFIL_BOUNDS=$b NANOFIL_OPT=$o tests/progtest.sh tests/c/bounds/edges.c & pids="$pids $!"; done; done; s=0; for p in $pids; do wait $p || s=1; done; exit $s'
@@ -148,8 +148,9 @@ pkgs.runCommandCC
     # GLib resource blobs of gtk4's size (1.66 MB), in both of
     # glib-compile-resources' forms: each overflowed the 1 GB stack. They
     # compile within 700 MB, so a real one (with its headers) has room.
+    # Each file has its own compiler stack and differential run directory.
     step bigblob env COMPILE_TIMEOUT=300 NANOFIL_STACK_LIMIT=734003200 \
-      tests/progtest.sh bigblob-string.c bigblob-braces.c bigblob-shorts.c
+      tests/par.sh tests/progtest.sh bigblob-string.c bigblob-braces.c bigblob-shorts.c
     # One basic block of 3000 statements (tor's keccak-tiny-unrolled.c):
     # block liveness was quadratic in its length (docs/perf.md, item 15).
     step longblock env COMPILE_TIMEOUT=60 tests/progtest.sh longblock.c

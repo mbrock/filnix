@@ -36,7 +36,9 @@ alignment test, which a half check repeats unchanged). No header byte is
 read at a null lower.
 
 Run from nanofil/:  python3 tests/half_smt.py   (needs z3-solver)
+Use --parallel for the full matrix, in independent per-size processes.
 """
+import argparse
 import os
 import subprocess
 import sys
@@ -44,9 +46,20 @@ import tempfile
 
 import z3
 
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--size", type=int)
+parser.add_argument("--parallel", action="store_true")
+args = parser.parse_args()
 BOUNDS = ["upper", "lower"]
 SELECTIONS = ["stack", "local"]
 SIZES = [1, 2, 3, 4, 8, 16, 17, 32, 4096, 2147483647]
+if args.parallel:
+    if args.size is not None:
+        parser.error("--parallel runs the full matrix")
+    sys.exit(subprocess.run([os.path.join(os.path.dirname(__file__), "par.sh"),
+                             __file__, *[f"--size={n}" for n in SIZES]]).returncode)
+if args.size is not None:
+    SIZES = [args.size]
 NEAR = 1 << 62
 
 GOAL = r"""

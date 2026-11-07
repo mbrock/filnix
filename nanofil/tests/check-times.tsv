@@ -1,170 +1,170 @@
-151	hoist trap text, every shape
-128	bigblob
-106	half smt
-103	hoist smt
-83	bounds smt
-53	-O reference checks programs
-53	arith slice
-53	share programs
-51	half -O programs
-50	-O inline=small programs
-50	extended -O programs
-50	registers temps:-O programs
-49	-O inline=none programs
-49	-O or bounds programs
-49	-O progtest
-49	-O progtest gc-stress
-49	branches reference:-O programs
-49	forward -O programs
-49	lowers -O programs
-46	-O merged bounds programs
-46	-O simplify=none programs
-46	registers temps: programs
-45	renew -O programs
-45	schedule -O programs
-44	hoist -O programs
-43	reuse -O programs
-41	renew, guard, hoist, half, forward combined and hull trap text
-40	registers stack:-O programs
-39	combined programs
-39	extended  programs
-39	lowers  programs
-39	progtest gc-stress
-38	branches selected: programs
-38	forward  programs
-38	guard  programs
-38	guard -O programs
-38	pptest
-38	progtest
-35	half  programs
-33	hoist  programs
-33	reject
-32	schedule  programs
-31	renew  programs
-30	reuse  programs
-27	extended -O ifchain 600 compile time
-25	-O bigcopy manyhomes 1 GB
-24	-O ifchain 600 compile time
-20	guide
+124	share programs
+113	-O inline=small programs
+112	combined programs
+107	renew -O programs
+104	bigblob
+93	registers temps:-O programs
+91	registers stack:-O programs
+84	arith slice
+83	-O inline=none programs
+82	lowers  programs
+76	hoist -O programs
+68	-O progtest
+67	-O reference checks programs
+62	branches reference:-O programs
+62	hoist  programs
+62	reuse -O programs
+61	-O progtest gc-stress
+61	pptest
+59	reject
+58	-O or bounds programs
+57	guard  programs
+57	lowers -O programs
+56	extended  programs
+56	forward  programs
+55	registers temps: programs
+54	-O simplify=none programs
+54	renew  programs
+53	branches selected: programs
+49	extended -O programs
+49	half  programs
+49	progtest
+48	-O ifchain 600 compile time
+48	progtest gc-stress
+46	half -O programs
+42	-O merged bounds programs
+41	guard -O programs
+40	forward -O programs
+40	schedule -O programs
+37	schedule  programs
+35	reuse  programs
+33	-O bigcopy manyhomes 1 GB
+32	hoist smt
+31	temps corpus
+28	-O reference checks difftest
+28	corpus
+27	combined difftest
+27	schedule -O corpus
+26	share smt
+25	extended -O ifchain 600 compile time
+24	guide
+24	longblock
+22	bounds smt
+22	renew  difftest
+21	bounds edges
+19	hoisted bounds edges
+19	lowers  difftest
+18	guard -O corpus
+18	half -O corpus
+18	share -O corpus
 17	hoist -O corpus
-16	guard -O corpus
-16	share smt
-15	half -O corpus
-15	longblock
-15	share -O corpus
-14	extended -O corpus
-14	lowers -O corpus
-14	temps corpus
-12	branches corpus
-12	schedule -O corpus
-11	corpus
-11	forward -O corpus
-11	reuse corpus
-10	share trap text vs filcc
-8	-O simplify=none difftest
-8	guide links
-8	registers temps:-O difftest
-7	-O difftest filc, c, big1
-7	-O inline=none difftest
-7	-O reference checks difftest
-7	branches reference:-O difftest
-7	branches selected: difftest
-7	forward -O difftest
-7	guard  difftest
-7	guard -O difftest
-7	half  difftest
-7	half -O difftest
+17	renew -O difftest
+17	reuse corpus
+16	branches corpus
+16	forward -O corpus
+15	extended -O corpus
+15	hoist trap text, every shape
+15	registers temps:-O checks
+14	half smt
+13	guide links
+13	lowers -O corpus
+12	share trap text vs filcc
+11	registers stack:-O memcpy
+9	checks
+9	difftest c/*.c
+9	memcpy
+9	registers stack:-O checks
+9	registers temps: memcpy
+9	renew, guard, hoist, half, forward combined and hull trap text
+9	schedule trap text vs filcc -O2
+8	lowers -O difftest
+8	share checks
+7	-O inline=small difftest
+7	-O simplify=none difftest
+7	extended -O difftest
 7	hoist -O difftest
-7	lowers  difftest
-7	memcpy
-7	registers temps: memcpy
+7	registers stack:-O difftest
+7	registers temps: checks
+7	registers temps: difftest
+7	registers temps:-O difftest
 7	registers temps:-O memcpy
 7	schedule  difftest
-7	schedule -O difftest
-7	schedule trap text vs filcc -O2
-7	share checks
-7	share difftest
-6	-O inline=small difftest
-6	checks
-6	extended -O difftest
+7	share temps checks
+7	unit
+6	-O difftest filc, c, big1
+6	branches selected: difftest
 6	forward  difftest
+6	guard  difftest
+6	guard -O difftest
 6	hoist  difftest
-6	hoisted bounds edges
-6	lowers -O difftest
-6	registers stack:-O checks
-6	registers stack:-O memcpy
-6	registers temps: checks
-6	registers temps:-O checks
-6	renew  difftest
-6	reuse  difftest
-6	reuse -O difftest
-6	share temps checks
-5	bounds edges
+6	schedule -O difftest
+5	-O inline=none difftest
+5	-O pointer+exception gc-stress
+5	branches reference:-O difftest
 5	check watchdog
-5	combined difftest
-5	difftest c/*.c
 5	extended  difftest
-5	registers stack:-O difftest
-5	registers temps: difftest
-5	renew -O difftest
-5	unit
-4	getter trap text
-3	pointer+exception gc-stress
+5	forward -O difftest
+5	getter trap text
+5	half -O difftest
+5	reuse  difftest
+5	reuse -O difftest
+5	share difftest
+4	-O run-c interop gc float
+4	half  difftest
+4	pointer+exception gc-stress
+4	renew  ABI+GC
+4	reuse -O ABI+GC
+3	-O difftest fixtures+gen1
+3	-O variadic+float gc-stress
+3	combined temps ABI+GC
+3	difftest filc/*.ir
+3	lowers -O actual ensure-aux exits
+3	registers stack:-O ABI+GC
+3	registers temps: ABI+GC
+3	renew temps ABI+GC
+3	schedule -O ABI+GC
+3	share ABI+GC
 2	-O actual ensure-aux exits
-2	-O difftest fixtures+gen1
-2	-O pointer+exception gc-stress
+2	-O inline=none ABI+GC
+2	-O reference checks ABI+GC
+2	actual ensure-aux exits
 2	branches reference:-O ABI+GC
 2	combined ABI+GC
-2	combined temps ABI+GC
 2	difftest fixtures+gen1
 2	extended  ABI+GC
-2	extended -O ABI+GC
-2	half  ABI+GC
-2	half -O ABI+GC
+2	forward -O ABI+GC
+2	hoist  ABI+GC
+2	hoist -O ABI+GC
 2	lowers  ABI+GC
 2	lowers  actual ensure-aux exits
-2	lowers -O actual ensure-aux exits
+2	lowers temps ABI+GC
 2	registers stack:-O actual ensure-aux exits
 2	registers temps: actual ensure-aux exits
-2	reuse -O ABI+GC
+2	retired registers
+2	reuse  ABI+GC
+2	reuse temps ABI+GC
+2	schedule  ABI+GC
+2	variadic+float gc-stress
 1	-O difftest backend
 1	-O difftest float SSE2
-1	-O inline=none ABI+GC
-1	-O reference checks ABI+GC
 1	-O run-c gc gc-stress
-1	-O run-c interop gc float
+1	-O setjmp gc-stress
 1	-O simplify=none ABI+GC
-1	-O variadic+float gc-stress
-1	actual ensure-aux exits
+1	bench-cfg
 1	branches selected: ABI+GC
 1	difftest backend
-1	difftest filc/*.ir
+1	difftest float SSE2
 1	docs
+1	extended -O ABI+GC
 1	forward  ABI+GC
-1	forward -O ABI+GC
 1	guard  ABI+GC
 1	guard -O ABI+GC
-1	hoist  ABI+GC
-1	hoist -O ABI+GC
+1	half  ABI+GC
+1	half -O ABI+GC
 1	lowers -O ABI+GC
-1	lowers temps ABI+GC
-1	registers stack:-O ABI+GC
-1	registers temps: ABI+GC
 1	registers temps:-O ABI+GC
 1	registers temps:-O actual ensure-aux exits
-1	renew  ABI+GC
 1	renew -O ABI+GC
-1	renew temps ABI+GC
-1	retired registers
-1	reuse  ABI+GC
-1	reuse temps ABI+GC
 1	run-c gc gc-stress
 1	run-c interop gc float
-1	schedule  ABI+GC
-1	schedule -O ABI+GC
-1	share ABI+GC
-1	variadic+float gc-stress
-0	-O setjmp gc-stress
-0	bench-cfg
-0	difftest float SSE2
 0	setjmp gc-stress

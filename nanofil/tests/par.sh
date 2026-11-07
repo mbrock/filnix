@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # par.sh SCRIPT FILE...: run SCRIPT FILE once per file, NANOFIL_JOBS at a
-# time (default: the CPU count). Each run's output is printed in one block
+# time (default: the CPU count), largest files first to avoid an idle tail.
+# Non-file arguments keep their order. Each run's output is printed in one block
 # as soon as it finishes, followed by a line with its wall time; the exit
 # status is 1 if any run failed.
 set -uo pipefail
@@ -10,11 +11,16 @@ here=$(cd "$(dirname "$0")" && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 export PAR_WORK=$work PAR_SCRIPT=$script PAR_WATCH=$here/watch.py
-i=0
-for f in "$@"; do
-  printf '%s\0%s\0' "$i" "$f"
-  i=$((i + 1))
-done | xargs -0 -n2 -P "${NANOFIL_JOBS:-$(nproc)}" bash -c '
+python3 - "$@" <<'PY' |
+import os
+import sys
+
+files = sorted(sys.argv[1:], key=lambda f: os.path.getsize(f) if os.path.isfile(f) else 0,
+               reverse=True)
+for i, f in enumerate(files):
+    sys.stdout.buffer.write(f"{i}\0{f}\0".encode())
+PY
+xargs -0 -n2 -P "${NANOFIL_JOBS:-$(nproc)}" bash -c '
   set -o pipefail
   out=$PAR_WORK/$0
   t0=${EPOCHREALTIME/./}
@@ -23,7 +29,7 @@ done | xargs -0 -n2 -P "${NANOFIL_JOBS:-$(nproc)}" bash -c '
   ms=$(( (${EPOCHREALTIME/./} - t0) / 1000 ))
   [ -e "$out.failed" ] && r=FAILED || r=ok
   sed "/^@@nanofil-/d" "$out"
-  printf "  [%4d.%01ds] %s %s %s\n" $((ms / 1000)) $((ms % 1000 / 100)) "$(basename "$PAR_SCRIPT")" "$(basename "$1")" "$r"
+  printf "  [%4d.%01ds] %s %s %s\n" $((ms / 1000)) $((ms % 1000 / 100)) "$(basename "$PAR_SCRIPT")" "$(basename -- "$1")" "$r"
 '
 # A plain glob, not compgen: Nix's non-interactive bash has no compgen.
 failed=("$work"/*.failed)

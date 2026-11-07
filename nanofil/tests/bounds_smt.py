@@ -27,7 +27,9 @@ non-canonical, so its access faults in hardware rather than reaching
 memory.
 
 Run from nanofil/:  python3 tests/bounds_smt.py [SHAPE...]   (needs z3-solver)
+Use --parallel for the full matrix, in independent per-size processes.
 """
+import argparse
 import os
 import subprocess
 import sys
@@ -35,9 +37,21 @@ import tempfile
 
 import z3
 
-SHAPES = sys.argv[1:] or ["split", "merged", "or", "sign"]
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("shapes", nargs="*")
+parser.add_argument("--size", type=int)
+parser.add_argument("--parallel", action="store_true")
+args = parser.parse_args()
+SHAPES = args.shapes or ["split", "merged", "or", "sign"]
 SELECTIONS = ["stack", "local"]
 SIZES = [1, 2, 3, 4, 8, 16, 17, 32, 4096, 2147483647]
+if args.parallel:
+    if args.shapes or args.size is not None:
+        parser.error("--parallel runs the full matrix")
+    sys.exit(subprocess.run([os.path.join(os.path.dirname(__file__), "par.sh"),
+                             __file__, *[f"--size={n}" for n in SIZES]]).returncode)
+if args.size is not None:
+    SIZES = [args.size]
 
 GOAL = r"""
 :- use_module('%s').

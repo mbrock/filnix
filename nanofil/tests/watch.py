@@ -8,6 +8,7 @@ the whole process group, not just the shell waiting for the test.
 import argparse
 import datetime
 import os
+import resource
 import selectors
 import signal
 import subprocess
@@ -93,7 +94,8 @@ def main():
         return 130
     finally:
         child.stdout.close()
-    report(f"done exit={124 if timed_out else code}")
+    usage = resource.getrusage(resource.RUSAGE_CHILDREN)
+    report(f"done exit={124 if timed_out else code} cpu={usage.ru_utime + usage.ru_stime:.3f}s")
     return 124 if timed_out else code if code >= 0 else 128 - code
 
 

@@ -17,10 +17,15 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 filcc=${FILCC:?set FILCC to a filcc clang}
+# Files have independent builds and comparisons. Keep the no-argument suite,
+# but give each file its own watched worker and temporary directory.
+if [ $# = 0 ]; then
+  exec "$here/par.sh" "$0" "$here"/c/prog/renew-*.c "$here"/c/prog/guard-*.c "$here"/c/prog/hoist-*.c "$here"/c/prog/half-*.c "$here"/c/prog/forward-*.c "$here"/c/prog/hull-*.c
+fi
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 status=0
-for f in "$here"/c/prog/renew-*.c "$here"/c/prog/guard-*.c "$here"/c/prog/hoist-*.c "$here"/c/prog/half-*.c "$here"/c/prog/forward-*.c "$here"/c/prog/hull-*.c; do
+for f in "$@"; do
   name=$(basename "$f" .c)
   mode=${name%%-*}
   read -r -a args <<<"$(sed -n 's|^// args: ||p' "$f")"
