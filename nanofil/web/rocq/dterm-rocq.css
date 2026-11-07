@@ -169,6 +169,9 @@ details.rq-captured { margin: 0.25rem 0 1rem; font-size: 0.9rem; }
 .rq-captured .proof-invite { color: var(--accent); font-weight: 650; }
 .rq-captured .proof-count { margin-left: 0.4rem; }
 .rq-explorer { border-block: 1px solid var(--rule); padding: 0.4rem 0; }
+/* Do not style the large snapshot tree while its disclosure is closed.
+   The modal moves the explorer out of this direct-child relationship. */
+.rq-captured:not([open]) > .rq-explorer { display: none; }
 html:has(.rq-dialog[open]) { overflow: hidden; }
 .rq-dialog { box-sizing: border-box; width: calc(100vw - 2rem); max-width: none; height: calc(100dvh - 2rem); max-height: none; padding: 0 0.8rem 0.4rem; border: 1px solid var(--rule); color: var(--ink); background: var(--paper, white); container-type: inline-size; overflow: hidden; }
 .rq-dialog[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }

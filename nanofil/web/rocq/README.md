@@ -160,6 +160,14 @@ the ordinary wrapping markup rather than forcing wide indents and no-break
 spaces. The browser sweep also rejects JavaScript exceptions: a crashed
 planner can leave a fitting but unplanned page and conceal a reflow bug.
 
+Closed captured proofs hide their explorer subtree with `display: none`,
+not only the browser's native disclosure hiding. This keeps large snapshot
+trees out of style work until opened; the modal moves the explorer out of
+that direct-child rule. The shared printer also leaves clauses without a
+rendered box alone: its ResizeObserver queues them when they become visible.
+All snapshots remain inline and readable without scripts. The phone gate
+keeps the same pages, states, parallel widths and deadlines.
+
 The pinned agent-browser 0.38.1 has a fixed 25-second navigation load wait,
 independent of its advertised default timeout. If only that wait expires,
 the checker waits up to another 60 seconds for the same URL to finish

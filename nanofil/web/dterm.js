@@ -458,6 +458,9 @@ document.addEventListener("mouseover", (event) => {
     const todo = [];
     for (const clause of pending) {
       if (!clause.isConnected) { clauses.delete(clause); continue; }
+      // Closed disclosures and unselected proof states have no width to
+      // plan for. ResizeObserver queues them again when they become visible.
+      if (!clause.getClientRects().length) continue;
       const terms = clause.matches(".clause.item") ? [clause]
         : [...clause.querySelectorAll(TERMS)].filter((e) => e.closest(".clause") === clause);
       // Splitting a huge expanded goal into blocks must not bypass the
