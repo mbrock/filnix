@@ -133,8 +133,8 @@ details.rq-proof > summary::before { content: "▸ "; }
 details.rq-proof[open] > summary::before { content: "▾ "; }
 .proof-count { font-size: 0.85em; }
 .proof-steps { margin: 0.2rem 0 0 0.9em; padding-left: 0.6em; border-left: 2px solid var(--rule); }
-.dterm-rocq .tac { display: grid; grid-template-columns: 1em minmax(0, 1fr); gap: 0.15em; margin: 0.1rem 0; font-size: 0.9rem; line-height: 1.4; }
-.tac .bullet { display: inline-block; min-width: 1.1em; color: var(--accent); }
+.dterm-rocq .tac { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.15em; margin: 0.1rem 0; font-size: 0.9rem; line-height: 1.4; }
+.tac .bullet { display: inline-block; min-width: 1.1em; color: var(--accent); white-space: nowrap; }
 .rq-focus { min-width: 0; margin-left: 0.45em; padding-left: 0.35em; border-left: 1px solid var(--rule); }
 .rq-braced { border-left-color: var(--paren); border-radius: 0.5em; padding-block: 0.1em; }
 .tactic { white-space: normal; }
@@ -191,7 +191,8 @@ html:has(.rq-dialog[open]) { overflow: hidden; }
 .rq-walk { display: grid; grid-template-columns: minmax(0, 13rem) minmax(0, 1fr); gap: 0.6rem; align-items: start; }
 .rq-walk:has(.rq-timeline[hidden]) { grid-template-columns: minmax(0, 1fr); }
 .rq-timeline { padding: 0 0.4rem 0 0; border-right: 1px solid var(--rule); }
-.dterm-rocq .rq-step-link { display: grid; grid-template-columns: 0.9em minmax(0, 1fr); gap: 0.15em; width: 100%; margin: 0; border: 0; border-left: 2px solid transparent; border-radius: 0; background: transparent; color: var(--muted); text-align: left; padding: 0.12rem 0.25rem; font: inherit; font-size: 0.85rem; line-height: 1.4; overflow-wrap: anywhere; white-space: normal; cursor: pointer; }
+.dterm-rocq .rq-step-link { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.15em; width: 100%; margin: 0; border: 0; border-left: 2px solid transparent; border-radius: 0; background: transparent; color: var(--muted); text-align: left; padding: 0.12rem 0.25rem; font: inherit; font-size: 0.85rem; line-height: 1.4; overflow-wrap: anywhere; white-space: normal; cursor: pointer; }
+.rq-step-link > .bullet { min-width: 0.9em; white-space: nowrap; }
 .rq-step-name { grid-column: 1 / -1; }
 .dterm-rocq .rq-step-link:hover { background-color: color-mix(in srgb, var(--accent) 5%, transparent); color: var(--ink); }
 .dterm-rocq .rq-step-link[aria-current=step] { color: var(--accent); border-left-color: var(--accent); background-color: color-mix(in srgb, var(--accent) 8%, transparent); }

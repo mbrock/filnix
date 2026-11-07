@@ -62,8 +62,8 @@ or-patterns `(W | L)`), records `{| … |}`, sigma types, scopes, chained
 comparisons `a <= b < c` and Rocq's standard operator levels. A proof keeps
 its focus bullets and tactic sentences. Ltac definitions and scripts parse
 sequencing, choice, dispatch, `first`/`solve`, prefixes such as `try` and
-`repeat`, goal selectors, and `match`/`lazymatch`/`multimatch`. Match patterns,
-parenthesized expressions, assertions and `ltac:(…)` use the Gallina grammar;
+`repeat`, counted `do N`, goal selectors, and `match`/`lazymatch`/`multimatch`.
+Match patterns, parenthesized expressions, assertions and `ltac:(…)` use the Gallina grammar;
 intro patterns remain distinct from terms. Atomic tactic extensions keep
 their tokens; an unsupported control form stays verbatim, never disappears.
 
@@ -207,8 +207,10 @@ Intro patterns are trees of alternatives, sequences and pairs, with bound
 names, wildcards and rewrite arrows, rather than generic bracket tokens.
 `as`, `in`, `with`, `using`, `eqn:` and `by` own their arguments. Parenthesized
 expressions and assertions still use the same Gallina grammar and printer
-as goals. `context […]` in a match hypothesis is a tactic pattern, not a
-Gallina application; the reprint must not parenthesize it as one.
+as goals. `context […]` in a match hypothesis or goal is a tactic pattern,
+not a Gallina application; the reprint must not parenthesize it as one.
+`do N` owns its count and one tactic, before sequencing or choice. The
+coqc fixture checks both zero and multiple repetitions and explicit grouping.
 
 Short tactic chains, prefixes and choices use dterm's operator and argument
 groups: they stay a phrase when they fit and break at tree boundaries when
@@ -217,6 +219,11 @@ Chains containing match arms become indented control flow; their separators
 stay beside the continuation, not alone on a line. Match arms use the shared
 Adaptive/Stacked/Side-by-side fitting. Focus bullets start sibling groups and
 braces nest groups, with compact rows and the bullet beside its first tactic.
+The source parser and capture planner share `rocq_focus_tokens/4`, so
+`2: { tac. … }` opens a selected focus group and captures `tac.` separately,
+even on one line. Nested braces always open another group, unlike repeated
+bullets, which start siblings. Capture fixtures use the first tactic's new
+hypothesis later in the proof, so silently dropping it fails the check.
 On narrow screens the selected state still follows the actual compound
 command; the renderer never invents intermediate execution states.
 

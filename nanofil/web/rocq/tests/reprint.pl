@@ -49,12 +49,15 @@ item(proved(S, pf(Steps, End))) :- !,
 item(S) :- sent(S).
 
 step(step(P, Bs, Ts)) :-
-    maplist([B]>>format("~w ", [B]), Bs),
+    maplist(focus, Bs),
     ( rocq_tactic_tokens(Ts, T) -> pt(T), write(".\n")
     ; nb_getval(strict, Opts), memberchk('--strict', Opts)
     -> format(user_error, "unparsed tactic at ~w~n", [P]), halt(1)
     ; src(P) ).
-step(bullets(Bs)) :- maplist([B]>>format("~w ", [B]), Bs), nl.
+step(bullets(Bs)) :- maplist(focus, Bs), nl.
+
+focus(focus(N)) :- !, format("~w: { ", [N]).
+focus(B) :- format("~w ", [B]).
 
 sent(ind(_, Kw, Bodies)) :- !, format("~w ", [Kw]), bodies(Bodies), write(".\n").
 sent(rec(_, Kw, n(_, N), Bs, Sort, Ctor, Fs)) :- !,
@@ -164,6 +167,7 @@ alts([A|As]) :- sep(A, ", "), write(" | "), alts(As).
 % and the embedded Gallina, not just the untouched source script.
 pt(tbin(Op, L, R)) :- format("("), pt(L), format(" ~w ", [Op]), pt(R), write(")").
 pt(prefix(K, T)) :- format("(~w ", [K]), pt(T), write(")").
+pt(do(N, T)) :- format("(do ~w ", [N]), pt(T), write(")").
 pt(select(S, T)) :- format("~w: ", [S]), pt(T).
 pt(tgroup(T)) :- write("("), pt(T), write(")").
 pt(choices(K, Ts)) :- format("~w [", [K]), pt_choices(Ts), write("]").

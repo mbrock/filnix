@@ -71,6 +71,34 @@ Goal forall P : Prop, P -> P /\ True.
 Proof. intros P H. split; [exact H|exact I]. Qed.
 Goal forall n : nat, n + 0 = n.
 Proof. intro n. assert (n + 0 = n) by (apply Nat.add_0_r; auto). assumption. Qed.
+(* Numeric prefixes must keep their count and bind before semicolon. *)
+Ltac introduce n := do n intro.
+Goal forall a b : nat, a = a /\ b = b.
+Proof. do 2 intro; split; reflexivity. Qed.
+Goal forall a : nat, a = a.
+Proof. do 0 intro. intro a. reflexivity. Qed.
+Goal True /\ True.
+Proof. do 2 split || (split; exact I). Qed.
+(* The first tactic after a focus opener must not be swallowed. *)
+Goal True /\ (True /\ True).
+Proof.
+  split.
+  2: { split. 2: { pose proof I as H2. exact H2. } 1: { exact I. } }
+  1: { pose proof I as H1. exact H1. }
+Qed.
+(* context is a match-pattern form, not a parenthesized Gallina term. *)
+Ltac goal_case :=
+  match goal with
+  | |- context [if ?b then _ else _] => destruct b
+  end.
+Ltac hypothesis_and_goal :=
+  match goal with
+  | [ H : True |- context [if ?b then _ else _] ] => clear H; destruct b
+  end.
+Goal forall b : bool, (if b then 0 else 1) = (if b then 0 else 1).
+Proof. intro b. goal_case; reflexivity. Qed.
+Goal forall b : bool, True -> (if b then 0 else 1) = (if b then 0 else 1).
+Proof. intros b H. hypothesis_and_goal; reflexivity. Qed.
 ROCQ
 set -- "$@" "$tmp/tactics/Tactics.v"
 

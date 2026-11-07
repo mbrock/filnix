@@ -705,7 +705,7 @@ proof_(_, pf(Steps, End)) -->
 focus_tree(_, [], []).
 focus_tree(Level, [X|Xs], [focus(Kind, Children)|Tree]) :-
     focus_depth(X, D, Bs), D > Level, !,
-    ( memberchk('{', Bs) -> Kind = 'rq-focus rq-braced' ; Kind = 'rq-focus' ),
+    ( ( memberchk('{', Bs) ; member(focus(_), Bs) ) -> Kind = 'rq-focus rq-braced' ; Kind = 'rq-focus' ),
     focus_members(Xs, D, More, Rest), focus_tree(D, [X|More], Children), focus_tree(Level, Rest, Tree).
 focus_tree(Level, [X|Xs], [X|Tree]) :- focus_tree(Level, Xs, Tree).
 
@@ -808,6 +808,8 @@ step_depth(step(P, Bs, Ts), row(D, Bs, P, Ts), S0, S) :- foldl(bullet_focus, Bs,
 step_depth(bullets(Bs), row(close, Bs, none, []), S0, S) :- foldl(bullet_focus, Bs, S0, S).
 
 bullet_focus('}', S0, S) :- !, ( append(_, ['{'|S], S0) -> true ; S = [] ).
+bullet_focus('{', S, ['{'|S]) :- !.
+bullet_focus(focus(_), S, ['{'|S]) :- !.
 bullet_focus(B, S0, [B|S]) :- ( append(_, [B|S1], S0) -> S = S1 ; S = S0 ).
 
 tac_row(row(close, _, _, _)) --> !, [].
@@ -824,6 +826,7 @@ bullet_(B) --> { bullet_glyph(B, G) }, esc(G).
 bullet_glyph('-', "–") :- !.
 bullet_glyph('+', "+") :- !.
 bullet_glyph('*', "∗") :- !.
+bullet_glyph(focus(N), G) :- !, format(string(G), "~w: {", [N]).
 bullet_glyph(B, B).
 
 % One tactic tree for the source, timeline and snapshot heading. The raw
@@ -856,6 +859,8 @@ tactic_block(tbin(Op, L, R), Env) -->
         el(span, "rq-tac-sep", esc(Op)), el(span, "rq-tac-right", tactic_block(R, Env)) )).
 tactic_block(prefix(K, T), Env) --> { tactic_structural(T) }, !,
     el(span, "rq-tac-prefix", ( kw(K), " ", tactic_block(T, Env) )).
+tactic_block(do(N, T), Env) --> { tactic_structural(T) }, !,
+    el(span, "rq-tac-prefix", ( el(span, none, ( kw(do), " ", esc(N) )), " ", tactic_block(T, Env) )).
 tactic_block(select(S, T), Env) --> !,
     el(span, "rq-tac-select", ( el(span, "rq-selector", ( esc(S), ":" )), " ", tactic_block(T, Env) )).
 tactic_block(choices(K, Ts), Env) --> { member(T, Ts), tactic_structural(T) }, !,
@@ -872,6 +877,7 @@ tactic_structural(choices(_, Ts)) :- member(T, Ts), tactic_structural(T).
 tactic_structural(dispatch(T, Ts)) :- ( tactic_structural(T) ; member(B, Ts), tactic_structural(B) ).
 tactic_structural(select(_, _)).
 tactic_structural(prefix(_, T)) :- tactic_structural(T).
+tactic_structural(do(_, T)) :- tactic_structural(T).
 tactic_structural(tgroup(T)) :- tactic_structural(T).
 tactic_structural(tbin(_, L, R)) :- ( tactic_structural(L) ; tactic_structural(R) ).
 
@@ -880,6 +886,9 @@ tactic_inline(tbin(Op, L, R), Env) -->
         el(span, "op wide", [title=Op], esc(Op)), " ", tactic_inline(R, Env) )).
 tactic_inline(prefix(K, T), Env) -->
     el(span, "c rq-tac-call", ['data-d'=args], ( kw(K), " ", el(span, "args rq-tac-args", el(span, arg, tactic_inline(T, Env))) )).
+tactic_inline(do(N, T), Env) -->
+    el(span, "c rq-tac-call", ['data-d'=args], ( kw(do), " ",
+        el(span, "args rq-tac-args", ( el(span, arg, esc(N)), " ", el(span, arg, tactic_inline(T, Env)) )) )).
 tactic_inline(tgroup(T), Env) --> el(span, paren, tactic_inline(T, Env)).
 tactic_inline(choices(K, Ts), Env) -->
     el(span, "c rq-tac-call", ['data-d'=args], ( kw(K), " ",

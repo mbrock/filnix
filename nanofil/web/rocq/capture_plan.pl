@@ -17,14 +17,10 @@ plan(File, _{file:File, commands:Commands, proofs:Proofs}) :-
     findall(P, proof_in(Items, P), Proofs).
 
 commands([], []).
-commands([t(K, F, T)|Ts], [_{start:F, end:T}|Cs]) :-
-    focus(K), !, commands(Ts, Cs).
+commands(Ts0, [_{start:F, end:T}|Cs]) :-
+    Ts0 = [t(_, F, _)|_], rocq_focus_tokens(Ts0, _, T, Ts), !, commands(Ts, Cs).
 commands([t(_, F, _)|Ts], [_{start:F, end:T}|Cs]) :-
     append(_, [t(dot, _, T)|Rest], Ts), !, commands(Rest, Cs).
-
-focus(p('{')).
-focus(p('}')).
-focus(sym(S)) :- atom_codes(S, [C|Cs]), memberchk(C, `-+*`), maplist(=(C), Cs).
 
 proof_in(Items, P) :- member(I, Items),
     ( I = block(_, Body, _), proof_in(Body, P)

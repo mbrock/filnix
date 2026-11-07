@@ -20,6 +20,26 @@ Proof.
   - exact I.
 Qed.
 End Nested.
+Lemma focusing : True /\ (True /\ True).
+Proof.
+  split.
+  2: { pose proof I as kept2. split; exact kept2. }
+  1: { pose proof I as kept1. exact kept1. }
+Qed.
+Lemma nested_focusing : True /\ (True /\ True).
+Proof.
+  split.
+  2: { split. 2: { exact I. } { exact I. } }
+  1: { exact I. }
+Qed.
+Lemma counted : forall a b : nat, a = a /\ b = b.
+Proof. do 2 intro; split; reflexivity. Qed.
+Lemma matching_goal : forall b : bool,
+  (if b then 0 else 1) = (if b then 0 else 1).
+Proof.
+  intro b.
+  do 1 match goal with |- context [if ?x then _ else _] => destruct x end; reflexivity.
+Qed.
 Goal True /\ True.
 Proof. split. shelve. exact I. Unshelve. exact I. Qed.
 Goal False.
@@ -69,6 +89,11 @@ with tempfile.TemporaryDirectory() as tmp:
     assert after("Abort.") is None and after("Admitted.") is None
     assert after("Qed.") is None
     assert after("exact I.") == [], "all goals solved, but proof not yet closed"
+    assert "kept2 : True" in after("pose proof I as kept2.")[0]["hypotheses"]
+    assert "kept1 : True" in after("pose proof I as kept1.")[0]["hypotheses"]
+    counted = after("do 2 intro; split; reflexivity.")
+    assert counted == [], "counted repetition and its following chain must execute"
+    assert after("destruct x end; reflexivity.") == []
 
     # Exercise the renderer's public CLI too: capture is an exact-source
     # build input, and aborted/admitted proofs must never look checked.
@@ -81,11 +106,12 @@ with tempfile.TemporaryDirectory() as tmp:
               f"--states={result}", "nanofil/rocq/Example.v"]
     subprocess.run(render, check=True, stdin=subprocess.DEVNULL)
     html = (out / "rocq-Example.html").read_text()
-    assert html.count("Proof checked and closed by Rocq.") == 2
+    assert html.count("Proof checked and closed by Rocq.") == 6
     assert html.count("Proof ended without a checked closure.") == 2
     assert 'data-role="shelved"' in html and 'data-role="deferred"' in html
     assert "saved" in html and "No remaining goals" in html
     assert 'id="Nested.rewriting"' in html
+    assert "rq-unparsed" not in html, "supported tactics must use the structured printer"
 
     # Grow one page, not the number of pages. Copy the real captured
     # proof with renamed lemmas and shifted character offsets, and have

@@ -44,7 +44,7 @@
     Comments are `cm(From, To, Text)`, Text with its markers.
 */
 :- module(rocq_syntax, [rocq_read_file/3, rocq_parse_codes/3, rocq_fragment_codes/2,
-                        rocq_tactic_tokens/2, rocq_lex/3, node_pos/2, binop/3, notation_fold/3]).
+                        rocq_tactic_tokens/2, rocq_focus_tokens/4, rocq_lex/3, node_pos/2, binop/3, notation_fold/3]).
 
 :- use_module(library(lists)).
 :- use_module(library(apply)).
@@ -200,8 +200,15 @@ proof_end(Kw) :- memberchk(Kw, ['Qed', 'Defined', 'Admitted', 'Abort', 'Save']).
 
 %  The bullets and braces that focus a tactic, and the closing braces of
 %  the one before it.
-bullets([t(K, _, _)|Ts0], [B|Bs], Ts) :- bullet(K, B), !, bullets(Ts0, Bs, Ts).
+bullets(Ts0, [B|Bs], Ts) :- rocq_focus_tokens(Ts0, B, _, Ts1), !, bullets(Ts1, Bs, Ts).
 bullets(Ts, [], Ts).
+
+%! rocq_focus_tokens(+Tokens, -Focus, -End, -Rest) is semidet.
+%
+% One standalone focus command, including a numeric selector's opening
+% brace. Capture must send only this prefix to Rocq, not the tactic after it.
+rocq_focus_tokens([t(num(N), _, _), t(sym(':'), _, _), t(p('{'), _, T)|Ts], focus(N), T, Ts).
+rocq_focus_tokens([t(K, _, T)|Ts], B, T, Ts) :- bullet(K, B).
 
 bullet(p('{'), '{').
 bullet(p('}'), '}').
@@ -544,7 +551,9 @@ tactic_then(L, T) --> tk(p(';')), !,
 tactic_then(T, T) --> [].
 
 tactic_unit(select(S, T)) --> [t(K, _, _)], { K = num(S) ; K = id(S), S == all }, tk(sym(':')), !, tactic(T).
-tactic_unit(prefix(K, T)) --> tk(id(K)), { memberchk(K, [try, repeat, progress, now, once, timeout, do]) },
+tactic_unit(do(N, T)) --> tk(id(do)), !,
+    [t(K, _, _)], { K = num(N) ; K = id(N) }, tactic_unit(T).
+tactic_unit(prefix(K, T)) --> tk(id(K)), { memberchk(K, [try, repeat, progress, now, once, timeout]) },
     !, tactic_unit(T).
 tactic_unit(choices(K, Ts)) --> tk(id(K)), { memberchk(K, [first, solve]) }, tk(p('[')), !,
     tactic_choices(Ts), tk(p(']')).
@@ -576,9 +585,12 @@ tactic_match_pattern([group('[', Ps, ']')]) --> tk(p('[')), tactic_match_pattern
 tactic_match_pattern([context(E)]) --> tk(id(context)), tk(p('[')), term(E), tk(p(']')), !.
 tactic_match_pattern([hyp(N, E)|Ps]) --> name(N), tk(sym(':')), tactic_match_type(E), !,
     ( tk(p(',')) -> tactic_match_pattern(Rest), { Ps = [token(p(','))|Rest] }
-    ; tk(sym('|-')), term(G), { Ps = [token(sym('|-')), term(G)] } ).
-tactic_match_pattern([token(sym('|-')), term(E)]) --> tk(sym('|-')), !, term(E).
+    ; tk(sym('|-')), tactic_goal_pattern(G), { Ps = [token(sym('|-')), G] } ).
+tactic_match_pattern([token(sym('|-')), G]) --> tk(sym('|-')), !, tactic_goal_pattern(G).
 tactic_match_pattern([term(E)]) --> term(E).
+
+tactic_goal_pattern(context(E)) --> tk(id(context)), tk(p('[')), term(E), tk(p(']')), !.
+tactic_goal_pattern(term(E)) --> term(E).
 
 tactic_match_type(context(E)) --> tk(id(context)), tk(p('[')), term(E), tk(p(']')), !.
 tactic_match_type(E) --> term(E).
