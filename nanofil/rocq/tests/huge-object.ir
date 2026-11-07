@@ -1,14 +1,13 @@
-% Checked IR whose second object ends above 2^64 (docs/rocq.md, "An
-% object past 2^64"). The interpreter's allocator only adds, so after an
-% object of 2^64 - 2^32 - 80 bytes the next one starts 64 bytes below
-% 2^64. A check of its bytes [0, 128) passes, since bounds are
-% unbounded integers, and a raw load at offset 64 that the check covers
-% wraps to address 0 and runs unchecked(out_of_bounds). ir.pl accepts the
-% module, so it is a counterexample to Campaign 3's valid_no_unchecked
-% over the interpreter's runtime. Native Fil-C refuses the first
-% allocation ("attempt to allocate object that is too big"), so no
-% native object ends above 2^64; the coverage lemma assumes as much
-% (Coverage.v's objects_fit). The model agrees with the interpreter.
+% Allocations at the end of the address space (docs/rocq.md, "An object
+% past 2^64"). Fil-C traps at a heap object of more than 2^48 - 1 bytes
+% ("attempt to allocate object that is too big") and at one the address
+% space cannot hold ("out of memory"); interp.pl keeps objects below
+% 2^48, libpas's address space, so no address inside one wraps.
+
+% Before the bound, the second object started 64 bytes below 2^64, the
+% check of its bytes [0, 128) passed, and the covered load at offset 64
+% wrapped to address 0 and ran unchecked(out_of_bounds), though ir.pl
+% accepts the module. Now the first allocation traps too_big.
 run(huge_object, []).
 func(huge_object, export, l, [], [
     block(start, [], [
@@ -17,4 +16,50 @@ func(huge_object, export, l, [], [
         let(tmp(q), a, check(0, 128, read, 1), [tmp(p2)]),
         let(tmp(x), l, raw_load(l, 64), [tmp(q)])
     ], ret(tmp(x)))
+]).
+
+% The size limit: 2^48 traps too_big; 2^48 - 1 is not too big but does
+% not fit above the first allocation at 2^32, so it is out of memory;
+% the largest object that fits, 2^48 - 2^32 - 16 bytes, is allocated.
+run(heap_limit, [281474976710656]).
+run(heap_limit, [281474976710655]).
+run(heap_limit, [281470681743345]).
+run(heap_limit, [281470681743344]).
+func(heap_limit, export, l, [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(8), [tmp(n)]),
+        let(tmp(x), l, ptoi, [tmp(p)])
+    ], ret(tmp(x)))
+]).
+
+% A first object of N bytes leaves Next at 2^48 - 16 (N = 2^48 - 2^32 -
+% 32) or 2^48 - 32 (16 bytes less). A named local of 8 bytes then needs
+% 32 more and is out of memory in the first case only; so is a variadic
+% callee's 16-byte argument snapshot.
+run(local_limit, [281470681743328]).
+run(local_limit, [281470681743312]).
+run(snapshot_limit, [281470681743328]).
+run(snapshot_limit, [281470681743312]).
+func(local_limit, export, l, [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(8), [tmp(n)]),
+        call(result(tmp(r), l), global(with_local), [])
+    ], ret(tmp(r)))
+]).
+func(with_local, local, l, [], [
+    block(start, [], [local_alloc(x, 8)], ret(const(5)))
+]).
+func(snapshot_limit, export, l, [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(8), [tmp(n)]),
+        call(result(tmp(r), l), global(extra), [arg(l, const(1)), arg(l, const(7))])
+    ], ret(tmp(r)))
+]).
+func(extra, local, l, [param(l, tmp(m))], [
+    block(start, [], [
+        let(tmp(va), p, va_args, [const(8)]),
+        let(tmp(c), a, check(0, 8, read, 1), [tmp(va)]),
+        let(tmp(v), l, raw_load(l, 0), [tmp(c)]),
+        let(tmp(r), l, add, [tmp(v), tmp(m)])
+    ], ret(tmp(r)))
 ]).

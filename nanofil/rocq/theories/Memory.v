@@ -40,10 +40,12 @@ Open Scope Z_scope.
 (** ## Reasons and partial results *)
 
 (** The reasons of `trap(Why)` and `unchecked(Why)`: the access check's,
-    the call checks', free's, and those of the reuse vocabulary. *)
+    the call checks', free's, an allocation's (`alloc_res/6`), and those
+    of the reuse vocabulary. *)
 Inductive reason : Type :=
 | NullCapability | OutOfBounds | Misaligned | Readonly | NotAFunction
 | ArgumentSize | ReturnSize | InvalidFree | DoubleFree
+| TooBig | OutOfMemory
 | Alias | Span | Half | WhyLimit
 | Early (r : reason)
 | Ahead (r : reason).
@@ -244,9 +246,11 @@ Record alloc_req : Type := mkReq {
 (** `fresh m q base`: base may be the identity and address of a new
     object of q in m. It is a positive, aligned address; it is no
     object's identity, live or freed; the new bytes overlap no object's
-    current bounds; and they read as zero with no stored capability,
-    as Fil-C's allocations do. The interpreter never reuses an address;
-    the model allows any choice that satisfies this. Runtime.v's
+    current bounds; they end at or below 2^64, so that no address
+    inside the object wraps (`raw_address/3`); and they read as zero with
+    no stored capability, as Fil-C's allocations do. The interpreter
+    never reuses an address; the model allows any choice that satisfies
+    this. Runtime.v's
     `fresh_allocation` asks every runtime's choice to satisfy it.
 
     Objects are what `object_region` finds, as everywhere else: a
@@ -254,6 +258,7 @@ Record alloc_req : Type := mkReq {
 Definition fresh (m : mem) (q : alloc_req) (base : Z) : Prop :=
   0 < base /\
   base mod req_align q = 0 /\
+  base + req_extent q <= 2 ^ 64 /\
   object_region base (m_regions m) = None /\
   (forall b reg, object_region b (m_regions m) = Some reg ->
                  ~ (base < r_end reg /\ b < base + req_extent q)) /\
@@ -268,6 +273,10 @@ Definition allocated (m : mem) (q : alloc_req) (base : Z) : mem :=
   mkMem (m_bytes m)
         (mkRegion base (base + req_extent q) (req_kind q) Live :: m_regions m)
         (m_aux m).
+
+(** `max_allocation_size/1`: Fil-C refuses a heap object of more bytes
+    (FILC_MAX_ALLOCATION_SIZE, 2^48 - 1). *)
+Definition max_allocation_size : Z := 2 ^ 48 - 1.
 
 (** `alloc_extent/4` and `alloc_align/3` in filc mode: a heap object's
     bounds are its size rounded up to 16, at an alignment of at least

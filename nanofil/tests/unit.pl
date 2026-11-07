@@ -2224,9 +2224,12 @@ returns_differ(M0, M, Fn, Args, Fuel) :-
     ).
 
 % Translation validation's comparison: undefined behaviour and unknown
-% bytes allow any outcome they could produce, nothing else differs.
+% bytes allow any outcome they could produce, and so does running out of
+% memory, the runtime's choice; nothing else differs, too_big included.
 test(refines) :-
     refines(ub(float_conversion), ret(7)),
+    refines(trap(out_of_memory), ret(7)),
+    \+ refines(trap(too_big), ret(7)),
     V in 0..255,
     refines(ret(V), ret(0)),
     \+ refines(ret(V), ret(256)),

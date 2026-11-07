@@ -124,6 +124,9 @@ has_local_storage(module(Items)) :-
 %  inputs:
 %
 %    - undefined behaviour allows anything;
+%    - running out of memory allows anything: whether an allocation is
+%      refused is the runtime's choice (Runtime.v's `alloc` may refuse
+%      any), so a program that allocates less may run on;
 %    - an unknown result (read of uninitialized bytes in plain mode)
 %      allows any value consistent with its constraints;
 %    - otherwise the outcomes must be equal. A pointer into an alloc
@@ -131,6 +134,7 @@ has_local_storage(module(Items)) :-
 %      moves the ones left; data and function addresses do not move.
 
 refines(ub(_), _) :- !.
+refines(trap(out_of_memory), _) :- !.
 refines(Before0, After0) :-
     outcome_key(Before0, Before),
     outcome_key(After0, After),

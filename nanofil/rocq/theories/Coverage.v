@@ -26,29 +26,25 @@
     An address is `raw_address/3`'s sum modulo 2^64, while the model's
     bounds are unbounded integers. An object ending above 2^64 would let
     a check of [2^64-64, 2^64+64) pass and the covered access at offset
-    64 wrap to address 0, outside it, so `objects_fit` is a hypothesis
-    here. The validator cannot ensure it; only the runtime can. Native
-    Fil-C does: it refuses any object of 2^48 bytes or more ("attempt to
-    allocate object that is too big"). The interpreter does not, and
-    rocq/tests/huge-object.ir is a valid module whose run there is
-    unchecked this way (docs/rocq.md, "An object past 2^64"). Until the
-    runtime axioms bound an allocation, `objects_fit` stays a hypothesis
-    of the lemma.
+    64 wrap to address 0, outside it. The runtime excludes that for the
+    objects it allocates: `objects_fit` (Runtime.v) holds wherever a
+    runtime is ready, its `address_space` axiom, so of every state of a
+    run that starts ready (Machine.v's `mreachable_objects_fit`).
+    Whether a valid module's initial memory is ready is not yet proved:
+    its data has no size limit (docs/rocq.md, "An object past 2^64").
+    Native Fil-C keeps every object below 2^48
+    (docs/runtime-axioms.md).
 
     The lemma is stated over the memory the access runs in: that the
     check passed there is what the evidence invariant, the next lemma,
     will establish from the check having passed earlier. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
-From Nanofil Require Import Term Syntax Values Memory Ops Semantics Machine Validate.
+From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Machine Validate.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** ## The hypotheses *)
-
-(** `objects_fit rs`: every object of rs ends at or below 2^64. *)
-Definition objects_fit (rs : list region) : Prop :=
-  forall b reg, object_region b rs = Some reg -> r_end reg <= 2 ^ 64.
 
 (** `check_passes m p lo hi r al`: `check(Lo, Hi, Rights, Align)` of p
     passes in m (`kind_res/8` of `check/4`). *)

@@ -16,7 +16,8 @@
 
     | Fact | Statement | Native test |
     |---|---|---|
-    | `fresh_allocation` | an allocation's base is `fresh`: a new identity, aligned, overlapping no object, reading as zero | axiom-fresh.c |
+    | `fresh_allocation` | an allocation's base is `fresh`: a new identity, aligned, overlapping no object, ending at or below 2^64, reading as zero | axiom-fresh.c |
+    | `address_space` | every object ends at or below 2^64 (natively below 2^48); an allocation the runtime cannot hold is refused, a trap | axiom-address.c |
     | `non_moving` | at a safepoint no byte moves or changes: the collector writes no object's contents | axiom-nonmoving.c |
     | `free_lifetime`, `safepoint_lifetime` | bounds change only by free, which empties a live heap object's | axiom-lifetime.c |
     | `safepoints` | the runtime acts only at instructions that are not evidence preserving | axiom-safepoint.c |
@@ -90,6 +91,11 @@ Definition freed_in (rs : list region) (c : cap) : Prop :=
 Definition traps_as_freed (rs : list region) (c : cap) : Prop :=
   forall a size r align, 0 < size -> cap_access_res c rs a size r align = Some (RTrap OutOfBounds).
 
+(** `objects_fit rs`: every object of rs ends at or below 2^64, so an
+    address inside one never wraps (`raw_address/3`). *)
+Definition objects_fit (rs : list region) : Prop :=
+  forall b reg, object_region b rs = Some reg -> r_end reg <= 2 ^ 64.
+
 (** `in_object m a`: a is inside the current bounds of an object of m. *)
 Definition in_object (m : mem) (a : Z) : Prop :=
   exists b reg, object_region b (m_regions m) = Some reg /\ b <= a < r_end reg.
@@ -123,15 +129,20 @@ Module Type Runtime.
   (** `ready s m`: s may allocate in m. *)
   Parameter ready : state -> mem -> Prop.
 
-  (** The base of a new object of q, and the state after it. *)
-  Parameter alloc : state -> alloc_req -> Z * state.
+  (** The base of a new object of q, and the state after it; `None`
+      when the runtime cannot hold the object, which ends the run with
+      `trap(out_of_memory)`. *)
+  Parameter alloc : state -> alloc_req -> option (Z * state).
 
-  Axiom fresh_allocation : forall s m q,
+  Axiom fresh_allocation : forall s m q base s',
     ready s m ->
     0 < req_align q ->
     0 <= req_extent q ->
-    fresh m q (fst (alloc s q)) /\
-    ready (snd (alloc s q)) (allocated m q (fst (alloc s q))).
+    alloc s q = Some (base, s') ->
+    fresh m q base /\ ready s' (allocated m q base).
+
+  (** No object of a memory the runtime is ready in ends past 2^64. *)
+  Axiom address_space : forall s m, ready s m -> objects_fit (m_regions m).
 
   (** The program's own changes keep the runtime ready. *)
   Axiom ready_kept : forall s m m', ready s m -> kept m m' -> ready s m'.
@@ -267,42 +278,57 @@ Module InterpRuntime : Runtime.
   (** `stack_base/1`: allocations start at 2^32, above the data. *)
   Definition start : state := 2 ^ 32.
 
-  (** Every object lies below Next, and nothing at or above it has been
-      written. *)
+  (** `address_space/2`: Next stays at or below 2^48, libpas's address
+      space (PAS_ADDRESS_BITS). *)
+  Definition address_end : Z := 2 ^ 48.
+
+  (** Every object lies below Next, Next within the address space, and
+      nothing at or above Next has been written. *)
   Definition ready (next : state) (m : mem) : Prop :=
-    0 < next /\
+    0 < next <= address_end /\
     (forall b reg, object_region b (m_regions m) = Some reg -> b < next /\ r_end reg <= next) /\
     (forall a, next <= a -> m_bytes m a = 0 /\ m_aux m a = CNone).
 
   (** `alloc_base/6`: the request's alignment above Next; Next then
-      moves past the object, rounded up to 16, and a 16-byte gap. *)
-  Definition alloc (next : state) (q : alloc_req) : Z * state :=
+      moves past the object, rounded up to 16, and a 16-byte gap. Where
+      that would pass the address space's end, the runtime is out of
+      memory. *)
+  Definition alloc (next : state) (q : alloc_req) : option (Z * state) :=
     let base := align_up next (req_align q) in
-    (base, base + align_up (req_extent q) 16 + 16).
+    let next' := base + align_up (req_extent q) 16 + 16 in
+    if next' <=? address_end then Some (base, next') else None.
 
-  Lemma fresh_allocation : forall s m q,
+  Lemma fresh_allocation : forall s m q base s',
     ready s m ->
     0 < req_align q ->
     0 <= req_extent q ->
-    fresh m q (fst (alloc s q)) /\
-    ready (snd (alloc s q)) (allocated m q (fst (alloc s q))).
+    alloc s q = Some (base, s') ->
+    fresh m q base /\ ready s' (allocated m q base).
   Proof.
-    intros next m q (Hpos & Hobj & Hbytes) Ha He. simpl.
+    intros next m q base s' (Hpos & Hobj & Hbytes) Ha He E. unfold alloc in E.
+    destruct (_ <=? address_end) eqn:Hend in E; [|discriminate E].
+    injection E as <- <-. apply Z.leb_le in Hend. unfold address_end in *.
     pose proof (align_up_ge next (req_align q) Ha) as Hb.
     pose proof (align_up_ge (req_extent q) 16 ltac:(lia)) as Hx.
     set (base := align_up next (req_align q)) in *.
     split.
-    - unfold fresh. split; [lia|]. split; [apply align_up_mod; auto|]. split.
+    - unfold fresh. split; [lia|]. split; [apply align_up_mod; auto|]. split; [lia|]. split.
       { destruct (object_region base (m_regions m)) as [reg|] eqn:E; auto.
         destruct (Hobj _ _ E). lia. }
       split.
       { intros b reg E [H1 H2]. destruct (Hobj _ _ E). lia. }
       intros a Hr. apply Hbytes. lia.
-    - unfold ready, allocated. simpl. split; [lia|]. split.
+    - unfold ready, allocated, address_end. simpl. split; [lia|]. split.
       + intros b reg E. destruct (Z.eqb base b) eqn:Eb.
-        * inversion E; subst. simpl. apply Z.eqb_eq in Eb. lia.
+        * injection E as <-. simpl. apply Z.eqb_eq in Eb. lia.
         * destruct (Hobj _ _ E). lia.
       + intros a Hr. apply Hbytes. lia.
+  Qed.
+
+  (** Objects end below Next, which is within 2^48. *)
+  Lemma address_space : forall s m, ready s m -> objects_fit (m_regions m).
+  Proof.
+    intros next m (Hpos & Hobj & _) b reg E. destruct (Hobj _ _ E). unfold address_end in *. lia.
   Qed.
 
   (** Objects stay below Next as they end, and the program writes only

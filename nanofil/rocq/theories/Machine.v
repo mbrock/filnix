@@ -9,7 +9,7 @@
     | Step | Is |
     |---|---|
     | `mstep_next` | a step of Semantics.v's `step` that allocates nothing |
-    | `mstep_alloc` | an allocation at R's `alloc`, the base and R's next state |
+    | `mstep_alloc` | an allocation at R's `alloc`, the base and R's next state; where R refuses (out of memory) there is no step, and the run traps |
     | `mstep_safepoint` | R's action at a safepoint: `R.safepoint` may change memory and R's state |
 
     A call of libc's `free` is the genv's `ge_free`, which is `R.free`
@@ -32,6 +32,10 @@
       writes, a variadic callee's argument snapshot, is inside the new
       object (`step_fresh_kept`);
     - a safepoint is R's `safepoint_ready`.
+
+    Where R is ready no object ends past 2^64 (R's `address_space`), so
+    `mreachable_objects_fit` gives the coverage lemma's hypothesis
+    (Coverage.v) in every state of a run that starts ready.
 
     `mstep_refines` connects the machine to `step_rel`: from a ready
     state, each machine step is a step of `step_rel`, the allocation's
@@ -515,10 +519,11 @@ Inductive mstep (ge : genv) : mstate -> mstate -> Prop :=
 | mstep_next : forall c c' s,
     step ge c = Next c' ->
     mstep ge (c, s) (c', s)
-| mstep_alloc : forall c q k s,
+| mstep_alloc : forall c q k s base s',
     step ge c = Fresh q k ->
     0 <= req_extent q ->
-    mstep ge (c, s) (k (fst (R.alloc s q)), snd (R.alloc s q))
+    R.alloc s q = Some (base, s') ->
+    mstep ge (c, s) (k base, s')
 | mstep_safepoint : forall c s s' m',
     safepoint_due ge c = true ->
     R.safepoint s (c_mem c) s' m' ->
@@ -542,11 +547,11 @@ Qed.
 Theorem mstep_ready : forall ge st st',
   ge_free ge = R.free -> mstep ge st st' -> ready_state st -> ready_state st'.
 Proof.
-  unfold ready_state. intros ge st st' Hge Hs Hr. destruct Hs as [c c' s E | c q k s E He | c s s' m' _ Hsp].
+  unfold ready_state. intros ge st st' Hge Hs Hr. destruct Hs as [c c' s E | c q k s base s' E He Hal | c s s' m' _ Hsp].
   - simpl in *. eapply R.ready_kept; [exact Hr|]. eapply step_next_kept; [|exact E].
     rewrite Hge. exact free_kept.
   - simpl in *. destruct (step_fresh_kept _ _ _ _ E) as [Ha Hk].
-    destruct (R.fresh_allocation _ _ _ Hr Ha He) as [_ Hr'].
+    destruct (R.fresh_allocation _ _ _ _ _ Hr Ha He Hal) as [_ Hr'].
     eapply R.ready_kept; [exact Hr' | apply Hk].
   - simpl in *. eapply R.safepoint_ready; eauto.
 Qed.
@@ -559,6 +564,16 @@ Proof.
   eapply mstep_ready; eauto.
 Qed.
 
+(** Ready initially, no object of any state a run reaches ends past
+    2^64: the coverage lemma's `objects_fit` (Coverage.v). *)
+Corollary mreachable_objects_fit : forall ge st st',
+  ge_free ge = R.free -> mreachable ge st st' -> ready_state st ->
+  objects_fit (m_regions (c_mem (fst st'))).
+Proof.
+  intros ge st st' Hge H Hr. apply (R.address_space (snd st')).
+  exact (mreachable_ready _ _ _ Hge H Hr).
+Qed.
+
 (** From a ready state, a machine step is a step of `step_rel`, its
     allocation's base fresh, or the runtime's action at a safepoint. *)
 Theorem mstep_refines : forall ge c s c' s',
@@ -567,10 +582,10 @@ Theorem mstep_refines : forall ge c s c' s',
   (safepoint_due ge c = true /\ exists m', c' = with_mem c m' /\ R.safepoint s (c_mem c) s' m').
 Proof.
   unfold ready_state. simpl. intros ge c s c' s' Hr Hs.
-  inversion Hs as [c0 c1 s0 E | c0 q k s0 E He | c0 s0 s1 m' Hd Hsp]; subst.
+  inversion Hs as [c0 c1 s0 E | c0 q k s0 base s1 E He Hal | c0 s0 s1 m' Hd Hsp]; subst.
   - left. apply step_next. exact E.
   - left. destruct (step_fresh_kept _ _ _ _ E) as [Ha _].
-    destruct (R.fresh_allocation _ _ _ Hr Ha He) as [Hf _].
+    destruct (R.fresh_allocation _ _ _ _ _ Hr Ha He Hal) as [Hf _].
     eapply step_fresh; eauto.
   - right. eauto.
 Qed.

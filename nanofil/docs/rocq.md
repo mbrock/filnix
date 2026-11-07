@@ -23,7 +23,7 @@ the interpreter and cites the predicate it copies.
 | `Syntax.v` | ir.pl's header tables | classes, ops, values, instructions, jumps, blocks, functions, data, modules; `op_arg_classes/4`, `evidence_preserving/1`, `ahead_transparent/1`, `local_objects/2` |
 | `Values.v` | interp.pl's values | `cap` (`none`, `obj`, `ro`, `fn`, `ext`), `ptr`, `word`; `word_at_class/3` |
 | `Memory.v` | interp.pl's Memory section | regions, `mem`, `cap_access_res/7`, `free_res/4`, bytes and aux, `fresh` |
-| `Runtime.v` | `alloc_base/6`, `free_res/4`; [runtime-axioms.md](runtime-axioms.md) | Campaign 2's `Module Type Runtime`, seven axioms and two readiness obligations, and `InterpRuntime`, which proves them |
+| `Runtime.v` | `alloc_base/6`, `free_res/4`; [runtime-axioms.md](runtime-axioms.md) | Campaign 2's `Module Type Runtime`, eight axioms and two readiness obligations, and `InterpRuntime`, which proves them |
 | `Ops.v` | `alu/4`, `additive_res/4`, `kind_res/8` | integer and float ops, `check` and the reuse vocabulary, raw loads and stores, pointer-load and pointer-store protocols, `va_arg` |
 | `Semantics.v` | `run/5`'s blocks, instructions, jumps, calls | the configuration, `step`, `step_rel`, `reachable`; the variadic entry snapshot |
 | `Run.v` | `initial_memory/4` | module preparation, and `Driver`, a run over any `Runtime`'s allocations and free |
@@ -381,7 +381,7 @@ These are formal.md's early decisions as they turned out in the code:
   stack on Lua's `luaV_execute`, which has 995 blocks.
 - **The runtime is a module type.** `Runtime.v` states what the model
   takes from the Fil-C runtime: where a new object goes, what free
-  does, and what may change at a safepoint, as seven axioms
+  does, and what may change at a safepoint, as eight axioms
   ([runtime-axioms.md](runtime-axioms.md)). The model has one thread
   and no collector, so other threads and the collector show up only
   as the `safepoint` relation. `InterpRuntime` is interp.pl's
@@ -610,11 +610,13 @@ Decisions and findings:
   does not say why; that is the evidence invariant's job, from the
   check having passed earlier and nothing between it and the use having
   freed or moved the object.
-- **Objects end at or below 2^64 is a hypothesis, `objects_fit`.**
-  Addresses wrap modulo 2^64 (`raw_address/3`) while bounds are
-  unbounded integers, so the lemma is false for an object ending above
-  2^64. The runtime axioms do not exclude one, and the interpreter makes
-  one: see "An object past 2^64" below.
+- **Objects end at or below 2^64: `objects_fit`.** Addresses wrap
+  modulo 2^64 (`raw_address/3`) while bounds are unbounded integers, so
+  the lemma is false for an object ending above 2^64. The lemma takes
+  `objects_fit` as a hypothesis, and the runtime's `address_space`
+  axiom supplies it wherever the runtime is ready: Machine.v's
+  `mreachable_objects_fit` gives it in every state of a run that starts
+  ready. See "An object past 2^64" below.
 - **The capture replays sentences one at a time.** `1: { tac.` on one
   line is two sentences to Rocq but one to the proof-state capture's
   plan, which then drops `tac`; Coverage.v uses bullets instead.
@@ -630,21 +632,80 @@ the module, and the model agrees with the interpreter: a counterexample
 to `valid_no_unchecked` over the interpreter's runtime, found by the
 coverage lemma's proof rather than by a test.
 
-The interpreter is more permissive than native code. The pinned Fil-C
-refuses `malloc` of 2^48 bytes or more ("filc safety error: attempt to
-allocate object that is too big") and runs out of memory at 2^47, so no
-native object ends above 2^64. The backend cannot emit this module's
-check yet, so difftest does not compare it. Not yet fixed: the fix is
-interpreter semantics (an allocation past a limit traps, as native code
-does) and a runtime axiom (`fresh_allocation` bounds the object it
-gives), with a native test, so it needs an Oracle review first.
+The interpreter was more permissive than native code. The pinned Fil-C
+refuses a heap object of more than 2^48 - 1 bytes before allocating
+("filc safety error: attempt to allocate object that is too big",
+`filc_prepare_allocate_object`), and one within that limit that the
+address space cannot hold ("filc safety error: out of memory", at 2^47
+here), so no native object ends above 2^64. The fix, Campaign 3's third
+milestone, follows native code:
+
+- **Too big is the op's.** `alloc_res/6` traps `too_big` for a size
+  over `max_allocation_size/1` (2^48 - 1) before anything is allocated,
+  as Ops.v's `alloc` does, for every runtime. huge-object.ir now traps
+  there.
+- **Out of memory is the runtime's.** The runtime's `alloc` returns
+  `None` where it cannot hold the object, and the run ends
+  `trap(out_of_memory)` (Run.v's `Driver`); Machine.v has no step there.
+  Which allocations fail natively depends on the machine, so the module
+  type lets any runtime refuse. The interpreter's address space ends at
+  2^48, libpas's (`address_space/2`): an allocation whose Next would
+  pass it fails, whether a heap object, a named local or a variadic
+  callee's argument snapshot. Plain mode keeps no limit. Natively the
+  snapshot is a heap object (`filc_promote_args_to_heap`) but a named
+  local is a stack frame slot, so a local's `out_of_memory` exists only
+  in the interpreter and the model; and native memory ends well before
+  2^48, so sizes the interpreter allocates may trap natively, as any
+  runtime may refuse.
+- **The axioms bound the object.** `fresh` asks that the object end at
+  or below 2^64, and the new axiom `address_space` that no object of a
+  memory the runtime is ready in ends past it (`objects_fit`, now in
+  Runtime.v). `InterpRuntime` proves both: its `ready` keeps Next at
+  most 2^48. The native test is
+  [axiom-address.c](../tests/c/prog/axiom-address.c): objects end below
+  2^48, `malloc(2^48)` traps, and so does `malloc(2^48 - 1)`, which is
+  within the size limit, so a runtime may refuse.
+- **Fixtures.** huge-object.ir's runs cover the size limit and its
+  boundary and an out-of-memory heap object, named local and argument
+  snapshot (the model agrees on all nine). `tests/filc/alloc-limit.ir`
+  runs in difftest with and without `-O`; difftest counts every safety
+  error as a trap, so axiom-address.c checks the two messages.
+- **The middle end.** Translation validation (`refines/2`, opt.pl) lets
+  an optimized program run on where the original ran out of memory,
+  since a refusal is the runtime's choice; `too_big` must stay.
+  promote, which removes the allocs it promotes, keeps a Fil-C alloc
+  over 2^48 - 1 bytes, or of a negative constant, which is 2^64 or more
+  at `l` (`size_allocates/2`); alloc-limit.ir's `dead_too_big` and
+  `dead_negative` failed `-O` validation without that. No other pass
+  removes an alloc.
+- **Reviewed.** An Oracle review confirmed the model transcribes the
+  change (the size test, the three refusal sites, the strides) and the
+  `too_big`/`out_of_memory` boundary natively, and found the `-O`
+  validation failure, an axiom test that did not pin the boundary, and
+  the open gap below; a second review of the fixes found promote still
+  removing an alloc of a negative size.
+
+Still open: a valid module's initial memory need not be ready. ir.pl
+accepts `zero(N)` data of any size, and `initial_memory/4` lays data
+out from 65536 with no limit, so data can reach past 2^32, where heap
+objects start and overlap it, or past 2^64, where a covered access
+wraps again: with `data(big, export, 16, [zero(2^64)])` and a flight to
+64 bytes below 2^64, `valid` accepts the module and the model runs it
+`unchecked(out_of_bounds)`, as the review showed. The interpreter
+cannot build such data (`item_bytes/3` makes every zero byte and
+overflows its stack), so the gates do not see it. Natively an 8 GiB
+global compiles and runs. The machine's theorems already assume a run
+that starts ready; closing the gap means either bounding filc data in
+`valid_module/1` so the layout ends at or below 2^32 (`stack_base/1`),
+and proving the initial state ready, which refuses static data the
+native toolchain accepts, or starting the heap above the data, which
+needs the runtime's start to depend on the module. That is a validator
+decision, left to mbrock before the soundness theorem is stated.
 
 ## Next
 
-1. An allocation bound: the interpreter's `alloc_base/6` traps where
-   native Fil-C refuses an object, `fresh` bounds the object below
-   2^64, with an axiom test for the limit, so `objects_fit` follows from
-   `ready` and huge-object.ir traps.
+1. Initial readiness, once the data question above is decided: the
+   initial memory of a valid module is `ready` for `InterpRuntime`.
 2. The evidence invariant for proof persistence, stated over
    `Machine R`'s steps: between a check and its use, only
    `evidence_preserving/1` instructions and unpolled edges, so no

@@ -15,7 +15,9 @@
       local, perf.md item 4, in a caller's loop is an alloc in a middle
       block);
     - its size is a constant and every slot lies inside it, so no access
-      could trap or be undefined;
+      could trap or be undefined; in filc mode the size is at most
+      2^48 - 1, so the alloc itself could not trap too_big
+      (interp:alloc_res/6), which removing it would hide;
     - its slots do not overlap and each offset has one width, so every
       load reads exactly the bytes one earlier store wrote, except for
       punned reads: a `b` or `h` load, at an access never stored, inside
@@ -456,8 +458,16 @@ punned_read(acc(O, W), Slots, Stored) :-
     memberchk(SW, [h, w]).
 
 slots_ok(Mode, Size, Accs) :-
+    size_allocates(Mode, Size),
     maplist(slot_ok(Mode, Size), Accs),
     slots_disjoint(Accs).
+
+% size_allocates(+Mode, +Size): an alloc of Size bytes does not trap
+% too_big: Fil-C's limit is 2^48 - 1 bytes (FILC_MAX_ALLOCATION_SIZE,
+% interp:alloc_res/6). A negative constant is a size of 2^64 or more,
+% read at l. Plain mode has none.
+size_allocates(plain, _).
+size_allocates(filc, Size) :- Size >= 0, Size =< 281474976710655.
 
 slot_ok(Mode, Size, acc(Off, Width)) :-
     width_bytes(Width, Bytes),

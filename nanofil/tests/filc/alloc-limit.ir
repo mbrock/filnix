@@ -1,0 +1,41 @@
+% A heap allocation past Fil-C's limits traps, natively and in interp.pl
+% (alloc_res/6): more than 2^48 - 1 bytes is too big, and 2^48 - 1 bytes
+% is out of memory, as the address space cannot hold it. An ordinary
+% size is allocated and written. difftest counts every safety error as
+% a trap, so it compares that these trap, not which reason;
+% tests/c/prog/axiom-address.c checks the messages. Sizes just within
+% the interpreter's 2^48 address space run on there but trap natively,
+% where memory ends sooner, so none is run here.
+run(alloc_limit, [281474976710656]).
+run(alloc_limit, [281474976710655]).
+run(alloc_limit, [64]).
+func(alloc_limit, export, l, [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(8), [tmp(n)]),
+        store(l, const(7), tmp(p)),
+        let(tmp(x), l, load(l), [tmp(p)])
+    ], ret(tmp(x)))
+]).
+
+% A dead alloc too big for Fil-C still traps: promote, which removes the
+% allocs it promotes, keeps it (promote.pl's size_allocates/2).
+run(dead_too_big, []).
+func(dead_too_big, export, l, [], [
+    block(start, [], [
+        let(tmp(big), p, alloc(8), [const(281474976710656)]),
+        let(tmp(p), p, alloc(8), [const(16)]),
+        store(l, const(7), tmp(p)),
+        let(tmp(x), l, load(l), [tmp(p)])
+    ], ret(tmp(x)))
+]).
+
+% The same with a negative size, which an l operand reads as 2^64 - 1.
+run(dead_negative, []).
+func(dead_negative, export, l, [], [
+    block(start, [], [
+        let(tmp(big), p, alloc(8), [const(-1)]),
+        let(tmp(p), p, alloc(8), [const(16)]),
+        store(l, const(7), tmp(p)),
+        let(tmp(x), l, load(l), [tmp(p)])
+    ], ret(tmp(x)))
+]).

@@ -19,7 +19,8 @@ the runtime paths below are relative to `libpas/src/libpas/` there.
 
 | Axiom | Statement | Native test | Source |
 | --- | --- | --- | --- |
-| `fresh_allocation` | an allocation's base is `fresh`: no identity the memory has, live or freed, aligned, overlapping no object, reading as zero with no stored capability; for a runtime state `ready` for the memory | [axiom-fresh.c](../tests/c/prog/axiom-fresh.c): new objects read zero; a freed object's capability, still held, traps after collections and thousands of allocations of its size | `filc_runtime.c` `finish_allocate_small`/`_large` (zero mode), `fugc.h:170–181` |
+| `fresh_allocation` | an allocation the runtime makes has a `fresh` base: no identity the memory has, live or freed, aligned, overlapping no object, ending at or below 2^64, reading as zero with no stored capability; for a runtime state `ready` for the memory | [axiom-fresh.c](../tests/c/prog/axiom-fresh.c): new objects read zero; a freed object's capability, still held, traps after collections and thousands of allocations of its size | `filc_runtime.c` `finish_allocate_small`/`_large` (zero mode), `fugc.h:170–181` |
+| `address_space` | where the runtime is `ready`, no object ends past 2^64 (`objects_fit`), so no address inside one wraps; the runtime's `alloc` may refuse, and the run then traps `out_of_memory` | [axiom-address.c](../tests/c/prog/axiom-address.c): objects of 1 byte to 1 GiB end below 2^48; `malloc(2^48)` traps as too big, and `malloc(2^48 - 1)`, within the size limit, traps out of memory | `filc_runtime.h` `filc_prepare_allocate_object` (`FILC_MAX_ALLOCATION_SIZE`, `PAS_MAX_ADDRESS`), `pas_config.h` `PAS_ADDRESS_BITS` 48 |
 | `non_moving` | at a safepoint no byte moves or changes: the collector writes no object's contents and no address word | [axiom-nonmoving.c](../tests/c/prog/axiom-nonmoving.c): addresses of live and freed objects, and live contents, unchanged across six collections | Manifesto.md, "Non-moving" |
 | `free_lifetime`, `safepoint_lifetime` | an object's bounds change only by free, which empties a live heap object's for every alias at once; nothing else changes a region, and no identity appears | [axiom-lifetime.c](../tests/c/prog/axiom-lifetime.c): a read after a free through an alias traps; another object is untouched | `filc_runtime.c:3160–3183` (`free_impl`: `upper = lower`, then FREE), `3869–3917` |
 | `safepoints` | the runtime acts, and another thread's effects become visible, only at instructions that are not `evidence_preserving/1`: calls, polls, alloc and the rest | [axiom-safepoint.c](../tests/c/prog/axiom-safepoint.c): a timer's handler frees the object a loop reads; the loop reads only its bytes, then traps | Manifesto.md, "FUGC relies on safepoints"; `filc_runtime.c:1191` (`handle_deferred_signals`) |
@@ -51,12 +52,13 @@ old pointer alive, and why it does not ask that addresses never recur.
 ## The interpreter's instance
 
 `InterpRuntime` in Runtime.v is interp.pl's runtime: `alloc` is
-`alloc_base/6` with Next from 2^32, `free` is `free_res/4`,
+`alloc_base/6` with Next from 2^32 up to 2^48, refusing an allocation
+that would pass 2^48 (`address_space/2`), `free` is `free_res/4`,
 `at_safepoint` is the negation of `evidence_preserving/1`, and nothing
 changes at a safepoint. It proves every axiom, so the module type is
 consistent and `Print Assumptions` of the extracted `judge` is closed.
-Its `ready` says every object lies below Next and nothing at or above it
-has been written. Run.v's `Driver` runs over any `Runtime`, and the
+Its `ready` says every object lies below Next, Next is at most 2^48,
+and nothing at or above Next has been written. Run.v's `Driver` runs over any `Runtime`, and the
 gates run `Driver InterpRuntime`.
 
 ## Readiness
@@ -68,6 +70,35 @@ objects leave the runtime ready to allocate, and `safepoint_ready`, the
 runtime's actions at a safepoint do too. With `fresh_allocation` they
 make `ready` an invariant of every run: Machine.v's `mreachable_ready`
 proves it for every runtime, and `InterpRuntime` proves both.
+
+## The address space
+
+The model's addresses wrap modulo 2^64 (`raw_address/3`) while its
+bounds are unbounded integers, so an object ending past 2^64 would let a
+covered access wrap outside it: Coverage.v's lemma needs `objects_fit`.
+Before `address_space`, the interpreter's allocator only added, and
+`rocq/tests/huge-object.ir` placed an object 64 bytes below 2^64 and ran
+a valid module unchecked ([rocq.md](rocq.md), "An object past 2^64").
+
+Fil-C refuses such objects in two ways, both safety errors. A size over
+`FILC_MAX_ALLOCATION_SIZE` (2^48 - 1) traps before anything is
+allocated, "attempt to allocate object that is too big"; that is part of
+the `alloc` op itself, the same for every runtime (`alloc_res/6`,
+`trap(too_big)`). A size within the limit that the address space cannot
+hold traps "out of memory"; when that happens depends on the machine, so
+it is the runtime's choice: `alloc` returns `None`, and the run ends
+`trap(out_of_memory)`, whether the object was a heap object, a named
+local or a variadic callee's argument snapshot. (Natively the snapshot
+is a heap object but a named local is a stack frame slot, so only the
+model refuses a local.) The interpreter's address space ends at 2^48,
+libpas's (`PAS_ADDRESS_BITS`); natively memory ends sooner, so sizes the
+interpreter allocates may trap natively, which the axiom allows.
+`tests/filc/alloc-limit.ir` checks that both trap natively too, and
+axiom-address.c checks each one's message, which pins the size limit.
+
+The axioms speak of states the runtime is ready in. Whether a valid
+module's initial memory is one is open: its data has no size limit
+([rocq.md](rocq.md), "An object past 2^64").
 
 ## What is not yet stated
 

@@ -420,8 +420,10 @@ Definition op_res_int (o : op) (k : class) (xs : list word) (m : mem) : option o
   let with_mem (r : option (res word)) := let* r' := r in Some (OpRes r' m) in
   match o, k, xs with
   | Alloc align, _, [WInt size] =>
-      let q := heap_req align size in
-      Some (OpAlloc q (fun base => (WPtr (mkPtr base (Obj base)), allocated m q base)))
+      if max_allocation_size <? size then Some (OpRes (RTrap TooBig) m)
+      else
+        let q := heap_req align size in
+        Some (OpAlloc q (fun base => (WPtr (mkPtr base (Obj base)), allocated m q base)))
   | Check lo hi r al, A, [WPtr p] =>
       let* chk := access_res m (raw_address (ptr_addr p) lo) (ptr_cap p) (hi - lo) r al in
       Some (OpRes (checked_res chk (WPtr p)) m)

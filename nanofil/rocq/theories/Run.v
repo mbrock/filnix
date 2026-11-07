@@ -19,9 +19,13 @@
     `Driver R` runs with R's choices. The gates run
     `Driver InterpRuntime` (Transport.v), whose `alloc` is
     `alloc_base/6`: the next address aligned for the request, starting
-    at 2^32 (`stack_base/1`). That is one instance of `fresh`
-    allocation, not part of the semantics: Semantics.v's `step_rel`
-    allows any fresh base.
+    at 2^32 (`stack_base/1`), up to 2^48 (`address_space/2`). That is
+    one instance of `fresh` allocation, not part of the semantics:
+    Semantics.v's `step_rel` allows any fresh base. Where R refuses an
+    allocation the run ends with `trap(out_of_memory)`, at whichever
+    allocation it is: a heap object, a named local or a variadic
+    callee's argument snapshot (`alloc_res/6`, `inst_result/5`,
+    `call_outcome/8`).
 
     ## The driver
 
@@ -145,7 +149,11 @@ Definition run_step (ge : genv) (s : config * R.state) : (config * R.state) + ru
   match step ge c with
   | Next c' => inl (c', rt)
   | Done o => inr (Finished o)
-  | Fresh q k => let (base, rt') := R.alloc rt q in inl (k base, rt')
+  | Fresh q k =>
+      match R.alloc rt q with
+      | Some (base, rt') => inl (k base, rt')
+      | None => inr (Finished (Trap OutOfMemory))
+      end
   | Stuck why => inr (Halted why)
   end.
 

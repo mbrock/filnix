@@ -207,6 +207,8 @@ int_arg_in_range(K, X) :-
 %  Calling Fn on Xs in state S0 ends with Out in state S. In plain mode
 %  a callee's allocations die when it returns; in filc mode every
 %  allocation is a heap object that lives until explicitly freed.
+%  A variadic callee whose argument snapshot the address space cannot
+%  hold traps out_of_memory at its entry, as Fil-C does.
 call_outcome(Fns, Globals, Mode, Fn, Args, S0, Out, S) :-
     (   get_assoc(Fn, Fns, fn(Ret, Params, Entry, Blocks)) -> true
     ;   format(atom(Msg), 'cannot interpret a call to external ~w', [Fn]),
@@ -215,17 +217,19 @@ call_outcome(Fns, Globals, Mode, Fn, Args, S0, Out, S) :-
     empty_assoc(Env0),
     length(Params, NParams), length(Fixed, NParams), append(Fixed, _, Args),
     foldl(param_arg_env, Params, Fixed, Env0, Env1),
-    entry_snapshot(Blocks, Args, Env1, Env, S0, SEntry),
-    assoc_to_values(Blocks, Bs),
-    local_objects(func(Fn, local, Ret, Params, Bs), Objects),
-    findall(Name-_, member(Name-_, Objects), LocalPairs),
-    list_to_assoc(LocalPairs, Locals),
-    Ctx = ctx(Fns, Globals, Blocks, Ret, Mode, Locals),
-    block_outcome(Ctx, Entry, entry, Env, SEntry, Out, S1),
-    assoc_to_values(Locals, Bases),
-    invalidate_locals(Bases, S1, S2),
-    S0 = s(mem(_, Regions, _, _), _),
-    returned_state(Mode, Regions, S2, S).
+    (   entry_snapshot(Blocks, Args, Env1, Env, S0, SEntry)
+    ->  assoc_to_values(Blocks, Bs),
+        local_objects(func(Fn, local, Ret, Params, Bs), Objects),
+        findall(Name-_, member(Name-_, Objects), LocalPairs),
+        list_to_assoc(LocalPairs, Locals),
+        Ctx = ctx(Fns, Globals, Blocks, Ret, Mode, Locals),
+        block_outcome(Ctx, Entry, entry, Env, SEntry, Out, S1),
+        assoc_to_values(Locals, Bases),
+        invalidate_locals(Bases, S1, S2),
+        S0 = s(mem(_, Regions, _, _), _),
+        returned_state(Mode, Regions, S2, S)
+    ;   Out = trap(out_of_memory), S = S0
+    ).
 
 % Keep identities, bytes and aux, but end just this invocation's stack
 % lifetimes in the latest state. A trap may precede a declaration; its
@@ -246,6 +250,9 @@ returned_state(filc, _, S, S).
 
 param_arg_env(param(_, tmp(N)), X, Env0, Env) :- put_assoc(N, Env0, X, Env).
 
+% entry_snapshot(+Blocks, +Args, +Env0, -Env, +S0, -S) is semidet: a
+% variadic callee's entry takes the snapshot of its arguments. Fails
+% when the address space cannot hold the snapshot (alloc_base/6).
 entry_snapshot(Blocks, Args, Env0, Env, s(Mem0, Fuel), s(Mem, Fuel)) :-
     assoc_to_values(Blocks, Bs),
     ( variadic_func(func(_, _, _, _, Bs))
@@ -411,10 +418,13 @@ rest_result(stop(Out, S), _, _, stop(Out, S)).
 %  the run.
 inst_result(loc(_, _), _, Env, S, cont(Env, S)) :- !.
 inst_result(local_alloc(Name, Size), ctx(_, _, _, _, filc, Locals), Env,
-            s(Mem0, Fuel), cont(Env, s(Mem, Fuel))) :-
+            s(Mem0, Fuel), Result) :-
     ( get_assoc(Name, Locals, Base), var(Base) -> true
     ; throw(nanofil_error('duplicate or undeclared local allocation')) ),
-    alloc_base(local, Mem0, 16, Size, Base, Mem).
+    (   alloc_base(local, Mem0, 16, Size, Base, Mem)
+    ->  Result = cont(Env, s(Mem, Fuel))
+    ;   Result = stop(trap(out_of_memory), s(Mem0, Fuel))
+    ).
 inst_result(local_load(tmp(D), K, T, Name, Off), Ctx, Env, S0, Result) :-
     local_pointer(Ctx, Name, Off, P),
     load_op_res(T, K, filc, [P], S0, Res, S),
@@ -948,10 +958,9 @@ kind_res(raw_cas, raw_cas(T, Off), K, filc, [ptr(A, Cap), E, N], S0, Res, S) :-
     raw_address(A, Off, B),
     cas_res(T, K, E, N, B, Cap, S0, Res0, S),
     raw_res(Res0, Res).
-kind_res(alloc, alloc(Align), _, Mode, [Size], s(Mem0, Fuel), val(P),
+kind_res(alloc, alloc(Align), _, Mode, [Size], s(Mem0, Fuel), Res,
          s(Mem, Fuel)) :-
-    alloc_base(Mode, Mem0, Align, Size, Base, Mem),
-    alloc_pointer(Mode, Base, P).
+    alloc_res(Mode, Mem0, Align, Size, Res, Mem).
 kind_res(va_arg, _, K, filc, [P], S0, Res, S) :-
     pointer_load_res(filc, [P], S0, Cursor, S1),
     va_cursor_res(Cursor, K, P, S1, Res, S).
@@ -1599,11 +1608,32 @@ low_bytes([B|Bs], X) :-
     int_is(X1, X // 256),
     low_bytes(Bs, X1).
 
-% alloc_base(+Mode, +Mem0, +Align, +Size, -Base, -Mem): Base is a new
-% region of Size bytes in Mem. Allocations are aligned (Fil-C's to at
-% least 16, as filc_allocate_with_alignment aligns them),
+% alloc_res(+Mode, +Mem0, +Align, +Size, -Res, -Mem): the heap
+% allocation `alloc(Align)` of Size bytes. Fil-C refuses an object of
+% more than max_allocation_size/1 bytes before it allocates anything
+% (filc_prepare_allocate_object/1: "attempt to allocate object that is
+% too big"), and one its address space cannot hold ("out of memory");
+% both are safety errors.
+alloc_res(Mode, Mem0, Align, Size, Res, Mem) :-
+    must_be(integer, Size),
+    (   Mode == filc, max_allocation_size(Max), Size > Max
+    ->  Res = trap(too_big), Mem = Mem0
+    ;   alloc_base(Mode, Mem0, Align, Size, Base, Mem1)
+    ->  alloc_pointer(Mode, Base, P), Res = val(P), Mem = Mem1
+    ;   Res = trap(out_of_memory), Mem = Mem0
+    ).
+
+% max_allocation_size(-Max): FILC_MAX_ALLOCATION_SIZE, PAS_MAX_ADDRESS,
+% 2^48 - 1.
+max_allocation_size(281474976710655).
+
+% alloc_base(+Mode, +Mem0, +Align, +Size, -Base, -Mem) is semidet: Base
+% is a new region of Size bytes in Mem. Allocations are aligned (Fil-C's
+% to at least 16, as filc_allocate_with_alignment aligns them),
 % with Fil-C bounds rounded to 16 as prepare_allocate_object does (zero
 % stays zero). A 16-byte gap separates distinct, never-reused identities.
+% Fails when Next would pass the end of the address space
+% (address_space/2): the runtime is out of memory.
 alloc_base(Mode, mem(Bytes, Rs, Next0, Aux), Align0, Size, Base,
            mem(Bytes, [region(Base, End, Kind, live)|Rs], Next, Aux)) :-
     must_be(integer, Size),
@@ -1612,7 +1642,16 @@ alloc_base(Mode, mem(Bytes, Rs, Next0, Aux), Align0, Size, Base,
     Base is (Next0 + Align - 1) // Align * Align,
     End is Base + Extent,
     allocation_stride(Mode, Size, Extent, Stride),
-    Next is Base + Stride + 16.
+    Next is Base + Stride + 16,
+    address_space(Mode, Next).
+
+% address_space(+Mode, +Next): Next is within the address space. Fil-C's
+% objects lie below 2^48, libpas's address space (PAS_ADDRESS_BITS), so
+% no object ends past 2^64 and an address never wraps inside one. Plain
+% mode sets no limit.
+address_space(plain, _).
+address_space(filc, Next) :- Next =< 281474976710656.
+address_space(local, Next) :- Next =< 281474976710656.
 
 alloc_extent(plain, Size, Size, stack).
 alloc_extent(filc, Size, Extent, heap) :- Extent is (Size + 15) // 16 * 16.
