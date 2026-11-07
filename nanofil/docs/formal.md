@@ -60,7 +60,7 @@ package in Filnix rather than only what nanofil compiles.
 | 1 | The core model in Rocq, agreeing with the interpreter | Gallina syntax, semantics, `valid` | under way: syntax, memory and small-step semantics in `nanofil/rocq/`, agreeing with `interp:run/5` on every core-subset run line, and `valid` for functions, data and aliases, agreeing with `ir:valid_module/1` on every core-subset mutant of the corpus and of tests/gen.pl's Fil-C modules, both under every `--checks` mode with and without `-O`, and of the tests/c/prog programs with aliases and weak, thread-local or constructor data; floats (`Ieee.v`) and variadics are in the subset, so every corpus run line is compared and all of Lua 5.4.7's functions but `luaD_rawrunprotected` (`setjmp`) decode into it, with Lua's state-free functions run by the gate ([rocq.md](rocq.md)); tests/gen.pl's Fil-C modules now reach `renew_if`, `limit` with `check_limit`, and `renew_hull`, with frees and traps; found and fixed: a renew of a freed variadic snapshot was `unchecked(span)`, now a trap as native renew gives; dominance now transcribes cfg.pl's `cfg_idoms/2` and `dom_intervals/3`, so the validator judges Lua's lvm.c; the model's runtime is Campaign 2's module type; the three data findings are decided (data items have the header's shapes, a call of data traps, names are unique) |
 | 2 | The runtime as one page of axioms, each probed natively | `docs/runtime-axioms.md` | first version: [runtime-axioms.md](runtime-axioms.md) and `Module Type Runtime` in `nanofil/rocq/theories/Runtime.v`, eight axioms read against staging `18b6663`, each with a native test in tests/c/prog/axiom-*.c (the eighth, `address_space`, from Campaign 3's coverage lemma); the interpreter's instance proves them all, and two readiness obligations without a native test; Campaign 3's machine runs over any instance |
 | 3 | Soundness of checking: the validator's theorem | `valid_no_unchecked`, no admits | started: [Machine.v](../rocq/theories/Machine.v) runs the steps over any `Runtime` and proves `ready` an invariant of every run, and every step a `step_rel` step or a safepoint action; [Coverage.v](../rocq/theories/Coverage.v) proves the coverage lemma, given `objects_fit` (its proof needs only objects ending at or below 2^64; the axiom says 2^48, native's bound, which `hull_covered` needs: mbrock's decision); the interpreter broke that (`rocq/tests/huge-object.ir`, a valid module run unchecked), and now traps where native Fil-C refuses an allocation, with the runtime axiom `address_space` supplying the hypothesis in every state of a run that starts ready; a valid module's initial data has no size limit, so the theorem takes "the run starts ready" as a hypothesis (mbrock's decision; starting the heap above the data is the planned fix); [Evidence.v](../rocq/theories/Evidence.v) proves the evidence pass sound instruction by instruction and across an edge; [Persistence.v](../rocq/theories/Persistence.v) carries it over whole runs: in every state of a run, a frame that is not doomed runs no raw access or raw call to `unchecked` except by `hull_covered`, given that the runtime changes no region at a safepoint the pass keeps facts across (`spares`; the module type allows three such, the interpreter's runtime satisfies it); [Dominance.v](../rocq/theories/Dominance.v) proves the validator's dominator intervals sound for every function (a run enters only blocks with an interval, and dominance holds across each edge), which the reuse forms' single-definition chains rest on; [Interval.v](../rocq/theories/Interval.v) proves the offset intervals `offset_interval/8` answers sound, wherever the names they walk hold their definitions; [Sites.v](../rocq/theories/Sites.v) proves that a single definition's operands are not defined again where it dominates; [Identity.v](../rocq/theories/Identity.v) proves that no run loses an object, given that the runtime's free keeps identities (`free_ids`; the interpreter's does), so a check that passed passes again or traps; [Single.v](../rocq/theories/Single.v) proves that in every frame of every run each single definition whose site dominates the point replays, its operands unchanged and its memory persisting; [Chain.v](../rocq/theories/Chain.v) reads guard chains and pointer distances off it and proves the first reuse form: along every run, an access `hull_covered` accepts gives no `unchecked` (`interp_access_checked`, closed), with the evidence invariant now carrying that the live facts' pointers dominate the point (Dominance.v's `dom_meet`, from the nearest-common-ancestor property of `cfg_idoms/2`); next: the other reuse forms and the doomed frame, then `valid_no_unchecked` |
-| 4 | Observations, refinement, and libc contracts | a trace semantics; `opt:refines/2` as trace inclusion | first standalone slice: [ExternalCalls.v](../rocq/theories/ExternalCalls.v) states contracts, finite effect prefixes over any runtime, readiness/identity preservation and `puts` stream acceptance; integration, native trace coverage and refinement remain open |
+| 4 | Observations, refinement, and libc contracts | a trace semantics; `opt:refines/2` as trace inclusion | [ExternalCalls.v](../rocq/theories/ExternalCalls.v) states trusted contracts and finite effect prefixes, starting with `puts`; [ExternalMachine.v](../rocq/theories/ExternalMachine.v) adds guarded direct-call transitions and finite labelled runs, preserving readiness, identities and Campaign 3's two invariants; native instances/trace coverage, executable integration and refinement remain open |
 | 5 | Static discharge by certificate | `discharged(Cert)`, `discharge_ok`, a Prolog finder | not started |
 | 6 | Integration with Filnix and the playground | the `nanofil-check` gate | not started |
 | 7 | Trap-freedom of a pinned Nix closure: a program that never panics | `never_panics` of one closure: a closed module, then a one-call libc program, then GNU Hello (`nanofil-hello-O`); `ls` next; this build of OpenSSH's server as the stretch | [step 0 measured](trap-census.md): Hello has 1,398 class-`a` sites, 360 flag-only renewals; all 178 functions in 81 objects inside the subset, `valid = Some true`; no trap-freedom proof yet |
@@ -442,28 +442,72 @@ deliver pending bytes from earlier calls. Native trace coverage and the
 relation between API acceptance and externally visible writes are still
 trusted obligations to state, not theorems proved by `effects_preserve`.
 
+### Campaign 4, milestone 2: guarded machine integration
+
+[ExternalMachine.v](../rocq/theories/ExternalMachine.v) is a labelled
+extension, not a change to `Semantics.step`, `inst_step`, `Machine.mstep`
+or the extracted driver. Its registry maps unresolved names to trusted
+contracts over a shared logical world.
+
+- `external_site` recognizes direct global calls only, after defined
+  and outside-subset functions, global data and the existing runtime
+  `free` have taken precedence. The frame must not be doomed. Arguments
+  are evaluated with the same `map_option arg_x` as the core, and the
+  actual words are passed to `invoke`. Raw/indirect calls are deferred.
+- Core machine steps lift silently, including safepoints. At an eligible
+  external call, `external_core_safepoint` proves that a core step can
+  only be a safepoint, leaving the call point in place. Every invocation
+  checks preconditions in its actual post-safepoint state.
+- Normal completion emits exactly the invocation's trace, uses its
+  declared void/scalar/tuple channel (including empty/singleton tuples),
+  and binds the values with `returned_env`. The continuation retains
+  function, locals, callers and fuel, advances one instruction, and uses
+  the invocation's exact memory, runtime state and logical world.
+- Exit and resource endings retain that same final snapshot. Exit does
+  not append a second `ProcessExit`; an ordinary main return does not
+  become an exit event. Core `Done`, stuck and allocation refusal remain
+  explicit terminal cases, guarded against intercepting external sites.
+  Core terminals retain source **observation snapshots**, not a proved
+  post-finalization memory: `Done` discards that memory in the old core.
+- Missing contracts, failed evaluation, false ABI/preconditions and an
+  incompatible return channel have explicit `ContractViolation` endings,
+  not invented Fil-C traps. These are relational negation premises, not
+  an executable decision procedure. `no_violation` requires rejection
+  to be disabled at **every reached state**: a chosen silent safepoint,
+  or a later repaired precondition, cannot hide an earlier failure.
+  Admissibility does not imply a completed invocation exists; an admitted
+  empty relation still fails the future native coverage obligation.
+- `run_preserve` carries readiness, identity persistence, the evidence
+  invariant and the single-definition invariant through finite labelled
+  runs. Calls kill live access facts, so the evidence continuation uses
+  `call_parked` and `parked_resume`. Single-definition scopes use only
+  result-name updates and persistence, including for waiting callers.
+  Legacy steps retain their existing `spares` and `free_ids` hypotheses.
+  Terminal snapshots claim no active-frame facts. `unchecked_is_core`
+  says any `Unchecked` ending came from the old core; it does not prove
+  arbitrary frees or doomed runs safe.
+
+The regression proofs exercise actual transitions for `puts` success,
+partial EOF and an output/write prefix before resource refusal; all
+return channels; independent rejection with empty behavior; dispatch
+isolation; doomed frames and safepoints; core endings; an exit trace;
+and the order of two calls' events. Contracts remain abstract fixtures,
+not native FILE/startup implementations. Completed calls are atomic;
+the independent `ExternalCalls.prefix` relation has not been turned
+into all of a native execution's intermediate machine states. Existing
+`mstep_refines` still covers only the old machine.
+
 ### The next milestones, in order
 
-1. **Guarded machine integration.** Lift existing `Machine.mstep`
-   silently into a labelled extension and add a direct contract-call
-   rule, rather than changing every Campaign 3 constructor prematurely.
-   Match existing dispatch precedence (defined/outside functions, data,
-   existing `free`, then registered contracts), evaluate the arguments,
-   and require a non-doomed frame. Resume with `returned_env`, the
-   declared void/scalar/tuple shape (including empty/singleton tuples),
-   unchanged function/locals/callers/fuel, and the next `Exec` point.
-   Prove continuation lemmas for Campaign 3's evidence and single-def
-   invariants; readiness and identity preservation alone do not imply
-   those invariants. Existing `mstep_refines` covers only the old machine.
-2. **Close `hi.c`.** Install concrete startup/stdio representation and
+1. **Close `hi.c`.** Install concrete startup/stdio representation and
    request contracts; model main's return, flush and `exit`/handlers as
    events, plus blocking/divergence and resource endings. Require
    external-symbol coverage and admissibility at every reached call,
    independently of whether it has an `invoke` derivation. An empty
    relation must never prove safety by deleting an invalid execution.
    Link the pinned modules and prove adequacy before claiming
-   `never_panics`; no such claim is made by this standalone slice.
-3. **Grow by Hello contract kinds.** Add bounded byte/string operations,
+   `never_panics`; no such claim is made by the abstract integration.
+2. **Grow by Hello contract kinds.** Add bounded byte/string operations,
    fresh allocations and owned release, then formatting, argv/environment,
    locale/conversion, opaque streams/descriptors and callbacks, following
    the native table. Connect Prolog/extraction and native observations;
@@ -713,16 +757,15 @@ kinds are:
 
 #### The proof, layer by layer
 
-1. **Semantics (Campaign 4).** Machine.v's machine gains a step for
-   external calls. A call of a contracted symbol takes one step to any
-   result its postcondition allows, if its precondition holds. If the
-   precondition fails, the step ends in a failure that counts against
-   the caller, not necessarily a native Fil-C trap. Buffered stream
-   acceptance is distinct from kernel `write`; flush and `exit` follow
-   their own contracts. Today
-   [Semantics.v](../rocq/theories/Semantics.v)'s `external_call` models
-   only `free`; every other call is `Stuck`. The standalone first
-   contract relation exists, but is not integrated into that machine.
+1. **Semantics (Campaign 4).** The labelled
+   [ExternalMachine.v](../rocq/theories/ExternalMachine.v) extension
+   executes admitted direct contract calls and preserves Campaign 3's
+   invariants. Failed caller obligations are explicit specification
+   failures, not necessarily native Fil-C traps. Buffered stream
+   acceptance is distinct from kernel `write`; flush and `exit` need
+   their own contracts. The extracted driver still uses the old core,
+   whose `external_call` models only `free`. Native contract instances,
+   prefix coverage and whole-program adequacy remain open.
 2. **Linking.** One genv holds the functions and data of every
    translation unit in Hello's closure, with libc's symbols resolved to
    contracts. The model now runs one module.
@@ -761,7 +804,7 @@ kinds are:
 | Which trap reasons are panics | stated here | the table above; `alloc_res`'s `too_big`/`out_of_memory` split in [Ops.v](../rocq/theories/Ops.v) already separates refusals from errors |
 | Running Hello's IR in the model to test contracts | missing | the extracted model and `agree.sh` exist, but externals are stuck |
 | Initial readiness for every runtime | hypothesis | the heap starting above the data ([rocq.md](rocq.md)) |
-| External-call step, events, contract language | standalone first slice; machine integration missing | Campaign 4's [ExternalCalls.v](../rocq/theories/ExternalCalls.v), starting with `puts` |
+| External-call step, events, contract language | abstract direct-call integration and finite labelled runs exist; native/executable integration missing | Campaign 4's [ExternalCalls.v](../rocq/theories/ExternalCalls.v) and [ExternalMachine.v](../rocq/theories/ExternalMachine.v), starting with `puts` |
 | Linking several modules | missing | Run.v takes one module |
 | Program logic and adequacy | missing | new. Separation logic in Rocq is the first option; whether to instantiate Iris is the temporal-discharge inquiry |
 | libc contract table | trusted native specification and nine probes exist; Rocq starts with `puts` | [libc-contracts.md](libc-contracts.md): 56 Hello names, `puts` and `fcntl`; not a proof of libc |
