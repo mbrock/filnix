@@ -24,5 +24,6 @@ theories/Steps.v
 theories/Invariant.v
 theories/Persistence.v
 theories/Single.v
+theories/Chain.v
 theories/Transport.v
 theories/Extract.v

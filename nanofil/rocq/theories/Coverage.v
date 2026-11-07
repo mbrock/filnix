@@ -13,13 +13,14 @@
     this is enough: the access's check then passes too, so the raw
     access does not give `unchecked`.
 
-    It is arithmetic over `cap_access_res/7`, in two steps:
+    It is arithmetic over `cap_access_res/7`, in these steps:
 
     | Lemma | Says |
     |---|---|
     | `cap_access_covered` | a passed check of [A+Lo, A+Hi) passes for every covered part of it |
     | `covered_access_checked` | the raw access's own check passes |
-    | `covered_access_not_unchecked` | the raw access instruction gives no `unchecked` |
+    | `access_ok_not_unchecked` | a raw access whose own check passes gives no `unchecked` |
+    | `covered_access_not_unchecked` | so a covered raw access instruction gives no `unchecked` |
 
     ## One more hypothesis: objects end in the address space
 
@@ -187,21 +188,20 @@ Qed.
 
 (** ## The raw access instruction
 
-    `covered_access_not_unchecked`: where the validator says the raw
-    access instruction i is covered by the check that yielded q, and
-    that check passes in the memory i runs in, `inst_step/4` does not
-    stop i with `unchecked`. The access may still fail otherwise (a
-    pointer load of a word that is not a pointer, an operand of the
-    wrong class); only `unchecked` is ruled out. *)
-Lemma covered_access_not_unchecked : forall ge fr m i q lo hi r al p why,
-  objects_fit (m_regions m) ->
-  covered_access i q lo hi r al = true ->
+    `access_ok_not_unchecked`: a raw access instruction i whose own
+    access check passes, at the address of the pointer its operand q
+    holds, is not stopped by `inst_step/4` with `unchecked`. The access
+    may still fail otherwise (a pointer load of a word that is not a
+    pointer, an operand of the wrong class); only `unchecked` is ruled
+    out. *)
+Lemma access_ok_not_unchecked : forall ge fr m i q x off need p why,
+  raw_access i = Some (q, x, off, need) ->
   lookup q (fr_env fr) = Some (WPtr p) ->
-  check_passes m p lo hi r al ->
+  access_res m (raw_address (ptr_addr p) off) (ptr_cap p)
+             (fst (access_size_align x)) need (snd (access_size_align x)) = Some ok ->
   inst_step ge fr m i <> Some (IStop (Unchecked why)).
 Proof.
-  intros ge fr m i q lo hi r al p why Hfit Hc Hq Hp Hst.
-  destruct (covered_access_checked _ _ _ _ _ _ _ _ Hfit Hc Hp) as (x & off & need & Ei & Ha).
+  intros ge fr m i q x off need p why Ei Hq Ha Hst.
   destruct i; simpl in Ei; cases Ei.
   (* No other instruction is a raw access. *)
   all: try discriminate Ei.
@@ -227,4 +227,19 @@ Proof.
     simpl in Ha. destruct (value_x _ _ _ _) as [x|]; simpl in Hst; try discriminate Hst.
     rewrite Ha in Hst. destruct x; try discriminate Hst.
     destruct (pointer_store_effects _ _ _ _); discriminate Hst.
+Qed.
+
+(** `covered_access_not_unchecked`: where the validator says the raw
+    access instruction i is covered by the check that yielded q, and
+    that check passes in the memory i runs in, i gives no `unchecked`. *)
+Lemma covered_access_not_unchecked : forall ge fr m i q lo hi r al p why,
+  objects_fit (m_regions m) ->
+  covered_access i q lo hi r al = true ->
+  lookup q (fr_env fr) = Some (WPtr p) ->
+  check_passes m p lo hi r al ->
+  inst_step ge fr m i <> Some (IStop (Unchecked why)).
+Proof.
+  intros ge fr m i q lo hi r al p why Hfit Hc Hq Hp.
+  destruct (covered_access_checked _ _ _ _ _ _ _ _ Hfit Hc Hp) as (x & off & need & Ei & Ha).
+  exact (access_ok_not_unchecked _ _ _ _ _ _ _ _ _ _ Ei Hq Ha).
 Qed.
