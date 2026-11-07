@@ -95,34 +95,85 @@ order() {
   (cd "$1" && find . -name '*.v' | sed 's|^\./||' | sort)
 }
 
-for f in "$@"; do
-  f=$(cd "$(dirname "$f")" && pwd)/$(basename "$f")
+# build ORIG PROJ: compile the project's files in ORIG, the project file's
+# makefile in parallel where there is one, else one at a time in order.
+jobs=${NIX_BUILD_CORES:-$(nproc 2>/dev/null || echo 1)}
+[ "$jobs" -ge 1 ] 2>/dev/null || jobs=1
+makefile=$(command -v rocq >/dev/null && echo "rocq makefile" || echo coq_makefile)
+build() {
+  local orig=$1 proj=$2 fl v
+  echo "build $proj with -j$jobs"
+  if [ -e "$orig/_RocqProject" ] &&
+     (cd "$orig" && $makefile -f _RocqProject -o Makefile.parse >/dev/null 2>&1 &&
+      make -j"$jobs" -f Makefile.parse >"$tmp/log" 2>&1); then
+    return
+  fi
+  fl=$(flags "$proj")
+  while read -r v; do
+    (cd "$orig" && $coqc $fl "$v" >"$tmp/log" 2>&1) || {
+      echo "skip $proj/$v: it does not compile as it is" >&2
+      sed 's/^/  /' "$tmp/log" >&2
+    }
+  done < <(order "$proj")
+}
+
+# check N F: reprint F in a copy of its compiled project and compile the
+# reprint there; the verdict goes to $tmp/verdict-N, its log after it.
+check() {
+  local n=$1 f=$2 proj rel fl key orig dir
   proj=$(project "$f")
   rel=${f#"$proj"/}
   fl=$(flags "$proj")
   key=$(echo "$proj" | tr / _)
   orig=$tmp/orig$key
+  dir=$tmp/reprint-$n
+  cp -r "$orig" "$dir"
+  if ! swipl "$here/reprint.pl" "$f" --strict >"$dir/$rel" </dev/null 2>"$tmp/verdict-$n.log"; then
+    echo "FAIL $f: the grammar does not read it" >"$tmp/verdict-$n"
+  elif (cd "$dir" && $coqc $fl "$rel" >"$tmp/verdict-$n.log" 2>&1); then
+    echo "ok   $f" >"$tmp/verdict-$n"
+  else
+    echo "FAIL $f: the reprint does not compile" >"$tmp/verdict-$n"
+    sed -i 's/^/  /' "$tmp/verdict-$n.log"
+  fi
+  rm -rf "$dir"
+}
+
+# report N: print check N's verdict as it finishes; a failure's log goes
+# to stderr with it.
+report() {
+  local v
+  v=$(cat "$tmp/verdict-$1")
+  case $v in
+    ok*) echo "$v" ;;
+    *) { echo "$v"; cat "$tmp/verdict-$1.log"; } >&2; status=1 ;;
+  esac
+}
+
+# Each project is compiled once; then every file's reprint is checked in
+# its own copy, up to $jobs at a time.
+declare -a paths=()
+for f in "$@"; do
+  f=$(cd "$(dirname "$f")" && pwd)/$(basename "$f")
+  paths+=("$f")
+  proj=$(project "$f")
+  orig=$tmp/orig$(echo "$proj" | tr / _)
   if [ ! -d "$orig" ]; then
     cp -r "$proj" "$orig"
-    while read -r v; do
-      (cd "$orig" && $coqc $fl "$v" >"$tmp/log" 2>&1) || {
-        echo "skip $proj/$v: it does not compile as it is" >&2
-        sed 's/^/  /' "$tmp/log" >&2
-      }
-    done < <(order "$proj")
-  fi
-  rm -rf "$tmp/reprint" && cp -r "$orig" "$tmp/reprint"
-  if ! swipl "$here/reprint.pl" "$f" --strict >"$tmp/reprint/$rel" </dev/null; then
-    echo "FAIL $f: the grammar does not read it" >&2
-    status=1
-    continue
-  fi
-  if (cd "$tmp/reprint" && $coqc $fl "$rel" >"$tmp/log" 2>&1); then
-    echo "ok   $f"
-  else
-    echo "FAIL $f: the reprint does not compile" >&2
-    sed 's/^/  /' "$tmp/log" >&2
-    status=1
+    build "$orig" "$proj"
   fi
 done
+declare -A running=()
+for n in "${!paths[@]}"; do
+  while [ "${#running[@]}" -ge "$jobs" ]; do
+    wait -n || true
+    for k in "${!running[@]}"; do
+      if ! kill -0 "${running[$k]}" 2>/dev/null; then report "$k"; unset "running[$k]"; fi
+    done
+  done
+  check "$n" "${paths[$n]}" &
+  running[$n]=$!
+done
+wait || true
+for k in "${!running[@]}"; do report "$k"; done
 exit $status
