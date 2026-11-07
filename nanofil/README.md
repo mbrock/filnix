@@ -105,7 +105,9 @@ tests only the unknown bound where an earlier check proved the other
 ([half](docs/half.md)), and shares null tests and uppers between checks
 of one object; no trap moves. Static
 discharge remains planned. The interpreter distinguishes an invalid raw access
-(`unchecked`) from a program's legitimate safety trap. Keeping access
+(`unchecked`) from a program's legitimate safety trap, a Fil-C panic:
+the formal campaign's soundness of checking says a valid module never
+reaches the first, while a program that never panics avoids the second. Keeping access
 safety separate from behavior preservation is the basis for future work.
 
 The [playground](https://mbrock.github.io/filnix/nanofil/play/) exposes

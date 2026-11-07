@@ -30,6 +30,21 @@ it preserves behavior exactly. The whole program never needs proving:
 runtime checks at a boundary establish preconditions (`span_test(Lo, Hi)`
 and `limit` already do this), and proofs carry them through the hot code.
 
+Two properties run through this page and must not be confused:
+
+- **Soundness of checking** (`valid_no_unchecked`, Campaign 3): every
+  run of every valid checked module avoids `unchecked`. It is a theorem
+  about the validator, for all valid modules at once: the checks it
+  demands, and the checks it lets a pass remove or reuse, are enough, so
+  a check that fails is the run's whole story. It does not say that a
+  check never fails; programs with memory errors are valid and panic.
+- **Trap-freedom of a program, "it never panics"**: no Fil-C check of
+  one particular program, as compiled and linked, ever fails. That is
+  memory safety with respect to Fil-C's capability semantics, a
+  per-program theorem with no general version, ideally of a whole pinned
+  Nix closure; it builds on the first ("Campaign 7: a program that
+  never panics", below).
+
 Three things fall out of a well-stated model beyond nanofil: a
 definition of Fil-C independent of LLVM, which does not exist today; a
 trusted base small enough to hand to the runtime's author as one page of
@@ -44,21 +59,30 @@ package in Filnix rather than only what nanofil compiles.
 | 0 | Measure which checks survive `-O --checks=combined` | [docs/residual.md](residual.md) | measured: 10,353 Lua data-check sites, 24.49% flag-only renewals; cycle costs estimated from native benchmark calibration; spatial-certificate pilot before ownership |
 | 1 | The core model in Rocq, agreeing with the interpreter | Gallina syntax, semantics, `valid` | under way: syntax, memory and small-step semantics in `nanofil/rocq/`, agreeing with `interp:run/5` on every core-subset run line, and `valid` for functions, data and aliases, agreeing with `ir:valid_module/1` on every core-subset mutant of the corpus and of tests/gen.pl's Fil-C modules, both under every `--checks` mode with and without `-O`, and of the tests/c/prog programs with aliases and weak, thread-local or constructor data; floats (`Ieee.v`) and variadics are in the subset, so every corpus run line is compared and all of Lua 5.4.7's functions but `luaD_rawrunprotected` (`setjmp`) decode into it, with Lua's state-free functions run by the gate ([rocq.md](rocq.md)); tests/gen.pl's Fil-C modules now reach `renew_if`, `limit` with `check_limit`, and `renew_hull`, with frees and traps; found and fixed: a renew of a freed variadic snapshot was `unchecked(span)`, now a trap as native renew gives; dominance now transcribes cfg.pl's `cfg_idoms/2` and `dom_intervals/3`, so the validator judges Lua's lvm.c; the model's runtime is Campaign 2's module type; the three data findings are decided (data items have the header's shapes, a call of data traps, names are unique) |
 | 2 | The runtime as one page of axioms, each probed natively | `docs/runtime-axioms.md` | first version: [runtime-axioms.md](runtime-axioms.md) and `Module Type Runtime` in `nanofil/rocq/theories/Runtime.v`, eight axioms read against staging `18b6663`, each with a native test in tests/c/prog/axiom-*.c (the eighth, `address_space`, from Campaign 3's coverage lemma); the interpreter's instance proves them all, and two readiness obligations without a native test; Campaign 3's machine runs over any instance |
-| 3 | The soundness theorem for the validator | `valid_no_unchecked`, no admits | started: [Machine.v](../rocq/theories/Machine.v) runs the steps over any `Runtime` and proves `ready` an invariant of every run, and every step a `step_rel` step or a safepoint action; [Coverage.v](../rocq/theories/Coverage.v) proves the coverage lemma, given objects that end at or below 2^64; the interpreter broke that (`rocq/tests/huge-object.ir`, a valid module run unchecked), and now traps where native Fil-C refuses an allocation, with the runtime axiom `address_space` supplying the hypothesis in every state of a run that starts ready; a valid module's initial data has no size limit, so the theorem takes "the run starts ready" as a hypothesis (mbrock's decision; starting the heap above the data is the planned fix); [Evidence.v](../rocq/theories/Evidence.v) proves the evidence pass sound instruction by instruction and across an edge; [Persistence.v](../rocq/theories/Persistence.v) carries it over whole runs: in every state of a run, a frame that is not doomed runs no raw access or raw call to `unchecked` except by `hull_covered`, given that the runtime changes no region at a safepoint the pass keeps facts across (`spares`; the module type allows three such, the interpreter's runtime satisfies it); next: the reuse forms and the doomed frame, then `valid_no_unchecked` |
+| 3 | Soundness of checking: the validator's theorem | `valid_no_unchecked`, no admits | started: [Machine.v](../rocq/theories/Machine.v) runs the steps over any `Runtime` and proves `ready` an invariant of every run, and every step a `step_rel` step or a safepoint action; [Coverage.v](../rocq/theories/Coverage.v) proves the coverage lemma, given objects that end at or below 2^64; the interpreter broke that (`rocq/tests/huge-object.ir`, a valid module run unchecked), and now traps where native Fil-C refuses an allocation, with the runtime axiom `address_space` supplying the hypothesis in every state of a run that starts ready; a valid module's initial data has no size limit, so the theorem takes "the run starts ready" as a hypothesis (mbrock's decision; starting the heap above the data is the planned fix); [Evidence.v](../rocq/theories/Evidence.v) proves the evidence pass sound instruction by instruction and across an edge; [Persistence.v](../rocq/theories/Persistence.v) carries it over whole runs: in every state of a run, a frame that is not doomed runs no raw access or raw call to `unchecked` except by `hull_covered`, given that the runtime changes no region at a safepoint the pass keeps facts across (`spares`; the module type allows three such, the interpreter's runtime satisfies it); next: the reuse forms and the doomed frame, then `valid_no_unchecked` |
 | 4 | Observations, refinement, and libc contracts | a trace semantics; `opt:refines/2` as trace inclusion | not started |
 | 5 | Static discharge by certificate | `discharged(Cert)`, `discharge_ok`, a Prolog finder | not started |
 | 6 | Integration with Filnix and the playground | the `nanofil-check` gate | not started |
+| 7 | Trap-freedom of a pinned Nix closure: a program that never panics | `never_panics` of one closure: a closed module, then a one-call libc program, then GNU Hello (`nanofil-hello-O`); `ls` next; this build of OpenSSH's server as the stretch | stated (below); not started |
 
-## Three claims, kept apart
+## The claims, kept apart
 
 [campaign.md](campaign.md) already separates three claims; the formal
-work keeps that separation and attacks them in this order.
+work keeps that separation, attacks them in this order, and adds a
+fourth, about one program rather than about nanofil.
 
 | Claim | Statement | Status today | This campaign |
 | --- | --- | --- | --- |
-| Checked-IR safety | Every execution of a validated checked module, under the runtime axioms and environment contracts, avoids `unchecked(Reason)` | `ir:valid_module/1` in Prolog, differential tests, bounded symbolic search | The central theorem, machine-checked (Campaign 3) |
+| Soundness of checking ([campaign.md](campaign.md)'s checked-IR safety) | Every execution of a validated checked module, under the runtime axioms and environment contracts, avoids `unchecked(Reason)`; its traps are the whole story | `ir:valid_module/1` in Prolog, differential tests, bounded symbolic search | The central theorem, machine-checked (Campaign 3) |
 | Transformation correctness | A pass's output refines its input's observations | `opt:refines/2`, ad hoc; `check_reuse:reuse_refines/2` and its kin per check pass | A trace semantics and refinement relation (Campaign 4); certificates for static discharge (Campaign 5) |
 | Implementation correctness | Native lowering and the runtime realize the IR semantics | `amd64_regs_check.pl`, native difftests, snapshot gates | Out of scope for proof; strengthened by a native trace oracle only |
+| Trap-freedom of a program ("never panics") | No Fil-C check of one pinned program ever fails, on any input its entry contract allows | nothing beyond tests: a test that passes shows one run did not panic | Per program, on the first three claims (Campaign 7) |
+
+The first claim is quantified over programs and says nothing about
+whether any of them panics: a module that reads past an array is valid
+and traps, and soundness of checking says only that it traps rather
+than running on unchecked. The fourth is the converse question asked of
+one program, and is false of many valid ones.
 
 In scope: filc mode, the checked stage, the integer and pointer classes,
 `check`, the `raw_*` accesses, `flight`, `poll`, `call` and `free`, and
@@ -250,9 +274,15 @@ module's initial memory, an explicit hypothesis; [rocq.md](rocq.md),
 scope.
 
 This is the theorem [campaign.md](campaign.md) names as "checked-IR
-safety". It is about the validator, not about any program, and it is
-where all the content lives: pizlonation soundness is then the trivial
-fact that `pizlonate:pizlonate_module/2` emits valid modules.
+safety", and this page as soundness of checking. It is not the claim
+that a program never panics: `Trap(Reason)` outcomes are allowed, and are
+what a valid module with a memory error does. What it gives that claim
+is that the traps are the whole story, so a proof that a program never
+panics reasons about its checks alone (Campaign 7).
+
+It is about the validator, not about any program, and it is where all
+the content lives: pizlonation soundness is then the trivial fact that
+`pizlonate:pizlonate_module/2` emits valid modules.
 
 Proof plan, in the order the dependencies run:
 
@@ -443,6 +473,257 @@ Gates: a Filnix build of the Lua package through nanofil passes the
 gate; removing one line from a certificate fails the gate; the
 playground renders the certificate for the `sum` example in
 [the README](../README.md#a-look).
+
+## Campaign 7: a program that never panics
+
+Goal: for one pinned program, ideally a whole Nix closure, a theorem
+that no Fil-C check of it ever fails on any input its entry contract
+allows. When Filip Pizlo says a Fil-C program panics, he means a Fil-C
+check failed: a trap on a capability violation, or on some other
+operation that would be a memory safety error without Fil-C's checks.
+"This program never panics" is then memory safety of that program with
+respect to Fil-C's capability semantics.
+
+There is no general version. Programs with memory errors exist, are
+valid, and panic; that is Fil-C working. So this is a theorem per
+program, and its unit is a derivation: every object of the program and
+of the libraries it links, compiled by a pinned nanofil with pinned
+flags, against a pinned runtime. Examples: `ls`, and as the stretch,
+this build of OpenSSH's server.
+
+### What counts as a panic
+
+In the model's terms (Semantics.v's `outcome`, interp.pl's outcomes),
+the property sorts every way a run can end:
+
+| How a run ends | interp.pl | Counts as | Why |
+| --- | --- | --- | --- |
+| `Trap r`, r one of `NullCapability`, `OutOfBounds`, `Misaligned`, `Readonly`, `NotAFunction`, `ArgumentSize`, `ReturnSize`, `InvalidFree`, `DoubleFree` | `trap(Reason)` | a panic | a capability check failed: without Fil-C, a memory safety error |
+| `Trap (Early r)` | `trap(early(R))` | a panic | a `check_ahead` trapped early on a failure the run was going to reach |
+| `Unchecked r` | `unchecked(Reason)` | impossible | soundness of checking: never, in a valid module |
+| `Trap OutOfMemory` | `trap(out_of_memory)` | not a panic | the runtime refused an allocation it cannot hold; any runtime may (Runtime.v), so no program could be proved free of it |
+| `Trap TooBig` | `trap(too_big)` | not a panic (proposed) | a request over 2^48 - 1 bytes, which C's `malloc` would answer with null; natively a "filc safety error", but not a memory error |
+| a stack overflow | native only | not a panic (proposed) | a resource limit, like out of memory; the model has no stack bound |
+| `exit`, `abort` | external calls (Campaign 4) | not a panic | the program chose to stop |
+| `Ret`, `Rets`, `RetVoid` | `ret(V)`, `rets(Xs)`, `ret` | not a panic | |
+| a run that never ends, or `OutOfFuel` | `out_of_fuel` | not a panic | the property speaks of every state a run reaches, so divergence is allowed and fuel plays no part |
+| `UB r` | `ub(float_conversion)` | ruled out (proposed) | the model gives no continuation after it, so nothing can be proved about what follows |
+| `Unreachable` | `unreachable` | ruled out (proposed) | natively a crash (`ud2`), not a Fil-C check, and never a correct program's ending |
+| stuck | instantiation error | ruled out | the run left the model: an external call with no contract, or code outside the subset |
+
+The proposed rows wait for mbrock's decision; the panic rows follow
+Filip's meaning.
+
+### The statement
+
+Over Machine.v's machine, for a program P (the linked checked IR of
+the closure, its initial memory and its entry function):
+
+```
+never_panics P :=
+  forall (R : Runtime), R.ready R.start (initial memory of P) ->
+  forall input, entry_contract P input ->
+  forall environment the contracts of P's external calls allow,
+  forall st, mreachable ge (start P input, R.start) st ->
+    ~ ends_in_failure st
+```
+
+where `ends_in_failure` is a step to `Done (Trap r)` with r a panic
+reason, `Done (Unchecked _)`, `Done (UB _)`, `Done Unreachable`, or
+`Stuck`. Quantifying over every runtime means the proof may not depend
+on where objects are placed or on when the runtime refuses an
+allocation; quantifying over every state reached rather than over
+outcomes makes divergence harmless. Readiness of the initial memory is
+a fact about P's data for any runtime that starts the heap above it,
+the planned fix in [rocq.md](rocq.md); until then it is a hypothesis
+here as in Campaign 3.
+
+### How it builds on soundness of checking
+
+- **`Unchecked` is excluded for free.** Every module of the closure is
+  valid, so `valid_no_unchecked` rules out the one outcome whose native
+  meaning is unknown. What is left are explicit points of the IR: each
+  `check` and reuse form's retest, each `free`, each function check,
+  each `alloc`. Never panics is the claim that none of them fails: every
+  check site discharged, in Campaign 5's sense, across the whole
+  closure.
+- **The proof may take the compiled IR as it is.** A reused or renewed
+  check stands for the original one only because soundness of checking
+  says the evidence is real; without Campaign 3, a proof about the
+  optimized IR would say nothing about the accesses it no longer checks.
+- **Or the simplest IR of the closure.** With Campaign 4's refinement
+  (trace inclusion, trapping earlier only where the original would
+  trap), a program that never panics and never reaches UB has only
+  refinements that never panic, so the proof may target the IR before
+  the middle end and carry over to every `-O` and `--checks` mode.
+
+### Against Campaigns 4 to 6
+
+- **Campaign 4** makes a program a closed thing. Without contracts a run
+  is stuck at its first external call, so the statement is about
+  nothing. The entry contract (what `argv` and the environment may be)
+  and the contracts of `read`, `write`, `opendir` and the rest are its
+  hypotheses, and `exit` is an event.
+- **Campaign 5** supplies the evidence: a never-panics proof is a
+  discharge certificate for every check site, but with preconditions
+  that flow across calls and through the whole closure, where
+  Campaign 5 starts within a function. It also needs the temporal half
+  that Campaign 5 leaves to `renew`: never panics means no use after
+  free, no double free and no invalid free, so the temporal-discharge
+  inquiry is a prerequisite here, not an option.
+- **Campaign 6** supplies the pinning. The certificate names the
+  closure's derivation, the nanofil and checker versions, the runtime
+  axioms' Fil-C commit and the contract table; a Nix check rebuilds the
+  closure and replays the certificate. A Fil-C bump reruns the axiom
+  tests before any certificate is trusted again.
+
+### Outside the proof
+
+- **libc and anything filcc compiled.** Their code is not in the model.
+  Their contracts say what they need and promise, and that they never
+  panic when their callers meet those needs is trusted. The
+  libc-inside-the-model and filcc translation-validation inquiries
+  shrink that trust.
+- **The native binary.** The theorem is about the model. Implementation
+  correctness (the third claim) carries it to native code: native
+  difftests, and the runtime's own correctness.
+- **Threads and signals.** The model has one thread; another thread's
+  free at a safepoint is the concurrency inquiry.
+
+### Worked first target: GNU Hello
+
+This is a sketch for discussion; nothing below is built yet. GNU Hello
+is the right first closure: [nix/hello.nix](../nix/hello.nix) already
+builds it with every object compiled by nanofil, once per configuration
+(`plain`, `O`, `O-reuse` and the rest), and checks it against filcc's
+build. So the pinned unit exists: the derivation `nanofil-hello-O`, which
+fixes Hello 2.12.3's source, its gnulib, nanofil's commit, the flags,
+and the Fil-C glibc and runtime it links. A smaller step comes first,
+`hi.c`: `int main(void) { puts("hello"); return 0; }`. It is
+compiled by nanofil and links the same libc, and has one libc call, no
+input and no free. Hello is the same proof with more contracts, a real
+entry contract, the heap, and a loop over strings.
+
+#### What Hello asks of libc
+
+Hello imports 66 libc symbols (from `nm -D` of nixpkgs' hello-2.12.3).
+They fall into a few kinds of contract:
+
+| Kind | Hello's calls | What the contract says |
+| --- | --- | --- |
+| Memory functions | `strlen`, `strnlen`, `strchr`, `strrchr`, `strcmp`, `strncmp`, `memchr`, `memcmp`, `memcpy`, `memset`, `strdup` | Each requires capabilities that cover what it reads or writes: a readable object that holds a NUL within bounds, or n bytes in bounds. Under Fil-C, an unterminated string traps inside `strlen`, so the panic belongs to the caller, and its precondition is an obligation at the call site. |
+| Allocation | `malloc`, `calloc`, `realloc`, `free` | Allocation is the runtime's `alloc`. It may return null and is never a panic. `free` requires null or a live heap base. |
+| Formatted output | `__printf_chk`, `__fprintf_chk`, `__sprintf_chk`, `fputs`, `fputc`, `error` | The varargs must match the format string (Fil-C checks every `va_arg`). Output is a trace event `write(fd, bytes)`. |
+| Arguments and locale | `getopt_long`, `optarg`, `optind`, `setlocale`, `nl_langinfo`, `bindtextdomain`, `textdomain`, `dcgettext`, `__ctype_b_loc`, `mbrtowc`, `mbrtoc32`, `mbsinit`, `iswprint`, `iconv*` | `getopt_long` needs the entry contract's `argv` and a long-options table that ends in a zero entry. It returns pointers into `argv`. `__ctype_b_loc` returns a table indexed from −128 to 255, a classic out-of-bounds risk. The locale functions return strings whose lifetimes the contract must state. |
+| Ending | `exit`, `_exit`, `abort`, `__cxa_atexit`, `close_stdout` through `ferror`, `fclose`, `__fpending` | `exit` is an event and the end of the trace. Handlers registered with `atexit` run during `exit`, so they are part of the program's proof. |
+
+#### The proof, layer by layer
+
+1. **Semantics (Campaign 4).** Machine.v's machine gains a step for
+   external calls. A call of a contracted symbol takes one step to any
+   result its postcondition allows, if its precondition holds. If the
+   precondition fails, the step ends in a failure that counts against
+   the caller. The step emits events: `write`, then `exit`. Today
+   [Semantics.v](../rocq/theories/Semantics.v)'s `external_call` models
+   only `free`; every other call is `Stuck`.
+2. **Linking.** One genv holds the functions and data of every
+   translation unit in Hello's closure, with libc's symbols resolved to
+   contracts. The model now runs one module.
+3. **The environment.** The entry contract describes the starting
+   state: `argc ≥ 1`, and `argv` and `envp` as arrays of readable,
+   NUL-terminated strings, each array ending in null. These are
+   quantified over every content and length: Hello's `--greeting=` takes
+   any string. The locale is whatever `LC_ALL` names; quantifying over
+   it makes `setlocale`'s result one more input.
+4. **A program logic over Machine.** It uses triples
+   `{P} f {Q}` per function, with capabilities as resources: an object,
+   its region and flags, and its bytes. It has a rule for each
+   instruction, a call rule that uses callee triples and libc contracts,
+   and loop invariants. Its adequacy theorem connects the logic to runs:
+   if main's triple holds under the contracts, no state reached by
+   `mreachable` ends in failure. Adequacy must hold for every `Runtime`,
+   so the logic may not assume where objects are placed.
+5. **Per-function triples for Hello's own code.** These cover `main`,
+   gnulib's `quotearg`, `version_etc`, the `xalloc` family,
+   `close_stdout`, and the rest. Most specs are about strings: "a
+   readable object with a NUL at or after offset 0". The heap ones
+   (`quotearg`'s slot vector, grown with `realloc`) need temporal
+   reasoning: no free between a pointer's creation and its use.
+6. **Composition.** The final statement is `never_panics` of
+   `nanofil-hello-O`: valid modules, starting ready, the entry contract,
+   and main's triple with an empty postcondition.
+
+#### What exists and what is missing
+
+| Piece | State | Where |
+| --- | --- | --- |
+| `Unchecked` excluded for every valid module | in progress (Campaign 3) | `valid_no_unchecked`; today [Persistence.v](../rocq/theories/Persistence.v)'s `run_access_not_unchecked` covers frames that are not doomed, except for the reuse forms |
+| The exact condition under which an access traps | exists | [Memory.v](../rocq/theories/Memory.v)'s `cap_access_res`; [Coverage.v](../rocq/theories/Coverage.v)'s `cap_access_covered` and `covered_access_checked`. A check site's obligation is "`cap_access_res` does not trap", a decidable predicate |
+| Validator facts hold in every reached state | exists for the base forms | [Evidence.v](../rocq/theories/Evidence.v)'s `evidence_after_holds` and `entry_holds`, Persistence.v's `mreachable_inv`. A triple may use them as known facts instead of proving them again |
+| Runs over any runtime: fresh allocation, frees, retention, safepoints | exists | [Runtime.v](../rocq/theories/Runtime.v)'s eight axioms, [Machine.v](../rocq/theories/Machine.v)'s `mreachable_ready`, `mstep_refines` and `kept`. These supply the allocation and free rules of the logic. `free_res_lifetime` is what makes a use after free a trap and not a silent read |
+| Which trap reasons are panics | stated here | the table above; `alloc_res`'s `too_big`/`out_of_memory` split in [Ops.v](../rocq/theories/Ops.v) already separates refusals from errors |
+| Running Hello's IR in the model to test contracts | missing | the extracted model and `agree.sh` exist, but externals are stuck |
+| Initial readiness for every runtime | hypothesis | the heap starting above the data ([rocq.md](rocq.md)) |
+| External-call step, events, contract language | missing | Campaign 4 |
+| Linking several modules | missing | Run.v takes one module |
+| Program logic and adequacy | missing | new. Separation logic in Rocq is the first option; whether to instantiate Iris is the temporal-discharge inquiry |
+| libc contract table | missing | about 60 entries for Hello, each with a native test like the runtime axioms' |
+| Hello inside the model's subset | unknown | Validate.v's `valid` returns `None` outside the core subset. Running it over Hello's objects is the cheapest first measurement |
+
+#### Where the per-function obligations come from
+
+A never-panics proof discharges a finite list of sites per function,
+read from the pinned checked IR:
+
+- **Residual checks.** Each class-`a` site still in the checked IR
+  after `-O --checks=combined`, counted as Campaign 0 counted Lua's
+  ([residual.md](residual.md)). The same query, run over Hello's
+  translation units, is the obligation census. Its shape classes predict
+  the cost: static-bounds globals and affine loops are discharged by
+  Campaign 5's certificates, and pointer chasing needs a triple.
+- **Reuse retests.** A `renew`, `half` or hull form reduces its site's
+  obligation to the parts it tests again. Flag-only renewals (24.49% of
+  Lua's) are purely temporal: no free since the check, and not
+  read-only.
+- **Frees.** Every `free` and libc `free` call: null, or a live heap base
+  not yet freed.
+- **Calls through pointers.** The function check: a function, of the
+  right signature (`NotAFunction`, `ArgumentSize`, `ReturnSize`).
+- **Varargs.** Each `va_arg` in Hello's own variadic functions and each
+  variadic libc call: the arguments match (`ArgumentSize`).
+- **libc preconditions.** Each external call site: the contract's
+  precondition from the table above.
+- **Allocation sites** are not obligations: refusing is the runtime's
+  choice.
+
+The census is mechanical and needs no proof, so it is the first
+deliverable. Its size and shape classes for `hi.c` and Hello decide how
+much a per-function triple must carry and how much Campaign 5 can
+discharge.
+
+### The quest, in steps
+
+| Step | Program | Needs |
+| --- | --- | --- |
+| 0 | the obligation census of `hi.c` and `nanofil-hello-O`, plus `valid` over Hello's objects | Campaign 0's query over Hello; no proof |
+| 1 | a closed corpus module with no external calls, such as tests/filc/gc.ir's list `sum` | Campaign 3 complete; `never_panics` stated in Rocq; the program logic and its adequacy |
+| 2 | `hi.c`, built by nanofil against the pinned libc | the external-call step; contracts for `puts` and the `exit` path; linking |
+| 3 | GNU Hello, `nanofil-hello-O` | the entry contract; about 60 libc contracts; triples for gnulib's string code; temporal reasoning for `quotearg` |
+| 4 | `ls`, from [nix/coreutils.nix](../nix/coreutils.nix) | contracts for directories, `stat` and locale; a malloc-heavy program |
+| stretch | this build of OpenSSH's server | its crypto libraries inside the closure; `fork`, signals and privilege separation; the concurrency inquiry |
+
+Gates: each step's proof is checked in a Nix check, and its
+certificates are replayed by the extracted checker. A planted
+off-by-one in the program makes the proof fail and a native run panic.
+Nothing in the build asks a model.
+
+Decisions for mbrock before step 1:
+
+- whether `too_big` and a stack overflow are panics;
+- whether `UB` and `unreachable` are ruled out or allowed;
+- whether the entry contract is "any input" or a stated precondition;
+- whether libc stays trusted behind contracts or must be compiled into
+  the closure by nanofil.
 
 ## Inquiries and investigations
 

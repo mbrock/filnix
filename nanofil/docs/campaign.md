@@ -124,6 +124,11 @@ Three different claims must not be conflated:
    assumptions, every admitted execution of a validated checked module
    avoids `unchecked`. This is a theorem to establish about validation
    and semantics, not a theorem obtained merely by running the validator.
+   [formal.md](formal.md) calls it soundness of checking. It allows
+   traps: a valid program with a memory error still panics (a Fil-C
+   check fails), and that a particular program never panics is a
+   separate, per-program theorem built on this one (formal.md's
+   Campaign 7).
 2. **Transformation correctness:** a pass produces admissible output and
    preserves or refines the original program's observations. Replacing
    every program with a trap could satisfy the first claim and fail this

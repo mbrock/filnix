@@ -507,7 +507,7 @@ These are formal.md's early decisions as they turned out in the code:
 - **Entry evidence depends on block order.** An edge from a block not
   yet processed carries no evidence, the same as a poll edge. Block
   order is therefore part of the checked IR's meaning for the
-  validator, and Campaign 3's soundness statement must be about the
+  validator, and Campaign 3's soundness-of-checking statement must be about the
   blocks in that order.
 
 ## A freed snapshot traps at its renew
@@ -562,7 +562,7 @@ Run.v's `Driver` sets to R's `free`. Two theorems, no admits:
   safepoint is R's `safepoint_ready`.
 - `mstep_refines`: from a ready state each machine step is a
   `step_rel` step, its allocation's base fresh, or a safepoint action.
-  What the soundness theorem proves of `step_rel` and `R.safepoint`
+  What the soundness-of-checking theorem proves of `step_rel` and `R.safepoint`
   therefore holds of every run of every runtime.
 
 Decisions and findings:
