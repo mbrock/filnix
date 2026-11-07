@@ -60,7 +60,7 @@ package in Filnix rather than only what nanofil compiles.
 | 1 | The core model in Rocq, agreeing with the interpreter | Gallina syntax, semantics, `valid` | under way: syntax, memory and small-step semantics in `nanofil/rocq/`, agreeing with `interp:run/5` on every core-subset run line, and `valid` for functions, data and aliases, agreeing with `ir:valid_module/1` on every core-subset mutant of the corpus and of tests/gen.pl's Fil-C modules, both under every `--checks` mode with and without `-O`, and of the tests/c/prog programs with aliases and weak, thread-local or constructor data; floats (`Ieee.v`) and variadics are in the subset, so every corpus run line is compared and all of Lua 5.4.7's functions but `luaD_rawrunprotected` (`setjmp`) decode into it, with Lua's state-free functions run by the gate ([rocq.md](rocq.md)); tests/gen.pl's Fil-C modules now reach `renew_if`, `limit` with `check_limit`, and `renew_hull`, with frees and traps; found and fixed: a renew of a freed variadic snapshot was `unchecked(span)`, now a trap as native renew gives; dominance now transcribes cfg.pl's `cfg_idoms/2` and `dom_intervals/3`, so the validator judges Lua's lvm.c; the model's runtime is Campaign 2's module type; the three data findings are decided (data items have the header's shapes, a call of data traps, names are unique) |
 | 2 | The runtime as one page of axioms, each probed natively | `docs/runtime-axioms.md` | first version: [runtime-axioms.md](runtime-axioms.md) and `Module Type Runtime` in `nanofil/rocq/theories/Runtime.v`, eight axioms read against staging `18b6663`, each with a native test in tests/c/prog/axiom-*.c (the eighth, `address_space`, from Campaign 3's coverage lemma); the interpreter's instance proves them all, and two readiness obligations without a native test; Campaign 3's machine runs over any instance |
 | 3 | Soundness of checking: the validator's theorem | `valid_no_unchecked`, no admits | started: [Machine.v](../rocq/theories/Machine.v) runs the steps over any `Runtime` and proves `ready` an invariant of every run, and every step a `step_rel` step or a safepoint action; [Coverage.v](../rocq/theories/Coverage.v) proves the coverage lemma, given `objects_fit` (its proof needs only objects ending at or below 2^64; the axiom says 2^48, native's bound, which `hull_covered` needs: mbrock's decision); the interpreter broke that (`rocq/tests/huge-object.ir`, a valid module run unchecked), and now traps where native Fil-C refuses an allocation, with the runtime axiom `address_space` supplying the hypothesis in every state of a run that starts ready; a valid module's initial data has no size limit, so the theorem takes "the run starts ready" as a hypothesis (mbrock's decision; starting the heap above the data is the planned fix); [Evidence.v](../rocq/theories/Evidence.v) proves the evidence pass sound instruction by instruction and across an edge; [Persistence.v](../rocq/theories/Persistence.v) carries it over whole runs: in every state of a run, a frame that is not doomed runs no raw access or raw call to `unchecked` except by `hull_covered`, given that the runtime changes no region at a safepoint the pass keeps facts across (`spares`; the module type allows three such, the interpreter's runtime satisfies it); [Dominance.v](../rocq/theories/Dominance.v) proves the validator's dominator intervals sound for every function (a run enters only blocks with an interval, and dominance holds across each edge), which the reuse forms' single-definition chains rest on; [Interval.v](../rocq/theories/Interval.v) proves the offset intervals `offset_interval/8` answers sound, wherever the names they walk hold their definitions; [Sites.v](../rocq/theories/Sites.v) proves that a single definition's operands are not defined again where it dominates; [Identity.v](../rocq/theories/Identity.v) proves that no run loses an object, given that the runtime's free keeps identities (`free_ids`; the interpreter's does), so a check that passed passes again or traps; [Single.v](../rocq/theories/Single.v) proves that in every frame of every run each single definition whose site dominates the point replays, its operands unchanged and its memory persisting; next: the reuse forms and the doomed frame, then `valid_no_unchecked` |
-| 4 | Observations, refinement, and libc contracts | a trace semantics; `opt:refines/2` as trace inclusion | not started |
+| 4 | Observations, refinement, and libc contracts | a trace semantics; `opt:refines/2` as trace inclusion | first standalone slice: [ExternalCalls.v](../rocq/theories/ExternalCalls.v) states contracts, finite effect prefixes over any runtime, readiness/identity preservation and `puts` stream acceptance; integration, native trace coverage and refinement remain open |
 | 5 | Static discharge by certificate | `discharged(Cert)`, `discharge_ok`, a Prolog finder | not started |
 | 6 | Integration with Filnix and the playground | the `nanofil-check` gate | not started |
 | 7 | Trap-freedom of a pinned Nix closure: a program that never panics | `never_panics` of one closure: a closed module, then a one-call libc program, then GNU Hello (`nanofil-hello-O`); `ls` next; this build of OpenSSH's server as the stretch | [step 0 measured](trap-census.md): Hello has 1,398 class-`a` sites, 360 flag-only renewals; all 178 functions in 81 objects inside the subset, `valid = Some true`; no trap-freedom proof yet |
@@ -357,19 +357,23 @@ Three things become precise at once:
   than proved; the point is that the test and any later proof check the
   same relation.
 - **Environment contracts.** An external call is an event with a
-  contract: the capability authority it requires on its arguments (or it
-  traps), the memory it may write, the objects it may allocate or free.
+  contract: the capability authority it requires on its arguments,
+  the memory it may write, the objects it may allocate or free.
+  A failed premise is a caller obligation that has not been met, not
+  a blanket promise that native libc traps: some C violations are UB,
+  and each justified trap needs its own failing check.
   `read(Fd, Buf, N)` requires write on [Buf, Buf + N), writes at most N
   bytes there, frees nothing. `malloc` mints a fresh region. `memcpy`
   needs read on one range and write on another. `free` is what the
   interpreter already does.
 
-The contract table is the trusted base for everything about libc, so it
-is built as a relation in Prolog first (replacing today's instantiation
-error on `ext(Name)` accesses, and letting the oracle run programs that
-call out), tested natively on the Lua suite's actual calls, and only
-then transcribed as axioms in Rocq. Starting set: whatever the Lua test
-suite links against.
+The contract table is the trusted base for everything about libc
+(mbrock's decision: libc stays behind these contracts). The starting
+set is [libc-contracts.md](libc-contracts.md): `puts` for `hi.c`, then
+the 56 Hello names and `fcntl`, with nine native probes. Rocq states
+these specifications as relations, not global axioms or a purported
+proof of libc. The first relation is standalone; Prolog execution and
+the extracted driver still model only `free`.
 
 Fil-C's own layering helps: libc is pizlonated C, the runtime's syscall
 wrappers check buffer capabilities before the kernel sees raw addresses,
@@ -384,6 +388,86 @@ under it with no special cases; the oracle runs every Lua test that
 calls libc; each contract has a native test that would fail if its
 footprint were too small. The contract table grows one function at a
 time, driven by the calls the corpus makes.
+
+### Campaign 4, milestone 1: a standalone contract boundary
+
+[ExternalCalls.v](../rocq/theories/ExternalCalls.v) is independent of
+Campaign 3's ongoing reuse proofs. `Semantics.v`, `Machine.v`, their
+constructors and all existing theorem statements are unchanged.
+It supplies these pieces, without claiming the program is closed yet:
+
+- `contract` separates the declared return shape, ABI, caller premises,
+  designated capability sources, writable roots, owned releases,
+  possible allocation requests, finite observations and normal/resource
+  endings. Its panic set describes out-of-contract checks, not an
+  executable rule from the negation of the precondition.
+- `local_effect` frames bytes and auxiliary metadata outside the
+  permitted roots. Changed stored capabilities must be copied from a
+  designated source, loaded through a checked complete pointer slot,
+  or minted by this call's allocation. A raw address cannot upgrade
+  `Ro` to `Obj`. Release permission is distinct from write permission;
+  no local/global can be freed by this boundary. Partial pointer-copy
+  smidgens need a later extension, not silent havoc permission.
+- `ExternalCalls R.effects` alternates these segments with actual
+  successful `R.alloc` calls, retaining their exact base and runtime
+  state. The call's fresh-object list grows monotonically; old
+  identities are never dropped. `effects_preserve`, `prefix_preserve`
+  and `invoke_preserve` prove readiness and `persists` from initial
+  readiness, using the existing runtime obligations. There is no new
+  runtime axiom and no assumption about `R.free` preserving identities:
+  releases are constrained directly by the relation.
+- `prefix` does not depend on eventual completion. `invoke` retains its
+  last internal memory/runtime snapshot even for a resource ending;
+  `invoke_prefix` exposes that prefix. Allocation refusal needs a
+  contract-authorized request with `R.alloc = None`; `TooBig` needs an
+  authorized original byte count exceeding the existing size limit,
+  before `heap_req` rounds the extent. EOF is an API return, not a
+  resource ending or capability panic.
+- `puts_contract` requires an in-bounds first NUL, the pointer ABI and
+  a usable byte/unoriented stdout with designated writable state.
+  A representation predicate and allocation-request relation remain
+  explicit trusted inputs; a Boolean is not a proof of a native FILE.
+  New stream roots must derive both their capability provenance (even
+  for zero-length spans) and write coverage from old roots or this
+  call's fresh objects, not unrelated caller memory. Aliasing is
+  allowed: no disjointness or input-immutability promise is invented.
+  Success accepts the string plus newline and returns a representable
+  nonnegative int; EOF may follow any prefix, including the entire
+  payload, and is normalized to 32-bit word bits.
+
+The chosen first observation is **`StreamBytes`**, bytes accepted by
+stdio, possibly only into a buffer. It is not `write(fd, bytes)` and
+does not prove delivery to the kernel. A future flush may fail or
+deliver pending bytes from earlier calls. Native trace coverage and the
+relation between API acceptance and externally visible writes are still
+trusted obligations to state, not theorems proved by `effects_preserve`.
+
+### The next milestones, in order
+
+1. **Guarded machine integration.** Lift existing `Machine.mstep`
+   silently into a labelled extension and add a direct contract-call
+   rule, rather than changing every Campaign 3 constructor prematurely.
+   Match existing dispatch precedence (defined/outside functions, data,
+   existing `free`, then registered contracts), evaluate the arguments,
+   and require a non-doomed frame. Resume with `returned_env`, the
+   declared void/scalar/tuple shape (including empty/singleton tuples),
+   unchanged function/locals/callers/fuel, and the next `Exec` point.
+   Prove continuation lemmas for Campaign 3's evidence and single-def
+   invariants; readiness and identity preservation alone do not imply
+   those invariants. Existing `mstep_refines` covers only the old machine.
+2. **Close `hi.c`.** Install concrete startup/stdio representation and
+   request contracts; model main's return, flush and `exit`/handlers as
+   events, plus blocking/divergence and resource endings. Require
+   external-symbol coverage and admissibility at every reached call,
+   independently of whether it has an `invoke` derivation. An empty
+   relation must never prove safety by deleting an invalid execution.
+   Link the pinned modules and prove adequacy before claiming
+   `never_panics`; no such claim is made by this standalone slice.
+3. **Grow by Hello contract kinds.** Add bounded byte/string operations,
+   fresh allocations and owned release, then formatting, argv/environment,
+   locale/conversion, opaque streams/descriptors and callbacks, following
+   the native table. Connect Prolog/extraction and native observations;
+   only then restate and validate `opt:refines/2` as trace inclusion.
 
 ## Campaign 5: static discharge by certificate
 
@@ -623,7 +707,7 @@ kinds are:
 | --- | --- | --- |
 | Memory functions | `strlen`, `strnlen`, `strchr`, `strrchr`, `strcmp`, `strncmp`, `memchr`, `memcmp`, `memcpy`, `memset`, `strdup` | Each requires capabilities that cover what it reads or writes: a readable object that holds a NUL within bounds, or n bytes in bounds. Under Fil-C, an unterminated string traps inside `strlen`, so the panic belongs to the caller, and its precondition is an obligation at the call site. |
 | Allocation | `malloc`, `calloc`, `realloc`, `free` | Allocation is the runtime's `alloc`. It may return null and is never a panic. `free` requires null or a live heap base. |
-| Formatted output | `__printf_chk`, `__fprintf_chk`, `__sprintf_chk`, `fputs`, `fputc`, `error` | The varargs must match the format string (Fil-C checks every `va_arg`). Output is a trace event `write(fd, bytes)`. |
+| Formatted output | `__printf_chk`, `__fprintf_chk`, `__sprintf_chk`, `fputs`, `fputc`, `error` | The varargs must match the format string (Fil-C checks every `va_arg`). Stream acceptance is distinct from later device delivery; buffered success does not imply a `write(fd, bytes)` event. |
 | Arguments and locale | `getopt_long`, `optarg`, `optind`, `setlocale`, `nl_langinfo`, `bindtextdomain`, `textdomain`, `dcgettext`, `__ctype_b_loc`, `mbrtowc`, `mbrtoc32`, `mbsinit`, `iswprint`, `iconv*` | `getopt_long` needs the entry contract's `argv` and a long-options table that ends in a zero entry. It returns pointers into `argv`. `__ctype_b_loc` returns a table indexed from −128 to 255, a classic out-of-bounds risk. The locale functions return strings whose lifetimes the contract must state. |
 | Ending | `exit`, `_exit`, `abort`, `__cxa_atexit`, `close_stdout` through `ferror`, `fclose`, `__fpending` | `exit` is an event and the end of the trace. Handlers registered with `atexit` run during `exit`, so they are part of the program's proof. |
 
@@ -633,9 +717,12 @@ kinds are:
    external calls. A call of a contracted symbol takes one step to any
    result its postcondition allows, if its precondition holds. If the
    precondition fails, the step ends in a failure that counts against
-   the caller. The step emits events: `write`, then `exit`. Today
+   the caller, not necessarily a native Fil-C trap. Buffered stream
+   acceptance is distinct from kernel `write`; flush and `exit` follow
+   their own contracts. Today
    [Semantics.v](../rocq/theories/Semantics.v)'s `external_call` models
-   only `free`; every other call is `Stuck`.
+   only `free`; every other call is `Stuck`. The standalone first
+   contract relation exists, but is not integrated into that machine.
 2. **Linking.** One genv holds the functions and data of every
    translation unit in Hello's closure, with libc's symbols resolved to
    contracts. The model now runs one module.
@@ -674,10 +761,10 @@ kinds are:
 | Which trap reasons are panics | stated here | the table above; `alloc_res`'s `too_big`/`out_of_memory` split in [Ops.v](../rocq/theories/Ops.v) already separates refusals from errors |
 | Running Hello's IR in the model to test contracts | missing | the extracted model and `agree.sh` exist, but externals are stuck |
 | Initial readiness for every runtime | hypothesis | the heap starting above the data ([rocq.md](rocq.md)) |
-| External-call step, events, contract language | missing | Campaign 4 |
+| External-call step, events, contract language | standalone first slice; machine integration missing | Campaign 4's [ExternalCalls.v](../rocq/theories/ExternalCalls.v), starting with `puts` |
 | Linking several modules | missing | Run.v takes one module |
 | Program logic and adequacy | missing | new. Separation logic in Rocq is the first option; whether to instantiate Iris is the temporal-discharge inquiry |
-| libc contract table | missing | about 60 entries for Hello, each with a native test like the runtime axioms' |
+| libc contract table | trusted native specification and nine probes exist; Rocq starts with `puts` | [libc-contracts.md](libc-contracts.md): 56 Hello names, `puts` and `fcntl`; not a proof of libc |
 | Hello inside the model's subset | measured: all 178 functions in 81 objects inside; every object `Some true` | [step 0](trap-census.md) calls the extracted Validate.v `valid` directly; no `None` or `Some false`; this is not execution through the still-missing libc contracts |
 
 #### Where the per-function obligations come from
