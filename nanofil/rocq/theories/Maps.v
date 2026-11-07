@@ -18,7 +18,7 @@
     thirty times slower with it. *)
 
 
-From Stdlib Require Import String ZArith List Ascii OrderedTypeEx FMapAVL.
+From Stdlib Require Import String ZArith List Ascii OrderedTypeEx FMapAVL FMapFacts.
 From Nanofil Require Import Term.
 Import ListNotations.
 Local Open Scope Z_scope.
@@ -88,3 +88,81 @@ Definition nm_mem {A : Type} (n : name) (m : nmap A) : bool :=
     pair would replace an earlier one; list_to_assoc/2 throws). *)
 Definition nm_of_list {A : Type} (ps : list (name * A)) : nmap A :=
   fold_left (fun m p => nm_add (fst p) (snd p) m) ps nm_empty.
+
+(** ## What a lookup answers
+
+    The lemmas below say what each operation does to a lookup, by name
+    and not by hash: a map answers as the association list of its
+    puts would. *)
+
+Module ZF := FMapFacts.WFacts_fun Z_as_OT ZMap.
+
+Lemma name_key_eqb : forall a b, name_eqb a b = true -> name_key a = name_key b.
+Proof. intros a b H. apply term_eqb_eq in H. subst. reflexivity. Qed.
+
+Lemma lookup_put_name : forall (A : Type) k n (v : A) ps,
+  lookup k (put n v ps) = if name_eqb k n then Some v else lookup k ps.
+Proof.
+  intros A k n v ps. simpl. destruct (name_eqb k n) eqn:E; [reflexivity|].
+  induction ps as [|[k' v'] ps IH]; simpl; [reflexivity|].
+  destruct (name_eqb n k') eqn:E'; simpl.
+  - apply term_eqb_eq in E'. subst k'. rewrite E. exact IH.
+  - destruct (name_eqb k k'); [reflexivity | exact IH].
+Qed.
+
+Lemma nm_find_empty : forall (A : Type) k, nm_find k (@nm_empty A) = None.
+Proof. intros A k. unfold nm_find, nm_empty. rewrite ZF.empty_o. reflexivity. Qed.
+
+Lemma nm_find_add : forall (A : Type) k n (v : A) m,
+  nm_find k (nm_add n v m) = if name_eqb k n then Some v else nm_find k m.
+Proof.
+  intros A k n v m. unfold nm_find, nm_add.
+  destruct (Z.eq_dec (name_key n) (name_key k)) as [E | E].
+  - rewrite ZF.add_eq_o by exact E. rewrite lookup_put_name.
+    destruct (name_eqb k n) eqn:Ek; [reflexivity|].
+    rewrite <- E. destruct (ZMap.find (name_key n) m); reflexivity.
+  - rewrite ZF.add_neq_o by exact E. destruct (name_eqb k n) eqn:Ek; [|reflexivity].
+    exfalso. apply E. symmetry. apply name_key_eqb. exact Ek.
+Qed.
+
+Lemma nm_find_remove : forall (A : Type) k n (m : nmap A),
+  nm_find k (nm_remove n m) = if name_eqb k n then None else nm_find k m.
+Proof.
+  intros A k n m. unfold nm_find, nm_remove.
+  destruct (ZMap.find (name_key n) m) as [bucket|] eqn:Eb.
+  - destruct (Z.eq_dec (name_key n) (name_key k)) as [E | E].
+    + rewrite ZF.add_eq_o by exact E. rewrite <- E, Eb.
+      destruct (name_eqb k n) eqn:Ek.
+      * apply term_eqb_eq in Ek. subst k. clear Eb E. induction bucket as [|[k' v'] b IH]; simpl; [reflexivity|].
+        destruct (name_eqb n k') eqn:E'; simpl; [exact IH|]. rewrite E'. exact IH.
+      * clear Eb E. induction bucket as [|[k' v'] b IH]; simpl; [reflexivity|].
+        destruct (name_eqb n k') eqn:E'; simpl.
+        -- apply term_eqb_eq in E'. subst k'. rewrite Ek. exact IH.
+        -- destruct (name_eqb k k'); [reflexivity | exact IH].
+    + rewrite ZF.add_neq_o by exact E. destruct (name_eqb k n) eqn:Ek; [|reflexivity].
+      exfalso. apply E. symmetry. apply name_key_eqb. exact Ek.
+  - destruct (name_eqb k n) eqn:Ek; [|reflexivity].
+    apply term_eqb_eq in Ek. subst k. rewrite Eb. reflexivity.
+Qed.
+
+Lemma nm_mem_add : forall (A : Type) k n (v : A) m,
+  nm_mem k (nm_add n v m) = name_eqb k n || nm_mem k m.
+Proof. intros A k n v m. unfold nm_mem. rewrite nm_find_add. destruct (name_eqb k n); reflexivity. Qed.
+
+Lemma lookup_app : forall (A : Type) k (ps qs : list (name * A)),
+  lookup k (ps ++ qs) = match lookup k ps with Some v => Some v | None => lookup k qs end.
+Proof.
+  intros A k ps qs. induction ps as [|[k' v'] ps IH]; simpl; [reflexivity|].
+  destruct (name_eqb k k'); [reflexivity | exact IH].
+Qed.
+
+(** `nm_of_list`: a later pair replaces an earlier one, so a lookup
+    answers as the reversed list does. *)
+Lemma nm_find_fold_add : forall (A : Type) k (ps : list (name * A)) m,
+  nm_find k (fold_left (fun m p => nm_add (fst p) (snd p) m) ps m)
+  = match lookup k (rev ps) with Some v => Some v | None => nm_find k m end.
+Proof.
+  intros A k ps. induction ps as [|[k' v'] ps IH]; intros m; simpl; [reflexivity|].
+  rewrite IH, lookup_app, nm_find_add. simpl.
+  destruct (lookup k (rev ps)); [reflexivity|]. destruct (name_eqb k k'); reflexivity.
+Qed.

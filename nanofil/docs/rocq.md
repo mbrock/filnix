@@ -18,7 +18,7 @@ the interpreter and cites the predicate it copies.
 | File | Transcribes | Contents |
 | --- | --- | --- |
 | `Term.v` | ground Prolog terms | names (temporaries, labels, symbols) as terms compared by `==`, and `term_eqb_eq`, that `==` is equality; `char_code/2` |
-| `Maps.v` | library(assoc) | name maps: a hash of the name, then an association list per hash, so a lookup's answer never depends on the hash |
+| `Maps.v` | library(assoc) | name maps: a hash of the name, then an association list per hash, so a lookup's answer never depends on the hash; what each operation does to a lookup (`nm_find_add`, `nm_find_remove`, `nm_find_fold_add`) |
 | `Ieee.v` | ieee.pl | binary32, binary64 and x87 extended as bit patterns: `decode/4`, `round_ratio/5`, `ieee_binary/5`, `ieee_convert/4`, `ieee_compare/5`, `ieee_from_int/3`, `ieee_to_int/3` |
 | `Syntax.v` | ir.pl's header tables | classes, ops, values, instructions, jumps, blocks, functions, data, modules; `op_arg_classes/4`, `evidence_preserving/1`, `ahead_transparent/1`, `local_objects/2` |
 | `Values.v` | interp.pl's values | `cap` (`none`, `obj`, `ro`, `fn`, `ext`), `ptr`, `word`; `word_at_class/3` |
@@ -30,6 +30,7 @@ the interpreter and cites the predicate it copies.
 | `Machine.v` | — (Campaign 3) | the machine of a `Runtime`: steps, the runtime's allocations, its actions at safepoints; `ready` kept by every step; each step a `step_rel` step or a safepoint action |
 | `Cfg.v` | cfg.pl | `func_cfg/2`, `cfg_idoms/2` (Cooper, Harvey and Kennedy), `dom_children/3`, `dom_intervals/3`, `dominates_by_interval/3` |
 | `Validate.v` | ir.pl's `valid_module/1` | `valid_func`, `valid_data`, `valid_alias`, `valid_items`, `valid`: uses, ops, instructions, dominance, locals, the evidence pass, the reuse rules, `polls_every_cycle`, data linkage and items, aliases |
+| `Dominance.v` | — (Campaign 3) | what Cfg.v's dominator intervals mean: the entry is reachable, reachable blocks' successors are, and what dominates a successor dominates its predecessor, but for the successor itself; only the entry dominates the entry; dominance is antisymmetric |
 | `Coverage.v` | — (Campaign 3) | the coverage lemma: a raw access that `covered_access/6` puts inside a passed check gives no `unchecked` |
 | `Evidence.v` | — (Campaign 3) | the evidence invariant at an instruction and an edge: what a live fact means, every case of `checked_inst_rest/7` keeps the pass's facts true, block entry keeps the meet, accesses the pass accepts give no `unchecked` |
 | `Walk.v` | — (Campaign 3) | the evidence pass read back for the run-level invariant: block by block (`pass_fold`), position by position (`walks`), where it keeps facts (`relies`), a `check_local`'s own fact |
@@ -755,7 +756,62 @@ Decisions and findings:
 Not yet: `hull_covered`, the reuse forms' own rules (a renew's
 `unchecked(span)`, a half check's, a limit's, `unchecked(alias)`), the
 doomed frame (`check_ahead`), and then `valid_no_unchecked` itself,
-which assembles these with the initial readiness hypothesis.
+which assembles these with the initial readiness hypothesis. The reuse
+forms rest on dominance, below.
+
+### Dominance
+
+The reuse forms' rules read single-definition names along flight
+chains (`guard_chain/3`, `pointer_distance/4`), and a chain is a
+relation between the values of two names: a flight's value and its
+base's. In a loop the base is defined again on each iteration, so the
+relation holds at a point only because the flight's definition
+dominates it, and the base's dominates the flight's
+(`definitions_dominate/3`). The proof that the reuse forms are sound
+therefore needs the validator's answer to "does A dominate B?" to mean
+what it says on the machine's runs.
+
+`Dominance.v` proves it, with no admits, of `block_intervals` for every
+function: of the dominator tree and intervals ir.pl computes, not of a
+corrected copy. It checks in under two seconds.
+
+- `dom_entry`, `dom_closed`: the entry block has an interval, and so
+  does every successor of a block with one. A run enters only such
+  blocks, so `definitions_dominate/3` skipping blocks without an
+  interval skips no block a run reaches.
+- `dom_edge`: a label that dominates a block's successor and is not the
+  successor dominates the block. This is what keeps a dominance fact
+  true across an edge.
+- `dom_entry_top`, `dom_antisym`, `dominates_trans`,
+  `dominates_refl`: the order facts.
+
+Decisions and findings:
+
+- **Soundness only.** The proof never shows that `cfg_idoms/2` computes
+  the true immediate dominators (Cooper, Harvey and Kennedy's argument
+  is about the fixpoint being the least). It uses three facts of what
+  was computed: `reverse_postorder/6` starts at the entry and is closed
+  under successors; at the last sweep, which changed nothing, each
+  label's idom is a common ancestor of its predecessors that have one,
+  since `common_dominator/5` only walks up; and `dom_intervals/3` gives
+  each label the preorder numbers of its subtree. A tree with these
+  properties passes every path from the entry through each ancestor,
+  which is all ir.pl relies on.
+- **The fuel bounds stay unproved.** Cfg.v's walks carry fuel and give
+  no answer when it runs out. The theorems are about a computation that
+  answered, so a bound that is too small would make the validator
+  reject a function, not accept a wrong one; the gates would show it.
+- **No two blocks share a label.** `dom_closed` and `dom_edge` take
+  `no_dups` of the labels, which `valid_func` checks: the successor
+  map `func_cfg/2` builds keeps the last block of a label, and the
+  machine runs the first.
+- **The tree has no cycle because the numbering stopped.**
+  `subtree_intervals/6` with fuel numbers a subtree only if its depth is
+  below the fuel (`si_depth`), so a cycle under the entry is impossible
+  (`si_no_cycle`), and two labels whose intervals hold each other's
+  first number are one (`dom_antisym`).
+- `term_eqb_refl` moved from Evidence.v to Term.v, next to
+  `term_eqb_eq`, for Maps.v's lemmas.
 
 ## An object past 2^64
 
@@ -849,10 +905,15 @@ and the module type's `start`, so it needs an Oracle review.
 
 ## Next
 
-1. The reuse forms as corollaries, each with ir.pl's side conditions as
-   hypotheses: `hull_covered`, renew, half check, `renew_if`,
-   `check_limit`, and `check_ahead`'s doomed frame; then
-   `valid_no_unchecked`, assembled from Persistence.v's invariant.
+1. The single-definition invariant over runs: where a name's one
+   definition dominates the running point, the relation its definition
+   states holds (a flight's capability and offset from its base, a
+   proof's pointer and passed check, a span test's or a limit's
+   reading), on Dominance.v. Then the reuse forms as corollaries, each
+   with ir.pl's side conditions as hypotheses: `hull_covered`, renew,
+   half check, `renew_if`, `check_limit`, and `check_ahead`'s doomed
+   frame; then `valid_no_unchecked`, assembled from Persistence.v's
+   invariant.
 2. A decision on the runtime's safepoints (`spares`, above): narrow
    the module type, or keep the hypothesis.
 3. Starting the heap above the module's data, so that the initial

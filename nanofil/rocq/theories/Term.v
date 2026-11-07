@@ -60,6 +60,17 @@ Proof.
     apply andb_true_iff in Hl as [H1 H2]. f_equal; [apply IH; exact H1 | apply IHl; exact H2].
 Qed.
 
+(** `==` on a term holds of the term itself. *)
+Lemma term_eqb_refl : forall t, term_eqb t t = true.
+Proof.
+  fix IH 1. intros t. destruct t as [n | a | f ts | ts]; simpl.
+  - apply Z.eqb_refl.
+  - apply String.eqb_refl.
+  - rewrite String.eqb_refl. simpl. induction ts as [|t ts IHl]; simpl; auto.
+    rewrite IH. exact IHl.
+  - induction ts as [|t ts IHl]; simpl; auto. rewrite IH. exact IHl.
+Qed.
+
 (** A name of the IR: a temporary, label, symbol or named local. *)
 Definition name := term.
 

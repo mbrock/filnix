@@ -12,6 +12,7 @@ theories/Semantics.v
 theories/Run.v
 theories/Machine.v
 theories/Validate.v
+theories/Dominance.v
 theories/Coverage.v
 theories/Evidence.v
 theories/Walk.v

@@ -43,17 +43,6 @@ Open Scope Z_scope.
 
 (** ## Names *)
 
-(** `==` on a term holds of the term itself. *)
-Lemma term_eqb_refl : forall t, term_eqb t t = true.
-Proof.
-  fix IH 1. intros t. destruct t as [n | a | f ts | ts]; simpl.
-  - apply Z.eqb_refl.
-  - apply String.eqb_refl.
-  - rewrite String.eqb_refl. simpl. induction ts as [|t ts IHl]; simpl; auto.
-    rewrite IH. exact IHl.
-  - induction ts as [|t ts IHl]; simpl; auto. rewrite IH. exact IHl.
-Qed.
-
 Lemma lookup_put_same : forall (A : Type) k (v : A) ps, lookup k (put k v ps) = Some v.
 Proof. intros A k v ps. simpl. unfold name_eqb. rewrite term_eqb_refl. reflexivity. Qed.
 
