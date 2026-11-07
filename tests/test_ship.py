@@ -362,11 +362,16 @@ class ShippingTests(unittest.TestCase):
         directory.mkdir()
         evidence = receipt(self.sha)
         (directory / "fleet.json").write_text(json.dumps(evidence["fleet"]))
-        for result in evidence["results"]:
-            name = result["job"].replace("@", "_").replace("/", "_")
-            event = {"type": "result", "result": "NANOFIL-FLEET-RESULT " + json.dumps(result)}
-            (directory / (name + ".jsonl")).write_text(json.dumps(event) + "\n")
-        self.run_command(sys.executable, "scripts/nanofil-fleet", "collect", str(directory))
+        for wall in (539, 540):
+            evidence["results"][0]["wall_s"] = wall
+            for result in evidence["results"]:
+                name = result["job"].replace("@", "_").replace("/", "_")
+                event = {"type": "result", "result": "NANOFIL-FLEET-RESULT " + json.dumps(result)}
+                (directory / (name + ".jsonl")).write_text(json.dumps(event) + "\n")
+            collected = self.run_command(sys.executable, "scripts/nanofil-fleet", "collect", str(directory))
+            self.assertEqual("WARNING: shard headroom" in collected.stdout, wall == 540)
+            self.assertEqual("cp " in collected.stdout, wall == 540)
+            self.assertIn("13\textra-a\n", (directory / "times.tsv").read_text())
         self.run_command(sys.executable, "scripts/nanofil-fleet", "verify", str(directory / "results.json"), "--rev", self.sha)
         self.assertTrue(json.loads((directory / "results.json").read_text())["coverage"]["complete"])
 

@@ -504,6 +504,18 @@ def collect_dir(outdir, recover=False):
     if coverage:
         md += [f"Shard coverage: {coverage['ran']} step runs, {coverage['distinct']} distinct, "
                f"of {coverage['steps']} listed; step lists agree: {coverage['lists_agree']}.", ""]
+    # Leave the tested tree untouched: changing weights creates a new SHA
+    # that needs its own fleet. Always export measurements, and flag drift
+    # with a minute of headroom before the 600s soft budget is crossed.
+    near_budget = [r for r in shards if r.get("wall_s", 0) >= 540]
+    if near_budget:
+        md += ["WARNING: shard headroom at most 60s of the 600s soft budget: "
+               + ", ".join(f"{r['job']} ({r['wall_s']}s)" for r in near_budget) + ".", ""]
+        if ok and coverage["complete"]:
+            md += ["Refresh the measured shard weights before the next candidate: `cp "
+                   + shlex.quote(os.path.join(outdir, "times.tsv"))
+                   + " nanofil/tests/check-times.tsv`. Commit and rerun the fleet at the new SHA; "
+                   "this receipt remains valid only for the tested SHA.", ""]
     md += ["| job | status | wall | steps | slowest step | thread |", "|---|---|---|---|---|---|"]
     for r in results:
         st = r.get("steps") or []
