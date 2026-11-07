@@ -502,17 +502,17 @@ the property sorts every way a run can end:
 | `Trap (Early r)` | `trap(early(R))` | a panic | a `check_ahead` trapped early on a failure the run was going to reach |
 | `Unchecked r` | `unchecked(Reason)` | impossible | soundness of checking: never, in a valid module |
 | `Trap OutOfMemory` | `trap(out_of_memory)` | not a panic | the runtime refused an allocation it cannot hold; any runtime may (Runtime.v), so no program could be proved free of it |
-| `Trap TooBig` | `trap(too_big)` | not a panic (proposed) | a request over 2^48 - 1 bytes, which C's `malloc` would answer with null; natively a "filc safety error", but not a memory error |
-| a stack overflow | native only | not a panic (proposed) | a resource limit, like out of memory; the model has no stack bound |
+| `Trap TooBig` | `trap(too_big)` | not a panic | a request over 2^48 - 1 bytes, which C's `malloc` would answer with null; natively a "filc safety error", but not a memory error |
+| a stack overflow | native only | not a panic | a resource limit, like out of memory; the model has no stack bound |
 | `exit`, `abort` | external calls (Campaign 4) | not a panic | the program chose to stop |
 | `Ret`, `Rets`, `RetVoid` | `ret(V)`, `rets(Xs)`, `ret` | not a panic | |
 | a run that never ends, or `OutOfFuel` | `out_of_fuel` | not a panic | the property speaks of every state a run reaches, so divergence is allowed and fuel plays no part |
-| `UB r` | `ub(float_conversion)` | ruled out (proposed) | the model gives no continuation after it, so nothing can be proved about what follows |
-| `Unreachable` | `unreachable` | ruled out (proposed) | natively a crash (`ud2`), not a Fil-C check, and never a correct program's ending |
+| `UB r` | `ub(float_conversion)` | ruled out | the model gives no continuation after it, so nothing can be proved about what follows |
+| `Unreachable` | `unreachable` | ruled out | natively a crash (`ud2`), not a Fil-C check, and never a correct program's ending |
 | stuck | instantiation error | ruled out | the run left the model: an external call with no contract, or code outside the subset |
 
-The proposed rows wait for mbrock's decision; the panic rows follow
-Filip's meaning.
+The panic rows follow Filip's meaning. The rest are mbrock's decisions
+(November 2026), listed at the end of this campaign.
 
 ### The statement
 
@@ -522,7 +522,7 @@ the closure, its initial memory and its entry function):
 ```
 never_panics P :=
   forall (R : Runtime), R.ready R.start (initial memory of P) ->
-  forall input, entry_contract P input ->
+  forall input, well_formed_entry input ->
   forall environment the contracts of P's external calls allow,
   forall st, mreachable ge (start P input, R.start) st ->
     ~ ends_in_failure st
@@ -717,13 +717,20 @@ certificates are replayed by the extracted checker. A planted
 off-by-one in the program makes the proof fail and a native run panic.
 Nothing in the build asks a model.
 
-Decisions for mbrock before step 1:
+Decisions (mbrock, November 2026):
 
-- whether `too_big` and a stack overflow are panics;
-- whether `UB` and `unreachable` are ruled out or allowed;
-- whether the entry contract is "any input" or a stated precondition;
-- whether libc stays trusted behind contracts or must be compiled into
-  the closure by nanofil.
+- **`too_big` is not a panic.** It is a refusal, like `out_of_memory`:
+  no memory is touched, and C's `malloc` would answer with null.
+- **A stack overflow is not a panic.** It is a resource limit, and the
+  model keeps no stack bound.
+- **`UB` and `unreachable` are ruled out.** The theorem also proves that
+  neither happens: the model has no continuation after `UB`, and
+  `unreachable` is natively a crash that no Fil-C check catches.
+- **The entry contract is any input:** every well-formed `argv` and
+  environment, not a precondition stated per program.
+- **libc stays trusted behind contracts,** each probed by a native test
+  as the runtime axioms are. Compiling it into the closure with nanofil
+  remains the libc-inside-the-model inquiry.
 
 ## Inquiries and investigations
 
