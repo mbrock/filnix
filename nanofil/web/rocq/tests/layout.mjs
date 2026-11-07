@@ -12,7 +12,18 @@ if (widths.some(w => ![320, 390, 768, 1280].includes(w))) throw new Error("Unkno
 const detailWidths = pagesOnly ? [] : widths;
 let session = `rocq-test-${process.pid}`;
 function browser(...args) {
-  return execFileSync("agent-browser", ["--session", session, ...args], { encoding: "utf8" });
+  try {
+    return execFileSync("agent-browser", ["--session", session, ...args], { encoding: "utf8" });
+  } catch (error) {
+    // agent-browser 0.38.1's navigation load wait is fixed at 25s,
+    // independently of AGENT_BROWSER_DEFAULT_TIMEOUT. Keep waiting for
+    // this navigation, not a second GET or an assertion on the old page.
+    if (args[0] !== "open" || !String(error.stderr).includes("Operation timed out.")) throw error;
+    console.log(`${new Date().toISOString()} waiting for navigation to finish: ${args[1]}`);
+    return execFileSync("agent-browser", ["--session", session, "wait", "--fn",
+      `location.href === ${JSON.stringify(args[1])} && document.readyState === "complete"`,
+      "--timeout", "60000"], { encoding: "utf8" });
+  }
 }
 function check(body) {
   browser("eval", `(async () => {
@@ -294,6 +305,7 @@ try {
   for (const width of widths.filter(w => w <= 390)) {
     browser("set", "viewport", String(width), "900", "2");
     for (const page of ["index.html", ...pages]) {
+      console.log(`${new Date().toISOString()} checking ${page} without scripts at ${width}px`);
       browser("open", `${base}/nanofil/rocq/${page}`);
       check(`
         if (!${pagesOnly})

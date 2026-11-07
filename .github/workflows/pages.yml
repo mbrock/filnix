@@ -60,6 +60,11 @@ jobs:
             npm install --global agent-browser@0.38.1
           python3 nanofil/tests/watch.py --label 'Chromium install' -- \
             agent-browser install --with-deps
+      - name: Check delayed browser navigation
+        run: |
+          set -o pipefail
+          python3 nanofil/tests/watch.py --label 'Rocq delayed navigation' -- \
+            node nanofil/web/rocq/tests/navigation.mjs 2>&1 | tee rocq-phone-navigation.log
       - name: Check every Rocq page at phone widths
         run: |
           set -o pipefail

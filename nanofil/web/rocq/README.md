@@ -154,6 +154,16 @@ rendering Evidence alone misses. A fresh narrow load can also fit when the
 resize plan does not. The browser check was previously manual, so adding a
 theory did not automatically run it in CI.
 
+The pinned agent-browser 0.38.1 has a fixed 25-second navigation load wait,
+independent of its advertised default timeout. If only that wait expires,
+the checker waits up to another 60 seconds for the same URL to finish
+loading, then runs all assertions normally. It neither repeats navigation
+nor accepts the old document as a loaded page. Other errors still fail,
+and the watchdog's 300-second deadline is unchanged. Pages also runs
+`node nanofil/web/rocq/tests/navigation.mjs`: a real delayed HTTP response
+must pass when narrow and fail on overflow inserted at the end of loading,
+after the initial navigation timeout.
+
 Rendering streams completed declarations, timeline entries, hypotheses,
 goals and snapshots instead of retaining a page-sized list of HTML codes.
 `write_streamed_page/3` resumes the existing DCG after each `html_flush/2`
