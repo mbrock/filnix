@@ -58,6 +58,7 @@ mkdir -p "$out/nanofil/rocq"
 cp "$src"/nanofil/web/rocq/dterm-rocq.css "$src"/nanofil/web/rocq/dterm-rocq.js "$out/nanofil/rocq/"
 mapfile -t rocq < <(cd "$src" && find nanofil -name '*.v' | sort)
 swipl "$src/nanofil/web/rocq/dterm_rocq.pl" "$out/nanofil/rocq" "$src" \
+  --states="${ROCQ_PROOF_STATES:?the site needs real Rocq proof states}" \
   --prolog="$src/nanofil/src" "${rocq[@]}" </dev/null
 # The dterm workbench: the samples drawn by dterm, set side by side.
 mkdir -p "$out/nanofil/workbench"

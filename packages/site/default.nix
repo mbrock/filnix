@@ -18,6 +18,7 @@ let
   # playground in the browser (swipl-wasm is 10.1.19).
   swipl = import ../../nanofil/web/play/swipl.nix { inherit pkgs; };
   play = import ../../nanofil/web/play { inherit pkgs filcc swipl; };
+  proofStates = import ../../nanofil/web/rocq/capture.nix { inherit pkgs; };
   # The Nix files drawn as pages (dterm-nix): every Nix file of the
   # repository, but for the trees that are not filnix's own Nix: build
   # results (result*) and experiments/, scratch projects with their own
@@ -77,9 +78,10 @@ pkgs.runCommand "filnix-site"
       pkgs.pandoc
       swipl
     ];
-    passthru = { inherit play; };
+    passthru = { inherit play proofStates; };
   }
   ''
+    export ROCQ_PROOF_STATES=${proofStates}
     bash ${./.}/build.sh ${src} $out ${repoFiles} ${options} ${nixpkgs} \
       ${lib.escapeShellArgs nixPages}
     cp -r ${play} $out/nanofil/play

@@ -37,7 +37,7 @@ try {
     }
     browser("open", `${base}/nanofil/formal.html`);
     check(`${fitsPage}
-      const table = document.querySelector(".rq-comparison");
+      const table = [...document.querySelectorAll(".rq-comparison")].find(t => t.querySelector("th")?.textContent === "Rocq definition");
       const cell = table.querySelector("td");
       if (innerWidth <= 700) {
         assert(table.scrollWidth <= table.clientWidth + 1, "Rocq comparison overflows");
@@ -46,6 +46,43 @@ try {
       }
     `);
     console.log(`ok formal comparison at ${width}px`);
+
+    browser("open", source("Runtime"));
+    const proof = "#object_region_remove + .rq-captured";
+    browser("click", `${proof} > summary`);
+    check(`${fitsPage}
+      const proof = document.querySelector(${JSON.stringify(proof)});
+      assert(proof.querySelector('[data-move="-1"]').disabled, "initial previous enabled");
+      assert(proof.querySelectorAll('.rq-snapshot:not([hidden])').length === 1, "multiple selected states");
+    `);
+    browser("click", `${proof} [data-move="1"]`);
+    check(`${fitsPage}
+      const state = document.querySelector(${JSON.stringify(proof)}).querySelector('.rq-snapshot:not([hidden])');
+      assert(state.querySelector('.rq-conclusion').dataset.raw === 'object_region b (remove_region base rs) = object_region b rs', "wrong intros goal");
+      assert(state.querySelectorAll('.rq-hyp[data-change="added"]').length === 3, "missing introduced context");
+      assert(state.querySelector('.rq-conclusion .f'), "goal not typeset by dterm");
+    `);
+    browser("click", `${proof} .rq-compare`);
+    check(`assert(document.querySelector(${JSON.stringify(proof)}).querySelectorAll('.rq-snapshot:not([hidden])').length === 2, "before/after unavailable");`);
+    browser("click", `${proof} .rq-compare`);
+    browser("scrollintoview", `${proof} .rq-step-link:nth-child(5)`);
+    browser("click", `${proof} .rq-step-link:nth-child(5)`);
+    check(`${fitsPage}
+      const state = document.querySelector(${JSON.stringify(proof)}).querySelector('.rq-snapshot:not([hidden])');
+      assert(state.querySelector('h3').textContent.includes('apply Z.eqb_eq in E.'), "wrong selected tactic");
+      assert(state.querySelector('[data-role="deferred"]'), "pending branch lost");
+      assert(state.querySelector('.rq-hyp[data-change="changed"]'), "rewrite in hypothesis not highlighted");
+    `);
+    browser("press", "End");
+    check(`${fitsPage}
+      const proof = document.querySelector(${JSON.stringify(proof)});
+      assert(proof.querySelector('[data-move="1"]').disabled, "next enabled after Qed");
+      assert(proof.querySelector('.rq-snapshot:not([hidden])').textContent.includes('checked and closed'), "closure not distinguished");
+    `);
+    browser("press", "Home");
+    browser("press", "ArrowDown");
+    check(`assert(document.activeElement.getAttribute('aria-current') === 'step', "keyboard selection loses focus");`);
+    console.log(`ok proof navigation, context changes, pending goals and comparison at ${width}px`);
   }
   for (const width of [320, 1280]) {
     browser("set", "viewport", String(width), "900", "2");

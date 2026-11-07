@@ -36,3 +36,93 @@ if (matchMedia("(max-width: 900px)").matches)
   });
   select.closest(".rq-layout").hidden = false;
 })();
+
+// Progressive enhancement over build-time, dterm-rendered proof states.
+// Without JavaScript every snapshot remains readable in source order.
+for (const proof of document.querySelectorAll(".rq-captured")) {
+  const links = [...proof.querySelectorAll(".rq-step-link")];
+  const states = [...proof.querySelectorAll(".rq-snapshot")];
+  const controls = proof.querySelector(".rq-proof-controls");
+  const previous = controls.querySelector('[data-move="-1"]');
+  const next = controls.querySelector('[data-move="1"]');
+  const timeline = proof.querySelector(".rq-timeline");
+  const compare = document.createElement("button");
+  compare.type = "button";
+  compare.className = "rq-compare";
+  compare.textContent = "Compare before";
+  compare.setAttribute("aria-pressed", "false");
+  controls.append(compare);
+  let selected = 0;
+  let comparing = false;
+
+  // Compare against the preceding source step, not the last one clicked.
+  // These are textual changes in Rocq's output, not semantic equivalence.
+  for (let i = 1; i < states.length; i++) {
+    const before = states[i - 1].querySelector('.rq-proof-goal[data-role="focused"]');
+    const after = states[i].querySelector('.rq-proof-goal[data-role="focused"]');
+    if (!before || !after) continue;
+    const oldHyps = new Map([...before.querySelectorAll(".rq-hyp")].map(h => [h.dataset.hyp, h.dataset.raw]));
+    let added = 0, changed = 0;
+    for (const h of after.querySelectorAll(".rq-hyp")) {
+      if (oldHyps.get(h.dataset.hyp) !== h.dataset.raw) {
+        const isNew = !oldHyps.has(h.dataset.hyp);
+        h.dataset.change = isNew ? "added" : "changed";
+        h.title = isNew ? "Added since preceding step" : "Changed since preceding step";
+        if (isNew) added++; else changed++;
+      }
+      oldHyps.delete(h.dataset.hyp);
+    }
+    const conclusion = after.querySelector(".rq-conclusion");
+    const goalChanged = conclusion.dataset.raw !== before.querySelector(".rq-conclusion").dataset.raw;
+    if (goalChanged) conclusion.dataset.change = "changed";
+    const parts = [goalChanged ? "Goal changed" : "Goal unchanged"];
+    if (added) parts.push(`${added} context ${added === 1 ? "entry" : "entries"} added`);
+    if (changed) parts.push(`${changed} changed`);
+    if (oldHyps.size) parts.push(`${oldHyps.size} removed`);
+    states[i].querySelector(".rq-changes").textContent = parts.join(" · ");
+  }
+
+  function show(index, focus = false) {
+    selected = Math.max(0, Math.min(index, states.length - 1));
+    for (let i = 0; i < states.length; i++) {
+      states[i].hidden = i !== selected && !(comparing && i === selected - 1);
+      states[i].classList.toggle("rq-before", comparing && i === selected - 1);
+      links[i].setAttribute("aria-current", i === selected ? "step" : "false");
+    }
+    previous.disabled = selected === 0;
+    next.disabled = selected === states.length - 1;
+    compare.disabled = selected === 0;
+    controls.querySelector(".rq-position").textContent = selected === 0
+      ? `Initial goal · ${states.length - 2} tactics`
+      : selected === states.length - 1 ? "Proof closed" : `Tactic ${selected} of ${states.length - 2}`;
+    if (focus) links[selected].focus({ preventScroll: true });
+    // dterm.js's ResizeObserver remeasures newly visible clauses.
+    // Scroll only the timeline, never move the reader's page position.
+    if (proof.open) {
+      const row = links[selected].getBoundingClientRect();
+      const viewport = timeline.getBoundingClientRect();
+      if (row.top < viewport.top) timeline.scrollTop += row.top - viewport.top;
+      else if (row.bottom > viewport.bottom) timeline.scrollTop += row.bottom - viewport.bottom;
+    }
+  }
+  links.forEach((link, i) => link.addEventListener("click", () => show(i)));
+  controls.addEventListener("click", event => {
+    const move = event.target.closest("[data-move]");
+    if (move) show(selected + Number(move.dataset.move));
+  });
+  compare.addEventListener("click", () => {
+    comparing = !comparing;
+    compare.setAttribute("aria-pressed", String(comparing));
+    show(selected);
+  });
+  timeline.addEventListener("keydown", event => {
+    const move = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[event.key];
+    if (!move && event.key !== "Home" && event.key !== "End") return;
+    event.preventDefault();
+    show(event.key === "Home" ? 0 : event.key === "End" ? states.length - 1 : selected + move, true);
+  });
+  controls.hidden = false;
+  timeline.hidden = false;
+  show(0);
+  proof.addEventListener("toggle", () => { if (proof.open) show(selected); });
+}

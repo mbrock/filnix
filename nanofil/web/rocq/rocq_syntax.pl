@@ -555,6 +555,10 @@ fragment(P, sentence(S)) --> peek(id(K)), { vernac_keyword(K) }, sentence(P, S).
 fragment(_, alts(N, [C|Cs])) --> name(N), tk(sym(':=')), expr(99, C), tk(sym('|')), alt_terms(Cs).
 fragment(_, fields(N, Fs)) --> name(N), tk(sym(':=')), tk(p('{')), fields(Fs), tk(p('}')).
 fragment(_, typed(N, Ty)) --> name(N), tk(sym(':')), term(Ty).
+% Rocq's printed local context, including grouped names and definitions.
+fragment(_, context(Ns, Body, Ty)) -->
+    names(Ns), ( tk(sym(':=')) -> term(Body) ; { Body = none } ),
+    tk(sym(':')), term(Ty).
 fragment(_, term(E)) --> term(E).
 
 alt_terms([C|Cs]) --> expr(99, C), ( tk(sym('|')) -> alt_terms(Cs) ; { Cs = [] } ).

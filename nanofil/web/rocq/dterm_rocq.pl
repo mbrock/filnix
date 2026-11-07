@@ -24,6 +24,8 @@
 :- use_module(library(apply)).
 :- use_module(library(readutil)).
 :- use_module(library(uri)).
+:- use_module(library(http/json)).
+:- use_module(library(crypto)).
 :- use_module(rocq_syntax).
 :- use_module(rocq_draw).
 
@@ -33,9 +35,14 @@
 
 main :-
     current_prolog_flag(argv, [Out, Root|Args0]),
-    (   select(A, Args0, Files), atom_concat('--prolog=', Dir, A)
+    (   select(C, Args0, Args), atom_concat('--states=', StateFile, C)
+    ->  setup_call_cleanup(open(StateFile, read, SS), json_read_dict(SS, States), close(SS)),
+        nb_setval(rq_capture, States)
+    ;   Args = Args0, nb_setval(rq_capture, none)
+    ),
+    (   select(A, Args, Files), atom_concat('--prolog=', Dir, A)
     ->  index_prolog(Dir), nb_setval(rq_prolog, '../')
-    ;   Files = Args0, nb_setval(rq_prolog, none)
+    ;   Files = Args, nb_setval(rq_prolog, none)
     ),
     maplist(read_or_report(Root), Files, Read),
     (   memberchk(failed, Read) -> format(user_error, "dterm-rocq: a file above does not read~n", []), halt(1)
@@ -95,10 +102,22 @@ write_source_page(Out, page(File, Text, Items, Cms)) :-
     (   Items = [I|_], first_offset(I, From) -> true ; string_length(Text, From) ),
     partition([cm(O, _, _, _)]>>(O < From), Cms, Head, Body),
     rocq_set_source(Text, Body),
+    source_states(File, Text),
     contents(Items, Body, Groups),
     summarize(File, Text, Head),
     file_name_extension(Page, html, Name), directory_file_path(Out, Name, Path),
     write_page(Path, source_page(File, Head, Items, Groups)).
+
+% Captures belong to the exact source, never a nearby revision's offsets.
+source_states(File, Text) :-
+    nb_getval(rq_capture, Capture),
+    (   Capture \== none, atom_concat('nanofil/rocq/', Rel, File)
+    ->  get_dict(Rel, Capture.files, Entry),
+        crypto_data_hash(Text, Hash, [algorithm(sha256), encoding(utf8)]),
+        ( atom_string(Hash, Entry.sha256) -> rocq_set_states(Entry.states)
+        ; throw(error(stale_proof_capture(File), _)) )
+    ;   rocq_set_states(none)
+    ).
 
 first_offset(I, F) :- ( I = proved(S, _) ; I = block(S, _, _) ; S = I ), !, arg(1, S, F-_).
 

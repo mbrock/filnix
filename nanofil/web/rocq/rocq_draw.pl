@@ -32,7 +32,7 @@
       nanofil's Prolog.
 */
 :- module(rocq_draw, [rocq_items//1, rocq_inline//1, rocq_fence//1, rocq_prose//1, rocq_layout//0,
-                      rocq_set_source/2, rocq_index_items/3, rocq_items_names/2,
+                      rocq_set_source/2, rocq_set_states/1, rocq_index_items/3, rocq_items_names/2,
                       rocq_global/5, rocq_prolog_pred/2, comment_heading/3, comment_prose_lines/2,
                       note_kind/3]).
 
@@ -58,8 +58,13 @@ github('https://github.com/mbrock/filnix/blob/main/').
 %  the comments still to draw, cm(From, To, Text, Kind).
 rocq_set_source(Text, Cms) :-
     nb_setval(rq_text, Text), nb_setval(rq_notes, Cms), nb_setval(rq_mod, []),
+    rocq_set_states(none),
     ( nb_current(rq_page, _) -> true ; nb_setval(rq_page, none) ),
     ( nb_current(rq_file, _) -> true ; nb_setval(rq_file, none) ).
+
+%  rocq_set_states(+States): build-time Rocq states keyed by source end
+%  offset, or none for unexecuted snippets in prose.
+rocq_set_states(States) :- nb_setval(rq_states, States).
 
 src_text(F-T, S) :- nb_getval(rq_text, Text), L is T - F, sub_string(Text, F, L, _, S).
 
@@ -513,7 +518,7 @@ item_(block(module(F-_, Kind, n(_, N), Bs, Open), Body, End)) --> !,
          el(div, "rq-module-body", rocq_items(Body)),
          { nb_setval(rq_mod, Mod0) },
          ( { End = endm(_-T, _) } -> notes_upto(T) ; [] ) )).
-item_(proved(S, Pf)) --> !, item_(S), proof_(Pf).
+item_(proved(S, Pf)) --> !, item_(S), proof_(S, Pf).
 item_(proof_start(_)) --> !, [].
 item_(ind(_, _, Bodies)) --> !, seq(Bodies, ind_body).
 item_(rec(F-T, Kw, n(_, N), Bs, Sort, Ctor, Fs)) --> !,
@@ -639,9 +644,32 @@ line_link(_) --> [].
 
 %% Proofs
 
-%  A proof folds under its statement: a row per tactic, indented by the
-%  bullets that focus it.
-proof_(pf(Steps, End)) -->
+%  Real proof states are an optional build input, never reconstructed
+%  from tactic names. Unexecuted prose snippets retain their source view.
+proof_(S, pf(Steps, End)) -->
+    { nb_getval(rq_states, States), States \== none, !,
+      arg(1, S, _-Start), atom_number(Key, Start), get_dict(Key, States, Initial),
+      End = qed(_-Finish, Kw),
+      include([X]>>(X = step(_, _, _)), Steps, Tacs), length(Tacs, N),
+      foldl(step_depth, Steps, Rows, [], _),
+      format(atom(Id), "proof-~d", [Start]),
+      findall(snap(T, D, Bs, F, Ts), member(row(D, Bs, F-T, Ts), Rows), Snaps),
+      append([snap(Start, 0, [], none, [])|Snaps], [snap(Finish, 0, [], end(Kw), [])], All),
+      format(string(Count), "~d tactics · captured by Rocq", [N]) },
+    el(details, "rq-proof rq-captured", [id=Id],
+       ( el(summary, none, ( el(span, "proof-invite", "Explore proof"), " ", el(span, "proof-count", esc(Count)) )),
+         el(div, "rq-explorer",
+            ( el(p, "rq-proof-help", "Actual Rocq states, captured at build time. Green marks changes from the preceding step."),
+              el(div, "rq-proof-controls", [hidden=hidden],
+                 ( el(button, none, [type=button, 'data-move'= -1, 'aria-label'="Previous proof step"], "← Previous"),
+                   el(output, "rq-position", ['aria-live'=polite], "Initial goal"),
+                   el(button, none, [type=button, 'data-move'=1, 'aria-label'="Next proof step"], "Next →") )),
+              el(div, "rq-walk",
+                 ( el(nav, "rq-timeline", [hidden=hidden, 'aria-label'="Proof steps"], seq(All, proof_link(Id))),
+                   el(div, "rq-states", ( snapshot(Id, States, snap(Start, 0, [], none, []), Initial),
+                                          seq_tail(All, Id, States) )) )),
+              el(details, "rq-script", ( el(summary, none, "Source script"), el(div, "proof-steps", seq(Rows, tac_row)) )) )) )).
+proof_(_, pf(Steps, End)) -->
     { include([S]>>(S = step(_, _, _)), Steps, Tacs), length(Tacs, N),
       ( End = qed(_, Kw) -> true ; Kw = '' ),
       ( N =:= 1 -> Count = "1 step" ; format(string(Count), "~d steps", [N]) ),
@@ -649,6 +677,79 @@ proof_(pf(Steps, End)) -->
     el(details, "rq-proof",
        ( el(summary, none, ( kw("Proof"), " ", el(span, "proof-count", esc(Count)), " ", kw(Kw) )),
          el(div, "proof-steps", seq(Rows, tac_row)) )).
+
+seq_tail([_|Ss], Id, States) --> seq(Ss, snapshot_lookup(Id, States)).
+
+proof_link(Id, Snap) -->
+    { Snap = snap(T, D, _, F, _), format(atom(Target), "~w-~d", [Id, T]), format(atom(Style), "--depth:~d", [D]),
+      ( integer(F) -> src_text(F-T, Label) ; F = end(Kw) -> Label = Kw ; Label = "Initial goal" ) },
+    el(button, "rq-step-link", [type=button, 'data-target'=Target, style=Style], esc(Label)).
+
+step_label(snap(_, _, _, none, _)) --> !, esc("Initial goal").
+step_label(snap(_, _, _, end(Kw), _)) --> !, esc(Kw).
+step_label(snap(T, _, Bs, F, Ts)) -->
+    el(span, bullet, seq(Bs, bullet_)), el(span, tactic, tactic_text(F, T, Ts)).
+
+snapshot_lookup(Id, States, Snap) -->
+    { Snap = snap(T, _, _, _, _), atom_number(Key, T),
+      ( get_dict(Key, States, Goals) -> true ; throw(error(missing_proof_state(T), _)) ) },
+    snapshot(Id, States, Snap, Goals).
+
+snapshot(Id, _, Snap, Goals) -->
+    { Snap = snap(T, _, _, F, _), format(atom(Sid), "~w-~d", [Id, T]),
+      ( is_list(Goals) -> length(Goals, N) ; N = 0 ),
+      format(string(Count), "~d open", [N]) },
+    el(section, "rq-snapshot", [id=Sid],
+       ( el(header, "rq-state-heading", ( el(h3, none, step_label(Snap)), el(span, "rq-goal-count", esc(Count)) )),
+         el(p, "rq-changes", ['aria-live'=polite], []),
+         ( { Goals == null }
+         -> ( { F = end(Kw), memberchk(Kw, ['Qed', 'Defined']) }
+            -> el(p, "rq-complete", "✓ Proof checked and closed by Rocq.")
+            ; el(p, "rq-incomplete", "Proof ended without a checked closure.") )
+         ; { Goals == [] }
+         -> el(p, "rq-complete", "✓ No remaining goals. Qed or Defined must still close the proof.")
+         ; captured_goals(Goals) ) )).
+
+captured_goals([G|Gs]) --> captured_goal(G), seq(Gs, secondary_goal).
+
+captured_goal(G) -->
+    { G.role == "focused", ! },
+    el(div, "rq-proof-goal clause", ['data-goal-id'=G.id, 'data-role'=G.role], goal_contents(G)).
+captured_goal(G) -->
+    secondary_goal(G).
+
+secondary_goal(G) -->
+    el(details, "rq-other-goal", ( el(summary, none, ( esc(G.role), " goal" )),
+        el(div, "rq-proof-goal clause", ['data-goal-id'=G.id, 'data-role'=G.role], goal_contents(G)) )).
+
+goal_contents(G) -->
+    { maplist(hyp_parts, G.hypotheses, Hyps), findall(N, ( member(hyp(Ns, _, _, _), Hyps), member(N, Ns) ), Env) },
+    ( { Hyps == [] } -> el(p, "rq-context-empty", "No local assumptions yet.")
+    ; el(div, "rq-context", ( el(p, "rq-state-label", "In context"), seq(Hyps, captured_hyp(Env)) )) ),
+    el(div, "rq-conclusion", ['data-raw'=G.conclusion],
+       ( el(p, "rq-state-label", "To prove"), el(div, goal, captured_term(G.conclusion, Env)) )).
+
+% Parse the context with the same Gallina grammar, including newlines
+% after colons and types containing colons, strings or record fields.
+hyp_parts(Text, hyp(Names, Body, Ty, Text)) :-
+    string_codes(Text, Cs), rocq_fragment_codes(Cs, context(Ns, Body, Ty)), !,
+    maplist([n(_, N), N]>>true, Ns, Names).
+hyp_parts(Text, hyp([], none, none, Text)).
+
+captured_hyp(Env, hyp(Ns, Body, Ty, Raw)) -->
+    { atomic_list_concat(Ns, ',', Key) },
+    el(div, "rq-hyp", ['data-hyp'=Key, 'data-raw'=Raw],
+       ( { Ty == none } -> el(code, "rq-unparsed", esc(Raw))
+       ; el(div, "rq-hyp-names", ( sep_vars(Ns), ( { Body == none } -> " :" ; " :=" ) )),
+         el(div, "rq-hyp-type goal", ( ( { Body == none } -> [] ; term(Body, Env), " : " ), term(Ty, Env) )) )).
+
+sep_vars([]) --> [].
+sep_vars([N]) --> !, var_def(N).
+sep_vars([N|Ns]) --> var_def(N), ", ", sep_vars(Ns).
+
+captured_term(Text, Env) -->
+    { string_codes(Text, Cs), rocq_fragment_codes(Cs, term(E)) }, !, term(E, Env).
+captured_term(Text, _) --> el(code, "rq-unparsed", [title="Rocq output; notation not yet supported by dterm"], esc(Text)).
 
 %  The focus stack after each step's bullets, as Rocq keeps it: a bullet
 %  closes the goals focused since the last bullet of its kind, { opens a
