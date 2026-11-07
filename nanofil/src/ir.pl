@@ -313,6 +313,12 @@
     | `item(p, sym(Name, Off))` | a pointer with the capability of Name (filc mode only) |
     | `zero(N)` | N zero bytes |
 
+    Each item is one of these, with integer N and Off, an atom Name and
+    W a width of width_bytes/2; a pointer item `item(p, sym(_, _))`
+    starts at a multiple of 8 bytes into the object. No two items of a
+    module, functions, data other than an `extern(weak)` declaration,
+    and aliases, define the same name (unique_names/1).
+
     ## Modes
 
     A module is in one of two modes, told apart by what it uses
@@ -324,7 +330,10 @@
     | `filc` | anything of class `p`, a tuple return, read-only data, a pointer-only op, or a call to a function the module does not define. Addresses are `p` values (flight pointers with a capability), `alloc` yields `p`, loads and stores take a `p` address, `p` arithmetic is `add` or `sub` of an `l` offset, and `ptoi` and `itop` convert. |
 
     In filc mode calls may name functions outside the module, or go
-    through a `p` value. A symbol `global(S)` is read only by
+    through a `p` value. A call may name data the module defines; it
+    traps (`not_a_function`), as the function check of native code does.
+    It may not name an alias of data, nor, like a copy, a constructor or
+    destructor table entry. A symbol `global(S)` is read only by
     `let(tmp(D), p, copy, [global(S)])`, which yields a pointer to the
     data or function object; S may be defined outside the module. See
     docs/m3.md and docs/m4.md.
@@ -771,7 +780,8 @@ variadic_named(symbols(Index), Name) :-
 %  Symbols indexes the functions and data of module M by name, for
 %  func_named/3 and data_named/2: a large module (SQLite) calls
 %  thousands of functions, and a scan of its items per call would be
-%  quadratic. As memberchk/2 does, the first item of a name wins.
+%  quadratic. As memberchk/2 does, the first item of a name wins; in a
+%  valid module each name has one item (unique_names/1).
 
 module_symbols(module(Items), symbols(Index)) :-
     findall(Key-Value, ( member(Item, Items), symbol_entry(Item, Key, Value) ), Pairs0),
@@ -907,12 +917,29 @@ pointer_inst(local_store(_, _, _, _)).
 valid_module(M) :-
     M = module(All),
     code_items(All, Items),
+    unique_names(Items),
     module_mode(M, Mode),
     module_stage(M, Stage),
     % forall/2: no choicepoint per item keeps its garbage alive.
     module_symbols(M, Symbols),
     forall(member(Item, Items), valid_item(Symbols, Mode, Stage, Item)),
     valid_contexts(All).
+
+% unique_names(+Items): no two items define the same name. Functions,
+% data and aliases share one namespace; an extern(weak) declaration
+% defines nothing. The interpreter's layout, the symbol table and the
+% assembler would otherwise each pick a different item of the name.
+unique_names(Items) :-
+    findall(N, ( member(I, Items), defined_name(I, N) ), Ns),
+    msort(Ns, Sorted),
+    (   append(_, [N, N1|_], Sorted), N == N1
+    ->  fn_error(N, '~w is defined more than once', [N])
+    ;   true
+    ).
+
+defined_name(func(N, _, _, _, _), N).
+defined_name(data(N, L, _, _), N) :- L \== extern(weak).
+defined_name(alias(N, _, _), N).
 
 %! module_stage(+M, -Stage) is det.
 %
@@ -1043,7 +1070,11 @@ valid_item(_, Mode, _, data(Name, Linkage, Align, Items)) :-
     ),
     forall(member(item(_, str(Cs)), Items),
            ( maplist(byte_char, Cs) -> true
-           ; fn_error(Name, 'str/1 holds characters of codes 0..255', []) )).
+           ; fn_error(Name, 'str/1 holds characters of codes 0..255', []) )),
+    forall(member(Item, Items),
+           ( data_item_shape(Item) -> true
+           ; fn_error(Name, 'invalid data item ~w', [Item]) )),
+    pointer_items_aligned(Name, Items, 0).
 
 % An alias names a function or a data object the module defines, its
 % target, and no other item defines its name. Its kind is the
@@ -1071,6 +1102,29 @@ valid_item(Symbols, Mode, _, alias(Name, Linkage, Target)) :-
         )
     ;   fn_error(Name, 'alias target ~w is not defined in the module', [Target])
     ).
+
+% data_item_shape(+Item): Item is one of the header's data items.
+data_item_shape(item(W, const(N))) :- atom(W), width_bytes(W, _), integer(N).
+data_item_shape(item(b, str(Cs))) :- is_list(Cs).
+data_item_shape(item(W, sym(S, Off))) :- memberchk(W, [l, p]), atom(S), integer(Off).
+data_item_shape(zero(N)) :- integer(N), N >= 0.
+
+% pointer_items_aligned(+Name, +Items, +Off): each pointer item of
+% Items, from Off bytes into the object, starts at a multiple of 8, as
+% the layout of its capability requires.
+pointer_items_aligned(_, [], _).
+pointer_items_aligned(Name, [Item|Items], Off0) :-
+    (   Item = item(p, sym(_, _)), Off0 mod 8 =\= 0
+    ->  fn_error(Name, 'pointer data item at offset ~w is not 8-aligned', [Off0])
+    ;   true
+    ),
+    data_item_size(Item, Size),
+    Off is Off0 + Size,
+    pointer_items_aligned(Name, Items, Off).
+
+data_item_size(zero(N), N).
+data_item_size(item(b, str(Cs)), N) :- !, length(Cs, N).
+data_item_size(item(W, _), N) :- width_bytes(W, N).
 
 % byte_char(+C): C is a character that stands for one byte.
 byte_char(C) :- atom(C), atom_length(C, 1), char_code(C, N), N =< 255.
@@ -2318,7 +2372,8 @@ valid_inst(Ctx, flight(tmp(_), Op, Args, Lower)) :-
     ),
     maplist(valid_flight_arg(Ctx), Args),
     valid_flight_lower(Lower, Ctx).
-valid_inst(ctx(_, _, _, _, _, _, filc), let(_, p, copy, [global(_)])) :- !.
+valid_inst(ctx(M, Fn, _, _, _, _, filc), let(_, p, copy, [global(S)])) :- !,
+    not_init_entry(M, Fn, S).
 valid_inst(Ctx, let(_, K, Op, Args)) :-
     Ctx = ctx(_, Fn, _, _, _, _, Mode),
     (   valid_op(Op) -> true
@@ -2406,6 +2461,7 @@ valid_inst(Ctx, raw_store_pointer(Off, Value, Addr, Effects)) :-
     valid_use(Ctx, a, Addr).
 valid_inst(Ctx, call(Res, global(Callee), Args)) :-
     Ctx = ctx(M, Fn, _, _, _, _, Mode),
+    not_init_entry(M, Fn, Callee),
     findall(K, member(arg(K, _), Args), ArgClasses),
     (   func_named(M, Callee, CalleeFunc),
         CalleeFunc = func(_, _, CalleeRet, Params, _)
@@ -2430,6 +2486,15 @@ valid_inst(Ctx, call(_, Callee, Args)) :-
 valid_inst(Ctx, raw_call(_, Callee, Args)) :-
     valid_use(Ctx, f, Callee),
     forall(member(arg(K, V), Args), valid_use(Ctx, K, V)).
+
+% not_init_entry(+M, +Fn, +S): global(S) does not name a constructor or
+% destructor table entry, which is not an object (the header's Data):
+% nothing may take its address or call it.
+not_init_entry(M, Fn, S) :-
+    (   data_item(M, S, data(_, init(_, _), _, _))
+    ->  fn_error(Fn, 'global(~w) names a constructor or destructor table entry', [S])
+    ;   true
+    ).
 
 % store_value_class(?Width, ?K): a store of Width reads its value at K.
 store_value_class(b, w).

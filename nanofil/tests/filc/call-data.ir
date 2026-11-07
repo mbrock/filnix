@@ -1,0 +1,24 @@
+% A direct call of data the module defines (ir.pl's header, Modes). It
+% is valid, and native code's function check traps at the call, before
+% anything after it runs: the interpreter says trap(not_a_function),
+% and the Rocq model the same (rocq/agree.sh). With a nonzero argument
+% the call is skipped and the function returns.
+data(d, export, 8, [item(l, const(1))]).
+data(r, ro(local), 8, [item(l, const(2))]).
+func(f, export, w, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(m), p, alloc(8), [const(8)])
+    ], branch(tmp(k), skip, call)),
+    block(call, [], [
+        call(void, global(d), [])
+    ], ret(const(7))),
+    block(skip, [], [], ret(const(3)))
+]).
+func(g, export, w, [], [
+    block(start, [], [
+        call(void, global(r), [])
+    ], ret(const(9)))
+]).
+run(f, [0]).
+run(f, [1]).
+run(g, []).

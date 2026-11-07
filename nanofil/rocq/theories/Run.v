@@ -46,19 +46,6 @@ Definition data_cap (lk : linkage) (base : Z) : option cap :=
   | LExternWeak | LOther _ => None
   end.
 
-(** `item_size(Item, Size0, Size)`. *)
-Definition item_size (it : data_item) : Z :=
-  match it with
-  | Item w _ => width_bytes w
-  | Str cs => Z.of_nat (length cs)
-  | Sym _ _ => 8
-  | Zero n => n
-  | ItemOther _ => 0
-  end.
-
-Definition items_size (its : list data_item) : Z :=
-  fold_left (fun s it => s + item_size it) its 0.
-
 (** `filc_layout(Item, A0-Globals0-Rs0, A-Globals-Rs)`. *)
 Definition layout (st : option (Z * list (name * ptr) * list region)) (it : item)
   : option (Z * list (name * ptr) * list region) :=

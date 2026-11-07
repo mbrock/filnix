@@ -570,6 +570,61 @@ test(alias_validator) :-
                           [D, Caller, alias(a, export, d)]]),  % a call names a data alias
            catch((valid_module(module(Items)), fail), nanofil_error(_), true)).
 
+% Data items have the header's shapes, and a pointer item starts at a
+% multiple of 8 bytes, counted with each width's and string's own size.
+test(data_item_validator) :-
+    F = func(f, export, w, [], [block(start, [], [let(tmp(m), p, alloc(8), [const(8)])], ret(const(0)))]),
+    forall(member(Its, [[item(b, const(1)), zero(7), item(p, sym(f, 0)), item(w, const(-1))],
+                        [item(b, str([a,b,c,d,e,f,g,h])), item(p, sym(f, 8))],
+                        [item(l, const(0)), item(p, sym(g, 0))]]),
+           valid_module(module([F, data(d, export, 8, Its)]))),
+    forall(member(Its-Why, [[item(w, foo)]-"invalid data item",
+                            [bar]-"invalid data item",
+                            [zero(-1)]-"invalid data item",
+                            [item(q, const(1))]-"invalid data item",
+                            [item(w, str([a]))]-"invalid data item",
+                            [item(p, sym(f, x))]-"invalid data item",
+                            [item(b, const(1)), item(p, sym(f, 0))]-"not 8-aligned",
+                            [item(x, const(0)), item(p, sym(f, 0))]-"not 8-aligned",
+                            [item(b, str([a,b,c,d,e,f,g])), item(p, sym(f, 0))]-"not 8-aligned"]),
+           rejected_with([F, data(d, export, 8, Its)], Why)).
+
+% Functions, data and aliases share one namespace; a weak declaration
+% defines nothing.
+test(unique_names_validator) :-
+    F = func(f, export, w, [], [block(start, [], [let(tmp(m), p, alloc(8), [const(8)])], ret(const(0)))]),
+    D = data(d, export, 8, [item(l, const(1))]),
+    valid_module(module([F, D, data(w, extern(weak), 1, []), data(w, export, 8, [item(l, const(2))])])),
+    forall(member(Items, [[F, F],
+                          [F, D, data(d, export, 8, [item(l, const(2))])],
+                          [F, data(f, export, 8, [item(l, const(2))])],
+                          [F, D, alias(a, export, f), alias(a, export, d)]]),
+           rejected_with(Items, "is defined more than once")).
+
+% A constructor table entry is not an object: nothing may copy or call
+% it, though the function it names may be.
+test(init_entry_validator) :-
+    F = func(f, export, w, [], [block(start, [], [let(tmp(m), p, alloc(8), [const(8)])], ret(const(0)))]),
+    E = data(e, init(ctor, none), 8, [item(p, sym(f, 0))]),
+    valid_module(module([F, E,
+        func(c, export, w, [], [block(start, [], [let(tmp(q), p, copy, [global(f)])], ret(const(0)))]),
+        func(k, export, w, [], [block(start, [], [call(void, global(f), [])], ret(const(0)))])])),
+    rejected_with([F, E, func(c, export, w, [], [block(start, [], [let(tmp(q), p, copy, [global(e)])], ret(const(0)))])],
+                  "constructor or destructor table entry"),
+    rejected_with([F, E, func(k, export, w, [], [block(start, [], [call(void, global(e), [])], ret(const(0)))])],
+                  "constructor or destructor table entry").
+
+% A direct call of data the module defines traps, as native code's
+% function check does; memory is unchanged and nothing after it runs.
+test(call_data_traps) :-
+    M = module([data(d, export, 8, [item(l, const(1))]),
+                func(g, export, w, [], [block(start, [], [
+                    let(tmp(m), p, alloc(8), [const(8)]),
+                    call(void, global(d), [])
+                ], ret(const(7)))])]),
+    once(run(M, g, [], 10, Out)),
+    Out == trap(not_a_function).
+
 test(float_validator) :-
     forall(member(Op, [rem, urem, udiv, and, or, xor, sar, shr, shl]),
            ( M = module([func(f, local, s, [],

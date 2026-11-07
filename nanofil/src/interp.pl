@@ -504,6 +504,9 @@ inst_result(call(Res, global(F), Args), Ctx, Env0, S0, Result) :-
     maplist(arg_x(Ctx, Env0), Args, Xs),
     (   get_assoc(F, Fns, _)
     ->  call_outcome(Fns, Globals, Mode, F, Xs, S0, Out, S)
+    ;   get_assoc(F, Globals, _)
+    ->  % Data the module defines: native code's function check traps.
+        Out = trap(not_a_function), S = S0
     ;   external_call_outcome(Mode, Globals, F, Res, Args, Xs, S0, Out, S)
     ),
     call_outcome_result(Out, Res, Env0, S, Result).
@@ -525,14 +528,12 @@ local_pointer(ctx(_, _, _, _, filc, Locals), Name, Off, ptr(A, obj(Base))) :-
     A is Base + Off.
 
 % Only libc free's ordinary signature is modeled. Resolution comes first:
-% an in-module function is handled above; an in-module data symbol is not
-% a function. Other signatures and external calls are explicit gaps, not
-% silently failed relations or guessed libc effects.
-external_call_outcome(filc, Globals, free, Res, Args, Xs,
+% an in-module function or data symbol is handled above. Other
+% signatures and external calls are explicit gaps, not silently failed
+% relations or guessed libc effects.
+external_call_outcome(filc, _, free, Res, Args, Xs,
                       s(Mem0, Fuel), Out, s(Mem, Fuel)) :- !,
-    (   get_assoc(free, Globals, _)
-    ->  Out = trap(not_a_function), Mem = Mem0
-    ;   Res == void, Args = [arg(p, _)], Xs = [P]
+    (   Res == void, Args = [arg(p, _)], Xs = [P]
     ->  free_res(P, Mem0, Freed, Mem), free_outcome(Freed, Out)
     ;   throw(nanofil_error('interpreter supports only void free(p)'))
     ).

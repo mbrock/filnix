@@ -435,6 +435,11 @@ Definition width_value_ok (w : width) : option class :=
   | Wp => None
   end.
 
+(** `not_init_entry(M, Fn, S)`, negated: S names a constructor or
+    destructor table entry, which nothing may copy or call. *)
+Definition init_entry_named (md : module) (s : name) : bool :=
+  existsb (fun it => match it with IData n (LInit _ _) _ _ => name_eqb n s | _ => false end) md.
+
 (** `valid_inst(Ctx, Inst)`. *)
 Definition valid_inst (md : module) (classes : list (name * class)) (i : inst) : bool :=
   let use := valid_use classes in
@@ -448,7 +453,7 @@ Definition valid_inst (md : module) (classes : list (name * class)) (i : inst) :
       end
       && forallb (fun a => match a with FAddress p => use P p | FValue v => use L v end) args
       && match lw with LowerNone => true | LowerOf p => use P p end
-  | Let _ P Copy [Global _] => true
+  | Let _ P Copy [Global g] => negb (init_entry_named md g)
   | Let _ k o args =>
       valid_op o && op_result_ok o k &&
       (* `va_args needs a non-negative constant` *)
@@ -468,6 +473,7 @@ Definition valid_inst (md : module) (classes : list (name * class)) (i : inst) :
       (effects_eqb es store_effects || effects_eqb es local_store_effects
        || effects_eqb es atomic_store_effects) && use P v && use A a
   | Call r (Global c) args =>
+      negb (init_entry_named md c) &&
       match func_sig c md with
       | Some s =>
           let acs := map (fun a => eclass (arg_class a)) args in
@@ -1605,30 +1611,38 @@ Definition data_linkage_ok (lk : linkage) (its : list data_item) : bool :=
   | _ => false
   end.
 
-(** `byte_char(C)`: an atom of one character, of code 0 to 255. *)
-Definition byte_char (c : term) : bool :=
-  match char_code c with Some n => n <=? 255 | None => false end.
-
-(** What `valid_item` asks of each item: a float item is `const(N)`
-    with N below the class's modulus, a string holds bytes, and a
-    Fil-C module writes a pointer as `item(p, sym(_, _))`, never
-    `item(l, sym(_, _))`. Any other shape passes. *)
+(** What `valid_item` asks of each item: it has one of the header's
+    shapes (`data_item_shape/1`), a float item's constant is below the
+    class's modulus, a string holds bytes, and a pointer names its
+    symbol by an atom. In a Fil-C module `item(l, sym(_, _))`, like any
+    other term, decodes to `ItemOther` and is refused. *)
 Definition data_item_ok (it : data_item) : bool :=
   match it with
   | Item Ws n => (0 <=? n) && (n <? 2 ^ 32)
   | Item Wd n => (0 <=? n) && (n <? 2 ^ 64)
   | Item Wx n => (0 <=? n) && (n <? 2 ^ 80)
+  | Item _ _ => true
   | Str cs => forallb (fun c => c <=? 255) cs
-  | ItemOther (TApp "item" [TAtom ("s" | "d" | "x"); _]) => false
-  | ItemOther (TApp "item" [TAtom "l"; TApp "sym" [_; _]]) => false
-  | ItemOther (TApp "item" [_; TApp "str" [TList cs]]) => forallb byte_char cs
-  | ItemOther (TApp "item" [_; TApp "str" [_]]) => false
-  | _ => true
+  | Sym (TAtom _) _ => true
+  | Sym _ _ => false
+  | Zero n => 0 <=? n
+  | ItemOther _ => false
+  end.
+
+(** `pointer_items_aligned(Name, Items, Off)`: each pointer item, from
+    off bytes into the object, starts at a multiple of 8. *)
+Fixpoint pointer_items_aligned (off : Z) (its : list data_item) : bool :=
+  match its with
+  | [] => true
+  | it :: rest =>
+      match it with Sym _ _ => off mod 8 =? 0 | _ => true end
+      && pointer_items_aligned (off + item_size it) rest
   end.
 
 (** `valid_item(Symbols, filc, Stage, data(Name, Linkage, Align, Items))`. *)
 Definition valid_data (lk : linkage) (align : Z) (its : list data_item) : bool :=
-  data_align align && data_linkage_ok lk its && forallb data_item_ok its.
+  data_align align && data_linkage_ok lk its && forallb data_item_ok its
+  && pointer_items_aligned 0 its.
 
 (** ## Aliases *)
 
@@ -1700,8 +1714,33 @@ Definition valid_alias (md : module) (n : name) (lk : term) (target : name) : bo
 
 (** ## Modules *)
 
-(** The items of the module that the model can judge are valid. *)
+(** `defined_name(Item, Name)`: the name an item defines; a weak
+    declaration defines none. *)
+Definition defined_name (it : item) : option name :=
+  match it with
+  | IFunc f => Some (fn_name f)
+  | IOutside n _ => Some n
+  | IData _ LExternWeak _ _ => None
+  | IData n _ _ _ => Some n
+  | IAlias n _ _ => Some n
+  end.
+
+(** `unique_names(Items)`: no two items define the same name. *)
+Definition unique_names (md : module) : bool :=
+  match fold_left (fun acc it =>
+                     let* seen := acc in
+                     match defined_name it with
+                     | Some n => if nm_mem n seen then None else Some (nm_add n tt seen)
+                     | None => Some seen
+                     end) md (Some nm_empty) with
+  | Some _ => true
+  | None => false
+  end.
+
+(** No two items share a name, and the items of the module that the
+    model can judge are valid. *)
 Definition valid_items (md : module) : bool :=
+  unique_names md &&
   forallb (fun it => match it with
                      | IFunc f => valid_func md f
                      | IData _ lk al its => valid_data lk al its

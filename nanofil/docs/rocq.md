@@ -242,11 +242,14 @@ a check's bounds, rights or alignment changed, a raw access's offset
 moved by one, a free inserted between evidence and its use, a reuse
 form given another proof, a poll edge removed. A data object's: its
 alignment, its linkage, an item of each shape the validator looks at
-appended, the object renamed or deleted. An alias's: its linkage, its
+appended, a byte, a long or an `x` constant prepended (which moves every
+pointer item after it), the object renamed (also to another item's
+name) or deleted. An alias's: its linkage, its
 target and its name changed, or the alias deleted. And up to 150 items
 inserted: an alias of each kind of target, under a fresh name and under
-the name of a function the module calls without defining, and a data
-object of each linkage. `valid_module/1` judges each changed module, and
+the name of a function the module calls without defining, a data
+object of each linkage, and a data object under the first function's
+name. `valid_module/1` judges each changed module, and
 the model must reach the same verdict. Plain modules are skipped, and
 so is a mutant that would make its module plain.
 
@@ -269,6 +272,11 @@ over 169 of them agreed on all 73,330 verdicts it could judge.
 | the 16 `tests/c/prog` programs (reference checks) | 9,505 | 3,012 | 0 |
 | Lua's own functions, `rocq/lua.sh` (reference checks) | 6,345 | 0 | 0 |
 | `rocq/tests/reuse.ir`, `snapshot.ir`, `floats.ir`, `dominance.ir`, `interval.ir` (reference checks) | 111, 145, 46, 41, 30 | 0 | 0 |
+
+The counts were measured before the mutants for the three data
+decisions below (prepended items, renames onto other items' names, data
+under a function's name) were added; those add a few verdicts per item,
+and the full campaign's receipt for that change had no disagreement.
 
 The mutants test rejection as well as acceptance: on basic.ir,
 `valid_module/1` judged 413 of them invalid and 210 valid. In the four
@@ -429,21 +437,52 @@ These are formal.md's early decisions as they turned out in the code:
   every caller. So the gate replaces one function and judges the whole
   module, and the model cannot judge a mutant whose callers are outside
   the subset.
-- **ir.pl does not check the shape of a data item.** Only three
-  things about items are checked: float items are `const(N)` in range,
-  strings hold bytes, and a Fil-C module has no `item(l, sym(_, _))`.
-  `data(x, export, 8, [item(w, foo), bar])` is valid. The model accepts
-  the same, so its `ItemOther` items are valid and stuck. Campaign 3's
-  statement about data needs the interpreter's layout to be total on
-  valid modules, or the validator to check the shapes the layout reads.
-- **A data object's name is not checked against its uses.** Deleting
-  or renaming a data object is valid unless an alias targets it or
-  has its new name: a symbol the module does not define is external,
-  which a Fil-C module may name. So `valid` says nothing about whether a global names data
-  or a function; the runtime decides.
-- **The symbol table keeps the first item of each name.** An alias's
-  call check reads only the first function of each name, as
-  `module_symbols/2` indexes them; the model does the same.
+- **Three data findings, decided by mbrock** (the decision record is
+  the artifact "Campaign 3 prerequisites: three data findings to
+  decide"). Each was a valid module whose meaning the validator, the
+  interpreter and the assembler did not agree on, found by
+  transcribing the validator. None of the decisions makes a module of
+  the corpus invalid: 226 C modules, the IR fixtures, Lua's 34 modules
+  and 40 modules of [tests/gen.pl](../tests/gen.pl) have none of these shapes.
+  - *Data items have the header's shapes.* ir.pl checked only that
+    float items are in range, that strings hold bytes and that a Fil-C
+    module has no `item(l, sym(_, _))`, so
+    `data(x, export, 8, [item(w, foo), bar])` was valid, and so was a
+    pointer item at an odd offset; neither could be laid out by the
+    interpreter or emitted by the backend. `data_item_shape/1` and
+    `pointer_items_aligned/3` now refuse them, and `Validate.v`'s
+    `data_item_ok` and `pointer_items_aligned` the same; `ItemOther` is
+    always invalid. Campaign 3 needs no hypothesis that the layout
+    succeeds.
+  - *A call of data traps.* A symbol the module does not define stays
+    external, which a Fil-C module may name (a closed world would make
+    203 of the 226 C modules invalid). A direct `call` of data the
+    module defines is valid, and native code's function check traps
+    there; the interpreter was stuck, treating the name as an
+    external. It now gives `trap(not_a_function)`, and `Semantics.v`'s
+    `external_call` the same; `tests/filc/call-data.ir` compares that
+    with native code. A deleted or renamed data object still makes its
+    uses external. An independent review found two places where native
+    code did not trap, both fixed: a constructor or destructor table
+    entry has no getter, so a call (or a copy) of one is now invalid,
+    as ir.pl's header already said (`not_init_entry/3`, and
+    `init_entry_named` in the model); and a call of `local` data got a
+    weak thunk that another object's function of the same name
+    replaced, which a two-object link showed running that function, so
+    filc_abi.pl's `lower_thunk` now keeps it local, as it does for a
+    local function's.
+  - *Names are unique.* `module_symbols/2` keeps the first item of each
+    name, the interpreter's layout the last, and the assembler refuses
+    both; with two functions of one name the interpreter crashed.
+    `unique_names/1` now refuses two items, functions, data other than
+    a weak declaration, and aliases, of one name, and `Validate.v`'s
+    `valid_items` the same.
+  Planted in the model, each rule is caught by the full campaign: no
+  unique names (25 disagreements on three files), no pointer alignment
+  (16), `zero(-1)` accepted (11), unknown items accepted (110), a
+  non-atom symbol accepted (4), `x` taken as 16 bytes (1), the call
+  stuck instead of trapping (2), and a copy of a table entry accepted
+  (30).
 - **Entry evidence depends on block order.** An edge from a block not
   yet processed carries no evidence, the same as a poll edge. Block
   order is therefore part of the checked IR's meaning for the
@@ -489,9 +528,7 @@ ends a run first), and atoms containing UTF-8 bytes in a reader.
 1. Campaign 3's first steps: a step relation over a `Runtime`, taking
    its `free` and its `safepoint` transitions at `at_safepoint`
    instructions and poll edges, and the invariant that `ready` holds
-   initially and after every step. Before that, mbrock's rulings on the
-   three data findings above, since each changes ir.pl or the theorem's
-   hypotheses.
+   initially and after every step.
 
 Inquiries touched: none closed. The integer-at-`p` case is a small
 input to the integer-to-pointer inquiry.

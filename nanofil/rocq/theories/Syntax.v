@@ -297,11 +297,22 @@ Inductive data_item : Type :=
 | Sym (s : name) (off : Z)
 | Zero (n : Z)
 | ItemOther (t : term).
-(** `ItemOther` is a data item the interpreter does not lay out, kept
-    as its term: valid_module/1 does not check the shape of data items,
-    only that float items are in range, that strings hold bytes and
-    that a Fil-C module has no `item(l, sym(_, _))`, so the validator
-    reads these terms and the interpreter's layout is stuck on them. *)
+(** `ItemOther` is any other term, kept as it is: valid_module/1
+    rejects it (`data_item_shape/1`), so only the validator meets it. *)
+
+(** `item_size(Item, Size0, Size)`. *)
+Definition item_size (it : data_item) : Z :=
+  match it with
+  | Item w _ => width_bytes w
+  | Str cs => Z.of_nat (length cs)
+  | Sym _ _ => 8
+  | Zero n => n
+  | ItemOther _ => 0
+  end.
+
+Definition items_size (its : list data_item) : Z :=
+  fold_left (fun s it => s + item_size it) its 0.
+
 
 (** ## Modules *)
 

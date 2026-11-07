@@ -108,7 +108,8 @@ item_mutant(Items, A, Id, Change) :-
     alias_mutant(Items, A, Id, Change).
 
 % data_mutant(+Items, +D, -Id, -Change): D's alignment, linkage or items
-% changed, D renamed, or D deleted.
+% changed (an item appended, or one prepended, which moves every pointer
+% item after it), D renamed, also to another item's name, or D deleted.
 data_mutant(_, data(N, Lk, Al, Is), align(Al1), replace(data(N, Lk, Al1, Is))) :-
     Al2 is Al * 2,
     member(Al1, [0, 3, Al2, 8192]), Al1 \== Al.
@@ -116,6 +117,8 @@ data_mutant(Items, data(N, Lk, Al, Is), linkage(Lk1), replace(data(N, Lk1, Al, I
     linkage(Items, Lk1, Is, Is1), Lk1 \== Lk.
 data_mutant(Items, data(N, Lk, Al, Is), item(I), replace(data(N, Lk, Al, Is1))) :-
     data_item(Items, N, I), append(Is, [I], Is1).
+data_mutant(_, data(N, Lk, Al, Is), prepend(I), replace(data(N, Lk, Al, [I|Is]))) :-
+    member(I, [item(b, const(1)), item(x, const(0)), item(l, const(0))]).
 data_mutant(Items, data(N, Lk, Al, Is), rename(N1), replace(data(N1, Lk, Al, Is))) :-
     other_name(Items, N, N1).
 data_mutant(_, data(_, _, _, _), delete, delete).
@@ -139,7 +142,8 @@ data_item(Items, N, I) :-
                    item(l, sym(N, 0)), item(p, sym(N, 0)), item(w, const(7)),
                    item(b, str([a, b])), item(b, str([ab])), item(b, str([C256])),
                    item(b, str([C19968])), item(w, str([a])), item(b, str(a)),
-                   item(w, foo), zero(3), bar])
+                   item(w, foo), zero(3), bar, zero(-1), item(q, const(1)),
+                   item(p, sym(N, x)), item(p, sym(3, 0))])
     ;   once(member(func(F, _, _, _, _), Items)), I = item(p, sym(F, 8))
     ).
 
@@ -173,7 +177,7 @@ target(_, rocq_undefined).
 % inserted(+Items, -Name, -Id, -Change): a data object or an alias
 % inserted at the front: an alias of each target under a fresh name and
 % under the name of a function the module calls without defining; a
-% data object of each linkage.
+% data object of each linkage, and one under the first function's name.
 inserted(Items, Name, alias(Name, T), insert(alias(Name, export, T))) :-
     findall(T, target(Items, T), Ts0), sort(Ts0, Ts),
     member(T, Ts),
@@ -184,6 +188,8 @@ inserted(Items, Name, alias(Name, T), insert(alias(Name, export, T))) :-
     ).
 inserted(Items, rocq_data, data(Lk1), insert(data(rocq_data, Lk1, 8, Is1))) :-
     linkage(Items, Lk1, [item(w, const(1))], Is1).
+inserted(Items, F, data_named_as(F), insert(data(F, export, 8, [item(w, const(1))]))) :-
+    once(member(func(F, _, _, _, _), Items)).
 
 % mutant(+F, -Id, -F1): F1 is F mutated as Id says.
 mutant(F, Id, F1) :-

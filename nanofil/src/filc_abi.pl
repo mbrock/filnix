@@ -483,10 +483,15 @@ same_symbol(F,Sig,t(F,Sig,_,_)).
 % local if this module defines it with local linkage, so that the thunk
 % is local too and never merges with another object's thunk for its own
 % local function of the same name, as clang keeps such thunks local.
+% Local data called directly is the same: its thunk calls this module's
+% getter, whose function check traps, and another object's function d
+% must not replace it.
 lower_thunk(Symbols, t(F,Sig,Ret,Ks),
             thunk(F,Ref,Sig,Words,Cells,ArgsSize,Result,Need)) :-
     (   weak_declared(Symbols,F) -> Ref = weak
     ;   func_named(Symbols,F,func(_,local,_,_,_)) -> Ref = local
+    ;   ir:data_item(Symbols,F,data(_,L,_,_)), memberchk(L,[local,ro(local),tls(local)])
+    ->  Ref = local
     ;   Ref = strong
     ),
     findall(param(K,tmp(I)),nth0(I,Ks,K),Ps), fast_params(Ps,Words),

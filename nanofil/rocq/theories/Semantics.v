@@ -452,17 +452,20 @@ Definition width_value_class (w : width) : option class :=
   | Wx => Some Extended
   end.
 
-(** `external_call_outcome/9`: only libc's `void free(p)` is modeled; a
-    data symbol named free is not a function. *)
+(** A call of a name the module does not define as a function:
+    `inst_result/5`'s call of `global(F)`. Data the module defines is
+    not a function, and the call traps, as native code's function check
+    does. Otherwise it is `external_call_outcome/9`: only libc's
+    `void free(p)` is modeled. *)
 Definition free_name : name := TAtom "free".
 
 Definition external_call (ge : genv) (f : name) (r : call_result) (args : list arg)
     (xs : list word) (e : env) locals (m : mem) : option inst_out :=
-  if negb (name_eqb f free_name) then None
-  else match lookup free_name (ge_globals ge) with
-       | Some _ => Some (IStop (Trap NotAFunction))
-       | None =>
-           match r, args, xs with
+  match lookup f (ge_globals ge) with
+  | Some _ => Some (IStop (Trap NotAFunction))
+  | None =>
+      if negb (name_eqb f free_name) then None
+      else match r, args, xs with
            | CVoid, [Arg P _], [x] =>
                let* rm := free_res x m in
                let (r', m') := rm in
@@ -473,7 +476,7 @@ Definition external_call (ge : genv) (f : name) (r : call_result) (args : list a
                      end)
            | _, _, _ => None
            end
-       end.
+  end.
 
 (** `inst_result(Inst, Ctx, Env0, S0, Result)` for the core subset. *)
 Definition inst_step (ge : genv) (fr : frame) (m : mem) (i : inst) : option inst_out :=
