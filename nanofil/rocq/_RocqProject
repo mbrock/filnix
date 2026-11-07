@@ -12,5 +12,6 @@ theories/Semantics.v
 theories/Run.v
 theories/Machine.v
 theories/Validate.v
+theories/Coverage.v
 theories/Transport.v
 theories/Extract.v

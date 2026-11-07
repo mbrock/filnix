@@ -17,7 +17,7 @@ the interpreter and cites the predicate it copies.
 
 | File | Transcribes | Contents |
 | --- | --- | --- |
-| `Term.v` | ground Prolog terms | names (temporaries, labels, symbols) as terms compared by `==`; `char_code/2` |
+| `Term.v` | ground Prolog terms | names (temporaries, labels, symbols) as terms compared by `==`, and `term_eqb_eq`, that `==` is equality; `char_code/2` |
 | `Maps.v` | library(assoc) | name maps: a hash of the name, then an association list per hash, so a lookup's answer never depends on the hash |
 | `Ieee.v` | ieee.pl | binary32, binary64 and x87 extended as bit patterns: `decode/4`, `round_ratio/5`, `ieee_binary/5`, `ieee_convert/4`, `ieee_compare/5`, `ieee_from_int/3`, `ieee_to_int/3` |
 | `Syntax.v` | ir.pl's header tables | classes, ops, values, instructions, jumps, blocks, functions, data, modules; `op_arg_classes/4`, `evidence_preserving/1`, `ahead_transparent/1`, `local_objects/2` |
@@ -30,6 +30,7 @@ the interpreter and cites the predicate it copies.
 | `Machine.v` | — (Campaign 3) | the machine of a `Runtime`: steps, the runtime's allocations, its actions at safepoints; `ready` kept by every step; each step a `step_rel` step or a safepoint action |
 | `Cfg.v` | cfg.pl | `func_cfg/2`, `cfg_idoms/2` (Cooper, Harvey and Kennedy), `dom_children/3`, `dom_intervals/3`, `dominates_by_interval/3` |
 | `Validate.v` | ir.pl's `valid_module/1` | `valid_func`, `valid_data`, `valid_alias`, `valid_items`, `valid`: uses, ops, instructions, dominance, locals, the evidence pass, the reuse rules, `polls_every_cycle`, data linkage and items, aliases |
+| `Coverage.v` | — (Campaign 3) | the coverage lemma: a raw access that `covered_access/6` puts inside a passed check gives no `unchecked` |
 | `Transport.v` | — | decoding a printed checked module, encoding outcomes, `judge`, `judge_valid` |
 | `Extract.v`, `extraction/main.ml` | — | OCaml extraction, and a reader of Prolog terms |
 
@@ -589,11 +590,61 @@ Decisions and findings:
   `inst_step_let` states the generic `let` once instead of letting a
   case split unfold every op.
 
+### The coverage lemma
+
+`Coverage.v` is Campaign 3's second milestone, no admits, checked in
+about a second. `covered_access_not_unchecked`: where ir.pl's
+`covered_access/6` says a raw access instruction (`raw_load`,
+`raw_load_pointer`, `raw_store`, `raw_store_pointer`) lies inside the
+check that yielded its address operand, and that check passes in the
+memory the access runs in, `inst_step` does not stop the instruction
+with `unchecked`. It is arithmetic over `cap_access_res/7` in two
+steps: `cap_access_covered` (a passed check of [A+Lo, A+Hi) passes for
+every part of it at an alignment the check's implies and with rights it
+allows) and `covered_access_checked` (the raw access's own check is such
+a part).
+
+Decisions and findings:
+
+- **The check passes in the memory the access runs in.** The lemma
+  does not say why; that is the evidence invariant's job, from the
+  check having passed earlier and nothing between it and the use having
+  freed or moved the object.
+- **Objects end at or below 2^64 is a hypothesis, `objects_fit`.**
+  Addresses wrap modulo 2^64 (`raw_address/3`) while bounds are
+  unbounded integers, so the lemma is false for an object ending above
+  2^64. The runtime axioms do not exclude one, and the interpreter makes
+  one: see "An object past 2^64" below.
+- **The capture replays sentences one at a time.** `1: { tac.` on one
+  line is two sentences to Rocq but one to the proof-state capture's
+  plan, which then drops `tac`; Coverage.v uses bullets instead.
+
+## An object past 2^64
+
+`rocq/tests/huge-object.ir` allocates an object of 2^64 - 2^32 - 80
+bytes and then one of 256, which the interpreter's allocator (Next only
+adds) places 64 bytes below 2^64. A check of the second object's bytes
+[0, 128) passes, and a raw load at offset 64, which the check covers,
+wraps to address 0 and runs `unchecked(out_of_bounds)`. ir.pl accepts
+the module, and the model agrees with the interpreter: a counterexample
+to `valid_no_unchecked` over the interpreter's runtime, found by the
+coverage lemma's proof rather than by a test.
+
+The interpreter is more permissive than native code. The pinned Fil-C
+refuses `malloc` of 2^48 bytes or more ("filc safety error: attempt to
+allocate object that is too big") and runs out of memory at 2^47, so no
+native object ends above 2^64. The backend cannot emit this module's
+check yet, so difftest does not compare it. Not yet fixed: the fix is
+interpreter semantics (an allocation past a limit traps, as native code
+does) and a runtime axiom (`fresh_allocation` bounds the object it
+gives), with a native test, so it needs an Oracle review first.
+
 ## Next
 
-1. Campaign 3's coverage lemma: a raw access whose address a passed
-   check covers, with the validator's offset, size, rights and
-   alignment, does not give `unchecked`.
+1. An allocation bound: the interpreter's `alloc_base/6` traps where
+   native Fil-C refuses an object, `fresh` bounds the object below
+   2^64, with an axiom test for the limit, so `objects_fit` follows from
+   `ready` and huge-object.ir traps.
 2. The evidence invariant for proof persistence, stated over
    `Machine R`'s steps: between a check and its use, only
    `evidence_preserving/1` instructions and unpolled edges, so no

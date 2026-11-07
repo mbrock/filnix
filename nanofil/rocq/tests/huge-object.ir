@@ -1,0 +1,20 @@
+% Checked IR whose second object ends above 2^64 (docs/rocq.md, "An
+% object past 2^64"). The interpreter's allocator only adds, so after an
+% object of 2^64 - 2^32 - 80 bytes the next one starts 64 bytes below
+% 2^64. A check of its bytes [0, 128) passes, since bounds are
+% unbounded integers, and a raw load at offset 64 that the check covers
+% wraps to address 0 and runs unchecked(out_of_bounds). ir.pl accepts the
+% module, so it is a counterexample to Campaign 3's valid_no_unchecked
+% over the interpreter's runtime. Native Fil-C refuses the first
+% allocation ("attempt to allocate object that is too big"), so no
+% native object ends above 2^64; the coverage lemma assumes as much
+% (Coverage.v's objects_fit). The model agrees with the interpreter.
+run(huge_object, []).
+func(huge_object, export, l, [], [
+    block(start, [], [
+        let(tmp(p1), p, alloc(8), [const(18446744069414584240)]),
+        let(tmp(p2), p, alloc(8), [const(256)]),
+        let(tmp(q), a, check(0, 128, read, 1), [tmp(p2)]),
+        let(tmp(x), l, raw_load(l, 64), [tmp(q)])
+    ], ret(tmp(x)))
+]).

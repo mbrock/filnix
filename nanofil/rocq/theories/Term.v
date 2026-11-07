@@ -45,6 +45,21 @@ Fixpoint term_eqb (t u : term) : bool :=
   | _, _ => false
   end.
 
+(** `term_eqb` is equality: two terms it calls equal are the same. *)
+Lemma term_eqb_eq : forall t u, term_eqb t u = true -> t = u.
+Proof.
+  fix IH 1. intros t u H.
+  destruct t as [n | a | f ts | ts], u as [n' | a' | f' us | us]; simpl in H; try discriminate H.
+  - f_equal. apply Z.eqb_eq. exact H.
+  - f_equal. apply String.eqb_eq. exact H.
+  - apply andb_true_iff in H as [Hf Hl]. apply String.eqb_eq in Hf. subst f'. f_equal.
+    revert us Hl. induction ts as [|t ts IHl]; intros [|u us] Hl; simpl in Hl; try discriminate Hl; auto.
+    apply andb_true_iff in Hl as [H1 H2]. f_equal; [apply IH; exact H1 | apply IHl; exact H2].
+  - f_equal.
+    revert us H. induction ts as [|t ts IHl]; intros [|u us] Hl; simpl in Hl; try discriminate Hl; auto.
+    apply andb_true_iff in Hl as [H1 H2]. f_equal; [apply IH; exact H1 | apply IHl; exact H2].
+Qed.
+
 (** A name of the IR: a temporary, label, symbol or named local. *)
 Definition name := term.
 
