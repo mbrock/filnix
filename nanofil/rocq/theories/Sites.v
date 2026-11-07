@@ -323,3 +323,16 @@ Proof.
   destruct (Huniq _ _ Hs) as [-> _]. destruct (Huniq _ _ Hx) as [Esite _].
   exact (site_strict doms (dom_antisym _ _ _ Hdoms) _ _ _ _ _ Hsdom Hsd (eq_sym Esite)).
 Qed.
+
+(** ## Definitions that dominate a point *)
+
+(** The dominator intervals of a function, as the validator computed
+    them. *)
+Definition fn_doms (f : func) : nmap (Z * Z) :=
+  match block_intervals (fn_blocks f) with Some doms => doms | None => nm_empty end.
+
+(** `dominating f l k n`: n's single definition is at a site that
+    dominates index k of block l. *)
+Definition dominating (f : func) (l : name) (k : Z) (n : name) : Prop :=
+  exists s D, lookup n (single_definitions f) = Some D /\ In (n, s, D) (def_positions f) /\
+    site_dominates (fn_doms f) l k s = true.

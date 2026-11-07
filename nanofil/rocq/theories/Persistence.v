@@ -67,6 +67,17 @@ Open Scope Z_scope.
 
 (** ## Every step keeps the invariant *)
 
+(** `hull_case ge md c l i rest`: the pass accepted the raw access i,
+    the next instruction of block l, by `hull_covered`, with live facts
+    that hold and whose pointers' single definitions dominate i. *)
+Definition hull_case (ge : genv) (md : module) (c : config) (l : name) (i : inst) (rest : list inst)
+  : Prop :=
+  let f := fr_fn (c_frame c) in
+  exists b k live fa q,
+    find_block l (fn_blocks f) = Some b /\ i :: rest = skipn k (b_insts b) /\
+    facts_hold ge (c_mem c) (fr_env (c_frame c)) live /\ live_dom f l k live /\
+    fact_of q live = Some fa /\ hull_covered i q (f_p fa) (f_lo fa) (f_al fa) live (s_once (fn_src md f)) = true.
+
 Module Persistence (R : Runtime).
 
 Module I := Invariant R.
@@ -124,12 +135,12 @@ Proof.
   destruct (jump_step_next _ _ _ _ _ Hs) as [(t & Ht & ->) | (Hd & o & Hret)].
   + simpl. split; [|exact Hcall]. split; [exact Hin|]. split; [exact Hpos|].
     destruct Hpt as [Hd0 | Hp]; [left; exact Hd0 | right].
-    destruct (point_ok_exec_inv _ _ _ _ _ _ _ Hp Ha) as (E & b & out & HE & Hb & Ho & Hj & Hat).
+    destruct (point_ok_exec_inv _ _ _ _ _ _ _ Hp Ha) as (E & b & out & k & HE & Hb & Ho & Hj & _ & Hat).
     unfold point_ok. cbv zeta. simpl. exists E. split; [exact HE|].
     exists b, t. split; [exact Hb|]. split; [rewrite <- Hj; exact (taken_target_in _ _ _ _ Ht)|].
     split; [reflexivity|]. destruct (is_poll t) eqn:Ep; [left; reflexivity | right].
     exists out. split; [exact Ho|].
-    destruct Hat as [(live & Hw & Hjc) | (access & rest' & live' & E' & _)]; [|discriminate E'].
+    destruct Hat as [(live & Hw & _ & Hjc) | (access & rest' & live' & E' & _)]; [|discriminate E'].
     rewrite (walks_nil _ _ _ Hw). exact (Hjc t Ht Ep).
   + destruct (return_step_next _ _ _ Hret) as (caller & pd & callers & e & m' & Hc & ->).
     rewrite Hc in Hcall. inversion Hcall as [|fp fps Hpk Hrest]; subst. simpl.
@@ -139,14 +150,14 @@ Qed.
 (** `next_inv_continue`: an instruction continues; the pass's next
     position holds, unless the instruction doomed the frame. *)
 Lemma next_inv_continue : forall ge md c s l i rest j out0 od e1 l1 m1,
-  ready_state (c, s) -> fr_at (c_frame c) = Exec l (i :: rest) j ->
+  checked_module md -> ready_state (c, s) -> fr_at (c_frame c) = Exec l (i :: rest) j ->
   inst_step ge (c_frame c) (c_mem c) i = Some out0 ->
   doomed_result ge (c_frame c) (c_mem c) i out0 = Some od -> fst od = IContinue e1 l1 m1 ->
   inv ge md (c, s) ->
   inv ge md (mkConfig (mkFrame (fr_fn (c_frame c)) e1 l1 (snd od) (Exec l rest j)) (c_callers c) m1
                       (c_fuel c), s).
 Proof.
-  intros ge md c s l i rest j out0 od e1 l1 m1 Hr Ha Hi Hdr Ho [(Hin & Hpos & Hpt) Hcall].
+  intros ge md c s l i rest j out0 od e1 l1 m1 Hmd Hr Ha Hi Hdr Ho [(Hin & Hpos & Hpt) Hcall].
   unfold inv. simpl in *.
   assert (Hfit : objects_fit (m_regions (c_mem c))) by exact (R.address_space _ _ Hr).
   split; [|exact Hcall]. split; [exact Hin|].
@@ -159,9 +170,10 @@ Proof.
   * destruct Hpt as [Hd0 | Hp]; [congruence|].
     destruct (doomed_result_fresh _ _ _ _ _ _ Ew Hdr) as [-> | (e' & w & ->)]; simpl in Ho |- *.
     -- subst out0. pose proof (inst_step_locals _ _ _ _ _ _ _ Hi) as Hl1. subst l1. split; [exact Hpos|]. right.
-       destruct (point_ok_exec_inv _ _ _ _ _ _ _ Hp Ha) as (E & b & out & HE & Hb & Hout & Hj & Hat).
-       eapply point_ok_exec; simpl; [exact HE | reflexivity | exact Hb | exact Hout | exact Hj |].
-       eapply at_pos_continue; [exact Hfit | exact Hpos | exact Hat | exact Hi | reflexivity].
+       destruct (point_ok_exec_inv _ _ _ _ _ _ _ Hp Ha) as (E & b & out & k & HE & Hb & Hout & Hj & Hk & Hat).
+       destruct (skipn_cons _ _ _ _ _ (eq_sym Hk)) as (_ & Hrest & _).
+       eapply point_ok_exec; simpl; [exact HE | reflexivity | exact Hb | exact Hout | exact Hj | symmetry; exact Hrest |].
+       eapply at_pos_continue; [exact Hmd | exact Hin | exact Hb | exact Hk | exact Hfit | exact Hpos | exact Hat | exact Hi | reflexivity].
     -- injection Ho as _ <- _. split; [exact Hpos | left; discriminate].
 Qed.
 
@@ -191,10 +203,12 @@ Proof.
   destruct Hd as (Hd & -> & Hsd).
   destruct (inst_step_call_shape _ _ _ _ _ _ _ Hi) as (Hg & Hcl). rewrite Hge in Hg.
   destruct Hpt as [Hd0 | Hp]; [congruence|].
-  destruct (point_ok_exec_inv _ _ _ _ _ _ _ Hp Ha) as (E & b & out & HE & Hb & Hout & Hj & Hat).
+  destruct (point_ok_exec_inv _ _ _ _ _ _ _ Hp Ha) as (E & b & out & k & HE & Hb & Hout & Hj & Hk & Hat).
+  destruct (skipn_cons _ _ _ _ _ (eq_sym Hk)) as (_ & Hrest & _).
   simpl. split; [exact (call_frame_ok _ _ _ _ _ _ Hmd Hg Hcf)|]. constructor; [|exact Hcall].
   split; [exact Hin|]. split; [exact Hpos|]. split; [exact Hsd|].
-  exists E, l, rest, j, b, out. simpl. repeat (split; [assumption || reflexivity|]).
+  exists E, l, rest, j, b, out, (S k). simpl. repeat (split; [assumption || reflexivity|]).
+  split; [symmetry; exact Hrest|].
   eapply walks_after; [exact Hat | |];
     destruct Hcl as [(r & cl & args & ->) | (r & cl & args & ->)]; reflexivity.
 Qed.
@@ -265,12 +279,13 @@ Proof.
     assert (Hnd : fr_doomed (c_frame c) <> None) by (rewrite Ew; discriminate).
     exfalso. exact (proj1 (doomed_result_doomed _ _ _ _ _ _ Hnd Hdr) Esd).
   + rewrite (Hsd eq_refl). right. destruct Hpt as [Hd0 | Hp]; [congruence|].
-    destruct (point_ok_exec_inv _ _ _ _ _ _ _ Hp Ha) as (E & b & out & HE & Hb & Hout & Hj & Hat).
+    destruct (point_ok_exec_inv _ _ _ _ _ _ _ Hp Ha) as (E & b & out & kp & HE & Hb & Hout & Hj & Hkp & Hat).
+    destruct (skipn_cons _ _ _ _ _ (eq_sym Hkp)) as (_ & Hrest & _).
     destruct (relies_alloc_any (fn_src md (fr_fn (c_frame c))) i
                 ltac:(destruct Hshape as [(d & cl & al & args & -> & _) | (x & size & -> & _)]; eauto 6))
       as [Hrel Hcf].
-    eapply point_ok_exec; simpl; [exact HE | reflexivity | exact Hb | exact Hout | exact Hj |].
-    eapply at_pos_between; [exact (walks_after _ _ _ _ _ _ _ _ Hat Hrel Hcf) | apply facts_hold_nil].
+    eapply point_ok_exec; simpl; [exact HE | reflexivity | exact Hb | exact Hout | exact Hj | symmetry; exact Hrest |].
+    eapply at_pos_between; [exact (walks_after _ _ _ _ _ _ _ _ _ _ _ Hat Hrel Hcf) | apply live_dom_nil | apply facts_hold_nil].
 Qed.
 
 (** An allocation. *)
@@ -310,18 +325,19 @@ Proof.
   destruct Hpt as [Hd0 | Hp]; [left; exact Hd0 | right].
   pose proof Hdue as Hdue0. unfold safepoint_due in Hdue.
   destruct (fr_at (c_frame c)) as [xs l | l from | l is j] eqn:Ha; try discriminate Hdue.
-  destruct (point_ok_exec_inv _ _ _ _ _ _ _ Hp Ha) as (E & b & out & HE & Hb & Hout & Hj & Hat).
-  eapply point_ok_exec; [exact HE | exact Ha | exact Hb | exact Hout | exact Hj |].
+  destruct (point_ok_exec_inv _ _ _ _ _ _ _ Hp Ha) as (E & b & out & k & HE & Hb & Hout & Hj & Hk & Hat).
+  eapply point_ok_exec; [exact HE | exact Ha | exact Hb | exact Hout | exact Hj | exact Hk |].
   destruct is as [|i rest].
-  - destruct Hat as [(live & Hw & Hjc) | (access & rest' & live' & E' & _)]; [|discriminate E'].
-    left. exists live. split; [exact Hw|]. intros t Ht Hpoll. exfalso.
+  - destruct Hat as [(live & Hw & Hd & Hjc) | (access & rest' & live' & E' & _)]; [|discriminate E'].
+    left. exists live. split; [exact Hw|]. split; [exact Hd|]. intros t Ht Hpoll. exfalso.
     unfold with_mem in Ht. simpl in Ht. rewrite Ht in Hdue. destruct t; simpl in Hdue, Hpoll; [discriminate Hdue | discriminate Hpoll].
   - assert (Hreg : relies (fn_src md (fr_fn (c_frame c))) i = true ->
                    m_regions m' = m_regions (c_mem c)) by (intros Hr; exact (Hsp c s s' m' Hdue0 Hact l i rest j Ha Hr)).
-    destruct Hat as [(live & Hw & Hl) | (access & rest' & live' & E' & Hw & Hpc)].
-    + left. exists live. split; [exact Hw|]. intros Hr.
+    destruct Hat as [(live & Hw & Hd & Hl) | (access & rest' & live' & E' & Hw & Hd & Hpc)].
+    + left. exists live. split; [exact Hw|]. split; [exact Hd|]. intros Hr.
       eapply facts_hold_same; [exact (Hreg Hr) | exact (Hl Hr)].
     + injection E' as <- <-. right. exists i, rest, live'. split; [reflexivity|]. split; [exact Hw|].
+      split; [exact Hd|].
       destruct Hpc as [(fb & pre & Hcov & -> & Hh) | Hfn]; [left | right; exact Hfn].
       exists fb, pre. split; [exact Hcov|]. split; [reflexivity|].
       eapply facts_hold_same; [exact (Hreg (covered_relies _ _ _ _ _ _ _ Hcov)) | exact Hh].
@@ -366,27 +382,28 @@ Qed.
 (** `access_not_unchecked`: in a state where the invariant holds, a
     frame that is not doomed runs no raw access, and no raw call, to an
     `unchecked` outcome, unless the pass accepted the access by
-    `hull_covered`, a reuse form still to come. *)
+    `hull_covered`, with facts that hold and dominate (`hull_case`).
+    Chain.v's `Hull` closes that case with Single.v's invariant. *)
 Theorem access_not_unchecked : forall ge md c s l i rest j why,
   inv ge md (c, s) -> ready_state (c, s) ->
   fr_doomed (c_frame c) = None -> fr_at (c_frame c) = Exec l (i :: rest) j ->
   (raw_access i <> None \/ exists r cl args, i = RawCall r cl args) ->
   inst_step ge (c_frame c) (c_mem c) i <> Some (IStop (Unchecked why)) \/
-  exists live fa q x off need, raw_access i = Some (q, x, off, need) /\ fact_of q live = Some fa /\
-    hull_covered i q (f_p fa) (f_lo fa) (f_al fa) live (s_once (fn_src md (fr_fn (c_frame c)))) = true.
+  hull_case ge md c l i rest.
 Proof.
   intros ge md c s l i rest j why [(_ & Hpos & Hpt) _] Hr Hd Ha Hi. simpl in *.
   assert (Hfit : objects_fit (m_regions (c_mem c))) by exact (R.address_space _ _ Hr).
   destruct Hpt as [Hd0 | Hp]; [congruence|].
-  destruct (point_ok_exec_inv _ _ _ _ _ _ _ Hp Ha) as (E & b & out & _ & _ & _ & _ & Hat).
-  destruct Hat as [(live & Hw & Hl) | (access & rest' & live' & E' & _ & Hpc)].
+  destruct (point_ok_exec_inv _ _ _ _ _ _ _ Hp Ha) as (E & b & out & k & _ & Hb & _ & _ & Hk & Hat).
+  destruct Hat as [(live & Hw & Hdom & Hl) | (access & rest' & live' & E' & _ & _ & Hpc)].
   - destruct (walks_cons _ _ _ _ _ Hw) as (rest' & live' & Hc & _).
     destruct (raw_access i) as [[[[q x] off] need]|] eqn:Hra.
     + assert (Hrel : relies (fn_src md (fr_fn (c_frame c))) i = true)
         by (unfold relies; rewrite Hra, !orb_true_r; reflexivity).
       destruct (generic_access_not_unchecked _ _ _ _ _ _ _ _ _ q x off need why Hfit (Hl Hrel)
                   (raw_access_not_special _ _ Hra) Hc Hra) as [Hn | (fa & Hfa & Hh)];
-        [left; exact Hn | right; exists live, fa, q, x, off, need; auto].
+        [left; exact Hn | right; exists b, k, live, fa, q].
+      repeat (split; [eassumption|]). split; [exact (Hl Hrel)|]. repeat (split; [eassumption|]). exact Hh.
     + destruct Hi as [Hi | (r & cl & args & ->)]; [congruence|].
       rewrite raw_call_alone in Hc. discriminate Hc.
   - injection E' as <- _. left.
@@ -406,8 +423,7 @@ Theorem run_access_not_unchecked : forall ge md f xs fr m fuel s0 c s l i rest j
   fr_doomed (c_frame c) = None -> fr_at (c_frame c) = Exec l (i :: rest) j ->
   (raw_access i <> None \/ exists r cl args, i = RawCall r cl args) ->
   inst_step ge (c_frame c) (c_mem c) i <> Some (IStop (Unchecked why)) \/
-  exists live fa q x off need, raw_access i = Some (q, x, off, need) /\ fact_of q live = Some fa /\
-    hull_covered i q (f_p fa) (f_lo fa) (f_al fa) live (s_once (fn_src md (fr_fn (c_frame c)))) = true.
+  hull_case ge md c l i rest.
 Proof.
   intros ge md f xs fr m fuel s0 c s l i rest j why Hmd Hge Hfree Hsp Hin Hcf H0 Hreach.
   eapply access_not_unchecked.
@@ -433,7 +449,8 @@ Qed.
 (** `interp_access_not_unchecked`: under the interpreter's runtime,
     in every state of a run of a checked module's function that starts
     ready, a frame that is not doomed runs no raw access or raw call to
-    `unchecked`, unless the pass accepted it by `hull_covered`. *)
+    `unchecked`, unless the pass accepted it by `hull_covered` (Chain.v's
+    `interp_access_checked` closes that case). *)
 Corollary interp_access_not_unchecked : forall md globals f xs fr m fuel s0 c s l i rest j why,
   let ge := mkGenv md globals InterpRuntime.free in
   checked_module md -> In (IFunc f) md -> call_frame f xs = Some fr -> InterpRuntime.ready s0 m ->
@@ -441,8 +458,7 @@ Corollary interp_access_not_unchecked : forall md globals f xs fr m fuel s0 c s 
   fr_doomed (c_frame c) = None -> fr_at (c_frame c) = Exec l (i :: rest) j ->
   (raw_access i <> None \/ exists r cl args, i = RawCall r cl args) ->
   inst_step ge (c_frame c) (c_mem c) i <> Some (IStop (Unchecked why)) \/
-  exists live fa q x off need, raw_access i = Some (q, x, off, need) /\ fact_of q live = Some fa /\
-    hull_covered i q (f_p fa) (f_lo fa) (f_al fa) live (s_once (fn_src md (fr_fn (c_frame c)))) = true.
+  hull_case ge md c l i rest.
 Proof.
   intros md globals f xs fr m fuel s0 c s l i rest j why ge Hmd Hin Hcf H0 Hreach Hd Ha Hi.
   exact (InterpPersistence.run_access_not_unchecked ge md f xs fr m fuel s0 c s l i rest j why

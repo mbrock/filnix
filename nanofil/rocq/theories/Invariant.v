@@ -5,19 +5,263 @@
 
     | Name | Says |
     |---|---|
-    | `at_pos` | where the pass is in a block, and what holds there: the facts the next instruction relies on, those the unpolled edge at the end carries, or the fact covering the access taken with a check (`pair_claim`) |
+    | `live_dom`, `pass_exits_dom` | the pass's live facts' pointers have single definitions dominating the point; true of every position the pass reaches, block entries by `dom_meet` |
+    | `at_pos` | where the pass is in a block, and what holds there: the facts the next instruction relies on, those the unpolled edge at the end carries, or the fact covering the access taken with a check (`pair_claim`); in each, the facts dominate (`live_dom`) |
     | `point_ok` | what holds at a frame's point: a function's entry, a block's entry from a predecessor whose exit facts hold unless the edge polls, or `at_pos` |
     | `frame_ok`, `parked`, `inv` | the running frame, unless doomed, is `point_ok`; each waiting caller has no fact |
     | `spares` | the runtime changes no region at a safepoint before an instruction the pass relies on facts for |
     | `pass_step` | an instruction the pass took, that continues, leaves the pass's next position true |
     | `enter_point_ok` | entering a block, the pass's entry facts hold |
-    | `at_pos_continue`, `walks_after` | the next position after an instruction that continues, or after one the pass keeps no fact across | *)
+    | `at_pos_continue`, `walks_after` | the next position after an instruction that continues, or after one the pass keeps no fact across |
+    | `call_parked` | a frame at a call that is not doomed can wait after it with no fact | *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Semantics Machine Validate
-  Coverage Evidence Walk Steps.
+  Dominance Sites Coverage Evidence Walk Steps.
 Import ListNotations.
 Open Scope Z_scope.
+
+(** ## The live facts' pointers dominate
+
+    A fact names the pointer its check was of. The reuse forms read
+    that pointer's single definition, so they need it to dominate the
+    point where the fact is live (`live_dom`). This is a property of
+    the pass alone, block by block: a check's pointer is an operand the
+    check uses (`definitions_dominate/3`), and a fact that reaches a
+    block's entry over every incoming edge has a pointer dominating each
+    reachable predecessor's end, so the entry too (`dom_meet`). *)
+
+(** A function of a checked module is valid: its blocks, their
+    intervals, distinct labels, and dominated uses. *)
+Lemma func_facts : forall md f,
+  checked_module md -> In (IFunc f) md ->
+  exists b0 rest, fn_blocks f = b0 :: rest /\ block_intervals (b0 :: rest) = Some (fn_doms f) /\
+    no_dups (map b_label (fn_blocks f)) = true /\ definitions_dominate f (fn_doms f) = true.
+Proof.
+  unfold checked_module, valid. intros md f [Hv _] Hin.
+  destruct (existsb _ md); [discriminate Hv|]. injection Hv as Hv.
+  unfold valid_items in Hv. apply andb_true_iff in Hv as [_ Hv]. rewrite forallb_forall in Hv.
+  specialize (Hv _ Hin). simpl in Hv. unfold valid_func, fn_doms in *.
+  destruct (fn_blocks f) as [|b0 bs] eqn:Eb; [discriminate Hv|].
+  destruct (block_intervals (b0 :: bs)) as [doms|] eqn:Ed; [|discriminate Hv].
+  repeat match goal with Hb : (_ && _) = true |- _ => apply andb_true_iff in Hb as [? ?] end.
+  exists b0, bs. auto.
+Qed.
+
+Lemma find_block_unique : forall bs l b b',
+  no_dups (map b_label bs) = true -> find_block l bs = Some b -> In b' bs -> b_label b' = l -> b' = b.
+Proof.
+  induction bs as [|b0 bs IH]; simpl; intros l b b' Hnd Hf Hin Hl; [discriminate Hf|].
+  apply andb_true_iff in Hnd as [Hn Hnd]. destruct (name_eqb (b_label b0) l) eqn:E.
+  - injection Hf as <-. apply name_eqb_true in E. destruct Hin as [-> | Hin]; [reflexivity|].
+    exfalso. apply negb_true_iff in Hn. pose proof (mem_false _ _ Hn (b_label b') (in_map _ _ _ Hin)) as Hne.
+    rewrite E, Hl in Hne. apply name_eqb_false in Hne. exact (Hne eq_refl).
+  - destruct Hin as [-> | Hin]; [rewrite Hl in E; apply name_eqb_false in E; contradiction|].
+    exact (IH _ _ _ Hnd Hf Hin Hl).
+Qed.
+
+Lemma skipn_cons : forall (A : Type) k (l : list A) x rest,
+  skipn k l = x :: rest -> nth_error l k = Some x /\ skipn (S k) l = rest /\ (S k <= length l)%nat.
+Proof.
+  intros A k. induction k as [|k IH]; intros l x rest H; destruct l as [|y l]; simpl in *; try discriminate H.
+  - injection H as -> ->. split; [reflexivity|]. split; [reflexivity | lia].
+  - destruct (IH _ _ _ H) as (H1 & H2 & H3). split; [exact H1|]. split; [exact H2 | lia].
+Qed.
+
+Lemma value_temps_in : forall vs a, In (Tmp a) vs -> In a (value_temps vs).
+Proof. intros vs a H. unfold value_temps. apply in_flat_map. exists (Tmp a). split; [exact H | left; reflexivity]. Qed.
+
+(** `facts_dominate f l k live`: the single definition of each live
+    fact's pointer is at a site dominating index k of block l. *)
+Definition facts_dominate (f : func) (l : name) (k : Z) (live : list fact) : Prop :=
+  forall fa y, In fa live -> f_p fa = Tmp y -> once_has (single_definitions f) y = true ->
+    dominating f l k y.
+
+(** `live_dom f l k live`: so, where block l is reachable. *)
+Definition live_dom (f : func) (l : name) (k : nat) (live : list fact) : Prop :=
+  is_reachable (fn_doms f) l = true -> facts_dominate f l (Z.of_nat k) live.
+
+Lemma site_dominates_mono : forall doms l k k' s,
+  k <= k' -> site_dominates doms l k s = true -> site_dominates doms l k' s = true.
+Proof.
+  intros doms l k k' [|d j] Hk H; simpl in *; [reflexivity|].
+  destruct (name_eqb d l); [apply Z.ltb_lt in H; apply Z.ltb_lt; lia | exact H].
+Qed.
+
+Lemma live_dom_mono : forall f l k k' live, (k <= k')%nat -> live_dom f l k live -> live_dom f l k' live.
+Proof.
+  intros f l k k' live Hk H Hr fa y Hfa Hy Ho. destruct (H Hr fa y Hfa Hy Ho) as (s & D & H1 & H2 & H3).
+  exists s, D. split; [exact H1|]. split; [exact H2|]. eapply site_dominates_mono; [|exact H3]. lia.
+Qed.
+
+Lemma live_dom_nil : forall f l k, live_dom f l k [].
+Proof. intros f l k _ fa y []. Qed.
+
+Lemma kill_incl : forall d fs fa, In fa (kill d fs) -> In fa fs.
+Proof. unfold kill. intros d fs fa H. apply filter_In in H. exact (proj1 H). Qed.
+
+Lemma evidence_after_incl : forall i fs fa, In fa (evidence_after i fs) -> In fa fs.
+Proof.
+  unfold evidence_after. intros i fs fa H.
+  destruct (evidence_preserving i); [|destruct H].
+  destruct (inst_def_first i); [exact (kill_incl _ _ _ H) | exact H].
+Qed.
+
+(** A check-like instruction's fact is of a pointer it uses. *)
+Lemma check_fact_uses : forall i fa y, check_fact i = Some fa -> f_p fa = Tmp y -> In y (inst_uses i).
+Proof.
+  intros i fa y H Hy. destruct i as [q k o args | | | | | | |]; try discriminate H.
+  destruct k, o; try discriminate H;
+    destruct args as [|a1 [|a2 [|a3 [|a4 args]]]]; simpl in H; try discriminate H;
+    injection H as <-; simpl in Hy; subst; apply value_temps_in; simpl; auto.
+Qed.
+
+(** `pass_live_after`: the pass takes one instruction or a check and
+    its access, and keeps only facts it had or the check's own. *)
+Lemma pass_live_after : forall s i rest live rest' live',
+  checked_inst_rest s i rest live = Some (rest', live') ->
+  (rest' = rest \/ exists a, rest = a :: rest') /\
+  forall fa, In fa live' -> In fa live \/ check_fact i = Some fa.
+Proof.
+  intros s i rest live rest' live' Hc.
+  destruct (check_fact i) as [fa0|] eqn:Hf.
+  - destruct (access_fact_some _ _ Hf) as [fb Hg].
+    destruct (checked_inst_rest_check _ _ _ _ _ _ _ _ Hf Hg Hc) as (access & -> & _ & ->).
+    split; [right; eauto|]. intros fa Hfa. apply evidence_after_incl in Hfa as [<- | Hfa]; [right; reflexivity|].
+    left. exact (evidence_after_incl _ _ _ Hfa).
+  - destruct (is_check_local i) eqn:Hcl.
+    + destruct i as [q k o args | | | | | | |]; try discriminate Hcl.
+      destruct k; try discriminate Hcl; destruct o; try discriminate Hcl;
+        destruct args; try discriminate Hcl.
+      destruct (checked_inst_rest_local_cov _ _ _ _ _ _ _ _ _ _ _ Hc) as (access & -> & _ & ->).
+      split; [right; eauto|]. intros fa Hfa. left. exact (kill_incl _ _ _ (evidence_after_incl _ _ _ Hfa)).
+    + destruct (is_check_function i) eqn:Hcf.
+      * destruct i as [q k o args | | | | | | |]; try discriminate Hcf.
+        destruct k; try discriminate Hcf; destruct o; try discriminate Hcf.
+        destruct (checked_inst_rest_function_rest _ _ _ _ _ _ _ Hc) as (-> & r & cargs & ->).
+        split; [right; eauto | intros fa []].
+      * assert (Hs' : pass_special i = false).
+        { destruct (pass_special i) eqn:Hp; [|reflexivity].
+          destruct (pass_special_cases _ Hp Hf) as [E | E]; congruence. }
+        rewrite (checked_inst_rest_generic _ _ _ _ Hs') in Hc.
+        destruct (generic_rest_shape _ _ _ _ _ _ Hc) as (-> & Hlive & _). split; [left; reflexivity|].
+        intros fa Hfa. left. destruct Hlive as [-> | (d & g & _ & ->)];
+          [exact (evidence_after_incl _ _ _ Hfa) | exact (kill_incl _ _ _ Hfa)].
+Qed.
+
+(** `pass_step_dom`: the facts after the pass's step at index k of a
+    block dominate index k + 1. *)
+Lemma pass_step_dom : forall md f b k i rest live rest' live',
+  checked_module md -> In (IFunc f) md -> In b (fn_blocks f) ->
+  nth_error (b_insts b) k = Some i ->
+  checked_inst_rest (fn_src md f) i rest live = Some (rest', live') ->
+  live_dom f (b_label b) k live -> live_dom f (b_label b) (S k) live'.
+Proof.
+  intros md f b k i rest live rest' live' Hmd Hin Hb Hk Hc H Hr fa y Hfa Hy Ho.
+  destruct (proj2 (pass_live_after _ _ _ _ _ _ Hc) fa Hfa) as [Hl | Hf].
+  - exact (live_dom_mono _ _ _ _ _ (le_S _ _ (le_n k)) H Hr fa y Hl Hy Ho).
+  - destruct (func_facts _ _ Hmd Hin) as (_ & _ & _ & _ & _ & Hdd).
+    unfold once_has in Ho. destruct (lookup y (single_definitions f)) as [D|] eqn:Ey; [|discriminate Ho].
+    destruct (use_dominated _ _ _ _ _ _ _ Hdd Hb Hr Hk (check_fact_uses _ _ _ Hf Hy) Ey) as (s & Hs & Hsd).
+    exists s, D. split; [exact Ey|]. split; [exact Hs|]. eapply site_dominates_mono; [|exact Hsd]. lia.
+Qed.
+
+(** `walk_dom`: the pass's facts at a block's end dominate it, where
+    those it started with dominated its starting index. *)
+Lemma walk_dom : forall md f b n k is live out,
+  checked_module md -> In (IFunc f) md -> In b (fn_blocks f) ->
+  is = skipn k (b_insts b) -> (k <= length (b_insts b))%nat ->
+  live_dom f (b_label b) k live ->
+  checked_insts (fn_src md f) n is live = Some out ->
+  live_dom f (b_label b) (length (b_insts b)) out.
+Proof.
+  intros md f b n. induction n as [|n IH]; intros k is live out Hmd Hin Hb Hs Hk H Hc;
+    (destruct is as [|i rest]; cbn [checked_insts] in Hc; [injection Hc as <-; exact (live_dom_mono _ _ _ _ _ Hk H)|]);
+    [discriminate Hc|].
+  destruct (checked_inst_rest _ i rest live) as [[rest' live']|] eqn:Ec; [|discriminate Hc]. simpl in Hc.
+  destruct (skipn_cons _ _ _ _ _ (eq_sym Hs)) as (Hki & Hrest & Hlen).
+  pose proof (pass_step_dom _ _ _ _ _ _ _ _ _ Hmd Hin Hb Hki Ec H) as H1.
+  destruct (proj1 (pass_live_after _ _ _ _ _ _ Ec)) as [-> | (a & ->)].
+  - exact (IH _ _ _ _ Hmd Hin Hb (eq_sym Hrest) Hlen H1 Hc).
+  - destruct (skipn_cons _ _ _ _ _ Hrest) as (_ & Hrest' & Hlen').
+    exact (IH _ _ _ _ Hmd Hin Hb (eq_sym Hrest') Hlen' (live_dom_mono _ _ _ _ _ (le_S _ _ (le_n _)) H1) Hc).
+Qed.
+
+(** `exits_dom f ex`: each block's exit facts dominate its end. *)
+Definition exits_dom (f : func) (ex : list (name * list fact)) : Prop :=
+  forall bp out, In bp (fn_blocks f) -> lookup (b_label bp) ex = Some out ->
+    live_dom f (b_label bp) (length (b_insts bp)) out.
+
+Lemma jump_succs_target : forall j s, In s (jump_succs j) -> exists t, In t (jump_targets j) /\ edge_label t = s.
+Proof.
+  intros [t | v t1 t2 | v | vs | | ] s H; simpl in H; try contradiction.
+  - destruct H as [<- | []]. exists t. split; [left|]; reflexivity.
+  - destruct H as [<- | [<- | []]]; [exists t1 | exists t2]; simpl; auto.
+Qed.
+
+(** `entry_dom`: the pass's entry facts of a block dominate its entry. *)
+Lemma entry_dom : forall md f ex b,
+  checked_module md -> In (IFunc f) md -> In b (fn_blocks f) -> exits_dom f ex ->
+  live_dom f (b_label b) 0 (entry_live f ex b).
+Proof.
+  intros md f ex b Hmd Hin Hb Hex Hr fa y Hfa Hy Ho.
+  destruct (func_facts _ _ Hmd Hin) as (b0 & rest & Eb & Hdoms & Hnd & _).
+  destruct (module_func _ _ Hmd Hin) as (_ & (b0' & bs' & Eb' & Hnoin) & _).
+  rewrite Eb in Eb'. injection Eb' as <- <-.
+  unfold entry_live in Hfa. apply entry_kill_in in Hfa as [Hfa _].
+  destruct (name_eqb (b_label b) (b_label b0)) eqn:E0.
+  { apply name_eqb_true in E0. rewrite E0, (incoming_nil (fn_blocks f) (b_label b0)) in Hfa; [destruct Hfa|].
+    exact Hnoin. }
+  apply name_eqb_false in E0.
+  unfold once_has in Ho. destruct (lookup y (single_definitions f)) as [D|] eqn:Ey; [|discriminate Ho].
+  destruct (once_position _ _ _ Ey) as (s0 & Hs0 & Huniq).
+  exists s0, D. split; [exact Ey|]. split; [exact Hs0|].
+  destruct s0 as [|d j]; [reflexivity|]. simpl.
+  rewrite Eb in Hnd.
+  assert (Hpre : forall p, edge (b0 :: rest) p (b_label b) -> is_reachable (fn_doms f) p = true ->
+                   dominates (fn_doms f) d p = true).
+  { intros p (bp & Hbp & Hpl & Hsj) Hrp. rewrite <- Eb in Hbp.
+    destruct (jump_succs_target _ _ Hsj) as (t & Ht & Htl).
+    pose proof (incoming_in _ _ _ Hbp Ht) as Hinc. rewrite Htl in Hinc.
+    pose proof (evidence_meet_in _ _ _ Hfa (in_map (edge_set ex) _ _ Hinc)) as Hset.
+    unfold edge_set in Hset. simpl in Hset. destruct (is_poll t); [destruct Hset|].
+    destruct (lookup (b_label bp) ex) as [fs|] eqn:Ex; [|destruct Hset].
+    destruct (Hex bp fs Hbp Ex ltac:(rewrite Hpl; exact Hrp) fa y Hset Hy ltac:(unfold once_has; rewrite Ey; reflexivity))
+      as (s & D' & Ey' & Hs & Hsd).
+    rewrite Ey in Ey'. injection Ey' as <-. destruct (Huniq _ _ Hs) as [-> _].
+    rewrite Hpl in Hsd. simpl in Hsd. destruct (name_eqb d p) eqn:Edp; [|exact Hsd].
+    apply name_eqb_true in Edp. rewrite Edp. exact (dominates_refl _ _ _ Hdoms _ Hrp). }
+  destruct (dom_meet _ _ _ Hdoms _ _ Hnd Hr E0 Hpre) as [Hd Hne].
+  rewrite (proj2 (name_eqb_false _ _) Hne). exact Hd.
+Qed.
+
+(** `pass_exits_dom`: every block's exit facts dominate its end. *)
+Lemma pass_exits_dom : forall md f E,
+  checked_module md -> In (IFunc f) md -> pass_exits (fn_src md f) f = Some E -> exits_dom f E.
+Proof.
+  intros md f E Hmd Hin HE. unfold pass_exits in HE.
+  destruct (func_facts _ _ Hmd Hin) as (_ & _ & _ & _ & Hnd & _).
+  assert (G : forall bs ex, (forall b, In b bs -> In b (fn_blocks f)) ->
+                fold_left (pass_block (fn_src md f) f) bs (Some ex) = Some E -> exits_dom f ex -> exits_dom f E).
+  { induction bs as [|b bs IH]; cbn [fold_left]; intros ex Hbs H Hex; [injection H as <-; exact Hex|].
+    rewrite pass_block_some in H.
+    destruct (checked_insts _ _ _ (entry_live f ex b)) as [out|] eqn:Ec; [|rewrite pass_fold_none in H; discriminate H].
+    apply (IH _ (fun b' Hb' => Hbs b' (or_intror Hb')) H).
+    pose proof (Hbs b (or_introl eq_refl)) as Hb.
+    intros bp out' Hbp Hl. rewrite lookup_put in Hl. destruct (name_eqb (b_label bp) (b_label b)) eqn:El.
+    - injection Hl as <-. apply name_eqb_true in El.
+      assert (Hf : find_block (b_label b) (fn_blocks f) = Some b).
+      { clear -Hnd Hb. induction (fn_blocks f) as [|b1 bs1 IHb]; [destruct Hb|]. simpl in *.
+        apply andb_true_iff in Hnd as [Hn Hnd]. destruct (name_eqb (b_label b1) (b_label b)) eqn:E.
+        - destruct Hb as [-> | Hb]; [reflexivity|]. exfalso. apply negb_true_iff in Hn.
+          pose proof (mem_false _ _ Hn (b_label b) (in_map _ _ _ Hb)) as Hne.
+          apply name_eqb_true in E. rewrite E, name_eqb_refl in Hne. discriminate Hne.
+        - destruct Hb as [-> | Hb]; [rewrite name_eqb_refl in E; discriminate E | exact (IHb Hnd Hb)]. }
+      rewrite (find_block_unique _ _ _ _ Hnd Hf Hbp El).
+      exact (walk_dom _ _ _ _ 0 _ _ _ Hmd Hin Hb eq_refl (Nat.le_0_l _) (entry_dom _ _ _ _ Hmd Hin Hb Hex) Ec).
+    - exact (Hex _ _ Hbp Hl). }
+  apply (G _ _ (fun b Hb => Hb) HE). intros bp out _ Hl. discriminate Hl.
+Qed.
 
 (** ## The invariant, frame by frame *)
 
@@ -96,14 +340,14 @@ Definition pair_claim (ge : genv) (m : Memory.mem) (fr : frame) (access : inst) 
      lookup q (fr_env fr) = Some (WPtr p) /\ function_check_res ge p = Some ok).
 
 Definition at_pos (ge : genv) (s : src) (m : Memory.mem) (fr : frame) (is : list inst) (j : jump)
-    (out : list fact) : Prop :=
-  (exists live, walks s is live out /\
+    (out : list fact) (f : func) (l : name) (k : nat) : Prop :=
+  (exists live, walks s is live out /\ live_dom f l k live /\
      match is with
      | i :: _ => relies s i = true -> facts_hold ge m (fr_env fr) live
      | [] => jump_claim ge m fr j live
      end) \/
   (exists access rest' live', is = access :: rest' /\ walks s rest' live' out /\
-     pair_claim ge m fr access live').
+     live_dom f l (S k) live' /\ pair_claim ge m fr access live').
 
 (** `point_ok`: what holds at the frame's point. A block is entered
     from the entry of the function, or by an edge of a block whose exit
@@ -119,8 +363,8 @@ Definition point_ok (ge : genv) (md : module) (m : Memory.mem) (fr : frame) : Pr
         edge_label t = l /\
         (is_poll t = true \/ exists out, lookup p E = Some out /\ facts_hold ge m (fr_env fr) out)
   | Exec l is j =>
-      exists b out, find_block l (fn_blocks f) = Some b /\ lookup l E = Some out /\
-        j = b_jump b /\ at_pos ge (fn_src md f) m fr is j out
+      exists b out k, find_block l (fn_blocks f) = Some b /\ lookup l E = Some out /\
+        j = b_jump b /\ is = skipn k (b_insts b) /\ at_pos ge (fn_src md f) m fr is j out f l k
   end.
 
 (** Every named local the frame has allocated lies above 0. *)
@@ -135,9 +379,10 @@ Definition frame_ok (ge : genv) (md : module) (m : Memory.mem) (fr : frame) : Pr
 (** A caller waits after its call with no live fact. *)
 Definition parked (md : module) (fr : frame) : Prop :=
   In (IFunc (fr_fn fr)) md /\ locals_pos fr /\ fr_doomed fr = None /\
-  exists E l rest j b out, pass_exits (fn_src md (fr_fn fr)) (fr_fn fr) = Some E /\
+  exists E l rest j b out k, pass_exits (fn_src md (fr_fn fr)) (fr_fn fr) = Some E /\
     fr_at fr = Exec l rest j /\ find_block l (fn_blocks (fr_fn fr)) = Some b /\
-    lookup l E = Some out /\ j = b_jump b /\ walks (fn_src md (fr_fn fr)) rest [] out.
+    lookup l E = Some out /\ j = b_jump b /\ rest = skipn k (b_insts b) /\
+    walks (fn_src md (fr_fn fr)) rest [] out.
 
 Definition inv (ge : genv) (md : module) (st : mstate) : Prop :=
   frame_ok ge md (c_mem (fst st)) (c_frame (fst st)) /\
@@ -156,10 +401,10 @@ Proof. intros ge m e fa []. Qed.
 
 (** Where the facts after a step hold, whatever comes next may rely on
     them. *)
-Lemma at_pos_between : forall ge s m fr is j live out,
-  walks s is live out -> facts_hold ge m (fr_env fr) live -> at_pos ge s m fr is j out.
+Lemma at_pos_between : forall ge s m fr is j live out f l k,
+  walks s is live out -> live_dom f l k live -> facts_hold ge m (fr_env fr) live -> at_pos ge s m fr is j out f l k.
 Proof.
-  intros ge s m fr is j live out Hw Hl. left. exists live. split; [exact Hw|].
+  intros ge s m fr is j live out f l k Hw Hd Hl. left. exists live. split; [exact Hw|]. split; [exact Hd|].
   destruct is; [intros t _ _; exact Hl | intros _; exact Hl].
 Qed.
 
@@ -167,10 +412,10 @@ Qed.
 Lemma parked_resume : forall ge md m fr e,
   parked md fr -> frame_ok ge md m (mkFrame (fr_fn fr) e (fr_locals fr) (fr_doomed fr) (fr_at fr)).
 Proof.
-  intros ge md m fr e (Hin & Hpos & Hd & E & l & rest & j & b & out & HE & Ha & Hb & Hout & Hj & Hw).
+  intros ge md m fr e (Hin & Hpos & Hd & E & l & rest & j & b & out & k & HE & Ha & Hb & Hout & Hj & Hk & Hw).
   split; [exact Hin|]. split; [exact Hpos|]. right. exists E. split; [exact HE|]. simpl. rewrite Ha.
-  exists b, out. split; [exact Hb|]. split; [exact Hout|]. split; [exact Hj|].
-  eapply at_pos_between; [exact Hw | apply facts_hold_nil].
+  exists b, out, k. split; [exact Hb|]. split; [exact Hout|]. split; [exact Hj|]. split; [exact Hk|].
+  eapply at_pos_between; [exact Hw | apply live_dom_nil | apply facts_hold_nil].
 Qed.
 
 (** A callee starts at its entry. *)
@@ -254,31 +499,37 @@ Qed.
 
 (** `at_pos_continue`: where the instruction at the pass's position
     continues, the next position holds. *)
-Lemma at_pos_continue : forall ge s m fr i rest j out e1 l1 m1 fr1,
+Lemma at_pos_continue : forall ge md m fr i rest j out e1 l1 m1 fr1 f l b k,
+  checked_module md -> In (IFunc f) md -> find_block l (fn_blocks f) = Some b ->
+  i :: rest = skipn k (b_insts b) ->
   objects_fit (m_regions m) -> locals_pos fr ->
-  at_pos ge s m fr (i :: rest) j out ->
+  at_pos ge (fn_src md f) m fr (i :: rest) j out f l k ->
   inst_step ge fr m i = Some (IContinue e1 l1 m1) -> fr_env fr1 = e1 ->
-  at_pos ge s m1 fr1 rest j out.
+  at_pos ge (fn_src md f) m1 fr1 rest j out f l (S k).
 Proof.
-  intros ge s m fr i rest j out e1 l1 m1 fr1 Hfit Hpos Hat Hs He.
-  destruct Hat as [(live & Hw & Hl) | (access & rest' & live' & E & Hw & Hp)].
+  intros ge md m fr i rest j out e1 l1 m1 fr1 f l b k Hmd Hin Hb Hk Hfit Hpos Hat Hs He.
+  destruct (find_block_in _ _ _ Hb) as [Hbin <-].
+  destruct (skipn_cons _ _ _ _ _ (eq_sym Hk)) as (Hki & _ & _).
+  destruct Hat as [(live & Hw & Hd & Hl) | (access & rest' & live' & E & Hw & Hd & Hp)].
   - destruct (walks_cons _ _ _ _ _ Hw) as (rest' & live' & Hc & Hw').
+    pose proof (pass_step_dom _ _ _ _ _ _ _ _ _ Hmd Hin Hbin Hki Hc Hd) as Hd'.
     destruct (pass_step _ _ _ _ _ _ _ _ _ _ _ _ _ Hfit Hpos Hl Hc Hs He)
       as [(-> & Hh) | (access & -> & Hp)].
-    + eapply at_pos_between; [exact Hw' | rewrite He; exact Hh].
-    + right. exists access, rest', live'. auto.
-  - injection E as <- <-. eapply at_pos_between; [exact Hw|]. rewrite He.
+    + eapply at_pos_between; [exact Hw' | exact Hd' | rewrite He; exact Hh].
+    + right. exists access, rest', live'. split; [reflexivity|]. split; [exact Hw'|].
+      split; [exact (live_dom_mono _ _ _ _ _ (le_S _ _ (le_n _)) Hd')|]. exact Hp.
+  - injection E as <- <-. eapply at_pos_between; [exact Hw | exact Hd|]. rewrite He.
     eapply pair_continue; eauto.
 Qed.
 
 (** After an instruction the pass relies on nothing for, and that is
     not a `check_function`, the pass goes on with no facts. *)
-Lemma walks_after : forall ge s m fr i rest j out,
-  at_pos ge s m fr (i :: rest) j out -> relies s i = false -> is_check_function i = false ->
+Lemma walks_after : forall ge s m fr i rest j out f l k,
+  at_pos ge s m fr (i :: rest) j out f l k -> relies s i = false -> is_check_function i = false ->
   walks s rest [] out.
 Proof.
-  intros ge s m fr i rest j out Hat Hr Hcf.
-  destruct Hat as [(live & Hw & _) | (access & rest' & live' & E & Hw & Hp)].
+  intros ge s m fr i rest j out f l k Hat Hr Hcf.
+  destruct Hat as [(live & Hw & _) | (access & rest' & live' & E & Hw & _ & Hp)].
   - destruct (walks_cons _ _ _ _ _ Hw) as (rest' & live' & Hc & Hw').
     destruct (relies_false_rest _ _ _ _ _ _ Hr Hcf Hc) as [-> ->]. exact Hw'.
   - injection E as <- <-.
@@ -288,23 +539,40 @@ Qed.
 
 (** ### Reading and making `point_ok` *)
 
-Lemma point_ok_exec : forall ge md m fr l is j E b out,
+Lemma point_ok_exec : forall ge md m fr l is j E b out k,
   pass_exits (fn_src md (fr_fn fr)) (fr_fn fr) = Some E -> fr_at fr = Exec l is j ->
   find_block l (fn_blocks (fr_fn fr)) = Some b -> lookup l E = Some out -> j = b_jump b ->
-  at_pos ge (fn_src md (fr_fn fr)) m fr is j out -> point_ok ge md m fr.
+  is = skipn k (b_insts b) ->
+  at_pos ge (fn_src md (fr_fn fr)) m fr is j out (fr_fn fr) l k -> point_ok ge md m fr.
 Proof.
-  intros ge md m fr l is j E b out HE Ha Hb Ho Hj Hat. unfold point_ok. cbv zeta.
-  exists E. split; [exact HE|]. rewrite Ha. eauto 7.
+  intros ge md m fr l is j E b out k HE Ha Hb Ho Hj Hk Hat. unfold point_ok. cbv zeta.
+  exists E. split; [exact HE|]. rewrite Ha. eauto 8.
 Qed.
 
 Lemma point_ok_exec_inv : forall ge md m fr l is j,
   point_ok ge md m fr -> fr_at fr = Exec l is j ->
-  exists E b out, pass_exits (fn_src md (fr_fn fr)) (fr_fn fr) = Some E /\
+  exists E b out k, pass_exits (fn_src md (fr_fn fr)) (fr_fn fr) = Some E /\
     find_block l (fn_blocks (fr_fn fr)) = Some b /\ lookup l E = Some out /\ j = b_jump b /\
-    at_pos ge (fn_src md (fr_fn fr)) m fr is j out.
+    is = skipn k (b_insts b) /\ at_pos ge (fn_src md (fr_fn fr)) m fr is j out (fr_fn fr) l k.
 Proof.
   intros ge md m fr l is j H Ha. unfold point_ok in H. cbv zeta in H.
-  destruct H as (E & HE & H). rewrite Ha in H. destruct H as (b & out & ?). eauto 8.
+  destruct H as (E & HE & H). rewrite Ha in H. destruct H as (b & out & k & ?). eauto 10.
+Qed.
+
+(** `call_parked`: a running frame that is not doomed, at a call,
+    can wait after it with no fact, whatever the call does. *)
+Lemma call_parked : forall ge md m fr l r callee args rest j,
+  frame_ok ge md m fr -> fr_doomed fr = None -> fr_at fr = Exec l (Call r callee args :: rest) j ->
+  parked md (mkFrame (fr_fn fr) (fr_env fr) (fr_locals fr) None (Exec l rest j)).
+Proof.
+  intros ge md m fr l r callee args rest j (Hin & Hpos & Hpt) Hd Ha.
+  destruct Hpt as [Hd0 | Hp]; [congruence|].
+  destruct (point_ok_exec_inv _ _ _ _ _ _ _ Hp Ha) as (E & b & out & k & HE & Hb & Hout & Hj & Hk & Hat).
+  destruct (skipn_cons _ _ _ _ _ (eq_sym Hk)) as (_ & Hrest & _).
+  split; [exact Hin|]. split; [exact Hpos|]. split; [reflexivity|].
+  exists E, l, rest, j, b, out, (S k). simpl. repeat (split; [assumption || reflexivity|]).
+  split; [symmetry; exact Hrest|].
+  eapply walks_after; [exact Hat | reflexivity | reflexivity].
 Qed.
 
 (** A function's entry is where its snapshot leads. *)
@@ -334,9 +602,12 @@ Proof.
   pose proof (find_block_in _ _ _ Hb) as [Hbin Hbl].
   destruct (pass_fold _ _ _ _ _ HE Hd (fun b _ => lookup_nil_none _ (b_label b)) b Hbin)
     as (exits & out & Hsub & Hout & Hc).
-  eapply point_ok_exec with (b := b) (out := out); simpl; [exact HE | reflexivity | exact Hb
-                                                         | rewrite <- Hbl; exact Hout | reflexivity |].
-  eapply at_pos_between; [exists (S (length (b_insts b))); exact Hc|]. simpl.
+  eapply point_ok_exec with (b := b) (out := out) (k := 0%nat); simpl; [exact HE | reflexivity | exact Hb
+                                                         | rewrite <- Hbl; exact Hout | reflexivity | reflexivity |].
+  eapply at_pos_between; [exists (S (length (b_insts b))); exact Hc| |].
+  { rewrite <- Hbl. apply (entry_dom md); [exact Hmd | exact Hin | exact Hbin|].
+    intros bp o Hbp Ho. apply (pass_exits_dom _ _ _ Hmd Hin HE _ _ Hbp). exact (Hsub _ _ Ho). }
+  simpl.
   unfold entry_live. destruct from as [p|].
   - eapply phis_facts_hold; [exact Hp|]. intros fa Hfa.
     destruct Hpt as (bp & t & Hbp & Ht & Hl & Hpoll).

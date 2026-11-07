@@ -688,7 +688,7 @@ Qed.
 
 (** `generic_access_not_unchecked`: a raw access the pass accepts on
     its own gives no `unchecked` where the facts hold, unless the pass
-    accepted it by `hull_covered`, a reuse form still to come. *)
+    accepted it by `hull_covered` (Chain.v's `hull_access_not_unchecked`). *)
 Theorem generic_access_not_unchecked : forall ge s fr m i rest live rest' live' q x off need why,
   objects_fit (m_regions m) ->
   facts_hold ge m (fr_env fr) live ->

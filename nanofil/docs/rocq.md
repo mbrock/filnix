@@ -949,7 +949,10 @@ capability, with addresses D apart modulo 2^64
 The first reuse form is proved from these. A raw access that the pass
 accepts by `hull_covered/7` gives no `unchecked`
 (`hull_access_not_unchecked`). The precondition is that the live facts
-hold and their pointers' single definitions dominate the point.
+hold and their pointers' single definitions dominate the point; the
+evidence invariant now carries both, so along every run there is no
+`hull_covered` exception left (`run_access_checked`,
+`interp_access_checked`).
 
 - Each span the rule reads off a live fact is a check of the access's
   capability that passed (`hull_span_passes`).
@@ -969,16 +972,30 @@ Decisions:
   capability, not one of the two bounding spans.** `hull_covered/7`
   takes write rights from any span, and a passed write check shows the
   capability is not read-only.
-- **The theorem takes "the facts' pointers dominate" as its
-  precondition.** Inside a block it follows from
-  `definitions_dominate/3`. A fact also reaches a block's entry over
-  every incoming edge (the meet), and there the property needs the
-  converse of `dom_edge`: what dominates every reachable predecessor of
-  a block dominates the block. That holds because the
-  Cooper–Harvey–Kennedy fixpoint is the nearest common ancestor of the
-  predecessors, which Dominance.v does not yet prove. ir.pl is sound
-  here; the gap is in the model's dominance lemmas. Until it is closed,
-  `access_not_unchecked` keeps its `hull_covered` exception.
+- **"The facts' pointers dominate" is part of the evidence invariant.**
+  Invariant.v's `at_pos` now says each live fact's pointer has a single
+  definition dominating the point (`live_dom`), and every step keeps it.
+  Inside a block this is `definitions_dominate/3`
+  (`use_dominated`). A fact also reaches a block's entry over every
+  incoming edge (the meet), and there it needs the converse of
+  `dom_edge`: what dominates every reachable predecessor of a block
+  dominates the block (`dom_meet`). That holds because at the
+  Cooper–Harvey–Kennedy fixpoint each block's idom is the *nearest*
+  common ancestor of its predecessors (`idoms_nca`): `common_dominator/5`
+  walks up from the later label in reverse postorder, and the depth-first
+  walk lists each label after a predecessor (`func_cfg_parent`), so every
+  ancestor comes earlier. ir.pl needed no change.
+- **The closed theorem joins two invariants.** Persistence.v leaves the
+  hull case with its facts holding and dominating (`hull_case`);
+  Single.v's invariant supplies the replays. Chain.v's `Hull R` joins
+  them: `run_access_checked` given `spares` and `free_ids`, and
+  `interp_access_checked` for the interpreter with no hypothesis but a
+  ready start. Each file instantiates `Machine R`, and `mstep` is an
+  inductive new in each instance, so a run is carried across
+  (`mreachable_same`).
+- **The point records its index.** `point_ok` and `parked` say the
+  frame runs the suffix of its block from index k, so the facts'
+  dominance is stated at k.
 - **`access_ok_not_unchecked` is split out of the coverage lemma.**
   Both `covered_access` and `hull_covered` end at the same step: the raw
   access's own check passes, so `inst_step` does not give `unchecked`.
@@ -1113,22 +1130,18 @@ with this bound it also keeps a ready module's data below 2^48.
 
 ## Next
 
-1. Close `hull_covered`'s exception: the nearest-common-ancestor
-   property of `cfg_idoms/2` in Dominance.v (`dom_meet`), then "live
-   facts' pointers dominate" carried through Persistence.v's walk
-   invariant.
-2. The other reuse forms as corollaries of `Single.v`'s invariant and
+1. The other reuse forms as corollaries of `Single.v`'s invariant and
    Interval.v's `iv_sound`, each
    with ir.pl's side conditions as hypotheses: renew,
    half check, `renew_if`, `check_limit`, and `check_ahead`'s doomed
    frame; then `valid_no_unchecked`, assembled from Persistence.v's
    invariant.
-3. After the reuse forms, a decision on the runtime's safepoints
+2. After the reuse forms, a decision on the runtime's safepoints
    (`spares`, above) and its free (`free_ids`, "Identities persist"),
    brought to mbrock together with a recommendation after an Oracle
    review: narrow the module type or add axioms with native tests, or
    keep the hypotheses.
-4. Starting the heap above the module's data, so that the initial
+3. Starting the heap above the module's data, so that the initial
    readiness hypothesis becomes a lemma.
 
 Inquiries touched: none closed. The integer-at-`p` case is a small

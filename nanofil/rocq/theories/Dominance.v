@@ -19,6 +19,7 @@
     | `dom_edge` | what dominates a successor dominates its predecessor too, but for the successor itself |
     | `dom_entry_top` | only the entry dominates the entry |
     | `dom_antisym` | two blocks that dominate each other are one block |
+    | `dom_meet` | what dominates every reachable predecessor of a block but the entry dominates the block, and is not it |
 
     ## Why the result is right
 
@@ -34,7 +35,14 @@
     Cooper, Harvey and Kennedy's argument that the fixpoint is the true
     dominator tree is not needed: a tree whose parent of each label is
     an ancestor of the label's predecessors already passes every path
-    from the entry through each ancestor. *)
+    from the entry through each ancestor.
+
+    `dom_meet`, the converse of `dom_edge`, needs one more property:
+    a label's parent is the *nearest* common ancestor of its
+    predecessors (`idoms_nca`). `common_dominator/5` walks up from the
+    label later in the reverse postorder, and at the fixpoint every
+    ancestor comes before its descendants in that order, because the
+    walk lists each label after a predecessor (`func_cfg_parent`). *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Maps Syntax Cfg Validate.
@@ -235,6 +243,23 @@ Proof.
   eexists. split; [reflexivity | left; reflexivity].
 Qed.
 
+(** Every predecessor `add_pred` lists comes from an edge it added or
+    was there before. *)
+Lemma add_pred_only : forall (P : name -> name -> Prop) es m,
+  (forall s ps p, nm_find s m = Some ps -> In p ps -> P s p) ->
+  (forall e, In e es -> P (fst e) (snd e)) ->
+  forall s ps p, nm_find s (fold_left add_pred es m) = Some ps -> In p ps -> P s p.
+Proof.
+  intros P es. induction es as [|e es IH]; simpl; intros m Hm He; [exact Hm|].
+  apply IH; [|intros e' He'; exact (He e' (or_intror He'))].
+  intros s ps p Hs Hp. unfold add_pred in Hs. rewrite nm_find_add in Hs.
+  destruct (name_eqb s (fst e)) eqn:E.
+  - apply name_eqb_true in E. subst s. injection Hs as <-. destruct Hp as [<- | Hp].
+    + exact (He e (or_introl eq_refl)).
+    + destruct (nm_find (fst e) m) as [ps0|] eqn:E0; [exact (Hm _ _ _ E0 Hp) | destruct Hp].
+  - exact (Hm _ _ _ Hs Hp).
+Qed.
+
 (** What `func_cfg/2` built: the successor map of the blocks, a
     predecessor of every edge, and a reverse postorder that starts at
     the entry, lists it once, and is closed under successors. *)
@@ -243,7 +268,8 @@ Record cfg_ok (bs : list block) (g : cfg) : Prop := {
   cfg_ok_preds : forall p s, edge bs p s -> exists ps, nm_find s (cfg_preds g) = Some ps /\ In p ps;
   cfg_ok_rpo : exists rest, cfg_rpo g = cfg_entry g :: rest /\ ~ In (cfg_entry g) rest;
   cfg_ok_closed : forall x, In x (cfg_rpo g) ->
-                  exists ss, nm_find x (cfg_succs g) = Some ss /\ forall y, In y ss -> In y (cfg_rpo g)
+                  exists ss, nm_find x (cfg_succs g) = Some ss /\ forall y, In y ss -> In y (cfg_rpo g);
+  cfg_ok_pred_edge : forall s ps p, nm_find s (cfg_preds g) = Some ps -> In p ps -> edge bs p s
 }.
 
 Lemma func_cfg_ok : forall bs g, func_cfg bs = Some g -> cfg_ok bs g /\ exists b0 rest, bs = b0 :: rest /\ cfg_entry g = b_label b0.
@@ -284,6 +310,16 @@ Proof.
         by (rewrite nm_mem_add, E, nm_mem_empty; reflexivity).
       destruct (Hc _ Hx Hn) as [_ (ss' & Hf & Hy)]. exists ss'. split; [exact Hf|].
       intros y Hyy. apply Hsp. exact (Hy _ Hyy).
+  - apply (add_pred_only (fun s p => edge (b0 :: rest) p s)).
+    + intros s ps p Hs Hp. unfold nm_of_list in Hs. rewrite nm_find_fold_add, nm_find_empty in Hs.
+      destruct (lookup s (rev _)) eqn:E; [|discriminate Hs]. injection Hs as <-.
+      destruct (lookup_some_in _ _ _ _ E) as (s' & _ & Hin).
+      apply (proj2 (in_rev _ _)) in Hin.
+      destruct Hin as [Eb | Hin]; [injection Eb as _ <- | apply in_map_iff in Hin as (b & Eb & _);
+        injection Eb as _ <-]; destruct Hp.
+    + intros [s p] Hin. change (In (s, p) (cfg_edges (b0 :: rest))) in Hin.
+      unfold cfg_edges in Hin. apply in_flat_map in Hin as (b & Hbin & Hin).
+      apply in_map_iff in Hin as (s' & Eb & Hs'). injection Eb as <- <-. exists b. auto.
 Qed.
 
 (** The labels the walk lists are listed once each. *)
@@ -317,6 +353,76 @@ Proof.
     destruct (reverse_postorder fu ns su se po) as [[seen post]|] eqn:Er; [|discriminate H] end.
   injection H as <-. simpl.
   refine (proj1 (reverse_postorder_nodup _ _ _ _ _ _ _ Er _ _)); [constructor | intros x []].
+Qed.
+
+(** ### Each label after a predecessor
+
+    The walk lists a label it reaches from another after that one: in
+    the reverse postorder every reachable label but the entry has a
+    predecessor before it. The nearest-common-ancestor argument below
+    numbers labels by this order. *)
+
+Lemma app_cons_split : forall (A : Type) (a b u v : list A) (x : A),
+  a ++ b = u ++ x :: v ->
+  (exists v', a = u ++ x :: v') \/ (exists w, u = a ++ w /\ b = w ++ x :: v).
+Proof.
+  intros A a. induction a as [|y a IH]; simpl; intros b u v x H.
+  - right. exists u. auto.
+  - destruct u as [|z u]; simpl in H; injection H as <- H.
+    + left. exists a. reflexivity.
+    + destruct (IH _ _ _ _ H) as [(v' & ->) | (w & -> & ->)];
+        [left; exists v' | right; exists w; split]; reflexivity.
+Qed.
+
+(** `reverse_postorder_parent`: the walk puts its new labels in front,
+    and each new label is one it started from or a successor of a label
+    before it. *)
+Lemma reverse_postorder_parent : forall fuel ns succs seen post seen' post',
+  reverse_postorder fuel ns succs seen post = Some (seen', post') ->
+  exists new, post' = new ++ post /\
+    forall u x v, new = u ++ x :: v ->
+      In x ns \/ exists p ss, In p u /\ nm_find p succs = Some ss /\ In x ss.
+Proof.
+  induction fuel as [|fuel IH]; intros ns succs seen post seen' post' H; simpl in H; [discriminate H|].
+  destruct ns as [|l ls].
+  - injection H as <- <-. exists []. split; [reflexivity|]. intros u x v E. destruct u; discriminate E.
+  - destruct (nm_mem l seen).
+    + destruct (IH _ _ _ _ _ _ H) as (new & -> & Hn). exists new. split; [reflexivity|].
+      intros u x v E. destruct (Hn _ _ _ E) as [Hx | Hp]; [left; right; exact Hx | right; exact Hp].
+    + destruct (nm_find l succs) as [ss|] eqn:Ess; [|discriminate H].
+      destruct (reverse_postorder fuel ss succs (nm_add l tt seen) post) as [[seen2 post1]|] eqn:E1;
+        [|discriminate H].
+      destruct (IH _ _ _ _ _ _ E1) as (new1 & -> & Hn1).
+      destruct (IH _ _ _ _ _ _ H) as (new2 & -> & Hn2).
+      exists (new2 ++ l :: new1). split; [rewrite <- app_assoc; reflexivity|].
+      intros u x v E.
+      destruct (app_cons_split _ _ _ _ _ _ E) as [(v' & E2) | (w & -> & E3)].
+      * destruct (Hn2 _ _ _ E2) as [Hx | Hp]; [left; right; exact Hx | right; exact Hp].
+      * destruct w as [|y w]; simpl in E3; injection E3 as <- E3.
+        -- left. left. reflexivity.
+        -- right. destruct (Hn1 _ _ _ E3) as [Hx | (p & ss' & Hp & Hf & Hs)].
+           ++ exists l, ss. split; [apply in_or_app; right; left; reflexivity|]. auto.
+           ++ exists p, ss'. split; [apply in_or_app; right; right; exact Hp|]. auto.
+Qed.
+
+(** `func_cfg_parent`: in the reverse postorder, every label but the
+    entry has a predecessor before it. *)
+Lemma func_cfg_parent : forall bs g, func_cfg bs = Some g ->
+  forall u x v, cfg_rpo g = u ++ x :: v -> x <> cfg_entry g ->
+  exists p ps, In p u /\ nm_find x (cfg_preds g) = Some ps /\ In p ps.
+Proof.
+  intros bs g H u x v E Hx. destruct (func_cfg_ok _ _ H) as [Hok _].
+  unfold func_cfg in H. destruct bs as [|b0 rest]; [discriminate H|]. cbv zeta in H.
+  destruct (negb _) eqn:Ec; [discriminate H|].
+  match type of H with context [reverse_postorder ?fu ?ns ?su ?se ?po] =>
+    destruct (reverse_postorder fu ns su se po) as [[seen post]|] eqn:Er; [|discriminate H] end.
+  injection H as <-. simpl in E, Hx.
+  destruct (reverse_postorder_parent _ _ _ _ _ _ _ Er) as (new & Ep & Hn).
+  rewrite app_nil_r in Ep. subst new.
+  destruct (Hn _ _ _ E) as [[<- | []] | (p & ss & Hp & Hf & Hs)]; [congruence|].
+  destruct (block_succs_some _ _ _ Hf) as (b & Hb & Eb & ->).
+  destruct (cfg_ok_preds _ _ Hok p x) as (ps & Hps & Hin); [exists b; auto|].
+  exists p, ps. auto.
 Qed.
 
 (** ## The tree of immediate dominators *)
@@ -451,12 +557,24 @@ Qed.
 (** What `cfg_idoms/2` computed, before it drops the entry's own idom:
     the entry is its own parent, every other label of the reverse
     postorder has a parent, and that parent is an ancestor of each of
-    the label's predecessors that has one. *)
+    the label's predecessors that has one. For the nearest common
+    ancestor below, also: only labels of the reverse postorder have a
+    parent, each parent is the walk's meet of the predecessors, and the
+    order lists each label but the entry after a predecessor. *)
 Record idoms_ok (g : cfg) (M : nmap name) : Prop := {
   idoms_entry : nm_find (cfg_entry g) M = Some (cfg_entry g);
   idoms_meet : forall b, In b (cfg_rpo g) -> b <> cfg_entry g ->
                exists nw, nm_find b M = Some nw /\
-               forall p ps, nm_find b (cfg_preds g) = Some ps -> In p ps -> nm_mem p M = true -> anc M nw p
+               forall p ps, nm_find b (cfg_preds g) = Some ps -> In p ps -> nm_mem p M = true -> anc M nw p;
+  idoms_dom : forall x, nm_mem x M = true -> In x (cfg_rpo g);
+  idoms_fold : forall b, In b (cfg_rpo g) -> b <> cfg_entry g ->
+               exists cf ps first others nw,
+               nm_find b (cfg_preds g) = Some ps /\ filter (fun p => nm_mem p M) ps = first :: others /\
+               fold_left (common_step cf (labels_numbered (cfg_rpo g)) M) others (Some first) = Some nw /\
+               nm_find b M = Some nw;
+  idoms_nodup : NoDup (cfg_rpo g);
+  idoms_parent : forall u x v, cfg_rpo g = u ++ x :: v -> x <> cfg_entry g ->
+                 exists p ps, In p u /\ nm_find x (cfg_preds g) = Some ps /\ In p ps
 }.
 
 Lemma cfg_idoms_ok : forall bs g t,
@@ -467,17 +585,213 @@ Proof.
   destruct (cfg_ok_rpo _ _ Hok) as (rest & Hr & Hent).
   unfold cfg_idoms in H. rewrite Hr in H.
   destruct (idom_fixpoint _ _ _ _ _ _) as [M|] eqn:Ef; [|discriminate H]. injection H as <-.
+  destruct (label_idoms_unchanged _ _ _ _ _ _ (idom_fixpoint_final _ _ _ _ _ _ _ Ef)) as [_ Hall].
   exists M. split; [|reflexivity]. constructor.
   - rewrite (idom_fixpoint_other _ _ _ _ _ _ _ _ Hent Ef), nm_find_add, term_eqb_refl. reflexivity.
   - intros b Hb Hne. rewrite Hr in Hb. destruct Hb as [E | Hb]; [congruence|].
-    destruct (label_idoms_unchanged _ _ _ _ _ _ (idom_fixpoint_final _ _ _ _ _ _ _ Ef))
-      as [_ Hall].
     destruct (Hall _ Hb) as (ps & first & others & nw & Hp & Hf & Hc & Hb').
     exists nw. split; [exact Hb'|]. intros p ps' Hp' Hin Hm. rewrite Hp in Hp'. injection Hp' as <-.
     assert (Hpin : In p (first :: others)) by (rewrite <- Hf; apply filter_In; auto).
     destruct (common_fold_anc _ _ _ _ _ _ Hc) as [H1 H2].
     destruct Hpin as [<- | Hpin]; [exact H1 | exact (H2 _ Hpin)].
+  - intros x Hx. rewrite Hr. destruct (name_eqb x (cfg_entry g)) eqn:Ex.
+    + apply name_eqb_true in Ex. left. symmetry. exact Ex.
+    + right. destruct (mem x rest) eqn:Em; [apply mem_in; exact Em|].
+      assert (Hn : ~ In x rest) by (intros Hin; apply mem_in in Hin; congruence).
+      rewrite nm_mem_find, (idom_fixpoint_other _ _ _ _ _ _ _ _ Hn Ef), nm_find_add, Ex, nm_find_empty in Hx.
+      destruct Hx as [v Hv]. discriminate Hv.
+  - intros b Hb Hne. rewrite Hr in Hb. destruct Hb as [E | Hb]; [congruence|].
+    destruct (Hall _ Hb) as (ps & first & others & nw & Hp & Hf & Hc & Hb').
+    rewrite Hr. exists (S (2 * length (cfg_entry g :: rest))), ps, first, others, nw. auto.
+  - exact (func_cfg_nodup _ _ Hg).
+  - exact (func_cfg_parent _ _ Hg).
 Qed.
+
+(** ## The nearest common ancestor
+
+    `common_dominator/5` walks up from whichever of its two labels is
+    later in the reverse postorder. It returns their nearest common
+    ancestor, not merely a common one, if a label's ancestors all come
+    before it in the order. At the fixpoint they do: a label's parent
+    is an ancestor of the predecessor the order lists before it
+    (`idoms_parent`), and by induction on the order that predecessor's
+    ancestors come before it. So whatever is an ancestor of every
+    predecessor of a label that has a parent is an ancestor of the
+    label's parent (`idoms_nca`). *)
+
+(** `labels_numbered/3` numbers each label by its place in the list. *)
+Definition number_step (acc : Z * nmap Z) (l : name) : Z * nmap Z :=
+  (fst acc + 1, nm_add l (fst acc) (snd acc)).
+
+Lemma number_fold_out : forall ls x acc,
+  ~ In x ls -> nm_find x (snd (fold_left number_step ls acc)) = nm_find x (snd acc).
+Proof.
+  induction ls as [|l ls IH]; simpl; intros x acc Hx; [reflexivity|].
+  rewrite IH by (intros Hin; apply Hx; right; exact Hin). unfold number_step. simpl.
+  rewrite nm_find_add. destruct (name_eqb x l) eqn:E; [|reflexivity].
+  apply name_eqb_true in E. subst. exfalso. apply Hx. left. reflexivity.
+Qed.
+
+Lemma number_fold_at : forall u ls x v acc, NoDup ls -> ls = u ++ x :: v ->
+  nm_find x (snd (fold_left number_step ls acc)) = Some (fst acc + Z.of_nat (length u)).
+Proof.
+  induction u as [|y u IH]; simpl; intros ls x v acc Hnd ->.
+  - inversion Hnd as [|? ? Hx _]. cbn [fold_left]. rewrite number_fold_out by exact Hx.
+    unfold number_step. simpl. rewrite nm_find_add, term_eqb_refl. f_equal. lia.
+  - inversion Hnd as [|? ? _ Hnd']. cbn [fold_left]. rewrite (IH _ x v _ Hnd' eq_refl).
+    unfold number_step. simpl. f_equal. lia.
+Qed.
+
+Section Nca.
+
+Variables (g : cfg) (M : nmap name).
+Hypothesis HM : idoms_ok g M.
+Hypothesis Hr0 : exists rest, cfg_rpo g = cfg_entry g :: rest.
+
+(** `rank x`: x's place in the reverse postorder. *)
+Definition rank (x : name) : Z :=
+  match nm_find x (labels_numbered (cfg_rpo g)) with Some i => i | None => -1 end.
+
+Lemma rank_at : forall u x v, cfg_rpo g = u ++ x :: v ->
+  nm_find x (labels_numbered (cfg_rpo g)) = Some (Z.of_nat (length u)) /\ rank x = Z.of_nat (length u).
+Proof.
+  intros u x v E. unfold rank, labels_numbered.
+  change (fun acc l => (fst acc + 1, nm_add l (fst acc) (snd acc))) with number_step.
+  rewrite (number_fold_at u _ x v (0, nm_empty) (idoms_nodup _ _ HM) E). split; reflexivity.
+Qed.
+
+Lemma rank_find : forall x, In x (cfg_rpo g) -> nm_find x (labels_numbered (cfg_rpo g)) = Some (rank x).
+Proof.
+  intros x Hx. destruct (in_split _ _ Hx) as (u & v & E). destruct (rank_at _ _ _ E) as [-> ->]. reflexivity.
+Qed.
+
+Lemma rank_nonneg : forall x, In x (cfg_rpo g) -> 0 <= rank x.
+Proof.
+  intros x Hx. destruct (in_split _ _ Hx) as (u & v & E). rewrite (proj2 (rank_at _ _ _ E)). lia.
+Qed.
+
+(** A label listed before another has a smaller rank. *)
+Lemma rank_before : forall u x v p, cfg_rpo g = u ++ x :: v -> In p u -> rank p < rank x.
+Proof.
+  intros u x v p E Hp. destruct (in_split _ _ Hp) as (u1 & u2 & ->).
+  rewrite (proj2 (rank_at _ _ _ E)).
+  rewrite <- app_assoc in E. simpl in E. rewrite (proj2 (rank_at _ _ _ E)).
+  rewrite length_app. simpl. lia.
+Qed.
+
+Lemma entry_in : In (cfg_entry g) (cfg_rpo g).
+Proof. destruct Hr0 as (rest & ->). left. reflexivity. Qed.
+
+(** Every label of the order has a parent. *)
+Lemma rpo_mem : forall x, In x (cfg_rpo g) -> nm_mem x M = true.
+Proof.
+  intros x Hx. apply nm_mem_find. destruct (name_eqb x (cfg_entry g)) eqn:E.
+  - apply name_eqb_true in E. subst. exists (cfg_entry g). exact (idoms_entry _ _ HM).
+  - apply name_eqb_false in E. destruct (idoms_meet _ _ HM _ Hx E) as (nw & Hnw & _). eauto.
+Qed.
+
+(** `idom_rank`: a label's parent is in the order, and before it, but
+    for the entry, its own parent. *)
+Lemma idom_rank : forall b c, In b (cfg_rpo g) -> nm_find b M = Some c ->
+  In c (cfg_rpo g) /\ ((b = cfg_entry g /\ c = b) \/ rank c < rank b).
+Proof.
+  assert (Main : forall k b c, (Z.to_nat (rank b) < k)%nat -> In b (cfg_rpo g) -> nm_find b M = Some c ->
+                 In c (cfg_rpo g) /\ ((b = cfg_entry g /\ c = b) \/ rank c < rank b)).
+  { induction k as [|k IH]; intros b c Hk Hb Hc; [lia|].
+    destruct (name_eqb b (cfg_entry g)) eqn:Eb.
+    - apply name_eqb_true in Eb. subst b. rewrite (idoms_entry _ _ HM) in Hc. injection Hc as <-.
+      split; [exact entry_in | left; auto].
+    - apply name_eqb_false in Eb.
+      destruct (idoms_meet _ _ HM _ Hb Eb) as (nw & Hnw & Hanc). rewrite Hc in Hnw. injection Hnw as <-.
+      destruct (in_split _ _ Hb) as (u & v & E).
+      destruct (idoms_parent _ _ HM _ _ _ E Eb) as (p & ps & Hp & Hps & Hin).
+      assert (HpR : In p (cfg_rpo g)) by (rewrite E; apply in_or_app; left; exact Hp).
+      pose proof (rank_before _ _ _ _ E Hp) as Hlt.
+      pose proof (Hanc _ _ Hps Hin (rpo_mem _ HpR)) as Hcp.
+      assert (Up : forall a y, anc M a y -> In y (cfg_rpo g) -> rank y < rank b ->
+                   In a (cfg_rpo g) /\ rank a <= rank y).
+      { intros a y Ha. induction Ha as [|y z Hf _ IHa]; intros Hy Hyb; [split; [exact Hy | lia]|].
+        assert (Hyk : (Z.to_nat (rank y) < k)%nat) by (pose proof (rank_nonneg _ Hy); lia).
+        destruct (IH _ _ Hyk Hy Hf) as [Hz Hzy].
+        assert (rank z <= rank y) by (destruct Hzy as [[_ ->] | Hzy]; lia).
+        destruct (IHa Hz ltac:(lia)) as [Ha Hrz]. split; [exact Ha | lia]. }
+      destruct (Up _ _ Hcp HpR Hlt) as [HcR Hrc]. split; [exact HcR | right; lia]. }
+  intros b c Hb Hc. exact (Main (S (Z.to_nat (rank b))) b c ltac:(lia) Hb Hc).
+Qed.
+
+(** `anc_rank`: an ancestor of a label of the order is in it, and is
+    the label or before it. *)
+Lemma anc_rank : forall a y, anc M a y -> In y (cfg_rpo g) ->
+  In a (cfg_rpo g) /\ (a = y \/ rank a < rank y).
+Proof.
+  intros a y H. induction H as [|y z Hf _ IH]; intros Hy; [auto|].
+  destruct (idom_rank _ _ Hy Hf) as [Hz Hzy]. destruct (IH Hz) as [Ha Haz]. split; [exact Ha|].
+  destruct Hzy as [[_ ->] | Hzy]; destruct Haz as [-> | Haz]; auto; right; lia.
+Qed.
+
+(** `common_dominator_nca`: the walk's meeting point is below every
+    common ancestor of its two labels. *)
+Lemma common_dominator_nca : forall fuel a b c,
+  In a (cfg_rpo g) -> In b (cfg_rpo g) ->
+  common_dominator fuel (labels_numbered (cfg_rpo g)) M a b = Some c ->
+  In c (cfg_rpo g) /\ forall D, anc M D a -> anc M D b -> anc M D c.
+Proof.
+  induction fuel as [|fuel IH]; intros a b c Ha Hb H; simpl in H; [discriminate H|].
+  destruct (name_eqb a b) eqn:E.
+  - injection H as <-. split; [exact Ha | auto].
+  - apply name_eqb_false in E. rewrite (rank_find _ Ha), (rank_find _ Hb) in H.
+    destruct (rank b <? rank a) eqn:Elt.
+    + apply Z.ltb_lt in Elt.
+      destruct (nm_find a M) as [a1|] eqn:Ea; [|discriminate H].
+      destruct (idom_rank _ _ Ha Ea) as [Ha1 _].
+      destruct (IH _ _ _ Ha1 Hb H) as [Hc Hn]. split; [exact Hc|].
+      intros D Hda Hdb. apply Hn; [|exact Hdb].
+      inversion Hda as [Eq | a' c' Hf Hdc]; subst.
+      * destruct (anc_rank _ _ Hdb Hb) as [_ [-> | Hlt]]; [congruence | lia].
+      * rewrite Ea in Hf. injection Hf as <-. exact Hdc.
+    + apply Z.ltb_ge in Elt.
+      destruct (nm_find b M) as [b1|] eqn:Eb; [|discriminate H].
+      destruct (idom_rank _ _ Hb Eb) as [Hb1 _].
+      destruct (IH _ _ _ Ha Hb1 H) as [Hc Hn]. split; [exact Hc|].
+      intros D Hda Hdb. apply Hn; [exact Hda|].
+      inversion Hdb as [Eq | b' c' Hf Hdc]; subst.
+      * destruct (anc_rank _ _ Hda Ha) as [_ [-> | Hlt]]; [congruence | lia].
+      * rewrite Eb in Hf. injection Hf as <-. exact Hdc.
+Qed.
+
+Lemma common_fold_nca : forall cf others c0 nw,
+  In c0 (cfg_rpo g) -> (forall p, In p others -> In p (cfg_rpo g)) ->
+  fold_left (common_step cf (labels_numbered (cfg_rpo g)) M) others (Some c0) = Some nw ->
+  forall D, anc M D c0 -> (forall p, In p others -> anc M D p) -> anc M D nw.
+Proof.
+  intros cf others. induction others as [|p others IH]; simpl; intros c0 nw Hc0 Ho H D Hd Hp.
+  - injection H as <-. exact Hd.
+  - simpl in H.
+    destruct (common_dominator cf _ M p c0) as [c1|] eqn:E1; [|rewrite common_fold_none in H; discriminate H].
+    destruct (common_dominator_nca _ _ _ _ (Ho p (or_introl eq_refl)) Hc0 E1) as [Hc1 Hn].
+    refine (IH _ _ Hc1 (fun q Hq => Ho q (or_intror Hq)) H D _ (fun q Hq => Hp q (or_intror Hq))).
+    exact (Hn _ (Hp p (or_introl eq_refl)) Hd).
+Qed.
+
+(** `idoms_nca`: an ancestor of every predecessor of a label that has
+    a parent is an ancestor of the label's parent. *)
+Theorem idoms_nca : forall b D, In b (cfg_rpo g) -> b <> cfg_entry g ->
+  (forall p ps, nm_find b (cfg_preds g) = Some ps -> In p ps -> nm_mem p M = true -> anc M D p) ->
+  exists nw, nm_find b M = Some nw /\ anc M D nw.
+Proof.
+  intros b D Hb Hne Hd.
+  destruct (idoms_fold _ _ HM _ Hb Hne) as (cf & ps & first & others & nw & Hps & Hf & Hc & Hnw).
+  exists nw. split; [exact Hnw|].
+  assert (Hin : forall p, In p (first :: others) -> In p ps /\ nm_mem p M = true)
+    by (intros p Hp; rewrite <- Hf in Hp; apply filter_In in Hp; exact Hp).
+  refine (common_fold_nca _ _ _ _ _ _ Hc D _ _).
+  - exact (idoms_dom _ _ HM _ (proj2 (Hin first (or_introl eq_refl)))).
+  - intros p Hp. exact (idoms_dom _ _ HM _ (proj2 (Hin p (or_intror Hp)))).
+  - destruct (Hin first (or_introl eq_refl)) as [H1 H2]. exact (Hd _ _ Hps H1 H2).
+  - intros p Hp. destruct (Hin p (or_intror Hp)) as [H1 H2]. exact (Hd _ _ Hps H1 H2).
+Qed.
+
+End Nca.
 
 (** ## The children of each label *)
 
@@ -1053,6 +1367,61 @@ Proof.
     rewrite T1 in T2. injection T2 as <-.
     apply Hdom. split; [exact Ha|]. split; [exact (desc_trans _ _ _ _ Hnw Hnwp)|].
     exact (desc_trans _ _ _ _ (ex_intro _ _ Hap1) Hnwp).
+Qed.
+
+(** `dom_meet`: what dominates every reachable predecessor of a
+    reachable block other than the entry dominates the block, and is
+    not the block. This is the converse of `dom_edge`, and needs the
+    nearest common ancestor (`idoms_nca`): a fact that reaches a block
+    over every incoming edge rests on names whose definitions then
+    dominate it. *)
+Theorem dom_meet : forall l a, no_dups (map b_label (b0 :: rest)) = true ->
+  is_reachable doms l = true -> l <> b_label b0 ->
+  (forall p, edge (b0 :: rest) p l -> is_reachable doms p = true -> dominates doms a p = true) ->
+  dominates doms a l = true /\ a <> l.
+Proof.
+  intros l a Hnd Hl Hne Ha.
+  destruct (tree_facts _ _ _ Hdoms) as (g & M & kids & Hok & Hent & HM & Hk1 & Hk2 & Hmem & Hdom & _).
+  assert (Hr0 : exists r, cfg_rpo g = cfg_entry g :: r)
+    by (destruct (cfg_ok_rpo _ _ Hok) as (r & Er & _); eauto).
+  assert (Hrpo : forall x, desc kids (b_label b0) x -> In x (cfg_rpo g)).
+  { intros x [k Hx]. destruct (descn_inv _ _ _ _ Hx) as [[-> _] | (p0 & ks & k' & _ & _ & Hks & Hin)].
+    - rewrite <- Hent. exact (entry_in g Hr0).
+    - exact (proj1 (Hk1 _ _ _ Hks Hin)). }
+  (* Every label of the order is in the tree. *)
+  assert (Hdesc : forall x, In x (cfg_rpo g) -> desc kids (b_label b0) x).
+  { assert (Main : forall k x, (Z.to_nat (rank g x) < k)%nat -> In x (cfg_rpo g) -> desc kids (b_label b0) x).
+    { induction k as [|k IH]; intros x Hk Hx; [lia|].
+      destruct (name_eqb x (cfg_entry g)) eqn:Ex.
+      - apply name_eqb_true in Ex. rewrite Ex, Hent. apply desc_refl.
+      - apply name_eqb_false in Ex. destruct (idoms_meet _ _ HM _ Hx Ex) as (c & Hc & _).
+        destruct (idom_rank g M HM Hr0 _ _ Hx Hc) as [HcR [[E _] | Hlt]]; [congruence|].
+        assert (Ht : nm_find x (nm_remove (cfg_entry g) M) = Some c)
+          by (rewrite nm_find_remove, (proj2 (name_eqb_false _ _) Ex); exact Hc).
+        destruct (Hk2 _ _ Hx Ht) as (ks & Hks & Hin).
+        pose proof (rank_nonneg g M HM _ HcR).
+        exact (desc_kid _ _ _ _ _ (IH c ltac:(lia) HcR) Hks Hin). }
+    intros x Hx. exact (Main (S (Z.to_nat (rank g x))) x ltac:(lia) Hx). }
+  (* The tree's descendants are ancestors in M. *)
+  assert (Hanc : forall q p, desc kids q p -> anc M q p).
+  { intros q p [k Hk]. induction Hk as [|p0 ks b k _ IH Hks Hin]; [constructor|].
+    pose proof (proj2 (Hk1 _ _ _ Hks Hin)) as Ht. rewrite nm_find_remove in Ht.
+    destruct (name_eqb b (cfg_entry g)); [discriminate Ht|]. exact (anc_up _ _ _ _ Ht IH). }
+  assert (Hk1' : forall x ks k, nm_find x kids = Some ks -> In k ks -> nm_find k (nm_remove (cfg_entry g) M) = Some x)
+    by (intros x ks k Hx Hkx; exact (proj2 (Hk1 _ _ _ Hx Hkx))).
+  apply Hmem in Hl. pose proof (Hrpo _ Hl) as HlR. rewrite <- Hent in Hne.
+  destruct (idoms_nca g M HM Hr0 l a HlR Hne) as (nw & Hnw & Hanw).
+  { intros p ps Hps Hin Hm. pose proof (idoms_dom _ _ HM _ Hm) as HpR.
+    pose proof (cfg_ok_pred_edge _ _ Hok _ _ _ Hps Hin) as He.
+    pose proof (Ha p He (proj2 (Hmem p) (Hdesc _ HpR))) as Hd.
+    apply Hdom in Hd as (_ & _ & Hd). exact (Hanc _ _ Hd). }
+  assert (Hal : anc M a l) by exact (anc_up _ _ _ _ Hnw Hanw).
+  destruct (anc_desc M kids (cfg_entry g) (idoms_entry _ _ HM) Hk1' _ _ Hal ltac:(rewrite Hent; exact Hl))
+    as [Hea Hdl].
+  rewrite Hent in Hea. split.
+  - apply Hdom. auto.
+  - intros ->. destruct (idom_rank g M HM Hr0 _ _ HlR Hnw) as [HnR [[E _] | Hlt]]; [congruence|].
+    destruct (anc_rank g M HM Hr0 _ _ Hanw HnR) as [_ [-> | Hlt']]; lia.
 Qed.
 
 End Dominance.

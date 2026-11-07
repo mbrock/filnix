@@ -11,7 +11,6 @@
     | Name | Says |
     |---|---|
     | `step_let_holds` | a `let` that continued computed its result as Interval.v's `let_holds` says |
-    | `dominating` | a name's single definition is at a site dominating a point |
     | `site_dominates_trans` | dominance of sites composes |
     | `operand_dominating` | a dominating definition's single-definition operands dominate too |
     | `interval_at` | a derived interval holds where its names dominate the frame's point |
@@ -20,6 +19,7 @@
     | `cap_access_hull` | an access between two passed checks of one capability, near offsets apart, passes (needs `objects_fit`) |
     | `hull_span_passes` | each span `hull_covered/7` reads off a live fact is a passed check of the access's capability |
     | `hull_access_not_unchecked` | a raw access accepted by `hull_covered/7` gives no `unchecked`, where the live facts hold and their pointers dominate the point |
+    | `run_access_checked`, `interp_access_checked` | along every run, a frame that is not doomed runs no raw access or raw call to `unchecked`, `hull_covered` included |
 
     ## Decisions
 
@@ -29,11 +29,12 @@
     | Interval.v's hypothesis speaks of `iv_op` lets at an integer class | a check's proof or a float sum does not compute by `alu`; no derivation walks through one |
     | `guard_chain` and `pointer_distance` are rewritten by equations, never unfolded in a hypothesis | unfolding makes the kernel compare two 64-deep unfoldings, and `Qed` takes minutes |
     | a write through the hull needs some write check of the capability, not of the two bounding spans | `hull_covered/7` takes write rights from any span; a passed write check means the capability is not read-only |
-    | the hull theorem assumes its facts' pointers dominate the point | a fact reaches a block over every incoming edge (the meet); that its pointer then dominates is a dominator-tree fact still to prove | *)
+    | the facts' pointers dominating the point is Invariant.v's (`live_dom`), not a hypothesis | inside a block it is `use_dominated`; over a block's entry it is `dom_meet` |
+    | `Hull R` carries runs between two instances of `Machine R` | Persistence.v and Single.v each instantiate it, and `mstep` is an inductive, new in each instance | *)
 
-From Stdlib Require Import String ZArith List Bool Lia.
+From Stdlib Require Import String ZArith List Bool Lia Relations.
 From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Semantics Machine Validate
-  Dominance Interval Sites Identity Coverage Walk Single Evidence.
+  Dominance Interval Sites Identity Coverage Walk Invariant Persistence Single Evidence.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -71,16 +72,7 @@ Lemma let_holds_name : forall ge e0 e e' n k o args,
   lookup n e' = lookup n e -> let_holds ge e0 e n k o args -> let_holds ge e0 e' n k o args.
 Proof. intros ge e0 e e' n k o args E H. unfold let_holds in *. rewrite E. exact H. Qed.
 
-Lemma value_temps_in : forall vs a, In (Tmp a) vs -> In a (value_temps vs).
-Proof. intros vs a H. unfold value_temps. apply in_flat_map. exists (Tmp a). split; [exact H | left; reflexivity]. Qed.
-
 (** ## Definitions that dominate a point *)
-
-(** `dominating f l k n`: n's single definition is at a site that
-    dominates index k of block l. *)
-Definition dominating (f : func) (l : name) (k : Z) (n : name) : Prop :=
-  exists s D, lookup n (single_definitions f) = Some D /\ In (n, s, D) (def_positions f) /\
-    site_dominates (fn_doms f) l k s = true.
 
 (** What dominates a site dominating a point dominates the point. *)
 Lemma site_dominates_trans : forall b0 rest doms l k d j s,
@@ -506,3 +498,78 @@ Qed.
 End Chain.
 
 
+
+(** ## No unchecked access through the hull, along every run *)
+
+(** `Hull R` joins Persistence.v's invariant, which says the hull's
+    facts hold and dominate the point, with Single.v's, which says the
+    single definitions there replay. Each instantiates `Machine R` on
+    its own, and an instance's `mstep` is an inductive of its own, so a
+    run of one is carried over to the other (`mreachable_same`). *)
+Module Hull (R : Runtime).
+
+Module P := Persistence R.
+Module S := Single R.
+
+Lemma mstep_same : forall ge st st', P.I.RM.mstep ge st st' -> S.ID.RM.mstep ge st st'.
+Proof. intros ge st st' H. destruct H; econstructor; eassumption. Qed.
+
+Lemma mreachable_same : forall ge st st', P.I.RM.mreachable ge st st' -> S.ID.RM.mreachable ge st st'.
+Proof.
+  intros ge st st' H. induction H as [st st' H | st | st1 st2 st3 _ IH1 _ IH2].
+  - apply rt_step. exact (mstep_same _ _ _ H).
+  - apply rt_refl.
+  - exact (rt_trans _ _ _ _ _ IH1 IH2).
+Qed.
+
+(** `run_access_checked`: in every state of a run of a checked
+    module's function that starts ready, a frame that is not doomed runs
+    no raw access, and no raw call, to an `unchecked` outcome, where the
+    runtime spares the pass's facts at safepoints (`spares`) and its
+    free keeps identities (`free_ids`). *)
+Theorem run_access_checked : forall ge md f xs fr m fuel s0 c s l i rest j why,
+  checked_module md -> ge_module ge = md -> ge_free ge = R.free -> P.I.spares ge md -> free_ids R.free ->
+  In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
+  P.I.RM.mreachable ge (mkConfig fr [] m fuel, s0) (c, s) ->
+  fr_doomed (c_frame c) = None -> fr_at (c_frame c) = Exec l (i :: rest) j ->
+  (raw_access i <> None \/ exists r cl args, i = RawCall r cl args) ->
+  inst_step ge (c_frame c) (c_mem c) i <> Some (IStop (Unchecked why)).
+Proof.
+  intros ge md f xs fr m fuel s0 c s l i rest j why Hmd Hge Hfree Hsp Hfi Hin Hcf H0 Hreach Hd Ha Hi.
+  destruct (P.run_access_not_unchecked _ _ _ _ _ _ _ _ _ _ _ _ _ _ why Hmd Hge Hfree Hsp Hin Hcf H0 Hreach Hd Ha Hi)
+    as [Hn | (b & k & live & fa & q & Hb & Hk & Hl & Hdom & Hfa & Hh)]; [exact Hn|].
+  pose proof (S.run_sinv _ _ _ _ _ _ _ _ _ Hmd Hge Hfree Hfi Hin Hcf H0 (mreachable_same _ _ _ Hreach))
+    as [[Hsh Hsc] _].
+  simpl in Hsh, Hsc. destruct Hsc as [Hsc | Hsc]; [congruence|].
+  destruct Hsh as [Hinf Hsh]. rewrite Ha in Hsh. destruct Hsh as [Hr _].
+  pose proof (P.I.RM.mreachable_ready _ _ _ Hfree Hreach H0) as Hready.
+  pose proof (R.address_space _ _ Hready) as Hfit.
+  destruct (skipn_cons _ _ _ _ _ (eq_sym Hk)) as (_ & _ & Hlen).
+  assert (Hpt : point_site (fr_fn (c_frame c)) (fr_at (c_frame c)) = Some (l, Z.of_nat k))
+    by (rewrite Ha, Hk; apply point_site_exec; [exact Hb | lia]).
+  exact (hull_access_not_unchecked ge md (c_frame c) (c_mem c) l (Z.of_nat k) Hmd Hinf Hr Hsc Hpt
+           i q fa live why Hfit Hl (Hdom Hr) Hfa Hh).
+Qed.
+
+End Hull.
+
+(** ## The interpreter's runtime *)
+
+Module InterpHull := Hull InterpRuntime.
+
+(** `interp_access_checked`: under the interpreter's runtime, in every
+    state of a run of a checked module's function that starts ready, a
+    frame that is not doomed runs no raw access or raw call to
+    `unchecked`. *)
+Corollary interp_access_checked : forall md globals f xs fr m fuel s0 c s l i rest j why,
+  let ge := mkGenv md globals InterpRuntime.free in
+  checked_module md -> In (IFunc f) md -> call_frame f xs = Some fr -> InterpRuntime.ready s0 m ->
+  InterpHull.P.I.RM.mreachable ge (mkConfig fr [] m fuel, s0) (c, s) ->
+  fr_doomed (c_frame c) = None -> fr_at (c_frame c) = Exec l (i :: rest) j ->
+  (raw_access i <> None \/ exists r cl args, i = RawCall r cl args) ->
+  inst_step ge (c_frame c) (c_mem c) i <> Some (IStop (Unchecked why)).
+Proof.
+  intros md globals f xs fr m fuel s0 c s l i rest j why ge Hmd Hin Hcf H0 Hreach Hd Ha Hi.
+  exact (InterpHull.run_access_checked ge md f xs fr m fuel s0 c s l i rest j why
+           Hmd eq_refl eq_refl (interp_spares ge md) free_res_ids Hin Hcf H0 Hreach Hd Ha Hi).
+Qed.

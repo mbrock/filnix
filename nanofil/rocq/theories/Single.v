@@ -67,11 +67,6 @@ Definition replays (ge : genv) (once : list (name * def)) (e : env) (m : Memory.
     (forall a, In a (inst_uses i) -> once_has once a = true -> lookup a (fr_env fr0) = lookup a e) /\
     persists m1 m.
 
-(** The dominator intervals of a function, as the validator computed
-    them. *)
-Definition fn_doms (f : func) : nmap (Z * Z) :=
-  match block_intervals (fn_blocks f) with Some doms => doms | None => nm_empty end.
-
 (** `point_site f pt`: the block and index of pt, a block's entry
     being before its phis, at -1. *)
 Definition point_site (f : func) (pt : point) : option (name * Z) :=
@@ -135,38 +130,7 @@ Definition waiting (ge : genv) (md : module) (m : Memory.mem) (fp : frame * pend
 Definition sinv (ge : genv) (md : module) (c : config) : Prop :=
   running ge md (c_mem c) (c_frame c) /\ Forall (waiting ge md (c_mem c)) (c_callers c).
 
-(** ## The function's facts *)
-
-(** A function of a checked module is valid: its blocks, their
-    intervals, distinct labels, and dominated uses. *)
-Lemma func_facts : forall md f,
-  checked_module md -> In (IFunc f) md ->
-  exists b0 rest, fn_blocks f = b0 :: rest /\ block_intervals (b0 :: rest) = Some (fn_doms f) /\
-    no_dups (map b_label (fn_blocks f)) = true /\ definitions_dominate f (fn_doms f) = true.
-Proof.
-  unfold checked_module, valid. intros md f [Hv _] Hin.
-  destruct (existsb _ md); [discriminate Hv|]. injection Hv as Hv.
-  unfold valid_items in Hv. apply andb_true_iff in Hv as [_ Hv]. rewrite forallb_forall in Hv.
-  specialize (Hv _ Hin). simpl in Hv. unfold valid_func, fn_doms in *.
-  destruct (fn_blocks f) as [|b0 bs] eqn:Eb; [discriminate Hv|].
-  destruct (block_intervals (b0 :: bs)) as [doms|] eqn:Ed; [|discriminate Hv].
-  repeat match goal with Hb : (_ && _) = true |- _ => apply andb_true_iff in Hb as [? ?] end.
-  exists b0, bs. auto.
-Qed.
-
 (** ## Sites *)
-
-Lemma find_block_unique : forall bs l b b',
-  no_dups (map b_label bs) = true -> find_block l bs = Some b -> In b' bs -> b_label b' = l -> b' = b.
-Proof.
-  induction bs as [|b0 bs IH]; simpl; intros l b b' Hnd Hf Hin Hl; [discriminate Hf|].
-  apply andb_true_iff in Hnd as [Hn Hnd]. destruct (name_eqb (b_label b0) l) eqn:E.
-  - injection Hf as <-. apply name_eqb_true in E. destruct Hin as [-> | Hin]; [reflexivity|].
-    exfalso. apply negb_true_iff in Hn. pose proof (mem_false _ _ Hn (b_label b') (in_map _ _ _ Hin)) as Hne.
-    rewrite E, Hl in Hne. apply name_eqb_false in Hne. exact (Hne eq_refl).
-  - destruct Hin as [-> | Hin]; [rewrite Hl in E; apply name_eqb_false in E; contradiction|].
-    exact (IH _ _ _ Hnd Hf Hin Hl).
-Qed.
 
 (** An instruction's single definition is at an instruction's site. *)
 Lemma dinst_site : forall f n s i, In (n, s, DInst i) (def_positions f) -> exists d j, s = SAt d j.
@@ -354,14 +318,6 @@ Proof.
 Qed.
 
 (** ## Points *)
-
-Lemma skipn_cons : forall (A : Type) k (l : list A) x rest,
-  skipn k l = x :: rest -> nth_error l k = Some x /\ skipn (S k) l = rest /\ (S k <= length l)%nat.
-Proof.
-  intros A k. induction k as [|k IH]; intros l x rest H; destruct l as [|y l]; simpl in *; try discriminate H.
-  - injection H as -> ->. split; [reflexivity|]. split; [reflexivity | lia].
-  - destruct (IH _ _ _ H) as (H1 & H2 & H3). split; [exact H1|]. split; [exact H2 | lia].
-Qed.
 
 Lemma skipn_nil_length : forall (A : Type) k (l : list A), skipn k l = [] -> (k <= length l)%nat -> k = length l.
 Proof.
