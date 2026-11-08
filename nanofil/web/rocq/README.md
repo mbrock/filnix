@@ -227,10 +227,18 @@ in order, with no dialog or nonfunctional controls.
 
 The explorer uses dterm's compact rows and rules rather than nested cards:
 hypothesis names and types share aligned rows even on narrow screens, and
-⊢ separates the conclusion from its context. One content area scrolls vertically;
-the title, layout choice and navigation occupy a separate grid row, not a
-sticky overlay that can cover hypothesis lines. There are no independently
-scrolling script or goal panes. All three layouts still use the same printer.
+⊢ separates the conclusion from its context. The name, navigation, layout
+choice and close button share one header row on desktop, outside the
+scrollers, so nothing slides underneath it. On desktop the script and the
+selected state are two panes that scroll on their own: the script pane
+keeps the selected tactic in view, and the state pane keeps its position
+from step to step. A wide state pane sets short hypotheses (34 characters
+or fewer, as Rocq prints them) two to four to a row, in columns whose names
+and types align, in Rocq's order; long ones and local definitions keep a
+whole row. The selected tactic is highlighted beside its state, so the state
+repeats no heading; it counts open goals only when there are several. On a
+phone the explorer is one vertical flow with no nested scrolling, and the
+selected state follows its tactic. All three layouts still use the same printer.
 Tactic locals come from captured contexts before and after each command,
 so newly introduced and consumed names share the goals' variable typography.
 Intro patterns keep their delimiters inline, rather than looking like nested

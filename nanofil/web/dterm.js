@@ -32,8 +32,9 @@ document.addEventListener("mouseover", (event) => {
 //   it) on the opening line and each of the rest on a line of its own,
 //   aligned under the first or hung --indent past the term's start; when
 //   or, as Lisp is set, all from the next line, a step past the functor;
-//   when all after the first are simple (atoms, numbers, variables, tmp(Q)) they
-//   fill their lines instead, aligned or hung; a list of two or more
+//   when all after the first are simple (atoms, numbers, variables, tmp(Q)),
+//   or a Rocq application's are mostly simple, they fill their lines
+//   instead, aligned or hung; a list of two or more
 //   compound terms is on one line only within half the ribbon;
 // - a chain of one operator: on one line, or a line per operand, aligned
 //   under the first: a comma ends its line, → and ; start theirs, and any
@@ -188,7 +189,13 @@ document.addEventListener("mouseover", (event) => {
     // than a phrase: half the ribbon.
     const column = box === el && items.filter((it) => !it.simple).length > 1;
     const alts = [ONE(CAT([O, line(0, n), close]), column ? 0.5 : 1)];
-    if (items.slice(1).every((it) => it.simple)) {
+    // A Rocq proof term applies a lemma to many hypotheses and a few
+    // compound arguments: those fill their lines too, rather than a line
+    // per hypothesis.
+    const fills = items.slice(1).every((it) => it.simple) ||
+      (el.classList.contains("app") && el.closest(".dterm-rocq, code.rq") &&
+        items.slice(1).filter((it) => it.simple).length >= 4);
+    if (fills) {
       // Filled: aligned under the first item, or hung.
       let L = items[0].d, H = CAT([O, items[0].d]);
       for (const it of items.slice(1)) {
@@ -196,7 +203,8 @@ document.addEventListener("mouseover", (event) => {
         H = OR(CAT([H, sp, it.d]), CAT([FLUSH(H, it.at), step, it.d]));
       }
       alts.push(CAT([O, L, close]), CAT([H, close, T(0, false, 1)]));
-    } else {
+    }
+    if (!items.slice(1).every((it) => it.simple)) {
       for (let k = 1; k < n; k++) {
         const rest = vcat(items.slice(k).map((it, i) => [it.d, items[k + i + 1]?.at]));
         const at = items[k].at, first = k > 1 ? ONE(line(0, k)) : line(0, k);

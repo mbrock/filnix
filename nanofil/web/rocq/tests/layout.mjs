@@ -215,8 +215,10 @@ try {
         ${fitsPage}
         assert(proof.querySelector('.rq-snapshot:not([hidden]) h3 .rq-tac-match'), "selected match not typeset");
         assert(proof.querySelector('dialog:modal'), "proof did not open modally");
-        assert(getComputedStyle(proof.querySelector('.rq-timeline')).overflowY === 'visible',
-          "timeline has a nested scroll area");
+        // A phone reads the proof as one flow; desktop gives the script
+        // and the selected state a pane each.
+        assert(getComputedStyle(proof.querySelector('.rq-timeline')).overflowY === (innerWidth <= 720 ? 'visible' : 'auto'),
+          "timeline scrolling does not match the width");
       `);
       browser("open", source("Ops"));
       console.log(`ok ${layout} selection and persistence at ${width}px`);
@@ -236,8 +238,9 @@ try {
       assert(link.querySelector('[data-v="reg2"] sub')?.textContent === '2', "tactic local not subscripted");
       assert(proof.querySelector('.rq-position').textContent.endsWith('/ 20'), "tactic count disagrees with source");
       const dialog = proof.querySelector('dialog');
+      const panes = innerWidth <= 720 ? '.rq-explorer' : '.rq-timeline, .rq-states, .rq-script';
       for (const el of dialog.querySelectorAll('*'))
-        if (!el.matches('.rq-explorer') && el.getClientRects().length && ['auto','scroll'].includes(getComputedStyle(el).overflowY))
+        if (!el.matches(panes) && el.getClientRects().length && ['auto','scroll'].includes(getComputedStyle(el).overflowY))
           assert(el.scrollHeight <= el.clientHeight + 1, "nested vertical scrolling in proof");
       if (innerWidth === 320) {
         const row = link.getBoundingClientRect(), state = proof.querySelector('.rq-states').getBoundingClientRect();
@@ -287,7 +290,8 @@ try {
       links[links.indexOf(rewrite) - 1].click();
       for (let i=0; i<4; i++) await new Promise(requestAnimationFrame);
       const header = proof.querySelector('.rq-dialog-head');
-      const content = proof.querySelector('.rq-explorer');
+      const narrow = innerWidth <= 720;
+      const content = proof.querySelector(narrow ? '.rq-explorer' : '.rq-states');
       const top = header.getBoundingClientRect().top;
       content.scrollTop = 500;
       await new Promise(requestAnimationFrame);
@@ -297,7 +301,14 @@ try {
       assert(Math.abs(header.getBoundingClientRect().top - top) < 1, "header scrolled away");
       const scrollers = [...proof.querySelectorAll('dialog *')].filter(e =>
         e.getClientRects().length && ['auto','scroll'].includes(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight + 1);
-      assert(scrollers.length === 1 && scrollers[0] === content, "proof has multiple vertical scroll areas");
+      if (narrow) assert(scrollers.length === 1 && scrollers[0] === content, "phone proof has multiple vertical scroll areas");
+      else assert(scrollers.every(e => e.matches('.rq-timeline, .rq-states')), "desktop proof scrolls outside its two panes");
+      // The selected tactic stays in view in its own pane.
+      if (!narrow) {
+        const pane = proof.querySelector('.rq-timeline').getBoundingClientRect();
+        const row = links[links.indexOf(rewrite) - 1].getBoundingClientRect();
+        assert(row.top >= pane.top - 1 && row.bottom <= pane.bottom + 1, "selected tactic scrolled out of its pane");
+      }
     `);
     console.log(`ok nested patterns, compact bullets, braced focus and non-overlapping header at ${width}px`);
   }

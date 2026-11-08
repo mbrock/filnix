@@ -65,7 +65,7 @@ for (const proof of document.querySelectorAll(".rq-captured")) {
       title.textContent = proof.previousElementSibling?.querySelector('.def')?.textContent || 'Proof';
       title.title = title.textContent;
       dialog.setAttribute('aria-labelledby', title.id);
-      heading.append(title);
+      heading.append(title, controls);
       if (selectLayout) {
         const layout = selectLayout.cloneNode(true);
         layout.removeAttribute('id');
@@ -81,7 +81,7 @@ for (const proof of document.querySelectorAll(".rq-captured")) {
       close.textContent = '×';
       close.setAttribute('aria-label', 'Close proof');
       close.addEventListener('click', () => dialog.close());
-      heading.append(close, controls);
+      heading.append(close);
       dialog.append(heading, explorer);
       proof.append(dialog);
       dialog.addEventListener('click', event => {
@@ -156,15 +156,19 @@ for (const proof of document.querySelectorAll(".rq-captured")) {
     stateList.style.order = selected * 2 + 1;
     if (focus) links[selected].focus({ preventScroll: true });
     // dterm.js's ResizeObserver remeasures newly visible clauses.
-    // The header has its own grid row, outside the one content scroller:
-    // large contexts cannot slide underneath it. Never scroll the page.
+    // The header has its own grid row, outside the scrollers: large
+    // contexts cannot slide underneath it. Never scroll the page. On a
+    // phone the explorer is one flow, and the selected tactic goes to its
+    // top; on desktop the script pane keeps the tactic in view and the
+    // state pane keeps its position, so a long context reads in place.
     if (dialog?.open) requestAnimationFrame(() => requestAnimationFrame(() => {
-      const row = links[selected].getBoundingClientRect();
-      const view = explorer.getBoundingClientRect();
       const narrow = getComputedStyle(timeline).display === 'contents';
-      const delta = narrow || row.top < view.top ? row.top - view.top - 4
+      const pane = narrow ? explorer : timeline;
+      const row = links[selected].getBoundingClientRect();
+      const view = pane.getBoundingClientRect();
+      const delta = narrow ? row.top - view.top : row.top < view.top ? row.top - view.top - 4
         : row.bottom > view.bottom ? row.bottom - view.bottom + 4 : 0;
-      explorer.scrollTop += delta;
+      pane.scrollTop += delta;
     }));
   }
   links.forEach((link, i) => link.addEventListener("click", () => show(i)));

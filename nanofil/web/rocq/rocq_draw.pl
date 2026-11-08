@@ -176,7 +176,8 @@ term(E, Env) --> term_(E, Env), !.
 term_(id(_, X), Env) --> name_ref(X, Env).
 term_(hole(_), _) --> el(span, "v anon", [title="_"], "_").
 term_(meta(_, X), _) --> el(span, "rq-meta", ( "?", var_def(X) )).
-term_(ltac(_, T), Env) --> kw("ltac:"), "(", tactic_block(T, Env), ")".
+term_(ltac(_, T), Env) --> { tactic_structural(T) }, !, kw("ltac:"), "(", tactic_block(T, Env), ")".
+term_(ltac(_, T), Env) --> kw("ltac:"), el(span, paren, tactic_inline(T, Env)).
 term_(num(_, N), _) --> el(span, n, esc(N)).
 term_(str(_, S), _) --> el(span, s, ( "\"", esc(S), "\"" )).
 term_(explicit(_, X), Env) --> el(span, explicit, ( el(span, at, "@"), name_ref(X, Env) )).
@@ -681,9 +682,9 @@ proof_(S, pf(Steps, End)) -->
        ( el(summary, none, ( el(span, "proof-invite", "Explore proof"), " ", el(span, "proof-count", esc(Count)) )),
          el(div, "rq-explorer",
             ( el(div, "rq-proof-controls", [hidden=hidden],
-                 ( el(button, none, [type=button, 'data-move'= -1, 'aria-label'="Previous proof step"], "← Previous"),
+                 ( el(button, none, [type=button, 'data-move'= -1, 'aria-label'="Previous proof step", title="Previous step (←)"], "←"),
                    el(output, "rq-position", ['aria-live'=polite], "Initial goal"),
-                   el(button, none, [type=button, 'data-move'=1, 'aria-label'="Next proof step"], "Next →") )),
+                   el(button, none, [type=button, 'data-move'=1, 'aria-label'="Next proof step", title="Next step (→)"], "→") )),
               el(div, "rq-walk",
                  ( el(nav, "rq-timeline", [hidden=hidden, 'aria-label'="Proof steps"], focus_nodes(Timeline, proof_link(Id))),
                    el(div, "rq-states", ( snapshot(Id, States, snap(Start, 0, [], none, []), Initial),
@@ -743,10 +744,9 @@ snapshot_lookup(Id, States, Snap) -->
 
 snapshot(Id, _, Snap, Goals) -->
     { Snap = snap(T, _, _, F, _), format(atom(Sid), "~w-~d", [Id, T]),
-      ( is_list(Goals) -> length(Goals, N) ; N = 0 ),
-      format(string(Count), "~d open", [N]) },
+      ( is_list(Goals) -> length(Goals, N) ; N = 0 ) },
     el(section, "rq-snapshot", [id=Sid],
-       ( el(header, "rq-state-heading", ( el(h3, clause, step_label(Snap)), el(span, "rq-goal-count", esc(Count)) )),
+       ( el(header, "rq-state-heading", ( el(h3, clause, step_label(Snap)), goal_count(N) )),
          el(p, "rq-changes", ['aria-live'=polite], []),
          ( { Goals == null }
          -> ( { F = end(Kw), memberchk(Kw, ['Qed', 'Defined']) }
@@ -755,6 +755,10 @@ snapshot(Id, _, Snap, Goals) -->
          ; { Goals == [] }
          -> el(p, "rq-complete", "No remaining goals.")
          ; captured_goals(Goals) ) )), html_flush.
+
+% One open goal is the usual case; only several are worth a word.
+goal_count(N) --> { N > 1 }, !, { format(string(Count), "~d open", [N]) }, el(span, "rq-goal-count", esc(Count)).
+goal_count(_) --> [].
 
 captured_goals([G|Gs]) --> captured_goal(G), seq(Gs, secondary_goal).
 
@@ -783,14 +787,20 @@ hyp_parts(Text, hyp(Names, Body, Ty, Text)) :-
 hyp_parts(Text, hyp([], none, none, Text)).
 
 captured_hyp(Env, hyp(Ns, Body, Ty, Raw)) -->
-    { atomic_list_concat(Ns, ',', Key) },
-    el(div, "rq-hyp", ['data-hyp'=Key, 'data-raw'=Raw],
+    { atomic_list_concat(Ns, ',', Key), ( Body == none, Ty \== none, short_hyp(Raw) -> C = "rq-hyp" ; C = "rq-hyp wide" ) },
+    el(div, C, ['data-hyp'=Key, 'data-raw'=Raw],
        ( { Ty == none } -> el(code, "rq-unparsed", esc(Raw))
        ; el(div, "rq-hyp-names", ( sep_vars(Ns), ( { Body == none } -> " :" ; " :=" ) )),
          el(div, "rq-hyp-type goal",
             ( { Body == none } -> blk(Ty, Env)
             ; { block(Body) ; block(Ty) } -> blk(Body, Env), " : ", blk(Ty, Env)
             ; term(Body, Env), " : ", term(Ty, Env) )) )), html_flush.
+
+% A short hypothesis shares its row with others when the context is wide;
+% a long one, or a local definition, keeps the whole row.
+short_hyp(Raw) :-
+    split_string(Raw, " \n", " \n", Ws), exclude(==(""), Ws, Ws1),
+    atomic_list_concat(Ws1, ' ', Flat), atom_length(Flat, L), L =< 34.
 
 sep_vars([]) --> [].
 sep_vars([N]) --> !, var_def(N).
