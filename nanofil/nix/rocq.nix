@@ -10,7 +10,9 @@
 # (rocq/agree.sh), and Lua's own functions (rocq/lua.sh); and that its
 # validator reaches ir:valid_module/1's verdict on mutants of every checked module
 # in the same matrix, and of the tests/c/prog programs with aliases and
-# weak, thread-local or constructor data (rocq/valid.sh).
+# weak, thread-local or constructor data (rocq/valid.sh). Both check that
+# the modules the program proofs are about are what nanofil makes today
+# (rocq/programs.sh).
 {
   pkgs,
   filcc,
@@ -77,6 +79,9 @@ let
       ../rocq/lua.sh
       ../rocq/mutants.pl
       ../rocq/tests
+      ../rocq/programs.sh
+      ../rocq/gallina.pl
+      ../rocq/programs
     ];
   };
   syntax = pkgs.lib.fileset.toSource {
@@ -119,6 +124,10 @@ pkgs.runCommandCC
       export NANOFIL_STATE=$TMPDIR/nanofil.state
       python3 tests/watch.py --label "Rocq parse/typecheck" -- bash web/rocq/tests/parse.sh
       mark parse
+      # The modules the program proofs are about are nanofil's current
+      # products (rocq/programs.sh, Panics.v).
+      python3 tests/watch.py --label "Rocq program fixtures" -- bash rocq/programs.sh
+      mark programs
     ''
     + (
       if !full then

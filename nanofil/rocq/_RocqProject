@@ -1,5 +1,7 @@
 -R theories Nanofil
 theories/Term.v
+theories/SumCode.v
+theories/HiCode.v
 theories/Maps.v
 theories/Ieee.v
 theories/Syntax.v
