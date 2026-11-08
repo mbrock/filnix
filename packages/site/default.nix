@@ -79,7 +79,8 @@ let
         mkdir -p $out
         cp ${src}/nanofil/web/dterm.css ${src}/nanofil/web/dterm.js $out/
         swipl ${src}/nanofil/web/dterm.pl $out ${src}/nanofil/src \
-          --doc=${src}/nanofil/docs/guide.md --doc=${src}/nanofil/docs/formal.md </dev/null
+          --doc=${src}/nanofil/docs/guide.md --doc=${src}/nanofil/docs/formal.md \
+          --concepts=${src}/nanofil/docs/concepts --rocq=${src}/nanofil/rocq/theories </dev/null
       '';
   rocqPages =
     pkgs.runCommand "filnix-rocq-pages" { nativeBuildInputs = [ swipl ]; }
@@ -88,7 +89,8 @@ let
         cp ${src}/nanofil/web/rocq/dterm-rocq.css ${src}/nanofil/web/rocq/dterm-rocq.js $out/
         mapfile -t rocq < <(cd ${src} && find nanofil -name '*.v' | sort)
         swipl ${src}/nanofil/web/rocq/dterm_rocq.pl $out ${src} \
-          --states=${proofStates} --prolog=${src}/nanofil/src "''${rocq[@]}" </dev/null
+          --states=${proofStates} --prolog=${src}/nanofil/src \
+          --concepts=${src}/nanofil/docs/concepts "''${rocq[@]}" </dev/null
       '';
 in
 pkgs.runCommand "filnix-site"

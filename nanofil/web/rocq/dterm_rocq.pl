@@ -9,12 +9,14 @@
     of the names it defines, by the sections its (** * Title *) comments
     make, over the files.
 
-    Usage: swipl dterm_rocq.pl OUT ROOT [--prolog=DIR] FILE.v... draws
+    Usage: swipl dterm_rocq.pl OUT ROOT [--prolog=DIR] [--concepts=DIR] FILE.v... draws
     ROOT/FILE.v as OUT/PAGE.html and OUT/index.html, ROOT the repository
     and FILE its path there (nanofil/rocq/Core.v is rocq-Core.html). With --prolog,
     name/N and module.pl in comments link to nanofil's Prolog pages, one
     directory up (../MODULE.html), for the predicates DIR's .pl files
-    define. The pages expect dterm.css and dterm.js one directory up and
+    define. With --concepts=DIR, [[name]] in comments links to a concept
+    of DIR (docs/concepts, web/concepts.pl), whose page is one directory
+    up, and ![[name]] embeds it. The pages expect dterm.css and dterm.js one directory up and
     dterm-rocq.css and dterm-rocq.js beside them, as on the Filnix wiki
     (nanofil/rocq/).
 */
@@ -29,6 +31,7 @@
 :- use_module(library(time)).
 :- use_module(rocq_syntax).
 :- use_module(rocq_draw).
+:- use_module('../concepts').
 
 :- include('../dterm_html').
 
@@ -36,10 +39,15 @@
 
 main :-
     current_prolog_flag(argv, [Out, Root|Args0]),
-    (   select(C, Args0, Args), atom_concat('--states=', StateFile, C)
+    (   select(C, Args0, Args1), atom_concat('--states=', StateFile, C)
     ->  setup_call_cleanup(open(StateFile, read, SS), json_read_dict(SS, States), close(SS)),
         nb_setval(rq_capture, States)
-    ;   Args = Args0, nb_setval(rq_capture, none)
+    ;   Args1 = Args0, nb_setval(rq_capture, none)
+    ),
+    %  --concepts=DIR: [[name]] in comments links to DIR's concepts.
+    (   select(K, Args1, Args), atom_concat('--concepts=', CDir, K)
+    ->  concepts_load(CDir), nb_setval(rq_concepts, '../')
+    ;   Args = Args1
     ),
     (   select(A, Args, Files), atom_concat('--prolog=', Dir, A)
     ->  index_prolog(Dir), nb_setval(rq_prolog, '../')

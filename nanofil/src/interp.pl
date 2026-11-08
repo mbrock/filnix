@@ -67,7 +67,7 @@
     stay intact; every alias consults the same region's current bounds.
     Module-defined functions take precedence over this external adapter.
 
-    A capability's Base is stable identity, never recovered from address
+    A [[capability]]'s Base is stable identity, never recovered from address
     bits. All exposed capabilities for an object have the same rights
     (`obj(Base)` or `ro(Base)`); snapshot initialization is private until
     its readonly capability is published. Memory-using injected pointer

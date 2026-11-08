@@ -318,9 +318,8 @@ The Markdown stays the source and reads the same on GitHub. On the page:
 - `name/N`, `name//N` and `module:name/N` link to the definition, with
   a card of its PlDoc signature and first paragraph on hover; `name.pl`
   and `../src/name.pl` links go to the module's page.
-- Glossary entries are anchors, and an emphasized or code mention of a
-  glossary term links to its entry. Each entry must name the predicate
-  or module that defines it.
+- An emphasized or code mention of a concept's name links to its page
+  ([Concept nodes](#concept-nodes-november-2026)).
 - Each module page lists the guide's sections that name it and its
   module-map entry; each predicate's aside lists the sections that
   mention it.
@@ -333,8 +332,8 @@ Nix check runs.
 `nanofil/formal.html` (dterm.pl takes any number of `--doc=` documents).
 Each module page lists every document's sections that name it; a
 document without a module map, like formal.md, lists the sections that
-mention the module. A glossary term mentioned in one document links to
-its entry in another, and a link to a `.nix` file goes to its
+mention the module. A concept mentioned in one document links to its
+page, and a link to a `.nix` file goes to its
 [dterm-nix](#nix-november-2026) page.
 
 ### Diagrams
@@ -380,6 +379,55 @@ under them, and dterm.js breaks the inline terms as it breaks Prolog's.
 Rocq in formal.md's prose (`cap := None | Obj base`, `Ret v`, the
 `Theorem`) is drawn as Rocq, beside the Prolog it transcribes drawn as
 Prolog. It draws the Campaign 1 development in [rocq/](../rocq/).
+
+## Concept nodes (November 2026)
+
+nanofil is meant to read as one literate program in three languages:
+the Prolog that compiles, the Rocq that models it, and the documents
+that explain both. Their terms (a capability, a renew, a doomed frame) were explained in the guide's glossary, again in a
+module's header, and again in a `.v` file's header, each a little
+differently. A concept node is the one place a term is explained, after
+Roam's and Obsidian's pages: a file
+[concepts/ID.md](concepts/), linked from everywhere it is used.
+
+```
+# doomed frame / doomed / doom
+
+A frame whose check_ahead failed early: ...
+```
+
+- The title line names the concept and its other names, separated by
+  `/`; any of them, with any case, `-`, `_` or a space alike, or with a
+  plural `s`, links to it. The first paragraph is its summary: the hover
+  card, the index entry, and what a reader sees first where it is
+  embedded. It names the predicate, module or Rocq definition that
+  defines it (`ir:covered_access/6`, `[valid_no_unchecked]`), or the
+  check fails.
+- `[[name]]` or `[[name|shown text]]` links to a concept from a Prolog
+  comment, a `(** … *)` comment of the Rocq, a document or another
+  concept, with its summary in a card on hover. A line that is only
+  `![[name]]` draws the whole concept in place, so a Prolog header and
+  the `.v` file that transcribes it can both show one explanation
+  instead of each keeping a copy. An emphasized or code mention of a
+  concept's name in a document links to it as well, as glossary terms
+  did.
+- Each concept is a page, `nanofil/concept-ID.html`, ending with
+  everything that links to it: document sections, other concepts,
+  predicates (the one after the comment that links) and Rocq
+  definitions. `nanofil/concepts.html` lists them all with their
+  summaries; the guide's Glossary is that list.
+- [web/concepts.pl](../web/concepts.pl) reads the concepts and resolves
+  names; dterm.pl (`--concepts=DIR`) draws them for the Prolog and the
+  documents, and dterm-rocq (`--concepts=DIR`) for the Rocq. With
+  `--rocq=DIR`, dterm.pl also reads the model's `.v` files, so `[name]`
+  in a document or concept links to the Rocq definition and the concept
+  pages know which Rocq comments link to them.
+- `swipl web/dterm.pl --check docs/guide.md docs/formal.md src
+  --concepts=docs/concepts --rocq=rocq/theories`, which the Nix check
+  runs, fails on a `[[name]]` that names no concept anywhere in the
+  Prolog, the Rocq or the documents, and on a concept that names no
+  source. A C23 attribute, `[[gnu::packed]]`, and anything in backticks
+  is not a link.
 
 ## Not yet
 

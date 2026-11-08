@@ -10,7 +10,7 @@ validator decides whether a module's checks cover its accesses.
 This guide follows one small C function from source text to assembly
 through every stage, showing what each stage actually produces and which
 module and predicate produce it. After the walkthrough come the ideas
-you need to keep in mind, a map of the 31 modules, a glossary, recipes
+you need to keep in mind, a map of the 31 modules, the concepts, recipes
 for common changes, and a reading order through the rest of the
 documentation. It assumes you know C and some Prolog, and nothing about
 Fil-C.
@@ -909,7 +909,7 @@ in the 16 bytes below the lower: its upper bound, and a word holding its
 flags (freed, read-only, ...) and its aux array. Computing an address
 never conjures a capability. `flight` makes the
 two sources explicit, and integer-to-pointer conversion gives a null
-capability unless the integer is laundered (glossary). In registers,
+capability unless the integer is [laundered](concepts/launder.md). In registers,
 the pair travels together. In memory, the address is stored in the
 object and the lower in the object's aux array, which is why a pointer
 load or store has an effect list (`ir:pointer_memory_effects/2`). On
@@ -1059,7 +1059,7 @@ it must produce.
 
 **[launder.pl](../src/launder.pl)**: the last step of `c_module/2`.
 Gives each `itop` the capability of the one pointer its integer came
-from (glossary, *launder*): Fil-C's analysis, read on the SSA form
+from ([launder](concepts/launder.md)): Fil-C's analysis, read on the SSA form
 promote.pl defines, with shadow slots for local integers, so the result
 is the same with and without `-O`.
 
@@ -1203,174 +1203,12 @@ SWI-Prolog ([swi/compat.pl](../src/swi/compat.pl)) and supplies the small librar
 
 ## Glossary
 
-**access**: `access(K, Addr, Size, Align)`, a vector's full-width check
-with no data movement, before its 8-byte chunks
-([docs/vector-access.md](vector-access.md)). Pizlonated, it becomes a
-check and a `touch` (`pizlonate:checked_access/4`).
+Each term is a concept node in [concepts/](concepts/), one short page
+shared by the Prolog, the Rocq model and the documents. Comments and
+documents link to one with `[[name]]` and draw it in place with a line
+`![[name]]`; an emphasized or code mention of a term links to it too.
 
-**alloc**: `let(D, p, alloc(Align), [Size])`, a fresh zeroed heap
-object. The frontend gives every local one; promote and local_storage
-remove most of them under `-O` (`promote:promote_module/2`,
-`local_storage.pl`).
-
-**asm_fixed**: `asm_fixed(M, Ins, Outs)`, an inline asm of one
-fixed-register instruction (`cpuid`, `xgetbv`, `rdtsc`, `rdtscp`, or
-the operand-free `lfence`, `sfence` and `pause`;
-`ir:asm_fixed_regs/3`, [docs/asm-fixed.md](asm-fixed.md)). Other
-inline asm is a blank-template barrier (its operands are evaluated,
-nothing else), a call to `zsafety_error` where filcc would refuse it
-at run time, or refused.
-
-**aux**: an object's auxiliary array, which holds the lowers of the
-pointers stored in the object, slot for slot. A pointer store must
-*ensure* it exists (may call the runtime); a pointer load reads it. An
-entry with its low bit set is boxed, for a pointer accessed atomically,
-and the real lower is at box+8 (`ir:pointer_memory_effects/2`,
-`filc_amd64:pointer_load_effects//4`).
-
-**cas**: compare-and-exchange, the one atomic read-modify-write IR term;
-every other atomic operation is a loop of it (`c_lower:rmw//7`).
-
-**check**: `check(Lo, Hi, Rights, Align)`, the checked stage's access
-check, producing a proof of class `a`. `check_local` does the same for
-a named local, and `check_function` produces a function proof of
-class `f` (`ir:op_kind/2`, `pizlonate:checked_access/4`).
-
-**checked / unchecked**: the two IR stages. Unchecked IR implies Fil-C's
-checks in every `load` and `store` at a `p` address; checked IR states
-them (`ir:module_stage/2`).
-
-**class**: a value's machine type: `w l s d x p`, plus `a` and `f` in
-the checked stage (`ir:class/3`).
-
-**context**: a `context(Fn, Records)` item, explanatory provenance
-(provenance.pl).
-
-**elaborate**: to read a C expression into its typed tree
-(`c_types:elaborate/3`).
-
-**evidence**: whatever discharges an access's requirement. Today, a
-check immediately before it, an earlier live heap check under reuse,
-or, for `renew`, a dominating check of the same pointer, and for
-`renew_if` a guard's span test. `live(Q, P, Lo, Hi, Rights, Align)` is the validator's
-fact for it (`ir:checked_insts/5`).
-
-**fast / generic convention**: Fil-C's two ways in to a function. The
-fast entry takes the arguments in registers when caller and callee
-agree on the signature; the generic entry takes them as a buffer in the
-thread for any caller. A call through a pointer compares the signature
-word at lower+16 with its own and takes the fast entry if they match;
-otherwise it marshals the arguments into thread+128 (data) and
-thread+384 (lowers) and calls the generic entry, which checks the size.
-Functions with over 16 words of arguments and variadic functions are
-generic-only (`filc_abi:signature/3`, `filc_amd64:fast_call//4`,
-`filc_amd64:generic_entry//2`).
-
-**flight**: `flight(D, Op, Args, Lower)`, a pointer built from an
-address computation and an independently named capability source
-(`pizlonate:flight_inst/2`).
-
-**fuel**: the interpreter's bound on executed blocks; running out gives
-`out_of_fuel`, which proves nothing (`interp:run/5`).
-
-**getter**: the function that returns a global's or function's address
-with its capability, initializing it on first use. Calling one is a
-safepoint (`filc_amd64:object_getter//2`).
-
-**guard**: `--checks=guard`, range guards: a `span_test` before a loop
-proves its accesses' bounds once, and the loop's checks become
-`renew_if`, which tests the flags and alignment when the guard passed
-and runs the full check out of line otherwise
-(`check_reuse:guard_checks/2`, [docs/m7.md](m7.md), round 5).
-
-**home**: an 8-byte frame word that holds a temporary, a phi's shadow
-or a pointer's address word in the stack-homed stream amd64_regs
-starts from (§12). Scalar homes are `w` or `l` only; float temporaries
-are kept out of them. Under `--registers=temps|pointers` a home may be
-mapped to a register (`amd64_regs:regs_asm/6`).
-
-**launder**: give an integer converted back to a pointer the capability
-of the pointer it came from, as Fil-C does when its analysis can follow
-the integer: through arithmetic, promotable local variables and phis,
-never through memory or a call, and only from one pointer
-(`launder:launder_func/4`, [docs/m4.md](m4.md), *Pointer-as-int
-laundering*). Otherwise the pointer gets no capability and
-dereferencing it traps.
-
-**lower**: a capability, kept beside the address: the object's lower
-bound. The header below it holds the upper bound at lower−16 and the
-aux pointer at lower−8, with the object's flags in its top 16 bits
-(`filc_abi:lower_function/5` keeps each live one in a root).
-
-**mode**: plain or filc (`ir:module_mode/2`).
-
-**origin**: a static record the runtime reads to name a function and
-location in a trap or backtrace (`filc_amd64:function_origins//3`),
-and in context records, a typed source node (provenance.pl).
-
-**pizlonate**: to make Fil-C's checks explicit, turning unchecked IR
-into checked IR (after FilPizlonator, Fil-C's LLVM pass;
-`pizlonate:pizlonate_module/2`).
-
-**poll / pollcheck / safepoint**: `poll(L)` is a jump target that runs a
-pollcheck before going to L. A pollcheck is a safepoint, a point where
-the thread may run signal handlers and answer the collector. Calls,
-allocations and some helpers are safepoints too
-(`ir:evidence_preserving/1`, `ir:polls_every_cycle/1`).
-
-**proof**: a temporary of class `a` or `f`, the result of a check
-(`ir:proof_use/6`).
-
-**raw access**: `raw_load`, `raw_store`, `raw_load_pointer`,
-`raw_store_pointer`, `raw_cas` and `raw_call`, which do no checking of
-their own and read a proof (`ir:covered_access/6`).
-
-**reference path**: the selection without `-O`, against which every
-optimization is compared (`main:registers_default/2`).
-
-**refines**: `opt:refines/2`, the outcome relation that translation
-validation of the middle end uses: undefined behaviour allows anything,
-an unknown value allows any consistent one, otherwise the outcomes must
-be equal.
-
-**renew**: `renew(Lo, Hi, Rights, Align)`, which reuses an earlier
-dominating check's bounds and tests only that the object is not freed
-(and, for a write, not read-only) (`check_reuse:renew_checks/2`,
-[docs/m7.md](m7.md), round 4). The `-O` default.
-
-**renew_if**: `renew_if(Lo, Hi, Rights, Align)`, reading the pointer P
-and a guard's `span_test` result G: a `renew` whose bounds come from
-the guard (see guard; `ir:guard_chain/3`).
-
-**reuse**: `--checks=reuse`, deleting a check whose access an earlier
-live proof already covers, so the access reads that proof. It works
-across plain edges and for related pointers at a constant offset
-(`check_reuse:reuse_checks/2`, [docs/m7.md](m7.md), round 3).
-
-**root**: a frame word the collector scans: an entry of the frame
-record's `lowers[]`, a local's stack aux, or a jmpbuf root
-(`filc_abi:lower_function/5`, `amd64_regs_check:valid_map/3`).
-
-**shadow**: two meanings. In the backends, a phi's shadow slot, which
-holds the incoming value during a parallel copy. In launder.pl, a local
-integer's capability shadow, a pointer slot that holds the capability
-of the value last stored in the integer (`launder:launder_func/4`).
-
-**snapshot**: `tests/snapshot.sh`, the byte-identity gate across
-revisions. Also the copies of every temporary a setjmp function keeps
-(`filc_amd64:setjmp_snapshots//3`, [docs/setjmp.md](setjmp.md)).
-
-**touch**: `touch(tmp(Q))`, the use of a vector check's proof that
-accesses nothing (`pizlonate:checked_access/4`).
-
-**translation validation**: checking a transformation's result rather
-than proving the transformation: the register checker, `*_refines/2`,
-and the interpreter refinement of `difftest -O`
-(`amd64_regs_check:check_regs/5`, `opt:refines/2`).
-
-**unchecked(Why)**: the interpreter outcome of a raw access its
-capability does not allow. Only a broken pass produces it
-(`interp:raw_res/2`).
+<!-- concepts -->
 
 ## Where to start
 
@@ -1502,15 +1340,21 @@ These keep the modules readable and are checked.
   this guide differs from what the compiler produces; run it without
   `--check` to update them. It also writes the outputs' terms to
   [guide/outputs.pl](guide/outputs.pl), from which the site draws them.
-  `swipl web/dterm.pl --check docs/guide.md src` fails when a predicate
-  reference (`name/N`, `module:name/N`), a module file name, a link or a
-  glossary entry's source does not resolve. All three run in
+  `swipl web/dterm.pl --check docs/guide.md src --concepts=docs/concepts`
+  fails when a predicate reference (`name/N`, `module:name/N`), a module
+  file name, a link or a `[[concept]]` does not resolve, or a concept
+  names no source. All three run in
   `nix build .#checks.x86_64-linux.nanofil`.
 - **On the site.** The guide is a dterm page (`nanofil/guide.html`,
   [web/dterm_guide.pl](../web/dterm_guide.pl)): its terms are drawn as
   the source is, predicate references link to their definitions with
-  the signature on hover, glossary terms link to their entries, and each
+  the signature on hover, concept names link to their pages, and each
   module page links back to the sections that name it. Write a
   predicate reference in backticks as `name/N` or, when two modules
-  define it, `module:name/N`; give a glossary entry the predicate or
-  module that defines it.
+  define it, `module:name/N`; give a concept the predicate, module or
+  Rocq definition that defines it.
+- **Concepts.** A term a reader may not know gets a page in
+  [concepts/](concepts/), written once and linked from both the Prolog
+  and the Rocq rather than explained again in each
+  ([dterm.md](dterm.md), Concept nodes). In a comment or document,
+  `[[name]]` links to it and a line `![[name]]` draws it in place.

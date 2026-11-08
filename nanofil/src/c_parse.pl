@@ -513,7 +513,7 @@ c23_attr_entries -->
     ),
     ( punct(',') -> c23_attr_entries ; [] ).
 
-% c23_known(+Prefix, +Name, +Loc): [[Name]] is a standard attribute or
+% c23_known(+Prefix, +Name, +Loc): `[[Name]]` is a standard attribute or
 % one c_types lists, as is [[gnu::Name]] or [[clang::Name]]; others in
 % those namespaces are refused. An attribute of another namespace
 % (vendor::x, and msvc::x on this target) is ignored, as clang ignores

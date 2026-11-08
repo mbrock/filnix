@@ -40,6 +40,7 @@
 :- use_module(library(apply)).
 :- use_module(library(uri)).
 :- use_module(rocq_syntax).
+:- use_module('../concepts').
 
 :- include('../dterm_html').
 
@@ -1105,19 +1106,66 @@ block_(h(N, T)) --> { format(atom(H), "h~d", [N]) }, el(H, "prose-h", rocq_prose
 block_(table(Head, Rows)) -->
     el(table, "prose-table", ( el(thead, none, el(tr, none, seq(Head, [C]>>el(th, none, rocq_prose_inline(C))))),
                                el(tbody, none, seq(Rows, [R]>>el(tr, none, seq(R, [C]>>el(td, none, rocq_prose_inline(C)))))) )).
+block_(embed(Name)) --> concept_embed(Name).
 block_(fence(Lang, Lines)) --> { memberchk(Lang, ["rocq", "coq", ""]) }, !, rocq_fence(Lines).
 block_(fence(_, Lines)) --> { atomic_list_concat(Lines, '\n', T) }, el(pre, fence, esc(T)).
 
 rocq_prose_inline(Text) --> { text_codes(Text, Cs) }, pi(Cs).
 
 pi([]) --> !, [].
-%  [text](url) is a link; [term] is Rocq (coqdoc), or code.
+%  [[name]] and [[name|text]] link to a concept node (web/concepts.pl).
+pi([0'[, 0'[|Cs0]) --> { concept_link_codes(Cs0, Name, Shown, Cs) }, !, concept_ref(Name, Shown), pi(Cs).
+%  [text](url) is a link (in an embedded concept, from docs/concepts:
+%  concept_url/3); [term] is Rocq (coqdoc), or code.
 pi([0'[|Cs0]) --> { append(T, [0'], 0'(|Cs1], Cs0), \+ memberchk(0'], T), append(U, [0')|Cs], Cs1), \+ memberchk(0' , U) }, !,
-    { string_codes(TS, T) }, el(a, none, [href=U], rocq_prose_inline(TS)), pi(Cs).
+    { string_codes(TS, T), atom_codes(UA, U),
+      ( nb_current(rq_embedding, true), nb_current(rq_concepts, Pre) -> concept_url(UA, Pre, Href) ; Href = UA ) },
+    el(a, none, [href=Href], rocq_prose_inline(TS)), pi(Cs).
 pi([0'[|Cs0]) --> { bracketed(Cs0, 1, Code, Cs) }, !, code_(Code), pi(Cs).
 pi([0'`|Cs0]) --> { append(Code, [0'`|Cs], Cs0) }, !, code_(Code), pi(Cs).
 pi(Cs0) --> { word(Cs0, W, Cs1), W \== [] }, !, word_(W, Cs1).
 pi([C|Cs]) --> esc_code(C), pi(Cs).
+
+%% Concepts
+
+%  concept_ref(+Name, +Shown): a link to the concept Name, with its
+%  summary in a card shown on hover, as dterm's predicate references
+%  have (rq_concepts is the concept pages' directory, relative to this
+%  page). Without concepts loaded it is its text.
+concept_ref(_, Shown) --> { \+ concepts_loaded }, !, esc(Shown).
+concept_ref(Name, Shown) --> { concept_resolve(Name, Id) }, !,
+    { concept_href(Id, Href), concept_title(Id, Title), concept_summary(Id, Sum0), concept_plain(Sum0, Sum) },
+    el(span, "pref cref", ( el(a, concept, [href=Href], esc(Shown)),
+                           ( { nb_current(rq_in_card, true) } -> []
+                           ; el(span, "sigcard concept-card", ['aria-hidden'=true],
+                                ( el(span, "card-mod", esc(Title)),
+                                  el(span, "card-text", in_card(rocq_prose_inline(Sum))) )) ) )).
+concept_ref(Name, Shown) -->
+    { nb_current(rq_file, F) -> true ; F = none },
+    { format(user_error, "dterm-rocq: ~w: [[~w]] names no concept~n", [F, Name]) },
+    el(span, broken, esc(Shown)).
+
+concept_href(Id, Href) :-
+    concept_page(Id, Page),
+    ( nb_current(rq_concepts, Pre) -> true ; Pre = '../' ),
+    atom_concat(Pre, Page, Href).
+
+%  A card's text links nothing: no cards in cards, no names (rq_button).
+in_card(G) -->
+    { ( nb_current(rq_button, B0) -> true ; B0 = false ), nb_setval(rq_in_card, true), nb_setval(rq_button, true) },
+    call(G),
+    { nb_setval(rq_in_card, false), nb_setval(rq_button, B0) }.
+
+%  concept_embed(+Name): ![[name]], the concept's whole text where it is
+%  written, under its title. An embed inside an embed is a link.
+concept_embed(Name) --> { \+ concepts_loaded }, !, el(p, none, esc(Name)).
+concept_embed(Name) --> { nb_current(rq_embedding, true) }, !, el(p, none, concept_ref(Name, Name)).
+concept_embed(Name) --> { concept_resolve(Name, Id) }, !,
+    { concept_href(Id, Href), concept_title(Id, Title), concept(Id, _, Lines) },
+    el(aside, "concept-embed",
+       ( el(a, "concept-embed-title", [href=Href], esc(Title)),
+         { nb_setval(rq_embedding, true) }, rocq_prose(Lines), { nb_setval(rq_embedding, false) } )).
+concept_embed(Name) --> el(p, none, concept_ref(Name, Name)).
 
 %  The text up to the ] that closes a [.
 bracketed([0']|Cs], 1, [], Cs) :- !.

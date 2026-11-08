@@ -26,10 +26,16 @@
     OUT/index.html and one OUT/NAME.html per SRC-DIR/NAME.pl; dterm.css
     and dterm.js are expected beside the pages. Each --doc, such as the
     guide, is also drawn as OUT/DOC.html (dterm_guide.pl), and the run
-    fails if a document has a broken reference.
+    fails if a document has a broken reference. --concepts=DIR draws each
+    concept node DIR/ID.md (docs/concepts) as OUT/concept-ID.html with
+    what links to it, and OUT/concepts.html; --rocq=DIR indexes the
+    Rocq model's .v files in DIR, for [name] in documents and concepts
+    and for the concepts' links from Rocq comments.
 
-    swipl dterm.pl -- --check DOC.md... SRC-DIR... writes nothing: it
-    lists the documents' broken references and exits 1 if there are any.
+    swipl dterm.pl -- --check DOC.md... SRC-DIR... [--concepts=DIR]
+    [--rocq=DIR] writes nothing: it lists the broken references of the
+    documents and concepts, and of [[name]] in the Prolog's and the
+    Rocq's comments, and exits 1 if there are any.
 
     Runs on SWI-Prolog only: it relies on read_term/3's comments and
     subterm_positions options.
@@ -70,7 +76,10 @@ github('https://github.com/mbrock/filnix/blob/main/nanofil/').
 :- op(200, fy, dterm_sig:(:)).
 
 main :-
-    current_prolog_flag(argv, Argv),
+    current_prolog_flag(argv, Argv0),
+    nb_setval(guide_concept, none),
+    take_options(Argv0, Argv),
+    ( nb_current(rocq_dir, RD) -> index_rocq(RD) ; true ),
     (   Argv = ['--check'|Args] -> Out = none, partition(is_doc, Args, Docs, Dirs)
     ;   Argv = [Out|Args],
         partition([A]>>atom_concat('--doc=', _, A), Args, DocArgs, Dirs),
@@ -81,6 +90,7 @@ main :-
     sort(Files0, Files),
     maplist(read_source, Files, Sources),
     maplist(index_source, Sources),
+    ( concepts_loaded -> index_concept_links(Sources) ; true ),
     guide_render(Docs, Sources, Pages),
     (   Out == none -> true
     ;   maplist(run_examples(Files), Sources),
@@ -94,6 +104,16 @@ main :-
     guide_report(Docs).
 
 is_doc(A) :- file_name_extension(_, md, A).
+
+%  take_options(+Argv0, -Argv): --concepts=DIR reads the concept nodes of
+%  DIR (docs/concepts); --rocq=DIR indexes the Rocq model's .v files in
+%  DIR, for [name] links and the concepts' links from Rocq comments.
+take_options([], []).
+take_options([A|As], Bs) :- atom_concat('--concepts=', D, A), !,
+    concepts_load(D), nb_setval(concept_dir, D), take_options(As, Bs).
+take_options([A|As], Bs) :- atom_concat('--rocq=', D, A), !,
+    nb_setval(rocq_dir, D), take_options(As, Bs).
+take_options([A|As], [A|Bs]) :- take_options(As, Bs).
 
 %  guide_report(+Docs): fails, listing them, if a document has broken
 %  references.
@@ -1213,6 +1233,7 @@ block_(_, F, fence("prolog", Lines)) -->
     { atomic_list_concat(Lines, '\n', T0), atom_string(T0, T), fence_terms(T, Ts) }, !,
     el(div, "prose-terms", seq(Ts, fence_term(F))).
 block_(_, F, fence("diagram", Lines)) --> !, diagram(Lines, F).
+block_(_, _, embed(Name)) --> concept_embed(Name).
 block_(_, _, fence(Lang, Lines)) -->
     { dedent(Lines, Ls), atomic_list_concat(Ls, '\n', T),
       ( Lang == "" -> C = "fence" ; atom_concat('fence lang-', Lang, C) ) },
@@ -1243,6 +1264,8 @@ inline(Text, Vars) --> { nb_getval(dterm_file, F) }, inline(Text, Vars, F).
 inline(Text, Vars, F) --> { string_codes(Text, Cs) }, inl(Cs, Vars, F).
 
 inl([], _, _) --> !, [].
+inl([0'[, 0'[|Cs0], Vars, F) --> { concept_link_codes(Cs0, Name, Shown, Cs) }, !,
+    concept_ref(Name, Shown), inl(Cs, Vars, F).
 inl([0'`|Cs0], Vars, F) --> { append(Code, [0'`|Cs], Cs0) }, !,
     (   { code_term(Code, T) }
     ->  el(code, "term", term(T, _, 999, ctx(F, data)))

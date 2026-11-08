@@ -109,8 +109,9 @@ drop(N, S0, S) :- ( blank(S0) -> S = "" ; sub_string(S0, N, _, 0, S) ).
 %  Markdown for module headers: h(Level, Text) from "## Text" (h3, as
 %  the page's own sections are h2),
 %  table(Head, Rows) from lines of | cells | (the second line |---|),
-%  and fence(Lang, Lines) from ``` blocks. A prolog fence is drawn as
-%  terms, a diagram fence as box drawing.
+%  fence(Lang, Lines) from ``` blocks, and embed(Name) from a line
+%  ![[name]], a concept's text in place (web/concepts.pl). A prolog
+%  fence is drawn as terms, a diagram fence as box drawing.
 blocks([], []).
 blocks([L|Ls], Bs) :- blank(L), !, blocks(Ls, Bs).
 blocks([L|Ls0], [fence(Lang, Body)|Bs]) :- string_concat("```", Lang0, L), !,
@@ -120,6 +121,7 @@ blocks([L|Ls0], [fence(Lang, Body)|Bs]) :- string_concat("```", Lang0, L), !,
     ),
     blocks(Ls, Bs).
 blocks([L|Ls0], [h(N, Text)|Bs]) :- heading(L, N, Text), !, blocks(Ls0, Bs).
+blocks([L|Ls0], [embed(Name)|Bs]) :- embed_line(L, Name), !, blocks(Ls0, Bs).
 blocks([L|Ls0], [table(Head, Rows)|Bs]) :-
     table_line(L, Head), Ls0 = [Sep|Ls1], table_line(Sep, Cells), maplist(rule_cell, Cells), !,
     take_table(Ls1, Rows, Ls), blocks(Ls, Bs).
@@ -154,9 +156,15 @@ take_indented(Ls, [], Ls).
 
 take_para([L|Ls0], [L|Ps], Ls) :-
     \+ blank(L), \+ item_start(L, _), indent(L, 0),
-    \+ string_concat("```", _, L), \+ heading(L, _, _), \+ table_line(L, _), !,
+    \+ string_concat("```", _, L), \+ heading(L, _, _), \+ table_line(L, _), \+ embed_line(L, _), !,
     take_para(Ls0, Ps, Ls).
 take_para(Ls, [], Ls).
+
+%  embed_line(+Line, -Name): Line is ![[name]] and nothing else.
+embed_line(L, Name) :-
+    split_string(L, "", " \t", [T]),
+    string_concat("![[", R, T), string_concat(Name, "]]", R),
+    \+ sub_string(Name, _, _, _, "]").
 
 heading(L, N, Text) :-
     member(Mark-N, ["### "-4, "## "-3]), string_concat(Mark, Text, L), !.

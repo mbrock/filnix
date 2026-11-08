@@ -728,3 +728,32 @@ aside.guide-links .label { color: var(--muted); font-size: 0.75rem; text-transfo
   .dg-chains { grid-template-columns: minmax(0, 1fr); }
   .dg-chain .dg-label { margin-top: 0.3rem; }
 }
+
+/* Concept nodes (web/concepts.pl): links, cards, embeds and pages. */
+a.concept { color: inherit; text-decoration: underline dotted color-mix(in srgb, var(--accent) 70%, transparent);
+  text-underline-offset: 0.15em; }
+a.concept:hover { color: var(--accent); }
+.concept-card .card-mod { text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--ink); }
+aside.concept-embed {
+  margin: 0.6rem 0 1rem; padding: 0.45rem 0.8rem 0.1rem;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--code-bg) 40%, transparent);
+}
+aside.concept-embed .concept-embed-title {
+  display: block; font-size: 0.75rem; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--muted); text-decoration: none;
+}
+aside.concept-embed .concept-embed-title:hover { color: var(--accent); }
+aside.concept-embed p { margin: 0.3rem 0 0.6rem; }
+.concept-aliases { color: var(--muted); margin: -0.6rem 0 1.2rem; }
+section.concept-links { margin-top: 2.2rem; border-top: 1px solid var(--rule); }
+section.concept-links h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0.8rem 0 0.4rem; }
+section.concept-links ul { list-style: none; padding: 0; margin: 0; columns: 2 16rem; column-gap: 1.6rem; font-size: 0.9rem; }
+section.concept-links li { break-inside: avoid; margin: 0.15rem 0; overflow-wrap: anywhere; }
+dl.concept-index { display: grid; grid-template-columns: minmax(7rem, max-content) minmax(0, 1fr); gap: 0.35rem 1.1rem; }
+dl.concept-index dt { font-weight: 600; overflow-wrap: anywhere; }
+dl.concept-index dd { margin: 0; color: var(--ink); }
+@media (max-width: 560px) {
+  dl.concept-index { grid-template-columns: minmax(0, 1fr); gap: 0.1rem; }
+  dl.concept-index dd { margin-bottom: 0.6rem; }
+}
