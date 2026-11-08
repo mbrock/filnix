@@ -961,6 +961,29 @@ proof of C lowering, native interpreter refinement or libc realization.
 Generated `HiCode.v` is never hand-edited. Native startup, stdio,
 shutdown resource/blocking coverage and host completion remain open.
 
+### Campaign 4, milestone 4h: every launcher input at application entry
+
+`HiProgram R.hi_launcher_words_safe` in
+[HiArtifact.v](../rocq/theories/HiArtifact.v) proves that main is defined
+and that the actual launcher words produce a call frame. For every fuel
+and ready supplied entry runtime state, all reached external calls are independently
+admissible and every stopped application endpoint of the outer machine
+is nonfailure under the shared classification. Entry-memory/stdio
+validity, logical world validity and safepoint stability are explicit
+premises; shutdown closure and host completion are not assumptions of
+this application-only safety theorem.
+
+The exact allocator state after startup is retained with its memory,
+not reset to `R.start`: startup's `copied_startup` exports readiness at
+the resulting allocator state, which need not hold at the original start.
+
+There is no short-string, C-locale or empty-argv restriction. The theorem
+is stronger than requiring `startup_at`: main(void) ignores all three
+launcher words. This does **not** establish native launch for malformed
+words or construct its libc/TLS image; startup's own preconditions and
+resource outcomes still apply before entry. Native realization and
+shutdown blocking/resource coverage remain open.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and
