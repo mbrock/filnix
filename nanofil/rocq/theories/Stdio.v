@@ -74,6 +74,16 @@ Inductive stream_step : stream_state -> stream_action -> stream_state -> Prop :=
     stream_step (mkStream ByteOriented pending err) OutputError
       (mkStream ByteOriented pending true).
 
+(** A fixed action has one logical target; an exact consumed prefix fixes
+    the remaining queue, without promising that the action occurs. *)
+Lemma stream_step_target : forall q action left right,
+  stream_step q action left -> stream_step q action right -> left = right.
+Proof.
+  intros q action left right Hl Hr. inversion Hl; subst; inversion Hr; subst; try reflexivity.
+  all: match goal with H : ?bytes ++ ?xs = ?bytes ++ ?ys |- _ =>
+    apply app_inv_head in H; subst; reflexivity end.
+Qed.
+
 (** A finite sequence of [stream_step]s, from q by actions to q'. *)
 Inductive stream_run : stream_state -> list stream_action -> stream_state -> Prop :=
 | stream_refl : forall q, stream_run q [] q

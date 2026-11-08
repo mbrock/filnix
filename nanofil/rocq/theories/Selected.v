@@ -4,9 +4,9 @@
     neither is inferred from an unfinished prefix. Native satisfaction and
     coverage remain trusted obligations, not theorems of this adapter. *)
 
-From Stdlib Require Import String ZArith List Lia.
+From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Identity
-  ExternalCalls Stdio Shutdown Hi Composition HiArtifact Program.
+  ExternalCalls ExternalMachine Startup Stdio Shutdown Hi Composition HiArtifact Program Panics.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -147,6 +147,120 @@ Proof.
   - rewrite Hpending', Hpending. apply Hrep. exact Hwf.
 Qed.
 
+(** A finite chain of actual normal invocations at exact shared snapshots.
+    Logical edges name the targets; their validity and runtime readiness
+    are extracted from those same calls, not supplied for each endpoint.
+    This is not coverage of unfinished, refused or native executions. *)
+Inductive normal_run (specs : segments) :
+    R.state -> mem -> stdio_world -> shutdown_state -> list event ->
+    R.state -> mem -> stdio_world -> shutdown_state -> Prop :=
+| normal_refl : forall s m w sh, normal_run specs s m w sh [] s m w sh
+| normal_next : forall s m w sh action trace s1 m1 w1 sh1 tail s' m' w' sh',
+    shutdown_step sh action sh1 ->
+    E.invoke (selected_contract specs sh action) CVoid [] []
+      s m w trace (CallReturn []) s1 m1 w1 ->
+    normal_run specs s1 m1 w1 sh1 tail s' m' w' sh' ->
+    normal_run specs s m w sh (trace ++ tail) s' m' w' sh'.
+
+(** Lift the invocation chain through the existing adapter. Logical target
+    uniqueness identifies its extracted endpoint with the named cutpoint. *)
+Theorem normal_run_lifts : forall specs s m w sh trace s' m' w' sh' rep requests host,
+  normal_run specs s m w sh trace s' m' w' sh' -> R.ready s m ->
+  P.run rep requests (boundary specs) host
+    (P.ShuttingDown s m w sh) trace (P.ShuttingDown s' m' w' sh') /\
+  (stream_wf (shutdown_stdout sh) -> stream_wf (shutdown_stdout sh')).
+Proof.
+  intros specs s m w sh trace s' m' w' sh' rep requests host Hrun.
+  induction Hrun; intros Hr.
+  - split; [constructor|auto].
+  - destruct (invocation_realizes _ _ _ _ _ _ _ _ _ _ Hr H0) as [target Hreal].
+    assert (Htarget : target = sh1).
+    { inversion Hreal; subst. eapply shutdown_step_target; eauto. }
+    subst target.
+    destruct (IHHrun (proj1 (E.invoke_preserve _ _ _ _ _ _ _ _ _ _ _ _ _ H0 Hr)))
+      as [Htail Hwf].
+    split.
+    + eapply P.program_next; [apply P.program_shutdown with (action := action); exact Hreal|exact Htail].
+    + intros Hq. apply Hwf. destruct H; simpl in *; try exact Hq;
+        eapply stream_step_wf; eauto.
+Qed.
+
+(** Conditional hi composition under the selected trusted libc contracts:
+    exact successful entry, reached returning puts, normal shutdown calls,
+    and an explicit completion witness at the resulting handoff. Nothing
+    here claims that native execution supplies these witnesses or terminates. *)
+Theorem trusted_hi_completion : forall specs inventory requests
+    s0 m0 w0 argc argv envp args environment fuel
+    first s m w callfuel calltrace n s1 m1 w1 tail s2 m2 w2
+    kind status pending consumed q (completed : P.host_boundary),
+  (forall s m s' m' w, R.safepoint s m s' m' -> entry_rep specs inventory m w ->
+    stdio_ready m w -> entry_rep specs inventory m' w /\ stdio_ready m' w) ->
+  A.trusted_entry_contract (entry_rep specs inventory) s0 m0 w0 argc argv envp args environment ->
+  program_pending w0 = inventory ->
+  P.M.run (P.registry (entry_rep specs inventory) requests) P.H.hi_genv
+    (P.M.Running (hi_entry m0 fuel, s0) w0) first (P.M.Running (hi_call m callfuel, s) w) ->
+  E.invoke (program_puts (entry_rep specs inventory) requests)
+    (site_result hi_site) (site_args hi_site) [WPtr hi_literal]
+    s m w calltrace (CallReturn [WInt n]) s1 m1 w1 ->
+  normal_run specs s1 m1 (program_stdio w1)
+    (mkShutdown Tls 0 (program_pending w1) [] (program_stdout w1)) tail
+    s2 m2 w2 (mkShutdown (HandedOff kind) status pending consumed q) ->
+  completed s2 m2 w2 (mkShutdown (HandedOff kind) status pending consumed q) ->
+  P.run (entry_rep specs inventory) requests (boundary specs) (A.trusted_host_contract completed)
+    (P.Application (P.M.Running (hi_entry m0 fuel, s0) w0))
+    (first ++ calltrace ++ tail ++ [ProcessExit (process_status status)])
+    (P.Finished s2 m2 w2 (mkShutdown (HandedOff kind) status pending consumed q)).
+Proof.
+  intros specs inventory requests s0 m0 w0 argc argv envp args environment fuel
+    first s m w callfuel calltrace n s1 m1 w1 tail s2 m2 w2 kind status pending consumed q completed
+    Hstable Hentry Hinitial Hreach Hcall Hshutdown Hcomplete.
+  pose proof (A.trusted_entry_body (entry_rep specs inventory) s0 m0 w0
+    argc argv envp args environment fuel Hentry) as Hbody.
+  destruct Hentry as (_ & Hr & _).
+  assert (Hclosed := reached_puts_closed specs inventory requests _ Hstable Hbody Hr Hinitial).
+  pose proof (P.returning_puts_shutdown (entry_rep specs inventory) requests (boundary specs)
+    (A.trusted_host_contract completed) (P.M.Running (hi_entry m0 fuel, s0) w0)
+    first s m w callfuel calltrace n s1 m1 w1
+    Hclosed Hreach Hcall) as Hbridge.
+  pose proof (E.invoke_preserve _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall
+    (body_ready _ _ _ _ _ _ Hreach Hr)) as [Hr1 _].
+  destruct (normal_run_lifts specs _ _ _ _ _ _ _ _ _ (entry_rep specs inventory) requests
+    (A.trusted_host_contract completed) Hshutdown Hr1) as [Hsegments Hwf].
+  assert (Hr2 : R.ready s2 m2).
+  { exact (P.run_ready _ _ _ _ _ _ _ Hsegments Hr1). }
+  assert (Hq : stream_wf q).
+  { apply Hwf. exact (proj1 (proj2 (proj2 (P.C.program_invoke_continuity _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall)))). }
+  replace (first ++ calltrace ++ tail ++ [ProcessExit (process_status status)])
+    with ((first ++ calltrace) ++ (tail ++ [ProcessExit (process_status status)]))
+    by (repeat rewrite app_assoc; reflexivity).
+  eapply P.run_trans; [exact Hbridge|]. eapply P.run_trans; [exact Hsegments|].
+  eapply P.program_next with (trace := [ProcessExit (process_status status)]) (tail := []); [|constructor].
+  apply A.trusted_host_completion_step; assumption.
+Qed.
+
+(** Finite-observation safety is separate from witnessed completion. It
+    includes unfinished/resource leaves, promises at most one exit event,
+    and retains the shared nonfailure classification for application stops.
+    It does not establish native coverage of the outer relation. *)
+Theorem trusted_hi_observations : forall specs inventory requests completed
+    s m w argc argv envp args environment fuel trace last,
+  (forall s m s' m' w, R.safepoint s m s' m' -> entry_rep specs inventory m w ->
+    stdio_ready m w -> entry_rep specs inventory m' w /\ stdio_ready m' w) ->
+  A.trusted_entry_contract (entry_rep specs inventory) s m w argc argv envp args environment ->
+  P.run (entry_rep specs inventory) requests (boundary specs) (A.trusted_host_contract completed)
+    (P.Application (P.M.Running (hi_entry m fuel, s) w)) trace last ->
+  P.runtime_ready last /\ (P.exit_count trace <= 1)%nat /\
+  forall why ms w', last = P.Application (P.M.Stopped why ms w') -> ~ failure_ending why.
+Proof.
+  intros specs inventory requests completed s m w argc argv envp args environment fuel trace last
+    Hstable Hentry Hrun.
+  pose proof (A.trusted_entry_body (entry_rep specs inventory) s m w
+    argc argv envp args environment fuel Hentry) as Hbody.
+  destruct Hentry as (_ & Hr & _). split; [eapply P.run_ready; eauto|]. split.
+  - eapply P.at_most_one_exit; eauto.
+  - intros why ms w' ->. eapply P.application_stopped_never_panics; eauto. exact Hbody.
+Qed.
+
 End Selected.
 
 (** Logical instances exercise admission and cutpoints, not native libc.
@@ -256,14 +370,14 @@ Qed.
 
 (** An identity-memory fixture completes a selected, independently admissible
     logical action. Its full invocation—not merely a prefix—supplies the post. *)
-Lemma fixture_invocation : forall sh action sh',
-  S.libc_valid specs hello_mem hello_world sh -> action_selected hello_mem action ->
-  shutdown_step sh action sh' -> S.libc_valid specs hello_mem hello_world sh' ->
+Lemma fixture_invocation : forall m w sh action sh',
+  S.libc_valid specs m w sh -> action_selected m action ->
+  shutdown_step sh action sh' -> S.libc_valid specs m w sh' ->
   S.E.invoke (S.selected_contract specs sh action) CVoid [] []
-    InterpRuntime.start hello_mem hello_world (P.action_events action) (CallReturn [])
-    InterpRuntime.start hello_mem hello_world.
+    InterpRuntime.start m w (P.action_events action) (CallReturn [])
+    InterpRuntime.start m w.
 Proof.
-  intros sh action sh' Hvalid Hselect Hstep Hvalid'.
+  intros m w sh action sh' Hvalid Hselect Hstep Hvalid'.
   eapply S.E.invoke_normal with (born := []).
   - split; reflexivity.
   - split; [reflexivity|]. split; [exact Hvalid|]. split; [exact Hselect|]. exists sh'. exact Hstep.
@@ -312,7 +426,7 @@ Proof.
   intros q action q' Hnot Hstream Hwf.
   assert (Hstep : shutdown_step (cleanup q) (ShutdownOutput action) (cleanup q'))
     by (apply shutdown_cleanup_output; assumption).
-  assert (Hcall := fixture_invocation (cleanup q) (ShutdownOutput action) (cleanup q')
+  assert (Hcall := fixture_invocation hello_mem hello_world (cleanup q) (ShutdownOutput action) (cleanup q')
     (cleanup_valid _ Hwf) I Hstep
     (cleanup_valid _ (stream_step_wf _ _ _ Hstream Hwf))).
   assert (Hevents : P.action_events (ShutdownOutput action) = []).
@@ -358,6 +472,187 @@ Proof.
         apply cleanup_realized; [discriminate|apply (stream_discard [66] [] true); discriminate|].
         split; [repeat constructor; lia|reflexivity].
       * constructor.
+Qed.
+
+(** A successful logical entry with argv, environment, the generated hi
+    literal, stdout storage and the nonempty admitted callback inventory. *)
+Definition completion_memory : mem :=
+  startup_store (copy_c_bytes
+    (mkMem (m_bytes hello_mem)
+      (mkRegion 65552 65560 GlobalData Live :: mkRegion 4096 4112 Heap Live ::
+       mkRegion 4200 4208 Heap Live :: m_regions hello_mem) (m_aux hello_mem))
+    65552 hello_bytes) 4096 hi_literal.
+
+(** The concrete startup vectors and retained callback argument are genuine
+    readable capabilities; a logical queue is not a physical FILE claim. *)
+Lemma completion_entry_image :
+  startup_at completion_memory 1 entry_argv entry_envp [hello_bytes] [] /\
+  P.H.hi_before_call (S.entry_rep specs [entry]) completion_memory hello_world.
+Proof.
+  split.
+  - split; [lia|]. split; [reflexivity|]. split.
+    + split; [reflexivity|]. exists hi_literal. split; [vm_compute; repeat split; congruence|].
+      split; [vm_compute; repeat split; try congruence; lia|]. vm_compute. repeat split; congruence.
+    + vm_compute. repeat split; congruence.
+  - split.
+    + intros q Hwf. split; [split; reflexivity|]. split.
+      * split; [|exact I]. constructor; [split; reflexivity|constructor].
+      * split; [exact Hwf|]. repeat constructor. simpl. tauto.
+    + split.
+      * split; [reflexivity|]. constructor; [|constructor].
+        split; [simpl; lia|]. exists 2048, (mkRegion 2048 2064 Heap Live). repeat split; reflexivity.
+      * split; [reflexivity|]. vm_compute. repeat split; try congruence; lia.
+Qed.
+
+(** Every static object is below the actual entry allocator state, and the
+    vector/literal stores do not write above that state. *)
+Lemma completion_ready : InterpRuntime.ready InterpRuntime.start completion_memory.
+Proof.
+  pose proof (hello_ready InterpRuntime.start ltac:(split; vm_compute; congruence)) as [Hpos [Hobj Hbytes]].
+  split; [exact Hpos|]. split.
+  - intros b reg E. change (object_region b
+      (mkRegion 65552 65560 GlobalData Live :: mkRegion 4096 4112 Heap Live ::
+       mkRegion 4200 4208 Heap Live :: m_regions hello_mem) = Some reg) in E.
+    cbn -[Z.eqb] in E.
+    destruct (65552 =? b) eqn:E1.
+    + apply Z.eqb_eq in E1. subst b. injection E as <-. simpl. split; [vm_compute; repeat split; congruence|].
+      split; [vm_compute; congruence|discriminate].
+    + destruct (4096 =? b) eqn:E2.
+      * apply Z.eqb_eq in E2. subst b. injection E as <-. simpl. split; [vm_compute; repeat split; congruence|].
+        split; [vm_compute; congruence|discriminate].
+      * destruct (4200 =? b) eqn:E3.
+        -- apply Z.eqb_eq in E3. subst b. injection E as <-. simpl. split; [vm_compute; repeat split; congruence|].
+           split; [vm_compute; congruence|discriminate].
+        -- apply Hobj. exact E.
+  - intros a Ha. destruct (Hbytes a Ha) as [Hb Haux]. change (4294967296 <= a) in Ha.
+    assert (Hrange : ((4096 <=? a) && (a <? 4096 + 8)) = false).
+    { apply andb_false_iff. right. apply Z.ltb_ge. lia. }
+    assert (Hslot : (a =? 4096) = false) by (apply Z.eqb_neq; lia).
+    unfold completion_memory, startup_store. cbn -[copy_c_bytes Z.leb Z.ltb Z.eqb Z.add].
+    rewrite Hrange, Hslot, copy_c_bytes_aux, copy_c_bytes_outside by (right; simpl; lia).
+    exact (conj Hb Haux).
+Qed.
+
+(** The actual puts invocation keeps the nonempty inventory and accepts the
+    bytes before the later hard exit, without asserting descriptor delivery. *)
+Lemma completion_puts :
+  S.E.invoke (program_puts (S.entry_rep specs [entry]) fixture_requests)
+    (site_result hi_site) (site_args hi_site) [WPtr hi_literal]
+    InterpRuntime.start completion_memory (mkProgramWorld hello_world stdout_initial [entry])
+    [StreamBytes 1 (hello_bytes ++ [10])] (CallReturn [WInt 6])
+    InterpRuntime.start completion_memory (mkProgramWorld hello_world ProgramChecks.buffered [entry]).
+Proof.
+  destruct (proj2 completion_entry_image) as [Hr [Hw Hl]].
+  pose proof (P.H.hi_literal_checked completion_memory Hl) as Hstr.
+  assert (Hpost : puts_stream_post [WPtr hi_literal] completion_memory stdout_initial
+    [StreamBytes 1 (hello_bytes ++ [10])] (CallReturn [WInt 6]) ProgramChecks.buffered).
+  { exists hi_literal, hello_bytes, [Accept (hello_bytes ++ [10])], 6.
+    split; [reflexivity|]. split; [exact Hstr|]. split;
+      [exact puts_buffered_acceptance|split; reflexivity]. }
+  eapply S.E.invoke_normal with (born := []).
+  - split; [right; exists (TAtom "v1"); reflexivity|]. exists (Tmp (TAtom "v0")). reflexivity.
+  - split.
+    + split; [exact Hr|]. split; [exact Hw|]. exists hi_literal, hello_bytes. auto.
+    + split; [split; [exact stdout_initial_wf|repeat constructor; simpl; tauto]|discriminate].
+  - split; [constructor|]. split.
+    + split; [exact Hr|]. split; [exact Hw|]. split.
+      * apply stdio_delegates_refl; [reflexivity|exact (proj2 Hw)].
+      * right. exists hi_literal, hello_bytes, (hello_bytes ++ [10]), ([] : list Z).
+        split; [reflexivity|]. split; [exact Hstr|]. split; reflexivity.
+    + split; [reflexivity|]. eapply P.C.program_post_prefix; exact Hpost.
+  - split; [|exact Hpost].
+    exact (protocol_puts_post hello_bytes stdout_initial [Accept (hello_bytes ++ [10])] 6 ProgramChecks.buffered
+      completion_memory hi_literal hello_world [] completion_memory hello_world
+      puts_buffered_acceptance Hstr Hw).
+  - intros why Hbad. discriminate.
+  - intros values Heq. injection Heq as <-. split.
+    + exists (WInt 6). split; reflexivity.
+    + constructor; [exact I|constructor].
+  - intros status Hbad. discriminate.
+Qed.
+
+(** Three genuine logical cutpoints: TLS, callback entry, then the callback's
+    hard exit. Tokens are consumed once, and accepted bytes stay outstanding. *)
+Lemma completion_shutdown :
+  S.normal_run specs InterpRuntime.start completion_memory hello_world
+    (mkShutdown Tls 0 [entry] [] ProgramChecks.buffered) []
+    InterpRuntime.start completion_memory hello_world
+    (mkShutdown (HandedOff HardExit) 258 [] [0%nat] ProgramChecks.buffered).
+Proof.
+  assert (Hwf : stream_wf ProgramChecks.buffered) by (split; [repeat constructor; lia|reflexivity]).
+  assert (Hvalid : forall phase pending consumed,
+    callbacks_valid completion_memory (mkShutdown phase 0 pending consumed ProgramChecks.buffered) ->
+    shutdown_unique (mkShutdown phase 0 pending consumed ProgramChecks.buffered) ->
+    S.libc_valid specs completion_memory hello_world
+      (mkShutdown phase 0 pending consumed ProgramChecks.buffered)).
+  { intros phase pending consumed Hcallbacks Hunique. split; [split; reflexivity|].
+    split; [exact Hcallbacks|]. split; assumption. }
+  assert (Htls := (proj1 (proj2 completion_entry_image)) ProgramChecks.buffered Hwf).
+  assert (Hhandlers : S.libc_valid specs completion_memory hello_world
+    (mkShutdown Handlers 0 [entry] [] ProgramChecks.buffered)).
+  { apply Hvalid; [split; [constructor; [split; reflexivity|constructor]|exact I]|].
+    repeat constructor. simpl. tauto. }
+  assert (Hactive : S.libc_valid specs completion_memory hello_world
+    (mkShutdown (InCallback entry) 0 [] [0%nat] ProgramChecks.buffered)).
+  { apply Hvalid; [split; [constructor|split; reflexivity]|]. repeat constructor. simpl. tauto. }
+  assert (Hhard : S.libc_valid specs completion_memory hello_world
+    (mkShutdown (HandedOff HardExit) 258 [] [0%nat] ProgramChecks.buffered)).
+  { split; [split; reflexivity|]. split; [split; constructor|]. split; [exact Hwf|].
+    repeat constructor. simpl. tauto. }
+  eapply S.normal_next with (action := EmptyTls) (trace := []) (tail := [])
+    (sh1 := mkShutdown Handlers 0 [entry] [] ProgramChecks.buffered).
+  - constructor.
+  - eapply fixture_invocation; [exact Htls|exact I|constructor|exact Hhandlers].
+  - eapply S.normal_next with (action := InvokeCallback entry 0) (trace := []) (tail := [])
+      (sh1 := mkShutdown (InCallback entry) 0 [] [0%nat] ProgramChecks.buffered).
+    + constructor.
+    + eapply fixture_invocation; [exact Hhandlers|split; reflexivity|constructor|exact Hactive].
+    + eapply S.normal_next with (action := Handoff HardExit 258) (trace := []) (tail := []).
+      * constructor. intros kind Hbad. discriminate.
+      * eapply fixture_invocation; [exact Hactive|exact I|constructor; intros; discriminate|exact Hhard].
+      * constructor.
+Qed.
+
+(** Host completion is witnessed only at this full handoff snapshot. *)
+Definition completion_host : P.host_boundary :=
+  fun s m w sh => s = InterpRuntime.start /\ m = completion_memory /\ w = hello_world /\
+    sh = mkShutdown (HandedOff HardExit) 258 [] [0%nat] ProgramChecks.buffered.
+
+(** A different status or an invented empty queue does not match the witness. *)
+Example completion_host_rejects_changed_snapshot :
+  ~ completion_host InterpRuntime.start completion_memory hello_world
+    (mkShutdown (HandedOff HardExit) 0 [] [0%nat] ProgramChecks.buffered) /\
+  ~ completion_host InterpRuntime.start completion_memory hello_world
+    (mkShutdown (HandedOff HardExit) 258 [] [0%nat] (mkStream ByteOriented [] false)).
+Proof. split; intros (_ & _ & _ & Hsnapshot); discriminate Hsnapshot. Qed.
+
+(** This full logical path uses the composition theorem, an actual returning
+    puts, nonempty callback admission, and a supplied exact host witness.
+    The observed exit is 258 mod 256 = 2, not main's original zero status. *)
+Example nonempty_hi_to_hard_completion :
+  P.run (S.entry_rep specs [entry]) fixture_requests (S.boundary specs)
+    (S.A.trusted_host_contract completion_host)
+    (P.Application (P.M.Running (hi_entry completion_memory 10, InterpRuntime.start)
+      (mkProgramWorld hello_world stdout_initial [entry])))
+    [StreamBytes 1 (hello_bytes ++ [10]); ProcessExit 2]
+    (P.Finished InterpRuntime.start completion_memory hello_world
+      (mkShutdown (HandedOff HardExit) 258 [] [0%nat] ProgramChecks.buffered)).
+Proof.
+  replace ([StreamBytes 1 (hello_bytes ++ [10]); ProcessExit 2]) with
+    ([] ++ [StreamBytes 1 (hello_bytes ++ [10])] ++ [] ++ [ProcessExit (process_status 258)])
+    by reflexivity.
+  eapply S.trusted_hi_completion with (inventory := [entry]) (argc := 1)
+    (argv := entry_argv) (envp := entry_envp) (args := [hello_bytes]) (environment := []) (n := 6).
+  - apply HiChecks.interpreter_stdio_stable.
+  - split; [exact (proj1 completion_entry_image)|]. split; [exact completion_ready|].
+    split; [exact (proj2 completion_entry_image)|]. split.
+    + split; [exact stdout_initial_wf|repeat constructor; simpl; tauto].
+    + discriminate.
+  - reflexivity.
+  - apply P.H.hi_reaches_call. lia.
+  - exact completion_puts.
+  - exact completion_shutdown.
+  - repeat split; reflexivity.
 Qed.
 
 End SelectedChecks.

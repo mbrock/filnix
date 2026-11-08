@@ -91,6 +91,16 @@ Inductive shutdown_step : shutdown_state -> shutdown_action -> shutdown_state ->
       (mkShutdown (HandedOff HardExit) status (shutdown_pending s)
         (shutdown_consumed s) (shutdown_stdout s)).
 
+(** A source and selected action fix the logical endpoint. This lets a
+    caller name its next cutpoint without supplying endpoint validity again. *)
+Lemma shutdown_step_target : forall sh action left right,
+  shutdown_step sh action left -> shutdown_step sh action right -> left = right.
+Proof.
+  intros sh action left right Hl Hr. inversion Hl; subst; inversion Hr; subst; try reflexivity.
+  all: match goal with H1 : stream_step ?q ?a ?q1, H2 : stream_step ?q ?a ?q2 |- _ =>
+    assert (q1 = q2) by (eapply stream_step_target; eauto); subst; reflexivity end.
+Qed.
+
 (** A finite shutdown prefix; no rule promises eventual completion. *)
 Inductive shutdown_run : shutdown_state -> list shutdown_action -> shutdown_state -> Prop :=
 | shutdown_refl : forall s, shutdown_run s [] s

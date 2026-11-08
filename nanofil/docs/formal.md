@@ -1220,6 +1220,56 @@ axioms do not supply precise non-target preservation. Native satisfaction,
 selected lifecycle segment instantiation and unconditional hi.c closure
 remain open; libc stays trusted behind its stated contracts.
 
+### Campaign 4 milestone 4o: conditional whole-model hi composition
+
+`Selected.trusted_hi_completion` connects the named successful
+`HiProgram.trusted_entry_contract`, the generated application's actual
+reached returning `puts`, a finite chain of selected shutdown **invocations**,
+and `HiProgram.trusted_host_contract` at the exact resulting handoff.
+The same entry inventory, runtime state, memory, logical stdout and retained
+callback specifications cross those boundaries. The entry domain is any
+well-formed argv/environment satisfying that trusted image, not an assumption
+of an empty registration inventory. Safepoint stability remains explicit.
+
+`Selected.normal_run` names each logical shutdown target but does not ask
+the caller to supply `Program.realizes`, endpoint validity or endpoint runtime
+readiness again. Those follow from the same invocation's effect path and normal
+post. Fixed-action target uniqueness in `Stdio.v` and `Shutdown.v` identifies
+the extracted target with the next cutpoint; neither transition system changes.
+The full trace includes application and shutdown observations followed by the
+one host-exit event. Separately, `trusted_hi_observations` covers represented
+finite observations, including unfinished/resource leaves: runtime readiness,
+at most one exit event, and application-stop exclusion under the shared
+`failure_ending` classification. It does not assert eventual completion.
+
+An inhabited logical fixture supplies real argv/literal/stdio/argument memory,
+a nonempty eligible callback inventory, an actual returning buffered `puts`,
+and three selected invocations (TLS completion, callback entry, hard exit).
+Its callback changes status to 258, whose observed process status is 2;
+accepted bytes remain outstanding, rather than being silently delivered.
+The existing unknown-callback and missing-host-witness controls still reject
+admission/completion. The host fixture fixes the full runtime/memory/world
+and handoff snapshot, rejecting a changed status or invented empty queue.
+This is a logical composition instance, not evidence that the fixture callback
+executes natively or that native hi takes this path.
+
+This closes the **conditional composition** gap, not native adequacy. For the
+pinned launcher/libc/TLS/host boundary, the following obligations remain distinct:
+independent source-state action selection and callback admission; native
+satisfaction of the selected contracts and their effect permissions; and
+exhaustive observation coverage, including resource refusal, unfinished work
+and host handoff. Existing libc entry/exit probes are finite evidence, not
+proofs of these universal obligations. A theorem over existing invocations
+cannot establish coverage by omitting executions without such witnesses.
+
+Libc stays trusted behind these contracts. Internal registry scanning, unlink,
+retirement and done/lock work belong within a selected native segment before
+the next genuine logical cutpoint, not new outer lifecycle stutters. They may
+not hide callback output, re-entry or control transfers. The metadata pop/unlink
+constructions remain useful supporting evidence, not prerequisites for a libc
+executor. No native callback dispatch, universal segment satisfaction/coverage,
+termination or unconditional native `never_panics` theorem is claimed.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and
