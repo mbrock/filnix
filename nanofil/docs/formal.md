@@ -823,6 +823,50 @@ completion remain explicit next obligations. The body theorem alone
 does not promise puts completion, delivery, process exit or native
 trap-freedom.
 
+### Campaign 4, milestone 4e: coupled stdout endpoints
+
+[Composition.v](../rocq/theories/Composition.v) strengthens the trusted
+puts contract with a logical world containing the existing stdio
+capability roots, **one exact stdout protocol state**, and the pending
+exit-registration inventory. Every prefix, including unfinished and
+resource-ending prefixes, carries a stream-run witness between its
+actual endpoints and preserves that inventory. Normal completion also
+ties the returned integer and acceptance summary to a `puts_protocol`
+witness over those same endpoints. The source string is always read in
+the original invocation memory, not its endpoint memory.
+
+Forgetting stdout and registrations projects both prefixes and completed
+invocations into the existing puts contract, retaining the exact memory
+effect path, requests and resource-failure evidence. This implication is
+**one-way**. Native satisfaction of the stronger contract is a trusted
+specification obligation, not a consequence of native satisfaction of
+the old contract. The logical stream relation does not implement FILE
+or establish a native buffer interpretation.
+
+The endpoint lemmas establish FIFO accounting, stream well-formedness,
+nonwide preservation, sticky error and exit-free observations. Raw
+prefixes need explicit source well-formedness: they do not implicitly
+include call admissibility. An empty observation forbids new acceptance
+but may deliver old obligations; it does not imply unchanged stdout.
+Each summary is cumulative for one original call. It must not be
+concatenated with another summary as if they were incremental writes,
+or used to restart puts at the observed endpoint.
+
+Examples exercise empty/partial/full EOF, partial acceptance followed
+by a genuine oversized-allocation resource ending, silent delivery of
+prior output, inventory mutation and wide-entry rejection. Distinct
+delivery/discard histories can have the same endpoint when error is
+already set; the contract does not identify those histories or promise
+that each prefix extends to a completed call.
+
+Next, the outer application/shutdown relation must establish these
+stronger preconditions at every reached call, retain the exact stdout
+and inventory through main's actual return, and consume host completion
+once. Inventory equality and distinct tokens are **not callback
+validity**: callable targets, ABI, retained arguments and memory
+preconditions still require a trusted shutdown-ready contract at the
+exact post-puts memory. No native closure claim is made here.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and
