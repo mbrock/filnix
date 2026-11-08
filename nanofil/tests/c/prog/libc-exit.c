@@ -88,7 +88,45 @@ static int dynamic_exit(int reenter) {
     return WIFEXITED(st) && WEXITSTATUS(st) == status &&
         n == count && memcmp(buf, expected, n) == 0;
 }
-int main(void) {
+// A fresh exec reaches main through startup and observes real host
+// termination, not just a logical handoff. E is a direct handler write;
+// Z remains buffered until soft cleanup, and is absent on hard exit.
+static int host_completion(const char *mode, int status, const char *expected) {
+    fflush(0);
+    int fd[2];
+    if (pipe(fd)) return 0;
+    pid_t child = fork();
+    if (child == 0) {
+        close(fd[0]);
+        if (dup2(fd[1], 1) < 0 || dup2(fd[1], 2) < 0) _exit(99);
+        close(fd[1]);
+        char *args[] = {"host-completion", (char *)mode, 0};
+        char *env[] = {0};
+        execve("/proc/self/exe", args, env);
+        _exit(99);
+    }
+    close(fd[1]);
+    char buf[4096];
+    size_t n = 0;
+    ssize_t r;
+    while (n < sizeof buf && (r = read(fd[0], buf + n, sizeof buf - n)) > 0) n += r;
+    close(fd[0]);
+    int st = 0;
+    return child > 0 && waitpid(child, &st, 0) == child &&
+        WIFEXITED(st) && WEXITSTATUS(st) == status &&
+        n == strlen(expected) && memcmp(buf, expected, n) == 0;
+}
+int main(int argc, char **argv) {
+    if (argc == 2) {
+        pipe_out = 1;
+        if (setvbuf(stdout, 0, _IOFBF, 4096) || atexit(on_exit_probe) || fputs("Z", stdout) < 0)
+            _exit(99);
+        if (!strcmp(argv[1], "--main")) return -1;
+        if (!strcmp(argv[1], "--soft")) exit(258);
+        if (!strcmp(argv[1], "--hard")) _Exit(-2);
+        if (!strcmp(argv[1], "--underscore")) _exit(513);
+        _exit(99);
+    }
     int fd[2];
     if (pipe(fd)) return 1;
     pipe_out = fd[1];
@@ -110,5 +148,9 @@ int main(void) {
     answer("new handler precedes older handlers and cleanup", dynamic_exit(0));
     answer("recursive exit updates signed status without repeating handler", dynamic_exit(1));
     answer("handler underscore-exit replaces status without cleanup", dynamic_exit(2));
+    answer("main return reaches host completion with signed low-byte status", host_completion("--main", 255, "EZ"));
+    answer("soft exit reaches host completion after handlers and flush", host_completion("--soft", 2, "EZ"));
+    answer("hard exit reaches host completion without handlers or flush", host_completion("--hard", 254, ""));
+    answer("underscore-exit reaches host completion with wrapped status", host_completion("--underscore", 1, ""));
     return 0;
 }

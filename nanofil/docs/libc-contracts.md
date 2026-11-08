@@ -9,6 +9,52 @@ Campaign 4 can turn each row's precondition, footprint, result and
 failure alternatives into an external-call relation, without treating
 an unimplemented call as success.
 
+## Trusted entry and host boundaries
+
+The trusted libc boundary includes the pinned launcher, libc/TLS
+initialization and host-exit completion (mbrock's decision), not only
+functions called after main begins. These are **named specifications**
+in [HiArtifact.v](../rocq/theories/HiArtifact.v), not proved native
+implementations or new global Rocq axioms:
+
+| Trusted contract | Successful observation / guarantee | Native counterexample probe |
+| --- | --- | --- |
+| `HiProgram R.trusted_entry_contract` | A successful eligible launch supplies the exact ready runtime state and entry memory, readable argv/environment vectors, the module's checked literal, opaque libc/TLS/stdio validity, and a well-formed nonwide stdout with its actual registration inventory. | [libc-entry.c](../tests/c/prog/libc-entry.c): fresh re-execs with empty/nonempty environments and empty/high-byte strings; writable NULs; errno and initial streams; initialized TLS and usable libc in a constructor before main. |
+| `HiProgram R.trusted_host_contract` | An explicit completion witness at the exact ready soft/hard handoff permits one low-byte process-exit observation. The finished state remembers the handoff snapshot, not native postmortem memory. | [libc-exit.c](../tests/c/prog/libc-exit.c): fresh-exec main return −1, exit(258), _Exit(−2), and _exit(513), checking wait status and exact descriptor bytes; soft handlers precede buffered flush, hard exit does neither. |
+
+Entry satisfaction is directional: a successful eligible native launch
+supplies this image; it does not say every satisfying tuple is natively
+constructible. The `startup_at` component is a **readable projection**,
+not a proof of writable strings, complete TLS layout or initialization
+write footprints. The probe checks some stronger native facts. Copying
+still requires the native `argc + 1` int arithmetic to fit, before size
+multiplication; readable `startup_at` alone is not that precondition.
+Resource refusal or unfinished startup is not a successful entry, and
+the contract does not claim startup always succeeds. Eligible application
+constructors and retained callbacks require their own valid contracts;
+the trust boundary cannot make arbitrary user code safe. In particular,
+the entry inventory is not assumed empty merely because hi.c registers
+no handlers.
+
+The host contract retains a separate **actual completion witness**:
+readiness and a handoff phase alone do not establish native termination.
+Host handlers, loader finalization and host stdio are inside the trusted
+boundary. Its current observation interpretation projects host-only
+activity to the final process-exit event; descriptor bytes in the probe
+are not `StreamBytes` acceptance events or a durability promise. A host
+callback re-entering modeled Fil-C is not silently hidden by this
+projection: its effects/observations require an additional contract.
+Richer host-prefix coverage, blocking/resource behavior and universal
+termination are not proved here. Completion leaves the remembered
+outstanding obligations untouched; neither soft nor hard completion
+proves delivery, and hard exit requires no flush or empty pending list.
+
+The native probes are finite counterexample evidence for these trusted
+specifications, **not universal native satisfaction proofs**. Rocq
+derives application-only nonfailure and the witnessed terminal step
+from the predicates. Selected puts/shutdown closure and lifecycle
+coverage remain separate obligations.
+
 ## Pin, notation and common obligations
 
 The pin is `lib/filc-staging.json`'s core revision

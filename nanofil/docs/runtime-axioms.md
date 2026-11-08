@@ -115,6 +115,27 @@ Its `ready` says every object lies between 0 and Next, empty if freed,
 Next is at most 2^48, and nothing at or above Next has been written. Run.v's `Driver` runs over any `Runtime`, and the
 gates run `Driver InterpRuntime`.
 
+## Trusted libc outside the runtime module type
+
+The [libc contracts](libc-contracts.md#trusted-entry-and-host-boundaries)
+are a separate part of the trusted base, not extra `Runtime` axioms.
+This includes launcher/libc/TLS initialization and host-exit completion,
+under the same policy as ordinary libc calls. In
+[HiArtifact.v](../rocq/theories/HiArtifact.v),
+`HiProgram R.trusted_entry_contract` specifies successful entry images
+with their exact allocator state, and `HiProgram R.trusted_host_contract`
+requires an explicit completion witness at the exact handoff snapshot.
+Their native probes are respectively
+[libc-entry.c](../tests/c/prog/libc-entry.c) and
+[libc-exit.c](../tests/c/prog/libc-exit.c).
+
+These are named predicates with derived Rocq consequences, not claims
+that native initialization, host handlers or termination have been
+proved. A ready handoff is not a completion witness; the finished state
+remembers pre-death memory and does not certify output delivery. The
+contract table records the observation policy and remaining coverage
+limits. No axiom was added outside or inside the module type for them.
+
 ## Readiness
 
 Three more obligations of the module type are about the runtime's own

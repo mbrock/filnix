@@ -5,6 +5,15 @@
 #include <errno.h>
 #include "libc-probe.h"
 extern char **environ;
+static _Thread_local int entry_tls = 173;
+static int *constructor_errno;
+static int constructor_ready;
+__attribute__((constructor)) static void entry_constructor(void) {
+    constructor_errno = __errno_location();
+    *constructor_errno = ERANGE;
+    entry_tls += 9;
+    constructor_ready = stdout != 0 && stderr != 0 && fputs("", stderr) >= 0;
+}
 static int copied_inputs(int empty_environment) {
     fflush(0);
     pid_t child = fork();
@@ -27,6 +36,8 @@ int main(int argc, char **argv) {
             p[0] == 1 && p[1] == 128 && p[2] == 255 && p[3] == 0;
         good = good && (!strcmp(argv[1], "--copy-empty") ? environ[0] == 0 :
             environ[0] && strcmp(environ[0], "NF_COPY=\1\200\377") == 0 && environ[1] == 0);
+        good = good && constructor_ready && entry_tls == 182 &&
+            constructor_errno == __errno_location() && !ferror(stdout) && !ferror(stderr);
         for (int i = 0; i < argc; ++i) {
             volatile char *p = argv[i];
             p[strlen(argv[i])] = 0;
@@ -57,5 +68,7 @@ int main(int argc, char **argv) {
     *cell = EDOM;
     answer("errno is a writable thread-local cell", errno == EDOM && __errno_location() == cell);
     answer("initial streams are live", stdout != 0 && stderr != 0 && !ferror(stdout) && fputs("", stderr) >= 0);
+    answer("libc and TLS are usable before the entry constructor", constructor_ready &&
+        constructor_errno == cell && entry_tls == 182);
     return 0;
 }

@@ -371,7 +371,9 @@ Three things become precise at once:
 The contract table is the trusted base for everything about libc
 (mbrock's decision: libc stays behind these contracts). The starting
 set is [libc-contracts.md](libc-contracts.md): `puts` for `hi.c`, then
-the 56 Hello names and `fcntl`, with nine native probes. Rocq states
+the 56 Hello names and `fcntl`, with nine native probes. This trust
+also covers the named launcher/libc-TLS entry and host-completion
+contracts, with their entry/exit probes (milestone 4i below). Rocq states
 these specifications as relations, not global axioms or a purported
 proof of libc. The first relation is standalone; Prolog execution and
 the extracted driver still model only `free`.
@@ -983,6 +985,39 @@ launcher words. This does **not** establish native launch for malformed
 words or construct its libc/TLS image; startup's own preconditions and
 resource outcomes still apply before entry. Native realization and
 shutdown blocking/resource coverage remain open.
+
+### Campaign 4, milestone 4i: named trusted entry and host contracts
+
+The libc trust policy explicitly includes the pinned launcher,
+libc/TLS initialization and host completion. In
+[HiArtifact.v](../rocq/theories/HiArtifact.v),
+`trusted_entry_contract` names the successful-entry image, including
+startup vectors, exact allocator-state readiness, module literal and
+opaque libc/stdio validity. `trusted_entry_never_panics` derives
+application-only nonfailure from it and the stated safepoint-stability
+premise. It is not a theorem that native startup supplies every image
+or always succeeds. Refusal and unfinished startup are not normal entry.
+
+`trusted_host_contract` retains an explicit successful-completion
+witness at the exact ready handoff, rather than deriving termination
+from readiness. `trusted_host_completion_step` permits one terminal
+low-byte exit observation under this contract. The remembered snapshot
+and pending output remain unchanged; they do not describe postmortem
+memory or prove delivery. The trusted boundary owns host handlers,
+loader finalization and host stdio under the observation policy stated
+in [libc-contracts.md](libc-contracts.md#trusted-entry-and-host-boundaries).
+Host callbacks re-entering modeled Fil-C require their own contracts.
+
+The extended [libc-entry.c](../tests/c/prog/libc-entry.c) probe checks
+initialized TLS and usable errno/streams in a constructor and fresh
+re-execs. [libc-exit.c](../tests/c/prog/libc-exit.c) now observes fresh-exec
+main return, soft exit and both hard-exit names through wait status and
+exact descriptor bytes, with signed/wrapping statuses and handler/flush
+distinctions. These are finite native probes, **not proofs of the native
+implementations**. The contracts are listed separately in the
+[trusted base](runtime-axioms.md#trusted-libc-outside-the-runtime-module-type);
+no new axioms or core machine rules were added. Lifecycle prefix/resource
+coverage remains the next closure slice.
 
 ### The next milestones, in order
 

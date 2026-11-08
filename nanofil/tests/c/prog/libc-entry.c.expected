@@ -4,3 +4,4 @@ entry copies empty strings and high bytes with writable NULs: yes
 program names are readable aliases: yes
 errno is a writable thread-local cell: yes
 initial streams are live: yes
+libc and TLS are usable before the entry constructor: yes
