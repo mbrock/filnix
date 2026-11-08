@@ -200,7 +200,7 @@
     reaches an access through P's base that needs those bytes, and
     reaches it first: before a call or other effect
     (ahead_transparent/1), a poll edge, an edge back or a return; its
-    own access must be ahead_transparent/1 too (ahead_justified/4, docs/schedule.md). So it traps where the
+    own access must be ahead_transparent/1 too (ahead_justified/3, docs/schedule.md). So it traps where the
     plain check would not only on executions that trap later anyway.
 
     `renew(Lo, Hi, Rights, Align)` reads `[a Q1, p P]`: Q1 is the proof
@@ -213,7 +213,7 @@
     is `write` and the object is read-only; otherwise its result is P,
     proven accessible. Q1 and P1 have one definition each, Q1's check
     covers [Lo, Hi) at Align, and the function has no setjmp
-    (stage_func/5).
+    (stage_func/6).
 
     `renew_hull(Lo, Hi, Rights, Align)` reads `[a QL, a QH, p P]` and is
     a renew of P whose bounds and alignment two earlier heap proofs
@@ -248,7 +248,7 @@
     with its reason, and is followed by the access it covers. G has one
     definition, a span test of P0; P is P0 plus an offset through
     single-definition `add`, `sub` and `copy` flights with P0's lower;
-    the offset's interval (guard_offset/4) shifted by [Lo, Hi) lies in
+    the offset's interval (guard_chain/3) shifted by [Lo, Hi) lies in
     the span test's [Lo, Hi); every name on the way has one definition
     and the function has no setjmp. When G is 1 only the free flag, the
     read-only flag for a write, and alignment are tested natively.

@@ -885,7 +885,9 @@ compile. Its header is the reference for every term. Three properties
 are worth memorising:
 
 - **Ground terms in SSA.** Temporaries are `tmp(Name)` with ground
-  names, defined once, each use dominated by a definition. No logic
+  names, each use dominated by a definition (`definitions_dominate/3`).
+  The validator allows a temporary several definitions; the middle end
+  works on strict SSA, one definition each (`promote:strict_ssa/3`). No logic
   variable appears in IR. A module is ordinary data you can print
   (`ir_text.pl`), read back, and compare.
 - **Classes.** `w l s d x` are scalars, `p` is a pointer with its
@@ -931,9 +933,14 @@ must get its output past that one rule.
 
 Be precise about what this gives. The validator checks each module
 against a rule. That the rule is sound (that validated checked IR never
-reaches `unchecked` in the interpreter) is an argument made in
+reaches `unchecked` in the interpreter) was first an argument made in
 [docs/pizlonation.md](pizlonation.md) and [docs/m7.md](m7.md) and
-tested by mutation, not a mechanised proof. That the emitted assembly
+tested by mutation; it is now proved in Rocq
+([soundness](concepts/soundness.md), `valid_no_unchecked` in
+[Soundness.v](../rocq/theories/Soundness.v)) for the core subset, under
+the runtime axioms, of Validate.v's transcription of the rule. That the
+transcription is the rule is checked by agreement with `valid_module/1`
+on every core-subset mutant of the corpus, not proved. That the emitted assembly
 does what the checked IR says, and that the runtime keeps its side of
 the bargain, are separate claims, supported by differential and native
 tests. [docs/campaign.md](campaign.md) states these three obligations
@@ -956,8 +963,10 @@ structurally:
   upper to its lower, and the flag test catches that.
   - `renew` names an earlier check's proof for its bounds. The check
     and its pointer have one definition each and dominate the renew,
-    the renewed pointer has the same base and offset
-    (`same_pointer/3`), and the function has no setjmp. It tests the
+    the renewed pointer is at a constant distance from the checked one
+    through one base, the check's span covering the renew's shifted by
+    it (`pointer_distance/4`; distance 0 is `same_pointer/3`), and the
+    function has no setjmp. It tests the
     freed and read-only flags again.
   - `renew_if` reads a guard's `span_test` result G instead of live
     evidence. The validator accepts it through `guard_covers/5`
@@ -995,7 +1004,7 @@ A refactoring must leave the snapshot unchanged.
 
 | On every compile | By the tests | Trusted |
 |---|---|---|
-| IR well-formedness, SSA dominance and class rules (`valid_module/1`) | the frontend against clang on every test and corpus program | the soundness of the validator's evidence rule (argued and reviewed, not mechanised) |
+| IR well-formedness, SSA dominance and class rules (`valid_module/1`) | the frontend against clang on every test and corpus program | that Validate.v transcribes the evidence rule (compared on every core-subset mutant), the runtime axioms its soundness proof rests on, and the rule outside the core subset (argued and reviewed) |
 | checked-IR evidence: every raw access covered by a live proof, every cycle polled | the middle end, by interpreter refinement | the emitter's check, pointer-access and call sequences (reviewed against Fil-C's, tested natively and under `FUGC_SCRIBBLE`/`FUGC_VERIFY`) |
 | check passes change only checks (`*_refines/2`) | pizlonation, by agreement of unchecked and checked runs in the interpreter | the ABI facts in [docs/abi-findings.md](abi-findings.md) |
 | register homes hold their values, and no home overlaps a GC root (`check_regs`, `check_operands`) | the emitted code against the interpreter and clang (difftest, progtest, whole programs) | the root ranges the emitter reports to the register checker |

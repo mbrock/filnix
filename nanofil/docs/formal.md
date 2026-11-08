@@ -91,10 +91,11 @@ the reuse vocabulary: `renew`,
 `half_check(Bound, Lo, Hi, Rights, Align)`, `span_test(Lo, Hi)` with
 `renew_if(Lo, Hi, Rights, Align)`, `limit` with
 `check_limit(Lo, Hi, Rights, Align)`, and
-`check_ahead(Lo, Hi, Rights, Align, AHi)`. Deferred: floats
-([ieee.pl](../src/ieee.pl) is a separate integer-only model and can
-come later), x87, vectors, `cas` and atomics, `setjmp` (already excluded
-from every reuse rule), `va_arg`, `asm_fixed`, plain mode.
+`check_ahead(Lo, Hi, Rights, Align, AHi)`. Since added: the float
+classes `s`, `d` and `x`, with [ieee.pl](../src/ieee.pl) transcribed as
+Ieee.v, and variadic functions (`va_args`, `va_arg`). Deferred: vectors,
+`cas` and atomics, `setjmp` (already excluded from every reuse rule),
+`asm_fixed`, plain mode.
 
 The theorem is always relative. Its hypotheses are the runtime axioms
 (Campaign 2) and the libc contracts (Campaign 4), and every certificate
@@ -1258,7 +1259,7 @@ scheduled; each has a cheap first step.
 | Concurrency model | The model is one thread's (mbrock's decision, November 2026). A free-at-safepoint event is not enough for threaded programs: another thread's free shows at any check natively (tests/c/prog/axiom-threads.c). What would state the theorem for them? | A free event allowed before any instruction, emptying only a live heap object's bounds; run theorems weakened to "checked, or freed since its check"; re-check Campaign 3 | Campaign 2's axioms; Campaign 4's traces |
 | libc inside the model | Compile musl (or Fil-C's libc) with nanofil, moving libc from axioms into the theorem | Survey which libc functions the corpus needs and whether nanofil's C subset covers them ([survey.md](survey.md)) | Campaign 4's trusted base |
 | filcc translation validation | Map FilPizlonator's LLVM output into checked IR and run it through the same checker | Hand-translate one function's filcc output; list the vocabulary gaps | Reach: every package in Filnix, not only nanofil's |
-| Floats | [ieee.pl](../src/ieee.pl) is an integer-only SSE2 model; transcribe it and prove it against a reference? | Differential-test the extracted version against the Prolog one | Whether `s` and `d` join the core subset |
+| Floats | [ieee.pl](../src/ieee.pl), an integer-only model, is transcribed as Ieee.v and in the core subset; prove it against a reference? | Differential-test the extracted version against a reference IEEE implementation | Whether float results carry a proof, not only agreement |
 | Backend fusion | The check-plus-access templates are a closed set; validate instruction selection for them only | Enumerate the templates and write a native trace oracle before considering any x86 model | How much of claim 3 gets any evidence |
 
 ## Non-goals and things to resist
