@@ -23,7 +23,7 @@ the interpreter and cites the predicate it copies.
 | `Syntax.v` | ir.pl's header tables | classes, ops, values, instructions, jumps, blocks, functions, data, modules; `op_arg_classes/4`, `evidence_preserving/1`, `ahead_transparent/1`, `local_objects/2` |
 | `Values.v` | interp.pl's values | `cap` (`none`, `obj`, `ro`, `fn`, `ext`), `ptr`, `word`; `word_at_class/3` |
 | `Memory.v` | interp.pl's Memory section | regions, `mem`, `cap_access_res/7`, `free_res/4`, bytes and aux, `fresh` |
-| `Runtime.v` | `alloc_base/6`, `free_res/4`; [runtime-axioms.md](runtime-axioms.md) | Campaign 2's `Module Type Runtime`, eight axioms and three readiness obligations, and `InterpRuntime`, which proves them |
+| `Runtime.v` | `alloc_base/6`, `free_res/4`; [runtime-axioms.md](runtime-axioms.md) | Campaign 2's `Module Type Runtime`, ten axioms and three readiness obligations, and `InterpRuntime`, which proves them |
 | `Ops.v` | `alu/4`, `additive_res/4`, `kind_res/8` | integer and float ops, `check` and the reuse vocabulary, raw loads and stores, pointer-load and pointer-store protocols, `va_arg` |
 | `Semantics.v` | `run/5`'s blocks, instructions, jumps, calls | the configuration, `step`, `step_rel`, `reachable`; the variadic entry snapshot |
 | `Run.v` | `initial_memory/4` | module preparation, and `Driver`, a run over any `Runtime`'s allocations and free |
@@ -726,25 +726,32 @@ Decisions and findings:
   before any instruction that is not `evidence_preserving/1`
   (`safepoints`). The pass keeps facts across three such instructions:
   a pointer store taken with its check (its ensure-aux may exit), a
-  `check_local`, and a repeated getter (`repeated_getters/4`). Natively
-  none reaches a safepoint where a free could show: the ensure-aux exit
-  comes after the inline check and the write lands in the checked
-  object, a local check is inline, and a repeated getter takes the fast
-  path because the same getter returned earlier in this activation. The
-  module type does not say so, and a runtime that frees there would run
-  a valid module to `unchecked`. The theorem takes this as a hypothesis,
-  `spares`: at a safepoint before an instruction the pass relies on
-  facts for, the runtime changes no region. The interpreter's runtime
-  changes nothing at a safepoint (`interp_spares`), so
-  `interp_access_not_unchecked` has no such hypothesis. Narrowing the
-  module type (no safepoint at raw accesses or `check_local`, and a
-  machine that knows which getters have returned) would make `spares`
-  a lemma; that is a decision for the module type's owners, and needs
-  an Oracle review.
-- **A runtime's free may be `unchecked`.** The module type's `free`
-  returns any result; `free_res` never returns `unchecked`, and native
-  free traps. The theorem is about accesses, so it claims nothing for a
-  free; a later axiom (free gives no `unchecked`) would close it.
+  `check_local`, and a repeated getter (`repeated_getters/4`). A local
+  check is inline, and a repeated getter takes the fast path because
+  the same getter returned earlier in this activation, so neither
+  reaches a safepoint natively. A pointer store does: when its aux must
+  be allocated and is not in zero mode, it exits to the runtime
+  (`filc_exit_with_allocation_root`, filc_runtime.c 2578-2591, "anytime
+  we do a store, it's a safepoint"), and `filc_exit` runs deferred
+  signal handlers (1231-1250), which may free the checked object. The
+  store then lands in the freed object's retained memory: safe natively
+  by `retention`, which is Fil-C's own argument at that exit ("any
+  object referenced from roots is guaranteed to be kept alive"), but
+  `unchecked` in the model, whose raw access to a freed object is a
+  false check. (An earlier version of this page said no such free can
+  show; that was wrong for pointer stores.) The theorem takes this as a
+  hypothesis, `spares`: at a safepoint before an instruction the pass
+  relies on facts for, the runtime changes no region. The interpreter's
+  runtime changes nothing at a safepoint (`interp_spares`), so
+  `interp_access_not_unchecked` has no such hypothesis. mbrock's
+  decision (November 2026): `spares` stays a hypothesis. Neither axiom
+  that would remove it is true natively (no free at any safepoint; no
+  safepoint at a pointer store). The principled alternative, weakening
+  the conclusion to "checked, or its object was freed since its
+  check", is left for later.
+- **A runtime's free gives no `unchecked`.** The module type's
+  `free_checked` now says so ("No run is unchecked"); `free_res`
+  proves it, and native free returns or traps.
 - **`InterpRuntime` is unsealed.** It was `: Runtime`, which hides that
   its safepoint changes nothing; `Driver InterpRuntime` and
   `Persistence InterpRuntime` still check it against the module type.
@@ -888,20 +895,27 @@ object had, and the runtime's safepoint keeps every identity
 
 Decisions and findings:
 
-- **The runtime's free is not promised to keep identities.** The module
+- **The runtime's free keeps identities, as an axiom.** The module
   type's `free_lifetime` says every identity after a free was one
   before, not that every one before is still there. A runtime whose free
   dropped a region could give its base to a later allocation, and a
   renew that names the old object would then check the new one: a
-  valid module run to `unchecked(span)`. The theorem takes `free_ids`
-  as a hypothesis. The interpreter's free keeps the identity, freeing
-  in place (`free_res_ids`), so `interp_persists` has no hypothesis.
-  Natively a freed object's address may be reused only once nothing
-  names it (Runtime.v's header), which is what `free_ids` says in the
-  model. mbrock's decision: `free_ids` stays a named hypothesis, like
-  `spares`. Once the reuse forms are done, both go to him together, with
-  a recommendation after an Oracle review; an axiom would need a native
-  test.
+  valid module run to `unchecked(span)`. The theorems first took
+  `free_ids` as a hypothesis; mbrock's decision (November 2026) made it
+  the axiom `free_keeps_ids`: free reclaims nothing, only the
+  collector does, at a safepoint, where `rooting` already keeps every
+  identity. `InterpRuntime` proves it (`free_res_keeps_ids`), and
+  Identity.v derives `free_ids R.free` from it (`R_free_ids`), so no run
+  theorem takes it any more. Its native test, axiom-identity.c, checks
+  that thousands of allocations right after a free, before any
+  collection, never take the freed address. Writing it showed that
+  after a collection the address may recur even while a local holds the
+  pointer: nanofil keeps every local in a memory slot, whose stored
+  capability the collector redirects to the free singleton, while clang
+  keeps it in a frame root. Both trap. The model never reuses a base,
+  so the two agree on whether every access through a capability the
+  program holds traps, not on its address bits after a collection. The
+  test therefore checks non-reuse only before any collection.
 
 ### The single-definition invariant
 
@@ -931,7 +945,7 @@ Decisions:
 - **Memory is handled once.** Every machine step's memory persists from
   the last (`mstep_persists`), so the step lemmas carry frames only, and
   a replay's memory follows by `scope_mem`. This is where `free_ids`
-  enters.
+  enters, now from the axiom `free_keeps_ids`.
 - **A doomed frame claims nothing.** Its `check_ahead` did not pass, so
   nothing after it is trusted. A doomed frame never returns to a caller
   or calls one, so every waiting caller is undoomed.
@@ -989,7 +1003,7 @@ Decisions:
 - **The closed theorem joins two invariants.** Persistence.v leaves the
   hull case with its facts holding and dominating (`hull_case`);
   Single.v's invariant supplies the replays. Chain.v's `Hull R` joins
-  them: `run_access_checked` given `spares` and `free_ids`, and
+  them: `run_access_checked` given `spares`, and
   `interp_access_checked` for the interpreter with no hypothesis but a
   ready start. Each file instantiates `Machine R`, and `mstep` is an
   inductive new in each instance, so a run is carried across
@@ -1158,7 +1172,7 @@ theorem `run_doomed_checked` says this never happens in a checked
 module's run: a doomed frame never steps to `unchecked` of any kind.
 `interp_doomed_checked` states it under the interpreter's runtime with
 no hypothesis about safepoints; like the other run theorems, the
-generic one takes `spares` and `free_ids`.
+generic one takes `spares`.
 
 The invariant, `dinv`, says what holds of a doomed frame
 (`doomed_ok`):
@@ -1218,7 +1232,7 @@ theorem for that place:
 | a raw load, store or call | Chain.v's `run_access_checked` |
 | a renew, a renew over a hull, a half check | Renew.v's `run_reuse_checked` |
 | a `renew_if`, a `check_limit` | Guard.v's `run_guard_checked` |
-| the runtime's free | the hypothesis `free_checked` |
+| the runtime's free | Runtime.v's axiom `free_checked` |
 
 A frame that is not doomed steps to `unchecked` only where its next
 instruction's result is (`step_unchecked_inst`): block entry, jumps and
@@ -1241,20 +1255,20 @@ What the theorem covers and what it does not:
 - **External calls other than `free` are stuck** in the model, so the
   theorem says nothing about runs past them; Campaign 4's contracts
   extend the machine there.
-- **The generic theorem has three runtime hypotheses**: `spares` and
-  `free_ids`, as every run theorem has (see "Next"), and
-  `free_checked`, that the runtime's free traps or frees and never
-  answers `unchecked`. The module type does not say it; the
-  interpreter's free satisfies it (`free_res_checked`), and native
-  free traps or frees.
+- **The generic theorem has one runtime hypothesis**, `spares` ("The
+  runtime's safepoints" above), which the interpreter's runtime
+  satisfies. That free keeps identities and never answers `unchecked`
+  are the module type's axioms `free_keeps_ids` and `free_checked`.
 - **A run starts ready**, a hypothesis until the heap starts above the
   module's data.
 
 Decisions:
 
-- **`free_checked` is a hypothesis, not an axiom.** Axioms in Runtime.v
-  are mbrock's to add, each with a native test; it can join the
-  decision on `free_ids`.
+- **`free_checked` is an axiom** (mbrock's decision, November 2026),
+  with the native test axiom-free.c: free of null or a live heap
+  object's base returns, and a second free, an interior pointer or a
+  global's address traps. `InterpRuntime` proves it
+  (`free_res_checked`).
 - **The theorem is stated over Guard.v's machine instance**, the one
   Chain.v's, Renew.v's and Guard.v's run theorems share; a run is
   carried over to Doomed.v's instance (`mreachable_doom`).
@@ -1421,13 +1435,7 @@ with this bound it also keeps a ready module's data below 2^48.
 
 ## Next
 
-1. After the reuse forms, a decision on the runtime's safepoints
-   (`spares`, above) and its free (`free_ids`, "Identities persist"),
-   brought to mbrock together with a recommendation after an Oracle
-   review: narrow the module type or add axioms with native tests, or
-   keep the hypotheses. `free_checked` ("No run is unchecked") can
-   join it.
-2. Starting the heap above the module's data, so that the initial
+1. Starting the heap above the module's data, so that the initial
    readiness hypothesis becomes a lemma.
 
 Inquiries touched: none closed. The integer-at-`p` case is a small

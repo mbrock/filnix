@@ -22,6 +22,8 @@
     | `free_lifetime`, `safepoint_lifetime` | bounds change only by free, which empties a live heap object's | axiom-lifetime.c |
     | `safepoints` | the runtime acts only at instructions that are not evidence preserving | axiom-safepoint.c |
     | `retention` | free leaves an object's bytes and stored capabilities where they were | axiom-retention.c |
+    | `free_keeps_ids` | free reclaims nothing: every identity before it is one after it | axiom-identity.c |
+    | `free_checked` | free frees or traps, and never answers `unchecked` | axiom-free.c |
     | `aux_round_trip` | a stored capability stays, or becomes one that traps as the freed object does | axiom-aux.c |
     | `rooting` | no identity the program can name is reclaimed | axiom-rooting.c |
 
@@ -49,7 +51,8 @@
     A freed object's address can be a new object's natively, once
     nothing names the old one. The model's `fresh` never reuses an
     identity, because a capability never dies in the model: the two
-    agree on every capability a program still holds.
+    agree on whether each access through a capability a program still
+    holds traps, though not on its address bits after a collection.
 
     ## Instances
 
@@ -175,6 +178,16 @@ Module Type Runtime.
   Axiom retention : forall x m r m',
     free x m = Some (r, m') -> m_bytes m' = m_bytes m /\ m_aux m' = m_aux m.
 
+  (** Free reclaims nothing: every identity before it is one after it,
+      the freed object's too. Only the collector reclaims, at a
+      safepoint (`rooting`). *)
+  Axiom free_keeps_ids : forall x m r m',
+    free x m = Some (r, m') ->
+    forall b, object_region b (m_regions m) <> None -> object_region b (m_regions m') <> None.
+
+  (** Free frees or traps; it never answers `unchecked`. *)
+  Axiom free_checked : forall x m w m', free x m <> Some (RUnchecked w, m').
+
   (** `at_safepoint i`: the runtime may act, and another thread's
       effects become visible, at i. *)
   Parameter at_safepoint : inst -> bool.
@@ -268,6 +281,24 @@ Proof.
     destruct (Z.eqb b base) eqn:E.
     + apply Z.eqb_eq in E. subst. inversion Hb; subst. exists reg. auto.
     + exists reg'. auto.
+Qed.
+
+Lemma free_res_keeps_ids : forall x m r m',
+  free_res x m = Some (r, m') ->
+  forall b, object_region b (m_regions m) <> None -> object_region b (m_regions m') <> None.
+Proof.
+  intros x m r m' H b Hb. destruct (free_res_frees x m r m' H) as [-> | (base & reg & _ & _ & _ & Hr & _)]; [exact Hb|].
+  rewrite (object_region_replace _ _ _ _ b Hr eq_refl). destruct (Z.eqb b base); [discriminate | exact Hb].
+Qed.
+
+(** `free_res/4` answers ok or a trap. *)
+Lemma free_res_checked : forall x m w m', free_res x m <> Some (RUnchecked w, m').
+Proof.
+  intros x m w m' H. unfold free_res, cap_free_res, object_free_res in H.
+  repeat match type of H with
+         | context [match ?y with _ => _ end] => destruct y; try discriminate H
+         end.
+  all: injection H as H; discriminate H.
 Qed.
 
 Lemma free_res_retention : forall x m r m',
@@ -378,6 +409,8 @@ Module InterpRuntime.
 
   Definition free_lifetime := free_res_lifetime.
   Definition retention := free_res_retention.
+  Definition free_keeps_ids := free_res_keeps_ids.
+  Definition free_checked := free_res_checked.
 
   (** The interpreter's runtime may act wherever the compiler does not
       promise that it cannot. *)

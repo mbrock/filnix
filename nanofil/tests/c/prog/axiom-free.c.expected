@@ -1,0 +1,7 @@
+free of null returns: yes
+free of a live object returns: yes
+its capability then traps: yes
+a second free traps: yes
+a second free after a collection traps: yes
+free of an interior pointer traps: yes
+free of a global traps: yes

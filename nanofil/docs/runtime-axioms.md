@@ -26,6 +26,8 @@ the runtime paths below are relative to `libpas/src/libpas/` there.
 | `safepoints` | the runtime acts, and another thread's effects become visible, only at instructions that are not `evidence_preserving/1`: calls, polls, alloc and the rest | [axiom-safepoint.c](../tests/c/prog/axiom-safepoint.c): a timer's handler frees the object a loop reads; the loop reads only its bytes, then traps | Manifesto.md, "FUGC relies on safepoints"; `filc_runtime.c:1191` (`handle_deferred_signals`) |
 | `retention` | free changes no byte and no stored capability: a freed object's memory is retained while anything can name it | [axiom-retention.c](../tests/c/prog/axiom-retention.c): another thread frees the object a loop reads and churns the allocator; the loop reads retained bytes or traps, never other values | `free_impl` writes only the header; Manifesto.md on freed objects |
 | `aux_round_trip` | at a safepoint a stored capability stays, or, if its object was freed, becomes one that traps as a freed object does (the free singleton) | [axiom-aux.c](../tests/c/prog/axiom-aux.c): a stored pointer to a freed object loads back at its address and traps; a live one reads | `fugc.h:170–181, 220–231` (CAS of the lower to `filc_free_singleton`) |
+| `free_keeps_ids` | free reclaims nothing: every identity before a free is one after it, the freed object's too; only the collector reclaims, at a safepoint | [axiom-identity.c](../tests/c/prog/axiom-identity.c): its capability traps, before and after a collection (refuting "free leaves every region as it was"); 4096 allocations of its size right after the free, while no collection runs (checked with `zgc_requested_cycle`; about 320 KiB with headers, below `fugc_minimum_threshold`), never take its address; another object is untouched | `filc_runtime.c:3160–3183` (`free_impl` writes only the header), `3897–3923` (`free` reaches it directly), `fugc.c:64` |
+| `free_checked` | free frees or traps; it never goes on having done something else, so it gives no `unchecked` | [axiom-free.c](../tests/c/prog/axiom-free.c): free of null and of a live object's base return, the object then traps; a second free, before or after a collection, an interior pointer and a global's address trap | `filc_runtime.c:3897–3923` (`FILC_CHECK` and `free_fail` panic) |
 | `rooting` | at a safepoint no identity the program can name is reclaimed | [axiom-rooting.c](../tests/c/prog/axiom-rooting.c): objects held only by a frame, and one only through another object, survive collections and allocation; with `FUGC_SCRIBBLE=1` in the gc-stress steps; [gcglobals.c](../tests/c/prog/gcglobals.c) for globals | Manifesto.md, "Accurate" |
 
 The tests are ordinary `tests/c/prog` programs: progtest.sh builds each
@@ -45,9 +47,41 @@ still reads the object's bytes until then.
 
 A freed object's address can become a new object's natively once
 nothing names the old one. The model's `fresh` never reuses an
-identity, because nothing dies in the model: the two agree on every
-capability a program still holds. This is why the fresh test keeps the
+identity, because nothing dies in the model: the two agree on whether
+each access through a capability a program still holds traps, though
+not on its address bits after a collection. This is why the fresh test keeps the
 old pointer alive, and why it does not ask that addresses never recur.
+
+Writing axiom-identity.c showed why its claim stops at the first
+collection. After one, a freed object's address may be reused even
+while a local holds the pointer: nanofil keeps every C local in a
+memory slot, and the collector redirects a stored capability to a freed
+object to the free singleton and reclaims the object, while clang keeps
+the same local in a frame root, which the collector marks without
+looking at the FREE flag. Either way the old capability traps.
+
+The model and native agree on how every capability a program holds
+behaves, whether it reads or traps, not on its address bits. With
+`free_keeps_ids`, `rooting` and `fresh_allocation` the model never gives
+a freed object's base to a later allocation; natively a stale pointer's
+address may equal a new object's after a collection, though the
+pointer itself traps. The previous axioms already implied this.
+
+`free_keeps_ids` is about `free`, the only external call the model
+sends to the runtime's free (`external_call` in Semantics.v). Native
+`munmap` and `shmdt` free and then unmap at once, so their range can
+return from a later `mmap` with no collection; routing them through
+`free` would make the axiom false.
+
+Writing axiom-free.c found a disagreement the axioms do not cover:
+native free of an escaping local's address returns, under both nanofil
+and filcc (the local is an ordinary collected object natively), while
+the model's free (`object_free_res` in Memory.v) traps `invalid_free`
+for every object that is not a heap object. `free_lifetime`'s
+`lifetime_step` lets a free empty only a heap object, so no runtime of
+the module type can match native there. The test leaves that case out;
+it is a fidelity question for `free_res` and `free_lifetime`, not a
+safety one, and a follow-up.
 
 ## The interpreter's instance
 

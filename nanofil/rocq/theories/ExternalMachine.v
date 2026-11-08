@@ -258,7 +258,7 @@ Theorem step_persists : forall registry ge st trace st',
 Proof.
   intros registry ge st trace st' Hfree Hids H. destruct H; simpl; intros Hr;
     try apply persists_refl.
-  1: exact (S.ID.mstep_persists _ _ _ Hfree Hids Hr (single_core_step _ _ _ H)).
+  1: exact (S.ID.mstep_persists _ _ _ Hfree Hr (single_core_step _ _ _ H)).
   all: exact (proj2 (E.invoke_preserve _ _ _ _ _ _ _ _ _ _ _ _ _ H2 Hr)).
 Qed.
 
@@ -330,7 +330,7 @@ Theorem step_sinv : forall registry ge md st trace st',
   step registry ge st trace st' -> state_ready st -> single_inv ge md st -> single_inv ge md st'.
 Proof.
   intros registry ge md st trace st' Hge Hmd Hfree Hids H. destruct H; simpl; intros Hr Hi; try exact I.
-  - exact (S.mstep_sinv _ _ _ _ Hge Hmd Hfree Hids Hr (single_core_step _ _ _ H) Hi).
+  - exact (S.mstep_sinv _ _ _ _ Hge Hmd Hfree Hr (single_core_step _ _ _ H) Hi).
   - eapply resume_sinv; eauto. exact (proj2 (E.invoke_preserve _ _ _ _ _ _ _ _ _ _ _ _ _ H2 Hr)).
 Qed.
 

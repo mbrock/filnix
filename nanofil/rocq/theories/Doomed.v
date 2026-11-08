@@ -1478,12 +1478,12 @@ Qed.
 (** `mstep_dinv`: every machine step from a ready state keeps `dinv`,
     where Single.v's and Persistence.v's invariants hold. *)
 Theorem mstep_dinv : forall ge md st st',
-  checked_module md -> ge_free ge = R.free -> free_ids R.free ->
+  checked_module md -> ge_free ge = R.free ->
   ready_state st -> mstep ge st st' -> sinv ge md (fst st) -> P.I.inv ge md st ->
   dinv ge md (fst st) -> dinv ge md (fst st').
 Proof.
-  intros ge md st st' Hmd Hfree Hfi Hr Hs Hsi Hi Hdi.
-  pose proof (S.ID.mstep_persists _ _ _ Hfree Hfi Hr Hs) as Hp.
+  intros ge md st st' Hmd Hfree Hr Hs Hsi Hi Hdi.
+  pose proof (S.ID.mstep_persists _ _ _ Hfree Hr Hs) as Hp.
   pose proof (R.address_space _ _ Hr) as Hfit.
   pose proof (R.address_space _ _ (mstep_ready _ _ _ Hfree Hs Hr)) as Hfit'.
   destruct Hs as [c c' s E | c q k s base s' E He Hal | c s s' m' Hd Hact]; simpl in *.
@@ -1517,17 +1517,17 @@ Proof. intros ge st st' H. destruct H; econstructor; eassumption. Qed.
     (`sinv`), the pass's facts (`P.I.inv`) and the doomed frame's need
     (`dinv`), hold in every state a ready run reaches. *)
 Lemma run_inv : forall ge md st st',
-  ge_module ge = md -> checked_module md -> ge_free ge = R.free -> P.I.spares ge md -> free_ids R.free ->
+  ge_module ge = md -> checked_module md -> ge_free ge = R.free -> P.I.spares ge md ->
   P.I.RM.mreachable ge st st' -> ready_state st ->
   sinv ge md (fst st) -> P.I.inv ge md st -> dinv ge md (fst st) ->
   sinv ge md (fst st') /\ P.I.inv ge md st' /\ dinv ge md (fst st').
 Proof.
-  intros ge md st st' Hge Hmd Hfree Hsp Hfi H.
+  intros ge md st st' Hge Hmd Hfree Hsp H.
   induction H as [st st' Hs | st | st1 st2 st3 H12 IH1 H23 IH2]; intros Hr Hsi Hi Hdi.
   - pose proof (mstep_same _ _ _ Hs) as Hs'.
-    split; [exact (S.mstep_sinv _ _ _ _ Hge Hmd Hfree Hfi Hr Hs' Hsi)|].
+    split; [exact (S.mstep_sinv _ _ _ _ Hge Hmd Hfree Hr Hs' Hsi)|].
     split; [exact (P.mstep_inv _ _ _ _ Hge Hmd Hsp Hr Hs Hi)|].
-    subst md. exact (mstep_dinv _ _ _ _ Hmd Hfree Hfi Hr Hs' Hsi Hi Hdi).
+    subst md. exact (mstep_dinv _ _ _ _ Hmd Hfree Hr Hs' Hsi Hi Hdi).
   - auto.
   - destruct (IH1 Hr Hsi Hi Hdi) as (Hsi2 & Hi2 & Hdi2).
     exact (IH2 (P.I.RM.mreachable_ready _ _ _ Hfree H12 Hr) Hsi2 Hi2 Hdi2).
@@ -1536,15 +1536,15 @@ Qed.
 (** `run_doomed_checked`: in every state of a run of a checked
     module's function that starts ready, a doomed frame never steps to
     an `unchecked` outcome, where the runtime spares the pass's facts at
-    safepoints (`spares`) and its free keeps identities (`free_ids`). *)
+    safepoints (`spares`). *)
 Theorem run_doomed_checked : forall ge md f xs fr m fuel s0 c s w,
-  checked_module md -> ge_module ge = md -> ge_free ge = R.free -> P.I.spares ge md -> free_ids R.free ->
+  checked_module md -> ge_module ge = md -> ge_free ge = R.free -> P.I.spares ge md ->
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
   P.I.RM.mreachable ge (mkConfig fr [] m fuel, s0) (c, s) ->
   fr_doomed (c_frame c) <> None -> step ge c <> Done (Unchecked w).
 Proof.
-  intros ge md f xs fr m fuel s0 c s w Hmd Hge Hfree Hsp Hfi Hin Hcf H0 Hreach Hd.
-  destruct (run_inv _ _ _ _ Hge Hmd Hfree Hsp Hfi Hreach H0
+  intros ge md f xs fr m fuel s0 c s w Hmd Hge Hfree Hsp Hin Hcf H0 Hreach Hd.
+  destruct (run_inv _ _ _ _ Hge Hmd Hfree Hsp Hreach H0
               (S.start_sinv ge md f xs fr m fuel Hmd Hin Hcf)
               (P.start_inv ge md f xs fr m fuel s0 Hmd Hin Hcf)
               ltac:(intros Hd0; simpl in Hd0; destruct (call_frame_entry _ _ _ Hcf) as (_ & Hn & _); contradiction))
@@ -1569,5 +1569,5 @@ Corollary interp_doomed_checked : forall md globals f xs fr m fuel s0 c s w,
 Proof.
   intros md globals f xs fr m fuel s0 c s w ge Hmd Hin Hcf H0 Hreach Hd.
   exact (InterpDoom.run_doomed_checked ge md f xs fr m fuel s0 c s w
-           Hmd eq_refl eq_refl (interp_spares ge md) free_res_ids Hin Hcf H0 Hreach Hd).
+           Hmd eq_refl eq_refl (interp_spares ge md) Hin Hcf H0 Hreach Hd).
 Qed.

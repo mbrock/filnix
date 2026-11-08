@@ -14,7 +14,7 @@
     | a renew, a renew over a hull, a half check | Renew.v's `run_reuse_checked` |
     | a `renew_if`, a `check_limit` | Guard.v's `run_guard_checked` |
     | a frame a `check_ahead` doomed | Doomed.v's `run_doomed_checked` |
-    | the runtime's free | the hypothesis `free_checked` |
+    | the runtime's free | Runtime.v's axiom `free_checked` |
 
     A step of a frame that is not doomed is `unchecked` only where its
     instruction's own result is (`inst_unchecked_source`). Of a raw
@@ -28,7 +28,6 @@
     | `unchecked_op`, `op_unchecked_source` | the ops whose result may be `unchecked` |
     | `inst_unchecked_source` | the instructions whose result may be `unchecked` |
     | `raw_tmp` | a raw access of a checked module goes through a temporary |
-    | `free_checked`, `free_res_checked` | a free never answers `unchecked`; the interpreter's does not |
     | `valid_no_unchecked` | along every run of a checked module that starts ready, no step is `unchecked` |
     | `interp_valid_no_unchecked` | the same under the interpreter's runtime, with no hypothesis about the runtime |
 
@@ -36,9 +35,9 @@
 
     | Decision | Why |
     |---|---|
-    | the runtime's free never answering `unchecked` is a hypothesis | the module type does not say it; Runtime.v keeps axioms to those mbrock decides, with native tests |
-    | the theorem takes `spares` and `free_ids` as the run theorems do | the decision on both is mbrock's (docs/rocq.md, "Next") |
-    | a run is stated over Guard.v's machine instance | the doomed frame's run is carried over to Doomed.v's (`mreachable_same`) | *)
+    | free never answering `unchecked` is the module type's axiom `free_checked` | mbrock's decision, with the native test axiom-free.c |
+    | the theorem takes `spares` as the run theorems do | it is false natively at a pointer store's aux exit; mbrock's decision keeps it a hypothesis (docs/rocq.md, "The runtime's safepoints") |
+    | a run is stated over Guard.v's machine instance | the doomed frame's run is carried over to Doomed.v's (`mreachable_doom`) | *)
 
 From Stdlib Require Import String ZArith List Bool Lia Relations.
 From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Semantics Machine Validate
@@ -74,18 +73,6 @@ Proof.
   all: try (unfold float_integer in H; cases H; fail).
   all: match goal with E : va_arg_res _ _ _ = Some ?p0 |- _ =>
          injection H as H3 _; exact (va_arg_reason _ _ _ _ _ E H3) end.
-Qed.
-
-(** `free_checked free`: the runtime's free traps or frees, and never
-    answers `unchecked`. *)
-Definition free_checked (free : word -> Memory.mem -> option (res unit * Memory.mem)) : Prop :=
-  forall x m w m', free x m <> Some (RUnchecked w, m').
-
-(** `free_res/4` answers ok or a trap. *)
-Lemma free_res_checked : free_checked free_res.
-Proof.
-  intros x m w m' H. unfold free_res, cap_free_res, object_free_res in H.
-  cases H; injection H as H; discriminate H.
 Qed.
 
 (** `inst_unchecked_source`: an instruction's result is `unchecked`
@@ -243,22 +230,20 @@ Qed.
 
 (** `valid_no_unchecked`: in every state of a run of a checked
     module's function that starts ready, no step is `unchecked`, where
-    the runtime spares the pass's facts at safepoints (`spares`), its
-    free keeps identities (`free_ids`) and never answers `unchecked`
-    (`free_checked`). *)
+    the runtime spares the pass's facts at safepoints (`spares`). *)
 Theorem valid_no_unchecked : forall ge md f xs fr m fuel s0 c s w,
   checked_module md -> ge_module ge = md -> ge_free ge = R.free ->
-  GD.G.H.P.I.spares ge md -> free_ids R.free -> free_checked R.free ->
+  GD.G.H.P.I.spares ge md ->
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
   GD.G.H.P.I.RM.mreachable ge (mkConfig fr [] m fuel, s0) (c, s) ->
   step ge c <> Done (Unchecked w).
 Proof.
-  intros ge md f xs fr m fuel s0 c s w Hmd Hge Hfree Hsp Hfi Hfc Hin Hcf H0 Hreach E.
+  intros ge md f xs fr m fuel s0 c s w Hmd Hge Hfree Hsp Hin Hcf H0 Hreach E.
   destruct (fr_doomed (c_frame c)) as [why|] eqn:Ed.
-  - exact (D.run_doomed_checked ge md f xs fr m fuel s0 c s w Hmd Hge Hfree Hsp Hfi Hin Hcf H0
+  - exact (D.run_doomed_checked ge md f xs fr m fuel s0 c s w Hmd Hge Hfree Hsp Hin Hcf H0
              (mreachable_doom _ _ _ Hreach) ltac:(rewrite Ed; discriminate) E).
   - destruct (step_unchecked_inst _ _ _ Ed E) as (l & i & rest & j & Ha & Hi).
-    pose proof (GD.G.H.S.run_sinv _ _ _ _ _ _ _ _ _ Hmd Hge Hfree Hfi Hin Hcf H0 (GD.G.H.mreachable_same _ _ _ Hreach))
+    pose proof (GD.G.H.S.run_sinv _ _ _ _ _ _ _ _ _ Hmd Hge Hfree Hin Hcf H0 (GD.G.H.mreachable_same _ _ _ Hreach))
       as [[Hsh _] _].
     simpl in Hsh. unfold shaped in Hsh. cbv zeta in Hsh. destruct Hsh as [Hinf Hsh]. rewrite Ha in Hsh.
     destruct Hsh as (_ & b & k & Hb & _ & Hk & _).
@@ -267,7 +252,7 @@ Proof.
     { rewrite <- (firstn_skipn k (b_insts b)). apply in_or_app. right. rewrite <- Hk. left. reflexivity. }
     pose proof (raw_tmp _ _ _ _ Hmd Hinf Hbin Hii) as Hraw.
     pose proof (GD.G.H.run_access_checked ge md f xs fr m fuel s0 c s l i rest j w
-                  Hmd Hge Hfree Hsp Hfi Hin Hcf H0 Hreach Ed Ha) as Hacc.
+                  Hmd Hge Hfree Hsp Hin Hcf H0 Hreach Ed Ha) as Hacc.
     destruct (inst_unchecked_source _ _ _ _ _ Hi)
       as [(q & kc & o & args & -> & Ho) | [(wd & off & v & a & ->) | [(off & v & a & es & ->) |
           [(r & cl & args & ->) | (r & args & x & m' & -> & Hf)]]]].
@@ -275,20 +260,20 @@ Proof.
       all: first
         [ exact (Hacc (or_introl (Hraw ltac:(left; do 5 eexists; reflexivity))) Hi)
         | exact (Hacc (or_introl (Hraw ltac:(right; left; do 5 eexists; reflexivity))) Hi)
-        | exact (GD.G.run_reuse_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hsp Hfi Hin Hcf H0
+        | exact (GD.G.run_reuse_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hsp Hin Hcf H0
                    Hreach Ed Ha ltac:(left; do 7 eexists; reflexivity) Hi)
-        | exact (GD.G.run_reuse_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hsp Hfi Hin Hcf H0
+        | exact (GD.G.run_reuse_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hsp Hin Hcf H0
                    Hreach Ed Ha ltac:(right; left; do 7 eexists; reflexivity) Hi)
-        | exact (GD.G.run_reuse_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hsp Hfi Hin Hcf H0
+        | exact (GD.G.run_reuse_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hsp Hin Hcf H0
                    Hreach Ed Ha ltac:(right; right; do 8 eexists; reflexivity) Hi)
-        | exact (GD.run_guard_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hsp Hfi Hin Hcf H0
+        | exact (GD.run_guard_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hsp Hin Hcf H0
                    Hreach Ed Ha ltac:(left; do 7 eexists; reflexivity) Hi)
-        | exact (GD.run_guard_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hsp Hfi Hin Hcf H0
+        | exact (GD.run_guard_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hsp Hin Hcf H0
                    Hreach Ed Ha ltac:(right; do 7 eexists; reflexivity) Hi) ].
     + exact (Hacc (or_introl (Hraw ltac:(right; right; left; do 4 eexists; reflexivity))) Hi).
     + exact (Hacc (or_introl (Hraw ltac:(right; right; right; do 4 eexists; reflexivity))) Hi).
     + exact (Hacc (or_intror (ex_intro _ r (ex_intro _ cl (ex_intro _ args eq_refl)))) Hi).
-    + rewrite Hfree in Hf. exact (Hfc _ _ _ _ Hf).
+    + rewrite Hfree in Hf. exact (R.free_checked _ _ _ _ Hf).
 Qed.
 
 End Sound.
@@ -308,5 +293,5 @@ Corollary interp_valid_no_unchecked : forall md globals f xs fr m fuel s0 c s w,
 Proof.
   intros md globals f xs fr m fuel s0 c s w ge Hmd Hin Hcf H0 Hreach.
   exact (InterpSound.valid_no_unchecked ge md f xs fr m fuel s0 c s w
-           Hmd eq_refl eq_refl (interp_spares ge md) free_res_ids free_res_checked Hin Hcf H0 Hreach).
+           Hmd eq_refl eq_refl (interp_spares ge md) Hin Hcf H0 Hreach).
 Qed.

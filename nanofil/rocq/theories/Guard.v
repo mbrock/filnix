@@ -390,18 +390,17 @@ Module G := Reuse R.
 (** `run_guard_checked`: in every state of a run of a checked module's
     function that starts ready, a frame that is not doomed runs no
     `renew_if` and no `check_limit` to an `unchecked` outcome, where the
-    runtime spares the pass's facts at safepoints (`spares`) and its
-    free keeps identities (`free_ids`). *)
+    runtime spares the pass's facts at safepoints (`spares`). *)
 Theorem run_guard_checked : forall ge md f xs fr m fuel s0 c s l i rest j why,
-  checked_module md -> ge_module ge = md -> ge_free ge = R.free -> G.H.P.I.spares ge md -> free_ids R.free ->
+  checked_module md -> ge_module ge = md -> ge_free ge = R.free -> G.H.P.I.spares ge md ->
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
   G.H.P.I.RM.mreachable ge (mkConfig fr [] m fuel, s0) (c, s) ->
   fr_doomed (c_frame c) = None -> fr_at (c_frame c) = Exec l (i :: rest) j -> guard_form i ->
   inst_step ge (c_frame c) (c_mem c) i <> Some (IStop (Unchecked why)).
 Proof.
-  intros ge md f xs fr m fuel s0 c s l i rest j why Hmd Hge Hfree Hsp Hfi Hin Hcf H0 Hreach Hd Ha Hi Hst.
+  intros ge md f xs fr m fuel s0 c s l i rest j why Hmd Hge Hfree Hsp Hin Hcf H0 Hreach Hd Ha Hi Hst.
   destruct (guard_shape _ _ _ _ _ Hi Hst) as (q & o & a1 & a2 & -> & Ho).
-  destruct (G.run_point _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hmd Hge Hfree Hsp Hfi Hin Hcf H0 Hreach Hd Ha
+  destruct (G.run_point _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hmd Hge Hfree Hsp Hin Hcf H0 Hreach Hd Ha
               ltac:(destruct Ho as [(? & ? & ? & ? & ->) | (? & ? & ? & ? & ->)]; reflexivity)
               ltac:(intros ? ? ? E; discriminate E))
     as (b & kk & live & out & Hinf & Hr & Hsc & Hpt & Hb & Hnth & Hc & _ & _).
@@ -431,5 +430,5 @@ Corollary interp_guard_checked : forall md globals f xs fr m fuel s0 c s l i res
 Proof.
   intros md globals f xs fr m fuel s0 c s l i rest j why ge Hmd Hin Hcf H0 Hreach Hd Ha Hi.
   exact (InterpGuards.run_guard_checked ge md f xs fr m fuel s0 c s l i rest j why
-           Hmd eq_refl eq_refl (interp_spares ge md) free_res_ids Hin Hcf H0 Hreach Hd Ha Hi).
+           Hmd eq_refl eq_refl (interp_spares ge md) Hin Hcf H0 Hreach Hd Ha Hi).
 Qed.

@@ -28,7 +28,7 @@
     | `shaped`, `waits` | a frame's point is in a reachable block of its function; a caller waits just after the call that made its callee |
     | `running`, `waiting`, `sinv` | the running frame, unless doomed, and every waiting caller hold their scope |
     | `scope_step`, `scope_after` | across one instruction of a block, the scope moves on: the instruction's own name replays, or does not need to |
-    | `mstep_sinv`, `mreachable_sinv` | every machine step keeps `sinv`, given `free_ids` |
+    | `mstep_sinv`, `mreachable_sinv` | every machine step keeps `sinv` |
     | `interp_sinv` | under the interpreter's runtime, with no hypothesis but a ready start |
 
     ## Decisions
@@ -41,7 +41,7 @@
     | a doomed frame claims nothing | its `check_ahead` did not pass; a doomed frame never returns to a caller or calls one |
     | memory is handled once, for every step | each step's memory persists (`mstep_persists`), so the step lemmas carry frames and a replay's memory follows by `scope_mem` |
     | a replay keeps that the memory it left fit the address space (`objects_fit`) | the object of a check that passed then ended below 2^48; once the object is freed, the current memory no longer says where it ended |
-    | `free_ids` is a hypothesis | mbrock's decision (docs/rocq.md, "Identities persist") | *)
+    | free keeps identities by Runtime.v's axiom `free_keeps_ids` | mbrock's decision (docs/rocq.md, "Identities persist") | *)
 
 From Stdlib Require Import String ZArith List Bool Lia Relations.
 From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Semantics Machine Validate
@@ -863,11 +863,11 @@ Qed.
 (** `mstep_sinv`: every machine step from a ready state keeps the
     invariant, if the runtime's free keeps identities. *)
 Theorem mstep_sinv : forall ge md st st',
-  ge_module ge = md -> checked_module md -> ge_free ge = R.free -> free_ids R.free ->
+  ge_module ge = md -> checked_module md -> ge_free ge = R.free ->
   ready_state st -> mstep ge st st' -> sinv ge md (fst st) -> sinv ge md (fst st').
 Proof.
-  intros ge md st st' Hge Hmd Hfree Hfi Hr Hs H.
-  pose proof (mstep_persists _ _ _ Hfree Hfi Hr Hs) as Hp.
+  intros ge md st st' Hge Hmd Hfree Hr Hs H.
+  pose proof (mstep_persists _ _ _ Hfree Hr Hs) as Hp.
   pose proof (R.address_space _ _ (mstep_ready _ _ _ Hfree Hs Hr)) as Hfit.
   destruct Hs as [c c' s E | c q k s base s' E He Hal | c s s' m' Hd Hact]; simpl in *.
   - exact (next_sinv _ _ _ _ Hge Hmd E Hp Hfit H).
@@ -878,10 +878,10 @@ Qed.
 (** `mreachable_sinv`: from a ready start where it holds, the invariant
     holds in every state a run reaches. *)
 Theorem mreachable_sinv : forall ge md st st',
-  ge_module ge = md -> checked_module md -> ge_free ge = R.free -> free_ids R.free ->
+  ge_module ge = md -> checked_module md -> ge_free ge = R.free ->
   mreachable ge st st' -> ready_state st -> sinv ge md (fst st) -> sinv ge md (fst st').
 Proof.
-  intros ge md st st' Hge Hmd Hfree Hfi H.
+  intros ge md st st' Hge Hmd Hfree H.
   induction H as [st st' Hs | st | st1 st2 st3 H12 IH1 H23 IH2]; intros Hr Hi; auto.
   - eapply mstep_sinv; eauto.
   - apply IH2; [exact (mreachable_ready _ _ _ Hfree H12 Hr) | exact (IH1 Hr Hi)].
@@ -900,12 +900,12 @@ Qed.
 (** `run_sinv`: in every state of a run of a checked module's function
     that starts ready, the invariant holds. *)
 Corollary run_sinv : forall ge md f xs fr m fuel s0 st,
-  checked_module md -> ge_module ge = md -> ge_free ge = R.free -> free_ids R.free ->
+  checked_module md -> ge_module ge = md -> ge_free ge = R.free ->
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
   mreachable ge (mkConfig fr [] m fuel, s0) st -> sinv ge md (fst st).
 Proof.
-  intros ge md f xs fr m fuel s0 st Hmd Hge Hfree Hfi Hin Hcf H0 Hreach.
-  exact (mreachable_sinv _ _ _ _ Hge Hmd Hfree Hfi Hreach H0 (start_sinv _ _ _ _ _ _ _ Hmd Hin Hcf)).
+  intros ge md f xs fr m fuel s0 st Hmd Hge Hfree Hin Hcf H0 Hreach.
+  exact (mreachable_sinv _ _ _ _ Hge Hmd Hfree Hreach H0 (start_sinv _ _ _ _ _ _ _ Hmd Hin Hcf)).
 Qed.
 
 End Single.
@@ -922,5 +922,5 @@ Corollary interp_sinv : forall md globals f xs fr m fuel s0 st,
   InterpSingle.ID.RM.mreachable ge (mkConfig fr [] m fuel, s0) st -> sinv ge md (fst st).
 Proof.
   intros md globals f xs fr m fuel s0 st ge Hmd Hin Hcf H0 Hreach.
-  exact (InterpSingle.run_sinv ge md f xs fr m fuel s0 st Hmd eq_refl eq_refl free_res_ids Hin Hcf H0 Hreach).
+  exact (InterpSingle.run_sinv ge md f xs fr m fuel s0 st Hmd eq_refl eq_refl Hin Hcf H0 Hreach).
 Qed.

@@ -43,11 +43,17 @@
     not `evidence_preserving/1` (Runtime.v's `safepoints`). The pass
     keeps facts across three such instructions: the pointer store a
     check is taken with, a `check_local`, and a repeated getter. Natively
-    none reaches a safepoint where a free could show; the module type
-    does not say so. `spares` is that hypothesis: at a safepoint before
-    an instruction the pass relies on facts for, the runtime changes no
-    region. The interpreter's runtime changes nothing at a safepoint
-    (`interp_spares`), so its theorem has no such hypothesis.
+    a `check_local` is inline and a repeated getter takes its fast path,
+    so neither reaches a safepoint; but a pointer store whose aux must be
+    allocated exits to the runtime (`filc_exit_with_allocation_root` in
+    filc_runtime.c, 2578-2591), where a deferred signal handler may free
+    the checked object. The store then lands in the freed object's
+    retained memory, which native Fil-C keeps safe by `retention`; the
+    model calls that store `unchecked`. `spares` is the hypothesis that
+    no such free comes: at a safepoint before an instruction the pass
+    relies on facts for, the runtime changes no region. The interpreter's
+    runtime changes nothing at a safepoint (`interp_spares`), so its
+    theorem has no such hypothesis.
 
     ## Decisions
 
@@ -55,9 +61,9 @@
     |---|---|
     | the pass's position is a relation (`walks`, `at_pos`), not a program counter | `checked_inst_rest/7` takes a check and its access in one step, so the pass's positions are a subset of the instructions |
     | a doomed frame claims nothing | its `check_ahead`'s fact does not hold; what it may still do is the `check_ahead` corollary's |
-    | `spares` is a hypothesis, not an axiom | the module type is Campaign 2's, read against native Fil-C; whether to narrow its safepoints is a decision for its owners (docs/rocq.md) |
+    | `spares` is a hypothesis, not an axiom | it is false natively at a pointer store's aux exit, where a free may show and retention keeps the store safe; mbrock's decision (docs/rocq.md, "The runtime's safepoints") |
     | `InterpRuntime` is unsealed | so that `interp_spares` can read its safepoint |
-    | no unchecked outcome is claimed for a free | the module type lets a runtime's free return one; `free_res` never does | *)
+    | no unchecked outcome is claimed for a free | Soundness.v covers it by Runtime.v's `free_checked` | *)
 
 From Stdlib Require Import String ZArith List Bool Lia Relations.
 From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Semantics Machine Validate

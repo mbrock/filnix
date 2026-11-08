@@ -537,20 +537,19 @@ Qed.
 (** `run_access_checked`: in every state of a run of a checked
     module's function that starts ready, a frame that is not doomed runs
     no raw access, and no raw call, to an `unchecked` outcome, where the
-    runtime spares the pass's facts at safepoints (`spares`) and its
-    free keeps identities (`free_ids`). *)
+    runtime spares the pass's facts at safepoints (`spares`). *)
 Theorem run_access_checked : forall ge md f xs fr m fuel s0 c s l i rest j why,
-  checked_module md -> ge_module ge = md -> ge_free ge = R.free -> P.I.spares ge md -> free_ids R.free ->
+  checked_module md -> ge_module ge = md -> ge_free ge = R.free -> P.I.spares ge md ->
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
   P.I.RM.mreachable ge (mkConfig fr [] m fuel, s0) (c, s) ->
   fr_doomed (c_frame c) = None -> fr_at (c_frame c) = Exec l (i :: rest) j ->
   (raw_access i <> None \/ exists r cl args, i = RawCall r cl args) ->
   inst_step ge (c_frame c) (c_mem c) i <> Some (IStop (Unchecked why)).
 Proof.
-  intros ge md f xs fr m fuel s0 c s l i rest j why Hmd Hge Hfree Hsp Hfi Hin Hcf H0 Hreach Hd Ha Hi.
+  intros ge md f xs fr m fuel s0 c s l i rest j why Hmd Hge Hfree Hsp Hin Hcf H0 Hreach Hd Ha Hi.
   destruct (P.run_access_not_unchecked _ _ _ _ _ _ _ _ _ _ _ _ _ _ why Hmd Hge Hfree Hsp Hin Hcf H0 Hreach Hd Ha Hi)
     as [Hn | (b & k & live & fa & q & Hb & Hk & Hl & Hdom & Hfa & Hh)]; [exact Hn|].
-  pose proof (S.run_sinv _ _ _ _ _ _ _ _ _ Hmd Hge Hfree Hfi Hin Hcf H0 (mreachable_same _ _ _ Hreach))
+  pose proof (S.run_sinv _ _ _ _ _ _ _ _ _ Hmd Hge Hfree Hin Hcf H0 (mreachable_same _ _ _ Hreach))
     as [[Hsh Hsc] _].
   simpl in Hsh, Hsc. destruct Hsc as [Hsc | Hsc]; [congruence|].
   destruct Hsh as [Hinf Hsh]. rewrite Ha in Hsh. destruct Hsh as [Hr _].
@@ -583,5 +582,5 @@ Corollary interp_access_checked : forall md globals f xs fr m fuel s0 c s l i re
 Proof.
   intros md globals f xs fr m fuel s0 c s l i rest j why ge Hmd Hin Hcf H0 Hreach Hd Ha Hi.
   exact (InterpHull.run_access_checked ge md f xs fr m fuel s0 c s l i rest j why
-           Hmd eq_refl eq_refl (interp_spares ge md) free_res_ids Hin Hcf H0 Hreach Hd Ha Hi).
+           Hmd eq_refl eq_refl (interp_spares ge md) Hin Hcf H0 Hreach Hd Ha Hi).
 Qed.

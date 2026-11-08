@@ -7,25 +7,24 @@
     checked is still there when the reuse comes: as it was, so the
     check passes again, or freed, so it traps out of bounds. A run must
     never lose the object, or a new one could take its base. This file
-    proves it of every run that starts ready, given one fact of the
-    runtime's free.
+    proves it of every run that starts ready.
 
     | Name | Says |
     |---|---|
     | `ids m m'` | every object of m is an object of m' |
     | `persists m m'` | every object of m is in m' as it was, or freed |
     | `free_ids` | a free keeps every identity |
-    | `free_res_ids` | `free_res/4`, the interpreter's free, does |
     | `step_next_ids`, `step_fresh_regions` | a step keeps every identity; an allocation adds one and drops none |
     | `persists_access` | a check that passed passes again in a memory that persists, or traps out of bounds |
-    | `mstep_persists`, `mreachable_persists` | over a run that starts ready, memory persists, given `free_ids` |
+    | `R_free_ids` | a runtime's free keeps every identity, by Runtime.v's `free_keeps_ids` |
+    | `mstep_persists`, `mreachable_persists` | over a run that starts ready, memory persists |
     | `interp_persists` | the same under the interpreter's runtime, with no hypothesis |
 
     ## Decisions
 
     | Decision | Why |
     |---|---|
-    | `free_ids` is a hypothesis, not an axiom | the module type's `free_lifetime` says each identity after a free was one before, not the reverse; at safepoints `rooting` says it. Whether a runtime's free may drop an object is the module type owners' decision, and an axiom needs a native test and an Oracle review |
+    | `free_ids` follows from an axiom | the module type's `free_lifetime` says each identity after a free was one before, not the reverse; `free_keeps_ids` (mbrock's decision, with axiom-identity.c) says the reverse, as `rooting` does at safepoints |
     | an allocation's base was no object's | `fresh` says so, which is what keeps an old capability from naming the new object |
     | the regions of a step are compared, not its bytes | `kept` already says where a step writes; identity is about the region list alone | *)
 
@@ -163,14 +162,6 @@ Qed.
 Definition free_ids (free : word -> Memory.mem -> option (res unit * Memory.mem)) : Prop :=
   forall x m r m', free x m = Some (r, m') -> ids m m'.
 
-(** `free_res/4` keeps every identity: it frees one in place. *)
-Lemma free_res_ids : free_ids free_res.
-Proof.
-  intros x m r m' H. destruct (free_res_frees _ _ _ _ H) as [-> | (base & reg & _ & _ & _ & Hr & _)].
-  - apply ids_refl.
-  - intros b r0 Hb. rewrite (object_region_replace _ _ _ _ b Hr eq_refl). destruct (Z.eqb b base); eauto.
-Qed.
-
 Lemma inst_step_ids : forall ge fr m i e l m',
   free_ids (ge_free ge) -> inst_step ge fr m i = Some (IContinue e l m') -> ids m m'.
 Proof.
@@ -300,17 +291,25 @@ Module Identity (R : Runtime).
 Module RM := Machine R.
 Import RM.
 
+(** R's free keeps identities (`free_keeps_ids`). *)
+Lemma R_free_ids : free_ids R.free.
+Proof.
+  intros x m r m' H b reg Hb. pose proof (R.free_keeps_ids _ _ _ _ H b) as Hk.
+  destruct (object_region b (m_regions m')) as [reg'|]; [eauto|].
+  exfalso. apply Hk; [rewrite Hb; discriminate | reflexivity].
+Qed.
+
 (** `mstep_persists`: from a ready state, every machine step keeps each
     object as it was, or freed, if the runtime's free keeps identities. *)
 Theorem mstep_persists : forall ge st st',
-  ge_free ge = R.free -> free_ids R.free -> ready_state st -> mstep ge st st' ->
+  ge_free ge = R.free -> ready_state st -> mstep ge st st' ->
   persists (c_mem (fst st)) (c_mem (fst st')).
 Proof.
-  unfold ready_state. intros ge st st' Hge Hfi Hr Hs.
+  unfold ready_state. intros ge st st' Hge Hr Hs.
   destruct Hs as [c c' s E | c q k s base s' E He Hal | c s s' m' _ Hsp]; simpl in *.
   - apply kept_ids_persists.
     + eapply step_next_kept; [rewrite Hge; exact free_kept | exact E].
-    + eapply step_next_ids; [rewrite Hge; exact Hfi | exact E].
+    + eapply step_next_ids; [rewrite Hge; exact R_free_ids | exact E].
   - destruct (step_fresh_kept _ _ _ _ E) as [Ha _].
     destruct (R.fresh_allocation _ _ _ _ _ Hr Ha He Hal) as [(_ & _ & _ & Hnone & _) _].
     eapply persists_trans; [exact (allocated_persists _ q _ Hnone)|].
@@ -324,10 +323,10 @@ Qed.
 (** `mreachable_persists`: over a run that starts ready, each object of
     a state is in every later state as it was, or freed. *)
 Theorem mreachable_persists : forall ge st st',
-  ge_free ge = R.free -> free_ids R.free -> mreachable ge st st' -> ready_state st ->
+  ge_free ge = R.free -> mreachable ge st st' -> ready_state st ->
   persists (c_mem (fst st)) (c_mem (fst st')).
 Proof.
-  intros ge st st' Hge Hfi H. induction H as [st st' Hs | st | st1 st2 st3 H12 IH1 _ IH2]; intros Hr.
+  intros ge st st' Hge H. induction H as [st st' Hs | st | st1 st2 st3 H12 IH1 _ IH2]; intros Hr.
   - eapply mstep_persists; eauto.
   - apply persists_refl.
   - eapply persists_trans; [exact (IH1 Hr) | apply IH2; exact (mreachable_ready _ _ _ Hge H12 Hr)].
@@ -342,5 +341,5 @@ Corollary interp_persists : forall ge st st',
   ge_free ge = InterpRuntime.free -> InterpIdentity.RM.mreachable ge st st' ->
   InterpIdentity.RM.ready_state st -> persists (c_mem (fst st)) (c_mem (fst st')).
 Proof.
-  intros ge st st' Hge H Hr. exact (InterpIdentity.mreachable_persists _ _ _ Hge free_res_ids H Hr).
+  intros ge st st' Hge H Hr. exact (InterpIdentity.mreachable_persists _ _ _ Hge H Hr).
 Qed.

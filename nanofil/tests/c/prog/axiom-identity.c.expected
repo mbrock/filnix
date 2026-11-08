@@ -1,0 +1,5 @@
+no collection ran during the allocations: yes
+no allocation after a free takes the freed object's address: yes
+the freed pointer's capability traps: yes
+and still traps after a collection: yes
+another object reads unchanged: yes
