@@ -477,6 +477,108 @@ Definition memchr_contract (world : Type) : contract world :=
     (fun _ => False)
     (fun why => In why [NullCapability; OutOfBounds; ArgumentSize; ReturnSize]).
 
+(** ## Bounded binary comparisons *)
+
+(** Lexicographic byte order: either every pair is equal, or the first
+    differing pair fixes the order. Both pointers refer to the same
+    memory; overlap and identical spans are permitted. Readability and
+    unsigned-byte domains are separate admission obligations. *)
+Definition memcmp_order (m : mem) (p q : ptr) (n : Z) (ordering : comparison) : Prop :=
+  (ordering = Datatypes.Eq /\
+    forall i, 0 <= i < n -> m_bytes m (ptr_addr p + i) = m_bytes m (ptr_addr q + i)) \/
+  (exists k, 0 <= k < n /\
+    (forall i, 0 <= i < k -> m_bytes m (ptr_addr p + i) = m_bytes m (ptr_addr q + i)) /\
+    m_bytes m (ptr_addr p + k) <> m_bytes m (ptr_addr q + k) /\
+    ordering = Z.compare (m_bytes m (ptr_addr p + k)) (m_bytes m (ptr_addr q + k))).
+
+(** A finite interval has a first difference or is equal throughout.
+    This constructive existence does not assume invocation coverage. *)
+Lemma memcmp_order_total : forall m p q n,
+  0 <= n -> exists ordering, memcmp_order m p q n ordering.
+Proof.
+  intros m p q n Hn.
+  assert (Hfinite : forall count : nat, exists ordering, memcmp_order m p q (Z.of_nat count) ordering).
+  { induction count as [|count [ordering Horder]].
+    - exists Datatypes.Eq. left. split; [reflexivity|intros i Hi; lia].
+    - destruct Horder as [(-> & Hsame) | (k & Hk & Hbefore & Hdifferent & ->)].
+      + destruct (Z.eq_dec (m_bytes m (ptr_addr p + Z.of_nat count))
+          (m_bytes m (ptr_addr q + Z.of_nat count))) as [Heq | Hneq].
+        * exists Datatypes.Eq. left. split; [reflexivity|]. intros i Hi.
+          rewrite Nat2Z.inj_succ in Hi. destruct (Z_lt_dec i (Z.of_nat count)).
+          -- apply Hsame. lia.
+          -- replace i with (Z.of_nat count) by lia. exact Heq.
+        * eexists. right. exists (Z.of_nat count). rewrite Nat2Z.inj_succ.
+          repeat split; auto; lia.
+      + eexists. right. exists k. rewrite Nat2Z.inj_succ. repeat split; auto; lia. }
+  replace n with (Z.of_nat (Z.to_nat n)) by (rewrite Z2Nat.id; lia). apply Hfinite.
+Qed.
+
+(** The first differing pair fixes the order uniquely, not the returned
+    int's magnitude. An equal prefix rules out a competing earlier pair. *)
+Lemma memcmp_order_unique : forall m p q n left right,
+  memcmp_order m p q n left -> memcmp_order m p q n right -> left = right.
+Proof.
+  intros m p q n left right Hl Hr.
+  destruct Hl as [(-> & Hsamel) | (l & Hl & Hbeforel & Hdiffl & ->)];
+    destruct Hr as [(-> & Hsamer) | (r & Hr & Hbeforer & Hdiffr & ->)].
+  - reflexivity.
+  - exfalso. apply Hdiffr. apply Hsamel. exact Hr.
+  - exfalso. apply Hdiffl. apply Hsamer. exact Hl.
+  - assert (l = r).
+    { destruct (Z.lt_trichotomy l r) as [Hlt | [Heq | Hgt]]; [|exact Heq|].
+      - exfalso. apply Hdiffl. apply Hbeforer. lia.
+      - exfalso. apply Hdiffr. apply Hbeforel. lia. }
+    subst. reflexivity.
+Qed.
+
+(** A canonical class-W bit pattern whose signed reading has the byte
+    order's sign. All representable correct magnitudes are permitted,
+    not merely minus/plus one or the first byte difference. *)
+Definition memcmp_result (m : mem) (p q : ptr) (n bits : Z) : Prop :=
+  0 <= bits < 2 ^ 32 /\ exists ordering, memcmp_order m p q n ordering /\
+    Z.compare (sign_extension (2 ^ 32) (2 ^ 31) bits) 0 = ordering.
+
+(** Every finite comparison permits a canonical zero, negative or
+    positive witness. Other magnitudes remain permitted by the contract. *)
+Lemma memcmp_result_total : forall m p q n,
+  0 <= n -> exists bits, memcmp_result m p q n bits.
+Proof.
+  intros m p q n Hn. destruct (memcmp_order_total m p q n Hn) as [ordering Horder].
+  destruct ordering; [exists 0|exists (2 ^ 32 - 1)|exists 1].
+  all: split; [vm_compute; split; congruence|]; eexists; split; [exact Horder|reflexivity].
+Qed.
+
+(** Permitted result words may differ, but their signed signs agree. *)
+Lemma memcmp_result_sign_unique : forall m p q n left right,
+  memcmp_result m p q n left -> memcmp_result m p q n right ->
+  Z.compare (sign_extension (2 ^ 32) (2 ^ 31) left) 0 =
+    Z.compare (sign_extension (2 ^ 32) (2 ^ 31) right) 0.
+Proof.
+  intros m p q n left right (_ & ol & Hl & El) (_ & or & Hr & Er).
+  rewrite El, Er. eapply memcmp_order_unique; eauto.
+Qed.
+
+(** memcmp returns an int and takes two pointers and a size_t. *)
+Definition memcmp_abi (r : call_result) (args : list arg) : Prop :=
+  (r = CVoid \/ exists d, r = CResult d W) /\
+  exists p q n, args = [Arg P p; Arg P q; Arg L n].
+
+(** Pure trusted binary comparison. Both full spans must be readable,
+    even at zero count or an early difference. There is no capability
+    propagation, mutation, allocation or resource outcome. *)
+Definition memcmp_contract (world : Type) : contract world :=
+  mkContract world (RClass W) memcmp_abi
+    (fun xs m _ => exists p q n, xs = [WPtr p; WPtr q; WInt n] /\
+      readable_bytes m p n /\ readable_bytes m q n)
+    (fun _ _ _ => []) (fun _ _ _ => []) (fun _ _ _ => []) (fun _ _ _ _ _ => False)
+    (fun _ m w born trace m' w' => born = [] /\ trace = [] /\ m' = m /\ w' = w)
+    (fun xs m w born trace ending m' w' =>
+      born = [] /\ trace = [] /\ m' = m /\ w' = w /\
+      exists p q n bits, xs = [WPtr p; WPtr q; WInt n] /\ memcmp_result m p q n bits /\
+        ending = CallReturn [WInt bits])
+    (fun _ => False)
+    (fun why => In why [NullCapability; OutOfBounds; ArgumentSize; ReturnSize]).
+
 (** ## Memory paths over any runtime *)
 
 (** The call relations over any [[runtime]] R, whose allocator answers
@@ -767,6 +869,54 @@ Lemma memchr_input_extent : forall s m p c n,
   R.ready s m -> memchr_input m p c n ->
   0 <= ptr_addr p /\ ptr_addr p + n <= 2 ^ 48.
 Proof. intros s m p c n Hr [_ Hin]. eapply readable_bytes_extent; eauto. Qed.
+
+(** Every legal signed magnitude has a permitted pure invocation, not
+    only the three witnesses used in [memcmp_result_total]. *)
+Theorem memcmp_return : forall world r args p q n bits s m (w : world),
+  memcmp_abi r args -> readable_bytes m p n -> readable_bytes m q n ->
+  memcmp_result m p q n bits ->
+  invoke (memcmp_contract world) r args [WPtr p; WPtr q; WInt n] s m w
+    [] (CallReturn [WInt bits]) s m w.
+Proof.
+  intros world r args p q n bits s m w Habi Hp Hq Hresult.
+  eapply invoke_normal with (born := []).
+  - exact Habi.
+  - exists p, q, n. auto.
+  - split; [constructor|]. repeat split; reflexivity.
+  - repeat split; try reflexivity. exists p, q, n, bits. auto.
+  - intros why Hbad. discriminate.
+  - intros values Heq. injection Heq as <-. split.
+    + exists (WInt bits). split; [reflexivity|]. simpl.
+      rewrite Z.mod_small; [reflexivity|exact (proj1 Hresult)].
+    + constructor; [exact I|constructor].
+  - intros status Hbad. discriminate.
+Qed.
+
+(** Independently readable arguments admit some permitted result;
+    invocation existence is a conclusion, not an admission premise. *)
+Theorem memcmp_admitted : forall world r args p q n s m (w : world),
+  memcmp_abi r args -> readable_bytes m p n -> readable_bytes m q n ->
+  exists bits, invoke (memcmp_contract world) r args [WPtr p; WPtr q; WInt n] s m w
+    [] (CallReturn [WInt bits]) s m w.
+Proof.
+  intros world r args p q n s m w Habi Hp Hq.
+  destruct (memcmp_result_total m p q n ltac:(destruct Hp as [Hn _]; lia)) as [bits Hbits].
+  exists bits. apply memcmp_return; assumption.
+Qed.
+
+(** Every represented completion is pure with the specified signed
+    byte-order result. Resource and process-exit endings are excluded. *)
+Theorem memcmp_invocation : forall world r args xs s m (w : world) trace ending s' m' w',
+  invoke (memcmp_contract world) r args xs s m w trace ending s' m' w' ->
+  trace = [] /\ m' = m /\ w' = w /\
+  exists p q n bits, xs = [WPtr p; WPtr q; WInt n] /\ memcmp_result m p q n bits /\
+    ending = CallReturn [WInt bits].
+Proof.
+  intros world r args xs s m w trace ending s' m' w' Hcall. inversion Hcall; subst.
+  - match goal with Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
+      destruct Hpost as (_ & Htrace & Hmem & Hworld & Hresult); auto end.
+  - contradiction.
+Qed.
 
 End ExternalCalls.
 
@@ -1437,4 +1587,173 @@ Proof.
   split; [intros [[H | (d & H)] _]; discriminate H|]. split.
   - intros [_ (p & c & n & H)]. discriminate H.
   - intros (Hc & _). lia.
+Qed.
+
+(** Two overlapping five-byte spans of the ready high-byte fixture. *)
+Lemma high_five_readable : forall offset, 0 <= offset <= 1 ->
+  readable_bytes high_byte_mem (mkPtr (1024 + offset) (Ro 1024)) 5.
+Proof.
+  intros offset Hoffset. split; [vm_compute; split; congruence|]. split.
+  - exists 1024, (mkRegion 1024 1030 GlobalData Live). split; [right; reflexivity|]. auto.
+  - split.
+    + assert (Hlo : (1024 <=? 1024 + offset) = true) by (apply Z.leb_le; lia).
+      assert (Hhi : (1024 + offset + 5 <=? 1030) = true) by (apply Z.leb_le; lia).
+      unfold access_res, cap_access_res. cbn -[Z.add Z.leb Z.modulo].
+      rewrite Hlo, Hhi. simpl. unfold aligned_res. rewrite Z.mod_1_r. reflexivity.
+    + intros i Hi.
+      assert (Hinside : (1024 <=? 1024 + offset + i) && (1024 + offset + i <? 1030) = true).
+      { apply andb_true_iff. split; [apply Z.leb_le|apply Z.ltb_lt]; lia. }
+      change (0 <= (if (1024 <=? 1024 + offset + i) && (1024 + offset + i <? 1030)
+        then if 1024 + offset + i =? 1024 then 128 else 255 else m_bytes hello_mem (1024 + offset + i)) < 256).
+      rewrite Hinside. destruct (1024 + offset + i =? 1024); lia.
+Qed.
+
+(** The first unsigned-byte pair is 128 versus 255. *)
+Lemma memcmp_high_less :
+  memcmp_order high_byte_mem hello_ptr (mkPtr 1025 (Ro 1024)) 5 Datatypes.Lt.
+Proof.
+  right. exists 0. split; [lia|]. split; [intros; lia|]. split; [discriminate|reflexivity].
+Qed.
+
+(** Reversing the two overlapping spans reverses their order. *)
+Lemma memcmp_high_greater :
+  memcmp_order high_byte_mem (mkPtr 1025 (Ro 1024)) hello_ptr 5 Datatypes.Gt.
+Proof.
+  right. exists 0. split; [lia|]. split; [intros; lia|]. split; [discriminate|reflexivity].
+Qed.
+
+(** Distinct nonunit negative magnitudes, including one greater than
+    255, are permitted; the byte difference itself need not be returned. *)
+Example memcmp_negative_magnitudes : forall bits, In bits [2 ^ 32 - 2; 2 ^ 32 - 7; 2 ^ 32 - 512] ->
+  InterpExternal.invoke (memcmp_contract unit) CVoid
+    [Arg P (Const 0); Arg P (Const 1); Arg L (Const 5)]
+    [WPtr hello_ptr; WPtr (mkPtr 1025 (Ro 1024)); WInt 5] InterpRuntime.start high_byte_mem tt
+    [] (CallReturn [WInt bits]) InterpRuntime.start high_byte_mem tt.
+Proof.
+  intros bits Hbits. apply InterpExternal.memcmp_return.
+  - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
+  - apply (high_five_readable 0). lia.
+  - apply (high_five_readable 1). lia.
+  - split.
+    + destruct Hbits as [<- | [<- | [<- | []]]]; vm_compute; split; congruence.
+    + exists Datatypes.Lt. split; [exact memcmp_high_less|].
+      destruct Hbits as [<- | [<- | [<- | []]]]; reflexivity.
+Qed.
+
+(** Positive 2, 7 and 512 are also permitted through the public invocation. *)
+Example memcmp_positive_magnitudes : forall bits, In bits [2; 7; 512] ->
+  InterpExternal.invoke (memcmp_contract unit) CVoid
+    [Arg P (Const 1); Arg P (Const 0); Arg L (Const 5)]
+    [WPtr (mkPtr 1025 (Ro 1024)); WPtr hello_ptr; WInt 5] InterpRuntime.start high_byte_mem tt
+    [] (CallReturn [WInt bits]) InterpRuntime.start high_byte_mem tt.
+Proof.
+  intros bits Hbits. apply InterpExternal.memcmp_return.
+  - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
+  - apply (high_five_readable 1). lia.
+  - apply (high_five_readable 0). lia.
+  - split.
+    + destruct Hbits as [<- | [<- | [<- | []]]]; vm_compute; split; congruence.
+    + exists Datatypes.Gt. split; [exact memcmp_high_greater|].
+      destruct Hbits as [<- | [<- | [<- | []]]]; reflexivity.
+Qed.
+
+(** Wrong zero/positive signs are rejected at otherwise admitted calls. *)
+Example memcmp_wrong_sign_rejected : forall bits s' m' w', In bits [0; 2; 7] ->
+  ~ InterpExternal.invoke (memcmp_contract unit) CVoid
+    [Arg P (Const 0); Arg P (Const 1); Arg L (Const 5)]
+    [WPtr hello_ptr; WPtr (mkPtr 1025 (Ro 1024)); WInt 5] InterpRuntime.start high_byte_mem tt
+    [] (CallReturn [WInt bits]) s' m' w'.
+Proof.
+  intros bits s' m' w' Hbad Hcall.
+  destruct (InterpExternal.memcmp_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as (_ & _ & _ & p & q & n & result & Hargs & (_ & ordering & Horder & Hsign) & Hending).
+  injection Hargs as <- <- <-. injection Hending as <-.
+  pose proof (memcmp_order_unique _ _ _ _ _ _ Horder memcmp_high_less) as ->.
+  destruct Hbad as [<- | [<- | [<- | []]]]; discriminate Hsign.
+Qed.
+
+(** Comparing an identical span is admitted and returns zero. *)
+Example memcmp_identical :
+  InterpExternal.invoke (memcmp_contract unit) CVoid
+    [Arg P (Const 0); Arg P (Const 0); Arg L (Const 5)]
+    [WPtr hello_ptr; WPtr hello_ptr; WInt 5] InterpRuntime.start high_byte_mem tt
+    [] (CallReturn [WInt 0]) InterpRuntime.start high_byte_mem tt.
+Proof.
+  apply InterpExternal.memcmp_return.
+  - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
+  - apply (high_five_readable 0). lia.
+  - apply (high_five_readable 0). lia.
+  - split; [vm_compute; split; congruence|]. exists Datatypes.Eq.
+    split; [left; split; reflexivity|reflexivity].
+Qed.
+
+(** A differing byte exactly at the bound is invisible until the count
+    includes it. The two selected spans overlap in the ready hello memory. *)
+Example memcmp_count_boundary :
+  memcmp_order hello_mem (mkPtr 1026 (Ro 1024)) (mkPtr 1027 (Ro 1024)) 1 Datatypes.Eq /\
+  memcmp_order hello_mem (mkPtr 1026 (Ro 1024)) (mkPtr 1027 (Ro 1024)) 2 Datatypes.Lt.
+Proof.
+  split.
+  - left. split; [reflexivity|]. intros i Hi. assert (i = 0) by lia. subst. reflexivity.
+  - right. exists 1. split; [lia|]. split.
+    + intros i Hi. assert (i = 0) by lia. subst. reflexivity.
+    + split; [discriminate|reflexivity].
+Qed.
+
+(** Checking only the first span is insufficient, even with an immediate
+    difference. The second span extends one byte past its object. *)
+Example memcmp_second_span_required :
+  ~ contract_pre (memcmp_contract unit)
+    [WPtr hello_ptr; WPtr (mkPtr 1025 (Ro 1024)); WInt 6] high_byte_mem tt.
+Proof.
+  intros (p & q & n & Hargs & _ & _ & _ & Ha & _).
+  injection Hargs as <- <- <-. discriminate Ha.
+Qed.
+
+(** Neither side's missing authority is waived by a zero count. *)
+Example memcmp_zero_authority_required : forall m p q,
+  ptr_cap p = CNone \/ ptr_cap q = CNone ->
+  ~ contract_pre (memcmp_contract unit) [WPtr p; WPtr q; WInt 0] m tt.
+Proof.
+  intros m p q Hbad (left & right & n & Hargs & Hl & Hr).
+  injection Hargs as <- <- <-.
+  destruct Hbad as [Hbad | Hbad];
+    destruct Hl as (_ & (bl & rl & [Hcl | Hcl] & _) & _);
+    destruct Hr as (_ & (br & rr & [Hcr | Hcr] & _) & _);
+    rewrite Hbad in *; discriminate.
+Qed.
+
+(** Both live one-past arguments remain admitted at zero count. *)
+Example memcmp_zero_one_past :
+  InterpExternal.invoke (memcmp_contract unit) CVoid
+    [Arg P (Const 0); Arg P (Const 0); Arg L (Const 0)]
+    [WPtr (mkPtr 1030 (Ro 1024)); WPtr (mkPtr 1030 (Ro 1024)); WInt 0]
+    InterpRuntime.start hello_mem tt [] (CallReturn [WInt 0]) InterpRuntime.start hello_mem tt.
+Proof.
+  apply InterpExternal.memcmp_return.
+  - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
+  - exact (proj2 (proj1 memchr_zero_one_past)).
+  - exact (proj2 (proj1 memchr_zero_one_past)).
+  - split; [vm_compute; split; congruence|]. exists Datatypes.Eq. split; [|reflexivity].
+    left. split; [reflexivity|intros; lia].
+Qed.
+
+(** Full-span admission rejects malformed cells and noncanonical counts. *)
+Example readable_bytes_bad_domain :
+  ~ readable_bytes (mkMem (fun _ => 256) (m_regions hello_mem) (m_aux hello_mem)) hello_ptr 1 /\
+  ~ readable_bytes high_byte_mem hello_ptr (-1).
+Proof.
+  split.
+  - intros (_ & _ & _ & Hbytes). specialize (Hbytes 0 ltac:(lia)). simpl in Hbytes. lia.
+  - intros (Hn & _). lia.
+Qed.
+
+(** Same-width ABI shortcuts cannot change the result or count class. *)
+Example memcmp_wrong_abi_rejected :
+  ~ memcmp_abi (CResult (TAtom "compared") L) [Arg P (Const 0); Arg P (Const 0); Arg L (Const 0)] /\
+  ~ memcmp_abi CVoid [Arg P (Const 0); Arg P (Const 0); Arg W (Const 0)].
+Proof.
+  split.
+  - intros [[H | (d & H)] _]; discriminate H.
+  - intros [_ (p & q & n & H)]. discriminate H.
 Qed.

@@ -1338,6 +1338,42 @@ interpreter registration, native satisfaction, exhaustive coverage or native
 termination is proved. The pinned generic source's wider reads and pointer
 reconstruction still require separate implementation justification.
 
+### Campaign 4 milestone 4s: bounded memcmp and signed result freedom
+
+`readable_bytes` extracts memchr's existing full-span premise without
+changing its domain, contract or fixtures. It carries the canonical size_t
+count, live Obj/Ro authority, complete readable interval and 0..255 byte
+domain. strnlen deliberately retains its different early-NUL premise.
+The shared extent theorem bounds a readable interval under runtime readiness.
+
+The memcmp contract requires two such spans in the same memory. They may
+overlap or be identical; neither side's authority is waived at zero count,
+nor does an early difference waive either unreadable suffix. Its ABI is
+P/P/L arguments and a class-W result, even when discarded. The byte-order
+relation describes the first differing unsigned-byte pair, or equality
+throughout the count. Constructive finite existence and order uniqueness
+are independent of invocation existence.
+
+The result is any canonical W bit pattern whose signed reading has that
+order's sign. It is not constrained to the byte difference, to magnitude
+at most 255, or to precisely -1, 0 or +1. Only its sign is unique, not the result
+word. Every independently admitted input has a permitted returning witness;
+all represented completions preserve exact memory/world with no events,
+allocation, writes, releases or resource/exit endings. This is nonvacuity
+of a trusted specification, not native termination or observation coverage.
+
+Public invocation fixtures permit distinct nonunit positive and negative
+magnitudes, reject wrong signs, and admit identical/overlapping spans from
+ready memory. Other controls cover count boundaries, a separately unreadable
+second span, missing zero-count authority on either side, malformed bytes,
+noncanonical counts and wrong ABI classes. The native probe checks signs
+only: high unsigned bytes, an early difference opposite a later one, binary
+zero before a difference, a difference exactly at the count boundary, live
+one-past zero counts and overlap. Aligned 16-byte arrays exercise their
+capability ends without relying on small-array padding. Finite probes do
+not prove native satisfaction of these trusted contracts. Runtime axioms,
+Machine semantics, interpreter registration and the validator are unchanged.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and

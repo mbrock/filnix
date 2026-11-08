@@ -4,6 +4,9 @@ strnlen unaligned high bytes need no extra byte: yes
 strnlen zero count permits live one-past: yes
 memchr converts int and selects first match: yes
 memchr respects last byte and zero count: yes
+memcmp unsigned first difference controls sign: yes
+memcmp binary zero and count boundary: yes
+memcmp permits overlap and zero count: yes
 copy returns end and preserves neighbours: yes
 memcpy and memset return destination: yes
 string results and comparison signs: yes

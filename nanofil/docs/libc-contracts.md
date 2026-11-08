@@ -255,6 +255,16 @@ and zero count at a live allocation's end. Pointer equality in these finite
 native checks alone does not establish capability equality; the model's
 postcondition states that stronger trusted requirement explicitly.
 
+The Rocq memcmp contract shares memchr's full-span `readable_bytes`
+premise for both inputs, permitting overlap. Its result promises only
+the unsigned lexicographic sign in a canonical signed-int representation,
+not a fixed magnitude. Public invocation fixtures admit distinct nonunit
+results of each sign. Native rows distinguish signed-char comparison,
+last-difference comparison, stopping at binary zero and reading beyond
+the count; they also cover identical/overlapping spans and live one-past
+zero counts. These are finite checks of the trusted API specification,
+not a bytewise implementation model or universal native-satisfaction proof.
+
 ## 2. Heap lifetime (5)
 
 All fresh results satisfy the runtime axioms. Requested size is a

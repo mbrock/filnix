@@ -38,6 +38,11 @@ int main(void) {
     answer("strnlen zero count permits live one-past", strnlen(s + 3, 0) == 0 && strnlen(&"r"[2], 0) == 0);
     answer("memchr converts int and selects first match", memchr(high_bytes + 1, 511, 15) == high_bytes + 2 && memchr(high_bytes + 1, -1, 15) == high_bytes + 2 && memchr(short_string, 0, 3) == short_string + 2);
     answer("memchr respects last byte and zero count", memchr(high_bytes + 1, 'l', 15) == high_bytes + 15 && !memchr(high_bytes + 1, 0, 15) && !memchr(high_bytes + 16, 0, 0));
+    _Alignas(16) unsigned char compare_left[16] = {'!', 128, 255, 0, 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l'};
+    _Alignas(16) unsigned char compare_right[16] = {'!', 127, 0, 0, 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'm'};
+    answer("memcmp unsigned first difference controls sign", memcmp(compare_left + 1, compare_right + 1, 15) > 0 && memcmp(compare_right + 1, compare_left + 1, 15) < 0 && memcmp(compare_left + 2, compare_right + 2, 1) > 0);
+    answer("memcmp binary zero and count boundary", memcmp(compare_left + 3, compare_right + 3, 12) == 0 && memcmp(compare_left + 3, compare_right + 3, 13) < 0 && memcmp(compare_left + 3, compare_left + 3, 13) == 0);
+    answer("memcmp permits overlap and zero count", memcmp(compare_left + 1, compare_left + 2, 14) < 0 && memcmp(compare_left + 16, compare_right + 16, 0) == 0);
     char *end = mempcpy(d + 1, s, 3);
     answer("copy returns end and preserves neighbours", end == d + 4 && memcmp(d, "!xyz!", 5) == 0);
     answer("memcpy and memset return destination", memcpy(d, "pq", 2) == d && memset(d + 2, '#', 2) == d + 2 && memcmp(d, "pq##!", 5) == 0);
