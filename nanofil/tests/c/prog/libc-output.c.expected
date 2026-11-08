@@ -1,6 +1,8 @@
 hello
 format writes NUL and percent-n count: yes
 stream output changes stream state: yes
+allocated stream buffer follows stat capacity: yes
+unbuffered stream uses embedded byte: yes
 I/O errors are results not traps: yes
 wide stream formatting: yes
 printf:xy:7

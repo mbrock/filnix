@@ -569,6 +569,59 @@ evidence, is the next step; terminal resource refusal must retain the
 existing runtime-refusal justification. Shutdown and startup object
 construction/readiness remain open, so this still does not close `hi.c`.
 
+### Campaign 4, milestone 3c: selected native stdout memory
+
+[Libio.v](../rocq/theories/Libio.v) supplies a **partial memory view**
+for the pinned x86-64 byte stdout file backend. It binds the actual
+`_IO_buf_base`, `_IO_buf_end` and `_lock` slots' address bytes and aux to
+explicit FILE, lock, errno and heap-buffer capabilities. Whole-root and
+aligned field-slot checks are separate from decoding the slot contents.
+The embedded byte at FILE offset 131 keeps the FILE's existing capability;
+`short_buffer_delegates` proves that it needs no new object or authority.
+Heap kind and liveness are not ownership and grant no permission to free.
+
+The source/ABI evidence is the `coreRev` in `lib/filc-staging.json`, its
+`projects/user-glibc-2.44/libio/{stdfiles,genops,filedoalloc,fileops}.c`,
+`bits/types/struct_FILE.h` and NPTL `stdio-lock.h`. The installed Fil-C
+compiler reports FILE size 216/alignment 8, pointer slots 56/64/136 and
+short-buffer offset 131. `_IO_FILE_plus` adds its eight-byte vtable
+pointer; the private lock is `{ int lock; int cnt; void *owner; }`.
+The [libc-output.c](../tests/c/prog/libc-output.c) probe checks the used
+public layout constants, stat-selected allocated capacity and the
+embedded one-byte unbuffered path against native Fil-C.
+
+`file_capacity` is deliberately specialized to stdout descriptor 1 and
+this pin's block-size configuration: successful stat uses a positive
+block size below 8192, otherwise the capacity is 8192. Capacity and
+allocated extent differ: capacity 8191 ends the buffer at base + 8191,
+but `heap_req` reserves 8192 bytes. `Libio R.allocate_buffer` starts with
+an actual successful `R.alloc` answer and proves freshness, readiness,
+an authorized allocation effect and the resulting buffer authority.
+`buffer_refusal` requires the actual runtime refusal; the bounded request
+cannot justify `TooBig`. Neither lemma installs pointers or flags yet.
+
+The selected allocator distinction is now explicit. Generic libio falls
+back to `_shortbuf` if its malloc returns NULL, but this glibc's
+`malloc/malloc.c:__libc_malloc2` forwards directly to `zgc_alloc`.
+`filc_native_zgc_alloc`, `filc_allocate` and `verse_heap_allocate` reach
+the runtime's no-return allocation failure, not NULL. The separate
+`pinned_choice` excludes the generic NULL branch; byte-unbuffered setup
+still uses the embedded buffer without allocating, and an existing
+buffer has priority. These are branch facts, not a native coverage proof.
+
+Next is **NoBuffer installation**, composing the actual allocation (or
+embedded bypass) with local byte/aux stores and the `_IO_USER_BUF` update,
+then outgoing-root delegation. Initial null slots must exclude
+`_IO_setb`'s old-buffer release; replacement/caller-buffer ownership is
+not modeled. The memory view is not complete FILE validity, exhaustive
+native roots or a `puts` realization: for example, storing `THREAD_SELF`
+in `lock.owner` needs a capability source beyond these writable spans.
+Backend/vtable dispatch, flags/orientation, lock state, pending-byte
+representation, native effects/prefix coverage and protocol scheduling
+remain open. No core semantics, runtime axioms or existing theorems change.
+Startup construction and shutdown follow installation; `hi.c` is not
+yet closed, and no adequacy or native trap-freedom theorem is claimed.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and
