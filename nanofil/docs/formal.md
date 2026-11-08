@@ -1146,6 +1146,47 @@ counterexample probes, not universal implementation proofs. Selected
 startup callback specifications, native registry representation satisfaction,
 locking/stability and lifecycle segment coverage remain to instantiate.
 
+### Campaign 4 milestone 4m: constructing the pre-callback pop
+
+`ExitMemory.v` now constructs the selected native metadata writes for one
+nonempty head block: decrement `idx`, then clear the removed flavor for
+`ef_cxa` only. Payload bytes, every auxiliary capability, regions and block
+identities remain unchanged. Exact byte framing is proved from the stores,
+not inferred from the larger permissions of an arbitrary contract effect.
+The original capacity and containing alignment justify the eight-byte field
+checks; independent narrow writable spans justify an effects path over any
+runtime, with no allocation or release, at both the index-only and final
+cutpoints. Captured payload capabilities come from complete checked source
+slots, separately from write permission and callback admission.
+
+Registry preservation additionally requires that the head cell and other
+block storage do not overlap the popped block. Distinct identities alone
+are insufficient: an inhabited counterexample puts the head cell inside
+`idx`, so its initially consistent pointer is corrupted by decrementing it.
+The snapshot predicate is not silently strengthened; separation is an
+explicit construction premise. An empty block cannot supply a selected pop.
+An exhausted endpoint is not permission to unlink or release the block.
+
+Free/reserved slots stutter logically, without inventing a shutdown action.
+An installed slot gives the existing `InvokeCallback` edge from the actual
+pending projection to the detached active registration; independent token
+uniqueness is preserved. Memory-indexed callback admission needs a general
+footprint-stability rule for **all** pending and active callbacks. The
+inhabited fixture discharges it for known callbacks and checked retained
+argument data outside the writes; a specification depending on `idx` is
+explicitly rejected. Other fixtures cover a preserved second block, cxa
+flavor clearing with untouched payload capabilities, and missing write
+authority. The native boundary probes remain milestone 4l's finite evidence;
+they cannot independently observe these hidden metadata writes.
+
+This is a constructed **pre-callback entry cutpoint**, not native indirect
+dispatch, callback ABI correctness or callback execution. No traversal loop,
+re-registration, recursive exit, allocation, unlink/free, lock implementation,
+selected-segment instantiation or universal native cutpoint coverage is
+claimed. The next construction slice is exhausted-block unlinking with
+explicit release ownership and non-target framing; native callback/entry
+instantiation and unconditional hi.c closure remain open.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and
