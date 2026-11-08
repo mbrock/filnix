@@ -531,6 +531,44 @@ list. A failed write may discard previously accepted bytes; acceptance
 never promises descriptor delivery. Linking the pinned body and native
 prefix coverage/adequacy remain necessary before `never_panics`.
 
+### Campaign 4, milestone 3b: ordered stdout obligations
+
+[Stdio.v](../rocq/theories/Stdio.v) defines a finite logical stdout
+protocol, not a native FILE layout. Acceptance appends output
+obligations; descriptor acceptance and output-error discard each consume
+an exact prefix. A zero-progress output error leaves the obligations
+unchanged. The error flag stays set across later output; its connection
+to native `ferror` is not yet proved. Outstanding obligations are not
+physical buffer contents, and descriptor acceptance is not durability.
+
+`stream_accounting` proves that old obligations followed by new
+acceptance equal all resolutions, in their actual interleaved order,
+followed by the remaining obligations. Discarded bytes cannot disappear
+from this accounting or be moved after all delivered bytes. The public
+examples cover buffered acceptance without delivery, prior pending
+output, partial delivery/discard followed by later output, sticky errors,
+and empty/partial/full acceptance with EOF. They reject out-of-order
+delivery, non-byte contents, success without the newline, and a
+wide-oriented puts even when its run is empty and it returns EOF.
+
+`puts_observation` summarizes **one whole call** as one cumulative
+`StreamBytes` event, including the singleton empty-acceptance event on
+EOF. It is not a concatenation-preserving projection of internal steps.
+`protocol_puts_post` bridges this summary to the existing `puts_post`
+only when supplied the independent string-memory and final readiness
+premises. It proves neither invocation nor native refinement: effects,
+representation, roots/delegation, allocator requests/fallback and
+prefix coverage remain separate obligations. No memory, runtime or
+machine interface changes, admits or new axioms are needed.
+
+The source-selected buffering modes/capacities and ordinary malloc
+failure fallback are deliberately not guessed here. Relating the
+pinned `libio/ioputs.c`, `fileops.c` and `filedoalloc.c` paths to this
+protocol, with actual capability-bearing roots and fresh allocation
+evidence, is the next step; terminal resource refusal must retain the
+existing runtime-refusal justification. Shutdown and startup object
+construction/readiness remain open, so this still does not close `hi.c`.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and
