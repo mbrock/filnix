@@ -19,6 +19,7 @@ theories/Identity.v
 theories/ExternalCalls.v
 theories/Startup.v
 theories/Stdio.v
+theories/Shutdown.v
 theories/Libio.v
 theories/Coverage.v
 theories/Evidence.v

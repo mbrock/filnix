@@ -47,6 +47,47 @@ static int stopped(int mode) {
         strstr(buf, "filc user error: abort(3) called.") &&
         !strstr(buf, "filc safety error:") && buf[0] != 'E';
 }
+static int recursive;
+static void oldest(int status, void *arg) {
+    int expected = recursive ? -1 : 31;
+    write(pipe_out, status == expected && arg == &recursive ? "A" : "X", 1);
+}
+static void added(void) { write(pipe_out, "C", 1); }
+static void newest(void) {
+    write(pipe_out, "B", 1);
+    if (recursive == 2) _exit(98);
+    if (recursive) {
+        exit(-1);
+        write(pipe_out, "X", 1);
+    }
+    if (atexit(added)) _exit(98);
+}
+// Direct handler writes precede the buffered byte flushed by cleanup.
+static int dynamic_exit(int reenter) {
+    fflush(0);
+    int fd[2];
+    if (pipe(fd)) return 0;
+    pid_t child = fork();
+    if (child == 0) {
+        close(fd[0]); pipe_out = fd[1]; recursive = reenter;
+        if (dup2(fd[1], 1) < 0 || setvbuf(stdout, 0, _IOFBF, 4096)) _exit(99);
+        if (fputs("Z", stdout) < 0 || on_exit(oldest, &recursive) || atexit(newest)) _exit(99);
+        exit(31);
+    }
+    close(fd[1]);
+    char buf[8] = {0};
+    size_t n = 0;
+    ssize_t r;
+    while (n < sizeof buf && (r = read(fd[0], buf + n, sizeof buf - n)) > 0) n += r;
+    close(fd[0]);
+    int st = 0;
+    if (child < 0 || waitpid(child, &st, 0) != child) return 0;
+    int status = reenter == 2 ? 98 : reenter ? 255 : 31;
+    size_t count = reenter == 2 ? 1 : reenter ? 3 : 4;
+    const char *expected = reenter == 2 ? "B" : reenter ? "BAZ" : "BCAZ";
+    return WIFEXITED(st) && WEXITSTATUS(st) == status &&
+        n == count && memcmp(buf, expected, n) == 0;
+}
 int main(void) {
     int fd[2];
     if (pipe(fd)) return 1;
@@ -66,5 +107,8 @@ int main(void) {
     answer("abort stops without handlers", stopped(2));
     answer("assert failure stops without handlers", stopped(3));
     answer("callback argument must outlive registration", libc_traps(expired_argument));
+    answer("new handler precedes older handlers and cleanup", dynamic_exit(0));
+    answer("recursive exit updates signed status without repeating handler", dynamic_exit(1));
+    answer("handler underscore-exit replaces status without cleanup", dynamic_exit(2));
     return 0;
 }

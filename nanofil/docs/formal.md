@@ -728,7 +728,56 @@ framing. The native re-exec probe covers both environment cases.
 This is memory construction, not coverage of the entire launcher: native
 obtaining/tracking of `main` between the two loops, auxv, libc/TLS/stdio
 initialization, constructors and failure paths still need accounting.
-Shutdown follows next; no `hi.c` closure or native trap-freedom is claimed.
+Shutdown's lifecycle follows below; no `hi.c` closure or native
+trap-freedom is claimed.
+
+### Campaign 4, milestone 4c: shutdown lifecycle and main return
+
+[Shutdown.v](../rocq/theories/Shutdown.v) gives the serialized lifecycle
+of the selected user-glibc's exit path. Its TLS destructor hook is empty
+at this pin. Registrations are distinct instances, even for the same
+function: pop-before-call records the consumed token, successful dynamic
+registration pushes a fresh token, and recursive exit abandons the
+active callback while replacing the signed status. Remaining callbacks
+see that new status. Proofs establish invocation uniqueness, exact
+consumption history, sticky registration closure, and stdout accounting
+through finite prefixes. There is no eventual-completion theorem.
+
+Cleanup projects delivery and output-error discard, without promising
+that every byte is delivered or even settled. Both soft and hard
+handoffs retain outstanding obligations. Hard exit neither invokes
+handlers nor invents a flush/discard; it installs its own `_exit`
+argument, including when it replaces an enclosing exit's status during
+a callback or cleanup. Successful registration is
+conditional; registration failure, callback memory effects, concurrent
+finalization, `dlclose`, `__cxa_finalize` and quick exit are not represented
+by this stack protocol. Cleanup reentrancy and arbitrary backend
+callbacks are likewise not coverage claims.
+
+The boundary is deliberately **host-exit handoff**, not native process
+termination: `filc_native_zsys_exit_soft` leaves Fil-C and calls host
+`exit`; its hard counterpart calls host `_Exit`. Host handlers, loader
+finalization and host stdio therefore remain an explicit, uninstantiated
+completion contract. Only its witnessed observation contributes one
+`ProcessExit`. This does not prove arbitrary external callback traces
+exit-free; later composition must exclude exit events from returning
+callback/cleanup traces and transfer recursive exit to the lifecycle.
+
+`main_return_step` justifies the retained core snapshot for a real
+non-doomed, top-level W return **with no locals**, because invalidation
+is then exactly identity. It adds no successor to the terminal state of
+`ExternalMachine`. Main's result is interpreted as a signed 32-bit C int
+before shutdown: -1 reaches callbacks as -1, although the final process
+status is 255. Doomed/live-local returns cannot use this bridge.
+
+The native exit probe now distinguishes new-handler precedence and
+recursive exit with a signed -1 observed by `on_exit`, followed by
+buffered-output cleanup, and a handler's `_exit(98)` replacing
+`exit(31)` without cleanup. The symbolic examples also cover duplicate
+function registrations, token reuse rejection, partial delivery/error,
+hard exit's unflushed output, and the concrete main-return bridge.
+This closes a lifecycle component, not callback/native cleanup
+realization, host termination, full entry readiness or `hi.c` closure.
 
 ### The next milestones, in order
 

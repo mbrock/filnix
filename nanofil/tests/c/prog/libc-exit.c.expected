@@ -4,3 +4,6 @@ underscore-exit skips handlers: yes
 abort stops without handlers: yes
 assert failure stops without handlers: yes
 callback argument must outlive registration: yes
+new handler precedes older handlers and cleanup: yes
+recursive exit updates signed status without repeating handler: yes
+handler underscore-exit replaces status without cleanup: yes
