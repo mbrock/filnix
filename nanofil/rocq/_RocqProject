@@ -40,8 +40,8 @@ theories/ExternalMachine.v
 theories/Hi.v
 theories/Composition.v
 theories/Panics.v
-theories/Sum.v
 theories/Program.v
 theories/Transport.v
+theories/Sum.v
 theories/HiArtifact.v
 theories/Extract.v
