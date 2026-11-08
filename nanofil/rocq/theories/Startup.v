@@ -23,6 +23,40 @@ Definition pointer_slot (m : mem) (a : Z) (p : ptr) : Prop :=
   0 <= ptr_addr p < 2 ^ 64 /\
   load_bytes m a 8 = ptr_addr p /\ m_aux m a = ptr_cap p.
 
+(** The same address/aux store used by store_res constructs an actual
+    decoded slot. No access or capability authority is inferred here;
+    local_store_pointer supplies the separate footprint obligation. *)
+Lemma pointer_slot_written : forall m a p,
+  0 <= ptr_addr p < 2 ^ 64 ->
+  pointer_slot (store_aux (store_bytes m a 8 (ptr_addr p)) a (ptr_cap p)) a p.
+Proof.
+  intros m a p Hp. split; [exact Hp|]. split.
+  - change (load_bytes (store_bytes m a 8 (ptr_addr p)) a 8 = ptr_addr p).
+    rewrite stored_bytes_value by lia. apply Z.mod_small. exact Hp.
+  - simpl. rewrite Z.eqb_refl. reflexivity.
+Qed.
+
+Lemma pointer_slot_bytes_disjoint : forall m a size x b p,
+  0 <= size -> b + 8 <= a \/ a + size <= b -> pointer_slot m b p ->
+  pointer_slot (store_bytes m a size x) b p.
+Proof.
+  intros m a size x b p Hsize Hdis [Hp [Hbytes Haux]]. split; [exact Hp|]. split; [|exact Haux].
+  rewrite <- Hbytes. apply load_bytes_agree; [lia|]. intros i Hi. simpl.
+  destruct ((a <=? b + i) && (b + i <? a + size)) eqn:E; [|reflexivity].
+  apply andb_true_iff in E as [E1 E2]. apply Z.leb_le in E1. apply Z.ltb_lt in E2. lia.
+Qed.
+
+Lemma pointer_slot_pointer_disjoint : forall m a p b q,
+  b + 8 <= a \/ a + 8 <= b -> pointer_slot m b q ->
+  pointer_slot (store_aux (store_bytes m a 8 (ptr_addr p)) a (ptr_cap p)) b q.
+Proof.
+  intros m a p b q Hdis Hslot.
+  destruct (pointer_slot_bytes_disjoint m a 8 (ptr_addr p) b q ltac:(lia) Hdis Hslot)
+    as [Hq [Hbytes Haux]]. split; [exact Hq|]. split; [exact Hbytes|]. simpl.
+  assert ((b =? a) = false) as E by (apply Z.eqb_neq; lia).
+  rewrite E. exact Haux.
+Qed.
+
 Fixpoint string_slots (m : mem) (a : Z) (texts : list (list Z)) : Prop :=
   match texts with
   | [] => pointer_slot m a (mkPtr 0 CNone)

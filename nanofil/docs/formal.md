@@ -609,18 +609,50 @@ the runtime's no-return allocation failure, not NULL. The separate
 still uses the embedded buffer without allocating, and an existing
 buffer has priority. These are branch facts, not a native coverage proof.
 
-Next is **NoBuffer installation**, composing the actual allocation (or
-embedded bypass) with local byte/aux stores and the `_IO_USER_BUF` update,
-then outgoing-root delegation. Initial null slots must exclude
-`_IO_setb`'s old-buffer release; replacement/caller-buffer ownership is
-not modeled. The memory view is not complete FILE validity, exhaustive
-native roots or a `puts` realization: for example, storing `THREAD_SELF`
-in `lock.owner` needs a capability source beyond these writable spans.
-Backend/vtable dispatch, flags/orientation, lock state, pending-byte
-representation, native effects/prefix coverage and protocol scheduling
-remain open. No core semantics, runtime axioms or existing theorems change.
-Startup construction and shutdown follow installation; `hi.c` is not
-yet closed, and no adequacy or native trap-freedom theorem is claimed.
+Installation is the following milestone. This memory view alone is not
+complete FILE validity, exhaustive native roots or a `puts` realization.
+
+### Campaign 4, milestone 3d: install the selected buffer
+
+`Libio R.setup_short` and `setup_heap` now compose the **NoBuffer** case
+of pinned `genops.c:_IO_setb`: store the base and one-past end with their
+capabilities, then set `_IO_USER_BUF` for the embedded byte or clear it
+for the allocated buffer. The four-byte mask preserves every other
+flags bit. Null initial slots exclude the native old-buffer release;
+this is not arbitrary replacement or proof of buffer ownership.
+
+The embedded setup performs only authorized local stores, with no
+allocation request or new identity. Heap setup requires the actual
+successful allocator answer for the original capacity, preserves every
+old root across fresh allocation, then installs the pointers and flags.
+Both theorems establish an effects path, runtime readiness, identity
+persistence, the new checked `stdout_memory` view and outgoing-root
+delegation. Shared byte-store, pointer-store and disjoint-slot lemmas
+prove serialization and auxiliary metadata explicitly, not just address
+agreement. No new runtime axiom or core machine change is needed.
+
+The installed-memory regressions exercise capacity 8191 with extent
+8192, both flag updates, the retained FILE/heap capabilities, the
+unchanged lock pointer and nonzero errno contents, and rejection of
+dead or undersized buffers.
+These are model regressions, not evidence that native libc realizes the
+whole contract. Existing native layout and allocation/bypass probes
+remain the pin evidence; the latter also check the null initial slots
+and the selected `_IO_USER_BUF` outcomes.
+
+Selection remains conditional on the selected byte/file backend; the
+cause-indexed `pinned_choice` is not native dispatch or allocation
+evidence. In particular, installation does not model the earlier
+`_IO_file_doallocate` line-buffer flag update or prove that mode, stat
+and descriptor observations select that call. It also does not invent
+a NULL return when the runtime refuses allocation.
+
+Startup construction and shutdown follow. Full FILE validity, backend
+dispatch, flags/orientation and lock state, pending-byte representation,
+native effects/prefix coverage and protocol scheduling remain open.
+For example, storing `THREAD_SELF` in `lock.owner` needs a capability
+source beyond these writable spans. `hi.c` is not yet closed; no native
+trap-freedom or adequacy theorem is claimed.
 
 ### The next milestones, in order
 

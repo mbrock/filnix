@@ -108,6 +108,109 @@ Proof.
     apply Z.leb_le in E1. apply Z.ltb_lt in E2. lia.
 Qed.
 
+(** Construction facts shared by native buffer setup and entry vectors.
+    Writing a pointer requires a capability source as well as writable
+    bytes. These are ordinary model stores, not additional axioms. *)
+Lemma local_store_pointer : forall sources roots releases born m a p,
+  (forall b, a <= b < a + 8 -> write_authority roots born m b) ->
+  available_cap sources born m (ptr_cap p) ->
+  local_effect sources roots releases born m
+    (store_aux (store_bytes m a 8 (ptr_addr p)) a (ptr_cap p)).
+Proof.
+  intros sources roots releases born m a p Ha Hcap.
+  split; [apply ids_same; reflexivity|]. split.
+  - intros b reg E. exists reg. auto.
+  - split.
+    + intros b Hn. simpl. split.
+      * destruct ((a <=? b) && (b <? a + 8)) eqn:E; [|reflexivity].
+        exfalso. apply Hn, Ha. apply andb_true_iff in E as [E1 E2].
+        apply Z.leb_le in E1. apply Z.ltb_lt in E2. lia.
+      * destruct (b =? a) eqn:E; [|reflexivity].
+        apply Z.eqb_eq in E. subst. exfalso. apply Hn, Ha. lia.
+    + intros b. simpl. destruct (b =? a); [right; exact Hcap|left; reflexivity].
+Qed.
+
+Lemma load_bytes_agree : forall m m' a size,
+  0 <= size ->
+  (forall i, 0 <= i < size -> m_bytes m (a + i) = m_bytes m' (a + i)) ->
+  load_bytes m a size = load_bytes m' a size.
+Proof.
+  intros m m' a size Hsize Hbytes. unfold load_bytes.
+  remember (Z.to_nat size) as n eqn:En.
+  assert (Hn : Z.of_nat n <= size) by (rewrite En, Z2Nat.id; lia).
+  clear En. revert Hn. generalize 0 as acc.
+  induction n as [|n IH]; intros acc Hn; [reflexivity|].
+  cbn -[Z.of_nat Z.add Z.mul].
+  rewrite Hbytes by (rewrite Nat2Z.inj_succ in Hn; lia).
+  apply IH. rewrite Nat2Z.inj_succ in Hn. lia.
+Qed.
+
+Lemma stored_byte : forall m a size x i,
+  0 <= i < size -> m_bytes (store_bytes m a size x) (a + i) = byte_of x i.
+Proof.
+  intros m a size x i Hi. unfold store_bytes. simpl.
+  assert ((a <=? a + i) = true) as Hlo by (apply Z.leb_le; lia).
+  assert ((a + i <? a + size) = true) as Hhi by (apply Z.ltb_lt; lia).
+  rewrite Hlo, Hhi. simpl. replace (a + i - a) with i by lia. reflexivity.
+Qed.
+
+Lemma stored_bytes_value : forall m a size x,
+  0 <= size -> load_bytes (store_bytes m a size x) a size = x mod 256 ^ size.
+Proof.
+  intros m a size x Hsize. unfold load_bytes.
+  remember (Z.to_nat size) as n eqn:En.
+  assert (Hn : Z.of_nat n <= size) by (rewrite En, Z2Nat.id; lia).
+  replace (x mod 256 ^ size) with
+    (0 * 256 ^ Z.of_nat n + x mod 256 ^ Z.of_nat n)
+    by (rewrite En, Z2Nat.id by lia; ring).
+  clear En. revert Hn. generalize 0 as acc.
+  induction n as [|n IH]; intros acc Hn.
+  - cbn -[Z.add Z.mul Z.modulo]. rewrite Z.mod_1_r. ring.
+  - cbn -[store_bytes Z.of_nat Z.add Z.mul Z.pow].
+    rewrite stored_byte by (rewrite Nat2Z.inj_succ in Hn; lia).
+    rewrite IH by (rewrite Nat2Z.inj_succ in Hn; lia).
+    unfold byte_of. rewrite Nat2Z.inj_succ, Z.pow_succ_r by lia.
+    rewrite Z.pow_mul_r by lia. change (2 ^ 8) with 256.
+    pose proof (Z.pow_pos_nonneg 256 (Z.of_nat n) ltac:(lia) ltac:(lia)) as Hpow.
+    rewrite (Z.mul_comm 256 (256 ^ Z.of_nat n)), Z.rem_mul_r by lia.
+    ring.
+Qed.
+
+(** A fresh allocation cannot shadow an already registered identity or
+    invalidate a capability-backed root of the caller. *)
+Lemma allocated_old_region : forall m q base old reg,
+  object_region base (m_regions m) = None ->
+  object_region old (m_regions m) = Some reg ->
+  object_region old (m_regions (allocated m q base)) = Some reg.
+Proof.
+  intros m q base old reg Hnew Hold. simpl.
+  assert ((base =? old) = false) as E.
+  { apply Z.eqb_neq. intros ->. rewrite Hnew in Hold. discriminate. }
+  rewrite E. exact Hold.
+Qed.
+
+Lemma allocated_old_access : forall m q base a c size rights align,
+  object_region base (m_regions m) = None ->
+  access_res m a c size rights align = Some ok ->
+  access_res (allocated m q base) a c size rights align = Some ok.
+Proof.
+  intros m q base a c size rights align Hnew Ha.
+  unfold access_res, cap_access_res in Ha. destruct c as [|old|old|f|f]; try discriminate.
+  all: destruct (object_region old (m_regions m)) as [reg|] eqn:E; try discriminate.
+  all: unfold access_res, cap_access_res;
+    rewrite (allocated_old_region m q base old reg Hnew E); exact Ha.
+Qed.
+
+Lemma allocated_old_span : forall m q base s,
+  object_region base (m_regions m) = None -> writable_span m s ->
+  writable_span (allocated m q base) s.
+Proof.
+  intros m q base s Hnew [Hsize [old [reg [Hcap [Hr [Hl Ha]]]]]].
+  split; [exact Hsize|]. exists old, reg. split; [exact Hcap|].
+  split; [eapply allocated_old_region; eauto|]. split; [exact Hl|].
+  eapply allocated_old_access; eauto.
+Qed.
+
 (** ## Events and contract results *)
 
 Inductive event : Type :=

@@ -11,7 +11,7 @@
     fallback and the pin's terminal resource ending are distinct. *)
 
 From Stdlib Require Import ZArith List Bool Lia.
-From Nanofil Require Import Syntax Values Memory Runtime ExternalCalls Startup.
+From Nanofil Require Import Syntax Values Memory Runtime Identity ExternalCalls Startup.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -145,6 +145,115 @@ Proof.
     split; [exact Hw|]. unfold span_contains, short_ptr in *. simpl in *. lia.
 Qed.
 
+(** ## Installing a buffer from the null-buffer state
+
+    This is _IO_setb's selected no-old-buffer case. The two pointer
+    stores change bytes AND aux; the four-byte flags store changes only
+    _IO_USER_BUF. No release is hidden in this construction. Selection
+    of this path still needs NoBuffer and backend/mode premises. *)
+Definition install_buffer (m : mem) (r : stdout_roots) (storage : buffer_storage) : mem :=
+  match buffer_span r storage with
+  | None => m
+  | Some s =>
+      let a := ptr_addr (file_ptr r) in
+      let p := span_ptr s in
+      let m1 := store_aux (store_bytes m (a + 56) 8 (ptr_addr p)) (a + 56) (ptr_cap p) in
+      let m2 := store_aux (store_bytes m1 (a + 64) 8 (ptr_addr p + span_size s))
+        (a + 64) (ptr_cap p) in
+      store_bytes m2 a 4
+        (match storage with
+         | HeapBuffer _ _ => Z.land (load_bytes m a 4) (-2)
+         | _ => Z.lor (load_bytes m a 4) 1
+         end)
+  end.
+
+Theorem installed_buffer_slots : forall m r storage s,
+  buffer_span r storage = Some s ->
+  0 <= ptr_addr (span_ptr s) < 2 ^ 64 ->
+  0 <= ptr_addr (span_ptr s) + span_size s < 2 ^ 64 ->
+  buffer_slots (install_buffer m r storage) r storage.
+Proof.
+  intros m r storage s Hs Hp Hend. unfold buffer_slots, install_buffer. rewrite Hs. split.
+  - apply pointer_slot_bytes_disjoint; [lia|right; simpl; lia|].
+    eapply pointer_slot_pointer_disjoint with
+      (p := mkPtr (ptr_addr (span_ptr s) + span_size s) (ptr_cap (span_ptr s)));
+      [left; lia|]. apply pointer_slot_written. exact Hp.
+  - apply pointer_slot_bytes_disjoint; [lia|right; simpl; lia|].
+    apply (pointer_slot_written _ _
+      (mkPtr (ptr_addr (span_ptr s) + span_size s) (ptr_cap (span_ptr s)))). exact Hend.
+Qed.
+
+Theorem installed_user_buffer_flag : forall m r storage s,
+  buffer_span r storage = Some s ->
+  load_bytes (install_buffer m r storage) (ptr_addr (file_ptr r)) 4 =
+    (match storage with
+     | HeapBuffer _ _ => Z.land (load_bytes m (ptr_addr (file_ptr r)) 4) (-2)
+     | _ => Z.lor (load_bytes m (ptr_addr (file_ptr r)) 4) 1
+     end) mod 2 ^ 32.
+Proof.
+  intros m r storage s Hs. unfold install_buffer. rewrite Hs.
+  rewrite stored_bytes_value by lia. reflexivity.
+Qed.
+
+Lemma file_write_authority : forall m r born a,
+  Forall (writable_span m) (fixed_roots r) ->
+  ptr_addr (file_ptr r) <= a < ptr_addr (file_ptr r) + 224 ->
+  write_authority (fixed_roots r) born m a.
+Proof.
+  intros m r born a Hroots Ha. left. exists (mkSpan (file_ptr r) 224).
+  inversion Hroots as [|s rest Hw Hrest]; subst. split; [simpl; auto|]. split; auto.
+Qed.
+
+(** Fresh allocation leaves the null slots and every caller root valid.
+    It does not install its address into FILE. *)
+Lemma no_buffer_allocated : forall m r q base,
+  stdout_memory m r NoBuffer -> object_region base (m_regions m) = None ->
+  stdout_memory (allocated m q base) r NoBuffer.
+Proof.
+  intros m r q base (Hroots & Hfile & Hfields & Hlock & Herr & Hslot & Hnull & _) Hnew.
+  split.
+  - eapply Forall_impl; [|exact Hroots]. intros span Hspan. eapply allocated_old_span; eauto.
+  - split; [eapply allocated_old_access; eauto|]. split.
+    + eapply Forall_impl; [|exact Hfields]. intros offset Hfield. eapply allocated_old_access; eauto.
+    + split; [eapply allocated_old_access; eauto|].
+      split; [eapply allocated_old_access; eauto|]. split; [exact Hslot|]. auto.
+Qed.
+
+(** Installation preserves the checked fixed fields and lock pointer;
+    target root bounds and heap lifetime are independent obligations.
+    In particular, matching slot bytes alone cannot prove this view. *)
+Theorem installed_memory : forall m r storage span,
+  stdout_memory m r NoBuffer -> buffer_span r storage = Some span ->
+  Forall (writable_span m) (memory_roots r storage) ->
+  0 <= ptr_addr (span_ptr span) < 2 ^ 64 ->
+  0 <= ptr_addr (span_ptr span) + span_size span < 2 ^ 64 ->
+  (match storage with
+   | HeapBuffer base size => 0 < size /\ exists reg,
+       object_region base (m_regions m) = Some reg /\ r_kind reg = Heap /\ r_life reg = Live
+   | _ => True
+   end) ->
+  stdout_memory (install_buffer m r storage) r storage.
+Proof.
+  intros m r storage span (Hroots & Hfile & Hfields & Hlock & Herr & Hslot & Hnull & _)
+    Hspan Hout Hp Hend Hheap.
+  assert (Hregions : m_regions (install_buffer m r storage) = m_regions m).
+  { unfold install_buffer. rewrite Hspan. reflexivity. }
+  split.
+  - unfold writable_span, access_res. rewrite Hregions. exact Hout.
+  - split; [unfold access_res; rewrite Hregions; exact Hfile|]. split.
+    + unfold access_res. rewrite Hregions. exact Hfields.
+    + split; [unfold access_res; rewrite Hregions; exact Hlock|].
+      split; [unfold access_res; rewrite Hregions; exact Herr|]. split.
+      * unfold install_buffer. rewrite Hspan.
+        apply pointer_slot_bytes_disjoint; [lia|right; lia|].
+        eapply pointer_slot_pointer_disjoint with
+          (p := mkPtr (ptr_addr (span_ptr span) + span_size span) (ptr_cap (span_ptr span)));
+          [right; lia|].
+        apply pointer_slot_pointer_disjoint with (p := span_ptr span); [right; lia|exact Hslot].
+      * split; [eapply installed_buffer_slots; eauto|].
+        destruct storage; try exact I. rewrite Hregions. exact Hheap.
+Qed.
+
 (** ## Allocation evidence over any runtime *)
 
 Module Libio (R : Runtime).
@@ -210,6 +319,155 @@ Theorem buffer_never_too_big : forall stat_ok block_size s,
 Proof.
   intros stat_ok block_size s H. inversion H as [|align size [_ ->] Hbig].
   pose proof (file_capacity_bounds stat_ok block_size). unfold max_allocation_size in Hbig. lia.
+Qed.
+
+Theorem install_short_effects : forall s m r requests,
+  stdout_memory m r NoBuffer ->
+  E.effects (fixed_roots r) (fixed_roots r) [] requests s m []
+    s (install_buffer m r ShortBuffer) [].
+Proof.
+  intros s m r requests [Hroots _].
+  set (a := ptr_addr (file_ptr r)). set (p := short_ptr r).
+  set (m1 := store_aux (store_bytes m (a + 56) 8 (ptr_addr p)) (a + 56) (ptr_cap p)).
+  set (m2 := store_aux (store_bytes m1 (a + 64) 8 (ptr_addr p + 1)) (a + 64) (ptr_cap p)).
+  set (m3 := store_bytes m2 a 4 (Z.lor (load_bytes m a 4) 1)).
+  change (E.effects (fixed_roots r) (fixed_roots r) [] requests s m [] s m3 []).
+  eapply E.effects_local with (m1 := m1).
+  - apply local_store_pointer with (p := p).
+    + intros b Hb. apply file_write_authority; [exact Hroots|simpl in *; lia].
+    + right. left. exists (mkSpan (file_ptr r) 224). simpl. auto.
+  - eapply E.effects_local with (m1 := m2).
+    + apply local_store_pointer with (p := mkPtr (ptr_addr p + 1) (ptr_cap p)).
+      * intros b Hb. apply file_write_authority; [exact Hroots|simpl in *; lia].
+      * right. left. exists (mkSpan (file_ptr r) 224). simpl. auto.
+    + eapply E.effects_local with (m1 := m3).
+      * apply local_store_bytes. intros b Hb.
+        apply file_write_authority; [exact Hroots|simpl in *; lia].
+      * constructor.
+Qed.
+
+Theorem install_heap_effects : forall s m r requests born base size,
+  stdout_memory m r NoBuffer -> In base born ->
+  E.effects (fixed_roots r) (fixed_roots r) [] requests s m born
+    s (install_buffer m r (HeapBuffer base size)) born.
+Proof.
+  intros s m r requests born base size [Hroots _] Hborn.
+  set (a := ptr_addr (file_ptr r)).
+  set (m1 := store_aux (store_bytes m (a + 56) 8 base) (a + 56) (Obj base)).
+  set (m2 := store_aux (store_bytes m1 (a + 64) 8 (base + size)) (a + 64) (Obj base)).
+  set (m3 := store_bytes m2 a 4 (Z.land (load_bytes m a 4) (-2))).
+  change (E.effects (fixed_roots r) (fixed_roots r) [] requests s m born s m3 born).
+  eapply E.effects_local with (m1 := m1).
+  - apply local_store_pointer with (p := mkPtr base (Obj base)).
+    + intros b Hb. apply file_write_authority; [exact Hroots|simpl in *; lia].
+    + right. right. right. exists base. auto.
+  - eapply E.effects_local with (m1 := m2).
+    + apply local_store_pointer with (p := mkPtr (base + size) (Obj base)).
+      * intros b Hb. apply file_write_authority; [exact Hroots|simpl in *; lia].
+      * right. right. right. exists base. auto.
+    + eapply E.effects_local with (m1 := m3).
+      * apply local_store_bytes. intros b Hb.
+        apply file_write_authority; [exact Hroots|simpl in *; lia].
+      * constructor.
+Qed.
+
+Theorem setup_short : forall s m r requests,
+  R.ready s m -> stdout_memory m r NoBuffer ->
+  let m' := install_buffer m r ShortBuffer in
+  E.effects (fixed_roots r) (fixed_roots r) [] requests s m [] s m' [] /\
+  R.ready s m' /\ persists m m' /\ stdout_memory m' r ShortBuffer /\
+  stdio_delegates (fixed_roots r) [] m' (memory_world r ShortBuffer).
+Proof.
+  intros s m r requests Hr Hmem.
+  pose proof (install_short_effects s m r requests Hmem) as He.
+  destruct (E.effects_preserve _ _ _ _ _ _ _ _ _ _ He Hr) as [Hr' Hpersist].
+  destruct Hmem as [Hroots Hrest].
+  inversion Hroots as [|span rest Hw Htail]; subst.
+  destruct Hw as (_ & base & reg & Hcap & Hreg & Hlive & Haccess).
+  destruct (R.address_space s m Hr base reg Hreg) as [Hlo Hhi].
+  change (access_res m (ptr_addr (file_ptr r)) (Obj base) 224 Write 1 = Some ok) in Haccess.
+  unfold access_res, cap_access_res in Haccess. rewrite Hreg in Haccess.
+  destruct ((base <=? ptr_addr (file_ptr r)) &&
+    (ptr_addr (file_ptr r) + 224 <=? r_end reg)) eqn:E; try discriminate Haccess.
+  apply andb_true_iff in E as [E1 E2]. apply Z.leb_le in E1. apply Z.leb_le in E2.
+  assert (Hpost : stdout_memory (install_buffer m r ShortBuffer) r ShortBuffer).
+  { eapply installed_memory with (span := mkSpan (short_ptr r) 1).
+    - split; assumption.
+    - reflexivity.
+    - exact Hroots.
+    - unfold short_ptr. simpl. lia.
+    - unfold short_ptr. simpl. lia.
+    - exact I. }
+  split; [exact He|]. split; [exact Hr'|]. split; [exact Hpersist|]. split; [exact Hpost|].
+  apply stdio_delegates_refl; [reflexivity|exact (proj1 Hpost)].
+Qed.
+
+Theorem setup_heap : forall stat_ok block_size s m r base s',
+  R.ready s m -> stdout_memory m r NoBuffer ->
+  R.alloc s (heap_req 16 (file_capacity stat_ok block_size)) = Some (base, s') ->
+  let size := file_capacity stat_ok block_size in
+  let m1 := allocated m (heap_req 16 size) base in
+  let m' := install_buffer m1 r (HeapBuffer base size) in
+  E.effects (fixed_roots r) (fixed_roots r) [] (buffer_request stat_ok block_size)
+    s m [] s' m' [base] /\
+  R.ready s' m' /\ persists m m' /\ stdout_memory m' r (HeapBuffer base size) /\
+  stdio_delegates (fixed_roots r) [base] m' (memory_world r (HeapBuffer base size)).
+Proof.
+  intros stat_ok block_size s m r base s' Hr Hmem Ha.
+  set (size := file_capacity stat_ok block_size).
+  set (q := heap_req 16 size). set (m1 := allocated m q base).
+  pose proof (file_capacity_bounds stat_ok block_size) as Hsize.
+  change (0 < size <= 8192) in Hsize.
+  assert (Hfit : size <= req_extent q).
+  { unfold q, heap_req. simpl.
+    pose proof (Z.mod_pos_bound (size + 15) 16 ltac:(lia)).
+    pose proof (Z.div_mod (size + 15) 16 ltac:(lia)). lia. }
+  destruct (allocate_buffer stat_ok block_size s m base s' (fixed_roots r)
+    (fixed_roots r) [] Hr Ha) as (Hnew & Hr1 & Healloc & Hcap & Hauthority).
+  change (R.ready s' m1) in Hr1.
+  pose proof (no_buffer_allocated m r q base Hmem Hnew) as Hmem1.
+  assert (Hreg : object_region base (m_regions m1) = Some (mkRegion base (base + req_extent q) Heap Live)).
+  { unfold m1, allocated. simpl. rewrite Z.eqb_refl. reflexivity. }
+  destruct (R.address_space s' m1 Hr1 _ _ Hreg) as [Hbase Hend].
+  change (base + req_extent q <= 2 ^ 48) in Hend.
+  assert (Hw : writable_span m1 (mkSpan (mkPtr base (Obj base)) size)).
+  { split; [simpl; lia|]. exists base, (mkRegion base (base + req_extent q) Heap Live).
+    split; [reflexivity|]. split; [exact Hreg|]. split; [reflexivity|].
+    change (cap_access_res (Obj base) (m_regions m1) base size Write 1 = Some ok).
+    unfold cap_access_res. rewrite Hreg.
+    change (Some (if (base <=? base) && (base + size <=? base + req_extent q)
+      then aligned_res base 1 else RTrap OutOfBounds) = Some ok).
+    assert (((base <=? base) && (base + size <=? base + req_extent q)) = true) as E.
+    { apply andb_true_iff. split; apply Z.leb_le; lia. }
+    rewrite E. unfold aligned_res. rewrite Z.mod_1_r. reflexivity. }
+  pose proof (install_heap_effects s' m1 r (buffer_request stat_ok block_size)
+    [base] base size Hmem1 ltac:(simpl; auto)) as Hetail.
+  assert (He : E.effects (fixed_roots r) (fixed_roots r) [] (buffer_request stat_ok block_size)
+    s m [] s' (install_buffer m1 r (HeapBuffer base size)) [base]).
+  { eapply E.effects_alloc with (align := 16) (size := size).
+    - split; reflexivity.
+    - unfold max_allocation_size. lia.
+    - exact Ha.
+    - exact Hetail. }
+  destruct (E.effects_preserve _ _ _ _ _ _ _ _ _ _ He Hr) as [Hr' Hpersist].
+  assert (Hpost : stdout_memory (install_buffer m1 r (HeapBuffer base size)) r (HeapBuffer base size)).
+  { eapply installed_memory with (span := mkSpan (mkPtr base (Obj base)) size).
+    - exact Hmem1.
+    - reflexivity.
+    - unfold memory_roots. apply Forall_app. split; [exact (proj1 Hmem1)|]. constructor; [exact Hw|constructor].
+    - change (0 <= base < 2 ^ 64). lia.
+    - change (0 <= base + size < 2 ^ 64). lia.
+    - split; [exact (proj1 Hsize)|]. exists (mkRegion base (base + req_extent q) Heap Live). auto. }
+  split; [exact He|]. split; [exact Hr'|]. split; [exact Hpersist|]. split; [exact Hpost|].
+  intros span Hin. change (In span (fixed_roots r ++ [mkSpan (mkPtr base (Obj base)) size])) in Hin.
+  apply in_app_iff in Hin as [Hold|[<-|[]]].
+  - split; [right; left; exists span; auto|]. intros a Hrange. left. exists span.
+    split; [exact Hold|]. split; [|exact Hrange].
+    pose proof (proj1 Hpost) as Hroots. rewrite Forall_forall in Hroots.
+    apply Hroots. apply in_or_app. left. exact Hold.
+  - split.
+    + right. right. right. exists base. simpl. auto.
+    + intros a Hrange. apply Hauthority. exact Hrange.
 Qed.
 
 End Libio.
@@ -293,4 +551,73 @@ Proof.
       * constructor; [|constructor].
         split; [simpl; lia|]. exists 8192, (mkRegion 8192 8196 Heap Live). repeat split; reflexivity.
   - vm_compute. repeat constructor; discriminate.
+Qed.
+
+(** An asymmetric capacity exercises installed slots, rounded extent,
+    the nontrivial flag mask, and unchanged lock/errno contents. *)
+Definition heap_example : mem :=
+  install_buffer
+    (allocated (store_bytes (store_bytes unbuffered_example 2048 4 305419897) 8192 4 73)
+      (heap_req 16 8191) 16384) root_example (HeapBuffer 16384 8191).
+
+Example installed_heap_memory_inhabited : stdout_memory heap_example root_example (HeapBuffer 16384 8191).
+Proof.
+  split.
+  - constructor.
+    + split; [simpl; lia|]. exists 2048, (mkRegion 2048 2272 GlobalData Live). repeat split; reflexivity.
+    + constructor.
+      * split; [simpl; lia|]. exists 4096, (mkRegion 4096 4112 GlobalData Live). repeat split; reflexivity.
+      * constructor.
+        -- split; [simpl; lia|]. exists 8192, (mkRegion 8192 8196 Heap Live). repeat split; reflexivity.
+        -- constructor; [|constructor].
+           split; [simpl; lia|]. exists 16384, (mkRegion 16384 24576 Heap Live). repeat split; reflexivity.
+  - split; [reflexivity|]. split; [repeat constructor; reflexivity|].
+    split; [reflexivity|]. split; [reflexivity|].
+    split; [vm_compute; repeat constructor; discriminate|].
+    split; [vm_compute; repeat constructor; discriminate|].
+    split; [lia|]. exists (mkRegion 16384 24576 Heap Live). repeat split; reflexivity.
+Qed.
+
+Example installed_capacity_and_flag :
+  pointer_slot heap_example 2104 (mkPtr 16384 (Obj 16384)) /\
+  pointer_slot heap_example 2112 (mkPtr 24575 (Obj 16384)) /\
+  object_region 16384 (m_regions heap_example) = Some (mkRegion 16384 24576 Heap Live) /\
+  load_bytes heap_example 2048 4 = 305419896 /\
+  pointer_slot heap_example 2184 (mkPtr 4096 (Obj 4096)) /\
+  load_bytes heap_example 8192 4 = 73.
+Proof. vm_compute. repeat constructor; discriminate. Qed.
+
+Example installed_short_memory_inhabited :
+  stdout_memory (install_buffer unbuffered_example root_example ShortBuffer) root_example ShortBuffer /\
+  load_bytes (install_buffer (store_bytes unbuffered_example 2048 4 305419896)
+    root_example ShortBuffer) 2048 4 = 305419897.
+Proof.
+  split; [|reflexivity]. eapply installed_memory.
+  - exact no_buffer_memory_inhabited.
+  - reflexivity.
+  - exact (proj1 no_buffer_memory_inhabited).
+  - change (0 <= 2179 < 2 ^ 64). lia.
+  - change (0 <= 2180 < 2 ^ 64). lia.
+  - exact I.
+Qed.
+
+Example installed_dead_heap_rejected :
+  ~ stdout_memory (mkMem (m_bytes heap_example)
+    (mkRegion 16384 16384 Heap Freed :: m_regions heap_example) (m_aux heap_example))
+    root_example (HeapBuffer 16384 8191).
+Proof.
+  intros (_ & _ & _ & _ & _ & _ & _ & _ & reg & Hreg & _ & Hlife).
+  change (Some (mkRegion 16384 16384 Heap Freed) = Some reg) in Hreg.
+  injection Hreg as <-. discriminate Hlife.
+Qed.
+
+Example installed_undersized_heap_rejected :
+  ~ stdout_memory (mkMem (m_bytes heap_example)
+    (mkRegion 16384 24574 Heap Live :: m_regions heap_example) (m_aux heap_example))
+    root_example (HeapBuffer 16384 8191).
+Proof.
+  intros [Hroots _]. rewrite Forall_forall in Hroots.
+  specialize (Hroots (mkSpan (mkPtr 16384 (Obj 16384)) 8191) ltac:(simpl; auto)).
+  destruct Hroots as (_ & base & reg & Hcap & _ & _ & Haccess).
+  change (Obj 16384 = Obj base) in Hcap. injection Hcap as <-. discriminate Haccess.
 Qed.

@@ -46,13 +46,17 @@ int main(void) {
     struct stat st;
     if (fstat(fileno(f), &st)) return 1;
     size_t capacity = st.st_blksize > 0 && st.st_blksize < BUFSIZ ? st.st_blksize : BUFSIZ;
-    good = fputc('Q', f) == 'Q' && __fbufsize(f) == capacity && __fpending(f) == 1;
+    good = f->_IO_buf_base == 0 && f->_IO_buf_end == 0;
+    good = good && fputc('Q', f) == 'Q' && __fbufsize(f) == capacity && __fpending(f) == 1;
     good = good && f->_IO_buf_end - f->_IO_buf_base == capacity && f->_IO_buf_base[0] == 'Q';
+    // genops.c: _IO_setb clears _IO_USER_BUF (bit 0) for an allocated buffer.
+    good = good && !(f->_flags & 1);
     answer("allocated stream buffer follows stat capacity", good && fclose(f) == 0);
     f = tmpfile();
     if (!f) return 1;
     good = setvbuf(f, 0, _IONBF, 0) == 0 && __fbufsize(f) == 1;
     good = good && f->_IO_buf_base == f->_shortbuf && f->_IO_buf_end == f->_shortbuf + 1;
+    good = good && (f->_flags & 1);
     good = good && fputc('R', f) == 'R' && __fpending(f) == 0;
     rewind(f);
     answer("unbuffered stream uses embedded byte", good && fgetc(f) == 'R' && fclose(f) == 0);
