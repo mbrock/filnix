@@ -1187,6 +1187,39 @@ claimed. The next construction slice is exhausted-block unlinking with
 explicit release ownership and non-target framing; native callback/entry
 instantiation and unconditional hi.c closure remain open.
 
+### Campaign 4 milestone 4n: exhausted-head unlink without retirement
+
+`ExitMemory.v` constructs the head pointer store from an exhausted block's
+checked next slot. It copies both address bytes and the successor capability;
+the original readable source slot supplies capability authority, separately
+from the writable eight-byte head root and aligned store access. The actual
+local effect preserves readiness and identity over any runtime, without
+allocation or release. Regions are exactly unchanged, bytes are unchanged
+outside the head's eight bytes, and shadow is unchanged except at the head.
+
+Explicit head-cell separation from represented block storage preserves the
+checked suffix and the detached exhausted block. A singleton is unlinked
+to canonical null, **not left in the registry**; its allocation stays live.
+Unlink contributes no logical callback action and leaves the pending order
+and detached active registration unchanged. Admission transport for all
+pending/active callbacks requires a general arbitrary-snapshot frame rule
+that permits the head shadow update. Pop's globally unchanged-shadow rule
+cannot justify it. A retained-argument fixture discharges the new rule;
+a predicate observing the old head capability is rejected.
+
+Inhabited singleton/multi-block fixtures check allocation retention,
+successor address and capability, and the callback-bearing suffix. Controls
+reject bytes-only pointer stores, absent write authority and overlapping
+head/suffix storage: distinct block identities alone admit a snapshot whose
+head store corrupts the older block's index. This is a selected metadata
+construction, not native execution, synchronization or lifecycle coverage.
+No done-flag store, cleanup transition, callback dispatch, or retirement is
+claimed. Retirement needs a separate identity-aware lifetime frame, including
+head-object exclusion and callback dependencies; arbitrary runtime free
+axioms do not supply precise non-target preservation. Native satisfaction,
+selected lifecycle segment instantiation and unconditional hi.c closure
+remain open; libc stays trusted behind its stated contracts.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and

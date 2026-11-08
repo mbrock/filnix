@@ -211,7 +211,7 @@ Qed.
 
 (** A pointer slot depends on its eight bytes and its own shadow entry. *)
 Lemma exit_pointer_agree : forall m m' a p,
-  m_aux m' = m_aux m ->
+  m_aux m' a = m_aux m a ->
   (forall b, a <= b < a + 8 -> m_bytes m' b = m_bytes m b) ->
   pointer_slot m a p -> pointer_slot m' a p.
 Proof.
@@ -222,7 +222,7 @@ Qed.
 
 (** Physical slot decoding is framed by its 32 bytes and unchanged shadow. *)
 Lemma exit_slot_memory_agree : forall m m' a slot,
-  m_aux m' = m_aux m ->
+  (forall b, a <= b < a + 32 -> m_aux m' b = m_aux m b) ->
   (forall b, a <= b < a + 32 -> m_bytes m' b = m_bytes m b) ->
   exit_slot_memory m a slot -> exit_slot_memory m' a slot.
 Proof.
@@ -232,7 +232,7 @@ Proof.
   { intros off Hoff. apply load_bytes_agree; [lia|]. intros i Hi. apply Hb. lia. }
   assert (Hptr : forall off p, 0 <= off <= 24 ->
     pointer_slot m (a + off) p -> pointer_slot m' (a + off) p).
-  { intros off p Hoff. apply exit_pointer_agree; [exact Haux|]. intros b Hrange. apply Hb. lia. }
+  { intros off p Hoff. apply exit_pointer_agree; [apply Haux; lia|]. intros b Hrange. apply Hb. lia. }
   assert (Hzero : load_bytes m' a 8 = load_bytes m a 8).
   { replace a with (a + 0) by lia. apply Hload. lia. }
   destruct slot; simpl in *; rewrite Hzero; try exact Hslot.
@@ -250,7 +250,9 @@ Qed.
 
 (** A block view is preserved by an exact frame over its full storage. *)
 Lemma exit_block_memory_agree : forall m m' block next,
-  m_regions m' = m_regions m -> m_aux m' = m_aux m ->
+  m_regions m' = m_regions m ->
+  (forall a, ptr_addr (block_ptr block) <= a < ptr_addr (block_ptr block) + 1040 ->
+    m_aux m' a = m_aux m a) ->
   (forall a, ptr_addr (block_ptr block) <= a < ptr_addr (block_ptr block) + 1040 ->
     m_bytes m' a = m_bytes m a) ->
   exit_block_memory m block next -> exit_block_memory m' block next.
@@ -259,13 +261,15 @@ Proof.
   split; [exact Hcap|]. split.
   - unfold access_res. rewrite Hregions. exact Hread.
   - split.
-    + apply (exit_pointer_agree m m'); [exact Haux| |exact Hnext]. intros b Hrange. apply Hb. lia.
+    + apply (exit_pointer_agree m m'); [apply Haux; lia| |exact Hnext]. intros b Hrange. apply Hb. lia.
     + split.
       * rewrite <- Hidx. apply load_bytes_agree; [lia|]. intros i Hi. apply Hb. lia.
       * split; [exact Hlen|]. intros i slot Hi.
-        apply (exit_slot_memory_agree m m'); [exact Haux| |auto].
         assert ((i < length (block_slots block))%nat) by (apply nth_error_Some; congruence).
-        intros a Ha. apply Hb. apply Nat2Z.inj_lt in H. apply Nat2Z.inj_le in Hlen. lia.
+        apply Nat2Z.inj_lt in H. apply Nat2Z.inj_le in Hlen.
+        apply (exit_slot_memory_agree m m'); [| |auto]; intros a Ha.
+        -- apply Haux. lia.
+        -- apply Hb. lia.
 Qed.
 
 (** Exact metadata frames keep regions and shadow everywhere, and bytes
@@ -319,7 +323,7 @@ Proof.
     + unfold exit_pop_index. rewrite stored_bytes_value by lia.
       apply Z.mod_small. split; [lia|apply Nat2Z.inj_le in Hlen; cbn; lia].
     + split; [simpl; lia|]. intros i slot Hi. change (nth_error older i = Some slot) in Hi.
-      apply (exit_slot_memory_agree m); [reflexivity| |].
+      apply (exit_slot_memory_agree m); [intros; reflexivity| |].
       * intros a Ha. cbn -[Z.mul] in Ha. simpl.
         destruct ((ptr_addr p + 8 <=? a) && (a <? ptr_addr p + 8 + 8)) eqn:E; [|reflexivity].
         apply Bool.andb_true_iff in E as [Hlo Hhi]. apply Z.leb_le in Hlo. apply Z.ltb_lt in Hhi. lia.
@@ -337,7 +341,7 @@ Proof.
   split; [exact Hcap|]. split; [exact Hread|]. split.
   - apply pointer_slot_bytes_disjoint; [lia|left; lia|exact Hnext].
   - split; [rewrite exit_load_bytes_disjoint by lia; exact Hidx|]. split; [exact Hlen|].
-    intros i slot Hi. apply (exit_slot_memory_agree m); [reflexivity| |auto].
+    intros i slot Hi. apply (exit_slot_memory_agree m); [intros; reflexivity| |auto].
     assert ((i < length (block_slots block))%nat) by (apply nth_error_Some; congruence).
     apply Nat2Z.inj_lt in H. intros b Hb. simpl.
     destruct ((a <=? b) && (b <? a + n)) eqn:E; [|reflexivity].
@@ -435,14 +439,15 @@ Proof.
   split.
   - unfold access_res. rewrite Hregions. exact Hread.
   - split.
-    + apply (exit_pointer_agree m); [exact Haux| |exact Hhead].
+    + apply (exit_pointer_agree m); [rewrite Haux; reflexivity| |exact Hhead].
       intros b Hb. apply exit_pop_outside_block; [exact Hlen|lia].
     + split; [|exact Hdistinct]. split.
       * apply exit_pop_block_represented. exact Hblock.
       * clear Hhead Hheadsep Hread Hdistinct Hblock. induction rest as [|block rest IH]; [exact I|].
         destruct Hchain as [Hblock Hchain]. inversion Hsep as [|? ? Hdis Hrest]; subst.
         split; [|apply IH; assumption]. apply (exit_block_memory_agree m); try assumption.
-        intros a Ha. apply exit_pop_outside_block; [exact Hlen|lia].
+        -- intros a Ha. rewrite Haux. reflexivity.
+        -- intros a Ha. apply exit_pop_outside_block; [exact Hlen|lia].
 Qed.
 
 (** An installed physical slot is exactly the first pending registration. *)
@@ -560,6 +565,158 @@ Proof.
 Qed.
 
 End ExitPop.
+
+(** ## Unlinking an exhausted head, without retirement *)
+
+(** The actual pointer store also installs the successor's capability.
+    A last node is unlinked to null, not freed or kept in the chain. *)
+Definition exit_unlink_memory m head rest : mem :=
+  startup_store m (ptr_addr head) (exit_head rest).
+
+(** This is head-cell separation, unlike pop's modified-block separation. *)
+Definition exit_unlink_separated head blocks : Prop :=
+  Forall (fun block => ptr_addr head + 8 <= ptr_addr (block_ptr block) \/
+    ptr_addr (block_ptr block) + 1040 <= ptr_addr head) blocks.
+
+(** Unlink changes only eight head bytes and the head's own shadow cell;
+    every region, including the removed block's lifetime, is unchanged. *)
+Lemma exit_unlink_frame : forall m head rest,
+  m_regions (exit_unlink_memory m head rest) = m_regions m /\
+  (forall a, a < ptr_addr head \/ ptr_addr head + 8 <= a ->
+    m_bytes (exit_unlink_memory m head rest) a = m_bytes m a) /\
+  (forall a, a <> ptr_addr head -> m_aux (exit_unlink_memory m head rest) a = m_aux m a).
+Proof.
+  intros m head rest. split; [reflexivity|]. split.
+  - intros a Hout. unfold exit_unlink_memory, startup_store. simpl.
+    destruct ((ptr_addr head <=? a) && (a <? ptr_addr head + 8)) eqn:E; [|reflexivity].
+    apply andb_true_iff in E as [Hlo Hhi]. apply Z.leb_le in Hlo. apply Z.ltb_lt in Hhi. lia.
+  - intros a Hneq. unfold exit_unlink_memory, startup_store. simpl.
+    assert ((a =? ptr_addr head) = false) as E by (apply Z.eqb_neq; exact Hneq).
+    rewrite E. reflexivity.
+Qed.
+
+(** The successor capability comes from the original checked next slot,
+    not from the head's old capability or the successor's address bits. *)
+Lemma exit_next_authority : forall m block next,
+  exit_block_memory m block next ->
+  available_cap [mkSpan (block_ptr block) 1040] [] m (ptr_cap next).
+Proof.
+  intros m block next Hblock. destruct Hblock as (Hcap & Hread & Hnext & Htail).
+  right. right. left. exists (mkSpan (block_ptr block) 1040), (ptr_addr (block_ptr block)).
+  split; [left; reflexivity|]. split; [unfold span_contains; simpl; lia|]. split; [simpl; lia|].
+  split.
+  - replace (ptr_addr (block_ptr block)) with (ptr_addr (block_ptr block) + 0) at 1 by lia.
+    eapply exit_block_field_access with (block := block) (next := next) (off := 0).
+    + split; [exact Hcap|]. split; [exact Hread|]. split; assumption.
+    + lia.
+    + lia.
+    + reflexivity.
+  - symmetry. exact (proj2 (proj2 Hnext)).
+Qed.
+
+(** Writable head authority plus the original aligned read permits the
+    native aligned store; neither premise is inferred from stored bytes. *)
+Lemma exit_unlink_head_access : forall m head,
+  writable_span m (mkSpan head 8) ->
+  access_res m (ptr_addr head) (ptr_cap head) 8 Read 8 = Some ok ->
+  access_res m (ptr_addr head) (ptr_cap head) 8 Write 8 = Some ok.
+Proof.
+  intros m head (_ & base & reg & Hcap & _) Hread. simpl in Hcap.
+  rewrite Hcap in *. exact Hread.
+Qed.
+
+(** Exact local frames preserve the old chain, including the detached node,
+    when every represented block is separated from the head store. *)
+Lemma exit_unlink_chain_represented : forall m head rest blocks,
+  exit_chain_memory m blocks -> exit_unlink_separated head blocks ->
+  exit_chain_memory (exit_unlink_memory m head rest) blocks.
+Proof.
+  intros m head rest blocks Hchain Hsep.
+  destruct (exit_unlink_frame m head rest) as [Hregions [Hbytes Haux]].
+  induction blocks as [|block blocks IH]; [exact I|].
+  destruct Hchain as [Hblock Hchain]. inversion Hsep as [|? ? Hdis Htail]; subst.
+  split; [|apply IH; assumption]. apply (exit_block_memory_agree m); [exact Hregions| | |exact Hblock].
+  - intros a Ha. apply Haux. lia.
+  - intros a Ha. apply Hbytes. lia.
+Qed.
+
+(** Removing an exhausted head preserves the checked suffix and the detached
+    block's view. No free, done flag, lock change or cleanup action occurs. *)
+Theorem exit_unlink_registry_represented : forall m head p rest,
+  exit_registry_memory m head (mkExitBlock p [] :: rest) ->
+  exit_unlink_separated head (mkExitBlock p [] :: rest) ->
+  exit_registry_memory (exit_unlink_memory m head rest) head rest /\
+  exit_block_memory (exit_unlink_memory m head rest) (mkExitBlock p []) (exit_head rest).
+Proof.
+  intros m head p rest (Hread & Hhead & Hchain & Hdistinct) Hsep.
+  destruct (exit_unlink_chain_represented m head rest (mkExitBlock p [] :: rest) Hchain Hsep)
+    as [Hdetached Hsuffix].
+  split; [|exact Hdetached]. split; [exact Hread|]. split.
+  - apply pointer_slot_written. exact (proj1 (proj1 (proj2 (proj2 (proj1 Hchain))))).
+  - split; [exact Hsuffix|]. inversion Hdistinct; assumption.
+Qed.
+
+(** An empty physical node contributes no callback, even when it is last. *)
+Lemma exit_unlink_pending : forall p rest,
+  exit_registry_pending (mkExitBlock p [] :: rest) = exit_registry_pending rest.
+Proof. reflexivity. Qed.
+
+(** Admission may observe the head's old capability, so pop's globally
+    unchanged-shadow premise is insufficient. This rule permits precisely
+    the head store's byte and shadow changes in arbitrary snapshots. *)
+Definition exit_unlink_admission_stable (admitted : mem -> registration -> Prop) head : Prop :=
+  forall m m', m_regions m' = m_regions m ->
+    (forall a, a < ptr_addr head \/ ptr_addr head + 8 <= a -> m_bytes m' a = m_bytes m a) ->
+    (forall a, a <> ptr_addr head -> m_aux m' a = m_aux m a) ->
+    forall entry, admitted m entry -> admitted m' entry.
+
+(** Unlink stutters on pending/active registrations and transports every
+    admission only when its independent pointer-store frame rule holds. *)
+Theorem exit_unlink_admitted : forall admitted m head p rest active,
+  exit_unlink_admission_stable admitted head ->
+  exit_callbacks_admitted admitted m (mkExitBlock p [] :: rest) active ->
+  exit_callbacks_admitted admitted (exit_unlink_memory m head rest) rest active.
+Proof.
+  intros admitted m head p rest active Hstable [Hall Hactive].
+  rewrite exit_unlink_pending in Hall.
+  destruct (exit_unlink_frame m head rest) as [Hregions [Hbytes Haux]].
+  assert (Htransport : forall entry, admitted m entry -> admitted (exit_unlink_memory m head rest) entry).
+  { apply Hstable; assumption. }
+  split.
+  - eapply Forall_impl; [|exact Hall]. intros entry Hi. apply Htransport. exact Hi.
+  - destruct active; [apply Htransport; exact Hactive|exact I].
+Qed.
+
+(** One actual pointer-store effect over any runtime, with no retirement. *)
+Module ExitUnlink (R : Runtime).
+(** The existing external-call effect relation for the selected runtime. *)
+Module E := ExternalCalls R.
+
+(** The source capability is loaded from next; only the head is writable. *)
+Lemma unlink_effects : forall s m head p rest,
+  exit_block_memory m (mkExitBlock p []) (exit_head rest) ->
+  writable_span m (mkSpan head 8) ->
+  E.effects [mkSpan p 1040] [mkSpan head 8] [] (fun _ _ => False)
+    s m [] s (exit_unlink_memory m head rest) [].
+Proof.
+  intros s m head p rest Hblock Hw. eapply E.effects_local; [|constructor].
+  apply local_store_pointer.
+  - intros a Ha. left. exists (mkSpan head 8). split; [left; reflexivity|]. split; [exact Hw|exact Ha].
+  - exact (exit_next_authority m (mkExitBlock p []) (exit_head rest) Hblock).
+Qed.
+
+(** Readiness and identity persistence follow from the constructed effect,
+    not from a claim that libc always reaches or completes this cutpoint. *)
+Theorem unlink_preserves : forall s m head p rest,
+  exit_block_memory m (mkExitBlock p []) (exit_head rest) ->
+  writable_span m (mkSpan head 8) -> R.ready s m ->
+  R.ready s (exit_unlink_memory m head rest) /\ persists m (exit_unlink_memory m head rest).
+Proof.
+  intros s m head p rest Hblock Hw Hr. eapply E.effects_preserve;
+    [exact (unlink_effects s m head p rest Hblock Hw)|exact Hr].
+Qed.
+
+End ExitUnlink.
 
 (** Concrete model memory checks do not locate the native hidden registry. *)
 Module ExitMemoryChecks.
@@ -825,6 +982,159 @@ Example aliased_head_pop_rejected :
 Proof.
   split; [intros [H _]; simpl in H; lia|].
   intros (_ & (_ & Hload & _) & _). discriminate Hload.
+Qed.
+
+(** An exhausted heap head links to the callback-bearing older block.
+    Its successor has different address bits AND a different capability. *)
+Definition unlink_memory : mem :=
+  let m := mkMem (m_bytes memory)
+    (m_regions memory ++ [mkRegion 8192 9232 Heap Live]) (m_aux memory) in
+  startup_store (startup_store m 8192 (block_ptr block)) 1000 (mkPtr 8192 (Obj 8192)).
+
+(** The source view is inhabited, not merely an executable update example. *)
+Lemma unlink_source_represented : exit_registry_memory unlink_memory (mkPtr 1000 (Obj 1000))
+  [mkExitBlock (mkPtr 8192 (Obj 8192)) []; block].
+Proof.
+  split; [reflexivity|]. split; [vm_compute; repeat split; congruence|]. split.
+  - split.
+    + split; [reflexivity|]. split; [reflexivity|]. split; [vm_compute; repeat split; congruence|].
+      split; [reflexivity|]. split; [simpl; lia|]. intros i slot Hi. destruct i; discriminate Hi.
+    + split; [|exact I]. split; [reflexivity|]. split; [reflexivity|].
+      split; [vm_compute; repeat split; congruence|]. split; [reflexivity|]. split; [simpl; lia|].
+      intros i slot Hi. destruct i as [|[|[|i]]]; simpl in Hi; try (destruct i; discriminate Hi);
+        injection Hi as <-; vm_compute; repeat split; congruence.
+  - repeat constructor; simpl; intuition congruence.
+Qed.
+
+(** Unlink preserves the callback-bearing suffix and detached node, using
+    an independently checked writable head and the actual source view. *)
+Example constructed_multiblock_unlink :
+  writable_span unlink_memory (mkSpan (mkPtr 1000 (Obj 1000)) 8) /\
+  let m' := exit_unlink_memory unlink_memory (mkPtr 1000 (Obj 1000)) [block] in
+  pointer_slot m' 1000 (block_ptr block) /\
+  exit_registry_memory m' (mkPtr 1000 (Obj 1000)) [block] /\
+  exit_block_memory m' (mkExitBlock (mkPtr 8192 (Obj 8192)) []) (block_ptr block).
+Proof.
+  split.
+  - split; [simpl; lia|]. exists 1000, (mkRegion 1000 1008 GlobalData Live). repeat split; reflexivity.
+  - split; [vm_compute; repeat split; congruence|].
+    apply (exit_unlink_registry_represented unlink_memory (mkPtr 1000 (Obj 1000))
+      (mkPtr 8192 (Obj 8192)) [block] unlink_source_represented).
+    constructor; [left; simpl; lia|]. constructor; [left; simpl; lia|constructor].
+Qed.
+
+(** Singleton removal installs canonical null but retains its heap allocation. *)
+Example constructed_last_unlink :
+  let m := startup_store unlink_memory 8192 (mkPtr 0 CNone) in
+  exit_registry_memory m (mkPtr 1000 (Obj 1000)) [mkExitBlock (mkPtr 8192 (Obj 8192)) []] /\
+  let m' := exit_unlink_memory m (mkPtr 1000 (Obj 1000)) [] in
+  exit_registry_memory m' (mkPtr 1000 (Obj 1000)) [] /\
+  object_region 8192 (m_regions m') = Some (mkRegion 8192 9232 Heap Live).
+Proof.
+  intros m. assert (Hsource : exit_registry_memory m (mkPtr 1000 (Obj 1000))
+    [mkExitBlock (mkPtr 8192 (Obj 8192)) []]).
+  { split; [reflexivity|]. split; [vm_compute; repeat split; congruence|]. split.
+    - split; [|exact I]. split; [reflexivity|]. split; [reflexivity|].
+      split; [vm_compute; repeat split; congruence|]. split; [reflexivity|]. split; [simpl; lia|].
+      intros i slot Hi. destruct i; discriminate Hi.
+    - repeat constructor. simpl. tauto. }
+  split; [exact Hsource|]. split; [|reflexivity].
+  apply (proj1 (exit_unlink_registry_represented m (mkPtr 1000 (Obj 1000))
+    (mkPtr 8192 (Obj 8192)) [] Hsource ltac:(constructor; [left; simpl; lia|constructor]))).
+Qed.
+
+(** Updating address bits alone loses the successor's capability. *)
+Example bytes_only_unlink_rejected :
+  ~ pointer_slot (store_bytes unlink_memory 1000 8 2048) 1000 (block_ptr block).
+Proof. intros (_ & _ & Haux). discriminate Haux. Qed.
+
+(** The changed head byte cannot be justified without writable roots. *)
+Example unlink_without_write_authority_rejected :
+  ~ local_effect [mkSpan (mkPtr 8192 (Obj 8192)) 1040] [] [] [] unlink_memory
+    (exit_unlink_memory unlink_memory (mkPtr 1000 (Obj 1000)) [block]).
+Proof.
+  intros (_ & _ & Hframe & _).
+  assert (Hnone : ~ write_authority [] [] unlink_memory 1001).
+  { intros [(root & [] & _) | (base & reg & [] & _)]. }
+  destruct (Hframe 1001 Hnone) as [Hbyte _]. discriminate Hbyte.
+Qed.
+
+(** Retained argument admission survives arbitrary head stores, not just
+    this endpoint: the admitted data and its access remain outside the head. *)
+Lemma unlink_admission_stable :
+  exit_unlink_admission_stable pop_admission (mkPtr 1000 (Obj 1000)).
+Proof.
+  intros m m' Hregions Hbytes Haux entry (Hin & Hread & Hdata).
+  split; [exact Hin|]. split.
+  - unfold access_res. rewrite Hregions. exact Hread.
+  - rewrite <- Hdata. apply load_bytes_agree; [lia|]. intros i Hi. apply Hbytes. cbn -[Z.add]. lia.
+Qed.
+
+(** Both pending callbacks and a detached active registration retain their
+    admitted argument checks through the actual pointer store. *)
+Example constructed_unlink_admitted :
+  exit_callbacks_admitted pop_admission
+    (exit_unlink_memory unlink_memory (mkPtr 1000 (Obj 1000)) [block]) [block]
+    (Some (mkRegistration 10 (OnExit (TAtom "oldest") (WPtr (mkPtr 4096 (Obj 4096)))))).
+Proof.
+  apply (exit_unlink_admitted pop_admission unlink_memory (mkPtr 1000 (Obj 1000))
+    (mkPtr 8192 (Obj 8192)) [block]); [exact unlink_admission_stable|].
+  split.
+  - constructor.
+    + split; [left; reflexivity|]. split; reflexivity.
+    + constructor; [|constructor]. split; [right; left; reflexivity|]. split; reflexivity.
+  - split; [right; left; reflexivity|]. split; reflexivity.
+Qed.
+
+(** A specification observing the old head shadow does not frame through
+    unlink, despite every allocation and every other shadow cell surviving. *)
+Example head_dependent_admission_rejected :
+  ~ exit_unlink_admission_stable (fun m _ => m_aux m 1000 = Obj 8192) (mkPtr 1000 (Obj 1000)).
+Proof.
+  intros Hstable. destruct (exit_unlink_frame unlink_memory (mkPtr 1000 (Obj 1000)) [block])
+    as [Hregions [Hbytes Haux]].
+  pose proof (Hstable unlink_memory (exit_unlink_memory unlink_memory (mkPtr 1000 (Obj 1000)) [block])
+    Hregions Hbytes Haux (mkRegistration 11 (AtExit (TAtom "head"))) eq_refl) as Hbad.
+  discriminate Hbad.
+Qed.
+
+(** Even distinct block identities may overlap. Here the readable head cell
+    is the older block's idx; unlink would change it from 32 to 8. *)
+Definition unlink_alias_memory : mem :=
+  startup_store (startup_store
+    (mkMem (fun _ => 0) [mkRegion 8 1048 GlobalData Live; mkRegion 32 1072 Heap Live]
+      (fun _ => CNone)) 16 (mkPtr 32 (Obj 32))) 32 (mkPtr 8 (Obj 8)).
+
+(** The unrestricted snapshot admits the alias, so separation is substantive. *)
+Lemma unlink_alias_represented :
+  exit_registry_memory unlink_alias_memory (mkPtr 16 (Obj 8))
+    [mkExitBlock (mkPtr 32 (Obj 32)) []; mkExitBlock (mkPtr 8 (Obj 8)) (repeat FreeSlot 32)].
+Proof.
+  split; [reflexivity|]. split; [vm_compute; repeat split; congruence|]. split.
+  - split.
+    + split; [reflexivity|]. split; [reflexivity|]. split; [vm_compute; repeat split; congruence|].
+      split; [reflexivity|]. split; [simpl; lia|]. intros i slot Hi. destruct i; discriminate Hi.
+    + split; [|exact I]. split; [reflexivity|]. split; [reflexivity|].
+      split; [vm_compute; repeat split; congruence|]. split; [reflexivity|]. split; [simpl; lia|].
+      intros i slot Hi. apply nth_error_In in Hi. apply repeat_spec in Hi. subst slot.
+      change (load_bytes (store_bytes (store_bytes
+        (mkMem (fun _ => 0) [mkRegion 8 1048 GlobalData Live; mkRegion 32 1072 Heap Live]
+          (fun _ => CNone)) 16 8 32) 32 8 8) (8 + 16 + 32 * Z.of_nat i) 8 = 0).
+      destruct i; rewrite !exit_load_bytes_disjoint by lia; reflexivity.
+  - repeat constructor; simpl; intuition congruence.
+Qed.
+
+(** Head/suffix separation rejects this actual representation-breaking store. *)
+Example aliased_suffix_unlink_rejected :
+  ~ exit_unlink_separated (mkPtr 16 (Obj 8)) [mkExitBlock (mkPtr 8 (Obj 8)) (repeat FreeSlot 32)] /\
+  ~ exit_registry_memory
+    (exit_unlink_memory unlink_alias_memory (mkPtr 16 (Obj 8))
+      [mkExitBlock (mkPtr 8 (Obj 8)) (repeat FreeSlot 32)])
+    (mkPtr 16 (Obj 8)) [mkExitBlock (mkPtr 8 (Obj 8)) (repeat FreeSlot 32)].
+Proof.
+  split.
+  - intros H. inversion H as [|? ? Hdis Htail]. simpl in Hdis. lia.
+  - intros (_ & _ & [(_ & _ & _ & Hidx & _) _] & _). discriminate Hidx.
 Qed.
 
 End ExitMemoryChecks.
