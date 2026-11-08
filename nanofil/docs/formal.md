@@ -1303,6 +1303,41 @@ need not perform only byte loads. Passing finite probes does not prove native
 satisfaction of the narrow API premise. Interpreter registration, additional
 Hello functions and universal native satisfaction remain future slices.
 
+### Campaign 4 milestone 4r: bounded pointer-returning memchr
+
+The next Hello contract kind is a pure bounded binary search.
+`memchr_input` independently admits a canonical class-W int pattern and
+class-L size_t count, a live Obj/Ro capability reading the entire count,
+and byte cells in 0..255. Unlike strnlen, an immediate match does not
+waive an unreadable suffix. Zero count permits live one-past authority,
+but not null or freed authority; invalid inputs are failed obligations,
+not invented native traps. Comparison uses the int pattern's low byte,
+so both 511 and the normalized representation of -1 search for 255.
+
+`memchr_result` is the first matching offset with exactly the input
+capability, or null with no capability on a miss. Merely requiring an
+available return capability would be weaker: a source span can also
+contain complete stored pointer slots. The postcondition therefore fixes
+the pointer itself, and requires a pointer word rather than any class-P
+word. Its only capability source is the input span; there are no writable
+roots, releases, allocation requests, resource endings or observations.
+Every represented completion retains exact memory and logical world.
+
+Constructive finite first-match existence and result uniqueness yield a
+permitted returning invocation for every admitted input, without requiring
+the caller to supply a result in its precondition. Runtime readiness bounds
+the full readable interval. Fixtures reject later matches, false null,
+same-address capability loss/amplification, unreadable suffixes, invalid
+zero-count lifetimes and wrong scalar/ABI domains. They cover binary zero,
+high-byte conversion, a miss and a returning read-only pointer invocation
+from ready memory. Native probes distinguish competing matches, last-byte
+hits, exact-bound misses and zero count at an aligned allocation's end.
+
+These results specify trusted libc, not its execution: no libc executor,
+interpreter registration, native satisfaction, exhaustive coverage or native
+termination is proved. The pinned generic source's wider reads and pointer
+reconstruction still require separate implementation justification.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and

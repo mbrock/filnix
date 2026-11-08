@@ -32,10 +32,12 @@ int main(void) {
     char s[3] = {'x', 'y', 'z'}, d[5] = {'!', '!', '!', '!', '!'};
     answer("bounded scans need no NUL", strnlen(s, 3) == 3 && strncmp(s, "xyq", 2) == 0 && memchr(s, 'z', 3) == s + 2);
     char short_string[3] = {'x', (char)255, 0};
-    _Alignas(16) char high_bytes[16] = {'!', (char)128, (char)255, 'z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l'};
+    _Alignas(16) char high_bytes[16] = {'!', (char)128, (char)255, 'z', 'a', 'b', 'c', 'd', 'e', 'f', (char)255, 'h', 'i', 'j', 'k', 'l'};
     answer("strnlen stops before a huge bound", strnlen(short_string, (size_t)-1) == 2 && strnlen(short_string + 1, (size_t)-1) == 1);
     answer("strnlen unaligned high bytes need no extra byte", strnlen(high_bytes + 1, 15) == 15 && strnlen(short_string + 1, 2) == 1);
     answer("strnlen zero count permits live one-past", strnlen(s + 3, 0) == 0 && strnlen(&"r"[2], 0) == 0);
+    answer("memchr converts int and selects first match", memchr(high_bytes + 1, 511, 15) == high_bytes + 2 && memchr(high_bytes + 1, -1, 15) == high_bytes + 2 && memchr(short_string, 0, 3) == short_string + 2);
+    answer("memchr respects last byte and zero count", memchr(high_bytes + 1, 'l', 15) == high_bytes + 15 && !memchr(high_bytes + 1, 0, 15) && !memchr(high_bytes + 16, 0, 0));
     char *end = mempcpy(d + 1, s, 3);
     answer("copy returns end and preserves neighbours", end == d + 4 && memcmp(d, "!xyz!", 5) == 0);
     answer("memcpy and memset return destination", memcpy(d, "pq", 2) == d && memset(d + 2, '#', 2) == d + 2 && memcmp(d, "pq##!", 5) == 0);

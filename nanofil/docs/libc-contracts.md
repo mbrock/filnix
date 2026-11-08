@@ -246,6 +246,15 @@ Source: `string/` and `filc_runtime.c` `memset_impl_specialized`,
 `memmove_aux_loop_body`, `memmove_smidgen`. Runtime-only `zmemmove` needs the same two
 ranges but permits overlap; it is not a 57th libc import.
 
+The Rocq memchr contract requires the full readable span independently of
+the result, compares the canonical int's low byte, and returns the first
+matching pointer with exactly the input capability, or null. Additional
+probe rows check competing high-byte matches (including negative int
+conversion), binary zero, a last-readable-byte hit, an exact-bound miss
+and zero count at a live allocation's end. Pointer equality in these finite
+native checks alone does not establish capability equality; the model's
+postcondition states that stronger trusted requirement explicitly.
+
 ## 2. Heap lifetime (5)
 
 All fresh results satisfy the runtime axioms. Requested size is a
