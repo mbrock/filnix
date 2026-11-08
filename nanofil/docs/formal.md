@@ -868,6 +868,63 @@ validity**: callable targets, ABI, retained arguments and memory
 preconditions still require a trusted shutdown-ready contract at the
 exact post-puts memory. No native closure claim is made here.
 
+### Campaign 4, milestone 4f: conditional outer execution
+
+[Program.v](../rocq/theories/Program.v) proves the stronger coupled
+world's preconditions at **every reached application call**, including
+arbitrarily repeated permitted safepoints. Its projection handles the
+machine's rejected-call rules explicitly: one-way invoke projection
+alone would not justify this theorem, because the richer contract has
+additional preconditions. Every finite stopped application still has
+the body theorem's return-zero, fuel or resource classification.
+
+An additive outer machine now has application, shutdown, unfinished
+call-observation and finished phases. The main-return bridge requires
+the actual non-doomed no-locals return site, retaining the exact
+runtime, memory, stdio world, output obligations and registration list.
+`puts_shutdown_closed` names the trusted libc/entry obligation that
+establishes shutdown readiness at **every returning puts endpoint**;
+`returning_puts_shutdown` derives the real return-zero bridge from it.
+Readiness is not inferred merely from equal callback tokens or hidden
+by requiring it only on an edge that might never exist.
+
+Each successful shutdown segment selects an opaque contract and its
+argument/ABI obligations, supplies an actual contract effect-prefix
+witness and endpoint relation, and preserves shutdown readiness.
+`shutdown_ready_admits` separately states selected-action admissibility,
+independently of an effect witness. Callback native ABI and retained
+argument validity remain inside that trusted boundary; dynamic
+registration needs its own admission condition. Recursive and hard
+exit are control transfers, not falsely returning callbacks.
+
+Action/trace compatibility is explicit: starting a callback is not
+executing its entire body; callback output is represented by later
+output actions. Only acceptance actions emit stdout acceptance events;
+delivery/discard/error and pure lifecycle actions do not. Actual effect
+witnesses preserve allocator readiness and object identities, while
+each segment's stdout projection retains FIFO accounting.
+
+Host completion is tied to the entire handoff snapshot and consumed
+into an outer terminal. `at_most_one_exit` proves that **every finite
+represented execution** from the application invariant contains at
+most one process-exit observation. Unfinished puts observations are
+terminal leaves tied to the independently admissible original call and
+its evaluated argument, not restarted calls. Resource and original
+inner-machine terminal observations have no shutdown successor.
+
+An inhabited fixture traverses actual main entry/copy/call/return,
+identity-memory shutdown segments and one host completion. It retains
+accepted bytes as outstanding, deliberately showing that acceptance is
+not guaranteed delivery. It is a logical contract fixture, not native
+libc or host coverage. Successful shutdown segments do not yet cover
+blocking/resource leaves inside callbacks/cleanup. Native launcher and
+stronger libc contract satisfaction, pinned lowering correspondence,
+native shutdown realization and host completion remain open.
+`application_never_panics` uses Campaign 3's shared `failure_ending`
+classification from [Panics.v](../rocq/theories/Panics.v), the same
+classification used by its closed-module `never_panics`. This conditional
+labelled application theorem is not yet unconditional native safety.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and
