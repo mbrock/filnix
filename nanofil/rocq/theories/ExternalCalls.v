@@ -330,6 +330,55 @@ Arguments contract_post {world}.
 Arguments contract_resource {world}.
 Arguments contract_panics {world}.
 
+(** ## Bounded string scans *)
+
+(** The first NUL is at offset k before the bound n, or all n bytes
+    are nonzero and k=n. Only the consumed interval is readable; an
+    early NUL does not require n readable bytes or address+n to fit.
+    Even a zero-length scan requires a live object capability, allowing
+    one-past but not null, expired or forged pointers. *)
+Definition bounded_length (m : mem) (p : ptr) (n k : Z) : Prop :=
+  0 <= n < 2 ^ 64 /\ 0 <= k <= n /\
+  (exists base reg, (ptr_cap p = Obj base \/ ptr_cap p = Ro base) /\
+    object_region base (m_regions m) = Some reg /\ r_life reg = Live) /\
+  access_res m (ptr_addr p) (ptr_cap p) (k + (if k <? n then 1 else 0)) Read 1 = Some ok /\
+  (forall i, 0 <= i < k -> 0 < m_bytes m (ptr_addr p + i) < 256) /\
+  (k < n -> m_bytes m (ptr_addr p + k) = 0).
+
+(** The first NUL, or the exhausted bound, uniquely fixes the result. *)
+Lemma bounded_length_unique : forall m p n left right,
+  bounded_length m p n left -> bounded_length m p n right -> left = right.
+Proof.
+  intros m p n left right (_ & Hl & _ & _ & Hbytesl & Hnull) (_ & Hr & _ & _ & Hbytesr & Hnulr).
+  destruct (Z.lt_trichotomy left right) as [Hlt | [Heq | Hgt]]; [|exact Heq|].
+  - specialize (Hbytesr left ltac:(lia)). rewrite Hnull in Hbytesr by lia. lia.
+  - specialize (Hbytesl right ltac:(lia)). rewrite Hnulr in Hbytesl by lia. lia.
+Qed.
+
+(** strnlen returns a size_t (class L) and takes a pointer and size_t.
+    Discarding the result does not change the callee's return shape. *)
+Definition strnlen_abi (r : call_result) (args : list arg) : Prop :=
+  (r = CVoid \/ exists d, r = CResult d L) /\ exists p n, args = [Arg P p; Arg L n].
+
+(** A pure, read-only trusted API contract over any logical world.
+    Empty sources govern capability propagation, not all byte reads:
+    those are justified by [bounded_length]. No writes, releases,
+    allocations, events or resource outcomes are authorized. Empty
+    prefixes allow no visible progress without promising termination.
+    Panic annotations describe violated premises, not native behavior
+    for every invalid input (notably zero-count null pointers). *)
+Definition strnlen_contract (world : Type) : contract world :=
+  mkContract world (RClass L) strnlen_abi
+    (fun xs m _ => exists p n k, xs = [WPtr p; WInt n] /\ bounded_length m p n k)
+    (fun _ _ _ => []) (fun _ _ _ => []) (fun _ _ _ => [])
+    (fun _ _ _ _ _ => False)
+    (fun _ m w born trace m' w' => born = [] /\ trace = [] /\ m' = m /\ w' = w)
+    (fun xs m w born trace ending m' w' =>
+      born = [] /\ trace = [] /\ m' = m /\ w' = w /\
+      exists p n k, xs = [WPtr p; WInt n] /\ bounded_length m p n k /\ ending = CallReturn [WInt k])
+    (fun _ => False)
+    (fun why => In why [NullCapability; OutOfBounds; ArgumentSize; ReturnSize]).
+
 (** ## Memory paths over any runtime *)
 
 (** The call relations over any [[runtime]] R, whose allocator answers
@@ -501,6 +550,57 @@ Example oversized_request : forall s,
 Proof.
   intros s. eapply failure_big with (align := 16) (size := 2 ^ 48);
     [split; reflexivity | unfold max_allocation_size; lia].
+Qed.
+
+(** Every admitted scan has a permitted normal invocation via the
+    reflexive effect path. This proves nonvacuity, not native termination. *)
+Theorem strnlen_return : forall world r args p n k s m (w : world),
+  strnlen_abi r args -> bounded_length m p n k ->
+  invoke (strnlen_contract world) r args [WPtr p; WInt n] s m w
+    [] (CallReturn [WInt k]) s m w.
+Proof.
+  intros world r args p n k s m w Habi Hlength.
+  eapply invoke_normal with (born := []).
+  - exact Habi.
+  - exists p, n, k. auto.
+  - split; [constructor|]. repeat split; reflexivity.
+  - repeat split; try reflexivity. exists p, n, k. auto.
+  - intros why Hbad. discriminate.
+  - intros values Heq. injection Heq as <-. split.
+    + exists (WInt k). split; [reflexivity|]. simpl.
+      rewrite Z.mod_small; [reflexivity|destruct Hlength as [Hn [Hk _]]; lia].
+    + constructor; [exact I|constructor].
+  - intros status Hbad. discriminate.
+Qed.
+
+(** Every represented completion is the pure bounded result. There is
+    no resource or exit ending; malformed arguments get no invocation. *)
+Theorem strnlen_invocation : forall world r args xs s m (w : world) trace ending s' m' w',
+  invoke (strnlen_contract world) r args xs s m w trace ending s' m' w' ->
+  trace = [] /\ m' = m /\ w' = w /\
+  exists p n k, xs = [WPtr p; WInt n] /\ bounded_length m p n k /\ ending = CallReturn [WInt k].
+Proof.
+  intros world r args xs s m w trace ending s' m' w' Hcall. inversion Hcall; subst.
+  - match goal with Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
+      destruct Hpost as (_ & Htrace & Hmem & Hworld & Hresult); auto end.
+  - contradiction.
+Qed.
+
+(** Readiness bounds only the consumed interval. A huge unused maximum
+    need not fit in the address space, and is not part of this bound. *)
+Lemma bounded_length_extent : forall s m p n k,
+  R.ready s m -> bounded_length m p n k ->
+  0 <= ptr_addr p /\ ptr_addr p + k + (if k <? n then 1 else 0) <= 2 ^ 48.
+Proof.
+  intros s m p n k Hr (_ & _ & (base & reg & Hcap & Hreg & _) & Ha & _).
+  pose proof (R.address_space s m Hr base reg Hreg) as [Hb Hend].
+  unfold access_res in Ha. destruct Hcap as [Hcap | Hcap]; rewrite Hcap in Ha;
+    cbn in Ha; rewrite Hreg in Ha.
+  all: destruct ((base <=? ptr_addr p) &&
+      (ptr_addr p + (k + (if k <? n then 1 else 0)) <=? r_end reg)) eqn:E;
+    [|discriminate].
+  all: apply andb_true_iff in E; destruct E as [Hlo Hhi];
+    apply Z.leb_le in Hlo; apply Z.leb_le in Hhi; lia.
 Qed.
 
 End ExternalCalls.
@@ -938,3 +1038,125 @@ Proof.
   - injection Hcap as <-. injection Hr as <-. discriminate Hl.
   - injection Hr as <-. discriminate Hl.
 Qed.
+
+(** High bytes are nonzero bytes, and the exact six-byte object has no
+    required seventh byte or terminator for a bound of six. *)
+Definition high_byte_mem : mem :=
+  mkMem (fun a => if (1024 <=? a) && (a <? 1030)
+    then if a =? 1024 then 128 else 255 else m_bytes hello_mem a)
+    (m_regions hello_mem) (m_aux hello_mem).
+
+(** High bytes are confined to the represented object, retaining the
+    runtime's zeroed unused address space. *)
+Example high_byte_ready : InterpRuntime.ready InterpRuntime.start high_byte_mem.
+Proof.
+  destruct (hello_ready InterpRuntime.start ltac:(unfold InterpRuntime.start, InterpRuntime.address_end; lia))
+    as (Hnext & Hregions & Hunused).
+  split; [exact Hnext|]. split; [exact Hregions|]. intros a Ha.
+  specialize (Hunused a Ha). cbn -[Z.leb Z.ltb Z.eqb].
+  assert (Hout : (1024 <=? a) && (a <? 1030) = false).
+  { apply andb_false_iff. right. apply Z.ltb_ge. unfold InterpRuntime.start in Ha. lia. }
+  rewrite Hout. exact Hunused.
+Qed.
+
+(** An actual permitted invocation returns the exhausted bound without
+    modifying memory/world or producing observations. *)
+Example strnlen_exact_bound :
+  InterpExternal.invoke (strnlen_contract unit) CVoid [Arg P (Const 0); Arg L (Const 6)]
+    [WPtr hello_ptr; WInt 6] InterpRuntime.start high_byte_mem tt
+    [] (CallReturn [WInt 6]) InterpRuntime.start high_byte_mem tt.
+Proof.
+  apply InterpExternal.strnlen_return.
+  - split; [left; reflexivity|]. exists (Const 0), (Const 6). reflexivity.
+  - split; [vm_compute; split; congruence|]. split; [lia|]. split.
+    + exists 1024, (mkRegion 1024 1030 GlobalData Live). split; [right; reflexivity|]. auto.
+    + split; [reflexivity|]. split; [|lia]. intros i Hi.
+      assert (Hinside : (1024 <=? 1024 + i) && (1024 + i <? 1030) = true).
+      { apply andb_true_iff. split; [apply Z.leb_le|apply Z.ltb_lt]; lia. }
+      change (0 < (if (1024 <=? 1024 + i) && (1024 + i <? 1030)
+        then if 1024 + i =? 1024 then 128 else 255 else m_bytes hello_mem (1024 + i)) < 256).
+      rewrite Hinside.
+      change (0 < (if 1024 + i =? 1024 then 128 else 255) < 256).
+      destruct (1024 + i =? 1024); lia.
+Qed.
+
+(** A readable first NUL permits the largest size_t maximum, even
+    though address+maximum would wrap; the sixth byte is the NUL. *)
+Example strnlen_early_nul_huge : bounded_length hello_mem hello_ptr (2 ^ 64 - 1) 5.
+Proof.
+  split; [vm_compute; split; congruence|]. split; [vm_compute; split; congruence|]. split.
+  - exists 1024, (mkRegion 1024 1030 GlobalData Live). split; [right; reflexivity|]. auto.
+  - split; [reflexivity|]. split; [|intros; reflexivity]. intros i Hi.
+    assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4) by lia.
+    destruct H as [-> | [-> | [-> | [-> | ->]]]]; vm_compute; split; congruence.
+Qed.
+
+(** A returning invocation cannot pass the earlier NUL and return six,
+    even with the largest bound and arbitrary proposed endpoints. *)
+Example strnlen_wrong_result_rejected : forall s' m' w',
+  ~ InterpExternal.invoke (strnlen_contract unit) CVoid [Arg P (Const 0); Arg L (Const 0)]
+    [WPtr hello_ptr; WInt (2 ^ 64 - 1)] InterpRuntime.start hello_mem tt
+    [] (CallReturn [WInt 6]) s' m' w'.
+Proof.
+  intros s' m' w' Hcall.
+  destruct (InterpExternal.strnlen_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as (_ & _ & _ & p & n & k & Hargs & Hlength & Hending).
+  injection Hargs as <- <-. injection Hending as <-.
+  pose proof (bounded_length_unique _ _ _ _ _ Hlength strnlen_early_nul_huge). lia.
+Qed.
+
+(** Zero count accepts a live read-only one-past pointer without a load. *)
+Example strnlen_zero_one_past : bounded_length hello_mem (mkPtr 1030 (Ro 1024)) 0 0.
+Proof.
+  split; [vm_compute; split; congruence|]. split; [lia|]. split.
+  - exists 1024, (mkRegion 1024 1030 GlobalData Live). split; [right; reflexivity|]. auto.
+  - split; [reflexivity|]. split; intros; lia.
+Qed.
+
+(** The same one-past pointer does not admit even one byte of scanning. *)
+Example strnlen_positive_one_past_rejected : forall k,
+  ~ bounded_length hello_mem (mkPtr 1030 (Ro 1024)) 1 k.
+Proof.
+  intros k (_ & Hk & _ & Ha & _). assert (k = 0 \/ k = 1) by lia.
+  destruct H as [-> | ->]; discriminate Ha.
+Qed.
+
+(** Null and non-object capabilities remain failed obligations even
+    for zero count, without claiming native zero-count calls trap. *)
+Example strnlen_zero_null_rejected : forall m k,
+  ~ bounded_length m (mkPtr 0 CNone) 0 k.
+Proof. intros m k (_ & _ & (base & reg & [Hcap | Hcap] & _) & _); discriminate Hcap. Qed.
+
+(** A freed empty object passes the raw zero-size access check but not
+    the live-object requirement of the bounded scan contract. *)
+Example strnlen_zero_freed_rejected : forall k,
+  ~ bounded_length (mkMem (fun _ => 0) [mkRegion 1024 1024 Heap Freed] (fun _ => CNone))
+    (mkPtr 1024 (Obj 1024)) 0 k.
+Proof.
+  intros k (_ & _ & (base & reg & [Hcap | Hcap] & Hreg & Hlife) & _);
+    [injection Hcap as <-; injection Hreg as <-; discriminate Hlife|discriminate Hcap].
+Qed.
+
+(** A malformed byte 256 is not a nonzero character merely because
+    memory uses Z-valued cells. The contract does not normalize it. *)
+Example strnlen_malformed_byte_rejected :
+  ~ bounded_length (mkMem (fun _ => 256) (m_regions hello_mem) (m_aux hello_mem)) hello_ptr 1 1.
+Proof.
+  intros (_ & _ & _ & _ & Hbytes & _). specialize (Hbytes 0 ltac:(lia)). simpl in Hbytes. lia.
+Qed.
+
+(** Both the return channel and count argument must have size_t width;
+    same-word-count but class-W calls fail independently of behavior. *)
+Example strnlen_wrong_abi_rejected :
+  ~ strnlen_abi (CResult (TAtom "result") W) [Arg P (Const 0); Arg L (Const 0)] /\
+  ~ strnlen_abi CVoid [Arg P (Const 0); Arg W (Const 0)].
+Proof.
+  split.
+  - intros [[Hbad | (d & Hbad)] _]; discriminate Hbad.
+  - intros [_ (p & n & Hbad)]. discriminate Hbad.
+Qed.
+
+(** An evaluated pointer is not an integer count, even with the right ABI. *)
+Example strnlen_pointer_count_rejected :
+  ~ contract_pre (strnlen_contract unit) [WPtr hello_ptr; WPtr hello_ptr] hello_mem tt.
+Proof. intros (p & n & k & Hargs & _). discriminate Hargs. Qed.

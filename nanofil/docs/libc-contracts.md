@@ -227,7 +227,17 @@ argument converted to unsigned char (string searches as C specifies).
 Probe: [libc-regions.c](../tests/c/prog/libc-regions.c). It checks bounded
 nonterminated arrays, asymmetric copies with neighbouring sentinels,
 comparison signs, missing NUL, short destination and a search-result
-alias after free. It also copies a complete stored pointer and clears
+alias after free. strnlen additionally stops at short-object NULs with
+SIZE_MAX, handles unaligned high bytes (128 and 255) through the end of
+an explicitly aligned 16-byte allocation, and permits
+zero-count live writable/read-only one-past pointers. Its Rocq contract
+in [ExternalCalls.v](../rocq/theories/ExternalCalls.v) requires readability
+only through the consumed bytes (including an early NUL), not the entire
+maximum; zero count still requires live authority. The contract is pure,
+nonallocating and independently inhabited, not a native termination proof.
+Pinned strnlen delegates to memchr; generic and multiarch implementations
+need not read only bytewise, so these probes do not prove universal native
+satisfaction of that API premise. The probe also copies a complete stored pointer and clears
 its authority with a one-byte memset that leaves its address unchanged.
 The auxiliary footprint is word-granular within the containing live
 object, not restricted to n shadow bytes; arbitrary partial pointer

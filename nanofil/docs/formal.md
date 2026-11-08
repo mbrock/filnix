@@ -1270,6 +1270,39 @@ constructions remain useful supporting evidence, not prerequisites for a libc
 executor. No native callback dispatch, universal segment satisfaction/coverage,
 termination or unconditional native `never_panics` theorem is claimed.
 
+### Campaign 4 milestone 4q: the bounded strnlen contract kind
+
+`ExternalCalls.v` adds a pure `strnlen_contract` over any logical world.
+Its `bounded_length` premise requires a canonical size_t maximum, a live
+Obj/Ro capability, and readability only through the first NUL before that
+maximum, or exactly the maximum bytes if all are nonzero. A NUL at byte n
+is not required. An early NUL permits even SIZE_MAX without requiring the
+unused address+n to fit or n bytes to be readable. Zero count permits a live
+one-past pointer but not null, expired or forged authority; the raw zero-size
+access check alone would incorrectly admit a freed empty object's base.
+
+The return and count ABI use class L. The result is unique and within the
+maximum; all bytes before it are in 1..255, not arbitrary nonzero Z values.
+Every admitted input has a permitted normal invocation using the reflexive
+effect path. All represented completions return that bounded result with
+unchanged exact memory/world and no observations; no writes, releases,
+allocations, resource outcomes or exit are permitted. Empty capability sources
+mean no capability propagation, not an assertion of no byte reads. Runtime
+readiness bounds the consumed interval to the address space, without bounding
+the unused maximum. These are specification/nonvacuity results, not native
+termination or an implementation of the scan.
+
+Fixtures cover an exact-bound nonterminated high-byte object, an early NUL
+at the last readable byte with SIZE_MAX, zero-count read-only one-past, and
+rejection of positive one-past scans, null/freed authority, malformed bytes,
+wrong results and wrong ABI/count kinds. The extended `libc-regions.c` native
+probe independently checks short objects, unaligned high bytes, huge bounds
+and zero-count writable/read-only one-past pointers. The pinned strnlen source
+delegates to memchr; its generic implementation and multiarch alternatives
+need not perform only byte loads. Passing finite probes does not prove native
+satisfaction of the narrow API premise. Interpreter registration, additional
+Hello functions and universal native satisfaction remain future slices.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and
