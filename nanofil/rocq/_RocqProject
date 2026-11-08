@@ -35,5 +35,6 @@ theories/Ahead.v
 theories/Doomed.v
 theories/Soundness.v
 theories/ExternalMachine.v
+theories/Hi.v
 theories/Transport.v
 theories/Extract.v

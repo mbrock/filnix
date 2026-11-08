@@ -779,6 +779,50 @@ hard exit's unflushed output, and the concrete main-return bridge.
 This closes a lifecycle component, not callback/native cleanup
 realization, host termination, full entry readiness or `hi.c` closure.
 
+### Campaign 4, milestone 4d: the hi application body
+
+[Hi.v](../rocq/theories/Hi.v) now models the actual two-instruction
+shape emitted for `tests/c/prog/hi.c`: copy the read-only literal to
+`v0`, call `puts` with that temporary and a W result in `v1`, then
+return zero. Its module initializer actually constructs the literal's
+global object, bytes and capability. `main(void)` accepts arbitrary
+launcher argc/argv/environment words and ignores them; the proof does
+not replace the entry contract by an empty argument vector.
+
+`hi_finite_safety` covers **every finite labelled application run** from
+the stated entry invariant, not only an exhibited successful run.
+Terminals are return zero, fuel exhaustion, or declared resource
+endings. `hi_all_calls_admissible` proves symbol coverage, ABI and the
+NUL-inclusive string precondition at every reached external call,
+independently of a completed invocation's existence. Failed-contract
+rules remain enabled in the machine; the proof rules them out from
+this entry invariant rather than deleting executions.
+
+The literal survives all runtime safepoints by the existing lifetime,
+rooting and non-moving axioms: it is GlobalData, not a freeable heap
+object. Opaque libc state needs a separate **stdio-stability premise**
+at both the global-copy and puts-call safepoints. This premise is
+inhabited by the interpreter runtime, whose safepoints are identity.
+It is not derivable for every unrestricted Runtime, and a regression
+shows freeing the fixture's protected libc root destroys its
+representation. The native contract table already excludes hostile
+signal handlers and racing frees; no stronger global Runtime axiom is
+introduced here.
+
+Every represented puts completion is an integer return or permitted
+resource ending. Any integer result, including EOF after empty,
+partial or full acceptance, resumes the actual no-locals `return 0`
+with the invocation's exact final memory. Missing registry coverage
+still produces a specification violation without needing an invocation.
+
+This is the **source-shaped application theorem relative to trusted
+entry, libc and environment contracts**, not yet whole-program closure.
+Pinned lowering equality, native prefix coverage, stdout continuity
+from puts to shutdown, registration inventory and one-shot host
+completion remain explicit next obligations. The body theorem alone
+does not promise puts completion, delivery, process exit or native
+trap-freedom.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and
