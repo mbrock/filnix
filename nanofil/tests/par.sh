@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # par.sh SCRIPT FILE...: run SCRIPT FILE once per file, NANOFIL_JOBS at a
-# time (default: the CPU count), largest files first to avoid an idle tail.
+# time (default: up to four CPUs), largest files first to avoid an idle tail.
 # Non-file arguments keep their order. Each run's output is printed in one block
 # as soon as it finishes, followed by a line with its wall time; the exit
 # status is 1 if any run failed.
@@ -8,6 +8,14 @@ set -uo pipefail
 script=$1
 shift
 here=$(cd "$(dirname "$0")" && pwd)
+jobs=${NANOFIL_JOBS:-}
+if [ -z "$jobs" ]; then
+  jobs=$(nproc)
+  # The same 55-file group on four pinned CPUs took 57/55 s at fanout 8/4;
+  # its largest compile fell from 35 to 20 s. Keep that deadline headroom.
+  [ "$jobs" -le 4 ] || jobs=4
+fi
+echo "par: jobs=$jobs files=$# script=$script"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 export PAR_WORK=$work PAR_SCRIPT=$script PAR_WATCH=$here/watch.py
@@ -20,7 +28,7 @@ files = sorted(sys.argv[1:], key=lambda f: os.path.getsize(f) if os.path.isfile(
 for i, f in enumerate(files):
     sys.stdout.buffer.write(f"{i}\0{f}\0".encode())
 PY
-xargs -0 -n2 -P "${NANOFIL_JOBS:-$(nproc)}" bash -c '
+xargs -0 -n2 -P "$jobs" bash -c '
   set -o pipefail
   out=$PAR_WORK/$0
   t0=${EPOCHREALTIME/./}

@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Survey pinned corpora through progtest.sh; compare every expected outcome.
 
-Usage: corpus.py CPROC C_TESTSUITE [--record] [--work DIR] [--jobs N]
---jobs runs N programs at once (default: the CPU count, or NANOFIL_JOBS).
+Usage: corpus.py CPROC C_TESTSUITE [--record] [--work DIR] [--jobs N] [--partition I/N]
+--jobs runs N programs at once (default: up to four CPUs, or NANOFIL_JOBS).
+--partition selects disjoint names in both sources and the expected outcomes.
 --record writes the baseline only after an intentional review of diagnostics.
 --work retains assembly, compiler diagnostics, output and diffs for triage.
 """
 import argparse
 import collections
 import concurrent.futures
+import hashlib
 import os
 import pathlib
 import re
@@ -25,6 +27,11 @@ def run_one(dest, source):
 
 
 def survey(args, work):
+    def included(name):
+        return ((not args.test or name in args.test)
+                and (not args.partition or int.from_bytes(hashlib.sha256(name.encode()).digest(), 'big')
+                     % args.partition[1] == args.partition[0] - 1))
+
     results = []
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs)
     for suite, root in [("cproc", pathlib.Path(args.cproc) / "test"),
@@ -37,7 +44,7 @@ def survey(args, work):
             # cproc's function-only and invalid constraint tests are inventoried.
             code = re.sub(r'/\*.*?\*/|//[^\n]*', '', source.read_text(), flags=re.S)
             name = suite + "/" + source.relative_to(root).as_posix()
-            if args.test and name not in args.test:
+            if not included(name):
                 continue
             if not re.search(r'\bmain\s*\(', code):
                 results.append((name, "no-main"))
@@ -45,6 +52,7 @@ def survey(args, work):
             results.append((name, pool.submit(run_one, work / name, source)))
     # Progress prints in completion order; results.tsv keeps source order.
     pending = {r: name for name, r in results if not isinstance(r, str)}
+    print(f"corpus: jobs={args.jobs} programs={len(pending)} partition={args.partition or 'all'}", flush=True)
     for future in concurrent.futures.as_completed(pending):
         print(pending[future], future.result(), flush=True)
     pool.shutdown()
@@ -59,7 +67,7 @@ def survey(args, work):
         expected.write_text(text)
     else:
         old = ''.join(line for line in expected.read_text().splitlines(True)
-                      if not args.test or line.split('\t')[0] in args.test)
+                      if included(line.split('\t')[0]))
         if old != text:
             import difflib
             print(''.join(difflib.unified_diff(old.splitlines(True), text.splitlines(True),
@@ -78,10 +86,18 @@ if __name__ == "__main__":
     parser.add_argument("--record", action="store_true")
     parser.add_argument("--work", type=pathlib.Path)
     parser.add_argument("--jobs", type=int,
-                        default=int(os.environ.get("NANOFIL_JOBS", os.cpu_count() or 1)))
+                        default=int(os.environ.get("NANOFIL_JOBS", min(os.cpu_count() or 1, 4))))
     parser.add_argument("--test", action="append", help="run only this suite/path.c (repeatable)")
+    parser.add_argument("--partition", help="run disjoint partition I/N of sources and expected outcomes")
     args = parser.parse_args()
-    if args.record and args.test:
+    if args.partition:
+        try:
+            args.partition = tuple(map(int, args.partition.split('/')))
+            if len(args.partition) != 2 or not 1 <= args.partition[0] <= args.partition[1]:
+                raise ValueError()
+        except ValueError:
+            parser.error("--partition must be I/N with 1 <= I <= N")
+    if args.record and (args.test or args.partition):
         parser.error("--record requires the full corpus")
     if args.work:
         args.work.mkdir(parents=True, exist_ok=True)

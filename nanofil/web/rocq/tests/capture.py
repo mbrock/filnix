@@ -66,11 +66,26 @@ class BalancedHTML(HTMLParser):
 here = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory() as tmp:
     root = Path(tmp)
-    (root / "_RocqProject").write_text("-Q . Test\nExample.v\n")
+    (root / "_RocqProject").write_text("-Q . Test\nExample.v\nClient.v\n")
     (root / "Example.v").write_text(source)
+    client = """From Test Require Import Example.
+Definition imported := Nested.rewriting.
+Lemma rewriting : forall b : bool, b = b.
+Proof. intro b. reflexivity. Qed.
+"""
+    (root / "Client.v").write_text(client)
     result = root / "states.json"
     subprocess.run(["python3", str(here / "capture.py"), str(root), str(result)], check=True)
-    entry = json.loads(result.read_text())["files"]["Example.v"]
+    files = json.loads(result.read_text())["files"]
+    assert set(files) == {"Example.v", "Client.v"}
+    # Dependent files must find checked imports, while concurrent prover
+    # sessions keep their distinct contexts, offsets and source hashes.
+    client_entry = files["Client.v"]
+    assert client_entry["sha256"] == hashlib.sha256(client.encode()).hexdigest()
+    client_goal = client_entry["states"][str(client.index("intro b.") + len("intro b."))][0]
+    assert client_goal["hypotheses"] == ["b : bool"] and client_goal["conclusion"] == "b = b"
+    assert client_entry["states"][str(client.index("Qed.") + len("Qed."))] is None
+    entry = files["Example.v"]
     assert entry["sha256"] == hashlib.sha256(source.encode()).hexdigest()
     states = entry["states"]
 

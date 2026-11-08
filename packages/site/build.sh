@@ -24,6 +24,7 @@ cp "$src"/docs/*.txt "$out/docs/"
 
 for md in "$src"/docs/*.md; do
   name=$(basename "$md" .md)
+  echo "$(date -u +%FT%TZ) site: render docs/$name.md"
   if [ "$name" = README ]; then
     html=index
   else
@@ -46,21 +47,12 @@ for md in "$src"/docs/*.md; do
 done
 
 mkdir -p "$out/nanofil"
-cp "$src"/nanofil/web/dterm.css "$src"/nanofil/web/dterm.js "$out/nanofil/"
-# The guide and the formal campaign are dterm pages too
-# (nanofil/guide.html, nanofil/formal.html); a broken reference in either
-# fails the build.
-swipl "$src/nanofil/web/dterm.pl" "$out/nanofil" "$src/nanofil/src" \
-  --doc="$src/nanofil/docs/guide.md" --doc="$src/nanofil/docs/formal.md" </dev/null
-# nanofil's Rocq, drawn by dterm-rocq (nanofil/web/rocq) into
-# nanofil/rocq/: every .v file under nanofil (the model in nanofil/rocq).
-mkdir -p "$out/nanofil/rocq"
-cp "$src"/nanofil/web/rocq/dterm-rocq.css "$src"/nanofil/web/rocq/dterm-rocq.js "$out/nanofil/rocq/"
-mapfile -t rocq < <(cd "$src" && find nanofil -name '*.v' | sort)
-swipl "$src/nanofil/web/rocq/dterm_rocq.pl" "$out/nanofil/rocq" "$src" \
-  --states="${ROCQ_PROOF_STATES:?the site needs real Rocq proof states}" \
-  --prolog="$src/nanofil/src" "${rocq[@]}" </dev/null
+# Rendered in independent derivations, with the same complete cross-file
+# indexes and real proof states. Assembly never substitutes a fixture.
+cp -r "${PROLOG_PAGES:?the site needs rendered Prolog pages}/." "$out/nanofil/"
+cp -r "${ROCQ_PAGES:?the site needs rendered Rocq pages}" "$out/nanofil/rocq"
 # The dterm workbench: the samples drawn by dterm, set side by side.
+echo "$(date -u +%FT%TZ) site: render dterm workbench"
 mkdir -p "$out/nanofil/workbench"
 wb=$src/nanofil/web/workbench
 cp "$wb"/index.html "$wb"/*.css "$wb"/*.js "$out/nanofil/workbench/"
@@ -71,6 +63,7 @@ mkdir -p "$out/nanofil/docs"
 cp -r "$src/nanofil/docs/dterm" "$out/nanofil/docs/"
 for md in "$src"/nanofil/docs/*.md; do
   name=$(basename "$md" .md)
+  echo "$(date -u +%FT%TZ) site: render nanofil/docs/$name.md"
   if [ "$name" = guide ] || [ "$name" = formal ]; then
     # Drawn by dterm beside the modules; this address forwards there.
     printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=../%s.html"><link rel="canonical" href="../%s.html"><a href="../%s.html">%s</a>\n' \
@@ -88,6 +81,7 @@ done
 
 # filnix's own Nix, drawn by dterm-nix with nanofil's dterm.css and
 # dterm.js (../nanofil/).
+echo "$(date -u +%FT%TZ) site: render $# Nix pages and option index"
 mkdir -p "$out/nix"
 cp "$src"/dterm-nix/dterm-nix.css "$src"/dterm-nix/dterm-nix.js "$out/nix/"
 (cd "$src" && swipl dterm-nix/dterm_nix.pl "$out/nix" . --files="$files" \

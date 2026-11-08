@@ -50,12 +50,18 @@ let
         exit 1
       fi
       start=$SECONDS
-      python3 ${../tests/watch.py} --label "Rocq compile/extraction/link" -- make
+      python3 ${../tests/watch.py} --label "Rocq compile/extraction/link" -- make -j"$NIX_BUILD_CORES"
       echo "@@nanofil-rocq $((SECONDS - start))s compile-extract-link"
     '';
     installPhase = ''
       mkdir -p $out/bin
       cp nanofil-model $out/bin/
+      # parse.sh needs the originals' checked dependencies, not a second
+      # compilation of this identical project. Keep sources and objects
+      # together so make can still rebuild anything that actually changes.
+      mkdir -p $out/share/rocq/extraction
+      cp -r theories _RocqProject $out/share/rocq/
+      cp extraction/main.ml $out/share/rocq/extraction/
     '';
   };
   # The check reads compiler sources, harnesses and corpora, not the wiki,
@@ -76,9 +82,6 @@ let
   syntax = pkgs.lib.fileset.toSource {
     root = ../.;
     fileset = pkgs.lib.fileset.unions [
-      ../rocq/_RocqProject
-      ../rocq/theories
-      ../rocq/extraction/main.ml
       ../web/rocq/rocq_syntax.pl
       ../web/rocq/tests/parse.sh
       ../web/rocq/tests/reprint.pl
@@ -107,6 +110,7 @@ pkgs.runCommandCC
       cp -r ${corpus} nanofil
       chmod -R u+w nanofil
       cp -r ${syntax}/. nanofil/
+      cp -rp ${model}/share/rocq/. nanofil/rocq/
       chmod -R u+w nanofil
       cd nanofil
       patchShebangs rocq bin tests

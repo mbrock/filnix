@@ -71,6 +71,25 @@ let
       (lib.fileset.unions (map (f: ../.. + "/${f}") nixPages))
     ];
   };
+  # Independent renderers are cached separately. The Rocq invocation still
+  # sees every source for its real cross-file index and captured states.
+  prologPages =
+    pkgs.runCommand "filnix-prolog-pages" { nativeBuildInputs = [ swipl ]; }
+      ''
+        mkdir -p $out
+        cp ${src}/nanofil/web/dterm.css ${src}/nanofil/web/dterm.js $out/
+        swipl ${src}/nanofil/web/dterm.pl $out ${src}/nanofil/src \
+          --doc=${src}/nanofil/docs/guide.md --doc=${src}/nanofil/docs/formal.md </dev/null
+      '';
+  rocqPages =
+    pkgs.runCommand "filnix-rocq-pages" { nativeBuildInputs = [ swipl ]; }
+      ''
+        mkdir -p $out
+        cp ${src}/nanofil/web/rocq/dterm-rocq.css ${src}/nanofil/web/rocq/dterm-rocq.js $out/
+        mapfile -t rocq < <(cd ${src} && find nanofil -name '*.v' | sort)
+        swipl ${src}/nanofil/web/rocq/dterm_rocq.pl $out ${src} \
+          --states=${proofStates} --prolog=${src}/nanofil/src "''${rocq[@]}" </dev/null
+      '';
 in
 pkgs.runCommand "filnix-site"
   {
@@ -78,10 +97,17 @@ pkgs.runCommand "filnix-site"
       pkgs.pandoc
       swipl
     ];
-    passthru = { inherit play proofStates; };
+    passthru = {
+      inherit
+        play
+        proofStates
+        prologPages
+        rocqPages
+        ;
+    };
   }
   ''
-    export ROCQ_PROOF_STATES=${proofStates}
+    export PROLOG_PAGES=${prologPages} ROCQ_PAGES=${rocqPages}
     bash ${./.}/build.sh ${src} $out ${repoFiles} ${options} ${nixpkgs} \
       ${lib.escapeShellArgs nixPages}
     cp -r ${play} $out/nanofil/play

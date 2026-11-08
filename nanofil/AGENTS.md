@@ -86,6 +86,13 @@ whoever is watching sees the active step rather than silence. A step
 that keeps warning is worth splitting, caching or speeding up; do not
 delete its cases to make it fast.
 
+File runners default to at most four concurrent files and print their
+fanout. Program and corpus modes are four disjoint groups; all cases and
+modes remain covered. Compile failures retain source, mode, status, command,
+stderr and wall/CPU timings. Measure contention before raising fanout.
+The site caches Prolog rendering, Rocq rendering and proof capture
+separately, retaining the complete cross-file index and actual states.
+
 ## Local iteration
 
 For many runs, `bin/nanofil --save-state /tmp/nanofil.state` and

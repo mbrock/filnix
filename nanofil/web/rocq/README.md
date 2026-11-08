@@ -168,6 +168,11 @@ rendered box alone: its ResizeObserver queues them when they become visible.
 All snapshots remain inline and readable without scripts. The phone gate
 keeps the same pages, states, parallel widths and deadlines.
 
+Proof capture first compiles every source in dependency order, then replays
+up to four independent files at once in separate RocqIDE sessions. It keeps
+every command, source hash, active goal and proof-closure check; concurrency
+changes neither the snapshots nor the capture/build deadlines.
+
 The pinned agent-browser 0.38.1 has a fixed 25-second navigation load wait,
 independent of its advertised default timeout. If only that wait expires,
 the checker waits up to another 60 seconds for the same URL to finish

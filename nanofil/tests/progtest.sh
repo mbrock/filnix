@@ -57,6 +57,28 @@ else
 fi
 status=0
 n=0
+# Keep a failed compilation's command, stderr and wall/CPU timings in the
+# caller's log even outside --result mode (whose directory also keeps them).
+compile() {
+  local input=$1 output=$2 rc
+  shift 2
+  outcome=reject
+  if (cd "$src" && TIMEFORMAT='compile elapsed=%3R user=%3U system=%3S' &&
+      time NANOFIL_COMMON=$common timeout "${COMPILE_TIMEOUT:-20}" "$nanofil" "$@" cc "$input" </dev/null) >"$output" 2>"$output.log"; then
+    cat "$output.log" >&2
+  else
+    rc=$?
+    if [[ $rc == 124 ]]; then outcome=compile-timeout; fi
+    {
+      printf '%s progtest: %s source=%s exit=%s budget=%ss opt=%s checks=%s registers=%s\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$outcome" "$input" "$rc" "${COMPILE_TIMEOUT:-20}" \
+        "${NANOFIL_OPT:-plain}" "${NANOFIL_CHECKS:-default}" "${NANOFIL_REGISTERS:-default}"
+      printf 'command: '; printf '%q ' "$nanofil" "$@" cc "$input"; printf '\n'
+      cat "$output.log"
+    } >&2
+    return 1
+  fi
+}
 run() {
   local exe=$1 out=$2
   shift 2
@@ -118,19 +140,12 @@ for f in "$@"; do
   clibs=() nlibs=()
   if [ -n "$nlink" ]; then
     "$filcc" -O1 -w -c -o "$d/nlib-clang.o" "$(dirname "$f")/$nlink"
-    (cd "$src" && NANOFIL_COMMON=$common timeout "${COMPILE_TIMEOUT:-20}" "$nanofil" ${NANOFIL_OPT:-} cc "$(dirname "$f")/$nlink" </dev/null) >"$d/nlib.s"
+    compile "$(dirname "$f")/$nlink" "$d/nlib.s" ${NANOFIL_OPT:-}
     as -o "$d/nlib.o" "$d/nlib.s"
     clibs=("$d/nlib-clang.o") nlibs=("$d/nlib.o")
   fi
   if ! "$filcc" "${cflags[@]}" "$ropt" -w -o "$d/clang" "$f" "${libs[@]}" "${clibs[@]}" -lm; then reference_failed=1; fi
-  outcome=reject
-  if (cd "$src" && NANOFIL_STD=$std NANOFIL_COMMON=$common timeout "${COMPILE_TIMEOUT:-20}" "$nanofil" ${NANOFIL_OPT:-} ${vectors} cc "$input" </dev/null) >"$d/n.s"; then
-    :
-  else
-    rc=$?
-    if [[ $rc == 124 ]]; then outcome=compile-timeout; fi
-    exit 1
-  fi
+  NANOFIL_STD=$std compile "$input" "$d/n.s" ${NANOFIL_OPT:-} ${vectors}
   outcome=assemble-error
   as -o "$d/n.o" "$d/n.s"
   outcome='link-error'
@@ -179,6 +194,9 @@ for f in "$@"; do
   if grep -qx 'exit 124' "$d/n.status" "$d/c.status"; then
     outcome=run-timeout
     status=1
+    printf '%s progtest: run-timeout source=%s budget=%ss opt=%s bounds=%s nanofil=%s reference=%s\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$f" "$run_timeout" "${NANOFIL_OPT:-plain}" \
+      "${NANOFIL_BOUNDS:-default}" "$(cat "$d/n.status")" "$(cat "$d/c.status")" >&2
   fi
   n=$((n + 1))
 done

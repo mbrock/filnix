@@ -73,10 +73,9 @@ line_of(O, L) :- nb_getval(rq_text, Text), sub_string(Text, 0, O, _, Pre),
 
 note_kind(Text, cm(F, T, S), cm(F, T, S, Kind)) :-
     sub_string(Text, 0, F, _, Pre),
-    (   sub_string(Pre, B, 1, _, "\n"), \+ ( sub_string(Pre, B1, 1, _, "\n"), B1 > B )
-    ->  B2 is B + 1, sub_string(Pre, B2, _, 0, Line)
-    ;   Line = Pre
-    ),
+    % The last line, including an empty one after a newline. Searching
+    % every newline for a later one made comment placement quadratic.
+    split_string(Pre, "\n", "", Lines), last(Lines, Line),
     ( split_string(Line, "", " \t", [""]) -> Kind = own ; Kind = trailing ).
 
 %% The index of names

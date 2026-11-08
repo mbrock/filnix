@@ -77,6 +77,11 @@ push check, targeted at 1–2 minutes: build/extract/link the model, run
 `web/rocq/tests/parse.sh` on every theory, then compare outcomes and base
 validator verdicts on `rocq/tests/*.ir`, `tests/filc/basic.ir`,
 `tests/c/ldouble.c` and `tests/c/prog/alias.c`, with reference checks.
+The model builds independent theories in parallel and exports its checked
+original sources and objects. The Nix parser check reuses those originals
+without compiling them twice; every reprinted theory still compiles in its
+own project copy, as does the Ltac fixture. A source-only checkout still
+builds originals normally. No no-admit, parsing or typechecking gate is skipped.
 `NANOFIL_MUTANTS=0` selects `mutants.pl --base`: it generates no mutations,
 only the unchanged items' whole-module verdicts. This is a smoke check,
 not rejection coverage or a soundness proof.

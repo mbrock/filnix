@@ -142,6 +142,7 @@ build() {
   if [ -e "$orig/_RocqProject" ] &&
      (cd "$orig" && $makefile -f _RocqProject -o Makefile.parse >/dev/null 2>&1 &&
       make -j"$jobs" -f Makefile.parse >"$tmp/log" 2>&1); then
+    cat "$tmp/log"
     return
   fi
   fl=$(flags "$proj")
@@ -195,7 +196,9 @@ for f in "$@"; do
   proj=$(project "$f")
   orig=$tmp/orig$(echo "$proj" | tr / _)
   if [ ! -d "$orig" ]; then
-    cp -r "$proj" "$orig"
+    # Preserve checked objects' timestamps when the Nix model supplies
+    # them; make still builds the originals in a source-only checkout.
+    cp -rp "$proj" "$orig"
     build "$orig" "$proj"
   fi
 done

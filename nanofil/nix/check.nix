@@ -68,6 +68,28 @@ pkgs.runCommandCC
         ${if shard == null then "exit 1" else "return 0"}
       fi
     }
+    # Keep each complete mode, but distribute its independent files across
+    # four steps. Round-robin sorted paths spread the vector family across
+    # groups; each file and each step keeps its original deadline.
+    programs() {
+      local label=$1 part i
+      shift
+      local files=(tests/c/prog/*.c) group
+      for part in 1 2 3 4; do
+        group=()
+        for ((i = part - 1; i < ''${#files[@]}; i += 4)); do
+          group+=("''${files[i]}")
+        done
+        step "$label [$part/4]" "$@" tests/par.sh tests/progtest.sh "''${group[@]}"
+      done
+    }
+    corpus_steps() {
+      local label=$1 part
+      for part in 1 2 3 4; do
+        step "$label [$part/4]" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py \
+          ${corpus.cproc} ${corpus.c-testsuite} --partition "$part/4"
+      done
+    }
     cp -r ${../.} nanofil
     chmod -R u+w nanofil
     cd nanofil
@@ -92,7 +114,7 @@ pkgs.runCommandCC
     python3 -I tests/ifchain.py 600 > ifchain.c
     python3 -I tests/bigfn.py 2 100 > big2.c
     steps() {
-    step "check watchdog" python3 tests/watch_test.py
+    step "check watchdog" bash -c 'python3 tests/watch_test.py && python3 tests/harness_test.py'
     step unit bash -c '(cd src && ../bin/nanofil --script ../tests/unit.pl </dev/null) | tee unit.log && grep -q "tests ok$" unit.log'
     # Every module has a header and every export PlDoc (docs/guide.md,
     # Conventions).
@@ -121,7 +143,7 @@ pkgs.runCommandCC
     step reject tests/reject.sh
     # const_eval, the IR and clang on generated integer expressions (docs/arith.md).
     step "arith slice" tests/arith.sh slice
-    step progtest tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    programs progtest
     # Every bounds-check shape's lines against Fil-C's condition, with Z3
     # (docs/bounds.md). Partition by size, not shape: merged dominates.
     step "bounds smt" python3 tests/bounds_smt.py --parallel
@@ -132,11 +154,18 @@ pkgs.runCommandCC
     # an earlier check of the object proves, with Z3 (docs/half.md).
     step "half smt" python3 tests/half_smt.py --parallel
     # Every bounds-check shape at both levels against filcc's traps
-    # (docs/bounds.md); thousands of forks, so once, in parallel.
-    step "bounds edges" bash -c 'pids=; for b in split merged sign or; do for o in "" -O; do NANOFIL_BOUNDS=$b NANOFIL_OPT=$o tests/progtest.sh tests/c/bounds/edges.c & pids="$pids $!"; done; done; s=0; for p in $pids; do wait $p || s=1; done; exit $s'
+    # (docs/bounds.md). Each mode forks thousands of children: independent
+    # steps avoid eight simultaneous fork storms in one builder.
+    for b in split merged sign or; do
+      for o in "" -O; do
+        step "bounds edges $b ''${o:-plain}" env NANOFIL_BOUNDS=$b NANOFIL_OPT=$o tests/progtest.sh tests/c/bounds/edges.c
+      done
+    done
     # The same matrix with each access in a loop, hoisted (docs/bounds.md;
     # -O keeps the loop's base in a register, which hoisting needs).
-    step "hoisted bounds edges" bash -c 'pids=; for b in split merged sign or; do NANOFIL_CHECKS=hoist NANOFIL_BOUNDS=$b NANOFIL_OPT=-O tests/progtest.sh tests/c/bounds/hoist-edges.c & pids="$pids $!"; done; s=0; for p in $pids; do wait $p || s=1; done; exit $s'
+    for b in split merged sign or; do
+      step "hoisted bounds edges $b" env NANOFIL_CHECKS=hoist NANOFIL_BOUNDS=$b NANOFIL_OPT=-O tests/progtest.sh tests/c/bounds/hoist-edges.c
+    done
     # Small constant copies (docs/perf.md item 7a): the failing cases,
     # inline filter against --memcpy=call.
     step memcpy tests/memcpy.sh
@@ -144,7 +173,7 @@ pkgs.runCommandCC
     # their boundaries, -O against the reference selection.
     step checks tests/checks.sh
     # c-testsuite/00200 (1557 blocks) is the slowest compile (docs/m5.md).
-    step corpus env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    corpus_steps corpus
     # GLib resource blobs of gtk4's size (1.66 MB), in both of
     # glib-compile-resources' forms: each overflowed the 1 GB stack. They
     # compile within 700 MB, so a real one (with its headers) has room.
@@ -154,7 +183,7 @@ pkgs.runCommandCC
     # One basic block of 3000 statements (tor's keccak-tiny-unrolled.c):
     # block liveness was quadratic in its length (docs/perf.md, item 15).
     step longblock env COMPILE_TIMEOUT=60 tests/progtest.sh longblock.c
-    step "progtest gc-stress" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    programs "progtest gc-stress" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1"
     step "run-c gc gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc
     # M5: the same suites with the middle end on. difftest -O also runs
     # every run line on the unoptimized module and checks that each result
@@ -182,11 +211,11 @@ pkgs.runCommandCC
     step "-O setjmp gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh setjmp
     step "-O pointer+exception gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh pointer-effects lower-donor exceptions lowers
     step "-O actual ensure-aux exits" tests/filc/trace-pointer-effects.sh
-    step "-O progtest" tests/par.sh tests/progtest.sh tests/c/prog/*.c
-    step "-O progtest gc-stress" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    programs "-O progtest"
+    programs "-O progtest gc-stress" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1"
     # The merged and or bounds checks (docs/bounds.md), opt-in.
-    step "-O merged bounds programs" env NANOFIL_BOUNDS=merged tests/par.sh tests/progtest.sh tests/c/prog/*.c
-    step "-O or bounds programs" env NANOFIL_BOUNDS=or tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    programs "-O merged bounds programs" env NANOFIL_BOUNDS=merged
+    programs "-O or bounds programs" env NANOFIL_BOUNDS=or
     step "-O run-c gc gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh gc
     # Wide inlining (docs/perf.md items 4 and 20) is the -O default, so
     # the -O suites above inline; these keep -O --inline=none, the
@@ -194,17 +223,17 @@ pkgs.runCommandCC
     export NANOFIL_INLINE=none
     step "-O inline=none difftest" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
     step "-O inline=none ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
-    step "-O inline=none programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    programs "-O inline=none programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1"
     export NANOFIL_INLINE=small
     step "-O inline=small difftest" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir tests/c/*.c big1.c
-    step "-O inline=small programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    programs "-O inline=small programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1"
     unset NANOFIL_INLINE
     # The cheap middle end (docs/perf.md item 8) is the -O default, so the
     # -O suites above simplify; these keep -O --simplify=none.
     export NANOFIL_SIMPLIFY=none
     step "-O simplify=none difftest" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir tests/backend/*.ir tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/filc/branches.ir tests/c/*.c big1.c
     step "-O simplify=none ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
-    step "-O simplify=none programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    programs "-O simplify=none programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1"
     unset NANOFIL_SIMPLIFY
     # Register homes with register operands and frame cells on a frame
     # with a home per scalar temporary and pointer address words as homes
@@ -222,11 +251,11 @@ pkgs.runCommandCC
       step "registers $mode actual ensure-aux exits" tests/filc/trace-pointer-effects.sh
       step "registers $mode memcpy" tests/memcpy.sh
       step "registers $mode checks" tests/checks.sh
-      step "registers $mode programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+      programs "registers $mode programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1"
     done
     unset NANOFIL_OPT
     export NANOFIL_REGISTERS=temps
-    step "temps corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    corpus_steps "temps corpus"
     unset NANOFIL_REGISTERS
     # M7 check reuse (docs/m7.md) is independent of both. difftest also
     # runs each run line on the reused module, which must agree with the
@@ -237,10 +266,10 @@ pkgs.runCommandCC
       export NANOFIL_OPT=$opt
       step "reuse $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
       step "reuse $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
-      step "reuse $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+      programs "reuse $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1"
     done
     unset NANOFIL_OPT
-    step "reuse corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    corpus_steps "reuse corpus"
     step "reuse temps ABI+GC" env NANOFIL_REGISTERS=temps RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh gc setjmp pointer-effects reuse-gc
     unset NANOFIL_CHECKS
     # M7 round 4, check renewal (docs/m7.md): reuse, then a check that a
@@ -256,7 +285,7 @@ pkgs.runCommandCC
       export NANOFIL_OPT=$opt
       step "renew $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
       step "renew $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
-      step "renew $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+      programs "renew $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1"
     done
     unset NANOFIL_OPT
     step "renew temps ABI+GC" env NANOFIL_REGISTERS=temps RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh gc setjmp pointer-effects reuse-gc
@@ -266,12 +295,12 @@ pkgs.runCommandCC
     export NANOFIL_CHECKS=combined
     step "combined difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
     step "combined ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
-    step "combined programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    programs "combined programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1"
     step "combined temps ABI+GC" env NANOFIL_REGISTERS=temps RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh gc setjmp pointer-effects reuse-gc
     export NANOFIL_CHECKS=reference NANOFIL_OPT=-O
     step "-O reference checks difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
     step "-O reference checks ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
-    step "-O reference checks programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    programs "-O reference checks programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1"
     unset NANOFIL_CHECKS NANOFIL_OPT NANOFIL_SHARE
     # M7 round 5, range guards (docs/m7.md): renewal, then a span test
     # before each loop and renew_if for the loop's checks it covers. The
@@ -283,9 +312,9 @@ pkgs.runCommandCC
       export NANOFIL_OPT=$opt
       step "guard $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/filc/guard-span.ir tests/c/*.c big1.c
       step "guard $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
-      step "guard $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+      programs "guard $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1"
     done
-    step "guard -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    corpus_steps "guard -O corpus"
     unset NANOFIL_OPT NANOFIL_CHECKS
     # Hoisted bounds (docs/bounds.md): renewal, then a limit before each
     # loop and check_limit for the loop's remaining full checks of a root
@@ -297,9 +326,9 @@ pkgs.runCommandCC
       export NANOFIL_OPT=$opt
       step "hoist $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
       step "hoist $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
-      step "hoist $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+      programs "hoist $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1"
     done
-    step "hoist -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    corpus_steps "hoist -O corpus"
     unset NANOFIL_OPT NANOFIL_CHECKS
     # Scheduled checks (docs/schedule.md), opt-in: renewal, then checks
     # widened over the bytes every path ahead needs and renewed at a
@@ -310,9 +339,9 @@ pkgs.runCommandCC
       export NANOFIL_OPT=$opt
       step "schedule $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
       step "schedule $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
-      step "schedule $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+      programs "schedule $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1"
     done
-    step "schedule -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    corpus_steps "schedule -O corpus"
     unset NANOFIL_OPT NANOFIL_CHECKS
     # Shared check parts (docs/perf.md item 17), the -O default with
     # combined checks: a check skips the null test of a lower a dominating
@@ -324,10 +353,10 @@ pkgs.runCommandCC
     export NANOFIL_SHARE=upper NANOFIL_OPT=-O
     step "share difftest" tests/par.sh tests/difftest.sh tests/filc/share.ir tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
     step "share ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
-    step "share programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+    programs "share programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1"
     step "share checks" tests/checks.sh
     step "share temps checks" env NANOFIL_REGISTERS=temps tests/checks.sh
-    step "share -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    corpus_steps "share -O corpus"
     unset NANOFIL_OPT NANOFIL_SHARE
     step "share smt" python3 tests/share_smt.py
     # Shared lowers (docs/lowers.md), opt-in: a flight or phi uses its
@@ -342,9 +371,9 @@ pkgs.runCommandCC
       step "lowers $opt difftest" tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir tests/backend/*.ir tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/filc/share.ir tests/filc/branches.ir tests/c/*.c big1.c
       step "lowers $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc lowers asm-fixed
       step "lowers $opt actual ensure-aux exits" tests/filc/trace-pointer-effects.sh
-      step "lowers $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+      programs "lowers $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1"
     done
-    step "lowers -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    corpus_steps "lowers -O corpus"
     step "lowers temps ABI+GC" env NANOFIL_REGISTERS=temps RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh gc setjmp pointer-effects reuse-gc lowers
     unset NANOFIL_OPT NANOFIL_LOWERS
     step "share trap text vs filcc" tests/share-trap.sh
@@ -357,9 +386,9 @@ pkgs.runCommandCC
       export NANOFIL_OPT=$opt
       step "half $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
       step "half $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
-      step "half $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+      programs "half $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1"
     done
-    step "half -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    corpus_steps "half -O corpus"
     unset NANOFIL_OPT NANOFIL_CHECKS
     step "schedule trap text vs filcc -O2" tests/schedule-trap.sh
     # Forward facts (docs/forward.md), opt-in: reuse that also serves
@@ -371,9 +400,9 @@ pkgs.runCommandCC
       export NANOFIL_OPT=$opt
       step "forward $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
       step "forward $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
-      step "forward $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+      programs "forward $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1"
     done
-    step "forward -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    corpus_steps "forward -O corpus"
     unset NANOFIL_OPT NANOFIL_CHECKS
     # Renewal by the hull of two checks and facts kept across repeated
     # getters (docs/forward.md), opt-in as --checks=extended (both),
@@ -384,9 +413,9 @@ pkgs.runCommandCC
       export NANOFIL_OPT=$opt
       step "extended $opt difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/c/*.c big1.c
       step "extended $opt ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
-      step "extended $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+      programs "extended $opt programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1"
     done
-    step "extended -O corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    corpus_steps "extended -O corpus"
     step "extended -O ifchain 600 compile time" env NANOFIL_OPT=-O COMPILE_TIMEOUT=60 tests/progtest.sh ifchain.c
     unset NANOFIL_OPT NANOFIL_CHECKS
     step "getter trap text" tests/getter-trap.sh
@@ -399,11 +428,11 @@ pkgs.runCommandCC
       export NANOFIL_BRANCHES=''${mode%%:*} NANOFIL_OPT=''${mode#*:}
       step "branches $mode difftest" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/filc/branches.ir tests/c/*.c big1.c
       step "branches $mode ABI+GC" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/filc/run-c.sh interop gc variadic float setjmp pointer-effects lower-donor exceptions reuse-gc
-      step "branches $mode programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/par.sh tests/progtest.sh tests/c/prog/*.c
+      programs "branches $mode programs" env RUN_ENV="env FUGC_SCRIBBLE=1 FUGC_VERIFY=1"
     done
     unset NANOFIL_OPT
     export NANOFIL_BRANCHES=selected
-    step "branches corpus" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py ${corpus.cproc} ${corpus.c-testsuite}
+    corpus_steps "branches corpus"
     unset NANOFIL_BRANCHES
     # The functional, versioned-fact and incremental analyses must agree.
     step bench-cfg bash -c '(cd src && ../bin/nanofil --script ../tests/bench-cfg.pl ../big2.c </dev/null)'

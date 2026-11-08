@@ -8,6 +8,7 @@ The bundled RocqIDE XML protocol is pinned by the site's Rocq package.
 Run under tests/watch.py for deadlines and 15-second progress reporting.
 """
 import argparse
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -102,6 +103,44 @@ class Prover:
         self.proc.wait()
 
 
+def capture_file(work, flags, plan):
+    """Replay one file after all its checked dependencies are available."""
+    file = plan["file"]
+    text = (work / file).read_text()
+    stamp(f"proof capture: replay {file}")
+    proofs = plan["proofs"]
+    endpoints = {p["start"] for p in proofs} | {p["end"] for p in proofs}
+    endpoints.update(e for p in proofs for e in p["steps"])
+    states = {}
+    if proofs:
+        with tempfile.TemporaryFile() as log:
+            prover = Prover(work, flags, log)
+            try:
+                last = time.monotonic()
+                for command in plan["commands"]:
+                    start, end = command["start"], command["end"]
+                    try:
+                        prover.add(text[start:end])
+                        if end in endpoints:
+                            states[str(end)] = prover.goals()
+                    except Exception as exc:
+                        raise RuntimeError(f"{file}:{text[:start].count(chr(10)) + 1}: {text[start:end]}\n{exc}") from exc
+                    if time.monotonic() - last >= 10:
+                        stamp(f"proof capture: {file} line {text[:end].count(chr(10)) + 1}")
+                        last = time.monotonic()
+            finally:
+                prover.close()
+        if set(map(int, states)) != endpoints:
+            raise RuntimeError(f"Missing proof endpoints in {file}")
+        for p in proofs:
+            if states[str(p["start"])] is None or any(states[str(e)] is None for e in p["steps"]):
+                raise RuntimeError(f"Missing active proof state in {file}: {p}")
+            if p["kind"] in ("Qed", "Defined") and states[str(p["end"])] is not None:
+                raise RuntimeError(f"Proof did not close in {file}: {p}")
+    stamp(f"proof capture: {file}: {len(proofs)} proofs, {len(states)} snapshots")
+    return file, {"sha256": hashlib.sha256(text.encode()).hexdigest(), "states": states}
+
+
 def capture(project, output):
     project = project.resolve()
     project_file = next(p for p in [project / "_RocqProject", project / "_CoqProject"] if p.exists())
@@ -125,40 +164,14 @@ def capture(project, output):
         shutil.copytree(project, work, ignore=shutil.ignore_patterns("*.vo", "*.vos", "*.vok", "*.glob", ".*.aux"))
         for plan in plans:
             file = plan["file"]
-            text = (work / file).read_text()
             stamp(f"proof capture: compile {file}")
             subprocess.run(["coqc", *flags, file], cwd=work, check=True, stdin=subprocess.DEVNULL)
-            proofs = plan["proofs"]
-            endpoints = {p["start"] for p in proofs} | {p["end"] for p in proofs}
-            endpoints.update(e for p in proofs for e in p["steps"])
-            states = {}
-            if proofs:
-                with tempfile.TemporaryFile() as log:
-                    prover = Prover(work, flags, log)
-                    try:
-                        last = time.monotonic()
-                        for command in plan["commands"]:
-                            start, end = command["start"], command["end"]
-                            try:
-                                prover.add(text[start:end])
-                                if end in endpoints:
-                                    states[str(end)] = prover.goals()
-                            except Exception as exc:
-                                raise RuntimeError(f"{file}:{text[:start].count(chr(10)) + 1}: {text[start:end]}\n{exc}") from exc
-                            if time.monotonic() - last >= 10:
-                                stamp(f"proof capture: {file} line {text[:end].count(chr(10)) + 1}")
-                                last = time.monotonic()
-                    finally:
-                        prover.close()
-                if set(map(int, states)) != endpoints:
-                    raise RuntimeError(f"Missing proof endpoints in {file}")
-                for p in proofs:
-                    if states[str(p["start"])] is None or any(states[str(e)] is None for e in p["steps"]):
-                        raise RuntimeError(f"Missing active proof state in {file}: {p}")
-                    if p["kind"] in ("Qed", "Defined") and states[str(p["end"])] is not None:
-                        raise RuntimeError(f"Proof did not close in {file}: {p}")
-            data["files"][file] = {"sha256": hashlib.sha256(text.encode()).hexdigest(), "states": states}
-            stamp(f"proof capture: {file}: {len(proofs)} proofs, {len(states)} snapshots")
+        # Prover instances and their XML streams are per file. Only replay
+        # independent files in parallel, never the dependency compilation.
+        stamp(f"proof capture: replay {len(plans)} files, fanout=4")
+        with concurrent.futures.ThreadPoolExecutor(4) as pool:
+            for file, entry in pool.map(lambda plan: capture_file(work, flags, plan), plans):
+                data["files"][file] = entry
     output.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n")
 
 
