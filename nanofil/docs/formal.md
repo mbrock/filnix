@@ -583,8 +583,8 @@ Heap kind and liveness are not ownership and grant no permission to free.
 The source/ABI evidence is the `coreRev` in `lib/filc-staging.json`, its
 `projects/user-glibc-2.44/libio/{stdfiles,genops,filedoalloc,fileops}.c`,
 `bits/types/struct_FILE.h` and NPTL `stdio-lock.h`. The installed Fil-C
-compiler reports FILE size 216/alignment 8, pointer slots 56/64/136 and
-short-buffer offset 131. `_IO_FILE_plus` adds its eight-byte vtable
+compiler reports FILE size 216 and alignment 8. Pointer slots are at
+56, 64 and 136; the short-buffer offset is 131. `_IO_FILE_plus` adds its eight-byte vtable
 pointer; the private lock is `{ int lock; int cnt; void *owner; }`.
 The [libc-output.c](../tests/c/prog/libc-output.c) probe checks the used
 public layout constants, stat-selected allocated capacity and the
