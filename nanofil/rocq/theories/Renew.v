@@ -1,6 +1,6 @@
-(** Campaign 3's reuse forms, part two: `renew` and `half_check`
-    (docs/formal.md, Campaign 3; docs/rocq.md, "Renew and the half
-    check").
+(** Campaign 3's reuse forms, part two: `renew`, `renew_hull` and
+    `half_check` (docs/formal.md, Campaign 3; docs/rocq.md, "Renew and
+    the half check").
 
     Both reuse a check that passed earlier. A renew of P trusts Q1, the
     proof of a single-definition check of P1 (a renew source,
@@ -11,8 +11,10 @@
     Q1 of another capability (`unchecked(alias)`), a renew whose access
     test fails but not because the object was freed (`unchecked(span)`),
     or a half check whose one-sided native test disagrees with the whole
-    check (`unchecked(half)`). This file proves none of them happens
-    where the pass accepted the instruction.
+    check (`unchecked(half)`). A renew over a hull trusts two sources,
+    QL and QH, whose spans bound P's from below and above
+    (`hull_renewable/8`). This file proves none of them makes the run
+    `unchecked` where the pass accepted the instruction.
 
     The argument is the same for both. Q1 is used by the instruction, so
     its single definition dominates it and replays (Single.v): Q1 holds
@@ -25,12 +27,13 @@
     |---|---|
     | `renew_source_def` | a renew source is a single-definition check-like instruction of a single-definition pointer |
     | `renew_access` | an access inside a span that passed earlier, in a memory that persists, renews: it passes, traps read-only, or traps out of bounds on a freed object |
+    | `hull_address`, `hull_renew_access` | an access between a low span and a high span that passed earlier, near both, renews as `renew_access` says |
     | `half_bound_agrees`, `half_access` | a half check whose known bound a span that passed earlier proves tests natively what the whole check tests |
     | `renew_source_holds` | a renew source that dominates the point holds the pointer of a check that passed, in a memory the current one persists from |
     | `distance_pointer` | a value a known distance from a pointer reads as a pointer |
     | `reuse_operands` | what a renew or half check the pass accepted reads at its point |
-    | `renew_not_unchecked`, `half_not_unchecked` | a renew or half check the pass accepts gives no `unchecked`, where single definitions replay |
-    | `run_reuse_checked`, `interp_reuse_checked` | along every run, a frame that is not doomed runs no renew or half check to `unchecked` |
+    | `renew_not_unchecked`, `hull_renew_not_unchecked`, `half_not_unchecked` | a renew, renew over a hull or half check the pass accepts gives no `unchecked`, where single definitions replay |
+    | `run_reuse_checked`, `interp_reuse_checked` | along every run, a frame that is not doomed runs no renew, renew over a hull or half check to `unchecked` |
 
     ## Decisions
 
@@ -40,6 +43,7 @@
     | the persisting object is split by cases, not read through `persists_access` | a renew's trap must be on a freed object, which `persists_access`'s conclusion forgets |
     | the source's memory fit the address space (Single.v's `replays`) | once the object is freed, the current memory no longer says where it ended, and a lower half check's address may wrap |
     | objects start at or above 0 and freed objects are empty (`objects_fit`, `freed_bounds`) | a lower half check reads its address signed and fails on any freed object; the whole check agrees only then |
+    | a renew over a hull compares its two sources only through the current memory | each source's check passed in its own memory, and both persist into the current one, so the object is as both saw it or freed since |
     | an instruction of another class or arity is not the pass's concern | it does not step (`reuse_shape`) | *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
@@ -180,6 +184,110 @@ Proof.
           [right; apply Z.leb_gt; lia | left; apply Z.leb_gt; lia]).
     exists (RTrap OutOfBounds), (RTrap OutOfBounds). split; [reflexivity|].
     unfold renew_res. rewrite Hc, E'. split; [reflexivity | discriminate].
+Qed.
+
+(** ## Renew over a hull, over memory *)
+
+(** `hull_address`: a renew over a hull starts E past the low source's
+    span and ends F before the high source's, both near (E, F in
+    [0, 2^62]). Its address modulo 2^64 is then both sums exactly: the
+    spans lie in the address space, so neither sum wraps. *)
+Lemma hull_address : forall Al Ah A lol loh hih dl dh lo hi,
+  A mod 2 ^ 64 = (Al + dl) mod 2 ^ 64 -> A mod 2 ^ 64 = (Ah + dh) mod 2 ^ 64 ->
+  raw_address Al lol <= 2 ^ 48 -> raw_address Ah loh + (hih - loh) <= 2 ^ 48 -> loh < hih ->
+  0 <= lo + dl - lol <= 2 ^ 62 -> 0 <= hih - hi - dh <= 2 ^ 62 -> 0 < hi - lo <= 2 ^ 62 ->
+  raw_address A lo = raw_address Al lol + (lo + dl - lol) /\
+  raw_address A lo = raw_address Ah loh + (lo + dh - loh).
+Proof.
+  intros Al Ah A lol loh hih dl dh lo hi HAl HAh Hl Hh Hs He Hf Hsz.
+  assert (Hmod : forall B d o o', A mod 2 ^ 64 = (B + d) mod 2 ^ 64 ->
+            raw_address A o = (raw_address B o' + (o + d - o')) mod 2 ^ 64).
+  { intros B d o o' HB. unfold raw_address.
+    rewrite <- (Z.add_mod_idemp_l A o (2 ^ 64)), HB, !Z.add_mod_idemp_l by lia. f_equal. ring. }
+  pose proof (Hmod Al dl lo lol HAl) as Xl. pose proof (Hmod Ah dh lo loh HAh) as Xh.
+  pose proof (Z.mod_pos_bound (Al + lol) (2 ^ 64) ltac:(lia)).
+  pose proof (Z.mod_pos_bound (Ah + loh) (2 ^ 64) ltac:(lia)).
+  unfold raw_address in *.
+  rewrite (Z.mod_small ((Al + lol) mod 2 ^ 64 + (lo + dl - lol))) in Xl by lia.
+  pose proof (Z.div_mod ((Ah + loh) mod 2 ^ 64 + (lo + dh - loh)) (2 ^ 64) ltac:(lia)).
+  split; [exact Xl | lia].
+Qed.
+
+(** `renew_freed`: a renew of an object freed since traps out of
+    bounds on a freed object (`renew_res/4`); never `unchecked`. *)
+Lemma renew_freed : forall m base reg A off size r al p,
+  object_region base (m_regions m) = Some (freed_region reg) -> r_base reg = base -> 0 < size ->
+  ptr_cap p = Obj base \/ ptr_cap p = Ro base ->
+  exists chk rr, access_res m (raw_address A off) (ptr_cap p) size r al = Some chk /\
+    renew_res chk p m = Some rr /\ forall why, rr <> RUnchecked why.
+Proof.
+  intros m base reg A off size r al p E Hrb Hs Hc.
+  exists (RTrap OutOfBounds), (RTrap OutOfBounds).
+  unfold access_res, cap_access_res, renew_res.
+  destruct Hc as [Hc | Hc]; rewrite Hc, E; simpl; rewrite Hrb.
+  all: replace ((base <=? raw_address A off) && (raw_address A off + size <=? base)) with false
+         by (symmetry; apply andb_false_iff; destruct (Z.le_gt_cases base (raw_address A off));
+             [right; apply Z.leb_gt; lia | left; apply Z.leb_gt; lia]).
+  all: split; [reflexivity | split; [reflexivity | discriminate]].
+Qed.
+
+(** `hull_renew_access`: where a low span [Al+lol, Al+hil) and a high
+    span [Ah+loh, Ah+hih) of one capability passed their checks, in
+    memories the current one persists from, a renew [A+lo, A+hi)
+    between them (`hull_renewable/8`'s arithmetic), aligned as one of
+    them is, passes, traps read-only, or finds the object freed; never
+    `unchecked`. *)
+Lemma hull_renew_access : forall ml mh m c Al Ah A lol hil rl all loh hih rh alh lo hi r al p dl dh,
+  access_res ml (raw_address Al lol) c (hil - lol) rl all = Some ok ->
+  access_res mh (raw_address Ah loh) c (hih - loh) rh alh = Some ok ->
+  persists ml m -> persists mh m -> objects_fit (m_regions m) -> ptr_cap p = c ->
+  lol < hil -> loh < hih ->
+  A mod 2 ^ 64 = (Al + dl) mod 2 ^ 64 -> A mod 2 ^ 64 = (Ah + dh) mod 2 ^ 64 ->
+  0 <= lo + dl - lol <= 2 ^ 62 -> 0 <= hih - hi - dh <= 2 ^ 62 -> 0 < hi - lo <= 2 ^ 62 -> 0 < al ->
+  (all mod al = 0 /\ (lo + dl - lol) mod al = 0) \/ (alh mod al = 0 /\ (lo + dh - loh) mod al = 0) ->
+  exists chk rr, access_res m (raw_address A lo) c (hi - lo) r al = Some chk /\ renew_res chk p m = Some rr /\
+    forall why, rr <> RUnchecked why.
+Proof.
+  intros ml mh m c Al Ah A lol hil rl all loh hih rh alh lo hi r al p dl dh
+    H1 H2 Hpl Hph Hfit Hc Hl Hh HAl HAh He Hf Hsz Hal Halign.
+  set (Ll := raw_address Al lol) in *. set (Lh := raw_address Ah loh) in *.
+  destruct c as [| base | base | fn | n]; try discriminate H1.
+  all: unfold access_res, cap_access_res in H1, H2.
+  all: destruct (object_region base (m_regions ml)) as [regl|] eqn:El; try discriminate H1;
+    destruct (object_region base (m_regions mh)) as [regh|] eqn:Eh; try discriminate H2;
+    destruct ((base <=? Ll) && (Ll + (hil - lol) <=? r_end regl)) eqn:Bl; try discriminate H1;
+    destruct ((base <=? Lh) && (Lh + (hih - loh) <=? r_end regh)) eqn:Bh; try discriminate H2;
+    apply andb_true_iff in Bl as [Bl Bl']; apply andb_true_iff in Bh as [Bh Bh'];
+    apply Z.leb_le in Bl, Bl', Bh, Bh';
+    pose proof (object_region_base _ _ _ El) as Hrl; pose proof (object_region_base _ _ _ Eh) as Hrh.
+  (* The object is as both checks saw it, or freed since. *)
+  all: destruct (Hpl _ _ El) as [E | E];
+    [destruct (Hph _ _ Eh) as [E' | E']; rewrite E in E'; injection E' as E'
+    | rewrite <- Hc; exact (renew_freed m base regl A lo (hi - lo) r al p E Hrl ltac:(lia) ltac:(auto))].
+  (* as the low check saw it but freed since the high one: empty, so
+     the low check could not have passed *)
+  all: try (subst regl; simpl in Bl'; lia).
+  (* both as they were: one object, which holds the hull *)
+  all: subst regh; destruct (Hfit _ _ E) as [Hb0 Hend].
+  all: destruct (hull_address Al Ah A lol loh hih dl dh lo hi HAl HAh ltac:(lia) ltac:(lia) Hh He Hf Hsz)
+         as [Xl Xh].
+  all: unfold access_res, cap_access_res; rewrite E.
+  all: replace ((base <=? raw_address A lo) && (raw_address A lo + (hi - lo) <=? r_end regl)) with true
+         by (symmetry; apply andb_true_iff; split; apply Z.leb_le; lia).
+  (* aligned as the source it is aligned to *)
+  all: assert (Ha : forall (aal aah : Z), Ll mod aal = 0 -> Lh mod aah = 0 ->
+                 (aal mod al = 0 /\ (lo + dl - lol) mod al = 0) \/ (aah mod al = 0 /\ (lo + dh - loh) mod al = 0) ->
+                 raw_address A lo mod al = 0)
+         by (intros aal aah Hl1 Hh1 [[A1 A2] | [A1 A2]];
+             [rewrite Xl | rewrite Xh]; apply aligned_add; auto; eapply aligned_divisor; eauto).
+  - injection H1 as H1. injection H2 as H2.
+    rewrite (aligned_res_ok _ _ (Ha _ _ (aligned_res_mod _ _ H1) (aligned_res_mod _ _ H2) Halign)).
+    do 2 eexists. split; [reflexivity|]. split; [reflexivity | discriminate].
+  - destruct rl; simpl in H1; [|discriminate H1]. destruct rh; simpl in H2; [|discriminate H2].
+    injection H1 as H1. injection H2 as H2.
+    pose proof (Ha _ _ (aligned_res_mod _ _ H1) (aligned_res_mod _ _ H2) Halign) as Hx.
+    destruct r; simpl; [rewrite (aligned_res_ok _ _ Hx)|].
+    all: do 2 eexists; split; [reflexivity|]; split; [unfold renew_res; reflexivity | discriminate].
 Qed.
 
 (** ## The half check, over memory *)
@@ -547,13 +655,73 @@ Proof.
   intros E. injection E as <-. exact (Hnot w eq_refl).
 Qed.
 
+(** `hull_renew_not_unchecked`: a renew over a hull the pass accepts
+    gives no `unchecked`, where single definitions replay. Each of its
+    two sources holds the pointer its check passed, a known distance
+    from the renewed pointer (`reuse_operands`), so all three share a
+    capability, and the renewed span lies between the two spans
+    (`hull_renewable/8`, `hull_renew_access`). *)
+Theorem hull_renew_not_unchecked : forall b kk q lo hi r al nl nh p rest live out why,
+  objects_fit (m_regions m) ->
+  find_block l (fn_blocks (fr_fn fr)) = Some b ->
+  nth_error (b_insts b) kk = Some (Let q A (RenewHull lo hi r al) [Tmp nl; Tmp nh; p]) -> k = Z.of_nat kk ->
+  checked_inst_rest (fn_src md (fr_fn fr)) (Let q A (RenewHull lo hi r al) [Tmp nl; Tmp nh; p]) rest live
+    = Some out ->
+  inst_step ge fr m (Let q A (RenewHull lo hi r al) [Tmp nl; Tmp nh; p]) <> Some (IStop (Unchecked why)).
+Proof.
+  intros b kk q lo hi r al nl nh p rest live out why Hfit Hb Hk Hkk H.
+  (* What the pass checked: two sources, two distances, and the span
+     between them. *)
+  unfold checked_inst_rest in H. cbn beta iota zeta in H.
+  destruct (hull_renewable _ _ _ _ _ _ _ _) eqn:Ehr; [clear H | discriminate H].
+  unfold hull_renewable in Ehr.
+  destruct (lookup nl (s_renews (fn_src md (fr_fn fr)))) as [[[[pl lol] hil] all]|] eqn:El;
+    [|discriminate Ehr].
+  destruct (lookup nh (s_renews (fn_src md (fr_fn fr)))) as [[[[ph loh] hih] alh]|] eqn:Eh;
+    [|discriminate Ehr].
+  destruct (pointer_distance (s_once (fn_src md (fr_fn fr))) p (Tmp pl)) as [dl|] eqn:Edl; [|discriminate Ehr].
+  destruct (pointer_distance (s_once (fn_src md (fr_fn fr))) p (Tmp ph)) as [dh|] eqn:Edh; [|discriminate Ehr].
+  cbn beta iota zeta in Ehr.
+  repeat match goal with H : (_ && _) = true |- _ => apply andb_true_iff in H as [? ?] end.
+  repeat match goal with H : (_ <=? _) = true |- _ => apply Z.leb_le in H end.
+  assert (Halign : (all mod al = 0 /\ (lo + dl - lol) mod al = 0) \/ (alh mod al = 0 /\ (lo + dh - loh) mod al = 0))
+    by (match goal with H : (_ || _) = true |- _ =>
+          apply orb_true_iff in H as [H | H]; apply andb_true_iff in H as [Ha1 Ha2];
+          apply Z.eqb_eq in Ha1, Ha2; [left | right]; split; assumption end).
+  (* What the operands hold at the point. *)
+  destruct (reuse_operands b kk _ nl p pl lol hil all dl Hb Hk Hkk ltac:(simpl; auto)
+              ltac:(intros y ->; simpl; auto) El Edl)
+    as (ppl & pp & ml & rl & Hnl & Hpp & Hcl & Hpl & _ & Hll & Hcapl & Haddrl).
+  destruct (reuse_operands b kk _ nh p ph loh hih alh dh Hb Hk Hkk ltac:(simpl; auto)
+              ltac:(intros y ->; simpl; auto) Eh Edh)
+    as (pph & pp' & mh & rh & Hnh & Hpp' & Hch & Hph & _ & Hlh & Hcaph & Haddrh).
+  rewrite Hpp in Hpp'. injection Hpp' as <-.
+  (* The step: one capability, so no alias; then the memory's answer. *)
+  rewrite inst_step_let by reflexivity. cbn beta iota zeta delta [op_arg_classes map2_option].
+  replace (value_x ge (fr_env fr) A (Tmp nl)) with (Some (WPtr ppl)) by (simpl; rewrite Hnl; reflexivity).
+  replace (value_x ge (fr_env fr) A (Tmp nh)) with (Some (WPtr pph)) by (simpl; rewrite Hnh; reflexivity).
+  rewrite Hpp. cbn beta iota. unfold op_res, op_res_int. cbn beta iota zeta delta [fmt_of].
+  rewrite <- Hcapl, <- Hcaph, cap_eqb_refl. cbn beta iota delta [andb].
+  destruct (find_block_in _ _ _ Hb) as [Hbin _].
+  destruct (check_fact_ok _ _ _ _ _ Hmd Hin Hbin (nth_error_In _ _ Hk) eq_refl) as [Hsz Hca]. simpl in Hsz, Hca.
+  unfold check_passes in Hcl, Hch. rewrite <- Hcapl in Hcl. rewrite <- Hcaph in Hch.
+  destruct (hull_renew_access ml mh m (ptr_cap pp) (ptr_addr ppl) (ptr_addr pph) (ptr_addr pp)
+              lol hil rl all loh hih rh alh lo hi r al pp dl dh
+              Hcl Hch Hpl Hph Hfit eq_refl Hll Hlh Haddrl Haddrh ltac:(lia) ltac:(lia) ltac:(lia)
+              (check_align_pos _ Hca) Halign) as (chk & rr & Hchk & Hrr & Hnot).
+  rewrite Hchk. cbn beta iota. rewrite Hrr. unfold bind_res.
+  destruct rr as [x | w | w]; try discriminate. intros E. injection E as <-. exact (Hnot w eq_refl).
+Qed.
+
 End Reuse.
 
 (** ## Along every run *)
 
-(** A renew or half check is a `let` that is not a raw access. *)
+(** A renew, renew over a hull or half check is a `let` that is not a
+    raw access. *)
 Definition reuse_form (i : inst) : Prop :=
   (exists q kc lo hi r al args, i = Let q kc (Renew lo hi r al) args) \/
+  (exists q kc lo hi r al args, i = Let q kc (RenewHull lo hi r al) args) \/
   (exists q kc bd lo hi r al args, i = Let q kc (HalfCheck bd lo hi r al) args).
 
 Lemma map2_option_two : forall (X Y Z : Type) (f : X -> Y -> option Z) x y args zs,
@@ -565,19 +733,38 @@ Proof.
   - destruct (f x a1), (f y a2); discriminate H.
 Qed.
 
+(** A list of three operands. *)
+Lemma map2_option_three : forall (X Y Z : Type) (f : X -> Y -> option Z) x y w args zs,
+  map2_option f [x; y; w] args = Some zs -> exists a1 a2 a3, args = [a1; a2; a3].
+Proof.
+  intros X Y Z f x y w args zs H. destruct args as [|a1 [|a2 [|a3 [|a4 args]]]]; simpl in H;
+    repeat match goal with H : context [match f ?u ?v with _ => _ end] |- _ => destruct (f u v) end;
+    try discriminate H; eauto.
+Qed.
+
 (** `reuse_shape`: a renew or half check steps only at class A with two
-    operands (`op_arg_classes/4`, `kind_res/8`). *)
+    operands, a renew over a hull with three (`op_arg_classes/4`,
+    `kind_res/8`). *)
 Lemma reuse_shape : forall ge fr m i why,
   reuse_form i -> inst_step ge fr m i = Some (IStop (Unchecked why)) ->
-  exists q o a1 a2, i = Let q A o [a1; a2] /\
-    ((exists lo hi r al, o = Renew lo hi r al) \/ (exists bd lo hi r al, o = HalfCheck bd lo hi r al)).
+  exists q o args, i = Let q A o args /\
+    ((exists lo hi r al a1 a2, o = Renew lo hi r al /\ args = [a1; a2]) \/
+     (exists lo hi r al a1 a2 a3, o = RenewHull lo hi r al /\ args = [a1; a2; a3]) \/
+     (exists bd lo hi r al a1 a2, o = HalfCheck bd lo hi r al /\ args = [a1; a2])).
 Proof.
-  intros ge fr m i why [(q & kc & lo & hi & r & al & args & ->) | (q & kc & bd & lo & hi & r & al & args & ->)] H;
+  intros ge fr m i why [(q & kc & lo & hi & r & al & args & ->)
+                       | [(q & kc & lo & hi & r & al & args & ->) | (q & kc & bd & lo & hi & r & al & args & ->)]] H;
     rewrite inst_step_let in H by reflexivity; cbn beta iota zeta delta [op_arg_classes] in H;
-    destruct (map2_option _ _ args) as [xs|] eqn:Ex; try discriminate H;
-    destruct (map2_option_two _ _ _ _ _ _ _ _ Ex) as (a1 & a2 & ->);
+    destruct (map2_option _ _ args) as [xs|] eqn:Ex; try discriminate H.
+  - destruct (map2_option_two _ _ _ _ _ _ _ _ Ex) as (a1 & a2 & ->).
     destruct kc; unfold op_res, op_res_int in H; cbn beta iota zeta delta [fmt_of] in H; try discriminate H;
-    eauto 12.
+      do 3 eexists; split; [reflexivity | left; eauto 10].
+  - destruct (map2_option_three _ _ _ _ _ _ _ _ _ Ex) as (a1 & a2 & a3 & ->).
+    destruct kc; unfold op_res, op_res_int in H; cbn beta iota zeta delta [fmt_of] in H; try discriminate H;
+      do 3 eexists; split; [reflexivity | right; left; eauto 10].
+  - destruct (map2_option_two _ _ _ _ _ _ _ _ Ex) as (a1 & a2 & ->).
+    destruct kc; unfold op_res, op_res_int in H; cbn beta iota zeta delta [fmt_of] in H; try discriminate H;
+      do 3 eexists; split; [reflexivity | right; right; eauto 10].
 Qed.
 
 (** `Reuse R` carries the frame theorems along runs as Chain.v's `Hull`
@@ -636,8 +823,8 @@ Proof.
 Qed.
 
 (** `run_reuse_checked`: in every state of a run of a checked module's
-    function that starts ready, a frame that is not doomed runs no renew
-    and no half check to an `unchecked` outcome, where the runtime spares
+    function that starts ready, a frame that is not doomed runs no
+    renew, renew over a hull or half check to an `unchecked` outcome, where the runtime spares
     the pass's facts at safepoints (`spares`) and its free keeps
     identities (`free_ids`). *)
 Theorem run_reuse_checked : forall ge md f xs fr m fuel s0 c s l i rest j why,
@@ -648,21 +835,28 @@ Theorem run_reuse_checked : forall ge md f xs fr m fuel s0 c s l i rest j why,
   inst_step ge (c_frame c) (c_mem c) i <> Some (IStop (Unchecked why)).
 Proof.
   intros ge md f xs fr m fuel s0 c s l i rest j why Hmd Hge Hfree Hsp Hfi Hin Hcf H0 Hreach Hd Ha Hi Hst.
-  destruct (reuse_shape _ _ _ _ _ Hi Hst) as (q & o & a1 & a2 & -> & Ho).
+  destruct (reuse_shape _ _ _ _ _ Hi Hst) as (q & o & args & -> & Ho).
   destruct (run_point _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hmd Hge Hfree Hsp Hfi Hin Hcf H0 Hreach Hd Ha
-              ltac:(destruct Ho as [(? & ? & ? & ? & ->) | (? & ? & ? & ? & ? & ->)]; reflexivity)
+              ltac:(destruct Ho as [(? & ? & ? & ? & ? & ? & -> & ->)
+                                   | [(? & ? & ? & ? & ? & ? & ? & -> & ->) | (? & ? & ? & ? & ? & ? & ? & -> & ->)]];
+                    reflexivity)
               ltac:(intros ? ? ? E; discriminate E))
     as (b & kk & live & out & Hinf & Hr & Hsc & Hpt & Hb & Hnth & Hc & Hfit & Hfe).
-  (* The pass accepts a renew or half check only of a proof's name. *)
-  assert (Hn1 : exists n1, a1 = Tmp n1)
-    by (destruct Ho as [(lo & hi & r & al & ->) | (bd & lo & hi & r & al & ->)];
-        destruct a1 as [n1 | c1 | g1]; eauto;
-        unfold checked_inst_rest in Hc; cbn beta iota zeta in Hc; discriminate Hc).
-  destruct Hn1 as [n1 ->].
-  destruct Ho as [(lo & hi & r & al & ->) | (bd & lo & hi & r & al & ->)].
-  - exact (renew_not_unchecked ge md (c_frame c) (c_mem c) l (Z.of_nat kk) Hmd Hinf Hr Hsc Hpt
+  (* The pass accepts a reuse form only where its sources are proofs'
+     names. *)
+  destruct Ho as [(lo & hi & r & al & a1 & a2 & -> & ->)
+                 | [(lo & hi & r & al & a1 & a2 & a3 & -> & ->) | (bd & lo & hi & r & al & a1 & a2 & -> & ->)]].
+  - destruct a1 as [n1 | c1 | g1];
+      try (unfold checked_inst_rest in Hc; cbn beta iota zeta in Hc; discriminate Hc).
+    exact (renew_not_unchecked ge md (c_frame c) (c_mem c) l (Z.of_nat kk) Hmd Hinf Hr Hsc Hpt
              b kk q lo hi r al n1 a2 rest live out why Hfit Hb Hnth eq_refl Hc Hst).
-  - exact (half_not_unchecked ge md (c_frame c) (c_mem c) l (Z.of_nat kk) Hmd Hinf Hr Hsc Hpt
+  - destruct a1 as [nl | c1 | g1], a2 as [nh | c2 | g2];
+      try (unfold checked_inst_rest, hull_renewable in Hc; cbn beta iota zeta in Hc; discriminate Hc).
+    exact (hull_renew_not_unchecked ge md (c_frame c) (c_mem c) l (Z.of_nat kk) Hmd Hinf Hr Hsc Hpt
+             b kk q lo hi r al nl nh a3 rest live out why Hfit Hb Hnth eq_refl Hc Hst).
+  - destruct a1 as [n1 | c1 | g1];
+      try (unfold checked_inst_rest in Hc; cbn beta iota zeta in Hc; discriminate Hc).
+    exact (half_not_unchecked ge md (c_frame c) (c_mem c) l (Z.of_nat kk) Hmd Hinf Hr Hsc Hpt
              b kk q bd lo hi r al n1 a2 rest live out why Hfit Hfe Hb Hnth eq_refl Hc Hst).
 Qed.
 
@@ -674,8 +868,8 @@ Module InterpReuse := Reuse InterpRuntime.
 
 (** `interp_reuse_checked`: under the interpreter's runtime, in every
     state of a run of a checked module's function that starts ready, a
-    frame that is not doomed runs no renew and no half check to
-    `unchecked`. *)
+    frame that is not doomed runs no renew, renew over a hull or half
+    check to `unchecked`. *)
 Corollary interp_reuse_checked : forall md globals f xs fr m fuel s0 c s l i rest j why,
   let ge := mkGenv md globals InterpRuntime.free in
   checked_module md -> In (IFunc f) md -> call_frame f xs = Some fr -> InterpRuntime.ready s0 m ->

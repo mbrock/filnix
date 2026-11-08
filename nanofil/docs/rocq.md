@@ -42,7 +42,7 @@ the interpreter and cites the predicate it copies.
 | `Invariant.v` | — (Campaign 3) | the run-level invariant stated: what holds at each point of a frame (`at_pos`, `point_ok`, `inv`), the runtime hypothesis `spares`, and what each kind of step needs of it |
 | `Persistence.v` | — (Campaign 3) | the evidence invariant over whole runs: every machine step keeps `inv` (one lemma per kind of step), and in every state of a run no raw access or raw call of a frame that is not doomed is `unchecked`, but by `hull_covered` |
 | `Chain.v` | `offset_interval/8`, `guard_chain/3`, `pointer_distance/4`, `hull_covered/7` (ir.pl) | what a frame reads off the single definitions that dominate its point; along every run, no access `hull_covered` accepts gives `unchecked` |
-| `Renew.v` | `renew_source_op/6`, `half_known/6` (ir.pl); `renew_res/4`, `half_bound/6`, `half_res/4` (interp.pl) | along every run, no renew or half check the pass accepts gives `unchecked` |
+| `Renew.v` | `renew_source_op/6`, `hull_renewable/8`, `half_known/6` (ir.pl); `renew_res/4`, `half_bound/6`, `half_res/4` (interp.pl) | along every run, no renew, renew over a hull or half check the pass accepts gives `unchecked` |
 | `Guard.v` | `guard_covers/5`, `limit_covers/5`, `lower_chain/3` (ir.pl); `kind_res/8` (interp.pl) | along every run, no `renew_if` or `check_limit` the pass accepts gives `unchecked` |
 | `Transport.v` | — | decoding a printed checked module, encoding outcomes, `judge`, `judge_valid` |
 | `Extract.v`, `extraction/main.ml` | — | OCaml extraction, and a reader of Prolog terms |
@@ -1000,9 +1000,9 @@ Decisions:
 
 ### Renew and the half check
 
-`Renew.v` proves the next two reuse forms. Both trust Q1, the proof of
-an earlier check of P1, a single definition that the pass records as a
-renew source (`renew_source_op/6`). A renew of P checks the whole span
+`Renew.v` proves the next three reuse forms. A renew and a half check
+trust Q1, the proof of an earlier check of P1, a single definition that
+the pass records as a renew source (`renew_source_op/6`). A renew of P checks the whole span
 of P only if P's span lies inside Q1's at the distance
 `pointer_distance/4` finds. A half check tests one bound natively and
 takes the other from Q1's span (`half_known/6`). The interpreter makes
@@ -1010,8 +1010,10 @@ the run `unchecked` where that trust was false: Q1 of another
 capability is `unchecked(alias)`; a renew whose access check fails, but
 not on a freed object, is `unchecked(span)`; and a half check whose
 native test (`half_bound/6`) disagrees with the whole check is
-`unchecked(half)`. Along every run, a frame that is not doomed runs
-neither instruction to `unchecked` (`run_reuse_checked`, and
+`unchecked(half)`. A renew over a hull (`renew_hull`) trusts two
+sources, QL and QH, whose spans bound P's from below and above
+(`hull_renewable/8`). Along every run, a frame that is not doomed runs
+none of the three to `unchecked` (`run_reuse_checked`, and
 `interp_reuse_checked` for the interpreter, closed).
 
 The proof has three steps:
@@ -1029,6 +1031,11 @@ The proof has three steps:
   finds the object freed, and `renew_res/4` keeps each as the program's
   outcome (`renew_access`). A half check's native bound says what both
   bounds of the whole check say (`half_bound_agrees`, `half_access`).
+  A renew over a hull starts E bytes above QL's span and ends F bytes
+  below QH's, with E and F in [0, 2^62]. Both spans lie in the address
+  space, so neither sum wraps and the two readings of P's address are
+  one integer (`hull_address`). The span then lies in the object as both
+  checks saw it, and it renews as a renew does (`hull_renew_access`).
 
 The half check needed three facts that nothing stated before:
 
@@ -1057,9 +1064,15 @@ No admits. Decisions:
 - **A renew does not need the source's rights.** A renew asks for its
   own rights; on a read-only object a write traps `readonly`, which
   `renew_res/4` keeps as the program's trap.
-- **A malformed instruction is not the pass's concern.** A renew or
-  half check of another class or arity does not step (`reuse_shape`),
-  so the run theorem covers every instruction of either op.
+- **A malformed instruction is not the pass's concern.** A renew,
+  renew over a hull or half check of another class or arity does not
+  step (`reuse_shape`), so the run theorem covers every instruction of
+  each op.
+- **A hull's two sources meet only in the current memory.** Each
+  source's check passed in a memory of its own, and both persist into
+  the current one, so the object is as both saw it or freed since. An
+  object QL saw live and QH saw freed is empty, so QL's check could not
+  have passed. No new hypothesis or runtime fact.
 - **`Reuse R` builds on Chain.v's `Hull R`.** It reuses its two
   instances and `mreachable_same`, so no new instance of the machine is
   needed.
