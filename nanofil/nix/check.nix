@@ -59,7 +59,7 @@ pkgs.runCommandCC
         return
       fi
       echo ">>> [$((SECONDS - check_t0))s] start: $label"
-      python3 tests/watch.py --label "$label" -- "$@" || status=FAIL mark=" FAILED"
+      python3 tests/watch.py --label "$label" --warn-after 300 --timeout 1800 -- "$@" || status=FAIL mark=" FAILED"
       echo "<<< [$((SECONDS - check_t0))s] done in $((SECONDS - t0))s: $label$mark"
       printf '%5ds  %s\n' $((SECONDS - t0)) "$label$mark" >>"$TMPDIR/timings"
       echo "@@nanofil-step $status $((SECONDS - t0)) $label"
@@ -86,7 +86,7 @@ pkgs.runCommandCC
     corpus_steps() {
       local label=$1 part
       for part in 1 2 3 4; do
-        step "$label [$part/4]" env COMPILE_TIMEOUT=60 python3 -I tests/corpus.py \
+        step "$label [$part/4]" python3 -I tests/corpus.py \
           ${corpus.cproc} ${corpus.c-testsuite} --partition "$part/4"
       done
     }
@@ -94,9 +94,12 @@ pkgs.runCommandCC
     chmod -R u+w nanofil
     cd nanofil
     patchShebangs tests bin
-    # Above the interactive 20 s: a check must not time out on a loaded
-    # builder (unused-intrinsics.c took 22 s beside two CPython builds).
-    export COMPILE_TIMEOUT=60
+    # Wall-clock limits that catch hangs, not slowness: CI runs a shard on
+    # 4 vCPUs that eight parallel compiles share (bounds edges), where a
+    # 30 s compile takes over 60 s and a step that takes 2 minutes on an
+    # orb takes over 5. Below tests/par.sh's 300 s per file, so a compile
+    # timeout is reported as such.
+    export COMPILE_TIMEOUT=240 PROG_TIMEOUT=60
     # Commands run from a saved state (bin/nanofil); scripts still load
     # src/, so both paths are tested.
     bin/nanofil --save-state "$TMPDIR/nanofil.state"
