@@ -214,6 +214,57 @@ Lemma action_events_exit_free : forall action status,
   ~ In (ProcessExit status) (action_events action).
 Proof. intros action status. destruct action; simpl; try tauto. destruct action; simpl; intuition discriminate. Qed.
 
+(** A conservative partial segment stays in its selected output family
+    and byte budget. Control actions, including callback entry, print
+    nothing. This does not claim coverage of mixed native segments. *)
+Definition partial_actions (action : shutdown_action) (actions : list stream_action) : Prop :=
+  match action with
+  | ShutdownOutput (Accept wanted) =>
+      Forall (fun a => exists bytes, a = Accept bytes) actions /\
+      exists tail, wanted = accepted actions ++ tail
+  | ShutdownOutput (Deliver wanted) =>
+      Forall (fun a => exists bytes, a = Deliver bytes) actions /\
+      exists tail, wanted = resolved actions ++ tail
+  | ShutdownOutput (Discard wanted) =>
+      Forall (fun a => exists bytes, a = Discard bytes) actions /\
+      exists tail, wanted = resolved actions ++ tail
+  | ShutdownOutput OutputError => actions = [] \/ actions = [OutputError]
+  | _ => actions = []
+  end.
+
+(** A terminal summary of one original segment, not a resumable trace.
+    Delivery and discard remain distinct in the retained action history;
+    only acceptance can produce a cumulative stdout observation. *)
+Definition partial_output action q trace actions q' : Prop :=
+  partial_actions action actions /\ stream_run q actions q' /\
+  match action with
+  | ShutdownOutput (Accept _) => prefix_observation trace actions
+  | _ => trace = []
+  end.
+
+(** Partial actions cannot smuggle a process-exit event into a leaf. *)
+Lemma partial_output_exit_free : forall action q trace actions q' status,
+  partial_output action q trace actions q' -> ~ In (ProcessExit status) trace.
+Proof.
+  intros action q trace actions q' status (_ & _ & Hobs).
+  destruct action; simpl in Hobs; try (subst trace; simpl; tauto).
+  destruct action; simpl in Hobs; try (subst trace; simpl; tauto).
+  destruct Hobs as [[-> _]| ->]; simpl; intuition discriminate.
+Qed.
+
+(** The actual stream path, not a successful lifecycle endpoint, gives
+    FIFO accounting, well-formedness and sticky error at partial leaves. *)
+Theorem partial_output_accounting : forall action q trace actions q',
+  partial_output action q trace actions q' ->
+  outstanding q ++ accepted actions = resolved actions ++ outstanding q' /\
+  (stream_wf q -> stream_wf q') /\
+  (stream_error q = true -> stream_error q' = true).
+Proof.
+  intros action q trace actions q' (_ & Hrun & _). split.
+  - apply stream_accounting. exact Hrun.
+  - split; [eapply stream_run_wf|eapply stream_error_sticky]; eauto.
+Qed.
+
 (** Trusted segment selection is independent of successful execution.
     ABI/arguments describe the selected segment boundary, not a proof
     of native callback calling conventions or retained-argument validity. *)
@@ -272,11 +323,19 @@ Proof.
 Qed.
 
 (** The outer sum consumes completion once; neither resource leaves nor
-    unfinished puts observations acquire a normal-exit continuation. *)
+    unfinished observations acquire a normal-exit continuation. Shutdown
+    leaves retain original snapshots as provenance, not endpoint phases
+    or inventories; their memory/world and observed stdout are separate. *)
 Inductive state : Type :=
 | Application (body : M.state program_world)
 | ShuttingDown (runtime : R.state) (memory : mem) (stdio : stdio_world) (sh : shutdown_state)
 | Unfinished (runtime : R.state) (memory : mem) (world : program_world)
+| ShutdownUnfinished (runtime : R.state) (memory : mem) (stdio : stdio_world)
+    (original : shutdown_state) (action : shutdown_action)
+    (observed : list stream_action) (stdout : stream_state)
+| ShutdownResource (why : reason) (runtime : R.state) (memory : mem) (stdio : stdio_world)
+    (original : shutdown_state) (action : shutdown_action)
+    (observed : list stream_action) (stdout : stream_state)
 | Finished (runtime : R.state) (memory : mem) (stdio : stdio_world) (sh : shutdown_state).
 
 (** Host completion is explicitly tied to the entire handoff snapshot. *)
@@ -308,6 +367,23 @@ Inductive step (rep : mem -> stdio_world -> Prop)
 | program_shutdown : forall s m w sh action trace s' m' w' sh',
     realizes b s m w sh action trace s' m' w' sh' ->
     step rep requests b host (ShuttingDown s m w sh) trace (ShuttingDown s' m' w' sh')
+| program_shutdown_unfinished : forall s m w sh action full born trace s' m' w' actions q',
+    shutdown_step sh action full -> shutdown_ready b s m w sh ->
+    shutdown_admissible b s m w sh action ->
+    M.E.prefix (action_contract b sh action) (action_words b sh action)
+      s m w born trace s' m' w' ->
+    partial_output action (shutdown_stdout sh) trace actions q' ->
+    step rep requests b host (ShuttingDown s m w sh) trace
+      (ShutdownUnfinished s' m' w' sh action actions q')
+| program_shutdown_resource : forall s m w sh action full why trace s' m' w' actions q',
+    shutdown_step sh action full -> shutdown_ready b s m w sh ->
+    shutdown_admissible b s m w sh action ->
+    M.E.invoke (action_contract b sh action) (action_result b sh action)
+      (action_arguments b sh action) (action_words b sh action)
+      s m w trace (CallResource why) s' m' w' ->
+    partial_output action (shutdown_stdout sh) trace actions q' ->
+    step rep requests b host (ShuttingDown s m w sh) trace
+      (ShutdownResource why s' m' w' sh action actions q')
 | program_complete : forall s m w kind status pending consumed q,
     host s m w (mkShutdown (HandedOff kind) status pending consumed q) ->
     step rep requests b host (ShuttingDown s m w (mkShutdown (HandedOff kind) status pending consumed q))
@@ -339,6 +415,52 @@ Proof. intros rep requests b host s m w sh trace st Hstep. inversion Hstep. Qed.
 Theorem unfinished_terminal : forall rep requests b host s m w trace st,
   ~ step rep requests b host (Unfinished s m w) trace st.
 Proof. intros rep requests b host s m w trace st Hstep. inversion Hstep. Qed.
+
+(** A partial shutdown snapshot is provenance, not a resumed lifecycle
+    state. No host rule can complete either kind of terminal leaf. *)
+Theorem shutdown_leaves_terminal : forall rep requests b host s m w sh action actions q trace st,
+  ~ step rep requests b host (ShutdownUnfinished s m w sh action actions q) trace st /\
+  forall why, ~ step rep requests b host (ShutdownResource why s m w sh action actions q) trace st.
+Proof. intros. split; intros; intro Hstep; inversion Hstep. Qed.
+
+(** Even without successful endpoint readiness, an unfinished observation
+    keeps allocator readiness and all old object identities through effects. *)
+Theorem shutdown_unfinished_preserve : forall rep requests b host s m w sh trace s' m' w' action actions q,
+  step rep requests b host (ShuttingDown s m w sh) trace
+    (ShutdownUnfinished s' m' w' sh action actions q) -> R.ready s m ->
+  R.ready s' m' /\ persists m m'.
+Proof.
+  intros rep requests b host s m w sh trace s' m' w' action actions q Hstep Hr.
+  inversion Hstep; subst. eapply M.E.prefix_preserve; eauto.
+Qed.
+
+(** A resource endpoint carries the same preservation evidence as its
+    actual invocation, not merely a resource label or logical edge. *)
+Theorem shutdown_resource_preserve : forall rep requests b host s m w sh trace why s' m' w' action actions q,
+  step rep requests b host (ShuttingDown s m w sh) trace
+    (ShutdownResource why s' m' w' sh action actions q) -> R.ready s m ->
+  R.ready s' m' /\ persists m m'.
+Proof.
+  intros rep requests b host s m w sh trace why s' m' w' action actions q Hstep Hr.
+  inversion Hstep; subst. eapply M.E.invoke_preserve; eauto.
+Qed.
+
+(** A reached resource leaf carries a genuine requested refusal. The
+    shared classification excludes it from capability panics. *)
+Theorem shutdown_resource_nonfailure : forall rep requests b host st trace why s m w sh action actions q,
+  step rep requests b host st trace (ShutdownResource why s m w sh action actions q) ->
+  resource_reason why /\ ~ failure_ending (CoreEnd (Trap why)).
+Proof.
+  intros rep requests b host st trace why s m w sh action actions q Hstep.
+  inversion Hstep; subst. match goal with Hcall : M.E.invoke _ _ _ _ _ _ _ _ _ _ _ _ |- _ =>
+    inversion Hcall; subst end.
+  match goal with Hnormal : forall why, CallResource _ <> CallResource why |- _ =>
+    exfalso; apply (Hnormal why); reflexivity end.
+  assert (Hr : resource_reason why).
+  { match goal with Hrefuse : M.E.resource_failure _ _ _ |- _ => inversion Hrefuse end;
+      unfold resource_reason; auto. }
+  split; [exact Hr|]. apply resource_not_failure. exact Hr.
+Qed.
 
 (** No continuation is added to the inner machine's stopped observations. *)
 Theorem stopped_application_terminal : forall rep requests b host why ms w trace st,
@@ -413,6 +535,7 @@ Definition runtime_ready (st : state) : Prop :=
   match st with
   | Application body => M.state_ready program_world body
   | ShuttingDown s m _ _ | Unfinished s m _ | Finished s m _ _ => R.ready s m
+  | ShutdownUnfinished s m _ _ _ _ _ | ShutdownResource _ s m _ _ _ _ _ => R.ready s m
   end.
 
 (** No ready outer step can lose allocator readiness. *)
@@ -423,6 +546,8 @@ Proof.
   - eapply M.step_ready; [|exact H|exact Hr]. reflexivity.
   - exact (proj1 (M.E.prefix_preserve _ _ _ _ _ _ _ _ _ _ _ H3 Hr)).
   - exact (proj1 (realizes_preserve _ _ _ _ _ _ _ _ _ _ _ H Hr)).
+  - exact (proj1 (M.E.prefix_preserve _ _ _ _ _ _ _ _ _ _ _ H2 Hr)).
+  - exact (proj1 (M.E.invoke_preserve _ _ _ _ _ _ _ _ _ _ _ _ _ H2 Hr)).
 Qed.
 
 (** Runtime readiness holds at every finite endpoint. *)
@@ -506,6 +631,8 @@ Proof.
   - left. apply exit_free_count. intros status. eapply puts_stream_prefix_exit_free.
     exact (proj2 (proj2 (proj2 H3))).
   - left. destruct H. subst trace. apply exit_free_count. apply action_events_exit_free.
+  - left. apply exit_free_count. intros status. eapply partial_output_exit_free; eauto.
+  - left. apply exit_free_count. intros status. eapply partial_output_exit_free; eauto.
   - right. do 4 eexists. split; reflexivity.
 Qed.
 
@@ -739,6 +866,149 @@ Proof.
     + apply fixture_shutdown.
     + eapply P.program_next with (trace := [ProcessExit 0]) (tail := []);
         [apply P.program_complete; exact I|constructor].
+Qed.
+
+(** Partial controls have no successful endpoint premise. This fixture
+    deliberately makes Handlers unready and every action post false. *)
+Definition prefix_boundary : P.shutdown_boundary :=
+  P.mkShutdownBoundary (fun _ _ _ sh => shutdown_at sh = Tls) (fun _ _ => segment)
+    (fun _ _ => CVoid) (fun _ _ => []) (fun _ _ => [])
+    (fun _ _ _ _ _ _ _ _ _ _ _ => False).
+
+(** An empty unfinished TLS segment exists although the complete target
+    is unready and cannot satisfy the selected action's postcondition. *)
+Example unfinished_without_completion : forall s m w q host,
+  P.step fixture_rep fixture_requests prefix_boundary host
+    (P.ShuttingDown s m w (mkShutdown Tls 0 [] [] q)) []
+    (P.ShutdownUnfinished s m w (mkShutdown Tls 0 [] [] q) EmptyTls [] q) /\
+  ~ P.shutdown_ready prefix_boundary s m w (mkShutdown Handlers 0 [] [] q).
+Proof.
+  intros s m w q host. split; [|discriminate].
+  eapply P.program_shutdown_unfinished with (born := [])
+    (full := mkShutdown Handlers 0 [] [] q).
+  - constructor.
+  - reflexivity.
+  - split; exact I.
+  - split; [constructor|exact I].
+  - split; [reflexivity|]. split; [constructor|reflexivity].
+Qed.
+
+(** A partial delivery settles only the oldest selected bytes and
+    preserves an existing error, without claiming the action completed. *)
+Example partial_delivery_exact :
+  P.partial_output (ShutdownOutput (Deliver [65; 66]))
+    (mkStream ByteOriented [65; 66; 67] true) [] [Deliver [65]]
+    (mkStream ByteOriented [66; 67] true).
+Proof.
+  split.
+  - split; [constructor; [exists [65]; reflexivity|constructor]|exists [66]; reflexivity].
+  - split; [|reflexivity]. eapply stream_next;
+      [exact (stream_deliver [65] [66; 67] true ltac:(discriminate))|constructor].
+Qed.
+
+(** Control/hidden output, excess acceptance, non-FIFO delivery and
+    delivery/discard substitution are not admitted partial observations. *)
+Example incompatible_partial_output :
+  (~ P.partial_output EmptyTls stdout_initial [StreamBytes 1 [65]] [Accept [65]]
+    (mkStream ByteOriented [65] false)) /\
+  (~ P.partial_output (ShutdownOutput (Accept [65; 66])) stdout_initial
+    [StreamBytes 1 [65; 66; 67]] [Accept [65; 66; 67]]
+    (mkStream ByteOriented [65; 66; 67] false)) /\
+  (~ P.partial_output (ShutdownOutput (Deliver [66; 65]))
+    (mkStream ByteOriented [65; 66] false) [] [Deliver [66]]
+    (mkStream ByteOriented [65] false)) /\
+  (~ P.partial_output (ShutdownOutput (Deliver [65; 66]))
+    (mkStream ByteOriented [65; 66] false) [] [Discard [65]]
+    (mkStream ByteOriented [66] true)) /\
+  (~ P.partial_output (ShutdownOutput (Deliver [65]))
+    (mkStream ByteOriented [65; 66] false) [] [Deliver [65; 66]]
+    (mkStream ByteOriented [] false)) /\
+  (~ P.partial_output (ShutdownOutput (Discard [65]))
+    (mkStream ByteOriented [65; 66] false) [] [Discard [65; 66]]
+    (mkStream ByteOriented [] true)) /\
+  (~ P.partial_output (ShutdownOutput (Accept [65; 66])) stdout_initial
+    [] [Accept [65]] (mkStream ByteOriented [65] false)).
+Proof.
+  repeat split.
+  - intros [Hactions _]. discriminate.
+  - intros [[_ [tail Hbad]] _]. discriminate.
+  - intros [_ [Hrun _]]. inversion Hrun; subst.
+    match goal with Hstep : stream_step _ _ _ |- _ => inversion Hstep; subst end. discriminate.
+  - intros [[Hfamily _] _]. inversion Hfamily as [|a rest [bytes Hbad] Hrest]; subst.
+    discriminate.
+  - intros [[_ [tail Hbad]] _]. discriminate.
+  - intros [[_ [tail Hbad]] _]. discriminate.
+  - intros [_ [_ [[_ Hhidden]|Hhidden]]]; discriminate.
+Qed.
+
+(** A logical test contract can first allocate and accept a byte, then
+    genuinely refuse an oversized request. It has no normal completion. *)
+Definition resource_segment : contract stdio_world :=
+  mkContract stdio_world RVoid (fun _ _ => True) (fun _ _ _ => True)
+    (fun _ _ _ => []) (fun _ _ _ => []) (fun _ _ _ => [])
+    (fun _ _ _ align size => align = 16 /\ (size = 16 \/ size = 2 ^ 48))
+    (fun _ _ _ _ _ _ _ => True) (fun _ _ _ _ _ _ _ _ => False)
+    resource_reason (fun _ => False).
+
+(** This fixture grants source readiness but no successful action post. *)
+Definition resource_boundary : P.shutdown_boundary :=
+  P.mkShutdownBoundary (fun _ _ _ _ => True) (fun _ _ => resource_segment)
+    (fun _ _ => CVoid) (fun _ _ => []) (fun _ _ => [])
+    (fun _ _ _ _ _ _ _ _ _ _ _ => False).
+
+(** The refusal leaf keeps nonempty memory and output progress, rather
+    than rolling back to the selected action's original snapshot. *)
+Example resource_after_progress : forall host entry,
+  P.step fixture_rep fixture_requests resource_boundary host
+    (P.ShuttingDown InterpRuntime.start HiChecks.memory hello_world
+      (mkShutdown (InCallback entry) 0 [] [] stdout_initial))
+    [StreamBytes 1 [65]]
+    (P.ShutdownResource TooBig (InterpRuntime.start + 32)
+      (allocated HiChecks.memory (heap_req 16 16) InterpRuntime.start) hello_world
+      (mkShutdown (InCallback entry) 0 [] [] stdout_initial)
+      (ShutdownOutput (Accept [65; 66])) [Accept [65]]
+      (mkStream ByteOriented [65] false)).
+Proof.
+  intros host entry.
+  eapply P.program_shutdown_resource with
+    (full := mkShutdown (InCallback entry) 0 [] [] (mkStream ByteOriented [65; 66] false)).
+  - apply shutdown_callback_output. apply stream_accept; [discriminate|repeat constructor; lia].
+  - exact I.
+  - split; exact I.
+  - eapply P.M.E.invoke_resource with (born := [InterpRuntime.start]).
+    + exact I.
+    + exact I.
+    + split; [|exact I]. eapply P.M.E.effects_alloc with
+        (align := 16) (size := 16) (base := InterpRuntime.start)
+        (s1 := InterpRuntime.start + 32).
+      * split; [reflexivity|left; reflexivity].
+      * unfold max_allocation_size. lia.
+      * reflexivity.
+      * constructor.
+    + eapply P.M.E.failure_big with (align := 16) (size := 2 ^ 48).
+      * split; [reflexivity|right; reflexivity].
+      * unfold max_allocation_size. lia.
+    + right. reflexivity.
+  - split.
+    + split; [constructor; [exists [65]; reflexivity|constructor]|exists [66]; reflexivity].
+    + split.
+      * eapply stream_next; [apply stream_accept; [discriminate|repeat constructor; lia]|constructor].
+      * right. reflexivity.
+Qed.
+
+(** Without a permitted request there is no resource endpoint, even
+    when the logical action and its empty prefix are available. *)
+Example unrequested_refusal_rejected : forall rep requests host s m w sh trace why s' m' w' action actions q,
+  ~ P.step rep requests boundary host (P.ShuttingDown s m w sh) trace
+    (P.ShutdownResource why s' m' w' sh action actions q).
+Proof.
+  intros rep requests host s m w sh trace why s' m' w' action actions q Hstep.
+  inversion Hstep; subst.
+  match goal with Hcall : P.M.E.invoke _ _ _ _ _ _ _ _ _ _ _ _ |- _ => inversion Hcall; subst end.
+  - match goal with Hnormal : forall why, CallResource _ <> CallResource why |- _ =>
+      apply (Hnormal why); reflexivity end.
+  - match goal with Hrefuse : P.M.E.resource_failure _ _ _ |- _ => inversion Hrefuse; subst end;
+      contradiction.
 Qed.
 
 End ProgramChecks.

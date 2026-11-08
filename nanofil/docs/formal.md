@@ -1019,6 +1019,47 @@ implementations**. The contracts are listed separately in the
 no new axioms or core machine rules were added. Lifecycle prefix/resource
 coverage remains the next closure slice.
 
+### Campaign 4, milestone 4j: terminal shutdown prefixes and refusals
+
+[Program.v](../rocq/theories/Program.v) now represents unfinished
+shutdown segments and genuine requested allocation refusals as separate
+terminal leaves. Each keeps the exact endpoint runtime, memory and
+stdio world, the original selected lifecycle snapshot, the selected
+action and the observed stdout history/state. The original snapshot
+is provenance, **not** a statement that its phase or inventory describes
+native endpoint memory. Neither leaf can restart its cumulative prefix,
+continue cleanup or use the host-completion rule.
+
+Selection and admission are independent of completion: an enabled
+`shutdown_step`, source shutdown readiness and the action's ABI and
+argument preconditions are required. Unfinished leaves need the actual
+selected contract's effect prefix; resource leaves need its actual
+`invoke` ending in `CallResource`, including a permitted request and
+real refusal evidence. Neither requires `action_post`, successful target
+readiness or a completed lifecycle transition. Actual effects preserve
+allocator readiness and object identities. Refusal reasons satisfy the
+shared `failure_ending` classification, and the existing application
+safety and at-most-one-exit theorems continue to hold.
+
+Partial stdout histories conservatively stay within the selected action:
+acceptance, delivery and discard cannot change families or exceed the
+selected byte prefix; an output-error segment observes zero or one
+error; control actions have no output history. A real `stream_run`
+supplies FIFO accounting, well-formedness and sticky error. Only
+acceptance has a cumulative stdout event; no partial leaf emits exit.
+Delivery and discard histories remain distinct even when their logical
+endpoints coincide.
+
+Logical fixtures cover unfinished TLS with no successful post/target
+readiness, partial FIFO delivery, and a resource refusal after both
+allocation and partial acceptance. Regressions reject control output,
+excess acceptance, wrong-prefix delivery, delivery/discard substitution
+and unrequested resource endings. These are **not native blocking or
+refusal coverage proofs**. Mixed-operation native segments, independently
+valid callback admission and a selected complete boundary still need
+instantiation; absence of a prefix witness proves neither safety nor a
+native trap. The new rules add no axioms and leave Machine/Runtime alone.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and
