@@ -379,16 +379,21 @@ Definition strnlen_contract (world : Type) : contract world :=
     (fun _ => False)
     (fun why => In why [NullCapability; OutOfBounds; ArgumentSize; ReturnSize]).
 
-(** memchr admits a canonical int bit pattern and size_t count, with a
-    live capability reading the entire count of well-formed bytes.
-    Unlike [bounded_length], an early match does not shorten this
-    premise. Zero count still needs live authority, possibly one-past. *)
-Definition memchr_input (m : mem) (p : ptr) (c n : Z) : Prop :=
-  0 <= c < 2 ^ 32 /\ 0 <= n < 2 ^ 64 /\
+(** A canonical size_t count of well-formed bytes is readable through
+    one live object capability. Zero count still needs live authority,
+    possibly one-past. This is a full-span premise, not an early-stop scan. *)
+Definition readable_bytes (m : mem) (p : ptr) (n : Z) : Prop :=
+  0 <= n < 2 ^ 64 /\
   (exists base reg, (ptr_cap p = Obj base \/ ptr_cap p = Ro base) /\
     object_region base (m_regions m) = Some reg /\ r_life reg = Live) /\
   access_res m (ptr_addr p) (ptr_cap p) n Read 1 = Some ok /\
   (forall i, 0 <= i < n -> 0 <= m_bytes m (ptr_addr p + i) < 256).
+
+(** memchr admits a canonical int bit pattern and [readable_bytes].
+    Unlike [bounded_length], an early match does not shorten this
+    premise. *)
+Definition memchr_input (m : mem) (p : ptr) (c n : Z) : Prop :=
+  0 <= c < 2 ^ 32 /\ readable_bytes m p n.
 
 (** A hit is the first matching byte, with exactly the input capability;
     a miss is null. The int's low byte implements unsigned-char
@@ -741,13 +746,13 @@ Proof.
   - contradiction.
 Qed.
 
-(** A ready memchr input's entire interval fits in the address space;
+(** A ready readable byte span's entire interval fits in the address space;
     unlike [bounded_length_extent], this includes the full maximum. *)
-Lemma memchr_input_extent : forall s m p c n,
-  R.ready s m -> memchr_input m p c n ->
+Lemma readable_bytes_extent : forall s m p n,
+  R.ready s m -> readable_bytes m p n ->
   0 <= ptr_addr p /\ ptr_addr p + n <= 2 ^ 48.
 Proof.
-  intros s m p c n Hr (_ & _ & (base & reg & Hcap & Hreg & _) & Ha & _).
+  intros s m p n Hr (_ & (base & reg & Hcap & Hreg & _) & Ha & _).
   pose proof (R.address_space s m Hr base reg Hreg) as [Hb Hend].
   unfold access_res in Ha. destruct Hcap as [Hcap | Hcap]; rewrite Hcap in Ha;
     cbn in Ha; rewrite Hreg in Ha.
@@ -756,6 +761,12 @@ Proof.
   all: apply andb_true_iff in E; destruct E as [Hlo Hhi];
     apply Z.leb_le in Hlo; apply Z.leb_le in Hhi; lia.
 Qed.
+
+(** Keep the memchr-specific full-interval consequence. *)
+Lemma memchr_input_extent : forall s m p c n,
+  R.ready s m -> memchr_input m p c n ->
+  0 <= ptr_addr p /\ ptr_addr p + n <= 2 ^ 48.
+Proof. intros s m p c n Hr [_ Hin]. eapply readable_bytes_extent; eauto. Qed.
 
 End ExternalCalls.
 
