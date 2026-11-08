@@ -63,7 +63,7 @@ package in Filnix rather than only what nanofil compiles.
 | 4 | Observations, refinement, and libc contracts | a trace semantics; `opt:refines/2` as trace inclusion | [ExternalCalls.v](../rocq/theories/ExternalCalls.v) states trusted contracts and finite effect prefixes, starting with `puts`; [ExternalMachine.v](../rocq/theories/ExternalMachine.v) adds guarded direct-call transitions and finite labelled runs, preserving readiness, identities and Campaign 3's two invariants; native instances/trace coverage, executable integration and refinement remain open |
 | 5 | Static discharge by certificate | `discharged(Cert)`, `discharge_ok`, a Prolog finder | not started |
 | 6 | Integration with Filnix and the playground | the `nanofil-check` gate | not started |
-| 7 | Trap-freedom of a pinned Nix closure: a program that never panics | `never_panics` of one closure: a closed module, then a one-call libc program, then GNU Hello (`nanofil-hello-O`); `ls` next; this build of OpenSSH's server as the stretch | [step 0 measured](trap-census.md): Hello has 1,398 class-`a` sites, 360 flag-only renewals; all 178 functions in 81 objects inside the subset, `valid = Some true`; `never_panics` stated in [Panics.v](../rocq/theories/Panics.v); no trap-freedom proof yet |
+| 7 | Trap-freedom of a pinned Nix closure: a program that never panics | `never_panics` of one closure: a closed module, then a one-call libc program, then GNU Hello (`nanofil-hello-O`); `ls` next; this build of OpenSSH's server as the stretch | [step 0 measured](trap-census.md): Hello has 1,398 class-`a` sites, 360 flag-only renewals; all 178 functions in 81 objects inside the subset, `valid = Some true`; `never_panics` stated in [Panics.v](../rocq/theories/Panics.v); step 1 proved: [Sum.v](../rocq/theories/Sum.v)'s `sum_never_panics`, a closed loop over a global array, for every runtime |
 
 ## The claims, kept apart
 
@@ -1410,11 +1410,25 @@ discharge.
 | Step | Program | Needs |
 | --- | --- | --- |
 | 0 | [measured: obligation census](trap-census.md) of `hi.c` and `nanofil-hello-O`, plus `valid` over all Hello objects | Campaign 0's query over Hello; no proof |
-| 1 | a closed corpus module with no external calls, such as tests/filc/gc.ir's list `sum` | Campaign 3 complete; `never_panics` stated in Rocq; the program logic and its adequacy |
+| 1 | proved: [rocq/programs/sum.c](../rocq/programs/sum.c), a loop over a read-only global array with no input and no external call ([Sum.v](../rocq/theories/Sum.v)) | `never_panics` stated in Rocq ([Panics.v](../rocq/theories/Panics.v)); the module as a fixture ([rocq/programs.sh](../rocq/programs.sh)); a symbolic run over abstract memory. Next: an integer input, which needs loop invariants instead of one path |
 | 2 | `hi.c`, built by nanofil against the pinned libc | the external-call step; contracts for `puts` and the `exit` path; linking |
 | 3 | GNU Hello, `nanofil-hello-O` | the entry contract; about 60 libc contracts; triples for gnulib's string code; temporal reasoning for `quotearg` |
 | 4 | `ls`, from [nix/coreutils.nix](../nix/coreutils.nix) | contracts for directories, `stat` and locale; a malloc-heavy program |
 | stretch | this build of OpenSSH's server | its crypto libraries inside the closure; `fork`, signals and privilege separation; the concurrency inquiry |
+
+How step 1 is proved. nanofil -O's checked module of sum.c is
+committed as a Gallina term (SumCode.v), and the quick Rocq check fails
+when nanofil no longer makes it ([rocq/programs.sh](../rocq/programs.sh)).
+The program has one path, so Sum.v computes it with the model's own
+`step` on the initial memory (59 states) and then checks each step
+again with the memory and fuel abstract: every state steps to the next,
+returns 10, or runs out of fuel, in any memory that agrees with the
+initial one on the array's bytes and region. Runtime.v's safepoint
+axioms keep that agreement, since the array is global data, which no
+free empties, and no byte moves. The theorem needs neither readiness
+nor `spares`, and `Print Assumptions` of the interpreter's instance is
+empty. Changing the loop to `i <= 4` makes both the fixture check and
+the proof fail.
 
 Gates: each step's proof is checked in a Nix check, and its
 certificates are replayed by the extracted checker. A planted
