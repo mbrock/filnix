@@ -116,6 +116,44 @@ static int host_completion(const char *mode, int status, const char *expected) {
         WIFEXITED(st) && WEXITSTATUS(st) == status &&
         n == strlen(expected) && memcmp(buf, expected, n) == 0;
 }
+// The registry, rather than this caller, retains each argument capability.
+// Once a callback has consumed its argument, later callbacks need not keep
+// that object live. Exercise both sides of the pinned 32-slot block boundary.
+static void block_handler(int status, void *arg) {
+    if (status != 47) _exit(99);
+    unsigned char byte = *(unsigned char *)arg;
+    free(arg);
+    if (write(pipe_out, &byte, 1) != 1) _exit(99);
+}
+static int block_exit(int count) {
+    fflush(0);
+    int fd[2];
+    if (pipe(fd)) return 0;
+    pid_t child = fork();
+    if (child == 0) {
+        close(fd[0]); pipe_out = fd[1];
+        if (dup2(fd[1], 1) < 0 || dup2(fd[1], 2) < 0) _exit(99);
+        for (int i = 0; i < count; ++i) {
+            unsigned char *arg = malloc(1);
+            if (!arg) _exit(99);
+            *arg = (unsigned char)(i * 73 + 19);
+            if (on_exit(block_handler, arg)) _exit(99);
+        }
+        exit(47);
+    }
+    close(fd[1]);
+    unsigned char bytes[128];
+    size_t n = 0;
+    ssize_t r;
+    while (n < sizeof bytes && (r = read(fd[0], bytes + n, sizeof bytes - n)) > 0) n += r;
+    close(fd[0]);
+    int st = 0;
+    if (child < 0 || waitpid(child, &st, 0) != child ||
+        !WIFEXITED(st) || WEXITSTATUS(st) != 47 || n != (size_t)count) return 0;
+    for (int i = 0; i < count; ++i)
+        if (bytes[i] != (unsigned char)((count - i - 1) * 73 + 19)) return 0;
+    return 1;
+}
 int main(int argc, char **argv) {
     if (argc == 2) {
         pipe_out = 1;
@@ -152,5 +190,7 @@ int main(int argc, char **argv) {
     answer("soft exit reaches host completion after handlers and flush", host_completion("--soft", 2, "EZ"));
     answer("hard exit reaches host completion without handlers or flush", host_completion("--hard", 254, ""));
     answer("underscore-exit reaches host completion with wrapped status", host_completion("--underscore", 1, ""));
+    answer("exit registry retains arguments across block boundaries",
+           block_exit(31) && block_exit(32) && block_exit(33) && block_exit(65));
     return 0;
 }

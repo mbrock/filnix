@@ -11,3 +11,4 @@ main return reaches host completion with signed low-byte status: yes
 soft exit reaches host completion after handlers and flush: yes
 hard exit reaches host completion without handlers or flush: yes
 underscore-exit reaches host completion with wrapped status: yes
+exit registry retains arguments across block boundaries: yes

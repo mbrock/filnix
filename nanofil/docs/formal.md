@@ -1106,6 +1106,46 @@ The independent partial-output histories of milestone 4j still do not
 prove exact native queue correspondence. No unconditional hi.c closure,
 native totality or native implementation proof is claimed.
 
+### Campaign 4 milestone 4l: the pinned exit registry memory view
+
+`ExitMemory.v` describes a **snapshot**, not a registry executor or native
+satisfaction proof. The pinned `stdlib/exit.h` declarations, extracted and
+compiled with Fil-C, give 32-byte entries, 1040-byte blocks, next/idx/fns
+offsets 0, 8 and 16, and function/argument/DSO offsets 8, 16 and 24 within an entry.
+This measures the source-selected declarations, not hidden runtime object
+locations. Synchronization and stability between cutpoints remain separate.
+
+The checked containing-object access and decoded pointer capabilities are
+both required. Chains are finite, null-terminated and identity-distinct.
+`idx` counts represented physical slots, **not live callbacks**: free and
+reserved slots are skipped, while unknown flavors fail the view. Blocks
+scan head-first, each block scanning slots downward. This pin stores
+`atexit` registrations as `ef_cxa` with null argument/DSO; adapting that to
+logical `AtExit` still requires its calling-convention contract.
+
+Pending callbacks and the detached active callback require independent
+admission/argument specifications. A decoded `Fn` capability alone is not
+one. Slots at or above decremented `idx` may retain stale payloads, and
+consumed callback arguments need not remain live. Ghost registration tokens
+are not reusable slot addresses. Writable spans remain independent of the
+read-only view. Block release eligibility additionally needs explicit
+ownership, an exhausted live Heap base with enough extent, unlinking and a
+distinct nonempty successor chain; the last node is retained even if Heap.
+The predicate does not itself perform a release or prove its footprint.
+
+Model fixtures inhabit a registry with a free hole and check reversed
+multi-block projection, stale payload exclusion, detached admission and
+rejection of excessive idx, wrong link/function capabilities, unknown
+flavors, repeated blocks and unowned/last-node release. The native
+`libc-exit.c` probe checks 31, 32, 33 and 65 registrations with asymmetric heap
+arguments, reverse callback order, exact status and descriptor bytes,
+freeing each argument after consumption. Startup registrations and holes
+mean these counts do **not** measure exact native slot occupancy; direct
+callback writes are not stdio acceptance observations. These are finite
+counterexample probes, not universal implementation proofs. Selected
+startup callback specifications, native registry representation satisfaction,
+locking/stability and lifecycle segment coverage remain to instantiate.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and
