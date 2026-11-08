@@ -122,13 +122,24 @@ Proof.
   exact (Hs _ _ _ _ _ Hpt Hn Hrp Hpos Hsd).
 Qed.
 
+(** The same where only definitions that are not a `check_ahead` need
+    to replay (`scope_plain`). *)
+Lemma plain_replays : forall ge fr m l k n i,
+  scope_plain ge fr m -> point_site (fr_fn fr) (fr_at fr) = Some (l, k) ->
+  lookup n (single_definitions (fr_fn fr)) = Some (DInst i) -> replayable i = true -> ahead_free i = true ->
+  dominating (fr_fn fr) l k n -> replays ge (single_definitions (fr_fn fr)) (fr_env fr) m n i.
+Proof.
+  intros ge fr m l k n i Hs Hpt Hn Hrp Ha (s & D & Hn' & Hpos & Hsd). rewrite Hn in Hn'. injection Hn' as <-.
+  exact (Hs _ _ _ _ _ Hpt Hn Hrp Hpos Hsd Ha).
+Qed.
+
 (** ## Offset intervals at a point *)
 
 (** `interval_at`: an interval the validator derives holds of the value
     a frame reads, where the names it walks dominate the frame's point. *)
 Theorem interval_at : forall ge md fr m l k v k' lo hi,
   checked_module md -> In (IFunc (fr_fn fr)) md -> is_reachable (fn_doms (fr_fn fr)) l = true ->
-  scope_holds ge fr m -> point_site (fr_fn fr) (fr_at fr) = Some (l, k) ->
+  scope_plain ge fr m -> point_site (fr_fn fr) (fr_at fr) = Some (l, k) ->
   iv (single_definitions (fr_fn fr)) v k' lo hi -> (forall n, v = Tmp n -> dominating (fr_fn fr) l k n) ->
   in_iv ge (fr_env fr) k' v lo hi.
 Proof.
@@ -137,7 +148,8 @@ Proof.
   intros n k0 o args (n' & Hn & Ene) Hop Hk Hdom.
   apply name_eqb_true in Ene. subst n'.
   assert (Hrp : replayable (Let n k0 o args) = true) by (destruct o; try discriminate Hop; reflexivity).
-  destruct (dominating_replays _ _ _ _ _ _ _ Hs Hpt Hn Hrp Hdom) as (fr0 & m0 & e1 & l1 & m1 & Hst & Hn1 & Ha & _).
+  assert (Haf : ahead_free (Let n k0 o args) = true) by (destruct o; try discriminate Hop; reflexivity).
+  destruct (plain_replays _ _ _ _ _ _ _ Hs Hpt Hn Hrp Haf Hdom) as (fr0 & m0 & e1 & l1 & m1 & Hst & Hn1 & Ha & _).
   exists (fr_env fr0). split.
   - exact (let_holds_name _ _ _ _ _ _ _ _ (eq_sym Hn1) (step_let_holds _ _ _ _ _ _ _ _ _ _ Hop Hk Hst)).
   - intros a Hin' Ho. split.
@@ -268,7 +280,7 @@ Variables (ge : genv) (md : module) (fr : frame) (m : Memory.mem) (l : name) (k 
 Hypothesis Hmd : checked_module md.
 Hypothesis Hin : In (IFunc (fr_fn fr)) md.
 Hypothesis Hr : is_reachable (fn_doms (fr_fn fr)) l = true.
-Hypothesis Hs : scope_holds ge fr m.
+Hypothesis Hs : scope_plain ge fr m.
 Hypothesis Hpt : point_site (fr_fn fr) (fr_at fr) = Some (l, k).
 
 (** `chain_go_sound`: every element of a guard chain that is not a
@@ -293,7 +305,7 @@ Proof.
     assert (Hox : once_has (single_definitions (fr_fn fr)) x = true) by (unfold once_has; rewrite Ex; reflexivity).
     pose proof (Hdom x eq_refl Hox) as Hdx.
     destruct (Hrel ltac:(intros y E; injection E as <-; exact Hox)) as (pp & xo & Hpp & Hcap & Hxo & Haddr).
-    destruct (dominating_replays _ _ _ _ _ _ _ Hs Hpt Ex eq_refl Hdx) as (fr0 & m0 & e1 & l1 & m1 & Hst' & Hx1 & Hops & _).
+    destruct (plain_replays _ _ _ _ _ _ _ Hs Hpt Ex eq_refl eq_refl Hdx) as (fr0 & m0 & e1 & l1 & m1 & Hst' & Hx1 & Hops & _).
     assert (Hop : forall y, In (Tmp y) (map flight_arg_value args ++ [b']) ->
                    once_has (single_definitions (fr_fn fr)) y = true ->
                    dominating (fr_fn fr) l k y /\ lookup y (fr_env fr0) = lookup y (fr_env fr)).
@@ -547,7 +559,7 @@ Proof.
   destruct (skipn_cons _ _ _ _ _ (eq_sym Hk)) as (_ & _ & Hlen).
   assert (Hpt : point_site (fr_fn (c_frame c)) (fr_at (c_frame c)) = Some (l, Z.of_nat k))
     by (rewrite Ha, Hk; apply point_site_exec; [exact Hb | lia]).
-  exact (hull_access_not_unchecked ge md (c_frame c) (c_mem c) l (Z.of_nat k) Hmd Hinf Hr Hsc Hpt
+  exact (hull_access_not_unchecked ge md (c_frame c) (c_mem c) l (Z.of_nat k) Hmd Hinf Hr (scope_plain_of _ _ _ Hsc) Hpt
            i q fa live why Hfit Hl (Hdom Hr) Hfa Hh).
 Qed.
 

@@ -44,6 +44,7 @@ the interpreter and cites the predicate it copies.
 | `Chain.v` | `offset_interval/8`, `guard_chain/3`, `pointer_distance/4`, `hull_covered/7` (ir.pl) | what a frame reads off the single definitions that dominate its point; along every run, no access `hull_covered` accepts gives `unchecked` |
 | `Renew.v` | `renew_source_op/6`, `hull_renewable/8`, `half_known/6` (ir.pl); `renew_res/4`, `half_bound/6`, `half_res/4` (interp.pl) | along every run, no renew, renew over a hull or half check the pass accepts gives `unchecked` |
 | `Guard.v` | `guard_covers/5`, `limit_covers/5`, `lower_chain/3` (ir.pl); `kind_res/8` (interp.pl) | along every run, no `renew_if` or `check_limit` the pass accepts gives `unchecked` |
+| `Ahead.v` | `ahead_justified/3`, `ahead_block/6`, `ahead_edge/5`, `ahead_step/5`, `ahead_insts/8` (ir.pl) | the facts `check_ahead`'s backward pass keeps, as functions of the point, and that its one sweep computes them |
 | `Transport.v` | — | decoding a printed checked module, encoding outcomes, `judge`, `judge_valid` |
 | `Extract.v`, `extraction/main.ml` | — | OCaml extraction, and a reader of Prolog terms |
 
@@ -1112,6 +1113,37 @@ Decisions:
   instruction that is not a raw access: the pass accepted it, single
   definitions replay, and memory is in the address space. Both run
   theorems use it.
+
+### Facts ahead
+
+`Ahead.v` reads back `check_ahead`'s backward pass, the first step
+toward its doomed frame. `ahead_justified/3` sweeps a function's
+blocks once, last first, and keeps per point the *needs*: a base N and
+an offset H that every path from the point reaches by a raw access
+through N, before any poll edge, back edge or end. The file states
+those facts as functions of the point: `block_exit` (the meet over a
+block's edges, each reading its target's entry facts from the final
+table) and `facts_from` (the instructions after a point, walked
+backward). It proves the sweep computes them: each block's entry facts
+are what its instructions make of its exit (`ahead_entry`), and each
+accepted `check_ahead` is accepted with the facts after its own access
+(`ahead_accepted`).
+
+Decisions:
+
+- **The facts are read from the final table.** An edge reads its
+  target's entry only for a later block, which the sweep has already
+  finished, and labels are unique, so no later step changes it.
+- **Validate.v's `ahead_justified` is split as ir.pl's is**, into
+  `ahead_fold`, `ahead_block`, `ahead_edge` and `ahead_accepts`, so the
+  proofs read each part on its own. Behaviour is unchanged.
+- **Reading single definitions asks less.** Chain.v's
+  `pointer_distance_sound` and `guard_chain_sound`, and Guard.v, now
+  take `scope_plain`: every single definition but a `check_ahead`
+  replays. A doomed frame keeps that, while its doomed check_ahead
+  cannot replay, so the same lemmas will serve it. Renew.v still asks
+  every definition to replay, since a renew's source may be a
+  check_ahead.
 
 ## A need past 2^64
 

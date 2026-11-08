@@ -1126,6 +1126,24 @@ Definition proof_pointers (f : func) (once : list (name * def)) : list (name * v
                                  | _ => []
                                  end) (b_insts b)) (fn_blocks f).
 
+(** `ahead_accepts once next i`: the proof `ahead_insts/8` accepts at i,
+    a single-definition `check_ahead` of P whose access is followed by
+    the facts `next`: some exact base N of P at offset K, with K and
+    K + Lo near, has need(N) >= K + Hi there. *)
+Definition ahead_accepts (once : list (name * def)) (next : facts) (i : inst) : option name :=
+  match i with
+  | Let q A (CheckAhead lo hi _ _ _) [p] =>
+      if once_has once q &&
+         existsb (fun e => match exact_base once e with
+                           | Some (n, k) =>
+                               near_offset k && near_offset (k + lo) &&
+                               match lookup n next with Some h => k + hi <=? h | None => false end
+                           | None => false
+                           end) (guard_chain once p)
+      then Some q else None
+  | _ => None
+  end.
+
 (** The check_ahead proofs `ahead_insts/8` accepts in one block, walking
     its instructions from the last: `next` are the facts after the
     instruction that follows the current one, its access. *)
@@ -1134,51 +1152,48 @@ Fixpoint ahead_insts (once : list (name * def)) (ptrs : list (name * value)) (ri
   match ris with
   | [] => (after, js)
   | i :: rest =>
-      let js1 :=
-        match i with
-        | Let q A (CheckAhead lo hi _ _ _) [p] =>
-            if once_has once q &&
-               existsb (fun e => match exact_base once e with
-                                 | Some (n, k) =>
-                                     near_offset k && near_offset (k + lo) &&
-                                     match lookup n next with Some h => k + hi <=? h | None => false end
-                                 | None => false
-                                 end) (guard_chain once p)
-            then q :: js else js
-        | _ => js
-        end in
+      let js1 := match ahead_accepts once next i with Some q => q :: js | None => js end in
       ahead_insts once ptrs rest (ahead_step once ptrs i after) after js1
   end.
 
 Fixpoint index_of (l : name) (ls : list name) (n : nat) : option nat :=
   match ls with [] => None | l' :: rest => if name_eqb l l' then Some n else index_of l rest (S n) end.
 
-(** `ahead_justified(Blocks, Once, Ahead)`: the needs computed backward
-    in one pass over the blocks in reverse order. An edge carries its
+(** `ahead_edge(T, Pos, Order, In0, F)`: the facts an edge carries, its
     target's entry facts only if it is plain and goes to a later block. *)
+Definition ahead_edge (order : list name) (pos : option nat) (ins : list (name * facts)) (t : target)
+  : facts :=
+  match t with
+  | Poll _ => []
+  | To l =>
+      match index_of l order 0, pos, lookup l ins with
+      | Some tp, Some p, Some fs => if (p <? tp)%nat then fs else []
+      | _, _, _ => []
+      end
+  end.
+
+(** `phi_ends_need/3`, folded over a block's phis. *)
+Definition phis_end_needs (phs : list phi) (fs : facts) : facts :=
+  fold_left (fun (fs : facts) (ph : phi) => match ph with Phi d _ _ => del d fs end) phs fs.
+
+(** `ahead_block/6`: one block of the backward pass, its entry facts
+    added to `ins` and its accepted proofs to `js`. *)
+Definition ahead_block (order : list name) (once : list (name * def)) (ptrs : list (name * value))
+    (st : list (name * facts) * list name) (b : block) : list (name * facts) * list name :=
+  let (ins, js) := st in
+  let out := ahead_meet (map (ahead_edge order (index_of (b_label b) order 0) ins) (jump_targets (b_jump b))) in
+  let '(entry0, js') := ahead_insts once ptrs (rev (b_insts b)) out [] js in
+  (put (b_label b) (phis_end_needs (b_phis b) entry0) ins, js').
+
+(** `ahead_fold f once`: every block's entry facts, and the accepted
+    proofs, from one pass over the blocks in reverse order. *)
+Definition ahead_fold (f : func) (once : list (name * def)) : list (name * facts) * list name :=
+  fold_left (ahead_block (map b_label (fn_blocks f)) once (proof_pointers f once)) (rev (fn_blocks f)) ([], []).
+
+(** `ahead_justified(Blocks, Once, Ahead)`: the needs computed backward
+    in one pass over the blocks in reverse order. *)
 Definition ahead_justified (f : func) (once : list (name * def)) : list name :=
-  let bs := fn_blocks f in
-  let order := map b_label bs in
-  let ptrs := proof_pointers f once in
-  snd (fold_left
-         (fun (st : list (name * facts) * list name) (b : block) =>
-            let (ins, js) := st in
-            let pos := index_of (b_label b) order 0 in
-            let edge (t : target) : facts :=
-              match t with
-              | Poll _ => []
-              | To l =>
-                  match index_of l order 0, pos, lookup l ins with
-                  | Some tp, Some p, Some fs => if (p <? tp)%nat then fs else []
-                  | _, _, _ => []
-                  end
-              end in
-            let out := ahead_meet (map edge (jump_targets (b_jump b))) in
-            let '(entry0, js') := ahead_insts once ptrs (rev (b_insts b)) out [] js in
-            let entry := fold_left (fun (fs : facts) (ph : phi) => match ph with Phi d _ _ => del d fs end)
-                                   (b_phis b) entry0 in
-            (put (b_label b) entry ins, js'))
-         (rev bs) ([], [])).
+  snd (ahead_fold f once).
 
 (** ## Getters *)
 

@@ -82,15 +82,21 @@ Definition point_site (f : func) (pt : point) : option (name * Z) :=
       end
   end.
 
-(** `scope_holds ge fr m`: at fr's point, each replayable single
-    definition whose site dominates the point replays. *)
-Definition scope_holds (ge : genv) (fr : frame) (m : Memory.mem) : Prop :=
+(** `scope_with rp fr m`: at fr's point, each replayable single
+    definition whose site dominates the point satisfies rp. *)
+Definition scope_with (rp : list (name * def) -> env -> Memory.mem -> name -> inst -> Prop)
+    (fr : frame) (m : Memory.mem) : Prop :=
   let f := fr_fn fr in
   forall l k n s i,
     point_site f (fr_at fr) = Some (l, k) ->
     lookup n (single_definitions f) = Some (DInst i) -> replayable i = true ->
     In (n, s, DInst i) (def_positions f) -> site_dominates (fn_doms f) l k s = true ->
-    replays ge (single_definitions f) (fr_env fr) m n i.
+    rp (single_definitions f) (fr_env fr) m n i.
+
+(** `scope_holds ge fr m`: at fr's point, each replayable single
+    definition whose site dominates the point replays. *)
+Definition scope_holds (ge : genv) (fr : frame) (m : Memory.mem) : Prop :=
+  scope_with (replays ge) fr m.
 
 (** `shaped md fr`: fr runs a function of md, at a point of a reachable
     block, a suffix of its instructions. *)
@@ -364,11 +370,38 @@ Proof.
   exact (conj (persists_trans _ _ _ Hp Hp') Hfit).
 Qed.
 
-Lemma scope_mem : forall ge fr m m', scope_holds ge fr m -> persists m m' -> scope_holds ge fr m'.
+(** `moves rp`: rp of a name survives what `replays_change` allows: an
+    environment that keeps the name and its single-definition operands,
+    and a memory that persists. *)
+Definition moves (rp : list (name * def) -> env -> Memory.mem -> name -> inst -> Prop) : Prop :=
+  forall once e e' m m' n i,
+    rp once e m n i -> lookup n e' = lookup n e ->
+    (forall a, In a (inst_uses i) -> once_has once a = true -> lookup a e' = lookup a e) ->
+    persists m m' -> rp once e' m' n i.
+
+Lemma scope_with_mem : forall rp fr m m',
+  moves rp -> scope_with rp fr m -> persists m m' -> scope_with rp fr m'.
 Proof.
-  intros ge fr m m' H Hp l k n s i Hpt Hn Hr Hpos Hsd.
-  exact (replays_change _ _ _ _ _ _ _ _ (H _ _ _ _ _ Hpt Hn Hr Hpos Hsd) eq_refl (fun _ _ _ => eq_refl) Hp).
+  intros rp fr m m' Hmv H Hp l k n s i Hpt Hn Hr Hpos Hsd.
+  exact (Hmv _ _ _ _ _ _ _ (H _ _ _ _ _ Hpt Hn Hr Hpos Hsd) eq_refl (fun _ _ _ => eq_refl) Hp).
 Qed.
+
+Lemma scope_mem : forall ge fr m m', scope_holds ge fr m -> persists m m' -> scope_holds ge fr m'.
+Proof. intros ge. exact (fun fr m m' => scope_with_mem _ fr m m' (replays_change ge)). Qed.
+
+(** `ahead_free i`: i is not a `check_ahead`, whose proof a doomed frame
+    holds though its check did not pass. *)
+Definition ahead_free (i : inst) : bool :=
+  match i with Let _ _ (CheckAhead _ _ _ _ _) _ => false | _ => true end.
+
+(** `scope_plain ge fr m`: each single definition in scope that is not a
+    `check_ahead` replays. Guard chains, offset intervals and pointer
+    distances read only such definitions. *)
+Definition scope_plain (ge : genv) (fr : frame) (m : Memory.mem) : Prop :=
+  scope_with (fun once e m n i => ahead_free i = true -> replays ge once e m n i) fr m.
+
+Lemma scope_plain_of : forall ge fr m, scope_holds ge fr m -> scope_plain ge fr m.
+Proof. intros ge fr m H l k n s i Hpt Hn Hr Hpos Hsd _. exact (H _ _ _ _ _ Hpt Hn Hr Hpos Hsd). Qed.
 
 (** `scope_moves`: names defined at index k of a reachable block l
     change neither a single definition in scope there nor its
@@ -448,11 +481,12 @@ Proof.
   rewrite (find_block_unique _ _ _ _ Hnd Hb Hb' Hl) in Hk. apply Nat2Z.inj in Ej. subst. exact Hk.
 Qed.
 
-(** `scope_step`: from index k to k+1 of a block, over the instruction
-    i at k, which changes only the names it defines, in a memory that
-    persists; i's own names replay if it is replayable. *)
-Lemma scope_step : forall ge md fr fr' m m' l b k i,
-  checked_module md -> In (IFunc (fr_fn fr)) md -> fr_fn fr' = fr_fn fr ->
+(** `scope_step_with`: from index k to k+1 of a block, over the
+    instruction i at k, which changes only the names it defines, in a
+    memory that persists, rp moves on; i's own names satisfy it if i is
+    replayable. *)
+Lemma scope_step_with : forall rp md fr fr' m m' l b k i,
+  moves rp -> checked_module md -> In (IFunc (fr_fn fr)) md -> fr_fn fr' = fr_fn fr ->
   is_reachable (fn_doms (fr_fn fr)) l = true ->
   find_block l (fn_blocks (fr_fn fr)) = Some b -> nth_error (b_insts b) k = Some i ->
   point_site (fr_fn fr) (fr_at fr) = Some (l, Z.of_nat k) ->
@@ -460,10 +494,10 @@ Lemma scope_step : forall ge md fr fr' m m' l b k i,
   (forall a, ~ In a (map fst (inst_temp_defs i)) -> lookup a (fr_env fr') = lookup a (fr_env fr)) ->
   persists m m' ->
   (forall n, replayable i = true -> lookup n (single_definitions (fr_fn fr)) = Some (DInst i) ->
-     replays ge (single_definitions (fr_fn fr)) (fr_env fr') m' n i) ->
-  scope_holds ge fr m -> scope_holds ge fr' m'.
+     rp (single_definitions (fr_fn fr)) (fr_env fr') m' n i) ->
+  scope_with rp fr m -> scope_with rp fr' m'.
 Proof.
-  intros ge md fr fr' m m' l b k i Hmd Hin Hf' Hr Hb Hk Hpt0 Hpt1 He Hp Hself Hold l' k' n s i' Hpt Hn Hrp Hpos Hsd.
+  intros rp md fr fr' m m' l b k i Hmv Hmd Hin Hf' Hr Hb Hk Hpt0 Hpt1 He Hp Hself Hold l' k' n s i' Hpt Hn Hrp Hpos Hsd.
   rewrite Hf' in *. rewrite Hpt1 in Hpt. injection Hpt as <- <-.
   assert (Hsd1 : site_dominates (fn_doms (fr_fn fr)) l (Z.of_nat k + 1) s = true)
     by (rewrite <- Hsd; f_equal; lia).
@@ -477,7 +511,23 @@ Proof.
                    exists D, In (x, SAt l (Z.of_nat k), D) (def_positions (fr_fn fr)))
       by (intros x Hx; rewrite <- Hl; exact (inst_defs_here _ _ _ _ Hbin Hk _ Hx)).
     destruct (scope_moves _ _ _ _ _ _ _ _ _ _ _ Hf Hd Hdd Hr HX He Hn Hpos Hsd0) as [Hn' Ha'].
-    exact (replays_change _ _ _ _ _ _ _ _ (Hold _ _ _ _ _ Hpt0 Hn Hrp Hpos Hsd0) Hn' Ha' Hp).
+    exact (Hmv _ _ _ _ _ _ _ (Hold _ _ _ _ _ Hpt0 Hn Hrp Hpos Hsd0) Hn' Ha' Hp).
+Qed.
+
+(** `scope_step`: `scope_step_with` for replays. *)
+Lemma scope_step : forall ge md fr fr' m m' l b k i,
+  checked_module md -> In (IFunc (fr_fn fr)) md -> fr_fn fr' = fr_fn fr ->
+  is_reachable (fn_doms (fr_fn fr)) l = true ->
+  find_block l (fn_blocks (fr_fn fr)) = Some b -> nth_error (b_insts b) k = Some i ->
+  point_site (fr_fn fr) (fr_at fr) = Some (l, Z.of_nat k) ->
+  point_site (fr_fn fr) (fr_at fr') = Some (l, Z.of_nat (S k)) ->
+  (forall a, ~ In a (map fst (inst_temp_defs i)) -> lookup a (fr_env fr') = lookup a (fr_env fr)) ->
+  persists m m' ->
+  (forall n, replayable i = true -> lookup n (single_definitions (fr_fn fr)) = Some (DInst i) ->
+     replays ge (single_definitions (fr_fn fr)) (fr_env fr') m' n i) ->
+  scope_holds ge fr m -> scope_holds ge fr' m'.
+Proof.
+  intros ge md fr fr' m m' l b k i. exact (scope_step_with (replays ge) md fr fr' m m' l b k i (replays_change ge)).
 Qed.
 
 (** `scope_after`: just after the instruction i at index k, whose own

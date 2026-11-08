@@ -148,7 +148,7 @@ Variables (ge : genv) (md : module) (fr : frame) (m : Memory.mem) (l : name) (k 
 Hypothesis Hmd : checked_module md.
 Hypothesis Hin : In (IFunc (fr_fn fr)) md.
 Hypothesis Hr : is_reachable (fn_doms (fr_fn fr)) l = true.
-Hypothesis Hs : scope_holds ge fr m.
+Hypothesis Hs : scope_plain ge fr m.
 Hypothesis Hpt : point_site (fr_fn fr) (fr_at fr) = Some (l, k).
 
 (** `span_guard_holds`: a span test of N0 that dominates the point
@@ -166,7 +166,7 @@ Lemma span_guard_holds : forall gn glo ghi n0,
        raw_address (ptr_addr pb) ghi <= r_end reg /\ persists m1 m /\ objects_fit (m_regions m1)).
 Proof.
   intros gn glo ghi n0 Hgn Ho Hdom.
-  destruct (dominating_replays _ _ _ _ _ _ _ Hs Hpt Hgn eq_refl Hdom)
+  destruct (plain_replays _ _ _ _ _ _ _ Hs Hpt Hgn eq_refl eq_refl Hdom)
     as (fr0 & m0 & e1 & l1 & m1 & Hst & He1 & Hops & Hp & Hfit).
   pose proof (Hops n0 (or_introl eq_refl) Ho) as En0.
   rewrite inst_step_let in Hst by reflexivity. cbn [op_arg_classes map2_option value_x] in Hst.
@@ -208,7 +208,7 @@ Proof.
     pose proof (flight_def_name _ _ _ _ _ _ Ex) as ->.
     assert (Hox : once_has (single_definitions (fr_fn fr)) x = true) by (unfold once_has; rewrite Ex; reflexivity).
     pose proof (Hdom x eq_refl Hox) as Hdx.
-    destruct (dominating_replays _ _ _ _ _ _ _ Hs Hpt Ex eq_refl Hdx) as (fr0 & m0 & e1 & l1 & m1 & Hst & Hx1 & Hops & _).
+    destruct (plain_replays _ _ _ _ _ _ _ Hs Hpt Ex eq_refl eq_refl Hdx) as (fr0 & m0 & e1 & l1 & m1 & Hst & Hx1 & Hops & _).
     (* The lower donor b reads now what it read then. *)
     assert (Hub : forall y, b = Tmp y -> In y (inst_uses (Flight x o args (LowerOf b))))
       by (intros y ->; simpl; apply value_temps_in, in_or_app; right; left; reflexivity).
@@ -332,7 +332,7 @@ Proof.
   assert (Hdu : dominating (fr_fn fr) l k un)
     by (apply (operand_at md fr l k Hmd Hin Hr Hpt b kk i un Hb Hk Hkk);
         [unfold i; simpl; apply in_or_app; right; left; reflexivity | unfold once_has; rewrite Eun; reflexivity]).
-  destruct (dominating_replays _ _ _ _ _ _ _ Hs Hpt Eun eq_refl Hdu)
+  destruct (plain_replays _ _ _ _ _ _ _ Hs Hpt Eun eq_refl eq_refl Hdu)
     as (fr0 & m0 & e1 & l1 & m1 & Hst0 & He1 & Hops & _).
   pose proof (Hops n0 (or_introl eq_refl) Ho) as En0.
   rewrite inst_step_let in Hst0 by reflexivity. cbn [op_arg_classes map2_option value_x] in Hst0.
@@ -406,9 +406,9 @@ Proof.
               ltac:(intros ? ? ? E; discriminate E))
     as (b & kk & live & out & Hinf & Hr & Hsc & Hpt & Hb & Hnth & Hc & _ & _).
   destruct Ho as [(lo & hi & r & al & ->) | (lo & hi & r & al & ->)].
-  - exact (renew_if_not_unchecked ge md (c_frame c) (c_mem c) l (Z.of_nat kk) Hmd Hinf Hr Hsc Hpt
+  - exact (renew_if_not_unchecked ge md (c_frame c) (c_mem c) l (Z.of_nat kk) Hmd Hinf Hr (scope_plain_of _ _ _ Hsc) Hpt
              b kk q lo hi r al a1 a2 rest live out why Hb Hnth eq_refl Hc Hst).
-  - exact (check_limit_not_unchecked ge md (c_frame c) (c_mem c) l (Z.of_nat kk) Hmd Hinf Hr Hsc Hpt
+  - exact (check_limit_not_unchecked ge md (c_frame c) (c_mem c) l (Z.of_nat kk) Hmd Hinf Hr (scope_plain_of _ _ _ Hsc) Hpt
              b kk q lo hi r al a1 a2 rest live out why Hb Hnth eq_refl Hc Hst).
 Qed.
 

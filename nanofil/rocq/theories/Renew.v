@@ -524,7 +524,7 @@ Proof.
     destruct (once_has (single_definitions (fr_fn fr)) y) eqn:Ho; [|discriminate Eb].
     injection Eb as <- _.
     assert (Hst : stable (single_definitions (fr_fn fr)) (Tmp y)) by (intros y' E; injection E as <-; exact Ho).
-    destruct (guard_chain_sound ge md fr m l k Hmd Hin Hr Hs Hpt _ _ _ _ _ Hp1 Hd1 Hel1 Hst) as (pb & _ & Hpb & _).
+    destruct (guard_chain_sound ge md fr m l k Hmd Hin Hr (scope_plain_of _ _ _ Hs) Hpt _ _ _ _ _ Hp1 Hd1 Hel1 Hst) as (pb & _ & Hpb & _).
     eauto.
   - (* p is a flight, which binds a pointer *)
     assert (Ho : once_has (single_definitions (fr_fn fr)) y = true) by (unfold once_has; rewrite Ey; reflexivity).
@@ -561,7 +561,7 @@ Proof.
   assert (Hdq : forall y, Tmp p1 = Tmp y -> once_has (single_definitions (fr_fn fr)) y = true -> dominating (fr_fn fr) l k y)
     by (intros y E _; injection E as <-; exact Hdp1).
   destruct (distance_pointer p (Tmp p1) pp1 d Hp1 Hdp Hdq Ed) as [pp Hpp].
-  destruct (pointer_distance_sound ge md fr m l k Hmd Hin Hr Hs Hpt p (Tmp p1) pp pp1 d Hpp Hp1 Hdp Hdq Ed)
+  destruct (pointer_distance_sound ge md fr m l k Hmd Hin Hr (scope_plain_of _ _ _ Hs) Hpt p (Tmp p1) pp pp1 d Hpp Hp1 Hdp Hdq Ed)
     as [Hcap Haddr].
   exists pp1, pp, m1, r1. auto 10.
 Qed.
