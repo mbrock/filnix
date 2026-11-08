@@ -8,13 +8,13 @@
 
     These are concrete predicates on model memory, not new
     [[runtime|runtime axioms]] or a proof of the native launcher.
-    Establishing them from successful startup allocations, including
+    Establishing the full entry image from startup allocations, including
     libc/TLS and finalizer roots, remains a separate
     [[obligation]]. Resource refusal before entry
     must not be confused with a malformed entry or deleted execution. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
-From Nanofil Require Import Term Syntax Values Memory Ops Semantics ExternalCalls.
+From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Identity ExternalCalls.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -194,6 +194,157 @@ Definition process_status (status : Z) : Z := status mod 256.
 Lemma process_status_range : forall status, 0 <= process_status status < 256.
 Proof. intros status. unfold process_status. apply Z.mod_pos_bound. lia. Qed.
 
+(** ## Constructing the launcher's copied strings
+
+    The source bytes here describe native argv/environ strings, before
+    they enter the capability model. This is the memcpy suboperation,
+    including the NUL. It never creates a pointer capability by copying
+    raw bytes; only the actual allocator answer creates that identity. *)
+(** Copy bytes to address a, then write one NUL; copy no [[capability]]. *)
+Fixpoint copy_c_bytes (m : mem) (a : Z) (bytes : list Z) : mem :=
+  match bytes with
+  | [] => store_bytes m a 1 0
+  | b :: rest => copy_c_bytes (store_bytes m a 1 b) (a + 1) rest
+  end.
+
+(** Copying the bytes and NUL leaves every object's region unchanged. *)
+Lemma copy_c_bytes_regions : forall bytes m a,
+  m_regions (copy_c_bytes m a bytes) = m_regions m.
+Proof. induction bytes; intros; simpl; [reflexivity|rewrite IHbytes; reflexivity]. Qed.
+
+(** Byte copying changes no stored [[aux|capabilities]], even inside the copy. *)
+Lemma copy_c_bytes_aux : forall bytes m a,
+  m_aux (copy_c_bytes m a bytes) = m_aux m.
+Proof. induction bytes; intros; simpl; [reflexivity|rewrite IHbytes; reflexivity]. Qed.
+
+(** Bytes before the copy or at and beyond its end keep their old values. *)
+Lemma copy_c_bytes_outside : forall bytes m a b,
+  b < a \/ a + Z.of_nat (length bytes) + 1 <= b ->
+  m_bytes (copy_c_bytes m a bytes) b = m_bytes m b.
+Proof.
+  induction bytes as [|head rest IH]; intros m a b Hout.
+  - simpl. destruct ((a <=? b) && (b <? a + 1)) eqn:E; [|reflexivity].
+    apply andb_true_iff in E as [E1 E2]. apply Z.leb_le in E1. apply Z.ltb_lt in E2. simpl in Hout. lia.
+  - change (m_bytes (copy_c_bytes (store_bytes m a 1 head) (a + 1) rest) b = m_bytes m b).
+    change (b < a \/ a + Z.of_nat (S (length rest)) + 1 <= b) in Hout.
+    rewrite Nat2Z.inj_succ in Hout. rewrite IH by lia.
+    simpl. destruct ((a <=? b) && (b <? a + 1)) eqn:E; [|reflexivity].
+    apply andb_true_iff in E as [E1 E2]. apply Z.leb_le in E1. apply Z.ltb_lt in E2.
+    lia.
+Qed.
+
+(** Nonzero byte values are copied exactly, with the first NUL just after them. *)
+Theorem copied_string_bytes : forall bytes m a,
+  Forall (fun b => 0 < b < 256) bytes -> string_at (copy_c_bytes m a bytes) a bytes.
+Proof.
+  induction bytes as [|b rest IH]; intros m a Hbytes.
+  - simpl. rewrite Z.leb_refl.
+    assert ((a <? a + 1) = true) as E by (apply Z.ltb_lt; lia). rewrite E.
+    replace (a - a) with 0 by lia. reflexivity.
+  - inversion Hbytes as [|head tail Hb Hrest]; subst. simpl. split; [exact Hb|]. split.
+    + rewrite copy_c_bytes_outside by lia.
+      pose proof (stored_byte m a 1 b 0 ltac:(lia)) as Hstored.
+      replace (a + 0) with a in Hstored by lia. rewrite Hstored.
+      unfold byte_of. change ((b / 1) mod 256 = b).
+      rewrite Z.div_1_r. apply Z.mod_small. lia.
+    + apply IH. exact Hrest.
+Qed.
+
+(** A copied fresh string cannot modify any old object, not just an
+    enumerated set of startup roots. This frame will retain earlier
+    strings while subsequent launcher allocations/copies take place. *)
+Theorem copied_string_old_object : forall m q base bytes a,
+  fresh m q base -> Z.of_nat (length bytes) + 1 <= req_extent q -> in_object m a ->
+  m_bytes (copy_c_bytes (allocated m q base) base bytes) a = m_bytes m a /\
+  m_aux (copy_c_bytes (allocated m q base) base bytes) a = m_aux m a.
+Proof.
+  intros m q base bytes a (_ & _ & _ & _ & Hdis & _) Hsize (old & reg & Hreg & Hrange).
+  specialize (Hdis old reg Hreg). split.
+  - rewrite copy_c_bytes_outside by lia. reflexivity.
+  - rewrite copy_c_bytes_aux. reflexivity.
+Qed.
+
+(** Startup copying over an arbitrary [[runtime]]. *)
+Module Startup (R : Runtime).
+(** The external-call effects of this runtime. *)
+Module E := ExternalCalls R.
+
+(** Copying through supplied write authority is a finite path of local effects. *)
+Lemma copy_c_bytes_effects : forall bytes sources roots releases requests s m born a,
+  (forall b, a <= b < a + Z.of_nat (length bytes) + 1 -> write_authority roots born m b) ->
+  E.effects sources roots releases requests s m born s (copy_c_bytes m a bytes) born.
+Proof.
+  induction bytes as [|head rest IH]; intros sources roots releases requests s m born a Hw.
+  - eapply E.effects_local with (m1 := store_bytes m a 1 0).
+    + apply local_store_bytes. intros b Hb. apply Hw. simpl. lia.
+    + constructor.
+  - eapply E.effects_local with (m1 := store_bytes m a 1 head).
+    + apply local_store_bytes. intros b Hb. apply Hw.
+      change (a <= b < a + Z.of_nat (S (length rest)) + 1). rewrite Nat2Z.inj_succ. lia.
+    + apply IH. intros b Hb. apply Hw.
+      change (a <= b < a + Z.of_nat (S (length rest)) + 1). rewrite Nat2Z.inj_succ. lia.
+Qed.
+
+(** Success remains conditional on the runtime's real answer, for the
+    original strlen + 1 request. No small fixed bound or NULL-success
+    case is introduced. The result includes the entire checked NUL. *)
+Theorem copy_string : forall bytes sources roots releases requests s m born base s',
+  R.ready s m -> Forall (fun b => 0 < b < 256) bytes ->
+  Z.of_nat (length bytes) + 1 <= max_allocation_size ->
+  requests 16 (Z.of_nat (length bytes) + 1) ->
+  R.alloc s (heap_req 16 (Z.of_nat (length bytes) + 1)) = Some (base, s') ->
+  let q := heap_req 16 (Z.of_nat (length bytes) + 1) in
+  let m' := copy_c_bytes (allocated m q base) base bytes in
+  E.effects sources roots releases requests s m born s' m' (base :: born) /\
+  R.ready s' m' /\ persists m m' /\ c_string m' (mkPtr base (Obj base)) bytes /\
+  writable_span m' (mkSpan (mkPtr base (Obj base)) (Z.of_nat (length bytes) + 1)) /\
+  0 <= base < 2 ^ 64 /\
+  (forall a, in_object m a -> m_bytes m' a = m_bytes m a /\ m_aux m' a = m_aux m a).
+Proof.
+  intros bytes sources roots releases requests s m born base s' Hr Hbytes Hmax Hrequest Ha.
+  set (size := Z.of_nat (length bytes) + 1). set (q := heap_req 16 size).
+  assert (Hsize : 0 < size) by (unfold size; lia).
+  assert (Hfit : size <= req_extent q).
+  { unfold q, heap_req. simpl.
+    pose proof (Z.mod_pos_bound (size + 15) 16 ltac:(lia)).
+    pose proof (Z.div_mod (size + 15) 16 ltac:(lia)). lia. }
+  destruct (R.fresh_allocation s m q base s' Hr ltac:(simpl; lia) ltac:(lia) Ha) as [Hfresh Hr1].
+  assert (Hreg : object_region base (m_regions (allocated m q base)) =
+    Some (mkRegion base (base + req_extent q) Heap Live)).
+  { simpl. rewrite Z.eqb_refl. reflexivity. }
+  assert (He : E.effects sources roots releases requests s m born s'
+    (copy_c_bytes (allocated m q base) base bytes) (base :: born)).
+  { eapply E.effects_alloc with (align := 16) (size := size).
+    - exact Hrequest.
+    - split; [lia|exact Hmax].
+    - exact Ha.
+    - apply copy_c_bytes_effects. intros a Hrange. right.
+      exists base, (mkRegion base (base + req_extent q) Heap Live).
+      split; [simpl; auto|]. split; [exact Hreg|]. split; [reflexivity|].
+      split; [reflexivity|]. change (base <= a < base + req_extent q).
+      unfold size in Hfit. lia. }
+  destruct (E.effects_preserve _ _ _ _ _ _ _ _ _ _ He Hr) as [Hr' Hpersist].
+  assert (Haccess : access_res (copy_c_bytes (allocated m q base) base bytes)
+    base (Obj base) size Write 1 = Some ok).
+  { unfold access_res. rewrite copy_c_bytes_regions. unfold cap_access_res. rewrite Hreg.
+    change (Some (if (base <=? base) && (base + size <=? base + req_extent q)
+      then aligned_res base 1 else RTrap OutOfBounds) = Some ok).
+    assert (((base <=? base) && (base + size <=? base + req_extent q)) = true) as E.
+    { apply andb_true_iff. split; apply Z.leb_le; lia. }
+    rewrite E. unfold aligned_res. rewrite Z.mod_1_r. reflexivity. }
+  split; [exact He|]. split; [exact Hr'|]. split; [exact Hpersist|]. split.
+  - split; [exact Haccess|]. apply copied_string_bytes. exact Hbytes.
+  - split.
+    + split; [simpl; lia|]. exists base, (mkRegion base (base + req_extent q) Heap Live).
+      split; [reflexivity|]. split; [rewrite copy_c_bytes_regions; exact Hreg|].
+      split; [reflexivity|exact Haccess].
+    + split.
+      * destruct Hfresh as (Hbase & _ & Hend & _). lia.
+      * intros a Hin. eapply copied_string_old_object; eauto.
+Qed.
+
+End Startup.
+
 (** ## Entry regressions
 
     Two arguments of unequal lengths, including the empty string, and
@@ -284,3 +435,45 @@ Proof. split; [reflexivity|lia]. Qed.
 (** Status 513 reports 1, and -1 reports 255. *)
 Example exit_status_low_byte : process_status 513 = 1 /\ process_status (-1) = 255.
 Proof. split; reflexivity. Qed.
+
+(** Construction, not a preassumed final entry image. All old argument
+    table bytes/capabilities stay; high bytes are not interpreted as
+    text, and the NUL must fit the new object's checked bounds. *)
+Definition copied_entry_string : mem :=
+  copy_c_bytes (allocated entry_mem (heap_req 16 4) 16384) 16384 [1; 128; 255].
+
+(** An empty string needs one byte for its NUL, within a rounded 16-byte object. *)
+Example copy_empty_string :
+  c_string (copy_c_bytes (allocated entry_mem (heap_req 16 1) 16384) 16384 [])
+    (mkPtr 16384 (Obj 16384)) [] /\ req_extent (heap_req 16 1) = 16.
+Proof. repeat split; reflexivity. Qed.
+
+(** High bytes survive exactly, along with the old pointer slot and environment. *)
+Example copy_high_bytes_and_old_slot :
+  c_string copied_entry_string (mkPtr 16384 (Obj 16384)) [1; 128; 255] /\
+  m_bytes copied_entry_string 16387 = 0 /\
+  pointer_slot copied_entry_string 4096 hello_ptr /\
+  string_vector copied_entry_string entry_envp [].
+Proof. vm_compute. repeat constructor; discriminate. Qed.
+
+(** Sixteen payload bytes need a seventeenth NUL byte and a 32-byte extent. *)
+Example copy_crosses_rounding_boundary :
+  c_string (copy_c_bytes (allocated entry_mem (heap_req 16 17) 16384) 16384 (repeat 255 16))
+    (mkPtr 16384 (Obj 16384)) (repeat 255 16) /\ req_extent (heap_req 16 17) = 32.
+Proof. vm_compute. repeat constructor; discriminate. Qed.
+
+(** Correct payload bytes are insufficient when the NUL lies outside the object. *)
+Example copied_nul_needs_bounds :
+  ~ c_string (mkMem (m_bytes copied_entry_string)
+    [mkRegion 16384 16387 Heap Live] (m_aux copied_entry_string))
+    (mkPtr 16384 (Obj 16384)) [1; 128; 255].
+Proof. intros [H _]. discriminate H. Qed.
+
+(** A pre-NUL payload contains neither a zero nor a value outside the byte range. *)
+Example pre_nul_representation :
+  ~ Forall (fun b => 0 < b < 256) [65; 0; 66] /\
+  ~ Forall (fun b => 0 < b < 256) [65; 256].
+Proof.
+  split; intros H; inversion H as [|head rest Hb Hrest]; subst;
+    inversion Hrest as [|head tail Hbad Htail]; subst; lia.
+Qed.

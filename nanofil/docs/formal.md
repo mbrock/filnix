@@ -654,6 +654,45 @@ For example, storing `THREAD_SELF` in `lock.owner` needs a capability
 source beyond these writable spans. `hi.c` is not yet closed; no native
 trap-freedom or adequacy theorem is claimed.
 
+### Campaign 4, milestone 4a: construct one startup string
+
+`Startup R.copy_string` now constructs a string from the launcher's
+native input bytes instead of assuming a final model string. It requires
+the original `strlen + 1` request to be authorized, within the allocation
+limit, and actually answered by `R.alloc`. The byte-copy path includes
+the terminating NUL, creates no pointer capability from raw bytes, and
+establishes a checked readable **and writable** string, runtime readiness,
+identity persistence, and its call-born allocation history.
+
+`copied_string_old_object` frames bytes and auxiliary capabilities in
+**every** old object's current bounds, not just an enumerated root list.
+The copy leaves all old regions unchanged. This is the frame needed to
+retain the preallocated argv table and earlier strings during subsequent
+copies; persistence alone would not prove their contents unchanged.
+
+Payload lists denote bytes before the first NUL: any value from 1 through
+255 is allowed, including high bytes, and the empty list needs one byte
+for its NUL. A list containing zero is not this representation of the
+native input; it is not a claim that native argv traps on an embedded
+zero. The success theorem compares the original size before rounding,
+as `filc_prepare_allocate_object` does. Runtime refusal and oversized
+requests retain the existing resource rules, not successful NULL copies;
+this slice does not yet prove coverage of the launcher's failure paths.
+
+Model examples cover empty/high-byte payloads, a 17-byte request with
+32-byte extent, retained old pointer-slot capabilities, and missing NUL
+bounds. The [libc-entry.c](../tests/c/prog/libc-entry.c) probe re-execs with
+an empty argument and high bytes, under both populated and empty
+environments, and performs volatile writes to copied NUL bytes.
+
+Next, allocate each pointer table first and thread the actual runtime
+state, memory and cumulative born list through the forward string-copy
+and pointer-store loop. Preserve the zero sentinel and derive the full
+`startup_at` image; retain argv's signed `argc + 1` restriction and prove
+environment-size arithmetic separately. Auxiliary-vector construction,
+libc/TLS/stdio readiness, constructors, shutdown and native coverage
+remain open. This conditional string suboperation does not close `hi.c`.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and
