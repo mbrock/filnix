@@ -46,6 +46,7 @@ the interpreter and cites the predicate it copies.
 | `Guard.v` | `guard_covers/5`, `limit_covers/5`, `lower_chain/3` (ir.pl); `kind_res/8` (interp.pl) | along every run, no `renew_if` or `check_limit` the pass accepts gives `unchecked` |
 | `Ahead.v` | `ahead_justified/3`, `ahead_block/6`, `ahead_edge/5`, `ahead_step/5`, `ahead_insts/8` (ir.pl) | the facts `check_ahead`'s backward pass keeps, as functions of the point, and that its one sweep computes them |
 | `Doomed.v` | `doomed_result/5` (interp.pl); `raise_need/6`, `ahead_meet/2` (ir.pl) | along every run, a frame a `check_ahead` doomed never steps to `unchecked` |
+| `Soundness.v` | `inst_result/5`, `raw_access/5`, `valid_use/3` | `valid_no_unchecked`: along every run of a checked module that starts ready, no step is `unchecked` |
 | `Transport.v` | — | decoding a printed checked module, encoding outcomes, `judge`, `judge_valid` |
 | `Extract.v`, `extraction/main.ml` | — | OCaml extraction, and a reader of Prolog terms |
 
@@ -1203,6 +1204,61 @@ Decisions:
 - **`distance_pointer` moved to its own section in Renew.v**, which
   assumes only `scope_plain`, so the doomed frame's renews use it.
 
+### No run is unchecked
+
+`Soundness.v` assembles Campaign 3's theorem. `valid_no_unchecked`
+says: in every state of a run of a checked module's function that
+starts ready, `step` never answers `Done (Unchecked w)`. Its proof
+reads each place an `unchecked` can come from and hands it to the run
+theorem for that place:
+
+| Source | Run theorem |
+|---|---|
+| a frame a `check_ahead` doomed | Doomed.v's `run_doomed_checked` |
+| a raw load, store or call | Chain.v's `run_access_checked` |
+| a renew, a renew over a hull, a half check | Renew.v's `run_reuse_checked` |
+| a `renew_if`, a `check_limit` | Guard.v's `run_guard_checked` |
+| the runtime's free | the hypothesis `free_checked` |
+
+A frame that is not doomed steps to `unchecked` only where its next
+instruction's result is (`step_unchecked_inst`): block entry, jumps and
+returns give no such outcome. Of instructions, only a raw access, a
+raw call, a reuse form, or a call of `free` can (`inst_unchecked_source`);
+every other op either succeeds, traps or is undefined behaviour. The
+validator reads a raw access only when its address is a temporary
+(`raw_access/5`), and `raw_tmp` shows a checked module has no other:
+`valid_use/3` never reads a global at class `a` nor a constant at a
+proof class.
+
+`interp_valid_no_unchecked` states it under the interpreter's runtime
+with no hypothesis beyond the run starting ready; `Print Assumptions`
+reports it closed.
+
+What the theorem covers and what it does not:
+
+- **The module is checked by Validate.v's `valid`**, which the gates
+  compare with `ir:valid_module/1`, not by ir.pl itself.
+- **External calls other than `free` are stuck** in the model, so the
+  theorem says nothing about runs past them; Campaign 4's contracts
+  extend the machine there.
+- **The generic theorem has three runtime hypotheses**: `spares` and
+  `free_ids`, as every run theorem has (see "Next"), and
+  `free_checked`, that the runtime's free traps or frees and never
+  answers `unchecked`. The module type does not say it; the
+  interpreter's free satisfies it (`free_res_checked`), and native
+  free traps or frees.
+- **A run starts ready**, a hypothesis until the heap starts above the
+  module's data.
+
+Decisions:
+
+- **`free_checked` is a hypothesis, not an axiom.** Axioms in Runtime.v
+  are mbrock's to add, each with a native test; it can join the
+  decision on `free_ids`.
+- **The theorem is stated over Guard.v's machine instance**, the one
+  Chain.v's, Renew.v's and Guard.v's run theorems share; a run is
+  carried over to Doomed.v's instance (`mreachable_doom`).
+
 ## A need past 2^64
 
 Planning the proof for `check_ahead`'s doomed frame turned up a module
@@ -1365,15 +1421,13 @@ with this bound it also keeps a ready module's data below 2^48.
 
 ## Next
 
-1. `valid_no_unchecked`, assembled from the run theorems: raw accesses
-   and calls (Chain.v), the reuse forms (Renew.v, Guard.v) and the
-   doomed frame (Doomed.v).
-2. After the reuse forms, a decision on the runtime's safepoints
+1. After the reuse forms, a decision on the runtime's safepoints
    (`spares`, above) and its free (`free_ids`, "Identities persist"),
    brought to mbrock together with a recommendation after an Oracle
    review: narrow the module type or add axioms with native tests, or
-   keep the hypotheses.
-3. Starting the heap above the module's data, so that the initial
+   keep the hypotheses. `free_checked` ("No run is unchecked") can
+   join it.
+2. Starting the heap above the module's data, so that the initial
    readiness hypothesis becomes a lemma.
 
 Inquiries touched: none closed. The integer-at-`p` case is a small
