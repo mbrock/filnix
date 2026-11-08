@@ -89,13 +89,13 @@ Proof.
   all: eapply G; eauto; reflexivity.
 Qed.
 
-(** `check_fact_ok`: a check-like instruction of a checked module
-    checks a nonempty span at one of the alignments `valid_op/1` allows. *)
-Lemma check_fact_ok : forall md f b i fa,
-  checked_module md -> In (IFunc f) md -> In b (fn_blocks f) -> In i (b_insts b) -> check_fact i = Some fa ->
-  f_lo fa < f_hi fa /\ check_align (f_al fa) = true.
+(** `inst_valid`: every instruction of a checked module's function
+    passes `valid_inst/3`. *)
+Lemma inst_valid : forall md f b i,
+  checked_module md -> In (IFunc f) md -> In b (fn_blocks f) -> In i (b_insts b) ->
+  exists cls, valid_inst md cls i = true.
 Proof.
-  unfold checked_module, valid. intros md f b i fa [Hv _] Hin Hb Hi Hf.
+  unfold checked_module, valid. intros md f b i [Hv _] Hin Hb Hi.
   destruct (existsb _ md); [discriminate Hv|]. injection Hv as Hv.
   unfold valid_items in Hv. apply andb_true_iff in Hv as [_ Hv]. rewrite forallb_forall in Hv.
   specialize (Hv _ Hin). simpl in Hv. unfold valid_func in Hv.
@@ -106,7 +106,16 @@ Proof.
     rewrite forallb_forall in H; specialize (H b Hb); unfold valid_block in H end.
   repeat match goal with H : (_ && _) = true |- _ => apply andb_true_iff in H as [? ?] end.
   match goal with H : forallb (valid_inst md _) (b_insts b) = true |- _ =>
-    rewrite forallb_forall in H; specialize (H i Hi); rename H into Hvi end.
+    rewrite forallb_forall in H; exact (ex_intro _ _ (H i Hi)) end.
+Qed.
+
+(** `check_fact_ok`: a check-like instruction of a checked module
+    checks a nonempty span at one of the alignments `valid_op/1` allows. *)
+Lemma check_fact_ok : forall md f b i fa,
+  checked_module md -> In (IFunc f) md -> In b (fn_blocks f) -> In i (b_insts b) -> check_fact i = Some fa ->
+  f_lo fa < f_hi fa /\ check_align (f_al fa) = true.
+Proof.
+  intros md f b i fa Hmd Hin Hb Hi Hf. destruct (inst_valid _ _ _ _ Hmd Hin Hb Hi) as [cls Hvi].
   destruct i as [q k o args | | | | | | |]; try discriminate Hf.
   destruct k; try (destruct o; discriminate Hf).
   destruct o; try discriminate Hf; cbn -[valid_op] in Hf; cases Hf; injection Hf as <-;
@@ -580,6 +589,52 @@ Module Reuse (R : Runtime).
 
 Module H := Hull R.
 
+(** `run_point`: what holds at the point of a frame that is not doomed,
+    in every state of a run that starts ready, at an instruction that is
+    not a raw access or raw call: the pass accepted it there
+    (`checked_inst_rest/7`), single definitions replay (Single.v), and
+    memory lies in the address space with freed objects empty. *)
+Lemma run_point : forall ge md f xs fr m fuel s0 c s l i rest j,
+  checked_module md -> ge_module ge = md -> ge_free ge = R.free -> H.P.I.spares ge md -> free_ids R.free ->
+  In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
+  H.P.I.RM.mreachable ge (mkConfig fr [] m fuel, s0) (c, s) ->
+  fr_doomed (c_frame c) = None -> fr_at (c_frame c) = Exec l (i :: rest) j ->
+  raw_access i = None -> (forall r cl args, i <> RawCall r cl args) ->
+  exists b kk live out,
+    In (IFunc (fr_fn (c_frame c))) md /\ is_reachable (fn_doms (fr_fn (c_frame c))) l = true /\
+    scope_holds ge (c_frame c) (c_mem c) /\
+    point_site (fr_fn (c_frame c)) (fr_at (c_frame c)) = Some (l, Z.of_nat kk) /\
+    find_block l (fn_blocks (fr_fn (c_frame c))) = Some b /\ nth_error (b_insts b) kk = Some i /\
+    checked_inst_rest (fn_src md (fr_fn (c_frame c))) i rest live = Some out /\
+    objects_fit (m_regions (c_mem c)) /\ freed_empty (m_regions (c_mem c)).
+Proof.
+  intros ge md f xs fr m fuel s0 c s l i rest j Hmd Hge Hfree Hsp Hfi Hin Hcf H0 Hreach Hd Ha Hra Hrc.
+  (* The pass accepted the instruction at the point. *)
+  pose proof (H.P.mreachable_inv _ _ _ _ Hge Hmd Hfree Hsp Hreach H0 (H.P.start_inv _ _ _ _ _ _ _ s0 Hmd Hin Hcf))
+    as [(Hinf & _ & Hpo) _].
+  simpl in Hinf, Hpo. destruct Hpo as [Hd0 | Hpo]; [congruence|].
+  destruct (H.P.I.point_ok_exec_inv _ _ _ _ _ _ _ Hpo Ha) as (E & b & out & kk & _ & Hb & _ & _ & Hk & Hat).
+  destruct Hat as [(live & Hw & _ & _) | (access & rest' & live' & E' & _ & _ & Hpc)].
+  2: { (* only a raw access or raw call follows a check as its access *)
+       injection E' as <- _. exfalso.
+       destruct Hpc as [(fb & pre & Hcov & _) | (_ & r & q' & args & p & E'' & _)].
+       - unfold covered_access in Hcov. rewrite Hra in Hcov. discriminate Hcov.
+       - exact (Hrc _ _ _ E''). }
+  destruct (walks_cons _ _ _ _ _ Hw) as (rest' & live' & Hc & _).
+  (* Single definitions replay there. *)
+  pose proof (H.S.run_sinv _ _ _ _ _ _ _ _ _ Hmd Hge Hfree Hfi Hin Hcf H0 (H.mreachable_same _ _ _ Hreach))
+    as [[Hsh Hsc] _].
+  simpl in Hsh, Hsc. destruct Hsc as [Hsc | Hsc]; [congruence|].
+  unfold shaped in Hsh. cbv zeta in Hsh. rewrite Ha in Hsh. destruct Hsh as (_ & Hr & _).
+  (* Memory lies in the address space, freed objects empty. *)
+  pose proof (H.P.I.RM.mreachable_ready _ _ _ Hfree Hreach H0) as Hready.
+  destruct (skipn_cons _ _ _ _ _ (eq_sym Hk)) as (Hnth & _ & Hlen).
+  exists b, kk, live, (rest', live'). split; [exact Hinf|]. split; [exact Hr|]. split; [exact Hsc|].
+  split; [rewrite Ha, Hk; apply point_site_exec; [exact Hb | lia]|].
+  split; [exact Hb|]. split; [exact Hnth|]. split; [exact Hc|].
+  exact (conj (R.address_space _ _ Hready) (R.freed_bounds _ _ Hready)).
+Qed.
+
 (** `run_reuse_checked`: in every state of a run of a checked module's
     function that starts ready, a frame that is not doomed runs no renew
     and no half check to an `unchecked` outcome, where the runtime spares
@@ -594,28 +649,10 @@ Theorem run_reuse_checked : forall ge md f xs fr m fuel s0 c s l i rest j why,
 Proof.
   intros ge md f xs fr m fuel s0 c s l i rest j why Hmd Hge Hfree Hsp Hfi Hin Hcf H0 Hreach Hd Ha Hi Hst.
   destruct (reuse_shape _ _ _ _ _ Hi Hst) as (q & o & a1 & a2 & -> & Ho).
-  (* The pass accepted the instruction at the point. *)
-  pose proof (H.P.mreachable_inv _ _ _ _ Hge Hmd Hfree Hsp Hreach H0 (H.P.start_inv _ _ _ _ _ _ _ s0 Hmd Hin Hcf))
-    as [(Hinf & _ & Hpo) _].
-  simpl in Hinf, Hpo. destruct Hpo as [Hd0 | Hpo]; [congruence|].
-  destruct (H.P.I.point_ok_exec_inv _ _ _ _ _ _ _ Hpo Ha) as (E & b & out & kk & _ & Hb & _ & _ & Hk & Hat).
-  destruct Hat as [(live & Hw & _ & _) | (access & rest' & live' & E' & _ & _ & Hpc)].
-  2: { (* only a raw access or raw call follows a check as its access *)
-       injection E' as <- _.
-       destruct Hpc as [(fb & pre & Hcov & _) | (_ & r & q' & args & p & E'' & _)]; [|discriminate E''].
-       destruct Ho as [(lo & hi & r & al & ->) | (bd & lo & hi & r & al & ->)]; discriminate Hcov. }
-  destruct (walks_cons _ _ _ _ _ Hw) as (rest' & live' & Hc & _).
-  (* Single definitions replay there. *)
-  pose proof (H.S.run_sinv _ _ _ _ _ _ _ _ _ Hmd Hge Hfree Hfi Hin Hcf H0 (H.mreachable_same _ _ _ Hreach))
-    as [[Hsh Hsc] _].
-  simpl in Hsh, Hsc. destruct Hsc as [Hsc | Hsc]; [congruence|].
-  unfold shaped in Hsh. cbv zeta in Hsh. rewrite Ha in Hsh. destruct Hsh as (_ & Hr & _).
-  (* Memory lies in the address space, freed objects empty. *)
-  pose proof (H.P.I.RM.mreachable_ready _ _ _ Hfree Hreach H0) as Hready.
-  pose proof (R.address_space _ _ Hready) as Hfit. pose proof (R.freed_bounds _ _ Hready) as Hfe.
-  destruct (skipn_cons _ _ _ _ _ (eq_sym Hk)) as (Hnth & _ & Hlen).
-  assert (Hpt : point_site (fr_fn (c_frame c)) (fr_at (c_frame c)) = Some (l, Z.of_nat kk))
-    by (rewrite Ha, Hk; apply point_site_exec; [exact Hb | lia]).
+  destruct (run_point _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hmd Hge Hfree Hsp Hfi Hin Hcf H0 Hreach Hd Ha
+              ltac:(destruct Ho as [(? & ? & ? & ? & ->) | (? & ? & ? & ? & ? & ->)]; reflexivity)
+              ltac:(intros ? ? ? E; discriminate E))
+    as (b & kk & live & out & Hinf & Hr & Hsc & Hpt & Hb & Hnth & Hc & Hfit & Hfe).
   (* The pass accepts a renew or half check only of a proof's name. *)
   assert (Hn1 : exists n1, a1 = Tmp n1)
     by (destruct Ho as [(lo & hi & r & al & ->) | (bd & lo & hi & r & al & ->)];
@@ -624,9 +661,9 @@ Proof.
   destruct Hn1 as [n1 ->].
   destruct Ho as [(lo & hi & r & al & ->) | (bd & lo & hi & r & al & ->)].
   - exact (renew_not_unchecked ge md (c_frame c) (c_mem c) l (Z.of_nat kk) Hmd Hinf Hr Hsc Hpt
-             b kk q lo hi r al n1 a2 rest live _ why Hfit Hb Hnth eq_refl Hc Hst).
+             b kk q lo hi r al n1 a2 rest live out why Hfit Hb Hnth eq_refl Hc Hst).
   - exact (half_not_unchecked ge md (c_frame c) (c_mem c) l (Z.of_nat kk) Hmd Hinf Hr Hsc Hpt
-             b kk q bd lo hi r al n1 a2 rest live _ why Hfit Hfe Hb Hnth eq_refl Hc Hst).
+             b kk q bd lo hi r al n1 a2 rest live out why Hfit Hfe Hb Hnth eq_refl Hc Hst).
 Qed.
 
 End Reuse.

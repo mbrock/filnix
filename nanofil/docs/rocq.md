@@ -43,6 +43,7 @@ the interpreter and cites the predicate it copies.
 | `Persistence.v` | — (Campaign 3) | the evidence invariant over whole runs: every machine step keeps `inv` (one lemma per kind of step), and in every state of a run no raw access or raw call of a frame that is not doomed is `unchecked`, but by `hull_covered` |
 | `Chain.v` | `offset_interval/8`, `guard_chain/3`, `pointer_distance/4`, `hull_covered/7` (ir.pl) | what a frame reads off the single definitions that dominate its point; along every run, no access `hull_covered` accepts gives `unchecked` |
 | `Renew.v` | `renew_source_op/6`, `half_known/6` (ir.pl); `renew_res/4`, `half_bound/6`, `half_res/4` (interp.pl) | along every run, no renew or half check the pass accepts gives `unchecked` |
+| `Guard.v` | `guard_covers/5`, `limit_covers/5`, `lower_chain/3` (ir.pl); `kind_res/8` (interp.pl) | along every run, no `renew_if` or `check_limit` the pass accepts gives `unchecked` |
 | `Transport.v` | — | decoding a printed checked module, encoding outcomes, `judge`, `judge_valid` |
 | `Extract.v`, `extraction/main.ml` | — | OCaml extraction, and a reader of Prolog terms |
 
@@ -1063,6 +1064,42 @@ No admits. Decisions:
   instances and `mreachable_same`, so no new instance of the machine is
   needed.
 
+### Guards and limits
+
+`Guard.v` proves the two reuse forms whose evidence is not a check.
+
+A `renew_if` of P with guard G trusts a `span_test` of N0 that G names
+(`guard_covers/5`). Where G is 0, it checks, and a check is never
+`unchecked`. Where G is not 0, the span test found N0+[GLo, GHi) inside
+N0's object, and P's guard chain puts P's span inside that one. The
+renewed access then lies inside the object as it was
+(`guard_inside`), so in a memory that persists it passes, traps
+read-only or misaligned, or finds the object freed (`renew_inside`):
+never `unchecked(span)`.
+
+A `check_limit` of P with U trusts a `limit` of N0 whose size is the
+check's span (`limit_covers/5`), and P's lower chain reaches N0
+(`lower_chain/3`). Each step of a lower chain is a flight, whose
+capability is its lower donor's, so P has N0's capability
+(`lower_chain_sound`). The limit then matches, and the instruction
+checks: never `unchecked(limit)`.
+
+Along every run, a frame that is not doomed runs neither to `unchecked`
+(`run_guard_checked`; `interp_guard_checked`, closed). No admits, and
+no new hypothesis or runtime fact.
+
+Decisions:
+
+- **The span's width comes from `valid_op/1`, not from the object.** A
+  span test reduces its two addresses modulo 2^64 separately. Their
+  difference is the span's width only because the width is below
+  2^64, which `valid_op/1` ensures (both ends signed 64-bit offsets).
+- **The run theorems share one context lemma.** Renew.v's `run_point`
+  states what holds at the point of a frame that is not doomed, at an
+  instruction that is not a raw access: the pass accepted it, single
+  definitions replay, and memory is in the address space. Both run
+  theorems use it.
+
 ## An object past 2^64
 
 `rocq/tests/huge-object.ir` allocates an object of 2^64 - 2^32 - 80
@@ -1195,9 +1232,9 @@ with this bound it also keeps a ready module's data below 2^48.
 
 1. The other reuse forms as corollaries of `Single.v`'s invariant and
    Interval.v's `iv_sound`, each
-   with ir.pl's side conditions as hypotheses: `renew_if`,
-   `check_limit`, and `check_ahead`'s doomed frame; then
-   `valid_no_unchecked`, assembled from Persistence.v's invariant.
+   with ir.pl's side conditions as hypotheses: `check_ahead`'s doomed
+   frame; then `valid_no_unchecked`, assembled from Persistence.v's
+   invariant.
 2. After the reuse forms, a decision on the runtime's safepoints
    (`spares`, above) and its free (`free_ids`, "Identities persist"),
    brought to mbrock together with a recommendation after an Oracle
