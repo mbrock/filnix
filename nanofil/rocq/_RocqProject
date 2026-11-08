@@ -17,6 +17,7 @@ theories/Interval.v
 theories/Sites.v
 theories/Identity.v
 theories/ExternalCalls.v
+theories/Startup.v
 theories/Coverage.v
 theories/Evidence.v
 theories/Walk.v

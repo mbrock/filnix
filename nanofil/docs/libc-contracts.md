@@ -321,8 +321,15 @@ probes. It traverses argc+1 and environment sentinel arrays, reads their
 strings using actual capabilities, checks program-name aliases and
 writes errno. Sources: `csu/`, `misc/init-misc.c`, `csu/errno-loc.c`,
 `libio/` initial streams. Tests do not exhaust all legal entry vectors;
-the eventual entry contract must include empty argv/environment and
-arbitrary lengths/content, not assume these sample command lines.
+the entry contract includes empty argument strings and an empty
+environment, with arbitrary lengths/content within ABI and allocation
+bounds, not just these sample command lines. The selected native
+`filc_start_program.c` boundary asserts `argc >= 1`, so an empty **argv
+vector** is not a successful entry at this pin. Its `argc + 1` is an
+int expression before checked size multiplication; constructing that
+array additionally requires `argc < INT_MAX`. `Startup.v` separates
+the readable entry facts from this copying-arithmetic obligation; it
+does not yet prove the launcher establishes the memory image.
 
 ## Native evidence and remaining work
 

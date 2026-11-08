@@ -497,6 +497,40 @@ the independent `ExternalCalls.prefix` relation has not been turned
 into all of a native execution's intermediate machine states. Existing
 `mstep_refines` still covers only the old machine.
 
+### Campaign 4, milestone 3a: launcher entry memory
+
+[Startup.v](../rocq/theories/Startup.v) states the readable projection
+of the selected Fil-C launcher's argv/environment image: a checked,
+pointer-aligned array including the sentinel, address bytes and auxiliary
+capability for each slot, and an in-object first NUL for each string.
+`startup_argument`, `startup_environment` and `startup_sentinels` expose
+those facts for arbitrary finite contents, not just sample command
+lines. Empty strings and an empty environment are included; the pinned
+`filc_start_program.c` asserts `argc >= 1`. Its separate copying-size
+lemma records the int `argc + 1` overflow boundary before checked size
+multiplication. `main_void_entry` proves that the model's main(void)
+frame ignores the launcher's three arguments, rather than restricting
+the launcher to no arguments. Process-status conversion keeps the low
+byte, but no new process-exit transition is claimed yet.
+
+The retained [hi.c](../tests/c/prog/hi.c) is the census's exact source
+program and now runs in the ordinary native-comparison matrix. Public
+entry regressions reject mismatched argc, missing sentinel bounds,
+nonnull sentinels, lost capabilities, wrong address bytes and missing
+NUL. This is **not** yet a construction of copied, writable, fresh
+startup objects or a proof of initial runtime readiness.
+
+The remaining closure is split into small changes: first define the
+stdout protocol (acceptance, ordered delivery/discard and allocation
+fallback), then relate explicit libc roots and allocations to it, then
+connect main's return to shutdown. Native FILE realization remains a
+trusted obligation, not a guessed layout or a Boolean. Shutdown must
+account for TLS destructors and dynamically changing/reentrant exit
+registrations before stream cleanup, not just fold a fixed callback
+list. A failed write may discard previously accepted bytes; acceptance
+never promises descriptor delivery. Linking the pinned body and native
+prefix coverage/adequacy remain necessary before `never_panics`.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and
