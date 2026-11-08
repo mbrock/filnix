@@ -115,7 +115,8 @@ table.rq-ctors tr.note td, table.rq-fields tr.note td { padding-top: 0.4rem; }
 .rule { display: inline-grid; grid-template-columns: minmax(0, 1fr); max-width: 100%; }
 .rule-vars { color: var(--muted); font-size: 0.88rem; margin-bottom: 0.15rem; }
 .rule-vars .v.def { color: var(--var); font-weight: 500; }
-.premises { display: grid; row-gap: 0.1em; padding: 0 0.6em; }
+/* Without the term planner, wide premises must wrap inside the rule too. */
+.premises { display: grid; grid-template-columns: minmax(0, 1fr); row-gap: 0.1em; padding: 0 0.6em; }
 .rule-line {
   display: flex; align-items: center; gap: 0.6em;
   margin: 0.15em 0; min-height: 0.3em;
