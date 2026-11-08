@@ -37,5 +37,6 @@ theories/Soundness.v
 theories/ExternalMachine.v
 theories/Hi.v
 theories/Composition.v
+theories/Panics.v
 theories/Transport.v
 theories/Extract.v
