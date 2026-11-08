@@ -1,47 +1,36 @@
-(** Campaign 3's single-definition invariant over runs (docs/formal.md,
-    Campaign 3; docs/rocq.md, "The single-definition invariant").
+(** Campaign 3's [[single-definition invariant]] over runs
+    (docs/formal.md, Campaign 3;
+    [docs/rocq.md, The single-definition invariant](../../docs/rocq.md#the-single-definition-invariant)).
 
-    The reuse forms' rules read relations between the values of names
-    that have one definition each: a flight and its base, a proof and
-    the pointer it checked, a span test or a limit and the pointer it
-    read. Such a relation holds at a point of a run only where the
-    name's definition dominates the point, and only while the
-    definition's operands hold the values it read. This file states
-    that for every frame of every run, and proves that every machine
-    step keeps it.
+    The [[reuse]] forms' rules read relations between the values of
+    names that have one definition each: a [[flight]] and its base, a
+    [[proof]] and the pointer it checked, a [[span test]] or a [[limit]]
+    and the pointer it read. Such a relation holds at a point of a run
+    only where the name's definition [[dominates]] the point, and only
+    while the definition's operands hold the values it read. This file
+    states that for every frame of every run ([sinv]), and proves that
+    every machine step keeps it ([mreachable_sinv]).
 
-    At a frame's point, each single definition whose site dominates the
-    point *replays* (`replays`): the name holds what its instruction made
-    in some earlier frame and memory, that frame agrees with the current
-    environment on the instruction's single-definition operands, and the
-    current memory persists from the memory the instruction left
-    (Identity.v), which lay in the address space. A check that passed
-    then passes again or traps; a flight's capability is its lower
-    donor's.
-
-    | Name | Says |
-    |---|---|
-    | `replayable` | the instructions a replay speaks of: a `let` that is not an `alloc`, and a flight |
-    | `replays` | a name holds what its defining instruction made from its operands' current values, in a memory that fit the address space and that the current one persists from |
-    | `point_site` | the block and index of a frame's point, as `site_dominates/4` reads them |
-    | `scope_holds` | every replayable single definition whose site dominates the point replays |
-    | `shaped`, `waits` | a frame's point is in a reachable block of its function; a caller waits just after the call that made its callee |
-    | `running`, `waiting`, `sinv` | the running frame, unless doomed, and every waiting caller hold their scope |
-    | `scope_step`, `scope_after` | across one instruction of a block, the scope moves on: the instruction's own name replays, or does not need to |
-    | `mstep_sinv`, `mreachable_sinv` | every machine step keeps `sinv` |
-    | `interp_sinv` | under the interpreter's runtime, with no hypothesis but a ready start |
+    At a frame's point, each single definition whose [[site]] dominates
+    the point [[replays]] ([replays]): the name holds what its
+    instruction made in some earlier frame and memory, that frame agrees
+    with the current environment on the instruction's single-definition
+    operands, and the current memory [[identity|persists]] from the
+    memory the instruction left (Identity.v), which lay in the address
+    space. A check that passed then passes again or traps; a flight's
+    capability is its lower donor's.
 
     ## Decisions
 
     | Decision | Why |
     |---|---|
-    | the relation is the instruction's own step, replayed | one statement covers every op; each reuse form reads off what it needs from `inst_step` |
-    | the operands a replay fixes are the single definitions | `no_use_redefined` (Sites.v) keeps exactly those; a name defined twice may change, and no reuse rule follows one |
+    | the relation is the instruction's own step, replayed | one statement covers every op; each reuse form reads off what it needs from [inst_step] |
+    | the operands a replay fixes are the single definitions | [no_use_redefined] (Sites.v) keeps exactly those; a name defined twice may change, and no reuse rule follows one |
     | a call and an `alloc` do not replay | their step is not one that continues; no reuse rule reads through them |
     | a doomed frame claims nothing | its `check_ahead` did not pass; a doomed frame never returns to a caller or calls one |
-    | memory is handled once, for every step | each step's memory persists (`mstep_persists`), so the step lemmas carry frames and a replay's memory follows by `scope_mem` |
-    | a replay keeps that the memory it left fit the address space (`objects_fit`) | the object of a check that passed then ended below 2^48; once the object is freed, the current memory no longer says where it ended |
-    | free keeps identities by Runtime.v's axiom `free_keeps_ids` | mbrock's decision (docs/rocq.md, "Identities persist") | *)
+    | memory is handled once, for every step | each step's memory persists ([mstep_persists]), so the step lemmas carry frames and a replay's memory follows by [scope_mem] |
+    | a replay keeps that the memory it left fit the address space ([objects_fit]) | the object of a check that passed then ended below 2^48; once the object is freed, the current memory no longer says where it ended |
+    | free keeps identities by Runtime.v's axiom [free_keeps_ids] | mbrock's decision ([docs/rocq.md, Identities persist](../../docs/rocq.md#identities-persist)) | *)
 
 From Stdlib Require Import String ZArith List Bool Lia Relations.
 From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Semantics Machine Validate
@@ -51,7 +40,10 @@ Open Scope Z_scope.
 
 (** ## The invariant *)
 
-(** The instructions whose step continues and defines a name. *)
+(** The instructions a replay speaks of: a `let` that is not an `alloc`,
+    and a [[flight]]. Their step continues and defines a name; a call's
+    or an allocation's does not continue with a value, and no reuse rule
+    reads through one. *)
 Definition replayable (i : inst) : bool :=
   match i with
   | Let _ _ (Alloc _) _ => false
@@ -59,9 +51,12 @@ Definition replayable (i : inst) : bool :=
   | _ => false
   end.
 
-(** `replays ge once e m n i`: n holds what i made in a frame that
-    agrees with e on i's single-definition operands, and m persists from
-    the memory i left, whose objects fit the address space. *)
+(** The name n, defined by the instruction i, [[replays]] in the
+    environment e and memory m: in some earlier frame fr0 and memory m0,
+    i's step continued and gave n the value it has in e; fr0 agrees with
+    e on i's single-definition operands (once being the function's
+    [single_definitions]); and m [persists] from the memory m1 the step
+    left, whose objects fit the address space ([objects_fit]). *)
 Definition replays (ge : genv) (once : list (name * def)) (e : env) (m : Memory.mem) (n : name) (i : inst)
   : Prop :=
   exists fr0 m0 e1 l1 m1,
@@ -69,8 +64,9 @@ Definition replays (ge : genv) (once : list (name * def)) (e : env) (m : Memory.
     (forall a, In a (inst_uses i) -> once_has once a = true -> lookup a (fr_env fr0) = lookup a e) /\
     persists m1 m /\ objects_fit (m_regions m1).
 
-(** `point_site f pt`: the block and index of pt, a block's entry
-    being before its phis, at -1. *)
+(** The block and index of the point pt of f, as `site_dominates/4`
+    reads them: a block's entry is before its phis, at index -1; a
+    [[snapshot]] has none. *)
 Definition point_site (f : func) (pt : point) : option (name * Z) :=
   match pt with
   | Snapshot _ _ => None
@@ -82,8 +78,11 @@ Definition point_site (f : func) (pt : point) : option (name * Z) :=
       end
   end.
 
-(** `scope_with rp fr m`: at fr's point, each replayable single
-    definition whose site dominates the point satisfies rp. *)
+(** At the point of the frame fr, each replayable single definition (the
+    name n, defined by i at the site s) whose [[site]] dominates the
+    point satisfies the property rp in fr's environment and the memory
+    m. [scope_holds] takes [replays] for rp; [scope_plain] a weaker
+    one. *)
 Definition scope_with (rp : list (name * def) -> env -> Memory.mem -> name -> inst -> Prop)
     (fr : frame) (m : Memory.mem) : Prop :=
   let f := fr_fn fr in
@@ -93,13 +92,16 @@ Definition scope_with (rp : list (name * def) -> env -> Memory.mem -> name -> in
     In (n, s, DInst i) (def_positions f) -> site_dominates (fn_doms f) l k s = true ->
     rp (single_definitions f) (fr_env fr) m n i.
 
-(** `scope_holds ge fr m`: at fr's point, each replayable single
-    definition whose site dominates the point replays. *)
+(** At the point of the frame fr, each replayable single definition
+    whose site dominates the point [replays] in fr's environment and the
+    memory m: fr holds its scope. *)
 Definition scope_holds (ge : genv) (fr : frame) (m : Memory.mem) : Prop :=
   scope_with (replays ge) fr m.
 
-(** `shaped md fr`: fr runs a function of md, at a point of a reachable
-    block, a suffix of its instructions. *)
+(** The frame fr runs a function of the module md, at a point of a
+    reachable block: a [[snapshot]] that leads to the entry, a block's
+    entry (from no block only at the function's entry), or a suffix of
+    a block's instructions before its jump. *)
 Definition shaped (md : module) (fr : frame) : Prop :=
   let f := fr_fn fr in
   In (IFunc f) md /\
@@ -112,35 +114,39 @@ Definition shaped (md : module) (fr : frame) : Prop :=
         is = skipn k (b_insts b) /\ j = b_jump b
   end.
 
-(** The names a call's result defines. *)
+(** The names a call's result r defines. *)
 Definition result_names (r : call_result) : list name :=
   match r with CVoid => [] | CResult d _ => [d] | CTuple rs => map fst rs end.
 
-(** `waits fr pd`: fr is just after a call or raw call whose result is
-    pd's. *)
+(** The frame fr is just after a call or raw call whose result is the
+    pending result pd's: it waits for its callee to return. *)
 Definition waits (fr : frame) (pd : pending) : Prop :=
   exists l rest j b k ci,
     fr_at fr = Exec l rest j /\ find_block l (fn_blocks (fr_fn fr)) = Some b /\
     nth_error (b_insts b) k = Some ci /\ rest = skipn (S k) (b_insts b) /\
     ((exists cl args, ci = Call (pd_res pd) cl args) \/ (exists cl args, ci = RawCall (pd_res pd) cl args)).
 
-(** `running ge md m fr`: the running frame is shaped and, unless
-    doomed, holds its scope in m. *)
+(** The running frame fr is [shaped] and, unless doomed, holds its scope
+    in the memory m. *)
 Definition running (ge : genv) (md : module) (m : Memory.mem) (fr : frame) : Prop :=
   shaped md fr /\ (fr_doomed fr <> None \/ scope_holds ge fr m).
 
-(** `waiting ge md m fp`: a caller is shaped, not doomed, just after
-    the call it waits on, and holds its scope in m. *)
+(** A waiting caller fp, its frame and the result it waits for, is
+    [shaped], not doomed, just after the call it waits on ([waits]), and
+    holds its scope in the memory m. *)
 Definition waiting (ge : genv) (md : module) (m : Memory.mem) (fp : frame * pending) : Prop :=
   shaped md (fst fp) /\ fr_doomed (fst fp) = None /\ waits (fst fp) (snd fp) /\ scope_holds ge (fst fp) m.
 
-(** `sinv ge md c`: the invariant of a configuration. *)
+(** The single-definition invariant of a configuration c: in c's
+    memory, the running frame is [running] and every waiting caller is
+    [waiting]. *)
 Definition sinv (ge : genv) (md : module) (c : config) : Prop :=
   running ge md (c_mem c) (c_frame c) /\ Forall (waiting ge md (c_mem c)) (c_callers c).
 
 (** ## Sites *)
 
-(** An instruction's single definition is at an instruction's site. *)
+(** A name an instruction defines ([DInst]) is at an instruction's site
+    [SAt] d j, not at a parameter's ([SParam]). *)
 Lemma dinst_site : forall f n s i, In (n, s, DInst i) (def_positions f) -> exists d j, s = SAt d j.
 Proof.
   intros f n s i H. unfold def_positions in H. apply in_app_or in H as [H | H].
@@ -201,13 +207,15 @@ Qed.
 
 (** ## What a step changes in the environment *)
 
+(** Putting d leaves the value of every name a not among d :: ds. *)
 Lemma lookup_put_not : forall (A : Type) a d (v : A) ds e, ~ In a (d :: ds) -> lookup a (put d v e) = lookup a e.
 Proof.
   intros A a d v ds e H. rewrite lookup_put. destruct (name_eqb a d) eqn:E; [|reflexivity].
   apply name_eqb_true in E. subst. exfalso. apply H. left. reflexivity.
 Qed.
 
-(** An instruction that continues changes only the names it defines. *)
+(** An instruction that continues changes only the names it defines
+    ([inst_temp_defs]). *)
 Lemma inst_step_env : forall ge fr m i e1 l1 m1,
   inst_step ge fr m i = Some (IContinue e1 l1 m1) ->
   forall a, ~ In a (map fst (inst_temp_defs i)) -> lookup a e1 = lookup a (fr_env fr).
@@ -235,6 +243,7 @@ Proof.
       exact (lookup_put_not _ _ _ _ [] _ Ha) ].
 Qed.
 
+(** A fold of environment updates that starts from failure fails. *)
 Lemma fold_env_none : forall (A : Type) (g : env -> A -> option env) xs,
   fold_left (fun acc x => let* e := acc in g e x) xs None = None.
 Proof. intros A g xs. induction xs; simpl; auto. Qed.
@@ -253,8 +262,10 @@ Proof.
     apply name_eqb_true in Ek. subst. exfalso. apply Ha. left. reflexivity.
 Qed.
 
+(** The name a phi defines. *)
 Definition phi_name (ph : phi) : name := match ph with Phi d _ _ => d end.
 
+(** Putting d leaves the value of every other name a. *)
 Lemma lookup_put_ne : forall (A : Type) a d (v : A) e, a <> d -> lookup a (put d v e) = lookup a e.
 Proof. intros A a d v e H. apply (lookup_put_not _ _ _ _ []). intros [E | []]. exact (H (eq_sym E)). Qed.
 
@@ -311,6 +322,7 @@ Qed.
 Lemma call_defs : forall r cl args, map fst (inst_temp_defs (Call r cl args)) = result_names r.
 Proof. intros r cl args. destruct r; reflexivity. Qed.
 
+(** So are a raw call's. *)
 Lemma raw_call_defs : forall r cl args, map fst (inst_temp_defs (RawCall r cl args)) = result_names r.
 Proof. intros r cl args. destruct r; reflexivity. Qed.
 
@@ -327,6 +339,8 @@ Qed.
 
 (** ## Points *)
 
+(** Where dropping k elements of l, with k at most l's length, leaves
+    nothing, k is l's length. *)
 Lemma skipn_nil_length : forall (A : Type) k (l : list A), skipn k l = [] -> (k <= length l)%nat -> k = length l.
 Proof.
   intros A k l H Hk. pose proof (length_skipn k l) as E. rewrite H in E. simpl in E. lia.
@@ -356,9 +370,9 @@ Qed.
 
 (** ## A single definition's relation survives a step *)
 
-(** `replays_change`: a replay holds of any environment that agrees on
-    the name and its single-definition operands, in any memory that
-    persists. *)
+(** A replay holds of any environment e' that agrees with e on the name
+    n and its single-definition operands, in any memory m' that persists
+    from m. *)
 Lemma replays_change : forall ge once e e' m m' n i,
   replays ge once e m n i -> lookup n e' = lookup n e ->
   (forall a, In a (inst_uses i) -> once_has once a = true -> lookup a e' = lookup a e) ->
@@ -370,15 +384,17 @@ Proof.
   exact (conj (persists_trans _ _ _ Hp Hp') Hfit).
 Qed.
 
-(** `moves rp`: rp of a name survives what `replays_change` allows: an
+(** The property rp of a name survives what [replays_change] allows: an
     environment that keeps the name and its single-definition operands,
-    and a memory that persists. *)
+    and a memory that persists. The scope lemmas hold of any such rp. *)
 Definition moves (rp : list (name * def) -> env -> Memory.mem -> name -> inst -> Prop) : Prop :=
   forall once e e' m m' n i,
     rp once e m n i -> lookup n e' = lookup n e ->
     (forall a, In a (inst_uses i) -> once_has once a = true -> lookup a e' = lookup a e) ->
     persists m m' -> rp once e' m' n i.
 
+(** A frame's scope of a property rp that [moves] holds in any memory m'
+    that persists from m. *)
 Lemma scope_with_mem : forall rp fr m m',
   moves rp -> scope_with rp fr m -> persists m m' -> scope_with rp fr m'.
 Proof.
@@ -386,26 +402,30 @@ Proof.
   exact (Hmv _ _ _ _ _ _ _ (H _ _ _ _ _ Hpt Hn Hr Hpos Hsd) eq_refl (fun _ _ _ => eq_refl) Hp).
 Qed.
 
+(** So [scope_holds] holds in any memory that persists. *)
 Lemma scope_mem : forall ge fr m m', scope_holds ge fr m -> persists m m' -> scope_holds ge fr m'.
 Proof. intros ge. exact (fun fr m m' => scope_with_mem _ fr m m' (replays_change ge)). Qed.
 
-(** `ahead_free i`: i is not a `check_ahead`, whose proof a doomed frame
-    holds though its check did not pass. *)
+(** The instruction i is not a [[check_ahead]], whose result a doomed
+    frame holds though its check did not pass. *)
 Definition ahead_free (i : inst) : bool :=
   match i with Let _ _ (CheckAhead _ _ _ _ _) _ => false | _ => true end.
 
-(** `scope_plain ge fr m`: each single definition in scope that is not a
-    `check_ahead` replays. Guard chains, offset intervals and pointer
-    distances read only such definitions. *)
+(** Each single definition in scope at fr's point that is not a
+    `check_ahead` replays. [[guard chain|Guard chains]], [[offset intervals]] and
+    pointer distances read only such definitions. *)
 Definition scope_plain (ge : genv) (fr : frame) (m : Memory.mem) : Prop :=
   scope_with (fun once e m n i => ahead_free i = true -> replays ge once e m n i) fr m.
 
+(** A frame that holds its scope holds its plain scope. *)
 Lemma scope_plain_of : forall ge fr m, scope_holds ge fr m -> scope_plain ge fr m.
 Proof. intros ge fr m H l k n s i Hpt Hn Hr Hpos Hsd _. exact (H _ _ _ _ _ Hpt Hn Hr Hpos Hsd). Qed.
 
-(** `scope_moves`: names defined at index k of a reachable block l
-    change neither a single definition in scope there nor its
-    single-definition operands. *)
+(** The names X defined at index k of a reachable block l change
+    neither a single definition n in scope there nor its
+    single-definition operands: where the environment e' differs from e
+    only on X, both read the same values. This rests on
+    [no_use_redefined]. *)
 Lemma scope_moves : forall f b0 rest l k (X : list name) n s i (e e' : env),
   fn_blocks f = b0 :: rest -> block_intervals (b0 :: rest) = Some (fn_doms f) ->
   definitions_dominate f (fn_doms f) = true -> is_reachable (fn_doms f) l = true ->
@@ -463,6 +483,9 @@ Qed.
 
 (** ## Scope along a block *)
 
+(** A [shaped] frame inside block l: its function is the module's, l is
+    reachable, and its instructions are the suffix of l's block b from
+    an index k, before b's jump. *)
 Lemma shaped_exec : forall md fr l is j,
   shaped md fr -> fr_at fr = Exec l is j ->
   In (IFunc (fr_fn fr)) md /\ is_reachable (fn_doms (fr_fn fr)) l = true /\
@@ -481,9 +504,10 @@ Proof.
   rewrite (find_block_unique _ _ _ _ Hnd Hb Hb' Hl) in Hk. apply Nat2Z.inj in Ej. subst. exact Hk.
 Qed.
 
-(** `scope_step_with`: from index k to k+1 of a block, over the
-    instruction i at k, which changes only the names it defines, in a
-    memory that persists, rp moves on; i's own names satisfy it if i is
+(** From index k to k + 1 of block l, over the instruction i at k: where
+    the next frame fr' differs from fr only on i's names and memory
+    persists from m to m', a scope of a property rp that [moves] holds
+    at fr' if it held at fr, provided i's own name satisfies rp when i is
     replayable. *)
 Lemma scope_step_with : forall rp md fr fr' m m' l b k i,
   moves rp -> checked_module md -> In (IFunc (fr_fn fr)) md -> fr_fn fr' = fr_fn fr ->
@@ -514,7 +538,7 @@ Proof.
     exact (Hmv _ _ _ _ _ _ _ (Hold _ _ _ _ _ Hpt0 Hn Hrp Hpos Hsd0) Hn' Ha' Hp).
 Qed.
 
-(** `scope_step`: `scope_step_with` for replays. *)
+(** [scope_step_with] for [replays]: the step lemma of [scope_holds]. *)
 Lemma scope_step : forall ge md fr fr' m m' l b k i,
   checked_module md -> In (IFunc (fr_fn fr)) md -> fr_fn fr' = fr_fn fr ->
   is_reachable (fn_doms (fr_fn fr)) l = true ->
@@ -530,9 +554,10 @@ Proof.
   intros ge md fr fr' m m' l b k i. exact (scope_step_with (replays ge) md fr fr' m m' l b k i (replays_change ge)).
 Qed.
 
-(** `scope_after`: just after the instruction i at index k, whose own
-    names do not replay, a frame whose environment changed only on i's
-    names keeps the scope it had there. *)
+(** Just after the instruction i at index k, whose own names do not
+    replay (a call, an allocation), a frame whose environment changed
+    only on i's names keeps the scope it had there, in a memory that
+    persists. *)
 Lemma scope_after : forall ge md fr fr' m m' l b k i,
   checked_module md -> In (IFunc (fr_fn fr)) md -> fr_fn fr' = fr_fn fr -> fr_at fr' = fr_at fr ->
   is_reachable (fn_doms (fr_fn fr)) l = true ->
@@ -575,8 +600,8 @@ Proof.
   destruct (variadic_func g); eauto.
 Qed.
 
-(** `at_entry`: a frame at its function's entry, entered or about to
-    take its snapshot, is shaped, with nothing in scope. *)
+(** A frame at its function's entry, entered or about to take its
+    [[snapshot]], is [shaped], with nothing in scope. *)
 Lemma at_entry : forall ge md fr m l,
   checked_module md -> In (IFunc (fr_fn fr)) md -> entry_label (fr_fn fr) = Some l ->
   (fr_at fr = Enter l None \/ exists ys, fr_at fr = Snapshot ys l) ->
@@ -611,8 +636,9 @@ Proof.
   destruct (returned_env _ _ _) as [e|] eqn:Ee; [|discriminate H]. injection H as <-. simpl. eauto 10.
 Qed.
 
-(** `scope_return`: a caller resumes with its scope, the call's result
-    names being the only ones that changed. *)
+(** A caller that [waits] resumes with its scope, in a memory that
+    persists, the call's result names being the only ones that
+    changed. *)
 Lemma scope_return : forall ge md fr e m m' pd,
   checked_module md -> shaped md fr -> waits fr pd ->
   (forall a, ~ In a (result_names (pd_res pd)) -> lookup a e = lookup a (fr_env fr)) ->
@@ -658,6 +684,8 @@ Qed.
 
 (** ## Every step keeps the invariant *)
 
+(** The invariant over the runs of [Machine] R, for any [[runtime]]
+    R. *)
 Module Single (R : Runtime).
 
 Module ID := Identity R.
@@ -665,7 +693,8 @@ Module I := Invariant R.
 Import ID.
 Import RM.
 
-(** `next_sinv_snapshot`: a snapshot enters the entry block. *)
+(** A [[snapshot]] step keeps [sinv]: it enters the entry block, where
+    nothing is in scope. *)
 Lemma next_sinv_snapshot : forall ge md c c' xs l,
   checked_module md -> fr_at (c_frame c) = Snapshot xs l -> step ge c = Next c' ->
   persists (c_mem c) (c_mem c') -> sinv ge md c -> sinv ge md c'.
@@ -678,8 +707,8 @@ Proof.
   split; [split; [exact Hsh' | right; exact Hsc'] | rewrite Hc; exact (callers_mem _ _ _ _ _ Hcall Hp)].
 Qed.
 
-(** `next_sinv_enter`: entering a block, its phis define their names
-    at index -1, and its first instruction is at index 0. *)
+(** Entering a block keeps [sinv]: its phis define their names at index
+    -1, and its first instruction is at index 0. *)
 Lemma next_sinv_enter : forall ge md c c' l from,
   checked_module md -> fr_at (c_frame c) = Enter l from -> step ge c = Next c' ->
   persists (c_mem c) (c_mem c') -> sinv ge md c -> sinv ge md c'.
@@ -705,8 +734,9 @@ Proof.
              (Hsc l (-1) n s i ltac:(rewrite Ha; reflexivity) Hn Hrp Hpos Hsd0) Hn' Ha' Hp).
 Qed.
 
-(** `next_sinv_jump`: a jump takes an edge, to the entry of a block
-    whose dominators dominated the jump; or returns to a waiting caller. *)
+(** A jump keeps [sinv]: it takes an edge, to the entry of a block whose
+    dominators dominated the jump ([site_edge]); or it returns to a
+    waiting caller, which resumes with its scope ([scope_return]). *)
 Lemma next_sinv_jump : forall ge md c c' l j,
   checked_module md -> fr_at (c_frame c) = Exec l [] j -> step ge c = Next c' ->
   persists (c_mem c) (c_mem c') -> sinv ge md c -> sinv ge md c'.
@@ -740,8 +770,9 @@ Proof.
     exact (scope_return _ _ _ _ _ _ _ Hmd Hshc Hwt (fun a Ha => returned_env_other _ _ _ _ _ Hre Ha) Hp Hscc).
 Qed.
 
-(** `next_sinv_inst`: an instruction continues, and its own name
-    replays from where it ran; or it calls, and the caller waits. *)
+(** An instruction keeps [sinv]: it continues, and its own name replays
+    from where it ran; or it calls, the callee starting with nothing in
+    scope and the caller waiting. *)
 Lemma next_sinv_inst : forall ge md c c' l i rest j,
   ge_module ge = md -> checked_module md -> fr_at (c_frame c) = Exec l (i :: rest) j ->
   step ge c = Next c' -> persists (c_mem c) (c_mem c') -> objects_fit (m_regions (c_mem c')) ->
@@ -802,7 +833,8 @@ Proof.
       intros n Hrp. destruct Hpd as [(cl & args & ->) | (cl & args & ->)]; discriminate Hrp.
 Qed.
 
-(** A step that allocates nothing. *)
+(** A step that allocates nothing keeps [sinv], where memory persists
+    across it and fits the address space after it. *)
 Lemma next_sinv : forall ge md c c',
   ge_module ge = md -> checked_module md -> step ge c = Next c' ->
   persists (c_mem c) (c_mem c') -> objects_fit (m_regions (c_mem c')) -> sinv ge md c -> sinv ge md c'.
@@ -815,7 +847,8 @@ Proof.
   - exact (next_sinv_inst _ _ _ _ _ _ _ _ Hge Hmd Ha Hs Hp Hfit H).
 Qed.
 
-(** `fresh_sinv`: an allocation defines names that do not replay. *)
+(** An allocation keeps [sinv]: it defines names that do not replay, and
+    memory persists across it. *)
 Lemma fresh_sinv : forall ge md c q k base,
   checked_module md -> step ge c = Fresh q k -> persists (c_mem c) (c_mem (k base)) ->
   sinv ge md c -> sinv ge md (k base).
@@ -852,16 +885,16 @@ Proof.
       discriminate Hrp.
 Qed.
 
-(** `mem_sinv`: the runtime's action at a safepoint changes only the
-    memory, which persists. *)
+(** The runtime's action at a [[safepoint]] keeps [sinv]: it changes only
+    the memory, which persists. *)
 Lemma mem_sinv : forall ge md c m', persists (c_mem c) m' -> sinv ge md c -> sinv ge md (with_mem c m').
 Proof.
   intros ge md c m' Hp [Hrun Hcall].
   exact (conj (running_mem _ _ _ _ _ Hrun Hp) (callers_mem _ _ _ _ _ Hcall Hp)).
 Qed.
 
-(** `mstep_sinv`: every machine step from a ready state keeps the
-    invariant, if the runtime's free keeps identities. *)
+(** Every machine step from a [[ready]] state keeps [sinv], where the
+    genv's free is R's, so keeps identities ([mstep_persists]). *)
 Theorem mstep_sinv : forall ge md st st',
   ge_module ge = md -> checked_module md -> ge_free ge = R.free ->
   ready_state st -> mstep ge st st' -> sinv ge md (fst st) -> sinv ge md (fst st').
@@ -875,8 +908,8 @@ Proof.
   - exact (mem_sinv _ _ _ _ Hp H).
 Qed.
 
-(** `mreachable_sinv`: from a ready start where it holds, the invariant
-    holds in every state a run reaches. *)
+(** From a ready start where it holds, [sinv] holds in every state a run
+    reaches. *)
 Theorem mreachable_sinv : forall ge md st st',
   ge_module ge = md -> checked_module md -> ge_free ge = R.free ->
   mreachable ge st st' -> ready_state st -> sinv ge md (fst st) -> sinv ge md (fst st').
@@ -887,7 +920,8 @@ Proof.
   - apply IH2; [exact (mreachable_ready _ _ _ Hfree H12 Hr) | exact (IH1 Hr Hi)].
 Qed.
 
-(** A run starts at its function's entry, with no caller. *)
+(** [sinv] holds where a run starts: at the entry of a checked module's
+    function, with no caller. *)
 Lemma start_sinv : forall ge md f xs fr m fuel,
   checked_module md -> In (IFunc f) md -> call_frame f xs = Some fr -> sinv ge md (mkConfig fr [] m fuel).
 Proof.
@@ -897,8 +931,8 @@ Proof.
   split; [split; [exact Hsh | right; exact Hsc] | constructor].
 Qed.
 
-(** `run_sinv`: in every state of a run of a checked module's function
-    that starts ready, the invariant holds. *)
+(** In every state of a run of a checked module's function that starts
+    ready, [sinv] holds. *)
 Corollary run_sinv : forall ge md f xs fr m fuel s0 st,
   checked_module md -> ge_module ge = md -> ge_free ge = R.free ->
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
@@ -912,10 +946,11 @@ End Single.
 
 (** ## The interpreter's runtime *)
 
+(** The same for the interpreter's runtime. *)
 Module InterpSingle := Single InterpRuntime.
 
-(** `interp_sinv`: under the interpreter's runtime, whose free keeps
-    identities, the invariant needs no hypothesis but a ready start. *)
+(** Under the interpreter's runtime, whose free keeps identities, [sinv]
+    needs no hypothesis but a ready start. *)
 Corollary interp_sinv : forall md globals f xs fr m fuel s0 st,
   let ge := mkGenv md globals InterpRuntime.free in
   checked_module md -> In (IFunc f) md -> call_frame f xs = Some fr -> InterpRuntime.ready s0 m ->

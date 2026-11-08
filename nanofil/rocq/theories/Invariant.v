@@ -1,19 +1,16 @@
-(** Campaign 3's run-level invariant, stated (docs/rocq.md, "The
-    evidence invariant over runs"): what holds at each point of a frame
-    of `Machine R` (Machine.v), and the lemmas each kind of step needs.
-    Persistence.v proves that every step keeps it.
+(** Campaign 3's run-level [[evidence]] invariant, stated
+    ([docs/rocq.md, The evidence invariant over runs](../../docs/rocq.md#the-evidence-invariant-over-runs)):
+    what holds at each point of a [[frame]] of [Machine] R (Machine.v),
+    and the lemmas each kind of step needs. Persistence.v proves that
+    every step keeps it.
 
-    | Name | Says |
-    |---|---|
-    | `live_dom`, `pass_exits_dom` | the pass's live facts' pointers have single definitions dominating the point; true of every position the pass reaches, block entries by `dom_meet` |
-    | `at_pos` | where the pass is in a block, and what holds there: the facts the next instruction relies on, those the unpolled edge at the end carries, or the fact covering the access taken with a check (`pair_claim`); in each, the facts dominate (`live_dom`) |
-    | `point_ok` | what holds at a frame's point: a function's entry, a block's entry from a predecessor whose exit facts hold unless the edge polls, or `at_pos` |
-    | `frame_ok`, `parked`, `inv` | the running frame, unless doomed, is `point_ok`; each waiting caller has no fact |
-    | `spares` | the runtime changes no region at a safepoint before an instruction the pass relies on facts for |
-    | `pass_step` | an instruction the pass took, that continues, leaves the pass's next position true |
-    | `enter_point_ok` | entering a block, the pass's entry facts hold |
-    | `at_pos_continue`, `walks_after` | the next position after an instruction that continues, or after one the pass keeps no fact across |
-    | `call_parked` | a frame at a call that is not doomed can wait after it with no fact | *)
+    The invariant ([inv]) says that the running frame, unless a
+    [[check_ahead]] doomed it, is at a point where the facts the
+    [[evidence pass]] computed for that point hold ([point_ok]), and
+    that every waiting caller has no fact ([parked]). It also says that
+    each live fact's pointer has a [[single definition]] whose [[site]]
+    [[dominates]] the point ([live_dom]), so that the [[reuse]] forms
+    may read that pointer's definition. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Semantics Machine Validate
@@ -31,8 +28,11 @@ Open Scope Z_scope.
     block's entry over every incoming edge has a pointer dominating each
     reachable predecessor's end, so the entry too (`dom_meet`). *)
 
-(** A function of a checked module is valid: its blocks, their
-    intervals, distinct labels, and dominated uses. *)
+(** A function f of a [checked_module] md is valid in the ways the
+    proofs use: it has a first block, its [[dominator intervals]]
+    ([block_intervals]) are its [fn_doms], its block labels are
+    distinct, and its definitions dominate their uses
+    (`definitions_dominate/3`). *)
 Lemma func_facts : forall md f,
   checked_module md -> In (IFunc f) md ->
   exists b0 rest, fn_blocks f = b0 :: rest /\ block_intervals (b0 :: rest) = Some (fn_doms f) /\
@@ -48,6 +48,8 @@ Proof.
   exists b0, bs. auto.
 Qed.
 
+(** Where the labels of the blocks bs are distinct, the block
+    [find_block] finds for l is the only block of bs labelled l. *)
 Lemma find_block_unique : forall bs l b b',
   no_dups (map b_label bs) = true -> find_block l bs = Some b -> In b' bs -> b_label b' = l -> b' = b.
 Proof.
@@ -60,6 +62,9 @@ Proof.
     exact (IH _ _ _ Hnd Hf Hin Hl).
 Qed.
 
+(** Where dropping k elements of l leaves x before rest, x is l's
+    element at k, dropping k + 1 leaves rest, and k is below l's
+    length. *)
 Lemma skipn_cons : forall (A : Type) k (l : list A) x rest,
   skipn k l = x :: rest -> nth_error l k = Some x /\ skipn (S k) l = rest /\ (S k <= length l)%nat.
 Proof.
@@ -68,19 +73,25 @@ Proof.
   - destruct (IH _ _ _ H) as (H1 & H2 & H3). split; [exact H1|]. split; [exact H2 | lia].
 Qed.
 
+(** A temporary among the values vs is among their temporaries
+    ([value_temps]). *)
 Lemma value_temps_in : forall vs a, In (Tmp a) vs -> In a (value_temps vs).
 Proof. intros vs a H. unfold value_temps. apply in_flat_map. exists (Tmp a). split; [exact H | left; reflexivity]. Qed.
 
-(** `facts_dominate f l k live`: the single definition of each live
-    fact's pointer is at a site dominating index k of block l. *)
+(** The [[single definition]] of each live fact's pointer (its P, where
+    P is a temporary y with one definition) is at a [[site]] that
+    dominates index k of block l of f ([dominating]). *)
 Definition facts_dominate (f : func) (l : name) (k : Z) (live : list fact) : Prop :=
   forall fa y, In fa live -> f_p fa = Tmp y -> once_has (single_definitions f) y = true ->
     dominating f l k y.
 
-(** `live_dom f l k live`: so, where block l is reachable. *)
+(** The same, where block l is reachable: what the reuse forms need of
+    the live facts at index k of l. *)
 Definition live_dom (f : func) (l : name) (k : nat) (live : list fact) : Prop :=
   is_reachable (fn_doms f) l = true -> facts_dominate f l (Z.of_nat k) live.
 
+(** A site that dominates index k of block l dominates every later index
+    k' of l. *)
 Lemma site_dominates_mono : forall doms l k k' s,
   k <= k' -> site_dominates doms l k s = true -> site_dominates doms l k' s = true.
 Proof.
@@ -88,18 +99,23 @@ Proof.
   destruct (name_eqb d l); [apply Z.ltb_lt in H; apply Z.ltb_lt; lia | exact H].
 Qed.
 
+(** So live facts that dominate index k of a block dominate every later
+    index of it. *)
 Lemma live_dom_mono : forall f l k k' live, (k <= k')%nat -> live_dom f l k live -> live_dom f l k' live.
 Proof.
   intros f l k k' live Hk H Hr fa y Hfa Hy Ho. destruct (H Hr fa y Hfa Hy Ho) as (s & D & H1 & H2 & H3).
   exists s, D. split; [exact H1|]. split; [exact H2|]. eapply site_dominates_mono; [|exact H3]. lia.
 Qed.
 
+(** The empty list of facts dominates every point. *)
 Lemma live_dom_nil : forall f l k, live_dom f l k [].
 Proof. intros f l k _ fa y []. Qed.
 
+(** [kill] d keeps only facts it was given. *)
 Lemma kill_incl : forall d fs fa, In fa (kill d fs) -> In fa fs.
 Proof. unfold kill. intros d fs fa H. apply filter_In in H. exact (proj1 H). Qed.
 
+(** [evidence_after] keeps only facts it was given. *)
 Lemma evidence_after_incl : forall i fs fa, In fa (evidence_after i fs) -> In fa fs.
 Proof.
   unfold evidence_after. intros i fs fa H.
@@ -107,7 +123,8 @@ Proof.
   destruct (inst_def_first i); [exact (kill_incl _ _ _ H) | exact H].
 Qed.
 
-(** A check-like instruction's fact is of a pointer it uses. *)
+(** The fact a check-like instruction i adds ([check_fact]) is of a
+    pointer y that i uses. *)
 Lemma check_fact_uses : forall i fa y, check_fact i = Some fa -> f_p fa = Tmp y -> In y (inst_uses i).
 Proof.
   intros i fa y H Hy. destruct i as [q k o args | | | | | | |]; try discriminate H.
@@ -116,8 +133,9 @@ Proof.
     injection H as <-; simpl in Hy; subst; apply value_temps_in; simpl; auto.
 Qed.
 
-(** `pass_live_after`: the pass takes one instruction or a check and
-    its access, and keeps only facts it had or the check's own. *)
+(** One step of the pass ([checked_inst_rest]) takes one instruction,
+    or a check and its access, and keeps only facts it had or the
+    check's own. *)
 Lemma pass_live_after : forall s i rest live rest' live',
   checked_inst_rest s i rest live = Some (rest', live') ->
   (rest' = rest \/ exists a, rest = a :: rest') /\
@@ -149,8 +167,10 @@ Proof.
           [exact (evidence_after_incl _ _ _ Hfa) | exact (kill_incl _ _ _ Hfa)].
 Qed.
 
-(** `pass_step_dom`: the facts after the pass's step at index k of a
-    block dominate index k + 1. *)
+(** In a block b of a function f of a checked module md, where the facts
+    before the pass's step at index k dominate k, the facts after it
+    dominate index k + 1: a check's own fact is of an operand it uses,
+    whose single definition dominates it ([use_dominated]). *)
 Lemma pass_step_dom : forall md f b k i rest live rest' live',
   checked_module md -> In (IFunc f) md -> In b (fn_blocks f) ->
   nth_error (b_insts b) k = Some i ->
@@ -166,8 +186,9 @@ Proof.
     exists s, D. split; [exact Ey|]. split; [exact Hs|]. eapply site_dominates_mono; [|exact Hsd]. lia.
 Qed.
 
-(** `walk_dom`: the pass's facts at a block's end dominate it, where
-    those it started with dominated its starting index. *)
+(** The pass's facts at a block's end ([checked_insts] walking the
+    block from index k) dominate the end, where those it started with
+    dominated k. *)
 Lemma walk_dom : forall md f b n k is live out,
   checked_module md -> In (IFunc f) md -> In b (fn_blocks f) ->
   is = skipn k (b_insts b) -> (k <= length (b_insts b))%nat ->
@@ -187,11 +208,14 @@ Proof.
     exact (IH _ _ _ _ Hmd Hin Hb (eq_sym Hrest') Hlen' (live_dom_mono _ _ _ _ _ (le_S _ _ (le_n _)) H1) Hc).
 Qed.
 
-(** `exits_dom f ex`: each block's exit facts dominate its end. *)
+(** Each block's exit facts, in the map ex from labels to the facts at
+    their end, dominate its end. *)
 Definition exits_dom (f : func) (ex : list (name * list fact)) : Prop :=
   forall bp out, In bp (fn_blocks f) -> lookup (b_label bp) ex = Some out ->
     live_dom f (b_label bp) (length (b_insts bp)) out.
 
+(** Each successor label of a jump j is the label of one of its targets
+    ([jump_targets]). *)
 Lemma jump_succs_target : forall j s, In s (jump_succs j) -> exists t, In t (jump_targets j) /\ edge_label t = s.
 Proof.
   intros [t | v t1 t2 | v | vs | | ] s H; simpl in H; try contradiction.
@@ -199,7 +223,11 @@ Proof.
   - destruct H as [<- | [<- | []]]; [exists t1 | exists t2]; simpl; auto.
 Qed.
 
-(** `entry_dom`: the pass's entry facts of a block dominate its entry. *)
+(** Where every block's exit facts dominate its end, the pass's entry
+    facts of a block b ([entry_live]) dominate its entry: a fact that
+    reaches b over every incoming edge has a pointer whose definition
+    dominates each reachable predecessor's end, so b's entry too
+    ([dom_meet]). The entry block has no incoming edge and no fact. *)
 Lemma entry_dom : forall md f ex b,
   checked_module md -> In (IFunc f) md -> In b (fn_blocks f) -> exits_dom f ex ->
   live_dom f (b_label b) 0 (entry_live f ex b).
@@ -235,7 +263,8 @@ Proof.
   rewrite (proj2 (name_eqb_false _ _) Hne). exact Hd.
 Qed.
 
-(** `pass_exits_dom`: every block's exit facts dominate its end. *)
+(** Every block's exit facts, as the pass computes them for f
+    ([pass_exits]), dominate its end. *)
 Lemma pass_exits_dom : forall md f E,
   checked_module md -> In (IFunc f) md -> pass_exits (fn_src md f) f = Some E -> exits_dom f E.
 Proof.
@@ -265,12 +294,14 @@ Qed.
 
 (** ## The invariant, frame by frame *)
 
+(** The invariant over the configurations of [Machine] R, for any
+    [[runtime]] R. *)
 Module Invariant (R : Runtime).
 
 Module RM := Machine R.
 Import RM.
 
-(** The edge a jump takes is one of its targets. *)
+(** The edge a jump j takes ([taken_target]) is one of its targets. *)
 Lemma taken_target_in : forall ge fr j t, taken_target ge fr j = Some t -> In t (jump_targets j).
 Proof.
   unfold taken_target. intros ge fr j t H. destruct j; try discriminate H.
@@ -279,6 +310,10 @@ Proof.
     destruct (n =? 0); simpl; auto.
 Qed.
 
+(** An edge step along t from the block from that continues moves the
+    frame to the entry of t's label, entered from from, with memory and
+    [[fuel]] unchanged; and the frame is not doomed, or the edge does not
+    [[poll]]. *)
 Lemma edge_step_next' : forall c from t c',
   edge_step c from t = Next c' ->
   c' = continue_at c (with_point (c_frame c) (Enter (edge_label t) (Some from))) (c_mem c) (c_fuel c) /\
@@ -288,8 +323,8 @@ Proof.
   destruct t, (fr_doomed (c_frame c)); try discriminate H; injection H as <-; auto.
 Qed.
 
-(** A jump takes an edge, the one `taken_target` names, or returns from
-    a frame that is not doomed. *)
+(** A jump at the end of block l takes an edge, the one [taken_target]
+    names, or returns from a frame that is not doomed. *)
 Lemma jump_step_next : forall ge c l j c',
   jump_step ge c l j = Next c' ->
   (exists t, taken_target ge (c_frame c) j = Some t /\
@@ -330,15 +365,31 @@ Qed.
     took with it, the fact that covers the access (`pair_claim`). A
     `check_function`'s raw call needs no fact but its function check. *)
 
+(** At a block's end, before its jump j: if the edge j takes does not
+    [[poll]], the facts live hold. A poll edge carries no fact, since
+    the runtime may act there. *)
 Definition jump_claim (ge : genv) (m : Memory.mem) (fr : frame) (j : jump) (live : list fact) : Prop :=
   forall t, taken_target ge fr j = Some t -> is_poll t = false -> facts_hold ge m (fr_env fr) live.
 
+(** Between a check and the access the pass took with it: the fact fb
+    that covers the access ([covered_access]) holds, with the facts pre
+    the pass kept with it, and live' is what [evidence_after] keeps of
+    pre across the access; or, after a `check_function`, the access is a
+    raw call through q whose pointer p passed its function check
+    ([function_check_res]), and the pass keeps no fact. *)
 Definition pair_claim (ge : genv) (m : Memory.mem) (fr : frame) (access : inst) (live' : list fact) : Prop :=
   (exists fb pre, covered_access access (f_q fb) (f_lo fb) (f_hi fb) (f_r fb) (f_al fb) = true /\
      live' = evidence_after access pre /\ facts_hold ge m (fr_env fr) (fb :: pre)) \/
   (live' = [] /\ exists r q args p, access = RawCall r (Tmp q) args /\
      lookup q (fr_env fr) = Some (WPtr p) /\ function_check_res ge p = Some ok).
 
+(** Where the pass is in the instructions is of block l of f, and what
+    holds there, with out the pass's exit facts of the block. Either it
+    is between two of its steps, with facts live that the pass walks to
+    out ([walks]), that dominate index k ([live_dom]), and that hold if
+    the next instruction relies on them ([relies]) or, at the block's
+    end, as the jump carries them ([jump_claim]); or it is between a
+    check and the access it took with it ([pair_claim]). *)
 Definition at_pos (ge : genv) (s : src) (m : Memory.mem) (fr : frame) (is : list inst) (j : jump)
     (out : list fact) (f : func) (l : name) (k : nat) : Prop :=
   (exists live, walks s is live out /\ live_dom f l k live /\
@@ -349,9 +400,12 @@ Definition at_pos (ge : genv) (s : src) (m : Memory.mem) (fr : frame) (is : list
   (exists access rest' live', is = access :: rest' /\ walks s rest' live' out /\
      live_dom f l (S k) live' /\ pair_claim ge m fr access live').
 
-(** `point_ok`: what holds at the frame's point. A block is entered
-    from the entry of the function, or by an edge of a block whose exit
-    facts hold unless the edge polls; within a block, `at_pos`. *)
+(** What holds at the point of the frame fr in memory m, for its
+    function f of the module md: at a [[snapshot]], or at the entry
+    entered from no block, the point is f's entry; at a block's entry
+    from the block p, the edge is one of p's and, unless it polls, p's
+    exit facts hold; within a block, [at_pos], with the exit facts E the
+    pass computes ([pass_exits]). *)
 Definition point_ok (ge : genv) (md : module) (m : Memory.mem) (fr : frame) : Prop :=
   let f := fr_fn fr in
   exists E, pass_exits (fn_src md f) f = Some E /\
@@ -367,16 +421,21 @@ Definition point_ok (ge : genv) (md : module) (m : Memory.mem) (fr : frame) : Pr
         j = b_jump b /\ is = skipn k (b_insts b) /\ at_pos ge (fn_src md f) m fr is j out f l k
   end.
 
-(** Every named local the frame has allocated lies above 0. *)
+(** Every named local the frame has allocated lies above address 0: a
+    `check_local`'s fact needs its address not to wrap. *)
 Definition locals_pos (fr : frame) : Prop :=
   forall x base, lookup x (fr_locals fr) = Some (Some base) -> 0 < base.
 
-(** The running frame: a function of the module, its locals, and
-    `point_ok` unless a `check_ahead` doomed it. *)
+(** The running frame fr: it runs a function of the module md, its
+    locals lie above 0 ([locals_pos]), and it is [point_ok] unless a
+    [[check_ahead]] [[doomed]] it. *)
 Definition frame_ok (ge : genv) (md : module) (m : Memory.mem) (fr : frame) : Prop :=
   In (IFunc (fr_fn fr)) md /\ locals_pos fr /\ (fr_doomed fr <> None \/ point_ok ge md m fr).
 
-(** A caller waits after its call with no live fact. *)
+(** A waiting caller fr: it runs a function of md, its locals lie above
+    0, it is not doomed, and it waits just after its call, inside a
+    block whose rest the pass walks from no fact at all: a call ends
+    every fact. *)
 Definition parked (md : module) (fr : frame) : Prop :=
   In (IFunc (fr_fn fr)) md /\ locals_pos fr /\ fr_doomed fr = None /\
   exists E l rest j b out k, pass_exits (fn_src md (fr_fn fr)) (fr_fn fr) = Some E /\
@@ -384,18 +443,26 @@ Definition parked (md : module) (fr : frame) : Prop :=
     lookup l E = Some out /\ j = b_jump b /\ rest = skipn k (b_insts b) /\
     walks (fn_src md (fr_fn fr)) rest [] out.
 
+(** The invariant of a machine state st: the running frame is
+    [frame_ok], and every waiting caller is [parked]. *)
 Definition inv (ge : genv) (md : module) (st : mstate) : Prop :=
   frame_ok ge md (c_mem (fst st)) (c_frame (fst st)) /\
   Forall (fun fp => parked md (fst fp)) (c_callers (fst st)).
 
-(** `spares ge md`: the runtime's action at a safepoint leaves every
-    region where the pass relies on facts across the instruction. *)
+(** The [[runtime]]'s action at a [[safepoint]] changes no region where
+    it comes just before an instruction i that the pass relies on facts
+    across ([relies]). A hypothesis, not an axiom: natively, a pointer
+    store whose aux must be allocated exits to the runtime, where a
+    signal handler may free the checked object (docs/rocq.md, The
+    evidence invariant over runs). The interpreter's runtime satisfies
+    it (Persistence.v's [interp_spares]). *)
 Definition spares (ge : genv) (md : module) : Prop :=
   forall c s s' m',
     safepoint_due ge c = true -> R.safepoint s (c_mem c) s' m' ->
     forall l i rest j, fr_at (c_frame c) = Exec l (i :: rest) j ->
     relies (fn_src md (fr_fn (c_frame c))) i = true -> m_regions m' = m_regions (c_mem c).
 
+(** The empty list of facts holds. *)
 Lemma facts_hold_nil : forall ge m e, facts_hold ge m e [].
 Proof. intros ge m e fa []. Qed.
 
@@ -408,7 +475,8 @@ Proof.
   destruct is; [intros t _ _; exact Hl | intros _; exact Hl].
 Qed.
 
-(** A parked caller resumes with any result and memory. *)
+(** A [parked] caller, resumed with any environment e (the call's
+    result bound) in any memory m, is [frame_ok]. *)
 Lemma parked_resume : forall ge md m fr e,
   parked md fr -> frame_ok ge md m (mkFrame (fr_fn fr) e (fr_locals fr) (fr_doomed fr) (fr_at fr)).
 Proof.
@@ -418,7 +486,8 @@ Proof.
   eapply at_pos_between; [exact Hw | apply live_dom_nil | apply facts_hold_nil].
 Qed.
 
-(** A callee starts at its entry. *)
+(** A callee g of a checked module, its frame fr made by [call_frame]
+    from the arguments xs, starts at its entry, [frame_ok]. *)
 Lemma call_frame_ok : forall ge md m g xs fr,
   checked_module md -> In (IFunc g) md -> call_frame g xs = Some fr -> frame_ok ge md m fr.
 Proof.
@@ -431,9 +500,10 @@ Proof.
   destruct (variadic_func g); reflexivity.
 Qed.
 
-(** `pass_step`: an instruction the pass took, that continues, leaves
-    the pass's next position true: the facts after it, or the fact that
-    covers the access the pass took with it. *)
+(** An instruction i the pass took, that continues, leaves the pass's
+    next position true: the facts after it, or the fact that covers the
+    access the pass took with it ([pair_claim]). The facts before i
+    need to hold only if the pass relies on them ([relies]). *)
 Lemma pass_step : forall ge s fr m i rest live rest' live' e1 l1 m1 fr1,
   objects_fit (m_regions m) -> locals_pos fr ->
   (relies s i = true -> facts_hold ge m (fr_env fr) live) ->
@@ -497,8 +567,9 @@ Proof.
   eapply evidence_after_holds; [|exact Hs]. intros fa Hin. apply Hh. right. exact Hin.
 Qed.
 
-(** `at_pos_continue`: where the instruction at the pass's position
-    continues, the next position holds. *)
+(** Where the instruction i at the pass's position, index k of block b,
+    continues with environment e1 and memory m1, the next position, at
+    index k + 1, holds of any frame fr1 with environment e1. *)
 Lemma at_pos_continue : forall ge md m fr i rest j out e1 l1 m1 fr1 f l b k,
   checked_module md -> In (IFunc f) md -> find_block l (fn_blocks f) = Some b ->
   i :: rest = skipn k (b_insts b) ->
@@ -539,6 +610,8 @@ Qed.
 
 (** ### Reading and making `point_ok` *)
 
+(** [point_ok] of a frame inside block l, from [at_pos] at its
+    instructions is, the suffix of the block from index k. *)
 Lemma point_ok_exec : forall ge md m fr l is j E b out k,
   pass_exits (fn_src md (fr_fn fr)) (fr_fn fr) = Some E -> fr_at fr = Exec l is j ->
   find_block l (fn_blocks (fr_fn fr)) = Some b -> lookup l E = Some out -> j = b_jump b ->
@@ -549,6 +622,8 @@ Proof.
   exists E. split; [exact HE|]. rewrite Ha. eauto 8.
 Qed.
 
+(** Conversely, [point_ok] of a frame inside block l gives the block b,
+    the pass's exit facts, the index k of its point, and [at_pos]. *)
 Lemma point_ok_exec_inv : forall ge md m fr l is j,
   point_ok ge md m fr -> fr_at fr = Exec l is j ->
   exists E b out k, pass_exits (fn_src md (fr_fn fr)) (fr_fn fr) = Some E /\
@@ -559,8 +634,8 @@ Proof.
   destruct H as (E & HE & H). rewrite Ha in H. destruct H as (b & out & k & ?). eauto 10.
 Qed.
 
-(** `call_parked`: a running frame that is not doomed, at a call,
-    can wait after it with no fact, whatever the call does. *)
+(** A running frame that is not doomed, at a call, can wait after it
+    with no fact, whatever the call does: it is [parked] there. *)
 Lemma call_parked : forall ge md m fr l r callee args rest j,
   frame_ok ge md m fr -> fr_doomed fr = None -> fr_at fr = Exec l (Call r callee args :: rest) j ->
   parked md (mkFrame (fr_fn fr) (fr_env fr) (fr_locals fr) None (Exec l rest j)).
@@ -575,7 +650,10 @@ Proof.
   eapply walks_after; [exact Hat | reflexivity | reflexivity].
 Qed.
 
-(** A function's entry is where its snapshot leads. *)
+(** A frame fr' of the same function, at the entry of the entry block
+    l from no block, is [point_ok] in any memory where fr, at the
+    [[snapshot]] that leads to l or at l itself, was: a function's entry
+    is where its snapshot leads. *)
 Lemma point_ok_entry : forall ge md m m' fr fr' xs l,
   point_ok ge md m fr -> fr_at fr = Snapshot xs l \/ fr_at fr = Enter l None ->
   fr_fn fr' = fr_fn fr -> fr_at fr' = Enter l None -> point_ok ge md m' fr'.
@@ -585,10 +663,14 @@ Proof.
   destruct Ha as [Ha | Ha]; rewrite Ha in H; exact H.
 Qed.
 
+(** Nothing is found in an empty map. *)
 Lemma lookup_nil_none : forall (A : Type) n, @lookup A n [] = None.
 Proof. reflexivity. Qed.
 
-(** `enter_point_ok`: entering a block, the pass's entry facts hold. *)
+(** Entering a block l of a checked module's function, from [point_ok],
+    the pass's entry facts hold once the phis have run, and their
+    pointers dominate the entry ([entry_dom]): the frame after the step
+    is [point_ok]. *)
 Lemma enter_point_ok : forall ge md c c' l from,
   checked_module md -> In (IFunc (fr_fn (c_frame c))) md ->
   fr_at (c_frame c) = Enter l from -> step ge c = Next c' ->

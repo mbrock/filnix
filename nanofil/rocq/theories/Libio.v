@@ -1,10 +1,12 @@
-(** A capability-backed memory view of the pinned byte stdout.
+(** A [[capability]]-backed memory view of the pinned byte stdout
+    ([milestone 3c](../../docs/formal.md#campaign-4-milestone-3c-selected-native-stdout-memory)).
 
     Offsets are measured with the Fil-C headers, not the host's FILE.
     This is a view of the buffer/lock roots, not a complete predicate
     for native FILE validity or a proof of libio's execution. In
     particular, vtable dispatch, TLS initialization, protocol scheduling
-    and native prefix coverage remain trusted realization obligations.
+    and native prefix coverage remain trusted realization
+    [[obligation|obligations]].
 
     The selected malloc forwards to zgc_alloc: runtime refusal does
     not return NULL to _IO_file_doallocate. The generic libio NULL
@@ -17,14 +19,19 @@ Open Scope Z_scope.
 
 (** ## Source-selected capacity and buffer paths *)
 
-(** filedoalloc.c, selected stdout descriptor 1 and the pinned x86-64
+(** The byte capacity of stdout's allocated buffer, given whether stat
+    succeeded and the block size it reported. As filedoalloc.c, for the
+    selected stdout descriptor 1 and the pinned x86-64
     _STATBUF_ST_BLKSIZE configuration: use a positive st_blksize smaller
-    than BUFSIZ only after a successful stat; otherwise retain BUFSIZ.
-    This is NOT the capacity function for arbitrary descriptors. *)
+    than BUFSIZ (8192) only after a successful stat; otherwise retain
+    BUFSIZ. This is NOT the capacity function for arbitrary
+    descriptors. *)
 Definition file_capacity (stat_ok : bool) (block_size : Z) : Z :=
   if stat_ok && (0 <? block_size) && (block_size <? 8192)
   then block_size else 8192.
 
+(** The capacity is always positive and at most 8192 bytes, so the
+    buffer request is never too big. *)
 Lemma file_capacity_bounds : forall stat_ok block_size,
   0 < file_capacity stat_ok block_size <= 8192.
 Proof.
@@ -34,17 +41,26 @@ Proof.
   apply Z.ltb_lt in Hhi. apply Z.ltb_lt in Hlo. lia.
 Qed.
 
+(** Where stdout's buffer lives: no buffer yet, the one-byte buffer
+    embedded in the FILE (_shortbuf), or a heap buffer of size bytes at
+    base. *)
 Inductive buffer_storage : Type :=
 | NoBuffer
 | ShortBuffer
 | HeapBuffer (base size : Z).
 
-(** These causes describe libio's control flow, not R.alloc's result.
+(** Why libio picks a buffer: one already exists, the stream is
+    unbuffered, malloc returned base, or malloc returned NULL. These
+    causes describe libio's control flow, not R.alloc's result.
     MallocNull is useful for generic libio, but is excluded at this pin.
     Unbuffered is for a byte stream: wide orientation takes another path. *)
 Inductive buffer_cause : Type :=
 | Existing | Unbuffered | MallocSuccess (base : Z) | MallocNull.
 
+(** Generic libio's buffer choice, from the old storage for a cause to
+    the new: an existing buffer is kept; with no buffer, an unbuffered
+    stream or a NULL malloc falls back to the embedded byte, and a
+    successful malloc gives a heap buffer of the given capacity. *)
 Inductive buffer_choice (capacity : Z)
     : buffer_storage -> buffer_cause -> buffer_storage -> Prop :=
 | choice_existing : forall storage,
@@ -54,19 +70,24 @@ Inductive buffer_choice (capacity : Z)
     buffer_choice capacity NoBuffer (MallocSuccess base) (HeapBuffer base capacity)
 | choice_null : buffer_choice capacity NoBuffer MallocNull ShortBuffer.
 
+(** The pin's buffer choice: a [buffer_choice] whose cause is not a NULL
+    malloc, since this glibc's malloc ends the run on refusal instead. *)
 Definition pinned_choice (capacity : Z) (old : buffer_storage)
     (cause : buffer_cause) (new : buffer_storage) : Prop :=
   buffer_choice capacity old cause new /\ cause <> MallocNull.
 
 (** ## Measured pointer slots and writable roots *)
 
+(** The pointers, with their capabilities, through which stdout's state
+    is reached: the FILE, its lock, and errno. *)
 Record stdout_roots : Type := mkStdoutRoots {
   file_ptr : ptr;
   lock_ptr : ptr;
   errno_ptr : ptr
 }.
 
-(** stdfiles.c allocates _IO_FILE_plus: FILE (216) plus its vtable
+(** The writable spans of the FILE, lock and errno.
+    stdfiles.c allocates _IO_FILE_plus: FILE (216) plus its vtable
     pointer (8). NPTL's lock is { int lock; int cnt; void *owner; }.
     errno is a separate four-byte TLS cell. These spans are authority
     supplied by the caller of the trusted boundary, never inferred
@@ -74,9 +95,13 @@ Record stdout_roots : Type := mkStdoutRoots {
 Definition fixed_roots (r : stdout_roots) : list span :=
   [mkSpan (file_ptr r) 224; mkSpan (lock_ptr r) 16; mkSpan (errno_ptr r) 4].
 
+(** A pointer to the FILE's embedded one-byte buffer (_shortbuf, at
+    offset 131), with the FILE's own capability. *)
 Definition short_ptr (r : stdout_roots) : ptr :=
   mkPtr (ptr_addr (file_ptr r) + 131) (ptr_cap (file_ptr r)).
 
+(** The span of the buffer the storage names: none, the embedded byte,
+    or the heap buffer with an [Obj] capability for its base. *)
 Definition buffer_span (r : stdout_roots) (storage : buffer_storage) : option span :=
   match storage with
   | NoBuffer => None
@@ -84,6 +109,9 @@ Definition buffer_span (r : stdout_roots) (storage : buffer_storage) : option sp
   | HeapBuffer base size => Some (mkSpan (mkPtr base (Obj base)) size)
   end.
 
+(** All of stdout's writable roots: the [fixed_roots], plus a heap
+    buffer's span. The embedded byte needs no root of its own: it is
+    inside the FILE's. *)
 Definition memory_roots (r : stdout_roots) (storage : buffer_storage) : list span :=
   fixed_roots r ++
     match storage with
@@ -91,6 +119,10 @@ Definition memory_roots (r : stdout_roots) (storage : buffer_storage) : list spa
     | _ => []
     end.
 
+(** In memory m, the FILE's _IO_buf_base and _IO_buf_end slots (offsets
+    56 and 64) hold, as a [pointer_slot] with address bytes and
+    [[aux]], the start and end of the storage's buffer, or null when
+    there is none. The end pointer keeps the buffer's capability. *)
 Definition buffer_slots (m : mem) (r : stdout_roots) (storage : buffer_storage) : Prop :=
   let a := ptr_addr (file_ptr r) in
   match buffer_span r storage with
@@ -101,7 +133,14 @@ Definition buffer_slots (m : mem) (r : stdout_roots) (storage : buffer_storage) 
         (mkPtr (ptr_addr (span_ptr s) + span_size s) (ptr_cap (span_ptr s)))
   end.
 
-(** This view supplies actual address bytes and aux, not a detached
+(** Memory m holds stdout's selected state for roots r and storage:
+    - every root of [memory_roots] is a [writable_span];
+    - the whole FILE and its three pointer slots (56, 64 and the lock
+      slot 136) are readable, 8-aligned; the lock and errno writable;
+    - the lock slot points at the lock, and [buffer_slots] holds;
+    - a heap buffer is nonempty and a live heap object.
+
+    This view supplies actual address bytes and [[aux]], not a detached
     logical list of roots. Heap kind, liveness and buffer bounds are
     checked independently of the two pointer slots. It intentionally
     does not describe ownership, flags, orientation, pending bytes or
@@ -123,15 +162,21 @@ Definition stdout_memory (m : mem) (r : stdout_roots) (storage : buffer_storage)
   | _ => True
   end.
 
+(** The [stdio_world] this view gives: a usable stdout whose roots are
+    [memory_roots]. *)
 Definition memory_world (r : stdout_roots) (storage : buffer_storage) : stdio_world :=
   mkStdioWorld true (memory_roots r storage).
 
+(** Where [stdout_memory] holds, its world is [stdio_ready], as
+    [puts_pre] requires. *)
 Theorem stdout_memory_ready : forall m r storage,
   stdout_memory m r storage -> stdio_ready m (memory_world r storage).
 Proof. intros m r storage [H _]. split; [reflexivity|exact H]. Qed.
 
-(** The embedded buffer neither allocates nor expands root authority.
-    Its one byte is already inside the FILE root, with the SAME cap. *)
+(** Where the fixed roots are writable, the embedded buffer's capability
+    is available from them and its byte is under their write authority:
+    it neither allocates nor expands root authority. Its one byte is
+    already inside the FILE root, with the SAME capability. *)
 Theorem short_buffer_delegates : forall m r,
   Forall (writable_span m) (fixed_roots r) ->
   available_cap (fixed_roots r) [] m (ptr_cap (short_ptr r)) /\
@@ -256,13 +301,21 @@ Qed.
 
 (** ## Allocation evidence over any runtime *)
 
+(** Buffer allocation over any [[runtime]] R. *)
 Module Libio (R : Runtime).
 Module E := ExternalCalls R.
 
+(** The one allocation request stdout's buffer setup makes: 16-aligned,
+    of [file_capacity] bytes. *)
 Definition buffer_request (stat_ok : bool) (block_size align size : Z) : Prop :=
   align = 16 /\ size = file_capacity stat_ok block_size.
 
-(** No theorem turns a logical HeapBuffer into an allocated object.
+(** When the runtime, [[ready]] in state s and memory m, grants the
+    buffer request at base: base was no object of m, the runtime stays
+    ready, the allocation is an [effects] path with born list [base],
+    and the new object's [Obj] capability and its capacity bytes are
+    the call's authority.
+    No theorem turns a logical HeapBuffer into an allocated object.
     This theorem starts with the runtime's actual successful answer.
     Installing its pointer slots and native flags is still a separate
     local-effects obligation. *)
@@ -302,6 +355,8 @@ Proof.
         lia.
 Qed.
 
+(** If the runtime refuses the buffer request, the call may end as
+    [OutOfMemory] ([resource_failure]). *)
 Theorem buffer_refusal : forall stat_ok block_size s,
   R.alloc s (heap_req 16 (file_capacity stat_ok block_size)) = None ->
   E.resource_failure (buffer_request stat_ok block_size) s OutOfMemory.
@@ -314,6 +369,8 @@ Proof.
   - exact H.
 Qed.
 
+(** The buffer request never fails as [TooBig]: its capacity is at most
+    8192 bytes. *)
 Theorem buffer_never_too_big : forall stat_ok block_size s,
   ~ E.resource_failure (buffer_request stat_ok block_size) s TooBig.
 Proof.
@@ -474,6 +531,8 @@ End Libio.
 
 (** ## Public branch and representation boundaries *)
 
+(** Block sizes from 1 to 8191 after a successful stat are the capacity;
+    8192 and above, zero, negative, or a failed stat give 8192. *)
 Example capacity_edges :
   file_capacity true 1 = 1 /\ file_capacity true 8191 = 8191 /\
   file_capacity true 8192 = 8192 /\ file_capacity true 8193 = 8192 /\
@@ -481,50 +540,63 @@ Example capacity_edges :
   file_capacity true (-7) = 8192 /\ file_capacity false 4096 = 8192.
 Proof. vm_compute. repeat split; reflexivity. Qed.
 
+(** Capacity 8191 is not rounded, though [heap_req] reserves 8192. *)
 Example capacity_not_rounded_extent :
   file_capacity true 8191 = 8191 /\ req_extent (heap_req 16 8191) = 8192.
 Proof. vm_compute. auto. Qed.
 
+(** Generic libio falls back to the embedded byte when malloc returns
+    NULL. *)
 Example generic_malloc_fallback : buffer_choice 4096 NoBuffer MallocNull ShortBuffer.
 Proof. constructor. Qed.
 
+(** At the pin, that NULL branch is never taken. *)
 Example pin_cannot_return_null : forall size storage,
   ~ pinned_choice size NoBuffer MallocNull storage.
 Proof. intros size storage [_ H]. apply H. reflexivity. Qed.
 
+(** An unbuffered stdout uses the embedded byte without allocating. *)
 Example unbuffered_needs_no_allocation : pinned_choice 8192 NoBuffer Unbuffered ShortBuffer.
 Proof. split; [constructor|discriminate]. Qed.
 
+(** An existing buffer has priority: no malloc replaces it. *)
 Example existing_buffer_not_reallocated : forall size old new,
   old <> NoBuffer -> pinned_choice size old (MallocSuccess 4096) new -> False.
 Proof. intros size old new H [Hchoice _]. inversion Hchoice; subst; contradiction. Qed.
 
+(** The embedded buffer's pointer has the FILE's capability. *)
 Example shortbuf_keeps_file_cap : forall r,
   ptr_cap (short_ptr r) = ptr_cap (file_ptr r).
 Proof. reflexivity. Qed.
 
+(** A buffer slot with the right address bytes but no capability in its
+    [[aux]] does not satisfy [buffer_slots]. *)
 Example buffer_address_without_aux_is_not_enough : forall m r base size,
   m_aux m (ptr_addr (file_ptr r) + 56) = CNone ->
   ~ buffer_slots m r (HeapBuffer base size).
 Proof. intros m r base size Ha [[_ [_ Hcap]] _]. simpl in Hcap. rewrite Ha in Hcap. discriminate. Qed.
 
+(** Nor does one with the right capability but other address bytes. *)
 Example buffer_cap_without_address_is_not_enough : forall m r base size,
   load_bytes m (ptr_addr (file_ptr r) + 56) 8 <> base ->
   ~ buffer_slots m r (HeapBuffer base size).
 Proof. intros m r base size Ha [[_ [Haddr _]] _]. apply Ha. exact Haddr. Qed.
 
-(** An inhabited memory view, not a fixture claiming to be native FILE.
-    The first image has null buffer slots and a capability-bearing lock;
-    the second changes BOTH address bytes and aux to embed the buffer. *)
+(** Example roots: the FILE at 2048, its lock at 4096, errno at 8192.
+    With the memories below, an inhabited memory view, not a fixture
+    claiming to be native FILE. *)
 Definition root_example : stdout_roots :=
   mkStdoutRoots (mkPtr 2048 (Obj 2048)) (mkPtr 4096 (Obj 4096)) (mkPtr 8192 (Obj 8192)).
 
+(** A memory with null buffer slots and a capability-bearing lock slot
+    pointing at 4096. *)
 Definition unbuffered_example : mem :=
   mkMem (fun a => if (2184 <=? a) && (a <? 2192) then byte_of 4096 (a - 2184) else 0)
     [mkRegion 2048 2272 GlobalData Live; mkRegion 4096 4112 GlobalData Live;
      mkRegion 8192 8196 Heap Live]
     (fun a => if a =? 2184 then Obj 4096 else CNone).
 
+(** [unbuffered_example] satisfies [stdout_memory] with no buffer. *)
 Example no_buffer_memory_inhabited : stdout_memory unbuffered_example root_example NoBuffer.
 Proof.
   split.
@@ -537,6 +609,10 @@ Proof.
   - vm_compute. repeat constructor; discriminate.
 Qed.
 
+(** Storing in the two buffer slots BOTH the address bytes (the
+    embedded byte's start 2179 and end 2180) and the FILE's capability
+    in their [[aux]] satisfies [stdout_memory] with the embedded
+    buffer. *)
 Example embedded_memory_inhabited :
   stdout_memory
     (store_aux (store_aux

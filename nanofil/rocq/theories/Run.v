@@ -1,37 +1,13 @@
 (** Running a function of a module as `interp:run/5` does: prepare
-    the module's initial memory, call the function, and take steps until
-    an outcome, choosing each allocation's base as the interpreter does.
+    the module's initial memory, call the function, and take
+    [[step|steps]] until an [[outcome]], choosing each allocation's
+    base as a [[runtime]] does.
 
-    ## Preparing a module
-
-    `initial_memory/4` in filc mode places each item in order from
-    address 65536: a data object at the next address aligned to 16 or
-    its stricter Align, its size rounded up to 8, with a 16-byte gap
-    after it; a function at the next 16-aligned address, 16 bytes,
-    with the capability `fn(Name)`. An alias is its target's pointer. A
-    weak declaration (`extern(weak)`) takes no space and stays
-    undefined. Then each data object's items are written: bytes, and
-    for a pointer item its symbol's capability in aux.
-
-    ## The runtime
-
-    A run takes its allocations' bases from a `Runtime` (Runtime.v):
-    `Driver R` runs with R's choices. The gates run
-    `Driver InterpRuntime` (Transport.v), whose `alloc` is
-    `alloc_base/6`: the next address aligned for the request, starting
-    at 2^32 (`stack_base/1`), up to 2^48 (`address_space/2`). That is
-    one instance of `fresh` allocation, not part of the semantics:
-    Semantics.v's `step_rel` allows any fresh base. Where R refuses an
-    allocation the run ends with `trap(out_of_memory)`, at whichever
-    allocation it is: a heap object, a named local or a variadic
-    callee's argument snapshot (`alloc_res/6`, `inst_result/5`,
-    `call_outcome/8`).
-
-    ## The driver
-
-    `run_steps` takes up to 2^p steps by halving p, so that its gas is
-    a positive and never the limit in practice: the run's own fuel
-    (blocks entered) ends every run first. *)
+    A run takes its allocations' bases from a [Runtime] (Runtime.v):
+    [Driver R] runs with R's choices, and the gates run
+    [Driver InterpRuntime] (Transport.v), the [[interpreter]]'s
+    allocator. That is one instance of [fresh] allocation, not part of
+    the semantics: Semantics.v's [step_rel] allows any fresh base. *)
 
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics Runtime.
@@ -39,10 +15,12 @@ Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
 
-(** `data_base/1`. *)
+(** As `data_base/1`: the address where the module's items start. *)
 Definition data_base : Z := 65536.
 
-(** `data_cap(Linkage, Base, Cap)`: the capability of data at Base. *)
+(** As `data_cap/3`: the [[capability]] of data with the linkage lk at
+    base, writable or read-only; a weak declaration or an unknown
+    linkage has none. *)
 Definition data_cap (lk : linkage) (base : Z) : option cap :=
   match lk with
   | LExport | LLocal | LWeak | LTls _ => Some (Obj base)
@@ -50,7 +28,13 @@ Definition data_cap (lk : linkage) (base : Z) : option cap :=
   | LExternWeak | LOther _ => None
   end.
 
-(** `filc_layout(Item, A0-Globals0-Rs0, A-Globals-Rs)`. *)
+(** As `filc_layout/3`: the item it placed after those before it,
+    updating the next address, the globals and the objects. A data object
+    goes at the next address aligned to 16 or its stricter alignment,
+    its size rounded up to 8, with a 16-byte gap after it; a function
+    at the next 16-aligned address, 16 bytes, with the capability
+    `fn(Name)`. A weak declaration (`extern(weak)`) takes no space and
+    stays undefined; an alias waits for [alias_global]. *)
 Definition layout (st : option (Z * list (name * ptr) * list region)) (it : item)
   : option (Z * list (name * ptr) * list region) :=
   let* s := st in
@@ -73,8 +57,8 @@ Definition layout (st : option (Z * list (name * ptr) * list region)) (it : item
       Some (base + 16, put n (mkPtr base (Fn n)) globals, rs)
   end.
 
-(** `alias_global(Item, Globals0, Globals)`: an alias's address is its
-    target's, the same pointer. *)
+(** As `alias_global/3`: an alias's address is its target's, the same
+    pointer. *)
 Definition alias_global (gs : option (list (name * ptr))) (it : item)
   : option (list (name * ptr)) :=
   let* globals := gs in
@@ -83,7 +67,11 @@ Definition alias_global (gs : option (list (name * ptr))) (it : item)
   | _ => Some globals
   end.
 
-(** `filc_item_contents(Globals, Item, At0-Bytes0-Aux0, At-Bytes-Aux)`. *)
+(** As `filc_item_contents/4`: one item of a data object written at the
+    next address, and the address after it. A pointer item writes its
+    symbol's address plus the offset, and the symbol's [[capability]]
+    in the [[aux]]; a symbol the module does not define is an external
+    one. *)
 Definition item_contents (globals : list (name * ptr)) (st : option (Z * mem))
     (it : data_item) : option (Z * mem) :=
   let* s := st in
@@ -109,7 +97,8 @@ Definition item_contents (globals : list (name * ptr)) (st : option (Z * mem))
   | ItemOther _ => None
   end.
 
-(** `filc_contents(Globals, Item, Bytes0-Aux0, Bytes-Aux)`. *)
+(** As `filc_contents/4`: a data object's items written in order from
+    its address; other items write nothing. *)
 Definition contents (globals : list (name * ptr)) (st : option mem) (it : item)
   : option mem :=
   let* m := st in
@@ -122,9 +111,14 @@ Definition contents (globals : list (name * ptr)) (st : option mem) (it : item)
   | _ => Some m
   end.
 
+(** The memory with no objects, every byte zero and no stored
+    capability. *)
 Definition empty_mem : mem := mkMem (fun _ => 0) [] (fun _ => CNone).
 
-(** `initial_memory(filc, M, Globals, Mem)`. *)
+(** As `initial_memory/4` in filc mode: the module md's globals, each
+    name with its pointer, and the memory with every item placed in
+    order from [data_base] ([layout]), aliases bound ([alias_global]),
+    and each data object's contents written ([contents]). *)
 Definition initial_memory (md : module) : option (list (name * ptr) * mem) :=
   let* l := fold_left layout md (Some (data_base, [], [])) in
   let '(_, globals0, rs) := l in
@@ -133,17 +127,23 @@ Definition initial_memory (md : module) : option (list (name * ptr) * mem) :=
                       (Some (mkMem (m_bytes empty_mem) rs (m_aux empty_mem))) in
   Some (globals, m).
 
-(** What a run ends with: an outcome, or stuck where the interpreter
-    throws or fails, with the step that was stuck. *)
+(** What a run ends with: an [[outcome]], or halted where the
+    interpreter throws or fails, with the step that was stuck. *)
 Inductive run_result : Type :=
 | Finished (o : outcome)
 | Halted (why : string).
 
 (** ## The driver *)
 
+(** Running under the [[runtime]] R: R's [alloc] chooses each
+    allocation's base, and R's free is the genv's. *)
 Module Driver (R : Runtime).
 
-(** One step, with the runtime's state beside the configuration. *)
+(** One step, with the runtime's state beside the configuration. Where
+    R refuses an allocation the run ends with `trap(out_of_memory)`, at
+    whichever allocation it is: a heap object, a named local or a
+    variadic callee's argument snapshot (`alloc_res/6`,
+    `inst_result/5`, `call_outcome/8`). *)
 Definition run_step (ge : genv) (s : config * R.state) : (config * R.state) + run_result :=
   let (c, rt) := s in
   match step ge c with
@@ -157,7 +157,9 @@ Definition run_step (ge : genv) (s : config * R.state) : (config * R.state) + ru
   | Stuck why => inr (Halted why)
   end.
 
-(** Up to 2^p steps (the halving makes the recursion depth p). *)
+(** Up to 2^p steps, by halving p, so that the recursion depth is p and
+    the gas a positive. The gas is never the limit in practice: the
+    run's own [[fuel]] (blocks entered) ends every run first. *)
 Fixpoint run_steps (ge : genv) (p : positive) (s : config * R.state)
   : (config * R.state) + run_result :=
   match p with
@@ -170,7 +172,9 @@ Fixpoint run_steps (ge : genv) (p : positive) (s : config * R.state)
       end
   end.
 
-(** `run(M, Fn, Args, Fuel, Outcome)`. *)
+(** As `run/5`: the run of the function fn of the module md on the
+    words args, entering at most fuel blocks, from the module's initial
+    memory and R's [start]. *)
 Definition run (md : module) (fn : name) (args : list word) (fuel : Z) : run_result :=
   match initial_memory md with
   | None => Halted "initial memory"

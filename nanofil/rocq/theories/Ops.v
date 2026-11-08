@@ -7,34 +7,38 @@
     defines division by zero as 0 and `MIN / -1` as `MIN` (docs/ub.md),
     so integer arithmetic never has undefined behaviour here.
 
-    `op_res` gives an op's partial result, or asks for an allocation:
-    `alloc` is the only op whose result depends on a choice, the fresh
-    base of its object (Memory.v's `fresh`). *)
+    [op_res] gives an op's partial result, or asks for an allocation:
+    [[alloc]] is the only op whose result depends on a choice, the
+    fresh base of its object (Memory.v's [fresh]). *)
 
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Ieee Syntax Values Memory.
 Import ListNotations.
 Open Scope Z_scope.
 
+(** Option binding: `let* x := e in b` is b with x the value of e, or
+    none if e has none. *)
 Notation "'let*' x ':=' e 'in' b" :=
   (match e with Some x => b | None => None end)
   (at level 200, x name, e at level 100, b at level 200).
 
 (** ## Integers *)
 
-(** `sign_extension(M, H, U, S)`: the two's-complement reading of the
-    low bits of U, for a field of modulus M with sign threshold H. *)
+(** As `sign_extension(M, H, U, S)`: the two's-complement reading of
+    the low bits of u, for a field of modulus m with sign threshold h,
+    from which values read as negative. *)
 Definition sign_extension (m h u : Z) : Z :=
   let l := u mod m in if h <=? l then l - m else l.
 
-(** `signed(K, U, S)`. *)
+(** As `signed(K, U, S)`: the integer u of class k read as signed; none
+    for a class that is not an integer class. *)
 Definition signed (k : class) (u : Z) : option Z :=
   let* m := modulus k in
   let* h := half_modulus k in
   Some (sign_extension m h u).
 
-(** `extension(T, X, S)`: the low bytes of X that T names, sign- or
-    zero-extended. *)
+(** As `extension(T, X, S)`: the low bytes of x that the narrow type t
+    names, sign- or zero-extended. *)
 Definition extension (t : narrow) (x : Z) : Z :=
   match t with
   | Sb => sign_extension 256 128 x
@@ -45,7 +49,9 @@ Definition extension (t : narrow) (x : Z) : Z :=
   | Uw => x mod 2 ^ 32
   end.
 
-(** `cond_bit(Cond, K, X, Y, B)`: 1 when X Cond Y holds at class K. *)
+(** As `cond_bit(Cond, K, X, Y, B)`: 1 when x c y holds at the integer
+    class k, else 0; a float condition has none here
+    ([float_compare]). *)
 Definition cond_bit (c : cond) (k : class) (x y : Z) : option Z :=
   let bit (b : bool) := Some (if b then 1 else 0) in
   match c with
@@ -62,25 +68,32 @@ Definition cond_bit (c : cond) (k : class) (x y : Z) : option Z :=
   | Le | Lt | Ge | Gt | Ord | Unord => None
   end.
 
-(** `shift_factor(K, Y, P)`: the count is taken modulo the class width. *)
+(** As `shift_factor(K, Y, P)`: the power of two a shift by y at class
+    k multiplies or divides by; the count is taken modulo the class
+    width. *)
 Definition shift_factor (k : class) (y : Z) : option Z :=
   let* bits := class_bits k in
   Some (2 ^ (y mod bits)).
 
-(** `unsigned_division/4`: a zero divisor gives 0. *)
+(** As `unsigned_division/4`: the division or remainder f of x by y,
+    where a zero divisor gives 0. *)
 Definition unsigned_division (f : Z -> Z -> Z) (x y : Z) : Z :=
   if y =? 0 then 0 else f x y.
 
-(** `signed_division/5`: a zero divisor gives 0, and the quotient
-    truncates toward zero (Prolog's `//` and `rem`), then wraps. *)
+(** As `signed_division/5`: the division or remainder f of x by y read
+    as signed at class k. A zero divisor gives 0, and the quotient
+    truncates toward zero (Prolog's `//` and `rem`), then wraps, so
+    the most negative value divided by -1 is itself. *)
 Definition signed_division (f : Z -> Z -> Z) (k : class) (x y : Z) : option Z :=
   let* sx := signed k x in
   let* sy := signed k y in
   let* m := modulus k in
   Some (if sy =? 0 then 0 else f sx sy mod m).
 
-(** `alu(Op, K, Xs, Res)`: the arithmetic Op of class K on Xs; add and
-    sub are integer here. *)
+(** As `alu(Op, K, Xs, Res)`: the integer op o of class k on the words
+    xs, wrapping to the class's [modulus]; add and sub are integer here
+    ([additive_res] adds to pointers). No word for arguments of the
+    wrong form. *)
 Definition alu (o : op) (k : class) (xs : list word) : option word :=
   match o, xs with
   | Ptoi, [WPtr p] => Some (WInt (ptr_addr p))
@@ -109,8 +122,9 @@ Definition alu (o : op) (k : class) (xs : list word) : option word :=
   | _, _ => None
   end.
 
-(** `additive_res(K, Op, Xs, Res)`: pointer arithmetic keeps the
-    capability; integer add and sub are `alu/4`'s. *)
+(** As `additive_res(K, Op, Xs, Res)`: add or sub at class k. A pointer
+    plus or minus an `l` offset keeps its capability, its address
+    wrapping modulo 2^64; integer add and sub are [alu]'s. *)
 Definition additive_res (k : class) (o : op) (xs : list word) : option word :=
   match k, o, xs with
   | P, Add, [WPtr p; WInt x] =>
@@ -123,7 +137,8 @@ Definition additive_res (k : class) (o : op) (xs : list word) : option word :=
 
 (** ## Checks *)
 
-(** `checked_res(Res0, P, Res)`: a check yields P, proven, or traps. *)
+(** As `checked_res(Res0, P, Res)`: a [[check]]'s result from its access
+    check r: the pointer p, now proven, or r's trap. *)
 Definition checked_res (r : res unit) (p : word) : res word :=
   match r with
   | RVal _ => RVal p
@@ -131,18 +146,20 @@ Definition checked_res (r : res unit) (p : word) : res word :=
   | RUnchecked why => RUnchecked why
   end.
 
-(** `raw_res(Res0, Res)`: a raw access is the access its check covers,
-    made again without trapping; what would have trapped is unchecked. *)
+(** As `raw_res(Res0, Res)`: a [[raw-access|raw access]] is the access
+    its check covers, made again without trapping; what would have
+    trapped is [[unchecked]]. *)
 Definition raw_res {X : Type} (r : res X) : res X :=
   match r with
   | RTrap why => RUnchecked why
   | _ => r
   end.
 
-(** `renew_res(Res0, P, Mem, Res)`: a renew traps as the check it
-    replaced would on a freed object or a write to a read-only one; any
-    other failure means the earlier check's bounds did not cover this
-    access: unchecked(span). *)
+(** As `renew_res(Res0, P, Mem, Res)`: a [[renew]]'s result from the
+    access check r of the check it replaced, of the pointer p. It
+    traps as that check would on a freed object or a write to a
+    read-only one; any other failure means the earlier check's bounds
+    did not cover this access: unchecked [Span]. *)
 Definition renew_res (r : res unit) (p : ptr) (m : mem) : option (res word) :=
   match r with
   | RVal _ => Some (RVal (WPtr p))
@@ -160,8 +177,11 @@ Definition renew_res (r : res unit) (p : ptr) (m : mem) : option (res word) :=
   | RUnchecked why => Some (RUnchecked why)
   end.
 
-(** `half_bound(Bound, B, Size, Base, End, Life)`: the bound a half
-    check tests natively. *)
+(** As `half_bound(Bound, B, Size, Base, End, Life)`: the one bound a
+    [[half_check|half check]] tests natively, for size bytes at the
+    address b of the object from base up to end_ of life l. The upper
+    bound holds if the bytes end at or below end_; the lower if base is
+    at or below b read as signed, and never for a freed object. *)
 Definition half_bound (bd : bound) (b size base end_ : Z) (l : life) : bool :=
   match bd with
   | Upper => b + size <=? end_
@@ -172,9 +192,11 @@ Definition half_bound (bd : bound) (b size base end_ : Z) (l : life) : bool :=
       end
   end.
 
-(** `half_passes(Bound, Mem, B, Size, Cap, Rights, Align, Passes)`: a
-    half check's native test at B. None for a capability that is not an
-    object's, whose header no half check may read. *)
+(** As `half_passes(Bound, Mem, B, Size, Cap, Rights, Align, Passes)`:
+    a half check's whole native test at the address b: the bound bd,
+    the read-only flag for a write, and the alignment. Its inner none
+    is for a capability that is not an object's, whose header no half
+    check may read. *)
 Definition half_passes (bd : bound) (m : mem) (b size : Z) (c : cap)
     (r : rights) (align : Z) : option (option bool) :=
   let test base ro :=
@@ -188,8 +210,10 @@ Definition half_passes (bd : bound) (m : mem) (b size : Z) (c : cap)
   | _ => Some None
   end.
 
-(** `half_res(Res0, Passes, P, Res)`: where the native test and the
-    check disagree, the bound taken as known was false. *)
+(** As `half_res(Res0, Passes, P, Res)`: a half check's result from the
+    full check's r and the native test. Where they agree it is theirs;
+    where they disagree, the bound the [[validator]] took as known was
+    false: unchecked [Half]. *)
 Definition half_res (r : res unit) (passes : bool) (p : word) : res word :=
   match r, passes with
   | RVal _, true => RVal p
@@ -199,12 +223,15 @@ Definition half_res (r : res unit) (passes : bool) (p : word) : res word :=
 
 (** ## Loads *)
 
-(** `extended_res(Res0, T, K, Res)` of a loaded U. *)
+(** As `extended_res(Res0, T, K, Res)` of a loaded u: u extended from
+    the narrow type t, as a word of class k. *)
 Definition extended (t : narrow) (k : class) (u : Z) : option word :=
   let* m := modulus k in Some (WInt (extension t u mod m)).
 
-(** `load_op_res(T, K, filc, [ptr(A, Cap)], ...)` for an integer T: the
-    access check (read, alignment 1), then the bytes, extended. *)
+(** As `load_op_res(T, K, filc, [ptr(A, Cap)], ...)` for a non-pointer
+    load type t: the access check of the address a through the
+    capability c (read, alignment 1), then the bytes, extended for a
+    narrow t. *)
 Definition int_load_res (t : load_type) (k : class) (m : mem) (a : Z) (c : cap)
   : option (res word) :=
   let size := match t with
@@ -223,8 +250,10 @@ Definition int_load_res (t : load_type) (k : class) (m : mem) (a : Z) (c : cap)
   | RUnchecked why => Some (RUnchecked why)
   end.
 
-(** The local state of a pointer load's protocol: the aux word read so
-    far and the pointer being assembled (`loaded(C, P, Mem)`). *)
+(** One step e of a pointer load's protocol at the address a. The
+    state st is the [[aux]] capability read so far and the pointer
+    being assembled (interp.pl's `loaded(C, P, Mem)`); a store's step
+    has none here. *)
 Definition pointer_load_effect (m : mem) (a : Z) (st : cap * ptr) (e : effect)
   : option (cap * ptr) :=
   let (c, p) := st in
@@ -237,16 +266,19 @@ Definition pointer_load_effect (m : mem) (a : Z) (st : cap * ptr) (e : effect)
   | _ => None
   end.
 
-(** `pointer_load_effects_res(ok, Effects, A, Mem0, val(P), Mem)`: run
-    the protocol from `loaded(none, ptr(0, none))`. *)
+(** As `pointer_load_effects_res(ok, Effects, A, Mem0, val(P), Mem)`:
+    the pointer the protocol es loads from the address a, run from
+    `loaded(none, ptr(0, none))`. *)
 Definition pointer_load_effects (m : mem) (a : Z) (es : list effect) : option ptr :=
   let* st := fold_left (fun st e => let* s := st in pointer_load_effect m a s e)
                        es (Some (CNone, mkPtr 0 CNone)) in
   Some (snd st).
 
-(** `pointer_store_effect(A, P, Effect, Mem0, Mem)`: ensure, barrier and
-    reload are identities here (no GC, no aux allocation); the writes
-    happen in list order, the lower before the primary address. *)
+(** As `pointer_store_effect(A, P, Effect, Mem0, Mem)`: one step e of
+    storing the pointer x at the address a. Ensure, barrier and reload
+    are identities here (no garbage collector, no aux allocation); the
+    writes happen in list order, the [[lower]] before the primary
+    address. *)
 Definition pointer_store_effect (a : Z) (x : ptr) (m : mem) (e : effect) : option mem :=
   match e with
   | AuxEnsure | LowerBarrier | RootedReload => Some m
@@ -256,16 +288,19 @@ Definition pointer_store_effect (a : Z) (x : ptr) (m : mem) (e : effect) : optio
   | _ => None
   end.
 
+(** The memory after a pointer store's protocol es, each step by
+    [pointer_store_effect] in turn. *)
 Definition pointer_store_effects (a : Z) (x : ptr) (m : mem) (es : list effect)
   : option mem :=
   fold_left (fun m e => let* m' := m in pointer_store_effect a x m' e) es (Some m).
 
 (** ## Stores *)
 
-(** `store_res(filc, Width, Mem0, ptr(A, Cap), X, Res, Mem)`: the access
-    check of a store (alignment 8 for a pointer and for `x`, else 1,
+(** As `store_res(filc, Width, Mem0, ptr(A, Cap), X, Res, Mem)`: a store
+    of the word x at width w to the address a through the capability c.
+    The access check (alignment 8 for a pointer and for `x`, else 1,
     `width_word/5`), then its bytes, and for a pointer its capability
-    in aux. *)
+    in aux; a failed check leaves memory as it was. *)
 Definition store_res (w : width) (m : mem) (a : Z) (c : cap) (x : word)
   : option (res unit * mem) :=
   let size := width_bytes w in
@@ -285,8 +320,9 @@ Definition store_res (w : width) (m : mem) (a : Z) (c : cap) (x : word)
 
 (** ## Variadic arguments *)
 
-(** `width_bytes(K, Size)` of a value class K, the width a store of K
-    writes. *)
+(** The width a store of a value of class k writes, as
+    `width_bytes(K, Size)` reads a class as a width; none for a proof
+    class. *)
 Definition class_width (k : class) : option width :=
   match k with
   | W => Some Ww | L => Some Wl | P => Some Wp
@@ -294,7 +330,7 @@ Definition class_width (k : class) : option width :=
   | _ => None
   end.
 
-(** `va_cell(K, Step, Align)`: a `va_arg` of class K takes Step bytes
+(** As `va_cell(K, Step, Align)`: a `va_arg` of class k takes Step bytes
     at an Align-aligned cursor, as Fil-C's runtime does: a long
     double's cell is 16 bytes at 16, of which it reads its 10. *)
 Definition va_cell (k : class) : option (Z * Z) :=
@@ -303,11 +339,12 @@ Definition va_cell (k : class) : option (Z * Z) :=
   | _ => let* w := class_width k in Some (width_bytes w, 8)
   end.
 
-(** `kind_res(va_arg, _, K, filc, [P], S0, Res, S)`: the cursor is the
-    pointer stored at the va_list P (`pointer_load_res/5`); its cell is
-    checked for reading, the cursor moves past it with an `l` store at
-    P, and the value is the cell's bytes, a pointer with its stored
-    capability for `p` (`va_cursor_res/6` and `va_checked_res/8`). *)
+(** As `kind_res(va_arg, _, K, filc, [P], S0, Res, S)`: the next
+    variadic argument, of class k, through the va_list p. The cursor is
+    the pointer stored at p (`pointer_load_res/5`); its cell is checked
+    for reading, the cursor moves past it with an `l` store at p, and
+    the value is the cell's bytes, a pointer with its stored capability
+    for `p` (`va_cursor_res/6` and `va_checked_res/8`). *)
 Definition va_arg_res (k : class) (p : ptr) (m : mem) : option (res word * mem) :=
   let* chk := access_res m (ptr_addr p) (ptr_cap p) 8 Read 8 in
   match chk with
@@ -343,20 +380,20 @@ Definition va_arg_res (k : class) (p : ptr) (m : mem) : option (res word * mem) 
     from its base. *)
 Inductive op_out : Type :=
 | OpRes (r : res word) (m : mem)
-| OpUB (why : term)
-| OpAlloc (q : alloc_req) (k : Z -> word * mem).
+| OpUB (why : term) (* `ub(Why)` *)
+| OpAlloc (q : alloc_req) (k : Z -> word * mem). (* allocate q; k gives the result and the memory for its [[fresh]] base *)
 
 (** ## Floats *)
 
-(** The ieee.pl format of a float class. *)
+(** The ieee.pl format of a float class k; none for the others. *)
 Definition fmt_of (k : class) : option fmt :=
   match k with
   | Single => Some FmtS | Double => Some FmtD | Extended => Some FmtX
   | _ => None
   end.
 
-(** A float comparison's condition; none for the integer orders, which
-    `condition/2` never holds. *)
+(** The ieee.pl condition of a comparison's condition c; none for the
+    integer orders, which `condition/2` never holds. *)
 Definition fcond_of (c : cond) : option fcond :=
   match c with
   | Eq => Some FEq | Ne => Some FNe | Le => Some FLe | Lt => Some FLt
@@ -364,12 +401,14 @@ Definition fcond_of (c : cond) : option fcond :=
   | _ => None
   end.
 
-(** `op_res(cmp(C, CK), ...)` at a float CK: `ieee_compare/5`. *)
+(** As `op_res(cmp(C, CK), ...)` at a float CK: 1 if the bit patterns
+    a and b of format ck compare by c, else 0 (`ieee_compare/5`). *)
 Definition float_compare (c : cond) (ck : fmt) (a b : Z) : Z :=
   match fcond_of c with Some fc => ieee_compare ck fc a b | None => 0 end.
 
-(** `float_arithmetic(Op, K, Xs, R)`: add, sub, mul, div, neg and copy
-    at a float class. A copy only checks that its word is an integer. *)
+(** As `float_arithmetic(Op, K, Xs, R)`: add, sub, mul, div, neg and
+    copy in the float format k, on bit patterns. A copy only checks
+    that its word is an integer. *)
 Definition float_arithmetic (o : op) (k : fmt) (xs : list word) : option Z :=
   match o, xs with
   | Copy, [WInt x] => Some x
@@ -381,8 +420,10 @@ Definition float_arithmetic (o : op) (k : fmt) (xs : list word) : option Z :=
   | _, _ => None
   end.
 
-(** `kind_res(float_convert, Op, K, ...)`: `ext(s)` to any float class,
-    `ext(d)` to `x`, `truncd` to `s`, `truncx` to any float class. *)
+(** As `kind_res(float_convert, Op, K, ...)`: the float x converted by
+    the op o to class k, rounded to nearest: `ext(s)` to any float
+    class, `ext(d)` to `x`, `truncd` to `s`, `truncx` to any float
+    class. *)
 Definition float_convert (o : op) (k : class) (x : Z) : option Z :=
   let* to := fmt_of k in
   match o, k with
@@ -393,9 +434,9 @@ Definition float_convert (o : op) (k : class) (x : Z) : option Z :=
   | _, _ => None
   end.
 
-(** `float_integer(Op, K, X, Res)`: the float X truncated toward zero,
-    if it is finite and fits K signed or unsigned, else undefined
-    behaviour. *)
+(** As `float_integer(Op, K, X, Res)`: the float x of format from
+    truncated toward zero, if it is finite and fits the class k signed
+    or unsigned, else the undefined behaviour `ub(float_conversion)`. *)
 Definition float_integer (from : fmt) (sg : signedness) (k : class) (x : Z) (m0 : mem)
   : option op_out :=
   let* m := modulus k in
@@ -409,12 +450,16 @@ Definition float_integer (from : fmt) (sg : signedness) (k : class) (x : Z) (m0 
   | None => Some (OpUB (TAtom "float_conversion"))
   end.
 
-(** `integer_source(Op, X, N)`: the integer an int-to-float op reads. *)
+(** As `integer_source(Op, X, N)`: the integer an int-to-float op reads
+    from the word x of class ik, signed or unsigned. *)
 Definition integer_source (ik : class) (sg : signedness) (x : Z) : option Z :=
   match sg with Signed => signed ik x | Unsigned => Some x end.
 
-(** `kind_res/8` for the core subset's integer, pointer and checked
-    ops. *)
+(** As `kind_res/8` for the core subset's integer, pointer and checked
+    ops: what the op o of result class k does on the words xs in the
+    memory m, or none where the interpreter fails (arguments of the
+    wrong form, or a capability it cannot follow). The checks read
+    memory and never change it; [Alloc] asks for an allocation. *)
 Definition op_res_int (o : op) (k : class) (xs : list word) (m : mem) : option op_out :=
   let pure (x : option word) := let* w := x in Some (OpRes (RVal w) m) in
   let with_mem (r : option (res word)) := let* r' := r in Some (OpRes r' m) in
@@ -515,9 +560,11 @@ Definition op_res_int (o : op) (k : class) (xs : list word) (m : mem) : option o
   | _, _, _ => None
   end.
 
-(** `op_res(Op, K, filc, Args, S0, Res, S)` and `kind_res/8` for the
-    core subset. A float comparison and float arithmetic come first, as
-    `op_res/7` commits to them before the integer dispatch. *)
+(** As `op_res(Op, K, filc, Args, S0, Res, S)` and `kind_res/8` for the
+    core subset: what the op o of result class k does on the words xs
+    in the memory m. A float comparison and float arithmetic come
+    first, as `op_res/7` commits to them before the integer dispatch
+    of [op_res_int]. *)
 Definition op_res (o : op) (k : class) (xs : list word) (m : mem) : option op_out :=
   match o, fmt_of k, xs with
   | Cmp c ck, _, [WInt a; WInt b] =>

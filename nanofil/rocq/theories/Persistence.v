@@ -1,69 +1,37 @@
-(** Campaign 3's evidence invariant over whole runs (docs/formal.md,
-    Campaign 3, "Proof persistence"; docs/rocq.md).
+(** Campaign 3's [[evidence]] invariant over whole runs (docs/formal.md,
+    Campaign 3, Proof persistence;
+    [docs/rocq.md, The evidence invariant over runs](../../docs/rocq.md#the-evidence-invariant-over-runs)).
 
-    Evidence.v proves ir.pl's evidence pass sound one instruction and
-    one edge at a time. This file carries that along every run of
-    Machine.v's machine: in each state a run of a checked module
+    Evidence.v proves ir.pl's [[evidence pass]] sound one instruction
+    and one edge at a time. This file carries that along every [[run]]
+    of Machine.v's [[machine]]: in each state a run of a checked module
     reaches, the facts the pass computed for the running frame's
-    position hold, so a raw access the pass accepted by a live fact, or
-    took with its own check, gives no `unchecked`.
+    position hold ([inv], stated in Invariant.v), so a raw access the
+    pass accepted by a live fact, or took with its own check, gives no
+    [[unchecked]] ([run_access_not_unchecked]). Walk.v reads the pass
+    back block by block and position by position, and Steps.v says what
+    each kind of step does to the frame.
 
-    Walk.v reads the pass back block by block (`pass_fold`) and
-    position by position (`walks`, `relies`); Steps.v says what each
-    kind of step does to the frame; Invariant.v states the invariant
-    and what each kind of step needs of it. This file proves that every
-    machine step keeps it, and what follows.
-
-    | Theorem | Says |
-    |---|---|
-    | `next_inv`, `alloc_inv`, `safepoint_inv` | a step that allocates nothing, an allocation, and the runtime's action at a safepoint keep `inv` |
-    | `mstep_inv`, `mreachable_inv` | every machine step keeps the invariant `inv` |
-    | `access_not_unchecked`, `run_access_not_unchecked` | a frame that is not doomed runs no raw access or raw call to `unchecked`, but where the pass accepted it by `hull_covered` |
-    | `interp_access_not_unchecked` | the same under the interpreter's runtime, with no hypothesis about safepoints |
-
-    ## The invariant (Invariant.v)
-
-    `inv` is about the running frame and the callers waiting for it.
-    The running frame is a function of the module, its named locals lie
-    above address 0, and, unless a `check_ahead` doomed it, `point_ok`
-    says what holds at its point:
-
-    | Point | What holds |
-    |---|---|
-    | a snapshot, or the entry block's entry | that it is the function's entry |
-    | a block's entry from a predecessor | the edge is the predecessor's; unless it polls, the predecessor's exit facts hold |
-    | between two of the pass's steps | the facts the next instruction relies on (`relies`); at a block's end, those the unpolled edge it takes carries |
-    | between a check and the access the pass took with it | the fact that covers the access (`pair_claim`); after a `check_function`, that its function check passed |
-
-    A waiting caller has no fact: a call ends them all (`parked`).
-
-    ## Where a runtime may act
-
-    The module type lets a runtime act before any instruction that is
-    not `evidence_preserving/1` (Runtime.v's `safepoints`). The pass
-    keeps facts across three such instructions: the pointer store a
-    check is taken with, a `check_local`, and a repeated getter. Natively
-    a `check_local` is inline and a repeated getter takes its fast path,
-    so neither reaches a safepoint; but a pointer store whose aux must be
-    allocated exits to the runtime (`filc_exit_with_allocation_root` in
-    filc_runtime.c, 2578-2591), where a deferred signal handler may free
-    the checked object. The store then lands in the freed object's
-    retained memory, which native Fil-C keeps safe by `retention`; the
-    model calls that store `unchecked`. `spares` is the hypothesis that
-    no such free comes: at a safepoint before an instruction the pass
-    relies on facts for, the runtime changes no region. The interpreter's
-    runtime changes nothing at a safepoint (`interp_spares`), so its
-    theorem has no such hypothesis.
+    One hypothesis remains, [spares]: at a [[safepoint]] before an
+    instruction the pass relies on facts across, the [[runtime]] changes
+    no region. Natively it fails at a pointer store whose aux must be
+    allocated: the store exits to the runtime
+    (`filc_exit_with_allocation_root` in filc_runtime.c), where a
+    deferred signal handler may free the checked object, and the store
+    lands in the freed object's retained memory, safe natively by
+    `retention` but `unchecked` in the model. The interpreter's runtime
+    changes nothing at a safepoint ([interp_spares]), so its theorem
+    has no such hypothesis.
 
     ## Decisions
 
     | Decision | Why |
     |---|---|
-    | the pass's position is a relation (`walks`, `at_pos`), not a program counter | `checked_inst_rest/7` takes a check and its access in one step, so the pass's positions are a subset of the instructions |
+    | the pass's position is a relation ([walks], [at_pos]), not a program counter | `checked_inst_rest/7` takes a check and its access in one step, so the pass's positions are a subset of the instructions |
     | a doomed frame claims nothing | its `check_ahead`'s fact does not hold; what it may still do is the `check_ahead` corollary's |
-    | `spares` is a hypothesis, not an axiom | it is false natively at a pointer store's aux exit, where a free may show and retention keeps the store safe; mbrock's decision (docs/rocq.md, "The runtime's safepoints") |
-    | `InterpRuntime` is unsealed | so that `interp_spares` can read its safepoint |
-    | no unchecked outcome is claimed for a free | Soundness.v covers it by Runtime.v's `free_checked` | *)
+    | [spares] is a hypothesis, not an axiom | it is false natively at a pointer store's aux exit, where a free may show and retention keeps the store safe; mbrock's decision (docs/rocq.md, The evidence invariant over runs) |
+    | [InterpRuntime] is unsealed | so that [interp_spares] can read its safepoint |
+    | no unchecked outcome is claimed for a free | Soundness.v covers it by Runtime.v's [free_checked] | *)
 
 From Stdlib Require Import String ZArith List Bool Lia Relations.
 From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Semantics Machine Validate
@@ -73,9 +41,10 @@ Open Scope Z_scope.
 
 (** ## Every step keeps the invariant *)
 
-(** `hull_case ge md c l i rest`: the pass accepted the raw access i,
-    the next instruction of block l, by `hull_covered`, with live facts
-    that hold and whose pointers' single definitions dominate i. *)
+(** The pass accepted the raw access i, the next instruction of block l
+    in the configuration c, by `hull_covered/7`, with live facts that
+    hold and whose pointers' single definitions dominate i ([live_dom]).
+    Chain.v proves such an access checked. *)
 Definition hull_case (ge : genv) (md : module) (c : config) (l : name) (i : inst) (rest : list inst)
   : Prop :=
   let f := fr_fn (c_frame c) in
@@ -84,6 +53,7 @@ Definition hull_case (ge : genv) (md : module) (c : config) (l : name) (i : inst
     facts_hold ge (c_mem c) (fr_env (c_frame c)) live /\ live_dom f l k live /\
     fact_of q live = Some fa /\ hull_covered i q (f_p fa) (f_lo fa) (f_al fa) live (s_once (fn_src md f)) = true.
 
+(** The proofs over the runs of [Machine] R, for any [[runtime]] R. *)
 Module Persistence (R : Runtime).
 
 Module I := Invariant R.
@@ -92,6 +62,8 @@ Import RM.
 
 (** ### Each step keeps the invariant *)
 
+(** Allocating the named local x at a base above 0 keeps every local
+    above 0 ([locals_pos]). *)
 Lemma locals_pos_put : forall fr x base,
   locals_pos fr -> 0 < base ->
   forall fr', fr_locals fr' = put x (Some base) (fr_locals fr) -> locals_pos fr'.
@@ -100,13 +72,17 @@ Proof.
   destruct (name_eqb y x); [injection H as <-; exact Hb | exact (Hpos _ _ H)].
 Qed.
 
+(** A call is not [[ahead-transparent]], so a doomed frame never makes
+    one. *)
 Lemma ahead_call : forall r callee args, ahead_transparent (Call r callee args) = false.
 Proof. reflexivity. Qed.
 
+(** Nor is a raw call. *)
 Lemma ahead_raw_call : forall r callee args, ahead_transparent (RawCall r callee args) = false.
 Proof. reflexivity. Qed.
 
-(** `next_inv_snapshot`: a snapshot enters the entry block. *)
+(** A step at a variadic function's [[snapshot]] keeps [inv]: it enters
+    the entry block. *)
 Lemma next_inv_snapshot : forall ge md c c' s xs l,
   ge_module ge = md -> checked_module md -> ready_state (c, s) ->
   fr_at (c_frame c) = Snapshot xs l -> step ge c = Next c' -> inv ge md (c, s) -> inv ge md (c', s).
@@ -119,7 +95,7 @@ Proof.
   eapply point_ok_entry; [exact Hp | left; exact Ha | exact Hf | exact Ha'].
 Qed.
 
-(** `next_inv_enter`: entering a block. *)
+(** Entering a block keeps [inv] ([enter_point_ok]). *)
 Lemma next_inv_enter : forall ge md c c' s l from,
   ge_module ge = md -> checked_module md -> ready_state (c, s) ->
   fr_at (c_frame c) = Enter l from -> step ge c = Next c' -> inv ge md (c, s) -> inv ge md (c', s).
@@ -131,7 +107,9 @@ Proof.
   destruct Hpt as [Hd0 | Hp]; [left; exact Hd0 | right; exact (Hep Hp)].
 Qed.
 
-(** `next_inv_jump`: a jump takes an edge or returns to a waiting caller. *)
+(** A jump keeps [inv]: it takes an edge, whose facts hold unless it
+    polls, or returns to a waiting caller, which resumes with no fact
+    ([parked_resume]). *)
 Lemma next_inv_jump : forall ge md c c' s l j,
   ge_module ge = md -> checked_module md -> ready_state (c, s) ->
   fr_at (c_frame c) = Exec l [] j -> step ge c = Next c' -> inv ge md (c, s) -> inv ge md (c', s).
@@ -153,8 +131,9 @@ Proof.
     split; [exact (parked_resume _ _ _ _ _ Hpk) | exact Hrest].
 Qed.
 
-(** `next_inv_continue`: an instruction continues; the pass's next
-    position holds, unless the instruction doomed the frame. *)
+(** An instruction i that continues keeps [inv]: the pass's next
+    position holds ([at_pos_continue]), unless the step doomed the
+    frame. *)
 Lemma next_inv_continue : forall ge md c s l i rest j out0 od e1 l1 m1,
   checked_module md -> ready_state (c, s) -> fr_at (c_frame c) = Exec l (i :: rest) j ->
   inst_step ge (c_frame c) (c_mem c) i = Some out0 ->
@@ -183,8 +162,8 @@ Proof.
     -- injection Ho as _ <- _. split; [exact Hpos | left; discriminate].
 Qed.
 
-(** `next_inv_call`: a call starts the callee at its entry, and the
-    caller waits with no fact. *)
+(** A call keeps [inv]: the callee starts at its entry, and the caller
+    waits with no fact ([parked]). *)
 Lemma next_inv_call : forall ge md c s l i rest j out0 od g xs pd callee,
   ge_module ge = md -> checked_module md -> fr_at (c_frame c) = Exec l (i :: rest) j ->
   (fr_doomed (c_frame c) = None \/ ahead_transparent i = true) ->
@@ -219,7 +198,7 @@ Proof.
     destruct Hcl as [(r & cl & args & ->) | (r & cl & args & ->)]; reflexivity.
 Qed.
 
-(** `next_inv_inst`: an instruction continues, or calls. *)
+(** An instruction that continues or calls keeps [inv]. *)
 Lemma next_inv_inst : forall ge md c c' s l i rest j,
   ge_module ge = md -> checked_module md -> ready_state (c, s) ->
   fr_at (c_frame c) = Exec l (i :: rest) j -> step ge c = Next c' -> inv ge md (c, s) -> inv ge md (c', s).
@@ -232,7 +211,8 @@ Proof.
   - eapply next_inv_call; eassumption.
 Qed.
 
-(** A step that allocates nothing. *)
+(** A step that allocates nothing ([Next]) keeps [inv], whatever the
+    frame's point. *)
 Lemma next_inv : forall ge md c c' s,
   ge_module ge = md -> checked_module md -> ready_state (c, s) ->
   step ge c = Next c' -> inv ge md (c, s) -> inv ge md (c', s).
@@ -245,6 +225,8 @@ Proof.
   - exact (next_inv_inst _ _ _ _ _ _ _ _ _ Hge Hmd Hr Ha Hs H).
 Qed.
 
+(** The pass relies on no fact across an allocation, of a heap object
+    or of a named local, and an allocation is not a `check_function`. *)
 Lemma relies_alloc_any : forall s i,
   (exists d c al args, i = Let d c (Alloc al) args) \/ (exists x size, i = LocalAlloc x size) ->
   relies s i = false /\ is_check_function i = false.
@@ -252,8 +234,8 @@ Proof.
   intros s i [(d & c & al & args & ->) | (x & size & ->)]; [destruct c|]; split; reflexivity.
 Qed.
 
-(** `alloc_inv_inst`: an instruction allocates, a heap object or a
-    named local, at a base above 0; the pass keeps no fact across it. *)
+(** An instruction that allocates, a heap object or a named local at a
+    base above 0, keeps [inv]; the pass keeps no fact across it. *)
 Lemma alloc_inv_inst : forall ge md c q k s base s' l i rest j,
   ready_state (c, s) -> fr_at (c_frame c) = Exec l (i :: rest) j -> step ge c = Fresh q k ->
   0 < base -> inv ge md (c, s) -> inv ge md (k base, s').
@@ -294,7 +276,8 @@ Proof.
     eapply at_pos_between; [exact (walks_after _ _ _ _ _ _ _ _ _ _ _ Hat Hrel Hcf) | apply live_dom_nil | apply facts_hold_nil].
 Qed.
 
-(** An allocation. *)
+(** An allocation, at the base R's alloc gives with the new runtime
+    state s', keeps [inv]: R's [[fresh]] base lies above 0. *)
 Lemma alloc_inv : forall ge md c q k s base s',
   ready_state (c, s) -> step ge c = Fresh q k -> 0 <= req_extent q ->
   R.alloc s q = Some (base, s') -> inv ge md (c, s) -> inv ge md (k base, s').
@@ -321,7 +304,10 @@ Proof.
   destruct (raw_access i); [|discriminate H]. rewrite !orb_true_r. reflexivity.
 Qed.
 
-(** The runtime's action at a safepoint. *)
+(** The runtime's action at a [[safepoint]] keeps [inv] where it
+    [spares] the pass's facts: no fact is live across a poll edge, and
+    before an instruction the pass relies on facts for, the regions are
+    unchanged. *)
 Lemma safepoint_inv : forall ge md c s s' m',
   spares ge md -> safepoint_due ge c = true -> R.safepoint s (c_mem c) s' m' ->
   inv ge md (c, s) -> inv ge md (with_mem c m', s').
@@ -349,8 +335,8 @@ Proof.
       eapply facts_hold_same; [exact (Hreg (covered_relies _ _ _ _ _ _ _ Hcov)) | exact Hh].
 Qed.
 
-(** `mstep_inv`: every machine step keeps the invariant, where the
-    runtime spares the pass's facts. *)
+(** Every machine step from a [[ready]] state keeps [inv], where the
+    runtime [spares] the pass's facts. *)
 Theorem mstep_inv : forall ge md st st',
   ge_module ge = md -> checked_module md -> spares ge md ->
   ready_state st -> mstep ge st st' -> inv ge md st -> inv ge md st'.
@@ -362,8 +348,8 @@ Proof.
   - eapply safepoint_inv; eauto.
 Qed.
 
-(** `mreachable_inv`: from a ready start where it holds, the invariant
-    holds in every state a run reaches. *)
+(** From a ready start where it holds, [inv] holds in every state a
+    run reaches. *)
 Theorem mreachable_inv : forall ge md st st',
   ge_module ge = md -> checked_module md -> ge_free ge = R.free -> spares ge md ->
   mreachable ge st st' -> ready_state st -> inv ge md st -> inv ge md st'.
@@ -374,7 +360,8 @@ Proof.
   - apply IH2; [exact (mreachable_ready _ _ _ Hfree H12 Hr) | exact (IH1 Hr Hi)].
 Qed.
 
-(** A run starts at its function's entry, with no caller. *)
+(** [inv] holds where a run starts: at the entry of a checked module's
+    function, with no caller. *)
 Lemma start_inv : forall ge md f xs fr m fuel s,
   checked_module md -> In (IFunc f) md -> call_frame f xs = Some fr ->
   inv ge md (mkConfig fr [] m fuel, s).
@@ -385,11 +372,11 @@ Qed.
 
 (** ## No unchecked access *)
 
-(** `access_not_unchecked`: in a state where the invariant holds, a
-    frame that is not doomed runs no raw access, and no raw call, to an
-    `unchecked` outcome, unless the pass accepted the access by
-    `hull_covered`, with facts that hold and dominate (`hull_case`).
-    Chain.v's `Hull` closes that case with Single.v's invariant. *)
+(** In a ready state where [inv] holds, a frame that is not doomed runs
+    no raw access, and no raw call, to an [[unchecked]] outcome, unless
+    the pass accepted the access by `hull_covered/7`, with facts that
+    hold and dominate ([hull_case]). Chain.v's `Hull` closes that case
+    with Single.v's invariant. *)
 Theorem access_not_unchecked : forall ge md c s l i rest j why,
   inv ge md (c, s) -> ready_state (c, s) ->
   fr_doomed (c_frame c) = None -> fr_at (c_frame c) = Exec l (i :: rest) j ->
@@ -419,9 +406,9 @@ Proof.
     + exact (raw_call_checked _ _ _ _ _ _ _ _ Hq Hc).
 Qed.
 
-(** `run_access_not_unchecked`: the same of every state of a run of a
-    checked module's function that starts ready, where the runtime
-    spares the pass's facts. *)
+(** The same of every state of a run of a checked module's function
+    that starts ready, where the runtime [spares] the pass's facts and
+    the genv's free is R's. *)
 Theorem run_access_not_unchecked : forall ge md f xs fr m fuel s0 c s l i rest j why,
   checked_module md -> ge_module ge = md -> ge_free ge = R.free -> spares ge md ->
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
@@ -441,6 +428,7 @@ End Persistence.
 
 (** ## The interpreter's runtime *)
 
+(** The same for the interpreter's runtime. *)
 Module InterpPersistence := Persistence InterpRuntime.
 Import InterpPersistence.I.
 
@@ -452,11 +440,11 @@ Proof.
   destruct Hact as [_ ->]. reflexivity.
 Qed.
 
-(** `interp_access_not_unchecked`: under the interpreter's runtime,
-    in every state of a run of a checked module's function that starts
-    ready, a frame that is not doomed runs no raw access or raw call to
-    `unchecked`, unless the pass accepted it by `hull_covered` (Chain.v's
-    `interp_access_checked` closes that case). *)
+(** Under the interpreter's runtime, in every state of a run of a
+    checked module's function that starts ready, a frame that is not
+    doomed runs no raw access or raw call to [[unchecked]], unless the
+    pass accepted it by `hull_covered/7` (Chain.v's
+    [interp_access_checked] closes that case). *)
 Corollary interp_access_not_unchecked : forall md globals f xs fr m fuel s0 c s l i rest j why,
   let ge := mkGenv md globals InterpRuntime.free in
   checked_module md -> In (IFunc f) md -> call_frame f xs = Some fr -> InterpRuntime.ready s0 m ->

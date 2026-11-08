@@ -16,45 +16,46 @@
     | `decode` | `decode/4` |
     | `round_ratio` | `round_ratio/5` |
     | `ieee_from_int`, `ieee_to_int` | the same |
-    | `ieee_neg`, `ieee_binary`, `ieee_convert`, `ieee_compare` | the same |
-
-    The x NaN rule is the x87's: of two NaN operands, a quiet one wins
-    over a signaling one, else the one with the larger significand, else
-    the first (`x87_nan/3`). *)
+    | `ieee_neg`, `ieee_binary`, `ieee_convert`, `ieee_compare` | the same | *)
 
 From Stdlib Require Import ZArith Bool.
 Open Scope Z_scope.
 
 (** ## Formats *)
 
-(** The three float formats, ieee.pl's K. *)
+(** The three float formats, ieee.pl's K: binary32 ([FmtS], `s`),
+    binary64 ([FmtD], `d`) and x87 extended ([FmtX], `x`). *)
 Inductive fmt : Type := FmtS | FmtD | FmtX.
 
-(** `format(K, Fraction, Exponent, Bias)`: the fraction excludes the
-    integer bit, which x stores explicitly. *)
+(** As `format(K, Fraction, _, _)`: the bits of the fraction of the
+    format k, without the integer bit, which only x stores
+    explicitly. *)
 Definition frac_bits (k : fmt) : Z := match k with FmtS => 23 | FmtD => 52 | FmtX => 63 end.
+(** As `format(K, _, Exponent, _)`: the bits of the exponent field. *)
 Definition exp_bits (k : fmt) : Z := match k with FmtS => 8 | FmtD => 11 | FmtX => 15 end.
+(** As `format(K, _, _, Bias)`: the exponent bias, the stored exponent
+    of 1.0. *)
 Definition bias (k : fmt) : Z := match k with FmtS => 127 | FmtD => 1023 | FmtX => 16383 end.
 
-(** `integer_bit(K, Bits)`: the explicit integer bit, if any; the
+(** As `integer_bit(K, Bits)`: the explicit integer bit, if any; the
     exponent starts above it. *)
 Definition integer_bit (k : fmt) : Z := match k with FmtX => 1 | _ => 0 end.
 
-(** `exponent_shift(K, Sh)`. *)
+(** As `exponent_shift(K, Sh)`: the position of the exponent field's
+    lowest bit, above the fraction and the integer bit. *)
 Definition exponent_shift (k : fmt) : Z := frac_bits k + integer_bit k.
 
 (** ## Decoding *)
 
-(** What a bit pattern is: an infinity, a NaN, or the finite value
-    N × 2^P (`decode/4`'s T). *)
+(** What a bit pattern is, `decode/4`'s T. *)
 Inductive fclass : Type :=
-| Inf
-| NaN
-| Finite (n p : Z).
+| Inf (* an infinity *)
+| NaN (* not a number *)
+| Finite (n p : Z). (* the finite value n × 2^p *)
 
-(** `decode(K, B, S, T)`: the sign S and the value T of the pattern B.
-    A zero exponent is a subnormal (or zero), whose significand is all
-    the bits below the exponent. *)
+(** As `decode(K, B, S, T)`: the sign S and the value T of the pattern
+    b in the format k. A zero exponent is a subnormal (or zero), whose
+    significand is all the bits below the exponent. *)
 Definition decode (k : fmt) (b : Z) : Z * fclass :=
   let f := frac_bits k in
   let e := exp_bits k in
@@ -68,30 +69,35 @@ Definition decode (k : fmt) (b : Z) : Z * fclass :=
     else Finite (2 ^ f + m) (x - bias k - f) in
   (s, t).
 
-(** `sign_bits(K, S, B)`. *)
+(** As `sign_bits(K, S, B)`: the pattern with only the sign s, 0 or 1;
+    also the zero of that sign. *)
 Definition sign_bits (k : fmt) (s : Z) : Z := Z.shiftl s (exponent_shift k + exp_bits k).
 
-(** `infinity(K, S, B)`. *)
+(** As `infinity(K, S, B)`: the infinity of sign s (x's has its
+    integer bit set). *)
 Definition infinity (k : fmt) (s : Z) : Z :=
   sign_bits k s + Z.shiftl (2 ^ exp_bits k - 1) (exponent_shift k)
   + Z.shiftl (integer_bit k) (frac_bits k).
 
-(** `quiet(K, A, B)`: A with the top fraction bit set. *)
+(** As `quiet(K, A, B)`: the pattern a with the top fraction bit set,
+    which makes a NaN quiet. *)
 Definition quiet (k : fmt) (a : Z) : Z := Z.lor a (2 ^ (frac_bits k - 1)).
 
-(** `invalid(K, B)`: the default NaN, a quiet negative one. *)
+(** As `invalid(K, B)`: the default NaN, a quiet negative one, the
+    result of an invalid operation. *)
 Definition invalid (k : fmt) : Z := quiet k (infinity k 1).
 
 (** ## Rounding *)
 
-(** `ilog(N, L)`: floor(log2(N)) for a positive N, and -1 for 0. *)
+(** As `ilog(N, L)`: floor(log2(N)) for a positive n, and -1 for 0. *)
 Definition ilog (n : Z) : Z := if n <=? 0 then -1 else Z.log2 n.
 
-(** `scale(N, D, E, A, B)`: A/B is N/D × 2^E. *)
+(** As `scale(N, D, E, A, B)`: the ratio A/B that is n/d × 2^e, both
+    parts integers. *)
 Definition scale (n d e : Z) : Z * Z :=
   if 0 <=? e then (Z.shiftl n e, d) else (n, Z.shiftl d (- e)).
 
-(** `round_even(N, D, Q)`: the positive quotient N/D rounded to
+(** As `round_even(N, D, Q)`: the positive quotient N/D rounded to
     nearest, a tie to the even neighbour. N and D are positive, so
     Prolog's `//` is `Z.div` (`Z.quot` is the same here, but its
     extraction divides bit by bit, which takes minutes on the 16000-bit
@@ -101,9 +107,10 @@ Definition round_even (n d : Z) : Z :=
   let twice := 2 * (n mod d) in
   if (d <? twice) || ((twice =? d) && (q0 mod 2 =? 1)) then q0 + 1 else q0.
 
-(** `round_ratio(K, S, N, D, B)`: B is the format-K pattern of sign S
-    nearest N/D, for N ≥ 0: the exponent is the one of N/D, raised to
-    the least normal one, and an overflow is an infinity. *)
+(** As `round_ratio(K, S, N, D, B)`: the pattern of format k and sign s
+    nearest n/d, for n ≥ 0, ties to even. The exponent is the one of
+    n/d, raised to the least normal one (so small values round as
+    subnormals), and an overflow is an infinity. *)
 Definition round_ratio (k : fmt) (s n d : Z) : Z :=
   if n =? 0 then sign_bits k s else
   let f := frac_bits k in
@@ -122,22 +129,25 @@ Definition round_ratio (k : fmt) (s n d : Z) : Z :=
                         else (e1 + bias k, q1 - Z.shiftl (1 - integer_bit k) f) in
     sign_bits k s + Z.shiftl exp (exponent_shift k) + mant.
 
-(** `finite_ratio(T, A, B)`: the finite value as a ratio. *)
+(** As `finite_ratio(T, A, B)`: the finite value n × 2^p as a ratio of
+    non-negative integers. *)
 Definition finite_ratio (n p : Z) : Z * Z := scale n 1 p.
 
-(** `signed_ratio(S, T, N, D)`. *)
+(** As `signed_ratio(S, T, N, D)`: the same ratio, with the sign s
+    applied to its numerator. *)
 Definition signed_ratio (s n p : Z) : Z * Z :=
   let '(a, d) := finite_ratio n p in ((1 - 2 * s) * a, d).
 
 (** ## Integers *)
 
-(** `ieee_from_int(K, N, B)`: the pattern nearest the integer N. *)
+(** As `ieee_from_int(K, N, B)`: the pattern of format k nearest the
+    integer n. *)
 Definition ieee_from_int (k : fmt) (n : Z) : Z :=
   round_ratio k (if n <? 0 then 1 else 0) (Z.abs n) 1.
 
-(** `ieee_to_int(K, B, N)`: the finite B truncated toward zero; none
-    for an infinity or NaN. The ratio's parts are non-negative, so
-    `//` is `Z.div` here too. *)
+(** As `ieee_to_int(K, B, N)`: the finite pattern b truncated toward
+    zero; none for an infinity or NaN. The ratio's parts are
+    non-negative, so `//` is `Z.div` here too. *)
 Definition ieee_to_int (k : fmt) (b : Z) : option Z :=
   match decode k b with
   | (s, Finite n p) => let '(a, d) := finite_ratio n p in Some ((1 - 2 * s) * (a / d))
@@ -146,10 +156,14 @@ Definition ieee_to_int (k : fmt) (b : Z) : option Z :=
 
 (** ## Arithmetic *)
 
-(** `ieee_neg(K, A, B)`: the sign bit flipped, NaNs included. *)
+(** As `ieee_neg(K, A, B)`: the pattern a with its sign bit flipped,
+    NaNs included. *)
 Definition ieee_neg (k : fmt) (a : Z) : Z := Z.lxor a (sign_bits k 1).
 
-(** `x87_nan(A, B, R)` (Intel SDM vol. 1, 4.8.3.5). *)
+(** As `x87_nan(A, B, R)`: the result of an x op on two NaNs a and b,
+    by the x87's rule (Intel SDM vol. 1, 4.8.3.5): a quiet one wins
+    over a signaling one, else the one with the larger significand,
+    else the first, and the winner is quieted. *)
 Definition x87_nan (a b : Z) : Z :=
   let qa := Z.land (Z.shiftr a 62) 1 in
   let qb := Z.land (Z.shiftr b 62) 1 in
@@ -158,15 +172,20 @@ Definition x87_nan (a b : Z) : Z :=
   let w := if qb <? qa then a else if qa <? qb then b else if ma <? mb then b else a in
   quiet FmtX w.
 
+(** The four arithmetic operations: add, subtract, multiply, divide. *)
 Inductive fop : Type := FAdd | FSub | FMul | FDiv.
 
+(** Whether a decoded value t is a zero, of either sign. *)
 Definition is_zero (t : fclass) : bool :=
   match t with Finite 0 _ => true | _ => false end.
 
+(** Whether a decoded value t is an infinity. *)
 Definition is_inf (t : fclass) : bool := match t with Inf => true | _ => false end.
 
-(** `binary(add, K, SA, TA, SB, TB, R)`: the sum of two non-NaN values.
-    An exact zero sum is negative only when both operands are. *)
+(** As `binary(add, K, SA, TA, SB, TB, R)`: the sum of two non-NaN
+    values, ta of sign sa and tb of sign sb. An exact zero sum is
+    negative only when both operands are; infinities of opposite signs
+    give the default NaN. *)
 Definition binary_add (k : fmt) (sa : Z) (ta : fclass) (sb : Z) (tb : fclass) : Z :=
   match ta, tb with
   | Inf, Inf => if negb (sa =? sb) then invalid k else infinity k sa
@@ -181,7 +200,9 @@ Definition binary_add (k : fmt) (sa : Z) (ta : fclass) (sb : Z) (tb : fclass) : 
   | _, _ => invalid k
   end.
 
-(** `binary(Op, K, SA, TA, SB, TB, R)` for the four ops. *)
+(** As `binary(Op, K, SA, TA, SB, TB, R)`: the op o on two non-NaN
+    values. The invalid cases, zero times infinity, zero over zero and
+    infinity over infinity, give the default NaN [invalid]. *)
 Definition binary (o : fop) (k : fmt) (sa : Z) (ta : fclass) (sb : Z) (tb : fclass) : Z :=
   let s := Z.lxor sa sb in
   match o with
@@ -211,8 +232,10 @@ Definition binary (o : fop) (k : fmt) (sa : Z) (ta : fclass) (sb : Z) (tb : fcla
            end
   end.
 
-(** `ieee_binary(K, Op, A, B, R)`: SSE's NaN rules (x87's for x), then
-    the op on the values. *)
+(** As `ieee_binary(K, Op, A, B, R)`: the op o on the patterns a and b
+    of format k. A NaN operand gives that NaN quieted, the first if
+    both are, as x86's SSE does ([x87_nan] for x); otherwise [binary]
+    on the values. *)
 Definition ieee_binary (k : fmt) (o : fop) (a b : Z) : Z :=
   let '(sa, ta) := decode k a in
   let '(sb, tb) := decode k b in
@@ -223,8 +246,9 @@ Definition ieee_binary (k : fmt) (o : fop) (a b : Z) : Z :=
   | _, _, _ => binary o k sa ta sb tb
   end.
 
-(** `ieee_convert(From, To, A, B)`: rounded to nearest; a NaN keeps as
-    much of its payload as fits, aligned at the top, and is quieted. *)
+(** As `ieee_convert(From, To, A, B)`: the pattern a of format from in
+    the format to, rounded to nearest; a NaN keeps as much of its
+    payload as fits, aligned at the top, and is quieted. *)
 Definition ieee_convert (from to : fmt) (a : Z) : Z :=
   match decode from a with
   | (s, Inf) => infinity to s
@@ -238,16 +262,21 @@ Definition ieee_convert (from to : fmt) (a : Z) : Z :=
 
 (** ## Comparison *)
 
-(** A float comparison's condition (`condition/2`). *)
+(** A float comparison's condition (`condition/2`): equal, not equal,
+    the four orders, ordered (neither is a NaN) and unordered (one
+    is). *)
 Inductive fcond : Type := FEq | FNe | FLt | FLe | FGt | FGe | FOrd | FUnord.
 
-(** How two values compare: the standard order, or unordered. *)
+(** How two values compare: the standard order, or unordered when one
+    is a NaN. *)
 Inductive order : Type := Below | Same | Above | Unordered.
 
+(** The order of a Rocq [comparison]. *)
 Definition order_of (c : comparison) : order :=
   match c with Lt => Below | Eq => Same | Gt => Above end.
 
-(** `condition(Cond, Order)`. *)
+(** As `condition(Cond, Order)`: whether the condition c holds of two
+    values that compare as o. *)
 Definition condition (c : fcond) (o : order) : bool :=
   match c, o with
   | FEq, Same => true
@@ -261,8 +290,9 @@ Definition condition (c : fcond) (o : order) : bool :=
   | _, _ => false
   end.
 
-(** `ieee_compare(K, Cond, A, B, R)`: 1 when A Cond B holds, else 0.
-    With a NaN only `ne` and `uo` hold. *)
+(** As `ieee_compare(K, Cond, A, B, R)`: 1 when a c b holds of the
+    patterns a and b of format k, else 0. With a NaN only `ne` and
+    `uo` hold; the two zeros are equal. *)
 Definition ieee_compare (k : fmt) (c : fcond) (a b : Z) : Z :=
   let '(sa, ta) := decode k a in
   let '(sb, tb) := decode k b in

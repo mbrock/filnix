@@ -1,39 +1,30 @@
-(** What ir.pl's offset intervals derive, and that they hold
-    (docs/formal.md, Campaign 3; docs/rocq.md, "Offset intervals").
+(** What ir.pl's [[offset-interval|offset intervals]] derive, and that
+    they hold ([Campaign 3](../../docs/formal.md#campaign-3-the-soundness-theorem);
+    [docs/rocq.md](../../docs/rocq.md#offset-intervals)).
 
-    The reuse forms' rules bound the offset of a flight from its base by
-    `offset_interval/8` (Validate.v's `oi`): the interval of values an
-    integer name can hold, walked through the single definitions of
-    the function. This file states the same derivations as an
-    inductive relation, `iv`, one constructor per clause of
-    `op_interval/9`, and proves two things:
+    The reuse forms' rules bound the offset of a [[flight]] from its base
+    by `offset_interval/8` (Validate.v's [oi]): the interval of values an
+    integer name can hold, walked through the
+    [[single-definition|single definitions]] of the function. This file
+    states the same derivations as an inductive relation, [iv], one
+    constructor per clause of `op_interval/9`, and proves two things:
 
-    - whatever `oi` answers, `iv` derives (`offset_interval_iv`), so
-      `oi`'s memo and depth limit need no further thought;
-    - an `iv` interval holds of the value a run reads, wherever each
+    - whatever [oi] answers, [iv] derives ([offset_interval_iv]), so
+      [oi]'s memo and depth limit need no further thought;
+    - an [iv] interval holds of the value a run reads, wherever each
       name the derivation walks holds what its definition computes from
       its operands' values where it ran, and each single-definition
-      operand still holds that value (`iv_sound`). Which names do, at a
+      operand still holds that value ([iv_sound]). Which names do, at a
       point of a run, is the run-level invariant's to say; here it is
-      any predicate `ok` closed under single-definition operands.
-
-    | Gallina | ir.pl | Says |
-    |---|---|---|
-    | `iv once v k lo hi` | `offset_interval/8`'s clauses | the derivations of an interval for v at class k |
-    | `memo_ok` | the memo's invariant | each interval the memo keeps is derived |
-    | `oi_sound`, `offset_interval_iv` | `offset_interval/8` | an interval `oi` answers is derived |
-    | `let_holds` | `inst_result/5` of a `let` | a name's value is what its definition computed in the environment it ran in |
-    | `iv_op` | `op_interval/9`'s ops | the ops a derivation walks through, the ones `let_holds` speaks of |
-    | `in_iv` | | the value read at the class is some x in [lo, hi], modulo the class |
-    | `iv_sound` | | a derived interval holds where its names hold their definitions |
+      any predicate ok closed under single-definition operands.
 
     ## Decisions
 
     | Decision | Why |
     |---|---|
     | one constructor per clause, each a little more general | `op_interval/9` commits to the first clause whose head matches; the relation needs no order, only that each derivation is sound |
-    | the depth limit and the memo are not in `iv` | a memo keeps only answers derived earlier, so they need no depth; `oi_sound` carries the memo's invariant |
-    | `mul` names its scaled operand, with the two orders as a premise | an `iv` under a disjunction gets no induction hypothesis |
+    | the depth limit and the memo are not in [iv] | a memo keeps only answers derived earlier, so they need no depth; [oi_sound] carries the memo's invariant |
+    | `mul` names its scaled operand, with the two orders as a premise | an [iv] under a disjunction gets no induction hypothesis |
     | an interval holds modulo the class | an `l` interval is not wrapped (`interval_fits/3` accepts any), so it bounds some integer congruent to the value; a `w` interval fits, so it bounds the signed word itself |
     | a narrow load's relation does not mention memory | any loaded value, extended, lies in the narrow range, so the relation survives every store |
     | an operand that is not a single definition is read where the definition ran | it may be defined again after; the clauses that walk an operand walk only single definitions, and the others (`and`'s, `urem`'s, a narrow `ext`'s) bound the result whatever the operand holds | *)
@@ -43,28 +34,40 @@ From Nanofil Require Import Term Maps Syntax Values Memory Ops Semantics Machine
 Import ListNotations.
 Local Open Scope Z_scope.
 
+(** Two classes k and k' that [class_eqb] finds equal are equal. *)
 Lemma class_eqb_true : forall k k', class_eqb k k' = true -> k = k'.
 Proof. intros k k' H. destruct k, k'; try discriminate H; reflexivity. Qed.
 
-(** A clause that answers no interval leaves the memo derived. When
-    the answer is none whatever an operand is, `no_answer` takes the
-    operand apart first. *)
+(** Closes the goal of a clause that answered no interval (H says so) and
+    returned the old memo, derived by Hm: there is no interval to derive,
+    and the memo is still derived. *)
 Ltac no_answer_now H Hm :=
   injection H as <- <-; split; [intros ? ? Hno; discriminate Hno | exact Hm].
 
+(** [no_answer_now], for a clause that answers none whatever an operand is:
+    it takes the operands apart until each case closes. *)
 Ltac no_answer H Hm :=
   first [ no_answer_now H Hm
         | match goal with v : value |- _ => destruct v; cbn in H; no_answer H Hm end ].
 
+(** The intervals of one function, read over its
+    [[single-definition|single definitions]]. *)
 Section Intervals.
 
+(** The function's single definitions, each name with its one definition, as
+    [single_definitions] builds them. *)
 Variable once : list (name * def).
 
-(** `defined n k o args`: n's one definition is `let(tmp(n), k, o, args)`. *)
+(** The name n has a single definition, the `let` that defines n at the
+    [[class]] k by the op o from args: `let(tmp(n), k, o, args)`. *)
 Definition defined (n : name) (k : class) (o : op) (args : list value) : Prop :=
   exists n', lookup n once = Some (DInst (Let n' k o args)) /\ name_eqb n' n = true.
 
-(** `iv v k lo hi`: the intervals `offset_interval/8` derives. *)
+(** The [[offset-interval|offset intervals]] `offset_interval/8` derives, as
+    a relation: [iv v k lo hi] says the operand v read at the [[class]] k
+    lies from lo to hi (for `l`, modulo 2^64). One constructor per clause of
+    `op_interval/9`, each a little more general than its clause, with the
+    [interval_fits] test the walk applies to each name. *)
 Inductive iv : value -> class -> Z -> Z -> Prop :=
 | iv_const : forall c k x, signed_value k c = Some x -> iv (Const c) k x x
 | iv_narrow : forall n k t args lo hi,
@@ -103,13 +106,17 @@ Inductive iv : value -> class -> Z -> Z -> Prop :=
     defined n k Sub [a; Const c] -> signed_value k c = Some v -> iv a k lo hi ->
     interval_fits k (lo - v) (hi - v) = true -> iv (Tmp n) k (lo - v) (hi - v).
 
-(** The memo keeps only derived intervals. *)
+(** The invariant of [oi]'s memo m: each interval it keeps for a name at a
+    class is derived ([iv]). *)
 Definition memo_ok (m : memo) : Prop :=
   forall n k lo hi, memo_lookup n k m = Some (Some (lo, hi)) -> iv (Tmp n) k lo hi.
 
+(** The empty memo is derived. *)
 Lemma memo_ok_nil : memo_ok [].
 Proof. intros n k lo hi E. discriminate E. Qed.
 
+(** Recording the answer r for the name n at the class k keeps a derived
+    memo m derived, when r, if an interval, is derived. *)
 Lemma memo_ok_cons : forall n k r m,
   memo_ok m -> (forall lo hi, r = Some (lo, hi) -> iv (Tmp n) k lo hi) -> memo_ok (((n, k), r) :: m).
 Proof.
@@ -120,14 +127,17 @@ Proof.
   - exact (Hm _ _ _ _ H).
 Qed.
 
-(** What the walk of an operand promises: an interval it answers is
-    derived, and the memo stays derived. *)
+(** What the walk rec of an operand promises [op_interval]: from a derived
+    memo, an interval it answers is derived, and the memo it returns is
+    derived too. *)
 Definition rec_ok (rec : value -> class -> memo -> option (Z * Z) * memo) : Prop :=
   forall a k m r m', memo_ok m -> rec a k m = (r, m') ->
   (forall lo hi, r = Some (lo, hi) -> iv a k lo hi) /\ memo_ok m'.
 
-(** `op_interval/9`: each clause's answer is a derivation for a name
-    the op defines, given that it fits. *)
+(** Each clause of [op_interval] (`op_interval/9`) is sound: where the name
+    n is [defined] by the op o over args and the operand walk rec keeps
+    [rec_ok], an interval the clause answers that fits the class is derived
+    for n, and the memo stays derived. *)
 Lemma op_interval_ok : forall rec o args k m r m' n,
   rec_ok rec -> memo_ok m -> defined n k o args ->
   op_interval rec o args k m = (r, m') ->
@@ -262,8 +272,10 @@ Proof.
     exact (iv_load _ _ _ _ _ _ _ Hd E Hf).
 Qed.
 
-(** `oi_sound`: an interval the walk answers is derived, and the memo
-    stays derived. *)
+(** Whatever its fuel and depth, from a derived memo, an interval the walk
+    [oi] (`offset_interval/8`) answers for v at the class k is derived, and
+    the memo it returns is derived. So the memo and the depth limit need no
+    further thought. *)
 Lemma oi_sound : forall fuel v k depth m r m',
   memo_ok m -> oi once fuel v k depth m = (r, m') ->
   (forall lo hi, r = Some (lo, hi) -> iv v k lo hi) /\ memo_ok m'.
@@ -318,8 +330,10 @@ Proof.
       apply memo_ok_cons; [exact Hm0 | exact Hr].
 Qed.
 
-(** `offset_interval_iv`: an interval `offset_interval/8` answers is
-    derived. *)
+(** An interval [offset_interval] (`offset_interval/6`, as the [[validator]]
+    calls it) answers for v at the class k is derived: what [oi_sound] gives
+    from the empty memo. Chain.v reads the validator's intervals back
+    through it. *)
 Theorem offset_interval_iv : forall v k lo hi,
   offset_interval once v k = Some (lo, hi) -> iv v k lo hi.
 Proof.
@@ -337,10 +351,11 @@ Qed.
     point of a run is the run-level invariant's to say; here it is a
     predicate `ok` closed under operands. *)
 
-(** `let_holds ge e0 e n k o args`: n's value in e is what `let(tmp(n),
-    k, o, args)` computes from the operands' values in e0, the
-    environment it ran in (`alu/4`), or, for a narrow load, some loaded
-    value extended (`extended_res/4`). *)
+(** As `interp:inst_result/5` of a `let`: the value of the temporary n in
+    the environment e is what `let(tmp(n), k, o, args)` computes
+    (`interp:alu/4`) from its operands' values in e0, the environment it ran
+    in, with ge the global environment. For a narrow load it is some loaded
+    value, extended (`interp:extended_res/4`). *)
 Definition let_holds (ge : genv) (e0 e : env) (n : name) (k : class) (o : op) (args : list value) : Prop :=
   match o with
   | RawLoad (LdNarrow t) _ => exists u x, extended t k u = Some x /\ lookup n e = Some x
@@ -349,26 +364,33 @@ Definition let_holds (ge : genv) (e0 e : env) (n : name) (k : class) (o : op) (a
            lookup n e = Some x
   end.
 
-(** The ops an interval derivation walks through (`op_interval/9`'s
-    clauses), each one whose result `let_holds` speaks of. *)
+(** The ops an interval derivation walks through, one per clause of
+    `op_interval/9`: those whose results [let_holds] speaks of. *)
 Definition iv_op (o : op) : bool :=
   match o with
   | Ext _ | RawLoad (LdNarrow _) _ | Copy | And | Urem | Shl | Mul | Add | Sub => true
   | _ => false
   end.
 
-(** `in_iv ge e k v lo hi`: v read at class k is some x in [lo, hi],
-    modulo the class. *)
+(** What an interval means of a value: the operand v, read at the integer
+    [[class]] k in the environment e (ge the global environment), is some x
+    from lo to hi, modulo the class's width. *)
 Definition in_iv (ge : genv) (e : env) (k : class) (v : value) (lo hi : Z) : Prop :=
   exists bits u x, class_bits k = Some bits /\ value_x ge e k v = Some (WInt u) /\
     lo <= x <= hi /\ u = x mod 2 ^ bits.
 
 (** ### Arithmetic *)
 
+(** An interval that fits the class k ([interval_fits]) is of an integer
+    class: k has a bit width bits, and its modulus is 2^bits, which is
+    positive. *)
 Lemma fits_bits : forall k lo hi, interval_fits k lo hi = true ->
   exists bits, class_bits k = Some bits /\ modulus k = Some (2 ^ bits) /\ 0 < 2 ^ bits.
 Proof. intros k lo hi H. destruct k; try discriminate H; eexists; (split; [reflexivity | split; [reflexivity | lia]]). Qed.
 
+(** The signed value x of the constant c at a class of width bits
+    ([signed_value]) is congruent to c modulo 2^bits and lies in the signed
+    range of that width. *)
 Lemma signed_value_mod : forall k c x bits, signed_value k c = Some x -> class_bits k = Some bits ->
   x mod 2 ^ bits = c mod 2 ^ bits /\ - 2 ^ (bits - 1) <= x < 2 ^ (bits - 1).
 Proof.
@@ -382,6 +404,8 @@ Proof.
   - apply Z.mod_mod. lia.
 Qed.
 
+(** A constant's signed value fits its class ([interval_fits]) as an
+    interval of one point. *)
 Lemma signed_value_fits : forall k c x, signed_value k c = Some x -> interval_fits k x x = true.
 Proof.
   intros k c x H. destruct k; try (unfold signed_value in H; discriminate H); [|reflexivity].
@@ -389,16 +413,21 @@ Proof.
   split; [apply Z.leb_le | apply Z.leb_le]; lia.
 Qed.
 
-(** Every interval derived fits its class. *)
+(** Every interval derived ([iv]) fits its class ([interval_fits]). *)
 Lemma iv_fits : forall v k lo hi, iv v k lo hi -> interval_fits k lo hi = true.
 Proof. intros v k lo hi H. destruct H; try assumption. exact (signed_value_fits _ _ _ H). Qed.
 
+(** Sign-extending u from the modulus m = 2h ([sign_extension]) gives at
+    least -h and less than h. *)
 Lemma sign_extension_range : forall m h u, 0 < h -> m = 2 * h -> - h <= sign_extension m h u < h.
 Proof.
   intros m h u Hh Hm. unfold sign_extension. pose proof (Z.mod_pos_bound u m ltac:(lia)).
   destruct (h <=? u mod m) eqn:E; [apply Z.leb_le in E | apply Z.leb_gt in E]; lia.
 Qed.
 
+(** Any x extended from the narrow type t ([extension]) lies in t's range
+    ([narrow_range]), so a narrow `ext` or load is bounded whatever it
+    reads. *)
 Lemma narrow_extension : forall t lo hi x, narrow_range t = Some (lo, hi) -> lo <= extension t x <= hi.
 Proof.
   intros t lo hi x H. destruct t; simpl in H; try discriminate H; injection H as <- <-; simpl.
@@ -408,7 +437,8 @@ Proof.
   - pose proof (Z.mod_pos_bound x 256 ltac:(lia)). lia.
 Qed.
 
-(** A sign-extended word is the signed value it holds. *)
+(** A sign-extended word is the signed value it holds: a signed 32-bit x,
+    taken modulo 2^32 and sign-extended, is x again. *)
 Lemma sign_extension_mod : forall x, - 2 ^ 31 <= x < 2 ^ 31 ->
   sign_extension (2 ^ 32) (2 ^ 31) (x mod 2 ^ 32) = x.
 Proof.
@@ -420,6 +450,8 @@ Proof.
   - rewrite Z.mod_small by lia. rewrite (proj2 (Z.leb_gt _ _)) by lia. reflexivity.
 Qed.
 
+(** The bitwise and of two nonnegative integers x and y lies from 0 to y: a
+    nonnegative mask bounds an `and`. *)
 Lemma land_le : forall x y, 0 <= x -> 0 <= y -> 0 <= Z.land x y <= y.
 Proof.
   intros x y Hx Hy. split; [apply Z.land_nonneg; auto|].
@@ -427,11 +459,14 @@ Proof.
   rewrite Z.ldiff_spec, Z.land_spec, Z.bits_0. destruct (Z.testbit x i), (Z.testbit y i); reflexivity.
 Qed.
 
-(** A temporary read at an integer class is its word modulo the class. *)
+(** A temporary n holding the integer w, read at an integer class of width
+    bits, reads as w modulo 2^bits. *)
 Lemma read_tmp : forall ge e k n w bits, class_bits k = Some bits -> lookup n e = Some (WInt w) ->
   value_x ge e k (Tmp n) = Some (WInt (w mod 2 ^ bits)).
 Proof. intros ge e k n w bits Hb H. simpl. rewrite H. destruct k; try discriminate Hb; injection Hb as <-; reflexivity. Qed.
 
+(** Any operand that reads as an integer u at an integer class of width bits
+    has u at least 0 and below 2^bits. *)
 Lemma value_int_range : forall ge e k v u bits, class_bits k = Some bits -> value_x ge e k v = Some (WInt u) ->
   0 <= u < 2 ^ bits.
 Proof.
@@ -443,15 +478,21 @@ Proof.
   all: destruct (lookup g (ge_globals ge)); discriminate H.
 Qed.
 
+(** A temporary n holding w lies in the interval from lo to hi ([in_iv])
+    when some x in it is congruent to w modulo the class's width. *)
 Lemma in_iv_tmp : forall ge e k n w bits x lo hi,
   class_bits k = Some bits -> lookup n e = Some (WInt w) -> w mod 2 ^ bits = x mod 2 ^ bits ->
   lo <= x <= hi -> in_iv ge e k (Tmp n) lo hi.
 Proof. intros ge e k n w bits x lo hi Hb H Hw Hx. exists bits, (w mod 2 ^ bits), x. rewrite (read_tmp _ _ _ _ _ _ Hb H). auto. Qed.
 
+(** A constant c read at an integer class of width bits reads as c modulo
+    2^bits. *)
 Lemma const_read : forall ge e k c bits, class_bits k = Some bits ->
   value_x ge e k (Const c) = Some (WInt (c mod 2 ^ bits)).
 Proof. intros ge e k c bits Hb. destruct k; try discriminate Hb; injection Hb as <-; reflexivity. Qed.
 
+(** [map2_option] over two two-element lists succeeds only when f succeeds
+    on each pair, and gives the two results. *)
 Lemma map2_two : forall (X Y W : Type) (f : X -> Y -> option W) k1 k2 a b xs,
   map2_option f [k1; k2] [a; b] = Some xs -> exists x y, f k1 a = Some x /\ f k2 b = Some y /\ xs = [x; y].
 Proof.
@@ -462,19 +503,27 @@ Qed.
 
 (** ### The theorem *)
 
+(** Soundness in one environment of a run: the names that hold their
+    definitions there are a predicate ok, which the run-level invariant
+    supplies (Chain.v's [interval_at] takes the names whose definitions
+    [[dominance|dominate]] the point). *)
 Section Sound.
 
+(** The global environment ge, the environment e the interval is read
+    in, and ok, the names that hold their definitions there. *)
 Variables (ge : genv) (e : env) (ok : name -> Prop).
 
-(** Each name `ok` whose definition is one a derivation walks, at an
-    integer class, holds
-    what its definition computed in some environment e0; its
-    single-definition operands are `ok` and hold there what they hold
-    now. *)
+(** What ok must promise, the hypothesis of [iv_sound]: each name n that is
+    ok and whose definition ([defined]) is one a derivation walks ([iv_op]),
+    at an integer class, holds what that definition computed in some
+    environment e0 ([let_holds]); each of its single-definition operands is
+    ok and holds in e0 what it holds in e. *)
 Hypothesis Hok : forall n k o args, defined n k o args -> iv_op o = true -> class_bits k <> None -> ok n ->
   exists e0, let_holds ge e0 e n k o args /\
     forall a, In (Tmp a) args -> once_has once a = true -> ok a /\ lookup a e0 = lookup a e.
 
+(** A temporary n with a derived interval has a single definition: every
+    [iv] constructor for a name rests on [defined]. *)
 Lemma iv_once : forall v k lo hi, iv v k lo hi -> forall n, v = Tmp n -> once_has once n = true.
 Proof.
   intros v k lo hi H n E. destruct H; try discriminate E; injection E as ->;
@@ -482,7 +531,10 @@ Proof.
     unfold once_has; rewrite Hl; reflexivity.
 Qed.
 
-(** An operand the derivation walks is `ok`, and reads in e0 as in e. *)
+(** An operand a of a definition that ran in e0, where a has a derived
+    interval and the definition's single-definition operands are ok and
+    unchanged since ([Hok]'s conclusion): a, if a temporary, is ok, and a
+    reads the same in e0 as in e, at any class. *)
 Lemma walked : forall e0 args a k' lo hi,
   (forall a, In (Tmp a) args -> once_has once a = true -> ok a /\ lookup a e0 = lookup a e) ->
   In a args -> iv a k' lo hi ->
@@ -495,13 +547,17 @@ Proof.
   intros k''. destruct a as [n | c | g]; simpl; [rewrite (proj2 (Hag _ eq_refl)) | |]; reflexivity.
 Qed.
 
+(** Takes apart every `match` in the statement of H, discarding the cases
+    that make H contradictory. *)
 Ltac opens H :=
   repeat match type of H with
          | context [match ?x with _ => _ end] => destruct x eqn:?; cbv beta iota zeta in H; try discriminate H
          end; try discriminate H.
 
-(** `iv_sound`: an interval derived over names that hold their
-    definitions holds of the value. *)
+(** Offset intervals are sound: if [iv v k lo hi] is derived and v, if a
+    temporary, is ok, then the value v reads in e at the class k lies from
+    lo to hi, modulo the class ([in_iv]). With [offset_interval_iv], an
+    interval the [[validator]] answers bounds the offset a run computes. *)
 Theorem iv_sound : forall v k lo hi, iv v k lo hi -> (forall n, v = Tmp n -> ok n) -> in_iv ge e k v lo hi.
 Proof.
   intros v k lo hi H. induction H; intros Hv.

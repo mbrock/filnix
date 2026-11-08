@@ -1,56 +1,41 @@
-(** The validator of checked IR, transcribed from ir.pl's
-    `valid_module/1` for the core subset: `valid_func md f` is true
-    exactly when ir.pl accepts the function f of the module md, checked
-    stage, filc mode; `valid_data` and `valid_alias` do the same for
-    the module's data objects and aliases.
+(** The [[validator]] of [[stage|checked IR]], transcribed from ir.pl's
+    `valid_module/1` for the [[core-subset|core subset]]: [valid_func md f]
+    is true exactly when ir.pl accepts the function f of the module md,
+    checked stage, filc [[mode]]; [valid_data] and [valid_alias] do the
+    same for the module's data objects and aliases.
 
     ir.pl's validator throws `nanofil_error(Message)` at the first
     problem and fails on a few terms outside the grammar; both are
     `false` here. The order of the tests therefore does not matter, and
     the definitions below follow ir.pl's clause groups, not its order of
-    evaluation.
+    evaluation. In three places ir.pl's result still depends on how
+    Prolog evaluates, not only on what its clauses say: the memo of
+    `offset_interval/8` and the cuts of `pointer_distance/4` and
+    `op_interval/9`; [oi], [pointer_distance] and [op_interval] follow
+    them.
 
     ## Parts
 
     | Gallina | ir.pl | Checks |
     |---|---|---|
-    | `valid_use` | `valid_use/3` | an operand read at a class its definition allows |
-    | `valid_op`, `op_result_ok` | `valid_op/1`, `op_result_ok/3` | an op's parameters and its result class |
-    | `valid_inst`, `valid_jump`, `valid_phi` | the same | each instruction, jump and phi |
-    | `definitions_dominate` | the same | strict SSA: every use has a dominating definition |
-    | `valid_locals` | the same | named locals declared once, in the entry block, before use |
-    | `stage_func` | the same | every access covered by evidence that still holds; a poll on every cycle |
-    | `valid_data` | `valid_item/4` for data | alignment, linkage, item shapes; a table entry names a function, a weak declaration no local definition, no pointer a table entry |
-    | `valid_alias` | `valid_item/4` for aliases | linkage, a name of its own, a target the module defines |
+    | [valid_use] | `valid_use/3` | an operand read at a class its definition allows |
+    | [valid_op], [op_result_ok] | `valid_op/1`, `op_result_ok/3` | an op's parameters and its result class |
+    | [valid_inst], [valid_jump], [valid_phi] | the same | each instruction, jump and phi |
+    | [definitions_dominate] | the same | strict SSA: every use has a dominating definition |
+    | [valid_locals] | the same | named locals declared once, in the entry block, before use |
+    | [stage_func] | the same | every access covered by evidence that still holds; a poll on every cycle |
+    | [valid_data] | `valid_item/4` for data | alignment, linkage, item shapes; a table entry names a function, a weak declaration no local definition, no pointer a table entry |
+    | [valid_alias] | `valid_item/4` for aliases | linkage, a name of its own, a target the module defines |
 
-    `stage_func` is the part Campaign 3 is about. A block's entry
-    evidence is the meet over its incoming edges of what each carries
-    (none over a poll edge or from a block later in block order); a
-    check must be followed at
-    once by an access it covers; a later scalar access may read a proof
-    whose fact is still live; and each reuse form (`renew`,
-    `renew_hull`, `half_check`, `renew_if`, `check_limit`,
-    `check_ahead`) has its own side conditions, stated over the
-    single-definition names of the function (`Once`), the chains of
-    flights from a pointer to its bases (`guard_chain`) and the
-    intervals of offsets (`offset_interval`).
-
-    ## Where Prolog's evaluation shows through
-
-    The transcription keeps three places where ir.pl's result depends on
-    how Prolog evaluates, not only on what the clauses say:
-
-    - `offset_interval/8` memoises each name's interval under a depth
-      limit of 32. A failure is never kept (the memo is discarded on
-      backtracking), but a success is, so a name met again deeper than
-      the limit allows still has its interval. `oi` threads the same
-      memo in the same order.
-    - `pointer_distance/4` commits to the first base of P's chain that
-      P1's chain shares (a cut). `pointer_distance` takes the same
-      first one.
-    - `op_interval/9`'s clauses commit by cuts after their heads, so an
-      `and` with a constant tries its left operand before its right one,
-      and a failed `ext(sw)` does not fall through to a later clause. *)
+    [stage_func] is the part
+    [Campaign 3](../../docs/rocq.md#campaign-3-the-machine-of-a-runtime)
+    is about: the [[evidence-pass|evidence pass]], in which a check must
+    be followed at once by an access it covers, a later scalar access
+    may read a proof whose fact is still live, and each reuse form has
+    its own side conditions, stated over the
+    [[single-definition|single definitions]] of the function, the
+    [[guard-chain|guard chains]] of flights from a pointer to its bases
+    and the [[offset-interval|offset intervals]]. *)
 
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Maps Syntax Values Memory Ops Semantics Cfg.
@@ -61,8 +46,11 @@ Open Scope list_scope.
 
 (** ## Names, uses and definitions *)
 
+(** Whether the name n is in the list ns. *)
 Definition mem (n : name) (ns : list name) : bool := existsb (name_eqb n) ns.
 
+(** Whether the operands v and w are the same temporary, the same symbol or
+    the same constant. *)
 Definition value_eqb (v w : value) : bool :=
   match v, w with
   | Tmp a, Tmp b | Global a, Global b => name_eqb a b
@@ -70,11 +58,14 @@ Definition value_eqb (v w : value) : bool :=
   | _, _ => false
   end.
 
+(** The [[temporary|temporaries]] among the operands vs, in order; constants
+    and symbols are dropped. *)
 Definition value_temps (vs : list value) : list name :=
   flat_map (fun v => match v with Tmp n => [n] | _ => [] end) vs.
 
-(** `inst_temp_def(Inst, N, K)`: the temporaries an instruction defines,
-    with their classes. *)
+(** As `inst_temp_def/3`: the [[temporary|temporaries]] the instruction i
+    defines, each with its [[class]]: a `let`'s or a [[flight]]'s
+    destination, or a call's results. *)
 Definition inst_temp_defs (i : inst) : list (name * class) :=
   match i with
   | Let d k _ _ => [(d, k)]
@@ -84,17 +75,23 @@ Definition inst_temp_defs (i : inst) : list (name * class) :=
   | _ => []
   end.
 
-(** cfg.pl's `inst_def(Inst, D)`, its first solution. *)
+(** As `cfg:inst_def/2`, its first solution: the first temporary the
+    instruction i defines, if it defines one. *)
 Definition inst_def_first (i : inst) : option name :=
   match inst_temp_defs i with (d, _) :: _ => Some d | [] => None end.
 
+(** The operand of a call argument a. *)
 Definition arg_value (a : arg) : value := match a with Arg _ v => v end.
+(** The [[class]] a call argument a is passed at. *)
 Definition arg_class (a : arg) : class := match a with Arg k _ => k end.
 
+(** As `cfg:flight_arg_value/2`: the operand of a [[flight]] argument,
+    whether it is the address operand or a plain value. *)
 Definition flight_arg_value (a : flight_arg) : value :=
   match a with FValue v => v | FAddress p => p end.
 
-(** cfg.pl's `inst_uses(Inst, Uses)`. *)
+(** As `cfg:inst_uses/2`: the temporaries the instruction i reads, a
+    [[flight]]'s lower donor included. *)
 Definition inst_uses (i : inst) : list name :=
   match i with
   | Let _ _ _ args => value_temps args
@@ -106,7 +103,8 @@ Definition inst_uses (i : inst) : list name :=
   | LocalAlloc _ _ | Loc _ _ => []
   end.
 
-(** cfg.pl's `jump_uses(Jump, Uses)`. *)
+(** As `cfg:jump_uses/2`: the temporaries the jump j reads, a branch's
+    condition or the values it returns. *)
 Definition jump_uses (j : jump) : list name :=
   match j with
   | JBranch v _ _ | JRet v => value_temps [v]
@@ -114,37 +112,50 @@ Definition jump_uses (j : jump) : list name :=
   | _ => []
   end.
 
-(** `jump_edge(Jump, T)`: the jump's targets, both arms of a branch. *)
+(** As `jump_edge/2`, all its solutions: the edges the jump j may take, both
+    arms of a branch; a return takes none. *)
 Definition jump_targets (j : jump) : list target :=
   match j with JGoto t => [t] | JBranch _ t1 t2 => [t1; t2] | _ => [] end.
 
+(** The labels of the [[block|blocks]] the jump j may go to, over
+    [[poll|poll edges]] too. *)
 Definition succ_labels (j : jump) : list name := map edge_label (jump_targets j).
 
+(** Whether the edge t is a [[poll|poll edge]], one that passes a safepoint
+    on the way to its target. *)
 Definition is_poll (t : target) : bool := match t with Poll _ => true | To _ => false end.
 
 (** ## Dominance *)
 
-(** The labels of the blocks that jump to l, unreachable ones included. *)
+(** The labels of the [[block|blocks]] of bs that jump to the label l,
+    unreachable ones included; [valid_phi] compares a [[phi]]'s predecessors
+    with them. *)
 Definition preds_of (bs : list block) (l : name) : list name :=
   map b_label (filter (fun b => mem l (succ_labels (b_jump b))) bs).
 
-(** The same labels, in any order and number. *)
+(** Whether the label lists a and b hold the same labels, in any order and
+    number. *)
 Definition sets_eqb (a b : list name) : bool :=
   forallb (fun x => mem x b) a && forallb (fun x => mem x a) b.
 
-(** `dominates_by_interval(Intervals, A, B)` over the intervals of
-    Cfg.v's `block_intervals`. *)
+(** As `cfg:dominates_by_interval/3`: whether block a
+    [[dominance|dominates]] block b, read off the dominator-tree intervals
+    doms that [block_intervals] numbers. *)
 Definition dominates (doms : nmap (Z * Z)) (a b : name) : bool := dominates_by_interval doms a b.
 
-(** A label is reachable when it has an interval. *)
+(** Whether the label l is reachable from the entry, that is, has a
+    [[dominance|dominator interval]] in doms. *)
 Definition is_reachable (doms : nmap (Z * Z)) (l : name) : bool := nm_mem l doms.
 
-(** A definition site of a temporary: `param`, or `at(L, I)`, index I of
-    block L, a phi's at -1. *)
+(** A [[site|definition site]] of a temporary, ir.pl's `param` or
+    `at(L, I)`: [SParam] for a parameter, [SAt l i] for index i of block l,
+    where a [[phi]] sits at -1, before every instruction. *)
 Inductive site : Type := SParam | SAt (l : name) (i : Z).
 
-(** `block_sites(Blocks)` with the parameters' sites: each temporary
-    with its definition sites. *)
+(** As `block_sites/1` with the parameters' sites added: each temporary of
+    the function f with every one of its [[site|definition sites]]. A
+    temporary may have several; [definitions_dominate] asks only that one of
+    them dominate each use. *)
 Definition temp_sites (f : func) : nmap (list site) :=
   let add (m : nmap (list site)) (n : name) (s : site) :=
     nm_add n (s :: match nm_find n m with Some ss => ss | None => [] end) m in
@@ -159,16 +170,18 @@ Definition temp_sites (f : func) : nmap (list site) :=
                               (b_insts b) (m1, 0)))
             (fn_blocks f) m0.
 
-(** `site_dominates(Def, L, I, Intervals)`: the definition comes before
-    position I of block L on every path from the entry. *)
+(** As `site_dominates/4`: whether the definition site s comes before
+    position i of block l on every path from the entry. A parameter always
+    does; a site in l itself does when its index is smaller; a site in
+    another block does when that block [[dominance|dominates]] l. *)
 Definition site_dominates (doms : nmap (Z * Z)) (l : name) (i : Z) (s : site) : bool :=
   match s with
   | SParam => true
   | SAt d j => if name_eqb d l then j <? i else dominates doms d l
   end.
 
-(** `dominated_use(D, L, I, N)`: some definition of N dominates
-    position I of block L. *)
+(** As `dominated_use/4`: whether some definition of the temporary n, among
+    its sites in sites, dominates position i of block l. *)
 Definition dominated_use (sites : nmap (list site)) (doms : nmap (Z * Z)) (l : name) (i : Z)
     (n : name) : bool :=
   match nm_find n sites with
@@ -176,9 +189,12 @@ Definition dominated_use (sites : nmap (list site)) (doms : nmap (Z * Z)) (l : n
   | None => false
   end.
 
-(** `definitions_dominate(Fn, Params, Blocks)`: in every reachable
-    block, each use is dominated by a definition; a phi's operand is
-    used at the end of its predecessor, if that is reachable. *)
+(** As `definitions_dominate/3`, the [[ssa|strict SSA]] (static single
+    assignment) rule: in every reachable block of the function f, each use
+    of a temporary, by an instruction or the jump, is
+    [[dominance|dominated]] by one of its definitions. A [[phi]]'s operand
+    counts as used at the end of the predecessor it comes from, if that
+    predecessor is reachable. *)
 Definition definitions_dominate (f : func) (doms : nmap (Z * Z)) : bool :=
   let sites := temp_sites f in
   let ends := nm_of_list (map (fun b => (b_label b, Z.of_nat (length (b_insts b)))) (fn_blocks f)) in
@@ -212,14 +228,16 @@ Definition definitions_dominate (f : func) (doms : nmap (Z * Z)) : bool :=
 
 (** ## Classes of temporaries *)
 
-(** `temp_defs(Params, Blocks, Defs)`. *)
+(** As `temp_defs/3`: every definition in the function f, as a temporary
+    with its [[class]]: the parameters, then each block's phis and
+    instructions. *)
 Definition temp_defs (f : func) : list (name * class) :=
   map (fun p => (snd p, fst p)) (fn_params f) ++
   flat_map (fun b => map (fun ph => match ph with Phi d k _ => (d, k) end) (b_phis b)
                      ++ flat_map inst_temp_defs (b_insts b)) (fn_blocks f).
 
-(** `check_temp_classes(Fn, Defs)`: one class per temporary, that is,
-    every definition has the class of the temporary's first one. *)
+(** As `check_temp_classes/2`: each temporary has one [[class]], that is,
+    each of its definitions in defs has the class of its first one. *)
 Definition temp_classes_ok (defs : list (name * class)) : bool :=
   let first := fold_left (fun m d => if nm_mem (fst d) m then m else nm_add (fst d) (snd d) m)
                          defs nm_empty in
@@ -228,13 +246,22 @@ Definition temp_classes_ok (defs : list (name * class)) : bool :=
                     | None => false
                     end) defs.
 
+(** As `proof_class/1`: whether k is a [[proof]] [[class]], `a` for an
+    access proof a [[check]] defines or `f` for the function proof
+    `check_function` defines. *)
 Definition proof_class (k : class) : bool := match k with A | F => true | _ => false end.
 
-(** `valid_use(Ctx, K, V)`: V may be read at class K. A proof or float
-    temporary is read only at its own class, and the reverse; a `p`
-    temporary only at `p`, and the reverse; a long may be read as a
-    word; a float constant is a bit pattern of its class; only a check
-    makes a proof; in filc mode only `copy` reads a symbol. *)
+(** As `valid_use/3`: whether the operand v may be read at the [[class]] k,
+    given the class of each temporary (classes).
+    - A [[proof]] or float temporary is read only at its own class, and a
+      proof or float class reads only a temporary of that class.
+    - A `p` (pointer) temporary is read only at `p`, and `p` reads only a
+      `p` temporary.
+    - A long (`l`) temporary may be read as a word (`w`), not the reverse.
+    - A float constant is a bit pattern below its class's modulus; no
+      constant is a proof.
+    - No symbol is read here: in filc [[mode]] only a `copy` reads one
+      ([valid_inst]). *)
 Definition valid_use (classes : list (name * class)) (k : class) (v : value) : bool :=
   match v with
   | Tmp n =>
@@ -256,26 +283,43 @@ Definition valid_use (classes : list (name * class)) (k : class) (v : value) : b
 
 (** ## Ops *)
 
+(** The alignments a [[check]] may prove, as `valid_op/1` lists them: 1, 2,
+    4, 8 or 16 bytes. *)
 Definition check_align (al : Z) : bool :=
   existsb (Z.eqb al) [1; 2; 4; 8; 16].
 
-(** `alloc_align(Align)`: a power of two from 4 to 4096. *)
+(** As `alloc_align/1`: an [[alloc]]'s alignment al is a power of two from 4
+    to 4096. *)
 Definition alloc_align (al : Z) : bool :=
   (4 <=? al) && (al <=? 4096) && (Z.land al (al - 1) =? 0).
 
+(** What `valid_op/1` asks of a [[check]]'s parameters: a nonempty span, lo
+    below hi, at an alignment al that [check_align] allows. *)
 Definition check_ok (lo hi al : Z) : bool := (lo <? hi) && check_align al.
 
+(** As `local_offset/1`: off is a signed 64-bit offset. *)
 Definition local_offset (off : Z) : bool := (- 2 ^ 63 <=? off) && (off <? 2 ^ 63).
 
+(** The effects a heap `raw_store_pointer` declares, as
+    `pointer_memory_effects/2` lists them for a store: ensure the [[aux]]
+    word, the lower barrier, reload the root, then write the lower and the
+    address. *)
 Definition store_effects : list effect :=
   [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite].
+(** The effects of a pointer store to a proven local object, which has an
+    explicit stack [[aux]]: write the lower and the address
+    (`pointer_memory_effects/2`'s `local_store`). *)
 Definition local_store_effects : list effect := [LowerWrite; AddressWrite].
+(** The effect of an atomic pointer load, which leaves the whole protocol to
+    Fil-C's helper (`pointer_memory_effects/2`'s `atomic_load`). *)
 Definition atomic_load_effects : list effect := [AtomicRead].
+(** The effect of an atomic pointer store, which leaves the whole protocol
+    to Fil-C's helper (`pointer_memory_effects/2`'s `atomic_store`). *)
 Definition atomic_store_effects : list effect := [AtomicWrite].
 
-(** `comparison(Cond, K)`: the signed and unsigned orders at an
-    integer class, the float conditions at a float class, `eq` and `ne`
-    at both. *)
+(** As `comparison/2`: whether the condition c compares values of the
+    [[class]] k. The signed and unsigned orders compare integers, the float
+    conditions floats, and `eq` and `ne` both. *)
 Definition comparison (c : cond) (k : class) : bool :=
   match c with
   | Eq | Ne => int_class k || float_class k
@@ -283,7 +327,13 @@ Definition comparison (c : cond) (k : class) : bool :=
   | Le | Lt | Ge | Gt | Ord | Unord => float_class k
   end.
 
-(** `valid_op(Op)` for the core subset's ops. *)
+(** As `valid_op/1` for the [[core-subset|core subset]]'s ops: the
+    parameters an op carries are well formed. A [[check]] or reuse form
+    needs [check_ok]; a [[check_ahead]] also an early end ahi strictly
+    inside its span; a [[span_test|span test]] a nonempty span of signed
+    64-bit offsets; a [[limit]] a size from 1 to 2^31 - 1; a `check_local` a
+    signed 64-bit offset, a size in that range and a check alignment; a raw
+    pointer load one of the heap, local or atomic effect lists. *)
 Definition valid_op (o : op) : bool :=
   match o with
   | Cmp c k => comparison c k
@@ -301,11 +351,15 @@ Definition valid_op (o : op) : bool :=
   | _ => true
   end.
 
-(** `any_class(K)`: a class a value may have, every class but the
-    proofs'. *)
+(** As `any_class/1`: a [[class]] a value may have, every class but the
+    [[proof]] classes ([proof_class]). *)
 Definition any_class (k : class) : bool := negb (proof_class k).
 
-(** `op_result_ok(filc, Op, K)`. *)
+(** As `op_result_ok/3` in filc [[mode]]: the op o may define a temporary of
+    [[class]] k. Arithmetic gives an integer or float class as the op
+    allows; conversions give the class they convert to; a [[check]] or reuse
+    form gives an access [[proof]] (`a`), `check_function` a function proof
+    (`f`), a [[span_test|span test]] a word and a [[limit]] a long. *)
 Definition op_result_ok (o : op) (k : class) : bool :=
   match o with
   | Add | Sub | Copy => any_class k
@@ -343,12 +397,16 @@ Definition op_result_ok (o : op) (k : class) : bool :=
 
 (** ## Signatures *)
 
+(** The atom ir.pl writes for the [[class]] k, so that a class can be
+    compared with the term of a function outside the
+    [[core-subset|core subset]]. *)
 Definition eclass (k : class) : term :=
   TAtom (match k with
          | W => "w" | L => "l" | P => "p" | A => "a" | F => "f"
          | Single => "s" | Double => "d" | Extended => "x"
          end).
 
+(** The term ir.pl writes for the return type r of a function. *)
 Definition eret (r : ret_type) : term :=
   match r with
   | RClass k => eclass k
@@ -356,8 +414,9 @@ Definition eret (r : ret_type) : term :=
   | RTuple ks => TApp "tuple" [TList (map eclass ks)]
   end.
 
-(** What a call site needs of its callee (`func_named/3`'s func): its
-    linkage, parameter classes, return and whether it is variadic. *)
+(** What a call site needs of its callee, the function `func_named/3` finds:
+    its linkage, its parameters' classes, its return type and whether it is
+    variadic, each as ir.pl writes it. *)
 Record sig : Type := mkSig {
   sig_linkage : term;
   sig_params : list term;
@@ -365,13 +424,16 @@ Record sig : Type := mkSig {
   sig_variadic : bool
 }.
 
+(** Whether the term t is a `let` of `va_args`, the mark of a variadic
+    function's body. *)
 Definition is_va_args (t : term) : bool :=
   match t with
   | TApp "let" [_; TAtom "p"; TAtom "va_args"; _] => true
   | _ => false
   end.
 
-(** The signature of a function outside the subset, read off its term. *)
+(** The [sig] of a function outside the [[core-subset|core subset]], read
+    off its term t. *)
 Definition term_sig (t : term) : option sig :=
   match t with
   | TApp "func" [_; lk; r; TList ps; TList bs] =>
@@ -383,7 +445,8 @@ Definition term_sig (t : term) : option sig :=
   | _ => None
   end.
 
-(** `func_named(M, Name, Func)`: the first function of that name. *)
+(** As `func_named/3`: the [sig] of the first function the module md defines
+    under the name n, in the core subset or outside it. *)
 Fixpoint func_sig (n : name) (md : module) : option sig :=
   match md with
   | [] => None
@@ -396,13 +459,20 @@ Fixpoint func_sig (n : name) (md : module) : option sig :=
   | _ :: rest => func_sig n rest
   end.
 
+(** Whether the term t is a float [[class]]'s atom: `s`, `d` or `x`. *)
 Definition float_atom (t : term) : bool :=
   match t with TAtom ("s" | "d" | "x") => true | _ => false end.
 
+(** Whether the term t is the atom of a value [[class]]: `w`, `l`, `p`, `s`,
+    `d` or `x`. *)
 Definition class_atom (t : term) : bool :=
   match t with TAtom ("w" | "l" | "p" | "s" | "d" | "x") => true | _ => false end.
 
-(** `call_result_ok(Fn, Callee, Res, CalleeRet)`. *)
+(** As `call_result_ok/4`: the result r a call binds fits the callee's
+    return type ret. A tuple must match it exactly; one result follows
+    `to_result_ok/4` and `class_result_ok/4`: floats only as the same class,
+    a long result never from a word return, and a pointer result exactly
+    from a pointer return. *)
 Definition call_result_ok (r : call_result) (ret : term) : bool :=
   match r with
   | CVoid => true
@@ -415,6 +485,8 @@ Definition call_result_ok (r : call_result) (ret : term) : bool :=
            && Bool.eqb (class_eqb k P) (term_eqb ret (TAtom "p"))
   end.
 
+(** Whether the terms ps are a prefix of the terms xs: a variadic callee's
+    fixed parameters, against a call's argument classes. *)
 Fixpoint prefix_eqb (ps xs : list term) : bool :=
   match ps, xs with
   | [], _ => true
@@ -424,10 +496,12 @@ Fixpoint prefix_eqb (ps xs : list term) : bool :=
 
 (** ## Instructions, jumps and phis *)
 
+(** The labels of the function f's [[block|blocks]]. *)
 Definition labels (f : func) : list name := map b_label (fn_blocks f).
 
-(** `store_value_class(Width, K)` for a raw store, which is never of a
-    pointer. *)
+(** As `store_value_class/2`: the [[class]] of the value a raw store of the
+    width w writes. None for a pointer width, which only `raw_store_pointer`
+    stores. *)
 Definition width_value_ok (w : width) : option class :=
   match w with
   | Wb | Wh | Ww => Some W | Wl => Some L
@@ -435,12 +509,27 @@ Definition width_value_ok (w : width) : option class :=
   | Wp => None
   end.
 
-(** `not_init_entry(M, Fn, S)`, negated: S names a constructor or
-    destructor table entry, which nothing may copy or call. *)
+(** As `not_init_entry/3`, negated: whether the symbol s names a constructor
+    or destructor table entry of the module md, which nothing may copy or
+    call. *)
 Definition init_entry_named (md : module) (s : name) : bool :=
   existsb (fun it => match it with IData n (LInit _ _) _ _ => name_eqb n s | _ => false end) md.
 
-(** `valid_inst(Ctx, Inst)`. *)
+(** As `valid_inst/2`: the instruction i of the module md is well formed,
+    its operands read at the classes given (classes, through [valid_use]).
+    - A [[flight]] is a `copy`, `add` or `sub` with addresses at `p`,
+      offsets at `l` and a pointer lower donor.
+    - A `copy` of a symbol at `p` (a [[getter]]) names no constructor or
+      destructor table entry.
+    - Any other `let` has a valid op ([valid_op], [op_result_ok]) and
+      operands at the classes the op reads; `va_args` takes a nonnegative
+      constant.
+    - A raw store writes a value of its width's class through an access
+      [[proof]] (`a`); a raw pointer store has one of the heap, local or
+      atomic effect lists.
+    - A direct call matches its callee's [sig] when the module defines it;
+      an indirect call reads a pointer callee, a `raw_call` a function proof
+      (`f`). *)
 Definition valid_inst (md : module) (classes : list (name * class)) (i : inst) : bool :=
   let use := valid_use classes in
   match i with
@@ -489,7 +578,9 @@ Definition valid_inst (md : module) (classes : list (name * class)) (i : inst) :
   | RawCall _ callee args => use F callee && forallb (fun a => use (arg_class a) (arg_value a)) args
   end.
 
-(** `valid_jump(Ctx, Jump)`. *)
+(** As `valid_jump/2`: the jump j of the function f is well formed: its
+    targets are labels of f, a branch reads its condition as a word, and a
+    return returns what f's return type says. *)
 Definition valid_jump (f : func) (classes : list (name * class)) (j : jump) : bool :=
   let exists_ t := mem (edge_label t) (labels f) in
   match j with
@@ -506,15 +597,16 @@ Definition valid_jump (f : func) (classes : list (name * class)) (j : jump) : bo
   | JUnreachable => true
   end.
 
-(** `valid_phi(Ctx, Label, Preds, Phi)`: a phi's predecessors are the
-    block's, as sets, and its values are read at its class. *)
+(** As `valid_phi/4`: the [[phi]] ph names exactly the block's predecessors
+    preds, as sets, and each of its values is read at its [[class]]. *)
 Definition valid_phi (classes : list (name * class)) (preds : list name) (ph : phi) : bool :=
   match ph with
   | Phi _ k pairs =>
       sets_eqb (map fst pairs) preds && forallb (fun pv => valid_use classes k (snd pv)) pairs
   end.
 
-(** `valid_block(Ctx, Block)`. *)
+(** As `valid_block/2`: the [[block]] b of the function f has valid phis,
+    instructions and jump, and a block with phis has a predecessor. *)
 Definition valid_block (md : module) (f : func) (classes : list (name * class)) (b : block)
   : bool :=
   let preds := preds_of (fn_blocks f) (b_label b) in
@@ -523,8 +615,9 @@ Definition valid_block (md : module) (f : func) (classes : list (name * class)) 
   && valid_jump f classes (b_jump b)
   && (match b_phis b, preds with _ :: _, [] => false | _, _ => true end).
 
-(** `proof_class_defs(Fn, Params, Blocks)`: only a check defines a
-    proof; no parameter, phi, call result or argument is one. *)
+(** As `proof_class_defs/3`: only a [[check]] defines a [[proof]] in the
+    function f; no parameter, [[phi]], call result or call argument has a
+    proof [[class]]. *)
 Definition proof_class_defs (f : func) : bool :=
   forallb (fun p => negb (proof_class (fst p))) (fn_params f) &&
   forallb (fun b =>
@@ -538,12 +631,14 @@ Definition proof_class_defs (f : func) : bool :=
                            end) (b_insts b))
           (fn_blocks f).
 
+(** Whether no name occurs twice in ns. *)
 Fixpoint no_dups (ns : list name) : bool :=
   match ns with [] => true | n :: rest => negb (mem n rest) && no_dups rest end.
 
-(** `valid_locals(Fn, Params, Blocks)`: each local is declared once, in
-    the entry block, before each check_local of it there; in another
-    block a reference needs only the declaration. *)
+(** As `valid_locals/3`: each local object of the function f is declared
+    once, by a `local_alloc` in the entry block; there each `check_local` of
+    it comes after the declaration, and in another block it needs only the
+    declaration. *)
 Definition valid_locals (f : func) : bool :=
   let objs := local_objects f in
   no_dups (map fst objs) &&
@@ -574,31 +669,40 @@ Definition valid_locals (f : func) : bool :=
 
 (** ## Evidence *)
 
-(** `live(Q, P, Lo, Hi, Rights, Align)`: Q proves Rights over
-    [P+Lo, P+Hi) at Align, and its evidence still holds. *)
+(** A [[live-fact|live fact]], ir.pl's `live(Q, P, Lo, Hi, Rights, Align)`:
+    the access [[proof]] f_q proves [[rights]] f_r over the bytes from
+    offset f_lo up to f_hi of the pointer f_p, at alignment f_al, and its
+    [[evidence]] still holds. *)
 Record fact : Type := mkFact {
   f_q : name; f_p : value; f_lo : Z; f_hi : Z; f_r : rights; f_al : Z
 }.
 
+(** Whether the facts a and b are equal in every field. *)
 Definition fact_eqb (a b : fact) : bool :=
   name_eqb (f_q a) (f_q b) && value_eqb (f_p a) (f_p b) && Z.eqb (f_lo a) (f_lo b)
   && Z.eqb (f_hi a) (f_hi b) && rights_eqb (f_r a) (f_r b) && Z.eqb (f_al a) (f_al b).
 
-(** `evidence_names(D, Fact)` and `evidence_kill/3`. *)
+(** As `evidence_kill/3` with `evidence_names/2`: the facts fs without those
+    whose proof or pointer is the temporary d, which is being defined again. *)
 Definition kill (d : name) (fs : list fact) : list fact :=
   filter (fun f => negb (name_eqb (f_q f) d || value_eqb (f_p f) (Tmp d))) fs.
 
-(** `evidence_after(Inst, Live0, Live)`. *)
+(** As `evidence_after/3`: the [[live-fact|live facts]] fs after the
+    instruction i. An instruction that is not [evidence_preserving] ends
+    them all; otherwise only the facts naming what it defines end. *)
 Definition evidence_after (i : inst) (fs : list fact) : list fact :=
   if evidence_preserving i
   then match inst_def_first i with Some d => kill d fs | None => fs end
   else [].
 
-(** The live fact of Q, the newest (`get_assoc(Q, ByQ, _)`). *)
+(** The [[live-fact|live fact]] of the proof q, the newest
+    (`get_assoc(Q, ByQ, _)` in ir.pl's index). *)
 Fixpoint fact_of (q : name) (fs : list fact) : option fact :=
   match fs with [] => None | f :: rest => if name_eqb (f_q f) q then Some f else fact_of q rest end.
 
-(** `evidence_meet(Sets, Live)`. *)
+(** As `evidence_meet/2`: the facts in every one of the sets, the
+    [[evidence]] a block may assume from all its incoming edges; none for no
+    sets. *)
 Definition evidence_meet (sets : list (list fact)) : list fact :=
   match sets with
   | [] => []
@@ -607,11 +711,13 @@ Definition evidence_meet (sets : list (list fact)) : list fact :=
 
 (** ## Accesses *)
 
-(** What a raw access reads or writes: a load type, a store width, or a
-    pointer (raw_access/5's X). *)
+(** What a [[raw-access|raw access]] reads or writes, `raw_access/5`'s X: a
+    load type, a store width, or a pointer. *)
 Inductive access_type : Type := XLoad (t : load_type) | XWidth (w : width) | XPtr.
 
-(** `raw_access(Inst, Q, X, Off, Rights)`. *)
+(** As `raw_access/5`: the instruction i as a [[raw-access|raw access]]: the
+    proof q it goes through, what it moves, its offset from q's pointer and
+    the [[rights]] it needs (read for a load, write for a store). *)
 Definition raw_access (i : inst) : option (name * access_type * Z * rights) :=
   match i with
   | Let _ _ (RawLoad t off) [Tmp q] => Some (q, XLoad t, off, Read)
@@ -621,7 +727,9 @@ Definition raw_access (i : inst) : option (name * access_type * Z * rights) :=
   | _ => None
   end.
 
-(** `access_size_align(X, Size, Align)`, its first solution. *)
+(** As `access_size_align/3`, its first solution: the bytes an access of
+    type x moves, and the alignment its address needs: 8 for a pointer, 8
+    for an 80-bit float, 1 for the rest. *)
 Definition access_size_align (x : access_type) : Z * Z :=
   match x with
   | XLoad (LdL | LdD) => (8, 1)
@@ -633,10 +741,15 @@ Definition access_size_align (x : access_type) : Z * Z :=
   | XWidth w => (width_bytes w, 1)
   end.
 
+(** As `rights_allow/2`: [[rights]] have serve an access that needs need;
+    write rights also allow a read. *)
 Definition rights_allow (have need : rights) : bool :=
   match have, need with Write, _ => true | Read, Read => true | Read, Write => false end.
 
-(** `covered_access(Access, Q, Lo, Hi, Rights, Align)`. *)
+(** As `covered_access/6`: the instruction i is a [[raw-access|raw access]]
+    through the proof q whose bytes lie from lo up to hi, whose start is
+    aligned as the access needs given q's alignment al, and that the
+    [[rights]] r allow: the [[covered-access|coverage]] a proof gives. *)
 Definition covered_access (i : inst) (q : name) (lo hi : Z) (r : rights) (al : Z) : bool :=
   match raw_access i with
   | Some (q', x, off, need) =>
@@ -646,9 +759,13 @@ Definition covered_access (i : inst) (q : name) (lo hi : Z) (r : rights) (al : Z
   | None => false
   end.
 
+(** Where a [[raw-access|raw access]] goes: the heap or a proven local
+    object. *)
 Inductive storage : Type := Heap' | Local'.
 
-(** `access_storage_effects(Access, Storage)`. *)
+(** As `access_storage_effects/2`: the access i declares the effects of its
+    storage s. A scalar access always does; a pointer access must declare
+    the heap's, the local's or the atomic effects. *)
 Definition storage_effects (i : inst) (s : storage) : bool :=
   match i, s with
   | Let _ _ (RawLoad _ _) _, _ | RawStore _ _ _ _, _ => true
@@ -661,13 +778,16 @@ Definition storage_effects (i : inst) (s : storage) : bool :=
   | _, _ => false
   end.
 
-(** `proof_use(Access, Q, Lo, Hi, Rights, Align)`: a heap raw access the
-    proof Q covers. *)
+(** As `proof_use/6`: the instruction i, right after the [[check]] of the
+    proof q, uses it: a heap [[raw-access|raw access]] the proof covers
+    ([covered_access]). *)
 Definition proof_use (i : inst) (q : name) (lo hi : Z) (r : rights) (al : Z) : bool :=
   covered_access i q lo hi r al && storage_effects i Heap'.
 
-(** `reusing_access(Inst, X)`: a scalar access, or a heap pointer load,
-    may read a proof that is not its own check's. *)
+(** As `reusing_access/2`: whether the access i, of type x, may read a
+    [[live-fact|live]] proof that is not its own check's: a scalar access,
+    or a heap pointer load, which reads [[aux]] and box words only. A
+    pointer store may exit while ensuring the aux, and keeps its own check. *)
 Definition reusing_access (i : inst) (x : access_type) : bool :=
   match x with
   | XPtr => match i with
@@ -679,33 +799,44 @@ Definition reusing_access (i : inst) (x : access_type) : bool :=
 
 (** ## Single definitions, chains and intervals *)
 
-(** A name's one definition (single_definitions/3's Once). *)
+(** A temporary's one definition, an entry of the map `Once` that
+    `single_definitions/3` builds: a parameter, a [[phi]] or an instruction. *)
 Inductive def : Type := DParam | DPhi (ph : phi) | DInst (i : inst).
 
+(** Every definition of the function f, as a name with what defines it:
+    parameters, phis and instructions. *)
 Definition all_defs (f : func) : list (name * def) :=
   map (fun p => (snd p, DParam)) (fn_params f) ++
   flat_map (fun b => map (fun ph => match ph with Phi d _ _ => (d, DPhi ph) end) (b_phis b)
                      ++ flat_map (fun i => map (fun dk => (fst dk, DInst i)) (inst_temp_defs i))
                                  (b_insts b)) (fn_blocks f).
 
-(** `single_definitions(Params, Blocks, Once)`. *)
+(** As `single_definitions/3`: the temporaries of the function f with
+    exactly one definition, each with it. The reuse forms' rules read only
+    these names: a [[single-definition|single definition]] that dominates a
+    point holds the value it computed there. *)
 Definition single_definitions (f : func) : list (name * def) :=
   let ds := all_defs f in
   filter (fun d => (length (filter (fun d' => name_eqb (fst d) (fst d')) ds) =? 1)%nat) ds.
 
+(** Whether the name n has a single definition in once. *)
 Definition once_has (once : list (name * def)) (n : name) : bool :=
   match lookup n once with Some _ => true | None => false end.
 
-(** `near_offset(K)`. *)
+(** As `near_offset/1`: k is well inside the signed 64-bit range, within
+    2^62 of 0. Offsets on a [[guard-chain|guard chain]] are exact only
+    modulo 2^64; only near ones are the true distance. *)
 Definition near_offset (k : Z) : bool := (- 2 ^ 62 <=? k) && (k <=? 2 ^ 62).
 
-(** `signed_value(K, C, V)` for the integer classes. *)
+(** As `signed_value/3`: the constant c taken as a signed integer of the
+    integer [[class]] k's width. *)
 Definition signed_value (k : class) (c : Z) : option Z :=
   let* bits := class_bits k in
   let u := c mod 2 ^ bits in
   Some (if 2 ^ (bits - 1) <=? u then u - 2 ^ bits else u).
 
-(** `narrow_range(T, Lo, Hi)`. *)
+(** As `narrow_range/3`: the values a narrow type t extends to, for the
+    signed and unsigned bytes and halves; none for the rest. *)
 Definition narrow_range (t : narrow) : option (Z * Z) :=
   match t with
   | Ub => Some (0, 255) | Uh => Some (0, 65535)
@@ -713,7 +844,10 @@ Definition narrow_range (t : narrow) : option (Z * Z) :=
   | _ => None
   end.
 
-(** `interval_fits(K, Lo, Hi)`: a `w` result must not wrap. *)
+(** As `interval_fits/3`: an [[offset-interval|offset interval]] from lo to
+    hi suits the [[class]] k. A word (`w`) interval must lie in the signed
+    32-bit range, so no word arithmetic wraps; a long (`l`) one may be
+    anything, since it bounds the value only modulo 2^64. *)
 Definition interval_fits (k : class) (lo hi : Z) : bool :=
   match k with
   | W => (- 2 ^ 31 <=? lo) && (hi <=? 2 ^ 31 - 1)
@@ -721,8 +855,11 @@ Definition interval_fits (k : class) (lo hi : Z) : bool :=
   | _ => false
   end.
 
+(** The memo of [oi]: each name walked at a [[class]], with the interval it
+    got, or none. *)
 Definition memo := list ((name * class) * option (Z * Z)).
 
+(** The memo's answer for the name n at the [[class]] k, if it has one. *)
 Fixpoint memo_lookup (n : name) (k : class) (m : memo) : option (option (Z * Z)) :=
   match m with
   | [] => None
@@ -730,11 +867,15 @@ Fixpoint memo_lookup (n : name) (k : class) (m : memo) : option (option (Z * Z))
       if name_eqb (fst nk) n && class_eqb (snd nk) k then Some r else memo_lookup n k rest
   end.
 
+(** Whether the operand v is a constant. *)
 Definition is_const (v : value) : bool := match v with Const _ => true | _ => false end.
 
-(** `op_interval(Op, Args, K, Once, Depth, Lo, Hi, Memo0, Memo)`, with
-    rec the walk of an operand one level deeper. Each clause commits
-    once its head matches, as ir.pl's cuts do. *)
+(** As `op_interval/9`: the [[offset-interval|offset interval]] of what the
+    op o computes from args at the [[class]] k, with rec the walk of an
+    operand one level deeper and m the memo. Each clause commits once its
+    head matches, as ir.pl's cuts do: an `and` tries its right operand as
+    the mask before its left one, and a failed `ext(sw)` does not fall
+    through to a later clause. *)
 Definition op_interval (rec : value -> class -> memo -> option (Z * Z) * memo)
     (o : op) (args : list value) (k : class) (m : memo) : option (Z * Z) * memo :=
   match o, args with
@@ -827,10 +968,13 @@ Definition op_interval (rec : value -> class -> memo -> option (Z * Z) * memo)
   | _, _ => (None, m)
   end.
 
-(** `offset_interval(Once, V, K, Depth, Lo, Hi, Memo0, Memo)`: every
-    value V of class K can hold lies in [Lo, Hi] (for `l`, modulo
-    2^64). A failed walk leaves the memo as it was, then records the
-    name as having none. *)
+(** As `offset_interval/8`: the interval from Lo to Hi in which every value
+    the operand v of [[class]] k can hold lies (for `l`, modulo 2^64),
+    walked through the [[single-definition|single definitions]] once, at
+    most 32 deep. It threads ir.pl's memo in the same order: each name's
+    answer is kept, so a name met again deeper than the limit allows still
+    has its interval, but a failed walk keeps nothing it memoised on the
+    way, and only records the name as having none. *)
 Fixpoint oi (once : list (name * def)) (fuel : nat) (v : value) (k : class) (depth : Z)
     (m : memo) : option (Z * Z) * memo :=
   match v with
@@ -862,10 +1006,16 @@ Fixpoint oi (once : list (name * def)) (fuel : nat) (v : value) (k : class) (dep
       end
   end.
 
+(** As `offset_interval/6` from depth 0: the
+    [[offset-interval|offset interval]] of the operand v at the [[class]] k,
+    if one is derived. Interval.v proves what it answers derived and sound
+    ([offset_interval_iv], [iv_sound]). *)
 Definition offset_interval (once : list (name * def)) (v : value) (k : class) : option (Z * Z) :=
   fst (oi once 33 v k 0 []).
 
-(** `flight_term(Op, Args, B, O, Sign)`. *)
+(** As `flight_term/5`: when the [[flight]] op o with args moves the base b,
+    the offset it adds to b and its sign: an `add` of an offset, a `sub` of
+    one, or a `copy`, which adds 0. *)
 Definition flight_term (o : op) (args : list flight_arg) (b : value) : option (value * Z) :=
   match o, args with
   | Add, [FAddress b0; FValue ov] => if value_eqb b0 b then Some (ov, 1) else None
@@ -874,10 +1024,8 @@ Definition flight_term (o : op) (args : list flight_arg) (b : value) : option (v
   | _, _ => None
   end.
 
-(** `guard_chain(Once, P, Chain)`: P at offset [0, 0] of itself, then
-    each base B whose capability P has, through single-definition add,
-    sub and copy flights whose lower donor is their address operand, at
-    the interval of P's offset from B. *)
+(** The walk of [guard_chain], fuel steps at most: the pointer p at the
+    offsets lo to hi from the start, then each base it reaches. *)
 Fixpoint guard_chain_go (once : list (name * def)) (fuel : nat) (p : value) (lo hi : Z)
   : list (value * (Z * Z)) :=
   (p, (lo, hi)) ::
@@ -900,21 +1048,31 @@ Fixpoint guard_chain_go (once : list (name * def)) (fuel : nat) (p : value) (lo 
   | _, _ => []
   end.
 
+(** As `guard_chain/3`: the [[guard-chain|guard chain]] of the pointer p.
+    First p at offset 0 from itself, then each base b whose [[capability]] p
+    has, through single-definition `add`, `sub` and `copy`
+    [[flight|flights]] whose lower donor is their address operand, with the
+    interval of p's offset from b. *)
 Definition guard_chain (once : list (name * def)) (p : value) : list (value * (Z * Z)) :=
   guard_chain_go once 64 p 0 0.
 
-(** A chain element that is an exact single-definition base. *)
+(** A chain element e as an exact base: a single-definition temporary at one
+    known offset, with that offset. *)
 Definition exact_base (once : list (name * def)) (e : value * (Z * Z)) : option (name * Z) :=
   match e with
   | (Tmp n, (k, k')) => if (k =? k') && once_has once n then Some (n, k) else None
   | _ => None
   end.
 
+(** The first answer f gives over the list xs. *)
 Fixpoint first_some {X Y : Type} (f : X -> option Y) (xs : list X) : option Y :=
   match xs with [] => None | x :: rest => match f x with Some y => Some y | None => first_some f rest end end.
 
-(** `pointer_distance(Once, P, P1, D)`: the first exact base of P's
-    chain that P1's chain has exactly too, D its offset difference. *)
+(** As `pointer_distance/4`: the distance D, modulo 2^64, from the pointer
+    p1 to the pointer p, which has p1's [[capability]]: both reach one exact
+    single-definition base on their [[guard-chain|guard chains]], and D is
+    the difference of their offsets from it. Like ir.pl, which cuts after
+    the first, it takes the first base of p's chain that p1's chain shares. *)
 Definition pointer_distance (once : list (name * def)) (p p1 : value) : option Z :=
   let c1 := guard_chain once p1 in
   first_some (fun e =>
@@ -928,7 +1086,13 @@ Definition pointer_distance (once : list (name * def)) (p p1 : value) : option Z
                 | None => None
                 end) (guard_chain once p).
 
-(** `half_known(Bound, Lo, Hi, D0, Lo1, Hi1)`. *)
+(** As `half_known/6`: a [[half_check|half check]] of the span from lo up to
+    hi of a pointer P may test only its bound bd, when P is d0 bytes from a
+    pointer whose passed check proved the span from lo1 up to hi1 (see
+    [docs/half.md](../../docs/half.md)). With d0 taken signed modulo
+    2^64: for `upper`, P+lo lies at or above the old span's start; for
+    `lower`, P+hi lies at or below its end; both distances are near
+    ([near_offset]) and the span is at most 2^62 bytes, so nothing wraps. *)
 Definition half_known (bd : bound) (lo hi d0 lo1 hi1 : Z) : bool :=
   let d := ((d0 + 2 ^ 63) mod 2 ^ 64) - 2 ^ 63 in
   let e := d + lo - lo1 in
@@ -936,8 +1100,12 @@ Definition half_known (bd : bound) (lo hi d0 lo1 hi1 : Z) : bool :=
   near_offset e && near_offset f && (hi - lo <=? 2 ^ 62) &&
   match bd with Upper => 0 <=? e | Lower => f <=? 0 end.
 
-(** A renew source: the checked pointer, bounds and alignment of a
-    single-definition proof (`renew_source_op/6`). *)
+(** As `renew_source_op/6` with `stage_sources/4`'s conditions: a
+    [[renew-source|renew source]], when the instruction i is a
+    single-definition [[proof]] q1 of a single-definition pointer p that a
+    later reuse form may lean on (a [[check]], [[check_ahead]],
+    [[renew_if]], `check_limit` or [[half_check]]): q1 with p, its bounds
+    and its alignment. *)
 Definition renew_source (once : list (name * def)) (i : inst) : option (name * (name * Z * Z * Z)) :=
   match i with
   | Let q1 A o args =>
@@ -955,7 +1123,11 @@ Definition renew_source (once : list (name * def)) (i : inst) : option (name * (
   | _ => None
   end.
 
-(** `hull_renewable(Sources, Once, P, Lo, Hi, Align, QL, QH)`. *)
+(** As `hull_renewable/8`: a [[renew_hull]] of the pointer p over the bytes
+    from lo up to hi, at alignment al, may lean on the two
+    [[renew-source|renew sources]] ql and qh: the span lies between ql's
+    start and qh's end at distances from 0 to 2^62 ([pointer_distance]), is
+    at most 2^62 bytes, and one of the sources gives the alignment. *)
 Definition hull_renewable (srcs : list (name * (name * Z * Z * Z))) (once : list (name * def))
     (p : value) (lo hi al : Z) (ql qh : value) : bool :=
   match ql, qh with
@@ -976,7 +1148,11 @@ Definition hull_renewable (srcs : list (name * (name * Z * Z * Z))) (once : list
   | _, _ => false
   end.
 
-(** `guard_covers(Once, P, G, Lo, Hi)`. *)
+(** As `guard_covers/5`: the operand g is a single-definition
+    [[span_test|span test]] of a single-definition pointer n0 whose span
+    contains the bytes from lo up to hi of the pointer p, for every offset p
+    can have from n0 on its [[guard-chain|guard chain]]: what a [[renew_if]]
+    needs of its guard. *)
 Definition guard_covers (once : list (name * def)) (p g : value) (lo hi : Z) : bool :=
   match g with
   | Tmp gn =>
@@ -993,7 +1169,9 @@ Definition guard_covers (once : list (name * def)) (p g : value) (lo hi : Z) : b
   | _ => false
   end.
 
-(** `lower_chain(Once, P, B)`: P has B's lower. *)
+(** As `lower_chain/3`: the pointer p has the lower of the base b: p is b,
+    or a single-definition [[flight]] whose lower donor has b's lower,
+    whatever its address (a [[lower-chain|lower chain]]). *)
 Fixpoint lower_chain (once : list (name * def)) (fuel : nat) (p b : value) : bool :=
   value_eqb p b ||
   match fuel, p with
@@ -1005,7 +1183,10 @@ Fixpoint lower_chain (once : list (name * def)) (fuel : nat) (p b : value) : boo
   | _, _ => false
   end.
 
-(** `limit_covers(Once, P, U, Lo, Hi)`. *)
+(** As `limit_covers/5`: the operand u is a single-definition [[limit]] of
+    size bytes of a single-definition pointer n0 whose lower p has
+    ([lower_chain]), and the access span from lo up to hi is exactly from 0
+    up to that size: what a `check_limit` needs. *)
 Definition limit_covers (once : list (name * def)) (p u : value) (lo hi : Z) : bool :=
   match u with
   | Tmp un =>
@@ -1018,8 +1199,13 @@ Definition limit_covers (once : list (name * def)) (p u : value) (lo hi : Z) : b
   | _ => false
   end.
 
-(** `hull_covered(Access, Q, P, Lo, Align, Live, Once)`: the access lies
-    within the hull of the live facts of P's object. *)
+(** As `hull_covered/7`: the instruction i, a [[raw-access|raw access]]
+    through the proof q of the pointer p, lies within the hull of the
+    [[live-fact|live facts]] about p's [[region|object]]: one fact's span
+    starts at or before it and one ends at or after it, measured from p by
+    [pointer_distance] at near offsets ([near_offset]). It is aligned as q's
+    proof gives (q's offset lo, alignment al), and a write needs a fact with
+    write [[rights]]. *)
 Definition hull_covered (i : inst) (q : name) (p : value) (lo al : Z) (live : list fact)
     (once : list (name * def)) : bool :=
   match raw_access i with
@@ -1048,12 +1234,16 @@ Definition hull_covered (i : inst) (q : name) (p : value) (lo al : Z) (live : li
 
 (** ## Scheduled checks *)
 
+(** The [[need|needs]] at a point of the backward pass of
+    [[check_ahead|scheduled checks]]: each base with the offset its bytes
+    are certain to be accessed up to. *)
 Definition facts := list (name * Z).
 
+(** The needs fs without the base n's. *)
 Definition del (n : name) (fs : facts) : facts := filter (fun f => negb (name_eqb (fst f) n)) fs.
 
-(** `ahead_meet(Facts, Meet)`: the bases in every one of Facts, each
-    with its least need. *)
+(** As `ahead_meet/2`: the bases in every one of the need sets fss, each
+    with its least [[need]]; none for no sets. *)
 Definition ahead_meet (fss : list facts) : facts :=
   match fss with
   | [] => []
@@ -1067,7 +1257,10 @@ Definition ahead_meet (fss : list facts) : facts :=
                   end) f
   end.
 
-(** `raise_need(Once, Off, Size, B-i(K, K1), F0, F)`. *)
+(** As `raise_need/6`: the needs fs after an access of size bytes at offset
+    off from the chain element e: when e is an exact base n at offset k, and
+    k and its end are near ([near_offset]), n's [[need]] is raised to at
+    least that end. *)
 Definition raise_need (once : list (name * def)) (off size : Z) (fs : facts)
     (e : value * (Z * Z)) : facts :=
   match exact_base once e with
@@ -1082,7 +1275,11 @@ Definition raise_need (once : list (name * def)) (off size : Z) (fs : facts)
   | None => fs
   end.
 
-(** `ahead_step(I, Once, Ptrs, F0, F)`. *)
+(** As `ahead_step/5`: the needs fs before the instruction i, given those
+    after it. An instruction that is not [[ahead-transparent]] ends every
+    need; one that defines a base ends that base's; a
+    [[raw-access|raw access]] through a proof of ptrs raises the need of
+    each base on its pointer's [[guard-chain|guard chain]] ([raise_need]). *)
 Definition ahead_step (once : list (name * def)) (ptrs : list (name * value)) (i : inst)
     (fs : facts) : facts :=
   if ahead_transparent i then
@@ -1104,8 +1301,8 @@ Definition ahead_step (once : list (name * def)) (ptrs : list (name * value)) (i
     end
   else [].
 
-(** `proof_pointers(Blocks, Once, Ptrs)`: each single-definition heap
-    proof with the pointer it proves (`proof_pointer/3`). *)
+(** As `proof_pointer/3`: the pointer that the [[check]] or reuse form o
+    with args proves. *)
 Definition proof_pointer (o : op) (args : list value) : option value :=
   match o, args with
   | Check _ _ _ _, [p] | CheckAhead _ _ _ _ _, [p] => Some p
@@ -1115,6 +1312,8 @@ Definition proof_pointer (o : op) (args : list value) : option value :=
   | _, _ => None
   end.
 
+(** As `proof_pointers/3`: each single-definition access [[proof]] of the
+    function f with the pointer it proves. *)
 Definition proof_pointers (f : func) (once : list (name * def)) : list (name * value) :=
   flat_map (fun b => flat_map (fun i =>
                                  match i with
@@ -1126,10 +1325,11 @@ Definition proof_pointers (f : func) (once : list (name * def)) : list (name * v
                                  | _ => []
                                  end) (b_insts b)) (fn_blocks f).
 
-(** `ahead_accepts once next i`: the proof `ahead_insts/8` accepts at i,
-    a single-definition `check_ahead` of P whose access is followed by
-    the facts `next`: some exact base N of P at offset K, with K and
-    K + Lo near, has need(N) >= K + Hi there. *)
+(** The proof `ahead_insts/8` accepts at the instruction i: a
+    single-definition [[check_ahead]] q of the pointer P whose access is
+    followed by the needs next, when some exact base N of P at offset K,
+    with K and K + lo near ([near_offset]), has a [[need]] of at least K +
+    hi there. *)
 Definition ahead_accepts (once : list (name * def)) (next : facts) (i : inst) : option name :=
   match i with
   | Let q A (CheckAhead lo hi _ _ _) [p] =>
@@ -1144,9 +1344,10 @@ Definition ahead_accepts (once : list (name * def)) (next : facts) (i : inst) : 
   | _ => None
   end.
 
-(** The check_ahead proofs `ahead_insts/8` accepts in one block, walking
-    its instructions from the last: `next` are the facts after the
-    instruction that follows the current one, its access. *)
+(** As `ahead_insts/8`: the [[check_ahead]] proofs accepted in one block,
+    walking its instructions ris from the last. after are the needs after
+    the current instruction, next those after the one that follows it, its
+    access; js collects the accepted proofs. *)
 Fixpoint ahead_insts (once : list (name * def)) (ptrs : list (name * value)) (ris : list inst)
     (after next : facts) (js : list name) : facts * list name :=
   match ris with
@@ -1156,11 +1357,14 @@ Fixpoint ahead_insts (once : list (name * def)) (ptrs : list (name * value)) (ri
       ahead_insts once ptrs rest (ahead_step once ptrs i after) after js1
   end.
 
+(** The position of the label l in ls, counting from n. *)
 Fixpoint index_of (l : name) (ls : list name) (n : nat) : option nat :=
   match ls with [] => None | l' :: rest => if name_eqb l l' then Some n else index_of l rest (S n) end.
 
-(** `ahead_edge(T, Pos, Order, In0, F)`: the facts an edge carries, its
-    target's entry facts only if it is plain and goes to a later block. *)
+(** As `ahead_edge/5`: the [[need|needs]] the edge t carries back to the
+    block at position pos: its target's entry needs if it is a plain edge to
+    a later block, none over a [[poll|poll edge]] or an edge to the same
+    or an earlier block. *)
 Definition ahead_edge (order : list name) (pos : option nat) (ins : list (name * facts)) (t : target)
   : facts :=
   match t with
@@ -1172,12 +1376,14 @@ Definition ahead_edge (order : list name) (pos : option nat) (ins : list (name *
       end
   end.
 
-(** `phi_ends_need/3`, folded over a block's phis. *)
+(** As `phi_ends_need/3`, folded over the phis phs: a [[phi]] redefines its
+    destination at the block's entry, which ends that base's need. *)
 Definition phis_end_needs (phs : list phi) (fs : facts) : facts :=
   fold_left (fun (fs : facts) (ph : phi) => match ph with Phi d _ _ => del d fs end) phs fs.
 
-(** `ahead_block/6`: one block of the backward pass, its entry facts
-    added to `ins` and its accepted proofs to `js`. *)
+(** As `ahead_block/6`: one block b of the backward pass. Its exit needs are
+    the meet over its jump's edges; its entry needs go into ins and its
+    accepted proofs into js. *)
 Definition ahead_block (order : list name) (once : list (name * def)) (ptrs : list (name * value))
     (st : list (name * facts) * list name) (b : block) : list (name * facts) * list name :=
   let (ins, js) := st in
@@ -1185,20 +1391,24 @@ Definition ahead_block (order : list name) (once : list (name * def)) (ptrs : li
   let '(entry0, js') := ahead_insts once ptrs (rev (b_insts b)) out [] js in
   (put (b_label b) (phis_end_needs (b_phis b) entry0) ins, js').
 
-(** `ahead_fold f once`: every block's entry facts, and the accepted
-    proofs, from one pass over the blocks in reverse order. *)
+(** Every block's entry [[need|needs]] and the accepted [[check_ahead]]
+    proofs, from one pass over the function f's blocks in reverse order. *)
 Definition ahead_fold (f : func) (once : list (name * def)) : list (name * facts) * list name :=
   fold_left (ahead_block (map b_label (fn_blocks f)) once (proof_pointers f once)) (rev (fn_blocks f)) ([], []).
 
-(** `ahead_justified(Blocks, Once, Ahead)`: the needs computed backward
-    in one pass over the blocks in reverse order. *)
+(** As `ahead_justified/3`: the [[check_ahead|scheduled checks]] of the
+    function f that are justified: right after its access, its pointer's
+    base needs at least the bytes up to the check's end, so where the check
+    fails early the original program would have trapped later on every path.
+    The needs are computed backward in one pass over the blocks in reverse
+    order; any edge into a later block was walked first. *)
 Definition ahead_justified (f : func) (once : list (name * def)) : list name :=
   snd (ahead_fold f once).
 
 (** ## Getters *)
 
-(** `local_global(Symbols, G)`: G is a function or data object this
-    module defines with local linkage, the first item of its name. *)
+(** The linkage of the first function the module md defines under the name
+    g, in the [[core-subset|core subset]] or outside it. *)
 Fixpoint first_func_linkage (g : name) (md : module) : option term :=
   match md with
   | [] => None
@@ -1209,6 +1419,8 @@ Fixpoint first_func_linkage (g : name) (md : module) : option term :=
   | _ :: rest => first_func_linkage g rest
   end.
 
+(** The linkage of the first data the module md defines under the name g,
+    skipping `extern(weak)` declarations, which define nothing. *)
 Fixpoint first_data_linkage (g : name) (md : module) : option linkage :=
   match md with
   | [] => None
@@ -1220,6 +1432,9 @@ Fixpoint first_data_linkage (g : name) (md : module) : option linkage :=
   | _ :: rest => first_data_linkage g rest
   end.
 
+(** As `local_global/2`: g is a function or data object the module md
+    defines with local linkage, as the first item of that name says, so its
+    [[getter]] is a local symbol only this module calls. *)
 Definition local_global (md : module) (g : name) : bool :=
   match first_func_linkage g md with
   | Some lk => term_eqb lk (TAtom "local")
@@ -1231,10 +1446,13 @@ Definition local_global (md : module) (g : name) : bool :=
       end
   end.
 
-(** `repeated_getters(Symbols, Blocks, Once, Getters)`: each
-    single-definition getter copy of a local symbol that another copy of
-    the same symbol dominates (earlier in its block, or in a block that
-    strictly dominates it). *)
+(** As `repeated_getters/4`: each single-definition [[getter]] copy d of a
+    local symbol g ([local_global]) that another copy of g
+    [[dominance|dominates]], earlier in its block or in a block that
+    strictly dominates it. Such a copy repeats a call of the getter that has
+    already returned, so it reaches no safepoint, frees nothing and stores
+    nothing, and the [[evidence-pass|evidence pass]] lets the
+    [[live-fact|live facts]] survive it. *)
 Definition repeated_getters (md : module) (f : func) (doms : nmap (Z * Z))
     (once : list (name * def)) : list (name * name) :=
   let sites := flat_map (fun b =>
@@ -1257,8 +1475,10 @@ Definition repeated_getters (md : module) (f : func) (doms : nmap (Z * Z))
 
 (** ## The evidence pass *)
 
-(** `stage_sources/4`'s src: the renew sources, the single definitions,
-    the justified check_aheads and the repeated getters. *)
+(** What [stage_sources] gathers for one function, `stage_sources/4`'s
+    `src`: the [[renew-source|renew sources]], the single definitions, the
+    justified [[check_ahead|scheduled checks]] and the repeated
+    [[getter|getters]]. *)
 Record src : Type := mkSrc {
   s_renews : list (name * (name * Z * Z * Z));
   s_once : list (name * def);
@@ -1266,6 +1486,8 @@ Record src : Type := mkSrc {
   s_getters : list (name * name)
 }.
 
+(** As `stage_sources/4`: the [src] of the function f of the module md, with
+    doms its dominator intervals. *)
 Definition stage_sources (md : module) (f : func) (doms : nmap (Z * Z)) : src :=
   let once := single_definitions f in
   mkSrc (flat_map (fun b => flat_map (fun i => match renew_source once i with
@@ -1274,16 +1496,30 @@ Definition stage_sources (md : module) (f : func) (doms : nmap (Z * Z)) : src :=
                                                end) (b_insts b)) (fn_blocks f))
         once (ahead_justified f once) (repeated_getters md f doms once).
 
-(** The evidence after a check-like instruction i of proof q over
-    [lo, hi) and its access (`evidence_after`, `evidence_add`,
-    `evidence_after`). *)
+(** The [[live-fact|live facts]] after a check-like instruction i of the
+    proof q over the bytes from lo up to hi and its access: as ir.pl does,
+    evidence_after/3 of the check, then evidence_add/3 of the new fact, then
+    evidence_after/3 of the access. *)
 Definition after_check (i access : inst) (q : name) (p : value) (lo hi : Z) (r : rights)
     (al : Z) (live : list fact) : list fact :=
   evidence_after access (mkFact q p lo hi r al :: evidence_after i live).
 
-(** `checked_inst_rest(Inst, Insts, Fn-Sources, Mode, Live0, Rest, Live)`:
-    None when ir.pl throws; otherwise the instructions left and the
-    evidence after. A check-like instruction consumes its access. *)
+(** As `checked_inst_rest/7`, one step of the
+    [[evidence-pass|evidence pass]]: None when ir.pl throws; otherwise the
+    instructions left after the instruction i, and the
+    [[live-fact|live facts]] after.
+    - A [[check]] or reuse form ([[renew]], [[renew_hull]], [[half_check]],
+      [[renew_if]], `check_limit`, an accepted [[check_ahead]]) must be
+      followed at once by an access it covers, which it consumes, and adds
+      its fact.
+    - A `check_local` and a `check_function` are used once, right away.
+    - Any other [[raw-access|raw access]] must read a live fact that covers
+      it, directly or by the hull of the live facts ([hull_covered]). A
+      `raw_call` not right after its `check_function`, an indirect call, and
+      pointer arithmetic, `itop` or a pointer copy outside a [[flight]] are
+      refused.
+    - A repeated [[getter]] ([repeated_getters]) ends only the facts naming
+      its destination; any other getter ends them all. *)
 Definition checked_inst_rest (s : src) (i : inst) (rest : list inst) (live : list fact)
   : option (list inst * list fact) :=
   let once := s_once s in
@@ -1389,7 +1625,9 @@ Definition checked_inst_rest (s : src) (i : inst) (rest : list inst) (live : lis
       if ok then Some (rest, live') else None
   end.
 
-(** `checked_insts(Insts, Fn, Mode, Live, LiveOut)`. *)
+(** As `checked_insts/5`: the [[live-fact|live facts]] at the end of the
+    instructions is, starting from live, or None when one is refused; fuel
+    bounds the steps. *)
 Fixpoint checked_insts (s : src) (fuel : nat) (is : list inst) (live : list fact)
   : option (list fact) :=
   match is with
@@ -1403,14 +1641,20 @@ Fixpoint checked_insts (s : src) (fuel : nat) (is : list inst) (live : list fact
       end
   end.
 
-(** `incoming_edges(Blocks, Incoming)` for one label: its incoming
-    edges, one per jump target, the last first (add_edge prepends). *)
+(** As `incoming_edges/2` for the label l: its incoming edges, each with
+    whether it is a [[poll|poll edge]], one per jump target, the last first
+    (`add_edge/3` prepends). *)
 Definition incoming (bs : list block) (l : name) : list (name * bool) :=
   rev (flat_map (fun b => flat_map (fun t => if name_eqb (edge_label t) l
                                              then [(b_label b, is_poll t)] else [])
                                    (jump_targets (b_jump b))) bs).
 
-(** `checked_block`, folded over the blocks in order (stage_func/6). *)
+(** As `checked_block/6`, folded over the function f's blocks in order (in
+    `stage_func/6`): the [[evidence-pass|evidence pass]]. A block's entry
+    [[evidence]] is the meet over its incoming edges of the facts each
+    carries, none over a [[poll|poll edge]] or from a block not yet walked;
+    a phi ends the facts naming its destination; then each instruction must
+    pass [checked_inst_rest]. *)
 Definition evidence_pass (s : src) (f : func) : bool :=
   match fold_left
           (fun (acc : option (list (name * list fact))) (b : block) =>
@@ -1432,8 +1676,9 @@ Definition evidence_pass (s : src) (f : func) : bool :=
   | None => false
   end.
 
-(** `limit_reads(Fn, Blocks)`: a limit is read only as a check_limit's
-    second argument. *)
+(** As `limit_reads/2`: a [[limit]] of the function f is read only as a
+    `check_limit`'s second argument, never by a phi, a jump or another
+    instruction. *)
 Definition limit_reads (f : func) : bool :=
   let limits := flat_map (fun b => flat_map (fun i => match i with
                                                       | Let n _ (Limit _) _ => [n]
@@ -1458,9 +1703,9 @@ Definition limit_reads (f : func) : bool :=
               (fn_blocks f)
   end.
 
-(** `polls_every_cycle(Blocks)`: without its poll edges the graph is
-    acyclic. Blocks with no unpolled edge into what is left are removed
-    until none are left, or none can be. *)
+(** The search of [polls_every_cycle]: blocks with no unpolled edge into
+    what is left of the graph g are removed until none is left (acyclic) or
+    none can be (a cycle without a poll). *)
 Fixpoint peel (fuel : nat) (g : list (name * list name)) : bool :=
   match g with
   | [] => true
@@ -1477,6 +1722,9 @@ Fixpoint peel (fuel : nat) (g : list (name * list name)) : bool :=
       end
   end.
 
+(** As `polls_every_cycle/1`: every cycle of the function f's control-flow
+    graph, unreachable blocks included, has a [[poll|poll edge]]: without
+    them the graph is acyclic. *)
 Definition polls_every_cycle (f : func) : bool :=
   let g := map (fun b => (b_label b, map edge_label (filter (fun t => negb (is_poll t))
                                                             (jump_targets (b_jump b)))))
@@ -1484,14 +1732,17 @@ Definition polls_every_cycle (f : func) : bool :=
   forallb (fun nl => forallb (fun s => mem s (map fst g)) (snd nl)) g
   && peel (S (length g)) g.
 
-(** `stage_func(checked, ...)`. *)
+(** As `stage_func/6` for the checked [[stage]]: the function f passes the
+    [[evidence-pass|evidence pass]], reads its [[limit|limits]] only in
+    `check_limit`, and polls on every cycle. *)
 Definition stage_func (md : module) (f : func) (doms : nmap (Z * Z)) : bool :=
   evidence_pass (stage_sources md f doms) f && limit_reads f && polls_every_cycle f.
 
-(** ## Functions and modules *)
-
 (** ## The stage *)
 
+(** Whether the op o is a word only the checked [[stage]] uses: a [[check]],
+    a reuse form, a [[span_test|span test]], a [[limit]] or a raw load (the
+    `let` clauses of `checked_inst/1`). *)
 Definition checked_op (o : op) : bool :=
   match o with
   | Check _ _ _ _ | CheckAhead _ _ _ _ _ | Renew _ _ _ _ | RenewHull _ _ _ _
@@ -1500,7 +1751,8 @@ Definition checked_op (o : op) : bool :=
   | _ => false
   end.
 
-(** `checked_inst(Inst)` and `checked_jump(Jump)`. *)
+(** As `checked_inst/1`: the instruction i uses a word of the checked
+    [[stage]]: a checked op, a raw store, a raw call or a [[flight]]. *)
 Definition checked_inst (i : inst) : bool :=
   match i with
   | Let _ _ o _ => checked_op o
@@ -1508,9 +1760,11 @@ Definition checked_inst (i : inst) : bool :=
   | _ => false
   end.
 
+(** As `checked_jump/1`: the jump j takes a [[poll|poll edge]]. *)
 Definition checked_jump (j : jump) : bool := existsb is_poll (jump_targets j).
 
-(** The same, read off the term of a function outside the subset. *)
+(** [checked_op], read off the term t of a function outside the
+    [[core-subset|core subset]]. *)
 Definition checked_op_term (t : term) : bool :=
   match t with
   | TAtom "check_function" => true
@@ -1520,6 +1774,8 @@ Definition checked_op_term (t : term) : bool :=
   | _ => false
   end.
 
+(** [checked_inst], read off the term t of an instruction outside the
+    [[core-subset|core subset]], a [[touch]] included. *)
 Definition checked_inst_term (t : term) : bool :=
   match t with
   | TApp "let" [_; _; o; _] => checked_op_term o
@@ -1527,6 +1783,8 @@ Definition checked_inst_term (t : term) : bool :=
   | _ => false
   end.
 
+(** [checked_jump], read off the term t of a jump outside the
+    [[core-subset|core subset]]. *)
 Definition checked_jump_term (t : term) : bool :=
   match t with
   | TApp "goto" [TApp "poll" [_]] => true
@@ -1536,11 +1794,11 @@ Definition checked_jump_term (t : term) : bool :=
   | _ => false
   end.
 
-(** `module_stage(M, Stage)`: checked when any function uses a word of
-    the checked stage, a check, raw access, flight or poll edge. The
-    stage is read off the vocabulary of the whole module, never stated:
-    a module whose only checked word is one poll edge is unchecked
-    without it, and then needs no poll on its cycles. *)
+(** As `module_stage/2`: the module md is in the checked [[stage]] when any
+    function uses a word of it, a check, raw access, flight or poll edge.
+    The stage is read off the vocabulary of the whole module, never stated:
+    a module whose only checked word is one poll edge is unchecked without
+    it, and then needs no poll on its cycles. *)
 Definition module_checked (md : module) : bool :=
   existsb (fun it =>
              match it with
@@ -1557,8 +1815,9 @@ Definition module_checked (md : module) : bool :=
 
 (** ## Functions and modules *)
 
-(** The `x` rule of `valid_item(_, _, _, func(...))`: an `x` value is
-    never a parameter, a result, a call's argument or result, or a phi. *)
+(** The `x` rule of `valid_item/4` for a function: whether an `x` (80-bit
+    extended float) value of the function f crosses where it may not: as a
+    parameter, the result, a call's argument or result, or a phi. *)
 Definition extended_crosses (f : func) : bool :=
   let ext k := class_eqb k Extended in
   match fn_ret f with RClass k => ext k | _ => false end
@@ -1572,9 +1831,15 @@ Definition extended_crosses (f : func) : bool :=
                                      | _ => false
                                      end) (b_insts b)) (fn_blocks f).
 
-(** `valid_item(Symbols, filc, Stage, func(...))` for a function of
-    the core subset. In the unchecked stage there is no evidence to
-    check; the core subset then has no memory access at all. *)
+(** As `valid_item/4` for a function f of the [[core-subset|core subset]] of
+    the module md, in filc [[mode]]: it has blocks and a linkage of
+    `export`, `local` or `weak`, a valid return type, no `x` crossing
+    ([extended_crosses]), distinct labels, one class per temporary, no
+    jump to the entry block, proofs defined only by checks, the
+    [[ssa|strict SSA]] rule, valid locals and valid blocks; in a checked
+    module also [stage_func]. In the unchecked [[stage]] there is no
+    [[evidence]] to check, and the core subset then has no memory access at
+    all. *)
 Definition valid_func (md : module) (f : func) : bool :=
   let bs := fn_blocks f in
   let defs := temp_defs f in
@@ -1602,13 +1867,15 @@ Definition valid_func (md : module) (f : func) : bool :=
 
 (** ## Data *)
 
-(** `data_align(Align)`: a power of two from 1 to 4096. *)
+(** As `data_align/1`: a data object's alignment a is a power of two from 1
+    to 4096. *)
 Definition data_align (a : Z) : bool :=
   (1 <=? a) && (a <=? 4096) && (Z.land a (a - 1) =? 0).
 
-(** The linkage clauses of `valid_item(_, filc, _, data(...))`: the
-    linkages data of a Fil-C module may have, and what `extern(weak)`
-    and `init(Kind, Prio)` ask of the items. *)
+(** The linkage clauses of `valid_item/4` for data: the linkages lk the data
+    of a Fil-C module may have, and what `extern(weak)` (no items) and
+    `init(Kind, Prio)` (a constructor or destructor, a priority up to 65535,
+    one pointer item at offset 0) ask of its items its. *)
 Definition data_linkage_ok (lk : linkage) (its : list data_item) : bool :=
   match lk with
   | LExport | LLocal | LWeak => true
@@ -1626,11 +1893,11 @@ Definition data_linkage_ok (lk : linkage) (its : list data_item) : bool :=
   | _ => false
   end.
 
-(** What `valid_item` asks of each item: it has one of the header's
-    shapes (`data_item_shape/1`), a float item's constant is below the
-    class's modulus, a string holds bytes, and a pointer names its
+(** What `valid_item/4` asks of each data item it: it has one of the
+    header's shapes (`data_item_shape/1`), a float item's constant is below
+    its class's modulus, a string holds bytes, and a pointer names its
     symbol by an atom. In a Fil-C module `item(l, sym(_, _))`, like any
-    other term, decodes to `ItemOther` and is refused. *)
+    other term, decodes to [ItemOther] and is refused. *)
 Definition data_item_ok (it : data_item) : bool :=
   match it with
   | Item Ws n => (0 <=? n) && (n <? 2 ^ 32)
@@ -1644,8 +1911,8 @@ Definition data_item_ok (it : data_item) : bool :=
   | ItemOther _ => false
   end.
 
-(** `pointer_items_aligned(Name, Items, Off)`: each pointer item, from
-    off bytes into the object, starts at a multiple of 8. *)
+(** As `pointer_items_aligned/3`: each pointer item of its, counting off
+    bytes into the object, starts at a multiple of 8. *)
 Fixpoint pointer_items_aligned (off : Z) (its : list data_item) : bool :=
   match its with
   | [] => true
@@ -1654,22 +1921,21 @@ Fixpoint pointer_items_aligned (off : Z) (its : list data_item) : bool :=
       && pointer_items_aligned (off + item_size it) rest
   end.
 
-(** `func_named(Symbols, Name, _)`: the module defines a function Name,
-    in the subset or not. *)
+(** Whether the module md defines a function named n, in the
+    [[core-subset|core subset]] or not (`func_named/3`). *)
 Definition func_named (md : module) (n : name) : bool :=
   match first_func_linkage n md with Some _ => true | None => false end.
 
-(** `data_named(Symbols, Name)`: the module defines data Name, that is
-    data of that name not declared `extern(weak)`. *)
+(** As `data_named/2`: the module md defines data named n, that is, data of
+    that name not declared `extern(weak)`. *)
 Definition data_named (md : module) (n : name) : bool :=
   match first_data_linkage n md with Some _ => true | None => false end.
 
-(** What data asks of the rest of the module: a constructor or
-    destructor table entry names a function the module defines; a weak
-    declaration is of no name the module defines with local linkage
-    (`local_global(Symbols, Name)`), whose symbols it would make weak and
-    global; and no pointer item names a table entry, which has no
-    address. *)
+(** What data asks of the rest of the module md: a constructor or destructor
+    table entry names a function the module defines; a weak declaration is
+    of no name the module defines with local linkage (`local_global/2`),
+    whose symbols it would make weak and global; and no pointer item names a
+    table entry, which has no address. *)
 Definition data_names_ok (md : module) (n : name) (lk : linkage) (its : list data_item) : bool :=
   match lk, its with
   | LInit _ _, [Sym f _] => func_named md f
@@ -1678,7 +1944,9 @@ Definition data_names_ok (md : module) (n : name) (lk : linkage) (its : list dat
   end
   && forallb (fun it => match it with Sym s _ => negb (init_entry_named md s) | _ => true end) its.
 
-(** `valid_item(Symbols, filc, Stage, data(Name, Linkage, Align, Items))`. *)
+(** As `valid_item/4` for `data(Name, Linkage, Align, Items)`: the data
+    object n of the module md has a valid alignment, linkage and items, its
+    pointer items aligned, and names it may refer to. *)
 Definition valid_data (md : module) (n : name) (lk : linkage) (align : Z) (its : list data_item)
   : bool :=
   data_align align && data_linkage_ok lk its && forallb data_item_ok its
@@ -1686,8 +1954,8 @@ Definition valid_data (md : module) (n : name) (lk : linkage) (align : Z) (its :
 
 (** ## Aliases *)
 
-(** The first function of each name, as `module_symbols/2` indexes
-    them. *)
+(** The first function of each name in the module md, as `module_symbols/2`
+    indexes them; seen are the names met so far. *)
 Fixpoint first_funcs (seen : list name) (md : module) : list item :=
   match md with
   | [] => []
@@ -1700,8 +1968,9 @@ Fixpoint first_funcs (seen : list name) (md : module) : list item :=
   | _ :: rest => first_funcs seen rest
   end.
 
-(** `memberchk(call(_, global(Name), _), Is)` for some block of F: read
-    off its blocks in the subset, off its term outside it. *)
+(** `memberchk(call(_, global(Name), _), Is)` for some block of the function
+    it: whether it calls the symbol n directly, read off its blocks in the
+    [[core-subset|core subset]] or off its term outside it. *)
 Definition calls_global (it : item) (n : name) : bool :=
   match it with
   | IFunc f =>
@@ -1721,14 +1990,16 @@ Definition calls_global (it : item) (n : name) : bool :=
   | _ => false
   end.
 
+(** The name of a function item it, in the [[core-subset|core subset]] or
+    not. *)
 Definition item_name (it : item) : option name :=
   match it with IFunc f => Some (fn_name f) | IOutside n _ => Some n | _ => None end.
 
-(** `valid_item(Symbols, filc, Stage, alias(Name, Linkage, Target))`:
-    the linkage is `export` or `weak`, no function or data shares the
-    alias's name, and the target is a function the module defines, or
-    data of a linkage an alias may name (`export`, `local`, `weak` or
-    `ro(_)`) that no other function calls through the alias. *)
+(** As `valid_item/4` for `alias(Name, Linkage, Target)`: the alias n of the
+    module md has linkage `export` or `weak`, no function or data shares its
+    name, and its target is a function the module defines, or data of a
+    linkage an alias may name (`export`, `local`, `weak` or `ro(_)`) that no
+    other function calls through the alias. *)
 Definition valid_alias (md : module) (n : name) (lk : term) (target : name) : bool :=
   match lk with TAtom ("export" | "weak") => true | _ => false end
   && negb (func_named md n || data_named md n)
@@ -1744,8 +2015,8 @@ Definition valid_alias (md : module) (n : name) (lk : term) (target : name) : bo
 
 (** ## Modules *)
 
-(** `defined_name(Item, Name)`: the name an item defines; a weak
-    declaration defines none. *)
+(** As `defined_name/2`: the name the item it defines; a weak declaration
+    defines none. *)
 Definition defined_name (it : item) : option name :=
   match it with
   | IFunc f => Some (fn_name f)
@@ -1755,7 +2026,8 @@ Definition defined_name (it : item) : option name :=
   | IAlias n _ _ => Some n
   end.
 
-(** `unique_names(Items)`: no two items define the same name. *)
+(** As `unique_names/1`: no two items of the module md define the same name.
+    Functions, data and aliases share one namespace. *)
 Definition unique_names (md : module) : bool :=
   match fold_left (fun acc it =>
                      let* seen := acc in
@@ -1767,8 +2039,8 @@ Definition unique_names (md : module) : bool :=
   | None => false
   end.
 
-(** No two items share a name, and the items of the module that the
-    model can judge are valid. *)
+(** No two items of the module md share a name, and each item the model can
+    judge is valid: functions, data and aliases. *)
 Definition valid_items (md : module) : bool :=
   unique_names md &&
   forallb (fun it => match it with
@@ -1778,11 +2050,13 @@ Definition valid_items (md : module) : bool :=
                      | IOutside _ _ => true
                      end) md.
 
-(** `valid md`, ir:valid_module/1 for a Fil-C module without its
-    contexts: None when a function is outside the core subset, which the
-    model cannot judge. The `context/2` items are provenance's records,
-    which `valid_contexts/1` checks and run/5 never reads; the model
-    has none (docs/rocq.md). *)
+(** As `valid_module/1` for a Fil-C module without its [[context|contexts]]:
+    whether the [[validator]] accepts the module md, or None when a function
+    is outside the [[core-subset|core subset]], which the model cannot
+    judge. The `context/2` items are provenance's records, which
+    `provenance:valid_contexts/1` checks and `interp:run/5` never reads; the
+    model has none
+    ([docs/rocq.md](../../docs/rocq.md#the-validator-and-its-gate)). *)
 Definition valid (md : module) : option bool :=
   if existsb (fun it => match it with IOutside _ _ => true | _ => false end) md then None
   else Some (valid_items md).

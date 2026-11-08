@@ -1,17 +1,20 @@
-(** Campaign 4's trusted external-call boundary (docs/libc-contracts.md).
+(** [[campaign|Campaign]] 4's trusted [[external call]] boundary
+    ([libc-contracts.md](../../docs/libc-contracts.md),
+    [milestone 1](../../docs/formal.md#campaign-4-milestone-1-a-standalone-contract-boundary)).
 
     Contracts describe libc; they do not implement or prove it. A call
     must establish its ABI and semantic premises. A missing premise is
-    an unmet obligation, not a proof that native libc necessarily traps.
+    an unmet [[obligation]], not a proof that native libc necessarily traps.
     In-contract calls may return, terminate, or exhaust resources, but
-    cannot produce Unchecked or a capability panic.
+    cannot produce [Unchecked] or a capability panic.
 
     Memory effects are finite paths: bounded writes and authorized heap
-    releases alternate with allocations by an arbitrary Runtime. Each
-    prefix preserves readiness and object identities. No new assumption
-    is added to Runtime, and the existing Machine is unchanged.
+    releases alternate with allocations by an arbitrary [[runtime]]. Each
+    prefix preserves [[ready|readiness]] and [[identity|object identities]].
+    No new assumption is added to Runtime, and the existing
+    [[machine]] is unchanged.
 
-    StreamBytes records bytes accepted by stdio, possibly buffered; it
+    [StreamBytes] records bytes accepted by stdio, possibly buffered; it
     is deliberately NOT a kernel write. Flush and exit handlers still
     need their own contracts before a whole-program trace is closed. *)
 
@@ -23,13 +26,22 @@ Open Scope list_scope.
 
 (** ## Authority and footprints *)
 
+(** A span: a pointer span_ptr, whose [[capability]] is the authority,
+    and the number of bytes span_size from its address. Contracts name
+    the memory a call may read capabilities from or write as spans. *)
 Record span : Type := mkSpan { span_ptr : ptr; span_size : Z }.
 
+(** Address a lies in span s: from the span's address up to, but not
+    including, that address plus its size. *)
 Definition span_contains (s : span) (a : Z) : Prop :=
   ptr_addr (span_ptr s) <= a < ptr_addr (span_ptr s) + span_size s.
 
-(** An explicit live, writable capability, including for a zero span.
-    The life test matters for zero-length spans of freed objects. *)
+(** Span s is writable in memory m: its size is nonnegative, and its
+    pointer carries an explicit [Obj] [[capability]] for a live
+    [[region|object]] that permits writing all its bytes ([access_res]
+    with [Write]), even when the size is zero. The life test matters for
+    zero-length spans of freed objects, which the access check alone
+    would pass. *)
 Definition writable_span (m : mem) (s : span) : Prop :=
   0 <= span_size s /\
   exists base reg,
@@ -37,18 +49,27 @@ Definition writable_span (m : mem) (s : span) : Prop :=
     object_region base (m_regions m) = Some reg /\ r_life reg = Live /\
     access_res m (ptr_addr (span_ptr s)) (Obj base) (span_size s) Write 1 = Some ok.
 
-(** Born objects belong to this call; old objects require an explicit
-    root supplied by the contract. Auxiliary writes use the same roots
-    but need not have the same byte footprint (partial memset, etc.). *)
+(** A call may write address a of memory m if a lies in one of the
+    contract's writable roots (each a [writable_span]), or inside a live
+    heap object whose base is in born, the objects this call allocated.
+    Born objects belong to this call; old objects require an explicit
+    root supplied by the contract. Writes to the [[aux]] use the same
+    roots but need not have the same byte footprint (a partial memset,
+    for instance). *)
 Definition write_authority (roots : list span) (born : list Z) (m : mem) (a : Z) : Prop :=
   (exists s, In s roots /\ writable_span m s /\ span_contains s a) \/
   (exists base reg, In base born /\ object_region base (m_regions m) = Some reg /\
     r_kind reg = Heap /\ r_life reg = Live /\ base <= a < r_end reg).
 
-(** A capability is copied, loaded through a designated readable root,
-    or minted by this call's allocator. In particular, Ro never becomes
-    Obj merely because their address bits coincide. Contracts needing
-    pointer-copy smidgens must extend this complete-slot rule first. *)
+(** Capability c is one a call with readable spans sources and born
+    objects born may store in memory m: no capability ([CNone]); a
+    source pointer's own capability, copied; one loaded from a complete
+    eight-byte pointer slot inside a source, read through that source's
+    capability (the [[aux]] entry [m_aux] at the slot); or [Obj] or [Ro]
+    of an object this call allocated. In particular, [Ro] never becomes
+    [Obj] merely because their address bits coincide. Contracts copying
+    parts of pointers (the runtime's smidgens) must extend this
+    complete-slot rule first. *)
 Definition available_cap (sources : list span) (born : list Z) (m : mem) (c : cap) : Prop :=
   c = CNone \/
   (exists s, In s sources /\ c = ptr_cap (span_ptr s)) \/
@@ -57,6 +78,8 @@ Definition available_cap (sources : list span) (born : list Z) (m : mem) (c : ca
     access_res m a (ptr_cap (span_ptr s)) 8 Read 8 = Some ok /\ c = m_aux m a) \/
   (exists base, In base born /\ (c = Obj base \/ c = Ro base)).
 
+(** Every address a call has [write_authority] over lies inside some
+    object of the memory ([in_object]); [local_effect_kept] needs this. *)
 Lemma write_authority_in : forall roots born m a,
   write_authority roots born m a -> in_object m a.
 Proof.
@@ -66,8 +89,15 @@ Proof.
   - exists base, reg. auto.
 Qed.
 
-(** Byte and shadow footprints are independent, but every changed cell
-    needs write authority, and a changed stored capability needs a
+(** One allocation-free segment of a call's memory effect, from m to m':
+    - every object of m is still an object of m' ([ids]);
+    - each object of m' is as it was in m or, if its base is in releases
+      or born and it was a live heap object, freed with empty bounds;
+    - bytes and [[aux]] entries outside [write_authority] are unchanged;
+    - every changed stored capability is [available_cap] from sources.
+
+    Byte and [[shadow]] footprints are independent, but every changed
+    cell needs write authority, and a changed stored capability needs a
     source. Release permissions are separate from write permissions. *)
 Definition local_effect (sources roots : list span) (releases born : list Z) (m m' : mem) : Prop :=
   ids m m' /\
@@ -79,6 +109,9 @@ Definition local_effect (sources roots : list span) (releases born : list Z) (m 
     m_bytes m' a = m_bytes m a /\ m_aux m' a = m_aux m a) /\
   (forall a, m_aux m' a = m_aux m a \/ available_cap sources born m (m_aux m' a)).
 
+(** A [local_effect] is a change the program itself may make to memory
+    ([kept]), so the [[runtime]] stays [[ready]] across it by the
+    runtime axiom [ready_kept]. *)
 Lemma local_effect_kept : forall sources roots releases born m m',
   local_effect sources roots releases born m m' -> kept m m'.
 Proof.
@@ -89,12 +122,15 @@ Proof.
   - intros a Hout. apply Hw. intros Ha. apply Hout. eapply write_authority_in; eauto.
 Qed.
 
+(** Changing nothing is a [local_effect]. *)
 Lemma local_effect_refl : forall sources roots releases born m,
   local_effect sources roots releases born m m.
 Proof.
   intros. split; [apply ids_refl|]. split; [intros b reg E; exists reg; auto |]. auto.
 Qed.
 
+(** Storing the n bytes of x at address a is a [local_effect], if the
+    call has [write_authority] over each of those n addresses. *)
 Lemma local_store_bytes : forall sources roots releases born m a n x,
   (forall b, a <= b < a + n -> write_authority roots born m b) ->
   local_effect sources roots releases born m (store_bytes m a n x).
@@ -213,21 +249,33 @@ Qed.
 
 (** ## Events and contract results *)
 
+(** An observation an [[external call]] makes: [StreamBytes] stream
+    bytes, bytes that stdio accepted for the stream with descriptor
+    number stream (possibly only into its buffer, not a kernel write),
+    or [ProcessExit] status, the end of the process. *)
 Inductive event : Type :=
 | StreamBytes (stream : Z) (bytes : list Z)
 | ProcessExit (status : Z).
 
+(** How a completed call ends: returning the [[word|words]] values,
+    exiting the process with status, or a resource ending with the
+    [[trap]] reason why. *)
 Inductive call_end : Type :=
 | CallReturn (values : list word)
 | CallExit (status : Z)
 | CallResource (why : reason).
 
+(** A resource reason: out of memory, or a request too big. These are
+    the only [[trap]] reasons a call within its contract may end with,
+    and they are not capability panics; [puts_contract] allows both. *)
 Definition resource_reason (why : reason) : Prop :=
   why = OutOfMemory \/ why = TooBig.
 
-(** Keep the declared return shape: an empty/singleton tuple is not a
-    void/scalar return. The machine adapter must use this signature,
-    not words_outcome's list-length convention. *)
+(** The words values fit the declared return type ty: none for void,
+    one word already at its [[class]] for a scalar, one per class for a
+    tuple. Keep the declared return shape: an empty or singleton tuple
+    is not a void or scalar return. The machine adapter must use this
+    signature, not [words_outcome]'s list-length convention. *)
 Definition return_shape (ty : ret_type) (values : list word) : Prop :=
   match ty with
   | RVoid => values = []
@@ -235,6 +283,10 @@ Definition return_shape (ty : ret_type) (values : list word) : Prop :=
   | RTuple ks => Forall2 (fun k x => word_at_class k x = Some x) ks values
   end.
 
+(** A returned [[word]] x carries only authority the call had: the
+    capability of a pointer, or of a [[limit]] word, is [available_cap]
+    from the sources and born objects in the final memory m; an integer
+    needs none. *)
 Definition word_authority (sources : list span) (born : list Z) (m : mem) (x : word) : Prop :=
   match x with
   | WPtr p => available_cap sources born m (ptr_cap p)
@@ -242,10 +294,16 @@ Definition word_authority (sources : list span) (born : list Z) (m : mem) (x : w
   | WInt _ => True
   end.
 
-(** A contract separates the ABI, its caller obligations, write/release
-    authority, normal outcomes and its resource endings. The panic set
-    documents checks reachable outside the premises; it does not grant
-    a transition when a premise fails. *)
+(** The [[external call|contract]] of one libc function, over a logical
+    world of libc state. It separates, in order: the declared return
+    type; the ABI premise on the call's result and argument syntax; the
+    caller's precondition on the argument words, memory and world; the
+    readable capability sources, writable roots and heap bases it may
+    release; the allocation requests (alignment, size) it may make; its
+    finite observable prefixes; its postcondition for normal endings;
+    the reasons it may end for lack of resources; and its panic set.
+    The panic set documents checks reachable outside the premises; it
+    does not grant a transition when a premise fails. *)
 Record contract (world : Type) : Type := mkContract {
   contract_returns : ret_type;
   contract_abi : call_result -> list arg -> Prop;
@@ -274,12 +332,19 @@ Arguments contract_panics {world}.
 
 (** ## Memory paths over any runtime *)
 
+(** The call relations over any [[runtime]] R, whose allocator answers
+    each request the contract makes. *)
 Module ExternalCalls (R : Runtime).
 
-(** Each allocation extends the call's private authority. It cannot
-    claim an existing object's identity: fresh_allocation proves that
-    from readiness. The list is historical, so freed identities never
-    become available for reuse. *)
+(** A finite path of a call's memory effects, from runtime state s,
+    memory m and born list born (the bases this call allocated) to s',
+    m' and born': [local_effect] segments, and successful allocations
+    of requests the contract allows, of at most [max_allocation_size]
+    bytes, each adding the new base to born. Each allocation extends
+    the call's private authority. It cannot claim an existing object's
+    identity: [fresh_allocation] proves that from readiness. The list
+    is historical, so freed identities never become available for
+    reuse. *)
 Inductive effects (sources roots : list span) (releases : list Z) (requests : Z -> Z -> Prop)
     : R.state -> mem -> list Z -> R.state -> mem -> list Z -> Prop :=
 | effects_refl : forall s m born, effects sources roots releases requests s m born s m born
@@ -293,8 +358,11 @@ Inductive effects (sources roots : list span) (releases : list Z) (requests : Z 
     effects sources roots releases requests s1 (allocated m (heap_req align size) base) (base :: born) s' m' born' ->
     effects sources roots releases requests s m born s' m' born'.
 
-(** This is a prefix theorem as well as an endpoint theorem: every
-    finite prefix is itself an effects derivation. *)
+(** If the [[runtime]] is [[ready]] in state s and memory m, it is ready
+    at the end of an [effects] path, and every object of m
+    [[identity|persists]] into m'. This is a prefix theorem as well as
+    an endpoint theorem: every finite prefix is itself an effects
+    derivation. *)
 Theorem effects_preserve : forall sources roots releases requests s m born s' m' born',
   effects sources roots releases requests s m born s' m' born' -> R.ready s m ->
   R.ready s' m' /\ persists m m'.
@@ -312,22 +380,33 @@ Proof.
     eapply persists_trans; [apply allocated_persists; exact (proj1 (proj2 (proj2 (proj2 Hf)))) | exact Hp].
 Qed.
 
-(** Prefixes do not require an eventual return: a blocking call may
-    have these finite observations. Concrete prefix coverage is trusted,
-    not established by the structural preservation theorem. *)
+(** A finite observed prefix of a call of the contract spec on argument
+    words xs: an [effects] path from s and m, with the contract's
+    sources, roots, releases and requests and no born objects yet, to
+    s', m' and born, where the contract's prefix relation accepts the
+    observations trace and the new world w'. Prefixes do not require an
+    eventual return: a blocking call may have these finite
+    observations. Concrete prefix coverage is trusted, not established
+    by the structural preservation theorem. *)
 Definition prefix {world : Type} (spec : contract world) xs s m w born trace s' m' w' : Prop :=
   effects (contract_sources spec xs m w) (contract_writes spec xs m w)
     (contract_releases spec xs m w) (contract_requests spec xs m w) s m [] s' m' born /\
   contract_prefix spec xs m w born trace m' w'.
 
+(** A call [prefix] from a [[ready]] state keeps the runtime ready and
+    every object [[identity|persisting]]. *)
 Theorem prefix_preserve : forall world (spec : contract world) xs s m w born trace s' m' w',
   prefix spec xs s m w born trace s' m' w' -> R.ready s m ->
   R.ready s' m' /\ persists m m'.
 Proof. intros world spec xs s m w born trace s' m' w' [He _] Hr. eapply effects_preserve; eauto. Qed.
 
-(** Compare the original requested size, BEFORE heap_req rounds it up,
-    exactly as Ops.v does. A legal size 2^48-1 has extent 2^48, and may
-    be refused by a runtime, but is not TooBig. *)
+(** Why an allocation the contract requests may fail in runtime state
+    s: [OutOfMemory] when the runtime refuses a request of legal size,
+    [TooBig] when the size exceeds [max_allocation_size]
+    (`max_allocation_size/1`). Compare the original requested size,
+    BEFORE [heap_req] rounds it up, exactly as Ops.v does. A legal size
+    2^48-1 has extent 2^48, and may be refused by a runtime, but is not
+    TooBig. *)
 Inductive resource_failure (requests : Z -> Z -> Prop) (s : R.state) : reason -> Prop :=
 | failure_oom : forall align size,
     requests align size -> 0 <= size <= max_allocation_size ->
@@ -336,7 +415,18 @@ Inductive resource_failure (requests : Z -> Z -> Prop) (s : R.state) : reason ->
     requests align size -> max_allocation_size < size ->
     resource_failure requests s TooBig.
 
-(** No rule turns a failed precondition into success or a native trap.
+(** A completed call of the contract spec, with call result r, argument
+    syntax args and argument words xs, from runtime state s, memory m
+    and world w, observing trace and ending as ending. In both rules the
+    ABI and the precondition hold and a [prefix] reaches the end state.
+    - Normal: the postcondition holds and the ending is not a resource
+      ending; returned values have the declared [return_shape] and only
+      the call's authority ([word_authority]); an exit ends the trace
+      with its [ProcessExit].
+    - Resource: a requested allocation fails ([resource_failure]) for a
+      reason the contract allows.
+
+    No rule turns a failed precondition into success or a native trap.
     The future machine wrapper must check admissibility even when no
     invoke derivation exists; absence of behavior is not adequacy. *)
 Inductive invoke {world : Type} (spec : contract world) (r : call_result) (args : list arg)
@@ -358,11 +448,16 @@ Inductive invoke {world : Type} (spec : contract world) (r : call_result) (args 
     resource_failure (contract_requests spec xs m w) s' why -> contract_resource spec why ->
     invoke spec r args xs s m w trace (CallResource why) s' m' w'.
 
+(** Every completed call, normal or resource, is a [prefix] ending in
+    the same state, for some list of born objects. *)
 Theorem invoke_prefix : forall world (spec : contract world) r args xs s m w trace ending s' m' w',
   invoke spec r args xs s m w trace ending s' m' w' ->
   exists born, prefix spec xs s m w born trace s' m' w'.
 Proof. intros. destruct H; eauto. Qed.
 
+(** A completed call from a [[ready]] state keeps the runtime ready and
+    every object [[identity|persisting]]; the labelled machine's
+    [step_ready] and [step_persists] rest on this. *)
 Theorem invoke_preserve : forall world (spec : contract world) r args xs s m w trace ending s' m' w',
   invoke spec r args xs s m w trace ending s' m' w' -> R.ready s m ->
   R.ready s' m' /\ persists m m'.
@@ -372,12 +467,16 @@ Proof.
   eapply effects_preserve; eauto.
 Qed.
 
-(** Boundary checks use the caller's size, not the rounded extent.
-    Successful allocation remains conditional on the runtime's answer. *)
+(** The largest legal size, rounded by [heap_req], reserves 2^48
+    bytes. Boundary checks use the caller's size, not the rounded
+    extent. *)
 Example rounded_maximum_extent :
   req_extent (heap_req 16 max_allocation_size) = 2 ^ 48.
 Proof. reflexivity. Qed.
 
+(** An allocation of the largest legal size is an [effects] step when
+    the runtime grants it. Successful allocation remains conditional on
+    the runtime's answer. *)
 Example rounded_maximum_allocation : forall s m base s',
   R.alloc s (heap_req 16 max_allocation_size) = Some (base, s') ->
   effects [] [] [] (fun align size => align = 16 /\ size = max_allocation_size)
@@ -387,6 +486,8 @@ Proof.
     [split; reflexivity | unfold max_allocation_size; lia | exact Ha | constructor].
 Qed.
 
+(** A request of the largest legal size never fails as [TooBig], even
+    though its rounded extent is 2^48. *)
 Example rounded_maximum_not_too_big : forall s,
   ~ resource_failure (fun align size => align = 16 /\ size = max_allocation_size) s TooBig.
 Proof.
@@ -394,6 +495,7 @@ Proof.
   destruct Hreq as [_ ->]. lia.
 Qed.
 
+(** A request of 2^48 bytes fails as [TooBig] in any runtime state. *)
 Example oversized_request : forall s,
   resource_failure (fun align size => align = 16 /\ size = 2 ^ 48) s TooBig.
 Proof.
@@ -405,20 +507,26 @@ End ExternalCalls.
 
 (** ## The first contract: puts *)
 
-(** The first NUL is within a readable capability. There is no bound
-    on the length in the contract; examples' short strings are fixtures. *)
+(** The memory m holds the nonzero bytes bytes from address a on,
+    followed by a NUL byte. *)
 Fixpoint string_at (m : mem) (a : Z) (bytes : list Z) : Prop :=
   match bytes with
   | [] => m_bytes m a = 0
   | b :: rest => 0 < b < 256 /\ m_bytes m a = b /\ string_at m (a + 1) rest
   end.
 
+(** Pointer p points at a C string with contents bytes in memory m:
+    its capability permits reading the bytes and the terminating NUL
+    ([access_res] with [Read]), and [string_at] holds there, so the
+    first NUL is within a readable capability. There is no bound on the
+    length in the contract; examples' short strings are fixtures. *)
 Definition c_string (m : mem) (p : ptr) (bytes : list Z) : Prop :=
   access_res m (ptr_addr p) (ptr_cap p) (Z.of_nat (length bytes) + 1) Read 1 = Some ok /\
   string_at m (ptr_addr p) bytes.
 
-(** This small world records only the currently modeled stream's
-    usability and reachable writable libc roots (stdout, errno, buffer).
+(** The logical libc world of [puts_contract]. This small world records
+    only the currently modeled stream's usability (stdout_usable) and
+    reachable writable libc roots, stdio_roots (stdout, errno, buffer).
     Establishing those roots at startup remains an entry obligation.
     It does not claim that an arbitrary writable object is a FILE. *)
 Record stdio_world : Type := mkStdioWorld {
@@ -426,26 +534,39 @@ Record stdio_world : Type := mkStdioWorld {
   stdio_roots : list span
 }.
 
+(** In memory m, the world w's stdout is usable and every libc root it
+    names is a [writable_span]. *)
 Definition stdio_ready (m : mem) (w : stdio_world) : Prop :=
   stdout_usable w = true /\ Forall (writable_span m) (stdio_roots w).
 
+(** The ABI of puts: the result is discarded or read as one word of
+    [[class]] [W], and the one argument is passed as a pointer ([P]). *)
 Definition puts_abi (r : call_result) (args : list arg) : Prop :=
   (r = CVoid \/ exists d, r = CResult d W) /\ exists v, args = [Arg P v].
 
-(** rep is the trusted relation between the abstract stream state and
-    its memory representation, including ownership and pointer sources.
-    No concrete FILE representation/startup instance is claimed here. *)
+(** The precondition of puts: the world w is represented in memory m
+    (rep), it is [stdio_ready], and the one argument word is a pointer
+    to a [c_string]. rep is the trusted relation between the abstract
+    stream state and its memory representation, including ownership and
+    pointer sources. No concrete FILE representation or startup instance
+    is claimed here. *)
 Definition puts_pre (rep : mem -> stdio_world -> Prop)
     (xs : list word) (m : mem) (w : stdio_world) : Prop :=
   rep m w /\ stdio_ready m w /\ exists p bytes, xs = [WPtr p] /\ c_string m p bytes.
 
-(** A call may retain newly allocated buffers, but cannot acquire write
-    authority to an unrelated old object by changing the logical world. *)
+(** Every libc root of the new world w is backed by the call's own
+    authority: its capability is [available_cap] from the old roots and
+    the born objects, and the call has [write_authority] over all of its
+    bytes. A call may retain newly allocated buffers, but cannot acquire
+    write authority to an unrelated old object by changing the logical
+    world. *)
 Definition stdio_delegates (roots : list span) (born : list Z) (m : mem) (w : stdio_world) : Prop :=
   forall s, In s (stdio_roots w) ->
     available_cap roots born m (ptr_cap (span_ptr s)) /\
     forall a, span_contains s a -> write_authority roots born m a.
 
+(** A world whose roots are exactly the old roots, all writable, is
+    delegated: keeping the same roots needs no new authority. *)
 Lemma stdio_delegates_refl : forall roots born m w,
   stdio_roots w = roots -> Forall (writable_span m) roots -> stdio_delegates roots born m w.
 Proof.
@@ -455,6 +576,11 @@ Proof.
     rewrite Forall_forall in Hroots. apply Hroots. exact Hin.
 Qed.
 
+(** What any finite prefix of a puts call may observe: the new world w'
+    is represented in m', [stdio_ready] and [stdio_delegates] from the
+    old roots; and the trace is empty, or one [StreamBytes] event on
+    stream 1 (stdout) accepting a prefix of the string followed by its
+    newline (byte 10). *)
 Definition puts_prefix (rep : mem -> stdio_world -> Prop)
     (xs : list word) (m : mem) (w : stdio_world) (born : list Z)
     (trace : list event) (m' : mem) (w' : stdio_world) : Prop :=
@@ -463,10 +589,14 @@ Definition puts_prefix (rep : mem -> stdio_world -> Prop)
     xs = [WPtr p] /\ c_string m p bytes /\ bytes ++ [10] = accepted ++ tail /\
     trace = [StreamBytes 1 accepted]).
 
-(** Successful acceptance is the whole string plus newline. On an I/O
-    error, any prefix may have been accepted (including all of it).
-    EOF is -1 at this glibc pin, represented as unsigned class w bits.
-    Neither event says that the bytes have reached a file descriptor. *)
+(** The postcondition of puts: the call accepted a prefix of the string
+    and its newline, observed as one [StreamBytes] event on stdout, and
+    returned one integer, with the world still [stdio_ready]. Successful
+    acceptance is the whole string plus newline, with a nonnegative int
+    result. On an I/O error, any prefix may have been accepted
+    (including all of it), and the result is EOF: -1 at this glibc pin,
+    represented as unsigned bits of [[class]] w, 2^32 - 1. Neither event
+    says that the bytes have reached a file descriptor. *)
 Definition puts_post (xs : list word) (m : mem) (w : stdio_world) (born : list Z)
     (trace : list event) (ending : call_end) (m' : mem) (w' : stdio_world) : Prop :=
   exists p bytes accepted tail result,
@@ -476,9 +606,18 @@ Definition puts_post (xs : list word) (m : mem) (w : stdio_world) (born : list Z
     trace = [StreamBytes 1 accepted] /\ ending = CallReturn [WInt result] /\
     stdio_ready m' w'.
 
+(** The capability checks a puts call outside its contract can reach
+    (codes R, W and V of [libc-contracts.md](../../docs/libc-contracts.md)):
+    null capability, out of bounds, misaligned, read-only store, and
+    argument or return size mismatch. *)
 Definition puts_panic (why : reason) : Prop :=
   In why [NullCapability; OutOfBounds; Misaligned; Readonly; ArgumentSize; ReturnSize].
 
+(** The [[external call|contract]] of puts, given the trusted stream
+    representation rep and the allocation requests it may make: a word
+    result, [puts_abi], [puts_pre], the world's roots as both sources
+    and writable roots, no releases, [puts_prefix], [puts_post], the
+    [resource_reason] endings and the [puts_panic] set. *)
 Definition puts_contract (rep : mem -> stdio_world -> Prop)
     (requests : list word -> mem -> stdio_world -> Z -> Z -> Prop) : contract stdio_world :=
   mkContract stdio_world (RClass W) puts_abi (puts_pre rep)
@@ -488,16 +627,22 @@ Definition puts_contract (rep : mem -> stdio_world -> Prop)
 
 (** ## Contract boundary checks *)
 
+(** No resource ending puts may have is in its panic set: running out of
+    memory is not a capability panic. *)
 Lemma puts_no_capability_panic : forall rep requests why,
   contract_resource (puts_contract rep requests) why -> ~ puts_panic why.
 Proof.
   intros rep requests why [-> | ->]; unfold puts_panic; simpl; intuition discriminate.
 Qed.
 
+(** A null pointer is never a [c_string], so puts of null fails the
+    precondition rather than having a modeled behavior. *)
 Lemma puts_null_not_admissible : forall m bytes,
   ~ c_string m (mkPtr 0 CNone) bytes.
 Proof. intros m bytes [H _]. discriminate H. Qed.
 
+(** A puts call that returns anything but EOF accepted exactly its
+    whole string followed by a newline on stdout. *)
 Lemma puts_success_bytes : forall xs m w born trace m' w' result,
   puts_post xs m w born trace (CallReturn [WInt result]) m' w' ->
   result <> 2 ^ 32 - 1 ->
@@ -510,14 +655,23 @@ Qed.
 
 (** ## Inhabited behaviors and regression boundaries *)
 
+(** The call relations over the interpreter's runtime, for the
+    examples below. *)
 Module InterpExternal := ExternalCalls InterpRuntime.
 
-(** An abstract stream-state fixture, not a native FILE implementation.
-    String, libc state and an unrelated caller object are asymmetric. *)
+(** The bytes of hello. *)
 Definition hello_bytes : list Z := [104; 101; 108; 108; 111].
+(** A read-only pointer to the string, at address 1024. *)
 Definition hello_ptr : ptr := mkPtr 1024 (Ro 1024).
+(** The fixture's one libc root: 16 writable bytes at 2048 standing for
+    stdout's state. *)
 Definition stdout_span : span := mkSpan (mkPtr 2048 (Obj 2048)) 16.
+(** A usable stdout whose only root is [stdout_span]. *)
 Definition hello_world : stdio_world := mkStdioWorld true [stdout_span].
+(** An abstract stream-state fixture, not a native FILE implementation:
+    hello and its NUL in a global object at 1024, the libc state at
+    2048, and an unrelated caller heap object at 3072. String, libc
+    state and caller object are asymmetric. *)
 Definition hello_mem : mem :=
   mkMem (fun a => if a =? 1024 then 104 else if a =? 1025 then 101 else
                    if a =? 1026 then 108 else if a =? 1027 then 108 else
@@ -525,15 +679,20 @@ Definition hello_mem : mem :=
     [mkRegion 1024 1030 GlobalData Live; mkRegion 2048 2064 Heap Live;
      mkRegion 3072 3080 Heap Live] (fun _ => CNone).
 
+(** The fixture's stream representation: the world is [hello_world]
+    and the libc object at 2048 is a live heap object. *)
 Definition fixture_rep (m : mem) (w : stdio_world) : Prop :=
   w = hello_world /\ object_region 2048 (m_regions m) = Some (mkRegion 2048 2064 Heap Live).
 
+(** The fixture's one allowed allocation: 32 bytes, 16-aligned. *)
 Definition fixture_requests (_ : list word) (_ : mem) (_ : stdio_world) (align size : Z) : Prop :=
   align = 16 /\ size = 32.
 
+(** [hello_ptr] points at the C string hello in [hello_mem]. *)
 Lemma hello_string : c_string hello_mem hello_ptr hello_bytes.
 Proof. vm_compute. repeat split; lia. Qed.
 
+(** The fixture's stdout is [stdio_ready] in [hello_mem]. *)
 Lemma hello_stdio : stdio_ready hello_mem hello_world.
 Proof.
   split; [reflexivity|]. constructor; [|constructor].
@@ -541,14 +700,18 @@ Proof.
   repeat split; reflexivity.
 Qed.
 
+(** puts of [hello_ptr] meets its precondition in the fixture. *)
 Lemma hello_pre : puts_pre fixture_rep [WPtr hello_ptr] hello_mem hello_world.
 Proof.
   split; [split; reflexivity|]. split; [exact hello_stdio|].
   exists hello_ptr, hello_bytes. split; [reflexivity|exact hello_string].
 Qed.
 
-(** Success and both empty/nonempty partial EOF results use the same
-    public call relation. No allocation or kernel write is required. *)
+(** puts of hello may complete having accepted any prefix, accepted, of
+    hello and its newline: it returns 0 if that is all of them, and may
+    return EOF (2^32 - 1) whatever the prefix. Success and both empty
+    and nonempty partial EOF results use the same public call relation,
+    [invoke]. No allocation or kernel write is required. *)
 Lemma hello_return : forall accepted tail n,
   hello_bytes ++ [10] = accepted ++ tail ->
   ((tail = [] /\ n = 0) \/ n = 2 ^ 32 - 1) ->
@@ -578,6 +741,8 @@ Proof.
   - intros status H. discriminate H.
 Qed.
 
+(** puts of hello succeeds, accepting hello and a newline and
+    returning 0. *)
 Example hello_success :
   InterpExternal.invoke (puts_contract fixture_rep fixture_requests)
     CVoid [Arg P (Const 0)] [WPtr hello_ptr]
@@ -586,6 +751,7 @@ Example hello_success :
     InterpRuntime.start hello_mem hello_world.
 Proof. apply (hello_return _ []); [reflexivity | left; auto]. Qed.
 
+(** puts of hello may return EOF having accepted nothing. *)
 Example hello_eof_empty :
   InterpExternal.invoke (puts_contract fixture_rep fixture_requests)
     CVoid [Arg P (Const 0)] [WPtr hello_ptr]
@@ -594,6 +760,7 @@ Example hello_eof_empty :
     InterpRuntime.start hello_mem hello_world.
 Proof. apply (hello_return _ (hello_bytes ++ [10])); [reflexivity | right; reflexivity]. Qed.
 
+(** puts of hello may return EOF having accepted only he. *)
 Example hello_eof_partial :
   InterpExternal.invoke (puts_contract fixture_rep fixture_requests)
     CVoid [Arg P (Const 0)] [WPtr hello_ptr]
@@ -602,6 +769,8 @@ Example hello_eof_partial :
     InterpRuntime.start hello_mem hello_world.
 Proof. apply (hello_return _ [108; 108; 111; 10]); [reflexivity | right; reflexivity]. Qed.
 
+(** puts of hello may return EOF even having accepted all of it and
+    the newline. *)
 Example hello_eof_full :
   InterpExternal.invoke (puts_contract fixture_rep fixture_requests)
     CVoid [Arg P (Const 0)] [WPtr hello_ptr]
@@ -610,6 +779,8 @@ Example hello_eof_full :
     InterpRuntime.start hello_mem hello_world.
 Proof. apply (hello_return _ []); [reflexivity | right; reflexivity]. Qed.
 
+(** An allocation the contract requests is an [effects] step: the
+    interpreter's runtime places it at 2^32 and adds it to born. *)
 Example internal_allocation :
   InterpExternal.effects [stdout_span] [stdout_span] []
     (fixture_requests [] hello_mem hello_world)
@@ -620,6 +791,9 @@ Proof.
     unfold max_allocation_size; simpl; lia | reflexivity | constructor].
 Qed.
 
+(** A call that writes libc state and accepts h, and whose allocation
+    the runtime then refuses (its address space is used up), ends as
+    [OutOfMemory] keeping that write and that observation. *)
 Example refusal_keeps_prefix :
   InterpExternal.invoke (puts_contract fixture_rep fixture_requests)
     CVoid [Arg P (Const 0)] [WPtr hello_ptr]
@@ -643,6 +817,9 @@ Proof.
   - left. reflexivity.
 Qed.
 
+(** The interpreter's runtime is [[ready]] in [hello_mem] with any next
+    allocation address next from 4096 up to the end of the address
+    space. *)
 Lemma hello_ready : forall next,
   4096 <= next <= InterpRuntime.address_end -> InterpRuntime.ready next hello_mem.
 Proof.
@@ -662,20 +839,29 @@ Proof.
     destruct (a =? 1028) eqn:E5; [apply Z.eqb_eq in E5; lia|]. reflexivity.
 Qed.
 
-(** These are negative contract obligations, not invented native traps. *)
+(** hello followed by an A is not the string at [hello_ptr], since the
+    NUL comes first. This and the examples below are negative contract
+    obligations, not invented native traps. *)
 Example missing_nul : ~ c_string hello_mem hello_ptr (hello_bytes ++ [65]).
 Proof. intros [H _]. discriminate H. Qed.
 
-(** All six bytes are readable, but the sixth is not a terminator. *)
+(** [hello_mem] with every byte A: all six bytes of the string object
+    are readable, but the sixth is not a terminator. *)
 Definition nonzero_mem : mem :=
   mkMem (fun _ => 65) (m_regions hello_mem) (m_aux hello_mem).
 
+(** In [nonzero_mem], the six bytes at 1024 are readable. *)
 Example nonzero_readable : access_res nonzero_mem 1024 (Ro 1024) 6 Read 1 = Some ok.
 Proof. reflexivity. Qed.
 
+(** Yet five As are not a C string there: readable bytes without a NUL
+    do not satisfy [c_string]. *)
 Example missing_nul_in_bounds : ~ c_string nonzero_mem hello_ptr [65; 65; 65; 65; 65].
 Proof. intros [_ H]. vm_compute in H. intuition discriminate. Qed.
 
+(** A call cannot add a zero-length root on the string's object to the
+    world: its [Obj] capability is not available from stdout's root,
+    even though the span has no bytes. *)
 Example no_zero_span_root_injection :
   ~ stdio_delegates [stdout_span] [] hello_mem
     (mkStdioWorld true [stdout_span; mkSpan (mkPtr 1024 (Obj 1024)) 0]).
@@ -685,6 +871,8 @@ Proof.
     [(s & a & [<- | []] & _ & _ & _ & Hc) | (b & [] & _)]]]; discriminate Hc.
 Qed.
 
+(** A call cannot widen stdout's root to cover the unrelated caller
+    object at 3072, even with stdout's own capability. *)
 Example no_unrelated_root_coverage :
   ~ stdio_delegates [stdout_span] [] hello_mem
     (mkStdioWorld true [mkSpan (mkPtr 2048 (Obj 2048)) 2048]).
@@ -695,6 +883,8 @@ Proof.
   unfold span_contains in Ha. simpl in Ha. lia.
 Qed.
 
+(** Writing a byte of the unrelated caller object is not a
+    [local_effect] of a call whose only root is stdout's. *)
 Example no_unrelated_write :
   ~ local_effect [stdout_span] [stdout_span] [] [] hello_mem (store_bytes hello_mem 3072 1 7).
 Proof.
@@ -704,6 +894,8 @@ Proof.
   destruct (Hw _ Hn) as [Hb _]. discriminate Hb.
 Qed.
 
+(** Storing a forged capability to the caller object into stdout's
+    state is not a [local_effect]: it has no source. *)
 Example no_forged_capability :
   ~ local_effect [stdout_span] [stdout_span] [] [] hello_mem (store_aux hello_mem 2048 (Obj 3072)).
 Proof.
@@ -712,6 +904,8 @@ Proof.
     discriminate H.
 Qed.
 
+(** A read-only source does not make [Obj] of the same address
+    available. *)
 Example no_readonly_upgrade :
   ~ available_cap [mkSpan hello_ptr 6] [] hello_mem (Obj 1024).
 Proof.
@@ -719,6 +913,8 @@ Proof.
     discriminate H.
 Qed.
 
+(** Freeing the caller object is not a [local_effect] of a call that
+    may release nothing. *)
 Example no_unauthorized_release :
   ~ local_effect [stdout_span] [stdout_span] [] [] hello_mem
     (mkMem (m_bytes hello_mem)
@@ -731,6 +927,8 @@ Proof.
   injection Hreg as <-. discriminate H.
 Qed.
 
+(** Once an object is freed, neither a root on it nor its having been
+    born in this call gives [write_authority] over it. *)
 Example no_write_after_release :
   ~ write_authority [mkSpan (mkPtr 3072 (Obj 3072)) 8] [3072]
     (mkMem (fun _ => 0) [mkRegion 3072 3072 Heap Freed] (fun _ => CNone)) 3072.

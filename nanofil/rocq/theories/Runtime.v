@@ -1,77 +1,35 @@
-(** The runtime as axioms: Campaign 2's `Module Type Runtime`, and the
-    interpreter's instance of it (docs/formal.md, docs/runtime-axioms.md).
+(** The [[runtime|runtime as axioms]]: Campaign 2's module type
+    [Runtime], and the [[interpreter]]'s instance of it
+    ([formal.md](../../docs/formal.md),
+    [runtime-axioms.md](../../docs/runtime-axioms.md), which gives each
+    axiom's source in the runtime).
 
-    The model of the checked IR is about one thread's program. What the
-    Fil-C runtime does around that program, where it puts a new object,
-    what free does to an object's header, what the collector and the
-    thread's own signal handlers may do at a safepoint, is not the
-    model's to decide. `Runtime` states those facts as one page of
-    axioms, read against the staging Fil-C the toolchain pins (mbrock/fil-c
-    at `18b6663a2785c8eba6cc2a544a7711e19fc448c7`, the `coreRev` of
-    lib/filc-staging.json). Each axiom has a native test in
+    The model of the [[stage|checked IR]] is about one thread's
+    program. What the Fil-C runtime does around that program, where it
+    puts a new object, what free does to an object's header, what the
+    collector and the thread's own signal handlers may do at a
+    [[poll|safepoint]], is not the model's to decide. [Runtime] states
+    those facts as one page of axioms, read against the staging Fil-C
+    the toolchain pins (mbrock/fil-c at
+    `18b6663a2785c8eba6cc2a544a7711e19fc448c7`, the `coreRev` of
+    lib/filc-staging.json). Each axiom about Fil-C has a native test in
     tests/c/prog/axiom-*.c that fails if it is stated in the obvious
     stronger way that the runtime does not promise.
-
-    ## The axioms
-
-    | Fact | Statement | Native test |
-    |---|---|---|
-    | `fresh_allocation` | an allocation's base is `fresh`: a new identity, aligned, overlapping no object, ending at or below 2^64, reading as zero | axiom-fresh.c |
-    | `address_space` | every object lies in [0, 2^48], native Fil-C's address space; an allocation the runtime cannot hold is refused, a trap | axiom-address.c |
-    | `non_moving` | at a safepoint no byte moves or changes: the collector writes no object's contents | axiom-nonmoving.c |
-    | `free_lifetime`, `safepoint_lifetime` | bounds change only by free, which empties a live heap object's | axiom-lifetime.c |
-    | `safepoints` | the runtime acts only at instructions that are not evidence preserving | axiom-safepoint.c |
-    | `retention` | free leaves an object's bytes and stored capabilities where they were | axiom-retention.c |
-    | `free_keeps_ids` | free reclaims nothing: every identity before it is one after it | axiom-identity.c |
-    | `free_checked` | free frees or traps, and never answers `unchecked` | axiom-free.c |
-    | `aux_round_trip` | a stored capability stays, or becomes one that traps as the freed object does | axiom-aux.c |
-    | `rooting` | no identity the program can name is reclaimed | axiom-rooting.c |
-
-    Three more obligations are about the runtime's own state, not about
-    Fil-C, so they have no native test. `freed_bounds`: no freed object
-    of a memory the runtime is ready in has bounds; every free and the
-    end of every invocation empty them (`lifetime_step`, `region_step`),
-    so it constrains only the memory a run starts in. `ready_kept`: the
-    program's own writes inside objects and its emptying of bounds leave
-    the runtime ready to allocate. `safepoint_ready`: the runtime's
-    actions at a safepoint do too. With `fresh_allocation` the last two
-    make `ready` an invariant of every run (Machine.v).
 
     ## One thread's view
 
     The model is one thread's. A free by one of its signal handlers,
     which Fil-C runs only at pollchecks and exits to the runtime, and
     the collector's rewriting of stored capabilities are what the
-    program sees change at a safepoint, the `safepoint` relation, and
+    program sees change at a safepoint, the [safepoint] relation, and
     nowhere else. Another thread is outside the model: its writes are
-    (`non_moving` lets no byte change at a safepoint), and so are its
+    ([non_moving] lets no byte change at a safepoint), and so are its
     frees, which natively show at any check, not only at a safepoint
     (tests/c/prog/axiom-threads.c). For a threaded program, native
     safety rests on Fil-C's own argument, not on the theorems proved
     over this module type: every check traps on a freed object, and an
     access whose check passed before the free reads retained memory
-    (`retention`).
-
-    A freed object's address can be a new object's natively, once
-    nothing names the old one. The model's `fresh` never reuses an
-    identity, because a capability never dies in the model: the two
-    agree on whether each access through a capability a program still
-    holds traps, though not on its address bits after a collection.
-
-    ## Instances
-
-    `InterpRuntime` is the interpreter's: interp.pl's allocator
-    (`alloc_base/6`), free as Memory.v states it, and no other thread.
-    It proves every axiom, so the module type is consistent. Run.v's
-    `Driver` takes any `Runtime`; the extracted model is
-    `Driver InterpRuntime` (Transport.v). Semantics.v calls Memory.v's
-    `free_res`, which is `InterpRuntime.free`; the step relation takes
-    `fresh` bases, which every runtime's `alloc` gives.
-
-    `fresh_allocation` holds of a runtime's state that is `ready` for
-    the memory: for the interpreter, every object lies below Next and
-    nothing above it has been written. Machine.v proves that every step
-    keeps it. *)
+    ([retention]). *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory.
@@ -80,8 +38,9 @@ Open Scope Z_scope.
 
 (** ## What the axioms speak of *)
 
-(** `lifetime_step m m'`: every identity of m' was one of m, unchanged,
-    or a live heap object now freed, its bounds empty. *)
+(** How the [[runtime]]'s free may change objects, from memory m to m':
+    every [[identity]] of m' was one of m, unchanged, or a live heap
+    object now freed, its bounds empty. No identity appears. *)
 Definition lifetime_step (m m' : mem) : Prop :=
   forall b reg',
     object_region b (m_regions m') = Some reg' ->
@@ -90,41 +49,44 @@ Definition lifetime_step (m m' : mem) : Prop :=
       (reg' = reg \/
        (r_kind reg = Heap /\ r_life reg = Live /\ reg' = mkRegion b b Heap Freed)).
 
-(** `freed_in rs c`: c is the capability of an object freed in rs. *)
+(** The [[capability]] c is that of an object freed in the
+    [[region|regions]] rs. *)
 Definition freed_in (rs : list region) (c : cap) : Prop :=
   exists b reg,
     (c = Obj b \/ c = Ro b) /\ object_region b rs = Some reg /\ r_life reg = Freed.
 
-(** `traps_as_freed rs c`: every access through c traps out of bounds,
-    as every access to a freed object does. The collector's free
-    singleton is such a capability. *)
+(** Every nonempty access through the capability c, in the regions rs,
+    [[trap|traps]] out of bounds, as every access to a freed object
+    does. The collector's free singleton is such a capability. *)
 Definition traps_as_freed (rs : list region) (c : cap) : Prop :=
   forall a size r align, 0 < size -> cap_access_res c rs a size r align = Some (RTrap OutOfBounds).
 
-(** `objects_fit rs`: every object of rs lies in [0, 2^48], native
+(** Every object of the regions rs lies between 0 and 2^48, native
     Fil-C's address space (`PAS_ADDRESS_BITS`); a native address is
     unsigned, so no object starts below 0. An address inside one never
     wraps (`raw_address/3`), and two addresses of one object are less
     than 2^63 apart, so a near offset between them does not wrap either
-    (`hull_covered/7`). A lower half check compares its address, read
-    signed, with the object's base (`half_bound/6`), so an address that
-    wrapped below 0 fails it. *)
+    (`hull_covered/7`). A lower [[half check]] compares its address,
+    read signed, with the object's base (`half_bound/6`), so an address
+    that wrapped below 0 fails it. *)
 Definition objects_fit (rs : list region) : Prop :=
   forall b reg, object_region b rs = Some reg -> 0 <= b /\ r_end reg <= 2 ^ 48.
 
-(** `freed_empty rs`: every freed object of rs is empty. Free and the
-    end of an invocation end an object's life and empty its bounds
-    together (`lifetime_step`, `region_step`). *)
+(** Every freed object of the regions rs is empty. Free and the end of
+    an invocation end an object's life and empty its bounds together
+    ([lifetime_step], [region_step]). *)
 Definition freed_empty (rs : list region) : Prop :=
   forall b reg, object_region b rs = Some reg -> r_life reg = Freed -> r_end reg = b.
 
-(** `in_object m a`: a is inside the current bounds of an object of m. *)
+(** The address a is inside the current bounds of an object of the
+    memory m. *)
 Definition in_object (m : mem) (a : Z) : Prop :=
   exists b reg, object_region b (m_regions m) = Some reg /\ b <= a < r_end reg.
 
-(** `region_step m m'`: every identity of m' was one of m, unchanged,
-    or live and now ended, its bounds empty: a free, or the end of an
-    invocation's locals. *)
+(** How the program may change objects, from memory m to m': every
+    [[identity]] of m' was one of m, unchanged, or live and now ended,
+    its bounds empty: a free, or the end of an invocation's locals.
+    Unlike [lifetime_step], an object of any kind may end. *)
 Definition region_step (m m' : mem) : Prop :=
   forall b reg',
     object_region b (m_regions m') = Some reg' ->
@@ -132,30 +94,56 @@ Definition region_step (m m' : mem) : Prop :=
       object_region b (m_regions m) = Some reg /\
       (reg' = reg \/ (r_life reg = Live /\ reg' = mkRegion b b (r_kind reg) Freed)).
 
-(** `kept m m'`: what the program itself may do to memory between
-    allocations: end objects, and write bytes and stored capabilities
-    inside objects' bounds. *)
+(** What the program itself may do to memory between allocations, from
+    m to m': end objects ([region_step]), and write bytes and stored
+    capabilities only inside objects' bounds. *)
 Definition kept (m m' : mem) : Prop :=
   region_step m m' /\
   forall a, ~ in_object m a -> m_bytes m' a = m_bytes m a /\ m_aux m' a = m_aux m a.
 
 (** ## The module type *)
 
+(** What the model assumes of the Fil-C [[runtime]]: its allocator, its
+    free, and what it and the thread's signal handlers may do at a
+    [[poll|safepoint]]. A runtime is any module with these parts that
+    proves these axioms; Run.v's [Driver] and Machine.v's [Machine] run
+    over any of them. *)
 Module Type Runtime.
 
   (** The runtime's own state, which the program never reads: the
       interpreter's Next. *)
   Parameter state : Type.
+
+  (** The runtime's state when a run starts. *)
   Parameter start : state.
 
-  (** `ready s m`: s may allocate in m. *)
+  (** The runtime in state s is [[ready]] to allocate in the memory m:
+      its bookkeeping agrees with m, so a new object will be [fresh]
+      there. For the interpreter, every object lies below Next and
+      nothing above it has been written. *)
   Parameter ready : state -> mem -> Prop.
 
-  (** The base of a new object of q, and the state after it; `None`
-      when the runtime cannot hold the object, which ends the run with
-      `trap(out_of_memory)`. *)
+  (** The base of a new object for the request q, and the state after
+      it; None when the runtime cannot hold the object, which ends the
+      run with `trap(out_of_memory)`. *)
   Parameter alloc : state -> alloc_req -> option (Z * state).
 
+  (** The allocator gives each new object an address no other object
+      uses. Where the runtime in state s is ready in memory m, a
+      request q with a positive alignment and an extent of at least 0
+      that [alloc] grants gets a [fresh] base: a new [[identity]],
+      aligned, overlapping no object, ending at or below 2^64, reading
+      as zero with no stored capability; and the runtime is ready in
+      the memory with the new object. The model needs it so that a new
+      object cannot alias an old one, and so the step relation's
+      choice of any fresh base covers every runtime.
+
+      Natively a freed object's address can be a new object's once
+      nothing names the old one; the model never reuses an identity,
+      because a capability never dies in it. The two agree on whether
+      each access through a capability the program still holds traps,
+      not on its address bits after a collection. Native test:
+      `axiom-fresh.c`. *)
   Axiom fresh_allocation : forall s m q base s',
     ready s m ->
     0 < req_align q ->
@@ -163,70 +151,131 @@ Module Type Runtime.
     alloc s q = Some (base, s') ->
     fresh m q base /\ ready s' (allocated m q base).
 
-  (** Every object of a memory the runtime is ready in lies in
-      [0, 2^48]. *)
+  (** Every object lies in native Fil-C's address space: where the
+      runtime in state s is ready in memory m, every object of m lies
+      between 0 and 2^48 ([objects_fit]). The model needs it so that no
+      address inside an object wraps and a wrapped address fails a
+      lower [[half check]]; an allocation the runtime cannot hold is
+      refused, a trap. Native test: `axiom-address.c`. *)
   Axiom address_space : forall s m, ready s m -> objects_fit (m_regions m).
 
-  (** No freed object of a memory the runtime is ready in has bounds. *)
+  (** No freed object of a memory m the runtime is ready in has bounds
+      ([freed_empty]). Every free and the end of every invocation empty
+      them ([lifetime_step], [region_step]), so it constrains only the
+      memory a run starts in. It is about the runtime's own
+      bookkeeping, not Fil-C, so it has no native test. *)
   Axiom freed_bounds : forall s m, ready s m -> freed_empty (m_regions m).
 
-  (** The program's own changes keep the runtime ready. *)
+  (** The program's own changes keep the runtime ready: if it is ready
+      in m, and m' is m after the program wrote inside objects and
+      ended some ([kept]), it is ready in m'. With
+      [fresh_allocation] and [safepoint_ready] this makes [ready] hold
+      in every state of a run (Machine.v). No native test: it is about
+      the runtime's own bookkeeping. *)
   Axiom ready_kept : forall s m m', ready s m -> kept m m' -> ready s m'.
 
-  (** Free of a pointer word: its result, and the memory after it. *)
+  (** Free of a pointer word: its result, and the memory after it. This
+      is what a call of libc's `free` runs, the genv's [ge_free]. *)
   Parameter free : word -> mem -> option (res unit * mem).
 
+  (** Free changes an object's bounds only by emptying a live heap
+      object's, for every alias at once, and makes no new identity
+      ([lifetime_step]). The model needs it so that a capability the
+      program holds keeps its meaning across a free except for the
+      freed object, whose every access then traps. Native test:
+      `axiom-lifetime.c`. *)
   Axiom free_lifetime : forall x m r m',
     free x m = Some (r, m') -> lifetime_step m m'.
 
+  (** Free changes no byte and no stored capability: a freed object's
+      memory is retained while anything can name it. Machine.v uses it
+      to show a free keeps the program's other memory; natively it is
+      also what lets an access whose check passed before another
+      thread's free read the same bytes. Native test: `axiom-retention.c`. *)
   Axiom retention : forall x m r m',
     free x m = Some (r, m') -> m_bytes m' = m_bytes m /\ m_aux m' = m_aux m.
 
-  (** Free reclaims nothing: every identity before it is one after it,
-      the freed object's too. Only the collector reclaims, at a
-      safepoint (`rooting`). *)
+  (** Free reclaims nothing: every [[identity]] before it is one after
+      it, the freed object's too. Only the collector reclaims, at a
+      safepoint ([rooting]). With [fresh_allocation] this keeps a later
+      allocation from taking a freed object's base. Native test:
+      `axiom-identity.c`. *)
   Axiom free_keeps_ids : forall x m r m',
     free x m = Some (r, m') ->
     forall b, object_region b (m_regions m) <> None -> object_region b (m_regions m') <> None.
 
-  (** Free frees or traps; it never answers `unchecked`. *)
+  (** Free frees or [[trap|traps]]; it never goes on having done
+      something else, so it never answers [[unchecked]], which the
+      model keeps for a broken pass. Native test: `axiom-free.c`. *)
   Axiom free_checked : forall x m w m', free x m <> Some (RUnchecked w, m').
 
-  (** `at_safepoint i`: the runtime may act at i: run a signal handler
-      or a pollcheck callback. Another thread's effects are outside the
-      model (the header's "One thread's view"). *)
+  (** The runtime may act at the instruction i: run a signal handler or
+      a pollcheck callback. Another thread's effects are outside the
+      model (the header's One thread's view). *)
   Parameter at_safepoint : inst -> bool.
 
+  (** The runtime acts only at instructions that are not
+      `evidence_preserving/1`: calls, polls, alloc and the rest. The
+      model needs it because the [[validator]] keeps [[evidence]]
+      across every other instruction, which would be unsound if the
+      runtime could free or rewrite memory there. Native test:
+      `axiom-safepoint.c`. *)
   Axiom safepoints : forall i,
     at_safepoint i = true -> evidence_preserving i = false.
 
-  (** `safepoint s m s' m'`: what the program may find changed when it
-      reaches a safepoint in s with memory m. *)
+  (** What the program may find changed when it reaches a
+      [[poll|safepoint]] with the runtime in state s and memory m: the
+      runtime's state s' and memory m' after the collector and the
+      thread's signal handlers acted. *)
   Parameter safepoint : state -> mem -> state -> mem -> Prop.
 
+  (** At a safepoint, as at a free, an object's bounds change only by
+      a live heap object's being freed, and no identity appears
+      ([lifetime_step]): a signal handler's free is the only change to
+      objects the program sees. Native test: `axiom-lifetime.c`. *)
   Axiom safepoint_lifetime : forall s m s' m',
     safepoint s m s' m' -> lifetime_step m m'.
 
+  (** At a safepoint no byte moves or changes: the collector writes no
+      object's contents and no address word. The model needs it so that
+      the bytes a check passed stay readable, unchanged, until the
+      program next looks at the header. Native test:
+      `axiom-nonmoving.c`. *)
   Axiom non_moving : forall s m s' m',
     safepoint s m s' m' -> m_bytes m' = m_bytes m.
 
+  (** At a safepoint each stored [[capability]] (in the [[aux]]) stays,
+      or, if its object was freed, becomes one that traps as a freed
+      object does: the collector's free singleton. The model needs it
+      so that a pointer loaded back after a collection behaves as the
+      one stored, reading or trapping alike. Native test:
+      `axiom-aux.c`. *)
   Axiom aux_round_trip : forall s m s' m',
     safepoint s m s' m' ->
     forall a, m_aux m' a = m_aux m a \/
               (freed_in (m_regions m') (m_aux m a) /\
                traps_as_freed (m_regions m') (m_aux m' a)).
 
+  (** At a safepoint the collector reclaims no [[identity]] the program
+      can name: every object of m is still one of m'. The model needs
+      it because a capability never dies in the model, so the object it
+      names must stay. Native test: `axiom-rooting.c`. *)
   Axiom rooting : forall s m s' m',
     safepoint s m s' m' ->
     forall b, object_region b (m_regions m) <> None -> object_region b (m_regions m') <> None.
 
-  (** The runtime's actions keep it ready. *)
+  (** The runtime's actions at a safepoint keep it [[ready]]. With
+      [fresh_allocation] and [ready_kept] this makes [ready] hold in
+      every state of a run (Machine.v). No native test: it is about the
+      runtime's own bookkeeping. *)
   Axiom safepoint_ready : forall s m s' m', safepoint s m s' m' -> ready s m -> ready s' m'.
 
 End Runtime.
 
 (** ## Facts about Memory.v *)
 
+(** Removing the object at base from the regions rs leaves every other
+    base b's object as it was. *)
 Lemma object_region_remove : forall b base rs,
   b <> base -> object_region b (remove_region base rs) = object_region b rs.
 Proof.
@@ -237,6 +286,9 @@ Proof.
   - simpl. destruct (Z.eqb (r_base r) b); auto.
 Qed.
 
+(** If replacing the object at base by the region r, whose base is
+    base, gives rs', then the object at base in rs' is r and every
+    other object is as in rs. *)
 Lemma object_region_replace : forall base r rs rs' b,
   replace_region base r rs = Some rs' -> r_base r = base ->
   object_region b rs' = if Z.eqb b base then Some r else object_region b rs.
@@ -251,7 +303,9 @@ Proof.
     + apply object_region_remove; auto.
 Qed.
 
-(** What `free_res` may do: free one live heap object, nothing else. *)
+(** What Memory.v's [free_res] (`free_res/4`) may do: change nothing,
+    or free one live heap object, emptying its bounds, and change
+    nothing else. *)
 Lemma free_res_frees : forall x m r m',
   free_res x m = Some (r, m') ->
   m' = m \/
@@ -277,6 +331,8 @@ Proof.
       simpl; auto.
 Qed.
 
+(** [free_res] changes objects only as [lifetime_step] allows: the
+    interpreter's proof of [free_lifetime]. *)
 Lemma free_res_lifetime : forall x m r m',
   free_res x m = Some (r, m') -> lifetime_step m m'.
 Proof.
@@ -288,6 +344,8 @@ Proof.
     + exists reg'. auto.
 Qed.
 
+(** Every [[identity]] before a [free_res] is one after it: the
+    interpreter's proof of [free_keeps_ids]. *)
 Lemma free_res_keeps_ids : forall x m r m',
   free_res x m = Some (r, m') ->
   forall b, object_region b (m_regions m) <> None -> object_region b (m_regions m') <> None.
@@ -296,7 +354,8 @@ Proof.
   rewrite (object_region_replace _ _ _ _ b Hr eq_refl). destruct (Z.eqb b base); [discriminate | exact Hb].
 Qed.
 
-(** `free_res/4` answers ok or a trap. *)
+(** [free_res] (`free_res/4`) answers ok or a [[trap]], never
+    [[unchecked]]: the interpreter's proof of [free_checked]. *)
 Lemma free_res_checked : forall x m w m', free_res x m <> Some (RUnchecked w, m').
 Proof.
   intros x m w m' H. unfold free_res, cap_free_res, object_free_res in H.
@@ -306,6 +365,8 @@ Proof.
   all: injection H as H; discriminate H.
 Qed.
 
+(** [free_res] changes no byte and no stored capability: the
+    interpreter's proof of [retention]. *)
 Lemma free_res_retention : forall x m r m',
   free_res x m = Some (r, m') -> m_bytes m' = m_bytes m /\ m_aux m' = m_aux m.
 Proof.
@@ -322,43 +383,53 @@ Proof.
   pose proof (Z.mod_pos_bound (a + align - 1) align H). nia.
 Qed.
 
+(** a, rounded up to a multiple of a positive align, is a multiple of
+    align. *)
 Lemma align_up_mod : forall a align, 0 < align -> align_up a align mod align = 0.
 Proof. intros a align H. unfold align_up. apply Z.mod_mul. lia. Qed.
 
-(** The interpreter's runtime is left unsealed, so that what it does
-    at a safepoint (nothing) can be read off it (Persistence.v's
-    `interp_spares`); Transport.v's `Driver InterpRuntime` and
-    Persistence.v's `Persistence InterpRuntime` check it against
-    `Runtime`. *)
+(** The [[interpreter]]'s runtime: interp.pl's allocator
+    (`alloc_base/6`), free as Memory.v states it ([free_res]), and no
+    other thread or collector. It proves every axiom, so the module
+    type is consistent; the extracted model is [Driver InterpRuntime]
+    (Transport.v). It is left unsealed, so that what it does at a
+    safepoint (nothing) can be read off it (Persistence.v's
+    [interp_spares]); Transport.v's [Driver InterpRuntime] and
+    Persistence.v's [Persistence InterpRuntime] check it against
+    [Runtime]. *)
 Module InterpRuntime.
 
   (** interp.pl's Next. *)
   Definition state := Z.
 
-  (** `stack_base/1`: allocations start at 2^32, above the data. *)
+  (** As `stack_base/1`: allocations start at 2^32, above the data. *)
   Definition start : state := 2 ^ 32.
 
-  (** `address_space/2`: Next stays at or below 2^48, libpas's address
-      space (PAS_ADDRESS_BITS). *)
+  (** As `address_space/2`: Next stays at or below 2^48, libpas's
+      address space (`PAS_ADDRESS_BITS`). *)
   Definition address_end : Z := 2 ^ 48.
 
-  (** Every object lies between 0 and Next, empty if freed, Next within
-      the address space, and nothing at or above Next has been written. *)
+  (** The interpreter, its Next being next, is [[ready]] in m: every
+      object lies between 0 and Next, empty if freed, Next is within the
+      address space, and nothing at or above Next has been written. *)
   Definition ready (next : state) (m : mem) : Prop :=
     0 < next <= address_end /\
     (forall b reg, object_region b (m_regions m) = Some reg ->
        0 <= b < next /\ r_end reg <= next /\ (r_life reg = Freed -> r_end reg = b)) /\
     (forall a, next <= a -> m_bytes m a = 0 /\ m_aux m a = CNone).
 
-  (** `alloc_base/6`: the request's alignment above Next; Next then
-      moves past the object, rounded up to 16, and a 16-byte gap. Where
-      that would pass the address space's end, the runtime is out of
-      memory. *)
+  (** As `alloc_base/6`: the base is Next rounded up to the request's
+      alignment; Next then moves past the object, rounded up to 16, and
+      a 16-byte gap. Where that would pass the address space's end, the
+      runtime is out of memory. *)
   Definition alloc (next : state) (q : alloc_req) : option (Z * state) :=
     let base := align_up next (req_align q) in
     let next' := base + align_up (req_extent q) 16 + 16 in
     if next' <=? address_end then Some (base, next') else None.
 
+  (** The interpreter's allocator gives a [fresh] base and stays ready:
+      everything at or above Next is unwritten and owned by no object,
+      and the new object lies there. *)
   Lemma fresh_allocation : forall s m q base s',
     ready s m ->
     0 < req_align q ->
@@ -392,6 +463,8 @@ Module InterpRuntime.
     intros next m (Hpos & Hobj & _) b reg E. destruct (Hobj _ _ E) as (? & ? & _). unfold address_end in *. lia.
   Qed.
 
+  (** A freed object of a memory the interpreter is ready in is empty,
+      as [ready] says. *)
   Lemma freed_bounds : forall s m, ready s m -> freed_empty (m_regions m).
   Proof. intros next m (_ & Hobj & _) b reg E. exact (proj2 (proj2 (Hobj _ _ E))). Qed.
 
@@ -412,27 +485,39 @@ Module InterpRuntime.
   (** Memory.v's free, the pinned runtime's as the interpreter has it. *)
   Definition free := free_res.
 
+  (** Free empties only a live heap object's bounds:
+      [free_res_lifetime]. *)
   Definition free_lifetime := free_res_lifetime.
+  (** Free changes no byte and no stored capability:
+      [free_res_retention]. *)
   Definition retention := free_res_retention.
+  (** Free reclaims no identity: [free_res_keeps_ids]. *)
   Definition free_keeps_ids := free_res_keeps_ids.
+  (** Free never answers unchecked: [free_res_checked]. *)
   Definition free_checked := free_res_checked.
 
   (** The interpreter's runtime may act wherever the compiler does not
       promise that it cannot. *)
   Definition at_safepoint (i : inst) : bool := negb (evidence_preserving i).
 
+  (** A safepoint of the interpreter's runtime is not evidence
+      preserving, by its definition. *)
   Lemma safepoints : forall i, at_safepoint i = true -> evidence_preserving i = false.
   Proof. unfold at_safepoint. intros i H. destruct (evidence_preserving i); auto. Qed.
 
   (** No other thread and no collector: nothing changes at a safepoint. *)
   Definition safepoint (s : state) (m : mem) (s' : state) (m' : mem) : Prop := s' = s /\ m' = m.
 
+  (** Nothing changes at a safepoint, so no object does. *)
   Lemma safepoint_lifetime : forall s m s' m', safepoint s m s' m' -> lifetime_step m m'.
   Proof. intros s m s' m' [_ ->] b reg' H. exists reg'. auto. Qed.
 
+  (** Nothing changes at a safepoint, so no byte does. *)
   Lemma non_moving : forall s m s' m', safepoint s m s' m' -> m_bytes m' = m_bytes m.
   Proof. intros s m s' m' [_ ->]. reflexivity. Qed.
 
+  (** Nothing changes at a safepoint, so every stored capability
+      stays. *)
   Lemma aux_round_trip : forall s m s' m',
     safepoint s m s' m' ->
     forall a, m_aux m' a = m_aux m a \/
@@ -440,11 +525,13 @@ Module InterpRuntime.
                traps_as_freed (m_regions m') (m_aux m' a)).
   Proof. intros s m s' m' [_ ->] a. auto. Qed.
 
+  (** Nothing changes at a safepoint, so no identity is reclaimed. *)
   Lemma rooting : forall s m s' m',
     safepoint s m s' m' ->
     forall b, object_region b (m_regions m) <> None -> object_region b (m_regions m') <> None.
   Proof. intros s m s' m' [_ ->]. auto. Qed.
 
+  (** Nothing changes at a safepoint, so the runtime stays ready. *)
   Lemma safepoint_ready : forall s m s' m', safepoint s m s' m' -> ready s m -> ready s' m'.
   Proof. intros s m s' m' [-> ->]. auto. Qed.
 

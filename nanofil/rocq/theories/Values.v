@@ -1,27 +1,14 @@
-(** Run-time values, transcribed from interp.pl: capabilities,
-    pointers and the words a temporary holds.
+(** Run-time values, transcribed from interp.pl:
+    [[capability|capabilities]], pointers and the [[word|words]] a
+    [[temporary]] holds.
 
-    A capability is an identity, never bounds: `Obj base` names the
-    object whose region has that base, and the region (Memory.v) says
-    what its bounds are now. Every alias of an object shares that one
-    region, so freeing through one alias empties the bounds the others
-    see.
-
-    ## Capabilities
-
-    | Gallina | interp.pl | Names |
-    |---|---|---|
-    | `CNone` | `none` | no object: a null or forged pointer |
-    | `Obj base` | `obj(Base)` | a writable object |
-    | `Ro base` | `ro(Base)` | a read-only object |
-    | `Fn f` | `fn(F)` | the function f of the module |
-    | `External n` | `ext(N)` | the symbol n, defined outside the module |
+    ![[capability]]
 
     ## Words
 
-    Values are a sum type over classes (formal.md's decision): well
-    classedness is a boolean fact about a word, not an index of its
-    type.
+    Values are a sum type over [[class|classes]] (formal.md's
+    decision): well classedness is a boolean fact about a word, not an
+    index of its type.
 
     | Gallina | interp.pl | Classes |
     |---|---|---|
@@ -39,13 +26,17 @@ From Nanofil Require Import Term Syntax.
 Import ListNotations.
 Open Scope Z_scope.
 
+(** A [[capability]], what a pointer carries beside its address: which
+    object, if any, it may access. An object's is its identity, the
+    base of its region, and holds no bounds of its own. *)
 Inductive cap : Type :=
-| CNone
-| Obj (base : Z)
-| Ro (base : Z)
-| Fn (f : name)
-| External (n : name).
+| CNone (* `none`: no object, a null or forged pointer *)
+| Obj (base : Z) (* `obj(Base)`: the writable object of identity base *)
+| Ro (base : Z) (* `ro(Base)`: the read-only object of identity base *)
+| Fn (f : name) (* `fn(F)`: the function f of the module *)
+| External (n : name). (* `ext(N)`: the symbol n, defined outside the module *)
 
+(** Equality of capabilities. *)
 Definition cap_eqb (c c' : cap) : bool :=
   match c, c' with
   | CNone, CNone => true
@@ -54,18 +45,23 @@ Definition cap_eqb (c c' : cap) : bool :=
   | _, _ => false
   end.
 
-(** `ptr(Addr, Cap)`: the indivisible flight pair. *)
+(** As `ptr(Addr, Cap)`: a pointer, an address and its capability,
+    which move together as one indivisible pair, the pair a [[flight]]
+    builds. *)
 Record ptr : Type := mkPtr { ptr_addr : Z; ptr_cap : cap }.
 
+(** A [[word]], the value a temporary holds at run time; the table at
+    the top of the page gives the classes each form is at. *)
 Inductive word : Type :=
-| WInt (n : Z)
-| WPtr (p : ptr)
-| WLimit (c : cap) (size : Z).
+| WInt (n : Z) (* an integer, or a float's bit pattern *)
+| WPtr (p : ptr) (* a pointer, or a proof of class `a` or `f` *)
+| WLimit (c : cap) (size : Z). (* `limit(Cap, Size)`: a [[limit]]'s opaque snapshot *)
 
-(** `word_at_class(K, X0, X)`: X is the word X0 taken at class K, its
-    low bits(K) bits; a pointer or proof word is itself. A float word
-    is its bit pattern, an integer. A limit stays a limit at `l`; any
-    other mismatch is the interpreter's type error, here no word. *)
+(** As `word_at_class(K, X0, X)`: the word x taken at class k. An
+    integer is cut to the low 32, 64 or 80 bits of the class (a float
+    word is its bit pattern, an integer); a pointer or proof word is
+    itself, and a limit stays a limit at `l`. Any other mismatch is the
+    interpreter's type error, here no word. *)
 Definition word_at_class (k : class) (x : word) : option word :=
   match k, x with
   | W, WInt n => Some (WInt (n mod 2 ^ 32))
@@ -78,8 +74,8 @@ Definition word_at_class (k : class) (x : word) : option word :=
   | _, _ => None
   end.
 
-(** `pointer_address(X, A)`: a pointer word's address, or the integer
-    held at `p` itself. *)
+(** As `pointer_address(X, A)`: the address of a pointer word x, or the
+    integer held at `p` itself; a limit has none. *)
 Definition pointer_address (x : word) : option Z :=
   match x with
   | WPtr p => Some (ptr_addr p)

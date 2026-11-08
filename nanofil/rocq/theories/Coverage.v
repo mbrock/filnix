@@ -1,45 +1,28 @@
-(** Campaign 3's coverage lemma (docs/formal.md, Campaign 3): a raw
-    access that a passed check covers, as ir.pl's
-    `covered_access/6` says, does not give `unchecked`.
+(** Campaign 3's coverage lemma (docs/formal.md, Campaign 3;
+    [docs/rocq.md, The coverage lemma](../../docs/rocq.md#the-coverage-lemma)):
+    a [[raw access]] that a passed [[check]] covers, as
+    ir.pl's `covered_access/6` says, does not give [[unchecked]].
 
-    A check `let(Q, a, check(Lo, Hi, Rights, Align), [P])` is the access
-    check of the bytes [P+Lo, P+Hi) with Rights and Align, and when it
-    passes it yields P itself. The raw access that uses Q afterwards
-    reads or writes Size bytes at Q+Off, and its own access check is
-    made again without trapping (`raw_res/2`): where it would trap, the
-    run is `unchecked`. `covered_access/6` asks that the access lie
-    inside the checked bytes, at an alignment the check's alignment
-    implies, with rights the check's rights allow. This file proves that
-    this is enough: the access's check then passes too, so the raw
-    access does not give `unchecked`.
+    A check `let(Q, a, check(Lo, Hi, Rights, Align), [P])` is the
+    [[access]] check of the bytes from P+Lo up to P+Hi with Rights and
+    Align, and when it passes it yields P itself. A raw access that uses
+    Q afterwards reads or writes Size bytes at Q+Off with no check of its
+    own: the model makes its access check again, and where that would
+    trap the run is `unchecked` (`raw_res/2`). `covered_access/6` asks
+    that the access lie inside the checked bytes, at an alignment the
+    check's implies, with rights the check's allow. This file proves
+    that this is enough: the access's own check then passes
+    ([covered_access_not_unchecked]). It is arithmetic over
+    `cap_access_res/7`.
 
-    It is arithmetic over `cap_access_res/7`, in these steps:
-
-    | Lemma | Says |
-    |---|---|
-    | `cap_access_covered` | a passed check of [A+Lo, A+Hi) passes for every covered part of it |
-    | `covered_access_checked` | the raw access's own check passes |
-    | `access_ok_not_unchecked` | a raw access whose own check passes gives no `unchecked` |
-    | `covered_access_not_unchecked` | so a covered raw access instruction gives no `unchecked` |
-
-    ## One more hypothesis: objects end in the address space
-
-    An address is `raw_address/3`'s sum modulo 2^64, while the model's
-    bounds are unbounded integers. An object ending above 2^64 would let
-    a check of [2^64-64, 2^64+64) pass and the covered access at offset
-    64 wrap to address 0, outside it. The runtime excludes that:
-    `objects_fit` (Runtime.v), every object ending at or below 2^48 as
-    natively, holds wherever a runtime is ready, its `address_space`
-    axiom, so of every state of a run that starts ready (Machine.v's
-    `mreachable_objects_fit`). This lemma needs only the weaker 2^64;
-    the reuse forms' hulls need the rest (docs/rocq.md, "Objects end
-    below 2^48"). Whether a valid module's initial memory is ready is
-    not yet proved: its data has no size limit (docs/rocq.md, "An
-    object past 2^64").
-
-    The lemma is stated over the memory the access runs in: that the
-    check passed there is what the evidence invariant, the next lemma,
-    will establish from the check having passed earlier. *)
+    An address is a sum modulo 2^64 (`raw_address/3`), while the model's
+    bounds are unbounded integers, so the lemma also needs every object
+    to end inside the address space ([objects_fit]). The runtime's
+    [address_space] axiom gives that in every state of a run that starts
+    [[ready]] (Machine.v's [mreachable_objects_fit]; docs/rocq.md, An
+    object past 2^64). That the check passes in the memory the access
+    runs in, not only when it ran, is the [[evidence]] invariant's to
+    show (Evidence.v, Persistence.v). *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Machine Validate.
@@ -48,14 +31,17 @@ Open Scope Z_scope.
 
 (** ## The hypotheses *)
 
-(** `check_passes m p lo hi r al`: `check(Lo, Hi, Rights, Align)` of p
-    passes in m (`kind_res/8` of `check/4`). *)
+(** The check `check(Lo, Hi, Rights, Align)` of the pointer p passes in
+    memory m: the [[access]] check of the bytes from p's address plus lo
+    up to plus hi, with rights r and alignment al, as `kind_res/8` makes
+    it for `check/4`. *)
 Definition check_passes (m : Memory.mem) (p : ptr) (lo hi : Z) (r : rights) (al : Z) : Prop :=
   access_res m (raw_address (ptr_addr p) lo) (ptr_cap p) (hi - lo) r al = Some ok.
 
 (** ## Arithmetic *)
 
-(** An address aligned to al is aligned to every divisor of al. *)
+(** An address a aligned to al is aligned to every positive divisor aa
+    of al. *)
 Lemma aligned_divisor : forall a al aa, 0 < aa -> a mod al = 0 -> al mod aa = 0 -> a mod aa = 0.
 Proof.
   intros a al aa Haa Ha Hal. destruct (Z.eq_dec al 0) as [-> | Hne].
@@ -64,14 +50,18 @@ Proof.
     apply Z.mod_divide; [lia|]. eapply Z.divide_trans; eassumption.
 Qed.
 
+(** Adding a multiple d of aa to an address aligned to aa keeps it
+    aligned. *)
 Lemma aligned_add : forall a d aa, 0 < aa -> a mod aa = 0 -> d mod aa = 0 -> (a + d) mod aa = 0.
 Proof.
   intros a d aa Haa Ha Hd. apply Z.mod_divide in Ha; [|lia]. apply Z.mod_divide in Hd; [|lia].
   apply Z.mod_divide; [lia|]. apply Z.divide_add_r; assumption.
 Qed.
 
-(** Off - Lo bytes past the address of Lo is the address of Off, where
-    that does not wrap. *)
+(** Offset off from a is offset lo plus off - lo bytes, where lo <= off
+    and the sum stays below 2^64: inside the address space, address
+    arithmetic ([raw_address], `raw_address/3`, modulo 2^64) does not
+    wrap. *)
 Lemma raw_address_within : forall a lo off,
   lo <= off -> raw_address a lo + (off - lo) < 2 ^ 64 ->
   raw_address a off = raw_address a lo + (off - lo).
@@ -83,10 +73,13 @@ Proof.
   apply Z.mod_small. lia.
 Qed.
 
-(** `aligned_res/3` of an address aligned to aa. *)
+(** The alignment check (`aligned_res/3`) passes for an address a that
+    is a multiple of al. *)
 Lemma aligned_res_ok : forall a al, a mod al = 0 -> aligned_res a al = ok.
 Proof. unfold aligned_res. intros a al H. rewrite H. reflexivity. Qed.
 
+(** Conversely, where the alignment check passes, a is a multiple of
+    al. *)
 Lemma aligned_res_mod : forall a al, aligned_res a al = ok -> a mod al = 0.
 Proof.
   unfold aligned_res. intros a al H. destruct (a mod al =? 0) eqn:E; [|discriminate H].
@@ -95,9 +88,15 @@ Qed.
 
 (** ## The access check *)
 
-(** A passed check of [A+Lo, A+Hi) passes for each part [A+Off,
-    A+Off+Size) of it, at an alignment aa that divides the check's and
-    Off - Lo, with rights the check's allow. *)
+(** Where every object of the region list rs ends in the address space
+    ([objects_fit]) and the [[access]] check through the [[capability]]
+    c of the bytes from a+lo up to a+hi, with rights r and alignment al,
+    passed, the check of any part of them, from a+off up to
+    a+off+size, passes too, at an alignment aa that divides both al and
+    off - lo, with rights need that r allows. The first hypothesis
+    matters: an object ending above 2^64 would let a check from
+    2^64-64 up to 2^64+64 pass and the covered access at offset 64 wrap
+    to address 0, outside it. *)
 Lemma cap_access_covered : forall c rs a lo hi r al off size need aa,
   objects_fit rs ->
   cap_access_res c rs (raw_address a lo) (hi - lo) r al = Some ok ->
@@ -125,7 +124,8 @@ Proof.
     apply (aligned_divisor _ al); auto using aligned_res_mod.
 Qed.
 
-(** An access check that passes at some alignment passes at 1. *)
+(** An access check that passes at some alignment passes at alignment
+    1, as an integer load makes it. *)
 Lemma cap_access_align_one : forall c rs a size need al,
   cap_access_res c rs a size need al = Some ok -> cap_access_res c rs a size need 1 = Some ok.
 Proof.
@@ -139,13 +139,17 @@ Qed.
 
 (** ## Raw accesses *)
 
-(** Every raw access reads or writes some bytes, at a positive
+(** Every raw access type x reads or writes some bytes, at a positive
     alignment (`access_size_align/3`). *)
 Lemma access_size_align_pos : forall x, 0 < fst (access_size_align x) /\ 0 < snd (access_size_align x).
 Proof. intros [[| | | | t] | w |]; try destruct t; try destruct w; simpl; lia. Qed.
 
-(** The raw access that `covered_access` accepts makes an access check
-    that passes, at its own address, size, rights and alignment. *)
+(** Where objects fit the address space and the [[validator]] accepts
+    the instruction i as an access through q covered by the check of p
+    from lo up to hi ([covered_access]), and that check passed in m, i
+    is a raw access ([raw_access]: through q, of access type x, at
+    offset off, with rights need) whose own access check, at its
+    address, size, rights and alignment, passes in m. *)
 Lemma covered_access_checked : forall m p i q lo hi r al,
   objects_fit (m_regions m) ->
   covered_access i q lo hi r al = true ->
@@ -168,7 +172,8 @@ Qed.
 
 (** ## The loads and stores *)
 
-(** A load whose access check passes gives a value. *)
+(** An integer load of type t ([int_load_res], `int_load_res/6`) whose
+    access check passes gives a value, not a trap or `unchecked`. *)
 Lemma int_load_res_checked : forall t k m a c rr,
   access_res m a c (fst (access_size_align (XLoad t))) Read 1 = Some ok ->
   int_load_res t k m a c = Some rr -> exists x, rr = RVal x.
@@ -177,7 +182,8 @@ Proof.
   destruct t as [| | | | n]; simpl in Ha; rewrite Ha in H; cases H; injection H as <-; eauto.
 Qed.
 
-(** A store whose access check passes succeeds. *)
+(** A store of width w ([store_res], `store_res/7`) whose access check
+    passes succeeds. *)
 Lemma store_res_checked : forall w m a c x rr m',
   access_res m a c (fst (access_size_align (XWidth w))) Write (snd (access_size_align (XWidth w))) = Some ok ->
   store_res w m a c x = Some (rr, m') -> rr = ok.
@@ -186,14 +192,13 @@ Proof.
   destruct w, x; simpl in Ha, H; try discriminate H; rewrite Ha in H; injection H as <- _; reflexivity.
 Qed.
 
-(** ## The raw access instruction
+(** ## The raw access instruction *)
 
-    `access_ok_not_unchecked`: a raw access instruction i whose own
-    access check passes, at the address of the pointer its operand q
-    holds, is not stopped by `inst_step/4` with `unchecked`. The access
-    may still fail otherwise (a pointer load of a word that is not a
-    pointer, an operand of the wrong class); only `unchecked` is ruled
-    out. *)
+(** A raw access instruction i whose own access check passes, at the
+    address of the pointer its operand q holds, is not stopped by
+    [inst_step] with [[unchecked]]. The access may still fail otherwise
+    (a pointer load of a word that is not a pointer, an operand of the
+    wrong class); only `unchecked` is ruled out. *)
 Lemma access_ok_not_unchecked : forall ge fr m i q x off need p why,
   raw_access i = Some (q, x, off, need) ->
   lookup q (fr_env fr) = Some (WPtr p) ->
@@ -229,9 +234,12 @@ Proof.
     destruct (pointer_store_effects _ _ _ _); discriminate Hst.
 Qed.
 
-(** `covered_access_not_unchecked`: where the validator says the raw
-    access instruction i is covered by the check that yielded q, and
-    that check passes in the memory i runs in, i gives no `unchecked`. *)
+(** The coverage lemma. Where objects fit the address space, the
+    [[validator]] says the raw access instruction i is covered by the
+    check that yielded q ([covered_access], the check of the pointer p
+    from lo up to hi with rights r and alignment al), and that check
+    passes in the memory m that i runs in ([check_passes]), i gives no
+    [[unchecked]]. *)
 Lemma covered_access_not_unchecked : forall ge fr m i q lo hi r al p why,
   objects_fit (m_regions m) ->
   covered_access i q lo hi r al = true ->

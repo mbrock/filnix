@@ -1,23 +1,15 @@
 (** Where a name is defined, and what `definitions_dominate/3` says of
-    its uses (docs/formal.md, Campaign 3; docs/rocq.md, "Where a name is
-    defined").
+    its uses ([formal.md, Campaign 3](../../docs/formal.md#campaign-3-the-soundness-theorem);
+    [rocq.md, Where a name is defined](../../docs/rocq.md#where-a-name-is-defined)).
 
     ir.pl reads a function's definitions twice: as the list of
-    definitions `single_definitions/3` filters (Validate.v's
-    `all_defs`), and as the sites `block_sites//1` records for strict
-    SSA (`temp_sites`). The run-level invariant needs both at once:
-    the relation a single definition states holds wherever its site
-    dominates the running point. This file joins them through one list
-    of every definition with its site, `def_positions`, and proves:
-
-    | Lemma | Says |
-    |---|---|
-    | `all_defs_positions` | `all_defs` is `def_positions` without the sites |
-    | `temp_sites_sound` | every site `temp_sites` records for a name is a position defining it |
-    | `once_position` | a name with a single definition has exactly one position, and it holds that definition |
-    | `use_dominated` | in a valid function, a single-definition name an instruction of a reachable block uses is defined at a site that dominates the use |
-    | `position_inst`, `inst_position`, `phi_position` | an instruction's or phi's position is its index in its block |
-    | `no_use_redefined` | where a single definition's site dominates a point of a reachable block, no single-definition operand of it is defined at that point |
+    definitions `single_definitions/3` filters (Validate.v's [all_defs]),
+    and as the [[site|definition sites]] `block_sites//1` records for the
+    [[ssa|strict SSA]] check ([temp_sites]). The run-level invariant
+    needs both at once: the relation a [[single definition]] states
+    holds wherever its site dominates the running point. This file joins
+    the two through one list of every definition with its site,
+    [def_positions].
 
     ## Decisions
 
@@ -34,7 +26,9 @@ Local Open Scope Z_scope.
 
 (** ## Every definition with its site *)
 
-(** The definitions of instructions from index j on, each at its index. *)
+(** The definitions the instructions is make in the block labelled l, the
+    first at index j: each name an instruction defines, with its [[site]] at
+    the instruction's index and the instruction as its definition. *)
 Fixpoint inst_positions (l : name) (j : Z) (is : list inst) : list (name * site * def) :=
   match is with
   | [] => []
@@ -42,17 +36,25 @@ Fixpoint inst_positions (l : name) (j : Z) (is : list inst) : list (name * site 
       map (fun dk => (fst dk, SAt l j, DInst i)) (inst_temp_defs i) ++ inst_positions l (j + 1) rest
   end.
 
-(** A block's definitions: its phis at -1, then its instructions. *)
+(** Every definition the [[block]] b makes, with its site: its [[phi|phis]]
+    at index -1, then its instructions from index 0. *)
 Definition block_positions (b : block) : list (name * site * def) :=
   map (fun ph => match ph with Phi d _ _ => (d, SAt (b_label b) (-1), DPhi ph) end) (b_phis b) ++
   inst_positions (b_label b) 0 (b_insts b).
 
-(** `def_positions f`: every definition of f with its site. *)
+(** Every definition of the function f with its site: its parameters at
+    [SParam], then each block's [block_positions]. The one list that joins
+    the two ways the validator reads definitions. *)
 Definition def_positions (f : func) : list (name * site * def) :=
   map (fun p => (snd p, SParam, DParam)) (fn_params f) ++ flat_map block_positions (fn_blocks f).
 
+(** Forgets the site of a definition, leaving the pair of a name and its
+    definition that [all_defs] lists. *)
 Definition drop_site (t : name * site * def) : name * def := (fst (fst t), snd t).
 
+(** Without their sites, the definitions [inst_positions] lists for some
+    instructions are those [all_defs] lists for them, whatever the label and
+    first index. *)
 Lemma inst_positions_defs : forall l j is,
   flat_map (fun i => map (fun dk => (fst dk, DInst i)) (inst_temp_defs i)) is
   = map drop_site (inst_positions l j is).
@@ -61,7 +63,8 @@ Proof.
   simpl. rewrite map_app, (IH (j + 1)), map_map. reflexivity.
 Qed.
 
-(** `all_defs_positions`: `all_defs` is `def_positions` without sites. *)
+(** [all_defs], Validate.v's list of every definition that
+    `single_definitions/3` filters, is [def_positions] without the sites. *)
 Lemma all_defs_positions : forall f, all_defs f = map drop_site (def_positions f).
 Proof.
   intros f. unfold all_defs, def_positions. rewrite map_app, map_map. f_equal.
@@ -72,12 +75,19 @@ Qed.
 
 (** ## The sites `temp_sites` records *)
 
+(** A map m from each name to sites is sound for the function f when every
+    site it records for a name n is a position of [def_positions] that
+    defines n. *)
 Definition sites_ok (f : func) (m : nmap (list site)) : Prop :=
   forall n ss s, nm_find n m = Some ss -> In s ss -> exists d, In (n, s, d) (def_positions f).
 
+(** Records the site s for the name n in front of n's list in m, as
+    [temp_sites] does. *)
 Definition add_site (m : nmap (list site)) (n : name) (s : site) : nmap (list site) :=
   nm_add n (s :: match nm_find n m with Some ss => ss | None => [] end) m.
 
+(** Recording a site s for n keeps the map sound when s is the position of
+    some definition of n in f. *)
 Lemma add_site_ok : forall f m n s d, sites_ok f m -> In (n, s, d) (def_positions f) ->
   sites_ok f (add_site m n s).
 Proof.
@@ -88,6 +98,8 @@ Proof.
   - exact (Hm _ _ _ E Hin).
 Qed.
 
+(** Recording a list of sites, the name and site g gives each element of xs,
+    keeps the map sound when each is the position of some definition in f. *)
 Lemma fold_sites_ok : forall (A : Type) f (g : A -> name * site) xs m,
   sites_ok f m -> (forall x, In x xs -> exists d, In (fst (g x), snd (g x), d) (def_positions f)) ->
   sites_ok f (fold_left (fun m x => add_site m (fst (g x)) (snd (g x))) xs m).
@@ -97,6 +109,9 @@ Proof.
   destruct (Hx x (or_introl eq_refl)) as [d Hd]. exact (add_site_ok _ _ _ _ _ Hm Hd).
 Qed.
 
+(** The fold [temp_sites] makes over the instructions is of the block
+    labelled l, from index j, keeps the map sound when every position
+    [inst_positions] lists for them is one of f's. *)
 Lemma inst_fold_sites_ok : forall f l is j m,
   sites_ok f m -> (forall t, In t (inst_positions l j is) -> In t (def_positions f)) ->
   sites_ok f (fst (fold_left (fun (acc : nmap (list site) * Z) ins =>
@@ -111,8 +126,9 @@ Proof.
   apply in_map_iff. exists dk. auto.
 Qed.
 
-(** `temp_sites_sound`: every site `block_sites//1` records for a name
-    is a position that defines it. *)
+(** Every site `block_sites//1` records for a name n in [temp_sites], the
+    sites the validator's [[ssa|strict SSA]] check reads, is a position of
+    [def_positions] that defines n. *)
 Theorem temp_sites_sound : forall f n ss s,
   nm_find n (temp_sites f) = Some ss -> In s ss -> exists d, In (n, s, d) (def_positions f).
 Proof.
@@ -150,12 +166,14 @@ Qed.
 
 (** ## A single definition has one position *)
 
+(** Filtering a mapped list keeps as many elements as filtering the list by
+    the test composed with the map. *)
 Lemma filter_map_length : forall (A B : Type) (p : B -> bool) (g : A -> B) l,
   length (filter p (map g l)) = length (filter (fun x => p (g x)) l).
 Proof. intros A B p g l. induction l as [|x l IH]; simpl; [reflexivity|]. destruct (p (g x)); simpl; auto. Qed.
 
-(** `once_position`: a name `single_definitions/3` keeps has exactly
-    one position, and it holds the definition kept. *)
+(** A name n that `single_definitions/3` keeps, with its definition d, has
+    exactly one position in [def_positions], and that position holds d. *)
 Theorem once_position : forall f n d,
   lookup n (single_definitions f) = Some d ->
   exists s, In (n, s, d) (def_positions f) /\
@@ -178,9 +196,10 @@ Qed.
 
 (** ## A use is dominated by its single definition *)
 
-(** `use_dominated`: in a function whose definitions dominate their
-    uses, a single-definition name an instruction of a reachable block
-    uses is defined at a site that dominates that instruction. *)
+(** In a function f whose definitions dominate their uses
+    ([definitions_dominate]), a name o with a [[single definition]] d that
+    the instruction at place k of a reachable block b uses is defined at a
+    site that dominates that place ([site_dominates]). *)
 Theorem use_dominated : forall f doms b k ins o d,
   definitions_dominate f doms = true -> In b (fn_blocks f) -> is_reachable doms (b_label b) = true ->
   nth_error (b_insts b) k = Some ins -> In o (inst_uses ins) ->
@@ -210,6 +229,7 @@ Qed.
 
 (** ## Positions and instructions *)
 
+(** [name_eqb] is symmetric. *)
 Lemma name_eqb_sym_d : forall a b, name_eqb a b = name_eqb b a.
 Proof.
   intros a b. destruct (name_eqb a b) eqn:E; symmetry.
@@ -217,6 +237,9 @@ Proof.
   - apply name_eqb_false. intros ->. apply name_eqb_false in E. exact (E eq_refl).
 Qed.
 
+(** A position that [inst_positions] lists for the instructions is of the
+    block labelled l, from index j, is that of some instruction i at place k
+    of is, at index j + k, and names a temporary i defines. *)
 Lemma inst_positions_in : forall l j is n s d,
   In (n, s, d) (inst_positions l j is) ->
   exists k i, nth_error is k = Some i /\ s = SAt l (j + Z.of_nat k) /\ d = DInst i /\
@@ -233,6 +256,8 @@ Proof.
     auto.
 Qed.
 
+(** Conversely, [inst_positions] lists each temporary dk that the
+    instruction i at place k of is defines, at index j + k. *)
 Lemma inst_positions_nth : forall l j is k i dk,
   nth_error is k = Some i -> In dk (inst_temp_defs i) ->
   In (fst dk, SAt l (j + Z.of_nat k), DInst i) (inst_positions l j is).
@@ -244,8 +269,9 @@ Proof.
   - right. replace (j + Z.of_nat (S k)) with (j + 1 + Z.of_nat k) by lia. exact (IH _ _ _ _ Hk Hdk).
 Qed.
 
-(** `position_inst`: an instruction's position is its index in its
-    block, and it defines the name. *)
+(** A position of f at index j of the block labelled d, holding the
+    instruction i, comes from a block of f labelled d whose instruction at
+    place j is i, and i defines the name. *)
 Lemma position_inst : forall f n d j i,
   In (n, SAt d j, DInst i) (def_positions f) ->
   exists b k, In b (fn_blocks f) /\ b_label b = d /\ nth_error (b_insts b) k = Some i /\
@@ -261,7 +287,8 @@ Proof.
       split; [exact (eq_sym Ed')|]. split; [exact Hk|]. split; [lia | exact Hn].
 Qed.
 
-(** `inst_position`: an instruction defines its names at its index. *)
+(** The instruction i at place k of a block b of f defines each of its
+    temporaries dk at index k of b. *)
 Lemma inst_position : forall f b k i dk,
   In b (fn_blocks f) -> nth_error (b_insts b) k = Some i -> In dk (inst_temp_defs i) ->
   In (fst dk, SAt (b_label b) (Z.of_nat k), DInst i) (def_positions f).
@@ -271,7 +298,7 @@ Proof.
   exact (inst_positions_nth _ 0 _ _ _ _ Hk Hdk).
 Qed.
 
-(** `phi_position`: a phi defines its name at -1 of its block. *)
+(** A [[phi]] of a block b of f defines its name d at index -1 of b. *)
 Lemma phi_position : forall f b d k pairs,
   In b (fn_blocks f) -> In (Phi d k pairs) (b_phis b) ->
   In (d, SAt (b_label b) (-1), DPhi (Phi d k pairs)) (def_positions f).
@@ -283,8 +310,9 @@ Qed.
 
 (** ## A single definition's operands are not redefined under it *)
 
-(** `site_strict`: a site that dominates another one, which dominates a
-    point, is not that point. *)
+(** Where dominance between blocks is antisymmetric, as [dom_antisym] gives,
+    a site s that dominates index j of the block labelled d, where d at j
+    dominates index k of the block labelled l, is not index k of l itself. *)
 Lemma site_strict : forall doms,
   (forall a b, dominates doms a b = true -> dominates doms b a = true -> a = b) ->
   forall d j l k s, site_dominates doms d j s = true -> site_dominates doms l k (SAt d j) = true ->
@@ -297,11 +325,12 @@ Proof.
   - apply name_eqb_false in E. exact (E (eq_sym (Hanti _ _ H1 H2))).
 Qed.
 
-(** `no_use_redefined`: where a single definition's site dominates a
-    point of a reachable block, no single-definition operand of it is
-    defined at that point. So defining a name at a point leaves every
-    relation in scope there between a definition and its operands'
-    values as it was. *)
+(** In a function f whose definitions dominate their uses, where the single
+    definition of n by the instruction i, at index j of block d, dominates
+    index k of a reachable block l, no operand x of i that has a single
+    definition is defined at that index. So defining a name at a point
+    leaves every relation in scope there between a definition and its
+    operands' values as it was. *)
 Theorem no_use_redefined : forall f b0 rest doms n d j i x l k D,
   fn_blocks f = b0 :: rest -> block_intervals (b0 :: rest) = Some doms ->
   definitions_dominate f doms = true ->
@@ -326,13 +355,14 @@ Qed.
 
 (** ## Definitions that dominate a point *)
 
-(** The dominator intervals of a function, as the validator computed
-    them. *)
+(** The [[dominance|dominator intervals]] of the function f as the validator
+    computed them ([block_intervals]), or the empty map where it computed
+    none. *)
 Definition fn_doms (f : func) : nmap (Z * Z) :=
   match block_intervals (fn_blocks f) with Some doms => doms | None => nm_empty end.
 
-(** `dominating f l k n`: n's single definition is at a site that
-    dominates index k of block l. *)
+(** The single definition of n in f is at a site that dominates index k of
+    the block labelled l, by the validator's intervals [fn_doms]. *)
 Definition dominating (f : func) (l : name) (k : Z) (n : name) : Prop :=
   exists s D, lookup n (single_definitions f) = Some D /\ In (n, s, D) (def_positions f) /\
     site_dominates (fn_doms f) l k s = true.

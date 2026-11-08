@@ -1,48 +1,31 @@
-(** What Cfg.v's dominator intervals mean (docs/formal.md, Campaign 3;
-    docs/rocq.md, "Dominance").
+(** What the [[dominance|dominator intervals]] of Cfg.v mean
+    ([formal.md, Campaign 3](../../docs/formal.md#campaign-3-the-soundness-theorem);
+    [rocq.md, Dominance](../../docs/rocq.md#dominance)).
 
-    The validator decides "does A dominate B?" by Cfg.v's
-    `dominates_by_interval`, over the preorder intervals of the
-    dominator tree that `cfg_idoms/2` computes (Cooper, Harvey and
-    Kennedy). Campaign 3's single-definition invariant needs the
-    answer to mean what it says on the runs of the machine: a run
-    enters only blocks with an interval, and a block that dominates a
-    successor and is not that successor dominates the block the edge
-    leaves. This file proves those facts of `block_intervals` for every
-    function, not of a corrected copy, so the theorem is about the
-    validator ir.pl runs.
+    The [[validator]] decides whether block A dominates block B, that is
+    whether every path from the entry to B passes through A, with
+    [dominates_by_interval]: `cfg_idoms/2` computes each label's
+    immediate dominator (idom, its parent in the dominator tree) by
+    Cooper, Harvey and Kennedy's algorithm, and `dom_intervals/3`
+    numbers that tree in preorder, giving each label the interval of its
+    subtree's numbers. Campaign 3's [[single-definition invariant]] needs
+    the answer to mean what it says on the runs of the [[machine]]: a run
+    enters only blocks with an interval ([dom_closed]), and what
+    dominates a successor, other than the successor, dominates the block
+    the edge leaves ([dom_edge]). This file proves those facts of
+    [block_intervals] for every function, not of a corrected copy, so
+    they are about the validator ir.pl runs.
 
-    | Theorem | Says |
-    |---|---|
-    | `dom_entry` | the entry block has an interval |
-    | `dom_closed` | a successor of a block with an interval has one |
-    | `dom_edge` | what dominates a successor dominates its predecessor too, but for the successor itself |
-    | `dom_entry_top` | only the entry dominates the entry |
-    | `dom_antisym` | two blocks that dominate each other are one block |
-    | `dom_meet` | what dominates every reachable predecessor of a block but the entry dominates the block, and is not it |
-
-    ## Why the result is right
-
-    Only soundness is needed, and it follows from three properties of
-    what the algorithm computed, not from its being the least fixpoint:
-
-    | Part | Property |
-    |---|---|
-    | `reverse_postorder/6` | the labels it lists start with the entry and are closed under successors |
-    | `cfg_idoms/2` | at the fixpoint a label's idom is a common ancestor, in the tree of idoms, of each predecessor that has one (`common_dominator/5` walks up the tree) |
-    | `dom_intervals/3` | a label's interval holds exactly the preorder numbers of its subtree, and no two labels share one |
-
-    Cooper, Harvey and Kennedy's argument that the fixpoint is the true
-    dominator tree is not needed: a tree whose parent of each label is
-    an ancestor of the label's predecessors already passes every path
-    from the entry through each ancestor.
-
-    `dom_meet`, the converse of `dom_edge`, needs one more property:
-    a label's parent is the *nearest* common ancestor of its
-    predecessors (`idoms_nca`). `common_dominator/5` walks up from the
-    label later in the reverse postorder, and at the fixpoint every
-    ancestor comes before its descendants in that order, because the
-    walk lists each label after a predecessor (`func_cfg_parent`). *)
+    Only soundness is needed, and it rests on three properties of what
+    the algorithm computed, not on its being the least fixpoint: the
+    reverse postorder starts at the entry and is closed under successors
+    ([cfg_ok]); at the fixpoint a label's parent is an ancestor of each
+    of its predecessors that has one ([idoms_ok]); and a label's interval
+    holds exactly the preorder numbers of its subtree ([si_ok]). A tree
+    whose parent of each label is an ancestor of the label's
+    predecessors already puts each ancestor on every path from the
+    entry, so the argument that the fixpoint is the true dominator tree
+    is not needed. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Maps Syntax Cfg Validate.
@@ -51,16 +34,21 @@ Local Open Scope Z_scope.
 
 (** ## Names and maps *)
 
+(** Comparing names with [name_eqb] answers true exactly when the two names
+    are equal. *)
 Lemma name_eqb_true : forall a b, name_eqb a b = true <-> a = b.
 Proof.
   intros a b. split; [apply term_eqb_eq|]. intros ->. apply term_eqb_refl.
 Qed.
 
+(** [name_eqb] answers false exactly when the two names differ. *)
 Lemma name_eqb_false : forall a b, name_eqb a b = false <-> a <> b.
 Proof.
   intros a b. rewrite <- not_true_iff_false, name_eqb_true. reflexivity.
 Qed.
 
+(** A [[name map]] m has the key k ([nm_mem]) exactly when looking k up in m
+    finds some value. *)
 Lemma nm_mem_find : forall (A : Type) k (m : nmap A), nm_mem k m = true <-> exists v, nm_find k m = Some v.
 Proof.
   intros A k m. unfold nm_mem. destruct (nm_find k m); split; intros H; eauto.
@@ -68,18 +56,28 @@ Proof.
   - destruct H as [v H]. discriminate H.
 Qed.
 
+(** After adding the key n to a name map m, k is a key exactly when it is n
+    or was a key of m. *)
 Lemma nm_mem_add_iff : forall (A : Type) k n (v : A) m, nm_mem k (nm_add n v m) = true <-> k = n \/ nm_mem k m = true.
 Proof.
   intros A k n v m. rewrite nm_mem_add, orb_true_iff, name_eqb_true. reflexivity.
 Qed.
 
+(** The empty name map has no keys. *)
 Lemma nm_mem_empty : forall (A : Type) k, nm_mem k (@nm_empty A) = false.
 Proof. intros A k. unfold nm_mem. rewrite nm_find_empty. reflexivity. Qed.
 
-(** ## Depth-first search *)
+(** ## Depth-first search
 
-(** `reverse_postorder/6`: what it marks, what it lists, and that each
-    label it marks newly has its successors marked. *)
+    `reverse_postorder/6` walks the labels depth first from the entry
+    and lists them in reverse postorder, where each label comes before
+    its successors but along a back edge. *)
+
+(** As `reverse_postorder/6`, the walk from the labels ns over the successor
+    map succs, starting from the marked labels seen and the list post: it
+    keeps every mark, marks each label of ns, lists each label it newly
+    marks and marks all of that label's successors, lists nothing else new,
+    and keeps everything post listed. *)
 Lemma reverse_postorder_spec : forall fuel ns succs seen post seen' post',
   reverse_postorder fuel ns succs seen post = Some (seen', post') ->
   (forall x, nm_mem x seen = true -> nm_mem x seen' = true) /\
@@ -128,10 +126,16 @@ Proof.
       * intros x Hx. apply He2. right. exact (He1 _ Hx).
 Qed.
 
+(** With [[fuel]] left, the walk over no labels returns its marks and its
+    list unchanged. *)
 Lemma reverse_postorder_nil : forall f succs seen post,
   reverse_postorder (S f) [] succs seen post = Some (seen, post).
 Proof. reflexivity. Qed.
 
+(** With fuel left, the walk over l :: ls skips l if it is marked; otherwise
+    it marks l, walks l's successors, puts l in front of what that listed,
+    and goes on with ls. One unfolding of [reverse_postorder], for stepping
+    through the walk from the entry. *)
 Lemma reverse_postorder_cons : forall f l ls succs seen post,
   reverse_postorder (S f) (l :: ls) succs seen post =
   if nm_mem l seen then reverse_postorder f ls succs seen post
@@ -147,10 +151,15 @@ Proof. reflexivity. Qed.
 
 (** ## The graph a function's blocks make *)
 
-(** An edge of the blocks: a jump of the block labelled p can go to s. *)
+(** An edge of the blocks bs from label p to label s: some [[block]]
+    labelled p has a jump that can go to s. *)
 Definition edge (bs : list block) (p s : name) : Prop :=
   exists b, In b bs /\ b_label b = p /\ In s (jump_succs (b_jump b)).
 
+(** ### The successor map *)
+
+(** If [lookup] finds v for the key k in an association list ps, ps holds a
+    pair of v with a key k' that [name_eqb] finds equal to k. *)
 Lemma lookup_some_in : forall (A : Type) k (ps : list (name * A)) v,
   lookup k ps = Some v -> exists k', name_eqb k k' = true /\ In (k', v) ps.
 Proof.
@@ -160,6 +169,8 @@ Proof.
   - destruct (IH H) as (k'' & E' & Hin). exists k''. split; [exact E' | right; exact Hin].
 Qed.
 
+(** [lookup] finds nothing for the key k in an association list where no
+    pair has the key k. *)
 Lemma lookup_none : forall (A : Type) k (ps : list (name * A)),
   (forall k' v, In (k', v) ps -> k' <> k) -> lookup k ps = None.
 Proof.
@@ -169,6 +180,8 @@ Proof.
   - apply IH. intros k'' v'' Hin. exact (H k'' v'' (or_intror Hin)).
 Qed.
 
+(** The validator's list membership test [mem] n ns is true exactly when n
+    is in ns. *)
 Lemma mem_in : forall n ns, mem n ns = true <-> In n ns.
 Proof.
   intros n ns. unfold mem. rewrite existsb_exists. split.
@@ -176,7 +189,10 @@ Proof.
   - intros Hin. exists n. split; [exact Hin | apply term_eqb_refl].
 Qed.
 
-(** With no two keys alike, the last pair of a key is its only one. *)
+(** In an association list ps whose keys are distinct ([no_dups]), looking k
+    up in the reversed list finds the value of k's one pair (k, v).
+    [nm_of_list] keeps the last pair of a key, so this is how a map built
+    from such a list finds a key's only value. *)
 Lemma lookup_rev_unique : forall (A : Type) (ps : list (name * A)) k v,
   no_dups (map fst ps) = true -> In (k, v) ps -> lookup k (rev ps) = Some v.
 Proof.
@@ -192,9 +208,13 @@ Proof.
   - rewrite (IH _ _ Hd Hin). reflexivity.
 Qed.
 
+(** The successor map of the blocks bs, as `func_cfg/2` builds it: each
+    block's label with the labels its jump can go to. *)
 Definition block_succs (bs : list block) : nmap (list name) :=
   nm_of_list (map (fun b => (b_label b, jump_succs (b_jump b))) bs).
 
+(** Where no two blocks of bs share a label, the successor map gives each
+    block b of bs the labels b's jump can go to. *)
 Lemma block_succs_find : forall bs b,
   no_dups (map b_label bs) = true -> In b bs ->
   nm_find (b_label b) (block_succs bs) = Some (jump_succs (b_jump b)).
@@ -205,6 +225,9 @@ Proof.
   - apply in_map_iff. exists b. auto.
 Qed.
 
+(** Every entry of the successor map comes from a block: if it gives the
+    label l the list ss, some block of bs is labelled l and its jump can go
+    to exactly ss. *)
 Lemma block_succs_some : forall bs l ss,
   nm_find l (block_succs bs) = Some ss -> exists b, In b bs /\ b_label b = l /\ ss = jump_succs (b_jump b).
 Proof.
@@ -215,14 +238,22 @@ Proof.
   exists b. auto.
 Qed.
 
-(** The edges `func_cfg/2` lists, successor first. *)
+(** ### The predecessor map *)
+
+(** The edges `func_cfg/2` lists, each as the pair of its successor and then
+    the label of the block it leaves. *)
 Definition cfg_edges (bs : list block) : list (name * name) :=
   flat_map (fun b => map (fun s => (s, b_label b)) (jump_succs (b_jump b))) bs.
 
+(** Adds the edge e, a successor and the label it is reached from, to the
+    predecessor map m: the source goes in front of the successor's list.
+    `func_cfg/2` folds it over [cfg_edges]. *)
 Definition add_pred (m : nmap (list name)) (e : name * name) : nmap (list name) :=
   let ps := match nm_find (fst e) m with Some ps => ps | None => [] end in
   nm_add (fst e) (snd e :: ps) m.
 
+(** Adding more edges keeps every predecessor listed: if s's list in m holds
+    p, so does s's list after folding [add_pred] over the edges es. *)
 Lemma add_pred_keeps : forall es m s p,
   (exists ps, nm_find s m = Some ps /\ In p ps) ->
   exists ps, nm_find s (fold_left add_pred es m) = Some ps /\ In p ps.
@@ -234,6 +265,8 @@ Proof.
   - exists ps. auto.
 Qed.
 
+(** After folding [add_pred] over the edges es, the successor of each edge
+    of es lists that edge's source among its predecessors. *)
 Lemma add_pred_in : forall es m e,
   In e es -> exists ps, nm_find (fst e) (fold_left add_pred es m) = Some ps /\ In (snd e) ps.
 Proof.
@@ -243,8 +276,10 @@ Proof.
   eexists. split; [reflexivity | left; reflexivity].
 Qed.
 
-(** Every predecessor `add_pred` lists comes from an edge it added or
-    was there before. *)
+(** Whatever relation P of a successor and a predecessor holds of every pair
+    the map m lists, and of every edge in es, holds of every pair after
+    folding [add_pred] over es: each predecessor listed comes from an edge
+    added or was there before. *)
 Lemma add_pred_only : forall (P : name -> name -> Prop) es m,
   (forall s ps p, nm_find s m = Some ps -> In p ps -> P s p) ->
   (forall e, In e es -> P (fst e) (snd e)) ->
@@ -260,9 +295,13 @@ Proof.
   - exact (Hm _ _ _ Hs Hp).
 Qed.
 
-(** What `func_cfg/2` built: the successor map of the blocks, a
-    predecessor of every edge, and a reverse postorder that starts at
-    the entry, lists it once, and is closed under successors. *)
+(** ### What `func_cfg/2` builds *)
+
+(** What `func_cfg/2` built for the blocks bs, as the [cfg] g: its successor
+    map is [block_succs]; it lists the source of each [edge] among the
+    target's predecessors, and lists no other predecessor; and its reverse
+    postorder starts at the entry, lists the entry once, and is closed under
+    successors. *)
 Record cfg_ok (bs : list block) (g : cfg) : Prop := {
   cfg_ok_succs : cfg_succs g = block_succs bs;
   cfg_ok_preds : forall p s, edge bs p s -> exists ps, nm_find s (cfg_preds g) = Some ps /\ In p ps;
@@ -272,6 +311,8 @@ Record cfg_ok (bs : list block) (g : cfg) : Prop := {
   cfg_ok_pred_edge : forall s ps p, nm_find s (cfg_preds g) = Some ps -> In p ps -> edge bs p s
 }.
 
+(** Whenever `func_cfg/2` builds a graph g of the blocks bs, g is [cfg_ok],
+    bs is not empty, and g's entry is the label of bs's first block. *)
 Lemma func_cfg_ok : forall bs g, func_cfg bs = Some g -> cfg_ok bs g /\ exists b0 rest, bs = b0 :: rest /\ cfg_entry g = b_label b0.
 Proof.
   intros bs g H. unfold func_cfg in H. destruct bs as [|b0 rest]; [discriminate H|]. cbv zeta in H.
@@ -322,7 +363,9 @@ Proof.
       apply in_map_iff in Hin as (s' & Eb & Hs'). injection Eb as <- <-. exists b. auto.
 Qed.
 
-(** The labels the walk lists are listed once each. *)
+(** The walk lists each label at most once: from a list post without repeats
+    whose labels are all marked, it leaves a list without repeats whose
+    labels are all marked. *)
 Lemma reverse_postorder_nodup : forall fuel ns succs seen post seen' post',
   reverse_postorder fuel ns succs seen post = Some (seen', post') ->
   NoDup post -> (forall x, In x post -> nm_mem x seen = true) ->
@@ -345,6 +388,8 @@ Proof.
     + intros x [<- | Hx]; [|exact (Hs1 _ Hx)]. apply Ha1, nm_mem_add_iff. left. reflexivity.
 Qed.
 
+(** The reverse postorder of a graph `func_cfg/2` builds lists each label
+    once. *)
 Lemma func_cfg_nodup : forall bs g, func_cfg bs = Some g -> NoDup (cfg_rpo g).
 Proof.
   intros bs g H. unfold func_cfg in H. destruct bs as [|b0 rest]; [discriminate H|]. cbv zeta in H.
@@ -362,6 +407,10 @@ Qed.
     predecessor before it. The nearest-common-ancestor argument below
     numbers labels by this order. *)
 
+(** A list split two ways, as a ++ b and as u ++ x :: v, has x either in a,
+    where a is u ++ x :: v' for some v', or in b, where u is a ++ w and b is
+    w ++ x :: v for some w. A list fact for following the walk's output
+    through its two halves. *)
 Lemma app_cons_split : forall (A : Type) (a b u v : list A) (x : A),
   a ++ b = u ++ x :: v ->
   (exists v', a = u ++ x :: v') \/ (exists w, u = a ++ w /\ b = w ++ x :: v).
@@ -374,9 +423,9 @@ Proof.
         [left; exists v' | right; exists w; split]; reflexivity.
 Qed.
 
-(** `reverse_postorder_parent`: the walk puts its new labels in front,
-    and each new label is one it started from or a successor of a label
-    before it. *)
+(** The walk puts the labels it newly lists, new, in front of post, and each
+    label x of new is one of the labels ns it started from or a successor of
+    a label listed before x in new. *)
 Lemma reverse_postorder_parent : forall fuel ns succs seen post seen' post',
   reverse_postorder fuel ns succs seen post = Some (seen', post') ->
   exists new, post' = new ++ post /\
@@ -405,8 +454,9 @@ Proof.
            ++ exists p, ss'. split; [apply in_or_app; right; right; exact Hp|]. auto.
 Qed.
 
-(** `func_cfg_parent`: in the reverse postorder, every label but the
-    entry has a predecessor before it. *)
+(** In the reverse postorder of a graph g that `func_cfg/2` builds, every
+    label x but the entry has a predecessor p listed before it (u is the
+    part of the order before x). *)
 Lemma func_cfg_parent : forall bs g, func_cfg bs = Some g ->
   forall u x v, cfg_rpo g = u ++ x :: v -> x <> cfg_entry g ->
   exists p ps, In p u /\ nm_find x (cfg_preds g) = Some ps /\ In p ps.
@@ -425,20 +475,30 @@ Proof.
   exists p, ps. auto.
 Qed.
 
-(** ## The tree of immediate dominators *)
+(** ## The tree of immediate dominators
 
-(** `anc t a b`: a is b, or b's parent in t is a descendant of a. *)
+    A label's immediate dominator (idom) is its parent in the
+    [[dominance|dominator tree]]. `cfg_idoms/2` computes them as a
+    [[name map]] by sweeping the reverse postorder until a sweep changes
+    nothing; each label's idom is then the meet, walking up the tree,
+    of its predecessors. *)
+
+(** In the tree whose parent map is t, a is an ancestor of b: a is b, or a
+    is an ancestor of b's parent. *)
 Inductive anc (t : nmap name) (a : name) : name -> Prop :=
 | anc_refl : anc t a a
 | anc_up : forall b c, nm_find b t = Some c -> anc t a c -> anc t a b.
 
+(** An ancestor of an ancestor of c is an ancestor of c. *)
 Lemma anc_trans : forall t a b c, anc t a b -> anc t b c -> anc t a c.
 Proof.
   intros t a b c Hab Hbc. induction Hbc as [|c d Hf _ IH]; [exact Hab|].
   exact (anc_up _ _ _ _ Hf IH).
 Qed.
 
-(** `common_dominator/5` meets A and B at a common ancestor. *)
+(** `common_dominator/5` meets its two labels at a common ancestor: if
+    walking up the parent map t from a and b, guided by the reverse
+    postorder numbers num, returns c, then c is an ancestor of both a and b. *)
 Lemma common_dominator_anc : forall fuel num t a b c,
   common_dominator fuel num t a b = Some c -> anc t c a /\ anc t c b.
 Proof.
@@ -454,14 +514,19 @@ Proof.
       destruct (IH _ _ _ _ _ H) as [H1 H2]. split; [exact H1 | exact (anc_up _ _ _ _ Eb H2)].
 Qed.
 
+(** One step of the fold over a label's predecessors in `label_idoms/5`:
+    meet the result so far with the next predecessor p by
+    [common_dominator]. *)
 Definition common_step (fuel : nat) (num : nmap Z) (t : nmap name) (acc : option name) (p : name)
   : option name :=
   let* c := acc in common_dominator fuel num t p c.
 
+(** Once a meet fails, the fold over the remaining predecessors fails too. *)
 Lemma common_fold_none : forall fuel num t others, fold_left (common_step fuel num t) others None = None.
 Proof. intros fuel num t others. induction others as [|p others IH]; [reflexivity | exact IH]. Qed.
 
-(** The meet of a label's predecessors is an ancestor of each. *)
+(** The meet nw of a label's predecessors, folded from the first one c0 over
+    the others, is an ancestor of c0 and of each of the others. *)
 Lemma common_fold_anc : forall fuel num t others c0 nw,
   fold_left (common_step fuel num t) others (Some c0) = Some nw ->
   anc t nw c0 /\ forall p, In p others -> anc t nw p.
@@ -476,9 +541,14 @@ Proof.
     intros p' [<- | Hin]; [exact (anc_trans _ _ _ _ H1 Hp) | exact (H2 _ Hin)].
 Qed.
 
+(** ### The sweeps to the fixpoint *)
+
+(** A sweep of `label_idoms/5` over the labels that has failed stays failed. *)
 Lemma label_idoms_none : forall preds num cf ls, fold_left (label_idoms preds num cf) ls None = None.
 Proof. intros preds num cf ls. induction ls as [|b ls IH]; [reflexivity | exact IH]. Qed.
 
+(** A sweep that has changed some immediate dominator ends with its changed
+    flag still set. *)
 Lemma label_idoms_changed : forall preds num cf ls t t' c,
   fold_left (label_idoms preds num cf) ls (Some (t, true)) = Some (t', c) -> c = true.
 Proof.
@@ -493,8 +563,9 @@ Proof.
     + exact (IH _ _ _ H).
 Qed.
 
-(** A sweep that changes nothing: every label's idom is the meet of
-    its predecessors that have one. *)
+(** A sweep over the labels ls that ends with its changed flag clear left
+    the map t of immediate dominators as it was, and each label b of ls has
+    as its immediate dominator the meet of its predecessors that have one. *)
 Lemma label_idoms_unchanged : forall preds num cf ls t t',
   fold_left (label_idoms preds num cf) ls (Some (t, false)) = Some (t', false) ->
   t' = t /\ forall b, In b ls -> exists ps first others nw,
@@ -516,6 +587,8 @@ Proof.
     + apply label_idoms_changed in H. discriminate H.
 Qed.
 
+(** The map M that `idom_fixpoint/5` returns is a fixpoint: one more sweep
+    over the labels changes nothing. *)
 Lemma idom_fixpoint_final : forall fuel ls preds num cf t M,
   idom_fixpoint fuel ls preds num cf t = Some M ->
   fold_left (label_idoms preds num cf) ls (Some (M, false)) = Some (M, false).
@@ -526,7 +599,8 @@ Proof.
   injection H as <-. destruct (label_idoms_unchanged _ _ _ _ _ _ E) as [-> _]. exact E.
 Qed.
 
-(** A label no sweep visits keeps its idom. *)
+(** A label k that a sweep does not visit keeps its entry in the map through
+    the sweep. *)
 Lemma label_idoms_other : forall preds num cf ls k t c t' c',
   ~ In k ls -> fold_left (label_idoms preds num cf) ls (Some (t, c)) = Some (t', c') ->
   nm_find k t' = nm_find k t.
@@ -545,6 +619,9 @@ Proof.
     + rewrite (IH _ _ _ _ _ (fun Hin => Hk (or_intror Hin)) H), nm_find_add, Hkb. reflexivity.
 Qed.
 
+(** A label k that the sweeps do not visit keeps the entry it started with
+    through all the sweeps of `idom_fixpoint/5`. The entry, its own
+    immediate dominator during the sweeps, is such a label. *)
 Lemma idom_fixpoint_other : forall fuel ls preds num cf t M k,
   ~ In k ls -> idom_fixpoint fuel ls preds num cf t = Some M -> nm_find k M = nm_find k t.
 Proof.
@@ -554,13 +631,17 @@ Proof.
   destruct c; [exact (IH _ _ _ _ _ _ _ Hk H)|]. injection H as <-. reflexivity.
 Qed.
 
-(** What `cfg_idoms/2` computed, before it drops the entry's own idom:
-    the entry is its own parent, every other label of the reverse
-    postorder has a parent, and that parent is an ancestor of each of
-    the label's predecessors that has one. For the nearest common
-    ancestor below, also: only labels of the reverse postorder have a
-    parent, each parent is the walk's meet of the predecessors, and the
-    order lists each label but the entry after a predecessor. *)
+(** ### What the fixpoint satisfies *)
+
+(** What `cfg_idoms/2` computed for the graph g, as the parent map M before
+    it drops the entry's parent: the entry is its own parent, every other
+    label of the reverse postorder has a parent, and that parent is an
+    ancestor ([anc]) of each of the label's predecessors that has one.
+
+    For the nearest common ancestor below, also: only labels of the reverse
+    postorder have a parent, each parent is the walk's meet of the
+    predecessors, and the order lists each label once and each label but the
+    entry after a predecessor. *)
 Record idoms_ok (g : cfg) (M : nmap name) : Prop := {
   idoms_entry : nm_find (cfg_entry g) M = Some (cfg_entry g);
   idoms_meet : forall b, In b (cfg_rpo g) -> b <> cfg_entry g ->
@@ -577,6 +658,9 @@ Record idoms_ok (g : cfg) (M : nmap name) : Prop := {
                  exists p ps, In p u /\ nm_find x (cfg_preds g) = Some ps /\ In p ps
 }.
 
+(** When `func_cfg/2` builds g from the blocks bs and `cfg_idoms/2` computes
+    the immediate dominators t, t is a map M that satisfies [idoms_ok] with
+    the entry removed. *)
 Lemma cfg_idoms_ok : forall bs g t,
   func_cfg bs = Some g -> cfg_idoms g = Some t ->
   exists M, idoms_ok g M /\ t = nm_remove (cfg_entry g) M.
@@ -619,10 +703,15 @@ Qed.
     predecessor of a label that has a parent is an ancestor of the
     label's parent (`idoms_nca`). *)
 
-(** `labels_numbered/3` numbers each label by its place in the list. *)
+(** ### Ranks in the reverse postorder *)
+
+(** One step of `labels_numbered/3`, which numbers each label by its place
+    in the list: give the label l the next number and count on. *)
 Definition number_step (acc : Z * nmap Z) (l : name) : Z * nmap Z :=
   (fst acc + 1, nm_add l (fst acc) (snd acc)).
 
+(** Numbering the labels ls leaves the number of a label not in ls as it
+    was. *)
 Lemma number_fold_out : forall ls x acc,
   ~ In x ls -> nm_find x (snd (fold_left number_step ls acc)) = nm_find x (snd acc).
 Proof.
@@ -632,6 +721,8 @@ Proof.
   apply name_eqb_true in E. subst. exfalso. apply Hx. left. reflexivity.
 Qed.
 
+(** In a list ls without repeats, numbering from a counter at n gives the
+    label x, written ls = u ++ x :: v, the number n plus the length of u. *)
 Lemma number_fold_at : forall u ls x v acc, NoDup ls -> ls = u ++ x :: v ->
   nm_find x (snd (fold_left number_step ls acc)) = Some (fst acc + Z.of_nat (length u)).
 Proof.
@@ -642,16 +733,21 @@ Proof.
     unfold number_step. simpl. f_equal. lia.
 Qed.
 
+(** Fixes a graph g and a parent map M that satisfies [idoms_ok], whose
+    reverse postorder starts at the entry. *)
 Section Nca.
 
 Variables (g : cfg) (M : nmap name).
 Hypothesis HM : idoms_ok g M.
 Hypothesis Hr0 : exists rest, cfg_rpo g = cfg_entry g :: rest.
 
-(** `rank x`: x's place in the reverse postorder. *)
+(** The place of the label x in g's reverse postorder, its number by
+    `labels_numbered/3`, or -1 for a label not in the order. *)
 Definition rank (x : name) : Z :=
   match nm_find x (labels_numbered (cfg_rpo g)) with Some i => i | None => -1 end.
 
+(** The label x of the order, written u ++ x :: v, is numbered by the length
+    of u, and that is its rank. *)
 Lemma rank_at : forall u x v, cfg_rpo g = u ++ x :: v ->
   nm_find x (labels_numbered (cfg_rpo g)) = Some (Z.of_nat (length u)) /\ rank x = Z.of_nat (length u).
 Proof.
@@ -660,11 +756,13 @@ Proof.
   rewrite (number_fold_at u _ x v (0, nm_empty) (idoms_nodup _ _ HM) E). split; reflexivity.
 Qed.
 
+(** Every label of the order is numbered, with its rank. *)
 Lemma rank_find : forall x, In x (cfg_rpo g) -> nm_find x (labels_numbered (cfg_rpo g)) = Some (rank x).
 Proof.
   intros x Hx. destruct (in_split _ _ Hx) as (u & v & E). destruct (rank_at _ _ _ E) as [-> ->]. reflexivity.
 Qed.
 
+(** A label of the order has a rank of 0 or more. *)
 Lemma rank_nonneg : forall x, In x (cfg_rpo g) -> 0 <= rank x.
 Proof.
   intros x Hx. destruct (in_split _ _ Hx) as (u & v & E). rewrite (proj2 (rank_at _ _ _ E)). lia.
@@ -679,10 +777,11 @@ Proof.
   rewrite length_app. simpl. lia.
 Qed.
 
+(** The entry is in the reverse postorder. *)
 Lemma entry_in : In (cfg_entry g) (cfg_rpo g).
 Proof. destruct Hr0 as (rest & ->). left. reflexivity. Qed.
 
-(** Every label of the order has a parent. *)
+(** Every label of the order has a parent in M. *)
 Lemma rpo_mem : forall x, In x (cfg_rpo g) -> nm_mem x M = true.
 Proof.
   intros x Hx. apply nm_mem_find. destruct (name_eqb x (cfg_entry g)) eqn:E.
@@ -690,8 +789,8 @@ Proof.
   - apply name_eqb_false in E. destruct (idoms_meet _ _ HM _ Hx E) as (nw & Hnw & _). eauto.
 Qed.
 
-(** `idom_rank`: a label's parent is in the order, and before it, but
-    for the entry, its own parent. *)
+(** A label b of the order has its parent c in the order too, and c comes
+    before b, but for the entry, which is its own parent. *)
 Lemma idom_rank : forall b c, In b (cfg_rpo g) -> nm_find b M = Some c ->
   In c (cfg_rpo g) /\ ((b = cfg_entry g /\ c = b) \/ rank c < rank b).
 Proof.
@@ -719,8 +818,8 @@ Proof.
   intros b c Hb Hc. exact (Main (S (Z.to_nat (rank b))) b c ltac:(lia) Hb Hc).
 Qed.
 
-(** `anc_rank`: an ancestor of a label of the order is in it, and is
-    the label or before it. *)
+(** An ancestor a of a label y of the order is in the order, and is y or
+    comes before it. *)
 Lemma anc_rank : forall a y, anc M a y -> In y (cfg_rpo g) ->
   In a (cfg_rpo g) /\ (a = y \/ rank a < rank y).
 Proof.
@@ -729,8 +828,11 @@ Proof.
   destruct Hzy as [[_ ->] | Hzy]; destruct Haz as [-> | Haz]; auto; right; lia.
 Qed.
 
-(** `common_dominator_nca`: the walk's meeting point is below every
-    common ancestor of its two labels. *)
+(** ### The meet is the nearest common ancestor *)
+
+(** Meeting two labels a and b of the order with [common_dominator] gives a
+    label c of the order below every common ancestor of a and b: whatever is
+    an ancestor of both is an ancestor of c. *)
 Lemma common_dominator_nca : forall fuel a b c,
   In a (cfg_rpo g) -> In b (cfg_rpo g) ->
   common_dominator fuel (labels_numbered (cfg_rpo g)) M a b = Some c ->
@@ -759,6 +861,9 @@ Proof.
       * rewrite Eb in Hf. injection Hf as <-. exact Hdc.
 Qed.
 
+(** The meet nw of a label's predecessors, c0 and the others, all in the
+    order, lies below each of their common ancestors D: D is an ancestor of
+    nw. *)
 Lemma common_fold_nca : forall cf others c0 nw,
   In c0 (cfg_rpo g) -> (forall p, In p others -> In p (cfg_rpo g)) ->
   fold_left (common_step cf (labels_numbered (cfg_rpo g)) M) others (Some c0) = Some nw ->
@@ -773,8 +878,10 @@ Proof.
     exact (Hn _ (Hp p (or_introl eq_refl)) Hd).
 Qed.
 
-(** `idoms_nca`: an ancestor of every predecessor of a label that has
-    a parent is an ancestor of the label's parent. *)
+(** For a label b of the order other than the entry, whatever is an ancestor
+    of each of b's predecessors that has a parent is an ancestor of b's
+    parent: the parent is the predecessors' nearest common ancestor.
+    [dom_meet] rests on it. *)
 Theorem idoms_nca : forall b D, In b (cfg_rpo g) -> b <> cfg_entry g ->
   (forall p ps, nm_find b (cfg_preds g) = Some ps -> In p ps -> nm_mem p M = true -> anc M D p) ->
   exists nw, nm_find b M = Some nw /\ anc M D nw.
@@ -793,8 +900,14 @@ Qed.
 
 End Nca.
 
-(** ## The children of each label *)
+(** ## The children of each label
 
+    `dom_children/3` turns the map of parents into a map of each
+    label's children, which the preorder numbering walks down. *)
+
+(** One step of `dom_children/3`: put the label l in front of its parent's
+    list of children, if l has a parent in t; fail if the parent has no
+    list. *)
 Definition child_step (t : nmap name) (acc : option (nmap (list name))) (l : name)
   : option (nmap (list name)) :=
   let* kids := acc in
@@ -803,13 +916,15 @@ Definition child_step (t : nmap name) (acc : option (nmap (list name))) (l : nam
   | None => Some kids
   end.
 
-(** The children table so far: each list holds once each the labels
-    done whose parent it is, and every parent of a label done has a
-    list. *)
+(** The children map kids after the labels D have been processed: each
+    label's list holds, once each, exactly the labels of D whose parent in t
+    it is, and every parent of a label of D has a list. *)
 Definition kids_inv (t : nmap name) (kids : nmap (list name)) (D : name -> Prop) : Prop :=
   (forall x ks, nm_find x kids = Some ks -> NoDup ks /\ forall k, In k ks <-> D k /\ nm_find k t = Some x) /\
   (forall k x, D k -> nm_find k t = Some x -> nm_mem x kids = true).
 
+(** [kids_inv] depends only on which labels have been processed, not on how
+    that set is written. *)
 Lemma kids_inv_iff : forall t kids (D D' : name -> Prop),
   (forall k, D k <-> D' k) -> kids_inv t kids D -> kids_inv t kids D'.
 Proof.
@@ -819,9 +934,12 @@ Proof.
   - intros k x Hd Ht. apply (H2 k x); [apply E; exact Hd | exact Ht].
 Qed.
 
+(** A failed fold of [child_step] stays failed. *)
 Lemma child_fold_none : forall t ls, fold_left (child_step t) ls None = None.
 Proof. intros t ls. induction ls as [|l ls IH]; [reflexivity | exact IH]. Qed.
 
+(** One [child_step] on a label l not yet processed keeps [kids_inv], now
+    with l processed. *)
 Lemma child_step_inv : forall t kids kids1 l (D : name -> Prop),
   ~ D l -> kids_inv t kids D -> child_step t (Some kids) l = Some kids1 ->
   kids_inv t kids1 (fun k => k = l \/ D k).
@@ -849,6 +967,8 @@ Proof.
     + intros k x [<- | Hk] Hkt; [congruence | exact (H2 _ _ Hk Hkt)].
 Qed.
 
+(** Folding [child_step] over labels ls without repeats, none of them
+    processed yet, keeps [kids_inv] and adds ls to the processed labels. *)
 Lemma child_fold : forall t ls kids kids' (D : name -> Prop),
   NoDup ls -> (forall l, In l ls -> ~ D l) -> kids_inv t kids D ->
   fold_left (child_step t) ls (Some kids) = Some kids' ->
@@ -865,6 +985,10 @@ Proof.
     intros k. simpl. split; [intros [Hk | [<- | Hk]]; auto | intros [[<- | Hk] | Hk]; auto].
 Qed.
 
+(** Where g's reverse postorder has no repeats, the children map
+    `dom_children/3` builds from the parent map t lists as children of x
+    exactly the labels of the order whose parent is x, and every label of
+    the order that has a parent is among that parent's children. *)
 Lemma dom_children_spec : forall g t kids,
   NoDup (cfg_rpo g) -> dom_children g t = Some kids ->
   (forall x ks, nm_find x kids = Some ks -> forall k, In k ks <-> In k (cfg_rpo g) /\ nm_find k t = Some x) /\
@@ -885,23 +1009,37 @@ Proof.
     exists ks. split; [exact Hf|]. apply (proj2 (H1 _ _ Hf)). split; [left; rewrite <- in_rev; exact Hk | exact Ht].
 Qed.
 
-(** ## Subtrees and their intervals *)
+(** ## Subtrees and their intervals
 
+    `subtree_intervals/6` numbers the tree of children in preorder; a
+    label's interval runs from its own number to the last number in its
+    subtree, so one label's interval holds another's number exactly
+    when the other is its descendant. *)
+
+(** Fixes the children map K: the tree given by each label's list of
+    children. *)
 Section Tree.
 
 Variable K : nmap (list name).
 
-(** `descn a b k`: b is a descendant of a, k generations down. *)
+(** In the children map K, b is a descendant of a k generations down: a
+    itself at 0, or a child of a descendant one generation up. *)
 Inductive descn (a : name) : name -> nat -> Prop :=
 | descn_refl : descn a a 0
 | descn_kid : forall p ks b k, descn a p k -> nm_find p K = Some ks -> In b ks -> descn a b (S k).
 
+(** b is a descendant of a in K, at some depth; a label is its own
+    descendant. *)
 Definition desc (a b : name) : Prop := exists k, descn a b k.
 
+(** Takes [descn] apart: a descendant at depth k is a itself at depth 0, or
+    a child of a descendant one generation up. *)
 Lemma descn_inv : forall a b k, descn a b k ->
   (b = a /\ k = 0%nat) \/ exists p ks k', k = S k' /\ descn a p k' /\ nm_find p K = Some ks /\ In b ks.
 Proof. intros a b k H. destruct H as [|p ks b k Hp Hf Hb]; [left; auto | right; eauto 8]. Qed.
 
+(** A descendant at depth j of a descendant at depth k of a is a descendant
+    of a at depth k + j. *)
 Lemma descn_trans : forall a b c k j, descn a b k -> descn b c j -> descn a c (k + j).
 Proof.
   intros a b c k j Hab Hbc. induction Hbc as [|p ks c' j Hbp IH Hp Hc].
@@ -909,15 +1047,20 @@ Proof.
   - rewrite Nat.add_succ_r. exact (descn_kid _ _ _ _ _ IH Hp Hc).
 Qed.
 
+(** Every label is its own descendant. *)
 Lemma desc_refl : forall a, desc a a.
 Proof. intros a. exists 0%nat. constructor. Qed.
 
+(** A descendant of a descendant of a is a descendant of a. *)
 Lemma desc_trans : forall a b c, desc a b -> desc b c -> desc a c.
 Proof. intros a b c [k Hk] [j Hj]. exists (k + j)%nat. exact (descn_trans _ _ _ _ _ Hk Hj). Qed.
 
+(** A child of a descendant of a is a descendant of a. *)
 Lemma desc_kid : forall a p ks b, desc a p -> nm_find p K = Some ks -> In b ks -> desc a b.
 Proof. intros a p ks b [k Hk] Hp Hb. exists (S k). exact (descn_kid _ _ _ _ _ Hk Hp Hb). Qed.
 
+(** A descendant b of a at depth k + 1 is, going down from a, a descendant
+    at depth k of one of a's children. *)
 Lemma descn_first : forall a b k, descn a b (S k) ->
   exists ks c, nm_find a K = Some ks /\ In c ks /\ descn c b k.
 Proof.
@@ -941,6 +1084,9 @@ Proof.
     injection Ha' as <-. exists c. split; [exact Hc|]. exists k. exact Hcb.
 Qed.
 
+(** A path of k generations from a back down to a can be repeated m times,
+    giving one of k times m generations: a cycle would make the tree as deep
+    as one likes. *)
 Lemma descn_iter : forall a k m, descn a a k -> descn a a (k * m).
 Proof.
   intros a k m H. induction m as [|m IH].
@@ -948,6 +1094,8 @@ Proof.
   - rewrite Nat.mul_succ_r. exact (descn_trans _ _ _ _ _ IH H).
 Qed.
 
+(** Each label is a child of at most one label: two lists of children that
+    hold the same label are the same parent's. *)
 Hypothesis kids_unique : forall x y ks ks' k,
   nm_find x K = Some ks -> In k ks -> nm_find y K = Some ks' -> In k ks' -> x = y.
 
@@ -962,9 +1110,17 @@ Proof.
     + rewrite <- (kids_unique _ _ _ _ _ Hp Hz Hp' Hz') in Hcp'. exact (IH _ _ Hcp').
 Qed.
 
+(** ### The preorder numbering *)
+
+(** One step of the fold `subtree_intervals/6` makes over a label's
+    children: number the subtree of the child c from the counter and
+    intervals so far. *)
 Definition si_step (f : nat) (acc : option (Z * nmap (Z * Z))) (c : name) : option (Z * nmap (Z * Z)) :=
   let* a := acc in subtree_intervals f K c (fst a) (snd a).
 
+(** One unfolding of [subtree_intervals] on the label L: number the subtrees
+    of L's children from n0 + 1 on, then give L the interval from n0 to the
+    last number used. *)
 Lemma si_unfold : forall f L n0 ivs, subtree_intervals (S f) K L n0 ivs =
   match nm_find L K with
   | Some ks =>
@@ -976,9 +1132,12 @@ Lemma si_unfold : forall f L n0 ivs, subtree_intervals (S f) K L n0 ivs =
   end.
 Proof. reflexivity. Qed.
 
+(** A failed fold of [si_step] stays failed. *)
 Lemma si_fold_none : forall f ks, fold_left (si_step f) ks None = None.
 Proof. intros f ks. induction ks as [|c ks IH]; [reflexivity | exact IH]. Qed.
 
+(** If the fold over the children ks succeeds, numbering the subtree of each
+    child succeeded, from some counter and intervals. *)
 Lemma si_fold_each : forall f ks a r, fold_left (si_step f) ks (Some a) = Some r ->
   forall c, In c ks -> exists n0 iv r', subtree_intervals f K c n0 iv = Some r'.
 Proof.
@@ -989,7 +1148,9 @@ Proof.
   destruct Hin as [<- | Hin]; [eauto | exact (IH _ _ H _ Hin)].
 Qed.
 
-(** The fuel bounds the depth of the subtree it numbers. *)
+(** The [[fuel]] of a numbering that succeeds bounds the depth of the
+    subtree at L: every descendant of L is fewer generations down than the
+    fuel. *)
 Lemma si_depth : forall fuel L n0 ivs r, subtree_intervals fuel K L n0 ivs = Some r ->
   forall X k, descn L X k -> (k < fuel)%nat.
 Proof.
@@ -1002,7 +1163,8 @@ Proof.
   pose proof (IH _ _ _ _ Hs _ _ Hcx). lia.
 Qed.
 
-(** So the subtree has no cycle. *)
+(** So the subtree at L has no cycle: a path from a descendant X of L back
+    down to X has no generations. *)
 Lemma si_no_cycle : forall fuel L n0 ivs r, subtree_intervals fuel K L n0 ivs = Some r ->
   forall X, desc L X -> forall k, descn X X k -> k = 0%nat.
 Proof.
@@ -1011,6 +1173,7 @@ Proof.
   simpl in Hl. lia.
 Qed.
 
+(** No descendant X of L but L itself has L as its descendant. *)
 Lemma si_acyclic : forall fuel L n0 ivs r, subtree_intervals fuel K L n0 ivs = Some r ->
   forall X, desc L X -> desc X L -> X = L.
 Proof.
@@ -1035,8 +1198,11 @@ Definition si_ok (fuel : nat) : Prop :=
      (pX <= pY <= lX <-> desc X Y)) /\
   (forall X v, nm_find X ivs' = Some v -> nm_find X ivs = None -> desc L X).
 
-(** The same of the children numbered so far, and that their subtrees'
-    intervals do not nest across children. *)
+(** What the fold over L's children has left once it has numbered the
+    children done, counting from n0 + 1 up to m and taking the intervals ivs
+    to iv: the facts of [si_ok] for each such child's subtree, and no
+    interval in one child's subtree holds the first number of a label in
+    another's. *)
 Definition fold_ok (n0 : Z) (ivs : nmap (Z * Z)) (done : list name) (m : Z) (iv : nmap (Z * Z)) : Prop :=
   n0 + 1 <= m /\
   (forall X, (forall c, In c done -> ~ desc c X) -> nm_find X iv = nm_find X ivs) /\
@@ -1047,6 +1213,9 @@ Definition fold_ok (n0 : Z) (ivs : nmap (Z * Z)) (done : list name) (m : Z) (iv 
      nm_find X iv = Some (pX, lX) -> nm_find Y iv = Some (pY, lY) -> ~ (pX <= pY <= lX)) /\
   (forall X v, nm_find X iv = Some v -> nm_find X ivs = None -> exists c, In c done /\ desc c X).
 
+(** Numbering the remaining children rest keeps [fold_ok], where no two
+    children share a descendant and [si_ok] holds at the smaller fuel f for
+    each child's subtree. *)
 Lemma si_fold : forall f, si_ok f -> forall n0 ivs rest done m iv n ivm,
   (forall c c' z, In c (done ++ rest) -> In c' (done ++ rest) -> c <> c' -> desc c z -> desc c' z -> False) ->
   fold_ok n0 ivs done m iv ->
@@ -1105,6 +1274,9 @@ Proof.
       * exists c. split; [apply in_or_app; right; left; reflexivity | exact (Q5 _ _ Hv Ev)].
 Qed.
 
+(** [si_ok] holds at every fuel: every call of `subtree_intervals/6` that
+    succeeds numbers its subtree in preorder, with intervals that nest
+    exactly as the tree does. *)
 Lemma si_ok_all : forall fuel, si_ok fuel.
 Proof.
   induction fuel as [|f IH]; intros L n0 ivs n ivs' H; [discriminate H|].
@@ -1172,7 +1344,11 @@ End Tree.
 
 (** ## The dominator intervals of a function *)
 
-(** Walking up the idoms from a label of the tree stays in the tree. *)
+(** Walking up the immediate dominators M from a label p of the tree of
+    children kids under the entry E stays in the tree: where E is its own
+    parent in M and each child's parent in M, the entry's removed, is the
+    label that lists it, an ancestor q of p is in the tree and p is q's
+    descendant. *)
 Lemma anc_desc : forall M kids E,
   nm_find E M = Some E ->
   (forall x ks k, nm_find x kids = Some ks -> In k ks -> nm_find k (nm_remove E M) = Some x) ->
@@ -1189,8 +1365,13 @@ Proof.
       split; [exact H1 | exact (desc_kid _ _ _ _ _ H2 Hks Hin)].
 Qed.
 
-(** What `block_intervals` computed for the blocks b0 :: rest, as a
-    tree of children under the entry. *)
+(** What [block_intervals] computed for the blocks b0 :: rest, read as a
+    tree of children under the entry: the graph g is [cfg_ok] with b0's
+    label as its entry, the immediate dominators M are [idoms_ok], the
+    children map kids lists exactly each label's children in M, a label has
+    an interval exactly when it is in the tree, [dominates_by_interval]
+    holds exactly when the first label is an ancestor of the second in the
+    tree, and the tree has no cycle. *)
 Lemma tree_facts : forall b0 rest doms, block_intervals (b0 :: rest) = Some doms ->
   exists g M kids,
     cfg_ok (b0 :: rest) g /\ cfg_entry g = b_label b0 /\ idoms_ok g M /\
@@ -1244,12 +1425,14 @@ Qed.
 
 (** ## What the validator's dominance means *)
 
+(** Fixes a function's blocks b0 :: rest, b0 the entry, and the intervals
+    doms that [block_intervals] computed for them. *)
 Section Dominance.
 
 Variables (b0 : block) (rest : list block) (doms : nmap (Z * Z)).
 Hypothesis Hdoms : block_intervals (b0 :: rest) = Some doms.
 
-(** `dom_entry`: the entry block is reachable. *)
+(** The entry block is reachable: it has an interval ([is_reachable]). *)
 Theorem dom_entry : is_reachable doms (b_label b0) = true.
 Proof.
   destruct (tree_facts _ _ _ Hdoms) as (g & M & kids & _ & _ & _ & _ & _ & Hmem & _).
@@ -1271,6 +1454,8 @@ Proof.
   apply Hdom. apply Hmem in H. split; [exact H|]. split; [exact H | apply desc_refl].
 Qed.
 
+(** Dominance is transitive: if a dominates b and b dominates c, then a
+    dominates c. *)
 Lemma dominates_trans : forall a b c, dominates doms a b = true -> dominates doms b c = true ->
   dominates doms a c = true.
 Proof.
@@ -1279,14 +1464,14 @@ Proof.
   apply Hdom. split; [exact Ha|]. split; [exact Hc | exact (desc_trans _ _ _ _ Hab Hbc)].
 Qed.
 
-(** `dom_antisym`: two labels that dominate each other are one. *)
+(** Two labels that dominate each other are the same label. *)
 Theorem dom_antisym : forall a b, dominates doms a b = true -> dominates doms b a = true -> a = b.
 Proof.
   intros a b H1 H2. destruct (tree_facts _ _ _ Hdoms) as (g & M & kids & _ & _ & _ & _ & _ & _ & Hdom & Hacyc).
   apply Hdom in H1 as (Ha & _ & Hab). apply Hdom in H2 as (_ & _ & Hba). exact (Hacyc _ _ Ha Hab Hba).
 Qed.
 
-(** `dom_entry_top`: only the entry dominates the entry. *)
+(** Only the entry dominates the entry. *)
 Theorem dom_entry_top : forall a, dominates doms a (b_label b0) = true -> a = b_label b0.
 Proof.
   intros a H. destruct (tree_facts _ _ _ Hdoms) as (g & M & kids & _ & He & _ & Hk1 & _ & _ & Hdom & _).
@@ -1295,8 +1480,9 @@ Proof.
   destruct (Hk1 _ _ _ Hks Hin) as [_ Ht]. rewrite He, nm_find_remove, term_eqb_refl in Ht. discriminate Ht.
 Qed.
 
-(** The parent of a reachable successor that is not the entry is an
-    ancestor of the block the edge leaves. *)
+(** Where no two blocks share a label, the parent nw of a successor s of a
+    reachable block p, s not the entry, is an ancestor of p. Also hands over
+    the tree facts that [dom_closed] and [dom_edge] use. *)
 Lemma succ_parent : forall p s, no_dups (map b_label (b0 :: rest)) = true ->
   is_reachable doms p = true -> edge (b0 :: rest) p s -> s <> b_label b0 ->
   exists g M kids nw,
@@ -1336,7 +1522,8 @@ Proof.
   split; [exact Hnw|]. split; [exact Hnwp|]. exact (Hk2 _ _ HsR Ht).
 Qed.
 
-(** `dom_closed`: a successor of a reachable block is reachable. *)
+(** Where no two blocks share a label, a successor s of a reachable block p
+    is reachable: a run never leaves the blocks that have an interval. *)
 Theorem dom_closed : forall p s, no_dups (map b_label (b0 :: rest)) = true ->
   is_reachable doms p = true -> edge (b0 :: rest) p s -> is_reachable doms s = true.
 Proof.
@@ -1350,8 +1537,9 @@ Proof.
     exact (proj2 (dominates_reachable _ _ Hd)).
 Qed.
 
-(** `dom_edge`: what dominates a successor of a reachable block, and is
-    not that successor, dominates the block too. *)
+(** Where no two blocks share a label, whatever dominates a successor s of a
+    reachable block p, and is not s, dominates p too: a run that crosses the
+    edge from p to s has already passed every other dominator of s. *)
 Theorem dom_edge : forall p s a, no_dups (map b_label (b0 :: rest)) = true ->
   is_reachable doms p = true -> edge (b0 :: rest) p s ->
   dominates doms a s = true -> a = s \/ dominates doms a p = true.
@@ -1369,12 +1557,11 @@ Proof.
     exact (desc_trans _ _ _ _ (ex_intro _ _ Hap1) Hnwp).
 Qed.
 
-(** `dom_meet`: what dominates every reachable predecessor of a
-    reachable block other than the entry dominates the block, and is
-    not the block. This is the converse of `dom_edge`, and needs the
-    nearest common ancestor (`idoms_nca`): a fact that reaches a block
-    over every incoming edge rests on names whose definitions then
-    dominate it. *)
+(** Where no two blocks share a label, whatever dominates every reachable
+    predecessor of a reachable block l other than the entry dominates l, and
+    is not l. The converse of [dom_edge]; it needs the nearest common
+    ancestor ([idoms_nca]). A fact that reaches a block over every incoming
+    edge rests on names whose definitions then dominate it. *)
 Theorem dom_meet : forall l a, no_dups (map b_label (b0 :: rest)) = true ->
   is_reachable doms l = true -> l <> b_label b0 ->
   (forall p, edge (b0 :: rest) p l -> is_reachable doms p = true -> dominates doms a p = true) ->

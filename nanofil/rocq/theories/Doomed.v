@@ -1,38 +1,31 @@
-(** Campaign 3's scheduled checks along runs: a doomed frame never runs
-    to `unchecked` (docs/formal.md, Campaign 3; docs/rocq.md, "The
-    doomed frame"; docs/schedule.md).
+(** Campaign 3's [[check_ahead|scheduled checks]] along runs: a
+    [[doomed frame]] never runs to [[unchecked]]
+    ([formal.md, Campaign 3](../../docs/formal.md#campaign-3-the-soundness-theorem);
+    [rocq.md, The doomed frame](../../docs/rocq.md#the-doomed-frame);
+    [schedule.md](../../docs/schedule.md)). This is the last
+    [[reuse|reuse form]].
 
     A `check_ahead` whose early bytes fail yields its pointer anyway and
     dooms the frame (`doomed_result/5`): from then on the frame must
-    reach, through ahead-transparent instructions only, an access whose
-    own check fails, which ends the run `trap(early(Why))`. The
+    reach, through [[ahead-transparent]] instructions only, an access
+    whose own check fails, which ends the run `trap(early(Why))`. The
     interpreter makes the run `unchecked(ahead(Why))` where it reaches a
-    poll edge, a return or an instruction that is not transparent
+    [[poll edge]], a return or an instruction that is not transparent
     first; and a renew of another capability or a wrong limit stays
     `unchecked(alias)` or `unchecked(limit)` even when doomed. This file
     proves that none of that happens in a checked module's run.
 
-    The argument follows the validator. Where the check was accepted,
-    some base N of its pointer at offset K has a need at least K + Hi
-    after its access (Ahead.v's `ahead_accepted`): every path ahead
-    reaches an access through N whose bytes end at or past N + K + Hi.
-    The frame carries that need (`doom_need`): at each step either the
-    need stays, or the instruction is the access meeting it, which
-    fails, because the check's start N + K + Lo lies in the object and
-    the access ends at most 2^63 after it (`need_access_fails`). The
-    single definitions in scope still replay, except a doomed proof,
-    which holds its pointer though its check did not pass
-    (`scope_weak`).
-
-    | Name | Says |
-    |---|---|
-    | `ahead_holds`, `replays_weak`, `scope_weak` | a doomed frame's scope: each single definition replays, or is a `check_ahead` holding its pointer |
-    | `raise_found`, `step_found`, `meet_found`, `phis_found` | where a need at a point comes from: the facts after, or an access through the base |
-    | `doom_mem`, `need_access_fails` | the memory a doom leaves, and that an access meeting the need fails there |
-    | `doomed_ok`, `dinv` | the invariant: a doomed frame's weak scope, and the need at its point |
-    | `doomed_step_checked` | a doomed frame where `doomed_ok` holds never steps to `unchecked` |
-    | `doom_start`, `mstep_dinv` | the check that dooms a frame starts the invariant, and every machine step keeps it |
-    | `run_doomed_checked`, `interp_doomed_checked` | along a run of a checked module, a doomed frame never steps to `unchecked`; under the interpreter's runtime with no hypothesis about safepoints |
+    The argument follows the [[validator]]. Where the check was
+    accepted, some base N of its pointer at offset K has a [[need]] of
+    at least K + Hi after its access (Ahead.v's [ahead_accepted]):
+    every path ahead reaches an access through N whose bytes end at or
+    past N + K + Hi. The frame carries that need ([need_at]): at each
+    step either the need stays, or the instruction is the access
+    meeting it, which fails, because the check's start N + K + Lo lies
+    in the object and the access ends at most 2^63 after it. The
+    [[single definition|single definitions]] in scope still
+    [[replay]], except a doomed proof, which holds its pointer though
+    its check did not pass ([scope_weak]).
 
     ## Decisions
 
@@ -50,24 +43,32 @@ Open Scope Z_scope.
 
 (** ## A doomed frame's scope *)
 
-(** `ahead_holds ge once e n i`: n holds the pointer the `check_ahead` i
-    read, in a frame that agrees with e on i's single-definition
-    operands, as `doomed_result/5` leaves it. *)
+(** What a doomed `check_ahead` i leaves in its name n: in the
+    environment e, n holds the pointer i read from its operand, in some
+    earlier frame that agrees with e on i's single-definition operands,
+    as `doomed_result/5` leaves it. The check failed, so this is all
+    that holds of n. *)
 Definition ahead_holds (ge : genv) (once : list (name * def)) (e : env) (n : name) (i : inst) : Prop :=
   exists lo hi r al ahi v fr0 pp,
     i = Let n A (CheckAhead lo hi r al ahi) [v] /\ value_x ge (fr_env fr0) P v = Some (WPtr pp) /\
     lookup n e = Some (WPtr pp) /\
     (forall a, In a (inst_uses i) -> once_has once a = true -> lookup a (fr_env fr0) = lookup a e).
 
+(** A single definition n by i [[replay|replays]] ([replays]), or is
+    a doomed `check_ahead` holding its pointer ([ahead_holds]). *)
 Definition replays_weak (ge : genv) (once : list (name * def)) (e : env) (m : Memory.mem) (n : name) (i : inst)
   : Prop :=
   replays ge once e m n i \/ ahead_holds ge once e n i.
 
-(** `scope_weak ge fr m`: each single definition in scope replays, or
-    holds a doomed check's pointer. *)
+(** A [[doomed frame]]'s scope: at the point of the frame fr, each
+    replayable single definition whose site dominates the point
+    replays, or holds a doomed check's pointer ([replays_weak]). *)
 Definition scope_weak (ge : genv) (fr : frame) (m : Memory.mem) : Prop :=
   scope_with (replays_weak ge) fr m.
 
+(** [replays_weak] survives what the scope lemmas allow ([moves]): an
+    environment that keeps the name and its operands, and a memory that
+    persists. *)
 Lemma replays_weak_moves : forall ge, moves (replays_weak ge).
 Proof.
   intros ge once e e' m m' n i [H | (lo & hi & r & al & ahi & v & fr0 & pp & Ei & Hv & Hn0 & Ha)] Hn Ha' Hp.
@@ -76,9 +77,13 @@ Proof.
     intros a Hu Ho. rewrite (Ha' _ Hu Ho). exact (Ha _ Hu Ho).
 Qed.
 
+(** A frame whose scope replays ([scope_holds]) has a weak scope. *)
 Lemma scope_weak_of : forall ge fr m, scope_holds ge fr m -> scope_weak ge fr m.
 Proof. intros ge fr m H l k n s i Hpt Hn Hr Hpos Hsd. left. exact (H _ _ _ _ _ Hpt Hn Hr Hpos Hsd). Qed.
 
+(** A weak scope gives [scope_plain]: every definition in scope but a
+    `check_ahead` replays. So the lemmas of Chain.v, Renew.v's [Plain]
+    and Guard.v serve a doomed frame too. *)
 Lemma scope_plain_weak : forall ge fr m, scope_weak ge fr m -> scope_plain ge fr m.
 Proof.
   intros ge fr m H l k n s i Hpt Hn Hr Hpos Hsd Ha.
@@ -88,6 +93,8 @@ Qed.
 
 (** ## Where a need comes from *)
 
+(** Looking up n after deleting d's need ([del]) finds nothing if n is
+    d, and what was there otherwise. *)
 Lemma lookup_del : forall n d fs, lookup n (del d fs) = if name_eqb n d then None else lookup n fs.
 Proof.
   intros n d fs. unfold del. induction fs as [|[k v] fs IH]; simpl; [destruct (name_eqb n d); reflexivity|].
@@ -97,9 +104,10 @@ Proof.
     apply name_eqb_true in Enk. subst k. rewrite Ekd. reflexivity.
 Qed.
 
-(** `raise_found`: after `raise_need/6` over a chain, a need is the one
-    before, or the end of the access through an exact base on the
-    chain. *)
+(** Where a [[need]] h for n comes from after `raise_need/6` over a
+    [[guard chain]]: it is the need before, or n is a single-definition
+    exact base on the chain at a near offset k', and h is the end of the
+    access of size bytes at off through it, near too. *)
 Lemma raise_found : forall once off size chain fs n h,
   lookup n (fold_left (raise_need once off size) chain fs) = Some h ->
   lookup n fs = Some h \/
@@ -129,7 +137,7 @@ Proof.
   - destruct (Hput H1) as [Hs | [Hn Hh]]; [left; exact Hs | exact (Hfound Hn Hh)].
 Qed.
 
-(** A transparent instruction defines at most one name. *)
+(** An [[ahead-transparent]] instruction defines at most one name. *)
 Lemma transparent_defs : forall i, ahead_transparent i = true ->
   inst_temp_defs i = [] \/ exists d k, inst_temp_defs i = [(d, k)].
 Proof.
@@ -138,10 +146,11 @@ Proof.
   unfold ahead_transparent, evidence_preserving in H. simpl in H. discriminate H.
 Qed.
 
-(** `step_found`: a need before an instruction is the need after it, the
-    instruction not defining the base, or the end of the instruction's
-    own access through an exact base on its proof's chain; and the
-    instruction is transparent (`ahead_step/5`). *)
+(** Where a [[need]] h for n before an instruction i comes from
+    (`ahead_step/5`): i is [[ahead-transparent]], and h is the need
+    after i, i not defining n; or i is a [[raw access]] through the proof
+    q of a pointer p, n an exact base on p's [[guard chain]], and h the
+    end of i's own access through it. *)
 Lemma step_found : forall once ptrs i fs n h,
   lookup n (ahead_step once ptrs i fs) = Some h ->
   ahead_transparent i = true /\
@@ -167,13 +176,18 @@ Proof.
   right. exists q, x, off, rs, p, k'. auto 8.
 Qed.
 
-(** The least of a need over edges, through `ahead_meet/2`'s fold. *)
+(** The least need for n over the edges' facts rest, starting from h0:
+    the fold inside `ahead_meet/2`, None as soon as an edge has no need
+    for n. *)
 Definition meet_fold (n : name) (rest : list facts) (h0 : option Z) : option Z :=
   fold_left (fun acc f' => let* h := acc in let* h1 := lookup n f' in Some (Z.min h h1)) rest h0.
 
+(** Once [meet_fold] has found no need, it finds none. *)
 Lemma meet_fold_none : forall n rest, meet_fold n rest None = None.
 Proof. intros n rest. unfold meet_fold. induction rest as [|f rest IH]; [reflexivity | exact IH]. Qed.
 
+(** A need h that [meet_fold] finds from h0 is at most h0 and at most
+    the need on every edge in rest, each of which has one. *)
 Lemma meet_fold_some : forall n rest h0 h,
   meet_fold n rest (Some h0) = Some h ->
   h <= h0 /\ forall f, In f rest -> exists h1, lookup n f = Some h1 /\ h <= h1.
@@ -186,7 +200,8 @@ Proof.
     + fold (meet_fold n rest None) in H. rewrite meet_fold_none in H. discriminate H.
 Qed.
 
-(** Whether the fold finds a need depends only on the base. *)
+(** Whether [meet_fold] finds a need depends only on the base n, not on
+    the starting value. *)
 Lemma meet_fold_found : forall n rest h0 h1,
   meet_fold n rest (Some h0) = None -> meet_fold n rest (Some h1) = None.
 Proof.
@@ -196,8 +211,9 @@ Proof.
   - fold (meet_fold n rest None). apply meet_fold_none.
 Qed.
 
-(** `meet_found`: a need at a jump is at most the need on each edge
-    (`ahead_meet/2`), and there is an edge. *)
+(** A [[need]] h for n at a jump, the meet of the edges' facts fss
+    (`ahead_meet/2`), is at most the need on each edge, and there is an
+    edge. *)
 Lemma meet_found : forall fss n h,
   lookup n (ahead_meet fss) = Some h ->
   fss <> [] /\ forall fs, In fs fss -> exists h1, lookup n fs = Some h1 /\ h <= h1.
@@ -218,8 +234,9 @@ Proof.
   intros fs [<- | Hin]; [exists h0; split; [exact Ef | lia] | exact (Hall _ Hin)].
 Qed.
 
-(** `phis_found`: a need at a block's entry is the need before its first
-    instruction, of a base no phi defines (`phi_ends_need/3`). *)
+(** A [[need]] at a block's entry is the need before its first
+    instruction, of a base n that none of its [[phi|phis]] phs defines
+    (`phi_ends_need/3`). *)
 Lemma phis_found : forall phs fs n h,
   lookup n (phis_end_needs phs fs) = Some h -> lookup n fs = Some h /\ ~ In n (map phi_name phs).
 Proof.
@@ -232,17 +249,18 @@ Qed.
 
 (** ## The access that meets the need *)
 
-(** `doom_mem m pn kl hreq`: the memory a doom leaves, seen from the
-    base's pointer pn. pn's object is there; the check's start, pn + kl
-    modulo 2^64, lies in it, below 2^48; and the object ends before
-    pn + hreq. *)
+(** The memory m a doom leaves, seen from the base's pointer pn. pn's
+    object is in m; the failed check's start, pn + kl modulo 2^64, lies
+    in it, at or below 2^48; and the object ends before pn + hreq, the
+    end of the bytes the check asked for. *)
 Definition doom_mem (m : Memory.mem) (pn : ptr) (kl hreq : Z) : Prop :=
   exists base reg, (ptr_cap pn = Obj base \/ ptr_cap pn = Ro base) /\
     object_region base (m_regions m) = Some reg /\
     base <= raw_address (ptr_addr pn) kl <= 2 ^ 48 /\ kl < hreq /\
     r_end reg < raw_address (ptr_addr pn) kl + (hreq - kl).
 
-(** The object is as it was, or freed and empty. *)
+(** [doom_mem] survives a memory m' that [persists] from m: the object
+    is as it was, or freed and empty. *)
 Lemma doom_mem_persists : forall m m' pn kl hreq, doom_mem m pn kl hreq -> persists m m' -> doom_mem m' pn kl hreq.
 Proof.
   intros m m' pn kl hreq (base & reg & Hc & E & Hb & Hk & Hend) Hp.
@@ -252,11 +270,12 @@ Proof.
     simpl. rewrite (object_region_base _ _ _ E). lia.
 Qed.
 
-(** `need_access_fails`: an access through a pointer of pn's capability,
-    at an exact near offset k' from pn, whose bytes end at or past
-    pn + hreq with that end near, fails its test: its start and end lie
-    at most 2^63 past the check's start, so they do not wrap below the
-    object's end. *)
+(** In the memory a doom left ([doom_mem]), an access through a pointer
+    x of pn's [[capability]], at an exact near offset k' from pn, of at
+    most 16 bytes whose end k' + off + size is near and at or past hreq,
+    fails its test: its start and end lie at most 2^63 past the check's
+    start, so they do not wrap below the object's end. The arithmetic of
+    [A need past 2^64](../../docs/rocq.md#a-need-past-264). *)
 Lemma need_access_fails : forall m pn kl hreq x k' off size r al,
   doom_mem m pn kl hreq -> objects_fit (m_regions m) ->
   ptr_cap x = ptr_cap pn -> ptr_addr x mod 2 ^ 64 = (ptr_addr pn + k') mod 2 ^ 64 ->
@@ -290,9 +309,9 @@ Qed.
 
 (** ## A raw access that fails stops *)
 
-(** `access_trap_stops`: a raw access whose own check traps at every
-    rights and alignment does not continue: `raw_res/2` makes the trap
-    `unchecked`. *)
+(** A [[raw access]] i through the proof q, whose own check traps at
+    every rights and alignment, does not step and continue: `raw_res/2`
+    stops the run there. *)
 Lemma access_trap_stops : forall ge fr m i q x off need p e1 l1 m1,
   raw_access i = Some (q, x, off, need) ->
   lookup q (fr_env fr) = Some (WPtr p) ->
@@ -328,9 +347,11 @@ Qed.
 
 (** ## The memory a doom leaves *)
 
-(** `doom_from_checks`: where a check of s1 bytes at b passes and one of
-    s2 bytes at the same address, rights and alignment traps, b lies in
-    the object, s1 bytes fit and s2 bytes do not. *)
+(** Where a check of s1 bytes at address b with capability c does not
+    trap and one of s2 bytes at the same address, rights and alignment
+    traps, c is an object's, b lies in the object, s1 bytes fit and s2
+    bytes do not. This is how a failing `check_ahead` leaves
+    [doom_mem]. *)
 Lemma doom_from_checks : forall m b c s1 s2 r al x1 w,
   access_res m b c s1 r al = Some x1 -> (forall w', x1 <> RTrap w') ->
   access_res m b c s2 r al = Some (RTrap w) ->
@@ -352,7 +373,8 @@ Qed.
 
 (** ## A need does not shrink *)
 
-(** `raise_keeps`: `raise_need/6` only raises a need. *)
+(** `raise_need/6` only raises a [[need]]: a need h for n before it is
+    some h' at least h after. *)
 Lemma raise_keeps : forall once off size chain fs n h,
   lookup n fs = Some h ->
   exists h', lookup n (fold_left (raise_need once off size) chain fs) = Some h' /\ h <= h'.
@@ -371,8 +393,8 @@ Proof.
   destruct Hstep as (h1 & H1 & Hle). destruct (IH _ _ _ H1) as (h' & H' & Hle'). exists h'. split; [exact H' | lia].
 Qed.
 
-(** `step_keeps`: before a transparent instruction that does not define
-    the base, the need is at least what it is after. *)
+(** Before an [[ahead-transparent]] instruction i that does not define
+    the base n, the [[need]] for n is at least what it is after. *)
 Lemma step_keeps : forall once ptrs i fs n h,
   ahead_transparent i = true -> ~ In n (map fst (inst_temp_defs i)) -> lookup n fs = Some h ->
   exists h', lookup n (ahead_step once ptrs i fs) = Some h' /\ h <= h'.
@@ -392,9 +414,10 @@ Qed.
 
 (** ## The base dominates the check *)
 
-(** `chain_dominating`: a single-definition name on a guard chain whose
-    start dominates a point dominates it too: each step of the chain is
-    a flight's lower operand. *)
+(** A single-definition name n on a [[guard chain]] whose start p
+    [[dominance|dominates]] index k of block l dominates it too: each
+    step of the chain is a [[flight]]'s lower operand, whose definition
+    dominates the flight. *)
 Lemma chain_dominating : forall md f l k fuel p lo hi n blo bhi,
   checked_module md -> In (IFunc f) md -> is_reachable (fn_doms f) l = true ->
   (forall y, p = Tmp y -> once_has (single_definitions f) y = true -> dominating f l k y) ->
@@ -418,8 +441,8 @@ Proof.
     destruct (sign =? 1); exact (IH _ _ _ _ _ _ Hmd Hin Hr Hdb Hb Ho).
 Qed.
 
-(** A `check_ahead` has its own access inside its early range:
-    lo < ahi < hi (`valid_op/1`). *)
+(** A `check_ahead` of a [checked_module] has its own access inside its
+    early range: [lo < ahi < hi] (`valid_op/1`). *)
 Lemma ahead_ok : forall md f b q lo hi r al ahi args,
   checked_module md -> In (IFunc f) md -> In b (fn_blocks f) ->
   In (Let q A (CheckAhead lo hi r al ahi) args) (b_insts b) -> lo < ahi < hi.
@@ -432,8 +455,9 @@ Qed.
 
 (** ## No alias in a doomed frame *)
 
-(** A renew's own failure is a trap or `unchecked(span)`, never an
-    alias (`renew_res/4`). *)
+(** Where the access test chk is not [[unchecked]], a renew's result
+    (`renew_res/4`) is its pointer, a trap or `unchecked(span)`, never an
+    alias. *)
 Lemma renew_res_not_alias : forall chk p m rr,
   (forall w, chk <> RUnchecked w) ->
   renew_res chk p m = Some rr -> rr = RVal (WPtr p) \/ (exists w, rr = RTrap w) \/ rr = RUnchecked Span.
@@ -441,7 +465,8 @@ Proof.
   unfold renew_res. intros chk p m rr Hc H. cases H; injection H as <-; eauto. exfalso. exact (Hc _ eq_refl).
 Qed.
 
-(** An access check passes or traps; it is never `unchecked`. *)
+(** An access check ([access_res]) passes or traps; it is never
+    [[unchecked]]. *)
 Lemma access_res_checked : forall m a c size r al chk,
   access_res m a c size r al = Some chk -> forall w, chk <> RUnchecked w.
 Proof.
@@ -449,8 +474,8 @@ Proof.
   destruct c; cases H; destruct r; cases H; discriminate H.
 Qed.
 
-(** An access check fails for an access reason: never an alias or a
-    wrong limit. *)
+(** An access check that traps does so for an access reason: never an
+    alias or a wrong limit. *)
 Lemma access_res_reason : forall m a c size r al w,
   access_res m a c size r al = Some (RTrap w) -> w <> Alias /\ w <> WhyLimit.
 Proof.
@@ -458,10 +483,13 @@ Proof.
   destruct c; cases H; try destruct r; cases H; try (injection H as <-); try (split; discriminate).
 Qed.
 
+(** A renew whose access test trapped is `unchecked` only as
+    `unchecked(span)`. *)
 Lemma renew_trap_reason : forall w p m r, renew_res (RTrap w) p m = Some (RUnchecked r) -> r = Span.
 Proof. unfold renew_res. intros w p m r H. destruct w; cases H; congruence. Qed.
 
-(** A raw load's own failure is its access check's. *)
+(** A raw load's own failure is its access check's, so it is never an
+    alias or a wrong limit. *)
 Lemma int_load_reason : forall t k m a c r0 r,
   int_load_res t k m a c = Some r0 -> raw_res r0 = RUnchecked r -> r <> Alias /\ r <> WhyLimit.
 Proof.
@@ -473,14 +501,16 @@ Proof.
   - exact (False_ind _ (access_res_checked _ _ _ _ _ _ _ Ea _ eq_refl)).
 Qed.
 
-(** A `va_arg` traps or reads; it is never `unchecked`. *)
+(** A `va_arg` traps or reads; it is never [[unchecked]]. *)
 Lemma va_arg_reason : forall k p m p0 r, va_arg_res k p m = Some p0 -> fst p0 = RUnchecked r -> False.
 Proof.
   unfold va_arg_res. intros k p m p0 r H Hr. cases H; injection H as <-; discriminate Hr.
 Qed.
 
-(** `op_alias_source`: only a renew, a renew over a hull, a half check
-    and a `check_limit` find an alias or a wrong limit. *)
+(** Only a renew, a renew over a hull, a half check and a
+    `check_limit`, at the proof [[class]] A with their operand counts,
+    find an alias or a wrong limit: no other op o answers
+    `unchecked(alias)` or `unchecked(limit)`. *)
 Lemma op_alias_source : forall o k xs m r m',
   op_res o k xs m = Some (OpRes (RUnchecked r) m') -> r = Alias \/ r = WhyLimit ->
   k = A /\
@@ -523,6 +553,7 @@ Proof.
          unfold half_res in E; cases E; injection E as <-; destruct Hr; discriminate end.
 Qed.
 
+(** [map2_option] gives as many results as it was given operands. *)
 Lemma map2_option_length : forall (X Y Z : Type) (f : X -> Y -> option Z) xs ys zs,
   map2_option f xs ys = Some zs -> length ys = length zs.
 Proof.
@@ -533,7 +564,8 @@ Proof.
     simpl. f_equal. exact (IH _ _ E).
 Qed.
 
-(** A store's own failure is its access check's. *)
+(** A store's own failure is its access check's, so it is never an
+    alias or a wrong limit. *)
 Lemma store_reason : forall w m a c x r m' why,
   store_res w m a c x = Some (r, m') -> raw_res r = RUnchecked why -> why <> Alias /\ why <> WhyLimit.
 Proof.
@@ -544,9 +576,10 @@ Proof.
   all: first [ exact (access_res_reason _ _ _ _ _ _ _ Ea) | exact (False_ind _ (access_res_checked _ _ _ _ _ _ _ Ea _ eq_refl)) ].
 Qed.
 
-(** `alias_source`: a transparent instruction finds an alias or a
-    wrong limit only as a renew, a renew over a hull, a half check or a
-    `check_limit`. *)
+(** An [[ahead-transparent]] instruction i that steps to
+    `unchecked(alias)` or `unchecked(limit)` is a renew, a renew over a
+    hull, a half check or a `check_limit`, of class A with its operand
+    count. *)
 Lemma alias_source : forall ge fr m i w,
   ahead_transparent i = true ->
   inst_step ge fr m i = Some (IStop (Unchecked w)) -> w = Alias \/ w = WhyLimit ->
@@ -583,6 +616,9 @@ Proof.
   - exfalso. simpl in H. discriminate H.
 Qed.
 
+(** Lemmas for a frame fr of a [checked_module] md, in memory m, at
+    index k of a reachable block l, with the weak scope of a doomed
+    frame ([scope_weak]). *)
 Section Weak.
 
 Variables (ge : genv) (md : module) (fr : frame) (m : Memory.mem) (l : name) (k : Z).
@@ -592,9 +628,11 @@ Hypothesis Hr : is_reachable (fn_doms (fr_fn fr)) l = true.
 Hypothesis Hs : scope_weak ge fr m.
 Hypothesis Hpt : point_site (fr_fn fr) (fr_at fr) = Some (l, k).
 
-(** `fact_holds`: a check-like single definition that dominates the
-    point holds the pointer its pointer operand holds there, whether
-    its check passed or it is a doomed `check_ahead`. *)
+(** A check-like single definition n by i, whose fact fa
+    ([check_fact]) checks a [stable] pointer operand, and which
+    [[dominance|dominates]] the point, holds the pointer that operand
+    holds there, whether its check passed or it is a doomed
+    `check_ahead`. *)
 Lemma fact_holds : forall n i fa,
   lookup n (single_definitions (fr_fn fr)) = Some (DInst i) -> check_fact i = Some fa -> f_q fa = n ->
   dominating (fr_fn fr) l k n -> stable (single_definitions (fr_fn fr)) (f_p fa) ->
@@ -613,8 +651,11 @@ Proof.
   - exists pp. split; [exact Hn0|]. rewrite <- (Hag _ Hops). simpl in Hf. injection Hf as <-. exact Hv.
 Qed.
 
-(** `weak_operands`: a reuse form's source and its renewed pointer
-    hold pointers of one capability. *)
+(** In a doomed frame, a reuse form i at index kk of block b, with
+    [[renew source]] n1 and renewed value p a known distance d apart,
+    reads pointers of one [[capability]] from both. Renew.v's
+    [reuse_operands] without the passed check, which a doomed source
+    lacks. *)
 Lemma weak_operands : forall b kk i n1 p p1 lo1 hi1 al1 d,
   find_block l (fn_blocks (fr_fn fr)) = Some b -> nth_error (b_insts b) kk = Some i -> k = Z.of_nat kk ->
   In n1 (inst_uses i) -> (forall y, p = Tmp y -> In y (inst_uses i)) ->
@@ -642,6 +683,9 @@ Proof.
   exists pp1, pp. auto.
 Qed.
 
+(** A [[renew]] the pass accepts ([checked_inst_rest]) gives no
+    `unchecked(alias)` in a doomed frame: its source and the renewed
+    pointer have one capability ([weak_operands]). *)
 Theorem renew_not_alias : forall b kk q lo hi r al n1 p rest live out,
   find_block l (fn_blocks (fr_fn fr)) = Some b ->
   nth_error (b_insts b) kk = Some (Let q A (Renew lo hi r al) [Tmp n1; p]) -> k = Z.of_nat kk ->
@@ -663,8 +707,8 @@ Proof.
   destruct (renew_res_not_alias _ _ _ _ (access_res_checked _ _ _ _ _ _ _ Ea) Er) as [-> | [(w & ->) | ->]]; discriminate.
 Qed.
 
-(** `half_not_alias`: a half check the pass accepts gives no
-    `unchecked(alias)` in a doomed frame. *)
+(** A [[half check]] the pass accepts ([checked_inst_rest]) gives no
+    `unchecked(alias)` in a doomed frame ([weak_operands]). *)
 Theorem half_not_alias : forall b kk q bd lo hi r al n1 p rest live out,
   find_block l (fn_blocks (fr_fn fr)) = Some b ->
   nth_error (b_insts b) kk = Some (Let q A (HalfCheck bd lo hi r al) [Tmp n1; p]) -> k = Z.of_nat kk ->
@@ -687,8 +731,10 @@ Proof.
   unfold half_res. destruct chk, ok'; discriminate.
 Qed.
 
-(** `hull_not_alias`: a renew over a hull the pass accepts gives no
-    `unchecked(alias)` in a doomed frame. *)
+(** A [[renew_hull|renew over a hull]] the pass accepts
+    ([checked_inst_rest]) gives no `unchecked(alias)` in a doomed frame:
+    both sources share the renewed pointer's capability
+    ([weak_operands]). *)
 Theorem hull_not_alias : forall b kk q lo hi r al nl nh p rest live out,
   find_block l (fn_blocks (fr_fn fr)) = Some b ->
   nth_error (b_insts b) kk = Some (Let q A (RenewHull lo hi r al) [Tmp nl; Tmp nh; p]) -> k = Z.of_nat kk ->
@@ -725,16 +771,18 @@ End Weak.
 
 (** ## The doomed frame's invariant *)
 
-(** `dpos s is out`: where the pass is in a block, without its facts:
-    before one of its steps, or between a check and the access it took
-    with it. *)
+(** Where the pass is in a block when the instructions `is` remain, out
+    being the facts at the block's end, without saying which facts are
+    live: before one of its steps ([walks]), or between a check and the
+    raw access or raw call it took with it. *)
 Definition dpos (s : src) (is : list inst) (out : list fact) : Prop :=
   (exists live, walks s is live out) \/
   (exists access rest' live', is = access :: rest' /\ walks s rest' live' out /\
      (raw_access access <> None \/ exists r cl args, access = RawCall r cl args)).
 
-(** `pass_after`: the pass takes one instruction, or a check and the
-    raw access or raw call it took with it (`pass_live_after`). *)
+(** One step of the pass ([checked_inst_rest]) takes one instruction
+    i, or i and the raw access or raw call that follows it, taken with
+    it ([pass_live_after]). *)
 Lemma pass_after : forall s i rest live rest' live',
   checked_inst_rest s i rest live = Some (rest', live') ->
   rest' = rest \/
@@ -765,10 +813,10 @@ Proof.
         left. exact (proj1 (generic_rest_shape _ _ _ _ _ _ Hc)).
 Qed.
 
-(** `need_at f n hreq pt`: at the point pt, the validator's facts need
-    n's bytes up to at least hreq: at a block's entry, its entry facts;
-    within it, what its instructions from the point make of its exit
-    facts. *)
+(** At the point pt of a function f, the validator's facts have a
+    [[need]] for n of at least hreq: at a block's entry, in its entry
+    facts ([ahead_entries]); within it, in what its instructions from
+    the point make of its exit facts ([facts_from], [block_exit]). *)
 Definition need_at (f : func) (n : name) (hreq : Z) (pt : point) : Prop :=
   match pt with
   | Snapshot _ _ => False
@@ -778,9 +826,10 @@ Definition need_at (f : func) (n : name) (hreq : Z) (pt : point) : Prop :=
         lookup n (facts_from f is (block_exit f b)) = Some h /\ hreq <= h
   end.
 
-(** `doomed_ok ge md m fr`: a doomed frame keeps its weak scope, is
-    where the pass walked, and carries a need for a base whose object
-    the doom left too short. *)
+(** What holds of a [[doomed frame]] fr of a module md in memory m: it
+    keeps its weak scope ([scope_weak]), is where the pass walked
+    ([dpos]), and carries a [[need]] ([need_at]) for a base n whose
+    pointer pn has an object the doom left too short ([doom_mem]). *)
 Definition doomed_ok (ge : genv) (md : module) (m : Memory.mem) (fr : frame) : Prop :=
   let f := fr_fn fr in
   scope_weak ge fr m /\
@@ -790,14 +839,16 @@ Definition doomed_ok (ge : genv) (md : module) (m : Memory.mem) (fr : frame) : P
   exists n pn kl hreq, lookup n (fr_env fr) = Some (WPtr pn) /\ near_offset kl = true /\
     doom_mem m pn kl hreq /\ need_at f n hreq (fr_at fr).
 
-(** `dinv ge md c`: the running frame, if doomed, is `doomed_ok`. *)
+(** The doomed frame's invariant of a configuration c: its running
+    frame, if doomed, is [doomed_ok]. *)
 Definition dinv (ge : genv) (md : module) (c : config) : Prop :=
   fr_doomed (c_frame c) <> None -> doomed_ok ge md (c_mem c) (c_frame c).
 
 (** ### Entering a block *)
 
-(** `doomed_enter`: entering a block, the need is the entry's, of a
-    base no phi defines, before the block's first instruction. *)
+(** Entering a block l keeps [doomed_ok]: the need is the entry's, of a
+    base no [[phi]] defines, so it is there before the block's first
+    instruction. *)
 Lemma doomed_enter : forall ge md c c' l from,
   checked_module md -> fr_at (c_frame c) = Enter l from -> step ge c = Next c' ->
   shaped md (c_frame c) -> doomed_ok ge md (c_mem c) (c_frame c) -> doomed_ok ge md (c_mem c') (c_frame c').
@@ -833,11 +884,11 @@ Qed.
 
 (** ## What a step of a doomed frame does *)
 
-(** `doomed_result_cases`: `doomed_result/5` keeps the instruction's
+(** The three cases of `doomed_result/5`. It keeps the instruction's
     result and the frame's doom; or a `check_ahead` whose early bytes
     fail goes on with its pointer, dooming the frame; or, in a doomed
-    frame, an `unchecked` result that is not an alias or a wrong limit
-    is the early trap. *)
+    frame, an [[unchecked]] result that is not an alias or a wrong limit
+    becomes the early trap. *)
 Lemma doomed_result_cases : forall ge fr m i out od,
   doomed_result ge fr m i out = Some od ->
   od = (out, fr_doomed fr) \/
@@ -870,8 +921,8 @@ Proof.
     destruct why; injection H as <-; first [left; reflexivity | right; right; eauto].
 Qed.
 
-(** `proof_pointers_def`: a proof the pass maps to its pointer is a
-    single definition whose check-like instruction proves that pointer
+(** A proof q that the pass maps to its pointer p ([proof_pointers]) is
+    a single definition whose check-like instruction proves p
     (`proof_pointer/3`). *)
 Lemma proof_pointers_def : forall f q p,
   lookup q (proof_pointers f (single_definitions f)) = Some p ->
@@ -896,11 +947,12 @@ Proof.
     injection Ep as <-; (eexists; split; [reflexivity|]; split; [reflexivity|]; split; reflexivity).
 Qed.
 
-(** An access is at most 16 bytes. *)
+(** A [[raw access]] is of 1 to 16 bytes. *)
 Lemma access_size_small : forall x, 0 < fst (access_size_align x) <= 16.
 Proof. intros [[| | | | t] | w |]; try destruct t; try destruct w; simpl; lia. Qed.
 
-(** An access check's trap is not an early one. *)
+(** An access check's trap is never `trap(early)`, which only a
+    `check_ahead` gives. *)
 Lemma access_res_not_early : forall m a c size r al w w',
   access_res m a c size r al = Some (RTrap w) -> w <> Early w'.
 Proof.
@@ -908,8 +960,9 @@ Proof.
   destruct c; cases H; try destruct r; cases H; try (injection H as <-); discriminate.
 Qed.
 
-(** `ahead_early`: a `check_ahead` traps early where its own bytes pass
-    and its early ones fail, at its pointer's address plus lo. *)
+(** A `check_ahead` q of v traps early only where, at its pointer's
+    address plus lo, the check of its own bytes up to ahi does not trap
+    and the check of its early bytes up to hi does. *)
 Lemma ahead_early : forall ge fr m q lo hi r al ahi v w,
   inst_step ge fr m (Let q A (CheckAhead lo hi r al ahi) [v]) = Some (IStop (Trap (Early w))) ->
   exists pp x1, value_x ge (fr_env fr) P v = Some (WPtr pp) /\
@@ -931,19 +984,21 @@ Proof.
   all: split; [intros w' E; discriminate E | reflexivity].
 Qed.
 
-(** A raw access reads its proof. *)
+(** The proof q of a [[raw access]] i is one of i's operands. *)
 Lemma raw_access_uses : forall i q x off rs, raw_access i = Some (q, x, off, rs) -> In q (inst_uses i).
 Proof.
   intros i q x off rs H. destruct i; simpl in H; cases H; inversion H; subst; simpl; auto.
   all: apply in_or_app; right; left; reflexivity.
 Qed.
 
+(** [facts_from] of i before the instructions `is` is i's backward
+    step after theirs. *)
 Lemma facts_from_cons : forall f i is out,
   facts_from f (i :: is) out =
   ahead_step (single_definitions f) (proof_pointers f (single_definitions f)) i (facts_from f is out).
 Proof. reflexivity. Qed.
 
-(** The name an instruction's single definition defines is its own. *)
+(** An instruction i that is n's single definition defines n. *)
 Lemma once_inst_name : forall f n i, lookup n (single_definitions f) = Some (DInst i) -> In n (map fst (inst_temp_defs i)).
 Proof.
   intros f n i H. destruct (once_position _ _ _ H) as (s & Hpos & _).
@@ -951,8 +1006,8 @@ Proof.
   destruct (position_inst _ _ _ _ _ Hpos) as (_ & _ & _ & _ & _ & _ & Hn). exact Hn.
 Qed.
 
-(** `doomed_mem`: the runtime's action at a safepoint changes only the
-    memory, which persists. *)
+(** [doomed_ok] survives a change of memory to one that [persists]: the
+    runtime's action at a [[poll|safepoint]] changes only the memory. *)
 Lemma doomed_mem : forall ge md m m' fr,
   persists m m' -> doomed_ok ge md m fr -> doomed_ok ge md m' fr.
 Proof.
@@ -965,7 +1020,8 @@ Qed.
 (** ## No `unchecked` in a doomed frame *)
 
 (** In a doomed frame, `doomed_result/5` passes on only an alias or a
-    wrong limit as `unchecked`. *)
+    wrong limit as [[unchecked]]; every other unchecked becomes the
+    early trap. *)
 Lemma doomed_unchecked : forall ge fr m i out od why w,
   fr_doomed fr = Some why -> doomed_result ge fr m i out = Some od -> fst od = IStop (Unchecked w) ->
   out = IStop (Unchecked w) /\ (w = Alias \/ w = WhyLimit).
@@ -994,15 +1050,17 @@ Proof.
     exact (G r0 H Ho).
 Qed.
 
-(** An instruction's step ends the run only with its own outcome. *)
+(** A step of an instruction ends the run ([inst_next] gives Done)
+    only with the instruction's own outcome. *)
 Lemma inst_next_done : forall c l rest j out d o, inst_next c l rest j out d = Done o -> out = IStop o.
 Proof.
   unfold inst_next. intros c l rest j out d o H.
   destruct out; try discriminate H; [injection H as <-; reflexivity | destruct (call_frame _ _); discriminate H].
 Qed.
 
-(** `exit_targets`: a need at a jump means the jump has edges, none of
-    them polling (`meet_found`, `ahead_edge/5`). *)
+(** A [[need]] at the jump of a block b means the jump has edges, none
+    of them a [[poll edge]] ([meet_found], `ahead_edge/5`): so a doomed
+    frame neither returns nor polls. *)
 Lemma exit_targets : forall f b n h,
   lookup n (block_exit f b) = Some h ->
   jump_targets (b_jump b) <> [] /\ forall t, In t (jump_targets (b_jump b)) -> is_poll t = false.
@@ -1014,13 +1072,13 @@ Proof.
     destruct t; [reflexivity | discriminate Hh1].
 Qed.
 
-(** `doomed_step_checked`: a doomed frame's step never ends the run
-    `unchecked`. It does not reach a poll edge, a return or an
+(** A [[doomed frame]] where [doomed_ok] holds never steps to
+    [[unchecked]]. It does not reach a poll edge, a return or an
     instruction that is not transparent, because the need is there
-    (`exit_targets`, `step_found`); and a renew, renew over a hull, half
+    ([exit_targets], [step_found]); and a renew, renew over a hull, half
     check or `check_limit` there finds no alias or wrong limit
-    (`renew_not_alias`, `hull_not_alias`, `half_not_alias`,
-    `check_limit_not_unchecked`). *)
+    ([renew_not_alias], [hull_not_alias], [half_not_alias],
+    [check_limit_not_unchecked]). *)
 Theorem doomed_step_checked : forall ge md c w,
   checked_module md -> fr_doomed (c_frame c) <> None -> shaped md (c_frame c) ->
   doomed_ok ge md (c_mem c) (c_frame c) -> step ge c <> Done (Unchecked w).
@@ -1086,6 +1144,8 @@ Qed.
 
 (** ## Every step keeps it *)
 
+(** The doomed frame's invariant carried along every [[run]] of the
+    [[machine]] of a [[runtime]] R. *)
 Module Doom (R : Runtime).
 
 Module P := Persistence R.
@@ -1094,9 +1154,9 @@ Import S.ID.RM.
 
 (** ### Taking an edge *)
 
-(** `doomed_jump`: a doomed frame's jump takes an edge to a later
-    block whose entry facts carry the need (`meet_found`): there is one,
-    and it does not poll. *)
+(** A doomed frame's jump keeps [doomed_ok]: it takes an edge to a
+    later block whose entry facts carry the need ([meet_found]); there
+    is one, and it does not poll. *)
 Lemma doomed_jump : forall ge md c c' l j,
   checked_module md -> fr_at (c_frame c) = Exec l [] j -> step ge c = Next c' ->
   fr_doomed (c_frame c) <> None -> shaped md (c_frame c) ->
@@ -1137,11 +1197,10 @@ Qed.
 
 (** ### An instruction *)
 
-(** `need_access_stops`: the access that meets the need does not
-    continue. Its proof q holds a pointer of the base's capability, at
-    an exact offset from it (`fact_holds`, `guard_chain_sound`), and its
+(** The access i that meets the need does not step and continue. Its proof q holds a pointer of the base's capability, at
+    an exact offset from it ([fact_holds], [guard_chain_sound]), and its
     bytes end at or past the need, so its check fails
-    (`need_access_fails`). *)
+    ([need_access_fails]). *)
 Lemma need_access_stops : forall ge md c l i b k n pn kl hreq q x off rs p k' e1 l1 m1,
   checked_module md -> In (IFunc (fr_fn (c_frame c))) md -> is_reachable (fn_doms (fr_fn (c_frame c))) l = true ->
   find_block l (fn_blocks (fr_fn (c_frame c))) = Some b -> nth_error (b_insts b) k = Some i ->
@@ -1182,9 +1241,9 @@ Proof.
                         (access_size_small x)).
 Qed.
 
-(** `doomed_inst`: a doomed frame's instruction keeps the need, not
-    defining its base; the access that would meet it does not continue
-    (`need_access_stops`). *)
+(** A doomed frame's instruction i keeps [doomed_ok]: it keeps the
+    need, not defining its base, and the access that would meet it does
+    not continue ([need_access_stops]). *)
 Lemma doomed_inst : forall ge md c c' l i rest j,
   checked_module md -> fr_at (c_frame c) = Exec l (i :: rest) j -> step ge c = Next c' ->
   fr_doomed (c_frame c) <> None -> persists (c_mem c) (c_mem c') ->
@@ -1283,16 +1342,16 @@ Qed.
 
 (** ### The doom *)
 
-(** `doom_start`: a frame that is not doomed is doomed only by a
-    `check_ahead` whose early bytes fail. The pass accepted it
-    (`checked_inst_rest/4`), so the validator found it at its own site
-    (`ahead_accepted`) with some exact base N of its pointer at offset
-    K, K and K + Lo near, whose need after the access is at least
-    K + Hi. N dominates the check (`chain_dominating`), so the access
+(** The check that dooms a frame starts [doomed_ok]. A frame that is
+    not doomed is doomed only by a `check_ahead` whose early bytes fail.
+    The pass accepted it (`checked_inst_rest/7`), so the validator
+    found it at its own site ([ahead_accepted]) with some exact base N
+    of its pointer at offset K, K and K + Lo near, whose need after the
+    access is at least K + Hi. N dominates the check ([chain_dominating]), so the access
     does not define it, and the need before the access is no less
-    (`step_keeps`). Its own bytes passed and its early ones failed, so
+    ([step_keeps]). Its own bytes passed and its early ones failed, so
     the check's start lies in the object and its end does not
-    (`doom_from_checks`). *)
+    ([doom_from_checks]). *)
 Lemma doom_start : forall ge md c c' l i rest j,
   checked_module md -> fr_at (c_frame c) = Exec l (i :: rest) j -> step ge c = Next c' ->
   fr_doomed (c_frame c) = None -> fr_doomed (c_frame c') <> None ->
@@ -1429,7 +1488,8 @@ Qed.
 
 (** ### Every step *)
 
-(** A doomed frame allocates nothing: an allocation is not transparent. *)
+(** A doomed frame allocates nothing (no [Fresh] step): an allocation
+    is not [[ahead-transparent]]. *)
 Lemma doomed_not_fresh : forall ge md c q k,
   fr_doomed (c_frame c) <> None -> doomed_ok ge md (c_mem c) (c_frame c) -> step ge c <> Fresh q k.
 Proof.
@@ -1448,7 +1508,8 @@ Proof.
       [destruct cl|]; discriminate Ht.
 Qed.
 
-(** `next_dinv`: a step that allocates nothing keeps `dinv`. *)
+(** A step that allocates nothing keeps [dinv], where Single.v's
+    invariant ([sinv]) and Persistence.v's hold before it. *)
 Lemma next_dinv : forall ge md c c' s,
   checked_module md -> step ge c = Next c' -> persists (c_mem c) (c_mem c') ->
   objects_fit (m_regions (c_mem c)) -> objects_fit (m_regions (c_mem c')) ->
@@ -1475,8 +1536,8 @@ Proof.
     + exact (doom_start _ _ _ _ _ _ _ _ Hmd Ha Hs Ed Hd' Hfit Hsh Hsc Hpo).
 Qed.
 
-(** `mstep_dinv`: every machine step from a ready state keeps `dinv`,
-    where Single.v's and Persistence.v's invariants hold. *)
+(** Every [[machine]] step from a [[ready]] state keeps [dinv], where
+    Single.v's ([sinv]) and Persistence.v's invariants hold. *)
 Theorem mstep_dinv : forall ge md st st',
   checked_module md -> ge_free ge = R.free ->
   ready_state st -> mstep ge st st' -> sinv ge md (fst st) -> P.I.inv ge md st ->
@@ -1513,9 +1574,10 @@ Qed.
 Lemma mstep_same : forall ge st st', P.I.RM.mstep ge st st' -> S.ID.RM.mstep ge st st'.
 Proof. intros ge st st' H. destruct H; econstructor; eassumption. Qed.
 
-(** `run_inv`: the three invariants together, single definitions
-    (`sinv`), the pass's facts (`P.I.inv`) and the doomed frame's need
-    (`dinv`), hold in every state a ready run reaches. *)
+(** The three invariants together, single definitions ([sinv]), the
+    pass's facts (Persistence.v's inv) and the doomed frame's need
+    ([dinv]), hold in every state a ready run reaches if they hold at
+    its start. *)
 Lemma run_inv : forall ge md st st',
   ge_module ge = md -> checked_module md -> ge_free ge = R.free -> P.I.spares ge md ->
   P.I.RM.mreachable ge st st' -> ready_state st ->
@@ -1533,10 +1595,12 @@ Proof.
     exact (IH2 (P.I.RM.mreachable_ready _ _ _ Hfree H12 Hr) Hsi2 Hi2 Hdi2).
 Qed.
 
-(** `run_doomed_checked`: in every state of a run of a checked
-    module's function that starts ready, a doomed frame never steps to
-    an `unchecked` outcome, where the runtime spares the pass's facts at
-    safepoints (`spares`). *)
+(** In every state c a [[run]] reaches from a call of a function f of a
+    [checked_module] md, started in a memory where the runtime is
+    [[ready]], a [[doomed frame]] never steps to an [[unchecked]]
+    outcome. It assumes the runtime [spares] the pass's facts at
+    [[poll|safepoints]] (see
+    [The evidence invariant over runs](../../docs/rocq.md#the-evidence-invariant-over-runs)). *)
 Theorem run_doomed_checked : forall ge md f xs fr m fuel s0 c s w,
   checked_module md -> ge_module ge = md -> ge_free ge = R.free -> P.I.spares ge md ->
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
@@ -1558,9 +1622,11 @@ End Doom.
 
 Module InterpDoom := Doom InterpRuntime.
 
-(** `interp_doomed_checked`: under the interpreter's runtime, in every
-    state of a run of a checked module's function that starts ready, a
-    doomed frame never steps to `unchecked`. *)
+(** [run_doomed_checked] for the [[interpreter]]'s runtime, which
+    changes nothing at a safepoint ([interp_spares]): in every state of
+    a run of a checked module's function that starts ready, a doomed
+    frame never steps to `unchecked`. No hypothesis remains but the
+    ready start. *)
 Corollary interp_doomed_checked : forall md globals f xs fr m fuel s0 c s w,
   let ge := mkGenv md globals InterpRuntime.free in
   checked_module md -> In (IFunc f) md -> call_frame f xs = Some fr -> InterpRuntime.ready s0 m ->

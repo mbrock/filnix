@@ -1,22 +1,14 @@
-(** What one step of Semantics.v's `step` does to the running frame,
-    as Campaign 3's run-level invariant (Persistence.v) reads it.
+(** What one [[step]] of Semantics.v's [step] does to the running
+    [[frame]], as Campaign 3's run-level invariant (Persistence.v) reads
+    it.
 
-    `step` is one function over every point of a frame; the invariant
-    asks, point by point, what the frame looks like after it:
-
-    | Point | Lemma |
-    |---|---|
-    | a variadic callee's snapshot | `step_snapshot`, `step_snapshot_fresh`: it enters the entry block, nothing else changes |
-    | a block's entry | `step_enter`: the phis, then the block's instructions, with the same locals and memory |
-    | an instruction | `step_exec_cons`: `inst_step`, `doomed_result/5`, then `inst_next` (`inst_next_next`, `inst_next_fresh`) |
-    | a return | `return_step_next`: the caller resumes where it waited |
-
-    An instruction that continues keeps the locals (`inst_step_locals`);
-    only `alloc` and a named local allocate (`inst_step_fresh_shape`);
-    only a call or raw call calls (`inst_step_call_shape`). A frame that
-    is not doomed is doomed afterwards only by a `check_ahead`
-    (`doomed_result_fresh`), and a doomed one stays doomed
-    (`doomed_result_doomed`). *)
+    [step] is one function over every point of a frame; the invariant
+    asks, point by point, what the frame looks like after it: after a
+    variadic callee's [[snapshot]] ([step_snapshot]), at a block's entry
+    ([step_enter]), at an instruction ([step_exec_cons]) and at a return
+    ([return_step_next]). The other lemmas say which instructions
+    allocate, call or keep the locals, and how a [[doomed]] frame comes
+    about and stays. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Semantics Machine Validate
@@ -26,6 +18,8 @@ Open Scope Z_scope.
 
 (** ## What a step does to the frame *)
 
+(** A function that [find_direct] finds by the name n among the items of a
+    module is one of its functions. *)
 Lemma find_direct_in : forall n items g, find_direct n items = Some (Defined g) -> In (IFunc g) items.
 Proof.
   induction items as [|it items IH]; simpl; intros g H; [discriminate H|].
@@ -35,6 +29,8 @@ Proof.
   injection H as <-. left. reflexivity.
 Qed.
 
+(** A function that [find_fn] finds by name, directly or through an alias,
+    is a function of the running module. *)
 Lemma find_fn_in : forall ge n g, find_fn ge n = Some (Defined g) -> In (IFunc g) (ge_module ge).
 Proof.
   unfold find_fn. intros ge n g H. destruct (find_direct n (ge_module ge)) eqn:E.
@@ -42,7 +38,8 @@ Proof.
   - destruct (find_alias n (ge_module ge)); [eapply find_direct_in; eauto | discriminate H].
 Qed.
 
-(** An instruction that continues keeps the invocation's locals. *)
+(** An instruction i that continues ([IContinue]) keeps the locals l of the
+    frame fr, its invocation's named locals. *)
 Lemma inst_step_locals : forall ge fr m i e l m',
   inst_step ge fr m i = Some (IContinue e l m') -> l = fr_locals fr.
 Proof.
@@ -53,7 +50,7 @@ Proof.
     reflexivity.
 Qed.
 
-(** Only `alloc` and a named local's allocation allocate. *)
+(** An operation whose result allocates ([OpAlloc]) is an [[alloc]]. *)
 Lemma op_res_alloc_op : forall o k xs m q kont,
   op_res o k xs m = Some (OpAlloc q kont) -> exists al, o = Alloc al.
 Proof.
@@ -61,6 +58,9 @@ Proof.
   destruct o; unfold op_res, op_res_int, float_integer in H; cases H; inversion H; subst; eauto.
 Qed.
 
+(** An instruction that allocates a fresh object ([IFresh]) is an [[alloc]],
+    which keeps the frame's locals whatever base the object gets, or the
+    allocation of a named local x, which gives x that base. *)
 Lemma inst_step_fresh_shape : forall ge fr m i q k,
   inst_step ge fr m i = Some (IFresh q k) ->
   (exists d c al args, i = Let d c (Alloc al) args /\
@@ -79,8 +79,8 @@ Proof.
   - right. eexists; eexists. split; [reflexivity|]. intros base. reflexivity.
 Qed.
 
-(** A call comes only from a call instruction, of a function of the
-    module. *)
+(** An instruction that calls ([ICall]) the function g is a call or a raw
+    call, and g is a function of the module. *)
 Lemma inst_step_call_shape : forall ge fr m i g xs pd,
   inst_step ge fr m i = Some (ICall g xs pd) ->
   In (IFunc g) (ge_module ge) /\
@@ -93,26 +93,32 @@ Proof.
   all: split; [eapply find_fn_in; eassumption | eauto].
 Qed.
 
+(** The [[evidence pass]] keeps no facts before a call ([relies]). *)
 Lemma call_relies : forall s r callee args, relies s (Call r callee args) = false.
 Proof. reflexivity. Qed.
 
+(** The pass keeps no facts before a raw call. *)
 Lemma raw_call_relies : forall s r callee args, relies s (RawCall r callee args) = false.
 Proof. reflexivity. Qed.
 
+(** The pass keeps no facts before an [[alloc]]. *)
 Lemma alloc_relies : forall s d c al args, relies s (Let d c (Alloc al) args) = false.
 Proof. intros s d c al args. destruct c; reflexivity. Qed.
 
+(** The pass keeps no facts before a named local's allocation. *)
 Lemma local_alloc_relies : forall s x size, relies s (LocalAlloc x size) = false.
 Proof. reflexivity. Qed.
 
+(** The pass keeps its facts before every [[ahead-transparent]] instruction,
+    one that may come between a [[check_ahead]] and its access. *)
 Lemma transparent_relies : forall s i, ahead_transparent i = true -> relies s i = true.
 Proof.
   unfold ahead_transparent, relies. intros s i H. apply andb_true_iff in H as [H _]. rewrite H. reflexivity.
 Qed.
 
-(** `doomed_result/5` in a frame that is not doomed: the instruction's
-    result as it is, or a doomed `check_ahead` that goes on with its
-    pointer. *)
+(** As `doomed_result/5` in a frame fr that is not [[doomed]]: the result od
+    is the instruction's result out as it is, or, for a doomed
+    `check_ahead`, one that goes on with its pointer and dooms the frame. *)
 Lemma doomed_result_fresh : forall ge fr m i out od,
   fr_doomed fr = None -> doomed_result ge fr m i out = Some od ->
   od = (out, None) \/ exists e w, od = (IContinue e (fr_locals fr) m, Some w).
@@ -124,7 +130,8 @@ Proof.
   - rewrite (doomed_result_other _ _ _ _ _ Ea) in H. rewrite Hd in H. cases H; inversion H; subst; auto.
 Qed.
 
-(** In a doomed frame it stays doomed. *)
+(** In a [[doomed]] frame, `doomed_result/5` keeps it doomed, and the result
+    is the instruction's own, a `check_ahead` that goes on, or an outcome. *)
 Lemma doomed_result_doomed : forall ge fr m i out od,
   fr_doomed fr <> None -> doomed_result ge fr m i out = Some od ->
   snd od <> None /\ (fst od = out \/ (exists e, fst od = IContinue e (fr_locals fr) m) \/
@@ -140,7 +147,10 @@ Proof.
     cases H; inversion H; subst; simpl; (split; [discriminate | eauto]).
 Qed.
 
-(** The step after an instruction's result that is not an outcome. *)
+(** The next configuration after an instruction's result that is not an
+    outcome: the same frame, at the instructions rest, with the new
+    environment, locals and memory of a result that continues, or the
+    callee's frame on top of the caller's, waiting at rest, for a call. *)
 Lemma inst_next_next : forall c l rest j out d c',
   inst_next c l rest j out d = Next c' ->
   (exists e1 l1 m1, out = IContinue e1 l1 m1 /\
@@ -155,6 +165,9 @@ Proof.
   - destruct (call_frame f xs) eqn:E; [|discriminate H]. injection H as <-. right. eauto 7.
 Qed.
 
+(** After a result that allocates, the next configuration for each base the
+    object can get is the same frame, at the instructions rest, with what
+    the instruction makes of that base. *)
 Lemma inst_next_fresh : forall c l rest j out d q k,
   inst_next c l rest j out d = Fresh q k ->
   exists k0, out = IFresh q k0 /\
@@ -170,8 +183,9 @@ Proof.
   injection H as <- <-. eexists. split; [reflexivity|]. intros base. reflexivity.
 Qed.
 
-(** A step at an instruction: the instruction, `doomed_result/5`, then
-    `inst_next`. *)
+(** A [[step]] at the instruction i that neither ends the run nor gets stuck
+    runs in a frame that is not doomed or at an [[ahead-transparent]] i, and
+    is [inst_step], then `doomed_result/5`, then [inst_next]. *)
 Lemma step_exec_cons : forall ge c l i rest j r,
   fr_at (c_frame c) = Exec l (i :: rest) j ->
   step ge c = r -> (forall o, r <> Done o) -> (forall why, r <> Stuck why) ->
@@ -197,7 +211,9 @@ Proof.
     exists out0, od. split; [first [exact Ei | reflexivity] | split; [first [exact Eo | reflexivity] | exact Hs]].
 Qed.
 
-(** Entering a block: its phis, then its instructions. *)
+(** Entering the block labelled l from the block from: the block is found,
+    its [[phi|phis]] bind the environment, and the frame goes on at the
+    block's instructions with the same locals and memory, one [[fuel]] less. *)
 Lemma step_enter : forall ge c l from c',
   fr_at (c_frame c) = Enter l from -> step ge c = Next c' ->
   exists b e, find_block l (fn_blocks (fr_fn (c_frame c))) = Some b /\
@@ -213,6 +229,7 @@ Proof.
   injection H as <-. eauto.
 Qed.
 
+(** Entering a block never allocates. *)
 Lemma step_enter_fresh : forall ge c l from q k,
   fr_at (c_frame c) = Enter l from -> step ge c <> Fresh q k.
 Proof.
@@ -223,7 +240,8 @@ Proof.
   destruct (fold_left _ _ _); discriminate H.
 Qed.
 
-(** A variadic callee's snapshot enters the entry block. *)
+(** A variadic callee's [[snapshot]] of its arguments xs enters the entry
+    block l, with the same callers, function, locals and doom. *)
 Lemma step_snapshot : forall ge c xs l c',
   fr_at (c_frame c) = Snapshot xs l -> step ge c = Next c' ->
   c_callers c' = c_callers c /\ fr_fn (c_frame c') = fr_fn (c_frame c) /\
@@ -235,6 +253,8 @@ Proof.
   destruct (negb _); discriminate H.
 Qed.
 
+(** Where a snapshot allocates, it enters the entry block l with the same
+    callers, function, locals and doom, whatever base the object gets. *)
 Lemma step_snapshot_fresh : forall ge c xs l q k,
   fr_at (c_frame c) = Snapshot xs l -> step ge c = Fresh q k ->
   forall base,
@@ -247,7 +267,9 @@ Proof.
   injection H as _ <-. simpl. auto.
 Qed.
 
-(** A return resumes the caller where it was, with the callee's result. *)
+(** A return of the outcome o resumes the caller where it was waiting, with
+    its function, locals, doom and point, and an environment given the
+    callee's result. *)
 Lemma return_step_next : forall c o c',
   return_step c o = Next c' ->
   exists caller pd callers e m',
@@ -263,7 +285,8 @@ Proof.
   destruct (returned_env _ _ _) as [e|]; [|discriminate H]. injection H as <-. eauto 8.
 Qed.
 
-(** A raw call whose function check passed is not unchecked. *)
+(** A raw call through q, whose pointer p passed its function check
+    ([function_check_res]), does not stop as [[unchecked]]. *)
 Lemma raw_call_checked : forall ge fr m r q args p why,
   lookup q (fr_env fr) = Some (WPtr p) -> function_check_res ge p = Some ok ->
   inst_step ge fr m (RawCall r (Tmp q) args) <> Some (IStop (Unchecked why)).
