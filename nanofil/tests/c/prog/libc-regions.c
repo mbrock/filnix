@@ -43,6 +43,11 @@ int main(void) {
     answer("memcmp unsigned first difference controls sign", memcmp(compare_left + 1, compare_right + 1, 15) > 0 && memcmp(compare_right + 1, compare_left + 1, 15) < 0 && memcmp(compare_left + 2, compare_right + 2, 1) > 0);
     answer("memcmp binary zero and count boundary", memcmp(compare_left + 3, compare_right + 3, 12) == 0 && memcmp(compare_left + 3, compare_right + 3, 13) < 0 && memcmp(compare_left + 3, compare_left + 3, 13) == 0);
     answer("memcmp permits overlap and zero count", memcmp(compare_left + 1, compare_left + 2, 14) < 0 && memcmp(compare_left + 16, compare_right + 16, 0) == 0);
+    char short_left[3] = {'a', 0, 'z'}, short_right[3] = {'a', 0, 'b'};
+    const char *cl = (const char *)compare_left, *cr = (const char *)compare_right;
+    answer("strncmp stops at shared NUL and compares terminators", strncmp(short_left, short_right, (size_t)-1) == 0 && strncmp("a", "ab", 3) < 0 && strncmp("ab", "a", 3) > 0);
+    answer("strncmp unsigned order and exact count boundary", strncmp(cl + 1, cr + 1, 15) > 0 && strncmp(cr + 1, cl + 1, 15) < 0 && strncmp(cl + 4, cr + 4, 11) == 0 && strncmp(cl + 4, cr + 4, 12) < 0 && strncmp(cl + 4, cl + 4, 12) == 0);
+    answer("strncmp permits overlap and zero count", strncmp(high_bytes + 1, high_bytes + 2, 14) < 0 && strncmp(high_bytes + 16, high_bytes + 16, 0) == 0);
     char *end = mempcpy(d + 1, s, 3);
     answer("copy returns end and preserves neighbours", end == d + 4 && memcmp(d, "!xyz!", 5) == 0);
     answer("memcpy and memset return destination", memcpy(d, "pq", 2) == d && memset(d + 2, '#', 2) == d + 2 && memcmp(d, "pq##!", 5) == 0);

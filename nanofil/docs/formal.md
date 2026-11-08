@@ -1374,6 +1374,40 @@ capability ends without relying on small-array padding. Finite probes do
 not prove native satisfaction of these trusted contracts. Runtime axioms,
 Machine semantics, interpreter registration and the validator are unchanged.
 
+### Campaign 4 milestone 4t: bounded strncmp and early terminators
+
+The trusted strncmp contract independently requires `bounded_length`
+witnesses for both inputs, reusing strnlen's early-NUL domain rather than
+memcmp's full-maximum span. This is the table's conservative B(a,n), B(b,n)
+contract, not the weakest operational precondition: an immediate difference
+does not waive an otherwise invalid bounded string on either side.
+
+With bounded lengths left and right, the logical comparison window is
+`min(n, min(left + 1, right + 1))`. It includes an earlier terminator but
+never byte n. These additions are mathematical integers, not class-L
+arithmetic that could wrap at SIZE_MAX. The window-bounds and readability
+theorems prove that both source capabilities permit every compared byte,
+with a well-formed byte domain. Total model memory and a result-existence
+proof alone would not establish that authority obligation. Existing
+readable-span extent results then apply under runtime readiness.
+
+The result reuses memcmp's unsigned-byte order and arbitrary canonical
+signed-int magnitude. Input-only premises construct a permitted invocation;
+first-NUL uniqueness yields sign uniqueness, not result-word uniqueness.
+The unchanged P/P/L-to-W ABI admits discarded results. Completions are pure:
+exact memory/world, empty observations, no mutation, allocation, release or
+resource/exit ending. No native termination or coverage is inferred.
+
+Controls distinguish a shared NUL with different following bytes, an
+earlier terminator versus a nonzero byte, huge bounds, exact-count
+nonterminated spans, overlap, zero-count one-past authority and wrong signs.
+Public invocations permit both signs with magnitude 512. Native probes
+retain explicitly aligned allocation-end cases and check signs only.
+Pinned strncmp also uses aligned/unaligned word loops and merged words;
+the window is a logical dependency bound, not an exact native load trace.
+These finite checks do not prove universal native satisfaction. Runtime
+axioms, Machine semantics, registry, validator and site code are unchanged.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and

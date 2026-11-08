@@ -7,6 +7,9 @@ memchr respects last byte and zero count: yes
 memcmp unsigned first difference controls sign: yes
 memcmp binary zero and count boundary: yes
 memcmp permits overlap and zero count: yes
+strncmp stops at shared NUL and compares terminators: yes
+strncmp unsigned order and exact count boundary: yes
+strncmp permits overlap and zero count: yes
 copy returns end and preserves neighbours: yes
 memcpy and memset return destination: yes
 string results and comparison signs: yes

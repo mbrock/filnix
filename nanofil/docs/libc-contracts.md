@@ -265,6 +265,18 @@ the count; they also cover identical/overlapping spans and live one-past
 zero counts. These are finite checks of the trusted API specification,
 not a bytewise implementation model or universal native-satisfaction proof.
 
+The Rocq strncmp contract instead uses independent early-NUL bounded-string
+premises. Its logical comparison window includes the earlier terminator
+when present, excludes byte n, and is proved readable through both input
+capabilities. It reuses the sign-only result specification; public calls
+permit both signs with magnitude 512. Native rows check huge bounds with
+short strings, differing bytes after a shared NUL, a terminator versus a
+nonzero byte, unsigned ordering, exact-count allocation ends, overlap and
+zero-count one-past pointers. The independent premises are conservative,
+not the weakest operational domain. Wider native loads remain a separate
+implementation obligation; neither native termination nor universal
+contract satisfaction follows from these finite observations.
+
 ## 2. Heap lifetime (5)
 
 All fresh results satisfy the runtime axioms. Requested size is a
