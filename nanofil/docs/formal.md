@@ -1060,6 +1060,52 @@ valid callback admission and a selected complete boundary still need
 instantiation; absence of a prefix witness proves neither safety nor a
 native trap. The new rules add no axioms and leave Machine/Runtime alone.
 
+### Campaign 4 milestone 4k: selected lifecycle segment contracts
+
+`Selected.v` separates memory/world-indexed `libc_valid` from exact
+allocator readiness. Every selected lifecycle action specifies capability
+sources, writable spans, owned heap releases, allocation requests, finite
+prefixes and its documented panic set. These permissions are independent:
+a readable callback argument is not automatically writable or owned.
+
+The contract's precondition requires validity, an independently selected
+action and an enabled logical edge. `selected_admits` establishes ABI and
+preconditions **without an invocation witness**. Selection is intentionally
+restricted: the logical register rule's fresh token does not authorize
+an unknown callback. The older all-actions `shutdown_ready_admits` remains
+available, but is not falsely asserted for a restricted registry.
+
+A successful contract post supplies `segment_finish`: the exact lifecycle
+edge, its acceptance observation and valid endpoint representation.
+`invocation_realizes` extracts the **same invocation's** effect prefix,
+born list and post, deriving allocator readiness from actual effects.
+Callers no longer independently supply action-post and target-readiness
+premises. The empty-argument, void-return ABI is a logical segment marker,
+**not a native C callback ABI or a return from exit/_exit**. Unfinished
+prefixes and resource leaves remain terminal and cannot use this adapter
+as a continuation.
+
+`entry_rep` strengthens puts' opaque invariant for the actual entry
+inventory, retaining its pending callback validity for every well-formed
+logical output queue. This is a conservative representation requirement,
+not physical FILE-buffer reconstruction. `reached_puts_closed` combines
+that contract guarantee, exact inventory preservation, stream continuity
+and runtime preservation to discharge the reached-call shutdown-closure
+obligation. Safepoint stability and the selected entry image remain
+explicit; equal token lists alone still do not establish callback validity.
+
+Inhabited logical fixtures use a nonempty callback inventory with a live
+retained argument and reject unknown callbacks, expired argument bounds,
+argument writes and unowned releases. Completed delivery, error and
+discard segments compose through exact intermediate snapshots, never by
+resuming an unfinished leaf. These fixtures are **not pinned native
+callback implementations**. Admission and specification consequences are
+proved; native representation satisfaction, action selection/coverage and
+valid native cutpoints remain trusted obligations to instantiate and probe.
+The independent partial-output histories of milestone 4j still do not
+prove exact native queue correspondence. No unconditional hi.c closure,
+native totality or native implementation proof is claimed.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and

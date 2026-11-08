@@ -44,4 +44,5 @@ theories/Program.v
 theories/Transport.v
 theories/Sum.v
 theories/HiArtifact.v
+theories/Selected.v
 theories/Extract.v
