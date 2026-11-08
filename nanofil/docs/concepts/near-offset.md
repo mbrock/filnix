@@ -1,5 +1,7 @@
 # near offset
 
+**nanofil**
+
 A near offset is one within 2^62 of 0. The validator's offsets between pointers ([[guard-chain|guard chains]], [[pointer-distance|pointer distances]]) are exact only modulo 2^64, because address arithmetic wraps; for a near offset the integer is the true signed distance, so the validator counts only near ones where it compares positions.
 
 - `ir:near_offset/1`; Validate.v's [near_offset].

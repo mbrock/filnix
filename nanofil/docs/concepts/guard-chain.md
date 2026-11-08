@@ -1,5 +1,7 @@
 # guard chain
 
+**nanofil**
+
 A pointer's guard chain lists its bases with the offset of its address from each: P itself at `i(0, 0)`, then each base B reached through single-definition `add`, `sub` and `copy` [[flight|flights]] whose lower donor is their address operand, with an interval for P's address minus B's, modulo 2^64. P has the capability of every base on its chain.
 
 - `ir:guard_chain/3` (at most 64 steps), offsets from `ir:offset_interval/8`. Readers: `ir:guard_covers/5` ([[renew_if]]), [[pointer-distance|pointer distance]] (`ir:pointer_distance/4`, `ir:same_pointer/3`) through an [[exact-base|exact base]] `i(K, K)`, `ir:raise_need/6` ([[need]]). Validate.v: [guard_chain], [pointer_distance].

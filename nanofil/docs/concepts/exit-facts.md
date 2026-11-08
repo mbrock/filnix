@@ -1,5 +1,7 @@
 # exit facts / entry facts
 
+**nanofil**
+
 A block's exit facts are what a validator pass knows at its jump; its entry facts are what it knows before its phis. Two passes keep them, over the same edge rule: entry facts are the meet over incoming edges, nothing comes over a poll edge, and an edge from a block the pass has not yet reached carries nothing.
 
 - The [[evidence-pass|evidence pass]], forward: exit facts are [[live-fact|live facts]] at the block's end, kept per label (`ir:stage_func/6`). Walk.v's [pass_exits] reads them back; Invariant.v's [point_ok] asks a block's entry, from a predecessor by an unpolled edge, to see that predecessor's exit facts hold.

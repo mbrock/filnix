@@ -1,5 +1,7 @@
 # identity / object identity / persists
 
+**nanofil** · the [[lower]] names the object
+
 An object's identity is its base, the number its [[capability|capabilities]] name; it outlives the object's bounds, so a freed object keeps its identity. One memory persists from another when every object of the first is in the second as it was, or freed: no identity is lost, moved or given to a new object.
 
 - Identity.v: [ids] (every object is still an object) and [persists] (as it was, or freed). [persists_access]: a check that passed in m passes again in a memory that persists from m, or traps out of bounds. That is what lets a [[reuse]] form trust an earlier check.

@@ -1,5 +1,7 @@
 # covered access / coverage
 
+**nanofil**
+
 A [[raw-access|raw access]] is covered by a check when it lies inside the checked bytes, at an alignment the check's implies, with [[rights]] the check allows. Its own access check, which the raw access makes again without trapping, then passes too.
 
 - `ir:covered_access/6`, from `ir:raw_access/5`, `ir:access_size_align/3` and `ir:rights_allow/2`; Validate.v's [covered_access].

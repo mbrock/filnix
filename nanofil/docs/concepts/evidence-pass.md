@@ -1,5 +1,7 @@
 # evidence pass
 
+**nanofil**
+
 The evidence pass is the validator's forward walk over a checked function: it tracks [[live-fact|live facts]] and accepts each raw access only where its own check, a live fact or a reuse rule covers it. It visits the blocks once, in order; a block's [[exit-facts|entry facts]] are the meet over its incoming edges, with nothing carried over a poll edge or from a block not yet visited.
 
 - ir.pl: `ir:stage_func/6` drives it, with `ir:checked_insts/5`, `ir:checked_inst_rest/7` and `ir:evidence_after/3`. Validate.v: [evidence_pass], [checked_inst_rest], [evidence_meet].

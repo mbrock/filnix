@@ -757,3 +757,22 @@ dl.concept-index dd { margin: 0; color: var(--ink); }
   dl.concept-index { grid-template-columns: minmax(0, 1fr); gap: 0.1rem; }
   dl.concept-index dd { margin-bottom: 0.6rem; }
 }
+/* A concept's kind: Fil-C's own, or nanofil's. */
+.kind {
+  display: inline-block; vertical-align: 0.12em; margin-left: 0.15em;
+  padding: 0 0.32em; border: 1px solid currentColor; border-radius: 2px;
+  font-size: 0.62rem; font-weight: 600; letter-spacing: 0.05em; line-height: 1.45;
+  text-transform: none; white-space: nowrap;
+}
+.kind-filc { color: #1f6f5c; }
+.kind-nanofil { color: #6a5a8e; }
+h1 .kind, .concept-aliases > .kind:first-child { margin-left: 0; }
+.kind-dot { display: inline-block; width: 0.38em; height: 0.38em; margin-left: 0.35em; border-radius: 50%;
+  background: #1f6f5c; vertical-align: 0.15em; }
+p.concept-upstream { font-size: 0.9rem; margin: -0.8rem 0 1.2rem; overflow-wrap: anywhere; }
+p.concept-upstream .label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+h3.concept-group { margin: 1.8rem 0 0.3rem; }
+h3.concept-group .count { color: var(--muted); font-weight: normal; font-size: 0.85em; }
+p.concept-group-text { color: var(--muted); margin: 0 0 0.8rem; font-size: 0.92rem; }
+/* A long predicate name in running text may break rather than widen a phone page. */
+.guide-prose p code, .guide-prose li code { overflow-wrap: anywhere; }

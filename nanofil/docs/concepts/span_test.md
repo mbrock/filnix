@@ -1,5 +1,7 @@
 # span_test / span test
 
+**nanofil**
+
 `span_test(Lo, Hi)` of a pointer P0 is 1 when P0's object contains `[P0+Lo, P0+Hi)`, addresses taken modulo 2^64 and compared unsigned, and 0 otherwise, including for a null, function, external or freed capability. It never traps and reaches no safepoint: it is the [[guard]] that `--checks=guard` puts before a loop.
 
 - A [[renew_if]] of P reads its result G. `ir:guard_covers/5` accepts it when G is a single-definition span test of a single-definition P0 and P's [[guard-chain|guard chain]] puts P's span inside the tested one. Where G is 0 the renew_if runs the full check out of line.

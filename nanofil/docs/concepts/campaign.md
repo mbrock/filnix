@@ -1,5 +1,7 @@
 # campaign
 
+**nanofil**
+
 A campaign is one numbered stage of nanofil's formal plan in formal.md, from Campaign 0 (measure which checks survive) to Campaign 7 (prove one program never panics). Each ends with a note in docs/ saying what it found.
 
 | Campaign | Goal | Note |

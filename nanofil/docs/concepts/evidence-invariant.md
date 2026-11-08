@@ -1,5 +1,7 @@
 # evidence invariant
 
+**nanofil**
+
 The evidence invariant says that along every run, at the running frame's point, the [[live-fact|live facts]] the [[evidence-pass|evidence pass]] computed for that point hold: each fact's check passes in the current memory, and its pointer has a [[single-definition|single definition]] dominating the point. It is how the pass's static bookkeeping becomes a fact about runs.
 
 - One step at a time (Evidence.v): [fact_holds] is a fact's meaning; [checked_inst_holds] keeps the facts across every case of `ir:checked_inst_rest/7`, [entry_holds] across an unpolled edge into the meet of [[exit-facts|exit facts]].

@@ -1,5 +1,7 @@
 # ready
 
+**nanofil**
+
 A [[runtime]] is ready in a memory when its own state and that memory agree well enough that its next allocation is [[fresh]]. Readiness is the runtime's invariant: the axioms about allocation and the [[address-space|address space]] are stated only for ready states.
 
 - [ready] is a parameter of [Runtime]; [ready_state] in Machine.v pairs it with the machine's memory. [InterpRuntime]'s says every object lies between 0 and Next, empty if freed, Next is at most 2^48, and nothing at or above Next has been written.

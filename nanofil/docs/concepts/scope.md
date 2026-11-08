@@ -1,5 +1,7 @@
 # scope
 
+**nanofil**
+
 A frame's scope is the set of [[single-definition|single definitions]] whose [[site]] dominates its point: the names the [[reuse]] rules may read relations off there. The single-definition invariant says every one of them [[replay|replays]].
 
 - Single.v: [point_site] reads the frame's point as a block and index; [scope_with] quantifies over the replayable single definitions whose site dominates it; [scope_holds] asks each to replay. [running] and [waiting] ask it of the running frame (unless [[doomed]]) and of each [[parked|waiting caller]].

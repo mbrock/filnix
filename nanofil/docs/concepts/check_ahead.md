@@ -1,5 +1,7 @@
 # check_ahead / scheduled check
 
+**nanofil** · the check scheduler hoists and merges checks, `filc-optimize-checks` ([compiler](https://fil-c.org/compiler), [FilPizlonator.cpp](https://github.com/pizlonator/fil-c/blob/deluge/llvm/lib/Transforms/Instrumentation/FilPizlonator.cpp))
+
 `check_ahead(Lo, Hi, Rights, Align, AHi)` is a check of `[Lo, Hi)` whose own access needs only `[Lo, AHi)`: the bytes `[AHi, Hi)` are checked early for later accesses through the same base, as filcc's check scheduler does. It may trap earlier than the reference program, but only on runs that would trap later anyway.
 
 - Made by `schedule:schedule_checks/2` under `--checks=schedule` (opt-in); emitted as a plain check of the whole range.

@@ -1,5 +1,7 @@
 # lower chain
 
+**nanofil** · every pointer derived from an allocation's carries its [[lower]] ([InvisiCaps](https://fil-c.org/invisicaps#flightptr))
+
 A lower chain from P to B says P carries B's [[capability]]: P is B, or a single-definition [[flight]] whose lower donor has B's lower, whatever its address.
 
 - `ir:lower_chain/3`, at most 64 steps; `ir:limit_covers/5` uses it to accept a [[limit|check_limit]]. Validate.v transcribes [lower_chain].

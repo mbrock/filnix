@@ -1,5 +1,7 @@
 # global environment / genv
 
+**nanofil**
+
 The global environment is what every [[step]] of a run reads but never changes: the module, each global's pointer, and the free that a call of libc's `free` runs.
 
 - Semantics.v's [genv]: [ge_module], [ge_globals] (each symbol's name with its address and [[capability]]), [ge_free]. Run.v's [Driver] builds it with [ge_free] the [[runtime]]'s [free]; the interpreter's is Memory.v's [free_res].

@@ -1,5 +1,7 @@
 # interpreter
 
+**nanofil**
+
 The interpreter is interp.pl, nanofil's executable meaning of the IR: a relation from a module, a function, arguments and [[fuel]] to an [[outcome]], with CLP(Z) integers so that it runs in every direction. The Rocq model transcribes it, and the outcome gate checks that the two agree on every run line of the corpus.
 
 - Entry points: `interp:run/5`, or `interp:module_prepared/2` once and `interp:run_prepared/5` many times. The tests also compare it with the native code nanofil and clang emit (difftest, progtest).

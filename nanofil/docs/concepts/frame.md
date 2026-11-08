@@ -1,5 +1,7 @@
 # frame / configuration / config
 
+**nanofil**
+
 A configuration is the whole state of a run in the model: the running frame, the suspended callers (each with how it will read its callee's result), memory, and the [[fuel]] left. A frame is one invocation: its function, its [[temporary|temporaries]], its named locals, whether it is [[doomed]], and its point.
 
 - Semantics.v: [config] with [c_frame], [c_callers], [c_mem], [c_fuel]; [frame] with [fr_fn], [fr_env], [fr_locals], [fr_doomed], [fr_at].

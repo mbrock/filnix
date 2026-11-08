@@ -1,5 +1,7 @@
 # live fact
 
+**nanofil** · FilPizlonator removes checks it finds redundant ([compiler](https://fil-c.org/compiler))
+
 A live fact `live(Q, P, Lo, Hi, Rights, Align)` is the validator's record that the [[proof]] Q came from a check of P over `[Lo, Hi)` that still holds: no safepoint since, and neither Q nor P redefined. A later raw access through Q that the fact covers needs no check of its own.
 
 - ir.pl: each check-like op adds one in `ir:checked_inst_rest/7`; `ir:evidence_after/3` keeps them across an `ir:evidence_preserving/1` instruction and `ir:evidence_kill/3` drops those naming a redefined name; any other instruction ends them all. Validate.v: [fact], [evidence_after], [kill].

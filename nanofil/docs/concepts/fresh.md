@@ -1,5 +1,7 @@
 # fresh base / fresh
 
+**nanofil** · a new capability overlaps no reachable one and its payload starts zeroed ([GIMSO](https://fil-c.org/gimso))
+
 A fresh base is an address where a new object may be placed: positive, aligned, no object's [[identity]] (live or freed), overlapping no object's bounds, ending at or below 2^64, and reading as zero with no stored capability, as Fil-C's allocations do.
 
 - [fresh] in Memory.v, for an allocation request [alloc_req]. Semantics.v's [step] answers [Fresh] at an allocation, and [step_rel] takes any fresh base, so the semantics never depends on where objects go.

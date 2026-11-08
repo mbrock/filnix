@@ -53,6 +53,7 @@
 
 %  guide_rocq(Doc): Doc is about Rocq (names it), so its inline code may
 %  be Rocq.
+:- dynamic concept_meta/2.
 :- dynamic guide_rocq/1, guide_slug/2, guide_broken/1, guide_mention/5, guide_heading/5,
            guide_output/2, guide_module/1, pred_doc/4, guide_entry_ref/1, concept_backlink/3,
            concept_body/2.
@@ -696,7 +697,7 @@ concept_ref(Name, Shown) --> { concepts_loaded, concept_resolve(Name, Id) }, !,
       concept_summary(Id, Sum0), concept_plain(Sum0, Sum) },
     el(span, "pref cref", ( el(a, concept, [href=Href], gt_text(Shown)),
                            el(span, "sigcard concept-card", ['aria-hidden'=true],
-                              ( el(span, "card-mod", esc(Title)), el(span, "card-text", ctext(Sum)) )) )).
+                              ( el(span, "card-mod", ( esc(Title), kind_badge(Id) )), el(span, "card-text", ctext(Sum)) )) )).
 concept_ref(Name, Shown) --> { broken("[[~w]] names no concept", [Name]) }, el(span, broken, esc(Shown)).
 
 gt_text(S) --> { string_codes(S, Cs) }, gt(Cs).
@@ -725,7 +726,7 @@ concept_embed(Name) --> { concepts_loaded, concept_resolve(Name, Id) }, !,
       nb_getval(concept_dir, CDir), atom_concat('concept-', Id, Doc),
       nb_setval(guide_doc, Doc), nb_setval(guide_dir, CDir), nb_setval(guide_concept, Id),
       nb_setval(guide_embedding, true) },
-    el(aside, "concept-embed", ( el(a, "concept-embed-title", [href=Href], esc(Title)), gblocks(Bs) )),
+    el(aside, "concept-embed", ( el(a, "concept-embed-title", [href=Href], ( esc(Title), kind_badge(Id) )), gblocks(Bs) )),
     { nb_setval(guide_embedding, false),
       maplist([K, V]>>nb_setval(K, V), [guide_doc, guide_dir, guide_concept, guide_sec], Saved) }.
 concept_embed(Name) --> el(p, none, concept_ref(Name, Name)).
@@ -754,6 +755,13 @@ render_concept_body(Dir, Id) :-
     retractall(guide_slug(_, _)), guide_prepass(Blocks),
     retractall(guide_entry_ref(_)),
     phrase(gblocks(Blocks), Body),
+    (   concept_kind(Id, _, Rest), Rest \== "" -> string_codes(Rest, RCs), phrase(gi(RCs), Meta)
+    ;   Meta = []
+    ),
+    assertz(concept_meta(Id, Meta)),
+    (   concept_kind(Id, _, _) -> true
+    ;   broken("concept ~w is not marked **Fil-C** or **nanofil**", [Id])
+    ),
     (   guide_entry_ref(_) -> true
     ;   nb_setval(guide_sec, sec(top, "", [])),
         broken("concept ~w names no predicate, module or Rocq definition", [Id])
@@ -770,7 +778,11 @@ concept_page_(Ids, Id, Body) -->
           ( concept_nav(Ids, Id),
             el(article, "dterm guide concept",
                ( el(h1, "source-title", esc(Title)),
-                 ( { Aliases == [] } -> [] ; el(p, "concept-aliases", ( "also ", alias_list(Aliases) )) ),
+                 el(p, "concept-aliases", ( kind_badge(Id),
+                                            ( { Aliases == [] } -> [] ; " also ", alias_list(Aliases) ) )),
+                 ( { concept_meta(Id, Meta), Meta \== [] }
+                 -> el(p, "concept-upstream", ( kind_rest_label(Id), raw(Meta) ))
+                 ;  [] ),
                  el(div, "prose guide-prose", raw(Body)),
                  ( { Bs == [] } -> []
                  ; el(section, "concept-links",
@@ -788,7 +800,21 @@ concept_nav(Ids, Current) -->
 
 concept_nav_item(Current, Id) -->
     { concept_page(Id, Href), concept_title(Id, T), ( Id == Current -> C = "nav-pred current" ; C = "nav-pred" ) },
-    el(li, C, el(a, none, [href=Href], esc(T))).
+    el(li, C, el(a, none, [href=Href], ( esc(T), nav_kind(Id) ))).
+
+%  kind_badge(+Id): a small mark, Fil-C or nanofil, after a concept's name.
+kind_badge(Id) --> { concept_kind(Id, K, _) }, !, " ", kind_mark(K).
+kind_badge(_) --> [].
+
+kind_mark('Fil-C') --> el(span, "kind kind-filc", [title="a concept of Fil-C itself, not only nanofil's"], "Fil-C").
+kind_mark(nanofil) --> el(span, "kind kind-nanofil", [title="nanofil's own: its compiler, IR, interpreter or Rocq model"], "nanofil").
+
+%  In the list of concepts only Fil-C's are marked, by a dot.
+nav_kind(Id) --> { concept_kind(Id, 'Fil-C', _) }, !, el(span, "kind-dot", [title="Fil-C"], "").
+nav_kind(_) --> [].
+
+kind_rest_label(Id) --> { concept_kind(Id, 'Fil-C', _) }, !, el(span, label, "Upstream ").
+kind_rest_label(_) --> el(span, label, "In Fil-C ").
 
 concepts_page(Ids) -->
     shell("concepts", ( el(a, crumb, [href="../index.html"], "Wiki"), el(span, "crumb-sep", "›"),
@@ -807,7 +833,20 @@ concepts_page(Ids) -->
                       concepts_index )) )) )).
 
 %  concepts_index: every concept, its title and summary.
-concepts_index --> { findall(Id, concept(Id, _, _), Ids) }, el(dl, "concept-index", seq(Ids, concept_index_entry)).
+%  Fil-C's own concepts first, then nanofil's, then any not yet marked.
+concepts_index -->
+    { findall(Id, concept_kind(Id, 'Fil-C', _), Fs), findall(Id, concept_kind(Id, nanofil, _), Ns),
+      findall(Id, ( concept(Id, _, _), \+ concept_kind(Id, _, _) ), Us) },
+    concept_group(Fs, "Fil-C", "Concepts of Fil-C itself: they hold of any Fil-C program, whatever compiled it, and link to Fil-C's documentation and source."),
+    concept_group(Ns, "nanofil", "nanofil's own: its IR, validator, interpreter and Rocq model. Each names the Fil-C concept it builds on."),
+    concept_group(Us, "Unmarked", "").
+
+concept_group([], _, _) --> !, [].
+concept_group(Ids, Title, Text) -->
+    { length(Ids, N) },
+    el(h3, "guide-h concept-group", ( esc(Title), " ", el(span, "count", ( "(", esc(N), ")" )) )),
+    ( { Text == "" } -> [] ; el(p, "concept-group-text", esc(Text)) ),
+    el(dl, "concept-index", seq(Ids, concept_index_entry)).
 
 %  A summary is drawn as its concept's page draws it, links and all.
 concept_index_entry(Id) -->

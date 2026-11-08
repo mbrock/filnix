@@ -1,5 +1,7 @@
 # limit / check_limit
 
+**nanofil**
+
 `limit(Size)` of a pointer P0 is an opaque class-`l` snapshot of P0's capability and its object's bounds; `check_limit(0, Size, Rights, Align)` of `[P, U]` is exactly a check of P, whose bounds are tested natively against the snapshot U rather than the object's header (plus the free flag, and read-only for a write). A hoisted limit makes a loop's bounds test cheap.
 
 - Validator: `ir:limit_covers/5` asks that U be a single-definition limit of a single-definition P0 and that P reach P0 by a [[lower-chain|lower chain]]; `ir:limit_reads/2` lets nothing but a check_limit read a limit. Validate.v: [limit_covers], [limit_reads].

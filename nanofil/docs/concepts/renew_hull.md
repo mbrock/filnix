@@ -1,5 +1,7 @@
 # renew_hull / hull
 
+**nanofil**
+
 The hull of several passed checks of one object is the interval from the least lower end to the greatest upper end of their spans; since an object is one interval, every byte of the hull is in it. `renew_hull(Lo, Hi, Rights, Align)` of `[QL, QH, P]` is a [[renew]] whose bounds two such checks give: QL's from at or below P+Lo, QH's to at or above P+Hi.
 
 - Two uses: `ir:hull_renewable/8` accepts a renew_hull from two [[renew-source|renew sources]]; `ir:hull_covered/7` accepts a raw access between the spans of the [[live-fact|live facts]] of P's object, related by [[pointer-distance|pointer distance]]. Validate.v: [hull_renewable], [hull_covered].

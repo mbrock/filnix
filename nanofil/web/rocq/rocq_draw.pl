@@ -1138,7 +1138,7 @@ concept_ref(Name, Shown) --> { concept_resolve(Name, Id) }, !,
     el(span, "pref cref", ( el(a, concept, [href=Href], esc(Shown)),
                            ( { nb_current(rq_in_card, true) } -> []
                            ; el(span, "sigcard concept-card", ['aria-hidden'=true],
-                                ( el(span, "card-mod", esc(Title)),
+                                ( el(span, "card-mod", ( esc(Title), rq_kind(Id) )),
                                   el(span, "card-text", in_card(rocq_prose_inline(Sum))) )) ) )).
 concept_ref(Name, Shown) -->
     { nb_current(rq_file, F) -> true ; F = none },
@@ -1149,6 +1149,11 @@ concept_href(Id, Href) :-
     concept_page(Id, Page),
     ( nb_current(rq_concepts, Pre) -> true ; Pre = '../' ),
     atom_concat(Pre, Page, Href).
+
+%  rq_kind(+Id): the mark, Fil-C or nanofil, that the concept pages give.
+rq_kind(Id) --> { concept_kind(Id, K, _) }, !,
+    { K == 'Fil-C' -> C = "kind kind-filc" ; C = "kind kind-nanofil" }, " ", el(span, C, esc(K)).
+rq_kind(_) --> [].
 
 %  A card's text links nothing: no cards in cards, no names (rq_button).
 in_card(G) -->
@@ -1163,7 +1168,7 @@ concept_embed(Name) --> { nb_current(rq_embedding, true) }, !, el(p, none, conce
 concept_embed(Name) --> { concept_resolve(Name, Id) }, !,
     { concept_href(Id, Href), concept_title(Id, Title), concept(Id, _, Lines) },
     el(aside, "concept-embed",
-       ( el(a, "concept-embed-title", [href=Href], esc(Title)),
+       ( el(a, "concept-embed-title", [href=Href], ( esc(Title), rq_kind(Id) )),
          { nb_setval(rq_embedding, true) }, rocq_prose(Lines), { nb_setval(rq_embedding, false) } )).
 concept_embed(Name) --> el(p, none, concept_ref(Name, Name)).
 

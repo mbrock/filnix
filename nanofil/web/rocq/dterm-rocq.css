@@ -64,7 +64,7 @@ code.rq .c, code.rq .args, code.rq .arg { white-space: nowrap; }
 .dterm-rocq h3.rq-sec { margin: 1.6rem 0 0.4rem; font-size: 1.05rem; }
 .rq-subtitle { font-size: 1.15rem; font-weight: 650; margin: 0 0 0.4rem; }
 .rq-doc { margin: 0.9rem 0 0.3rem; max-width: 44rem; }
-.rq-doc .prose p { margin: 0 0 0.4rem; }
+.rq-doc .prose p { margin: 0 0 0.4rem; overflow-wrap: break-word; }
 .dterm-rocq .note { font-style: normal; }
 .dterm-rocq code.term.rq { font: inherit; font-size: 0.96em; background: none; padding: 0; }
 .dterm-rocq a.ref.pl code { color: var(--accent); }

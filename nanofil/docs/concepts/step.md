@@ -1,5 +1,7 @@
 # step / small step
 
+**nanofil**
+
 A step moves a [[frame|configuration]] on by one thing: entering a block (its phis, one unit of [[fuel]]), one instruction, or one jump. [step] answers [Next] with the next configuration, [Done] with an [[outcome]], [Fresh] for an allocation that waits for a base, or [Stuck].
 
 - Semantics.v: [step] for the configuration, reading the [[genv|global environment]], [inst_step] for one instruction, [step_rel] the relation (any [[fresh]] base for an allocation), [reachable] its closure.

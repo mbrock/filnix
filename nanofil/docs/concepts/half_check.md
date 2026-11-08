@@ -1,5 +1,7 @@
 # half_check / half check
 
+**nanofil**
+
 `half_check(Bound, Lo, Hi, Rights, Align)` of `[Q1, P]` is exactly a check of `[Lo, Hi)` at P that natively tests only one bound, `upper` or `lower`; the other end is known from Q1's earlier check of the same object, P being at a known [[pointer-distance|distance]] from Q1's pointer.
 
 - Validator: `ir:half_known/6`, its offsets [[near-offset|near]]; Q1 is a [[renew-source|renew source]]. interp.pl: `interp:half_bound/6` is the native test and `interp:half_res/4` the result; where the native test disagrees with the whole check the run is `unchecked(half)`.

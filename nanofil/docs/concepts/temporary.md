@@ -1,5 +1,7 @@
 # temporary / temp
 
+**nanofil**
+
 A temporary is a function-local IR name, `tmp(N)`, holding one [[word]] of one [[class]]. Parameters, phis and instructions define temporaries; operands read them. Names are ground terms, compared only for equality: no logic variable appears in IR.
 
 - ir.pl's header ("Temps are ground names"); Syntax.v's value [Tmp]. At run time Semantics.v's environment [env] maps each temporary assigned so far to its word, as interp.pl's Env does; Term.v's [lookup] and [put] read and write it.

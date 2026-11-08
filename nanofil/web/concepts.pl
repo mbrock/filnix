@@ -15,7 +15,7 @@
     rocq_draw.pl for the Rocq, each with its own Markdown. The concept
     pages, with what links to each, are dterm_guide.pl's.
 */
-:- module(concepts, [concepts_load/1, concept/3, concept_resolve/2, concept_title/2,
+:- module(concepts, [concepts_load/1, concept/3, concept_kind/3, concept_resolve/2, concept_title/2,
                      concept_summary/2, concept_plain/2, concept_url/3, concept_link_codes/4,
                      concept_page/2, concepts_loaded/0]).
 
@@ -26,7 +26,12 @@
 %  concept(Id, Names, Body): the concept docs/concepts/Id.md, its title's
 %  alternatives (the first is its title) and the lines of its text.
 %  concept_key(Key, Id): a normalized name of Id.
-:- dynamic concept/3, concept_key/2.
+%  concept_kind(Id, Kind, Rest): Id is a general Fil-C concept (Kind
+%  'Fil-C') or nanofil's own ('nanofil'), from its first line after the
+%  title, **Fil-C** or **nanofil**; Rest is the Markdown after it on that
+%  line, after a ·: the upstream documentation and source, or the
+%  nearest Fil-C concept.
+:- dynamic concept/3, concept_key/2, concept_kind/3.
 
 concepts_loaded :- concept(_, _, _), !.
 
@@ -45,10 +50,24 @@ load_concept(Id, Path) :-
     ;   format(string(M), "~w: a concept starts with a # Title line", [Path]), throw(concept_error(M))
     ),
     split_string(Title, "/", " ", Names0), exclude(==(""), Names0, Names),
-    drop_blank(Lines0, Lines1), reverse(Lines1, R0), drop_blank(R0, R1), reverse(R1, Lines),
+    drop_blank(Lines0, Lines1), reverse(Lines1, R0), drop_blank(R0, R1), reverse(R1, Lines2),
+    (   Lines2 = [K|Lines3], kind_line(K, Kind, Rest)
+    ->  assertz(concept_kind(Id, Kind, Rest)), drop_blank(Lines3, Lines)
+    ;   Lines = Lines2
+    ),
     assertz(concept(Id, Names, Lines)),
     atom_string(Id, IdS),
     forall(member(N, [IdS|Names]), add_key(N, Id, Path)).
+
+%  kind_line(+Line, -Kind, -Rest): **Fil-C** or **nanofil**, then
+%  optionally a · and Rest.
+kind_line(L, Kind, Rest) :-
+    member(Mark-Kind, ["**Fil-C**"-'Fil-C', "**nanofil**"-nanofil]),
+    string_concat(Mark, R0, L), !,
+    split_string(R0, "", " ", [R1]),
+    (   R1 == "" -> Rest = ""
+    ;   string_concat("·", R2, R1) -> split_string(R2, "", " ", [Rest])
+    ).
 
 drop_blank([L|Ls0], Ls) :- split_string(L, "", " \t", [""]), !, drop_blank(Ls0, Ls).
 drop_blank(Ls, Ls).

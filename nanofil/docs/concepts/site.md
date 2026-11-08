@@ -1,5 +1,7 @@
 # site / definition site
 
+**nanofil**
+
 A site is where a temporary is defined: `param` for a parameter, or `at(L, I)` for index I of block L, with phis at index -1. A site dominates a position when it comes before it on every path from the entry: the same block at an earlier index, or a block that strictly [[dominance|dominates]] it.
 
 - ir.pl: `ir:block_sites//1` records every definition's site, `ir:site_dominates/4` orders them, and `ir:definitions_dominate/3` asks a dominating one for each use. Validate.v: [site] ([SParam], [SAt]), [temp_sites], [site_dominates].

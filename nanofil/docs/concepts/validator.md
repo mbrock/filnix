@@ -1,5 +1,7 @@
 # validator
 
+**nanofil**
+
 The validator decides whether a module is well formed and, in [[stage|checked IR]], whether every access is covered by evidence that still holds. Every producer of checked IR must get its output past it, and Soundness.v proves that a module it accepts never runs to [[unchecked]].
 
 - Prolog: `ir:valid_module/1`, which throws at the first problem; the checked part is `ir:stage_func/6` (the [[evidence-pass|evidence pass]], `ir:limit_reads/2`, `ir:polls_every_cycle/1`).

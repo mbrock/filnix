@@ -1,5 +1,7 @@
 # exact base
 
+**nanofil**
+
 An exact base of a pointer P is a [[single-definition|single-definition]] name B on P's [[guard-chain|guard chain]] whose offset interval is one point, `B-i(K, K)`: P's address is B's plus exactly K, modulo 2^64, with B's [[capability]].
 
 - ir.pl has no predicate for it; `ir:pointer_distance/4`, `ir:same_pointer/3` and `ir:raise_need/6` each select chain elements with `i(K, K)` whose name is in Once. Validate.v names it [exact_base].

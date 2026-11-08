@@ -1,5 +1,7 @@
 # address space / objects_fit
 
+**nanofil** · libpas's 48-bit addresses: the [[aux]] word keeps its pointer in the low 48 bits
+
 The address space is where objects may lie: every object within `[0, 2^48]`, native Fil-C's bound (libpas's `PAS_ADDRESS_BITS`). `objects_fit` says this of a memory, and the [[runtime]] axiom `address_space` says it of every memory the runtime is [[ready]] in; the runtime may also refuse an allocation it cannot hold, and the run traps `out_of_memory`.
 
 - Runtime.v: [objects_fit], [address_space]; Machine.v's [mreachable_objects_fit] gives it in every state of a run that starts ready. interp.pl: `interp:address_space/2`, where Next stops at 2^48.

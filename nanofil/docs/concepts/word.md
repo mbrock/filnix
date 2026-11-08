@@ -1,5 +1,7 @@
 # word
 
+**nanofil** · a pointer word is a [[flight-pointer|flight pointer]]
+
 A word is the value a [[temporary]] holds at run time: an integer, a pointer (an address with its [[capability]]), or a limit's opaque snapshot. The temporary's [[class]] says how it is read.
 
 | interp.pl | Values.v | Classes |

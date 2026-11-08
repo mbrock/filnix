@@ -1,5 +1,7 @@
 # extraction / judge
 
+**nanofil**
+
 Extraction compiles the Rocq model to OCaml so that it can be run beside the Prolog on the same inputs. `judge` is the extracted function that reads one run line nanofil printed, runs it in the model, and answers `agree`, `disagree`, `outside` or `stuck_both`.
 
 - Extract.v and `rocq/extraction/main.ml`, a reader of Prolog terms; [judge] and [judge_valid] are in Transport.v. `rocq/agree.sh` pipes `nanofil outcomes` through `judge`; `rocq/valid.sh` pipes [[mutant]] verdicts through `judge_valid`.

@@ -1,5 +1,7 @@
 # spares
 
+**nanofil**
+
 `spares` is the one runtime hypothesis of the generic [[soundness]] theorem: at a safepoint just before an instruction the [[evidence-pass|evidence pass]] keeps facts across, the [[runtime]] changes no [[region]].
 
 - Invariant.v's [spares], over Walk.v's [relies]. The module type lets the runtime act before any instruction that is not `ir:evidence_preserving/1`, yet the pass keeps facts across three such: a pointer store taken with its check, a `check_local`, and a [[repeated-getter|repeated getter]].

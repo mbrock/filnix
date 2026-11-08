@@ -1,5 +1,7 @@
 # external call / contract
 
+**nanofil** · libc is Fil-C code too, and only the runtime calls native code ([runtime](https://fil-c.org/runtime))
+
 An external call is a call to a symbol the module does not define, in practice libc. The core model sends only `free` to the [[runtime]] and is stuck at every other. A contract is Campaign 4's trusted description of one external function: its ABI, the caller's premises, the roots it may write, what it may release or allocate, its observations and its endings.
 
 - Core: Semantics.v's [external_call] and [free_name], which run the [[genv|global environment]]'s [ge_free]; interp.pl's external `call(void, global(free), [arg(p, P)])`, which module-defined functions take precedence over.

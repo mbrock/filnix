@@ -1,5 +1,7 @@
 # outcome
 
+**nanofil** · a program ends by exiting, by a signal, or in a [[trap|Fil-C panic]]
+
 An outcome is how a run ends: a return, `unreachable`, undefined behaviour, a [[trap]], [[unchecked]], or running out of [[fuel]]. interp.pl and the model give the same outcomes term for term, which is what the outcome gate compares.
 
 | interp.pl | Semantics.v |

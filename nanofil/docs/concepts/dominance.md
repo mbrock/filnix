@@ -1,5 +1,7 @@
 # dominance / dominates / dominator / dominator tree / dominator interval / immediate dominator / idom / reverse postorder / preorder interval
 
+**nanofil**
+
 Block A dominates block B when every path from the entry to B passes through A. The validator decides it with the dominator tree's preorder intervals: each label gets the numbers of its subtree, and A dominates B when B's number lies in A's interval.
 
 - cfg.pl: `cfg:reverse_postorder/6` orders the blocks, `cfg:cfg_idoms/2` finds each block's immediate dominator (idom), its parent in the tree, by Cooper, Harvey and Kennedy's fixpoint, `cfg:dom_intervals/3`, `cfg:dominates_by_interval/3`; Cfg.v transcribes them as [cfg_idoms], [dom_intervals], [dominates_by_interval] and [block_intervals].

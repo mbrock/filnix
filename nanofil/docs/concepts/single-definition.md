@@ -1,5 +1,7 @@
 # single definition / single-definition invariant
 
+**nanofil**
+
 A single definition is a temporary with exactly one definition in its function: a parameter, a phi or an instruction. The [[reuse]] forms read relations only between such names (a flight and its base, a proof and the pointer it checked, a span test or limit and its pointer), and the single-definition invariant says those relations hold at run time wherever the definition dominates the running point.
 
 - `ir:single_definitions/3` builds the map ir.pl calls Once; Validate.v transcribes it as [single_definitions]. Sites.v gives each one [[site]] ([once_position]) and proves [use_dominated] and [no_use_redefined].

@@ -1,5 +1,7 @@
 # name map
 
+**nanofil**
+
 A name map is a finite map keyed by IR names, the model's counterpart of SWI-Prolog's library(assoc), which ir.pl and cfg.pl use for every table indexed by a label or a [[temporary]]: the single-definition map, the evidence indexes, dominator intervals.
 
 - Maps.v: [nmap], with [nm_empty], [nm_find], [nm_add], [nm_remove] and [nm_mem]; the lemmas [nm_find_add], [nm_find_remove] and [nm_find_fold_add] say what each operation does to a lookup.

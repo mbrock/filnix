@@ -1,5 +1,7 @@
 # renew source
 
+**nanofil**
+
 A renew source is an earlier [[proof]] that a reuse form trusts for bounds: a single-definition proof Q1 of a single-definition pointer P1, made by a `check`, `check_ahead`, `renew_if`, `check_limit` or `half_check`, recorded with its range and alignment.
 
 - `ir:renew_source_op/6` lists the ops and what each proves; `ir:stage_sources/4` builds the table, empty in a function with setjmp, whose second return the CFG does not show. Validate.v: [renew_source].
