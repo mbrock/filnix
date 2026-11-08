@@ -21,6 +21,7 @@ trap 'rm -rf "$work"' EXIT
 programs='
 Sum rocq/programs/sum.c -O
 Prefix rocq/programs/prefix.c -O
+Cycle rocq/programs/cycle.c -O
 Hi tests/c/prog/hi.c -O
 '
 

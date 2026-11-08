@@ -30,7 +30,7 @@
     | the module's initial memory and its entry function must exist, and every admissible input must make a frame | otherwise there is no run to speak of, and the program would hold vacuously |
     | no premise about the runtime's safepoints | a safepoint may free any live heap object (Runtime.v's [safepoint_lifetime]); a program that relies on its heap objects staying live states that as a premise of its own theorem | *)
 
-From Stdlib Require Import String ZArith List Bool Relations.
+From Stdlib Require Import String ZArith List Bool Lia Relations.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine.
 Import ListNotations.
@@ -89,6 +89,18 @@ Proof. intros why. unfold refusal, resource_reason. tauto. Qed.
 Lemma resource_not_failure : forall why, resource_reason why -> ~ failure (Trap why).
 Proof. intros why H Hf. apply Hf, refusal_resource, H. Qed.
 
+(** The step result r is safe for the invariant inv: a next
+    configuration in inv, an ending that is not a [failure], or an
+    allocation with a nonnegative extent whose every base gives a
+    configuration in inv. Never stuck. *)
+Definition safe_result (inv : config -> Prop) (r : step_result) : Prop :=
+  match r with
+  | Next c' => inv c'
+  | Done o => ~ failure o
+  | Fresh q k => 0 <= req_extent q /\ forall base, inv (k base)
+  | Stuck _ => False
+  end.
+
 (** ## The property *)
 
 (** The property over any [[runtime]] R. *)
@@ -117,5 +129,38 @@ Definition never_panics (md : module) (entry : name) (input : list word -> Prop)
          forall fuel st,
            RM.mreachable (program_genv md globals) (mkConfig fr [] m fuel, R.start) st ->
            ~ fails (program_genv md globals) (fst st)).
+
+(** The proof rule for [never_panics]: an invariant inv of
+    configurations that holds where every admissible call starts, whose
+    every [step] is [safe_result], and that what R does at a due
+    [[poll|safepoint]] keeps. Then no state a run reaches [fails]. The
+    invariant is the program's own; Cycle.v's says what holds at each
+    point of its function. *)
+Lemma never_panics_by_invariant : forall md entry input globals m f (inv : config -> Prop),
+  initial_memory md = Some (globals, m) ->
+  find_fn (program_genv md globals) entry = Some (Defined f) ->
+  (forall xs, input xs -> exists fr, call_frame f xs = Some fr /\ forall fuel, inv (mkConfig fr [] m fuel)) ->
+  (forall c, inv c -> safe_result inv (step (program_genv md globals) c)) ->
+  (forall c s s' m', inv c -> RM.safepoint_due (program_genv md globals) c = true ->
+     R.safepoint s (c_mem c) s' m' -> inv (RM.with_mem c m')) ->
+  never_panics md entry input.
+Proof.
+  intros md entry input globals m f inv Hm Hf Hin Hstep Hsp.
+  exists globals, m, f. split; [exact Hm|]. split; [exact Hf|].
+  intros xs Hxs. destruct (Hin xs Hxs) as (fr & Hfr & Hinv). exists fr. split; [exact Hfr|].
+  intros _ fuel st Hreach.
+  assert (Hgen : forall st1 st2, RM.mreachable (program_genv md globals) st1 st2 ->
+                   inv (fst st1) -> inv (fst st2)).
+  { intros st1 st2 H. induction H as [st1 st2 Hs | st1 | st1 st2 st3 _ IH1 _ IH2]; auto.
+    intros H0. pose proof (Hstep _ H0) as Hr.
+    destruct Hs as [c c' s E | c q k s base s' E _ _ | c s s' m' Hdue Hsp'];
+      cbn [fst] in H0, Hr |- *.
+    - rewrite E in Hr. exact Hr.
+    - rewrite E in Hr. exact (proj2 Hr base).
+    - exact (Hsp c s s' m' H0 Hdue Hsp'). }
+  assert (Hst : inv (fst st)) by (apply (Hgen _ _ Hreach), Hinv).
+  unfold fails. pose proof (Hstep _ Hst) as Hr.
+  destruct (step (program_genv md globals) (fst st)); cbn [safe_result] in Hr; try tauto. lia.
+Qed.
 
 End Panics.
