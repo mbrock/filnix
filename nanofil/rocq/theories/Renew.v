@@ -445,6 +445,54 @@ Proof.
   destruct args as [|a [|a2 args]]; try (eexists; exact H). eexists. reflexivity.
 Qed.
 
+Section Plain.
+
+Variables (ge : genv) (md : module) (fr : frame) (m : Memory.mem) (l : name) (k : Z).
+Hypothesis Hmd : checked_module md.
+Hypothesis Hin : In (IFunc (fr_fn fr)) md.
+Hypothesis Hr : is_reachable (fn_doms (fr_fn fr)) l = true.
+Hypothesis Hs : scope_plain ge fr m.
+Hypothesis Hpt : point_site (fr_fn fr) (fr_at fr) = Some (l, k).
+
+(** `distance_pointer`: a value a known distance from a pointer
+    (`pointer_distance/4`) reads as a pointer, where its single
+    definitions dominate the point. Its guard chain starts at a single
+    definition: the exact base itself, which the pointer's chain reads,
+    or a flight, which binds a pointer. *)
+Lemma distance_pointer : forall p p1 pp1 d,
+  value_x ge (fr_env fr) P p1 = Some (WPtr pp1) ->
+  (forall y, p = Tmp y -> once_has (single_definitions (fr_fn fr)) y = true -> dominating (fr_fn fr) l k y) ->
+  (forall y, p1 = Tmp y -> once_has (single_definitions (fr_fn fr)) y = true -> dominating (fr_fn fr) l k y) ->
+  pointer_distance (single_definitions (fr_fn fr)) p p1 = Some d ->
+  exists pp, value_x ge (fr_env fr) P p = Some (WPtr pp).
+Proof.
+  intros p p1 pp1 d Hp1 Hd Hd1 H. rewrite pointer_distance_eq in H.
+  destruct (first_some_in _ _ _ _ _ H) as (el & Hel & Hf).
+  destruct (exact_base (single_definitions (fr_fn fr)) el) as [[n0 k0]|] eqn:Eb; [|discriminate Hf].
+  destruct (first_some_in _ _ _ _ _ Hf) as (el1 & Hel1 & Hf1).
+  destruct el1 as [[n1 | c1 | g1] [k1 k1']]; try discriminate Hf1.
+  destruct (name_eqb n1 n0 && (k1 =? k1')) eqn:E1; [|discriminate Hf1].
+  apply andb_true_iff in E1 as [En _]. apply name_eqb_true in En. subst n1.
+  rewrite guard_chain_eq in Hel.
+  destruct (chain_go_head _ _ _ _ _ _ Hel) as [-> | (y & d' & o & args & b & -> & Ey)].
+  - (* the exact base is p itself, which p1's chain reads *)
+    destruct p as [y | c | g]; try discriminate Eb. unfold exact_base in Eb.
+    destruct (once_has (single_definitions (fr_fn fr)) y) eqn:Ho; [|discriminate Eb].
+    injection Eb as <- _.
+    assert (Hst : stable (single_definitions (fr_fn fr)) (Tmp y)) by (intros y' E; injection E as <-; exact Ho).
+    destruct (guard_chain_sound ge md fr m l k Hmd Hin Hr Hs Hpt _ _ _ _ _ Hp1 Hd1 Hel1 Hst) as (pb & _ & Hpb & _).
+    eauto.
+  - (* p is a flight, which binds a pointer *)
+    assert (Ho : once_has (single_definitions (fr_fn fr)) y = true) by (unfold once_has; rewrite Ey; reflexivity).
+    pose proof (flight_def_name _ _ _ _ _ _ Ey) as ->.
+    destruct (plain_replays _ _ _ _ _ _ _ Hs Hpt Ey eq_refl eq_refl (Hd y eq_refl Ho))
+      as (fr0 & m0 & e1 & l1 & m1 & Hst & Hy & _).
+    destruct (flight_step_ptr _ _ _ _ _ _ _ _ _ _ Hst) as [pf Hpf].
+    exists pf. simpl. rewrite <- Hy, Hpf. reflexivity.
+Qed.
+
+End Plain.
+
 Section Reuse.
 
 Variables (ge : genv) (md : module) (fr : frame) (m : Memory.mem) (l : name) (k : Z).
@@ -498,43 +546,6 @@ Proof.
   - exact (operand_dominating _ _ _ _ _ _ _ Hmd Hin Hr Hn1 Hdom Hu1 Hop1).
 Qed.
 
-(** `distance_pointer`: a value a known distance from a pointer
-    (`pointer_distance/4`) reads as a pointer, where its single
-    definitions dominate the point. Its guard chain starts at a single
-    definition: the exact base itself, which the pointer's chain reads,
-    or a flight, which binds a pointer. *)
-Lemma distance_pointer : forall p p1 pp1 d,
-  value_x ge (fr_env fr) P p1 = Some (WPtr pp1) ->
-  (forall y, p = Tmp y -> once_has (single_definitions (fr_fn fr)) y = true -> dominating (fr_fn fr) l k y) ->
-  (forall y, p1 = Tmp y -> once_has (single_definitions (fr_fn fr)) y = true -> dominating (fr_fn fr) l k y) ->
-  pointer_distance (single_definitions (fr_fn fr)) p p1 = Some d ->
-  exists pp, value_x ge (fr_env fr) P p = Some (WPtr pp).
-Proof.
-  intros p p1 pp1 d Hp1 Hd Hd1 H. rewrite pointer_distance_eq in H.
-  destruct (first_some_in _ _ _ _ _ H) as (el & Hel & Hf).
-  destruct (exact_base (single_definitions (fr_fn fr)) el) as [[n0 k0]|] eqn:Eb; [|discriminate Hf].
-  destruct (first_some_in _ _ _ _ _ Hf) as (el1 & Hel1 & Hf1).
-  destruct el1 as [[n1 | c1 | g1] [k1 k1']]; try discriminate Hf1.
-  destruct (name_eqb n1 n0 && (k1 =? k1')) eqn:E1; [|discriminate Hf1].
-  apply andb_true_iff in E1 as [En _]. apply name_eqb_true in En. subst n1.
-  rewrite guard_chain_eq in Hel.
-  destruct (chain_go_head _ _ _ _ _ _ Hel) as [-> | (y & d' & o & args & b & -> & Ey)].
-  - (* the exact base is p itself, which p1's chain reads *)
-    destruct p as [y | c | g]; try discriminate Eb. unfold exact_base in Eb.
-    destruct (once_has (single_definitions (fr_fn fr)) y) eqn:Ho; [|discriminate Eb].
-    injection Eb as <- _.
-    assert (Hst : stable (single_definitions (fr_fn fr)) (Tmp y)) by (intros y' E; injection E as <-; exact Ho).
-    destruct (guard_chain_sound ge md fr m l k Hmd Hin Hr (scope_plain_of _ _ _ Hs) Hpt _ _ _ _ _ Hp1 Hd1 Hel1 Hst) as (pb & _ & Hpb & _).
-    eauto.
-  - (* p is a flight, which binds a pointer *)
-    assert (Ho : once_has (single_definitions (fr_fn fr)) y = true) by (unfold once_has; rewrite Ey; reflexivity).
-    pose proof (flight_def_name _ _ _ _ _ _ Ey) as ->.
-    destruct (dominating_replays _ _ _ _ _ _ _ Hs Hpt Ey eq_refl (Hd y eq_refl Ho))
-      as (fr0 & m0 & e1 & l1 & m1 & Hst & Hy & _).
-    destruct (flight_step_ptr _ _ _ _ _ _ _ _ _ _ Hst) as [pf Hpf].
-    exists pf. simpl. rewrite <- Hy, Hpf. reflexivity.
-Qed.
-
 (** `reuse_operands`: what a renew or half check the pass accepted
     reads at the frame's point. Q1, the name n1, holds the pointer PP1
     of a renew source's check that passed in m1, a memory in the address
@@ -560,7 +571,8 @@ Proof.
     by (intros y E Ho; exact (operand_at b kk i y Hb Hk Hkk (Hu y E) Ho)).
   assert (Hdq : forall y, Tmp p1 = Tmp y -> once_has (single_definitions (fr_fn fr)) y = true -> dominating (fr_fn fr) l k y)
     by (intros y E _; injection E as <-; exact Hdp1).
-  destruct (distance_pointer p (Tmp p1) pp1 d Hp1 Hdp Hdq Ed) as [pp Hpp].
+  destruct (distance_pointer ge md fr m l k Hmd Hin Hr (scope_plain_of _ _ _ Hs) Hpt p (Tmp p1) pp1 d Hp1 Hdp Hdq Ed)
+    as [pp Hpp].
   destruct (pointer_distance_sound ge md fr m l k Hmd Hin Hr (scope_plain_of _ _ _ Hs) Hpt p (Tmp p1) pp pp1 d Hpp Hp1 Hdp Hdq Ed)
     as [Hcap Haddr].
   exists pp1, pp, m1, r1. auto 10.

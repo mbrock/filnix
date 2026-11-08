@@ -45,6 +45,7 @@ the interpreter and cites the predicate it copies.
 | `Renew.v` | `renew_source_op/6`, `hull_renewable/8`, `half_known/6` (ir.pl); `renew_res/4`, `half_bound/6`, `half_res/4` (interp.pl) | along every run, no renew, renew over a hull or half check the pass accepts gives `unchecked` |
 | `Guard.v` | `guard_covers/5`, `limit_covers/5`, `lower_chain/3` (ir.pl); `kind_res/8` (interp.pl) | along every run, no `renew_if` or `check_limit` the pass accepts gives `unchecked` |
 | `Ahead.v` | `ahead_justified/3`, `ahead_block/6`, `ahead_edge/5`, `ahead_step/5`, `ahead_insts/8` (ir.pl) | the facts `check_ahead`'s backward pass keeps, as functions of the point, and that its one sweep computes them |
+| `Doomed.v` | `doomed_result/5` (interp.pl); `raise_need/6`, `ahead_meet/2` (ir.pl) | along every run, a frame a `check_ahead` doomed never steps to `unchecked` |
 | `Transport.v` | — | decoding a printed checked module, encoding outcomes, `judge`, `judge_valid` |
 | `Extract.v`, `extraction/main.ml` | — | OCaml extraction, and a reader of Prolog terms |
 
@@ -1145,6 +1146,63 @@ Decisions:
   every definition to replay, since a renew's source may be a
   check_ahead.
 
+### The doomed frame
+
+`Doomed.v` proves the last reuse form. A `check_ahead` whose early
+bytes fail yields its pointer anyway and dooms the frame
+(`doomed_result/5`). The interpreter then runs it to
+`unchecked(ahead(Why))` if it reaches a poll edge, a return or an
+instruction that is not ahead-transparent before an access fails. The
+theorem `run_doomed_checked` says this never happens in a checked
+module's run: a doomed frame never steps to `unchecked` of any kind.
+`interp_doomed_checked` states it under the interpreter's runtime with
+no hypothesis about safepoints; like the other run theorems, the
+generic one takes `spares` and `free_ids`.
+
+The invariant, `dinv`, says what holds of a doomed frame
+(`doomed_ok`):
+
+- its scope holds weakly (`scope_weak`): each single definition
+  replays, or is a `check_ahead` holding the pointer its operand read
+  (`ahead_holds`), since the check failed and cannot replay;
+- for the base N and offset K Ahead.v's `ahead_accepted` gave, with
+  K + Lo near, the memory still holds the doom (`doom_mem`: N + K + Lo
+  lies in N's object, and the check's range does not), and the
+  validator's facts at the frame's point keep a need for N of at least
+  K + Hi (`need_at`).
+
+Every step keeps it (`mstep_dinv`). The check that dooms the frame
+starts it from the pass's invariant and the single definitions in
+scope (`doom_start`). An ahead-transparent instruction either keeps
+the need (`step_keeps`, `raise_keeps`), or is the access that meets
+it, which fails by the arithmetic of "A need past 2^64" below
+(`need_access_fails`) and ends the run `trap(early)`. A jump keeps it
+only through a later edge with no poll, which the meet guarantees
+when its need is non-empty (`doomed_jump`). A doomed frame allocates
+nothing, so a fresh step is impossible (`doomed_not_fresh`), and a
+safepoint frees only what keeps the doom's memory
+(`doom_mem_persists`). Given the invariant, `doomed_step_checked`
+rules out each `unchecked` reason: `ahead`, because the need says an
+access comes first; `alias` and `limit`, because renews, hulls, half
+checks and limits ask only the capability of their source, which the
+weak scope gives (`renew_not_alias`, `hull_not_alias`,
+`half_not_alias`).
+
+Decisions:
+
+- **A doomed proof holds its pointer, not a passed check.** Reuse
+  rules read only the pointer and its capability of it; `scope_weak`
+  says exactly that, and `scope_plain` (Ahead.v) is what the reuse
+  lemmas ask.
+- **The need is carried as the validator's own facts at the frame's
+  point.** Each step of the frame is a step of the backward walk read
+  forward, so no new analysis is needed.
+- **The access meeting the need is not located in advance.** Any
+  access that raises the need past N + K + Hi fails; the need only
+  says that one comes before the frame leaves the scheduled region.
+- **`distance_pointer` moved to its own section in Renew.v**, which
+  assumes only `scope_plain`, so the doomed frame's renews use it.
+
 ## A need past 2^64
 
 Planning the proof for `check_ahead`'s doomed frame turned up a module
@@ -1307,11 +1365,9 @@ with this bound it also keeps a ready module's data below 2^48.
 
 ## Next
 
-1. The other reuse forms as corollaries of `Single.v`'s invariant and
-   Interval.v's `iv_sound`, each
-   with ir.pl's side conditions as hypotheses: `check_ahead`'s doomed
-   frame; then `valid_no_unchecked`, assembled from Persistence.v's
-   invariant.
+1. `valid_no_unchecked`, assembled from the run theorems: raw accesses
+   and calls (Chain.v), the reuse forms (Renew.v, Guard.v) and the
+   doomed frame (Doomed.v).
 2. After the reuse forms, a decision on the runtime's safepoints
    (`spares`, above) and its free (`free_ids`, "Identities persist"),
    brought to mbrock together with a recommendation after an Oracle

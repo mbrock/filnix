@@ -30,6 +30,7 @@ theories/Chain.v
 theories/Renew.v
 theories/Guard.v
 theories/Ahead.v
+theories/Doomed.v
 theories/ExternalMachine.v
 theories/Transport.v
 theories/Extract.v
