@@ -883,7 +883,8 @@ call-observation and finished phases. The main-return bridge requires
 the actual non-doomed no-locals return site, retaining the exact
 runtime, memory, stdio world, output obligations and registration list.
 `puts_shutdown_closed` names the trusted libc/entry obligation that
-establishes shutdown readiness at **every returning puts endpoint**;
+establishes shutdown readiness at **every returning puts endpoint**
+in its selected entry domain (restricted in milestone 4g below);
 `returning_puts_shutdown` derives the real return-zero bridge from it.
 Readiness is not inferred merely from equal callback tokens or hidden
 by requiring it only on an edge that might never exist.
@@ -924,6 +925,41 @@ native shutdown realization and host completion remain open.
 classification from [Panics.v](../rocq/theories/Panics.v), the same
 classification used by its closed-module `never_panics`. This conditional
 labelled application theorem is not yet unconditional native safety.
+
+### Campaign 4, milestone 4g: reached closure and generated hi
+
+The closure premise now takes an exact initial application state and
+quantifies over **all** returning invocations at calls reached from it
+by the ordinary inner `M.run`. That reachability does not use shutdown
+readiness, the outer return bridge or the closure premise itself.
+`returning_puts_shutdown` lifts this actual prefix once, retaining its
+trace before the returning call's trace and transferring the exact
+endpoint. No arbitrary callback inventory becomes eligible merely
+because its tokens are distinct. `body_run_inventory` proves every
+application run preserves the entry's registration list; the empty-list
+fixture cannot reach a call with even one substituted registration.
+
+The entry's body invariant and safepoint stability still establish
+reached-call admissibility **independently** of closure and invocation
+existence. Selecting an invalid or stopped initial state can make the
+closure premise vacuous; it does not establish a valid entry or a
+native safety result. The inhabited actual-entry fixture is retained.
+`application_stopped_never_panics` extends the shared `failure_ending`
+classification to stopped application endpoints of the outer machine,
+without closure or host-completion assumptions. It does not cover
+disabled shutdown actions or prove eventual completion.
+
+[HiArtifact.v](../rocq/theories/HiArtifact.v) proves by reflexivity that
+decoding the generated `HiCode.hi_term` gives exactly `Hi.hi_module`.
+Campaign 3's shared `rocq/programs.sh` gate regenerates that term from
+`tests/c/prog/hi.c` using `cc-ir`, `-O outcomes` and
+[gallina.pl](../rocq/gallina.pl), and
+rejects any drift. The routine Rocq check runs this gate. This closes
+the gap between the hand-written body and the current checked compiler
+artifact, including literal bytes and call temporaries; it is not a
+proof of C lowering, native interpreter refinement or libc realization.
+Generated `HiCode.v` is never hand-edited. Native startup, stdio,
+shutdown resource/blocking coverage and host completion remain open.
 
 ### The next milestones, in order
 

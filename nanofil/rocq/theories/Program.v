@@ -134,6 +134,31 @@ Proof.
   apply IHrun. eapply body_step; eauto.
 Qed.
 
+(** The application cannot replace the entry's callback inventory with a
+    different list merely because the replacement has distinct tokens. *)
+Lemma body_step_inventory : forall st trace st',
+  M.step registry H.hi_genv st trace st' -> body_inv st ->
+  program_pending (world_of st') = program_pending (world_of st).
+Proof.
+  intros st trace st' Hstep Hinv. destruct Hinv as [Hbody _].
+  destruct Hstep; simpl in *; try reflexivity.
+  all: assert (Hselected : spec = program_puts rep requests).
+  all: try (destruct (H.hi_reached_call_admissible rep requests _ _ _ _ Hbody H) as [Heq _];
+    rewrite Heq in H0; change (Some (program_puts rep requests) = Some spec) in H0; congruence).
+  all: subst spec.
+  all: exact (proj1 (C.program_invoke_continuity _ _ _ _ _ _ _ _ _ _ _ _ _ H2)).
+Qed.
+
+(** Every reached call keeps the actual initial registration list, not
+    an arbitrary well-formed inventory admitted by the raw contract. *)
+Theorem body_run_inventory : forall st trace st',
+  M.run registry H.hi_genv st trace st' -> body_inv st ->
+  program_pending (world_of st') = program_pending (world_of st).
+Proof.
+  intros st trace st' Hrun. induction Hrun; [reflexivity|]. intros Hinv.
+  rewrite IHHrun by (eapply body_step; eauto). eapply body_step_inventory; eauto.
+Qed.
+
 (** Every reachable rich-world external call meets all additional premises. *)
 Theorem all_calls_admissible : forall st trace c s w site,
   body_inv st -> M.run registry H.hi_genv st trace (M.Running (c, s) w) ->
@@ -333,27 +358,35 @@ Proof.
   - eapply program_next; [apply program_application; eassumption|exact IHHrun].
 Qed.
 
-(** Native entry/libc closure must guarantee shutdown readiness at the
-    exact returning endpoint. It is not inferred from an unchanged list
-    of registration tokens or stipulated only on an enabled bridge edge. *)
-Definition puts_shutdown_closed rep requests (b : shutdown_boundary) : Prop :=
-  forall s m w trace n s' m' w',
+(** Native entry/libc closure covers every returning call reached from
+    this exact entry, not arbitrary token-distinct callback inventories.
+    Readiness at the exact endpoint is not inferred from equal tokens
+    or stipulated only on an enabled bridge edge. *)
+Definition puts_shutdown_closed rep requests (b : shutdown_boundary)
+    (start : M.state program_world) : Prop :=
+  forall first s m w fuel trace n s' m' w',
+  M.run (registry rep requests) H.hi_genv start first
+    (M.Running (hi_call m fuel, s) w) ->
   M.E.invoke (program_puts rep requests) (site_result hi_site) (site_args hi_site)
     [WPtr hi_literal] s m w trace (CallReturn [WInt n]) s' m' w' ->
   shutdown_ready b s' m' (program_stdio w')
     (mkShutdown Tls 0 (program_pending w') [] (program_stdout w')).
 
-(** Every represented returning puts has the actual return-zero bridge
-    under the named trusted closure premise, not just selected invocations. *)
-Theorem returning_puts_shutdown : forall rep requests b host s m w trace n s' m' w' fuel,
-  puts_shutdown_closed rep requests b ->
+(** Every returning puts reached from the selected entry has the real
+    return-zero bridge. Its original prefix is retained, not replayed
+    from an independently selected call snapshot. *)
+Theorem returning_puts_shutdown : forall rep requests b host start first s m w fuel trace n s' m' w',
+  puts_shutdown_closed rep requests b start ->
+  M.run (registry rep requests) H.hi_genv start first
+    (M.Running (hi_call m fuel, s) w) ->
   M.E.invoke (program_puts rep requests) (site_result hi_site) (site_args hi_site)
     [WPtr hi_literal] s m w trace (CallReturn [WInt n]) s' m' w' ->
-  run rep requests b host (Application (M.Running (hi_call m fuel, s) w)) trace
+  run rep requests b host (Application start) (first ++ trace)
     (ShuttingDown s' m' (program_stdio w')
       (mkShutdown Tls 0 (program_pending w') [] (program_stdout w'))).
 Proof.
-  intros rep requests b host s m w trace n s' m' w' fuel Hclosed Hcall.
+  intros rep requests b host start first s m w fuel trace n s' m' w' Hclosed Hreach Hcall.
+  eapply run_trans; [apply application_run; exact Hreach|].
   rewrite <- (app_nil_r trace).
   eapply program_next with (trace := trace) (tail := [])
     (mid := Application (M.Running
@@ -364,7 +397,7 @@ Proof.
   - eapply program_next with (trace := []) (tail := []).
     + apply program_main_return with (bits := 0).
       * apply H.hi_after_puts_return.
-      * exact (Hclosed _ _ _ _ _ _ _ _ Hcall).
+      * eapply Hclosed; eauto.
     + constructor.
 Qed.
 
@@ -412,6 +445,32 @@ Lemma step_application_safe : forall rep requests b host st trace st',
 Proof.
   intros rep requests b host st trace st' Hstable Hstep Hsafe.
   destruct Hstep; simpl in *; auto. eapply body_step; eauto.
+Qed.
+
+(** Outer transitions cannot leave application execution and later
+    re-enter it with facts that bypass the body invariant. *)
+Lemma run_application_safe : forall rep requests b host st trace st',
+  (forall s m s' m' w, R.safepoint s m s' m' -> rep m w -> stdio_ready m w ->
+    rep m' w /\ stdio_ready m' w) ->
+  run rep requests b host st trace st' -> application_safe rep st -> application_safe rep st'.
+Proof.
+  intros rep requests b host st trace st' Hstable Hrun. induction Hrun; [auto|].
+  intros Hsafe. apply IHHrun. eapply step_application_safe; eauto.
+Qed.
+
+(** The outer machine's reachable application stops use the shared panic
+    classification too. Shutdown coverage and native realization remain
+    independent obligations, not consequences of this finite theorem. *)
+Theorem application_stopped_never_panics : forall rep requests b host st trace why ms w,
+  (forall s m s' m' w, R.safepoint s m s' m' -> rep m w -> stdio_ready m w ->
+    rep m' w /\ stdio_ready m' w) ->
+  application_safe rep st ->
+  run rep requests b host st trace (Application (M.Stopped why ms w)) ->
+  ~ failure_ending why.
+Proof.
+  intros rep requests b host st trace why ms w Hstable Hsafe Hrun.
+  pose proof (run_application_safe _ _ _ _ _ _ _ Hstable Hrun Hsafe) as Hbody.
+  destruct Hbody as [Hbody _]. apply hi_ending_not_failure. inversion Hbody. assumption.
 Qed.
 
 (** Process-exit observations, separated from stdout acceptance summaries. *)
@@ -502,6 +561,20 @@ Proof.
     [apply HiChecks.interpreter_stdio_stable|exact initial_body|exact Hrun|exact Hsite].
 Qed.
 
+(** Even a single distinct-token callback cannot appear at a reached
+    call when this selected entry supplied no registrations. *)
+Example changed_inventory_not_reached : forall trace m fuel s w entry,
+  program_pending w = [entry] ->
+  ~ P.M.run (P.registry fixture_rep fixture_requests) P.H.hi_genv
+    (P.M.Running (hi_entry HiChecks.memory 10, InterpRuntime.start) initial_world) trace
+    (P.M.Running (hi_call m fuel, s) w).
+Proof.
+  intros trace m fuel s w entry Hp Hrun.
+  pose proof (P.body_run_inventory _ _ (HiChecks.interpreter_stdio_stable fixture_rep)
+    _ _ _ Hrun initial_body) as Hsame.
+  simpl in Hsame. rewrite Hp in Hsame. discriminate.
+Qed.
+
 (** Zero fuel stops at entry, without calling puts or starting shutdown. *)
 Example zero_fuel_leaf : forall b host,
   P.step fixture_rep fixture_requests b host
@@ -511,6 +584,20 @@ Example zero_fuel_leaf : forall b host,
 Proof.
   intros b host. apply P.program_application. apply P.M.step_core_end; [|reflexivity].
   intros site Hsite. pose proof (external_site_stuck _ _ _ Hsite) as Hbad. discriminate.
+Qed.
+
+(** With any fuel, every stopped application endpoint of this actual
+    entry is nonfailure, including return, fuel and resource leaves. *)
+Example all_outer_application_stops_safe : forall fuel b host trace why ms w,
+  P.run fixture_rep fixture_requests b host
+    (P.Application (P.M.Running (hi_entry HiChecks.memory fuel, InterpRuntime.start) initial_world))
+    trace (P.Application (P.M.Stopped why ms w)) -> ~ failure_ending why.
+Proof.
+  intros fuel b host trace why ms w Hrun.
+  eapply P.application_stopped_never_panics;
+    [apply HiChecks.interpreter_stdio_stable| |exact Hrun].
+  split; [apply P.H.hi_body_entry; exact HiChecks.entry_pre|].
+  split; [split; [exact stdout_initial_wf|constructor]|discriminate].
 Qed.
 
 (** A segment with no memory authority; endpoint relations are deliberately
@@ -635,14 +722,23 @@ Example hi_entry_to_host :
     (P.Finished InterpRuntime.start HiChecks.memory hello_world
       (mkShutdown (HandedOff SoftExit) 0 [] [] buffered)).
 Proof.
-  eapply P.run_trans with (first := []) (last := [StreamBytes 1 (hello_bytes ++ [10]); ProcessExit 0]).
-  - apply P.application_run. apply P.H.hi_reaches_call. lia.
-  - eapply P.run_trans with (first := [StreamBytes 1 (hello_bytes ++ [10])]) (last := [ProcessExit 0]).
-    + eapply P.returning_puts_shutdown; [intros s m w trace n s' m' w' Hcall; exact I|exact buffered_puts].
-    + eapply P.run_trans with (first := []) (last := [ProcessExit 0]).
-      * apply fixture_shutdown.
-      * eapply P.program_next with (trace := [ProcessExit 0]) (tail := []);
-          [apply P.program_complete; exact I|constructor].
+  eapply P.run_trans with (first := [StreamBytes 1 (hello_bytes ++ [10])]) (last := [ProcessExit 0])
+    (mid := P.ShuttingDown InterpRuntime.start HiChecks.memory hello_world
+      (mkShutdown Tls 0 [] [] buffered)).
+  - change (P.run fixture_rep fixture_requests boundary (fun _ _ _ _ => True)
+      (P.Application (P.M.Running (hi_entry HiChecks.memory 10, InterpRuntime.start) initial_world))
+      ([] ++ [StreamBytes 1 (hello_bytes ++ [10])])
+      (P.ShuttingDown InterpRuntime.start HiChecks.memory hello_world
+        (mkShutdown Tls 0 [] [] buffered))).
+    eapply P.returning_puts_shutdown with (first := [])
+      (w' := mkProgramWorld hello_world buffered []).
+    + intros first s m w fuel trace n s' m' w' Hreach Hcall. exact I.
+    + apply P.H.hi_reaches_call. lia.
+    + exact buffered_puts.
+  - eapply P.run_trans with (first := []) (last := [ProcessExit 0]).
+    + apply fixture_shutdown.
+    + eapply P.program_next with (trace := [ProcessExit 0]) (tail := []);
+        [apply P.program_complete; exact I|constructor].
 Qed.
 
 End ProgramChecks.
