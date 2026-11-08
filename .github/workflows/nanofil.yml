@@ -45,7 +45,9 @@ jobs:
           sudo sysctl -w kernel.core_pattern=core
       - uses: cachix/install-nix-action@v31
       - name: Require cached staging toolchain, never rebuild LLVM here
-        run: python3 scripts/ci-cache-check.py packages.x86_64-linux.filcc-staging
+        run: |
+          grep 'core file' "/proc/$(pgrep -o nix-daemon)/limits"
+          python3 scripts/ci-cache-check.py packages.x86_64-linux.filcc-staging
       - name: Check
         env:
           SHARD: ${{ matrix.shard }}/8
