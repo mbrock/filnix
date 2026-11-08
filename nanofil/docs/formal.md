@@ -63,7 +63,7 @@ package in Filnix rather than only what nanofil compiles.
 | 4 | Observations, refinement, and libc contracts | a trace semantics; `opt:refines/2` as trace inclusion | [ExternalCalls.v](../rocq/theories/ExternalCalls.v) states trusted contracts and finite effect prefixes, starting with `puts`; [ExternalMachine.v](../rocq/theories/ExternalMachine.v) adds guarded direct-call transitions and finite labelled runs, preserving readiness, identities and Campaign 3's two invariants; native instances/trace coverage, executable integration and refinement remain open |
 | 5 | Static discharge by certificate | `discharged(Cert)`, `discharge_ok`, a Prolog finder | not started |
 | 6 | Integration with Filnix and the playground | the `nanofil-check` gate | not started |
-| 7 | Trap-freedom of a pinned Nix closure: a program that never panics | `never_panics` of one closure: a closed module, then a one-call libc program, then GNU Hello (`nanofil-hello-O`); `ls` next; this build of OpenSSH's server as the stretch | [step 0 measured](trap-census.md): Hello has 1,398 class-`a` sites, 360 flag-only renewals; all 178 functions in 81 objects inside the subset, `valid = Some true`; `never_panics` stated in [Panics.v](../rocq/theories/Panics.v); step 1 proved: [Sum.v](../rocq/theories/Sum.v)'s `sum_never_panics`, a closed loop over a global array, for every runtime |
+| 7 | Trap-freedom of a pinned Nix closure: a program that never panics | `never_panics` of one closure: a closed module, then a one-call libc program, then GNU Hello (`nanofil-hello-O`); `ls` next; this build of OpenSSH's server as the stretch | [step 0 measured](trap-census.md): Hello has 1,398 class-`a` sites, 360 flag-only renewals; all 178 functions in 81 objects inside the subset, `valid = Some true`; `never_panics` stated in [Panics.v](../rocq/theories/Panics.v); step 1 proved for every runtime: [Sum.v](../rocq/theories/Sum.v)'s `sum_never_panics`, a closed loop over a global array, and [Prefix.v](../rocq/theories/Prefix.v)'s `prefix_never_panics`, the same loop bounded by an `int` input, for every input |
 
 ## The claims, kept apart
 
@@ -1537,7 +1537,7 @@ discharge.
 | Step | Program | Needs |
 | --- | --- | --- |
 | 0 | [measured: obligation census](trap-census.md) of `hi.c` and `nanofil-hello-O`, plus `valid` over all Hello objects | Campaign 0's query over Hello; no proof |
-| 1 | proved: [rocq/programs/sum.c](../rocq/programs/sum.c), a loop over a read-only global array with no input and no external call ([Sum.v](../rocq/theories/Sum.v)) | `never_panics` stated in Rocq ([Panics.v](../rocq/theories/Panics.v)); the module as a fixture ([rocq/programs.sh](../rocq/programs.sh)); a symbolic run over abstract memory. Next: an integer input, which needs loop invariants instead of one path |
+| 1 | proved: [rocq/programs/sum.c](../rocq/programs/sum.c), a loop over a read-only global array with no input and no external call ([Sum.v](../rocq/theories/Sum.v)), and [rocq/programs/prefix.c](../rocq/programs/prefix.c), the same loop stopped by an `int` input n, for every n ([Prefix.v](../rocq/theories/Prefix.v)) | `never_panics` stated in Rocq ([Panics.v](../rocq/theories/Panics.v)); the modules as fixtures ([rocq/programs.sh](../rocq/programs.sh)); computed runs checked step by step over abstract memory. Loops whose trip count the input sets beyond a small bound need invariants instead of runs |
 | 2 | `hi.c`, built by nanofil against the pinned libc | the external-call step; contracts for `puts` and the `exit` path; linking |
 | 3 | GNU Hello, `nanofil-hello-O` | the entry contract; about 60 libc contracts; triples for gnulib's string code; temporal reasoning for `quotearg` |
 | 4 | `ls`, from [nix/coreutils.nix](../nix/coreutils.nix) | contracts for directories, `stat` and locale; a malloc-heavy program |
@@ -1556,6 +1556,16 @@ free empties, and no byte moves. The theorem needs neither readiness
 nor `spares`, and `Print Assumptions` of the interpreter's instance is
 empty. Changing the loop to `i <= 4` makes both the fixture check and
 the proof fail.
+
+With an input, prefix.c's loop compares its index with n at each
+iteration, and only the comparison with 4 guards the access. Prefix.v
+does not reason about n's value: at each comparison with n it allows
+both answers. That gives six runs (n from 0 to 5); run 5 stands for
+every other run until that run leaves the loop, and each other run adds
+five states of its own. Every state is checked with n left as a
+variable in the environment. The input is a 32-bit word, as the ABI
+passes an `int`. Changing the guard to `i <= 4` fails the proof at run
+5, which then reads past the array.
 
 Gates: each step's proof is checked in a Nix check, and its
 certificates are replayed by the extracted checker. A planted

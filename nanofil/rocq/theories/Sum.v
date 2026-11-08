@@ -83,33 +83,35 @@ Proof. reflexivity. Qed.
 
 (** ## The path *)
 
-(** The points and environments of the run from the configuration c,
-    one per [step], for at most n steps, until a step is not [Next]. *)
-Fixpoint trace (n : nat) (c : config) : list (point * env) :=
+(** The points and environments of the run in the genv ge from the
+    configuration c, one per [step], for at most n steps, until a step
+    is not [Next]. *)
+Fixpoint trace (ge : genv) (n : nat) (c : config) : list (point * env) :=
   (fr_at (c_frame c), fr_env (c_frame c)) ::
   match n with
   | O => []
-  | S n' => match step (sum_ge (fun _ _ => None)) c with Next c' => trace n' c' | _ => [] end
+  | S n' => match step ge c with Next c' => trace ge n' c' | _ => [] end
   end.
 
 (** The one path of `sum`, computed by running the model on the initial
     memory: 59 points, ending at the return of 10. The proof does not
     trust it; [sum_progress] checks every step. *)
 Definition sum_points : list (point * env) :=
-  trace 200 (mkConfig (mkFrame sum_fn [] [] None (Enter (TAtom "start") None)) [] sum_mem 1000).
+  trace (sum_ge (fun _ _ => None)) 200 (mkConfig (mkFrame sum_fn [] [] None (Enter (TAtom "start") None)) [] sum_mem 1000).
 
 (** ## What the program reads of memory *)
 
 (** The array `xs`: 32 bytes of read-only global data. *)
 Definition xs_region : region := mkRegion 65552 65584 GlobalData Live.
 
-(** The memory m agrees with the initial memory on everything `sum`
-    reads: its bytes, and the array's [[region]]. *)
-Definition mem_ok (m : mem) : Prop :=
-  m_bytes m = m_bytes sum_mem /\ object_region 65552 (m_regions m) = Some xs_region.
+(** The memory m agrees with the initial memory m0 on everything a
+    program that only reads the array reads: the bytes, and the array's
+    [[region]]. *)
+Definition mem_ok (m0 m : mem) : Prop :=
+  m_bytes m = m_bytes m0 /\ object_region 65552 (m_regions m) = Some xs_region.
 
 (** The initial memory agrees with itself. *)
-Lemma mem_ok_initial : mem_ok sum_mem.
+Lemma mem_ok_initial : mem_ok sum_mem sum_mem.
 Proof. split; [reflexivity | vm_compute; reflexivity]. Qed.
 
 (** A load reads only bytes: two memories with the same bytes load the
@@ -127,17 +129,18 @@ Lemma xs2 : load_bytes sum_mem 65568 8 = 3. Proof. vm_compute. reflexivity. Qed.
 Lemma xs3 : load_bytes sum_mem 65576 8 = 4. Proof. vm_compute. reflexivity. Qed.
 
 (** Compute the [step] in the goal for a memory known only by Hb and Hr
-    and the fuel: split on whether fuel is left, and rewrite that test
+    and the fuel: at a block's entry, which tests the fuel, split on
+    whether fuel is left, and rewrite that test
     first, before the arithmetic it guards is unfolded; then reduce the
     step without unfolding the memory's regions, loads or the initial
     memory, and rewrite what the reduction is stuck on (the array's
     region, its loads), again until nothing changes. *)
 Ltac step_eq Hb Hr fuel :=
-  case_eq (fuel =? 0); intro;
   match goal with |- context[step ?g ?c] =>
     remember (step g c) as r eqn:Estep;
+    try (match type of Estep with context[Enter _ _] => case_eq (fuel =? 0); intro end);
     cbv beta iota zeta delta -[object_region m_regions load_bytes sum_mem sum_module Z.eqb] in Estep;
-    match goal with Hf : (fuel =? 0) = _ |- _ => rewrite ?Hf in Estep end;
+    try (match goal with Hf : (fuel =? 0) = _ |- _ => rewrite Hf in Estep end);
     repeat progress (cbv beta iota zeta delta -[object_region m_regions load_bytes sum_mem sum_module] in Estep;
                      rewrite ?Hr, ?(load_bytes_same _ _ Hb), ?xs0, ?xs1, ?xs2, ?xs3 in Estep);
     subst r
@@ -147,7 +150,7 @@ Ltac step_eq Hb Hr fuel :=
     compute the step, and find it among the three outcomes
     [sum_progress] allows. *)
 Ltac point_step Hn Hb Hr fuel :=
-  cbn in Hn; injection Hn as <- <-;
+  cbv in Hn; injection Hn as <- <-;
   step_eq Hb Hr fuel;
   first [ right; right; reflexivity
         | right; left; reflexivity
@@ -157,7 +160,7 @@ Ltac point_step Hn Hb Hr fuel :=
     and with any fuel, `sum` steps to the next point with the same
     memory, ends for lack of fuel, or returns 10. *)
 Lemma sum_progress : forall free n pt e m fuel,
-  nth_error sum_points n = Some (pt, e) -> mem_ok m ->
+  nth_error sum_points n = Some (pt, e) -> mem_ok sum_mem m ->
   (exists pt' e' fuel', nth_error sum_points (S n) = Some (pt', e') /\
      step (sum_ge free) (mkConfig (mkFrame sum_fn e [] None pt) [] m fuel) =
      Next (mkConfig (mkFrame sum_fn e' [] None pt') [] m fuel')) \/
@@ -181,10 +184,10 @@ Module P := Panics R.
     ([R.non_moving]), and the array is still an object ([R.rooting])
     whose bounds only a free of a heap object could empty
     ([R.safepoint_lifetime]); it is global data. *)
-Lemma mem_ok_safepoint : forall s m s' m',
-  R.safepoint s m s' m' -> mem_ok m -> mem_ok m'.
+Lemma mem_ok_safepoint : forall m0 s m s' m',
+  R.safepoint s m s' m' -> mem_ok m0 m -> mem_ok m0 m'.
 Proof.
-  intros s m s' m' Hsp [Hb Hr]. split.
+  intros m0 s m s' m' Hsp [Hb Hr]. split.
   - rewrite (R.non_moving _ _ _ _ Hsp). exact Hb.
   - assert (Hold : object_region 65552 (m_regions m) <> None) by (rewrite Hr; discriminate).
     pose proof (R.rooting _ _ _ _ Hsp 65552 Hold) as Hin.
@@ -198,7 +201,7 @@ Qed.
 Definition sum_inv (st : P.RM.mstate) : Prop :=
   exists n pt e, nth_error sum_points n = Some (pt, e) /\
     fst st = mkConfig (mkFrame sum_fn e [] None pt) [] (c_mem (fst st)) (c_fuel (fst st)) /\
-    mem_ok (c_mem (fst st)).
+    mem_ok sum_mem (c_mem (fst st)).
 
 (** Every machine step from a state on the path stays on it: a step is
     the next point ([sum_progress]), never an allocation, and a

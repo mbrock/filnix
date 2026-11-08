@@ -2,6 +2,7 @@
 theories/Term.v
 theories/SumCode.v
 theories/HiCode.v
+theories/PrefixCode.v
 theories/Maps.v
 theories/Ieee.v
 theories/Syntax.v
@@ -44,6 +45,7 @@ theories/Panics.v
 theories/Program.v
 theories/Transport.v
 theories/Sum.v
+theories/Prefix.v
 theories/HiArtifact.v
 theories/Selected.v
 theories/Extract.v
