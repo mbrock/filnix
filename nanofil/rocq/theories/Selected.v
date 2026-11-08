@@ -314,6 +314,44 @@ Proof.
   - split; [exact Hwf|]. repeat constructor. simpl. tauto.
 Qed.
 
+(** Change only behavioral coverage: the same valid, selected source keeps
+    its ABI/preconditions, permissions and post, but has no possible prefix.
+    This is not a pinned native instance or a safe implementation. *)
+Definition uncovered_specs : S.segments :=
+  S.mkSegments (S.libc_valid specs) (S.selected_action specs)
+    (S.segment_sources specs) (S.segment_writes specs) (S.segment_releases specs)
+    (S.segment_requests specs) (fun _ _ _ _ _ _ _ _ => False) (S.segment_panics specs).
+
+(** Independent admission survives deleting every behavior. Thus neither
+    admission nor absence of invocations can establish native coverage. *)
+Example admitted_without_behavior :
+  let sh := mkShutdown Handlers 0 [entry] [] stdout_initial in
+  let action := InvokeCallback entry 0 in
+  P.shutdown_admissible (S.boundary uncovered_specs) InterpRuntime.start
+    hello_mem hello_world sh action /\
+  (forall born trace s' m' w',
+    ~ S.E.prefix (S.selected_contract uncovered_specs sh action) []
+      InterpRuntime.start hello_mem hello_world born trace s' m' w') /\
+  (forall trace ending s' m' w',
+    ~ S.E.invoke (S.selected_contract uncovered_specs sh action) CVoid [] []
+      InterpRuntime.start hello_mem hello_world trace ending s' m' w').
+Proof.
+  intros sh action.
+  assert (Hnone : forall born trace s' m' w',
+    ~ S.E.prefix (S.selected_contract uncovered_specs sh action) []
+      InterpRuntime.start hello_mem hello_world born trace s' m' w').
+  { intros born trace s' m' w' [_ Hfalse]. exact Hfalse. }
+  split.
+  - eapply S.selected_admits.
+    + split; [apply hello_ready; split; vm_compute; congruence|].
+      exact (nonempty_entry stdout_initial stdout_initial_wf).
+    + split; reflexivity.
+    + constructor.
+  - split; [exact Hnone|]. intros trace ending s' m' w' Hcall.
+    destruct (S.E.invoke_prefix _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall) as [born Hprefix].
+    exact (Hnone born trace s' m' w' Hprefix).
+Qed.
+
 (** A fresh token cannot authorize an unknown callback, even where the logical
     register rule permits it. No invocation witness is needed for rejection. *)
 Example unknown_callback_rejected : forall s,

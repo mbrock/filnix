@@ -129,6 +129,18 @@ Their native probes are respectively
 [libc-entry.c](../tests/c/prog/libc-entry.c) and
 [libc-exit.c](../tests/c/prog/libc-exit.c).
 
+The [selected shutdown boundary](libc-contracts.md#trusted-selected-shutdown-boundary)
+is named by `Selected R.selected_contract` and `Selected R.boundary` in
+[Selected.v](../rocq/theories/Selected.v). Its trusted obligations include
+independent native action/callback admission, segment satisfaction under the
+declared effects/control/observations, and coverage of finite normal,
+unfinished and resource behavior. Host projection may not hide modeled callback
+re-entry. Existing exit/output probes supply finite counterexamples, not a
+proof of coverage or a pinned native instance; `SelectedChecks.specs` is only a
+logical fixture. Its anti-vacuity control admits a valid selected source even
+when a false prefix predicate removes every behavior, demonstrating why
+admission alone cannot establish coverage.
+
 These are named predicates with derived Rocq consequences, not claims
 that native initialization, host handlers or termination have been
 proved. A ready handoff is not a completion witness; the finished state

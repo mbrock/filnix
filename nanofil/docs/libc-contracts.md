@@ -52,8 +52,50 @@ proves delivery, and hard exit requires no flush or empty pending list.
 The native probes are finite counterexample evidence for these trusted
 specifications, **not universal native satisfaction proofs**. Rocq
 derives application-only nonfailure and the witnessed terminal step
-from the predicates. Selected puts/shutdown closure and lifecycle
-coverage remain separate obligations.
+from the predicates. Conditional puts/shutdown composition is proved in
+`Selected.v`; native lifecycle satisfaction and coverage remain separate
+obligations.
+
+## Trusted selected shutdown boundary
+
+`Selected R.selected_contract` and `Selected R.boundary` in
+[Selected.v](../rocq/theories/Selected.v) name the trusted lifecycle segment
+interface for the [pin below](#pin-notation-and-common-obligations). It is
+parameterized by the actual native representation, selection and footprint
+specifications. The logical `SelectedChecks.specs` is **not** that pinned
+native instance. No new Rocq axiom or native implementation theorem is added.
+
+The selected boundary owes three separate obligations:
+
+- **Independent admission:** eligible startup inventory and retained pending
+  and active callback authority establish source-state validity, action
+  selection and ABI/preconditions before any invocation exists. Token
+  distinctness does not make arbitrary callbacks safe.
+- **Native satisfaction:** each selected native segment obeys its declared
+  memory permissions, resource outcomes, control transfers and observations.
+  Internal registry traversal/unlink/retirement and done/lock work belong
+  before the next genuine logical cutpoint, not silent outer callback actions.
+- **Coverage:** applicable finite native observations map to normal segments,
+  unfinished/resource observations or the separately witnessed host boundary.
+  This must include behavior for which no normal invocation exists. The
+  current partial-output vocabulary does not prove coverage of arbitrary
+  mixed native segments; a missing case stays an open obligation.
+
+Host-only projection may not hide modeled callback re-entry, output or control
+transfers. Callback specifications remain prerequisites, including for
+callbacks that register further callbacks or recursively exit. The existing
+[libc-exit.c](../tests/c/prog/libc-exit.c) probe checks handler ordering,
+re-registration/re-entry, retained argument lifetimes, block boundaries and
+soft/hard status/flush distinctions; [libc-output.c](../tests/c/prog/libc-output.c)
+checks finite output/error cases. These are finite evidence, not universal
+coverage, callback-dispatch or native-satisfaction proofs.
+
+The `admitted_without_behavior` control keeps an inhabited source's validity,
+selection and preconditions while replacing only its segment-prefix predicate
+with `False`. Admission still holds, but no prefix or invocation exists.
+Consequently neither independent admission nor the absence of invocations can
+discharge this boundary's coverage obligation. The conditional hi composition
+theorem consumes supplied witnesses; it cannot manufacture the missing ones.
 
 ## Pin, notation and common obligations
 
