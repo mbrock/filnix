@@ -37,6 +37,12 @@ jobs:
         builders =
     steps:
       - uses: actions/checkout@v4
+      - name: Let deliberate traps exit without a crash reporter
+        # The checks trap thousands of times (bounds edges); a core_pattern
+        # that pipes each crash to apport makes a 22 s step overrun 120 s.
+        run: |
+          echo "core_pattern was: $(cat /proc/sys/kernel/core_pattern)"
+          sudo sysctl -w kernel.core_pattern=core
       - uses: cachix/install-nix-action@v31
       - name: Require cached staging toolchain, never rebuild LLVM here
         run: python3 scripts/ci-cache-check.py packages.x86_64-linux.filcc-staging
