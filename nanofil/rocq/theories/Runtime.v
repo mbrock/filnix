@@ -3,8 +3,8 @@
 
     The model of the checked IR is about one thread's program. What the
     Fil-C runtime does around that program, where it puts a new object,
-    what free does to an object's header, what the collector and other
-    threads may do while the program waits at a safepoint, is not the
+    what free does to an object's header, what the collector and the
+    thread's own signal handlers may do at a safepoint, is not the
     model's to decide. `Runtime` states those facts as one page of
     axioms, read against the staging Fil-C the toolchain pins (mbrock/fil-c
     at `18b6663a2785c8eba6cc2a544a7711e19fc448c7`, the `coreRev` of
@@ -39,14 +39,18 @@
 
     ## One thread's view
 
-    The model has one thread and no collector. Another thread's free and
+    The model is one thread's. A free by one of its signal handlers,
+    which Fil-C runs only at pollchecks and exits to the runtime, and
     the collector's rewriting of stored capabilities are what the
     program sees change at a safepoint, the `safepoint` relation, and
-    nowhere else. Natively another thread may free an object between a
-    check and its access; `retention` and `non_moving` are what make
-    that the same as a free at the next safepoint: the object's bytes
-    stay where they were, readable through the capability the check
-    passed, until the program next looks at the header.
+    nowhere else. Another thread is outside the model: its writes are
+    (`non_moving` lets no byte change at a safepoint), and so are its
+    frees, which natively show at any check, not only at a safepoint
+    (tests/c/prog/axiom-threads.c). For a threaded program, native
+    safety rests on Fil-C's own argument, not on the theorems proved
+    over this module type: every check traps on a freed object, and an
+    access whose check passed before the free reads retained memory
+    (`retention`).
 
     A freed object's address can be a new object's natively, once
     nothing names the old one. The model's `fresh` never reuses an
@@ -188,8 +192,9 @@ Module Type Runtime.
   (** Free frees or traps; it never answers `unchecked`. *)
   Axiom free_checked : forall x m w m', free x m <> Some (RUnchecked w, m').
 
-  (** `at_safepoint i`: the runtime may act, and another thread's
-      effects become visible, at i. *)
+  (** `at_safepoint i`: the runtime may act at i: run a signal handler
+      or a pollcheck callback. Another thread's effects are outside the
+      model (the header's "One thread's view"). *)
   Parameter at_safepoint : inst -> bool.
 
   Axiom safepoints : forall i,

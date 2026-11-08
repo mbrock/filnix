@@ -1,0 +1,2 @@
+every run ends in a Fil-C trap: yes
+another thread's free shows at a check after one that passed, with no safepoint between: yes

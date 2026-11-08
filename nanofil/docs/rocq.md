@@ -392,10 +392,12 @@ These are formal.md's early decisions as they turned out in the code:
   stack on Lua's `luaV_execute`, which has 995 blocks.
 - **The runtime is a module type.** `Runtime.v` states what the model
   takes from the Fil-C runtime: where a new object goes, what free
-  does, and what may change at a safepoint, as eight axioms
+  does, and what may change at a safepoint, as ten axioms
   ([runtime-axioms.md](runtime-axioms.md)). The model has one thread
-  and no collector, so other threads and the collector show up only
-  as the `safepoint` relation. `InterpRuntime` is interp.pl's
+  and no collector, so the thread's signal handlers and the collector
+  show up only as the `safepoint` relation. Other threads are outside
+  it: natively their frees show at any check (axiom-threads.c), and a
+  threaded program's safety rests on Fil-C's own argument. `InterpRuntime` is interp.pl's
   (`alloc_base/6`, `free_res/4`, nothing at a safepoint) and proves
   every axiom, so the module type is consistent; `Run.v`'s `Driver` is
   a functor over `Runtime`, and the gates run `Driver InterpRuntime`.
