@@ -126,7 +126,7 @@ pkgs.runCommandCC
     # the formal campaign and the concepts resolves, as does every
     # [[concept]] in a Prolog or Rocq comment, and each prolog output has
     # its terms (web/dterm_guide.pl).
-    step "guide links" swipl web/dterm.pl --check docs/guide.md docs/formal.md src \
+    step "guide links" swipl web/dterm.pl --check docs/guide.md docs/formal.md docs/filc.md src \
       --concepts=docs/concepts --rocq=rocq/theories
     # M9 interpreter against nanofil's SSE2 backend.
     # Integer-bit wrappers preserve NaN payloads and negative zero.

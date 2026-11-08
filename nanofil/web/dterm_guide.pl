@@ -1,4 +1,4 @@
-/*  Documents as dterm pages: docs/guide.md and docs/formal.md, each
+/*  Documents as dterm pages: docs/guide.md, docs/formal.md and docs/filc.md, each
     drawn beside the module pages it explains as NAME.html (included by
     dterm.pl, docs/dterm.md).
 
@@ -43,7 +43,7 @@
     the Nix check runs.
 
     Every fact below names its document first, by its file name without
-    `.md`: guide, formal.
+    `.md`: guide, formal, filc.
 */
 
 %  Rocq in the documents (formal.md) is drawn by dterm-rocq.
@@ -85,6 +85,7 @@ doc_name(Path, Doc) :- file_base_name(Path, F), file_name_extension(Doc, _, F).
 %  doc_label(+Doc, -Label): how a module page names the document.
 doc_label(guide, "the guide") :- !.
 doc_label(formal, "the formal campaign") :- !.
+doc_label(filc, "How Fil-C works") :- !.
 doc_label(Doc, Doc).
 
 read_doc(Path, doc(Doc, Dir, Blocks)) :-
@@ -137,7 +138,7 @@ broken(Fmt, Args) :-
 
 %% Blocks: a little of GitHub's Markdown
 
-%  md_blocks(+Lines, -Blocks): h(Level, Text), p(Text), ul(Items) with
+%  md_blocks(+Lines, -Blocks): h(Level, Text), p(Text), aside(Blocks), ul(Items) with
 %  each item a list of blocks, table(Head, Rows), fence(Lang, Lines) and
 %  output(Name, Lang, Lines).
 md_blocks([], []).
@@ -169,6 +170,8 @@ md_blocks([L|Ls0], [table(Head, Rows)|Bs]) :-
     take_table(Ls1, Rows, Ls), md_blocks(Ls, Bs).
 md_blocks([L|Ls0], [ul(Items)|Bs]) :- item_start(L, _), !,
     md_items([L|Ls0], Items, Ls), md_blocks(Ls, Bs).
+md_blocks([L|Ls0], [aside(Inner)|Bs]) :- quote_line(L, Q), !,
+    take_quote(Ls0, Qs, Ls), md_blocks([Q|Qs], Inner), md_blocks(Ls, Bs).
 md_blocks([L|Ls0], [p(Text)|Bs]) :-
     md_para(Ls0, Para, Ls),
     maplist([S0, S]>>split_string(S0, "", " ", [S]), [L|Para], Ws),
@@ -185,9 +188,16 @@ hashes(0) --> [].
 md_para([L|Ls0], [L|Ps], Ls) :-
     \+ blank(L), \+ md_heading(L, _, _), \+ string_concat("```", _, L),
     \+ string_concat("<!--", _, L), \+ item_start(L, _), \+ string_concat("|", _, L),
-    \+ embed_line(L, _), !,
+    \+ embed_line(L, _), \+ quote_line(L, _), !,
     md_para(Ls0, Ps, Ls).
 md_para(Ls, [], Ls).
+
+%  A run of lines starting > is a sidebar: the blocks after the >, drawn
+%  aside from the text (no headings inside).
+quote_line(L, Q) :- string_concat(">", Q0, L), ( string_concat(" ", Q, Q0) -> true ; Q = Q0 ).
+
+take_quote([L|Ls0], [Q|Qs], Ls) :- quote_line(L, Q), !, take_quote(Ls0, Qs, Ls).
+take_quote(Ls, [], Ls).
 
 %  An item is its first line and the lines indented under it, blank
 %  lines between them included, read again as blocks.
@@ -222,6 +232,7 @@ prepass_(h(N, T)) :- !,
     assertz(guide_heading(D, Id, N, T, Mods)),
     ( N =:= 2 -> nb_setval(guide_h2, T) ; true ).
 prepass_(ul(Items)) :- !, maplist(prepass, Items).
+prepass_(aside(Bs)) :- !, prepass(Bs).
 prepass_(_).
 
 %  heading_id(+Title, -Id): GitHub's anchor for a heading: lower case,
@@ -255,8 +266,12 @@ guide_page(Doc, Blocks) -->
             el(nav, "toc dterm-nav guide-nav",
                ( el(div, "toc-title", esc(Label)), guide_toc(Doc) )),
             el(article, "dterm guide",
-               ( ( { guide_rocq(Doc) } -> rocq_layout ; [] ),
+               ( ( { guide_rocq(Doc), rocq_fence_in(Blocks) } -> rocq_layout ; [] ),
                  el(div, "prose guide-prose", gblocks(Blocks)) )) )).
+
+%  The Rocq layout control lays out Rocq fences and tables comparing Rocq;
+%  a document with neither has nothing for it to do.
+rocq_fence_in(Blocks) :- member(B, Blocks), ( B = fence(L, _), memberchk(L, ["rocq", "coq"]) ; B = table(_, _) ), !.
 
 %  A document about Rocq sets its Rocq with dterm-rocq's stylesheet
 %  (rocq/, beside the pages).
@@ -295,6 +310,7 @@ gblock(h(N, T)) -->
       ( N =:= 1 -> C = "source-title" ; C = "guide-h" ) },
     el(H, C, [id=Id], gtext(T)).
 gblock(embed(Name)) --> concept_embed(Name).
+gblock(aside(Bs)) --> el(aside, "sidebar", gblocks(Bs)).
 gblock(concepts) --> concepts_index.
 gblock(p(T)) -->
     { string_concat("**[", R, T), sub_string(R, B, _, _, ".pl]"), sub_string(R, 0, B, _, M0),
@@ -829,7 +845,9 @@ concepts_page(Ids) -->
                                     el(a, none, [href="https://github.com/mbrock/filnix/tree/main/nanofil/docs/concepts"],
                                        el(code, none, "docs/concepts")),
                                     ". Comments and documents link to one with ", el(code, none, "[[name]]"),
-                                    " and draw it in place with ", el(code, none, "![[name]]"), "." )),
+                                    " and draw it in place with ", el(code, none, "![[name]]"), ". ",
+                                    el(a, none, [href="filc.html"], "How Fil-C works"),
+                                    " tells the Fil-C ones as one story." )),
                       concepts_index )) )) )).
 
 %  concepts_index: every concept, its title and summary.

@@ -1419,6 +1419,8 @@ index_page(Sources) -->
                                     el(a, none, [href="https://github.com/mbrock/filnix/blob/main/nanofil/docs/campaign.md"], "the campaign"),
                                     "). These pages draw its source as terms: clause heads over their goals, ",
                                     "conditionals as tables, fact tables as tables, PlDoc as signatures. ",
+                                    el(a, none, [href="filc.html"], "How Fil-C works"),
+                                    " explains the memory-safe C it targets. ",
                                     el(a, none, [href="guide.html"], "The guide"),
                                     " follows one C function through every stage and maps the modules; ",
                                     el(a, none, [href="formal.html"], "the formal campaign"),

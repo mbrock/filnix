@@ -456,11 +456,11 @@ table.facts tr.note td { color: var(--note); font-style: italic; font-size: 0.88
 
 .modules {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr));
   gap: 0.9rem;
 }
 .module-card .meta { color: var(--muted) !important; font-size: 0.78rem !important; }
-.module-card .summary { color: var(--ink) !important; opacity: 0.8; }
+.module-card .summary { color: var(--ink) !important; opacity: 0.8; overflow-wrap: anywhere; }
 
 /* Variable occurrences, highlighted together on hover (dterm.js). */
 
@@ -776,3 +776,10 @@ h3.concept-group .count { color: var(--muted); font-weight: normal; font-size: 0
 p.concept-group-text { color: var(--muted); margin: 0 0 0.8rem; font-size: 0.92rem; }
 /* A long predicate name in running text may break rather than widen a phone page. */
 .guide-prose p code, .guide-prose li code { overflow-wrap: anywhere; }
+/* A sidebar in a document (> lines): the Prolog or Rocq side of the text beside it. */
+aside.sidebar {
+  margin: 0.4rem 0 1.1rem; padding: 0.5rem 0.85rem 0.1rem; font-size: 0.93rem;
+  border-left: 2px solid var(--rule); background: color-mix(in srgb, var(--code-bg) 55%, transparent);
+}
+aside.sidebar p { margin: 0 0 0.5rem; }
+aside.sidebar ul { margin: 0 0 0.5rem; padding-left: 1.1rem; }
