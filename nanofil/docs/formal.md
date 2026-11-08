@@ -1832,6 +1832,12 @@ once (`block_fact`), and each wrap and comparison is tried once,
 innermost first: a wrap that arithmetic cannot drop becomes an unknown
 in its range, and a comparison it cannot decide is split at once.
 
+Buffer.v is the last proof with one invariant for the whole program. A
+second function or object means rewriting that invariant, so the next
+step is a program logic whose facts travel with ownership of objects by
+identity, with one adequacy theorem into `never_panics`: the brief,
+with an assessment of the Iris proposal, is [logic.md](logic.md).
+
 Gates: each step's proof is checked in a Nix check, and its
 certificates are replayed by the extracted checker. A planted
 off-by-one in the program makes the proof fail and a native run panic.
