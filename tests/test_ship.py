@@ -1,7 +1,7 @@
 """Shipping contracts against real disposable Git remotes and HTTP caches.
 
-Nix evaluation/builds, SSH publication and Amp workers are controlled fixtures;
-the ship/hook/checker/fleet CLIs and Git fast-forward checks are real.
+Nix evaluation/builds and SSH publication are controlled fixtures; the
+ship/hook/checker CLIs and Git fast-forward checks are real.
 """
 import copy
 import functools
@@ -20,18 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ATTRS = [line for line in (ROOT / "scripts/ship-outputs.txt").read_text().splitlines()
          if line and not line.startswith("#")]
 STAGING = "packages.x86_64-linux.filcc-staging"
-PLAY = "packages.x86_64-linux.site-play"
-
-
-def receipt(sha, shards=12):
-    jobs = [f"nanofil@{i}/{shards}" for i in range(1, shards + 1)] + ["nanofil-rocq"]
-    results = [{"job": job, "rev": sha, "status": "pass"} for job in jobs]
-    for i, result in enumerate(results[:shards]):
-        result.update(shard=f"{i + 1}/{shards}", all_steps={"count": shards + 2, "hash": "0123456789abcdef"},
-                      steps=[["ok", i + 1, f"step-{i}"]])
-    results[0]["steps"] += [["ok", 13, "extra-a"], ["ok", 2, "extra-b"]]
-    return {"fleet": {"rev": sha, "jobs": jobs, "size": "fixture", "bundle": False},
-            "ok": True, "results": results}
+SWIPL = "packages.x86_64-linux.site-swipl"
 
 
 # One fixture command dispatcher, never used outside the temporary repository.
@@ -62,17 +51,10 @@ if name == 'nix':
         else:
             target = next(a for a in args if '#' in a)
             attr = target.split('#', 1)[1]
-            print(json.dumps(['nanofil-rocq', 'nanofil-rocq-full', 'nanofil-lua'] if attr == 'checks.x86_64-linux' else outputs[attr]))
+            print(json.dumps(outputs[attr]))
     elif 'build' in args:
         attr = next(a for a in args if '#' in a).split('#', 1)[1].removesuffix('^*')
-        if attr == 'checks.x86_64-linux.nanofil-rocq':
-            if (p / 'quick-fails').exists(): sys.exit(1)
-            if (p / 'worker-warnings').exists():
-                print('@@nanofil-progress 2026-11-06T20:00:00Z WARNING budget=60s label=slow')
-                print('@@nanofil-progress 2026-11-06T20:00:01Z TIMEOUT budget=300s label=slow')
-                print('@@nanofil-rocq 2026-11-06T20:00:02Z start validator file=next.ir')
-        else:
-            print('\n'.join(outputs[attr]))
+        print('\n'.join(outputs[attr]))
     elif 'copy' not in args:
         sys.exit('unexpected nix invocation')
 elif name == 'ssh':
@@ -98,39 +80,6 @@ elif name == 'ssh':
                     (p / 'cache' / 'filc' / source.name).write_text(source.read_text())
     elif args[0] != '/nix/var/nix/profiles/default/bin/nix-store':
         sys.exit('unexpected ssh invocation: ' + repr(args))
-elif name == 'amp':
-    job = args[args.index('--title') + 1].split()[-1]
-    if (p / 'startup-fails').exists() and job == 'nanofil@1/12':
-        sys.exit('Failed to attach rev.bundle: fixture upload unavailable')
-    if (p / 'rate-limit-after-start').exists() and job == 'nanofil@1/12':
-        print(json.dumps({'type': 'system', 'session_id': 'T-started-fixture'}), flush=True)
-        sys.exit('Too many attachment upload attempts. Try again in a minute.')
-    if '--attach' in args:
-        if (p / 'rate-limit-once').exists():
-            (p / 'rate-limit-once').unlink()
-            sys.exit('Failed to attach rev.bundle: Too many attachment upload attempts. Try again in a minute.')
-        uploads = [json.loads(line) for line in (p / 'commands').read_text().splitlines()
-                   if '--attach' in json.loads(line)]
-        if (p / 'upload-quota').exists() and len(uploads) > 6:
-            sys.exit('Failed to attach rev.bundle: Too many attachment upload attempts. Try again in a minute.')
-        print(json.dumps({'type': 'user', 'message': {'content': [{'type': 'text',
-              'text': 'https://ampcode.com/user-content/attachments/fixture-rev.bundle'}]}}), flush=True)
-    data = json.loads((p / 'worker-results.json').read_text())
-    result = next(r for r in data['results'] if r['job'] == job)
-    if job == 'nanofil-rocq' and (p / 'stream-progress').exists():
-        import time
-        progress = '@@nanofil-rocq 2026-11-06T20:00:00Z done validator opt=plain checks=reference file=/build/ldouble.c seconds=12'
-        print(json.dumps({'type': 'user', 'message': {'content': [{'type': 'text', 'text': '@@nanofil-rocq prompt-only'}]}}), flush=True)
-        response = json.dumps({'output': progress + '\n[120s] building: still working\n' + progress, 'running': True})
-        event = json.dumps({'type': 'user', 'message': {'content': [{'type': 'tool_result', 'content': response}]}})
-        sys.stdout.write(event[:10]); sys.stdout.flush()
-        time.sleep(1.2)
-        print(event[10:], flush=True)
-        deadline = time.time() + 15
-        while not (p / 'resume-worker').exists() and time.time() < deadline:
-            time.sleep(.05)
-        result['log_tail'] = [progress]
-    print(json.dumps({'type': 'result', 'result': 'NANOFIL-FLEET-RESULT ' + json.dumps(result)}))
 elif name == 'sudo':
     sys.exit(1)  # force the SSH path, never invoke a real publisher
 '''
@@ -164,14 +113,14 @@ class ShippingTests(unittest.TestCase):
                     "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
                     "FILNIX_REQUIRE_CACHE": "0", "FILNIX_PUBLISH_HOST": "fixture.invalid"}
         self.env.pop("GITHUB_STEP_SUMMARY", None)
-        for name in ("nix", "ssh", "sudo", "amp", "treefmt", "nixfmt", "actionlint"):
+        for name in ("nix", "ssh", "sudo", "treefmt", "nixfmt", "actionlint"):
             path = self.bin / name
             path.write_text(COMMAND)
             path.chmod(0o755)
         self.outputs = {attr: [f"/nix/store/{i:032d}-{attr.rsplit('.', 1)[1]}"]
                         for i, attr in enumerate(ATTRS, 1)}
         # Multi-output attr: one output can need repair while the other is healthy.
-        self.outputs[PLAY].append("/nix/store/" + "9" * 32 + "-play-dev")
+        self.outputs[SWIPL].append("/nix/store/" + "9" * 32 + "-play-dev")
         (self.tmp / "outputs.json").write_text(json.dumps(self.outputs))
         self.available = self.tmp / "available"
         self.available.mkdir()
@@ -193,10 +142,9 @@ class ShippingTests(unittest.TestCase):
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
         url = f"http://127.0.0.1:{server.server_port}"
-        for file in ("scripts/ship", "scripts/release", "scripts/nanofil-fleet", "scripts/ship-outputs.txt",
+        for file in ("scripts/ship", "scripts/release", "scripts/ship-outputs.txt",
                      "scripts/swa-cache-outputs.txt", "scripts/ci-outputs.txt",
-                     "scripts/git-hooks/lib.sh", "scripts/git-hooks/pre-push",
-                     "nanofil/tests/watch.py"):
+                     "scripts/git-hooks/lib.sh", "scripts/git-hooks/pre-push"):
             target = self.repo / file
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(ROOT / file, target)
@@ -216,14 +164,9 @@ class ShippingTests(unittest.TestCase):
         self.base = self.git("rev-parse", "HEAD").stdout.strip()
         self.git("remote", "add", "origin", str(self.remote))
         self.git("push", "-q", "origin", "HEAD:main")
-        (self.repo / "nanofil/src").mkdir(parents=True)
-        (self.repo / "nanofil/src/ir.pl").write_text("candidate\n")
-        self.git("add", "nanofil/src/ir.pl")
-        self.git("commit", "-qm", "candidate")
+        # lib/ can change the foundations, so the candidate gets the cache gate.
+        self.commit("lib/candidate.nix", "candidate")
         self.sha = self.git("rev-parse", "HEAD").stdout.strip()
-        self.evidence = self.tmp / "results.json"
-        self.evidence.write_text(json.dumps(receipt(self.sha)))
-        (self.tmp / "worker-results.json").write_text(self.evidence.read_text())
 
     def run_command(self, *command, check=True, **kwargs):
         result = subprocess.run(command, cwd=self.repo, env=self.env, text=True,
@@ -234,6 +177,12 @@ class ShippingTests(unittest.TestCase):
 
     def git(self, *args, **kwargs):
         return self.run_command("git", *args, **kwargs)
+
+    def commit(self, file, message):
+        (self.repo / file).parent.mkdir(parents=True, exist_ok=True)
+        (self.repo / file).write_text(message + "\n")
+        self.git("add", file)
+        self.git("commit", "-qm", message)
 
     def main(self):
         return self.git("--git-dir", str(self.remote), "rev-parse", "main").stdout.strip()
@@ -248,22 +197,50 @@ class ShippingTests(unittest.TestCase):
     def ship(self, *args, **kwargs):
         return self.run_command("bash", "scripts/ship", *args, **kwargs)
 
-    def exact(self, **kwargs):
-        return self.ship("--exact", self.sha, "--fleet-results", str(self.evidence), **kwargs)
-
-    def test_cached_exact_lands_same_sha_without_publication(self):
-        self.exact()
-        self.assertEqual(self.main(), self.sha)
-        self.assertEqual(self.git("rev-parse", "HEAD").stdout.strip(), self.sha)
+    def test_cached_change_rebases_and_lands_without_publication(self):
+        other = self.tmp / "other"
+        self.run_command("git", "clone", "-q", str(self.remote), str(other))
+        (other / "docs").mkdir()
+        (other / "docs/other.md").write_text("other\n")
+        self.run_command("git", "-C", str(other), "add", "docs/other.md")
+        self.run_command("git", "-C", str(other), "commit", "-qm", "other")
+        self.run_command("git", "-C", str(other), "push", "-q", "origin", "HEAD:main")
+        self.ship()
+        head = self.git("rev-parse", "HEAD").stdout.strip()
+        self.assertEqual(self.main(), head)
+        self.assertEqual(self.git("log", "--format=%s", "-3").stdout.splitlines(),
+                         ["candidate", "other", "fixture foundation"])
         self.assertFalse(self.commands("ssh"))
         self.assertFalse([r for r in self.commands("nix") if "build" in r])
-        self.assertFalse(self.commands("amp"))
 
-    def test_no_publish_is_not_a_cache_waiver_but_cached_push_needs_no_publisher(self):
-        self.lose(self.outputs[PLAY][0])
+    def test_nanofil_and_docs_changes_skip_the_cache_gate(self):
+        self.git("reset", "-q", "--hard", self.base)
+        self.lose(self.outputs[STAGING][0])
+        self.commit("nanofil/src/ir.pl", "compiler")
+        self.commit("docs/notes.md", "notes")
+        self.git("config", "core.hooksPath", "scripts/git-hooks")
+        self.ship("--no-publish")
+        self.assertEqual(self.main(), self.git("rev-parse", "HEAD").stdout.strip())
+        self.assertFalse(self.commands("nix"))
+        # The playground's SWI-Prolog is a foundation inside nanofil/.
+        self.commit("nanofil/web/play/swipl.nix", "swipl")
         failed = self.ship("--no-publish", check=False)
         self.assertNotEqual(failed.returncode, 0)
-        self.assertIn("cannot waive", failed.stderr)
+        self.assertNotEqual(self.main(), self.git("rev-parse", "HEAD").stdout.strip())
+
+    def test_main_moving_during_the_cache_check_rebases_and_pushes_again(self):
+        (self.tmp / "advance-main").touch()
+        result = self.ship()
+        self.assertIn("main moved", result.stdout)
+        head = self.git("rev-parse", "HEAD").stdout.strip()
+        self.assertEqual(self.main(), head)
+        self.assertEqual(self.git("log", "--format=%s", "-2").stdout.splitlines(), ["candidate", "other landing"])
+
+    def test_no_publish_is_not_a_cache_waiver_but_cached_push_needs_no_publisher(self):
+        self.lose(self.outputs[SWIPL][0])
+        failed = self.ship("--no-publish", check=False)
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertIn("not publishing", failed.stderr)
         self.assertEqual(self.main(), self.base)
         self.assertFalse(self.commands("ssh"))
         shutil.copytree(self.available, self.tmp / "cache/filc", dirs_exist_ok=True)
@@ -278,7 +255,7 @@ class ShippingTests(unittest.TestCase):
         self.assertEqual(self.main(), self.base)
 
     def test_hook_requires_main_caches_but_allows_feature_branch(self):
-        self.lose(self.outputs[PLAY][0])
+        self.lose(self.outputs[SWIPL][0])
         # Staged/working files cannot hide the committed missing foundation.
         (self.repo / "scripts/ship-outputs.txt").write_text(STAGING + "\n")
         self.git("config", "core.hooksPath", "scripts/git-hooks")
@@ -292,7 +269,7 @@ class ShippingTests(unittest.TestCase):
         self.git("push", "-q", "origin", "HEAD:main")
         # Candidate differs from invoking HEAD: manifest/evaluation must use X.
         self.git("checkout", "-q", "--detach", self.base)
-        missing = self.outputs[PLAY][1]
+        missing = self.outputs[SWIPL][1]
         self.lose(missing)
         (self.tmp / "publisher").touch()
         self.ship("--publish-only", "--rev", self.sha)
@@ -300,7 +277,7 @@ class ShippingTests(unittest.TestCase):
         self.assertEqual(self.git("rev-parse", "HEAD").stdout.strip(), self.base)
         builds = [r for r in self.commands("nix") if "build" in r]
         self.assertEqual(len(builds), 1)
-        self.assertIn(f"?rev={self.sha}#{PLAY}^*", builds[0][-1])
+        self.assertIn(f"?rev={self.sha}#{SWIPL}^*", builds[0][-1])
         queues = [r for r in self.commands("ssh") if "--batches" in r]
         self.assertEqual(len(queues), 2)
         self.assertEqual(queues[0][-2:], ["--extra-root", missing])
@@ -309,7 +286,7 @@ class ShippingTests(unittest.TestCase):
         self.assertEqual(len([r for r in self.commands("ssh") if "--batches" in r]), 2)
 
     def test_old_publisher_and_checker_errors_never_push(self):
-        self.lose(self.outputs[PLAY][0])
+        self.lose(self.outputs[SWIPL][0])
         (self.tmp / "publisher").touch()
         (self.tmp / "old-publisher").touch()
         failed = self.ship(check=False)
@@ -324,296 +301,9 @@ class ShippingTests(unittest.TestCase):
         self.assertEqual(self.main(), self.base)
         self.assertFalse([r for r in self.commands("nix") if "build" in r])
 
-    def test_exact_rejects_stale_head_and_main_movement_before_or_during_checks(self):
-        self.git("checkout", "-q", "--detach", self.base)
-        self.assertNotEqual(self.exact(check=False).returncode, 0)
-        self.git("checkout", "-q", "--detach", self.sha)
-        for marker in ("change-head", "advance-main"):
-            with self.subTest(marker=marker):
-                (self.tmp / marker).touch()
-                failed = self.exact(check=False)
-                self.assertNotEqual(failed.returncode, 0)
-                self.assertNotEqual(self.main(), self.sha)
-                self.git("checkout", "-q", "--detach", self.sha)
-        failed = self.exact(check=False)
-        self.assertIn("main diverged", failed.stderr)
-        self.assertEqual(self.git("rev-parse", "HEAD").stdout.strip(), self.sha)
-
-    def test_receipt_verifier_rejects_wrong_or_incomplete_evidence(self):
-        original = receipt(self.sha)
-        mutations = {
-            "other-revision": lambda e: e["fleet"].update(rev="f" * 40),
-            "root-missing-revision": lambda e: e["results"][-1].pop("rev"),
-            "worker-wrong-revision": lambda e: e["results"][0].update(rev="e" * 40),
-            "duplicate-shard": lambda e: e["results"].__setitem__(1, copy.deepcopy(e["results"][0])),
-            "missing-shard": lambda e: e["results"].pop(2),
-            "missing-rocq": lambda e: (e["results"].pop(), e["fleet"]["jobs"].pop()),
-            "root-failed": lambda e: e["results"][-1].update(status="fail"),
-            "step-failed": lambda e: e["results"][0]["steps"][0].__setitem__(0, "FAIL"),
-            "coverage-gap": lambda e: e["results"][0]["steps"].pop(),
-            "different-step-list": lambda e: e["results"][1]["all_steps"].update(hash="f" * 16),
-        }
-        for name, mutate in mutations.items():
-            with self.subTest(name=name):
-                evidence = copy.deepcopy(original)
-                mutate(evidence)
-                self.evidence.write_text(json.dumps(evidence))
-                self.assertNotEqual(self.exact(check=False).returncode, 0)
-                self.assertEqual(self.main(), self.base)
-        for shards in (6, 11, 13):
-            with self.subTest(shards=shards):
-                self.evidence.write_text(json.dumps(receipt(self.sha, shards)))
-                failed = self.exact(check=False)
-                self.assertNotEqual(failed.returncode, 0)
-                self.assertIn("need 12 complete shards", failed.stderr)
-                self.assertEqual(self.main(), self.base)
-        self.evidence.write_text('{"ok":true,')
-        self.assertNotEqual(self.exact(check=False).returncode, 0)
-        # Requesting an additional root must not replace mandatory Rocq.
-        evidence = copy.deepcopy(original)
-        evidence["fleet"]["jobs"][-1] = "nanofil-lua"
-        evidence["results"][-1]["job"] = "nanofil-lua"
-        self.evidence.write_text(json.dumps(evidence))
-        failed = self.ship("--exact", self.sha, "--fleet-results", str(self.evidence),
-                           "--roots", "nanofil-lua", check=False)
-        self.assertNotEqual(failed.returncode, 0)
-        self.assertFalse(self.commands("nix"))
-
-    def test_collection_and_verification_share_coverage_contract(self):
-        directory = self.tmp / "fleet"
-        directory.mkdir()
-        evidence = receipt(self.sha)
-        (directory / "fleet.json").write_text(json.dumps(evidence["fleet"]))
-        for wall in (539, 540):
-            evidence["results"][0]["wall_s"] = wall
-            for result in evidence["results"]:
-                name = result["job"].replace("@", "_").replace("/", "_")
-                event = {"type": "result", "result": "NANOFIL-FLEET-RESULT " + json.dumps(result)}
-                (directory / (name + ".jsonl")).write_text(json.dumps(event) + "\n")
-            collected = self.run_command(sys.executable, "scripts/nanofil-fleet", "collect", str(directory))
-            self.assertEqual("WARNING: shard headroom" in collected.stdout, wall == 540)
-            self.assertEqual("cp " in collected.stdout, wall == 540)
-            self.assertIn("13\textra-a\n", (directory / "times.tsv").read_text())
-        self.run_command(sys.executable, "scripts/nanofil-fleet", "verify", str(directory / "results.json"), "--rev", self.sha)
-        self.assertTrue(json.loads((directory / "results.json").read_text())["coverage"]["complete"])
-
-    def test_rocq_selection_and_evidence_distinguish_web_quick_and_full(self):
-        quick = self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--dry-run")
-        self.assertEqual(quick.stdout.count("--- nanofil@"), 12)
-        self.assertIn("--- nanofil-rocq\n", quick.stdout)
-        all_roots = self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--roots", "all", "--dry-run")
-        self.assertNotIn("--- nanofil-rocq-full\n", all_roots.stdout)
-        full = self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--roots", "nanofil-rocq-full", "--dry-run")
-        self.assertIn("--- nanofil-rocq-full\n", full.stdout)
-        # A quick receipt is not release/soundness mutation evidence.
-        rejected = self.run_command(sys.executable, "scripts/nanofil-fleet", "verify", str(self.evidence),
-                                    "--rev", self.sha, "--roots", "nanofil-rocq-full", check=False)
-        self.assertNotEqual(rejected.returncode, 0)
-        full_evidence = receipt(self.sha)
-        full_evidence["fleet"]["jobs"][-1] = "nanofil-rocq-full"
-        full_evidence["results"][-1]["job"] = "nanofil-rocq-full"
-        self.evidence.write_text(json.dumps(full_evidence))
-        self.run_command(sys.executable, "scripts/nanofil-fleet", "verify", str(self.evidence),
-                         "--rev", self.sha, "--roots", "nanofil-rocq-full")
-        self.git("checkout", "-q", "--detach", self.base)
-        (self.repo / "nanofil/web").mkdir(parents=True)
-        (self.repo / "nanofil/web/style.css").write_text("body {}\n")
-        self.git("add", ".")
-        self.git("commit", "-qm", "web only")
-        web = self.git("rev-parse", "HEAD").stdout.strip()
-        selected = self.run_command(sys.executable, "scripts/nanofil-fleet", "required-roots")
-        self.assertEqual(selected.stdout.strip(), "")
-        evidence = receipt(web)
-        evidence["fleet"]["jobs"].pop()
-        evidence["results"].pop()
-        self.evidence.write_text(json.dumps(evidence))
-        self.run_command(sys.executable, "scripts/nanofil-fleet", "verify", str(self.evidence), "--rev", web)
-        self.run_command("scripts/ship", "--exact", web, "--fleet-results", str(self.evidence))
-        self.assertEqual(self.main(), web)
-
-    def test_ordinary_ship_blocks_on_failed_quick_gate(self):
-        (self.tmp / "quick-fails").touch()
-        failed = self.ship("--no-publish", check=False)
-        self.assertNotEqual(failed.returncode, 0)
-        self.assertEqual(self.main(), self.base)
-        self.assertIn("checks.x86_64-linux.nanofil-rocq", " ".join(" ".join(c) for c in self.commands("nix")))
-
-    def test_release_rejects_quick_receipt_before_creating_tag(self):
-        self.git("push", "-q", "origin", self.sha + ":main")
-        failed = self.run_command("scripts/release", "--fleet-results", str(self.evidence), "v-test", check=False)
-        self.assertNotEqual(failed.returncode, 0)
-        self.assertIn("missing required roots", failed.stderr)
-        self.assertEqual(self.git("tag", "-l").stdout.strip(), "")
-        self.assertFalse(self.commands("nix"))
-
-    def test_fleet_preflight_uses_candidate_and_stops_before_any_workers(self):
-        self.lose(self.child)
-        failed = self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--rev", self.sha,
-                                  "--roots", "nanofil-rocq", "--out", str(self.tmp / "fleet"), check=False)
-        self.assertEqual(failed.returncode, 1)
-        self.assertIn("no workers launched", failed.stderr)
-        self.assertFalse(self.commands("amp"))
-        evals = self.commands("nix")
-        self.assertIn(f"?rev={self.sha}#{STAGING}", " ".join(evals[0]))
-        (self.tmp / "http-error").touch()
-        failed = self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--rev", self.sha,
-                                  "--roots", "nanofil-rocq", "--out", str(self.tmp / "fleet"), check=False)
-        self.assertEqual(failed.returncode, 2)
-        self.assertFalse(self.commands("amp"))
-
-    def test_missing_playground_does_not_block_fleet_and_dry_run_launches_nothing(self):
-        self.lose(self.outputs[PLAY][0])
-        directory = self.tmp / "fleet"
-        self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--rev", self.sha,
-                         "--roots", "nanofil-rocq", "--out", str(directory), "--dry-run")
-        self.assertFalse(self.commands("amp"))
-        self.assertFalse(self.commands("nix"))
-        self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--rev", self.sha,
-                         "--roots", "all", "--out", str(directory), "--dry-run")
-        self.assertIn(f"?rev={self.sha}#checks.x86_64-linux", " ".join(self.commands("nix")[0]))
-        self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--rev", self.sha,
-                         "--roots", "nanofil-rocq", "--out", str(directory))
-        result = json.loads((directory / "results.json").read_text())
-        self.assertTrue(result["ok"])
-        self.assertEqual(result["fleet"]["rev"], self.sha)
-        self.assertEqual(result["fleet"]["main"], self.base)
-        self.assertEqual(len(self.commands("amp")), 13)
-        self.assertEqual(result["coverage"], {"steps": 14, "ran": 14, "distinct": 14,
-                                               "lists_agree": True, "complete": True})
-
-    def test_fleet_shares_one_upload_across_twelve_shards(self):
-        (self.tmp / "upload-quota").touch()
-        directory = self.tmp / "fleet"
-        self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--rev", self.sha,
-                         "--roots", "nanofil-rocq", "--out", str(directory))
-        result = json.loads((directory / "results.json").read_text())
-        self.assertTrue(result["ok"])
-        self.assertTrue(result["coverage"]["complete"])
-        workers = self.commands("amp")
-        self.assertEqual(len(workers), 13)
-        self.assertEqual(sum("--attach" in worker for worker in workers), 1)
-        for worker in workers:
-            if "--attach" not in worker:
-                self.assertIn("amp files get https://ampcode.com/user-content/attachments/fixture-rev.bundle",
-                              worker[2])
-
-    def test_fleet_retries_upload_rejection_before_any_worker_started(self):
-        (self.tmp / "rate-limit-once").touch()
-        directory = self.tmp / "fleet"
-        # Keep real subprocesses and streaming, but do not spend a minute in
-        # the simulated service's backoff. Ordinary stream polling stays real.
-        self.run_command(sys.executable, "-c",
-                         "import runpy, sys, time; sleep = time.sleep; "
-                         "time.sleep = lambda s: None if s >= 15 else sleep(s); "
-                         "sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')",
-                         "scripts/nanofil-fleet", "run", "--rev", self.sha,
-                         "--roots", "nanofil-rocq", "--out", str(directory))
-        result = json.loads((directory / "results.json").read_text())
-        self.assertTrue(result["ok"])
-        self.assertTrue(result["coverage"]["complete"])
-        self.assertEqual(len(self.commands("amp")), 14)  # one rejected upload, then thirteen workers
-        self.assertEqual(sum("--attach" in worker for worker in self.commands("amp")), 2)
-        self.assertIn("Too many attachment upload attempts",
-                      (directory / "nanofil_1_12.attempt-1.err").read_text())
-        # Even that same error must not retry a thread that already exists.
-        (self.tmp / "rate-limit-after-start").touch()
-        directory = self.tmp / "started-without-receipt"
-        failed = self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--rev", self.sha,
-                                  "--roots", "nanofil-rocq", "--out", str(directory), check=False)
-        self.assertNotEqual(failed.returncode, 0)
-        result = json.loads((directory / "results.json").read_text())
-        self.assertEqual(result["results"][0]["status"], "lost")
-        self.assertIn("T-started-fixture", result["results"][0]["thread_url"])
-        self.assertEqual(len(self.commands("amp")), 15)  # no retry and no waiting workers launched
-
-    def test_fleet_reports_shared_upload_failure_as_not_started(self):
-        (self.tmp / "startup-fails").touch()
-        directory = self.tmp / "fleet"
-        failed = self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--rev", self.sha,
-                                  "--roots", "nanofil-rocq", "--out", str(directory), check=False)
-        self.assertNotEqual(failed.returncode, 0)
-        result = json.loads((directory / "results.json").read_text())
-        self.assertFalse(result["ok"])
-        self.assertEqual(len(result["results"]), 13)
-        for job in result["results"]:
-            self.assertEqual(job["status"], "not_started")
-            self.assertIn("upload unavailable", job["error"])
-        self.assertEqual(len(self.commands("amp")), 1)
-        # A check that actually ran and failed must still be reported as fail.
-        (self.tmp / "startup-fails").unlink()
-        evidence = receipt(self.sha)
-        evidence["results"][0]["status"] = "fail"
-        (self.tmp / "worker-results.json").write_text(json.dumps(evidence))
-        directory = self.tmp / "failed-check"
-        failed = self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--rev", self.sha,
-                                  "--roots", "nanofil-rocq", "--out", str(directory), check=False)
-        self.assertNotEqual(failed.returncode, 0)
-        result = json.loads((directory / "results.json").read_text())
-        self.assertEqual(result["results"][0]["status"], "fail")
-        self.assertTrue(all(job["status"] == "pass" for job in result["results"][1:]))
-
-    def test_pushed_fleet_fetches_origin_without_any_attachments(self):
-        self.git("push", "-q", "origin", "HEAD:refs/heads/candidate")
-        directory = self.tmp / "fleet"
-        self.run_command(sys.executable, "scripts/nanofil-fleet", "run", "--rev", self.sha,
-                         "--roots", "nanofil-rocq", "--out", str(directory))
-        self.assertTrue(json.loads((directory / "results.json").read_text())["ok"])
-        self.assertEqual(len(self.commands("amp")), 13)
-        for worker in self.commands("amp"):
-            self.assertNotIn("--attach", worker)
-            self.assertIn(f"git fetch -q origin {self.sha}", worker[2])
-
-    def test_fleet_relays_timestamped_progress_before_worker_finishes(self):
-        import queue
-        (self.tmp / "stream-progress").touch()
-        directory = self.tmp / "fleet"
-        process = subprocess.Popen(
-            [sys.executable, "scripts/nanofil-fleet", "run", "--rev", self.sha,
-             "--roots", "nanofil-rocq", "--out", str(directory)],
-            cwd=self.repo, env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        lines, arrived = [], queue.Queue()
-
-        def read():
-            for line in process.stdout:
-                lines.append(line)
-                arrived.put(line)
-
-        reader = threading.Thread(target=read)
-        reader.start()
-        try:
-            while "building: still working" not in arrived.get(timeout=15):
-                pass
-            self.assertIsNone(process.poll(), "progress must arrive before completion")
-        finally:
-            (self.tmp / "resume-worker").touch()
-            process.wait(timeout=15)
-            reader.join(timeout=5)
-            errors = process.stderr.read()
-            process.stdout.close()
-            process.stderr.close()
-        self.assertEqual(process.returncode, 0, errors)
-        output = "".join(lines)
-        self.assertRegex(output, r"\[\d{4}-\d\d-\d\dT[^]]+Z\] nanofil-rocq: @@nanofil-rocq")
-        self.assertEqual(output.count("file=/build/ldouble.c seconds=12"), 1)
-        self.assertNotIn("prompt-only", output)
-        self.assertNotIn('"running":', output)
-        self.assertTrue(json.loads((directory / "results.json").read_text())["ok"])
-
-    def test_worker_never_samples_away_budget_warnings(self):
-        (self.tmp / "worker-warnings").touch()
-        self.env["HOME"] = str(self.tmp)
-        (self.tmp / ".nix-profile").mkdir()
-        (self.tmp / ".nix-profile/bin").symlink_to(self.bin)
-        result = self.run_command(sys.executable, "scripts/nanofil-fleet", "worker", "nanofil-rocq")
-        # The receipt retains warnings too, but they must reach the live output
-        # even when later ordinary progress arrives in the same log read.
-        live = result.stdout.split("NANOFIL-FLEET-RESULT ")[0]
-        self.assertIn("@@nanofil-progress 2026-11-06T20:00:00Z WARNING ", live)
-        self.assertIn("@@nanofil-progress 2026-11-06T20:00:01Z TIMEOUT ", live)
-
     def test_json_report_tracks_transitive_misses_and_upstream_fallback(self):
         self.lose(self.child)
-        failed = self.run_command(sys.executable, "scripts/ci-cache-check.py", "--json", STAGING, PLAY, check=False)
+        failed = self.run_command(sys.executable, "scripts/ci-cache-check.py", "--json", STAGING, SWIPL, check=False)
         self.assertEqual(failed.returncode, 1)
         rows = json.loads(failed.stdout)
         self.assertEqual([r["missing"] for r in rows], [[self.child], [self.child]])

@@ -1,0 +1,55 @@
+# nanofil's whole check (checks.nanofil, nanofil/nix/check.nix) after each
+# push that changes nanofil, split into shards that run side by side. It
+# never blocks a push: a red shard is fixed forward on main. Run it on a
+# branch with workflow_dispatch to see a change's result before pushing it.
+name: Nanofil
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "nanofil/**"
+      - flake.lock
+      - .github/workflows/nanofil.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run at a time per branch; a newer push waits and supersedes any
+# other waiting run, so the latest main is always tested.
+concurrency:
+  group: nanofil-${{ github.ref }}
+
+jobs:
+  check:
+    name: Shard ${{ matrix.shard }}/8
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    env:
+      NIX_CONFIG: |
+        extra-substituters = https://filc.cachix.org
+        extra-trusted-public-keys = filc.cachix.org-1:8rA7kXyu1HaJuMTsAKfA9fU/+r8YtLv5KiZ5hfDNZMk=
+        builders =
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Require cached staging toolchain, never rebuild LLVM here
+        run: python3 scripts/ci-cache-check.py packages.x86_64-linux.filcc-staging
+      - name: Check
+        env:
+          SHARD: ${{ matrix.shard }}/8
+        run: |
+          set -o pipefail
+          nix build -L --no-link --impure --expr \
+            "(builtins.getFlake (toString ./.)).lib.x86_64-linux.nanofil-check { shard = \"$SHARD\"; }" \
+            2>&1 | tee nanofil.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nanofil-shard-${{ matrix.shard }}
+          path: nanofil.log

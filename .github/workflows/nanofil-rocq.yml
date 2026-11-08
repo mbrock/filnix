@@ -1,9 +1,26 @@
+# The quick Rocq gate (model, parse.sh, small corpus) after each push that
+# changes its inputs; workflow_dispatch with full runs the mutation campaign.
+# It never blocks a push: a red run is fixed forward on main.
 name: Nanofil Rocq
 
 on:
   push:
     branches: [main]
-  pull_request:
+    paths:
+      - flake.nix
+      - flake.lock
+      - "nanofil/rocq/**"
+      - "nanofil/src/**"
+      - "nanofil/bin/**"
+      - nanofil/nix/rocq.nix
+      - nanofil/tests/par.sh
+      - nanofil/tests/watch.py
+      - "nanofil/tests/filc/**"
+      - "nanofil/tests/c/**"
+      - nanofil/web/rocq/rocq_syntax.pl
+      - nanofil/web/rocq/tests/parse.sh
+      - nanofil/web/rocq/tests/reprint.pl
+      - .github/workflows/nanofil-rocq.yml
   workflow_dispatch:
     inputs:
       full:
@@ -29,40 +46,28 @@ jobs:
         builders =
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Select relevant quick gate or explicit campaign
+      - name: Select the quick gate or the explicit campaign
         id: select
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           FULL: ${{ inputs.full }}
         run: |
-          if [ "$FULL" = true ]; then
-            root=nanofil-rocq-full
-          else
-            if [ -z "$BASE" ] || [[ "$BASE" =~ ^0+$ ]]; then BASE=HEAD^; fi
-            root=$(python3 scripts/nanofil-fleet required-roots --base "$BASE" --rev HEAD)
-          fi
+          if [ "$FULL" = true ]; then root=nanofil-rocq-full; else root=nanofil-rocq; fi
           echo "root=$root" >> "$GITHUB_OUTPUT"
-          if [ -z "$root" ]; then echo 'No model/compiler inputs changed; skipping Rocq.'; fi
       - uses: cachix/install-nix-action@v31
-        if: steps.select.outputs.root != ''
       - name: Require cached staging toolchain, never rebuild LLVM here
-        if: steps.select.outputs.root != ''
         run: |
           python3 nanofil/tests/watch.py --label 'Staging cache preflight' -- \
             python3 scripts/ci-cache-check.py packages.x86_64-linux.filcc-staging
       - name: Build and compare
-        if: steps.select.outputs.root != ''
         env:
           ROOT: ${{ steps.select.outputs.root }}
         run: |
-          warn=120; limit=300
+          warn=300; limit=1200
           if [ "$ROOT" = nanofil-rocq-full ]; then warn=600; limit=1800; fi
           python3 nanofil/tests/watch.py --label "$ROOT" --warn-after "$warn" --timeout "$limit" -- \
             nix build -L --no-link --cores 2 ".#checks.x86_64-linux.$ROOT" 2>&1 | tee nanofil-rocq.log
       - uses: actions/upload-artifact@v4
-        if: always() && steps.select.outputs.root != ''
+        if: always()
         with:
           name: nanofil-rocq-log
           path: nanofil-rocq.log

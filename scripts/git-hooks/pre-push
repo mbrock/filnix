@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Verifies each pushed commit as committed, in a temporary worktree, not the
-# working tree: the foundation outputs evaluate, changed workflows lint, changed
-# Python compiles, and importer changes pass tests/upstream-sources.py.
-# Main requires complete foundation closures in the consumer caches.
-# Feature branches report misses but remain transferable before publication.
+# working tree: changed workflows lint, changed Python compiles, importer
+# changes pass tests/upstream-sources.py, and, unless the changes cannot
+# touch them (foundations_unaffected in lib.sh), the foundation outputs are
+# in the public caches. Main requires them; feature branches only report
+# misses.
 set -euo pipefail
 # shellcheck source=scripts/git-hooks/lib.sh
 . "$(dirname "$0")/lib.sh"
@@ -41,9 +42,12 @@ while read -r _local_ref sha remote_ref remote_sha; do
       # tested with ||, so fail explicitly.
       PATH="$projeny/bin:$PATH" python3 tests/upstream-sources.py || exit 1
     fi
-    if grep -q -E '^(scripts/(ship|ci-cache-check\.py|publish-cache\.py|nanofil-fleet|git-hooks/)|tests/test_(ship|cache_publication)\.py)' <<<"$changed"; then
+    if grep -q -E '^(scripts/(ship|ci-cache-check\.py|publish-cache\.py|git-hooks/)|tests/test_(ship|cache_publication)\.py)' <<<"$changed"; then
       python3 -m unittest discover -s tests -p test_ship.py || exit 1
       python3 -m unittest discover -s tests -p test_cache_publication.py || exit 1
+    fi
+    if foundations_unaffected "$base" "$sha"; then
+      exit 0
     fi
     # Evaluate the foundation gate; wider distribution readiness is separate.
     mapfile -t attrs < <(grep -v -e '^#' -e '^$' scripts/ship-outputs.txt)

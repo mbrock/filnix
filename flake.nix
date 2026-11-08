@@ -241,7 +241,7 @@
                 variant = "staging";
               }).filc-ref-src;
             # checks.nanofil with arguments, such as { shard = "2/6"; } or
-            # { withTrealla = true; } (scripts/nanofil-fleet).
+            # { withTrealla = true; } (.github/workflows/nanofil.yml).
             nanofil-check =
               args:
               import ./nanofil/nix/check.nix (

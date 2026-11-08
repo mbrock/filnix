@@ -1,22 +1,28 @@
 #!/usr/bin/env bash
-# Push committed work after publishing its foundation cache closure:
+# Rebase committed work onto origin/main and push it to main:
 #
-#   scripts/ship                     rebase, repair missing foundations, push
-#   scripts/ship --no-publish        require cached foundations, do not publish
-#   scripts/ship --publish-only --rev REV   repair REV without changing refs
-#   scripts/ship --exact SHA --fleet-results FILE [--roots LIST]
-#                                    land the tested SHA without rebasing
+#   scripts/ship                     rebase, check foundations, push to main
+#   scripts/ship --no-publish        stop instead of publishing a missing foundation
+#   scripts/ship --publish-only --rev REV   publish REV's missing foundations;
+#                                    changes no refs
 #
-# The core CI job never builds Fil-C; it requires the foundation outputs in
-# scripts/ship-outputs.txt to be in the public caches. On the host
-# that runs the cache publisher (swa), this builds only incomplete outputs
-# at the candidate commit, queues both caches, and waits
-# until scripts/ci-cache-check.py passes before pushing. On other hosts that
-# can ssh to the publisher host (FILNIX_PUBLISH_HOST, default swa.sh) and sudo
-# there, it queues them with that host's publisher: igloo builds them locally
-# and copies them there, and hosts that cannot build x86_64-linux, such as
-# Macs, evaluate them locally and build them there. The pre-push hook
-# then verifies the commits (see scripts/git-hooks/pre-push).
+# Main is the integration branch. Tests, Rocq and the site run in CI after
+# the push, and a red run is fixed forward on main; nothing else waits for
+# them. The one thing checked before main moves is that the toolchain
+# foundations in scripts/ship-outputs.txt are in the public caches, since
+# every orb and CI job would otherwise compile LLVM. Pushes that cannot
+# change them (foundations_unaffected in scripts/git-hooks/lib.sh: nanofil,
+# docs, pages, workflows) skip that check. If main moves during the push,
+# ship rebases and pushes again.
+#
+# When a foundation is missing: on the host that runs the cache publisher
+# (swa), this builds only incomplete outputs at the candidate commit,
+# queues both caches, and waits until scripts/ci-cache-check.py passes
+# before pushing. On other hosts that can ssh to the publisher host
+# (FILNIX_PUBLISH_HOST, default swa.sh) and sudo there, it queues them with
+# that host's publisher: igloo builds them locally and copies them there,
+# and hosts that cannot build x86_64-linux, such as Macs, evaluate them
+# locally and build them there. Elsewhere, such as an orb, it stops.
 #
 # Only commits are shipped: uncommitted changes to tracked files stop it.
 set -euo pipefail
@@ -27,36 +33,20 @@ cd "$filnix_root"
 publish=1
 publish_only=0
 rev=HEAD
-exact=
-fleet_results=
-roots=auto
 while [ $# -gt 0 ]; do
   case "$1" in
     --no-publish) publish=0; shift ;;
     --publish-only) publish_only=1; shift ;;
-    --rev|--exact|--fleet-results|--roots)
+    --rev)
       [ $# -ge 2 ] || { echo "ship: $1 needs a value" >&2; exit 2; }
-      case "$1" in
-        --rev) rev=$2 ;;
-        --exact) exact=$2 ;;
-        --fleet-results) fleet_results=$2 ;;
-        --roots)
-          if [ "$2" = all ]; then roots=all; else roots="auto,$2"; fi
-          ;;
-      esac
+      rev=$2
       shift 2
       ;;
     *) sed -n '2,/^set /p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 2 ;;
   esac
 done
-if { [ "$rev" != HEAD ] && [ $publish_only = 0 ]; } ||
-   { [ -n "$exact" ] && { [ $publish_only = 1 ] || [ -z "$fleet_results" ]; }; } ||
-   { [ -z "$exact" ] && { [ -n "$fleet_results" ] || [ "$roots" != auto ]; }; }; then
-  echo "ship: --rev requires --publish-only; --exact requires --fleet-results and cannot publish-only" >&2
-  exit 2
-fi
-if [ -n "$exact" ] && ! [[ "$exact" =~ ^[0-9a-f]{40}$ ]]; then
-  echo "ship: --exact requires the full tested commit SHA" >&2
+if [ "$rev" != HEAD ] && [ $publish_only = 0 ]; then
+  echo "ship: --rev requires --publish-only" >&2
   exit 2
 fi
 
@@ -65,151 +55,148 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "ship: commit or stash changes to tracked files first; only commits are shipped" >&2
   exit 1
 fi
-if [ $publish_only = 0 ]; then git fetch -q origin; fi
-if [ -n "$exact" ]; then
-  sha=$(git rev-parse --verify "$exact^{commit}")
-  [ "$(git rev-parse HEAD)" = "$sha" ] || { echo "ship: HEAD is not tested commit $sha" >&2; exit 1; }
-  python3 scripts/nanofil-fleet verify "$fleet_results" --rev "$sha" --roots "$roots"
-  git merge-base --is-ancestor origin/main "$sha" || {
-    echo "ship: main diverged from $sha; stop, rebase and rerun the fleet" >&2; exit 1;
-  }
-elif [ $publish_only = 1 ]; then
+if [ $publish_only = 1 ]; then
   sha=$(git rev-parse --verify "$rev^{commit}")
 else
+  git fetch -q origin
   git rebase -q origin/main
   sha=$(git rev-parse HEAD)
+  if [ "$sha" = "$(git rev-parse origin/main)" ]; then
+    echo "ship: nothing to push; $sha is main"
+    exit 0
+  fi
 fi
 
-work=$(mktemp -d)
-on=()
-remote_roots=
-cleanup() {
-  git worktree remove --force "$work/tree" >/dev/null 2>&1 || true
-  rm -rf "$work"
-  if [ -n "$remote_roots" ]; then "${on[@]}" rm -rf "$remote_roots" || true; fi
-}
-trap cleanup EXIT
-git worktree add -q --detach "$work/tree" "$sha"
-flake="git+file://$filnix_root?rev=$sha"
-mapfile -t attrs < <(grep -v -e '^#' -e '^$' "$work/tree/scripts/ship-outputs.txt")
-[ ${#attrs[@]} -gt 0 ] || { echo "ship: empty foundation manifest" >&2; exit 2; }
-check_cache() {
-  if python3 scripts/ci-cache-check.py --flake "$flake" --json "${attrs[@]}" >"$work/cache.json"; then
-    return 0
-  else
-    local status=$?
-    [ "$status" = 1 ] || exit "$status"
-    return 1
-  fi
-}
-if ! check_cache; then
-  mapfile -t missing < <(python3 -c 'import json,sys; print("\n".join(r["attr"] for r in json.load(open(sys.argv[1])) if r["missing"]))' "$work/cache.json")
-  echo "ship: $sha needs publication: ${missing[*]}" >&2
-  [ $publish = 1 ] || { echo "ship: --no-publish cannot waive the main cache gate; ask the swa lander to publish $sha" >&2; exit 1; }
-
-  publisher=/opt/filnix-cache/bin/filnix-publish-cache
-  # Elsewhere (igloo), build here and publish through the publisher host.
-  publish_host=${FILNIX_PUBLISH_HOST:-swa.sh}
-  if [ ! -x $publisher ] || ! sudo -n true 2>/dev/null; then
-    if ssh -o BatchMode=yes -o ConnectTimeout=10 "$publish_host" "test -x $publisher && sudo -n true" 2>/dev/null; then
-      on=(ssh -o BatchMode=yes "$publish_host")
+if [ $publish_only = 1 ] || ! foundations_unaffected origin/main "$sha"; then
+  work=$(mktemp -d)
+  on=()
+  remote_roots=
+  cleanup() {
+    git worktree remove --force "$work/tree" >/dev/null 2>&1 || true
+    rm -rf "$work"
+    if [ -n "$remote_roots" ]; then "${on[@]}" rm -rf "$remote_roots" || true; fi
+  }
+  trap cleanup EXIT
+  git worktree add -q --detach "$work/tree" "$sha"
+  flake="git+file://$filnix_root?rev=$sha"
+  mapfile -t attrs < <(grep -v -e '^#' -e '^$' "$work/tree/scripts/ship-outputs.txt")
+  [ ${#attrs[@]} -gt 0 ] || { echo "ship: empty foundation manifest" >&2; exit 2; }
+  check_cache() {
+    if python3 scripts/ci-cache-check.py --flake "$flake" --json "${attrs[@]}" >"$work/cache.json"; then
+      return 0
     else
-      echo "ship: no cache publisher here or on $publish_host; ask the swa lander to publish $sha; not pushing" >&2
+      local status=$?
+      [ "$status" = 1 ] || exit "$status"
+      return 1
+    fi
+  }
+  if ! check_cache; then
+    mapfile -t missing < <(python3 -c 'import json,sys; print("\n".join(r["attr"] for r in json.load(open(sys.argv[1])) if r["missing"]))' "$work/cache.json")
+    echo "ship: $sha needs publication: ${missing[*]}" >&2
+    [ $publish = 1 ] || { echo "ship: not publishing; on swa, scripts/ship --publish-only --rev $sha publishes it" >&2; exit 1; }
+
+    publisher=/opt/filnix-cache/bin/filnix-publish-cache
+    # Elsewhere (igloo), build here and publish through the publisher host.
+    publish_host=${FILNIX_PUBLISH_HOST:-swa.sh}
+    if [ ! -x $publisher ] || ! sudo -n true 2>/dev/null; then
+      if ssh -o BatchMode=yes -o ConnectTimeout=10 "$publish_host" "test -x $publisher && sudo -n true" 2>/dev/null; then
+        on=(ssh -o BatchMode=yes "$publish_host")
+      else
+        echo "ship: no cache publisher here or on $publish_host; not pushing. A thread on runner swa publishes it with scripts/ship --publish-only --rev $sha (push the branch first)" >&2
+        exit 1
+      fi
+    fi
+    if ! "${on[@]}" "$publisher" --help | grep -q -- '--republish-root'; then
+      echo "ship: install the updated cache publisher on swa (--republish-root required); not pushing" >&2
       exit 1
     fi
-  fi
-  if ! "${on[@]}" "$publisher" --help | grep -q -- '--republish-root'; then
-    echo "ship: install the updated cache publisher on swa (--republish-root required); not pushing" >&2
-    exit 1
-  fi
 
-  gcroots="$work/roots"
-  mkdir "$gcroots"
-  build=(nix build --print-out-paths)
-  remote_build=0
-  if [ ${#on[@]} -gt 0 ]; then
-    # Outputs on the publisher host are rooted there until the caches have
-    # them, as the out-links do here.
-    remote_roots=$("${on[@]}" mktemp -d)
-    if [ "$(nix eval --impure --raw --expr builtins.currentSystem)" != x86_64-linux ]; then
-      remote_build=1
-      build+=(--no-link --eval-store auto --store "ssh-ng://$publish_host")
-    fi
-  fi
-  roots=()
-  i=0
-  mapfile -t missing_paths < <(python3 -c 'import json,sys; print("\n".join(o["path"] for r in json.load(open(sys.argv[1])) for o in r["outputs"] if o["missing"]))' "$work/cache.json")
-  for path in "${missing_paths[@]}"; do roots+=(--extra-root "$path"); done
-  for attr in "${missing[@]}"; do
-    i=$((i + 1))
-    paths=()
-    if [ $remote_build = 1 ]; then
-      echo "ship: building $attr on $publish_host"
-      out=$("${build[@]}" "git+file://$filnix_root?rev=$sha#$attr^*")
-      mapfile -t paths <<<"$out"
-      "${on[@]}" /nix/var/nix/profiles/default/bin/nix-store --realise --add-root "$remote_roots/$i" "${paths[@]}" >/dev/null
-    else
-      echo "ship: building $attr"
-      # Out-links keep the outputs alive until they are published.
-      out=$("${build[@]}" --out-link "$gcroots/$i" "git+file://$filnix_root?rev=$sha#$attr^*")
-      mapfile -t paths <<<"$out"
-    fi
-  done
-  if [ ${#on[@]} -gt 0 ] && [ $remote_build = 0 ]; then
-    paths=()
-    for ((j = 1; j < ${#roots[@]}; j += 2)); do paths+=("${roots[j]}"); done
-    echo "ship: copying the outputs to $publish_host"
-    # Built here, so unsigned; the publisher signs them for its caches.
-    nix copy --no-check-sigs --to "ssh-ng://$publish_host" "${paths[@]}"
-    "${on[@]}" /nix/var/nix/profiles/default/bin/nix-store --realise --add-root "$remote_roots/out" "${paths[@]}" >/dev/null
-  fi
-  for target in local cachix; do
-    credential=()
-    [ $target = cachix ] && credential=(-p LoadCredential=cachix.dhall:/etc/filnix-cache/cachix.dhall)
-    queue=("${roots[@]}")
-    if [ $target = cachix ]; then
-      queue=()
-      for path in "${missing_paths[@]}"; do queue+=(--republish-root "$path"); done
-    fi
-    # The publisher's timer may hold its lock; queued roots are durable, so
-    # one successful run is enough and the timer finishes the upload.
-    for attempt in $(seq 1 40); do
-      if "${on[@]}" sudo systemd-run --quiet --wait --pipe --collect -p User=filnix-cache -p Group=filnix-observe \
-        "${credential[@]}" $publisher $target --batches 32 "${queue[@]}"; then
-        break
+    gcroots="$work/roots"
+    mkdir "$gcroots"
+    build=(nix build --print-out-paths)
+    remote_build=0
+    if [ ${#on[@]} -gt 0 ]; then
+      # Outputs on the publisher host are rooted there until the caches have
+      # them, as the out-links do here.
+      remote_roots=$("${on[@]}" mktemp -d)
+      if [ "$(nix eval --impure --raw --expr builtins.currentSystem)" != x86_64-linux ]; then
+        remote_build=1
+        build+=(--no-link --eval-store auto --store "ssh-ng://$publish_host")
       fi
-      [ "$attempt" = 40 ] && { echo "ship: could not queue roots for $target" >&2; exit 1; }
-      sleep 15
+    fi
+    roots=()
+    i=0
+    mapfile -t missing_paths < <(python3 -c 'import json,sys; print("\n".join(o["path"] for r in json.load(open(sys.argv[1])) for o in r["outputs"] if o["missing"]))' "$work/cache.json")
+    for path in "${missing_paths[@]}"; do roots+=(--extra-root "$path"); done
+    for attr in "${missing[@]}"; do
+      i=$((i + 1))
+      paths=()
+      if [ $remote_build = 1 ]; then
+        echo "ship: building $attr on $publish_host"
+        out=$("${build[@]}" "git+file://$filnix_root?rev=$sha#$attr^*")
+        mapfile -t paths <<<"$out"
+        "${on[@]}" /nix/var/nix/profiles/default/bin/nix-store --realise --add-root "$remote_roots/$i" "${paths[@]}" >/dev/null
+      else
+        echo "ship: building $attr"
+        # Out-links keep the outputs alive until they are published.
+        out=$("${build[@]}" --out-link "$gcroots/$i" "git+file://$filnix_root?rev=$sha#$attr^*")
+        mapfile -t paths <<<"$out"
+      fi
     done
-  done
-  echo "ship: waiting for the caches"
-  deadline=$((SECONDS + 3 * 3600))
-  until check_cache; do
-    [ $SECONDS -lt $deadline ] || { echo "ship: still not cached after 3 hours" >&2; exit 1; }
-    sleep 30
-  done
+    if [ ${#on[@]} -gt 0 ] && [ $remote_build = 0 ]; then
+      paths=()
+      for ((j = 1; j < ${#roots[@]}; j += 2)); do paths+=("${roots[j]}"); done
+      echo "ship: copying the outputs to $publish_host"
+      # Built here, so unsigned; the publisher signs them for its caches.
+      nix copy --no-check-sigs --to "ssh-ng://$publish_host" "${paths[@]}"
+      "${on[@]}" /nix/var/nix/profiles/default/bin/nix-store --realise --add-root "$remote_roots/out" "${paths[@]}" >/dev/null
+    fi
+    for target in local cachix; do
+      credential=()
+      [ $target = cachix ] && credential=(-p LoadCredential=cachix.dhall:/etc/filnix-cache/cachix.dhall)
+      queue=("${roots[@]}")
+      if [ $target = cachix ]; then
+        queue=()
+        for path in "${missing_paths[@]}"; do queue+=(--republish-root "$path"); done
+      fi
+      # The publisher's timer may hold its lock; queued roots are durable, so
+      # one successful run is enough and the timer finishes the upload.
+      for attempt in $(seq 1 40); do
+        if "${on[@]}" sudo systemd-run --quiet --wait --pipe --collect -p User=filnix-cache -p Group=filnix-observe \
+          "${credential[@]}" $publisher $target --batches 32 "${queue[@]}"; then
+          break
+        fi
+        [ "$attempt" = 40 ] && { echo "ship: could not queue roots for $target" >&2; exit 1; }
+        sleep 15
+      done
+    done
+    echo "ship: waiting for the caches"
+    deadline=$((SECONDS + 3 * 3600))
+    until check_cache; do
+      [ $SECONDS -lt $deadline ] || { echo "ship: still not cached after 3 hours" >&2; exit 1; }
+      sleep 30
+    done
+  fi
 fi
 
 if [ $publish_only = 1 ]; then
   echo "ship: $sha foundations cached; no refs changed"
   exit 0
 fi
-[ "$(git rev-parse HEAD)" = "$sha" ] || { echo "ship: HEAD changed; not pushing $sha" >&2; exit 1; }
-git fetch -q origin
-git merge-base --is-ancestor origin/main "$sha" || {
-  echo "ship: main diverged from $sha; stop, rebase and rerun the fleet" >&2; exit 1;
-}
-if [ "$sha" = "$(git rev-parse origin/main)" ]; then
-  echo "ship: $sha already on main; foundations cached"
-  exit 0
-fi
-if [ -z "$exact" ]; then
-  # Exact-head landing already verified this evidence above. Ordinary
-  # shipping runs only the quick gate, never the opt-in mutation campaign.
-  required=$(python3 scripts/nanofil-fleet required-roots --rev "$sha")
-  if [ -n "$required" ]; then
-    python3 nanofil/tests/watch.py --label nanofil-rocq --warn-after 120 --timeout 300 -- \
-      nix build -L --no-link "$flake#checks.x86_64-linux.nanofil-rocq"
+for attempt in 1 2 3 4 5; do
+  [ "$(git rev-parse HEAD)" = "$sha" ] || { echo "ship: HEAD changed; not pushing $sha" >&2; exit 1; }
+  if git push origin "$sha:refs/heads/main"; then
+    echo "ship: main is $sha"
+    exit 0
   fi
-fi
-git push origin "$sha:refs/heads/main"
+  git fetch -q origin
+  if git merge-base --is-ancestor origin/main "$sha"; then
+    echo "ship: push of $sha failed, and not because main moved" >&2
+    exit 1
+  fi
+  echo "ship: main moved; rebasing onto $(git rev-parse --short origin/main) (attempt $attempt)"
+  git rebase -q origin/main
+  sha=$(git rev-parse HEAD)
+done
+echo "ship: main kept moving; run scripts/ship again" >&2
+exit 1

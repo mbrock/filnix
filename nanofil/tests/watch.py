@@ -82,7 +82,7 @@ def main():
                     pending = lines.pop()[-500:]
                     if lines:
                         # Do not replay machine-readable completion markers:
-                        # fleet coverage must count each actual step only once.
+                        # aggregation must count each actual step only once.
                         last = " ".join(lines[-1].decode(errors="replace").split()).replace("@@", "")[-240:]
         code = child.wait()
     except KeyboardInterrupt:

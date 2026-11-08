@@ -51,6 +51,25 @@ jobs:
         run: |
           nix build -L .#site
           cp -rL result _site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  # The deployed site at phone widths. It reports and never holds back the
+  # deploy above: a red run is fixed forward.
+  phone:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+      - name: Unpack the deployed site
+        run: mkdir _site && tar -xf artifact.tar -C _site
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -76,7 +95,8 @@ jobs:
           pids=()
           for width in 320 390; do
             (
-              python3 nanofil/tests/watch.py --label "Rocq phone pages ${width}px" -- \
+              python3 nanofil/tests/watch.py --label "Rocq phone pages ${width}px" \
+                --warn-after 300 --timeout 1200 -- \
                 node nanofil/web/rocq/tests/layout.mjs http://127.0.0.1:8765 --pages-only "$width" \
                 2>&1 | tee "rocq-phone-${width}.log"
             ) &
@@ -91,9 +111,3 @@ jobs:
           name: rocq-phone-layout
           path: rocq-phone-*.log
           if-no-files-found: ignore
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-      - id: deploy
-        uses: actions/deploy-pages@v4

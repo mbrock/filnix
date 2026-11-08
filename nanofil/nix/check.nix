@@ -19,7 +19,7 @@
 # shard = "I/N" the derivation runs shard I of N (1-based), a fixed
 # split of the step list balanced by tests/check-times.tsv, and keeps
 # going past a failing step; the N shards together run every step once
-# (scripts/nanofil-fleet runs them in parallel orbs). Each step prints
+# (.github/workflows/nanofil.yml runs them side by side). Each step prints
 # a "@@nanofil-step ok|FAIL SECONDS LABEL" line for aggregation.
 {
   pkgs,

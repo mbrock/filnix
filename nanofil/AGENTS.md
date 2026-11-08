@@ -42,8 +42,7 @@ nanofil/tests/guide.sh [--check]               # regenerate (or check) the outpu
 swipl nanofil/tests/docs.pl -- nanofil/src     # every module has a header and every export PlDoc
 (cd nanofil && swipl web/dterm.pl --check docs/guide.md docs/formal.md src)  # the guide's and formal.md's references resolve
 (cd nanofil/src && ../bin/nanofil --script ../tests/gen.pl SEED COUNT </dev/null) >gen.ir  # random IR corpus
-scripts/nanofil-fleet run [--roots ...]       # everything, sharded over orbs; must pass before pushing
-nix build .#checks.x86_64-linux.nanofil        # the same, unsharded in one build (about 45 min)
+nix build .#checks.x86_64-linux.nanofil        # everything, in one build (about 45 min); CI runs it in 8 shards after each push
 nix build .#checks.x86_64-linux.nanofil-rocq   # quick: model, parse.sh, small corpus; base verdicts only
 nix build .#checks.x86_64-linux.nanofil-rocq-full # deliberate full mutation campaign (docs/rocq.md)
 nix build .#checks.x86_64-linux.nanofil-hello  # GNU hello built only by nanofil, vs filcc
@@ -61,80 +60,31 @@ swa that spreads them over swa and its remote builders (igloo, chapel;
 full set or a survey rerun after a push asks the orchestrating thread, or
 a thread on runner swa, to run it at the pushed commit.
 
-The pre-push check is `scripts/nanofil-fleet run`, from an orb or a
-runner: it must pass at the commit you push. Its default `--roots auto`
-adds the quick Rocq root for model/compiler/validator or gate-input
-changes relative to origin/main, not unrelated web/docs changes. CI and
-exact-head ship verification use the same selector. Add `--roots auto,...`
-for other affected checks (`nanofil-lua` and package builds for frontend
-and backend changes, `--roots all` when unsure). `all` excludes the full
-mutation campaign: select `nanofil-rocq-full` explicitly before releases
-and for soundness-relevant changes. Ordinary iteration needs only the
-quick model build, parse.sh and small-corpus outcomes/base verdicts,
-without mutants, targeted at 1–2 minutes. Full evidence is not proof and
-does not belong on every experimental edit. No nightly run is configured.
-Run the unsharded
-`nix build .#checks.x86_64-linux.nanofil` only when the fleet cannot
-start, and say so. The fleet runs the checks in
-new orbs (`amp -ox`, one thread per job) and aggregates the results
-in `.amp/in/nanofil-fleet/`. It splits `checks.nanofil` into
-`--shards N` (default 12) fixed shards of its steps
-(`lib.x86_64-linux.nanofil-check { shard = "I/N"; }`, balanced by
-`tests/check-times.tsv`) and with `--roots all` (or a list such as
-`nanofil-lua,nanofil-hello+nanofil-zlib`) builds the other checks, one
-worker each. Workers check out the exact commit; an unpushed one goes
-as a git bundle, so it works before pushing. The summary fails unless
-every job passed and the shards ran each step of the list exactly once.
-Its `times.tsv` is the new `tests/check-times.tsv` when the split has
-drifted. Steps live in `nix/check.nix`'s `steps` function; give each
-a unique label, since labels select a step's shard.
+Before pushing, run what covers your change: unit tests, the difftests or
+programs you touched, `snapshot.sh` for output changes, `nix build
+.#checks.x86_64-linux.nanofil-rocq` (1–2 minutes) for model, compiler or
+validator changes, and a package check for frontend or backend changes.
+Then push with `scripts/ship` (nanofil-only pushes skip the cache gate)
+and keep working. After the push, CI runs `checks.nanofil` split into 8
+shards (.github/workflows/nanofil.yml), quick Rocq and the site. If one
+of your runs goes red, fix it forward. To see the whole check on a
+branch before pushing, run the Nanofil workflow on it with
+`workflow_dispatch`, or build one shard locally:
+`nix build -L --impure --expr '(builtins.getFlake (toString ./.)).lib.x86_64-linux.nanofil-check { shard = "3/8"; }'`.
+Steps live in `nix/check.nix`'s `steps` function; give each a unique
+label, since labels select a step's shard, and refresh
+`tests/check-times.tsv` from a run's step timings when the split drifts.
 
-Before launching workers the fleet checks the candidate's `filcc-staging`
-closure through Cachix + cache.nixos.org; missing paths or check errors
-start zero workers. Ask the swa lander to repair a staging miss. A missing
-candidate `site-play` does not block testing: it gates landing instead.
-`--dry-run` shows the preflight and prompts without checking or launching.
+## Visible progress
 
-## Check budgets and visible progress
-
-Slow checks are bugs. Do not introduce a slow push gate or normalize one
-by silently waiting longer. Measure the largest cases under the actual
-parallel workload, then split independent work, fix its algorithm or
-cache immutable inputs without reducing coverage.
-
-| Work | Soft budget (warning) | Hard deadline (failure) |
-| --- | --- | --- |
-| A main-check step or one corpus file | 60 s | 300 s |
-| Quick Rocq root, including Nix dependencies | 120 s | 300 s |
-| Other fleet shards/roots, including the full mutation campaign | 600 s | 1800 s |
-| Explicit full-package campaign (`scripts/nanofil-checks`, not a push receipt) | 600 s | 5400 s |
-
-`tests/watch.py --label LABEL -- COMMAND...` enforces the first row by
-default; the fleet enforces root budgets. It emits UTC timestamps, elapsed
-time, the work's label and its latest output every 15 seconds even if the
-child is silent. It warns as soon as the soft budget is crossed and kills
-the process group on a hard timeout (exit 124). Main-check steps and
-`tests/par.sh` files use it; the Rocq matrix uses that same file runner.
-A timeout is a failure, never a skipped case or a successful receipt.
-
-- Run long experiments through the watchdog too. Do not launch a job
-  redirected solely to a log, wait silently, or poll less often than every
-  30 seconds. Show the latest real step/file/mode, time and warning, not
-  just "still running". A heartbeat with no indication of the active work
-  is not meaningful progress.
-- Preserve complete logs and per-step/per-file timings. The fleet relays
-  sampled worker progress and reports slow-check warnings in its summary;
-  Rocq's output retains the full per-mode and program logs. Worker agents
-  must surface those updates in commentary, including failures and budget
-  warnings, while waiting on the same process.
-- Investigate a warning before adding more work to that check. Do not
-  rerun a timeout unchanged, extend a limit, increase orb size, delete
-  cases or hide output to get a green gate. A deliberately slower
-  diagnostic/campaign must state its purpose and finite budget up front,
-  remain observable, and cannot replace exact-head fleet evidence.
-- Check performance after changing parallelism: wall time under CPU or
-  memory contention, not just the isolated fastest case. Keep reference
-  behavior, all modes, mutants and exactly-once shard coverage intact.
+`tests/watch.py --label LABEL -- COMMAND...` runs a check with UTC
+timestamps, elapsed time and its latest output every 15 seconds, warns
+at a soft budget (60 s by default) and kills the process group at a hard
+deadline (300 s by default, exit 124). Main-check steps and
+`tests/par.sh` files use it. Run long experiments through it too, so
+whoever is watching sees the active step rather than silence. A step
+that keeps warning is worth splitting, caching or speeding up; do not
+delete its cases to make it fast.
 
 ## Local iteration
 
@@ -263,34 +213,11 @@ Several threads may work on nanofil at once, each owning one workstream.
 - The IR term grammar in `ir.pl` is the contract between the frontend,
   interpreter and backends. Changing it needs the orchestrating thread's
   agreement first.
-- Rebase onto current main before the final commit X and run
-  `scripts/nanofil-fleet run --rev X --shards 12`,
-  adding other affected roots (`--roots auto,LIST` or `--roots all`).
-  The full mutation root is opt-in, not a routine landing requirement.
-  Freeze the candidate
-  ref and hand the swa lander its branch/bundle, full X, observed main,
-  exact command, pass/coverage, and `results.json`; retain `fleet.json`,
-  `summary.md`, and worker logs as supporting evidence. Transfer the files
-  explicitly: an orb path is not a path on swa. Never commit receipts
-  after testing, since that would create a new SHA.
-- The lander fetches the branch/bundle, confirms it is X, checks out X,
-  and runs `scripts/ship --exact X --fleet-results FILE`. Twelve complete
-  shards plus the change-selected quick Rocq root are required;
-  unrelated web-only changes need no Rocq receipt. `--roots LIST` adds
-  other required roots and `--roots all` excludes the full campaign.
-  Releases require a separate exact-head `nanofil-rocq-full` receipt via
-  `scripts/release --fleet-results FILE`. The existing receipt is verified; do not
-  rerun its fleet just because ownership changed. Main must be an ancestor
-  of X. If main diverges, stop, rebase, resolve any conflicts preserving
-  both sides' intent, and rerun at the new SHA. No cherry-pick, implicit
-  rebase, cross-SHA receipt reuse, or force-push in the landing path.
-- Shipping checks all foundations in `scripts/ship-outputs.txt` and
-  publishes only missing outputs through swa before main advances. A
-  `src/`, `bin/`, or playground/dterm change can invalidate `site-play`.
-  No publisher with missing outputs means no push; `--no-publish` is not
-  a waiver. Keep one normal main lander on swa; feature branches can be
-  pushed from orbs before publication. `scripts/ship --publish-only --rev X`
-  repairs caches even if X is already main, without changing refs.
+- Push your own work to main with `scripts/ship` when it is coherent
+  and its targeted checks pass; there is no lander or receipt. Commit
+  small and push often, so others rebase onto your work early. If
+  `scripts/ship` stops on a rebase conflict, resolve it preserving both
+  sides' intent and run it again.
 - Nothing under nanofil should change the toolchain. If the pre-push hook
   says "CI will fail until these are published", stop, do not push with
   --no-verify, and report what changed it.

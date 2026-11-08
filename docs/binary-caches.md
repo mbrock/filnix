@@ -118,8 +118,8 @@ No change to the Nix daemon or shared compiler derivations is necessary.
 There are two readiness levels:
 
 - **Foundation / push gate:** `scripts/ship-outputs.txt` lists `filcc`,
-  `filcc-staging` (nanofil and its pre-push fleet need it) and `baseline`,
-  with the site's `site-swipl` and `site-play`. The baseline retains every output of the curated packages in
+  `filcc-staging` (nanofil, its checks and the site's playground need it) and
+  `baseline`, with the site's `site-swipl`. The baseline retains every output of the curated packages in
   `shells/baseline.nix`, including Bash, Perl, Python, build tools, shared
   libraries and development headers. Publishing the complete closures means
   a toolchain update does not make ordinary consumers rebuild LLVM or these
@@ -171,8 +171,11 @@ checks the full distribution list, as required by the release workflow.
 
 The gate is **consumer availability through Cachix + cache.nixos.org**,
 not independently complete copies in both filnix caches. It covers complete
-closures of all five foundation attributes, including `filcc-staging` and
-`site-play`. Fresh narinfo queries, not upload receipts, establish readiness.
+closures of all four foundation attributes, including `filcc-staging`.
+Pushes whose changes lie only where those outputs never read (`nanofil/`
+except `nanofil/web/play/swipl.nix`, `docs/`, `pages/`, `.github/`,
+Markdown; `foundations_unaffected` in `scripts/git-hooks/lib.sh`) skip the
+check. Fresh narinfo queries, not upload receipts, establish readiness.
 Missing paths fail main pushes; evaluation/network errors are errors, not
 pending publication. The pre-push hook checks the committed tip in a clean
 worktree and is strict for destination `refs/heads/main`; feature branches
@@ -189,44 +192,7 @@ Repeating it on a cache hit performs no foundation build or publication.
 paths and each output's missing closure paths; exit codes remain 0 ready,
 1 missing, and 2 evaluation/checker failure.
 
-### Exact-head Nanofil handoffs
-
-Rebase before the final candidate X, then run
-`scripts/nanofil-fleet run --rev X --shards 12`, adding
-other affected roots (`--roots auto,LIST` or `--roots all`). The fleet checks staging's public
-closure before launching any worker. It does not require cached test results
-or candidate `site-play`; the latter gates landing instead.
-
-Hand the swa lander the repository/branch and full X, observed main, command,
-pass/coverage and `results.json`. Retain `fleet.json`, `summary.md`, worker
-links and raw event logs. Transfer a feature branch or Git bundle and the
-receipt files explicitly; paths in an orb do not exist on swa. Keep the
-candidate ref frozen, and do not commit receipts after testing.
-
-The lander fetches and confirms the branch/bundle resolves to X, checks it out
-cleanly, and runs `scripts/ship --exact X --fleet-results FILE`. This verifies
-the worker revisions, twelve distinct complete shards and successful exactly-once
-coverage, plus the quick Rocq root when model/compiler/validator or gate inputs
-changed. Unrelated web/docs changes skip Rocq. `--roots LIST` adds required
-checks; `--roots all` requires normal candidate roots, excluding the deliberate
-`nanofil-rocq-full` mutation campaign. The standalone `scripts/nanofil-fleet verify FILE --rev X`
-checks the same receipt without launching workers. Receipts are evidence from
-trusted workers, not cryptographic attestations.
-
-Exact landing never rebases or cherry-picks. It requires main to be an ancestor
-of X, repairs X's foundation caches, rechecks main, and normally fast-forwards
-exactly X with no second fleet. Diverging main means stop, rebase and obtain a
-new pass at the new SHA. A concurrent conflicting push is rejected, never
-forced. Keep one normal lander on swa without locking main for an entire
-fleet. Plain `scripts/ship` still rebases for non-handoff work; a pre-rebase
-receipt does not apply to its new SHA. Subscribe to CI for the actual landed
-SHA, separately from the fleet and cache results.
-
-`scripts/release --fleet-results FILE` requires twelve complete shards and
-`nanofil-rocq-full` at the exact release SHA, then tags `origin/main` as
-`vYYYY.MM.DD` once it is cached. The mutation campaign is selected explicitly
-before a release or a soundness-relevant change, not on every push. Routine
-relevant pushes use the 1–2 minute model/parse/base-verdict smoke check, and
+`scripts/release` tags `origin/main` as `vYYYY.MM.DD` once it is cached, and
 `.github/workflows/release.yml` publishes a GitHub release with the PHP
 tarball, the image as a docker-archive, the `/opt/fil` and filroot tarballs
 and their SHA-256 sums, and pushes the image as `PHPVERSION-TAG`.

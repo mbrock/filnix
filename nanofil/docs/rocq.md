@@ -86,37 +86,27 @@ mutant verdicts, not their unchanged base verdicts. They are covered only by the
 no-mutants smoke check. This tradeoff is deliberate; a dominance or
 other soundness-relevant change calls for the opt-in evidence.
 
-The fleet's default `--roots auto`, ship's evidence verifier and CI share
-the change selector in `scripts/nanofil-fleet required-roots`. Model,
-compiler/validator and gate-input changes need the quick root; unrelated
-web styling, rendering and documentation edits skip it. Parser/grammar
-changes still need parse.sh. Plain ship runs the relevant quick check;
-exact-head ship reuses its receipt instead of rerunning it.
+CI (`.github/workflows/nanofil-rocq.yml`) runs the quick root after each
+push that changes model, compiler/validator or gate inputs (its `paths`
+list); unrelated web styling, rendering and documentation edits skip it.
+Run it yourself before pushing such a change:
+`nix build .#checks.x86_64-linux.nanofil-rocq`.
 
-The complete outcome and mutation matrix described below is now
-`checks.x86_64-linux.nanofil-rocq-full`. Run it deliberately before a
-release or for a soundness-relevant change:
+The complete outcome and mutation matrix described below is
+`checks.x86_64-linux.nanofil-rocq-full`. Run it deliberately for a
+soundness-relevant change, with `nix build` or the workflow's manual
+`full` input. No nightly campaign is enabled.
 
-```sh
-scripts/nanofil-fleet run --rev HEAD --shards 12 --roots auto,nanofil-rocq-full
-```
-
-Even `--roots all` excludes it. CI runs quick checks on relevant pushes
-and pull requests; its manual `full` input selects the campaign. No
-nightly campaign is enabled. `scripts/release --fleet-results FILE`
-requires exact-head full-campaign evidence, not a quick receipt.
-
-All jobs retain timestamped progress and budget warnings. Quick Rocq
-warns at 120 seconds and fails at 300; the full fleet root warns at 600
-and fails at 1800. A corpus file warns at 60 seconds and fails at 300.
-Timeouts fail, never omit coverage. Independent outcome modes run in
+All jobs retain timestamped progress through `tests/watch.py`; a corpus
+file warns at 60 seconds and fails at 300. Timeouts fail, never omit
+coverage. Independent outcome modes run in
 parallel, as the validator modes already did. Lua's whole-module mutant
 generation/judging uses independent item-index partitions after the
 program cases finish; every changed module is still judged whole, and
 inserted-item mutants occur only in partition zero. The union is checked
 against the serial stream. Model inputs exclude fixtures/harnesses/docs;
 the check excludes unrelated web/docs inputs. Outputs retain full logs
-per mode/program, with file/mode/seconds progress visible through the fleet.
+per mode/program.
 
 ## The full outcome gate
 

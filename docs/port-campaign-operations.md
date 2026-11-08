@@ -177,21 +177,9 @@ campaignctl submit checks --prefix nanofil     # the same, recorded as a campaig
 campaignctl submit nanofil-survey --opt plain  # the survey (eight roots at a time)
 ```
 
-An orb cannot reach those builders but can start other orbs:
-`scripts/nanofil-fleet run --roots all` builds `checks.nanofil` in twelve
-shards and every other `nanofil-*` check in its own orb, at the current
-commit, and aggregates pass/FAIL with each step's time (nanofil/AGENTS.md).
-Staging's consumer-cache closure is checked before workers start; candidate
-`site-play` is checked before landing, not before testing. For an exact-head
-handoff, rebase before testing, run with `--rev X --shards 12 --roots nanofil-rocq`
-(plus other affected roots), then transfer branch/bundle at full X and
-`results.json` to the swa lander. It checks out X and runs
-`scripts/ship --exact X --fleet-results FILE` (adding required roots with
-`--roots LIST` or `--roots all`), reusing the pass and pushing exactly X.
-If main diverges, stop and obtain a new fleet at the rebased SHA; never rebase
-silently or force-push. Keep one normal swa lander, not a new queue service.
-See [binary caches](binary-caches.md#exact-head-nanofil-handoffs) for the
-receipt and transfer contract.
+An orb cannot reach those builders. After a push, CI runs `checks.nanofil`
+in eight shards (`.github/workflows/nanofil.yml`); run that workflow on a
+branch with `workflow_dispatch` to see the whole check before pushing.
 
 A check that compares against a reference must run both sides in one
 derivation whenever the result depends on the machine, because the

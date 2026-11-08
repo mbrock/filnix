@@ -3,13 +3,10 @@
 # including Bash, Perl, Python, build tools and shared libraries.
 # Wider distributions and ports belong to the campaign, not this gate.
 packages.x86_64-linux.filcc
-# The staging compiler nanofil requires: without it, every staging change
-# makes each orb of the pre-push fleet (scripts/nanofil-fleet) compile filc0.
+# The staging compiler nanofil, its checks and the site's playground need:
+# without it, every orb and CI job that touches nanofil compiles filc0.
 packages.x86_64-linux.filcc-staging
 packages.x86_64-linux.baseline
 # SWI-Prolog 10 for the Pages build (.#site), which would otherwise compile
 # it on every run; it changes only with nixpkgs.
 packages.x86_64-linux.site-swipl
-# The site's nanofil playground, built with filcc-staging: without it, every
-# staging pin change makes the Pages build compile staging clang.
-packages.x86_64-linux.site-play

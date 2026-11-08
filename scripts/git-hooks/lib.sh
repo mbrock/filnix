@@ -17,3 +17,18 @@ if ! command -v treefmt >/dev/null || ! command -v nixfmt >/dev/null ||
   PATH="$devtools/bin:$PATH"
 fi
 export PATH
+
+# foundations_unaffected BASE REV: true when every file changed between
+# BASE and REV lies where the outputs of scripts/ship-outputs.txt never
+# read, so pushing it needs no cache check. tests/ is not such a place:
+# baseline runs tests/baseline.py. Anything else gets the check.
+foundations_unaffected() {
+  local f
+  while IFS= read -r f; do
+    case "$f" in
+      nanofil/web/play/swipl.nix) return 1 ;; # site-swipl
+      nanofil/* | docs/* | pages/* | .github/* | *.md) ;;
+      *) return 1 ;;
+    esac
+  done < <(git diff --name-only "$1" "$2")
+}
