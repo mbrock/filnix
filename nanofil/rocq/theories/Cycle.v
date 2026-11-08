@@ -168,35 +168,6 @@ Definition cycle_inv (c : config) : Prop :=
 
 (** ## Each step *)
 
-(** Take apart the facts in the context: conjunctions, existentials,
-    and each case of a disjunction. *)
-Ltac facts :=
-  repeat match goal with
-  | H : True |- _ => clear H
-  | H : _ /\ _ |- _ => destruct H
-  | H : exists _, _ |- _ => destruct H
-  | H : _ \/ _ |- _ => destruct H
-  end.
-
-(** Prove a fact about the environment after a step: look each name up
-    through the step's [put]s to the facts before it, and the ranges
-    by arithmetic. *)
-Ltac show_facts :=
-  unfold int_at, into_xs, any;
-  repeat match goal with
-  | |- _ /\ _ => split
-  | |- exists _, _ => eexists
-  | |- True => exact I
-  | |- _ \/ _ => first [left; solve [show_facts] | right; solve [show_facts]]
-  | |- lookup _ (put _ _ _) = _ =>
-      first [ rewrite lookup_after_put_same | rewrite lookup_after_put_other by reflexivity ]
-  | H : lookup ?x ?e = _ |- lookup ?x ?e = _ => rewrite H; reflexivity
-  | |- Some _ = Some _ => reflexivity
-  | |- _ <= _ => arith
-  | |- _ < _ => arith
-  | |- _ => progress cbv beta
-  end.
-
 (** Unfold the assertion at a known point. *)
 Ltac assertion := cbn [cycle_assert Nat.leb andb Nat.sub]; try unfold body_assert; cbn [Nat.leb].
 
@@ -221,8 +192,8 @@ Ltac next_inv Hb Hr :=
   match goal with |- exists k pt e, mkConfig (mkFrame _ _ _ _ ?pt') _ _ _ = _ /\ _ =>
     find_point pt' 0%nat
   end;
-  eexists; split; [reflexivity|]; split; [assumption|]; cbn [c_mem]; split; [exact (conj Hb Hr)|];
-  split; [show_facts | assertion; show_facts].
+  eexists; split; [subst; reflexivity|]; split; [assumption|]; cbn [c_mem]; split; [exact (conj Hb Hr)|];
+  split; [show_facts | assertion; try unfold into_xs; show_facts].
 
 (** One point of [cycle_safe]: the point from Hk, an index into the
     points pts, the assertion Ha taken apart, the step computed, and its
@@ -230,17 +201,23 @@ Ltac next_inv Hb Hr :=
 Ltac point_safe pts Hk Ha Hb Hr :=
   cbv in Hk; injection Hk as <-; clear pts;
   assertion_in Ha; unfold int_at, into_xs in *; facts;
-  remember (step _ _) as r eqn:E; compute_step E; subst r; cbn [safe_result];
+  remember (step _ _) as r eqn:E; compute_step E; subst r; cbn [safe_step];
   solve [ intro; assumption | next_inv Hb Hr ].
 
 (** One step from a configuration where the assertions hold is
-    [safe_result] for them. *)
-Lemma cycle_safe : forall free c, cycle_inv c -> safe_result cycle_inv (step (cycle_ge free) c).
+    [safe_step] for them. *)
+Lemma cycle_safe : forall free c, cycle_inv c -> safe_step cycle_inv (c_mem c) (step (cycle_ge free) c).
 Proof.
   intros free c (k & pt & e & Ec & Hk & Hm & Hin & Ha).
-  rewrite Ec. destruct Hm as [Hb Hr]. clear Ec.
+  rewrite Ec. destruct Hm as [Hb Hr]. unfold xs_region in Hr. clear Ec.
   set (m := c_mem c) in *. set (fuel := c_fuel c) in *. clearbody m fuel.
   set (pts := cycle_points) in Hk. vm_compute in pts.
+  remember cycle_fn as f eqn:Hf.
+  block_fact f cycle_fn Hf (TAtom "start") b0 Hb0.
+  block_fact f cycle_fn Hf (TAtom "L4") b4 Hb4.
+  block_fact f cycle_fn Hf (TAtom "L5") b5 Hb5.
+  block_fact f cycle_fn Hf (TAtom "L7") b7 Hb7.
+  assert (Hret : fn_ret f = RClass L) by (rewrite Hf; reflexivity).
   do 19 (destruct k as [|k]; [point_safe pts Hk Ha Hb Hr|]).
   destruct k; discriminate Hk.
 Qed.
@@ -286,8 +263,8 @@ Proof.
   - exact cycle_initial.
   - apply cycle_find.
   - intros xs (n & rest & ->). eexists. split; [apply cycle_call_frame|]. intros fuel. apply cycle_start.
-  - intros c Hc. apply cycle_safe, Hc.
-  - intros c s s' m' Hc _ Hsp. eapply cycle_safepoint; eassumption.
+  - intros c s Hc _. apply cycle_safe, Hc.
+  - intros c s s' m' Hc _ _ Hsp. eapply cycle_safepoint; eassumption.
 Qed.
 
 End CycleSafe.

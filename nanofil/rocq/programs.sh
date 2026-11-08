@@ -22,6 +22,7 @@ programs='
 Sum rocq/programs/sum.c -O
 Prefix rocq/programs/prefix.c -O
 Cycle rocq/programs/cycle.c -O
+Buffer rocq/programs/buffer.c -O
 Hi tests/c/prog/hi.c -O
 '
 

@@ -63,7 +63,7 @@ package in Filnix rather than only what nanofil compiles.
 | 4 | Observations, refinement, and libc contracts | a trace semantics; `opt:refines/2` as trace inclusion | [ExternalCalls.v](../rocq/theories/ExternalCalls.v) states trusted contracts and finite effect prefixes, starting with `puts`; [ExternalMachine.v](../rocq/theories/ExternalMachine.v) adds guarded direct-call transitions and finite labelled runs, preserving readiness, identities and Campaign 3's two invariants; native instances/trace coverage, executable integration and refinement remain open |
 | 5 | Static discharge by certificate | `discharged(Cert)`, `discharge_ok`, a Prolog finder | not started |
 | 6 | Integration with Filnix and the playground | the `nanofil-check` gate | not started |
-| 7 | Trap-freedom of a pinned Nix closure: a program that never panics | `never_panics` of one closure: a closed module, then a one-call libc program, then GNU Hello (`nanofil-hello-O`); `ls` next; this build of OpenSSH's server as the stretch | [step 0 measured](trap-census.md): Hello has 1,398 class-`a` sites, 360 flag-only renewals; all 178 functions in 81 objects inside the subset, `valid = Some true`; `never_panics` stated in [Panics.v](../rocq/theories/Panics.v); step 1 proved for every runtime: [Sum.v](../rocq/theories/Sum.v)'s `sum_never_panics`, a closed loop over a global array, and [Prefix.v](../rocq/theories/Prefix.v)'s `prefix_never_panics`, the same loop bounded by an `int` input, for every input; [Cycle.v](../rocq/theories/Cycle.v)'s `cycle_never_panics`, a loop the input runs up to 2^31 - 1 times, by assertions at each point (Floyd's method) instead of enumerated runs |
+| 7 | Trap-freedom of a pinned Nix closure: a program that never panics | `never_panics` of one closure: a closed module, then a one-call libc program, then GNU Hello (`nanofil-hello-O`); `ls` next; this build of OpenSSH's server as the stretch | [step 0 measured](trap-census.md): Hello has 1,398 class-`a` sites, 360 flag-only renewals; all 178 functions in 81 objects inside the subset, `valid = Some true`; `never_panics` stated in [Panics.v](../rocq/theories/Panics.v); step 1 proved for every runtime: [Sum.v](../rocq/theories/Sum.v)'s `sum_never_panics`, a closed loop over a global array, and [Prefix.v](../rocq/theories/Prefix.v)'s `prefix_never_panics`, the same loop bounded by an `int` input, for every input; [Cycle.v](../rocq/theories/Cycle.v)'s `cycle_never_panics`, a loop the input runs up to 2^31 - 1 times, by assertions at each point (Floyd's method) instead of enumerated runs; [Buffer.v](../rocq/theories/Buffer.v)'s `buffer_never_panics`, the same over a heap buffer at any base the allocation returns, under the premise that no safepoint frees a live object |
 
 ## The claims, kept apart
 
@@ -1758,7 +1758,7 @@ discharge.
 | Step | Program | Needs |
 | --- | --- | --- |
 | 0 | [measured: obligation census](trap-census.md) of `hi.c` and `nanofil-hello-O`, plus `valid` over all Hello objects | Campaign 0's query over Hello; no proof |
-| 1 | proved: [rocq/programs/sum.c](../rocq/programs/sum.c), a loop over a read-only global array with no input and no external call ([Sum.v](../rocq/theories/Sum.v)), and [rocq/programs/prefix.c](../rocq/programs/prefix.c), the same loop stopped by an `int` input n, for every n ([Prefix.v](../rocq/theories/Prefix.v)) | `never_panics` stated in Rocq ([Panics.v](../rocq/theories/Panics.v)); the modules as fixtures ([rocq/programs.sh](../rocq/programs.sh)); computed runs checked step by step over abstract memory; for a loop with no small bound, [rocq/programs/cycle.c](../rocq/programs/cycle.c), an assertion at each point and one symbolically computed step from it ([Cycle.v](../rocq/theories/Cycle.v), [Symbolic.v](../rocq/theories/Symbolic.v)) |
+| 1 | proved: [rocq/programs/sum.c](../rocq/programs/sum.c), a loop over a read-only global array with no input and no external call ([Sum.v](../rocq/theories/Sum.v)), and [rocq/programs/prefix.c](../rocq/programs/prefix.c), the same loop stopped by an `int` input n, for every n ([Prefix.v](../rocq/theories/Prefix.v)) | `never_panics` stated in Rocq ([Panics.v](../rocq/theories/Panics.v)); the modules as fixtures ([rocq/programs.sh](../rocq/programs.sh)); computed runs checked step by step over abstract memory; for a loop with no small bound, [rocq/programs/cycle.c](../rocq/programs/cycle.c), an assertion at each point and one symbolically computed step from it ([Cycle.v](../rocq/theories/Cycle.v), [Symbolic.v](../rocq/theories/Symbolic.v)); for a heap object, [rocq/programs/buffer.c](../rocq/programs/buffer.c), the same with a premise that no safepoint frees it ([Buffer.v](../rocq/theories/Buffer.v)) |
 | 2 | `hi.c`, built by nanofil against the pinned libc | the external-call step; contracts for `puts` and the `exit` path; linking |
 | 3 | GNU Hello, `nanofil-hello-O` | the entry contract; about 60 libc contracts; triples for gnulib's string code; temporal reasoning for `quotearg` |
 | 4 | `ls`, from [nix/coreutils.nix](../nix/coreutils.nix) | contracts for directories, `stat` and locale; a malloc-heavy program |
@@ -1804,11 +1804,33 @@ check and the class wraps make, and a comparison the facts leave open
 `never_panics_by_invariant` is the proof rule: an invariant that holds
 at every admissible start, that every step keeps without failing, and
 that a due safepoint keeps gives `never_panics`. Cycle.v compiles in
-about 30 s, against Prefix.v's 66 s, and its cost grows with the
+about 20 s, against Prefix.v's 66 s, and its cost grows with the
 function's size, not with the trip count. Changing the loop to
 `i <= n` (i wraps to negative at INT_MAX) or the index to `i % 5` fails
-the proof. Heap objects still need a stability premise of their own,
-since a safepoint may free any live heap object.
+the proof.
+
+A heap object adds two things, both in Buffer.v. buffer.c allocates
+four longs (`__builtin_alloca`, which Fil-C places in the collected
+heap), fills them, then sums `p[i % 4]` as cycle.c does. First, the run
+chooses the object's base: the proof rule now hands the invariant every
+base that is `fresh` in the current memory (the runtime's
+`fresh_allocation` gives that where it is ready), and the assertions
+speak of any such base b: `v4` holds a pointer to b with b's capability,
+and b's region is a live heap object of 32 bytes. Second, Runtime.v lets
+a safepoint free any live heap object, as another thread's `free` would,
+so the theorem has the premise `safepoint_keeps_live`: no safepoint
+frees a live object. It is the program's own premise, like Campaign 4's
+`stdio_stable`, and is true of a single-threaded program natively and of
+the interpreter's runtime, so `interp_buffer_never_panics` has no
+assumption. Changing the fill loop to `i <= 4` (a write past the buffer)
+or the read to `p[i % 5]` fails the proof.
+
+Compile time stays proportional to the function: Buffer.v's 32 points
+take about 35 s, Cycle.v's 19 about 20 s. Two choices in Symbolic.v
+keep it so: the function is kept abstract and each block is computed
+once (`block_fact`), and each wrap and comparison is tried once,
+innermost first: a wrap that arithmetic cannot drop becomes an unknown
+in its range, and a comparison it cannot decide is split at once.
 
 Gates: each step's proof is checked in a Nix check, and its
 certificates are replayed by the extracted checker. A planted

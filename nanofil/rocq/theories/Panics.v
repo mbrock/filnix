@@ -89,15 +89,15 @@ Proof. intros why. unfold refusal, resource_reason. tauto. Qed.
 Lemma resource_not_failure : forall why, resource_reason why -> ~ failure (Trap why).
 Proof. intros why H Hf. apply Hf, refusal_resource, H. Qed.
 
-(** The step result r is safe for the invariant inv: a next
-    configuration in inv, an ending that is not a [failure], or an
-    allocation with a nonnegative extent whose every base gives a
-    configuration in inv. Never stuck. *)
-Definition safe_result (inv : config -> Prop) (r : step_result) : Prop :=
+(** The step result r, of a configuration in the memory m, is safe for
+    the invariant inv: a next configuration in inv, an ending that is
+    not a [failure], or an allocation with a nonnegative extent whose
+    every [fresh] base in m gives a configuration in inv. Never stuck. *)
+Definition safe_step (inv : config -> Prop) (m : mem) (r : step_result) : Prop :=
   match r with
   | Next c' => inv c'
   | Done o => ~ failure o
-  | Fresh q k => 0 <= req_extent q /\ forall base, inv (k base)
+  | Fresh q k => 0 <= req_extent q /\ forall base, fresh m q base -> inv (k base)
   | Stuck _ => False
   end.
 
@@ -132,35 +132,39 @@ Definition never_panics (md : module) (entry : name) (input : list word -> Prop)
 
 (** The proof rule for [never_panics]: an invariant inv of
     configurations that holds where every admissible call starts, whose
-    every [step] is [safe_result], and that what R does at a due
-    [[poll|safepoint]] keeps. Then no state a run reaches [fails]. The
-    invariant is the program's own; Cycle.v's says what holds at each
-    point of its function. *)
+    every [step] is [safe_step], and that what R does at a due
+    [[poll|safepoint]] keeps, where R is [[ready]]. Then no state a run
+    reaches [fails]. Readiness is what makes an allocation's base
+    [fresh] (R's [fresh_allocation]); the invariant is the program's
+    own, as Cycle.v's and Buffer.v's assertions at each point. *)
 Lemma never_panics_by_invariant : forall md entry input globals m f (inv : config -> Prop),
   initial_memory md = Some (globals, m) ->
   find_fn (program_genv md globals) entry = Some (Defined f) ->
   (forall xs, input xs -> exists fr, call_frame f xs = Some fr /\ forall fuel, inv (mkConfig fr [] m fuel)) ->
-  (forall c, inv c -> safe_result inv (step (program_genv md globals) c)) ->
-  (forall c s s' m', inv c -> RM.safepoint_due (program_genv md globals) c = true ->
+  (forall c s, inv c -> R.ready s (c_mem c) -> safe_step inv (c_mem c) (step (program_genv md globals) c)) ->
+  (forall c s s' m', inv c -> R.ready s (c_mem c) -> RM.safepoint_due (program_genv md globals) c = true ->
      R.safepoint s (c_mem c) s' m' -> inv (RM.with_mem c m')) ->
   never_panics md entry input.
 Proof.
   intros md entry input globals m f inv Hm Hf Hin Hstep Hsp.
   exists globals, m, f. split; [exact Hm|]. split; [exact Hf|].
   intros xs Hxs. destruct (Hin xs Hxs) as (fr & Hfr & Hinv). exists fr. split; [exact Hfr|].
-  intros _ fuel st Hreach.
+  intros Hready fuel st Hreach.
   assert (Hgen : forall st1 st2, RM.mreachable (program_genv md globals) st1 st2 ->
-                   inv (fst st1) -> inv (fst st2)).
+                   inv (fst st1) /\ RM.ready_state st1 -> inv (fst st2) /\ RM.ready_state st2).
   { intros st1 st2 H. induction H as [st1 st2 Hs | st1 | st1 st2 st3 _ IH1 _ IH2]; auto.
-    intros H0. pose proof (Hstep _ H0) as Hr.
-    destruct Hs as [c c' s E | c q k s base s' E _ _ | c s s' m' Hdue Hsp'];
-      cbn [fst] in H0, Hr |- *.
+    intros [H0 Hr0]. split; [|exact (RM.mstep_ready (program_genv md globals) _ _ eq_refl Hs Hr0)].
+    destruct Hs as [c c' s E | c q k s base s' E He Hal | c s s' m' Hdue Hsp'];
+      unfold RM.ready_state in Hr0; cbn [fst snd] in H0, Hr0 |- *;
+      pose proof (Hstep _ _ H0 Hr0) as Hr.
     - rewrite E in Hr. exact Hr.
-    - rewrite E in Hr. exact (proj2 Hr base).
-    - exact (Hsp c s s' m' H0 Hdue Hsp'). }
-  assert (Hst : inv (fst st)) by (apply (Hgen _ _ Hreach), Hinv).
-  unfold fails. pose proof (Hstep _ Hst) as Hr.
-  destruct (step (program_genv md globals) (fst st)); cbn [safe_result] in Hr; try tauto. lia.
+    - rewrite E in Hr. destruct (step_fresh_kept _ _ _ _ E) as [Ha _].
+      destruct (R.fresh_allocation _ _ _ _ _ Hr0 Ha He Hal) as [Hfresh _].
+      exact (proj2 Hr base Hfresh).
+    - exact (Hsp c s s' m' H0 Hr0 Hdue Hsp'). }
+  destruct (Hgen _ _ Hreach (conj (Hinv fuel) Hready)) as [Hst Hrs].
+  unfold fails. pose proof (Hstep _ _ Hst Hrs) as Hr.
+  destruct (step (program_genv md globals) (fst st)); cbn [safe_step] in Hr; try tauto. lia.
 Qed.
 
 End Panics.

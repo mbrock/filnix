@@ -4,6 +4,7 @@ theories/SumCode.v
 theories/HiCode.v
 theories/PrefixCode.v
 theories/CycleCode.v
+theories/BufferCode.v
 theories/Maps.v
 theories/Ieee.v
 theories/Syntax.v
@@ -49,6 +50,7 @@ theories/Sum.v
 theories/Prefix.v
 theories/Symbolic.v
 theories/Cycle.v
+theories/Buffer.v
 theories/HiArtifact.v
 theories/Selected.v
 theories/Extract.v
