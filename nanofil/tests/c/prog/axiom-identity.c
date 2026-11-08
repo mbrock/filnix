@@ -1,10 +1,12 @@
 // Runtime axiom "Free keeps identities" (docs/runtime-axioms.md): free
 // empties an object's bounds in place and reclaims nothing; only the
 // collector reclaims, at a safepoint. Right after a free, while no
-// collection runs (about 320 KiB with headers, below FUGC's 1 MiB trigger;
-// the test checks that none started), thousands of allocations of the
-// freed object's size never take its address, the freed pointer's
-// capability traps, and another object is untouched.
+// collection runs, a thousand allocations of the freed object's size
+// never take its address, the freed pointer's capability traps, and
+// another object is untouched. Each attempt starts just after a full
+// collection and allocates about 80 KiB with headers, below FUGC's 1 MiB
+// trigger; an attempt during which a collection started anyway (a loaded
+// CI builder once saw one) is retried, up to five times.
 //
 // The obvious wrong strengthening, that free leaves every region as it
 // was, is refuted by the trap. The address check is a consequence of the
@@ -34,20 +36,26 @@ static int trapped(void (*f)(void)) {
     return WIFSIGNALED(st) && WTERMSIG(st) == SIGTRAP;
 }
 int main(void) {
-    held = malloc(64);
     long *other = malloc(64);
-    for (int i = 0; i < 8; i++) { held[i] = 100 + i; other[i] = 200 + i; }
-    volatile uintptr_t address = (uintptr_t)held;
-    zgc_cycle_number before = zgc_requested_cycle();
-    free(held);
-    int taken = 0;
-    for (int k = 0; k < 4096; k++) {
-        long *q = malloc(64);
-        volatile uintptr_t qa = (uintptr_t)q;
-        if (qa == address) taken = 1;
-        memset(q, 0xa5, 64);
+    for (int i = 0; i < 8; i++) other[i] = 200 + i;
+    int clean = 0, taken = 0;
+    for (int attempt = 0; attempt < 5 && !clean; attempt++) {
+        held = malloc(64);
+        for (int i = 0; i < 8; i++) held[i] = 100 + i;
+        volatile uintptr_t address = (uintptr_t)held;
+        zgc_request_and_wait();
+        zgc_cycle_number before = zgc_requested_cycle();
+        free(held);
+        taken = 0;
+        for (int k = 0; k < 1024; k++) {
+            long *q = malloc(64);
+            volatile uintptr_t qa = (uintptr_t)q;
+            if (qa == address) taken = 1;
+            memset(q, 0xa5, 64);
+        }
+        clean = zgc_requested_cycle() == before;
     }
-    printf("no collection ran during the allocations: %s\n", zgc_requested_cycle() == before ? "yes" : "no");
+    printf("no collection ran during the allocations: %s\n", clean ? "yes" : "no");
     printf("no allocation after a free takes the freed object's address: %s\n", taken ? "no" : "yes");
     printf("the freed pointer's capability traps: %s\n", trapped(read_held) ? "yes" : "no");
     zgc_request_and_wait();
