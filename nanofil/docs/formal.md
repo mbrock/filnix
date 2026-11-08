@@ -693,6 +693,43 @@ environment-size arithmetic separately. Auxiliary-vector construction,
 libc/TLS/stdio readiness, constructors, shutdown and native coverage
 remain open. This conditional string suboperation does not close `hi.c`.
 
+### Campaign 4, milestone 4b: construct argv and environment tables
+
+`Startup R.copy_vector` allocates the pointer table first, including one
+sentinel slot even for an empty vector. `copy_slots` then executes the
+forward allocation, NUL-inclusive copy and pointer-store loop, threading
+the actual runtime state and cumulative born list through every step.
+Each slot receives both address bytes and its allocator-created `Obj`
+capability. The zero sentinel comes from fresh allocation and is framed
+through the loop, not restored by a fictitious final write.
+
+`copy_slots_correct` carries the live, already-born table identity,
+aligned cursor, bounds through the sentinel, and fresh separation from
+earlier strings. `startup_frame` preserves every old region exactly and
+bytes/auxiliary metadata outside the remaining slots. At vector entry
+even the table is new, so `copy_vector_correct` frames **all** old
+objects, alongside effects, readiness, identity persistence, the checked
+readable vector and a writable table span. `copied_startup` composes
+argv and environment construction into `startup_at` while preserving
+argv through the environment allocations.
+
+The successful construction remains conditional on actual allocator
+answers, valid pre-NUL payloads and authorized original sizes within the
+allocation limit. `None` does not classify a native failure. Argv retains
+the signed `argc + 1` restriction (`argc < INT_MAX`); the environment's
+legal original table size instead implies the selected size_t count,
+increment and multiplication bounds, without a signed-int limit.
+
+Executable regressions distinguish table-first and forward allocation
+order, asymmetric/empty/high-byte strings, slot stride and capabilities,
+both sentinels, empty and populated environments, and old pointer/byte
+framing. The native re-exec probe covers both environment cases.
+
+This is memory construction, not coverage of the entire launcher: native
+obtaining/tracking of `main` between the two loops, auxv, libc/TLS/stdio
+initialization, constructors and failure paths still need accounting.
+Shutdown follows next; no `hi.c` closure or native trap-freedom is claimed.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and

@@ -14,7 +14,7 @@
     must not be confused with a malformed entry or deleted execution. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Identity ExternalCalls.
+From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Machine Identity ExternalCalls.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -264,6 +264,162 @@ Proof.
   - rewrite copy_c_bytes_aux. reflexivity.
 Qed.
 
+(** Startup keeps all old regions exactly and all old-object bytes and
+    capabilities outside the pointer slots it is filling. New objects
+    need not be unchanged; their contents are constructed separately. *)
+Definition startup_frame (m m' : mem) (lo hi : Z) : Prop :=
+  (forall b reg, object_region b (m_regions m) = Some reg ->
+    object_region b (m_regions m') = Some reg) /\
+  (forall a, in_object m a -> a < lo \/ hi <= a ->
+    m_bytes m' a = m_bytes m a /\ m_aux m' a = m_aux m a).
+
+(** Allocating and copying a fresh string frames every old object. *)
+Lemma copied_string_frame : forall m q base bytes lo hi,
+  fresh m q base -> Z.of_nat (length bytes) + 1 <= req_extent q ->
+  startup_frame m (copy_c_bytes (allocated m q base) base bytes) lo hi.
+Proof.
+  intros m q base bytes lo hi Hfresh Hsize. split.
+  - intros b reg H. rewrite copy_c_bytes_regions. eapply allocated_old_region; [|exact H].
+    exact (proj1 (proj2 (proj2 (proj2 Hfresh)))).
+  - intros a Hin _. eapply copied_string_old_object; eauto.
+Qed.
+
+(** A startup frame transports old access checks without ending lifetimes. *)
+Lemma startup_frame_access : forall m m' lo hi a c size rights align,
+  startup_frame m m' lo hi -> access_res m a c size rights align = Some ok ->
+  access_res m' a c size rights align = Some ok.
+Proof.
+  intros m m' lo hi a c size rights align [Hr _] Ha.
+  unfold access_res, cap_access_res in Ha. destruct c as [|b|b|f|f]; try discriminate.
+  all: destruct (object_region b (m_regions m)) as [reg|] eqn:E; try discriminate;
+    unfold access_res, cap_access_res; rewrite (Hr _ _ E); exact Ha.
+Qed.
+
+(** Framing an old object leaves it an object for later allocations. *)
+Lemma startup_frame_in : forall m m' lo hi a,
+  startup_frame m m' lo hi -> in_object m a -> in_object m' a.
+Proof. intros m m' lo hi a [Hr _] (b & reg & E & H). exists b, reg. auto. Qed.
+
+(** Consecutive construction steps may write in adjoining slot ranges. *)
+Lemma startup_frame_join : forall m m1 m2 lo mid hi,
+  lo <= mid <= hi -> startup_frame m m1 lo mid -> startup_frame m1 m2 mid hi ->
+  startup_frame m m2 lo hi.
+Proof.
+  intros m m1 m2 lo mid hi Hbounds [Hr1 Hb1] [Hr2 Hb2]. split.
+  - intros b reg H. auto.
+  - intros a Hin Hout.
+    assert (Hin1 : in_object m1 a).
+    { destruct Hin as (b & reg & E & H). exists b, reg. auto. }
+    destruct (Hb2 a Hin1 ltac:(lia)) as [Hbytes Haux].
+    rewrite Hbytes, Haux. apply Hb1; auto; lia.
+Qed.
+
+(** A store writes the address bytes and the capability of a pointer. *)
+Definition startup_store (m : mem) (a : Z) (p : ptr) : mem :=
+  store_aux (store_bytes m a 8 (ptr_addr p)) a (ptr_cap p).
+
+(** A pointer store frames every old byte and capability outside its slot. *)
+Lemma startup_store_frame : forall m a p, startup_frame m (startup_store m a p) a (a + 8).
+Proof.
+  intros m a p. split; [intros; assumption|]. intros b Hin Hout.
+  unfold startup_store. simpl.
+  assert (((a <=? b) && (b <? a + 8)) = false) as E.
+  { apply Bool.not_true_is_false. intros H. apply andb_true_iff in H as [H1 H2].
+    apply Z.leb_le in H1. apply Z.ltb_lt in H2. lia. }
+  assert ((b =? a) = false) as E' by (apply Z.eqb_neq; lia).
+  rewrite E, E'. auto.
+Qed.
+
+(** An old checked pointer slot survives a frame disjoint from its eight bytes. *)
+Lemma startup_frame_slot : forall m m' lo hi a p,
+  startup_frame m m' lo hi -> (forall b, a <= b < a + 8 -> in_object m b) ->
+  (forall b, a <= b < a + 8 -> b < lo \/ hi <= b) ->
+  pointer_slot m a p -> pointer_slot m' a p.
+Proof.
+  intros m m' lo hi a p [_ Hb] Ha Hdis [Hp [Hbytes Haux]].
+  split; [exact Hp|]. split.
+  - rewrite <- Hbytes. apply load_bytes_agree; [lia|]. intros i Hi.
+    apply (proj1 (Hb (a + i) (Ha (a + i) ltac:(lia)) (Hdis (a + i) ltac:(lia)))).
+  - rewrite (proj2 (Hb a (Ha a ltac:(lia)) (Hdis a ltac:(lia)))). exact Haux.
+Qed.
+
+(** C-string contents depend only on their payload bytes and final NUL. *)
+Lemma string_at_agree : forall bytes m m' a,
+  (forall b, a <= b < a + Z.of_nat (length bytes) + 1 -> m_bytes m' b = m_bytes m b) ->
+  string_at m a bytes -> string_at m' a bytes.
+Proof.
+  induction bytes as [|b rest IH]; intros m m' a Hb Hs.
+  - simpl in *. rewrite Hb by lia. exact Hs.
+  - destruct Hs as [Hbyte [Hhead Hrest]]. simpl. split; [exact Hbyte|]. split.
+    + rewrite Hb; [exact Hhead|simpl; lia].
+    + apply (IH m m'); [|exact Hrest]. intros x Hx. apply Hb.
+      change (a <= x < a + Z.of_nat (S (length rest)) + 1).
+      rewrite Nat2Z.inj_succ. lia.
+Qed.
+
+(** A frame disjoint from an old string preserves its complete checked NUL. *)
+Lemma startup_frame_string : forall m m' lo hi p bytes,
+  startup_frame m m' lo hi -> c_string m p bytes ->
+  (forall a, ptr_addr p <= a < ptr_addr p + Z.of_nat (length bytes) + 1 ->
+    a < lo \/ hi <= a) -> c_string m' p bytes.
+Proof.
+  intros m m' lo hi p bytes Hf [Ha Hs] Hdis. split.
+  - eapply startup_frame_access; eauto.
+  - eapply string_at_agree; [|exact Hs]. intros a Hrange.
+    apply (proj1 (proj2 Hf a ltac:(eapply access_in; [exact Ha|lia]) (Hdis a Hrange))).
+Qed.
+
+(** A construction that frames every old object retains old vectors too. *)
+Lemma startup_frame_slots : forall texts m m' a,
+  startup_frame m m' 0 0 ->
+  (forall b, a <= b < a + 8 * (Z.of_nat (length texts) + 1) -> in_object m b) ->
+  string_slots m a texts -> string_slots m' a texts.
+Proof.
+  induction texts as [|text rest IH]; intros m m' a Hf Hin Hslots.
+  - eapply startup_frame_slot; [exact Hf| |intros; lia|exact Hslots].
+    intros b Hb. apply Hin. simpl. lia.
+  - destruct Hslots as (p & Hp & Hs & Hr). exists p. split.
+    + eapply startup_frame_slot; [exact Hf| |intros; lia|exact Hp].
+      intros b Hb. apply Hin. change (a <= b < a + 8 * (Z.of_nat (S (length rest)) + 1)).
+      rewrite Nat2Z.inj_succ. lia.
+    + split.
+      * eapply startup_frame_string; [exact Hf|exact Hs|]. intros; lia.
+      * apply (IH m m'); [exact Hf| |exact Hr]. intros b Hb. apply Hin.
+        change (a <= b < a + 8 * (Z.of_nat (S (length rest)) + 1)).
+        rewrite Nat2Z.inj_succ. lia.
+Qed.
+
+(** The readable pointer array and every pointed-to string survive later copies. *)
+Lemma startup_frame_vector : forall m m' table texts,
+  startup_frame m m' 0 0 -> string_vector m table texts -> string_vector m' table texts.
+Proof.
+  intros m m' table texts Hf [Ha Hslots]. split.
+  - eapply startup_frame_access; eauto.
+  - eapply startup_frame_slots; [exact Hf| |exact Hslots].
+    intros b Hb. eapply access_in; [exact Ha|exact Hb].
+Qed.
+
+(** Sixteen-byte rounding provides at least the original positive request. *)
+Lemma startup_extent : forall size, 0 < size -> size <= req_extent (heap_req 16 size).
+Proof.
+  intros size Hsize. unfold heap_req. simpl.
+  pose proof (Z.mod_pos_bound (size + 15) 16 ltac:(lia)).
+  pose proof (Z.div_mod (size + 15) 16 ltac:(lia)). lia.
+Qed.
+
+(** The table's actual object, bounds and alignment justify each slot access. *)
+Lemma startup_table_access : forall m table end_ a size rights align,
+  object_region table (m_regions m) = Some (mkRegion table end_ Heap Live) ->
+  table <= a -> a + size <= end_ -> a mod align = 0 ->
+  access_res m a (Obj table) size rights align = Some ok.
+Proof.
+  intros m table end_ a size rights align Hr Hlo Hhi Ha.
+  unfold access_res, cap_access_res. rewrite Hr. simpl.
+  assert (((table <=? a) && (a + size <=? end_)) = true) as E.
+  { apply andb_true_iff. split; apply Z.leb_le; lia. }
+  rewrite E. unfold aligned_res. rewrite Ha. reflexivity.
+Qed.
+
 (** Startup copying over an arbitrary [[runtime]]. *)
 Module Startup (R : Runtime).
 (** The external-call effects of this runtime. *)
@@ -341,6 +497,250 @@ Proof.
     + split.
       * destruct Hfresh as (Hbase & _ & Hend & _). lia.
       * intros a Hin. eapply copied_string_old_object; eauto.
+Qed.
+
+(** Append two actual effect paths, retaining the same contract authority. *)
+Lemma effects_trans : forall sources roots releases requests s m born s1 m1 born1 s2 m2 born2,
+  E.effects sources roots releases requests s m born s1 m1 born1 ->
+  E.effects sources roots releases requests s1 m1 born1 s2 m2 born2 ->
+  E.effects sources roots releases requests s m born s2 m2 born2.
+Proof.
+  intros sources roots releases requests s m born s1 m1 born1 s2 m2 born2 H.
+  induction H; intros Htail; eauto using E.effects_local, E.effects_alloc.
+Qed.
+
+(** Preconditions on copied pre-NUL payloads and their original allocation sizes. *)
+Definition payloads_allowed (requests : Z -> Z -> Prop) (texts : list (list Z)) : Prop :=
+  Forall (fun text => Forall (fun b => 0 < b < 256) text /\
+    Z.of_nat (length text) + 1 <= max_allocation_size /\
+    requests 16 (Z.of_nat (length text) + 1)) texts.
+
+(** Fill a preallocated pointer table in forward order. None says only
+    that this successful construction did not complete, not why native
+    startup ended. Each allocation uses the preceding runtime state. *)
+Fixpoint copy_slots (texts : list (list Z)) (s : R.state) (m : mem)
+    (born : list Z) (cursor : Z) : option (R.state * mem * list Z) :=
+  match texts with
+  | [] => Some (s, m, born)
+  | text :: rest =>
+      match R.alloc s (heap_req 16 (Z.of_nat (length text) + 1)) with
+      | None => None
+      | Some (base, s1) =>
+          let m1 := copy_c_bytes (allocated m (heap_req 16 (Z.of_nat (length text) + 1)) base)
+            base text in
+          copy_slots rest s1 (startup_store m1 cursor (mkPtr base (Obj base)))
+            (base :: born) (cursor + 8)
+      end
+  end.
+
+(** Allocate the pointer table first, even when there are no strings.
+    Fresh zero bytes and capabilities supply its sentinel, not a
+    synthetic final store. Allocation failures remain unclassified. *)
+Definition copy_vector (texts : list (list Z)) (s : R.state) (m : mem) (born : list Z)
+    : option (ptr * R.state * mem * list Z) :=
+  let size := 8 * (Z.of_nat (length texts) + 1) in
+  match R.alloc s (heap_req 16 size) with
+  | None => None
+  | Some (table, s1) =>
+      match copy_slots texts s1 (allocated m (heap_req 16 size) table) (table :: born) table with
+      | None => None
+      | Some (s2, m2, born2) => Some (mkPtr table (Obj table), s2, m2, born2)
+      end
+  end.
+
+(** The forward loop retains earlier strings and the sentinel while
+    writing only its remaining slots in the already-born table. *)
+Theorem copy_slots_correct : forall texts s m born cursor s' m' born' sources roots releases requests table end_,
+  copy_slots texts s m born cursor = Some (s', m', born') ->
+  R.ready s m -> payloads_allowed requests texts -> In table born ->
+  object_region table (m_regions m) = Some (mkRegion table end_ Heap Live) ->
+  table <= cursor -> cursor + 8 * (Z.of_nat (length texts) + 1) <= end_ -> cursor mod 8 = 0 ->
+  pointer_slot m (cursor + 8 * Z.of_nat (length texts)) (mkPtr 0 CNone) ->
+  E.effects sources roots releases requests s m born s' m' born' /\
+  R.ready s' m' /\ persists m m' /\
+  startup_frame m m' cursor (cursor + 8 * Z.of_nat (length texts)) /\
+  string_slots m' cursor texts.
+Proof.
+  induction texts as [|text rest IH]; intros s m born cursor s' m' born' sources roots releases requests table end_
+    Hcopy Hr Hallowed Hborn Htable Hlo Hhi Halign Hsent.
+  - simpl in Hcopy. injection Hcopy as <- <- <-.
+    split; [constructor|]. split; [exact Hr|]. split; [apply persists_refl|]. split.
+    + split; [auto|auto].
+    + replace (cursor + 8 * Z.of_nat (length [])) with cursor in Hsent by (simpl; lia). exact Hsent.
+  - cbn [copy_slots] in Hcopy.
+    destruct (R.alloc s (heap_req 16 (Z.of_nat (length text) + 1))) as [[base s1]|] eqn:Ha;
+      [|discriminate Hcopy].
+    inversion Hallowed as [|head tail [Hbytes [Hmax Hrequest]] Hrest]; subst head tail.
+    set (q := heap_req 16 (Z.of_nat (length text) + 1)).
+    set (m1 := copy_c_bytes (allocated m q base) base text).
+    set (m2 := startup_store m1 cursor (mkPtr base (Obj base))).
+    assert (Hfit : Z.of_nat (length text) + 1 <= req_extent q) by (apply startup_extent; lia).
+    destruct (R.fresh_allocation s m q base s1 Hr ltac:(simpl; lia) ltac:(lia) Ha) as [Hfresh Hready1].
+    assert (Hframe1 : startup_frame m m1 cursor cursor) by (apply copied_string_frame; auto).
+    assert (Htable1 : object_region table (m_regions m1) = Some (mkRegion table end_ Heap Live))
+      by (apply (proj1 Hframe1); exact Htable).
+    destruct (copy_string text sources roots releases requests s m born base s1 Hr Hbytes Hmax Hrequest Ha)
+      as (He1 & Hr1 & Hp1 & Hstring & Hwrite & Hbase & Hold).
+    fold q m1 in He1, Hr1, Hp1, Hstring, Hwrite, Hold.
+    assert (Hstore : local_effect sources roots releases (base :: born) m1 m2).
+    { apply local_store_pointer.
+      - intros a Hrange. right. exists table, (mkRegion table end_ Heap Live).
+        split; [simpl; auto|]. split; [exact Htable1|].
+        change (cursor + 8 * (Z.of_nat (S (length rest)) + 1) <= end_) in Hhi.
+        rewrite Nat2Z.inj_succ in Hhi. repeat split; simpl; try reflexivity; lia.
+      - right. right. right. exists base. simpl. auto. }
+    assert (Hr2 : R.ready s1 m2) by (eapply R.ready_kept; [exact Hr1|apply local_effect_kept in Hstore; exact Hstore]).
+    assert (Hframe2 : startup_frame m m2 cursor (cursor + 8)).
+    { eapply startup_frame_join with (mid := cursor); [lia|exact Hframe1|apply startup_store_frame]. }
+    assert (Htable2 : object_region table (m_regions m2) = Some (mkRegion table end_ Heap Live))
+      by (apply (proj1 Hframe2); exact Htable).
+    assert (Hsent2 : pointer_slot m2 (cursor + 8 + 8 * Z.of_nat (length rest)) (mkPtr 0 CNone)).
+    { replace (cursor + 8 + 8 * Z.of_nat (length rest)) with
+        (cursor + 8 * Z.of_nat (S (length rest))) by (rewrite Nat2Z.inj_succ; lia).
+      eapply startup_frame_slot; [exact Hframe2| | |exact Hsent].
+      - intros a Hrange. exists table, (mkRegion table end_ Heap Live). split; [exact Htable|].
+        simpl. change (cursor + 8 * (Z.of_nat (S (length rest)) + 1) <= end_) in Hhi. lia.
+      - intros a Hrange. rewrite Nat2Z.inj_succ in Hrange. lia. }
+    destruct (IH s1 m2 (base :: born) (cursor + 8) s' m' born' sources roots releases requests table end_
+      Hcopy Hr2 Hrest ltac:(simpl; auto) Htable2 ltac:(lia)
+      ltac:(change (cursor + 8 * (Z.of_nat (S (length rest)) + 1) <= end_) in Hhi;
+        rewrite Nat2Z.inj_succ in Hhi; lia)
+      ltac:(rewrite Z.add_mod by lia; rewrite Halign; reflexivity) Hsent2)
+      as (He2 & Hr' & Hp2 & Hframe3 & Hslots).
+    split.
+    + eapply effects_trans; [exact He1|]. eapply E.effects_local; [exact Hstore|exact He2].
+    + split; [exact Hr'|]. split.
+      * eapply persists_trans; [exact Hp1|]. eapply persists_trans;
+          [apply kept_ids_persists; [apply local_effect_kept in Hstore; exact Hstore|exact (proj1 Hstore)]|exact Hp2].
+      * split.
+        -- replace (cursor + 8 * Z.of_nat (length (text :: rest))) with
+             (cursor + 8 + 8 * Z.of_nat (length rest)) by (simpl length; rewrite Nat2Z.inj_succ; lia).
+           eapply startup_frame_join with (mid := cursor + 8); [lia|exact Hframe2|exact Hframe3].
+        -- exists (mkPtr base (Obj base)). split.
+           ++ eapply startup_frame_slot; [exact Hframe3| |intros; lia|].
+              ** intros a Hrange. exists table, (mkRegion table end_ Heap Live). split; [exact Htable2|].
+                 simpl. change (cursor + 8 * (Z.of_nat (S (length rest)) + 1) <= end_) in Hhi.
+                 rewrite Nat2Z.inj_succ in Hhi. lia.
+              ** apply pointer_slot_written. exact Hbase.
+           ++ split; [|exact Hslots].
+              assert (Hdis : forall a, base <= a < base + Z.of_nat (length text) + 1 ->
+                a < cursor \/ end_ <= a).
+              { intros a Hrange. destruct Hfresh as (_ & _ & _ & _ & Hseparate & _).
+                specialize (Hseparate _ _ Htable).
+                change (~ (base < end_ /\ table < base + req_extent q)) in Hseparate. lia. }
+              assert (Hstring2 : c_string m2 (mkPtr base (Obj base)) text).
+              { eapply startup_frame_string; [apply startup_store_frame|exact Hstring|].
+                intros a Hrange. simpl in Hrange. specialize (Hdis a Hrange). lia. }
+              eapply startup_frame_string; [exact Hframe3|exact Hstring2|].
+              intros a Hrange. simpl in Hrange. specialize (Hdis a Hrange).
+              change (cursor + 8 * (Z.of_nat (S (length rest)) + 1) <= end_) in Hhi.
+              rewrite Nat2Z.inj_succ in Hhi. lia.
+Qed.
+
+(** A successful table-first construction gives a checked writable
+    vector and frames every object that existed before its table. *)
+Theorem copy_vector_correct : forall texts s m born table s' m' born' sources roots releases requests,
+  copy_vector texts s m born = Some (table, s', m', born') ->
+  R.ready s m -> payloads_allowed requests texts ->
+  8 * (Z.of_nat (length texts) + 1) <= max_allocation_size ->
+  requests 16 (8 * (Z.of_nat (length texts) + 1)) ->
+  E.effects sources roots releases requests s m born s' m' born' /\
+  R.ready s' m' /\ persists m m' /\ startup_frame m m' 0 0 /\
+  string_vector m' table texts /\
+  writable_span m' (mkSpan table (8 * (Z.of_nat (length texts) + 1))).
+Proof.
+  intros texts s m born table s' m' born' sources roots releases requests Hcopy Hr Hallowed Hmax Hrequest.
+  unfold copy_vector in Hcopy.
+  destruct (R.alloc s (heap_req 16 (8 * (Z.of_nat (length texts) + 1)))) as [[base s1]|] eqn:Ha;
+    [|discriminate Hcopy].
+  set (size := 8 * (Z.of_nat (length texts) + 1)) in *.
+  set (q := heap_req 16 size) in *.
+  destruct (copy_slots texts s1 (allocated m q base) (base :: born) base)
+    as [[[s2 m2] born2]|] eqn:Hslots; [|discriminate Hcopy].
+  injection Hcopy as <- <- <- <-.
+  assert (Hsize : 0 < size) by (unfold size; lia).
+  assert (Hfit : size <= req_extent q) by (apply startup_extent; exact Hsize).
+  destruct (R.fresh_allocation s m q base s1 Hr ltac:(simpl; lia) ltac:(lia) Ha) as [Hfresh Hr1].
+  assert (Htable : object_region base (m_regions (allocated m q base)) =
+    Some (mkRegion base (base + req_extent q) Heap Live)) by (simpl; rewrite Z.eqb_refl; reflexivity).
+  assert (Halign : base mod 8 = 0).
+  { destruct Hfresh as (_ & Halign & _). change (base mod 16 = 0) in Halign.
+    apply Z.mod_divide; [lia|]. apply Z.mod_divide in Halign; [|lia].
+    destruct Halign as [k Hk]. exists (2 * k). lia. }
+  assert (Hsent : pointer_slot (allocated m q base)
+    (base + 8 * Z.of_nat (length texts)) (mkPtr 0 CNone)).
+  { destruct Hfresh as (_ & _ & _ & _ & _ & Hzero).
+    unfold pointer_slot. split; [simpl; lia|]. split.
+    - transitivity (load_bytes (mkMem (fun _ => 0) [] (fun _ => CNone))
+        (base + 8 * Z.of_nat (length texts)) 8); [|reflexivity].
+      apply load_bytes_agree; [lia|]. intros i Hi. simpl.
+      apply (proj1 (Hzero (base + 8 * Z.of_nat (length texts) + i) ltac:(unfold size in Hfit; lia))).
+    - simpl. apply (proj2 (Hzero (base + 8 * Z.of_nat (length texts)) ltac:(unfold size in Hfit; lia))). }
+  destruct (copy_slots_correct texts s1 (allocated m q base) (base :: born) base s2 m2 born2
+    sources roots releases requests base (base + req_extent q) Hslots Hr1 Hallowed
+    ltac:(simpl; auto) Htable ltac:(lia) ltac:(unfold size in Hfit; lia) Halign Hsent)
+    as (He & Hr2 & Hp & Hframe & Hvector).
+  assert (Heall : E.effects sources roots releases requests s m born s2 m2 born2).
+  { eapply E.effects_alloc; [exact Hrequest|split; lia|exact Ha|exact He]. }
+  destruct (E.effects_preserve _ _ _ _ _ _ _ _ _ _ Heall Hr) as [Hr' Hpall].
+  split; [exact Heall|]. split; [exact Hr'|]. split; [exact Hpall|]. split.
+  - split.
+    + intros b reg Hold. apply (proj1 Hframe). eapply allocated_old_region; [|exact Hold].
+      exact (proj1 (proj2 (proj2 (proj2 Hfresh)))).
+    + intros a Hin _. apply (proj2 Hframe a).
+      * destruct Hin as (b & reg & E & Hrange). exists b, reg. split; [|exact Hrange].
+        eapply allocated_old_region; [|exact E]. exact (proj1 (proj2 (proj2 (proj2 Hfresh)))).
+      * destruct Hin as (b & reg & E & Hrange).
+        destruct Hfresh as (_ & _ & _ & _ & Hdis & _). specialize (Hdis _ _ E).
+        unfold size in Hfit. lia.
+  - assert (Htable' : object_region base (m_regions m2) =
+      Some (mkRegion base (base + req_extent q) Heap Live)) by (apply (proj1 Hframe); exact Htable).
+    split.
+    + split; [|exact Hvector].
+      apply (startup_table_access m2 base (base + req_extent q) base size Read 8 Htable' ltac:(lia) ltac:(lia) Halign).
+    + split; [simpl; unfold size; lia|]. exists base, (mkRegion base (base + req_extent q) Heap Live).
+      split; [reflexivity|]. split; [exact Htable'|]. split; [reflexivity|].
+      apply (startup_table_access m2 base (base + req_extent q) base size Write 1 Htable' ltac:(lia) ltac:(lia) (Z.mod_1_r base)).
+Qed.
+
+(** The environment's count, increment and checked multiplication fit
+    size_t whenever its original table request is legal. Unlike argv,
+    this count is not restricted to signed int. *)
+Lemma environment_copy_bounds : forall n,
+  8 * (Z.of_nat n + 1) <= max_allocation_size ->
+  0 <= Z.of_nat n < 2 ^ 64 - 1 /\ 0 < 8 * (Z.of_nat n + 1) < 2 ^ 64.
+Proof. intros n H. unfold max_allocation_size in H. lia. Qed.
+
+(** Compose the argv and environment memory constructions. This is not
+    the complete native launcher trace: obtaining/tracking main between
+    the two loops, auxv and libc initialization still need coverage. *)
+Theorem copied_startup : forall args environment s m born argv s1 m1 born1 envp s2 m2 born2
+    sources roots releases requests,
+  copy_vector args s m born = Some (argv, s1, m1, born1) ->
+  copy_vector environment s1 m1 born1 = Some (envp, s2, m2, born2) ->
+  R.ready s m -> 1 <= Z.of_nat (length args) < 2 ^ 31 - 1 ->
+  payloads_allowed requests args -> payloads_allowed requests environment ->
+  8 * (Z.of_nat (length environment) + 1) <= max_allocation_size ->
+  requests 16 (8 * (Z.of_nat (length args) + 1)) ->
+  requests 16 (8 * (Z.of_nat (length environment) + 1)) ->
+  E.effects sources roots releases requests s m born s2 m2 born2 /\
+  R.ready s2 m2 /\ persists m m2 /\ startup_frame m m2 0 0 /\
+  startup_at m2 (Z.of_nat (length args)) argv envp args environment.
+Proof.
+  intros args environment s m born argv s1 m1 born1 envp s2 m2 born2 sources roots releases requests
+    Ha He Hr Hargc Hargs Henv Hmax Hrequesta Hrequeste.
+  pose proof (proj2 (argv_copy_bounds _ Hargc)) as Hargmax.
+  unfold argv_copy_size in Hargmax.
+  destruct (copy_vector_correct args s m born argv s1 m1 born1 sources roots releases requests
+    Ha Hr Hargs ltac:(lia) Hrequesta) as (Hea & Hr1 & Hp1 & Hf1 & Hva & Hwa).
+  destruct (copy_vector_correct environment s1 m1 born1 envp s2 m2 born2 sources roots releases requests
+    He Hr1 Henv Hmax Hrequeste) as (Hee & Hr2 & Hp2 & Hf2 & Hve & Hwe).
+  split; [eapply effects_trans; eauto|]. split; [exact Hr2|]. split.
+  - eapply persists_trans; eauto.
+  - split.
+    + eapply startup_frame_join with (mid := 0); [lia|exact Hf1|exact Hf2].
+    + split; [lia|]. split; [reflexivity|]. split; [|exact Hve].
+      eapply startup_frame_vector; eauto.
 Qed.
 
 End Startup.
@@ -477,3 +877,81 @@ Proof.
   split; intros H; inversion H as [|head rest Hb Hrest]; subst;
     inversion Hrest as [|head tail Hbad Htail]; subst; lia.
 Qed.
+
+(** Executable construction examples use the ordinary interpreter runtime. *)
+Module StartupExamples := Startup InterpRuntime.
+
+(** Table first, then three strings in forward order, with distinct
+    sizes and contents. Old pointer bytes and read-only authority stay. *)
+Example constructed_argv_order :
+  match StartupExamples.copy_vector [[65; 66]; []; [1; 128; 255]] 16384 entry_mem [] with
+  | Some (argv, next, m, born) =>
+      argv = mkPtr 16384 (Obj 16384) /\ next = 16528 /\
+      born = [16496; 16464; 16432; 16384] /\
+      pointer_slot m 16384 (mkPtr 16432 (Obj 16432)) /\
+      pointer_slot m 16392 (mkPtr 16464 (Obj 16464)) /\
+      pointer_slot m 16400 (mkPtr 16496 (Obj 16496)) /\
+      pointer_slot m 16408 (mkPtr 0 CNone) /\
+      c_string m (mkPtr 16432 (Obj 16432)) [65; 66] /\
+      c_string m (mkPtr 16464 (Obj 16464)) [] /\
+      c_string m (mkPtr 16496 (Obj 16496)) [1; 128; 255] /\
+      pointer_slot m 4096 hello_ptr /\ m_bytes m 1024 = 104
+  | None => False
+  end.
+Proof. vm_compute. repeat constructor; discriminate. Qed.
+
+(** The environment copy preserves the earlier argv and its strings;
+    an empty environment still allocates a checked sentinel table. *)
+Example constructed_entry_empty_environment :
+  match StartupExamples.copy_vector [[65; 66]; []; [1; 128; 255]] 16384 entry_mem [] with
+  | Some (argv, s, m, born) =>
+      match StartupExamples.copy_vector [] s m born with
+      | Some (envp, next, m', born') =>
+          envp = mkPtr 16528 (Obj 16528) /\ next = 16560 /\
+          born' = [16528; 16496; 16464; 16432; 16384] /\
+          pointer_slot m' 16384 (mkPtr 16432 (Obj 16432)) /\
+          pointer_slot m' 16408 (mkPtr 0 CNone) /\ pointer_slot m' 16528 (mkPtr 0 CNone) /\
+          c_string m' (mkPtr 16496 (Obj 16496)) [1; 128; 255] /\
+          access_res m' (ptr_addr envp) (ptr_cap envp) 8 Write 1 = Some ok /\
+          pointer_slot m' 4096 hello_ptr
+      | None => False
+      end
+  | None => False
+  end.
+Proof. vm_compute. repeat constructor; discriminate. Qed.
+
+(** A populated environment uses its own forward copy loop and sentinel,
+    retaining the earlier argv even through two further string allocations. *)
+Example constructed_entry_environment_bytes :
+  match StartupExamples.copy_vector [[65; 66]; []; [1; 128; 255]] 16384 entry_mem [] with
+  | Some (argv, s, m, born) =>
+      match StartupExamples.copy_vector [[78; 70; 61; 65]; [88; 61; 255]] s m born with
+      | Some (envp, next, m', born') =>
+          envp = mkPtr 16528 (Obj 16528) /\ next = 16640 /\
+          born' = [16608; 16576; 16528; 16496; 16464; 16432; 16384] /\
+          pointer_slot m' 16384 (mkPtr 16432 (Obj 16432)) /\
+          pointer_slot m' 16408 (mkPtr 0 CNone) /\
+          c_string m' (mkPtr 16432 (Obj 16432)) [65; 66] /\
+          c_string m' (mkPtr 16464 (Obj 16464)) [] /\
+          c_string m' (mkPtr 16496 (Obj 16496)) [1; 128; 255] /\
+          pointer_slot m' 16528 (mkPtr 16576 (Obj 16576)) /\
+          pointer_slot m' 16536 (mkPtr 16608 (Obj 16608)) /\
+          pointer_slot m' 16544 (mkPtr 0 CNone) /\
+          c_string m' (mkPtr 16576 (Obj 16576)) [78; 70; 61; 65] /\
+          c_string m' (mkPtr 16608 (Obj 16608)) [88; 61; 255] /\ pointer_slot m' 4096 hello_ptr
+      | None => False
+      end
+  | None => False
+  end.
+Proof. vm_compute. repeat constructor; discriminate. Qed.
+
+(** A resource-refusing allocator does not produce a successful empty table. *)
+Example constructed_table_refusal :
+  StartupExamples.copy_vector [] (2 ^ 48 - 1) entry_mem [] = None.
+Proof. reflexivity. Qed.
+
+(** Environment counts above INT_MAX are not rejected by argv's int rule. *)
+Example environment_count_not_int : forall n,
+  Z.of_nat n = 2 ^ 31 ->
+  2 ^ 31 - 1 < Z.of_nat n /\ 8 * (Z.of_nat n + 1) <= max_allocation_size.
+Proof. intros n H. rewrite H. unfold max_allocation_size. lia. Qed.
