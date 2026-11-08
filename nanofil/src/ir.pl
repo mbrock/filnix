@@ -1615,7 +1615,13 @@ renew_source_op(half_check(_, Lo, Hi, _, Al), [_, P], P, Lo, Hi, Al).
    -Ahead): Ahead holds Q for each single-definition
    `let(tmp(Q), a, check_ahead(Lo, Hi, _, _, _), [P])` such that, right
    after its access, P's base B (a single-definition name on
-   guard_chain/3 at an exact offset K) has need(B) >= K + Hi.
+   guard_chain/3 at an exact offset K) has need(B) >= K + Hi, with K and
+   K + Lo inside the signed range (near_offset/1). The check's start
+   B + K + Lo then lies at most 2^63 below the needed bytes' end B + H,
+   so the two do not wrap past each other modulo 2^64: where the check
+   fails at B + K + Hi, the later access ends beyond it
+   (tests/unit.pl, schedule_validation; docs/rocq.md, "A need past
+   2^64").
 
    need(B) = H at a point means: every path from it reaches a raw heap
    access through a pointer at an exact offset from B (well inside the
@@ -1703,11 +1709,11 @@ least_need(B, F, H0, H) :- get_assoc(B, F, H1), H is min(H0, H1).
 % instruction), AfterNext those after the instruction that follows it.
 ahead_insts([], _, _, F, _, F, Js, Js).
 ahead_insts([I|Is], Once, Ptrs, F0, Next, F, Js0, Js) :-
-    (   I = let(tmp(Q), a, check_ahead(_, Hi, _, _, _), [P]),
+    (   I = let(tmp(Q), a, check_ahead(Lo, Hi, _, _, _), [P]),
         get_assoc(Q, Once, _),
         guard_chain(Once, P, Chain),
         member(tmp(N)-i(K, K), Chain), get_assoc(N, Once, _),
-        near_offset(K),
+        near_offset(K), KLo is K + Lo, near_offset(KLo),
         get_assoc(N, Next, H), H >= K + Hi
     ->  Js1 = [Q|Js0]
     ;   Js1 = Js0

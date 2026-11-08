@@ -158,14 +158,21 @@ H, with B not redefined in between.
   arithmetic wraps). A need counts only offsets K and K + Off + Size in
   [-2^62, 2^62] (`near_offset/1`), where the integer is the true signed
   distance: otherwise a + (2^63 - 4) + (2^63 - 4), which is a - 8, would
-  count as needing a + 2^64.
+  count as needing a + 2^64. The check counts only if K + Lo is in that
+  range too: otherwise its start B + K + Lo and the end of the access
+  that meets the need, up to B + 2^62, could be nearly 2^64 apart, and
+  wrap past each other. Bounding the need alone would not do: the meet
+  keeps the least need over the edges, while the access a path runs may
+  end anywhere up to 2^62.
 
 Why that suffices: the early bytes fail only if P + Hi exceeds the
 object's upper (the access's own range [Lo, AHi) passed, so the object
 is live, writable if needed, aligned, and its lower end is below P +
 Lo). Every path then reaches an access through B, with B's capability,
 whose range ends at or past B + K + Hi, so that access's reference
-check fails too. Raw accesses in checked IR are the original program's
+check fails too. "At or past" is an integer claim about addresses
+modulo 2^64: P + Lo lies in the object, below 2^48, and the access ends
+H - (K + Lo) bytes after it, at most 2^63, so the sum does not wrap. Raw accesses in checked IR are the original program's
 accesses; each had its own check in the reference program.
 
 ## Interpreter rule (interp.pl)
@@ -256,6 +263,17 @@ and emitter. Two findings blocked adoption and are fixed:
    `unchecked(ahead)`. Fixed on the strict side: the validator requires
    the own access to be `ahead_transparent/1` and the pass to be
    `crossable/1` (unit case; the plant removing it fails).
+3. **Unsound, wraparound of the check's start** (found in November 2026
+   by Campaign 3's proof, docs/rocq.md, "A need past 2^64"). The rule
+   bounded K and the need H but not K + Lo. With P = a - (2^62 - 8) -
+   2^62 and Lo = -2^63, P + Lo is a + 8 modulo 2^64, while K + Lo is
+   about -3 * 2^62; an access ending at B + 2^62 counted as reaching
+   past P + Hi but is a's byte 0, and passed. The validator accepted a
+   module the interpreter ran to `unchecked(ahead(out_of_bounds))`, a
+   false early trap. Fixed by `near_offset/1` of K + Lo in the
+   validator and the pass; `schedule_validation` has the case (it fails
+   without the bound). The pass widens the same 55 checks in tests/c
+   with the bound as without it.
 
 Found sound: conditional paths, repeated edges, irreducible flow
 (block order is only conservative, since any cycle has an edge to the

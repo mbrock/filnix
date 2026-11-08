@@ -3736,6 +3736,21 @@ test(schedule_validation) :-
             let(tmp(yw), l, raw_load(l, 0), [tmp(kw)])],
     append(A16, Wrap, WIs), sched_fn([block(s, [], WIs, Ret)], WrapM),
     sched_rejected(WrapM),
+    % Nor may the check start far from its base: P = a - (2^62 - 8)
+    % - 2^62, so P + Lo is a + 8 modulo 2^64 with K + Lo = -3 * 2^62 + 8,
+    % and the later access ending at B + 2^62 is a's byte 0. It passes,
+    % so the early trap at a + 24 would be false (docs/rocq.md, "A need
+    % past 2^64").
+    Q62 is 1 << 62, Q62m8 is Q62 - 8, Min is -(1 << 63),
+    MinHi is Min + 16, MinAHi is Min + 8,
+    Far = [flight(tmp(fb), sub, [address(tmp(a)), const(Q62m8)], lower(tmp(a))),
+           flight(tmp(fp), sub, [address(tmp(fb)), const(Q62)], lower(tmp(fb))),
+           let(tmp(fq), a, check_ahead(Min, MinHi, read, 1, MinAHi), [tmp(fp)]),
+           let(tmp(fx), l, raw_load(l, Min), [tmp(fq)]),
+           let(tmp(fk), a, check(Q62m8, Q62, read, 1), [tmp(fb)]),
+           let(tmp(x), l, raw_load(l, Q62m8), [tmp(fk)])],
+    sched_fn([block(s, [], Far, Ret)], FarM),
+    sched_rejected(FarM),
     % A setjmp anywhere in the function.
     append(Line, [let(tmp(sj), w, setjmp(setjmp), [tmp(b), const(0)])], SjIs),
     sched_fn([block(s, [], SjIs, Ret)], Sj), sched_rejected(Sj),

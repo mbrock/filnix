@@ -1136,11 +1136,11 @@ Fixpoint ahead_insts (once : list (name * def)) (ptrs : list (name * value)) (ri
   | i :: rest =>
       let js1 :=
         match i with
-        | Let q A (CheckAhead _ hi _ _ _) [p] =>
+        | Let q A (CheckAhead lo hi _ _ _) [p] =>
             if once_has once q &&
                existsb (fun e => match exact_base once e with
                                  | Some (n, k) =>
-                                     near_offset k &&
+                                     near_offset k && near_offset (k + lo) &&
                                      match lookup n next with Some h => k + hi <=? h | None => false end
                                  | None => false
                                  end) (guard_chain once p)

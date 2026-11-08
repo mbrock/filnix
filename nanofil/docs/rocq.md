@@ -1113,6 +1113,38 @@ Decisions:
   definitions replay, and memory is in the address space. Both run
   theorems use it.
 
+## A need past 2^64
+
+Planning the proof for `check_ahead`'s doomed frame turned up a module
+ir.pl accepted and the interpreter ran to
+`unchecked(ahead(out_of_bounds))`, where the reference program returns
+normally: a counterexample to `valid_no_unchecked`, and a false early
+trap natively.
+
+A check_ahead of P = B + K is justified when every path ahead reaches
+an access through B ending at B + H, with H at least K + Hi
+(`ahead_insts/8`). The rule kept K and H within 2^62 of 0
+(`near_offset/1`), so each is a true signed distance from B, but not
+K + Lo. In `tests/unit.pl`'s case, B = a - (2^62 - 8) and
+P = B - 2^62, so K = -2^62, and the check's Lo is -2^63: P + Lo is a + 8
+modulo 2^64. A later access of B's bytes [2^62 - 8, 2^62) has H = 2^62,
+far past K + Hi = -3 * 2^62 + 16, but its address is a itself. The
+check's start and the need's end, 2^64 - 8 apart as integers, wrapped
+onto each other: the access passed, and the doomed frame reached its
+return.
+
+The fix follows the existing rule: ir.pl's `ahead_insts/8` and
+`widened/5` in schedule.pl, which emits check_ahead, both ask that K + Lo
+be near too (Validate.v transcribes it). The access a path runs ends at
+some H' of at least K + Hi and at most 2^62 (`raise_need/6`), so
+H' - (K + Lo) bytes after P + Lo, at most 2^63; P + Lo lies in an object
+below 2^48, so neither address wraps: where [Lo, Hi) failed, the access
+fails too. Bounding the need instead would not do, since the meet over
+a branch keeps the least need while the other arm's access may end at
+2^62. Oracle reviewed the fix. The pass widens the same 55 checks in
+tests/c with the bound as without it (docs/schedule.md, review
+finding 3).
+
 ## An object past 2^64
 
 `rocq/tests/huge-object.ir` allocates an object of 2^64 - 2^32 - 80

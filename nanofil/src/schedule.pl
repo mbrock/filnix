@@ -160,7 +160,10 @@ widened(let(tmp(Q), a, check(Lo, Hi, Rights, Align), [P]), Once-_, Next, [Access
     % crossable too (not a pointer store or an atomic).
     crossable(Access),
     guard_chain(Once, P, Chain),
+    % A base counts only where the check's start, B + K + Lo, is near
+    % too, as ir.pl's ahead_insts/8 asks.
     findall(H1, ( member(tmp(B)-i(K, K), Chain), get_assoc(B, Once, _), near(K),
+                  KLo is K + Lo, near(KLo),
                   get_assoc(B, Next, H), H1 is H - K ), H1s),
     max_list(H1s, Hi1),
     Hi1 > Hi, Hi1 - Lo =< 2147483647, !.
