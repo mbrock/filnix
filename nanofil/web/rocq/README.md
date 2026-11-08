@@ -57,9 +57,14 @@ formal campaign writes: `Inductive` (with `with`), `Record`,
 `Definition`, `Fixpoint`, theorems, `Axiom` and `Parameter`, `Module`,
 `Module Type` and `Section`, `Notation`, and Gallina terms with `forall`,
 `fun`, `exists`, `let` (with `let fix`, `let '(a, b)` and the development's
-`let*`), `if`, `match` (several scrutinees, `|` alternatives and
-or-patterns `(W | L)`), records `{| … |}`, sigma types, scopes, chained
-comparisons `a <= b < c` and Rocq's standard operator levels. A proof keeps
+`let*`), `if`, `match` (several scrutinees, `|` alternatives,
+or-patterns `(W | L)` and `as` patterns, which bind tighter than any
+operator: `Const c as a :: rest`), records `{| … |}`, sigma types, scopes,
+chained comparisons `a <= b < c` and Rocq's standard operator levels. It
+also reads what Rocq prints in proof states: an unfolded fixpoint
+`(fix f (x : T) {struct x} : U := …) a`, named arguments `(elt:=A)`,
+pattern binders `fun '(a, b) => …` and a positive's binary digits
+`p~0~1`; and `Module M := F A`, a functor applied, drawn as one line. A proof keeps
 its focus bullets and tactic sentences. Ltac definitions and scripts parse
 sequencing, choice, dispatch, `first`/`solve`, prefixes such as `try` and
 `repeat`, counted `do N`, goal selectors, and `match`/`lazymatch`/`multimatch`.

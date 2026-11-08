@@ -102,6 +102,28 @@ Proof. intros b H. hypothesis_and_goal; reflexivity. Qed.
 ROCQ
 set -- "$@" "$tmp/tactics/Tactics.v"
 
+# The forms Rocq prints in proof states. m is the head of the list only if
+# "as" binds tighter than "::", so m + n type-checks only when the grammar
+# reads it as Rocq does.
+mkdir "$tmp/terms"
+cat >"$tmp/terms/Terms.v" <<'ROCQ'
+From Stdlib Require Import List PArith.
+Import ListNotations.
+Definition unfolded (l : list nat) : nat :=
+  (fix len (xs : list nat) (acc : nat) {struct xs} : nat :=
+     match xs with [] => acc | _ :: ys => len ys (S acc) end) l 0.
+Definition aliased (l : list nat) : nat :=
+  match l with
+  | S n as m :: _ => m + n
+  | [O as z; _] => z
+  | _ => 0
+  end.
+Definition named : nat := @fst nat bool (pair (A:=nat) (B:=bool) 1 true).
+Definition paired : list nat := map (fun '(a, b) => a + b) [(1, 2); (3, 4)].
+Definition digits : positive := (xH)~0~1.
+ROCQ
+set -- "$@" "$tmp/terms/Terms.v"
+
 # project FILE: the directory of the project file above FILE, or FILE's own.
 project() {
   local d

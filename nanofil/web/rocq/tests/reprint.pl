@@ -100,6 +100,7 @@ names([n(_, N)|Ns]) :- format("~w ", [N]), names(Ns).
 
 binders(Bs) :- maplist([B]>>( write(" "), binder(B) ), Bs).
 
+binder(b(_, pattern(P), _, _)) :- !, write("'"), pr(P).
 binder(b(_, struct, [n(_, X)], _)) :- !, format("{struct ~w}", [X]).
 binder(b(_, brace, Ns, none)) :- !, write("{"), names(Ns), write("}").
 binder(b(_, brace, Ns, T)) :- !, write("{"), names(Ns), write(" : "), pr(T), write("}").
@@ -133,6 +134,11 @@ pr(letpat(_, P, V, B)) :- !, write("(let '"), pr(P), write(" := "), pr(V), write
 pr(letfix(_, n(_, F), Bs, Ty, V, B)) :- !,
     format("(let fix ~w", [F]), binders(Bs), opt_type(Ty), write(" := "), pr(V), write(" in "), pr(B), write(")").
 pr(orpat(_, Ps)) :- !, write("("), sep(Ps, " | "), write(")").
+pr(fix(_, n(_, F), Bs, Ty, B)) :- !,
+    format("(fix ~w", [F]), binders(Bs), opt_type(Ty), write(" := "), pr(B), write(")").
+pr(named(_, X, E)) :- !, format("(~w := ", [X]), pr(E), write(")").
+pr(aspat(_, P, n(_, X))) :- !, write("("), pr(P), format(" as ~w)", [X]).
+pr(bits(_, E, Ds)) :- !, write("("), pr(E), write(")"), atom_chars(Ds, Cs), forall(member(C, Cs), format("~~~w", [C])).
 pr(if(_, C, T, E)) :- !, write("(if "), pr(C), write(" then "), pr(T), write(" else "), pr(E), write(")").
 pr(match(_, Ss, Ret, Brs)) :- !,
     write("(match "), scruts(Ss), ( Ret == none -> true ; write(" return "), pr(Ret) ), write(" with"),

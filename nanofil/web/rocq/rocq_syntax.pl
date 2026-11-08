@@ -30,10 +30,12 @@
     | `match(P, Scrutinees, Return, Branches)` | `br(Alternatives, Rhs)`, each alternative a list of patterns |
     | `list(P, Es)`, `record(P, Fields)` | `[a; b]` and `{\| f := e \|}`, fields `fld(P, Name, E)` |
     | `scope(P, E, Key)`, `braces(P, E)`, `sig(P, N, T, Q)` | `E%Key`, `{E}`, `{ x : T \| Q }` |
+    | `fix(P, N, Bs, Ty, B)`, `named(P, X, E)` | `fix f Bs : Ty := B`, an argument `(x:=E)` |
+    | `aspat(P, Pat, N)`, `bits(P, E, Ds)` | `Pat as n` in a pattern, a positive's binary digits `p~0~1` (Ds `'01'`) |
 
-    A binder is `b(P, Kind, Names, Type)`: Kind `paren`, `brace`, `bare`
-    or `struct` (`{struct x}`), Names a list of `n(P, Name)`, Type `none`
-    when there is none.
+    A binder is `b(P, Kind, Names, Type)`: Kind `paren`, `brace`, `bare`,
+    `struct` (`{struct x}`) or `pattern(Pat)` (`'(a, b)`, Names `[]`),
+    Names a list of `n(P, Name)`, Type `none` when there is none.
 
     Sentences are the vernacular, each `dir/2`, `ind/3`, `rec/7`, `def/6`,
     `thm/5`, `decl/3`, `notation/5`, `module/5`, `endm/2` or `raw/2` (one
@@ -367,7 +369,7 @@ decl_groups(Gs) --> binders(Bs), { maplist([b(_, paren, Ns, Ty), g(Ns, Ty)]>>tru
 
 term(E) --> expr(200, E).
 
-expr(Max, E) --> operand(Max, L), op_rest(Max, L, E).
+expr(Max, E) --> operand(Max, L0), as_pat(L0, L), op_rest(Max, L, E).
 
 operand(_, E) --> binder_form(E), !.
 operand(_, pre(F-T, Op, A)) --> tk(sym(Op), F, _), { prefix_op(Op, Lv) }, !, expr(Lv, A), { end(A, T) }.
@@ -392,6 +394,9 @@ binder_form(let(F-T, Lhs, Ty, V, B)) --> tk(kw(let), F, _), !,
     let_lhs(Lhs), opt_type(Ty), tk(sym(':=')), term(V), tk(kw(in)), term(B), { end(B, T) }.
 binder_form(if(F-T, C, Th, El)) --> tk(kw(if), F, _), !,
     term(C), tk(kw(then)), term(Th), tk(kw(else)), term(El), { end(El, T) }.
+%  An anonymous fixpoint, as Rocq prints an unfolded Fixpoint.
+binder_form(fix(F-T, N, Bs, Ty, B)) --> tk(kw(fix), F, _), !,
+    name(N), binders0(Bs), opt_type(Ty), tk(sym(':=')), term(B), { end(B, T) }.
 
 forall_kw(F) --> tk(kw(forall), F, _), !.
 forall_kw(F) --> tk(sym('∀'), F, _).
@@ -427,6 +432,7 @@ binder(b(F-T, paren, Ns, Ty)) --> tk(p('('), F, _), names(Ns), tk(sym(':')), ter
 binder(b(F-T, struct, [N], none)) --> tk(p('{'), F, _), tk(id(struct)), name(N), tk(p('}'), _, T).
 binder(b(F-T, brace, Ns, Ty)) --> tk(p('{'), F, _), names(Ns), ( tk(sym(':')) -> term(Ty) ; { Ty = none } ), tk(p('}'), _, T).
 binder(b(P, bare, [n(P, X)], none)) --> tk(id(X), F, T), { \+ op_word(X), P = F-T }.
+binder(b(F-T, pattern(Pat), [], none)) --> tk(p(''''), F, _), atom(Pat), { end(Pat, T) }.
 
 %  Operators by precedence: binop(Op, Level, Assoc), Rocq's levels (a
 %  lower level binds tighter). The file's own infix notations are added
@@ -481,7 +487,21 @@ atom_start(p('(')). atom_start(p('[')). atom_start(p('{|')).
 atom_start(kw(match)). atom_start(sym('@')).
 atom_start(sym('?')).
 
-atom(E) --> atom0(E0), ( tk(sym('%')), tk(id(K), _, T) -> { start(E0, F), E = scope(F-T, E0, K) } ; { E = E0 } ).
+atom(E) --> atom0(E00), bits(E00, E0),
+    ( tk(sym('%')), tk(id(K), _, T) -> { start(E0, F), E = scope(F-T, E0, K) } ; { E = E0 } ).
+
+%  p~0~1, a positive's binary digits as Rocq prints them.
+bits(E0, bits(F-T, E0, Ds)) --> bit(D, T0), !, bit_rest(D, T0, Cs, T), { start(E0, F), atom_codes(Ds, Cs) }.
+bits(E, E) --> [].
+bit_rest(D, _, [D|Ds], T) --> bit(D1, T1), !, bit_rest(D1, T1, Ds, T).
+bit_rest(D, T, [D], T) --> [].
+bit(D, T) --> tk(sym('~')), tk(num(N), _, T), { memberchk(N, ['0', '1']), atom_codes(N, [D]) }.
+
+%  Pat as n, in a pattern, where it binds tighter than any operator:
+%  Rocq prints Const c as a :: rest. Elsewhere as belongs to a match's
+%  scrutinee or a tactic (destruct H as ...).
+as_pat(E, aspat(F-T, E, N)) --> { nb_current(rocq_mode, pattern) }, tk(kw(as)), !, name(N), { start(E, F), N = n(_-T, _) }.
+as_pat(E, E) --> [].
 
 atom0(hole(F-T)) --> tk(id('_'), F, T), !.
 atom0(meta(F-T, X)) --> tk(sym('?'), F, _), tk(id(X), _, T), !.
@@ -491,6 +511,7 @@ atom0(id(F-T, X)) --> tk(id(X), F, T), { \+ op_word(X) }, !.
 atom0(num(F-T, N)) --> tk(num(N), F, T), !.
 atom0(str(F-T, S)) --> tk(str(S), F, T), !.
 atom0(explicit(F-T, X)) --> tk(sym('@'), F, _), !, tk(id(X), _, T).
+atom0(named(F-T, X, E)) --> tk(p('('), F, _), tk(id(X)), tk(sym(':=')), !, term(E), tk(p(')'), _, T).
 atom0(E) --> tk(p('('), F, _), !, term(E0),
     (   tk(p(')'), _, T) -> { E = paren(F-T, E0) }
     ;   tk(sym(':')) -> term(Ty), tk(p(')'), _, T), { E = cast(F-T, E0, Ty) }
@@ -522,7 +543,10 @@ scrutinees([S|Ss]) --> expr(100, S0),
     ( tk(kw(as)) -> name(N), { S = as(S0, N) } ; { S = S0 } ),
     ( tk(p(',')) -> scrutinees(Ss) ; { Ss = [] } ).
 
-branches([br(Alts, R)|Bs]) --> alternatives(Alts), arrow_kw, !, term(R),
+branches([br(Alts, R)|Bs]) -->
+    { ( nb_current(rocq_mode, M) -> true ; M = term ), b_setval(rocq_mode, pattern) },
+    alternatives(Alts), { b_setval(rocq_mode, M) },
+    arrow_kw, !, term(R),
     ( tk(sym('|')) -> branches(Bs) ; { Bs = [] } ).
 branches([]) --> [].
 

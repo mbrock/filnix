@@ -210,6 +210,15 @@ term_(letfix(_, n(_, F), Bs, Ty, V, B), Env) -->
     { binders_env(Bs, [F|Env], EnvV) },
     el(span, "o let", ( kw("let fix"), " ", var_def(F), binders_(Bs, Env), opt_type(Ty, EnvV), "\u00A0", defeq, " ",
                         term(V, EnvV), " ", kw("in"), " ", term(B, [F|Env]) )).
+term_(fix(_, n(_, F), Bs, Ty, B), Env) -->
+    { binders_env(Bs, [F|Env], EnvB) },
+    el(span, "o let", ( kw("fix"), " ", var_def(F), binders_(Bs, Env), opt_type(Ty, EnvB), "\u00A0", defeq, " ",
+                        term(B, EnvB) )).
+term_(named(_, X, E), Env) --> el(span, "paren rq-named", ( el(span, "rq-arg-name", esc(X)), "\u00A0", defeq, " ", term(E, Env) )).
+term_(aspat(_, P, n(_, X)), Env) --> term(P, Env), " ", kw("as"), " ", var_def(X).
+term_(bits(_, E, Ds), Env) -->
+    { atom_chars(Ds, Cs), foldl([C, S0, S]>>atomic_list_concat([S0, '~', C], S), Cs, '', Text) },
+    term(E, Env), el(span, "rq-bits", [title="a positive's binary digits: p~0 is 2p, p~1 is 2p + 1"], esc(Text)).
 term_(orpat(_, Ps), Env) --> el(span, paren, bar_items(Ps, Env)).
 term_(if(_, C, T, E), Env) -->
     el(span, "o if", ( kw("if"), " ", term(C, Env), " ", kw("then"), " ", term(T, Env), " ", kw("else"), " ", term(E, Env) )).
@@ -313,6 +322,7 @@ sig_items([B|Bs], Ty, Env) -->
 binders_([], _) --> [].
 binders_([B|Bs], Env) --> " ", binder_(B, Env), binders_(Bs, Env).
 
+binder_(b(_, pattern(P), _, _), Env) --> !, el(span, tick, "'"), term(P, Env).
 binder_(b(_, struct, [n(_, X)], _), _) --> !, el(span, "struct", ( "{", kw("struct"), " ", esc(X), "}" )).
 binder_(b(_, brace, Ns, Ty), Env) --> !, el(span, "braces binder", ( vars(Ns), opt_type(Ty, Env) )).
 binder_(b(_, _, Ns, none), _) --> !, vars(Ns).
@@ -326,8 +336,10 @@ vars([n(_, X)|Ns]) --> var_def(X), " ", vars(Ns).
 opt_type(none, _) --> !, [].
 opt_type(T, Env) --> "\u00A0", el(span, "op wide colon", [title=":"], ":"), " ", term(T, Env).
 
-binders_env(Bs, Env0, Env) :-
-    foldl([b(_, _, Ns, _), E0, E]>>foldl([n(_, X), A0, A]>>( X == '_' -> A = A0 ; A = [X|A0] ), Ns, E0, E), Bs, Env0, Env).
+binders_env(Bs, Env0, Env) :- foldl(binder_env, Bs, Env0, Env).
+
+binder_env(b(_, pattern(P), _, _), E0, E) :- !, alts_vars([[P]], Vs), append(Vs, E0, E).
+binder_env(b(_, _, Ns, _), E0, E) :- foldl([n(_, X), A0, A]>>( X == '_' -> A = A0 ; A = [X|A0] ), Ns, E0, E).
 
 lhs_names(name(n(_, X), _), [X]).
 lhs_names(tuple(Ns), Xs) :- maplist([n(_, X), X]>>true, Ns, Xs).
@@ -367,6 +379,7 @@ pat_var(tuple(_, Es), V) :- member(E, Es), pat_var(E, V).
 pat_var(bin(_, _, L, R), V) :- ( pat_var(L, V) ; pat_var(R, V) ).
 pat_var(list(_, Es), V) :- member(E, Es), pat_var(E, V).
 pat_var(scope(_, E, _), V) :- pat_var(E, V).
+pat_var(aspat(_, P, n(_, X)), V) :- ( V = X ; pat_var(P, V) ).
 
 %% Blocks
 
@@ -381,9 +394,11 @@ block(let(_, _, _, _, _)).
 block(letstar(_, _, _, _)).
 block(letpat(_, _, _, _)).
 block(letfix(_, _, _, _, _, _)).
+block(fix(_, _, _, _, _)).
 block(fun(_, _, B)) :- block(B).
 block(forall(_, _, B)) :- block(B).
 block(exists(_, _, B)) :- block(B).
+block(app(_, paren(_, F), _)) :- block(F), !.
 block(app(_, _, As)) :- member(A, As), block(A), !.
 block(tuple(_, Es)) :- member(E, Es), block(E), !.
 block(bin(_, _, L, R)) :- ( block(L) ; block(R) ), !.
@@ -396,6 +411,10 @@ blk_(tuple(_, Es), Env) --> el(div, "rq-tuple", seq(Es, tuple_part(Env))).
 %  An application with a block among its arguments, such as fold_left over
 %  a λ whose body is a match: the function and the arguments before the
 %  block on a line, the rest under it, a row each.
+%  An unfolded fixpoint applied to its arguments: the fixpoint in its
+%  parentheses, then the arguments on a line.
+blk_(app(_, paren(_, F), As), Env) --> { block(F) }, !,
+    el(div, "rq-app", ( el(div, "rq-tuple", blk(F, Env)), el(div, "goal app-tail", items(As, Env)) )).
 blk_(app(_, F, As), Env) -->
     { append(Inline, [B|Rest], As), block(B), ! },
     el(div, "rq-app",
@@ -418,6 +437,10 @@ blk_(letfix(_, n(_, F), Bs, Ty, V, B), Env) -->
     { binders_env(Bs, [F|Env], EnvV) },
     let_block(( kw("let fix"), " ", var_def(F), binders_(Bs, Env), opt_type(Ty, EnvV) ), V, EnvV, B, [F|Env]).
 
+blk_(fix(_, n(_, F), Bs, Ty, B), Env) -->
+    { binders_env(Bs, [F|Env], EnvB) },
+    el(div, "rq-fun", ( el(div, "goal fun-head", ( kw("fix"), " ", var_def(F), binders_(Bs, Env), opt_type(Ty, EnvB), "\u00A0", defeq )),
+                        el(div, "fun-body", blk(B, EnvB)) )).
 blk_(fun(_, Bs, B), Env) --> quant_block("λ", Bs, "⇒", B, Env).
 blk_(forall(_, Bs, B), Env) --> quant_block("∀", Bs, ",", B, Env).
 blk_(exists(_, Bs, B), Env) --> quant_block("∃", Bs, ",", B, Env).
@@ -570,8 +593,17 @@ item_(notation(F-T, Kw, S, E, Mods)) --> !,
        el(div, head, ( line_link(F), kw(Kw), " ", notation_pattern(S, E), "\u00A0", defeq, " ", term(E, []),
                        ( { Mods == [] } -> [] ; " ", el(span, "rq-mods", esc_words(Mods)) ) ))),
     notes_upto(T).
+%  Module M := F A, a functor applied, as one line.
+item_(module(F-T, Kind, n(_, N), Bs, defined([M|As]))) --> !,
+    { nb_getval(rq_mod, Mod0), qualify(Mod0, N, Q), module_kw(Kind, KwS) },
+    el(div, "clause rq-module-def", [id=Q],
+       el(div, head, ( line_link(F), kw(KwS), " ", el(span, "module-name", esc(N)), binders_(Bs, []), "\u00A0", defeq, " ",
+                       name_ref(M, []), seq(As, module_arg) ))),
+    notes_upto(T).
 item_(endm(P, _)) --> !, raw_(P).
 item_(S) --> { arg(1, S, P) }, raw_(P).
+
+module_arg(A) --> " ", name_ref(A, []).
 
 module_kw(module_type, "Module Type").
 module_kw(module, "Module").
