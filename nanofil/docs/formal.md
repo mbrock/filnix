@@ -482,7 +482,7 @@ contracts over a shared logical world.
   runs. Calls kill live access facts, so the evidence continuation uses
   `call_parked` and `parked_resume`. Single-definition scopes use only
   result-name updates and persistence, including for waiting callers.
-  Legacy steps retain their existing `spares` and `free_ids` hypotheses.
+  Legacy steps retain their existing `spares` hypothesis.
   Terminal snapshots claim no active-frame facts. `unchecked_is_core`
   says any `Unchecked` ending came from the old core; it does not prove
   arbitrary frees or doomed runs safe.

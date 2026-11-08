@@ -253,10 +253,10 @@ Proof.
 Qed.
 
 Theorem step_persists : forall registry ge st trace st',
-  ge_free ge = R.free -> free_ids R.free -> step registry ge st trace st' -> state_ready st ->
+  ge_free ge = R.free -> step registry ge st trace st' -> state_ready st ->
   persists (c_mem (fst (machine_of st))) (c_mem (fst (machine_of st'))).
 Proof.
-  intros registry ge st trace st' Hfree Hids H. destruct H; simpl; intros Hr;
+  intros registry ge st trace st' Hfree H. destruct H; simpl; intros Hr;
     try apply persists_refl.
   1: exact (S.ID.mstep_persists _ _ _ Hfree Hr (single_core_step _ _ _ H)).
   all: exact (proj2 (E.invoke_preserve _ _ _ _ _ _ _ _ _ _ _ _ _ H2 Hr)).
@@ -326,10 +326,10 @@ Proof.
 Qed.
 
 Theorem step_sinv : forall registry ge md st trace st',
-  ge_module ge = md -> checked_module md -> ge_free ge = R.free -> free_ids R.free ->
+  ge_module ge = md -> checked_module md -> ge_free ge = R.free ->
   step registry ge st trace st' -> state_ready st -> single_inv ge md st -> single_inv ge md st'.
 Proof.
-  intros registry ge md st trace st' Hge Hmd Hfree Hids H. destruct H; simpl; intros Hr Hi; try exact I.
+  intros registry ge md st trace st' Hge Hmd Hfree H. destruct H; simpl; intros Hr Hi; try exact I.
   - exact (S.mstep_sinv _ _ _ _ Hge Hmd Hfree Hr (single_core_step _ _ _ H) Hi).
   - eapply resume_sinv; eauto. exact (proj2 (E.invoke_preserve _ _ _ _ _ _ _ _ _ _ _ _ _ H2 Hr)).
 Qed.
@@ -337,17 +337,17 @@ Qed.
 (** The four structural guarantees for every finite labelled run. No
     completeness or absence of contract violations follows from them. *)
 Theorem run_preserve : forall registry ge md st trace st',
-  ge_module ge = md -> checked_module md -> ge_free ge = R.free -> free_ids R.free -> spares ge md ->
+  ge_module ge = md -> checked_module md -> ge_free ge = R.free -> spares ge md ->
   run registry ge st trace st' -> state_ready st -> evidence_inv ge md st -> single_inv ge md st ->
   state_ready st' /\ persists (c_mem (fst (machine_of st))) (c_mem (fst (machine_of st'))) /\
   evidence_inv ge md st' /\ single_inv ge md st'.
 Proof.
-  intros registry ge md st trace st' Hge Hmd Hfree Hids Hsp H.
+  intros registry ge md st trace st' Hge Hmd Hfree Hsp H.
   induction H; intros Hr Hi Hs.
   - split; [exact Hr|]. split; [apply persists_refl|auto].
   - pose proof (step_ready _ _ _ _ _ Hfree H Hr) as Hr1.
     pose proof (step_inv _ _ _ _ _ _ Hge Hmd Hsp H Hr Hi) as Hi1.
-    pose proof (step_sinv _ _ _ _ _ _ Hge Hmd Hfree Hids H Hr Hs) as Hs1.
+    pose proof (step_sinv _ _ _ _ _ _ Hge Hmd Hfree H Hr Hs) as Hs1.
     destruct (IHrun Hr1 Hi1 Hs1) as (Hr' & Hp & Hi' & Hs'). split; [exact Hr'|].
     split; [eapply persists_trans; [eapply step_persists; eauto | exact Hp] | auto].
 Qed.
