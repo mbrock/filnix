@@ -173,10 +173,15 @@ rendered box alone: its ResizeObserver queues them when they become visible.
 All snapshots remain inline and readable without scripts. The phone gate
 keeps the same pages, states, parallel widths and deadlines.
 
-Proof capture first compiles every source in dependency order, then replays
-up to four independent files at once in separate RocqIDE sessions. It keeps
+Proof capture schedules the project as a dependency graph (`coqdep`) on the
+build's cores: compiling an imported file and replaying any file in its own
+RocqIDE session each start once that file's imports are compiled, the longest
+chain of compiles first. A file nothing imports is only replayed, since the
+replay already executes every command and checks every closure. It keeps
 every command, source hash, active goal and proof-closure check; concurrency
-changes neither the snapshots nor the capture/build deadlines.
+changes neither the snapshots nor the capture/build deadlines. At 4 cores
+this took the capture from 279s to 148s with byte-identical output; the
+remaining critical path is Prefix.v's own replay.
 
 The pinned agent-browser 0.38.1 has a fixed 25-second navigation load wait,
 independent of its advertised default timeout. If only that wait expires,

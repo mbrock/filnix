@@ -3,7 +3,10 @@
 
 python3 capture.py PROJECT OUTPUT.json
 Needs coqc, coqidetop, swipl and the project's Stdlib on ROCQPATH.
-Compiles dependencies and replays commands in an isolated writable copy.
+Compiles dependencies and replays commands in an isolated writable copy,
+as a dependency graph over the available cores: a file's replay starts as
+soon as its imports are compiled, and only imported files are compiled at
+all, since a replay already executes and checks every command of its file.
 The bundled RocqIDE XML protocol is pinned by the site's Rocq package.
 Run under tests/watch.py for deadlines and 15-second progress reporting.
 """
@@ -141,6 +144,25 @@ def capture_file(work, flags, plan):
     return file, {"sha256": hashlib.sha256(text.encode()).hexdigest(), "states": states}
 
 
+def dependencies(work, flags, files):
+    """Each file's imports among files, as rocq dep (coqdep) reads them."""
+    out = subprocess.run(["coqdep", *flags, *files], cwd=work, check=True,
+                         stdin=subprocess.DEVNULL, capture_output=True, text=True).stdout
+    vo = {f[:-2] + ".vo": f for f in files}
+    deps = {f: set() for f in files}
+    for line in out.splitlines():
+        targets, _, sources = line.partition(":")
+        target = targets.split()[0] if targets.split() else ""
+        if target in vo:
+            deps[vo[target]] |= {vo[s] for s in sources.split() if s in vo}
+    return deps
+
+
+def workers():
+    cores = int(os.environ.get("NIX_BUILD_CORES") or 0)
+    return cores if cores > 0 else len(os.sched_getaffinity(0))
+
+
 def capture(project, output):
     project = project.resolve()
     project_file = next(p for p in [project / "_RocqProject", project / "_CoqProject"] if p.exists())
@@ -162,16 +184,54 @@ def capture(project, output):
     with tempfile.TemporaryDirectory(prefix="dterm-rocq-") as tmp:
         work = Path(tmp) / "project"
         shutil.copytree(project, work, ignore=shutil.ignore_patterns("*.vo", "*.vos", "*.vok", "*.glob", ".*.aux"))
-        for plan in plans:
-            file = plan["file"]
+        by_file = {plan["file"]: plan for plan in plans}
+        deps = dependencies(work, flags, files)
+        users = {f: {g for g in files if f in deps[g]} for f in files}
+
+        def compile_file(file):
             stamp(f"proof capture: compile {file}")
             subprocess.run(["coqc", *flags, file], cwd=work, check=True, stdin=subprocess.DEVNULL)
-        # Prover instances and their XML streams are per file. Only replay
-        # independent files in parallel, never the dependency compilation.
-        stamp(f"proof capture: replay {len(plans)} files, fanout=4")
-        with concurrent.futures.ThreadPoolExecutor(4) as pool:
-            for file, entry in pool.map(lambda plan: capture_file(work, flags, plan), plans):
-                data["files"][file] = entry
+
+        # Jobs: compile an imported file, replay every file. Either may
+        # start once the file's imports are compiled. The longest chain of
+        # compiles still waiting on a job goes first; costs are unknown,
+        # so each job counts one.
+        jobs = [("compile", f) for f in files if users[f]] + [("replay", f) for f in files]
+        depth = {}
+
+        def chain(job):
+            if job not in depth:
+                kind, f = job
+                depth[job] = 1 if kind == "replay" else 1 + max(
+                    [chain(("replay", g)) for g in users[f]] +
+                    [chain(("compile", g)) for g in users[f] if users[g]])
+            return depth[job]
+
+        order = sorted(jobs, key=lambda job: (-chain(job), files.index(job[1]), job[0]))
+        compiled, waiting, running = set(), list(order), {}
+        n = workers()
+        stamp(f"proof capture: {len(jobs) - len(files)} compiles and {len(files)} replays on {n} workers")
+        with concurrent.futures.ThreadPoolExecutor(n) as pool:
+            while waiting or running:
+                for job in [j for j in waiting if deps[j[1]] <= compiled][:n - len(running)]:
+                    waiting.remove(job)
+                    kind, f = job
+                    running[pool.submit(compile_file, f) if kind == "compile"
+                            else pool.submit(capture_file, work, flags, by_file[f])] = job
+                finished, _ = concurrent.futures.wait(running, return_when=concurrent.futures.FIRST_COMPLETED)
+                for future in finished:
+                    kind, f = running.pop(future)
+                    try:
+                        result = future.result()
+                    except BaseException:
+                        for other in running:
+                            other.cancel()
+                        raise
+                    if kind == "compile":
+                        compiled.add(f)
+                    else:
+                        data["files"][result[0]] = result[1]
+        data["files"] = {f: data["files"][f] for f in files}
     output.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n")
 
 
