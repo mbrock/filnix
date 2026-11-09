@@ -82,4 +82,5 @@ theories/HelloProgName.v
 theories/HelloLocale.v
 theories/HelloReach.v
 theories/CallbackLogic.v
+theories/HelloVersion.v
 theories/Extract.v
