@@ -1112,6 +1112,66 @@ End logic.
     ContractFrame.v's frame for one [local_effect] or allocation,
     carried along the language's own call relations ([M.E]). *)
 
+(** Every piece of memory of h names an object of m. *)
+Definition ids_registered (h : gmap piece pval) (m : mem) : Prop :=
+  forall l v, h !! l = Some v -> mem_piece l -> registered m (piece_id l).
+
+(** Along an [effects] path, a call into blocks the program owns: every
+    piece of h but the keys ks keeps agreeing, where every root address
+    in an object the program owns is out and no piece of h but ks lies
+    at an address out. The pieces ks are the blocks the program hands
+    the call, at the addresses out; they keep only their identities.
+    With nothing out it is [effects_agrees]. *)
+Theorem effects_agrees_out : forall sources roots releases requests s m born0 s' m' born h ks out,
+  M.E.effects sources roots releases requests s m born0 s' m' born ->
+  R.ready s m -> live_disjoint m -> agrees_except ks m h -> ids_registered h m ->
+  roots_out roots h m out -> pieces_off ks h m out -> ids_apart releases h -> ids_apart born0 h ->
+  agrees_except ks m' h /\ ids_registered h m' /\ live_disjoint m' /\ ids_apart born h /\
+  roots_out roots h m' out.
+Proof.
+  intros sources roots releases requests s m born0 s' m' born h ks out H.
+  induction H as [s m born0 | s m born0 m1 s' m' born Hl H IH
+                 | s m born0 align size base s1 s' m' born Hq Hsize Halloc H IH];
+    intros Hr Hd Ha Hids Hra Hoff Hrel Hb.
+  - auto.
+  - apply IH.
+    + exact (R.ready_kept _ _ _ Hr (local_effect_kept _ _ _ _ _ _ Hl)).
+    + exact (local_live_disjoint _ _ _ _ _ _ Hl Hd).
+    + exact (local_agrees_out _ _ _ _ _ _ h Hl ks out Hd Ha Hra Hoff Hrel Hb).
+    + intros l v Hh Hm. pose proof (Hids l v Hh Hm) as Hreg. unfold registered in *.
+      destruct (object_region (piece_id l) (m_regions m)) as [reg|] eqn:E; [|contradiction].
+      destruct (proj1 Hl _ _ E) as [reg' ->]. discriminate.
+    + intros sp a Hin Hs Ho. exact (Hra sp a Hin Hs (local_owned_back _ _ _ _ _ _ h Hl a Ho)).
+    + intros l v Hh Hk. pose proof (Hoff l v Hh Hk) as Ho.
+      destruct l as [b|b o|b o|k]; try exact I;
+        intros reg Hlive; exact (Ho reg (local_live_back _ _ _ _ _ _ Hl _ _ Hlive)).
+    + exact Hrel.
+    + exact Hb.
+  - assert (Hal : 0 < req_align (heap_req align size)) by (cbn; lia).
+    assert (He : 0 <= req_extent (heap_req align size)).
+    { cbn. apply Z.mul_nonneg_nonneg; [apply Z.div_pos; lia | lia]. }
+    destruct (R.fresh_allocation _ _ _ _ _ Hr Hal He Halloc) as [Hf Hr1].
+    pose proof Hf as (_ & _ & _ & Hn & _).
+    apply IH.
+    + exact Hr1.
+    + exact (live_disjoint_allocated _ _ _ Hd Hf He).
+    + intros l v Hh Hk. exact (agree_piece_allocated _ _ _ _ _ Hn (Ha l v Hh Hk)).
+    + intros l v Hh Hm.
+      exact (agree_piece_allocated _ _ _ (PLive (piece_id l)) VFreed Hn (Hids l v Hh Hm)).
+    + intros sp a Hin Hs (l & v & reg & Hh & Hm & Hlive & Hrr). apply (Hra sp a Hin Hs).
+      exists l, v, reg. split; [exact Hh|]. split; [exact Hm|]. split; [|exact Hrr].
+      apply (allocated_live_back m (heap_req align size) base); [|exact Hlive].
+      intros E. apply (Hids l v Hh Hm). rewrite <- E. exact Hn.
+    + intros l v Hh Hk. pose proof (Hoff l v Hh Hk) as Ho.
+      destruct l as [b|b o|b o|k]; try exact I; intros reg Hlive;
+        assert (Hne : base <> b) by (intros E; apply (Hids _ v Hh I); cbn [piece_id]; rewrite <- E; exact Hn);
+        exact (Ho reg (allocated_live_back _ _ _ _ _ Hne Hlive)).
+    + exact Hrel.
+    + intros b l v [<- | Hin] Hh Hm.
+      * intros E. apply (Hids l v Hh Hm). rewrite E. exact Hn.
+      * exact (Hb b l v Hin Hh Hm).
+Qed.
+
 (** Along an [effects] path from a [[ready]] state, a ghost heap h
     whose live objects the roots avoid, none of whose identities the
     call releases or was born with, keeps agreeing with memory; live
@@ -1123,30 +1183,14 @@ Theorem effects_agrees : forall sources roots releases requests s m born0 s' m' 
   ids_apart releases h -> ids_apart born0 h ->
   agrees m' h /\ live_disjoint m' /\ ids_apart born h /\ roots_apart roots h m'.
 Proof.
-  intros sources roots releases requests s m born0 s' m' born h H.
-  induction H as [s m born0 | s m born0 m1 s' m' born Hl H IH
-                 | s m born0 align size base s1 s' m' born Hq Hsize Halloc H IH];
-    intros Hr Hd Ha Hra Hrel Hb.
-  - auto.
-  - apply IH.
-    + exact (R.ready_kept _ _ _ Hr (local_effect_kept _ _ _ _ _ _ Hl)).
-    + exact (local_live_disjoint _ _ _ _ _ _ Hl Hd).
-    + exact (local_agrees _ _ _ _ _ _ h Hl Hd Ha Hra Hrel Hb).
-    + intros sp a Hin Hs Ho. exact (Hra sp a Hin Hs (local_owned_back _ _ _ _ _ _ h Hl a Ho)).
-    + exact Hrel.
-    + exact Hb.
-  - assert (Hal : 0 < req_align (heap_req align size)) by (cbn; lia).
-    assert (He : 0 <= req_extent (heap_req align size)).
-    { cbn. apply Z.mul_nonneg_nonneg; [apply Z.div_pos; lia | lia]. }
-    destruct (R.fresh_allocation _ _ _ _ _ Hr Hal He Halloc) as [Hf Hr1].
-    pose proof Hf as (_ & _ & _ & Hn & _).
-    apply IH.
-    + exact Hr1.
-    + exact (live_disjoint_allocated _ _ _ Hd Hf He).
-    + intros l v Hh. exact (agree_piece_allocated _ _ _ _ _ Hn (Ha l v Hh)).
-    + intros sp a Hin Hs Ho. exact (Hra sp a Hin Hs (allocated_owned_back _ _ _ _ _ Hn Ha Ho)).
-    + exact Hrel.
-    + exact (unregistered_apart _ _ _ _ Hn Ha Hb).
+  intros sources roots releases requests s m born0 s' m' born h H Hr Hd Ha Hra Hrel Hb.
+  assert (Hx : agrees_except [] m h) by (intros l v Hh _; exact (Ha l v Hh)).
+  assert (Hids : ids_registered h m) by (intros l v Hh Hm; exact (agree_piece_registered m l v Hm (Ha l v Hh))).
+  assert (Hoff : pieces_off [] h m (fun _ => False)) by (intros l v _ _; destruct l; auto).
+  destruct (effects_agrees_out _ _ _ _ _ _ _ _ _ _ h [] (fun _ => False) H Hr Hd Hx Hids
+              (roots_out_apart _ _ _ Hra) Hoff Hrel Hb) as (Ha' & _ & Hd' & Hb' & Hra').
+  split; [intros l v Hh; exact (Ha' l v Hh (not_elem_of_nil _))|].
+  split; [exact Hd'|]. split; [exact Hb'|]. intros sp a Hin Hs Ho. exact (Hra' sp a Hin Hs Ho).
 Qed.
 
 (** The same for a whole call [prefix] of the contract spec: its
@@ -1159,6 +1203,23 @@ Corollary prefix_agrees : forall world (spec : contract world) xs s m w born tra
 Proof.
   intros world spec xs s m w born trace s' m' w' h [He _] Hr Hd Ha Hra Hrel.
   apply (effects_agrees _ _ _ _ _ _ _ _ _ _ h He Hr Hd Ha Hra Hrel). intros b l v [].
+Qed.
+
+(** The same for a whole call [prefix] of the contract spec into blocks
+    the program owns: every piece of h but ks keeps agreeing, where the
+    contract's writable roots touch the program's objects only at the
+    addresses out. *)
+Corollary prefix_agrees_out : forall world (spec : contract world) xs s m w born trace s' m' w' h ks out,
+  M.E.prefix spec xs s m w born trace s' m' w' -> R.ready s m -> live_disjoint m ->
+  agrees_except ks m h -> ids_registered h m ->
+  roots_out (contract_writes spec xs m w) h m out -> pieces_off ks h m out ->
+  ids_apart (contract_releases spec xs m w) h ->
+  agrees_except ks m' h /\ ids_registered h m' /\ live_disjoint m' /\ ids_apart born h.
+Proof.
+  intros world spec xs s m w born trace s' m' w' h ks out [He _] Hr Hd Ha Hids Hra Hoff Hrel.
+  destruct (effects_agrees_out _ _ _ _ _ _ _ _ _ _ h ks out He Hr Hd Ha Hids Hra Hoff Hrel
+              ltac:(intros ? ? ? [])) as (Ha' & Hids' & Hd' & Hb & _).
+  auto.
 Qed.
 
 (** The same for a completed call ([invoke]), normal or resource, for
