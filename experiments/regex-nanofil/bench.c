@@ -1,7 +1,9 @@
 /* Compare the functions rx.pl made (rx_NAME in the shared object argv[1])
    with PCRE2's interpreter on the patterns and subject of
-   ../pcre2-sljit-llvm/pats.h: every pcre2_match call of the find-all loop
-   must agree on the result and on the whole ovector. Then time both.
+   ../pcre2-sljit-llvm/pats.h: from every start offset of the subject the
+   two must agree on the result and on the whole ovector. Then time the
+   find-all loop with both.
+   The patterns of more.h are only checked.
 
    bench RX.so [seconds] [pattern] */
 #define PCRE2_CODE_UNIT_WIDTH 8
@@ -20,6 +22,8 @@ static double now(void)
 }
 
 #include "pats.h"
+
+#include "more.h"
 
 typedef int rx_fn(const char *subject, long length, long start, long *ovector, long *stack, long slimit);
 
@@ -70,9 +74,10 @@ static void timed(pcre2_code *re, pcre2_match_data *md, rx_fn *rx, const char *s
     r->calls /= passes, r->matches /= passes, r->sum /= passes;
 }
 
-/* Every call of the find-all loop, with both matchers: the number of
-   calls that disagree. */
-static unsigned long differences(pcre2_code *re, rx_fn *rx, const char *subj, size_t len)
+/* Both matchers from every start offset of the subject: the number of
+   calls that disagree, and how many calls and matches there were. */
+static unsigned long differences(pcre2_code *re, rx_fn *rx, const char *subj, size_t len, unsigned long *calls,
+                                 unsigned long *matches)
 {
     uint32_t groups;
     pcre2_pattern_info(re, PCRE2_INFO_CAPTURECOUNT, &groups);
@@ -80,10 +85,11 @@ static unsigned long differences(pcre2_code *re, rx_fn *rx, const char *subj, si
     PCRE2_SIZE *ov = pcre2_get_ovector_pointer(md);
     long *mine = malloc(sizeof(long) * 2 * (groups + 1));
     unsigned long bad = 0;
-    size_t off = 0;
-    for (;;) {
+    for (size_t off = 0; off <= len; off++) {
         int rc = pcre2_match(re, (PCRE2_SPTR)subj, len, off, 0, md, NULL);
         int rc2 = rx(subj, len, off, mine, stack, STACK);
+        ++*calls;
+        *matches += rc > 0;
         if ((rc > 0) != (rc2 > 0) || (rc > 0 && memcmp(ov, mine, sizeof(long) * 2 * (groups + 1)))) {
             if (!bad++) {
                 printf("  at %zu: pcre2 %d, rx %d\n", off, rc, rc2);
@@ -92,11 +98,6 @@ static unsigned long differences(pcre2_code *re, rx_fn *rx, const char *subj, si
                            mine[2 * g], mine[2 * g + 1]);
             }
         }
-        if (rc <= 0)
-            break;
-        off = ov[1] > ov[0] ? ov[1] : ov[1] + 1;
-        if (off > len)
-            break;
     }
     pcre2_match_data_free(md);
     free(mine);
@@ -117,26 +118,33 @@ int main(int argc, char **argv)
         return 1;
     }
     int status = 0;
+    size_t timed_pats = sizeof(pats) / sizeof(pats[0]), all = timed_pats + sizeof(more) / sizeof(more[0]);
     printf("%-10s %6s %10s %10s %7s\n", "pattern", "calls", "pcre2 ns", "rx ns", "speedup");
-    for (size_t p = 0; p < sizeof(pats) / sizeof(pats[0]); p++) {
+    for (size_t p = 0; p < all; p++) {
+        const struct pat *pat = p < timed_pats ? &pats[p] : &more[p - timed_pats];
         int err;
         PCRE2_SIZE eo;
         char name[64];
-        if (argc > 3 && strcmp(argv[3], pats[p].name))
+        if (argc > 3 && strcmp(argv[3], pat->name))
             continue;
-        snprintf(name, sizeof name, "rx_%s", pats[p].name);
+        snprintf(name, sizeof name, "rx_%s", pat->name);
         rx_fn *rx = (rx_fn *)dlsym(so, name);
         if (!rx) {
-            printf("%-10s not compiled\n", pats[p].name);
+            printf("%-10s not compiled\n", pat->name);
             continue;
         }
-        pcre2_code *re = pcre2_compile((PCRE2_SPTR)pats[p].re, PCRE2_ZERO_TERMINATED, pats[p].opts, &err, &eo, NULL);
-        const char *subj = pats[p].subject ? pats[p].subject : big;
+        pcre2_code *re = pcre2_compile((PCRE2_SPTR)pat->re, PCRE2_ZERO_TERMINATED, pat->opts, &err, &eo, NULL);
+        const char *subj = pat->subject ? pat->subject : big;
         size_t len = strlen(subj);
-        unsigned long bad = differences(re, rx, subj, len);
+        unsigned long n = 0, m = 0, bad = differences(re, rx, subj, len, &n, &m);
         if (bad) {
-            printf("%-10s %lu calls differ\n", pats[p].name, bad);
+            printf("%-10s %lu of %lu calls differ\n", pat->name, bad, n);
             status = 1;
+            continue;
+        }
+        if (p >= timed_pats) {
+            printf("%-10s agrees on %lu calls, %lu of them matches\n", pat->name, n, m);
+            pcre2_code_free(re);
             continue;
         }
         pcre2_match_data *md = pcre2_match_data_create_from_pattern(re, NULL);
@@ -145,7 +153,7 @@ int main(int argc, char **argv)
         timed(re, md, rx, subj, len, budget, &b);
         if (a.calls != b.calls || a.sum != b.sum)
             status = 1;
-        printf("%-10s %6lu %10.1f %10.1f %6.1fx\n", pats[p].name, a.calls, a.ns, b.ns, a.ns / b.ns);
+        printf("%-10s %6lu %10.1f %10.1f %6.1fx\n", pat->name, a.calls, a.ns, b.ns, a.ns / b.ns);
         pcre2_match_data_free(md);
         pcre2_code_free(re);
     }

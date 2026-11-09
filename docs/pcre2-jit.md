@@ -143,11 +143,17 @@ Callouts, script runs and `(*MARK)` searches abort. Partial matching,
 ## Another route: a regex compiler on nanofil
 
 `experiments/regex-nanofil` tries a compiler that does not involve sljit or
-LLVM: 690 lines of Prolog turn a PCRE subset into nanofil's unchecked IR, and
-nanofil, `as` and `clang -shared` make a shared object to `dlopen`. On nine
-of the ten patterns it agrees with the interpreter on every call and is 4.7
-to 26 times faster: at or above native sljit's speed on five of them and
-ahead of the LLVM JIT on seven. It needs no executable memory, no link flag and no LLVM in
-the process. Compiling a pattern takes 0.2 to 0.6 s, so it needs a cache on
-disk or compilation ahead of time. Its README has the numbers and what the
-subset leaves out.
+LLVM: 715 lines of Prolog turn the bytecode `pcre2_compile` makes into
+nanofil's unchecked IR, and nanofil, `as` and `clang -shared` make a shared
+object to `dlopen`. PCRE2 keeps parsing, numbering groups and finding where
+a match can start; a pattern with an opcode the compiler does not know stays
+on the interpreter.
+
+On nine of the ten patterns here, and on 27 more that exercise atomic and
+possessive groups, lookbehind, multiline and group loops, it agrees with the
+interpreter from every start offset of the subject. The nine are 4.8 to 25
+times faster than the interpreter: at or above native sljit's speed on five
+of them and ahead of the LLVM JIT on seven. It needs no executable memory,
+no link flag and no LLVM in the process. nanofil takes 0.15 to 0.6 s per
+pattern, so it needs a cache on disk or compilation ahead of time. Its
+README has the numbers and what is not compiled.

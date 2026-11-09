@@ -1,7 +1,11 @@
 /*  A regex compiler that emits nanofil's unchecked IR: an exploration.
 
-    regex_ast/3 parses a PCRE subset into a tree, and regex_func/3 turns
-    the tree into one IR function (nanofil/src/ir.pl)
+    It does not read regex syntax. Its input is the bytecode that
+    pcre2_compile made of the pattern, so PCRE2 still parses, numbers the
+    groups, folds case into classes, expands counted groups, makes
+    repeats possessive where that is safe, and finds where a match can
+    start. code_regex/4 decodes the bytecode into a tree, and
+    regex_func/3 turns the tree into one IR function (nanofil/src/ir.pl)
 
         w NAME(p subject, l length, l start, p ovector, p stack, l slimit)
 
@@ -13,14 +17,17 @@
     The compiler is outside the memory-safety argument: a bug here is a
     wrong match or a Fil-C panic, never a wild access.
 
-    ## The subset
+    ## What it compiles
 
-    Bytes, not UTF. Literals, `.`, classes with ranges and `\d \w \s`
-    (and their negations), `^ $ \b \B`, alternation, capturing and
-    `(?:)` groups, `(?=)` and `(?!)`, greedy, lazy and (on one character)
-    possessive `* + ? {n} {n,} {n,m}`, and the caseless option. Anything
-    else throws unsupported(Why), and the caller keeps PCRE2's
-    interpreter for that pattern.
+    An 8-bit pattern without UTF or UCP, with the LF newline and PCRE2's
+    built-in character tables, matched with no match options. The
+    opcodes are the ones dump.c names: characters, classes and `\d \w \s`
+    with their repeats, `.`, `^ $ \A \z \Z \b \B` in either line mode,
+    alternation, capturing, plain and atomic groups and their greedy,
+    lazy and possessive repeats, and lookahead and fixed-length
+    lookbehind. Any other opcode (a backreference, a Unicode property,
+    recursion, a condition, a verb, a callout) throws unsupported(Why),
+    and the caller keeps PCRE2's interpreter for that pattern.
 
     ## The code it makes
 
@@ -47,19 +54,28 @@
 
     The dialect is Trealla's, as nanofil's: run it with either host.
 */
-:- module(rx, [regex_ast/3, regex_func/3, rx_file/1]).
+:- module(rx, [code_regex/4, regex_func/3, rx_file/1]).
 :- set_prolog_flag(double_quotes, chars).
 
 :- use_module(library(lists)).
 :- use_module(library(dcgs)).
 
-%% Parsing
-
-%! regex_ast(+Chars, +Options, -Regex) is det.
+%% Decoding
 %
-%  Regex is re(Ast, Groups) for the pattern Chars: its tree and the
-%  number of its capturing groups. Options is a list that may hold
-%  `caseless`. Throws unsupported(Why) for syntax outside the subset.
+% The bytecode is a list of bytes. An opcode byte is named through Ops,
+% the list dump.c prints (nth0 of the byte), so no opcode number appears
+% here. Links are two bytes and are skipped: the nesting of brackets,
+% alts and kets says the same. Counts and group numbers are two bytes,
+% high first.
+
+%! code_regex(+Ops, +Header, +Bytes, -Regex) is det.
+%
+%  Regex is re(Ast, Groups, Start) for the compiled pattern that dump.c
+%  printed as `rx(_, Header, Bytes)` after `ops(Ops)`: its tree, the
+%  number of its capturing groups, and where a match can start
+%  (`anchored`, `any`, or `set(Ranges)` of the bytes one can begin
+%  with). Throws unsupported(Why) for what the header of this file
+%  excludes.
 %
 %  | Node | Matches |
 %  |---|---|
@@ -67,128 +83,151 @@
 %  | `seq(Nodes)` | each in turn |
 %  | `alt(Nodes)` | the first that lets the rest match |
 %  | `group(N, A)` | A, as capture N |
+%  | `once(A)` | A's first match, with no way back into it |
 %  | `star(A, Min, Max, Mode)` | Min to Max (`inf`) of A; Mode `greedy`, `lazy` or `possessive` |
 %  | `look(pos, A)`, `look(neg, A)` | here, if A does or does not match |
-%  | `bol`, `eol`, `wordb(yes)`, `wordb(no)` | `^`, `$`, `\b`, `\B` |
-regex_ast(Chars, Options, re(Ast, Groups)) :-
-    ( memberchk(caseless, Options) -> F = fold ; F = exact ),
-    (   phrase(alt(F, 1, N, Ast), Chars) -> Groups is N - 1
-    ;   throw(unsupported(syntax))
+%  | `back(N)` | N bytes back, at the start of a lookbehind branch |
+%  | `bol`, `eol`, `eod` | `^`, `$`, `\z` |
+%  | `mbol`, `meol` | `^` and `$` in multiline mode |
+%  | `wordb(yes)`, `wordb(no)` | `\b`, `\B` |
+%
+%  A loop over anything but one byte has Min 0 or 1 and Max `inf`:
+%  pcre2_compile writes the other counts out as copies.
+code_regex(Ops, Header, [B|Bytes], re(Ast, Groups, Start)) :-
+    memberchk(unsupported(Us), Header),
+    ( Us = [U|_] -> throw(unsupported(U)) ; true ),
+    memberchk(groups(Groups), Header),
+    memberchk(dollar(Dollar), Header),
+    memberchk(start(Start0), Header),
+    start_set(Start0, Start),
+    D = d(Ops, Dollar),
+    opcode(D, B, bra(plain)),
+    bracket(plain, Bytes, [E|_], D, Ast, single),
+    opcode(D, E, end), !.
+
+start_set(anchored, anchored).
+start_set(any, any).
+start_set(first(B, exact), set([B-B])).
+start_set(first(B, caseless), set(Rs)) :- folded([B-B], Rs).
+start_set(bitmap(Map), set(Rs)) :- bitmap_set(Map, Rs).
+
+opcode(d(Ops, _), B, Op) :- nth0(B, Ops, Op), !.
+
+% nodes(+Bs0, -Bs, +D, -Nodes): the nodes of a branch, up to the alt or
+% ket that Bs begins with.
+nodes(Bs0, Bs, D, Ns) :-
+    Bs0 = [B|Bs1], opcode(D, B, Op),
+    (   ( Op == alt ; Op = ket(_) ) -> Bs = Bs0, Ns = []
+    ;   node(Op, Bs1, Bs2, D, N) -> Ns = [N|Ns1], nodes(Bs2, Bs, D, Ns1)
+    ;   Op = x(Name) -> throw(unsupported(Name))
+    ;   throw(unsupported(Op))
     ).
 
-alt(F, N0, N, A) -->
-    seq(F, N0, N1, S), alt_rest(F, N1, N, Ss),
-    { Ss == [] -> A = S ; A = alt([S|Ss]) }.
+% node(+Op, +Bs0, -Bs, +D, -Node): the node of opcode Op, whose operands
+% Bs0 begins with.
+node(char, [C|Bs], Bs, _, class([C-C])).
+node(chari, [C|Bs], Bs, _, class(Rs)) :- folded([C-C], Rs).
+node(not, [C|Bs], Bs, _, class(Rs)) :- complement([C-C], Rs).
+node(noti, [C|Bs], Bs, _, class(Rs)) :- folded([C-C], Rs0), complement(Rs0, Rs).
+node(type(T, Sense), Bs, Bs, _, class(Rs)) :- type_set(T, Sense, Rs).
+node(rep(Set, Min0, Max0, Mode), Bs0, Bs, D, star(class(Rs), Min, Max, Mode)) :-
+    ( Max0 == n -> count(Bs0, Bs1, Max) ; Max = Max0, Bs1 = Bs0 ),
+    ( Min0 == n -> Min = Max ; Min = Min0 ),
+    Bs1 = [B|Bs],
+    (   Set == type -> opcode(D, B, Op), node(Op, [], [], D, class(Rs))
+    ;   node(Set, [B], [], D, class(Rs))
+    ).
+node(class, Bs0, Bs, D, Node) :-
+    length(Map, 32), append(Map, Bs1, Bs0),
+    bitmap_set(Map, Rs),
+    Bs1 = [B|Bs2], opcode(D, B, Op),
+    (   Op = crep(Min, Max, Mode) -> Node = star(class(Rs), Min, Max, Mode), Bs = Bs2
+    ;   Op = crange(Mode)
+    ->  count(Bs2, Bs3, Min), count(Bs3, Bs, Max0),
+        ( Max0 =:= 0 -> Max = inf ; Max = Max0 ),
+        Node = star(class(Rs), Min, Max, Mode)
+    ;   Node = class(Rs), Bs = Bs1
+    ).
+node(bol, Bs, Bs, _, bol).
+node(mbol, Bs, Bs, _, mbol).
+node(doll, Bs, Bs, d(_, Dollar), Dollar).
+node(eol, Bs, Bs, _, eol).
+node(eod, Bs, Bs, _, eod).
+node(meol, Bs, Bs, _, meol).
+node(wordb(W), Bs, Bs, _, wordb(W)).
+node(reverse, Bs0, Bs, _, back(N)) :- count(Bs0, Bs, N).
+node(bra(Kind), Bs0, Bs, D, Node) :-
+    bracket(Kind, Bs0, Bs, D, A, Ket),
+    repeated(none, Ket, A, Node).
+node(zero(Zero), [B|Bs0], Bs, D, Node) :-
+    opcode(D, B, bra(Kind)),
+    bracket(Kind, Bs0, Bs, D, A, Ket),
+    repeated(Zero, Ket, A, Node).
 
-alt_rest(F, N0, N, [S|Ss]) --> "|", !, seq(F, N0, N1, S), alt_rest(F, N1, N, Ss).
-alt_rest(_, N, N, []) --> [].
+count([H, L|Bs], Bs, N) :- N is H * 256 + L.
 
-seq(F, N0, N, A) --> items(F, N0, N, Is), { Is = [X] -> A = X ; A = seq(Is) }.
+% bracket(+Kind, +Bs0, -Bs, +D, -Node, -Ket): the group whose opening
+% opcode of Kind precedes Bs0, and how its ket repeats it.
+bracket(Kind, [_, _|Bs0], Bs, D, Node, Ket) :-
+    ( Kind == capture -> count(Bs0, Bs1, N) ; Bs1 = Bs0 ),
+    branches(Bs1, Bs, D, As, Ket),
+    ( As = [A] -> true ; A = alt(As) ),
+    wrapped(Kind, N, A, Node).
 
-items(F, N0, N, [I|Is]) --> item(F, N0, N1, I), !, items(F, N1, N, Is).
-items(_, N, N, []) --> [].
-
-item(F, N0, N, I) --> piece(F, N0, N, A), quant(A, I).
-
-quant(A, star(A, Min, Max, Mode)) --> rep(Min, Max), !, mode(Mode).
-quant(A, A) --> [].
-
-rep(0, inf) --> "*".
-rep(1, inf) --> "+".
-rep(0, 1) --> "?".
-rep(Min, Max) -->
-    "{", digits(Ds), { Ds \== [], number_chars(Min, Ds) },
-    (   "}" -> { Max = Min }
-    ;   ",", digits(Es), "}",
-        { Es == [] -> Max = inf ; number_chars(Max, Es), Max >= Min }
+branches(Bs0, Bs, D, [A|As], Ket) :-
+    nodes(Bs0, [B, _, _|Bs1], D, Ns),
+    ( Ns = [A] -> true ; A = seq(Ns) ),
+    opcode(D, B, Op),
+    (   Op == alt -> branches(Bs1, Bs, D, As, Ket)
+    ;   Op = ket(Ket), As = [], Bs = Bs1
     ).
 
-mode(lazy) --> "?", !.
-mode(possessive) --> "+", !.
-mode(greedy) --> [].
+wrapped(plain, _, A, A).
+wrapped(capture, N, A, group(N, A)).
+wrapped(once, _, A, once(A)).
+wrapped(look(Sense), _, A, look(Sense, A)).
 
-digits([D|Ds]) --> [D], { char_type_digit(D) }, !, digits(Ds).
-digits([]) --> [].
-
-char_type_digit(D) :- char_code(D, C), C >= 0'0, C =< 0'9.
-
-piece(F, N0, N, A) --> "(", !, group(F, N0, N, A).
-piece(_, N, N, bol) --> "^", !.
-piece(_, N, N, eol) --> "$", !.
-piece(_, N, N, class(Rs)) --> ".", !, { complement([10-10], Rs) }.
-piece(F, N, N, class(Rs)) --> "[", !, class_body(F, Rs).
-piece(F, N, N, A) --> "\\", !, [C], { escape(F, C, A) }.
-piece(F, N, N, A) --> [C], { \+ memberchk(C, "|)*+?") }, { literal(F, C, A) }.
-
-group(F, N0, N, A) --> "?:", !, alt(F, N0, N, A), ")".
-group(F, N0, N, look(neg, A)) --> "?!", !, alt(F, N0, N, A), ")".
-group(F, N0, N, look(pos, A)) --> "?=", !, alt(F, N0, N, A), ")".
-group(_, _, _, _) --> "?", !, { throw(unsupported(group_syntax)) }.
-group(F, N0, N, group(N0, A)) --> { N1 is N0 + 1 }, alt(F, N1, N, A), ")".
-
-literal(F, Ch, class(Rs)) :-
-    char_code(Ch, C),
-    ( C > 127 -> throw(unsupported(non_ascii)) ; true ),
-    folded(F, [C-C], Rs).
-
-escape(F, Ch, A) :-
-    (   class_escape(Ch, bytes(Rs)) -> A = class(Rs)
-    ;   Ch == b -> A = wordb(yes)
-    ;   Ch == 'B' -> A = wordb(no)
-    ;   control_escape(Ch, C) -> A = class([C-C])
-    ;   char_code(Ch, C), alnum(C) -> throw(unsupported(escape(Ch)))
-    ;   literal(F, Ch, A)
-    ).
-
-control_escape(n, 10).
-control_escape(t, 9).
-control_escape(r, 13).
-control_escape(f, 12).
-control_escape(e, 27).
-control_escape(a, 7).
-
-alnum(C) :- ( C >= 0'0, C =< 0'9 ; C >= 0'a, C =< 0'z ; C >= 0'A, C =< 0'Z ), !.
-
-class_escape(d, bytes([48-57])).
-class_escape(w, bytes([48-57, 65-90, 95-95, 97-122])).
-class_escape(s, bytes([9-13, 32-32])).
-class_escape('D', bytes(Rs)) :- complement([48-57], Rs).
-class_escape('W', bytes(Rs)) :- complement([48-57, 65-90, 95-95, 97-122], Rs).
-class_escape('S', bytes(Rs)) :- complement([9-13, 32-32], Rs).
-
-class_body(F, Rs) -->
-    ( "^" -> { Neg = true } ; { Neg = false } ),
-    class_first(Rs0),
-    { normal(Rs0, Rs1), folded(F, Rs1, Rs2),
-      ( Neg == true -> complement(Rs2, Rs) ; Rs = Rs2 ) }.
-
-% A `]` straight after the opening is a literal.
-class_first([93-93|Rs]) --> "]", !, class_items(Rs).
-class_first(Rs) --> class_items(Rs).
-
-class_items([]) --> "]", !.
-class_items(Rs) --> class_atom(A), class_after(A, Rs).
-
-class_after(code(Lo), [Lo-Hi|Rs]) -->
-    "-", class_atom(code(Hi)), !, { Lo =< Hi }, class_items(Rs).
-class_after(code(C), [C-C|Rs]) --> !, class_items(Rs).
-class_after(bytes(S), Rs) --> class_items(Rs1), { append(S, Rs1, Rs) }.
-
-class_atom(A) --> "\\", !, [Ch], { class_atom_escape(Ch, A) }.
-class_atom(_) --> "[", ":", !, { throw(unsupported(posix_class)) }.
-class_atom(code(C)) -->
-    [Ch], { Ch \== ']', char_code(Ch, C) },
-    { C > 127 -> throw(unsupported(non_ascii)) ; true }.
-
-class_atom_escape(Ch, A) :-
-    (   class_escape(Ch, A) -> true
-    ;   control_escape(Ch, C) -> A = code(C)
-    ;   Ch == b -> A = code(8)
-    ;   char_code(Ch, C), alnum(C) -> throw(unsupported(escape(Ch)))
-    ;   char_code(Ch, C), A = code(C)
-    ).
+% repeated(+Zero, +Ket, +A, -Node): A under the zero-repeat opcode
+% before its bracket (or `none`) and the ket after it. An optional
+% group is an alternation with nothing.
+repeated(none, single, A, A).
+repeated(none, greedy, A, star(A, 1, inf, greedy)).
+repeated(none, lazy, A, star(A, 1, inf, lazy)).
+repeated(none, possessive, A, star(A, 1, inf, possessive)).
+repeated(greedy, single, A, alt([A, seq([])])).
+repeated(greedy, greedy, A, star(A, 0, inf, greedy)).
+repeated(lazy, single, A, alt([seq([]), A])).
+repeated(lazy, lazy, A, star(A, 0, inf, lazy)).
+repeated(possessive, possessive, A, star(A, 0, inf, possessive)).
+repeated(skip, _, _, seq([])).
 
 %% Byte sets: sorted lists of disjoint, non-adjacent Lo-Hi ranges in 0..255.
+
+% The sets of PCRE2's built-in tables, which are the C locale's.
+type_bytes(digit, [48-57]).
+type_bytes(word, [48-57, 65-90, 95-95, 97-122]).
+type_bytes(space, [9-13, 32-32]).
+type_bytes(newline, [10-10]).
+type_bytes(none, []).
+
+type_set(T, yes, Rs) :- type_bytes(T, Rs).
+type_set(T, no, Rs) :- type_bytes(T, Rs0), complement(Rs0, Rs).
+
+% bitmap_set(+Map, -Rs): the set of a 32-byte class bitmap, which has
+% bit C mod 8 of byte C // 8 set for each member C.
+bitmap_set(Map, Rs) :- bitmap_bytes(Map, 0, Cs), normal(Cs, Rs).
+
+bitmap_bytes([], _, []).
+bitmap_bytes([M|Ms], Base, Cs) :-
+    byte_bits(0, M, Base, Cs, Cs1),
+    Base1 is Base + 8,
+    bitmap_bytes(Ms, Base1, Cs1).
+
+byte_bits(8, _, _, Cs, Cs) :- !.
+byte_bits(I, M, Base, Cs0, Cs) :-
+    ( M /\ (1 << I) =\= 0 -> C is Base + I, Cs0 = [C-C|Cs1] ; Cs0 = Cs1 ),
+    I1 is I + 1,
+    byte_bits(I1, M, Base, Cs1, Cs).
 
 normal(Rs0, Rs) :- msort(Rs0, Rs1), merged(Rs1, Rs).
 
@@ -207,17 +246,13 @@ complement([A-B|Rs], Lo, Cs) :-
     Lo1 is B + 1,
     complement(Rs, Lo1, Cs1).
 
-set_union(As, Bs, Cs) :- append(As, Bs, Ds), normal(Ds, Cs).
-
-% folded(+F, +Rs0, -Rs): with F fold, Rs also has the other case of each
-% ASCII letter of Rs0.
-folded(exact, Rs, Rs).
-folded(fold, Rs0, Rs) :-
+% folded(+Rs0, -Rs): Rs also has the other case of each ASCII letter of
+% Rs0.
+folded(Rs0, Rs) :-
     other_case(Rs0, 97, 122, -32, Us),
     other_case(Rs0, 65, 90, 32, Ls),
     append([Rs0, Us, Ls], Rs1),
     normal(Rs1, Rs).
-
 other_case([], _, _, _, []).
 other_case([A-B|Rs], Lo, Hi, D, Out) :-
     L is max(A, Lo), H is min(B, Hi),
@@ -226,41 +261,14 @@ other_case([A-B|Rs], Lo, Hi, D, Out) :-
     ),
     other_case(Rs, Lo, Hi, D, Out1).
 
-%% What a node can start with
-
-% firsts(+Node, -Rs, -Empty): Rs holds every byte a match of Node can
-% start with, and Empty is true if Node can match without consuming one.
-firsts(class(Rs), Rs, false).
-firsts(bol, [], true).
-firsts(eol, [], true).
-firsts(wordb(_), [], true).
-firsts(look(_, _), [], true).
-firsts(group(_, A), Rs, E) :- firsts(A, Rs, E).
-firsts(star(A, Min, _, _), Rs, E) :-
-    firsts(A, Rs, E0),
-    ( Min =:= 0 -> E = true ; E = E0 ).
-firsts(seq([]), [], true).
-firsts(seq([A|As]), Rs, E) :-
-    firsts(A, Rs1, E1),
-    (   E1 == true -> firsts(seq(As), Rs2, E), set_union(Rs1, Rs2, Rs)
-    ;   Rs = Rs1, E = false
-    ).
-firsts(alt([A]), Rs, E) :- !, firsts(A, Rs, E).
-firsts(alt([A|As]), Rs, E) :-
-    firsts(A, Rs1, E1), firsts(alt(As), Rs2, E2),
-    set_union(Rs1, Rs2, Rs),
-    ( ( E1 == true ; E2 == true ) -> E = true ; E = false ).
-
 % groups_in(+Node, -Ns): the capture numbers inside Node.
 groups_in(group(N, A), [N|Ns]) :- !, groups_in(A, Ns).
 groups_in(star(A, _, _, _), Ns) :- !, groups_in(A, Ns).
 groups_in(look(_, A), Ns) :- !, groups_in(A, Ns).
+groups_in(once(A), Ns) :- !, groups_in(A, Ns).
 groups_in(seq(As), Ns) :- !, maplist(groups_in, As, Nss), append(Nss, Ns).
 groups_in(alt(As), Ns) :- !, maplist(groups_in, As, Nss), append(Nss, Ns).
 groups_in(_, []).
-
-anchored(bol).
-anchored(seq([bol|_])).
 
 %% Emission state
 %
@@ -393,7 +401,30 @@ gen(look(Sense, A), X, F, F1) --> !,
     slot(LPos), slot(LSp), rd(Pos, P), wr(LPos, P), rd(Sp, S), wr(LSp, S),
     snapshot(Ns, Caps, Snap),
     look(Sense, A, X, F, F1, LPos, LSp, Snap).
+gen(once(A), X, F, F1) --> !,
+    % What A pushed is dropped, so nothing can resume it.
+    { X = ctx(_, Sp, Caps), groups_in(A, Ns) },
+    slot(LSp), rd(Sp, S0), wr(LSp, S0),
+    snapshot(Ns, Caps, Snap),
+    gen(A, X, F, _),
+    rd(LSp, S), wr(Sp, S),
+    undo_caps(Snap, F, F1).
+gen(back(N), ctx(Pos, _, _), F, F) --> !,
+    rd(Pos, P), check(uge, l, P, const(N), F), calc(sub, P, const(N), P1), wr(Pos, P1).
 gen(bol, ctx(Pos, _, _), F, F) --> !, rd(Pos, P), check(eq, l, P, const(0), F).
+gen(mbol, ctx(Pos, _, _), F, F) --> !,
+    % The start, or after a newline that does not end the subject.
+    rd(Pos, P), lab(Ok), lab(Inside),
+    cond(eq, l, P, const(0), Ok, Inside),
+    begin(Inside), check(ult, l, P, tmp(length), F),
+    calc(sub, P, const(1), P0), byte(P0, C), cond(eq, w, C, const(10), Ok, F),
+    begin(Ok).
+gen(eod, ctx(Pos, _, _), F, F) --> !, rd(Pos, P), check(eq, l, P, tmp(length), F).
+gen(meol, ctx(Pos, _, _), F, F) --> !,
+    rd(Pos, P), lab(Ok), lab(Inside),
+    cond(eq, l, P, tmp(length), Ok, Inside),
+    begin(Inside), byte(P, C), cond(eq, w, C, const(10), Ok, F),
+    begin(Ok).
 gen(eol, ctx(Pos, _, _), F, F) --> !,
     % The end, or the newline that ends the subject.
     rd(Pos, P), lab(Ok), lab(Inside), lab(Last),
@@ -402,7 +433,7 @@ gen(eol, ctx(Pos, _, _), F, F) --> !,
     begin(Last), byte(P, C), cond(eq, w, C, const(10), Ok, F),
     begin(Ok).
 gen(wordb(Want), ctx(Pos, _, _), F, F) --> !,
-    { class_escape(w, bytes(Word)) },
+    { type_bytes(word, Word) },
     slot(Before), slot(After), rd(Pos, P),
     wr(Before, const(0)), lab(B1), lab(B2), lab(B3),
     cond(ugt, l, P, const(0), B1, B3),
@@ -413,10 +444,10 @@ gen(wordb(Want), ctx(Pos, _, _), F, F) --> !,
     begin(A1), wr(After, const(1)), jump(goto(A2)),
     begin(A2), rd(Before, VB), rd(After, VA),
     ( { Want == yes } -> check(ne, l, VB, VA, F) ; check(eq, l, VB, VA, F) ).
-gen(star(A, Min, Max, lazy), X, F, F1) --> { Min > 0 }, !,
+gen(star(class(Rs), Min, Max, lazy), X, F, F1) --> { Min > 0 }, !,
     % X{m,n}? is X{m} then X{0,n-m}?.
     { ( Max == inf -> Max1 = inf ; Max1 is Max - Min ) },
-    gen(seq([star(A, Min, Min, greedy), star(A, 0, Max1, lazy)]), X, F, F1).
+    gen(seq([star(class(Rs), Min, Min, greedy), star(class(Rs), 0, Max1, lazy)]), X, F, F1).
 gen(star(class(Rs), Min, Max, Mode), X, F, F1) --> { Mode \== lazy }, !,
     { X = ctx(Pos, _, _) },
     slot(Start), rd(Pos, P0), wr(Start, P0),
@@ -451,13 +482,9 @@ gen(star(class(Rs), 0, Max, lazy), X, F, Back) --> !,
     test1(Rs, C, Adv, F),
     begin(Adv), calc(add, C, const(1), C1), wr(Cur, C1), wr(Pos, C1), jump(goto(Next)),
     begin(Next).
-gen(star(A, Min, Max, Mode), X, F, F1) --> !,
-    { firsts(A, _, Empty) },
-    (   { Empty == true } -> { throw(unsupported(loop_of_empty_match)) }
-    ;   { Mode == possessive } -> { throw(unsupported(possessive_group)) }
-    ;   { Mode == lazy } -> lazy_loop(A, Max, X, F, F1)
-    ;   greedy_loop(A, Min, Max, X, F, F1)
-    ).
+gen(star(A, Min, inf, possessive), X, F, F1) --> !, gen(once(star(A, Min, inf, greedy)), X, F, F1).
+gen(star(A, Min, inf, greedy), X, F, F1) --> !, greedy_loop(A, Min, X, F, F1).
+gen(star(A, Min, inf, lazy), X, F, F1) --> !, lazy_loop(A, Min, X, F, F1).
 
 arms([A], K, X, _, Which, Join, F, [K-FA]) --> !,
     gen(A, X, F, FA), wr(Which, const(K)), jump(goto(Join)).
@@ -483,11 +510,15 @@ look(pos, A, X, F, F1, LPos, LSp, Snap) -->
     { X = ctx(Pos, Sp, _) },
     gen(A, X, F, _),
     rd(LPos, P), wr(Pos, P), rd(LSp, S), wr(Sp, S),
-    (   { Snap == [] } -> { F1 = F }
-    ;   lab(Undo), lab(Next), jump(goto(Next)),
-        begin(Undo), restore_caps(Snap), jump(goto(F)),
-        begin(Next), { F1 = Undo }
-    ).
+    undo_caps(Snap, F, F1).
+
+% undo_caps(Snap, F, F1): failing to F1 puts the captures of Snap back
+% and goes on to F.
+undo_caps([], F, F) --> !.
+undo_caps(Snap, F, Undo) -->
+    lab(Undo), lab(Next), jump(goto(Next)),
+    begin(Undo), restore_caps(Snap), jump(goto(F)),
+    begin(Next).
 
 snapshot([], _, []) --> [].
 snapshot([N|Ns], Caps, [CS-S1, CE-E1|Snap]) -->
@@ -503,13 +534,16 @@ restore_caps([Slot-Saved|Snap]) --> rd(Saved, V), wr(Slot, V), restore_caps(Snap
 % if A can be resumed at all.
 body(A, X, F, FB, IStart, Saved) -->
     slots(Old), gen(A, X, F, FB), slots(Now),
-    { FB == F -> Saved = [IStart] ; append(New, Old, Now), Saved = [IStart|New] }.
+    { FB == F -> Saved = [IStart] ; once(append(New, Old, Now)), Saved = [IStart|New] }.
 
-/*  A greedy loop over a group. Count iterations are on the stack.
+/*  A greedy loop over a group, of at least Min (0 or 1) iterations.
+    Count iterations are on the stack. An iteration that matched nothing
+    is the last one, as in PCRE2, or the loop would not end.
 
     ```diagram
     Iter:     istart = pos; A        A fails ─▶ IterFail
-              push; count++; again
+              push; count++          it matched nothing ─▶ Next,
+                                     or again ─▶ Iter
     IterFail: pos = istart           with count iterations ─▶ Next,
                                      or too few ─▶ Back
     Back:     none left ─▶ Fail0
@@ -518,7 +552,7 @@ body(A, X, F, FB, IStart, Saved) -->
                                      or cannot ─▶ IterFail, one fewer
     ```
 */
-greedy_loop(A, Min, Max, X, F, Back) -->
+greedy_loop(A, Min, X, F, Back) -->
     { X = ctx(Pos, _, _) },
     slot(Count), slot(IStart), wr(Count, const(0)),
     lab(Iter), lab(IterFail), lab(Back), lab(Next),
@@ -526,7 +560,7 @@ greedy_loop(A, Min, Max, X, F, Back) -->
     begin(Iter), rd(Pos, P), wr(IStart, P),
     body(A, X, IterFail, FB, IStart, Saved),
     push(Saved, X), rd(Count, C), calc(add, C, const(1), C1), wr(Count, C1),
-    ( { Max == inf } -> jump(goto(Iter)) ; cond(ult, l, C1, const(Max), Iter, Next) ),
+    rd(Pos, P1), rd(IStart, I1), cond(ne, l, P1, I1, Iter, Next),
     begin(IterFail), rd(IStart, I), wr(Pos, I),
     (   { Min =:= 0 } -> jump(goto(Next))
     ;   rd(Count, C2), cond(uge, l, C2, const(Min), Next, Back)
@@ -535,25 +569,27 @@ greedy_loop(A, Min, Max, X, F, Back) -->
     pop(Saved, X), calc(sub, C3, const(1), C4), wr(Count, C4), jump(goto(FB)),
     begin(Next).
 
-/*  A lazy loop over a group, from zero iterations. LPos is where the
-    iterations so far end.
+/*  A lazy loop over a group, of at least Min (0 or 1) iterations. LPos
+    is where the iterations so far end, and IStart where the last one
+    began: when they are equal it matched nothing, and no further
+    iteration follows it.
 
     ```diagram
-    Back: at Max ─▶ Into
-          pos = istart = lpos; A     A fails ─▶ Into
+    Back: the last one matched nothing ─▶ Into
+    Iter: pos = istart = lpos; A     A fails ─▶ Into
           push; count++; lpos = pos ─▶ Next
     Into: none left ─▶ Fail0
           pop; count--               resume the last iteration ─▶ FB
     ```
 */
-lazy_loop(A, Max, X, F, Back) -->
+lazy_loop(A, Min, X, F, Back) -->
     { X = ctx(Pos, _, _) },
     slot(Count), slot(IStart), slot(LPos),
-    wr(Count, const(0)), rd(Pos, P0), wr(LPos, P0),
-    lab(Next), lab(Back), lab(Into), jump(goto(Next)),
-    begin(Back),
-    ( { Max == inf } -> [] ; rd(Count, C0), check(ult, l, C0, const(Max), Into) ),
-    rd(LPos, L), wr(Pos, L), wr(IStart, L),
+    wr(Count, const(0)), rd(Pos, P0), wr(LPos, P0), wr(IStart, const(-1)),
+    lab(Next), lab(Back), lab(Iter), lab(Into),
+    ( { Min =:= 0 } -> jump(goto(Next)) ; jump(goto(Iter)) ),
+    begin(Back), rd(LPos, L0), rd(IStart, I0), cond(ne, l, L0, I0, Iter, Into),
+    begin(Iter), rd(LPos, L), wr(Pos, L), wr(IStart, L),
     body(A, X, Into, FB, IStart, Saved),
     push(Saved, X), rd(Count, C), calc(add, C, const(1), C1), wr(Count, C1),
     rd(Pos, P1), wr(LPos, P1), jump(goto(Next)),
@@ -565,12 +601,13 @@ lazy_loop(A, Max, X, F, Back) -->
 
 %! regex_func(+Name, +Regex, -Func) is det.
 %
-%  Func is the IR function Name that matches Regex, a re(Ast, Groups) of
-%  regex_ast/3, with the signature and results the header gives. It
-%  tries each start offset in turn, skipping offsets whose byte cannot
-%  begin a match (with memchr when only one byte can).
-regex_func(Name, re(Ast, Groups), Func) :-
-    top(Ast, Groups, s(0, b(init, []), [], []), s(_, none, Blocks0, Slots0)),
+%  Func is the IR function Name that matches Regex, a re(Ast, Groups,
+%  Start) of code_regex/4, with the signature and results the header
+%  gives. It tries each start offset in turn, or only the first for an
+%  anchored pattern, skipping offsets whose byte cannot begin a match
+%  (with memchr when only one byte can).
+regex_func(Name, re(Ast, Groups, Start), Func) :-
+    top(Ast, Groups, Start, s(0, b(init, []), [], []), s(_, none, Blocks0, Slots0)),
     reverse(Blocks0, Blocks1), reverse(Slots0, Slots),
     findall(let(S, p, alloc(8), [const(8)]), member(S, Slots), Allocs),
     reachable([block(entry, [], Allocs, goto(init))|Blocks1], Blocks),
@@ -579,7 +616,7 @@ regex_func(Name, re(Ast, Groups), Func) :-
                  param(p, tmp(ovector)), param(p, tmp(stack)), param(l, tmp(slimit))],
                 Blocks).
 
-top(Ast, Groups) -->
+top(Ast, Groups, Start) -->
     slot(Pos), slot(Sp), slot(Scan),
     caps(0, Groups, Caps),
     { X = ctx(Pos, Sp, Caps) },
@@ -588,7 +625,7 @@ top(Ast, Groups) -->
     jump(goto(Try)),
     begin(Try), rd(Scan, S),
     % No match can start at a byte outside First, or at the end.
-    (   { firsts(Ast, [B-B], false) }
+    (   { Start = set([B-B]) }
     ->  % One possible byte: libc finds the next one.
         check(ult, l, S, tmp(length), Stop),
         tmp(Q), emit(let(Q, p, add, [tmp(subject), S])),
@@ -599,7 +636,7 @@ top(Ast, Groups) -->
         tmp(QA), emit(let(QA, l, ptoi, [Q])),
         calc(sub, RA, QA, D), calc(add, S, D, S0), wr(Scan, S0),
         jump(goto(Go))
-    ;   { firsts(Ast, First, false), First \== [0-255] }
+    ;   { Start = set(First) }
     ->  lab(Skip), check(ult, l, S, tmp(length), Stop),
         byte(S, C), class_test(First, C, Go, Skip),
         begin(Skip), calc(add, S, const(1), S0), wr(Scan, S0), jump(goto(Try))
@@ -609,7 +646,7 @@ top(Ast, Groups) -->
     gen(group(0, Ast), X, Fail, _),
     results(Caps), jump(ret(const(1))),
     begin(Fail),
-    (   { anchored(Ast) } -> jump(goto(Stop))
+    (   { Start == anchored } -> jump(goto(Stop))
     ;   rd(Scan, S1), calc(add, S1, const(1), S2), wr(Scan, S2),
         cond(ule, l, S2, tmp(length), Try, Stop)
     ),
@@ -654,37 +691,25 @@ targets(ret(_), []).
 
 %! rx_file(+File) is det.
 %
-%  Prints the IR text of one function per line of File, which is
-%  `NAME<tab>OPTIONS<tab>REGEX` with OPTIONS `i` for caseless or `-`.
-%  The function is `rx_NAME`. A pattern outside the subset prints a
-%  comment instead.
+%  Prints the IR text of one function per pattern of File, which holds
+%  the terms dump.c prints: `ops(Ops)`, then an `rx(Name, Header,
+%  Bytes)` for each pattern. The function is `rx_Name`. A pattern this
+%  does not compile prints a comment instead.
 rx_file(File) :-
     open(File, read, S),
-    once(rx_lines(S)),
+    read(S, ops(Ops)),
+    rx_terms(S, Ops),
     close(S).
 
-rx_lines(S) :-
-    read_line(S, Line),
-    (   Line == end -> true
-    ;   rx_line(Line), rx_lines(S)
+rx_terms(S, Ops) :-
+    read(S, T),
+    (   T == end_of_file -> true
+    ;   T = rx(Name, Header, Bytes), rx_term(Ops, Name, Header, Bytes), rx_terms(S, Ops)
     ).
 
-rx_line(Line) :-
-    append(NameCs, ['\t'|Rest], Line), append(OptCs, ['\t'|Regex], Rest), !,
-    atom_chars(Name, NameCs),
-    ( memberchk(i, OptCs) -> Options = [caseless] ; Options = [] ),
+rx_term(Ops, Name, Header, Bytes) :-
     atom_concat(rx_, Name, Fn),
-    catch(( regex_ast(Regex, Options, Re), regex_func(Fn, Re, Func),
+    catch(( code_regex(Ops, Header, Bytes, Re), regex_func(Fn, Re, Func),
             writeq(Func), write('.'), nl ),
           unsupported(Why),
           ( write('% '), write(Name), write(': unsupported: '), writeq(Why), nl )).
-
-read_line(S, Line) :-
-    get_char(S, C),
-    (   C == end_of_file -> Line = end
-    ;   line_rest(C, S, Line)
-    ).
-
-line_rest('\n', _, []) :- !.
-line_rest(end_of_file, _, []) :- !.
-line_rest(C, S, [C|Cs]) :- get_char(S, C1), line_rest(C1, S, Cs).

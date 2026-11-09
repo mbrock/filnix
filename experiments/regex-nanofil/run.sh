@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Compile the patterns of ../pcre2-sljit-llvm/pats.h with rx.pl and
-# nanofil, load the result into a Fil-C program, and compare it with
-# PCRE2's interpreter.
+# Compile the bytecode pcre2_compile makes of the patterns in
+# ../pcre2-sljit-llvm/pats.h and more.h with rx.pl and nanofil, load the
+# result into a Fil-C program, and compare it with PCRE2's interpreter.
 #
 #   ./run.sh              all patterns in one shared object
 #   HOST=tpl ./run.sh     regex to IR on Trealla instead of SWI-Prolog
 #
-# Needs nix, GNU as, and the Fil-C PCRE2 build that
+# Needs nix, GNU as, and the PCRE2 source and Fil-C build that
 # ../pcre2-sljit-llvm/run.sh leaves in $WORK. SWIPL and TPL name the
 # Prolog hosts; without them nix builds the pinned ones.
 set -euo pipefail
@@ -18,6 +18,7 @@ OUT=${OUT:-$WORK/regex-nanofil}
 BUDGET=${BUDGET:-0.3}
 HOST=${HOST:-swi}
 pcre2=$WORK/build/filc-nojit
+src=$WORK/pcre2-10.49 # the version ../pcre2-sljit-llvm/run.sh fetches
 
 if [ ! -e "$pcre2/.libs/libpcre2-8.a" ]; then
   echo "run ../pcre2-sljit-llvm/run.sh first: no $pcre2" >&2
@@ -38,24 +39,10 @@ fi
 filcc=$WORK/filcc-staging/bin/clang
 export SWIPL
 
-# NAME <tab> i|-|u <tab> REGEX, one pattern per line.
-cat >dumppats.c <<'EOF'
-#include <stdint.h>
-#include <stdio.h>
-#define PCRE2_CASELESS 8u
-#define PCRE2_UTF 0x80000u
-#define PCRE2_UCP 0x20000u
-#include "pats.h"
-int main(void)
-{
-    for (size_t i = 0; i < sizeof(pats) / sizeof(pats[0]); i++)
-        printf("%s\t%s\t%s\n", pats[i].name,
-               pats[i].opts & (PCRE2_UTF | PCRE2_UCP) ? "u" : pats[i].opts & PCRE2_CASELESS ? "i" : "-",
-               pats[i].re);
-}
-EOF
-cc -I"$here/../pcre2-sljit-llvm" -o dumppats dumppats.c
-./dumppats >pats.tsv
+# What pcre2_compile made of each pattern, as Prolog terms.
+"$filcc" -O2 -DHAVE_CONFIG_H -I"$pcre2/src" -I"$src/src" -I"$here/../pcre2-sljit-llvm" \
+  -o dump "$here/dump.c" "$pcre2/.libs/libpcre2-8.a"
+./dump >pats.pl
 
 step() { # step LABEL COMMAND...: run it and say how long it took
   local label=$1 t0 t1
@@ -68,9 +55,9 @@ step() { # step LABEL COMMAND...: run it and say how long it took
 
 regex_to_ir() {
   case $HOST in
-    swi) "$SWIPL" -q -g "consult('$here/rx.pl'), rx:rx_file('pats.tsv')" -t halt \
+    swi) "$SWIPL" -q -g "consult('$here/rx.pl'), rx:rx_file('pats.pl')" -t halt \
       "$repo/nanofil/src/swi/compat.pl" </dev/null >rx.ir ;;
-    tpl) "$TPL" -q "$here/rx.pl" -g "rx:rx_file('pats.tsv')" -g halt </dev/null >rx.ir ;;
+    tpl) "$TPL" -q "$here/rx.pl" -g "rx:rx_file('pats.pl')" -g halt </dev/null >rx.ir ;;
   esac
 }
 ir_to_asm() {
