@@ -33,9 +33,13 @@ overlapping memmove snapshots pointers backward: yes
 overlapping memmove snapshots pointers forward: yes
 mempcpy returns exact end and frames next pointer: yes
 empty and complete self moves keep authority: yes
+strdup fresh writable copy stops at first NUL: yes
+strdup does not consume source ownership: yes
+strdup retains complete in-phase source capability: yes
 unbounded scan needs in-object NUL: yes
 copy needs entire writable destination: yes
 search result dies with source: yes
 memset clears touched word authority: yes
 partial pointer copy clears authority: yes
 out-of-phase pointer bytes do not compose authority: yes
+strdup out-of-phase bytes do not import authority: yes

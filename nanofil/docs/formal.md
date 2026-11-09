@@ -1695,6 +1695,51 @@ rejection. Native heap probes check fresh distinct aligned zeroed storage,
 neighbour authority and freeable nonnull zero allocation. They do not force
 native allocator exhaustion or establish universal native coverage.
 
+### Campaign 4 milestone 5b: unindexed fresh strdup
+
+The selected strdup implementation is strlen plus one, malloc, then memcpy.
+`strdup_contract world` admits a separately established terminated string,
+with conservative source-object-base alignment for the reviewed snapshot
+metadata relation. Interior unaligned source addresses are admitted.
+Success allocates fresh Obj storage and copies exactly through the NUL;
+the intermediate malloc endpoint is distinct from the filled result.
+No old write roots, releases, NULL return, exit or observations are added.
+Source ownership and all other old objects survive, including their bytes
+and stored capabilities. Rounded allocation padding is untouched.
+
+One fixed registry must support strings of different lengths. A ghost
+length index would prevent that, and an object-capacity or SIZE_MAX source
+envelope would not be the exact string footprint. Instead a total bounded
+logical scan computes the first-NUL offset using the region named by the
+source capability. `terminated_string_length` proves it equals any
+independently established terminated-length witness. That witness remains
+the admission obligation: exhaustion, missing/freed authority and one-past
+do not become valid strings merely because the computation returns a
+number. The sources and request size are exactly that length plus one.
+The scan names logical footprints, not libc execution; rewrite with its
+correctness lemma for huge symbolic capacities rather than evaluating
+unary fuel. Existing strlen, strchr and puts interfaces remain unchanged.
+
+`strdup_return`, `strdup_refused` and `strdup_admitted` construct actual
+invocations from input and runtime premises. `strdup_invocation` extracts
+all completions. The copied metadata uses the original source map at the
+allocation intermediate: full in-phase words retain exact capabilities;
+partial or out-of-phase slots do not import them. Born-object authority
+justifies every destination change, including auxiliary slot starts.
+`strdup_prefix_old` frames every old object even at resource endpoints.
+OOM may abandon one fresh, possibly partially filled allocation under the
+same documented terminal-prefix overapproximation as malloc. Native
+auxiliary-allocation failure, boxing and collector-prefix correspondence
+remain uninstantiated; none is hidden behind extra caller write roots.
+
+Ready controls cover different lengths under one contract, early and
+partial-word NULs, high bytes, exact sources and requests, copied NUL and
+allocation padding, retained Ro/Obj words, nonimported partial words,
+unaligned phases, old cells, invalid authority and actual refusal.
+Native controls restore pointer address bits using volatile byte stores
+to distinguish copied authority from numeric equality; a complete
+in-phase duplicate remains usable, while out-of-phase bytes do not.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and

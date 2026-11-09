@@ -1444,6 +1444,205 @@ Proof.
   split; [intros; split; reflexivity|]. intros. eapply allocated_old_region; eauto.
 Qed.
 
+(** ## Computing exact string footprints *)
+
+(** A total bounded logical scan, not an implementation of libc.
+    Exhaustion returns the bound; admission still requires a NUL. *)
+Fixpoint nul_count (bytes : Z -> Z) (a : Z) (fuel : nat) : Z :=
+  match fuel with
+  | O => 0
+  | S fuel' => if bytes a =? 0 then 0 else 1 + nul_count bytes (a + 1) fuel'
+  end.
+
+(** Remaining bytes of the object named by p's own capability.
+    Missing/nonobject authority yields no scan capacity. *)
+Definition string_capacity (m : mem) (p : ptr) : Z :=
+  match ptr_cap p with
+  | Obj base | Ro base => match object_region base (m_regions m) with
+    | Some reg => Z.max 0 (r_end reg - ptr_addr p)
+    | None => 0
+    end
+  | _ => 0
+  end.
+
+(** A concrete length lets a single fixed registry name the exact
+    source span for strings of different lengths, without choice or a
+    ghost length index. The precondition, not this scan, grants reads. *)
+Definition string_length (m : mem) (p : ptr) : Z :=
+  nul_count (m_bytes m) (ptr_addr p) (Z.to_nat (string_capacity m p)).
+
+Lemma nul_count_first : forall fuel bytes a k,
+  0 <= k < Z.of_nat fuel ->
+  (forall i, 0 <= i < k -> bytes (a + i) <> 0) -> bytes (a + k) = 0 ->
+  nul_count bytes a fuel = k.
+Proof.
+  induction fuel as [|fuel IH]; intros bytes a k Hk Hbefore Hnul; [simpl in Hk; lia|].
+  cbn -[Z.add]. destruct (Z.eq_dec k 0) as [->|Hpos].
+  - rewrite Z.add_0_r in Hnul. rewrite Hnul. reflexivity.
+  - assert ((bytes a =? 0) = false) as E.
+    { apply Z.eqb_neq. replace a with (a + 0) by lia. apply Hbefore. lia. }
+    rewrite E. rewrite (IH bytes (a + 1) (k - 1)).
+    + lia.
+    + rewrite Nat2Z.inj_succ in Hk. lia.
+    + intros i Hi. replace (a + 1 + i) with (a + (1 + i)) by lia. apply Hbefore. lia.
+    + replace (a + 1 + (k - 1)) with (a + k) by lia. exact Hnul.
+Qed.
+
+(** An independently established first NUL determines the computed
+    footprint. Invalid inputs need not compute a meaningful length. *)
+Lemma terminated_string_length : forall m p k,
+  terminated_length m p k -> string_length m p = k.
+Proof.
+  intros m p k Hlength.
+  pose proof (terminated_length_readable _ _ _ Hlength) as
+    (Hsize & (base & reg & Hcap & Hr & Hl) & Ha & _).
+  destruct Hlength as ((_ & Hk & _ & _ & Hbytes & Hnul) & Hmax).
+  assert (Hcapacity : k < string_capacity m p).
+  { unfold string_capacity. unfold access_res, cap_access_res in Ha.
+    destruct Hcap as [Hcap|Hcap]; rewrite Hcap in Ha |- *; rewrite Hr in Ha |- *.
+    all: destruct ((base <=? ptr_addr p) && (ptr_addr p + (k + 1) <=? r_end reg)) eqn:E;
+      try discriminate.
+    all: apply andb_true_iff in E as [_ He]; apply Z.leb_le in He;
+      rewrite Z.max_r by lia; lia. }
+  unfold string_length. apply nul_count_first.
+  - rewrite Z2Nat.id by lia. lia.
+  - intros i Hi. specialize (Hbytes i Hi). lia.
+  - apply Hnul. exact Hmax.
+Qed.
+
+(** ## Fresh string duplication *)
+
+(** P to P/discarded: the length is not a native or ghost argument. *)
+Definition strdup_abi (r : call_result) (args : list arg) : Prop :=
+  (r = CVoid \/ exists d, r = CResult d P) /\ exists p, args = [Arg P p].
+
+(** Conservative source-base domain for the reviewed memcpy metadata
+    relation. The source address itself need not be aligned. *)
+Definition strdup_domain (m : mem) (p : ptr) (k : Z) : Prop :=
+  terminated_length m p k /\
+  exists base, (ptr_cap p = Obj base \/ ptr_cap p = Ro base) /\ base mod 8 = 0.
+
+(** strlen plus the NUL, computed from the original memory. *)
+Definition strdup_request (xs : list word) (m : mem) (align size : Z) : Prop :=
+  exists p, xs = [WPtr p] /\ align = 16 /\ size = string_length m p + 1.
+
+(** Fresh storage first, then the reviewed snapshot copy. The malloc
+    endpoint is the intermediate memory, NOT the filled result. *)
+Definition strdup_result (m : mem) (p : ptr) (n base : Z) (m' : mem) : Prop :=
+  malloc_result m n base (allocated m (heap_req 16 n) base) /\
+  copy_result (allocated m (heap_req 16 n) base) (mkPtr base (Obj base)) p n m'.
+
+(** Prefixes preserve old objects and restrict writes to the fresh
+    destination. As for malloc, terminal OOM can abandon one allocation. *)
+Definition strdup_prefix (m : mem) (p : ptr) (n : Z) (born : list Z) (m' : mem) : Prop :=
+  (born = [] /\ m' = m) \/ exists base, born = [base] /\
+    malloc_result m n base (allocated m (heap_req 16 n) base) /\
+    memset_frame (allocated m (heap_req 16 n) base) (mkPtr base (Obj base)) n m'.
+
+(** Trusted strdup for the selected strlen/malloc/memcpy path. No old
+    write root or release, no NULL or exit, and exact source metadata
+    only for full in-phase words. Auxiliary allocation, native boxing
+    and collector-prefix coverage retain the copying qualifications. *)
+Definition strdup_contract (world : Type) : contract world :=
+  mkContract world (RClass P) strdup_abi
+    (fun xs m _ => exists p k, xs = [WPtr p] /\ strdup_domain m p k)
+    (fun xs m _ => match xs with [WPtr p] => [mkSpan p (string_length m p + 1)] | _ => [] end)
+    (fun _ _ _ => []) (fun _ _ _ => []) (fun xs m _ => strdup_request xs m)
+    (fun xs m w born trace m' w' => trace = [] /\ w' = w /\ exists p,
+      xs = [WPtr p] /\ strdup_prefix m p (string_length m p + 1) born m')
+    (fun xs m w born trace ending m' w' => trace = [] /\ w' = w /\ exists p base,
+      xs = [WPtr p] /\ born = [base] /\ strdup_result m p (string_length m p + 1) base m' /\
+      ending = CallReturn [WPtr (mkPtr base (Obj base))])
+    resource_reason (fun why => In why [NullCapability; OutOfBounds; ArgumentSize; ReturnSize]).
+
+(** Fresh allocation preserves every previously readable byte span. *)
+Lemma readable_bytes_allocated : forall m q base p n,
+  object_region base (m_regions m) = None -> readable_bytes m p n ->
+  readable_bytes (allocated m q base) p n.
+Proof.
+  intros m q base p n Hnew (Hn & (b & reg & Hcap & Hr & Hl) & Ha & Hbytes).
+  split; [exact Hn|]. split.
+  - exists b, reg. split; [exact Hcap|]. split; [eapply allocated_old_region; eauto|exact Hl].
+  - split; [eapply allocated_old_access; eauto|exact Hbytes].
+Qed.
+
+(** A 16-aligned fresh base is also a globally aligned aux-slot start. *)
+Lemma fresh_heap_aligned8 : forall m n base,
+  fresh m (heap_req 16 n) base -> base mod 8 = 0.
+Proof.
+  intros m n base (_ & Ha & _). change (base mod 16 = 0) in Ha.
+  apply Z.mod_divide in Ha; [|lia]. destruct Ha as [k ->].
+  replace (k * 16) with ((k * 2) * 8) by ring. apply Z.mod_mul. lia.
+Qed.
+
+(** All changed cells, including shadow slot starts, are within the
+    fresh object; no caller write root is needed. Imported capabilities
+    still require complete readable original-source slots. *)
+Lemma strdup_result_local : forall m p n base m',
+  0 < n -> readable_bytes m p n -> strdup_result m p n base m' ->
+  local_effect [mkSpan p n] [] [] [base] (allocated m (heap_req 16 n) base) m'.
+Proof.
+  intros m p n base m' Hpos Hread ((Hlegal & Hfresh & _) & ((Hr & Hb & Ha) & Hbytes & Hslots)).
+  pose proof (fresh_heap_aligned8 _ _ _ Hfresh) as Halign.
+  destruct Hfresh as (Hbase & Hmod & Hbound & Hnew & Hsep & Hzero).
+  pose proof (malloc_extent n ltac:(lia)) as Hextent.
+  pose proof (readable_bytes_allocated m (heap_req 16 n) base p n Hnew Hread) as Hread'.
+  assert (Hwrite : forall a, base <= a < base + n ->
+    write_authority [] [base] (allocated m (heap_req 16 n) base) a).
+  { intros a Hin. right. exists base, (mkRegion base (base + req_extent (heap_req 16 n)) Heap Live).
+    split; [left; reflexivity|]. split; [simpl; rewrite Z.eqb_refl; reflexivity|].
+    split; [reflexivity|]. split; [reflexivity|].
+    change (base <= a < base + req_extent (heap_req 16 n)). lia. }
+  assert (Htouched : forall a, memset_touched (mkPtr base (Obj base)) n a = true -> base <= a < base + n).
+  { intros a H. apply memset_aux_in_root in H. unfold memset_root, span_contains in H.
+    assert ((n =? 0) = false) as E by (apply Z.eqb_neq; lia).
+    rewrite E in H. simpl in H. rewrite Halign in H. lia. }
+  split; [apply ids_same; exact Hr|]. split.
+  - intros b reg Hreg. rewrite Hr in Hreg. exists reg. auto.
+  - split.
+    + intros a Hout. split.
+      * apply Hb. intros Hin. apply Hout, Hwrite. exact Hin.
+      * apply Ha. destruct (memset_touched (mkPtr base (Obj base)) n a) eqn:E; [|reflexivity].
+        exfalso. apply Hout, Hwrite, Htouched. exact E.
+    + intros a. destruct (memset_touched (mkPtr base (Obj base)) n a) eqn:E.
+      * right. rewrite (Hslots a E). unfold copy_slot.
+        destruct (copy_full_slot (mkPtr base (Obj base)) p n a) eqn:Hfull; [|left; reflexivity].
+        unfold copy_full_slot in Hfull. repeat rewrite andb_true_iff in Hfull.
+        destruct Hfull as [[Hlo Hhi] Hphase]. apply Z.leb_le in Hlo. apply Z.leb_le in Hhi.
+        apply Z.eqb_eq in Hphase. right; right; left.
+        exists (mkSpan p n), (ptr_addr p + (a - base)).
+        split; [left; reflexivity|]. split; [unfold span_contains; simpl in *; lia|].
+        split; [simpl in *; lia|]. split; [|reflexivity].
+        apply (readable_bytes_slot _ _ n); simpl in *; try assumption; lia.
+      * left. apply Ha. exact E.
+Qed.
+
+(** Every accepted duplication prefix frames the caller's objects,
+    including source bytes and stored capabilities, even on refusal. *)
+Lemma strdup_prefix_old : forall m p n born m',
+  0 < n -> strdup_prefix m p n born m' ->
+  (forall b reg, object_region b (m_regions m) = Some reg ->
+    object_region b (m_regions m') = Some reg) /\
+  (forall a, in_object m a -> m_bytes m' a = m_bytes m a /\ m_aux m' a = m_aux m a).
+Proof.
+  intros m p n born m' Hpos [(_ & ->)|(base & _ & (Hlegal & Hfresh & _) & Hr & Hb & Ha)].
+  - auto.
+  - pose proof (fresh_heap_aligned8 _ _ _ Hfresh) as Halign.
+    destruct Hfresh as (_ & _ & _ & Hnew & Hsep & _).
+    pose proof (malloc_extent n ltac:(lia)) as Hextent. split.
+    + intros b reg Hreg. rewrite Hr. eapply allocated_old_region; eauto.
+    + intros a (b & reg & Hreg & Hin).
+      assert (Hout : ~ (base <= a < base + n)).
+      { intros Hboth. apply (Hsep b reg Hreg). split; lia. }
+      split.
+      * apply Hb. exact Hout.
+      * apply Ha. destruct (memset_touched (mkPtr base (Obj base)) n a) eqn:E; [|reflexivity].
+        exfalso. apply Hout. apply memset_aux_in_root in E.
+        unfold memset_root, span_contains in E.
+        assert ((n =? 0) = false) as En by (apply Z.eqb_neq; lia).
+        rewrite En in E. simpl in E. rewrite Halign in E. lia.
+Qed.
+
 (** ## Memory paths over any runtime *)
 
 (** The call relations over any [[runtime]] R, whose allocator answers
@@ -2284,6 +2483,120 @@ Proof.
       destruct Hreq as (k & Hargs & _ & Hsize); injection Hargs as <-; subst
     end.
     split; [assumption|]. destruct Hp as [(_ & ->)|(base & _ & (Hlegal & _))]; [reflexivity|lia].
+Qed.
+
+(** Successful allocation followed by any specified snapshot produces
+    an actual strdup invocation. Source length is proved from inputs. *)
+Theorem strdup_return : forall world r args p k s m (w : world) base s' m',
+  strdup_abi r args -> strdup_domain m p k -> k + 1 <= max_allocation_size ->
+  R.ready s m -> R.alloc s (heap_req 16 (k + 1)) = Some (base, s') ->
+  copy_result (allocated m (heap_req 16 (k + 1)) base)
+    (mkPtr base (Obj base)) p (k + 1) m' ->
+  invoke (strdup_contract world) r args [WPtr p] s m w []
+    (CallReturn [WPtr (mkPtr base (Obj base))]) s' m' w.
+Proof.
+  intros world r args p k s m w base s' m' Habi Hdomain Hsize Hr Ha Hcopy.
+  pose proof (terminated_string_length _ _ _ (proj1 Hdomain)) as Hlen.
+  pose proof (terminated_length_readable _ _ _ (proj1 Hdomain)) as Hread.
+  destruct (proj1 Hdomain) as ((_ & Hk & _) & Hmax).
+  destruct (R.fresh_allocation s m (heap_req 16 (k + 1)) base s' Hr ltac:(simpl; lia)
+    ltac:(pose proof (malloc_extent (k + 1) ltac:(lia)); lia) Ha) as [Hfresh _].
+  assert (Hresult : strdup_result m p (k + 1) base m').
+  { split; [split; [lia|]; auto|exact Hcopy]. }
+  eapply invoke_normal with (born := [base]).
+  - exact Habi.
+  - exists p, k. auto.
+  - split.
+    + change (effects [mkSpan p (string_length m p + 1)] [] [] (strdup_request [WPtr p] m)
+        s m [] s' m' [base]). rewrite Hlen.
+      eapply effects_alloc with (align := 16) (size := k + 1).
+      * exists p. split; [reflexivity|]. split; [reflexivity|]. rewrite Hlen. reflexivity.
+      * lia.
+      * exact Ha.
+      * eapply effects_local; [eapply strdup_result_local; eauto; lia|constructor].
+    + split; [reflexivity|]. split; [reflexivity|]. exists p. split; [reflexivity|].
+      rewrite Hlen. right. exists base. split; [reflexivity|].
+      split; [exact (proj1 Hresult)|exact (proj1 Hcopy)].
+  - split; [reflexivity|]. split; [reflexivity|]. exists p, base.
+    split; [reflexivity|]. split; [reflexivity|]. rewrite Hlen. auto.
+  - intros why Hbad. discriminate.
+  - intros values Heq. injection Heq as <-. split.
+    + eexists. split; reflexivity.
+    + constructor; [|constructor]. right; right; right. exists base. simpl. auto.
+  - intros status Hbad. discriminate.
+Qed.
+
+(** Allocation refusal is an actual unchanged prefix, not NULL. *)
+Theorem strdup_refused : forall world r args p k s m (w : world) why,
+  strdup_abi r args -> strdup_domain m p k ->
+  resource_failure (strdup_request [WPtr p] m) s why ->
+  invoke (strdup_contract world) r args [WPtr p] s m w [] (CallResource why) s m w.
+Proof.
+  intros world r args p k s m w why Habi Hdomain Hfail.
+  eapply invoke_resource with (born := []).
+  - exact Habi.
+  - exists p, k. auto.
+  - split; [constructor|]. split; [reflexivity|]. split; [reflexivity|].
+    exists p. split; [reflexivity|]. left. auto.
+  - exact Hfail.
+  - change (resource_reason why). destruct Hfail; unfold resource_reason; auto.
+Qed.
+
+(** Every independently admitted string has a modeled success or
+    resource invocation, even when the runtime refuses to allocate. *)
+Theorem strdup_admitted : forall world r args p k s m (w : world),
+  strdup_abi r args -> strdup_domain m p k -> R.ready s m ->
+  exists ending s' m', invoke (strdup_contract world) r args [WPtr p] s m w
+    [] ending s' m' w.
+Proof.
+  intros world r args p k s m w Habi Hdomain Hr.
+  pose proof (terminated_string_length _ _ _ (proj1 Hdomain)) as Hlen.
+  destruct (proj1 Hdomain) as ((_ & Hk & _) & Hmax).
+  destruct (Z_le_dec (k + 1) max_allocation_size) as [Hsize|Hbig].
+  - destruct (R.alloc s (heap_req 16 (k + 1))) as [[base s']|] eqn:Ha.
+    + do 3 eexists. eapply strdup_return; eauto. apply copy_memory_result.
+    + exists (CallResource OutOfMemory), s, m. eapply strdup_refused; eauto.
+      eapply failure_oom with (align := 16) (size := k + 1).
+      * exists p. split; [reflexivity|]. split; [reflexivity|]. rewrite Hlen. reflexivity.
+      * lia.
+      * exact Ha.
+  - exists (CallResource TooBig), s, m. eapply strdup_refused; eauto.
+    eapply failure_big with (align := 16) (size := k + 1).
+    + exists p. split; [reflexivity|]. split; [reflexivity|]. rewrite Hlen. reflexivity.
+    + lia.
+Qed.
+
+(** Extract the independent string witness, exact fresh result, or
+    terminal-resource prefix. The computed span equals k+1 for this
+    witness, so one fixed contract handles different lengths. *)
+Theorem strdup_invocation : forall world r args xs s m (w : world) trace ending s' m' w',
+  invoke (strdup_contract world) r args xs s m w trace ending s' m' w' ->
+  trace = [] /\ w' = w /\ exists p k, xs = [WPtr p] /\ strdup_domain m p k /\
+    ((exists base, strdup_result m p (k + 1) base m' /\
+       ending = CallReturn [WPtr (mkPtr base (Obj base))]) \/
+     (exists why born, ending = CallResource why /\ strdup_prefix m p (k + 1) born m' /\
+       resource_failure (strdup_request [WPtr p] m) s' why)).
+Proof.
+  intros world r args xs s m w trace ending s' m' w' Hcall. inversion Hcall; subst.
+  - match goal with
+    | Hpre : contract_pre _ _ _ _, Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
+      destruct Hpre as (p & k & Hxs & Hd);
+      destruct Hpost as (Ht & Hw & q & base & Hxs' & Hb & Hr & Hend)
+    end.
+    rewrite Hxs in Hxs'. injection Hxs' as <-.
+    pose proof (terminated_string_length _ _ _ (proj1 Hd)) as Hlen. rewrite Hlen in Hr.
+    split; [exact Ht|]. split; [exact Hw|]. exists p, k.
+    split; [exact Hxs|]. split; [exact Hd|]. left. exists base. auto.
+  - match goal with
+    | Hpre : contract_pre _ _ _ _, Hp : prefix _ _ _ _ _ _ _ _ _ _ |- _ =>
+      destruct Hpre as (p & k & Hxs & Hd);
+      destruct Hp as (_ & Ht & Hw & q & Hxs' & Hprefix)
+    end.
+    rewrite Hxs in Hxs'. injection Hxs' as <-.
+    pose proof (terminated_string_length _ _ _ (proj1 Hd)) as Hlen. rewrite Hlen in Hprefix.
+    split; [exact Ht|]. split; [exact Hw|]. exists p, k.
+    split; [exact Hxs|]. split; [exact Hd|]. right. do 2 eexists.
+    split; [reflexivity|]. split; [exact Hprefix|]. subst xs. assumption.
 Qed.
 
 End ExternalCalls.
@@ -4399,4 +4712,179 @@ Proof.
   split; [exists (2 ^ 64 - 1); split; [reflexivity|lia]|].
   split; [intros (_ & n & Hargs); discriminate Hargs|].
   intros ([H|(d & H)] & _); discriminate H.
+Qed.
+
+(** ## String duplication controls *)
+
+(** Sixteen nonzero bytes followed by NUL, with distinct stored
+    capabilities beneath the first two words. Finite unused bytes are
+    zero, so the fixture instantiates readiness. *)
+Definition strdup_fixture : mem :=
+  mkMem (fun a => if (1024 <=? a) && (a <? 1040) then 65 else 0)
+    (m_regions copy_fixture) (fun a => if a =? 1040 then Ro 2048 else m_aux copy_fixture a).
+
+Example strdup_fixture_ready : InterpRuntime.ready InterpRuntime.start strdup_fixture.
+Proof.
+  destruct copy_fixture_ready as (Hs & Hr & Hu). split; [exact Hs|]. split; [exact Hr|].
+  intros a Ha. destruct (Hu a Ha) as [_ Haux]. split.
+  - change ((if (1024 <=? a) && (a <? 1040) then 65 else 0) = 0).
+    assert ((a <? 1040) = false) as E by (apply Z.ltb_ge; unfold InterpRuntime.start in Ha; lia).
+    rewrite E, andb_false_r. reflexivity.
+  - change ((if a =? 1040 then Ro 2048 else m_aux copy_fixture a) = CNone).
+    assert ((a =? 1040) = false) as E by (apply Z.eqb_neq; unfold InterpRuntime.start in Ha; lia).
+    rewrite E. exact Haux.
+Qed.
+
+(** Interior starts, a partial-word NUL and empty strings use one contract. *)
+Lemma strdup_fixture_domain : forall off, 0 <= off <= 16 ->
+  strdup_domain strdup_fixture (mkPtr (1024 + off) (Ro 1024)) (16 - off).
+Proof.
+  intros off Hoff. split; [|exists 1024; split; [right; reflexivity|reflexivity]].
+  split; [|lia]. split; [lia|]. split; [lia|]. split.
+  - exists 1024, (mkRegion 1024 1053 Heap Live). split; [right; reflexivity|]. auto.
+  - split.
+    + assert ((16 - off <? 2 ^ 64 - 1) = true) as Hlt by (apply Z.ltb_lt; lia).
+      rewrite Hlt. change (access_res strdup_fixture (1024 + off) (Ro 1024) (16 - off + 1) Read 1 = Some ok).
+      unfold access_res, cap_access_res. cbn -[Z.add Z.sub Z.leb Z.modulo].
+      assert ((1024 <=? 1024 + off) && (1024 + off + (16 - off + 1) <=? 1053) = true) as E
+        by (apply andb_true_iff; split; [apply Z.leb_le|apply Z.leb_le]; lia).
+      rewrite E. unfold aligned_res. rewrite Z.mod_1_r. reflexivity.
+    + split.
+      * intros i Hi. change (0 < (if (1024 <=? 1024 + off + i) && (1024 + off + i <? 1040) then 65 else 0) < 256).
+        assert ((1024 <=? 1024 + off + i) && (1024 + off + i <? 1040) = true) as E
+          by (apply andb_true_iff; split; [apply Z.leb_le|apply Z.ltb_lt]; lia).
+        rewrite E. lia.
+      * intros _. change (m_bytes strdup_fixture (1024 + off + (16 - off)) = 0).
+        replace (1024 + off + (16 - off)) with 1040 by lia. reflexivity.
+Qed.
+
+(** Actual successful calls of lengths 16, 15 and zero share the same
+    unindexed registry entry, with an exact NUL-inclusive allocation. *)
+Example strdup_different_lengths : forall off, off = 0 \/ off = 1 \/ off = 16 ->
+  InterpExternal.invoke (strdup_contract unit) CVoid [Arg P (Const 0)]
+    [WPtr (mkPtr (1024 + off) (Ro 1024))] InterpRuntime.start strdup_fixture tt []
+    (CallReturn [WPtr (mkPtr (2 ^ 32) (Obj (2 ^ 32)))])
+    (2 ^ 32 + req_extent (heap_req 16 (17 - off)) + 16)
+    (copy_memory (allocated strdup_fixture (heap_req 16 (17 - off)) (2 ^ 32))
+      (mkPtr (2 ^ 32) (Obj (2 ^ 32))) (mkPtr (1024 + off) (Ro 1024)) (17 - off)) tt.
+Proof.
+  intros off Hcases. replace (17 - off) with (16 - off + 1) by lia.
+  eapply InterpExternal.strdup_return with (k := 16 - off).
+  - split; [left; reflexivity|eexists; reflexivity].
+  - apply strdup_fixture_domain. destruct Hcases as [-> | [-> | ->]]; lia.
+  - destruct Hcases as [-> | [-> | ->]]; unfold max_allocation_size; lia.
+  - exact strdup_fixture_ready.
+  - destruct Hcases as [-> | [-> | ->]]; reflexivity.
+  - apply copy_memory_result.
+Qed.
+
+(** Hand-derived cells constrain every public completion: exact
+    capabilities for complete slots, phase clearing, final NUL and
+    zero allocation padding. The source's own cells are unchanged. *)
+Example strdup_completed_cells : forall off offset byte capability trace s' m' w',
+  In (off, offset, byte, capability)
+    [(0, 0, 65, Ro 2048); (0, 8, 65, Obj 2048); (0, 16, 0, CNone);
+     (0, 31, 0, CNone); (1, 0, 65, CNone); (1, 15, 0, CNone); (16, 0, 0, CNone)] ->
+  InterpExternal.invoke (strdup_contract unit) CVoid [Arg P (Const 0)]
+    [WPtr (mkPtr (1024 + off) (Ro 1024))] InterpRuntime.start strdup_fixture tt trace
+    (CallReturn [WPtr (mkPtr (2 ^ 32) (Obj (2 ^ 32)))]) s' m' w' ->
+  m_bytes m' (2 ^ 32 + offset) = byte /\ m_aux m' (2 ^ 32 + offset) = capability /\
+  m_bytes m' 1024 = 65 /\ m_aux m' 1024 = Ro 2048.
+Proof.
+  intros off offset byte capability trace s' m' w' Hcases Hcall.
+  destruct (InterpExternal.strdup_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as (_ & _ & p & k & Hargs & Hd & [(b & Hr & Hend)|(why & born & Hend & _)]); [|discriminate Hend].
+  injection Hargs as <-. injection Hend as Hb. subst b.
+  assert (Hoff : 0 <= off <= 16).
+  { destruct Hcases as [C|[C|[C|[C|[C|[C|[C|[]]]]]]]]; injection C as <- <- <- <-; lia. }
+  assert (Hk : k = 16 - off).
+  { eapply terminated_length_unique; [exact (proj1 Hd)|exact (proj1 (strdup_fixture_domain off Hoff))]. }
+  subst k. destruct Hr as [Hmalloc Hcopy].
+  pose proof (strdup_prefix_old strdup_fixture (mkPtr (1024 + off) (Ro 1024)) (16 - off + 1)
+    [2 ^ 32] m' ltac:(lia) ltac:(right; exists (2 ^ 32); split; [reflexivity|]; split; [exact Hmalloc|exact (proj1 Hcopy)]))
+    as [_ Hold].
+  destruct (Hold 1024 ltac:(exists 1024, (mkRegion 1024 1053 Heap Live); split; [reflexivity|simpl; lia])) as [Hsb Hsa].
+  destruct (copy_result_cells _ _ _ _ _ (2 ^ 32 + offset) Hcopy) as [Hbytes Haux].
+  rewrite Hbytes, Haux, Hsb, Hsa.
+  destruct Hcases as [C|[C|[C|[C|[C|[C|[C|[]]]]]]]]; injection C as <- <- <- <-.
+  all: repeat split; reflexivity.
+Qed.
+
+(** A fixed registry computes exact NUL-inclusive sources and request
+    sizes, rather than the remainder of the source allocation. *)
+Example strdup_exact_sources : forall off, 0 <= off <= 16 ->
+  contract_sources (strdup_contract unit) [WPtr (mkPtr (1024 + off) (Ro 1024))] strdup_fixture tt =
+    [mkSpan (mkPtr (1024 + off) (Ro 1024)) (17 - off)] /\
+  contract_requests (strdup_contract unit) [WPtr (mkPtr (1024 + off) (Ro 1024))] strdup_fixture tt 16 (17 - off).
+Proof.
+  intros off Hoff. pose proof (terminated_string_length _ _ _ (proj1 (strdup_fixture_domain off Hoff))) as Hlen.
+  split.
+  - change ([mkSpan (mkPtr (1024 + off) (Ro 1024)) (string_length strdup_fixture (mkPtr (1024 + off) (Ro 1024)) + 1)] =
+      [mkSpan (mkPtr (1024 + off) (Ro 1024)) (17 - off)]).
+    rewrite Hlen. f_equal. f_equal. lia.
+  - exists (mkPtr (1024 + off) (Ro 1024)). split; [reflexivity|]. split; [reflexivity|]. rewrite Hlen. lia.
+Qed.
+
+(** High bytes precede an early NUL; later bytes and another NUL do
+    not enlarge the source span or allocation request. *)
+Definition strdup_early : mem := store_bytes strlen_high_mem 1026 1 0.
+
+Example strdup_early_span :
+  contract_sources (strdup_contract unit) [WPtr hello_ptr] strdup_early tt = [mkSpan hello_ptr 3] /\
+  contract_requests (strdup_contract unit) [WPtr hello_ptr] strdup_early tt 16 3 /\
+  ~ contract_requests (strdup_contract unit) [WPtr hello_ptr] strdup_early tt 16 6.
+Proof.
+  split; [reflexivity|]. split; [exists hello_ptr; repeat split; reflexivity|].
+  intros (p & Hargs & _ & Hsize). injection Hargs as <-. discriminate Hsize.
+Qed.
+
+(** Numeric exhaustion never grants string admission. Nor do null,
+    one-past or expired authority become admitted empty strings. *)
+Example strdup_bad_authority :
+  ~ contract_pre (strdup_contract unit) [WPtr hello_ptr] high_byte_mem tt /\
+  ~ contract_pre (strdup_contract unit) [WPtr (mkPtr 1030 (Ro 1024))] hello_mem tt /\
+  ~ contract_pre (strdup_contract unit) [WPtr (mkPtr 0 CNone)] hello_mem tt /\
+  ~ contract_pre (strdup_contract unit) [WPtr (mkPtr 1024 (Obj 1024))]
+    (mkMem (fun _ => 0) [mkRegion 1024 1024 Heap Freed] (fun _ => CNone)) tt.
+Proof.
+  destruct strlen_bad_authority_rejected as (Hpast & Hnull & Hfreed).
+  split; [|split; [|split]]; intros (p & k & Hargs & Hlength & _).
+  - apply strlen_missing_nul_rejected. exists p, k. auto.
+  - apply Hpast. exists p, k. auto.
+  - apply Hnull. exists p, k. auto.
+  - apply Hfreed. exists p, k. auto.
+Qed.
+
+(** Refusal is constructible without a success assumption. *)
+Example strdup_resource_call :
+  InterpExternal.invoke (strdup_contract unit) CVoid [Arg P (Const 0)] [WPtr hello_ptr]
+    InterpRuntime.address_end hello_mem tt [] (CallResource OutOfMemory)
+    InterpRuntime.address_end hello_mem tt.
+Proof.
+  eapply InterpExternal.strdup_refused with (k := 5).
+  - split; [left; reflexivity|eexists; reflexivity].
+  - split; [exact strlen_hello_bridge|]. exists 1024. split; [right; reflexivity|reflexivity].
+  - eapply InterpExternal.failure_oom with (align := 16) (size := 6).
+    + exists hello_ptr. repeat split; reflexivity.
+    + unfold max_allocation_size; lia.
+    + reflexivity.
+Qed.
+
+(** The same numeric address with another identity grants no string
+    read. Aligned object bases are a separate conservative obligation;
+    matching ABI width cannot replace a P argument with L. *)
+Example strdup_identity_alignment_and_abi :
+  ~ contract_pre (strdup_contract unit) [WPtr (mkPtr 1024 (Ro 2048))] hello_mem tt /\
+  ~ contract_pre (strdup_contract unit) [WPtr (mkPtr 1025 (Ro 1025))]
+    (mkMem (fun _ => 0) [mkRegion 1025 1030 Heap Live] (fun _ => CNone)) tt /\
+  ~ strdup_abi CVoid [Arg L (Const 0)].
+Proof.
+  split.
+  - intros (p & k & Hargs & [(Hn & Hk & _ & Ha & _) Hmax] & _). injection Hargs as <-.
+    discriminate Ha.
+  - split.
+    + intros (p & k & Hargs & _ & b & [Hcap|Hcap] & Halign); injection Hargs as <-.
+      * discriminate Hcap.
+      * injection Hcap as <-. discriminate Halign.
+    + intros (_ & p & Hargs). discriminate Hargs.
 Qed.

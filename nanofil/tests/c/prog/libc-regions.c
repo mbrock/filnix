@@ -45,6 +45,21 @@ static void copied_out_of_phase(void) {
     volatile char c = *destination;
     (void)c;
 }
+static void strdup_out_of_phase(void) {
+    char *saved = "retain";
+    union { char *pointer; unsigned char bytes[32]; } source;
+    source.pointer = saved;
+    volatile unsigned char *raw = source.bytes;
+    for (unsigned i = 0; i < 16; ++i) raw[i] = 'A';
+    raw[16] = 0;
+    char *copy = strdup((char *)source.bytes + 1);
+    for (unsigned i = 0; i < sizeof saved; ++i)
+        ((volatile unsigned char *)copy)[i] = ((unsigned char *)&saved)[i];
+    char *restored;
+    memcpy(&restored, copy, sizeof restored);
+    volatile char c = restored[1];
+    (void)c;
+}
 int main(void) {
     char s[3] = {'x', 'y', 'z'}, d[5] = {'!', '!', '!', '!', '!'};
     answer("bounded scans need no NUL", strnlen(s, 3) == 3 && strncmp(s, "xyq", 2) == 0 && memchr(s, 'z', 3) == s + 2);
@@ -110,6 +125,25 @@ int main(void) {
     char *end_slots[3] = {0, 0, "keep"};
     answer("mempcpy returns exact end and frames next pointer", mempcpy(end_slots, moving, 2 * sizeof *moving) == end_slots + 2 && end_slots[0][1] == 'b' && end_slots[1][1] == 'd' && end_slots[2][1] == 'e');
     answer("empty and complete self moves keep authority", memmove(moving, moving, sizeof *moving) == moving && memmove(moving + 4, moving + 4, 0) == moving + 4 && moving[0][1] == 'b');
+    char dup_source[6] = {(char)128, (char)255, 0, 'z', 'q', 0};
+    char *dup = strdup(dup_source), *dup_empty = strdup(dup_source + 2);
+    answer("strdup fresh writable copy stops at first NUL", dup && dup != dup_source && memcmp(dup, dup_source, 3) == 0 && dup_empty && dup_empty[0] == 0);
+    dup[1] = 'q';
+    answer("strdup does not consume source ownership", (unsigned char)dup_source[1] == 255 && dup_source[3] == 'z');
+    free(dup); free(dup_empty);
+    char *saved = "retain";
+    union { char *pointer; unsigned char bytes[32]; } dup_words;
+    dup_words.pointer = saved;
+    volatile unsigned char *raw = dup_words.bytes;
+    for (unsigned i = 0; i < 16; ++i) raw[i] = 'A';
+    raw[16] = 0;
+    dup = strdup((char *)dup_words.bytes);
+    for (unsigned i = 0; i < sizeof saved; ++i)
+        ((volatile unsigned char *)dup)[i] = ((unsigned char *)&saved)[i];
+    char *restored;
+    memcpy(&restored, dup, sizeof restored);
+    answer("strdup retains complete in-phase source capability", restored[2] == 't');
+    free(dup);
     free(p);
     answer("unbounded scan needs in-object NUL", libc_traps(missing_nul));
     answer("copy needs entire writable destination", libc_traps(short_destination));
@@ -117,5 +151,6 @@ int main(void) {
     answer("memset clears touched word authority", libc_traps(cleared_capability));
     answer("partial pointer copy clears authority", libc_traps(copied_fragment));
     answer("out-of-phase pointer bytes do not compose authority", libc_traps(copied_out_of_phase));
+    answer("strdup out-of-phase bytes do not import authority", libc_traps(strdup_out_of_phase));
     return 0;
 }
