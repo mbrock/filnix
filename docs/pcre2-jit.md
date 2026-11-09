@@ -146,8 +146,8 @@ Callouts, script runs and `(*MARK)` searches abort. Partial matching,
 LLVM: 690 lines of Prolog turn a PCRE subset into nanofil's unchecked IR, and
 nanofil, `as` and `clang -shared` make a shared object to `dlopen`. On nine
 of the ten patterns it agrees with the interpreter on every call and is 4.7
-to 26 times faster: at native sljit's speed on six of them and ahead of the
-LLVM JIT on seven. It needs no executable memory, no link flag and no LLVM in
+to 26 times faster: at or above native sljit's speed on five of them and
+ahead of the LLVM JIT on seven. It needs no executable memory, no link flag and no LLVM in
 the process. Compiling a pattern takes 0.2 to 0.6 s, so it needs a cache on
 disk or compilation ahead of time. Its README has the numbers and what the
 subset leaves out.
