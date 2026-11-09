@@ -6,6 +6,9 @@ strlen includes final-byte NUL: yes
 strlen empty still reads a live NUL: yes
 strchr converts int and includes final NUL: yes
 strchr stops at NUL and permits empty strings: yes
+strrchr selects last converted match: yes
+strrchr includes final NUL but not earlier bytes: yes
+strrchr ignores bytes after first NUL: yes
 memchr converts int and selects first match: yes
 memchr respects last byte and zero count: yes
 memcmp unsigned first difference controls sign: yes

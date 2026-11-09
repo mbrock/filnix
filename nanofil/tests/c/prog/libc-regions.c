@@ -42,6 +42,10 @@ int main(void) {
     answer("strchr converts int and includes final NUL", strchr(terminated + 1, 511) == terminated + 2 && strchr(terminated, -1) == terminated + 2 && strchr(terminated, 0) == terminated + 15 && strchr(terminated + 1, 256) == terminated + 15);
     char cutoff[4] = {'a', 0, 'z', 0};
     answer("strchr stops at NUL and permits empty strings", !strchr(cutoff, 'z') && strchr(cutoff, 256) == cutoff + 1 && strchr(terminated + 15, 0) == terminated + 15 && !strchr(terminated + 15, 'l'));
+    _Alignas(16) char reverse_search[16] = {'!', (char)128, (char)255, 'a', 'b', 'a', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', (char)255, 0};
+    answer("strrchr selects last converted match", strrchr(reverse_search, 511) == reverse_search + 14 && strrchr(reverse_search + 1, -1) == reverse_search + 14 && strrchr(reverse_search, 'a') == reverse_search + 5);
+    answer("strrchr includes final NUL but not earlier bytes", strrchr(reverse_search, 0) == reverse_search + 15 && strrchr(reverse_search + 1, 256) == reverse_search + 15 && strrchr(reverse_search + 15, 0) == reverse_search + 15 && !strrchr(reverse_search + 15, 511) && !strrchr(reverse_search + 1, '!'));
+    answer("strrchr ignores bytes after first NUL", !strrchr(cutoff, 'z') && !strrchr(cutoff, '?') && strrchr(cutoff, 256) == cutoff + 1);
     answer("memchr converts int and selects first match", memchr(high_bytes + 1, 511, 15) == high_bytes + 2 && memchr(high_bytes + 1, -1, 15) == high_bytes + 2 && memchr(short_string, 0, 3) == short_string + 2);
     answer("memchr respects last byte and zero count", memchr(high_bytes + 1, 'l', 15) == high_bytes + 15 && !memchr(high_bytes + 1, 0, 15) && !memchr(high_bytes + 16, 0, 0));
     _Alignas(16) unsigned char compare_left[16] = {'!', 128, 255, 0, 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l'};

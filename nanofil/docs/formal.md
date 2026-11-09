@@ -1525,6 +1525,45 @@ which implementation is selected, or termination; libc remains trusted
 behind this API contract. Existing call signatures and runtime axioms are
 unchanged. The next separate slice is last-match `strrchr`.
 
+### Campaign 4 milestone 4x: strrchr and last-match authority
+
+The trusted `strrchr_contract` shares strchr's count-free P/W-to-P ABI,
+canonical int admission and zero-size source-capability permission. Its
+separate `strrchr_result` selects the last low-byte match in the mathematical
+interval from zero through the first-NUL offset, or canonical null. A hit
+must exclude later matches, not earlier ones. Complete terminated-string
+admission independently proves readability of that entire interval.
+
+Constructive nonvacuity uses finite-interval induction, without pretending
+that shorter prefixes themselves satisfy terminated-string admission. The
+proof constructs a returning invocation from input-only premises. Exact
+pointer uniqueness, including the source capability, and pure invocation
+extraction are proved. Low-byte-zero searches necessarily return the exact
+terminator. Memory and world remain unchanged, with no observations,
+allocation, release, resource or exit ending. No ownership transfers or
+lifetimes are extended. The identity-keyed read dependencies remain the
+source region/life and bytes through NUL, not auxiliary slots; the zero-size
+propagation source is not a read footprint. These facts remain independent
+of Iris, for later derived triples.
+
+Public controls distinguish the last repeated match from the first and
+reject null or correct-address capability substitution at a hit. They check
+last high-byte matches after int conversion, NUL and empty inputs, bytes
+before the argument or after its NUL, false hits at an admitted miss, and
+retained Obj as well as Ro authority. Existing independent invalid-input
+and shared-ABI controls apply unchanged. Native rows use a dedicated aligned
+16-byte array with repeated high bytes and a final-byte NUL, including
+interior starts and empty suffixes; separate cut-off controls exclude
+matches past an earlier NUL in the same allocation.
+
+Pinned generic strrchr delegates to memrchr over `strlen(s) + 1`, so both the
+forward length scan and the reverse word scan are native obligations. The
+reverse scan rounds its endpoint upward, loads backward and masks boundary
+bytes; loads before the argument or beyond the logical interval remain
+possible. The API proofs and finite probes do not establish universal native
+satisfaction, implementation selection, coverage or termination. Runtime
+axioms, existing call signatures, machine and registry are unchanged.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and

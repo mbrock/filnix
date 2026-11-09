@@ -343,6 +343,24 @@ the argument or beyond the logical dependency interval remain trusted
 implementation obligations; these finite observations prove neither
 universal native satisfaction nor termination.
 
+The Rocq strrchr contract shares strchr's independently terminated input,
+canonical int and count-free pointer-result ABI, but returns the last
+low-byte match through NUL. A hit retains exactly the source capability;
+a miss is canonical null. The read dependencies are the same identity/life
+and complete string bytes, independent of the zero-size capability source;
+there are no auxiliary dependencies, writes, allocations, release,
+observations, resource or exit endings. No ownership or lifetime extends
+with the returned pointer. Constructive input-only invocation existence and
+exact pointer uniqueness do not prove native execution or termination.
+Public controls distinguish first from last, conversion, empty/NUL searches,
+false hits and capability substitution. Native rows distinguish repeated
+matches, an empty suffix from high bytes before it, and a byte only after an
+early NUL, using a dedicated aligned final-NUL array. Pinned generic strrchr
+calls memrchr over `strlen(s) + 1`: both the forward length scan and the
+backward word scan (with rounded endpoints and masked boundaries) can load
+outside the logical dependency interval. Universal native satisfaction and
+implementation selection remain trusted obligations, not probe conclusions.
+
 ## 2. Heap lifetime (5)
 
 All fresh results satisfy the runtime axioms. Requested size is a
