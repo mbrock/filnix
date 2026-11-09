@@ -2053,6 +2053,84 @@ machine. The project orders their files after ExternalMachine. This is
 module plumbing only: no core/runtime axiom, contract precondition,
 footprint, event, transition or preservation theorem changes.
 
+### Campaign 4 milestone 6e: composite world and plain mbrtowc
+
+[Libc.v](../rocq/theories/Libc.v) pairs one locale/stdio/errno payload
+with the existing authoritative shutdown state. It does not introduce
+another stdout queue or callback inventory. Independent full libc/TLS
+representation is required alongside structural readiness. The current
+locale name/text projection includes its readable string and aligned
+object base; non-setlocale conversion preserves exact names, text, opaque
+codec and borrow epoch, stdio state, errno pointer and shutdown inventory.
+
+The P/P/L/P-to-L contract admits nonnull input, output and state operands,
+canonical readable input, four-byte-aligned writable wchar_t and eight-byte
+mbstate_t storage, and a valid same-codec state. The chosen validity
+predicate must explicitly admit all-eight-zero storage. Non-EILSEQ normal
+results preserve validity; EILSEQ does not. The audited Hello profile adds
+nonzero wide output and no consumed NUL to positive bounded consumption,
+the NUL/output-zero interpretation of result zero, count-zero completion,
+and the two incomplete exclusions. Initial state is not eight zero bytes:
+the logical witness retains a nonzero residual value byte after completion.
+Generic codecs retain weaker output interpretations; TSCII source paths
+can consume input while buffering output, then emit it without consuming
+new input. Selectability of that locale in the pinned image is unverified.
+
+Only old private locale authority and fresh allocations can be delegated
+to converter caches. Admission separates private writable spans and release
+rights from caller input/output/state and errno, and excludes both Obj and
+Ro caller-object capabilities from private sources, including complete
+pointer slots. Scalar output/state/errno writes preserve caller auxiliary
+metadata. Its frame uses entry-memory private authority, so allocation,
+pointer write and free cleanup need not restore a private freed object's
+metadata. Nonerror errno changes are permitted; EILSEQ writes 84. Resource
+endings retain their actual permitted request/refusal and effects prefix,
+not normal-return state/errno facts. Zero count has no converter requests:
+every completion is exactly -2 with unchanged runtime, memory and world.
+
+LibcOn R M shares the supplied machine's M.E.invoke and M.E.effects;
+the standalone Libc R wrapper is not an exact-instance bridge. Public
+construction and inversion lemmas separate admission, effects, endpoint
+representation/delegation and result obligations: mbrtowc_zero,
+mbrtowc_completed, mbrtowc_returned, mbrtowc_zero_exact and
+mbrtowc_world. The pure mbrtowc_positive, mbrtowc_incomplete and
+mbrtowc_valid_after lemmas expose result facts independently of that module.
+Logical controls are specification witnesses, not native decoding or
+termination proofs. The existing native C/C.UTF-8 conversion probes
+supplement the source audit above. Null source/state/output forms,
+composite setlocale/stdio lifts, Iris triples, native representation/prefix
+coverage and the whole Hello theorem remain later work. No core/runtime
+axioms or Campaign 3-owned files change.
+
+### Reached-call contract packages and remaining integration
+
+[Getopt.v](../rocq/theories/Getopt.v) supplies independently admitted
+argv/table/option state, exact-capability argv permutation and borrowed
+optarg, with separate program-owned exposed/errno cells and private libc
+effects. [Streams.v](../rocq/theories/Streams.v) and
+[Formatting.v](../rocq/theories/Formatting.v) supply selected query,
+close, narrow/wide output and diagnostic-format contracts. A consumed
+fclose handle has a durable closed endpoint, not restored usable ownership;
+physical pending output is not automatically the entire abstract FIFO.
+Wide representation and native coverage remain independent premises.
+
+[Ending.v](../rocq/theories/Ending.v) and
+[Diagnostics.v](../rocq/theories/Diagnostics.v) supply request/registration
+and diagnostic semantics over an exact LinkedSig instance. A consumer of
+CallbackLogic as CL instantiates Diagnostics R CL.LK, using its exported
+N for Ending: callback return keeps current memory/world and shutdown
+inventory, not registration-time state. Only witnessed host completion
+emits ProcessExit. Error formatting is a stage; nonzero diagnostic handoff
+precedes native stderr unlock/cancellation restoration. Status-zero cleanup
+and native coverage are explicit obligations, not consequences of staging.
+Ending's request boundary does not discharge HelloClose's abstract ordinary
+nonreturning _exit invocation premise by itself.
+
+These packages prove parameterized contract/structural facts, not native
+libc adequacy or whole-Hello safety. Exact-machine composite projections,
+authoritative registry coverage, native entry/FILE/TLS representation and
+Iris admission/heap-update/frame discharge remain the integration work.
+
 ### The next milestones, in order
 
 1. **Hello's greeting conversion prerequisites.** Campaign 3 needs plain
@@ -2066,7 +2144,8 @@ footprint, event, transition or preservation theorem changes.
    The stronger no-consumed-NUL and incomplete-exclusion properties use
    the approved C/C.UTF-8 codec-profile premise above. Keep it visible in
    the Hello theorem; do not derive it merely from valid mbstate or
-   MB_LEN_MAX=16. The conversion contract is not yet implemented in Rocq.
+   MB_LEN_MAX=16. Milestone 6e supplies the plain conversion contract;
+   its composite setlocale/stdio lifts and Iris use remain to be built.
 
    Pair a locale/stdio/errno payload with Linked's authoritative shutdown
    state rather than inventing another callback inventory. Project the

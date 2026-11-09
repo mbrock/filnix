@@ -52,6 +52,7 @@ theories/Formatting.v
 theories/Linked.v
 theories/Ending.v
 theories/Diagnostics.v
+theories/Libc.v
 theories/Hi.v
 theories/Composition.v
 theories/Panics.v
