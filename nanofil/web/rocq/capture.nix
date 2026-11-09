@@ -1,6 +1,6 @@
 # Cache prover execution independently of the presentation assets.
-# With spikes, the logic spikes' states (rocq/spikes, which need std++
-# and Iris), replayed against the theories they import.
+# With spikes, the logic spikes' states (rocq/spikes), replayed against
+# the theories they import.
 {
   pkgs,
   spikes ? false,
@@ -28,13 +28,13 @@ in
 pkgs.runCommand
   (if spikes then "dterm-rocq-spike-states" else "dterm-rocq-proof-states")
   {
+    # The theories' program logic (Heap.v, Language.v, Logic.v) and the
+    # spikes both need std++ and Iris.
     nativeBuildInputs = [
       pkgs.coq
       pkgs.coqPackages.stdlib
       pkgs.swi-prolog
       pkgs.python3
-    ]
-    ++ pkgs.lib.optionals spikes [
       pkgs.rocqPackages.stdpp
       pkgs.rocqPackages.iris
     ];
