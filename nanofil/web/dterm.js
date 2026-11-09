@@ -276,13 +276,34 @@ document.addEventListener("mouseover", (event) => {
   // measures do not depend on where it starts). A candidate is {h, mw, lw,
   // b, u, r}: lines after the first, widest line, last line, badness,
   // whether it is one token, and how it was made.
-  function dominates(a, b) {
-    return a.h <= b.h && a.b <= b.b && a.mw <= b.mw + EPS && a.lw <= b.lw + EPS;
-  }
+  // The candidates no kept one dominates (no more lines, no worse, no
+  // wider), in this order. Every candidate kept before c has no more lines,
+  // so c is dominated when one of badness at most c's, at most c's width,
+  // has a last line at most c's. S[k] holds the kept candidates of badness
+  // at most k as a staircase, widths ascending and last lines descending,
+  // without those another is narrower and shorter than: the last one up
+  // to a width has the shortest last line. (Comparing c with every kept
+  // candidate took 30s for one large term: frontiers of 10,000 from
+  // 150,000 combinations, at 74 badnesses.)
+  const upTo = (a, x) => { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] <= x) lo = m + 1; else hi = m; } return lo; };
   function pareto(cs) {
     cs.sort((a, b) => a.h - b.h || a.b - b.b || a.mw - b.mw || a.lw - b.lw);
+    const top = cs.reduce((t, c) => Math.max(t, c.b), 0);
+    const S = Array.from({ length: top + 1 }, () => ({ mw: [], lw: [] }));
     const out = [];
-    for (const c of cs) if (!out.some((o) => dominates(o, c))) out.push(c);
+    for (const c of cs) {
+      const s = S[c.b], i = upTo(s.mw, c.mw + EPS);
+      if (i && s.lw[i - 1] <= c.lw + EPS) continue;
+      out.push(c);
+      for (let k = c.b; k <= top; k++) {
+        const s = S[k], i = upTo(s.mw, c.mw);
+        if (i && s.lw[i - 1] <= c.lw) break; // so it is in every later one
+        let j = i;
+        while (j < s.mw.length && s.lw[j] >= c.lw) j++;
+        s.mw.splice(i, j - i, c.mw);
+        s.lw.splice(i, j - i, c.lw);
+      }
+    }
     return out;
   }
   function evaluate(n, E) {
