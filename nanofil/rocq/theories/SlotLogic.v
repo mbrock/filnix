@@ -24,11 +24,10 @@
     buffer after each call ([use_spec]).
 
     [slot_logic_safe] is the labelled machine's safety from any memory
-    whose static objects hold null and 0; it takes [frees_heap] of R's
-    free, which Runtime.v does not promise, and
+    whose static objects hold null and 0, over any runtime, whose free
+    succeeds on null and the buffer ([R.free_succeeds]), and
     [interp_slot_logic_safe] instantiates it from the module's initial
-    memory under the interpreter's runtime, whose free is
-    [free_res] ([frees_heap_interp]). *)
+    memory under the interpreter's runtime. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -191,8 +190,6 @@ Lemma find_fill : find_fn slot_ge (TAtom "fill") = Some (Defined fill_fn).
 Proof. vm_compute. reflexivity. Qed.
 
 Section proof.
-(** R's free frees as the interpreter's does. *)
-Context (Hfree : frees_heap R.free).
 
 Section wp.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -285,9 +282,9 @@ Lemma wp_free_buffer f e ls l v rest j p sz Φ :
     {{ Φ }}.
 Proof.
   intros Hv. iIntros "[[%Hp _] | (%b & %reg & %xs & %cs & %Hf & Hl & _ & _)] HK".
-  - subst p. iApply (wp_free_null with "HK"); [exact Hfree | reflexivity | reflexivity | exact Hv].
+  - subst p. iApply (wp_free_null with "HK"); [exact R.free_succeeds | reflexivity | reflexivity | exact Hv].
   - destruct Hf as (-> & Hb & _ & Hk & _).
-    iApply (wp_free with "Hl HK"); [exact Hfree | reflexivity | reflexivity | exact Hv | exact Hk | lia |
+    iApply (wp_free with "Hl HK"); [exact R.free_succeeds | reflexivity | reflexivity | exact Hv | exact Hk | lia |
                                     intros; exact I].
 Qed.
 
@@ -557,13 +554,12 @@ Proof.
 Qed.
 
 (** `use` is safe under the interpreter's runtime, from the module's
-    initial memory ([slot_initial]), whose free [frees_heap]
-    ([frees_heap_interp]). *)
+    initial memory ([slot_initial]). *)
 Theorem interp_slot_logic_safe : forall fuel,
   InterpSlotLogic.L.labelled_safe slot_registry InterpSlotLogic.slot_ge use_entry slot_memory
     InterpRuntime.start tt fuel (fun o => exists k, o = Ret (WInt k)).
 Proof.
-  intros fuel. apply (InterpSlotLogic.slot_logic_safe frees_heap_interp hiΣ).
+  intros fuel. apply (InterpSlotLogic.slot_logic_safe hiΣ).
   - exact slot_memory_ready.
   - exact slot_memory_disjoint.
   - exact slot_memory_agrees.

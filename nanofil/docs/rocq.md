@@ -23,7 +23,7 @@ the interpreter and cites the predicate it copies.
 | `Syntax.v` | ir.pl's header tables | classes, ops, values, instructions, jumps, blocks, functions, data, modules; `op_arg_classes/4`, `evidence_preserving/1`, `ahead_transparent/1`, `local_objects/2` |
 | `Values.v` | interp.pl's values | `cap` (`none`, `obj`, `ro`, `fn`, `ext`), `ptr`, `word`; `word_at_class/3` |
 | `Memory.v` | interp.pl's Memory section | regions, `mem`, `cap_access_res/7`, `free_res/4`, bytes and aux, `fresh` |
-| `Runtime.v` | `alloc_base/6`, `free_res/4`; [runtime-axioms.md](runtime-axioms.md) | Campaign 2's `Module Type Runtime`, ten axioms and three readiness obligations, and `InterpRuntime`, which proves them |
+| `Runtime.v` | `alloc_base/6`, `free_res/4`; [runtime-axioms.md](runtime-axioms.md) | Campaign 2's `Module Type Runtime`, eleven axioms and three readiness obligations, and `InterpRuntime`, which proves them |
 | `Ops.v` | `alu/4`, `additive_res/4`, `kind_res/8` | integer and float ops, `check` and the reuse vocabulary, raw loads and stores, pointer-load and pointer-store protocols, `va_arg` |
 | `Semantics.v` | `run/5`'s blocks, instructions, jumps, calls | the configuration, `step`, `step_rel`, `reachable`; the variadic entry snapshot |
 | `Run.v` | `initial_memory/4` | module preparation, and `Driver`, a run over any `Runtime`'s allocations and free |
@@ -392,7 +392,7 @@ These are formal.md's early decisions as they turned out in the code:
   stack on Lua's `luaV_execute`, which has 995 blocks.
 - **The runtime is a module type.** `Runtime.v` states what the model
   takes from the Fil-C runtime: where a new object goes, what free
-  does, and what may change at a safepoint, as ten axioms
+  does, and what may change at a safepoint, as eleven axioms
   ([runtime-axioms.md](runtime-axioms.md)). The model has one thread
   and no collector, so the collector shows up only as the `safepoint`
   relation, which changes no region (`collector_live`). A signal
@@ -1305,6 +1305,12 @@ Decisions:
   object's base returns, and a second free, an interior pointer or a
   global's address traps. `InterpRuntime` proves it
   (`free_res_checked`).
+- **`free_succeeds` is an axiom** (mbrock's decision, 2026-11-09):
+  free of null, and of a live heap object's base, returns and frees
+  exactly that object (`frees_heap`), so the program logic's
+  `wp_free` needs no premise about the runtime. Native test
+  axiom-free-succeeds.c; `InterpRuntime` proves it
+  (`free_res_succeeds`).
 - **The theorem is stated over Guard.v's machine instance**, the one
   Chain.v's, Renew.v's and Guard.v's run theorems share; a run is
   carried over to Doomed.v's instance (`mreachable_doom`).

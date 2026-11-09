@@ -3,8 +3,8 @@
 // the other pointers below; it never goes on having done something else.
 // The obvious wrong strengthening, that free never traps, is false: an
 // interior pointer, a second free and a global's address all trap. (Free
-// of an escaping local's address returns natively, where the model traps
-// `invalid_free`; docs/runtime-axioms.md records it.)
+// of an escaping local's address returns, natively and in the model, which
+// keeps it on the heap; axiom-free-succeeds.c tests it.)
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>

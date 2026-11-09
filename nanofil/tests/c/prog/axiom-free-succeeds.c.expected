@@ -1,0 +1,26 @@
+free of null returns: yes
+and changes nothing: yes
+malloc(0): yes
+malloc(1): yes
+malloc(16): yes
+malloc(4096): yes
+malloc(1 MiB): yes
+calloc: yes
+realloc: yes
+aligned_alloc: yes
+posix_memalign: yes
+strdup: yes
+after collections: yes
+an object storing a pointer to it: yes
+its stored pointer loads back: yes
+free of a holder: yes
+leaves what it points to: yes
+an escaping local: yes
+a VLA: yes
+an alloca: yes
+argv[0]: yes
+argv: yes
+a second free traps: yes
+free of an mmap'd object traps: yes
+free of a global traps: yes
+free of an interior pointer traps: yes

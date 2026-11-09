@@ -115,6 +115,18 @@ Definition kept (m m' : mem) : Prop :=
   region_step m m' /\
   forall a, ~ in_object m a -> m_bytes m' a = m_bytes m a /\ m_aux m' a = m_aux m a.
 
+(** What a free that succeeds does: on the null pointer, nothing; on
+    the base pointer of a live heap object at an address other than 0,
+    it empties and frees that object's region and changes no other
+    region, no byte and no stored capability. The axiom
+    [free_succeeds] says the runtime's free does so. *)
+Definition frees_heap (free : word -> mem -> option (res unit * mem)) : Prop :=
+  (forall m, free (WPtr (mkPtr 0 CNone)) m = Some (ok, m)) /\
+  forall m b reg, object_region b (m_regions m) = Some reg /\ r_life reg = Live ->
+    r_kind reg = Heap -> b <> 0 ->
+    exists rs, replace_region b (mkRegion b b Heap Freed) (m_regions m) = Some rs /\
+      free (WPtr (mkPtr b (Obj b))) m = Some (ok, mkMem (m_bytes m) rs (m_aux m)).
+
 (** ## The module type *)
 
 (** What the model assumes of the Fil-C [[runtime]]: its allocator, its
@@ -222,6 +234,22 @@ Module Type Runtime.
       something else, so it never answers [[unchecked]], which the
       model keeps for a broken pass. Native test: `axiom-free.c`. *)
   Axiom free_checked : forall x m w m', free x m <> Some (RUnchecked w, m').
+
+  (** Free succeeds where a program frees what it owns: on the null
+      pointer it does nothing, and on the base pointer of a live heap
+      object it frees that object as [frees_heap] says. [free_lifetime],
+      [retention] and [free_keeps_ids] bound what any free may change;
+      this says that such a free returns, so that a program logic can
+      prove a call of free goes on (Logic.v's [wp_free]). The pointer
+      carries the object's [Obj] capability, not a read-only one. The
+      model's heap objects are what the IR's alloc makes (malloc-like
+      calls, and the address-taken locals, VLAs and allocas nanofil
+      leaves on the heap), what the malloc and strdup contracts make,
+      and the startup argv and environ objects; natively each is an
+      ordinary collected object, which free returns on. Free of a
+      global, an mmap'd object, an interior pointer or a freed object
+      traps. Native test: `axiom-free-succeeds.c`. *)
+  Axiom free_succeeds : frees_heap free.
 
   (** The runtime may act at the instruction i: the collector's
       handshake, a pollcheck callback, or a signal handler the program
@@ -403,6 +431,16 @@ Proof.
   intros x m r m' H. destruct (free_res_frees x m r m' H) as [-> | (_ & _ & _ & _ & _ & _ & Hb & Ha)]; auto.
 Qed.
 
+(** [free_res] frees null and a live heap object's base as
+    [frees_heap] says: the interpreter's proof of [free_succeeds]. *)
+Lemma free_res_succeeds : frees_heap free_res.
+Proof.
+  split; [reflexivity|]. intros m b reg [Ereg Hlive] Hk Hb.
+  unfold replace_region. rewrite Ereg. eexists. split; [reflexivity|].
+  cbn. unfold object_free_res. rewrite (proj2 (Z.eqb_neq b 0) Hb). rewrite Ereg, Hk, Z.eqb_refl, Hlive. cbn.
+  unfold replace_region. rewrite Ereg. reflexivity.
+Qed.
+
 (** ## The interpreter's runtime *)
 
 (** a, rounded up to a multiple of a positive align, is at least a. *)
@@ -524,6 +562,8 @@ Module InterpRuntime.
   Definition free_keeps_ids := free_res_keeps_ids.
   (** Free never answers unchecked: [free_res_checked]. *)
   Definition free_checked := free_res_checked.
+  (** Free succeeds on null and a live heap base: [free_res_succeeds]. *)
+  Definition free_succeeds := free_res_succeeds.
 
   (** The interpreter's runtime may act wherever the compiler does not
       promise that it cannot. *)

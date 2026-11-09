@@ -29,6 +29,7 @@ the runtime paths below are relative to `libpas/src/libpas/` there.
 | `aux_round_trip` | at a safepoint a stored capability stays, or, if its object was freed, becomes one that traps as a freed object does (the free singleton) | [axiom-aux.c](../tests/c/prog/axiom-aux.c): a stored pointer to a freed object loads back at its address and traps; a live one reads | `fugc.h:170–181, 220–231` (CAS of the lower to `filc_free_singleton`) |
 | `free_keeps_ids` | free reclaims nothing: every identity before a free is one after it, the freed object's too; only the collector reclaims, at a safepoint, and only objects nothing names, whose regions the model keeps (`collector_live`) | [axiom-identity.c](../tests/c/prog/axiom-identity.c): its capability traps, before and after a collection (refuting "free leaves every region as it was"); 1024 allocations of its size right after the free, just after a full collection and while no other runs (checked with `zgc_requested_cycle`, retried up to five times; about 80 KiB with headers, below `fugc_minimum_threshold`), never take its address; another object is untouched | `filc_runtime.c:3160–3183` (`free_impl` writes only the header), `3897–3923` (`free` reaches it directly), `fugc.c:64` |
 | `free_checked` | free frees or traps; it never goes on having done something else, so it gives no `unchecked` | [axiom-free.c](../tests/c/prog/axiom-free.c): free of null and of a live object's base return, the object then traps; a second free, before or after a collection, an interior pointer and a global's address trap | `filc_runtime.c:3897–3923` (`FILC_CHECK` and `free_fail` panic) |
+| `free_succeeds` | free succeeds where a program frees what it owns (`frees_heap`): on the null pointer it returns and changes nothing; on the base pointer of a live heap object it returns, emptying and freeing that object's region and changing no other region, byte or stored capability. Added 2026-11-09 (mbrock's decision) so that the program logic proves a call of free goes on (Logic.v's `wp_free`); it was a premise of `slot_logic_safe` | [axiom-free-succeeds.c](../tests/c/prog/axiom-free-succeeds.c): free of null returns and a neighbour's bytes and stored pointer read as before; free of the base of objects from malloc (0 bytes to 1 MiB), calloc, realloc, aligned_alloc, posix_memalign and strdup, before and after collections, returns, the neighbour is intact and the freed capability traps; a pointer stored to the freed object loads back at its address; freeing an object that stores a pointer leaves the pointee live; the model's other heap objects, an escaping local, a VLA, an alloca, `argv[0]` and `argv`, free too. The stronger statements are false: a second free traps (the object must be live), and a global's base, an mmap'd object and an interior pointer trap (it must be a heap object's base) | `filc_runtime.c:3937–3941` (`filc_native_zgc_free`), `3913–3918` (`free_with_checks`: address 0 returns), `3839–3880` (`object_for_deallocate`: panics on no object, a special, global or mmap object, or a pointer off its lower), `3160–3183` (`free_impl`: `upper = lower`, the free flag, only the header written) |
 | `rooting` (a lemma, from `collector_live`) | at a safepoint no identity the program can name is reclaimed | [axiom-rooting.c](../tests/c/prog/axiom-rooting.c): objects held only by a frame, and one only through another object, survive collections and allocation; with `FUGC_SCRIBBLE=1` in the gc-stress steps; [gcglobals.c](../tests/c/prog/gcglobals.c) for globals | Manifesto.md, "Accurate" |
 
 The tests are ordinary `tests/c/prog` programs: progtest.sh builds each
@@ -117,15 +118,14 @@ sends to the runtime's free (`external_call` in Semantics.v). Native
 return from a later `mmap` with no collection; routing them through
 `free` would make the axiom false.
 
-Writing axiom-free.c found a disagreement the axioms do not cover:
-native free of an escaping local's address returns, under both nanofil
-and filcc (the local is an ordinary collected object natively), while
-the model's free (`object_free_res` in Memory.v) traps `invalid_free`
-for every object that is not a heap object. `free_lifetime`'s
-`lifetime_step` lets a free empty only a heap object, so no runtime of
-the module type can match native there. The test leaves that case out;
-it is a fidelity question for `free_res` and `free_lifetime`, not a
-safety one, and a follow-up.
+Writing axiom-free.c seemed to find a disagreement: native free of an
+escaping local's address returns, under both nanofil and filcc (the
+local is an ordinary collected object natively), while the model's
+free (`object_free_res` in Memory.v) traps `invalid_free` for every
+object that is not a heap object. There is none: nanofil keeps an
+escaping local, a VLA and an alloca on the heap with the IR's alloc, a
+heap object, so the model's free returns on them too, and
+`free_succeeds` promises it (axiom-free-succeeds.c tests it).
 
 ## The interpreter's instance
 

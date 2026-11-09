@@ -98,28 +98,6 @@ Qed.
 
 (** ## The logic over a runtime *)
 
-(** The free function frees as the pinned runtime frees what a program
-    proved it may free: a null pointer is a no-op, and the base pointer
-    of a live heap object other than null empties and frees its region
-    and changes no byte and no aux slot. Runtime.v's module type does
-    not promise it of R's free, which may trap where it likes; a
-    program that frees takes it as a premise of its runtime
-    ([frees_heap_interp] proves it of [free_res]). *)
-Definition frees_heap (free : word -> mem -> option (res unit * mem)) : Prop :=
-  (forall m, free (WPtr null) m = Some (ok, m)) /\
-  forall m b reg, live_at m b reg -> r_kind reg = Heap -> b <> 0 ->
-    exists rs, replace_region b (mkRegion b b Heap Freed) (m_regions m) = Some rs /\
-      free (WPtr (mkPtr b (Obj b))) m = Some (ok, mkMem (m_bytes m) rs (m_aux m)).
-
-(** The pinned runtime's [free_res] frees so. *)
-Lemma frees_heap_interp : frees_heap free_res.
-Proof.
-  split; [reflexivity|]. intros m b reg [Ereg Hlive] Hk Hb.
-  unfold replace_region. rewrite Ereg. eexists. split; [reflexivity|].
-  cbn. unfold object_free_res. rewrite (proj2 (Z.eqb_neq b 0) Hb). rewrite Ereg Hk Z.eqb_refl Hlive. cbn.
-  unfold replace_region. rewrite Ereg. reflexivity.
-Qed.
-
 (** The memory after a free of the live heap object b: the same bytes
     and aux slots, b's region empty and freed, every other object as it
     was. Such a change is [kept]. *)
@@ -735,7 +713,8 @@ Proof.
 Qed.
 
 (** A call of `free` on the base pointer of the live heap object b,
-    which v reads as, where the genv's free [frees_heap], and where the
+    which v reads as, where the genv's free [frees_heap] (R's does,
+    by [R.free_succeeds]), and where the
     free keeps the world interpretation: b's life is given up, its
     token ending as [VFreed] in the ghost heap. Its bytes and aux
     slots, if still owned, agree vacuously from then on. *)
