@@ -20,6 +20,8 @@
 
 main :-
     current_prolog_flag(argv, [File|Opts]),
+    % Rocq reads UTF-8, whatever the locale (a Nix build has none).
+    set_stream(user_output, encoding(utf8)),
     rocq_read_file(File, Text, rocq(Items, _)),
     nb_setval(text, Text),
     nb_setval(strict, Opts),
@@ -72,8 +74,11 @@ sent(thm(_, Kw, n(_, N), Bs, Ty)) :- !,
     format("~w ~w", [Kw, N]), binders(Bs), write(" : "), pr(Ty), write(".\n").
 sent(tacdef(_, n(_, N), Args, T)) :- !,
     format("Ltac ~w ", [N]), names(Args), write(" := "), pt(T), write(".\n").
+sent(decl(_, 'Context', Gs)) :- Gs \= [bs(_)], !,
+    write("Context"), forall(member(g(Ns, Ty), Gs), ( write(" ("), names(Ns), write(" : "), pr(Ty), write(")") )), write(".\n").
 sent(decl(_, Kw, [g(Ns, Ty)])) :- !,
     format("~w ", [Kw]), names(Ns), write(" : "), pr(Ty), write(".\n").
+sent(decl(_, Kw, [bs(Bs)])) :- !, write(Kw), binders(Bs), write(".\n").
 sent(decl(_, Kw, Gs)) :- !,
     format("~w", [Kw]), forall(member(g(Ns, Ty), Gs), ( write(" ("), names(Ns), write(" : "), pr(Ty), write(")") )), write(".\n").
 sent(S) :- arg(1, S, P), src(P).
@@ -101,11 +106,18 @@ names([n(_, N)|Ns]) :- format("~w ", [N]), names(Ns).
 binders(Bs) :- maplist([B]>>( write(" "), binder(B) ), Bs).
 
 binder(b(_, pattern(P), _, _)) :- !, write("'"), pr(P).
+binder(b(_, gen(Open, Items), _, _)) :- !,
+    rocq_syntax:matching(Open, Close), format("`~w", [Open]), gen_items(Items), write(Close).
 binder(b(_, struct, [n(_, X)], _)) :- !, format("{struct ~w}", [X]).
 binder(b(_, brace, Ns, none)) :- !, write("{"), names(Ns), write("}").
 binder(b(_, brace, Ns, T)) :- !, write("{"), names(Ns), write(" : "), pr(T), write("}").
 binder(b(_, _, Ns, none)) :- !, names(Ns).
 binder(b(_, _, Ns, T)) :- write("("), names(Ns), write(" : "), pr(T), write(")").
+
+gen_items([I]) :- !, gen_item(I).
+gen_items([I|Is]) :- gen_item(I), write(", "), gen_items(Is).
+gen_item(bang(E)) :- !, write("!"), pr(E).
+gen_item(E) :- pr(E).
 
 pr(id(_, X)) :- !, write(X).
 pr(hole(_)) :- !, write("_").
@@ -122,8 +134,10 @@ pr(pre(_, Op, E)) :- !, format("(~w ", [Op]), pr(E), write(")").
 pr(paren(_, E)) :- !, write("("), pr(E), write(")").
 pr(cast(_, E, T)) :- !, write("("), pr(E), write(" : "), pr(T), write(")").
 pr(tuple(_, Es)) :- !, write("("), sep(Es, ", "), write(")").
-pr(forall(_, Bs, B)) :- !, write("(forall"), binders(Bs), write(", "), pr(B), write(")").
-pr(exists(_, Bs, B)) :- !, write("(exists"), binders(Bs), write(", "), pr(B), write(")").
+% ∀ and ∃ stay as they were written: in Iris's scope they are the
+% logic's quantifiers, forall and exists Rocq's.
+pr(forall(P, Bs, B)) :- !, quantifier(P, "∀", forall, Q), format("(~w", [Q]), binders(Bs), write(", "), pr(B), write(")").
+pr(exists(P, Bs, B)) :- !, quantifier(P, "∃", exists, Q), format("(~w", [Q]), binders(Bs), write(", "), pr(B), write(")").
 pr(fun(_, Bs, B)) :- !, write("(fun"), binders(Bs), write(" => "), pr(B), write(")").
 pr(let(_, Lhs, Ty, V, B)) :- !,
     write("(let "),
@@ -148,7 +162,49 @@ pr(list(_, Es)) :- !, write("["), sep(Es, "; "), write("]").
 pr(record(_, Fs)) :- !, write("{| "), fsep(Fs), write(" |}").
 pr(scope(_, E, K)) :- !, write("("), pr(E), format(")%~w", [K]).
 pr(braces(_, E)) :- !, write("{"), pr(E), write("}").
+pr(pure(_, E)) :- !, write("⌜"), pr(E), write("⌝").
+pr(const(_, C)) :- !, write(C).
+pr(unit(_)) :- !, write("()").
+pr(insert(_, K, V)) :- !, write("<["), pr(K), write(" := "), pr(V), write("]>").
+pr(proj(_, E, Op)) :- !, write("(("), pr(E), format(") ~w)", [Op]).
+pr(gfunctors(_, Es)) :- !, write("#["), sep(Es, "; "), write("]").
+pr(fupd(_, Ms, A)) :- !, write("(|={"), sep(Ms, ","), write("}=> "), pr(A), write(")").
+pr(fupdw(_, Ms, L, R)) :- !, write("("), pr(L), write(" ={"), sep(Ms, ","), write("}=∗ "), pr(R), write(")").
+pr(stepupd(_, Ms, N, A)) :- !, write("(|={"), sep(Ms, ","), write("}▷=>"), count(N), write(" "), pr(A), write(")").
+pr(stepupdw(_, Ms, N, L, R)) :- !, write("("), pr(L), write(" ={"), sep(Ms, ","), write("}▷=∗"), count(N), write(" "), pr(R), write(")").
+pr(laterN(_, N, A)) :- !, write("(▷^("), pr(N), write(") "), pr(A), write(")").
+pr(ifis(_, C, P, T, E)) :- !,
+    write("(if "), pr(C), write(" is "), pr(P), write(" then "), pr(T), write(" else "), pr(E), write(")").
+pr(pointsto(_, Op, L, Ms, R)) :- !,
+    write("("), pr(L), format(" ~w", [Op]),
+    forall(member(M, Ms), ( M = name(G) -> write("["), pr(G), write("]")
+                          ; M = dfrac(D) -> write("{"), pr(D), write("}")
+                          ; M = own(Q) -> write("{#"), pr(Q), write("}") ; write("□") )),
+    write(" "), pr(R), write(")").
+pr(indexed(_, '✓', N, none, A)) :- !, write("(✓{"), pr(N), write("} "), pr(A), write(")").
+pr(indexed(_, Op, N, L, R)) :- !,
+    write("("), pr(L), format(" ~w{", [Op]), pr(N), write("}"), ( Op == '≡' -> write("≡") ; true ), write(" "), pr(R), write(")").
+pr(wp(_, E, At, Post)) :- !, write("(WP "), pr(E), wp_at(At), write(" "), post(Post), write(")").
+pr(triple(_, Pre, E, At, Bs, Ret, Post)) :- !,
+    write("{{{ "), pr(Pre), write(" }}} "), pr(E), wp_at(At), write(" {{{"),
+    ( Bs == [] -> true ; binders(Bs), write(",") ), write(" RET "), pr(Ret), write("; "), pr(Post), write(" }}}").
+pr(bigop(_, Op, Kind, binds(K, Xs), Cs, B)) :- !,
+    format("([~w ~w] ", [Op, Kind]), ( K = n(_, KN) -> format("~w ↦ ", [KN]) ; true ),
+    maplist([n(_, X), X]>>true, Xs, Ns), atomic_list_concat(Ns, ';', NA), write(NA),
+    write(" ∈ "), sep(Cs, ";"), write(", "), pr(B), write(")").
+pr(bigall(_, Op, E)) :- !, format("([~w] ", [Op]), pr(E), write(")").
+pr(eval(_, Ws, E)) :- !, atomic_list_concat(Ws, ' ', W), format("Eval ~w in ", [W]), pr(E).
 pr(sig(_, n(_, X), T, Q)) :- !, format("{~w : ", [X]), pr(T), write(" | "), pr(Q), write("}").
+
+wp_at(none).
+wp_at(at(none, M)) :- !, write(" @ "), pr(M).
+wp_at(at(S, M)) :- write(" @ "), pr(S), write("; "), pr(M).
+
+post(post(none, Q)) :- !, write("{{ "), pr(Q), write(" }}").
+post(post(n(_, X), Q)) :- format("{{ ~w, ", [X]), pr(Q), write(" }}").
+
+quantifier(F-_, Glyph, Word, Q) :-
+    nb_getval(text, Text), ( sub_string(Text, F, 1, _, Glyph) -> Q = Glyph ; Q = Word ).
 
 names_c([n(_, N)]) :- !, write(N).
 names_c([n(_, N)|Ns]) :- format("~w, ", [N]), names_c(Ns).
@@ -157,9 +213,11 @@ sep([E], _) :- !, pr(E).
 sep([E|Es], S) :- pr(E), write(S), sep(Es, S).
 sep([], _).
 
-fsep([fld(_, N, E)]) :- !, format("~w := ", [N]), pr(E).
-fsep([fld(_, N, E)|Fs]) :- format("~w := ", [N]), pr(E), write("; "), fsep(Fs).
+fsep([F]) :- !, fld(F).
+fsep([F|Fs]) :- fld(F), write("; "), fsep(Fs).
 fsep([]).
+fld(fld(_, N, E)) :- format("~w := ", [N]), pr(E).
+fld(fldb(_, N, Bs, E)) :- write(N), binders(Bs), write(" := "), pr(E).
 
 scruts([S]) :- !, scrut(S).
 scruts([S|Ss]) :- scrut(S), write(", "), scruts(Ss).
@@ -182,6 +240,7 @@ pt(tmatch(K, Subject, Bs)) :-
     format("~w ", [K]), pt_subject(Subject), write(" with "),
     forall(member(tbr(Ps, T), Bs), ( write(" | "), pt_parts(Ps), write(" => "), pt(T) )), write(" end").
 pt(call(N, Ps)) :- format("~w ", [N]), pt_parts(Ps).
+pt(tlet(n(_, N), V, B)) :- format("(let ~w := ", [N]), pt(V), write(" in "), pt(B), write(")").
 pt(empty).
 
 pt_subject(goal) :- write("goal").
@@ -194,6 +253,15 @@ pt_choices([T|Ts]) :- pt(T), write(" | "), pt_choices(Ts).
 pt_parts([]).
 pt_parts([P|Ps]) :- pt_part(P), write(" "), pt_parts(Ps).
 pt_part(intro(Ps)) :- pt_intro_seq(Ps).
+pt_part(ipm_intros(Is)) :- forall(member(I, Is), ( I = coq(Ps) -> write("("), pt_intro_seq(Ps), write(") ") ; I = str(S), format('"~w" ', [S]) )).
+pt_part(ipm_as(Ps, Pat)) :-
+    ( Ps == [] -> true ; write("("), pt_intro_seq(Ps), write(") ") ),
+    ( Pat = str(S) -> format('"~w"', [S]) ; Pat = pure(P), write("%"), pt_intro(P) ).
+pt_part(ipm(H, Args, Spat)) :-
+    write("("), ( H = hyp(S) -> format('"~w"', [S]) ; pr(H) ),
+    ( Args == [] -> true ; write(" $!"), forall(member(A, Args), ( write(" "), pr(A) )) ),
+    ( Spat == none -> true ; format(' with "~w"', [Spat]) ), write(")").
+pt_part(terms(Es)) :- sep(Es, ", ").
 pt_part(clause(K, Ps)) :- write(K), ( K == eqn -> write(": ") ; write(" ") ), pt_parts(Ps).
 pt_part(term(E)) :- pr(E).
 pt_part(tactic(T)) :- write("("), pt(T), write(")").
@@ -208,11 +276,16 @@ pt_part(token(K)) :- rocq_syntax:tok_text(K, S), write(S).
 pt_intro(ip_name(n(_, N))) :- write(N).
 pt_intro(ip_rewrite(Op)) :- write(Op).
 pt_intro(ip_auto(K)) :- write(K).
+pt_intro(ip_fresh(n(_, N))) :- format("?~w", [N]).
 pt_intro(ip_and(Ps)) :- write("("), pt_intro_sep(Ps, " & "), write(")").
 pt_intro(ip_or(Arms)) :- write("["), pt_intro_arms(Arms), write("]").
+pt_intro(ip_inj(Ps)) :- write("[= "), pt_intro_seq(Ps), write("]").
 pt_intro_seq(Ps) :- pt_intro_sep(Ps, " ").
 pt_intro_sep([], _).
 pt_intro_sep([P], _) :- !, pt_intro(P).
 pt_intro_sep([P|Ps], S) :- pt_intro(P), write(S), pt_intro_sep(Ps, S).
 pt_intro_arms([Ps]) :- !, pt_intro_seq(Ps).
 pt_intro_arms([Ps|Arms]) :- pt_intro_seq(Ps), write(" | "), pt_intro_arms(Arms).
+
+count(none) :- !.
+count(N) :- write("^("), pr(N), write(")").

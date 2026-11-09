@@ -189,6 +189,7 @@ term_(bin(_, Op, L, R), Env) -->
     el(span, o, ['data-d'=op], ( term(L, Env), "\u00A0", op_(Op), " ", term(R, Env) )).
 term_(chain(_, [O1, O2], [A, B, C]), Env) -->
     el(span, o, ['data-d'=op], ( term(A, Env), "\u00A0", op_(O1), " ", term(B, Env), "\u00A0", op_(O2), " ", term(C, Env) )).
+term_(pre(_, Op, E), Env) --> { spaced_prefix(Op) }, !, el(span, "o pre", ( op_(Op), "\u00A0", term(E, Env) )).
 term_(pre(_, Op, E), Env) --> el(span, "o pre", ( op_(Op), term(E, Env) )).
 term_(paren(_, E), Env) --> el(span, paren, term(E, Env)).
 term_(cast(_, E, T), Env) -->
@@ -221,6 +222,9 @@ term_(bits(_, E, Ds), Env) -->
     { atom_chars(Ds, Cs), foldl([C, S0, S]>>atomic_list_concat([S0, '~', C], S), Cs, '', Text) },
     term(E, Env), el(span, "rq-bits", [title="a positive's binary digits: p~0 is 2p, p~1 is 2p + 1"], esc(Text)).
 term_(orpat(_, Ps), Env) --> el(span, paren, bar_items(Ps, Env)).
+term_(ifis(_, C, P, T, E), Env) -->
+    el(span, "o if", ( kw("if"), " ", term(C, Env), " ", kw("is"), " ", term(P, Env), " ", kw("then"), " ", term(T, Env),
+                       " ", kw("else"), " ", term(E, Env) )).
 term_(if(_, C, T, E), Env) -->
     el(span, "o if", ( kw("if"), " ", term(C, Env), " ", kw("then"), " ", term(T, Env), " ", kw("else"), " ", term(E, Env) )).
 term_(match(_, Ss, _, Brs), Env) -->
@@ -235,6 +239,89 @@ term_(sig(_, n(_, X), T, Q), Env) -->
     el(span, "braces sig", ( var_def(X), "\u00A0", el(span, "op wide", ":"), " ", term(T, Env), " ",
                              el(span, "op wide", "|"), " ", term(Q, [X|Env]) )).
 
+%  Iris, set as its papers set it: an update's masks around its arrow, a
+%  weakest precondition's mask under WP and its postcondition in braces,
+%  a big operator's binders under the operator.
+term_(pure(_, E), Env) --> el(span, "rq-pure", ( el(span, "op", "⌜"), term(E, Env), el(span, "op", "⌝") )).
+term_(const(_, C), _) --> el(span, "rq-const", esc(C)).
+term_(unit(_), _) --> el(span, a, "()").
+term_(insert(_, K, V), Env) -->
+    el(span, "rq-insert", ( el(span, op, "<["), term(K, Env), "\u00A0", defeq, " ", term(V, Env), el(span, op, "]>") )).
+term_(proj(_, E, Op), Env) --> term(E, Env), el(span, "rq-proj", [title=Op], esc(Op)).
+term_(gfunctors(_, Es), Env) --> el(span, "rq-gfunctors", ( el(span, op, "#"), term(list(0-0, Es), Env) )).
+term_(fupd(_, Ms, A), Env) --> el(span, "o pre rq-upd", ( update(Ms, "|⇛", Env), "\u00A0", term(A, Env) )).
+term_(laterN(_, N, A), Env) --> el(span, "o pre", ( el(span, op, step_later(N, Env)), term(A, Env) )).
+term_(stepupd(_, Ms, N, A), Env) -->
+    el(span, "o pre rq-upd", ( update(Ms, "|⇛", step_later(N, Env), Env), "\u00A0", term(A, Env) )).
+term_(stepupdw(_, Ms, N, L, R), Env) -->
+    el(span, o, ['data-d'=op], ( term(L, Env), "\u00A0", update(Ms, "⇛", step_later(N, Env), Env), " ", term(R, Env) )).
+term_(fupdw(_, Ms, L, R), Env) -->
+    el(span, o, ['data-d'=op], ( term(L, Env), "\u00A0", update(Ms, "⇛", Env), " ", term(R, Env) )).
+term_(pointsto(_, Op, L, Ms, R), Env) -->
+    el(span, o, ['data-d'=op], ( term(L, Env), "\u00A0", el(span, "op wide rq-pointsto", [title=Op], ( esc(Op), seq(Ms, pointsto_mod(Env)) )),
+                                 " ", term(R, Env) )).
+term_(indexed(_, Op, N, none, A), Env) --> !,
+    el(span, "o pre", ( el(span, op, ( esc(Op), el(sub, none, term(N, Env)) )), "\u00A0", term(A, Env) )).
+term_(indexed(_, Op, N, L, R), Env) -->
+    el(span, o, ['data-d'=op], ( term(L, Env), "\u00A0", el(span, "op wide", ( esc(Op), el(sub, none, term(N, Env)) )), " ", term(R, Env) )).
+term_(wp(_, E, At, Post), Env) -->
+    el(span, "c app rq-wp", ['data-d'=args],
+       ( el(span, "rq-wp-head", ( kw("WP"), wp_at(At, Env) )),
+         el(span, args, ( el(span, arg, term(E, Env)), " ", el(span, arg, post(Post, Env)) )) )).
+term_(triple(_, Pre, E, At, Bs, Ret, Q), Env) -->
+    { binders_env(Bs, Env, EnvQ) },
+    el(span, "c app rq-triple", ['data-d'=args],
+       el(span, args, ( el(span, arg, ( el(span, "op rq-triple-brace", "⦃"), term(Pre, Env), el(span, "op rq-triple-brace", "⦄") )), " ",
+                        el(span, arg, ( term(E, Env), wp_at(At, Env) )), " ",
+                        el(span, arg, ( el(span, "op rq-triple-brace", "⦃"),
+                                        ( { Bs == [] } -> [] ; binders_(Bs, Env), el(span, sep, "."), " " ),
+                                        kw("RET"), " ", term(Ret, EnvQ), el(span, sep, ";"), " ", term(Q, EnvQ),
+                                        el(span, "op rq-triple-brace", "⦄") )) ))).
+term_(bigop(_, Op, Kind, binds(K, Xs), Cs, B), Env) -->
+    { findall(X, ( ( K = n(_, X) ; member(n(_, X), Xs) ), X \== '_' ), Vs), append(Vs, Env, Env1),
+      format(atom(Title), "[~w ~w]", [Op, Kind]) },
+    el(span, "c quant rq-big", ['data-d'=args],
+       ( el(span, "q rq-big-op", [title=Title], ( esc(Op), el(sub, "rq-big-binds", big_binds(K, Xs, Cs, Env)) )),
+         el(span, args, el(span, arg, term(B, Env1))) )).
+term_(bigall(_, Op, E), Env) --> el(span, "o pre rq-big", ( el(span, "q rq-big-op", [title=Op], esc(Op)), "\u00A0", term(E, Env) )).
+term_(eval(_, Ws, E), Env) --> kw("Eval"), " ", el(span, "rq-mods", esc_words(Ws)), " ", kw("in"), " ", term(E, Env).
+
+spaced_prefix(Op) :- memberchk(Op, ['⊢', '|==>', '●', '◯', '✓', '£']) ; sub_atom(Op, 0, _, _, '<').
+
+%  An update's arrow, with one mask after it, or two around it.
+%  A step-taking update's later and count follow in the same operator.
+update(Ms, Arrow, Env) --> update(Ms, Arrow, [], Env).
+update([], Arrow, Tail, _) --> el(span, "op wide rq-upd-arrow", ( esc(Arrow), Tail )).
+update([E], Arrow, Tail, Env) --> el(span, "op wide rq-upd-arrow", ( esc(Arrow), el(sup, "rq-mask", term(E, Env)), Tail )).
+update([E1, E2], Arrow, Tail, Env) -->
+    el(span, "op wide rq-upd-arrow", ( el(sup, "rq-mask", term(E1, Env)), esc(Arrow), el(sup, "rq-mask", term(E2, Env)), Tail )).
+
+%  The later of a step-taking update, with its count: ▷ⁿ.
+step_later(none, _) --> !, "▷".
+step_later(N, Env) --> "▷", el(sup, "rq-mask", term(N, Env)).
+
+pointsto_mod(Env, name(G)) --> el(sub, "rq-mask", term(G, Env)).
+pointsto_mod(Env, own(Q)) --> el(sup, "rq-mask", term(Q, Env)).
+pointsto_mod(Env, dfrac(D)) --> el(sup, "rq-mask", term(D, Env)).
+pointsto_mod(_, persistent) --> el(sup, "rq-mask", "□").
+
+wp_at(none, _) --> [].
+wp_at(at(S, M), Env) --> el(sub, "rq-mask", ( ( { S == none } -> [] ; term(S, Env), "; " ), term(M, Env) )).
+
+post(post(none, Q), Env) --> el(span, "rq-post", ( el(span, op, "{"), term(Q, Env), el(span, op, "}") )).
+post(post(n(_, X), Q), Env) -->
+    { X == '_' -> Env1 = Env ; Env1 = [X|Env] },
+    el(span, "rq-post", ( el(span, op, "{"), var_def(X), el(span, sep, "."), " ", term(Q, Env1), el(span, op, "}") )).
+
+big_binds(K, Xs, Cs, Env) -->
+    ( { K = n(_, KX) } -> var_def(KX), el(span, op, "↦") ; [] ),
+    sep_defs(Xs), el(span, op, "∈"), sep_terms(Cs, Env).
+
+sep_defs([n(_, X)]) --> !, var_def(X).
+sep_defs([n(_, X)|Xs]) --> var_def(X), ";", sep_defs(Xs).
+sep_terms([C], Env) --> !, term(C, Env).
+sep_terms([C|Cs], Env) --> term(C, Env), ";", sep_terms(Cs, Env).
+
 bar_items([P], Env) --> !, term(P, Env).
 bar_items([P|Ps], Env) -->
     el(span, o, ['data-d'=op], ( term(P, Env), " ", el(span, "op wide bar", [title="|"], "|"), " ", bar_items(Ps, Env) )).
@@ -248,6 +335,10 @@ sep_items([E|Es], Env, Sep) --> el(span, arg, ( term(E, Env), el(span, sep, esc(
 rec_fields([], _) --> [].
 rec_fields([fld(_, N, E)|Fs], Env) -->
     el(span, arg, ( name_ref(N, []), "\u00A0", defeq, " ", term(E, Env), ( { Fs == [] } -> [] ; el(span, sep, ";") ) )),
+    ( { Fs == [] } -> [] ; " " ), rec_fields(Fs, Env).
+rec_fields([fldb(_, N, Bs, E)|Fs], Env) -->
+    { binders_env(Bs, Env, Env1) },
+    el(span, arg, ( name_ref(N, []), binders_(Bs, Env), "\u00A0", defeq, " ", term(E, Env1), ( { Fs == [] } -> [] ; el(span, sep, ";") ) )),
     ( { Fs == [] } -> [] ; " " ), rec_fields(Fs, Env).
 
 defeq --> el(span, "op wide defeq", [title=":="], "≔").
@@ -305,6 +396,13 @@ op_glyph('>=?', "≥?").
 op_glyph('*', "×").
 op_glyph('-', "−").
 op_glyph('=>', "⇒").
+op_glyph('-∗', "−∗").
+op_glyph('∗-∗', "∗−∗").
+op_glyph('|==>', "|⇛").
+op_glyph('==∗', "⇛").
+op_glyph('~~>', "⇝").
+op_glyph('-d>', "→ᵈ").
+op_glyph('-n>', "→ⁿᵉ").
 
 %  Binders: (x y : T) as a box, {x} in braces, bare names as they are.
 %  A name, binders and result type: the result can move below a long
@@ -324,11 +422,22 @@ binders_([], _) --> [].
 binders_([B|Bs], Env) --> " ", binder_(B, Env), binders_(Bs, Env).
 
 binder_(b(_, pattern(P), _, _), Env) --> !, el(span, tick, "'"), term(P, Env).
+binder_(b(_, gen(Open, Items), _, _), Env) --> !,
+    { matching_close(Open, Close) },
+    el(span, "rq-gen binder", ( el(span, op, ( "`", esc(Open) )), gen_items(Items, Env), el(span, op, esc(Close)) )).
 binder_(b(_, struct, [n(_, X)], _), _) --> !, el(span, "struct", ( "{", kw("struct"), " ", esc(X), "}" )).
 binder_(b(_, brace, Ns, Ty), Env) --> !, el(span, "braces binder", ( vars(Ns), opt_type(Ty, Env) )).
 binder_(b(_, _, Ns, none), _) --> !, vars(Ns).
 binder_(b(_, bare, Ns, Ty), Env) --> !, vars(Ns), opt_type(Ty, Env).
 binder_(b(_, paren, Ns, Ty), Env) --> el(span, "paren binder", ( vars(Ns), opt_type(Ty, Env) )).
+
+matching_close('{', '}').
+matching_close('(', ')').
+
+gen_items([I], Env) --> !, gen_item(I, Env).
+gen_items([I|Is], Env) --> gen_item(I, Env), el(span, sep, ","), " ", gen_items(Is, Env).
+gen_item(bang(E), Env) --> !, el(span, op, "!"), term(E, Env).
+gen_item(E, Env) --> term(E, Env).
 
 vars([]) --> [].
 vars([n(_, X)]) --> !, var_def(X).
@@ -404,8 +513,11 @@ block(app(_, _, As)) :- member(A, As), block(A), !.
 block(tuple(_, Es)) :- member(E, Es), block(E), !.
 block(bin(_, _, L, R)) :- ( block(L) ; block(R) ), !.
 block(paren(_, E)) :- block(E).
+block(scope(_, E, _)) :- block(E).
 
 blk_(paren(_, E), Env) --> blk(E, Env).
+%  A block's scope (match … end%I) only told Rocq how to read it.
+blk_(scope(_, E, _), Env) --> blk(E, Env).
 blk_(bin(_, Op, L, R), Env) -->
     el(div, "rq-equation", ( blk(L, Env), el(div, "goal", op_(Op)), blk(R, Env) )).
 blk_(tuple(_, Es), Env) --> el(div, "rq-tuple", seq(Es, tuple_part(Env))).
@@ -587,6 +699,8 @@ item_(thm(F-T, Kw, Name, Bs, Ty)) --> !,
     notes_upto(T).
 item_(decl(F-T, Kw, Gs)) --> { axiom_kw(Kw) }, !,
     seq(Gs, axiom_(F, Kw)), notes_upto(T).
+item_(decl(F-T, Kw, [bs(Bs)])) --> !,
+    el(div, "clause rq-param", el(div, head, ( line_link(F), kw(Kw), binders_(Bs, []) ))), notes_upto(T).
 item_(decl(F-T, Kw, Gs)) --> !,
     seq(Gs, param_(F, Kw)), notes_upto(T).
 item_(notation(F-T, Kw, S, E, Mods)) --> !,
@@ -910,6 +1024,9 @@ tactic_block(choices(K, Ts), Env) --> { member(T, Ts), tactic_structural(T) }, !
 tactic_block(dispatch(T, Ts), Env) --> { tactic_structural(T) ; member(B, Ts), tactic_structural(B) }, !,
     el(span, "rq-tac-seq", ( el(span, "rq-tac-left", tactic_block(T, Env)),
         el(span, "rq-tac-sep", ";"), el(span, "l rq-tac-options", tactic_options(Ts, Env)) )).
+tactic_block(tlet(n(_, X), V, B), Env) --> { tactic_structural(B) }, !,
+    el(span, "rq-tac-let", ( el(span, "goal rq-tac-head", ( kw("let"), " ", var_def(X), "\u00A0", defeq, " ", tactic_inline(V, Env), " ", kw("in") )),
+                             tactic_block(B, [X|Env]) )).
 tactic_block(tgroup(T), Env) --> { tactic_structural(T) }, !,
     el(span, "rq-tac-group", ( "(", tactic_block(T, Env), ")" )).
 tactic_block(T, Env) --> el(span, "goal rq-tac-inline", tactic_inline(T, Env)).
@@ -921,6 +1038,7 @@ tactic_structural(select(_, _)).
 tactic_structural(prefix(_, T)) :- tactic_structural(T).
 tactic_structural(do(_, T)) :- tactic_structural(T).
 tactic_structural(tgroup(T)) :- tactic_structural(T).
+tactic_structural(tlet(_, _, B)) :- tactic_structural(B).
 tactic_structural(tbin(_, L, R)) :- ( tactic_structural(L) ; tactic_structural(R) ).
 
 tactic_inline(tbin(Op, L, R), Env) -->
@@ -938,10 +1056,18 @@ tactic_inline(choices(K, Ts), Env) -->
 tactic_inline(dispatch(T, Ts), Env) -->
     el(span, "o rq-tac-chain", ['data-d'=op], ( tactic_inline(T, Env), " ",
         el(span, "op wide", [title=";"], ";"), " ", tactic_alternatives(Ts, Env) )).
+tactic_inline(tlet(n(_, X), V, B), Env) -->
+    el(span, "o rq-tac-chain", ['data-d'=op], ( kw("let"), " ", var_def(X), "\u00A0", defeq, " ", tactic_inline(V, Env), " ",
+        kw("in"), " ", tactic_inline(B, [X|Env]) )).
 tactic_inline(call(N, []), Env) --> !, name_ref(N, Env, head).
+%  In the proof mode's tactics, a string is a pattern of hypothesis names.
 tactic_inline(call(N, Ps), Env) -->
-    el(span, "c rq-tac-call", ['data-d'=args], ( name_ref(N, Env, head), " ", el(span, "args rq-tac-args", tactic_parts(Ps, Env)) )).
+    { ( nb_current(rq_ipm, I0) -> true ; I0 = false ), ( ipm_tactic(N) -> I = true ; I = I0 ), nb_setval(rq_ipm, I) },
+    el(span, "c rq-tac-call", ['data-d'=args], ( name_ref(N, Env, head), " ", el(span, "args rq-tac-args", tactic_parts(Ps, Env)) )),
+    { nb_setval(rq_ipm, I0) }.
 tactic_inline(empty, _) --> el(span, "rq-empty", []).
+
+ipm_tactic(N) :- atom_codes(N, [0'i, C|_]), between(0'A, 0'Z, C).
 
 tactic_alternatives(Ts, Env) -->
     el(span, "l rq-tac-alternatives", tactic_chain(Ts, '|', tactic_inline, Env)).
@@ -957,6 +1083,18 @@ tactic_parts([], _) --> [].
 tactic_parts([P|Ps], Env) --> el(span, arg, tactic_part(P, Env)),
     ( { Ps == [] } -> [] ; " ", tactic_parts(Ps, Env) ).
 
+tactic_part(ipm_intros(Is), Env) -->
+    el(span, "c rq-intros", ['data-d'=args], el(span, "args rq-tac-args", ipm_items(Is, Env))).
+tactic_part(ipm_as(Ps, Pat), Env) -->
+    ( { Ps == [] } -> [] ; el(span, "paren rq-pattern", intro_items(Ps, Env)), " " ),
+    ( { Pat = str(S) } -> ipm_pattern(S)
+    ; { Pat = pure(P) }, el(span, "rq-ipm-pure", ( el(span, op, "%"), intro_pattern(Env, P) )) ).
+tactic_part(ipm(H, Args, Spat), Env) -->
+    el(span, "paren rq-ipm-term",
+       ( ( { H = hyp(S) } -> ipm_pattern(S) ; term(H, Env) ),
+         ( { Args == [] } -> [] ; " ", el(span, "op wide", [title="$!"], "$!"), " ", items(Args, Env) ),
+         ( { Spat == none } -> [] ; " ", kw(with), " ", ipm_pattern(Spat) ) )).
+tactic_part(terms(Es), Env) --> el(span, "c tuple", el(span, "args rq-tac-args", sep_items(Es, Env, ","))).
 tactic_part(intro(Ps), Env) -->
     el(span, "c rq-intros", ['data-d'=args], el(span, "args rq-tac-args", intro_items(Ps, Env))).
 tactic_part(clause(by, [tactic(T)]), Env) --> !,
@@ -978,6 +1116,7 @@ tactic_part(group(Open, Ps, Close), Env) -->
     el(span, "l rq-token-group", ['data-d'=args], ( el(span, sep, esc(Open)), " ", tactic_parts(Ps, Env), " ", el(span, sep, esc(Close)) )).
 tactic_part(token(id(X)), Env) --> !, name_ref(X, Env).
 tactic_part(token(kw(X)), _) --> !, kw(X).
+tactic_part(token(str(S)), _) --> { nb_current(rq_ipm, true) }, !, ipm_pattern(S).
 tactic_part(token(str(S)), Env) --> !, term(str(0-0, S), Env).
 tactic_part(token(K), _) --> { rocq_syntax:tok_text(K, S) }, el(span, "rq-token", esc(S)).
 
@@ -986,6 +1125,8 @@ intro_pattern(_, ip_name(n(_, N))) --> var_(N).
 intro_pattern(_, ip_rewrite(Op)) -->
     { ( Op == '->' -> G = '→' ; G = '←' ) }, el(span, "op rq-rewrite", [title=Op], esc(G)).
 intro_pattern(_, ip_auto(K)) --> el(span, "v anon", esc(K)).
+intro_pattern(_, ip_fresh(n(_, N))) --> el(span, "rq-meta", ( "?", var_(N) )).
+intro_pattern(Env, ip_inj(Ps)) --> el(span, "l rq-pattern", ( el(span, op, "="), " ", intro_items(Ps, Env) )).
 intro_pattern(Env, ip_and(Ps)) -->
     el(span, "paren rq-pattern rq-intro-and", tactic_chain(Ps, '&', intro_operand, Env)).
 intro_pattern(Env, ip_or(Arms)) -->
@@ -997,6 +1138,23 @@ intro_sequence(Ps, Env) --> { Ps \== [] },
     el(span, "c rq-intros", ['data-d'=args], el(span, "args rq-tac-args", intro_items(Ps, Env))).
 intro_items([P|Ps], Env) --> el(span, arg, intro_pattern(Env, P)),
     ( { Ps == [] } -> [] ; " ", intro_items(Ps, Env) ).
+
+ipm_items([I|Is], Env) -->
+    el(span, arg, ( { I = coq(Ps) } -> el(span, "paren rq-pattern", intro_items(Ps, Env)) ; { I = str(S) }, ipm_pattern(S) )),
+    ( { Is == [] } -> [] ; " ", ipm_items(Is, Env) ).
+
+%  A proof mode pattern, "[H1 %Hφ]": its names are the hypotheses', as
+%  the proof state shows them, and its marks (% # $ [ ] & |) operators.
+ipm_pattern(S) --> { string_codes(S, Cs) }, el(span, "rq-ipm", ipm_codes(Cs)).
+
+ipm_codes([]) --> [].
+ipm_codes([C|Cs0]) --> { ipm_name_char(C) }, !,
+    { span(ipm_name_char, [C|Cs0], W, Cs), atom_codes(N, W) },
+    ( { N == '_' } -> el(span, "v anon", "_") ; var_(N) ), ipm_codes(Cs).
+ipm_codes([0' |Cs]) --> !, " ", ipm_codes(Cs).
+ipm_codes([C|Cs]) --> el(span, "op rq-ipm-mark", esc_code(C)), ipm_codes(Cs).
+
+ipm_name_char(C) :- code_type(C, csym) ; C == 0'' ; C >= 0x80, \+ memberchk(C, `□∗`).
 
 tactic_subject(goal, _) --> kw("goal").
 tactic_subject(type(E), Env) --> kw("type of"), " ", term(E, Env).
@@ -1174,7 +1332,7 @@ concept_href(Id, Href) :-
 
 %  rq_kind(+Id): the mark, Fil-C or nanofil, that the concept pages give.
 rq_kind(Id) --> { concept_kind(Id, K, _) }, !,
-    { K == 'Fil-C' -> C = "kind kind-filc" ; C = "kind kind-nanofil" }, " ", el(span, C, esc(K)).
+    { K == 'Fil-C' -> C = "kind kind-filc" ; K == 'Iris' -> C = "kind kind-iris" ; C = "kind kind-nanofil" }, " ", el(span, C, esc(K)).
 rq_kind(_) --> [].
 
 %  A card's text links nothing: no cards in cards, no names (rq_button).
@@ -1257,6 +1415,11 @@ rocq_inline(Codes) -->
     { nb_setval(rq_page, none), ( nb_current(rq_mod, M0) -> true ; M0 = [] ), nb_setval(rq_mod, []) },
     el(code, "term rq", fragment_(Frag)),
     { nb_setval(rq_page, P0), nb_setval(rq_mod, M0) }.
+%  A proof-mode tactic with its patterns: iDestruct "H" as "[H1 H2]".
+rocq_inline(Codes) -->
+    { memberchk(0' , Codes), catch(rocq_lex(Codes, Toks, []), _, fail),
+      rocq_tactic_tokens(Toks, T), T = call(N, [_|_]), ipm_tactic(N) },
+    el(code, "term rq", el(span, tactic, tactic_block(T, []))).
 
 prose_fragment(sentence(S)) :- S \= raw(_, _), S \= dir(_, _).
 prose_fragment(alts(_, _)).
@@ -1271,6 +1434,12 @@ rocq_only(forall(_, _, _)).
 rocq_only(exists(_, _, _)).
 rocq_only(fun(_, _, _)).
 rocq_only(match(_, _, _, _)).
+%  Iris: P ∗ Q, P -∗ Q, ℓ ↦ v, ▷ P, ⌜φ⌝, |==> P, WP e {{ Φ }} and the like.
+rocq_only(bin(_, Op, _, _)) :- memberchk(Op, ['∗', '-∗', '⊢', '⊣⊢', '==∗', '∗-∗', '~~>']).
+rocq_only(pre(_, Op, _)) :- memberchk(Op, ['▷', '□', '◇', '■', '⊢', '|==>', '✓']) ; sub_atom(Op, 0, _, _, '<').
+rocq_only(E) :- functor(E, F, _), memberchk(F, [pure, laterN, fupd, fupdw, stepupd, stepupdw, pointsto, indexed, wp, triple, bigop, bigall]).
+rocq_only(app(_, id(_, F), _)) :- memberchk(F, [own, inv, iProp, uPred]).
+rocq_only(scope(_, _, 'I')).
 
 fragment_(term(E)) --> term(E, []).
 fragment_(typed(n(_, N), T)) --> el(span, "f def", esc(N)), opt_type(T, []).

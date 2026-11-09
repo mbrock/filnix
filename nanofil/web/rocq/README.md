@@ -72,6 +72,17 @@ Match patterns, parenthesized expressions, assertions and `ltac:(…)` use the G
 intro patterns remain distinct from terms. Atomic tactic extensions keep
 their tokens; an unsupported control form stays verbatim, never disappears.
 
+It reads Iris (rocq/spikes) at Iris's levels: `∗` (80, right), `-∗`,
+`==∗` and `⊢` (99, right), `▷ □ ◇ ● ◯ ✓` as tight prefixes, `|==>`,
+`|={E1,E2}=>` and `P ={E}=∗ Q`, `⌜φ⌝`, `WP e @ s; E {{ v, Φ v }}`,
+Texan triples `{{{ P }}} e {{{ x, RET v; Q }}}`, big operators
+`[∗ list] k ↦ x ∈ l, Φ`, points-to `ℓ ↦{#q} v`, `k ↪[γ]□ v`, step-indexed
+relations `≡{n}≡ ≼{n} ✓{n}`, and std++'s `!! <$> <[k:=v]> .*1 λ`. A file's
+`Infix "**" := star` folds as a Notation does, also in the files that
+`Require` it. The proof mode's strings are read as intro, selection and
+specialization patterns (`iIntros (x) "[H1 #H2]"`, `iApply ("H" $! x with
+"[$HP]")`), not as opaque text.
+
 `tests/parse.sh` compiles each `.v` file, then reprints its tree with
 every subterm in parentheses (`tests/reprint.pl`) and compiles that: if
 the definitions still type-check and the proofs still go through, every
@@ -119,6 +130,10 @@ or tactics fail this check. Making `->` left-associative fails four Campaign
   as GitHub reads it, and drawn to the site's page for that document.
   `(* … *)` comments are notes, or asides at the end of a line.
   `name/N`, `module:name/N` and `module.pl` link to nanofil's Prolog.
+- Iris is drawn as its papers write it: `−∗`, `|⇛` with its masks as
+  scripts, `WP` with the postcondition's binder, triples in ⦃ ⦄, a big
+  operator with its binders and list under it, `ℓ ↦` with its fraction
+  above. A proof-mode tactic's hypotheses are names, its marks operators.
 
 ## Rocq in documents
 

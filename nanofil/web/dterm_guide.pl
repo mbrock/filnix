@@ -770,6 +770,8 @@ render_concept_body(Dir, Id) :-
     nb_setval(guide_doc, Doc), nb_setval(guide_dir, Dir), nb_setval(guide_concept, Id),
     nb_setval(guide_h2, ""), nb_setval(guide_sec, sec(top, "", [])), nb_setval(dterm_file, guide),
     retractall(guide_slug(_, _)), guide_prepass(Blocks),
+    %  An Iris concept writes its propositions in Iris's Rocq notation.
+    ( concept_kind(Id, 'Iris', _) -> assertz(guide_rocq(Doc)) ; true ),
     retractall(guide_entry_ref(_)),
     phrase(gblocks(Blocks), Body),
     (   concept_kind(Id, _, Rest), Rest \== "" -> string_codes(Rest, RCs), phrase(gi(RCs), Meta)

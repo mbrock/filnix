@@ -124,6 +124,117 @@ Definition digits : positive := (xH)~0~1.
 ROCQ
 set -- "$@" "$tmp/terms/Terms.v"
 
+# Iris's notations and proof mode, where Iris is on ROCQPATH (the logic
+# spikes' check, nix/spikes.nix): each lemma fails to type-check, or its
+# proof to go through, if one of its operators is read at another level.
+mkdir "$tmp/iris"
+if echo 'From iris.heap_lang Require Import proofmode.' >"$tmp/iris/Probe.v" &&
+   (cd "$tmp/iris" && $coqc Probe.v) >/dev/null 2>&1; then
+  rm -f "$tmp/iris"/Probe.*
+  cat >"$tmp/iris/Iris.v" <<'ROCQ'
+From iris.proofmode Require Import proofmode.
+From iris.base_logic.lib Require Import invariants gen_heap.
+From iris.base_logic.lib Require Import ghost_map.
+From iris.algebra Require Import auth excl.
+From iris.heap_lang Require Import lang proofmode notation.
+Definition testΣ : gFunctors := #[invΣ; gen_heapΣ nat nat].
+Section iris.
+Context `{!heapGS Σ}.
+Implicit Types P Q R : iProp Σ.
+(* ∗ binds tighter than -∗, which associates to the right. *)
+Lemma sep_wand P Q R : (P ∗ Q -∗ R) ⊢ P -∗ Q -∗ R.
+Proof. iIntros "H HP HQ". iApply ("H" with "[$HP $HQ]"). Qed.
+(* ▷ and □ take an operand, not the conjunction after it. *)
+Lemma later_sep P Q : ▷ P ∗ Q ⊢ Q ∗ ▷ P.
+Proof. iIntros "[HP HQ]". iFrame. Qed.
+Lemma box_dup P : □ P ⊢ □ P ∗ □ P.
+Proof. iIntros "#H". iSplitL; iModIntro; iExact "H". Qed.
+Lemma pers_and P Q : <pers> P ∧ Q ⊢ <pers> P.
+Proof. apply bi.and_elim_l. Qed.
+Lemma löb (P : iProp Σ) : □ (▷ P -∗ P) ⊢ P.
+Proof. iIntros "#H". iLöb as "IH". iApply "H". iExact "IH". Qed.
+Lemma sep_comm' P Q : P ∗ Q ⊣⊢ Q ∗ P.
+Proof. iSplit; iIntros "[A B]"; iFrame. Qed.
+Lemma bupd' P : P ==∗ P.
+Proof. iIntros "H". by iModIntro. Qed.
+Lemma fupd' E P : P ⊢ |={E}=> P.
+Proof. iIntros "H". by iModIntro. Qed.
+(* An existential's body runs to the end: iExists needs it on top. *)
+Lemma ex_sep (Φ : nat → iProp Σ) P : (∃ n, Φ n) ∗ P -∗ ∃ n, Φ n ∗ P.
+Proof. iIntros "[[%n H] HP]". iExists n. iFrame. Qed.
+Lemma all_zero (Φ : nat → iProp Σ) : (∀ n, Φ n) ⊢ Φ 0.
+Proof. iIntros "H". iApply "H". Qed.
+Lemma pure_sep (φ : Prop) P : φ → P ⊢ ⌜φ⌝ ∗ P.
+Proof. iIntros (Hφ) "HP". iSplitR; [by iPureIntro | iExact "HP"]. Qed.
+Lemma pure_destruct (φ : Prop) P : ⌜φ ∧ True⌝ ∗ P ⊢ P ∗ ⌜φ⌝.
+Proof. iIntros "[%Hφ HP]". iDestruct "HP" as "HP". iFrame. iPureIntro. apply Hφ. Qed.
+Lemma inv_open N P E : ↑N ⊆ E → inv N P ⊢ |={E, E ∖ ↑N}=> ▷ P ∗ (▷ P ={E ∖ ↑N, E}=∗ True).
+Proof. iIntros (?) "#HI". iApply (inv_acc with "HI"). done. Qed.
+Lemma frac (ℓ : loc) (q : Qp) (v : val) : ℓ ↦{#q} v ∗ ℓ ↦□ v ⊢ ℓ ↦□ v ∗ ℓ ↦{#q} v.
+Proof. iIntros "[H1 H2]". iFrame. Qed.
+Lemma wp_frame' P e Φ : P ∗ WP e {{ Φ }} ⊢ WP e {{ v, P ∗ Φ v }}.
+Proof. iIntros "[HP Hwp]". iApply (wp_wand with "Hwp"). iIntros (v) "HΦ". iFrame. Qed.
+Lemma wp_masks e E Φ : WP e @ NotStuck; E {{ Φ }} ⊢ WP e @ E {{ v, Φ v }}.
+Proof. iIntros "H". iExact "H". Qed.
+Lemma load_spec (ℓ : loc) (v : val) : {{{ ℓ ↦ v }}} ! #ℓ {{{ RET v; ℓ ↦ v }}}.
+Proof. iIntros (Φ) "Hl HΦ". wp_load. iApply "HΦ". iExact "Hl". Qed.
+Lemma alloc_spec : {{{ True }}} ref #1 {{{ ℓ, RET #ℓ; ℓ ↦ #1 }}}.
+Proof. iIntros (Φ) "_ HΦ". wp_alloc ℓ as "Hl". iApply "HΦ". iExact "Hl". Qed.
+Lemma big_list (l : list nat) (Φ : nat → iProp Σ) : ([∗ list] k ↦ x ∈ l, Φ x) ⊢ [∗ list] x ∈ l, Φ x.
+Proof. iIntros "H". iExact "H". Qed.
+Lemma big_map (m : gmap nat nat) (Φ : nat → nat → iProp Σ) P :
+  ([∗ map] k↦x ∈ m, Φ k x) ∗ P ⊢ P ∗ ([∗ map] k ↦ x ∈ m, Φ k x).
+Proof. iIntros "[H HP]". iFrame. Qed.
+Lemma big_set (X : gset nat) (l1 l2 : list nat) (Φ : nat → iProp Σ) (Ψ : nat → nat → iProp Σ) (Ps : list (iProp Σ)) :
+  ([∗ set] x ∈ X, Φ x) ∗ ([∗ list] x;y ∈ l1;l2, Ψ x y) ∗ [∗] Ps ⊢ [∗] Ps ∗ ([∗ set] x ∈ X, Φ x).
+Proof. iIntros "(H1 & _ & H3)". iFrame. Qed.
+Lemma own_excl `{!inG Σ (exclR unitO)} γ : own γ (Excl ()) ⊢ |==> own γ (Excl ()).
+Proof. iIntros "H". by iModIntro. Qed.
+Lemma auth_split `{!inG Σ (authR natUR)} γ (n : nat) : own γ (● n ⋅ ◯ n) ⊢ own γ (● n) ∗ own γ (◯ n).
+Proof. iIntros "[Ha Hf]". iFrame. Qed.
+Lemma specialize (Φ : nat → iProp Σ) P : (∀ n, P -∗ Φ n) ∗ P ⊢ Φ 1.
+Proof. iIntros "[H HP]". iApply ("H" $! 1 with "HP"). Qed.
+Lemma destruct_ex (Φ : nat → iProp Σ) : (∃ n, ⌜n = 1⌝ ∗ Φ n) ⊢ Φ 1.
+Proof. iIntros "H". iDestruct "H" as (n) "[%Hn H]". subst n. iExact "H". Qed.
+Lemma mod_intro P : (|==> P) ⊢ |==> P ∗ True.
+Proof. iIntros "H". iMod "H" as "H". iModIntro. iSplitL "H"; [iExact "H" | done]. Qed.
+(* An update's later and its count bind into the arrow, not the operand. *)
+Lemma step_wand E P Q n : (P ={E}▷=∗^n Q) ∗ P ⊢ |={E}▷=>^n Q.
+Proof. iIntros "[H HP]". iApply ("H" with "HP"). Qed.
+Lemma step_one E P : (|={E}▷=> P) ⊢ |={E}▷=> P.
+Proof. iIntros "H". iExact "H". Qed.
+Lemma laters n P Q : ▷^n P ∗ Q ⊢ Q ∗ ▷^n P.
+Proof. iIntros "[A B]". iFrame. Qed.
+Lemma credits n : £ (S n) ∗ £ n ⊢ £ n ∗ £ (S n).
+Proof. iIntros "[A B]". iFrame. Qed.
+Lemma ghost_elems `{!ghost_mapG Σ nat nat} γ (k v : nat) (q : Qp) :
+  k ↪[γ]{#q} v ∗ k ↪[γ]□ v ⊢ k ↪[γ]□ v ∗ k ↪[γ]{#q} v.
+Proof. iIntros "[A B]". iFrame. Qed.
+End iris.
+(* ⋅ binds tighter than ≼{n}; the index is the relation's. *)
+Lemma included_op {A : cmra} n (x : A) : x ≼{n} x ⋅ x.
+Proof. by exists x. Qed.
+Lemma dist_refl' {A : ofe} n (x : A) : x ≡{n}≡ x.
+Proof. reflexivity. Qed.
+Lemma update_refl {A : cmra} (x : A) : x ~~> x.
+Proof. reflexivity. Qed.
+Lemma valid_unit n : ✓{n} (ε : natUR) ∧ ✓ (ε : natUR).
+Proof. split; [apply ucmra_unit_validN | apply ucmra_unit_valid]. Qed.
+Record holds := { holds_at : nat → nat → Prop }.
+Definition always : holds := {| holds_at n x := n = n ∧ x = x |}.
+Lemma lookup_ins (m : gmap nat nat) k v : <[k := v]> m !! k = Some v.
+Proof. apply lookup_insert_Some. left. split; reflexivity. Qed.
+Lemma projections (p : nat * nat) (ps : list (nat * nat)) : p.1 :: ps.*1 = (fst <$> p :: ps).
+Proof. reflexivity. Qed.
+Definition twice : nat → nat := λ n, n + n.
+Definition dfun : ofe := nat -d> nat -d> natO.
+Definition nfun : ofe := natO -n> natO -n> natO.
+Definition dollar : nat := S $ S $ 0.
+Definition stuck_p (s : stuckness) : Prop := if s is NotStuck then True else False.
+ROCQ
+  set -- "$@" "$tmp/iris/Iris.v"
+fi
+
 # project FILE: the directory of the project file above FILE, or FILE's own.
 project() {
   local d
@@ -135,14 +246,16 @@ project() {
   cd "$(dirname "$1")" && pwd
 }
 
-# flags DIR: the project's -R and -Q flags.
+# flags DIR: the project's -R and -Q flags. A directory outside the
+# project (rocq/spikes reads ../theories) is the original's, compiled.
 flags() {
   local p
   for p in "$1/_RocqProject" "$1/_CoqProject"; do
-    [ -e "$p" ] && grep -oE '^-[RQ] +[^ ]+ +[^ ]+' "$p" | tr '\n' ' ' && return
+    [ -e "$p" ] && grep -oE '^-[RQ] +[^ ]+ +[^ ]+' "$p" | outside "$1" | tr '\n' ' ' && return
   done
   echo "-Q . Top"
 }
+outside() { sed -E "s#^(-[RQ] +)(\.\./)#\1$1/\2#"; }
 
 # order DIR: the project's .v files in the order its project file lists them.
 order() {
@@ -221,6 +334,9 @@ for f in "$@"; do
     # Preserve checked objects' timestamps when the Nix model supplies
     # them; make still builds the originals in a source-only checkout.
     cp -rp "$proj" "$orig"
+    for p in "$orig/_RocqProject" "$orig/_CoqProject"; do
+      if [ -e "$p" ]; then outside "$proj" <"$p" >"$p.abs" && mv "$p.abs" "$p"; fi
+    done
     build "$orig" "$proj"
   fi
 done

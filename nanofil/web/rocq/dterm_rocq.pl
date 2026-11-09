@@ -66,10 +66,13 @@ main :-
 
 %% Reading
 
+:- dynamic page_notations/2.
+
 read_or_report(Root, File, Page) :-
     directory_file_path(Root, File, Path),
     (   catch(rocq_read_file(Path, Text, rocq(Items, Cms0)), E, ( print_message(error, E), fail ))
     ->  maplist(note_kind(Text), Cms0, Cms),
+        rocq_notations(Ns), assertz(page_notations(File, Ns)),
         Page = page(File, Text, Items, Cms),
         forall(( raw_item(Items, raw(F-_, Kw)), \+ shown_as_text(Kw) ),
                ( sub_string(Text, 0, F, _, Pre), split_string(Pre, "\n", "", Ls), length(Ls, L),
@@ -110,6 +113,8 @@ span_csym(Cs, [], Cs).
 write_source_page(Out, page(File, Text, Items, Cms)) :-
     get_time(T0),
     page_name(File, Page), nb_setval(rq_page, Page), nb_setval(rq_file, File),
+    % Its own notations and its imports', not those of the file read last.
+    page_notations(File, Ns), rocq_set_notations(Ns),
     (   Items = [I|_], first_offset(I, From) -> true ; string_length(Text, From) ),
     partition([cm(O, _, _, _)]>>(O < From), Cms, Head, Body),
     rocq_set_source(Text, Body),

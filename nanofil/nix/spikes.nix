@@ -7,7 +7,8 @@
 #
 # It checks that ListSumCode.v is what nanofil makes of listsum.c, then
 # compiles the spikes against the model's compiled theories (the
-# nanofil-rocq model output), printing each file's time.
+# nanofil-rocq model output), printing each file's time. Then parse.sh
+# reads every spike sentence back (web/rocq), with its Iris fixture.
 {
   pkgs,
   filcc,
@@ -22,6 +23,9 @@ let
       ../bin
       ../rocq/gallina.pl
       ../rocq/spikes
+      ../web/rocq/rocq_syntax.pl
+      ../web/rocq/tests/parse.sh
+      ../web/rocq/tests/reprint.pl
     ];
   };
 in
@@ -40,10 +44,13 @@ pkgs.runCommandCC "nanofil-logic-spikes"
     set -o pipefail
     cp -r ${src} nanofil
     chmod -R u+w nanofil
+    cp -rp ${model}/share/rocq/theories nanofil/rocq/
+    chmod -R u+w nanofil
     cd nanofil
     patchShebangs bin rocq/spikes
     FILCC=${filcc}/bin/clang bash rocq/spikes/code.sh
-    bash rocq/spikes/build.sh ${model}/share/rocq/theories | tee timings.log
+    bash rocq/spikes/build.sh | tee timings.log
+    bash web/rocq/tests/parse.sh rocq/spikes/*.v
     mkdir -p $out
     cp timings.log $out/
   ''
