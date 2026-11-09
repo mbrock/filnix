@@ -3,7 +3,6 @@
   ports,
   world-pkgs,
   dank-bashrc,
-  ghostty-terminfo,
   lighttpd-demo,
 }:
 
@@ -122,11 +121,12 @@ let
     ln -s ../bin/runit $out/sbin/runit
   '';
 
+  # Ncurses 6.6 includes Ghostty, so a separate terminfo package collides
+  # here. The custom entry is installed into /usr/share/terminfo below.
   env = pkgs.buildEnv {
     name = "filc-world-env";
     paths = [
       runit
-      ghostty-terminfo
       runit-config
       lighttpd-demo
     ]

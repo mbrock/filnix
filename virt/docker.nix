@@ -7,7 +7,7 @@
 
 let
   common = import ./common.nix { inherit pkgs ports filcc; };
-  inherit (common) ghostty-terminfo dank-bashrc lighttpd-demo;
+  inherit (common) dank-bashrc lighttpd-demo;
 
   core =
     import ./core.nix
@@ -17,7 +17,6 @@ let
           ports
           world-pkgs
           dank-bashrc
-          ghostty-terminfo
           lighttpd-demo
           ;
       }

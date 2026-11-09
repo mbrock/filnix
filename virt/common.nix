@@ -5,11 +5,6 @@
 }:
 
 {
-  ghostty-terminfo = pkgs.runCommand "ghostty-terminfo" { } ''
-    mkdir -p $out/share/terminfo
-    ${pkgs.ncurses}/bin/tic -x -o $out/share/terminfo ${../misc/ghostty.terminfo}
-  '';
-
   dank-bashrc = pkgs.writeText "dank-bashrc" ''
     echo
     tput bold
