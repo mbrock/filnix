@@ -81,6 +81,11 @@ jobs:
             npm install --global agent-browser@0.38.1
           python3 nanofil/tests/watch.py --label 'Chromium install' -- \
             agent-browser install --with-deps
+      - name: Check the widest pages at phone width
+        run: |
+          set -o pipefail
+          python3 nanofil/tests/watch.py --label 'Pages at 320px' -- \
+            node packages/site/phone.mjs _site 320 2>&1 | tee site-phone.log
       - name: Check delayed browser navigation
         run: |
           set -o pipefail
@@ -111,5 +116,7 @@ jobs:
         if: always()
         with:
           name: rocq-phone-layout
-          path: rocq-phone-*.log
+          path: |
+            rocq-phone-*.log
+            site-phone.log
           if-no-files-found: ignore
