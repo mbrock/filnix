@@ -93,6 +93,7 @@ doc_label(guide, "the guide") :- !.
 doc_label(formal, "the formal campaign") :- !.
 doc_label(filc, "How Fil-C works") :- !.
 doc_label(iris, "How Iris works") :- !.
+doc_label(logic, "A program logic") :- !.
 doc_label(Doc, Doc).
 
 read_doc(Path, doc(Doc, Dir, Blocks)) :-

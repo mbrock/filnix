@@ -86,6 +86,7 @@ let
     "formal"
     "filc"
     "iris"
+    "logic"
   ];
   # Independent renderers are cached separately. The Rocq invocation still
   # sees every source for its real cross-file index and captured states.
