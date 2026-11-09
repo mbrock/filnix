@@ -1018,6 +1018,194 @@ Definition strrchr_contract (world : Type) : contract world :=
     (fun _ => False)
     (fun why => In why [NullCapability; OutOfBounds; ArgumentSize; ReturnSize]).
 
+(** ## Byte fills and auxiliary footprints *)
+
+(** The aligned pointer slot at a intersects a nonempty byte fill.
+    Its start can precede p; a slot starting at the exclusive endpoint
+    is not touched. The positive-count guard makes empty fills empty. *)
+Definition memset_touched (p : ptr) (n a : Z) : bool :=
+  (0 <? n) && (a mod 8 =? 0) && (a <? ptr_addr p + n) && (ptr_addr p <? a + 8).
+
+(** The boolean footprint states precisely positive count, slot
+    alignment and overlap of the two half-open intervals. *)
+Lemma memset_touched_spec : forall p n a,
+  memset_touched p n a = true <->
+  0 < n /\ a mod 8 = 0 /\ a < ptr_addr p + n /\ ptr_addr p < a + 8.
+Proof.
+  intros. unfold memset_touched. repeat rewrite andb_true_iff.
+  rewrite Z.eqb_eq. repeat rewrite Z.ltb_lt. tauto.
+Qed.
+
+(** Permission hull, not the byte footprint: round the start down
+    to include a partially touched auxiliary slot, but do not round
+    the end up. Empty fills retain the original zero-size pointer. *)
+Definition memset_root (p : ptr) (n : Z) : span :=
+  if n =? 0 then mkSpan p 0 else
+  mkSpan (mkPtr (ptr_addr p - ptr_addr p mod 8) (ptr_cap p)) (n + ptr_addr p mod 8).
+
+(** Independent admission: canonical int and size_t, live writable
+    destination bytes, and an eight-aligned object base for positive
+    counts. The base restriction matches native object-relative aux
+    rounding to the model's absolute slots; it is not a runtime axiom.
+    Zero-count live Obj admission is conservative: native returns
+    before checking even null, Ro or expired pointers at zero count. *)
+Definition memset_domain (m : mem) (p : ptr) (c n : Z) : Prop :=
+  0 <= c < 2 ^ 32 /\ 0 <= n < 2 ^ 64 /\ writable_span m (mkSpan p n) /\
+  (n = 0 \/ exists base, ptr_cap p = Obj base /\ base mod 8 = 0).
+
+(** Ordinary writable bytes and the explicit base alignment derive
+    the hull's authority; callers need not assume a second span. *)
+Lemma memset_root_writable : forall m p c n,
+  memset_domain m p c n -> writable_span m (memset_root p n).
+Proof.
+  intros m p c n (_ & Hn & Hw & Halign).
+  unfold memset_root. destruct (n =? 0) eqn:E.
+  - apply Z.eqb_eq in E. subst. exact Hw.
+  - apply Z.eqb_neq in E.
+    destruct Hw as (Hsize & base & reg & Hcap & Hr & Hl & Ha).
+    cbn in Hcap.
+    change (access_res m (ptr_addr p) (Obj base) n Write 1 = Some ok) in Ha.
+    destruct Halign as [Hz | (other & Hother & Hmod)]; [contradiction|].
+    rewrite Hcap in Hother. injection Hother as <-.
+    unfold access_res, cap_access_res in Ha. rewrite Hr in Ha.
+    destruct ((base <=? ptr_addr p) && (ptr_addr p + n <=? r_end reg)) eqn:Hbounds;
+      [|discriminate].
+    apply andb_true_iff in Hbounds as [Hlo Hhi].
+    apply Z.leb_le in Hlo. apply Z.leb_le in Hhi.
+    pose proof (Z.mod_pos_bound (ptr_addr p) 8 ltac:(lia)) as Hrem.
+    pose proof (Z.div_mod (ptr_addr p) 8 ltac:(lia)) as Hp.
+    pose proof (Z.div_mod base 8 ltac:(lia)) as Hb.
+    split; [simpl; lia|]. exists base, reg. split; [exact Hcap|].
+    split; [exact Hr|]. split; [exact Hl|].
+    unfold access_res, cap_access_res. simpl. rewrite Hr.
+    assert ((base <=? ptr_addr p - ptr_addr p mod 8) = true) as Hstart by (apply Z.leb_le; lia).
+    assert ((ptr_addr p - ptr_addr p mod 8 + (n + ptr_addr p mod 8) <=? r_end reg) = true)
+      as Hend by (apply Z.leb_le; lia).
+    rewrite Hstart, Hend. unfold aligned_res. rewrite Z.mod_1_r. reflexivity.
+Qed.
+
+(** Every written byte lies in the permission hull, including for
+    unaligned destinations; an empty byte interval has no members. *)
+Lemma memset_byte_in_root : forall p n a,
+  span_contains (mkSpan p n) a -> span_contains (memset_root p n) a.
+Proof.
+  intros p n a H. unfold span_contains in *. simpl in H.
+  unfold memset_root. destruct (n =? 0) eqn:E; simpl.
+  - apply Z.eqb_eq in E. subst. lia.
+  - pose proof (Z.mod_pos_bound (ptr_addr p) 8 ltac:(lia)). lia.
+Qed.
+
+(** Each touched auxiliary slot start also lies in the hull, even
+    when it precedes the first written byte. *)
+Lemma memset_aux_in_root : forall p n a,
+  memset_touched p n a = true -> span_contains (memset_root p n) a.
+Proof.
+  intros p n a H. apply memset_touched_spec in H as (Hn & Halign & Hhi & Hlo).
+  unfold memset_root, span_contains. destruct (n =? 0) eqn:E; simpl.
+  - apply Z.eqb_eq in E. lia.
+  - pose proof (Z.mod_pos_bound (ptr_addr p) 8 ltac:(lia)).
+    pose proof (Z.div_mod (ptr_addr p) 8 ltac:(lia)).
+    pose proof (Z.div_mod a 8 ltac:(lia)). lia.
+Qed.
+
+(** Exact frame for every accepted prefix: retain all regions,
+    all bytes outside the requested interval and all auxiliary entries
+    outside touched slots. The hull grants no extra byte writes. *)
+Definition memset_frame (m : mem) (p : ptr) (n : Z) (m' : mem) : Prop :=
+  m_regions m' = m_regions m /\
+  (forall a, ~ span_contains (mkSpan p n) a -> m_bytes m' a = m_bytes m a) /\
+  (forall a, memset_touched p n a = false -> m_aux m' a = m_aux m a).
+
+(** Completion fills every requested byte with the same low byte and
+    clears every touched slot, preserving the independent exact frame. *)
+Definition memset_result (m : mem) (p : ptr) (c n : Z) (m' : mem) : Prop :=
+  memset_frame m p n m' /\
+  (forall a, span_contains (mkSpan p n) a -> m_bytes m' a = c mod 256) /\
+  (forall a, memset_touched p n a = true -> m_aux m' a = CNone).
+
+(** A logical result witness, not an implementation of native libc.
+    Return m directly at zero count, avoiding extensionality assumptions.
+    At positive counts byte repetition is not a little-endian store. *)
+Definition memset_memory (m : mem) (p : ptr) (c n : Z) : mem :=
+  if n =? 0 then m else
+  mkMem (fun a => if (ptr_addr p <=? a) && (a <? ptr_addr p + n)
+                 then c mod 256 else m_bytes m a)
+    (m_regions m) (fun a => if memset_touched p n a then CNone else m_aux m a).
+
+(** The witness meets the exact byte and auxiliary result without
+    assuming coverage, readiness or an eventual native return. *)
+Lemma memset_memory_result : forall m p c n,
+  memset_result m p c n (memset_memory m p c n).
+Proof.
+  intros m p c n. unfold memset_memory. destruct (n =? 0) eqn:E.
+  - apply Z.eqb_eq in E. subst. split; [repeat split; reflexivity|]. split.
+    + intros a H. unfold span_contains in H. simpl in H. lia.
+    + intros a H. apply memset_touched_spec in H. lia.
+  - split.
+    + split; [reflexivity|]. split.
+      * intros a H. simpl. destruct ((ptr_addr p <=? a) && (a <? ptr_addr p + n)) eqn:Hrange;
+          [|reflexivity]. exfalso. apply H. apply andb_true_iff in Hrange as [Hlo Hhi].
+        unfold span_contains. simpl. apply Z.leb_le in Hlo. apply Z.ltb_lt in Hhi. lia.
+      * intros a H. simpl. rewrite H. reflexivity.
+    + split.
+      * intros a H. unfold span_contains in H. simpl in H. simpl.
+        assert ((ptr_addr p <=? a) && (a <? ptr_addr p + n) = true) as Hr.
+        { apply andb_true_iff. split; [apply Z.leb_le|apply Z.ltb_lt]; lia. }
+        rewrite Hr. reflexivity.
+      * intros a H. simpl. rewrite H. reflexivity.
+Qed.
+
+(** Every exact framed effect is a legal allocation-free segment:
+    changed cells lie in the writable hull and changed capabilities
+    are only CNone. This proves authority, not native satisfaction. *)
+Lemma memset_result_local : forall m p c n m',
+  memset_domain m p c n -> memset_result m p c n m' ->
+  local_effect [mkSpan p 0] [memset_root p n] [] [] m m'.
+Proof.
+  intros m p c n m' Hdomain ((Hregions & Hbytes & Haux) & Hfill & Hclear).
+  pose proof (memset_root_writable _ _ _ _ Hdomain) as Hroot.
+  assert (Hauthority : forall a, span_contains (memset_root p n) a ->
+    write_authority [memset_root p n] [] m a).
+  { intros a Ha. left. exists (memset_root p n).
+    split; [left; reflexivity|]. split; assumption. }
+  split; [apply ids_same; exact Hregions|]. split.
+  - intros b reg Hr. rewrite Hregions in Hr. exists reg. auto.
+  - split.
+    + intros a Hout. split.
+      * apply Hbytes. intros Ha. apply Hout, Hauthority. apply memset_byte_in_root. exact Ha.
+      * apply Haux. destruct (memset_touched p n a) eqn:Ha; [|reflexivity].
+        exfalso. apply Hout, Hauthority. apply memset_aux_in_root. exact Ha.
+    + intros a. destruct (memset_touched p n a) eqn:Ha.
+      * right. rewrite (Hclear a Ha). left. reflexivity.
+      * left. apply Haux. exact Ha.
+Qed.
+
+(** Memset's ABI is P/W/L to P, with a discarded result permitted.
+    It is distinct from searches' P/W and copies' P/P/L signatures. *)
+Definition memset_abi (r : call_result) (args : list arg) : Prop :=
+  (r = CVoid \/ exists d, r = CResult d P) /\
+  exists p c n, args = [Arg P p; Arg W c; Arg L n].
+
+(** Trusted nonallocating memset with an exact byte/aux frame. The
+    zero-size source permits returning the original pointer capability,
+    not importing slots. The widened root is permission only. No events,
+    ownership transfer, release, resource ending or exit are admitted.
+    Native coverage across internal collector safepoints is uninstantiated;
+    unrelated freed-capability rewrites are not hidden in this frame. *)
+Definition memset_contract (world : Type) : contract world :=
+  mkContract world (RClass P) memset_abi
+    (fun xs m _ => exists p c n, xs = [WPtr p; WInt c; WInt n] /\ memset_domain m p c n)
+    (fun xs _ _ => match xs with [WPtr p; WInt _; WInt _] => [mkSpan p 0] | _ => [] end)
+    (fun xs _ _ => match xs with [WPtr p; WInt _; WInt n] => [memset_root p n] | _ => [] end)
+    (fun _ _ _ => []) (fun _ _ _ _ _ => False)
+    (fun xs m w born trace m' w' => born = [] /\ trace = [] /\ w' = w /\
+      exists p c n, xs = [WPtr p; WInt c; WInt n] /\ memset_frame m p n m')
+    (fun xs m w born trace ending m' w' => born = [] /\ trace = [] /\ w' = w /\
+      exists p c n, xs = [WPtr p; WInt c; WInt n] /\ memset_result m p c n m' /\
+        ending = CallReturn [WPtr p])
+    (fun _ => False)
+    (fun why => In why [NullCapability; OutOfBounds; Readonly; ArgumentSize; ReturnSize]).
+
 (** ## Memory paths over any runtime *)
 
 (** The call relations over any [[runtime]] R, whose allocator answers
@@ -1602,6 +1790,81 @@ Proof.
   - match goal with Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
       destruct Hpost as (_ & Htrace & Hmem & Hworld & Hresult); auto end.
   - contradiction.
+Qed.
+
+(** Any exact memset result gives an actual returning invocation from
+    independent admission. Its finite path has one authorized segment,
+    no allocation and no state change in the runtime. *)
+Theorem memset_return : forall world r args p c n s m m' (w : world),
+  memset_abi r args -> memset_domain m p c n -> memset_result m p c n m' ->
+  invoke (memset_contract world) r args [WPtr p; WInt c; WInt n] s m w
+    [] (CallReturn [WPtr p]) s m' w.
+Proof.
+  intros world r args p c n s m m' w Habi Hdomain Hresult.
+  eapply invoke_normal with (born := []).
+  - exact Habi.
+  - exists p, c, n. auto.
+  - split.
+    + eapply effects_local; [eapply memset_result_local; eauto|constructor].
+    + split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+      exists p, c, n. split; [reflexivity|exact (proj1 Hresult)].
+  - split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+    exists p, c, n. auto.
+  - intros why Hbad. discriminate.
+  - intros values Heq. injection Heq as <-. split.
+    + exists (WPtr p). split; reflexivity.
+    + constructor; [|constructor]. right. left. exists (mkSpan p 0).
+      split; [left; reflexivity|reflexivity].
+  - intros status Hbad. discriminate.
+Qed.
+
+(** Input-only premises construct a completed effect, not merely a
+    postcondition witness. This is logical nonvacuity, not a native
+    coverage or termination theorem. *)
+Theorem memset_admitted : forall world r args p c n s m (w : world),
+  memset_abi r args -> memset_domain m p c n ->
+  invoke (memset_contract world) r args [WPtr p; WInt c; WInt n] s m w
+    [] (CallReturn [WPtr p]) s (memset_memory m p c n) w.
+Proof.
+  intros. apply memset_return; [assumption|assumption|apply memset_memory_result].
+Qed.
+
+(** Every completion extracts the original admitted arguments, exact
+    destination pointer, byte/aux effect, empty trace and unchanged
+    world. Resource and exit completions are excluded. *)
+Theorem memset_invocation : forall world r args xs s m (w : world) trace ending s' m' w',
+  invoke (memset_contract world) r args xs s m w trace ending s' m' w' ->
+  trace = [] /\ w' = w /\
+  exists p c n, xs = [WPtr p; WInt c; WInt n] /\ memset_domain m p c n /\
+    memset_result m p c n m' /\ ending = CallReturn [WPtr p].
+Proof.
+  intros world r args xs s m w trace ending s' m' w' Hcall. inversion Hcall; subst.
+  - match goal with
+    | Hpost : contract_post _ _ _ _ _ _ _ _ _, Hpre : contract_pre _ _ _ _ |- _ =>
+      destruct Hpost as (_ & Htrace & Hworld & p & c & n & Hxs & Hresult & Hending);
+      destruct Hpre as (q & v & size & Hxs' & Hdomain)
+    end.
+    rewrite Hxs in Hxs'. injection Hxs' as <- <- <-.
+    split; [exact Htrace|]. split; [exact Hworld|]. exists p, c, n. auto.
+  - contradiction.
+Qed.
+
+(** Zero-count completions preserve all bytes, regions and auxiliary
+    entries, not just the constructed witness. No extensionality axiom
+    is needed for this pointwise public-call result. *)
+Theorem memset_zero_invocation : forall world r args p c s m (w : world) trace ending s' m' w',
+  invoke (memset_contract world) r args [WPtr p; WInt c; WInt 0] s m w
+    trace ending s' m' w' ->
+  ending = CallReturn [WPtr p] /\ m_regions m' = m_regions m /\
+  forall a, m_bytes m' a = m_bytes m a /\ m_aux m' a = m_aux m a.
+Proof.
+  intros world r args p c s m w trace ending s' m' w' Hcall.
+  destruct (memset_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as (_ & _ & q & v & n & Hargs & Hdomain & ((Hr & Hb & Ha) & _) & Hend).
+  injection Hargs as <- <- <-. split; [exact Hend|]. split; [exact Hr|].
+  intros a. split.
+  - apply Hb. unfold span_contains. simpl. lia.
+  - apply Ha. reflexivity.
 Qed.
 
 End ExternalCalls.
@@ -3330,3 +3593,150 @@ Proof. exact strchr_bad_authority_rejected. Qed.
 Example strrchr_noncanonical_rejected : forall c, c < 0 \/ 2 ^ 32 <= c ->
   ~ contract_pre (strrchr_contract unit) [WPtr hello_ptr; WInt c] hello_mem tt.
 Proof. exact strchr_noncanonical_rejected. Qed.
+
+(** ## Byte-fill boundary controls *)
+
+(** An odd-sized writable object, nonuniform raw bytes and three
+    stored pointer capabilities; the pointee is a separate object. *)
+Definition memset_fixture : mem :=
+  mkMem (fun a => a mod 256)
+    [mkRegion 1024 1053 Heap Live; mkRegion 2048 2056 Heap Live]
+    (fun a => if (a =? 1024) || (a =? 1032) || (a =? 1040) then Obj 2048 else CNone).
+
+(** Independent authority for any in-bounds fixture destination. *)
+Lemma memset_fixture_domain : forall offset c n,
+  0 <= offset -> 0 <= n -> offset + n <= 29 -> 0 <= c < 2 ^ 32 ->
+  memset_domain memset_fixture (mkPtr (1024 + offset) (Obj 1024)) c n.
+Proof.
+  intros offset c n Hoffset Hn Hend Hc. split; [exact Hc|]. split.
+  - change (0 <= n < 18446744073709551616). lia.
+  - split.
+    + split; [exact Hn|]. exists 1024, (mkRegion 1024 1053 Heap Live).
+      split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+      change (Some (if (1024 <=? 1024 + offset) && (1024 + offset + n <=? 1053)
+        then aligned_res (1024 + offset) 1 else RTrap OutOfBounds) = Some ok).
+      assert ((1024 <=? 1024 + offset) = true) as Hlo by (apply Z.leb_le; lia).
+      assert ((1024 + offset + n <=? 1053) = true) as Hhi by (apply Z.leb_le; lia).
+      rewrite Hlo, Hhi. unfold aligned_res. rewrite Z.mod_1_r. reflexivity.
+    + right. exists 1024. split; reflexivity.
+Qed.
+
+(** Actual calls include partial, crossing and exact-word fills,
+    canonical negative int conversion, and an unaligned one-past empty
+    fill. The pointer return is the destination, never the hull start. *)
+Example memset_boundary_calls : forall offset c n,
+  In (offset, c, n) [(7, 511, 1); (7, 511, 2); (8, 256, 8);
+    (7, 2 ^ 32 - 1, 2); (29, 511, 0)] ->
+  InterpExternal.invoke (memset_contract unit) (CResult (TAtom "filled") P)
+    [Arg P (Const 0); Arg W (Const c); Arg L (Const n)]
+    [WPtr (mkPtr (1024 + offset) (Obj 1024)); WInt c; WInt n]
+    InterpRuntime.start memset_fixture tt []
+    (CallReturn [WPtr (mkPtr (1024 + offset) (Obj 1024))]) InterpRuntime.start
+    (memset_memory memset_fixture (mkPtr (1024 + offset) (Obj 1024)) c n) tt.
+Proof.
+  intros offset c n Hcases. apply InterpExternal.memset_admitted.
+  - split; [right; eexists; reflexivity|]. eexists _, _, _. reflexivity.
+  - apply memset_fixture_domain;
+      destruct Hcases as [H|[H|[H|[H|[H|[]]]]]]; injection H as <- <- <-;
+      vm_compute; intuition congruence.
+Qed.
+
+(** Every public partial or crossing completion has these observable
+    cells, independently of the constructed witness: repeated low bytes,
+    a cleared preceding slot, and intact byte/capability neighbours. *)
+Example memset_partial_observations : forall n trace ending s' m' w', In n [1; 2] ->
+  InterpExternal.invoke (memset_contract unit) CVoid
+    [Arg P (Const 0); Arg W (Const 511); Arg L (Const n)]
+    [WPtr (mkPtr 1031 (Obj 1024)); WInt 511; WInt n]
+    InterpRuntime.start memset_fixture tt trace ending s' m' w' ->
+  ending = CallReturn [WPtr (mkPtr 1031 (Obj 1024))] /\
+  m_bytes m' 1030 = 6 /\ m_bytes m' 1031 = 255 /\ m_bytes m' 1033 = 9 /\
+  m_aux m' 1024 = CNone /\ m_aux m' 1040 = Obj 2048 /\
+  (n = 1 -> m_bytes m' 1032 = 8 /\ m_aux m' 1032 = Obj 2048) /\
+  (n = 2 -> m_bytes m' 1032 = 255 /\ m_aux m' 1032 = CNone).
+Proof.
+  intros n trace ending s' m' w' Hn Hcall.
+  destruct (InterpExternal.memset_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as (_ & _ & p & c & size & Hargs & Hdomain & (Hframe & Hfill & Hclear) & Hending).
+  injection Hargs as <- <- <-. destruct Hframe as (Hregions & Hbytes & Haux).
+  split; [exact Hending|]. split.
+  - rewrite Hbytes; [reflexivity|]. unfold span_contains. simpl. lia.
+  - split.
+    + apply Hfill. unfold span_contains. simpl. destruct Hn as [<-|[<-|[]]]; lia.
+    + split.
+      * rewrite Hbytes; [reflexivity|]. unfold span_contains. simpl.
+        destruct Hn as [<-|[<-|[]]]; lia.
+      * split.
+        -- apply Hclear. destruct Hn as [<-|[<-|[]]]; reflexivity.
+        -- split.
+           ++ rewrite Haux; [reflexivity|]. destruct Hn as [<-|[<-|[]]]; reflexivity.
+           ++ split; intros ->; split.
+              ** rewrite Hbytes; [reflexivity|]. unfold span_contains. simpl. lia.
+              ** rewrite Haux; reflexivity.
+              ** apply Hfill. unfold span_contains. simpl. lia.
+              ** apply Hclear. reflexivity.
+Qed.
+
+(** A full-word endpoint excludes the next slot. Empty fills preserve
+    the actual memory record even at an unaligned one-past address. *)
+Example memset_exact_endpoint_and_zero :
+  m_aux (memset_memory memset_fixture (mkPtr 1032 (Obj 1024)) 256 8) 1032 = CNone /\
+  m_aux (memset_memory memset_fixture (mkPtr 1032 (Obj 1024)) 256 8) 1040 = Obj 2048 /\
+  memset_memory memset_fixture (mkPtr 1053 (Obj 1024)) 511 0 = memset_fixture.
+Proof. repeat split; reflexivity. Qed.
+
+(** A writable hull alone is insufficient for native-relative slot
+    correspondence: this interior call still has an unaligned base. *)
+Example memset_unaligned_base_rejected :
+  writable_span (mkMem (fun _ => 0) [mkRegion 1025 1053 Heap Live] (fun _ => CNone))
+    (memset_root (mkPtr 1033 (Obj 1025)) 1) /\
+  ~ contract_pre (memset_contract unit) [WPtr (mkPtr 1033 (Obj 1025)); WInt 0; WInt 1]
+    (mkMem (fun _ => 0) [mkRegion 1025 1053 Heap Live] (fun _ => CNone)) tt.
+Proof.
+  split.
+  - split; [vm_compute; congruence|]. exists 1025, (mkRegion 1025 1053 Heap Live).
+    repeat split; reflexivity.
+  - intros (p & c & n & Hargs & Hc & Hn & Hw & Halign).
+    injection Hargs as <- <- <-. destruct Halign as [Hbad | (base & Hcap & Hmod)].
+    + discriminate.
+    + injection Hcap as <-. discriminate Hmod.
+Qed.
+
+(** Ro, null and freed destinations are outside even the conservative
+    zero-count domain; positive one-past writes remain out of bounds. *)
+Example memset_invalid_destinations : forall p m n,
+  In (p, m, n) [(mkPtr 1024 (Ro 1024), memset_fixture, 0);
+    (mkPtr 0 CNone, memset_fixture, 0);
+    (mkPtr 1024 (Obj 1024),
+      mkMem (fun _ => 0) [mkRegion 1024 1024 Heap Freed] (fun _ => CNone), 0);
+    (mkPtr 1053 (Obj 1024), memset_fixture, 1)] ->
+  ~ contract_pre (memset_contract unit) [WPtr p; WInt 0; WInt n] m tt.
+Proof.
+  intros p m n Hcases (q & c & size & Hargs & Hc & Hsize & Hw & Halign).
+  injection Hargs as <- <- <-.
+  destruct Hcases as [H|[H|[H|[H|[]]]]]; injection H as <- <- <-;
+    destruct Hw as (_ & base & reg & Hcap & Hr & Hl & Ha); simpl in Hcap.
+  - discriminate.
+  - discriminate.
+  - injection Hcap as <-. simpl in Hr. injection Hr as <-. discriminate.
+  - injection Hcap as <-. simpl in Hr. injection Hr as <-. discriminate Ha.
+Qed.
+
+(** Canonical scalars and the exact P/W/L-to-P ABI are independent
+    obligations, not consequences of the chosen write effect. *)
+Example memset_invalid_scalars_and_abi :
+  (forall c n, c < 0 \/ 2 ^ 32 <= c \/ n < 0 \/ 2 ^ 64 <= n ->
+    ~ contract_pre (memset_contract unit)
+      [WPtr (mkPtr 1024 (Obj 1024)); WInt c; WInt n] memset_fixture tt) /\
+  ~ memset_abi (CResult (TAtom "bad") L) [Arg P (Const 0); Arg W (Const 0); Arg L (Const 1)] /\
+  ~ memset_abi CVoid [Arg P (Const 0); Arg L (Const 0); Arg L (Const 1)] /\
+  ~ memset_abi CVoid [Arg P (Const 0); Arg W (Const 0); Arg W (Const 1)] /\
+  ~ memset_abi CVoid [Arg P (Const 0); Arg W (Const 0)] /\
+  ~ memset_abi CVoid [Arg P (Const 0); Arg W (Const 0); Arg L (Const 1); Arg L (Const 1)].
+Proof.
+  split.
+  - intros c n Hbad (p & v & size & Hargs & Hc & Hn & _).
+    injection Hargs as <- <- <-. lia.
+  - split; [intros [[H|(d & H)] _]; discriminate H|].
+    repeat split; intros [_ (p & c & n & Hargs)]; discriminate Hargs.
+Qed.

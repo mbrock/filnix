@@ -22,9 +22,10 @@ static void freed_result(void) {
 }
 static void cleared_capability(void) {
     char *p = strdup("abc");
-    // Leave the address unchanged by writing back one of its own bytes.
-    unsigned char byte = *(unsigned char *)&p;
-    memset(&p, byte, 1);
+    // The aux slot starts before the last byte, whose bits stay unchanged.
+    unsigned char *last = (unsigned char *)&p + sizeof p - 1;
+    unsigned char byte = *last;
+    memset(last, byte, 1);
     volatile char c = *p;
     (void)c;
 }
@@ -69,6 +70,19 @@ int main(void) {
     char *end = mempcpy(d + 1, s, 3);
     answer("copy returns end and preserves neighbours", end == d + 4 && memcmp(d, "!xyz!", 5) == 0);
     answer("memcpy and memset return destination", memcpy(d, "pq", 2) == d && memset(d + 2, '#', 2) == d + 2 && memcmp(d, "pq##!", 5) == 0);
+    unsigned char fill[18];
+    for (unsigned i = 0; i < sizeof fill; ++i) fill[i] = 17 + i;
+    int fill_ok = memset(fill + 3, 511, 10) == fill + 3;
+    for (unsigned i = 0; i < sizeof fill; ++i)
+        fill_ok = fill_ok && fill[i] == (i >= 3 && i < 13 ? 255 : 17 + i);
+    answer("memset repeats converted byte and frames neighbours", fill_ok);
+    char *slots[3] = {"left", "middle", "right"};
+    unsigned char *last = (unsigned char *)&slots[1] + sizeof slots[1] - 1;
+    unsigned char byte = *last;
+    answer("partial memset frames adjacent pointer capabilities", memset(last, byte, 1) == last && slots[0][1] == 'e' && slots[2][1] == 'i');
+    slots[1] = "middle";
+    answer("zero memset keeps bytes and pointer capabilities", memset(slots + 3, -1, 0) == slots + 3 && memset(&slots[1], 511, 0) == &slots[1] && slots[1][2] == 'd');
+    answer("word-boundary memset does not clear next capability", memset(&slots[1], 0, sizeof slots[1]) == &slots[1] && slots[1] == 0 && slots[0][1] == 'e' && slots[2][1] == 'i');
     char *p = strdup("abaca");
     answer("string results and comparison signs", p && strlen(p) == 5 && strchr(p, 'a') == p && strrchr(p, 'a') == p + 4 && strchr(p, 0) == p + 5 && !strchr(p, 'z') && strcmp(p, "abacb") < 0 && memcmp("z", "a", 1) > 0);
     char *copy = 0;

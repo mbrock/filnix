@@ -265,6 +265,36 @@ Source: `string/` and `filc_runtime.c` `memset_impl_specialized`,
 `memmove_aux_loop_body`, `memmove_smidgen`. Runtime-only `zmemmove` needs the same two
 ranges but permits overlap; it is not a 57th libc import.
 
+The additive Rocq `memset_contract` separates exact byte and auxiliary
+frames. It requires canonical int and size_t, a live Obj covering the
+destination bytes, and, for positive counts, an eight-aligned object base.
+The destination itself may be unaligned. Base alignment is an explicit
+conservative model premise, not an extra runtime axiom: native auxiliary
+rounding is relative to the object's lower bound, while model slots use
+absolute alignment. The internal writable permission hull rounds its start
+down but not its end up; its writability is derived from the byte authority
+and base alignment. Prefixes and completions still preserve all raw bytes
+outside the requested interval, even before the destination inside that hull.
+Only aligned slots intersecting a nonempty fill may change; completions
+clear them to CNone and repeat the converted low byte in the byte interval.
+No capability is imported from auxiliary memory; returning d retains exactly
+its original address and capability. Regions and world remain unchanged,
+without allocation, release, ownership transfer, resource ending or event.
+
+Zero count has an empty byte and auxiliary footprint, including at an
+unaligned live one-past pointer, and needs no base-alignment premise. Its
+live-Obj admission is deliberately stronger than the native empty path,
+which returns before checking null, Ro or expired authority. Rejection by
+this conservative contract is not a claim that those native calls trap.
+The input-only logical result constructs an invocation, and existing effect
+theorems preserve readiness and identities. Native probes distinguish byte
+repetition, preceding-slot clearing with unchanged raw pointer bits,
+neighbouring capability preservation, exact word endpoints and zero counts.
+They do not instantiate universal native coverage or termination. Large
+paths contain internal filc_exit/filc_enter safepoints, where the collector
+may rewrite unrelated stored capabilities to freed objects; their relation
+to this exact logical frame remains an explicit native-coverage obligation.
+
 The Rocq strlen contract requires a live object capability through the
 first NUL, even for an empty string, and returns its exact offset as a
 canonical size_t. It frames the entire memory and world. Its read-locality

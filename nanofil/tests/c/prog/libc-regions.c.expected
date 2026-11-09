@@ -23,6 +23,10 @@ strcmp compares last nonzero byte: yes
 strcmp unsigned first difference wins: yes
 copy returns end and preserves neighbours: yes
 memcpy and memset return destination: yes
+memset repeats converted byte and frames neighbours: yes
+partial memset frames adjacent pointer capabilities: yes
+zero memset keeps bytes and pointer capabilities: yes
+word-boundary memset does not clear next capability: yes
 string results and comparison signs: yes
 memcpy preserves stored pointer authority: yes
 unbounded scan needs in-object NUL: yes

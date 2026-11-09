@@ -1564,6 +1564,58 @@ possible. The API proofs and finite probes do not establish universal native
 satisfaction, implementation selection, coverage or termination. Runtime
 axioms, existing call signatures, machine and registry are unchanged.
 
+### Campaign 4 milestone 4y: memset's byte and auxiliary footprints
+
+The first memory-writing slice is the additive trusted `memset_contract`:
+P/W/L arguments, discarded or P return, canonical int and size_t, and
+independent live writable destination authority. Positive counts additionally
+require the referenced object's base to be divisible by eight. This is an
+explicit conservative contract premise, not a new runtime axiom or a
+destination-alignment requirement. The pinned runtime rounds auxiliary
+offsets relative to the object base; without this premise a model object
+at an unaligned base could disagree with absolute pointer-slot alignment.
+Zero count does not require base alignment, but retains conservative live
+Obj admission, including unaligned one-past pointers. Native memset returns
+before checking any authority at zero count: rejected empty calls are
+unmet contract obligations, not claims of native traps.
+
+The exact byte footprint is the requested half-open interval. The separate
+auxiliary footprint contains every eight-aligned slot whose eight-byte
+interval intersects that nonempty byte interval. A one-byte fill can thus
+clear a slot starting before the destination. Completions repeat the low
+byte, clear these slots, preserve every other byte and auxiliary entry, and
+leave all regions and the world unchanged. Every accepted prefix has the
+same outside-footprint frame. Returning the exact destination pointer uses
+only its own capability, with no ownership transfer, allocation, release,
+resource ending or event. Existing string contracts and runtime axioms stay
+unchanged for Campaign 3's derived Iris triples.
+
+The internal permission root rounds only the start down to include the
+preceding auxiliary slot. Its end stays at the byte endpoint: authority is
+needed for slot starts, not all bytes in the last pointer word. Ordinary
+writable-byte admission and base alignment prove this root writable; the
+prefix frame still forbids modifying the extra preceding raw bytes. The
+result constructs a local effect and an actual returning invocation from
+input-only premises. The existing preservation theorems then retain runtime
+readiness and identities. This is logical nonvacuity, not libc execution.
+
+Public controls cover repeated-byte conversion rather than little-endian
+integer storage, partial and crossing slots, exact endpoints, preserved
+byte/capability neighbours, zero count, exact pointer returns, independent
+scalar/ABI failures, and the otherwise-writable unaligned-base counterexample.
+Native probes write back a pointer's unchanged last byte before testing loss
+of usable authority, while separate controls preserve neighbouring pointers,
+test an exact word boundary, and check zero-length and converted-byte fills.
+
+This exact logical frame is not yet a complete native instance. In particular,
+large memset paths exit and re-enter Fil-C during byte writes and auxiliary
+clearing: the collector may rewrite unrelated capabilities to freed objects
+at those internal safepoints. Universal native prefix/completion coverage,
+that collector relation, and termination remain open; finite probes do not
+establish them. Do not widen writable roots to conceal those rewrites.
+The next separate slices are copying and fresh-allocation contracts, with
+partial-pointer smidgens/boxing requiring their own reviewed relation.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and
