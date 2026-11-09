@@ -15,19 +15,21 @@
     answer every time; run k leaves it at the k-th comparison
     ([exit_at]), and its states before that are run 5's. Since the
     access is guarded by the comparison with 4 alone, every one of
-    those states steps safely, whatever n is.
+    those states steps safely, whatever n is. Each step is taken by its
+    rule from StepRules.v (Symbolic.v's [take_step]), with the state's
+    environment and the array's longs supplying its premises.
 
     ## Decisions
 
     | Decision | Why |
     |---|---|
-    | the comparison with n is over-approximated, both answers allowed | then nothing about n's value is needed: no reasoning about signed 32-bit comparison, and n stays a variable throughout |
+    | the comparison with n is over-approximated, both answers allowed | then nothing about n's value is needed beyond its range: the step's comparison is split on n's signed reading and on the answer ([split_compares]), and n stays a variable throughout |
     | a state is a run k and an index, with run 5 standing for every run before it leaves ([canonical]) | the six runs share their beginnings; listing each shared state once keeps the proof to 109 cases |
-    | the input is any list whose first word is a 32-bit integer word, 0 to 2^32 - 1 | the ABI passes an `int` as such a word; a pointer there is outside the C type, and extra words are ignored by [call_frame]. It also keeps the input's remainder modulo 2^32 from unfolding, which no reduction finishes on a variable | *)
+    | the input is any list whose first word is a 32-bit integer word, 0 to 2^32 - 1 | the ABI passes an `int` as such a word; a pointer there is outside the C type, and extra words are ignored by [call_frame]. It also lets arithmetic drop the input's remainder modulo 2^32, which no reduction finishes on a variable | *)
 
 From Stdlib Require Import String ZArith List Bool Lia Relations.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
-  Transport Panics PrefixCode Sum.
+  Transport Panics Symbolic PrefixCode Sum.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -130,56 +132,28 @@ Lemma pxs1 : load_bytes prefix_mem 65560 8 = 2. Proof. vm_compute. reflexivity. 
 Lemma pxs2 : load_bytes prefix_mem 65568 8 = 3. Proof. vm_compute. reflexivity. Qed.
 Lemma pxs3 : load_bytes prefix_mem 65576 8 = 4. Proof. vm_compute. reflexivity. Qed.
 
-(** A signed comparison of two 32-bit words is 0 or 1. *)
-Lemma slt_bit : forall x y, cond_bit Slt W x y = Some 0 \/ cond_bit Slt W x y = Some 1.
-Proof.
-  intros x y. unfold cond_bit. simpl.
-  match goal with |- context[if ?b then _ else _] => destruct b end; auto.
-Qed.
-
-(** The comparison with the input in the step computed in E: reduced
-    with remainders and comparisons folded, since [cbv] does not finish
-    on the remainder of a variable, it stops at the comparison; the
-    input's remainder is rewritten (Hmod), and the comparison is split
-    into its two answers ([slt_bit]). *)
-Ltac input_compare E Hmod :=
-  cbv beta iota zeta delta -[object_region m_regions load_bytes prefix_mem prefix_module
-                             cond_bit Z.modulo Z.eqb] in E;
-  rewrite ?Hmod in E;
-  match type of E with context[cond_bit Slt W ?x ?y] =>
-    destruct (slt_bit x y) as [Ecb|Ecb]; rewrite Ecb in E; clear Ecb
-  end.
-
-(** Compute the [step] in the goal for a memory known only by Hb and Hr,
-    an input known only by Hmod and the fuel, as Sum.v's [step_eq]; the
-    one instruction that reads the input, its comparison at the loop's
-    head, goes through [input_compare] first. *)
-Ltac input_step_eq Hb Hr Hmod fuel :=
-  match goal with |- context[step ?g ?c] =>
-    remember (step g c) as r eqn:Estep;
-    try (match type of Estep with context[Enter _ _] => case_eq (fuel =? 0); intro end);
-    try (match type of Estep with
-         | context[Exec _ (Let _ W (Cmp Slt W) [_; Tmp (TAtom "v0")] :: _) _] => input_compare Estep Hmod
-         end);
-    cbv beta iota zeta delta -[object_region m_regions load_bytes prefix_mem prefix_module Z.eqb] in Estep;
-    try (match goal with Hf : (fuel =? 0) = _ |- _ => rewrite Hf in Estep end);
-    repeat progress (cbv beta iota zeta delta -[object_region m_regions load_bytes prefix_mem prefix_module] in Estep;
-                     rewrite ?Hr, ?(load_bytes_same _ _ Hb), ?pxs0, ?pxs1, ?pxs2, ?pxs3 in Estep);
-    subst r
+(** Each long the step read from the array, known by Hb that the
+    memory has the initial bytes: the long at its address. *)
+Ltac known_loads Hb :=
+  rewrite ?(load_bytes_same _ _ Hb);
+  repeat match goal with |- context[load_bytes prefix_mem ?a 8] =>
+    first [ change a with 65552; rewrite pxs0 | change a with 65560; rewrite pxs1
+          | change a with 65568; rewrite pxs2 | change a with 65576; rewrite pxs3 ]
   end.
 
 (** The next state is index S i of run k. *)
 Ltac next_in k :=
-  exists k; do 3 eexists; split; [lia|]; split;
+  exists k; do 3 eexists; split; [apply Nat.leb_le; reflexivity|]; split;
   [first [left; reflexivity | right; cbv; lia] |];
   split; reflexivity.
 
 (** One state of run k: take its point and environment from Hn,
-    compute its step, and find it among the outcomes [prefix_progress]
+    take its step by its rule ([take_step]) with the longs it loads,
+    and find it among the outcomes [prefix_progress]
     allows, trying run k first for the next state, then each run. *)
-Ltac run_step k Hn Hb Hr Hmod fuel :=
+Ltac run_step k Hn Hb :=
   cbv in Hn; injection Hn as <- <-;
-  input_step_eq Hb Hr Hmod fuel;
+  take_step; known_loads Hb;
   first [ right; left; reflexivity
         | right; right; eexists; reflexivity
         | left; first [next_in k | next_in 5%nat | next_in 0%nat | next_in 1%nat
@@ -187,11 +161,11 @@ Ltac run_step k Hn Hb Hr Hmod fuel :=
 
 (** The states of run k below 5, which start where it leaves run 5
     ([canonical]): five of them, to its return. *)
-Ltac run_tail k Hc Hn Hb Hr Hmod fuel :=
+Ltac run_tail k Hc Hn Hb :=
   destruct Hc as [Hc|Hc]; [discriminate Hc|];
   cbv in Hc; destruct (Nat.le_exists_sub _ _ Hc) as (j & Hj & _);
   rewrite Nat.add_comm in Hj; subst;
-  do 5 (destruct j as [|j]; [run_step k Hn Hb Hr Hmod fuel|]);
+  do 5 (destruct j as [|j]; [run_step k Hn Hb|]);
   destruct j; cbv in Hn; discriminate Hn.
 
 (** From index i of run k, for the 32-bit input n, in any memory that is
@@ -210,17 +184,17 @@ Lemma prefix_progress : forall free n k i pt e m fuel,
     = Done (Ret (WInt s)).
 Proof.
   intros free n k i pt e m fuel Hin Hk Hc Hn [Hb Hr].
-  assert (Hmod : n mod 4294967296 = n) by (apply Z.mod_small; exact Hin).
+  unfold xs_region in Hr.
   unfold canonical in *.
   set (runs := prefix_runs) in Hn, Hc |- *. vm_compute in runs.
   set (f := prefix_fn). vm_compute in f.
   destruct k as [|[|[|[|[|[|k]]]]]].
-  - run_tail 0%nat Hc Hn Hb Hr Hmod fuel.
-  - run_tail 1%nat Hc Hn Hb Hr Hmod fuel.
-  - run_tail 2%nat Hc Hn Hb Hr Hmod fuel.
-  - run_tail 3%nat Hc Hn Hb Hr Hmod fuel.
-  - run_tail 4%nat Hc Hn Hb Hr Hmod fuel.
-  - do 84 (destruct i as [|i]; [run_step 5%nat Hn Hb Hr Hmod fuel|]).
+  - run_tail 0%nat Hc Hn Hb.
+  - run_tail 1%nat Hc Hn Hb.
+  - run_tail 2%nat Hc Hn Hb.
+  - run_tail 3%nat Hc Hn Hb.
+  - run_tail 4%nat Hc Hn Hb.
+  - do 84 (destruct i as [|i]; [run_step 5%nat Hn Hb|]).
     destruct i; cbv in Hn; discriminate Hn.
   - lia.
 Qed.

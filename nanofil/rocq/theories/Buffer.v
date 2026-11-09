@@ -244,12 +244,12 @@ Ltac fresh_inv :=
   cbn [c_mem req_extent req_align] in Hfresh; facts; next_inv.
 
 (** One point of [buffer_safe]: the point from Hk, an index into the
-    points pts, the assertion Ha taken apart, the step computed, and its
-    result shown safe. *)
+    points pts, the assertion Ha taken apart, the step taken by its
+    rule ([take_step]), and its result shown safe. *)
 Ltac point_safe pts Hk Ha :=
   cbv in Hk; injection Hk as <-; clear pts;
   assertion_in Ha; unfold int_at, holds_buffer, into_buf in *; facts;
-  remember (step _ _) as r eqn:E; compute_step E; subst r; cbn [safe_step];
+  take_step; cbn [safe_step];
   solve [ intro; assumption | next_inv | fresh_inv ].
 
 (** One step from a configuration where the assertions hold is

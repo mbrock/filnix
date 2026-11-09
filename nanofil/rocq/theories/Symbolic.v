@@ -13,6 +13,10 @@
     arithmetic over the facts' ranges, or split into its two answers
     when the facts do not decide it.
 
+    Cycle.v, Buffer.v and Prefix.v take each step by its rule from
+    StepRules.v ([take_step]): the step itself is never reduced, only
+    its rule's premises, with the same facts, wraps and comparisons.
+
     ## Decisions
 
     | Decision | Why |
@@ -24,7 +28,7 @@
     | an undecided comparison is split, both answers kept | the input is unknown: the comparison with it goes either way, and the facts after it say which | *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Panics.
+From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Panics StepRules.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -78,12 +82,15 @@ Ltac goal_divides :=
     the powers of two the model's classes use as numbers, and where
     the goal divides, with remainders and quotients by constants first
     turned into equations. Facts about environments and memory are set
-    aside first; they say nothing arithmetic. *)
+    aside first; they say nothing arithmetic. So are the bodies of
+    local definitions (a function, or a program's computed runs), which
+    the rewriting in every hypothesis below would otherwise walk. *)
 Ltac arith :=
   repeat match goal with
   | H : context[lookup _ _] |- _ => clear H
   | H : context[m_regions _] |- _ => clear H
   | H : context[m_bytes _] |- _ => clear H
+  | H : _ |- _ => clearbody H
   end;
   try change (2 ^ 31) with 2147483648 in *; try change (2 ^ 32) with 4294967296 in *;
   try change (2 ^ 63) with 9223372036854775808 in *;
@@ -189,7 +196,7 @@ Ltac facts :=
 (** Prove a fact about the configuration after a step: look each name
     up through the step's [put]s to the facts before it, each object's
     region through the stores, which change none, and through a new
-    object's, and the ranges by arithmetic. *)
+    object's, and the ranges as facts or by arithmetic. *)
 Ltac show_facts :=
   unfold int_at, any;
   repeat match goal with
@@ -206,8 +213,8 @@ Ltac show_facts :=
       progress (cbn [c_mem allocated m_regions object_region r_base req_extent]; rewrite ?Z.eqb_refl)
   | |- Some _ = Some _ => reflexivity
   | |- @eq Z _ _ => reflexivity
-  | |- _ <= _ => arith
-  | |- _ < _ => arith
+  | |- _ <= _ => first [ assumption | arith ]
+  | |- _ < _ => first [ assumption | arith ]
   | |- _ => progress cbv beta iota
   end.
 
@@ -219,3 +226,139 @@ Ltac show_facts :=
 Ltac block_fact f fn Hf l b H :=
   pose (b := find_block l (fn_blocks fn)); vm_compute in b;
   assert (H : find_block l (fn_blocks f) = b) by (rewrite Hf; reflexivity).
+
+(** ## A step by its rule
+
+    Instead of reducing [step] with the function and the memory inside
+    it, [take_step] names the instruction at the frame's point, rewrites
+    the step with its rule from StepRules.v, and proves the rule's
+    premises one by one ([premise]). Each premise is small: a
+    temporary's value, an op on those words, an access check, a block
+    of the function. The words the premises compute become the rule's
+    result, and a comparison of the input that the facts do not decide
+    is split there ([split_compares]). *)
+
+(** Rewrite in the goal every fact in the context that names a
+    temporary of an environment or the region of an object. *)
+Ltac use_facts_goal :=
+  repeat match goal with
+  | H : lookup _ _ = Some _ |- _ => rewrite H
+  | H : object_region _ (m_regions _) = Some _ |- _ => rewrite H
+  end.
+
+(** Drop each wrap in the goal that arithmetic over the context proves
+    is the identity, and turn a remainder or quotient of a nonnegative
+    value into Euclid's. A wrap it does not drop stays. *)
+Ltac drop_wraps_goal :=
+  repeat match goal with
+  | |- context[Z.rem ?x ?y] => assert_fails (has_if x); rewrite (Z.rem_mod_nonneg x y) by arith
+  | |- context[Z.quot ?x ?y] => assert_fails (has_if x); rewrite (Z.quot_div_nonneg x y) by arith
+  | |- context[?x mod ?m] => assert_fails (has_if x); rewrite (Z.mod_small x m) by arith
+  end.
+
+(** Decide each integer comparison in the goal that arithmetic over the
+    context decides; leave the others. *)
+Ltac decide_compares_goal :=
+  repeat match goal with
+  | |- context[?a <? ?b] =>
+      assert_fails (has_if a); assert_fails (has_if b);
+      first [ rewrite (proj2 (Z.ltb_lt a b)) by arith | rewrite (proj2 (Z.ltb_ge a b)) by arith ]
+  | |- context[?a <=? ?b] =>
+      assert_fails (has_if a); assert_fails (has_if b);
+      first [ rewrite (proj2 (Z.leb_le a b)) by arith | rewrite (proj2 (Z.leb_gt a b)) by arith ]
+  | |- context[?a =? ?b] =>
+      assert_fails (has_if a); assert_fails (has_if b);
+      first [ rewrite (proj2 (Z.eqb_eq a b)) by arith | rewrite (proj2 (Z.eqb_neq a b)) by arith ]
+  end.
+
+(** Decide each integer comparison in the goal, splitting the goal in
+    its two answers where the facts do not decide it, each kept as a
+    fact. A comparison whose operands hold another waits for it. The
+    split is a `case`, which looks at the goal alone, not at the
+    definitions in the context (a program's computed runs, say). *)
+Ltac split_compares :=
+  repeat (match goal with
+          | |- context[?a <? ?b] =>
+              assert_fails (has_if a); assert_fails (has_if b);
+              first [ rewrite (proj2 (Z.ltb_lt a b)) by arith | rewrite (proj2 (Z.ltb_ge a b)) by arith
+                    | case (Z.ltb_spec a b); intro ]
+          | |- context[?a <=? ?b] =>
+              assert_fails (has_if a); assert_fails (has_if b);
+              first [ rewrite (proj2 (Z.leb_le a b)) by arith | rewrite (proj2 (Z.leb_gt a b)) by arith
+                    | case (Z.leb_spec a b); intro ]
+          | |- context[?a =? ?b] =>
+              assert_fails (has_if a); assert_fails (has_if b);
+              first [ rewrite (proj2 (Z.eqb_eq a b)) by arith | rewrite (proj2 (Z.eqb_neq a b)) by arith
+                    | case (Z.eqb_spec a b); intro ]
+          end; cbv beta iota).
+
+(** Prove a premise lhs = rhs whose right side the proof leaves open:
+    compute lhs by `cbn`, with the facts, the wraps and the comparisons
+    the facts decide, then take rhs to be what it computed. *)
+Ltac compute_premise :=
+  repeat progress (cbn -[load_bytes store_bytes]; try unfold sign_extension;
+                   use_facts_goal; cbn [ptr_addr ptr_cap]; drop_wraps_goal; decide_compares_goal);
+  reflexivity.
+
+(** Prove that an access check passes: through the capability of an
+    object, read-only or not, whose region a fact gives, at an address
+    arithmetic shows in its bounds and aligned (any address is, to 1). *)
+Ltac access_ok :=
+  cbn [ptr_addr ptr_cap]; unfold raw_address; drop_wraps_goal;
+  match goal with
+  | |- access_res _ _ (Obj _) _ _ _ = _ => eapply access_obj
+  | |- access_res _ _ (Ro _) _ _ _ = _ => eapply access_ro_read
+  end;
+  first [ eassumption | apply Z.mod_1_r | cbn [r_end]; arith ].
+
+(** Prove one premise of a rule from StepRules.v: by computation for
+    the op's classes, by a fact or computation for a block (a
+    [block_fact]) and the return class, by the lemma of the op for a
+    check, a load and a store, with [access_ok] after it, and otherwise
+    by [compute_premise]. *)
+Ltac premise :=
+  match goal with
+  | |- general_op _ = true => reflexivity
+  | |- op_arg_classes _ _ = _ => reflexivity
+  | |- width_value_class _ = _ => reflexivity
+  | |- find_block _ _ = _ => first [ eassumption | compute_premise ]
+  | |- fn_ret _ = _ => first [ eassumption | compute_premise ]
+  | |- invalidate_locals _ _ = _ => apply invalidate_none
+  | |- _ <> _ => assumption
+  | |- _ <= _ => first [ apply Z.leb_le; reflexivity | arith ]
+  | |- op_res (Check _ _ _ _) _ _ _ = _ => apply op_check; access_ok
+  | |- op_res (RawLoad LdL _) _ _ _ = _ => apply op_raw_load; access_ok
+  | |- store_res Wl _ _ _ _ = _ => apply store_res_long; access_ok
+  | |- _ = _ => compute_premise
+  end.
+
+(** Rewrite the step in the goal, at a frame that is not doomed, by
+    the rule of its point: entering a block (out of fuel or not, the
+    fuel split), an allocation, any other let, a [[flight]], a raw
+    store, a goto, a branch, or a return of an invocation with no
+    caller. *)
+Ltac step_by_rule :=
+  match goal with
+  | |- context[step _ (mkConfig (mkFrame _ _ _ None (Enter _ _)) _ _ ?fuel)] =>
+      case (Z.eq_dec fuel 0); intro;
+      [ match goal with H : fuel = 0 |- _ => rewrite H end; rewrite rule_out_of_fuel
+      | erewrite rule_enter by premise ]
+  | |- context[step _ (mkConfig (mkFrame _ _ _ None (Exec _ (Let _ _ (Alloc _) _ :: _) _)) _ _ _)] =>
+      erewrite rule_alloc by premise
+  | |- context[step _ (mkConfig (mkFrame _ _ _ None (Exec _ (Let _ _ _ _ :: _) _)) _ _ _)] =>
+      erewrite rule_let by premise
+  | |- context[step _ (mkConfig (mkFrame _ _ _ None (Exec _ (Flight _ _ _ _ :: _) _)) _ _ _)] =>
+      erewrite rule_flight by premise
+  | |- context[step _ (mkConfig (mkFrame _ _ _ None (Exec _ (RawStore _ _ _ _ :: _) _)) _ _ _)] =>
+      erewrite rule_raw_store by premise
+  | |- context[step _ (mkConfig (mkFrame _ _ _ None (Exec _ [] (JGoto _))) _ _ _)] =>
+      rewrite rule_goto
+  | |- context[step _ (mkConfig (mkFrame _ _ _ None (Exec _ [] (JBranch _ _ _))) _ _ _)] =>
+      erewrite rule_branch by premise
+  | |- context[step _ (mkConfig (mkFrame _ _ _ None (Exec _ [] (JRet _))) [] _ _)] =>
+      erewrite rule_ret by premise; erewrite rule_return_top by premise
+  end.
+
+(** Take the step in the goal by its rule ([step_by_rule]), then the
+    jump's target, and split where the step compared the input. *)
+Ltac take_step := step_by_rule; cbn [edge_label Z.eqb Pos.eqb]; split_compares.

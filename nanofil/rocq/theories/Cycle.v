@@ -9,7 +9,10 @@
     ([cycle_assert]) says what the [[temporary|temporaries]] hold
     there, and one [[step]] from any configuration where the assertion
     holds reaches a point where its assertion holds, or ends without a
-    failure ([cycle_safe], computed by Symbolic.v's [compute_step]).
+    failure ([cycle_safe]). Each step is taken by its rule from
+    StepRules.v (Symbolic.v's [take_step]): the rule of the instruction
+    at the point, with its premises (a temporary's value, an op on
+    words, an access check) proved one by one.
     The loop's assertion is that its index i is between 0 and 2^31 - 1:
     then `i % 4` is between 0 and 3, the access is in bounds, and
     `i + 1` does not wrap. The index stays below 2^31 because the loop
@@ -196,12 +199,12 @@ Ltac next_inv Hb Hr :=
   split; [show_facts | assertion; try unfold into_xs; show_facts].
 
 (** One point of [cycle_safe]: the point from Hk, an index into the
-    points pts, the assertion Ha taken apart, the step computed, and its
-    result shown safe. *)
+    points pts, the assertion Ha taken apart, the step taken by its
+    rule ([take_step]), and its result shown safe. *)
 Ltac point_safe pts Hk Ha Hb Hr :=
   cbv in Hk; injection Hk as <-; clear pts;
   assertion_in Ha; unfold int_at, into_xs in *; facts;
-  remember (step _ _) as r eqn:E; compute_step E; subst r; cbn [safe_step];
+  take_step; cbn [safe_step];
   solve [ intro; assumption | next_inv Hb Hr ].
 
 (** One step from a configuration where the assertions hold is
