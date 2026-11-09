@@ -44,7 +44,7 @@ From iris.program_logic Require Import language ectx_language ectxi_language wea
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime ExternalCalls Ops Semantics Run
-  Machine Panics StepRules Pieces Heap ExternalMachine Language.
+  Machine Panics StepRules Pieces Heap ContractFrame ExternalMachine Language.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -834,6 +834,73 @@ Qed.
 
 End wp.
 End logic.
+
+(** ## A call's whole effect on the ghost heap
+
+    ContractFrame.v's frame for one [local_effect] or allocation,
+    carried along the language's own call relations ([M.E]). *)
+
+(** Along an [effects] path from a [[ready]] state, a ghost heap h
+    whose live objects the roots avoid, none of whose identities the
+    call releases or was born with, keeps agreeing with memory; live
+    objects stay apart, the born objects are none of h's, and the roots
+    still avoid h's live objects. born0 is [] at the start of a call. *)
+Theorem effects_agrees : forall sources roots releases requests s m born0 s' m' born h,
+  M.E.effects sources roots releases requests s m born0 s' m' born ->
+  R.ready s m -> live_disjoint m -> agrees m h -> roots_apart roots h m ->
+  ids_apart releases h -> ids_apart born0 h ->
+  agrees m' h /\ live_disjoint m' /\ ids_apart born h /\ roots_apart roots h m'.
+Proof.
+  intros sources roots releases requests s m born0 s' m' born h H.
+  induction H as [s m born0 | s m born0 m1 s' m' born Hl H IH
+                 | s m born0 align size base s1 s' m' born Hq Hsize Halloc H IH];
+    intros Hr Hd Ha Hra Hrel Hb.
+  - auto.
+  - apply IH.
+    + exact (R.ready_kept _ _ _ Hr (local_effect_kept _ _ _ _ _ _ Hl)).
+    + exact (local_live_disjoint _ _ _ _ _ _ Hl Hd).
+    + exact (local_agrees _ _ _ _ _ _ h Hl Hd Ha Hra Hrel Hb).
+    + intros sp a Hin Hs Ho. exact (Hra sp a Hin Hs (local_owned_back _ _ _ _ _ _ h Hl a Ho)).
+    + exact Hrel.
+    + exact Hb.
+  - assert (Hal : 0 < req_align (heap_req align size)) by (cbn; lia).
+    assert (He : 0 <= req_extent (heap_req align size)).
+    { cbn. apply Z.mul_nonneg_nonneg; [apply Z.div_pos; lia | lia]. }
+    destruct (R.fresh_allocation _ _ _ _ _ Hr Hal He Halloc) as [Hf Hr1].
+    pose proof Hf as (_ & _ & _ & Hn & _).
+    apply IH.
+    + exact Hr1.
+    + exact (live_disjoint_allocated _ _ _ Hd Hf He).
+    + intros l v Hh. exact (agree_piece_allocated _ _ _ _ _ Hn (Ha l v Hh)).
+    + intros sp a Hin Hs Ho. exact (Hra sp a Hin Hs (allocated_owned_back _ _ _ _ _ Hn Ha Ho)).
+    + exact Hrel.
+    + exact (unregistered_apart _ _ _ _ Hn Ha Hb).
+Qed.
+
+(** The same for a whole call [prefix] of the contract spec: its
+    writable roots avoid h's live objects and it releases none of h's
+    identities. *)
+Corollary prefix_agrees : forall world (spec : contract world) xs s m w born trace s' m' w' h,
+  M.E.prefix spec xs s m w born trace s' m' w' -> R.ready s m -> live_disjoint m -> agrees m h ->
+  roots_apart (contract_writes spec xs m w) h m -> ids_apart (contract_releases spec xs m w) h ->
+  agrees m' h /\ live_disjoint m' /\ ids_apart born h /\ roots_apart (contract_writes spec xs m w) h m'.
+Proof.
+  intros world spec xs s m w born trace s' m' w' h [He _] Hr Hd Ha Hra Hrel.
+  apply (effects_agrees _ _ _ _ _ _ _ _ _ _ h He Hr Hd Ha Hra Hrel). intros b l v [].
+Qed.
+
+(** The same for a completed call ([invoke]), normal or resource, for
+    the born objects of its prefix. *)
+Corollary invoke_agrees : forall world (spec : contract world) r args xs s m w trace ending s' m' w' h,
+  M.E.invoke spec r args xs s m w trace ending s' m' w' -> R.ready s m -> live_disjoint m -> agrees m h ->
+  roots_apart (contract_writes spec xs m w) h m -> ids_apart (contract_releases spec xs m w) h ->
+  exists born, agrees m' h /\ live_disjoint m' /\ ids_apart born h /\
+    roots_apart (contract_writes spec xs m w) h m'.
+Proof.
+  intros world spec r args xs s m w trace ending s' m' w' h H Hr Hd Ha Hra Hrel.
+  destruct (M.E.invoke_prefix _ _ _ _ _ _ _ _ _ _ _ _ _ H) as (born & Hp).
+  exists born. exact (prefix_agrees _ _ _ _ _ _ _ _ _ _ _ h Hp Hr Hd Ha Hra Hrel).
+Qed.
 
 (** No world: over the world unit, the interpretation that requires
     nothing of the memory. With [no_contracts] it is the core

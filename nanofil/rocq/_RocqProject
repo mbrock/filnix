@@ -60,4 +60,5 @@ theories/ContractFrame.v
 theories/Language.v
 theories/Logic.v
 theories/BufferLogic.v
+theories/HiLogic.v
 theories/Extract.v

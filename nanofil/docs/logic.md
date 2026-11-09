@@ -332,7 +332,7 @@ proves the same theorem through the program logic.
 ## Progress
 
 mbrock chose Iris (November 2026), in the Iris, RustBelt and Cerise
-tradition. Steps 1 to 3 above are done:
+tradition. Steps 1 to 4 above are done, and step 5 has begun:
 
 | Step | Where | Result |
 | --- | --- | --- |
@@ -343,6 +343,33 @@ tradition. Steps 1 to 3 above are done:
 | 3, rendering | dterm-rocq (another thread) | Iris notation and proof-mode states on the site |
 | 4, the main build | [_RocqProject](../rocq/_RocqProject), nix/rocq.nix | Pieces.v, Heap.v, Language.v and Logic.v are part of the model, built and parse-checked by the quick gate with stdpp and Iris from the pinned nixpkgs; they add about 13 s of compile time off the critical path. The list-sum examples stay in spikes/ |
 | 5, a program in the main build | [BufferLogic.v](../rocq/theories/BufferLogic.v) | `buffer_never_panics` again, through the logic: the allocation's `obj` splits into `live` and four cells, each loop is a Löb induction carrying them, each check lends `live` back for a step and each access takes the one cell it reaches (`cells_at`). Without `live` in the sum loop, or with three cells, the proof fails. Needs no new rule: `buffer` has no named locals and checks only class `a`. 14 s, after `arith` learned to treat a remainder by a constant as a bounded variable before reaching for division equations (`mod_atoms`, `arith_fast` for side goals that may be false): BufferLogic.v 24 s to 18 s to 14 s, Cycle.v 6.3 s to 3.9 s, Buffer.v 10.4 s to 6.6 s, ListSumLogic.v 17.5 s to 13.1 s, Prefix.v unchanged (its time is kernel checking and stepping) |
+| 6, contracts | [Language.v](../rocq/theories/Language.v), [Logic.v](../rocq/theories/Logic.v), [ContractFrame.v](../rocq/theories/ContractFrame.v) | the language takes a contract registry and a world: an admissible external call returns through Campaign 4's `invoke`, returns badly (`EBad`, never safe) or stalls (blocking, exit, resources); `adequate_labelled` and `heap_labelled_safe` prove the labelled machine's safety (no `failure_ending`, a return satisfies the postcondition) from a WP; `wp_external` is the call rule; the state interpretation gains a world interpretation `wi`, kept at safepoints (`SafepointStable`). The frame for a call: if a contract's writable roots share no address with the program's live owned objects and it releases none of them, the ghost heap still agrees after the whole effects path (`prefix_agrees`), and roots the call delegates stay apart (`delegates_apart`). Separation is by address, not identity, a premise of the program's theorem rather than of `puts_pre` (Campaign 4 agreed: formal.md promises no blanket input immutability) |
+| 6, hi.c | [HiLogic.v](../rocq/theories/HiLogic.v) | `hi_logic_safe` for every runtime and `interp_hi_logic_safe` from Hi.v's fixture, closed. The program owns its literal's pieces; `hi_wi` is puts's rep and `stdio_ready` and the world's roots apart from those pieces; puts's triple is derived from `puts_contract` (precondition from the owned literal, after a return the frame and puts's prefix re-establish the state); main is six tactic lines. No new rule was needed: main has no named locals and no check |
+
+**hi.c, the logic against Hi.v's hand proof.** The same body, the same
+contract, the same fixture:
+
+| | Hi.v (hand) | HiLogic.v (Iris) |
+| --- | --- | --- |
+| size, non-blank lines | about 270 for the safety part: the literal's validity across safepoints, a step lemma per point, the four-phase invariant `hi_body_state` with a case per kind of labelled step | 312: the literal as pieces and back (75), the world and puts's frame (44), puts's triple and main (65), adequacy (29), the interpreter instance (62) |
+| compile time | 1.2 s, the whole file | 5.8 s, of which 1.1 s loads Logic and Hi |
+| premises | `hi_before_call`, `stdio_stable` | those, and the runtime ready, live objects apart, the world's roots apart from the literal (`literal_apart`) |
+| conclusion | every stop is one of `hi_ending`'s three, by name | no stop is a `failure_ending`, and a return is 0 |
+| reusable | nothing outside hi | `wp_external`, the frame, `heap_labelled_safe`; the triple is stated at hi's site and literal |
+
+For hi alone the logic does not pay: as long, five times slower to
+check, more premises and a weaker conclusion. Hi.v gets away without a
+frame because main reads nothing after puts, and its invariant has no
+heap in it; the logic must re-establish its state interpretation after
+every call, so it needed the frame theorem before it could prove a
+program with one call. What it bought is where the cost lands: the
+program-specific proof is six lines and stays a line per instruction,
+while Hi.v's method adds a constructor and a case analysis per program
+point and would need the same frame argument as soon as a program reads
+memory after a call. The test of whether it pays is the next program
+with a call it reads after: gc.ir's `sum` with a `c_gc` contract, or
+Hello's first string call, with puts's triple generalised from hi's
+literal to a `string p` assertion.
 
 The premise `keeps_live` is gone: only a signal handler the program installed, or a thread it
 started, frees a live object, so Runtime.v's safepoint axiom is now the
