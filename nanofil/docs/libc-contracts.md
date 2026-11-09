@@ -135,11 +135,30 @@ finite evidence, not a replacement for that trust.
   promoted type/width the callee consumes. Too few argument bytes can
   raise `ArgumentSize`; an incompatible return channel `ReturnSize`.
   Equal ABI widths alone do not establish C type correctness.
-- The environment is single-threaded with no racing mutation/free,
-  no hostile signal handler or interposed libc. Locale, argv and
+- A run starts with no installed signal handler and no other program
+  thread, and excludes interposed libc. Locale, argv and
   environment values are otherwise unrestricted. I/O may fail, block,
   or be partial; allocation may refuse. The probes' C locale and short
   strings are fixtures, **not** hypotheses of `never_panics`.
+
+### No asynchronous program execution
+
+No libc contract may admit installing a signal handler or starting another
+program thread, directly or through a callback or trusted host boundary.
+`signal`, `sigaction`, `pthread_create` and `aio_*` are outside contract
+coverage; `timer_create` and `mq_notify` with `SIGEV_THREAD` are excluded
+as well. Reaching such an unsupported external call ends the covered run:
+it is not a successful call, nor permission to continue under the safety
+theorems. Entry must establish the no-handler/no-other-program-thread
+premise, including for application constructors.
+
+The runtime safepoint describes the collector alone. The collector does
+not free objects; signal handlers and additional program threads would
+execute program code, not collector actions. This exclusion is therefore
+a premise of the runtime-based theorems, not merely a probe convention.
+It does not exclude the synchronous `atexit`/`__cxa_atexit` callbacks below,
+whose targets and effects must satisfy their own contracts. See
+[runtime-axioms.md](runtime-axioms.md) for the entry and collector boundary.
 
 ### Memory invariants shared with Campaign 3
 

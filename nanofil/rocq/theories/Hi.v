@@ -240,9 +240,10 @@ Section BodySafety.
 Variable rep : mem -> stdio_world -> Prop.
 Variable requests : list word -> mem -> stdio_world -> Z -> Z -> Prop.
 
-(** This is the environment/library stability premise, not a stronger Runtime
-    axiom. It excludes hostile frees of protected libc state at both the
-    global-copy and call safepoints. The literal preservation is proved above. *)
+(** This environment/library premise requires the opaque representation and
+    writable roots to survive collector safepoints, including permitted
+    rewriting of capabilities to already-freed objects. It is not an extra
+    Runtime axiom. The literal preservation is proved above. *)
 Hypothesis stdio_stable : forall s m s' m' w,
   R.safepoint s m s' m' -> rep m w -> stdio_ready m w ->
   rep m' w /\ stdio_ready m' w.
@@ -566,8 +567,9 @@ Example missing_puts_rejected :
 Proof. eapply H.M.step_rejected with (site := hi_site);
   [apply H.hi_external_site|]. constructor. reflexivity. Qed.
 
-(** Freeing the protected fixture root destroys its representation: unrestricted
-    hostile-handler lifetimes cannot satisfy the theorem's stdio-stability premise. *)
+(** Freeing the protected fixture root destroys its representation. Such a
+    program free is not a collector-safepoint action; the fixture still
+    requires the root to be live at entry and throughout the puts contract. *)
 Example protected_root_cannot_be_freed :
   let m' := mkMem (m_bytes memory)
     [mkRegion 2048 2048 Heap Freed; mkRegion 65552 65560 GlobalData Live] (m_aux memory) in
