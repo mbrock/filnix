@@ -701,7 +701,8 @@ setlocale contract shows them. The same holds for the premises that
 the world interpretation survives the allocation, the copy and the
 byte store. The token is persistent, so no triple changes a lent
 name. Hello's one setter, setlocale(LC_ALL, ""), runs before any
-query, and it will need its own triple, which creates the tokens.
+query. Its triple, `wp_setlocale_set` above, takes the names owned
+whole and turns them into the persistent tokens.
 
 Two more decisions shape the rest of the milestone:
 - Hello's conversion theorem carries an explicit premise that the
@@ -712,6 +713,65 @@ Two more decisions shape the rest of the milestone:
   rule out `abort`.
 - `__errno_location` now has a contract (Campaign 4, ff21058), for
   rpl_mbsrtowcs's EILSEQ store.
+
+**Pieces proved in parallel.** From milestone 3 on, helper threads
+own pieces in their own files and hand them over for integration
+here. Each is generic in the registry and the world interpretation,
+and takes as Context premises the contracts that Campaign 4's
+packages are still landing.
+- [HelloProgName.v](../rocq/theories/HelloProgName.v) (5a34c2f)
+  strengthens HelloName's `set_program_name` triple, which only knew
+  capabilities, to bounded suffixes of the owned argv[0] string.
+  `set_program_name_string_spec` lends the chosen `program_name`
+  suffix as a string, with a wand that restores argv[0], ready for
+  printing. The one new comparison fact is `strncmp_zero_lengths`: a
+  zero from strncmp means equal bounded lengths, so comparing with
+  "lt-" for three bytes justifies advancing three without crossing
+  the NUL.
+- [CallbackLogic.v](../rocq/theories/CallbackLogic.v) (9a11a87)
+  connects a handler's weakest precondition to Linked's void-callback
+  endpoint. `callback_wp_safe` rules out failure endings for every
+  labelled run. `callback_wp_return` gives the handler's
+  postcondition at the exact memory after `invalidate_locals` and at
+  the current world, before ReturnCallback. It rests on
+  `heap_exact_adequacy`, an adequacy that keeps the final state,
+  where `heap_labelled_safe` forgets it.
+- [HelloReach.v](../rocq/theories/HelloReach.v) (c37f796) checks
+  reference closure of the linked image. From main, static
+  reachability follows global addresses and initializer symbols,
+  including callbacks. Every reachable reference is a module function,
+  a module global, one of 33 libc function imports, or one of six
+  libc data imports: stdout, stderr, optarg, optind,
+  program_invocation_name and program_invocation_short_name.
+  `hello_genv` keeps the module's globals as a prefix, so startup
+  data cannot override a module symbol, and `hello_genv_linked`
+  proves `hello_linked`. The proof is about the image we run. That
+  the linker's pruning kept every reachable definition of the
+  original objects is trusted, checked by the linker's own traversal.
+- [HelloVersion.v](../rocq/theories/HelloVersion.v) (471c501) proves
+  `proper_name`, the identity, and the help footer
+  `emit_bug_reporting_address`. The footer's literals stay owned by
+  the program; stdout is the world's cell. Its four output calls take
+  premises that line up with Campaign 4's Formatting.v contracts.
+  The variadic `version_etc` chain is not yet covered: it needs a rule
+  for the va snapshot's allocation, ownership of the VaArg cursor,
+  and the branches over 0 to 10 authors.
+
+Conventions the pieces share:
+- Module statics and the cells the program reads or writes directly
+  are owned pieces passed into the calls that write them, never facts
+  of wi. That covers file_name, ignore_EPIPE, program_name, errno,
+  optind and optarg.
+- A contract enters as raw premises: registry, ABI, admission, and
+  what an invocation keeps. Call-site triples are derived from them
+  with `wp_external`.
+- A rule a piece needs and the core lacks stays in the piece, marked
+  for promotion, until it is reviewed into Logic.v. The candidates so
+  far:
+  - `wp_strncmp_lengths`;
+  - `heap_exact_adequacy` and the Linked transports;
+  - `rule_va_args` and `wp_va_args`;
+  - `wp_world_let`, a load whose value wi fixes.
 
 ## Open questions for mbrock
 
