@@ -78,6 +78,38 @@ attrs([K=V|As]) --> " ", raw(K), "=\"", esc(V), "\"", attrs(As).
 seq([], _) --> [].
 seq([X|Xs], G) --> call(G, X), seq(Xs, G).
 
+%% The wiki's header
+
+%  site_door(Id, Label, Path): the wiki's menu, each section's address
+%  from the site's root. packages/site/template.html and the pages under
+%  pages/ write the same menu.
+site_door(docs, "Docs", 'docs/').
+site_door(explainers, "Explainers", 'index.html#explainers').
+site_door(nix, "Nix", 'nix/').
+site_door(nanofil, "nanofil", 'nanofil/').
+site_door(campaigns, "Campaigns", 'https://nix.swa.sh/').
+site_door(source, "Source", 'https://github.com/mbrock/filnix').
+
+%  site_header(+Root, +Door, :Crumbs, :Right): the wiki's header, its menu
+%  with Door selected, over the status bar of breadcrumbs and Right. Root
+%  is the way from the page to the site's root, such as '../'.
+site_header(Root, Door, Crumbs, Right) -->
+    { atom_concat(Root, 'index.html', Home), findall(D, site_door(D, _, _), Ds) },
+    "<header class=\"library\"><div class=\"page-frame library-frame\">\n",
+    "  <div class=\"library-heading\"><p class=\"eyebrow\">Fil-C on Nix</p><h1>",
+    el(a, none, [href=Home], "Filnix wiki"), "</h1></div>\n",
+    "  <nav class=\"doors\">\n", seq(Ds, site_door_(Root, Door)), "  </nav>\n</div></header>\n",
+    "<div class=\"status\"><div class=\"page-frame status-frame\">\n",
+    el(nav, crumbs, ['aria-label'="Breadcrumb"], Crumbs),
+    el(span, "status-right", Right),
+    "\n</div></div>\n".
+
+site_door_(Root, Selected, D) -->
+    { site_door(D, Label, Path),
+      ( sub_atom(Path, _, _, _, '://') -> Href = Path ; atom_concat(Root, Path, Href) ),
+      ( D == Selected -> C = "door selected" ; C = door ) },
+    "    ", el(a, C, [href=Href], Label), "\n".
+
 %% The Markdown of comments
 
 trim_blank_ends(Ls0, Ls) :-

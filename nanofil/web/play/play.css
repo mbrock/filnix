@@ -342,7 +342,7 @@ table.symbols tr.import td.name { color: var(--muted); }
     grid-template-areas: "editor" "out" "data" "symbols";
     padding-bottom: 2rem;
   }
-  .doors { justify-content: flex-end; flex-wrap: nowrap; gap: 0; }
+  .doors { justify-content: flex-end; gap: 0; }
   .door { padding: 0.35rem 0.4rem; font-size: 0.82rem; }
   main.play { padding: 0.4rem 0.6rem 2rem; }
   .library-frame { padding: 0.35rem 0.6rem; }
