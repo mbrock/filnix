@@ -658,13 +658,25 @@ query. `wi_lent` now also takes the facts a ready runtime gives:
 live objects apart, objects in the address space, and freed objects
 empty.
 
+A setter keeps `locale_wi`, with every category renamed to its new
+name (`locale_wi_setter`). The frame keeps libc's old roots apart from
+the program; the new roots have write authority only from old roots
+or born objects, so they stay apart. Campaign 4's private provenance
+(`locale_delegates_private`, 4de6b80) makes every new read, root and
+name capability a born object, which is none of the program's, or an
+old private one. `locale_set_return` states this for setlocale(c, p)
+in the form of `wp_lend`'s premise, and `wp_setlocale_set` is the
+setter's triple over the locale world: owning every category's
+`named` token and the string argument, the call binds null or c's new
+name and lends every new name for good.
+
 Two findings went back to Campaign 4:
 - The setter contract let a new name carry the setter input's
   capability, or one loaded from a source's aux slots. A name could
   then lie in the program's own literal, and no apartness would hold.
-  Campaign 4 is restricting new names, reads and roots to born objects
-  or the exact capability of an old read, root or name. That
-  restriction is what the setter's discharge of `wp_lend` needs.
+  Campaign 4 restricted new names, reads and roots to born objects
+  or the exact capability of an old read, root or name (4de6b80),
+  which is what the setter's discharge of `wp_lend` needs.
 - `Locale R`, `Libio R`, `Startup R` and `ExitMemory R` each build
   their own `ExternalCalls R`, whose `invoke` is a different inductive
   from the logic's `M.E.invoke`. Their theorems cannot yet be applied
