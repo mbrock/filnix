@@ -315,6 +315,15 @@
               filcc = filcc-staging;
               full = true;
             };
+            nanofil-logic-spikes = import ./nanofil/nix/spikes.nix {
+              inherit pkgs;
+              filcc = filcc-staging;
+              model =
+                (import ./nanofil/nix/rocq.nix {
+                  inherit pkgs;
+                  filcc = filcc-staging;
+                }).model;
+            };
             nanofil-hello = import ./nanofil/nix/hello.nix {
               inherit pkgs;
               filcc = filcc-staging;

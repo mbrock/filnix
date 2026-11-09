@@ -4,9 +4,10 @@ November 2026. The brief for the campaign after formal.md's Campaign 7
 proofs of single programs ([formal.md, Campaign 7](formal.md#campaign-7-a-program-that-never-panics)).
 It records a proposal mbrock received from another Fable instance, what
 the model already has that the proposal builds on, where the proposal
-misreads the model, what it would cost, and a recommendation. Nothing
-here is built beyond what "What exists" lists. The choice of Iris, and
-whether to start at all, is mbrock's.
+misreads the model, what it would cost, and a recommendation. Beyond what
+"What exists" lists, only the two list-sum spikes are built, off the
+main path. The choice of Iris, and whether to start at all, is
+mbrock's.
 
 ## The proposal in one paragraph
 
@@ -122,7 +123,8 @@ object means rewriting it.
 - **Recursion has fuel.** The machine spends one unit of fuel per block
   entry, shared by the whole stack, and `OutOfFuel` is not a failure.
   An induction on fuel therefore gives Löb's rule for recursive
-  functions without step-indexing.
+  functions without step-indexing; but not for a safepoint, which
+  spends none (see the spikes below).
 - **A configuration is not an expression.** Iris's `language` splits
   expression from state; a configuration holds the memory (`c_mem`), and
   the runtime's state sits beside it in `mstate`. An Iris instance needs
@@ -163,8 +165,7 @@ Iris's own costs, concretely:
 
 - **Dependency.** The pinned nixpkgs has `rocqPackages.iris` 4.5.0 and
   `stdpp` 1.13.0 beside Rocq 9.1.1, so it is a pin away, not a port;
-  whether cache.nixos.org has them, and the CI time they add, is
-  unmeasured.
+  cache.nixos.org has both (measured in the spikes below).
 - **The literate pipeline.** dterm-rocq's grammar (web/rocq, checked by
   parse.sh) does not yet read `let ... in` or `fresh` inside Ltac; Iris
   proofs are written in its proof mode (`iIntros "[Hl Hs]"`, intro
@@ -188,40 +189,131 @@ stability under alloc, free and a frees-nothing safepoint, and tactics
 to frame. A first-order version of this is a few thousand lines; VST
 shows how large it gets when it must also do everything Iris does.
 
+## The list-sum spikes
+
+mbrock asked for the spike overnight, both ways. Both are in
+`rocq/spikes`, off the main build: nothing in
+rocq/theories imports them, the quick gate and CI do not build them,
+and only their own check, `nix build .#checks.x86_64-linux.nanofil-logic-spikes`
+([spikes.nix](../nix/spikes.nix)), depends on Iris. Both prove the same
+statement about the same program, in Panics.v's terms:
+
+```
+Theorem listsum_never_panics : SS.keeps_live ->
+  P.never_panics ls_module (TAtom "listsum") (fun xs => exists n rest, xs = WInt n :: rest).
+```
+
+The program is [listsum.c](../rocq/spikes/listsum.c), closed, so the
+core machine runs all of it: `listsum(n)` allocates n 16-byte nodes on
+the collected heap, links each with a checked pointer store, and calls
+`sum`, which walks the list with a check of each value, a lower half
+check and an aux pointer load for each next pointer, and a poll on the
+back edge. gc.ir's `sum` is the same loop with an external `c_gc` call
+in it, which needs Campaign 4's machine. `keeps_live` (no safepoint
+frees a live object) is Buffer.v's premise; both spikes also prove the
+interpreter's runtime meets it, and `Print Assumptions` of that
+corollary is closed for both.
+
+They share [Pieces.v](../rocq/spikes/Pieces.v), the resource model:
+pieces keyed by [identity](concepts/identity.md) (an object's life,
+one byte, one aux slot at an offset), the global fact that live objects
+are disjoint, and `safepoint_shape`: under `keeps_live`, a safepoint
+keeps every region and every byte, and rewrites only aux slots that hold
+a freed object's capability (from `non_moving`, `aux_round_trip`,
+`rooting` and `safepoint_lifetime`). Keying by identity is forced, not
+chosen: the model's `fresh` lets a new object take a freed one's
+addresses.
+
+| | Hand-rolled ([Sep.v](../rocq/spikes/Sep.v), [SepListSum.v](../rocq/spikes/SepListSum.v)) | Iris 4.5 ([IrisLang.v](../rocq/spikes/IrisLang.v), [IrisHeap.v](../rocq/spikes/IrisHeap.v), [IrisListSum.v](../rocq/spikes/IrisListSum.v)) |
+| --- | --- | --- |
+| Assertions | `fp -> mem -> Prop`, a footprint of pieces and the memory; `star` splits the footprint | `iProp` over `gen_heap piece pval`; the state interpretation ties the ghost heap to `mem` |
+| [Adequacy](concepts/adequacy.md) | none new: `never_panics_by_invariant`, with an invariant of configurations built from the assertions | 174 lines, 2 s: the machine as an Iris `language` and `wp_never_panics`; done in an hour, no dead end |
+| Generic logic | 932 lines, 3 s: star algebra, stability, footprint lemmas for each store, allocation, a frame-generic list | 786 lines, 7 s: one lifting lemma and rules for next, done, a byte or aux write, allocation |
+| The program | 626 lines, 29 s | 488 lines, 59 s |
+| `sum`'s spec | a step lemma for any callers and any frame F: `lst p xs ** F` to `htrue ** F` | `lst p xs -∗ (∀ y, caller's wp) -∗ wp(sum)`, for any caller and callers; the frame rides in the wand |
+| The list predicate | a `Fixpoint` into `hprop`; unfolding, dropping walked nodes and reassociating stars by hand (`lst_cons_drop`) | a `Fixpoint` into `iProp`; `iDestruct` does the work |
+| The back-edge poll | one lemma per function (`sum_safepoint`, `ls_safepoint`): every assertion is `sp_stable`; never looks where a safepoint is due | once, in `wpc_lift`, by Löb (about 30 lines); no program proof mentions safepoints |
+| Loops | invariants at points, as Cycle.v | Löb on the loop head |
+| Planted bugs | a list that does not own `live b`: the value check of `sum` cannot be proved; `lst` without an alignment fact: false, and the proof found it | a node without its `live` piece: `lst_head` cannot show the next node is live, only registered, so its checks cannot pass |
+| dterm-rocq (parse.sh) | Pieces.v reads; Sep.v 40 of 114 items and SepListSum.v 24 of 55 do not, nearly all for the one infix `**` and its `%h` scope | IrisLang.v 3 of 14, IrisHeap.v 35 of 62, IrisListSum.v 29 of 47 do not: Unicode connectives (`∗ -∗ ▷ ⊢ |={⊤}=>`), `WP … {{ }}`, `Canonical Structure`, proof-mode strings, ssreflect `rewrite {2}/x` |
+
+What each spike taught:
+
+- **The step is still the cost.** In both, most of the program proof's
+  compile time is computing `step` on an abstract state, as in
+  Cycle.v and Buffer.v. Iris made it worse, not by itself but because
+  `wpc_next` leaves the next configuration as an existential variable
+  that the computed step must unify with: Symbolic.v's `drop_wraps` and
+  `decide_compares`, which generalise or split, break that unification,
+  so the Iris side wrote non-splitting copies, and the one undecidable
+  comparison is split by hand. The step lemmas of the recommendation
+  below remove this in both and would bring IrisListSum.v under the
+  35 s line.
+- **Framing by hand is where the hand-rolled logic hurts,** as
+  expected: footprints are predicates, so `emp ** P` is `P` only up to
+  "the same pieces" (no extensionality), and the proofs were arranged
+  never to eliminate `emp`; reassociating four-way stars for a node took
+  explicit lemma chains. Iris's proof mode makes all of this vanish.
+- **Safepoints are where Iris clearly wins.** A safepoint step leaves
+  the expression as it was and changes the state; in Iris that is one
+  Löb induction in the lifting lemma, and every later proof is silent
+  about polls. The hand-rolled logic needs each function's assertions
+  to be `sp_stable` and a lemma per function to say so. Cheap (0.5 s
+  each, mechanical) but per program. Fuel does not help here, as this
+  document claimed above: a safepoint spends no fuel.
+- **Calls need a design either way.** The Iris language keeps the
+  callers stack inside the expression, so there are no evaluation
+  contexts and no `wp_bind`; the spike's call rule passes the caller's
+  continuation as a wand. That frames for free but returns nothing to
+  the caller, so a spec that hands the list back needs list segments or
+  an `ectx_language` with the callers as the context. The hand-rolled
+  spike's frame-generic step lemma is the same idea, first-order.
+- **Friction with Iris is real but bounded.** Importing it swaps in
+  ssreflect's `rewrite` (no `by` clause), `++` and `+` change scope,
+  gen_heap's `↦` is local to its file, and Ltac cannot name a hypothesis
+  that an intro-pattern string introduces. Each was found once.
+- **Both logics found something.** The hand-rolled list predicate
+  first lacked a node's 8-byte alignment, which `sum`'s half check
+  and pointer load test; without it `lst p xs ** F` admits lists on
+  which `sum` traps.
+- **Iris is cheap to have.** `rocqPackages.iris` 4.5.0 and `stdpp`
+  1.13.0 come from cache.nixos.org for the pinned Rocq 9.1.1; loading
+  Iris and the compiled model together takes 2.5 s.
+
 ## Recommendation
 
-Take the proposal's architecture and change the order:
+Iris, decided on this evidence rather than at a later spike's end as
+first recommended here. The two spikes are the same size (about 1,550
+lines each) and prove the same thing; what separates them is where the
+next proofs will spend effort. Iris's adequacy into `never_panics` cost
+174 lines; its proof mode removes the framing that dominated the
+hand-rolled generic layer; safepoints are handled once; and Hello's
+hardest case, quotearg's lent-out buffer (`string ret ∗ (string ret −∗
+slots)`, below), is a wand, which a first-order logic would have to
+encode. The costs to pay first:
 
-1. **Step lemmas first** (rules for each instruction over abstract
-   states, from Symbolic.v's tactics). Needed whichever host; Cycle.v
-   and Buffer.v are re-proved on them as the check, and should get
-   faster.
-2. **The resource model, first-order, hand-rolled:** heaplets keyed by
-   identity with `meta`, `live` and cells; a state interpretation; its
-   stability under alloc, free, and a safepoint under
-   `safepoint_keeps_live`. Adequacy is `never_panics_by_invariant`
-   with the state interpretation and Campaign 3's run invariant as the
-   global invariant.
-3. **The list-sum spike on it:** a fixture that builds a list and sums
-   it (no external call), a recursive list predicate, a check per node,
-   a poll on the back edge, two functions with specs and the frame rule.
-   Then gc.ir's version with a `c_gc` contract on Campaign 4's machine.
-4. **Decide Iris at the spike's end, on evidence:** how much of the
-   spike was framing by hand, and whether Hello's census shows function
-   pointers with unknown targets or other higher-order specs. In
-   parallel and timeboxed, an Iris spike of the host alone: the
-   `language` wrapper above, its adequacy proved equal to never_panics,
-   and one small file through parse.sh and dterm-rocq, to price the
-   dependency and the pipeline. If Iris wins, steps 1 and 2's content
-   (step lemmas, the identity-keyed model) moves over; the hand-rolled
-   separation layer is what is lost.
-5. **Then the proposal's path from re-proving hi.c on:** hi.c through
-   the logic with puts' triple derived from its contract, compared with
-   Hi.v's direct proof; then ownership types and certificates as
-   fragments; then Hello.
+1. **Step lemmas,** one per instruction form of the core subset, over
+   abstract states, as the rules of the Iris wp. Needed whichever
+   host; they cut both spikes' compile time and remove the existential
+   variable problem. Re-prove Cycle.v and Buffer.v on them as the check.
+2. **An `ectx_language`** whose context is the callers stack, so calls
+   are `wp_bind` and a function spec returns its resources to the
+   caller; then `sum`'s spec as a Hoare triple.
+3. **dterm-rocq learns Iris:** the connectives above as notations,
+   `WP … {{ }}`, and the proof mode's string patterns. parse.sh shows
+   exactly which items fail; the spike files are the test corpus.
+4. **Iris in the main build** once the above works, with spikes/
+   becoming the campaign's first theories. Persistent `meta` as
+   `ghost_map` elements (`↪□`), which the spike did not need because
+   bounds came from the `live` token.
+5. **Then the proposal's path:** hi.c through the logic with puts'
+   triple derived from its contract, compared with Hi.v; gc.ir's `sum`
+   with a `c_gc` contract on Campaign 4's machine; certificates and
+   ownership types as fragments; Hello.
 
-This leaves Buffer.v as the last single-invariant proof: the next heap
-program is the spike.
+The hand-rolled spike stays as the record of the alternative and of
+what the logic must prove about Fil-C's memory, which Pieces.v holds
+for both. Buffer.v remains the last single-invariant proof.
 
 ## What Hello will demand
 
@@ -242,7 +334,7 @@ derived from each once):
 ## Open questions for mbrock
 
 - Start the logic now, or finish Campaign 4's hi.c first?
-- Iris: decide now, or at the spike's end as recommended?
+- Iris, as recommended after the spikes, or the hand-rolled logic?
 - Is "frees nothing live at a safepoint" the premise wanted for every
   single-threaded program, or should Runtime.v gain a single-threaded
   runtime type that has it as an axiom with a native test?
