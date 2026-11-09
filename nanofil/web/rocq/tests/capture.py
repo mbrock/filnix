@@ -5,6 +5,7 @@ from html.parser import HTMLParser
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 
 source = r'''(** Unicode λ, nested (* comments *) and a quoted "period.". *)
@@ -162,6 +163,23 @@ Proof. intro b. reflexivity. Qed.
         parser.feed(document)
         parser.close()
         assert not parser.stack, parser.stack
+
+    # Over budget, the largest proof loses its states and keeps its source
+    # view; the others keep their explorers.
+    sys.path.insert(0, str(here))
+    from capture import fit_budget
+    plans = {p["file"]: p for p in json.loads(subprocess.check_output(
+        ["swipl", str(here / "capture_plan.pl"), "Example.v"], cwd=root, stdin=subprocess.DEVNULL))}
+    capped = json.loads(result.read_text())
+    capped["files"] = {"Example.v": capped["files"]["Example.v"]}
+    total = sum(len(json.dumps(v, ensure_ascii=False)) for v in capped["files"]["Example.v"]["states"].values())
+    fit_budget(capped["files"], plans, file_budget=total - 1)
+    capped_capture = root / "capped.json"
+    capped_capture.write_text(json.dumps(capped))
+    subprocess.run(render[:-2] + [f"--states={capped_capture}", render[-1]], check=True, stdin=subprocess.DEVNULL)
+    capped_html = (out / "rocq-Example.html").read_text()
+    assert capped_html.count("rq-proof rq-captured") == html.count("rq-proof rq-captured") - 1
+    assert 'id="Nested.rewriting"' in capped_html
 
     page_source.write_text(source + "\n")
     stale = subprocess.run(render, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)

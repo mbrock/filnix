@@ -146,6 +146,50 @@ def capture_file(work, flags, plan):
     return file, {"sha256": hashlib.sha256(text.encode()).hexdigest(), "states": states}
 
 
+# The site inlines every captured state into its page, and GitHub Pages
+# publishes at most 1 GB, so the states have a budget, in bytes of their
+# JSON: per file, so that a page stays light enough for a phone, and per
+# capture. Past it, the largest proofs lose their states first and keep
+# their source view, without the explorer (rocq_draw.pl's proof_//2).
+# A page's HTML grows by about 16 times its states' JSON (Hi.v: 0.51 MB
+# of states, an 8 MB page); a few huge states render more compactly
+# (ExternalCalls.v: 46.5 MB, 239 MB).
+FILE_BUDGET = 1_000_000
+TOTAL_BUDGET = 16_000_000
+
+
+def proof_keys(proof):
+    """The snapshot keys of one proof: its start, its steps and its end."""
+    return {str(proof["start"]), str(proof["end"]), *(str(e) for e in proof["steps"])}
+
+
+def fit_budget(files, plans, file_budget=FILE_BUDGET, total_budget=TOTAL_BUDGET):
+    """Drop the states of the largest proofs until every file and the whole
+    capture fit their budgets; report what each file lost."""
+    proofs = []
+    for file, entry in files.items():
+        for proof in plans[file]["proofs"]:
+            keys = proof_keys(proof)
+            size = sum(len(json.dumps(entry["states"][k], ensure_ascii=False)) for k in keys)
+            proofs.append((size, file, keys))
+    per_file = dict.fromkeys(files, 0)
+    for size, file, _ in proofs:
+        per_file[file] += size
+    total = sum(per_file.values())
+    dropped = dict.fromkeys(files, 0)
+    for size, file, keys in sorted(proofs, key=lambda p: -p[0]):
+        if per_file[file] > file_budget or total > total_budget:
+            for k in keys:
+                files[file]["states"].pop(k, None)
+            per_file[file] -= size
+            total -= size
+            dropped[file] += 1
+    for file in files:
+        if dropped[file]:
+            stamp(f"proof capture: {file}: over budget, {dropped[file]} proofs without states")
+    stamp(f"proof capture: {total} bytes of states")
+
+
 def dependencies(work, flags, files):
     """Each file's imports among files, as rocq dep (coqdep) reads them."""
     out = subprocess.run(["coqdep", *flags, *files], cwd=work, check=True,
@@ -244,6 +288,7 @@ def capture(project, output, replay=""):
                     else:
                         data["files"][result[0]] = result[1]
         data["files"] = {f: data["files"][f] for f in replayed}
+        fit_budget(data["files"], by_file)
     output.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n")
 
 

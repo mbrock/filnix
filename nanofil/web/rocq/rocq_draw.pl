@@ -815,10 +815,11 @@ line_link(_) --> [].
 %% Proofs
 
 %  Real proof states are an optional build input, never reconstructed
-%  from tactic names. Unexecuted prose snippets retain their source view.
+%  from tactic names. Unexecuted prose snippets, and proofs whose states
+%  the capture's budget dropped, retain their source view.
 proof_(S, pf(Steps, End)) -->
-    { nb_getval(rq_states, States), States \== none, !,
-      arg(1, S, _-Start), atom_number(Key, Start), get_dict(Key, States, Initial),
+    { nb_getval(rq_states, States), States \== none,
+      arg(1, S, _-Start), atom_number(Key, Start), get_dict(Key, States, Initial), !,
       End = qed(_-Finish, Kw),
       include([X]>>(X = step(_, _, _)), Steps, Tacs), length(Tacs, N),
       foldl(step_depth, Steps, Rows, [], _),
