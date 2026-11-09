@@ -1,7 +1,7 @@
-(** The resource model both logic spikes share (docs/logic.md): the
-    pieces of memory an assertion may own, keyed by [[identity]], and
-    the facts about the whole memory that make owning them mean
-    something.
+(** The resource model of the program logic (Logic.v, docs/logic.md),
+    shared with the logic spikes: the pieces of memory an assertion may
+    own, keyed by [[identity]], and the facts about the whole memory
+    that make owning them mean something.
 
     A piece is an object's life ([PLive]), or one byte ([PByte]) or
     [[aux]] slot ([PAux]) at an offset in it. Pieces are keyed by

@@ -44,8 +44,7 @@
     pieces ([star_emp_elim]). *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Ops.
-From Spike Require Import Pieces.
+From Nanofil Require Import Term Syntax Values Memory Runtime Ops Pieces.
 Import ListNotations.
 Open Scope Z_scope.
 

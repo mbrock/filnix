@@ -227,7 +227,7 @@ lemma of Pieces.v from Runtime.v's `collector_live` (a safepoint
 changes no region), so the theorem holds for every runtime; `Print
 Assumptions` of the interpreter's corollary is closed for both.
 
-They share [Pieces.v](../rocq/spikes/Pieces.v), the resource model:
+They share [Pieces.v](../rocq/theories/Pieces.v), the resource model:
 pieces keyed by [identity](concepts/identity.md) (an object's life,
 one byte, one aux slot at an offset), the global fact that live objects
 are disjoint, and `safepoint_shape`: a safepoint keeps every region
@@ -336,13 +336,13 @@ tradition. Steps 1 to 3 above are done:
 | Step | Where | Result |
 | --- | --- | --- |
 | 1, step lemmas | [StepRules.v](../rocq/theories/StepRules.v), on the main build | one forward rule per instruction form and jump; Cycle.v 13 s to 4.4 s, Buffer.v 23 s to 7.4 s, Prefix.v 63 s to 45 s through Symbolic.v's `take_step`. Prefix's remaining time is mostly dropping wraps (`mod 2^64`) from values |
-| 2, the language | [Language.v](../rocq/spikes/Language.v) | an `ectxi_language` whose context is the callers stack; fuel in the state; a return to a caller is two Iris steps; endings that are neither failures nor returns stall; `wp_never_panics` proves Panics.v's `never_panics` |
-| 2, the rules | [Logic.v](../rocq/spikes/Logic.v) | the identity-keyed ghost heap and its state interpretation; one lifting lemma closes safepoints and stalls by Löb; a weakest-precondition rule per instruction (`wp_check`, `wp_raw_load_pointer`, `wp_alloc`, `wp_call_bind`, ...) |
+| 2, the language | [Language.v](../rocq/theories/Language.v) | an `ectxi_language` whose context is the callers stack; fuel in the state; a return to a caller is two Iris steps; endings that are neither failures nor returns stall; `wp_never_panics` proves Panics.v's `never_panics` |
+| 2, the rules | [Logic.v](../rocq/theories/Logic.v), [Heap.v](../rocq/theories/Heap.v) | the identity-keyed ghost heap (Heap.v) and its state interpretation; one lifting lemma closes safepoints and stalls by Löb; a weakest-precondition rule per instruction (`wp_check`, `wp_raw_load_pointer`, `wp_alloc`, `wp_call_bind`, ...) |
 | 2, the list sum | [ListSumLogic.v](../rocq/spikes/ListSumLogic.v) | `sum`'s triple `{{{ lst p xs }}} sum {{{ RET Ret (list_sum xs); lst p xs }}}` hands the list back and states the result; `listsum` uses it through `wp_call_bind`; 14 s, against 38 s for the spike on the old language |
 | 3, rendering | dterm-rocq (another thread) | Iris notation and proof-mode states on the site |
+| 4, the main build | [_RocqProject](../rocq/_RocqProject), nix/rocq.nix | Pieces.v, Heap.v, Language.v and Logic.v are part of the model, built and parse-checked by the quick gate with stdpp and Iris from the pinned nixpkgs; they add about 13 s of compile time off the critical path. The worked examples stay in spikes/ |
 
-Next is step 4, Iris in the main build. The premise `keeps_live` is
-gone: only a signal handler the program installed, or a thread it
+The premise `keeps_live` is gone: only a signal handler the program installed, or a thread it
 started, frees a live object, so Runtime.v's safepoint axiom is now the
 collector's alone, `collector_live`, which makes `keeps_live` a lemma.
 Handlers are program code, to be verified under an ownership

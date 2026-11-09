@@ -343,7 +343,7 @@ The postcondition is `True`: never_panics is a safety property, so what a run re
 
 ### Resources keyed by identity
 
-What can a proof own in Fil-C's memory? [Pieces.v](../rocq/spikes/Pieces.v), shared by both spikes, answers: an object's life, one byte, or one [[aux]] slot, each named by the object's [[identity]] and an offset:
+What can a proof own in Fil-C's memory? [Pieces.v](../rocq/theories/Pieces.v), shared by both spikes, answers: an object's life, one byte, or one [[aux]] slot, each named by the object's [[identity]] and an offset:
 
 ```rocq
 Inductive piece : Type :=

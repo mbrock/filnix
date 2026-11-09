@@ -27,8 +27,8 @@
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
-  Transport Panics Symbolic.
-From Spike Require Import Pieces Sep ListSum.
+  Transport Panics Symbolic Pieces.
+From Spike Require Import Sep ListSum.
 Import ListNotations.
 Open Scope Z_scope.
 

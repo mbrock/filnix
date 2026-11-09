@@ -54,4 +54,8 @@ theories/Cycle.v
 theories/Buffer.v
 theories/HiArtifact.v
 theories/Selected.v
+theories/Pieces.v
+theories/Heap.v
+theories/Language.v
+theories/Logic.v
 theories/Extract.v

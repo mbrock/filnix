@@ -20,8 +20,8 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
-  Symbolic.
-From Spike Require Import Pieces ListSum IrisLang IrisHeap.
+  Symbolic Pieces Heap.
+From Spike Require Import ListSum IrisLang IrisHeap.
 Open Scope Z_scope.
 Open Scope list_scope.
 

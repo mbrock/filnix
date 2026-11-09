@@ -1,7 +1,8 @@
-# The logic spikes (rocq/spikes, docs/logic.md): two small program
-# logics proving the same program never panics, one hand-rolled and one
-# on Iris. Off the main path: nothing else imports them, the quick gate
-# and CI do not build this, and only this derivation depends on Iris.
+# The logic spikes (rocq/spikes, docs/logic.md): the same program proved
+# never to panic by a hand-rolled logic, by Iris on an early language,
+# and by the program logic in theories (Logic.v). Off the main path:
+# nothing else imports them, and the quick gate and CI do not build
+# this; the program logic itself is in the model.
 #
 #   nix build -L .#checks.x86_64-linux.nanofil-logic-spikes
 #

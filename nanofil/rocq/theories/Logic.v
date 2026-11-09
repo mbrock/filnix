@@ -1,11 +1,11 @@
-(** Spike: the program logic of nanofil's core [[machine]] on the
+(** The program logic of nanofil's core [[machine]] on the
     language of Language.v, whose evaluation context is the stack of
     callers: a ghost heap of pieces as Iris's state interpretation, a
     small assertion vocabulary over it, and one weakest-precondition
     rule per instruction form, each the lifted reading of its rule in
     StepRules.v.
 
-    The ghost heap is IrisHeap.v's: Iris's [gen_heap] from Pieces.v's
+    The ghost heap is Heap.v's: Iris's [gen_heap] from Pieces.v's
     pieces to their values, which [heap_interp] keeps in agreement with
     the memory. The vocabulary is [live] (an object's life), [icell] (an
     8-byte integer in an object), [pcell] (a pointer stored in an
@@ -31,8 +31,7 @@ From iris.program_logic Require Import language ectx_language ectxi_language wea
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime ExternalCalls Ops Semantics Run
-  Machine Panics StepRules.
-From Spike Require Import Pieces IrisHeap Language.
+  Machine Panics StepRules Pieces Heap Language.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -62,7 +61,7 @@ Proof. intros [E _] H1 H2 x Hx. exists b, reg. split; [exact E | lia]. Qed.
 
 (** A pointer store at offset o of the live object b (aux, then the
     address bytes): its aux slot and its cell hold the pointer, and
-    nothing else changes. IrisHeap.v's [ptr_store_ok] at any offset. *)
+    nothing else changes. Heap.v's [ptr_store_ok] at any offset. *)
 Lemma pcell_store_ok m b reg o a c x :
   live_disjoint m -> live_at m b reg -> 0 <= o -> b + o + 8 <= r_end reg -> a = b + o ->
   all_agree (store_bytes (store_aux m a c) a 8 x) ((PAux b o, VAux c) :: cell b o x) /\
@@ -90,7 +89,6 @@ Qed.
 Module Logic (R : Runtime).
 Module L := Language R.
 Module SS := SafepointShape R.
-Module IH := IrisHeap R.
 Module P := L.P.
 Module RM := L.RM.
 Import L.
@@ -119,22 +117,22 @@ Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 
 (** [live] b reg: owning the life of the object of identity b, which is
     live with the region reg ([[live]]). *)
-Definition live (b : Z) (reg : region) : iProp Σ := IH.pts [(PLive b, VLive reg)].
+Definition live (b : Z) (reg : region) : iProp Σ := pts [(PLive b, VLive reg)].
 
 (** [icell] b o v: owning the 8 bytes at offset o of the object b,
     which hold the 64-bit integer v, little-endian. *)
-Definition icell (b o v : Z) : iProp Σ := IH.pts (cell b o v).
+Definition icell (b o v : Z) : iProp Σ := pts (cell b o v).
 
 (** [pcell] b o x: owning the pointer x stored at offset o of the
     object b: the 8 bytes of its address and the [[aux]] slot holding
     its capability. *)
 Definition pcell (b o : Z) (x : ptr) : iProp Σ :=
-  IH.pts ((PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x)).
+  pts ((PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x)).
 
 (** [obj] b q: owning every piece of the object of identity b just
     allocated for the request q: its life, a zero byte and an empty aux
     slot at each offset. *)
-Definition obj (b : Z) (q : alloc_req) : iProp Σ := IH.pts (obj_ps b q).
+Definition obj (b : Z) (q : alloc_req) : iProp Σ := pts (obj_ps b q).
 
 (** [live_cap] c reg: owning the life of the object c names, with the
     region reg, if c names one; nothing if c is no capability. A
@@ -148,10 +146,10 @@ Definition live_cap (c : cap) (reg : region) : iProp Σ :=
   end.
 
 (** What owned pieces tell about the memory of σ: [owned_facts]. *)
-Lemma pts_facts σ ps : heap_interp σ -∗ IH.pts ps -∗ ⌜owned_facts ps (ls_mem σ)⌝.
+Lemma pts_facts σ ps : heap_interp σ -∗ pts ps -∗ ⌜owned_facts ps (ls_mem σ)⌝.
 Proof.
   iIntros "Hσ Hps". iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr).
-  iDestruct (IH.pts_lookup with "Hh Hps") as %Hl. iPureIntro.
+  iDestruct (pts_lookup with "Hh Hps") as %Hl. iPureIntro.
   split; [|split; [exact Hd | exact (R.address_space _ _ Hr)]].
   apply all_agree_intro. intros l v Hin. apply Ha. apply Hl. exact Hin.
 Qed.
@@ -251,7 +249,7 @@ Lemma wp_write ps ps' fr fr' cs' (upd : mem -> mem) Φ :
      Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' cs' (upd m) fuel) /\
      m_regions (upd m) = m_regions m /\ kept m (upd m) /\
      all_agree (upd m) ps' /\ frame_ok ps'.*1 m (upd m)) ->
-  IH.pts ps -∗ ▷ (IH.pts ps' -∗ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }}) -∗
+  pts ps -∗ ▷ (pts ps' -∗ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }}) -∗
   WP (ERun fr : lexpr) {{ Φ }}.
 Proof.
   intros Hk Hs. iIntros "Hps HK". iCombine "Hps HK" as "H".
@@ -265,7 +263,7 @@ Proof.
       cbn [ls_mem ls_fuel ls_rt] in E'; rewrite E in E'; try discriminate E'.
     injection E' as <-. cbn [conf_expr conf_state c_frame c_callers c_mem c_fuel].
     iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr). cbn [ls_mem ls_rt] in Ha, Hd, Hr.
-    iMod (IH.pts_update with "Hh Hps") as "[Hh Hps]"; [exact Hk|].
+    iMod (pts_update with "Hh Hps") as "[Hh Hps]"; [exact Hk|].
     iModIntro. iSplitL "Hh".
     + iExists (overwrite ps' h). iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt]. split; [|split].
       * intros l v Hl. destruct (lookup_overwrite _ _ _ _ Hl) as [Hin | [Hn Hh]].
@@ -282,7 +280,7 @@ Qed.
 Lemma wp_read ps fr fr' cs' Φ :
   (forall m fuel, owned_facts ps m ->
      Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' cs' m fuel)) ->
-  IH.pts ps -∗ ▷ (IH.pts ps -∗ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }}) -∗
+  pts ps -∗ ▷ (pts ps -∗ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }}) -∗
   WP (ERun fr : lexpr) {{ Φ }}.
 Proof.
   intros Hs. apply (wp_write ps ps fr fr' cs' (fun m => m)); [reflexivity|].
@@ -296,7 +294,7 @@ Lemma wp_pure_next fr fr' cs' Φ :
   (forall m fuel, Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' cs' m fuel)) ->
   ▷ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }} -∗ WP (ERun fr : lexpr) {{ Φ }}.
 Proof.
-  intros Hs. iIntros "H". iApply (wp_read [] fr fr' cs' with "[] [H]"); [|by rewrite /IH.pts|].
+  intros Hs. iIntros "H". iApply (wp_read [] fr fr' cs' with "[] [H]"); [|by rewrite /pts|].
   - intros m fuel _. apply Hs.
   - iNext. iIntros "_". iExact "H".
 Qed.
@@ -376,8 +374,8 @@ Proof.
     rewrite (op_raw_load m k p off).
     + rewrite Ha (cell_load m b reg o v (b + o) Hlv Hcl eq_refl). reflexivity.
     + rewrite Hp Ha. apply (access_obj _ _ reg); [exact (proj1 Hlv) | lia | lia | apply Z.mod_1_r].
-  - rewrite IH.pts_app. iFrame.
-  - iNext. iIntros "H". rewrite IH.pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
+  - rewrite pts_app. iFrame.
+  - iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
 Qed.
 
 (** A step to the next configuration, with the callers cs' below its
@@ -452,7 +450,7 @@ Proof.
   intros Hv Ha Hp Hoff. iIntros "Hl Hc HK".
   iApply (wp_write ([(PLive b, VLive reg)] ++ cell b o w) ([(PLive b, VLive reg)] ++ cell b o w')
             _ _ [] (fun m => store_bytes m (b + o) 8 w') with "[Hl Hc] [HK]");
-    [reflexivity | | rewrite IH.pts_app; iFrame |].
+    [reflexivity | | rewrite pts_app; iFrame |].
   - intros m fuel (Hf & Hd & _). apply all_agree_app in Hf as [[Hlv _] Hcl].
     cbn [agree_piece fst snd] in Hlv. destruct (cell_bounds _ _ _ _ _ Hlv Hcl) as [Ho He].
     destruct (cell_store_ok m b reg o (b + o) w' Hd Hlv Ho He eq_refl) as [Hcs Hfr].
@@ -464,7 +462,7 @@ Proof.
     + apply all_agree_app. split; [|exact Hcs]. cbn [all_agree agree_piece fst snd].
       split; [apply (live_at_regions m); [reflexivity|exact Hlv] | exact I].
     + eapply frame_ok_mono; [|exact Hfr]. intros k Hin. rewrite fmap_app. apply elem_of_app. by right.
-  - iNext. iIntros "H". rewrite IH.pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
+  - iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
 Qed.
 
 (** A raw pointer store by the plain protocol of the pointer xp, which
@@ -485,7 +483,7 @@ Proof.
             ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap xp)) :: cell b o (ptr_addr xp))
             _ _ [] (fun m => store_bytes (store_aux m (b + o) (ptr_cap xp)) (b + o) 8 (ptr_addr xp))
             with "[Hl Hc] [HK]");
-    [reflexivity | | rewrite IH.pts_app; iFrame |].
+    [reflexivity | | rewrite pts_app; iFrame |].
   - intros m fuel (Hf & Hd & _). apply all_agree_app in Hf as [[Hlv _] [_ Hcl]].
     cbn [agree_piece fst snd] in Hlv. destruct (cell_bounds _ _ _ _ _ Hlv Hcl) as [Ho He].
     destruct (pcell_store_ok m b reg o (b + o) (ptr_cap xp) (ptr_addr xp) Hd Hlv Ho He eq_refl)
@@ -499,7 +497,7 @@ Proof.
     + apply all_agree_app. split; [|exact Hcs]. cbn [all_agree agree_piece fst snd].
       split; [apply (live_at_regions m); [reflexivity|exact Hlv] | exact I].
     + eapply frame_ok_mono; [|exact Hfr]. intros k Hin'. rewrite fmap_app. apply elem_of_app. by right.
-  - iNext. iIntros "H". rewrite IH.pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
+  - iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
 Qed.
 
 (** A heap allocation of size bytes, size read as the only argument,
@@ -530,7 +528,7 @@ Proof.
     iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Hag & Hd & Hr). cbn [ls_mem ls_rt] in Hag, Hd, Hr.
     destruct (R.fresh_allocation _ _ _ _ _ Hr Hal Hex Ha) as [Hf Hr'].
     pose proof Hf as (Hpos & Hmod & _ & Hn & _).
-    iMod (IH.pts_alloc h (obj_ps base q) with "Hh") as "[Hh Hps]".
+    iMod (pts_alloc h (obj_ps base q) with "Hh") as "[Hh Hps]".
     { apply obj_ps_nodup. }
     { intros l' v Hin. destruct (h !! l') as [v'|] eqn:E; [|reflexivity]. exfalso.
       pose proof (agree_piece_registered _ _ _ (Hag l' v' E)) as Hreg.

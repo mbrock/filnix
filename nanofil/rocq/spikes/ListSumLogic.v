@@ -16,8 +16,8 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
-  StepRules Symbolic.
-From Spike Require Import Pieces ListSum IrisHeap Language Logic.
+  StepRules Symbolic Pieces Heap Language Logic.
+From Spike Require Import ListSum.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -327,8 +327,8 @@ Proof.
   assert (E : obj_ps base (heap_req 16 16) =
      [(PLive base, VLive (node_reg base))] ++ cell base 0 0 ++ cell base 8 0 ++
      [(PAux base 0, VAux CNone)] ++ ((fun i => (PAux base i, VAux CNone)) <$> seqZ 1 15)) by reflexivity.
-  rewrite E !IH.pts_app. iIntros "(Hl & H0 & H8 & Ha & _)". iFrame "Hl H8".
-  rewrite (IH.pts_app [_] (cell base 0 0)). iFrame.
+  rewrite E !pts_app. iIntros "(Hl & H0 & H8 & Ha & _)". iFrame "Hl H8".
+  rewrite (pts_app [_] (cell base 0 0)). iFrame.
 Qed.
 
 (** `listsum`'s loop, from the point after its head's phis: with

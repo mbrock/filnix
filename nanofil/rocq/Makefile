@@ -1,7 +1,8 @@
 # Build the Rocq model and its extracted driver (docs/formal.md, Campaign 1).
 #   make            compile theories/, extract, link ./nanofil-model
 #   make clean
-# Needs rocq, the Rocq stdlib, ocamlfind and zarith (nix/rocq.nix).
+# Needs rocq, the Rocq stdlib, stdpp and Iris (Language.v, Logic.v),
+# ocamlfind and zarith (nix/rocq.nix).
 all: nanofil-model
 
 Makefile.rocq: _RocqProject

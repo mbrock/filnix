@@ -12,7 +12,9 @@
 # in the same matrix, and of the tests/c/prog programs with aliases and
 # weak, thread-local or constructor data (rocq/valid.sh). Both check that
 # the modules the program proofs are about are what nanofil makes today
-# (rocq/programs.sh).
+# (rocq/programs.sh). The program logic (Language.v, Logic.v) is built on
+# Iris, so the model and the parse check take stdpp and Iris from the
+# same nixpkgs; the extracted driver does not use them.
 {
   pkgs,
   filcc,
@@ -36,6 +38,8 @@ let
     nativeBuildInputs = [
       rocq.rocq-core
       rocq.stdlib
+      rocq.stdpp
+      rocq.iris
       ocamlPackages.ocaml
       ocamlPackages.findlib
       pkgs.python3
@@ -101,6 +105,8 @@ pkgs.runCommandCC
       pkgs.python3
       rocq.rocq-core
       rocq.stdlib
+      rocq.stdpp
+      rocq.iris
     ];
     passthru = { inherit model; };
   }

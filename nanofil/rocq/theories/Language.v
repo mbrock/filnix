@@ -1,12 +1,13 @@
-(** Spike: nanofil's core [[machine]] as an Iris language whose
+(** Nanofil's core [[machine]] as an Iris language whose
     evaluation context is the stack of callers, and Iris [[adequacy]]
     as a proof of [never_panics].
 
-    IrisLang.v made the whole configuration one expression, so a call
-    was just another step and a function could have no specification of
-    its own. Here the callers are Iris's evaluation context, so a call
-    is [wp_bind] and a function's specification is an ordinary Hoare
-    triple that hands resources back to its caller:
+    The first logic spike's IrisLang.v made the whole configuration one
+    expression, so a call was just another step and a function could
+    have no specification of its own. Here the callers are Iris's
+    evaluation context, so a call is [wp_bind] and a function's
+    specification is an ordinary Hoare triple that hands resources back
+    to its caller:
     - an expression is a running [[frame]] ([ERun]), the [[outcome]] an
       invocation returned ([EEnd], the value), or an expression running
       as the callee of a suspended caller frame ([EWait]); the one
