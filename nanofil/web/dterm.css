@@ -757,7 +757,7 @@ dl.concept-index dd { margin: 0; color: var(--ink); }
   dl.concept-index { grid-template-columns: minmax(0, 1fr); gap: 0.1rem; }
   dl.concept-index dd { margin-bottom: 0.6rem; }
 }
-/* A concept's kind: Fil-C's own, or nanofil's. */
+/* A concept's kind: Fil-C's own, nanofil's, or Iris's. */
 .kind {
   display: inline-block; vertical-align: 0.12em; margin-left: 0.15em;
   padding: 0 0.32em; border: 1px solid currentColor; border-radius: 2px;
@@ -766,9 +766,11 @@ dl.concept-index dd { margin: 0; color: var(--ink); }
 }
 .kind-filc { color: #1f6f5c; }
 .kind-nanofil { color: #6a5a8e; }
+.kind-iris { color: #8a5a1c; }
 h1 .kind, .concept-aliases > .kind:first-child { margin-left: 0; }
 .kind-dot { display: inline-block; width: 0.38em; height: 0.38em; margin-left: 0.35em; border-radius: 50%;
   background: #1f6f5c; vertical-align: 0.15em; }
+.kind-dot-iris { background: #8a5a1c; }
 p.concept-upstream { font-size: 0.9rem; margin: -0.8rem 0 1.2rem; overflow-wrap: anywhere; }
 p.concept-upstream .label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
 h3.concept-group { margin: 1.8rem 0 0.3rem; }

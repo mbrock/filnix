@@ -64,7 +64,7 @@ cp -r "$src/nanofil/docs/dterm" "$out/nanofil/docs/"
 for md in "$src"/nanofil/docs/*.md; do
   name=$(basename "$md" .md)
   echo "$(date -u +%FT%TZ) site: render nanofil/docs/$name.md"
-  if [ "$name" = guide ] || [ "$name" = formal ] || [ "$name" = filc ]; then
+  if [ "$name" = guide ] || [ "$name" = formal ] || [ "$name" = filc ] || [ "$name" = iris ]; then
     # Drawn by dterm beside the modules; this address forwards there.
     printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=../%s.html"><link rel="canonical" href="../%s.html"><a href="../%s.html">%s</a>\n' \
       "$name" "$name" "$name" "$name" >"$out/nanofil/docs/$name.html"

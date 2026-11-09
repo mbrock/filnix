@@ -7,7 +7,8 @@ the model already has that the proposal builds on, where the proposal
 misreads the model, what it would cost, and a recommendation. Beyond what
 "What exists" lists, only the two list-sum spikes are built, off the
 main path. The choice of Iris, and whether to start at all, is
-mbrock's.
+mbrock's. [iris.md](iris.md) explains Iris itself, its history and
+model, and reads the Iris spike.
 
 ## The proposal in one paragraph
 

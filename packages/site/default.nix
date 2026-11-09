@@ -80,7 +80,7 @@ let
         cp ${src}/nanofil/web/dterm.css ${src}/nanofil/web/dterm.js $out/
         swipl ${src}/nanofil/web/dterm.pl $out ${src}/nanofil/src \
           --doc=${src}/nanofil/docs/guide.md --doc=${src}/nanofil/docs/formal.md \
-          --doc=${src}/nanofil/docs/filc.md \
+          --doc=${src}/nanofil/docs/filc.md --doc=${src}/nanofil/docs/iris.md \
           --concepts=${src}/nanofil/docs/concepts --rocq=${src}/nanofil/rocq/theories </dev/null
       '';
   rocqPages =

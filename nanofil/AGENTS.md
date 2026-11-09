@@ -40,7 +40,7 @@ nanofil/tests/arith.sh slice|complete|random SEED COUNT DEPTH  # const_eval vs I
 nanofil/tests/snapshot.sh [REV]                # every output identical to REV's (default HEAD)
 nanofil/tests/guide.sh [--check]               # regenerate (or check) the outputs in docs/guide.md and README.md
 swipl nanofil/tests/docs.pl -- nanofil/src     # every module has a header and every export PlDoc
-(cd nanofil && swipl web/dterm.pl --check docs/guide.md docs/formal.md docs/filc.md src --concepts=docs/concepts --rocq=rocq/theories)  # the documents', concepts' and [[concept]] references resolve
+(cd nanofil && swipl web/dterm.pl --check docs/guide.md docs/formal.md docs/filc.md docs/iris.md src --concepts=docs/concepts --rocq=rocq/theories)  # the documents', concepts' and [[concept]] references resolve
 (cd nanofil/src && ../bin/nanofil --script ../tests/gen.pl SEED COUNT </dev/null) >gen.ir  # random IR corpus
 nix build .#checks.x86_64-linux.nanofil        # everything, in one build (about 45 min); CI runs it in 8 shards after each push
 nix build .#checks.x86_64-linux.nanofil-rocq   # quick: model, parse.sh, small corpus; base verdicts only

@@ -27,10 +27,11 @@
 %  alternatives (the first is its title) and the lines of its text.
 %  concept_key(Key, Id): a normalized name of Id.
 %  concept_kind(Id, Kind, Rest): Id is a general Fil-C concept (Kind
-%  'Fil-C') or nanofil's own ('nanofil'), from its first line after the
-%  title, **Fil-C** or **nanofil**; Rest is the Markdown after it on that
-%  line, after a ·: the upstream documentation and source, or the
-%  nearest Fil-C concept.
+%  'Fil-C'), nanofil's own ('nanofil'), or one of Iris and the program
+%  logics before it ('Iris'), from its first line after the title,
+%  **Fil-C**, **nanofil** or **Iris**; Rest is the Markdown after it on
+%  that line, after a ·: the upstream documentation and source, the
+%  nearest Fil-C concept, or the papers.
 :- dynamic concept/3, concept_key/2, concept_kind/3.
 
 concepts_loaded :- concept(_, _, _), !.
@@ -59,10 +60,10 @@ load_concept(Id, Path) :-
     atom_string(Id, IdS),
     forall(member(N, [IdS|Names]), add_key(N, Id, Path)).
 
-%  kind_line(+Line, -Kind, -Rest): **Fil-C** or **nanofil**, then
-%  optionally a · and Rest.
+%  kind_line(+Line, -Kind, -Rest): **Fil-C**, **nanofil** or **Iris**,
+%  then optionally a · and Rest.
 kind_line(L, Kind, Rest) :-
-    member(Mark-Kind, ["**Fil-C**"-'Fil-C', "**nanofil**"-nanofil]),
+    member(Mark-Kind, ["**Fil-C**"-'Fil-C', "**nanofil**"-nanofil, "**Iris**"-'Iris']),
     string_concat(Mark, R0, L), !,
     split_string(R0, "", " ", [R1]),
     (   R1 == "" -> Rest = ""

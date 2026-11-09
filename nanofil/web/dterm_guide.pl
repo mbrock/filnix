@@ -86,6 +86,7 @@ doc_name(Path, Doc) :- file_base_name(Path, F), file_name_extension(Doc, _, F).
 doc_label(guide, "the guide") :- !.
 doc_label(formal, "the formal campaign") :- !.
 doc_label(filc, "How Fil-C works") :- !.
+doc_label(iris, "How Iris works") :- !.
 doc_label(Doc, Doc).
 
 read_doc(Path, doc(Doc, Dir, Blocks)) :-
@@ -776,7 +777,7 @@ render_concept_body(Dir, Id) :-
     ),
     assertz(concept_meta(Id, Meta)),
     (   concept_kind(Id, _, _) -> true
-    ;   broken("concept ~w is not marked **Fil-C** or **nanofil**", [Id])
+    ;   broken("concept ~w is not marked **Fil-C**, **nanofil** or **Iris**", [Id])
     ),
     (   guide_entry_ref(_) -> true
     ;   nb_setval(guide_sec, sec(top, "", [])),
@@ -818,18 +819,21 @@ concept_nav_item(Current, Id) -->
     { concept_page(Id, Href), concept_title(Id, T), ( Id == Current -> C = "nav-pred current" ; C = "nav-pred" ) },
     el(li, C, el(a, none, [href=Href], ( esc(T), nav_kind(Id) ))).
 
-%  kind_badge(+Id): a small mark, Fil-C or nanofil, after a concept's name.
+%  kind_badge(+Id): a small mark, Fil-C, nanofil or Iris, after a concept's name.
 kind_badge(Id) --> { concept_kind(Id, K, _) }, !, " ", kind_mark(K).
 kind_badge(_) --> [].
 
 kind_mark('Fil-C') --> el(span, "kind kind-filc", [title="a concept of Fil-C itself, not only nanofil's"], "Fil-C").
 kind_mark(nanofil) --> el(span, "kind kind-nanofil", [title="nanofil's own: its compiler, IR, interpreter or Rocq model"], "nanofil").
+kind_mark('Iris') --> el(span, "kind kind-iris", [title="Iris and the program logics before it: it holds for any language, not only Fil-C"], "Iris").
 
-%  In the list of concepts only Fil-C's are marked, by a dot.
+%  In the list of concepts Fil-C's and Iris's are marked, by a dot.
 nav_kind(Id) --> { concept_kind(Id, 'Fil-C', _) }, !, el(span, "kind-dot", [title="Fil-C"], "").
+nav_kind(Id) --> { concept_kind(Id, 'Iris', _) }, !, el(span, "kind-dot kind-dot-iris", [title="Iris"], "").
 nav_kind(_) --> [].
 
 kind_rest_label(Id) --> { concept_kind(Id, 'Fil-C', _) }, !, el(span, label, "Upstream ").
+kind_rest_label(Id) --> { concept_kind(Id, 'Iris', _) }, !, el(span, label, "Sources ").
 kind_rest_label(_) --> el(span, label, "In Fil-C ").
 
 concepts_page(Ids) -->
@@ -847,16 +851,21 @@ concepts_page(Ids) -->
                                     ". Comments and documents link to one with ", el(code, none, "[[name]]"),
                                     " and draw it in place with ", el(code, none, "![[name]]"), ". ",
                                     el(a, none, [href="filc.html"], "How Fil-C works"),
-                                    " tells the Fil-C ones as one story." )),
+                                    " tells the Fil-C ones as one story, and ",
+                                    el(a, none, [href="iris.html"], "How Iris works"),
+                                    " the Iris ones." )),
                       concepts_index )) )) )).
 
 %  concepts_index: every concept, its title and summary.
-%  Fil-C's own concepts first, then nanofil's, then any not yet marked.
+%  Fil-C's own concepts first, then nanofil's, then Iris's, then any not
+%  yet marked.
 concepts_index -->
     { findall(Id, concept_kind(Id, 'Fil-C', _), Fs), findall(Id, concept_kind(Id, nanofil, _), Ns),
+      findall(Id, concept_kind(Id, 'Iris', _), Is),
       findall(Id, ( concept(Id, _, _), \+ concept_kind(Id, _, _) ), Us) },
     concept_group(Fs, "Fil-C", "Concepts of Fil-C itself: they hold of any Fil-C program, whatever compiled it, and link to Fil-C's documentation and source."),
     concept_group(Ns, "nanofil", "nanofil's own: its IR, validator, interpreter and Rocq model. Each names the Fil-C concept it builds on."),
+    concept_group(Is, "Iris", "Iris and the program logics before it: ideas that hold for any language. Each says where nanofil meets it; How Iris works tells them as one story."),
     concept_group(Us, "Unmarked", "").
 
 concept_group([], _, _) --> !, [].
