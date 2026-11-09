@@ -78,6 +78,20 @@ Ltac goal_divides :=
   | |- context[_ / _] => idtac
   end.
 
+(** Replace each remainder x mod m by a literal m with a new variable
+    in [0, m), everywhere. Cheaper for [lia] than the division equations
+    [Z.to_euclidean_division_equations] gives, and enough wherever the
+    remainder's bounds are all an argument needs. *)
+Ltac mod_atoms :=
+  repeat match goal with
+  | |- context[?x mod ?m] =>
+      let H := fresh "Hmod" in pose proof (Z.mod_pos_bound x m eq_refl) as H;
+      let r := fresh "r" in set (r := x mod m) in *; clearbody r
+  | H0 : context[?x mod ?m] |- _ =>
+      let H := fresh "Hmod" in pose proof (Z.mod_pos_bound x m eq_refl) as H;
+      let r := fresh "r" in set (r := x mod m) in *; clearbody r
+  end.
+
 (** The arithmetic oracle: linear arithmetic over the integers, with
     the powers of two the model's classes use as numbers, and where
     the goal divides, with remainders and quotients by constants first
@@ -95,7 +109,22 @@ Ltac arith :=
   try change (2 ^ 31) with 2147483648 in *; try change (2 ^ 32) with 4294967296 in *;
   try change (2 ^ 63) with 9223372036854775808 in *;
   try change (2 ^ 64) with 18446744073709551616 in *;
-  first [ lia | goal_divides; Z.to_euclidean_division_equations; lia ].
+  first [ lia | mod_atoms; lia | goal_divides; Z.to_euclidean_division_equations; lia ].
+
+(** [arith] without the division equations: for the side goals that
+    may well be false (dropping a wrap, deciding a comparison), where
+    a failing attempt should cost little. *)
+Ltac arith_fast :=
+  repeat match goal with
+  | H : context[lookup _ _] |- _ => clear H
+  | H : context[m_regions _] |- _ => clear H
+  | H : context[m_bytes _] |- _ => clear H
+  | H : _ |- _ => clearbody H
+  end;
+  try change (2 ^ 31) with 2147483648 in *; try change (2 ^ 32) with 4294967296 in *;
+  try change (2 ^ 63) with 9223372036854775808 in *;
+  try change (2 ^ 64) with 18446744073709551616 in *;
+  first [ lia | mod_atoms; lia ].
 
 (** Fails unless the term t has an `if` in it. *)
 Ltac has_if t := idtac; match t with context[if _ then _ else _] => idtac end.
@@ -251,9 +280,9 @@ Ltac use_facts_goal :=
     value into Euclid's. A wrap it does not drop stays. *)
 Ltac drop_wraps_goal :=
   repeat match goal with
-  | |- context[Z.rem ?x ?y] => assert_fails (has_if x); rewrite (Z.rem_mod_nonneg x y) by arith
-  | |- context[Z.quot ?x ?y] => assert_fails (has_if x); rewrite (Z.quot_div_nonneg x y) by arith
-  | |- context[?x mod ?m] => assert_fails (has_if x); rewrite (Z.mod_small x m) by arith
+  | |- context[Z.rem ?x ?y] => assert_fails (has_if x); rewrite (Z.rem_mod_nonneg x y) by arith_fast
+  | |- context[Z.quot ?x ?y] => assert_fails (has_if x); rewrite (Z.quot_div_nonneg x y) by arith_fast
+  | |- context[?x mod ?m] => assert_fails (has_if x); rewrite (Z.mod_small x m) by arith_fast
   end.
 
 (** Decide each integer comparison in the goal that arithmetic over the
@@ -262,13 +291,13 @@ Ltac decide_compares_goal :=
   repeat match goal with
   | |- context[?a <? ?b] =>
       assert_fails (has_if a); assert_fails (has_if b);
-      first [ rewrite (proj2 (Z.ltb_lt a b)) by arith | rewrite (proj2 (Z.ltb_ge a b)) by arith ]
+      first [ rewrite (proj2 (Z.ltb_lt a b)) by arith_fast | rewrite (proj2 (Z.ltb_ge a b)) by arith_fast ]
   | |- context[?a <=? ?b] =>
       assert_fails (has_if a); assert_fails (has_if b);
-      first [ rewrite (proj2 (Z.leb_le a b)) by arith | rewrite (proj2 (Z.leb_gt a b)) by arith ]
+      first [ rewrite (proj2 (Z.leb_le a b)) by arith_fast | rewrite (proj2 (Z.leb_gt a b)) by arith_fast ]
   | |- context[?a =? ?b] =>
       assert_fails (has_if a); assert_fails (has_if b);
-      first [ rewrite (proj2 (Z.eqb_eq a b)) by arith | rewrite (proj2 (Z.eqb_neq a b)) by arith ]
+      first [ rewrite (proj2 (Z.eqb_eq a b)) by arith_fast | rewrite (proj2 (Z.eqb_neq a b)) by arith_fast ]
   end.
 
 (** Decide each integer comparison in the goal, splitting the goal in
@@ -280,15 +309,15 @@ Ltac split_compares :=
   repeat (match goal with
           | |- context[?a <? ?b] =>
               assert_fails (has_if a); assert_fails (has_if b);
-              first [ rewrite (proj2 (Z.ltb_lt a b)) by arith | rewrite (proj2 (Z.ltb_ge a b)) by arith
+              first [ rewrite (proj2 (Z.ltb_lt a b)) by arith_fast | rewrite (proj2 (Z.ltb_ge a b)) by arith_fast
                     | case (Z.ltb_spec a b); intro ]
           | |- context[?a <=? ?b] =>
               assert_fails (has_if a); assert_fails (has_if b);
-              first [ rewrite (proj2 (Z.leb_le a b)) by arith | rewrite (proj2 (Z.leb_gt a b)) by arith
+              first [ rewrite (proj2 (Z.leb_le a b)) by arith_fast | rewrite (proj2 (Z.leb_gt a b)) by arith_fast
                     | case (Z.leb_spec a b); intro ]
           | |- context[?a =? ?b] =>
               assert_fails (has_if a); assert_fails (has_if b);
-              first [ rewrite (proj2 (Z.eqb_eq a b)) by arith | rewrite (proj2 (Z.eqb_neq a b)) by arith
+              first [ rewrite (proj2 (Z.eqb_eq a b)) by arith_fast | rewrite (proj2 (Z.eqb_neq a b)) by arith_fast
                     | case (Z.eqb_spec a b); intro ]
           end; cbv beta iota).
 

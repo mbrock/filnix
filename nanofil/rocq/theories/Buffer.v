@@ -3,6 +3,8 @@
     (`__builtin_alloca`, which Fil-C places in the collected heap),
     fills it, then sums `p[i % 4]` for i from 0 while i < n, for every
     int n (BufferCode.v, checked current by rocq/programs.sh).
+    BufferLogic.v proves the same theorem through the Iris program
+    logic.
 
     The proof is Cycle.v's: an assertion at each of the function's 32
     points ([buffer_assert]), and one [[step]] from any configuration

@@ -58,4 +58,5 @@ theories/Pieces.v
 theories/Heap.v
 theories/Language.v
 theories/Logic.v
+theories/BufferLogic.v
 theories/Extract.v
