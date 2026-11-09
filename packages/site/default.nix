@@ -88,7 +88,10 @@ let
       ''
         mkdir -p $out
         cp ${src}/nanofil/web/rocq/dterm-rocq.css ${src}/nanofil/web/rocq/dterm-rocq.js $out/
-        mapfile -t rocq < <(cd ${src} && find nanofil -name '*.v' | sort)
+        # Not the logic spikes (nanofil/rocq/spikes): they need Iris, so
+        # capture.nix records no proof states for them, and a page under
+        # nanofil/rocq/ must have its states.
+        mapfile -t rocq < <(cd ${src} && find nanofil -name '*.v' -not -path 'nanofil/rocq/spikes/*' | sort)
         swipl ${src}/nanofil/web/rocq/dterm_rocq.pl $out ${src} \
           --states=${proofStates} --prolog=${src}/nanofil/src \
           --concepts=${src}/nanofil/docs/concepts "''${rocq[@]}" </dev/null
