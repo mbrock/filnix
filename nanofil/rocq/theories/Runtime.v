@@ -422,9 +422,8 @@ Proof. intros a align H. unfold align_up. apply Z.mod_mul. lia. Qed.
     (`alloc_base/6`), free as Memory.v states it ([free_res]), and no
     other thread or collector. It proves every axiom, so the module
     type is consistent; the extracted model is [Driver InterpRuntime]
-    (Transport.v). It is left unsealed, so that what it does at a
-    safepoint (nothing) can be read off it (Persistence.v's
-    [interp_spares]); Transport.v's [Driver InterpRuntime] and
+    (Transport.v). It is left unsealed, so that what it does can be
+    read off it; Transport.v's [Driver InterpRuntime] and
     Persistence.v's [Persistence InterpRuntime] check it against
     [Runtime]. *)
 Module InterpRuntime.

@@ -49,7 +49,7 @@ types, then hand proofs, each a fragment of the one below, so Campaigns
 | `compute_step`, `block_fact`, `show_facts` | [Symbolic.v](../rocq/theories/Symbolic.v) | symbolic execution of one step with the environment, memory and fuel abstract; the work a wp rule per instruction would do once |
 | `cycle_never_panics` | [Cycle.v](../rocq/theories/Cycle.v) | Floyd assertions at each of 19 points; a loop of any trip count |
 | `buffer_never_panics` | [Buffer.v](../rocq/theories/Buffer.v) | a heap object at any fresh base; `holds_buffer` is `meta b 32 Heap` and `live b` written as one non-separating fact; it once took `safepoint_keeps_live`, the instance premise the proposal asks for, which Runtime.v's `collector_live` now makes a lemma |
-| `valid_no_unchecked` | [Soundness.v](../rocq/theories/Soundness.v) | Campaign 3: no run of a valid module that starts ready reaches `unchecked`; under `spares`, which every runtime meets (`spares_any`), and stuck past any external call but free |
+| `valid_no_unchecked` | [Soundness.v](../rocq/theories/Soundness.v) | Campaign 3: no run of a valid module that starts ready reaches `unchecked`, over every runtime; stuck past any external call but free |
 | ExternalCalls.v, ExternalMachine.v, Hi.v, Program.v | Campaign 4 | relational libc contracts with writable roots (a hand-rolled frame), a labelled machine, hi.c's body safety under `stdio_stable` |
 
 So the degenerate logic and its adequacy exist, and three programs are
@@ -98,8 +98,8 @@ object means rewriting it.
 ## Where it misreads the model
 
 - **"Raw accesses need no rule" has hypotheses.** `valid_no_unchecked`
-  needs the module valid, the run started ready, and `spares` (which
-  every runtime now meets, by `spares_any`), and in
+  needs the module valid and the run started ready (it no longer takes
+  `spares`, which every runtime meets, by `spares_any`), and in
   the core machine an external call other than free is stuck, so it says
   nothing past one. For hi.c or Hello it must hold on Campaign 4's
   labelled machine (ExternalMachine.v preserves Campaign 3's invariants

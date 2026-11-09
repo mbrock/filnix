@@ -567,19 +567,19 @@ Qed.
     [checked_module] md, started in a memory where the runtime is
     [[ready]], a frame that is not [[doomed]] runs no [[raw access]], and
     no raw call, to an [[unchecked]] outcome, `hull_covered/7` included.
-    It assumes the runtime [spares] the pass's facts at
-    [[poll|safepoints]] (see
+    Every runtime spares the pass's facts at [[poll|safepoints]]
+    ([spares_any]; see
     [The evidence invariant over runs](../../docs/rocq.md#the-evidence-invariant-over-runs)). *)
 Theorem run_access_checked : forall ge md f xs fr m fuel s0 c s l i rest j why,
-  checked_module md -> ge_module ge = md -> ge_free ge = R.free -> P.I.spares ge md ->
+  checked_module md -> ge_module ge = md -> ge_free ge = R.free ->
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
   P.I.RM.mreachable ge (mkConfig fr [] m fuel, s0) (c, s) ->
   fr_doomed (c_frame c) = None -> fr_at (c_frame c) = Exec l (i :: rest) j ->
   (raw_access i <> None \/ exists r cl args, i = RawCall r cl args) ->
   inst_step ge (c_frame c) (c_mem c) i <> Some (IStop (Unchecked why)).
 Proof.
-  intros ge md f xs fr m fuel s0 c s l i rest j why Hmd Hge Hfree Hsp Hin Hcf H0 Hreach Hd Ha Hi.
-  destruct (P.run_access_not_unchecked _ _ _ _ _ _ _ _ _ _ _ _ _ _ why Hmd Hge Hfree Hsp Hin Hcf H0 Hreach Hd Ha Hi)
+  intros ge md f xs fr m fuel s0 c s l i rest j why Hmd Hge Hfree Hin Hcf H0 Hreach Hd Ha Hi.
+  destruct (P.run_access_not_unchecked _ _ _ _ _ _ _ _ _ _ _ _ _ _ why Hmd Hge Hfree Hin Hcf H0 Hreach Hd Ha Hi)
     as [Hn | (b & k & live & fa & q & Hb & Hk & Hl & Hdom & Hfa & Hh)]; [exact Hn|].
   pose proof (S.run_sinv _ _ _ _ _ _ _ _ _ Hmd Hge Hfree Hin Hcf H0 (mreachable_same _ _ _ Hreach))
     as [[Hsh Hsc] _].
@@ -600,8 +600,7 @@ End Hull.
 
 Module InterpHull := Hull InterpRuntime.
 
-(** [run_access_checked] for the [[interpreter]]'s runtime, which
-    changes nothing at a safepoint ([interp_spares]): in every state of
+(** [run_access_checked] for the [[interpreter]]'s runtime: in every state of
     a run of a checked module's function that starts ready, a frame that
     is not doomed runs no raw access or raw call to `unchecked`. No
     hypothesis remains but the ready start. *)
@@ -615,5 +614,5 @@ Corollary interp_access_checked : forall md globals f xs fr m fuel s0 c s l i re
 Proof.
   intros md globals f xs fr m fuel s0 c s l i rest j why ge Hmd Hin Hcf H0 Hreach Hd Ha Hi.
   exact (InterpHull.run_access_checked ge md f xs fr m fuel s0 c s l i rest j why
-           Hmd eq_refl eq_refl (interp_spares ge md) Hin Hcf H0 Hreach Hd Ha Hi).
+           Hmd eq_refl eq_refl Hin Hcf H0 Hreach Hd Ha Hi).
 Qed.

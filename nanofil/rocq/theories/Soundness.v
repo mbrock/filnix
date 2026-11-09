@@ -10,10 +10,10 @@
     was false at run time. So the theorem says the validator's checks
     are sound: every access it lets go unchecked is in fact in bounds,
     or traps as a checked access would. It rests on the
-    [[runtime|runtime axioms]] of Runtime.v, on one hypothesis about the
-    runtime's [[poll|safepoints]] ([spares]), which every runtime meets
-    (Invariant.v's [spares_any]), and on the run starting ready; for the interpreter's own runtime only the ready start is
-    left ([interp_valid_no_unchecked]). The validator here is
+    [[runtime|runtime axioms]] of Runtime.v and on the run starting
+    ready; the runtime's [[poll|safepoints]] spare the pass's facts for
+    every runtime (Invariant.v's [spares_any]), and the interpreter's
+    instance is [interp_valid_no_unchecked]. The validator here is
     Validate.v's transcription, which the gates compare with
     `ir:valid_module/1`; external calls other than free are stuck in
     the model, so the theorem says nothing about a run past one. The
@@ -33,7 +33,7 @@
     | Decision | Why |
     |---|---|
     | free never answering `unchecked` is the module type's axiom [free_checked] | mbrock's decision, with the native test axiom-free.c |
-    | the theorem takes [spares] as the run theorems do | every runtime discharges it with Invariant.v's [spares_any]; it was a hypothesis while a handler's free at a pointer store's [[aux]] exit counted as the runtime's ([The runtime's safepoints](../../docs/rocq.md#the-evidence-invariant-over-runs)) |
+    | the theorem takes no hypothesis about safepoints | every runtime spares the pass's facts (Invariant.v's [spares_any]); [spares] was a hypothesis until 2026-11-09, while a handler's free at a pointer store's [[aux]] exit counted as the runtime's ([The runtime's safepoints](../../docs/rocq.md#the-evidence-invariant-over-runs)) |
     | a run is stated over Guard.v's machine instance | the doomed frame's run is carried over to Doomed.v's ([mreachable_doom]) | *)
 
 From Stdlib Require Import String ZArith List Bool Lia Relations.
@@ -237,22 +237,21 @@ Qed.
     a [[run]] reaches from that call, the next [[step]] is not
     [[unchecked]]: every access the checked code did not check was in
     bounds or trapped as a check would. It rests on Runtime.v's axioms
-    (among them [free_checked]: free never answers unchecked) and on one
-    hypothesis, that the runtime [spares] the pass's facts at
-    [[poll|safepoints]] (see
+    (among them [free_checked]: free never answers unchecked); every
+    runtime spares the pass's facts at [[poll|safepoints]]
+    ([spares_any]; see
     [The evidence invariant over runs](../../docs/rocq.md#the-evidence-invariant-over-runs)).
     The proof sends a doomed frame to [run_doomed_checked], and any
     other to the run theorem for its instruction. *)
 Theorem valid_no_unchecked : forall ge md f xs fr m fuel s0 c s w,
   checked_module md -> ge_module ge = md -> ge_free ge = R.free ->
-  GD.G.H.P.I.spares ge md ->
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
   GD.G.H.P.I.RM.mreachable ge (mkConfig fr [] m fuel, s0) (c, s) ->
   step ge c <> Done (Unchecked w).
 Proof.
-  intros ge md f xs fr m fuel s0 c s w Hmd Hge Hfree Hsp Hin Hcf H0 Hreach E.
+  intros ge md f xs fr m fuel s0 c s w Hmd Hge Hfree Hin Hcf H0 Hreach E.
   destruct (fr_doomed (c_frame c)) as [why|] eqn:Ed.
-  - exact (D.run_doomed_checked ge md f xs fr m fuel s0 c s w Hmd Hge Hfree Hsp Hin Hcf H0
+  - exact (D.run_doomed_checked ge md f xs fr m fuel s0 c s w Hmd Hge Hfree Hin Hcf H0
              (mreachable_doom _ _ _ Hreach) ltac:(rewrite Ed; discriminate) E).
   - destruct (step_unchecked_inst _ _ _ Ed E) as (l & i & rest & j & Ha & Hi).
     pose proof (GD.G.H.S.run_sinv _ _ _ _ _ _ _ _ _ Hmd Hge Hfree Hin Hcf H0 (GD.G.H.mreachable_same _ _ _ Hreach))
@@ -264,7 +263,7 @@ Proof.
     { rewrite <- (firstn_skipn k (b_insts b)). apply in_or_app. right. rewrite <- Hk. left. reflexivity. }
     pose proof (raw_tmp _ _ _ _ Hmd Hinf Hbin Hii) as Hraw.
     pose proof (GD.G.H.run_access_checked ge md f xs fr m fuel s0 c s l i rest j w
-                  Hmd Hge Hfree Hsp Hin Hcf H0 Hreach Ed Ha) as Hacc.
+                  Hmd Hge Hfree Hin Hcf H0 Hreach Ed Ha) as Hacc.
     destruct (inst_unchecked_source _ _ _ _ _ Hi)
       as [(q & kc & o & args & -> & Ho) | [(wd & off & v & a & ->) | [(off & v & a & es & ->) |
           [(r & cl & args & ->) | (r & args & x & m' & -> & Hf)]]]].
@@ -272,15 +271,15 @@ Proof.
       all: first
         [ exact (Hacc (or_introl (Hraw ltac:(left; do 5 eexists; reflexivity))) Hi)
         | exact (Hacc (or_introl (Hraw ltac:(right; left; do 5 eexists; reflexivity))) Hi)
-        | exact (GD.G.run_reuse_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hsp Hin Hcf H0
+        | exact (GD.G.run_reuse_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hin Hcf H0
                    Hreach Ed Ha ltac:(left; do 7 eexists; reflexivity) Hi)
-        | exact (GD.G.run_reuse_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hsp Hin Hcf H0
+        | exact (GD.G.run_reuse_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hin Hcf H0
                    Hreach Ed Ha ltac:(right; left; do 7 eexists; reflexivity) Hi)
-        | exact (GD.G.run_reuse_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hsp Hin Hcf H0
+        | exact (GD.G.run_reuse_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hin Hcf H0
                    Hreach Ed Ha ltac:(right; right; do 8 eexists; reflexivity) Hi)
-        | exact (GD.run_guard_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hsp Hin Hcf H0
+        | exact (GD.run_guard_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hin Hcf H0
                    Hreach Ed Ha ltac:(left; do 7 eexists; reflexivity) Hi)
-        | exact (GD.run_guard_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hsp Hin Hcf H0
+        | exact (GD.run_guard_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hin Hcf H0
                    Hreach Ed Ha ltac:(right; do 7 eexists; reflexivity) Hi) ].
     + exact (Hacc (or_introl (Hraw ltac:(right; right; left; do 4 eexists; reflexivity))) Hi).
     + exact (Hacc (or_introl (Hraw ltac:(right; right; right; do 4 eexists; reflexivity))) Hi).
@@ -295,8 +294,7 @@ End Sound.
 (** The theorem for the [[interpreter]]'s runtime. *)
 Module InterpSound := Sound InterpRuntime.
 
-(** [valid_no_unchecked] for the [[interpreter]]'s runtime, which
-    changes nothing at a safepoint ([interp_spares]): in every state of
+(** [valid_no_unchecked] for the [[interpreter]]'s runtime: in every state of
     a run of a checked module's function that starts ready, no step is
     [[unchecked]]. No hypothesis remains but the ready start;
     Print Assumptions reports it closed. *)
@@ -308,5 +306,5 @@ Corollary interp_valid_no_unchecked : forall md globals f xs fr m fuel s0 c s w,
 Proof.
   intros md globals f xs fr m fuel s0 c s w ge Hmd Hin Hcf H0 Hreach.
   exact (InterpSound.valid_no_unchecked ge md f xs fr m fuel s0 c s w
-           Hmd eq_refl eq_refl (interp_spares ge md) Hin Hcf H0 Hreach).
+           Hmd eq_refl eq_refl Hin Hcf H0 Hreach).
 Qed.

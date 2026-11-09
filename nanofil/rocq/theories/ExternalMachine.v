@@ -411,13 +411,12 @@ Definition single_inv (ge : genv) (md : module) (st : state) : Prop :=
   match st with Running ms _ => sinv ge md (fst ms) | Stopped _ _ _ => True end.
 
 (** A labelled step from a ready state keeps [evidence_inv] of the
-    environment's [checked_module] md, where the runtime [spares] md
-    (as the core machine's [mstep_inv] needs). *)
+    environment's [checked_module] md. *)
 Theorem step_inv : forall registry ge md st trace st',
-  ge_module ge = md -> checked_module md -> spares ge md ->
+  ge_module ge = md -> checked_module md ->
   step registry ge st trace st' -> state_ready st -> evidence_inv ge md st -> evidence_inv ge md st'.
 Proof.
-  intros registry ge md st trace st' Hge Hmd Hsp H. destruct H; simpl; intros Hr Hi; try exact I.
+  intros registry ge md st trace st' Hge Hmd H. destruct H; simpl; intros Hr Hi; try exact I.
   - eapply P.mstep_inv; eauto.
   - eapply resume_inv; eauto.
 Qed.
@@ -439,16 +438,16 @@ Qed.
     [single_inv] hold at the end. No completeness or absence of contract
     violations follows from them. *)
 Theorem run_preserve : forall registry ge md st trace st',
-  ge_module ge = md -> checked_module md -> ge_free ge = R.free -> spares ge md ->
+  ge_module ge = md -> checked_module md -> ge_free ge = R.free ->
   run registry ge st trace st' -> state_ready st -> evidence_inv ge md st -> single_inv ge md st ->
   state_ready st' /\ persists (c_mem (fst (machine_of st))) (c_mem (fst (machine_of st'))) /\
   evidence_inv ge md st' /\ single_inv ge md st'.
 Proof.
-  intros registry ge md st trace st' Hge Hmd Hfree Hsp H.
+  intros registry ge md st trace st' Hge Hmd Hfree H.
   induction H; intros Hr Hi Hs.
   - split; [exact Hr|]. split; [apply persists_refl|auto].
   - pose proof (step_ready _ _ _ _ _ Hfree H Hr) as Hr1.
-    pose proof (step_inv _ _ _ _ _ _ Hge Hmd Hsp H Hr Hi) as Hi1.
+    pose proof (step_inv _ _ _ _ _ _ Hge Hmd H Hr Hi) as Hi1.
     pose proof (step_sinv _ _ _ _ _ _ Hge Hmd Hfree H Hr Hs) as Hs1.
     destruct (IHrun Hr1 Hi1 Hs1) as (Hr' & Hp & Hi' & Hs'). split; [exact Hr'|].
     split; [eapply persists_trans; [eapply step_persists; eauto | exact Hp] | auto].

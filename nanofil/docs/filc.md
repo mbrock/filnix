@@ -72,7 +72,7 @@ The compiler puts a pollcheck on every back edge of the control-flow graph, so n
 
 Safepoints are also what make an ordinary load safe. Between a pointer load and the next pollcheck the collector cannot finish a cycle, so the loaded pointer's object stays valid without any barrier.
 
-> In nanofil's IR a pollcheck is a poll edge, `poll(L)`. The validator demands one in every cycle (`ir:polls_every_cycle/1`, [polls_every_cycle]). Natively a safepoint is also where a signal handler the program installed runs, and it may free, so checks done before one prove nothing after it: no [[live-fact|live fact]] crosses a safepoint. In the model the runtime frees nothing at a safepoint ([collector_live]), and a handler is program code; installing one is a call to an external with no contract, which ends the run. The soundness theorem's one runtime hypothesis, [[spares]], covers the three exceptions, and every runtime meets it.
+> In nanofil's IR a pollcheck is a poll edge, `poll(L)`. The validator demands one in every cycle (`ir:polls_every_cycle/1`, [polls_every_cycle]). Natively a safepoint is also where a signal handler the program installed runs, and it may free, so checks done before one prove nothing after it: no [[live-fact|live fact]] crosses a safepoint. In the model the runtime frees nothing at a safepoint ([collector_live]), and a handler is program code; installing one is a call to an external with no contract, which ends the run. The three exceptions are covered by [[spares]], which every runtime meets, so the soundness theorem no longer takes it as a hypothesis.
 
 ## Calls and linking
 

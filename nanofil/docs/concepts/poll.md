@@ -6,5 +6,5 @@ A safepoint is a point where the thread may run signal handlers and answer the c
 
 - Upstream puts a pollcheck on every back edge of the control-flow graph, not only on loops. A thread about to block in a system call first *exits*, and the collector does its handshake work for it ([[fugc|FUGC]]).
 - Every cycle of a checked function has a poll edge, so a loop cannot keep the collector waiting ([polls_every_cycle]).
-- No [[live-fact|live fact]] crosses a safepoint, with three exceptions that the generic theorem covers by [[spares]].
+- No [[live-fact|live fact]] crosses a safepoint, with three exceptions, covered by [[spares]], which every runtime meets ([spares_any]).
 - Rocq: the target [Poll]; the [[runtime]] acts only before an instruction where [at_safepoint] holds or before a poll edge ([safepoint_due]), as its axiom [safepoints] says, and there it changes no region ([collector_live]). The model has no handler: installing one is a call to an external with no contract, which ends the run.

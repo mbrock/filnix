@@ -12,12 +12,12 @@
     back block by block and position by position, and Steps.v says what
     each kind of step does to the frame.
 
-    The theorems take one hypothesis, [spares]: at a [[safepoint]]
-    before an instruction the pass relies on facts across, the
-    [[runtime]] changes no region. Every runtime satisfies it
-    (Invariant.v's [spares_any], from Runtime.v's [collector_live]).
-    It was a hypothesis because a pointer store whose aux must be
-    allocated exits to the runtime (`filc_exit_with_allocation_root` in
+    At a [[safepoint]] before an instruction the pass relies on facts
+    across, the [[runtime]] changes no region: every runtime [spares]
+    the pass's facts (Invariant.v's [spares_any], from Runtime.v's
+    [collector_live]), so the theorems take no hypothesis about
+    safepoints. Until 2026-11-09 [spares] was one, because a pointer
+    store whose aux must be allocated exits to the runtime (`filc_exit_with_allocation_root` in
     filc_runtime.c), where a deferred signal handler may free the
     checked object, and the store lands in the freed object's retained
     memory, safe natively by `retention` but `unchecked` in the model.
@@ -31,8 +31,7 @@
     |---|---|
     | the pass's position is a relation ([walks], [at_pos]), not a program counter | `checked_inst_rest/7` takes a check and its access in one step, so the pass's positions are a subset of the instructions |
     | a doomed frame claims nothing | its `check_ahead`'s fact does not hold; what it may still do is the `check_ahead` corollary's |
-    | [spares] is still a hypothesis of the theorems | every runtime discharges it with [spares_any] since the safepoint became the collector's alone (2026-11-09); removing it from the statements is a follow-up. Before, it was false natively at a pointer store's aux exit, where a handler's free may show (docs/rocq.md, The evidence invariant over runs) |
-    | [InterpRuntime] is unsealed | so that [interp_spares] can read its safepoint |
+    | [spares] is no hypothesis of the theorems | every runtime meets it ([spares_any]) since the safepoint became the collector's alone (2026-11-09). Before, it was false natively at a pointer store's aux exit, where a handler's free may show (docs/rocq.md, The evidence invariant over runs) |
     | no unchecked outcome is claimed for a free | Soundness.v covers it by Runtime.v's [free_checked] | *)
 
 From Stdlib Require Import String ZArith List Bool Lia Relations.
@@ -306,15 +305,14 @@ Proof.
   destruct (raw_access i); [|discriminate H]. rewrite !orb_true_r. reflexivity.
 Qed.
 
-(** The runtime's action at a [[safepoint]] keeps [inv] where it
-    [spares] the pass's facts: no fact is live across a poll edge, and
-    before an instruction the pass relies on facts for, the regions are
-    unchanged. *)
+(** The runtime's action at a [[safepoint]] keeps [inv]: no fact is
+    live across a poll edge, and before an instruction the pass relies
+    on facts for, the regions are unchanged ([spares_any]). *)
 Lemma safepoint_inv : forall ge md c s s' m',
-  spares ge md -> safepoint_due ge c = true -> R.safepoint s (c_mem c) s' m' ->
+  safepoint_due ge c = true -> R.safepoint s (c_mem c) s' m' ->
   inv ge md (c, s) -> inv ge md (with_mem c m', s').
 Proof.
-  intros ge md c s s' m' Hsp Hdue Hact [(Hin & Hpos & Hpt) Hcall]. unfold inv in *. simpl in *.
+  intros ge md c s s' m' Hdue Hact [(Hin & Hpos & Hpt) Hcall]. unfold inv in *. simpl in *.
   split; [|exact Hcall]. split; [exact Hin|]. split; [exact Hpos|].
   destruct Hpt as [Hd0 | Hp]; [left; exact Hd0 | right].
   pose proof Hdue as Hdue0. unfold safepoint_due in Hdue.
@@ -326,7 +324,7 @@ Proof.
     left. exists live. split; [exact Hw|]. split; [exact Hd|]. intros t Ht Hpoll. exfalso.
     unfold with_mem in Ht. simpl in Ht. rewrite Ht in Hdue. destruct t; simpl in Hdue, Hpoll; [discriminate Hdue | discriminate Hpoll].
   - assert (Hreg : relies (fn_src md (fr_fn (c_frame c))) i = true ->
-                   m_regions m' = m_regions (c_mem c)) by (intros Hr; exact (Hsp c s s' m' Hdue0 Hact l i rest j Ha Hr)).
+                   m_regions m' = m_regions (c_mem c)) by (intros Hr; exact (spares_any ge md c s s' m' Hdue0 Hact l i rest j Ha Hr)).
     destruct Hat as [(live & Hw & Hd & Hl) | (access & rest' & live' & E' & Hw & Hd & Hpc)].
     + left. exists live. split; [exact Hw|]. split; [exact Hd|]. intros Hr.
       eapply facts_hold_same; [exact (Hreg Hr) | exact (Hl Hr)].
@@ -337,13 +335,12 @@ Proof.
       eapply facts_hold_same; [exact (Hreg (covered_relies _ _ _ _ _ _ _ Hcov)) | exact Hh].
 Qed.
 
-(** Every machine step from a [[ready]] state keeps [inv], where the
-    runtime [spares] the pass's facts. *)
+(** Every machine step from a [[ready]] state keeps [inv]. *)
 Theorem mstep_inv : forall ge md st st',
-  ge_module ge = md -> checked_module md -> spares ge md ->
+  ge_module ge = md -> checked_module md ->
   ready_state st -> mstep ge st st' -> inv ge md st -> inv ge md st'.
 Proof.
-  intros ge md st st' Hge Hmd Hsp Hr Hs H.
+  intros ge md st st' Hge Hmd Hr Hs H.
   destruct Hs as [c c' s E | c q k s base s' E He Hal | c s s' m' Hd Hact].
   - eapply next_inv; eauto.
   - eapply alloc_inv; eauto.
@@ -353,10 +350,10 @@ Qed.
 (** From a ready start where it holds, [inv] holds in every state a
     run reaches. *)
 Theorem mreachable_inv : forall ge md st st',
-  ge_module ge = md -> checked_module md -> ge_free ge = R.free -> spares ge md ->
+  ge_module ge = md -> checked_module md -> ge_free ge = R.free ->
   mreachable ge st st' -> ready_state st -> inv ge md st -> inv ge md st'.
 Proof.
-  intros ge md st st' Hge Hmd Hfree Hsp H.
+  intros ge md st st' Hge Hmd Hfree H.
   induction H as [st st' Hs | st | st1 st2 st3 H12 IH1 H23 IH2]; intros Hr Hi; auto.
   - eapply mstep_inv; eauto.
   - apply IH2; [exact (mreachable_ready _ _ _ Hfree H12 Hr) | exact (IH1 Hr Hi)].
@@ -409,10 +406,9 @@ Proof.
 Qed.
 
 (** The same of every state of a run of a checked module's function
-    that starts ready, where the runtime [spares] the pass's facts and
-    the genv's free is R's. *)
+    that starts ready, where the genv's free is R's. *)
 Theorem run_access_not_unchecked : forall ge md f xs fr m fuel s0 c s l i rest j why,
-  checked_module md -> ge_module ge = md -> ge_free ge = R.free -> spares ge md ->
+  checked_module md -> ge_module ge = md -> ge_free ge = R.free ->
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
   mreachable ge (mkConfig fr [] m fuel, s0) (c, s) ->
   fr_doomed (c_frame c) = None -> fr_at (c_frame c) = Exec l (i :: rest) j ->
@@ -420,7 +416,7 @@ Theorem run_access_not_unchecked : forall ge md f xs fr m fuel s0 c s l i rest j
   inst_step ge (c_frame c) (c_mem c) i <> Some (IStop (Unchecked why)) \/
   hull_case ge md c l i rest.
 Proof.
-  intros ge md f xs fr m fuel s0 c s l i rest j why Hmd Hge Hfree Hsp Hin Hcf H0 Hreach.
+  intros ge md f xs fr m fuel s0 c s l i rest j why Hmd Hge Hfree Hin Hcf H0 Hreach.
   eapply access_not_unchecked.
   - eapply mreachable_inv; eauto. exact (start_inv _ _ _ _ _ _ _ s0 Hmd Hin Hcf).
   - exact (mreachable_ready _ _ _ Hfree Hreach H0).
@@ -433,14 +429,6 @@ End Persistence.
 (** The same for the interpreter's runtime. *)
 Module InterpPersistence := Persistence InterpRuntime.
 Import InterpPersistence.I.
-
-(** Nothing changes at the interpreter's safepoints, so it spares every
-    fact. *)
-Lemma interp_spares : forall ge md, spares ge md.
-Proof.
-  unfold spares. intros ge md c s s' m' _ Hact l i rest j _ _.
-  destruct Hact as [_ ->]. reflexivity.
-Qed.
 
 (** Under the interpreter's runtime, in every state of a run of a
     checked module's function that starts ready, a frame that is not
@@ -458,5 +446,5 @@ Corollary interp_access_not_unchecked : forall md globals f xs fr m fuel s0 c s 
 Proof.
   intros md globals f xs fr m fuel s0 c s l i rest j why ge Hmd Hin Hcf H0 Hreach Hd Ha Hi.
   exact (InterpPersistence.run_access_not_unchecked ge md f xs fr m fuel s0 c s l i rest j why
-           Hmd eq_refl eq_refl (interp_spares ge md) Hin Hcf H0 Hreach Hd Ha Hi).
+           Hmd eq_refl eq_refl Hin Hcf H0 Hreach Hd Ha Hi).
 Qed.

@@ -834,7 +834,7 @@ Module H := Hull R.
     [[replay]] ([scope_holds]), and memory lies in the address space
     with freed objects empty. Guard.v's run theorem uses it too. *)
 Lemma run_point : forall ge md f xs fr m fuel s0 c s l i rest j,
-  checked_module md -> ge_module ge = md -> ge_free ge = R.free -> H.P.I.spares ge md ->
+  checked_module md -> ge_module ge = md -> ge_free ge = R.free ->
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
   H.P.I.RM.mreachable ge (mkConfig fr [] m fuel, s0) (c, s) ->
   fr_doomed (c_frame c) = None -> fr_at (c_frame c) = Exec l (i :: rest) j ->
@@ -847,9 +847,9 @@ Lemma run_point : forall ge md f xs fr m fuel s0 c s l i rest j,
     checked_inst_rest (fn_src md (fr_fn (c_frame c))) i rest live = Some out /\
     objects_fit (m_regions (c_mem c)) /\ freed_empty (m_regions (c_mem c)).
 Proof.
-  intros ge md f xs fr m fuel s0 c s l i rest j Hmd Hge Hfree Hsp Hin Hcf H0 Hreach Hd Ha Hra Hrc.
+  intros ge md f xs fr m fuel s0 c s l i rest j Hmd Hge Hfree Hin Hcf H0 Hreach Hd Ha Hra Hrc.
   (* The pass accepted the instruction at the point. *)
-  pose proof (H.P.mreachable_inv _ _ _ _ Hge Hmd Hfree Hsp Hreach H0 (H.P.start_inv _ _ _ _ _ _ _ s0 Hmd Hin Hcf))
+  pose proof (H.P.mreachable_inv _ _ _ _ Hge Hmd Hfree Hreach H0 (H.P.start_inv _ _ _ _ _ _ _ s0 Hmd Hin Hcf))
     as [(Hinf & _ & Hpo) _].
   simpl in Hinf, Hpo. destruct Hpo as [Hd0 | Hpo]; [congruence|].
   destruct (H.P.I.point_ok_exec_inv _ _ _ _ _ _ _ Hpo Ha) as (E & b & out & kk & _ & Hb & _ & _ & Hk & Hat).
@@ -877,19 +877,19 @@ Qed.
 (** In every state a [[run]] reaches from a call of a function f of a
     [checked_module] md, started in a memory where the runtime is
     [[ready]], a frame that is not [[doomed]] runs no renew, renew over
-    a hull or half check to an [[unchecked]] outcome. It assumes the
-    runtime [spares] the pass's facts at [[poll|safepoints]] (see
+    a hull or half check to an [[unchecked]] outcome. Every runtime
+    spares the pass's facts at [[poll|safepoints]] ([spares_any]; see
     [The evidence invariant over runs](../../docs/rocq.md#the-evidence-invariant-over-runs)). *)
 Theorem run_reuse_checked : forall ge md f xs fr m fuel s0 c s l i rest j why,
-  checked_module md -> ge_module ge = md -> ge_free ge = R.free -> H.P.I.spares ge md ->
+  checked_module md -> ge_module ge = md -> ge_free ge = R.free ->
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
   H.P.I.RM.mreachable ge (mkConfig fr [] m fuel, s0) (c, s) ->
   fr_doomed (c_frame c) = None -> fr_at (c_frame c) = Exec l (i :: rest) j -> reuse_form i ->
   inst_step ge (c_frame c) (c_mem c) i <> Some (IStop (Unchecked why)).
 Proof.
-  intros ge md f xs fr m fuel s0 c s l i rest j why Hmd Hge Hfree Hsp Hin Hcf H0 Hreach Hd Ha Hi Hst.
+  intros ge md f xs fr m fuel s0 c s l i rest j why Hmd Hge Hfree Hin Hcf H0 Hreach Hd Ha Hi Hst.
   destruct (reuse_shape _ _ _ _ _ Hi Hst) as (q & o & args & -> & Ho).
-  destruct (run_point _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hmd Hge Hfree Hsp Hin Hcf H0 Hreach Hd Ha
+  destruct (run_point _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hmd Hge Hfree Hin Hcf H0 Hreach Hd Ha
               ltac:(destruct Ho as [(? & ? & ? & ? & ? & ? & -> & ->)
                                    | [(? & ? & ? & ? & ? & ? & ? & -> & ->) | (? & ? & ? & ? & ? & ? & ? & -> & ->)]];
                     reflexivity)
@@ -919,8 +919,7 @@ End Reuse.
 
 Module InterpReuse := Reuse InterpRuntime.
 
-(** [run_reuse_checked] for the [[interpreter]]'s runtime, which
-    changes nothing at a safepoint ([interp_spares]): in every state of
+(** [run_reuse_checked] for the [[interpreter]]'s runtime: in every state of
     a run of a checked module's function that starts ready, a frame that
     is not doomed runs no renew, renew over a hull or half check to
     `unchecked`. No hypothesis remains but the ready start. *)
@@ -933,5 +932,5 @@ Corollary interp_reuse_checked : forall md globals f xs fr m fuel s0 c s l i res
 Proof.
   intros md globals f xs fr m fuel s0 c s l i rest j why ge Hmd Hin Hcf H0 Hreach Hd Ha Hi.
   exact (InterpReuse.run_reuse_checked ge md f xs fr m fuel s0 c s l i rest j why
-           Hmd eq_refl eq_refl (interp_spares ge md) Hin Hcf H0 Hreach Hd Ha Hi).
+           Hmd eq_refl eq_refl Hin Hcf H0 Hreach Hd Ha Hi).
 Qed.

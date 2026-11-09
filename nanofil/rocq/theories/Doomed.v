@@ -1579,16 +1579,16 @@ Proof. intros ge st st' H. destruct H; econstructor; eassumption. Qed.
     ([dinv]), hold in every state a ready run reaches if they hold at
     its start. *)
 Lemma run_inv : forall ge md st st',
-  ge_module ge = md -> checked_module md -> ge_free ge = R.free -> P.I.spares ge md ->
+  ge_module ge = md -> checked_module md -> ge_free ge = R.free ->
   P.I.RM.mreachable ge st st' -> ready_state st ->
   sinv ge md (fst st) -> P.I.inv ge md st -> dinv ge md (fst st) ->
   sinv ge md (fst st') /\ P.I.inv ge md st' /\ dinv ge md (fst st').
 Proof.
-  intros ge md st st' Hge Hmd Hfree Hsp H.
+  intros ge md st st' Hge Hmd Hfree H.
   induction H as [st st' Hs | st | st1 st2 st3 H12 IH1 H23 IH2]; intros Hr Hsi Hi Hdi.
   - pose proof (mstep_same _ _ _ Hs) as Hs'.
     split; [exact (S.mstep_sinv _ _ _ _ Hge Hmd Hfree Hr Hs' Hsi)|].
-    split; [exact (P.mstep_inv _ _ _ _ Hge Hmd Hsp Hr Hs Hi)|].
+    split; [exact (P.mstep_inv _ _ _ _ Hge Hmd Hr Hs Hi)|].
     subst md. exact (mstep_dinv _ _ _ _ Hmd Hfree Hr Hs' Hsi Hi Hdi).
   - auto.
   - destruct (IH1 Hr Hsi Hi Hdi) as (Hsi2 & Hi2 & Hdi2).
@@ -1598,17 +1598,17 @@ Qed.
 (** In every state c a [[run]] reaches from a call of a function f of a
     [checked_module] md, started in a memory where the runtime is
     [[ready]], a [[doomed frame]] never steps to an [[unchecked]]
-    outcome. It assumes the runtime [spares] the pass's facts at
-    [[poll|safepoints]] (see
+    outcome. Every runtime spares the pass's facts at
+    [[poll|safepoints]] ([spares_any]; see
     [The evidence invariant over runs](../../docs/rocq.md#the-evidence-invariant-over-runs)). *)
 Theorem run_doomed_checked : forall ge md f xs fr m fuel s0 c s w,
-  checked_module md -> ge_module ge = md -> ge_free ge = R.free -> P.I.spares ge md ->
+  checked_module md -> ge_module ge = md -> ge_free ge = R.free ->
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
   P.I.RM.mreachable ge (mkConfig fr [] m fuel, s0) (c, s) ->
   fr_doomed (c_frame c) <> None -> step ge c <> Done (Unchecked w).
 Proof.
-  intros ge md f xs fr m fuel s0 c s w Hmd Hge Hfree Hsp Hin Hcf H0 Hreach Hd.
-  destruct (run_inv _ _ _ _ Hge Hmd Hfree Hsp Hreach H0
+  intros ge md f xs fr m fuel s0 c s w Hmd Hge Hfree Hin Hcf H0 Hreach Hd.
+  destruct (run_inv _ _ _ _ Hge Hmd Hfree Hreach H0
               (S.start_sinv ge md f xs fr m fuel Hmd Hin Hcf)
               (P.start_inv ge md f xs fr m fuel s0 Hmd Hin Hcf)
               ltac:(intros Hd0; simpl in Hd0; destruct (call_frame_entry _ _ _ Hcf) as (_ & Hn & _); contradiction))
@@ -1622,8 +1622,7 @@ End Doom.
 
 Module InterpDoom := Doom InterpRuntime.
 
-(** [run_doomed_checked] for the [[interpreter]]'s runtime, which
-    changes nothing at a safepoint ([interp_spares]): in every state of
+(** [run_doomed_checked] for the [[interpreter]]'s runtime: in every state of
     a run of a checked module's function that starts ready, a doomed
     frame never steps to `unchecked`. No hypothesis remains but the
     ready start. *)
@@ -1635,5 +1634,5 @@ Corollary interp_doomed_checked : forall md globals f xs fr m fuel s0 c s w,
 Proof.
   intros md globals f xs fr m fuel s0 c s w ge Hmd Hin Hcf H0 Hreach Hd.
   exact (InterpDoom.run_doomed_checked ge md f xs fr m fuel s0 c s w
-           Hmd eq_refl eq_refl (interp_spares ge md) Hin Hcf H0 Hreach Hd).
+           Hmd eq_refl eq_refl Hin Hcf H0 Hreach Hd).
 Qed.

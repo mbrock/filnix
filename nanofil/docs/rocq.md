@@ -39,7 +39,7 @@ the interpreter and cites the predicate it copies.
 | `Evidence.v` | — (Campaign 3) | the evidence invariant at an instruction and an edge: what a live fact means, every case of `checked_inst_rest/7` keeps the pass's facts true, block entry keeps the meet, accesses the pass accepts give no `unchecked` |
 | `Walk.v` | — (Campaign 3) | the evidence pass read back for the run-level invariant: block by block (`pass_fold`), position by position (`walks`), where it keeps facts (`relies`), a `check_local`'s own fact |
 | `Steps.v` | — (Campaign 3) | what one step does to the running frame, point by point: snapshot, block entry, instruction, return |
-| `Invariant.v` | — (Campaign 3) | the run-level invariant stated: what holds at each point of a frame (`at_pos`, `point_ok`, `inv`), the runtime hypothesis `spares`, and what each kind of step needs of it |
+| `Invariant.v` | — (Campaign 3) | the run-level invariant stated: what holds at each point of a frame (`at_pos`, `point_ok`, `inv`), `spares` (no region changes where the pass keeps facts across a safepoint) with `spares_any` proving it of every runtime, and what each kind of step needs of it |
 | `Persistence.v` | — (Campaign 3) | the evidence invariant over whole runs: every machine step keeps `inv` (one lemma per kind of step), and in every state of a run no raw access or raw call of a frame that is not doomed is `unchecked`, but by `hull_covered` |
 | `Chain.v` | `offset_interval/8`, `guard_chain/3`, `pointer_distance/4`, `hull_covered/7` (ir.pl) | what a frame reads off the single definitions that dominate its point; along every run, no access `hull_covered` accepts gives `unchecked` |
 | `Renew.v` | `renew_source_op/6`, `hull_renewable/8`, `half_known/6` (ir.pl); `renew_res/4`, `half_bound/6`, `half_res/4` (interp.pl) | along every run, no renew, renew over a hull or half check the pass accepts gives `unchecked` |
@@ -748,8 +748,8 @@ Decisions and findings:
   show; that was wrong for pointer stores.) The theorem takes this as a
   hypothesis, `spares`: at a safepoint before an instruction the pass
   relies on facts for, the runtime changes no region. The interpreter's
-  runtime changes nothing at a safepoint (`interp_spares`), so
-  `interp_access_not_unchecked` has no such hypothesis. mbrock's
+  runtime changes nothing at a safepoint, so
+  `interp_access_not_unchecked` had no such hypothesis. mbrock's
   decision (November 2026): `spares` stays a hypothesis. Neither axiom
   that would remove it is true natively (no free at any safepoint; no
   safepoint at a pointer store). The principled alternative, weakening
@@ -771,9 +771,11 @@ Decisions and findings:
   installed and no other thread when it starts. So the safepoint axiom
   is now the collector's alone, `collector_live` (no region changes at
   a safepoint); `safepoint_lifetime` and `rooting` are lemmas from it,
-  and so is `spares_any`. The run theorems still take `spares` as a
-  hypothesis, which every runtime discharges with `spares_any`;
-  removing the hypothesis is a follow-up. The native caveat remains:
+  and so is `spares_any`. The hypothesis is dropped from the
+  statements: the run theorems, `mstep_inv` and `mreachable_inv` take
+  no `spares`, `safepoint_inv` uses `spares_any` itself, and the
+  interpreter's theorems are plain instances of the generic ones. The
+  native caveat remains:
   a pointer store's aux exit (`filc_exit_with_allocation_root`, then
   `filc_exit`, then `handle_deferred_signals`) is a safepoint inside a
   check-to-access pair the pass keeps facts across, so a handler a
@@ -1036,9 +1038,9 @@ Decisions:
 - **The closed theorem joins two invariants.** Persistence.v leaves the
   hull case with its facts holding and dominating (`hull_case`);
   Single.v's invariant supplies the replays. Chain.v's `Hull R` joins
-  them: `run_access_checked` given `spares`, and
-  `interp_access_checked` for the interpreter with no hypothesis but a
-  ready start. Each file instantiates `Machine R`, and `mstep` is an
+  them: `run_access_checked` over any runtime, and
+  `interp_access_checked` for the interpreter, each with no hypothesis
+  but a ready start. Each file instantiates `Machine R`, and `mstep` is an
   inductive new in each instance, so a run is carried across
   (`mreachable_same`).
 - **The point records its index.** `point_ok` and `parked` say the
@@ -1203,9 +1205,8 @@ bytes fail yields its pointer anyway and dooms the frame
 instruction that is not ahead-transparent before an access fails. The
 theorem `run_doomed_checked` says this never happens in a checked
 module's run: a doomed frame never steps to `unchecked` of any kind.
-`interp_doomed_checked` states it under the interpreter's runtime with
-no hypothesis about safepoints; like the other run theorems, the
-generic one takes `spares`.
+`interp_doomed_checked` states it under the interpreter's runtime; like
+the other run theorems, neither takes a hypothesis about safepoints.
 
 The invariant, `dinv`, says what holds of a doomed frame
 (`doomed_ok`):
@@ -1288,11 +1289,12 @@ What the theorem covers and what it does not:
 - **External calls other than `free` are stuck** in the model, so the
   theorem says nothing about runs past them; Campaign 4's contracts
   extend the machine there.
-- **The generic theorem has one runtime hypothesis**, `spares` ("The
-  runtime's safepoints" above), which every runtime satisfies
-  (`spares_any`, from `collector_live`); removing it from the
-  statement is a follow-up. That free keeps identities and never answers `unchecked`
-  are the module type's axioms `free_keeps_ids` and `free_checked`.
+- **The generic theorem has no hypothesis about safepoints.** It took
+  `spares` ("The runtime's safepoints" above) until every runtime was
+  shown to satisfy it (`spares_any`, from `collector_live`); since
+  2026-11-09 the statement drops it. That free keeps identities and
+  never answers `unchecked` are the module type's axioms
+  `free_keeps_ids` and `free_checked`.
 - **A run starts ready**, a hypothesis until the heap starts above the
   module's data.
 
