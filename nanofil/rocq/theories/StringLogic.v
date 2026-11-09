@@ -176,6 +176,14 @@ Proof.
   apply list_elem_of_fmap in H as (o & -> & _). reflexivity.
 Qed.
 
+(** Every piece of a string is a piece of memory. *)
+Lemma string_ps_mem p b reg bytes l v : (l, v) ∈ string_ps p b reg bytes -> mem_piece l.
+Proof.
+  unfold string_ps. rewrite elem_of_cons. intros [H|H]; [injection H as -> _; exact I|].
+  apply (list_elem_of_fmap_2 fst) in H. cbn [fst] in H. rewrite byte_ps_keys in H.
+  apply list_elem_of_fmap in H as (o & -> & _). exact I.
+Qed.
+
 (** The suffix of the string p from its i-th byte, at q: the pieces
     of the string are its life, the bytes before q, and the pieces of
     the suffix's bytes, which are the string at q's. *)
@@ -229,8 +237,9 @@ Proof.
   intros Hst. split. intros s m s' m' w h Hsp (Hr & Hw & Ha).
   destruct (Hst _ _ _ _ _ Hsp Hr Hw) as [Hr' Hw'].
   split; [exact Hr'|]. split; [exact Hw'|].
-  intros sp a Hin Hs (l & v & reg & Hl & [E Hlive] & Hb). apply (Ha sp a Hin Hs).
-  rewrite (R.collector_live _ _ _ _ Hsp) in E. exists l, v, reg. split; [exact Hl|]. split; [|exact Hb].
+  intros sp a Hin Hs (l & v & reg & Hl & Hm & [E Hlive] & Hb). apply (Ha sp a Hin Hs).
+  rewrite (R.collector_live _ _ _ _ Hsp) in E. exists l, v, reg. split; [exact Hl|]. split; [exact Hm|].
+  split; [|exact Hb].
   split; [exact E | exact Hlive].
 Qed.
 

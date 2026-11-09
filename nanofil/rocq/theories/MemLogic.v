@@ -372,7 +372,7 @@ Qed.
 Lemma frame_other m m' b reg l v :
   m_regions m' = m_regions m -> live_disjoint m -> live_at m b reg ->
   (forall a, ~ (b <= a < r_end reg) -> m_bytes m' a = m_bytes m a /\ m_aux m' a = m_aux m a) ->
-  piece_id l <> b -> agree_piece m l v -> agree_piece m' l v.
+  (mem_piece l -> piece_id l <> b) -> agree_piece m l v -> agree_piece m' l v.
 Proof.
   intros Hr Hd Hl Hout Hid.
   set (ks := (PByte b <$> seqZ 0 (r_end reg - b)) ++ (PAux b <$> seqZ 0 (r_end reg - b))).
@@ -382,7 +382,7 @@ Proof.
   - intros a H. apply Hout. intros Ha. apply (H Ha). apply elem_of_app. right.
     apply list_elem_of_fmap_2. apply elem_of_seqZ. lia.
   - intros Hk. apply elem_of_app in Hk as [Hk|Hk]; apply list_elem_of_fmap in Hk as (o & -> & _);
-      exact (Hid eq_refl).
+      exact (Hid I eq_refl).
 Qed.
 
 (** A copy of the string ys at src, with its NUL, over the bytes xs
@@ -659,7 +659,7 @@ Proof.
     iMod (pts_alloc h (obj_ps base (heap_req 16 n)) with "Hh") as "[Hh Hps]".
     { apply obj_ps_nodup. }
     { intros l' v' Hin. destruct (h !! l') as [v0|] eqn:E; [|reflexivity]. exfalso.
-      pose proof (agree_piece_registered _ _ _ (Ha l' v0 E)) as Hreg'.
+      pose proof (agree_piece_registered _ _ _ (obj_ps_mem _ _ _ _ Hin) (Ha l' v0 E)) as Hreg'.
       rewrite (obj_ps_id _ _ _ _ Hin) in Hreg'. exact (Hreg' Hnone). }
     iModIntro. iExists _. iSplit; [iPureIntro; reflexivity|].
     iSplitL "Hh".
@@ -839,7 +839,7 @@ Proof.
     iMod (pts_alloc h (string_ps (mkPtr base (Obj base)) base reg' bytes) with "Hh") as "[Hh Hnew]".
     { apply string_ps_nodup. }
     { intros l' v' Hin. destruct (h !! l') as [v0|] eqn:E; [|reflexivity]. exfalso.
-      pose proof (agree_piece_registered _ _ _ (Ha l' v0 E)) as Hreg'.
+      pose proof (agree_piece_registered _ _ _ (string_ps_mem _ _ _ _ _ _ Hin) (Ha l' v0 E)) as Hreg'.
       rewrite (string_ps_id _ _ _ _ _ _ Hin) in Hreg'. exact (Hreg' Hnone). }
     iModIntro. iExists _. iSplit; [iPureIntro; reflexivity|].
     iSplitL "Hh".
@@ -858,7 +858,7 @@ Proof.
               replace (base + (0 + Z.of_nat i) - base) with (Z.of_nat i) by lia.
               exact (Hbs i x Hxi).
         -- apply (frame_other m1 m' base reg'); [exact Hregs | exact Hd1 | exact Hl1 | exact Hout | |].
-           ++ intros Hid. pose proof (agree_piece_registered _ _ _ (Ha l' v' Hh)) as Hreg'.
+           ++ intros Hm Hid. pose proof (agree_piece_registered _ _ _ Hm (Ha l' v' Hh)) as Hreg'.
               rewrite Hid in Hreg'. exact (Hreg' Hnone).
            ++ exact (agree_piece_allocated _ _ _ _ _ Hnone (Ha l' v' Hh)).
       * exact (live_disjoint_regions _ _ Hregs Hd1).

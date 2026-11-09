@@ -38,19 +38,20 @@ Open Scope list_scope.
 
 (** ## Separation of a call from the program's pieces *)
 
-(** The address a lies in a live object of m that owns a piece of the
-    ghost heap h. *)
+(** The address a lies in a live object of m that owns a piece of
+    memory in the ghost heap h. *)
 Definition owned_live (h : gmap piece pval) (m : mem) (a : Z) : Prop :=
-  exists l v reg, h !! l = Some v /\ live_at m (piece_id l) reg /\ piece_id l <= a < r_end reg.
+  exists l v reg, h !! l = Some v /\ mem_piece l /\ live_at m (piece_id l) reg /\
+    piece_id l <= a < r_end reg.
 
 (** No address of the spans roots lies in a live object owning a piece
     of h. *)
 Definition roots_apart (roots : list span) (h : gmap piece pval) (m : mem) : Prop :=
   forall s a, In s roots -> span_contains s a -> ~ owned_live h m a.
 
-(** None of the identities bs is that of a piece of h. *)
+(** None of the identities bs is that of a piece of memory in h. *)
 Definition ids_apart (bs : list Z) (h : gmap piece pval) : Prop :=
-  forall b l v, In b bs -> h !! l = Some v -> piece_id l <> b.
+  forall b l v, In b bs -> h !! l = Some v -> mem_piece l -> piece_id l <> b.
 
 (** A call whose roots are apart from h and whose born objects are none
     of h's has no [write_authority] over an address of a live object
@@ -62,8 +63,8 @@ Lemma owned_not_authority : forall roots born h m a,
 Proof.
   intros roots born h m a Hd Hr Hb Ho [(s & Hin & _ & Hs) | (base & reg & Hin & E & _ & L & Ha)].
   - exact (Hr s a Hin Hs Ho).
-  - destruct Ho as (l & v & reg0 & Hl & Hlive & Ha0).
-    specialize (Hb base l v Hin Hl).
+  - destruct Ho as (l & v & reg0 & Hl & Hm & Hlive & Ha0).
+    specialize (Hb base l v Hin Hl Hm).
     destruct (Hd (piece_id l) reg0 base reg Hlive (conj E L) Hb); lia.
 Qed.
 
@@ -129,8 +130,8 @@ Qed.
 (** An address of a live owned object of m' was one of m. *)
 Lemma local_owned_back : forall a, owned_live h m' a -> owned_live h m a.
 Proof.
-  intros a (l & v & reg & Hh & Hlive & Ha). exists l, v, reg. split; [exact Hh|].
-  split; [exact (local_live_back _ _ Hlive) | exact Ha].
+  intros a (l & v & reg & Hh & Hm & Hlive & Ha). exists l, v, reg. split; [exact Hh|].
+  split; [exact Hm|]. split; [exact (local_live_back _ _ Hlive) | exact Ha].
 Qed.
 
 (** A local effect whose roots are apart from h, that releases none of
@@ -143,18 +144,18 @@ Proof.
   pose proof Hl as (Hi & Hr & Hw & _).
   (* An address of a live object of m owning a piece of h keeps its
      byte and aux slot. *)
-  assert (Hkeep : forall reg o, live_at m (piece_id l) reg -> 0 <= o -> piece_id l + o < r_end reg ->
+  assert (Hkeep : forall reg o, mem_piece l -> live_at m (piece_id l) reg -> 0 <= o -> piece_id l + o < r_end reg ->
             m_bytes m' (piece_id l + o) = m_bytes m (piece_id l + o) /\
             m_aux m' (piece_id l + o) = m_aux m (piece_id l + o)).
-  { intros reg o Hlive Ho He. apply Hw. apply (owned_not_authority roots born h m); [exact Hd|exact Hra|exact Hb|].
-    exists l, v, reg. split; [exact Hh|]. split; [exact Hlive|lia]. }
-  destruct l as [b|b o|b o], v as [reg|x|c|]; cbn [agree_piece piece_id] in Hp, Hkeep |- *;
-    try contradiction.
+  { intros reg o Hm Hlive Ho He. apply Hw. apply (owned_not_authority roots born h m); [exact Hd|exact Hra|exact Hb|].
+    exists l, v, reg. split; [exact Hh|]. split; [exact Hm|]. split; [exact Hlive|lia]. }
+  destruct l as [b|b o|b o|k], v as [reg|x|c| |q t]; cbn [agree_piece piece_id] in Hp, Hkeep |- *;
+    try contradiction; try exact I.
   - destruct Hp as [E L]. destruct (Hi b reg E) as [reg' E'].
     destruct (Hr b reg' E') as (reg0 & E0 & [-> | (Hin & _)]); rewrite E in E0; injection E0 as <-.
     + split; assumption.
     + exfalso. apply in_app_or in Hin as [Hin|Hin];
-        [exact (Hrel b (PLive b) (VLive reg) Hin Hh eq_refl) | exact (Hb b (PLive b) (VLive reg) Hin Hh eq_refl)].
+        [exact (Hrel b (PLive b) (VLive reg) Hin Hh I eq_refl) | exact (Hb b (PLive b) (VLive reg) Hin Hh I eq_refl)].
   - unfold registered in *. destruct (object_region b (m_regions m)) as [reg|] eqn:E; [|contradiction].
     destruct (Hi b reg E) as [reg' ->]. discriminate.
   - destruct Hp as [Hreg Hin]. split.
@@ -163,7 +164,7 @@ Proof.
       destruct (Hi b reg E) as [reg' ->]. discriminate.
     + intros reg' E' L'. destruct (local_live_back b reg' (conj E' L')) as [E L].
       destruct (Hin reg' E L) as (Ho & He & Hx).
-      split; [exact Ho|]. split; [exact He|]. rewrite (proj1 (Hkeep reg' o (conj E L) Ho He)). exact Hx.
+      split; [exact Ho|]. split; [exact He|]. rewrite (proj1 (Hkeep reg' o I (conj E L) Ho He)). exact Hx.
   - destruct Hp as [Hreg Hin]. split.
     + unfold registered in *.
       destruct (object_region b (m_regions m)) as [reg|] eqn:E; [|contradiction].
@@ -171,7 +172,7 @@ Proof.
     + intros reg' E' L'. destruct (local_live_back b reg' (conj E' L')) as [E L].
       destruct (Hin reg' E L) as (Ho & He & Hx).
       split; [exact Ho|]. split; [exact He|]. unfold aux_holds in *.
-      rewrite (proj2 (Hkeep reg' o (conj E L) Ho He)).
+      rewrite (proj2 (Hkeep reg' o I (conj E L) Ho He)).
       destruct Hx as [Hx | [Hf Ht]]; [left; exact Hx | right].
       split; [exact (freed_in_step m m' _ Hi Hs Hf) | exact (traps_as_freed_step m m' _ Hi Hs Ht)].
 Qed.
@@ -195,9 +196,9 @@ Lemma allocated_owned_back : forall m q base h a,
   object_region base (m_regions m) = None -> agrees m h ->
   owned_live h (allocated m q base) a -> owned_live h m a.
 Proof.
-  intros m q base h a Hn Ha (l & v & reg & Hh & Hlive & Hr). exists l, v, reg. split; [exact Hh|].
-  split; [|exact Hr]. apply (allocated_live_back m q base); [|exact Hlive].
-  intros E. apply (agree_piece_registered m l v (Ha l v Hh)). rewrite <- E. exact Hn.
+  intros m q base h a Hn Ha (l & v & reg & Hh & Hm & Hlive & Hr). exists l, v, reg. split; [exact Hh|].
+  split; [exact Hm|]. split; [|exact Hr]. apply (allocated_live_back m q base); [|exact Hlive].
+  intros E. apply (agree_piece_registered m l v Hm (Ha l v Hh)). rewrite <- E. exact Hn.
 Qed.
 
 (** A base that is no object of m is none of the identities of a ghost
@@ -205,9 +206,9 @@ Qed.
 Lemma unregistered_apart : forall m h base bs,
   object_region base (m_regions m) = None -> agrees m h -> ids_apart bs h -> ids_apart (base :: bs) h.
 Proof.
-  intros m h base bs Hn Ha Hb b l v [<-|Hin] Hh.
-  - intros E. apply (agree_piece_registered m l v (Ha l v Hh)). rewrite E. exact Hn.
-  - exact (Hb b l v Hin Hh).
+  intros m h base bs Hn Ha Hb b l v [<-|Hin] Hh Hm.
+  - intros E. apply (agree_piece_registered m l v Hm (Ha l v Hh)). rewrite E. exact Hn.
+  - exact (Hb b l v Hin Hh Hm).
 Qed.
 
 (** ## Delegated roots *)

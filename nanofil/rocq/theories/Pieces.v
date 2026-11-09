@@ -7,7 +7,11 @@
     [[aux]] slot ([PAux]) at an offset in it. Pieces are keyed by
     identity, not address, because the model's [fresh] lets a new
     object take the addresses of a freed one: an address may belong to
-    two identities in turn, an identity never to two objects.
+    two identities in turn, an identity never to two objects. One more
+    kind of piece is no memory: the ghost name of a string the world
+    lends ([PName]), such as a locale's name, which the world
+    interpretation ties to the world so that a proof can remember,
+    across steps, which string a library call returned.
 
     Two facts about the whole memory are the logics' state
     interpretation. Live objects do not overlap ([live_disjoint]), which
@@ -27,15 +31,23 @@ Open Scope Z_scope.
 (** ## Pieces *)
 
 (** A piece of memory an assertion may own: the life of the object of
-    identity b, or the byte or aux slot at offset o in it. *)
+    identity b, or the byte or aux slot at offset o in it; or the ghost
+    name of the string the world lends under the key k, such as the
+    name of locale category k, which is no memory at all. *)
 Inductive piece : Type :=
 | PLive (b : Z)
 | PByte (b o : Z)
-| PAux (b o : Z).
+| PAux (b o : Z)
+| PName (k : Z).
 
-(** The identity a piece belongs to. *)
+(** The identity a piece belongs to; a name, which belongs to no
+    object, says 0, and facts about objects skip it ([mem_piece]). *)
 Definition piece_id (p : piece) : Z :=
-  match p with PLive b | PByte b _ | PAux b _ => b end.
+  match p with PLive b | PByte b _ | PAux b _ => b | PName _ => 0 end.
+
+(** The piece p is a piece of memory, not a name. *)
+Definition mem_piece (p : piece) : Prop :=
+  match p with PName _ => False | _ => True end.
 
 (** The null pointer, a constant 0 at class `p`. *)
 Definition null : ptr := mkPtr 0 CNone.

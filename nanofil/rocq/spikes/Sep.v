@@ -71,7 +71,7 @@ Definition grows (m m' : mem) : Prop :=
 
 (** From m to m', the pieces of S are kept: an owned object's region,
     and, while the object is live and the offset in bounds, an owned
-    byte or aux slot. *)
+    byte or aux slot; a name is no memory. *)
 Definition same_on (S : fp) (m m' : mem) : Prop :=
   forall p, S p ->
     match p with
@@ -81,6 +81,7 @@ Definition same_on (S : fp) (m m' : mem) : Prop :=
                                m_bytes m' (b + o) = m_bytes m (b + o)
     | PAux b o => forall reg, live_at m' b reg -> 0 <= o -> b + o < r_end reg ->
                               m_aux m' (b + o) = m_aux m (b + o)
+    | PName _ => True
     end.
 
 (** The assertion P is stable: it survives any change that keeps its
@@ -302,6 +303,7 @@ Proof.
     apply (H12 reg); [|assumption|assumption]. unfold live_at in *. rewrite <- Hr. exact Hl.
   - intros reg Hl Ho He. rewrite (H23 reg Hl Ho He).
     apply (H12 reg); [|assumption|assumption]. unfold live_at in *. rewrite <- Hr. exact Hl.
+  - exact I.
 Qed.
 
 (** ## The algebra of [star] *)
@@ -638,7 +640,7 @@ Lemma store_same_on : forall m b o reg x, live_disjoint m -> live_at m b reg -> 
   b + o + 8 <= r_end reg -> keeps (bytes8 b o) m (store_bytes m (b + o) 8 x).
 Proof.
   intros m b o reg x Hd Hl Ho He S HS p Hp. specialize (HS p Hp).
-  destruct p as [b'|b' o'|b' o']; cbn iota beta.
+  destruct p as [b'|b' o'|b' o'|k]; cbn iota beta; [| | |exact I].
   - intros reg' E. exact E.
   - intros reg' Hl' Ho' He'. apply store_bytes_other. intros Ha. change (live_at m b' reg') in Hl'.
     destruct (Z.eq_dec b' b) as [->|Hne].
@@ -654,7 +656,7 @@ Lemma aux_store_same_on : forall m b o reg c, live_disjoint m -> live_at m b reg
   b + o + 8 <= r_end reg -> keeps (eq (PAux b o)) m (store_aux m (b + o) c).
 Proof.
   intros m b o reg c Hd Hl Ho He S HS p Hp. specialize (HS p Hp).
-  destruct p as [b'|b' o'|b' o']; cbn iota beta.
+  destruct p as [b'|b' o'|b' o'|k]; cbn iota beta; [| | |exact I].
   - intros reg' E. exact E.
   - intros. reflexivity.
   - intros reg' Hl' Ho' He'. change (live_at m b' reg') in Hl'. cbn [m_aux store_aux].
@@ -688,7 +690,7 @@ Qed.
     the new identity, and no byte changes. *)
 Lemma alloc_same_on : forall S m q base, fresh m q base -> same_on S m (allocated m q base).
 Proof.
-  intros S m q base (_ & _ & _ & Hn & _) p _. destruct p as [b|b o|b o]; cbn iota beta.
+  intros S m q base (_ & _ & _ & Hn & _) p _. destruct p as [b|b o|b o|k]; cbn iota beta; [| | |exact I].
   - intros reg E. rewrite object_region_allocated. destruct (Z.eqb_spec base b) as [<-|_]; [congruence | exact E].
   - intros. reflexivity.
   - intros. reflexivity.

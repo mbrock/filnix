@@ -141,7 +141,7 @@ Proof.
   - exact Hd.
   - intros l v Hl. exact (lit_valid_agrees m Hv l v (elem_of_list_to_map_2 _ _ _ Hl)).
   - split; [exact Hrep|]. split; [exact Hw|].
-    intros sp a Hin Hs (l & v & reg & Hl & [E _] & Hb). apply elem_of_list_to_map_2 in Hl.
+    intros sp a Hin Hs (l & v & reg & Hl & _ & [E _] & Hb). apply elem_of_list_to_map_2 in Hl.
     rewrite (string_ps_id _ _ _ _ l v Hl) in E, Hb. rewrite (proj1 Hv) in E. injection E as <-.
     exact (Hapart sp a Hin Hs Hb).
   - intros HinvG HheapG. rewrite big_sepM_list_to_map; [|exact (string_ps_nodup _ _ _ _)].

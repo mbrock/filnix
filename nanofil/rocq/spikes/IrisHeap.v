@@ -301,7 +301,7 @@ Proof.
       iMod (pts_alloc h (obj_ps base q) with "Hh") as "[Hh Hps]".
       { apply obj_ps_nodup. }
       { intros l v Hin. destruct (h !! l) as [v'|] eqn:E; [|reflexivity]. exfalso.
-        pose proof (agree_piece_registered _ _ _ (Hag l v' E)) as Hreg.
+        pose proof (agree_piece_registered _ _ _ (obj_ps_mem _ _ _ _ Hin) (Hag l v' E)) as Hreg.
         rewrite (obj_ps_id _ _ _ _ Hin) in Hreg. exact (Hreg Hn). }
       iModIntro. iSplitL "Hh".
       + iExists _. iFrame "Hh". iPureIntro. cbn [fst snd]. split; [|split].

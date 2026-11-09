@@ -135,7 +135,8 @@ Proof.
   { intros b' o P H reg' E L. rewrite Ho in E. destruct (Z.eqb_spec b' b) as [->|Hne].
     - injection E as <-. discriminate L.
     - exact (H reg' E L). }
-  destruct l as [b'|b' o|b' o], v as [reg'|y|c|]; cbn [agree_piece] in Ha |- *; try contradiction.
+  destruct l as [b'|b' o|b' o|k], v as [reg'|y|c| |q t]; cbn [agree_piece] in Ha |- *; try contradiction;
+    try exact I.
   - destruct Ha as [E L]. split; [|exact L]. rewrite Ho. destruct (Z.eqb_spec b' b) as [->|]; [congruence|exact E].
   - exact (Hreg _ Ha).
   - destruct Ha as [Hr' Hin]. split; [exact (Hreg _ Hr')|]. exact (Hlive _ _ _ Hin).
@@ -876,7 +877,7 @@ Proof.
     iMod (pts_alloc h (obj_ps base q) with "Hh") as "[Hh Hps]".
     { apply obj_ps_nodup. }
     { intros l' v Hin. destruct (h !! l') as [v'|] eqn:E; [|reflexivity]. exfalso.
-      pose proof (agree_piece_registered _ _ _ (Hag l' v' E)) as Hreg.
+      pose proof (agree_piece_registered _ _ _ (obj_ps_mem _ _ _ _ Hin) (Hag l' v' E)) as Hreg.
       rewrite (obj_ps_id _ _ _ _ Hin) in Hreg. exact (Hreg Hn). }
     iModIntro. iSplitL "Hh".
     + iExists _. iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt ls_world]. split; [|split; [|split]].
