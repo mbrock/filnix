@@ -1449,6 +1449,44 @@ satisfaction, or which implementation the linked binary selects. Runtime
 axioms, Machine semantics, existing call signatures and the registry are
 unchanged.
 
+### Campaign 4 milestone 4v: unbounded strcmp with independent strings
+
+The trusted `strcmp_contract` requires independently terminated strings on
+both inputs, even when their first bytes already differ. Its P/P-to-W ABI
+has no count argument. `strcmp_result` compares unsigned bytes in the
+mathematical window `min(left + 1, right + 1)`, including the earlier NUL.
+The window is proved readable through both input capabilities by reusing
+the bounded-string window theorem. Total model memory alone would not
+justify those reads.
+
+The comparison window is not the whole admission footprint: each input
+depends on its referenced identity's region/life and its own bytes through
+its own NUL. The longer string must remain valid beyond an earlier
+terminator on the other side. Auxiliary slots are not input dependencies.
+This is an explicit logical footprint for later Iris triples, not a native
+load trace or a generic cross-memory frame rule. The call preserves all
+memory and world exactly and permits no capability propagation, writes,
+allocation, release, observations, resource endings or process exit.
+
+Input-only premises construct a permitted invocation. First-NUL uniqueness
+fixes the window and hence the signed result's sign, not its magnitude;
+both signs permit canonical results with magnitude 512. Every represented
+completion returns such an original-memory result. Nonvacuity does not
+establish native execution, observation coverage or termination.
+
+Public controls distinguish shared NULs with different following bytes,
+strict prefixes in both directions, unsigned high-byte ordering, empty
+strings, identical and overlapping spans, wrong signs, independently
+unterminated inputs, one-past authority and wrong ABI shapes. Native rows
+compare distinct equal aligned 16-byte arrays through their final-byte NULs,
+including unaligned starts, then introduce a final nonzero-byte difference
+and an earlier unsigned difference of the opposite sign. The pinned generic
+strcmp uses aligned word loops and an unaligned second-pointer path that
+aligns downward and merges words; loads before an argument or beyond the
+logical dependency window remain implementation obligations, not something
+these finite probes prove universally. Existing puts/invocation/machine
+interfaces, runtime axioms, registry and validator remain unchanged.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and

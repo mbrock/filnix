@@ -51,6 +51,14 @@ int main(void) {
     answer("strncmp stops at shared NUL and compares terminators", strncmp(short_left, short_right, (size_t)-1) == 0 && strncmp("a", "ab", 3) < 0 && strncmp("ab", "a", 3) > 0);
     answer("strncmp unsigned order and exact count boundary", strncmp(cl + 1, cr + 1, 15) > 0 && strncmp(cr + 1, cl + 1, 15) < 0 && strncmp(cl + 4, cr + 4, 11) == 0 && strncmp(cl + 4, cr + 4, 12) < 0 && strncmp(cl + 4, cl + 4, 12) == 0);
     answer("strncmp permits overlap and zero count", strncmp(high_bytes + 1, high_bytes + 2, 14) < 0 && strncmp(high_bytes + 16, high_bytes + 16, 0) == 0);
+    _Alignas(16) char terminated_copy[16];
+    memcpy(terminated_copy, terminated, 16);
+    answer("strcmp distinct equal strings reach final NUL", strcmp(terminated, terminated_copy) == 0 && strcmp(terminated + 1, terminated_copy + 1) == 0 && strcmp(terminated + 15, terminated_copy + 15) == 0);
+    answer("strcmp stops at NUL and permits overlap", strcmp(short_left, short_right) == 0 && strcmp("a", "ab") < 0 && strcmp("ab", "a") > 0 && strcmp(terminated + 1, terminated + 2) < 0 && strcmp(terminated + 15, terminated + 1) < 0);
+    terminated_copy[14] = 'm';
+    answer("strcmp compares last nonzero byte", strcmp(terminated, terminated_copy) < 0 && strcmp(terminated_copy + 1, terminated + 1) > 0);
+    terminated_copy[1] = 127;
+    answer("strcmp unsigned first difference wins", strcmp(terminated + 1, terminated_copy + 1) > 0 && strcmp(terminated_copy, terminated) < 0);
     char *end = mempcpy(d + 1, s, 3);
     answer("copy returns end and preserves neighbours", end == d + 4 && memcmp(d, "!xyz!", 5) == 0);
     answer("memcpy and memset return destination", memcpy(d, "pq", 2) == d && memset(d + 2, '#', 2) == d + 2 && memcmp(d, "pq##!", 5) == 0);

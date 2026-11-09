@@ -751,6 +751,77 @@ Definition strncmp_contract (world : Type) : contract world :=
     (fun _ => False)
     (fun why => In why [NullCapability; OutOfBounds; ArgumentSize; ReturnSize]).
 
+(** ## Unbounded string comparisons *)
+
+(** Both terminated strings authorize the comparison window through the
+    earlier NUL. Admission still depends on each complete string through
+    its own NUL, including the longer string's tail outside this window. *)
+Lemma strcmp_window_readable : forall m p q left right,
+  terminated_length m p left -> terminated_length m q right ->
+  readable_bytes m p (Z.min (left + 1) (right + 1)) /\
+  readable_bytes m q (Z.min (left + 1) (right + 1)).
+Proof.
+  intros m p q left right [Hl Hleft] [Hr Hright].
+  pose proof (strncmp_window_readable m p q (2 ^ 64 - 1) left right Hl Hr) as Hread.
+  unfold strncmp_window in Hread. rewrite Z.min_r in Hread; [exact Hread|].
+  eapply Z.le_trans; [apply Z.le_min_l|lia].
+Qed.
+
+(** strcmp compares unsigned bytes through the earlier terminator.
+    Independent complete-string witnesses govern admission; only the
+    signed sign of the canonical int result is specified, not magnitude. *)
+Definition strcmp_result (m : mem) (p q : ptr) (bits : Z) : Prop :=
+  exists left right, terminated_length m p left /\ terminated_length m q right /\
+    memcmp_result m p q (Z.min (left + 1) (right + 1)) bits.
+
+(** Terminated inputs construct a result independently of invocation
+    existence; window readability is proved before using total memory. *)
+Lemma strcmp_result_total : forall m p q left right,
+  terminated_length m p left -> terminated_length m q right ->
+  exists bits, strcmp_result m p q bits.
+Proof.
+  intros m p q left right Hl Hr.
+  destruct (strcmp_window_readable m p q left right Hl Hr) as [Hread _].
+  destruct (memcmp_result_total m p q (Z.min (left + 1) (right + 1))
+    ltac:(destruct Hread as [Hn _]; lia)) as [bits Hbits].
+  exists bits, left, right. auto.
+Qed.
+
+(** Unique first-NUL lengths fix the window, hence the result's signed
+    sign. Distinct representable magnitudes of that sign remain legal. *)
+Lemma strcmp_result_sign_unique : forall m p q left right,
+  strcmp_result m p q left -> strcmp_result m p q right ->
+  Z.compare (sign_extension (2 ^ 32) (2 ^ 31) left) 0 =
+    Z.compare (sign_extension (2 ^ 32) (2 ^ 31) right) 0.
+Proof.
+  intros m p q left right (ll & lr & Hll & Hlr & Hl) (rl & rr & Hrl & Hrr & Hr).
+  pose proof (terminated_length_unique _ _ _ _ Hll Hrl) as <-.
+  pose proof (terminated_length_unique _ _ _ _ Hlr Hrr) as <-.
+  eapply memcmp_result_sign_unique; eauto.
+Qed.
+
+(** strcmp returns an int and takes exactly two pointer arguments, no count. *)
+Definition strcmp_abi (r : call_result) (args : list arg) : Prop :=
+  (r = CVoid \/ exists d, r = CResult d W) /\ exists p q, args = [Arg P p; Arg P q].
+
+(** Pure trusted strcmp over two independent live terminated strings.
+    The input footprint is both referenced identities' regions and each
+    string's bytes through its NUL; no auxiliary slots are read. The
+    result compares only the minimum window. All memory and world are
+    preserved, with no writes, propagation, allocation or release. *)
+Definition strcmp_contract (world : Type) : contract world :=
+  mkContract world (RClass W) strcmp_abi
+    (fun xs m _ => exists p q left right, xs = [WPtr p; WPtr q] /\
+      terminated_length m p left /\ terminated_length m q right)
+    (fun _ _ _ => []) (fun _ _ _ => []) (fun _ _ _ => []) (fun _ _ _ _ _ => False)
+    (fun _ m w born trace m' w' => born = [] /\ trace = [] /\ m' = m /\ w' = w)
+    (fun xs m w born trace ending m' w' =>
+      born = [] /\ trace = [] /\ m' = m /\ w' = w /\
+      exists p q bits, xs = [WPtr p; WPtr q] /\ strcmp_result m p q bits /\
+        ending = CallReturn [WInt bits])
+    (fun _ => False)
+    (fun why => In why [NullCapability; OutOfBounds; ArgumentSize; ReturnSize]).
+
 (** ## Memory paths over any runtime *)
 
 (** The call relations over any [[runtime]] R, whose allocator answers
@@ -1178,6 +1249,55 @@ Theorem strncmp_invocation : forall world r args xs s m (w : world) trace ending
   invoke (strncmp_contract world) r args xs s m w trace ending s' m' w' ->
   trace = [] /\ m' = m /\ w' = w /\
   exists p q n bits, xs = [WPtr p; WPtr q; WInt n] /\ strncmp_result m p q n bits /\
+    ending = CallReturn [WInt bits].
+Proof.
+  intros world r args xs s m w trace ending s' m' w' Hcall. inversion Hcall; subst.
+  - match goal with Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
+      destruct Hpost as (_ & Htrace & Hmem & Hworld & Hresult); auto end.
+  - contradiction.
+Qed.
+
+(** Every legal sign and magnitude constructs a pure strcmp invocation.
+    The result predicate already contains independent input authority. *)
+Theorem strcmp_return : forall world r args p q bits s m (w : world),
+  strcmp_abi r args -> strcmp_result m p q bits ->
+  invoke (strcmp_contract world) r args [WPtr p; WPtr q] s m w
+    [] (CallReturn [WInt bits]) s m w.
+Proof.
+  intros world r args p q bits s m w Habi (left & right & Hl & Hr & Hbits).
+  eapply invoke_normal with (born := []).
+  - exact Habi.
+  - exists p, q, left, right. auto.
+  - split; [constructor|]. repeat split; reflexivity.
+  - repeat split; try reflexivity. exists p, q, bits. split; [reflexivity|].
+    split; [exists left, right; auto|reflexivity].
+  - intros why Hbad. discriminate.
+  - intros values Heq. injection Heq as <-. split.
+    + exists (WInt bits). split; [reflexivity|]. simpl.
+      rewrite Z.mod_small; [reflexivity|exact (proj1 Hbits)].
+    + constructor; [exact I|constructor].
+  - intros status Hbad. discriminate.
+Qed.
+
+(** Independent terminated inputs suffice for some permitted return.
+    This is logical nonvacuity, not a native termination theorem. *)
+Theorem strcmp_admitted : forall world r args p q left right s m (w : world),
+  strcmp_abi r args -> terminated_length m p left -> terminated_length m q right ->
+  exists bits, invoke (strcmp_contract world) r args [WPtr p; WPtr q] s m w
+    [] (CallReturn [WInt bits]) s m w.
+Proof.
+  intros world r args p q left right s m w Habi Hl Hr.
+  destruct (strcmp_result_total m p q left right Hl Hr) as [bits Hbits].
+  exists bits. apply strcmp_return; assumption.
+Qed.
+
+(** Every represented strcmp completion returns its original-memory
+    string-order result, with empty observations and unchanged memory/world.
+    No resource or process-exit completion is admitted. *)
+Theorem strcmp_invocation : forall world r args xs s m (w : world) trace ending s' m' w',
+  invoke (strcmp_contract world) r args xs s m w trace ending s' m' w' ->
+  trace = [] /\ m' = m /\ w' = w /\
+  exists p q bits, xs = [WPtr p; WPtr q] /\ strcmp_result m p q bits /\
     ending = CallReturn [WInt bits].
 Proof.
   intros world r args xs s m w trace ending s' m' w' Hcall. inversion Hcall; subst.
@@ -2419,4 +2539,178 @@ Proof.
       [destruct Hl as (_ & _ & (base & reg & [Hcap | Hcap] & _) & _) |
        destruct Hr as (_ & _ & (base & reg & [Hcap | Hcap] & _) & _)];
       rewrite H in Hcap; discriminate.
+Qed.
+
+(** ## Unbounded string comparison controls *)
+
+(** The bounded fixtures are also complete terminated strings. *)
+Lemma string_compare_terminated :
+  terminated_length string_compare_mem hello_ptr 1 /\
+  terminated_length string_compare_mem (mkPtr 2048 (Ro 2048)) 1 /\
+  terminated_length string_compare_mem (mkPtr 2052 (Ro 2048)) 2.
+Proof.
+  destruct (string_compare_lengths (2 ^ 64 - 1) ltac:(vm_compute; split; congruence))
+    as (Hl & Hr & Hab).
+  split; [split; [exact Hl|vm_compute; congruence]|].
+  split; split; try assumption; vm_compute; congruence.
+Qed.
+
+(** A shared NUL makes the strings equal despite different following bytes. *)
+Example strcmp_shared_nul :
+  InterpExternal.invoke (strcmp_contract unit) CVoid [Arg P (Const 0); Arg P (Const 1)]
+    [WPtr hello_ptr; WPtr (mkPtr 2048 (Ro 2048))] InterpRuntime.start string_compare_mem tt
+    [] (CallReturn [WInt 0]) InterpRuntime.start string_compare_mem tt.
+Proof.
+  apply InterpExternal.strcmp_return.
+  - split; [left; reflexivity|]. eexists _, _. reflexivity.
+  - destruct string_compare_terminated as (Hl & Hr & _).
+    exists 1, 1. split; [exact Hl|]. split; [exact Hr|].
+    split; [vm_compute; split; congruence|]. exists Datatypes.Eq. split; [|reflexivity].
+    left. split; [reflexivity|].
+    change (forall i, 0 <= i < 2 ->
+      m_bytes string_compare_mem (1024 + i) = m_bytes string_compare_mem (2048 + i)).
+    intros i Hi. assert (i = 0 \/ i = 1) by lia. destruct H as [-> | ->]; reflexivity.
+Qed.
+
+(** The earlier terminator decides strict-prefix order; neither sign is
+    restricted to a unit or byte-difference magnitude. *)
+Example strcmp_terminator_magnitudes : forall reverse : bool,
+  InterpExternal.invoke (strcmp_contract unit) CVoid [Arg P (Const 0); Arg P (Const 1)]
+    [WPtr (if reverse then mkPtr 2052 (Ro 2048) else hello_ptr);
+     WPtr (if reverse then hello_ptr else mkPtr 2052 (Ro 2048))]
+    InterpRuntime.start string_compare_mem tt
+    [] (CallReturn [WInt (if reverse then 512 else 2 ^ 32 - 512)])
+    InterpRuntime.start string_compare_mem tt.
+Proof.
+  intros reverse. destruct string_compare_terminated as (Hl & _ & Hr).
+  destruct reverse; apply InterpExternal.strcmp_return.
+  all: try solve [split; [left; reflexivity|]; eexists _, _; reflexivity].
+  - exists 2, 1. split; [exact Hr|]. split; [exact Hl|].
+    split; [vm_compute; split; congruence|]. exists Datatypes.Gt. split; [|reflexivity].
+    right. exists 1. split; [vm_compute; split; congruence|]. split.
+    + intros i Hi. assert (i = 0) by lia. subst. reflexivity.
+    + split; [discriminate|reflexivity].
+  - exists 1, 2. split; [exact Hl|]. split; [exact Hr|].
+    split; [vm_compute; split; congruence|]. exists Datatypes.Lt. split; [|reflexivity].
+    right. exists 1. split; [vm_compute; split; congruence|]. split.
+    + intros i Hi. assert (i = 0) by lia. subst. reflexivity.
+    + split; [discriminate|reflexivity].
+Qed.
+
+(** Public wrong-sign rejection uses the same admitted strict-prefix call. *)
+Example strcmp_wrong_sign_rejected : forall s' m' w',
+  ~ InterpExternal.invoke (strcmp_contract unit) CVoid [Arg P (Const 0); Arg P (Const 1)]
+    [WPtr hello_ptr; WPtr (mkPtr 2052 (Ro 2048))] InterpRuntime.start string_compare_mem tt
+    [] (CallReturn [WInt 512]) s' m' w'.
+Proof.
+  intros s' m' w' Hcall.
+  destruct (InterpExternal.strcmp_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as (_ & _ & _ & p & q & bits & Hargs & Hresult & Hending).
+  injection Hargs as <- <-. injection Hending as <-.
+  destruct (InterpExternal.strcmp_invocation _ _ _ _ _ _ _ _ _ _ _ _
+    (strcmp_terminator_magnitudes false))
+    as (_ & _ & _ & p & q & bits & Hargs & Hgood & Hending).
+  injection Hargs as <- <-. injection Hending as <-.
+  pose proof (strcmp_result_sign_unique _ _ _ _ _ Hresult Hgood) as Hsign.
+  discriminate Hsign.
+Qed.
+
+(** Unsigned 128 orders above the empty string, not below it as a signed
+    char would. The final live NUL is a valid empty input in either slot. *)
+Example strcmp_high_empty : forall reverse : bool,
+  InterpExternal.invoke (strcmp_contract unit) CVoid [Arg P (Const 0); Arg P (Const 1)]
+    [WPtr (if reverse then mkPtr 1029 (Ro 1024) else hello_ptr);
+     WPtr (if reverse then hello_ptr else mkPtr 1029 (Ro 1024))]
+    InterpRuntime.start strlen_high_mem tt
+    [] (CallReturn [WInt (if reverse then 2 ^ 32 - 512 else 512)])
+    InterpRuntime.start strlen_high_mem tt.
+Proof.
+  intros reverse.
+  pose proof (strlen_boundary_length 0 5 ltac:(simpl; auto)) as Hl.
+  pose proof (strlen_boundary_length 5 0 ltac:(simpl; auto)) as Hr.
+  destruct reverse; apply InterpExternal.strcmp_return.
+  all: try solve [split; [left; reflexivity|]; eexists _, _; reflexivity].
+  - exists 0, 5. split; [exact Hr|]. split; [exact Hl|].
+    split; [vm_compute; split; congruence|]. exists Datatypes.Lt. split; [|reflexivity].
+    right. exists 0. split; [vm_compute; split; congruence|]. split.
+    + intros i Hi. lia.
+    + split; [discriminate|reflexivity].
+  - exists 5, 0. split; [exact Hl|]. split; [exact Hr|].
+    split; [vm_compute; split; congruence|]. exists Datatypes.Gt. split; [|reflexivity].
+    right. exists 0. split; [vm_compute; split; congruence|]. split.
+    + intros i Hi. lia.
+    + split; [discriminate|reflexivity].
+Qed.
+
+(** Identical terminated spans, including empty and interior ones, admit
+    zero without requiring separate objects or disjoint input authority. *)
+Example strcmp_identical_calls : forall offset count,
+  In (offset, count) [(0, 5); (1, 4); (5, 0)] ->
+  InterpExternal.invoke (strcmp_contract unit) (CResult (TAtom "compared") W)
+    [Arg P (Const 0); Arg P (Const 0)]
+    [WPtr (mkPtr (1024 + offset) (Ro 1024)); WPtr (mkPtr (1024 + offset) (Ro 1024))]
+    InterpRuntime.start strlen_high_mem tt [] (CallReturn [WInt 0])
+    InterpRuntime.start strlen_high_mem tt.
+Proof.
+  intros offset count Hcase. apply InterpExternal.strcmp_return.
+  - split; [right; exists (TAtom "compared"); reflexivity|]. eexists _, _. reflexivity.
+  - pose proof (strlen_boundary_length offset count Hcase) as Hl.
+    exists count, count. split; [exact Hl|]. split; [exact Hl|].
+    split; [vm_compute; split; congruence|]. exists Datatypes.Eq.
+    split; [left; split; [reflexivity|intros; reflexivity]|reflexivity].
+Qed.
+
+(** Overlap is admitted. An earlier 128-versus-255 difference wins over
+    the opposite ordering of the final compared 255-versus-NUL pair. *)
+Example strcmp_overlap :
+  InterpExternal.invoke (strcmp_contract unit) CVoid [Arg P (Const 0); Arg P (Const 1)]
+    [WPtr hello_ptr; WPtr (mkPtr 1025 (Ro 1024))] InterpRuntime.start strlen_high_mem tt
+    [] (CallReturn [WInt (2 ^ 32 - 512)]) InterpRuntime.start strlen_high_mem tt.
+Proof.
+  apply InterpExternal.strcmp_return.
+  - split; [left; reflexivity|]. eexists _, _. reflexivity.
+  - exists 5, 4. split; [apply (strlen_boundary_length 0 5); simpl; auto|].
+    split; [apply (strlen_boundary_length 1 4); simpl; auto|].
+    split; [vm_compute; split; congruence|]. exists Datatypes.Lt. split; [|reflexivity].
+    right. exists 0. split; [vm_compute; split; congruence|]. split.
+    + intros i Hi. lia.
+    + split; [discriminate|reflexivity].
+Qed.
+
+(** An immediate unequal byte cannot waive the other string's missing
+    NUL, in either argument position. Both capabilities are live. *)
+Example strcmp_independent_inputs :
+  ~ contract_pre (strcmp_contract unit)
+    [WPtr hello_ptr; WPtr (mkPtr 2048 (Ro 2048))] high_byte_mem tt /\
+  ~ contract_pre (strcmp_contract unit)
+    [WPtr (mkPtr 2048 (Ro 2048)); WPtr hello_ptr] high_byte_mem tt.
+Proof.
+  split; intros (p & q & left & right & Hargs & Hl & Hr); injection Hargs as <- <-;
+    apply strlen_missing_nul_rejected.
+  - exists hello_ptr, left. auto.
+  - exists hello_ptr, right. auto.
+Qed.
+
+(** A numeric NUL at one-past is not a readable empty string in either
+    argument position, even when the other input is an admitted string. *)
+Example strcmp_one_past_rejected : forall reverse : bool,
+  ~ contract_pre (strcmp_contract unit)
+    [WPtr (if reverse then hello_ptr else mkPtr 1030 (Ro 1024));
+     WPtr (if reverse then mkPtr 1030 (Ro 1024) else hello_ptr)] hello_mem tt.
+Proof.
+  intros reverse. destruct reverse;
+    intros (p & q & left & right & Hargs & Hl & Hr); injection Hargs as <- <-;
+    apply (proj1 strlen_bad_authority_rejected).
+  - exists (mkPtr 1030 (Ro 1024)), right. auto.
+  - exists (mkPtr 1030 (Ro 1024)), left. auto.
+Qed.
+
+(** No count belongs in the ABI, and size_t is not the int result channel. *)
+Example strcmp_wrong_abi_rejected :
+  ~ strcmp_abi (CResult (TAtom "compared") L) [Arg P (Const 0); Arg P (Const 1)] /\
+  ~ strcmp_abi CVoid [Arg P (Const 0)] /\
+  ~ strcmp_abi CVoid [Arg P (Const 0); Arg P (Const 1); Arg L (Const 0)].
+Proof.
+  split; [intros [[H | (d & H)] _]; discriminate H|].
+  split; intros [_ (p & q & H)]; discriminate H.
 Qed.

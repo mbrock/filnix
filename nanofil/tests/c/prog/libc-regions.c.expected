@@ -12,6 +12,10 @@ memcmp permits overlap and zero count: yes
 strncmp stops at shared NUL and compares terminators: yes
 strncmp unsigned order and exact count boundary: yes
 strncmp permits overlap and zero count: yes
+strcmp distinct equal strings reach final NUL: yes
+strcmp stops at NUL and permits overlap: yes
+strcmp compares last nonzero byte: yes
+strcmp unsigned first difference wins: yes
 copy returns end and preserves neighbours: yes
 memcpy and memset return destination: yes
 string results and comparison signs: yes

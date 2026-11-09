@@ -310,6 +310,20 @@ not the weakest operational domain. Wider native loads remain a separate
 implementation obligation; neither native termination nor universal
 contract satisfaction follows from these finite observations.
 
+The Rocq strcmp contract independently requires both complete terminated
+strings. Its comparison window includes the earlier NUL; this does not
+waive the longer string's remaining admission obligations. The identity-keyed
+input footprint is each referenced region/life plus its bytes through its
+own NUL, with no auxiliary-slot dependency. Completions preserve all memory
+and world, returning only the unsigned-byte order's signed sign with any
+canonical int magnitude. Public controls permit ±512 and reject wrong signs.
+Native rows distinguish shared NULs, strict prefixes, overlap, empty strings,
+distinct equal aligned allocation-end strings, a final-byte difference and
+an earlier opposite unsigned difference. Pinned generic strcmp can load
+before its second argument when aligning and merge words beyond the logical
+comparison dependency; these are trusted native-satisfaction obligations,
+not guarantees established by the finite probe or a termination proof.
+
 ## 2. Heap lifetime (5)
 
 All fresh results satisfy the runtime axioms. Requested size is a
