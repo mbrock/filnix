@@ -40,6 +40,7 @@ pre .del { color: #a8282f; } pre .add { color: #2e7a3a; } pre .c { color: var(--
 .bar .track { flex: 1; background: #f4f1ea; height: 14px; border-radius: 2px; overflow: hidden; }
 .bar .fill { height: 100%; }
 .bar .val { width: 9rem; flex: none; font-family: var(--mono-font); font-size: 0.82rem; }
+@media (max-width: 560px) { .bar { flex-wrap: wrap; } .bar .track { min-width: 6rem; } .bar .val { width: auto; flex-basis: 100%; padding-left: calc(7.5rem + 8px); } }
 </style>
 </head>
 <body>

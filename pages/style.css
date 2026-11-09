@@ -178,6 +178,9 @@ code, pre { font-family: var(--mono-font); font-size: 0.85em; }
 code { color: color-mix(in srgb, var(--ink) 80%, var(--accent)); }
 pre { background: var(--code-bg); padding: 0.8rem 1rem; overflow-x: auto; line-height: 1.4; }
 pre code { color: inherit; }
+/* A long word, path, flag or identifier in a sentence breaks where it
+   must rather than push the page sideways; code blocks and tables scroll. */
+:is(p, li, dd, dt, h1, h2, h3, h4, figcaption) { overflow-wrap: anywhere; }
 pre.mermaid { background: none; text-align: center; }
 
 blockquote { margin: 1rem 0; padding: 0.1rem 0 0.1rem 1rem; border-left: 3px solid var(--rule); color: #3d4449; }

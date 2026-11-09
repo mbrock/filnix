@@ -51,7 +51,7 @@ td:first-child, th:first-child { text-align: left; }
 
 /* stepper */
 .stepper { display: grid; grid-template-columns: minmax(330px, 1.05fr) minmax(300px, 1fr); gap: 14px; }
-.listing { font: 12px/18px var(--mono); position: relative; }
+.listing { font: 12px/18px var(--mono); position: relative; overflow-x: auto; }
 .listing .ln { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 0 6px; border-radius: 3px; white-space: nowrap; }
 .listing .ln.cur { background: #fff1c9; }
 .listing .cells { display: flex; gap: 1px; }
@@ -78,7 +78,7 @@ td:first-child, th:first-child { text-align: left; }
 /* prefix */
 .prefix svg { width: 100%; height: auto; }
 .chart svg { width: 100%; height: auto; }
-@media (max-width: 860px) { .stepper { grid-template-columns: 1fr; } .race .lane { grid-template-columns: 110px 1fr 70px; } }
+@media (max-width: 860px) { .stepper { grid-template-columns: minmax(0, 1fr); } .race .lane { grid-template-columns: 110px 1fr 70px; } }
 </style>
 </head>
 <body>
