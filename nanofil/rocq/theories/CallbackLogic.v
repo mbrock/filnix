@@ -18,6 +18,9 @@ Module L := LG.L.
 Module LK := Linked R.
 Import L LG L.RM.
 
+(** Short local spelling of Linked's unchanged callback world type. *)
+Local Notation cworld := LK.callback_world.
+
 (** Linked and Language instantiate generative machine types separately;
     this changes only their constructor names, never their snapshots. *)
 Definition logic_state {world : Type} (st : LK.M.state world) : M.state world :=
@@ -62,7 +65,9 @@ Lemma linked_step {world : Type} registry ge (st : LK.M.state world) trace st' :
 Proof.
   intros H. destruct H; cbn [logic_state].
   - apply M.step_core. destruct H;
-      [eapply M.P.I.RM.mstep_next|eapply M.P.I.RM.mstep_alloc|eapply M.P.I.RM.mstep_safepoint]; eauto.
+      [eapply M.P.I.RM.mstep_next|
+       eapply M.P.I.RM.mstep_alloc|
+       eapply M.P.I.RM.mstep_safepoint]; eauto.
   - eapply M.step_core_end; eauto.
   - eapply M.step_core_stuck; eauto.
   - eapply M.step_core_refusal; eauto.
@@ -71,7 +76,8 @@ Proof.
   - eapply M.step_resource; eauto using linked_invoke.
   - eapply M.step_rejected; eauto.
     destruct H0;
-      [eapply M.reject_missing|eapply M.reject_arguments|eapply M.reject_abi|eapply M.reject_pre]; eauto.
+      [eapply M.reject_missing|eapply M.reject_arguments|
+       eapply M.reject_abi|eapply M.reject_pre]; eauto.
   - eapply M.step_bad_return; eauto using linked_invoke.
 Qed.
 
@@ -107,8 +113,8 @@ Proof.
   intros Hr Hd Ha Hw Hwp. apply adequate_alt.
   intros t2 σ2 Hsteps. apply erased_steps_nsteps in Hsteps.
   destruct Hsteps as [n [κs Hn]].
-  eapply (wp_strong_adequacy_gen HasNoLc Σ _ NotStuck _ _ _ _ _ _ _ (fun _ => 0%nat));
-    [|exact Hn].
+  eapply (wp_strong_adequacy_gen HasNoLc Σ _ NotStuck)
+    with (num_laters_per_step := fun _ => 0%nat); [|exact Hn].
   intros HinvG.
   iMod (gen_heap_init h0) as (HheapG) "(Hh & Hpts & _)".
   destruct (Hwp HinvG HheapG) as (Ψ & Hbody & Hpost).
@@ -145,7 +151,7 @@ Qed.
 (** Local rule for promotion: a stopped top-level void return reaches
     exactly the Iris state whose memory [invalidate_locals] produced. *)
 Lemma callback_return_reachable {payload : Type} registry ge fr m s
-    (w : LK.callback_world payload) fuel Q trace stopped entry ms' w' :
+    (w : cworld payload) fuel Q trace stopped entry ms' w' :
   @adequate (nanofil_lang registry ge) NotStuck (ERun fr)
     (mkLstate m s fuel w) Q ->
   LK.M.run registry ge (LK.M.Running (mkConfig fr [] m fuel, s) w) trace stopped ->
@@ -182,8 +188,8 @@ Qed.
     [heap_labelled_safe] also covers callbacks that exit or never return. *)
 Theorem callback_wp_safe Σ {HinvP : invGpreS Σ}
     {HheapP : gen_heapGpreS piece pval Σ}
-    {payload : Type} (registry : name -> option (contract (LK.callback_world payload)))
-    (wi : mem -> LK.callback_world payload -> gmap piece pval -> Prop)
+    {payload : Type} (registry : name -> option (contract (cworld payload)))
+    (wi : mem -> cworld payload -> gmap piece pval -> Prop)
     ge fr m s w h0 :
   R.ready s m -> live_disjoint m -> agrees m h0 -> wi m w h0 ->
   (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
@@ -207,9 +213,9 @@ Qed.
     is restored, and no return is required of nonreturning executions. *)
 Theorem callback_wp_return Σ {HinvP : invGpreS Σ}
     {HheapP : gen_heapGpreS piece pval Σ}
-    {payload : Type} (registry : name -> option (contract (LK.callback_world payload)))
-    (wi : mem -> LK.callback_world payload -> gmap piece pval -> Prop)
-    ge fr m s w h0 (Q : mem -> LK.callback_world payload -> Prop) :
+    {payload : Type} (registry : name -> option (contract (cworld payload)))
+    (wi : mem -> cworld payload -> gmap piece pval -> Prop)
+    ge fr m s w h0 (Q : mem -> cworld payload -> Prop) :
   R.ready s m -> live_disjoint m -> agrees m h0 -> wi m w h0 ->
   (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
     exists Ψ : outcome -> iProp Σ,
