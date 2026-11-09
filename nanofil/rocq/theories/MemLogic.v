@@ -1,22 +1,35 @@
-(** Blocks of memory in the program logic of Logic.v, and the triple of
-    libc's memset derived from [[campaign|Campaign]] 4's contract.
+(** Blocks of memory in the program logic of Logic.v, and the triples
+    of libc's memory calls derived from [[campaign|Campaign]] 4's
+    contracts.
 
     A block is owned piece by piece: [bytes] b o xs, the bytes xs from
     offset o of the object b, and [auxes] b o cs, the capabilities cs
     in its [[aux]] slots from the same offset. A write by libc into a
-    block needs both: memset clears every pointer slot it touches, and
-    a pointer slot is an aux piece.
+    block needs both: memset clears every pointer slot it touches, a
+    copy moves pointer slots, and a pointer slot is an aux piece.
 
-    [wp_memset] is memset's [memset_contract] read as a rule: owning the
-    object's life and a block of n bytes from an 8-aligned offset, with
-    their aux slots, the call fills the bytes with c's low byte and
-    empties every slot that starts in the block ([clear_slots]),
-    and binds its result to the block's pointer. The contract's exact
-    frame ([memset_frame]) keeps every other piece: a byte or slot it
-    may change lies in the owned block ([fill_after], through Heap.v's
-    [frame_within]). The block's offset is 8-aligned so that the slots
-    memset touches start inside it; the contract also allows an
-    unaligned start, whose first touched slot begins before it. *)
+    Each triple is a contract read as a rule, stated at any call site:
+    - [wp_memset], from [memset_contract]: owning the object's life and
+      a block of n bytes from an 8-aligned offset, with their aux
+      slots, the call fills the bytes with c's low byte and empties
+      every slot that starts in the block ([clear_slots]);
+    - [wp_memcpy], from [memcpy_contract]: owning a destination block
+      and a source block in another object, of the same length, both
+      8-aligned, so in phase, the destination takes the source's bytes,
+      and each of its slots the source's when the copy covers all 8 of
+      its bytes, or empties ([copy_slots]); the source is handed back;
+    - [wp_malloc], from [malloc_contract]: the fresh object's pieces
+      ([obj]); no null case, since the selected malloc refuses with a
+      resource ending, which is not a return;
+    - [wp_strdup], from [strdup_contract]: owning a [string], the call
+      returns a fresh object owning a copy of it as a [string].
+    The contracts' exact destination frame ([memset_frame], shared by
+    the copies) keeps every piece outside the written block
+    ([block_frame], through Heap.v's [frame_within]); for strdup, whose
+    writes lie in its fresh object, [frame_other] keeps every other
+    object's pieces. The blocks' offsets are 8-aligned so that the
+    slots a write touches start inside them; the contracts also allow
+    unaligned starts, whose first touched slot begins before them. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -116,6 +129,37 @@ Proof.
   apply lookup_seqZ in Hk as [-> _]. eauto.
 Qed.
 
+(** memset's exact frame ([memset_frame]) on the n bytes xs of the
+    block at offset o of the live object b, at a multiple of 8, with
+    its slots cs, keeps the agreement of every piece outside the
+    block. memset and the copies share it. *)
+Lemma block_frame m m' b reg o xs cs :
+  live_disjoint m -> live_at m b reg -> b mod 8 = 0 -> o mod 8 = 0 -> length cs = length xs ->
+  all_agree m (byte_ps b o xs ++ aux_ps b o cs) ->
+  memset_frame m (mkPtr (b + o) (Obj b)) (Z.of_nat (length xs)) m' ->
+  frame_ok (byte_ps b o xs ++ aux_ps b o cs).*1 m m'.
+Proof.
+  intros Hd Hl Hb8 Ho8 Hlen Ha (Hr & Hbytes & Haux). apply all_agree_app in Ha as [Hx Hc].
+  assert (Hbyte : forall i, (i < length xs)%nat -> 0 <= o + Z.of_nat i /\ b + (o + Z.of_nat i) < r_end reg).
+  { intros i Hi. destruct (lookup_lt_is_Some_2 xs i Hi) as [x Hxi].
+    destruct (byte_ps_agree _ _ _ _ _ _ _ Hl Hx Hxi) as (_ & H1 & H2). lia. }
+  assert (Hmod : forall i, (b + (o + i)) mod 8 = (o + i) mod 8).
+  { intros i. rewrite Z.add_mod; [|lia]. rewrite Hb8 Z.add_0_l Z.mod_mod; [reflexivity|lia]. }
+  apply (frame_within _ _ _ b reg); [exact Hr | exact Hd | exact Hl | |].
+  - intros a H. apply Hbytes. intros Hs. unfold span_contains in Hs. cbn in Hs.
+    destruct (Hbyte (Z.to_nat (a - b - o)) ltac:(lia)) as [H1 H2].
+    apply H; [lia|]. rewrite fmap_app. apply elem_of_app. left.
+    replace (a - b) with (o + (a - b - o)) by lia. apply byte_ps_key. lia.
+  - intros a H. apply Haux. destruct (memset_touched _ _ _) eqn:Ht; [|reflexivity]. exfalso.
+    apply memset_touched_spec in Ht as (Hn & Ha8 & Hhi & Hlo). cbn [ptr_addr] in Hhi, Hlo.
+    assert (Hab : b + o <= a).
+    { pose proof (Z.div_mod a 8 ltac:(lia)). pose proof (Z.div_mod (b + o) 8 ltac:(lia)).
+      pose proof (Hmod 0) as Hm0. rewrite Z.add_0_r in Hm0. rewrite Ho8 in Hm0. lia. }
+    destruct (Hbyte (Z.to_nat (a - b - o)) ltac:(lia)) as [H1 H2].
+    apply H; [lia|]. rewrite fmap_app. apply elem_of_app. right.
+    replace (a - b) with (o + (a - b - o)) by lia. apply aux_ps_key. lia.
+Qed.
+
 (** A memset of the n bytes xs of the block at offset o of the live
     object b, at a multiple of 8, with its slots cs: afterwards its
     bytes are c's low byte and its slots [clear_slots], and every piece
@@ -168,21 +212,134 @@ Proof.
       * unfold aux_holds in *. rewrite Hr. rewrite Haux; [exact Hh|].
         destruct (memset_touched _ _ _) eqn:Ht; [|reflexivity].
         apply memset_touched_spec in Ht as (_ & Ht & _). rewrite Hmod in Ht. contradiction.
-  - apply (frame_within _ _ _ b reg); [exact Hr | exact Hd | exact Hl | |].
-    + intros a H. apply Hbytes. intros Hs. unfold span_contains in Hs. cbn in Hs.
-      destruct (Hbyte (Z.to_nat (a - b - o)) ltac:(lia)) as [H1 H2].
-      apply H; [lia|]. rewrite fmap_app. apply elem_of_app. left.
-      replace (a - b) with (o + (a - b - o)) by lia. apply byte_ps_key. lia.
-    + intros a H. apply Haux. destruct (memset_touched _ _ _) eqn:Ht; [|reflexivity]. exfalso.
-      apply memset_touched_spec in Ht as (Hn & Ha8 & Hhi & Hlo). cbn [ptr_addr] in Hhi, Hlo.
-      assert (Hab : b + o <= a).
-      { pose proof (Z.div_mod a 8 ltac:(lia)). pose proof (Z.div_mod (b + o) 8 ltac:(lia)).
-        pose proof (Hmod 0) as Hm0. rewrite Z.add_0_r in Hm0. rewrite Ho8 in Hm0. lia. }
-      assert (Hi : (Z.to_nat (a - b - o) < length cs)%nat) by lia.
-      destruct (lookup_lt_is_Some_2 cs _ Hi) as [c0 Hc0].
-      destruct (Hslot _ c0 Hc0) as (_ & H1 & H2 & _).
-      apply H; [lia|]. rewrite fmap_app. apply elem_of_app. right.
-      replace (a - b) with (o + (a - b - o)) by lia. apply aux_ps_key. lia.
+  - apply (block_frame _ _ _ reg); [exact Hd | exact Hl | exact Hb8 | exact Ho8 | exact Hlen |
+      apply all_agree_app; split; assumption | split; [exact Hr|]; split; assumption].
+Qed.
+
+(** The slots cs of a destination block after a copy of n bytes from
+    a source block whose slots are ds, both blocks at multiples of 8,
+    so in phase: a slot at a multiple of 8 takes the source's if all 8
+    of its bytes were copied, and empties if only some were; the
+    others are as they were. *)
+Definition copy_slots (n : Z) (ds cs : list cap) : list cap :=
+  zip_with (fun i dc => if i mod 8 =? 0 then (if i + 8 <=? n then fst dc else CNone) else snd dc)
+    (seqZ 0 (Z.of_nat (length cs))) (zip ds cs).
+
+(** Copying keeps the number of slots. *)
+Lemma length_copy_slots n ds cs : length ds = length cs -> length (copy_slots n ds cs) = length cs.
+Proof.
+  intros H. unfold copy_slots. rewrite length_zip_with length_seqZ Nat2Z.id length_zip. lia.
+Qed.
+
+(** The i-th copied slot. *)
+Lemma lookup_copy_slots n ds cs i c :
+  copy_slots n ds cs !! i = Some c ->
+  exists d0 c0, ds !! i = Some d0 /\ cs !! i = Some c0 /\
+    c = if Z.of_nat i mod 8 =? 0 then (if Z.of_nat i + 8 <=? n then d0 else CNone) else c0.
+Proof.
+  unfold copy_slots. intros H. apply lookup_zip_with_Some in H as (k & [d0 c0] & -> & Hk & Hdc).
+  apply lookup_seqZ in Hk as [-> _]. apply lookup_zip_with_Some in Hdc as (x & y & E & Hd & Hc).
+  injection E as -> ->. exists x, y. auto.
+Qed.
+
+(** What a copy writes into the slot at offset i of a destination
+    block at b + o, from a source block at b' + o', all at multiples of
+    8, for i a multiple of 8: the source's slot if the copy covers all
+    8 bytes, else nothing ([copy_slot]). *)
+Lemma copy_slot_at m b o b' o' c' n i :
+  b mod 8 = 0 -> o mod 8 = 0 -> b' mod 8 = 0 -> o' mod 8 = 0 -> 0 <= i -> i mod 8 = 0 ->
+  copy_slot m (mkPtr (b + o) (Obj b)) (mkPtr (b' + o') c') n (b + (o + i)) =
+  if i + 8 <=? n then m_aux m (b' + (o' + i)) else CNone.
+Proof.
+  intros Hb Ho Hb' Ho' Hi Hi8. unfold copy_slot, copy_full_slot. cbn [ptr_addr].
+  replace (b + o <=? b + (o + i)) with true by (symmetry; apply Z.leb_le; lia).
+  replace (b + (o + i) + 8 <=? b + o + n) with (i + 8 <=? n)
+    by (destruct (Z.leb_spec (i + 8) n), (Z.leb_spec (b + (o + i) + 8) (b + o + n)); lia).
+  replace (b' + o' + (b + (o + i) - (b + o))) with (b' + (o' + i)) by lia.
+  replace ((b' + (o' + i)) mod 8 =? 0) with true.
+  - destruct (i + 8 <=? n); reflexivity.
+  - symmetry. apply Z.eqb_eq. pose proof (Z.div_mod b' 8 ltac:(lia)). pose proof (Z.div_mod o' 8 ltac:(lia)).
+    pose proof (Z.div_mod i 8 ltac:(lia)). pose proof (Z.div_mod (b' + (o' + i)) 8 ltac:(lia)).
+    pose proof (Z.mod_pos_bound (b' + (o' + i)) 8 ltac:(lia)). lia.
+Qed.
+
+(** A copy of the n bytes ys of a source block at offset o' of the live
+    object b' into the block at offset o of the live object b, both at
+    multiples of 8: afterwards the destination's bytes are ys and its
+    slots [copy_slots], and every piece outside it keeps its agreement
+    ([block_frame]). *)
+Lemma copy_after m m' b reg o xs cs b' reg' o' ys ds c' :
+  live_disjoint m -> live_at m b reg -> live_at m b' reg' -> b mod 8 = 0 -> o mod 8 = 0 -> b' mod 8 = 0 -> o' mod 8 = 0 ->
+  length ys = length xs -> length cs = length xs -> length ds = length xs ->
+  all_agree m (byte_ps b o xs ++ aux_ps b o cs) -> all_agree m (byte_ps b' o' ys ++ aux_ps b' o' ds) ->
+  copy_result m (mkPtr (b + o) (Obj b)) (mkPtr (b' + o') c') (Z.of_nat (length xs)) m' ->
+  all_agree m' (byte_ps b o ys ++ aux_ps b o (copy_slots (Z.of_nat (length xs)) ds cs)) /\
+  frame_ok (byte_ps b o xs ++ aux_ps b o cs).*1 m m'.
+Proof.
+  intros Hd Hl Hl' Hb8 Ho8 Hb8' Ho8' Hly Hlc Hld Hdst Hsrc Hres.
+  pose proof Hres as (Hfr & Hcb & Hcs). pose proof Hfr as (Hr & _ & Haux).
+  split; [|exact (block_frame _ _ _ _ _ _ _ Hd Hl Hb8 Ho8 Hlc Hdst Hfr)].
+  pose proof Hdst as Hdst'. apply all_agree_app in Hdst' as [Hx Hc]. apply all_agree_app in Hsrc as [Hy Hds].
+  destruct Hl as [E0 L0].
+  assert (Hreg : registered m' b) by (unfold registered; rewrite Hr E0; discriminate).
+  (* The i-th byte and slot of the destination lie in b's bounds. *)
+  assert (Hbyte : forall i, (i < length xs)%nat -> 0 <= o + Z.of_nat i /\ b + (o + Z.of_nat i) < r_end reg).
+  { intros i Hi. destruct (lookup_lt_is_Some_2 xs i Hi) as [x Hxi].
+    destruct (byte_ps_agree _ _ _ _ _ _ _ (conj E0 L0) Hx Hxi) as (_ & H1 & H2). lia. }
+  assert (Hslot : forall b0 o0 cs0 i c0, all_agree m (aux_ps b0 o0 cs0) -> cs0 !! i = Some c0 ->
+            forall reg0, live_at m b0 reg0 -> aux_holds m (b0 + (o0 + Z.of_nat i)) c0).
+  { intros b0 o0 cs0 i c0 Ha Hci reg0 [E L].
+    assert (Hin : (aux_ps b0 o0 cs0) !! i = Some (PAux b0 (o0 + Z.of_nat i), VAux c0)).
+    { unfold aux_ps. apply lookup_zip_with_Some. exists (o0 + Z.of_nat i), c0. split; [reflexivity|].
+      split; [|exact Hci]. apply lookup_seqZ. split; [reflexivity|]. apply lookup_lt_Some in Hci. lia. }
+    destruct (all_agree_elem _ _ _ _ Ha (list_elem_of_lookup_2 _ _ _ Hin)) as [_ Hin'].
+    destruct (Hin' reg0 E L) as (_ & _ & Hh). exact Hh. }
+  assert (Hmod : forall i, (b + (o + i)) mod 8 = i mod 8).
+  { intros i. rewrite Z.add_mod; [|lia]. rewrite Hb8 Z.add_0_l Z.mod_mod; [|lia].
+    rewrite Z.add_mod; [|lia]. rewrite Ho8 Z.add_0_l Z.mod_mod; [reflexivity|lia]. }
+  apply all_agree_app. split; apply all_agree_intro; intros l v Hin.
+  - apply byte_ps_elem in Hin as (i & y & Hyi & -> & ->).
+    assert (Hi : (i < length xs)%nat) by (rewrite <- Hly; exact (lookup_lt_Some _ _ _ Hyi)).
+    destruct (Hbyte i Hi) as [H1 H2]. cbn [agree_piece]. split; [exact Hreg|].
+    intros reg0 E L. rewrite Hr E0 in E. injection E as <-. split; [exact H1|]. split; [exact H2|].
+    rewrite Hcb; [|unfold span_contains; cbn; lia]. cbn [ptr_addr].
+    replace (b' + o' + (b + (o + Z.of_nat i) - (b + o))) with (b' + (o' + Z.of_nat i)) by lia.
+    destruct (byte_ps_agree _ _ _ _ _ _ _ Hl' Hy Hyi) as (Hv & _ & _). exact Hv.
+  - apply aux_ps_elem in Hin as (i & c & Hci & -> & ->).
+    destruct (lookup_copy_slots _ _ _ _ _ Hci) as (d0 & c0 & Hd0 & Hc0 & ->).
+    assert (Hi : (i < length xs)%nat) by (rewrite <- Hlc; exact (lookup_lt_Some _ _ _ Hc0)).
+    destruct (Hbyte i Hi) as [H1 H2]. cbn [agree_piece]. split; [exact Hreg|].
+    intros reg0 E L. rewrite Hr E0 in E. injection E as <-. split; [exact H1|]. split; [exact H2|].
+    unfold aux_holds. rewrite Hr.
+    destruct (Z.eqb_spec (Z.of_nat i mod 8) 0) as [Hz|Hz].
+    + assert (Ht : memset_touched (mkPtr (b + o) (Obj b)) (Z.of_nat (length xs)) (b + (o + Z.of_nat i)) = true).
+      { apply memset_touched_spec. cbn [ptr_addr]. rewrite Hmod. lia. }
+      rewrite (Hcs _ Ht) (copy_slot_at _ _ _ _ _ _ _ (Z.of_nat i) Hb8 Ho8 Hb8' Ho8' ltac:(lia) Hz).
+      destruct (Z.of_nat i + 8 <=? Z.of_nat (length xs)).
+      * exact (Hslot _ _ _ _ _ Hds Hd0 _ Hl').
+      * left. reflexivity.
+    + rewrite Haux; [exact (Hslot _ _ _ _ _ Hc Hc0 _ (conj E0 L0))|].
+      destruct (memset_touched _ _ _) eqn:Ht; [|reflexivity].
+      apply memset_touched_spec in Ht as (_ & Ht & _). rewrite Hmod in Ht. contradiction.
+Qed.
+
+(** A change that keeps every region, and every byte and aux slot
+    outside the live object b, keeps the agreement of every piece of
+    another object: [frame_within] with every piece of b as keys. *)
+Lemma frame_other m m' b reg l v :
+  m_regions m' = m_regions m -> live_disjoint m -> live_at m b reg ->
+  (forall a, ~ (b <= a < r_end reg) -> m_bytes m' a = m_bytes m a /\ m_aux m' a = m_aux m a) ->
+  piece_id l <> b -> agree_piece m l v -> agree_piece m' l v.
+Proof.
+  intros Hr Hd Hl Hout Hid.
+  set (ks := (PByte b <$> seqZ 0 (r_end reg - b)) ++ (PAux b <$> seqZ 0 (r_end reg - b))).
+  apply (frame_within ks m m' b reg Hr Hd Hl).
+  - intros a H. apply Hout. intros Ha. apply (H Ha). apply elem_of_app. left.
+    apply list_elem_of_fmap_2. apply elem_of_seqZ. lia.
+  - intros a H. apply Hout. intros Ha. apply (H Ha). apply elem_of_app. right.
+    apply list_elem_of_fmap_2. apply elem_of_seqZ. lia.
+  - intros Hk. apply elem_of_app in Hk as [Hk|Hk]; apply list_elem_of_fmap in Hk as (o & -> & _);
+      exact (Hid eq_refl).
 Qed.
 
 (** The memory and aux triples over any [[runtime]] R. *)
@@ -343,6 +500,202 @@ Proof.
                   (mkRegion base (base + req_extent (heap_req 16 n)) (req_kind (heap_req 16 n)) Live))
         as [_ Hend]; [rewrite object_region_allocated Z.eqb_refl; reflexivity|].
       cbn [r_end] in Hend. exact Hend.
+Qed.
+
+(** memcpy's triple, from [memcpy_contract]: owning the destination
+    block (the bytes xs and slots cs from offset o of the live object b)
+    and the source block (the bytes ys and slots ds from offset o' of
+    the live object b', another object, through the capability c', read-write
+    or read-only), of the same length, all at multiples of 8, where vd,
+    vs and vn read as their pointers and length, and where the copy
+    keeps the world interpretation: the destination's bytes become ys,
+    its slots [copy_slots], and d is bound to the destination pointer.
+    The source is handed back unchanged. *)
+Lemma wp_memcpy f e ls lab d vd vs vn rest j b reg o xs cs b' reg' o' c' ys ds Φ :
+  registry (TAtom "memcpy") = Some (memcpy_contract world) ->
+  find_fn ge (TAtom "memcpy") = None -> lookup (TAtom "memcpy") (ge_globals ge) = None ->
+  arg_x ge e (Arg P vd) = Some (WPtr (mkPtr (b + o) (Obj b))) ->
+  arg_x ge e (Arg P vs) = Some (WPtr (mkPtr (b' + o') c')) -> c' = Obj b' \/ c' = Ro b' ->
+  arg_x ge e (Arg L vn) = Some (WInt (Z.of_nat (length xs))) ->
+  b <> b' -> b mod 8 = 0 -> o mod 8 = 0 -> b' mod 8 = 0 -> o' mod 8 = 0 -> 0 <= o -> 0 <= o' ->
+  b + o + Z.of_nat (length xs) <= r_end reg -> b' + o' + Z.of_nat (length xs) <= r_end reg' ->
+  length ys = length xs -> length cs = length xs -> length ds = length xs ->
+  Forall (fun y => 0 <= y < 256) ys ->
+  (forall m m' wd h, copy_result m (mkPtr (b + o) (Obj b)) (mkPtr (b' + o') c') (Z.of_nat (length xs)) m' ->
+     (forall l v, (l, v) ∈ block_ps b reg o xs cs -> h !! l = Some v) -> wi m wd h ->
+     wi m' wd (overwrite (block_ps b reg o ys (copy_slots (Z.of_nat (length xs)) ds cs)) h)) ->
+  live b reg -∗ bytes b o xs -∗ auxes b o cs -∗ live b' reg' -∗ bytes b' o' ys -∗ auxes b' o' ds -∗
+  ▷ (live b reg -∗ bytes b o ys -∗ auxes b o (copy_slots (Z.of_nat (length xs)) ds cs) -∗
+     live b' reg' -∗ bytes b' o' ys -∗ auxes b' o' ds -∗
+     WP (ERun (mkFrame f (put d (WPtr (mkPtr (b + o) (Obj b))) e) ls None (Exec lab rest j)) : mexpr)
+       {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+             (Exec lab (Call (CResult d P) (Global (TAtom "memcpy")) [Arg P vd; Arg P vs; Arg L vn] :: rest) j))
+        : mexpr) {{ Φ }}.
+Proof.
+  intros Hreg Hfn Hdata Hpd Hps Hc' Hn Hne Hb8 Ho8 Hb8' Ho8' Ho Ho' Hend Hend' Hly Hlc Hld Hy Hwi.
+  iIntros "Hl Hx Hcs Hl' Hy Hds HK".
+  iDestruct (block_pts b reg o xs cs with "[$Hl $Hx $Hcs]") as "Hdst".
+  iDestruct (block_pts b' reg' o' ys ds with "[$Hl' $Hy $Hds]") as "Hsrc".
+  iCombine "Hdst Hsrc" as "Hps".
+  iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (memcpy_contract world)
+            [WPtr (mkPtr (b + o) (Obj b)); WPtr (mkPtr (b' + o') c'); WInt (Z.of_nat (length xs))]
+            (pts (block_ps b reg o xs cs) ∗ pts (block_ps b' reg' o' ys ds)) with "Hps [HK]");
+    [done | done | done | done | cbn [map_option]; rewrite Hpd Hps Hn; done | | |].
+  - split; [right; eexists; reflexivity | exists vd, vs, vn; reflexivity].
+  - iIntros (σ) "Hσ [Hdst Hsrc]". iDestruct (pts_facts with "Hσ Hdst") as %(Ha & Hd & Hfit).
+    iDestruct (pts_facts with "Hσ Hsrc") as %(Ha' & _ & _). iPureIntro.
+    destruct Ha as [[E L] _]. destruct Ha' as [[E' L'] Hsrc]. cbn [fst snd] in E, L, E', L'.
+    apply all_agree_app in Hsrc as [Hys _].
+    destruct (Hfit b reg E) as [Hb0 Hfit']. destruct (Hfit b' reg' E') as [Hb0' Hfit''].
+    eexists _, _, _. split; [reflexivity|]. split; [|split; [|split]].
+    + split; [lia|]. split; [lia|]. split.
+      * unfold writable_span. cbn [span_ptr span_size ptr_addr ptr_cap].
+        split; [lia|]. exists b, reg. split; [reflexivity|]. split; [exact E|]. split; [exact L|].
+        apply (access_obj _ _ reg); [exact E | lia | lia | apply Z.mod_1_r].
+      * right. exists b. auto.
+    + split; [lia|]. split; [exists b', reg'; auto|]. split.
+      * apply (access_read _ b' reg'); [exact Hc' | exact E' | cbn; lia | cbn; lia | apply Z.mod_1_r].
+      * intros i Hi. cbn [ptr_addr]. destruct (lookup_lt_is_Some_2 ys (Z.to_nat i) ltac:(lia)) as [y Hyi].
+        destruct (byte_ps_agree _ _ _ _ _ _ _ (conj E' L') Hys Hyi) as (Hv & _ & _).
+        replace (b' + o' + i) with (b' + (o' + Z.of_nat (Z.to_nat i))) by lia. rewrite Hv.
+        exact (Forall_lookup_1 _ _ _ _ Hy Hyi).
+    + right. exists b'. auto.
+    + right. right. cbn [ptr_addr].
+      destruct (Hd b reg b' reg' (conj E L) (conj E' L') Hne); [left | right]; lia.
+  - iNext. iIntros (σ trace values s' m' w' Hinv) "(%h & Hh & %Hf) [Hdst Hsrc]".
+    destruct Hf as (Ha & Hd & Hr & Hw).
+    destruct (M.E.copy_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hinv)
+      as (_ & -> & d' & s0 & n' & Hx & _ & Hres & He).
+    injection Hx as <- <- <-. injection He as ->.
+    iDestruct (pts_lookup with "Hh Hdst") as %Hlk.
+    iDestruct (pts_lookup with "Hh Hsrc") as %Hlk'.
+    assert (Hold : all_agree (ls_mem σ) (block_ps b reg o xs cs)).
+    { apply all_agree_intro. intros l v Hin. exact (Ha l v (Hlk l v Hin)). }
+    assert (Hold' : all_agree (ls_mem σ) (block_ps b' reg' o' ys ds)).
+    { apply all_agree_intro. intros l v Hin. exact (Ha l v (Hlk' l v Hin)). }
+    destruct Hold as [Hlv Hold]. destruct Hold' as [Hlv' Hold']. cbn [agree_piece fst snd] in Hlv, Hlv'.
+    destruct (copy_after (ls_mem σ) m' b reg o xs cs b' reg' o' ys ds c' Hd Hlv Hlv' Hb8 Ho8 Hb8' Ho8'
+                Hly Hlc Hld Hold Hold' Hres) as [Hnew Hfr].
+    destruct (M.E.invoke_prefix _ _ _ _ _ _ _ _ _ _ _ _ _ Hinv) as (born & Hpre).
+    destruct (M.E.prefix_preserve _ _ _ _ _ _ _ _ _ _ _ Hpre Hr) as [Hr' _].
+    pose proof Hres as ((Hregs & _) & _).
+    assert (Hk : (block_ps b reg o ys (copy_slots (Z.of_nat (length xs)) ds cs)).*1 = (block_ps b reg o xs cs).*1).
+    { apply block_ps_keys; [exact Hly | rewrite length_copy_slots; lia]. }
+    iMod (pts_update _ _ (block_ps b reg o ys (copy_slots (Z.of_nat (length xs)) ds cs)) with "Hh Hdst")
+      as "[Hh Hdst]"; [exact Hk|].
+    iModIntro. iExists _. iSplit; [iPureIntro; reflexivity|].
+    iSplitL "Hh".
+    + iExists _. iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt ls_world]. split; [|split; [|split]].
+      * intros l v Hl'. destruct (lookup_overwrite _ _ _ _ Hl') as [Hin | [Hnk Hh]].
+        -- apply elem_of_cons in Hin as [Hin|Hin].
+           ++ injection Hin as -> ->. cbn [agree_piece]. exact (live_at_regions _ _ _ _ Hregs Hlv).
+           ++ exact (all_agree_elem _ _ _ _ Hnew Hin).
+        -- apply Hfr; [|exact (Ha l v Hh)]. intros Hk'. apply Hnk. rewrite Hk.
+           cbn [fmap list_fmap fst block_ps]. right. exact Hk'.
+      * exact (live_disjoint_regions _ _ Hregs Hd).
+      * exact Hr'.
+      * exact (Hwi _ _ _ _ Hres Hlk Hw).
+    + rewrite !block_pts. iDestruct "Hdst" as "(Hl & Hx & Hcs)". iDestruct "Hsrc" as "(Hl' & Hy & Hds)".
+      iApply ("HK" with "Hl Hx Hcs Hl' Hy Hds").
+Qed.
+
+(** strdup's triple, from [strdup_contract]: owning the string at p,
+    which v reads as, in an object at a multiple of 8, the call binds d
+    to the base pointer of a fresh heap object holding a copy of the
+    string, which it owns as a [string] (its life and the copied bytes;
+    the fresh object's other bytes and its aux slots stay unowned), and
+    hands the original back. A refusal is a resource ending. *)
+Lemma wp_strdup f e ls lab d v rest j p b reg bytes Φ :
+  registry (TAtom "strdup") = Some (strdup_contract world) ->
+  find_fn ge (TAtom "strdup") = None -> lookup (TAtom "strdup") (ge_globals ge) = None ->
+  arg_x ge e (Arg P v) = Some (WPtr p) -> b mod 8 = 0 ->
+  (forall m m' wd h base k, strdup_result m p k base m' -> wi m wd h ->
+     wi m' wd (overwrite (string_ps (mkPtr base (Obj base)) base
+                            (mkRegion base (base + req_extent (heap_req 16 k)) Heap Live) bytes) h)) ->
+  string p b reg bytes -∗
+  ▷ (∀ base reg', string p b reg bytes -∗ string (mkPtr base (Obj base)) base reg' bytes -∗
+       WP (ERun (mkFrame f (put d (WPtr (mkPtr base (Obj base))) e) ls None (Exec lab rest j)) : mexpr)
+         {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+             (Exec lab (Call (CResult d P) (Global (TAtom "strdup")) [Arg P v] :: rest) j)) : mexpr)
+    {{ Φ }}.
+Proof.
+  intros Hreg Hfn Hdata Hv Hb8 Hwi. iIntros "Hs HK".
+  iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (strdup_contract world) [WPtr p] (string p b reg bytes)
+            with "Hs [HK]"); [done | done | done | done | cbn [map_option]; rewrite Hv; done | | |].
+  - split; [right; eexists; reflexivity | eexists; reflexivity].
+  - iIntros (σ) "Hσ Hs". iDestruct (string_facts with "Hσ Hs") as %[Ht _].
+    iDestruct "Hs" as "[%Hok _]". iPureIntro. destruct Hok as (Hc & _).
+    exists p, (Z.of_nat (length bytes)). split; [reflexivity|]. split; [exact Ht|]. exists b. auto.
+  - iNext. iIntros (σ trace values s' m' w' Hinv) "(%h & Hh & %Hf) [%Hok Hs]".
+    destruct Hf as (Ha & Hd & Hr & Hw).
+    iDestruct (pts_lookup with "Hh Hs") as %Hlk.
+    assert (Hold : all_agree (ls_mem σ) (string_ps p b reg bytes)).
+    { apply all_agree_intro. intros l v' Hin. exact (Ha l v' (Hlk l v' Hin)). }
+    pose proof (string_terminated _ _ _ _ _ Hok Hold) as Ht.
+    pose proof (string_bytes _ _ _ _ _ Hok Hold) as Hbs.
+    destruct (M.E.invoke_prefix _ _ _ _ _ _ _ _ _ _ _ _ _ Hinv) as (born & Hp).
+    destruct (M.E.prefix_preserve _ _ _ _ _ _ _ _ _ _ _ Hp Hr) as [Hr' _].
+    destruct (M.E.strdup_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hinv)
+      as (_ & -> & p' & k & Hx & (Hk & _) & [(base & Hres & He) | (why & born' & He & _)]); [|discriminate He].
+    injection Hx as <-. injection He as ->. rewrite <- (terminated_length_unique _ _ _ _ Ht Hk) in Hres.
+    set (n := Z.of_nat (length bytes)) in *.
+    pose proof (malloc_extent (n + 1) ltac:(unfold n; lia)) as Hext.
+    assert (Hn0 : 0 <= n) by (unfold n; lia).
+    set (q := heap_req 16 (n + 1)) in *.
+    set (reg' := mkRegion base (base + req_extent q) Heap Live).
+    destruct Hres as [(Hmax & Hfr & _) Hcopy].
+    pose proof Hfr as (Hpos & Hmod & _ & Hnone & _).
+    pose proof Hcopy as ((Hregs & Hbytes & Haux) & Hcb & _).
+    set (m1 := allocated (ls_mem σ) q base) in *.
+    assert (Hl1 : live_at m1 base reg').
+    { split; [|reflexivity]. unfold m1. rewrite object_region_allocated Z.eqb_refl. reflexivity. }
+    assert (Hd1 : live_disjoint m1).
+    { apply live_disjoint_allocated; [exact Hd | exact Hfr | lia]. }
+    assert (Hout : forall a, ~ (base <= a < r_end reg') ->
+              m_bytes m' a = m_bytes m1 a /\ m_aux m' a = m_aux m1 a).
+    { intros a Ha'. cbn [r_end reg'] in Ha'. split.
+      - apply Hbytes. unfold span_contains. cbn. lia.
+      - apply Haux. destruct (memset_touched _ _ a) eqn:Ht'; [|reflexivity]. exfalso.
+        apply memset_touched_spec in Ht' as (_ & Ha8 & Hhi & Hlo). cbn [ptr_addr] in Hhi, Hlo.
+        assert (Hb16 : base mod 8 = 0) by exact (fresh_heap_aligned8 _ _ _ Hfr).
+        pose proof (Z.div_mod a 8 ltac:(lia)). pose proof (Z.div_mod base 8 ltac:(lia)). lia. }
+    iMod (pts_alloc h (string_ps (mkPtr base (Obj base)) base reg' bytes) with "Hh") as "[Hh Hnew]".
+    { apply string_ps_nodup. }
+    { intros l' v' Hin. destruct (h !! l') as [v0|] eqn:E; [|reflexivity]. exfalso.
+      pose proof (agree_piece_registered _ _ _ (Ha l' v0 E)) as Hreg'.
+      rewrite (string_ps_id _ _ _ _ _ _ Hin) in Hreg'. exact (Hreg' Hnone). }
+    iModIntro. iExists _. iSplit; [iPureIntro; reflexivity|].
+    iSplitL "Hh".
+    + iExists _. iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt ls_world]. split; [|split; [|split]].
+      * intros l' v' Hl. destruct (lookup_overwrite _ _ _ _ Hl) as [Hin | [_ Hh]].
+        -- apply elem_of_cons in Hin as [Hin|Hin].
+           ++ injection Hin as -> ->. cbn [agree_piece]. unfold live_at. rewrite Hregs. exact Hl1.
+           ++ cbn [ptr_addr] in Hin. rewrite Z.sub_diag in Hin.
+              apply byte_ps_elem in Hin as (i & x & Hxi & -> & ->). cbn [agree_piece].
+              assert (Hi : (i <= length bytes)%nat).
+              { apply lookup_lt_Some in Hxi. rewrite length_app in Hxi. cbn in Hxi. lia. }
+              split; [unfold registered; rewrite Hregs; destruct Hl1 as [E _]; rewrite E; discriminate|].
+              intros reg0 E L. rewrite Hregs in E. destruct Hl1 as [E1 _]. rewrite E1 in E.
+              injection E as <-. cbn [r_end reg']. split; [lia|]. split; [lia|].
+              rewrite Hcb; [|unfold span_contains; cbn; lia]. cbn [ptr_addr].
+              replace (base + (0 + Z.of_nat i) - base) with (Z.of_nat i) by lia.
+              exact (Hbs i x Hxi).
+        -- apply (frame_other m1 m' base reg'); [exact Hregs | exact Hd1 | exact Hl1 | exact Hout | |].
+           ++ intros Hid. pose proof (agree_piece_registered _ _ _ (Ha l' v' Hh)) as Hreg'.
+              rewrite Hid in Hreg'. exact (Hreg' Hnone).
+           ++ exact (agree_piece_allocated _ _ _ _ _ Hnone (Ha l' v' Hh)).
+      * exact (live_disjoint_regions _ _ Hregs Hd1).
+      * exact Hr'.
+      * exact (Hwi _ _ _ _ _ _ (conj (conj Hmax (conj Hfr eq_refl)) Hcopy) Hw).
+    + iApply ("HK" with "[Hs] [Hnew]").
+      * iSplit; [iPureIntro; exact Hok | iExact "Hs"].
+      * iSplit; [|iExact "Hnew"]. iPureIntro. unfold string_ok. cbn [ptr_cap ptr_addr r_end reg'].
+        destruct Hok as (_ & _ & _ & _ & _ & Hf).
+        destruct (R.address_space _ _ Hr' base reg') as [_ Hend];
+          [rewrite Hregs; exact (proj1 Hl1)|].
+        cbn [r_end reg'] in Hend. split; [left; reflexivity|]. repeat split; try lia. exact Hf.
 Qed.
 
 End calls.
