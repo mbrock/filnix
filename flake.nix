@@ -251,6 +251,13 @@
                 }
                 // args
               );
+            # Unsupported ports stay available explicitly, not in flake check.
+            diagnostics = {
+              pipewire =
+                (import ./tests/pipewire.nix { inherit pkgs pkgsFilc filcc; }).pipewire;
+              pipewire-runtime =
+                (import ./tests/pipewire.nix { inherit pkgs pkgsFilc filcc; }).runtime;
+            };
           };
 
           checks.${system} = {
@@ -259,10 +266,6 @@
             port-version-refresh = import ./tests/port-version-refresh.nix {
               inherit pkgs pkgsFilc;
             };
-            pipewire =
-              (import ./tests/pipewire.nix { inherit pkgs pkgsFilc filcc; }).pipewire;
-            pipewire-runtime =
-              (import ./tests/pipewire.nix { inherit pkgs pkgsFilc filcc; }).runtime;
             staging-fork-regressions = import ./tests/fork-regressions.nix {
               pkgsFilc = pkgsFilcStaging;
             };

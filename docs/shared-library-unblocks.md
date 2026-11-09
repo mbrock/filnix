@@ -280,8 +280,23 @@ sets**. Since [the October 24 broken-port declaration](https://github.com/mbrock
 `ports.nix` marks PipeWire 1.6.6 broken: its `test-loop` cancellation case
 aborts in `pthread_cancel` with `libgcc_s.so.6661 must be installed for
 pthread_cancel to work`. The port and its patches remain, but ordinary package
-evaluation refuses it; the `pipewire` and `pipewire-runtime` flake checks
-therefore fail at evaluation, before running their tests.
+evaluation refuses it. The `pipewire` and `pipewire-runtime` checks are now
+opt-in diagnostics under `lib.x86_64-linux.diagnostics`, outside the ordinary
+`checks` set until support returns. They retain the package's tests and the
+installed-daemon/WirePlumber playback test; they are not passing substitutes
+for unsupported functionality.
+
+To investigate the runtime blocker explicitly, override both unsupported and
+broken-package evaluation guards for this invocation only:
+
+```sh
+NIXPKGS_ALLOW_BROKEN=1 NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 \
+  nix build --impure --no-link --keep-going \
+    .#lib.x86_64-linux.diagnostics.pipewire \
+    .#lib.x86_64-linux.diagnostics.pipewire-runtime
+```
+
+Without these explicit overrides, the diagnostics still refuse evaluation.
 
 The successful core-profile, full-package and consumer experiments below are
 historical results with the toolchains described there, not current support
@@ -293,7 +308,7 @@ not merely allowing a broken package or installing native libgcc.
 > **Retired.** The full `pkgsFilc.pipewire` built with these patches at the
 > time, and the consumer cohort (SDL3, SDL2 compatibility, CAVA, WirePlumber)
 > switched to it. The core profile and `tests/pipewire-core.nix` were removed;
-> the `pipewire` and `pipewire-runtime` flake checks replaced them. See the
+> the `pipewire` and `pipewire-runtime` checks replaced them. See the
 > current support status above; the notes below are kept as history.
 
 `tests/pipewire-core.nix` is a standalone diagnostic profile rather than a
