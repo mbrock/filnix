@@ -39,6 +39,9 @@ int main(void) {
     _Alignas(16) char terminated[16] = {'!', (char)128, (char)255, 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 0};
     answer("strlen includes final-byte NUL", strlen(terminated) == 15 && strlen(terminated + 1) == 14 && strlen(terminated + 2) == 13);
     answer("strlen empty still reads a live NUL", strlen(terminated + 15) == 0 && strlen("") == 0 && strlen(short_string + 1) == 1);
+    answer("strchr converts int and includes final NUL", strchr(terminated + 1, 511) == terminated + 2 && strchr(terminated, -1) == terminated + 2 && strchr(terminated, 0) == terminated + 15 && strchr(terminated + 1, 256) == terminated + 15);
+    char cutoff[4] = {'a', 0, 'z', 0};
+    answer("strchr stops at NUL and permits empty strings", !strchr(cutoff, 'z') && strchr(cutoff, 256) == cutoff + 1 && strchr(terminated + 15, 0) == terminated + 15 && !strchr(terminated + 15, 'l'));
     answer("memchr converts int and selects first match", memchr(high_bytes + 1, 511, 15) == high_bytes + 2 && memchr(high_bytes + 1, -1, 15) == high_bytes + 2 && memchr(short_string, 0, 3) == short_string + 2);
     answer("memchr respects last byte and zero count", memchr(high_bytes + 1, 'l', 15) == high_bytes + 15 && !memchr(high_bytes + 1, 0, 15) && !memchr(high_bytes + 16, 0, 0));
     _Alignas(16) unsigned char compare_left[16] = {'!', 128, 255, 0, 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l'};

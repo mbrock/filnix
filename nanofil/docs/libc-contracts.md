@@ -324,6 +324,25 @@ before its second argument when aligning and merge words beyond the logical
 comparison dependency; these are trusted native-satisfaction obligations,
 not guarantees established by the finite probe or a termination proof.
 
+The Rocq strchr contract requires a complete terminated string independently
+of an early match, plus a canonical int word. It returns the first low-byte
+match including NUL, with exactly the source capability, or null. Its read
+dependencies are the source identity's region/life and bytes through NUL,
+not auxiliary slots. Its zero-size capability source permits only copying
+the source pointer's authority, not importing an auxiliary slot; this is
+distinct from its nonempty logical read footprint. No ownership transfers,
+and the returned capability is invalidated when the source lifetime ends.
+Every completion preserves memory/world and has no observations or resource
+or exit ending. Public invocation controls distinguish first from later
+matches and reject correct-address capability amplification/loss. Added
+native rows check 511, -1, 0 and 256 conversions, aligned/interior final-byte
+NULs, empty strings and a nonzero byte only after the first NUL; the existing
+repeated-match and freed-result controls remain. Pinned generic strchr
+delegates to strchrnul, which aligns downward and scans words. Loads before
+the argument or beyond the logical dependency interval remain trusted
+implementation obligations; these finite observations prove neither
+universal native satisfaction nor termination.
+
 ## 2. Heap lifetime (5)
 
 All fresh results satisfy the runtime axioms. Requested size is a

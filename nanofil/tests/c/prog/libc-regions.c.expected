@@ -4,6 +4,8 @@ strnlen unaligned high bytes need no extra byte: yes
 strnlen zero count permits live one-past: yes
 strlen includes final-byte NUL: yes
 strlen empty still reads a live NUL: yes
+strchr converts int and includes final NUL: yes
+strchr stops at NUL and permits empty strings: yes
 memchr converts int and selects first match: yes
 memchr respects last byte and zero count: yes
 memcmp unsigned first difference controls sign: yes

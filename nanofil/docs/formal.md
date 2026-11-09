@@ -1487,6 +1487,44 @@ logical dependency window remain implementation obligations, not something
 these finite probes prove universally. Existing puts/invocation/machine
 interfaces, runtime axioms, registry and validator remain unchanged.
 
+### Campaign 4 milestone 4w: strchr and source-capability returns
+
+The trusted `strchr_contract` admits a complete terminated string and a
+canonical class-W int; its count-free ABI returns a class-P pointer.
+`strchr_result` reuses first-match `memchr_result` over the string length
+plus one, including the NUL. Strict termination proves this span readable
+without runtime readiness. Input-only premises construct an actual pure
+invocation, and every represented completion returns the unique exact
+source-capability pointer or null. Searching any int whose low byte is
+zero necessarily returns the terminating pointer, not null.
+
+The identity-keyed read footprint is the source object's region/life and
+all bytes through its NUL, even when an immediate match decides the result.
+Auxiliary slots are not dependencies. The capability source `[mkSpan p 0]`
+is deliberately separate: it permits copying p's own capability but cannot
+import a capability from a complete auxiliary pointer slot and grants no
+write permission. It is not a zero-byte read footprint or a maximum-sized
+read. A hit retains Obj or Ro exactly; no ownership transfers and the result
+is invalidated when its source object's lifetime ends. All memory and world
+are preserved, with no observations, allocations, releases, resource or exit
+endings. This relational interface remains independent of Iris.
+
+Public-call controls distinguish a first repeated match from a later match,
+null, capability amplification and capability loss. They cover 511 and the
+canonical int representation of -1, 0 and 256 NUL searches, empty strings, Obj
+as well as Ro sources, and a byte occurring only after the first NUL. Missing
+termination, one-past/null/freed authority, noncanonical int words and wrong
+ABI shapes fail admission. Native rows check high-byte int conversion,
+aligned/interior searches through a final-byte NUL, empty strings and NUL
+cut-off; the existing repeated-match and freed-result controls remain.
+
+Pinned generic strchr delegates to strchrnul, whose initial word load
+aligns downward and whose word scan can load beyond the logical dependency
+interval. These finite probes do not prove universal native satisfaction,
+which implementation is selected, or termination; libc remains trusted
+behind this API contract. Existing call signatures and runtime axioms are
+unchanged. The next separate slice is last-match `strrchr`.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and

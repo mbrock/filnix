@@ -822,6 +822,94 @@ Definition strcmp_contract (world : Type) : contract world :=
     (fun _ => False)
     (fun why => In why [NullCapability; OutOfBounds; ArgumentSize; ReturnSize]).
 
+(** ## Unbounded character search *)
+
+(** The complete string including its NUL is a readable byte span.
+    Only the consumed extent is required, without runtime readiness. *)
+Lemma terminated_length_readable : forall m p k,
+  terminated_length m p k -> readable_bytes m p (k + 1).
+Proof.
+  intros m p k [Hlength Hmax]. eapply bounded_prefix_readable; [exact Hlength|].
+  assert (Hlt : (k <? 2 ^ 64 - 1) = true) by (apply Z.ltb_lt; exact Hmax).
+  rewrite Hlt. destruct Hlength as (_ & Hk & _). lia.
+Qed.
+
+(** strchr selects the first low-byte match through the first NUL,
+    including that NUL when searched for, with exactly the source's
+    capability; a miss is null. Full string admission is independent
+    of an early match. The int's canonical domain is checked separately. *)
+Definition strchr_result (m : mem) (p : ptr) (c : Z) (q : ptr) : Prop :=
+  exists k, terminated_length m p k /\ memchr_result m p c (k + 1) q.
+
+(** Input string authority constructs a first match or miss, after
+    proving readability. This is nonvacuity, not native termination. *)
+Lemma strchr_result_total : forall m p c k,
+  terminated_length m p k -> exists q, strchr_result m p c q.
+Proof.
+  intros m p c k Hlength.
+  pose proof (terminated_length_readable m p k Hlength) as [Hspan _].
+  destruct (memchr_result_total m p c (k + 1) ltac:(lia)) as [q Hq].
+  exists q, k. auto.
+Qed.
+
+(** First-NUL and first-match uniqueness fix the full returned pointer,
+    including its capability rather than just its numeric address. *)
+Lemma strchr_result_unique : forall m p c left right,
+  strchr_result m p c left -> strchr_result m p c right -> left = right.
+Proof.
+  intros m p c left right (kl & Hl & Hleft) (kr & Hr & Hright).
+  pose proof (terminated_length_unique _ _ _ _ Hl Hr) as <-.
+  eapply memchr_result_unique; eauto.
+Qed.
+
+(** A zero-size source permits p's own capability, not any auxiliary
+    slot. This is capability provenance, not the string's read footprint. *)
+Lemma strchr_result_authority : forall m p c q,
+  strchr_result m p c q -> available_cap [mkSpan p 0] [] m (ptr_cap q).
+Proof.
+  intros m p c q (k & _ & [(i & _ & _ & _ & ->) | (_ & ->)]).
+  - right. left. exists (mkSpan p 0). split; [left; reflexivity|reflexivity].
+  - left. reflexivity.
+Qed.
+
+(** A low-byte-zero search necessarily returns the readable terminator
+    with the source capability; null or a later pointer cannot qualify. *)
+Lemma strchr_result_nul : forall m p c q k,
+  terminated_length m p k -> strchr_result m p c q -> c mod 256 = 0 ->
+  q = mkPtr (ptr_addr p + k) (ptr_cap p).
+Proof.
+  intros m p c q k Hlength Hresult Hzero.
+  eapply strchr_result_unique; [exact Hresult|]. exists k. split; [exact Hlength|].
+  destruct Hlength as [(_ & Hk & _ & _ & Hbytes & Hnul) Hmax].
+  left. exists k. split; [lia|]. split.
+  - rewrite Hzero. apply Hnul. exact Hmax.
+  - split; [|reflexivity]. intros i Hi. specialize (Hbytes i Hi). rewrite Hzero. lia.
+Qed.
+
+(** strchr returns a pointer and takes exactly a pointer and an int. *)
+Definition strchr_abi (r : call_result) (args : list arg) : Prop :=
+  (r = CVoid \/ exists d, r = CResult d P) /\ exists p c, args = [Arg P p; Arg W c].
+
+(** Pure trusted strchr. Read dependencies are the source identity's
+    region/life and bytes through its own NUL; auxiliary slots are not
+    dependencies. The zero-size capability source permits returning p's
+    own authority only, not zero byte reads or pointer-slot imports.
+    No ownership transfers: a hit retains the source capability and is
+    invalidated when that object's lifetime ends. No memory is changed. *)
+Definition strchr_contract (world : Type) : contract world :=
+  mkContract world (RClass P) strchr_abi
+    (fun xs m _ => exists p c k, xs = [WPtr p; WInt c] /\
+      0 <= c < 2 ^ 32 /\ terminated_length m p k)
+    (fun xs _ _ => match xs with [WPtr p; WInt _] => [mkSpan p 0] | _ => [] end)
+    (fun _ _ _ => []) (fun _ _ _ => []) (fun _ _ _ _ _ => False)
+    (fun _ m w born trace m' w' => born = [] /\ trace = [] /\ m' = m /\ w' = w)
+    (fun xs m w born trace ending m' w' =>
+      born = [] /\ trace = [] /\ m' = m /\ w' = w /\
+      exists p c q, xs = [WPtr p; WInt c] /\ 0 <= c < 2 ^ 32 /\ strchr_result m p c q /\
+        ending = CallReturn [WPtr q])
+    (fun _ => False)
+    (fun why => In why [NullCapability; OutOfBounds; ArgumentSize; ReturnSize]).
+
 (** ## Memory paths over any runtime *)
 
 (** The call relations over any [[runtime]] R, whose allocator answers
@@ -1299,6 +1387,57 @@ Theorem strcmp_invocation : forall world r args xs s m (w : world) trace ending 
   trace = [] /\ m' = m /\ w' = w /\
   exists p q bits, xs = [WPtr p; WPtr q] /\ strcmp_result m p q bits /\
     ending = CallReturn [WInt bits].
+Proof.
+  intros world r args xs s m w trace ending s' m' w' Hcall. inversion Hcall; subst.
+  - match goal with Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
+      destruct Hpost as (_ & Htrace & Hmem & Hworld & Hresult); auto end.
+  - contradiction.
+Qed.
+
+(** A specified first match or miss constructs a pure pointer return
+    from the independent ABI and canonical-int admission obligations. *)
+Theorem strchr_return : forall world r args p c q s m (w : world),
+  strchr_abi r args -> 0 <= c < 2 ^ 32 -> strchr_result m p c q ->
+  invoke (strchr_contract world) r args [WPtr p; WInt c] s m w
+    [] (CallReturn [WPtr q]) s m w.
+Proof.
+  intros world r args p c q s m w Habi Hc Hresult.
+  destruct Hresult as (k & Hlength & Hq).
+  eapply invoke_normal with (born := []).
+  - exact Habi.
+  - exists p, c, k. auto.
+  - split; [constructor|]. repeat split; reflexivity.
+  - repeat split; try reflexivity. exists p, c, q. split; [reflexivity|].
+    split; [exact Hc|]. split; [exists k; auto|reflexivity].
+  - intros why Hbad. discriminate.
+  - intros values Heq. injection Heq as <-. split.
+    + exists (WPtr q). split; reflexivity.
+    + constructor.
+      * apply (strchr_result_authority m p c q). exists k. auto.
+      * constructor.
+  - intros status Hbad. discriminate.
+Qed.
+
+(** Canonical int and terminated-string inputs suffice for some actual
+    permitted invocation; native coverage and termination remain trusted. *)
+Theorem strchr_admitted : forall world r args p c k s m (w : world),
+  strchr_abi r args -> 0 <= c < 2 ^ 32 -> terminated_length m p k ->
+  exists q, invoke (strchr_contract world) r args [WPtr p; WInt c] s m w
+    [] (CallReturn [WPtr q]) s m w.
+Proof.
+  intros world r args p c k s m w Habi Hc Hlength.
+  destruct (strchr_result_total m p c k Hlength) as [q Hq].
+  exists q. apply strchr_return; assumption.
+Qed.
+
+(** Every represented completion is a first-match pointer or null in
+    the original memory, with canonical int admission, empty observations,
+    unchanged memory/world, and no resource or process-exit ending. *)
+Theorem strchr_invocation : forall world r args xs s m (w : world) trace ending s' m' w',
+  invoke (strchr_contract world) r args xs s m w trace ending s' m' w' ->
+  trace = [] /\ m' = m /\ w' = w /\
+  exists p c q, xs = [WPtr p; WInt c] /\ 0 <= c < 2 ^ 32 /\ strchr_result m p c q /\
+    ending = CallReturn [WPtr q].
 Proof.
   intros world r args xs s m w trace ending s' m' w' Hcall. inversion Hcall; subst.
   - match goal with Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
@@ -2713,4 +2852,168 @@ Example strcmp_wrong_abi_rejected :
 Proof.
   split; [intros [[H | (d & H)] _]; discriminate H|].
   split; intros [_ (p & q & H)]; discriminate H.
+Qed.
+
+(** ## Unbounded character search controls *)
+
+(** The first l of hello, not the repeated l, retains read-only authority. *)
+Lemma strchr_hello_first : strchr_result hello_mem hello_ptr 108 (mkPtr 1026 (Ro 1024)).
+Proof.
+  exists 5. split; [exact strlen_hello_bridge|]. left. exists 2.
+  repeat split; try reflexivity; try lia. intros i Hi.
+  assert (i = 0 \/ i = 1) by lia. destruct H as [-> | ->]; discriminate.
+Qed.
+
+(** The source-only capability permission constructs an actual P return. *)
+Example strchr_first_call :
+  InterpExternal.invoke (strchr_contract unit) (CResult (TAtom "found") P)
+    [Arg P (Const 0); Arg W (Const 108)] [WPtr hello_ptr; WInt 108]
+    InterpRuntime.start hello_mem tt [] (CallReturn [WPtr (mkPtr 1026 (Ro 1024))])
+    InterpRuntime.start hello_mem tt.
+Proof.
+  apply InterpExternal.strchr_return.
+  - split; [right; eexists; reflexivity|]. eexists _, _. reflexivity.
+  - vm_compute; split; congruence.
+  - exact strchr_hello_first.
+Qed.
+
+(** At that admitted call, a later match, null, and correct-address
+    capability amplification or loss fail regardless of the endpoint. *)
+Example strchr_wrong_pointer_rejected : forall q s' m' w',
+  In q [mkPtr 1027 (Ro 1024); mkPtr 0 CNone; mkPtr 1026 (Obj 1024); mkPtr 1026 CNone] ->
+  ~ InterpExternal.invoke (strchr_contract unit) CVoid
+    [Arg P (Const 0); Arg W (Const 108)] [WPtr hello_ptr; WInt 108]
+    InterpRuntime.start hello_mem tt [] (CallReturn [WPtr q]) s' m' w'.
+Proof.
+  intros q s' m' w' Hbad Hcall.
+  destruct (InterpExternal.strchr_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as (_ & _ & _ & p & c & result & Hargs & Hc & Hresult & Hending).
+  injection Hargs as <- <-. injection Hending as <-.
+  pose proof (strchr_result_unique _ _ _ _ _ Hresult strchr_hello_first) as Heq.
+  destruct Hbad as [<- | [<- | [<- | [<- | []]]]]; discriminate Heq.
+Qed.
+
+(** Both 511 and the canonical W representation of -1 select byte 255,
+    whose repeated later occurrences do not replace the first match. *)
+Example strchr_high_calls : forall c, In c [511; 2 ^ 32 - 1] ->
+  InterpExternal.invoke (strchr_contract unit) CVoid
+    [Arg P (Const 0); Arg W (Const c)] [WPtr hello_ptr; WInt c]
+    InterpRuntime.start strlen_high_mem tt [] (CallReturn [WPtr (mkPtr 1025 (Ro 1024))])
+    InterpRuntime.start strlen_high_mem tt.
+Proof.
+  intros c Hcase. apply InterpExternal.strchr_return.
+  - split; [left; reflexivity|]. eexists _, _. reflexivity.
+  - destruct Hcase as [<- | [<- | []]]; vm_compute; split; congruence.
+  - exists 5. split; [apply (strlen_boundary_length 0 5); simpl; auto|].
+    left. exists 1. split; [lia|]. split.
+    + destruct Hcase as [<- | [<- | []]]; reflexivity.
+    + split; [|reflexivity]. intros i Hi. assert (i = 0) by lia. subst.
+      destruct Hcase as [<- | [<- | []]]; discriminate.
+Qed.
+
+(** Searching 0 or 256 returns the final live NUL, including an empty
+    input; a nonzero search in that empty string instead returns null. *)
+Example strchr_nul_empty_calls : forall offset c,
+  In (offset, c) [(0, 0); (0, 256); (5, 0); (5, 256); (5, 108)] ->
+  InterpExternal.invoke (strchr_contract unit) CVoid
+    [Arg P (Const 0); Arg W (Const c)]
+    [WPtr (mkPtr (1024 + offset) (Ro 1024)); WInt c] InterpRuntime.start strlen_high_mem tt
+    [] (CallReturn [WPtr (if c =? 108 then mkPtr 0 CNone else mkPtr 1029 (Ro 1024))])
+    InterpRuntime.start strlen_high_mem tt.
+Proof.
+  intros offset c Hcase.
+  assert (Hlength : terminated_length strlen_high_mem (mkPtr (1024 + offset) (Ro 1024)) (5 - offset)).
+  { apply strlen_boundary_length. destruct Hcase as [H|[H|[H|[H|[H|[]]]]]];
+      injection H as <- <-; simpl; auto. }
+  apply InterpExternal.strchr_return.
+  - split; [left; reflexivity|]. eexists _, _. reflexivity.
+  - destruct Hcase as [H|[H|[H|[H|[H|[]]]]]]; injection H as <- <-;
+      vm_compute; split; congruence.
+  - exists (5 - offset). split; [exact Hlength|].
+    destruct Hcase as [H|[H|[H|[H|[H|[]]]]]]; injection H as <- <-.
+    + left. exists 5. split; [lia|]. split; [reflexivity|]. split; [|reflexivity].
+      intros i Hi. assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4) by lia.
+      destruct H as [-> | [-> | [-> | [-> | ->]]]]; discriminate.
+    + left. exists 5. split; [lia|]. split; [reflexivity|]. split; [|reflexivity].
+      intros i Hi. assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4) by lia.
+      destruct H as [-> | [-> | [-> | [-> | ->]]]]; discriminate.
+    + left. exists 0. repeat split; try reflexivity; lia.
+    + left. exists 0. repeat split; try reflexivity; lia.
+    + right. split; [|reflexivity]. intros i Hi. assert (i = 0) by lia. subst. discriminate.
+Qed.
+
+(** A byte after the first NUL is not searched, even within the live
+    object; this call is admitted and returns null, not the later z. *)
+Example strchr_stops_at_nul :
+  InterpExternal.invoke (strchr_contract unit) CVoid
+    [Arg P (Const 0); Arg W (Const 122)] [WPtr hello_ptr; WInt 122]
+    InterpRuntime.start string_compare_mem tt [] (CallReturn [WPtr (mkPtr 0 CNone)])
+    InterpRuntime.start string_compare_mem tt.
+Proof.
+  apply InterpExternal.strchr_return.
+  - split; [left; reflexivity|]. eexists _, _. reflexivity.
+  - vm_compute; split; congruence.
+  - exists 1. split; [exact (proj1 string_compare_terminated)|]. right. split; [|reflexivity].
+    intros i Hi. assert (i = 0 \/ i = 1) by lia. destruct H as [-> | ->]; discriminate.
+Qed.
+
+(** Writable source authority is retained too: it is not universally
+    downgraded to read-only authority by a successful search. *)
+Example strchr_object_source :
+  InterpExternal.invoke (strchr_contract unit) CVoid
+    [Arg P (Const 0); Arg W (Const 108)] [WPtr (mkPtr 1024 (Obj 1024)); WInt 108]
+    InterpRuntime.start hello_mem tt [] (CallReturn [WPtr (mkPtr 1026 (Obj 1024))])
+    InterpRuntime.start hello_mem tt.
+Proof.
+  apply InterpExternal.strchr_return.
+  - split; [left; reflexivity|]. eexists _, _. reflexivity.
+  - vm_compute; split; congruence.
+  - exists 5. split.
+    + destruct strlen_hello_bridge as [(Hn & Hk & _ & Ha & Hbytes & Hnul) Hmax].
+      split; [|exact Hmax]. split; [exact Hn|]. split; [exact Hk|]. split.
+      * exists 1024, (mkRegion 1024 1030 GlobalData Live). split; [left; reflexivity|]. auto.
+      * split; [exact Ha|]. split; assumption.
+    + left. exists 2. repeat split; try reflexivity; try lia.
+      intros i Hi. assert (i = 0 \/ i = 1) by lia. destruct H as [-> | ->]; discriminate.
+Qed.
+
+(** An immediate matching byte cannot excuse a missing in-object NUL. *)
+Example strchr_missing_nul_rejected :
+  ~ contract_pre (strchr_contract unit) [WPtr hello_ptr; WInt 128] high_byte_mem tt.
+Proof.
+  intros (p & c & k & Hargs & _ & Hlength). injection Hargs as <- <-.
+  apply strlen_missing_nul_rejected. exists hello_ptr, k. auto.
+Qed.
+
+(** No search argument rescues one-past, null or freed input authority. *)
+Example strchr_bad_authority_rejected : forall c,
+  ~ contract_pre (strchr_contract unit) [WPtr (mkPtr 1030 (Ro 1024)); WInt c] hello_mem tt /\
+  ~ contract_pre (strchr_contract unit) [WPtr (mkPtr 0 CNone); WInt c] hello_mem tt /\
+  ~ contract_pre (strchr_contract unit) [WPtr (mkPtr 1024 (Obj 1024)); WInt c]
+    (mkMem (fun _ => 0) [mkRegion 1024 1024 Heap Freed] (fun _ => CNone)) tt.
+Proof.
+  intros c. destruct strlen_bad_authority_rejected as (Hpast & Hnull & Hfreed).
+  split; [|split]; intros (p & value & k & Hargs & _ & Hlength); injection Hargs as <- <-.
+  - apply Hpast. exists (mkPtr 1030 (Ro 1024)), k. auto.
+  - apply Hnull. exists (mkPtr 0 CNone), k. auto.
+  - apply Hfreed. exists (mkPtr 1024 (Obj 1024)), k. auto.
+Qed.
+
+(** Int words must already be canonical, even for a valid string. *)
+Example strchr_noncanonical_rejected : forall c, c < 0 \/ 2 ^ 32 <= c ->
+  ~ contract_pre (strchr_contract unit) [WPtr hello_ptr; WInt c] hello_mem tt.
+Proof.
+  intros c Hbad (p & value & k & Hargs & Hc & _). injection Hargs as <- <-. lia.
+Qed.
+
+(** Count-free P/W arguments and a pointer result are distinct ABI
+    obligations; identical machine word counts cannot change classes. *)
+Example strchr_wrong_abi_rejected :
+  ~ strchr_abi (CResult (TAtom "found") L) [Arg P (Const 0); Arg W (Const 0)] /\
+  ~ strchr_abi CVoid [Arg P (Const 0); Arg L (Const 0)] /\
+  ~ strchr_abi CVoid [Arg P (Const 0)] /\
+  ~ strchr_abi CVoid [Arg P (Const 0); Arg W (Const 0); Arg L (Const 0)].
+Proof.
+  split; [intros [[H | (d & H)] _]; discriminate H|].
+  split; [|split]; intros [_ (p & c & H)]; discriminate H.
 Qed.
