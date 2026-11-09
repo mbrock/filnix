@@ -31,16 +31,36 @@ Record locale_world : Type := mkLocaleWorld {
 Definition locale_heap m base : Prop := exists reg,
   object_region base (m_regions m) = Some reg /\ r_kind reg = Heap /\ r_life reg = Live.
 
+(** The selected implementation's borrowed names have aligned object
+    bases, even when the returned character address is unaligned. This
+    is the source-object premise of [copy_domain], not write permission. *)
+Definition locale_names_aligned w : Prop := forall category,
+  In category locale_categories -> exists base,
+    (ptr_cap (locale_name w category) = Obj base \/
+     ptr_cap (locale_name w category) = Ro base) /\ base mod 8 = 0.
+
 (** Every current name is readable through NUL and every write root is
     independently writable. The opaque representation includes actual
-    initialized libc/environment/TLS state and exclusive release rights. *)
+    initialized libc/environment/TLS state and exclusive release rights.
+    [locale_names_aligned] holds at entry and after every setter endpoint. *)
 Definition locale_ready (rep : mem -> locale_world -> Prop) m w : Prop :=
   rep m w /\ Forall (writable_span m) (locale_roots w) /\
   (forall category, In category locale_categories ->
     ptr_addr (locale_name w category) <> 0 /\
     c_string m (locale_name w category) (locale_text w category)) /\
   Forall (fun source => readable_bytes m (span_ptr source) (span_size source)) (locale_reads w) /\
-  Forall (locale_heap m) (locale_owned w).
+  Forall (locale_heap m) (locale_owned w) /\ locale_names_aligned w.
+
+(** A current name can supply memcpy's object-base alignment without
+    aligning its character address or changing its borrowed capability. *)
+Lemma locale_name_aligned : forall rep m w category,
+  locale_ready rep m w -> In category locale_categories -> exists base,
+    (ptr_cap (locale_name w category) = Obj base \/
+     ptr_cap (locale_name w category) = Ro base) /\ base mod 8 = 0.
+Proof.
+  intros rep m w category (_ & _ & _ & _ & _ & Haligned) Hcat.
+  exact (Haligned category Hcat).
+Qed.
 
 (** A current name's NUL-inclusive borrowed source span. *)
 Definition locale_name_span w category : span :=
@@ -168,7 +188,7 @@ Qed.
 Lemma locale_delegates_refl : forall rep xs m w,
   locale_ready rep m w -> locale_delegates xs m w [] m w.
 Proof.
-  intros rep xs m w (_ & Hroots & _ & Hreads & Howned). split.
+  intros rep xs m w (_ & Hroots & _ & Hreads & Howned & _). split.
   - intros root Hin. split.
     + right. left. exists root. split; [|reflexivity].
       unfold locale_sources. apply in_or_app. left. apply in_or_app. right. exact Hin.
@@ -327,6 +347,21 @@ Proof.
       rewrite Hquery in Hfailure. exact Hfailure.
 Qed.
 
+(** Queries, successful/refused setters and terminal resource endpoints
+    all retain aligned current-name bases, through endpoint readiness. *)
+Theorem setlocale_invocation_aligned : forall rep requests r args xs s m w trace ending s' m' w',
+  E.invoke (setlocale_contract rep requests) r args xs s m w trace ending s' m' w' ->
+  locale_names_aligned w'.
+Proof.
+  intros rep requests r args xs s m w trace ending s' m' w' Hcall.
+  destruct (setlocale_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as ([Hready _] & _ & born & _ & Hend).
+  destruct (locale_query xs).
+  - destruct Hend as (_ & _ & -> & _).
+    destruct Hready as (_ & _ & _ & _ & _ & Haligned). exact Haligned.
+  - destruct Hend as [(_ & _ & _ & _ & _ & Haligned) _]. exact Haligned.
+Qed.
+
 (** The pure-query runtime cannot advance through an allocation; all
     query completions have exactly the starting runtime state too. *)
 Theorem setlocale_query_invocation : forall rep requests r args category p s m w trace ending s' m' w',
@@ -415,9 +450,40 @@ Proof.
   split; split; [exact I| |exact I|]; (split; [exact Hroot|]); split.
   - intros category _. cbn [locale_name locale_text locale_before].
     destruct (category =? 5); vm_compute; repeat split; congruence.
-  - split; [exact Hread|constructor].
+  - split; [exact Hread|]. split; [constructor|].
+    intros category _. cbn [locale_name locale_before]. destruct (category =? 5).
+    + exists 3072. split; [left; reflexivity|reflexivity].
+    + exists 1024. split; [right; reflexivity|reflexivity].
   - intros category _. vm_compute. repeat split; congruence.
-  - split; [exact Hread|constructor].
+  - split; [exact Hread|]. split; [constructor|].
+    intros category _. exists 2048. split; [right; reflexivity|reflexivity].
+Qed.
+
+(** The character pointer need not be aligned when its object's base is. *)
+Example locale_interior_name_aligned :
+  let w := mkLocaleWorld 0 (fun _ => mkPtr 1025 (Ro 1024))
+    (fun _ => [101; 108; 108; 111]) (TAtom "C") [] [] [] in
+  locale_ready (fun _ _ => True) hello_mem w /\
+  ptr_addr (locale_name w 0) mod 8 = 1.
+Proof.
+  split; [|reflexivity]. split; [exact I|]. split; [constructor|]. split.
+  - intros category _. vm_compute; repeat split; congruence.
+  - split; [constructor|]. split; [constructor|].
+    intros category _. exists 1024. split; [right; reflexivity|reflexivity].
+Qed.
+
+(** Readability alone admitted this unaligned-base string before the
+    strengthened readiness premise. Alignment is an independent fact. *)
+Example locale_unaligned_name_rejected :
+  let m := mkMem (fun _ => 0) [mkRegion 1025 1026 GlobalData Live] (fun _ => CNone) in
+  let w := mkLocaleWorld 0 (fun _ => mkPtr 1025 (Ro 1025))
+    (fun _ => []) (TAtom "C") [] [] [] in
+  c_string m (locale_name w 0) [] /\ ~ locale_ready (fun _ _ => True) m w.
+Proof.
+  split; [vm_compute; repeat split; congruence|].
+  intros (_ & _ & _ & _ & _ & Haligned).
+  destruct (Haligned 0 (or_introl eq_refl)) as (base & [Hcap|Hcap] & Hmod);
+    [discriminate Hcap|injection Hcap as <-; discriminate Hmod].
 Qed.
 
 (** Ordinary calls use the exact selected W/P signature. *)

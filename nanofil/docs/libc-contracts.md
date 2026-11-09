@@ -523,12 +523,46 @@ zero-input incomplete versus NUL, invalid encoding and null resets. It
 also checks exact stable query/refusal name pointers, canonical C storage
 after freeing a separate POSIX input, empty selection under an explicitly
 C environment and a borrowed-name setter input.
+For Hello's greeting path it additionally sweeps every lead byte and
+n=1..16, with and without a final NUL, in both C and C.UTF-8. It checks
+that positive results consume at most n bytes and none is NUL, and that
+incomplete input is excluded when the interval contains NUL or n reaches
+16 (this ABI's MB_LEN_MAX). UTF-8 controls distinguish one- through
+four-byte characters, three split continuations and pending-state-plus-NUL
+EILSEQ. Complete conversions leave mbsinit true in these two locales;
+this is not a universal stateful-codec result or a promise that all eight
+state bytes are zero. Valid-state admission must include initialization
+and the converter's own non-EILSEQ updates, not arbitrary writable bytes.
+The errno probe writes through a live aligned four-byte int pointer from
+plain __errno_location. These finite probes pass both ordinary and -O
+native comparisons; the new conversion/errno Rocq contracts remain work
+in progress. `get_gconv_fcts` may initialize caches, acquire locks,
+allocate and clean up internal objects. Any future contract must expose
+those permissions while retaining effective locale names/text/codec and
+the borrow window; it must not disguise cache effects as writes to
+Hello-owned memory or infer universal native adequacy from these probes.
+The stronger Hello conversion exclusions will require an explicit codec
+profile: generic stateful converters do not obtain them just from valid
+mbstate and MB_LEN_MAX. Source review of ISO-2022-JP finds incomplete paths
+for ESC/NUL at n=2 and redundant shifts plus a final ESC at n=16; selection
+of such a locale in the pinned image is unverified. Lazy loading's errno
+behavior likewise needs separate justification before promising an
+unchanged errno on every non-EILSEQ result.
 Sources: `locale/setlocale.c`, `nl_langinfo.c`, `ctype/ctype-info.c`
 (table offset 128), `wcsmbs/mbrtowc.c`, `mbrtoc32.c`, `mbsinit.c`,
 and `wctype/`. Returned locale data is not promised writable or immortal.
 
 [Locale.v](../rocq/theories/Locale.v) gives `setlocale` an additive trusted
 Rocq contract with exact W/P-to-P ABI and a nonnull current-name invariant.
+Its `locale_names_aligned` readiness fact states that each current name's
+Obj/Ro object base is divisible by eight, including after setters.
+`locale_name_aligned` supplies memcpy's source-base requirement; the
+character address itself need not be aligned. Positive interior-pointer
+and rejected unaligned-object controls distinguish those interpretations.
+Native probes inspect zgetlower for every selected category in C and
+C.UTF-8 and through interior aliases, rather than merely testing the name
+pointer's bits. This remains a trusted layout obligation, not a universal
+native proof.
 Null queries preserve exact pointers/capabilities, memory, runtime and
 world, with no writes/releases/requests. Setters distinguish null refusal,
 nonnull success and witnessed runtime resource ending. Refusal retains

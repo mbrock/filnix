@@ -7,11 +7,97 @@
 #include <langinfo.h>
 #include <locale.h>
 #include <stdint.h>
+#include <stdfil.h>
 #include <uchar.h>
 #include <wchar.h>
 #include <wctype.h>
 #include "libc-probe.h"
+
+// Test the actual capability base, including through an unaligned alias.
+// The selected ABI has categories 0..12, with LC_ALL at 6.
+static int locale_name_bases(void) {
+    for (int category = 0; category <= 12; ++category) {
+        char *name = setlocale(category, 0);
+        if (!name || !*name) return 0;
+        void *base = zgetlower(name);
+        if (!base || (uintptr_t)base % 8 || zgetlower(name + 1) != base) return 0;
+    }
+    return 1;
+}
+
+// A positive conversion cannot consume the string's terminating byte.
+// These checks use the input bytes and the ABI's bounds, not a decoder.
+static int conversion_result(const char *s, size_t n, size_t r, wchar_t wc) {
+    if (r == (size_t)-1) return errno == EILSEQ;
+    if (r == (size_t)-2) return n < 16 && memchr(s, 0, n) == 0;
+    if (r == 0) return wc == 0 && memchr(s, 0, n) != 0;
+    if (r > n) return 0;
+    for (size_t i = 0; i < r; ++i)
+        if (s[i] == 0) return 0;
+    return 1;
+}
+
+static int conversion_boundaries(const char *locale, int utf8) {
+    if (!setlocale(LC_ALL, locale) || sizeof(wchar_t) != 4 || sizeof(mbstate_t) != 8)
+        return 0;
+    int good = locale_name_bases(), saw_incomplete = 0;
+    for (unsigned lead = 0; lead < 256; ++lead) {
+        for (size_t n = 1; n <= 16; ++n) {
+            char bytes[16];
+            memset(bytes, 0x80, sizeof bytes);
+            bytes[0] = (char)lead;
+            mbstate_t state = {0};
+            wchar_t wc = 99;
+            errno = 0;
+            size_t r = mbrtowc(&wc, bytes, n, &state);
+            if (r == (size_t)-2) saw_incomplete = 1;
+            good = conversion_result(bytes, n, r, wc) && good;
+            if (r != (size_t)-1 && r != (size_t)-2) good = mbsinit(&state) && good;
+            bytes[n - 1] = 0;
+            memset(&state, 0, sizeof state);
+            wc = 99;
+            errno = 0;
+            r = mbrtowc(&wc, bytes, n, &state);
+            good = r != (size_t)-2 && conversion_result(bytes, n, r, wc) && good;
+            if (r != (size_t)-1) good = mbsinit(&state) && good;
+        }
+    }
+    if (utf8) {
+        const char *samples[4] = {"A", "\xc2\xa2", "\xe2\x82\xac", "\xf0\x9f\x92\xa9"};
+        const wchar_t expected[4] = {65, 162, 8364, 128169};
+        for (unsigned i = 0; i < 4; ++i) {
+            mbstate_t state = {0};
+            wchar_t wc = 99;
+            size_t n = strlen(samples[i]);
+            size_t r = mbrtowc(&wc, samples[i], n + 1, &state);
+            good = r == n && wc == expected[i] && mbsinit(&state) &&
+                conversion_result(samples[i], n + 1, r, wc) && good;
+        }
+        for (size_t split = 1; split <= 3; ++split) {
+            const char *character = samples[3];
+            mbstate_t state = {0};
+            wchar_t wc = 99;
+            size_t r = mbrtowc(&wc, character, split, &state);
+            good = r == (size_t)-2 && good;
+            r = mbrtowc(&wc, character + split, 5 - split, &state);
+            good = r == 4 - split && wc == expected[3] && mbsinit(&state) &&
+                conversion_result(character + split, 5 - split, r, wc) && good;
+            memset(&state, 0, sizeof state);
+            good = mbrtowc(&wc, character, split, &state) == (size_t)-2 && good;
+            errno = 0;
+            r = mbrtowc(&wc, "", 1, &state);
+            good = r == (size_t)-1 && conversion_result("", 1, r, wc) && good;
+        }
+        good = saw_incomplete && good;
+    }
+    return good;
+}
+
 int main(void) {
+    int *error_cell = __errno_location();
+    *error_cell = EILSEQ;
+    answer("errno location is a writable aligned int", sizeof *error_cell == 4 &&
+        (uintptr_t)error_cell % 4 == 0 && errno == EILSEQ);
     answer("locale query and refusal", setlocale(LC_ALL, "C") != 0 && strcmp(setlocale(LC_CTYPE, 0), "C") == 0 && setlocale(LC_ALL, "nanofil-no-such-locale") == 0);
     char *ctype_name = setlocale(LC_CTYPE, 0);
     char *messages_name = setlocale(LC_MESSAGES, 0);
@@ -21,6 +107,7 @@ int main(void) {
         ctype_name == setlocale(LC_CTYPE, 0) && messages_name == setlocale(LC_MESSAGES, 0) &&
         strcmp(ctype_name, "C") == 0 && strcmp(messages_name, "C") == 0;
     answer("locale queries and refusal retain current borrowed names", stable);
+    answer("C locale names and interior aliases have aligned capability bases", locale_name_bases());
     char *separate = malloc(6);
     char *canonical = 0;
     int canonical_ok = 0;
@@ -56,5 +143,8 @@ int main(void) {
     answer("invalid byte is EILSEQ not panic", mbrtowc(&wc, "\xff", 1, &state) == (size_t)-1 && errno == EILSEQ);
     memset(&state, 0, sizeof state);
     answer("null conversion input resets", mbrtowc(0, 0, 0, &state) == 0 && mbrtoc32(0, 0, 0, &state) == 0 && mbsinit(&state));
+    answer("C conversion excludes incomplete at NUL or 16 bytes and positive NUL consumption", conversion_boundaries("C", 0));
+    answer("UTF-8 conversion excludes incomplete at NUL or 16 bytes and positive NUL consumption", conversion_boundaries("C.UTF-8", 1));
+    answer("UTF-8 locale names retain aligned capability bases after conversion", locale_name_bases());
     return 0;
 }

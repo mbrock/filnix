@@ -1,5 +1,7 @@
+errno location is a writable aligned int: yes
 locale query and refusal: yes
 locale queries and refusal retain current borrowed names: yes
+C locale names and interior aliases have aligned capability bases: yes
 POSIX returns an independently readable canonical C name: yes
 empty locale input selects the represented environment: yes
 setter input may be a borrowed locale name: yes
@@ -10,3 +12,6 @@ conversion writes output and state: yes
 empty input is incomplete not NUL: yes
 invalid byte is EILSEQ not panic: yes
 null conversion input resets: yes
+C conversion excludes incomplete at NUL or 16 bytes and positive NUL consumption: yes
+UTF-8 conversion excludes incomplete at NUL or 16 bytes and positive NUL consumption: yes
+UTF-8 locale names retain aligned capability bases after conversion: yes

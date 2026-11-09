@@ -1847,6 +1847,17 @@ alone cannot become ownership. [locale_ready] independently requires
 nonzero current-name addresses; readable objects at address zero are
 otherwise possible in this model.
 
+`locale_ready` additionally requires Obj/Ro name capabilities with object
+bases divisible by eight, independently of the character pointer's
+alignment. `locale_name_aligned` exposes memcpy's source-base premise;
+`setlocale_invocation_aligned` retains it after queries, setters and
+resource endpoints through their ready-world guarantees. A readable
+unaligned-base counterexample is rejected, while an interior name at
+address 1025 in an object based at 1024 is admitted. Native C/C.UTF-8
+probes inspect zgetlower for all thirteen categories, including interior
+aliases and post-conversion queries. This is selected finite evidence,
+not a universal proof of native object layout.
+
 [setlocale_invocation] exposes the exact effects, trace and world.
 A null query is a pure exact-pointer/capability projection with no writes,
 releases, allocations or resource ending, and preserves the runtime too.
@@ -1947,7 +1958,47 @@ ExternalMachine.v and Iris-owned files are unchanged.
 
 ### The next milestones, in order
 
-1. **Compose exit requests and registration.** Intercept selected exit,
+1. **Hello's greeting conversion prerequisites.** Campaign 3 needs plain
+   mbrtowc (P/P/L/P to L), __errno_location (no arguments to P), and
+   nonreturning error for nonzero status before the next exit-composition
+   slice. Start from independent readable input, aligned writable wchar_t
+   and writable valid eight-byte mbstate_t premises. Admit all-zero state;
+   preserve valid continuation after non-EILSEQ updates, without assuming
+   every successful stateful-codec conversion leaves an all-zero state.
+   Keep codec dependence opaque. Expose positive consumption at most n.
+   The stronger no-consumed-NUL and incomplete-exclusion properties need
+   an independently justified codec profile; do not derive them merely
+   from valid mbstate or MB_LEN_MAX=16. This profile is a visible Hello
+   obligation, not yet an implemented or discharged Rocq theorem.
+
+   Pair a locale/stdio/errno payload with Linked's authoritative shutdown
+   state rather than inventing another callback inventory. Project the
+   current locale name/text through that world so Campaign 3's borrow token
+   can transport locale_ready's c_string fact into strlen/memcpy. Non-setlocale
+   contracts must preserve effective names, text, codec and borrow epoch;
+   internal converter-cache roots and allocations may evolve with explicit
+   delegated authority. Keep those effects separate from Hello's writable
+   output/state slots and from any EILSEQ errno write. Admission, prefix
+   framing and native representation coverage remain separate obligations.
+
+   The selected Fil-C libc-locale probe now checks C and C.UTF-8: every
+   lead byte, n=1..16, with and without a final NUL (8,192 calls per locale),
+   positive consumption excluding NUL, correct UTF-8 lengths/values, three
+   split continuations and invalid pending-state-plus-NUL input. Completed
+   C/C.UTF-8 characters leave mbsinit true; this is finite evidence, not an
+   arbitrary-codec initial-state theorem. The probe also dereferences a
+   writable aligned four-byte __errno_location result. Converter loading
+   reaches allocation, locks and cleanup; the contract must account for
+   those roots rather than promising a pure wchar/state-only native call.
+   Oracle's source review found ISO-2022-JP converter paths reporting
+   incomplete for ESC/NUL at n=2 and for redundant shifts followed by a
+   trailing ESC at n=16. Whether such a locale is selectable in the pinned
+   image has not been established; these are not native mbrtowc probes.
+   The codec profile must cover permitted converter-resolution/fallback
+   behavior without silently changing its meaning when names stay fixed.
+   Non-EILSEQ errno preservation is also not established for lazy converter
+   loading; general contracts must not assume it without a stronger profile.
+2. **Compose exit requests and registration.** Intercept selected exit,
    _exit and _Exit call sites before ordinary external dispatch, excluding
    those sites from the generic lifted step. An existing ExternalExit is
    already terminal, not a request to run more handlers. Only witnessed
@@ -1955,7 +2006,7 @@ ExternalMachine.v and Iris-owned files are unchanged.
    registry/world must retain callback registrations and consumed tokens
    across ordinary execution and recursive exit. Check local lifetime,
    nested calls, re-registration order, changed signed status and hard exit.
-2. **Close the selected hi.c/Hello paths.** Campaign 3 owns the checked
+3. **Close the selected hi.c/Hello paths.** Campaign 3 owns the checked
    module merger and Iris application/handler triples. Campaign 4 supplies
    startup/stdio representations and reached-call contracts, beginning
    with registration and getopt state after locale and the existing string
@@ -1966,7 +2017,7 @@ ExternalMachine.v and Iris-owned files are unchanged.
    invocation, safepoint-stable libc representation and stream roots
    separated from program-owned memory. Concrete linking, native adequacy
    and termination remain obligations; none follows from the entry slice.
-3. **Refinement.** Connect Prolog/extraction and native observations;
+4. **Refinement.** Connect Prolog/extraction and native observations;
    only then restate and validate `opt:refines/2` as trace inclusion.
 
 ## Campaign 5: static discharge by certificate
