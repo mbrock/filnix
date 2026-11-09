@@ -97,23 +97,23 @@ Import L.
 
 (** The Iris state is inhabited, as the lifting lemmas of an
     evaluation-context language ask. *)
-Global Instance lstate_inhabited : Inhabited lstate := populate (mkLstate empty_mem R.start 0).
-
-Section logic.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
+Instance lstate_inhabited : Inhabited lstate := populate (mkLstate empty_mem R.start 0).
 
 (** The state interpretation of the Iris state σ: the authoritative
     ghost heap h, which [agrees] with σ's memory, the live objects
     apart, and the runtime ready. The [[fuel]] is unconstrained. *)
-Definition heap_interp (σ : lstate) : iProp Σ :=
+Definition heap_interp `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (σ : lstate) : iProp Σ :=
   ∃ h : gmap piece pval, gen_heap_interp h ∗
     ⌜agrees (ls_mem σ) h /\ live_disjoint (ls_mem σ) /\ R.ready (ls_rt σ) (ls_mem σ)⌝.
 
 (** The Iris instance of the genv ge: [heap_interp] as the state
     interpretation, no forks to speak of, one later per step. *)
-Global Instance nanofil_irisGS (ge : genv) : irisGS_gen hlc (nanofil_lang ge) Σ :=
+Instance nanofil_irisGS `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (ge : genv) : irisGS_gen hlc (nanofil_lang ge) Σ :=
   IrisG _ (fun σ _ _ _ => heap_interp σ) (fun _ => True%I) (fun _ => 0%nat)
         (fun _ _ _ _ => fupd_intro _ _).
+
+Section logic.
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 
 (** ## The assertions *)
 
@@ -722,7 +722,7 @@ Proof.
   intros xs Hxs. destruct (Hwp xs Hxs) as (fr & Hfr & Hw). exists fr. split; [exact Hfr|].
   intros Hready fuel Hinv.
   iMod (gen_heap_init (∅ : gmap piece pval)) as (HheapG) "(Hh & _ & _)".
-  iModIntro. iExists (@heap_interp Σ HheapG).
+  iModIntro. iExists heap_interp.
   iSplitL "Hh".
   - iExists ∅. iFrame "Hh". iPureIntro. split; [|split; [exact Hd | exact Hready]].
     intros l v Hl. rewrite lookup_empty in Hl. discriminate.
