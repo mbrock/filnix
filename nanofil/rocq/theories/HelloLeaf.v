@@ -100,6 +100,8 @@ Definition memeq_fn : func := Eval vm_compute in hello_fn "memeq".
 Definition streq_fn : func := Eval vm_compute in hello_fn "streq".
 (** `strnlen1(p, n)`: memchr for the NUL in n bytes; one past it, or n. *)
 Definition strnlen1_fn : func := Eval vm_compute in hello_fn "strnlen1".
+(** `xmalloc(n)`: malloc, and `xalloc_die` on null. *)
+Definition xmalloc_fn : func := Eval vm_compute in hello_fn "xmalloc".
 
 (** `mbszero`'s one block. *)
 Definition z_start : block := Eval vm_compute in hblk mbszero_fn "start".
@@ -113,6 +115,11 @@ Definition n_start : block := Eval vm_compute in hblk strnlen1_fn "start".
 Definition n_L8 : block := Eval vm_compute in hblk strnlen1_fn "L8".
 (** `strnlen1` after no hit: n. *)
 Definition n_L9 : block := Eval vm_compute in hblk strnlen1_fn "L9".
+
+(** `xmalloc`'s entry: malloc, then is the result null? *)
+Definition x_start : block := Eval vm_compute in hblk xmalloc_fn "start".
+(** `xmalloc`'s return. *)
+Definition x_join : block := Eval vm_compute in hblk xmalloc_fn "iw_1.join".
 
 (** `mbszero` has its block. *)
 Lemma find_z_start : find_block (TAtom "start") (fn_blocks mbszero_fn) = Some z_start.
@@ -131,6 +138,13 @@ Lemma find_n_L8 : find_block (TAtom "L8") (fn_blocks strnlen1_fn) = Some n_L8.
 Proof. vm_compute. reflexivity. Qed.
 (** `strnlen1` has its miss block. *)
 Lemma find_n_L9 : find_block (TAtom "L9") (fn_blocks strnlen1_fn) = Some n_L9.
+Proof. vm_compute. reflexivity. Qed.
+
+(** `xmalloc` has its entry. *)
+Lemma find_x_start : find_block (TAtom "start") (fn_blocks xmalloc_fn) = Some x_start.
+Proof. vm_compute. reflexivity. Qed.
+(** `xmalloc` has its return block. *)
+Lemma find_x_join : find_block (TAtom "iw_1.join") (fn_blocks xmalloc_fn) = Some x_join.
 Proof. vm_compute. reflexivity. Qed.
 
 (** `mbszero`'s entry binds its pointer. *)
@@ -153,6 +167,12 @@ Proof. reflexivity. Qed.
 Lemma strnlen1_entry p n :
   invocation strnlen1_fn [WPtr p; WInt n] =
   mkFrame strnlen1_fn [(TAtom "v2", WInt n); (TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None).
+Proof. reflexivity. Qed.
+
+(** `xmalloc`'s entry binds its size. *)
+Lemma xmalloc_entry n :
+  invocation xmalloc_fn [WInt n] =
+  mkFrame xmalloc_fn [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None).
 Proof. reflexivity. Qed.
 
 (** Prove a premise that names words: by computation, with the
@@ -297,6 +317,35 @@ Proof.
     iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
     iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
     iApply wp_ret; [reflexivity | word_premise |]. iNext. iApply ("HΦ" with "Hl Hx").
+Qed.
+
+(** `xmalloc`'s triple, from [wp_malloc]: for a size n, where an
+    allocation keeps the world interpretation, it returns the base
+    pointer of a fresh heap object of n bytes, whose pieces it owns. The
+    selected malloc never returns null, so `xalloc_die`, and the `abort`
+    it may reach, are never called. *)
+Lemma xmalloc_spec n Φ :
+  registry (TAtom "malloc") = Some (malloc_contract world) -> 0 <= n < 2 ^ 64 ->
+  (forall m wd h base, fresh m (heap_req 16 n) base -> wi m wd h ->
+     wi (allocated m (heap_req 16 n) base) wd (overwrite (obj_ps base (heap_req 16 n)) h)) ->
+  ▷ (∀ base, ⌜0 < base /\ base mod 16 = 0 /\ base + req_extent (heap_req 16 n) <= 2 ^ 48 /\
+               n <= max_allocation_size⌝ -∗
+       obj base (heap_req 16 n) -∗ Φ (Ret (WPtr (mkPtr base (Obj base))))) -∗
+  WP (ERun (invocation xmalloc_fn [WInt n]) : hexpr) {{ Φ }}.
+Proof.
+  intros Hreg Hn Hwi. iIntros "HΦ". rewrite xmalloc_entry.
+  iApply wp_enter; [exact find_x_start | reflexivity |]. iNext. cbn [b_insts b_jump x_start].
+  iApply (wp_malloc _ _ _ _ _ _ _ _ _ _ _ n);
+    [exact Hreg | apply linked_outside; reflexivity | apply linked_unbound; reflexivity |
+     cbn; rewrite Z.mod_small; [reflexivity | lia] | exact Hn | exact Hwi |].
+  iNext. iIntros (base Hb) "Hobj". destruct Hb as (Hb0 & Hb16 & Hbend & Hmax).
+  assert (Hext : 0 <= req_extent (heap_req 16 n)).
+  { unfold req_extent, heap_req. cbn. apply Z.mul_nonneg_nonneg; [apply Z.div_pos|]; lia. }
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
+  iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+  iApply wp_enter; [exact find_x_join | reflexivity |]. iNext. cbn [b_insts b_jump x_join].
+  iApply wp_ret; [reflexivity | reflexivity |]. iNext. iApply ("HΦ" with "[%] Hobj"). auto.
 Qed.
 
 End leaves.

@@ -99,6 +99,43 @@ Proof.
   intros Hi. rewrite byte_ps_keys. apply list_elem_of_fmap_2. apply elem_of_seqZ. lia.
 Qed.
 
+(** ## Integer stores *)
+
+(** The n little-endian bytes of the integer y. *)
+Definition le_bytes (y : Z) (n : nat) : list Z := (fun i => byte_of y (Z.of_nat i)) <$> seq 0 n.
+
+(** As many bytes as asked for. *)
+Lemma length_le_bytes y n : length (le_bytes y n) = n.
+Proof. unfold le_bytes. rewrite length_fmap length_seq. reflexivity. Qed.
+
+(** A store of the integer y over the bytes xs from offset o of the
+    live object b: afterwards they are y's little-endian bytes, and
+    every piece outside them keeps its agreement. *)
+Lemma store_after m b reg o xs y :
+  live_disjoint m -> live_at m b reg -> all_agree m (byte_ps b o xs) ->
+  all_agree (store_bytes m (b + o) (Z.of_nat (length xs)) y) (byte_ps b o (le_bytes y (length xs))) /\
+  frame_ok (byte_ps b o xs).*1 m (store_bytes m (b + o) (Z.of_nat (length xs)) y).
+Proof.
+  intros Hd Hl Hx.
+  assert (Hbyte : forall i, (i < length xs)%nat ->
+            registered m b /\ 0 <= o + Z.of_nat i /\ b + (o + Z.of_nat i) < r_end reg).
+  { intros i Hi. destruct (lookup_lt_is_Some_2 xs i Hi) as [x Hxi].
+    destruct (byte_ps_agree _ _ _ _ _ _ _ Hl Hx Hxi) as (_ & H1 & H2).
+    split; [destruct Hl as [E _]; unfold registered; congruence | lia]. }
+  split.
+  - apply all_agree_intro. intros l v Hin. apply byte_ps_elem in Hin as (i & x & Hxi & -> & ->).
+    unfold le_bytes in Hxi. apply list_lookup_fmap_Some in Hxi as (k & -> & Hk).
+    apply lookup_seq in Hk as [-> Hi]. cbn [Nat.add]. destruct (Hbyte i Hi) as (Hreg & H1 & H2).
+    cbn [agree_piece]. split; [exact Hreg|]. intros reg' E L. destruct Hl as [E0 _].
+    rewrite regions_store_bytes E0 in E. injection E as <-. split; [exact H1|]. split; [exact H2|].
+    replace (b + (o + Z.of_nat i)) with (b + o + Z.of_nat i) by lia. apply stored_byte. lia.
+  - apply (frame_within _ _ _ b reg); [reflexivity | exact Hd | exact Hl | |].
+    + intros a H. apply store_bytes_other. intros Ha.
+      destruct (Hbyte (Z.to_nat (a - b - o)) ltac:(lia)) as (_ & H1 & H2).
+      apply H; [lia|]. replace (a - b) with (o + (a - b - o)) by lia. apply byte_ps_key. lia.
+    + intros a _. reflexivity.
+Qed.
+
 (** ## Blocks *)
 
 (** The pieces of a block: the life of the object b with the region
@@ -471,6 +508,46 @@ Local Instance mem_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
 
 (** The expressions of the language. *)
 Local Notation mexpr := (language.expr (nanofil_lang registry ge)).
+
+(** A raw store of the 32-bit int y, which v reads as, through the
+    proven pointer p, which a reads as and which addresses offset o of
+    the live object b at offset off, over the four bytes xs there,
+    where the store keeps the world interpretation: they are now y's
+    four little-endian bytes. *)
+Lemma wp_raw_store_w f e ls l off v a rest j p b reg o xs y Φ :
+  value_x ge e W v = Some (WInt y) -> value_x ge e A a = Some (WPtr p) ->
+  ptr_cap p = Obj b -> raw_address (ptr_addr p) off = b + o -> length xs = 4%nat ->
+  (forall m wd h, (forall l v, (l, v) ∈ (PLive b, VLive reg) :: byte_ps b o xs -> h !! l = Some v) ->
+     wi m wd h ->
+     wi (store_bytes m (b + o) 4 y) wd (overwrite ((PLive b, VLive reg) :: byte_ps b o (le_bytes y 4)) h)) ->
+  live b reg -∗ bytes b o xs -∗
+  ▷ (live b reg -∗ bytes b o (le_bytes y 4) -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : mexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (RawStore Ww off v a :: rest) j)) : mexpr) {{ Φ }}.
+Proof.
+  intros Hv Ha Hp Hoff Hlen Hwi. iIntros "Hl Hx HK".
+  iApply (wp_write _ _ _ ((PLive b, VLive reg) :: byte_ps b o xs) ((PLive b, VLive reg) :: byte_ps b o (le_bytes y 4))
+            _ _ [] (fun m => store_bytes m (b + o) 4 y) with "[Hl Hx] [HK]");
+    [cbn [fmap list_fmap fst]; rewrite !byte_ps_keys length_le_bytes Hlen; reflexivity | | exact Hwi |
+     rewrite /live /bytes /pts !big_sepL_cons big_sepL_nil; iFrame; iDestruct "Hl" as "[$ _]" |].
+  - intros m fuel (Hf & Hd & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [Hlv Hx].
+    destruct (store_after m b reg o xs y Hd Hlv Hx) as [Hag Hfr]. rewrite Hlen in Hag Hfr. cbn in Hag, Hfr.
+    assert (Hb : forall i, (i < 4)%nat -> 0 <= o + Z.of_nat i /\ b + (o + Z.of_nat i) < r_end reg).
+    { intros i Hi. rewrite <- Hlen in Hi. destruct (lookup_lt_is_Some_2 xs i Hi) as [x Hxi].
+      destruct (byte_ps_agree _ _ _ _ _ _ _ Hlv Hx Hxi) as (_ & H1 & H2). lia. }
+    destruct (Hb 0%nat ltac:(lia)) as [H0 _]. destruct (Hb 3%nat ltac:(lia)) as [_ H3]. cbn in H0, H3.
+    split; [|split; [reflexivity|split; [|split]]].
+    + apply rule_raw_store with (vk := W) (x := WInt y) (p := p); [reflexivity | exact Hv | exact Ha |].
+      rewrite Hoff. cbn - [access_res store_bytes]. rewrite Hp.
+      rewrite (access_obj _ _ reg); [reflexivity | exact (proj1 Hlv) | lia | lia | apply Z.mod_1_r].
+    + apply store_bytes_kept. intros a' Ha'. exists b, reg. split; [exact (proj1 Hlv)|lia].
+    + cbn [all_agree agree_piece fst snd]. split; [exact Hlv | exact Hag].
+    + intros l' v' Hn Ha'. apply Hfr; [|exact Ha'].
+      intros Hin. apply Hn. cbn [fmap list_fmap fst]. apply elem_of_cons. right.
+      rewrite byte_ps_keys length_le_bytes. rewrite byte_ps_keys Hlen in Hin. exact Hin.
+  - iNext. iIntros "H".
+    iDestruct (pts_app [(PLive b, VLive reg)] (byte_ps b o (le_bytes y 4)) with "H") as "[Hl Hx]".
+    iApply ("HK" with "Hl Hx").
+Qed.
 
 (** memset's triple, from [memset_contract]: owning the life of the
     object b, at a multiple of 8, with the region reg, and the block of
