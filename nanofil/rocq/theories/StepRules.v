@@ -281,6 +281,13 @@ Proof.
   rewrite Hk, Hv. reflexivity.
 Qed.
 
+(** A return from a `void` function: the invocation ends with
+    [RetVoid] ([return_step]). *)
+Lemma rule_ret_void : forall ge f e ls l cs m fuel,
+  step ge (mkConfig (mkFrame f e ls None (Exec l [] JRetVoid)) cs m fuel) =
+  return_step (mkConfig (mkFrame f e ls None (Exec l [] JRetVoid)) cs m fuel) RetVoid.
+Proof. intros. reflexivity. Qed.
+
 (** An invocation whose named locals end, leaving the memory m', and
     that has no caller: the run's outcome is o. *)
 Lemma rule_return_top : forall fr m fuel o m',

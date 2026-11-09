@@ -72,4 +72,6 @@ theories/ScanLogic.v
 theories/CountLogic.v
 theories/SlotLogic.v
 theories/HelloModule.v
+theories/HelloLeaf.v
+theories/HelloName.v
 theories/Extract.v

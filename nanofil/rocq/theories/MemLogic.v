@@ -382,6 +382,26 @@ Proof.
     apply H; [lia|]. replace (a - b) with (o + (a - b - o)) by lia. apply byte_ps_key. lia.
 Qed.
 
+(** A block of the bytes xs from offset o of the live object b, in
+    its bounds and each a byte, is [readable_bytes] through b's
+    read-write or read-only capability c, and holds xs. *)
+Lemma block_readable m b reg o xs c :
+  live_at m b reg -> all_agree m (byte_ps b o xs) -> objects_fit (m_regions m) ->
+  c = Obj b \/ c = Ro b -> 0 <= o -> b + o + Z.of_nat (length xs) <= r_end reg ->
+  Forall (fun x => 0 <= x < 256) xs ->
+  readable_bytes m (mkPtr (b + o) c) (Z.of_nat (length xs)) /\
+  forall i x, xs !! i = Some x -> m_bytes m (b + o + Z.of_nat i) = x.
+Proof.
+  intros Hl Hx Hfit Hc Ho Hend Hy. destruct (Hfit b reg (proj1 Hl)) as [Hb0 Hfit'].
+  assert (Hv : forall i x, xs !! i = Some x -> m_bytes m (b + o + Z.of_nat i) = x).
+  { intros i x Hi. destruct (byte_ps_agree _ _ _ _ _ _ _ Hl Hx Hi) as (Hv & _ & _).
+    replace (b + o + Z.of_nat i) with (b + (o + Z.of_nat i)) by lia. exact Hv. }
+  split; [|exact Hv]. split; [lia|]. split; [exists b, reg; split; [exact Hc | exact Hl]|]. split.
+  - apply (access_read _ b reg); [exact Hc | exact (proj1 Hl) | cbn; lia | cbn; lia | apply Z.mod_1_r].
+  - intros i Hi. cbn [ptr_addr]. destruct (lookup_lt_is_Some_2 xs (Z.to_nat i) ltac:(lia)) as [x Hxi].
+    rewrite <- (Z2Nat.id i) by lia. rewrite (Hv _ _ Hxi). exact (Forall_lookup_1 _ _ _ _ Hy Hxi).
+Qed.
+
 (** The memory and aux triples over any [[runtime]] R. *)
 Module MemLogic (R : Runtime).
 Module SL := StringLogic R.
@@ -419,6 +439,26 @@ Lemma block_string b reg o ys :
 Proof.
   intros Hok. rewrite /string /string_ps /live /bytes /pts !big_sepL_cons big_sepL_nil. cbn [ptr_addr].
   replace (b + o - b) with o by lia. iIntros "[Hl _] Hx". iSplit; [iPureIntro; exact Hok|]. iFrame.
+Qed.
+
+(** A string lends n of its bytes from its k-th on, before its NUL,
+    as a block, with its object's life, and takes them back. *)
+Lemma string_window p b reg ys k n :
+  (k + n <= length ys)%nat ->
+  string p b reg ys -∗
+  ⌜string_ok p b reg ys⌝ ∗ live b reg ∗ bytes b (ptr_addr p - b + Z.of_nat k) (take n (drop k ys)) ∗
+  (live b reg -∗ bytes b (ptr_addr p - b + Z.of_nat k) (take n (drop k ys)) -∗ string p b reg ys).
+Proof.
+  intros Hk. iIntros "[%Hok Hs]".
+  assert (E : ys ++ [0] = take k ys ++ take n (drop k ys) ++ (drop (k + n) ys ++ [0])).
+  { rewrite app_assoc app_assoc. f_equal. rewrite -{1}(take_drop k ys). rewrite -app_assoc. f_equal.
+    rewrite -{1}(take_drop n (drop k ys)) drop_drop. reflexivity. }
+  assert (Lk : length (take k ys) = k) by (rewrite length_take; lia).
+  rewrite /string_ps E !byte_ps_app Lk.
+  rewrite /live /bytes /pts big_sepL_cons !big_sepL_app big_sepL_singleton.
+  iDestruct "Hs" as "(Hl & Hpre & Hw & Hpost)". iSplit; [done|]. iFrame "Hl Hw".
+  iIntros "Hl Hw". rewrite /string. iSplit; [done|]. rewrite /string_ps E !byte_ps_app Lk.
+  rewrite /pts big_sepL_cons !big_sepL_app. iFrame.
 Qed.
 
 Section calls.
@@ -885,6 +925,101 @@ Lemma wp_stpcpy f e ls lab d vd vs rest j b reg o xs src b' reg' ys Φ :
 Proof.
   intros Hreg Hfn Hdata Hpd Hps Hb0 Ho Hend Hlen Hwi. iIntros "Hl Hx Hs HK".
   iApply (wp_string_copy true (TAtom "stpcpy") with "Hl Hx Hs HK"); done.
+Qed.
+
+(** memcmp's triple, from [memcmp_contract]: owning the bytes xs from
+    offset o of the live object b and the bytes ys, as many, from
+    offset o' of the live object b', through read-write or read-only
+    capabilities, where vp, vq and vn read as their pointers and
+    length, the call binds d to an int. Which int does not matter to a
+    caller that only branches on it. *)
+Lemma wp_memcmp f e ls lab d vp vq vn rest j b reg o xs c b' reg' o' ys c' Φ :
+  registry (TAtom "memcmp") = Some (memcmp_contract world) ->
+  find_fn ge (TAtom "memcmp") = None -> lookup (TAtom "memcmp") (ge_globals ge) = None ->
+  arg_x ge e (Arg P vp) = Some (WPtr (mkPtr (b + o) c)) -> c = Obj b \/ c = Ro b ->
+  arg_x ge e (Arg P vq) = Some (WPtr (mkPtr (b' + o') c')) -> c' = Obj b' \/ c' = Ro b' ->
+  arg_x ge e (Arg L vn) = Some (WInt (Z.of_nat (length xs))) -> length ys = length xs ->
+  0 <= o -> 0 <= o' -> b + o + Z.of_nat (length xs) <= r_end reg ->
+  b' + o' + Z.of_nat (length xs) <= r_end reg' ->
+  Forall (fun x => 0 <= x < 256) xs -> Forall (fun x => 0 <= x < 256) ys ->
+  live b reg -∗ bytes b o xs -∗ live b' reg' -∗ bytes b' o' ys -∗
+  ▷ (∀ bits, live b reg -∗ bytes b o xs -∗ live b' reg' -∗ bytes b' o' ys -∗
+     WP (ERun (mkFrame f (put d (WInt bits) e) ls None (Exec lab rest j)) : mexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+             (Exec lab (Call (CResult d W) (Global (TAtom "memcmp")) [Arg P vp; Arg P vq; Arg L vn] :: rest) j))
+        : mexpr) {{ Φ }}.
+Proof.
+  intros Hreg Hfn Hdata Hp Hc Hq Hc' Hn Hlen Ho Ho' Hend Hend' Hx Hy.
+  iIntros "Hl Hx Hl' Hy HK".
+  iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (memcmp_contract world)
+            [WPtr (mkPtr (b + o) c); WPtr (mkPtr (b' + o') c'); WInt (Z.of_nat (length xs))]
+            (live b reg ∗ bytes b o xs ∗ live b' reg' ∗ bytes b' o' ys) with "[$Hl $Hx $Hl' $Hy] [HK]");
+    [done | done | done | done | cbn [map_option]; rewrite Hp Hq Hn; done | | |].
+  - split; [right; eexists; reflexivity | do 3 eexists; reflexivity].
+  - iIntros (σ) "Hσ (Hl & Hx & Hl' & Hy)".
+    iDestruct (pts_facts with "Hσ Hl") as %([Hlv _] & _ & Hfit).
+    iDestruct (pts_facts with "Hσ Hx") as %(Hxa & _).
+    iDestruct (pts_facts with "Hσ Hl'") as %([Hlv' _] & _ & _).
+    iDestruct (pts_facts with "Hσ Hy") as %(Hya & _). iPureIntro. cbn [fst snd agree_piece] in Hlv, Hlv'.
+    exists (mkPtr (b + o) c), (mkPtr (b' + o') c'), (Z.of_nat (length xs)). split; [reflexivity|].
+    split; [exact (proj1 (block_readable _ _ _ _ _ _ Hlv Hxa Hfit Hc Ho Hend Hx))|].
+    rewrite <- Hlen. rewrite <- Hlen in Hend'.
+    exact (proj1 (block_readable _ _ _ _ _ _ Hlv' Hya Hfit Hc' Ho' Hend' Hy)).
+  - iNext. iIntros (σ trace values s' m' w' Hinv) "Hσ (Hl & Hx & Hl' & Hy)".
+    destruct (M.E.memcmp_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hinv)
+      as (_ & -> & -> & p' & q' & n' & bits & Hxs & _ & He). injection He as ->.
+    iDestruct (pure_return with "Hσ") as "Hσ"; [exact Hinv|]. destruct σ as [m s fuel w0]. iModIntro.
+    iExists _. iSplit; [iPureIntro; reflexivity|]. iFrame "Hσ". iApply ("HK" with "Hl Hx Hl' Hy").
+Qed.
+
+(** memchr's triple, from [memchr_contract]: owning the bytes xs from
+    offset o of the live object b, through a read-write or read-only
+    capability c, where vp and vn read as their pointer and length,
+    the call binds d to what it finds of the int k, which vk reads as
+    ([strchr_found] of xs: the first byte equal to k's low byte, with
+    c, or null). *)
+Lemma wp_memchr f e ls lab d vp vk vn rest j b reg o xs c k Φ :
+  registry (TAtom "memchr") = Some (memchr_contract world) ->
+  find_fn ge (TAtom "memchr") = None -> lookup (TAtom "memchr") (ge_globals ge) = None ->
+  arg_x ge e (Arg P vp) = Some (WPtr (mkPtr (b + o) c)) -> c = Obj b \/ c = Ro b ->
+  arg_x ge e (Arg W vk) = Some (WInt k) -> 0 <= k < 2 ^ 32 ->
+  arg_x ge e (Arg L vn) = Some (WInt (Z.of_nat (length xs))) ->
+  0 <= o -> b + o + Z.of_nat (length xs) <= r_end reg -> Forall (fun x => 0 <= x < 256) xs ->
+  live b reg -∗ bytes b o xs -∗
+  ▷ (∀ q, ⌜strchr_found (mkPtr (b + o) c) xs k q⌝ -∗ live b reg -∗ bytes b o xs -∗
+     WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec lab rest j)) : mexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+             (Exec lab (Call (CResult d P) (Global (TAtom "memchr")) [Arg P vp; Arg W vk; Arg L vn] :: rest) j))
+        : mexpr) {{ Φ }}.
+Proof.
+  intros Hreg Hfn Hdata Hp Hc Hk Hk32 Hn Ho Hend Hx. iIntros "Hl Hx HK".
+  iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (memchr_contract world)
+            [WPtr (mkPtr (b + o) c); WInt k; WInt (Z.of_nat (length xs))]
+            (live b reg ∗ bytes b o xs) with "[$Hl $Hx] [HK]");
+    [done | done | done | done | cbn [map_option]; rewrite Hp Hk Hn; done | | |].
+  - split; [right; eexists; reflexivity | do 3 eexists; reflexivity].
+  - iIntros (σ) "Hσ (Hl & Hx)".
+    iDestruct (pts_facts with "Hσ Hl") as %([Hlv _] & _ & Hfit).
+    iDestruct (pts_facts with "Hσ Hx") as %(Hxa & _). iPureIntro. cbn [fst snd agree_piece] in Hlv.
+    do 3 eexists. split; [reflexivity|]. split; [exact Hk32|].
+    exact (proj1 (block_readable _ _ _ _ _ _ Hlv Hxa Hfit Hc Ho Hend Hx)).
+  - iNext. iIntros (σ trace values s' m' w' Hinv) "Hσ (Hl & Hx)".
+    iDestruct (pts_facts with "Hσ Hl") as %([Hlv _] & _ & Hfit).
+    iDestruct (pts_facts with "Hσ Hx") as %(Hxa & _). cbn [fst snd agree_piece] in Hlv.
+    destruct (block_readable _ _ _ _ _ _ Hlv Hxa Hfit Hc Ho Hend Hx) as [_ Hv].
+    destruct (M.E.memchr_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hinv)
+      as (_ & -> & -> & p' & k' & n' & q & Hxs & Hq & He). injection Hxs as <- <- <-. injection He as ->.
+    iDestruct (pure_return with "Hσ") as "Hσ"; [exact Hinv|]. destruct σ as [m s fuel w0]. iModIntro.
+    iExists _. iSplit; [iPureIntro; reflexivity|]. iFrame "Hσ".
+    iApply ("HK" with "[%] Hl Hx"). cbn [ptr_addr ls_mem] in Hq, Hv.
+    destruct Hq as [(i & Hi & Hvi & Hbefore & ->) | (Hnone & ->)].
+    + left. destruct (lookup_lt_is_Some_2 xs (Z.to_nat i) ltac:(lia)) as [x Hxi].
+      exists (Z.to_nat i), x. split; [exact Hxi|]. split.
+      * rewrite <- Hvi. rewrite <- (Hv _ _ Hxi). rewrite Z2Nat.id; [reflexivity|lia].
+      * split; [|cbn [ptr_addr ptr_cap]; rewrite Z2Nat.id; [reflexivity|lia]].
+        intros i' x' Hlt Hx'. rewrite <- (Hv _ _ Hx'). apply Hbefore. lia.
+    + right. split; [|reflexivity]. intros i' x' Hx'. rewrite <- (Hv _ _ Hx').
+      apply Hnone. split; [lia|]. apply lookup_lt_Some in Hx'. lia.
 Qed.
 
 End calls.

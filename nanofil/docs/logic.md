@@ -519,9 +519,8 @@ does.
 
 1. Done: the linked module, its gate, `hello_valid`, and the external
    list.
-2. Leaf triples from contracts that exist: `memeq`, `streq`,
-   `strnlen1` and `mbszero`. Then `set_program_name`, which needs the
-   entry's writable program-name cells.
+2. Done: leaf triples from contracts that exist, then
+   `set_program_name`. See "Milestone 2" below.
 3. The conversion chain, over a locale the world interpretation holds.
 4. `main` and its option loop, from Campaign 4's entry. This needs
    `setlocale`, `atexit`, `getopt_long`, `wprintf` and `exit`.
@@ -529,6 +528,51 @@ does.
    bridge, which runs an ordinary callback frame.
 6. The `--help`, `--version` and error paths.
 7. `never_panics` of the linked module from the entry.
+
+**Milestone 2.** New libc triples:
+- [StringLogic.v](../rocq/theories/StringLogic.v) adds `wp_strcmp`,
+  `wp_strncmp` and `wp_strrchr`.
+- [MemLogic.v](../rocq/theories/MemLogic.v) adds `wp_memcmp` and
+  `wp_memchr` over blocks read through read-write or read-only
+  capabilities (`block_readable`), and `string_window`, which lends n
+  bytes of a string as a block.
+- Logic.v gains `wp_ret_void` for `void` functions.
+
+[HelloLeaf.v](../rocq/theories/HelloLeaf.v) (12 s, 7 s of which is
+laying out the module's 115 symbols) proves `mbszero_spec`,
+`memeq_spec`, `streq_spec` and `strnlen1_spec`. They hold in any genv
+that links Hello (`hello_linked`): its module is `hello_module`, its
+symbols include Hello's own, and no libc function Hello calls is a
+symbol. The registry and the world interpretation are any that hold
+the contracts, so the same triples serve the whole program over
+Campaign 4's world. A caller binds them through `wp_call_bind` at
+`invocation f xs`, the frame `call_frame` makes.
+
+[HelloName.v](../rocq/theories/HelloName.v) (15 s) proves
+`set_program_name_spec` on every path:
+- The function owns argv[0] as a string, the two literals "/.libs/"
+  and "lt-", and three cells: Hello's `program_name` and libc's
+  `program_invocation_name` and `program_invocation_short_name`, each
+  its own object, as each Fil-C global is.
+- Whatever memcmp and strncmp return, the run is safe. The cells end
+  up holding pointers with argv[0]'s capability, the first two the
+  same one.
+- Each store's premise, that it keeps the world interpretation, is
+  `store_keeps`, which Campaign 4's world must show for the three
+  cells.
+
+The compiled function has no null check of argv[0]. gnulib declares
+the parameter nonnull, so clang drops the abort branch. The
+never-panics theorem therefore needs argc ≥ 1, which Startup's
+`startup_at` gives.
+
+Two lessons on cost:
+- `vm_compute` of a goal that names `hello_module` is fast, but `cbn`
+  or `discriminate` on one unfolds the whole decoded module (minutes).
+  The proofs only compute module facts through `vm_compute`
+  (`outside_find`, `hello_outside`).
+- `put` on an abstract environment needs `gen_env` before a lookup
+  through it reduces.
 
 ## Open questions for mbrock
 

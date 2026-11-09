@@ -938,6 +938,27 @@ Proof.
     iApply (wp_value' _ _ _ (Ret x)). iExact "H".
 Qed.
 
+(** A return from a `void` function, from an invocation with no named
+    locals: the invocation's value is [RetVoid], and the postcondition
+    holds of it. *)
+Lemma wp_ret_void f e l Φ :
+  ▷ Φ RetVoid -∗ WP (ERun (mkFrame f e [] None (Exec l [] JRetVoid)) : lexpr) {{ Φ }}.
+Proof.
+  assert (Hs : forall m fuel,
+             Semantics.step ge (mkConfig (mkFrame f e [] None (Exec l [] JRetVoid)) [] m fuel)
+             = Done RetVoid).
+  { intros m fuel. rewrite rule_ret_void.
+    exact (rule_return_top (mkFrame f e [] None (Exec l [] JRetVoid)) m fuel _ m (invalidate_none m)). }
+  iIntros "H". iApply (wp_lift_run with "H").
+  - iIntros (σ) "_ _". iPureIntro. left. unfold fails. rewrite Hs. cbn. tauto.
+  - iIntros ([m s fuel w]) "Hσ H". iNext. iIntros (e2 σ2 Hm).
+    destruct (moves_core _ _ _ _ Hm ltac:(intros ?; cbn [ls_mem ls_fuel]; rewrite Hs; discriminate))
+      as [(c' & E' & _) | [(q & kk & base & s' & E' & _) | (o & m' & E' & _ & Hi & -> & ->)]];
+      cbn [ls_mem ls_fuel] in E'; rewrite Hs in E'; try discriminate E'.
+    injection E' as <-. cbn in Hi. injection Hi as <-. iModIntro. iFrame "Hσ".
+    iApply (wp_value' _ _ _ RetVoid). iExact "H".
+Qed.
+
 (** A direct call of the function g, defined in the module, with
     arguments that read as xs and make its frame callee: the callee
     runs as the callee of the caller, which waits at the rest of its

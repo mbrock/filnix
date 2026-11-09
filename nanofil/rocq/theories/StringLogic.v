@@ -315,6 +315,26 @@ Proof.
   - iIntros "[_ Hq]". rewrite big_sepL_cons. iDestruct "Hq" as "[Hl Hsuf]". iSplit; [done|]. iFrame.
 Qed.
 
+(** Where the string's pieces agree, p points at a [bounded_length]
+    string for any bound n: its length, or n if that is shorter.
+    Campaign 4's reading of a string for strncmp. *)
+Lemma string_bounded m p b reg bytes n :
+  string_ok p b reg bytes -> all_agree m (string_ps p b reg bytes) -> 0 <= n < 2 ^ 64 ->
+  bounded_length m p n (Z.min (Z.of_nat (length bytes)) n).
+Proof.
+  intros Hok Ha Hn. pose proof (string_bytes m p b reg bytes Hok Ha) as Hb.
+  destruct Hok as (Hc & H0 & H1 & H2 & H3 & Hf). destruct Ha as [[E Lv] _].
+  split; [exact Hn|]. split; [lia|]. split; [exists b, reg; auto|]. split.
+  - apply (access_read _ b reg); [exact Hc | exact E | lia | | apply Z.mod_1_r].
+    destruct (Z.min _ n <? n); lia.
+  - split.
+    + intros i Hi. destruct (lookup_lt_is_Some_2 bytes (Z.to_nat i) ltac:(lia)) as [x Hx].
+      rewrite <- (Z2Nat.id i) by lia. rewrite (Hb (Z.to_nat i) x); [|by apply lookup_app_l_Some].
+      exact (Forall_lookup_1 _ _ _ _ Hf Hx).
+    + intros Hk. assert (Z.min (Z.of_nat (length bytes)) n = Z.of_nat (length bytes)) as -> by lia.
+      apply (Hb (length bytes) 0). rewrite lookup_app_r; [|lia]. rewrite Nat.sub_diag. reflexivity.
+Qed.
+
 (** ## The calls *)
 
 Section calls.
@@ -430,6 +450,109 @@ Proof.
       assert (Hl : (i' < length bytes)%nat) by (apply lookup_lt_Some in Hx'; exact Hx').
       specialize (Hnone (Z.of_nat i') ltac:(lia)).
       rewrite (Hb i' x') in Hnone; [exact Hnone|]. by apply lookup_app_l_Some.
+Qed.
+
+(** strcmp's triple, from [strcmp_contract]: owning the strings at p
+    and q, which v and w read as, the call binds d to an int. Which
+    int does not matter to a caller that only branches on it. *)
+Lemma wp_strcmp f e ls lab d v w rest j p b reg xs q b' reg' ys Φ :
+  registry (TAtom "strcmp") = Some (strcmp_contract world) ->
+  find_fn ge (TAtom "strcmp") = None -> lookup (TAtom "strcmp") (ge_globals ge) = None ->
+  arg_x ge e (Arg P v) = Some (WPtr p) -> arg_x ge e (Arg P w) = Some (WPtr q) ->
+  string p b reg xs -∗ string q b' reg' ys -∗
+  ▷ (∀ bits, string p b reg xs -∗ string q b' reg' ys -∗
+     WP (ERun (mkFrame f (put d (WInt bits) e) ls None (Exec lab rest j)) : sexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+             (Exec lab (Call (CResult d W) (Global (TAtom "strcmp")) [Arg P v; Arg P w] :: rest) j))
+        : sexpr) {{ Φ }}.
+Proof.
+  intros Hreg Hfn Hdata Hv Hw. iIntros "Hs Ht HK".
+  iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (strcmp_contract world) [WPtr p; WPtr q]
+            (string p b reg xs ∗ string q b' reg' ys) with "[$Hs $Ht] [HK]");
+    [done | done | done | done | cbn [map_option]; rewrite Hv Hw; done | | |].
+  - split; [right; eexists; reflexivity | do 2 eexists; reflexivity].
+  - iIntros (σ) "Hσ [Hs Ht]". iDestruct (string_facts with "Hσ Hs") as %[Hp _].
+    iDestruct (string_facts with "Hσ Ht") as %[Hq _]. iPureIntro.
+    exists p, q, (Z.of_nat (length xs)), (Z.of_nat (length ys)). auto.
+  - iNext. iIntros (σ trace values s' m' w' Hinv) "Hσ [Hs Ht]".
+    destruct (M.E.strcmp_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hinv)
+      as (_ & -> & -> & p' & q' & bits & Hx & _ & He). injection He as ->.
+    iDestruct (pure_return with "Hσ") as "Hσ"; [exact Hinv|]. destruct σ as [m s fuel w0]. iModIntro.
+    iExists _. iSplit; [iPureIntro; reflexivity|]. iFrame "Hσ". iApply ("HK" with "Hs Ht").
+Qed.
+
+(** strncmp's triple, from [strncmp_contract]: owning the strings at p
+    and q, which v and w read as, compared up to n bytes, which u reads
+    as, the call binds d to an int. *)
+Lemma wp_strncmp f e ls lab d v w u rest j p b reg xs q b' reg' ys n Φ :
+  registry (TAtom "strncmp") = Some (strncmp_contract world) ->
+  find_fn ge (TAtom "strncmp") = None -> lookup (TAtom "strncmp") (ge_globals ge) = None ->
+  arg_x ge e (Arg P v) = Some (WPtr p) -> arg_x ge e (Arg P w) = Some (WPtr q) ->
+  arg_x ge e (Arg L u) = Some (WInt n) -> 0 <= n < 2 ^ 64 ->
+  string p b reg xs -∗ string q b' reg' ys -∗
+  ▷ (∀ bits, string p b reg xs -∗ string q b' reg' ys -∗
+     WP (ERun (mkFrame f (put d (WInt bits) e) ls None (Exec lab rest j)) : sexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+             (Exec lab (Call (CResult d W) (Global (TAtom "strncmp")) [Arg P v; Arg P w; Arg L u] :: rest) j))
+        : sexpr) {{ Φ }}.
+Proof.
+  intros Hreg Hfn Hdata Hv Hw Hu Hn. iIntros "Hs Ht HK".
+  iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (strncmp_contract world) [WPtr p; WPtr q; WInt n]
+            (string p b reg xs ∗ string q b' reg' ys) with "[$Hs $Ht] [HK]");
+    [done | done | done | done | cbn [map_option]; rewrite Hv Hw Hu; done | | |].
+  - split; [right; eexists; reflexivity | do 3 eexists; reflexivity].
+  - iIntros (σ) "Hσ [[%Hok Hs] [%Hok' Ht]]".
+    iDestruct (pts_facts with "Hσ Hs") as %(Ha & _). iDestruct (pts_facts with "Hσ Ht") as %(Ha' & _).
+    iPureIntro. do 5 eexists. split; [reflexivity|].
+    split; [exact (string_bounded _ _ _ _ _ _ Hok Ha Hn) | exact (string_bounded _ _ _ _ _ _ Hok' Ha' Hn)].
+  - iNext. iIntros (σ trace values s' m' w' Hinv) "Hσ [Hs Ht]".
+    destruct (M.E.strncmp_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hinv)
+      as (_ & -> & -> & p' & q' & n' & bits & Hx & _ & He). injection He as ->.
+    iDestruct (pure_return with "Hσ") as "Hσ"; [exact Hinv|]. destruct σ as [m s fuel w0]. iModIntro.
+    iExists _. iSplit; [iPureIntro; reflexivity|]. iFrame "Hσ". iApply ("HK" with "Hs Ht").
+Qed.
+
+(** strrchr's triple, from [strrchr_contract]: owning the string at p,
+    which v reads as, the call binds d to null or to a pointer into the
+    string before its NUL, with p's capability, for an int c, which w
+    reads as, whose low byte is not the NUL. *)
+Lemma wp_strrchr f e ls lab d v w rest j p b reg bytes c Φ :
+  registry (TAtom "strrchr") = Some (strrchr_contract world) ->
+  find_fn ge (TAtom "strrchr") = None -> lookup (TAtom "strrchr") (ge_globals ge) = None ->
+  arg_x ge e (Arg P v) = Some (WPtr p) -> arg_x ge e (Arg W w) = Some (WInt c) ->
+  0 <= c < 2 ^ 32 -> c mod 256 <> 0 ->
+  string p b reg bytes -∗
+  ▷ (∀ q, ⌜q = mkPtr 0 CNone \/
+           exists i, (i < length bytes)%nat /\ q = mkPtr (ptr_addr p + Z.of_nat i) (ptr_cap p)⌝ -∗
+     string p b reg bytes -∗
+     WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec lab rest j)) : sexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+             (Exec lab (Call (CResult d P) (Global (TAtom "strrchr")) [Arg P v; Arg W w] :: rest) j))
+        : sexpr) {{ Φ }}.
+Proof.
+  intros Hreg Hfn Hdata Hv Hw Hc Hnz. iIntros "Hs HK".
+  iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (strrchr_contract world) [WPtr p; WInt c]
+            (string p b reg bytes) with "Hs [HK]");
+    [done | done | done | done | cbn [map_option]; rewrite Hv Hw; done | | |].
+  - split; [right; eexists; reflexivity | do 2 eexists; reflexivity].
+  - iIntros (σ) "Hσ Hs". iDestruct (string_facts with "Hσ Hs") as %[Ht _]. iPureIntro.
+    exists p, c, (Z.of_nat (length bytes)). auto.
+  - iNext. iIntros (σ trace values s' m' w' Hinv) "Hσ Hs".
+    iDestruct "Hs" as "[%Hok Hs]".
+    iDestruct (pts_facts with "Hσ Hs") as %(Ha & _).
+    pose proof (string_terminated _ _ _ _ _ Hok Ha) as Ht.
+    pose proof (string_bytes _ _ _ _ _ Hok Ha) as Hb.
+    destruct (M.E.strrchr_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hinv)
+      as (_ & -> & -> & p' & c' & q & Hx & _ & (k & Hk & Hq) & He). injection Hx as <- <-.
+    injection He as ->. rewrite (terminated_length_unique _ _ _ _ Hk Ht) in Hq.
+    iDestruct (pure_return with "Hσ") as "Hσ"; [exact Hinv|]. destruct σ as [m s fuel w0]. iModIntro.
+    iExists _. iSplit; [iPureIntro; reflexivity|]. iFrame "Hσ".
+    iApply ("HK" with "[%] [Hs]"); [|by iSplit].
+    cbn [ls_mem] in Hb. destruct Hq as [(i & Hi & Hv' & _ & ->) | (_ & ->)]; [right | left; reflexivity].
+    exists (Z.to_nat i). split; [|rewrite Z2Nat.id; [reflexivity | lia]].
+    destruct (decide (Z.to_nat i = length bytes)) as [Heq|Hne]; [|lia]. exfalso. apply Hnz.
+    rewrite <- Hv'. rewrite <- (Z2Nat.id i) by lia. rewrite Heq. apply (Hb (length bytes) 0).
+    rewrite lookup_app_r; [|lia]. rewrite Nat.sub_diag. reflexivity.
 Qed.
 
 End calls.
