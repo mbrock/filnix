@@ -30,6 +30,8 @@
 :- use_module(library(crypto)).
 :- use_module(library(time)).
 :- use_module(library(aggregate)).
+:- use_module(library(unix)).
+:- use_module(library(filesex)).
 :- use_module(rocq_syntax).
 :- use_module(rocq_draw).
 :- use_module('../concepts').
@@ -61,9 +63,51 @@ main :-
     ),
     nb_setval(rq_files, Files),
     forall(member(page(F, _, Items, _), Read), ( page_name(F, P), rocq_index_items(P, F, Items) )),
-    maplist(write_source_page(Out), Read),
+    forall(member(page(F, Text, Items, Cms), Read), ( page_head(Items, Text, Cms, Head, _), summarize(F, Text, Head) )),
+    write_source_pages(Out, Read),
+    % The index draws only prose, outside any page's source.
+    rocq_set_source("", []),
     directory_file_path(Out, 'index.html', IPath),
     write_page(IPath, index_page(Read)).
+
+%  Once every file is read and indexed, the pages are independent: forked
+%  workers, one per core up to 8, draw them. Each claims the next page,
+%  longest source first, by making its claim directory, which only one
+%  worker can do.
+write_source_pages(Out, Read) :-
+    (   getenv('NIX_BUILD_CORES', C0), atom_number(C0, C), C > 0 -> true
+    ;   current_prolog_flag(cpu_count, C)
+    ),
+    length(Read, NPages), N is min(8, min(C, NPages)),
+    (   N =< 1
+    ->  maplist(write_source_page(Out), Read)
+    ;   map_list_to_pairs([page(_, Text, _, _), L]>>string_length(Text, L), Read, Sized),
+        keysort(Sized, Ascending), reverse(Ascending, Longest), pairs_values(Longest, Pages),
+        directory_file_path(Out, '.claims', Claims), make_directory(Claims),
+        flush_output(user_output), flush_output(user_error),
+        numlist(1, N, Ws), maplist(page_worker(Out, Claims, Pages), Ws, Pids),
+        maplist([Pid, S]>>wait(Pid, S), Pids, Statuses),
+        delete_directory_and_contents(Claims),
+        (   forall(member(S, Statuses), S == exited(0)) -> true
+        ;   format(user_error, "dterm-rocq: a page worker failed: ~w~n", [Statuses]), halt(1)
+        )
+    ).
+
+page_worker(Out, Claims, Pages, _, Pid) :-
+    fork(Pid0),
+    (   Pid0 == child
+    ->  set_stream(user_error, buffer(line)),
+        (   catch(forall(( member(Page, Pages), claim(Claims, Page) ), write_source_page(Out, Page)),
+                  E, ( print_message(error, E), fail ))
+        ->  halt(0)
+        ;   halt(1)
+        )
+    ;   Pid = Pid0
+    ).
+
+claim(Claims, page(File, _, _, _)) :-
+    page_name(File, P), directory_file_path(Claims, P, Dir),
+    catch(make_directory(Dir), error(existence_error(_, _), _), fail).
 
 %% Reading
 
@@ -122,12 +166,10 @@ write_source_page(Out, page(File, Text, Items, Cms)) :-
     page_name(File, Page), nb_setval(rq_page, Page), nb_setval(rq_file, File),
     % Its own notations and its imports', not those of the file read last.
     page_notations(File, Ns), rocq_set_notations(Ns),
-    (   Items = [I|_], first_offset(I, From) -> true ; string_length(Text, From) ),
-    partition([cm(O, _, _, _)]>>(O < From), Cms, Head, Body),
+    page_head(Items, Text, Cms, Head, Body),
     rocq_set_source(Text, Body),
     source_states(File, Text),
     contents(Items, Body, Groups),
-    summarize(File, Text, Head),
     file_name_extension(Page, html, Name), directory_file_path(Out, Name, Path),
     setup_call_cleanup(start_stack_watch(Alarm),
       once(write_streamed_page(Path, source_page(File, Head, Items, Groups), sample_render_stack)),
@@ -203,6 +245,11 @@ crumbs(Title) -->
     el(a, crumb, [href="../index.html"], "nanofil"), el(span, "crumb-sep", "›"),
     el(a, crumb, [href="index.html"], "Rocq"), el(span, "crumb-sep", "›"),
     el(span, "crumb current", esc(Title)).
+
+%  The comments before a file's first item are its header.
+page_head(Items, Text, Cms, Head, Body) :-
+    (   Items = [I|_], first_offset(I, From) -> true ; string_length(Text, From) ),
+    partition([cm(O, _, _, _)]>>(O < From), Cms, Head, Body).
 
 %  The first sentence of a file's header, for the index.
 :- dynamic page_summary/3.
