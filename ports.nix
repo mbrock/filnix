@@ -305,6 +305,14 @@ in
     ];
   }
 
+  (for pkgs.re2 [
+    # Exhaustive tests exceed remote builders' 900 s silence limit. Stream
+    # actual progress, rather than skipping tests or masking a stuck test.
+    (patch ./patches/re2-test-progress.patch)
+    # Override Nixpkgs' typed CMAKE_CTEST_ARGUMENTS, keeping its timeout.
+    (addCMakeFlag "-DCMAKE_CTEST_ARGUMENTS=--timeout;999999;--verbose")
+  ])
+
   (
     let
       protobufPort = sourcePatch: [

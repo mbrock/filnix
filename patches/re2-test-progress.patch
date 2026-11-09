@@ -1,0 +1,19 @@
+RE2's exhaustive tests can run silently for more than 900 seconds under
+Fil-C, exceeding the remote builder's silence limit. Report completed
+regular expressions in the test harness; CTest's verbose mode streams it.
+The library and the tested inputs are unchanged. A stuck regexp still
+produces no progress and remains subject to the silence limit.
+
+diff --git a/re2/testing/exhaustive_tester.cc b/re2/testing/exhaustive_tester.cc
+--- a/re2/testing/exhaustive_tester.cc
++++ b/re2/testing/exhaustive_tester.cc
+@@ -89,6 +89,9 @@ static void PrintResult(const RE2& re, absl::string_view input,
+ // checks that NFA, DFA, and PCRE all return the same results.
+ void ExhaustiveTester::HandleRegexp(const std::string& const_regexp) {
+   regexps_++;
++  if (regexps_ > 1 && (regexps_ - 1) % 100 == 0)
++    fprintf(stderr, "exhaustive: %d regexps completed, %d tests, %d failures\n",
++            regexps_ - 1, tests_, failures_);
+   std::string regexp = const_regexp;
+   if (!topwrapper_.empty()) {
+     auto fmt = absl::ParsedFormat<'s'>::New(topwrapper_);
