@@ -74,24 +74,6 @@ Proof. vm_compute. reflexivity. Qed.
 
 (** ## Environments *)
 
-(** Replace each environment put k v e of the goal, e a variable, by a
-    new variable, with what each name looks up to in it. *)
-Ltac gen_env :=
-  repeat match goal with
-  | |- context[put ?k ?v ?e] =>
-      is_var e;
-      let H := fresh "Hput" in
-      assert (H : lookup k (put k v e) = Some v) by apply lookup_after_put_same;
-      repeat match goal with
-        | H' : lookup ?x e = Some ?w |- _ =>
-            first [ assert (lookup x (put k v e) = Some w)
-                      by (rewrite lookup_after_put_other; [exact H'|reflexivity])
-                  | idtac ];
-            clear H'
-        end;
-      let e' := fresh "e" in set (e' := put k v e) in *; clearbody e'; try clear e
-  end.
-
 (** ## The buffer *)
 
 (** The buffer's region: a 32-byte live heap object at b. *)

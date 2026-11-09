@@ -347,6 +347,7 @@ tradition. Steps 1 to 4 above are done, and step 5 is under way:
 | 6, hi.c | [HiLogic.v](../rocq/theories/HiLogic.v) | `hi_logic_safe` for every runtime and `interp_hi_logic_safe` from Hi.v's fixture, closed. The program owns its literal as a `string`; the world interpretation is `stdio_wi` (puts's rep, `stdio_ready`, the world's roots apart from the program's objects); puts is `wp_puts` from StringLogic.v; main is six tactic lines. No new rule was needed: main has no named locals and no check |
 | 7, strings | [StringLogic.v](../rocq/theories/StringLogic.v) | `string p b reg bytes`: the life of the object p's capability names, read-write or read-only, and its bytes through the NUL; owning it gives Campaign 4's `terminated_length` and `c_string` (`string_facts`), lends a suffix (`string_suffix`) or one byte (`string_byte`). Triples derived from the contracts, each stated at any call site: `wp_strlen` and `wp_strchr` (pure calls: memory and world unchanged, `pure_return`) over any registry and world, `wp_puts` under `stdio_wi` (the frame keeps the string through puts's writes). New rules: `wp_check_read`, a read check through an `Obj` or `Ro` capability, and `wp_raw_load_byte`, a one-byte load |
 | 7, a read after a call | [ScanLogic.v](../rocq/theories/ScanLogic.v), [scan.c](../rocq/programs/scan.c) | `scan(s)` takes `strlen(s)`, finds the first `l` with `strchr`, prints the rest with `puts`, then reads the byte after the `l` through strchr's pointer: three calls and a read after the last one. `scan_logic_safe` for every runtime and `interp_scan_logic_safe` on Hi.v's fixture ("hello"), closed. The proof (`scan_spec`) is 43 lines: one rule per instruction, the three triples, and the facts that make the read safe: strchr's hit is before the NUL because `l` is not 0, so the byte after it is in the string the frame kept through puts. Still no named locals, so `wp_ret` needed nothing new |
+| 7, a helper in a loop | [CountLogic.v](../rocq/theories/CountLogic.v), [count.c](../rocq/programs/count.c) | `next_l` is strchr for `l`, with its own triple (`next_l_spec`, 13 lines, from `wp_strchr`); `count_l` calls it once and then in a loop on the suffix past each hit, reading the byte each hit lands on. Both calls use the triple through `wp_call_bind`; the loop is a Löb induction at the head (`count_loop`, 46 lines) carrying the string and "the pointer is null or before the NUL" (`found_from`), re-established from the callee's postcondition on the suffix (`found_next`). `count_logic_safe` and `interp_count_logic_safe` (two `l`s in "hello"), closed; 5.3 s. No new rule: no named locals, so `wp_ret` is still the one without them. `gen_env` moved to Symbolic.v for both loop proofs |
 
 **hi.c, the logic against Hi.v's hand proof.** The same body, the same
 contract, the same fixture:
@@ -392,9 +393,27 @@ used twice (hi.c now takes `wp_puts` from StringLogic.v and shrank from
 312 to 196 lines). The price is a fixed one, StringLogic.v and the
 contract machinery in Language.v and Logic.v, and compile time, which
 stays above the hand method's. The case for the hand method is now only
-programs with no read after a call. Not yet tested: a loop around a
-call, and a callee's specification used by a caller (`wp_call_bind`
-with a triple), both of which Hello needs.
+programs with no read after a call.
+
+**count.c, a helper with a triple in a loop.** The two things Hello
+needed that scan did not: a callee's specification used by its caller,
+and a call inside a loop. The hand method has no callee
+specifications: its invariant covers every configuration, so the
+callee's points appear once per call site with the caller's frame
+under them, and the loop needs its invariant at the head as well.
+Again an estimate from Hi.v's rate:
+
+| | Hi.v's method (estimate) | CountLogic.v (Iris) |
+| --- | --- | --- |
+| program points | 16 in `count_l`, 3 in `next_l` at each of 2 call sites | the same, with `next_l` proved once |
+| program-specific proof | about 22 configurations at 45 lines: 900 to 1,000 lines, plus the string's validity across safepoints | `next_l_spec` 13, `count_loop` 46, `count_spec` 14: 73 lines; the file is 263 non-blank lines, most of it the module, blocks and the interpreter instance |
+| what carries over | nothing | `next_l_spec` is used at both calls; the loop invariant is three facts and the string |
+| compile time | several seconds at Hi.v's rate | 5.3 s |
+
+The callee's triple is what keeps the proof small: each call is one
+application of `next_l_spec`, and the caller never sees strchr. Hello's
+next needs from the table below are memory-writing contracts (Campaign 4
+has started with memset), and a callee that owns memory across calls.
 
 The premise `keeps_live` is gone: only a signal handler the program installed, or a thread it
 started, frees a live object, so Runtime.v's safepoint axiom is now the
