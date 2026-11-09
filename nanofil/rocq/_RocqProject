@@ -76,4 +76,5 @@ theories/SlotLogic.v
 theories/HelloModule.v
 theories/HelloLeaf.v
 theories/HelloName.v
+theories/HelloLocale.v
 theories/Extract.v

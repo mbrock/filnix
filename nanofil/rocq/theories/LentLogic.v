@@ -39,11 +39,12 @@ Open Scope list_scope.
 (** ## Lent strings in the memory *)
 
 (** The string t at p, lent by the world, in the memory m and against
-    the ghost heap h: a C string through its NUL, in an object, or a
-    read-only one, at a multiple of 8, and no byte of it in a live
-    object owning a piece of memory of h. *)
+    the ghost heap h: a C string through its NUL, not at null and
+    ending before 2^64,
+    in an object, or a read-only one, at a multiple of 8, and no byte
+    of it in a live object owning a piece of memory of h. *)
 Definition lent_at (m : mem) (h : gmap piece pval) (p : ptr) (t : list Z) : Prop :=
-  c_string m p t /\
+  c_string m p t /\ 0 < ptr_addr p /\ ptr_addr p + Z.of_nat (length t) < 2 ^ 64 /\
   (exists b, (ptr_cap p = Obj b \/ ptr_cap p = Ro b) /\ b mod 8 = 0) /\
   (forall a, ptr_addr p <= a <= ptr_addr p + Z.of_nat (length t) -> ~ owned_live h m a).
 
@@ -126,8 +127,11 @@ Import L LG SL ML.
 Section lent.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 
-(** [lent] k p t: the world lends the string t at p under the key k. *)
-Definition lent (k : Z) (p : ptr) (t : list Z) : iProp Σ := pointsto (PName k) DfracDiscarded (VName p t).
+(** [lent] k p t: the world lends the string t at p under the key k;
+    p is not null, t ends before 2^64 and its bytes are not NUL, facts
+    of the lent value that hold from when the world lends it. *)
+Definition lent (k : Z) (p : ptr) (t : list Z) : iProp Σ :=
+  ⌜0 < ptr_addr p /\ ptr_addr p + Z.of_nat (length t) < 2 ^ 64 /\ Forall (fun x => 0 < x < 256) t⌝ ∗ pointsto (PName k) DfracDiscarded (VName p t).
 
 (** Lending is persistent. *)
 Global Instance lent_persistent k p t : Persistent (lent k p t).
@@ -156,7 +160,7 @@ Lemma lent_facts σ k p t :
   ∃ h, ⌜agrees (ls_mem σ) h /\ live_disjoint (ls_mem σ) /\ R.ready (ls_rt σ) (ls_mem σ) /\
        lent_at (ls_mem σ) h p t⌝.
 Proof.
-  iIntros "(%h & Hh & %Hf) Hk". destruct Hf as (Ha & Hd & Hr & Hw).
+  iIntros "(%h & Hh & %Hf) [_ Hk]". destruct Hf as (Ha & Hd & Hr & Hw).
   iDestruct (gen_heap_valid with "Hh Hk") as %Hl. iExists h. iPureIntro.
   split; [exact Ha|]. split; [exact Hd|]. split; [exact Hr|]. exact (wi_lent _ _ _ _ _ _ Hw Hl).
 Qed.
@@ -181,9 +185,9 @@ Proof.
   intros Hreg Hret Hfn Hdata Hfree Hx Habi Hpre Hinv. iIntros "#Hk HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ spec xs (lent k p t) with "Hk [HK]");
     [done | done | done | done | done | done | |].
-  - iIntros (σ) "(%h & Hh & %Hf) Hk'". destruct Hf as (_ & _ & _ & Hw).
+  - iIntros (σ) "(%h & Hh & %Hf) [_ Hk']". destruct Hf as (_ & _ & _ & Hw).
     iDestruct (gen_heap_valid with "Hh Hk'") as %Hl. iPureIntro. exact (Hpre _ _ _ Hw Hl).
-  - iNext. iIntros (σ trace values s' m' w' Hi) "(%h & Hh & %Hf) Hk'".
+  - iNext. iIntros (σ trace values s' m' w' Hi) "(%h & Hh & %Hf) [_ Hk']".
     pose proof Hf as (_ & _ & _ & Hw). iDestruct (gen_heap_valid with "Hh Hk'") as %Hl.
     destruct (Hinv _ _ _ _ _ _ _ _ _ Hw Hl Hi) as (-> & -> & -> & He). injection He as ->.
     iModIntro. iExists _. iSplit.
@@ -273,8 +277,8 @@ Proof.
   - split; [right; eexists; reflexivity | exists vd, vs, vn; reflexivity].
   - iIntros (σ) "Hσ [Hdst Hk']". iDestruct (pts_facts with "Hσ Hdst") as %(Ha & Hd & Hfit).
     iDestruct "Hσ" as (h) "[Hh %Hf]". iDestruct (pts_lookup with "Hh Hdst") as %Hlk.
-    iDestruct (gen_heap_valid with "Hh Hk'") as %Hlent. iPureIntro.
-    destruct Hf as (_ & _ & Hr & Hw). destruct (wi_lent _ _ _ _ _ _ Hw Hlent) as (Hs & Hal & Hapart).
+    iDestruct "Hk'" as "[_ Hk']". iDestruct (gen_heap_valid with "Hh Hk'") as %Hlent. iPureIntro.
+    destruct Hf as (_ & _ & Hr & Hw). destruct (wi_lent _ _ _ _ _ _ Hw Hlent) as (Hs & _ & _ & Hal & Hapart).
     destruct Ha as [[E L] _]. cbn [fst snd] in E, L.
     destruct (Hfit b reg E) as [Hb0 Hfit'].
     assert (Hown : forall a, b <= a < r_end reg -> owned_live h (ls_mem σ) a).
@@ -293,10 +297,10 @@ Proof.
       destruct (Z.le_gt_cases (b + o + Z.of_nat n) (ptr_addr p)) as [H|H]; [left; exact H|].
       destruct (Z.le_gt_cases (ptr_addr p + Z.of_nat n) (b + o)) as [H'|H']; [right; exact H'|].
       exfalso. apply (Hapart (Z.max (ptr_addr p) (b + o))); [lia|]. apply Hown. lia.
-  - iNext. iIntros (σ trace values s' m' w' Hinv) "(%h & Hh & %Hf) [Hdst Hk']".
+  - iNext. iIntros (σ trace values s' m' w' Hinv) "(%h & Hh & %Hf) [Hdst [_ Hk']]".
     destruct Hf as (Ha & Hd & Hr & Hw).
     iDestruct (gen_heap_valid with "Hh Hk'") as %Hlent.
-    destruct (wi_lent _ _ _ _ _ _ Hw Hlent) as (Hs & _ & _).
+    destruct (wi_lent _ _ _ _ _ _ Hw Hlent) as (Hs & _).
     destruct (M.E.copy_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hinv)
       as (_ & -> & d' & s0 & n' & Hx & _ & Hres & He).
     injection Hx as <- <- <-. injection He as ->.

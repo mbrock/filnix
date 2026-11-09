@@ -22,7 +22,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import ZArith Lia.
 From Stdlib Require String.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run StepRules Symbolic
-  ExternalCalls ExternalMachine Pieces Heap ContractFrame Language Logic StringLogic MemLogic
+  ExternalCalls ExternalMachine Pieces Heap ContractFrame Language Logic StringLogic MemLogic LentLogic
   HelloModule.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -186,7 +186,8 @@ Ltac addr_premise := cbn [ptr_addr]; unfold raw_address; drop_wraps_goal; arith.
 
 (** Hello's leaf functions over any [[runtime]] R. *)
 Module HelloLeaf (R : Runtime).
-Module ML := MemLogic R.
+Module LL := LentLogic R.
+Module ML := LL.ML.
 Module SL := ML.SL.
 Module LG := ML.LG.
 Module L := LG.L.

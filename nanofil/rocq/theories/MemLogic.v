@@ -61,6 +61,33 @@ Proof.
   rewrite Z.pred_succ. reflexivity.
 Qed.
 
+(** The pieces of cs ++ ds from o are cs's, then ds's after them. *)
+Lemma aux_ps_app b o cs ds :
+  aux_ps b o (cs ++ ds) = aux_ps b o cs ++ aux_ps b (o + Z.of_nat (length cs)) ds.
+Proof.
+  revert o. induction cs as [|c cs IH]; intros o; [cbn; rewrite Z.add_0_r; reflexivity|].
+  cbn [app]. rewrite !aux_ps_cons IH. cbn [app length].
+  replace (o + Z.of_nat (S (length cs))) with (o + 1 + Z.of_nat (length cs)) by lia. reflexivity.
+Qed.
+
+(** The pieces of n slots holding c, from o. *)
+Lemma aux_ps_replicate b o n c :
+  aux_ps b o (replicate n c) = (fun i => (PAux b i, VAux c)) <$> seqZ o (Z.of_nat n).
+Proof.
+  revert o. induction n as [|n IH]; intros o; [reflexivity|].
+  rewrite replicate_S aux_ps_cons IH Nat2Z.inj_succ (seqZ_cons o); [|lia].
+  rewrite Z.pred_succ. reflexivity.
+Qed.
+
+(** The pieces of n bytes holding x, from o. *)
+Lemma byte_ps_replicate b o n x :
+  byte_ps b o (replicate n x) = (fun i => (PByte b i, VByte x)) <$> seqZ o (Z.of_nat n).
+Proof.
+  revert o. induction n as [|n IH]; intros o; [reflexivity|].
+  rewrite replicate_S byte_ps_cons IH Nat2Z.inj_succ (seqZ_cons o); [|lia].
+  rewrite Z.pred_succ. reflexivity.
+Qed.
+
 (** The pieces of cs are aux pieces at the offsets from o. *)
 Lemma aux_ps_keys b o cs : (aux_ps b o cs).*1 = PAux b <$> seqZ o (Z.of_nat (length cs)).
 Proof.
@@ -459,6 +486,27 @@ Definition auxes (b o : Z) (cs : list cap) : iProp Σ := pts (aux_ps b o cs).
 (** A block's pieces are its life, bytes and slots. *)
 Lemma block_pts b reg o xs cs : pts (block_ps b reg o xs cs) ⊣⊢ live b reg ∗ bytes b o xs ∗ auxes b o cs.
 Proof. rewrite /block_ps /live /bytes /auxes /pts big_sepL_cons big_sepL_app big_sepL_singleton. done. Qed.
+
+(** Owning the bytes xs ++ ys from offset o is owning xs there and ys
+    after them. *)
+Lemma bytes_app b o xs ys : bytes b o (xs ++ ys) ⊣⊢ bytes b o xs ∗ bytes b (o + Z.of_nat (length xs)) ys.
+Proof. rewrite /bytes byte_ps_app. apply pts_app. Qed.
+
+(** Owning the slots cs ++ ds from offset o is owning cs there and ds
+    after them. *)
+Lemma auxes_app b o cs ds : auxes b o (cs ++ ds) ⊣⊢ auxes b o cs ∗ auxes b (o + Z.of_nat (length cs)) ds.
+Proof. rewrite /auxes aux_ps_app. apply pts_app. Qed.
+
+(** A fresh object's pieces are its life, a zero byte at each offset of
+    its extent and an empty slot at each: a block from offset 0. *)
+Lemma obj_zero_block b q :
+  0 <= req_extent q ->
+  obj b q ⊣⊢ live b (mkRegion b (b + req_extent q) (req_kind q) Live) ∗
+    bytes b 0 (replicate (Z.to_nat (req_extent q)) 0) ∗ auxes b 0 (replicate (Z.to_nat (req_extent q)) CNone).
+Proof.
+  intros H. rewrite /obj /obj_ps /live /bytes /auxes byte_ps_replicate aux_ps_replicate Z2Nat.id; [|exact H].
+  rewrite /pts big_sepL_cons big_sepL_app big_sepL_singleton. done.
+Qed.
 
 (** The life of an object and a string's are of different objects:
     each is owned once. *)

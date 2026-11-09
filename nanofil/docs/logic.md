@@ -530,7 +530,8 @@ does.
    list.
 2. Done: leaf triples from contracts that exist, then
    `set_program_name`. See "Milestone 2" below.
-3. The conversion chain, over a locale the world interpretation holds.
+3. In progress: the conversion chain, over a locale the world
+   interpretation holds. See "Milestone 3" below.
 4. `main` and its option loop, from Campaign 4's entry. This needs
    `setlocale`, `atexit`, `getopt_long`, `wprintf` and `exit`.
 5. `close_stdout` as exit's callback, through Campaign 4's Linked.v
@@ -582,6 +583,72 @@ Two lessons on cost:
   (`outside_find`, `hello_outside`).
 - `put` on an abstract environment needs `gen_env` before a lookup
   through it reduces.
+
+**Milestone 3, so far.** The locale helpers are proved. Still to come
+are `rpl_mbrtowc` and `rpl_mbsrtowcs`, which wait on Campaign 4's
+mbrtowc, errno and composite-world contracts. New in the logic:
+- Logic.v adds `wp_renew` and `wp_half_check_read`. The second is a
+  read half check through a read-only capability, as rpl_mbsrtowcs
+  makes on the greeting literal. MemLogic.v adds `wp_raw_store_w`,
+  the 4-byte store with which rpl_mbrtowc's fallback writes `*pwc`.
+  It also adds `bytes_app`, `auxes_app` and `obj_zero_block`, which
+  read a fresh object as a block.
+- [HelloLeaf.v](../rocq/theories/HelloLeaf.v) adds `xmalloc_spec`:
+  the selected malloc never returns null, so `xalloc_die` is dead.
+
+**Strings the world lends.** setlocale(k, NULL) returns libc's own
+name for category k. The program does not own that memory, and a
+weakest precondition cannot remember across steps which string a query
+returned, because the memory and the world belong to the state, not
+to the assertion. Pieces.v therefore gains a ghost piece, `PName k`,
+valued `VName p t`. It names no memory: `mem_piece` is false for it,
+`owned_live` and `ids_apart` skip it, and it agrees with every memory.
+The world interpretation ties it to the world. An Oracle review chose
+this over a world-indexed state interpretation, which would have
+changed `heap_interp` and about 23 proof sites.
+[LentLogic.v](../rocq/theories/LentLogic.v) (4 s) reads such a string
+through `lent k p t`, a persistent token. It carries what holds of the
+lent value from the moment it is lent: p is not null, t ends before
+2^64, and t's bytes are not NUL. It needs one fact of the world
+interpretation, `lent_at`: the string is a C string, in an 8-aligned
+object (Campaign 4's `locale_name_aligned`, f9a82b6), apart from every
+object the program owns. On that fact it proves:
+- `wp_lent_query`, for a call that returns the lent pointer and
+  changes nothing, such as setlocale's query;
+- `wp_strlen_lent`;
+- `wp_memcpy_lent`, for a prefix of the name with its NUL, copied
+  into an owned block. The block's aux slots afterwards are whatever
+  the copy left (`slots_after`), since the source's slots are libc's.
+
+[HelloLocale.v](../rocq/theories/HelloLocale.v) (17 s) proves
+`setlocale_null_unlocked`, `setlocale_null_r_unlocked` on both of its
+paths, `setlocale_null_r` and `hard_locale`:
+- If the name fits in the buffer, it is copied with its NUL and the
+  result is 0.
+- Otherwise its first n - 1 bytes are copied, a NUL follows, and the
+  result is ERANGE (`snru_result`).
+- The NULL path, EINVAL, is dead because a lent name is never null.
+- `hard_locale` copies the name into a fresh 257-byte buffer and
+  compares it with "C" and "POSIX". Whatever strcmp answers, the run
+  is safe.
+
+The triples take setlocale's query as premises on its contract
+spec, so they serve Campaign 4's composite world once its lifted
+setlocale contract shows them. The same holds for the premises that
+the world interpretation survives the allocation, the copy and the
+byte store. The token is persistent, so no triple changes a lent
+name. Hello's one setter, setlocale(LC_ALL, ""), runs before any
+query, and it will need its own triple, which creates the tokens.
+
+Two more decisions shape the rest of the milestone:
+- Hello's conversion theorem carries an explicit premise that the
+  codec is one of the audited C or C.UTF-8 profiles (mbrock,
+  2026-11-09). It is not derived from `locale_ready`, from a
+  successful setlocale, or from MB_LEN_MAX. Campaign 4 found that an
+  arbitrary stateful codec does not justify the -2 restrictions that
+  rule out `abort`.
+- `__errno_location` now has a contract (Campaign 4, ff21058), for
+  rpl_mbsrtowcs's EILSEQ store.
 
 ## Open questions for mbrock
 
