@@ -348,6 +348,8 @@ tradition. Steps 1 to 4 above are done, and step 5 is under way:
 | 7, strings | [StringLogic.v](../rocq/theories/StringLogic.v) | `string p b reg bytes`: the life of the object p's capability names, read-write or read-only, and its bytes through the NUL; owning it gives Campaign 4's `terminated_length` and `c_string` (`string_facts`), lends a suffix (`string_suffix`) or one byte (`string_byte`). Triples derived from the contracts, each stated at any call site: `wp_strlen` and `wp_strchr` (pure calls: memory and world unchanged, `pure_return`) over any registry and world, `wp_puts` under `stdio_wi` (the frame keeps the string through puts's writes). New rules: `wp_check_read`, a read check through an `Obj` or `Ro` capability, and `wp_raw_load_byte`, a one-byte load |
 | 7, a read after a call | [ScanLogic.v](../rocq/theories/ScanLogic.v), [scan.c](../rocq/programs/scan.c) | `scan(s)` takes `strlen(s)`, finds the first `l` with `strchr`, prints the rest with `puts`, then reads the byte after the `l` through strchr's pointer: three calls and a read after the last one. `scan_logic_safe` for every runtime and `interp_scan_logic_safe` on Hi.v's fixture ("hello"), closed. The proof (`scan_spec`) is 43 lines: one rule per instruction, the three triples, and the facts that make the read safe: strchr's hit is before the NUL because `l` is not 0, so the byte after it is in the string the frame kept through puts. Still no named locals, so `wp_ret` needed nothing new |
 | 7, a helper in a loop | [CountLogic.v](../rocq/theories/CountLogic.v), [count.c](../rocq/programs/count.c) | `next_l` is strchr for `l`, with its own triple (`next_l_spec`, 13 lines, from `wp_strchr`); `count_l` calls it once and then in a loop on the suffix past each hit, reading the byte each hit lands on. Both calls use the triple through `wp_call_bind`; the loop is a Löb induction at the head (`count_loop`, 46 lines) carrying the string and "the pointer is null or before the NUL" (`found_from`), re-established from the callee's postcondition on the suffix (`found_next`). `count_logic_safe` and `interp_count_logic_safe` (two `l`s in "hello"), closed; 5.3 s. No new rule: no named locals, so `wp_ret` is still the one without them. `gen_env` moved to Symbolic.v for both loop proofs |
+| 7, writes, malloc and free | [MemLogic.v](../rocq/theories/MemLogic.v), [Logic.v](../rocq/theories/Logic.v), [Heap.v](../rocq/theories/Heap.v) | a block of memory is owned piece by piece: `bytes b o xs` and `auxes b o cs`, its bytes and its aux slots. `wp_memset` from `memset_contract`: the block's bytes become c's low byte and every slot starting in it is emptied (`clear_slots`); memset's exact frame keeps every other piece (`fill_after`, through Heap.v's `frame_within` for writes inside one live object). The block starts at a multiple of 8, so the slots memset touches start inside it. `wp_malloc` from `malloc_contract`: the fresh object's pieces (`obj`), no null case, since the selected malloc refuses with a resource ending. Logic.v's `wp_free` gives up a heap object's `live`, whose ghost token ends as `VFreed` (the ghost heap cannot delete a key), and `wp_free_null`; both take `frees_heap` of the genv's free, which Runtime.v does not promise (it proves only what a free may change) and `frees_heap_interp` proves of `free_res`. `wp_raw_store_byte` is new for a one-byte store |
+| 7, a callee owning memory | [SlotLogic.v](../rocq/theories/SlotLogic.v), [slot.c](../rocq/programs/slot.c) | `fill(c, n)` keeps one heap buffer in its static `slot`, with its size in `slot_size`: if n does not fit it frees the buffer and mallocs n + 1 bytes, then memsets n bytes, writes the NUL and returns the buffer. The module invariant `slot_inv` owns both statics and the `buffer` they describe (null and 0, or a live heap object with all its bytes and slots). `fill_spec` takes the invariant and returns `lent`: the n filled bytes and a wand that, given them back, returns the invariant, so the caller cannot keep them across its next call. `use` calls `fill` three times (grow, reuse, grow) and reads the buffer after each. `slot_logic_safe` for every runtime whose free `frees_heap`, `interp_slot_logic_safe` from the module's initial memory, closed; 14.8 s. Still no named locals: nanofil keeps `fill`'s and `use`'s locals in temporaries |
 
 **hi.c, the logic against Hi.v's hand proof.** The same body, the same
 contract, the same fixture:
@@ -415,6 +417,29 @@ application of `next_l_spec`, and the caller never sees strchr. Hello's
 next needs from the table below are memory-writing contracts (Campaign 4
 has started with memset), and a callee that owns memory across calls.
 
+**slot.c, a callee that owns memory across calls.** quotearg's shape:
+the callee's state lives in static objects between calls, the heap
+buffer they point to changes identity when it grows, and the caller
+reads a result it must not keep. Again against Hi.v's rate:
+
+| | Hi.v's method (estimate) | SlotLogic.v (Iris) |
+| --- | --- | --- |
+| program points | `fill` 37 (6 at its entry, 13 growing, 18 filling), `use` 22; `fill`'s appear at each of its 3 call sites, with the buffer in a different state each time | the same, with `fill` proved once for any c and n |
+| program-specific proof | about 130 configurations at 45 lines: 5,000 lines or more, plus a heap-level invariant relating the statics to the buffer, which Hi.v's state machine has no place for | `fill_L6` 55 and `fill_spec` 60 (the two paths of `fill`), `use_spec` 33, the invariant and lending 12, splitting bytes and freeing the buffer 40: about 200 lines; the file is 510 non-blank lines, of which the module, blocks and interpreter instance are most of the rest |
+| shared, written once | none | MemLogic.v, 300 non-blank lines: blocks as pieces (60), memset's effect on them (`fill_after`, 64), `wp_memset` 63, `wp_malloc` 50; `wp_free` and `wp_raw_store_byte` in Logic.v |
+| compile time | well above a second per call site | SlotLogic.v 14.8 s (`fill`'s two lemmas about 4 s each, `use_spec` 3.5 s), MemLogic.v 3.2 s |
+| conclusion | every stop named | no stop is a `failure_ending`, a return is an int |
+
+The invariant is what the hand method lacks: the state `fill` leaves for
+its next call is a separation-logic assertion, so the second call needs
+nothing about the first beyond `slot_inv`, and the caller's reads are
+safe because it holds the bytes the triple lent. The wand in `lent` is
+quotearg's contract with its caller: the buffer is valid until the next
+call. Writing it needed one fact Runtime.v does not state, that free
+succeeds on a live heap base and on null (`frees_heap`); it is a premise
+of `slot_logic_safe`, proved for the interpreter's runtime, and could
+become an axiom of Runtime.v after review.
+
 The premise `keeps_live` is gone: only a signal handler the program installed, or a thread it
 started, frees a live object, so Runtime.v's safepoint axiom is now the
 collector's alone, `collector_live`, which makes `keeps_live` a lemma.
@@ -431,9 +456,9 @@ derived from each once):
 | --- | --- | --- |
 | gnulib's string code | `string p`: identity, offset, `live`, a NUL at or after it | for each pointer argument, the bytes it reads up to a NUL; for each result, which identity it points into |
 | `__ctype_b_loc` | a persistent table from −128 to 255: persistent `meta`, `live` and read-only cells | that the returned object is never freed and never written |
-| `malloc`, `strdup` | `meta b n Heap`, `live b`, zeroed or copied cells | the extent of the new object; nothing else changed |
-| `free` | consumes `live b` | that it frees only its argument's object |
-| quotearg | a slot invariant, with the result lent: `string ret ∗ (string ret −∗ slots)` | that a buffer it returns is valid only until the next call with the same slot that grows it |
+| `malloc`, `strdup` | `obj b q`, then `live b`, `bytes` and `auxes`: zeroed or copied cells | the extent of the new object; nothing else changed. Done for malloc (`wp_malloc`); strdup's contract is coming from Campaign 4 |
+| `free` | consumes `live b` | that it frees only its argument's object. Done (`wp_free`), with `frees_heap` a premise |
+| quotearg | a slot invariant, with the result lent: `string ret ∗ (string ret −∗ slots)` | that a buffer it returns is valid only until the next call with the same slot that grows it. Shown on slot.c (`slot_inv`, `lent`) |
 | exit, atexit | the registered functions' specs, by case on the pinned targets | the order and set of callbacks (Campaign 4's registry) |
 | every call | the frame rule | the writable roots and nothing beyond them: no write, free or capability change outside the footprint |
 

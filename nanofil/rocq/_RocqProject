@@ -68,4 +68,5 @@ theories/BufferLogic.v
 theories/HiLogic.v
 theories/ScanLogic.v
 theories/CountLogic.v
+theories/SlotLogic.v
 theories/Extract.v
