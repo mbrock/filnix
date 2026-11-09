@@ -23,6 +23,12 @@
       resource ending, which is not a return;
     - [wp_strdup], from [strdup_contract]: owning a [string], the call
       returns a fresh object owning a copy of it as a [string].
+    - [wp_string_copy], from [string_copy_contract], with [wp_strcpy]
+      and [wp_stpcpy] its instances: owning an object's life and bytes,
+      one more than a [string]'s in another object, the call makes them
+      a [string] holding the copy and binds d to the destination or,
+      for stpcpy, its NUL; it keeps every aux slot, so none is owned,
+      and needs no alignment ([copy_string_after]).
     The contracts' exact destination frame ([memset_frame], shared by
     the copies) keeps every piece outside the written block
     ([block_frame], through Heap.v's [frame_within]); for strdup, whose
@@ -342,6 +348,40 @@ Proof.
       exact (Hid eq_refl).
 Qed.
 
+(** A copy of the string ys at src, with its NUL, over the bytes xs
+    from offset o of the live object b: afterwards those bytes are ys
+    and the NUL, and every piece outside them keeps its agreement
+    ([frame_ok]). A scalar copy keeps every aux slot. *)
+Lemma copy_string_after m m' b reg o xs src b' reg' ys :
+  live_disjoint m -> live_at m b reg -> all_agree m (byte_ps b o xs) -> length xs = S (length ys) ->
+  string_ok src b' reg' ys -> all_agree m (string_ps src b' reg' ys) ->
+  string_copy_result m (mkPtr (b + o) (Obj b)) src (Z.of_nat (length ys) + 1) m' ->
+  all_agree m' (byte_ps b o (ys ++ [0])) /\ frame_ok (byte_ps b o xs).*1 m m'.
+Proof.
+  intros Hd Hl Hx Hlen Hok Hs ((Hr & Haux & Hbytes) & Hcopy).
+  assert (Hbyte : forall i, (i < length xs)%nat -> 0 <= o + Z.of_nat i /\ b + (o + Z.of_nat i) < r_end reg).
+  { intros i Hi. destruct (lookup_lt_is_Some_2 xs i Hi) as [x Hxi].
+    destruct (byte_ps_agree _ _ _ _ _ _ _ Hl Hx Hxi) as (_ & H1 & H2). lia. }
+  split.
+  - apply all_agree_intro. intros l v Hin.
+    apply byte_ps_elem in Hin as (i & x & Hxi & -> & ->).
+    assert (Hi : (i < length xs)%nat).
+    { apply lookup_lt_Some in Hxi. rewrite length_app in Hxi. cbn in Hxi. lia. }
+    destruct (lookup_lt_is_Some_2 xs i Hi) as [x0 Hx0].
+    pose proof (all_agree_elem _ _ _ _ Hx (list_elem_of_lookup_2 _ _ _ (byte_ps_lookup b o xs i x0 Hx0)))
+      as [Hreg _].
+    cbn [agree_piece]. split; [unfold registered in *; rewrite Hr; exact Hreg|]. intros reg0 E L.
+    destruct Hl as [E0 _]. rewrite Hr E0 in E. injection E as <-.
+    destruct (Hbyte i Hi) as [H1 H2]. split; [exact H1|]. split; [exact H2|].
+    rewrite Hcopy; [|unfold span_contains; cbn; lia]. cbn [ptr_addr].
+    replace (ptr_addr src + (b + (o + Z.of_nat i) - (b + o))) with (ptr_addr src + Z.of_nat i) by lia.
+    exact (string_bytes _ _ _ _ _ Hok Hs i x Hxi).
+  - apply (frame_within _ _ _ b reg); [exact Hr | exact Hd | exact Hl | | intros a _; apply Haux].
+    intros a H. apply Hbytes. intros Hsp. unfold span_contains in Hsp. cbn in Hsp.
+    destruct (Hbyte (Z.to_nat (a - b - o)) ltac:(lia)) as [H1 H2].
+    apply H; [lia|]. replace (a - b) with (o + (a - b - o)) by lia. apply byte_ps_key. lia.
+Qed.
+
 (** The memory and aux triples over any [[runtime]] R. *)
 Module MemLogic (R : Runtime).
 Module SL := StringLogic R.
@@ -362,6 +402,24 @@ Definition auxes (b o : Z) (cs : list cap) : iProp Σ := pts (aux_ps b o cs).
 (** A block's pieces are its life, bytes and slots. *)
 Lemma block_pts b reg o xs cs : pts (block_ps b reg o xs cs) ⊣⊢ live b reg ∗ bytes b o xs ∗ auxes b o cs.
 Proof. rewrite /block_ps /live /bytes /auxes /pts big_sepL_cons big_sepL_app big_sepL_singleton. done. Qed.
+
+(** The life of an object and a string's are of different objects:
+    each is owned once. *)
+Lemma live_string_ne b reg p b' reg' ys : live b reg -∗ string p b' reg' ys -∗ ⌜b <> b'⌝.
+Proof.
+  rewrite /live /string /string_ps /pts !big_sepL_cons. iIntros "[Hl _] [_ [Hs _]]".
+  iDestruct (pointsto_ne with "Hl Hs") as %Hne. iPureIntro. intros <-. apply Hne. reflexivity.
+Qed.
+
+(** An object's life and its bytes from offset o, a string and its
+    NUL, are that string. *)
+Lemma block_string b reg o ys :
+  string_ok (mkPtr (b + o) (Obj b)) b reg ys ->
+  live b reg -∗ bytes b o (ys ++ [0]) -∗ string (mkPtr (b + o) (Obj b)) b reg ys.
+Proof.
+  intros Hok. rewrite /string /string_ps /live /bytes /pts !big_sepL_cons big_sepL_nil. cbn [ptr_addr].
+  replace (b + o - b) with o by lia. iIntros "[Hl _] Hx". iSplit; [iPureIntro; exact Hok|]. iFrame.
+Qed.
 
 Section calls.
 Context {world : Type} (registry : name -> option (contract world))
@@ -696,6 +754,137 @@ Proof.
         destruct (R.address_space _ _ Hr' base reg') as [_ Hend];
           [rewrite Hregs; exact (proj1 Hl1)|].
         cbn [r_end reg'] in Hend. split; [left; reflexivity|]. repeat split; try lia. exact Hf.
+Qed.
+
+(** The scalar string copies' triple, from [string_copy_contract]:
+    owning the life of the object b, above 0, and its bytes xs from
+    offset o, one more than the string's, and the string ys at src,
+    where vd reads as the bytes' pointer and vs as src, and where the
+    copy keeps the world interpretation: the bytes become the string
+    and its NUL, a [string] the call hands over, and d is bound to the
+    destination pointer, or for stpcpy ([copy_return]) to its NUL. The
+    source is handed back. The two objects differ, since each life is
+    owned once ([live_string_ne]), so the bytes do not overlap; no aux
+    slot needs owning, since a scalar copy keeps them all. *)
+Lemma wp_string_copy end_return g f e ls lab d vd vs rest j b reg o xs src b' reg' ys Φ :
+  registry g = Some (string_copy_contract end_return world) ->
+  find_fn ge g = None -> lookup g (ge_globals ge) = None -> name_eqb g free_name = false ->
+  arg_x ge e (Arg P vd) = Some (WPtr (mkPtr (b + o) (Obj b))) -> arg_x ge e (Arg P vs) = Some (WPtr src) ->
+  0 < b -> 0 <= o -> b + o + Z.of_nat (length xs) <= r_end reg -> length xs = S (length ys) ->
+  (forall m m' wd h, string_copy_result m (mkPtr (b + o) (Obj b)) src (Z.of_nat (length ys) + 1) m' ->
+     (forall l v, (l, v) ∈ byte_ps b o xs -> h !! l = Some v) -> wi m wd h ->
+     wi m' wd (overwrite (byte_ps b o (ys ++ [0])) h)) ->
+  live b reg -∗ bytes b o xs -∗ string src b' reg' ys -∗
+  ▷ (string (mkPtr (b + o) (Obj b)) b reg ys -∗ string src b' reg' ys -∗
+     WP (ERun (mkFrame f (put d (WPtr (copy_return end_return (mkPtr (b + o) (Obj b))
+                                         (Z.of_nat (length ys)))) e) ls None (Exec lab rest j)) : mexpr)
+       {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+             (Exec lab (Call (CResult d P) (Global g) [Arg P vd; Arg P vs] :: rest) j)) : mexpr) {{ Φ }}.
+Proof.
+  intros Hreg Hfn Hdata Hfree Hpd Hps Hb0 Ho Hend Hlen Hwi. iIntros "Hl Hx Hs HK".
+  iDestruct (live_string_ne with "Hl Hs") as %Hne.
+  iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (string_copy_contract end_return world)
+            [WPtr (mkPtr (b + o) (Obj b)); WPtr src] (live b reg ∗ bytes b o xs ∗ string src b' reg' ys)
+            with "[$Hl $Hx $Hs] [HK]");
+    [done | done | done | done | cbn [map_option]; rewrite Hpd Hps; done | | |].
+  - split; [right; eexists; reflexivity | exists vd, vs; reflexivity].
+  - iIntros (σ) "Hσ (Hl & _ & [%Hok Hs])".
+    iDestruct (pts_facts with "Hσ Hl") as %(Hal & Hd & _).
+    iDestruct (pts_facts with "Hσ Hs") as %(Has & _ & _). iPureIntro.
+    pose proof (string_terminated _ _ _ _ _ Hok Has) as Ht.
+    destruct Hal as [[E L] _]. destruct Has as [[E' L'] _]. cbn [fst snd] in E, L, E', L'.
+    exists (mkPtr (b + o) (Obj b)), src, (Z.of_nat (length ys)). split; [reflexivity|].
+    split; [exact Ht|]. split.
+    + unfold writable_span. cbn [span_ptr span_size ptr_addr ptr_cap].
+      split; [lia|]. exists b, reg. split; [reflexivity|]. split; [exact E|]. split; [exact L|].
+      apply (access_obj _ _ reg); [exact E | lia | lia | apply Z.mod_1_r].
+    + cbn [ptr_addr]. destruct Hok as (_ & _ & Hs1 & Hs2 & _).
+      destruct (Hd b reg b' reg' (conj E L) (conj E' L') Hne); [left | right]; lia.
+  - iNext. iIntros (σ trace values s' m' w' Hinv) "(%h & Hh & %Hf) (Hl & Hx & [%Hok Hs])".
+    destruct Hf as (Ha & Hd & Hr & Hw).
+    destruct (M.E.string_copy_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ Hinv)
+      as (_ & -> & d' & src' & k & Hx' & Hdom & Hres & He).
+    injection Hx' as <- <-.
+    iDestruct (pts_lookup with "Hh Hl") as %Hll.
+    iDestruct (pts_lookup with "Hh Hx") as %Hlx.
+    iDestruct (pts_lookup with "Hh Hs") as %Hls.
+    assert (Hlv : live_at (ls_mem σ) b reg).
+    { apply (Ha (PLive b) (VLive reg)). apply Hll. apply elem_of_cons. left. reflexivity. }
+    assert (Hx0 : all_agree (ls_mem σ) (byte_ps b o xs)).
+    { apply all_agree_intro. intros l v Hin. exact (Ha l v (Hlx l v Hin)). }
+    assert (Hs0 : all_agree (ls_mem σ) (string_ps src b' reg' ys)).
+    { apply all_agree_intro. intros l v Hin. exact (Ha l v (Hls l v Hin)). }
+    pose proof (string_terminated _ _ _ _ _ Hok Hs0) as Ht.
+    assert (k = Z.of_nat (length ys)) as ->.
+    { exact (terminated_length_unique _ _ _ _ (proj1 Hdom) Ht). }
+    injection He as ->.
+    destruct (copy_string_after (ls_mem σ) m' b reg o xs src b' reg' ys Hd Hlv Hx0 Hlen Hok Hs0 Hres)
+      as [Hnew Hfr].
+    destruct (M.E.invoke_prefix _ _ _ _ _ _ _ _ _ _ _ _ _ Hinv) as (born & Hpre).
+    destruct (M.E.prefix_preserve _ _ _ _ _ _ _ _ _ _ _ Hpre Hr) as [Hr' _].
+    pose proof Hres as ((Hregs & _) & _).
+    destruct (R.address_space _ _ Hr b reg (proj1 Hlv)) as [_ Hfit].
+    assert (Hok' : string_ok (mkPtr (b + o) (Obj b)) b reg ys).
+    { unfold string_ok. cbn [ptr_cap ptr_addr]. destruct Hok as (_ & _ & _ & _ & _ & Hf).
+      split; [left; reflexivity|]. repeat split; try lia. exact Hf. }
+    assert (Hk : (byte_ps b o (ys ++ [0])).*1 = (byte_ps b o xs).*1).
+    { rewrite !byte_ps_keys length_app Hlen. cbn [length]. rewrite Nat.add_1_r. reflexivity. }
+    iMod (pts_update _ (byte_ps b o xs) (byte_ps b o (ys ++ [0])) Hk with "Hh Hx") as "[Hh Hx]".
+    iModIntro. iExists _. iSplit; [iPureIntro; reflexivity|].
+    iSplitL "Hh".
+    + iExists _. iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt ls_world]. split; [|split; [|split]].
+      * intros l v Hl'. destruct (lookup_overwrite _ _ _ _ Hl') as [Hin | [Hnk Hh']].
+        -- exact (all_agree_elem _ _ _ _ Hnew Hin).
+        -- apply Hfr; [|exact (Ha l v Hh')]. rewrite <- Hk. exact Hnk.
+      * exact (live_disjoint_regions _ _ Hregs Hd).
+      * exact Hr'.
+      * exact (Hwi _ _ _ _ Hres Hlx Hw).
+    + iApply ("HK" with "[Hl Hx] [Hs]").
+      * iApply (block_string _ _ _ _ Hok' with "Hl Hx").
+      * iSplit; [iPureIntro; exact Hok | iExact "Hs"].
+Qed.
+
+(** strcpy's triple: [wp_string_copy], binding d to the destination. *)
+Lemma wp_strcpy f e ls lab d vd vs rest j b reg o xs src b' reg' ys Φ :
+  registry (TAtom "strcpy") = Some (strcpy_contract world) ->
+  find_fn ge (TAtom "strcpy") = None -> lookup (TAtom "strcpy") (ge_globals ge) = None ->
+  arg_x ge e (Arg P vd) = Some (WPtr (mkPtr (b + o) (Obj b))) -> arg_x ge e (Arg P vs) = Some (WPtr src) ->
+  0 < b -> 0 <= o -> b + o + Z.of_nat (length xs) <= r_end reg -> length xs = S (length ys) ->
+  (forall m m' wd h, string_copy_result m (mkPtr (b + o) (Obj b)) src (Z.of_nat (length ys) + 1) m' ->
+     (forall l v, (l, v) ∈ byte_ps b o xs -> h !! l = Some v) -> wi m wd h ->
+     wi m' wd (overwrite (byte_ps b o (ys ++ [0])) h)) ->
+  live b reg -∗ bytes b o xs -∗ string src b' reg' ys -∗
+  ▷ (string (mkPtr (b + o) (Obj b)) b reg ys -∗ string src b' reg' ys -∗
+     WP (ERun (mkFrame f (put d (WPtr (mkPtr (b + o) (Obj b))) e) ls None (Exec lab rest j)) : mexpr)
+       {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+             (Exec lab (Call (CResult d P) (Global (TAtom "strcpy")) [Arg P vd; Arg P vs] :: rest) j))
+        : mexpr) {{ Φ }}.
+Proof.
+  intros Hreg Hfn Hdata Hpd Hps Hb0 Ho Hend Hlen Hwi. iIntros "Hl Hx Hs HK".
+  iApply (wp_string_copy false (TAtom "strcpy") with "Hl Hx Hs HK"); done.
+Qed.
+
+(** stpcpy's triple: [wp_string_copy], binding d to the copy's NUL. *)
+Lemma wp_stpcpy f e ls lab d vd vs rest j b reg o xs src b' reg' ys Φ :
+  registry (TAtom "stpcpy") = Some (stpcpy_contract world) ->
+  find_fn ge (TAtom "stpcpy") = None -> lookup (TAtom "stpcpy") (ge_globals ge) = None ->
+  arg_x ge e (Arg P vd) = Some (WPtr (mkPtr (b + o) (Obj b))) -> arg_x ge e (Arg P vs) = Some (WPtr src) ->
+  0 < b -> 0 <= o -> b + o + Z.of_nat (length xs) <= r_end reg -> length xs = S (length ys) ->
+  (forall m m' wd h, string_copy_result m (mkPtr (b + o) (Obj b)) src (Z.of_nat (length ys) + 1) m' ->
+     (forall l v, (l, v) ∈ byte_ps b o xs -> h !! l = Some v) -> wi m wd h ->
+     wi m' wd (overwrite (byte_ps b o (ys ++ [0])) h)) ->
+  live b reg -∗ bytes b o xs -∗ string src b' reg' ys -∗
+  ▷ (string (mkPtr (b + o) (Obj b)) b reg ys -∗ string src b' reg' ys -∗
+     WP (ERun (mkFrame f (put d (WPtr (mkPtr (b + o + Z.of_nat (length ys)) (Obj b))) e) ls None
+                 (Exec lab rest j)) : mexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+             (Exec lab (Call (CResult d P) (Global (TAtom "stpcpy")) [Arg P vd; Arg P vs] :: rest) j))
+        : mexpr) {{ Φ }}.
+Proof.
+  intros Hreg Hfn Hdata Hpd Hps Hb0 Ho Hend Hlen Hwi. iIntros "Hl Hx Hs HK".
+  iApply (wp_string_copy true (TAtom "stpcpy") with "Hl Hx Hs HK"); done.
 Qed.
 
 End calls.
