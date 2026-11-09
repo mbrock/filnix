@@ -58,7 +58,11 @@ pkgs.runCommand
         mkdir -p project/extraction
         cp -r ${src}/nanofil/rocq/. project/
         chmod -R u+w project
-        python3 ${src}/nanofil/tests/watch.py --label "Rocq proof-state capture" -- \
+        # Every theory is compiled and replayed: minutes, growing with the
+        # development, so the budgets are check.nix's, not watch.py's
+        # five-minute default meant for single steps.
+        python3 ${src}/nanofil/tests/watch.py --label "Rocq proof-state capture" \
+          --warn-after 300 --timeout 1800 -- \
           python3 ${src}/nanofil/web/rocq/capture.py project $out
       ''
   )
