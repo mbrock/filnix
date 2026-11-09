@@ -426,4 +426,8 @@ html[data-case-layout="table"] .tactic { display: block; max-width: 100%; overfl
   .dterm-rocq :is(.prose, .rq-files) code.term :is(.c, .args, .arg, .binder) { white-space: normal; }
   .rq-comparison td:first-child { min-width: 0; }
   .rule { display: grid; }
+  /* A rule's ∀ line breaks where it must, like a goal: a binder's type
+     such as option (contract (LK.callback_world payload)) has no space
+     to break at. */
+  .rule-vars { overflow-wrap: anywhere; }
 }
