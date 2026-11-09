@@ -639,6 +639,38 @@ the state after the call. What the call must keep of the state, its
 frame and wi of the renamed heap, is the triple's premise, for the
 contract and the world interpretation to discharge.
 
+[LocaleLogic.v](../rocq/theories/LocaleLogic.v) gives the world
+interpretation of a program that calls setlocale, `locale_wi`, over
+Campaign 4's `locale_world`:
+- the world is `locale_ready`;
+- libc's roots and the objects it may release are apart from the
+  program's pieces, as the frame of an external call needs;
+- the object of every read, root and name capability owns no piece
+  of the program (`cap_private`);
+- every ghost name is its category's current name (`names_current`).
+
+From it, `locale_wi_lent` is LentLogic's `lent_at` for every ghost
+name. A name is a C string in a live object (live because a freed
+object is empty and a C string is not), and that object is private,
+so no live object of the program overlaps it. `locale_wi_pre` and
+`locale_wi_query` discharge HelloLocale's premises on setlocale's
+query. `wi_lent` now also takes the facts a ready runtime gives:
+live objects apart, objects in the address space, and freed objects
+empty.
+
+Two findings went back to Campaign 4:
+- The setter contract let a new name carry the setter input's
+  capability, or one loaded from a source's aux slots. A name could
+  then lie in the program's own literal, and no apartness would hold.
+  Campaign 4 is restricting new names, reads and roots to born objects
+  or the exact capability of an old read, root or name. That
+  restriction is what the setter's discharge of `wp_lend` needs.
+- `Locale R`, `Libio R`, `Startup R` and `ExitMemory R` each build
+  their own `ExternalCalls R`, whose `invoke` is a different inductive
+  from the logic's `M.E.invoke`. Their theorems cannot yet be applied
+  in the logic, so `locale_wi_query` restates the query case over
+  `M.E`.
+
 [HelloLocale.v](../rocq/theories/HelloLocale.v) (17 s) proves
 `setlocale_null_unlocked`, `setlocale_null_r_unlocked` on both of its
 paths, `setlocale_null_r` and `hard_locale`:

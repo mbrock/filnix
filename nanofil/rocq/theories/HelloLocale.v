@@ -201,7 +201,8 @@ Context {world : Type} (registry : name -> option (contract world))
 (** The genv links Hello, whose world interpretation keeps every lent
     string where [lent_at] says. *)
 Context (Hlinked : hello_linked ge)
-  (wi_lent : forall m w h k p t, wi m w h -> h !! PName k = Some (VName p t) -> lent_at m h p t).
+  (wi_lent : forall m w h k p t, wi m w h -> live_disjoint m -> objects_fit (m_regions m) ->
+     freed_empty (m_regions m) -> h !! PName k = Some (VName p t) -> lent_at m h p t).
 
 (** setlocale's contract spec answers a query, of a category whose name
     the world lends, with that name, changing nothing; the query's

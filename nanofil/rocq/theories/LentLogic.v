@@ -198,9 +198,12 @@ Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
 
 (** The world interpretation keeps every lent string where [lent_at]
-    says. *)
+    says, in a memory whose live objects are apart, whose objects fit
+    the address space and whose freed objects are empty, as a ready
+    runtime's are. *)
 Hypothesis wi_lent : forall m w h k p t,
-  wi m w h -> h !! PName k = Some (VName p t) -> lent_at m h p t.
+  wi m w h -> live_disjoint m -> objects_fit (m_regions m) -> freed_empty (m_regions m) ->
+  h !! PName k = Some (VName p t) -> lent_at m h p t.
 
 (** The Iris instance of the registry and wi. *)
 Local Instance lent_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
@@ -218,7 +221,8 @@ Lemma lent_facts σ k p t :
 Proof.
   iIntros "(%h & Hh & %Hf) [_ Hk]". destruct Hf as (Ha & Hd & Hr & Hw).
   iDestruct (gen_heap_valid with "Hh Hk") as %Hl. iExists h. iPureIntro.
-  split; [exact Ha|]. split; [exact Hd|]. split; [exact Hr|]. exact (wi_lent _ _ _ _ _ _ Hw Hl).
+  split; [exact Ha|]. split; [exact Hd|]. split; [exact Hr|].
+  exact (wi_lent _ _ _ _ _ _ Hw Hd (R.address_space _ _ Hr) (R.freed_bounds _ _ Hr) Hl).
 Qed.
 
 (** A call of the external g, with contract spec, returning a pointer,
@@ -290,7 +294,8 @@ Proof.
     { iApply big_sepL_bupd. iApply (big_sepL_impl with "Hks"). iIntros "!>" (i k Hik) "Hk".
       iMod (pointsto_persist with "Hk") as "Hk". iModIntro. iFrame "Hk". iPureIntro.
       assert (Hin : In k ks) by (apply list_elem_of_In; exact (list_elem_of_lookup_2 _ _ _ Hik)).
-      destruct (wi_lent _ _ _ _ _ _ Hw' (rename_lookup h ks new k Hin)) as ([_ Hs] & H0 & Hlen & _).
+      destruct (wi_lent _ _ _ _ _ _ Hw' Hd' (R.address_space _ _ Hr') (R.freed_bounds _ _ Hr')
+        (rename_lookup h ks new k Hin)) as ([_ Hs] & H0 & Hlen & _).
       split; [exact H0|]. split; [exact Hlen | exact (string_at_nonzero _ _ _ Hs)]. }
     iModIntro. iExists _. iSplit.
     + iPureIntro. unfold external_env. rewrite Hret. reflexivity.
@@ -382,7 +387,9 @@ Proof.
   - iIntros (σ) "Hσ [Hdst Hk']". iDestruct (pts_facts with "Hσ Hdst") as %(Ha & Hd & Hfit).
     iDestruct "Hσ" as (h) "[Hh %Hf]". iDestruct (pts_lookup with "Hh Hdst") as %Hlk.
     iDestruct "Hk'" as "[_ Hk']". iDestruct (gen_heap_valid with "Hh Hk'") as %Hlent. iPureIntro.
-    destruct Hf as (_ & _ & Hr & Hw). destruct (wi_lent _ _ _ _ _ _ Hw Hlent) as (Hs & _ & _ & Hal & Hapart).
+    destruct Hf as (_ & _ & Hr & Hw).
+    destruct (wi_lent _ _ _ _ _ _ Hw Hd (R.address_space _ _ Hr) (R.freed_bounds _ _ Hr) Hlent)
+      as (Hs & _ & _ & Hal & Hapart).
     destruct Ha as [[E L] _]. cbn [fst snd] in E, L.
     destruct (Hfit b reg E) as [Hb0 Hfit'].
     assert (Hown : forall a, b <= a < r_end reg -> owned_live h (ls_mem σ) a).
@@ -404,7 +411,7 @@ Proof.
   - iNext. iIntros (σ trace values s' m' w' Hinv) "(%h & Hh & %Hf) [Hdst [_ Hk']]".
     destruct Hf as (Ha & Hd & Hr & Hw).
     iDestruct (gen_heap_valid with "Hh Hk'") as %Hlent.
-    destruct (wi_lent _ _ _ _ _ _ Hw Hlent) as (Hs & _).
+    destruct (wi_lent _ _ _ _ _ _ Hw Hd (R.address_space _ _ Hr) (R.freed_bounds _ _ Hr) Hlent) as (Hs & _).
     destruct (M.E.copy_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hinv)
       as (_ & -> & d' & s0 & n' & Hx & _ & Hres & He).
     injection Hx as <- <- <-. injection He as ->.
