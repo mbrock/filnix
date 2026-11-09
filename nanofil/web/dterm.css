@@ -378,12 +378,21 @@ table.asm td.term { white-space: nowrap; }
    on the first line of their branch. */
 .cases.stack > .case.plain > .cond { text-align: left; }
 .cases.stack .kw { justify-self: start; }
+/* A comment between branches spans both columns, and its prose does not
+   size them: otherwise the label column takes the comment's width. */
+.cases.stack > :is(.note, .aside) { grid-column: 1 / -1; contain: inline-size; }
 @media (max-width: 700px) {
   /* A run of a term with nowhere to break (a functor, its parenthesis
      and a first argument, or a long atom) breaks where it must rather
      than push the page sideways. */
   .clause > .head, .goal, .examples td, .sig, .a, .s { overflow-wrap: anywhere; }
   .dterm .prose pre { max-width: 100%; overflow-x: auto; }
+  /* So does a long word in a title, a sentence or a comment, a term or
+     code in a sentence, and a citation's path. Tables scroll instead. */
+  .source-title, .note, .aside, .cite, .facts.set, .dterm .prose :is(p, li) { overflow-wrap: anywhere; }
+  /* Shallower hangs leave a deeply nested goal room for its words. */
+  :root { --indent: 1em; --hang: 1em; }
+  .dterm .prose :is(p, li) code.term :is(.c, .args, .arg) { white-space: normal; }
   /* An example whose goal is a block puts its answer on the next row. */
   .examples td.goal:has(.block) { flex-basis: 100%; }
   /* Without dterm.js, a conditional is a column of its parts. */
@@ -528,6 +537,10 @@ table.modes {
 table.modes td { padding: 0.12rem 0.9rem 0.12rem 0; border-bottom: 0; vertical-align: baseline; }
 table.modes td.dir { color: var(--muted); font-size: 0.78em; font-weight: 600; white-space: nowrap; }
 table.modes td.desc { color: color-mix(in srgb, var(--ink) 85%, transparent); }
+/* On a phone it scrolls inside itself, as a table of facts does. */
+@media (max-width: 700px) {
+  table.modes { display: block; max-width: 100%; overflow-x: auto; }
+}
 .dterm-doc .prose { margin-top: 0.35rem; }
 
 .cites { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.45rem 0 0.2rem; }
