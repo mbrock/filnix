@@ -46,6 +46,7 @@ theories/Ahead.v
 theories/Doomed.v
 theories/Soundness.v
 theories/ExternalMachine.v
+theories/Linked.v
 theories/Hi.v
 theories/Composition.v
 theories/Panics.v

@@ -1873,20 +1873,69 @@ replacement, and ALL commits categories sequentially. Native prefix
 coverage, codec adequacy, progress and termination remain open. There is
 no new runtime axiom or change to Machine.v.
 
+### Campaign 4 milestone 6c: void callback entry and return endpoints
+
+[Linked.v](../rocq/theories/Linked.v) provides an additive boundary for
+retained nonvariadic void callbacks. [callback_code] checks the retained
+function's **callable address** as well as its Fn capability, exact defined
+linked function, checked module and generic argument conversion. The
+frame is built from the converted words, not the original native words.
+At callbacks take no arguments, On callbacks take status/argument, and
+this pin's Cxa callbacks take argument/status, with full canonical 32-bit
+status rather than the host wait byte. Generic conversion discards unused
+extras for Hello's `close_stdout : void(void)`; no artificial parameters
+are added to that function.
+
+[callback_entry] independently requires the current post-pop memory,
+ready runtime, active registration instance, consumed token, unique
+inventory, signed-int status and the handler's semantic precondition.
+Physical pop/marking remains [ExitMemory.v](../rocq/theories/ExitMemory.v)'s
+separate witnessed boundary; neither physical mutation nor successful
+callback execution is inferred from a decoded slot. Callback execution
+is the existing ordinary labelled run, with its explicit running/stopped
+states, shared memory, world, runtime and fuel—not an opaque successful
+cleanup action. The world pairs arbitrary libc payload with **one**
+authoritative shutdown state.
+
+[callback_return] consumes only a top-level CoreEnd RetVoid whose current
+world still names the same active instance, with a unique inventory and
+consumed token. It reconstructs exactly the successful `invalidate_locals`
+memory. [callback_return_endpoint] exposes that memory and the logical
+ReturnCallback edge for Campaign 3's Iris endpoint correspondence. The
+current payload, pending registrations, consumed history, signed status,
+stdout, runtime and remaining fuel survive; no entry-world snapshot is
+restored. The reconstructed configuration is only a memory/fuel provenance
+snapshot: its old return point and locals list must **not** be restarted
+as a runnable continuation. Finalization emits no additional output event.
+
+[callback_prefix_preserve], [callback_return_preserve] and
+[callback_run_preserve] establish runtime readiness and identity
+persistence, with exact byte/aux preservation during final local teardown.
+They do not infer handler safety or logical-world invariants from checked
+code alone. Registered contracts and the callback proof must preserve
+those invariants; terminal facts remain explicit premises. Existing
+ExternalExit, failures and resource/fuel endings do not become normal
+returns. Finite unfinished prefixes remain prefixes, not eventual returns.
+
+Controls distinguish a separately checked void(void) entry with discarded
+Cxa extras from adversarial core execution that lets a local pointer
+escape through a global. The latter really allocates the local, stores
+its pointer and makes a nested call before returning, but deliberately
+uses a proof word as a pointer and is **not** claimed checked/admitted or
+natively reachable. Its stopped snapshot keeps the local live; the
+reconstructed memory retains the same identity and global address/aux,
+empties the local's bounds and traps a positive-size read. Callable-address
+and nonreturning-ending controls exercise the other boundary guards.
+
+This is a callback endpoint slice, not a whole shutdown executor. Exit
+requests are not yet intercepted, registrations are not yet composed
+through callbacks, and native pop/handler satisfaction, safepoint-stable
+libc invariants, failure freedom and termination remain open. Machine.v,
+ExternalMachine.v and Iris-owned files are unchanged.
+
 ### The next milestones, in order
 
-1. **Execute retained handlers as program code.** Add a generic callback
-   bridge in Linked.v, without changing Machine.v or Iris's interfaces.
-   A detached registration must supply its retained function capability,
-   native argument conversion, independently admitted current precondition
-   and exact linked function. Each callback instruction is an ordinary
-   labelled machine step, retaining memory, runtime, world and fuel.
-   Normal top-level return must reconstruct `invalidate_locals` at the
-   terminal configuration: the stopped machine snapshot is before local
-   invalidation and cannot itself be the resumed shutdown memory. Expose
-   that exact endpoint to Iris, not just an existential outcome post.
-   Resource, failure, unfinished execution and nonreturn stay distinct.
-2. **Compose exit requests and registration.** Intercept selected exit,
+1. **Compose exit requests and registration.** Intercept selected exit,
    _exit and _Exit call sites before ordinary external dispatch, excluding
    those sites from the generic lifted step. An existing ExternalExit is
    already terminal, not a request to run more handlers. Only witnessed
@@ -1894,7 +1943,7 @@ no new runtime axiom or change to Machine.v.
    registry/world must retain callback registrations and consumed tokens
    across ordinary execution and recursive exit. Check local lifetime,
    nested calls, re-registration order, changed signed status and hard exit.
-3. **Close the selected hi.c/Hello paths.** Campaign 3 owns the checked
+2. **Close the selected hi.c/Hello paths.** Campaign 3 owns the checked
    module merger and Iris application/handler triples. Campaign 4 supplies
    startup/stdio representations and reached-call contracts, beginning
    with registration and getopt state after locale and the existing string
@@ -1905,7 +1954,7 @@ no new runtime axiom or change to Machine.v.
    invocation, safepoint-stable libc representation and stream roots
    separated from program-owned memory. Concrete linking, native adequacy
    and termination remain obligations; none follows from the entry slice.
-4. **Refinement.** Connect Prolog/extraction and native observations;
+3. **Refinement.** Connect Prolog/extraction and native observations;
    only then restate and validate `opt:refines/2` as trace inclusion.
 
 ## Campaign 5: static discharge by certificate
