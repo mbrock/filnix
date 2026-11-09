@@ -515,6 +515,15 @@ show that rpl_mbsrtowcs and xalloc_die never reach it. xalloc_die is
 reached only when malloc returns null, which the selected malloc never
 does.
 
+**Decisions** (mbrock, 2026-11-09):
+- The link keeps what is reachable from `main`, as above. A later Rocq
+  lemma will show that `find_fn` agrees with the full link on every
+  reachable name.
+- `abort` stays without a contract, so reaching it is a failure: the
+  proof shows that Hello never calls it.
+- Every path is proved, `--help`, `--version` and the error paths
+  included, the default path first.
+
 **Milestones.**
 
 1. Done: the linked module, its gate, `hello_valid`, and the external
