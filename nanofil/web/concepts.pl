@@ -152,7 +152,7 @@ concept_url(Url, Pre, Href) :-
 concept_path(Path, Pre, Href) :- file_name_extension(Id, md, Path), \+ sub_atom(Id, _, _, _, '/'), !,
     concept_page(Id, P), atom_concat(Pre, P, Href).
 concept_path(Path, Pre, Href) :- atom_concat('../', F, Path), file_name_extension(D, md, F), \+ sub_atom(D, _, _, _, '/'), !,
-    (   memberchk(D, [guide, formal, filc]) -> format(atom(Href), "~w~w.html", [Pre, D])
+    (   nb_current(guide_docs, Ds), memberchk(D, Ds) -> format(atom(Href), "~w~w.html", [Pre, D])
     ;   format(atom(Href), "~wdocs/~w.html", [Pre, D])
     ).
 concept_path(Path, Pre, Href) :- atom_concat('../../rocq/', F, Path), file_name_extension(B, v, F), !,

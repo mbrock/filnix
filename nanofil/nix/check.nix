@@ -122,11 +122,11 @@ pkgs.runCommandCC
     # Every module has a header and every export PlDoc (docs/guide.md,
     # Conventions).
     step docs swipl tests/docs.pl -- src
-    # Every predicate, module, link and concept reference in the guide,
-    # the formal campaign and the concepts resolves, as does every
-    # [[concept]] in a Prolog or Rocq comment, and each prolog output has
-    # its terms (web/dterm_guide.pl).
-    step "guide links" swipl web/dterm.pl --check docs/guide.md docs/formal.md docs/filc.md docs/iris.md src \
+    # Every predicate, module, link and concept reference in the documents
+    # dterm draws (packages/site's dtermDocs) and the concepts resolves, as
+    # does every [[concept]] in a Prolog or Rocq comment, and each prolog
+    # output has its terms (web/dterm_guide.pl).
+    step "guide links" swipl web/dterm.pl --check docs/README.md docs/guide.md docs/formal.md docs/filc.md docs/iris.md src \
       --concepts=docs/concepts --rocq=rocq/theories --rocq=rocq/spikes
     # M9 interpreter against nanofil's SSE2 backend.
     # Integer-bit wrappers preserve NaN payloads and negative zero.

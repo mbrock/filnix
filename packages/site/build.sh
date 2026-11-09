@@ -58,18 +58,28 @@ wb=$src/nanofil/web/workbench
 cp "$wb"/index.html "$wb"/*.css "$wb"/*.js "$out/nanofil/workbench/"
 (cd "$wb" && swipl workbench.pl "$out/nanofil/workbench" "$src/nanofil/src" </dev/null)
 
-# nanofil's own documents, beside its pages: nanofil/docs/NAME.html.
+# nanofil's own documents: those dterm drew (DTERM_DOCS) are beside its
+# pages, README.md, which must list every document, as nanofil/index.html;
+# pandoc renders the rest into nanofil/docs/NAME.html.
 mkdir -p "$out/nanofil/docs"
 cp -r "$src/nanofil/docs/dterm" "$out/nanofil/docs/"
 for md in "$src"/nanofil/docs/*.md; do
   name=$(basename "$md" .md)
-  echo "$(date -u +%FT%TZ) site: render nanofil/docs/$name.md"
-  if [ "$name" = guide ] || [ "$name" = formal ] || [ "$name" = filc ] || [ "$name" = iris ]; then
+  [ "$name" = README ] || grep -q "]($name.md" "$src/nanofil/docs/README.md" || {
+    echo "nanofil/docs/$name.md is not linked from nanofil/docs/README.md" >&2
+    exit 1
+  }
+  case " ${DTERM_DOCS:?the site needs the list of dterm-drawn documents} " in
+  *" $name "*)
     # Drawn by dterm beside the modules; this address forwards there.
-    printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=../%s.html"><link rel="canonical" href="../%s.html"><a href="../%s.html">%s</a>\n' \
-      "$name" "$name" "$name" "$name" >"$out/nanofil/docs/$name.html"
+    page=$name.html html=$name.html
+    [ "$name" = README ] && page=index.html html=index.html
+    printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=../%s"><link rel="canonical" href="../%s"><a href="../%s">%s</a>\n' \
+      "$page" "$page" "$page" "$name" >"$out/nanofil/docs/$html"
     continue
-  fi
+    ;;
+  esac
+  echo "$(date -u +%FT%TZ) site: render nanofil/docs/$name.md"
   args=()
   if [ "$(grep -c '^## ' "$md")" -ge 4 ]; then
     args+=(--toc --toc-depth=3)

@@ -290,7 +290,7 @@ index_page(Pages) -->
                                 "folded proof, ", el(code, none, "match"), " as a table of patterns. Each name links to its ",
                                 "definition, and the Prolog a definition transcribes links to its page. Drawn by ",
                                 el(a, none, [href="https://github.com/mbrock/filnix/tree/main/nanofil/web/rocq"], "dterm-rocq"),
-                                ", after ", el(a, none, [href="../"], "nanofil's dterm"), "." ))),
+                                ", after ", el(a, none, [href="../src.html"], "nanofil's dterm"), "." ))),
                { findall(D, ( member(page(F, _, _, _), Pages), file_directory_name(F, D) ), Ds0), sort(Ds0, Ds) },
                seq(Ds, file_dir(Pages)) ))).
 

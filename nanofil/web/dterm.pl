@@ -23,10 +23,12 @@
     Calls to predicates defined in the corpus link to their definitions.
 
     Usage: swipl dterm.pl -- OUT SRC-DIR... [--doc=DOC.md]... Writes
-    OUT/index.html and one OUT/NAME.html per SRC-DIR/NAME.pl; dterm.css
-    and dterm.js are expected beside the pages. Each --doc, such as the
-    guide, is also drawn as OUT/DOC.html (dterm_guide.pl), and the run
-    fails if a document has a broken reference. --concepts=DIR draws each
+    OUT/src.html, the modules' index, and one OUT/NAME.html per
+    SRC-DIR/NAME.pl; dterm.css and dterm.js are expected beside the
+    pages. Each --doc, such as the guide, is also drawn as OUT/DOC.html
+    (dterm_guide.pl), README.md, nanofil's list of documents, as
+    OUT/index.html, and the run fails if a document has a broken
+    reference. --concepts=DIR draws each
     concept node DIR/ID.md (docs/concepts) as OUT/concept-ID.html with
     what links to it, and OUT/concepts.html; --rocq=DIR (repeated for
     the theories and the spikes) indexes the .v files in DIR, for [name]
@@ -97,9 +99,10 @@ main :-
     ;   maplist(run_examples(Files), Sources),
         maplist(write_source_page(Out, Sources), Sources),
         forall(member(Name-Page, Pages),
-               ( file_name_extension(Name, html, H), directory_file_path(Out, H, Path),
-                 write_page(Path, raw(Page)) )),
-        directory_file_path(Out, 'index.html', Index),
+               ( ( nb_getval(guide_docs, Ds), memberchk(Name, Ds) -> doc_page(Name, H)
+                 ; file_name_extension(Name, html, H) ),
+                 directory_file_path(Out, H, Path), write_page(Path, raw(Page)) )),
+        directory_file_path(Out, 'src.html', Index),
         write_page(Index, index_page(Sources))
     ),
     guide_report(Docs).
@@ -966,7 +969,7 @@ guide_xrefs([Doc-Secs|DSs]) -->
     guide_xrefs(DSs).
 
 guide_xref(Doc, Id-T) -->
-    { format(atom(Href), "~w.html#~w", [Doc, Id]) },
+    { doc_page(Doc, P), format(atom(Href), "~w#~w", [P, Id]) },
     el(li, none, el(a, none, [href=Href], toc_text(T))).
 
 xref_list(_, []) --> !, [].
@@ -1339,7 +1342,7 @@ write_source_page(Out, Sources, Src) :-
 source_page(Sources, src(Base, _, _, Events)) -->
     { entries(Events, Entries), format(atom(Title), "~w.pl", [Base]) },
     shell(Title, crumbs_source(Title),
-          ( el(nav, "toc dterm-nav", ( el(div, "toc-title", "nanofil/src"),
+          ( el(nav, "toc dterm-nav", ( el(div, "toc-title", el(a, none, [href="src.html"], "nanofil/src")),
                                         el(ul, none, seq(Sources, nav_file(Base, Entries))) )),
             el(article, dterm, ( el(h1, "source-title", esc(Title)),
                                  guide_backlinks(Base),
@@ -1348,6 +1351,7 @@ source_page(Sources, src(Base, _, _, Events)) -->
 crumbs_source(Title) -->
     el(a, crumb, [href="../index.html"], "Wiki"), el(span, "crumb-sep", "›"),
     el(a, crumb, [href="index.html"], "nanofil"), el(span, "crumb-sep", "›"),
+    el(a, crumb, [href="src.html"], "src"), el(span, "crumb-sep", "›"),
     el(span, "crumb current", esc(Title)).
 
 nav_file(Current, Entries, src(Base, _, _, _)) -->
@@ -1383,7 +1387,7 @@ entry_(F, pred(Key, Doc, Items)) --> pred_(Key, Doc, Items, F).
 shell(Title, Crumbs, Main) -->
     "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n",
     "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n",
-    "<title>", esc(Title), " · nanofil · Filnix wiki</title>\n",
+    "<title>", ( { Title == "nanofil" } -> [] ; esc(Title), " · " ), "nanofil · Filnix wiki</title>\n",
     "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n",
     "<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n",
     "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap\">\n",
@@ -1394,10 +1398,11 @@ shell(Title, Crumbs, Main) -->
     el(main, "page-frame dterm-page", Main),
     "\n<script src=\"dterm.js\"></script>\n</body>\n</html>\n".
 
-%  The index: every module with the first paragraph of its header.
+%  The modules' index: every module with the first paragraph of its header.
 index_page(Sources) -->
-    shell("nanofil", ( el(a, crumb, [href="../index.html"], "Wiki"), el(span, "crumb-sep", "›"),
-                       el(span, "crumb current", "nanofil") ),
+    shell("src", ( el(a, crumb, [href="../index.html"], "Wiki"), el(span, "crumb-sep", "›"),
+                   el(a, crumb, [href="index.html"], "nanofil"), el(span, "crumb-sep", "›"),
+                   el(span, "crumb current", "src") ),
           ( el(nav, "toc dterm-nav", ( el(div, "toc-title", "nanofil/src"),
                                         el(ul, none, seq(Sources, nav_file(none, []))) )),
             el(article, "dterm index",
@@ -1406,20 +1411,12 @@ index_page(Sources) -->
                     ( el(p, none, ( "nanofil is a C compiler written in Prolog that emits Fil-C ABI assembly. ",
                                     "It aims to read like the standards it implements: each fact about C, the IR ",
                                     "or Fil-C stated once, as a relation everything else reads (",
-                                    el(a, none, [href="https://github.com/mbrock/filnix/blob/main/nanofil/docs/campaign.md"], "the campaign"),
+                                    el(a, none, [href="docs/campaign.html"], "the campaign"),
                                     "). These pages draw its source as terms: clause heads over their goals, ",
                                     "conditionals as tables, fact tables as tables, PlDoc as signatures. ",
-                                    el(a, none, [href="filc.html"], "How Fil-C works"),
-                                    " explains the memory-safe C it targets, and ",
-                                    el(a, none, [href="iris.html"], "How Iris works"),
-                                    " the program logic its proofs are moving to. ",
-                                    el(a, none, [href="guide.html"], "The guide"),
-                                    " follows one C function through every stage and maps the modules; ",
-                                    el(a, none, [href="formal.html"], "the formal campaign"),
-                                    " plans a Rocq model of the checked IR and checks removed by certificate. ",
-                                    el(a, none, [href="play/"], "Compile C with it"),
-                                    " in the browser, or compare how terms are set in the ",
-                                    el(a, none, [href="workbench/"], "workbench"), "." )) )),
+                                    el(a, none, [href="guide.html#the-module-map"], "The guide's module map"),
+                                    " says what each module is for, and the ",
+                                    el(a, none, [href="workbench/"], "workbench"), " how terms are set." )) )),
                  el(div, modules, seq(Sources, module_card)) )) )).
 
 module_card(src(Base, Text, _, Events)) -->

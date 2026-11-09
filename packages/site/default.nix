@@ -1,9 +1,10 @@
 # The GitHub Pages site: pages/ as is, docs/ rendered with pandoc into
 # docs/*.html, nanofil's Prolog drawn as terms into nanofil/*.html by
 # nanofil/web/dterm.pl, nanofil's Rocq into nanofil/rocq/*.html by
-# nanofil/web/rocq, nanofil's documents (its guide among them) into
-# nanofil/docs/*.html, the nanofil playground in nanofil/play/, and
-# every Nix file of filnix drawn by dterm-nix into nix/*.html.
+# nanofil/web/rocq, nanofil's documents into nanofil/*.html (dterm) or
+# nanofil/docs/*.html (pandoc), with its README as nanofil/index.html,
+# the nanofil playground in nanofil/play/, and every Nix file of filnix
+# drawn by dterm-nix into nix/*.html.
 # .github/workflows/pages.yml publishes it.
 {
   pkgs,
@@ -76,6 +77,16 @@ let
       (lib.fileset.unions (map (f: ../.. + "/${f}") nixPages))
     ];
   };
+  # nanofil's documents dterm draws beside the modules, at nanofil/NAME.html,
+  # with concept, module and Rocq links; README is nanofil's home page,
+  # nanofil/index.html. pandoc renders the others into nanofil/docs.
+  dtermDocs = [
+    "README"
+    "guide"
+    "formal"
+    "filc"
+    "iris"
+  ];
   # Independent renderers are cached separately. The Rocq invocation still
   # sees every source for its real cross-file index and captured states.
   prologPages =
@@ -84,8 +95,7 @@ let
         mkdir -p $out
         cp ${src}/nanofil/web/dterm.css ${src}/nanofil/web/dterm.js $out/
         swipl ${src}/nanofil/web/dterm.pl $out ${src}/nanofil/src \
-          --doc=${src}/nanofil/docs/guide.md --doc=${src}/nanofil/docs/formal.md \
-          --doc=${src}/nanofil/docs/filc.md --doc=${src}/nanofil/docs/iris.md \
+          ${lib.concatMapStringsSep " " (d: "--doc=${src}/nanofil/docs/${d}.md") dtermDocs} \
           --concepts=${src}/nanofil/docs/concepts --rocq=${src}/nanofil/rocq/theories \
           --rocq=${src}/nanofil/rocq/spikes </dev/null
       '';
@@ -117,7 +127,8 @@ pkgs.runCommand "filnix-site"
     };
   }
   ''
-    export PROLOG_PAGES=${prologPages} ROCQ_PAGES=${rocqPages}
+    export PROLOG_PAGES=${prologPages} ROCQ_PAGES=${rocqPages} \
+      DTERM_DOCS=${lib.escapeShellArg (toString dtermDocs)}
     bash ${./.}/build.sh ${src} $out ${repoFiles} ${options} ${nixpkgs} \
       ${lib.escapeShellArgs nixPages}
     cp -r ${play} $out/nanofil/play

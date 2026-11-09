@@ -1129,7 +1129,7 @@ index_page -->
                                   " as tables of conditions, ports as tables of their steps, options with their descriptions as prose. Each name ",
                                   "links to where it is bound, and each ", el(code, none, "let"), " binding lists what ",
                                   "uses it. Drawn by ", el(a, none, [href="https://github.com/mbrock/filnix/tree/main/dterm-nix"], "dterm-nix"),
-                                  ", after ", el(a, none, [href="../nanofil/"], "nanofil's dterm"), "." ))),
+                                  ", after ", el(a, none, [href="../nanofil/src.html"], "nanofil's dterm"), "." ))),
                  options_entry,
                  seq(Ds, dir_section) )) )).
 

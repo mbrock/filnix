@@ -82,7 +82,13 @@ guide_render(Paths, Sources, Pages) :-
 %  doc_name(+Path, -Doc): docs/formal.md is formal.
 doc_name(Path, Doc) :- file_base_name(Path, F), file_name_extension(Doc, _, F).
 
+%  doc_page(+Doc, -Html): the page Doc is drawn as. README, which lists
+%  every document, is nanofil's home page.
+doc_page('README', 'index.html') :- !.
+doc_page(Doc, Html) :- file_name_extension(Doc, html, Html).
+
 %  doc_label(+Doc, -Label): how a module page names the document.
+doc_label('README', "nanofil") :- !.
 doc_label(guide, "the guide") :- !.
 doc_label(formal, "the formal campaign") :- !.
 doc_label(filc, "How Fil-C works") :- !.
@@ -260,15 +266,21 @@ heading_modules(T, Mods) :-
 
 guide_page(Doc, Blocks) -->
     { findall(Id-T, guide_heading(Doc, Id, 1, T, _), [_-Title|_]), doc_label(Doc, Label) },
-    shell(Title, ( el(a, crumb, [href="../index.html"], "Wiki"), el(span, "crumb-sep", "›"),
-                   el(a, crumb, [href="index.html"], "nanofil"), el(span, "crumb-sep", "›"),
-                   el(span, "crumb current", esc(Doc)) ),
+    shell(Title, guide_crumbs(Doc),
           ( rocq_style(Doc),
             el(nav, "toc dterm-nav guide-nav",
                ( el(div, "toc-title", esc(Label)), guide_toc(Doc) )),
             el(article, "dterm guide",
                ( ( { guide_rocq(Doc), rocq_fence_in(Blocks) } -> rocq_layout ; [] ),
                  el(div, "prose guide-prose", gblocks(Blocks)) )) )).
+
+guide_crumbs('README') --> !,
+    el(a, crumb, [href="../index.html"], "Wiki"), el(span, "crumb-sep", "›"),
+    el(span, "crumb current", "nanofil").
+guide_crumbs(Doc) -->
+    el(a, crumb, [href="../index.html"], "Wiki"), el(span, "crumb-sep", "›"),
+    el(a, crumb, [href="index.html"], "nanofil"), el(span, "crumb-sep", "›"),
+    el(span, "crumb current", esc(Doc)).
 
 %  The Rocq layout control lays out Rocq fences and tables comparing Rocq;
 %  a document with neither has nothing for it to do.
@@ -533,12 +545,15 @@ link_target(Url, Href, M) :-
     atom_concat('../src/', F, Url), file_name_extension(M, pl, F), guide_module(M), !,
     atom_concat(M, '.html', Href).
 link_target(Url, Href, none) :-
+    split_atom_fragment(Url, Path, Frag), site_dir(Path, Page), !,
+    atom_concat(Page, Frag, Href).
+link_target(Url, Href, none) :-
     split_atom_fragment(Url, Path, Frag),
     nb_getval(guide_dir, Dir), directory_file_path(Dir, Path, Abs),
     linked_file(Dir, Path, Abs),
     (   \+ sub_atom(Path, _, _, _, '/'), file_name_extension(Name, md, Path)
     ->  (   nb_getval(guide_docs, Docs), memberchk(Name, Docs)
-        ->  format(atom(Href), "~w.html~w", [Name, Frag])
+        ->  doc_page(Name, Page), atom_concat(Page, Frag, Href)
         ;   format(atom(Href), "docs/~w.html~w", [Name, Frag])
         )
     ;   file_name_extension(_, nix, Path), nix_page(Path, Page)
@@ -550,6 +565,14 @@ link_target(Url, Href, none) :-
         (   atom_concat('../', Rel, Path) -> true ; atom_concat('docs/', Path, Rel) ),
         format(atom(Href), "~w~w~w", [G, Rel, Frag])
     ).
+
+%  site_dir(?Path, ?Page): a directory, named from nanofil/docs, that the
+%  site draws as a page of its own, and that page from nanofil/.
+site_dir('../src/', 'src.html').
+site_dir('../rocq/', 'rocq/').
+site_dir('../web/play/', 'play/').
+site_dir('../web/workbench/', 'workbench/').
+site_dir('../../pages/nanofil-status/', '../nanofil-status/').
 
 %  nix_page(+Path, -Page): the dterm-nix page of a .nix file a link from
 %  nanofil/docs names: ../nix/check.nix is nanofil-nix-check.html.
@@ -687,9 +710,9 @@ doc_backlinks(Base, D) -->
     ).
 
 guide_section_link(D, Id-T) -->
-    { format(atom(Href), "~w.html#~w", [D, Id]) }, el(a, none, [href=Href], toc_text(T)).
+    { doc_page(D, P), format(atom(Href), "~w#~w", [P, Id]) }, el(a, none, [href=Href], toc_text(T)).
 guide_map_link(D, Id) -->
-    { format(atom(Href), "~w.html#~w", [D, Id]) }, el(a, none, [href=Href], "the module map").
+    { doc_page(D, P), format(atom(Href), "~w#~w", [P, Id]) }, el(a, none, [href=Href], "the module map").
 
 %  The sections of each document that mention predicate PI of File, as
 %  Doc-Secs with Secs a list of Id-Title, in the order of the documents.
@@ -725,8 +748,9 @@ concept_mentioned(Id) :-
     (   nb_getval(guide_concept, C), C \== none
     ->  ( C == Id -> true ; concept_title(C, T), concept_page(C, Href), add_backlink(Id, Href, T) )
     ;   doc_label(D, DL),
-        ( SId == top -> format(atom(Href), "~w.html", [D]), Label = DL
-        ; format(atom(Href), "~w.html#~w", [D, SId]), format(string(Label), "~w: ~w", [DL, ST]) ),
+        doc_page(D, P),
+        ( SId == top -> Href = P, Label = DL
+        ; format(atom(Href), "~w#~w", [P, SId]), format(string(Label), "~w: ~w", [DL, ST]) ),
         add_backlink(Id, Href, Label)
     ).
 
