@@ -1382,6 +1382,68 @@ Definition mempcpy_contract := copy_contract false true.
 (** memmove uses the same original snapshot with overlapping ranges. *)
 Definition memmove_contract := copy_contract true false.
 
+(** ## Fresh allocation *)
+
+(** malloc takes one size_t and returns a pointer, or its result is
+    discarded. Width coincidence does not admit a W argument. *)
+Definition malloc_abi (r : call_result) (args : list arg) : Prop :=
+  (r = CVoid \/ exists d, r = CResult d P) /\ exists n, args = [Arg L n].
+
+(** The one permitted request shape; this does not count attempts. *)
+Definition malloc_request (xs : list word) (align size : Z) : Prop :=
+  exists n, xs = [WInt n] /\ align = 16 /\ size = n.
+
+(** One successful allocation, including its independent freshness
+    and legal original size. No old byte or auxiliary cell changes. *)
+Definition malloc_result (m : mem) (n base : Z) (m' : mem) : Prop :=
+  0 <= n <= max_allocation_size /\ fresh m (heap_req 16 n) base /\
+  m' = allocated m (heap_req 16 n) base.
+
+(** A logical allocation prefix is either unchanged or one-born.
+    The generic resource rule can refuse a further permitted request
+    after the one-born prefix. This terminal overapproximation is
+    explicit: it is not a native two-request claim, nor a guarantee
+    that every failure leaves the region list unchanged. *)
+Definition malloc_prefix (m : mem) (n : Z) (born : list Z) (m' : mem) : Prop :=
+  (born = [] /\ m' = m) \/
+  exists base, born = [base] /\ malloc_result m n base m'.
+
+(** The selected Fil-C malloc calls zgc_alloc, which does not return
+    NULL on refusal. Refusal is a resource ending, never a panic.
+    Exact endpoint framing is logical; native collector prefixes at
+    allocation safepoints remain a correspondence obligation. *)
+Definition malloc_contract (world : Type) : contract world :=
+  mkContract world (RClass P) malloc_abi
+    (fun xs _ _ => exists n, xs = [WInt n] /\ 0 <= n < 2 ^ 64)
+    (fun _ _ _ => []) (fun _ _ _ => []) (fun _ _ _ => [])
+    (fun xs _ _ => malloc_request xs)
+    (fun xs m w born trace m' w' => trace = [] /\ w' = w /\
+      exists n, xs = [WInt n] /\ malloc_prefix m n born m')
+    (fun xs m w born trace ending m' w' => trace = [] /\ w' = w /\
+      exists n base, xs = [WInt n] /\ born = [base] /\ malloc_result m n base m' /\
+        ending = CallReturn [WPtr (mkPtr base (Obj base))])
+    resource_reason (fun why => In why [ArgumentSize; ReturnSize]).
+
+(** Rounded capacity covers n, with strictly less than 16 extra
+    bytes. Zero has zero modeled extent and grants no byte access. *)
+Lemma malloc_extent : forall n, 0 <= n ->
+  n <= req_extent (heap_req 16 n) < n + 16.
+Proof.
+  intros n Hn. change (n <= (n + 15) / 16 * 16 < n + 16).
+  pose proof (Z.div_mod (n + 15) 16 ltac:(lia)).
+  pose proof (Z.mod_pos_bound (n + 15) 16 ltac:(lia)). lia.
+Qed.
+
+(** The exact endpoint frames old objects as well as both cell maps. *)
+Lemma malloc_old_cells : forall m n base m', malloc_result m n base m' ->
+  (forall a, m_bytes m' a = m_bytes m a /\ m_aux m' a = m_aux m a) /\
+  (forall b reg, object_region b (m_regions m) = Some reg ->
+    object_region b (m_regions m') = Some reg).
+Proof.
+  intros m n base m' (_ & (_ & _ & _ & Hnew & _) & ->).
+  split; [intros; split; reflexivity|]. intros. eapply allocated_old_region; eauto.
+Qed.
+
 (** ## Memory paths over any runtime *)
 
 (** The call relations over any [[runtime]] R, whose allocator answers
@@ -2113,6 +2175,115 @@ Proof.
   apply andb_true_iff in E as [Hlo Hhi]. apply Z.leb_le in Hlo. apply Z.leb_le in Hhi.
   destruct (R.address_space _ _ Hready base reg Hr) as (Hb & He).
   exists base, reg. split; [exact Hcap|]. split; [exact Hr|]. repeat split; try assumption; lia.
+Qed.
+
+(** A successful runtime answer constructs an actual malloc call;
+    readiness supplies freshness, rather than assuming it of callers. *)
+Theorem malloc_return : forall world r args n s m (w : world) base s',
+  malloc_abi r args -> 0 <= n < 2 ^ 64 -> n <= max_allocation_size ->
+  R.ready s m -> R.alloc s (heap_req 16 n) = Some (base, s') ->
+  invoke (malloc_contract world) r args [WInt n] s m w []
+    (CallReturn [WPtr (mkPtr base (Obj base))]) s' (allocated m (heap_req 16 n) base) w.
+Proof.
+  intros world r args n s m w base s' Habi Hn Hsize Hr Ha.
+  destruct (R.fresh_allocation s m (heap_req 16 n) base s' Hr ltac:(simpl; lia)
+    ltac:(pose proof (malloc_extent n ltac:(lia)); lia) Ha) as [Hfresh _].
+  assert (Hresult : malloc_result m n base (allocated m (heap_req 16 n) base))
+    by (split; [lia|]; auto).
+  eapply invoke_normal with (born := [base]).
+  - exact Habi.
+  - exists n. auto.
+  - split.
+    + eapply effects_alloc; [exists n; auto|lia|exact Ha|constructor].
+    + split; [reflexivity|]. split; [reflexivity|]. exists n. split; [reflexivity|].
+      right. exists base. auto.
+  - split; [reflexivity|]. split; [reflexivity|]. exists n, base. auto.
+  - intros why Hbad. discriminate.
+  - intros values Heq. injection Heq as <-. split.
+    + eexists. split; reflexivity.
+    + constructor; [|constructor]. right; right; right. exists base. simpl. auto.
+  - intros status Hbad. discriminate.
+Qed.
+
+(** Refusal can be observed with no successful allocation at all. *)
+Theorem malloc_refused : forall world r args n s m (w : world) why,
+  malloc_abi r args -> 0 <= n < 2 ^ 64 ->
+  resource_failure (malloc_request [WInt n]) s why ->
+  invoke (malloc_contract world) r args [WInt n] s m w [] (CallResource why) s m w.
+Proof.
+  intros world r args n s m w why Habi Hn Hfail.
+  eapply invoke_resource with (born := []).
+  - exact Habi.
+  - exists n. auto.
+  - split; [constructor|]. split; [reflexivity|]. split; [reflexivity|].
+    exists n. split; [reflexivity|]. left. auto.
+  - exact Hfail.
+  - change (resource_reason why). destruct Hfail; unfold resource_reason; auto.
+Qed.
+
+(** Input-only nonvacuity: a ready runtime either grants the sole
+    request shape, refuses it, or rejects the original size as TooBig. *)
+Theorem malloc_admitted : forall world r args n s m (w : world),
+  malloc_abi r args -> 0 <= n < 2 ^ 64 -> R.ready s m ->
+  exists ending s' m', invoke (malloc_contract world) r args [WInt n] s m w
+    [] ending s' m' w.
+Proof.
+  intros world r args n s m w Habi Hn Hr.
+  destruct (Z_le_dec n max_allocation_size) as [Hsize|Hbig].
+  - destruct (R.alloc s (heap_req 16 n)) as [[base s']|] eqn:Ha.
+    + do 3 eexists. eapply malloc_return; eauto.
+    + exists (CallResource OutOfMemory), s, m. apply malloc_refused; auto.
+      eapply failure_oom; [exists n; auto|lia|exact Ha].
+  - exists (CallResource TooBig), s, m. apply malloc_refused; auto.
+    eapply failure_big; [exists n; auto|lia].
+Qed.
+
+(** Public inversion retains the exact success endpoint or the
+    documented terminal-resource prefix, with refusal in its final
+    runtime state. There is no NULL return and no exit outcome. *)
+Theorem malloc_invocation : forall world r args xs s m (w : world) trace ending s' m' w',
+  invoke (malloc_contract world) r args xs s m w trace ending s' m' w' ->
+  trace = [] /\ w' = w /\ exists n, xs = [WInt n] /\ 0 <= n < 2 ^ 64 /\
+    ((exists base, malloc_result m n base m' /\
+       ending = CallReturn [WPtr (mkPtr base (Obj base))]) \/
+     (exists why born, ending = CallResource why /\ malloc_prefix m n born m' /\
+       resource_failure (malloc_request [WInt n]) s' why)).
+Proof.
+  intros world r args xs s m w trace ending s' m' w' Hcall. inversion Hcall; subst.
+  - match goal with
+    | Hpre : contract_pre _ _ _ _, Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
+      destruct Hpre as (n & Hxs & Hn);
+      destruct Hpost as (Ht & Hw & size & base & Hxs' & Hb & Hresult & Hend)
+    end.
+    rewrite Hxs in Hxs'. injection Hxs' as <-.
+    split; [exact Ht|]. split; [exact Hw|]. exists n. split; [exact Hxs|].
+    split; [exact Hn|]. left. exists base. auto.
+  - match goal with
+    | Hpre : contract_pre _ _ _ _, Hp : prefix _ _ _ _ _ _ _ _ _ _ |- _ =>
+      destruct Hpre as (n & Hxs & Hn);
+      destruct Hp as (_ & Ht & Hw & size & Hxs' & Hprefix)
+    end.
+    rewrite Hxs in Hxs'. injection Hxs' as <-.
+    split; [exact Ht|]. split; [exact Hw|]. exists n. split; [exact Hxs|].
+    split; [exact Hn|]. right. do 2 eexists. split; [reflexivity|].
+    split; [exact Hprefix|]. subst xs. assumption.
+Qed.
+
+(** Oversize refusal cannot follow the successful prefix: legal-size
+    admission of that prefix makes this distinction provable. *)
+Theorem malloc_too_big_unchanged : forall world r args n s m (w : world) trace s' m' w',
+  invoke (malloc_contract world) r args [WInt n] s m w trace (CallResource TooBig) s' m' w' ->
+  max_allocation_size < n /\ m' = m.
+Proof.
+  intros world r args n s m w trace s' m' w' Hcall.
+  destruct (malloc_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as (_ & _ & size & Hargs & _ & [(base & _ & Hend)|(why & born & Hend & Hp & Hf)]).
+  - discriminate Hend.
+  - injection Hargs as <-. injection Hend as <-. inversion Hf; subst.
+    match goal with Hreq : malloc_request _ _ _ |- _ =>
+      destruct Hreq as (k & Hargs & _ & Hsize); injection Hargs as <-; subst
+    end.
+    split; [assumption|]. destruct Hp as [(_ & ->)|(base & _ & (Hlegal & _))]; [reflexivity|lia].
 Qed.
 
 End ExternalCalls.
@@ -4154,4 +4325,78 @@ Proof.
       injection Hargs as <- <- <-. destruct Hcap as [H|H]; discriminate.
     + split; [intros [[H|(d & H)] _]; discriminate H|].
       repeat split; intros [_ (d & src & n & Hargs)]; discriminate Hargs.
+Qed.
+
+(** ## Fresh allocation controls *)
+
+(** Empty and nonmultiple sizes are actual successful calls, not just
+    satisfiable postconditions. The latter has 32 bytes of capacity. *)
+Example malloc_boundary_calls : forall n, n = 0 \/ n = 17 ->
+  InterpExternal.invoke (malloc_contract unit) (CResult (TAtom "buffer") P)
+    [Arg L (Const n)] [WInt n] InterpRuntime.start hello_mem tt []
+    (CallReturn [WPtr (mkPtr (2 ^ 32) (Obj (2 ^ 32)))])
+    (2 ^ 32 + req_extent (heap_req 16 n) + 16)
+    (allocated hello_mem (heap_req 16 n) (2 ^ 32)) tt.
+Proof.
+  intros n [-> | ->]; apply InterpExternal.malloc_return.
+  all: try solve [split; [right; eexists; reflexivity|eexists; reflexivity]].
+  all: try solve [apply hello_ready; unfold InterpRuntime.start, InterpRuntime.address_end; lia].
+  all: try solve [vm_compute; intuition congruence].
+Qed.
+
+(** Refusal at the address-space end is OOM, including for a legal
+    rounded request. Oversize is separately TooBig, not NULL/panic. *)
+Example malloc_resource_calls :
+  InterpExternal.invoke (malloc_contract unit) CVoid [Arg L (Const 17)] [WInt 17]
+    InterpRuntime.address_end hello_mem tt [] (CallResource OutOfMemory)
+    InterpRuntime.address_end hello_mem tt /\
+  InterpExternal.invoke (malloc_contract unit) CVoid [Arg L (Const (2 ^ 48))] [WInt (2 ^ 48)]
+    InterpRuntime.start hello_mem tt [] (CallResource TooBig) InterpRuntime.start hello_mem tt.
+Proof.
+  split; apply InterpExternal.malloc_refused.
+  all: try solve [split; [left; reflexivity|eexists; reflexivity]].
+  all: try solve [vm_compute; intuition congruence].
+  - eapply InterpExternal.failure_oom with (align := 16) (size := 17).
+    + exists 17. auto.
+    + unfold max_allocation_size; lia.
+    + reflexivity.
+  - eapply InterpExternal.failure_big with (align := 16) (size := 2 ^ 48).
+    + exists (2 ^ 48). auto.
+    + unfold max_allocation_size; lia.
+Qed.
+
+(** Every successful public call returns positive, fresh aligned Obj
+    authority and frames both old cell maps. A constant NULL answer or
+    changing an old pointer's capability cannot satisfy this control. *)
+Example malloc_success_frame : forall n trace p s' m' w',
+  InterpExternal.invoke (malloc_contract unit) CVoid [Arg L (Const n)] [WInt n]
+    InterpRuntime.start hello_mem tt trace (CallReturn [WPtr p]) s' m' w' ->
+  0 < ptr_addr p /\ ptr_addr p mod 16 = 0 /\ ptr_cap p = Obj (ptr_addr p) /\
+  object_region (ptr_addr p) (m_regions hello_mem) = None /\
+  (forall a, m_bytes m' a = m_bytes hello_mem a /\ m_aux m' a = m_aux hello_mem a).
+Proof.
+  intros n trace p s' m' w' Hcall.
+  destruct (InterpExternal.malloc_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as (_ & _ & size & Hargs & _ & [(base & Hr & Hend)|(why & born & Hend & _)]).
+  - injection Hargs as <-. injection Hend as Hp. subst p.
+    destruct (malloc_old_cells _ _ _ _ Hr) as [Hcells _].
+    destruct Hr as (_ & (Hpos & Halign & _ & Hnew & _) & _).
+    simpl in Halign. simpl. auto.
+  - discriminate Hend.
+Qed.
+
+(** Reject noncanonical size_t and wrong ABI classes independently of
+    allocation availability. A huge canonical request remains admitted. *)
+Example malloc_inputs :
+  ~ contract_pre (malloc_contract unit) [WInt (-1)] hello_mem tt /\
+  ~ contract_pre (malloc_contract unit) [WInt (2 ^ 64)] hello_mem tt /\
+  contract_pre (malloc_contract unit) [WInt (2 ^ 64 - 1)] hello_mem tt /\
+  ~ malloc_abi CVoid [Arg W (Const 1)] /\
+  ~ malloc_abi (CResult (TAtom "wrong") L) [Arg L (Const 1)].
+Proof.
+  split; [intros (n & Hargs & Hn); injection Hargs as <-; lia|].
+  split; [intros (n & Hargs & Hn); injection Hargs as <-; lia|].
+  split; [exists (2 ^ 64 - 1); split; [reflexivity|lia]|].
+  split; [intros (_ & n & Hargs); discriminate Hargs|].
+  intros ([H|(d & H)] & _); discriminate H.
 Qed.

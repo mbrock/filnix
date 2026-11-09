@@ -1658,6 +1658,43 @@ their byte result is a terminated copy: the selected implementation's stores
 need a separate specification. Fresh allocation is next for the Iris
 slot-buffer proof, followed by that string-copy and strdup boundary.
 
+### Campaign 4 milestone 5a: fresh malloc and resource refusal
+
+Hello needs allocation, and the Iris slot-buffer proof needs it before the
+remaining string-copy kinds. `malloc_contract` is additive: one canonical
+size_t argument at L, discarded or P result, no sources, old-object write
+roots or releases, no events, and unchanged logical world. The permitted
+request shape is alignment 16 and the original size n. Success returns
+exactly the positive fresh base with Obj authority, with singleton born
+list and the exact `allocated` endpoint. Its rounded capacity covers n
+with fewer than 16 extra bytes. At zero the modeled extent is zero;
+returning a freeable pointer does not license a byte dereference.
+
+The selected glibc malloc forwards to zgc_alloc: it does not return NULL on
+refusal. The logical endings are successful pointer return, OutOfMemory or
+TooBig, not capability panic or process-exit events. `malloc_return` builds
+a call from readiness and a successful runtime answer. `malloc_admitted`
+constructively produces a normal or resource call from inputs alone;
+`malloc_invocation` extracts every completion, and `malloc_old_cells`
+frames both cell maps and every old region. TooBig tests the original
+size, not its rounded capacity; the existing maximum-size controls remain.
+
+The unchanged generic prefix interface deliberately overapproximates
+terminal refusal: it admits zero or one successful allocation, and its
+resource rule may then refuse the same request shape. Thus OOM may leave
+one unreturned fresh object at termination. This is not a claim about a
+second native malloc request, and not a promise of unchanged regions on
+every failure. TooBig can only use the unchanged zero-born prefix.
+No axiom or core relation is strengthened to hide that distinction.
+Exact old-cell framing is a logical endpoint: native allocation safepoints
+still need collector-prefix correspondence, as for the copying slice.
+
+Public controls instantiate zero, 17-byte requests with 32-byte capacity, fresh Obj provenance,
+old cells, legal OOM, oversized TooBig and independent ABI/canonical-size
+rejection. Native heap probes check fresh distinct aligned zeroed storage,
+neighbour authority and freeable nonnull zero allocation. They do not force
+native allocator exhaustion or establish universal native coverage.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and

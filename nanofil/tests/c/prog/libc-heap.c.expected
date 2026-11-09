@@ -1,3 +1,5 @@
+malloc fresh aligned storage frames old objects: yes
+malloc zero returns freeable nonnull storage: yes
 calloc product is zeroed: yes
 realloc preserves old prefix: yes
 reallocarray shrink preserves prefix: yes

@@ -16,6 +16,16 @@ static void realloc_alias(void) {
 }
 int main(void) {
     free(0);
+    char *kept = "authority";
+    unsigned char *fresh = malloc(17), *other = malloc(17);
+    int fresh_ok = fresh && other && fresh != other &&
+        (uintptr_t)fresh % 16 == 0 && (uintptr_t)other % 16 == 0;
+    for (unsigned i = 0; i < 17; ++i) fresh_ok = fresh_ok && fresh[i] == 0 && other[i] == 0;
+    fresh[0] = 41; fresh[16] = 97;
+    answer("malloc fresh aligned storage frames old objects", fresh_ok && other[0] == 0 && other[16] == 0 && kept[2] == 't');
+    void *empty = malloc(0);
+    answer("malloc zero returns freeable nonnull storage", empty != 0 && (uintptr_t)empty % 16 == 0);
+    free(empty); free(fresh); free(other);
     unsigned char *p = calloc(3, 7);
     int zero = p != 0;
     for (int i = 0; i < 21; ++i) if (p[i]) zero = 0;
