@@ -144,6 +144,25 @@ int main(void) {
     memcpy(&restored, dup, sizeof restored);
     answer("strdup retains complete in-phase source capability", restored[2] == 't');
     free(dup);
+    char *partial = saved;
+    strcpy((char *)&partial, (const char *)&saved);
+    answer("scalar strcpy retains partially overwritten destination authority", partial[2] == 't');
+    union { char *pointer; unsigned char bytes[32]; } scalar_words;
+    char scalar_source[32] = "ABCDEFGHIJKLMNOP";
+    scalar_words.pointer = saved;
+    char *scalar_return = strcpy((char *)scalar_words.bytes, scalar_source);
+    int scalar_ok = scalar_return == (char *)scalar_words.bytes && memcmp(scalar_words.bytes, scalar_source, 17) == 0;
+    for (unsigned i = 0; i < sizeof saved; ++i)
+        ((volatile unsigned char *)scalar_words.bytes)[i] = ((unsigned char *)&saved)[i];
+    answer("scalar strcpy retains old destination not source authority", scalar_ok && scalar_words.pointer[2] == 't');
+    scalar_words.pointer = saved;
+    scalar_return = stpcpy((char *)scalar_words.bytes, scalar_source);
+    scalar_ok = scalar_return == (char *)scalar_words.bytes + 16 && memcmp(scalar_words.bytes, scalar_source, 17) == 0;
+    for (unsigned i = 0; i < sizeof saved; ++i)
+        ((volatile unsigned char *)scalar_words.bytes)[i] = ((unsigned char *)&saved)[i];
+    answer("scalar stpcpy retains destination authority and returns NUL", scalar_ok && scalar_words.pointer[2] == 't');
+    char scalar_boundary[5] = {'!', '!', '!', '!', '!'};
+    answer("string copies frame neighbours and include final NUL", stpcpy(scalar_boundary + 1, "abc") == scalar_boundary + 4 && memcmp(scalar_boundary, "!abc", 5) == 0 && stpcpy(scalar_boundary + 2, "") == scalar_boundary + 2 && scalar_boundary[1] == 'a' && scalar_boundary[2] == 0 && scalar_boundary[3] == 'c');
     free(p);
     answer("unbounded scan needs in-object NUL", libc_traps(missing_nul));
     answer("copy needs entire writable destination", libc_traps(short_destination));

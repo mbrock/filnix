@@ -1740,6 +1740,47 @@ Native controls restore pointer address bits using volatile byte stores
 to distinguish copied authority from numeric equality; a complete
 in-phase duplicate remains usable, while out-of-phase bytes do not.
 
+### Campaign 4 milestone 5c: scalar strcpy and stpcpy
+
+The selected glibc archive and shared-library bodies use the generic
+scalar byte/word path: strcpy calls stpcpy, whose destination stores
+have no memcpy/memmove dependency. Those ordinary integer stores retain
+old destination auxiliary entries. They do not import source capabilities
+and do not clear touched words. The logical `string_copy_result` therefore
+copies original-memory bytes through NUL while retaining every aux entry,
+all regions and bytes outside the destination interval. Retained authority
+does not make arbitrary new pointer address bits usable.
+
+`strcpy_contract world` and `stpcpy_contract world` share one unindexed
+development, with the same independently established terminated-string
+premise and bounded logical footprint scan as strdup. The caller supplies
+writable destination capacity through NUL and disjoint byte intervals;
+same-object adjacent ranges are permitted. Neither object base nor operand
+needs alignment. Only the ordinary destination interval is a write root,
+not the memset auxiliary hull. Ownership, trace and world are retained,
+with no allocation, release, resource, panic or exit completion. The exact
+return carries the destination capability: d for strcpy, d+k for stpcpy.
+That last address names the copied NUL, not its successor, and is inside
+the destination object; readiness proves its nonwrapping address bound.
+
+`string_copy_completed` accepts any specified result;
+`string_copy_admitted` constructs an actual invocation from input premises;
+`string_copy_invocation` extracts every completion. Controls use a ready
+fixture for empty/interior strings, same-object disjoint ranges, unaligned
+operands, NUL at the destination's final byte, unchanged preceding-word
+authority and source/byte frames. Additional controls permit unaligned
+object bases and reject read-only destinations, self-copy and wrong ABI.
+Native probes restore address bits with volatile scalar stores after full
+overwrites, distinguishing retained destination authority from both
+clearing and source-capability copying, and check partial overwrites and
+exact NUL returns in plain and optimized builds.
+
+These remain conditional logical contracts. Selected scalar stores retain
+auxiliary entries, but internal pollchecks may permit collector rewrites
+of stored capabilities to freed objects. Wider/downward-load adequacy,
+native collector-prefix correspondence, universal satisfaction and
+termination remain open; the exact logical frame does not prove them.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and

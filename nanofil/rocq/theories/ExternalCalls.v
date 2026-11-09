@@ -1510,6 +1510,111 @@ Proof.
   - apply Hnul. exact Hmax.
 Qed.
 
+(** ## Scalar string copies *)
+
+(** Ordinary scalar stores retain destination auxiliary entries; they
+    neither clear them nor import source capabilities. No rounded
+    shadow footprint or base-alignment premise is needed here. *)
+Definition string_copy_frame (m : mem) (d : ptr) (n : Z) (m' : mem) : Prop :=
+  m_regions m' = m_regions m /\
+  (forall a, m_aux m' a = m_aux m a) /\
+  (forall a, ~ span_contains (mkSpan d n) a -> m_bytes m' a = m_bytes m a).
+
+(** Snapshot bytes through NUL with the scalar-store frame. *)
+Definition string_copy_result (m : mem) (d src : ptr) (n : Z) (m' : mem) : Prop :=
+  string_copy_frame m d n m' /\
+  forall a, span_contains (mkSpan d n) a ->
+    m_bytes m' a = m_bytes m (ptr_addr src + (a - ptr_addr d)).
+
+(** Admission is independent of the computed footprint: a terminated
+    source, writable destination through NUL, and byte nonoverlap. *)
+Definition string_copy_domain (m : mem) (d src : ptr) (k : Z) : Prop :=
+  terminated_length m src k /\ writable_span m (mkSpan d (k + 1)) /\
+  (ptr_addr d + (k + 1) <= ptr_addr src \/ ptr_addr src + (k + 1) <= ptr_addr d).
+
+(** A logical witness, not an implementation or native termination proof. *)
+Definition string_copy_memory (m : mem) (d src : ptr) (n : Z) : mem :=
+  mkMem (fun a => if (ptr_addr d <=? a) && (a <? ptr_addr d + n)
+    then m_bytes m (ptr_addr src + (a - ptr_addr d)) else m_bytes m a)
+    (m_regions m) (m_aux m).
+
+Lemma string_copy_memory_result : forall m d src n,
+  string_copy_result m d src n (string_copy_memory m d src n).
+Proof.
+  intros m d src n. split.
+  - split; [reflexivity|]. split; [intros; reflexivity|]. intros a Hout.
+    change ((if (ptr_addr d <=? a) && (a <? ptr_addr d + n)
+      then m_bytes m (ptr_addr src + (a - ptr_addr d)) else m_bytes m a) = m_bytes m a).
+    destruct ((ptr_addr d <=? a) && (a <? ptr_addr d + n)) eqn:E; [|reflexivity].
+    exfalso. apply Hout. apply andb_true_iff in E as [Hlo Hhi].
+    apply Z.leb_le in Hlo. apply Z.ltb_lt in Hhi. exact (conj Hlo Hhi).
+  - intros a [Hlo Hhi]. simpl in Hlo, Hhi. unfold string_copy_memory. simpl.
+    assert ((ptr_addr d <=? a) && (a <? ptr_addr d + n) = true) as E.
+    { apply andb_true_iff. split; [apply Z.leb_le|apply Z.ltb_lt]; assumption. }
+    rewrite E. reflexivity.
+Qed.
+
+(** Any specified completion has these cells, not only the witness. *)
+Lemma string_copy_cells : forall m d src n m' a,
+  string_copy_result m d src n m' ->
+  m_bytes m' a = (if (ptr_addr d <=? a) && (a <? ptr_addr d + n)
+    then m_bytes m (ptr_addr src + (a - ptr_addr d)) else m_bytes m a) /\
+  m_aux m' a = m_aux m a.
+Proof.
+  intros m d src n m' a ((Hr & Ha & Hb) & Hcopy). split; [|apply Ha].
+  destruct ((ptr_addr d <=? a) && (a <? ptr_addr d + n)) eqn:E.
+  - apply Hcopy. apply andb_true_iff in E as [Hlo Hhi].
+    apply Z.leb_le in Hlo. apply Z.ltb_lt in Hhi. exact (conj Hlo Hhi).
+  - apply Hb. intros [Hlo Hhi]. simpl in Hlo, Hhi.
+    apply andb_false_iff in E as [E|E]; [apply Z.leb_gt in E|apply Z.ltb_ge in E]; lia.
+Qed.
+
+(** Only ordinary destination bytes need write permission; every aux
+    entry retains its old authority regardless of new numeric bits. *)
+Lemma string_copy_local : forall m d src k m',
+  string_copy_domain m d src k -> string_copy_result m d src (k + 1) m' ->
+  local_effect [mkSpan src (k + 1); mkSpan d 0] [mkSpan d (k + 1)] [] [] m m'.
+Proof.
+  intros m d src k m' (_ & Hw & _) ((Hr & Ha & Hb) & Hcopy).
+  split; [apply ids_same; exact Hr|]. split.
+  - intros b reg Hreg. rewrite Hr in Hreg. exists reg. auto.
+  - split.
+    + intros a Hout. split; [|apply Ha]. apply Hb. intros Hin.
+      apply Hout. left. exists (mkSpan d (k + 1)). split; [left; reflexivity|]. auto.
+    + intros a. left. apply Ha.
+Qed.
+
+(** P/P to P/discarded. The length is neither a native nor a ghost argument. *)
+Definition string_copy_abi (r : call_result) (args : list arg) : Prop :=
+  (r = CVoid \/ exists d, r = CResult d P) /\ exists d src, args = [Arg P d; Arg P src].
+
+(** Conditional contract for the selected scalar strcpy/stpcpy paths.
+    Their archive and shared bodies use ordinary stores, not memcpy.
+    Internal polls may rewrite freed capabilities: this exact logical
+    aux frame does not establish native collector-prefix correspondence,
+    wider-load adequacy, universal satisfaction or termination. *)
+Definition string_copy_contract (end_return : bool) (world : Type) : contract world :=
+  mkContract world (RClass P) string_copy_abi
+    (fun xs m _ => exists d src k, xs = [WPtr d; WPtr src] /\ string_copy_domain m d src k)
+    (fun xs m _ => match xs with [WPtr d; WPtr src] =>
+      [mkSpan src (string_length m src + 1); mkSpan d 0] | _ => [] end)
+    (fun xs m _ => match xs with [WPtr d; WPtr src] =>
+      [mkSpan d (string_length m src + 1)] | _ => [] end)
+    (fun _ _ _ => []) (fun _ _ _ _ _ => False)
+    (fun xs m w born trace m' w' => born = [] /\ trace = [] /\ w' = w /\
+      exists d src, xs = [WPtr d; WPtr src] /\ string_copy_frame m d (string_length m src + 1) m')
+    (fun xs m w born trace ending m' w' => born = [] /\ trace = [] /\ w' = w /\
+      exists d src, xs = [WPtr d; WPtr src] /\
+        string_copy_result m d src (string_length m src + 1) m' /\
+        ending = CallReturn [WPtr (copy_return end_return d (string_length m src))])
+    (fun _ => False)
+    (fun why => In why [NullCapability; OutOfBounds; Readonly; ArgumentSize; ReturnSize]).
+
+(** strcpy returns its original destination capability. *)
+Definition strcpy_contract := string_copy_contract false.
+(** stpcpy returns the destination's NUL position, not one byte after it. *)
+Definition stpcpy_contract := string_copy_contract true.
+
 (** ## Fresh string duplication *)
 
 (** P to P/discarded: the length is not a native or ghost argument. *)
@@ -2597,6 +2702,82 @@ Proof.
     split; [exact Ht|]. split; [exact Hw|]. exists p, k.
     split; [exact Hxs|]. split; [exact Hd|]. right. do 2 eexists.
     split; [reflexivity|]. split; [exact Hprefix|]. subst xs. assumption.
+Qed.
+
+(** Any specified scalar copy constructs an actual invocation from
+    independently admitted inputs. The computed footprint equals k+1. *)
+Theorem string_copy_completed : forall end_return world r args d src k s m m' (w : world),
+  string_copy_abi r args -> string_copy_domain m d src k ->
+  string_copy_result m d src (k + 1) m' ->
+  invoke (string_copy_contract end_return world) r args [WPtr d; WPtr src] s m w
+    [] (CallReturn [WPtr (copy_return end_return d k)]) s m' w.
+Proof.
+  intros end_return world r args d src k s m m' w Habi Hdomain Hresult.
+  pose proof (terminated_string_length _ _ _ (proj1 Hdomain)) as Hlen.
+  eapply invoke_normal with (born := []).
+  - exact Habi.
+  - exists d, src, k. auto.
+  - split.
+    + change (effects [mkSpan src (string_length m src + 1); mkSpan d 0]
+        [mkSpan d (string_length m src + 1)] [] (fun _ _ => False) s m [] s m' []).
+      rewrite Hlen. eapply effects_local; [eapply string_copy_local; eauto|constructor].
+    + split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+      exists d, src. split; [reflexivity|]. rewrite Hlen. exact (proj1 Hresult).
+  - split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+    exists d, src. split; [reflexivity|]. rewrite Hlen. auto.
+  - intros why Hbad. discriminate.
+  - intros values Heq. injection Heq as <-. split.
+    + exists (WPtr (copy_return end_return d k)). split; reflexivity.
+    + constructor; [|constructor]. unfold copy_return. destruct end_return; simpl.
+      all: right; left; exists (mkSpan d 0); split; [right; left; reflexivity|reflexivity].
+  - intros status Hbad. discriminate.
+Qed.
+
+(** Input-only nonvacuity, without a native progress or termination claim. *)
+Theorem string_copy_admitted : forall end_return world r args d src k s m (w : world),
+  string_copy_abi r args -> string_copy_domain m d src k ->
+  invoke (string_copy_contract end_return world) r args [WPtr d; WPtr src] s m w
+    [] (CallReturn [WPtr (copy_return end_return d k)]) s (string_copy_memory m d src (k + 1)) w.
+Proof. intros. apply string_copy_completed; [assumption|assumption|apply string_copy_memory_result]. Qed.
+
+(** Arbitrary completions retain all destination aux, exact bytes/NUL,
+    and destination or NUL-position provenance. No resource/exit branch. *)
+Theorem string_copy_invocation : forall end_return world r args xs s m (w : world)
+    trace ending s' m' w',
+  invoke (string_copy_contract end_return world) r args xs s m w trace ending s' m' w' ->
+  trace = [] /\ w' = w /\ exists d src k, xs = [WPtr d; WPtr src] /\
+    string_copy_domain m d src k /\ string_copy_result m d src (k + 1) m' /\
+    ending = CallReturn [WPtr (copy_return end_return d k)].
+Proof.
+  intros end_return world r args xs s m w trace ending s' m' w' Hcall.
+  inversion Hcall; subst.
+  - match goal with
+    | Hpost : contract_post _ _ _ _ _ _ _ _ _, Hpre : contract_pre _ _ _ _ |- _ =>
+      destruct Hpost as (_ & Htrace & Hworld & d & src & Hxs & Hresult & Hending);
+      destruct Hpre as (q & v & k & Hxs' & Hdomain)
+    end.
+    rewrite Hxs in Hxs'. injection Hxs' as <- <-.
+    pose proof (terminated_string_length _ _ _ (proj1 Hdomain)) as Hlen.
+    rewrite Hlen in Hresult, Hending. split; [exact Htrace|]. split; [exact Hworld|].
+    exists d, src, k. auto.
+  - contradiction.
+Qed.
+
+(** stpcpy's returned NUL is inside the destination, not one-past.
+    Readiness bounds its mathematical address without a new runtime axiom. *)
+Theorem string_copy_endpoint : forall s m d src k,
+  R.ready s m -> string_copy_domain m d src k ->
+  exists base reg, ptr_cap d = Obj base /\ object_region base (m_regions m) = Some reg /\
+    base <= ptr_addr d + k < r_end reg /\ 0 <= ptr_addr d + k < 2 ^ 64.
+Proof.
+  intros s m d src k Hready (Hlength & (_ & base & reg & Hcap & Hr & Hl & Ha) & _).
+  destruct Hlength as ((_ & Hk & _) & _). simpl in Hcap, Ha.
+  unfold access_res, cap_access_res in Ha. rewrite Hr in Ha.
+  destruct ((base <=? ptr_addr d) && (ptr_addr d + (k + 1) <=? r_end reg)) eqn:E;
+    [|discriminate].
+  apply andb_true_iff in E as [Hlo Hhi]. apply Z.leb_le in Hlo. apply Z.leb_le in Hhi.
+  destruct (R.address_space _ _ Hready base reg Hr) as (Hb & He).
+  exists base, reg. split; [exact Hcap|]. split; [exact Hr|]. split; lia.
 Qed.
 
 End ExternalCalls.
@@ -4887,4 +5068,113 @@ Proof.
       * discriminate Hcap.
       * injection Hcap as <-. discriminate Halign.
     + intros (_ & p & Hargs). discriminate Hargs.
+Qed.
+
+(** ## Scalar string-copy controls *)
+
+(** These calls use the ready duplication fixture: distinct source
+    lengths in one registry, adjacent ranges in one object, unaligned
+    operands, and a destination whose final byte receives the NUL. *)
+Lemma string_copy_fixture_domain : forall d off,
+  0 <= off <= 16 -> 0 <= d -> d + (17 - off) <= 29 ->
+  (d + (17 - off) <= off \/ 17 <= d) ->
+  string_copy_domain strdup_fixture (mkPtr (1024 + d) (Obj 1024))
+    (mkPtr (1024 + off) (Ro 1024)) (16 - off).
+Proof.
+  intros d off Hoff Hd Hend Hsep. split.
+  - exact (proj1 (strdup_fixture_domain off Hoff)).
+  - split.
+    + change (writable_span memset_fixture (mkSpan (mkPtr (1024 + d) (Obj 1024)) (16 - off + 1))).
+      pose proof (memset_fixture_domain d 0 (16 - off + 1) Hd ltac:(lia) ltac:(lia) ltac:(lia))
+        as (_ & _ & Hw & _). exact Hw.
+    + change (1024 + d + (16 - off + 1) <= 1024 + off \/
+        1024 + off + (16 - off + 1) <= 1024 + d).
+      destruct Hsep; [left|right]; lia.
+Qed.
+
+Example string_copy_boundary_calls : forall end_return d off,
+  In (d, off) [(0, 9); (1, 15); (8, 16); (21, 9)] ->
+  InterpExternal.invoke (string_copy_contract end_return unit) CVoid
+    [Arg P (Const 0); Arg P (Const 0)]
+    [WPtr (mkPtr (1024 + d) (Obj 1024)); WPtr (mkPtr (1024 + off) (Ro 1024))]
+    InterpRuntime.start strdup_fixture tt []
+    (CallReturn [WPtr (copy_return end_return (mkPtr (1024 + d) (Obj 1024)) (16 - off))])
+    InterpRuntime.start (string_copy_memory strdup_fixture (mkPtr (1024 + d) (Obj 1024))
+      (mkPtr (1024 + off) (Ro 1024)) (16 - off + 1)) tt.
+Proof.
+  intros end_return d off Hcases. apply InterpExternal.string_copy_admitted.
+  - split; [left; reflexivity|do 2 eexists; reflexivity].
+  - apply string_copy_fixture_domain; destruct Hcases as [H|[H|[H|[H|[]]]]];
+      injection H as <- <-; lia.
+Qed.
+
+(** Every completion, not just the witness: unchanged old destination
+    Ro/Obj cells distinguish scalar stores from memset and memcpy.
+    Source bytes, neighbours, the NUL and the exact stpcpy endpoint
+    are independently fixed by this table. *)
+Example string_copy_completion_cells : forall end_return d off a byte capability endpoint trace ending s' m' w',
+  In (d, off, a, byte, capability, endpoint)
+    [(1024, 9, 1024, 65, Ro 2048, 1031);
+     (1024, 9, 1031, 0, CNone, 1031);
+     (1024, 9, 1032, 65, Obj 2048, 1031);
+     (1025, 15, 1024, 65, Ro 2048, 1026);
+     (1025, 15, 1026, 0, CNone, 1026);
+     (1025, 15, 1039, 65, CNone, 1026);
+     (1032, 16, 1032, 0, Obj 2048, 1032);
+     (1045, 9, 1040, 0, Ro 2048, 1052);
+     (1045, 9, 1052, 0, CNone, 1052)] ->
+  InterpExternal.invoke (string_copy_contract end_return unit) CVoid
+    [Arg P (Const 0); Arg P (Const 0)]
+    [WPtr (mkPtr d (Obj 1024)); WPtr (mkPtr (1024 + off) (Ro 1024))]
+    InterpRuntime.start strdup_fixture tt trace ending s' m' w' ->
+  m_bytes m' a = byte /\ m_aux m' a = capability /\
+    ending = CallReturn [WPtr (if end_return then mkPtr endpoint (Obj 1024) else mkPtr d (Obj 1024))].
+Proof.
+  intros end_return d off a byte capability endpoint trace ending s' m' w' Hcases Hcall.
+  destruct (InterpExternal.string_copy_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as (_ & _ & dst & src & k & Hargs & Hd & Hresult & Hend).
+  injection Hargs as <- <-.
+  assert (Hoff : 0 <= off <= 16).
+  { destruct Hcases as [H|[H|[H|[H|[H|[H|[H|[H|[H|[]]]]]]]]]]; injection H as <- <- <- <- <- <-; lia. }
+  assert (Hk : k = 16 - off).
+  { eapply terminated_length_unique; [exact (proj1 Hd)|exact (proj1 (strdup_fixture_domain off Hoff))]. }
+  subst k. destruct (string_copy_cells _ _ _ _ _ a Hresult) as [Hb Ha]. rewrite Hb, Ha, Hend.
+  destruct Hcases as [H|[H|[H|[H|[H|[H|[H|[H|[H|[]]]]]]]]]]; injection H as <- <- <- <- <- <-;
+    destruct end_return; vm_compute; repeat split; reflexivity.
+Qed.
+
+(** Without auxiliary writes, neither object base needs alignment.
+    A readable source is not a writable destination, even at equal bits. *)
+Example string_copy_unaligned_bases :
+  string_copy_domain
+    (mkMem (fun _ => 0) [mkRegion 1025 1030 Heap Live; mkRegion 2049 2052 Heap Live] (fun _ => CNone))
+    (mkPtr 2049 (Obj 2049)) (mkPtr 1025 (Ro 1025)) 0.
+Proof.
+  split.
+  - split; [|lia]. split; [lia|]. split; [lia|]. split.
+    + exists 1025, (mkRegion 1025 1030 Heap Live). split; [right; reflexivity|]. auto.
+    + split; [reflexivity|]. split; [intros i Hi; lia|intros; reflexivity].
+  - split.
+    + split; [change (0 <= 1); lia|].
+      exists 2049, (mkRegion 2049 2052 Heap Live). repeat split; reflexivity.
+    + right. simpl. lia.
+Qed.
+
+Example string_copy_bad_destination_and_abi :
+  ~ contract_pre (strcpy_contract unit)
+    [WPtr (mkPtr 1024 (Ro 1024)); WPtr (mkPtr 1033 (Ro 1024))] strdup_fixture tt /\
+  ~ contract_pre (stpcpy_contract unit)
+    [WPtr (mkPtr 1024 (Obj 1024)); WPtr (mkPtr 1024 (Ro 1024))] strdup_fixture tt /\
+  ~ string_copy_abi CVoid [Arg P (Const 0); Arg L (Const 0)].
+Proof.
+  split.
+  - intros (d & src & k & Hargs & _ & (_ & b & reg & Hcap & _) & _).
+    injection Hargs as <- <-. discriminate Hcap.
+  - split.
+    + intros (d & src & k & Hargs & Hlength & _ & Hsep). injection Hargs as <- <-.
+      pose proof (terminated_length_unique _ _ _ _ Hlength
+        (proj1 (strdup_fixture_domain 0 ltac:(lia)))) as Hk.
+      change (k = 16) in Hk. subst k.
+      change (1041 <= 1024 \/ 1041 <= 1024) in Hsep. destruct Hsep; lia.
+    + intros (_ & d & src & Hargs). discriminate Hargs.
 Qed.

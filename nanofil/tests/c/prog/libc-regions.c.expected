@@ -36,6 +36,10 @@ empty and complete self moves keep authority: yes
 strdup fresh writable copy stops at first NUL: yes
 strdup does not consume source ownership: yes
 strdup retains complete in-phase source capability: yes
+scalar strcpy retains partially overwritten destination authority: yes
+scalar strcpy retains old destination not source authority: yes
+scalar stpcpy retains destination authority and returns NUL: yes
+string copies frame neighbours and include final NUL: yes
 unbounded scan needs in-object NUL: yes
 copy needs entire writable destination: yes
 search result dies with source: yes
