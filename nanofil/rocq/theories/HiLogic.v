@@ -5,20 +5,14 @@
     Hi.v proves hi's body safe by hand: an invariant over the labelled
     machine's states with a case for each of main's four points, and a
     lemma for each kind of labelled step at each. This file proves the
-    same body in Iris, by one rule per instruction and a triple for
-    puts derived from its contract:
-    - the program owns the pieces of its literal `str.10`, its life and
-      its six bytes ([lit_ps]); owning them in an interpreted state
-      gives puts its [c_string] ([lit_agree_valid]);
-    - the world interpretation [hi_wi] is what puts needs of the world:
-      the representation rep, [stdio_ready], and the world's writable
-      roots apart from the program's live objects ([roots_apart]). A
-      safepoint keeps it, under Hi.v's premise that it keeps rep and
-      readiness, by [collector_live];
-    - after a puts call that returns, the state is interpreted again
-      with the same ghost heap ([puts_return_frame]): the literal by the
-      frame for external calls (Logic.v's [prefix_agrees]), the world by
-      puts's prefix and the roots it delegates ([delegates_apart]);
+    same body in Iris, by one rule per instruction and StringLogic.v's
+    triple for puts ([wp_puts]):
+    - the program owns its literal `str.10` as a [string]: its life and
+      its six bytes ([lit_ps]);
+    - the world interpretation is [stdio_wi]: puts's rep and
+      [stdio_ready], and the world's writable roots apart from the
+      program's live objects; a safepoint keeps it under Hi.v's
+      premise that it keeps rep and readiness;
     - main enters, copies the literal, calls puts and returns 0
       ([main_spec]), and Iris [[adequacy]] for the labelled machine
       ([heap_labelled_safe]) makes that [hi_logic_safe].
@@ -33,13 +27,14 @@
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
-From Stdlib Require Import String ZArith Lia.
+From Stdlib Require Import ZArith Lia.
+From Stdlib Require String.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
-  ExternalCalls ExternalMachine Pieces Heap ContractFrame Language Logic Hi.
+  ExternalCalls ExternalMachine Pieces Heap ContractFrame Language Logic StringLogic Hi.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## The literal's pieces *)
+(** ## The literal *)
 
 (** The literal's object, `str.10`'s region in the module's layout. *)
 Definition lit_reg : region := mkRegion 65552 65560 GlobalData Live.
@@ -47,20 +42,13 @@ Definition lit_reg : region := mkRegion 65552 65560 GlobalData Live.
 (** The literal's bytes: hello and its NUL. *)
 Definition lit_bytes : list Z := hello_bytes ++ [0].
 
-(** The pieces of the literal the program owns: its life and its six
-    bytes. *)
-Definition lit_ps : list (piece * pval) :=
-  (PLive 65552, VLive lit_reg) :: zip_with (fun i x => (PByte 65552 i, VByte x)) (seqZ 0 6) lit_bytes.
+(** The pieces of the literal the program owns, as a string: its life
+    and its six bytes. *)
+Definition lit_ps : list (piece * pval) := string_ps hi_literal 65552 lit_reg hello_bytes.
 
-(** The ghost heap hi starts with: the literal's pieces. *)
-Definition lit_heap : gmap piece pval := list_to_map lit_ps.
-
-(** No piece of the literal is listed twice. *)
-Lemma lit_ps_nodup : NoDup lit_ps.*1.
-Proof.
-  cbn. repeat apply NoDup_cons_2; try apply NoDup_nil_2;
-    rewrite ?elem_of_cons ?elem_of_nil; intuition discriminate.
-Qed.
+(** The literal is a string in its object. *)
+Lemma lit_ok : string_ok hi_literal 65552 lit_reg hello_bytes.
+Proof. unfold string_ok. cbn. split; [right; reflexivity|]. repeat split; try lia. repeat constructor; lia. Qed.
 
 (** The six byte pieces, one by one. *)
 Lemma lit_ps_cases l v : (l, v) ∈ lit_ps ->
@@ -73,21 +61,6 @@ Proof.
     injection Hp as -> ->; eexists; (split; [|split; reflexivity]); lia.
 Qed.
 
-(** Every piece of the literal is of its object. *)
-Lemma lit_ps_id l v : (l, v) ∈ lit_ps -> piece_id l = 65552.
-Proof.
-  intros Hin. destruct (lit_ps_cases l v Hin) as [Hp|(i & _ & -> & _)]; [injection Hp as -> _|]; reflexivity.
-Qed.
-
-(** ## The world *)
-
-(** hi's world interpretation: puts's representation rep and
-    [stdio_ready] of the world w in m, and the world's writable roots
-    apart from the live objects owning pieces of h. *)
-Definition hi_wi (rep : mem -> stdio_world -> Prop) (m : mem) (w : stdio_world)
-    (h : gmap piece pval) : Prop :=
-  rep m w /\ stdio_ready m w /\ roots_apart (stdio_roots w) h m.
-
 (** No writable root of the world w reaches into the literal's
     object. *)
 Definition literal_apart (w : stdio_world) : Prop :=
@@ -95,10 +68,11 @@ Definition literal_apart (w : stdio_world) : Prop :=
 
 (** hi over any [[runtime]] R. *)
 Module HiLogic (R : Runtime).
-Module LG := Logic R.
+Module SL := StringLogic R.
+Module LG := SL.LG.
 Module L := LG.L.
 Module HB := Hi R.
-Import L LG.
+Import L LG SL.
 
 (** Where the literal is valid (Hi.v's [hi_literal_valid]: its region
     and its string), every piece of the literal agrees. *)
@@ -108,25 +82,8 @@ Proof.
   - injection Hp as -> ->. split; [exact Hreg | reflexivity].
   - cbn in Hs. split; [unfold registered; rewrite Hreg; discriminate|].
     intros reg E _. rewrite Hreg in E. injection E as <-. cbn. split; [lia|]. split; [lia|].
-    assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4 \/ i = 5) as [->|[->|[->|[->|[->| ->]]]]] by lia;
+    assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4 \/ i = 5) as [-> | [-> | [-> | [-> | [-> | ->]]]]] by lia;
       cbn; tauto.
-Qed.
-
-(** Where every piece of the literal agrees, the literal is valid. *)
-Lemma lit_agree_valid m : (forall l v, (l, v) ∈ lit_ps -> agree_piece m l v) -> HB.hi_literal_valid m.
-Proof.
-  intros Ha.
-  destruct (Ha (PLive 65552) (VLive lit_reg) ltac:(left)) as [Hreg _].
-  assert (Hb : forall i, 0 <= i < 6 -> m_bytes m (65552 + i) = nth (Z.to_nat i) lit_bytes 0).
-  { intros i Hi. assert (Hin : (PByte 65552 i, VByte (nth (Z.to_nat i) lit_bytes 0)) ∈ lit_ps).
-    { assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4 \/ i = 5) as [->|[->|[->|[->|[->| ->]]]]] by lia;
-        cbn; rewrite !elem_of_cons; tauto. }
-    destruct (Ha _ _ Hin) as [_ Hl]. exact (proj2 (proj2 (Hl _ Hreg eq_refl))). }
-  split; [exact Hreg|]. cbn.
-  pose proof (Hb 0 ltac:(lia)) as B0. pose proof (Hb 1 ltac:(lia)) as B1.
-  pose proof (Hb 2 ltac:(lia)) as B2. pose proof (Hb 3 ltac:(lia)) as B3.
-  pose proof (Hb 4 ltac:(lia)) as B4. pose proof (Hb 5 ltac:(lia)) as B5.
-  cbn in B0, B1, B2, B3, B4, B5. rewrite B0 B1 B2 B3 B4 B5. repeat split; lia.
 Qed.
 
 Section proof.
@@ -138,52 +95,8 @@ Variable requests : list word -> mem -> stdio_world -> Z -> Z -> Prop.
 Hypothesis stdio_stable : forall s m s' m' w,
   R.safepoint s m s' m' -> rep m w -> stdio_ready m w -> rep m' w /\ stdio_ready m' w.
 
-(** A safepoint keeps [hi_wi]: rep and readiness by [stdio_stable],
-    the roots apart since no region changes ([collector_live]). *)
-Local Instance hi_wi_stable : SafepointStable (hi_wi rep).
-Proof.
-  split. intros s m s' m' w h Hsp (Hr & Hw & Ha).
-  destruct (stdio_stable _ _ _ _ _ Hsp Hr Hw) as [Hr' Hw'].
-  split; [exact Hr'|]. split; [exact Hw'|].
-  intros sp a Hin Hs (l & v & reg & Hl & [E Hlive] & Hb). apply (Ha sp a Hin Hs).
-  rewrite (R.collector_live _ _ _ _ Hsp) in E. exists l, v, reg. split; [exact Hl|]. split; [|exact Hb].
-  split; [exact E | exact Hlive].
-Qed.
-
-(** A puts call returns one int. *)
-Lemma puts_returns_int r args xs s m w trace values s' m' w' :
-  M.E.invoke (puts_contract rep requests) r args xs s m w trace (CallReturn values) s' m' w' ->
-  exists n, values = [WInt n].
-Proof.
-  intros H. remember (CallReturn values) as en eqn:Een. destruct H as [? ? ? ? ? ? _ _ _ Hp | ? ? ? ? ? ? _ _ _ _ _];
-    [|discriminate Een].
-  destruct Hp as (p & bytes & acc & tail & n & _ & _ & _ & _ & _ & Hend & _).
-  subst. injection Hend as ->. eauto.
-Qed.
-
-(** After a puts call that returns, from a state the logic interprets
-    with the ghost heap h, the state is interpreted with h again:
-    puts's prefix keeps the runtime ready, the frame keeps h agreeing
-    and live objects apart, and the prefix gives rep and readiness of
-    the new world, whose roots it delegated from the old roots and its
-    born objects, so they stay apart from h. *)
-Lemma puts_return_frame r args xs s m w trace values s' m' w' h :
-  M.E.invoke (puts_contract rep requests) r args xs s m w trace (CallReturn values) s' m' w' ->
-  agrees m h -> live_disjoint m -> R.ready s m -> hi_wi rep m w h ->
-  agrees m' h /\ live_disjoint m' /\ R.ready s' m' /\ hi_wi rep m' w' h.
-Proof.
-  intros Hi Ha Hd Hr (Hrep & Hw & Hapart).
-  destruct (M.E.invoke_prefix _ _ _ _ _ _ _ _ _ _ _ _ _ Hi) as (born & Hp).
-  destruct (M.E.prefix_preserve _ _ _ _ _ _ _ _ _ _ _ Hp Hr) as [Hr' _].
-  destruct (prefix_agrees _ _ _ _ _ _ _ _ _ _ _ h Hp Hr Hd Ha Hapart ltac:(intros ? ? ? []))
-    as (Ha' & Hd' & Hb & Hapart').
-  destruct Hp as [_ (Hrep' & Hw' & Hdel & _)].
-  change (roots_apart (stdio_roots w) h m') in Hapart'.
-  split; [exact Ha'|]. split; [exact Hd'|]. split; [exact Hr'|]. split; [exact Hrep'|]. split; [exact Hw'|].
-  exact (delegates_apart _ _ _ _ h Hdel Hapart' Hb Hd').
-Qed.
-
-(** ## main *)
+(** [stdio_wi] survives safepoints, by [stdio_stable]. *)
+Local Instance hi_wi_stable : SafepointStable (stdio_wi rep) := stdio_wi_safepoint rep stdio_stable.
 
 (** main's frame at its entry. *)
 Definition hi_main : frame := mkFrame hi_function [] [] None (Enter (TAtom "start") None).
@@ -191,65 +104,22 @@ Definition hi_main : frame := mkFrame hi_function [] [] None (Enter (TAtom "star
 Section wp.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 
-(** The Iris instance of hi: puts's contract and [hi_wi]. *)
+(** The Iris instance of hi: puts's contract and [stdio_wi]. *)
 Local Instance hi_irisGS : irisGS_gen hlc (nanofil_lang (HB.hi_registry rep requests) HB.hi_genv) Σ :=
-  nanofil_irisGS (HB.hi_registry rep requests) (hi_wi rep) HB.hi_genv.
+  nanofil_irisGS (HB.hi_registry rep requests) (stdio_wi rep) HB.hi_genv.
 
 (** The expressions of hi's language. *)
 Local Notation hexpr := (language.expr (nanofil_lang (HB.hi_registry rep requests) HB.hi_genv)).
-
-(** Owning the literal's pieces in an interpreted state, the literal is
-    valid there. *)
-Lemma lit_owned σ : heap_interp (hi_wi rep) σ -∗ pts lit_ps -∗ ⌜HB.hi_literal_valid (ls_mem σ)⌝.
-Proof.
-  iIntros "(%h & Hh & %Hf) Hl". iDestruct (pts_lookup with "Hh Hl") as %Hl.
-  iPureIntro. apply lit_agree_valid. intros l v Hin. exact (proj1 Hf l v (Hl l v Hin)).
-Qed.
-
-(** puts's triple at main's call: owning the literal, the call is
-    admissible, and the rest of main runs with the literal still owned
-    and v1 bound to the int puts returns. *)
-Lemma puts_spec e (Φ : outcome -> iProp Σ) :
-  lookup (TAtom "v0") e = Some (WPtr hi_literal) ->
-  pts lit_ps -∗
-  ▷ (∀ n, pts lit_ps -∗
-        WP (ERun (mkFrame hi_function (put (TAtom "v1") (WInt (n mod 2 ^ 32)) e) [] None
-                   (Exec (TAtom "start") [] (JRet (Const 0)))) : hexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame hi_function e [] None
-             (Exec (TAtom "start") [Call (site_result hi_site) (Global (TAtom "puts")) (site_args hi_site)]
-                (JRet (Const 0)))) : hexpr) {{ Φ }}.
-Proof.
-  intros He. iIntros "Hl HK".
-  iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (puts_contract rep requests) [WPtr hi_literal] (pts lit_ps)
-            with "Hl [HK]").
-  - reflexivity.
-  - reflexivity.
-  - reflexivity.
-  - reflexivity.
-  - cbn. rewrite He. reflexivity.
-  - split; [right; eexists; reflexivity | eexists; reflexivity].
-  - iIntros (σ) "Hσ Hl". iDestruct (lit_owned with "Hσ Hl") as %Hv.
-    iDestruct "Hσ" as (h) "[_ %Hf]". destruct Hf as (_ & _ & _ & Hrep & Hw & _).
-    iPureIntro. split; [exact Hrep|]. split; [exact Hw|].
-    exists hi_literal, hello_bytes. split; [reflexivity | exact (HB.hi_literal_checked _ Hv)].
-  - iNext. iIntros (σ trace values s' m' w' Hinv) "(%h & Hh & %Hf) Hl".
-    destruct Hf as (Ha & Hd & Hr & Hwi).
-    destruct (puts_return_frame _ _ _ _ _ _ _ _ _ _ _ h Hinv Ha Hd Hr Hwi) as (Ha' & Hd' & Hr' & Hwi').
-    destruct (puts_returns_int _ _ _ _ _ _ _ _ _ _ _ Hinv) as (n & ->).
-    iModIntro. iExists _. iSplit; [iPureIntro; cbn; reflexivity|].
-    iSplitL "Hh"; [iExists h; iFrame "Hh"; iPureIntro; auto|].
-    iApply ("HK" with "Hl").
-Qed.
 
 (** main, owning the literal, is safe and returns 0: it enters its
     block, copies the literal's pointer, calls puts and returns 0,
     whatever puts returned. *)
 Lemma main_spec :
-  pts lit_ps -∗ WP (ERun hi_main : hexpr) {{ o, ⌜o = Ret (WInt 0)⌝ }}.
+  string hi_literal 65552 lit_reg hello_bytes -∗ WP (ERun hi_main : hexpr) {{ o, ⌜o = Ret (WInt 0)⌝ }}.
 Proof.
-  iIntros "Hl". iApply wp_enter; [reflexivity | reflexivity |]. iNext. cbn [b_insts b_jump].
+  iIntros "Hs". iApply wp_enter; [reflexivity | reflexivity |]. iNext. cbn [b_insts b_jump].
   iApply wp_let; [reflexivity | reflexivity | reflexivity | intros m; reflexivity |]. iNext.
-  iApply (puts_spec with "Hl"); [reflexivity|]. iNext. iIntros (n) "_".
+  iApply (wp_puts with "Hs"); [reflexivity | reflexivity | reflexivity | reflexivity |]. iNext. iIntros (n) "_".
   iApply wp_ret; [reflexivity | reflexivity |]. iNext. done.
 Qed.
 
@@ -265,16 +135,17 @@ Theorem hi_logic_safe Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pva
   labelled_safe (HB.hi_registry rep requests) HB.hi_genv hi_main m s w fuel (fun o => o = Ret (WInt 0)).
 Proof.
   intros Hr Hd (Hrep & Hw & Hv) Hapart.
-  apply (heap_labelled_safe Σ (HB.hi_registry rep requests) (hi_wi rep) HB.hi_genv hi_main m s w lit_heap).
+  apply (heap_labelled_safe Σ (HB.hi_registry rep requests) (stdio_wi rep) HB.hi_genv hi_main m s w
+           (list_to_map lit_ps)).
   - exact Hr.
   - exact Hd.
   - intros l v Hl. exact (lit_valid_agrees m Hv l v (elem_of_list_to_map_2 _ _ _ Hl)).
   - split; [exact Hrep|]. split; [exact Hw|].
     intros sp a Hin Hs (l & v & reg & Hl & [E _] & Hb). apply elem_of_list_to_map_2 in Hl.
-    rewrite (lit_ps_id l v Hl) in E, Hb. rewrite (proj1 Hv) in E. injection E as <-.
+    rewrite (string_ps_id _ _ _ _ l v Hl) in E, Hb. rewrite (proj1 Hv) in E. injection E as <-.
     exact (Hapart sp a Hin Hs Hb).
-  - intros HinvG HheapG. rewrite big_sepM_list_to_map; [|exact lit_ps_nodup].
-    iIntros "Hl". iApply (main_spec with "Hl").
+  - intros HinvG HheapG. rewrite big_sepM_list_to_map; [|exact (string_ps_nodup _ _ _ _)].
+    iIntros "Hl". iApply main_spec. iSplit; [iPureIntro; exact lit_ok | iExact "Hl"].
 Qed.
 
 End proof.

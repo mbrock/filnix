@@ -332,7 +332,7 @@ proves the same theorem through the program logic.
 ## Progress
 
 mbrock chose Iris (November 2026), in the Iris, RustBelt and Cerise
-tradition. Steps 1 to 4 above are done, and step 5 has begun:
+tradition. Steps 1 to 4 above are done, and step 5 is under way:
 
 | Step | Where | Result |
 | --- | --- | --- |
@@ -344,15 +344,17 @@ tradition. Steps 1 to 4 above are done, and step 5 has begun:
 | 4, the main build | [_RocqProject](../rocq/_RocqProject), nix/rocq.nix | Pieces.v, Heap.v, Language.v and Logic.v are part of the model, built and parse-checked by the quick gate with stdpp and Iris from the pinned nixpkgs; they add about 13 s of compile time off the critical path. The list-sum examples stay in spikes/ |
 | 5, a program in the main build | [BufferLogic.v](../rocq/theories/BufferLogic.v) | `buffer_never_panics` again, through the logic: the allocation's `obj` splits into `live` and four cells, each loop is a Löb induction carrying them, each check lends `live` back for a step and each access takes the one cell it reaches (`cells_at`). Without `live` in the sum loop, or with three cells, the proof fails. Needs no new rule: `buffer` has no named locals and checks only class `a`. 14 s, after `arith` learned to treat a remainder by a constant as a bounded variable before reaching for division equations (`mod_atoms`, `arith_fast` for side goals that may be false): BufferLogic.v 24 s to 18 s to 14 s, Cycle.v 6.3 s to 3.9 s, Buffer.v 10.4 s to 6.6 s, ListSumLogic.v 17.5 s to 13.1 s, Prefix.v unchanged (its time is kernel checking and stepping) |
 | 6, contracts | [Language.v](../rocq/theories/Language.v), [Logic.v](../rocq/theories/Logic.v), [ContractFrame.v](../rocq/theories/ContractFrame.v) | the language takes a contract registry and a world: an admissible external call returns through Campaign 4's `invoke`, returns badly (`EBad`, never safe) or stalls (blocking, exit, resources); `adequate_labelled` and `heap_labelled_safe` prove the labelled machine's safety (no `failure_ending`, a return satisfies the postcondition) from a WP; `wp_external` is the call rule; the state interpretation gains a world interpretation `wi`, kept at safepoints (`SafepointStable`). The frame for a call: if a contract's writable roots share no address with the program's live owned objects and it releases none of them, the ghost heap still agrees after the whole effects path (`prefix_agrees`), and roots the call delegates stay apart (`delegates_apart`). Separation is by address, not identity, a premise of the program's theorem rather than of `puts_pre` (Campaign 4 agreed: formal.md promises no blanket input immutability) |
-| 6, hi.c | [HiLogic.v](../rocq/theories/HiLogic.v) | `hi_logic_safe` for every runtime and `interp_hi_logic_safe` from Hi.v's fixture, closed. The program owns its literal's pieces; `hi_wi` is puts's rep and `stdio_ready` and the world's roots apart from those pieces; puts's triple is derived from `puts_contract` (precondition from the owned literal, after a return the frame and puts's prefix re-establish the state); main is six tactic lines. No new rule was needed: main has no named locals and no check |
+| 6, hi.c | [HiLogic.v](../rocq/theories/HiLogic.v) | `hi_logic_safe` for every runtime and `interp_hi_logic_safe` from Hi.v's fixture, closed. The program owns its literal as a `string`; the world interpretation is `stdio_wi` (puts's rep, `stdio_ready`, the world's roots apart from the program's objects); puts is `wp_puts` from StringLogic.v; main is six tactic lines. No new rule was needed: main has no named locals and no check |
+| 7, strings | [StringLogic.v](../rocq/theories/StringLogic.v) | `string p b reg bytes`: the life of the object p's capability names, read-write or read-only, and its bytes through the NUL; owning it gives Campaign 4's `terminated_length` and `c_string` (`string_facts`), lends a suffix (`string_suffix`) or one byte (`string_byte`). Triples derived from the contracts, each stated at any call site: `wp_strlen` and `wp_strchr` (pure calls: memory and world unchanged, `pure_return`) over any registry and world, `wp_puts` under `stdio_wi` (the frame keeps the string through puts's writes). New rules: `wp_check_read`, a read check through an `Obj` or `Ro` capability, and `wp_raw_load_byte`, a one-byte load |
+| 7, a read after a call | [ScanLogic.v](../rocq/theories/ScanLogic.v), [scan.c](../rocq/programs/scan.c) | `scan(s)` takes `strlen(s)`, finds the first `l` with `strchr`, prints the rest with `puts`, then reads the byte after the `l` through strchr's pointer: three calls and a read after the last one. `scan_logic_safe` for every runtime and `interp_scan_logic_safe` on Hi.v's fixture ("hello"), closed. The proof (`scan_spec`) is 43 lines: one rule per instruction, the three triples, and the facts that make the read safe: strchr's hit is before the NUL because `l` is not 0, so the byte after it is in the string the frame kept through puts. Still no named locals, so `wp_ret` needed nothing new |
 
 **hi.c, the logic against Hi.v's hand proof.** The same body, the same
 contract, the same fixture:
 
 | | Hi.v (hand) | HiLogic.v (Iris) |
 | --- | --- | --- |
-| size, non-blank lines | about 270 for the safety part: the literal's validity across safepoints, a step lemma per point, the four-phase invariant `hi_body_state` with a case per kind of labelled step | 312: the literal as pieces and back (75), the world and puts's frame (44), puts's triple and main (65), adequacy (29), the interpreter instance (62) |
-| compile time | 1.2 s, the whole file | 5.8 s, of which 1.1 s loads Logic and Hi |
+| size, non-blank lines | about 270 for the safety part: the literal's validity across safepoints, a step lemma per point, the four-phase invariant `hi_body_state` with a case per kind of labelled step | 312 when it stood alone: the literal as pieces and back (75), the world and puts's frame (44), puts's triple and main (65), adequacy (29), the interpreter instance (62); 196 once puts's triple and the frame moved to StringLogic.v |
+| compile time | 1.2 s, the whole file | 5.8 s alone, 4.2 s on StringLogic.v; 1.1 s of either loads Logic and Hi |
 | premises | `hi_before_call`, `stdio_stable` | those, and the runtime ready, live objects apart, the world's roots apart from the literal (`literal_apart`) |
 | conclusion | every stop is one of `hi_ending`'s three, by name | no stop is a `failure_ending`, and a return is 0 |
 | reusable | nothing outside hi | `wp_external`, the frame, `heap_labelled_safe`; the triple is stated at hi's site and literal |
@@ -370,6 +372,29 @@ memory after a call. The test of whether it pays is the next program
 with a call it reads after: gc.ir's `sum` with a `c_gc` contract, or
 Hello's first string call, with puts's triple generalised from hi's
 literal to a `string p` assertion.
+
+**scan.c, the read after a call.** The next program does read memory
+after a call, so here the hand method would need the frame too. There
+is no hand proof of scan; the hand column is an estimate from Hi.v's
+rate, which is the method's only proof with calls:
+
+| | Hi.v's method (estimate) | ScanLogic.v (Iris) |
+| --- | --- | --- |
+| program points | 15 (6 in `start`, 2 in the miss, 7 in the hit), 3 calls, a branch | the same |
+| program-specific proof | Hi.v's body section is 187 non-blank lines for 4 points and 1 call, about 45 a point: 600 to 700 lines for scan, plus a memory-level frame for puts (the string's region and bytes kept through its writes, from ContractFrame.v's segment lemmas) and the string's validity across safepoints | `scan_spec` 43 lines, `scan_logic_safe` 21; the file is 215 non-blank lines, of which the module, blocks and registry are about 90 and the interpreter instance about 25 |
+| shared, written once | none: each program's invariant restates what each call needs | StringLogic.v, 438 lines: strings as pieces and their reading as Campaign 4's strings (183 pure, 44 in Iris), the stdio world and puts's frame (58), the three triples and the pure-call lemma (153: `wp_strlen` 28, `wp_strchr` 47, `wp_puts` 28); Logic.v gained `wp_check_read` and `wp_raw_load_byte` |
+| compile time | Hi.v's 1.2 s for 4 points; scan's would be several times that | ScanLogic.v 5.6 s, StringLogic.v 4.8 s |
+| conclusion | every stop named | no stop is a `failure_ending`, a return is an int |
+
+This is where the logic starts to pay: scan's own proof is a fifth of
+the estimate for the hand method, and the triples behind it are already
+used twice (hi.c now takes `wp_puts` from StringLogic.v and shrank from
+312 to 196 lines). The price is a fixed one, StringLogic.v and the
+contract machinery in Language.v and Logic.v, and compile time, which
+stays above the hand method's. The case for the hand method is now only
+programs with no read after a call. Not yet tested: a loop around a
+call, and a callee's specification used by a caller (`wp_call_bind`
+with a triple), both of which Hello needs.
 
 The premise `keeps_live` is gone: only a signal handler the program installed, or a thread it
 started, frees a live object, so Runtime.v's safepoint axiom is now the

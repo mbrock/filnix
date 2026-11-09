@@ -147,6 +147,10 @@ Definition live (b : Z) (reg : region) : iProp Σ := pts [(PLive b, VLive reg)].
     which hold the 64-bit integer v, little-endian. *)
 Definition icell (b o v : Z) : iProp Σ := pts (cell b o v).
 
+(** [ibyte] b o x: owning the byte at offset o of the object b, which
+    holds x. *)
+Definition ibyte (b o x : Z) : iProp Σ := pts [(PByte b o, VByte x)].
+
 (** [pcell] b o x: owning the pointer x stored at offset o of the
     object b: the 8 bytes of its address and the [[aux]] slot holding
     its capability. *)
@@ -410,6 +414,25 @@ Proof.
   apply op_check. rewrite Hp. exact (access_obj _ _ _ _ _ _ _ E H1 H2 H3).
 Qed.
 
+(** A [[check]] for reading of the pointer p, through a read-write or
+    read-only capability for the live object b with the region reg,
+    whose checked bytes lie in its bounds and are aligned: d is bound
+    to p, proven. *)
+Lemma wp_check_read f e ls l d lo hi al args rest j classes p b reg Φ :
+  op_arg_classes (Check lo hi Read al) A = Some classes ->
+  map2_option (value_x ge e) classes args = Some [WPtr p] ->
+  ptr_cap p = Obj b \/ ptr_cap p = Ro b -> b <= raw_address (ptr_addr p) lo ->
+  raw_address (ptr_addr p) lo + (hi - lo) <= r_end reg -> raw_address (ptr_addr p) lo mod al = 0 ->
+  live b reg -∗
+  ▷ (live b reg -∗ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d A (Check lo hi Read al) args :: rest) j)) : lexpr) {{ Φ }}.
+Proof.
+  intros Hc Hx Hp H1 H2 H3. apply (wp_read _ _ _ []).
+  intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E _] _].
+  apply rule_let with (classes := classes) (xs := [WPtr p]); [reflexivity | exact Hc | exact Hx |].
+  apply op_check. exact (access_read _ _ _ _ _ _ _ Hp E H1 H2 H3).
+Qed.
+
 (** A [[half_check]] of the pointer p, against the proof p1 of the same
     capability, at the live object b with the region reg, ending at or
     below 2^63, whose checked bytes lie in its bounds and are aligned:
@@ -454,6 +477,33 @@ Proof.
     + rewrite Hp Ha. apply (access_obj _ _ reg); [exact (proj1 Hlv) | lia | lia | apply Z.mod_1_r].
   - rewrite pts_app. iFrame.
   - iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
+Qed.
+
+(** A raw load of the one-byte narrow type n at offset off from the
+    proven pointer p, through a read-write or read-only capability for
+    the live object b, at offset o, where the byte is x: d is bound to
+    x extended to the class k, y. *)
+Lemma wp_raw_load_byte f e ls l d k n off args rest j classes p b reg o x y Φ :
+  op_arg_classes (RawLoad (LdNarrow n) off) k = Some classes ->
+  map2_option (value_x ge e) classes args = Some [WPtr p] ->
+  fst (narrow_type n) = 1 -> extended n k x = Some y ->
+  ptr_cap p = Obj b \/ ptr_cap p = Ro b -> raw_address (ptr_addr p) off = b + o ->
+  live b reg -∗ ibyte b o x -∗
+  ▷ (live b reg -∗ ibyte b o x -∗
+     WP (ERun (mkFrame f (put d y e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawLoad (LdNarrow n) off) args :: rest) j)) : lexpr)
+    {{ Φ }}.
+Proof.
+  intros Hc Hx Hn Hy Hp Ha. iIntros "Hl Hb HK".
+  iApply (wp_read ([(PLive b, VLive reg)] ++ [(PByte b o, VByte x)]) _ _ [] with "[Hl Hb] [HK]").
+  - intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd app] in Hf.
+    destruct Hf as [[E Lv] [[_ Hin] _]]. destruct (Hin reg E Lv) as (Ho & He & Hv).
+    apply rule_let with (classes := classes) (xs := [WPtr p]); [reflexivity | exact Hc | exact Hx |].
+    rewrite (op_raw_load_byte m k n p off Hn).
+    + rewrite Ha Hv Hy. reflexivity.
+    + rewrite Ha. apply (access_read _ b reg); [exact Hp | exact E | lia | lia | apply Z.mod_1_r].
+  - rewrite pts_app. iFrame.
+  - iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hb]". iApply ("HK" with "Hl Hb").
 Qed.
 
 (** A step to the next configuration, with the callers cs' below its

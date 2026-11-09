@@ -302,6 +302,22 @@ Proof.
   unfold aligned_res. rewrite H3. reflexivity.
 Qed.
 
+(** A read through a read-write or read-only capability for the object
+    b with the region reg, of size bytes at a within its bounds and
+    aligned, passes. *)
+Lemma access_read : forall m b reg c a size al,
+  c = Obj b \/ c = Ro b ->
+  object_region b (m_regions m) = Some reg ->
+  b <= a -> a + size <= r_end reg -> a mod al = 0 ->
+  access_res m a c size Read al = Some ok.
+Proof.
+  intros m b reg c a size al [->| ->] Hr H1 H2 H3; [exact (access_obj _ _ _ _ _ _ _ Hr H1 H2 H3)|].
+  unfold access_res, cap_access_res. rewrite Hr.
+  replace ((b <=? a) && (a + size <=? r_end reg)) with true
+    by (symmetry; apply andb_true_iff; split; [apply Z.leb_le | apply Z.leb_le]; lia).
+  cbn [readonly_access_res]. unfold aligned_res. rewrite H3. reflexivity.
+Qed.
+
 (** A [[check]] of the pointer p whose access passes: p, proven. *)
 Lemma op_check : forall m p lo hi r al,
   access_res m (raw_address (ptr_addr p) lo) (ptr_cap p) (hi - lo) r al = Some ok ->
@@ -346,6 +362,24 @@ Proof.
   assert (E : op_res (RawLoad LdL off) k [WPtr p] m = op_res_int (RawLoad LdL off) k [WPtr p] m)
     by (destruct k; reflexivity).
   rewrite E. cbn - [access_res raw_address load_bytes]. unfold int_load_res. cbn - [access_res raw_address load_bytes]. rewrite H. reflexivity.
+Qed.
+
+(** A raw load of the one-byte narrow type n at offset off from the
+    proven pointer p, whose read access passes: the byte there, extended
+    to the class k. *)
+Lemma op_raw_load_byte : forall m k n p off,
+  fst (narrow_type n) = 1 ->
+  access_res m (raw_address (ptr_addr p) off) (ptr_cap p) 1 Read 1 = Some ok ->
+  op_res (RawLoad (LdNarrow n) off) k [WPtr p] m =
+  option_map (fun y => OpRes (RVal y) m) (extended n k (m_bytes m (raw_address (ptr_addr p) off))).
+Proof.
+  intros m k n p off Hn H.
+  assert (E : op_res (RawLoad (LdNarrow n) off) k [WPtr p] m =
+              op_res_int (RawLoad (LdNarrow n) off) k [WPtr p] m) by (destruct k; reflexivity).
+  assert (Hl : load_bytes m (raw_address (ptr_addr p) off) 1 = m_bytes m (raw_address (ptr_addr p) off)).
+  { unfold load_bytes. change (Z.to_nat 1) with 1%nat. cbn - [raw_address]. now rewrite Z.add_0_r. }
+  rewrite E. cbn - [access_res raw_address load_bytes narrow_type extended]. unfold int_load_res.
+  rewrite Hn, H, Hl. destruct (extended n k _); reflexivity.
 Qed.
 
 (** A raw pointer load at offset off from the proven pointer p, whose
