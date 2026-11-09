@@ -375,14 +375,18 @@ document.addEventListener("mouseover", (event) => {
   // can give a nested term less room than the enclosing clause.
   function rightEdge(el, clause) {
     const cc = getComputedStyle(clause), cr = clause.getBoundingClientRect();
-    let right = cr.left + clause.clientLeft + clause.clientWidth - px(cc.paddingRight);
+    let right = cr.left + clause.clientLeft + clause.clientWidth - px(cc.paddingRight), limit = Infinity;
     for (let a = el.parentElement; a && a !== clause && clause.contains(a); a = a.parentElement) {
       const as = getComputedStyle(a);
       right -= px(as.marginRight) + px(as.borderRightWidth) + px(as.paddingRight);
-      if (a.clientWidth && as.display !== "inline" && as.display !== "contents")
-        right = Math.min(right, a.getBoundingClientRect().left + a.clientLeft + a.clientWidth - px(as.paddingRight));
+      // An inline grid or block (a rule) is as wide as what it holds, and
+      // so is everything in it: their widths are the last plan's, not a
+      // limit on the next, or each plan would narrow the one after it.
+      if (as.display.startsWith("inline-")) limit = Infinity;
+      else if (a.clientWidth && as.display !== "inline" && as.display !== "contents")
+        limit = Math.min(limit, a.getBoundingClientRect().left + a.clientLeft + a.clientWidth - px(as.paddingRight));
     }
-    return right;
+    return Math.min(right, limit);
   }
 
   // A term: where it starts, how wide it may run, its document.
