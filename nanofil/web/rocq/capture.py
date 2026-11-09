@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Capture real Rocq states for dterm; no browser prover or inferred goals.
 
-python3 capture.py PROJECT OUTPUT.json
+python3 capture.py PROJECT OUTPUT.json [--replay PREFIX]
 Needs coqc, coqidetop, swipl and the project's Stdlib on ROCQPATH.
 Compiles dependencies and replays commands in an isolated writable copy,
 as a dependency graph over the available cores: a file's replay starts as
@@ -9,6 +9,8 @@ soon as its imports are compiled, and only imported files are compiled at
 all, since a replay already executes and checks every command of its file.
 The bundled RocqIDE XML protocol is pinned by the site's Rocq package.
 Run under tests/watch.py for deadlines and 15-second progress reporting.
+--replay replays only the files under PREFIX (the logic spikes), and
+compiles the rest of the project only as they import it.
 """
 import argparse
 import concurrent.futures
@@ -163,7 +165,7 @@ def workers():
     return cores if cores > 0 else len(os.sched_getaffinity(0))
 
 
-def capture(project, output):
+def capture(project, output, replay=""):
     project = project.resolve()
     project_file = next(p for p in [project / "_RocqProject", project / "_CoqProject"] if p.exists())
     flags, files = [], []
@@ -196,7 +198,17 @@ def capture(project, output):
         # start once the file's imports are compiled. The longest chain of
         # compiles still waiting on a job goes first; costs are unknown,
         # so each job counts one.
-        jobs = [("compile", f) for f in files if users[f]] + [("replay", f) for f in files]
+        replayed = [f for f in files if f.startswith(replay)]
+        needed = set()
+
+        def need(f):
+            for g in deps[f] - needed:
+                needed.add(g)
+                need(g)
+        for f in replayed:
+            need(f)
+        users = {f: users[f] & (needed | set(replayed)) for f in files}
+        jobs = [("compile", f) for f in files if f in needed] + [("replay", f) for f in replayed]
         depth = {}
 
         def chain(job):
@@ -210,7 +222,7 @@ def capture(project, output):
         order = sorted(jobs, key=lambda job: (-chain(job), files.index(job[1]), job[0]))
         compiled, waiting, running = set(), list(order), {}
         n = workers()
-        stamp(f"proof capture: {len(jobs) - len(files)} compiles and {len(files)} replays on {n} workers")
+        stamp(f"proof capture: {len(jobs) - len(replayed)} compiles and {len(replayed)} replays on {n} workers")
         with concurrent.futures.ThreadPoolExecutor(n) as pool:
             while waiting or running:
                 for job in [j for j in waiting if deps[j[1]] <= compiled][:n - len(running)]:
@@ -231,7 +243,7 @@ def capture(project, output):
                         compiled.add(f)
                     else:
                         data["files"][result[0]] = result[1]
-        data["files"] = {f: data["files"][f] for f in files}
+        data["files"] = {f: data["files"][f] for f in replayed}
     output.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n")
 
 
@@ -239,5 +251,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("project", type=Path)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--replay", default="", metavar="PREFIX")
     args = parser.parse_args()
-    capture(args.project, args.output)
+    capture(args.project, args.output, args.replay)

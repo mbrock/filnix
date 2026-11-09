@@ -300,6 +300,14 @@ html:has(.rq-dialog[open]) { overflow: hidden; }
 .rq-conclusion { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.4rem; align-items: baseline; border-left: 2px solid transparent; padding: 0.2rem 0.25rem; }
 .rq-context + .rq-conclusion { border-top: 1px solid var(--rule); margin-top: 0.3rem; }
 .rq-turnstile { color: var(--muted); }
+/* The proof mode's contexts as Iris prints them: persistent hypotheses
+   over a rule marked □, spatial ones over a rule marked ∗, the goal. */
+/* Rocq's own context over the proof mode's, as Iris's ==== line. */
+.rq-context:not(.rq-ipm-context) + :is(.rq-ipm-context, .rq-ipm-rule) { margin-top: 0.3rem; padding-top: 0.25rem; border-top: 3px double var(--rule); }
+.rq-ipm-rule { display: flex; align-items: center; gap: 0.3rem; color: var(--muted); font-size: 0.8rem; line-height: 1; margin: 0.15rem 0; }
+.rq-ipm-rule::before { content: ""; flex: 1; border-top: 1px solid var(--rule); }
+.rq-conclusion.rq-ipm-goal { grid-template-columns: minmax(0, 1fr); }
+.rq-conclusion[data-change].rq-ipm-goal { border-left-color: #5c9870; }
 .rq-captured [data-change] { background: #edf5ef; border-left-color: #5c9870; }
 .rq-hyp[data-change] .rq-hyp-names::before { content: "↻ "; color: #38664d; font-size: 0.7rem; }
 .rq-hyp[data-change=added] .rq-hyp-names::before { content: "+ "; }

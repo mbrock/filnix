@@ -28,9 +28,10 @@
     guide, is also drawn as OUT/DOC.html (dterm_guide.pl), and the run
     fails if a document has a broken reference. --concepts=DIR draws each
     concept node DIR/ID.md (docs/concepts) as OUT/concept-ID.html with
-    what links to it, and OUT/concepts.html; --rocq=DIR indexes the
-    Rocq model's .v files in DIR, for [name] in documents and concepts
-    and for the concepts' links from Rocq comments.
+    what links to it, and OUT/concepts.html; --rocq=DIR (repeated for
+    the theories and the spikes) indexes the .v files in DIR, for [name]
+    in documents and concepts and for the concepts' links from Rocq
+    comments.
 
     swipl dterm.pl -- --check DOC.md... SRC-DIR... [--concepts=DIR]
     [--rocq=DIR] writes nothing: it lists the broken references of the
@@ -79,7 +80,7 @@ main :-
     current_prolog_flag(argv, Argv0),
     nb_setval(guide_concept, none),
     take_options(Argv0, Argv),
-    ( nb_current(rocq_dir, RD) -> index_rocq(RD) ; true ),
+    ( nb_current(rocq_dirs, RDs) -> maplist(index_rocq, RDs) ; true ),
     (   Argv = ['--check'|Args] -> Out = none, partition(is_doc, Args, Docs, Dirs)
     ;   Argv = [Out|Args],
         partition([A]>>atom_concat('--doc=', _, A), Args, DocArgs, Dirs),
@@ -106,13 +107,15 @@ main :-
 is_doc(A) :- file_name_extension(_, md, A).
 
 %  take_options(+Argv0, -Argv): --concepts=DIR reads the concept nodes of
-%  DIR (docs/concepts); --rocq=DIR indexes the Rocq model's .v files in
-%  DIR, for [name] links and the concepts' links from Rocq comments.
+%  DIR (docs/concepts); --rocq=DIR, repeated for each directory, indexes
+%  the .v files in DIR, for [name] links and the concepts' links from
+%  Rocq comments.
 take_options([], []).
 take_options([A|As], Bs) :- atom_concat('--concepts=', D, A), !,
     concepts_load(D), nb_setval(concept_dir, D), take_options(As, Bs).
 take_options([A|As], Bs) :- atom_concat('--rocq=', D, A), !,
-    nb_setval(rocq_dir, D), take_options(As, Bs).
+    ( nb_current(rocq_dirs, Ds0) -> true ; Ds0 = [] ), append(Ds0, [D], Ds),
+    nb_setval(rocq_dirs, Ds), take_options(As, Bs).
 take_options([A|As], [A|Bs]) :- take_options(As, Bs).
 
 %  guide_report(+Docs): fails, listing them, if a document has broken

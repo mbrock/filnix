@@ -342,16 +342,22 @@ Goals, grouped hypotheses and local definitions use the same Gallina
 grammar and term printer as source code. Unsupported notation is shown
 verbatim with an explanatory tooltip, never silently dropped or guessed.
 The existing Adaptive/Stacked/Side-by-side selector is unchanged.
+A proof-mode goal is drawn as Iris prints it: under Rocq's context and a
+double rule, the persistent hypotheses (named in italics) over a rule
+marked □, the spatial ones over a rule marked ∗, then the goal.
 
 `capture.nix` caches execution independently of CSS/JS. The site requires
 its output and embeds the rendered states in HTML; the reader needs
-neither a server nor a running prover. To preview with local tools:
+neither a server nor a running prover. With `spikes = true` it replays only
+the logic spikes, which need std++ and Iris, against the theories they
+import (`capture.py --replay spikes/`); `--states` is given once per
+capture. To preview with local tools:
 
 ```sh
 python3 nanofil/tests/watch.py --label 'Proof capture' -- \
   python3 nanofil/web/rocq/capture.py nanofil/rocq /tmp/proof-states.json
 swipl nanofil/web/rocq/dterm_rocq.pl OUT . --prolog=nanofil/src \
-  --states=/tmp/proof-states.json $(find nanofil/rocq -name '*.v')
+  --states=/tmp/proof-states.json nanofil/rocq/theories/*.v
 python3 nanofil/web/rocq/tests/capture.py
 ```
 

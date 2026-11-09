@@ -19,6 +19,11 @@ let
   swipl = import ../../nanofil/web/play/swipl.nix { inherit pkgs; };
   play = import ../../nanofil/web/play { inherit pkgs filcc swipl; };
   proofStates = import ../../nanofil/web/rocq/capture.nix { inherit pkgs; };
+  # The logic spikes' states, with Iris; only the site depends on them.
+  spikeStates = import ../../nanofil/web/rocq/capture.nix {
+    inherit pkgs;
+    spikes = true;
+  };
   # The Nix files drawn as pages (dterm-nix): every Nix file of the
   # repository, but for the trees that are not filnix's own Nix: build
   # results (result*) and experiments/, scratch projects with their own
@@ -81,19 +86,17 @@ let
         swipl ${src}/nanofil/web/dterm.pl $out ${src}/nanofil/src \
           --doc=${src}/nanofil/docs/guide.md --doc=${src}/nanofil/docs/formal.md \
           --doc=${src}/nanofil/docs/filc.md --doc=${src}/nanofil/docs/iris.md \
-          --concepts=${src}/nanofil/docs/concepts --rocq=${src}/nanofil/rocq/theories </dev/null
+          --concepts=${src}/nanofil/docs/concepts --rocq=${src}/nanofil/rocq/theories \
+          --rocq=${src}/nanofil/rocq/spikes </dev/null
       '';
   rocqPages =
     pkgs.runCommand "filnix-rocq-pages" { nativeBuildInputs = [ swipl ]; }
       ''
         mkdir -p $out
         cp ${src}/nanofil/web/rocq/dterm-rocq.css ${src}/nanofil/web/rocq/dterm-rocq.js $out/
-        # Not the logic spikes (nanofil/rocq/spikes): they need Iris, so
-        # capture.nix records no proof states for them, and a page under
-        # nanofil/rocq/ must have its states.
-        mapfile -t rocq < <(cd ${src} && find nanofil -name '*.v' -not -path 'nanofil/rocq/spikes/*' | sort)
+        mapfile -t rocq < <(cd ${src} && find nanofil -name '*.v' | sort)
         swipl ${src}/nanofil/web/rocq/dterm_rocq.pl $out ${src} \
-          --states=${proofStates} --prolog=${src}/nanofil/src \
+          --states=${proofStates} --states=${spikeStates} --prolog=${src}/nanofil/src \
           --concepts=${src}/nanofil/docs/concepts "''${rocq[@]}" </dev/null
       '';
 in
@@ -107,6 +110,7 @@ pkgs.runCommand "filnix-site"
       inherit
         play
         proofStates
+        spikeStates
         prologPages
         rocqPages
         ;

@@ -923,8 +923,49 @@ goal_contents(G) -->
     { maplist(hyp_parts, G.hypotheses, Hyps), findall(N, ( member(hyp(Ns, _, _, _), Hyps), member(N, Ns) ), Env) },
     ( { Hyps == [] } -> []
     ; el(div, "rq-context", seq(Hyps, captured_hyp(Env))) ),
-    el(div, "rq-conclusion", ['data-raw'=G.conclusion],
-       ( el(span, "rq-turnstile", ['aria-label'="Goal"], "⊢"), el(div, goal, captured_term(G.conclusion, Env)) )), html_flush.
+    (   { ipm_goal(G.conclusion, Zones, Goal) }
+    ->  seq(Zones, ipm_zone(Env)),
+        el(div, "rq-conclusion rq-ipm-goal", ['data-raw'=Goal], el(div, goal, captured_term(Goal, Env)))
+    ;   el(div, "rq-conclusion", ['data-raw'=G.conclusion],
+           ( el(span, "rq-turnstile", ['aria-label'="Goal"], "⊢"), el(div, goal, captured_term(G.conclusion, Env)) ))
+    ), html_flush.
+
+%  ipm_goal(+Text, -Zones, -Goal): the proof mode's goal as Iris prints
+%  it: the persistent hypotheses over a ---□ rule, the spatial ones over
+%  a ---∗ rule, then the goal; zone(Mark, Hyps) for each rule printed.
+ipm_goal(Text, Zones, Goal) :-
+    split_string(Text, "\n", "", Lines),
+    ipm_lines(Lines, [], Zones, GoalLines), Zones \== [],
+    atomic_list_concat(GoalLines, '\n', A), atom_string(A, Goal).
+
+ipm_lines([L|Ls], Acc, [zone(Mark, Hyps)|Zs], G) :-
+    string_concat("----------", _, L), sub_string(L, _, 1, 0, Mark), memberchk(Mark, ["□", "∗"]), !,
+    ipm_hyps(Acc, Hyps), ipm_lines(Ls, [], Zs, G).
+ipm_lines(Ls, [], [], Ls) :- \+ ( member(L, Ls), string_concat("----------", _, L) ), !.
+ipm_lines([L|Ls], Acc, Zs, G) :- append(Acc, [L], Acc1), ipm_lines(Ls, Acc1, Zs, G).
+
+%  "H" : P, continued on indented lines.
+ipm_hyps([], []).
+ipm_hyps([L|Ls], [ipm_hyp(Name, Ty, Raw)|Hs]) :-
+    sub_string(L, 0, 1, _, "\""), sub_string(L, B, _, A, "\" : "), !,
+    N is B - 1, sub_string(L, 1, N, _, Name), sub_string(L, _, A, 0, Ty0),
+    indented(Ls, Cont, Rest),
+    atomic_list_concat([Ty0|Cont], '\n', TyA), atom_string(TyA, Ty),
+    atomic_list_concat([L|Cont], '\n', RawA), atom_string(RawA, Raw),
+    ipm_hyps(Rest, Hs).
+
+indented([L|Ls], [L|Cs], Rest) :- sub_string(L, 0, 1, _, " "), !, indented(Ls, Cs, Rest).
+indented(Ls, [], Ls).
+
+ipm_zone(Env, zone(Mark, Hyps)) -->
+    ( { Hyps == [] } -> [] ; el(div, "rq-context rq-ipm-context", seq(Hyps, ipm_hyp(Env))) ),
+    el(div, "rq-ipm-rule", ['aria-label'=Mark], el(span, "rq-ipm-mark", esc(Mark))).
+
+ipm_hyp(Env, ipm_hyp(Name, Ty, Raw)) -->
+    { atom_concat('"', Name, Key), ( short_hyp(Ty) -> C = "rq-hyp" ; C = "rq-hyp wide" ) },
+    el(div, C, ['data-hyp'=Key, 'data-raw'=Raw],
+       ( el(div, "rq-hyp-names", ( ipm_pattern(Name), " :" )),
+         el(div, "rq-hyp-type goal", captured_term(Ty, Env)) )), html_flush.
 
 % Parse the context with the same Gallina grammar, including newlines
 % after colons and types containing colons, strings or record fields.

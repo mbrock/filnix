@@ -40,10 +40,11 @@
 
 main :-
     current_prolog_flag(argv, [Out, Root|Args0]),
-    (   select(C, Args0, Args1), atom_concat('--states=', StateFile, C)
-    ->  setup_call_cleanup(open(StateFile, read, SS), json_read_dict(SS, States), close(SS)),
-        nb_setval(rq_capture, States)
-    ;   Args1 = Args0, nb_setval(rq_capture, none)
+    %  --states=FILE, once per capture (the theories', the spikes'): the
+    %  files of all of them.
+    partition([C]>>atom_concat('--states=', _, C), Args0, StateArgs, Args1),
+    (   StateArgs == [] -> nb_setval(rq_capture, none)
+    ;   foldl(read_states, StateArgs, _{files:_{}}, States), nb_setval(rq_capture, States)
     ),
     %  --concepts=DIR: [[name]] in comments links to DIR's concepts.
     (   select(K, Args1, Args), atom_concat('--concepts=', CDir, K)
@@ -65,6 +66,12 @@ main :-
     write_page(IPath, index_page(Read)).
 
 %% Reading
+
+read_states(Arg, S0, S) :-
+    atom_concat('--states=', File, Arg),
+    % UTF-8 whatever the locale: a Nix build has none.
+    setup_call_cleanup(open(File, read, In, [encoding(utf8)]), json_read_dict(In, D), close(In)),
+    S = S0.put(files, S0.files.put(D.files)).
 
 :- dynamic page_notations/2.
 
