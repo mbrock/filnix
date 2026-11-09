@@ -378,6 +378,49 @@ Proof.
     apply Z.leb_le; lia.
 Qed.
 
+(** A read [[half_check]] of the pointer p, against the proof p1 of the
+    same capability, an object's or a read-only object's, at a live
+    object b whose bounds hold the bytes, which are aligned, and which
+    ends at or below 2^63: p, proven. A read-only capability passes a
+    read's native test as an object's does. *)
+Lemma op_half_check_read : forall m p1 p bd lo hi al b reg,
+  ptr_cap p1 = ptr_cap p -> ptr_cap p = Obj b \/ ptr_cap p = Ro b ->
+  object_region b (m_regions m) = Some reg -> r_life reg = Live ->
+  b <= raw_address (ptr_addr p) lo -> raw_address (ptr_addr p) lo + (hi - lo) <= r_end reg ->
+  lo < hi -> r_end reg <= 2 ^ 63 -> raw_address (ptr_addr p) lo mod al = 0 ->
+  op_res (HalfCheck bd lo hi Read al) A [WPtr p1; WPtr p] m = Some (OpRes (RVal (WPtr p)) m).
+Proof.
+  intros m p1 p bd lo hi al b reg E Hc Hr Hl Hlo Hhi Hlh Hend Hal.
+  destruct Hc as [Hc | Hc]; [rewrite Hc in E; exact (op_half_check _ _ _ _ _ _ Read _ _ _ E Hc Hr Hl Hlo Hhi Hlh Hend Hal)|].
+  assert (Hacc : access_res m (raw_address (ptr_addr p) lo) (Ro b) (hi - lo) Read al = Some ok)
+    by (eapply access_read; eauto).
+  cbn - [access_res raw_address half_passes]. rewrite E, Hc.
+  cbn [cap_eqb]. rewrite Z.eqb_refl, Hacc.
+  unfold half_passes. rewrite Hr. cbn [option_map].
+  replace (half_bound bd (raw_address (ptr_addr p) lo) (hi - lo) b (r_end reg) (r_life reg)) with true.
+  - rewrite Hal, Z.eqb_refl. reflexivity.
+  - symmetry. unfold half_bound. rewrite Hl. destruct bd; [apply Z.leb_le; lia|].
+    assert (Hn : 0 <= raw_address (ptr_addr p) lo < 2 ^ 63).
+    { pose proof (Z.mod_pos_bound (ptr_addr p + lo) (2 ^ 64) ltac:(lia)) as Hm.
+      fold (raw_address (ptr_addr p) lo) in Hm. lia. }
+    replace (2 ^ 63 <=? raw_address (ptr_addr p) lo) with false by (symmetry; apply Z.leb_gt; lia).
+    apply Z.leb_le; lia.
+Qed.
+
+(** A [[renew]] of the pointer p, against the proof p1 of the same
+    capability, whose own access check passes: p, proven, as the check
+    it replaced would have proven it. *)
+Lemma op_renew : forall m p1 p lo hi r al,
+  ptr_cap p1 = ptr_cap p ->
+  access_res m (raw_address (ptr_addr p) lo) (ptr_cap p) (hi - lo) r al = Some ok ->
+  op_res (Renew lo hi r al) A [WPtr p1; WPtr p] m = Some (OpRes (RVal (WPtr p)) m).
+Proof.
+  intros m p1 p lo hi r al E H. cbn - [access_res raw_address cap_eqb]. rewrite E.
+  replace (cap_eqb (ptr_cap p) (ptr_cap p)) with true
+    by (symmetry; destruct (ptr_cap p); cbn; try apply Z.eqb_refl; try apply term_eqb_refl; reflexivity).
+  rewrite H. reflexivity.
+Qed.
+
 (** A raw load of 8 bytes at offset off from the proven pointer p, whose
     read access passes: the little-endian integer there. *)
 Lemma op_raw_load : forall m k p off,

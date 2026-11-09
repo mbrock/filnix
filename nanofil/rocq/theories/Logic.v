@@ -516,6 +516,47 @@ Proof.
   exact (op_half_check _ _ _ _ _ _ _ _ _ _ Hp1 Hp E Lv H1 H2 H3 H4 H5).
 Qed.
 
+(** A read half check of the pointer p against the proof p1 of the same
+    capability, an object's or a read-only object's, at the live object
+    b, ending at or below 2^63 and holding the aligned bytes: d is bound
+    to p. Hello's string scans half check read-only literals. *)
+Lemma wp_half_check_read f e ls l d bd lo hi al args rest j classes p1 p b reg Φ :
+  op_arg_classes (HalfCheck bd lo hi Read al) A = Some classes ->
+  map2_option (value_x ge e) classes args = Some [WPtr p1; WPtr p] ->
+  ptr_cap p1 = ptr_cap p -> ptr_cap p = Obj b \/ ptr_cap p = Ro b ->
+  b <= raw_address (ptr_addr p) lo -> raw_address (ptr_addr p) lo + (hi - lo) <= r_end reg ->
+  lo < hi -> r_end reg <= 2 ^ 63 -> raw_address (ptr_addr p) lo mod al = 0 ->
+  live b reg -∗
+  ▷ (live b reg -∗ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d A (HalfCheck bd lo hi Read al) args :: rest) j)) : lexpr)
+    {{ Φ }}.
+Proof.
+  intros Hc Hx Hp1 Hp H1 H2 H3 H4 H5. apply (wp_read _ _ _ []).
+  intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E Lv] _].
+  apply rule_let with (classes := classes) (xs := [WPtr p1; WPtr p]);
+    [reflexivity | exact Hc | exact Hx |].
+  exact (op_half_check_read _ _ _ _ _ _ _ _ _ Hp1 Hp E Lv H1 H2 H3 H4 H5).
+Qed.
+
+(** A renew of the pointer p, an object's, against the proof p1 of the
+    same capability, inside the live object b and aligned: d is bound to
+    p. The renews Hello reaches reuse the check of a stack slot. *)
+Lemma wp_renew f e ls l d lo hi r al args rest j classes p1 p b reg Φ :
+  op_arg_classes (Renew lo hi r al) A = Some classes ->
+  map2_option (value_x ge e) classes args = Some [WPtr p1; WPtr p] ->
+  ptr_cap p1 = ptr_cap p -> ptr_cap p = Obj b -> b <= raw_address (ptr_addr p) lo ->
+  raw_address (ptr_addr p) lo + (hi - lo) <= r_end reg -> raw_address (ptr_addr p) lo mod al = 0 ->
+  live b reg -∗
+  ▷ (live b reg -∗ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d A (Renew lo hi r al) args :: rest) j)) : lexpr) {{ Φ }}.
+Proof.
+  intros Hc Hx Hp1 Hp H1 H2 H3. apply (wp_read _ _ _ []).
+  intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E _] _].
+  apply rule_let with (classes := classes) (xs := [WPtr p1; WPtr p]);
+    [reflexivity | exact Hc | exact Hx |].
+  apply op_renew; [exact Hp1|]. rewrite Hp. exact (access_obj _ _ _ _ _ _ _ E H1 H2 H3).
+Qed.
+
 (** A raw load of a long at offset off from the proven pointer p, which
     addresses offset o of the live object b, where the cell holds v: d
     is bound to v modulo 2^64. *)
