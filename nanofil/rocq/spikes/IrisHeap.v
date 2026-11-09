@@ -16,9 +16,9 @@
     The rules ([wpc_next], [wpc_done], [wpc_write], [wpc_alloc]) are all
     derived from one lifting lemma, [wpc_lift], which handles the
     safepoint: a safepoint step leaves the expression as it is and
-    changes only memory, so under Panics.v's premise that no safepoint
-    frees a live object ([SS.keeps_live]) it keeps [heap_interp] with the
-    same ghost heap, and the lemma closes that case by Löb induction.
+    changes only memory, and no region of it (Runtime.v's
+    [collector_live]), so it keeps [heap_interp] with the same ghost
+    heap, and the lemma closes that case by Löb induction.
     [heap_never_panics] is IrisLang.v's adequacy with the ghost heap
     allocated: a program proof only proves [wpc] of its entry call. *)
 
@@ -197,8 +197,7 @@ Proof. unfold live_at. intros ->. auto. Qed.
 Lemma live_disjoint_regions m m' : m_regions m' = m_regions m -> live_disjoint m -> live_disjoint m'.
 Proof. intros E Hd b1 r1 b2 r2. unfold live_at. rewrite E. apply Hd. Qed.
 
-(** What a safepoint may do, under [keeps_live], keeps a piece's
-    agreement. *)
+(** What a safepoint may do keeps a piece's agreement. *)
 Lemma agree_piece_safepoint m m' l v :
   same_regions m m' -> m_bytes m' = m_bytes m -> aux_moves m m' -> agree_piece m l v -> agree_piece m' l v.
 Proof.
@@ -571,17 +570,17 @@ Proof.
     iModIntro. rewrite /pts /=. iFrame.
 Qed.
 
-(** What R does at a safepoint, under [keeps_live], keeps the state
-    interpretation, with the same ghost heap. *)
+(** What R does at a safepoint keeps the state interpretation, with
+    the same ghost heap. *)
 Lemma heap_interp_safepoint m s m' s' :
-  SS.keeps_live -> R.safepoint s m s' m' -> heap_interp (m, s) -∗ heap_interp (m', s').
+  R.safepoint s m s' m' -> heap_interp (m, s) -∗ heap_interp (m', s').
 Proof.
-  intros HK Hsp. iIntros "Hσ". iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr).
+  intros Hsp. iIntros "Hσ". iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr).
   iExists h. iFrame "Hh". iPureIntro. cbn [fst snd] in *.
-  destruct (SS.safepoint_shape HK _ _ _ _ Hsp) as (Hreg & Hb & Haux).
+  destruct (SS.safepoint_shape _ _ _ _ Hsp) as (Hreg & Hb & Haux).
   split; [|split].
   - intros l v Hl. exact (agree_piece_safepoint _ _ _ _ Hreg Hb Haux (Ha l v Hl)).
-  - exact (SS.live_disjoint_safepoint HK _ _ _ _ Hsp Hd).
+  - exact (SS.live_disjoint_safepoint _ _ _ _ Hsp Hd).
   - exact (R.safepoint_ready _ _ _ _ Hsp Hr).
 Qed.
 
@@ -607,17 +606,15 @@ Proof. rewrite /wpc. iApply (wp_value' _ _ _ o). done. Qed.
     safe, given Q, if Q and the state interpretation show it does not
     [fails], and if after any step that is not a safepoint they give
     the state interpretation and safety of what follows. A safepoint
-    keeps the expression and Q, and changes only memory, which under
-    [keeps_live] keeps the state interpretation: that case is closed by
-    Löb induction. *)
+    keeps the expression and Q, and changes only memory, which keeps
+    the state interpretation: that case is closed by Löb induction. *)
 Lemma wpc_lift (Q : iProp Σ) fr callers fuel :
-  SS.keeps_live ->
   (forall m s, heap_interp (m, s) -∗ Q -∗ ⌜~ fails ge (mkConfig fr callers m fuel)⌝) ->
   (forall m s, heap_interp (m, s) -∗ Q -∗
      ▷ ∀ e2 σ2, ⌜nosp_step ge (mkConfig fr callers m fuel) s e2 σ2⌝ ==∗ heap_interp σ2 ∗ wpc e2) ->
   Q -∗ wpc (EConf fr callers fuel).
 Proof.
-  intros HK Hnf Hst. iLöb as "IH". iIntros "HQ". rewrite {2}/wpc.
+  intros Hnf Hst. iLöb as "IH". iIntros "HQ". rewrite {2}/wpc.
   iApply wp_lift_step; [done|].
   iIntros ([m s] ns κ κs nt) "Hσ".
   iDestruct (Hnf with "Hσ HQ") as %Hnf'.
@@ -631,19 +628,18 @@ Proof.
   - iDestruct "H" as "[H _]". iMod ("H" with "[//]") as "[Hσ Hwp]". iModIntro.
     iSplitL "Hσ"; [iExact "Hσ"|]. iSplitL "Hwp"; [iExact "Hwp"|]. done.
   - iDestruct "H" as "[_ [Hσ HQ]]". iModIntro.
-    iSplitL "Hσ"; [iApply (heap_interp_safepoint with "Hσ"); [exact HK|exact Hsp]|].
+    iSplitL "Hσ"; [iApply (heap_interp_safepoint with "Hσ"); exact Hsp|].
     iSplitL; [iApply ("IH" with "HQ")|done].
 Qed.
 
 (** A step to the next configuration that leaves memory as it is, given
     what P shows the step to be: P is kept. *)
 Lemma wpc_next (P : iProp Σ) fr callers fuel fr' callers' fuel' :
-  SS.keeps_live ->
   (forall m s, heap_interp (m, s) -∗ P -∗
      ⌜Semantics.step ge (mkConfig fr callers m fuel) = Next (mkConfig fr' callers' m fuel')⌝) ->
   P -∗ ▷ (P -∗ wpc (EConf fr' callers' fuel')) -∗ wpc (EConf fr callers fuel).
 Proof.
-  intros HK Hs.
+  intros Hs.
   assert (Hnf : forall m s, heap_interp (m, s) -∗ (P ∗ ▷ (P -∗ wpc (EConf fr' callers' fuel'))) -∗
                   ⌜~ fails ge (mkConfig fr callers m fuel)⌝).
   { iIntros (m s) "Hσ [HP _]". iDestruct (Hs with "Hσ HP") as %E. iPureIntro.
@@ -653,16 +649,16 @@ Proof.
   { iIntros (m s) "Hσ [HP HK]". iDestruct (Hs with "Hσ HP") as %E. iNext. iIntros (e2 σ2 Hns).
     destruct (nosp_next _ _ _ _ _ _ E Hns) as [-> ->]. cbn [conf_expr c_frame c_callers c_fuel c_mem].
     iModIntro. iFrame "Hσ". iApply ("HK" with "HP"). }
-  iIntros "HP HK". iApply (wpc_lift _ _ _ _ HK Hnf Hst with "[$HP $HK]").
+  iIntros "HP HK". iApply (wpc_lift _ _ _ _ Hnf Hst with "[$HP $HK]").
 Qed.
 
 (** A step that ends the run with an outcome that is not a failure. *)
 Lemma wpc_done (P : iProp Σ) fr callers fuel o :
-  SS.keeps_live -> ~ failure o ->
+  ~ failure o ->
   (forall m s, heap_interp (m, s) -∗ P -∗ ⌜Semantics.step ge (mkConfig fr callers m fuel) = Done o⌝) ->
   P -∗ wpc (EConf fr callers fuel).
 Proof.
-  intros HK Ho Hs.
+  intros Ho Hs.
   assert (Hnf : forall m s, heap_interp (m, s) -∗ P -∗ ⌜~ fails ge (mkConfig fr callers m fuel)⌝).
   { iIntros (m s) "Hσ HP". iDestruct (Hs with "Hσ HP") as %E. iPureIntro.
     unfold fails. rewrite E. exact Ho. }
@@ -671,7 +667,7 @@ Proof.
   { iIntros (m s) "Hσ HP". iDestruct (Hs with "Hσ HP") as %E. iNext. iIntros (e2 σ2 Hns).
     destruct (nosp_done _ _ _ _ _ _ E Hns) as [-> ->]. cbn [c_mem].
     iModIntro. iFrame "Hσ". iApply wpc_end. }
-  iIntros "HP". iApply (wpc_lift _ _ _ _ HK Hnf Hst with "HP").
+  iIntros "HP". iApply (wpc_lift _ _ _ _ Hnf Hst with "HP").
 Qed.
 
 (** A step to the next configuration that writes memory: owning the
@@ -680,13 +676,13 @@ Qed.
     keys), and changes nothing outside them. Readiness follows from
     Machine.v's [mstep_ready]. *)
 Lemma wpc_write ps ps' (upd : mem -> mem) fr callers fuel fr' callers' fuel' :
-  SS.keeps_live -> ge_free ge = R.free -> ps'.*1 = ps.*1 ->
+  ge_free ge = R.free -> ps'.*1 = ps.*1 ->
   (forall m, owned_facts ps m ->
      Semantics.step ge (mkConfig fr callers m fuel) = Next (mkConfig fr' callers' (upd m) fuel') /\
      m_regions (upd m) = m_regions m /\ all_agree (upd m) ps' /\ frame_ok ps'.*1 m (upd m)) ->
   pts ps -∗ ▷ (pts ps' -∗ wpc (EConf fr' callers' fuel')) -∗ wpc (EConf fr callers fuel).
 Proof.
-  intros HK Hge Hk Hs.
+  intros Hge Hk Hs.
   assert (Hnf : forall m s, heap_interp (m, s) -∗ (pts ps ∗ ▷ (pts ps' -∗ wpc (EConf fr' callers' fuel'))) -∗
                   ⌜~ fails ge (mkConfig fr callers m fuel)⌝).
   { iIntros (m s) "Hσ [Hps _]". iDestruct (pts_facts with "Hσ Hps") as %Hf. iPureIntro.
@@ -707,21 +703,21 @@ Proof.
       + exact (RM.mstep_ready ge (mkConfig fr callers m fuel, s) (mkConfig fr' callers' (upd m) fuel', s)
                  Hge (RM.mstep_next ge _ _ s E) Hr).
     - iApply ("HK" with "Hps"). }
-  iIntros "Hps HK". iApply (wpc_lift _ _ _ _ HK Hnf Hst with "[$Hps $HK]").
+  iIntros "Hps HK". iApply (wpc_lift _ _ _ _ Hnf Hst with "[$Hps $HK]").
 Qed.
 
 (** An allocation of the request q: for every base R may grant, the new
     object's pieces are owned, and the base is positive, aligned, and
     the object ends within the address space. A refusal ends the run. *)
 Lemma wpc_alloc q fr callers fuel (frk : Z -> frame) :
-  SS.keeps_live -> 0 < req_align q -> 0 <= req_extent q ->
+  0 < req_align q -> 0 <= req_extent q ->
   (forall m, Semantics.step ge (mkConfig fr callers m fuel) =
              Fresh q (fun base => mkConfig (frk base) callers (allocated m q base) fuel)) ->
   ▷ (∀ base, ⌜0 < base /\ base mod req_align q = 0 /\ base + req_extent q <= 2 ^ 48⌝ -∗
        pts (obj_ps base q) -∗ wpc (EConf (frk base) callers fuel)) -∗
   wpc (EConf fr callers fuel).
 Proof.
-  intros HK Hal Hex Hs.
+  intros Hal Hex Hs.
   set (K := (∀ base, ⌜0 < base /\ base mod req_align q = 0 /\ base + req_extent q <= 2 ^ 48⌝ -∗
        pts (obj_ps base q) -∗ wpc (EConf (frk base) callers fuel))%I).
   assert (Hnf : forall m s, heap_interp (m, s) -∗ ▷ K -∗ ⌜~ fails ge (mkConfig fr callers m fuel)⌝).
@@ -751,7 +747,7 @@ Proof.
           as [_ Hend]; [rewrite object_region_allocated Z.eqb_refl; reflexivity|].
         cbn [r_end] in Hend. exact Hend.
     - cbn [c_mem]. iModIntro. iFrame "Hσ". iApply wpc_end. }
-  iIntros "HK". iApply (wpc_lift _ _ _ _ HK Hnf Hst with "HK").
+  iIntros "HK". iApply (wpc_lift _ _ _ _ Hnf Hst with "HK").
 Qed.
 
 End wp.

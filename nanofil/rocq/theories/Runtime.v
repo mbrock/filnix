@@ -7,9 +7,8 @@
     The model of the [[stage|checked IR]] is about one thread's
     program. What the Fil-C runtime does around that program, where it
     puts a new object, what free does to an object's header, what the
-    collector and the thread's own signal handlers may do at a
-    [[poll|safepoint]], is not the model's to decide. [Runtime] states
-    those facts as one page of axioms, read against the staging Fil-C
+    collector may do at a [[poll|safepoint]], is not the model's to
+    decide. [Runtime] states those facts as one page of axioms, read against the staging Fil-C
     the toolchain pins (mbrock/fil-c at
     `18b6663a2785c8eba6cc2a544a7711e19fc448c7`, the `coreRev` of
     lib/filc-staging.json). Each axiom about Fil-C has a native test in
@@ -18,13 +17,28 @@
 
     ## One thread's view
 
-    The model is one thread's. A free by one of its signal handlers,
-    which Fil-C runs only at pollchecks and exits to the runtime, and
-    the collector's rewriting of stored capabilities are what the
-    program sees change at a safepoint, the [safepoint] relation, and
-    nowhere else. Another thread is outside the model: its writes are
-    ([non_moving] lets no byte change at a safepoint), and so are its
-    frees, which natively show at any check, not only at a safepoint
+    The model is one thread's. At a safepoint the collector acts, and
+    what the program sees change there, the [safepoint] relation, is
+    the collector's rewriting of stored capabilities to freed objects
+    and nothing else: no region changes ([collector_live]). Fil-C's
+    runtime never frees an object by itself. Only code the program
+    brings in does: a signal handler it installed, which Fil-C runs
+    only at pollchecks (tests/c/prog/axiom-safepoint.c), or a thread
+    it started. Both are the program's code, not the runtime's, and a
+    module that installs a handler or starts a thread calls an
+    external with no contract, which ends its run in the model; a
+    handler is to be verified as program code of its own. The model
+    takes a run to be the program's whole execution after the trusted
+    entry, with no handler installed and no other program thread when
+    it starts: a constructor, a preloaded library or a native caller
+    that installed one is outside it. A pointer store's aux exit is a
+    native safepoint inside a check and its access, which the
+    [[validator]] keeps facts across, so a handler a program installs
+    could free a checked object there; a verified handler must not
+    free an object whose check is in flight. Another
+    thread is outside the model: its writes are ([non_moving] lets no
+    byte change at a safepoint), and so are its frees, which natively
+    show at any check, not only at a safepoint
     (tests/c/prog/axiom-threads.c). For a threaded program, native
     safety rests on Fil-C's own argument, not on the theorems proved
     over this module type: every check traps on a freed object, and an
@@ -104,8 +118,7 @@ Definition kept (m m' : mem) : Prop :=
 (** ## The module type *)
 
 (** What the model assumes of the Fil-C [[runtime]]: its allocator, its
-    free, and what it and the thread's signal handlers may do at a
-    [[poll|safepoint]]. A runtime is any module with these parts that
+    free, and what its collector may do at a [[poll|safepoint]]. A runtime is any module with these parts that
     proves these axioms; Run.v's [Driver] and Machine.v's [Machine] run
     over any of them. *)
 Module Type Runtime.
@@ -197,7 +210,8 @@ Module Type Runtime.
 
   (** Free reclaims nothing: every [[identity]] before it is one after
       it, the freed object's too. Only the collector reclaims, at a
-      safepoint ([rooting]). With [fresh_allocation] this keeps a later
+      safepoint ([rooting]), and natively only of objects nothing can
+      name, whose regions the model keeps. With [fresh_allocation] this keeps a later
       allocation from taking a freed object's base. Native test:
       `axiom-identity.c`. *)
   Axiom free_keeps_ids : forall x m r m',
@@ -209,9 +223,10 @@ Module Type Runtime.
       model keeps for a broken pass. Native test: `axiom-free.c`. *)
   Axiom free_checked : forall x m w m', free x m <> Some (RUnchecked w, m').
 
-  (** The runtime may act at the instruction i: run a signal handler or
-      a pollcheck callback. Another thread's effects are outside the
-      model (the header's One thread's view). *)
+  (** The runtime may act at the instruction i: the collector's
+      handshake, a pollcheck callback, or a signal handler the program
+      installed. Another thread's effects are outside the model (the
+      header's One thread's view). *)
   Parameter at_safepoint : inst -> bool.
 
   (** The runtime acts only at instructions that are not
@@ -225,16 +240,29 @@ Module Type Runtime.
 
   (** What the program may find changed when it reaches a
       [[poll|safepoint]] with the runtime in state s and memory m: the
-      runtime's state s' and memory m' after the collector and the
-      thread's signal handlers acted. *)
+      runtime's state s' and memory m' after the collector acted. *)
   Parameter safepoint : state -> mem -> state -> mem -> Prop.
+
+  (** At a safepoint no [[region]] changes: the collector frees no
+      object, live or freed, and no identity appears. Natively the
+      collector reclaims objects nothing can name; the model keeps
+      their regions, as [fresh_allocation] explains. Only the program
+      frees, by [free] or by code it brought in (a signal handler, a
+      thread), and that is not the runtime's action. The model needs
+      it so that an object live before a poll is live after it with
+      the same bounds. Native test: `axiom-collector-live.c`. *)
+  Axiom collector_live : forall s m s' m',
+    safepoint s m s' m' -> m_regions m' = m_regions m.
 
   (** At a safepoint, as at a free, an object's bounds change only by
       a live heap object's being freed, and no identity appears
-      ([lifetime_step]): a signal handler's free is the only change to
-      objects the program sees. Native test: `axiom-lifetime.c`. *)
-  Axiom safepoint_lifetime : forall s m s' m',
+      ([lifetime_step]); at a safepoint none changes at all
+      ([collector_live]). *)
+  Lemma safepoint_lifetime : forall s m s' m',
     safepoint s m s' m' -> lifetime_step m m'.
+  Proof.
+    intros s m s' m' H b reg' E. rewrite (collector_live s m s' m' H) in E. eauto.
+  Qed.
 
   (** At a safepoint no byte moves or changes: the collector writes no
       object's contents and no address word. The model needs it so that
@@ -259,10 +287,12 @@ Module Type Runtime.
   (** At a safepoint the collector reclaims no [[identity]] the program
       can name: every object of m is still one of m'. The model needs
       it because a capability never dies in the model, so the object it
-      names must stay. Native test: `axiom-rooting.c`. *)
-  Axiom rooting : forall s m s' m',
+      names must stay. It follows from [collector_live]. Native test:
+      `axiom-rooting.c`. *)
+  Lemma rooting : forall s m s' m',
     safepoint s m s' m' ->
     forall b, object_region b (m_regions m) <> None -> object_region b (m_regions m') <> None.
+  Proof. intros s m s' m' H b. rewrite (collector_live s m s' m' H). auto. Qed.
 
   (** The runtime's actions at a safepoint keep it [[ready]]. With
       [fresh_allocation] and [ready_kept] this makes [ready] hold in
@@ -507,6 +537,10 @@ Module InterpRuntime.
 
   (** No other thread and no collector: nothing changes at a safepoint. *)
   Definition safepoint (s : state) (m : mem) (s' : state) (m' : mem) : Prop := s' = s /\ m' = m.
+
+  (** Nothing changes at a safepoint, so no region does. *)
+  Lemma collector_live : forall s m s' m', safepoint s m s' m' -> m_regions m' = m_regions m.
+  Proof. intros s m s' m' [_ ->]. reflexivity. Qed.
 
   (** Nothing changes at a safepoint, so no object does. *)
   Lemma safepoint_lifetime : forall s m s' m', safepoint s m s' m' -> lifetime_step m m'.

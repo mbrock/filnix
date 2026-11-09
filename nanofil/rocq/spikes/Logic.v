@@ -16,10 +16,10 @@
     Every rule for a running frame comes from one lifting lemma,
     [wp_lift_run]. A [[poll|safepoint]] and a stall (out of [[fuel]], a
     refusal trap, an allocation the runtime refuses) step [ERun fr] to
-    itself,
-    the first changing memory only as [SS.keeps_live] allows, which
-    keeps [heap_interp] with the same ghost heap: the lemma closes both
-    by Löb induction, so a rule speaks only of the step its instruction
+    itself, the first changing memory only as [SS.safepoint_shape]
+    allows (no region, by Runtime.v's [collector_live]), which keeps
+    [heap_interp] with the same ghost heap: the lemma closes both by
+    Löb induction, so a rule speaks only of the step its instruction
     takes. A call is [wp_bind] over the caller ([wp_call_bind]), so a
     function's specification is an ordinary Hoare triple.
     [heap_never_panics] is Language.v's [[adequacy]] with the ghost heap
@@ -166,18 +166,18 @@ Proof.
   cbn [all_agree agree_piece fst snd] in Hf. eexists _, _. split; [reflexivity | exact (proj1 Hf)].
 Qed.
 
-(** What R does at a safepoint, under [keeps_live], keeps the state
-    interpretation, with the same ghost heap. *)
+(** What R does at a safepoint keeps the state interpretation, with
+    the same ghost heap. *)
 Lemma heap_interp_safepoint m s fuel m' s' :
-  SS.keeps_live -> R.safepoint s m s' m' ->
+  R.safepoint s m s' m' ->
   heap_interp (mkLstate m s fuel) -∗ heap_interp (mkLstate m' s' fuel).
 Proof.
-  intros HK Hsp. iIntros "Hσ". iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr).
+  intros Hsp. iIntros "Hσ". iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr).
   iExists h. iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt] in *.
-  destruct (SS.safepoint_shape HK _ _ _ _ Hsp) as (Hreg & Hb & Haux).
+  destruct (SS.safepoint_shape _ _ _ _ Hsp) as (Hreg & Hb & Haux).
   split; [|split].
   - intros l v Hl. exact (agree_piece_safepoint _ _ _ _ Hreg Hb Haux (Ha l v Hl)).
-  - exact (SS.live_disjoint_safepoint HK _ _ _ _ Hsp Hd).
+  - exact (SS.live_disjoint_safepoint _ _ _ _ Hsp Hd).
   - exact (R.safepoint_ready _ _ _ _ Hsp Hr).
 Qed.
 
@@ -206,16 +206,15 @@ Definition moves (fr : frame) (σ : lstate) (e2 : expr) (σ2 : lstate) : Prop :=
     does not [fails], and if, after any step that [moves], they give
     the state interpretation and the weakest precondition of what
     follows. A stall leaves the expression and the state as they are; a
-    safepoint leaves the expression and, under [keeps_live], the state
-    interpretation: both cases are closed by Löb induction, keeping Q. *)
+    safepoint leaves the expression and the state interpretation: both
+    cases are closed by Löb induction, keeping Q. *)
 Lemma wp_lift_run (Q : iProp Σ) fr Φ :
-  SS.keeps_live ->
   (forall σ, heap_interp σ -∗ Q -∗ ⌜~ fails ge (mkConfig fr [] (ls_mem σ) (ls_fuel σ))⌝) ->
   (forall σ, heap_interp σ -∗ Q -∗
      ▷ ∀ e2 σ2, ⌜moves fr σ e2 σ2⌝ ==∗ heap_interp σ2 ∗ WP (e2 : lexpr) {{ Φ }}) ->
   Q -∗ WP (ERun fr : lexpr) {{ Φ }}.
 Proof.
-  intros HK Hnf Hst. iLöb as "IH". iIntros "HQ".
+  intros Hnf Hst. iLöb as "IH". iIntros "HQ".
   iApply wp_lift_base_step; [done|].
   iIntros (σ ns κ κs nt) "Hσ".
   iDestruct (Hnf with "Hσ HQ") as %Hnf'.
@@ -237,7 +236,7 @@ Proof.
     iModIntro. iFrame. done.
   - iDestruct "H" as "[_ [Hσ HQ]]". iModIntro. iFrame "Hσ". iSplitL; [iApply ("IH" with "HQ")|done].
   - iDestruct "H" as "[_ [Hσ HQ]]". iModIntro. destruct σ as [m s fuel].
-    iSplitL "Hσ"; [iApply (heap_interp_safepoint with "Hσ"); [exact HK|exact Hsp]|].
+    iSplitL "Hσ"; [iApply (heap_interp_safepoint with "Hσ"); exact Hsp|].
     iSplitL; [iApply ("IH" with "HQ")|done].
 Qed.
 
@@ -247,7 +246,7 @@ Qed.
     [kept], agreeing with the new values ps' (the same keys) and
     changing nothing outside them. The new pieces are handed on. *)
 Lemma wp_write ps ps' fr fr' cs' (upd : mem -> mem) Φ :
-  SS.keeps_live -> ps'.*1 = ps.*1 ->
+  ps'.*1 = ps.*1 ->
   (forall m fuel, owned_facts ps m ->
      Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' cs' (upd m) fuel) /\
      m_regions (upd m) = m_regions m /\ kept m (upd m) /\
@@ -255,8 +254,8 @@ Lemma wp_write ps ps' fr fr' cs' (upd : mem -> mem) Φ :
   IH.pts ps -∗ ▷ (IH.pts ps' -∗ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }}) -∗
   WP (ERun fr : lexpr) {{ Φ }}.
 Proof.
-  intros HK Hk Hs. iIntros "Hps HK". iCombine "Hps HK" as "H".
-  iApply (wp_lift_run with "H"); [exact HK| |].
+  intros Hk Hs. iIntros "Hps HK". iCombine "Hps HK" as "H".
+  iApply (wp_lift_run with "H").
   - iIntros (σ) "Hσ [Hps _]". iDestruct (pts_facts with "Hσ Hps") as %Hf. iPureIntro.
     destruct (Hs _ (ls_fuel σ) Hf) as (E & _). unfold fails. rewrite E. auto.
   - iIntros ([m s fuel]) "Hσ [Hps HK]". iDestruct (pts_facts with "Hσ Hps") as %Hf.
@@ -281,13 +280,12 @@ Qed.
     frame, that reads the pieces ps and changes no memory: they are
     handed back. *)
 Lemma wp_read ps fr fr' cs' Φ :
-  SS.keeps_live ->
   (forall m fuel, owned_facts ps m ->
      Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' cs' m fuel)) ->
   IH.pts ps -∗ ▷ (IH.pts ps -∗ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }}) -∗
   WP (ERun fr : lexpr) {{ Φ }}.
 Proof.
-  intros HK Hs. apply (wp_write ps ps fr fr' cs' (fun m => m)); [exact HK|reflexivity|].
+  intros Hs. apply (wp_write ps ps fr fr' cs' (fun m => m)); [reflexivity|].
   intros m fuel Hf. split; [exact (Hs m fuel Hf)|]. split; [reflexivity|]. split; [apply kept_refl|].
   split; [exact (proj1 Hf)|]. intros l v _ H. exact H.
 Qed.
@@ -295,11 +293,10 @@ Qed.
 (** A step to the next configuration, with the callers cs' below its
     frame, that needs no resource and changes no memory. *)
 Lemma wp_pure_next fr fr' cs' Φ :
-  SS.keeps_live ->
   (forall m fuel, Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' cs' m fuel)) ->
   ▷ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }} -∗ WP (ERun fr : lexpr) {{ Φ }}.
 Proof.
-  intros HK Hs. iIntros "H". iApply (wp_read [] fr fr' cs' with "[] [H]"); [exact HK| |by rewrite /IH.pts|].
+  intros Hs. iIntros "H". iApply (wp_read [] fr fr' cs' with "[] [H]"); [|by rewrite /IH.pts|].
   - intros m fuel _. apply Hs.
   - iNext. iIntros "_". iExact "H".
 Qed.
@@ -309,14 +306,13 @@ Qed.
 (** A [let] of a general op o whose arguments read as xs and whose
     [op_res] is the word w in any memory, leaving it: d is bound to w. *)
 Lemma wp_let f e ls l d k o args rest j classes xs w Φ :
-  SS.keeps_live ->
   general_op o = true -> op_arg_classes o k = Some classes ->
   map2_option (value_x ge e) classes args = Some xs ->
   (forall m, op_res o k xs m = Some (OpRes (RVal w) m)) ->
   ▷ WP (ERun (mkFrame f (put d w e) ls None (Exec l rest j)) : lexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k o args :: rest) j)) : lexpr) {{ Φ }}.
 Proof.
-  intros HK Hg Hc Hx Ho. apply (wp_pure_next _ _ []); [exact HK|].
+  intros Hg Hc Hx Ho. apply (wp_pure_next _ _ []).
   intros m fuel. exact (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hg Hc Hx (Ho m)).
 Qed.
 
@@ -324,7 +320,6 @@ Qed.
     object b with the region reg, whose checked bytes lie in its bounds
     and are aligned: d is bound to p, proven. *)
 Lemma wp_check f e ls l d lo hi r al args rest j classes p b reg Φ :
-  SS.keeps_live ->
   op_arg_classes (Check lo hi r al) A = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p] ->
   ptr_cap p = Obj b -> b <= raw_address (ptr_addr p) lo ->
@@ -333,7 +328,7 @@ Lemma wp_check f e ls l d lo hi r al args rest j classes p b reg Φ :
   ▷ (live b reg -∗ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (Check lo hi r al) args :: rest) j)) : lexpr) {{ Φ }}.
 Proof.
-  intros HK Hc Hx Hp H1 H2 H3. apply (wp_read _ _ _ []); [exact HK|].
+  intros Hc Hx Hp H1 H2 H3. apply (wp_read _ _ _ []).
   intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E _] _].
   apply rule_let with (classes := classes) (xs := [WPtr p]); [reflexivity | exact Hc | exact Hx |].
   apply op_check. rewrite Hp. exact (access_obj _ _ _ _ _ _ _ E H1 H2 H3).
@@ -344,7 +339,6 @@ Qed.
     below 2^63, whose checked bytes lie in its bounds and are aligned:
     d is bound to p, proven. *)
 Lemma wp_half_check f e ls l d bd lo hi r al args rest j classes p1 p b reg Φ :
-  SS.keeps_live ->
   op_arg_classes (HalfCheck bd lo hi r al) A = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p1; WPtr p] ->
   ptr_cap p1 = Obj b -> ptr_cap p = Obj b ->
@@ -355,7 +349,7 @@ Lemma wp_half_check f e ls l d bd lo hi r al args rest j classes p1 p b reg Φ :
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (HalfCheck bd lo hi r al) args :: rest) j)) : lexpr)
     {{ Φ }}.
 Proof.
-  intros HK Hc Hx Hp1 Hp H1 H2 H3 H4 H5. apply (wp_read _ _ _ []); [exact HK|].
+  intros Hc Hx Hp1 Hp H1 H2 H3 H4 H5. apply (wp_read _ _ _ []).
   intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E Lv] _].
   apply rule_let with (classes := classes) (xs := [WPtr p1; WPtr p]);
     [reflexivity | exact Hc | exact Hx |].
@@ -366,7 +360,6 @@ Qed.
     addresses offset o of the live object b, where the cell holds v: d
     is bound to v modulo 2^64. *)
 Lemma wp_raw_load f e ls l d k off args rest j classes p b reg o v Φ :
-  SS.keeps_live ->
   op_arg_classes (RawLoad LdL off) k = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p] ->
   ptr_cap p = Obj b -> raw_address (ptr_addr p) off = b + o ->
@@ -375,8 +368,8 @@ Lemma wp_raw_load f e ls l d k off args rest j classes p b reg o v Φ :
      WP (ERun (mkFrame f (put d (WInt (v mod 2 ^ 64)) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawLoad LdL off) args :: rest) j)) : lexpr) {{ Φ }}.
 Proof.
-  intros HK Hc Hx Hp Ha. iIntros "Hl Hc HK".
-  iApply (wp_read ([(PLive b, VLive reg)] ++ cell b o v) _ _ [] with "[Hl Hc] [HK]"); [exact HK| | |].
+  intros Hc Hx Hp Ha. iIntros "Hl Hc HK".
+  iApply (wp_read ([(PLive b, VLive reg)] ++ cell b o v) _ _ [] with "[Hl Hc] [HK]").
   - intros m fuel (Hf & _). apply all_agree_app in Hf as [[Hlv _] Hcl]. cbn [agree_piece fst snd] in Hlv.
     destruct (cell_bounds _ _ _ _ _ Hlv Hcl) as [Ho He].
     apply rule_let with (classes := classes) (xs := [WPtr p]); [reflexivity | exact Hc | exact Hx |].
@@ -392,13 +385,12 @@ Qed.
     interpretation, shows the memory has the property F, and every
     memory with F steps there: Q is handed back. *)
 Lemma wp_read_with (Q : iProp Σ) (F : mem -> Prop) fr fr' cs' Φ :
-  SS.keeps_live ->
   (forall σ, heap_interp σ -∗ Q -∗ ⌜F (ls_mem σ)⌝) ->
   (forall m fuel, F m -> Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' cs' m fuel)) ->
   Q -∗ ▷ (Q -∗ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }}) -∗ WP (ERun fr : lexpr) {{ Φ }}.
 Proof.
-  intros HK HF Hs. iIntros "HQ HK". iCombine "HQ HK" as "H".
-  iApply (wp_lift_run with "H"); [exact HK| |].
+  intros HF Hs. iIntros "HQ HK". iCombine "HQ HK" as "H".
+  iApply (wp_lift_run with "H").
   - iIntros (σ) "Hσ [HQ _]". iDestruct (HF with "Hσ HQ") as %Hf. iPureIntro.
     unfold fails. rewrite (Hs _ _ Hf). auto.
   - iIntros ([m s fuel]) "Hσ [HQ HK]". iDestruct (HF with "Hσ HQ") as %Hf. cbn [ls_mem] in Hf.
@@ -415,7 +407,6 @@ Qed.
     life of the object x's capability names, if any ([live_cap]), and
     x's address in range. *)
 Lemma wp_raw_load_pointer f e ls l d off args rest j classes p b reg o x reg' Φ :
-  SS.keeps_live ->
   op_arg_classes (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) P = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p] ->
   ptr_cap p = Obj b -> raw_address (ptr_addr p) off = b + o -> (b + o) mod 8 = 0 ->
@@ -427,12 +418,12 @@ Lemma wp_raw_load_pointer f e ls l d off args rest j classes p b reg o x reg' Φ
        (Exec l (Let d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) args :: rest) j))
        : lexpr) {{ Φ }}.
 Proof.
-  intros HK Hc Hx Hp Ha Hal Hrange. iIntros "Hl Hc Hcap HK".
+  intros Hc Hx Hp Ha Hal Hrange. iIntros "Hl Hc Hcap HK".
   iApply (wp_read_with (live b reg ∗ pcell b o x ∗ live_cap (ptr_cap x) reg')
             (fun m => live_at m b reg /\ agree_piece m (PAux b o) (VAux (ptr_cap x)) /\
                       all_agree m (cell b o (ptr_addr x)) /\
                       (ptr_cap x = CNone \/ exists b' reg', ptr_cap x = Obj b' /\ live_at m b' reg'))
-            _ _ [] with "[$Hl $Hc $Hcap] [HK]"); [exact HK| | |].
+            _ _ [] with "[$Hl $Hc $Hcap] [HK]").
   - iIntros (σ) "Hσ (Hl & Hc & Hcap)".
     iDestruct (pts_facts with "Hσ Hl") as %([Hlv _] & _).
     iDestruct (pts_facts with "Hσ Hc") as %([Hax Hcl] & _).
@@ -452,17 +443,16 @@ Qed.
     pointer p, which a reads as and which addresses offset o of the live
     object b at offset off: the cell there now holds v'. *)
 Lemma wp_raw_store f e ls l off v a rest j p b reg o w w' Φ :
-  SS.keeps_live ->
   value_x ge e L v = Some (WInt w') -> value_x ge e A a = Some (WPtr p) ->
   ptr_cap p = Obj b -> raw_address (ptr_addr p) off = b + o ->
   live b reg -∗ icell b o w -∗
   ▷ (live b reg -∗ icell b o w' -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (RawStore Wl off v a :: rest) j)) : lexpr) {{ Φ }}.
 Proof.
-  intros HK Hv Ha Hp Hoff. iIntros "Hl Hc HK".
+  intros Hv Ha Hp Hoff. iIntros "Hl Hc HK".
   iApply (wp_write ([(PLive b, VLive reg)] ++ cell b o w) ([(PLive b, VLive reg)] ++ cell b o w')
             _ _ [] (fun m => store_bytes m (b + o) 8 w') with "[Hl Hc] [HK]");
-    [exact HK | reflexivity | | rewrite IH.pts_app; iFrame |].
+    [reflexivity | | rewrite IH.pts_app; iFrame |].
   - intros m fuel (Hf & Hd & _). apply all_agree_app in Hf as [[Hlv _] Hcl].
     cbn [agree_piece fst snd] in Hlv. destruct (cell_bounds _ _ _ _ _ Hlv Hcl) as [Ho He].
     destruct (cell_store_ok m b reg o (b + o) w' Hd Hlv Ho He eq_refl) as [Hcs Hfr].
@@ -482,7 +472,6 @@ Qed.
     which addresses the 8-aligned offset o of the live object b at
     offset off: the pointer cell there now holds xp. *)
 Lemma wp_raw_store_pointer f e ls l off v a rest j xp p b reg o x Φ :
-  SS.keeps_live ->
   value_x ge e P v = Some (WPtr xp) -> value_x ge e A a = Some (WPtr p) ->
   ptr_cap p = Obj b -> raw_address (ptr_addr p) off = b + o -> (b + o) mod 8 = 0 ->
   live b reg -∗ pcell b o x -∗
@@ -491,12 +480,12 @@ Lemma wp_raw_store_pointer f e ls l off v a rest j xp p b reg o x Φ :
        (Exec l (RawStorePointer off v a [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]
                 :: rest) j)) : lexpr) {{ Φ }}.
 Proof.
-  intros HK Hv Ha Hp Hoff Hal. iIntros "Hl Hc HK".
+  intros Hv Ha Hp Hoff Hal. iIntros "Hl Hc HK".
   iApply (wp_write ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x))
             ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap xp)) :: cell b o (ptr_addr xp))
             _ _ [] (fun m => store_bytes (store_aux m (b + o) (ptr_cap xp)) (b + o) 8 (ptr_addr xp))
             with "[Hl Hc] [HK]");
-    [exact HK | reflexivity | | rewrite IH.pts_app; iFrame |].
+    [reflexivity | | rewrite IH.pts_app; iFrame |].
   - intros m fuel (Hf & Hd & _). apply all_agree_app in Hf as [[Hlv _] [_ Hcl]].
     cbn [agree_piece fst snd] in Hlv. destruct (cell_bounds _ _ _ _ _ Hlv Hcl) as [Ho He].
     destruct (pcell_store_ok m b reg o (b + o) (ptr_cap xp) (ptr_addr xp) Hd Hlv Ho He eq_refl)
@@ -519,7 +508,6 @@ Qed.
     ([obj]); the base is positive, aligned and the object ends within
     the address space. A refusal stalls. *)
 Lemma wp_alloc f e ls l d k al args rest j size Φ :
-  SS.keeps_live ->
   map2_option (value_x ge e) [L] args = Some [WInt size] -> 0 <= size -> size <= max_allocation_size ->
   ▷ (∀ base, ⌜0 < base /\ base mod req_align (heap_req al size) = 0 /\
               base + req_extent (heap_req al size) <= 2 ^ 48⌝ -∗ obj base (heap_req al size) -∗
@@ -527,12 +515,12 @@ Lemma wp_alloc f e ls l d k al args rest j size Φ :
          {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k (Alloc al) args :: rest) j)) : lexpr) {{ Φ }}.
 Proof.
-  intros HK Hx Hs0 Hs. set (q := heap_req al size).
+  intros Hx Hs0 Hs. set (q := heap_req al size).
   assert (Hex : 0 <= req_extent q).
   { cbn. apply Z.mul_nonneg_nonneg; [apply Z.div_pos|]; lia. }
   assert (Hal : 0 < req_align q) by (cbn; lia).
   pose proof (fun m fuel => rule_alloc ge f e ls l d k al args rest j [] m fuel size Hx Hs) as Hst.
-  iIntros "HK". iApply (wp_lift_run with "HK"); [exact HK| |].
+  iIntros "HK". iApply (wp_lift_run with "HK").
   - iIntros (σ) "_ _". iPureIntro. unfold fails. rewrite Hst. fold q. lia.
   - iIntros ([m s fuel]) "Hσ HK". iNext. iIntros (e2 σ2 Hm).
     destruct Hm as [(c' & E' & _) | [(q' & kk & base & s' & E' & _ & Ha & -> & ->) | (o & m' & E' & _)]];
@@ -564,13 +552,12 @@ Qed.
     computes as n, and whose capability source gives c: d is bound to
     the pointer of n and c. *)
 Lemma wp_flight f e ls l d o args lw rest j xs n c Φ :
-  SS.keeps_live ->
   map_option (flight_arg_x ge e) args = Some xs -> alu o L xs = Some (WInt n) ->
   flight_cap ge e lw = Some c ->
   ▷ WP (ERun (mkFrame f (put d (WPtr (mkPtr n c)) e) ls None (Exec l rest j)) : lexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Flight d o args lw :: rest) j)) : lexpr) {{ Φ }}.
 Proof.
-  intros HK Hx Ha Hc. apply (wp_pure_next _ _ []); [exact HK|].
+  intros Hx Ha Hc. apply (wp_pure_next _ _ []).
   intros m fuel. exact (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hx Ha Hc).
 Qed.
 
@@ -583,12 +570,11 @@ Proof. rewrite /heap_interp /=. iIntros "H". iExact "H". Qed.
     bind the environment e', and the frame goes on at its instructions.
     With no [[fuel]] left the run stops there, a stall. *)
 Lemma wp_enter f e ls l from b e' Φ :
-  SS.keeps_live ->
   find_block l (fn_blocks f) = Some b -> phis_env ge (b_phis b) from e = Some e' ->
   ▷ WP (ERun (mkFrame f e' ls None (Exec l (b_insts b) (b_jump b))) : lexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Enter l from)) : lexpr) {{ Φ }}.
 Proof.
-  intros HK Hb Hp. iIntros "H". iApply (wp_lift_run with "H"); [exact HK| |].
+  intros Hb Hp. iIntros "H". iApply (wp_lift_run with "H").
   - iIntros (σ) "_ _". iPureIntro. unfold fails.
     destruct (Z.eq_dec (ls_fuel σ) 0) as [Hz|Hz].
     + rewrite Hz rule_out_of_fuel. cbn. tauto.
@@ -608,20 +594,19 @@ Qed.
 
 (** A goto to the target t, polling or not, enters its block from l. *)
 Lemma wp_goto f e ls l t Φ :
-  SS.keeps_live ->
   ▷ WP (ERun (mkFrame f e ls None (Enter (edge_label t) (Some l))) : lexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l [] (JGoto t))) : lexpr) {{ Φ }}.
-Proof. intros HK. apply (wp_pure_next _ _ []); [exact HK|]. intros m fuel. apply rule_goto. Qed.
+Proof. apply (wp_pure_next _ _ []). intros m fuel. apply rule_goto. Qed.
 
 (** A branch on v, which reads as the integer n, enters t2's block from
     l if n is 0, else t1's. *)
 Lemma wp_branch f e ls l v t1 t2 n Φ :
-  SS.keeps_live -> value_x ge e W v = Some (WInt n) ->
+  value_x ge e W v = Some (WInt n) ->
   ▷ WP (ERun (mkFrame f e ls None (Enter (edge_label (if n =? 0 then t2 else t1)) (Some l))) : lexpr)
       {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l [] (JBranch v t1 t2))) : lexpr) {{ Φ }}.
 Proof.
-  intros HK Hv. apply (wp_pure_next _ _ []); [exact HK|].
+  intros Hv. apply (wp_pure_next _ _ []).
   intros m fuel. exact (rule_branch _ _ _ _ _ _ _ _ _ _ _ _ Hv).
 Qed.
 
@@ -629,16 +614,16 @@ Qed.
     invocation with no named locals: the invocation's value is [Ret]
     x, and the postcondition holds of it. *)
 Lemma wp_ret f e l v k x Φ :
-  SS.keeps_live -> fn_ret f = RClass k -> value_x ge e k v = Some x ->
+  fn_ret f = RClass k -> value_x ge e k v = Some x ->
   ▷ Φ (Ret x) -∗ WP (ERun (mkFrame f e [] None (Exec l [] (JRet v))) : lexpr) {{ Φ }}.
 Proof.
-  intros HK Hk Hv.
+  intros Hk Hv.
   assert (Hs : forall m fuel,
              Semantics.step ge (mkConfig (mkFrame f e [] None (Exec l [] (JRet v))) [] m fuel)
              = Done (Ret x)).
   { intros m fuel. rewrite (rule_ret _ _ _ _ _ _ _ _ _ _ _ Hk Hv).
     exact (rule_return_top (mkFrame f e [] None (Exec l [] (JRet v))) m fuel _ m (invalidate_none m)). }
-  iIntros "H". iApply (wp_lift_run with "H"); [exact HK| |].
+  iIntros "H". iApply (wp_lift_run with "H").
   - iIntros (σ) "_ _". iPureIntro. unfold fails. rewrite Hs. cbn. tauto.
   - iIntros ([m s fuel]) "Hσ H". iNext. iIntros (e2 σ2 Hm).
     unfold moves in Hm. cbn [ls_mem ls_fuel ls_rt] in Hm.
@@ -653,14 +638,13 @@ Qed.
     runs as the callee of the caller, which waits at the rest of its
     block for the result r. *)
 Lemma wp_call f e ls l r g args rest j xs gf callee Φ :
-  SS.keeps_live ->
   map_option (arg_x ge e) args = Some xs -> find_fn ge g = Some (Defined gf) ->
   call_frame gf xs = Some callee ->
   ▷ WP (EWait (ERun callee) (mkFrame f e ls None (Exec l rest j)) (mkPending r None) : lexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : lexpr) {{ Φ }}.
 Proof.
-  intros HK Hx Hf Hc.
-  apply (wp_pure_next _ callee [(mkFrame f e ls None (Exec l rest j), mkPending r None)]); [exact HK|].
+  intros Hx Hf Hc.
+  apply (wp_pure_next _ callee [(mkFrame f e ls None (Exec l rest j), mkPending r None)]).
   intros m fuel. exact (rule_call _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hx Hf Hc).
 Qed.
 
@@ -686,14 +670,13 @@ Proof. exact (ectxi_lang_ctx_item (Λ := nanofil_ectxi_lang ge) (KWait cf pd)). 
     is the caller's, through [wp_bind] and [wp_resume]. A caller uses a
     callee's Hoare triple here. *)
 Lemma wp_call_bind f e ls l r g args rest j xs gf callee Φ :
-  SS.keeps_live ->
   map_option (arg_x ge e) args = Some xs -> find_fn ge g = Some (Defined gf) ->
   call_frame gf xs = Some callee ->
   ▷ WP (ERun callee : lexpr) {{ o, ∃ cf', ⌜resume (mkFrame f e ls None (Exec l rest j)) (mkPending r None) o
                                              = Some cf'⌝ ∗ ▷ WP (ERun cf' : lexpr) {{ Φ }} }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : lexpr) {{ Φ }}.
 Proof.
-  intros HK Hx Hf Hc. iIntros "H". iApply (wp_call with "[H]"); [exact HK|exact Hx|exact Hf|exact Hc|].
+  intros Hx Hf Hc. iIntros "H". iApply (wp_call with "[H]"); [exact Hx|exact Hf|exact Hc|].
   iNext. iApply (wp_bind (fun ex => EWait ex (mkFrame f e ls None (Exec l rest j)) (mkPending r None))
                    NotStuck ⊤ (ERun callee : lexpr)).
   iApply (wp_mono with "H"). iIntros (o) "H". iDestruct "H" as (cf') "[%Hr H]".

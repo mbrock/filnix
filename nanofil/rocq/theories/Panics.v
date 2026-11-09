@@ -28,7 +28,7 @@
     | every fuel, and every state reached | divergence and `out_of_fuel` are allowed; fuel plays no part |
     | an allocation with a negative extent is a failure | the machine has no step there, so the run left the model |
     | the module's initial memory and its entry function must exist, and every admissible input must make a frame | otherwise there is no run to speak of, and the program would hold vacuously |
-    | no premise about the runtime's safepoints | a safepoint may free any live heap object (Runtime.v's [safepoint_lifetime]); a program that relies on its heap objects staying live states that as a premise of its own theorem | *)
+    | no premise about the runtime's safepoints | a safepoint changes no region (Runtime.v's [collector_live]): Fil-C's collector frees nothing, and a signal handler or a thread that could is the program's code; a module that installs one calls an external with no contract, which ends its run as a failure | *)
 
 From Stdlib Require Import String ZArith List Bool Lia Relations.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine

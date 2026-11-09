@@ -14,22 +14,18 @@
     is a live heap object of 32 bytes. The access checks then pass
     because each address is b plus 0 to 24.
 
-    A heap object is the one thing a [[poll|safepoint]] may take away:
-    Runtime.v lets the runtime free any live heap object there
-    ([safepoint_lifetime]), as another thread's `free` would. So the
-    theorem has a premise, [safepoint_keeps_live]: no safepoint frees a
-    live object. It holds of the [[interpreter]]'s runtime
-    ([interp_buffer_never_panics] has no assumption), and natively of a
-    program with one thread, since Fil-C's collector frees nothing the
-    program can still reach. It is the program's own premise, as
-    Campaign 4's `stdio_stable` is hi.c's for its stdio objects.
+    A [[poll|safepoint]] leaves the object as it is: the collector
+    changes no region (Runtime.v's [collector_live]), and Fil-C's
+    runtime frees nothing by itself. Only code a program brings in, a
+    signal handler it installs or a thread it starts, could free the
+    buffer under it, and `buffer` calls no external at all. So the
+    theorem holds for every runtime with no premise.
 
     ## Decisions
 
     | Decision | Why |
     |---|---|
-    | the premise is stated for every live object, not for the buffer alone | the buffer's base is chosen by the run, so a premise naming it would have to quantify over bases anyway; "frees nothing live" is the plain statement of a single-threaded program |
-    | the premise is an antecedent of the theorem, not an axiom | it is true of some runtimes and not others; [Runtime] keeps the weaker axiom that only a heap object is ever freed |
+    | no premise about safepoints | the theorem once took `safepoint_keeps_live`, when Runtime.v's safepoint stood for signal handlers too; a handler or a thread is the program's code, and Fil-C's collector frees nothing, so the safepoint axiom is now the collector's alone ([collector_live]) |
     | the assertions say nothing of the buffer's bytes | the program reads them only as `long`s it adds; any value is safe, so neither the fill nor a safepoint's bytes matter |
     | an allocation's base is any [fresh] one | Panics.v's [never_panics_by_invariant] gives every base the runtime may return; the proof uses only that it is positive and that the object ends at or below 2^64 | *)
 
@@ -284,44 +280,33 @@ Proof.
   split; [exists n; split; [reflexivity | exact I] | exact I].
 Qed.
 
-(** ## Over any runtime that frees nothing live at a safepoint *)
+(** ## Over any runtime *)
 
-(** `buffer` never panics under the [[runtime]] R, if R frees no live
-    object at a safepoint. *)
+(** `buffer` never panics under the [[runtime]] R. *)
 Module BufferSafe (R : Runtime).
 Module P := Panics R.
 
-(** The premise: what R does at a [[poll|safepoint]] leaves every live
-    object's [[region]] as it was. Runtime.v allows a safepoint to
-    free a live heap object, as another thread's `free` would; a
-    program with one thread has no other thread to do it. *)
-Definition safepoint_keeps_live : Prop :=
-  forall s m s' m' b reg, R.safepoint s m s' m' ->
-    object_region b (m_regions m) = Some reg -> r_life reg = Live ->
-    object_region b (m_regions m') = Some reg.
-
-(** Under the premise, what R does at a safepoint keeps the
-    assertions: it changes only the memory, and keeps the buffer's
-    region. *)
-Lemma buffer_safepoint : safepoint_keeps_live -> forall c s s' m',
+(** What R does at a [[poll|safepoint]] keeps the assertions: it
+    changes only the memory, and no region ([R.collector_live]), so
+    the buffer's region stays. *)
+Lemma buffer_safepoint : forall c s s' m',
   buffer_inv c -> R.safepoint s (c_mem c) s' m' -> buffer_inv (P.RM.with_mem c m').
 Proof.
-  intros Hkeep c s s' m' (k & pt & e & Ec & Hk & Hin & Ha) Hsp.
+  intros c s s' m' (k & pt & e & Ec & Hk & Hin & Ha) Hsp.
   exists k, pt, e. rewrite Ec at 1. unfold P.RM.with_mem; cbn [c_frame c_callers c_mem c_fuel].
   split; [reflexivity|]. split; [exact Hk|]. split; [exact Hin|].
   destruct k as [|[|k]]; [exact I | exact I|].
   destruct Ha as (b & (Hv & Hpos & Hle & Hr) & Hp). exists b. split; [|exact Hp].
   split; [exact Hv|]. split; [exact Hpos|]. split; [exact Hle|].
-  exact (Hkeep _ _ _ _ _ _ Hsp Hr eq_refl).
+  rewrite (R.collector_live _ _ _ _ Hsp). exact Hr.
 Qed.
 
-(** `buffer` never panics: if R frees no live object at a safepoint,
-    then for every input whose first word is an integer, with any fuel,
-    no state of its run [fails], whatever base its buffer gets. *)
-Theorem buffer_never_panics : safepoint_keeps_live ->
+(** `buffer` never panics: for every input whose first word is an
+    integer, with any fuel, no state of its run [fails], whatever base
+    its buffer gets. *)
+Theorem buffer_never_panics :
   P.never_panics buffer_module (TAtom "buffer") (fun xs => exists n rest, xs = WInt n :: rest).
 Proof.
-  intros Hkeep.
   apply (P.never_panics_by_invariant _ _ _ buffer_globals buffer_mem buffer_fn buffer_inv).
   - exact buffer_initial.
   - apply buffer_find.
@@ -335,12 +320,11 @@ End BufferSafe.
 (** The theorem for the [[interpreter]]'s runtime. *)
 Module InterpBuffer := BufferSafe InterpRuntime.
 
-(** The interpreter's runtime frees nothing at a safepoint, so `buffer`
-    never panics under it, with no premise. *)
+(** `buffer` never panics under the [[interpreter]]'s runtime, an
+    instance of [buffer_never_panics]. *)
 Theorem interp_buffer_never_panics :
   InterpBuffer.P.never_panics buffer_module (TAtom "buffer")
     (fun xs => exists n rest, xs = WInt n :: rest).
 Proof.
   apply InterpBuffer.buffer_never_panics.
-  intros s m s' m' b reg [_ ->] Hr _. exact Hr.
 Qed.

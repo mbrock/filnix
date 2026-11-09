@@ -178,7 +178,6 @@ Module IrisListSum (R : Runtime).
 Module IH := IrisHeap R.
 Module IM := IH.IM.
 Module P := IM.P.
-Module SS := IH.SS.
 Import IM IH.
 
 (** The genv of the module, whose free is R's. *)
@@ -201,20 +200,19 @@ Ltac compute_eq :=
   reflexivity.
 
 (** A one-instruction step that changes no memory. *)
-Ltac wp_emp HK :=
+Ltac wp_emp :=
   iApply (wpc_next _ emp%I with "[//]");
-  [ exact HK
-  | let m := fresh "m" in let s := fresh "s" in iIntros (m s) "_ _"; iPureIntro; compute_eq
+  [ let m := fresh "m" in let s := fresh "s" in iIntros (m s) "_ _"; iPureIntro; compute_eq
   | iNext; iIntros "_"; gen_env ].
 
 (** Entering a block: when the fuel F is 0 the run ends with
     [OutOfFuel]; otherwise the goal is left with F not 0. *)
-Ltac wp_fuel HK :=
+Ltac wp_fuel :=
   match goal with |- environments.envs_entails _ (wpc _ (EConf _ _ ?F)) =>
     let Hz := fresh "Hz" in
     destruct (Z.eq_dec F 0) as [Hz|Hz];
     [ iApply (wpc_done _ emp%I _ _ _ OutOfFuel with "[//]");
-      [ exact HK | intros []
+      [ intros []
       | let m := fresh "m" in let s := fresh "s" in iIntros (m s) "_ _"; iPureIntro; compute_eq ]
     | ]
   end.
@@ -279,10 +277,9 @@ Proof.
 Qed.
 
 (** A step of `sum`'s loop body that may read the node at b. *)
-Ltac wp_node HK b nx x xs :=
+Ltac wp_node b nx x xs :=
   iApply (wpc_next _ (pts (node_ps b nx x) ∗ lst nx xs)%I with "[$Hn $Hl]");
-  [ exact HK
-  | let m := fresh "m" in let s := fresh "s" in
+  [ let m := fresh "m" in let s := fresh "s" in
     iIntros (m s) "Hσ [Hn Hl]";
     iDestruct (node_view with "Hσ Hn Hl") as %(? & ? & ? & ?); iPureIntro; compute_eq
   | iNext; iIntros "[Hn Hl]"; gen_env ].
@@ -296,7 +293,7 @@ Local Notation cont cf d callers :=
 (** `sum`'s loop, from the point after its head's phis: with `pr.1` the
     list's pointer p and `pr.2` an integer, owning the list and the
     continuation, the run is safe. By Löb induction. *)
-Lemma sum_loop (HK : SS.keeps_live) cf d callers :
+Lemma sum_loop cf d callers :
   ⊢ ∀ e p xs fuel, ⌜lookup (TAtom "pr.1") e = Some (WPtr p)⌝ -∗
       ⌜exists s, lookup (TAtom "pr.2") e = Some (WInt s)⌝ -∗ lst p xs -∗ cont cf d callers -∗
       wpc lge (EConf (mkFrame (ls_fn "sum") e [] None
@@ -306,21 +303,20 @@ Proof.
   iLöb as "IH". iIntros (e p xs fuel Hp [s0 Hs]) "Hl HK".
   destruct xs as [|x xs].
   - iDestruct "Hl" as %->.
-    wp_emp HK. wp_emp HK. wp_emp HK.
-    wp_fuel HK. wp_emp HK.
+    wp_emp. wp_emp. wp_emp.
+    wp_fuel. wp_emp.
     iApply (wpc_next _ emp%I with "[//]");
-      [ exact HK
-      | let m := fresh "m" in let s := fresh "s" in iIntros (m s) "_ _"; iPureIntro; compute_eq
+      [ let m := fresh "m" in let s := fresh "s" in iIntros (m s) "_ _"; iPureIntro; compute_eq
       | iNext; iIntros "_"; iApply "HK" ].
   - iDestruct "Hl" as (b [na nc] (-> & Hb0 & Hb1 & Hb2)) "[Hn Hl]".
-    wp_node HK b (mkPtr na nc) x xs. wp_node HK b (mkPtr na nc) x xs.
-    wp_node HK b (mkPtr na nc) x xs.
-    wp_fuel HK. wp_node HK b (mkPtr na nc) x xs.
-    wp_node HK b (mkPtr na nc) x xs. wp_node HK b (mkPtr na nc) x xs.
-    wp_node HK b (mkPtr na nc) x xs. wp_node HK b (mkPtr na nc) x xs.
-    wp_node HK b (mkPtr na nc) x xs. wp_node HK b (mkPtr na nc) x xs.
-    wp_node HK b (mkPtr na nc) x xs.
-    wp_fuel HK. wp_node HK b (mkPtr na nc) x xs.
+    wp_node b (mkPtr na nc) x xs. wp_node b (mkPtr na nc) x xs.
+    wp_node b (mkPtr na nc) x xs.
+    wp_fuel. wp_node b (mkPtr na nc) x xs.
+    wp_node b (mkPtr na nc) x xs. wp_node b (mkPtr na nc) x xs.
+    wp_node b (mkPtr na nc) x xs. wp_node b (mkPtr na nc) x xs.
+    wp_node b (mkPtr na nc) x xs. wp_node b (mkPtr na nc) x xs.
+    wp_node b (mkPtr na nc) x xs.
+    wp_fuel. wp_node b (mkPtr na nc) x xs.
     iApply ("IH" $! _ (mkPtr na nc) xs with "[%] [%] Hl HK");
       [eassumption | eexists; eassumption].
 Qed.
@@ -328,14 +324,14 @@ Qed.
 (** `sum`'s specification, the rule for calling it: from any caller
     frame cf whose call binds the result to d, over any callers stack,
     owning the list from p and the continuation, the call is safe. *)
-Lemma sum_spec (HK : SS.keeps_live) cf d callers p xs fuel :
+Lemma sum_spec cf d callers p xs fuel :
   ⊢ lst p xs -∗ cont cf d callers -∗
     wpc lge (EConf (mkFrame (ls_fn "sum") [(TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None))
                    ((cf, mkPending (CResult d L) None) :: callers) fuel).
 Proof.
   iIntros "Hl HK".
-  wp_fuel HK. wp_emp HK. wp_emp HK. wp_fuel HK. wp_emp HK.
-  iApply (sum_loop HK with "[%] [%] Hl HK"); [reflexivity | eexists; reflexivity].
+  wp_fuel. wp_emp. wp_emp. wp_fuel. wp_emp.
+  iApply (sum_loop with "[%] [%] Hl HK"); [reflexivity | eexists; reflexivity].
 Qed.
 
 (** A new node's object, split into the pieces the loop body uses: its
@@ -354,10 +350,9 @@ Qed.
 
 (** A step of `listsum`'s loop body that may read the new object's
     region. *)
-Ltac wp_live HK :=
+Ltac wp_live :=
   iApply (wpc_next _ (pts _) with "Hlv");
-  [ exact HK
-  | let m := fresh "m" in let s := fresh "s" in
+  [ let m := fresh "m" in let s := fresh "s" in
     iIntros (m s) "Hσ Hlv"; iDestruct (pts_facts with "Hσ Hlv") as %?; iPureIntro;
     match goal with H : owned_facts _ _ |- _ =>
       let H1 := fresh in destruct H as [H1 _]; cbn [all_agree fst snd agree_piece] in H1;
@@ -371,7 +366,7 @@ Ltac wp_live HK :=
     allocates a node, stores h and i in it, and the loop goes on with
     i + 1 and the longer list; at the end `sum` is called with the
     list. *)
-Lemma ls_loop (HK : SS.keeps_live) n :
+Lemma ls_loop n :
   ⊢ ∀ e i h xs fuel,
       ⌜lookup (TAtom "pr.2") e = Some (WInt i) /\ 0 <= i < 2 ^ 31 /\
        lookup (TAtom "pr.1") e = Some (WPtr h) /\ lookup (TAtom "v0") e = Some (WInt n)⌝ -∗
@@ -380,7 +375,7 @@ Lemma ls_loop (HK : SS.keeps_live) n :
                         (Exec (TAtom "L4") (b_insts ls_L4) (b_jump ls_L4))) [] fuel).
 Proof.
   iLöb as "IH". iIntros (e i h xs fuel (Hi & Hir & Hh & Hn)) "Hl".
-  wp_emp HK.
+  wp_emp.
   match goal with H : lookup (TAtom "v10") _ = Some (WInt (if ?c then 1 else 0)) |- _ =>
     destruct c eqn:Hc end.
   - assert (Hi1 : i + 1 < 2 ^ 31).
@@ -389,22 +384,22 @@ Proof.
         let Hb := fresh in destruct b eqn:Hb; [apply Z.leb_le in Hb | apply Z.leb_gt in Hb] end;
       intros; pose proof (Z.mod_pos_bound n (2 ^ 32) ltac:(lia));
       pose proof (Z.mod_pos_bound (n mod 2 ^ 32) (2 ^ 32) ltac:(lia)); lia. }
-    wp_emp HK. wp_fuel HK. wp_emp HK.
+    wp_emp. wp_fuel. wp_emp.
     iApply (wpc_alloc _ (heap_req 16 16));
-      [ exact HK | vm_compute; reflexivity | vm_compute; discriminate
+      [ vm_compute; reflexivity | vm_compute; discriminate
       | let m := fresh "m" in intros m; compute_eq | ].
     iNext. iIntros (base (Hb0 & Hb1 & Hb2)) "Hobj". cbv beta.
     change (req_align (heap_req 16 16)) with 16 in Hb1.
     change (req_extent (heap_req 16 16)) with 16 in Hb2.
     iDestruct (obj_split with "Hobj") as "(Hlv & Hax & Hc0 & Hc8)".
     gen_env.
-    wp_live HK.
+    wp_live.
     iApply (wpc_write _ ([(PLive base, VLive (mkRegion base (base + 16) Heap Live))] ++
                          [(PAux base 0, VAux CNone)] ++ cell base 0 0)
                         ([(PLive base, VLive (mkRegion base (base + 16) Heap Live))] ++
                          [(PAux base 0, VAux (ptr_cap h))] ++ cell base 0 (ptr_addr h))
               with "[Hlv Hax Hc0]");
-      [ exact HK | reflexivity | reflexivity
+      [ reflexivity | reflexivity
       | let m := fresh "m" in intros m (Hf & Hd & _);
         apply all_agree_app in Hf as [Hf _]; cbn [all_agree fst snd agree_piece] in Hf;
         destruct Hf as [Hlive _]; pose proof Hlive as [Hor _];
@@ -412,11 +407,11 @@ Proof.
       | rewrite !pts_app; iFrame
       | iNext; iIntros "Hps"; iDestruct (pts_app with "Hps") as "[Hlv Hps]";
         iDestruct (pts_app with "Hps") as "[Hax Hc0]"; gen_env ].
-    wp_emp HK. wp_emp HK. wp_live HK.
+    wp_emp. wp_emp. wp_live.
     iApply (wpc_write _ ([(PLive base, VLive (mkRegion base (base + 16) Heap Live))] ++ cell base 8 0)
                         ([(PLive base, VLive (mkRegion base (base + 16) Heap Live))] ++ cell base 8 i)
               with "[Hlv Hc8]");
-      [ exact HK | reflexivity | reflexivity
+      [ reflexivity | reflexivity
       | let m := fresh "m" in intros m (Hf & Hd & _);
         apply all_agree_app in Hf as [Hf _]; cbn [all_agree fst snd agree_piece] in Hf;
         destruct Hf as [Hlive _]; pose proof Hlive as [Hor _];
@@ -431,27 +426,27 @@ Proof.
           right; exact Hin ]
       | rewrite !pts_app; iFrame
       | iNext; iIntros "Hps"; iDestruct (pts_app with "Hps") as "[Hlv Hc8]"; gen_env ].
-    wp_emp HK. wp_emp HK. wp_fuel HK. wp_emp HK.
+    wp_emp. wp_emp. wp_fuel. wp_emp.
     iApply ("IH" $! _ (i + 1) (mkPtr base (Obj base)) (i :: xs) with "[%] [Hlv Hax Hc0 Hc8 Hl]").
     { split; [eassumption|]. split; [lia|]. split; eassumption. }
     { cbn [lst]. iExists base, h. iSplitR; [iPureIntro; split; [reflexivity|]; lia|].
       iFrame "Hl". rewrite /node_ps !pts_app. iFrame. }
-  - wp_emp HK. wp_fuel HK. wp_emp HK. wp_emp HK.
-    iApply (sum_spec HK with "Hl"). iIntros (y fuel').
+  - wp_emp. wp_fuel. wp_emp. wp_emp.
+    iApply (sum_spec with "Hl"). iIntros (y fuel').
     cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. gen_env.
     iApply (wpc_done _ emp%I _ _ _ (Ret _) with "[//]");
-      [ exact HK | intros []
+      [ intros []
       | let m := fresh "m" in let s := fresh "s" in iIntros (m s) "_ _"; iPureIntro; compute_eq ].
 Qed.
 
 (** `listsum` called with the int n is safe, with any fuel. *)
-Lemma listsum_spec (HK : SS.keeps_live) n fuel :
+Lemma listsum_spec n fuel :
   ⊢ wpc lge (EConf (mkFrame (ls_fn "listsum") [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None))
                    [] fuel).
 Proof.
   iStartProof.
-  wp_fuel HK. wp_emp HK. wp_emp HK. wp_fuel HK. wp_emp HK.
-  iApply (ls_loop HK n $! _ _ _ [] with "[%] []").
+  wp_fuel. wp_emp. wp_emp. wp_fuel. wp_emp.
+  iApply (ls_loop n $! _ _ _ [] with "[%] []").
   - split; [reflexivity|]. split; [lia|]. split; reflexivity.
   - cbn [lst]. done.
 Qed.
@@ -469,20 +464,19 @@ Proof. apply subG_invΣ. apply _. Qed.
 Global Instance lsΣ_heap : gen_heapGpreS piece pval lsΣ.
 Proof. apply subG_gen_heapGpreS. apply _. Qed.
 
-(** `listsum` never panics: if R frees no live object at a safepoint,
-    then for every input whose first word is an int, with any fuel, no
-    state of its run [fails], whatever bases its nodes get. Proved by
-    Iris adequacy ([heap_never_panics]) from [listsum_spec]. *)
-Theorem listsum_never_panics : SS.keeps_live ->
+(** `listsum` never panics: for every input whose first word is an
+    int, with any fuel, no state of its run [fails], whatever bases its
+    nodes get. Proved by Iris adequacy ([heap_never_panics]) from
+    [listsum_spec]. *)
+Theorem listsum_never_panics :
   P.never_panics ls_module (TAtom "listsum") (fun xs => exists n rest, xs = WInt n :: rest).
 Proof.
-  intros HK.
   apply (heap_never_panics lsΣ ls_module (TAtom "listsum") _ ls_globals ls_mem (ls_fn "listsum")).
   - exact ls_initial.
   - exact (ls_find_listsum R.free).
   - intros b1 r1 b2 r2 [E _]. vm_compute in E. discriminate E.
   - intros xs (n & rest & ->). eexists. split; [apply listsum_call_frame|].
-    intros fuel HinvG HheapG. apply listsum_spec, HK.
+    intros fuel HinvG HheapG. apply listsum_spec.
 Qed.
 
 End IrisListSum.

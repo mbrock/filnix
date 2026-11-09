@@ -12,16 +12,18 @@
     back block by block and position by position, and Steps.v says what
     each kind of step does to the frame.
 
-    One hypothesis remains, [spares]: at a [[safepoint]] before an
-    instruction the pass relies on facts across, the [[runtime]] changes
-    no region. Natively it fails at a pointer store whose aux must be
-    allocated: the store exits to the runtime
-    (`filc_exit_with_allocation_root` in filc_runtime.c), where a
-    deferred signal handler may free the checked object, and the store
-    lands in the freed object's retained memory, safe natively by
-    `retention` but `unchecked` in the model. The interpreter's runtime
-    changes nothing at a safepoint ([interp_spares]), so its theorem
-    has no such hypothesis.
+    The theorems take one hypothesis, [spares]: at a [[safepoint]]
+    before an instruction the pass relies on facts across, the
+    [[runtime]] changes no region. Every runtime satisfies it
+    (Invariant.v's [spares_any], from Runtime.v's [collector_live]).
+    It was a hypothesis because a pointer store whose aux must be
+    allocated exits to the runtime (`filc_exit_with_allocation_root` in
+    filc_runtime.c), where a deferred signal handler may free the
+    checked object, and the store lands in the freed object's retained
+    memory, safe natively by `retention` but `unchecked` in the model.
+    A handler is the program's code, and installing one ends a run in
+    the model, so that case is now a constraint on verifying handlers:
+    one must not free an object whose check is in flight.
 
     ## Decisions
 
@@ -29,7 +31,7 @@
     |---|---|
     | the pass's position is a relation ([walks], [at_pos]), not a program counter | `checked_inst_rest/7` takes a check and its access in one step, so the pass's positions are a subset of the instructions |
     | a doomed frame claims nothing | its `check_ahead`'s fact does not hold; what it may still do is the `check_ahead` corollary's |
-    | [spares] is a hypothesis, not an axiom | it is false natively at a pointer store's aux exit, where a free may show and retention keeps the store safe; mbrock's decision (docs/rocq.md, The evidence invariant over runs) |
+    | [spares] is still a hypothesis of the theorems | every runtime discharges it with [spares_any] since the safepoint became the collector's alone (2026-11-09); removing it from the statements is a follow-up. Before, it was false natively at a pointer store's aux exit, where a handler's free may show (docs/rocq.md, The evidence invariant over runs) |
     | [InterpRuntime] is unsealed | so that [interp_spares] can read its safepoint |
     | no unchecked outcome is claimed for a free | Soundness.v covers it by Runtime.v's [free_checked] | *)
 

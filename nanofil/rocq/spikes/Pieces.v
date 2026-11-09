@@ -12,12 +12,12 @@
     Two facts about the whole memory are the logics' state
     interpretation. Live objects do not overlap ([live_disjoint]), which
     a run keeps, so a store into one object leaves every other live
-    object's bytes alone. And under [keeps_live] (no safepoint frees a
-    live object, Buffer.v's premise) a [[poll|safepoint]] changes no
-    region and no byte, and changes an aux slot only where the
-    capability stored there names a freed object ([safepoint_shape],
-    from Runtime.v's [non_moving], [aux_round_trip], [rooting] and
-    [safepoint_lifetime]). *)
+    object's bytes alone. And a [[poll|safepoint]] changes no region
+    and no byte, and changes an aux slot only where the capability
+    stored there names a freed object ([safepoint_shape], from
+    Runtime.v's [collector_live], [non_moving] and [aux_round_trip]),
+    so no safepoint frees a live object ([keeps_live], once a premise,
+    now a lemma). *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime ExternalCalls.
@@ -164,39 +164,34 @@ Qed.
 
 (** ## Safepoints *)
 
-(** What any runtime R does at a safepoint, under the premise that it
-    frees no live object. *)
+(** What any runtime R does at a safepoint: by Runtime.v's
+    [collector_live] it frees no object. *)
 Module SafepointShape (R : Runtime).
 
-(** No safepoint of R frees a live object: Buffer.v's
-    [safepoint_keeps_live]. *)
-Definition keeps_live : Prop :=
-  forall s m s' m' b reg, R.safepoint s m s' m' ->
-    object_region b (m_regions m) = Some reg -> r_life reg = Live ->
-    object_region b (m_regions m') = Some reg.
+(** No safepoint of R frees a live object, the premise Buffer.v once
+    took: a safepoint changes no region ([collector_live]). *)
+Lemma keeps_live : forall s m s' m' b reg, R.safepoint s m s' m' ->
+  object_region b (m_regions m) = Some reg -> r_life reg = Live ->
+  object_region b (m_regions m') = Some reg.
+Proof. intros s m s' m' b reg Hsp E _. rewrite (R.collector_live _ _ _ _ Hsp). exact E. Qed.
 
-(** Under [keeps_live], a safepoint keeps every object's region and
+(** A safepoint keeps every object's region ([collector_live]) and
     every byte, and changes an aux slot only as [aux_moves] allows. *)
-Lemma safepoint_shape : keeps_live -> forall s m s' m',
+Lemma safepoint_shape : forall s m s' m',
   R.safepoint s m s' m' -> same_regions m m' /\ m_bytes m' = m_bytes m /\ aux_moves m m'.
 Proof.
-  intros Hk s m s' m' Hsp. split; [|split].
-  - intros b. destruct (object_region b (m_regions m')) as [reg'|] eqn:E'.
-    + destruct (R.safepoint_lifetime _ _ _ _ Hsp b reg' E') as (reg & E & [<-|(_ & Hl & ->)]);
-        [symmetry; exact E|].
-      rewrite (Hk _ _ _ _ _ _ Hsp E Hl) in E'. rewrite E. symmetry. exact E'.
-    + destruct (object_region b (m_regions m)) as [reg|] eqn:E; [|reflexivity].
-      exfalso. apply (R.rooting _ _ _ _ Hsp b); congruence.
+  intros s m s' m' Hsp. split; [|split].
+  - intros b. rewrite (R.collector_live _ _ _ _ Hsp). reflexivity.
   - exact (R.non_moving _ _ _ _ Hsp).
   - exact (R.aux_round_trip _ _ _ _ Hsp).
 Qed.
 
-(** A safepoint of R keeps live objects apart, if it frees none. *)
-Lemma live_disjoint_safepoint : keeps_live -> forall s m s' m',
+(** A safepoint of R keeps live objects apart: it changes no region. *)
+Lemma live_disjoint_safepoint : forall s m s' m',
   R.safepoint s m s' m' -> live_disjoint m -> live_disjoint m'.
 Proof.
-  intros Hk s m s' m' Hsp Hd b1 r1 b2 r2 [E1 L1] [E2 L2].
-  destruct (safepoint_shape Hk _ _ _ _ Hsp) as (Hr & _).
+  intros s m s' m' Hsp Hd b1 r1 b2 r2 [E1 L1] [E2 L2].
+  destruct (safepoint_shape _ _ _ _ Hsp) as (Hr & _).
   rewrite Hr in E1, E2. exact (Hd b1 r1 b2 r2 (conj E1 L1) (conj E2 L2)).
 Qed.
 

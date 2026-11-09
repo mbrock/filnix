@@ -11,8 +11,8 @@
     are sound: every access it lets go unchecked is in fact in bounds,
     or traps as a checked access would. It rests on the
     [[runtime|runtime axioms]] of Runtime.v, on one hypothesis about the
-    runtime's [[poll|safepoints]] ([spares]), and on the run starting
-    ready; for the interpreter's own runtime only the ready start is
+    runtime's [[poll|safepoints]] ([spares]), which every runtime meets
+    (Invariant.v's [spares_any]), and on the run starting ready; for the interpreter's own runtime only the ready start is
     left ([interp_valid_no_unchecked]). The validator here is
     Validate.v's transcription, which the gates compare with
     `ir:valid_module/1`; external calls other than free are stuck in
@@ -33,7 +33,7 @@
     | Decision | Why |
     |---|---|
     | free never answering `unchecked` is the module type's axiom [free_checked] | mbrock's decision, with the native test axiom-free.c |
-    | the theorem takes [spares] as the run theorems do | it is false natively at a pointer store's [[aux]] exit; mbrock's decision keeps it a hypothesis ([The runtime's safepoints](../../docs/rocq.md#the-evidence-invariant-over-runs)) |
+    | the theorem takes [spares] as the run theorems do | every runtime discharges it with Invariant.v's [spares_any]; it was a hypothesis while a handler's free at a pointer store's [[aux]] exit counted as the runtime's ([The runtime's safepoints](../../docs/rocq.md#the-evidence-invariant-over-runs)) |
     | a run is stated over Guard.v's machine instance | the doomed frame's run is carried over to Doomed.v's ([mreachable_doom]) | *)
 
 From Stdlib Require Import String ZArith List Bool Lia Relations.

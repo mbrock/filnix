@@ -25,11 +25,12 @@
     interpretation.
 
     A [[poll|safepoint]] is the one step that may change memory nobody
-    in the program wrote. Under [keeps_live] (no safepoint frees a live
-    object; Buffer.v's premise, here per runtime) it changes nothing an
-    assertion owns except an aux slot whose stored capability names a
-    freed object, and the list predicate [lst] never stores one
-    ([lst_safepoint]). An assertion that survives that is [sp_stable].
+    in the program wrote. It frees no object (Runtime.v's
+    [collector_live], so the premise Buffer.v once took is Pieces.v's
+    lemma [keeps_live]) and changes nothing an assertion owns except an
+    aux slot whose stored capability names a freed object, and the list
+    predicate [lst] never stores one ([lst_safepoint]). An assertion
+    that survives that is [sp_stable].
 
     An assertion that owns only pieces of objects ([owns_registered])
     can be dropped into [htrue], the affine assertion of anything
@@ -175,8 +176,8 @@ Definition lst_cons (p : ptr) (v : Z) (next : ptr) (xs : list Z) : hprop :=
 
 (** ## More ways memory may change *)
 
-(** The assertion P survives what a safepoint may do under
-    [keeps_live] ([safepoint_shape]): the same objects, the same bytes,
+(** The assertion P survives what a safepoint may do
+    ([safepoint_shape]): the same objects, the same bytes,
     and aux slots changed only as [aux_moves] allows. *)
 Definition sp_stable (P : hprop) : Prop :=
   forall S m m', P S m -> same_regions m m' -> m_bytes m' = m_bytes m -> aux_moves m m' -> P S m'.

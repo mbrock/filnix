@@ -451,16 +451,22 @@ Definition inv (ge : genv) (md : module) (st : mstate) : Prop :=
 
 (** The [[runtime]]'s action at a [[safepoint]] changes no region where
     it comes just before an instruction i that the pass relies on facts
-    across ([relies]). A hypothesis, not an axiom: natively, a pointer
+    across ([relies]). Every runtime satisfies it ([spares_any]): no
+    region changes at a safepoint. It was kept a hypothesis while the
+    safepoint stood for signal handlers too, since natively a pointer
     store whose aux must be allocated exits to the runtime, where a
-    signal handler may free the checked object (docs/rocq.md, The
-    evidence invariant over runs). The interpreter's runtime satisfies
-    it (Persistence.v's [interp_spares]). *)
+    handler the program installed may free the checked object
+    (docs/rocq.md, The evidence invariant over runs). *)
 Definition spares (ge : genv) (md : module) : Prop :=
   forall c s s' m',
     safepoint_due ge c = true -> R.safepoint s (c_mem c) s' m' ->
     forall l i rest j, fr_at (c_frame c) = Exec l (i :: rest) j ->
     relies (fn_src md (fr_fn (c_frame c))) i = true -> m_regions m' = m_regions (c_mem c).
+
+(** Every runtime spares every module's facts: the collector changes
+    no region at a safepoint ([R.collector_live]). *)
+Lemma spares_any : forall ge md, spares ge md.
+Proof. intros ge md c s s' m' _ Hsp _ _ _ _ _ _. exact (R.collector_live _ _ _ _ Hsp). Qed.
 
 (** The empty list of facts holds. *)
 Lemma facts_hold_nil : forall ge m e, facts_hold ge m e [].

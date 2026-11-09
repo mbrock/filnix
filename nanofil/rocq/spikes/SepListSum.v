@@ -1,7 +1,6 @@
 (** The listsum spike proved with the hand-rolled separation logic of
-    Sep.v (docs/logic.md): spikes/listsum.c never panics, under any
-    runtime that frees nothing live at a safepoint, and with no premise
-    under the interpreter's runtime.
+    Sep.v (docs/logic.md): spikes/listsum.c never panics, with no
+    premise, under any runtime, the interpreter's among them.
 
     The proof is Buffer.v's: an assertion at each point of each
     function, one step from a configuration where it holds is
@@ -21,8 +20,8 @@
     caller, or `sum` runs with `listsum` suspended after its call. A
     safepoint ([R.at_safepoint] is abstract, so one may be due before
     any instruction that is not evidence-preserving, and at each poll
-    edge) keeps every assertion: under [keeps_live] it changes no
-    region and no byte, and changes an aux slot only where a freed
+    edge) keeps every assertion: it changes no region
+    ([collector_live]) and no byte, and changes an aux slot only where a freed
     object's capability is stored, which no list does
     ([sum_safepoint], [ls_safepoint]). *)
 
@@ -582,32 +581,30 @@ Proof.
     split; [exists n; split; [reflexivity | exact I] | exact I].
 Qed.
 
-(** ## Over any runtime that frees nothing live at a safepoint *)
+(** ## Over any runtime *)
 
-(** listsum.c never panics under the runtime R, if R frees no live
-    object at a safepoint. *)
+(** listsum.c never panics under the runtime R. *)
 Module SepListSum (R : Runtime).
 
 (** Panics.v's property over R. *)
 Module P := Panics R.
 
-(** What a safepoint of R does under [keeps_live] (Pieces.v). *)
+(** What a safepoint of R does (Pieces.v). *)
 Module SS := SafepointShape R.
 
-(** listsum.c never panics: if R frees no live object at a safepoint,
-    then for every input whose first word is an integer, with any fuel,
-    no state of its run [fails], wherever its nodes are placed. *)
-Theorem listsum_never_panics : SS.keeps_live ->
+(** listsum.c never panics: for every input whose first word is an
+    integer, with any fuel, no state of its run [fails], wherever its
+    nodes are placed. *)
+Theorem listsum_never_panics :
   P.never_panics ls_module (TAtom "listsum") (fun xs => exists n rest, xs = WInt n :: rest).
 Proof.
-  intros Hk.
   apply (P.never_panics_by_invariant _ _ _ ls_globals ls_mem listsum_fn ls_inv).
   - exact ls_initial.
   - apply ls_find_listsum.
   - intros xs (n & rest & ->). eexists. split; [apply listsum_call_frame|]. intros fuel. apply ls_start.
   - intros c s Hc Hr. apply ls_safe; [exact ls_find_direct_sum | exact Hc | exact (R.address_space _ _ Hr)].
-  - intros c s s' m' Hc _ _ Hsp. destruct (SS.safepoint_shape Hk _ _ _ _ Hsp) as (Hr & Hb & Ha).
-    exact (ls_safepoint c m' Hc (SS.live_disjoint_safepoint Hk _ _ _ _ Hsp (proj1 Hc)) Hr Hb Ha).
+  - intros c s s' m' Hc _ _ Hsp. destruct (SS.safepoint_shape _ _ _ _ Hsp) as (Hr & Hb & Ha).
+    exact (ls_safepoint c m' Hc (SS.live_disjoint_safepoint _ _ _ _ Hsp (proj1 Hc)) Hr Hb Ha).
 Qed.
 
 End SepListSum.
@@ -615,12 +612,8 @@ End SepListSum.
 (** The theorem for the interpreter's runtime. *)
 Module InterpSepListSum := SepListSum InterpRuntime.
 
-(** The interpreter's runtime frees nothing at a safepoint, so
-    listsum.c never panics under it, with no premise. *)
+(** listsum.c never panics under the interpreter's runtime. *)
 Theorem interp_listsum_never_panics :
   InterpSepListSum.P.never_panics ls_module (TAtom "listsum")
     (fun xs => exists n rest, xs = WInt n :: rest).
-Proof.
-  apply InterpSepListSum.listsum_never_panics.
-  intros s m s' m' b reg [_ ->] Hr _. exact Hr.
-Qed.
+Proof. exact InterpSepListSum.listsum_never_panics. Qed.

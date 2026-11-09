@@ -1,0 +1,5 @@
+objects held by a frame keep their bounds: yes
+objects held through an object keep their bounds: yes
+objects held by a global keep their bounds: yes
+an object held in a register keeps its bounds: yes
+a freed object stays freed: yes

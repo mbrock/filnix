@@ -94,7 +94,7 @@ Local Definition inv_def `{!invGS_gen hlc Σ} (N : namespace) (P : iProp Σ) : i
   □ ∀ E, ⌜↑N ⊆ E⌝ → |={E,E ∖ ↑N}=> ▷ P ∗ (▷ P ={E ∖ ↑N,E}=∗ True).
 ```
 
-> An invariant shared between threads is the piece nanofil's planned logic does not need yet. Its model has one thread, and the only other party that touches memory is the [[runtime]] at a [[poll|safepoint]], which logic.md states as a premise on the runtime rather than as an invariant.
+> An invariant shared between threads is the piece nanofil's planned logic does not need yet. Its model has one thread, and the only other party that touches memory is the [[runtime]] at a [[poll|safepoint]], which Runtime.v bounds by an axiom ([collector_live]: no region changes there) rather than by an invariant.
 
 ### The later modality
 
@@ -367,17 +367,16 @@ Definition pts (ps : list (piece * pval)) : iProp Σ := [∗ list] lv ∈ ps, po
 
 A [[check]] splits along these pieces. Its bounds test is arithmetic on the object's extent and the pointer's offset, and its free-flag test needs the object still live. logic.md's plan makes those two halves two resources. The [[meta|meta fact]] `meta b n k` (b was allocated with n bytes, of kind k) is persistent, because nothing after an allocation changes what was allocated; it would be a ghost_map element `b ↪□ (n, k)`, which anyone may copy. The [[live|live token]] `live b` is exclusive, or split into fractions for readers, and free consumes it, so only the owner can free. Cells are points-to pieces, as above. The spike needed only `live`: its PLive piece carries the region, and the bounds come from there.
 
-> Raw accesses need no rule. Campaign 3's [valid_no_unchecked] already proves that a validated module's every raw load and store is covered by a check that passed, so the logic needs rules only where a check could fail, and value rules for what a load returns. [[spares|Spares]], the run starting [[ready]], and the core machine's stop at external calls are its hypotheses; Campaign 4's labelled machine removes the last.
+> Raw accesses need no rule. Campaign 3's [valid_no_unchecked] already proves that a validated module's every raw load and store is covered by a check that passed, so the logic needs rules only where a check could fail, and value rules for what a load returns. The run starting [[ready]] and the core machine's stop at external calls are its hypotheses; Campaign 4's labelled machine removes the last. It also takes [[spares]] as a hypothesis, but every runtime meets it, since the collector changes no region at a safepoint ([collector_live]).
 
 ### Safepoints, by Löb
 
-A safepoint is where the runtime acts, and Runtime.v lets it free a live heap object ([safepoint_lifetime]), standing for another thread. A single-threaded program that keeps its own objects across a safepoint needs a runtime that frees nothing live: Buffer.v's premise [safepoint_keeps_live], which the spikes call [keeps_live] and prove the interpreter meets. Under it a safepoint keeps every region and byte, and rewrites only aux slots that hold a dead object's capability ([safepoint_shape], from [non_moving], [aux_round_trip] and [rooting]), so it keeps [heap_interp] with the same ghost heap.
+A safepoint is where the runtime acts, and Runtime.v's axiom for it is the collector's alone, [collector_live]: no region changes at a safepoint, so no safepoint frees a live object. The spikes once took that as a premise, [keeps_live], as Buffer.v did; with [collector_live] it is a lemma of Pieces.v for every runtime, and no rule or theorem takes it. A safepoint keeps every region and byte, and rewrites only aux slots that hold a dead object's capability ([safepoint_shape], from [collector_live], [non_moving] and [aux_round_trip]), so it keeps [heap_interp] with the same ghost heap.
 
 Every rule of the spike comes from one lifting lemma, [wpc_lift], and that lemma deals with safepoints once:
 
 ```rocq
 Lemma wpc_lift (Q : iProp Σ) fr callers fuel :
-  SS.keeps_live ->
   (forall m s, heap_interp (m, s) -∗ Q -∗ ⌜~ fails ge (mkConfig fr callers m fuel)⌝) ->
   (forall m s, heap_interp (m, s) -∗ Q -∗
      ▷ ∀ e2 σ2, ⌜nosp_step ge (mkConfig fr callers m fuel) s e2 σ2⌝ ==∗ heap_interp σ2 ∗ wpc e2) ->
@@ -436,7 +435,7 @@ Local Notation cont cf d callers :=
   (∀ y fuel', wpc lge (EConf (mkFrame (fr_fn cf) (put d (WInt y) (fr_env cf)) (fr_locals cf)
                                        (fr_doomed cf) (fr_at cf)) callers fuel'))%I.
 
-Lemma sum_spec (HK : SS.keeps_live) cf d callers p xs fuel :
+Lemma sum_spec cf d callers p xs fuel :
   ⊢ lst p xs -∗ cont cf d callers -∗
     wpc lge (EConf (mkFrame (ls_fn "sum") [(TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None))
                    ((cf, mkPending (CResult d L) None) :: callers) fuel).
@@ -445,16 +444,15 @@ Lemma sum_spec (HK : SS.keeps_live) cf d callers p xs fuel :
 The frame is free: whatever the caller owns besides the list rides inside `cont`. Each loop is a Löb induction at the point after its head's phis, and each step is one rule application with the step computed, as in Symbolic.v. The theorem is then adequacy ([heap_never_panics]) applied to `listsum`'s specification ([listsum_spec]):
 
 ```rocq
-Theorem listsum_never_panics : SS.keeps_live ->
+Theorem listsum_never_panics :
   P.never_panics ls_module (TAtom "listsum") (fun xs => exists n rest, xs = WInt n :: rest).
 Proof.
-  intros HK.
   apply (heap_never_panics lsΣ ls_module (TAtom "listsum") _ ls_globals ls_mem (ls_fn "listsum")).
   - exact ls_initial.
   - exact (ls_find_listsum R.free).
   - intros b1 r1 b2 r2 [E _]. vm_compute in E. discriminate E.
   - intros xs (n & rest & ->). eexists. split; [apply listsum_call_frame|].
-    intros fuel HinvG HheapG. apply listsum_spec, HK.
+    intros fuel HinvG HheapG. apply listsum_spec.
 Qed.
 ```
 

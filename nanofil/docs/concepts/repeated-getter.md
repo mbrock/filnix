@@ -7,6 +7,6 @@ A repeated getter is a call of a [[getter]] that another call of the same getter
 - `ir:repeated_getters/4`, with `ir:local_global/2`; empty in a function with setjmp. Validate.v's [repeated_getters]; Walk.v's [repeated_getter] marks it among the instructions the pass [relies] on.
 - Local linkage matters: only then is the getter the one nanofil emits and nobody can interpose it.
 
-The subtlety: the module type still lets the [[runtime]] act before a getter, since it is not `ir:evidence_preserving/1`, so the proofs cover it only through [[spares]]; natively the fast path reaches no safepoint, so it holds there.
+The subtlety: the module type still lets the [[runtime]] act before a getter, since it is not `ir:evidence_preserving/1`, so the proofs cover it through [[spares]], which every runtime meets because its safepoint changes no region ([collector_live]); natively the fast path reaches no safepoint at all.
 
 See [forward.md, Getters](../forward.md#getters-november-2026).

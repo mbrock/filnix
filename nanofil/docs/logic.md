@@ -48,8 +48,8 @@ types, then hand proofs, each a fragment of the one below, so Campaigns
 | `never_panics_by_invariant` | Panics.v | the [adequacy](concepts/adequacy.md) of the simplest logic: one global invariant of configurations, every step safe and back in it, every fresh base, and a due safepoint keeping it |
 | `compute_step`, `block_fact`, `show_facts` | [Symbolic.v](../rocq/theories/Symbolic.v) | symbolic execution of one step with the environment, memory and fuel abstract; the work a wp rule per instruction would do once |
 | `cycle_never_panics` | [Cycle.v](../rocq/theories/Cycle.v) | Floyd assertions at each of 19 points; a loop of any trip count |
-| `buffer_never_panics` | [Buffer.v](../rocq/theories/Buffer.v) | a heap object at any fresh base; `holds_buffer` is `meta b 32 Heap` and `live b` written as one non-separating fact; `safepoint_keeps_live` is the instance premise the proposal asks for |
-| `valid_no_unchecked` | [Soundness.v](../rocq/theories/Soundness.v) | Campaign 3: no run of a valid module that starts ready reaches `unchecked`; under `spares`, and stuck past any external call but free |
+| `buffer_never_panics` | [Buffer.v](../rocq/theories/Buffer.v) | a heap object at any fresh base; `holds_buffer` is `meta b 32 Heap` and `live b` written as one non-separating fact; it once took `safepoint_keeps_live`, the instance premise the proposal asks for, which Runtime.v's `collector_live` now makes a lemma |
+| `valid_no_unchecked` | [Soundness.v](../rocq/theories/Soundness.v) | Campaign 3: no run of a valid module that starts ready reaches `unchecked`; under `spares`, which every runtime meets (`spares_any`), and stuck past any external call but free |
 | ExternalCalls.v, ExternalMachine.v, Hi.v, Program.v | Campaign 4 | relational libc contracts with writable roots (a hand-rolled frame), a labelled machine, hi.c's body safety under `stdio_stable` |
 
 So the degenerate logic and its adequacy exist, and three programs are
@@ -83,11 +83,14 @@ object means rewriting it.
   value rules for what a load returns. This would cut most of the
   per-program arithmetic.
 - **The safepoint premise belongs to the instance.** Under Runtime.v as
-  written, a safepoint may free any live heap object
-  (`safepoint_lifetime`), so never_panics is false for a program that
-  holds one across a poll or a call. Buffer.v states the premise as an
+  first written, a safepoint could free any live heap object
+  (`safepoint_lifetime`), so never_panics was false for a program that
+  holds one across a poll or a call. Buffer.v stated the premise as an
   antecedent, `safepoint_keeps_live`, which the interpreter meets; Hi.v's
-  `stdio_stable` is the same kind of premise for stdio's objects.
+  `stdio_stable` is the same kind of premise for stdio's objects. The
+  safepoint axiom is now the collector's alone, `collector_live` (no
+  region changes at a safepoint), which makes `safepoint_keeps_live` a
+  lemma for every runtime, so the premise is gone.
 - **The ladder, and Campaign 5 as a fragment.** A certificate checker
   that emits derivations in the logic is sound by adequacy, with no
   separate soundness proof against the machine.
@@ -95,7 +98,8 @@ object means rewriting it.
 ## Where it misreads the model
 
 - **"Raw accesses need no rule" has hypotheses.** `valid_no_unchecked`
-  needs the module valid, the run started ready, and `spares`, and in
+  needs the module valid, the run started ready, and `spares` (which
+  every runtime now meets, by `spares_any`), and in
   the core machine an external call other than free is stuck, so it says
   nothing past one. For hi.c or Hello it must hold on Campaign 4's
   labelled machine (ExternalMachine.v preserves Campaign 3's invariants
@@ -105,13 +109,20 @@ object means rewriting it.
   alone.
 - **The safepoint rely is simpler than "handlers respect ownership".**
   The model has no threads and no handlers: a safepoint is the runtime
-  R acting, and what it frees stands for another thread or a handler.
-  For a single-threaded program without a freeing handler, which is
-  every program on the roadmap including Hello, the whole rely is
-  "frees nothing live", already stated in Buffer.v. The ownership-
-  respecting rely matters only for the concurrency inquiry. Its
+  R's collector acting, and Runtime.v's `collector_live` says it
+  changes no region, so no program states a rely at all. A signal
+  handler or another thread is program code. In the model installing a
+  handler (`signal`, `sigaction`) or starting a thread
+  (`pthread_create`) is a call to an external with no contract, which
+  ends the run as a failure, and the run is the program's whole
+  execution after the trusted entry, with no handler installed and no
+  other thread when it starts. That covers Hello, which installs no
+  handler. The ownership-respecting rely returns when a
+  handler is verified as program code, with an invariant that it frees
+  only what it was handed, and in the concurrency inquiry. Its
   stability proof uses `non_moving` (bytes), `aux_round_trip` (stored
-  capabilities) and `rooting` (identities), as the proposal says.
+  capabilities) and `collector_live` (regions and identities, with
+  `rooting` now a lemma from it), as the proposal says.
 - **Shared libc state is not Iris-shaped here.** libc is not code in the
   model; it is trusted contracts over an abstract world with a `rep`
   relation to memory. The program does not touch a FILE's fields, so
@@ -200,7 +211,7 @@ and only their own check, `nix build .#checks.x86_64-linux.nanofil-logic-spikes`
 statement about the same program, in Panics.v's terms:
 
 ```
-Theorem listsum_never_panics : SS.keeps_live ->
+Theorem listsum_never_panics :
   P.never_panics ls_module (TAtom "listsum") (fun xs => exists n rest, xs = WInt n :: rest).
 ```
 
@@ -211,17 +222,18 @@ the collected heap, links each with a checked pointer store, and calls
 check and an aux pointer load for each next pointer, and a poll on the
 back edge. gc.ir's `sum` is the same loop with an external `c_gc` call
 in it, which needs Campaign 4's machine. `keeps_live` (no safepoint
-frees a live object) is Buffer.v's premise; both spikes also prove the
-interpreter's runtime meets it, and `Print Assumptions` of that
-corollary is closed for both.
+frees a live object), once Buffer.v's premise and the spikes', is now a
+lemma of Pieces.v from Runtime.v's `collector_live` (a safepoint
+changes no region), so the theorem holds for every runtime; `Print
+Assumptions` of the interpreter's corollary is closed for both.
 
 They share [Pieces.v](../rocq/spikes/Pieces.v), the resource model:
 pieces keyed by [identity](concepts/identity.md) (an object's life,
 one byte, one aux slot at an offset), the global fact that live objects
-are disjoint, and `safepoint_shape`: under `keeps_live`, a safepoint
-keeps every region and every byte, and rewrites only aux slots that hold
-a freed object's capability (from `non_moving`, `aux_round_trip`,
-`rooting` and `safepoint_lifetime`). Keying by identity is forced, not
+are disjoint, and `safepoint_shape`: a safepoint keeps every region
+and every byte, and rewrites only aux slots that hold a freed object's
+capability (from `collector_live`, `non_moving` and
+`aux_round_trip`). Keying by identity is forced, not
 chosen: the model's `fresh` lets a new object take a freed one's
 addresses.
 
@@ -329,12 +341,12 @@ tradition. Steps 1 to 3 above are done:
 | 2, the list sum | [ListSumLogic.v](../rocq/spikes/ListSumLogic.v) | `sum`'s triple `{{{ lst p xs }}} sum {{{ RET Ret (list_sum xs); lst p xs }}}` hands the list back and states the result; `listsum` uses it through `wp_call_bind`; 14 s, against 38 s for the spike on the old language |
 | 3, rendering | dterm-rocq (another thread) | Iris notation and proof-mode states on the site |
 
-Next is step 4, Iris in the main build. The premise `keeps_live` is to
-become a consequence of the program rather than of the runtime: only a
-signal handler the program installed, or a thread it started, frees a
-live object, so the plan is a collector-only safepoint axiom, with
-handlers as program code verified under an ownership invariant. That
-plan is awaiting mbrock.
+Next is step 4, Iris in the main build. The premise `keeps_live` is
+gone: only a signal handler the program installed, or a thread it
+started, frees a live object, so Runtime.v's safepoint axiom is now the
+collector's alone, `collector_live`, which makes `keeps_live` a lemma.
+Handlers are program code, to be verified under an ownership
+invariant.
 
 ## What Hello will demand
 
@@ -358,7 +370,12 @@ derived from each once):
 - Iris, as recommended after the spikes, or the hand-rolled logic?
 - Is "frees nothing live at a safepoint" the premise wanted for every
   single-threaded program, or should Runtime.v gain a single-threaded
-  runtime type that has it as an axiom with a native test?
+  runtime type that has it as an axiom with a native test? Answered
+  (2026-11-09): neither. There is no premise. Runtime.v's safepoint
+  axiom is the collector's alone, `collector_live` (no region changes
+  at a safepoint, native test axiom-collector-live.c), for every
+  runtime. A signal handler or a thread is program code, to be
+  verified with an invariant that it frees only what it was handed.
 - Should the ladder's middle rungs (types, certificates) be designed
   before the spike, or only after it shows what a derivation looks like?
 

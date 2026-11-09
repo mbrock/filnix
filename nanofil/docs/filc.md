@@ -62,7 +62,7 @@ Free is immediate and cheap. It sets the object's upper to its lower and raises 
 
 FUGC runs on its own threads, concurrently with the program and in parallel. It never moves objects and never stops the world. It needs only a store barrier: while it marks, storing a pointer marks its target. It needs no load barrier, because it rescans thread stacks until nothing new turns up.
 
-> The model has one thread and no collector. Instead, the [[runtime]] is a page of axioms in Runtime.v, each with a native test. Allocation is [[fresh]] ([fresh_allocation]); no object moves ([non_moving]); free changes only the header ([[retention]], [free_lifetime]); and nothing the program can still name is reclaimed ([rooting]). Every theorem holds for any runtime that satisfies them.
+> The model has one thread and no collector. Instead, the [[runtime]] is a page of axioms in Runtime.v, each with a native test. Allocation is [[fresh]] ([fresh_allocation]); no object moves ([non_moving]); free changes only the header ([[retention]], [free_lifetime]); and at a safepoint no object is freed or reclaimed ([collector_live]), so nothing the program can still name goes ([rooting], a lemma from it). Every theorem holds for any runtime that satisfies them.
 
 ## Safepoints
 
@@ -72,7 +72,7 @@ The compiler puts a pollcheck on every back edge of the control-flow graph, so n
 
 Safepoints are also what make an ordinary load safe. Between a pointer load and the next pollcheck the collector cannot finish a cycle, so the loaded pointer's object stays valid without any barrier.
 
-> In nanofil's IR a pollcheck is a poll edge, `poll(L)`. The validator demands one in every cycle (`ir:polls_every_cycle/1`, [polls_every_cycle]). A safepoint is also where another thread's free can land, so checks done before one prove nothing after it: no [[live-fact|live fact]] crosses a safepoint. The one runtime hypothesis of the soundness theorem, [[spares]], covers the three exceptions.
+> In nanofil's IR a pollcheck is a poll edge, `poll(L)`. The validator demands one in every cycle (`ir:polls_every_cycle/1`, [polls_every_cycle]). Natively a safepoint is also where a signal handler the program installed runs, and it may free, so checks done before one prove nothing after it: no [[live-fact|live fact]] crosses a safepoint. In the model the runtime frees nothing at a safepoint ([collector_live]), and a handler is program code; installing one is a call to an external with no contract, which ends the run. The soundness theorem's one runtime hypothesis, [[spares]], covers the three exceptions, and every runtime meets it.
 
 ## Calls and linking
 

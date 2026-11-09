@@ -394,8 +394,12 @@ These are formal.md's early decisions as they turned out in the code:
   takes from the Fil-C runtime: where a new object goes, what free
   does, and what may change at a safepoint, as ten axioms
   ([runtime-axioms.md](runtime-axioms.md)). The model has one thread
-  and no collector, so the thread's signal handlers and the collector
-  show up only as the `safepoint` relation. Other threads are outside
+  and no collector, so the collector shows up only as the `safepoint`
+  relation, which changes no region (`collector_live`). A signal
+  handler or a thread is the program's code, not the runtime's: in the
+  model, installing one (`signal`, `sigaction`) or starting one
+  (`pthread_create`) is a call to an external with no contract, which
+  ends the run as a failure. Other threads are outside
   it: natively their frees show at any check (axiom-threads.c), and a
   threaded program's safety rests on Fil-C's own argument. `InterpRuntime` is interp.pl's
   (`alloc_base/6`, `free_res/4`, nothing at a safepoint) and proves
@@ -751,6 +755,33 @@ Decisions and findings:
   safepoint at a pointer store). The principled alternative, weakening
   the conclusion to "checked, or its object was freed since its
   check", is left for later.
+
+  Superseded (2026-11-09): every runtime now satisfies `spares`, by
+  Invariant.v's `spares_any`. The `safepoint` relation used to stand
+  for the thread's signal handlers as well as the collector, so a
+  safepoint could free any live heap object (`safepoint_lifetime` was
+  an axiom). mbrock decided that whether a safepoint frees depends on
+  the program, not the runtime. Fil-C's runtime never frees an object
+  by itself; only a signal handler the program installed or a thread
+  it started can, and both are program code. In the model, installing
+  a handler (`signal`, `sigaction`) or starting a thread
+  (`pthread_create`) is a call to an external with no contract, which
+  ends the run as a failure. The model also assumes the run is the
+  program's whole execution after the trusted entry, with no handler
+  installed and no other thread when it starts. So the safepoint axiom
+  is now the collector's alone, `collector_live` (no region changes at
+  a safepoint); `safepoint_lifetime` and `rooting` are lemmas from it,
+  and so is `spares_any`. The run theorems still take `spares` as a
+  hypothesis, which every runtime discharges with `spares_any`;
+  removing the hypothesis is a follow-up. The native caveat remains:
+  a pointer store's aux exit (`filc_exit_with_allocation_root`, then
+  `filc_exit`, then `handle_deferred_signals`) is a safepoint inside a
+  check-to-access pair the pass keeps facts across, so a handler a
+  program installs can run there and free the checked object. That is
+  now a constraint on verifying handlers, not a gap in the theorems for
+  programs without them: a verified handler must not free an object
+  whose check is in flight, or the theorems weaken to "checked, or
+  freed since its check".
 - **A runtime's free gives no `unchecked`.** The module type's
   `free_checked` now says so ("No run is unchecked"); `free_res`
   proves it, and native free returns or traps.
@@ -1258,8 +1289,9 @@ What the theorem covers and what it does not:
   theorem says nothing about runs past them; Campaign 4's contracts
   extend the machine there.
 - **The generic theorem has one runtime hypothesis**, `spares` ("The
-  runtime's safepoints" above), which the interpreter's runtime
-  satisfies. That free keeps identities and never answers `unchecked`
+  runtime's safepoints" above), which every runtime satisfies
+  (`spares_any`, from `collector_live`); removing it from the
+  statement is a follow-up. That free keeps identities and never answers `unchecked`
   are the module type's axioms `free_keeps_ids` and `free_checked`.
 - **A run starts ready**, a hypothesis until the heap starts above the
   module's data.

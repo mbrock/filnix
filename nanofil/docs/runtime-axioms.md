@@ -22,13 +22,14 @@ the runtime paths below are relative to `libpas/src/libpas/` there.
 | `fresh_allocation` | an allocation the runtime makes has a `fresh` base: no identity the memory has, live or freed, aligned, overlapping no object, ending at or below 2^64, reading as zero with no stored capability; for a runtime state `ready` for the memory | [axiom-fresh.c](../tests/c/prog/axiom-fresh.c): new objects read zero; a freed object's capability, still held, traps after collections and thousands of allocations of its size | `filc_runtime.c` `finish_allocate_small`/`_large` (zero mode), `fugc.h:170–181` |
 | `address_space` | where the runtime is `ready`, every object lies in [0, 2^48] (`objects_fit`), so no address inside one wraps, two addresses of one object are less than 2^63 apart, and an address that wrapped below 0, read signed, is below every object; the runtime's `alloc` may refuse, and the run then traps `out_of_memory` | [axiom-address.c](../tests/c/prog/axiom-address.c): heap objects of 1 byte to 1 GiB, static and initialized data and an address-taken local end below 2^48; `malloc(2^48)` traps as too big, and `malloc(2^48 - 1)`, within the size limit, traps out of memory | `filc_runtime.h` `filc_prepare_allocate_object` (`FILC_MAX_ALLOCATION_SIZE`, `PAS_MAX_ADDRESS`), `FILC_OBJECT_AUX_PTR_MASK` (object addresses stored in 48 bits), `pas_config.h` `PAS_ADDRESS_BITS` 48 |
 | `non_moving` | at a safepoint no byte moves or changes: the collector writes no object's contents and no address word | [axiom-nonmoving.c](../tests/c/prog/axiom-nonmoving.c): addresses of live and freed objects, and live contents, unchanged across six collections | Manifesto.md, "Non-moving" |
-| `free_lifetime`, `safepoint_lifetime` | an object's bounds change only by free, which empties a live heap object's for every alias at once; nothing else changes a region, and no identity appears | [axiom-lifetime.c](../tests/c/prog/axiom-lifetime.c): a read after a free through an alias traps; another object is untouched | `filc_runtime.c:3160–3183` (`free_impl`: `upper = lower`, then FREE), `3869–3917` |
-| `safepoints` | the runtime acts (a signal handler, a pollcheck callback) only at instructions that are not `evidence_preserving/1`: calls, polls, alloc and the rest; this is one thread's view, and another thread's frees show elsewhere (below) | [axiom-safepoint.c](../tests/c/prog/axiom-safepoint.c): a timer's handler frees the object a loop reads; the loop reads only its bytes, then traps. [axiom-threads.c](../tests/c/prog/axiom-threads.c) records the limit: another thread's free traps a check after an earlier check of the same object passed, with no safepoint between | Manifesto.md, "FUGC relies on safepoints"; `filc_runtime.c:1191` (`handle_deferred_signals`) |
+| `free_lifetime` | an object's bounds change only by free, which empties a live heap object's for every alias at once; no identity appears | [axiom-lifetime.c](../tests/c/prog/axiom-lifetime.c): a read after a free through an alias traps; another object is untouched | `filc_runtime.c:3160–3183` (`free_impl`: `upper = lower`, then FREE), `3869–3917` |
+| `collector_live` | at a safepoint no region changes: the collector frees nothing, live or freed, and no identity appears or goes. `safepoint_lifetime` and `rooting` are lemmas from it | [axiom-collector-live.c](../tests/c/prog/axiom-collector-live.c): objects of 16 bytes to 1 MiB held by a frame, a register, another object and a global, across polls and collections, read their last byte and trap one past it; a freed object stays freed. The stronger "nothing frees at a safepoint" is false: in [axiom-safepoint.c](../tests/c/prog/axiom-safepoint.c) a handler the program installed frees there | Manifesto.md, "Accurate" and "Non-moving"; the collector's sweep frees only unmarked objects (`fugc.c`), which the program cannot name |
+| `safepoints` | the runtime acts (the collector's handshake, a pollcheck callback, a signal handler the program installed) only at instructions that are not `evidence_preserving/1`: calls, polls, alloc and the rest; this is one thread's view, and another thread's frees show elsewhere (below) | [axiom-safepoint.c](../tests/c/prog/axiom-safepoint.c): a timer's handler frees the object a loop reads; the loop reads only its bytes, then traps. [axiom-threads.c](../tests/c/prog/axiom-threads.c) records the limit: another thread's free traps a check after an earlier check of the same object passed, with no safepoint between | Manifesto.md, "FUGC relies on safepoints"; `filc_runtime.c:1191` (`handle_deferred_signals`) |
 | `retention` | free changes no byte and no stored capability: a freed object's memory is retained while anything can name it | [axiom-retention.c](../tests/c/prog/axiom-retention.c): another thread frees the object a loop reads and churns the allocator; the loop reads retained bytes or traps, never other values | `free_impl` writes only the header; Manifesto.md on freed objects |
 | `aux_round_trip` | at a safepoint a stored capability stays, or, if its object was freed, becomes one that traps as a freed object does (the free singleton) | [axiom-aux.c](../tests/c/prog/axiom-aux.c): a stored pointer to a freed object loads back at its address and traps; a live one reads | `fugc.h:170–181, 220–231` (CAS of the lower to `filc_free_singleton`) |
-| `free_keeps_ids` | free reclaims nothing: every identity before a free is one after it, the freed object's too; only the collector reclaims, at a safepoint | [axiom-identity.c](../tests/c/prog/axiom-identity.c): its capability traps, before and after a collection (refuting "free leaves every region as it was"); 1024 allocations of its size right after the free, just after a full collection and while no other runs (checked with `zgc_requested_cycle`, retried up to five times; about 80 KiB with headers, below `fugc_minimum_threshold`), never take its address; another object is untouched | `filc_runtime.c:3160–3183` (`free_impl` writes only the header), `3897–3923` (`free` reaches it directly), `fugc.c:64` |
+| `free_keeps_ids` | free reclaims nothing: every identity before a free is one after it, the freed object's too; only the collector reclaims, at a safepoint, and only objects nothing names, whose regions the model keeps (`collector_live`) | [axiom-identity.c](../tests/c/prog/axiom-identity.c): its capability traps, before and after a collection (refuting "free leaves every region as it was"); 1024 allocations of its size right after the free, just after a full collection and while no other runs (checked with `zgc_requested_cycle`, retried up to five times; about 80 KiB with headers, below `fugc_minimum_threshold`), never take its address; another object is untouched | `filc_runtime.c:3160–3183` (`free_impl` writes only the header), `3897–3923` (`free` reaches it directly), `fugc.c:64` |
 | `free_checked` | free frees or traps; it never goes on having done something else, so it gives no `unchecked` | [axiom-free.c](../tests/c/prog/axiom-free.c): free of null and of a live object's base return, the object then traps; a second free, before or after a collection, an interior pointer and a global's address trap | `filc_runtime.c:3897–3923` (`FILC_CHECK` and `free_fail` panic) |
-| `rooting` | at a safepoint no identity the program can name is reclaimed | [axiom-rooting.c](../tests/c/prog/axiom-rooting.c): objects held only by a frame, and one only through another object, survive collections and allocation; with `FUGC_SCRIBBLE=1` in the gc-stress steps; [gcglobals.c](../tests/c/prog/gcglobals.c) for globals | Manifesto.md, "Accurate" |
+| `rooting` (a lemma, from `collector_live`) | at a safepoint no identity the program can name is reclaimed | [axiom-rooting.c](../tests/c/prog/axiom-rooting.c): objects held only by a frame, and one only through another object, survive collections and allocation; with `FUGC_SCRIBBLE=1` in the gc-stress steps; [gcglobals.c](../tests/c/prog/gcglobals.c) for globals | Manifesto.md, "Accurate" |
 
 The tests are ordinary `tests/c/prog` programs: progtest.sh builds each
 with nanofil and with filcc and compares them, and its `.expected` file
@@ -37,11 +38,34 @@ in a forked child with its stderr closed, so each program exits 0.
 
 ## How the model uses them
 
-The model is one thread's. A free by one of its signal handlers, which
-Fil-C runs only at pollchecks and exits to the runtime, and the
-collector's rewriting of a stored capability are what the program finds
-changed at a safepoint, the module type's `safepoint` relation, and
-nowhere else.
+The model is one thread's. The collector's rewriting of a stored
+capability to a freed object is what the program finds changed at a
+safepoint, the module type's `safepoint` relation, and nowhere else: no
+region changes there (`collector_live`). Fil-C's runtime never frees an
+object by itself. A signal handler can, and Fil-C runs one only at a
+pollcheck, but a handler is code the program installed, not the
+runtime's, as is a thread it starts. In the model, installing a handler
+(`signal`, `sigaction`) or starting a thread (`pthread_create`) is a
+call to an external with no contract, which ends the run as a failure,
+so no theorem covers a program past that point. The model takes a run
+to be the program's whole execution after the trusted entry, with no
+handler installed and no other program thread when it starts; a
+constructor, a preloaded library or a native caller that installed one
+is outside it, and no libc contract may admit installing a handler or
+starting a thread. A handler a program does install is to be verified
+as program code under the same logic, with an invariant that it frees
+only what it was handed. A pointer store's aux exit is a native
+safepoint between a check and its access, which the validator keeps
+facts across, so such a handler must also not free an object whose
+check is in flight; otherwise the theorems would weaken to "checked,
+or freed since its check".
+
+Until 2026-11 the `safepoint` relation also stood for the thread's
+signal handlers, and its axiom `safepoint_lifetime` let a safepoint
+free any live heap object, so Buffer.v and the logic spikes took a
+premise that no safepoint frees a live object. Whether a safepoint can
+free one depends on the program, not on the runtime, so the axiom is
+now the collector's alone and the premise is gone.
 
 Another thread is outside the model. Its writes already are:
 `non_moving` lets no byte change at a safepoint. So are its frees,
