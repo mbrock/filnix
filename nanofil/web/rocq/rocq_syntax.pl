@@ -371,7 +371,7 @@ vernac(P, proof_start(P)) --> tk(id('Proof')), !, words(_).
 def_kw(Kw) --> tk(id(Kw)), { memberchk(Kw, ['Definition', 'Fixpoint', 'CoFixpoint', 'Let', 'Example', 'Instance', 'Function']) }, !.
 def_kw('Canonical Structure') --> tk(id('Canonical')), tk(id('Structure')).
 
-directive(K) :- memberchk(K, ['From', 'Require', 'Import', 'Export', 'Open', 'Close', 'Set', 'Unset',
+directive(K) :- memberchk(K, ['From', 'Require', 'Import', 'Export', 'Include', 'Open', 'Close', 'Set', 'Unset',
                               'Arguments', 'Hint', 'Declare', 'Delimit', 'Bind', 'Implicit',
                               'Generalizable', 'Create', 'Opaque', 'Transparent', 'Coercion']).
 
