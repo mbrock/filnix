@@ -438,10 +438,30 @@
             # same vulnerable release under Fil-C (docs/php.md).
             php-stealmybitcoin = import ./tests/php-stealmybitcoin.nix {
               inherit pkgs;
-              native = pkgs.php84.overrideAttrs (old: {
-                dontStrip = true;
-                separateDebugInfo = false;
-              });
+              native =
+                (pkgs.php84.overrideAttrs (old: {
+                  dontStrip = true;
+                  separateDebugInfo = false;
+                })).withExtensions
+                  (
+                    { enabled, ... }:
+                    map (
+                      ext:
+                      if ext.extensionName == "pcntl" then
+                        ext.overrideAttrs (old: {
+                          # Nix sandboxes may exclude CPU 0. Exercise affinity on
+                          # allowed CPUs rather than assuming CPUs 0 and 1 exist.
+                          postPatch = (old.postPatch or "") + ''
+                            substituteInPlace ext/pcntl/tests/pcntl_cpuaffinity.phpt \
+                              --replace-fail '$mask = [0, 1];' \
+                                '$mask = array_slice(pcntl_getcpuaffinity(), 0, 2);' \
+                              --replace-fail '["0", "1"]' 'array_map("strval", $mask)'
+                          '';
+                        })
+                      else
+                        ext
+                    ) enabled
+                  );
               filc = pkgsFilcPhp84_25.php84_25;
             };
             utf8-locale = import ./tests/locale.nix { inherit pkgsFilc; };
