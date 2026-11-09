@@ -36,6 +36,9 @@ int main(void) {
     answer("strnlen stops before a huge bound", strnlen(short_string, (size_t)-1) == 2 && strnlen(short_string + 1, (size_t)-1) == 1);
     answer("strnlen unaligned high bytes need no extra byte", strnlen(high_bytes + 1, 15) == 15 && strnlen(short_string + 1, 2) == 1);
     answer("strnlen zero count permits live one-past", strnlen(s + 3, 0) == 0 && strnlen(&"r"[2], 0) == 0);
+    _Alignas(16) char terminated[16] = {'!', (char)128, (char)255, 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 0};
+    answer("strlen includes final-byte NUL", strlen(terminated) == 15 && strlen(terminated + 1) == 14 && strlen(terminated + 2) == 13);
+    answer("strlen empty still reads a live NUL", strlen(terminated + 15) == 0 && strlen("") == 0 && strlen(short_string + 1) == 1);
     answer("memchr converts int and selects first match", memchr(high_bytes + 1, 511, 15) == high_bytes + 2 && memchr(high_bytes + 1, -1, 15) == high_bytes + 2 && memchr(short_string, 0, 3) == short_string + 2);
     answer("memchr respects last byte and zero count", memchr(high_bytes + 1, 'l', 15) == high_bytes + 15 && !memchr(high_bytes + 1, 0, 15) && !memchr(high_bytes + 16, 0, 0));
     _Alignas(16) unsigned char compare_left[16] = {'!', 128, 255, 0, 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l'};

@@ -265,6 +265,20 @@ Source: `string/` and `filc_runtime.c` `memset_impl_specialized`,
 `memmove_aux_loop_body`, `memmove_smidgen`. Runtime-only `zmemmove` needs the same two
 ranges but permits overlap; it is not a 57th libc import.
 
+The Rocq strlen contract requires a live object capability through the
+first NUL, even for an empty string, and returns its exact offset as a
+canonical size_t. It frames the entire memory and world. Its read-locality
+theorem identifies the object's region/life and precisely the bytes through
+that NUL; auxiliary slots and other memory are not dependencies. Under
+runtime readiness this domain is equivalent to the existing checked
+list-string predicate used by puts, without changing puts's premises.
+Additional probe rows check high bytes and unaligned starts through an
+aligned 16-byte allocation's final-byte NUL, including length zero at that
+byte. The pinned generic strlen can load before the argument (downward
+alignment) and beyond its logical terminator. These finite probes neither
+prove universal native satisfaction nor identify the linked implementation;
+the logical read footprint is not a native byte-load trace.
+
 The Rocq memchr contract requires the full readable span independently of
 the result, compares the canonical int's low byte, and returns the first
 matching pointer with exactly the input capability, or null. Additional

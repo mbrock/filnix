@@ -1409,6 +1409,46 @@ the window is a logical dependency bound, not an exact native load trace.
 These finite checks do not prove universal native satisfaction. Runtime
 axioms, Machine semantics, registry, validator and site code are unchanged.
 
+### Campaign 4 milestone 4u: unbounded strlen and the string bridge
+
+The trusted `strlen_contract` returns the exact first-NUL offset as a
+class-L size_t. `terminated_length` reuses `bounded_length` at SIZE_MAX,
+requiring termination strictly before that sentinel. This is a logical
+device, not a maximum-sized read: the input capability must cover only
+the nonzero bytes and their NUL. Even an empty string needs one readable
+live byte; a one-past pointer is not admitted.
+
+The contract names a single object's identity/life and the byte interval
+through the NUL as its read dependencies. `terminated_length_agree` proves
+locality: preserving that identity's region lookup and those bytes keeps
+the predicate true, regardless of other objects, bytes or auxiliary slots.
+This supplies a footprint fact for a later derived Iris triple without
+making the relational contract depend on Iris. All memory and the logical
+world are preserved exactly; no writes, capability propagation, allocation,
+release, observation, resource or exit outcome is authorized.
+
+Input-only premises construct a permitted invocation, and every completion
+returns the unique length of the original string. This proves specification
+nonvacuity, not native termination. `StringLengths` bridges the predicate to
+the existing checked list-string `c_string` under runtime readiness. The
+forward direction constructs a finite list without readiness. The reverse
+uses the existing freed-empty and address-space axioms to establish live
+authority and a canonical length. Neither `c_string` nor puts is silently
+strengthened on arbitrary model memories. The consumed-extent theorem
+reuses the bounded-scan proof and includes the final NUL.
+
+Public-call controls cover high bytes, unaligned starts, empty strings and
+a final-byte NUL; reject incorrect lengths, absent in-object NULs, and
+one-past/null/freed authority; and instantiate the bridge on the established
+puts string. Native probes use an aligned 16-byte allocation with its sole
+NUL at the last byte, checking full and interior lengths and the empty final
+byte. The missing-NUL trap control remains. The pinned generic strlen aligns
+its first word load downward and can load beyond the logical terminator:
+these probes do not prove safety of every native load, universal contract
+satisfaction, or which implementation the linked binary selects. Runtime
+axioms, Machine semantics, existing call signatures and the registry are
+unchanged.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and

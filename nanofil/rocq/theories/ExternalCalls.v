@@ -355,6 +355,61 @@ Proof.
   - specialize (Hbytesl right ltac:(lia)). rewrite Hnulr in Hbytesl by lia. lia.
 Qed.
 
+(** An unbounded string terminates strictly before SIZE_MAX. The sentinel
+    is a logical bound, not permission to read SIZE_MAX bytes: only the
+    first k nonzero bytes and their NUL are required through p's live
+    object capability. An exhausted nonterminated span is not a string. *)
+Definition terminated_length (m : mem) (p : ptr) (k : Z) : Prop :=
+  bounded_length m p (2 ^ 64 - 1) k /\ k < 2 ^ 64 - 1.
+
+(** The first NUL uniquely fixes strlen's integer result, not just its sign. *)
+Lemma terminated_length_unique : forall m p left right,
+  terminated_length m p left -> terminated_length m p right -> left = right.
+Proof. intros m p left right [Hl _] [Hr _]. eapply bounded_length_unique; eauto. Qed.
+
+(** The read footprint is one identity's region (including life) and
+    bytes at offsets 0 through k. Agreement on those pieces suffices;
+    unrelated objects, bytes and every auxiliary slot may change. *)
+Lemma terminated_length_agree : forall m m' p k,
+  (forall base, ptr_cap p = Obj base \/ ptr_cap p = Ro base ->
+    object_region base (m_regions m') = object_region base (m_regions m)) ->
+  (forall i, 0 <= i <= k -> m_bytes m' (ptr_addr p + i) = m_bytes m (ptr_addr p + i)) ->
+  terminated_length m p k -> terminated_length m' p k.
+Proof.
+  intros m m' p k Hregions Hbytes [(Hn & Hk & Hlife & Ha & Hbefore & Hnul) Hmax].
+  destruct Hlife as (base & reg & Hcap & Hreg & Hlive).
+  split; [|exact Hmax]. split; [exact Hn|]. split; [exact Hk|]. split.
+  - exists base, reg. split; [exact Hcap|]. rewrite Hregions by exact Hcap. auto.
+  - split.
+    + unfold access_res, cap_access_res in Ha |- *.
+      destruct Hcap as [Hcap|Hcap]; rewrite Hcap in Ha |- *;
+        rewrite Hregions by auto; exact Ha.
+    + split.
+      * intros i Hi. rewrite Hbytes by lia. apply Hbefore. exact Hi.
+      * intros Hlt. rewrite Hbytes by lia. apply Hnul. exact Hlt.
+Qed.
+
+(** strlen returns a size_t (class L) and takes exactly one pointer. *)
+Definition strlen_abi (r : call_result) (args : list arg) : Prop :=
+  (r = CVoid \/ exists d, r = CResult d L) /\ exists p, args = [Arg P p].
+
+(** Pure trusted strlen. Its input names the object life and the byte
+    span through the first NUL; no auxiliary slots are read to compute
+    the result. Empty sources prohibit capability propagation, not reads.
+    All memory, including regions and auxiliary slots, is preserved;
+    no allocation, release, observation or resource ending is permitted. *)
+Definition strlen_contract (world : Type) : contract world :=
+  mkContract world (RClass L) strlen_abi
+    (fun xs m _ => exists p k, xs = [WPtr p] /\ terminated_length m p k)
+    (fun _ _ _ => []) (fun _ _ _ => []) (fun _ _ _ => [])
+    (fun _ _ _ _ _ => False)
+    (fun _ m w born trace m' w' => born = [] /\ trace = [] /\ m' = m /\ w' = w)
+    (fun xs m w born trace ending m' w' =>
+      born = [] /\ trace = [] /\ m' = m /\ w' = w /\
+      exists p k, xs = [WPtr p] /\ terminated_length m p k /\ ending = CallReturn [WInt k])
+    (fun _ => False)
+    (fun why => In why [NullCapability; OutOfBounds; ArgumentSize; ReturnSize]).
+
 (** strnlen returns a size_t (class L) and takes a pointer and size_t.
     Discarding the result does not change the callee's return shape. *)
 Definition strnlen_abi (r : call_result) (args : list arg) : Prop :=
@@ -920,6 +975,53 @@ Proof.
     apply Z.leb_le in Hlo; apply Z.leb_le in Hhi; lia.
 Qed.
 
+(** Input-only string authority constructs an actual pure invocation.
+    This is specification nonvacuity, not native execution or termination. *)
+Theorem strlen_return : forall world r args p k s m (w : world),
+  strlen_abi r args -> terminated_length m p k ->
+  invoke (strlen_contract world) r args [WPtr p] s m w
+    [] (CallReturn [WInt k]) s m w.
+Proof.
+  intros world r args p k s m w Habi Hlength.
+  eapply invoke_normal with (born := []).
+  - exact Habi.
+  - exists p, k. auto.
+  - split; [constructor|]. repeat split; reflexivity.
+  - repeat split; try reflexivity. exists p, k. auto.
+  - intros why Hbad. discriminate.
+  - intros values Heq. injection Heq as <-. split.
+    + exists (WInt k). split; [reflexivity|]. simpl.
+      rewrite Z.mod_small; [reflexivity|destruct Hlength as [(_ & Hk & _) Hmax]; lia].
+    + constructor; [exact I|constructor].
+  - intros status Hbad. discriminate.
+Qed.
+
+(** Every represented completion returns the original string's exact
+    length, with empty observations and unchanged memory and world.
+    There is no resource or process-exit alternative. *)
+Theorem strlen_invocation : forall world r args xs s m (w : world) trace ending s' m' w',
+  invoke (strlen_contract world) r args xs s m w trace ending s' m' w' ->
+  trace = [] /\ m' = m /\ w' = w /\
+  exists p k, xs = [WPtr p] /\ terminated_length m p k /\ ending = CallReturn [WInt k].
+Proof.
+  intros world r args xs s m w trace ending s' m' w' Hcall. inversion Hcall; subst.
+  - match goal with Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
+      destruct Hpost as (_ & Htrace & Hmem & Hworld & Hresult); auto end.
+  - contradiction.
+Qed.
+
+(** The consumed extent includes the terminating byte and fits in the
+    address space whenever the runtime starts ready. *)
+Lemma terminated_length_extent : forall s m p k,
+  R.ready s m -> terminated_length m p k ->
+  0 <= ptr_addr p /\ ptr_addr p + k + 1 <= 2 ^ 48.
+Proof.
+  intros s m p k Hr [Hlength Hmax].
+  pose proof (bounded_length_extent _ _ _ _ _ Hr Hlength) as Hextent.
+  assert (Hlt : (k <? 2 ^ 64 - 1) = true) by (apply Z.ltb_lt; exact Hmax).
+  rewrite Hlt in Hextent. exact Hextent.
+Qed.
+
 (** Any specified first match or miss has a permitted pure invocation. *)
 Theorem memchr_return : forall world r args p c n q s m (w : world),
   memchr_abi r args -> memchr_input m p c n -> memchr_result m p c n q ->
@@ -1105,6 +1207,118 @@ Definition c_string (m : mem) (p : ptr) (bytes : list Z) : Prop :=
   access_res m (ptr_addr p) (ptr_cap p) (Z.of_nat (length bytes) + 1) Read 1 = Some ok /\
   string_at m (ptr_addr p) bytes.
 
+(** A list string has nonzero byte contents before its length and a NUL
+    exactly at that length. No authority is inferred from total memory. *)
+Lemma string_at_length : forall bytes m a,
+  string_at m a bytes ->
+  (forall i, 0 <= i < Z.of_nat (length bytes) -> 0 < m_bytes m (a + i) < 256) /\
+  m_bytes m (a + Z.of_nat (length bytes)) = 0.
+Proof.
+  induction bytes as [|b rest IH]; intros m a Hstring.
+  - simpl in *. split; [intros i Hi; lia|]. replace (a + 0) with a by lia. exact Hstring.
+  - destruct Hstring as (Hb & Hhead & Hrest).
+    destruct (IH m (a + 1) Hrest) as [Hbytes Hnul].
+    change ((forall i, 0 <= i < Z.of_nat (S (length rest)) ->
+      0 < m_bytes m (a + i) < 256) /\ m_bytes m (a + Z.of_nat (S (length rest))) = 0).
+    rewrite Nat2Z.inj_succ. split.
+    + intros i Hi. destruct (Z.eq_dec i 0) as [->|Hnonzero].
+      * replace (a + 0) with a by lia. rewrite Hhead. exact Hb.
+      * replace (a + i) with (a + 1 + (i - 1)) by lia. apply Hbytes. lia.
+    + replace (a + Z.succ (Z.of_nat (length rest))) with
+        (a + 1 + Z.of_nat (length rest)) by lia. exact Hnul.
+Qed.
+
+(** Finite nonzero bytes ending in NUL construct their list representation.
+    This constructive enumeration is a proof, not a native scan algorithm. *)
+Lemma string_at_exists : forall count m a,
+  (forall i, 0 <= i < Z.of_nat count -> 0 < m_bytes m (a + i) < 256) ->
+  m_bytes m (a + Z.of_nat count) = 0 ->
+  exists bytes, length bytes = count /\ string_at m a bytes.
+Proof.
+  induction count as [|count IH]; intros m a Hbytes Hnul.
+  - exists []. split; [reflexivity|]. simpl in Hnul. replace (a + 0) with a in Hnul by lia.
+    exact Hnul.
+  - rewrite Nat2Z.inj_succ in Hbytes, Hnul.
+    destruct (IH m (a + 1)) as (bytes & Hlen & Hstring).
+    + intros i Hi. replace (a + 1 + i) with (a + (i + 1)) by lia. apply Hbytes. lia.
+    + replace (a + 1 + Z.of_nat count) with (a + Z.succ (Z.of_nat count)) by lia. exact Hnul.
+    + exists (m_bytes m a :: bytes). split; [simpl; congruence|]. simpl.
+      split; [|auto]. replace a with (a + 0) by lia. apply Hbytes. lia.
+Qed.
+
+(** Terminated-length authority constructs a checked list string without
+    readiness; the reverse direction below needs ready-memory facts. *)
+Lemma terminated_length_string : forall m p k,
+  terminated_length m p k ->
+  exists bytes, c_string m p bytes /\ k = Z.of_nat (length bytes).
+Proof.
+  intros m p k [(_ & Hk & _ & Ha & Hbytes & Hnul) Hmax].
+  assert (Hlt : (k <? 2 ^ 64 - 1) = true) by (apply Z.ltb_lt; exact Hmax).
+  rewrite Hlt in Ha.
+  destruct (string_at_exists (Z.to_nat k) m (ptr_addr p)) as (bytes & Hlen & Hstring).
+  - rewrite Z2Nat.id by lia. exact Hbytes.
+  - rewrite Z2Nat.id by lia. apply Hnul. exact Hmax.
+  - exists bytes. assert (Hlength : Z.of_nat (length bytes) = k) by
+      (rewrite Hlen, Z2Nat.id by lia; reflexivity).
+    split; [split; [rewrite Hlength; exact Ha|exact Hstring]|lia].
+Qed.
+
+(** Ready-memory facts connect strlen's explicit lifetime and canonical
+    result to the unchanged list-string domain used by puts. *)
+Module StringLengths (R : Runtime).
+
+(** A checked list string is live under readiness: freed objects have
+    empty bounds. Its positive extent fits in 2^48, so the first NUL is
+    strictly before SIZE_MAX, not an extra practical length restriction. *)
+Lemma c_string_length : forall s m p bytes,
+  R.ready s m -> c_string m p bytes ->
+  terminated_length m p (Z.of_nat (length bytes)).
+Proof.
+  intros s m p bytes Hr [Ha Hstring].
+  pose proof (string_at_length bytes m (ptr_addr p) Hstring) as [Hbytes Hnul].
+  assert (Hnonneg : 0 <= Z.of_nat (length bytes)) by lia.
+  unfold access_res, cap_access_res in Ha.
+  destruct (ptr_cap p) as [|base|base|f|f] eqn:Hcap; try discriminate.
+  all: destruct (object_region base (m_regions m)) as [reg|] eqn:Hreg; try discriminate.
+  all: destruct ((base <=? ptr_addr p) &&
+      (ptr_addr p + (Z.of_nat (length bytes) + 1) <=? r_end reg)) eqn:Hbounds;
+    [|discriminate].
+  all: apply andb_true_iff in Hbounds as [Hlo Hhi];
+    apply Z.leb_le in Hlo; apply Z.leb_le in Hhi.
+  all: pose proof (R.address_space s m Hr base reg Hreg) as [Hb Hend].
+  all: assert (Hmax : Z.of_nat (length bytes) < 2 ^ 64 - 1) by lia.
+  all: assert (Hlive : r_life reg = Live) by
+    (destruct (r_life reg) eqn:Hlife; [reflexivity|];
+      pose proof (R.freed_bounds s m Hr base reg Hreg Hlife); lia).
+  all: split; [|exact Hmax]; split; [vm_compute; split; congruence|];
+    split; [lia|]; split.
+  - exists base, reg. auto.
+  - split.
+    + assert (Hlt : (Z.of_nat (length bytes) <? 2 ^ 64 - 1) = true) by (apply Z.ltb_lt; exact Hmax).
+      rewrite Hlt. unfold access_res, cap_access_res. rewrite Hcap, Hreg.
+      rewrite (proj2 (Z.leb_le _ _) Hlo), (proj2 (Z.leb_le _ _) Hhi). exact Ha.
+    + auto.
+  - exists base, reg. auto.
+  - split.
+    + assert (Hlt : (Z.of_nat (length bytes) <? 2 ^ 64 - 1) = true) by (apply Z.ltb_lt; exact Hmax).
+      rewrite Hlt. unfold access_res, cap_access_res. rewrite Hcap, Hreg.
+      rewrite (proj2 (Z.leb_le _ _) Hlo), (proj2 (Z.leb_le _ _) Hhi). exact Ha.
+    + auto.
+Qed.
+
+(** Under readiness, terminated lengths and checked list strings are
+    equivalent. This does not strengthen puts on arbitrary model memories. *)
+Theorem terminated_length_c_string : forall s m p k,
+  R.ready s m ->
+  (terminated_length m p k <->
+   exists bytes, c_string m p bytes /\ k = Z.of_nat (length bytes)).
+Proof.
+  intros s m p k Hr. split; [apply terminated_length_string|].
+  intros (bytes & Hstring & ->). eapply c_string_length; eauto.
+Qed.
+
+End StringLengths.
+
 (** The logical libc world of [puts_contract]. This small world records
     only the currently modeled stream's usability (stdout_usable) and
     reachable writable libc roots, stdio_roots (stdout, errno, buffer).
@@ -1239,6 +1453,9 @@ Qed.
 (** The call relations over the interpreter's runtime, for the
     examples below. *)
 Module InterpExternal := ExternalCalls InterpRuntime.
+
+(** The list-string bridge instantiated with the interpreter's ready memory. *)
+Module InterpStrings := StringLengths InterpRuntime.
 
 (** The bytes of hello. *)
 Definition hello_bytes : list Z := [104; 101; 108; 108; 111].
@@ -1641,6 +1858,105 @@ Qed.
 Example strnlen_pointer_count_rejected :
   ~ contract_pre (strnlen_contract unit) [WPtr hello_ptr; WPtr hello_ptr] hello_mem tt.
 Proof. intros (p & n & k & Hargs & _). discriminate Hargs. Qed.
+
+(** The established puts string also meets strlen's explicit live domain. *)
+Example strlen_hello_bridge : terminated_length hello_mem hello_ptr 5.
+Proof.
+  apply (InterpStrings.c_string_length InterpRuntime.start hello_mem hello_ptr hello_bytes).
+  - apply hello_ready. unfold InterpRuntime.start, InterpRuntime.address_end. lia.
+  - exact hello_string.
+Qed.
+
+(** An unaligned high-byte string whose NUL is the object's last byte. *)
+Definition strlen_high_mem : mem := store_bytes high_byte_mem 1029 1 0.
+
+(** Offsets zero and one consume high bytes, while offset five is a
+    readable empty string. Each reaches the same final in-object NUL. *)
+Lemma strlen_boundary_length : forall offset count,
+  In (offset, count) [(0, 5); (1, 4); (5, 0)] ->
+  terminated_length strlen_high_mem (mkPtr (1024 + offset) (Ro 1024)) count.
+Proof.
+  intros offset count Hcase. destruct Hcase as [Hcase|[Hcase|[Hcase|[]]]];
+    injection Hcase as <- <-.
+  all: split; [|vm_compute; congruence]; split; [vm_compute; split; congruence|];
+    split; [lia|]; split.
+  all: try (exists 1024, (mkRegion 1024 1030 GlobalData Live); split; [right; reflexivity|]; auto).
+  all: split; [reflexivity|]; split; [|intros; reflexivity].
+  - intros i Hi. assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4) by lia.
+    destruct H as [-> | [-> | [-> | [-> | ->]]]]; vm_compute; split; congruence.
+  - intros i Hi. assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3) by lia.
+    destruct H as [-> | [-> | [-> | ->]]]; vm_compute; split; congruence.
+  - intros i Hi. lia.
+Qed.
+
+(** The boundary inputs really admit pure size_t returns through the
+    public call relation, including the empty and interior strings. *)
+Example strlen_boundary_calls : forall offset count,
+  In (offset, count) [(0, 5); (1, 4); (5, 0)] ->
+  InterpExternal.invoke (strlen_contract unit) (CResult (TAtom "length") L) [Arg P (Const 0)]
+    [WPtr (mkPtr (1024 + offset) (Ro 1024))] InterpRuntime.start strlen_high_mem tt
+    [] (CallReturn [WInt count]) InterpRuntime.start strlen_high_mem tt.
+Proof.
+  intros offset count Hcase. apply InterpExternal.strlen_return.
+  - split; [right; exists (TAtom "length"); reflexivity|]. exists (Const 0). reflexivity.
+  - apply strlen_boundary_length. exact Hcase.
+Qed.
+
+(** Incorrect lengths fail at an otherwise admitted public call,
+    independently of the proposed return memory, runtime state or world. *)
+Example strlen_wrong_result_rejected : forall bits s' m' w',
+  bits <> 4 ->
+  ~ InterpExternal.invoke (strlen_contract unit) CVoid [Arg P (Const 0)]
+    [WPtr (mkPtr 1025 (Ro 1024))] InterpRuntime.start strlen_high_mem tt
+    [] (CallReturn [WInt bits]) s' m' w'.
+Proof.
+  intros bits s' m' w' Hwrong Hcall.
+  destruct (InterpExternal.strlen_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as (_ & _ & _ & p & k & Hargs & Hlength & Hending).
+  injection Hargs as <-. injection Hending as <-.
+  apply Hwrong. eapply terminated_length_unique; [exact Hlength|].
+  apply (strlen_boundary_length 1 4). simpl. auto.
+Qed.
+
+(** Numeric zeroes outside the high-byte object's bounds cannot satisfy
+    strlen's existential admission premise: no in-object NUL exists. *)
+Example strlen_missing_nul_rejected :
+  ~ contract_pre (strlen_contract unit) [WPtr hello_ptr] high_byte_mem tt.
+Proof.
+  intros (p & k & Hargs & [(Hn & Hk & _ & Ha & Hbytes & Hnul) Hmax]).
+  injection Hargs as <-.
+  assert (Hlt : (k <? 2 ^ 64 - 1) = true) by (apply Z.ltb_lt; exact Hmax).
+  rewrite Hlt in Ha.
+  change (Some (if 1024 + (k + 1) <=? 1030 then ok else RTrap OutOfBounds) = Some ok) in Ha.
+  destruct (1024 + (k + 1) <=? 1030) eqn:Hend; [|discriminate Ha].
+  apply Z.leb_le in Hend.
+  specialize (Hnul Hmax).
+  assert (Hinside : (1024 <=? 1024 + k) && (1024 + k <? 1030) = true).
+  { apply andb_true_iff. split; [apply Z.leb_le|apply Z.ltb_lt]; lia. }
+  change ((if (1024 <=? 1024 + k) && (1024 + k <? 1030)
+    then if 1024 + k =? 1024 then 128 else 255 else m_bytes hello_mem (1024 + k)) = 0) in Hnul.
+  rewrite Hinside in Hnul. destruct (1024 + k =? 1024); discriminate Hnul.
+Qed.
+
+(** Unlike zero-count strnlen, strlen needs a readable byte even for an
+    empty result. One-past, null and freed pointers are not admitted. *)
+Example strlen_bad_authority_rejected :
+  ~ contract_pre (strlen_contract unit) [WPtr (mkPtr 1030 (Ro 1024))] hello_mem tt /\
+  ~ contract_pre (strlen_contract unit) [WPtr (mkPtr 0 CNone)] hello_mem tt /\
+  ~ contract_pre (strlen_contract unit) [WPtr (mkPtr 1024 (Obj 1024))]
+    (mkMem (fun _ => 0) [mkRegion 1024 1024 Heap Freed] (fun _ => CNone)) tt.
+Proof.
+  split.
+  - intros (p & k & Hargs & [(Hn & Hk & _ & Ha & _) Hmax]). injection Hargs as <-.
+    assert (Hlt : (k <? 2 ^ 64 - 1) = true) by (apply Z.ltb_lt; exact Hmax).
+    rewrite Hlt in Ha.
+    change (Some (if 1030 + (k + 1) <=? 1030 then ok else RTrap OutOfBounds) = Some ok) in Ha.
+    destruct (1030 + (k + 1) <=? 1030) eqn:Hend; [|discriminate Ha].
+    apply Z.leb_le in Hend. lia.
+  - split; intros (p & k & Hargs & [(_ & _ & (base & reg & [Hcap|Hcap] & Hreg & Hlife) & _) _]);
+      injection Hargs as <-; try discriminate Hcap.
+    injection Hcap as <-. injection Hreg as <-. discriminate Hlife.
+Qed.
 
 (** The ready high-byte fixture admits any canonical int argument,
     including values whose unsigned-char conversion changes them. *)

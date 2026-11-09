@@ -2,6 +2,8 @@ bounded scans need no NUL: yes
 strnlen stops before a huge bound: yes
 strnlen unaligned high bytes need no extra byte: yes
 strnlen zero count permits live one-past: yes
+strlen includes final-byte NUL: yes
+strlen empty still reads a live NUL: yes
 memchr converts int and selects first match: yes
 memchr respects last byte and zero count: yes
 memcmp unsigned first difference controls sign: yes
