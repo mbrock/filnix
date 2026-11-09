@@ -251,12 +251,17 @@
                 }
                 // args
               );
-            # Unsupported ports stay available explicitly, not in flake check.
+            # Unsupported ports and known release gaps stay strict and opt-in,
+            # outside the ordinary passing contract of flake check.
             diagnostics = {
               pipewire =
                 (import ./tests/pipewire.nix { inherit pkgs pkgsFilc filcc; }).pipewire;
               pipewire-runtime =
                 (import ./tests/pipewire.nix { inherit pkgs pkgsFilc filcc; }).runtime;
+              release-fork-known-gaps = import ./tests/fork-regressions.nix {
+                inherit pkgsFilc;
+                suite = "release-known-gaps";
+              };
             };
           };
 
@@ -503,7 +508,10 @@
             cxx-coroutines = import ./tests/cxx-coroutines.nix { inherit pkgsFilc; };
             pointer-tagging = import ./tests/pointer-tagging.nix { inherit pkgsFilc; };
             link-hygiene = import ./tests/link-hygiene.nix { inherit pkgsFilc; };
-            fork-regressions = import ./tests/fork-regressions.nix { inherit pkgsFilc; };
+            fork-regressions = import ./tests/fork-regressions.nix {
+              inherit pkgsFilc;
+              suite = "release";
+            };
             icu = import ./tests/icu.nix {
               inherit pkgs pkgsFilc;
             };

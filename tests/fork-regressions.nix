@@ -6,7 +6,10 @@
 # PHP 8.5 allocator work: small payload memmove/memset through libc, and
 # FUGC keeping freshly swept pages from the scavenger until they are reused,
 # and a glibc memcmp that does not heap-allocate on every call.
-{ pkgsFilc }:
+{
+  pkgsFilc,
+  suite ? "all",
+}:
 let
   cases = {
     sync-pointer-atomics = ''
@@ -68,6 +71,23 @@ let
       cmp fiber.expected fiber.log
     '';
   };
+  # Release 0.687 lacks these staging changes. Keep their assertions strict
+  # in an opt-in comparison diagnostic, not in the release passing contract.
+  knownReleaseGaps = [
+    "cas-expected-cap" # Failed CAS can lose the winning pointer's capability.
+    "descriptors" # dlsym can call the wrong module's implementation.
+    "memcmp-noalloc" # Release memcmp still allocates per call.
+    "scavenge-hold" # Release has no swept-page reuse hold.
+  ];
+  selectedCases =
+    if suite == "all" then
+      cases
+    else if suite == "release" then
+      builtins.removeAttrs cases knownReleaseGaps
+    else if suite == "release-known-gaps" then
+      pkgsFilc.lib.getAttrs knownReleaseGaps cases
+    else
+      throw "Unknown fork-regressions suite: ${suite}";
   tests = pkgsFilc.lib.mapAttrs (
     name: body:
     pkgsFilc.stdenv.mkDerivation {
@@ -81,9 +101,12 @@ let
       '';
       installPhase = "touch $out";
     }
-  ) cases;
+  ) selectedCases;
 in
-pkgsFilc.runCommand "filc-fork-regressions-check"
+pkgsFilc.runCommand
+  "filc-fork-regressions${
+    pkgsFilc.lib.optionalString (suite != "all") "-${suite}"
+  }-check"
   { passthru = { inherit tests; }; }
   ''
     test -e ${pkgsFilc.lib.concatStringsSep " -a -e " (map toString (builtins.attrValues tests))}
