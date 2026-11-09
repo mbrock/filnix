@@ -625,6 +625,8 @@
           # Export the full cross-compiled package sets
           legacyPackages.${system} = {
             inherit pkgsFilc pkgsFilcStaging pkgsFilcSystem;
+            # A package set, not a derivation; .#rubyWithGem.<gem> still works.
+            inherit rubyWithGem;
             # NixOS VM tests of Fil-C systems; see tests/nixos/default.nix.
             nixosTests = import ./tests/nixos {
               inherit pkgs pkgsFilc;
@@ -799,8 +801,6 @@
               '';
 
               inherit runfilc;
-
-              inherit rubyWithGem;
 
               inherit (emacs-safe) filc-emacs;
               emacs30 = pkgsFilc.emacs30;
