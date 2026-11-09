@@ -20,10 +20,15 @@
       NUL, into an owned block, whose aux slots afterwards are what the
       copy left there ([slots_after]).
 
-    The token is persistent: a lent string is read, never given back.
-    So no triple here changes a lent string, and a setter that would,
-    such as setlocale(k, ""), needs its own triple, before any token
-    exists. *)
+    The token is persistent: a lent string is read, never given back,
+    so no triple changes a lent string. Before it is lent, a name is
+    owned whole ([named]), and a setter that changes it, such as
+    setlocale(LC_ALL, ""), takes it:
+
+    - [wp_lend]: a call that renames the keys whose names it is given,
+      and lends the new names. The ghost heap renames them
+      ([rename_update]); what the call must keep of the state is its
+      premise, for the contract and wi to discharge. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -64,6 +69,40 @@ Proof.
   induction ps as [|[l v] ps IH]; intros Hm; [reflexivity|].
   inversion Hm as [|? ? Hl Hps]; subst. cbn [overwrite fst snd].
   rewrite lookup_insert_ne; [exact (IH Hps)|]. intros ->. exact Hl.
+Qed.
+
+(** The bytes of a string in memory are not NUL. *)
+Lemma string_at_nonzero m a t : string_at m a t -> Forall (fun x => 0 < x < 256) t.
+Proof.
+  revert a. induction t as [|x t IH]; intros a Hs; [constructor|].
+  destruct Hs as (Hx & _ & Hs). constructor; [exact Hx | exact (IH _ Hs)].
+Qed.
+
+(** The ghost heap h with the name of each key in ks renamed to new's:
+    what a setter makes of the names it changes. *)
+Fixpoint rename (h : gmap piece pval) (ks : list Z) (new : Z -> ptr * list Z) : gmap piece pval :=
+  match ks with
+  | [] => h
+  | k :: ks' => <[PName k := VName (new k).1 (new k).2]> (rename h ks' new)
+  end.
+
+(** A renamed key has its new name. *)
+Lemma rename_lookup h ks new k :
+  In k ks -> rename h ks new !! PName k = Some (VName (new k).1 (new k).2).
+Proof.
+  induction ks as [|k' ks IH]; intros Hk; [destruct Hk|]. cbn [rename].
+  destruct (decide (k' = k)) as [->|Hne]; [apply lookup_insert_eq|].
+  rewrite lookup_insert_ne; [|congruence]. apply IH. destruct Hk as [Hk|Hk]; [congruence | exact Hk].
+Qed.
+
+(** Renaming changes no piece of memory, so a memory that agrees with
+    h agrees with it renamed. *)
+Lemma rename_agrees m h ks new : agrees m h -> agrees m (rename h ks new).
+Proof.
+  intros Ha. induction ks as [|k ks IH]; [exact Ha|]. cbn [rename]. intros l v Hl.
+  destruct (decide (l = PName k)) as [->|Hne].
+  - rewrite lookup_insert_eq in Hl. injection Hl as <-. exact I.
+  - rewrite lookup_insert_ne in Hl; [|congruence]. exact (IH l v Hl).
 Qed.
 
 (** The aux slots of the n bytes from offset o of the object b in the
@@ -137,6 +176,23 @@ Definition lent (k : Z) (p : ptr) (t : list Z) : iProp Σ :=
 Global Instance lent_persistent k p t : Persistent (lent k p t).
 Proof. apply _. Qed.
 
+(** [named] k p t: the name t at p of the key k, owned whole and not
+    yet lent. A setter that changes k's name takes it ([wp_lend]). *)
+Definition named (k : Z) (p : ptr) (t : list Z) : iProp Σ :=
+  pointsto (PName k) (DfracOwn 1) (VName p t).
+
+(** Owning the names of the keys ks, the ghost heap may rename them,
+    to any new names, which it then owns. *)
+Lemma rename_update h ks old new :
+  gen_heap_interp h -∗ ([∗ list] k ∈ ks, named k (old k).1 (old k).2) ==∗
+  gen_heap_interp (rename h ks new) ∗ [∗ list] k ∈ ks, named k (new k).1 (new k).2.
+Proof.
+  induction ks as [|k ks IH]; iIntros "Hh Hks"; [iModIntro; iFrame|].
+  rewrite !big_sepL_cons. iDestruct "Hks" as "[Hk Hks]".
+  iMod (IH with "Hh Hks") as "[Hh Hks]". iMod (gen_heap_update with "Hh Hk") as "[Hh Hk]".
+  iModIntro. cbn [rename]. iFrame.
+Qed.
+
 Section calls.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
@@ -194,6 +250,54 @@ Proof.
     + iPureIntro. unfold external_env. rewrite Hret. reflexivity.
     + destruct σ as [m s fuel w]. iSplitL "Hh"; [iExists h; iFrame "Hh"; iPureIntro; exact Hf|].
       iExact "HK".
+Qed.
+
+(** A setter's triple: a call of the external g, with contract spec,
+    returning a pointer, that renames the keys ks. Owning their names
+    ([named]) and Q, from which spec admits the arguments xs in any
+    state, the call lends the new names for good. Every invocation
+    that returns, from an interpreted state with the ghost heap h,
+    returns some q with new names, related by Rq, and keeps h's
+    memory agreeing, the live objects apart and the runtime ready,
+    while wi holds of the renamed h ([rename]). d is bound to q.
+    setlocale(LC_ALL, "") is one, renaming every category. *)
+Lemma wp_lend f e ls lab d g args rest j spec xs ks old (Rq : ptr -> (Z -> ptr * list Z) -> Prop)
+    (Q : iProp Σ) Φ :
+  registry g = Some spec -> contract_returns spec = RClass P ->
+  find_fn ge g = None -> lookup g (ge_globals ge) = None -> name_eqb g free_name = false ->
+  map_option (arg_x ge e) args = Some xs -> contract_abi spec (CResult d P) args ->
+  (forall σ, heap_interp wi σ -∗ Q -∗ ⌜contract_pre spec xs (ls_mem σ) (ls_world σ)⌝) ->
+  (forall s m w h trace values s' m' w', wi m w h -> agrees m h -> live_disjoint m -> R.ready s m ->
+     M.E.invoke spec (CResult d P) args xs s m w trace (CallReturn values) s' m' w' ->
+     exists q new, values = [WPtr q] /\ Rq q new /\
+       agrees m' h /\ live_disjoint m' /\ R.ready s' m' /\ wi m' w' (rename h ks new)) ->
+  ([∗ list] k ∈ ks, named k (old k).1 (old k).2) -∗ Q -∗
+  ▷ (∀ q new, ⌜Rq q new⌝ -∗ Q -∗ ([∗ list] k ∈ ks, lent k (new k).1 (new k).2) -∗
+     WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec lab rest j)) : lexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec lab (Call (CResult d P) (Global g) args :: rest) j)) : lexpr)
+    {{ Φ }}.
+Proof.
+  intros Hreg Hret Hfn Hdata Hfree Hx Habi Hpre Hpost. iIntros "Hks HQ HK".
+  iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ spec xs
+            (Q ∗ [∗ list] k ∈ ks, named k (old k).1 (old k).2)%I with "[$HQ $Hks] [HK]");
+    [done | done | done | done | done | done | |].
+  - iIntros (σ) "Hσ [HQ _]". iApply (Hpre with "Hσ HQ").
+  - iNext. iIntros (σ trace values s' m' w' Hi) "(%h & Hh & %Hf) [HQ Hks]".
+    destruct Hf as (Ha & Hd & Hr & Hw).
+    destruct (Hpost _ _ _ _ _ _ _ _ _ Hw Ha Hd Hr Hi) as (q & new & -> & Hq & Ha' & Hd' & Hr' & Hw').
+    iMod (rename_update _ _ _ new with "Hh Hks") as "[Hh Hks]".
+    iAssert (|==> [∗ list] k ∈ ks, lent k (new k).1 (new k).2)%I with "[Hks]" as ">Hl".
+    { iApply big_sepL_bupd. iApply (big_sepL_impl with "Hks"). iIntros "!>" (i k Hik) "Hk".
+      iMod (pointsto_persist with "Hk") as "Hk". iModIntro. iFrame "Hk". iPureIntro.
+      assert (Hin : In k ks) by (apply list_elem_of_In; exact (list_elem_of_lookup_2 _ _ _ Hik)).
+      destruct (wi_lent _ _ _ _ _ _ Hw' (rename_lookup h ks new k Hin)) as ([_ Hs] & H0 & Hlen & _).
+      split; [exact H0|]. split; [exact Hlen | exact (string_at_nonzero _ _ _ Hs)]. }
+    iModIntro. iExists _. iSplit.
+    + iPureIntro. unfold external_env. rewrite Hret. reflexivity.
+    + iSplitL "Hh".
+      * iExists _. iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt ls_world].
+        split; [exact (rename_agrees _ _ _ _ Ha')|]. auto.
+      * iApply ("HK" with "[%] HQ Hl"). exact Hq.
 Qed.
 
 (** strlen's triple, from [strlen_contract], for the string t lent at

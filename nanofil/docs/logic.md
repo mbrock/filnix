@@ -631,6 +631,14 @@ object the program owns. On that fact it proves:
   into an owned block. The block's aux slots afterwards are whatever
   the copy left (`slots_after`), since the source's slots are libc's.
 
+Before a name is lent it is owned whole, as `named k p t`. The setter
+setlocale(LC_ALL, "") takes the names it changes: `wp_lend` renames
+them in the ghost heap (`rename_update`) and hands back persistent
+`lent` tokens for the new names, whose facts it reads off `lent_at` in
+the state after the call. What the call must keep of the state, its
+frame and wi of the renamed heap, is the triple's premise, for the
+contract and the world interpretation to discharge.
+
 [HelloLocale.v](../rocq/theories/HelloLocale.v) (17 s) proves
 `setlocale_null_unlocked`, `setlocale_null_r_unlocked` on both of its
 paths, `setlocale_null_r` and `hard_locale`:
