@@ -8,6 +8,7 @@ theories/BufferCode.v
 theories/ScanCode.v
 theories/CountCode.v
 theories/SlotCode.v
+theories/HelloCode.v
 theories/Maps.v
 theories/Ieee.v
 theories/Syntax.v
@@ -69,4 +70,5 @@ theories/HiLogic.v
 theories/ScanLogic.v
 theories/CountLogic.v
 theories/SlotLogic.v
+theories/HelloModule.v
 theories/Extract.v

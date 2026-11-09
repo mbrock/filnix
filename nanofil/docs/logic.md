@@ -462,6 +462,74 @@ derived from each once):
 | exit, atexit | the registered functions' specs, by case on the pinned targets | the order and set of callbacks (Campaign 4's registry) |
 | every call | the frame rule | the writable roots and nothing beyond them: no write, free or capability change outside the footprint |
 
+## GNU Hello through the logic
+
+The target (mbrock, 2026-11-09): `never_panics` of `nanofil-hello-O`,
+proved through the Iris logic as scan, count and slot were. Campaign 4
+writes the libc contracts, the entry and exit's callbacks; this
+campaign writes the triples and the program's proof.
+
+**The program.** [HelloModule.v](../rocq/theories/HelloModule.v) reads
+Hello as one checked module, `hello_module`. Its fixture,
+[HelloCode.v](../rocq/theories/HelloCode.v), is what
+[link.pl](../rocq/link.pl) makes of the 81 checked terms of the real
+build, regenerated and compared by the flake check
+`nanofil-hello-fixture` (`rocq/hello-fixture.sh`):
+
+- each object's `local` names become `OBJECT#NAME`, because objects
+  reuse them (closeout.o and hello.o both have a `str.54`);
+- exported names are shared, and each is defined once;
+- only the items a run from `main` can name, through a `global(S)`
+  operand or a `sym(S, Off)` data item, are kept: 32 functions and their data, 183 KB of IR. Leaving
+  the rest out changes no run, since no run can name them. This is a
+  claim about the link that no Rocq lemma states yet.
+
+Every object was valid alone, and the link is valid too
+(`hello_valid`). That needed one fix to [gallina.pl](../rocq/gallina.pl): a byte from 128 to
+255 in a string now prints as its two UTF-8 bytes, as Term.v's
+`char_code` reads it. Before the fix, gettext_quote's `‘` decoded to an
+unknown item and the link was `Some false`. HelloCode.v compiles in
+9 s, and HelloModule.v in 20 s, of which `vm_compute` of `valid` takes
+8.5 s.
+
+**What it calls.** `hello_externals_exact` lists the 33 libc functions
+the module calls. They are the plain entries, not the fortified ones:
+`printf`, `fprintf`, `wprintf`, `fputs`, `atexit`, not
+`__printf_chk`. Seven of them are called only by quotearg
+(`iswprint`, `mbrtoc32`, `__ctype_b_loc`, `__ctype_get_mb_cur_max`,
+`mbsinit`, `zmemmove`, `realloc`). Quotearg is reached only through
+close_stdout's diagnostic for a named file, and Hello never names one:
+closeout's static `file_name` stays null. A module invariant over that
+static rules the branch out, so its 414-block function needs no
+triple. Without it, 21 functions remain (about 200 blocks):
+
+| Group | Functions | Contracts |
+| --- | --- | --- |
+| startup and options | `main` (25 blocks; parse_options and print_help are inlined), `set_program_name`, `memeq`, `mbszero` | `strrchr`, `memcmp`, `strncmp`, `memset`, `setlocale`, `atexit`, `getopt_long`, `strlen`, `malloc`, `wprintf`, `free`, `exit`, `fprintf`, `fputs` |
+| the greeting's conversion | `rpl_mbsrtowcs` (29), `rpl_mbrtowc`, `hard_locale`, `setlocale_null_r` and its two helpers, `streq`, `strnlen1`, `xmalloc`, `xalloc_die` | `mbrtowc`, `setlocale`, `memcpy`, `strlen`, `strcmp`, `memchr`, `error`, `abort` |
+| `--version` and `--help` | `version_etc`, `version_etc_va`, `version_etc_arn` (27), `emit_bug_reporting_address`, `proper_name` | `fprintf`, `fputs`, `printf` |
+| the ending, as exit's handler | `close_stdout`, `close_stream` | `__fpending`, `ferror`, `fclose`, `__errno_location`, `error`, `_exit` |
+
+`abort` has no contract: reaching it is a failure, so the proof must
+show that rpl_mbsrtowcs and xalloc_die never reach it. xalloc_die is
+reached only when malloc returns null, which the selected malloc never
+does.
+
+**Milestones.**
+
+1. Done: the linked module, its gate, `hello_valid`, and the external
+   list.
+2. Leaf triples from contracts that exist: `memeq`, `streq`,
+   `strnlen1` and `mbszero`. Then `set_program_name`, which needs the
+   entry's writable program-name cells.
+3. The conversion chain, over a locale the world interpretation holds.
+4. `main` and its option loop, from Campaign 4's entry. This needs
+   `setlocale`, `atexit`, `getopt_long`, `wprintf` and `exit`.
+5. `close_stdout` as exit's callback, through Campaign 4's Linked.v
+   bridge, which runs an ordinary callback frame.
+6. The `--help`, `--version` and error paths.
+7. `never_panics` of the linked module from the entry.
+
 ## Open questions for mbrock
 
 - Start the logic now, or finish Campaign 4's hi.c first?
