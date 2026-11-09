@@ -601,9 +601,23 @@ inhabitation, not native refusal or native progress.
 Current names, persistent internal readable sources, writable roots and
 exclusive release identities are separate. Every future world-held
 capability must be delegated, including a name not returned until a later
-query. The internal pool admits canonical built-in names without deriving
-authority from unrelated caller objects; writable access does not grant
-exclusive release ownership. Borrow validity is logical and epoch-scoped,
+query. `locale_private_sources` contains the old read/root spans and
+current names. `locale_retained_cap` permits only an exact capability of
+one of those span pointers, or Obj/Ro of a witnessed born identity.
+All new names, reads and roots use that rule, including zero-sized spans:
+neither the setter input's own capability nor an aux-loaded capability
+may enter the future private pool. Applying it to roots too prevents
+two-call laundering through a zero-sized root. Transient effects retain
+their ordinary input/aux capability permissions; root byte-write authority
+and exclusive Heap release ownership remain separate and unchanged.
+Canonical built-in names such as `_nl_C_name`, static tables and internal
+objects must therefore be explicitly represented in the old private pool
+or arise through a witnessed allocation. Native loader/mmap allocation
+correspondence is still a representation obligation, not established here.
+Clients supply initial object-identity separation of that pool and release
+rights from program-owned objects (comparing both Obj and Ro), plus runtime
+readiness for allocation freshness; the rule preserves, not establishes,
+their separation. Borrow validity is logical and epoch-scoped,
 without rewriting Obj capabilities to Ro. Same-epoch pointer, text and
 codec preservation does not yet cover other locale API borrows such as
 `nl_langinfo` tables.

@@ -66,6 +66,18 @@ Qed.
 Definition locale_name_span w category : span :=
   mkSpan (locale_name w category) (Z.of_nat (length (locale_text w category)) + 1).
 
+(** Private objects whose own capabilities may survive a setter. Neither
+    the caller's input nor capabilities loaded from aux enter this pool. *)
+Definition locale_private_sources w : list span :=
+  (locale_reads w ++ locale_roots w) ++ map (locale_name_span w) locale_categories.
+
+(** Retained authority has object-level private provenance. Zero-sized
+    spans still carry their object's own capability. Fresh objects may
+    be retained as Obj or Ro; old authority is never upgraded. *)
+Definition locale_retained_cap w born c : Prop :=
+  (exists base, In base born /\ (c = Obj base \/ c = Ro base)) \/
+  (exists source, In source (locale_private_sources w) /\ c = ptr_cap (span_ptr source)).
+
 (** Null is tested by address, as in native C. No capability or input
     string is required for the null-query operand. *)
 Definition locale_query (xs : list word) : bool :=
@@ -87,7 +99,7 @@ Definition setlocale_abi r args : Prop :=
     authority. The setter input contributes its independently admitted
     string span, but never becomes writable merely by being an input. *)
 Definition locale_sources xs m w : list span :=
-  (locale_reads w ++ locale_roots w) ++ map (locale_name_span w) locale_categories ++
+  locale_private_sources w ++
   match xs with
   | [WInt _; WPtr p] => if locale_query xs then [] else
       [mkSpan p (string_length m p + 1)]
@@ -125,18 +137,33 @@ Definition locale_selected category w w' : Prop :=
     other <> category -> other <> 6 -> locale_text w' other = locale_text w other) /\
   (category <> 0 -> category <> 6 -> locale_codec w' = locale_codec w).
 
-(** New world roots, release rights and even names returned only by a
-    later query must derive from old authority or born allocations.
-    Changing the logical world alone cannot manufacture capabilities. *)
-Definition locale_delegates xs m w born m' w' : Prop :=
+(** Retained names, read spans and roots inherit only private own
+    capabilities or born objects, not the setter input or aux-loaded
+    caller authority. Apply this to all three to prevent laundering on
+    a later call, including through a zero-sized root. Ordinary transient
+    effects still use [locale_sources]; exclusive releases stay separate. *)
+Definition locale_delegates (xs : list word) (m : mem) w born m' w' : Prop :=
   (forall root, In root (locale_roots w') ->
-    available_cap (locale_sources xs m w) born m' (ptr_cap (span_ptr root)) /\
+    locale_retained_cap w born (ptr_cap (span_ptr root)) /\
     forall a, span_contains root a -> write_authority (locale_roots w) born m' a) /\
   (forall category, In category locale_categories ->
-    available_cap (locale_sources xs m w) born m' (ptr_cap (locale_name w' category))) /\
+    locale_retained_cap w born (ptr_cap (locale_name w' category))) /\
   (forall source, In source (locale_reads w') ->
-    available_cap (locale_sources xs m w) born m' (ptr_cap (span_ptr source))) /\
+    locale_retained_cap w born (ptr_cap (span_ptr source))) /\
   (forall base, In base (locale_owned w') -> In base (locale_owned w ++ born) /\ locale_heap m' base).
+
+(** The entire next private pool, not just this call's returned name,
+    has private provenance. Clients apply object-level separation and
+    fresh-allocation facts to this lemma across repeated setters. *)
+Lemma locale_delegates_private : forall xs m w born m' w' source,
+  locale_delegates xs m w born m' w' -> In source (locale_private_sources w') ->
+  locale_retained_cap w born (ptr_cap (span_ptr source)).
+Proof.
+  intros xs m w born m' w' source (Hroots & Hnames & Hreads & _) Hin.
+  unfold locale_private_sources in Hin. apply in_app_or in Hin as [Hin|Hin].
+  - apply in_app_or in Hin as [Hin|Hin]; [apply Hreads|apply (proj1 (Hroots source Hin))]; auto.
+  - apply in_map_iff in Hin as (category & <- & Hcat). apply Hnames. exact Hcat.
+Qed.
 
 (** Silent logical segment endpoints, NOT arbitrary native instruction
     cutpoints: setname can free before installing a replacement. Native
@@ -174,14 +201,29 @@ Lemma locale_unchanged_refl : forall w, locale_unchanged w w.
 Proof. intros w. repeat split; reflexivity. Qed.
 
 (** Current names are explicit sources, not unexplained return authority. *)
+Lemma locale_retained_available : forall xs m w born m' c,
+  locale_retained_cap w born c -> available_cap (locale_sources xs m w) born m' c.
+Proof.
+  intros xs m w born m' c [(base & Hin & Hcap)|(source & Hin & Hcap)].
+  - right. right. right. exists base. auto.
+  - right. left. exists source. split; [|exact Hcap].
+    unfold locale_sources. apply in_or_app. left. exact Hin.
+Qed.
+
+Lemma locale_name_retained : forall w born category,
+  In category locale_categories -> locale_retained_cap w born (ptr_cap (locale_name w category)).
+Proof.
+  intros w born category Hcategory. right. exists (locale_name_span w category).
+  split; [|reflexivity]. unfold locale_private_sources. apply in_or_app. right.
+  apply in_map. exact Hcategory.
+Qed.
+
 Lemma locale_name_available : forall xs m w born category,
   In category locale_categories ->
   available_cap (locale_sources xs m w) born m (ptr_cap (locale_name w category)).
 Proof.
-  intros xs m w born category Hcategory. right. left.
-  exists (locale_name_span w category). split; [|reflexivity].
-  unfold locale_sources. apply in_or_app. right. apply in_or_app. left.
-  apply in_map. exact Hcategory.
+  intros xs m w born category Hcategory. apply locale_retained_available.
+  apply locale_name_retained. exact Hcategory.
 Qed.
 
 (** An unchanged represented world requires no newly delegated authority. *)
@@ -190,13 +232,13 @@ Lemma locale_delegates_refl : forall rep xs m w,
 Proof.
   intros rep xs m w (_ & Hroots & _ & Hreads & Howned & _). split.
   - intros root Hin. split.
-    + right. left. exists root. split; [|reflexivity].
-      unfold locale_sources. apply in_or_app. left. apply in_or_app. right. exact Hin.
+    + right. exists root. split; [|reflexivity].
+      unfold locale_private_sources. apply in_or_app. left. apply in_or_app. right. exact Hin.
     + intros a Ha. left. exists root. split; [exact Hin|]. split; [|exact Ha].
       rewrite Forall_forall in Hroots. apply Hroots. exact Hin.
-  - split; [intros; apply locale_name_available; assumption|]. split.
-    + intros source Hin. right. left. exists source. split; [|reflexivity].
-      unfold locale_sources. apply in_or_app. left. apply in_or_app. left. exact Hin.
+  - split; [intros; apply locale_name_retained; assumption|]. split.
+    + intros source Hin. right. exists source. split; [|reflexivity].
+      unfold locale_private_sources. apply in_or_app. left. apply in_or_app. left. exact Hin.
     + intros base Hin. split; [apply in_or_app; left; exact Hin|].
       rewrite Forall_forall in Howned. apply Howned. exact Hin.
 Qed.
@@ -305,7 +347,7 @@ Proof.
   - intros why Hbad. discriminate.
   - intros values Heq. injection Heq as <-. split.
     + eexists. split; reflexivity.
-    + constructor; [apply (proj1 (proj2 Hd)); exact Hcat|constructor].
+    + constructor; [apply locale_retained_available; apply (proj1 (proj2 Hd)); exact Hcat|constructor].
   - intros status Hbad. discriminate.
 Qed.
 
@@ -515,8 +557,8 @@ Proof.
   destruct (locale_delegates_refl _ [WInt 6; WPtr (mkPtr 4096 (Obj 4096))] _ _
     (proj1 locale_fixture_ready)) as [Hroots [_ [Hreads Howned]]].
   split; [exact Hroots|]. split.
-  - intros category _. right. left. exists (mkSpan (mkPtr 2048 (Ro 2048)) 2).
-    split; [unfold locale_sources; simpl; auto|reflexivity].
+  - intros category _. right. exists (mkSpan (mkPtr 2048 (Ro 2048)) 2).
+    split; [unfold locale_private_sources; simpl; auto|reflexivity].
   - split; [exact Hreads|exact Howned].
 Qed.
 
@@ -599,13 +641,97 @@ Proof.
   intros (_ & Hnames & _).
   specialize (Hnames 5 ltac:(vm_compute; tauto)).
   assert (Hcaps : Forall (fun source => ptr_cap (span_ptr source) <> Obj 5120)
-    (locale_sources [WInt 6; WPtr hello_ptr] locale_fixture locale_before)).
+    (locale_private_sources locale_before)).
   { vm_compute. repeat constructor; discriminate. }
-  destruct Hnames as [Hnone|[(source & Hin & Hcap)|[(source & a & _ & _ & _ & _ & Hcap)|(base & [] & _)]]].
-  - discriminate Hnone.
-  - rewrite Forall_forall in Hcaps. apply (Hcaps source Hin). symmetry. exact Hcap.
-  - discriminate Hcap.
+  destruct Hnames as [(base & [] & _)|(source & Hin & Hcap)].
+  rewrite Forall_forall in Hcaps. apply (Hcaps source Hin). symmetry. exact Hcap.
 Qed.
+
+(** Both transient sources really can supply the caller capability:
+    its input pointer and a complete private root slot. Neither may
+    become retained authority, even through a zero-sized future span. *)
+Definition locale_caller_memory : mem :=
+  store_aux locale_fixture 3072 (Ro 5120).
+
+Example locale_caller_transient_only :
+  available_cap (locale_sources [WInt 6; WPtr (mkPtr 5120 (Obj 5120))]
+    locale_caller_memory locale_before) [] locale_caller_memory (Obj 5120) /\
+  available_cap (locale_sources [WInt 6; WPtr (mkPtr 5120 (Obj 5120))]
+    locale_caller_memory locale_before) [] locale_caller_memory (Ro 5120) /\
+  ~ locale_retained_cap locale_before [] (Obj 5120) /\
+  ~ locale_retained_cap locale_before [] (Ro 5120).
+Proof.
+  split.
+  - right. left. exists (mkSpan (mkPtr 5120 (Obj 5120))
+      (string_length locale_caller_memory (mkPtr 5120 (Obj 5120)) + 1)).
+    split; [unfold locale_sources; apply in_or_app; right; simpl; auto|reflexivity].
+  - split.
+    + right. right. left. exists (mkSpan (mkPtr 3072 (Obj 3072)) 8), 3072.
+      split.
+      * unfold locale_sources, locale_private_sources. apply in_or_app. left.
+        apply in_or_app. left. apply in_or_app. right. simpl. auto.
+      * split; [change (3072 <= 3072 < 3080); lia|]. split; [simpl; lia|].
+        split; reflexivity.
+    + assert (Hcaps : Forall (fun source => ptr_cap (span_ptr source) <> Obj 5120 /\
+        ptr_cap (span_ptr source) <> Ro 5120) (locale_private_sources locale_before)).
+      { vm_compute. repeat constructor; discriminate. }
+      split; intros [(base & [] & _)|(source & Hin & Hcap)];
+        rewrite Forall_forall in Hcaps; destruct (Hcaps source Hin) as [Hobj Hro]; congruence.
+Qed.
+
+(** Each role independently attempts the two-call laundering step:
+    installing the caller as a name, a zero-sized read, or a zero-sized
+    root. A subsequent query/setter can never receive such a pool. *)
+Definition locale_caller_endpoint (role : Z) : locale_world :=
+  mkLocaleWorld 1
+    (if role =? 0 then fun _ => mkPtr 5120 (Obj 5120) else locale_name locale_before)
+    (if role =? 0 then fun _ => [] else locale_text locale_before)
+    (locale_codec locale_before)
+    (if role =? 1 then mkSpan (mkPtr 5120 (Obj 5120)) 0 :: locale_reads locale_before
+      else locale_reads locale_before)
+    (if role =? 2 then mkSpan (mkPtr 5120 (Obj 5120)) 0 :: locale_roots locale_before
+      else locale_roots locale_before) [].
+
+Example locale_no_caller_endpoint : forall role, role = 0 \/ role = 1 \/ role = 2 ->
+  ~ locale_delegates [WInt 6; WPtr (mkPtr 5120 (Obj 5120))]
+    locale_caller_memory locale_before [] locale_caller_memory (locale_caller_endpoint role).
+Proof.
+  intros role Hrole Hd. apply (proj1 (proj2 (proj2 locale_caller_transient_only))).
+  destruct Hrole as [-> | [-> | ->]].
+  - apply (locale_delegates_private _ _ _ _ _ _
+      (locale_name_span (locale_caller_endpoint 0) 0) Hd).
+    unfold locale_private_sources. apply in_or_app. right. apply in_map.
+    simpl. auto.
+  - apply (locale_delegates_private _ _ _ _ _ _ (mkSpan (mkPtr 5120 (Obj 5120)) 0) Hd).
+    unfold locale_private_sources. apply in_or_app. left. apply in_or_app. left. simpl. auto.
+  - apply (locale_delegates_private _ _ _ _ _ _ (mkSpan (mkPtr 5120 (Obj 5120)) 0) Hd).
+    unfold locale_private_sources. apply in_or_app. left. apply in_or_app. right. simpl. auto.
+Qed.
+
+(** Public-call rejection: no-request setters cannot install any of
+    those future pools. The effects path cannot disguise caller storage
+    as a fresh allocation by choosing a nonempty born list. *)
+Example locale_no_caller_call : forall role r args s trace ending s',
+  role = 0 \/ role = 1 \/ role = 2 ->
+  ~ InterpLocale.E.invoke (setlocale_contract (fun _ _ => True) (fun _ _ _ _ _ => False))
+    r args [WInt 6; WPtr (mkPtr 5120 (Obj 5120))] s locale_caller_memory locale_before
+    trace ending s' locale_caller_memory (locale_caller_endpoint role).
+Proof.
+  intros role r args s trace ending s' Hrole Hcall.
+  destruct (InterpLocale.setlocale_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as (_ & _ & born & He & Hpost).
+  assert (born = []) as ->.
+  { clear -He. induction He; [reflexivity|exact IHHe|]. destruct H as [_ Hfalse]. contradiction. }
+  cbn [locale_query ptr_addr Z.eqb] in Hpost.
+  destruct Hpost as (_ & Hd & _). exact (locale_no_caller_endpoint role Hrole Hd).
+Qed.
+
+(** Born allocation authority permits interior name pointers without
+    aligning their character addresses or inventing old-object authority. *)
+Example locale_fresh_interior_retained : forall base,
+  locale_retained_cap locale_before [base] (ptr_cap (mkPtr (base + 1) (Obj base))) /\
+  locale_retained_cap locale_before [base] (ptr_cap (mkPtr (base + 3) (Ro base))).
+Proof. intros base. split; left; exists base; simpl; auto. Qed.
 
 (** Model access at address zero can be readable, but a current locale
     name there is independently rejected as NULL. *)
