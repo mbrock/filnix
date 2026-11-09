@@ -137,10 +137,12 @@ Ltac unfold_blocks :=
 
 (** Prove one pure premise of a rule of Logic.v: by computation for
     the op's classes, by a fact for a block and a return class, by
-    [addr] for an address, by [compute_premise] for a word, and by
-    arithmetic for a bound. *)
+    [addr] for an address, by [compute_premise] for a word, trivially
+    for what the world interpretation must keep (there is no world),
+    and by arithmetic for a bound. *)
 Ltac side :=
   lazymatch goal with
+  | |- forall (_ : mem) (_ : unit), _ => intros; exact I
   | |- general_op _ = true => reflexivity
   | |- op_arg_classes _ _ = _ => reflexivity
   | |- find_block _ _ = _ => eassumption
@@ -185,7 +187,7 @@ Import L LG.
 (** The genv of the module, whose free is R's. *)
 Local Notation lge := (P.program_genv ls_module ls_globals).
 (** The expressions of its language. *)
-Local Notation lexpr := (language.expr (nanofil_lang lge)).
+Local Notation lexpr := (language.expr (nanofil_lang no_contracts lge)).
 
 (** ## The rules as tactics *)
 

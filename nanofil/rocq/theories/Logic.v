@@ -13,17 +13,30 @@
     object's pieces) and [live_cap] (the life of the object a
     capability names, if any).
 
+    The logic is over Language.v's contract registry and its world of
+    libc state. [heap_interp] also holds a world interpretation wi:
+    what the world requires of the memory, given the program's ghost
+    heap. A [[poll|safepoint]] must keep it ([SafepointStable]), and a
+    rule that writes memory or the ghost heap has a pure premise that
+    the write keeps it ([wp_write], the stores, [wp_alloc]). With
+    [no_contracts] and [no_world] every such premise is trivial, and
+    [closed_irisGS] is the Iris instance of a closed module.
+
     Every rule for a running frame comes from one lifting lemma,
-    [wp_lift_run]. A [[poll|safepoint]] and a stall (out of [[fuel]], a
-    refusal trap, an allocation the runtime refuses) step [ERun fr] to
-    itself, the first changing memory only as [SS.safepoint_shape]
-    allows (no region, by Runtime.v's [collector_live]), which keeps
-    [heap_interp] with the same ghost heap: the lemma closes both by
-    Löb induction, so a rule speaks only of the step its instruction
-    takes. A call is [wp_bind] over the caller ([wp_call_bind]), so a
-    function's specification is an ordinary Hoare triple.
+    [wp_lift_run]. A safepoint and a stall (out of [[fuel]], a refusal
+    trap, an allocation the runtime refuses, an admissible external
+    call) step [ERun fr] to itself, the first changing memory only as
+    [SS.safepoint_shape] allows (no region, by Runtime.v's
+    [collector_live]), which keeps [heap_interp] with the same ghost
+    heap: the lemma closes both by Löb induction, so a rule speaks only
+    of the step its instruction takes. A call is [wp_bind] over the
+    caller ([wp_call_bind]), so a function's specification is an
+    ordinary Hoare triple. An external call ([wp_external]) asks for
+    its contract's precondition and, after every return the contract
+    allows, for the state interpretation of the call's memory and world.
     [heap_never_panics] is Language.v's [[adequacy]] with the ghost heap
-    allocated. *)
+    allocated, for a closed module; [heap_labelled_safe] is the
+    labelled machine's, from a ghost heap the caller provides. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language ectx_language ectxi_language weakestpre lifting
@@ -31,7 +44,7 @@ From iris.program_logic Require Import language ectx_language ectxi_language wea
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime ExternalCalls Ops Semantics Run
-  Machine Panics StepRules Pieces Heap Language.
+  Machine Panics StepRules Pieces Heap ExternalMachine Language.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -93,25 +106,36 @@ Module P := L.P.
 Module RM := L.RM.
 Import L.
 
-(** The Iris state is inhabited, as the lifting lemmas of an
-    evaluation-context language ask. *)
-Instance lstate_inhabited : Inhabited lstate := populate (mkLstate empty_mem R.start 0).
+(** The world interpretation wi, what the world of libc state requires
+    of the memory given the program's ghost heap, survives what R does
+    at a [[poll|safepoint]]. Every rule needs it, since a safepoint may
+    come before any step; a class, so that a rule finds it for the wi
+    it is used at. *)
+Class SafepointStable {world : Type} (wi : mem -> world -> gmap piece pval -> Prop) : Prop := {
+  wi_safepoint : forall s m s' m' w h, R.safepoint s m s' m' -> wi m w h -> wi m' w h
+}.
+
+(** The logic for the contracts of registry over the world type world,
+    with the world interpretation wi. *)
+Section logic.
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
+Context {world : Type} (registry : name -> option (contract world))
+  (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi}.
 
 (** The state interpretation of the Iris state σ: the authoritative
     ghost heap h, which [agrees] with σ's memory, the live objects
-    apart, and the runtime ready. The [[fuel]] is unconstrained. *)
-Definition heap_interp `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (σ : lstate) : iProp Σ :=
+    apart, the runtime ready, and σ's world interpreted by wi in the
+    memory, given h. The [[fuel]] is unconstrained. *)
+Definition heap_interp (σ : lstate world) : iProp Σ :=
   ∃ h : gmap piece pval, gen_heap_interp h ∗
-    ⌜agrees (ls_mem σ) h /\ live_disjoint (ls_mem σ) /\ R.ready (ls_rt σ) (ls_mem σ)⌝.
+    ⌜agrees (ls_mem σ) h /\ live_disjoint (ls_mem σ) /\ R.ready (ls_rt σ) (ls_mem σ) /\
+     wi (ls_mem σ) (ls_world σ) h⌝.
 
 (** The Iris instance of the genv ge: [heap_interp] as the state
     interpretation, no forks to speak of, one later per step. *)
-Instance nanofil_irisGS `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (ge : genv) : irisGS_gen hlc (nanofil_lang ge) Σ :=
+Local Instance nanofil_irisGS (ge : genv) : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   IrisG _ (fun σ _ _ _ => heap_interp σ) (fun _ => True%I) (fun _ => 0%nat)
         (fun _ _ _ _ => fupd_intro _ _).
-
-Section logic.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 
 (** ## The assertions *)
 
@@ -148,7 +172,7 @@ Definition live_cap (c : cap) (reg : region) : iProp Σ :=
 (** What owned pieces tell about the memory of σ: [owned_facts]. *)
 Lemma pts_facts σ ps : heap_interp σ -∗ pts ps -∗ ⌜owned_facts ps (ls_mem σ)⌝.
 Proof.
-  iIntros "Hσ Hps". iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr).
+  iIntros "Hσ Hps". iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr & _).
   iDestruct (pts_lookup with "Hh Hps") as %Hl. iPureIntro.
   split; [|split; [exact Hd | exact (R.address_space _ _ Hr)]].
   apply all_agree_intro. intros l v Hin. apply Ha. apply Hl. exact Hin.
@@ -165,18 +189,29 @@ Proof.
 Qed.
 
 (** What R does at a safepoint keeps the state interpretation, with
-    the same ghost heap. *)
-Lemma heap_interp_safepoint m s fuel m' s' :
+    the same ghost heap and world. *)
+Lemma heap_interp_safepoint m s fuel w m' s' :
   R.safepoint s m s' m' ->
-  heap_interp (mkLstate m s fuel) -∗ heap_interp (mkLstate m' s' fuel).
+  heap_interp (mkLstate m s fuel w) -∗ heap_interp (mkLstate m' s' fuel w).
 Proof.
-  intros Hsp. iIntros "Hσ". iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr).
-  iExists h. iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt] in *.
+  intros Hsp. iIntros "Hσ". iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr & Hw).
+  iExists h. iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt ls_world] in *.
   destruct (SS.safepoint_shape _ _ _ _ Hsp) as (Hreg & Hb & Haux).
-  split; [|split].
+  split; [|split; [|split]].
   - intros l v Hl. exact (agree_piece_safepoint _ _ _ _ Hreg Hb Haux (Ha l v Hl)).
   - exact (SS.live_disjoint_safepoint _ _ _ _ Hsp Hd).
   - exact (R.safepoint_ready _ _ _ _ Hsp Hr).
+  - exact (wi_safepoint _ _ _ _ _ _ Hsp Hw).
+Qed.
+
+(** Owned pieces written over the ghost heap with the values it holds
+    leave it as it is. *)
+Lemma overwrite_id ps (h : gmap piece pval) :
+  (forall l v, (l, v) ∈ ps -> h !! l = Some v) -> overwrite ps h = h.
+Proof.
+  induction ps as [|[l v] ps IH]; intros Hl; [reflexivity|]. cbn [overwrite fst snd].
+  rewrite IH; [|intros l' v' Hin; apply Hl; apply elem_of_cons; by right].
+  apply insert_id. apply Hl. apply elem_of_cons. by left.
 Qed.
 
 Section wp.
@@ -184,30 +219,60 @@ Context (ge : genv).
 Implicit Types Φ : outcome -> iProp Σ.
 
 (** The expressions of the language of ge. *)
-Local Notation lexpr := (language.expr (nanofil_lang ge)).
+Local Notation lexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The steps of [ERun fr] in σ that move on, to e2 and σ2: a step to
-    the next configuration, an allocation R grants, or a return, the
-    cases of [head_step_run_inv] that are neither a stall nor a
-    safepoint. *)
-Definition moves (fr : frame) (σ : lstate) (e2 : expr) (σ2 : lstate) : Prop :=
+    the next configuration, an allocation R grants, a return, or an
+    external call's return ([returned_expr]: the frame resumed with the
+    call's memory, runtime state and world, or [EBad]); the cases of
+    [head_step_run_inv] that are neither a stall nor a safepoint. *)
+Definition moves (fr : frame) (σ : lstate world) (e2 : expr) (σ2 : lstate world) : Prop :=
   let c0 := mkConfig fr [] (ls_mem σ) (ls_fuel σ) in
-  (exists c', Semantics.step ge c0 = Next c' /\ e2 = conf_expr c' /\ σ2 = conf_state c' (ls_rt σ)) \/
+  (exists c', Semantics.step ge c0 = Next c' /\ e2 = conf_expr c' /\
+     σ2 = conf_state c' (ls_rt σ) (ls_world σ)) \/
   (exists q k base s', Semantics.step ge c0 = Fresh q k /\ 0 <= req_extent q /\
-     R.alloc (ls_rt σ) q = Some (base, s') /\ e2 = conf_expr (k base) /\ σ2 = conf_state (k base) s') \/
+     R.alloc (ls_rt σ) q = Some (base, s') /\ e2 = conf_expr (k base) /\
+     σ2 = conf_state (k base) s' (ls_world σ)) \/
   (exists o m', Semantics.step ge c0 = Done o /\ returning o /\
      invalidate_locals (fr_locals fr) (ls_mem σ) = Some m' /\
-     e2 = EEnd o /\ σ2 = mkLstate m' (ls_rt σ) (ls_fuel σ)).
+     e2 = EEnd o /\ σ2 = mkLstate m' (ls_rt σ) (ls_fuel σ) (ls_world σ)) \/
+  (exists site spec xs trace values s' m' w', external_site ge c0 site /\
+     registry (site_name site) = Some spec /\
+     map_option (arg_x ge (fr_env fr)) (site_args site) = Some xs /\
+     M.E.invoke spec (site_result site) (site_args site) xs (ls_rt σ) (ls_mem σ) (ls_world σ)
+       trace (CallReturn values) s' m' w' /\
+     e2 = returned_expr fr spec site values /\ σ2 = mkLstate m' s' (ls_fuel σ) w').
+
+(** A step that [moves] where the frame alone is not stuck is a core
+    one: an external call is stuck to the core [step]. *)
+Lemma moves_core fr σ e2 σ2 :
+  moves fr σ e2 σ2 ->
+  (forall why, Semantics.step ge (mkConfig fr [] (ls_mem σ) (ls_fuel σ)) <> Stuck why) ->
+  let c0 := mkConfig fr [] (ls_mem σ) (ls_fuel σ) in
+  (exists c', Semantics.step ge c0 = Next c' /\ e2 = conf_expr c' /\
+     σ2 = conf_state c' (ls_rt σ) (ls_world σ)) \/
+  (exists q k base s', Semantics.step ge c0 = Fresh q k /\ 0 <= req_extent q /\
+     R.alloc (ls_rt σ) q = Some (base, s') /\ e2 = conf_expr (k base) /\
+     σ2 = conf_state (k base) s' (ls_world σ)) \/
+  (exists o m', Semantics.step ge c0 = Done o /\ returning o /\
+     invalidate_locals (fr_locals fr) (ls_mem σ) = Some m' /\
+     e2 = EEnd o /\ σ2 = mkLstate m' (ls_rt σ) (ls_fuel σ) (ls_world σ)).
+Proof.
+  intros [H | [H | [H | (site & _ & _ & _ & _ & _ & _ & _ & Hs & _)]]] Hns; auto.
+  exfalso. exact (Hns _ (external_site_stuck _ _ _ Hs)).
+Qed.
 
 (** The lifting lemma every rule for a running frame comes from. [ERun
     fr] is safe, given Q, if Q and the state interpretation show fr
-    does not [fails], and if, after any step that [moves], they give
-    the state interpretation and the weakest precondition of what
-    follows. A stall leaves the expression and the state as they are; a
-    safepoint leaves the expression and the state interpretation: both
-    cases are closed by Löb induction, keeping Q. *)
+    [proceeds] (it does not [fails], or its external call is
+    admissible), and if, after any step that [moves], they give the
+    state interpretation and the weakest precondition of what follows.
+    A stall (an admissible call's included) leaves the expression and
+    the state as they are; a safepoint leaves the expression and the
+    state interpretation: these cases are closed by Löb induction,
+    keeping Q. *)
 Lemma wp_lift_run (Q : iProp Σ) fr Φ :
-  (forall σ, heap_interp σ -∗ Q -∗ ⌜~ fails ge (mkConfig fr [] (ls_mem σ) (ls_fuel σ))⌝) ->
+  (forall σ, heap_interp σ -∗ Q -∗ ⌜proceeds registry ge fr σ⌝) ->
   (forall σ, heap_interp σ -∗ Q -∗
      ▷ ∀ e2 σ2, ⌜moves fr σ e2 σ2⌝ ==∗ heap_interp σ2 ∗ WP (e2 : lexpr) {{ Φ }}) ->
   Q -∗ WP (ERun fr : lexpr) {{ Φ }}.
@@ -217,60 +282,72 @@ Proof.
   iIntros (σ ns κ κs nt) "Hσ".
   iDestruct (Hnf with "Hσ HQ") as %Hnf'.
   iApply fupd_mask_intro; [set_solver|]. iIntros "Hclose".
-  iSplitR; [iPureIntro; by apply run_reducible|].
+  iSplitR; [iPureIntro; by apply proceeds_reducible|].
   iAssert ((▷ ∀ e2 σ2, ⌜moves fr σ e2 σ2⌝ ==∗ heap_interp σ2 ∗ WP (e2 : lexpr) {{ Φ }})
            ∧ (heap_interp σ ∗ Q))%I with "[Hσ HQ]" as "H".
   { iSplit; [iApply (Hst with "Hσ HQ") | iFrame]. }
   iNext. iIntros (e2 σ2 efs Hstep) "_". iMod "Hclose" as "_".
-  destruct (head_step_run_inv _ _ _ _ _ _ _ Hstep) as (_ & -> & Hc).
+  destruct (head_step_run_inv _ _ _ _ _ _ _ _ Hstep) as (_ & -> & Hc).
   destruct Hc as [Hn | [Ha | [(q & k & _ & _ & _ & -> & ->) | [Hr | [(o & _ & _ & _ & -> & ->) |
-    (s' & m' & _ & _ & Hsp & -> & ->)]]]]].
+    [(s' & m' & _ & _ & Hsp & -> & ->) | [Hx | (_ & -> & ->)]]]]]]].
   - iDestruct "H" as "[H _]". iMod ("H" with "[%]") as "[Hσ Hwp]"; [by left|].
     iModIntro. iFrame. done.
   - iDestruct "H" as "[H _]". iMod ("H" with "[%]") as "[Hσ Hwp]"; [by (right; left)|].
     iModIntro. iFrame. done.
   - iDestruct "H" as "[_ [Hσ HQ]]". iModIntro. iFrame "Hσ". iSplitL; [iApply ("IH" with "HQ")|done].
-  - iDestruct "H" as "[H _]". iMod ("H" with "[%]") as "[Hσ Hwp]"; [by (right; right)|].
+  - iDestruct "H" as "[H _]". iMod ("H" with "[%]") as "[Hσ Hwp]"; [by (right; right; left)|].
     iModIntro. iFrame. done.
   - iDestruct "H" as "[_ [Hσ HQ]]". iModIntro. iFrame "Hσ". iSplitL; [iApply ("IH" with "HQ")|done].
-  - iDestruct "H" as "[_ [Hσ HQ]]". iModIntro. destruct σ as [m s fuel].
+  - iDestruct "H" as "[_ [Hσ HQ]]". iModIntro. destruct σ as [m s fuel w].
     iSplitL "Hσ"; [iApply (heap_interp_safepoint with "Hσ"); exact Hsp|].
     iSplitL; [iApply ("IH" with "HQ")|done].
+  - iDestruct "H" as "[H _]". iMod ("H" with "[%]") as "[Hσ Hwp]"; [by (right; right; right)|].
+    iModIntro. iFrame. done.
+  - iDestruct "H" as "[_ [Hσ HQ]]". iModIntro. iFrame "Hσ". iSplitL; [iApply ("IH" with "HQ")|done].
 Qed.
 
 (** A step to the next configuration, with the callers cs' below its
     frame, that writes memory: owning the pieces ps, where every memory
     m those pieces agree with steps to [upd] m, keeping its regions,
     [kept], agreeing with the new values ps' (the same keys) and
-    changing nothing outside them. The new pieces are handed on. *)
+    changing nothing outside them, and where the write keeps the world
+    interpretation, for a ghost heap that holds ps, with ps' written
+    over it. The new pieces are handed on. *)
 Lemma wp_write ps ps' fr fr' cs' (upd : mem -> mem) Φ :
   ps'.*1 = ps.*1 ->
   (forall m fuel, owned_facts ps m ->
      Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' cs' (upd m) fuel) /\
      m_regions (upd m) = m_regions m /\ kept m (upd m) /\
      all_agree (upd m) ps' /\ frame_ok ps'.*1 m (upd m)) ->
+  (forall m w h, (forall l v, (l, v) ∈ ps -> h !! l = Some v) -> wi m w h ->
+     wi (upd m) w (overwrite ps' h)) ->
   pts ps -∗ ▷ (pts ps' -∗ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }}) -∗
   WP (ERun fr : lexpr) {{ Φ }}.
 Proof.
-  intros Hk Hs. iIntros "Hps HK". iCombine "Hps HK" as "H".
+  intros Hk Hs Hwi. iIntros "Hps HK". iCombine "Hps HK" as "H".
   iApply (wp_lift_run with "H").
   - iIntros (σ) "Hσ [Hps _]". iDestruct (pts_facts with "Hσ Hps") as %Hf. iPureIntro.
-    destruct (Hs _ (ls_fuel σ) Hf) as (E & _). unfold fails. rewrite E. auto.
-  - iIntros ([m s fuel]) "Hσ [Hps HK]". iDestruct (pts_facts with "Hσ Hps") as %Hf.
-    cbn [ls_mem ls_rt ls_fuel] in *.
+    destruct (Hs _ (ls_fuel σ) Hf) as (E & _). left. unfold fails. rewrite E. auto.
+  - iIntros ([m s fuel w]) "Hσ [Hps HK]". iDestruct (pts_facts with "Hσ Hps") as %Hf.
+    cbn [ls_mem ls_rt ls_fuel ls_world] in *.
     destruct (Hs m fuel Hf) as (E & Hreg & Hkept & Hag & Hfr). iNext. iIntros (e2 σ2 Hm).
-    destruct Hm as [(c' & E' & -> & ->) | [(q & k & b & s' & E' & _) | (o & m' & E' & _)]];
+    destruct (moves_core _ _ _ _ Hm ltac:(intros ?; cbn [ls_mem ls_fuel]; rewrite E; discriminate))
+      as [(c' & E' & -> & ->) | [(q & k & b & s' & E' & _) | (o & m' & E' & _)]];
       cbn [ls_mem ls_fuel ls_rt] in E'; rewrite E in E'; try discriminate E'.
     injection E' as <-. cbn [conf_expr conf_state c_frame c_callers c_mem c_fuel].
-    iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr). cbn [ls_mem ls_rt] in Ha, Hd, Hr.
+    iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr & Hw).
+    cbn [ls_mem ls_rt ls_world] in Ha, Hd, Hr, Hw.
+    iDestruct (pts_lookup with "Hh Hps") as %Hl.
     iMod (pts_update with "Hh Hps") as "[Hh Hps]"; [exact Hk|].
     iModIntro. iSplitL "Hh".
-    + iExists (overwrite ps' h). iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt]. split; [|split].
-      * intros l v Hl. destruct (lookup_overwrite _ _ _ _ Hl) as [Hin | [Hn Hh]].
+    + iExists (overwrite ps' h). iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt ls_world].
+      split; [|split; [|split]].
+      * intros l v Hl'. destruct (lookup_overwrite _ _ _ _ Hl') as [Hin | [Hn Hh]].
         -- exact (all_agree_elem _ _ _ _ Hag Hin).
         -- exact (Hfr l v Hn (Ha l v Hh)).
       * exact (live_disjoint_regions _ _ Hreg Hd).
       * exact (R.ready_kept _ _ _ Hr Hkept).
+      * exact (Hwi m w h Hl Hw).
     + iApply ("HK" with "Hps").
 Qed.
 
@@ -283,9 +360,10 @@ Lemma wp_read ps fr fr' cs' Φ :
   pts ps -∗ ▷ (pts ps -∗ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }}) -∗
   WP (ERun fr : lexpr) {{ Φ }}.
 Proof.
-  intros Hs. apply (wp_write ps ps fr fr' cs' (fun m => m)); [reflexivity|].
-  intros m fuel Hf. split; [exact (Hs m fuel Hf)|]. split; [reflexivity|]. split; [apply kept_refl|].
-  split; [exact (proj1 Hf)|]. intros l v _ H. exact H.
+  intros Hs. apply (wp_write ps ps fr fr' cs' (fun m => m)); [reflexivity| |].
+  - intros m fuel Hf. split; [exact (Hs m fuel Hf)|]. split; [reflexivity|]. split; [apply kept_refl|].
+    split; [exact (proj1 Hf)|]. intros l v _ H. exact H.
+  - intros m w h Hl Hw. rewrite overwrite_id; [exact Hw | exact Hl].
 Qed.
 
 (** A step to the next configuration, with the callers cs' below its
@@ -390,10 +468,11 @@ Proof.
   intros HF Hs. iIntros "HQ HK". iCombine "HQ HK" as "H".
   iApply (wp_lift_run with "H").
   - iIntros (σ) "Hσ [HQ _]". iDestruct (HF with "Hσ HQ") as %Hf. iPureIntro.
-    unfold fails. rewrite (Hs _ _ Hf). auto.
-  - iIntros ([m s fuel]) "Hσ [HQ HK]". iDestruct (HF with "Hσ HQ") as %Hf. cbn [ls_mem] in Hf.
+    left. unfold fails. rewrite (Hs _ _ Hf). auto.
+  - iIntros ([m s fuel w]) "Hσ [HQ HK]". iDestruct (HF with "Hσ HQ") as %Hf. cbn [ls_mem] in Hf.
     iNext. iIntros (e2 σ2 Hm).
-    destruct Hm as [(c' & E' & -> & ->) | [(q & k & b & s' & E' & _) | (o & m' & E' & _)]];
+    destruct (moves_core _ _ _ _ Hm ltac:(intros ?; cbn [ls_mem ls_fuel]; rewrite (Hs _ _ Hf); discriminate))
+      as [(c' & E' & -> & ->) | [(q & k & b & s' & E' & _) | (o & m' & E' & _)]];
       cbn [ls_mem ls_fuel ls_rt] in E'; rewrite (Hs _ _ Hf) in E'; try discriminate E'.
     injection E' as <-. cbn [conf_expr conf_state c_frame c_callers c_mem c_fuel].
     iModIntro. iFrame "Hσ". iApply ("HK" with "HQ").
@@ -439,18 +518,21 @@ Qed.
 
 (** A raw store of the long v', which v reads as, through the proven
     pointer p, which a reads as and which addresses offset o of the live
-    object b at offset off: the cell there now holds v'. *)
+    object b at offset off, where the store keeps the world
+    interpretation: the cell there now holds v'. *)
 Lemma wp_raw_store f e ls l off v a rest j p b reg o w w' Φ :
   value_x ge e L v = Some (WInt w') -> value_x ge e A a = Some (WPtr p) ->
   ptr_cap p = Obj b -> raw_address (ptr_addr p) off = b + o ->
+  (forall m wd h, (forall l v, (l, v) ∈ [(PLive b, VLive reg)] ++ cell b o w -> h !! l = Some v) ->
+     wi m wd h -> wi (store_bytes m (b + o) 8 w') wd (overwrite ([(PLive b, VLive reg)] ++ cell b o w') h)) ->
   live b reg -∗ icell b o w -∗
   ▷ (live b reg -∗ icell b o w' -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (RawStore Wl off v a :: rest) j)) : lexpr) {{ Φ }}.
 Proof.
-  intros Hv Ha Hp Hoff. iIntros "Hl Hc HK".
+  intros Hv Ha Hp Hoff Hwi. iIntros "Hl Hc HK".
   iApply (wp_write ([(PLive b, VLive reg)] ++ cell b o w) ([(PLive b, VLive reg)] ++ cell b o w')
             _ _ [] (fun m => store_bytes m (b + o) 8 w') with "[Hl Hc] [HK]");
-    [reflexivity | | rewrite pts_app; iFrame |].
+    [reflexivity | | exact Hwi | rewrite pts_app; iFrame |].
   - intros m fuel (Hf & Hd & _). apply all_agree_app in Hf as [[Hlv _] Hcl].
     cbn [agree_piece fst snd] in Hlv. destruct (cell_bounds _ _ _ _ _ Hlv Hcl) as [Ho He].
     destruct (cell_store_ok m b reg o (b + o) w' Hd Hlv Ho He eq_refl) as [Hcs Hfr].
@@ -468,22 +550,29 @@ Qed.
 (** A raw pointer store by the plain protocol of the pointer xp, which
     v reads as, through the proven pointer p, which a reads as and
     which addresses the 8-aligned offset o of the live object b at
-    offset off: the pointer cell there now holds xp. *)
+    offset off, where the store keeps the world interpretation: the
+    pointer cell there now holds xp. *)
 Lemma wp_raw_store_pointer f e ls l off v a rest j xp p b reg o x Φ :
   value_x ge e P v = Some (WPtr xp) -> value_x ge e A a = Some (WPtr p) ->
   ptr_cap p = Obj b -> raw_address (ptr_addr p) off = b + o -> (b + o) mod 8 = 0 ->
+  (forall m wd h,
+     (forall l v, (l, v) ∈ [(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x) ->
+        h !! l = Some v) ->
+     wi m wd h ->
+     wi (store_bytes (store_aux m (b + o) (ptr_cap xp)) (b + o) 8 (ptr_addr xp)) wd
+       (overwrite ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap xp)) :: cell b o (ptr_addr xp)) h)) ->
   live b reg -∗ pcell b o x -∗
   ▷ (live b reg -∗ pcell b o xp -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
        (Exec l (RawStorePointer off v a [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]
                 :: rest) j)) : lexpr) {{ Φ }}.
 Proof.
-  intros Hv Ha Hp Hoff Hal. iIntros "Hl Hc HK".
+  intros Hv Ha Hp Hoff Hal Hwi. iIntros "Hl Hc HK".
   iApply (wp_write ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x))
             ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap xp)) :: cell b o (ptr_addr xp))
             _ _ [] (fun m => store_bytes (store_aux m (b + o) (ptr_cap xp)) (b + o) 8 (ptr_addr xp))
             with "[Hl Hc] [HK]");
-    [reflexivity | | rewrite pts_app; iFrame |].
+    [reflexivity | | exact Hwi | rewrite pts_app; iFrame |].
   - intros m fuel (Hf & Hd & _). apply all_agree_app in Hf as [[Hlv _] [_ Hcl]].
     cbn [agree_piece fst snd] in Hlv. destruct (cell_bounds _ _ _ _ _ Hlv Hcl) as [Ho He].
     destruct (pcell_store_ok m b reg o (b + o) (ptr_cap xp) (ptr_addr xp) Hd Hlv Ho He eq_refl)
@@ -504,28 +593,34 @@ Qed.
     from 0 to Fil-C's limit: for every base the runtime may grant, d is
     bound to the new object's own pointer and its pieces are owned
     ([obj]); the base is positive, aligned and the object ends within
-    the address space. A refusal stalls. *)
+    the address space. The allocation of any [fresh] base, with the new
+    object's pieces added to the ghost heap, must keep the world
+    interpretation. A refusal stalls. *)
 Lemma wp_alloc f e ls l d k al args rest j size Φ :
   map2_option (value_x ge e) [L] args = Some [WInt size] -> 0 <= size -> size <= max_allocation_size ->
+  (forall m wd h base, fresh m (heap_req al size) base -> wi m wd h ->
+     wi (allocated m (heap_req al size) base) wd (overwrite (obj_ps base (heap_req al size)) h)) ->
   ▷ (∀ base, ⌜0 < base /\ base mod req_align (heap_req al size) = 0 /\
               base + req_extent (heap_req al size) <= 2 ^ 48⌝ -∗ obj base (heap_req al size) -∗
        WP (ERun (mkFrame f (put d (WPtr (mkPtr base (Obj base))) e) ls None (Exec l rest j)) : lexpr)
          {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k (Alloc al) args :: rest) j)) : lexpr) {{ Φ }}.
 Proof.
-  intros Hx Hs0 Hs. set (q := heap_req al size).
+  intros Hx Hs0 Hs Hwi. set (q := heap_req al size).
   assert (Hex : 0 <= req_extent q).
   { cbn. apply Z.mul_nonneg_nonneg; [apply Z.div_pos|]; lia. }
   assert (Hal : 0 < req_align q) by (cbn; lia).
   pose proof (fun m fuel => rule_alloc ge f e ls l d k al args rest j [] m fuel size Hx Hs) as Hst.
   iIntros "HK". iApply (wp_lift_run with "HK").
-  - iIntros (σ) "_ _". iPureIntro. unfold fails. rewrite Hst. fold q. lia.
-  - iIntros ([m s fuel]) "Hσ HK". iNext. iIntros (e2 σ2 Hm).
-    destruct Hm as [(c' & E' & _) | [(q' & kk & base & s' & E' & _ & Ha & -> & ->) | (o & m' & E' & _)]];
+  - iIntros (σ) "_ _". iPureIntro. left. unfold fails. rewrite Hst. fold q. lia.
+  - iIntros ([m s fuel w]) "Hσ HK". iNext. iIntros (e2 σ2 Hm).
+    destruct (moves_core _ _ _ _ Hm ltac:(intros ?; cbn [ls_mem ls_fuel]; rewrite Hst; discriminate))
+      as [(c' & E' & _) | [(q' & kk & base & s' & E' & _ & Ha & -> & ->) | (o & m' & E' & _)]];
       cbn [ls_mem ls_fuel ls_rt] in E'; rewrite Hst in E'; try discriminate E'.
     injection E' as <- <-. cbn [conf_expr conf_state stack_expr c_frame c_callers c_mem c_fuel].
     fold q in Ha |- *.
-    iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Hag & Hd & Hr). cbn [ls_mem ls_rt] in Hag, Hd, Hr.
+    iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Hag & Hd & Hr & Hw).
+    cbn [ls_mem ls_rt ls_world] in Hag, Hd, Hr, Hw.
     destruct (R.fresh_allocation _ _ _ _ _ Hr Hal Hex Ha) as [Hf Hr'].
     pose proof Hf as (Hpos & Hmod & _ & Hn & _).
     iMod (pts_alloc h (obj_ps base q) with "Hh") as "[Hh Hps]".
@@ -534,12 +629,13 @@ Proof.
       pose proof (agree_piece_registered _ _ _ (Hag l' v' E)) as Hreg.
       rewrite (obj_ps_id _ _ _ _ Hin) in Hreg. exact (Hreg Hn). }
     iModIntro. iSplitL "Hh".
-    + iExists _. iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt]. split; [|split].
+    + iExists _. iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt ls_world]. split; [|split; [|split]].
       * intros l' v Hl. destruct (lookup_overwrite _ _ _ _ Hl) as [Hin | [_ Hh]].
         -- exact (obj_ps_agree _ _ _ _ _ Hf Hex Hin).
         -- exact (agree_piece_allocated _ _ _ _ _ Hn (Hag l' v Hh)).
       * exact (live_disjoint_allocated _ _ _ Hd Hf Hex).
       * exact Hr'.
+      * exact (Hwi m w h base Hf Hw).
     + iApply ("HK" with "[%] Hps"). split; [exact Hpos|]. split; [exact Hmod|].
       destruct (R.address_space _ _ Hr' base (mkRegion base (base + req_extent q) (req_kind q) Live))
         as [_ Hend]; [rewrite object_region_allocated Z.eqb_refl; reflexivity|].
@@ -560,8 +656,8 @@ Proof.
 Qed.
 
 (** The state interpretation does not read the [[fuel]]. *)
-Lemma heap_interp_fuel m s fuel fuel' :
-  heap_interp (mkLstate m s fuel) -∗ heap_interp (mkLstate m s fuel').
+Lemma heap_interp_fuel m s fuel fuel' w :
+  heap_interp (mkLstate m s fuel w) -∗ heap_interp (mkLstate m s fuel' w).
 Proof. rewrite /heap_interp /=. iIntros "H". iExact "H". Qed.
 
 (** Entering the block l of f, found as b, from the edge from: its phis
@@ -573,19 +669,21 @@ Lemma wp_enter f e ls l from b e' Φ :
   WP (ERun (mkFrame f e ls None (Enter l from)) : lexpr) {{ Φ }}.
 Proof.
   intros Hb Hp. iIntros "H". iApply (wp_lift_run with "H").
-  - iIntros (σ) "_ _". iPureIntro. unfold fails.
+  - iIntros (σ) "_ _". iPureIntro. left. unfold fails.
     destruct (Z.eq_dec (ls_fuel σ) 0) as [Hz|Hz].
     + rewrite Hz rule_out_of_fuel. cbn. tauto.
     + rewrite (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hz Hb Hp). auto.
-  - iIntros ([m s fuel]) "Hσ H". iNext. iIntros (e2 σ2 Hm).
-    unfold moves in Hm. cbn [ls_mem ls_fuel ls_rt] in Hm.
+  - iIntros ([m s fuel w]) "Hσ H". iNext. iIntros (e2 σ2 Hm).
     destruct (Z.eq_dec fuel 0) as [->|Hz].
-    + exfalso. rewrite rule_out_of_fuel in Hm.
-      destruct Hm as [(c' & E' & _) | [(q & k & base & s' & E' & _) | (o & m' & E' & Hr & _)]];
+    + exfalso.
+      destruct (moves_core _ _ _ _ Hm
+                  ltac:(intros ?; cbn [ls_mem ls_fuel]; rewrite rule_out_of_fuel; discriminate))
+        as [(c' & E' & _) | [(q & k & base & s' & E' & _) | (o & m' & E' & Hr & _)]];
         try discriminate E'. injection E' as <-. exact Hr.
-    + rewrite (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hz Hb Hp) in Hm.
-      destruct Hm as [(c' & E' & -> & ->) | [(q & k & base & s' & E' & _) | (o & m' & E' & _)]];
-        try discriminate E'.
+    + pose proof (rule_enter ge f e ls l from [] m fuel b e' Hz Hb Hp) as E.
+      destruct (moves_core _ _ _ _ Hm ltac:(intros ?; cbn [ls_mem ls_fuel]; rewrite E; discriminate))
+        as [(c' & E' & -> & ->) | [(q & k & base & s' & E' & _) | (o & m' & E' & _)]];
+        cbn [ls_mem ls_fuel] in E'; rewrite E in E'; try discriminate E'.
       injection E' as <-. cbn [conf_expr conf_state stack_expr c_frame c_callers c_mem c_fuel].
       iModIntro. iSplitL "Hσ"; [iApply (heap_interp_fuel with "Hσ") | iExact "H"].
 Qed.
@@ -622,11 +720,11 @@ Proof.
   { intros m fuel. rewrite (rule_ret _ _ _ _ _ _ _ _ _ _ _ Hk Hv).
     exact (rule_return_top (mkFrame f e [] None (Exec l [] (JRet v))) m fuel _ m (invalidate_none m)). }
   iIntros "H". iApply (wp_lift_run with "H").
-  - iIntros (σ) "_ _". iPureIntro. unfold fails. rewrite Hs. cbn. tauto.
-  - iIntros ([m s fuel]) "Hσ H". iNext. iIntros (e2 σ2 Hm).
-    unfold moves in Hm. cbn [ls_mem ls_fuel ls_rt] in Hm.
-    destruct Hm as [(c' & E' & _) | [(q & kk & base & s' & E' & _) | (o & m' & E' & _ & Hi & -> & ->)]];
-      rewrite Hs in E'; try discriminate E'.
+  - iIntros (σ) "_ _". iPureIntro. left. unfold fails. rewrite Hs. cbn. tauto.
+  - iIntros ([m s fuel w]) "Hσ H". iNext. iIntros (e2 σ2 Hm).
+    destruct (moves_core _ _ _ _ Hm ltac:(intros ?; cbn [ls_mem ls_fuel]; rewrite Hs; discriminate))
+      as [(c' & E' & _) | [(q & kk & base & s' & E' & _) | (o & m' & E' & _ & Hi & -> & ->)]];
+      cbn [ls_mem ls_fuel] in E'; rewrite Hs in E'; try discriminate E'.
     injection E' as <-. cbn in Hi. injection Hi as <-. iModIntro. iFrame "Hσ".
     iApply (wp_value' _ _ _ (Ret x)). iExact "H".
 Qed.
@@ -652,16 +750,17 @@ Lemma wp_resume o cf pd cf' Φ :
   resume cf pd o = Some cf' ->
   ▷ WP (ERun cf' : lexpr) {{ Φ }} -∗ WP (EWait (EEnd o) cf pd : lexpr) {{ Φ }}.
 Proof.
-  intros Hr. iIntros "H". iApply (wp_lift_pure_det_base_step_no_fork' _ (ERun cf')); [done | | |].
-  - intros σ. exists [], (ERun cf'), σ, []. exact (hs_resume ge o cf pd cf' σ Hr).
-  - intros σ κ e2 σ2 efs Hs. inversion Hs; subst. split; [done|]. split; [done|]. split; [|done].
-    congruence.
-  - iNext. iIntros "_". iExact "H".
+  intros Hr. iIntros "H". iApply wp_lift_base_step; [done|].
+  iIntros (σ ns κ κs nt) "Hσ". iApply fupd_mask_intro; [set_solver|]. iIntros "Hclose".
+  iSplitR; [iPureIntro; exists [], (ERun cf'), σ, []; exact (hs_resume registry ge o cf pd cf' σ Hr)|].
+  iNext. iIntros (e2 σ2 efs Hs) "_". iMod "Hclose" as "_".
+  inversion Hs; subst.
+  match goal with H : resume cf pd o = Some ?c |- _ => assert (c = cf') as -> by congruence end. iModIntro. iFrame "Hσ". iSplitL; [iExact "H"|done].
 Qed.
 
 (** The caller cf waiting on its callee is an evaluation context. *)
-Local Instance wait_ctx cf pd : LanguageCtx (Λ := nanofil_lang ge) (fun e => EWait e cf pd).
-Proof. exact (ectxi_lang_ctx_item (Λ := nanofil_ectxi_lang ge) (KWait cf pd)). Qed.
+Local Instance wait_ctx cf pd : LanguageCtx (Λ := nanofil_lang registry ge) (fun e => EWait e cf pd).
+Proof. exact (ectxi_lang_ctx_item (Λ := nanofil_ectxi_lang registry ge) (KWait cf pd)). Qed.
 
 (** A direct call, as [wp_call], whose callee's run ends with an
     outcome the caller resumes with: the callee's weakest precondition
@@ -681,14 +780,80 @@ Proof.
   iApply (wp_resume _ _ _ _ _ Hr with "H").
 Qed.
 
+(** A call of the global g that is not a function of the module, nor
+    global data, nor free: an [external_site], whose contract spec the
+    registry holds, with arguments that read as xs and the contract's
+    ABI. Given Q:
+    - Q and the state interpretation show the contract's precondition,
+      in the memory and the world of the call;
+    - after any return the contract allows from that state (an
+      [M.E.invoke] ending in [CallReturn] values), Q and the state
+      interpretation give, under a modality that may update the ghost
+      heap, the caller's environment e' the site's result binds
+      ([external_env]: a return the site cannot take is ruled out
+      here), the state interpretation of the call's memory, runtime
+      state and world, and the weakest precondition of the rest of the
+      block.
+    The call's exit and resource endings, blocking, and an admissible
+    call with no completed invocation need nothing: they are stalls. A
+    safepoint before the call keeps Q, and the precondition is shown
+    again after it. *)
+Lemma wp_external f e ls lab r g args rest j spec xs (Q : iProp Σ) Φ :
+  find_fn ge g = None -> lookup g (ge_globals ge) = None -> name_eqb g free_name = false ->
+  registry g = Some spec -> map_option (arg_x ge e) args = Some xs -> contract_abi spec r args ->
+  (forall σ, heap_interp σ -∗ Q -∗ ⌜contract_pre spec xs (ls_mem σ) (ls_world σ)⌝) ->
+  Q -∗
+  ▷ (∀ σ trace values s' m' w',
+       ⌜M.E.invoke spec r args xs (ls_rt σ) (ls_mem σ) (ls_world σ) trace (CallReturn values) s' m' w'⌝ -∗
+       heap_interp σ -∗ Q ==∗
+       ∃ e', ⌜external_env spec (mkCallSite lab r g args rest j) values e = Some e'⌝ ∗
+         heap_interp (mkLstate m' s' (ls_fuel σ) w') ∗
+         WP (ERun (mkFrame f e' ls None (Exec lab rest j)) : lexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)) : lexpr) {{ Φ }}.
+Proof.
+  intros Hfn Hdata Hfree Hreg Hx Habi Hpre. iIntros "HQ HK".
+  set (site := mkCallSite lab r g args rest j).
+  set (fr := mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)).
+  assert (Hsite : forall m fuel, external_site ge (mkConfig fr [] m fuel) site).
+  { intros m fuel. unfold external_site. cbv zeta. cbn. auto. }
+  iCombine "HQ HK" as "H". iApply (wp_lift_run with "H").
+  - iIntros (σ) "Hσ [HQ _]". iDestruct (Hpre with "Hσ HQ") as %Hp. iPureIntro. right.
+    exists site. split; [apply Hsite|]. exists spec, xs. auto.
+  - iIntros (σ) "Hσ [HQ HK]". iNext. iIntros (e2 σ2 Hm).
+    destruct Hm as [(c' & E' & _) | [(q & k & b & s' & E' & _) | [(o & m' & E' & _) |
+      (site' & spec' & xs' & tr & vs & s' & m' & w' & Hs' & Hreg' & Hx' & Hi & -> & ->)]]];
+      try (rewrite (external_site_stuck _ _ _ (Hsite _ _)) in E'; discriminate E').
+    assert (site' = site) as ->.
+    { eapply (external_site_unique ge); [|exact Hs'|apply (Hsite (ls_mem σ) (ls_fuel σ))]. reflexivity. }
+    cbn [site_name site_args site_result] in Hreg', Hx', Hi.
+    rewrite Hreg in Hreg'. injection Hreg' as <-.
+    cbn [fr fr_env] in Hx'. rewrite Hx in Hx'. injection Hx' as <-.
+    iMod ("HK" $! σ tr vs s' m' w' with "[%] Hσ HQ") as (e') "(%He & Hσ & Hwp)"; [exact Hi|].
+    iModIntro. iFrame "Hσ". unfold returned_expr. cbn [fr fr_env]. rewrite He. iExact "Hwp".
+Qed.
+
 End wp.
 End logic.
 
+(** No world: over the world unit, the interpretation that requires
+    nothing of the memory. With [no_contracts] it is the core
+    machine's logic. *)
+Definition no_world : mem -> unit -> gmap piece pval -> Prop := fun _ _ _ => True.
+
+(** [no_world] survives every safepoint. *)
+Instance no_world_stable : SafepointStable no_world.
+Proof. split. intros s m s' m' w h _ _. exact I. Qed.
+
+(** The Iris instance of a module that calls no external function, in
+    the genv ge: no contracts and no world. *)
+Instance closed_irisGS `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (ge : genv) :
+  irisGS_gen hlc (nanofil_lang no_contracts ge) Σ := nanofil_irisGS no_contracts no_world ge.
+
 (** Iris [[adequacy]] with the ghost heap: if, for every admissible
-    input, the entry's frame has a weakest precondition under any
-    invariant and ghost heap instance, the module never panics. The
-    initial memory's live objects must not overlap (it holds none for a
-    module with no data). *)
+    input, the entry's frame has a weakest precondition with no
+    contracts under any invariant and ghost heap instance, the module
+    never panics. The initial memory's live objects must not overlap
+    (it holds none for a module with no data). *)
 Theorem heap_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
     md entry (input : list word -> Prop) globals m f :
   initial_memory md = Some (globals, m) ->
@@ -696,18 +861,47 @@ Theorem heap_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece
   live_disjoint m ->
   (forall xs, input xs -> exists fr, call_frame f xs = Some fr /\
      forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
-       ⊢ WP (ERun fr : language.expr (nanofil_lang (P.program_genv md globals))) {{ _, True }}) ->
+       ⊢ WP (ERun fr : language.expr (nanofil_lang no_contracts (P.program_genv md globals)))
+           {{ _, True }}) ->
   P.never_panics md entry input.
 Proof.
   intros Hm Hf Hd Hwp. apply (L.wp_never_panics HasNoLc Σ md entry input globals m f Hm Hf).
   intros xs Hxs. destruct (Hwp xs Hxs) as (fr & Hfr & Hw). exists fr. split; [exact Hfr|].
   intros Hready fuel Hinv.
   iMod (gen_heap_init (∅ : gmap piece pval)) as (HheapG) "(Hh & _ & _)".
-  iModIntro. iExists heap_interp.
+  iModIntro. iExists (heap_interp no_world).
   iSplitL "Hh".
-  - iExists ∅. iFrame "Hh". iPureIntro. split; [|split; [exact Hd | exact Hready]].
+  - iExists ∅. iFrame "Hh". iPureIntro. split; [|split; [exact Hd | split; [exact Hready | exact I]]].
     intros l v Hl. rewrite lookup_empty in Hl. discriminate.
   - iApply (Hw Hinv HheapG).
+Qed.
+
+(** Iris [[adequacy]] with the ghost heap for the labelled machine
+    (Language.v's [wp_labelled_safe]), with the contracts of registry
+    and the world interpretation wi. From the memory m, the runtime
+    state s and the world w, where R is [[ready]], the live objects are
+    apart, and the caller's initial ghost heap h0 agrees with m and
+    satisfies wi with w: if, under any invariant and ghost heap
+    instance, owning h0's pieces gives a weakest precondition of [ERun
+    fr] with the postcondition φ, then for every fuel the run is
+    [labelled_safe]: no labelled run stops with a [failure_ending], and
+    a top-level return's value satisfies φ. *)
+Theorem heap_labelled_safe Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
+    {world : Type} (registry : name -> option (contract world))
+    (wi : mem -> world -> gmap piece pval -> Prop)
+    ge fr m s (w : world) (h0 : gmap piece pval) (φ : outcome -> Prop) :
+  R.ready s m -> live_disjoint m -> agrees m h0 -> wi m w h0 ->
+  (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
+     ([∗ map] l ↦ v ∈ h0, pointsto l (DfracOwn 1) v) ⊢
+       let _ : irisGS_gen HasNoLc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge in
+       WP (ERun fr : language.expr (nanofil_lang registry ge)) {{ o, ⌜φ o⌝ }}) ->
+  forall fuel, labelled_safe registry ge fr m s w fuel φ.
+Proof.
+  intros Hr Hd Ha Hw Hwp fuel. apply (L.wp_labelled_safe HasNoLc Σ registry ge fr m s w fuel φ).
+  intros Hinv. iMod (gen_heap_init h0) as (HheapG) "(Hh & Hpts & _)".
+  iModIntro. iExists (heap_interp wi). iSplitL "Hh".
+  - iExists h0. iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt ls_world]. auto.
+  - iPoseProof (Hwp Hinv HheapG with "Hpts") as "H". iExact "H".
 Qed.
 
 End Logic.
