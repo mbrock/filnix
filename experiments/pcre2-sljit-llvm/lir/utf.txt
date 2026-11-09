@@ -1,0 +1,233 @@
+SYM re 94226901785248 166
+SYM tables 94226883959584 1088
+SYM ucd_stage1 94226883918656 0
+SYM ucd_stage2 94226883838272 0
+SYM ucd_records 94226883936064 0
+SYM ucd_caseless_sets 94226883958976 0
+SYM ucd_boolprop_sets 94226883954848 0
+SYM ucd_script_sets 94226883956384 0
+SYM utf8_table4_m0xc0 94226883837472 0
+SYM fn_stack_resize 94226883483616 0
+SYM fn_callout 94226883479616 0
+SYM fn_search_mark 94226883481184 0
+  enter ret[w], args[w], scratches:5, saveds:5, fscratches:0, fsaveds:0, vscratches:15, vsaveds:0, local_size:64
+  sub r0, [s0 + 16], #1
+  mov [sp + 40], r0
+  mov s4, s0
+  mov r0, s0
+  mov r1, [r0 + 8]
+  mov s0, [r0 + 24]
+  mov r3, [r0]
+  mov.u32 r0, [r0 + 80]
+  mov s1, [r3 + 8]
+  mov s2, [r3 + 16]
+  add r0, r0, #1
+  mov [sp], r0
+  mov [sp + 56], #0
+  jump jump
+  =J0
+label:
+  =L0
+  mov.u8 r0, [r1]
+  add r1, r1, #1
+  cmp less, r0, #192
+  =J1
+  mov.u8 r0, [r0 + 94226883837472]
+  add r1, r1, r0
+label:
+  =L1
+  @J1->L1
+label:
+  =L1
+  @J0->L1
+label:
+  =L1
+  mov r0, #-1
+  add r3, r1, #2
+  cmp greater, r3, s0
+  =J2
+  mov [sp + 32], r1
+  mov s3, [sp]
+  cmp greater_equal, r1, s0
+  =J3
+  mov.u8 r0, [r1]
+  add r1, r1, #1
+  cmp less, r0, #192
+  =J4
+  jump fast_call
+  =J5
+label:
+  =L2
+  @J4->L2
+  lshr r3, r0, #7
+  shl r3, r3, #1
+  mov.u16 r3, [r3 + 94226883918656]
+  and r0, r0, #127
+  add.shl_imm.src2und r0, r0, r3, #7
+  mov r3, #94226883838272
+  mov.u16 r3, [r3 + r0 * 2]
+  add.shl_imm.src2und r3, r3, r3, #1
+  shl r3, r3, #2
+  mov.u8 r3, [r3 + 94226883936065]
+  shl r0, #1, r3
+  and.z unset, r0, #512
+  jump equal
+  =J6
+  cmp less_equal, r1, [sp + 56]
+  =J7
+  mov r2, #0
+  cmp greater_equal, r1, s0
+  =J8
+label:
+  =L3
+  mov.u8 r0, [r1]
+  add r1, r1, #1
+  cmp less, r0, #192
+  =J9
+  jump fast_call
+  =J10
+label:
+  =L4
+  @J9->L4
+  lshr r3, r0, #7
+  shl r3, r3, #1
+  mov.u16 r3, [r3 + 94226883918656]
+  and r0, r0, #127
+  add.shl_imm.src2und r0, r0, r3, #7
+  mov r3, #94226883838272
+  mov.u16 r3, [r3 + r0 * 2]
+  add.shl_imm.src2und r3, r3, r3, #1
+  shl r3, r3, #2
+  mov.u8 r3, [r3 + 94226883936065]
+  shl r0, #1, r3
+  and.z unset, r0, #32
+  jump equal
+  =J11
+  mov r2, r1
+  cmp less, r1, s0
+  =J12
+  @J12->L3
+label:
+  =L5
+  @J11->L5
+  @J8->L5
+  mov r1, r2
+  cmp equal, r1, #0
+  =J13
+  mov [sp + 56], r1
+  sub.z s3, s3, #1
+  jump equal
+  =J14
+label:
+  =L6
+  mov s2, [sp + 40]
+  mov [sp + 40], r1
+  mov s0, [sp + 32]
+  mov r2, [s4 + 32]
+  mov.u32 r1, [s4 + 84]
+  mov [s4 + 40], s0
+  add r2, r2, #112
+  local_base s0, #32
+  mov r0, [s4 + 16]
+label:
+  =L7
+  mov s1, [s0]
+  add s0, s0, #8
+  add r2, r2, #8
+  sub s1, s1, r0
+  mov [r2], s1
+  sub.z r1, r1, #1
+  jump not_equal
+  =J15
+  @J15->L7
+  mov r0, #1
+label:
+  =L8
+  @J2->L8
+  skip_frames_before_return
+  return r0
+label:
+  =L9
+  @J13->L9
+  @J7->L9
+  @J6->L9
+  @J3->L9
+label:
+  =L9
+  mov r1, [sp + 32]
+  cmp less, r1, s0
+  =J16
+  @J16->L0
+  mov r0, #-1
+  jump jump
+  =J17
+  @J17->L8
+label:
+  =L10
+  fast_enter [sp + 8]
+  mov [sp + 16], r1
+  mov r0, s4
+  sub r1, s2, #8192
+  mov r0, [r0]
+  mov s2, r3
+  icall ret[w], args[w,w], #94226883483616
+  =J18
+  cmp equal, r0, #0
+  =J19
+  mov r3, s2
+  mov s2, r0
+  mov r0, [sp + 8]
+  mov r1, [sp + 16]
+  fast_return r0
+label:
+  =L11
+  @J19->L11
+  mov r0, #-46
+  jump jump
+  =J20
+  @J20->L8
+label:
+  =L12
+  @J14->L12
+  mov r0, #-47
+  jump jump
+  =J21
+  @J21->L8
+label:
+  =L13
+  @J10->L13
+  @J5->L13
+  fast_enter r4
+  mov.u8 r3, [r1]
+  shl r0, r0, #6
+  and r3, r3, #63
+  or r0, r0, r3
+  and.z unset, r0, #2048
+  jump not_equal
+  =J22
+  xor r0, r0, #12288
+  add r1, r1, #1
+  fast_return r4
+label:
+  =L14
+  @J22->L14
+  mov.u8 r3, [r1 + 1]
+  shl r0, r0, #6
+  and r3, r3, #63
+  or r0, r0, r3
+  and.z unset, r0, #65536
+  jump not_equal
+  =J23
+  xor r0, r0, #917504
+  add r1, r1, #2
+  fast_return r4
+label:
+  =L15
+  @J23->L15
+  mov.u8 r3, [r1 + 2]
+  xor r0, r0, #983040
+  add r1, r1, #3
+  shl r0, r0, #6
+  and r3, r3, #63
+  or r0, r0, r3
+  fast_return r4

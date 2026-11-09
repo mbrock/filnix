@@ -67,6 +67,8 @@ individual ports needed, and how the port campaigns run. The repository's
 - [Trealla with Fil-C](trealla.md): the Trealla Prolog interpreter.
 - [QuickJS in place of Node.js](quickjs-for-node.md): which packages need
   Node on the Fil-C host and where QuickJS stands in.
+- [PCRE2's JIT and the Fil-C LLVM JIT](pcre2-jit.md): why sljit cannot run,
+  and a prototype that lowers its LIR to LLVM IR for Fil-C's JIT.
 - [Data race in Determinate Nix's parallel evaluation](determinate-nix-addtrace-race.md):
   a failed thunk's shared exception mutated across threads.
 - [Gem porting workflow](gem-porting.md) and

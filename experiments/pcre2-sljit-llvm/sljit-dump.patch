@@ -1,0 +1,135 @@
+--- a/deps/sljit/sljit_src/sljitLir.c
++++ b/deps/sljit/sljit_src/sljitLir.c
+@@ -633,6 +633,7 @@
+ 	if (SLJIT_LIKELY(!!jump) && SLJIT_LIKELY(!!label)) {
+ 		jump->flags &= (sljit_uw)~JUMP_ADDR;
+ 		jump->u.label = label;
++		if (getenv("SLJIT_DUMP")) fprintf(stderr, "  @J%lu->L%lu\n", (unsigned long)jump->dbg_id, (unsigned long)label->u.index);
+ 	}
+ }
+ 
+@@ -641,6 +642,7 @@
+ 	if (SLJIT_LIKELY(!!jump)) {
+ 		jump->flags |= JUMP_ADDR;
+ 		jump->u.target = target;
++		if (getenv("SLJIT_DUMP")) fprintf(stderr, "  @J%lu->A%lu\n", (unsigned long)jump->dbg_id, (unsigned long)target);
+ 	}
+ }
+ 
+@@ -883,6 +885,8 @@
+ 	jump->next = NULL;
+ 	jump->flags = flags;
+ 	jump->u.label = NULL;
++	{ static sljit_uw dbg_jump_counter_a; jump->dbg_id = dbg_jump_counter_a++;
++	  if (getenv("SLJIT_DUMP")) fprintf(stderr, "  =J%lu\n", (unsigned long)jump->dbg_id); }
+ 
+ 	if (compiler->last_jump != NULL)
+ 		compiler->last_jump->next = jump;
+@@ -898,6 +902,8 @@
+ 	jump->addr = compiler->size - offset;
+ 	jump->flags = JUMP_MOV_ADDR;
+ 	jump->u.label = NULL;
++	{ static sljit_uw dbg_jump_counter; jump->dbg_id = 1000000 + dbg_jump_counter++;
++	  if (getenv("SLJIT_DUMP")) fprintf(stderr, "  =J%lu\n", (unsigned long)jump->dbg_id); }
+ 	if (compiler->last_jump != NULL)
+ 		compiler->last_jump->next = jump;
+ 	else
+--- a/deps/sljit/sljit_src/sljitLir.h
++++ b/deps/sljit/sljit_src/sljitLir.h
+@@ -490,6 +490,7 @@
+ 		sljit_uw target;
+ 		struct sljit_label *label;
+ 	} u;
++	sljit_uw dbg_id;
+ };
+ 
+ struct sljit_const {
+--- a/deps/sljit/sljit_src/sljitNativeX86_common.c
++++ b/deps/sljit/sljit_src/sljitNativeX86_common.c
+@@ -3573,12 +3573,15 @@
+ 	CHECK_ERROR_PTR();
+ 	CHECK_PTR(check_sljit_emit_label(compiler));
+ 
+-	if (compiler->last_label && compiler->last_label->size == compiler->size)
++	if (compiler->last_label && compiler->last_label->size == compiler->size) {
++		if (compiler->verbose) fprintf(compiler->verbose, "  =L%lu\n", (unsigned long)compiler->last_label->u.index);
+ 		return compiler->last_label;
++	}
+ 
+ 	label = (struct sljit_label*)ensure_abuf(compiler, sizeof(struct sljit_label));
+ 	PTR_FAIL_IF(!label);
+ 	set_label(label, compiler);
++	if (compiler->verbose) fprintf(compiler->verbose, "  =L%lu\n", (unsigned long)label->u.index);
+ 
+ 	inst = (sljit_u8*)ensure_buf(compiler, 1);
+ 	PTR_FAIL_IF(!inst);
+--- a/src/pcre2_jit_compile.c
++++ b/src/pcre2_jit_compile.c
+@@ -55,7 +55,7 @@
+ 
+ #define SLJIT_CONFIG_AUTO 1
+ #define SLJIT_CONFIG_STATIC 1
+-#define SLJIT_VERBOSE 0
++#define SLJIT_VERBOSE 1
+ 
+ #ifdef PCRE2_DEBUG
+ #define SLJIT_DEBUG 1
+@@ -3555,6 +3555,7 @@
+ OP2(SLJIT_ADD, STACK_TOP, 0, STACK_TOP, 0, SLJIT_IMM, size * SSIZE_OF(sw));
+ }
+ 
++static unsigned char *proto_rod[64]; static unsigned long proto_rod_size[64]; static int proto_rod_n;
+ static sljit_uw * allocate_read_only_data(compiler_common *common, sljit_uw size)
+ {
+ DEFINE_COMPILER;
+@@ -3572,6 +3573,7 @@
+ 
+ *(void**)result = common->read_only_data_head;
+ common->read_only_data_head = (void *)result;
++if (getenv("SLJIT_DUMP")) { fprintf(stderr, "SYM rodata%d %lu %lu\n", proto_rod_n, (unsigned long)(result + 1), (unsigned long)size); proto_rod[proto_rod_n] = (unsigned char *)(result + 1); proto_rod_size[proto_rod_n++] = size; }
+ return result + 1;
+ }
+ 
+@@ -13771,6 +13773,23 @@
+   }
+ 
+ compiler = sljit_create_compiler(allocator_data);
++if (compiler != NULL && getenv("SLJIT_DUMP")) sljit_compiler_verbose(compiler, stderr);
++if (compiler != NULL && getenv("SLJIT_DUMP")) {
++  fprintf(stderr, "SYM re %lu %lu\n", (unsigned long)re, (unsigned long)re->blocksize);
++  fprintf(stderr, "SYM tables %lu %lu\n", (unsigned long)tables, (unsigned long)TABLES_LENGTH);
++#ifdef SUPPORT_UNICODE
++  fprintf(stderr, "SYM ucd_stage1 %lu 0\n", (unsigned long)PRIV(ucd_stage1));
++  fprintf(stderr, "SYM ucd_stage2 %lu 0\n", (unsigned long)PRIV(ucd_stage2));
++  fprintf(stderr, "SYM ucd_records %lu 0\n", (unsigned long)PRIV(ucd_records));
++  fprintf(stderr, "SYM ucd_caseless_sets %lu 0\n", (unsigned long)PRIV(ucd_caseless_sets));
++  fprintf(stderr, "SYM ucd_boolprop_sets %lu 0\n", (unsigned long)PRIV(ucd_boolprop_sets));
++  fprintf(stderr, "SYM ucd_script_sets %lu 0\n", (unsigned long)PRIV(ucd_script_sets));
++  fprintf(stderr, "SYM utf8_table4_m0xc0 %lu 0\n", (unsigned long)PRIV(utf8_table4) - 0xc0);
++#endif
++  fprintf(stderr, "SYM fn_stack_resize %lu 0\n", (unsigned long)sljit_stack_resize);
++  fprintf(stderr, "SYM fn_callout %lu 0\n", (unsigned long)do_callout_jit);
++  fprintf(stderr, "SYM fn_search_mark %lu 0\n", (unsigned long)do_search_mark);
++}
+ if (!compiler)
+   {
+   SLJIT_FREE(common->private_data_ptrs, allocator_data);
+@@ -14237,6 +14256,7 @@
+ if (common->has_then)
+   SLJIT_FREE(common->then_offsets, allocator_data);
+ 
++if (getenv("SLJIT_DUMP")) { for (int pi = 0; pi < proto_rod_n; pi++) { fprintf(stderr, "RODATA rodata%d ", pi); for (unsigned long pj = 0; pj < proto_rod_size[pi]; pj++) fprintf(stderr, "%02x", proto_rod[pi][pj]); fprintf(stderr, "\n"); } }
+ executable_func = sljit_generate_code(compiler, 0, NULL);
+ executable_size = sljit_get_generated_code_size(compiler);
+ sljit_free_compiler(compiler);
+--- a/src/pcre2_jit_simd_inc.h
++++ b/src/pcre2_jit_simd_inc.h
+@@ -39,7 +39,7 @@
+ -----------------------------------------------------------------------------
+ */
+ 
+-#if !(defined SUPPORT_VALGRIND)
++#if !(defined SUPPORT_VALGRIND) && !(defined PROTO_NO_SIMD)
+ 
+ #if ((defined SLJIT_CONFIG_X86 && SLJIT_CONFIG_X86) \
+      || (defined SLJIT_CONFIG_ARM_64 && SLJIT_CONFIG_ARM_64) \

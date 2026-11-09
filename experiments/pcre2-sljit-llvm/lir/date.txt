@@ -1,0 +1,412 @@
+SYM re 94230830439072 205
+SYM tables 94230303583008 1088
+SYM ucd_stage1 94230303542080 0
+SYM ucd_stage2 94230303461696 0
+SYM ucd_records 94230303559488 0
+SYM ucd_caseless_sets 94230303582400 0
+SYM ucd_boolprop_sets 94230303578272 0
+SYM ucd_script_sets 94230303579808 0
+SYM utf8_table4_m0xc0 94230303460896 0
+SYM fn_stack_resize 94230303107040 0
+SYM fn_callout 94230303103040 0
+SYM fn_search_mark 94230303104608 0
+  enter ret[w], args[w], scratches:5, saveds:5, fscratches:0, fsaveds:0, vscratches:15, vsaveds:0, local_size:144
+  sub r0, [s0 + 16], #1
+  local_base r1, #40
+  mov r2, #7
+label:
+  =L0
+  mov [r1], r0
+  add r1, r1, #8
+  sub.z r2, r2, #1
+  jump not_equal
+  =J0
+  @J0->L0
+  mov [sp + 24], r0
+  mov s4, s0
+  mov r0, s0
+  mov r1, [r0 + 8]
+  mov s0, [r0 + 24]
+  mov r3, [r0]
+  mov.u32 r0, [r0 + 80]
+  mov s1, [r3 + 8]
+  mov s2, [r3 + 16]
+  add r0, r0, #1
+  mov [sp], r0
+label:
+  =L1
+  mov r0, #-1
+  add r3, r1, #10
+  cmp greater, r3, s0
+  =J1
+  add r3, r1, #500000
+  mov r0, [sp + 24]
+  cmp less, r3, s0
+  =J2
+  cmp less, r1, r0
+  =J3
+  mov r0, r1
+label:
+  =L2
+  cmp greater_equal, r0, s0
+  =J4
+  mov.u8 r3, [r0]
+  cmp equal, r3, #45
+  =J5
+  add r0, r0, #1
+  jump jump
+  =J6
+  @J6->L2
+label:
+  =L3
+  @J5->L3
+  mov [sp + 24], r0
+label:
+  =L4
+  @J3->L4
+label:
+  =L4
+  @J2->L4
+  mov [sp + 32], r1
+  mov s3, [sp]
+  mov r0, [s4 + 16]
+  cmp greater, r1, r0
+  =J7
+  and32.z unset, [s4 + 88], #1
+  jump not_equal
+  =J8
+  cmp greater_equal, r1, s0
+  =J9
+label:
+  =L5
+  mov.u8 r3, [r1]
+  add r1, r1, #1
+  mov.u8 r0, [r3 + 94230303583840]
+  and.z unset, r0, #1
+  jump equal
+  =J10
+  cmp less, r1, s0
+  =J11
+  @J11->L5
+  add r1, r1, #1
+label:
+  =L6
+  @J10->L6
+  sub r1, r1, #1
+label:
+  =L7
+  @J9->L7
+  sub.z s3, s3, #1
+  jump equal
+  =J12
+  sub s1, s1, #16
+  cmp less, s1, s2
+  =J13
+label:
+  =L8
+  mov r0, [sp + 48]
+  mov r3, [sp + 56]
+  mov [sp + 48], r1
+  mov [s1], r0
+  mov [s1 + 8], r3
+  sub r0, s0, r1
+  cmp less, r0, #4
+  =J14
+  mov r2, #4
+label:
+  =L9
+  mov.u8 r3, [r1]
+  add r1, r1, #1
+  mov.u8 r0, [r3 + 94230303583840]
+  and.z unset, r0, #8
+  jump equal
+  =J15
+  sub.z r2, r2, #1
+  jump not_equal
+  =J16
+  @J16->L9
+  sub.z s3, s3, #1
+  jump equal
+  =J17
+  mov [sp + 56], r1
+  add r1, r1, #1
+  cmp greater, r1, s0
+  =J18
+  mov.u8 r0, [r1 + -1]
+  cmp not_equal, r0, #45
+  =J19
+  sub s1, s1, #16
+  cmp less, s1, s2
+  =J20
+label:
+  =L10
+  mov r0, [sp + 64]
+  mov r3, [sp + 72]
+  mov [sp + 64], r1
+  mov [s1], r0
+  mov [s1 + 8], r3
+  sub r0, s0, r1
+  cmp less, r0, #2
+  =J21
+  mov r2, #2
+label:
+  =L11
+  mov.u8 r3, [r1]
+  add r1, r1, #1
+  mov.u8 r0, [r3 + 94230303583840]
+  and.z unset, r0, #8
+  jump equal
+  =J22
+  sub.z r2, r2, #1
+  jump not_equal
+  =J23
+  @J23->L11
+  sub.z s3, s3, #1
+  jump equal
+  =J24
+  mov [sp + 72], r1
+  add r1, r1, #1
+  cmp greater, r1, s0
+  =J25
+  mov.u8 r0, [r1 + -1]
+  cmp not_equal, r0, #45
+  =J26
+  sub s1, s1, #16
+  cmp less, s1, s2
+  =J27
+label:
+  =L12
+  mov r0, [sp + 80]
+  mov r3, [sp + 88]
+  mov [sp + 80], r1
+  mov [s1], r0
+  mov [s1 + 8], r3
+  sub r0, s0, r1
+  cmp less, r0, #2
+  =J28
+  mov r2, #2
+label:
+  =L13
+  mov.u8 r3, [r1]
+  add r1, r1, #1
+  mov.u8 r0, [r3 + 94230303583840]
+  and.z unset, r0, #8
+  jump equal
+  =J29
+  sub.z r2, r2, #1
+  jump not_equal
+  =J30
+  @J30->L13
+  sub.z s3, s3, #1
+  jump equal
+  =J31
+  mov [sp + 88], r1
+  mov [sp + 136], r1
+  cmp greater_equal, r1, s0
+  =J32
+label:
+  =L14
+  mov.u8 r3, [r1]
+  add r1, r1, #1
+  mov.u8 r0, [r3 + 94230303583840]
+  and.z unset, r0, #1
+  jump equal
+  =J33
+  cmp less, r1, s0
+  =J34
+  @J34->L14
+  add r1, r1, #1
+label:
+  =L15
+  @J33->L15
+  sub r1, r1, #1
+label:
+  =L16
+  @J32->L16
+  mov [sp + 128], r1
+label:
+  =L17
+  sub.z s3, s3, #1
+  jump equal
+  =J35
+  and32.z unset, [s4 + 88], #2
+  jump not_equal
+  =J36
+  cmp greater_equal, r1, s0
+  =J37
+  add r3, r1, #1
+  mov.u8 r0, [r1]
+  cmp not_equal, r3, s0
+  =J38
+  cmp not_equal, r0, #10
+  =J39
+label:
+  =L18
+  @J37->L18
+label:
+  =L18
+  mov s2, [sp + 40]
+  mov [sp + 40], r1
+  mov s0, [sp + 32]
+  mov r2, [s4 + 32]
+  mov.u32 r1, [s4 + 84]
+  mov [s4 + 40], s0
+  add r2, r2, #112
+  local_base s0, #32
+  mov r0, [s4 + 16]
+label:
+  =L19
+  mov s1, [s0]
+  add s0, s0, #8
+  add r2, r2, #8
+  sub s1, s1, r0
+  mov [r2], s1
+  sub.z r1, r1, #1
+  jump not_equal
+  =J40
+  @J40->L19
+  local_base r0, #80
+  mov r1, #5
+label:
+  =L20
+  mov r2, [r0]
+  sub r0, r0, #16
+  sub r1, r1, #1
+  cmp equal, r2, s2
+  =J41
+  @J41->L20
+  mov r0, r1
+label:
+  =L21
+  @J1->L21
+  skip_frames_before_return
+  return r0
+label:
+  =L22
+  @J39->L22
+  @J38->L22
+  @J36->L22
+  mov r1, [sp + 128]
+  cmp less_equal, r1, [sp + 136]
+  =J42
+  sub r1, r1, #1
+  mov [sp + 128], r1
+  jump jump
+  =J43
+  @J43->L17
+label:
+  =L23
+label:
+  =L23
+  @J42->L23
+label:
+  =L23
+  @J29->L23
+  @J28->L23
+  mov r0, [s1]
+  mov r3, [s1 + 8]
+  add s1, s1, #16
+  mov [sp + 80], r0
+  mov [sp + 88], r3
+label:
+  =L24
+  @J26->L24
+  @J25->L24
+label:
+  =L24
+  @J22->L24
+  @J21->L24
+  mov r0, [s1]
+  mov r3, [s1 + 8]
+  add s1, s1, #16
+  mov [sp + 64], r0
+  mov [sp + 72], r3
+label:
+  =L25
+  @J19->L25
+  @J18->L25
+label:
+  =L25
+  @J15->L25
+  @J14->L25
+  mov r0, [s1]
+  mov r3, [s1 + 8]
+  add s1, s1, #16
+  mov [sp + 48], r0
+  mov [sp + 56], r3
+label:
+  =L26
+  @J8->L26
+  @J7->L26
+label:
+  =L26
+  mov r1, [sp + 32]
+label:
+  =L27
+  @J4->L27
+  mov r0, #-1
+  jump jump
+  =J44
+  @J44->L21
+label:
+  =L28
+  @J27->L28
+  jump fast_call
+  =J45
+  jump jump
+  =J46
+  @J46->L12
+label:
+  =L29
+  @J20->L29
+  jump fast_call
+  =J47
+  jump jump
+  =J48
+  @J48->L10
+label:
+  =L30
+  @J13->L30
+  jump fast_call
+  =J49
+  jump jump
+  =J50
+  @J50->L8
+label:
+  =L31
+  @J49->L31
+  @J47->L31
+  @J45->L31
+  fast_enter [sp + 8]
+  mov [sp + 16], r1
+  mov r0, s4
+  sub r1, s2, #8192
+  mov r0, [r0]
+  mov s2, r3
+  icall ret[w], args[w,w], #94230303107040
+  =J51
+  cmp equal, r0, #0
+  =J52
+  mov r3, s2
+  mov s2, r0
+  mov r0, [sp + 8]
+  mov r1, [sp + 16]
+  fast_return r0
+label:
+  =L32
+  @J52->L32
+  mov r0, #-46
+  jump jump
+  =J53
+  @J53->L21
+label:
+  =L33
+  @J35->L33
+  @J31->L33
+  @J24->L33
+  @J17->L33
+  @J12->L33
+  mov r0, #-47
+  jump jump
+  =J54
+  @J54->L21

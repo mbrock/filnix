@@ -1,0 +1,758 @@
+SYM re 94068159453856 378
+SYM tables 94067517336352 1088
+SYM ucd_stage1 94067517295424 0
+SYM ucd_stage2 94067517215040 0
+SYM ucd_records 94067517312832 0
+SYM ucd_caseless_sets 94067517335744 0
+SYM ucd_boolprop_sets 94067517331616 0
+SYM ucd_script_sets 94067517333152 0
+SYM utf8_table4_m0xc0 94067517214240 0
+SYM fn_stack_resize 94067516860384 0
+SYM fn_callout 94067516856384 0
+SYM fn_search_mark 94067516857952 0
+  enter ret[w], args[w], scratches:5, saveds:5, fscratches:0, fsaveds:0, vscratches:15, vsaveds:0, local_size:168
+  sub r0, [s0 + 16], #1
+  local_base r1, #40
+  mov r2, #9
+label:
+  =L0
+  mov [r1], r0
+  add r1, r1, #8
+  sub.z r2, r2, #1
+  jump not_equal
+  =J0
+  @J0->L0
+  mov [sp + 24], r0
+  mov s4, s0
+  mov r0, s0
+  mov r1, [r0 + 8]
+  mov s0, [r0 + 24]
+  mov r3, [r0]
+  mov.u32 r0, [r0 + 80]
+  mov s1, [r3 + 8]
+  mov s2, [r3 + 16]
+  add r0, r0, #1
+  mov [sp], r0
+  jump jump
+  =J1
+label:
+  =L1
+  add r1, r1, #1
+label:
+  =L2
+  @J1->L2
+label:
+  =L2
+SYM rodata0 94068159463608 256
+  sub.less s0, s0, #6
+  jump less
+  =J2
+  mov r4, #94068159463608
+label:
+  =L3
+  cmp greater, r1, s0
+  =J3
+  mov.u8 r0, [r1 + 5]
+  mov.u8 r0, [r4 + r0]
+  add r1, r1, r0
+  cmp not_equal, r0, #0
+  =J4
+  @J4->L3
+  mov.u8 r0, [r1]
+  add r1, r1, #1
+  cmp not_equal, r0, #91
+  =J5
+  @J5->L3
+  sub r1, r1, #1
+  add s0, s0, #6
+  mov r0, #-1
+  add r3, r1, #7
+  cmp greater, r3, s0
+  =J6
+  add r3, r1, #500000
+  mov r0, [sp + 24]
+  cmp less, r3, s0
+  =J7
+  cmp less, r1, r0
+  =J8
+  add r0, r1, #1
+label:
+  =L4
+  cmp greater_equal, r0, s0
+  =J9
+  mov.u8 r3, [r0]
+  cmp equal, r3, #93
+  =J10
+  add r0, r0, #1
+  jump jump
+  =J11
+  @J11->L4
+label:
+  =L5
+  @J10->L5
+  mov [sp + 24], r0
+label:
+  =L6
+  @J8->L6
+label:
+  =L6
+  @J7->L6
+  mov [sp + 32], r1
+  mov s3, [sp]
+  add r1, r1, #1
+  cmp greater, r1, s0
+  =J12
+  mov.u8 r0, [r1 + -1]
+  cmp not_equal, r0, #91
+  =J13
+  sub s1, s1, #16
+  cmp less, s1, s2
+  =J14
+label:
+  =L7
+  mov r0, [sp + 48]
+  mov r3, [sp + 56]
+  mov [sp + 48], r1
+  mov [s1], r0
+  mov [s1 + 8], r3
+  mov r2, r1
+  add r1, r1, #1
+  cmp greater, r1, s0
+  =J15
+  mov.u8 r0, [r1 + -1]
+  cmp not_equal, r0, #91
+  =J16
+  mov r2, r1
+label:
+  =L8
+  @J16->L8
+  @J15->L8
+  mov r1, r2
+  sub.z s3, s3, #1
+  jump equal
+  =J17
+  mov [sp + 56], r1
+  sub s1, s1, #16
+  cmp less, s1, s2
+  =J18
+label:
+  =L9
+  mov r0, [sp + 64]
+  mov r3, [sp + 72]
+  mov [sp + 64], r1
+  mov [s1], r0
+  mov [s1 + 8], r3
+  add r1, r1, #7
+  cmp greater, r1, s0
+  =J19
+  mov.s32 r0, [r1 + -7]
+  mov.u16 r3, [r1 + -3]
+  cmp not_equal, r0, #1819042151
+  =J20
+  mov.u8 r0, [r1 + -1]
+  cmp not_equal, r3, #29285
+  =J21
+  cmp not_equal, r0, #121
+  =J22
+  sub s1, s1, #8
+  cmp less, s1, s2
+  =J23
+label:
+  =L10
+  mov [s1], #0
+label:
+  =L11
+  mov [sp + 72], r1
+  sub.z s3, s3, #1
+  jump equal
+  =J24
+  sub s1, s1, #8
+  cmp less, s1, s2
+  =J25
+label:
+  =L12
+  mov [s1], r1
+  cmp greater_equal, r1, s0
+  =J26
+  mov.u8 r0, [r1]
+  add r1, r1, #1
+  and r3, r0, #7
+  lshr r0, r0, #3
+  mov.u8 r0, [r0 + 94068159454079]
+  shl r3, #1, r3
+  and.z unset, r0, r3
+  jump equal
+  =J27
+label:
+  =L13
+  add s1, s1, #8
+  jump jump
+  =J28
+label:
+  =L14
+  @J27->L14
+  @J26->L14
+  mov r1, [s1]
+  add s1, s1, #8
+  sub s1, s1, #16
+  cmp less, s1, s2
+  =J29
+label:
+  =L15
+  mov r0, [sp + 80]
+  mov r3, [sp + 88]
+  mov [sp + 80], r1
+  mov [s1], r0
+  mov [s1 + 8], r3
+  cmp greater_equal, r1, s0
+  =J30
+label:
+  =L16
+  mov.u8 r0, [r1]
+  add r1, r1, #1
+  cmp equal, r0, #47
+  =J31
+  cmp equal, r0, #93
+  =J32
+  cmp less, r1, s0
+  =J33
+  @J33->L16
+  add r1, r1, #1
+label:
+  =L17
+  @J32->L17
+  @J31->L17
+  sub r1, r1, #1
+label:
+  =L18
+  @J30->L18
+  sub.z s3, s3, #1
+  jump equal
+  =J34
+  sub s1, s1, #16
+  cmp less, s1, s2
+  =J35
+label:
+  =L19
+  mov [s1], #0
+  mov [s1 + 8], r1
+label:
+  =L20
+  sub.z s3, s3, #1
+  jump equal
+  =J36
+  mov [sp + 88], r1
+  sub s1, s1, #8
+  cmp less, s1, s2
+  =J37
+label:
+  =L21
+  mov [s1], r1
+  sub s1, s1, #16
+  cmp less, s1, s2
+  =J38
+label:
+  =L22
+  mov r0, [sp + 96]
+  mov r3, [sp + 104]
+  mov [sp + 96], r1
+  mov [s1], r0
+  mov [s1 + 8], r3
+  add r1, r1, #1
+  cmp greater, r1, s0
+  =J39
+  mov.u8 r0, [r1 + -1]
+  cmp not_equal, r0, #47
+  =J40
+  mov [sp + 104], r1
+  add r1, r1, #1
+  cmp greater, r1, s0
+  =J41
+  mov.u8 r0, [r1 + -1]
+  cmp not_equal, r0, #93
+  =J42
+  sub s1, s1, #8
+  cmp less, s1, s2
+  =J43
+label:
+  =L23
+  mov [s1], #0
+label:
+  =L24
+  sub.z s3, s3, #1
+  jump equal
+  =J44
+label:
+  =L25
+  mov s2, [sp + 40]
+  mov [sp + 40], r1
+  mov s0, [sp + 32]
+  mov r2, [s4 + 32]
+  mov.u32 r1, [s4 + 84]
+  mov [s4 + 40], s0
+  add r2, r2, #112
+  local_base s0, #32
+  mov r0, [s4 + 16]
+label:
+  =L26
+  mov s1, [s0]
+  add s0, s0, #8
+  add r2, r2, #8
+  sub s1, s1, r0
+  mov [r2], s1
+  sub.z r1, r1, #1
+  jump not_equal
+  =J45
+  @J45->L26
+  local_base r0, #96
+  mov r1, #6
+label:
+  =L27
+  mov r2, [r0]
+  sub r0, r0, #16
+  sub r1, r1, #1
+  cmp equal, r2, s2
+  =J46
+  @J46->L27
+  mov r0, r1
+label:
+  =L28
+  @J6->L28
+  skip_frames_before_return
+  return r0
+label:
+  =L29
+  @J3->L29
+  @J2->L29
+  mov r0, #-1
+  jump jump
+  =J47
+  @J47->L28
+  mov r0, [s1]
+  add s1, s1, #8
+  cmp not_equal, r0, #0
+  =J48
+label:
+  =L30
+  @J42->L30
+  @J41->L30
+label:
+  =L30
+  @J40->L30
+  @J39->L30
+  mov r0, [s1]
+  mov r3, [s1 + 8]
+  add s1, s1, #16
+  mov [sp + 96], r0
+  mov [sp + 104], r3
+  mov r1, [s1]
+  add r1, r1, #1
+  cmp greater, r1, s0
+  =J49
+  mov.u8 r0, [r1 + -1]
+  cmp not_equal, r0, #93
+  =J50
+  sub s1, s1, #8
+  cmp less, s1, s2
+  =J51
+label:
+  =L31
+  mov [s1], #1
+  jump jump
+  =J52
+  @J52->L24
+label:
+  =L32
+  @J48->L32
+label:
+  =L32
+  @J50->L32
+  @J49->L32
+  add s1, s1, #8
+  mov r1, [s1]
+  cmp not_equal, r1, #0
+  =J53
+  mov r1, [s1 + 8]
+label:
+  =L33
+  @J53->L33
+label:
+  =L33
+  add r1, r1, #1
+  cmp greater, r1, s0
+  =J54
+  mov.u8 r0, [r1 + -1]
+  cmp not_equal, r0, #47
+  =J55
+  sub s1, s1, #8
+  cmp less, s1, s2
+  =J56
+label:
+  =L34
+  mov [s1], r1
+  add r1, r1, #1
+  cmp greater, r1, s0
+  =J57
+  mov.u8 r0, [r1 + -1]
+  cmp not_equal, r0, #93
+  =J58
+label:
+  =L35
+  add s1, s1, #8
+  jump jump
+  =J59
+label:
+  =L36
+  @J58->L36
+  @J57->L36
+  mov r1, [s1]
+  add s1, s1, #8
+  sub s1, s1, #16
+  cmp less, s1, s2
+  =J60
+label:
+  =L37
+  mov [s1 + 8], r1
+  cmp greater_equal, r1, s0
+  =J61
+label:
+  =L38
+  mov.u8 r0, [r1]
+  add r1, r1, #1
+  cmp equal, r0, #47
+  =J62
+  cmp equal, r0, #93
+  =J63
+  cmp less, r1, s0
+  =J64
+  @J64->L38
+  add r1, r1, #1
+label:
+  =L39
+  @J63->L39
+  @J62->L39
+  sub r1, r1, #1
+label:
+  =L40
+  @J61->L40
+  mov [s1], r1
+label:
+  =L41
+  sub.z s3, s3, #1
+  jump equal
+  =J65
+  sub s1, s1, #8
+  cmp less, s1, s2
+  =J66
+label:
+  =L42
+  mov [s1], r1
+  jump jump
+  =J67
+  @J67->L20
+label:
+  =L43
+  mov r1, [s1]
+  cmp less_equal, r1, [s1 + 8]
+  =J68
+  sub r1, r1, #1
+  mov [s1], r1
+  jump jump
+  =J69
+  @J69->L41
+label:
+  =L44
+label:
+  =L44
+  @J68->L44
+  add s1, s1, #16
+label:
+  =L45
+  @J59->L45
+label:
+  =L45
+  @J55->L45
+  @J54->L45
+  mov r0, [s1]
+  add s1, s1, #8
+  cmp not_equal, r0, #0
+  =J70
+  @J70->L43
+  add s1, s1, #8
+  mov r0, [s1]
+  mov r3, [s1 + 8]
+  add s1, s1, #16
+  mov [sp + 80], r0
+  mov [sp + 88], r3
+label:
+  =L46
+  @J28->L46
+  mov r0, [s1]
+  add s1, s1, #8
+  cmp not_equal, r0, #0
+  =J71
+label:
+  =L47
+  @J22->L47
+  @J21->L47
+  @J20->L47
+  @J19->L47
+  mov r1, [sp + 64]
+  add r1, r1, #7
+  cmp greater, r1, s0
+  =J72
+  mov.s32 r0, [r1 + -7]
+  mov.u16 r3, [r1 + -3]
+  cmp not_equal, r0, #1953522019
+  =J73
+  mov.u8 r0, [r1 + -1]
+  cmp not_equal, r3, #28521
+  =J74
+  cmp not_equal, r0, #110
+  =J75
+  sub s1, s1, #8
+  cmp less, s1, s2
+  =J76
+label:
+  =L48
+  mov [s1], #1
+  jump jump
+  =J77
+  @J77->L11
+label:
+  =L49
+  @J71->L49
+  cmp not_equal, r0, #1
+  =J78
+label:
+  =L50
+  @J75->L50
+  @J74->L50
+  @J73->L50
+  @J72->L50
+  mov r1, [sp + 64]
+  add r1, r1, #5
+  cmp greater, r1, s0
+  =J79
+  mov.s32 r0, [r1 + -5]
+  mov.u8 r3, [r1 + -1]
+  cmp not_equal, r0, #1700949349
+  =J80
+  cmp not_equal, r3, #100
+  =J81
+  sub s1, s1, #8
+  cmp less, s1, s2
+  =J82
+label:
+  =L51
+  mov [s1], #2
+  jump jump
+  =J83
+  @J83->L11
+label:
+  =L52
+  @J78->L52
+label:
+  =L52
+  @J81->L52
+  @J80->L52
+  @J79->L52
+  mov r0, [s1]
+  mov r3, [s1 + 8]
+  add s1, s1, #16
+  mov [sp + 64], r0
+  mov [sp + 72], r3
+  mov r0, [s1]
+  mov r3, [s1 + 8]
+  add s1, s1, #16
+  mov [sp + 48], r0
+  mov [sp + 56], r3
+label:
+  =L53
+  @J13->L53
+  @J12->L53
+label:
+  =L53
+  mov r1, [sp + 32]
+  cmp less, r1, s0
+  =J84
+  @J84->L1
+label:
+  =L54
+  @J9->L54
+  mov r0, #-1
+  jump jump
+  =J85
+  @J85->L28
+label:
+  =L55
+  @J82->L55
+  jump fast_call
+  =J86
+  jump jump
+  =J87
+  @J87->L51
+label:
+  =L56
+  @J76->L56
+  jump fast_call
+  =J88
+  jump jump
+  =J89
+  @J89->L48
+label:
+  =L57
+  @J66->L57
+  jump fast_call
+  =J90
+  jump jump
+  =J91
+  @J91->L42
+label:
+  =L58
+  @J60->L58
+  jump fast_call
+  =J92
+  jump jump
+  =J93
+  @J93->L37
+label:
+  =L59
+  @J56->L59
+  jump fast_call
+  =J94
+  jump jump
+  =J95
+  @J95->L34
+label:
+  =L60
+  @J51->L60
+  jump fast_call
+  =J96
+  jump jump
+  =J97
+  @J97->L31
+label:
+  =L61
+  @J43->L61
+  jump fast_call
+  =J98
+  jump jump
+  =J99
+  @J99->L23
+label:
+  =L62
+  @J38->L62
+  jump fast_call
+  =J100
+  jump jump
+  =J101
+  @J101->L22
+label:
+  =L63
+  @J37->L63
+  jump fast_call
+  =J102
+  jump jump
+  =J103
+  @J103->L21
+label:
+  =L64
+  @J35->L64
+  jump fast_call
+  =J104
+  jump jump
+  =J105
+  @J105->L19
+label:
+  =L65
+  @J29->L65
+  jump fast_call
+  =J106
+  jump jump
+  =J107
+  @J107->L15
+label:
+  =L66
+  @J25->L66
+  jump fast_call
+  =J108
+  jump jump
+  =J109
+  @J109->L12
+label:
+  =L67
+  @J23->L67
+  jump fast_call
+  =J110
+  jump jump
+  =J111
+  @J111->L10
+label:
+  =L68
+  @J18->L68
+  jump fast_call
+  =J112
+  jump jump
+  =J113
+  @J113->L9
+label:
+  =L69
+  @J14->L69
+  jump fast_call
+  =J114
+  jump jump
+  =J115
+  @J115->L7
+label:
+  =L70
+  @J114->L70
+  @J112->L70
+  @J110->L70
+  @J108->L70
+  @J106->L70
+  @J104->L70
+  @J102->L70
+  @J100->L70
+  @J98->L70
+  @J96->L70
+  @J94->L70
+  @J92->L70
+  @J90->L70
+  @J88->L70
+  @J86->L70
+  fast_enter [sp + 8]
+  mov [sp + 16], r1
+  mov r0, s4
+  sub r1, s2, #8192
+  mov r0, [r0]
+  mov s2, r3
+  icall ret[w], args[w,w], #94067516860384
+  =J116
+  cmp equal, r0, #0
+  =J117
+  mov r3, s2
+  mov s2, r0
+  mov r0, [sp + 8]
+  mov r1, [sp + 16]
+  fast_return r0
+label:
+  =L71
+  @J117->L71
+  mov r0, #-46
+  jump jump
+  =J118
+  @J118->L28
+label:
+  =L72
+  @J65->L72
+  @J44->L72
+  @J36->L72
+  @J34->L72
+  @J24->L72
+  @J17->L72
+  mov r0, #-47
+  jump jump
+  =J119
+  @J119->L28
+RODATA rodata0 06060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606040606060606020103000006030600060600020606010606060006060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606
