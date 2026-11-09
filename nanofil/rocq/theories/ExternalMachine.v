@@ -462,6 +462,14 @@ Arguments step {world}.
 Arguments run {world}.
 End ExternalMachine.
 
+(** Accept an existing machine instance rather than instantiate a sibling
+    functor. In particular its inductive [E.invoke], [E.effects], [step]
+    and [run] types remain the caller's exact types. This signature adds
+    no runtime assumptions and changes no transition or theorem. *)
+Module Type ExternalMachineSig (R : Runtime).
+Include ExternalMachine R.
+End ExternalMachineSig.
+
 (** ## Public transition regressions
 
     These are abstract contract fixtures, not native libc instances.

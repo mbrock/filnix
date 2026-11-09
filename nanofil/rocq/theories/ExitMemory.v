@@ -7,7 +7,7 @@
     [[obligation|obligations]]. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Identity ExternalCalls Startup Stdio Shutdown.
+From Nanofil Require Import Term Syntax Values Memory Runtime Identity ExternalCalls ExternalMachine Startup Stdio Shutdown.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -523,8 +523,8 @@ Qed.
 
 (** Construction uses the existing bounded-write effects, with no allocations
     or releases. Both the index-only prefix and cxa's final prefix are valid. *)
-Module ExitPop (R : Runtime).
-Module E := ExternalCalls R.
+Module ExitPopOn (R : Runtime) (M : ExternalMachineSig R).
+Module E := M.E.
 
 (** Writable roots survive these stores because their regions do not change. *)
 Lemma pop_effects : forall sources s m p older selected,
@@ -564,6 +564,12 @@ Proof.
   split; eapply E.effects_preserve; eauto.
 Qed.
 
+End ExitPopOn.
+
+(** Standalone wrapper; composition clients supply their exact machine. *)
+Module ExitPop (R : Runtime).
+Module M := ExternalMachine R.
+Include ExitPopOn R M.
 End ExitPop.
 
 (** ## Unlinking an exhausted head, without retirement *)
@@ -688,9 +694,9 @@ Proof.
 Qed.
 
 (** One actual pointer-store effect over any runtime, with no retirement. *)
-Module ExitUnlink (R : Runtime).
-(** The existing external-call effect relation for the selected runtime. *)
-Module E := ExternalCalls R.
+Module ExitUnlinkOn (R : Runtime) (M : ExternalMachineSig R).
+(** The existing external-call effects of the caller's machine. *)
+Module E := M.E.
 
 (** The source capability is loaded from next; only the head is writable. *)
 Lemma unlink_effects : forall s m head p rest,
@@ -716,6 +722,12 @@ Proof.
     [exact (unlink_effects s m head p rest Hblock Hw)|exact Hr].
 Qed.
 
+End ExitUnlinkOn.
+
+(** Standalone wrapper for existing unlink clients. *)
+Module ExitUnlink (R : Runtime).
+Module M := ExternalMachine R.
+Include ExitUnlinkOn R M.
 End ExitUnlink.
 
 (** Concrete model memory checks do not locate the native hidden registry. *)

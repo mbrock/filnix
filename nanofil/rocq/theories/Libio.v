@@ -13,7 +13,7 @@
     fallback and the pin's terminal resource ending are distinct. *)
 
 From Stdlib Require Import ZArith List Bool Lia.
-From Nanofil Require Import Syntax Values Memory Runtime Identity ExternalCalls Startup.
+From Nanofil Require Import Syntax Values Memory Runtime Identity ExternalCalls ExternalMachine Startup.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -301,9 +301,9 @@ Qed.
 
 (** ## Allocation evidence over any runtime *)
 
-(** Buffer allocation over any [[runtime]] R. *)
-Module Libio (R : Runtime).
-Module E := ExternalCalls R.
+(** Buffer allocation over the caller's exact machine instance. *)
+Module LibioOn (R : Runtime) (M : ExternalMachineSig R).
+Module E := M.E.
 
 (** The one allocation request stdout's buffer setup makes: 16-aligned,
     of [file_capacity] bytes. *)
@@ -527,6 +527,12 @@ Proof.
     + intros a Hrange. apply Hauthority. exact Hrange.
 Qed.
 
+End LibioOn.
+
+(** Standalone wrapper for existing buffer clients. *)
+Module Libio (R : Runtime).
+Module M := ExternalMachine R.
+Include LibioOn R M.
 End Libio.
 
 (** ## Public branch and representation boundaries *)

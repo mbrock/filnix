@@ -14,7 +14,7 @@
     must not be confused with a malformed entry or deleted execution. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Identity ExternalCalls.
+From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Identity ExternalCalls ExternalMachine.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -517,10 +517,10 @@ Proof.
   rewrite E. unfold aligned_res. rewrite Ha. reflexivity.
 Qed.
 
-(** Startup copying over an arbitrary [[runtime]]. *)
-Module Startup (R : Runtime).
-(** The external-call effects of this runtime. *)
-Module E := ExternalCalls R.
+(** Startup copying over the caller's exact machine instance. *)
+Module StartupOn (R : Runtime) (M : ExternalMachineSig R).
+(** The external-call effects of this machine. *)
+Module E := M.E.
 
 (** Copying through supplied write authority is a finite path of local effects. *)
 Lemma copy_c_bytes_effects : forall bytes sources roots releases requests s m born a,
@@ -878,6 +878,12 @@ Proof.
   split; [exact Hbound|]. eapply startup_frame_libc_globals; eauto.
 Qed.
 
+End StartupOn.
+
+(** Standalone wrapper for existing entry clients. *)
+Module Startup (R : Runtime).
+Module M := ExternalMachine R.
+Include StartupOn R M.
 End Startup.
 
 (** ## Entry regressions

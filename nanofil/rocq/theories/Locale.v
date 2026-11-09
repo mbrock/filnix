@@ -5,7 +5,7 @@
     independent obligations; there are no new runtime axioms. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Identity ExternalCalls.
+From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Identity ExternalCalls ExternalMachine.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -256,9 +256,10 @@ Proof.
   - lia.
 Qed.
 
-(** Call constructions and exact extraction over the existing runtime. *)
-Module Locale (R : Runtime).
-Module E := ExternalCalls R.
+(** Call constructions and exact extraction over the caller's machine.
+    A separately instantiated machine has different inductive types. *)
+Module LocaleOn (R : Runtime) (M : ExternalMachineSig R).
+Module E := M.E.
 
 (** A null query is constructively inhabited from its independent
     represented input facts, with exact memory, world and runtime. *)
@@ -447,6 +448,13 @@ Proof.
   exfalso. apply (proj1 (Hnames category Hcat)). congruence.
 Qed.
 
+End LocaleOn.
+
+(** Standalone compatibility wrapper; logic clients use [LocaleOn] with
+    their actual exported machine instance instead. *)
+Module Locale (R : Runtime).
+Module M := ExternalMachine R.
+Include LocaleOn R M.
 End Locale.
 
 (** Independent logical controls: non-C names, a separate canonical

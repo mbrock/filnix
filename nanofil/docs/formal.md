@@ -2029,6 +2029,30 @@ sequences. A general arbitrary-codec contract must retain weaker results;
 ISO-2022-JP source counterpaths are the reason not to generalize this
 profile. Non-EILSEQ errno preservation is a separate, unaudited obligation.
 
+### Exact machine instances at contract boundaries
+
+Rocq functor applications are generative: two independently constructed
+ExternalMachine modules have different invoke/effects and step/run
+inductive types, even at the same Runtime argument. Aliasing a fresh
+machine inside each contract module does not make those types equal.
+
+[ExternalMachine.v](../rocq/theories/ExternalMachine.v) exports
+ExternalMachineSig, which includes the complete existing machine
+signature without adding assumptions or changing transitions. Contract
+clients pass their **actual exported machine** to LocaleOn, StartupOn,
+LibioOn, ExitPopOn and ExitUnlinkOn. Each reuses that machine's E module;
+its existing theorem names and statements are otherwise unchanged.
+For example, an Iris locale client that reaches Logic as LG instantiates
+LocaleOn R LG.L.M and can apply setlocale_query_invocation and
+setlocale_invocation directly to LG.L.M.E.invoke hypotheses. It must not
+instantiate a sibling ExternalMachine R instead.
+
+The existing Locale, Startup, Libio, ExitPop and ExitUnlink module names
+remain standalone wrappers for clients that do not share an existing
+machine. The project orders their files after ExternalMachine. This is
+module plumbing only: no core/runtime axiom, contract precondition,
+footprint, event, transition or preservation theorem changes.
+
 ### The next milestones, in order
 
 1. **Hello's greeting conversion prerequisites.** Campaign 3 needs plain
