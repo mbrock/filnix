@@ -1308,9 +1308,12 @@ Hello functions and universal native satisfaction remain future slices.
 
 The next Hello contract kind is a pure bounded binary search.
 `memchr_input` independently admits a canonical class-W int pattern and
-class-L size_t count, a live Obj/Ro capability reading the entire count,
-and byte cells in 0..255. Unlike strnlen, an immediate match does not
-waive an unreadable suffix. Zero count permits live one-past authority,
+class-L size_t count, and a memory-only first-stop witness: a live Obj/Ro
+capability reads through the first matching byte, or the entire count on
+a miss, with byte cells in 0..255. An early hit waives the unreadable
+suffix, as C11 7.24.5.1 requires. This corrects the initial full-count
+premise, which rejected Hello's strnlen1 searches near its final NUL.
+Zero count permits live one-past authority,
 but not null or freed authority; invalid inputs are failed obligations,
 not invented native traps. Comparison uses the int pattern's low byte,
 so both 511 and the normalized representation of -1 search for 255.
@@ -1323,16 +1326,25 @@ the pointer itself, and requires a pointer word rather than any class-P
 word. Its only capability source is the input span; there are no writable
 roots, releases, allocation requests, resource endings or observations.
 Every represented completion retains exact memory and logical world.
+The source span remains a capability-propagation envelope, not a claim
+that the entire count is read. The exact result cannot export any stored
+pointer's authority through that envelope.
 
 Constructive finite first-match existence and result uniqueness yield a
 permitted returning invocation for every admitted input, without requiring
 the caller to supply a result in its precondition. Runtime readiness bounds
-the full readable interval. Fixtures reject later matches, false null,
-same-address capability loss/amplification, unreadable suffixes, invalid
-zero-count lifetimes and wrong scalar/ABI domains. They cover binary zero,
-high-byte conversion, a miss and a returning read-only pointer invocation
-from ready memory. Native probes distinguish competing matches, last-byte
-hits, exact-bound misses and zero count at an aligned allocation's end.
+the consumed prefix, not the maximum count or p+n. `memchr_input_full`
+preserves full-span callers; the only MemLogic compatibility edit replaces
+wp_memchr's admission conjunction with this lemma. The string-based triple
+for a larger bound and shorter owned string remains separate work.
+Fixtures reject later matches, false null, same-address capability
+loss/amplification, unreadable misses/matching bytes, invalid zero-count
+lifetimes and wrong scalar/ABI domains. Public calls cover immediate and
+final-byte hits with SIZE_MAX, an ignored match at offset n, binary search
+across an earlier NUL, and high-byte conversion. Native probes include the
+exact 14-byte Hello greeting's suffixes with bound 12, final-byte NUL with
+SIZE_MAX, competing matches, exact-bound misses and zero count at an
+aligned allocation's end.
 
 These results specify trusted libc, not its execution: no libc executor,
 interpreter registration, native satisfaction, exhaustive coverage or native
@@ -1341,8 +1353,8 @@ reconstruction still require separate implementation justification.
 
 ### Campaign 4 milestone 4s: bounded memcmp and signed result freedom
 
-`readable_bytes` extracts memchr's existing full-span premise without
-changing its domain, contract or fixtures. It carries the canonical size_t
+`readable_bytes` states the full-span premise independently of memchr's
+early-stop admission. It carries the canonical size_t
 count, live Obj/Ro authority, complete readable interval and 0..255 byte
 domain. strnlen deliberately retains its different early-NUL premise.
 The shared extent theorem bounds a readable interval under runtime readiness.

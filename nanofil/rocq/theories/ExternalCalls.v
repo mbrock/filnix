@@ -444,11 +444,16 @@ Definition readable_bytes (m : mem) (p : ptr) (n : Z) : Prop :=
   access_res m (ptr_addr p) (ptr_cap p) n Read 1 = Some ok /\
   (forall i, 0 <= i < n -> 0 <= m_bytes m (ptr_addr p + i) < 256).
 
-(** memchr admits a canonical int bit pattern and [readable_bytes].
-    Unlike [bounded_length], an early match does not shorten this
-    premise. *)
+(** memchr reads sequentially through its first matching byte, or the
+    whole bound on a miss. The memory-only stop witness does not assume
+    an invocation or its returned pointer. Zero count retains the live
+    capability requirement of [readable_bytes]. *)
 Definition memchr_input (m : mem) (p : ptr) (c n : Z) : Prop :=
-  0 <= c < 2 ^ 32 /\ readable_bytes m p n.
+  0 <= c < 2 ^ 32 /\ 0 <= n < 2 ^ 64 /\
+  exists k, 0 <= k <= n /\
+    readable_bytes m p (k + (if k <? n then 1 else 0)) /\
+    (forall i, 0 <= i < k -> m_bytes m (ptr_addr p + i) <> c mod 256) /\
+    (k < n -> m_bytes m (ptr_addr p + k) = c mod 256).
 
 (** A hit is the first matching byte, with exactly the input capability;
     a miss is null. The int's low byte implements unsigned-char
@@ -481,6 +486,49 @@ Proof.
           destruct (Z_lt_dec i (Z.of_nat count)); [apply Hmiss; lia|].
           replace i with (Z.of_nat count) by lia. exact Hneq. }
   replace n with (Z.of_nat (Z.to_nat n)) by (rewrite Z2Nat.id; lia). apply Hfinite.
+Qed.
+
+(** A shorter prefix retains the same live capability and byte domain. *)
+Lemma readable_bytes_prefix : forall m p n k,
+  readable_bytes m p n -> 0 <= k <= n -> readable_bytes m p k.
+Proof.
+  intros m p n k (Hn & Hlife & Ha & Hbytes) Hk.
+  split; [lia|]. split; [exact Hlife|]. split; [|intros i Hi; apply Hbytes; lia].
+  destruct Hlife as (base & reg & [Hcap|Hcap] & Hreg & Hlive);
+    unfold access_res, cap_access_res in Ha |- *; rewrite Hcap, Hreg in Ha |- *.
+  all: destruct ((base <=? ptr_addr p) && (ptr_addr p + n <=? r_end reg)) eqn:Hbounds;
+    [|discriminate Ha].
+  all: apply andb_true_iff in Hbounds as [Hlo Hhi]; apply Z.leb_le in Hhi.
+  all: rewrite Hlo, (proj2 (Z.leb_le (ptr_addr p + k) (r_end reg)) ltac:(lia)); exact Ha.
+Qed.
+
+(** Existing full-span callers remain admitted. Early hits no longer
+    require their unused suffix to be inside the object. *)
+Lemma memchr_input_full : forall m p c n,
+  0 <= c < 2 ^ 32 -> readable_bytes m p n -> memchr_input m p c n.
+Proof.
+  intros m p c n Hc Hread.
+  pose proof (proj1 Hread) as Hn.
+  split; [exact Hc|]. split; [exact Hn|].
+  destruct (memchr_result_total m p c n ltac:(lia)) as [q [(k & Hk & Hbyte & Hbefore & _) | (Hmiss & _)]].
+  - exists k. split; [lia|]. split.
+    + rewrite (proj2 (Z.ltb_lt _ _) (proj2 Hk)). eapply readable_bytes_prefix; [exact Hread|lia].
+    + auto.
+  - exists n. rewrite Z.ltb_irrefl. simpl. rewrite Z.add_0_r.
+    split; [lia|]. split; [exact Hread|]. split; [exact Hmiss|intros; lia].
+Qed.
+
+(** The admitted stop witness constructs a result without searching an
+    inaccessible suffix, even when the maximum is SIZE_MAX. *)
+Lemma memchr_input_result : forall m p c n,
+  memchr_input m p c n -> exists q, memchr_result m p c n q.
+Proof.
+  intros m p c n (_ & _ & k & Hk & _ & Hbefore & Hmatch).
+  destruct (Z_lt_dec k n) as [Hlt|Hlast].
+  - exists (mkPtr (ptr_addr p + k) (ptr_cap p)). left. exists k.
+    split; [lia|]. split; [apply Hmatch; exact Hlt|]. auto.
+  - exists (mkPtr 0 CNone). right. split; [|reflexivity].
+    intros i Hi. apply Hbefore. lia.
 Qed.
 
 (** First-match order fixes the entire returned pointer, not only its
@@ -518,7 +566,9 @@ Definition memchr_abi (r : call_result) (args : list arg) : Prop :=
 
 (** Pure trusted search with one capability source and no mutation,
     allocation or resource permission. Admission requires only the
-    input domain and readable span, not a supplied result or invocation. *)
+    input domain and first-match prefix, not a supplied result or invocation.
+    Its source span is a capability propagation envelope, not the consumed
+    byte-read footprint; [memchr_result] allows only the input cap or null. *)
 Definition memchr_contract (world : Type) : contract world :=
   mkContract world (RClass P) memchr_abi
     (fun xs m _ => exists p c n, xs = [WPtr p; WInt c; WInt n] /\ memchr_input m p c n)
@@ -2039,14 +2089,14 @@ Proof.
 Qed.
 
 (** Every admitted input has some permitted result, without requiring
-    a first-match witness in its precondition. Not native termination. *)
+    a returned-pointer witness in its precondition. Not native termination. *)
 Theorem memchr_admitted : forall world r args p c n s m (w : world),
   memchr_abi r args -> memchr_input m p c n ->
   exists q, invoke (memchr_contract world) r args [WPtr p; WInt c; WInt n] s m w
     [] (CallReturn [WPtr q]) s m w.
 Proof.
   intros world r args p c n s m w Habi Hinput.
-  destruct (memchr_result_total m p c n ltac:(destruct Hinput as (_ & Hn & _); lia)) as [q Hq].
+  destruct (memchr_input_result _ _ _ _ Hinput) as [q Hq].
   exists q. apply memchr_return; assumption.
 Qed.
 
@@ -2080,11 +2130,17 @@ Proof.
     apply Z.leb_le in Hlo; apply Z.leb_le in Hhi; lia.
 Qed.
 
-(** Keep the memchr-specific full-interval consequence. *)
+(** Runtime readiness bounds the consumed prefix, NOT the maximum count.
+    A first-byte hit with SIZE_MAX need not authorize p + SIZE_MAX. *)
 Lemma memchr_input_extent : forall s m p c n,
   R.ready s m -> memchr_input m p c n ->
-  0 <= ptr_addr p /\ ptr_addr p + n <= 2 ^ 48.
-Proof. intros s m p c n Hr [_ Hin]. eapply readable_bytes_extent; eauto. Qed.
+  exists k, 0 <= k <= n /\
+    0 <= ptr_addr p /\ ptr_addr p + k + (if k <? n then 1 else 0) <= 2 ^ 48.
+Proof.
+  intros s m p c n Hr (_ & _ & k & Hk & Hread & _).
+  exists k. split; [exact Hk|].
+  pose proof (readable_bytes_extent _ _ _ _ Hr Hread). lia.
+Qed.
 
 (** Every legal signed magnitude has a permitted pure invocation, not
     only the three witnesses used in [memcmp_result_total]. *)
@@ -3557,7 +3613,7 @@ Qed.
 Lemma memchr_high_input : forall c, 0 <= c < 2 ^ 32 ->
   memchr_input high_byte_mem hello_ptr c 6.
 Proof.
-  intros c Hc. split; [exact Hc|]. split; [vm_compute; split; congruence|]. split.
+  intros c Hc. apply memchr_input_full; [exact Hc|]. split; [vm_compute; split; congruence|]. split.
   - exists 1024, (mkRegion 1024 1030 GlobalData Live). split; [right; reflexivity|]. auto.
   - split; [reflexivity|]. intros i Hi.
     assert (Hinside : (1024 <=? 1024 + i) && (1024 + i <? 1030) = true).
@@ -3631,15 +3687,160 @@ Example memchr_zero_one_past :
   memchr_result hello_mem (mkPtr 1030 (Ro 1024)) (2 ^ 32 - 1) 0 (mkPtr 0 CNone).
 Proof.
   split.
-  - split; [vm_compute; split; congruence|]. split; [vm_compute; split; congruence|]. split.
+  - apply memchr_input_full; [vm_compute; split; congruence|]. split; [vm_compute; split; congruence|]. split.
     + exists 1024, (mkRegion 1024 1030 GlobalData Live). split; [right; reflexivity|]. auto.
     + split; [reflexivity|]. intros; lia.
   - right. split; [intros; lia|reflexivity].
 Qed.
 
-(** A match in the first byte does not waive an unreadable suffix. *)
-Example memchr_full_span_required : ~ memchr_input high_byte_mem hello_ptr 128 7.
-Proof. intros (_ & _ & _ & Ha & _). discriminate Ha. Qed.
+(** An immediate match waives the unreadable suffix, not the hit byte. *)
+Example memchr_early_hit :
+  memchr_input high_byte_mem hello_ptr 128 (2 ^ 64 - 1).
+Proof.
+  split; [vm_compute; split; congruence|]. split; [vm_compute; split; congruence|].
+  exists 0. split; [lia|]. split.
+  - change (readable_bytes high_byte_mem hello_ptr 1).
+    split; [vm_compute; split; congruence|]. split.
+    + exists 1024, (mkRegion 1024 1030 GlobalData Live). split; [right; reflexivity|]. auto.
+    + split; [reflexivity|]. intros i Hi. assert (i = 0) by lia. subst. vm_compute; split; congruence.
+  - split; [intros; lia|intros; reflexivity].
+Qed.
+
+(** An immediate hit admits a real call even with an unreadable suffix. *)
+Example memchr_early_call :
+  InterpExternal.invoke (memchr_contract unit) CVoid
+    [Arg P (Const 0); Arg W (Const 128); Arg L (Const (2 ^ 64 - 1))]
+    [WPtr hello_ptr; WInt 128; WInt (2 ^ 64 - 1)] InterpRuntime.start high_byte_mem tt
+    [] (CallReturn [WPtr hello_ptr]) InterpRuntime.start high_byte_mem tt.
+Proof.
+  apply InterpExternal.memchr_return.
+  - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
+  - exact memchr_early_hit.
+  - left. exists 0. split; [vm_compute; split; congruence|]. split; [reflexivity|].
+    split; [intros; lia|reflexivity].
+Qed.
+
+(** The object's final NUL permits an oversized count without granting
+    authority after the matching byte. The same proof covers SIZE_MAX. *)
+Lemma memchr_final_nul_input : forall n,
+  6 <= n < 2 ^ 64 -> memchr_input hello_mem hello_ptr 0 n.
+Proof.
+  intros n Hn. split; [vm_compute; split; congruence|]. split; [lia|].
+  exists 5. split; [lia|]. split.
+  - rewrite (proj2 (Z.ltb_lt 5 n) ltac:(lia)).
+    split; [vm_compute; split; congruence|]. split.
+    + exists 1024, (mkRegion 1024 1030 GlobalData Live). split; [right; reflexivity|]. auto.
+    + split; [reflexivity|]. intros i Hi.
+      assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4 \/ i = 5) by lia.
+      destruct H as [-> | [-> | [-> | [-> | [-> | ->]]]]]; vm_compute; split; congruence.
+  - split.
+    + intros i Hi. assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4) by lia.
+      destruct H as [-> | [-> | [-> | [-> | ->]]]]; vm_compute; discriminate.
+    + intros. reflexivity.
+Qed.
+
+(** Exact-bound, oversized and SIZE_MAX calls return the same final byte. *)
+Example memchr_final_nul_calls : forall n,
+  In n [6; 12; 2 ^ 64 - 1] ->
+  InterpExternal.invoke (memchr_contract unit) CVoid
+    [Arg P (Const 0); Arg W (Const 0); Arg L (Const n)]
+    [WPtr hello_ptr; WInt 0; WInt n] InterpRuntime.start hello_mem tt
+    [] (CallReturn [WPtr (mkPtr 1029 (Ro 1024))]) InterpRuntime.start hello_mem tt.
+Proof.
+  intros n Hn. assert (Hbound : 6 <= n < 2 ^ 64).
+  { destruct Hn as [<- | [<- | [<- | []]]]; vm_compute; split; congruence. }
+  apply InterpExternal.memchr_return.
+  - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
+  - apply memchr_final_nul_input. exact Hbound.
+  - left. exists 5. split; [lia|]. split; [reflexivity|]. split; [|reflexivity].
+    intros i Hi. assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4) by lia.
+    destruct H as [-> | [-> | [-> | [-> | ->]]]]; vm_compute; discriminate.
+Qed.
+
+(** A null, a later matching byte in total memory, and same-address
+    capability substitutions are rejected on an admitted early-stop call. *)
+Example memchr_early_wrong_result : forall q s' m' w',
+  In q [mkPtr 0 CNone; mkPtr 1030 (Ro 1024); mkPtr 1029 (Obj 1024); mkPtr 1029 CNone] ->
+  ~ InterpExternal.invoke (memchr_contract unit) CVoid
+    [Arg P (Const 0); Arg W (Const 0); Arg L (Const 12)]
+    [WPtr hello_ptr; WInt 0; WInt 12] InterpRuntime.start hello_mem tt
+    [] (CallReturn [WPtr q]) s' m' w'.
+Proof.
+  intros q s' m' w' Hbad Hcall.
+  destruct (InterpExternal.memchr_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as (_ & _ & _ & p & c & n & result & Hargs & Hresult & Hending).
+  injection Hargs as <- <- <-. injection Hending as <-.
+  destruct (InterpExternal.memchr_invocation _ _ _ _ _ _ _ _ _ _ _ _
+    (memchr_final_nul_calls 12 ltac:(simpl; auto)))
+    as (_ & _ & _ & p & c & n & result & Hargs & Hright & Hending).
+  injection Hargs as <- <- <-. injection Hending as <-.
+  pose proof (memchr_result_unique _ _ _ _ _ _ Hresult Hright) as Heq.
+  destruct Hbad as [<- | [<- | [<- | [<- | []]]]]; discriminate Heq.
+Qed.
+
+(** A match at offset n is ignored; the immediately larger bound above
+    includes it. This five-byte miss still has full readable authority. *)
+Example memchr_match_at_count_ignored :
+  InterpExternal.invoke (memchr_contract unit) CVoid
+    [Arg P (Const 0); Arg W (Const 0); Arg L (Const 5)]
+    [WPtr hello_ptr; WInt 0; WInt 5] InterpRuntime.start hello_mem tt
+    [] (CallReturn [WPtr (mkPtr 0 CNone)]) InterpRuntime.start hello_mem tt.
+Proof.
+  apply InterpExternal.memchr_return.
+  - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
+  - apply memchr_input_full; [vm_compute; split; congruence|].
+    split; [vm_compute; split; congruence|]. split.
+    + exists 1024, (mkRegion 1024 1030 GlobalData Live). split; [right; reflexivity|]. auto.
+    + split; [reflexivity|]. intros i Hi.
+      assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4) by lia.
+      destruct H as [-> | [-> | [-> | [-> | ->]]]]; vm_compute; split; congruence.
+  - right. split; [|reflexivity]. intros i Hi.
+    assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4) by lia.
+    destruct H as [-> | [-> | [-> | [-> | ->]]]]; vm_compute; discriminate.
+Qed.
+
+(** Binary search crosses an earlier NUL to find a nonzero byte. *)
+Example memchr_crosses_nul :
+  InterpExternal.invoke (memchr_contract unit) CVoid
+    [Arg P (Const 0); Arg W (Const 111); Arg L (Const 12)]
+    [WPtr hello_ptr; WInt 111; WInt 12] InterpRuntime.start (store_bytes hello_mem 1025 1 0) tt
+    [] (CallReturn [WPtr (mkPtr 1028 (Ro 1024))])
+    InterpRuntime.start (store_bytes hello_mem 1025 1 0) tt.
+Proof.
+  apply InterpExternal.memchr_return.
+  - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
+  - split; [vm_compute; split; congruence|]. split; [vm_compute; split; congruence|].
+    exists 4. split; [lia|]. split.
+    + change (readable_bytes (store_bytes hello_mem 1025 1 0) hello_ptr 5).
+      split; [vm_compute; split; congruence|]. split.
+      * exists 1024, (mkRegion 1024 1030 GlobalData Live). split; [right; reflexivity|]. auto.
+      * split; [reflexivity|]. intros i Hi.
+        assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4) by lia.
+        destruct H as [-> | [-> | [-> | [-> | ->]]]]; vm_compute; split; congruence.
+    + split; [|intros; reflexivity]. intros i Hi.
+      assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3) by lia.
+      destruct H as [-> | [-> | [-> | ->]]]; vm_compute; discriminate.
+  - left. exists 4. split; [lia|]. split; [reflexivity|]. split; [|reflexivity].
+    intros i Hi. assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3) by lia.
+    destruct H as [-> | [-> | [-> | ->]]]; vm_compute; discriminate.
+Qed.
+
+(** A zero in total memory just beyond the object cannot authorize a
+    miss or a matching read there. All in-object bytes are nonzero. *)
+Example memchr_unreadable_match_rejected : ~ memchr_input high_byte_mem hello_ptr 0 7.
+Proof.
+  intros (_ & _ & k & Hk & (_ & _ & Ha & _) & _ & Hmatch).
+  change (Some (if 1024 + (k + (if k <? 7 then 1 else 0)) <=? 1030
+    then ok else RTrap OutOfBounds) = Some ok) in Ha.
+  destruct (1024 + (k + (if k <? 7 then 1 else 0)) <=? 1030) eqn:Hend; [|discriminate Ha].
+  apply Z.leb_le in Hend.
+  assert (Hlt : k < 7) by (destruct (k <? 7) eqn:E; [apply Z.ltb_lt; exact E|lia]).
+  rewrite (proj2 (Z.ltb_lt _ _) Hlt) in Hend.
+  specialize (Hmatch Hlt).
+  destruct memchr_miss as [Hbad|[Hmiss _]].
+  - destruct Hbad as (i & _ & _ & _ & Hptr). discriminate Hptr.
+  - apply (Hmiss k ltac:(lia)). exact Hmatch.
+Qed.
 
 (** Null and freed authority are not admitted even at zero count. *)
 Example memchr_zero_invalid_rejected :
@@ -3648,8 +3849,8 @@ Example memchr_zero_invalid_rejected :
     (mkPtr 1024 (Obj 1024)) 0 0.
 Proof.
   split.
-  - intros m (_ & _ & (base & reg & [Hcap | Hcap] & _) & _); discriminate Hcap.
-  - intros (_ & _ & (base & reg & [Hcap | Hcap] & Hreg & Hlife) & _);
+  - intros m (_ & _ & k & _ & (_ & (base & reg & [Hcap | Hcap] & _) & _) & _); discriminate Hcap.
+  - intros (_ & _ & k & _ & (_ & (base & reg & [Hcap | Hcap] & Hreg & Hlife) & _) & _);
       [injection Hcap as <-; injection Hreg as <-; discriminate Hlife|discriminate Hcap].
 Qed.
 
@@ -3658,11 +3859,14 @@ Qed.
 Example memchr_bad_domain_rejected :
   ~ memchr_abi (CResult (TAtom "found") L) [Arg P (Const 0); Arg W (Const 0); Arg L (Const 0)] /\
   ~ memchr_abi CVoid [Arg P (Const 0); Arg L (Const 0); Arg L (Const 0)] /\
-  ~ memchr_input high_byte_mem hello_ptr (-1) 6.
+  ~ memchr_input high_byte_mem hello_ptr (-1) 6 /\
+  ~ memchr_input high_byte_mem hello_ptr 128 (2 ^ 64).
 Proof.
   split; [intros [[H | (d & H)] _]; discriminate H|]. split.
   - intros [_ (p & c & n & H)]. discriminate H.
-  - intros (Hc & _). lia.
+  - split.
+    + intros (Hc & _). lia.
+    + intros (_ & Hn & _). lia.
 Qed.
 
 (** Two overlapping five-byte spans of the ready high-byte fixture. *)
@@ -3808,8 +4012,10 @@ Example memcmp_zero_one_past :
 Proof.
   apply InterpExternal.memcmp_return.
   - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
-  - exact (proj2 (proj1 memchr_zero_one_past)).
-  - exact (proj2 (proj1 memchr_zero_one_past)).
+  - destruct (proj1 memchr_zero_one_past) as (_ & _ & k & Hk & Hread & _).
+    assert (k = 0) by lia. subst. exact Hread.
+  - destruct (proj1 memchr_zero_one_past) as (_ & _ & k & Hk & Hread & _).
+    assert (k = 0) by lia. subst. exact Hread.
   - split; [vm_compute; split; congruence|]. exists Datatypes.Eq. split; [|reflexivity].
     left. split; [reflexivity|intros; lia].
 Qed.

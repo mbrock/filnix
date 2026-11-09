@@ -1078,7 +1078,7 @@ Proof.
   - iIntros (σ) "Hσ (Hl & Hx)".
     iDestruct (pts_facts with "Hσ Hl") as %([Hlv _] & _ & Hfit).
     iDestruct (pts_facts with "Hσ Hx") as %(Hxa & _). iPureIntro. cbn [fst snd agree_piece] in Hlv.
-    do 3 eexists. split; [reflexivity|]. split; [exact Hk32|].
+    do 3 eexists. split; [reflexivity|]. apply memchr_input_full; [exact Hk32|].
     exact (proj1 (block_readable _ _ _ _ _ _ Hlv Hxa Hfit Hc Ho Hend Hx)).
   - iNext. iIntros (σ trace values s' m' w' Hinv) "Hσ (Hl & Hx)".
     iDestruct (pts_facts with "Hσ Hl") as %([Hlv _] & _ & Hfit).

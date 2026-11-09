@@ -80,6 +80,12 @@ int main(void) {
     answer("strrchr ignores bytes after first NUL", !strrchr(cutoff, 'z') && !strrchr(cutoff, '?') && strrchr(cutoff, 256) == cutoff + 1);
     answer("memchr converts int and selects first match", memchr(high_bytes + 1, 511, 15) == high_bytes + 2 && memchr(high_bytes + 1, -1, 15) == high_bytes + 2 && memchr(short_string, 0, 3) == short_string + 2);
     answer("memchr respects last byte and zero count", memchr(high_bytes + 1, 'l', 15) == high_bytes + 15 && !memchr(high_bytes + 1, 0, 15) && !memchr(high_bytes + 16, 0, 0));
+    char greeting[14] = "Hello, world!";
+    int early_match = 1;
+    for (unsigned i = 4; i < sizeof greeting; ++i)
+        early_match = early_match && memchr(greeting + i, 0, 12) == greeting + 13;
+    answer("memchr stops at final-byte NUL before an oversized bound", early_match && memchr(terminated + 15, 0, (size_t)-1) == terminated + 15);
+    answer("memchr crosses NUL for nonzero search and excludes byte n", memchr(cutoff, 'z', (size_t)-1) == cutoff + 2 && !memchr(short_string, 0, 2) && memchr(short_string, 0, 3) == short_string + 2);
     _Alignas(16) unsigned char compare_left[16] = {'!', 128, 255, 0, 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l'};
     _Alignas(16) unsigned char compare_right[16] = {'!', 127, 0, 0, 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'm'};
     answer("memcmp unsigned first difference controls sign", memcmp(compare_left + 1, compare_right + 1, 15) > 0 && memcmp(compare_right + 1, compare_left + 1, 15) < 0 && memcmp(compare_left + 2, compare_right + 2, 1) > 0);

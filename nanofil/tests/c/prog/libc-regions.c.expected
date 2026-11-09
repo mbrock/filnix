@@ -11,6 +11,8 @@ strrchr includes final NUL but not earlier bytes: yes
 strrchr ignores bytes after first NUL: yes
 memchr converts int and selects first match: yes
 memchr respects last byte and zero count: yes
+memchr stops at final-byte NUL before an oversized bound: yes
+memchr crosses NUL for nonzero search and excludes byte n: yes
 memcmp unsigned first difference controls sign: yes
 memcmp binary zero and count boundary: yes
 memcmp permits overlap and zero count: yes

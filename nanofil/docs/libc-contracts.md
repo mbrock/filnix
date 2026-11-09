@@ -236,7 +236,7 @@ argument converted to unsigned char (string searches as C specifies).
 | `strrchr` | `S(s)` | last match including NUL, or null; same object | R |
 | `strcmp` | `S(a), S(b)` | unsigned-byte lexicographic sign, zero iff equal | R |
 | `strncmp` | `B(a,n), B(b,n)` | sign of first difference before n or a NUL; n=0 gives zero | R |
-| `memchr` | `R(s,n)` | first matching byte among n, or null; same object | R |
+| `memchr` | readable through first match, or `R(s,n)` on a miss | first matching byte among n, or null; same object | R |
 | `memcmp` | `R(a,n), R(b,n)` | unsigned-byte lexicographic sign of n bytes | R |
 | `memcpy` | `R(s,n), W(d,n)`, nonoverlap | copies bytes; complete aligned pointer slots retain source authority; returns d | R,W |
 | `mempcpy` | same as memcpy | same copy, returns d+n (possibly one-past), not new authority | R,W |
@@ -330,16 +330,22 @@ alignment) and beyond its logical terminator. These finite probes neither
 prove universal native satisfaction nor identify the linked implementation;
 the logical read footprint is not a native byte-load trace.
 
-The Rocq memchr contract requires the full readable span independently of
-the result, compares the canonical int's low byte, and returns the first
-matching pointer with exactly the input capability, or null. Additional
-probe rows check competing high-byte matches (including negative int
-conversion), binary zero, a last-readable-byte hit, an exact-bound miss
-and zero count at a live allocation's end. Pointer equality in these finite
+The Rocq memchr contract independently requires a canonical int and size_t,
+and a memory-only stop witness: readability through the first matching
+byte, or all n bytes on a miss (C11 7.24.5.1). An immediate hit may have
+an unreadable suffix even at SIZE_MAX; zero count still needs live Obj/Ro
+authority. It compares the int's low byte and returns the first matching
+pointer with exactly the input capability, or null. Its source span is a
+capability-propagation envelope, not the consumed read footprint. Runtime
+readiness bounds only the readable prefix, not p+n. Additional probe rows
+check Hello's exact 14-byte greeting at offsets 4..13 with bound 12,
+final-byte NUL with SIZE_MAX, competing high-byte matches (including
+negative int conversion), binary zero, a last-readable-byte hit, an
+exact-bound miss and zero count at a live allocation's end. Pointer equality in these finite
 native checks alone does not establish capability equality; the model's
 postcondition states that stronger trusted requirement explicitly.
 
-The Rocq memcmp contract shares memchr's full-span `readable_bytes`
+The Rocq memcmp contract retains the full-span `readable_bytes`
 premise for both inputs, permitting overlap. Its result promises only
 the unsigned lexicographic sign in a canonical signed-int representation,
 not a fixed magnitude. Public invocation fixtures admit distinct nonunit
