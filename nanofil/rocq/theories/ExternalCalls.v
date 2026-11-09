@@ -1432,6 +1432,36 @@ Definition mempcpy_contract := copy_contract false true.
 (** memmove uses the same original snapshot with overlapping ranges. *)
 Definition memmove_contract := copy_contract true false.
 
+(** ## Thread-local errno lookup *)
+
+(** The represented thread supplies a live, nonnull writable int cell.
+    Alignment is of its address, not merely of its containing object. *)
+Definition errno_cell (m : mem) (p : ptr) : Prop :=
+  ptr_addr p <> 0 /\ writable_span m (mkSpan p 4) /\ ptr_addr p mod 4 = 0.
+
+(** Plain __errno_location takes no arguments and returns P, including
+    when the caller discards that result. Tuples are not scalar returns. *)
+Definition errno_location_abi (r : call_result) (args : list arg) : Prop :=
+  (r = CVoid \/ exists d, r = CResult d P) /\ args = [].
+
+(** The representation independently ties the selected cell to the
+    current thread. Its zero-length source exports that exact capability,
+    not arbitrary stored pointers. Looking it up neither writes errno
+    nor changes the world, allocates, releases, emits events or fails for
+    resources. No cross-thread lifetime/stability theorem is implied. *)
+Definition errno_location_contract (world : Type) (cell : world -> ptr)
+    (rep : mem -> world -> Prop) : contract world :=
+  mkContract world (RClass P) errno_location_abi
+    (fun xs m w => xs = [] /\ rep m w /\ errno_cell m (cell w))
+    (fun _ _ w => [mkSpan (cell w) 0])
+    (fun _ _ _ => []) (fun _ _ _ => []) (fun _ _ _ _ _ => False)
+    (fun _ m w born trace m' w' => born = [] /\ trace = [] /\ m' = m /\ w' = w)
+    (fun _ m w born trace ending m' w' =>
+      born = [] /\ trace = [] /\ m' = m /\ w' = w /\
+      ending = CallReturn [WPtr (cell w)])
+    (fun _ => False)
+    (fun why => In why [ArgumentSize; ReturnSize]).
+
 (** ## Fresh allocation *)
 
 (** malloc takes one size_t and returns a pointer, or its result is
@@ -1969,6 +1999,51 @@ Example oversized_request : forall s,
 Proof.
   intros s. eapply failure_big with (align := 16) (size := 2 ^ 48);
     [split; reflexivity | unfold max_allocation_size; lia].
+Qed.
+
+(** Independent representation and cell admission construct a real call
+    in the logical relation; this is not a native termination theorem. *)
+Theorem errno_location_return : forall world cell rep r args s m (w : world),
+  errno_location_abi r args -> rep m w -> errno_cell m (cell w) ->
+  invoke (errno_location_contract world cell rep) r args [] s m w
+    [] (CallReturn [WPtr (cell w)]) s m w.
+Proof.
+  intros world cell rep r args s m w Habi Hrep Hcell.
+  eapply invoke_normal with (born := []).
+  - exact Habi.
+  - split; [reflexivity|]. auto.
+  - split; [constructor|]. repeat split; reflexivity.
+  - repeat split; reflexivity.
+  - intros why Hbad. discriminate.
+  - intros values Heq. injection Heq as <-. split.
+    + exists (WPtr (cell w)). split; reflexivity.
+    + constructor; [|constructor]. right. left.
+      exists (mkSpan (cell w) 0). split; [left; reflexivity|reflexivity].
+  - intros status Hbad. discriminate.
+Qed.
+
+(** Every endpoint returns the exact represented cell with its original
+    capability. All memory, runtime and world state remain unchanged. *)
+Theorem errno_location_invocation : forall world cell rep r args xs s m (w : world)
+    trace ending s' m' w',
+  invoke (errno_location_contract world cell rep) r args xs s m w
+    trace ending s' m' w' ->
+  errno_location_abi r args /\ xs = [] /\ rep m w /\ errno_cell m (cell w) /\
+  trace = [] /\ s' = s /\ m' = m /\ w' = w /\ ending = CallReturn [WPtr (cell w)].
+Proof.
+  intros world cell rep r args xs s m w trace ending s' m' w' Hcall.
+  inversion Hcall; subst.
+  - match goal with
+    | Habi : contract_abi _ _ _, Hpre : contract_pre _ _ _ _,
+      Hp : prefix _ _ _ _ _ _ _ _ _ _, Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
+      destruct Hpre as (Hxs & Hrep & Hcell);
+      destruct Hpost as (Hb & Htrace & Hmem & Hworld & Hend);
+      destruct Hp as [He _];
+      assert (Hs : s' = s) by (clear -He; induction He; [reflexivity|exact IHHe|contradiction]);
+      exact (conj Habi (conj Hxs (conj Hrep (conj Hcell
+        (conj Htrace (conj Hs (conj Hmem (conj Hworld Hend))))))))
+    end.
+  - contradiction.
 Qed.
 
 (** Every admitted scan has a permitted normal invocation via the
@@ -3126,6 +3201,106 @@ Definition hello_mem : mem :=
                    if a =? 1028 then 111 else 0)
     [mkRegion 1024 1030 GlobalData Live; mkRegion 2048 2064 Heap Live;
      mkRegion 3072 3080 Heap Live] (fun _ => CNone).
+
+(** Use the fixture's libc object as represented errno storage. Both P
+    and discarded calls construct an exact, unchanged-state endpoint. *)
+Example errno_location_fixture : Forall (fun r =>
+  InterpExternal.invoke (errno_location_contract ptr (fun p => p) (fun _ _ => True))
+    r [] [] (2 ^ 32) hello_mem (mkPtr 2048 (Obj 2048))
+    [] (CallReturn [WPtr (mkPtr 2048 (Obj 2048))])
+    (2 ^ 32) hello_mem (mkPtr 2048 (Obj 2048))) [CResult (TAtom "errno") P; CVoid].
+Proof.
+  apply Forall_forall. intros r [<-|[<-|[]]];
+    apply InterpExternal.errno_location_return;
+    [split; [right; eexists; reflexivity|reflexivity]|exact I|
+     |split; [left; reflexivity|reflexivity]|exact I|].
+  all: (split; [discriminate|]; split; [|reflexivity];
+    split; [simpl; lia|]; exists 2048, (mkRegion 2048 2064 Heap Live);
+    repeat split; reflexivity).
+Qed.
+
+(** Invalid cells never invoke: null, read-only, misaligned, too short,
+    missing, and freed. The freed case keeps a former object's bytes. *)
+Example errno_location_invalid_cells :
+  Forall (fun p => forall r args s trace ending s' m' w',
+    ~ InterpExternal.invoke (errno_location_contract ptr (fun q => q) (fun _ _ => True))
+      r args [] s hello_mem p trace ending s' m' w')
+    [mkPtr 0 (Obj 2048); mkPtr 2048 (Ro 2048); mkPtr 2049 (Obj 2048);
+     mkPtr 2064 (Obj 2048); mkPtr 4096 (Obj 4096)] /\
+  (forall r args s trace ending s' m' w',
+    ~ InterpExternal.invoke (errno_location_contract ptr (fun q => q) (fun _ _ => True))
+      r args [] s (mkMem (m_bytes hello_mem) [mkRegion 2048 2048 Heap Freed] (m_aux hello_mem))
+      (mkPtr 2048 (Obj 2048)) trace ending s' m' w').
+Proof.
+  assert (Hreject : forall m p, ~ errno_cell m p -> forall r args s trace ending s' m' w',
+    ~ InterpExternal.invoke (errno_location_contract ptr (fun q => q) (fun _ _ => True))
+      r args [] s m p trace ending s' m' w').
+  { intros m p Hbad r args s trace ending s' m' w' Hcall.
+    destruct (InterpExternal.errno_location_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+      as (_ & _ & _ & Hcell & _). exact (Hbad Hcell). }
+  split.
+  - repeat constructor; apply Hreject;
+      intros (Hnz & (_ & base & reg & Hcap & Hr & Hl & Ha) & Halign);
+      simpl in Hcap; try discriminate Hcap; injection Hcap as <-;
+      try solve [vm_compute in Hr, Halign, Hnz; intuition congruence];
+      vm_compute in Hr; injection Hr as <-; vm_compute in Ha; discriminate Ha.
+  - apply Hreject. intros (_ & (_ & base & reg & Hcap & Hr & Hl & Ha) & _).
+    injection Hcap as <-. vm_compute in Hr. injection Hr as <-. discriminate Hl.
+Qed.
+
+(** A writable live cell is not itself evidence of initialized TLS. *)
+Example errno_location_unrepresented : forall r args s trace ending s' m' w',
+  ~ InterpExternal.invoke (errno_location_contract ptr (fun p => p) (fun _ _ => False))
+    r args [] s hello_mem (mkPtr 2048 (Obj 2048)) trace ending s' m' w'.
+Proof.
+  intros r args s trace ending s' m' w' Hcall.
+  destruct (InterpExternal.errno_location_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as (_ & _ & Hrep & _). exact Hrep.
+Qed.
+
+(** The abstract model allows writable storage at zero. Reject it for
+    being NULL independently of bounds, lifetime, alignment or TLS. *)
+Example errno_location_live_null :
+  let m := mkMem (fun _ => 0) [mkRegion 0 4 GlobalData Live] (fun _ => CNone) in
+  let p := mkPtr 0 (Obj 0) in
+  writable_span m (mkSpan p 4) /\ ptr_addr p mod 4 = 0 /\
+  forall r args s trace ending s' m' w',
+  ~ InterpExternal.invoke (errno_location_contract ptr (fun q => q) (fun _ _ => True))
+    r args [] s m p trace ending s' m' w'.
+Proof.
+  split.
+  - split; [simpl; lia|]. exists 0, (mkRegion 0 4 GlobalData Live).
+    repeat split; reflexivity.
+  - split; [reflexivity|]. intros r args s trace ending s' m' w' Hcall.
+    destruct (InterpExternal.errno_location_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+      as (_ & _ & _ & (Hnonnull & _) & _). apply Hnonnull. reflexivity.
+Qed.
+
+(** Even a readable same-address replacement cannot substitute a Ro
+    capability for the exact Obj capability supplied by the thread. *)
+Example errno_location_no_cap_substitution : forall r args s trace s' m' w',
+  ~ InterpExternal.invoke (errno_location_contract ptr (fun p => p) (fun _ _ => True))
+    r args [] s hello_mem (mkPtr 2048 (Obj 2048))
+    trace (CallReturn [WPtr (mkPtr 2048 (Ro 2048))]) s' m' w'.
+Proof.
+  intros r args s trace s' m' w' Hcall.
+  destruct (InterpExternal.errno_location_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as (_ & _ & _ & _ & _ & _ & _ & _ & Hend). discriminate Hend.
+Qed.
+
+(** Width coincidence, extra native arguments and extra argument words
+    are rejected through the public invocation, not just ABI inspection. *)
+Example errno_location_invalid_abi :
+  Forall (fun call => let '(r, args, xs) := call in
+    forall s trace ending s' m' w',
+    ~ InterpExternal.invoke (errno_location_contract ptr (fun p => p) (fun _ _ => True))
+      r args xs s hello_mem (mkPtr 2048 (Obj 2048)) trace ending s' m' w')
+    [(CResult (TAtom "n") L, [], []); (CVoid, [Arg W (Const 0)], []); (CVoid, [], [WInt 0])].
+Proof.
+  repeat constructor; intros s trace ending s' m' w' Hcall;
+    destruct (InterpExternal.errno_location_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+      as (([Hvoid|(d & Hr)] & Hargs) & Hxs & _); discriminate.
+Qed.
 
 (** The fixture's stream representation: the world is [hello_world]
     and the libc object at 2048 is a live heap object. *)

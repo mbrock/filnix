@@ -1956,10 +1956,36 @@ through callbacks, and native pop/handler satisfaction, safepoint-stable
 libc invariants, failure freedom and termination remain open. Machine.v,
 ExternalMachine.v and Iris-owned files are unchanged.
 
+### Campaign 4 milestone 6d: pure thread-local errno lookup
+
+`errno_location_contract` takes an independent thread representation and
+a cell projection from any logical world. Its admission requires no
+arguments and a nonnull live writable four-byte cell with address
+divisible by four. The ABI returns P or discards it; an L result is not
+accepted just because its machine width matches P.
+
+`errno_location_return` constructs a logical invocation from those input
+facts alone. `errno_location_invocation` extracts its exact returned
+pointer and capability and unchanged memory, runtime and world, with no
+events, allocations, releases or resource endings. Its single zero-length
+source carries the represented pointer's capability, not a read footprint
+or permission to manufacture arbitrary stored pointers. The representation
+must tie that cell to the actual current thread; generic runtime readiness
+does not establish TLS initialization or libc satisfaction.
+
+Public invocation controls reject null, Ro, unaligned, short, missing and
+freed cells, a same-address Ro result substituted for Obj, wrong result
+class and extra native/retained arguments. A constructive returning
+fixture is separate from these negative controls. The selected native
+libc-locale probe dereferences and writes the plain __errno_location
+result in ordinary and -O comparisons. This finite evidence does not
+prove native termination, universal prefix/safepoint coverage or
+cross-thread pointer stability. No core/runtime axioms or Iris files change.
+
 ### The next milestones, in order
 
 1. **Hello's greeting conversion prerequisites.** Campaign 3 needs plain
-   mbrtowc (P/P/L/P to L), __errno_location (no arguments to P), and
+   mbrtowc (P/P/L/P to L), the supplied __errno_location contract, and
    nonreturning error for nonzero status before the next exit-composition
    slice. Start from independent readable input, aligned writable wchar_t
    and writable valid eight-byte mbstate_t premises. Admit all-zero state;

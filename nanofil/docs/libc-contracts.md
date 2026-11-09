@@ -535,10 +535,11 @@ state bytes are zero. Valid-state admission must include initialization
 and the converter's own non-EILSEQ updates, not arbitrary writable bytes.
 The errno probe writes through a live aligned four-byte int pointer from
 plain __errno_location. These finite probes pass both ordinary and -O
-native comparisons; the new conversion/errno Rocq contracts remain work
-in progress. `get_gconv_fcts` may initialize caches, acquire locks,
-allocate and clean up internal objects. Any future contract must expose
-those permissions while retaining effective locale names/text/codec and
+native comparisons; the conversion Rocq contract remains work in
+progress, while errno lookup is modeled below. `get_gconv_fcts` may
+initialize caches, acquire locks, allocate and clean up internal objects.
+Any future contract must expose those permissions while retaining
+effective locale names/text/codec and
 the borrow window; it must not disguise cache effects as writes to
 Hello-owned memory or infer universal native adequacy from these probes.
 The stronger Hello conversion exclusions will require an explicit codec
@@ -649,6 +650,18 @@ never panics.
 | `__errno_location` | initialized live thread | aligned writable int cell, stable for that thread's lifetime, aliases errno; changes on API errors, need not be cleared on success | — |
 | `program_invocation_name` | initialized entry; caller preserves a valid borrowed string if replacing cell | readable/writable pointer cell to borrowed NUL string derived from argv[0], or empty fallback if absent; no independent allocation/ownership promise | R,W on access |
 | `program_invocation_short_name` | same | borrowed basename pointer, may alias inside full name's object | R,W on access |
+
+`errno_location_contract` in [ExternalCalls.v](../rocq/theories/ExternalCalls.v)
+requires an independent thread representation, an exact cell projection,
+and live nonnull writable four-byte storage whose address is four-aligned.
+The no-argument P/discarded ABI exports only that pointer and capability,
+via an explicit zero-length capability source. Every invocation preserves
+all memory, runtime and world state, without allocation, release, events
+or resource endings. Logical invocation construction needs only those
+input premises, not an assumed successful execution. Controls reject
+invalid storage, capability substitution and ABI/argument mismatches.
+TLS representation and native correspondence remain trusted obligations;
+the generic world parameter does not establish cross-thread stability.
 
 Probe: [libc-entry.c](../tests/c/prog/libc-entry.c), plus stream/error
 probes. It traverses argc+1 and environment sentinel arrays, reads their
