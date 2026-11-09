@@ -44,7 +44,7 @@ From iris.program_logic Require Import language ectx_language ectxi_language wea
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime ExternalCalls Ops Semantics Run
-  Machine Panics StepRules Pieces Heap ContractFrame ExternalMachine Language.
+  Machine Panics StepRules Pieces Heap Identity ContractFrame ExternalMachine Language.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -97,6 +97,89 @@ Proof.
 Qed.
 
 (** ## The logic over a runtime *)
+
+(** The free function frees as the pinned runtime frees what a program
+    proved it may free: a null pointer is a no-op, and the base pointer
+    of a live heap object other than null empties and frees its region
+    and changes no byte and no aux slot. Runtime.v's module type does
+    not promise it of R's free, which may trap where it likes; a
+    program that frees takes it as a premise of its runtime
+    ([frees_heap_interp] proves it of [free_res]). *)
+Definition frees_heap (free : word -> mem -> option (res unit * mem)) : Prop :=
+  (forall m, free (WPtr null) m = Some (ok, m)) /\
+  forall m b reg, live_at m b reg -> r_kind reg = Heap -> b <> 0 ->
+    exists rs, replace_region b (mkRegion b b Heap Freed) (m_regions m) = Some rs /\
+      free (WPtr (mkPtr b (Obj b))) m = Some (ok, mkMem (m_bytes m) rs (m_aux m)).
+
+(** The pinned runtime's [free_res] frees so. *)
+Lemma frees_heap_interp : frees_heap free_res.
+Proof.
+  split; [reflexivity|]. intros m b reg [Ereg Hlive] Hk Hb.
+  unfold replace_region. rewrite Ereg. eexists. split; [reflexivity|].
+  cbn. unfold object_free_res. rewrite (proj2 (Z.eqb_neq b 0) Hb). rewrite Ereg Hk Z.eqb_refl Hlive. cbn.
+  unfold replace_region. rewrite Ereg. reflexivity.
+Qed.
+
+(** The memory after a free of the live heap object b: the same bytes
+    and aux slots, b's region empty and freed, every other object as it
+    was. Such a change is [kept]. *)
+Lemma free_heap_kept m b reg rs :
+  live_at m b reg -> r_kind reg = Heap ->
+  replace_region b (mkRegion b b Heap Freed) (m_regions m) = Some rs ->
+  kept m (mkMem (m_bytes m) rs (m_aux m)).
+Proof.
+  intros [E L] Hk Hr. split; [|intros a _; split; reflexivity].
+  intros b' reg' E'. cbn [m_regions] in E'. rewrite (object_region_replace _ _ _ _ b' Hr eq_refl) in E'.
+  destruct (Z.eqb_spec b' b) as [->|Hne].
+  - injection E' as <-. exists reg. split; [exact E|]. right. split; [exact L|]. rewrite Hk. reflexivity.
+  - exists reg'. split; [exact E'|]. left. reflexivity.
+Qed.
+
+(** A free of the live heap object b keeps the agreement of every piece
+    but b's life: other objects keep their regions, b's bytes and aux
+    slots agree vacuously once it is not live, and a capability freed
+    before is freed after. *)
+Lemma agree_piece_free m b reg rs l v :
+  live_at m b reg -> r_kind reg = Heap ->
+  replace_region b (mkRegion b b Heap Freed) (m_regions m) = Some rs ->
+  l <> PLive b -> agree_piece m l v -> agree_piece (mkMem (m_bytes m) rs (m_aux m)) l v.
+Proof.
+  intros Hl Hk Hr Hn Ha. set (m' := mkMem (m_bytes m) rs (m_aux m)).
+  assert (Hs : region_step m m') by exact (proj1 (free_heap_kept m b reg rs Hl Hk Hr)).
+  assert (Ho : forall b', object_region b' (m_regions m') =
+                          if Z.eqb b' b then Some (mkRegion b b Heap Freed) else object_region b' (m_regions m))
+    by (intros b'; exact (object_region_replace _ _ _ _ b' Hr eq_refl)).
+  assert (Hi : ids m m').
+  { intros b' reg' E. rewrite Ho. destruct (Z.eqb b' b); [eexists; reflexivity | exists reg'; exact E]. }
+  assert (Hreg : forall b', registered m b' -> registered m' b').
+  { unfold registered. intros b' H. rewrite Ho. destruct (Z.eqb b' b); [discriminate | exact H]. }
+  assert (Hlive : forall b' o P, in_live m b' o P -> in_live m' b' o P).
+  { intros b' o P H reg' E L. rewrite Ho in E. destruct (Z.eqb_spec b' b) as [->|Hne].
+    - injection E as <-. discriminate L.
+    - exact (H reg' E L). }
+  destruct l as [b'|b' o|b' o], v as [reg'|y|c|]; cbn [agree_piece] in Ha |- *; try contradiction.
+  - destruct Ha as [E L]. split; [|exact L]. rewrite Ho. destruct (Z.eqb_spec b' b) as [->|]; [congruence|exact E].
+  - exact (Hreg _ Ha).
+  - destruct Ha as [Hr' Hin]. split; [exact (Hreg _ Hr')|]. exact (Hlive _ _ _ Hin).
+  - destruct Ha as [Hr' Hin]. split; [exact (Hreg _ Hr')|]. apply Hlive.
+    intros reg0 E L. destruct (Hin reg0 E L) as (Hlo & Hhi & Hx). split; [exact Hlo|]. split; [exact Hhi|].
+    unfold aux_holds in *. cbn [m_aux m'].
+    destruct Hx as [Hx | [Hf Ht]]; [left; exact Hx | right].
+    split; [exact (freed_in_step m m' _ Hi Hs Hf) | exact (traps_as_freed_step m m' _ Hi Hs Ht)].
+Qed.
+
+(** Live objects stay apart after a free, which ends one. *)
+Lemma live_disjoint_free m b rs :
+  replace_region b (mkRegion b b Heap Freed) (m_regions m) = Some rs ->
+  live_disjoint m -> live_disjoint (mkMem (m_bytes m) rs (m_aux m)).
+Proof.
+  intros Hr Hd b1 r1 b2 r2 [E1 L1] [E2 L2]. cbn [m_regions] in E1, E2.
+  rewrite (object_region_replace _ _ _ _ b1 Hr eq_refl) in E1.
+  rewrite (object_region_replace _ _ _ _ b2 Hr eq_refl) in E2.
+  destruct (Z.eqb b1 b); [injection E1 as <-; discriminate L1|].
+  destruct (Z.eqb b2 b); [injection E2 as <-; discriminate L2|].
+  exact (Hd b1 r1 b2 r2 (conj E1 L1) (conj E2 L2)).
+Qed.
 
 (** The ghost heap, the assertions and the rules over the runtime R. *)
 Module Logic (R : Runtime).
@@ -637,6 +720,103 @@ Proof.
       split; [apply (live_at_regions m); [reflexivity|exact Hlv] | exact I].
     + eapply frame_ok_mono; [|exact Hfr]. intros k Hin'. rewrite fmap_app. apply elem_of_app. by right.
   - iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
+Qed.
+
+(** A call of `free` on null, which v reads as: nothing happens. *)
+Lemma wp_free_null f e ls l v rest j Φ :
+  frees_heap (ge_free ge) -> find_fn ge free_name = None -> lookup free_name (ge_globals ge) = None ->
+  arg_x ge e (Arg P v) = Some (WPtr null) ->
+  ▷ WP (ERun (mkFrame f e ls None (Exec l rest j)) : lexpr) {{ Φ }} -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Call CVoid (Global free_name) [Arg P v] :: rest) j)) : lexpr)
+    {{ Φ }}.
+Proof.
+  intros [Hnull _] Hfn Hdata Hx. apply (wp_pure_next _ _ []). intros m fuel.
+  exact (rule_free _ _ _ _ _ _ _ _ _ _ _ _ _ Hfn Hdata Hx (Hnull m)).
+Qed.
+
+(** A call of `free` on the base pointer of the live heap object b,
+    which v reads as, where the genv's free [frees_heap], and where the
+    free keeps the world interpretation: b's life is given up, its
+    token ending as [VFreed] in the ghost heap. Its bytes and aux
+    slots, if still owned, agree vacuously from then on. *)
+Lemma wp_free f e ls l v rest j b reg Φ :
+  frees_heap (ge_free ge) -> find_fn ge free_name = None -> lookup free_name (ge_globals ge) = None ->
+  arg_x ge e (Arg P v) = Some (WPtr (mkPtr b (Obj b))) -> r_kind reg = Heap -> b <> 0 ->
+  (forall m wd h rs, h !! PLive b = Some (VLive reg) ->
+     replace_region b (mkRegion b b Heap Freed) (m_regions m) = Some rs -> wi m wd h ->
+     wi (mkMem (m_bytes m) rs (m_aux m)) wd (overwrite [(PLive b, VFreed)] h)) ->
+  live b reg -∗ ▷ WP (ERun (mkFrame f e ls None (Exec l rest j)) : lexpr) {{ Φ }} -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Call CVoid (Global free_name) [Arg P v] :: rest) j)) : lexpr)
+    {{ Φ }}.
+Proof.
+  intros [_ Hfh] Hfn Hdata Hx Hk Hb Hwi. iIntros "Hl HK". iCombine "Hl HK" as "H".
+  iApply (wp_lift_run with "H").
+  - iIntros (σ) "Hσ [Hl _]". iDestruct (pts_facts with "Hσ Hl") as %(Hf & _). iPureIntro.
+    cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [Hlv _].
+    destruct (Hfh _ _ _ Hlv Hk Hb) as (rs & _ & Hfree). left. unfold fails.
+    rewrite (rule_free _ _ _ _ _ _ _ _ [] _ (ls_fuel σ) _ _ Hfn Hdata Hx Hfree). auto.
+  - iIntros ([m s fuel w]) "Hσ [Hl HK]". iDestruct (pts_facts with "Hσ Hl") as %(Hf & _).
+    cbn [ls_mem ls_rt ls_fuel ls_world all_agree agree_piece fst snd] in *. destruct Hf as [Hlv _].
+    destruct (Hfh _ _ _ Hlv Hk Hb) as (rs & Hrs & Hfree).
+    pose proof (rule_free ge f e ls l v rest j [] m fuel _ _ Hfn Hdata Hx Hfree) as E.
+    iNext. iIntros (e2 σ2 Hm).
+    destruct (moves_core _ _ _ _ Hm ltac:(intros ?; cbn [ls_mem ls_fuel]; rewrite E; discriminate))
+      as [(c' & E' & -> & ->) | [(q & k & b' & s' & E' & _) | (o & m' & E' & _)]];
+      cbn [ls_mem ls_fuel ls_rt] in E'; rewrite E in E'; try discriminate E'.
+    injection E' as <-. cbn [conf_expr conf_state stack_expr c_frame c_callers c_mem c_fuel].
+    iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr & Hw).
+    cbn [ls_mem ls_rt ls_world] in Ha, Hd, Hr, Hw.
+    iDestruct (pts_lookup with "Hh Hl") as %Hlk.
+    iMod (pts_update _ _ [(PLive b, VFreed)] with "Hh Hl") as "[Hh _]"; [reflexivity|].
+    iModIntro. iSplitL "Hh"; [|iExact "HK"].
+    iExists _. iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt ls_world]. split; [|split; [|split]].
+    + intros l' v' Hl'. destruct (lookup_overwrite _ _ _ _ Hl') as [Hin | [Hn Hh]].
+      * apply list_elem_of_singleton in Hin. injection Hin as -> ->. cbn [agree_piece]. unfold registered.
+        cbn [m_regions]. rewrite (object_region_replace _ _ _ _ b Hrs eq_refl) Z.eqb_refl. discriminate.
+      * apply (agree_piece_free m b reg rs); [exact Hlv | exact Hk | exact Hrs | | exact (Ha l' v' Hh)].
+        intros ->. apply Hn. cbn. left.
+    + exact (live_disjoint_free _ _ _ Hrs Hd).
+    + exact (R.ready_kept _ _ _ Hr (free_heap_kept _ _ _ _ Hlv Hk Hrs)).
+    + apply (Hwi m w h rs); [apply Hlk; left | exact Hrs | exact Hw].
+Qed.
+
+(** A raw byte store of the int y, which v reads as, through the proven
+    pointer p, which a reads as and which addresses offset o of the live
+    object b at offset off, where the store keeps the world
+    interpretation: the byte there now holds y's low byte. *)
+Lemma wp_raw_store_byte f e ls l off v a rest j p b reg o x y Φ :
+  value_x ge e W v = Some (WInt y) -> value_x ge e A a = Some (WPtr p) ->
+  ptr_cap p = Obj b -> raw_address (ptr_addr p) off = b + o ->
+  (forall m wd h, (forall l v, (l, v) ∈ [(PLive b, VLive reg); (PByte b o, VByte x)] -> h !! l = Some v) ->
+     wi m wd h ->
+     wi (store_bytes m (b + o) 1 y) wd (overwrite [(PLive b, VLive reg); (PByte b o, VByte (y mod 256))] h)) ->
+  live b reg -∗ ibyte b o x -∗
+  ▷ (live b reg -∗ ibyte b o (y mod 256) -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (RawStore Wb off v a :: rest) j)) : lexpr) {{ Φ }}.
+Proof.
+  intros Hv Ha Hp Hoff Hwi. iIntros "Hl Hc HK".
+  iApply (wp_write [(PLive b, VLive reg); (PByte b o, VByte x)] [(PLive b, VLive reg); (PByte b o, VByte (y mod 256))]
+            _ _ [] (fun m => store_bytes m (b + o) 1 y) with "[Hl Hc] [HK]");
+    [reflexivity | | exact Hwi | rewrite /live /ibyte /pts !big_sepL_cons; iDestruct "Hl" as "[$ _]"; iFrame |].
+  - intros m fuel (Hf & Hd & _). cbn [all_agree agree_piece fst snd] in Hf.
+    destruct Hf as [Hlv [[Hreg Hin] _]]. destruct (Hin reg (proj1 Hlv) (proj2 Hlv)) as (Ho & He & _).
+    split; [|split; [reflexivity|split; [|split]]].
+    + apply rule_raw_store with (vk := W) (x := WInt y) (p := p); [reflexivity | exact Hv | exact Ha |].
+      rewrite Hoff. cbn - [access_res store_bytes]. rewrite Hp.
+      rewrite (access_obj _ _ reg); [reflexivity | exact (proj1 Hlv) | lia | lia | apply Z.mod_1_r].
+    + apply store_bytes_kept. intros a' Ha'. exists b, reg. split; [exact (proj1 Hlv)|lia].
+    + cbn [all_agree agree_piece fst snd]. split; [exact Hlv|]. split; [|exact I].
+      split; [exact Hreg|]. intros reg' E L. rewrite regions_store_bytes in E. destruct Hlv as [E' _].
+      rewrite E in E'. injection E' as <-. split; [exact Ho|]. split; [exact He|]. cbn.
+      rewrite Z.leb_refl. replace (b + o <? b + o + 1) with true by (symmetry; apply Z.ltb_lt; lia).
+      unfold byte_of. rewrite Z.sub_diag Z.mul_0_r Z.pow_0_r Z.div_1_r. reflexivity.
+    + apply (frame_within _ _ _ b reg); [reflexivity | exact Hd | exact Hlv | |].
+      * intros a' H. cbn. destruct ((b + o <=? a') && (a' <? b + o + 1)) eqn:Hr; [|reflexivity].
+        exfalso. apply andb_true_iff in Hr as [H1 H2]. apply Z.leb_le in H1. apply Z.ltb_lt in H2.
+        apply H; [lia|]. replace (a' - b) with o by lia. cbn. right. left.
+      * intros a' _. reflexivity.
+  - iNext. iIntros "H". rewrite /live /ibyte /pts !big_sepL_cons. iDestruct "H" as "(Hl & Hc & _)".
+    iApply ("HK" with "[Hl] [Hc]"); iFrame; done.
 Qed.
 
 (** A heap allocation of size bytes, size read as the only argument,

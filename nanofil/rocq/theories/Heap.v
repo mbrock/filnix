@@ -32,9 +32,11 @@ Open Scope list_scope.
 
 (** ## Pieces and their values *)
 
-(** What a piece holds: an object's life with its region, a byte, or
-    the capability in an aux slot. *)
-Inductive pval : Type := VLive (reg : region) | VByte (v : Z) | VAux (c : cap).
+(** What a piece holds: an object's life with its region, a byte, the
+    capability in an aux slot, or, for a life token, the end of the
+    object's life: a [free] turns a [VLive] token into [VFreed], since
+    the ghost heap has no way to give a piece up. *)
+Inductive pval : Type := VLive (reg : region) | VByte (v : Z) | VAux (c : cap) | VFreed.
 
 (** Pieces have decidable equality. *)
 Instance piece_eq_dec : EqDecision piece.
@@ -69,12 +71,13 @@ Definition in_live (m : mem) (b o : Z) (P : Prop) : Prop :=
     0 <= o /\ b + o < r_end reg /\ P.
 
 (** The piece l with the value v agrees with the memory m: a life token
-    names a live object with its region; a byte or aux piece names a
+    names a live object with its region, or, ended, a registered one; a byte or aux piece names a
     registered object and, while it is live, is inside its bounds and
     holds the memory's byte, or the capability up to [aux_holds]. *)
 Definition agree_piece (m : mem) (l : piece) (v : pval) : Prop :=
   match l, v with
   | PLive b, VLive reg => live_at m b reg
+  | PLive b, VFreed => registered m b
   | PByte b o, VByte x => registered m b /\ in_live m b o (m_bytes m (b + o) = x)
   | PAux b o, VAux c => registered m b /\ in_live m b o (aux_holds m (b + o) c)
   | _, _ => False
@@ -183,7 +186,7 @@ Qed.
 (** A piece that agrees names a registered object. *)
 Lemma agree_piece_registered m l v : agree_piece m l v -> registered m (piece_id l).
 Proof.
-  destruct l as [b|b o|b o], v as [reg|x|c]; cbn; unfold live_at, registered; try tauto.
+  destruct l as [b|b o|b o], v as [reg|x|c|]; cbn; unfold live_at, registered; try tauto.
   intros [E _]. congruence.
 Qed.
 
@@ -200,9 +203,8 @@ Lemma agree_piece_safepoint m m' l v :
   same_regions m m' -> m_bytes m' = m_bytes m -> aux_moves m m' -> agree_piece m l v -> agree_piece m' l v.
 Proof.
   intros Hr Hb Ha. pose proof Hr as Hr'. unfold same_regions in Hr'.
-  destruct l as [b|b o|b o], v as [reg|x|c]; cbn; try tauto; unfold live_at, registered, in_live;
-    rewrite !Hr'.
-  - tauto.
+  destruct l as [b|b o|b o], v as [reg|x|c|]; cbn; try tauto; unfold live_at, registered, in_live;
+    rewrite !Hr'; try tauto.
   - rewrite Hb. tauto.
   - intros [Hreg Hin]. split; [exact Hreg|]. intros reg E L.
     destruct (Hin reg E L) as (Ho & He & Hx). split; [exact Ho|]. split; [exact He|].
@@ -223,8 +225,9 @@ Lemma frame_store_bytes ks m b reg o a x :
   frame_ok ks m (store_bytes m a 8 x).
 Proof.
   intros Hd Hl Ho He -> Hks l v Hn Ha.
-  destruct l as [b'|b' o'|b' o'], v as [reg'|y|c]; cbn [agree_piece] in Ha |- *; try contradiction.
+  destruct l as [b'|b' o'|b' o'], v as [reg'|y|c|]; cbn [agree_piece] in Ha |- *; try contradiction.
   - exact (live_at_regions _ _ _ _ (regions_store_bytes _ _ _ _) Ha).
+  - unfold registered in *. rewrite regions_store_bytes. exact Ha.
   - unfold registered, in_live in *. rewrite !regions_store_bytes.
     destruct Ha as [Hr Hin]. split; [exact Hr|]. intros reg' E L.
     destruct (Hin reg' E L) as (Ho' & He' & Hb). split; [exact Ho'|]. split; [exact He'|].
@@ -243,8 +246,9 @@ Lemma frame_store_aux ks m b reg o a c :
   frame_ok ks m (store_aux m a c).
 Proof.
   intros Hd Hl Ho He -> Hk l v Hn Ha.
-  destruct l as [b'|b' o'|b' o'], v as [reg'|y|c']; cbn [agree_piece] in Ha |- *; try contradiction.
+  destruct l as [b'|b' o'|b' o'], v as [reg'|y|c'|]; cbn [agree_piece] in Ha |- *; try contradiction.
   - exact (live_at_regions _ _ _ _ (regions_store_aux _ _ _) Ha).
+  - unfold registered in *. rewrite regions_store_aux. exact Ha.
   - unfold registered, in_live in *. rewrite !regions_store_aux. exact Ha.
   - unfold registered, in_live, aux_holds in *. rewrite !regions_store_aux.
     destruct Ha as [Hr Hin]. split; [exact Hr|]. intros reg' E L.
@@ -255,6 +259,38 @@ Proof.
       - intros Heq. apply Hn. replace o' with o by lia. exact Hk.
       - destruct Hl as [El Ll]. destruct (Hd b reg b' reg' (conj El Ll) (conj E L)); [congruence| |]; lia. }
     rewrite Hne. exact Hx.
+Qed.
+
+(** A change that keeps every region and writes bytes and aux slots
+    only inside the live object b, at offsets whose pieces are among
+    the keys ks, keeps every other piece's agreement: a byte or aux
+    slot of another live object lies outside b, since live objects do
+    not overlap. *)
+Lemma frame_within ks m m' b reg :
+  m_regions m' = m_regions m -> live_disjoint m -> live_at m b reg ->
+  (forall a, (b <= a < r_end reg -> PByte b (a - b) ∉ ks) -> m_bytes m' a = m_bytes m a) ->
+  (forall a, (b <= a < r_end reg -> PAux b (a - b) ∉ ks) -> m_aux m' a = m_aux m a) ->
+  frame_ok ks m m'.
+Proof.
+  intros Hr Hd Hl Hb Hx l v Hn Ha.
+  assert (Hout : forall b' o' reg', live_at m b' reg' -> 0 <= o' -> b' + o' < r_end reg' ->
+            b <= b' + o' < r_end reg -> b' = b /\ b' + o' - b = o').
+  { intros b' o' reg' Hl' Ho He Hin. destruct (Z.eq_dec b' b) as [->|Hne]; [split; [reflexivity|lia]|].
+    exfalso. exact (live_apart m b reg b' reg' (b' + o') (b' + o') Hd Hl Hl' (not_eq_sym Hne) Hin
+                      ltac:(lia) eq_refl). }
+  destruct l as [b'|b' o'|b' o'], v as [reg'|y|c|]; cbn [agree_piece] in Ha |- *; try contradiction.
+  - exact (live_at_regions _ _ _ _ Hr Ha).
+  - unfold registered in *. rewrite Hr. exact Ha.
+  - unfold registered, in_live in *. rewrite Hr.
+    destruct Ha as [Hreg Hin]. split; [exact Hreg|]. intros reg' E L.
+    destruct (Hin reg' E L) as (Ho & He & Hy). split; [exact Ho|]. split; [exact He|].
+    rewrite Hb; [exact Hy|]. intros Hin'. destruct (Hout b' o' reg' (conj E L) Ho He Hin') as [-> ->].
+    exact Hn.
+  - unfold registered, in_live, aux_holds in *. rewrite Hr.
+    destruct Ha as [Hreg Hin]. split; [exact Hreg|]. intros reg' E L.
+    destruct (Hin reg' E L) as (Ho & He & Hy). split; [exact Ho|]. split; [exact He|].
+    rewrite Hx; [exact Hy|]. intros Hin'. destruct (Hout b' o' reg' (conj E L) Ho He Hin') as [-> ->].
+    exact Hn.
 Qed.
 
 (** Framing composes. *)
@@ -406,9 +442,10 @@ Proof.
   assert (Ho : forall b, object_region b (m_regions m) <> None ->
             object_region b (m_regions (allocated m q base)) = object_region b (m_regions m)).
   { intros b Hb. rewrite object_region_allocated. destruct (Z.eqb_spec base b) as [<-|]; [contradiction|reflexivity]. }
-  destruct l as [b|b o|b o], v as [reg|x|c]; cbn [agree_piece]; try tauto;
+  destruct l as [b|b o|b o], v as [reg|x|c|]; cbn [agree_piece]; try tauto;
     unfold live_at, registered, in_live.
   - intros [E L]. rewrite Ho; [|congruence]. auto.
+  - intros Hr. rewrite Ho; exact Hr.
   - intros [Hr Hin]. rewrite Ho; [|exact Hr]. split; [exact Hr | exact Hin].
   - intros [Hr Hin]. rewrite Ho; [|exact Hr]. split; [exact Hr|]. intros reg E L.
     destruct (Hin reg E L) as (Ho' & He & Hx). split; [exact Ho'|]. split; [exact He|].

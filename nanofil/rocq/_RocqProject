@@ -7,6 +7,7 @@ theories/CycleCode.v
 theories/BufferCode.v
 theories/ScanCode.v
 theories/CountCode.v
+theories/SlotCode.v
 theories/Maps.v
 theories/Ieee.v
 theories/Syntax.v
@@ -62,6 +63,7 @@ theories/ContractFrame.v
 theories/Language.v
 theories/Logic.v
 theories/StringLogic.v
+theories/MemLogic.v
 theories/BufferLogic.v
 theories/HiLogic.v
 theories/ScanLogic.v

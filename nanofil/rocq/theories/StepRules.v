@@ -210,6 +210,26 @@ Proof.
   cbn [inst_next c_frame fr_fn fr_env fr_locals c_callers c_mem c_fuel]. rewrite Hc. reflexivity.
 Qed.
 
+(** A call of libc's `void free(p)`, a name the module neither defines
+    nor holds as data, whose argument v reads as x, where the genv's
+    free frees x without a trap and leaves the memory m': the frame
+    goes on in m' ([external_call]). *)
+Lemma rule_free : forall ge f e ls l v rest j cs m fuel x m',
+  find_fn ge free_name = None -> lookup free_name (ge_globals ge) = None ->
+  arg_x ge e (Arg P v) = Some x -> ge_free ge x m = Some (ok, m') ->
+  step ge (mkConfig (mkFrame f e ls None (Exec l (Call CVoid (Global free_name) [Arg P v] :: rest) j))
+             cs m fuel) =
+  Next (mkConfig (mkFrame f e ls None (Exec l rest j)) cs m' fuel).
+Proof.
+  intros ge f e ls l v rest j cs m fuel x m' Hf Hd Hx Hfree.
+  assert (Hi : inst_step ge (mkFrame f e ls None (Exec l (Call CVoid (Global free_name) [Arg P v] :: rest) j))
+                 m (Call CVoid (Global free_name) [Arg P v]) = Some (IContinue e ls m')).
+  { cbn - [arg_x find_fn lookup ge_free]. rewrite Hx, Hf. unfold external_call. rewrite Hd.
+    cbn - [ge_free]. rewrite Hfree. reflexivity. }
+  rewrite (rule_inst _ _ _ _ _ _ _ _ _ _ _ _ Hi) by (apply doomed_result_continue; reflexivity).
+  reflexivity.
+Qed.
+
 (** ## Blocks and jumps *)
 
 (** Entering the block l of f, found as b, from the edge from, with fuel

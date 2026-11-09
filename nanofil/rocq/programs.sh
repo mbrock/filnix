@@ -26,6 +26,7 @@ Buffer rocq/programs/buffer.c -O
 Hi tests/c/prog/hi.c -O
 Scan rocq/programs/scan.c -O
 Count rocq/programs/count.c -O
+Slot rocq/programs/slot.c -O
 '
 
 status=0

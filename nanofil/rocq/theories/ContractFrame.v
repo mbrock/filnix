@@ -148,13 +148,15 @@ Proof.
             m_aux m' (piece_id l + o) = m_aux m (piece_id l + o)).
   { intros reg o Hlive Ho He. apply Hw. apply (owned_not_authority roots born h m); [exact Hd|exact Hra|exact Hb|].
     exists l, v, reg. split; [exact Hh|]. split; [exact Hlive|lia]. }
-  destruct l as [b|b o|b o], v as [reg|x|c]; cbn [agree_piece piece_id] in Hp, Hkeep |- *;
+  destruct l as [b|b o|b o], v as [reg|x|c|]; cbn [agree_piece piece_id] in Hp, Hkeep |- *;
     try contradiction.
   - destruct Hp as [E L]. destruct (Hi b reg E) as [reg' E'].
     destruct (Hr b reg' E') as (reg0 & E0 & [-> | (Hin & _)]); rewrite E in E0; injection E0 as <-.
     + split; assumption.
     + exfalso. apply in_app_or in Hin as [Hin|Hin];
         [exact (Hrel b (PLive b) (VLive reg) Hin Hh eq_refl) | exact (Hb b (PLive b) (VLive reg) Hin Hh eq_refl)].
+  - unfold registered in *. destruct (object_region b (m_regions m)) as [reg|] eqn:E; [|contradiction].
+    destruct (Hi b reg E) as [reg' ->]. discriminate.
   - destruct Hp as [Hreg Hin]. split.
     + unfold registered in *.
       destruct (object_region b (m_regions m)) as [reg|] eqn:E; [|contradiction].
