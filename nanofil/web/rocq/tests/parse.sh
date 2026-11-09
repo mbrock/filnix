@@ -231,6 +231,9 @@ Definition dfun : ofe := nat -d> nat -d> natO.
 Definition nfun : ofe := natO -n> natO -n> natO.
 Definition dollar : nat := S $ S $ 0.
 Definition stuck_p (s : stuckness) : Prop := if s is NotStuck then True else False.
+(* ∘ binds tighter than =, ¬ takes the existential after it. *)
+Lemma compose_snd (p : nat * (nat * nat)) : (fst ∘ snd) p = p.2.1 ∧ ¬ ∃ n : nat, n < 0.
+Proof. split; [reflexivity | intros [n Hn]; inversion Hn]. Qed.
 ROCQ
   set -- "$@" "$tmp/iris/Iris.v"
 fi

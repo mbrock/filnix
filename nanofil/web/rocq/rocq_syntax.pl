@@ -180,10 +180,13 @@ token(Cs0, O0, sym(A), Cs, O) :-
     sym_run(Cs0, S, Cs), S \== [], atom_codes(A, S), length(S, N), O is O0 + N.
 token([0'.|Cs], O0, sym('.'), Cs, O) :- O is O0 + 1.
 
-%  A run of symbol characters, stopping before |}.
+%  A run of symbol characters, stopping before |}, and before ?x, an
+%  existential variable, after its first character: <[l:=?Goal]>.
 sym_run([0'|, 0'}|Cs], [], [0'|, 0'}|Cs]) :- !.
-sym_run([C|Cs0], [C|S], Cs) :- sym_char(C), \+ single_sym(C), !, sym_run(Cs0, S, Cs).
+sym_run([C|Cs0], [C|S], Cs) :- sym_char(C), \+ single_sym(C), !, sym_more(Cs0, S, Cs).
 sym_run(Cs, [], Cs).
+sym_more([0'?, C|Cs], [], [0'?, C|Cs]) :- id_start(C), !.
+sym_more(Cs0, S, Cs) :- sym_run(Cs0, S, Cs).
 
 single_sym(C) :- memberchk(C, `⌜⌝▷□◇■⊤∅↑●◯£`).
 
@@ -192,10 +195,12 @@ keyword(A) :- memberchk(A, [forall, fun, exists, let, in, match, with, end, if, 
 
 digit(C) :- between(0'0, 0'9, C).
 num_char(C) :- digit(C) ; C == 0'_.
-letter(C) :- between(0'a, 0'z, C) ; between(0'A, 0'Z, C) ; between(128, 0x1FFF, C) ; C == 0'ℓ.
+letter(C) :- between(0'a, 0'z, C) ; between(0'A, 0'Z, C) ; between(128, 0x1FFF, C), \+ latin_sym(C) ; C == 0'ℓ.
+%  Latin-1's operators: ¬ P, A × B.
+latin_sym(C) :- memberchk(C, `¬×÷±`).
 id_start(C) :- letter(C) ; C == 0'_.
 id_char(C) :- id_start(C) ; digit(C) ; C == 0'' ; between(0'₀, 0'₉, C).
-sym_char(C) :- memberchk(C, `!#$%&*+-/:<=>?@\\^|~`) ; C >= 0x2000, \+ letter(C).
+sym_char(C) :- memberchk(C, `!#$%&*+-/:<=>?@\\^|~`) ; latin_sym(C) ; C >= 0x2000, \+ letter(C).
 
 %  A name, and its qualification: Z.leb_le, R.alloc.
 ident(Cs0, I, Cs) :-
@@ -474,7 +479,9 @@ masks([M|Ms]) --> term(M), ( tk(p(',')) -> term(M2), { Ms = [M2] } ; { Ms = [] }
 %  The expression of a weakest precondition: its @ is the mask's, not an
 %  explicit argument's.
 wp_expr(E) --> { ( nb_current(rocq_no_at, O) -> true ; O = false ), b_setval(rocq_no_at, true) },
-    term(E), { b_setval(rocq_no_at, O) }.
+    term(E0), { b_setval(rocq_no_at, O) },
+    %  Rocq prints a cast there bare: WP e : T {{ … }}.
+    ( tk(sym(':')) -> term(Ty), { start(E0, F), end(Ty, T), E = cast(F-T, E0, Ty) } ; { E = E0 } ).
 
 wp_at(at(S, M)) --> tk(sym('@')), !, term(X), ( tk(p(';')) -> term(M), { S = X } ; { S = none, M = X } ).
 wp_at(none) --> [].
@@ -588,6 +595,7 @@ std_op('⊣⊢', 95, none). std_op('∗-∗', 95, none).
 std_op('∗', 80, right).
 std_op('<$>', 61, left).
 std_op('$', 65, right).
+std_op('∘', 40, left).
 std_op('-d>', 99, right). std_op('-n>', 45, right).
 std_op('⋅', 50, left).
 std_op('∪', 50, left). std_op('∖', 40, left). std_op('∩', 40, left).
