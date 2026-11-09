@@ -513,10 +513,40 @@ setlocale nor the environment is restricted to C/ASCII by the contract.
 
 Probe: [libc-locale.c](../tests/c/prog/libc-locale.c). It checks negative
 ctype indices and 255, refusal, writable conversion outputs/state,
-zero-input incomplete versus NUL, invalid encoding and null resets.
+zero-input incomplete versus NUL, invalid encoding and null resets. It
+also checks exact stable query/refusal name pointers, canonical C storage
+after freeing a separate POSIX input, empty selection under an explicitly
+C environment and a borrowed-name setter input.
 Sources: `locale/setlocale.c`, `nl_langinfo.c`, `ctype/ctype-info.c`
 (table offset 128), `wcsmbs/mbrtowc.c`, `mbrtoc32.c`, `mbsinit.c`,
 and `wctype/`. Returned locale data is not promised writable or immortal.
+
+[Locale.v](../rocq/theories/Locale.v) gives `setlocale` an additive trusted
+Rocq contract with exact W/P-to-P ABI and a nonnull current-name invariant.
+Null queries preserve exact pointers/capabilities, memory, runtime and
+world, with no writes/releases/requests. Setters distinguish null refusal,
+nonnull success and witnessed runtime resource ending. Refusal retains
+logical names, codec and borrow epoch, but may change internal represented
+state; a terminal resource ending has no such rollback guarantee.
+The unchanged-memory refusal witness proves conservative specification
+inhabitation, not native refusal or native progress.
+
+Current names, persistent internal readable sources, writable roots and
+exclusive release identities are separate. Every future world-held
+capability must be delegated, including a name not returned until a later
+query. The internal pool admits canonical built-in names without deriving
+authority from unrelated caller objects; writable access does not grant
+exclusive release ownership. Borrow validity is logical and epoch-scoped,
+without rewriting Obj capabilities to Ro. Same-epoch pointer, text and
+codec preservation does not yet cover other locale API borrows such as
+`nl_langinfo` tables.
+
+Initialized coherent serialized locale/environment/TLS representation,
+Iris separation, safepoint stability and native coverage remain independent
+obligations. The contract describes ready logical segment endpoints, not
+every internal native cutpoint: ALL commits categories sequentially, and
+`setname` can free before installing a replacement. No native termination,
+universal satisfaction or new runtime axiom is claimed.
 
 ## 6. Conversion descriptors (3)
 

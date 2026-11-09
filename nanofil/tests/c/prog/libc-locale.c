@@ -13,6 +13,29 @@
 #include "libc-probe.h"
 int main(void) {
     answer("locale query and refusal", setlocale(LC_ALL, "C") != 0 && strcmp(setlocale(LC_CTYPE, 0), "C") == 0 && setlocale(LC_ALL, "nanofil-no-such-locale") == 0);
+    char *ctype_name = setlocale(LC_CTYPE, 0);
+    char *messages_name = setlocale(LC_MESSAGES, 0);
+    int stable = ctype_name && messages_name &&
+        ctype_name == setlocale(LC_CTYPE, 0) && messages_name == setlocale(LC_MESSAGES, 0);
+    stable = stable && setlocale(LC_ALL, "nanofil-no-such-locale") == 0 &&
+        ctype_name == setlocale(LC_CTYPE, 0) && messages_name == setlocale(LC_MESSAGES, 0) &&
+        strcmp(ctype_name, "C") == 0 && strcmp(messages_name, "C") == 0;
+    answer("locale queries and refusal retain current borrowed names", stable);
+    char *separate = malloc(6);
+    char *canonical = 0;
+    int canonical_ok = 0;
+    if (separate) {
+        memcpy(separate, "POSIX", 6);
+        canonical = setlocale(LC_ALL, separate);
+        canonical_ok = canonical && canonical != separate;
+        free(separate);
+    }
+    answer("POSIX returns an independently readable canonical C name", canonical_ok && strcmp(canonical, "C") == 0);
+    answer("empty locale input selects the represented environment", setenv("LC_ALL", "C", 1) == 0 &&
+        setlocale(LC_ALL, "") != 0 && strcmp(setlocale(LC_CTYPE, 0), "C") == 0);
+    char *borrowed = setlocale(LC_ALL, 0);
+    char *selected = borrowed ? setlocale(LC_ALL, borrowed) : 0;
+    answer("setter input may be a borrowed locale name", selected && strcmp(selected, "C") == 0);
     answer("langinfo returns readable string", strlen(nl_langinfo(CODESET)) > 0);
     const unsigned short *table = *__ctype_b_loc();
     volatile unsigned short low = table[-128], high = table[255];

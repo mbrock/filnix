@@ -26,6 +26,7 @@ theories/Interval.v
 theories/Sites.v
 theories/Identity.v
 theories/ExternalCalls.v
+theories/Locale.v
 theories/Startup.v
 theories/Stdio.v
 theories/Shutdown.v

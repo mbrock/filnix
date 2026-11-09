@@ -1814,6 +1814,65 @@ suffix borrowed from argv, and swaps then restores stdout/stderr through
 volatile pointer cells. It exercises live streams separately rather than
 treating a represented pointer cell as a valid FILE.
 
+### Campaign 4 milestone 6b: the selected setlocale boundary
+
+[Locale.v](../rocq/theories/Locale.v) supplies the plain W/P-to-P
+`setlocale` contract reached by the linked Hello module. It admits all
+thirteen selected glibc categories, including ALL=6, CTYPE=0 and
+MESSAGES=5. Null is tested by address before selecting the query branch;
+nonzero setter inputs independently require a readable NUL-terminated
+string. Empty input selects from the represented environment, without
+restricting it to C/ASCII.
+
+[locale_world] separates exact current name pointers/text, an opaque
+codec and borrow epoch, persistent internal read sources, writable roots
+and exclusively releasable heap identities. The internal read pool matters:
+native POSIX selection can return the built-in C name even when neither
+the input nor any current name supplies its capability. [locale_delegates]
+checks authority for **every** new category name, read source, write root
+and release identity, not merely the returned pointer. Write authority
+alone cannot become ownership. [locale_ready] independently requires
+nonzero current-name addresses; readable objects at address zero are
+otherwise possible in this model.
+
+[setlocale_invocation] exposes the exact effects, trace and world.
+A null query is a pure exact-pointer/capability projection with no writes,
+releases, allocations or resource ending, and preserves the runtime too.
+A setter may return null with exact names/codec/epoch retained while
+internal represented state changes, or a readable nonnull current name
+after selection. [setlocale_null_refusal] distinguishes those
+results. Terminal resource endings carry an actual permitted runtime
+failure witness and do not imply rollback. The constructive unchanged
+refusal is specification nonvacuity, **not** evidence that native code
+refuses a particular request. Success requires independent effects,
+ready-world and update witnesses, not admission alone.
+
+[locale_borrow_preserved] transports current-name pointers, contents and
+codec only within the same epoch. Equal text does not preserve a borrow
+after pointer replacement; an epoch change withdraws the contract's old
+borrow, not necessarily the pointer's physical validity. Returned Obj
+capabilities stay Obj: logical borrowing is not a capability downgrade.
+The effects frame caller pieces outside roots and release identities;
+Iris still needs its independent root/ownership separation and a
+safepoint-stable representation for any concrete use.
+
+Controls exercise exact CTYPE/MESSAGES queries, a non-C logical world
+selecting canonical C from a separate POSIX input, empty/borrowed inputs,
+resource versus null endings, hidden nonreturned-name laundering,
+ownership amplification, zero-address names, equal-text replacement and
+invalid ABI/category. Native probes check stable query/refusal pointers,
+canonical storage readable after freeing the separate POSIX input,
+empty selection under an explicitly C environment and a borrowed setter
+input. These are finite evidence, not universal libc satisfaction.
+
+The opaque representation assumes initialized, coherent serialized libc,
+locale, environment and TLS state. Prefixes here are **ready logical
+segment endpoints**, not arbitrary native instruction/resource/safepoint
+cutpoints: selected `setname` frees an old name before storing its
+replacement, and ALL commits categories sequentially. Native prefix
+coverage, codec adequacy, progress and termination remain open. There is
+no new runtime axiom or change to Machine.v.
+
 ### The next milestones, in order
 
 1. **Execute retained handlers as program code.** Add a generic callback
@@ -1838,7 +1897,7 @@ treating a represented pointer cell as a valid FILE.
 3. **Close the selected hi.c/Hello paths.** Campaign 3 owns the checked
    module merger and Iris application/handler triples. Campaign 4 supplies
    startup/stdio representations and reached-call contracts, beginning
-   with locale, registration and getopt state after the existing string
+   with registration and getopt state after locale and the existing string
    and allocation contracts. Use the actual checked-term call census to
    choose multibyte and formatted-output symbols. Prove close_stdout as
    ordinary code, including stream settlement, errno and error branches.

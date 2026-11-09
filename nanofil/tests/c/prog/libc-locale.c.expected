@@ -1,4 +1,8 @@
 locale query and refusal: yes
+locale queries and refusal retain current borrowed names: yes
+POSIX returns an independently readable canonical C name: yes
+empty locale input selects the represented environment: yes
+setter input may be a borrowed locale name: yes
 langinfo returns readable string: yes
 ctype table includes negative indices: yes
 wide character domains: yes
