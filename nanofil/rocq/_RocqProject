@@ -67,6 +67,7 @@ theories/Language.v
 theories/Logic.v
 theories/StringLogic.v
 theories/MemLogic.v
+theories/LentLogic.v
 theories/BufferLogic.v
 theories/HiLogic.v
 theories/ScanLogic.v
