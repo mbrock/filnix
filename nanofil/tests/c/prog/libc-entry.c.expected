@@ -2,6 +2,8 @@ entry argv carries writable string capabilities: yes
 entry environment is sentinel terminated: yes
 entry copies empty strings and high bytes with writable NULs: yes
 program names are readable aliases: yes
+program name cells accept borrowed pointers and an empty suffix: yes
+stream pointer cells are independently writable and restored: yes
 errno is a writable thread-local cell: yes
 initial streams are live: yes
 libc and TLS are usable before the entry constructor: yes

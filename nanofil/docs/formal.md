@@ -1781,20 +1781,72 @@ of stored capabilities to freed objects. Wider/downward-load adequacy,
 native collector-prefix correspondence, universal satisfaction and
 termination remain open; the exact logical frame does not prove them.
 
+### Campaign 4 milestone 6a: Hello's exposed entry cells
+
+`Startup.v` now separates the four exposed pointer cells from their
+pointees. `exposed_pointer_cell` requires independent writable authority,
+aligned eight-byte read/write access and an exact decoded address plus
+auxiliary capability. `libc_globals_bound` resolves stdout, stderr and the
+two program-name symbols to those cells, not directly to FILE objects or
+name strings. `libc_globals_at` adds the four stored values and readable
+NUL-terminated names. Names may share one object, and the short name may
+be an interior or empty suffix. This does not equate them with the
+launcher's copied argv[0], grant ownership of their strings, or establish
+FILE, TLS or stream-root validity.
+
+`startup_frame_libc_globals` preserves all those cell and string facts
+through successful launcher copying. `main_argv_frame` binds the actual
+argc and argv parameters while ignoring the extra launcher environment
+word. `Startup R.copied_startup_main` combines these with the existing
+copying effects and independent ready-runtime premise: it supplies an
+actual frame for a defined linked main, preserving the exact resulting
+runtime state, initialized old module data, symbol bindings, argv and
+environment vectors. It is a successful-copy composition theorem, not
+native launcher adequacy or a derivation of opaque libc initialization.
+`HiProgram R.trusted_entry_contract` remains the named trusted boundary.
+
+Controls start from `initial_memory` of an independent data module, with
+hand-computed symbol addresses and distinct Obj/Ro stored capabilities.
+They reject lost aux, wrong address bits, wrong cell identity, insufficient
+extent and misalignment, and accept an empty suffix. The native entry
+probe reversibly replaces both program-name pointers, including an empty
+suffix borrowed from argv, and swaps then restores stdout/stderr through
+volatile pointer cells. It exercises live streams separately rather than
+treating a represented pointer cell as a valid FILE.
+
 ### The next milestones, in order
 
-1. **Close `hi.c`.** Install concrete startup/stdio representation and
-   request contracts; model main's return, flush and `exit`/handlers as
-   events, plus blocking/divergence and resource endings. Require
-   external-symbol coverage and admissibility at every reached call,
-   independently of whether it has an `invoke` derivation. An empty
-   relation must never prove safety by deleting an invalid execution.
-   Link the pinned modules and prove adequacy before claiming
-   `never_panics`; no such claim is made by the abstract integration.
-2. **Grow by Hello contract kinds.** Add bounded byte/string operations,
-   fresh allocations and owned release, then formatting, argv/environment,
-   locale/conversion, opaque streams/descriptors and callbacks, following
-   the native table. Connect Prolog/extraction and native observations;
+1. **Execute retained handlers as program code.** Add a generic callback
+   bridge in Linked.v, without changing Machine.v or Iris's interfaces.
+   A detached registration must supply its retained function capability,
+   native argument conversion, independently admitted current precondition
+   and exact linked function. Each callback instruction is an ordinary
+   labelled machine step, retaining memory, runtime, world and fuel.
+   Normal top-level return must reconstruct `invalidate_locals` at the
+   terminal configuration: the stopped machine snapshot is before local
+   invalidation and cannot itself be the resumed shutdown memory. Expose
+   that exact endpoint to Iris, not just an existential outcome post.
+   Resource, failure, unfinished execution and nonreturn stay distinct.
+2. **Compose exit requests and registration.** Intercept selected exit,
+   _exit and _Exit call sites before ordinary external dispatch, excluding
+   those sites from the generic lifted step. An existing ExternalExit is
+   already terminal, not a request to run more handlers. Only witnessed
+   host completion emits the final ProcessExit event. The authoritative
+   registry/world must retain callback registrations and consumed tokens
+   across ordinary execution and recursive exit. Check local lifetime,
+   nested calls, re-registration order, changed signed status and hard exit.
+3. **Close the selected hi.c/Hello paths.** Campaign 3 owns the checked
+   module merger and Iris application/handler triples. Campaign 4 supplies
+   startup/stdio representations and reached-call contracts, beginning
+   with locale, registration and getopt state after the existing string
+   and allocation contracts. Use the actual checked-term call census to
+   choose multibyte and formatted-output symbols. Prove close_stdout as
+   ordinary code, including stream settlement, errno and error branches.
+   Require symbol coverage and admission independently of successful
+   invocation, safepoint-stable libc representation and stream roots
+   separated from program-owned memory. Concrete linking, native adequacy
+   and termination remain obligations; none follows from the entry slice.
+4. **Refinement.** Connect Prolog/extraction and native observations;
    only then restate and validate `opt:refines/2` as trace inclusion.
 
 ## Campaign 5: static discharge by certificate

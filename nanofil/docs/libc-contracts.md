@@ -574,16 +574,19 @@ never panics.
 
 | Name | Precondition | Guarantee / footprint | Violated checks |
 | --- | --- | --- | --- |
-| `stdout` | initialized process; not closed/replaced without updating ownership | readable pointer cell to live stream and reachable buffering state; pointee is mutable, not read-only data | R,W on use |
-| `stderr` | same | independent live diagnostic stream root; no promise of successful output | R,W on use |
+| `stdout` | initialized process; not closed/replaced without updating ownership | readable/writable pointer cell to live stream and reachable buffering state; cell authority is separate from the mutable pointee's authority | R,W on use |
+| `stderr` | same | readable/writable pointer cell to independent live diagnostic stream root; no promise of successful output | R,W on use |
 | `__errno_location` | initialized live thread | aligned writable int cell, stable for that thread's lifetime, aliases errno; changes on API errors, need not be cleared on success | — |
 | `program_invocation_name` | initialized entry; caller preserves a valid borrowed string if replacing cell | readable/writable pointer cell to borrowed NUL string derived from argv[0], or empty fallback if absent; no independent allocation/ownership promise | R,W on access |
 | `program_invocation_short_name` | same | borrowed basename pointer, may alias inside full name's object | R,W on access |
 
 Probe: [libc-entry.c](../tests/c/prog/libc-entry.c), plus stream/error
 probes. It traverses argc+1 and environment sentinel arrays, reads their
-strings using actual capabilities, checks program-name aliases and
-writes errno. Sources: `csu/`, `misc/init-misc.c`, `csu/errno-loc.c`,
+strings using actual capabilities, checks program-name aliases, reversibly
+replaces both name pointers (including an empty suffix borrowed from argv),
+swaps and restores the two stream pointer cells, and writes errno.
+Volatile cell accesses keep those writes observable in optimized builds.
+Sources: `csu/`, `misc/init-misc.c`, `csu/errno-loc.c`,
 `libio/` initial streams. Tests do not exhaust all legal entry vectors;
 the entry contract includes empty argument strings and an empty
 environment, with arbitrary lengths/content within ABI and allocation
@@ -592,8 +595,14 @@ bounds, not just these sample command lines. The selected native
 vector** is not a successful entry at this pin. Its `argc + 1` is an
 int expression before checked size multiplication; constructing that
 array additionally requires `argc < INT_MAX`. `Startup.v` separates
-the readable entry facts from this copying-arithmetic obligation; it
-does not yet prove the launcher establishes the memory image.
+the readable entry facts from this copying-arithmetic obligation.
+Its `exposed_pointer_cell` and `libc_globals_bound` distinguish actual
+cell identities, access and decoded values from pointee validity;
+`startup_frame_libc_globals` preserves them through successful copying.
+`copied_startup_main` supplies the defined two-parameter main's actual
+frame at the resulting ready runtime state. The entry projection does
+not prove native launcher adequacy, opaque FILE/TLS validity, ownership
+of borrowed name strings, or equality with the launcher's copied argv[0].
 
 ## Native evidence and remaining work
 

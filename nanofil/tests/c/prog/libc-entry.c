@@ -64,6 +64,27 @@ int main(int argc, char **argv) {
     answer("entry environment is sentinel terminated", good);
     answer("entry copies empty strings and high bytes with writable NULs", copied_inputs(0) && copied_inputs(1));
     answer("program names are readable aliases", program_invocation_name && program_invocation_short_name && strlen(program_invocation_name) > 0 && strlen(program_invocation_short_name) > 0 && strstr(program_invocation_name, program_invocation_short_name) != 0);
+    char *volatile *full_cell = &program_invocation_name;
+    char *volatile *short_cell = &program_invocation_short_name;
+    char *saved_full = *full_cell, *saved_short = *short_cell;
+    *full_cell = argv[2];
+    *short_cell = argv[2] + strlen(argv[2]);
+    good = strcmp(*full_cell, "--name=xyz") == 0 && (*short_cell)[0] == 0;
+    *full_cell = saved_full;
+    *short_cell = saved_short;
+    answer("program name cells accept borrowed pointers and an empty suffix", good &&
+        *full_cell == saved_full && *short_cell == saved_short);
+    FILE *volatile *out_cell = &stdout;
+    FILE *volatile *err_cell = &stderr;
+    FILE *saved_out = *out_cell, *saved_err = *err_cell;
+    *out_cell = saved_err;
+    *err_cell = saved_out;
+    good = *out_cell == saved_err && *err_cell == saved_out &&
+        !ferror(*out_cell) && !ferror(*err_cell) && fputs("", *out_cell) >= 0;
+    *out_cell = saved_out;
+    *err_cell = saved_err;
+    answer("stream pointer cells are independently writable and restored", good &&
+        *out_cell == saved_out && *err_cell == saved_err);
     int *cell = __errno_location();
     *cell = EDOM;
     answer("errno is a writable thread-local cell", errno == EDOM && __errno_location() == cell);

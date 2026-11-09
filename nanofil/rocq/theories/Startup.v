@@ -14,7 +14,7 @@
     must not be confused with a malformed entry or deleted execution. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Machine Identity ExternalCalls.
+From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Identity ExternalCalls.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -93,9 +93,72 @@ Definition startup_at (m : mem) (argc : Z) (argv envp : ptr)
   1 <= argc < 2 ^ 31 /\ argc = Z.of_nat (length args) /\
   string_vector m argv args /\ string_vector m envp environment.
 
+(** A libc-exposed pointer cell has its own writable object authority
+    and decoded value. Authority to its pointee is not authority to
+    change the cell, nor does this predicate establish FILE validity. *)
+Definition exposed_pointer_cell (m : mem) (cell value : ptr) : Prop :=
+  writable_span m (mkSpan cell 8) /\
+  access_res m (ptr_addr cell) (ptr_cap cell) 8 Read 8 = Some ok /\
+  access_res m (ptr_addr cell) (ptr_cap cell) 8 Write 8 = Some ok /\
+  pointer_slot m (ptr_addr cell) value.
+
+(** Distinct symbolic roles, not an assertion that their storage is
+    disjoint. The program-name aliases may name the same native cells. *)
+Record libc_global_cells : Type := mkLibcGlobalCells {
+  stdout_cell : ptr;
+  stderr_cell : ptr;
+  invocation_name_cell : ptr;
+  short_name_cell : ptr
+}.
+
+(** Symbol resolution reaches the cells themselves, not the FILE or
+    character buffer stored in them. Module linking supplies this map. *)
+Definition libc_globals_bound (ge : genv) (g : libc_global_cells) : Prop :=
+  lookup (TAtom "stdout") (ge_globals ge) = Some (stdout_cell g) /\
+  lookup (TAtom "stderr") (ge_globals ge) = Some (stderr_cell g) /\
+  lookup (TAtom "program_invocation_name") (ge_globals ge) = Some (invocation_name_cell g) /\
+  lookup (TAtom "program_invocation_short_name") (ge_globals ge) = Some (short_name_cell g).
+
+(** Concrete exposed cells at a successful entry. Program names have
+    independently readable NUL-terminated contents; they are not
+    silently identified with the launcher's copied argv[0]. Program
+    code may subsequently replace their pointer values. Stream object
+    validity, libc/TLS state and separation remain separate premises. *)
+Definition libc_globals_at (m : mem) (g : libc_global_cells)
+    (out err full short : ptr) : Prop :=
+  exposed_pointer_cell m (stdout_cell g) out /\
+  exposed_pointer_cell m (stderr_cell g) err /\
+  exposed_pointer_cell m (invocation_name_cell g) full /\
+  exposed_pointer_cell m (short_name_cell g) short /\
+  (exists bytes, c_string m full bytes) /\ (exists bytes, c_string m short bytes).
+
+(** The ordinary non-atomic pointer-load protocol recovers exactly
+    the stored address AND capability, not an external/null surrogate. *)
+Lemma exposed_pointer_load : forall m cell value,
+  exposed_pointer_cell m cell value ->
+  pointer_load_effects m (ptr_addr cell) [AuxRead; LowerResolve; AddressRead] = Some value.
+Proof.
+  intros m cell [a c] (_ & _ & _ & _ & Hbytes & Haux).
+  unfold pointer_load_effects, pointer_load_effect, aux_at. simpl.
+  rewrite Hbytes, Haux. reflexivity.
+Qed.
+
 (** The three words the launcher passes to main: argc, argv, envp. *)
 Definition main_arguments (argc : Z) (argv envp : ptr) : list word :=
   [WInt argc; WPtr argv; WPtr envp].
+
+(** Hello's two-parameter main binds the first two launcher words and
+    ignores the extra environment word. This gives its actual fresh
+    frame, without restricting the strings or resetting runtime state. *)
+Lemma main_argv_frame : forall f b blocks argc_name argv_name argc argv envp,
+  fn_params f = [(W, argc_name); (P, argv_name)] -> fn_blocks f = b :: blocks ->
+  variadic_func f = false ->
+  call_frame f (main_arguments argc argv envp) = Some
+    (mkFrame f (put argv_name (WPtr argv) (put argc_name (WInt argc) []))
+      (map (fun xs => (fst xs, None)) (local_objects f)) None (Enter (b_label b) None)).
+Proof. intros f b blocks an vn argc argv envp Hp Hb Hv. unfold call_frame.
+  rewrite Hp, Hb, Hv. reflexivity.
+Qed.
 
 (** The byte size of the launcher's argv copy, 8 * (argc + 1).
     The native expression argc + 1 is evaluated as int BEFORE the
@@ -397,6 +460,40 @@ Proof.
   - eapply startup_frame_access; eauto.
   - eapply startup_frame_slots; [exact Hf| |exact Hslots].
     intros b Hb. eapply access_in; [exact Ha|exact Hb].
+Qed.
+
+(** Launcher allocation/copying preserves each exposed old pointer
+    cell, including its write authority, address bytes and capability. *)
+Lemma startup_frame_exposed_cell : forall m m' cell value,
+  startup_frame m m' 0 0 -> exposed_pointer_cell m cell value ->
+  exposed_pointer_cell m' cell value.
+Proof.
+  intros m m' cell value Hframe (Hw & Hr & Hwr & Hslot).
+  split.
+  - destruct Hw as (Hn & b & reg & Hcap & Hreg & Hlive & Ha).
+    split; [exact Hn|]. exists b, reg. split; [exact Hcap|]. split.
+    + apply (proj1 Hframe). exact Hreg.
+    + split; [exact Hlive|]. eapply startup_frame_access; eauto.
+  - split; [eapply startup_frame_access; eauto|].
+    split; [eapply startup_frame_access; eauto|].
+    eapply startup_frame_slot; [exact Hframe| |intros; lia|exact Hslot].
+    intros a Ha. eapply access_in; [exact Hr|exact Ha].
+Qed.
+
+(** Exposed libc cells and their readable name payloads survive the
+    two successful launcher-copy loops. This preserves module data;
+    it does not construct or assume native FILE/TLS validity. *)
+Theorem startup_frame_libc_globals : forall m m' g out err full short,
+  startup_frame m m' 0 0 -> libc_globals_at m g out err full short ->
+  libc_globals_at m' g out err full short.
+Proof.
+  intros m m' g out err full short Hf (Ho & He & Hn & Hs & Hfull & Hshort).
+  split; [eapply startup_frame_exposed_cell; eauto|].
+  split; [eapply startup_frame_exposed_cell; eauto|].
+  split; [eapply startup_frame_exposed_cell; eauto|].
+  split; [eapply startup_frame_exposed_cell; eauto|]. split.
+  - destruct Hfull as [bytes H]. exists bytes. eapply startup_frame_string; eauto. intros; lia.
+  - destruct Hshort as [bytes H]. exists bytes. eapply startup_frame_string; eauto. intros; lia.
 Qed.
 
 (** Sixteen-byte rounding provides at least the original positive request. *)
@@ -743,6 +840,44 @@ Proof.
       eapply startup_frame_vector; eauto.
 Qed.
 
+(** A ready entry frame for a linked two-parameter main after the
+    successful launcher copies. Existing global cells and name strings
+    survive; the linked symbol map and exact runtime state are retained.
+    FILE/TLS validity and the program's logical precondition are still
+    separate trusted entry obligations, not consequences of copying. *)
+Theorem copied_startup_main : forall args environment s m born argv s1 m1 born1 envp s2 m2 born2
+    sources roots releases requests ge g out err full short f b blocks an vn fuel,
+  copy_vector args s m born = Some (argv, s1, m1, born1) ->
+  copy_vector environment s1 m1 born1 = Some (envp, s2, m2, born2) ->
+  R.ready s m -> 1 <= Z.of_nat (length args) < 2 ^ 31 - 1 ->
+  payloads_allowed requests args -> payloads_allowed requests environment ->
+  8 * (Z.of_nat (length environment) + 1) <= max_allocation_size ->
+  requests 16 (8 * (Z.of_nat (length args) + 1)) ->
+  requests 16 (8 * (Z.of_nat (length environment) + 1)) ->
+  libc_globals_bound ge g -> libc_globals_at m g out err full short ->
+  find_fn ge (TAtom "main") = Some (Defined f) ->
+  fn_params f = [(W, an); (P, vn)] -> fn_blocks f = b :: blocks -> variadic_func f = false ->
+  exists fr,
+    call_frame f (main_arguments (Z.of_nat (length args)) argv envp) = Some fr /\
+    find_fn ge (TAtom "main") = Some (Defined f) /\
+    E.effects sources roots releases requests s m born s2 m2 born2 /\
+    R.ready s2 (c_mem (mkConfig fr [] m2 fuel)) /\
+    persists m m2 /\ startup_frame m m2 0 0 /\
+    startup_at m2 (Z.of_nat (length args)) argv envp args environment /\
+    libc_globals_bound ge g /\ libc_globals_at m2 g out err full short.
+Proof.
+  intros args environment s m born argv s1 m1 born1 envp s2 m2 born2
+    sources roots releases requests ge g out err full short f b blocks an vn fuel
+    Ha He Hr Hargc Hargs Henv Hmax Hra Hre Hbound Hglobals Hfind Hp Hb Hv.
+  destruct (copied_startup args environment s m born argv s1 m1 born1 envp s2 m2 born2
+    sources roots releases requests Ha He Hr Hargc Hargs Henv Hmax Hra Hre)
+    as (Heffects & Hr2 & Hpersists & Hframe & Hstartup).
+  eexists. split; [eapply main_argv_frame; eauto|].
+  split; [exact Hfind|]. split; [exact Heffects|]. split; [exact Hr2|].
+  split; [exact Hpersists|]. split; [exact Hframe|]. split; [exact Hstartup|].
+  split; [exact Hbound|]. eapply startup_frame_libc_globals; eauto.
+Qed.
+
 End Startup.
 
 (** ## Entry regressions
@@ -955,3 +1090,108 @@ Example environment_count_not_int : forall n,
   Z.of_nat n = 2 ^ 31 ->
   2 ^ 31 - 1 < Z.of_nat n /\ 8 * (Z.of_nat n + 1) <= max_allocation_size.
 Proof. intros n H. rewrite H. unfold max_allocation_size. lia. Qed.
+
+(** An independent initialized module, not a preassumed cell predicate.
+    Opaque stream storage is only raw data here, deliberately not FILE
+    validity. Both names share a read-only object; short is interior. *)
+Definition exposed_module : module :=
+  [IData (TAtom "out_storage") LLocal 16 [Zero 224];
+   IData (TAtom "err_storage") LLocal 16 [Zero 224];
+   IData (TAtom "name_storage") (LRo (TAtom "local")) 1 [Str [120; 47; 104; 0]];
+   IData (TAtom "stdout") LExport 8 [Sym (TAtom "out_storage") 0];
+   IData (TAtom "stderr") LExport 8 [Sym (TAtom "err_storage") 0];
+   IData (TAtom "program_invocation_name") LExport 8 [Sym (TAtom "name_storage") 0];
+   IData (TAtom "program_invocation_short_name") LExport 8 [Sym (TAtom "name_storage") 2]].
+
+(** The actual initialized symbol map and memory of [exposed_module]. *)
+Definition exposed_image : list (name * ptr) * mem :=
+  match initial_memory exposed_module with Some image => image | None => ([], empty_mem) end.
+
+(** The initializer really succeeds at the hand-computed cell addresses. *)
+Example exposed_initial_symbols :
+  option_map fst (initial_memory exposed_module) = Some
+    [(TAtom "program_invocation_short_name", mkPtr 66144 (Obj 66144));
+     (TAtom "program_invocation_name", mkPtr 66112 (Obj 66112));
+     (TAtom "stderr", mkPtr 66080 (Obj 66080));
+     (TAtom "stdout", mkPtr 66048 (Obj 66048));
+     (TAtom "name_storage", mkPtr 66016 (Ro 66016));
+     (TAtom "err_storage", mkPtr 65776 (Obj 65776));
+     (TAtom "out_storage", mkPtr 65536 (Obj 65536))].
+Proof. vm_compute. reflexivity. Qed.
+
+(** Exact cell identities, independent of the values stored in them. *)
+Definition exposed_cells : libc_global_cells := mkLibcGlobalCells
+  (mkPtr 66048 (Obj 66048)) (mkPtr 66080 (Obj 66080))
+  (mkPtr 66112 (Obj 66112)) (mkPtr 66144 (Obj 66144)).
+
+(** Symbol lookup reaches cells while the initialized contents point
+    elsewhere, with the name's exact read-only capability. *)
+Example exposed_initial_cells :
+  libc_globals_bound (mkGenv exposed_module (fst exposed_image) free_res) exposed_cells /\
+  libc_globals_at (snd exposed_image) exposed_cells
+    (mkPtr 65536 (Obj 65536)) (mkPtr 65776 (Obj 65776))
+    (mkPtr 66016 (Ro 66016)) (mkPtr 66018 (Ro 66016)).
+Proof.
+  split; [vm_compute; repeat split; reflexivity|].
+  unfold libc_globals_at. repeat split;
+    lazymatch goal with |- exists _, _ => idtac | _ => vm_compute; congruence end.
+  - exists 66048, (mkRegion 66048 66056 GlobalData Live). repeat split; reflexivity.
+  - exists 66080, (mkRegion 66080 66088 GlobalData Live). repeat split; reflexivity.
+  - exists 66112, (mkRegion 66112 66120 GlobalData Live). repeat split; reflexivity.
+  - exists 66144, (mkRegion 66144 66152 GlobalData Live). repeat split; reflexivity.
+  - exists [120; 47; 104]. vm_compute. repeat split; reflexivity.
+  - exists [104]. vm_compute. repeat split; reflexivity.
+Qed.
+
+(** Ordinary pointer loads recover different stored addresses and the
+    exact mutable/read-only authority, not the cells' own capabilities. *)
+Example exposed_initial_loads :
+  pointer_load_effects (snd exposed_image) 66048 [AuxRead; LowerResolve; AddressRead] =
+    Some (mkPtr 65536 (Obj 65536)) /\
+  pointer_load_effects (snd exposed_image) 66144 [AuxRead; LowerResolve; AddressRead] =
+    Some (mkPtr 66018 (Ro 66016)).
+Proof. vm_compute. split; reflexivity. Qed.
+
+(** A basename can be the empty suffix in the same name object. *)
+Example exposed_empty_suffix :
+  exposed_pointer_cell
+    (store_aux (store_bytes (snd exposed_image) 66144 8 66019) 66144 (Ro 66016))
+    (short_name_cell exposed_cells) (mkPtr 66019 (Ro 66016)) /\
+  c_string (snd exposed_image) (mkPtr 66019 (Ro 66016)) [].
+Proof.
+  split; [|vm_compute; repeat split; reflexivity]. repeat split;
+    lazymatch goal with |- exists _, _ => idtac | _ => vm_compute; congruence end.
+  exists 66144, (mkRegion 66144 66152 GlobalData Live). repeat split; reflexivity.
+Qed.
+
+(** Right address bits do not compensate for missing stored authority. *)
+Example exposed_lost_aux :
+  ~ exposed_pointer_cell (store_aux (snd exposed_image) 66048 CNone)
+    (stdout_cell exposed_cells) (mkPtr 65536 (Obj 65536)).
+Proof. intros (_ & _ & _ & _ & _ & Haux). discriminate Haux. Qed.
+
+(** Correct aux does not compensate for wrong stored address bits. *)
+Example exposed_wrong_bits :
+  ~ exposed_pointer_cell (store_bytes (snd exposed_image) 66048 8 65537)
+    (stdout_cell exposed_cells) (mkPtr 65536 (Obj 65536)).
+Proof. intros (_ & _ & _ & _ & Hbits & _). discriminate Hbits. Qed.
+
+(** Pointee authority is not authority for accessing the pointer cell. *)
+Example exposed_wrong_cell_identity :
+  ~ exposed_pointer_cell (snd exposed_image) (mkPtr 66048 (Obj 65536))
+    (mkPtr 65536 (Obj 65536)).
+Proof. intros (_ & Hr & _). discriminate Hr. Qed.
+
+(** The full aligned word must fit the cell's object. *)
+Example exposed_short_cell :
+  ~ exposed_pointer_cell
+    (mkMem (m_bytes (snd exposed_image)) [mkRegion 66048 66055 GlobalData Live]
+      (m_aux (snd exposed_image))) (stdout_cell exposed_cells) (mkPtr 65536 (Obj 65536)).
+Proof. intros (_ & Hr & _). discriminate Hr. Qed.
+
+(** Sufficient raw extent does not waive pointer-load alignment. *)
+Example exposed_unaligned_cell :
+  ~ exposed_pointer_cell
+    (mkMem (m_bytes (snd exposed_image)) [mkRegion 66048 66064 GlobalData Live]
+      (m_aux (snd exposed_image))) (mkPtr 66049 (Obj 66048)) (mkPtr 65536 (Obj 65536)).
+Proof. intros (_ & Hr & _). discriminate Hr. Qed.
