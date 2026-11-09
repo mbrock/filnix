@@ -759,6 +759,17 @@ packages are still landing.
   for the va snapshot's allocation, ownership of the VaArg cursor,
   and the branches over 0 to 10 authors.
 
+- [HelloClose.v](../rocq/theories/HelloClose.v) (2a1f328) proves
+  `close_stream` and `close_stdout`. `close_stream` consumes a usable
+  stream, follows the pending, error and fclose decisions (EBADF
+  included), and returns 0 or EOF, handing back the four errno bytes.
+  `close_stdout` owns its statics: `file_name` stays null and
+  `ignore_EPIPE` zero, so the `quotearg_colon` branch is dead and no
+  quotearg triple is needed. It closes stdout, then stderr. A stdout
+  failure calls `error` with status 0, then `_exit`; a stderr failure
+  calls `_exit` directly. Wiring it as exit's callback, and `_exit`
+  over the exact machine, remain integration work.
+
 Conventions the pieces share:
 - Module statics and the cells the program reads or writes directly
   are owned pieces passed into the calls that write them, never facts
@@ -773,7 +784,9 @@ Conventions the pieces share:
   - `wp_strncmp_lengths`;
   - `heap_exact_adequacy` and the Linked transports;
   - `rule_va_args` and `wp_va_args`;
-  - `wp_world_let`, a load whose value wi fixes.
+  - `wp_world_let`, a load whose value wi fixes;
+  - `wp_close_errno`, `wp_close_load_w`, `wp_close_contract` and
+    `wp_close_stream_pointer`.
 
 ## Open questions for mbrock
 
