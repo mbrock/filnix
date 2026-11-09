@@ -1616,6 +1616,48 @@ establish them. Do not widen writable roots to conceal those rewrites.
 The next separate slices are copying and fresh-allocation contracts, with
 partial-pointer smidgens/boxing requiring their own reviewed relation.
 
+### Campaign 4 milestone 4z: snapshot memcpy, mempcpy and memmove
+
+The next additive contracts share one snapshot byte/auxiliary relation.
+`memcpy_contract` and `mempcpy_contract` require byte nonoverlap;
+`memmove_contract` permits overlap in either direction. All use independent
+readable source and writable destination authority, canonical size_t, and
+positive-count alignment of both object bases. Operand addresses can be
+unaligned. Empty calls conservatively require live capabilities, as before.
+memcpy and memmove return the exact destination; mempcpy returns its
+mathematical endpoint with the same capability. Readiness proves that
+endpoint in-object or one-past and below the address-space wrap boundary.
+
+Each destination byte comes from the original source snapshot. Each touched
+auxiliary word retains the original translated source capability only when
+the entire word was copied and its source is aligned; partial endpoint
+smidgens and out-of-phase words become CNone. Thus fragments do not compose
+authority. Even a partial self-copy may clear metadata without changing
+address bits. Byte-disjoint adjacent ranges may share a touched auxiliary
+word, so hull disjointness is not required. An original complete-slot read
+proves capability availability; no new capability constructor, authority
+rule or runtime axiom is needed. The destination-only permission hull and
+exact prefix frame are those of the preceding memset milestone.
+
+Any specified result is proved a local effect, and independent inputs
+construct an actual invocation. Extraction constrains every completion.
+Ready positive fixtures and public controls distinguish both overlap
+directions, exact Ro/Obj propagation, partial/self/out-of-phase copies,
+CNone overwrites, adjacent byte ranges, neighbours, zero count and the
+one-past mempcpy return. Native pointer-array moves, unchanged-bit fragment
+copies and byte-buffer phase controls supply finite evidence.
+
+The reviewed partial-word relation does not establish universal native
+satisfaction. Even small copies may allocate auxiliary storage, exit,
+collect and reload a stored capability. Internal metadata-allocation
+failure, those collector prefixes, and lower/box representation
+correspondence remain open; this logical contract admits only its selected
+returning effects. Do not model that storage as caller-owned allocation.
+String copies must not inherit this auxiliary guarantee merely because
+their byte result is a terminated copy: the selected implementation's stores
+need a separate specification. Fresh allocation is next for the Iris
+slot-buffer proof, followed by that string-copy and strdup boundary.
+
 ### The next milestones, in order
 
 1. **Close `hi.c`.** Install concrete startup/stdio representation and

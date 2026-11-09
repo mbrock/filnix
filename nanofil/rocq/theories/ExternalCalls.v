@@ -1206,6 +1206,182 @@ Definition memset_contract (world : Type) : contract world :=
     (fun _ => False)
     (fun why => In why [NullCapability; OutOfBounds; Readonly; ArgumentSize; ReturnSize]).
 
+(** ## Snapshot copies and partial pointer words *)
+
+(** A complete destination word maps to a complete aligned source
+    word. Partial smidgens and out-of-phase transfers do not compose
+    pointer authority. Slot alignment itself comes from the touched set. *)
+Definition copy_full_slot (d s : ptr) (n a : Z) : bool :=
+  (ptr_addr d <=? a) && (a + 8 <=? ptr_addr d + n) &&
+  ((ptr_addr s + (a - ptr_addr d)) mod 8 =? 0).
+
+(** The exact capability for a touched destination slot, from the
+    original memory snapshot. A partial or out-of-phase word is cleared.
+    Native lower/box correspondence remains a representation obligation. *)
+Definition copy_slot (m : mem) (d s : ptr) (n a : Z) : cap :=
+  if copy_full_slot d s n a then m_aux m (ptr_addr s + (a - ptr_addr d)) else CNone.
+
+(** Both operands have independent live authority; positive counts
+    require aligned object bases, not aligned operand addresses. memcpy
+    and mempcpy require disjoint byte ranges; memmove permits overlap.
+    Adjacent byte intervals may share a partial auxiliary word. *)
+Definition copy_domain (overlap : bool) (m : mem) (d s : ptr) (n : Z) : Prop :=
+  memset_domain m d 0 n /\ readable_bytes m s n /\
+  (n = 0 \/ exists base, (ptr_cap s = Obj base \/ ptr_cap s = Ro base) /\ base mod 8 = 0) /\
+  (overlap = true \/ n = 0 \/ ptr_addr d + n <= ptr_addr s \/ ptr_addr s + n <= ptr_addr d).
+
+(** Read authority for each complete aligned source word follows
+    from full-span input readability, not from an auxiliary-cell lookup. *)
+Lemma readable_bytes_slot : forall m p n a,
+  readable_bytes m p n -> ptr_addr p <= a -> a + 8 <= ptr_addr p + n -> a mod 8 = 0 ->
+  access_res m a (ptr_cap p) 8 Read 8 = Some ok.
+Proof.
+  intros m p n a (_ & (base & reg & Hcap & Hr & Hl) & Ha & _) Hlo Hhi Halign.
+  unfold access_res, cap_access_res in Ha |- *.
+  destruct Hcap as [Hcap|Hcap]; rewrite Hcap in Ha |- *; rewrite Hr in Ha |- *.
+  all: destruct ((base <=? ptr_addr p) && (ptr_addr p + n <=? r_end reg)) eqn:Hbounds;
+    try discriminate.
+  all: apply andb_true_iff in Hbounds as [Hb He]; apply Z.leb_le in Hb; apply Z.leb_le in He.
+  all: assert ((base <=? a) = true) as Hstart by (apply Z.leb_le; lia).
+  all: assert ((a + 8 <=? r_end reg) = true) as Hend by (apply Z.leb_le; lia).
+  all: rewrite Hstart, Hend; simpl; unfold aligned_res; rewrite Halign; reflexivity.
+Qed.
+
+(** A specified copied capability is available through a complete
+    original source slot, or is CNone. Destination authority is separate. *)
+Lemma copy_slot_authority : forall m d s n a,
+  readable_bytes m s n ->
+  available_cap [mkSpan s n; mkSpan d 0] [] m (copy_slot m d s n a).
+Proof.
+  intros m d s n a Hread. unfold copy_slot. destruct (copy_full_slot d s n a) eqn:Hfull.
+  - unfold copy_full_slot in Hfull. repeat rewrite andb_true_iff in Hfull.
+    destruct Hfull as [[Hlo Hhi] Halign]. apply Z.leb_le in Hlo. apply Z.leb_le in Hhi.
+    apply Z.eqb_eq in Halign. right. right. left.
+    exists (mkSpan s n), (ptr_addr s + (a - ptr_addr d)).
+    split; [left; reflexivity|]. split.
+    + unfold span_contains. simpl. lia.
+    + split; [simpl; lia|]. split; [|reflexivity].
+      apply (readable_bytes_slot m s n); try assumption; lia.
+  - left. reflexivity.
+Qed.
+
+(** Snapshot bytes and exact touched-slot capabilities, with the
+    independent destination-only frame shared with byte fills. *)
+Definition copy_result (m : mem) (d s : ptr) (n : Z) (m' : mem) : Prop :=
+  memset_frame m d n m' /\
+  (forall a, span_contains (mkSpan d n) a ->
+    m_bytes m' a = m_bytes m (ptr_addr s + (a - ptr_addr d))) /\
+  (forall a, memset_touched d n a = true -> m_aux m' a = copy_slot m d s n a).
+
+(** Observable cells of any completed snapshot, not only its chosen
+    witness. Outside-range byte and auxiliary frames are independent. *)
+Lemma copy_result_cells : forall m d s n m' a,
+  copy_result m d s n m' ->
+  m_bytes m' a = (if (ptr_addr d <=? a) && (a <? ptr_addr d + n)
+    then m_bytes m (ptr_addr s + (a - ptr_addr d)) else m_bytes m a) /\
+  m_aux m' a = (if memset_touched d n a then copy_slot m d s n a else m_aux m a).
+Proof.
+  intros m d s n m' a ((Hr & Hb & Ha) & Hbytes & Hslots). split.
+  - destruct ((ptr_addr d <=? a) && (a <? ptr_addr d + n)) eqn:H.
+    + apply Hbytes. apply andb_true_iff in H as [Hlo Hhi].
+      apply Z.leb_le in Hlo. apply Z.ltb_lt in Hhi. unfold span_contains. simpl. lia.
+    + apply Hb. intros Hrange. unfold span_contains in Hrange. simpl in Hrange.
+      apply andb_false_iff in H as [H|H]; [apply Z.leb_gt in H|apply Z.ltb_ge in H]; lia.
+  - destruct (memset_touched d n a) eqn:H; [apply Hslots|apply Ha]; exact H.
+Qed.
+
+(** One logical snapshot witness, including for overlapping moves.
+    Empty copies return the original memory; self-copies of partial
+    words still clear metadata and are not a blanket no-op. *)
+Definition copy_memory (m : mem) (d s : ptr) (n : Z) : mem :=
+  if n =? 0 then m else
+  mkMem (fun a => if (ptr_addr d <=? a) && (a <? ptr_addr d + n)
+    then m_bytes m (ptr_addr s + (a - ptr_addr d)) else m_bytes m a)
+    (m_regions m) (fun a => if memset_touched d n a then copy_slot m d s n a else m_aux m a).
+
+(** The snapshot witness satisfies the exact copy relation, without
+    any claim that native libc terminates or realizes every prefix. *)
+Lemma copy_memory_result : forall m d s n, copy_result m d s n (copy_memory m d s n).
+Proof.
+  intros m d s n. unfold copy_memory. destruct (n =? 0) eqn:E.
+  - apply Z.eqb_eq in E. subst. split; [repeat split; reflexivity|]. split.
+    + intros a H. unfold span_contains in H. simpl in H. lia.
+    + intros a H. apply memset_touched_spec in H. lia.
+  - split.
+    + split; [reflexivity|]. split.
+      * intros a H. simpl. destruct ((ptr_addr d <=? a) && (a <? ptr_addr d + n)) eqn:Ha;
+          [|reflexivity]. exfalso. apply H. unfold span_contains. simpl.
+        apply andb_true_iff in Ha as [Hlo Hhi]. apply Z.leb_le in Hlo. apply Z.ltb_lt in Hhi. lia.
+      * intros a H. simpl. rewrite H. reflexivity.
+    + split.
+      * intros a H. unfold span_contains in H. simpl in H. simpl.
+        assert ((ptr_addr d <=? a) && (a <? ptr_addr d + n) = true) as Ha.
+        { apply andb_true_iff. split; [apply Z.leb_le|apply Z.ltb_lt]; lia. }
+        rewrite Ha. reflexivity.
+      * intros a H. simpl. rewrite H. reflexivity.
+Qed.
+
+(** Every specified snapshot result is an authorized local effect.
+    Only destination cells change; imported caps come from original
+    complete source words, never from fragments or the result memory. *)
+Lemma copy_result_local : forall overlap m d s n m',
+  copy_domain overlap m d s n -> copy_result m d s n m' ->
+  local_effect [mkSpan s n; mkSpan d 0] [memset_root d n] [] [] m m'.
+Proof.
+  intros overlap m d s n m' (Hd & Hs & _) ((Hr & Hb & Ha) & Hbytes & Hslots).
+  pose proof (memset_root_writable _ _ _ _ Hd) as Hroot.
+  assert (Hwrite : forall a, span_contains (memset_root d n) a ->
+    write_authority [memset_root d n] [] m a).
+  { intros a H. left. exists (memset_root d n). split; [left; reflexivity|]. auto. }
+  split; [apply ids_same; exact Hr|]. split.
+  - intros b reg Hreg. rewrite Hr in Hreg. exists reg. auto.
+  - split.
+    + intros a Hout. split.
+      * apply Hb. intros H. apply Hout, Hwrite. apply memset_byte_in_root. exact H.
+      * apply Ha. destruct (memset_touched d n a) eqn:H; [|reflexivity].
+        exfalso. apply Hout, Hwrite. apply memset_aux_in_root. exact H.
+    + intros a. destruct (memset_touched d n a) eqn:H.
+      * right. rewrite (Hslots a H). apply copy_slot_authority. exact Hs.
+      * left. apply Ha. exact H.
+Qed.
+
+(** The shared byte-copy ABI: destination, source, count, with a
+    discarded result or a pointer result. *)
+Definition copy_abi (r : call_result) (args : list arg) : Prop :=
+  (r = CVoid \/ exists d, r = CResult d P) /\
+  exists d s n, args = [Arg P d; Arg P s; Arg L n].
+
+(** Copy APIs differ only in overlap admission and destination/end
+    return. The end retains the destination's exact capability. *)
+Definition copy_return (end_return : bool) (d : ptr) (n : Z) : ptr :=
+  if end_return then mkPtr (ptr_addr d + n) (ptr_cap d) else d.
+
+(** Conditional logical byte-copy contract. Metadata allocation can
+    fail or exit/re-enter even for small native copies: resource and
+    collector prefix coverage, and lower/box correspondence, remain
+    uninstantiated. No application-visible allocation is invented for
+    that internal storage. The shared relation includes partial words. *)
+Definition copy_contract (overlap end_return : bool) (world : Type) : contract world :=
+  mkContract world (RClass P) copy_abi
+    (fun xs m _ => exists d s n, xs = [WPtr d; WPtr s; WInt n] /\ copy_domain overlap m d s n)
+    (fun xs _ _ => match xs with [WPtr d; WPtr s; WInt n] => [mkSpan s n; mkSpan d 0] | _ => [] end)
+    (fun xs _ _ => match xs with [WPtr d; WPtr _; WInt n] => [memset_root d n] | _ => [] end)
+    (fun _ _ _ => []) (fun _ _ _ _ _ => False)
+    (fun xs m w born trace m' w' => born = [] /\ trace = [] /\ w' = w /\
+      exists d s n, xs = [WPtr d; WPtr s; WInt n] /\ memset_frame m d n m')
+    (fun xs m w born trace ending m' w' => born = [] /\ trace = [] /\ w' = w /\
+      exists d s n, xs = [WPtr d; WPtr s; WInt n] /\ copy_result m d s n m' /\
+        ending = CallReturn [WPtr (copy_return end_return d n)])
+    (fun _ => False)
+    (fun why => In why [NullCapability; OutOfBounds; Readonly; ArgumentSize; ReturnSize]).
+
+(** memcpy returns its destination and requires nonoverlapping bytes. *)
+Definition memcpy_contract := copy_contract false false.
+(** mempcpy has the same effect but returns the destination endpoint. *)
+Definition mempcpy_contract := copy_contract false true.
+(** memmove uses the same original snapshot with overlapping ranges. *)
+Definition memmove_contract := copy_contract true false.
+
 (** ## Memory paths over any runtime *)
 
 (** The call relations over any [[runtime]] R, whose allocator answers
@@ -1865,6 +2041,78 @@ Proof.
   intros a. split.
   - apply Hb. unfold span_contains. simpl. lia.
   - apply Ha. reflexivity.
+Qed.
+
+(** Any permitted snapshot result constructs a real returning call,
+    using original source authority even when byte ranges overlap. *)
+Theorem copy_completed : forall overlap end_return world r args d src n s m m' (w : world),
+  copy_abi r args -> copy_domain overlap m d src n -> copy_result m d src n m' ->
+  invoke (copy_contract overlap end_return world) r args [WPtr d; WPtr src; WInt n] s m w
+    [] (CallReturn [WPtr (copy_return end_return d n)]) s m' w.
+Proof.
+  intros overlap end_return world r args d src n s m m' w Habi Hdomain Hresult.
+  eapply invoke_normal with (born := []).
+  - exact Habi.
+  - exists d, src, n. auto.
+  - split.
+    + eapply effects_local; [eapply copy_result_local; eauto|constructor].
+    + split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+      exists d, src, n. split; [reflexivity|exact (proj1 Hresult)].
+  - split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|]. exists d, src, n. auto.
+  - intros why Hbad. discriminate.
+  - intros values Heq. injection Heq as <-. split.
+    + exists (WPtr (copy_return end_return d n)). split; reflexivity.
+    + constructor; [|constructor]. unfold copy_return. destruct end_return; simpl.
+      all: right; left; exists (mkSpan d 0); split; [right; left; reflexivity|reflexivity].
+  - intros status Hbad. discriminate.
+Qed.
+
+(** Independent inputs construct a snapshot invocation. This proves
+    nonvacuity, not native success, resource coverage or termination. *)
+Theorem copy_admitted : forall overlap end_return world r args d src n s m (w : world),
+  copy_abi r args -> copy_domain overlap m d src n ->
+  invoke (copy_contract overlap end_return world) r args [WPtr d; WPtr src; WInt n] s m w
+    [] (CallReturn [WPtr (copy_return end_return d n)]) s (copy_memory m d src n) w.
+Proof. intros. apply copy_completed; [assumption|assumption|apply copy_memory_result]. Qed.
+
+(** Every completion retains the admitted operands and exact snapshot
+    result, including the API's chosen destination/end provenance. *)
+Theorem copy_invocation : forall overlap end_return world r args xs s m (w : world)
+    trace ending s' m' w',
+  invoke (copy_contract overlap end_return world) r args xs s m w trace ending s' m' w' ->
+  trace = [] /\ w' = w /\ exists d src n, xs = [WPtr d; WPtr src; WInt n] /\
+    copy_domain overlap m d src n /\ copy_result m d src n m' /\
+    ending = CallReturn [WPtr (copy_return end_return d n)].
+Proof.
+  intros overlap end_return world r args xs s m w trace ending s' m' w' Hcall.
+  inversion Hcall; subst.
+  - match goal with
+    | Hpost : contract_post _ _ _ _ _ _ _ _ _, Hpre : contract_pre _ _ _ _ |- _ =>
+      destruct Hpost as (_ & Htrace & Hworld & d & src & n & Hxs & Hresult & Hending);
+      destruct Hpre as (q & v & size & Hxs' & Hdomain)
+    end.
+    rewrite Hxs in Hxs'. injection Hxs' as <- <- <-.
+    split; [exact Htrace|]. split; [exact Hworld|]. exists d, src, n. auto.
+  - contradiction.
+Qed.
+
+(** In a ready memory the mathematical destination endpoint stays in
+    its object or one-past, below 2^64. No modular wrap or extra bound
+    axiom is needed for mempcpy's result. *)
+Theorem copy_endpoint : forall overlap s m d src n,
+  R.ready s m -> copy_domain overlap m d src n ->
+  exists base reg, ptr_cap d = Obj base /\ object_region base (m_regions m) = Some reg /\
+    base <= ptr_addr d /\ ptr_addr d + n <= r_end reg /\ 0 <= ptr_addr d + n < 2 ^ 64.
+Proof.
+  intros overlap s m d src n Hready ((Hc & Hn & Hw & _) & _).
+  destruct Hw as (_ & base & reg & Hcap & Hr & Hl & Ha). cbn in Hcap.
+  change (access_res m (ptr_addr d) (Obj base) n Write 1 = Some ok) in Ha.
+  unfold access_res, cap_access_res in Ha. rewrite Hr in Ha.
+  destruct ((base <=? ptr_addr d) && (ptr_addr d + n <=? r_end reg)) eqn:E;
+    [|discriminate].
+  apply andb_true_iff in E as [Hlo Hhi]. apply Z.leb_le in Hlo. apply Z.leb_le in Hhi.
+  destruct (R.address_space _ _ Hready base reg Hr) as (Hb & He).
+  exists base, reg. split; [exact Hcap|]. split; [exact Hr|]. repeat split; try assumption; lia.
 Qed.
 
 End ExternalCalls.
@@ -3739,4 +3987,171 @@ Proof.
     injection Hargs as <- <- <-. lia.
   - split; [intros [[H|(d & H)] _]; discriminate H|].
     repeat split; intros [_ (p & c & n & Hargs)]; discriminate Hargs.
+Qed.
+
+(** ## Snapshot-copy controls *)
+
+(** Finite patterned bytes and distinct Ro/Obj stored capabilities.
+    The odd-sized destination permits an unaligned one-past endpoint. *)
+Definition copy_fixture : mem :=
+  mkMem (fun a => if (1024 <=? a) && (a <? 1053) then a mod 256 else 0)
+    (m_regions memset_fixture)
+    (fun a => if a =? 1024 then Ro 2048 else if a =? 1032 then Obj 2048 else CNone).
+
+(** This positive fixture is genuinely ready, so the generic effect
+    preservation theorem has a concrete ready-start instance. *)
+Example copy_fixture_ready : InterpRuntime.ready InterpRuntime.start copy_fixture.
+Proof.
+  split; [unfold InterpRuntime.start, InterpRuntime.address_end; lia|]. split.
+  - intros b reg Hr. cbn -[Z.eqb] in Hr. destruct (1024 =? b) eqn:Hb.
+    + apply Z.eqb_eq in Hb. injection Hr as <-. simpl.
+      unfold InterpRuntime.start. repeat split; try discriminate; lia.
+    + destruct (2048 =? b) eqn:Hb'; [|discriminate].
+      apply Z.eqb_eq in Hb'. injection Hr as <-. simpl.
+      unfold InterpRuntime.start. repeat split; try discriminate; lia.
+  - intros a Ha. unfold InterpRuntime.start in Ha.
+    change ((if (1024 <=? a) && (a <? 1053) then a mod 256 else 0) = 0 /\
+      (if a =? 1024 then Ro 2048 else if a =? 1032 then Obj 2048 else CNone) = CNone).
+    assert ((a <? 1053) = false) as He by (apply Z.ltb_ge; lia).
+    assert ((a =? 1024) = false) as H1 by (apply Z.eqb_neq; lia).
+    assert ((a =? 1032) = false) as H2 by (apply Z.eqb_neq; lia).
+    rewrite He, H1, H2, andb_false_r. split; reflexivity.
+Qed.
+
+(** Input-only fixture authority for byte-disjoint or overlapping
+    calls. A read-only source alias never licenses destination writes. *)
+Lemma copy_fixture_domain : forall overlap d src n,
+  0 <= d -> 0 <= src -> 0 <= n -> d + n <= 29 -> src + n <= 29 ->
+  (overlap = true \/ n = 0 \/ d + n <= src \/ src + n <= d) ->
+  copy_domain overlap copy_fixture (mkPtr (1024 + d) (Obj 1024))
+    (mkPtr (1024 + src) (Ro 1024)) n.
+Proof.
+  intros overlap d src n Hd Hsrc Hn Hdend Hsend Hsep. split.
+  - change (memset_domain memset_fixture (mkPtr (1024 + d) (Obj 1024)) 0 n).
+    apply memset_fixture_domain; try assumption. change (0 <= 0 < 4294967296). lia.
+  - split.
+    + split; [change (0 <= n < 18446744073709551616); lia|]. split.
+      * exists 1024, (mkRegion 1024 1053 Heap Live).
+        split; [right; reflexivity|]. repeat split; reflexivity.
+      * split.
+        -- change (Some (if (1024 <=? 1024 + src) && (1024 + src + n <=? 1053)
+             then aligned_res (1024 + src) 1 else RTrap OutOfBounds) = Some ok).
+           assert ((1024 <=? 1024 + src) = true) as Hlo by (apply Z.leb_le; lia).
+           assert ((1024 + src + n <=? 1053) = true) as Hhi by (apply Z.leb_le; lia).
+           rewrite Hlo, Hhi. unfold aligned_res. rewrite Z.mod_1_r. reflexivity.
+        -- intros i Hi.
+           change (0 <= (if (1024 <=? 1024 + src + i) && (1024 + src + i <? 1053)
+             then (1024 + src + i) mod 256 else 0) < 256).
+           destruct ((1024 <=? 1024 + src + i) && (1024 + src + i <? 1053));
+             [apply Z.mod_pos_bound|]; lia.
+    + split.
+      * right. exists 1024. split; [right; reflexivity|reflexivity].
+      * change (overlap = true \/ n = 0 \/ 1024 + d + n <= 1024 + src \/
+          1024 + src + n <= 1024 + d).
+        destruct Hsep as [H|[H|[H|H]]]; [left|right; left|right; right; left|right; right; right];
+          try assumption; lia.
+Qed.
+
+(** Actual public calls cover full and partial words, both overlap
+    directions, self moves, out-of-phase moves, adjacent memcpy ranges,
+    CNone source metadata, and an exact one-past mempcpy return. *)
+Example copy_boundary_calls : forall overlap end_return d src n,
+  In (overlap, end_return, d, src, n)
+    [(false, false, 16, 0, 8); (false, true, 21, 0, 8);
+     (true, false, 8, 0, 16); (true, false, 0, 8, 16);
+     (false, false, 1, 2, 1); (true, false, 1, 1, 1);
+     (true, false, 0, 0, 8); (true, false, 9, 1, 16);
+     (true, false, 0, 1, 16); (false, false, 0, 16, 8); (false, true, 29, 29, 0)] ->
+  InterpExternal.invoke (copy_contract overlap end_return unit) (CResult (TAtom "copied") P)
+    [Arg P (Const 0); Arg P (Const 0); Arg L (Const n)]
+    [WPtr (mkPtr (1024 + d) (Obj 1024)); WPtr (mkPtr (1024 + src) (Ro 1024)); WInt n]
+    InterpRuntime.start copy_fixture tt []
+    (CallReturn [WPtr (copy_return end_return (mkPtr (1024 + d) (Obj 1024)) n)])
+    InterpRuntime.start (copy_memory copy_fixture (mkPtr (1024 + d) (Obj 1024))
+      (mkPtr (1024 + src) (Ro 1024)) n) tt.
+Proof.
+  intros overlap end_return d src n Hcases. apply InterpExternal.copy_admitted.
+  - split; [right; eexists; reflexivity|]. eexists _, _, _. reflexivity.
+  - apply copy_fixture_domain; destruct Hcases as [H|[H|[H|[H|[H|[H|[H|[H|[H|[H|[H|[]]]]]]]]]]]];
+      injection H as <- <- <- <- <-; vm_compute; intuition congruence.
+Qed.
+
+(** Hand-derived cells distinguish original snapshots, exact Ro/Obj
+    retention, smidgen and phase clearing, self-copy effects, empty
+    copies and neighbours. They constrain every public completion. *)
+Example copy_completion_cells : forall d src n a byte capability trace ending s' m' w',
+  In (d, src, n, a, byte, capability)
+    [(1040, 1024, 8, 1040, 0, Ro 2048);
+     (1032, 1024, 16, 1040, 8, Obj 2048);
+     (1024, 1032, 16, 1024, 8, Obj 2048);
+     (1024, 1032, 16, 1032, 16, CNone);
+     (1033, 1025, 16, 1032, 8, CNone);
+     (1033, 1025, 16, 1040, 8, Obj 2048);
+     (1024, 1025, 16, 1024, 1, CNone);
+     (1024, 1040, 8, 1024, 16, CNone);
+     (1025, 1025, 1, 1024, 0, CNone);
+     (1024, 1024, 8, 1024, 0, Ro 2048);
+     (1025, 1026, 1, 1024, 0, CNone);
+     (1053, 1053, 0, 1024, 0, Ro 2048)] ->
+  InterpExternal.invoke (memmove_contract unit) CVoid
+    [Arg P (Const 0); Arg P (Const 0); Arg L (Const n)]
+    [WPtr (mkPtr d (Obj 1024)); WPtr (mkPtr src (Ro 1024)); WInt n]
+    InterpRuntime.start copy_fixture tt trace ending s' m' w' ->
+  m_bytes m' a = byte /\ m_aux m' a = capability.
+Proof.
+  intros d src n a byte capability trace ending s' m' w' Hcases Hcall.
+  destruct (InterpExternal.copy_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as (_ & _ & dst & source & count & Hargs & Hdomain & Hresult & Hend).
+  injection Hargs as <- <- <-.
+  destruct (copy_result_cells _ _ _ _ _ a Hresult) as [Hb Ha]. rewrite Hb, Ha.
+  destruct Hcases as [H|[H|[H|[H|[H|[H|[H|[H|[H|[H|[H|[H|[]]]]]]]]]]]]];
+    injection H as <- <- <- <- <- <-; split; reflexivity.
+Qed.
+
+(** Positive overlapping bytes cannot be used under memcpy merely
+    because the shared snapshot relation also supports memmove. *)
+Example memcpy_overlap_rejected :
+  ~ contract_pre (memcpy_contract unit)
+    [WPtr (mkPtr 1032 (Obj 1024)); WPtr (mkPtr 1024 (Ro 1024)); WInt 16] copy_fixture tt.
+Proof.
+  intros (d & src & n & Hargs & _ & _ & _ & Hsep).
+  injection Hargs as <- <- <-. simpl in Hsep. destruct Hsep as [H|[H|[H|H]]]; try discriminate; lia.
+Qed.
+
+(** The end-return expectation is a hand-written one-past pointer,
+    not computed from the API's own return helper. *)
+Example mempcpy_exact_return : forall trace ending s' m' w',
+  InterpExternal.invoke (mempcpy_contract unit) CVoid
+    [Arg P (Const 0); Arg P (Const 0); Arg L (Const 8)]
+    [WPtr (mkPtr 1045 (Obj 1024)); WPtr (mkPtr 1024 (Ro 1024)); WInt 8]
+    InterpRuntime.start copy_fixture tt trace ending s' m' w' ->
+  ending = CallReturn [WPtr (mkPtr 1053 (Obj 1024))].
+Proof.
+  intros trace ending s' m' w' Hcall.
+  destruct (InterpExternal.copy_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as (_ & _ & d & src & n & Hargs & Hdomain & Hresult & Hend).
+  injection Hargs as <- <- <-. exact Hend.
+Qed.
+
+(** Destination writes require Obj independently of readable source
+    authority. Null sources and incorrect P/P/L ABI shapes fail too. *)
+Example copy_bad_domains_and_abi :
+  (forall n, ~ contract_pre (memmove_contract unit)
+    [WPtr (mkPtr 1024 (Ro 1024)); WPtr (mkPtr 1024 (Ro 1024)); WInt n] copy_fixture tt) /\
+  (forall n, ~ contract_pre (memmove_contract unit)
+    [WPtr (mkPtr 1024 (Obj 1024)); WPtr (mkPtr 0 CNone); WInt n] copy_fixture tt) /\
+  ~ copy_abi (CResult (TAtom "bad") L) [Arg P (Const 0); Arg P (Const 0); Arg L (Const 8)] /\
+  ~ copy_abi CVoid [Arg P (Const 0); Arg W (Const 0); Arg L (Const 8)] /\
+  ~ copy_abi CVoid [Arg P (Const 0); Arg P (Const 0); Arg W (Const 8)] /\
+  ~ copy_abi CVoid [Arg P (Const 0); Arg P (Const 0)] /\
+  ~ copy_abi CVoid [Arg P (Const 0); Arg P (Const 0); Arg L (Const 8); Arg L (Const 8)].
+Proof.
+  split.
+  - intros n (d & src & count & Hargs & (_ & _ & Hw & _) & _).
+    injection Hargs as <- <- <-. destruct Hw as (_ & base & reg & Hcap & _). discriminate Hcap.
+  - split.
+    + intros n (d & src & count & Hargs & _ & (_ & (base & reg & Hcap & _) & _) & _).
+      injection Hargs as <- <- <-. destruct Hcap as [H|H]; discriminate.
+    + split; [intros [[H|(d & H)] _]; discriminate H|].
+      repeat split; intros [_ (d & src & n & Hargs)]; discriminate Hargs.
 Qed.

@@ -295,6 +295,27 @@ paths contain internal filc_exit/filc_enter safepoints, where the collector
 may rewrite unrelated stored capabilities to freed objects; their relation
 to this exact logical frame remains an explicit native-coverage obligation.
 
+The additive Rocq memcpy/mempcpy/memmove contracts share original-snapshot
+bytes and auxiliary words. A complete destination word imports precisely
+the original translated source slot when in phase; partial smidgens and
+out-of-phase transfers clear authority. This includes partial self-copies;
+there is no general self-copy no-op law. Byte nonoverlap is required for
+memcpy/mempcpy, not memmove, and does not require disjoint auxiliary hulls.
+The source span licenses only complete-slot reads, never source writes;
+the destination pointer supplies its own return authority. Positive counts
+require aligned object bases but permit unaligned starts. Native lower/box
+correspondence is an explicit representation obligation, not an extra
+capability constructor or permission to reassemble pointer fragments.
+Ready fixtures and arbitrary-completion controls distinguish overlap
+directions, Ro/Obj preservation, CNone overwrites, partial/self/phase effects,
+neighbours, adjacent bytes, zero and a one-past mempcpy return. Native rows
+exercise pointer-array overlaps, an end-return copy and unchanged-bit
+fragment/phase copies that lose usable authority. Internal auxiliary
+allocation may fail or exit/re-enter even for small counts, so universal
+resource and collector-prefix coverage remains uninstantiated. These are
+logical effect/nonvacuity results, not native execution or termination
+proofs. String-copy auxiliary effects require separate source evidence.
+
 The Rocq strlen contract requires a live object capability through the
 first NUL, even for an empty string, and returns its exact offset as a
 canonical size_t. It frames the entire memory and world. Its read-locality

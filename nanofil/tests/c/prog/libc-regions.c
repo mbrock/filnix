@@ -29,6 +29,22 @@ static void cleared_capability(void) {
     volatile char c = *p;
     (void)c;
 }
+static void copied_fragment(void) {
+    char *source = "abc", *destination = source;
+    unsigned char *src = (unsigned char *)&source + sizeof source - 1;
+    unsigned char *dst = (unsigned char *)&destination + sizeof destination - 1;
+    memcpy(dst, src, 1); // unchanged address bits, but no complete pointer word
+    volatile char c = *destination;
+    (void)c;
+}
+static void copied_out_of_phase(void) {
+    char *source = "abc", *destination = source;
+    _Alignas(16) unsigned char bytes[16];
+    memcpy(bytes + 1, &source, sizeof source);
+    memcpy(&destination, bytes + 1, sizeof destination);
+    volatile char c = *destination;
+    (void)c;
+}
 int main(void) {
     char s[3] = {'x', 'y', 'z'}, d[5] = {'!', '!', '!', '!', '!'};
     answer("bounded scans need no NUL", strnlen(s, 3) == 3 && strncmp(s, "xyq", 2) == 0 && memchr(s, 'z', 3) == s + 2);
@@ -88,10 +104,18 @@ int main(void) {
     char *copy = 0;
     memcpy(&copy, &p, sizeof p);
     answer("memcpy preserves stored pointer authority", copy == p && copy[2] == 'a');
+    char *moving[4] = {"ab", "cd", "ef", "gh"};
+    answer("overlapping memmove snapshots pointers backward", memmove(moving + 1, moving, 3 * sizeof *moving) == moving + 1 && moving[0][1] == 'b' && moving[1][1] == 'b' && moving[2][1] == 'd' && moving[3][1] == 'f');
+    answer("overlapping memmove snapshots pointers forward", memmove(moving, moving + 1, 3 * sizeof *moving) == moving && moving[0][1] == 'b' && moving[1][1] == 'd' && moving[2][1] == 'f' && moving[3][1] == 'f');
+    char *end_slots[3] = {0, 0, "keep"};
+    answer("mempcpy returns exact end and frames next pointer", mempcpy(end_slots, moving, 2 * sizeof *moving) == end_slots + 2 && end_slots[0][1] == 'b' && end_slots[1][1] == 'd' && end_slots[2][1] == 'e');
+    answer("empty and complete self moves keep authority", memmove(moving, moving, sizeof *moving) == moving && memmove(moving + 4, moving + 4, 0) == moving + 4 && moving[0][1] == 'b');
     free(p);
     answer("unbounded scan needs in-object NUL", libc_traps(missing_nul));
     answer("copy needs entire writable destination", libc_traps(short_destination));
     answer("search result dies with source", libc_traps(freed_result));
     answer("memset clears touched word authority", libc_traps(cleared_capability));
+    answer("partial pointer copy clears authority", libc_traps(copied_fragment));
+    answer("out-of-phase pointer bytes do not compose authority", libc_traps(copied_out_of_phase));
     return 0;
 }
