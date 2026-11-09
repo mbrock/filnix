@@ -26,6 +26,7 @@
 :- use_module(library(assoc)).
 :- use_module(library(ordsets)).
 :- use_module(library(pairs)).
+:- use_module(list_partition).
 :- use_module(cfg).
 
 %! temp_slots(+Params, +Blocks, +Temps, -Aliases, -ScalarCount, -PtrCount, -WideCount) is det.

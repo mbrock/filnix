@@ -76,6 +76,7 @@
 :- use_module(library(ordsets)).
 :- use_module(library(pairs)).
 :- use_module(library(dcgs)).
+:- use_module(list_partition).
 :- use_module(ir).
 :- use_module(cfg).
 :- use_module(escape).

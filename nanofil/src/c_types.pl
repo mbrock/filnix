@@ -86,6 +86,7 @@
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
+:- use_module(list_partition).
 :- use_module(ieee).
 
 % Documentation is a relation of the module, doc(Head, Det, Props)

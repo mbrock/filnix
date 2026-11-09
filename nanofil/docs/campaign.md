@@ -231,8 +231,9 @@ this semantic work, nor is an end-to-end compiler proof.
   copies of a rule changes what nanofil accepts or computes, compare
   with clang, add a test that fails before the change and passes after,
   and say so in the commit.
-- **SWI for now.** Trealla is paused (October 2026): work and measure on
-  SWI-Prolog, keep to the shared dialect, and come back to Trealla later.
+- **SWI by default.** Keep to the shared dialect. The small backend parity
+  check runs on Trealla too; full frontend/interpreter work there remains
+  paused ([archive/hosts.md](archive/hosts.md)).
 - **Report honestly.** Say what a step made clearer and where the
   structure still differs from what it describes. Track line counts
   with `git diff --stat` as a symptom (a factoring that only adds lines

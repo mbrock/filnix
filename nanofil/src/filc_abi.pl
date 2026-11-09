@@ -223,7 +223,7 @@ block_shadows(Phis, Once, Positions) :-
 
 phi_position(Once, phi(tmp(N), K, _), Next0-Ps0, Next-Ps) :-
     (   ord_memberchk(N, Once), shadow_class(K, C)
-    ->  select(C-I, Next0, C-I1, Next), I1 is I+1,
+    ->  nth0(J, Next0, C-I, Rest), nth0(J, Next, C-I1, Rest), I1 is I+1,
         Ps0 = [N-C-I|Ps]
     ;   Next = Next0, Ps0 = Ps
     ).

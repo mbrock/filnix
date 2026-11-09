@@ -39,7 +39,9 @@
 :- use_module(library(lists)).
 :- use_module(library(dcgs)).
 :- use_module(library(charsio)).
+:- if(current_prolog_flag(dialect, swi)).
 :- use_module(library(readutil)).
+:- endif.
 
 %! c_tokens(+Chars, +File, -Tokens) is det.
 %

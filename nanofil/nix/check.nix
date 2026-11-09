@@ -9,10 +9,10 @@
 # built by nanofil and by clang and must print and exit the same, also
 # under FUGC_SCRIBBLE and FUGC_VERIFY. Then everything runs again with
 # the M5 middle end (-O), validated run by run by the interpreter.
-# Everything runs on SWI-Prolog. Trealla, the other host, is paused
-# (October 2026): with withTrealla = true a last step repeats the unit
-# tests, the C difftests and the programs on it, and checks that it
-# generates the same random corpus.
+# Everything runs on SWI-Prolog. A small cross-host step also compares
+# Trealla's back-end products. Full Trealla testing remains opt-in:
+# with withTrealla = true a last step repeats the unit tests, the C
+# difftests and programs, and checks that it generates the same corpus.
 #
 # The steps are independent once the setup below has run: each needs
 # only the saved state, the generated inputs and its own exports. With
@@ -39,8 +39,8 @@ pkgs.runCommandCC
       pkgs.swi-prolog
       (pkgs.python3.withPackages (p: [ p.z3-solver ]))
       pkgs.gdb
-    ]
-    ++ pkgs.lib.optional withTrealla trealla;
+      trealla
+    ];
   }
   ''
     # step LABEL CMD...: run CMD, printing when it starts and how long it
@@ -119,6 +119,7 @@ pkgs.runCommandCC
     steps() {
     step "check watchdog" bash -c 'python3 tests/watch_test.py && python3 tests/harness_test.py'
     step unit bash -c '(cd src && ../bin/nanofil --script ../tests/unit.pl </dev/null) | tee unit.log && grep -q "tests ok$" unit.log'
+    step "Trealla backend parity" bash tests/backend-hosts.sh
     # Every module has a header and every export PlDoc (docs/guide.md,
     # Conventions).
     step docs swipl tests/docs.pl -- src

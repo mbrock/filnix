@@ -851,7 +851,7 @@ param_list(Env, [Param|Params], Variadic) -->
     ).
 
 knr_names(Env, [N|Ns]) -->
-    \+ starts_type(Env),
+    ( starts_type(Env) -> { fail } ; [] ),
     [tok(id(N), _)],
     (   punct(',')
     ->  knr_names(Env, Ns)
@@ -1433,7 +1433,7 @@ primary(Env, types_compatible(A, B)) -->
 % the type void *, not nullptr_t: the two convert alike, and only
 % _Generic, which would select void * for it, tells them apart.
 primary(Env, cast(Type, num(V, none-dec))) -->
-    loc(Loc), ( kw(true) -> { V = 1 } ; kw(false) -> { V = 0 } ), !,
+    loc(Loc), ( kw(true) -> { V = 1 } ; kw(false), { V = 0 } ), !,
     { phrase(type_name(Env, Type), [tok(kw(bool), Loc)]) }.
 primary(Env, cast(Type, num(0, none-dec))) -->
     loc(Loc), kw(nullptr), !,

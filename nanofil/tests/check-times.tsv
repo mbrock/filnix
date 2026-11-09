@@ -190,6 +190,7 @@
 15	reuse corpus [1/4]
 15	schedule trap text vs filcc -O2
 15	share -O corpus [1/4]
+14	Trealla backend parity
 14	checks
 14	extended  difftest
 14	forward -O corpus [1/4]

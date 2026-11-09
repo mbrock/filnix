@@ -248,7 +248,9 @@ item_reference(data(_, _, _, Ds), _, S) :- member(item(_, sym(S, _)), Ds).
 item_reference(alias(_, _, S), _, S).
 
 term_global(global(S), S) :- atom(S), !.
-term_global(T, S) :- compound(T), arg(_, T, A), term_global(A, S).
+term_global(T, S) :-
+    compound(T), functor(T, _, Arity), between(1, Arity, I),
+    arg(I, T, A), term_global(A, S).
 
 % referenced_items(+Items0, -Items): Items0 less the local functions,
 % with their contexts, that no exported or weak function, data object or

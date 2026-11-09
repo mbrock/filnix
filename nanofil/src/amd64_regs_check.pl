@@ -410,12 +410,14 @@ block_rest(line(I,_,Ss,_), Ls, More, Succs, Rest) :-
     ).
 
 % A block's gen and kill sets, composed backward over its lines.
+% Set difference is xor(A, A /\ B), not A /\ \ B: pinned Trealla
+% truncates a bigint intersected with a negative machine integer.
 block_summary(Ids, block(_, Lines, Succs), sum(G, K, SuccIds)) :-
     reverse(Lines, Rev),
     foldl(compose, Rev, 0-0, G-K),
     maplist(block_id(Ids), Succs, SuccIds).
 compose(line(_,_,_,ud(U,D)), G0-K0, G-K) :-
-    G is U \/ (G0 /\ \ D), K is K0 \/ D.
+    G is U \/ xor(G0, G0 /\ D), K is K0 \/ D.
 block_id(Ids, S, B) :- get_assoc(S, Ids, B).
 
 % Backward passes over the blocks until no live-in set changes.
@@ -427,7 +429,7 @@ pass(0, _, In, In, C, C) :- !.
 pass(B1, Sum, In0, In, C0, C) :-
     B is B1-1, arg(B1, Sum, sum(G, K, Ss)),
     foldl(or_live(In0), Ss, 0, Out),
-    New is G \/ (Out /\ \ K),
+    New is G \/ xor(Out, Out /\ K),
     ( get_assoc(B, In0, Old) -> true ; Old = 0 ),
     ( New =:= Old -> In1 = In0, C1 = C0 ; put_assoc(B, In0, New, In1), C1 = true ),
     pass(B, Sum, In1, In, C1, C).
@@ -442,7 +444,7 @@ block_live_out(Ids, In, block(_, Lines, Succs), Outs) :-
     line_outs(Rev, Out, [], Outs).
 line_outs([], _, Outs, Outs).
 line_outs([line(_,_,_,ud(U,D))|Ls], Out, Acc, Outs) :-
-    In is U \/ (Out /\ \ D),
+    In is U \/ xor(Out, Out /\ D),
     line_outs(Ls, In, [Out|Acc], Outs).
 
 % Uses and definitions of home halves by one line. A write covering a
@@ -452,7 +454,7 @@ line_use_def(Lookup, Line, Effect, ud(Use, Def)) :-
     foldl(memory_use_def(Lookup), Ms, 0-0, Use0-Def0),
     extra_use_def(Line, Effect, EU, ED),
     Use is Use0 \/ EU, Def1 is Def0 \/ ED,
-    Def is Def1 /\ \ Use.
+    Def is xor(Def1, Def1 /\ Use).
 
 %! scratch_family(?Family, ?Bit) is nondet.
 %  The scratch families whose liveness the analysis tracks, by bit; the
@@ -505,7 +507,7 @@ memory_use_def(Lookup, read(mem(D,rbp),N), U0-D0, U-D0) :- !,
     halves(Lookup, D, N, _, Touched), U is U0 \/ Touched.
 memory_use_def(Lookup, write(mem(D,rbp),N), U0-D0, U-Df) :- !,
     halves(Lookup, D, N, Covered, Touched),
-    U is U0 \/ (Touched /\ \ Covered), Df is D0 \/ Covered.
+    U is U0 \/ xor(Touched, Touched /\ Covered), Df is D0 \/ Covered.
 memory_use_def(_, _, UD, UD).
 
 % halves(+Lookup, +D, +N, -Covered, -Touched): bitsets of the home halves
@@ -569,7 +571,7 @@ line_obligation(Mapped, Index, Masks, Scratch, All, Line, Out) :-
     ->  get_assoc(D, Mapped, R), get_assoc(D, Index, K),
         memberchk(R-M, Masks),
         home_shift(K, Sh), Own is 3 << Sh,
-        Out /\ (M /\ \ Own) =:= 0,
+        Out /\ xor(M, M /\ Own) =:= 0,
         ( S == l -> Out /\ (2 << Sh) =:= 0 ; true )
     ;   Line = ins(call,_,_)
     ->  Out /\ Scratch =:= 0
@@ -641,7 +643,7 @@ ref_lives([R|Rs], [E|Es], [O|Os], [UD|UDs], Masks, Always, [Lv|Lvs]) :-
 
 % live(In, Out, R, E): R is the reference line, E its effects.
 line_lives(R, E, Out, ud(U,D), Masks, Always, live(I8, O8, R, E)) :-
-    In is U \/ (Out /\ \ D),
+    In is U \/ xor(Out, Out /\ D),
     home_bits(Masks, In, Always, HI), home_bits(Masks, Out, Always, HO),
     I8 is (In /\ 255) \/ HI, O8 is (Out /\ 255) \/ HO.
 

@@ -104,9 +104,9 @@ elements([X|Xs]) --> "        ", term(X), ",\n", elements(Xs).
 
 % term(+T)//: the text of the ground term T, which read_term/3 reads
 % back as T.
+term([]) --> !, "[]".
 term(T) --> { integer(T) }, !, { number_chars(T, Cs) }, seq(Cs).
 term(T) --> { atom(T) }, !, atom_text(T).
-term([]) --> !, "[]".
 term([X|Xs]) --> !, "[", args([X|Xs]), "]".
 term(str(Cs)) --> { is_list(Cs) }, !, "str(\"", string_chars(Cs), "\")".
 term(L-V) --> !, term(L), "-", term(V).

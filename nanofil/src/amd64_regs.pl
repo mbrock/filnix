@@ -23,7 +23,7 @@
 :- use_module(amd64_contract, [instruction_effects/2, register/3,
                                 explicit_registers/2]).
 :- use_module(amd64_regs_check).
-:- use_module(library(apply)).
+:- use_module(list_partition).
 :- use_module(library(assoc)).
 :- use_module(library(lists)).
 :- use_module(library(pairs)).
@@ -205,7 +205,7 @@ single(H, Map) :- empty_assoc(E), put_assoc(H, E, rbx, Map).
 % depths(+Body, -Depths): for each line, how many backward jumps span it.
 depths(Body, Depths) :-
     % GNU as numeric labels repeat; their jumps are short and ignored here.
-    findall(L-I, ( nth0(I, Body, label(L)), \+ atom_number(L, _) ), Ls),
+    findall(L-I, ( nth0(I, Body, label(L)), \+ numeric_label(L) ), Ls),
     list_to_assoc(Ls, Labels),
     findall(T-I, ( nth0(I, Body, ins(Op,none,[sym(L)])), atom_concat(j, _, Op),
                    get_assoc(L, Labels, T), T < I ), Loops),
@@ -214,6 +214,12 @@ depths(Body, Depths) :-
     append(Opens, Closes, Events0), keysort(Events0, Events),
     length(Body, N),
     running(0, N, Events, 0, Depths).
+
+% Numeric GNU as labels are nonempty decimal digit sequences, not
+% arbitrary Prolog numbers. Trealla's atom_number/2 throws on symbols.
+numeric_label(L) :-
+    atom_codes(L, [C|Cs]),
+    forall(member(D, [C|Cs]), (D >= 0'0, D =< 0'9)).
 
 running(I, N, _, _, []) :- I >= N, !.
 running(I, N, Events, D0, [D|Ds]) :-
@@ -236,7 +242,7 @@ home_facts(Index, HomeBits, Line, Out, f(C0,W0)-E0, f(C,W)-E) :-
     ->  C = C0,
         home_shift(K, Sh), Own is 3 << Sh,
         ( S == l, Out /\ (2 << Sh) =\= 0 -> W is W0 \/ Own ; W = W0 ),
-        Others is Out /\ HomeBits /\ \ Own,
+        Others is Out /\ xor(HomeBits, HomeBits /\ Own),
         (   Others =:= 0 -> E = E0
         ;   ( get_assoc(K, E0, Row0) -> true ; Row0 = 0 ),
             Row is Row0 \/ Others, put_assoc(K, E0, Row, E)
@@ -490,7 +496,7 @@ dead_move(L-I, Live0-Acc, Live-Acc1) :-
     ).
 
 live_before(_-inf(_,U,D,_), Out, In) :-
-    In is (U \/ (Out /\ \ D)) /\ 127.
+    In is (U \/ xor(Out, Out /\ D)) /\ 127.
 
 % live_after(+Lines, +End, -Pairs): each line with the scratch families
 % live after it.

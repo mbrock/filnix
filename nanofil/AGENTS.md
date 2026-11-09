@@ -108,10 +108,7 @@ SWI, `swipl ... -g 'profile(Goal)'` shows where time goes.
 - Run Prolog with stdin closed (`</dev/null`).
 - Show that a new test can fail: plant the bug it targets, watch it fail,
   restore. Say so in the commit or report.
-- Trealla is paused (October 2026): develop, test and measure on SWI
-  only, and don't spend time on Trealla failures or memory. The Nix
-  check runs Trealla only with `withTrealla = true` (nix/check.nix). The
-  dialect rules below still hold, so the way back stays cheap.
+- Run `TPL=/tmp/tpl-native/bin/tpl tests/backend-hosts.sh` from `nanofil/` for backend changes: the Nix check also runs this small cross-host parity check. Full Trealla frontend/interpreter testing remains paused and opt-in with `withTrealla = true`; develop and measure those on SWI. [docs/archive/hosts.md](docs/archive/hosts.md) records the backend's supported scope and remaining costs.
 - Scryer was tried in October 2026 and is not worth supporting yet
   ([docs/archive/hosts.md](docs/archive/hosts.md)). Write strict ISO syntax anyway: bracket
   an operator atom used as an operand, `Op == (=)`, not `Op == '='`.

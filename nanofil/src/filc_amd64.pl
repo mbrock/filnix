@@ -1467,11 +1467,14 @@ branch_selection(selected, Blocks, selected(Uses)) :-
 temp_names(tmp(N)) --> !, [N].
 temp_names(T) -->
     (   { compound(T) }
-    ->  { T =.. [_|As] }, temp_name_list(As)
+    ->  { functor(T, _, Arity) }, temp_name_args(1, Arity, T)
     ;   []
     ).
-temp_name_list([]) --> [].
-temp_name_list([A|As]) --> temp_names(A), temp_name_list(As).
+temp_name_args(I, N, T) -->
+    (   { I =< N }
+    ->  { arg(I, T, A), J is I+1 }, temp_names(A), temp_name_args(J, N, T)
+    ;   []
+    ).
 
 name_counts([], []).
 name_counts([N|Ns], [N-C|Cs]) :- same_names(Ns, N, 1, C, Rest), name_counts(Rest, Cs).
