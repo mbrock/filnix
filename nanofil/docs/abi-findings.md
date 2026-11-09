@@ -5,7 +5,7 @@ Nanofil requires **staging Fil-C 0.687**, core revision `af81305` of
 ([lib/filc-staging.json](../../lib/filc-staging.json)). There is no 0.686
 compatibility path. The original probes below were established at
 `163fae5`; their emitted ABI contracts were rechecked against staging's
-pass and runtime. The [handoff](handoff.md) is historical, not the target.
+pass and runtime. The [handoff](archive/handoff.md) is historical, not the target.
 Rerun [probes/](../probes/) with `nanofil/probes/run.sh` and
 `FILCC=/tmp/filcc/bin/clang` after building `.#filcc-staging`.
 

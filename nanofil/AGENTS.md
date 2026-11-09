@@ -113,7 +113,7 @@ SWI, `swipl ... -g 'profile(Goal)'` shows where time goes.
   check runs Trealla only with `withTrealla = true` (nix/check.nix). The
   dialect rules below still hold, so the way back stays cheap.
 - Scryer was tried in October 2026 and is not worth supporting yet
-  ([docs/hosts.md](docs/hosts.md)). Write strict ISO syntax anyway: bracket
+  ([docs/archive/hosts.md](docs/archive/hosts.md)). Write strict ISO syntax anyway: bracket
   an operator atom used as an operand, `Op == (=)`, not `Op == '='`.
 - Code is written to run on both hosts. Write Trealla's dialect (double_quotes
   chars, `library(dcgs)`, `format_//2`, character-list `phrase_from_file`);
@@ -140,9 +140,10 @@ current priorities; read it before semantic or structural work.
 [docs/formal.md](docs/formal.md) is the formal campaign built on it:
 a Rocq model of the checked IR, the runtime as axioms, and certificates
 that discharge checks; work in it follows that page's working method.
-[PLAN.md](PLAN.md) tracks milestones and [docs/factorings.md](docs/factorings.md)
-records completed refactorings. The old frontend roadmap is a record,
-not a request to repeat completed work.
+[PLAN.md](PLAN.md) tracks milestones and [docs/archive/factorings.md](docs/archive/factorings.md)
+records completed refactorings. The frontend roadmap
+([docs/archive/frontend.md](docs/archive/frontend.md)) is a record, not a
+request to repeat completed work; so is everything in `docs/archive`.
 
 - Separate safety requirements, evidence that discharges them, and their
   implementation. Checked IR accepts adjacent checks and, since M7's
@@ -167,7 +168,7 @@ not a request to repeat completed work.
 ## Purity where it pays
 
 The style follows Triska's [The Power of Prolog](https://www.metalevel.at/prolog)
-(PLAN.md's rules, docs/handoff.md): relation names, clean
+(PLAN.md's rules, docs/archive/handoff.md): relation names, clean
 representations, case analysis in clause heads, DCG semicontext for
 state. Two of its tools do not pay in compiler code on ground data,
 measured in October 2026:

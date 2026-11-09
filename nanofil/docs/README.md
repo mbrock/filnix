@@ -8,8 +8,6 @@ page about it is listed here.
 
 ## Start
 
-- [Where it stands](../../pages/nanofil-status/): what it builds, how
-  fast its code runs and how fast it compiles.
 - [A guide to nanofil](guide.md): one C function through every stage,
   the ideas to hold, a map of the modules and where to start a change.
 - [Compile C in the browser](../web/play/): nanofil on SWI-Prolog in
@@ -87,20 +85,31 @@ page about it is listed here.
   by nanofil, failures by kind.
 - [One arithmetic, three readings](arith.md): constant folding against
   the interpreter and clang.
-- [Prolog hosts](hosts.md): Trealla and Scryer, measured.
 
-## History
+## Milestones
 
-The record of how nanofil was built; the conclusions that still hold
-have moved into the code and the documents above.
+The milestones that are still partly reference; search M4 for a C
+feature.
 
 - [PLAN.md](../PLAN.md): milestones and decisions.
-- [M1: IR, relational interpreter, QBE subset](m1.md),
-  [M2: naive x86-64 backend](m2.md),
-  [M3: pointer class and Fil-C lowering](m3.md),
-  [M4: C frontend](m4.md),
-  [M5: analyses and promotion](m5.md),
-  [M6: scalar stack caching](m6.md) (retired).
-- [Toward a shorter, truer nanofil](factorings.md): completed
+- [M3: pointer class and Fil-C lowering](m3.md),
+  [M4: C frontend](m4.md) and
+  [M5: analyses and promotion](m5.md).
+
+## Archive
+
+Records of finished or retired work, kept as written. What still holds
+has moved into the code and the documents above.
+
+- [Where it stands, October 2026](../../pages/nanofil-status/): what it
+  built, how fast its code ran and compiled, then.
+- [The frontend's one typed tree](archive/frontend.md): the review,
+  design and step-by-step record that made the frontend's four walks one.
+- [Toward a shorter, truer nanofil](archive/factorings.md): completed
   refactorings and what each bought.
-- [The handoff](handoff.md): the original design notes.
+- [M1: IR, relational interpreter, QBE subset](archive/m1.md),
+  [M2: naive x86-64 backend](archive/m2.md) and
+  [M6: scalar stack caching](archive/m6.md), retired.
+- [Prolog hosts](archive/hosts.md): Trealla and Scryer, measured in
+  October 2026.
+- [The handoff](archive/handoff.md): the original design notes.

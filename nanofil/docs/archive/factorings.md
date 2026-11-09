@@ -115,7 +115,7 @@ It stays inside `c_lower.pl`, so it is the easiest place to start.
 - the thunk's register moves are unrolled by hand for each return form.
 
 A few facts make the backend read like
-[abi-findings.md](abi-findings.md):
+[abi-findings.md](../abi-findings.md):
 
 ```prolog
 abi_symbol(fo(F), Sym).          % pizlonatedFO_F, and so on
@@ -130,7 +130,7 @@ length.
 ### 5. Not done: cfg_tabled.pl stays in src
 
 This page first proposed moving it out as a finished experiment. It is
-not one: [m5.md](m5.md) keeps it as the declarative specification that
+not one: [m5.md](../m5.md) keeps it as the declarative specification that
 the Nix check holds cfg.pl's functional analyses to, which is the kind
 of executable reference this page argues for.
 
@@ -229,7 +229,7 @@ checks and reports an access no check covers as `unchecked(Why)`; and
 the backend emits the check's sequence from the term. The assembly
 stayed byte-identical. Along the way `valid_module` learned that
 definitions dominate uses. Design, runtime evidence and review:
-[pizlonation.md](pizlonation.md).
+[pizlonation.md](../pizlonation.md).
 
 ## The IR's words
 
@@ -276,8 +276,8 @@ This adds a contract rather than shrinking the backend: pointer pairs,
 aux/barrier operations and frame/ABI lowering still need to move before
 target emission. PLAN now distinguishes M3's completed runtime tests
 from that unfinished architecture. Review, tests and native evidence
-are in [pizlonation.md](pizlonation.md); the next responsibilities are
-in [campaign.md](campaign.md).
+are in [pizlonation.md](../pizlonation.md); the next responsibilities are
+in [campaign.md](../campaign.md).
 
 ## Address arithmetic and lower propagation are independent operands
 
@@ -294,7 +294,7 @@ The increment adds a contract rather than reducing line count. Review
 also exposed an existing boundary problem: the unchecked-only middle
 end must not process directly supplied checked IR. It now leaves that
 input unchanged, including with `-O`. Design and evidence are in
-[pizlonation.md](pizlonation.md).
+[pizlonation.md](../pizlonation.md).
 
 ## Pointer-memory protocols and ABI plans are consumed before emission
 
@@ -317,8 +317,8 @@ The combined representation changes retain 1014 byte-identical
 snapshot outputs. Native interoperation/GC tests and four Nix gates
 pass, including a traced ensure-aux exit and a boxed lower whose
 primary address differs from its box's address. Fault injections test
-the effects, not just their spelling. See [pizlonation.md](pizlonation.md)
-and [lifetime.md](lifetime.md) for the contracts and remaining limits.
+the effects, not just their spelling. See [pizlonation.md](../pizlonation.md)
+and [lifetime.md](../lifetime.md) for the contracts and remaining limits.
 
 ## Named local storage completes the bounded foundation
 
@@ -336,7 +336,7 @@ over-budget objects retain heap storage. The GC regression detects a
 missing stack-aux root by its wrong result. All 1014 existing normal
 snapshot outputs remain identical; only compilation and printing of the
 new local-syntax fixture differ from the old compiler. The combined Nix
-gates cover both optimization modes. The [M5 note](m5.md) states the
+gates cover both optimization modes. The [M5 note](../m5.md) states the
 selection boundary and remaining general C local-OOB gap.
 
 The basic separation is now in place: source judgments, checked safety
@@ -355,4 +355,4 @@ enough to trust, and pleasant enough that people read it to learn how
 memory-safe C works.
 
 The current assessment and the roadmap from here are in
-[campaign.md](campaign.md).
+[campaign.md](../campaign.md).

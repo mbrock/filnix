@@ -3,7 +3,7 @@
    implementations are left alone. Native arithmetic/ABI outcomes use the
    differential and interop suites; regs_check.pl attacks the translation
    validators themselves. (M6's local scalar cache and its tests were
-   retired in October 2026, docs/m6.md.) */
+   retired in October 2026, docs/archive/m6.md.) */
 :- module(register_tests, [scalar_cache/0]).
 :- use_module('../src/filc_amd64').
 :- use_module('../src/amd64_contract', [register/3]).

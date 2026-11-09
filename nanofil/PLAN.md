@@ -16,7 +16,7 @@ claimed to exist today.
 
 This file tracks milestones; their numbering records the project's
 history, not a requirement to finish general register allocation before
-semantic work. [docs/handoff.md](docs/handoff.md) is the original proposal,
+semantic work. [docs/archive/handoff.md](docs/archive/handoff.md) is the original proposal,
 kept as written. [docs/abi-findings.md](docs/abi-findings.md) records what
 was checked against the pinned toolchain and takes precedence over it.
 
@@ -189,7 +189,7 @@ this.
 
 ### M1. IR terms, relational interpreter, QBE subset parser
 
-**Status: complete.** See [docs/m1.md](docs/m1.md). The differential
+**Status: complete.** See [docs/archive/m1.md](docs/archive/m1.md). The differential
 tests found three qbe miscompiles and a Trealla use-after-free. The QBE
 text parser and printer were later replaced by nanofil's own IR text
 (`src/ir_text.pl`). Memory is
@@ -215,7 +215,7 @@ term. This is the hardest part to keep relational.
 
 ### M2. Naive backend, plain SysV
 
-**Status: complete.** See [docs/m2.md](docs/m2.md). nanofil's own
+**Status: complete.** See [docs/archive/m2.md](docs/archive/m2.md). nanofil's own
 assembly matches the interpreter on the fixtures, the random corpus and
 the three qbe-bug repros that qbe gets wrong.
 
@@ -471,7 +471,7 @@ tabling, at realistic sizes (hundreds of blocks, small live sets).
 **First slice: opt-in scalar stack caching and immediate selection**
 (retired in October 2026: `--registers=temps`, the `-O` default, does
 more with fewer instructions everywhere; the immediate selection stays as
-temps' selection; [m6.md](docs/m6.md), [perf.md](docs/perf.md)).
+temps' selection; [m6.md](docs/archive/m6.md), [perf.md](docs/perf.md)).
 `--registers=local` selects integer immediate arithmetic and shifts, then
 caches private `w/l` homes in two registers within straight-line regions.
 Frame layout, pointer homes, roots, helpers, phis and polls stay unchanged.
@@ -479,7 +479,7 @@ Setjmp (even in a dead block) retains reference selection and no caching;
 unknown machine forms retain selected-but-uncached code. The independent
 symbolic checker validates caching, not the preceding instruction selection.
 `--registers=stack` remains the default and differential reference,
-independent of `-O`. See [m6.md](docs/m6.md) for boundaries and measurements.
+independent of `-O`. See [m6.md](docs/archive/m6.md) for boundaries and measurements.
 
 **Next:** [docs/perf.md](docs/perf.md) profiles `-O` against filcc `-O2`
 with a benchmark gate and ranks the code-quality work: switch dispatch,

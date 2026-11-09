@@ -2,8 +2,11 @@
 -- become nanofil/docs/*.html: foo.md becomes foo.html, ../src/F.pl the
 -- dterm page ../F.html, concepts/ID.md the concept page
 -- ../concept-ID.html (dterm.pl --concepts), and any other path outside nanofil/docs points
--- at GitHub.
+-- at GitHub. An archived document (pandoc -M archived) is written in
+-- nanofil/docs/archive but rendered beside the others, so its links lose
+-- one ../ first; archive/NAME.md, from any document, is NAME.html.
 local repo = "https://github.com/mbrock/filnix/blob/main/"
+local archived = false
 
 function Link(el)
   local target = el.target
@@ -11,6 +14,14 @@ function Link(el)
     return el
   end
   local path, fragment = target:match("^([^#]*)(#?.*)$")
+  if archived and path:match("^%.%./") then
+    path = path:sub(4)
+  end
+  local old = path:match("^archive/([%w_.-]+)%.md$")
+  if old then
+    el.target = old .. ".html" .. fragment
+    return el
+  end
   local module = path:match("^%.%./src/([%w_]+)%.pl$")
   local concept = path:match("^concepts/([%w_.-]+)%.md$")
   if module then
@@ -30,3 +41,8 @@ function Link(el)
   end
   return el
 end
+
+return {
+  { Meta = function(meta) archived = meta.archived ~= nil end },
+  { Link = Link },
+}

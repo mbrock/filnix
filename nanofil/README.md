@@ -141,7 +141,7 @@ whole-function register homes with register operands and forwarded
 frame-word loads ([docs/perf.md](docs/perf.md)). Build/test harnesses
 accept the same choice as `NANOFIL_REGISTERS`. This does not change
 pointer/root placement, and setjmp functions retain their original code.
-The earlier modes `local` ([docs/m6.md](docs/m6.md)), `function`,
+The earlier modes `local` ([docs/archive/m6.md](docs/archive/m6.md)), `function`,
 `operands`, `cells` and `flow` were retired and are refused.
 
 `-O` also copies small constant `memcpy` and `memmove` inline (1 to 16
@@ -206,10 +206,11 @@ allocates scalar registers ([docs/perf.md](docs/perf.md)).
   and explicit-free model, including what they do not establish.
 - [docs/abi-findings.md](docs/abi-findings.md): the Fil-C ABI as checked
   against filnix's pinned Fil-C.
-- [docs/m1.md](docs/m1.md) to [docs/m5.md](docs/m5.md): the IR and
-  interpreter, the plain backend, the Fil-C lowering, the C frontend,
-  and the middle end.
-- [docs/handoff.md](docs/handoff.md): the original design notes.
+- [docs/m3.md](docs/m3.md) to [docs/m5.md](docs/m5.md): the Fil-C
+  lowering, the C frontend and the middle end.
+- [docs/README.md](docs/README.md): every document, as the wiki's nanofil
+  page lists them, including the archive ([docs/archive](docs/archive)):
+  M1 and M2, the original handoff and other records of finished work.
 - [AGENTS.md](AGENTS.md): tools, tests and conventions for working on it.
 - The wiki's [nanofil pages](https://mbrock.github.io/filnix/nanofil/):
   the source drawn as terms by [web/dterm.pl](web/dterm.pl) (SWI-Prolog),

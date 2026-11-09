@@ -545,6 +545,13 @@ link_target(Url, Href, none) :-
 link_target(Url, Href, M) :-
     atom_concat('../src/', F, Url), file_name_extension(M, pl, F), guide_module(M), !,
     atom_concat(M, '.html', Href).
+%  An archived document, nanofil/docs/archive/NAME.md, is rendered as
+%  docs/NAME.html (packages/site/build.sh).
+link_target(Url, Href, none) :-
+    split_atom_fragment(Url, Path, Frag), atom_concat('archive/', F, Path),
+    file_name_extension(Name, md, F), \+ sub_atom(Name, _, _, _, '/'),
+    nb_getval(guide_dir, Dir), directory_file_path(Dir, Path, Abs), exists_file(Abs), !,
+    format(atom(Href), "docs/~w.html~w", [Name, Frag]).
 link_target(Url, Href, none) :-
     split_atom_fragment(Url, Path, Frag), site_dir(Path, Page), !,
     atom_concat(Page, Frag, Href).

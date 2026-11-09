@@ -32,7 +32,7 @@ $endif$
   </nav>
 </div></header>
 <div class="status"><div class="page-frame status-frame">
-  <nav class="crumbs" aria-label="Breadcrumb">$if(nanofil)$<a class="crumb" href="../">nanofil</a><span class="crumb-sep">›</span><span class="crumb current">$pagetitle$</span>$elseif(index)$<span class="crumb current">Docs</span>$else$<a class="crumb" href="index.html">Docs</a><span class="crumb-sep">›</span><span class="crumb current">$pagetitle$</span>$endif$</nav>
+  <nav class="crumbs" aria-label="Breadcrumb">$if(nanofil)$<a class="crumb" href="../">nanofil</a><span class="crumb-sep">›</span>$if(archived)$<a class="crumb" href="../index.html#archive">Archive</a><span class="crumb-sep">›</span>$endif$<span class="crumb current">$pagetitle$</span>$elseif(index)$<span class="crumb current">Docs</span>$else$<a class="crumb" href="index.html">Docs</a><span class="crumb-sep">›</span><span class="crumb current">$pagetitle$</span>$endif$</nav>
   <span class="status-right"><a href="https://github.com/mbrock/filnix/blob/main/$if(nanofil)$nanofil/$endif$docs/$source$">$if(nanofil)$nanofil/docs/$endif$$source$</a></span>
 </div></div>
 <main class="page-frame $if(toc)$with-toc$else$reading$endif$">
@@ -43,6 +43,9 @@ $toc$
 $endif$
 <article class="doc">
 <h1 class="title">$title$</h1>
+$if(archived)$
+<p class="archived">Archived: a record of finished work, kept as written. <a href="../index.html#archive">nanofil's archive</a> lists the others.</p>
+$endif$
 $body$
 </article>
 </main>

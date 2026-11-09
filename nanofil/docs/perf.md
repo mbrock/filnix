@@ -568,7 +568,7 @@ Retire as selectable modes:
    `--registers=local`" step becomes temps. `tests/registers.pl` tests
    immediate selection through `local`. The selection (`sel(local, …)`)
    is the allocating modes' too, so those tests move to temps emission.
-   M6 stays in the record (m6.md); the mode no longer runs.
+   M6 stays in the record (archive/m6.md); the mode no longer runs.
 2. **`function`, `operands` and `cells`.** No trusted code goes. Their
    checks run inside temps. This removes the `split` pool choice, three
    snapshot modes (`F.`, `P.`, `C.`; `I.` becomes temps with inlining),

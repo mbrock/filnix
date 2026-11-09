@@ -89,6 +89,30 @@ for md in "$src"/nanofil/docs/*.md; do
     -V nanofil -V source="$name.md" "${args[@]}" -o "$out/nanofil/docs/$name.html" "$md"
 done
 
+# The archive, nanofil/docs/archive/NAME.md, renders beside the others as
+# nanofil/docs/NAME.html, where it always was, marked archived; README.md
+# lists each one too.
+for md in "$src"/nanofil/docs/archive/*.md; do
+  name=$(basename "$md" .md)
+  echo "$(date -u +%FT%TZ) site: render nanofil/docs/archive/$name.md"
+  grep -q "](archive/$name.md" "$src/nanofil/docs/README.md" || {
+    echo "nanofil/docs/archive/$name.md is not linked from nanofil/docs/README.md" >&2
+    exit 1
+  }
+  [ ! -e "$src/nanofil/docs/$name.md" ] || {
+    echo "nanofil/docs/archive/$name.md and nanofil/docs/$name.md would both be $name.html" >&2
+    exit 1
+  }
+  args=()
+  if [ "$(grep -c '^## ' "$md")" -ge 4 ]; then
+    args+=(--toc --toc-depth=3)
+  fi
+  pandoc -f gfm -t html5 --standalone --shift-heading-level-by=-1 \
+    --template "$here/template.html" --lua-filter "$here/nanofil-links.lua" \
+    -V nanofil -M archived=true -V source="archive/$name.md" "${args[@]}" \
+    -o "$out/nanofil/docs/$name.html" "$md"
+done
+
 # filnix's own Nix, drawn by dterm-nix with nanofil's dterm.css and
 # dterm.js (../nanofil/).
 echo "$(date -u +%FT%TZ) site: render $# Nix pages and option index"

@@ -168,6 +168,7 @@ h4 { font-size: 1rem; margin: 1.6rem 0 0.4rem; font-weight: 700; }
 /* Pandoc promotes each doc's "# Title" to the page title, so its "##"
    sections are h1 inside the article, "###" h2, and so on. */
 .doc h1:not(.title) { font-size: 1.3rem; letter-spacing: -0.04em; margin: 2.6rem 0 0.75rem; }
+.doc p.archived { color: var(--muted); font-size: 0.9rem; }
 .doc h2 { font-size: 1.1rem; letter-spacing: -0.02em; margin: 2rem 0 0.5rem; font-weight: 700; }
 .doc h3, .doc h4 { font-size: 1rem; margin: 1.6rem 0 0.4rem; font-weight: 700; letter-spacing: 0; }
 

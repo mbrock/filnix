@@ -1208,7 +1208,7 @@ printer.
 `src/swi/` maps the Trealla dialect nanofil is written in onto
 SWI-Prolog ([swi/compat.pl](../src/swi/compat.pl)) and supplies the small libraries
 (`dcgs`, `format`, `pio`, `clpz`) under Trealla's names. See
-[docs/hosts.md](hosts.md).
+[docs/archive/hosts.md](archive/hosts.md).
 
 ## Glossary
 
@@ -1300,18 +1300,14 @@ code or into the reference documents.
 | [ub.md](ub.md) | reference | what Fil-C and nanofil do with C's undefined behaviour |
 | [dterm.md](dterm.md) | reference | the Pages renderer and `doc/3` |
 | [PLAN.md](../PLAN.md) | both | decisions and rules (reference), milestones (history) |
-| [m1.md](m1.md) | history | the IR's origin as a QBE subset; the semantics decisions still hold |
-| [m2.md](m2.md), [m3.md](m3.md) | history, partly reference | the plain backend and the first Fil-C lowering; m3 still states the backend's rules |
+| [m3.md](m3.md) | history, partly reference | the first Fil-C lowering; it still states the backend's rules |
 | [m4.md](m4.md) | history, partly reference | the frontend, construct by construct; search it for a feature |
 | [m5.md](m5.md) | history, partly reference | the middle end's passes and their validation |
-| [m6.md](m6.md) | history | the retired scalar stack cache |
 | [perf.md](perf.md) | history, partly reference | code quality work item by item; the benchmark gate and register modes are current |
-| [factorings.md](factorings.md) | history | completed refactorings and what each bought |
-| [handoff.md](handoff.md) | history | the original design notes |
 | [corpus.md](corpus.md), [survey.md](survey.md), [lua.md](lua.md) | measurement | what compiles, and why the rest does not |
 | [filc-tests.md](filc-tests.md) | measurement | upstream Fil-C's test suite built by nanofil, failures by kind |
 | [arith.md](arith.md) | measurement | constant folding against the IR and clang |
-| [hosts.md](hosts.md) | measurement | other Prolog hosts |
+| [archive/](README.md#archive) | archive | finished or retired work kept as written: M1, M2 and M6, the frontend's typed-tree record, factorings, Prolog hosts, the handoff |
 
 A good order for a newcomer: this guide, [campaign.md](campaign.md),
 [ir.pl](../src/ir.pl)'s header, [pizlonation.md](pizlonation.md), then
