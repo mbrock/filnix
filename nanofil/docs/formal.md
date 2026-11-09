@@ -1982,6 +1982,53 @@ result in ordinary and -O comparisons. This finite evidence does not
 prove native termination, universal prefix/safepoint coverage or
 cross-thread pointer stability. No core/runtime axioms or Iris files change.
 
+### Approved Hello codec-profile premise and audit
+
+Hello's conversion theorem may assume an **independently audited current
+LC_CTYPE codec profile: C or C.UTF-8** (mbrock's approved scope). It must
+state that premise explicitly at conversion, rather than claiming the
+strong conversion properties for every environment-selected locale.
+Other locale categories need not be C. The general startup and setlocale
+contracts remain unrestricted; a successful environment-based selection
+does not itself discharge the Hello premise.
+
+The trusted representation must bind the opaque locale_codec, effective
+LC_CTYPE name/text and actual converter to the audited profile, including
+permitted lazy resolution/fallback. A name string alone, locale_ready,
+valid mbstate or MB_LEN_MAX=16 is not the audit. Valid state means initial
+all-zero storage or a valid continuation of that same codec; switching
+codecs does not transport a continuation's validity. Non-setlocale calls
+retain effective names/text/codec and the borrow epoch, even when private
+converter-cache representation evolves.
+
+The source audit is of the selected user-glibc's wcsmbs/mbrtowc.c,
+wcsmbs/wcsmbsload.c and iconv/gconv_simple.c, with iconv/loop.c and
+iconv/skeleton.c for continuation handling:
+
+- The C converter consumes one ASCII byte or reports illegal input. NUL
+  produces a zero wide character; it is not a positive consumed result.
+- The selected UTF-8 converter accepts sequences of up to **six** bytes
+  (not just the four Unicode examples in the probe). Its incomplete branch
+  checks all supplied continuation bytes; NUL is not a continuation byte.
+  A valid pending sequence also needs at most six bytes in total. Thus a
+  NUL within the supplied interval prevents an incomplete result, and a
+  count of at least sixteen cannot run out before completing or rejecting
+  the next character. Positive consumption contains no NUL.
+- mbrtowc maps incomplete to size_t -2 and illegal input to -1/EILSEQ,
+  returns zero for the completed NUL, and reports consumption from the
+  input-pointer difference. Completed C/C.UTF-8 conversions are initial;
+  incomplete conversions can retain a valid noninitial continuation.
+
+Independent review and the native libc-locale probe support this trusted
+profile; they do not prove native adequacy or termination. The finite
+probe covers 8,192 initial-state calls per locale (every lead byte,
+n=1..16, with/without terminal NUL), exact one-to-four-byte UTF-8 samples,
+three split continuations and pending-state-plus-NUL EILSEQ, in ordinary
+and -O comparisons. It is not exhaustive over UTF-8 states or six-byte
+sequences. A general arbitrary-codec contract must retain weaker results;
+ISO-2022-JP source counterpaths are the reason not to generalize this
+profile. Non-EILSEQ errno preservation is a separate, unaudited obligation.
+
 ### The next milestones, in order
 
 1. **Hello's greeting conversion prerequisites.** Campaign 3 needs plain
@@ -1992,10 +2039,10 @@ cross-thread pointer stability. No core/runtime axioms or Iris files change.
    preserve valid continuation after non-EILSEQ updates, without assuming
    every successful stateful-codec conversion leaves an all-zero state.
    Keep codec dependence opaque. Expose positive consumption at most n.
-   The stronger no-consumed-NUL and incomplete-exclusion properties need
-   an independently justified codec profile; do not derive them merely
-   from valid mbstate or MB_LEN_MAX=16. This profile is a visible Hello
-   obligation, not yet an implemented or discharged Rocq theorem.
+   The stronger no-consumed-NUL and incomplete-exclusion properties use
+   the approved C/C.UTF-8 codec-profile premise above. Keep it visible in
+   the Hello theorem; do not derive it merely from valid mbstate or
+   MB_LEN_MAX=16. The conversion contract is not yet implemented in Rocq.
 
    Pair a locale/stdio/errno payload with Linked's authoritative shutdown
    state rather than inventing another callback inventory. Project the

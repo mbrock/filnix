@@ -542,9 +542,35 @@ Any future contract must expose those permissions while retaining
 effective locale names/text/codec and
 the borrow window; it must not disguise cache effects as writes to
 Hello-owned memory or infer universal native adequacy from these probes.
-The stronger Hello conversion exclusions will require an explicit codec
-profile: generic stateful converters do not obtain them just from valid
-mbstate and MB_LEN_MAX. Source review of ISO-2022-JP finds incomplete paths
+The stronger Hello conversion exclusions use an explicit, independently
+audited **C or C.UTF-8 LC_CTYPE codec-profile premise**, approved by mbrock.
+Campaign 3's Hello theorem must state it at conversion. This does not
+restrict the general entry/setlocale contracts or other locale categories.
+The represented opaque codec must be bound to the actual audited
+converter and effective category name/text, including permitted lazy
+resolution/fallback; checking a locale name alone is not an audit.
+All-zero state is admitted, and valid non-EILSEQ continuations are
+preserved for that same codec. A setter cannot carry an old codec's
+pending state into a new one just by retaining its bytes.
+
+The selected source audit follows wcsmbs/mbrtowc.c's status mapping and
+input-pointer consumption, wcsmbs/wcsmbsload.c's C converter/loader, and
+iconv/gconv_simple.c's ASCII/UTF-8 loops with iconv/loop.c and skeleton.c
+for pending state. C consumes one ASCII byte or rejects it. The selected
+UTF-8 loop permits up to **six** bytes, checks available continuation
+bytes before declaring incomplete, and treats NUL as a non-continuation.
+For a valid same-codec state, this supports consumption at most n, no NUL
+in positive consumption, and no -2 when the interval contains NUL or
+n>=16. NUL completion yields zero; a completed character leaves an
+initial state, whereas incomplete input can leave a valid pending state.
+These are trusted profile properties, not a mechanized libc proof.
+The finite probes above supplement the source audit; their exact UTF-8
+value/continuation samples cover one through four bytes, not all six-byte
+sequences or all represented states. Neither the profile nor these probes
+establishes universal native prefix/safepoint coverage or termination.
+
+Generic stateful converters do not obtain the Hello exclusions just
+from valid mbstate and MB_LEN_MAX. Source review of ISO-2022-JP finds incomplete paths
 for ESC/NUL at n=2 and redundant shifts plus a final ESC at n=16; selection
 of such a locale in the pinned image is unverified. Lazy loading's errno
 behavior likewise needs separate justification before promising an
