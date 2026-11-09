@@ -181,6 +181,12 @@ Qed.
 End World.
 End Linked.
 
+(** Consumers accept an existing callback bridge and its exact machine
+    inductives, rather than instantiate a generatively distinct machine. *)
+Module Type LinkedSig (R : Runtime).
+Include Linked R.
+End LinkedSig.
+
 (** Independent execution controls, not native exit-registry memory. *)
 Module LinkedChecks.
 Module L := Linked InterpRuntime.

@@ -50,6 +50,8 @@ theories/Doomed.v
 theories/Soundness.v
 theories/ExternalMachine.v
 theories/Linked.v
+theories/Ending.v
+theories/Diagnostics.v
 theories/Hi.v
 theories/Composition.v
 theories/Panics.v

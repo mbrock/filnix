@@ -1,0 +1,3 @@
+error zero returns then hard exit skips handlers: yes
+error nonzero exits with signed status and existing handlers: yes
+callback error replaces status without repeating active handler: yes
