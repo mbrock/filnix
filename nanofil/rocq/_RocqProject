@@ -28,6 +28,7 @@ theories/Identity.v
 theories/ExternalCalls.v
 theories/Locale.v
 theories/Startup.v
+theories/Getopt.v
 theories/Stdio.v
 theories/Shutdown.v
 theories/ExitMemory.v
