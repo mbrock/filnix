@@ -34,7 +34,7 @@ Example load_spec ℓ v : ⊢ {{{ ℓ ↦ v }}} ! #ℓ {{{ RET v; ℓ ↦ v }}}.
 
 Recursive data becomes a recursive predicate. The list from p holding xs is null when xs is empty, and otherwise a node owning its cells, separately from the list after it. Since ∗ keeps each node's cells apart from the rest, the predicate excludes cycles and sharing without saying so.
 
-> The model of ∗ is plain set theory: an assertion is a predicate on heap fragments, and P ∗ Q holds of h when h is the disjoint union of an h1 where P holds and an h2 where Q does. nanofil's hand-rolled spike writes exactly that over footprints of identity-keyed pieces (`star` in [Sep.v](https://github.com/mbrock/filnix/blob/main/nanofil/rocq/spikes/Sep.v)). The frame rule is sound because every rule of the language leaves alone what it does not own.
+> The model of ∗ is plain set theory: an assertion is a predicate on heap fragments, and P ∗ Q holds of h when h is the disjoint union of an h1 where P holds and an h2 where Q does. nanofil's hand-rolled spike writes exactly that over footprints of identity-keyed pieces (`star` in [Sep.v](../rocq/spikes/Sep.v)). The frame rule is sound because every rule of the language leaves alone what it does not own.
 
 ## Concurrent separation logic
 
@@ -174,7 +174,7 @@ What it does not give for free: a plain WP is partial correctness, so terminatio
 
 Each approach makes a different choice of what is trusted and what is proved about which program.
 
-- **A hand-rolled logic**: assertions as predicates on heaps, with a star and its frame lemmas written for one language, everything proved by hand in Rocq. [Sep.v](https://github.com/mbrock/filnix/blob/main/nanofil/rocq/spikes/Sep.v) is one; its adequacy is [never_panics_by_invariant], but its framing is manual.
+- **A hand-rolled logic**: assertions as predicates on heaps, with a star and its frame lemmas written for one language, everything proved by hand in Rocq. [Sep.v](../rocq/spikes/Sep.v) is one; its adequacy is [never_panics_by_invariant], but its framing is manual.
 - **VST**: Andrew Appel's Verifiable C, a higher-order impredicative separation logic for CompCert's Clight with its own step-indexed model, proved sound in Rocq against CompCert's semantics, so its proofs reach the assembly; rebuilt on Iris in 2024. It is a logic for C with C's memory model; nanofil proves programs in its own IR, whose memory is Fil-C's.
 - **CompCert**: Xavier Leroy's verified C compiler, which proves in Rocq that the assembly simulates the source. It proves a translation, not programs; nanofil proves its [[validator]] sound instead ([valid_no_unchecked]) and checks its passes by [[translation-validation|translation validation]].
 - **RefinedC**: refinement types for C built on Iris, with Lithium searching for the typing proof. It is the ownership-types rung of logic.md's ladder: its typing derivations are Iris proofs, so they need no soundness proof of their own.
@@ -234,28 +234,24 @@ The laws are proved in the model once and packaged as the `bi` interface, for bu
 
 ### The proof mode
 
-Proving `P ∗ Q ⊢ Q ∗ P` with Rocq's own tactics means rewriting with associativity and commutativity lemmas, and real goals have a dozen conjuncts. The [[iris-proof-mode|Iris Proof Mode]] gives Iris goals their own context. Hypotheses have string names and live in two zones: persistent ones, which can be used any number of times, and spatial ones, which a tactic consumes. Above the double line is Rocq's own context; below it, persistent hypotheses (none here) would come first, then the spatial ones, then the goal under `∗`. A goal of nanofil's spike, in the middle of the proof below, as Rocq prints it:
+Proving `P ∗ Q ⊢ Q ∗ P` with Rocq's own tactics means rewriting with associativity and commutativity lemmas, and real goals have a dozen conjuncts. The [[iris-proof-mode|Iris Proof Mode]] gives Iris goals their own context. Hypotheses have string names and live in two zones: persistent ones, which can be used any number of times, and spatial ones, which a tactic consumes. Above the double line is Rocq's own context; below it, persistent hypotheses (none here) would come first, then the spatial ones, then the goal under `∗`. A goal of nanofil's spike, in the middle of the proof below, as Rocq prints it, without the section's variables and with shorter rules (the spike's page draws every state of the proof):
 
 ```text
-  hlc : has_lc
-  Σ : gFunctors
-  HinvG : invGS_gen hlc Σ
-  HheapG : gen_heapGS piece pval Σ
-  m : mem
-  s : R.state
-  ps : list (piece * pval)
-  h : gmap piece pval
-  Ha : agrees (m, s).1 h
-  Hd : live_disjoint (m, s).1
-  Hr : R.ready (m, s).2 (m, s).1
-  ============================
-  "Hh" : gen_heap_interp h
-  "Hps" : pts ps
-  --------------------------------------∗
-  ⌜owned_facts ps m⌝
+m : mem
+s : R.state
+ps : list (piece * pval)
+h : gmap piece pval
+Ha : agrees (m, s).1 h
+Hd : live_disjoint (m, s).1
+Hr : R.ready (m, s).2 (m, s).1
+=============================
+"Hh" : gen_heap_interp h
+"Hps" : pts ps
+-----------------------------∗
+⌜owned_facts ps m⌝
 ```
 
-`iIntros "Hσ Hps"` introduces wands, `iDestruct "Hσ" as (h) "[Hh %Hσ]"` opens an existential and a ∗ and moves a pure fact into Rocq's context, `iFrame` cancels hypotheses against the goal, `iSplitL "H"` gives H to the left conjunct, `iMod` runs an update, `iNext` removes a later, and `iLöb as "IH"` starts Löb induction. The tactics are driven by typeclasses (`IntoSep`, `Frame`, `ElimModal`), so a new connective joins them with instances. The whole proof of that goal, from IrisHeap.v:
+`iIntros "Hσ Hps"` introduces wands, `iDestruct "Hσ" as (h) "[Hh %Hσ]"` opens an existential and a ∗ and moves a pure fact into Rocq's context, `iFrame` cancels hypotheses against the goal, `iSplitL "H"` gives H to the left conjunct, `iMod` runs an update, `iNext` removes a later, and `iLöb as "IH"` starts Löb induction. The tactics are driven by typeclasses (`IntoSep`, `Frame`, `ElimModal`), so a new connective joins them with instances. The whole proof of that goal, [pts_facts]:
 
 ```rocq
 Lemma pts_facts m s ps : heap_interp (m, s) -∗ pts ps -∗ ⌜owned_facts ps m⌝.
@@ -292,7 +288,7 @@ nanofil's campaign is now a property of whole programs ([formal.md](formal.md)):
 
 ### The machine as a language
 
-[IrisLang.v](https://github.com/mbrock/filnix/blob/main/nanofil/rocq/spikes/IrisLang.v) wraps the machine. An expression is a configuration without its memory, or the [[outcome]] a run ended with; the Iris state is the memory with the runtime's state:
+[IrisLang.v](../rocq/spikes/IrisLang.v) wraps the machine. An expression is a configuration without its memory, or the [[outcome]] a run ended with; the Iris state is the memory with the runtime's state:
 
 ```rocq
 Inductive expr : Type :=
@@ -321,11 +317,11 @@ Inductive prim_step (ge : genv) : expr -> nstate -> list unit -> expr -> nstate 
     prim_step ge (EConf fr callers fuel) (m, s) [] (EEnd o) (m, s) [].
 ```
 
-This is the whole trick. A panic, a stuck step and a negative allocation are each a configuration with no primitive step, so in Iris's terms it is stuck (`fails_not_reducible`). Running out of fuel, a refusal and a normal return end the run in a value. A [[poll|safepoint]] is an `mstep` that leaves the expression as it was and changes only the state. Nothing forks, and observations are unused.
+This is the whole trick. A panic, a stuck step and a negative allocation are each a configuration with no primitive step, so in Iris's terms it is stuck ([fails_not_reducible]). Running out of fuel, a refusal and a normal return end the run in a value. A [[poll|safepoint]] is an [mstep] that leaves the expression as it was and changes only the state. Nothing forks, and observations are unused.
 
 ### Adequacy is never_panics
 
-A WP with stuckness NotStuck demands that every reachable expression be a value or reducible. In this language that is exactly that no reachable configuration fails. So Iris's adequacy, with a bridge from the machine's reachability to Iris's (`adequate_no_fails`), proves Panics.v's statement itself:
+A WP with stuckness NotStuck demands that every reachable expression be a value or reducible. In this language that is exactly that no reachable configuration fails. So Iris's adequacy, with a bridge from the machine's reachability to Iris's ([adequate_no_fails]), proves Panics.v's statement itself, [wp_never_panics]:
 
 ```rocq
 Theorem wp_never_panics (hlc : has_lc) Σ `{!invGpreS Σ} md entry (input : list word -> Prop) globals m f :
@@ -343,11 +339,11 @@ Theorem wp_never_panics (hlc : has_lc) Σ `{!invGpreS Σ} md entry (input : list
   P.never_panics md entry input.
 ```
 
-The postcondition is `True`: never_panics is a safety property, so what a run returns does not matter, only that every step it takes is safe. The fuel is universally quantified and `OutOfFuel` is a value, so the WP needs no termination argument. The theorem took 174 lines and an hour. The hard part of an adequacy proof is the logic's model, and Iris has proved that once for every language.
+The postcondition is `True`: never_panics is a safety property, so what a run returns does not matter, only that every step it takes is safe. The fuel is universally quantified and [OutOfFuel] is a value, so the WP needs no termination argument. The theorem took 174 lines and an hour. The hard part of an adequacy proof is the logic's model, and Iris has proved that once for every language.
 
 ### Resources keyed by identity
 
-What can a proof own in Fil-C's memory? [Pieces.v](https://github.com/mbrock/filnix/blob/main/nanofil/rocq/spikes/Pieces.v), shared by both spikes, answers: an object's life, one byte, or one [[aux]] slot, each named by the object's [[identity]] and an offset:
+What can a proof own in Fil-C's memory? [Pieces.v](../rocq/spikes/Pieces.v), shared by both spikes, answers: an object's life, one byte, or one [[aux]] slot, each named by the object's [[identity]] and an offset:
 
 ```rocq
 Inductive piece : Type :=
@@ -358,7 +354,7 @@ Inductive piece : Type :=
 
 Keying by identity is forced, not chosen. In the model a new object may cover addresses a freed object once had ([fresh]), so an address may belong to two objects in turn, but an identity never does ([free_keeps_ids]). An assertion about address a would be about whichever object is there; an assertion about identity b stays about one object for its whole life, and after it.
 
-[IrisHeap.v](https://github.com/mbrock/filnix/blob/main/nanofil/rocq/spikes/IrisHeap.v) gives each piece a value, puts the pieces in Iris's gen_heap, and defines the state interpretation: the authoritative ghost heap agrees with the memory, live objects do not overlap, and the runtime is [[ready]]. `pts ps` owns a list of pieces with their values:
+[IrisHeap.v](../rocq/spikes/IrisHeap.v) gives each piece a value, puts the pieces in Iris's gen_heap, and defines the state interpretation: the authoritative ghost heap agrees with the memory, live objects do not overlap, and the runtime is [[ready]]. [pts] owns a list of pieces with their values:
 
 ```rocq
 Inductive pval : Type := VLive (reg : region) | VByte (v : Z) | VAux (c : cap).
@@ -375,9 +371,9 @@ A [[check]] splits along these pieces. Its bounds test is arithmetic on the obje
 
 ### Safepoints, by Löb
 
-A safepoint is where the runtime acts, and Runtime.v lets it free a live heap object ([safepoint_lifetime]), standing for another thread. A single-threaded program that keeps its own objects across a safepoint needs a runtime that frees nothing live: Buffer.v's premise [safepoint_keeps_live], which the spikes call `keeps_live` and prove the interpreter meets. Under it a safepoint keeps every region and byte, and rewrites only aux slots that hold a dead object's capability (`safepoint_shape`, from [non_moving], [aux_round_trip] and [rooting]), so it keeps `heap_interp` with the same ghost heap.
+A safepoint is where the runtime acts, and Runtime.v lets it free a live heap object ([safepoint_lifetime]), standing for another thread. A single-threaded program that keeps its own objects across a safepoint needs a runtime that frees nothing live: Buffer.v's premise [safepoint_keeps_live], which the spikes call [keeps_live] and prove the interpreter meets. Under it a safepoint keeps every region and byte, and rewrites only aux slots that hold a dead object's capability ([safepoint_shape], from [non_moving], [aux_round_trip] and [rooting]), so it keeps [heap_interp] with the same ghost heap.
 
-Every rule of the spike comes from one lifting lemma, and that lemma deals with safepoints once:
+Every rule of the spike comes from one lifting lemma, [wpc_lift], and that lemma deals with safepoints once:
 
 ```rocq
 Lemma wpc_lift (Q : iProp Σ) fr callers fuel :
@@ -388,7 +384,7 @@ Lemma wpc_lift (Q : iProp Σ) fr callers fuel :
   Q -∗ wpc (EConf fr callers fuel).
 ```
 
-Given Q, the configuration is safe if Q and the state interpretation show it does not fail, and if after every step that is not a safepoint (`nosp_step`) they give back the state interpretation and safety of what follows. The safepoint case is missing from the premises because the proof closes it with `iLöb`: a safepoint steps from `EConf fr callers fuel` to itself, so what is to be proved after it is the lemma's own conclusion, one step later, which Löb induction assumes. No program proof mentions safepoints again. The hand-rolled spike, without ▷, needs each function's assertions to survive a safepoint and a lemma per function to say so. Fuel cannot replace Löb here, because a safepoint spends no fuel.
+Given Q, the configuration is safe if Q and the state interpretation show it does not fail, and if after every step that is not a safepoint ([nosp_step]) they give back the state interpretation and safety of what follows. The safepoint case is missing from the premises because the proof closes it with `iLöb`: a safepoint steps from `EConf fr callers fuel` to itself, so what is to be proved after it is the lemma's own conclusion, one step later, which Löb induction assumes. No program proof mentions safepoints again. The hand-rolled spike, without ▷, needs each function's assertions to survive a safepoint and a lemma per function to say so. Fuel cannot replace Löb here, because a safepoint spends no fuel.
 
 ### A list, summed
 
@@ -418,7 +414,7 @@ long listsum(int n) {
 }
 ```
 
-In checked IR, `sum` checks each node's value field, half-checks and loads the next pointer with its capability from the aux, and polls on the loop's back edge; `listsum` allocates each node on the collected heap and stores through checked pointers. A node owns its life as a 16-byte heap object, the aux slot of its next pointer, and the bytes of both fields; the list is a recursive predicate, with the pointer's own capability and alignment as pure facts ([IrisListSum.v](https://github.com/mbrock/filnix/blob/main/nanofil/rocq/spikes/IrisListSum.v)):
+In checked IR, `sum` checks each node's value field, half-checks and loads the next pointer with its capability from the aux, and polls on the loop's back edge; `listsum` allocates each node on the collected heap and stores through checked pointers. A node owns its life as a 16-byte heap object, the aux slot of its next pointer, and the bytes of both fields; the list is a recursive predicate, with the pointer's own capability and alignment as pure facts ([IrisListSum.v](../rocq/spikes/IrisListSum.v)):
 
 ```rocq
 Definition node_ps (b : Z) (nx : ptr) (x : Z) : list (piece * pval) :=
@@ -433,7 +429,7 @@ Fixpoint lst (p : ptr) (xs : list Z) : iProp Σ :=
   end%I.
 ```
 
-`sum`'s specification is in continuation style. The machine keeps the callers stack inside the expression, so there is no evaluation context to bind; instead the caller's resumption, with any result and any fuel, is a resource the callee carries to its return:
+`sum`'s specification, [sum_spec], is in continuation style. The machine keeps the callers stack inside the expression, so there is no evaluation context to bind; instead the caller's resumption, with any result and any fuel, is a resource the callee carries to its return:
 
 ```rocq
 Local Notation cont cf d callers :=
@@ -446,7 +442,7 @@ Lemma sum_spec (HK : SS.keeps_live) cf d callers p xs fuel :
                    ((cf, mkPending (CResult d L) None) :: callers) fuel).
 ```
 
-The frame is free: whatever the caller owns besides the list rides inside `cont`. Each loop is a Löb induction at the point after its head's phis, and each step is one rule application with the step computed, as in Symbolic.v. The theorem is then adequacy applied to `listsum`'s specification:
+The frame is free: whatever the caller owns besides the list rides inside `cont`. Each loop is a Löb induction at the point after its head's phis, and each step is one rule application with the step computed, as in Symbolic.v. The theorem is then adequacy ([heap_never_panics]) applied to `listsum`'s specification ([listsum_spec]):
 
 ```rocq
 Theorem listsum_never_panics : SS.keeps_live ->
@@ -462,7 +458,7 @@ Proof.
 Qed.
 ```
 
-Planting a bug shows what the specification carries: a node without its `PLive` piece makes `lst_head` unable to show the next node is live, only that it was allocated, and `sum`'s checks of it cannot be proved to pass.
+Planting a bug shows what the specification carries: a node without its [PLive] piece makes [lst_head] unable to show the next node is live, only that it was allocated, and `sum`'s checks of it cannot be proved to pass.
 
 ### Against the hand-rolled logic
 
@@ -474,7 +470,7 @@ Definition star (P Q : hprop) : hprop :=
     (forall p, S p <-> S1 p \/ S2 p) /\ (forall p, ~ (S1 p /\ S2 p)) /\ P S1 m /\ Q S2 m.
 ```
 
-It needs no new adequacy, since an invariant of configurations built from its assertions goes straight into [never_panics_by_invariant]. Everything Iris's proof mode does, it does by lemma: `emp ∗ P` is P only up to "the same pieces", four-way stars are reassociated by explicit chains, and walked nodes are dropped by `lst_cons_drop`. The two spikes are the same size and prove the same theorem:
+It needs no new adequacy, since an invariant of configurations built from its assertions goes straight into [never_panics_by_invariant]. Everything Iris's proof mode does, it does by lemma: `emp ∗ P` is P only up to "the same pieces", four-way stars are reassociated by explicit chains, and walked nodes are dropped by [lst_cons_drop]. The two spikes are the same size and prove the same theorem:
 
 | | Hand-rolled | Iris |
 | --- | --- | --- |
