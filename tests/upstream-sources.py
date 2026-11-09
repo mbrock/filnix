@@ -318,7 +318,8 @@ class UpstreamTests(unittest.TestCase):
                              [runtime[0], "runtime-exception-unwind.patch", runtime[1]])
             self.assertEqual(data["release"]["libcPatches"], libc)
             self.assertEqual(data["release"]["libcPostPatch"], "")
-            self.assertEqual(data["staging"]["runtimePatches"], runtime)
+            self.assertEqual(data["staging"]["runtimePatches"],
+                             runtime + ["sealed-closures.patch", "runtime-zmark-shared.patch"])
             self.assertEqual(data["staging"]["libcPatches"], libc)
 
     def test_component_hashes_and_store_identity(self):
