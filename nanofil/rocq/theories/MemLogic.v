@@ -28,7 +28,11 @@
       one more than a [string]'s in another object, the call makes them
       a [string] holding the copy and binds d to the destination or,
       for stpcpy, its NUL; it keeps every aux slot, so none is owned,
-      and needs no alignment ([copy_string_after]).
+      and needs no alignment ([copy_string_after]);
+    - [wp_memchr] and [wp_memchr_string], from [memchr_contract]: a
+      search of an owned block, or a search for the NUL of an owned
+      [string] with any bound, since memchr reads only through its
+      first match ([memchr_input_bounded], [nul_found]).
     The contracts' exact destination frame ([memset_frame], shared by
     the copies) keeps every piece outside the written block
     ([block_frame], through Heap.v's [frame_within]); for strdup, whose
@@ -464,6 +468,59 @@ Proof.
   - apply (access_read _ b reg); [exact Hc | exact (proj1 Hl) | cbn; lia | cbn; lia | apply Z.mod_1_r].
   - intros i Hi. cbn [ptr_addr]. destruct (lookup_lt_is_Some_2 xs (Z.to_nat i) ltac:(lia)) as [x Hxi].
     rewrite <- (Z2Nat.id i) by lia. rewrite (Hv _ _ Hxi). exact (Forall_lookup_1 _ _ _ _ Hy Hxi).
+Qed.
+
+(** ## Searching a string for its NUL *)
+
+(** A search for the NUL reads a [bounded_length] string through its
+    NUL when that lies before the bound, and the whole bound
+    otherwise. So [memchr_input] holds for an int c whose low byte is
+    the NUL, with nothing asked of the bytes after the NUL. *)
+Lemma memchr_input_bounded m p c n k :
+  0 <= c < 2 ^ 32 -> c mod 256 = 0 -> bounded_length m p n k -> memchr_input m p c n.
+Proof.
+  intros Hc H0 (Hn & Hk & Hlife & Ha & Hpos & Hnul).
+  split; [exact Hc|]. split; [exact Hn|]. exists k. split; [exact Hk|]. rewrite H0. split.
+  - split; [destruct (k <? n) eqn:E; [apply Z.ltb_lt in E | apply Z.ltb_ge in E]; lia|].
+    split; [exact Hlife|]. split; [exact Ha|].
+    destruct (k <? n) eqn:E; intros i Hi.
+    + apply Z.ltb_lt in E. destruct (Z.lt_ge_cases i k) as [Hik|Hik]; [specialize (Hpos i ltac:(lia)); lia|].
+      replace i with k by lia. rewrite (Hnul E). lia.
+    + specialize (Hpos i ltac:(lia)). lia.
+  - split; [|exact Hnul]. intros i Hi. specialize (Hpos i Hi). lia.
+Qed.
+
+(** What a search for the NUL bounded by n finds in the string at p
+    with contents bytes: its NUL, with p's capability, when the string
+    is shorter than n, and null otherwise. *)
+Definition nul_found (p : ptr) (bytes : list Z) (n : Z) : ptr :=
+  if Z.of_nat (length bytes) <? n then mkPtr (ptr_addr p + Z.of_nat (length bytes)) (ptr_cap p)
+  else mkPtr 0 CNone.
+
+(** Where the string's pieces agree, memchr's [memchr_result] for an
+    int whose low byte is the NUL is [nul_found]: no byte before the
+    NUL matches, and the NUL does. *)
+Lemma memchr_result_string m p b reg bytes c n q :
+  string_ok p b reg bytes -> all_agree m (string_ps p b reg bytes) -> c mod 256 = 0 ->
+  memchr_result m p c n q -> q = nul_found p bytes n.
+Proof.
+  intros Hok Ha H0 Hq. pose proof (string_bytes m p b reg bytes Hok Ha) as Hb.
+  pose proof Hok as (_ & _ & _ & _ & _ & Hf). unfold memchr_result in Hq. rewrite H0 in Hq. unfold nul_found.
+  assert (Hnz : forall i, 0 <= i < Z.of_nat (length bytes) -> m_bytes m (ptr_addr p + i) <> 0).
+  { intros i Hi. destruct (lookup_lt_is_Some_2 bytes (Z.to_nat i) ltac:(lia)) as [x Hx].
+    rewrite <- (Z2Nat.id i) by lia. rewrite (Hb (Z.to_nat i) x); [|by apply lookup_app_l_Some].
+    pose proof (Forall_lookup_1 _ _ _ _ Hf Hx) as Hx0. cbv beta in Hx0. lia. }
+  assert (Hz : m_bytes m (ptr_addr p + Z.of_nat (length bytes)) = 0).
+  { apply (Hb (length bytes) 0). rewrite lookup_app_r; [|lia]. rewrite Nat.sub_diag. reflexivity. }
+  destruct Hq as [(k & Hk & Hvk & Hbefore & ->) | (Hmiss & ->)].
+  - assert (Hkl : k = Z.of_nat (length bytes)).
+    { destruct (Z.lt_trichotomy k (Z.of_nat (length bytes))) as [Hl|[Hl|Hl]].
+      - exfalso. apply (Hnz k); [lia | exact Hvk].
+      - exact Hl.
+      - exfalso. apply (Hbefore (Z.of_nat (length bytes))); [lia | exact Hz]. }
+    subst k. rewrite (proj2 (Z.ltb_lt _ _) (proj2 Hk)). reflexivity.
+  - destruct (Z.of_nat (length bytes) <? n) eqn:E; [|reflexivity].
+    apply Z.ltb_lt in E. exfalso. apply (Hmiss (Z.of_nat (length bytes))); [lia | exact Hz].
 Qed.
 
 (** The memory and aux triples over any [[runtime]] R. *)
@@ -1145,6 +1202,43 @@ Proof.
         intros i' x' Hlt Hx'. rewrite <- (Hv _ _ Hx'). apply Hbefore. lia.
     + right. split; [|reflexivity]. intros i' x' Hx'. rewrite <- (Hv _ _ Hx').
       apply Hnone. split; [lia|]. apply lookup_lt_Some in Hx'. lia.
+Qed.
+
+(** memchr's triple on a string, from [memchr_contract]: owning the
+    string at p, which vp reads as, a search for the int k, which vk
+    reads as and whose low byte is the NUL, bounded by n, which vn
+    reads as, binds d to [nul_found] p bytes n. The search reads only
+    through the NUL ([memchr_input_bounded]), so the bound may run
+    past the string's object. *)
+Lemma wp_memchr_string f e ls lab d vp vk vn rest j p b reg bytes k n Φ :
+  registry (TAtom "memchr") = Some (memchr_contract world) ->
+  find_fn ge (TAtom "memchr") = None -> lookup (TAtom "memchr") (ge_globals ge) = None ->
+  arg_x ge e (Arg P vp) = Some (WPtr p) ->
+  arg_x ge e (Arg W vk) = Some (WInt k) -> 0 <= k < 2 ^ 32 -> k mod 256 = 0 ->
+  arg_x ge e (Arg L vn) = Some (WInt n) -> 0 <= n < 2 ^ 64 ->
+  string p b reg bytes -∗
+  ▷ (string p b reg bytes -∗
+     WP (ERun (mkFrame f (put d (WPtr (nul_found p bytes n)) e) ls None (Exec lab rest j)) : mexpr)
+       {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+             (Exec lab (Call (CResult d P) (Global (TAtom "memchr")) [Arg P vp; Arg W vk; Arg L vn] :: rest) j))
+        : mexpr) {{ Φ }}.
+Proof.
+  intros Hreg Hfn Hdata Hp Hk Hk32 H0 Hn Hn64. iIntros "Hs HK".
+  iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (memchr_contract world)
+            [WPtr p; WInt k; WInt n] (string p b reg bytes) with "Hs [HK]");
+    [done | done | done | done | cbn [map_option]; rewrite Hp Hk Hn; done | | |].
+  - split; [right; eexists; reflexivity | do 3 eexists; reflexivity].
+  - iIntros (σ) "Hσ [%Hok Hs]". iDestruct (pts_facts with "Hσ Hs") as %(Ha & _). iPureIntro.
+    do 3 eexists. split; [reflexivity|].
+    exact (memchr_input_bounded _ _ _ _ _ Hk32 H0 (string_bounded _ _ _ _ _ n Hok Ha Hn64)).
+  - iNext. iIntros (σ trace values s' m' w' Hinv) "Hσ [%Hok Hs]".
+    iDestruct (pts_facts with "Hσ Hs") as %(Ha & _).
+    destruct (M.E.memchr_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hinv)
+      as (_ & -> & -> & p' & k' & n' & q & Hxs & Hq & He). injection Hxs as <- <- <-. injection He as ->.
+    rewrite (memchr_result_string _ _ _ _ _ _ _ _ Hok Ha H0 Hq).
+    iDestruct (pure_return with "Hσ") as "Hσ"; [exact Hinv|]. destruct σ as [m s fuel w0]. iModIntro.
+    iExists _. iSplit; [iPureIntro; reflexivity|]. iFrame "Hσ". iApply "HK". by iSplit.
 Qed.
 
 End calls.

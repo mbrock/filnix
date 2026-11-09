@@ -595,6 +595,17 @@ mbrtowc, errno and composite-world contracts. New in the logic:
   read a fresh object as a block.
 - [HelloLeaf.v](../rocq/theories/HelloLeaf.v) adds `xmalloc_spec`:
   the selected malloc never returns null, so `xalloc_die` is dead.
+- MemLogic.v adds `wp_memchr_string`, a search for the NUL in an
+  owned string with any bound. Campaign 4's memchr reads only through
+  its first match (25073c1), so the bound may run past the string's
+  object; `memchr_input_bounded` reads the admission off the string's
+  `bounded_length`, and the result is `nul_found`: the NUL if the
+  string is shorter than the bound, else null. On it, `strnlen1_spec`
+  now returns exactly min(length + 1, n). rpl_mbsrtowcs calls
+  `strnlen1(p + 4, 12)` on the greeting to size its mbrtowc window, and
+  the audited codec profile rules out -2 by that size or its NUL. The
+  milestone 2 version over a whole block, whose result was any int, is
+  gone.
 
 **Strings the world lends.** setlocale(k, NULL) returns libc's own
 name for category k. The program does not own that memory, and a

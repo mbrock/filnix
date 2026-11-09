@@ -5,9 +5,10 @@
     each make one libc call and return, and each gets a Hoare triple
     from that call's triple: `mbszero` from [wp_memset]
     ([mbszero_spec]), `memeq` from [wp_memcmp] ([memeq_spec]), `streq`
-    from [wp_strcmp] ([streq_spec]) and `strnlen1` from [wp_memchr]
-    ([strnlen1_spec]). Callers in the module use them through
-    [wp_call_bind], as `count_l` uses `next_l` in CountLogic.v.
+    from [wp_strcmp] ([streq_spec]) and `strnlen1` from
+    [wp_memchr_string] ([strnlen1_spec]). Callers in the module use
+    them through [wp_call_bind], as `count_l` uses `next_l` in
+    CountLogic.v.
 
     The triples hold in any genv that links Hello: one whose module is
     [hello_module], whose symbols include the module's own
@@ -286,38 +287,56 @@ Proof.
   iApply wp_ret; [reflexivity | word_premise |]. iNext. iApply ("HΦ" with "Hs Ht").
 Qed.
 
-(** `strnlen1`'s triple, from [wp_memchr]: owning the bytes xs from
-    offset o of the live object b, through a read-write or read-only
-    capability, with n their count, it returns an int and hands them
-    back. Whether memchr found the NUL decides which int; either way
-    the rest is arithmetic. *)
-Lemma strnlen1_spec b reg o xs c n Φ :
-  registry (TAtom "memchr") = Some (memchr_contract world) -> n = Z.of_nat (length xs) ->
-  c = Obj b \/ c = Ro b -> 0 <= o -> b + o + Z.of_nat (length xs) <= r_end reg ->
-  Z.of_nat (length xs) < 2 ^ 64 -> Forall (fun x => 0 <= x < 256) xs ->
-  live b reg -∗ bytes b o xs -∗
-  ▷ (∀ k, live b reg -∗ bytes b o xs -∗ Φ (Ret (WInt k))) -∗
-  WP (ERun (invocation strnlen1_fn [WPtr (mkPtr (b + o) c); WInt n]) : hexpr) {{ Φ }}.
+(** `strnlen1`'s triple on a string, from [wp_memchr_string]: owning
+    the string at p with contents bytes, a bound n returns one past
+    its NUL when that lies within n bytes, and n otherwise. The bytes
+    after the NUL need not exist. *)
+Lemma strnlen1_spec p b reg bytes n Φ :
+  registry (TAtom "memchr") = Some (memchr_contract world) -> 0 <= n < 2 ^ 64 ->
+  SL.string p b reg bytes -∗
+  ▷ (SL.string p b reg bytes -∗ Φ (Ret (WInt (Z.min (Z.of_nat (length bytes) + 1) n)))) -∗
+  WP (ERun (invocation strnlen1_fn [WPtr p; WInt n]) : hexpr) {{ Φ }}.
 Proof.
-  intros Hreg -> Hc Ho Hend Hn Hx. iIntros "Hl Hx HΦ". rewrite strnlen1_entry.
+  intros Hreg Hn. iIntros "Hs HΦ". iDestruct "Hs" as "[%Hok Hs]".
+  pose proof Hok as (_ & Hb0 & Hlo & Hhi & H48 & _). rewrite strnlen1_entry.
   iApply wp_enter; [exact find_n_start | reflexivity |]. iNext. cbn [b_insts b_jump n_start].
-  iApply (wp_memchr _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 0 with "Hl Hx");
+  iApply (ML.wp_memchr_string _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 0 n with "[$Hs //]");
     [exact Hreg | apply linked_outside; reflexivity | apply linked_unbound; reflexivity |
-     reflexivity | exact Hc | reflexivity | lia | cbn; rewrite Z.mod_small; [reflexivity | lia] |
-     exact Ho | exact Hend | exact Hx |].
-  iNext. iIntros (q _) "Hl Hx".
-  iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
-  iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
-  iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
-  iApply wp_branch; [reflexivity|]. iNext.
-  match goal with |- context[if ?t =? 0 then _ else _] => destruct (t =? 0) end; cbn [edge_label].
-  - iApply wp_enter; [exact find_n_L9 | reflexivity |]. iNext. cbn [b_insts b_jump n_L9].
-    iApply wp_ret; [reflexivity | word_premise |]. iNext. iApply ("HΦ" with "Hl Hx").
-  - iApply wp_enter; [exact find_n_L8 | reflexivity |]. iNext. cbn [b_insts b_jump n_L8].
+     reflexivity | reflexivity | lia | reflexivity | cbn; rewrite Z.mod_small; [reflexivity | lia] |
+     exact Hn |].
+  iNext. iIntros "Hs". unfold nul_found.
+  destruct (Z.of_nat (length bytes) <? n) eqn:E; [apply Z.ltb_lt in E | apply Z.ltb_ge in E].
+  - iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
+    iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
+    iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
+    iApply wp_branch; [reflexivity|]. iNext.
+    match goal with |- context[if ?t =? 0 then _ else _] => replace t with 1 end;
+      [| cbn [ptr_addr]; rewrite !Zmod_0_l (Z.mod_small (ptr_addr p + _)); [|lia];
+         rewrite (proj2 (Z.eqb_neq _ 0)); [reflexivity | lia]].
+    cbn [Z.eqb edge_label].
+    iApply wp_enter; [exact find_n_L8 | reflexivity |]. iNext. cbn [b_insts b_jump n_L8].
     iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
     iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
     iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
-    iApply wp_ret; [reflexivity | word_premise |]. iNext. iApply ("HΦ" with "Hl Hx").
+    iApply wp_ret; [reflexivity | word_premise |]. iNext. cbn [ptr_addr].
+    assert (Ht : forall a l, 0 <= a -> 0 <= l -> a + l + 1 < 2 ^ 64 ->
+      ((((a + l) mod 2 ^ 64 - a mod 2 ^ 64) mod 2 ^ 64) mod 2 ^ 64 + 1 mod 2 ^ 64) mod 2 ^ 64 mod 2 ^ 64
+      = l + 1).
+    { intros a l Ha Hl Hal. rewrite (Z.mod_small (a + l)); [|lia]. rewrite (Z.mod_small a); [|lia].
+      replace (a + l - a) with l by lia. rewrite (Z.mod_small l); [|lia]. rewrite (Z.mod_small l); [|lia].
+      rewrite (Z.mod_small 1); [|lia]. rewrite (Z.mod_small (l + 1)); [|lia].
+      rewrite (Z.mod_small (l + 1)); [reflexivity | lia]. }
+    rewrite (Ht (ptr_addr p) (Z.of_nat (length bytes))); [|lia | lia | lia]. rewrite Z.min_l; [|lia].
+    iApply ("HΦ" with "Hs").
+  - iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
+    iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
+    iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
+    iApply wp_branch; [reflexivity|]. iNext.
+    match goal with |- context[if ?t =? 0 then _ else _] => replace t with 0 by reflexivity end.
+    cbn [Z.eqb edge_label].
+    iApply wp_enter; [exact find_n_L9 | reflexivity |]. iNext. cbn [b_insts b_jump n_L9].
+    iApply wp_ret; [reflexivity | word_premise |]. iNext.
+    rewrite Z.min_r; [|lia]. rewrite (Z.mod_small n); [|lia]. iApply ("HΦ" with "Hs").
 Qed.
 
 (** `xmalloc`'s triple, from [wp_malloc]: for a size n, where an
