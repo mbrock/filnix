@@ -667,6 +667,9 @@ item_(block(module(F-_, Kind, n(_, N), Bs, Open), Body, End)) --> !,
          el(div, "rq-module-body", rocq_items(Body)),
          { nb_setval(rq_mod, Mod0) },
          ( { End = endm(_-T, _) } -> notes_upto(T) ; [] ) )).
+%  A statement quoted without its proof (a document's fence) is only the
+%  statement: no empty proof under it.
+item_(proved(S, pf([], none))) --> !, item_(S).
 item_(proved(S, Pf)) --> !, item_(S), proof_(S, Pf).
 item_(proof_start(_)) --> !, [].
 item_(ind(_, _, Bodies)) --> !, seq(Bodies, ind_body).
