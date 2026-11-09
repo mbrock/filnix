@@ -677,11 +677,13 @@ Two findings went back to Campaign 4:
   Campaign 4 restricted new names, reads and roots to born objects
   or the exact capability of an old read, root or name (4de6b80),
   which is what the setter's discharge of `wp_lend` needs.
-- `Locale R`, `Libio R`, `Startup R` and `ExitMemory R` each build
+- `Locale R`, `Libio R`, `Startup R` and `ExitMemory R` each built
   their own `ExternalCalls R`, whose `invoke` is a different inductive
-  from the logic's `M.E.invoke`. Their theorems cannot yet be applied
-  in the logic, so `locale_wi_query` restates the query case over
-  `M.E`.
+  from the logic's `M.E.invoke`, so their theorems could not be
+  applied in the logic. Campaign 4 added exact-machine variants
+  (b03f7ec): `LocaleOn R M` and its siblings take the machine module
+  itself, and LocaleLogic instantiates `LocaleOn R L.M`, so
+  `locale_wi_query` now uses `setlocale_query_invocation` directly.
 
 [HelloLocale.v](../rocq/theories/HelloLocale.v) (17 s) proves
 `setlocale_null_unlocked`, `setlocale_null_r_unlocked` on both of its

@@ -18,7 +18,8 @@
 
     From it, [locale_wi_lent] is LentLogic.v's hypothesis [lent_at] for
     every ghost name, and [locale_wi_pre] and [locale_wi_query] are
-    HelloLocale.v's premises on setlocale's query. A safepoint keeps
+    HelloLocale.v's premises on setlocale's query, the latter from
+    Campaign 4's [LocaleOn] instance over the logic's own machine. A safepoint keeps
     it where it keeps rep and readiness ([locale_wi_safepoint]).
 
     A setter keeps it too, with every category renamed to its new name
@@ -188,6 +189,7 @@ Module LocaleLogic (R : Runtime).
 Module LL := LentLogic R.
 Module LG := LL.LG.
 Module L := LG.L.
+Module LC := LocaleOn R L.M.
 Import L LG.
 
 (** setlocale's query of a category whose name is lent is admitted:
@@ -208,17 +210,8 @@ Lemma locale_wi_query rep requests r args s m w h k p t z trace ending s' m' w' 
   s' = s /\ m' = m /\ w' = w /\ ending = CallReturn [WPtr p].
 Proof.
   intros (_ & _ & _ & _ & _ & Hcur) Hk Hz Hi. destruct (Hcur _ _ _ Hk) as (_ & -> & _).
-  assert (Hq : locale_query [WInt k; WPtr z] = true) by (cbn; rewrite Hz; reflexivity).
-  destruct Hi as [trace ending s' m' w' born _ _ [He [_ Hp]] Hpost _ _ _
-                 |why trace s' m' w' born _ _ [He [_ Hp]] Hfail _].
-  - unfold setlocale_contract in Hp, Hpost, He.
-    cbn [contract_prefix contract_post contract_requests] in Hp, Hpost, He.
-    unfold setlocale_prefix in Hp. rewrite Hq in Hp.
-    destruct Hp as (_ & -> & ->).
-    destruct Hpost as (c & q & Hxs & Hend). injection Hxs as <- _. rewrite Hq in Hend.
-    split; [|auto]. clear -He Hq. induction He; [reflexivity | exact IHHe |].
-    destruct H as [Hfalse _]. congruence.
-  - exfalso. unfold setlocale_contract in Hfail. cbn [contract_requests] in Hfail. destruct Hfail as [al sz [Hfalse _] _ _ | al sz [Hfalse _] _]; congruence.
+  destruct (LC.setlocale_query_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hz Hi)
+    as (_ & -> & -> & -> & ->). auto.
 Qed.
 
 (** setlocale's setter of the category c, with a string argument p,
