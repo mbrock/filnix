@@ -33,6 +33,8 @@ theories/Stdio.v
 theories/Shutdown.v
 theories/ExitMemory.v
 theories/Libio.v
+theories/Streams.v
+theories/Formatting.v
 theories/Coverage.v
 theories/Evidence.v
 theories/Walk.v

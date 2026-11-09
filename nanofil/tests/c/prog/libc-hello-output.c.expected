@@ -1,0 +1,8 @@
+format read frames and caller buffer survive close: yes
+buffered acceptance can fail at close: yes
+close success does not erase earlier error: yes
+plain:hello:2026
+diagnostic flushes stdout without accepting there: yes
+formatted string needs its NUL: yes
+close consumes heap FILE: yes
+hello-output: write error: No space left on device
