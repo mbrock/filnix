@@ -273,13 +273,28 @@ The default PipeWire package now requests `systemdLibs`, which supplies the API
 it uses. Its larger default plugin graph still needs additional ports; this
 change alone does not establish a successful full PipeWire build.
 
+## Current PipeWire support status (2026-11-09)
+
+PipeWire is currently **unsupported in both the release and staging package
+sets**. Since [the October 24 broken-port declaration](https://github.com/mbrock/filnix/commit/0bb4257505660ec9dd568e4944d13c08584ca1da),
+`ports.nix` marks PipeWire 1.6.6 broken: its `test-loop` cancellation case
+aborts in `pthread_cancel` with `libgcc_s.so.6661 must be installed for
+pthread_cancel to work`. The port and its patches remain, but ordinary package
+evaluation refuses it; the `pipewire` and `pipewire-runtime` flake checks
+therefore fail at evaluation, before running their tests.
+
+The successful core-profile, full-package and consumer experiments below are
+historical results with the toolchains described there, not current support
+claims. Restoring support requires resolving the cancellation-runtime blocker,
+not merely allowing a broken package or installing native libgcc.
+
 ## PipeWire core experiment
 
-> **Retired.** The full `pkgsFilc.pipewire` now builds with these patches,
-> and the consumer cohort (SDL3, SDL2 compatibility, CAVA, WirePlumber) uses
-> it. The core profile and `tests/pipewire-core.nix` were removed; the
-> `pipewire` and `pipewire-runtime` flake checks replace them. The notes below
-> are kept as history.
+> **Retired.** The full `pkgsFilc.pipewire` built with these patches at the
+> time, and the consumer cohort (SDL3, SDL2 compatibility, CAVA, WirePlumber)
+> switched to it. The core profile and `tests/pipewire-core.nix` were removed;
+> the `pipewire` and `pipewire-runtime` flake checks replaced them. See the
+> current support status above; the notes below are kept as history.
 
 `tests/pipewire-core.nix` is a standalone diagnostic profile rather than a
 replacement for Nixpkgs' default PipeWire configuration. It keeps the core,
