@@ -29,6 +29,7 @@
 :- use_module(library(http/json)).
 :- use_module(library(crypto)).
 :- use_module(library(time)).
+:- use_module(library(aggregate)).
 :- use_module(rocq_syntax).
 :- use_module(rocq_draw).
 :- use_module('../concepts').
@@ -281,22 +282,38 @@ index_page(Pages) -->
     shell("Rocq", ( el(a, crumb, [href="../../index.html"], "Wiki"), el(span, "crumb-sep", "›"),
                     el(a, crumb, [href="../index.html"], "nanofil"), el(span, "crumb-sep", "›"),
                     el(span, "crumb current", "Rocq") ),
-          ( sidebar(index, []),
-            el(article, "dterm dterm-rocq index",
-               ( el(h1, "source-title", "nanofil's formal model, read as Rocq"),
-                 el(div, "prose lede",
-                    el(p, none, ( "The Rocq side of ", el(a, none, [href="../formal.html"], "the formal campaign"),
-                                  ", drawn by what it is rather than how it was typed: inductive types as tables of their ",
-                                  "constructors, relations as inference rules, theorems as their statement over a ",
-                                  "folded proof, ", el(code, none, "match"), " as a table of patterns. Each name links to its ",
-                                  "definition, and the Prolog a definition transcribes links to its page. Drawn by ",
-                                  el(a, none, [href="https://github.com/mbrock/filnix/tree/main/nanofil/web/rocq"], "dterm-rocq"),
-                                  ", after ", el(a, none, [href="../"], "nanofil's dterm"), "." ))),
-                 el(table, files, el(tbody, none, seq(Pages, file_row))) )) )).
+          el(article, "dterm dterm-rocq rq-index",
+             ( el(h1, "source-title", "nanofil's formal model, read as Rocq"),
+               el(div, "prose lede",
+                  el(p, none, ( "The Rocq side of ", el(a, none, [href="../formal.html"], "the formal campaign"),
+                                ", drawn by what it is rather than how it was typed: inductive types as tables of their ",
+                                "constructors, relations as inference rules, theorems as their statement over a ",
+                                "folded proof, ", el(code, none, "match"), " as a table of patterns. Each name links to its ",
+                                "definition, and the Prolog a definition transcribes links to its page. Drawn by ",
+                                el(a, none, [href="https://github.com/mbrock/filnix/tree/main/nanofil/web/rocq"], "dterm-rocq"),
+                                ", after ", el(a, none, [href="../"], "nanofil's dterm"), "." ))),
+               { findall(D, ( member(page(F, _, _, _), Pages), file_directory_name(F, D) ), Ds0), sort(Ds0, Ds) },
+               seq(Ds, file_dir(Pages)) ))).
 
-file_row(page(F, _, _, _)) -->
-    { page_name(F, P), file_name_extension(P, html, H), ( page_summary(F, S, N) -> true ; S = "", N = 0 ) },
-    { ( atom_concat('nanofil/', R, F) -> true ; R = F ) },
-    el(tr, none, ( el(td, "file-name", el(a, none, [href=H], esc(R))),
-                   el(td, "file-sum", esc(S)),
-                   el(td, "file-lines", ( esc(N), " lines" )) )).
+%  A directory's files, each its name, its size and its header's first
+%  sentence, the sentence drawn as the page draws it.
+file_dir(Pages, Dir) -->
+    { ( atom_concat('nanofil/', R, Dir) -> true ; R = Dir ),
+      atom_concat('https://github.com/mbrock/filnix/tree/main/', Dir, Src) },
+    el(h2, "rq-dir", el(a, none, [href=Src], ( esc(R), "/" ))),
+    el(dl, "rq-files", seq(Pages, file_row(Dir))).
+
+file_row(Dir, page(F, _, Items, _)) --> { file_directory_name(F, Dir) }, !,
+    { page_name(F, P), file_name_extension(P, html, H), ( page_summary(F, S, N) -> true ; S = "", N = 0 ),
+      file_base_name(F, Base), rocq_items_names(Items, Ns),
+      aggregate_all(count, member(n(_, _, _, lemma), Ns), NL),
+      aggregate_all(count, member(n(_, _, _, axiom), Ns), NA),
+      nb_setval(rq_file, F), nb_setval(rq_page, P) },
+    el(dt, none, ( el(a, none, [href=H], esc(Base)),
+                   el(span, "rq-file-meta", ( esc(N), "\u00A0lines", count_(NL, lemma), count_(NA, axiom) )) )),
+    el(dd, none, rocq_prose_inline(S)).
+file_row(_, _) --> [].
+
+count_(0, _) --> !, [].
+count_(1, W) --> !, " · 1\u00A0", esc(W).
+count_(N, W) --> " · ", esc(N), "\u00A0", esc(W), "s".

@@ -114,7 +114,10 @@ or tactics fail this check. Making `->` left-associative fails four Campaign
 - `(** … *)` comments are prose in dterm's little Markdown, with
   coqdoc's `[term]` drawn as Rocq and `(** * Title *)` or
   `(** ## Title *)` as a section heading (the page's contents follow them). The first is the page's
-  lede. `(* … *)` comments are notes, or asides at the end of a line.
+  lede, and its first sentence the file's line on the index. A link
+  `[text](../../docs/formal.md#…)` is written relative to the `.v` file,
+  as GitHub reads it, and drawn to the site's page for that document.
+  `(* … *)` comments are notes, or asides at the end of a line.
   `name/N`, `module:name/N` and `module.pl` link to nanofil's Prolog.
 
 ## Rocq in documents

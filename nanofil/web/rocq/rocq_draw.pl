@@ -31,7 +31,7 @@
       or asides beside the line they end. `name/N` and `module.pl` link to
       nanofil's Prolog.
 */
-:- module(rocq_draw, [rocq_items//1, rocq_inline//1, rocq_fence//1, rocq_prose//1, rocq_layout//0,
+:- module(rocq_draw, [rocq_items//1, rocq_inline//1, rocq_fence//1, rocq_prose//1, rocq_prose_inline//1, rocq_layout//0,
                       rocq_set_source/2, rocq_set_states/1, rocq_index_items/3, rocq_items_names/2,
                       rocq_global/5, rocq_prolog_pred/2, comment_heading/3, comment_prose_lines/2,
                       note_kind/3]).
@@ -1115,16 +1115,38 @@ rocq_prose_inline(Text) --> { text_codes(Text, Cs) }, pi(Cs).
 pi([]) --> !, [].
 %  [[name]] and [[name|text]] link to a concept node (web/concepts.pl).
 pi([0'[, 0'[|Cs0]) --> { concept_link_codes(Cs0, Name, Shown, Cs) }, !, concept_ref(Name, Shown), pi(Cs).
-%  [text](url) is a link (in an embedded concept, from docs/concepts:
-%  concept_url/3); [term] is Rocq (coqdoc), or code.
+%  [text](url) is a link (in an embedded concept, from docs/concepts;
+%  in a .v file's comment, from its directory); [term] is Rocq (coqdoc),
+%  or code.
 pi([0'[|Cs0]) --> { append(T, [0'], 0'(|Cs1], Cs0), \+ memberchk(0'], T), append(U, [0')|Cs], Cs1), \+ memberchk(0' , U) }, !,
-    { string_codes(TS, T), atom_codes(UA, U),
-      ( nb_current(rq_embedding, true), nb_current(rq_concepts, Pre) -> concept_url(UA, Pre, Href) ; Href = UA ) },
+    { string_codes(TS, T), atom_codes(UA, U), prose_href(UA, Href) },
     el(a, none, [href=Href], rocq_prose_inline(TS)), pi(Cs).
 pi([0'[|Cs0]) --> { bracketed(Cs0, 1, Code, Cs) }, !, code_(Code), pi(Cs).
 pi([0'`|Cs0]) --> { append(Code, [0'`|Cs], Cs0) }, !, code_(Code), pi(Cs).
 pi(Cs0) --> { word(Cs0, W, Cs1), W \== [] }, !, word_(W, Cs1).
 pi([C|Cs]) --> esc_code(C), pi(Cs).
+
+%  prose_href(+Url, -Href): a link written in a concept or a .v file, as
+%  the site has it from a Rocq page. A .v file's relative link is first
+%  made relative to docs/concepts, where concept_url/3 reads links.
+prose_href(Url, Href) :-
+    ( nb_current(rq_concepts, Pre) -> true ; Pre = '../' ),
+    (   nb_current(rq_embedding, true) -> concept_url(Url, Pre, Href)
+    ;   nb_current(rq_file, File), atom(File), file_name_extension(_, v, File),
+        \+ sub_atom(Url, _, _, _, ':'), \+ sub_atom(Url, 0, _, _, '#')
+    ->  ( sub_atom(Url, B, _, _, '#') -> sub_atom(Url, 0, B, _, Path), sub_atom(Url, B, _, 0, Frag) ; Path = Url, Frag = '' ),
+        atomic_list_concat(Dir0, '/', File), append(Dir, [_], Dir0), reverse(Dir, Dir1),
+        atomic_list_concat(Steps, '/', Path),
+        foldl([S, R0, R]>>( S == '..' -> R0 = [_|R] ; S == '.' -> R = R0 ; R = [S|R0] ), Steps, Dir1, Rev),
+        reverse(Rev, Repo),
+        (   Repo = [nanofil, docs, D] -> Rel = ['..', D]
+        ;   Repo = [nanofil|In] -> append(['..', '..'], In, Rel)
+        ;   append(['..', '..', '..'], Repo, Rel)
+        ),
+        atomic_list_concat(Rel, '/', R1), atom_concat(R1, Frag, ConceptUrl),
+        concept_url(ConceptUrl, Pre, Href)
+    ;   Href = Url
+    ).
 
 %% Concepts
 
