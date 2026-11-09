@@ -103,6 +103,8 @@ table.formals td { padding: 0.1rem 1rem 0.1rem 0; vertical-align: baseline; }
 .curly-empty { color: var(--paren); }
 .c.set > .kw.rec { margin-right: 0.3em; }
 .sel { white-space: nowrap; }
+/* A path does not break, but a parenthesized term it selects from does. */
+.sel > .paren { white-space: normal; }
 .sel > .v, .sel > a.v { color: var(--atom); }
 a.v, a.f.call { text-decoration: none; }
 a.v:hover, a.f.call:hover { text-decoration: underline; }
@@ -251,4 +253,13 @@ tr.may-read td.desc > .muted { font-size: 0.8rem; }
 @media (max-width: 700px) {
   .istr-text { white-space: pre; overflow-x: auto; max-width: 100%; }
   .istr, .app-arg, .value, .operand { min-width: 0; }
+  /* A name or path wider than a phone breaks where it must, and a table
+     of parameters scrolls inside itself. */
+  .sel, .clause.bind > .head { white-space: normal; overflow-wrap: anywhere; }
+  table.formals { display: block; max-width: 100%; overflow-x: auto; margin-left: 0.6em; }
+  .list-block, .paren.block { grid-template-columns: minmax(0, 1fr); }
+  .names > .name { min-width: 0; overflow-wrap: anywhere; }
+  /* Half the indent under a binding or an application, so a deeply
+     nested value keeps room for its words. */
+  .clause.bind > .value, .clause.bind.over > .value, .app-block > .app-args { padding-left: 0.5em; }
 }
