@@ -78,4 +78,5 @@ theories/HelloModule.v
 theories/HelloLeaf.v
 theories/HelloName.v
 theories/HelloLocale.v
+theories/HelloReach.v
 theories/Extract.v
