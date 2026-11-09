@@ -1,0 +1,19 @@
+diff --git a/crc32.c b/crc32.c
+index 32b1d04..d49629f 100644
+--- a/crc32.c
++++ b/crc32.c
+@@ -106,10 +106,10 @@
+ #endif
+ 
+ /* If available, use the ARM processor CRC32 instruction. */
+-#if defined(__aarch64__) && defined(__ARM_FEATURE_CRC32) && \
+-    defined(W) && W == 8
+-#  define ARMCRC32
+-#endif
++//#if defined(__aarch64__) && defined(__ARM_FEATURE_CRC32) && \
++//    defined(W) && W == 8
++//#  define ARMCRC32
++//#endif
+ 
+ #if defined(W) && (!defined(ARMCRC32) || defined(DYNAMIC_CRC_TABLE))
+ /*

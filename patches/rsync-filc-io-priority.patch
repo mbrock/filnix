@@ -1,0 +1,15 @@
+The released Fil-C runtime does not implement ioprio_set (syscall 251).
+Use rsync's existing unsupported-I/O-priority warning instead of trapping;
+CPU niceness through setpriority remains supported.
+
+--- a/niceness.c
++++ b/niceness.c
+@@ -19,7 +19,7 @@
+ #define SUPPORT_NICE_PRIORITY 1
+ #endif
+ 
+-#if defined HAVE_LINUX_IOPRIO_H && defined HAVE_SYS_SYSCALL_H \
++#if !defined(__FILC__) && defined HAVE_LINUX_IOPRIO_H && defined HAVE_SYS_SYSCALL_H \
+  && defined SYS_ioprio_set && defined IOPRIO_PRIO_VALUE
+ #define SUPPORT_IO_PRIORITY 1
+ #endif

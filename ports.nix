@@ -412,7 +412,10 @@ in
   ])
 
   (for pkgs.zlib [
-    (patch ./ports/patch/zlib-1.3.2.patch)
+    (pin "1.4" "sha256-At0Vl4NnenScBK290CtVuKK8x+BU9Rt2tUkZmpFq1YQ=")
+    # Included in 1.4; applying Nixpkgs' older fix would reverse it.
+    (skipPatch "export-variable.patch")
+    (patch ./ports/patch/zlib-1.4.patch)
   ])
 
   # Nixpkgs builds minizip from zlib's source with a patch that installs
@@ -1614,8 +1617,51 @@ in
     (patch ./ports/patch/zstd-1.5.6.patch)
     # 1.5.7's pointer-select inline asm is independent of ZSTD_DISABLE_ASM.
     (patch ./patches/zstd-pointer-select.patch)
+    (patch ./patches/zstd-lz4-checksum.patch)
     (skipCheck "too slow")
     (addCFlag "-DZSTD_DISABLE_ASM")
+  ])
+
+  (for pkgs.lz4 [
+    (src "1.11.0" "sha256-JH5fpk2l97de49077UhAdjlsnr6CVNnM9pPrYoAMXiY=" (
+      v: "https://github.com/lz4/lz4/releases/download/v${v}/lz4-${v}.tar.gz"
+    ))
+    # Already included in the new release.
+    (skipPatch "CVE-2025-62813.patch")
+    (patch ./ports/patch/lz4-1.11.0.patch)
+  ])
+
+  {
+    gnupatch = for pkgs.gnupatch [
+      (src "2.8.1" "sha256-MkDHlZxTR8jtNH48QgHAM3v0JA1c8J1oiJ5Y7qujDhc=" (
+        v: "mirror://gnu/patch/patch-${v}.tar.xz"
+      ))
+    ];
+  }
+
+  # Only the target package changes; native build tools remain Nixpkgs'.
+  (for pkgs.patchelf [
+    (src "0.19.3" "sha256-+sdqPAtzDo1T6h0QzWAVMi14yZAK+Rc28sylHVg3thI=" (
+      v:
+      "https://github.com/NixOS/patchelf/releases/download/${v}/patchelf-${v}.tar.gz"
+    ))
+    # These are deliberately unusual ELF/assembly fixtures, not installed
+    # programs. Run the Fil-C patchelf against native fixtures, including
+    # non-PIE files and assembly that has no SaRCAsm annotations.
+    (use (old: {
+      preCheck = (old.preCheck or "") + ''
+        export PATH=${pkgs.buildPackages.glibc.bin}/bin:$PATH
+        # The native wrapper has its own role salt in this cross build.
+        export NIX_DONT_SET_RPATH_${pkgs.buildPackages.stdenv.cc.suffixSalt}=1
+        substituteInPlace tests/no-rpath.sh --replace-fail \
+          '--print-interpreter ../src/patchelf' '--print-interpreter no-rpath'
+      '';
+      checkFlags = (old.checkFlags or [ ]) ++ [
+        "CC=${pkgs.buildPackages.stdenv.cc}/bin/cc"
+        "CCAS=${pkgs.buildPackages.stdenv.cc}/bin/cc"
+        "CXX=${pkgs.buildPackages.stdenv.cc}/bin/c++"
+      ];
+    }))
   ])
 
   (for pkgs.lzo [
@@ -1651,12 +1697,17 @@ in
   ])
 
   (for pkgs.nghttp2 [
+    (src "1.71.0" "sha256-wPVRIdiGUOS5InrsKM669mTSQXymD+cL4PjTiCn1IRY=" (
+      v:
+      "https://github.com/nghttp2/nghttp2/releases/download/v${v}/nghttp2-${v}.tar.xz"
+    ))
     (configure "--disable-app")
     (addCFlag "-Wno-deprecated-literal-operator")
   ])
 
   (for pkgs.openssh [
-    (patch ./ports/patch/openssh-10.5p1.patch)
+    (pin "10.6p2" "sha256-muRIcgkM8vBrPPn/FH5/FvMJZxNAdj7S+ZJIOYrinVs=")
+    (patch ./ports/patch/openssh-10.6p2.patch)
     (skipCheck "let's see")
     # preCheck preloads libredirect, whose dlsym(RTLD_NEXT, ...) interposition
     # cannot work under Fil-C; referencing it would still build it.
@@ -3879,11 +3930,25 @@ in
   ])
 
   (for pkgs.rsync [
-    # The test LD_PRELOADs a shim that finds the real read() with
-    # dlsym(RTLD_NEXT, ...), which Fil-C refuses (docs/filc-findings.md).
+    (src "3.5.2" "sha256-oQ1ZGCUlHgcPdMmN89qtGV3vTtgbSi3hYWkCauoz9sg=" (
+      v:
+      "https://github.com/RsyncProject/rsync/releases/download/v${v}/rsync-${v}.tar.gz"
+    ))
+    (patch ./patches/rsync-filc-io-priority.patch)
     (use (old: {
+      # IDN support is enabled by default starting with 3.5.2.
+      buildInputs = old.buildInputs ++ [ final.libidn2 ];
+      preBuild = old.preBuild + ''
+        # New tests embed executable scripts; patchShebangs cannot see them.
+        substituteInPlace testsuite/rrsync-receiver-file-arg_test.py \
+          --replace-fail '#!/usr/bin/env python3' '#!${pkgs.buildPackages.python3}/bin/python3'
+        substituteInPlace testsuite/rsync-ssl-type-option_test.py \
+          --replace-fail '#!/usr/bin/env bash' '#!${pkgs.stdenv.shell}'
+      '';
+      # These tests LD_PRELOAD shims that use dlsym(RTLD_NEXT, ...),
+      # which Fil-C refuses (docs/filc-findings.md).
       preCheck = old.preCheck + ''
-        export RSYNC_EXCLUDE="$RSYNC_EXCLUDE,source-change-size-continues"
+        export RSYNC_EXCLUDE="$RSYNC_EXCLUDE,source-change-size-continues,hardlinks-emlink-recovery"
       '';
     }))
   ])

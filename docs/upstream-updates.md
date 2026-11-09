@@ -594,6 +594,92 @@ Run importer regression tests with the packaged tool available:
 nix develop -c python3 tests/upstream-sources.py
 ```
 
+### November 2026 selective application bumps
+
+The active release ports select OpenSSH 10.6p2, rsync 3.5.2, GNU patch
+2.8.1 (`gnupatch`), target patchelf 0.19.3, nghttp2 1.71.0, LZ4 1.11.0,
+zlib 1.4 and SaRCAsm OpenSSL 3.6.5. Default OpenSSL stays at 3.5.7;
+native patchelf stays at Nixpkgs' version. The compiler/runtime, glibc,
+SaRCAsm, minilute and importer pins are unchanged. mg stays on Nixpkgs'
+ibara/OpenBSD source, rather than switching to the unrelated troglobit fork.
+Mesa, Rust and zegarmistrz changes are not part of this refresh.
+
+Selected descriptors were materialized with the existing native Projeny at
+upstream `f641231a1559bb90d5e16a2f1f247d8732db88e7`, independently of
+`ports/upstream.json`. To reproduce the review output:
+
+```sh
+rev=f641231a1559bb90d5e16a2f1f247d8732db88e7
+for p in openssh rsync patch patchelf nghttp2 lz4 zlib sarcastic-openssl; do
+  nix develop -c ports/extract-patch.sh "$p.projeny" "$HOME/fil-c" \
+    "/tmp/port-review/$p" "$rev"
+done
+```
+
+Do not run the whole importer into one directory at this revision:
+`sarcastic-openssl.projeny` and `zunsafe-openssl.projeny` both have
+`Origname: openssl-3.6.5`. Preserve the former as
+`openssl-sarcasm-3.6.5.patch`; never overwrite the default-backend patch.
+
+OpenSSH retains the descriptor's GSSAPI/KEX/socket-activation adaptations.
+Nixpkgs' ordinary OpenSSH has no competing GSSAPI or socket-activation
+patch; retain its locale, privsep-install and ssh-keysign patches. Unlike
+Autotools-generated Makefiles, OpenSSH's `Makefile.in` is hand-maintained:
+append its descriptor hunk (with `openssh/` path prefixes removed) after
+extraction, since the generic importer omits it. Nixpkgs' autoreconf hook
+regenerates configure/config.h.in from the patched configure.ac. Socket
+activation remains conditional on `--with-systemd`, not enabled by this
+refresh; the additional NIST hybrid KEX is not added to the default list.
+
+For zlib, keep only the source-level ARM CRC assembly disable from the
+extracted patch, not the deleted placeholder Makefile or configured zconf.h.
+Drop Nixpkgs' export-variable patch and LZ4's CVE-2025-62813 patch because
+their fixes are included in these releases. Keep Zstd's existing Fil-C
+patches and add upstream's `LZ4F_contentChecksum_t` compatibility fix.
+
+Patchelf's test programs are native ELF fixtures (including non-PIE and
+unannotated assembly), while the tested and installed patchelf is Fil-C.
+The fixture build disables the native wrapper's automatic RPATH, uses
+native ldd, and preserves the fixture's own interpreter rather than copying
+the Fil-C tool's interpreter into it. No test failures are ignored.
+
+Rsync 3.5.2 requires libidn2 for its default IDN support. Its new I/O-priority
+option calls `ioprio_set`, which the released runtime rejects as unsupported
+syscall 251. A package-local guard uses rsync's existing unsupported-operation
+warning for I/O priority; CPU niceness still works. Two new embedded test
+scripts need Nix shebangs. The new `hardlinks-emlink-recovery` test joins
+`source-change-size-continues` in the exclusions because both require
+`dlsym(RTLD_NEXT, ...)` interposition, which Fil-C rejects. Neither requires
+a compiler/runtime change to support ordinary transfers.
+
+Validation used ordinary `legacyPackages.x86_64-linux.pkgsFilc`, not staging:
+
+- All eight selected packages built, along with Zstd and curl reverse
+  dependencies. The release compiler wrapper's derivation remained identical.
+- SaRCAsm OpenSSL: all 353 upstream test recipes, 4,569 assertions, passed;
+  the existing AES out-of-bounds safety check trapped as intended. SHA-256
+  and AES-128 known-answer encryption/decryption also passed.
+- Rsync: 256 upstream tests passed, 107 skipped, plus 13 explicit exclusions.
+  This includes IDN, CPU niceness, and the repaired embedded-script fixtures.
+- Patchelf: 69 passed, six skipped, no failures. Rewriting the RPATH and
+  interpreter of a Fil-C executable and then running it passed.
+- GNU patch: 46 passed, two expected failures, no unexpected failures;
+  applying and reversing a patch also passed.
+- zlib's static/shared/64-bit tests passed. Independent library probes
+  checked CRC known answers, embedded-NUL compression roundtrips, corrupt
+  zlib input, LZ4 output bounds, and nghttp2 HPACK dynamic-table roundtrips.
+- LZ4's shared-only Makefile build passed. A release Zstd override with
+  `-DZSTD_LZ4_SUPPORT=ON` passed LZ4-frame encode/decode interoperability.
+  Rebuilt curl decoded HTTP gzip and reported zlib 1.4/nghttp2 1.71.0.
+- A loopback OpenSSH daemon passed public-key acceptance/rejection, the
+  optional `mlkem1024nistp384-sha384` KEX, seccomp setup and SIGHUP re-exec.
+  Rsync over that SSH connection passed zstd/LZ4/zlib transfers with
+  hardlinks, symlinks and deletion. GSSAPI authentication and systemd socket
+  activation were not exercised; the ordinary package enables neither.
+- Ten of eleven `tests/upstream-sources.py` tests passed. The staging-runtime
+  patch-list expectation in `test_toolchain_variants` fails identically on
+  the unchanged baseline; this refresh leaves that unrelated test untouched.
+
 ### Initial September 2026 ports refresh
 
 The ports pin is `4867f1179f1c3dbe5484ec0f98c2fcc7d401e50c`. Existing checked-in
