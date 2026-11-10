@@ -351,11 +351,16 @@ Proof.
   intros. apply clobber_preserves_agrees; assumption.
 Qed.
 
+(** No other temporary `t <> d` in `live` shares `d`'s assigned
+    register in `rm`. *)
+Definition dest_no_collision (rm : ZMap.t hreg) (d : nat) (live : list nat) : Prop :=
+  forall r t, In t live -> t <> d ->
+    zmap_find_nat d rm = Some r -> zmap_find_nat t rm = Some r -> False.
+
 (** Writing temporary `d` preserves every other temporary `t <> d`
     whose register does not collide with `d`'s, and sets `d` to `v`. *)
 Theorem write_mach_step_sound : forall rm live tenv ms d v,
-  (forall r t, In t live -> t <> d ->
-     zmap_find_nat d rm = Some r -> zmap_find_nat t rm = Some r -> False) ->
+  dest_no_collision rm d live ->
   state_agrees rm (filter (fun t => negb (Nat.eqb t d)) live) tenv ms ->
   state_agrees rm live (fun t => if Nat.eqb t d then v else tenv t) (write_mach rm ms d v).
 Proof.
@@ -380,61 +385,85 @@ Proof.
       * destruct (hreg_eqb rt rd) eqn:Er.
         -- apply hreg_eqb_spec in Er. subst rt.
            exfalso. apply Nat.eqb_neq in Etd.
-           eapply Hdisj; [exact Hin | exact Etd | reflexivity | exact Ert].
+           eapply Hdisj; [exact Hin | exact Etd | exact Erd | exact Ert].
         -- exact Hlive.
       * exact Hlive.
       * exact Hlive.
       * rewrite Etd. exact Hlive.
 Qed.
 
+(** Helper predicates and state steps for [check_rinst_step_sound],
+    stated at top level so the theorem renders as an inference rule
+    without nested `let` or `match` blocks. *)
+Definition live_without (d : nat) (live : list nat) : list nat :=
+  filter (fun t => negb (Nat.eqb t d)) live.
+
+Definition tenv_set (tenv : nat -> Z) (d : nat) (v : Z) (t : nat) : Z :=
+  if Nat.eqb t d then v else tenv t.
+
+Definition call_mid_ok (rm : ZMap.t hreg) (call : rcall) (live_mid : list nat) : Prop :=
+  match call with
+  | RCallAfterReads => all_callee_saved rm live_mid = true
+  | _ => True
+  end.
+
+Definition call_pre_ok (rm : ZMap.t hreg) (call : rcall) (live_before : list nat) : Prop :=
+  match call with
+  | RCallDuringReads => all_callee_saved rm live_before = true
+  | _ => True
+  end.
+
+Definition pre_call_state (call : rcall) (arb : hreg -> Z) (ms : mach_state) : mach_state :=
+  match call with
+  | RCallDuringReads => clobber_call arb ms
+  | _ => ms
+  end.
+
+Definition post_call_state (call : rcall) (arb : hreg -> Z) (ms : mach_state) : mach_state :=
+  match call with
+  | RCallNone => ms
+  | RCallAfterReads | RCallDuringReads => clobber_call arb ms
+  end.
+
 (** Complete one-instruction simulation theorem: reading inputs `uses`,
-    clobbering caller-saved registers according to `ri_call`, and
-    writing a destination `d` preserves [state_agrees] whenever
-    [no_dup_hregs] and [all_callee_saved] hold as checked by
-    [check_rinsts_rev]. *)
+    clobbering caller-saved registers according to `call`, and writing
+    destination `d` preserves [state_agrees] whenever [no_dup_hregs]
+    and [all_callee_saved] hold as checked by [check_rinsts_rev]. *)
 Theorem check_rinst_step_sound :
   forall rm live_after d uses call f arb1 arb2 tenv ms,
-  let live_mid := filter (fun t => negb (Nat.eqb t d)) live_after in
-  let live_before := uses ++ live_mid in
-  (forall r t, In t live_after -> t <> d ->
-     zmap_find_nat d rm = Some r -> zmap_find_nat t rm = Some r -> False) ->
-  (match call with RCallAfterReads => all_callee_saved rm live_mid = true | _ => True end) ->
-  (match call with RCallDuringReads => all_callee_saved rm live_before = true | _ => True end) ->
-  state_agrees rm live_before tenv ms ->
-  let ms_pre := match call with RCallDuringReads => clobber_call arb1 ms | _ => ms end in
-  let args_mach := map (read_mach rm ms_pre) uses in
-  let args_abs := map tenv uses in
-  let ms_post_call :=
-    match call with
-    | RCallNone => ms_pre
-    | RCallAfterReads | RCallDuringReads => clobber_call arb2 ms_pre
-    end in
-  args_mach = args_abs /\
+  dest_no_collision rm d live_after ->
+  call_mid_ok rm call (live_without d live_after) ->
+  call_pre_ok rm call (uses ++ live_without d live_after) ->
+  state_agrees rm (uses ++ live_without d live_after) tenv ms ->
+  map (read_mach rm (pre_call_state call arb1 ms)) uses = map tenv uses /\
   state_agrees rm live_after
-    (fun t => if Nat.eqb t d then f args_abs else tenv t)
-    (write_mach rm ms_post_call d (f args_mach)).
+    (tenv_set tenv d (f (map tenv uses)))
+    (write_mach rm
+      (post_call_state call arb2 (pre_call_state call arb1 ms))
+      d (f (map (read_mach rm (pre_call_state call arb1 ms)) uses))).
 Proof.
-  intros rm live_after d uses call f arb1 arb2 tenv ms
-    live_mid live_before Hnodup Hca Hcd Hagree ms_pre args_mach args_abs ms_post_call.
+  intros rm live_after d uses call f arb1 arb2 tenv ms Hnodup Hca Hcd Hagree.
+  set (live_mid := live_without d live_after) in *.
+  set (live_before := uses ++ live_mid) in *.
+  set (ms_pre := pre_call_state call arb1 ms).
   assert (Hagree_pre : state_agrees rm live_before tenv ms_pre).
-  { subst ms_pre. destruct call; try exact Hagree.
-    apply clobber_preserves_agrees; assumption. }
-  assert (Hargs : args_mach = args_abs).
-  { unfold args_mach, args_abs. apply map_ext_in. intros u Hu.
+  { unfold ms_pre, pre_call_state. destruct call; try exact Hagree.
+    apply clobber_preserves_agrees; [exact Hcd | exact Hagree]. }
+  assert (Hargs : map (read_mach rm ms_pre) uses = map tenv uses).
+  { apply map_ext_in. intros u Hu.
     destruct Hagree_pre as [_ Hlb]. apply Hlb.
     unfold live_before. apply in_or_app. left. exact Hu. }
   split; [exact Hargs|].
-  rewrite Hargs.
+  rewrite Hargs. unfold tenv_set.
   apply write_mach_step_sound; [exact Hnodup|].
   assert (Hagree_mid : state_agrees rm live_mid tenv ms_pre).
   { destruct Hagree_pre as [Hs Hlb]. split; [exact Hs|].
     intros t Ht. apply Hlb. unfold live_before. apply in_or_app. right. exact Ht. }
-  subst ms_post_call. destruct call.
+  unfold post_call_state. destruct call.
   - exact Hagree_mid.
   - apply clobber_preserves_agrees; [exact Hca | exact Hagree_mid].
   - apply clobber_preserves_agrees.
-    + intros. unfold all_callee_saved in *.
-      clear -Hcd. unfold live_before in Hcd.
+    + simpl in Hcd. clear -Hcd. unfold live_before in Hcd.
       induction uses as [|u uses' IH]; simpl in *; [exact Hcd|].
       destruct (zmap_find_nat u rm) as [ru|].
       * destruct (hreg_callee_saved ru); [exact (IH Hcd) | discriminate].
@@ -529,15 +558,14 @@ Qed.
     final target value and leaves every source in `rest` unchanged. *)
 Theorem ready_pmove_step_sound : forall env m rest,
   loc_read_in_pmoves (pmv_dst m) rest = false ->
-  let env1 := exec_pmove_abs env m in
-  env1 (pmv_dst m) = eval_pm_src env (pmv_half m) (pmv_src m) /\
+  exec_pmove_abs env m (pmv_dst m) = eval_pm_src env (pmv_half m) (pmv_src m) /\
   (forall m', In m' rest ->
-     eval_pm_src env1 (pmv_half m') (pmv_src m')
+     eval_pm_src (exec_pmove_abs env m) (pmv_half m') (pmv_src m')
      = eval_pm_src env (pmv_half m') (pmv_src m')) /\
-  (forall l, l <> pmv_dst m -> env1 l = env l).
+  (forall l, l <> pmv_dst m -> exec_pmove_abs env m l = env l).
 Proof.
-  intros env m rest Hnr env1. split; [|split].
-  - unfold env1, exec_pmove_abs. rewrite pm_loc_eqb_refl. reflexivity.
+  intros env m rest Hnr. split; [|split].
+  - unfold exec_pmove_abs. rewrite pm_loc_eqb_refl. reflexivity.
   - intros m' Hin. induction rest as [|r0 rs IH]; simpl in *.
     + contradiction.
     + destruct (match pmv_src r0 with PsLoc l' => pm_loc_eqb (pmv_dst m) l' | _ => false end) eqn:Eh;
@@ -545,7 +573,7 @@ Proof.
       destruct Hin as [<- | Hin'].
       * apply loc_not_read_eval_unchanged. simpl. rewrite Eh. reflexivity.
       * apply IH; assumption.
-  - intros l Hneq. unfold env1, exec_pmove_abs.
+  - intros l Hneq. unfold exec_pmove_abs.
     destruct (pm_loc_eqb l (pmv_dst m)) eqn:E; [|reflexivity].
     apply pm_loc_eqb_spec in E. contradiction.
 Qed.
@@ -566,16 +594,24 @@ Definition subst_one_pmove (old : pm_loc) (m : pmove) : pmove :=
     end in
   mkPMove (pmv_half m) (pmv_src_w m) (pmv_dst m) src'.
 
+Definition no_cycle_tmp_src (m : pmove) : Prop :=
+  match pmv_src m with
+  | PsLoc PmCycleTmp => False
+  | _ => True
+  end.
+
 Theorem cycle_break_step_sound : forall env old m,
   old <> PmCycleTmp ->
-  (match pmv_src m with PsLoc PmCycleTmp => False | _ => True end) ->
-  let env1 := save_cycle_abs env old in
-  let m' := subst_one_pmove old m in
-  eval_pm_src env1 (pmv_half m') (pmv_src m') = eval_pm_src env (pmv_half m) (pmv_src m) /\
-  loc_read_in_pmoves old [m'] = false.
+  no_cycle_tmp_src m ->
+  eval_pm_src (save_cycle_abs env old)
+              (pmv_half (subst_one_pmove old m))
+              (pmv_src (subst_one_pmove old m))
+  = eval_pm_src env (pmv_half m) (pmv_src m) /\
+  loc_read_in_pmoves old [subst_one_pmove old m] = false.
 Proof.
-  intros env old m Hnot_tmp Hno_tmp env1 m'.
-  unfold env1, m', save_cycle_abs, subst_one_pmove, eval_pm_src. simpl.
+  intros env old m Hnot_tmp Hno_tmp.
+  unfold no_cycle_tmp_src in Hno_tmp.
+  unfold save_cycle_abs, subst_one_pmove, eval_pm_src. simpl.
   destruct (pmv_src m) as [l | n | g].
   - destruct (pm_loc_eqb l old) eqn:Elo.
     + apply pm_loc_eqb_spec in Elo. subst l. simpl.
@@ -671,40 +707,57 @@ Qed.
 Definition ex_cmap2 : ZMap.t class :=
   zmap_add_nat 0%nat L (zmap_add_nat 1%nat L (zmap_add_nat 2%nat Double (ZMap.empty class))).
 
+Definition ex_rm1 (t : nat) (r : hreg) : ZMap.t hreg :=
+  zmap_add_nat t r (ZMap.empty hreg).
+
+Definition ex_rb_collision : rblock :=
+  mkRBlock 0%nat [] [] [mkRInst [0%nat; 1%nat] [] RCallNone] [].
+
+Definition ex_rm_collision : ZMap.t hreg :=
+  zmap_add_nat 0%nat HRbx (ex_rm1 1%nat HRbx).
+
 (** Two live parameters mapped to the same register `HRbx` are rejected. *)
-Example valid_alloc_rejects_collision :
-  let rb := mkRBlock 0%nat [] [] [mkRInst [0%nat; 1%nat] [] RCallNone] [] in
-  let rm := zmap_add_nat 0%nat HRbx (zmap_add_nat 1%nat HRbx (ZMap.empty hreg)) in
-  valid_alloc ex_cmap2 [0%nat; 1%nat] [rb] rm = false.
+Example ex_rejects_collision :
+  valid_alloc ex_cmap2 [0%nat; 1%nat] [ex_rb_collision] ex_rm_collision = false.
 Proof. reflexivity. Qed.
+
+Definition ex_rb_after_call : rblock :=
+  mkRBlock 0%nat [] [] [mkRInst [] [] RCallAfterReads] [0%nat].
 
 (** A caller-saved register `HR10` live across `RCallAfterReads` is rejected,
     while callee-saved `HRbx` is accepted. *)
-Example valid_alloc_rejects_r10_across_call :
-  let rb := mkRBlock 0%nat [] [] [mkRInst [] [] RCallAfterReads] [0%nat] in
-  valid_alloc ex_cmap2 [0%nat] [rb] (zmap_add_nat 0%nat HR10 (ZMap.empty hreg)) = false /\
-  valid_alloc ex_cmap2 [0%nat] [rb] (zmap_add_nat 0%nat HRbx (ZMap.empty hreg)) = true.
+Example ex_rejects_r10_call :
+  valid_alloc ex_cmap2 [0%nat] [ex_rb_after_call] (ex_rm1 0%nat HR10) = false /\
+  valid_alloc ex_cmap2 [0%nat] [ex_rb_after_call] (ex_rm1 0%nat HRbx) = true.
 Proof. split; reflexivity. Qed.
+
+Definition ex_rb_during_call : rblock :=
+  mkRBlock 0%nat [] [] [mkRInst [0%nat] [] RCallDuringReads] [].
 
 (** Input of `RCallDuringReads` (`AStorePointer` / `ADispatch`) in `HR11`
     is rejected even when dead after the instruction. *)
-Example valid_alloc_rejects_r11_during_reads_call :
-  let rb := mkRBlock 0%nat [] [] [mkRInst [0%nat] [] RCallDuringReads] [] in
-  valid_alloc ex_cmap2 [0%nat] [rb] (zmap_add_nat 0%nat HR11 (ZMap.empty hreg)) = false /\
-  valid_alloc ex_cmap2 [0%nat] [rb] (zmap_add_nat 0%nat HR12 (ZMap.empty hreg)) = true.
+Example ex_rejects_r11_read_call :
+  valid_alloc ex_cmap2 [0%nat] [ex_rb_during_call] (ex_rm1 0%nat HR11) = false /\
+  valid_alloc ex_cmap2 [0%nat] [ex_rb_during_call] (ex_rm1 0%nat HR12) = true.
 Proof. split; reflexivity. Qed.
+
+Definition ex_rb_poll0 : rblock :=
+  mkRBlock 0%nat [(1%nat, false)] [] [] [].
+
+Definition ex_rb_poll1 : rblock :=
+  mkRBlock 1%nat [(1%nat, true)] [(1%nat, [(0%nat, Some 0%nat); (1%nat, Some 1%nat)])] [] [1%nat].
 
 (** A phi destination in `HR10` on a `Poll` loop back-edge is rejected,
     while `HR13` is accepted. *)
-Example valid_alloc_rejects_r10_across_poll :
-  let rb0 := mkRBlock 0%nat [(1%nat, false)] [] [] [] in
-  let rb1 := mkRBlock 1%nat [(1%nat, true)] [(1%nat, [(0%nat, Some 0%nat); (1%nat, Some 1%nat)])] [] [1%nat] in
-  valid_alloc ex_cmap2 [0%nat] [rb0; rb1] (zmap_add_nat 1%nat HR10 (ZMap.empty hreg)) = false /\
-  valid_alloc ex_cmap2 [0%nat] [rb0; rb1] (zmap_add_nat 1%nat HR13 (ZMap.empty hreg)) = true.
+Example ex_rejects_r10_poll :
+  valid_alloc ex_cmap2 [0%nat] [ex_rb_poll0; ex_rb_poll1] (ex_rm1 1%nat HR10) = false /\
+  valid_alloc ex_cmap2 [0%nat] [ex_rb_poll0; ex_rb_poll1] (ex_rm1 1%nat HR13) = true.
 Proof. split; reflexivity. Qed.
 
+Definition ex_rb_float : rblock :=
+  mkRBlock 0%nat [] [] [] [2%nat].
+
 (** Assigning a float temporary (`Double`) to a general register is rejected. *)
-Example valid_alloc_rejects_float_class :
-  let rb := mkRBlock 0%nat [] [] [] [2%nat] in
-  valid_alloc ex_cmap2 [2%nat] [rb] (zmap_add_nat 2%nat HRbx (ZMap.empty hreg)) = false.
+Example ex_rejects_float :
+  valid_alloc ex_cmap2 [2%nat] [ex_rb_float] (ex_rm1 2%nat HRbx) = false.
 Proof. reflexivity. Qed.
