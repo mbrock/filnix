@@ -13,6 +13,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 Open Scope Z_scope.
 Open Scope list_scope.
 
+(** Keep symbolic address arithmetic folded while computing IR operands. *)
+Local Arguments Z.add : simpl nomatch.
+(** Keep symbolic offsets folded while computing IR operands. *)
+Local Arguments Z.sub : simpl nomatch.
+(** Keep symbolic scaled indices folded while computing IR operands. *)
+Local Arguments Z.mul : simpl nomatch.
+
 (** The compiled proper-name helper returns its argument unchanged. *)
 Definition proper_name_fn : func := Eval vm_compute in hello_fn "proper_name".
 (** Its empty entry block returns the pointer. *)
@@ -40,6 +47,70 @@ Proof. vm_compute. reflexivity. Qed.
 (** A version-etc literal's pointer in the linked fixture. *)
 Definition version_literal (s : String.string) : ptr := Eval vm_compute in
   match lookup (TAtom s) hello_globals with Some p => p | None => mkPtr 0 CNone end.
+
+(** The array-based version helper reached by Hello's single version call. *)
+Definition version_etc_arn_fn : func := Eval vm_compute in hello_fn "version_etc_arn".
+(** Its entry selects the format with a command name. *)
+Definition arn_start : block := Eval vm_compute in hblk version_etc_arn_fn "start".
+(** The command-name version heading. *)
+Definition arn_L12 : block := Eval vm_compute in hblk version_etc_arn_fn "L12".
+(** The copyright and license lines precede author dispatch. *)
+Definition arn_L14 : block := Eval vm_compute in hblk version_etc_arn_fn "L14".
+(** The first dispatch compares the count with two. *)
+Definition arn_L263 : block := Eval vm_compute in hblk version_etc_arn_fn "L263".
+(** The second dispatch tests for two authors. *)
+Definition arn_L267 : block := Eval vm_compute in hblk version_etc_arn_fn "L267".
+(** The third dispatch tests for three authors. *)
+Definition arn_L273 : block := Eval vm_compute in hblk version_etc_arn_fn "L273".
+(** The last reachable dispatch tests for four authors. *)
+Definition arn_L275 : block := Eval vm_compute in hblk version_etc_arn_fn "L275".
+(** The four-author output reads four cells of the array. *)
+Definition arn_L82 : block := Eval vm_compute in hblk version_etc_arn_fn "L82".
+(** The shared return after author output. *)
+Definition arn_L47 : block := Eval vm_compute in hblk version_etc_arn_fn "L47".
+
+(** Every block on the reachable four-author path occurs in the fixture. *)
+Lemma find_arn_blocks :
+  Forall (fun lb => find_block (TAtom lb.1) (fn_blocks version_etc_arn_fn) = Some lb.2)
+    [("start", arn_start); ("L12", arn_L12); ("L14", arn_L14); ("L263", arn_L263);
+     ("L267", arn_L267); ("L273", arn_L273); ("L275", arn_L275);
+     ("L82", arn_L82); ("L47", arn_L47)].
+Proof. vm_compute. repeat constructor. Qed.
+
+(** The array helper's entry for main's three heading literals and
+    four authors. The count is the result the variadic loop must prove. *)
+Lemma version_etc_arn_entry stream authors :
+  invocation version_etc_arn_fn
+    [WPtr stream; WPtr (version_literal "hello#str.70");
+     WPtr (version_literal "hello#str.63"); WPtr (version_literal "hello#str.71");
+     WPtr authors; WInt 4] =
+  mkFrame version_etc_arn_fn
+    [(TAtom "v10", WInt 4); (TAtom "v8", WPtr authors);
+     (TAtom "v6", WPtr (version_literal "hello#str.71"));
+     (TAtom "v4", WPtr (version_literal "hello#str.63"));
+     (TAtom "v2", WPtr (version_literal "hello#str.70")); (TAtom "v0", WPtr stream)]
+    [] None (Enter (TAtom "start") None).
+Proof. reflexivity. Qed.
+
+(** The six exact output calls on the four-author path; the copyright
+    year is a promoted W argument, not a pointer or a 64-bit integer. *)
+Definition version_output_args (stream : ptr) : list (name * list word) :=
+  [(TAtom "fprintf", [WPtr stream; WPtr (version_literal "version-etc#str.41");
+      WPtr (version_literal "hello#str.70"); WPtr (version_literal "hello#str.63");
+      WPtr (version_literal "hello#str.71")]);
+   (TAtom "fprintf", [WPtr stream; WPtr (version_literal "version_etc_copyright");
+      WPtr (version_literal "version-etc#str.44"); WInt 2026]);
+   (TAtom "fputs", [WPtr (version_literal "version-etc#str.45"); WPtr stream]);
+   (TAtom "fprintf", [WPtr stream; WPtr (version_literal "version-etc#str.46");
+      WPtr (version_literal "version-etc#str.47")]);
+   (TAtom "fputs", [WPtr (version_literal "version-etc#str.45"); WPtr stream]);
+   (TAtom "fprintf", [WPtr stream; WPtr (version_literal "version-etc#str.51");
+      WPtr (version_literal "hello#str.72"); WPtr (version_literal "hello#str.73");
+      WPtr (version_literal "hello#str.74"); WPtr (version_literal "hello#str.75")])].
+
+(** The promoted classes at these output sites: pointers and int words. *)
+Definition version_output_classes (xs : list word) : list class :=
+  (fun x => match x with WPtr _ => P | _ => W end) <$> xs.
 
 (** The four exact output argument lists in the help footer: the newline,
     bug address, home-page line, and general-help line. *)
@@ -150,6 +221,41 @@ Proof.
     cbn [store_bytes store_aux m_bytes m_aux]; rewrite ?Hbyte ?Haux; split; reflexivity.
 Qed.
 
+(** A pointer argument's bytes survive all the later snapshot stores. *)
+Lemma snapshot_pointer_byte xs i p a m j :
+  xs !! i = Some (WPtr p) -> 0 <= j < 8 ->
+  m_bytes (snapshot_values xs a m) (a + 8 * Z.of_nat i + j) = byte_of (ptr_addr p) j.
+Proof.
+  revert xs a m. induction i as [|i IH]; intros [|x xs] a m Hnth Hj; try discriminate.
+  - cbn [lookup list_lookup] in Hnth. injection Hnth as ->.
+    cbn [snapshot_values]. rewrite Z.mul_0_r Z.add_0_r.
+    rewrite (proj1 (snapshot_values_outside xs (a + 8) _ (a + j) ltac:(left; lia))).
+    cbn [store_aux store_bytes m_bytes].
+    rewrite (proj2 (Z.leb_le a (a + j)) ltac:(lia)).
+    rewrite (proj2 (Z.ltb_lt (a + j) (a + 8)) ltac:(lia)).
+    cbn [andb]. replace (a + j - a) with j by lia. reflexivity.
+  - cbn [lookup list_lookup] in Hnth.
+    replace (a + 8 * Z.of_nat (S i) + j) with (a + 8 + 8 * Z.of_nat i + j)
+      by (rewrite Nat2Z.inj_succ; lia).
+    destruct x; cbn [snapshot_values]; apply IH; assumption.
+Qed.
+
+(** A pointer argument's capability survives all later snapshot stores. *)
+Lemma snapshot_pointer_aux xs i p a m :
+  xs !! i = Some (WPtr p) ->
+  m_aux (snapshot_values xs a m) (a + 8 * Z.of_nat i) = ptr_cap p.
+Proof.
+  revert xs a m. induction i as [|i IH]; intros [|x xs] a m Hnth; try discriminate.
+  - cbn [lookup list_lookup] in Hnth. injection Hnth as ->.
+    cbn [snapshot_values]. rewrite Z.mul_0_r Z.add_0_r.
+    rewrite (proj2 (snapshot_values_outside xs (a + 8) _ a ltac:(left; lia))).
+    cbn [store_aux m_aux]. rewrite Z.eqb_refl. reflexivity.
+  - cbn [lookup list_lookup] in Hnth.
+    replace (a + 8 * Z.of_nat (S i)) with (a + 8 + 8 * Z.of_nat i)
+      by (rewrite Nat2Z.inj_succ; lia).
+    destruct x; cbn [snapshot_values]; apply IH; assumption.
+Qed.
+
 (** For promotion: values for a snapshot's pieces can be computed from
     empty memory. Freshness guarantees the actual allocated cells start
     with the same zero bytes and empty capability slots. *)
@@ -173,6 +279,34 @@ Lemma snapshot_ps_keys xs base q :
 Proof.
   unfold snapshot_ps. rewrite -list_fmap_compose. apply list_fmap_ext.
   intros i [l v] Hi. destruct l; reflexivity.
+Qed.
+
+(** The snapshot pieces contain an argument's complete pointer cell. *)
+Lemma snapshot_ps_pointer xs i p base q :
+  xs !! i = Some (WPtr p) -> 8 * Z.of_nat (S i) <= req_extent q ->
+  forall l v, (l, v) ∈ (PAux base (8 * Z.of_nat i), VAux (ptr_cap p)) ::
+    cell base (8 * Z.of_nat i) (ptr_addr p) -> (l, v) ∈ snapshot_ps xs base q.
+Proof.
+  intros Hnth Hextent l v Hin. unfold snapshot_ps.
+  apply elem_of_cons in Hin as [[= -> ->] | Hin].
+  - apply list_elem_of_fmap.
+    exists (PAux base (8 * Z.of_nat i), VAux CNone). split.
+    + unfold snapshot_piece. cbn [fst snd]. rewrite (snapshot_pointer_aux _ _ _ _ _ Hnth).
+      reflexivity.
+    + unfold obj_ps. apply elem_of_cons. right. apply elem_of_app. right.
+      apply list_elem_of_fmap. exists (8 * Z.of_nat i). split; [reflexivity |].
+      apply elem_of_seqZ. rewrite Nat2Z.inj_succ in Hextent. lia.
+  - unfold cell in Hin. apply list_elem_of_fmap in Hin as (j & [= -> ->] & Hj).
+    assert (Hjrange : 0 <= j < 8).
+    { apply list_elem_of_In in Hj. cbn in Hj. repeat destruct Hj as [<- | Hj]; try contradiction; lia. }
+    apply list_elem_of_fmap.
+    exists (PByte base (8 * Z.of_nat i + j), VByte 0). split.
+    + unfold snapshot_piece. cbn [fst snd].
+      replace (base + (8 * Z.of_nat i + j)) with (base + 8 * Z.of_nat i + j) by lia.
+      rewrite (snapshot_pointer_byte _ _ _ _ _ _ Hnth Hjrange). reflexivity.
+    + unfold obj_ps. apply elem_of_cons. right. apply elem_of_app. left.
+      apply list_elem_of_fmap. exists (8 * Z.of_nat i + j). split; [reflexivity |].
+      apply elem_of_seqZ. rewrite Nat2Z.inj_succ in Hextent. lia.
 Qed.
 
 (** For promotion: each snapshot piece names its fresh object. *)
@@ -271,6 +405,37 @@ Proof.
   rewrite Hwords. reflexivity.
 Qed.
 
+(** For promotion: the collector cannot rewrite a stored read-only
+    capability while its object is live. This is the read-only case of
+    [aux_holds_live], derived directly from [freed_in]. *)
+Lemma aux_holds_ro m a b reg :
+  aux_holds m a (Ro b) -> live_at m b reg -> m_aux m a = Ro b.
+Proof.
+  intros [Heq | ((b' & reg' & Hcap & Hreg & Hfreed) & _)] [Hlive Hlife];
+    [exact Heq |].
+  destruct Hcap as [Hcap | Hcap]; [discriminate |].
+  injection Hcap as <-. rewrite Hlive in Hreg. injection Hreg as <-. congruence.
+Qed.
+
+(** Writing concatenated piece lists is their two overwrites in order. *)
+Lemma overwrite_app ps qs h : overwrite (ps ++ qs) h = overwrite ps (overwrite qs h).
+Proof. induction ps as [|[l v] ps IH]; cbn; [reflexivity | rewrite IH; reflexivity]. Qed.
+
+(** Rewriting already-owned values leaves the authoritative map unchanged. *)
+Lemma overwrite_owned ps h :
+  (forall l v, (l, v) ∈ ps -> h !! l = Some v) -> overwrite ps h = h.
+Proof.
+  induction ps as [|[l v] ps IH]; intros Hown; [reflexivity |].
+  cbn. rewrite IH.
+  - apply insert_id. apply Hown. apply elem_of_cons. left. reflexivity.
+  - intros k u Hin. apply Hown. apply elem_of_cons. right. exact Hin.
+Qed.
+
+(** The mutable va_list cell: its life, pointer capability, and cursor
+    bytes. Advancing the cursor keeps the capability unchanged. *)
+Definition va_cursor_ps b reg (cursor : ptr) : list (piece * pval) :=
+  [(PLive b, VLive reg); (PAux b 0, VAux (ptr_cap cursor))] ++ cell b 0 (ptr_addr cursor).
+
 (** The helpers over any runtime and caller-supplied world. *)
 Module HelloVersion (R : Runtime).
 Module HL := HelloLeaf R.
@@ -290,6 +455,21 @@ Local Instance version_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry wi ge.
 (** Expressions in that language. *)
 Local Notation hexpr := (language.expr (nanofil_lang registry ge)).
+
+(** Full ownership cannot contain two pieces with the same key. This
+    supplies the disjointness needed when a cursor read also owns its
+    snapshot and literal frames. *)
+Lemma pts_keys_nodup ps : pts ps -∗ ⌜NoDup ps.*1⌝.
+Proof.
+  induction ps as [|[l v] ps IH]; [iIntros "_"; iPureIntro; constructor |].
+  rewrite /pts big_sepL_cons. iIntros "[Hl Hps]".
+  iDestruct (IH with "Hps") as %Hnd.
+  destruct (decide (l ∈ ps.*1)) as [Hin | Hnot].
+  - apply list_elem_of_fmap in Hin as ([k u] & Hkey & Hin). cbn in Hkey. subst k.
+    iDestruct (big_sepL_elem_of _ _ _ Hin with "Hps") as "Hk".
+    iDestruct (pointsto_ne with "Hl Hk") as %Hne. contradiction.
+  - iPureIntro. apply NoDup_cons. auto.
+Qed.
 
 (** For promotion: allocating a nonempty variadic snapshot yields its
     populated pieces, with the read-only pointer installed in the frame.
@@ -390,6 +570,166 @@ Proof.
     [exact Hkeys | | exact Hwi].
   intros m fuel Hfacts. destruct (Hread m Hfacts) as (Hres & Hrest).
   split; [exact (rule_va_arg _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hargs Hres) | exact Hrest].
+Qed.
+
+(** For promotion: a pointer va_arg reads its snapshot cell and advances only the
+    mutable cursor. The source and literal pieces are framed, including
+    when the argument is the terminating null pointer. *)
+Lemma wp_va_arg_pointer f e ls l d args rest j cb cr sb sr off x ps Φ :
+  map2_option (value_x ge e) [P] args = Some [WPtr (mkPtr cb (Obj cb))] ->
+  cb mod 8 = 0 -> 0 < sb -> 0 <= off -> sb + off + 8 <= r_end sr -> r_end sr <= 2 ^ 48 ->
+  (sb + off) mod 8 = 0 -> 0 <= ptr_addr x < 2 ^ 64 ->
+  (ptr_cap x = CNone \/ exists xb xr,
+    (ptr_cap x = Obj xb \/ ptr_cap x = Ro xb) /\ (PLive xb, VLive xr) ∈ ps) ->
+  (forall m w h,
+    (forall k v, (k, v) ∈ va_cursor_ps cb cr (mkPtr (sb + off) (Ro sb)) -> h !! k = Some v) ->
+    wi m w h -> wi (store_bytes m cb 8 (sb + off + 8)) w
+      (overwrite (va_cursor_ps cb cr (mkPtr (sb + off + 8) (Ro sb))) h)) ->
+  pts (va_cursor_ps cb cr (mkPtr (sb + off) (Ro sb))) -∗
+  live sb sr -∗ pcell sb off x -∗ pts ps -∗
+  ▷ (pts (va_cursor_ps cb cr (mkPtr (sb + off + 8) (Ro sb))) -∗
+    live sb sr -∗ pcell sb off x -∗ pts ps -∗
+    WP (ERun (mkFrame f (put d (WPtr x) e) ls None (Exec l rest j)) : hexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d P VaArg args :: rest) j)) : hexpr) {{ Φ }}.
+Proof.
+  intros Hargs Hcb Hsb Hoff Hsend Hsmax Hal Hrange Htarget Hwi.
+  set (before := va_cursor_ps cb cr (mkPtr (sb + off) (Ro sb))).
+  set (after := va_cursor_ps cb cr (mkPtr (sb + off + 8) (Ro sb))).
+  set (reads := [(PLive sb, VLive sr); (PAux sb off, VAux (ptr_cap x))] ++
+    cell sb off (ptr_addr x) ++ ps).
+  iIntros "Hcursor Hsl Hsc Hps HK".
+  iAssert (pts (before ++ reads)) with "[Hcursor Hsl Hsc Hps]" as "Hpieces".
+  { rewrite pts_app. iFrame "Hcursor".
+    rewrite /reads /pts !big_sepL_app !big_sepL_cons.
+    iDestruct "Hsl" as "[Hsl _]". iDestruct "Hsc" as "[Hsa Hsc]". iFrame. done. }
+  iDestruct (pts_keys_nodup with "Hpieces") as %Hnd.
+  rewrite fmap_app in Hnd. apply NoDup_app in Hnd as (_ & Hseparate & _).
+  iApply (wp_va_arg f e ls l d P args rest j (mkPtr cb (Obj cb)) (WPtr x)
+    (before ++ reads) (after ++ reads) (fun m => store_bytes m cb 8 (sb + off + 8))
+    with "Hpieces [HK]").
+  - exact Hargs.
+  - rewrite !fmap_app. unfold before, after, va_cursor_ps, cell. reflexivity.
+  - intros m (Hagree & Hd & _).
+    apply all_agree_app in Hagree as [Hcur Hreads].
+    unfold before, va_cursor_ps in Hcur. cbn [all_agree fst snd] in Hcur.
+    destruct Hcur as (Hclive & Hcaux & Hcbytes).
+    unfold reads in Hreads. cbn [all_agree fst snd] in Hreads.
+    destruct Hreads as (Hslive & Hsaux & Hrest).
+    change (all_agree m (cell sb off (ptr_addr x) ++ ps)) in Hrest.
+    destruct (proj1 (all_agree_app m (cell sb off (ptr_addr x)) ps) Hrest) as [Hsbytes Hps].
+    destruct (cell_bounds _ _ _ _ _ Hclive Hcbytes) as [Hc0 Hcend].
+    destruct (cell_store_ok m cb cr 0 cb (sb + off + 8) Hd Hclive Hc0 ltac:(lia) ltac:(lia))
+      as [Hnew Hframe].
+    assert (Hframe_reads : all_agree (store_bytes m cb 8 (sb + off + 8)) reads).
+    { apply all_agree_intro. intros k v Hin. apply Hframe.
+      - intros Hkey. apply (Hseparate k).
+        + unfold before, va_cursor_ps. rewrite fmap_app. apply elem_of_app. right. exact Hkey.
+        + exact (list_elem_of_fmap_2 fst _ _ Hin).
+      - apply (all_agree_elem _ reads k v); [|exact Hin].
+        unfold reads. cbn [all_agree fst snd]. split; [exact Hslive |].
+        split; [exact Hsaux |].
+        apply (proj2 (all_agree_app m (cell sb off (ptr_addr x)) ps)). auto. }
+    assert (Hslive' : live_at (store_bytes m cb 8 (sb + off + 8)) sb sr).
+    { exact Hslive. }
+    assert (Hsaux' : agree_piece (store_bytes m cb 8 (sb + off + 8))
+      (PAux sb off) (VAux (ptr_cap x))).
+    { apply (all_agree_elem _ reads _ _ Hframe_reads). unfold reads. cbn. right. left. }
+    assert (Hsbytes' : all_agree (store_bytes m cb 8 (sb + off + 8))
+      (cell sb off (ptr_addr x))).
+    { apply all_agree_intro. intros k v Hin. apply (all_agree_elem _ reads k v Hframe_reads).
+      unfold reads. apply elem_of_app. right. apply elem_of_app. left. exact Hin. }
+    assert (Hcursor : load_bytes m cb 8 = sb + off).
+    { replace cb with (cb + 0) at 1 by lia.
+      rewrite (cell_load m cb cr 0 (sb + off) (cb + 0) Hclive Hcbytes eq_refl).
+      apply Z.mod_small. lia. }
+    assert (Hcursor_cap : aux_at m cb = Ro sb).
+    { unfold aux_at. replace cb with (cb + 0) at 1 by lia.
+      apply (aux_holds_ro m (cb + 0) sb sr); [|exact Hslive].
+      exact (aux_piece_holds _ _ _ _ _ Hclive Hcaux). }
+    assert (Hresult_cap : aux_at (store_bytes m cb 8 (sb + off + 8)) (sb + off) = ptr_cap x).
+    { unfold aux_at. pose proof (aux_piece_holds _ _ _ _ _ Hslive' Hsaux') as Haux.
+      destruct Htarget as [Hnull | (xb & xr & [Hobj | Hro] & Hmember)].
+      - apply aux_holds_live; [exact Haux | auto].
+      - apply aux_holds_live; [exact Haux |]. right. exists xb, xr. split; [exact Hobj |].
+        exact (all_agree_elem _ _ _ _ Hps Hmember).
+      - rewrite Hro in Haux |- *. apply (aux_holds_ro _ _ _ xr Haux).
+        exact (all_agree_elem _ _ _ _ Hps Hmember). }
+    split.
+    + apply (va_arg_pointer m (mkPtr cb (Obj cb)) (sb + off) (Ro sb)
+        (store_bytes m cb 8 (sb + off + 8)) x).
+      * cbn [ptr_addr ptr_cap]. apply (access_obj _ _ cr); [exact (proj1 Hclive) | lia | lia | exact Hcb].
+      * exact Hcursor.
+      * exact Hcursor_cap.
+      * exact Hal.
+      * apply (access_ro_read _ _ sr); [exact (proj1 Hslive) | lia | exact Hsend | exact Hal].
+      * apply store_res_long. cbn [ptr_addr ptr_cap].
+        apply (access_obj _ _ cr); [exact (proj1 Hclive) | lia | lia | apply Z.mod_1_r].
+      * rewrite (cell_load _ sb sr off (ptr_addr x) (sb + off) Hslive' Hsbytes' eq_refl).
+        apply Z.mod_small. exact Hrange.
+      * exact Hresult_cap.
+    + split; [reflexivity |]. split.
+      * apply store_bytes_kept. exact (in_object_live _ _ _ cb Hclive ltac:(lia) ltac:(lia)).
+      * split.
+        -- apply all_agree_app. split; [|exact Hframe_reads].
+           unfold after, va_cursor_ps. cbn [all_agree fst snd]. split; [exact Hclive |].
+           split; [exact Hcaux | exact Hnew].
+        -- eapply frame_ok_mono; [|exact Hframe]. intros k Hin.
+           rewrite fmap_app. apply elem_of_app. left.
+           unfold after, va_cursor_ps. rewrite fmap_app. apply elem_of_app. right.
+           exact Hin.
+  - intros m w h Hown Hw. rewrite overwrite_app.
+    rewrite (overwrite_owned reads h).
+    + apply Hwi; [|exact Hw]. intros k v Hin. apply Hown.
+      apply elem_of_app. left. exact Hin.
+    + intros k v Hin. apply Hown. apply elem_of_app. right. exact Hin.
+  - iNext. iIntros "Hpieces". iEval (rewrite pts_app) in "Hpieces".
+    iDestruct "Hpieces" as "[Hcursor Hreads]".
+    iEval (rewrite /reads; rewrite pts_app) in "Hreads".
+    iDestruct "Hreads" as "[Hhead Htail]".
+    iEval (rewrite pts_app) in "Htail". iDestruct "Htail" as "[Hsc Hps]".
+    iEval (rewrite /pts !big_sepL_cons) in "Hhead".
+    iDestruct "Hhead" as "(Hsl & Hsa & _)".
+    iApply ("HK" with "Hcursor [Hsl] [Hsa Hsc] Hps");
+      rewrite /live /pcell /pts; iFrame; done.
+Qed.
+
+(** For promotion: a pointer load can return a read-only literal.
+    Its life comes from the caller's existing pieces rather than a new
+    token. This lifts [rule_let] and [op_raw_load_pointer] through
+    [wp_read_with], and preserves those pieces. *)
+Lemma wp_raw_load_literal f e ls l d off args rest j classes p b reg o x xb xr ps Φ :
+  op_arg_classes (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) P = Some classes ->
+  map2_option (value_x ge e) classes args = Some [WPtr p] ->
+  ptr_cap p = Obj b -> raw_address (ptr_addr p) off = b + o -> (b + o) mod 8 = 0 ->
+  0 <= ptr_addr x < 2 ^ 64 -> ptr_cap x = Ro xb -> (PLive xb, VLive xr) ∈ ps ->
+  live b reg -∗ pcell b o x -∗ pts ps -∗
+  ▷ (live b reg -∗ pcell b o x -∗ pts ps -∗
+    WP (ERun (mkFrame f (put d (WPtr x) e) ls None (Exec l rest j)) : hexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+    (Exec l (Let d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) args :: rest) j))
+    : hexpr) {{ Φ }}.
+Proof.
+  intros Hc Hx Hp Ha Hal Hrange Hcap Hmember. iIntros "Hl Hc Hps HK".
+  iApply (wp_read_with registry wi ge (live b reg ∗ pcell b o x ∗ pts ps)
+    (fun m => live_at m b reg /\ agree_piece m (PAux b o) (VAux (ptr_cap x)) /\
+      all_agree m (cell b o (ptr_addr x)) /\ live_at m xb xr)
+    _ _ [] with "[$Hl $Hc $Hps] [HK]").
+  - iIntros (σ) "Hσ (Hl & Hc & Hps)".
+    iDestruct (pts_facts with "Hσ Hl") as %([Hlv _] & _).
+    iDestruct (pts_facts with "Hσ Hc") as %([Hax Hcl] & _).
+    iDestruct (pts_facts with "Hσ Hps") as %(Hps & _).
+    pose proof (all_agree_elem _ _ _ _ Hps Hmember) as Htarget. iPureIntro. auto.
+  - intros m fuel (Hlv & Hax & Hcl & Htarget).
+    destruct (cell_bounds _ _ _ _ _ Hlv Hcl) as [Ho He].
+    apply rule_let with (classes := classes) (xs := [WPtr p]);
+      [reflexivity | exact Hc | exact Hx |].
+    apply op_raw_load_pointer.
+    + rewrite Hp Ha. apply (access_obj _ _ reg); [exact (proj1 Hlv) | lia | lia | exact Hal].
+    + rewrite pointer_load_plain Ha (cell_load m b reg o (ptr_addr x) (b + o) Hlv Hcl eq_refl).
+      rewrite Z.mod_small; [|exact Hrange]. unfold aux_at.
+      pose proof (aux_piece_holds _ _ _ _ _ Hlv Hax) as Haux. rewrite Hcap in Haux.
+      rewrite (aux_holds_ro _ _ _ _ Haux Htarget). rewrite <- Hcap. destruct x. reflexivity.
+  - iNext. iIntros "(Hl & Hc & Hps)". iApply ("HK" with "Hl Hc Hps").
 Qed.
 
 (** For promotion: a memory-reading operation justified by the world
@@ -560,6 +900,576 @@ Proof.
 Qed.
 
 End emit.
+
+Section arn.
+(** The reachable version path uses the linked heading, author, and
+    format literals; the stream itself belongs to the stdio world. *)
+Context (Hlinked : hello_linked ge) (stream : ptr) (literal_ps : list (piece * pval)).
+
+(** The existing literal resources include each author's live object;
+    this prevents the collector from rewriting its read-only capability. *)
+Context (author_reg : String.string -> region)
+  (Hauthor_live : forall s, In s ["hello#str.72"; "hello#str.73"; "hello#str.74"; "hello#str.75"] ->
+    (PLive (ptr_addr (version_literal s)), VLive (author_reg s)) ∈ literal_ps).
+
+(** The four initialized array cells that the counting loop passes on. *)
+Definition version_author_cells (b : Z) : iProp Σ :=
+  pcell b 0 (version_literal "hello#str.72") ∗
+  pcell b 8 (version_literal "hello#str.73") ∗
+  pcell b 16 (version_literal "hello#str.74") ∗
+  pcell b 24 (version_literal "hello#str.75").
+
+(** The pure literal copies in the reachable array helper are linked. *)
+Lemma arn_literal_lookup s :
+  In s ["version-etc#str.41"; "version_etc_copyright"; "version-etc#str.43";
+    "version-etc#str.44"; "version-etc#str.45"; "version-etc#str.46";
+    "version-etc#str.47"; "version-etc#str.51"] ->
+  lookup (TAtom s) (ge_globals ge) = Some (version_literal s).
+Proof.
+  intros Hin. apply (proj1 (proj2 Hlinked)).
+  repeat destruct Hin as [<- | Hin]; try contradiction; vm_compute; reflexivity.
+Qed.
+
+(** Advance one memory-independent IR let on the fixed version path. *)
+Local Ltac version_let :=
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]; iNext.
+
+(** These are the stdio contracts for the six exact version calls.
+    The mixed pointer/int classes are checked before any output result;
+    partial output and negative results retain the caller's resources. *)
+Context (version_spec : name -> contract world)
+  (Hversion_reg : forall g xs, In (g, xs) (version_output_args stream) -> registry g = Some (version_spec g))
+  (Hversion_ret : forall g xs, In (g, xs) (version_output_args stream) ->
+    contract_returns (version_spec g) = RClass W)
+  (Hversion_abi : forall g xs d args, In (g, xs) (version_output_args stream) ->
+    map (fun a => match a with Arg k _ => k end) args = version_output_classes xs ->
+    contract_abi (version_spec g) (CResult d W) args)
+  (Hversion_pre : forall g xs m w h, In (g, xs) (version_output_args stream) ->
+    (forall l v, (l, v) ∈ literal_ps -> h !! l = Some v) ->
+    agrees m h -> wi m w h -> contract_pre (version_spec g) xs m w)
+  (Hversion_frame : forall g xs r args s m w h trace values s' m' w',
+    In (g, xs) (version_output_args stream) ->
+    agrees m h -> live_disjoint m -> R.ready s m -> wi m w h ->
+    M.E.invoke (version_spec g) r args xs s m w trace (CallReturn values) s' m' w' ->
+    agrees m' h /\ live_disjoint m' /\ R.ready s' m' /\ wi m' w' h /\
+      exists n, values = [WInt n] /\ 0 <= n < 2 ^ 32).
+
+(** The reachable version calls preserve their literals and ignore
+    every canonical int result, including negative and partial output. *)
+Lemma wp_version_output f e ls lab d g args rest j xs Φ :
+  In (g, xs) (version_output_args stream) ->
+  map_option (arg_x ge e) args = Some xs ->
+  map (fun a => match a with Arg k _ => k end) args = version_output_classes xs ->
+  pts literal_ps -∗
+  ▷ (∀ n, pts literal_ps -∗
+    WP (ERun (mkFrame f (put d (WInt n) e) ls None (Exec lab rest j)) : hexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+    (Exec lab (Call (CResult d W) (Global g) args :: rest) j)) : hexpr) {{ Φ }}.
+Proof.
+  intros Hin Hargs Hclasses. iIntros "Hps HK".
+  assert (Hg : g = TAtom "fputs" \/ g = TAtom "fprintf").
+  { unfold version_output_args in Hin. repeat destruct Hin as [H | Hin];
+      try contradiction; inversion H; auto. }
+  iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (version_spec g) xs (pts literal_ps) with "Hps [HK]").
+  - destruct Hg as [-> | ->]; apply hello_outside; try exact (proj1 Hlinked); reflexivity.
+  - destruct Hg as [-> | ->]; apply (proj2 (proj2 Hlinked)); reflexivity.
+  - destruct Hg as [-> | ->]; reflexivity.
+  - exact (Hversion_reg _ _ Hin).
+  - exact Hargs.
+  - exact (Hversion_abi _ _ _ _ Hin Hclasses).
+  - iIntros (σ) "(%h & Hh & %Hf) Hps". destruct Hf as (Ha & _ & _ & Hw).
+    iDestruct (pts_lookup with "Hh Hps") as %Hps.
+    iPureIntro. exact (Hversion_pre _ _ _ _ _ Hin Hps Ha Hw).
+  - iNext. iIntros (σ trace values s' m' w' Hinv) "(%h & Hh & %Hf) Hps".
+    destruct Hf as (Ha & Hd & Hr & Hw).
+    destruct (Hversion_frame _ _ _ _ _ _ _ _ _ _ _ _ _ Hin Ha Hd Hr Hw Hinv)
+      as (Ha' & Hd' & Hr' & Hw' & n & -> & Hn).
+    iModIntro. iExists (put d (WInt n) e). iSplit.
+    + iPureIntro. unfold external_env. cbn [site_result]. rewrite (Hversion_ret _ _ Hin).
+      cbn. rewrite Z.mod_small; [reflexivity | exact Hn].
+    + iSplitL "Hh"; [iExists h; iFrame; iPureIntro; auto |]. iApply ("HK" with "Hps").
+Qed.
+
+(** The reachable array helper prints the heading and four authors,
+    preserving the array and literal resources for every stdio result.
+    Its fixed count is discharged by [version_etc_va], not assumed by main. *)
+Lemma version_etc_arn_spec b Φ :
+  0 < b -> b mod 16 = 0 -> b + 80 <= 2 ^ 48 ->
+  pts literal_ps -∗ live b (mkRegion b (b + 80) Heap Live) -∗ version_author_cells b -∗
+  ▷ (pts literal_ps -∗ live b (mkRegion b (b + 80) Heap Live) -∗
+    version_author_cells b -∗ Φ RetVoid) -∗
+  WP (ERun (invocation version_etc_arn_fn
+    [WPtr stream; WPtr (version_literal "hello#str.70");
+     WPtr (version_literal "hello#str.63"); WPtr (version_literal "hello#str.71");
+     WPtr (mkPtr b (Obj b)); WInt 4]) : hexpr) {{ Φ }}.
+Proof.
+  intros Hb Hmod Hend.
+  assert (Hmod8 : b mod 8 = 0).
+  { apply Z.mod_divide; [lia |]. apply (Z.divide_trans 8 16 b).
+    - exists 2. reflexivity.
+    - apply Z.mod_divide; [lia | exact Hmod]. }
+  pose proof (arn_literal_lookup "version-etc#str.41" ltac:(simpl; tauto)) as H41.
+  pose proof (arn_literal_lookup "version_etc_copyright" ltac:(simpl; tauto)) as Hcopyright.
+  pose proof (arn_literal_lookup "version-etc#str.43" ltac:(simpl; tauto)) as H43.
+  pose proof (arn_literal_lookup "version-etc#str.44" ltac:(simpl; tauto)) as H44.
+  pose proof (arn_literal_lookup "version-etc#str.45" ltac:(simpl; tauto)) as H45.
+  pose proof (arn_literal_lookup "version-etc#str.46" ltac:(simpl; tauto)) as H46.
+  pose proof (arn_literal_lookup "version-etc#str.47" ltac:(simpl; tauto)) as H47.
+  pose proof (arn_literal_lookup "version-etc#str.51" ltac:(simpl; tauto)) as H51.
+  iIntros "Hps Hl (H0 & H1 & H2 & H3) HΦ". rewrite version_etc_arn_entry.
+  iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
+  cbn [b_insts b_jump arn_start]. version_let. version_let.
+  iApply wp_branch; [word_premise |]. iNext. cbn [Z.eqb edge_label].
+  iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
+  cbn [b_insts b_jump arn_L12]. version_let.
+  iApply (wp_version_output with "Hps");
+    [unfold version_output_args; left; reflexivity | word_premise | reflexivity |].
+  iNext. iIntros (n0) "Hps". iApply wp_goto. iNext.
+  iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
+  cbn [b_insts b_jump arn_L14]. version_let. version_let. version_let.
+  iApply (wp_version_output with "Hps");
+    [unfold version_output_args; right; left; reflexivity | word_premise | reflexivity |].
+  iNext. iIntros (n1) "Hps". version_let.
+  iApply (wp_version_output with "Hps");
+    [unfold version_output_args; right; right; left; reflexivity | word_premise | reflexivity |].
+  iNext. iIntros (n2) "Hps". version_let. version_let. version_let.
+  iApply (wp_version_output with "Hps");
+    [unfold version_output_args; right; right; right; left; reflexivity | word_premise | reflexivity |].
+  iNext. iIntros (n3) "Hps". version_let.
+  iApply (wp_version_output with "Hps");
+    [unfold version_output_args; right; right; right; right; left; reflexivity | word_premise | reflexivity |].
+  iNext. iIntros (n4) "Hps". version_let.
+  iApply wp_branch; [word_premise |]. iNext. cbn [Z.eqb edge_label].
+  iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
+  cbn [b_insts b_jump arn_L263]. version_let.
+  iApply wp_branch; [word_premise |]. iNext. cbn [Z.eqb edge_label].
+  iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
+  cbn [b_insts b_jump arn_L267]. version_let.
+  iApply wp_branch; [word_premise |]. iNext. cbn [Z.eqb edge_label].
+  iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
+  cbn [b_insts b_jump arn_L273]. version_let.
+  iApply wp_branch; [word_premise |]. iNext. cbn [Z.eqb edge_label].
+  iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
+  cbn [b_insts b_jump arn_L275]. version_let.
+  iApply wp_branch; [word_premise |]. iNext. cbn [Z.eqb edge_label].
+  iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
+  cbn [b_insts b_jump arn_L82]. version_let. version_let.
+  iApply (wp_check with "Hl");
+    [reflexivity | word_premise | reflexivity | addr_premise | cbn [r_end]; addr_premise | addr_premise |].
+  iNext. iIntros "Hl".
+  iApply (wp_raw_load_literal with "Hl H0 Hps");
+    [reflexivity | word_premise | reflexivity | addr_premise | addr_premise |
+     vm_compute; split; congruence | vm_compute; reflexivity |
+     apply (Hauthor_live "hello#str.72"); simpl; tauto |].
+  iNext. iIntros "Hl H0 Hps".
+  iApply (wp_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ (b + 8));
+    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]. iNext.
+  iApply (wp_half_check with "Hl");
+    [reflexivity | word_premise | reflexivity | reflexivity | addr_premise |
+     cbn [r_end]; addr_premise | lia | cbn; lia | addr_premise |]. iNext. iIntros "Hl".
+  iApply (wp_raw_load_literal with "Hl H1 Hps");
+    [reflexivity | word_premise | reflexivity | addr_premise | addr_premise |
+     vm_compute; split; congruence | vm_compute; reflexivity |
+     apply (Hauthor_live "hello#str.73"); simpl; tauto |].
+  iNext. iIntros "Hl H1 Hps".
+  iApply (wp_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ (b + 16));
+    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]. iNext.
+  iApply (wp_half_check with "Hl");
+    [reflexivity | word_premise | reflexivity | reflexivity | addr_premise |
+     cbn [r_end]; addr_premise | lia | cbn; lia | addr_premise |]. iNext. iIntros "Hl".
+  iApply (wp_raw_load_literal with "Hl H2 Hps");
+    [reflexivity | word_premise | reflexivity | addr_premise | addr_premise |
+     vm_compute; split; congruence | vm_compute; reflexivity |
+     apply (Hauthor_live "hello#str.74"); simpl; tauto |].
+  iNext. iIntros "Hl H2 Hps".
+  iApply (wp_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ (b + 24));
+    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]. iNext.
+  iApply (wp_half_check with "Hl");
+    [reflexivity | word_premise | reflexivity | reflexivity | addr_premise |
+     cbn [r_end]; addr_premise | lia | cbn; lia | addr_premise |]. iNext. iIntros "Hl".
+  iApply (wp_raw_load_literal with "Hl H3 Hps");
+    [reflexivity | word_premise | reflexivity | addr_premise | addr_premise |
+     vm_compute; split; congruence | vm_compute; reflexivity |
+     apply (Hauthor_live "hello#str.75"); simpl; tauto |].
+  iNext. iIntros "Hl H3 Hps".
+  iApply (wp_version_output with "Hps");
+    [unfold version_output_args; right; right; right; right; right; left; reflexivity |
+     word_premise | reflexivity |].
+  iNext. iIntros (n5) "Hps". iApply wp_goto. iNext.
+  iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
+  cbn [b_insts b_jump arn_L47]. iApply wp_ret_void. iNext.
+  iApply ("HΦ" with "Hps Hl [H0 H1 H2 H3]"). rewrite /version_author_cells. iFrame.
+Qed.
+
+(** The variadic counting helper in the linked program. *)
+Definition version_etc_va_fn : func := Eval vm_compute in hello_fn "version_etc_va".
+(** The allocation block of the counting helper. *)
+Definition va_start : block := Eval vm_compute in hblk version_etc_va_fn "start".
+(** The loop header binds the current author count. *)
+Definition va_L12 : block := Eval vm_compute in hblk version_etc_va_fn "L12".
+(** The loop body consumes and stores one variadic pointer. *)
+Definition va_L18 : block := Eval vm_compute in hblk version_etc_va_fn "L18".
+(** The null test selects another iteration or the array helper. *)
+Definition va_L19 : block := Eval vm_compute in hblk version_etc_va_fn "L19".
+(** The back edge increments the count of non-null authors. *)
+Definition va_L14 : block := Eval vm_compute in hblk version_etc_va_fn "L14".
+(** The exit block passes the derived count to the array helper. *)
+Definition va_L15 : block := Eval vm_compute in hblk version_etc_va_fn "L15".
+
+(** Five zero cells suffice for the four authors and their terminator;
+    the rest of the allocated array is unused. *)
+Lemma version_array_zero b :
+  obj b (heap_req 8 80) -∗ live b (mkRegion b (b + 80) Heap Live) ∗
+    pcell b 0 null ∗ pcell b 8 null ∗ pcell b 16 null ∗ pcell b 24 null ∗ pcell b 32 null.
+Proof.
+  iIntros "Hobj". iDestruct (obj_zero_block with "Hobj") as "(Hl & Hx & Ha)";
+    [compute; discriminate |].
+  iSplitL "Hl"; [iExact "Hl" |].
+  iAssert (bytes b 0 (replicate (40 + 40) 0))%I with "Hx" as "Hx".
+  iAssert (auxes b 0 (replicate (40 + 40) CNone))%I with "Ha" as "Ha".
+  iEval (rewrite replicate_add bytes_app) in "Hx".
+  iEval (rewrite replicate_add auxes_app) in "Ha".
+  iDestruct "Hx" as "[Hx _]". iDestruct "Ha" as "[Ha _]".
+  iEval (rewrite /bytes /byte_ps /pts; simpl) in "Hx".
+  iEval (rewrite /auxes /aux_ps /pts; simpl) in "Ha".
+  repeat (iDestruct "Hx" as "[? Hx]").
+  repeat (iDestruct "Ha" as "[? Ha]").
+  assert (Hbyte : forall i, byte_of 0 i = 0).
+  { intros i. unfold byte_of. destruct (Z.eq_dec (2 ^ (8 * i)) 0) as [-> | Hne].
+    - reflexivity.
+    - rewrite Z.div_0_l; [reflexivity | exact Hne]. }
+  rewrite /pcell /pts /cell. cbn. setoid_rewrite Hbyte. iFrame.
+Qed.
+
+(** The entry binds the heading literals and the caller's va_list. *)
+Lemma version_etc_va_entry cb :
+  invocation version_etc_va_fn
+    [WPtr stream; WPtr (version_literal "hello#str.70");
+     WPtr (version_literal "hello#str.63"); WPtr (version_literal "hello#str.71");
+     WPtr (mkPtr cb (Obj cb))] =
+  mkFrame version_etc_va_fn
+    [(TAtom "v8", WPtr (mkPtr cb (Obj cb)));
+     (TAtom "v6", WPtr (version_literal "hello#str.71"));
+     (TAtom "v4", WPtr (version_literal "hello#str.63"));
+     (TAtom "v2", WPtr (version_literal "hello#str.70")); (TAtom "v0", WPtr stream)]
+    [] None (Enter (TAtom "start") None).
+Proof. reflexivity. Qed.
+
+(** Program-local allocations preserve the caller's opaque world. *)
+Context (Kversion_alloc : forall size m wd h base,
+  In size [24; 80] -> fresh m (heap_req 8 size) base -> wi m wd h ->
+  wi (allocated m (heap_req 8 size) base) wd
+    (overwrite (obj_ps base (heap_req 8 size)) h)).
+
+(** Storing a pointer in an owned program cell preserves that world;
+    no ownership of the output stream is introduced. *)
+Context (Kversion_store : forall b reg o x xp m wd h,
+  (forall k v, (k, v) ∈ [(PLive b, VLive reg)] ++
+    (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x) -> h !! k = Some v) ->
+  wi m wd h ->
+  wi (store_bytes (store_aux m (b + o) (ptr_cap xp)) (b + o) 8 (ptr_addr xp)) wd
+    (overwrite ([(PLive b, VLive reg)] ++
+      (PAux b o, VAux (ptr_cap xp)) :: cell b o (ptr_addr xp)) h)).
+
+(** Advancing an owned va_list cursor preserves the caller's world. *)
+Context (Kversion_cursor : forall cb cr sb off m wd h,
+  (forall k v, (k, v) ∈ va_cursor_ps cb cr (mkPtr (sb + off) (Ro sb)) ->
+    h !! k = Some v) -> wi m wd h ->
+  wi (store_bytes m cb 8 (sb + off + 8)) wd
+    (overwrite (va_cursor_ps cb cr (mkPtr (sb + off + 8) (Ro sb))) h)).
+
+(** Execute one non-null iteration, including the loop's actual phi,
+    pointer comparison, and count increment. *)
+Local Ltac version_va_round addr src dst text :=
+  iRename src into "Hsource"; iRename dst into "Hdest";
+  iApply wp_goto; iNext;
+  iApply wp_enter; [vm_compute; reflexivity | word_premise |]; iNext;
+  cbn [b_insts b_jump va_L12]; version_let;
+  iApply wp_branch; [word_premise |]; iNext; cbn [Z.eqb edge_label];
+  iApply wp_enter; [vm_compute; reflexivity | reflexivity |]; iNext;
+  cbn [b_insts b_jump va_L18]; version_let;
+  iApply (wp_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ addr);
+    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]; iNext;
+  iApply (wp_va_arg_pointer with "Hcursor Hsl Hsource Hps");
+    [word_premise | assumption | assumption | lia | lia | assumption |
+     addr_premise | vm_compute; split; congruence |
+     right; exists (ptr_addr (version_literal text)), (author_reg text);
+       split; [right; vm_compute; reflexivity | apply Hauthor_live; simpl; tauto] |
+     apply Kversion_cursor |];
+  iNext; iIntros "Hcursor Hsl Hsource Hps";
+  iApply (wp_check with "Hl");
+    [reflexivity | word_premise | reflexivity | addr_premise |
+     cbn [r_end]; addr_premise | addr_premise |]; iNext; iIntros "Hl";
+  iApply (wp_raw_store_pointer with "Hl Hdest");
+    [word_premise | word_premise | reflexivity | addr_premise | addr_premise |
+     apply Kversion_store |]; iNext; iIntros "Hl Hdest";
+  version_let; version_let; version_let;
+  iApply wp_goto; iNext;
+  iApply wp_enter; [vm_compute; reflexivity | word_premise |]; iNext;
+  cbn [b_insts b_jump va_L19];
+  iApply wp_branch; [word_premise |]; iNext; cbn [Z.eqb edge_label];
+  iApply wp_enter; [vm_compute; reflexivity | reflexivity |]; iNext;
+  cbn [b_insts b_jump va_L14]; version_let;
+  iRename "Hsource" into src; iRename "Hdest" into dst.
+
+(** The counting loop reads four literal authors and the actual null
+    terminator, then calls the array helper with the derived count four.
+    It returns the caller's literals, snapshot cells, and advanced cursor. *)
+Lemma version_etc_va_spec cb cr sb sr Φ :
+  cb mod 8 = 0 -> 0 < sb -> sb mod 16 = 0 ->
+  sb + 72 <= r_end sr -> r_end sr <= 2 ^ 48 ->
+  pts literal_ps -∗ pts (va_cursor_ps cb cr (mkPtr (sb + 32) (Ro sb))) -∗
+  live sb sr -∗
+  pcell sb 32 (version_literal "hello#str.72") -∗
+  pcell sb 40 (version_literal "hello#str.73") -∗
+  pcell sb 48 (version_literal "hello#str.74") -∗
+  pcell sb 56 (version_literal "hello#str.75") -∗ pcell sb 64 null -∗
+  ▷ (pts literal_ps -∗ pts (va_cursor_ps cb cr (mkPtr (sb + 72) (Ro sb))) -∗
+    live sb sr -∗
+    pcell sb 32 (version_literal "hello#str.72") -∗
+    pcell sb 40 (version_literal "hello#str.73") -∗
+    pcell sb 48 (version_literal "hello#str.74") -∗
+    pcell sb 56 (version_literal "hello#str.75") -∗ pcell sb 64 null -∗ Φ RetVoid) -∗
+  WP (ERun (invocation version_etc_va_fn
+    [WPtr stream; WPtr (version_literal "hello#str.70");
+     WPtr (version_literal "hello#str.63"); WPtr (version_literal "hello#str.71");
+     WPtr (mkPtr cb (Obj cb))]) : hexpr) {{ Φ }}.
+Proof.
+  intros Hcb Hsb Hsmod Hsend Hsmax.
+  assert (Hs8 : sb mod 8 = 0).
+  { apply Z.mod_divide; [lia |]. apply (Z.divide_trans 8 16 sb).
+    - exists 2. reflexivity.
+    - apply Z.mod_divide; [lia | exact Hsmod]. }
+  iIntros "Hps Hcursor Hsl Hs0 Hs1 Hs2 Hs3 Hs4 HK".
+  rewrite version_etc_va_entry.
+  iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
+  cbn [b_insts b_jump va_start].
+  iApply (wp_alloc _ _ _ _ _ _ _ _ _ _ _ _ _ 80);
+    [reflexivity | lia | unfold max_allocation_size; lia |
+     intros m wd h base Hf Hw; apply Kversion_alloc; [simpl; tauto | exact Hf | exact Hw] |].
+  iNext. iIntros (b [Hb [Hbmod Hbend]]) "Hobj".
+  change (b mod 16 = 0) in Hbmod. change (b + 80 <= 2 ^ 48) in Hbend.
+  assert (Hb8 : b mod 8 = 0).
+  { apply Z.mod_divide; [lia |]. apply (Z.divide_trans 8 16 b).
+    - exists 2. reflexivity.
+    - apply Z.mod_divide; [lia | exact Hbmod]. }
+  iDestruct (version_array_zero with "Hobj") as "(Hl & H0 & H1 & H2 & H3 & H4)".
+  assert (H40 : sb + 32 + 8 = sb + 40) by lia.
+  assert (H48 : sb + 40 + 8 = sb + 48) by lia.
+  assert (H56 : sb + 48 + 8 = sb + 56) by lia.
+  assert (H64 : sb + 56 + 8 = sb + 64) by lia.
+  version_va_round b "Hs0" "H0" "hello#str.72".
+  iEval (rewrite H40) in "Hcursor".
+  version_va_round (b + 8) "Hs1" "H1" "hello#str.73".
+  iEval (rewrite H48) in "Hcursor".
+  version_va_round (b + 16) "Hs2" "H2" "hello#str.74".
+  iEval (rewrite H56) in "Hcursor".
+  version_va_round (b + 24) "Hs3" "H3" "hello#str.75".
+  iEval (rewrite H64) in "Hcursor".
+  iApply wp_goto. iNext.
+  iApply wp_enter; [vm_compute; reflexivity | word_premise |]. iNext.
+  cbn [b_insts b_jump va_L12]. version_let.
+  iApply wp_branch; [word_premise |]. iNext. cbn [Z.eqb edge_label].
+  iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
+  cbn [b_insts b_jump va_L18]. version_let.
+  iApply (wp_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ (b + 32));
+    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]. iNext.
+  iApply (wp_va_arg_pointer with "Hcursor Hsl Hs4 Hps");
+    [word_premise | exact Hcb | exact Hsb | lia | lia | exact Hsmax |
+     addr_premise | vm_compute; split; congruence | left; reflexivity | apply Kversion_cursor |].
+    iNext. iIntros "Hcursor Hsl Hs4 Hps".
+    iApply (wp_check with "Hl");
+      [reflexivity | word_premise | reflexivity | addr_premise |
+       cbn [r_end]; addr_premise | addr_premise |]. iNext. iIntros "Hl".
+    iApply (wp_raw_store_pointer with "Hl H4");
+      [word_premise | word_premise | reflexivity | addr_premise | addr_premise |
+       apply Kversion_store |]. iNext. iIntros "Hl H4".
+    version_let. version_let. version_let.
+    iApply wp_goto. iNext.
+    iApply wp_enter; [vm_compute; reflexivity | word_premise |]. iNext.
+    cbn [b_insts b_jump va_L19].
+    iApply wp_branch; [word_premise |]. iNext. cbn [Z.eqb edge_label].
+    iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
+    cbn [b_insts b_jump va_L15].
+    iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ _ version_etc_arn_fn
+      (invocation version_etc_arn_fn
+        [WPtr stream; WPtr (version_literal "hello#str.70");
+         WPtr (version_literal "hello#str.63"); WPtr (version_literal "hello#str.71");
+         WPtr (mkPtr b (Obj b)); WInt 4]));
+      [word_premise | unfold find_fn; rewrite (proj1 Hlinked); vm_compute; reflexivity | reflexivity |].
+    iNext. iApply (version_etc_arn_spec with "Hps Hl [H0 H1 H2 H3]");
+      [exact Hb | exact Hbmod | exact Hbend |
+       rewrite /version_author_cells; iFrame |].
+    iNext. iIntros "Hps Hl Ha". iExists _. iSplit; [iPureIntro; reflexivity |].
+    iNext. iApply wp_ret_void. iNext.
+    assert (H72 : sb + 64 + 8 = sb + 72) by lia.
+    iEval (rewrite H72) in "Hcursor".
+    iApply ("HK" with "Hps Hcursor Hsl Hs0 Hs1 Hs2 Hs3 Hs4").
+Qed.
+
+(** The only version invocation in main: four literal author pointers,
+    followed by the pointer-class interpretation of const zero. *)
+Definition version_main_args : list word :=
+  [WPtr stream; WPtr (version_literal "hello#str.70");
+   WPtr (version_literal "hello#str.63"); WPtr (version_literal "hello#str.71");
+   WPtr (version_literal "hello#str.72"); WPtr (version_literal "hello#str.73");
+   WPtr (version_literal "hello#str.74"); WPtr (version_literal "hello#str.75"); WPtr null].
+
+(** The five pointer cells selected from main's actual snapshot. *)
+Definition version_snapshot_cells sb : list (piece * pval) :=
+  [(PLive sb, VLive (mkRegion sb (sb + 80) Heap Live))] ++
+  ((PAux sb 32, VAux (ptr_cap (version_literal "hello#str.72"))) ::
+    cell sb 32 (ptr_addr (version_literal "hello#str.72"))) ++
+  ((PAux sb 40, VAux (ptr_cap (version_literal "hello#str.73"))) ::
+    cell sb 40 (ptr_addr (version_literal "hello#str.73"))) ++
+  ((PAux sb 48, VAux (ptr_cap (version_literal "hello#str.74"))) ::
+    cell sb 48 (ptr_addr (version_literal "hello#str.74"))) ++
+  ((PAux sb 56, VAux (ptr_cap (version_literal "hello#str.75"))) ::
+    cell sb 56 (ptr_addr (version_literal "hello#str.75"))) ++
+  ((PAux sb 64, VAux CNone) :: cell sb 64 0).
+
+(** The selected cells have distinct life, byte, and capability keys. *)
+Lemma version_snapshot_cells_nodup sb : NoDup (version_snapshot_cells sb).*1.
+Proof.
+  unfold version_snapshot_cells, cell. cbn.
+  repeat constructor; intros Hin;
+    repeat (apply elem_of_cons in Hin; destruct Hin as [Hin | Hin]); inversion Hin.
+Qed.
+
+(** The selected cells are populated by argument indices four through
+    eight of the actual snapshot, not supplied as new initial memory. *)
+Lemma version_snapshot_cells_member sb lv :
+  lv ∈ version_snapshot_cells sb ->
+  lv ∈ snapshot_ps version_main_args sb (heap_req 16 72).
+Proof.
+  destruct lv as [l v]. unfold version_snapshot_cells.
+  rewrite !elem_of_app. intros [Hlive | [H0 | [H1 | [H2 | [H3 | H4]]]]].
+  - apply elem_of_cons in Hlive as [Hlive | Hfalse]; [|inversion Hfalse].
+    injection Hlive as -> ->.
+    unfold snapshot_ps, obj_ps. apply list_elem_of_fmap.
+    exists (PLive sb, VLive (mkRegion sb (sb + 80) Heap Live)).
+    split; [reflexivity | left; reflexivity].
+  - apply (snapshot_ps_pointer version_main_args 4 (version_literal "hello#str.72"));
+      [reflexivity | vm_compute; congruence | exact H0].
+  - apply (snapshot_ps_pointer version_main_args 5 (version_literal "hello#str.73"));
+      [reflexivity | vm_compute; congruence | exact H1].
+  - apply (snapshot_ps_pointer version_main_args 6 (version_literal "hello#str.74"));
+      [reflexivity | vm_compute; congruence | exact H2].
+  - apply (snapshot_ps_pointer version_main_args 7 (version_literal "hello#str.75"));
+      [reflexivity | vm_compute; congruence | exact H3].
+  - apply (snapshot_ps_pointer version_main_args 8 null);
+      [reflexivity | vm_compute; congruence | exact H4].
+Qed.
+
+(** Extracting only the used cells discards unused snapshot padding. *)
+Lemma version_snapshot_authors sb :
+  pts (snapshot_ps version_main_args sb (heap_req 16 72)) -∗
+  live sb (mkRegion sb (sb + 80) Heap Live) ∗
+  pcell sb 32 (version_literal "hello#str.72") ∗
+  pcell sb 40 (version_literal "hello#str.73") ∗
+  pcell sb 48 (version_literal "hello#str.74") ∗
+  pcell sb 56 (version_literal "hello#str.75") ∗ pcell sb 64 null.
+Proof.
+  iIntros "Hps".
+  iAssert (pts (version_snapshot_cells sb)) with "[Hps]" as "Hps".
+  { iApply (big_sepL_submseteq with "Hps"). apply NoDup_submseteq.
+    - apply (NoDup_fmap_1 fst). apply version_snapshot_cells_nodup.
+    - apply version_snapshot_cells_member. }
+  rewrite /version_snapshot_cells !pts_app /pcell /live. iExact "Hps".
+Qed.
+
+(** The public variadic wrapper in the linked program. *)
+Definition version_etc_fn : func := Eval vm_compute in hello_fn "version_etc".
+(** Its single block constructs a va_list and calls the counting helper. *)
+Definition version_start : block := Eval vm_compute in hblk version_etc_fn "start".
+
+(** The variadic entry retains every actual argument for Snapshot. *)
+Lemma version_etc_entry : invocation version_etc_fn version_main_args =
+  mkFrame version_etc_fn
+    [(TAtom "v6", WPtr (version_literal "hello#str.71"));
+     (TAtom "v4", WPtr (version_literal "hello#str.63"));
+     (TAtom "v2", WPtr (version_literal "hello#str.70")); (TAtom "v0", WPtr stream)]
+    [] None (Snapshot version_main_args (TAtom "start")).
+Proof. reflexivity. Qed.
+
+(** The local va_list begins with one zero pointer cell. *)
+Lemma version_cursor_zero cb :
+  obj cb (heap_req 8 24) -∗ live cb (mkRegion cb (cb + 32) Heap Live) ∗ pcell cb 0 null.
+Proof.
+  iIntros "Hobj". iDestruct (obj_zero_block with "Hobj") as "(Hl & Hx & Ha)";
+    [compute; discriminate |].
+  iSplitL "Hl"; [iExact "Hl" |].
+  iEval (rewrite /bytes /byte_ps /pts; simpl) in "Hx".
+  iEval (rewrite /auxes /aux_ps /pts; simpl) in "Ha".
+  repeat (iDestruct "Hx" as "[? Hx]").
+  repeat (iDestruct "Ha" as "[? Ha]").
+  rewrite /pcell /pts /cell. cbn.
+  assert (Hbyte : forall i, byte_of 0 i = 0).
+  { intros i. unfold byte_of. destruct (Z.eq_dec (2 ^ (8 * i)) 0) as [-> | Hne].
+    - reflexivity.
+    - rewrite Z.div_0_l; [reflexivity | exact Hne]. }
+  setoid_rewrite Hbyte. iFrame.
+Qed.
+
+(** Snapshot population preserves the same opaque world under the
+    already proved fresh-object and exact-store frame facts. *)
+Context (Kversion_snapshot : forall m wd h sb,
+  fresh m (heap_req 16 72) sb -> wi m wd h ->
+  wi (snapshot_values version_main_args sb (allocated m (heap_req 16 72) sb)) wd
+    (overwrite (snapshot_ps version_main_args sb (heap_req 16 72)) h)).
+
+(** Main can apply this triple directly after the four proper_name
+    identities. The snapshot and the counting loop derive the count;
+    neither the count nor the array contents are caller premises. *)
+Lemma version_etc_spec Φ :
+  pts literal_ps -∗ ▷ (pts literal_ps -∗ Φ RetVoid) -∗
+  WP (ERun (invocation version_etc_fn version_main_args) : hexpr) {{ Φ }}.
+Proof.
+  iIntros "Hps HK". rewrite version_etc_entry.
+  iApply wp_snapshot;
+    [discriminate | reflexivity | exact Kversion_snapshot |].
+  iNext. iIntros (sb [Hsb [Hsmod Hsend]]) "Hsnapshot".
+  change (sb mod 16 = 0) in Hsmod. change (sb + 80 <= 2 ^ 48) in Hsend.
+  iDestruct (version_snapshot_authors with "Hsnapshot") as "(Hsl & Hs0 & Hs1 & Hs2 & Hs3 & Hs4)".
+  iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
+  cbn [b_insts b_jump version_start].
+  iApply (wp_alloc _ _ _ _ _ _ _ _ _ _ _ _ _ 24);
+    [reflexivity | lia | unfold max_allocation_size; lia |
+     intros m wd h base Hf Hw; apply Kversion_alloc; [simpl; tauto | exact Hf | exact Hw] |].
+  iNext. iIntros (cb [Hcb [Hcmod Hcend]]) "Hobj".
+  change (cb mod 16 = 0) in Hcmod. change (cb + 32 <= 2 ^ 48) in Hcend.
+  assert (Hc8 : cb mod 8 = 0).
+  { apply Z.mod_divide; [lia |]. apply (Z.divide_trans 8 16 cb).
+    - exists 2. reflexivity.
+    - apply Z.mod_divide; [lia | exact Hcmod]. }
+  iDestruct (version_cursor_zero with "Hobj") as "[Hcl Hc]".
+  iApply wp_va_args; [reflexivity |]. iNext.
+  iApply (wp_check with "Hcl");
+    [reflexivity | word_premise | reflexivity | addr_premise |
+     cbn [r_end]; addr_premise | addr_premise |]. iNext. iIntros "Hcl".
+  iApply (wp_raw_store_pointer with "Hcl Hc");
+    [word_premise | word_premise | reflexivity | addr_premise | addr_premise |
+     apply Kversion_store |]. iNext. iIntros "Hcl Hc".
+  assert (Hwrap : (sb + 32) mod 2 ^ 64 = sb + 32) by (apply Z.mod_small; lia).
+  iEval (cbn [ptr_addr]; rewrite Hwrap) in "Hc".
+  iAssert (pts (va_cursor_ps cb (mkRegion cb (cb + 32) Heap Live)
+    (mkPtr (sb + 32) (Ro sb)))) with "[Hcl Hc]" as "Hcursor".
+  { rewrite /va_cursor_ps /live /pcell /pts !big_sepL_app !big_sepL_cons.
+    iDestruct "Hcl" as "[Hl _]". iDestruct "Hc" as "[Ha Hc]". iFrame. done. }
+  iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ _ version_etc_va_fn
+    (invocation version_etc_va_fn
+      [WPtr stream; WPtr (version_literal "hello#str.70");
+       WPtr (version_literal "hello#str.63"); WPtr (version_literal "hello#str.71");
+       WPtr (mkPtr cb (Obj cb))]));
+    [word_premise | unfold find_fn; rewrite (proj1 Hlinked); vm_compute; reflexivity | reflexivity |].
+  iNext. iApply (version_etc_va_spec with "Hps Hcursor Hsl Hs0 Hs1 Hs2 Hs3 Hs4");
+    [exact Hc8 | exact Hsb | exact Hsmod | cbn [r_end]; lia | cbn [r_end]; lia |].
+  iNext. iIntros "Hps Hcursor Hsl Hs0 Hs1 Hs2 Hs3 Hs4".
+  iExists _. iSplit; [iPureIntro; reflexivity |].
+  iNext. iApply wp_ret_void. iNext. iApply ("HK" with "Hps").
+Qed.
+
+End arn.
 
 End version.
 End HelloVersion.
