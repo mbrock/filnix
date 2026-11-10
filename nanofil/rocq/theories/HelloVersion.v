@@ -437,8 +437,8 @@ Definition va_cursor_ps b reg (cursor : ptr) : list (piece * pval) :=
   [(PLive b, VLive reg); (PAux b 0, VAux (ptr_cap cursor))] ++ cell b 0 (ptr_addr cursor).
 
 (** The helpers over any runtime and caller-supplied world. *)
-Module HelloVersion (R : Runtime).
-Module HL := HelloLeaf R.
+Module HelloVersionOn (R : Runtime) (LG0 : LogicSig R).
+Module HL := HelloLeafOn R LG0.
 Module ML := HL.ML.
 Module SL := ML.SL.
 Module LG := ML.LG.
@@ -1556,4 +1556,10 @@ Qed.
 End arn.
 
 End version.
+End HelloVersionOn.
+
+(** [HelloVersionOn] over a Logic instance of its own. *)
+Module HelloVersion (R : Runtime).
+Module LG0 := Logic R.
+Include HelloVersionOn R LG0.
 End HelloVersion.

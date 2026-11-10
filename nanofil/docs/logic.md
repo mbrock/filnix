@@ -963,14 +963,14 @@ file built its own chain from `R`, and so did `LocaleLogic R` and
 signature of one instance. Each layer above it is a functor over one
 instance, `XOn (R : Runtime) (LG0 : LogicSig R)`:
 - StringLogic, MemLogic, LentLogic and LocaleLogic;
-- HelloLeaf, HelloLocale, HelloConv, HelloName, HelloProgName and
-  HelloClose;
+- HelloLeaf, HelloLocale, HelloConv, HelloName, HelloProgName,
+  HelloClose and HelloVersion;
 - CallbackLogic.
 
 Inside each, `Module LG := LG0.` keeps the old paths. `X` itself is
 `XOn` over a `Logic R` of its own, so no statement and no existing
 user changes. Main's proof applies every `…On` functor to one
-instance. HelloVersion follows once its speedup lands. Campaign 4's
+instance. Campaign 4's
 StreamFrameLogic has the same signature, so its `…On` modules take
 the same instance.
 
