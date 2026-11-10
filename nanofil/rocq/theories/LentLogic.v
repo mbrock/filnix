@@ -172,6 +172,36 @@ Proof.
     left. reflexivity.
 Qed.
 
+(** An access that is allowed for size bytes is allowed for fewer: the
+    bounds check only gets easier, and alignment and rights do not
+    depend on the size. *)
+Lemma access_res_le m a c size size' r al :
+  access_res m a c size r al = Some ok -> size' <= size -> access_res m a c size' r al = Some ok.
+Proof.
+  unfold access_res, cap_access_res. intros Ha Hle.
+  destruct c as [|base|base|f|f]; try exact Ha.
+  all: destruct (object_region base (m_regions m)) as [reg|]; [|discriminate].
+  all: destruct ((base <=? a) && (a + size <=? r_end reg)) eqn:E; [|discriminate].
+  all: apply andb_true_iff in E as [E1 E2]; apply Z.leb_le in E2.
+  all: assert (E3 : (a + size' <=? r_end reg) = true) by (apply Z.leb_le; lia).
+  all: rewrite E1 E3; exact Ha.
+Qed.
+
+(** A string terminated at k, read with a bound n: the first NUL or the
+    bound, whichever comes first, is where the read stops. *)
+Lemma terminated_bounded m p k n :
+  terminated_length m p k -> 0 <= n < 2 ^ 64 -> bounded_length m p n (Z.min k n).
+Proof.
+  intros [(_ & Hk & Hlive & Ha & Hb & H0) Hlt] Hn.
+  assert (Hkn : (k <? 2 ^ 64 - 1) = true) by (apply Z.ltb_lt; exact Hlt). rewrite Hkn in Ha.
+  split; [exact Hn|]. split; [lia|]. split; [exact Hlive|]. split.
+  - apply (access_res_le _ _ _ (k + 1)); [exact Ha|].
+    destruct (Z.min k n <? n) eqn:E; [apply Z.ltb_lt in E | apply Z.ltb_ge in E]; lia.
+  - split.
+    + intros i Hi. apply Hb. lia.
+    + intros Hmin. assert (Z.min k n = k) as -> by lia. apply H0. lia.
+Qed.
+
 (** ## Triples *)
 
 (** The triples over any [[runtime]] R. *)
@@ -364,6 +394,40 @@ Proof.
     iExists _. iSplit.
     + iPureIntro. cbn. rewrite Z.mod_small; [reflexivity|]. destruct Ht as [_ ?]. lia.
     + iFrame "Hσ". iExact "HK".
+Qed.
+
+(** strncmp's triple, from [strncmp_contract], of the string t lent at
+    p, which v reads as, with the string ys owned at q, for at most n
+    bytes: d is bound to the comparison's bits, and both strings stay
+    as they were. A help text's check of its locale name is one. *)
+Lemma wp_strncmp_lent f e ls lab d v w u rest j k p t q b' reg' ys n Φ :
+  registry (TAtom "strncmp") = Some (strncmp_contract world) ->
+  find_fn ge (TAtom "strncmp") = None -> lookup (TAtom "strncmp") (ge_globals ge) = None ->
+  arg_x ge e (Arg P v) = Some (WPtr p) -> arg_x ge e (Arg P w) = Some (WPtr q) ->
+  arg_x ge e (Arg L u) = Some (WInt n) -> 0 <= n < 2 ^ 64 ->
+  lent k p t -∗ string q b' reg' ys -∗
+  ▷ (∀ bits, string q b' reg' ys -∗
+     WP (ERun (mkFrame f (put d (WInt bits) e) ls None (Exec lab rest j)) : lexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+             (Exec lab (Call (CResult d W) (Global (TAtom "strncmp")) [Arg P v; Arg P w; Arg L u] :: rest) j))
+        : lexpr) {{ Φ }}.
+Proof.
+  intros Hreg Hfn Hdata Hv Hw Hu Hn. iIntros "#Hk Ht HK".
+  iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (strncmp_contract world) [WPtr p; WPtr q; WInt n]
+            (lent k p t ∗ string q b' reg' ys) with "[$Hk $Ht] [HK]");
+    [done | done | done | done | cbn [map_option]; rewrite Hv Hw Hu; done | | |].
+  - split; [right; eexists; reflexivity | do 3 eexists; reflexivity].
+  - iIntros (σ) "Hσ [Hk' [%Hok' Ht]]".
+    iDestruct (lent_facts with "Hσ Hk'") as %(h & _ & _ & Hr & Hs & _).
+    iDestruct (pts_facts with "Hσ Ht") as %(Ha' & _).
+    iPureIntro. do 5 eexists. split; [reflexivity|]. split.
+    + exact (terminated_bounded _ _ _ _ (SLen.c_string_length _ _ _ _ Hr Hs) Hn).
+    + exact (string_bounded _ _ _ _ _ _ Hok' Ha' Hn).
+  - iNext. iIntros (σ trace values s' m' w' Hinv) "Hσ [_ Ht]".
+    destruct (M.E.strncmp_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hinv)
+      as (_ & -> & -> & p' & q' & n' & bits & Hx & _ & He). injection He as ->.
+    iDestruct (pure_return with "Hσ") as "Hσ"; [exact Hinv|]. destruct σ as [m s fuel w0]. iModIntro.
+    iExists _. iSplit; [iPureIntro; reflexivity|]. iFrame "Hσ". iApply ("HK" with "Ht").
 Qed.
 
 (** memcpy's triple, from [memcpy_contract], of the first n bytes of

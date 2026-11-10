@@ -349,6 +349,26 @@ Proof.
 Qed.
 
 (** Main's proof over one Logic instance shared by every layer. *)
+(** The help text's output calls, in order: the usage line with the
+    program's name, the six lines of options, and the hint that a
+    translation's bugs go elsewhere. *)
+Definition help_output_args (stream pname : ptr) : list (name * list word) :=
+  [(TAtom "fprintf", [WPtr stream; WPtr (version_literal "hello#str.54"); WPtr pname]);
+   (TAtom "fputs", [WPtr (version_literal "hello#str.55"); WPtr stream]);
+   (TAtom "fputs", [WPtr (version_literal "hello#str.56"); WPtr stream]);
+   (TAtom "fputs", [WPtr (version_literal "hello#str.57"); WPtr stream]);
+   (TAtom "fputs", [WPtr (version_literal "hello#str.58"); WPtr stream]);
+   (TAtom "fputs", [WPtr (version_literal "hello#str.59"); WPtr stream]);
+   (TAtom "fputs", [WPtr (version_literal "hello#str.60"); WPtr stream]);
+   (TAtom "fprintf", [WPtr stream; WPtr (version_literal "hello#str.62");
+                      WPtr (version_literal "hello#str.63")])].
+
+(** The program's name as set_program_name leaves it: a suffix of the
+    first argument's string. *)
+Definition name_ok (sargs : list argument) (pname : ptr) : Prop :=
+  exists s0 srest (i : nat), sargs = s0 :: srest /\ (i <= length (arg_text s0))%nat /\
+    pname = mkPtr (ptr_addr (arg_ptr s0) + Z.of_nat i) (ptr_cap (arg_ptr s0)).
+
 Module HelloMain (R : Runtime).
 Module LG0 := Logic R.
 Module HC := HelloConvOn R LG0.
@@ -1653,6 +1673,305 @@ Proof.
             Kversion_alloc Kversion_store Kversion_cursor Kversion_snapshot with "Hps").
   iNext. iIntros "_". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. gen_env.
   iApply (wp_main_exit _ _ _ _ _ _ _ 0); [reflexivity | lia].
+Qed.
+
+(** setlocale's query of LC_MESSAGES, whose name is lent, is admitted,
+    returns that name and changes nothing: LocaleLogic's
+    [locale_wi_pre] and [locale_wi_query], for libc's world. *)
+Context (Hquery_pre : forall m w h p t, wi m w h -> h !! PName 5 = Some (VName p t) ->
+    contract_pre (libc_setlocale_contract rep requests) [WInt 5; WPtr null] m w)
+  (Hquery : forall r args s m w h p t trace ending s' m' w',
+    wi m w h -> h !! PName 5 = Some (VName p t) ->
+    M.E.invoke (libc_setlocale_contract rep requests) r args [WInt 5; WPtr null] s m w trace ending s' m' w' ->
+    s' = s /\ m' = m /\ w' = w /\ ending = CallReturn [WPtr p]).
+
+(** libc's stderr: the world keeps its cell readable and holding the
+    stream, as for stdout. *)
+Context (stderr_cell errstream : ptr)
+  (Hstderr_g : lookup (TAtom "stderr") (ge_globals ge) = Some stderr_cell)
+  (wi_stderr : forall m w h, wi m w h ->
+    access_res m (raw_address (ptr_addr stderr_cell) 0) (ptr_cap stderr_cell) 8 Read 8 = Some ok /\
+    pointer_load_effects m (raw_address (ptr_addr stderr_cell) 0)
+      [AuxRead; LowerResolve; AddressRead] = Some errstream).
+
+(** The help text's and the footer's output contracts, as HelloVersion
+    states the footer's: each is admitted with the literals' pieces
+    (and, for the usage line, the arguments' strings, one of which holds
+    the program's name), returns a canonical int and keeps the world
+    interpretation, whether its output succeeded or not. *)
+Context (help_ps : list (piece * pval)) (output_spec : name -> contract libc_world)
+  (Hhelp_reg : forall pname g xs, In (g, xs) (help_output_args stream pname) ->
+    registry g = Some (output_spec g))
+  (Hhelp_ret : forall pname g xs, In (g, xs) (help_output_args stream pname) ->
+    contract_returns (output_spec g) = RClass W)
+  (Hhelp_abi : forall pname g xs d args, In (g, xs) (help_output_args stream pname) ->
+    map (fun a => match a with Arg k _ => k end) args = replicate (length xs) P ->
+    contract_abi (output_spec g) (CResult d W) args)
+  (Hhelp_pre : forall pname g xs m w h, name_ok sargs pname -> In (g, xs) (help_output_args stream pname) ->
+    (forall l v, (l, v) ∈ help_ps ++ flat_map arg_ps sargs -> h !! l = Some v) ->
+    agrees m h -> wi m w h -> contract_pre (output_spec g) xs m w)
+  (Hhelp_frame : forall pname g xs r args s m w h trace values s' m' w',
+    In (g, xs) (help_output_args stream pname) ->
+    agrees m h -> live_disjoint m -> R.ready s m -> wi m w h ->
+    M.E.invoke (output_spec g) r args xs s m w trace (CallReturn values) s' m' w' ->
+    agrees m' h /\ live_disjoint m' /\ R.ready s' m' /\ wi m' w' h /\
+      exists n, values = [WInt n] /\ 0 <= n < 2 ^ 32)
+  (Houtput_reg : forall g xs, In (g, xs) (emit_output_args stream) -> registry g = Some (output_spec g))
+  (Houtput_ret : forall g xs, In (g, xs) (emit_output_args stream) ->
+    contract_returns (output_spec g) = RClass W)
+  (Houtput_abi : forall g xs d args, In (g, xs) (emit_output_args stream) ->
+    map (fun a => match a with Arg k _ => k end) args = replicate (length xs) P ->
+    contract_abi (output_spec g) (CResult d W) args)
+  (Houtput_pre : forall g xs m w h, In (g, xs) (emit_output_args stream) ->
+    (forall l v, (l, v) ∈ help_ps -> h !! l = Some v) ->
+    agrees m h -> wi m w h -> contract_pre (output_spec g) xs m w)
+  (Houtput_frame : forall g xs r args s m w h trace values s' m' w',
+    In (g, xs) (emit_output_args stream) ->
+    agrees m h -> live_disjoint m -> R.ready s m -> wi m w h ->
+    M.E.invoke (output_spec g) r args xs s m w trace (CallReturn values) s' m' w' ->
+    agrees m' h /\ live_disjoint m' /\ R.ready s' m' /\ wi m' w' h /\
+      exists n, values = [WInt n] /\ 0 <= n < 2 ^ 32).
+
+(** The help block's literals and program_name's cell are linked where
+    main reads them. *)
+Lemma main_help_lookup s :
+  In s ["hello#str.54"; "hello#str.55"; "hello#str.56"; "hello#str.57"; "hello#str.58";
+        "hello#str.59"; "hello#str.60"; "hello#str.61"; "hello#str.62"; "hello#str.63"] ->
+  lookup (TAtom s) (ge_globals ge) = Some (version_literal s).
+Proof.
+  intros Hin. apply (proj1 (proj2 Hlinked)).
+  repeat destruct Hin as [<- | Hin]; try contradiction; vm_compute; reflexivity.
+Qed.
+
+(** One output call of the help text: it is safe, binds d to some int
+    and keeps the literals and the arguments' strings. *)
+Lemma wp_help_output f e ls lab d g args rest j pname xs Φ :
+  name_ok sargs pname -> In (g, xs) (help_output_args stream pname) ->
+  map_option (arg_x ge e) args = Some xs ->
+  map (fun a => match a with Arg k _ => k end) args = replicate (length xs) P ->
+  pts help_ps -∗ pts (flat_map arg_ps sargs) -∗
+  ▷ (∀ n, pts help_ps -∗ pts (flat_map arg_ps sargs) -∗
+     WP (ERun (mkFrame f (put d (WInt n) e) ls None (Exec lab rest j)) : mexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec lab (Call (CResult d W) (Global g) args :: rest) j)) : mexpr) {{ Φ }}.
+Proof.
+  intros Hname Hin Hargs' Hclasses. iIntros "Hps Has HK".
+  assert (Hg : g = TAtom "fputs" \/ g = TAtom "fprintf").
+  { unfold help_output_args in Hin. repeat destruct Hin as [H | Hin];
+      try contradiction; inversion H; auto. }
+  iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (output_spec g) xs
+            (pts help_ps ∗ pts (flat_map arg_ps sargs)) with "[$Hps $Has] [HK]").
+  - destruct Hg as [-> | ->]; apply linked_outside; first [exact Hlinked | reflexivity].
+  - destruct Hg as [-> | ->]; apply linked_unbound; first [exact Hlinked | reflexivity].
+  - destruct Hg as [-> | ->]; reflexivity.
+  - exact (Hhelp_reg _ _ _ Hin).
+  - exact Hargs'.
+  - exact (Hhelp_abi _ _ _ _ _ Hin Hclasses).
+  - iIntros (σ) "(%h & Hh & %Hf) [Hps Has]". destruct Hf as (Ha & _ & _ & Hw).
+    iDestruct (pts_lookup with "Hh Hps") as %Hps. iDestruct (pts_lookup with "Hh Has") as %Has.
+    iPureIntro. apply (Hhelp_pre _ _ _ _ _ h Hname Hin); [|exact Ha|exact Hw].
+    intros l v Hl. apply elem_of_app in Hl as [Hl|Hl]; [exact (Hps _ _ Hl) | exact (Has _ _ Hl)].
+  - iNext. iIntros (σ trace values s' m' w' Hinv) "(%h & Hh & %Hf) [Hps Has]".
+    destruct Hf as (Ha & Hd & Hr & Hw).
+    destruct (Hhelp_frame _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hin Ha Hd Hr Hw Hinv)
+      as (Ha' & Hd' & Hr' & Hw' & n & -> & Hn).
+    iModIntro. iExists (put d (WInt n) e). iSplit.
+    + iPureIntro. unfold external_env. cbn [site_result]. rewrite (Hhelp_ret _ _ _ Hin).
+      cbn. rewrite Z.mod_small; [reflexivity | exact Hn].
+    + iSplitL "Hh"; [iExists h; iFrame; iPureIntro; auto |]. iApply ("HK" with "Hps Has").
+Qed.
+
+(** iw_1.iw_1.L32, the help text's end: main loads stderr, compares it
+    with stdout and exits with 0 or 1. *)
+Lemma help_L32 e from Φ :
+  lookup (TAtom "iw_1.v41") e = Some (WPtr stream) ->
+  ⊢ WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.iw_1.L32") (Some (TAtom from)))) : mexpr)
+      {{ Φ }}.
+Proof.
+  intros H41. mn_enter "iw_1.iw_1.L32".
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite Hstderr_g; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply (wp_world_let_with registry wi ge []); [reflexivity | reflexivity | word_premise | | rewrite /pts /=; done |].
+  { intros m w h Hw _. apply op_check. exact (proj1 (wi_stderr _ _ _ Hw)). }
+  iNext. iIntros "_". gen_env.
+  iApply (wp_world_let_with registry wi ge []); [reflexivity | reflexivity | word_premise | | rewrite /pts /=; done |].
+  { intros m w h Hw _. apply op_raw_load_pointer; apply (wi_stderr _ _ _ Hw). }
+  iNext. iIntros "_". gen_env.
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  destruct (ptr_addr stream mod 2 ^ 64 =? ptr_addr errstream mod 2 ^ 64).
+  - (* Help went to stderr: exit(1). *)
+    iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+    mn_enter "iw_1.iw_1.L50".
+    iApply (wp_main_exit _ _ _ _ _ _ _ 1); [word_premise | lia].
+  - (* To stdout: exit(0). *)
+    iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+    mn_enter "iw_1.iw_1.L49".
+    iApply wp_goto. iNext. cbn [edge_label].
+    mn_enter "iw_1.iw_1.L50".
+    iApply (wp_main_exit _ _ _ _ _ _ _ 0); [word_premise | lia].
+Qed.
+
+(** Pick the output call's entry in a list of calls. *)
+Local Ltac pick_output := repeat (first [left; reflexivity | right]).
+
+(** --help, iw_1.L39: main loads stdout, queries LC_MESSAGES' name,
+    prints the usage line with the program's name and the option lines,
+    calls the footer, and, unless the locale's name starts with "en_",
+    a line on where to report translation bugs; then iw_1.iw_1.L32
+    exits. The pieces it needs are the help literals, the "en_" string,
+    the program's name cells and LC_MESSAGES' lent name. *)
+Lemma main_help b4 b6 x0 x1 y0 p t b61 r61 Φ :
+  name_ok sargs x0 ->
+  LL.lent 5 p t -∗ pts help_ps -∗ string (version_literal "hello#str.61") b61 r61 [101; 110; 95] -∗
+  HP.HN.name_cells pn nreg sreg nb sb x0 x1 y0 -∗
+  loop_exit b4 b6 "iw_1.L39"%string "iw_1.L50"%string Φ.
+Proof.
+  intros Hname.
+  pose proof (main_help_lookup "hello#str.54" ltac:(simpl; tauto)) as H54.
+  pose proof (main_help_lookup "hello#str.55" ltac:(simpl; tauto)) as H55.
+  pose proof (main_help_lookup "hello#str.56" ltac:(simpl; tauto)) as H56.
+  pose proof (main_help_lookup "hello#str.57" ltac:(simpl; tauto)) as H57.
+  pose proof (main_help_lookup "hello#str.58" ltac:(simpl; tauto)) as H58.
+  pose proof (main_help_lookup "hello#str.59" ltac:(simpl; tauto)) as H59.
+  pose proof (main_help_lookup "hello#str.60" ltac:(simpl; tauto)) as H60.
+  pose proof (main_help_lookup "hello#str.61" ltac:(simpl; tauto)) as H61.
+  pose proof (main_help_lookup "hello#str.62" ltac:(simpl; tauto)) as H62.
+  pose proof (main_help_lookup "hello#str.63" ltac:(simpl; tauto)) as H63.
+  assert (Hpn : lookup (TAtom "program_name") (ge_globals ge) =
+                Some (mkPtr program_name_b (Obj program_name_b))).
+  { apply (proj1 (proj2 Hlinked)). vm_compute. reflexivity. }
+  destruct Hname as (s0 & srest & i & Hs0 & Hi & Ex0).
+  assert (Hin0 : In s0 sargs) by (rewrite Hs0; left; reflexivity).
+  pose proof (proj1 (List.Forall_forall _ _) Hargs s0 Hin0) as (Hcap & Hb0 & Hbp & Hend & H48 & _).
+  assert (Hxr : 0 <= ptr_addr x0 < 2 ^ 64) by (rewrite Ex0; cbn [ptr_addr]; lia).
+  assert (Hxlife : forall xb, ptr_cap x0 = Obj xb \/ ptr_cap x0 = Ro xb ->
+                     exists xr, (PLive xb, VLive xr) ∈ flat_map arg_ps sargs).
+  { intros xb Hxb. exists (arg_region s0). rewrite Ex0 in Hxb. cbn [ptr_cap] in Hxb.
+    assert (xb = arg_base s0) as ->.
+    { destruct Hcap as [E1|E1]; rewrite E1 in Hxb; destruct Hxb as [E2|E2]; congruence. }
+    apply list_elem_of_In, in_flat_map. exists s0. split; [exact Hin0|]. unfold arg_ps, string_ps. left. reflexivity. }
+  assert (Hname : name_ok sargs x0) by (exists s0, srest, i; auto).
+  pose proof Hpn_end as Hpn_end'.
+  iIntros "#Hk Hps H61 (Hpl & Hpc & Hnl & Hnc & Hsl & Hsc)".
+  rewrite /loop_exit. iIntros (e ps cs a ix g lose _) "(Hb & Has & Ht & Hl4 & Hp4)".
+  iPoseProof "Hk" as "[%Hpk _]". destruct Hpk as (Hp0 & Hpt & _).
+  mn_enter "iw_1.L39".
+  (* stdout's stream. *)
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite Hstdout_g; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply (wp_world_let_with registry wi ge []); [reflexivity | reflexivity | word_premise | | rewrite /pts /=; done |].
+  { intros m w h Hw _. apply op_check. exact (proj1 (wi_stdout _ _ _ Hw)). }
+  iNext. iIntros "_". gen_env.
+  iApply (wp_world_let_with registry wi ge []); [reflexivity | reflexivity | word_premise | | rewrite /pts /=; done |].
+  { intros m w h Hw _. apply op_raw_load_pointer; apply (wi_stdout _ _ _ Hw). }
+  iNext. iIntros "_". gen_env.
+  (* setlocale(LC_MESSAGES, NULL). *)
+  iApply (LL.wp_lent_query registry wi ge _ _ _ _ _ (TAtom "setlocale") _ _ _
+            (libc_setlocale_contract rep requests) [WInt 5; WPtr null] 5 p t with "Hk");
+    [exact Hsetlocale | reflexivity | apply linked_outside; first [exact Hlinked | reflexivity] |
+     apply linked_unbound; first [exact Hlinked | reflexivity] | reflexivity | word_premise |
+     split; [right; eexists; reflexivity | do 2 eexists; reflexivity] |
+     intros m w h Hw Hl; exact (Hquery_pre _ _ _ _ _ Hw Hl) |
+     intros s m w h trace ending s' m' w' Hw Hl Hq; exact (Hquery _ _ _ _ _ _ _ _ _ _ _ _ _ Hw Hl Hq) |].
+  iNext. gen_env.
+  (* The usage line. *)
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H54; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite Hpn; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply (wp_check_read with "Hpl");
+    [reflexivity | word_premise | left; reflexivity |
+     unfold raw_address; cbn [ptr_addr]; unfold program_name_b; rewrite Z.add_0_r Z.mod_small; lia |
+     unfold raw_address; cbn [ptr_addr]; rewrite Z.add_0_r Z.mod_small; [lia | unfold program_name_b; lia] |
+     unfold raw_address; cbn [ptr_addr]; unfold program_name_b; reflexivity |].
+  iNext. iIntros "Hpl". gen_env.
+  iApply (wp_raw_load_pointer_in with "Hpl Hpc Has");
+    [reflexivity | word_premise | left; reflexivity |
+     unfold raw_address; cbn [ptr_addr]; unfold program_name_b; reflexivity |
+     unfold program_name_b; reflexivity | exact Hxr | exact Hxlife |].
+  iNext. iIntros "Hpl Hpc Has". gen_env.
+  iApply (wp_help_output with "Hps Has");
+    [exact Hname | | word_premise | reflexivity |]; [unfold help_output_args; pick_output |].
+  iNext. iIntros (n0) "Hps Has". gen_env.
+  (* The option lines. *)
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H55; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply (wp_help_output with "Hps Has");
+    [exact Hname | | word_premise | reflexivity |]; [unfold help_output_args; pick_output |].
+  iNext. iIntros (?n) "Hps Has". gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H56; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply (wp_help_output with "Hps Has");
+    [exact Hname | | word_premise | reflexivity |]; [unfold help_output_args; pick_output |].
+  iNext. iIntros (?n) "Hps Has". gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H57; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply (wp_help_output with "Hps Has");
+    [exact Hname | | word_premise | reflexivity |]; [unfold help_output_args; pick_output |].
+  iNext. iIntros (?n) "Hps Has". gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H58; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply (wp_help_output with "Hps Has");
+    [exact Hname | | word_premise | reflexivity |]; [unfold help_output_args; pick_output |].
+  iNext. iIntros (?n) "Hps Has". gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H56; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply (wp_help_output with "Hps Has");
+    [exact Hname | | word_premise | reflexivity |]; [unfold help_output_args; pick_output |].
+  iNext. iIntros (?n) "Hps Has". gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H59; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply (wp_help_output with "Hps Has");
+    [exact Hname | | word_premise | reflexivity |]; [unfold help_output_args; pick_output |].
+  iNext. iIntros (?n) "Hps Has". gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H60; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply (wp_help_output with "Hps Has");
+    [exact Hname | | word_premise | reflexivity |]; [unfold help_output_args; pick_output |].
+  iNext. iIntros (?n) "Hps Has". gen_env.
+  (* The footer. *)
+  iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ _ emit_bug_reporting_address_fn
+            (invocation emit_bug_reporting_address_fn []));
+    [reflexivity | unfold find_fn; rewrite (proj1 Hlinked); vm_compute; reflexivity | reflexivity |].
+  iNext.
+  iApply (HV.emit_bug_reporting_address_spec registry wi ge Hlinked stdout_cell stream Hstdout_g wi_stdout
+            help_ps output_spec Houtput_reg Houtput_ret Houtput_abi Houtput_pre Houtput_frame with "Hps").
+  iNext. iIntros "Hps". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
+  cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. gen_env.
+  (* The locale's name is never null: it is lent. *)
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  assert (Ep : (ptr_addr p =? 0) = false) by (apply Z.eqb_neq; lia).
+  match goal with H : lookup (TAtom "iw_1.iw_1.v35") _ = _ |- _ => rewrite Ep in H; cbn [negb] in H end.
+  iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+  (* strncmp(name, "en_", 3). *)
+  mn_enter "iw_1.iw_1.L36".
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H61; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply (LL.wp_strncmp_lent registry wi ge Hlent _ _ _ _ _ _ _ _ _ _ 5 p t _ _ _ _ 3 with "Hk H61");
+    [exact Hstrncmp | apply linked_outside; first [exact Hlinked | reflexivity] |
+     apply linked_unbound; first [exact Hlinked | reflexivity] | word_premise | word_premise | word_premise | lia |].
+  iNext. iIntros (bits) "H61". gen_env.
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  iApply wp_goto. iNext. cbn [edge_label].
+  mn_enter "iw_1.iw_1.L37". gen_env.
+  match goal with H : lookup (TAtom "iw_1.iw_1.v43") _ = Some (WInt ((if ?c then _ else _) mod _)) |- _ =>
+    destruct c end.
+  - (* Not English: where to report translation bugs. *)
+    iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+    mn_enter "iw_1.iw_1.L30".
+    iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H62; reflexivity | intros ?m; word_premise |].
+    iNext. gen_env.
+    iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H63; reflexivity | intros ?m; word_premise |].
+    iNext. gen_env.
+    iApply (wp_help_output with "Hps Has");
+      [exact Hname | | word_premise | reflexivity |]; [unfold help_output_args; pick_output |].
+    iNext. iIntros (?n) "Hps Has". gen_env.
+    iApply wp_goto. iNext. cbn [edge_label].
+    iApply help_L32. assumption.
+  - iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+    iApply help_L32. assumption.
 Qed.
 
 End main.

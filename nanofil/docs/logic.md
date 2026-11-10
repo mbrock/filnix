@@ -1125,8 +1125,37 @@ stalls. The handlers exit runs, close_stdout among them, are the
 ending's, and Campaign 4's Ending and Linked compose them with main.
 Since main never resumes, the loop's pieces are dropped there.
 
-Next are the help path over the stdio contracts, then the greeting at
-`iw_1.join`.
+**The help path.** `main_help` is the loop's exit at `iw_1.L39`, the
+inlined `print_help`. It needs the help literals' pieces, the string
+"en_", the program-name cells and LC_MESSAGES' lent name. The steps
+are:
+1. Load stdout through the world.
+2. Query LC_MESSAGES with `setlocale(5, NULL)` (LentLogic's
+   `wp_lent_query`). The premises `Hquery_pre` and `Hquery` are
+   LocaleLogic's `locale_wi_pre` and `locale_wi_query` for libc's
+   world.
+3. Load the program's name from its cell. It is a suffix of argv[0]
+   (`name_ok`), and its life is among the arguments' pieces.
+4. Print the usage line and the six option lines (`wp_help_output`),
+   then call the footer through HelloVersion's
+   `emit_bug_reporting_address_spec`.
+5. Compare the locale's name with "en_". The name is lent, so it is
+   never null. The comparison uses the new `wp_strncmp_lent`, whose
+   bound comes from `terminated_bounded`. If the name is not English,
+   print the translation-bugs line.
+6. In `help_L32`, compare stderr with stdout and exit with 1 or 0.
+
+Every output call is admitted for these exact arguments (the
+`Hhelp_*` and `Houtput_*` premises) and keeps the whole `wi`, getopt
+token included, on success and on failure. Campaign 4's
+`libc_stream_frame` preserves locale, errno, shutdown and the other
+stream, but not `libc_getopt`. A concrete `wi` therefore has to show
+that these calls keep optarg, optind and the parser's state.
+Getopt's sampled errno may change, and `getopt_current` does not
+constrain it.
+
+Next is the greeting at `iw_1.join`, then the operand errors at
+`iw_1.L79` and `iw_1.L113`.
 
 ## Open questions for mbrock
 
