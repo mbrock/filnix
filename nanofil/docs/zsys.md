@@ -295,9 +295,10 @@ unused `__int128_t` padding members as aligned bytes of the same size.
 | `.filc_*` directives, gnu89 | 2,111 (68%) | 2,749 (88%) |
 | sign builtins, float asm, forward enums | 2,206 (71%) | 2,866 (92%) |
 | declarator attributes, `__int128_t`, no `_BitInt`, alias coalescing | 2,900 (93%) | |
-| `address_space` refused only where used | **2,902 (93%)** | |
+| `address_space` refused only where used | 2,902 (93%) | |
+| `packed` members | **2,975 (96%)** | |
 
-The last two rows are a new capture, preprocessed without
+The last three rows are a new capture, preprocessed without
 `__BITINT_MAXWIDTH__`, so `math_uint128.h` takes its portable path. No
 unit timed out (120 s); most take under a second.
 
@@ -312,12 +313,10 @@ With both rewrites, before the `.filc_*` directives, by library:
 | libnsl | 38 | 38 |
 | the other 12 | 50 | 31 |
 
-Of the 245 `libc.a` members that define a function Hello reaches, 237
-compile (232 before the last two rows); 7 fail and one (`atexit`) is
-built into `libc_nonshared.a`, not captured as a shared unit. Six of the
-7 are the `packed` member below (`libc-cleanup`, the three
-`pthread_rwlock_*`, `pthread_setcancelstate`, `unwind`), and `errno` is
-the TLS alias.
+Of the 245 `libc.a` members that define a function Hello reaches, 243
+compile (232 before the last three rows). `errno` fails on the TLS
+alias, and `atexit` is built into `libc_nonshared.a`, not captured as a
+shared unit.
 
 ### What stops the rest
 
@@ -325,19 +324,12 @@ First errors (one error per unit, so a fix can uncover the next layer):
 
 | Cause | Units | Where |
 | --- | ---: | --- |
-| aligned struct members | 76 | a `packed` member of `struct __res_state`, inside `struct pthread` |
 | `__real__`, `__imag__`, `_Complex` returns | 72 | libm's complex functions |
 | x87 and MXCSR | 51 | `fnclex`, `frndint`, `__builtin_ia32_ldmxcsr` in libm's fenv |
-| other | 7 | `__alignof__` of an expression, `__label__`, `#pragma weak` in a body, `__builtin_ia32_cvtpd2ps` |
+| other | 9 | `__alignof__` of an expression, `__label__`, `#pragma weak` in a body, `__builtin_ia32_cvtpd2ps`, `__builtin_ia32_rdtsc` |
 | other math builtins | 4 | `__builtin_trunc`, `truncf`, `sqrtf`, `sqrtl` |
-| TLS alias | 2 | `__libc_errno`, `__libc_h_errno` |
+| TLS alias | 3 | `__libc_errno`, `__libc_h_errno`, `__libc_resp` |
 
-- **aligned members.** The first error names a member of `struct
-  pthread`, but what nanofil refuses is a member of `struct __res_state`
-  inside it, `__glibc_extension_index __attribute__((packed))`: a
-  `packed` member, which nanofil reads as a layout attribute it does not
-  honor. It reaches 76 units, all nptl or what touches `THREAD_SELF`:
-  Hello's rwlock and cleanup members among them.
 - **x87 and MXCSR.** Fil-C's own glibc keeps a few x87 instructions
   (`fnclex`, `frndint`, `fnstsw`) as inline asm, which FilPizlonator's
   `validateSafeInlineAsm` accepts, and reads MXCSR through
@@ -386,6 +378,12 @@ Each frontend fix has a test that fails without it:
   `constructor`, `destructor`, `gnu_inline` and `common`. In a member
   it is still refused. `tests/c/prog/attr-slide.c`, which fails to link
   if the attributes are dropped.
+- `packed` on a member gives it alignment 1 unless `aligned` asks for
+  more, whatever the struct's packing, as GCC does: glibc's `struct
+  __res_state`, inside `struct pthread`, ends in `__glibc_extension_index
+  __attribute__((packed))`, which reached 76 units (all of nptl and
+  what touches `THREAD_SELF`). `tests/c/prog/packed-member.c` checks
+  offsets, sizes and alignments by hand and against filcc.
 - An `address_space` type is refused only where it is used, as a
   vector type is: filcc cannot compile an access through another
   address space either, and glibc's `rseq-internal.h` casts to
@@ -418,12 +416,7 @@ Every generated syscall stub now compiles: its body, a `zcall` of the
 1. **Teach nanofil the `.filc_*` directives.** Done (above).
 2. **`__int128`.** Settled without a layout: nanofil still refuses
    `__int128` where it is used, and glibc compiles around it.
-3. **`packed` on a member** (GCC: the member's alignment is 1 unless
-   `aligned` asks for more). c_types already lays out packed structs and
-   explicitly aligned members, so this sets the member's alignment base
-   (`member_alignment/4`) to one. It unblocks all 76 nptl units, six of
-   them Hello's. Recommended: yes; it is a layout change, so it waits
-   for review.
+3. **`packed` on a member.** Done (above).
 4. **What the proofs trust about glibc's compiler** (above). Decided
    for now: it is [glibc-ir.md](glibc-ir.md)'s assumption G1, written
    down and decided again before Hello uses glibc's IR.

@@ -1424,13 +1424,16 @@ member_decl(field(Specs00, dcl(Name, SyntaxType, _), Width), Fields,
     ->  lookup_ordinary(Env0, enclosing(member_base), Base), Env1 = Env0
     ;   Specs0 = Specs00
     ),
-    alignment_requests(Specs0, Requests, Specs),
+    alignment_requests(Specs0, Requests, Specs1),
+    member_packing(Specs1, Specs, Packed),
     (   nonvar(Base) -> true
     ;   specs_type(Specs, Base, Env0, Env1a),
         bind_ordinary(enclosing(member_base), Base, Env1a, Env1)
     ),
     apply_declarator(SyntaxType, Base, Type, Env1, Env),
-    inherited_alignment(Specs, SyntaxType, Env, Inherited),
+    (   Packed == yes -> Inherited = [align(1)]
+    ;   inherited_alignment(Specs, SyntaxType, Env, Inherited)
+    ),
     member_alignment(Requests, Inherited, Env, MA),
     (   bad_type(Type, Why) -> Fields = [bad(Why)], Reflected = []
     ;   MA = bad(Why) -> Fields = [bad(Why)], Reflected = []
@@ -1487,6 +1490,24 @@ member_alignment(Requests, Inherited, Env, MA) :-
         ;   MA = a(Base, Explicit)
         )
     ;   MA = bad('alignment attributes')
+    ).
+
+% member_packing(+Specs0, -Specs, -Packed): Packed is yes when a
+% member's attributes include packed, which GCC gives the member the
+% least alignment, 1, unless aligned asks for more (Common Variable
+% Attributes, packed): its alignment base is 1 (member_alignment/4).
+% Specs are Specs0 without the packed items.
+member_packing(Specs0, Specs, Packed) :-
+    (   select(attr([group(Inner)]), Specs0, Rest),
+        attr_items(Inner, Items),
+        select([T], Items, Others), ( T = id(Word) ; T = kw(Word) ),
+        memberchk(Word, [packed, '__packed__'])
+    ->  Packed = yes,
+        (   Others == [] -> Specs1 = Rest
+        ;   attr_items(Joined, Others), Specs1 = [attr([group(Joined)])|Rest]
+        ),
+        member_packing(Specs1, Specs, _)
+    ;   Specs = Specs0, Packed = no
     ).
 
 doc(alignment_requests(+Specs0, -Requests, -Specs), det, [
