@@ -1,6 +1,7 @@
 # SWI-Prolog 9.2.9's core (no packages) for the profile in docs/perf.md:
 # built by plain clang (`native`), by filcc (`ref`) and by nanofil -O
-# (`O`), from the same sources with the same configuration and `-O2`,
+# (`O`, or `O-lowers` with --lowers=shared), from the same sources
+# with the same configuration and `-O2`,
 # unstripped. The Fil-C builds apply filnix's port (nix/swipl.nix's
 # patch); the native one does not, since the patched atom GC crashes
 # without Fil-C. The patch's changes to the VM are casts that keep
@@ -23,7 +24,7 @@ let
     inherit pkgs filcc;
   };
   build =
-    label: cc: libs: launcher:
+    label: cc: libs: launcher: opt:
     pkgs.runCommandCC "nanofil-bench-swipl-${label}"
       {
         nativeBuildInputs = [
@@ -40,7 +41,12 @@ let
         # Each nanofil compile appends its user seconds and peak KB to ../ctimes.
         printf '#!${pkgs.runtimeShell}\nshift\nexec ${pkgs.time}/bin/time -f "%%U %%M" -a -o %s ${nanofil} "$@"\n' $PWD/../ctimes >../launcher
         chmod +x ../launcher
-        export CC=${cc} NANOFIL_OPT=-O NANOFIL_STACK_LIMIT=4000000000
+        export CC=${cc} NANOFIL_OPT="${opt}" NANOFIL_STACK_LIMIT=4000000000
+        # As nix/swipl.nix: pass headers explicitly. Library discovery
+        # alone left gmp.h off the compile command through the launcher.
+        export CFLAGS="${
+          pkgs.lib.concatMapStringsSep " " (p: "-I${pkgs.lib.getDev p}/include") libs
+        }"
         cmake -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_C_FLAGS_RELEASE=-O2 -DNDEBUG" \
           -DCMAKE_INSTALL_PREFIX=$out -DSWIPL_PACKAGES=OFF -DUSE_GMP=ON -DUSE_TCMALLOC=OFF \
           -DINSTALL_DOCUMENTATION=OFF -DHAVE_SIGALTSTACK= -DBUILD_TESTING=OFF \
@@ -72,15 +78,28 @@ pkgs.linkFarm "nanofil-bench-swipl" (
         path = build "native" "${pkgs.llvmPackages_20.clang}/bin/clang" [
           pkgs.gmp
           pkgs.zlib
-        ] false;
+        ] false "";
       }
       {
         name = "ref";
-        path = build "ref" "${filcc}/bin/clang" [ pkgsFilc.gmp pkgsFilc.zlib ] false;
+        path = build "ref" "${filcc}/bin/clang" [
+          pkgsFilc.gmp
+          pkgsFilc.zlib
+        ] false "";
       }
       {
         name = "O";
-        path = build "O" "${filcc}/bin/clang" [ pkgsFilc.gmp pkgsFilc.zlib ] true;
+        path = build "O" "${filcc}/bin/clang" [
+          pkgsFilc.gmp
+          pkgsFilc.zlib
+        ] true "-O";
+      }
+      {
+        name = "O-lowers";
+        path = build "O-lowers" "${filcc}/bin/clang" [
+          pkgsFilc.gmp
+          pkgsFilc.zlib
+        ] true "-O --lowers=shared";
       }
       {
         name = "bench";

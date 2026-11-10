@@ -9,17 +9,155 @@ instructions, and a ranked plan. It is separate from the semantic
 campaign ([campaign.md](campaign.md)): nothing here weakens a check,
 and safety decisions are flagged for review before implementation.
 
-## Stocktake (November 2026, at `edfeb0c`)
+## Stocktake (10 November 2026, at `1604dee687af`)
 
-Item 19 profiles `-O` against filcc `-O2` and against plain clang
-`-O2`. On the gate, `-O` runs at 1.79× filcc's time with 2.67× its
-instructions; filcc runs at 2.69× native's. SWI-Prolog's suite runs at
-1.64× filcc. nanofil's excess is extra instructions at high IPC, not
-stalls. Of those instructions, register-to-register moves are 29%,
-frame traffic 27%, branch selection 11%, the runtime 10% and checks 9%.
-Item 19 ranks the levers. Item 20 takes lever 2: `-O` now inlines
-always_inline, single-call-site and non-leaf callees, and the gate goes
-from 1.78× to 1.69× filcc (lz4 −13 to −18%, SQLite −7%).
+**Current `-O`: 1.61× filcc `-O2`'s time, 2.17× its instructions**
+on the eleven-workload gate (swa, core 6, 11 trials). This measures
+`--operands=regions` and `--inline=wide` together. The former headline,
+1.69×, measured wide inlining before regions; it was not today's default.
+
+**Lever 3, `--lowers=shared`: 1.53× time, 2.01× instructions.** That is
+4.9% less task-clock time overall, but bzip2 decompression is 5.4%
+slower with disjoint trial ranges, despite executing 6.6% fewer
+instructions. This is a real timing tradeoff, not just an instruction
+win. Shared lowers remains opt-in; its GC-root contract has been reviewed
+([lowers.md](lowers.md)), but changing the default still needs a decision.
+**Recommendation: no to an unconditional default change yet**: keep the
+gain available opt-in while investigating the repeatable decompression
+penalty. This is a performance objection, not a new contract blocker.
+
+### Current gate
+
+Ratios to the **same pinned filcc binaries used in item 20**: task-clock
+(user instructions). Medians of 11 shuffled trials after a warm-up;
+`run.py` checked every workload's stdout byte for byte against filcc.
+The last column compares shared lowers with current `-O`, not filcc.
+
+| Workload | filcc ms | `-O` | `-O --lowers=shared` | shared time change |
+| --- | --: | --: | --: | --: |
+| zlib -6 | 135.1 | 1.86 (2.73) | 1.69 (2.49) | −8.9% |
+| zlib -d | 19.7 | 1.51 (2.36) | 1.41 (2.12) | −6.9% |
+| bzip2 -9 | 276.2 | 1.43 (1.69) | 1.35 (1.59) | −5.2% |
+| bzip2 -d | 95.4 | 2.16 (2.43) | 2.27 (2.27) | **+5.4%** |
+| lz4 -1 | 15.8 | 1.78 (6.79) | 1.78 (6.69) | +0.0% |
+| lz4 -9 | 158.7 | 1.50 (1.65) | 1.35 (1.48) | −10.0% |
+| lz4 -d | 14.3 | 2.10 (3.78) | 2.06 (3.62) | −2.1% |
+| Lua int | 49.0 | 1.42 (1.48) | 1.26 (1.28) | −11.0% |
+| Lua tab | 41.9 | 1.31 (1.39) | 1.19 (1.22) | −9.3% |
+| Lua str | 270.9 | 1.34 (1.37) | 1.32 (1.33) | −1.6% |
+| SQLite | 671.5 | 1.59 (1.60) | 1.54 (1.53) | −2.9% |
+| **geomean** | | **1.61 (2.17)** | **1.53 (2.01)** | **−4.9%** |
+
+Unlike the earlier loaded-host run, SQLite improves: 1065.2 → 1034.5 ms,
+with non-overlapping ranges (1059.7–1066.9 / 1030.3–1042.8 ms).
+bzip2 `-d` takes 205.9 → 217.0 ms (205.3–208.2 / 215.4–217.8 ms).
+The short lz4 `-1` and `-d` ranges overlap: neither small change is
+established. Wall-clock geomeans also improve, 1.60 → 1.53 of filcc
+(−4.7%); the result is not just fewer instructions.
+
+An independent **21-trial bzip2 `-d` rerun**, with the mode list reordered,
+gives 206.47 → 217.93 ms (**+5.6%**), ranges 205.37–214.53 /
+216.25–222.02 ms. Wall time rises 5.6% and user cycles 5.6%, while branch
+misses are essentially unchanged (−0.3%). The cause is not established;
+fewer instructions alone do not settle this tradeoff.
+
+**SWI-Prolog's suite**, separately from the eleven-workload geomean,
+at 0.02 of its counts, core 6, 11 trials: filcc 11592.6 ms; `-O`
+18863.4 ms (**1.63×**, 1.60× instructions); shared lowers 18508.0 ms
+(**1.60×**, 1.57× instructions), **−1.9% time**, with disjoint ranges
+(18784.1–19162.5 / 18421.6–18620.6 ms). Its printed program names/counts
+match filcc's; this is a workload-output check, not SWI's correctness suite.
+
+### Next levers, ranked by expected runtime win
+
+These are estimates from item 19, **not measured gains on today's
+compiler**, and their instruction budgets overlap. Review the contract
+before implementing a runtime or register-checker change.
+
+| Rank | Lever | Expected win and evidence | Prerequisite |
+| --- | --- | --- | --- |
+| 1 | Slow-path register convention | Broadest remaining opportunity; a low-single-digit time win is a hypothesis, not a measurement. The scratch allocator experiment gave registers to another 2.6% of zlib `-6`'s instructions and 4.5% of lz4 `-9`'s. The 8.8% → 0.7% crossing-call figure is **not** an 8.1% runtime saving: most homes became ordinary register pressure instead. | A reviewed call-rule contract in `amd64_regs_check.pl`; audit save stubs for poll, store-barrier and ensure-aux slow calls, including GC and exceptional exits. |
+| 2 | Globals without getters | About 0.8G gate instructions and 1.6G on SWI in the old profile; roughly 1% gate time inferred, with 10–15% instruction opportunities in zlib `-d` and lz4. | Establish exactly when filcc bypasses initialization/registration; `abi-findings.md` distinguishes a source reading from a GC stress test. |
+| 3 | `memcpy` straight to `filc_memmove` | Old estimate: about 4% of SQLite's time, only about 0.4% of an eleven-workload geomean if nothing else changes. Wider inlining already changed the callers, so recount first. | Preserve the agreed bad-copy error observation, not only successful bytes. |
+| — | Compile-time gate for `-O` | No direct runtime gain; put it in place **before another default change**. A fresh, single pinned-core compile of the same preprocessed sqlite3.c takes 43.56 → 211.31 user seconds (4.85×), 49.39 → 228.11 wall seconds (4.62×), with a 4 GB Prolog stack and about 2.1 GiB RSS. This is a budget warning, not a calibrated gate threshold. | Choose representative files and explicit time/memory/stack budgets; retain `-O` versus plain and a frozen optimized baseline, so cumulative regressions cannot hide in a moving denominator. |
+
+### Fresh instruction profile
+
+`checks.py --categories --variants ref,O,O-lowers`, the same binaries,
+callgrind on CCD1 **separately from** the timed runs. Gate totals, including the
+runtime and libc: 27.54G instructions for filcc, 47.47G for `-O`, 44.30G
+for shared lowers. Shared lowers removes 3.17G (6.7%); 2.46G is frame
+stores and 0.50G frame loads. These are callgrind counts, not the native
+PMU counts or a new time measurement.
+
+| Category | Current `-O` excess over filcc, G | Share of excess |
+| --- | --: | --: |
+| Frame loads + stores | 6.98 | 35.0% |
+| Runtime, libc, loader | 2.81 | 14.1% |
+| Branch selection (compare, branch, constant, boolean) | 2.70 | 13.5% |
+| Register moves | 2.56 | 12.9% |
+| ALU + extensions | 2.20 | 11.0% |
+| Checks | 1.95 | **9.8%** |
+
+Checks were 9% of the pre-regions/pre-wide excess in item 19 and remain
+only 9.8% now, not the largest lever. Matching filcc's check-category
+count would remove only 4.1% of `-O`'s total instructions, before any
+conversion to time. The table is not exhaustive; the denominator includes
+negative excesses such as fewer pushes/pops.
+
+SWI at 0.005 of its counts saves 2.27G **program** instructions with
+shared lowers, but spends 2.17G more in other objects under callgrind.
+GC execution under instrumentation is different: use the native 11-trial
+timing and PMU counts above to judge its performance, not this profile's
+almost-flat whole-process total. No GC-retention cause is established.
+
+### Measurement record and reproduction
+
+[Samples, categories and provenance](../bench/rebaseline-2026-11-10.json)
+keep every native timing sample/event, the 21-trial control, the category
+counts, exact binary store paths, input hashes, compiler source-tree hash
+and unchanged Fil-C pin. The top-level `samples`/`events` are the eleven
+gate workloads; `swipl` and `bzip2_repeat` hold the separate runs.
+`run.py --markdown` can print the gate again from that file.
+
+swa is a Ryzen 9 7950X3D, powersave governor, boost enabled, unchanged.
+The site-deploy thread confirmed no heavy local builds were planned.
+The final gate ran at 15:06:47–15:09:48 UTC with load 0.58–1.11 on
+32 logical CPUs and core 22 at most 0.7% busy in 10-second samples;
+`run.py` waited 3 s total for cores 6/22 to idle below 5%. SWI's load
+was 1.41–2.81, sibling at most 0.1%, with ordinary services and brief
+documentation checks elsewhere. This was not a reserved or isolated host.
+An initial gate overlapping one compile on CCD1 gave 1.61 → 1.54; the
+final gate above had no concurrent compilation or profiling. Callgrind
+ran separately on cores 8–15/24–31, between SWI and the final gate.
+
+Build just the candidate modes, without changing the toolchain:
+
+```sh
+nix build --impure -f nanofil/bench -o nanofil/bench/out --argstr only O,O-lowers
+nix build --impure -f nanofil/bench/swipl.nix -o nanofil/bench/swipl --argstr only O,O-lowers
+```
+
+For the **exact** executables on swa, the comparison trees are retained
+under `/home/mbrock/filnix-nanofil-perf-rebaseline/.amp/in/`: `cmp` for the
+gate and `swcmp` for SWI. From that worktree's root:
+
+```sh
+python3 nanofil/bench/run.py --out .amp/in/cmp --ref .amp/in/cmp --swipl .amp/in/no-swipl --modes ref,O,O-lowers --trials 11 --cpu 6 --busy 0.05 --events cycles:u,duration_time --json gate.json
+python3 nanofil/bench/run.py --out .amp/in/cmp --ref .amp/in/cmp --swipl .amp/in/swcmp --only swipl --modes ref,O,O-lowers --trials 11 --cpu 6 --busy 0.05 --events cycles:u,duration_time --json swipl.json
+VALGRIND=/nix/store/i4dgw3l0d60xg2101370lhyamlc155mq-valgrind-3.26.0/bin/valgrind taskset -c 8-15,24-31 python3 nanofil/bench/profile/checks.py --builds .amp/in/cmp --bench .amp/in/cmp --swipl .amp/in/swcmp --variants ref,O,O-lowers --categories --work checks-work --json checks.json
+```
+
+Run profiling and compile probes separately from timing. A fresh build's
+`ref` is not the historical denominator: preserve the reference paths in
+the data file rather than silently substituting newly compiled filcc code.
+The SWI benchmark recipe now supports `O-lowers` and passes library headers
+explicitly, fixing the reproduced `gmp.h` build failure. No compiler,
+runtime, default, ABI or toolchain pin changed in this re-baseline.
+
+The dated rounds below are historical measurements, not current-default
+claims. In particular, their check-count priorities and compile-time
+budgets have been superseded.
 
 ## Round closed (October 2026, at `07b2b11`)
 
@@ -237,7 +375,8 @@ mode, through the same `nanofil-cc` wrapper the Nix checks use:
 | Mode | nanofil options |
 | --- | --- |
 | `off` | none: the reference backend without the middle end |
-| `O` | `-O` (selected branches, item 2; `--registers=temps`: register homes with register operands and frame cells, items 3a, 3b, 5a-loads and 3d; inlining, item 4; inline small copies, 7a) |
+| `O` | `-O`: pointer address homes, region operand selection, wide inlining, full simplification, combined checks and shared uppers; lowers remain owned per temporary |
+| `O-lowers` | `-O --lowers=shared`: lever 3, still opt-in |
 | `O-reuse` | `-O --checks=reuse` ([m7.md](m7.md)) |
 | `O-noinline` | `-O --inline=none` |
 | `O-refbranches` | `-O --branches=reference`: `-O` before item 2 became its default |
@@ -274,9 +413,10 @@ scripts: [int.lua](../bench/int.lua) (an integer loop),
 [str.lua](../bench/str.lua) (string formatting, sort, gsub), and SQLite
 on [sqlite.sql](../bench/sqlite.sql): an in-memory database of 5,000
 customers and 50,000 orders with joins, windows, a correlated subquery,
-JSON, updates, FTS5 and a sort. nanofil needs 1.5–2.5 minutes and up to
-7 GB for each build of `sqlite3.c`, so build only the modes you compare
-(`--argstr only off,O`).
+JSON, updates, FTS5 and a sort. At the current stocktake a saved-state
+`-O` compile of preprocessed `sqlite3.c` takes 228 s and about 2.1 GiB
+RSS on swa's core 14 with a 4 GB Prolog stack. Build only the modes you
+compare (`--argstr only O,O-lowers`).
 
 It is not part of `nix flake check`: timings need a quiet machine.
 
