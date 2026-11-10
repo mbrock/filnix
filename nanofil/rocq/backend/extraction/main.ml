@@ -535,6 +535,19 @@ let nfb prefix =
       !parse_s !decode_s !encode_s !read_s !input_s;
   if !bad > 0 then exit 1
 
+(* `nfb-read FILE...`: decode_input on each NFB file, the backend's
+   input path without the check of the words' identity; prints each
+   module's item count and, with NANOFIL_BACKEND_TIME=1, the CPU
+   seconds of reading the bytes and of decoding. *)
+let nfb_read files =
+  let load_s = ref 0.0 and input_s = ref 0.0 in
+  List.iter (fun f ->
+      let ws = timed load_s (fun () -> file_words f) in
+      match timed input_s (fun () -> decode_input ws) with
+      | Some md -> Printf.printf "%s: %d items\n" f (List.length md)
+      | None -> Printf.printf "%s: refused\n" f; exit 1) files;
+  if report then Printf.eprintf "nanofil-backend: load %.3fs decode_input %.3fs\n" !load_s !input_s
+
 (* A minor heap of 32 MB: with OCaml's 2 MB, the plans of a large
    function were promoted while they were built, which cost a
    quarter of the time of SQLite's. *)
@@ -547,4 +560,6 @@ let () =
   | [| _; "emit" |] -> big_minor_heap (); emit ()
   | [| _; "module" |] -> big_minor_heap (); whole ()
   | [| _; "nfb"; prefix |] -> big_minor_heap (); nfb prefix
-  | _ -> prerr_endline "usage: nanofil-backend [abi | emit | module | nfb PREFIX] <TERMS"; exit 2
+  | _ when Array.length Sys.argv >= 3 && Sys.argv.(1) = "nfb-read" ->
+      big_minor_heap (); nfb_read (List.tl (List.tl (Array.to_list Sys.argv)))
+  | _ -> prerr_endline "usage: nanofil-backend [abi | emit | module | nfb PREFIX] <TERMS, or nfb-read FILE.nfb..."; exit 2
