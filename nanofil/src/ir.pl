@@ -1108,7 +1108,7 @@ valid_item(Symbols, Mode, _, alias(Name, Linkage, Target)) :-
     ;   true
     ),
     (   func_named(Symbols, Target, _) -> true
-    ;   data_item(Symbols, Target, data(_, TL, _, _)), \+ memberchk(TL, [export, local, weak, ro(_)])
+    ;   data_item(Symbols, Target, data(_, TL, _, _)), \+ memberchk(TL, [export, local, weak, ro(_), tls(_)])
     ->  fn_error(Name, 'an alias of ~w data is not supported', [TL])
     ;   data_named(Symbols, Target)
     ->  (   Symbols = symbols(Index),

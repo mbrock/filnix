@@ -1998,14 +1998,14 @@ Definition item_name (it : item) : option name :=
 (** As `valid_item/4` for `alias(Name, Linkage, Target)`: the alias n of the
     module md has linkage `export` or `weak`, no function or data shares its
     name, and its target is a function the module defines, or data of a
-    linkage an alias may name (`export`, `local`, `weak` or `ro(_)`) that no
-    other function calls through the alias. *)
+    linkage an alias may name (`export`, `local`, `weak`, `ro(_)` or
+    `tls(_)`) that no other function calls through the alias. *)
 Definition valid_alias (md : module) (n : name) (lk : term) (target : name) : bool :=
   match lk with TAtom ("export" | "weak") => true | _ => false end
   && negb (func_named md n || data_named md n)
   && (func_named md target
       || match first_data_linkage target md with
-         | Some (LExport | LLocal | LWeak | LRo _) =>
+         | Some (LExport | LLocal | LWeak | LRo _ | LTls _) =>
              negb (existsb (fun it => match item_name it with
                                       | Some g => negb (name_eqb g n) && calls_global it n
                                       | None => false

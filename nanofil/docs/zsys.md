@@ -297,7 +297,8 @@ unused `__int128_t` padding members as aligned bytes of the same size.
 | declarator attributes, `__int128_t`, no `_BitInt`, alias coalescing | 2,900 (93%) | |
 | `address_space` refused only where used | 2,902 (93%) | |
 | `packed` members | 2,975 (96%) | |
-| `sqrt` and `trunc` | **2,979 (96%)** | |
+| `sqrt` and `trunc` | 2,979 (96%) | |
+| aliases of thread-local data | **2,982 (96%)** | |
 
 The last three rows are a new capture, preprocessed without
 `__BITINT_MAXWIDTH__`, so `math_uint128.h` takes its portable path. No
@@ -314,10 +315,10 @@ With both rewrites, before the `.filc_*` directives, by library:
 | libnsl | 38 | 38 |
 | the other 12 | 50 | 31 |
 
-Of the 245 `libc.a` members that define a function Hello reaches, 243
-compile (232 before the last three rows). `errno` fails on the TLS
-alias, and `atexit` is built into `libc_nonshared.a`, not captured as a
-shared unit.
+Of the 245 `libc.a` members that define a function Hello reaches, 244
+compile (232 before the declarator-attribute row). Only `atexit` is
+missing: it is built into `libc_nonshared.a`, not captured as a shared
+unit.
 
 ### What stops the rest
 
@@ -328,7 +329,6 @@ First errors (one error per unit, so a fix can uncover the next layer):
 | `__real__`, `__imag__`, `_Complex` returns | 72 | libm's complex functions |
 | x87 and MXCSR | 51 | `fnclex`, `frndint`, `__builtin_ia32_ldmxcsr` in libm's fenv |
 | other | 9 | `__alignof__` of an expression, `__label__`, `#pragma weak` in a body, `__builtin_ia32_cvtpd2ps`, `__builtin_ia32_rdtsc` |
-| TLS alias | 3 | `__libc_errno`, `__libc_h_errno`, `__libc_resp` |
 
 - **x87 and MXCSR.** Fil-C's own glibc keeps a few x87 instructions
   (`fnclex`, `frndint`, `fnstsw`) as inline asm, which FilPizlonator's
@@ -392,6 +392,15 @@ Each frontend fix has a test that fails without it:
   `e_sqrt` recursed: `__ieee754_sqrt` called `sqrt`, whose wrapper calls
   `__ieee754_sqrt`. `tests/float/sqrt.ir` (difftest, plain and `-O`)
   and `tests/c/prog/sqrt-trunc.c` against filcc.
+- An alias may name thread-local data (`tls(export)` or `tls(local)`),
+  as `errno.c` defines `__libc_errno` for `errno`, `herrno.c`
+  `__libc_h_errno` and `res_libc.c` `__libc_resp`. Every global of a
+  Fil-C module is reached through its getter, so the alias's getter,
+  which calls the target's, reaches this thread's instance, and the
+  interpreter gives the alias the target's pointer, as for any alias.
+  Rocq's `valid_alias` takes the same linkage. `tests/c/prog/tls-alias.c`,
+  two threads against filcc. (clang cannot compile an alias of a static
+  thread-local, so the `tls(local)` getter was checked by hand.)
 - An `address_space` type is refused only where it is used, as a
   vector type is: filcc cannot compile an access through another
   address space either, and glibc's `rseq-internal.h` casts to
@@ -432,12 +441,7 @@ Every generated syscall stub now compiles: its body, a `zcall` of the
    contracts for Hello, and treat this page's direction as a later
    campaign whose first step is "module `strlen` implements
    `strlen_contract`" for the leaf functions that reach no primitive.
-6. **An alias of thread-local data** (`errno`'s `__libc_errno`).
-   `ir.pl` refuses it; the Fil-C backend's alias getter, which calls the
-   target's getter, already serves it, as filcc's `pizlonated_lerr`
-   reads the same TLS slot. It is an IR validity change (`valid_item`,
-   and the interpreter's aliases). Recommended: yes, with Campaign 3's
-   agreement, since `errno` is a Hello unit.
+6. **An alias of thread-local data.** Done (above).
 7. **IR operations for `sqrt` and `trunc`.** Done (above): `sqrt` is
    an IR operation, and `trunc` is built in the frontend.
 8. **x87 and MXCSR** (51 libm units, the floating-point environment).

@@ -3219,7 +3219,7 @@ local_entry(_, Impl, Fast) -->
 alias_getter(Symbols, Name, Linkage, Target) -->
     { abi_symbol(getter, Name, Getter), abi_symbol(getter, Target, TG),
       (   ( func_named(Symbols, Target, func(_, local, _, _, _))
-          ; ir:data_item(Symbols, Target, data(_, L, _, _)), memberchk(L, [local, ro(local)]) )
+          ; ir:data_item(Symbols, Target, data(_, L, _, _)), memberchk(L, [local, ro(local), tls(local)]) )
       ->  Op = sym(TG)
       ;   Op = plt(TG)
       ) },
