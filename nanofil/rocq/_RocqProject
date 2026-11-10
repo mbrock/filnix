@@ -93,6 +93,7 @@ theories/CallbackLogic.v
 theories/HelloVersion.v
 theories/HelloClose.v
 theories/LibcErrnoLogic.v
+theories/LibcStreamTokens.v
 theories/HelloStdio.v
 theories/HelloConv.v
 theories/Extract.v

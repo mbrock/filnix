@@ -2297,6 +2297,39 @@ open/closed world state, demonstrating changed-errno/resource close
 executions, and assembling HelloClose's complete world interpretation
 remain consumer integration work. No new trusted law is introduced.
 
+### Campaign 4 milestone 6j: stable FILE lives beside private storage
+
+[LibcStreamTokens.v](../rocq/theories/LibcStreamTokens.v) uses the
+consumer's exact logic instance. Its data-heap projection removes only
+the two designated handle-life keys when applying the private-memory
+frame. It does not remove authoritative Iris resources, or any byte,
+auxiliary or name key. Owning a byte or auxiliary slot in a live FILE
+object still prevents a private write root from overlapping that object.
+
+The existing effects frame separately proves that each old handle keeps
+its exact live region: local effects cannot release an excluded identity,
+and fresh allocation cannot claim that identity as born. Native stream
+readiness excludes both stable handle capabilities from every active
+release pool. Query frames restore the full original heap, including
+owned errno. Close frames instead sample actual endpoint errno and retain
+both handle lives, also for resource endings. They do not infer completed
+closure or an empty FIFO from a resource prefix. A query on HelloClose's
+actual machine owns both handle lives and all four errno bytes; separate
+controls reject retained byte and auxiliary ownership inside a FILE.
+
+The remaining adapter binds distinct stream ghost keys to open snapshots
+(physical pending count and logical FIFO) or ordinary completed closure.
+These values use Heap.v's separate VStream constructor, not VName: the
+locale interpretation constrains every VName entry, regardless of its
+key. Main's unchanged-heap output frame cannot preserve an exact mutable
+snapshot, so snapshots must be genuinely allocated or transferred at
+callback entry, not silently installed by a pure world interpretation.
+The returning diagnostic has the same unchanged-snapshot conflict; its
+full binding remains outstanding. These helpers introduce no trusted law
+and do not yet discharge the complete HelloClose premises or native FILE
+realization. Changed-errno/resource close executions and ghost/world
+coherence remain integration evidence to construct.
+
 ### Reached-call contract packages and remaining integration
 
 [Getopt.v](../rocq/theories/Getopt.v) supplies independently admitted
