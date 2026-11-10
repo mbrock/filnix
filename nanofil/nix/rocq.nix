@@ -1,5 +1,6 @@
 # The Rocq model of the checked IR (rocq/, docs/formal.md Campaign 1):
-# default: model + parse.sh + a small outcome/base-verdict smoke corpus.
+# default: model (whose build runs parse.sh) + a small outcome/base-verdict
+# smoke corpus.
 # full=true opts into the complete outcome and mutation campaign below:
 # compile it with the pinned nixpkgs' Rocq, refuse any Admitted or Axiom
 # (none is allowed outside the Campaign 2 runtime module type in
@@ -25,14 +26,19 @@ let
   ocamlPackages = rocq.rocq-core.ocamlPackages;
   model = pkgs.stdenv.mkDerivation {
     name = "nanofil-rocq-model";
-    # Fixtures and shell harnesses do not change the extracted executable.
+    # The theories, the driver, and the grammar check (web/rocq/tests/
+    # parse.sh), which runs beside the compile; fixtures and the other
+    # harnesses do not change the extracted executable.
     src = pkgs.lib.fileset.toSource {
-      root = ../rocq;
+      root = ../.;
       fileset = pkgs.lib.fileset.unions [
         ../rocq/Makefile
         ../rocq/_RocqProject
         ../rocq/theories
         ../rocq/extraction/main.ml
+        ../web/rocq/rocq_syntax.pl
+        ../web/rocq/tests/parse.sh
+        ../web/rocq/tests/reprint.pl
       ];
     };
     nativeBuildInputs = [
@@ -43,9 +49,11 @@ let
       ocamlPackages.ocaml
       ocamlPackages.findlib
       pkgs.python3
+      pkgs.swi-prolog
     ];
     buildInputs = [ ocamlPackages.zarith ];
     buildPhase = ''
+      cd rocq
       # Axioms and parameters only inside Runtime.v's module type, which
       # InterpRuntime discharges; no Admitted anywhere.
       if grep -rnw Admitted theories ||
@@ -55,9 +63,16 @@ let
         echo "rocq: no Admitted, and no Axiom outside the runtime module type" >&2
         exit 1
       fi
+      # One make compiles the theories and checks the grammar on each:
+      # a file's reprint compiles as soon as its imports are compiled
+      # (parse.sh), so the check does not wait for the slowest theory.
       start=$SECONDS
-      python3 ${../tests/watch.py} --label "Rocq compile/extraction/link" --timeout 600 -- make -j"$NIX_BUILD_CORES"
-      echo "@@nanofil-rocq $((SECONDS - start))s compile-extract-link"
+      PARSE_IN_PLACE=1 python3 ${../tests/watch.py} --label "Rocq compile and parse/typecheck" \
+        --warn-after 300 --timeout 1200 -- bash ../web/rocq/tests/parse.sh theories/*.v
+      echo "@@nanofil-rocq $((SECONDS - start))s compile-parse"
+      start=$SECONDS
+      python3 ${../tests/watch.py} --label "Rocq extraction/link" --timeout 600 -- make -j"$NIX_BUILD_CORES"
+      echo "@@nanofil-rocq $((SECONDS - start))s extract-link"
     '';
     installPhase = ''
       mkdir -p $out/bin
@@ -88,14 +103,6 @@ let
       ../rocq/programs
     ];
   };
-  syntax = pkgs.lib.fileset.toSource {
-    root = ../.;
-    fileset = pkgs.lib.fileset.unions [
-      ../web/rocq/rocq_syntax.pl
-      ../web/rocq/tests/parse.sh
-      ../web/rocq/tests/reprint.pl
-    ];
-  };
 in
 pkgs.runCommandCC
   (if full then "nanofil-rocq-full-check" else "nanofil-rocq-check")
@@ -120,7 +127,6 @@ pkgs.runCommandCC
       }
       cp -r ${corpus} nanofil
       chmod -R u+w nanofil
-      cp -r ${syntax}/. nanofil/
       cp -rp ${model}/share/rocq/. nanofil/rocq/
       chmod -R u+w nanofil
       cd nanofil
@@ -128,8 +134,6 @@ pkgs.runCommandCC
       export FILCC=${filcc}/bin/clang MODEL=${model}/bin/nanofil-model
       bin/nanofil --save-state "$TMPDIR/nanofil.state"
       export NANOFIL_STATE=$TMPDIR/nanofil.state
-      python3 tests/watch.py --label "Rocq parse/typecheck" -- bash web/rocq/tests/parse.sh
-      mark parse
       # The modules the program proofs are about are nanofil's current
       # products (rocq/programs.sh, Panics.v).
       python3 tests/watch.py --label "Rocq program fixtures" -- bash rocq/programs.sh

@@ -90,7 +90,8 @@ operator was read at Rocq's precedence and every binder where Rocq puts
 it. The reprint also groups Ltac control flow and embedded terms, and a
 temporary proof fixture distinguishes choice from sequencing and exercises
 dispatch, match patterns and assertions. All files in the development are
-compiled with their `_RocqProject`'s flags in its order. Unparsed definitions
+compiled with their `_RocqProject`'s flags, and each reprint as soon as the
+file's imports are compiled. Unparsed definitions
 or tactics fail this check. Making `->` left-associative fails four Campaign
 1 files and `::` left-associative fails Semantics.v.
 

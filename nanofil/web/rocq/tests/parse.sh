@@ -9,19 +9,137 @@
 # coqc) with the Stdlib on ROCQPATH, as the flake's nixpkgs gives them:
 #   nix shell --impure --expr 'with import (builtins.getFlake (toString ./.)).inputs.nixpkgs {}; [ swi-prolog coq coqPackages.stdlib ]'
 # A file in a project (a _RocqProject or _CoqProject above it) is
-# compiled with the project's -R/-Q flags, after the files listed before
-# it, so a development whose files import each other is checked in order.
+# compiled with the project's -R/-Q flags, after the files it imports.
+# With a _RocqProject, one make compiles the originals and checks the
+# reprints, each reprint as soon as its file's imports are compiled.
+# PARSE_IN_PLACE=1 compiles the originals where they are, not in a copy,
+# so the model's build (nix/rocq.nix) checks its theories as it compiles.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../../.." && pwd)
+coqc=$(command -v rocq >/dev/null && echo "rocq c" || echo coqc)
+rocqdep=$(command -v rocq >/dev/null && echo "rocq dep" || echo coqdep)
+makefile=$(command -v rocq >/dev/null && echo "rocq makefile" || echo coq_makefile)
+jobs=${NIX_BUILD_CORES:-$(nproc 2>/dev/null || echo 1)}
+[ "$jobs" -ge 1 ] 2>/dev/null || jobs=1
+
+# project FILE: the directory of the project file above FILE, or FILE's own.
+project() {
+  local d
+  d=$(cd "$(dirname "$1")" && pwd)
+  while [ "$d" != / ]; do
+    if [ -e "$d/_RocqProject" ] || [ -e "$d/_CoqProject" ]; then echo "$d"; return; fi
+    d=$(dirname "$d")
+  done
+  cd "$(dirname "$1")" && pwd
+}
+
+# flags DIR: the project's -R and -Q flags. A directory outside the
+# project (rocq/spikes reads ../theories) is the original's, compiled.
+flags() {
+  local p
+  for p in "$1/_RocqProject" "$1/_CoqProject"; do
+    [ -e "$p" ] && grep -oE '^-[RQ] +[^ ]+ +[^ ]+' "$p" | outside "$1" | tr '\n' ' ' && return
+  done
+  echo "-Q . Top"
+}
+outside() { sed -E "s#^(-[RQ] +)(\.\./)#\1$1/\2#"; }
+
+# order DIR: the project's .v files in the order its project file lists them.
+order() {
+  local p
+  for p in "$1/_RocqProject" "$1/_CoqProject"; do
+    [ -e "$p" ] && grep -E '\.v$' "$p" && return
+  done
+  (cd "$1" && find . -name '*.v' | sed 's|^\./||' | sort)
+}
+
+# orig PROJ: where the project's originals are compiled, a copy in the
+# run's directory or, with PARSE_IN_PLACE (the model's build), PROJ itself.
+orig_of() {
+  if [ -n "${PARSE_IN_PLACE-}" ]; then echo "$1"; else echo "$tmp/orig$(echo "$1" | tr / _)"; fi
+}
+
+# check N F: reprint F and compile the reprint alone, under the project's
+# names, with the original's compiled imports, which is all it needs: its
+# reprint can start as soon as they are compiled. The verdict goes to
+# $tmp/verdict-N and is printed, a failure's log with it on stderr.
+check() {
+  local n=$1 f=$2 proj rel orig dir fl i k p l over=
+  local -a words args=()
+  proj=$(project "$f")
+  rel=${f#"$proj"/}
+  orig=$(orig_of "$proj")
+  fl=$(flags "$proj")
+  dir=$tmp/reprint-$n
+  mkdir "$dir"
+  (cd "$orig" && find . -type d) | (cd "$dir" && xargs mkdir -p)
+  read -ra words <<<"$fl"
+  for ((i = 0; i + 2 < ${#words[@]}; i += 3)); do
+    k=${words[i]} p=${words[i + 1]%/} l=${words[i + 2]}
+    case $p in /*) args+=("$k" "$p" "$l") ;; *) args+=("$k" "$orig/$p" "$l") ;; esac
+    # The binding F is under names the reprint too, from its own tree.
+    case $p in /*) ;; *) if [ "$p" = . ] || [[ $rel == "$p"/* ]]; then
+      if [ -z "$over" ] || [ ${#p} -gt ${#over} ]; then over=$p; fi; fi ;; esac
+  done
+  if [ -n "$over" ]; then
+    for ((i = 0; i + 2 < ${#words[@]}; i += 3)); do
+      [ "${words[i + 1]%/}" = "$over" ] && args+=("${words[i]}" "$dir/$over" "${words[i + 2]}") && break
+    done
+  fi
+  if ! swipl "$here/reprint.pl" "$f" --strict >"$dir/$rel" </dev/null 2>"$tmp/verdict-$n.log"; then
+    echo "FAIL $f: the grammar does not read it" >"$tmp/verdict-$n"
+  elif (cd "$dir" && $coqc "${args[@]}" "$rel" >"$tmp/verdict-$n.log" 2>&1); then
+    echo "ok   $f" >"$tmp/verdict-$n"
+  else
+    echo "FAIL $f: the reprint does not compile" >"$tmp/verdict-$n"
+    sed -i 's/^/  /' "$tmp/verdict-$n.log"
+  fi
+  rm -rf "$dir"
+  case $(cat "$tmp/verdict-$n") in
+    ok*) cat "$tmp/verdict-$n" ;;
+    *) cat "$tmp/verdict-$n" "$tmp/verdict-$n.log" >&2 ;;
+  esac
+}
+
+# pool N...: check those files, up to $jobs at a time.
+pool() {
+  local n
+  for n; do
+    while [ "$(jobs -rp | wc -l)" -ge "$jobs" ]; do wait -n || true; done
+    check "$n" "${paths[$n]}" &
+  done
+  wait
+}
+
+# A make recipe's call (below): check one file of this run.
+if [ "${1-}" = --check ]; then
+  tmp=$PARSE_TMP
+  check "$2" "$3"
+  exit 0
+fi
+
+# build ORIG PROJ: compile a project without a makefile one file at a
+# time, in order.
+build() {
+  local orig=$1 proj=$2 fl v
+  echo "build $proj"
+  fl=$(flags "$proj")
+  while read -r v; do
+    (cd "$orig" && $coqc $fl "$v" >"$tmp/log" 2>&1) || {
+      echo "skip $proj/$v: it does not compile as it is" >&2
+      sed 's/^/  /' "$tmp/log" >&2
+    }
+  done < <(order "$proj")
+}
+
 if [ $# -eq 0 ]; then
   mapfile -t files < <(cd "$root" && find nanofil -name '*.v' -not -path '*/_build/*' | sort)
   set -- "${files[@]/#/$root/}"
 fi
-coqc=$(command -v rocq >/dev/null && echo "rocq c" || echo coqc)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-status=0
+
 
 # Compile the Ltac tree too: asymmetric branches expose a wrong scope for
 # repeat/try, sequence, choice or dispatch even if a simple proof passes.
@@ -238,122 +356,77 @@ ROCQ
   set -- "$@" "$tmp/iris/Iris.v"
 fi
 
-# project FILE: the directory of the project file above FILE, or FILE's own.
-project() {
-  local d
-  d=$(cd "$(dirname "$1")" && pwd)
-  while [ "$d" != / ]; do
-    if [ -e "$d/_RocqProject" ] || [ -e "$d/_CoqProject" ]; then echo "$d"; return; fi
-    d=$(dirname "$d")
-  done
-  cd "$(dirname "$1")" && pwd
-}
-
-# flags DIR: the project's -R and -Q flags. A directory outside the
-# project (rocq/spikes reads ../theories) is the original's, compiled.
-flags() {
-  local p
-  for p in "$1/_RocqProject" "$1/_CoqProject"; do
-    [ -e "$p" ] && grep -oE '^-[RQ] +[^ ]+ +[^ ]+' "$p" | outside "$1" | tr '\n' ' ' && return
-  done
-  echo "-Q . Top"
-}
-outside() { sed -E "s#^(-[RQ] +)(\.\./)#\1$1/\2#"; }
-
-# order DIR: the project's .v files in the order its project file lists them.
-order() {
-  local p
-  for p in "$1/_RocqProject" "$1/_CoqProject"; do
-    [ -e "$p" ] && grep -E '\.v$' "$p" && return
-  done
-  (cd "$1" && find . -name '*.v' | sed 's|^\./||' | sort)
-}
-
-# build ORIG PROJ: compile the project's files in ORIG, the project file's
-# makefile in parallel where there is one, else one at a time in order.
-jobs=${NIX_BUILD_CORES:-$(nproc 2>/dev/null || echo 1)}
-[ "$jobs" -ge 1 ] 2>/dev/null || jobs=1
-makefile=$(command -v rocq >/dev/null && echo "rocq makefile" || echo coq_makefile)
-build() {
-  local orig=$1 proj=$2 fl v
-  echo "build $proj with -j$jobs"
-  if [ -e "$orig/_RocqProject" ] &&
-     (cd "$orig" && $makefile -f _RocqProject -o Makefile.parse >/dev/null 2>&1 &&
-      make -j"$jobs" -f Makefile.parse >"$tmp/log" 2>&1); then
-    cat "$tmp/log"
-    return
-  fi
-  fl=$(flags "$proj")
-  while read -r v; do
-    (cd "$orig" && $coqc $fl "$v" >"$tmp/log" 2>&1) || {
-      echo "skip $proj/$v: it does not compile as it is" >&2
-      sed 's/^/  /' "$tmp/log" >&2
-    }
-  done < <(order "$proj")
-}
-
-# check N F: reprint F in a copy of its compiled project and compile the
-# reprint there; the verdict goes to $tmp/verdict-N, its log after it.
-check() {
-  local n=$1 f=$2 proj rel fl key orig dir
-  proj=$(project "$f")
-  rel=${f#"$proj"/}
-  fl=$(flags "$proj")
-  key=$(echo "$proj" | tr / _)
-  orig=$tmp/orig$key
-  dir=$tmp/reprint-$n
-  cp -r "$orig" "$dir"
-  if ! swipl "$here/reprint.pl" "$f" --strict >"$dir/$rel" </dev/null 2>"$tmp/verdict-$n.log"; then
-    echo "FAIL $f: the grammar does not read it" >"$tmp/verdict-$n"
-  elif (cd "$dir" && $coqc $fl "$rel" >"$tmp/verdict-$n.log" 2>&1); then
-    echo "ok   $f" >"$tmp/verdict-$n"
-  else
-    echo "FAIL $f: the reprint does not compile" >"$tmp/verdict-$n"
-    sed -i 's/^/  /' "$tmp/verdict-$n.log"
-  fi
-  rm -rf "$dir"
-}
-
-# report N: print check N's verdict as it finishes; a failure's log goes
-# to stderr with it.
-report() {
-  local v
-  v=$(cat "$tmp/verdict-$1")
-  case $v in
-    ok*) echo "$v" ;;
-    *) { echo "$v"; cat "$tmp/verdict-$1.log"; } >&2; status=1 ;;
-  esac
-}
-
-# Each project is compiled once; then every file's reprint is checked in
-# its own copy, up to $jobs at a time.
-declare -a paths=()
+# Each project with a _RocqProject compiles its originals and checks its
+# files' reprints in one make: a reprint is a target that depends on the
+# file's imports, so it starts as soon as they are compiled, beside the
+# compiles still running. Other projects (the fixtures above) compile one
+# file at a time, then check their files.
+declare -a paths=() projects=()
+declare -A seen=()
 for f in "$@"; do
   f=$(cd "$(dirname "$f")" && pwd)/$(basename "$f")
   paths+=("$f")
   proj=$(project "$f")
-  orig=$tmp/orig$(echo "$proj" | tr / _)
-  if [ ! -d "$orig" ]; then
-    # Preserve checked objects' timestamps when the Nix model supplies
-    # them; make still builds the originals in a source-only checkout.
-    cp -rp "$proj" "$orig"
-    for p in "$orig/_RocqProject" "$orig/_CoqProject"; do
-      if [ -e "$p" ]; then outside "$proj" <"$p" >"$p.abs" && mv "$p.abs" "$p"; fi
-    done
-    build "$orig" "$proj"
+  if [ -z "${seen[$proj]-}" ]; then
+    seen[$proj]=1
+    projects+=("$proj")
+    orig=$(orig_of "$proj")
+    if [ "$orig" != "$proj" ]; then
+      # Preserve checked objects' timestamps when the Nix model supplies
+      # them; make still builds the originals in a source-only checkout.
+      cp -rp "$proj" "$orig"
+      for p in "$orig/_RocqProject" "$orig/_CoqProject"; do
+        if [ -e "$p" ]; then outside "$proj" <"$p" >"$p.abs" && mv "$p.abs" "$p"; fi
+      done
+    fi
   fi
 done
-declare -A running=()
-for n in "${!paths[@]}"; do
-  while [ "${#running[@]}" -ge "$jobs" ]; do
-    wait -n || true
-    for k in "${!running[@]}"; do
-      if ! kill -0 "${running[$k]}" 2>/dev/null; then report "$k"; unset "running[$k]"; fi
-    done
-  done
-  check "$n" "${paths[$n]}" &
-  running[$n]=$!
+declare -a later=() sequential=()
+for proj in "${projects[@]}"; do
+  orig=$(orig_of "$proj")
+  declare -A listed=()
+  if [ -e "$orig/_RocqProject" ] &&
+     (cd "$orig" && $makefile -f _RocqProject -o Makefile.parse >/dev/null 2>&1 &&
+      $rocqdep -f _RocqProject >"$tmp/deps" 2>/dev/null); then
+    while read -r v; do listed[$v]=1; done < <(order "$proj")
+    goals=()
+    {
+      for n in "${!paths[@]}"; do
+        f=${paths[$n]}
+        [ "$(project "$f")" = "$proj" ] || continue
+        rel=${f#"$proj"/}
+        if [ -z "${listed[$rel]-}" ]; then later+=("$n"); continue; fi
+        # Its imports: the .vo prerequisites rocq dep gives its .vo.
+        printf 'reprint-%s: %s\n' "$n" "$(awk -v t="${rel%.v}.vo" '$1 == t {
+          for (i = 2; i <= NF; i++) if ($i ~ /\.vo$/ && $i != t) print $i }' "$tmp/deps" | tr '\n' ' ')"
+        printf '\t@bash %q --check %s %q\n' "$here/parse.sh" "$n" "$f"
+        goals+=("reprint-$n")
+      done
+      for v in "${!listed[@]}"; do goals+=("${v%.v}.vo"); done
+      echo "parse-all: ${goals[*]}"
+      echo ".PHONY: parse-all $(printf '%s\n' "${goals[@]}" | grep '^reprint-' | tr '\n' ' ')"
+    } >"$orig/Makefile.reprint"
+    echo "build and reprint $proj with -j$jobs"
+    (cd "$orig" && PARSE_TMP=$tmp make -k -j"$jobs" -f Makefile.parse -f Makefile.reprint parse-all) ||
+      echo "make: an original of $proj does not compile; the reprints of its importers are not checked" >&2
+  else
+    sequential+=("$proj")
+  fi
+  unset listed
 done
-wait || true
-for k in "${!running[@]}"; do report "$k"; done
+for proj in "${sequential[@]}"; do
+  build "$(orig_of "$proj")" "$proj"
+  for n in "${!paths[@]}"; do [ "$(project "${paths[$n]}")" = "$proj" ] && later+=("$n"); done
+done
+pool "${later[@]}"
+
+status=0
+for n in "${!paths[@]}"; do
+  if [ ! -e "$tmp/verdict-$n" ]; then
+    echo "FAIL ${paths[$n]}: not checked, since a file it imports does not compile" >&2
+    status=1
+  elif ! grep -q '^ok' "$tmp/verdict-$n"; then
+    status=1
+  fi
+done
 exit $status
