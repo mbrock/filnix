@@ -143,8 +143,8 @@ Callouts, script runs and `(*MARK)` searches abort. Partial matching,
 ## Another route: a regex compiler on nanofil
 
 `experiments/regex-nanofil` tries a compiler that does not involve sljit or
-LLVM: 715 lines of Prolog turn the bytecode `pcre2_compile` makes into
-nanofil's unchecked IR, and nanofil, `as` and `clang -shared` make a shared
+LLVM: 728 lines of Prolog turn the bytecode `pcre2_compile` makes into
+nanofil's unchecked IR, and nanofil, `as` and `ld -shared` make a shared
 object to `dlopen`. PCRE2 keeps parsing, numbering groups and finding where
 a match can start; a pattern with an opcode the compiler does not know stays
 on the interpreter.
@@ -154,6 +154,14 @@ possessive groups, lookbehind, multiline and group loops, it agrees with the
 interpreter from every start offset of the subject. The nine are 4.8 to 25
 times faster than the interpreter: at or above native sljit's speed on five
 of them and ahead of the LLVM JIT on seven. It needs no executable memory,
-no link flag and no LLVM in the process. nanofil takes 0.15 to 0.6 s per
-pattern, so it needs a cache on disk or compilation ahead of time. Its
-README has the numbers and what is not compiled.
+no link flag and no LLVM in the process.
+
+nanofil takes 0.15 to 0.8 s per pattern, so the experiment also has a patch
+to libpcre2 that serves `pcre2_jit_compile` from a cache directory of shared
+objects, named by `PCRE2_RX_CACHE`, and runs the compiler on a miss. With it
+`pcre2_match` is 3 to 17 times faster than the patched interpreter on the
+nine patterns, and a cache hit costs 0.1 to 0.9 ms. PCRE2's `testinput1` and
+`testinput2` give the interpreter's output with `-jit`; 1383 of their 2485
+patterns are compiled and the rest stay on the interpreter. It is not wired
+into `pkgsFilc.pcre2`. The README has the numbers, the cache rules and what
+is not compiled.

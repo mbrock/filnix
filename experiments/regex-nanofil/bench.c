@@ -25,9 +25,11 @@ static double now(void)
 
 #include "more.h"
 
-typedef int rx_fn(const char *subject, long length, long start, long *ovector, long *stack, long slimit);
+typedef int rx_fn(const char *subject, long length, long start, long *ovector, long *stack, long slimit,
+                  long budget);
 
 #define STACK 65536
+#define BUDGET 10000000 /* PCRE2's default match limit */
 static long stack[STACK];
 
 struct run {
@@ -41,12 +43,12 @@ static void pass(pcre2_code *re, pcre2_match_data *md, rx_fn *rx, const char *su
     PCRE2_SIZE *ov = pcre2_get_ovector_pointer(md);
     size_t off = 0;
     for (;;) {
-        int rc = rx ? rx(subj, len, off, (long *)ov, stack, STACK)
+        int rc = rx ? rx(subj, len, off, (long *)ov, stack, STACK, BUDGET)
                     : pcre2_match(re, (PCRE2_SPTR)subj, len, off, 0, md, NULL);
         r->calls++;
         if (rc <= 0) {
             if (rx && rc < 0) {
-                printf("backtrack stack overflow\n");
+                printf("rx gave up: %d\n", rc);
                 exit(1);
             }
             break;
@@ -87,7 +89,7 @@ static unsigned long differences(pcre2_code *re, rx_fn *rx, const char *subj, si
     unsigned long bad = 0;
     for (size_t off = 0; off <= len; off++) {
         int rc = pcre2_match(re, (PCRE2_SPTR)subj, len, off, 0, md, NULL);
-        int rc2 = rx(subj, len, off, mine, stack, STACK);
+        int rc2 = rx(subj, len, off, mine, stack, STACK, BUDGET);
         ++*calls;
         *matches += rc > 0;
         if ((rc > 0) != (rc2 > 0) || (rc > 0 && memcmp(ov, mine, sizeof(long) * 2 * (groups + 1)))) {

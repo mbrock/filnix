@@ -7,11 +7,13 @@
     start. code_regex/4 decodes the bytecode into a tree, and
     regex_func/3 turns the tree into one IR function (nanofil/src/ir.pl)
 
-        w NAME(p subject, l length, l start, p ovector, p stack, l slimit)
+        w NAME(p subject, l length, l start, p ovector, p stack, l slimit,
+               l budget)
 
     that returns 1 with PCRE2's ovector filled in (every group, -1 for an
-    unset one), 0 for no match at or after start, or -1 when the
-    backtrack stack of slimit longs is too small. nanofil then does what
+    unset one), 0 for no match at or after start, -1 when the backtrack
+    stack of slimit longs is too small, or -2 when it has gone back into
+    a loop or an alternation more than budget times. nanofil then does what
     it does for C: promotes the slots to SSA, inserts the Fil-C checks
     (pizlonate), removes the redundant ones, and prints x86-64 assembly.
     The compiler is outside the memory-safety argument: a bug here is a
@@ -363,6 +365,15 @@ pop_each([Slot|Slots], S, I) -->
     { I1 is I + 1 },
     pop_each(Slots, S, I1).
 
+% tick: one of the budget is spent. Every way back into a node that can
+% match in more than one way passes a tick, and between two of them the
+% code only moves forward, so a pattern that backtracks without end
+% returns -2 instead. The count is the slot `steps`, a fixed name as the
+% labels `overflow` and `spent` are.
+tick -->
+    rd(tmp(steps), N), check(ne, l, N, const(0), spent),
+    calc(sub, N, const(1), N1), wr(tmp(steps), N1).
+
 stack_address(S, I, Q) -->
     calc(add, S, const(I), Ix),
     tmp(Off), emit(let(Off, l, shl, [Ix, const(3)])),
@@ -384,7 +395,7 @@ gen(alt(As), X, F, Resume) --> !,
     slot(Save), slot(Which), rd(Pos, P), wr(Save, P),
     lab(Join), lab(Resume),
     arms(As, 1, X, Save, Which, Join, F, Fs),
-    begin(Resume), rd(Which, W), dispatch(Fs, W),
+    begin(Resume), tick, rd(Which, W), dispatch(Fs, W),
     begin(Join).
 gen(group(N, A), X, F, Undo) --> !,
     { X = ctx(Pos, _, Caps), memberchk(cap(N, CS, CE), Caps) },
@@ -466,7 +477,7 @@ gen(star(class(Rs), Min, Max, Mode), X, F, F1) --> { Mode \== lazy }, !,
     (   { Mode == possessive ; Max == Min } -> { F1 = F }
     ;   % Give back one byte at a time, down to Min.
         slot(Cur), wr(Cur, P2), lab(Next), lab(Back), jump(goto(Next)),
-        begin(Back), rd(Cur, C), rd(Start, S3), calc(add, S3, const(Min), M),
+        begin(Back), tick, rd(Cur, C), rd(Start, S3), calc(add, S3, const(Min), M),
         check(ugt, l, C, M, F),
         calc(sub, C, const(1), C1), wr(Cur, C1), wr(Pos, C1), jump(goto(Next)),
         begin(Next), { F1 = Back }
@@ -475,7 +486,7 @@ gen(star(class(Rs), 0, Max, lazy), X, F, Back) --> !,
     { X = ctx(Pos, _, _) },
     slot(Start), slot(Cur), rd(Pos, P0), wr(Start, P0), wr(Cur, P0),
     lab(Next), lab(Back), lab(Adv), jump(goto(Next)),
-    begin(Back), rd(Cur, C),
+    begin(Back), tick, rd(Cur, C),
     (   { Max == inf } -> []
     ;   rd(Start, S), calc(sub, C, S, N), check(ult, l, N, const(Max), F)
     ),
@@ -565,7 +576,7 @@ greedy_loop(A, Min, X, F, Back) -->
     (   { Min =:= 0 } -> jump(goto(Next))
     ;   rd(Count, C2), cond(uge, l, C2, const(Min), Next, Back)
     ),
-    begin(Back), rd(Count, C3), check(ne, l, C3, const(0), F),
+    begin(Back), tick, rd(Count, C3), check(ne, l, C3, const(0), F),
     pop(Saved, X), calc(sub, C3, const(1), C4), wr(Count, C4), jump(goto(FB)),
     begin(Next).
 
@@ -588,7 +599,7 @@ lazy_loop(A, Min, X, F, Back) -->
     wr(Count, const(0)), rd(Pos, P0), wr(LPos, P0), wr(IStart, const(-1)),
     lab(Next), lab(Back), lab(Iter), lab(Into),
     ( { Min =:= 0 } -> jump(goto(Next)) ; jump(goto(Iter)) ),
-    begin(Back), rd(LPos, L0), rd(IStart, I0), cond(ne, l, L0, I0, Iter, Into),
+    begin(Back), tick, rd(LPos, L0), rd(IStart, I0), cond(ne, l, L0, I0, Iter, Into),
     begin(Iter), rd(LPos, L), wr(Pos, L), wr(IStart, L),
     body(A, X, Into, FB, IStart, Saved),
     push(Saved, X), rd(Count, C), calc(add, C, const(1), C1), wr(Count, C1),
@@ -609,18 +620,19 @@ lazy_loop(A, Min, X, F, Back) -->
 regex_func(Name, re(Ast, Groups, Start), Func) :-
     top(Ast, Groups, Start, s(0, b(init, []), [], []), s(_, none, Blocks0, Slots0)),
     reverse(Blocks0, Blocks1), reverse(Slots0, Slots),
-    findall(let(S, p, alloc(8), [const(8)]), member(S, Slots), Allocs),
+    findall(let(S, p, alloc(8), [const(8)]), member(S, [tmp(steps)|Slots]), Allocs),
     reachable([block(entry, [], Allocs, goto(init))|Blocks1], Blocks),
     Func = func(Name, export, w,
                 [param(p, tmp(subject)), param(l, tmp(length)), param(l, tmp(start)),
-                 param(p, tmp(ovector)), param(p, tmp(stack)), param(l, tmp(slimit))],
+                 param(p, tmp(ovector)), param(p, tmp(stack)), param(l, tmp(slimit)),
+                 param(l, tmp(budget))],
                 Blocks).
 
 top(Ast, Groups, Start) -->
     slot(Pos), slot(Sp), slot(Scan),
     caps(0, Groups, Caps),
     { X = ctx(Pos, Sp, Caps) },
-    wr(Scan, tmp(start)),
+    wr(Scan, tmp(start)), wr(tmp(steps), tmp(budget)),
     lab(Try), lab(Go), lab(Fail), lab(Stop),
     jump(goto(Try)),
     begin(Try), rd(Scan, S),
@@ -651,7 +663,8 @@ top(Ast, Groups, Start) -->
         cond(ule, l, S2, tmp(length), Try, Stop)
     ),
     begin(Stop), jump(ret(const(0))),
-    begin(overflow), jump(ret(const(-1))).
+    begin(overflow), jump(ret(const(-1))),
+    begin(spent), jump(ret(const(-2))).
 
 caps(N, Groups, []) --> { N > Groups }, !.
 caps(N, Groups, [cap(N, CS, CE)|Caps]) -->

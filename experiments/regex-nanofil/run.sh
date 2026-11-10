@@ -2,8 +2,11 @@
 # Compile the bytecode pcre2_compile makes of the patterns in
 # ../pcre2-sljit-llvm/pats.h and more.h with rx.pl and nanofil, load the
 # result into a Fil-C program, and compare it with PCRE2's interpreter.
+# Then build a libpcre2 with the hook (pcre2-rx-hook.patch), which does
+# the same per pattern behind pcre2_jit_compile and pcre2_match, and run
+# hook.c against it with an empty cache and again with the full one.
 #
-#   ./run.sh              all patterns in one shared object
+#   ./run.sh              all patterns in one shared object, then the hook
 #   HOST=tpl ./run.sh     regex to IR on Trealla instead of SWI-Prolog
 #
 # Needs nix, GNU as, and the PCRE2 source and Fil-C build that
@@ -73,3 +76,24 @@ step "link -shared" "$filcc" -shared -o rx.so rx.o
 
 "$filcc" -O2 -I"$pcre2/src" -I"$here/../pcre2-sljit-llvm" -o bench "$here/bench.c" "$pcre2/.libs/libpcre2-8.a"
 ./bench ./rx.so "$BUDGET"
+
+# The hook: PCRE2 with the match patch, the hook patch and its two headers.
+if [ ! -d "$WORK/pcre2-rx" ]; then
+  cp -r "$WORK/pcre2-match" "$WORK/pcre2-rx"
+  patch -d "$WORK/pcre2-rx" -p1 <"$here/pcre2-rx-hook.patch"
+fi
+cp "$here/pcre2_rx_inc.h" "$here/pcre2_rx_terms.h" "$WORK/pcre2-rx/src/"
+hooked=$WORK/build/filc-rx
+mkdir -p "$hooked"
+(cd "$hooked" &&
+  { [ -e Makefile ] || "$WORK/pcre2-rx/configure" --disable-shared --disable-jit CC="$filcc" CFLAGS=-O2 >configure.log; } &&
+  make -j"$(nproc)" libpcre2-8.la >make.log 2>&1)
+"$filcc" -O2 -I"$hooked/src" -I"$here/../pcre2-sljit-llvm" -I"$here" -o hook "$here/hook.c" "$hooked/.libs/libpcre2-8.a"
+
+rm -rf cache
+mkdir -m 755 cache
+export PCRE2_RX_CACHE=$OUT/cache NANOFIL_STATE=$OUT/nanofil.state
+echo "empty cache:"
+PCRE2_RX_COMPILER=$here/rxc ./hook "$BUDGET"
+echo "full cache, no compiler:"
+./hook 0 | tail -n 1

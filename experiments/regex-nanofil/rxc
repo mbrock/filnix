@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# rxc TERMS OUTPUT: the compiler libpcre2's hook (pcre2_rx_inc.h) runs
+# when its cache has no shared object for a pattern. TERMS is what the
+# hook wrote, the terms of pcre2_rx_terms.h for one pattern named m.
+#
+#   exit 0   OUTPUT is a shared object that defines rx_m
+#   exit 1   rx.pl does not compile the pattern, or compiling it took
+#            more than RXC_SECONDS (default 10); OUTPUT says why
+#   else     something broke; the hook caches nothing
+#
+# SWIPL names SWI-Prolog (default: swipl on PATH). NANOFIL_STATE names a
+# saved state of nanofil (bin/nanofil --save-state), which saves the
+# quarter second of loading its sources. Needs GNU as, ld and timeout.
+set -euo pipefail
+
+here=$(cd "$(dirname "$0")" && pwd)
+repo=$(cd "$here/../.." && pwd)
+terms=$(realpath "$1")
+output=$(realpath "$2")
+export SWIPL=${SWIPL:-swipl}
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+# A long pattern can take minutes, and the process that asked is waiting.
+slow() {
+  [ $? -eq 124 ] || exit 2
+  echo "% m: unsupported: took more than ${RXC_SECONDS:-10} s to compile" >"$output"
+  exit 1
+}
+limited() { timeout "${RXC_SECONDS:-10}" "$@"; }
+
+limited "$SWIPL" -q -g "consult('$here/rx.pl'), rx:rx_file('$terms')" -t halt \
+  "$repo/nanofil/src/swi/compat.pl" </dev/null >"$work/rx.ir" || slow
+if grep '^%' "$work/rx.ir" >"$output"; then
+  exit 1
+fi
+(cd "$repo/nanofil/src" && limited ../bin/nanofil -O compile "$work/rx.ir" </dev/null) >"$work/rx.s" || slow
+as -o "$work/rx.o" "$work/rx.s"
+# The Fil-C runtime it calls is already in the process that loads it.
+ld -shared -o "$output" "$work/rx.o"
