@@ -600,8 +600,10 @@ Proof.
   iIntros "Hcursor Hsl Hsc Hps HK".
   iAssert (pts (before ++ reads)) with "[Hcursor Hsl Hsc Hps]" as "Hpieces".
   { rewrite pts_app. iFrame "Hcursor".
-    rewrite /reads /pts !big_sepL_app !big_sepL_cons.
-    iDestruct "Hsl" as "[Hsl _]". iDestruct "Hsc" as "[Hsa Hsc]". iFrame. done. }
+    replace reads with ([(PLive sb, VLive sr)] ++
+      ((PAux sb off, VAux (ptr_cap x)) :: cell sb off (ptr_addr x)) ++ ps) by reflexivity.
+    rewrite !pts_app.
+    iFrame "Hsl Hsc Hps". }
   iDestruct (pts_keys_nodup with "Hpieces") as %Hnd.
   rewrite fmap_app in Hnd. apply NoDup_app in Hnd as (_ & Hseparate & _).
   iApply (wp_va_arg f e ls l d P args rest j (mkPtr cb (Obj cb)) (WPtr x)
@@ -932,7 +934,8 @@ Qed.
 
 (** Advance one memory-independent IR let on the fixed version path. *)
 Local Ltac version_let :=
-  iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]; iNext.
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |];
+  iNext; gen_env.
 
 (** These are the stdio contracts for the six exact version calls.
     The mixed pointer/int classes are checked before any output result;
@@ -1017,6 +1020,17 @@ Proof.
   pose proof (arn_literal_lookup "version-etc#str.47" ltac:(simpl; tauto)) as H47.
   pose proof (arn_literal_lookup "version-etc#str.51" ltac:(simpl; tauto)) as H51.
   iIntros "Hps Hl (H0 & H1 & H2 & H3) HΦ". rewrite version_etc_arn_entry.
+  set (e := [(TAtom "v10", WInt 4); (TAtom "v8", WPtr (mkPtr b (Obj b)));
+    (TAtom "v6", WPtr (version_literal "hello#str.71"));
+    (TAtom "v4", WPtr (version_literal "hello#str.63"));
+    (TAtom "v2", WPtr (version_literal "hello#str.70")); (TAtom "v0", WPtr stream)]).
+  assert (Hv0 : lookup (TAtom "v0") e = Some (WPtr stream)) by reflexivity.
+  assert (Hv2 : lookup (TAtom "v2") e = Some (WPtr (version_literal "hello#str.70"))) by reflexivity.
+  assert (Hv4 : lookup (TAtom "v4") e = Some (WPtr (version_literal "hello#str.63"))) by reflexivity.
+  assert (Hv6 : lookup (TAtom "v6") e = Some (WPtr (version_literal "hello#str.71"))) by reflexivity.
+  assert (Hv8 : lookup (TAtom "v8") e = Some (WPtr (mkPtr b (Obj b)))) by reflexivity.
+  assert (Hv10 : lookup (TAtom "v10") e = Some (WInt 4)) by reflexivity.
+  clearbody e.
   iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
   cbn [b_insts b_jump arn_start]. version_let. version_let.
   iApply wp_branch; [word_premise |]. iNext. cbn [Z.eqb edge_label].
@@ -1024,21 +1038,21 @@ Proof.
   cbn [b_insts b_jump arn_L12]. version_let.
   iApply (wp_version_output with "Hps");
     [unfold version_output_args; left; reflexivity | word_premise | reflexivity |].
-  iNext. iIntros (n0) "Hps". iApply wp_goto. iNext.
+  iNext. iIntros (n0) "Hps". gen_env. iApply wp_goto. iNext.
   iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
   cbn [b_insts b_jump arn_L14]. version_let. version_let. version_let.
   iApply (wp_version_output with "Hps");
     [unfold version_output_args; right; left; reflexivity | word_premise | reflexivity |].
-  iNext. iIntros (n1) "Hps". version_let.
+  iNext. iIntros (n1) "Hps". gen_env. version_let.
   iApply (wp_version_output with "Hps");
     [unfold version_output_args; right; right; left; reflexivity | word_premise | reflexivity |].
-  iNext. iIntros (n2) "Hps". version_let. version_let. version_let.
+  iNext. iIntros (n2) "Hps". gen_env. version_let. version_let. version_let.
   iApply (wp_version_output with "Hps");
     [unfold version_output_args; right; right; right; left; reflexivity | word_premise | reflexivity |].
-  iNext. iIntros (n3) "Hps". version_let.
+  iNext. iIntros (n3) "Hps". gen_env. version_let.
   iApply (wp_version_output with "Hps");
     [unfold version_output_args; right; right; right; right; left; reflexivity | word_premise | reflexivity |].
-  iNext. iIntros (n4) "Hps". version_let.
+  iNext. iIntros (n4) "Hps". gen_env. version_let.
   iApply wp_branch; [word_premise |]. iNext. cbn [Z.eqb edge_label].
   iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
   cbn [b_insts b_jump arn_L263]. version_let.
@@ -1056,42 +1070,42 @@ Proof.
   cbn [b_insts b_jump arn_L82]. version_let. version_let.
   iApply (wp_check with "Hl");
     [reflexivity | word_premise | reflexivity | addr_premise | cbn [r_end]; addr_premise | addr_premise |].
-  iNext. iIntros "Hl".
+  iNext. iIntros "Hl". gen_env.
   iApply (wp_raw_load_literal with "Hl H0 Hps");
     [reflexivity | word_premise | reflexivity | addr_premise | addr_premise |
      vm_compute; split; congruence | vm_compute; reflexivity |
      apply (Hauthor_live "hello#str.72"); simpl; tauto |].
-  iNext. iIntros "Hl H0 Hps".
+  iNext. iIntros "Hl H0 Hps". gen_env.
   iApply (wp_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ (b + 8));
-    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]. iNext.
+    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]. iNext. gen_env.
   iApply (wp_half_check with "Hl");
     [reflexivity | word_premise | reflexivity | reflexivity | addr_premise |
-     cbn [r_end]; addr_premise | lia | cbn; lia | addr_premise |]. iNext. iIntros "Hl".
+     cbn [r_end]; addr_premise | lia | cbn; lia | addr_premise |]. iNext. iIntros "Hl". gen_env.
   iApply (wp_raw_load_literal with "Hl H1 Hps");
     [reflexivity | word_premise | reflexivity | addr_premise | addr_premise |
      vm_compute; split; congruence | vm_compute; reflexivity |
      apply (Hauthor_live "hello#str.73"); simpl; tauto |].
-  iNext. iIntros "Hl H1 Hps".
+  iNext. iIntros "Hl H1 Hps". gen_env.
   iApply (wp_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ (b + 16));
-    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]. iNext.
+    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]. iNext. gen_env.
   iApply (wp_half_check with "Hl");
     [reflexivity | word_premise | reflexivity | reflexivity | addr_premise |
-     cbn [r_end]; addr_premise | lia | cbn; lia | addr_premise |]. iNext. iIntros "Hl".
+     cbn [r_end]; addr_premise | lia | cbn; lia | addr_premise |]. iNext. iIntros "Hl". gen_env.
   iApply (wp_raw_load_literal with "Hl H2 Hps");
     [reflexivity | word_premise | reflexivity | addr_premise | addr_premise |
      vm_compute; split; congruence | vm_compute; reflexivity |
      apply (Hauthor_live "hello#str.74"); simpl; tauto |].
-  iNext. iIntros "Hl H2 Hps".
+  iNext. iIntros "Hl H2 Hps". gen_env.
   iApply (wp_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ (b + 24));
-    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]. iNext.
+    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]. iNext. gen_env.
   iApply (wp_half_check with "Hl");
     [reflexivity | word_premise | reflexivity | reflexivity | addr_premise |
-     cbn [r_end]; addr_premise | lia | cbn; lia | addr_premise |]. iNext. iIntros "Hl".
+     cbn [r_end]; addr_premise | lia | cbn; lia | addr_premise |]. iNext. iIntros "Hl". gen_env.
   iApply (wp_raw_load_literal with "Hl H3 Hps");
     [reflexivity | word_premise | reflexivity | addr_premise | addr_premise |
      vm_compute; split; congruence | vm_compute; reflexivity |
      apply (Hauthor_live "hello#str.75"); simpl; tauto |].
-  iNext. iIntros "Hl H3 Hps".
+  iNext. iIntros "Hl H3 Hps". gen_env.
   iApply (wp_version_output with "Hps");
     [unfold version_output_args; right; right; right; right; right; left; reflexivity |
      word_premise | reflexivity |].
@@ -1116,6 +1130,33 @@ Definition va_L14 : block := Eval vm_compute in hblk version_etc_va_fn "L14".
 (** The exit block passes the derived count to the array helper. *)
 Definition va_L15 : block := Eval vm_compute in hblk version_etc_va_fn "L15".
 
+(** Zero pointer bytes coincide with the eight-byte string block. *)
+Lemma version_zero_cell b o :
+  bytes b o (replicate 8 0) -∗ auxes b o (replicate 8 CNone) -∗ pcell b o null.
+Proof.
+  assert (Hbyte : forall i, byte_of 0 i = 0).
+  { intros i. unfold byte_of. destruct (Z.eq_dec (2 ^ (8 * i)) 0) as [-> | Hne].
+    - reflexivity.
+    - rewrite Z.div_0_l; [reflexivity | exact Hne]. }
+  assert (Hcell : cell b o 0 = byte_ps b o (replicate 8 0)).
+  { unfold cell, byte_ps, seqZ. cbn. rewrite !Hbyte Nat2Z.id.
+    cbn. repeat (f_equal; try lia). }
+  rewrite /pcell /pts big_sepL_cons Hcell.
+  iIntros "Hx Ha". iEval (rewrite /auxes; rewrite aux_ps_cons /pts big_sepL_cons) in "Ha".
+  iDestruct "Ha" as "[Ha _]". iFrame "Ha Hx".
+Qed.
+
+(** Split off one zero pointer cell without expanding the rest of its
+    allocation into individually searched heap pieces. *)
+Lemma version_zero_cell_prefix b o n :
+  bytes b o (replicate (8 + n) 0) -∗ auxes b o (replicate (8 + n) CNone) -∗
+  pcell b o null ∗ bytes b (o + 8) (replicate n 0) ∗ auxes b (o + 8) (replicate n CNone).
+Proof.
+  rewrite !replicate_add bytes_app auxes_app.
+  iIntros "[Hx Hrest] [Ha Htail]". iFrame "Hrest Htail".
+  iApply (version_zero_cell with "Hx Ha").
+Qed.
+
 (** Five zero cells suffice for the four authors and their terminator;
     the rest of the allocated array is unused. *)
 Lemma version_array_zero b :
@@ -1125,20 +1166,12 @@ Proof.
   iIntros "Hobj". iDestruct (obj_zero_block with "Hobj") as "(Hl & Hx & Ha)";
     [compute; discriminate |].
   iSplitL "Hl"; [iExact "Hl" |].
-  iAssert (bytes b 0 (replicate (40 + 40) 0))%I with "Hx" as "Hx".
-  iAssert (auxes b 0 (replicate (40 + 40) CNone))%I with "Ha" as "Ha".
-  iEval (rewrite replicate_add bytes_app) in "Hx".
-  iEval (rewrite replicate_add auxes_app) in "Ha".
-  iDestruct "Hx" as "[Hx _]". iDestruct "Ha" as "[Ha _]".
-  iEval (rewrite /bytes /byte_ps /pts; simpl) in "Hx".
-  iEval (rewrite /auxes /aux_ps /pts; simpl) in "Ha".
-  repeat (iDestruct "Hx" as "[? Hx]").
-  repeat (iDestruct "Ha" as "[? Ha]").
-  assert (Hbyte : forall i, byte_of 0 i = 0).
-  { intros i. unfold byte_of. destruct (Z.eq_dec (2 ^ (8 * i)) 0) as [-> | Hne].
-    - reflexivity.
-    - rewrite Z.div_0_l; [reflexivity | exact Hne]. }
-  rewrite /pcell /pts /cell. cbn. setoid_rewrite Hbyte. iFrame.
+  iDestruct (version_zero_cell_prefix b 0 72 with "Hx Ha") as "(H0 & Hx & Ha)".
+  iDestruct (version_zero_cell_prefix b 8 64 with "Hx Ha") as "(H1 & Hx & Ha)".
+  iDestruct (version_zero_cell_prefix b 16 56 with "Hx Ha") as "(H2 & Hx & Ha)".
+  iDestruct (version_zero_cell_prefix b 24 48 with "Hx Ha") as "(H3 & Hx & Ha)".
+  iDestruct (version_zero_cell_prefix b 32 40 with "Hx Ha") as "(H4 & _ & _)".
+  iFrame "H0 H1 H2 H3 H4".
 Qed.
 
 (** The entry binds the heading literals and the caller's va_list. *)
@@ -1178,38 +1211,93 @@ Context (Kversion_cursor : forall cb cr sb off m wd h,
   wi (store_bytes m cb 8 (sb + off + 8)) wd
     (overwrite (va_cursor_ps cb cr (mkPtr (sb + off + 8) (Ro sb))) h)).
 
-(** Execute one non-null iteration, including the loop's actual phi,
-    pointer comparison, and count increment. *)
+(** The heading, cursor and array registers survive every loop round. *)
+Definition version_va_saved e cb b : Prop :=
+  lookup (TAtom "v0") e = Some (WPtr stream) /\
+  lookup (TAtom "v2") e = Some (WPtr (version_literal "hello#str.70")) /\
+  lookup (TAtom "v4") e = Some (WPtr (version_literal "hello#str.63")) /\
+  lookup (TAtom "v6") e = Some (WPtr (version_literal "hello#str.71")) /\
+  lookup (TAtom "v8") e = Some (WPtr (mkPtr cb (Obj cb))) /\
+  lookup (TAtom "v11") e = Some (WPtr (mkPtr b (Obj b))).
+
+(** The common loop body begins after the scalar index and flight. *)
+Definition va_read_body : list inst := Eval vm_compute in skipn 2 (b_insts va_L18).
+
+(** Check the non-null body once, with an abstract incoming and outgoing
+    environment, rather than expanding its proof at every author. *)
+Lemma version_va_round_step e i cb cr sb sr off b o x Φ :
+  version_va_saved e cb b -> lookup (TAtom "pr.1") e = Some (WInt i) ->
+  lookup (TAtom "v22") e = Some (WPtr (mkPtr (b + o) (Obj b))) ->
+  0 <= i < 4 -> cb mod 8 = 0 -> 0 < sb -> 0 <= off ->
+  sb + off + 8 <= r_end sr -> r_end sr <= 2 ^ 48 -> (sb + off) mod 8 = 0 ->
+  0 < b -> 0 <= o -> o + 8 <= 80 -> b + 80 <= 2 ^ 48 -> (b + o) mod 8 = 0 ->
+  0 < ptr_addr x < 2 ^ 64 ->
+  (ptr_cap x = CNone \/ exists xb xr,
+    (ptr_cap x = Obj xb \/ ptr_cap x = Ro xb) /\ (PLive xb, VLive xr) ∈ literal_ps) ->
+  pts literal_ps -∗ pts (va_cursor_ps cb cr (mkPtr (sb + off) (Ro sb))) -∗
+  live sb sr -∗ pcell sb off x -∗
+  live b (mkRegion b (b + 80) Heap Live) -∗ pcell b o null -∗
+  ▷ (∀ e', ⌜version_va_saved e' cb b /\ lookup (TAtom "v31") e' = Some (WInt (i + 1))⌝ -∗
+    pts literal_ps -∗ pts (va_cursor_ps cb cr (mkPtr (sb + off + 8) (Ro sb))) -∗
+    live sb sr -∗ pcell sb off x -∗
+    live b (mkRegion b (b + 80) Heap Live) -∗ pcell b o x -∗
+    WP (ERun (mkFrame version_etc_va_fn e' [] None
+      (Exec (TAtom "L14") [] (JGoto (Poll (TAtom "L12"))))) : hexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame version_etc_va_fn e [] None
+    (Exec (TAtom "L18") va_read_body (JGoto (To (TAtom "L19"))))) : hexpr) {{ Φ }}.
+Proof.
+  intros Hsaved Hcount Hflight Hi Hcb Hsb Hoff Hsend Hsmax Hsal Hb Ho Hoend Hbend Hbal Hx Htarget.
+  destruct Hsaved as (Hv0 & Hv2 & Hv4 & Hv6 & Hv8 & Hv11).
+  assert (Hxmod : ptr_addr x mod 2 ^ 64 = ptr_addr x) by (apply Z.mod_small; lia).
+  assert (Hxne : (ptr_addr x =? 0) = false) by (apply Z.eqb_neq; lia).
+  iIntros "Hps Hcursor Hsl Hsource Hl Hdest HK". cbn [va_read_body].
+  iApply (wp_va_arg_pointer with "Hcursor Hsl Hsource Hps");
+    [word_premise | exact Hcb | exact Hsb | exact Hoff | exact Hsend | exact Hsmax |
+     exact Hsal | lia | exact Htarget | apply Kversion_cursor |].
+  iNext. iIntros "Hcursor Hsl Hsource Hps". gen_env.
+  iApply (wp_check with "Hl");
+    [reflexivity | word_premise | reflexivity | addr_premise |
+     cbn [r_end]; addr_premise | addr_premise |]. iNext. iIntros "Hl". gen_env.
+  iApply (wp_raw_store_pointer with "Hl Hdest");
+    [word_premise | word_premise | reflexivity | addr_premise | addr_premise |
+     apply Kversion_store |]. iNext. iIntros "Hl Hdest".
+  version_let. rewrite ?Hxmod. gen_env.
+  version_let. gen_env.
+  version_let. rewrite ?Hxmod ?Hxne. gen_env.
+  iApply wp_goto. iNext.
+  iApply wp_enter; [vm_compute; reflexivity | word_premise |]. iNext. gen_env.
+  cbn [b_insts b_jump va_L19].
+  iApply wp_branch; [word_premise |]. iNext. cbn [Z.eqb edge_label].
+  iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
+  cbn [b_insts b_jump va_L14]. version_let. gen_env.
+  iApply ("HK" with "[%] Hps Hcursor Hsl Hsource Hl Hdest").
+  split; [unfold version_va_saved; repeat split; word_premise | word_premise].
+Qed.
+
+(** Select the concrete index, then reuse the opaque non-null body. *)
 Local Ltac version_va_round addr src dst text :=
   iRename src into "Hsource"; iRename dst into "Hdest";
   iApply wp_goto; iNext;
-  iApply wp_enter; [vm_compute; reflexivity | word_premise |]; iNext;
-  cbn [b_insts b_jump va_L12]; version_let;
+  iApply wp_enter; [vm_compute; reflexivity | word_premise |]; iNext; gen_env;
+  cbn [b_insts b_jump va_L12]; version_let; gen_env;
   iApply wp_branch; [word_premise |]; iNext; cbn [Z.eqb edge_label];
   iApply wp_enter; [vm_compute; reflexivity | reflexivity |]; iNext;
-  cbn [b_insts b_jump va_L18]; version_let;
+  cbn [b_insts b_jump va_L18]; version_let; gen_env;
   iApply (wp_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ addr);
-    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]; iNext;
-  iApply (wp_va_arg_pointer with "Hcursor Hsl Hsource Hps");
-    [word_premise | assumption | assumption | lia | lia | assumption |
-     addr_premise | vm_compute; split; congruence |
+    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]; iNext; gen_env;
+  iApply (version_va_round_step with "Hps Hcursor Hsl Hsource Hl Hdest");
+    [unfold version_va_saved; repeat split; word_premise | word_premise |
+     repeat progress (cbn -[load_bytes store_bytes]; use_facts_goal);
+       repeat (f_equal; try lia) |
+     vm_compute; split; congruence | assumption | assumption | lia | lia | assumption |
+     addr_premise | assumption | lia | lia | assumption | addr_premise |
+     vm_compute; split; congruence |
      right; exists (ptr_addr (version_literal text)), (author_reg text);
-       split; [right; vm_compute; reflexivity | apply Hauthor_live; simpl; tauto] |
-     apply Kversion_cursor |];
-  iNext; iIntros "Hcursor Hsl Hsource Hps";
-  iApply (wp_check with "Hl");
-    [reflexivity | word_premise | reflexivity | addr_premise |
-     cbn [r_end]; addr_premise | addr_premise |]; iNext; iIntros "Hl";
-  iApply (wp_raw_store_pointer with "Hl Hdest");
-    [word_premise | word_premise | reflexivity | addr_premise | addr_premise |
-     apply Kversion_store |]; iNext; iIntros "Hl Hdest";
-  version_let; version_let; version_let;
-  iApply wp_goto; iNext;
-  iApply wp_enter; [vm_compute; reflexivity | word_premise |]; iNext;
-  cbn [b_insts b_jump va_L19];
-  iApply wp_branch; [word_premise |]; iNext; cbn [Z.eqb edge_label];
-  iApply wp_enter; [vm_compute; reflexivity | reflexivity |]; iNext;
-  cbn [b_insts b_jump va_L14]; version_let;
+       split; [right; vm_compute; reflexivity | apply Hauthor_live; simpl; tauto] |];
+  iNext; iIntros (e' Hsaved) "Hps Hcursor Hsl Hsource Hl Hdest";
+  match goal with
+  | H : version_va_saved _ _ _ /\ _ |- _ => destruct H as ((? & ? & ? & ? & ? & ?) & ?)
+  end;
   iRename "Hsource" into src; iRename "Hdest" into dst.
 
 (** The counting loop reads four literal authors and the actual null
@@ -1267,26 +1355,26 @@ Proof.
   version_va_round (b + 24) "Hs3" "H3" "hello#str.75".
   iEval (rewrite H64) in "Hcursor".
   iApply wp_goto. iNext.
-  iApply wp_enter; [vm_compute; reflexivity | word_premise |]. iNext.
-  cbn [b_insts b_jump va_L12]. version_let.
+  iApply wp_enter; [vm_compute; reflexivity | word_premise |]. iNext. gen_env.
+  cbn [b_insts b_jump va_L12]. version_let. gen_env.
   iApply wp_branch; [word_premise |]. iNext. cbn [Z.eqb edge_label].
   iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
-  cbn [b_insts b_jump va_L18]. version_let.
+  cbn [b_insts b_jump va_L18]. version_let. gen_env.
   iApply (wp_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ (b + 32));
-    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]. iNext.
+    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]. iNext. gen_env.
   iApply (wp_va_arg_pointer with "Hcursor Hsl Hs4 Hps");
     [word_premise | exact Hcb | exact Hsb | lia | lia | exact Hsmax |
      addr_premise | vm_compute; split; congruence | left; reflexivity | apply Kversion_cursor |].
-    iNext. iIntros "Hcursor Hsl Hs4 Hps".
+    iNext. iIntros "Hcursor Hsl Hs4 Hps". gen_env.
     iApply (wp_check with "Hl");
       [reflexivity | word_premise | reflexivity | addr_premise |
-       cbn [r_end]; addr_premise | addr_premise |]. iNext. iIntros "Hl".
+       cbn [r_end]; addr_premise | addr_premise |]. iNext. iIntros "Hl". gen_env.
     iApply (wp_raw_store_pointer with "Hl H4");
       [word_premise | word_premise | reflexivity | addr_premise | addr_premise |
        apply Kversion_store |]. iNext. iIntros "Hl H4".
-    version_let. version_let. version_let.
+    version_let. gen_env. version_let. gen_env. version_let. gen_env.
     iApply wp_goto. iNext.
-    iApply wp_enter; [vm_compute; reflexivity | word_premise |]. iNext.
+    iApply wp_enter; [vm_compute; reflexivity | word_premise |]. iNext. gen_env.
     cbn [b_insts b_jump va_L19].
     iApply wp_branch; [word_premise |]. iNext. cbn [Z.eqb edge_label].
     iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
@@ -1399,16 +1487,8 @@ Proof.
   iIntros "Hobj". iDestruct (obj_zero_block with "Hobj") as "(Hl & Hx & Ha)";
     [compute; discriminate |].
   iSplitL "Hl"; [iExact "Hl" |].
-  iEval (rewrite /bytes /byte_ps /pts; simpl) in "Hx".
-  iEval (rewrite /auxes /aux_ps /pts; simpl) in "Ha".
-  repeat (iDestruct "Hx" as "[? Hx]").
-  repeat (iDestruct "Ha" as "[? Ha]").
-  rewrite /pcell /pts /cell. cbn.
-  assert (Hbyte : forall i, byte_of 0 i = 0).
-  { intros i. unfold byte_of. destruct (Z.eq_dec (2 ^ (8 * i)) 0) as [-> | Hne].
-    - reflexivity.
-    - rewrite Z.div_0_l; [reflexivity | exact Hne]. }
-  setoid_rewrite Hbyte. iFrame.
+  iDestruct (version_zero_cell_prefix cb 0 24 with "Hx Ha") as "(Hc & _ & _)".
+  iExact "Hc".
 Qed.
 
 (** Snapshot population preserves the same opaque world under the
@@ -1454,8 +1534,12 @@ Proof.
   iEval (cbn [ptr_addr]; rewrite Hwrap) in "Hc".
   iAssert (pts (va_cursor_ps cb (mkRegion cb (cb + 32) Heap Live)
     (mkPtr (sb + 32) (Ro sb)))) with "[Hcl Hc]" as "Hcursor".
-  { rewrite /va_cursor_ps /live /pcell /pts !big_sepL_app !big_sepL_cons.
-    iDestruct "Hcl" as "[Hl _]". iDestruct "Hc" as "[Ha Hc]". iFrame. done. }
+  { replace (va_cursor_ps cb (mkRegion cb (cb + 32) Heap Live)
+      (mkPtr (sb + 32) (Ro sb))) with
+      ([(PLive cb, VLive (mkRegion cb (cb + 32) Heap Live))] ++
+        ((PAux cb 0, VAux (Ro sb)) :: cell cb 0 (sb + 32))) by reflexivity.
+    rewrite pts_app.
+    iFrame "Hcl Hc". }
   iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ _ version_etc_va_fn
     (invocation version_etc_va_fn
       [WPtr stream; WPtr (version_literal "hello#str.70");
