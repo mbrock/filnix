@@ -638,6 +638,12 @@ Decisions and findings:
 - **The capture replays sentences one at a time.** `1: { tac.` on one
   line is two sentences to Rocq but one to the proof-state capture's
   plan, which then drops `tac`; Coverage.v uses bullets instead.
+- **Captured proof states have a budget.** The site inlines every
+  captured state into its page, and GitHub Pages publishes at most
+  1 GB. So capture.py keeps a file's states within 1 MB of JSON and a
+  whole capture's within 16 MB. Past that, the largest proofs keep
+  their source view but lose their states (924cc2e). mbrock accepted
+  these budgets on 2026-11-10.
 
 ### The evidence invariant, instruction by instruction
 
