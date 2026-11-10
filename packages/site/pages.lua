@@ -17,10 +17,6 @@ local rules = {
   { "^nanofil/src/([%w_]+)%.pl$", function(m) return "nanofil/" .. m .. ".html" end },
   -- dterm-rocq: nanofil/rocq/glibc/ZsysWrite.v is nanofil/rocq/rocq-glibc-ZsysWrite.html.
   { "^nanofil/(.+)%.v$", function(p) return "nanofil/rocq/" .. dashed(p) .. ".html" end },
-  -- dterm's C pages: nanofil/tests/c/basic.c is nanofil/c/tests-c-basic.html,
-  -- nanofil/tests/c/x.h is nanofil/c/tests-c-x-h.html.
-  { "^nanofil/(.+)%.c$", function(p) return "nanofil/c/" .. dashed(p) .. ".html" end },
-  { "^nanofil/(.+)%.h$", function(p) return "nanofil/c/" .. dashed(p) .. "-h.html" end },
   -- dterm-nix: nanofil/nix/check.nix is nix/nanofil-nix-check.html.
   { "^(.+)%.nix$", function(p) return "nix/" .. dashed(p) .. ".html" end },
 }
