@@ -1,0 +1,7 @@
+% A weak declaration and a definition of one name are two symbols of
+% one name (valid_module/1 allows it). A symbol after them must keep
+% its place as its id: Nfb.v once numbered names, not places, and read
+% e's pointer back as d.
+data(d, extern(weak), 1, []).
+data(d, export, 8, [item(l, const(1))]).
+data(e, export, 8, [item(p, sym(e, 0))]).

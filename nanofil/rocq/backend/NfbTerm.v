@@ -924,6 +924,15 @@ Fixpoint number (ns : list term) (m : nmap Z) (n : Z) (acc : list term) : nmap Z
   | x :: xs => if nm_mem x m then number xs m n acc else number xs (nm_add x n m) (n + 1) (x :: acc)
   end.
 
+(** Each of the names ns numbered by its place from i, in the map m: a
+    name that occurs twice keeps the place of its first occurrence, as
+    the reader, which numbers every place, names it there. *)
+Fixpoint first_ids (ns : list term) (i : Z) (m : nmap Z) : nmap Z :=
+  match ns with
+  | [] => m
+  | x :: xs => first_ids xs (i + 1) (if nm_mem x m then m else nm_add x i m)
+  end.
+
 (** The temporary of a parameter `param(K, tmp(D))`, and K's code. *)
 Definition param_parts (t : term) : option (term * Z) :=
   match app_args "param" 2 t with
@@ -1155,7 +1164,7 @@ Definition module_tables (items : list term) : option mtab :=
   let* named := mapo atom_string (filter (fun g => negb (nm_mem g defmap)) (p_globals ps)) in
   let named := sort_uniq str_lt String.eqb named in
   let syms := defined ++ map (fun s => (TAtom s, 3, None)) named in
-  let '(symids, _, _) := number (map (fun d => let '(n, _, _) := d in n) syms) nm_empty 0 [] in
+  let symids := first_ids (map (fun d => let '(n, _, _) := d in n) syms) 0 nm_empty in
   let* files := mapo atom_string (p_files ps) in
   let strs := sort_uniq str_lt String.eqb (defnames ++ named ++ files) in
   let '(strids, _, _) := number (map TAtom strs) nm_empty 0 [] in
@@ -1229,7 +1238,8 @@ Definition data_item_words (t : mtab) (x : term) : option (list Z) :=
       match app_args "str" 1 v with
       | Some [TList cs] =>
           if is_atom "b" wd then
-            let* bs := mapo (fun c => let* b := char_code c in if b <? 256 then Some b else None) cs in
+            let* bs := mapo (fun c => let* b := char_code c in
+                                      if (b <? 256) && term_eqb (code_char b) c then Some b else None) cs in
             Some (1 :: bytes_words bs)
           else None
       | _ =>
@@ -1301,6 +1311,7 @@ Fixpoint side_term_words (ids : nmap Z) (t : term) : option (list Z) :=
   | TInt n => if wideok n then Some (0 :: wide_words n) else None
   | TAtom a => let* i := nm_find t ids in Some [1; i]
   | TApp f ts =>
+      if Nat.eqb (length ts) 0 then None else
       let* i := nm_find (TAtom f) ids in
       let* ws := (fix go (ts : list term) : option (list Z) :=
                     match ts with

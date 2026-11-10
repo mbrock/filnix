@@ -83,8 +83,8 @@ pkgs.runCommandCC (if full then "nanofil-backend-full" else "nanofil-backend")
           tests/par.sh rocq/backend/tests/asm.sh ${corpus} | tee asm.log
           NANOFIL_OPT=-O tests/par.sh rocq/backend/tests/asm.sh ${corpus} | tee asm-O.log
           tests/par.sh rocq/backend/tests/abi.sh ${corpus} | tee abi.log
-          tests/par.sh rocq/backend/tests/nfb.sh ${corpus} | tee nfb.log
-          NANOFIL_OPT=-O tests/par.sh rocq/backend/tests/nfb.sh ${corpus} | tee nfb-O.log
+          tests/par.sh rocq/backend/tests/nfb.sh ${corpus} rocq/backend/tests/nfb/*.ir | tee nfb.log
+          NANOFIL_OPT=-O tests/par.sh rocq/backend/tests/nfb.sh ${corpus} rocq/backend/tests/nfb/*.ir | tee nfb-O.log
           tests/par.sh rocq/backend/tests/emit.sh ${corpus} ${edge} | tee emit.log
           NANOFIL_OPT=-O tests/par.sh rocq/backend/tests/emit.sh ${corpus} ${edge} | tee emit-O.log
         ''
@@ -92,7 +92,7 @@ pkgs.runCommandCC (if full then "nanofil-backend-full" else "nanofil-backend")
         ''
           tests/par.sh rocq/backend/tests/asm.sh ${quick} | tee asm.log
           tests/par.sh rocq/backend/tests/abi.sh ${quickAbi} | tee abi.log
-          tests/par.sh rocq/backend/tests/nfb.sh ${quickAbi} | tee nfb.log
+          tests/par.sh rocq/backend/tests/nfb.sh ${quickAbi} rocq/backend/tests/nfb/*.ir | tee nfb.log
           tests/par.sh rocq/backend/tests/emit.sh ${quickAbi} ${edge} | tee emit.log
         ''
     )

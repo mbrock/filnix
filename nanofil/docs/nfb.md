@@ -437,9 +437,31 @@ The second is the one that costs something, because every canonical-form rule be
 > `decode_canonical` in `rocq/backend/NfbProof.v` proves it, with the
 > words compared on the core sections and NAMES, and
 > `decode_identity` gives the sound identity. The cost moves to the
-> round trip, which must show that the reader inverts the writer;
-> that proof is in progress. Total and bounded is
-> `rocq/backend/NfbTotal.v`: every reader that takes fuel is given the
+> round trip, which must show that the reader inverts the writer.
+> `round_trip` in the same file proves `decode (encode m) = Some m`,
+> NAMES included, for every module `m` that `Transport.decode_module`
+> gives. Its halves are `read_encode_term` (`NfbRead.v`: the term reader
+> gives back what the term writer wrote) and `decode_enc_module`
+> (`NfbTransport.v`: `decode_module` reads `enc_module m` as `m`).
+> The proof found two inputs the encoder wrote but the reader could
+> not give back, and the encoders now refuse them:
+> - a NAMES term with a compound of no arguments;
+> - in Gallina only, a string character spelled as overlong UTF-8,
+>   which the term reader reads as a code but does not write back the
+>   same way. A Prolog atom of one character has only one spelling.
+>
+> It also found that the Gallina writer numbered symbols by distinct
+> name, where nfb.pl and both readers number them by place. The two
+> differ when two items share a name, as a weak declaration and its
+> definition may. The Gallina writer now numbers by place, the first
+> occurrence giving a name's id, and
+> `rocq/backend/tests/nfb/weak-twin.ir` checks it.
+>
+> Transport's `char_code` accepts that overlong spelling, so `enc_module`
+> does not always give back the exact term a module was read from
+> (`strong_form_fails`); the round trip needs only the weaker fact.
+>
+> Total and bounded is `rocq/backend/NfbTotal.v`: every reader that takes fuel is given the
 > length of its words, and each lemma there proves that more fuel
 > gives the same answer, because each round reads a word.
 

@@ -669,8 +669,8 @@ term_atom(T, A) :- compound(T), T =.. [F|As], ( A = F ; member(X, As), term_atom
 side_term(T, Ids) --> { is_list(T) }, !, { length(T, N) }, [3, N], side_terms(T, Ids).
 side_term(T, Ids) --> { atom(T) }, !, { get_assoc(T, Ids, I) }, [1, I].
 side_term(T, _) --> { integer(T) }, !, [0], wide(T).
-side_term(T, Ids) --> { compound(T) }, !,
-    { T =.. [F|As], get_assoc(F, Ids, I), length(As, N) }, [2, I, N], side_terms(As, Ids).
+side_term(T, Ids) --> { compound(T), compound_name_arity(T, _, N), N > 0 }, !,
+    { T =.. [F|As], get_assoc(F, Ids, I) }, [2, I, N], side_terms(As, Ids).
 side_term(T, _) --> { nfb_error('a side section cannot hold ~q', [T]) }.
 side_terms([], _) --> [].
 side_terms([T|Ts], Ids) --> side_term(T, Ids), side_terms(Ts, Ids).

@@ -21,6 +21,8 @@ EmitThunk.v
 EmitModule.v
 NfbTerm.v
 Nfb.v
+NfbTransport.v
+NfbRead.v
 NfbProof.v
 NfbTotal.v
 Extract.v
