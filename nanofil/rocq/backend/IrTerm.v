@@ -180,6 +180,12 @@ Definition enc_op (o : op) : term :=
   | RawLoadPointer off es => TApp "raw_load_pointer" [TInt off; enc_effects es]
   | VaArgs => TAtom "va_args"
   | VaArg => TAtom "va_arg"
+  | Setjmp kind =>
+      TApp "setjmp" [TAtom match kind with
+                           | SjSetjmp => "setjmp"
+                           | SjUnderscore => "_setjmp"
+                           | SjSig => "sigsetjmp"
+                           end]
   end.
 
 (** ## Instructions *)
