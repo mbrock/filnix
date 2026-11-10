@@ -431,6 +431,18 @@ The theorems wanted, in order of use:
 
 The second is the one that costs something, because every canonical-form rule becomes a case in the proof. It is also the one that justifies using the bytes as a cache key.
 
+> **Changed in the implementation (Nov 10, 2026).** The Gallina
+> `decode` takes words only if `encode` writes the same words for the
+> module it read, so the canonical theorem costs little:
+> `decode_canonical` in `rocq/backend/NfbProof.v` proves it, with the
+> words compared on the core sections and NAMES, and
+> `decode_identity` gives the sound identity. The cost moves to the
+> round trip, which must show that the reader inverts the writer;
+> that proof is in progress. Total and bounded is
+> `rocq/backend/NfbTotal.v`: every reader that takes fuel is given the
+> length of its words, and each lemma there proves that more fuel
+> gives the same answer, because each round reads a word.
+
 **Agreement between the two.** The Prolog and Gallina encoders must produce the same bytes for every module of the corpus. This is the same byte-identity standard the backend campaign already uses for assembly.
 
 **Speed.** Reusing `Syntax.v` means the decoder still builds names and the backend still looks them up in `Maps.v`. The gain from dense ids arrives only when a consumer works on ids directly. A reasonable path is to decode to an id-indexed form, prove it corresponds to the `Syntax.v` module, and let the hot passes use that form.
