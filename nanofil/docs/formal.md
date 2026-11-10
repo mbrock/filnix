@@ -2270,6 +2270,33 @@ Pending UTF-8 error state and arbitrary codecs receive no new guarantee;
 the selected source audit and residual-state native probes are recorded
 in [libc-contracts.md](libc-contracts.md).
 
+### Campaign 4 milestone 6i: program-owned errno frames
+
+[LibcErrnoLogic.v](../rocq/theories/LibcErrnoLogic.v) takes the consumer's
+actual logic instance. Its libc_errno_wi separates private FILE roots
+and release identities from program memory while allowing ownership of
+the four scalar errno bytes. Other owned byte and auxiliary pieces must
+not alias those handed-over addresses; no errno auxiliary slot is lent.
+
+The query_frame theorem restores the original owned errno bytes using
+the query-specific entry-memory frame. close_frame instead reads the
+four actual endpoint bytes and updates their existing ghost keys,
+framing all other pieces. Persistence, runtime readiness and endpoint
+root/release separation follow from the actual effects prefix; the
+frame also covers resource endings without assuming stream closure.
+close_stream_frame additionally substitutes an equal-key stream
+assertion whose keys are disjoint from errno, using a pure replacement
+entailment quantified over every memory and heap. It does not assume
+that the native call changed unrelated memory.
+
+An actual invocation on HelloClose's machine preserves a nonempty
+owned errno heap; the old all-write-roots interpretation rejects that
+same heap at errno's last byte. These are logical controls, not native
+FILE representations. Binding the stream assertion's ghost values to
+open/closed world state, demonstrating changed-errno/resource close
+executions, and assembling HelloClose's complete world interpretation
+remain consumer integration work. No new trusted law is introduced.
+
 ### Reached-call contract packages and remaining integration
 
 [Getopt.v](../rocq/theories/Getopt.v) supplies independently admitted
