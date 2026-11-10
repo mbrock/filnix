@@ -249,6 +249,132 @@ Proof.
     + exact (proj1 (proj2 (proj2 (proj2 Hframe)))).
 Qed.
 
+(** Only an ordinary return establishes completed closure. Sample all
+    four endpoint errno bytes, update the selected name, and retain the
+    opposite snapshot and both native lives. This is a pure heap frame;
+    updating an owned name in Iris still requires its points-to resource. *)
+Theorem close_frame : forall rep requests wide out err b o d r args
+    s m w trace values s' m' w' h xs,
+  d = out \/ d = err ->
+  M.E.invoke (fclose_contract (libc_stream_model rep requests wide))
+    r args [WPtr (token_handle d)] s m w trace (CallReturn values) s' m' w' ->
+  agrees m h -> live_disjoint m -> R.ready s m -> stream_tokens_wi rep out err b o m w h ->
+  length xs = 4%nat ->
+  (forall l v, (l, v) ∈ byte_ps b o xs -> h !! l = Some v) ->
+  exists ys, length ys = 4%nat /\ (byte_ps b o ys).*1 = (byte_ps b o xs).*1 /\
+    agrees m' (<[PName (token_key d) := VStream (token_handle d) None]>
+      (overwrite (byte_ps b o ys) h)) /\ live_disjoint m' /\ R.ready s' m' /\
+    stream_tokens_wi rep out err b o m' w'
+      (<[PName (token_key d) := VStream (token_handle d) None]>
+        (overwrite (byte_ps b o ys) h)).
+Proof.
+  intros rep requests wide out err b o d r args s m w trace values s' m' w' h xs
+    Hd Hcall Ha Hdis Hr
+    (Houtwf & Herrwf & Hbase & Hkey & Hout & Herr & Houtcurrent & Herrcurrent & Hprivate)
+    Hlen Howned.
+  destruct (Hprivate d Hd) as [Hselected Hrelease].
+  destruct (T.close_frame rep requests wide (token_base out) (token_base err)
+    (token_handle d) b o r args s m w trace (CallReturn values) s' m' w' h xs
+    ltac:(rewrite Hout; exact (proj1 Houtwf))
+    ltac:(rewrite Herr; exact (proj1 Herrwf)) Hcall Ha Hdis Hr Hselected Hlen Howned)
+    as (ys & Hys & Hkeys & Ha' & Hdis' & Hr' & Hselected').
+  set (h0 := overwrite (byte_ps b o ys) h) in *.
+  set (h1 := <[PName (token_key d) := VStream (token_handle d) None]> h0).
+  assert (Hkeys0 : memory_keys_from h0 h).
+  { intros l v Hl Hmem. unfold h0 in Hl.
+    destruct (lookup_overwrite _ _ _ _ Hl) as [Hin|[_ Hold]]; [|eauto].
+    assert (Hkey0 : l ∈ (byte_ps b o xs).*1).
+    { rewrite <- Hkeys. apply list_elem_of_fmap. exists (l, v). auto. }
+    apply list_elem_of_fmap in Hkey0 as ([l0 old] & E & Hinold). simpl in E. subst l0.
+    exists old. exact (Howned l old Hinold). }
+  assert (Hkeys1 : memory_keys_from h1 h0).
+  { intros l v Hl Hmem. unfold h1 in Hl.
+    apply lookup_insert_Some in Hl as [[He Hv]|[_ Hold]]; [subst l; contradiction|eauto]. }
+  assert (Hdata1 : memory_keys_from
+      (stream_data_heap (token_base out) (token_base err) h1)
+      (stream_data_heap (token_base out) (token_base err) h0)).
+  { intros l v Hl Hmem. apply stream_data_lookup in Hl as (Hl & Hno & Hne).
+    destruct (Hkeys1 l v Hl Hmem) as [old Hold].
+    exists old. rewrite stream_data_lookup_ne; assumption. }
+  assert (Hdata0 : memory_keys_from
+      (stream_data_heap (token_base out) (token_base err) h1)
+      (stream_data_heap (token_base out) (token_base err) h)).
+  { intros l v Hl Hmem. apply stream_data_lookup in Hl as (Hl & Hno & Hne).
+    destruct (Hkeys1 l v Hl Hmem) as [old Hold].
+    destruct (Hkeys0 l old Hold Hmem) as [entry Hentry].
+    exists entry. rewrite stream_data_lookup_ne; assumption. }
+  exists ys. split; [exact Hys|]. split; [exact Hkeys|]. split.
+  { intros l v Hl. unfold h1 in Hl.
+    apply lookup_insert_Some in Hl as [[He Hv]|[_ Hold]];
+      [subst l v; exact I|exact (Ha' l v Hold)]. }
+  split; [exact Hdis'|]. split; [exact Hr'|].
+  destruct (M.E.invoke_prefix _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall) as (born & Hp).
+  destruct (M.E.prefix_preserve _ _ _ _ _ _ _ _ _ _ _ Hp Hr) as [_ Hpers].
+  destruct Hp as (_ & p & info & final & Hxs & _ & _ & _ & Hready' & Hframe & _).
+  injection Hxs as <-.
+  destruct (T.EL.S.fclose_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as [(born0 & p & info0 & final0 & n & Hxs & _ & Hsettle & Hstate & _ & Hclosed & _)
+      |(why & Hbad & _)]; [|discriminate Hbad].
+  injection Hxs as <-.
+  change (libc_stream_at w' (token_handle d) = None) in Hclosed.
+  assert (Hfifo : outstanding (libc_stream_state w' (token_handle d)) = []).
+  { change (libc_stream_state w' (token_handle d) = final0) in Hstate.
+    rewrite Hstate. eapply stream_settlement_complete; exact Hsettle. }
+  assert (Hdistinct : ptr_addr (libc_stdout w) <> ptr_addr (libc_stderr w)).
+  { destruct (proj1 Hselected) as (_ & _ & _ & _ & _ & _ & _ & _ & Hdistinct & _).
+    exact Hdistinct. }
+  assert (Hchoice : forall q, q = out \/ q = err -> q = d \/ q <> d).
+  { intros q Hq. destruct Hd as [-> | ->]; destruct Hq as [-> | ->];
+      try (left; reflexivity); right; intros Heq; apply Hbase; congruence. }
+  assert (Hother : forall q, (q = out \/ q = err) -> q <> d ->
+      libc_file_at w' (token_handle q) = libc_file_at w (token_handle q) /\
+      libc_stream_at w' (token_handle q) = libc_stream_at w (token_handle q) /\
+      libc_stream_state w' (token_handle q) = libc_stream_state w (token_handle q)).
+  { intros q Hq Hne. apply stream_other_frame with (p := token_handle d); [|exact Hdistinct|exact Hframe].
+    destruct Hd as [-> | ->]; destruct Hq as [-> | ->]; try contradiction;
+      [left|right]; split; congruence. }
+  assert (Hcurrent : forall q, q = out \/ q = err -> stream_current q w' h1).
+  { intros q Hq. destruct (Hchoice q Hq) as [->|Hne].
+    - unfold stream_current, h1. rewrite lookup_insert_eq.
+      exact (conj eq_refl (conj Hclosed Hfifo)).
+    - assert (Hkeyne : token_key d <> token_key q).
+      { destruct Hd as [-> | ->]; destruct Hq as [-> | ->]; congruence. }
+      assert (Hc : stream_current q w h) by (destruct Hq as [-> | ->]; assumption).
+      destruct (Hother q Hq Hne) as (_ & Hlookup & Hprotocol).
+      unfold stream_current in *. unfold h1. rewrite lookup_insert_ne; [|congruence].
+      unfold h0. rewrite overwrite_out.
+      + destruct (h !! PName (token_key q)) as [v|]; [|exact I].
+        destruct v; try contradiction. destruct Hc as [-> Hobs]. split; [reflexivity|].
+        unfold stream_observation in *. destruct pending as [[physical fifo]|];
+          rewrite Hlookup; [exact Hobs|rewrite Hprotocol; exact Hobs].
+      + rewrite byte_ps_keys. intros Hin. apply list_elem_of_fmap in Hin as (i & E & _).
+        discriminate E. }
+  split; [exact Houtwf|]. split; [exact Herrwf|]. split; [exact Hbase|]. split; [exact Hkey|].
+  split; [rewrite (proj1 Hframe); exact Hout|].
+  split; [rewrite (proj1 (proj2 Hframe)); exact Herr|].
+  split; [apply Hcurrent; left; reflexivity|]. split; [apply Hcurrent; right; reflexivity|].
+  intros q Hq. destruct (Hchoice q Hq) as [->|Hne].
+  - split; [eapply errno_wi_heap; [exact Hselected'|exact Hdata1]|].
+    unfold libc_stream_at in Hclosed. unfold libc_stream_releases.
+    destruct (libc_file_at w' (token_handle d)); [discriminate Hclosed|].
+    intros base l v Hin. contradiction.
+  - destruct (Hother q Hq Hne) as [Hfile _].
+    destruct (Hprivate q Hq) as [Hwi Hrel].
+    assert (Hroots : libc_stream_aux_roots w' (token_handle q) = libc_stream_aux_roots w (token_handle q))
+      by (unfold libc_stream_aux_roots; rewrite Hfile; reflexivity).
+    assert (Hrels : libc_stream_releases w' (token_handle q) = libc_stream_releases w (token_handle q))
+      by (unfold libc_stream_releases; rewrite Hfile; reflexivity).
+    split.
+    + eapply errno_wi_heap; [|exact Hdata0].
+      eapply errno_wi_fixed; [exact Hwi| |exact Hpers|exact Hready'| |exact Hroots|exact Hrels].
+      * apply stream_data_agrees. exact Ha.
+      * exact (proj1 (proj2 (proj2 (proj2 Hframe)))).
+    + rewrite Hrels. intros base l v Hin Hl Hmem.
+      destruct (Hkeys1 l v Hl Hmem) as [old Hold].
+      destruct (Hkeys0 l old Hold Hmem) as [entry Hentry].
+      exact (Hrel base l entry Hin Hentry Hmem).
+Qed.
+
 (** Token ownership plus the current world interpretation admits the
     concrete libc call; openness is not another consumer assumption. *)
 Theorem open_admitted : forall rep requests wide out err b o d pending fifo m w h,
@@ -468,6 +594,151 @@ Proof.
     (or_introl eq_refl) (or_introl eq_refl) Hcall open_heap_agrees
     HelloErrnoChecks.disjoint HelloErrnoChecks.ready full_wi) as (_ & _ & _ & Hw).
   exact Hw.
+Qed.
+
+(** An actual authorized scalar write changes every errno byte, including
+    the last one. It changes neither FILE storage nor locale strings. *)
+Definition changed_errno : mem := store_bytes conversion_mem 5120 4 16909060.
+
+Lemma changed_files_ready :
+  libc_file_ready changed_errno (mkPtr 5120 (Obj 5120)) F.out_file /\
+  libc_file_ready changed_errno (mkPtr 5120 (Obj 5120)) F.err_file.
+Proof.
+  destruct F.files_ready as [Hout Herr]. split; [clear Herr|clear Hout].
+  all: (destruct Hout as (Hnon & (Hn & Hreg & Haccess & Hbytes) & Hrest)
+    || destruct Herr as (Hnon & (Hn & Hreg & Haccess & Hbytes) & Hrest)).
+  all: split; [exact Hnon|].
+  all: split; [|destruct Hrest as (Hp & _ & _ & _ & Ha);
+    split; [exact Hp|]; split; [constructor|]; split; [constructor|];
+    split; [constructor|exact Ha]].
+  all: split; [exact Hn|].
+  all: split; [exact Hreg|].
+  all: split; [exact Haccess|].
+  all: intros i Hi; assert (i = 0) as -> by lia; vm_compute; split; congruence.
+Qed.
+
+Lemma changed_ready : forall opened,
+  libc_stream_ready (fun _ _ => True) changed_errno (F.world opened).
+Proof.
+  intros opened. destruct (F.ready opened)
+    as (Hrep & Hlocale & He & Hout & Herr & Hu & Hstatus & Hphase & Hdistinct & Hroots & _).
+  split; [exact Hrep|]. split.
+  - destruct Hlocale as (_ & _ & _ & _ & _ & Haligned).
+    split; [exact I|]. split; [constructor|]. split.
+    + intros category _. vm_compute. repeat split; congruence.
+    + split; [constructor|]. split; [constructor|exact Haligned].
+  - split; [exact He|]. split; [exact Hout|]. split; [exact Herr|].
+    split; [exact Hu|]. split; [exact Hstatus|]. split; [exact Hphase|].
+    split; [exact Hdistinct|]. split; [exact Hroots|].
+    split; [intros _; exact (proj1 changed_files_ready)|].
+    split; [intros _; exact (proj2 changed_files_ready)|].
+    intros p file Hfile base Hin. unfold libc_file_at in Hfile.
+    destruct (same_file p (libc_stdout (F.world opened)));
+      [destruct opened|destruct (same_file p (libc_stderr (F.world opened)))];
+      try discriminate; injection Hfile as <-; contradiction.
+Qed.
+
+(** The contract allows success or EOF after settling the old FIFO.
+    Both controls use the supplied HelloClose machine, not F.M. *)
+Lemma changed_close : forall n, n = 0 \/ n = stream_eof ->
+  A.M.E.invoke (fclose_contract F.model) CVoid [Arg P (Const 0)]
+    [WPtr (token_handle out)] InterpRuntime.start conversion_mem (F.world true) []
+    (CallReturn [WInt n]) InterpRuntime.start changed_errno (F.world false).
+Proof.
+  intros n Hn. eapply A.M.E.invoke_normal with (born := []).
+  - split; [left; reflexivity|]. exists (Const 0). reflexivity.
+  - apply full_open_admitted.
+  - split.
+    + eapply A.M.E.effects_local; [apply local_store_bytes|constructor].
+      intros a Ha. left. exists (errno_span 5120 0).
+      split; [left; reflexivity|]. split.
+      * exact (proj1 (proj2 (proj1 (proj2 (proj2 (F.ready true)))))).
+      * unfold span_contains, errno_span. simpl. lia.
+    + exists (token_handle out),
+        (mkStreamInfo 1 (mkStream ByteOriented [65; 66] true) 7), (mkStream ByteOriented [] true).
+      split; [reflexivity|]. split; [reflexivity|]. split; [apply F.close_settles|].
+      split; [reflexivity|]. split; [apply changed_ready|]. split; [apply F.close_frame|].
+      split; [split; [intros root []|split; intros x []; contradiction]|].
+      split; [reflexivity|]. split; [left; reflexivity|]. intros a Hin Houtside. reflexivity.
+  - exists (token_handle out), (mkStreamInfo 1 (mkStream ByteOriented [65; 66] true) 7),
+      (mkStream ByteOriented [] true), n.
+    split; [reflexivity|]. split; [reflexivity|]. split; [apply F.close_settles|].
+    split; [reflexivity|]. split; [exact Hn|]. split; [reflexivity|].
+    split; [intros base []|]. split; [apply changed_ready|]. split; [apply F.close_frame|]. auto.
+  - intros why Hbad. discriminate.
+  - intros values Hvalues. injection Hvalues as <-. split.
+    + exists (WInt n). split; [reflexivity|]. destruct Hn as [-> | ->]; reflexivity.
+    + repeat constructor.
+  - intros status Hbad. discriminate.
+Qed.
+
+Example completed_close_preserves_pair : forall n, n = 0 \/ n = stream_eof ->
+  exists ys, ys = [4; 3; 2; 1] /\
+    stream_tokens_wi (fun _ _ => True) out err 5120 0 changed_errno (F.world false)
+      (<[PName (-2) := VStream (token_handle out) None]>
+        (overwrite (byte_ps 5120 0 ys) open_heap)).
+Proof.
+  intros n Hn.
+  destruct (A.close_frame (fun _ _ => True) (fun _ _ _ _ => False)
+    (fun _ _ _ _ _ => False) out err 5120 0 out _ _ _ _ _ _ _ _ _ _ open_heap [0; 0; 0; 0]
+    (or_introl eq_refl) (changed_close n Hn) open_heap_agrees
+    HelloErrnoChecks.disjoint HelloErrnoChecks.ready full_wi eq_refl)
+    as (ys & Hlen & Hkeys & Hagree & _ & _ & Hwi).
+  - intros l v Hin. unfold open_heap, StreamHandleChecks.heap.
+    pose proof (MemLogic.byte_ps_elem _ _ _ _ _ Hin) as (i & x & Hi & El & Ev).
+    subst l v.
+    rewrite lookup_insert_ne; [|discriminate]. rewrite lookup_insert_ne; [|discriminate].
+    rewrite lookup_insert_ne; [|discriminate]. rewrite lookup_insert_ne; [|discriminate].
+    unfold HelloErrnoChecks.heap. apply elem_of_list_to_map_1; [|exact Hin].
+    change (base.NoDup [PByte 5120 0; PByte 5120 1; PByte 5120 2; PByte 5120 3]).
+    repeat (apply base.NoDup_cons_2; [set_solver|]). apply base.NoDup_nil_2.
+  - exists ys. split; [|exact Hwi].
+    destruct ys as [|a [|b [|c [|d rest]]]]; try discriminate Hlen.
+    assert (rest = []) as -> by (destruct rest; [reflexivity|discriminate Hlen]).
+    assert (Hbyte : forall i x, (PByte 5120 i, VByte x) ∈ byte_ps 5120 0 [a; b; c; d] ->
+        x = m_bytes changed_errno (5120 + i)).
+    { intros i x Hin. assert (Hl :
+        (<[PName (-2) := VStream (token_handle out) None]>
+          (overwrite (byte_ps 5120 0 [a; b; c; d]) open_heap)) !! PByte 5120 i = Some (VByte x)).
+      { rewrite lookup_insert_ne; [|discriminate].
+        change ((PByte 5120 i, VByte x) ∈
+          [(PByte 5120 0, VByte a); (PByte 5120 1, VByte b);
+           (PByte 5120 2, VByte c); (PByte 5120 3, VByte d)]) in Hin.
+        repeat (apply elem_of_cons in Hin as [E|Hin];
+          [injection E as Ei Ex; subst i x; cbn [byte_ps overwrite fst snd];
+           repeat (rewrite lookup_insert_ne; [|discriminate]); apply lookup_insert_eq|]).
+        apply not_elem_of_nil in Hin. contradiction. }
+      destruct (Hagree _ _ Hl) as [_ Hvalue].
+      destruct (Hvalue (mkRegion 5120 5128 Heap Live) eq_refl eq_refl) as (_ & _ & Hv).
+      symmetry. exact Hv. }
+    assert (Ha : a = 4) by (apply (Hbyte 0 a); change ((PByte 5120 0, VByte a) ∈
+      [(PByte 5120 0, VByte a); (PByte 5120 1, VByte b); (PByte 5120 2, VByte c); (PByte 5120 3, VByte d)]);
+      apply list_elem_of_In; simpl; auto 10).
+    assert (Hb : b = 3) by (apply (Hbyte 1 b); change ((PByte 5120 1, VByte b) ∈
+      [(PByte 5120 0, VByte a); (PByte 5120 1, VByte b); (PByte 5120 2, VByte c); (PByte 5120 3, VByte d)]);
+      apply list_elem_of_In; simpl; auto 10).
+    assert (Hc : c = 2) by (apply (Hbyte 2 c); change ((PByte 5120 2, VByte c) ∈
+      [(PByte 5120 0, VByte a); (PByte 5120 1, VByte b); (PByte 5120 2, VByte c); (PByte 5120 3, VByte d)]);
+      apply list_elem_of_In; simpl; auto 10).
+    assert (Hd : d = 1) by (apply (Hbyte 3 d); change ((PByte 5120 3, VByte d) ∈
+      [(PByte 5120 0, VByte a); (PByte 5120 1, VByte b); (PByte 5120 2, VByte c); (PByte 5120 3, VByte d)]);
+      apply list_elem_of_In; simpl; auto 10).
+    subst. reflexivity.
+Qed.
+
+(** Updating only the stream name would leave stale owned errno. The
+    last byte alone distinguishes that incorrect replacement. *)
+Example stale_errno_close_heap_rejected :
+  ~ agrees changed_errno (<[PName (-2) := VStream (token_handle out) None]> open_heap).
+Proof.
+  intros Ha.
+  assert (Hl : (<[PName (-2) := VStream (token_handle out) None]> open_heap) !!
+    PByte 5120 3 = Some (VByte 0)).
+  { unfold open_heap, StreamHandleChecks.heap, HelloErrnoChecks.heap.
+    repeat (rewrite lookup_insert_ne; [|discriminate]). apply lookup_insert_eq. }
+  destruct (Ha _ _ Hl) as [_ Hbyte].
+  destruct (Hbyte (mkRegion 5120 5128 Heap Live) eq_refl eq_refl) as (_ & _ & Hvalue).
+  discriminate Hvalue.
 Qed.
 
 End StreamTokenChecks.

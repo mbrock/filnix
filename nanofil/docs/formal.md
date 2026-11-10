@@ -2383,6 +2383,43 @@ locking or realize the representation. Paired fclose preservation,
 callback-entry resource transfer and returning-diagnostic binding remain
 outstanding, as do changed-errno/resource close executions.
 
+### Campaign 4 milestone 6m: paired completed-close preservation
+
+LibcStreamAdapterOn.close_frame preserves the complete paired
+stream_tokens_wi after an ordinary fclose return, whether its result is
+zero or EOF. It samples the actual four endpoint errno bytes, retains
+both original native handle regions, and replaces only the selected
+VStream snapshot with None. Completed settlement proves that the closed
+stream has no outstanding FIFO; no final orientation, sticky error or
+retired physical pending count is frozen by that snapshot.
+
+The opposite FILE's lookup, protocol and private inventory follow from
+the composite world frame. Its separation transports through object
+persistence and existing memory keys, even when bytes change. Its full
+release separation remains against the full endpoint heap, not merely
+the life-projected data heap. The selected closed FILE has no active
+release inventory. No unchanged-memory premise, runtime law or trusted
+contract change is introduced.
+
+This is a pure heap-replacement theorem, not an Iris update permission.
+An Iris consumer must still own the selected name and errno points-to
+resources, or establish freshness before allocating an absent name. A
+resource-ending prefix does not supply the ordinary postcondition and
+does not justify a closed snapshot, even if its lookup is inactive.
+The earlier prefix frame still retains native lives and samples errno
+without claiming completed closure.
+
+Actual HelloClose-machine controls close stdout with either return code
+after an authorized write changes errno from four zeros to [4; 3; 2; 1].
+They apply the paired theorem and independently recover all four bytes
+from its memory-agreement conclusion. Stderr's count three and empty FIFO
+remain current alongside the closed stdout snapshot. A negative control
+rejects retaining the old errno heap, using the changed last byte. These logical
+fixtures have empty private FILE roots and release pools: they are not
+native realization, private-lock writes, resource executions or release
+executions. Callback-entry transfer, the Iris close rule and the
+returning-diagnostic binding remain integration work.
+
 ### Reached-call contract packages and remaining integration
 
 [Getopt.v](../rocq/theories/Getopt.v) supplies independently admitted

@@ -73,6 +73,23 @@ Qed.
 Definition memory_keys_from (h' h : gmap piece pval) : Prop :=
   forall l v, h' !! l = Some v -> mem_piece l -> exists old, h !! l = Some old.
 
+(** Separation depends on memory keys, not their stored ghost values.
+    This transports it across sampled errno and stream-name updates. *)
+Lemma errno_wi_heap : forall rep p b o m w h h',
+  libc_errno_wi rep p b o m w h -> memory_keys_from h' h ->
+  libc_errno_wi rep p b o m w h'.
+Proof.
+  intros rep p b o m w h h' (Hr & He & Hroots & Hrelease & Hoff) Hkeys.
+  split; [exact Hr|]. split; [exact He|]. split; [|split].
+  - intros root a Hin Hspan (l & v & reg & Hl & Hmem & Hlive & Hrange).
+    destruct (Hkeys l v Hl Hmem) as [old Hold]. apply (Hroots root a Hin Hspan).
+    exists l, old, reg. exact (conj Hold (conj Hmem (conj Hlive Hrange))).
+  - intros base l v Hin Hl Hmem. destruct (Hkeys l v Hl Hmem) as [old Hold].
+    exact (Hrelease base l old Hin Hold Hmem).
+  - intros l v Hl Hnot. destruct l as [base|base off|base off|key]; try exact I.
+    all: destruct (Hkeys _ _ Hl I) as [old Hold]; exact (Hoff _ old Hold Hnot).
+Qed.
+
 Lemma errno_wi_endpoint : forall rep requests wide p b o m w born m' w' h h',
   libc_errno_wi rep p b o m w h -> agrees m h -> persists m m' -> live_disjoint m' ->
   libc_stream_ready rep m' w' -> libc_stream_frame p w w' ->
