@@ -1,0 +1,11 @@
+% A module in filc mode only because it calls a function it does not define (docs/gallina-backend.md,
+% M4), for rocq/backend/tests/pizlonate.sh: it has no pointer class,
+% and the load from a constant address still gets its check.
+% The `loc` marker is dropped, as from every unchecked module.
+func(f, export, w, [], [
+    block(start, [], [
+        call(none, global(g), []),
+        loc(f, 3),
+        let(tmp(v), w, load(sw), [const(16)])
+    ], ret(tmp(v)))
+]).

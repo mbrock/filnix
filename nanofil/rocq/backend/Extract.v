@@ -18,7 +18,10 @@
     - the NFB writer and reader of a module (Nfb.v's [encode] and
       [decode]), held to the words `nanofil nfb-terms` writes, and
       [enc_module] to compare what the reader gives with the
-      module that command prints.
+      module that command prints;
+    - pizlonation ([pizlonate_module]), on the module term that
+      `nanofil pizlonate-terms` prints first, compared with the
+      term it prints second.
 
     Integers become zarith's, strings OCaml's and [nat] OCaml's
     `int`, as in the model's extraction. The order of two atoms'
@@ -30,7 +33,7 @@ From Stdlib Require Extraction ExtrOcamlBasic ExtrOcamlNativeString
 From Stdlib Require Import ZArith.
 From Nanofil Require Import Term Maps Transport.
 From Backend Require Import Text Asm AsmTerm Order Abi PlanTerm Layout Emit EmitData EmitThunk
-  EmitModule Nfb.
+  EmitModule Nfb Pizlonate.
 
 (** The hash that picks a name's bucket becomes OCaml's string hash,
     as in the model's extraction (theories/Extract.v): a lookup
@@ -57,5 +60,5 @@ Extract Inlined Constant length => "List.length".
 Set Extraction Output Directory "extraction".
 Extraction "nanofil_backend.ml" dline rev_lines_parts
   decode_module module_symbols lower_function lower_thunks plan_term thunks_term term_eqb
-  Nfb.encode Nfb.decode Nfb.decode_input enc_module
+  Nfb.encode Nfb.decode Nfb.decode_input enc_module pizlonate_module
   function_lines data_lines alias_lines thunk_lines end_lines module_pieces module_lines is_todo first_todo.

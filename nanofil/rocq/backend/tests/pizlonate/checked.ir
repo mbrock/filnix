@@ -1,0 +1,15 @@
+% A module that is already checked (docs/gallina-backend.md, M4), for
+% rocq/backend/tests/pizlonate.sh: pizlonation leaves its instructions
+% as they are, keeps its `loc` marker, which it drops only from an
+% unchecked module, and does not poll again an edge that polls.
+func(get, export, w, [param(p, tmp(a)), param(w, tmp(n))], [
+    block(start, [], [], goto(loop)),
+    block(loop, [phi(tmp(i), w, [start-const(0), loop-tmp(i1)])], [
+        loc(f, 3),
+        let(tmp(chk0), a, check(0, 4, read, 1), [tmp(a)]),
+        let(tmp(v), w, raw_load(sw, 0), [tmp(chk0)]),
+        let(tmp(i1), w, add, [tmp(i), tmp(v)]),
+        let(tmp(c), w, cmp(slt, w), [tmp(i1), tmp(n)])
+    ], branch(tmp(c), poll(loop), done)),
+    block(done, [], [], ret(tmp(i1)))
+]).

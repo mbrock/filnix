@@ -548,6 +548,42 @@ let nfb_read files =
       | None -> Printf.printf "%s: refused\n" f; exit 1) files;
   if report then Printf.eprintf "nanofil-backend: load %.3fs decode_input %.3fs\n" !load_s !input_s
 
+(* The gate of pizlonation (tests/pizlonate.sh). Stdin is what
+   `nanofil pizlonate-terms FILE` prints: the module, then what
+   pizlonate.pl makes of it. Pizlonate.v must make the same term of
+   the first. Prints how many items are the same and, for each that
+   is not, where it first differs. Exits 1 on any difference. *)
+let pizlonate () =
+  let next = reader (In_channel.input_all stdin) in
+  let fail fmt = Printf.ksprintf (fun m -> prerr_endline ("nanofil-backend: " ^ m); exit 1) fmt in
+  let pass_s = ref 0.0 in
+  let before = match timed parse_s next with Some t -> t | None -> fail "no module" in
+  let theirs = match timed parse_s next with Some t -> t | None -> fail "no pizlonated module" in
+  let ours = match timed pass_s (fun () -> pizlonate_module before) with
+    | Some t -> t
+    | None -> fail "pizlonation refuses the module" in
+  let name = function TApp (_, n :: _) -> shown n | t -> shown t in
+  (match ours, theirs with
+   | TApp ("module", [TList xs]), TApp ("module", [TList ys])
+     when List.length xs = List.length ys ->
+       let same = ref 0 and differ = ref 0 in
+       List.iter2 (fun x y ->
+           if term_eqb x y then incr same
+           else begin
+             incr differ;
+             let path, a, b = first_difference [] x y in
+             Printf.eprintf "%s differs at %s\n  rocq:   %s\n  prolog: %s\n" (name x)
+               (String.concat "." path) (shown a) (shown b)
+           end) xs ys;
+       Printf.printf "items same %d differ %d\n" !same !differ;
+       if report then
+         Printf.eprintf "nanofil-backend: parse %.3fs pizlonate %.3fs\n" !parse_s !pass_s;
+       if !differ > 0 then exit 1
+   | _ ->
+       let path, a, b = first_difference [] ours theirs in
+       fail "modules differ at %s\n  rocq:   %s\n  prolog: %s" (String.concat "." path)
+         (shown a) (shown b))
+
 (* A minor heap of 32 MB: with OCaml's 2 MB, the plans of a large
    function were promoted while they were built, which cost a
    quarter of the time of SQLite's. *)
@@ -560,6 +596,10 @@ let () =
   | [| _; "emit" |] -> big_minor_heap (); emit ()
   | [| _; "module" |] -> big_minor_heap (); whole ()
   | [| _; "nfb"; prefix |] -> big_minor_heap (); nfb prefix
+  | [| _; "pizlonate" |] -> big_minor_heap (); pizlonate ()
   | _ when Array.length Sys.argv >= 3 && Sys.argv.(1) = "nfb-read" ->
       big_minor_heap (); nfb_read (List.tl (List.tl (Array.to_list Sys.argv)))
-  | _ -> prerr_endline "usage: nanofil-backend [abi | emit | module | nfb PREFIX] <TERMS, or nfb-read FILE.nfb..."; exit 2
+  | _ ->
+      prerr_endline
+        "usage: nanofil-backend [abi | emit | module | nfb PREFIX | pizlonate] <TERMS, or nfb-read FILE.nfb...";
+      exit 2

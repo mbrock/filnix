@@ -21,6 +21,8 @@
     | `nfb-terms FILE PREFIX` | write the module, and a Fil-C module's checked module, as NFB with NAMES to `PREFIX.unchecked.nfb` and `PREFIX.checked.nfb`, and print each as `nfb_module(Stage, Module)` without its context items (rocq/backend) |
     | `nfb-check FILE` | write the module, and a Fil-C module's checked module, as NFB and read each back: the same term with NAMES, the same words without it (tests/nfb.sh) |
     | `emit-terms FILE` | print the checked module of a Fil-C file, then the reference emission's asm.pl lines, a list for each item, for each weak thunk and for the end of the file, as terms; a `.i` file is a Fil-C module whatever it uses, as for `cc` (rocq/backend) |
+    | `pizlonate-terms FILE` | print the module of a file and then its pizlonation, each without its context items, as terms: the result of pizlonate.pl alone, neither validated nor passed to the check passes (rocq/backend) |
+    | `read-terms FILE` | print the module of an IR text file as a term, as read: every item, the context items included, and not validated (rocq/backend) |
 
     A FILE ending in `.c` or `.i` goes through the C frontend, one ending
     in `.nfb` is NFB, and any other FILE is IR text. A `.c` file is preprocessed with the predefined
@@ -586,6 +588,15 @@ command(Opt, _, Checks, ['abi-terms', File]) :- !,
     checked_module(Checks, Module, Checked),
     format("~k.~n", [Checked]),
     filc_module_plans(Checked, print_term_line).
+command(Opt, _, _, ['pizlonate-terms', File]) :- !,
+    file_module(File, Module0),
+    optimize(Opt, Module0, Module),
+    once(pizlonate_module(Module, Checked)),
+    code_module_term(Module, Before), format("~k.~n", [Before]),
+    code_module_term(Checked, After), format("~k.~n", [After]).
+command(_, _, _, ['read-terms', File]) :- !,
+    read_ir_file(File, Module, _),
+    format("~k.~n", [Module]).
 command(Opt, _, Checks, ['nfb-check', File]) :- !,
     file_module(File, Module0),
     optimize(Opt, Module0, Module),
@@ -719,6 +730,11 @@ nfb_round_trip(File, Stage, Module) :-
     ;   format(atom(Msg), '~w: the ~w module does not read back from NFB', [File, Stage]),
         throw(nanofil_error(Msg))
     ).
+
+% code_module_term(+Module, -Code): Code is Module without its context
+% items.
+code_module_term(module(All), module(Items)) :-
+    findall(I, ( member(I, All), I \= context(_, _) ), Items).
 
 % nfb_terms(+Prefix, +Stage, +Module): write Module, its context items
 % dropped, as NFB with NAMES to Prefix.Stage.nfb, and print it as

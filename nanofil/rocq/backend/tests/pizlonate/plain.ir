@@ -1,0 +1,17 @@
+% A plain module (docs/gallina-backend.md, M4), for
+% rocq/backend/tests/pizlonate.sh: no pointer class and no external
+% call, so its addresses are not Fil-C pointers. Pizlonation adds the
+% polls of its backward edges and no check. A name that begins chk is
+% only a name here.
+func(sum, export, w, [param(l, tmp(a)), param(w, tmp(n))], [
+    block(start, [], [], goto(loop)),
+    block(loop, [phi(tmp(i), w, [start-const(0), loop-tmp(i1)]),
+                 phi(tmp(chk0), w, [start-const(0), loop-tmp(s1)])], [
+        let(tmp(v), w, load(ub), [tmp(a)]),
+        let(tmp(s1), w, add, [tmp(chk0), tmp(v)]),
+        let(tmp(i1), w, add, [tmp(i), const(1)]),
+        store(b, tmp(s1), tmp(a)),
+        let(tmp(c), w, cmp(slt, w), [tmp(i1), tmp(n)])
+    ], branch(tmp(c), loop, done)),
+    block(done, [], [], ret(tmp(chk0)))
+]).

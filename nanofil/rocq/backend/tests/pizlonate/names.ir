@@ -1,0 +1,50 @@
+% Pizlonation that the corpus lacks (docs/gallina-backend.md, M4), for
+% rocq/backend/tests/pizlonate.sh.
+
+% A fresh proof name passes over the names the function defines: chk0
+% is a parameter, chk1 a phi, chk2 a call's result, chk3 and chk5 a
+% tuple call's results and chk7 a load's result, so the checks take
+% chk4, chk6 and chk8. The count runs on across the blocks.
+func(taken, export, l, [param(p, tmp(chk0))], [
+    block(start, [], [
+        call(result(tmp(chk2), l), global(ext), []),
+        call(tuple([result(tmp(chk3), l), result(tmp(chk5), p)]), global(pair), [])
+    ], goto(loop)),
+    block(loop, [phi(tmp(chk1), l, [start-const(0), loop-tmp(chk7)])], [
+        let(tmp(chk7), l, load(l), [tmp(chk0)]),
+        store(l, tmp(chk2), tmp(chk5)),
+        let(tmp(c), w, cmp(slt, l), [tmp(chk7), const(9)])
+    ], branch(tmp(c), loop, done)),
+    block(done, [], [store(l, tmp(chk3), tmp(chk0))], ret(tmp(chk1)))
+]).
+
+% Each pure pointer operation: an offset added and subtracted, a copy
+% of a temporary and of a constant, and an integer made a pointer are
+% flights. A copy of a symbol calls its getter and stays.
+func(flights, export, p, [param(p, tmp(a)), param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(b), p, add, [tmp(a), tmp(n)]),
+        let(tmp(c), p, sub, [tmp(b), const(8)]),
+        let(tmp(d), p, copy, [tmp(c)]),
+        let(tmp(e), p, copy, [const(0)]),
+        let(tmp(f), p, itop, [tmp(n)]),
+        let(tmp(g), p, copy, [global(cell)]),
+        store(p, tmp(d), tmp(g)), store(p, tmp(e), tmp(g)), store(p, tmp(f), tmp(g))
+    ], ret(tmp(b)))
+]).
+
+% Each access through a named local, an indirect call, and edges back:
+% a block's edge to itself and a branch both of whose targets are at
+% or before it.
+func(edges, export, w, [param(p, tmp(fn)), param(w, tmp(k))], [
+    block(start, [], [local_alloc(x, 24)], goto(first)),
+    block(first, [], [], goto(spin)),
+    block(spin, [], [
+        local_store(p, tmp(fn), x, 0), local_store(h, tmp(k), x, 8),
+        local_load(tmp(q), p, p, x, 0), local_load(tmp(v), w, sh, x, 8),
+        call(result(tmp(r), w), tmp(q), [arg(w, tmp(v))])
+    ], branch(tmp(r), spin, first)),
+    block(never, [], [], goto(never))
+]).
+
+data(cell, export, 8, [item(l, const(0))]).

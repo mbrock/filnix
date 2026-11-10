@@ -1,0 +1,9 @@
+% A module in filc mode only because it has an alias (docs/gallina-backend.md,
+% M4), for rocq/backend/tests/pizlonate.sh: it has no pointer class,
+% and the load from a constant address still gets its check.
+func(f, export, w, [], [
+    block(start, [], [
+        let(tmp(v), w, load(sw), [const(16)])
+    ], ret(tmp(v)))
+]).
+alias(h, export, f).

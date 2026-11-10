@@ -178,10 +178,11 @@ Two places need more than the model has, and both go to the model's
 owner as requests instead of being worked around:
 
 - **The unchecked stage.** Pizlonation's input has `load`, `store`
-  and unproven calls. Recommendation: a backend-owned `Unchecked.v`
-  that reuses `class`, `value`, `op` and `jump` and adds only the
-  unchecked instruction forms, so `Syntax.inst` and every proof by
-  cases over it are untouched.
+  and unproven calls, which `Syntax.inst` does not have. It gets no
+  types of its own: pizlonation rewrites the module's term, as
+  pizlonate.pl does, and the model's decoder reads the result. So
+  `Syntax.inst` and every proof by cases over it are untouched, and
+  nothing mirrors them. M4 says why.
 - **Constructs outside the subset.** Vectors, atomics, `setjmp` and
   fixed-register asm reach the backend only when `Syntax.v` and the
   semantics gain them. The backend never invents a private
@@ -654,12 +655,46 @@ What remains of M3:
   emission alone: it needs M5's numbered temporaries and M4's
   reader.
 
-**M4. Pizlonation and a standalone compiler.** `Unchecked.v`,
-`Pizlonate.v` and a Gallina reader for IR text. The pipeline is
-read, pizlonate, `valid`, lower, emit, print. Gate: the pizlonated
-module equals Prolog's as a term, and `nanofil-backend compile
-FILE.ir` equals `nanofil compile FILE.ir` with no Prolog in the
-pipeline.
+**M4. Pizlonation and a standalone compiler.** `Pizlonate.v` and a
+Gallina reader for IR text. The pipeline is read, pizlonate,
+`valid`, lower, emit, print. Gate: the pizlonated module equals
+Prolog's as a term, and `nanofil-backend compile FILE.ir` equals
+`nanofil compile FILE.ir` with no Prolog in the pipeline.
+
+*Pizlonation is done.* `Pizlonate.v`'s `pizlonate_module` takes a
+module's term and gives the term pizlonate.pl gives: every access
+with its check, the flight forms, a poll on each edge to a block at
+or before its source, the `loc` markers of an unchecked module
+dropped, and the context items dropped. It gives nothing where
+Prolog fails or throws.
+
+- **No `Unchecked.v`.** The plan was an inductive for the unchecked
+  instructions. Pizlonation does not need one: it looks at a few
+  instruction shapes and passes every other term through, so on
+  terms it is 700 lines, and `Transport.decode_module` then reads
+  its result into `Syntax.v`'s types, keeping a function outside the
+  subset as `IOutside`. An inductive would have been a second copy
+  of the instruction grammar, with a decoder and a printer to keep
+  in step.
+- **The gate** is `tests/pizlonate.sh`: `nanofil pizlonate-terms`
+  prints a module and then pizlonate.pl's result, and the backend
+  must make the second from the first. The corpus, with and without
+  `-O`, the package translation units and SQLite are 857 modules and
+  18,191 items, all the same. SQLite's 4,949 items take 0.9 s, after
+  1.7 s to read the term.
+- **Mutations.** 36 wrong ports were tried, and an `Example` or the
+  gate catches 35. Nine of those got past the corpus alone, and
+  each showed something the corpus does not have: a module that is
+  in filc mode for one reason only (an external call, a weak
+  function, read-only data, an alias, a local object), a checked
+  module with a `loc` marker, and a name `chk0` taken by a phi or a
+  parameter. Those are now the fixtures of `tests/pizlonate/`.
+  The one left, keeping the context items, cannot show in this
+  gate, which prints modules without them; the standalone
+  compiler's gate reads them.
+
+What remains of M4: the IR text reader, and `nanofil-backend
+compile`.
 
 **M5. Speed, and pcre2 through `rxc`.** Profile, fix data
 structures, record the numbers in perf.md's style. `rxc` gets a
@@ -740,7 +775,7 @@ otherwise.
    `amd64_regs.pl`.
 2. **Where the compiler starts.** Recommended: checked IR first (M1
    to M3), since that is what `Syntax.v` describes, then pizlonation
-   on a backend-owned `Unchecked.v` (M4).
+   (M4). It turned out to need no types of its own.
 3. **Byte identity as the standard**, until the Gallina backend is
    the reference. Recommended: yes; it is the cheapest strong test
    there is, and the snapshot gate already works this way.

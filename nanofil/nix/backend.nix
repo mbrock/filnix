@@ -28,8 +28,12 @@
 # does not; full=true takes the whole corpus, with and without -O,
 # and then every translation unit of zlib, GNU hello and Lua as
 # nanofil-cc preprocesses it (nanofil-cc.nix, hello.nix, lua.nix),
-# where the whole text must be `nanofil cc`'s. Then parse.sh reads
-# every backend sentence back (web/rocq).
+# where the whole text must be `nanofil cc`'s. M4: Pizlonate.v makes
+# of a module the term pizlonate.pl makes of it
+# (rocq/backend/tests/pizlonate.sh), on the same files and the
+# fixtures of rocq/backend/tests/pizlonate; full=true takes the whole
+# corpus, with and without -O, and the translation units. Then
+# parse.sh reads every backend sentence back (web/rocq).
 {
   pkgs,
   filcc,
@@ -55,6 +59,7 @@ let
   quickAbi = "${quick} tests/c/fstructs.c tests/c/variadic.c tests/c/prog/structs.c tests/c/prog/memcpy-small.c tests/c/prog/weak-symbols.c tests/c/prog/byval.c";
   corpus = "tests/filc/*.ir tests/c/*.c tests/c/prog/*.c";
   edge = "rocq/backend/tests/edge/*.ir";
+  pizlonate = "rocq/backend/tests/pizlonate/*.ir";
   # zlib, GNU hello and Lua, built through nanofil-cc as their own
   # checks build them, keeping each preprocessed translation unit.
   # None of their flags makes nanofil-cc set NANOFIL_STD or
@@ -78,6 +83,7 @@ let
     unset NANOFIL_KEEP_I
     echo "kept $(ls units | wc -l) translation units of zlib, hello and Lua"
     tests/par.sh rocq/backend/tests/emit.sh units/*.i | tee emit-packages.log
+    tests/par.sh rocq/backend/tests/pizlonate.sh units/*.i | tee pizlonate-packages.log
   '';
 in
 pkgs.runCommandCC (if full then "nanofil-backend-full" else "nanofil-backend")
@@ -114,6 +120,8 @@ pkgs.runCommandCC (if full then "nanofil-backend-full" else "nanofil-backend")
           NANOFIL_OPT=-O tests/par.sh rocq/backend/tests/nfb.sh ${corpus} rocq/backend/tests/nfb/*.ir | tee nfb-O.log
           tests/par.sh rocq/backend/tests/emit.sh ${corpus} ${edge} | tee emit.log
           NANOFIL_OPT=-O tests/par.sh rocq/backend/tests/emit.sh ${corpus} ${edge} | tee emit-O.log
+          tests/par.sh rocq/backend/tests/pizlonate.sh ${corpus} ${pizlonate} | tee pizlonate.log
+          NANOFIL_OPT=-O tests/par.sh rocq/backend/tests/pizlonate.sh ${corpus} ${pizlonate} | tee pizlonate-O.log
         ''
         + packages
       else
@@ -122,12 +130,13 @@ pkgs.runCommandCC (if full then "nanofil-backend-full" else "nanofil-backend")
           tests/par.sh rocq/backend/tests/abi.sh ${quickAbi} | tee abi.log
           tests/par.sh rocq/backend/tests/nfb.sh ${quickAbi} rocq/backend/tests/nfb/*.ir | tee nfb.log
           tests/par.sh rocq/backend/tests/emit.sh ${quickAbi} ${edge} | tee emit.log
+          tests/par.sh rocq/backend/tests/pizlonate.sh ${quickAbi} ${pizlonate} | tee pizlonate.log
         ''
     )
     + ''
       python3 tests/watch.py --label "backend parse/typecheck" -- bash web/rocq/tests/parse.sh rocq/backend/*.v
       mkdir -p $out/bin
       cp rocq/backend/nanofil-backend $out/bin/
-      cp timings.log asm*.log abi.log nfb*.log emit*.log $out/
+      cp timings.log asm*.log abi.log nfb*.log emit*.log pizlonate*.log $out/
     ''
   )
