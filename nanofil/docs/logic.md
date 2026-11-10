@@ -1175,13 +1175,44 @@ with pr.2 clear and optind at argc, and is left to one continuation.
 The version and help paths use up the literals and the program's
 name cells. The greeting needs neither.
 
-Next is the greeting at `iw_1.join`: strlen of the greeting, xmalloc,
-`rpl_mbsrtowcs_spec`, then wprintf, free and exit(0), or
-`error(1, errno, ...)` if the conversion fails. xmalloc's failure
-path is `xalloc_die`, which reaches `abort` only if `exit_failure` is
-0. Showing that abort is unreachable therefore needs the
-`exit_failure` cell, which holds 1 in Hello's data and which no code
-writes, and `error` with a nonzero status never returning.
+**The greeting.** [HelloJoin.v](../rocq/theories/HelloJoin.v) proves
+`iw_1.join` and composes it with the rest. It is a file of its own so
+that HelloMain does not wait for HelloConv: the two compile side by
+side, and HelloJoin after both. HelloMain takes only HelloConv's pure
+part, [HelloConvDefs.v](../rocq/theories/HelloConvDefs.v).
+- `xmalloc_spec`: malloc's contract has no null return, as running out
+  of memory is a resource ending. So xmalloc's call of `xalloc_die`,
+  and the `abort` behind it, is never reached, and `exit_failure` is
+  not needed.
+- `greeting_string`: b4's greeting is the default literal, the
+  traditional one or a suffix of an argument, a string main owns and
+  gets back.
+- `main_join`: strlen, xmalloc of 4 × (len + 1) bytes, and
+  HelloConv's `rpl_mbsrtowcs_spec`. That spec's postcondition now also
+  says the errno block keeps 4 bytes. If the result is -1, main loads
+  errno and calls `error(1, errno, ...)`. That is the same contract as
+  main's extra-operand diagnostic, since `error` is one function, and
+  with status 1 it never returns (`Herror_fatal`). Otherwise main calls
+  `wprintf` on the converted string (`Hwprintf_pre` asks for the wide
+  characters and their NUL), frees the buffer and calls `exit(0)`.
+- `main_full`: `main_to_join` composed with `main_join`, so main is
+  proved from its entry through every path. Every path ends in exit,
+  in a fatal `error`, or in the option loop running for good.
+- `hello_main_safe`: `heap_labelled_safe` from `main_full`. Given an
+  initial ghost heap that agrees with memory, satisfies wi and holds
+  main's pieces, no labelled run of main fails at any fuel: no panic,
+  no stuck step, no contract violation, and so no abort. The audited
+  codec premise `Haudit` stays explicit. `Print Assumptions` is
+  closed.
+
+HelloJoin's section takes HelloMain's premises and HelloConv's extra
+ones as one list. Where the two named the same thing, they are now one
+premise. libc's `rep` and `requests` are shared, and setlocale is
+`libc_setlocale_contract rep requests` for both files. The query
+premises `Hset_query_pre`/`Hset_query` (any lent category, a pointer
+with a null address) give HelloMain's LC_MESSAGES-only
+`Hquery_pre`/`Hquery`. The theorem is still conditional on the
+call-local wi premises; no concrete wi discharges them yet.
 
 ## Open questions for mbrock
 

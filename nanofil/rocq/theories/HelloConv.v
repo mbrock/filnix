@@ -884,7 +884,7 @@ Lemma mbs_loop p b reg bs bd rd sb sr so be re oe spb spr spo codec dq p0 t0 rc 
     bytes bd (Z.of_nat (4 * i)) wrest -∗ auxes bd (Z.of_nat (4 * i)) crest -∗
     pts (block_ps sb sr so ys cs) -∗ pts (block_ps be re oe xe ce) -∗ live spb spr -∗ pcell spb spo x -∗
     (∀ r ws cws ys' cs' xe' ce' x',
-       ⌜mbs_post (length bs) r ws xe' /\ length ws = (4 * (length bs + 1))%nat⌝ -∗
+       ⌜mbs_post (length bs) r ws xe' /\ length ws = (4 * (length bs + 1))%nat /\ length xe' = 4%nat⌝ -∗
        SL.string c_ptr 65824 rc c_bytes -∗ SL.string posix_ptr 65856 rp posix_bytes -∗
        pointsto (PName codec_key) dq (VCodec codec) -∗ SL.string p b reg bs -∗
        live bd rd -∗ bytes bd 0 ws -∗ auxes bd 0 cws -∗
@@ -977,7 +977,7 @@ Proof.
     iApply ("HΦ" $! _ (wpre ++ xo' ++ drop 4 wrest) (cpre ++ co' ++ drop 4 crest) ys' cs' (le_bytes 84 4) ce'
               with "[%] Hc Hposix Hcod Hs Hdl [Hdw Hw0 Hw1] [Hda Ha0 Ha1] HBs [Hel Hew Hea] Hspl Hsp").
     - split; [left; split; [reflexivity | apply le_value_byte; lia]|].
-      rewrite !length_app length_drop. lia.
+      split; [rewrite !length_app length_drop; lia | apply length_le_bytes].
     - rewrite bytes_app bytes_app Lwp Lxo' Z.add_0_l. iFrame.
     - rewrite auxes_app auxes_app Lcp Lco' Z.add_0_l. iFrame.
     - rewrite -dest_block. iFrame. }
@@ -1008,7 +1008,7 @@ Proof.
       + rewrite <- Lwp. rewrite take_app_length. exact Hwide.
       + rewrite <- Lwp. rewrite drop_app_length. rewrite take_app_le; [|lia]. rewrite take_ge; [|lia].
         exact (Hz eq_refl).
-      + rewrite !length_app length_drop. lia.
+      + split; [rewrite !length_app length_drop; lia | exact Lxe'].
     - rewrite bytes_app bytes_app Lwp Lxo' Z.add_0_l. iFrame.
     - rewrite auxes_app auxes_app Lcp Lco' Z.add_0_l. iFrame. }
   (* A character: both cursors move on, and the loop goes round. *)
@@ -1066,7 +1066,7 @@ Lemma rpl_mbsrtowcs_spec p b reg bs bd rd ws cws sb sr so ys cs be re oe xe ce s
   live bd rd -∗ bytes bd 0 ws -∗ auxes bd 0 cws -∗
   pts (block_ps sb sr so ys cs) -∗ pts (block_ps be re oe xe ce) -∗ live spb spr -∗ pcell spb spo p -∗
   (∀ r ws' cws' ys' cs' xe' ce' x',
-     ⌜mbs_post (length bs) r ws' xe' /\ length ws' = (4 * (length bs + 1))%nat⌝ -∗
+     ⌜mbs_post (length bs) r ws' xe' /\ length ws' = (4 * (length bs + 1))%nat /\ length xe' = 4%nat⌝ -∗
      SL.string c_ptr 65824 rc c_bytes -∗ SL.string posix_ptr 65856 rp posix_bytes -∗
      pointsto (PName codec_key) dq (VCodec codec) -∗ SL.string p b reg bs -∗
      live bd rd -∗ bytes bd 0 ws' -∗ auxes bd 0 cws' -∗

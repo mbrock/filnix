@@ -102,4 +102,5 @@ theories/HelloConvDefs.v
 theories/HelloConv.v
 theories/GetoptLogic.v
 theories/HelloMain.v
+theories/HelloJoin.v
 theories/Extract.v
