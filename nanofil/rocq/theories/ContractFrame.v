@@ -193,7 +193,7 @@ Proof.
     - exact (Hout (Hra s _ Hin Hsp Hown)).
     - exact (owned_not_authority [] born h m _ Hd (fun s a Hin => match Hin with end) Hb Hown
                (or_intror Hborn)). }
-  destruct l as [b|b o|b o|k], v as [reg|x|c| |q t]; cbn [agree_piece piece_id] in Hp, Hkeep, Hno |- *;
+  destruct l as [b|b o|b o|k], v as [reg|x|c| |q t|cd]; cbn [agree_piece piece_id] in Hp, Hkeep, Hno |- *;
     try contradiction; try exact I.
   - destruct Hp as [E L]. destruct (Hi b reg E) as [reg' E'].
     destruct (Hr b reg' E') as (reg0 & E0 & [-> | (Hin & _)]); rewrite E in E0; injection E0 as <-.

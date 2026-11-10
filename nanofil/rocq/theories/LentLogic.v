@@ -105,6 +105,26 @@ Proof.
   - rewrite lookup_insert_ne in Hl; [|congruence]. exact (IH l v Hl).
 Qed.
 
+(** Pieces that agree with every memory: ghost names and codecs. *)
+Definition ghost_ps (ps : list (piece * pval)) : Prop :=
+  Forall (fun lv => forall m, agree_piece m lv.1 lv.2) ps.
+
+(** A key that ps does not write keeps its piece. *)
+Lemma overwrite_out ps h l : l ∉ ps.*1 -> overwrite ps h !! l = h !! l.
+Proof.
+  induction ps as [|[l' v'] ps IH]; intros Hl; [reflexivity|]. cbn [overwrite fst snd].
+  apply not_elem_of_cons in Hl as [Hne Hl]. rewrite lookup_insert_ne; [exact (IH Hl)|].
+  intros E. apply Hne. symmetry. exact E.
+Qed.
+
+(** Overwriting with ghost pieces keeps a memory agreeing. *)
+Lemma ghost_agrees m h ps : agrees m h -> ghost_ps ps -> agrees m (overwrite ps h).
+Proof.
+  intros Ha Hg l v Hl. destruct (lookup_overwrite _ _ _ _ Hl) as [Hin | [_ Hh]]; [|exact (Ha l v Hh)].
+  unfold ghost_ps in Hg. rewrite List.Forall_forall in Hg.
+  exact (Hg (l, v) (proj1 (list_elem_of_In _ _) Hin) m).
+Qed.
+
 (** The aux slots of the n bytes from offset o of the object b in the
     memory m'. *)
 Definition slots_after (m' : mem) (b o : Z) (n : nat) : list cap :=
@@ -258,51 +278,60 @@ Qed.
 
 (** A setter's triple: a call of the external g, with contract spec,
     returning a pointer, that renames the keys ks. Owning their names
-    ([named]) and Q, from which spec admits the arguments xs in any
-    state, the call lends the new names for good. Every invocation
-    that returns, from an interpreted state with the ghost heap h,
-    returns some q with new names, related by Rq, and keeps h's
-    memory agreeing, the live objects apart and the runtime ready,
-    while wi holds of the renamed h ([rename]). d is bound to q.
-    setlocale(LC_ALL, "") is one, renaming every category. *)
-Lemma wp_lend f e ls lab d g args rest j spec xs ks old (Rq : ptr -> (Z -> ptr * list Z) -> Prop)
-    (Q : iProp Σ) Φ :
+    ([named]), the ghost pieces gs, whose keys are none of the names,
+    and Q, from which spec admits the arguments xs in any state, the
+    call lends the new names for good and gives the ghost pieces new
+    values gs'. Every invocation that returns, from an interpreted
+    state with the ghost heap h, returns some q with new names and
+    ghost pieces, related by Rq, and keeps h's memory agreeing, the
+    live objects apart and the runtime ready, while wi holds of the
+    renamed h with gs' written over it ([rename]). d is bound to q.
+    setlocale(LC_ALL, "") is one, renaming every category and giving
+    the codec piece the new codec. *)
+Lemma wp_lend f e ls lab d g args rest j spec xs ks old gs
+    (Rq : ptr -> (Z -> ptr * list Z) -> list (piece * pval) -> Prop) (Q : iProp Σ) Φ :
   registry g = Some spec -> contract_returns spec = RClass P ->
   find_fn ge g = None -> lookup g (ge_globals ge) = None -> name_eqb g free_name = false ->
   map_option (arg_x ge e) args = Some xs -> contract_abi spec (CResult d P) args ->
+  Forall (fun k => PName k ∉ gs.*1) ks ->
   (forall σ, heap_interp wi σ -∗ Q -∗ ⌜contract_pre spec xs (ls_mem σ) (ls_world σ)⌝) ->
   (forall s m w h trace values s' m' w', wi m w h -> agrees m h -> live_disjoint m -> R.ready s m ->
      M.E.invoke spec (CResult d P) args xs s m w trace (CallReturn values) s' m' w' ->
-     exists q new, values = [WPtr q] /\ Rq q new /\
-       agrees m' h /\ live_disjoint m' /\ R.ready s' m' /\ wi m' w' (rename h ks new)) ->
-  ([∗ list] k ∈ ks, named k (old k).1 (old k).2) -∗ Q -∗
-  ▷ (∀ q new, ⌜Rq q new⌝ -∗ Q -∗ ([∗ list] k ∈ ks, lent k (new k).1 (new k).2) -∗
+     exists q new gs', values = [WPtr q] /\ Rq q new gs' /\ gs'.*1 = gs.*1 /\ ghost_ps gs' /\
+       agrees m' h /\ live_disjoint m' /\ R.ready s' m' /\ wi m' w' (overwrite gs' (rename h ks new))) ->
+  ([∗ list] k ∈ ks, named k (old k).1 (old k).2) -∗ pts gs -∗ Q -∗
+  ▷ (∀ q new gs', ⌜Rq q new gs'⌝ -∗ Q -∗ pts gs' -∗ ([∗ list] k ∈ ks, lent k (new k).1 (new k).2) -∗
      WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec lab rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call (CResult d P) (Global g) args :: rest) j)) : lexpr)
     {{ Φ }}.
 Proof.
-  intros Hreg Hret Hfn Hdata Hfree Hx Habi Hpre Hpost. iIntros "Hks HQ HK".
+  intros Hreg Hret Hfn Hdata Hfree Hx Habi Hgs Hpre Hpost. iIntros "Hks Hgs HQ HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ spec xs
-            (Q ∗ [∗ list] k ∈ ks, named k (old k).1 (old k).2)%I with "[$HQ $Hks] [HK]");
+            (Q ∗ ([∗ list] k ∈ ks, named k (old k).1 (old k).2) ∗ pts gs)%I with "[$HQ $Hks $Hgs] [HK]");
     [done | done | done | done | done | done | |].
   - iIntros (σ) "Hσ [HQ _]". iApply (Hpre with "Hσ HQ").
-  - iNext. iIntros (σ trace values s' m' w' Hi) "(%h & Hh & %Hf) [HQ Hks]".
+  - iNext. iIntros (σ trace values s' m' w' Hi) "(%h & Hh & %Hf) (HQ & Hks & Hgs)".
     destruct Hf as (Ha & Hd & Hr & Hw).
-    destruct (Hpost _ _ _ _ _ _ _ _ _ Hw Ha Hd Hr Hi) as (q & new & -> & Hq & Ha' & Hd' & Hr' & Hw').
+    destruct (Hpost _ _ _ _ _ _ _ _ _ Hw Ha Hd Hr Hi)
+      as (q & new & gs' & -> & Hq & Hkeys & Hghost & Ha' & Hd' & Hr' & Hw').
     iMod (rename_update _ _ _ new with "Hh Hks") as "[Hh Hks]".
+    iMod (pts_update _ _ gs' Hkeys with "Hh Hgs") as "[Hh Hgs]".
     iAssert (|==> [∗ list] k ∈ ks, lent k (new k).1 (new k).2)%I with "[Hks]" as ">Hl".
     { iApply big_sepL_bupd. iApply (big_sepL_impl with "Hks"). iIntros "!>" (i k Hik) "Hk".
       iMod (pointsto_persist with "Hk") as "Hk". iModIntro. iFrame "Hk". iPureIntro.
       assert (Hin : In k ks) by (apply list_elem_of_In; exact (list_elem_of_lookup_2 _ _ _ Hik)).
-      destruct (wi_lent _ _ _ _ _ _ Hw' Hd' (R.address_space _ _ Hr') (R.freed_bounds _ _ Hr')
-        (rename_lookup h ks new k Hin)) as ([_ Hs] & H0 & Hlen & _).
+      assert (Hk : overwrite gs' (rename h ks new) !! PName k = Some (VName (new k).1 (new k).2)).
+      { rewrite overwrite_out; [exact (rename_lookup h ks new k Hin)|]. rewrite Hkeys.
+        rewrite List.Forall_forall in Hgs. exact (Hgs k Hin). }
+      destruct (wi_lent _ _ _ _ _ _ Hw' Hd' (R.address_space _ _ Hr') (R.freed_bounds _ _ Hr') Hk)
+        as ([_ Hs] & H0 & Hlen & _).
       split; [exact H0|]. split; [exact Hlen | exact (string_at_nonzero _ _ _ Hs)]. }
     iModIntro. iExists _. iSplit.
     + iPureIntro. unfold external_env. rewrite Hret. reflexivity.
     + iSplitL "Hh".
       * iExists _. iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt ls_world].
-        split; [exact (rename_agrees _ _ _ _ Ha')|]. auto.
-      * iApply ("HK" with "[%] HQ Hl"). exact Hq.
+        split; [exact (ghost_agrees _ _ _ (rename_agrees _ _ _ _ Ha') Hghost)|]. auto.
+      * iApply ("HK" with "[%] HQ Hgs Hl"). exact Hq.
 Qed.
 
 (** strlen's triple, from [strlen_contract], for the string t lent at

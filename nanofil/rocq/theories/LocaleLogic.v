@@ -14,7 +14,10 @@
     - [cap_private]: the object of every read, root and name capability
       owns no piece of h, so libc's locale memory is not the program's;
     - [names_current]: every ghost name piece is a category's current
-      name with its text, so a [lent] token is the world's name.
+      name with its text, so a [lent] token is the world's name;
+    - [codec_current]: the codec piece, under the key [codec_key],
+      holds the world's current codec, so a conversion can name the
+      codec a setter selected.
 
     From it, [locale_wi_lent] is LentLogic.v's hypothesis [lent_at] for
     every ghost name, and [locale_wi_pre] and [locale_wi_query] are
@@ -26,6 +29,7 @@
     ([locale_wi_setter]): the frame keeps libc's roots apart, and
     Campaign 4's private provenance ([locale_delegates_private]) makes
     every new read, root and name a born object or an old private one.
+    The setter also gives the codec piece the new codec.
     [locale_set_return] is that for setlocale(c, p), in the form of
     [wp_lend]'s premise, and [wp_setlocale_set] is the setter's triple. *)
 
@@ -53,17 +57,25 @@ Definition names_current (w : locale_world) (h : gmap piece pval) : Prop :=
   forall k p t, h !! PName k = Some (VName p t) ->
     In k locale_categories /\ p = locale_name w k /\ t = locale_text w k.
 
+(** The key of the codec piece, which is no category's. *)
+Definition codec_key : Z := -1.
+
+(** The codec piece of h, if any, holds the codec of the world w. *)
+Definition codec_current (w : locale_world) (h : gmap piece pval) : Prop :=
+  forall c, h !! PName codec_key = Some (VCodec c) -> locale_codec w = c.
+
 (** The world interpretation of a program that calls setlocale, whose
     trusted representation is rep: in the memory m and against the
     ghost heap h, the world w is ready, libc's roots and releasable
     objects are apart from the program's pieces, its read, root and
-    name capabilities are private, and the ghost names are current. *)
+    name capabilities are private, and the ghost names and the codec
+    are current. *)
 Definition locale_wi (rep : mem -> locale_world -> Prop) (m : mem) (w : locale_world)
     (h : gmap piece pval) : Prop :=
   locale_ready rep m w /\ roots_apart (locale_roots w) h m /\ ids_apart (locale_owned w) h /\
   Forall (fun s => cap_private h (ptr_cap (span_ptr s))) (locale_reads w ++ locale_roots w) /\
   (forall k, In k locale_categories -> cap_private h (ptr_cap (locale_name w k))) /\
-  names_current w h.
+  names_current w h /\ codec_current w h.
 
 (** ## Lent names *)
 
@@ -90,7 +102,7 @@ Lemma locale_wi_lent rep m w h k p t :
   locale_wi rep m w h -> live_disjoint m -> objects_fit (m_regions m) -> freed_empty (m_regions m) ->
   h !! PName k = Some (VName p t) -> lent_at m h p t.
 Proof.
-  intros (Hready & _ & _ & _ & Hpriv & Hcur) Hd Hfit Hfree Hk.
+  intros (Hready & _ & _ & _ & Hpriv & Hcur & _) Hd Hfit Hfree Hk.
   destruct (Hcur _ _ _ Hk) as (Hcat & -> & ->).
   pose proof Hready as (_ & _ & Hstr & _ & _ & Hal).
   destruct (Hstr k Hcat) as [Hnz Hcs]. destruct (Hal k Hcat) as (b & Hc & Hb8).
@@ -154,34 +166,68 @@ Qed.
 Definition current_names (w' : locale_world) : Z -> ptr * list Z :=
   fun k => (locale_name w' k, locale_text w' k).
 
+(** The codec piece holding the codec c. *)
+Definition codec_ps (c : term) : list (piece * pval) := [(PName codec_key, VCodec c)].
+
+(** The ghost heap h with every category renamed to its name in w' and
+    the codec piece holding w''s codec: what a setter makes of it. *)
+Definition relocale (h : gmap piece pval) (w' : locale_world) : gmap piece pval :=
+  overwrite (codec_ps (locale_codec w')) (rename h locale_categories (current_names w')).
+
+(** Relocaling keeps every piece of memory. *)
+Lemma relocale_mem h w' l : mem_piece l -> relocale h w' !! l = h !! l.
+Proof.
+  intros Hm. unfold relocale. rewrite overwrite_out; [exact (rename_mem _ _ _ _ Hm)|].
+  cbn. rewrite list_elem_of_singleton. intros ->. exact Hm.
+Qed.
+
+(** An address a relocaled heap owns, the heap owned. *)
+Lemma owned_live_relocale h w' m a : owned_live (relocale h w') m a -> owned_live h m a.
+Proof.
+  intros (l & v & reg & Hl & Hm & Hlv & Hin). exists l, v, reg.
+  rewrite (relocale_mem _ _ _ Hm) in Hl. auto.
+Qed.
+
+(** A capability private to h is private to it relocaled. *)
+Lemma cap_private_relocale h w' c : cap_private h c -> cap_private (relocale h w') c.
+Proof.
+  intros Hc b Hb b' l v Hb' Hl Hm. rewrite (relocale_mem _ _ _ Hm) in Hl. exact (Hc b Hb b' l v Hb' Hl Hm).
+Qed.
+
 (** After a setter with private provenance, from the world w against
     the ghost heap h, to the world w' in m': if w' is ready, the frame
     kept h agreeing and libc's old roots apart, and the born objects
     are none of h's, then [locale_wi] holds of w' and h with every
-    category renamed to its new name. *)
+    category renamed to its new name and the codec piece holding the
+    new codec ([relocale]). *)
 Lemma locale_wi_setter rep xs m w h born m' w' :
   locale_wi rep m w h -> locale_ready rep m' w' -> locale_delegates xs m w born m' w' ->
   live_disjoint m' -> roots_apart (locale_roots w) h m' -> ids_apart born h ->
-  locale_wi rep m' w' (rename h locale_categories (current_names w')).
+  locale_wi rep m' w' (relocale h w').
 Proof.
-  intros Hwi Hready Hdel Hd Hra Hb. pose proof Hwi as (_ & _ & Hown & _ & _ & Hcur).
+  intros Hwi Hready Hdel Hd Hra Hb. pose proof Hwi as (_ & _ & Hown & _ & _ & Hcur & _).
   pose proof Hdel as (Hroots & _ & _ & Howned).
-  split; [exact Hready|]. split; [|split; [|split; [|split]]].
-  - intros sp a Hin Hs Ho. apply owned_live_rename in Ho.
+  split; [exact Hready|]. split; [|split; [|split; [|split; [|split]]]].
+  - intros sp a Hin Hs Ho. apply owned_live_relocale in Ho.
     exact (owned_not_authority _ _ _ _ _ Hd Hra Hb Ho (proj2 (Hroots sp Hin) a Hs)).
-  - apply ids_apart_rename. intros b l v Hin Hl Hm.
+  - intros b l v Hin Hl Hm. rewrite (relocale_mem _ _ _ Hm) in Hl.
     destruct (Howned b Hin) as [Hin' _]. apply in_app_or in Hin' as [Hin' | Hin'];
       [exact (Hown b l v Hin' Hl Hm) | exact (Hb b l v Hin' Hl Hm)].
-  - apply List.Forall_forall. intros sp Hin. apply cap_private_rename.
+  - apply List.Forall_forall. intros sp Hin. apply cap_private_relocale.
     apply (retained_private rep m w h born _ Hwi Hb).
     apply (locale_delegates_private _ _ _ _ _ _ _ Hdel). unfold locale_private_sources.
     apply in_or_app. left. exact Hin.
-  - intros k Hk. apply cap_private_rename. apply (retained_private rep m w h born _ Hwi Hb).
+  - intros k Hk. apply cap_private_relocale. apply (retained_private rep m w h born _ Hwi Hb).
     apply (locale_delegates_private _ _ _ _ _ _ (locale_name_span w' k) Hdel).
     unfold locale_private_sources. apply in_or_app. right. apply in_map. exact Hk.
-  - intros k p t Hl. destruct (In_dec Z.eq_dec k locale_categories) as [Hk | Hk].
-    + rewrite (rename_lookup _ _ _ _ Hk) in Hl. injection Hl as <- <-. auto.
-    + rewrite (rename_out _ _ _ _ Hk) in Hl. exfalso. apply Hk. exact (proj1 (Hcur _ _ _ Hl)).
+  - intros k p t Hl. unfold relocale in Hl. destruct (Z.eq_dec k codec_key) as [-> | Hne].
+    + cbn in Hl. rewrite lookup_insert_eq in Hl. discriminate Hl.
+    + rewrite overwrite_out in Hl; [|cbn; rewrite list_elem_of_singleton; congruence].
+      destruct (In_dec Z.eq_dec k locale_categories) as [Hk | Hk].
+      * rewrite (rename_lookup _ _ _ _ Hk) in Hl. injection Hl as <- <-. auto.
+      * rewrite (rename_out _ _ _ _ Hk) in Hl. exfalso. apply Hk. exact (proj1 (Hcur _ _ _ Hl)).
+  - intros c Hl. unfold relocale in Hl. cbn in Hl. rewrite lookup_insert_eq in Hl.
+    injection Hl as <-. reflexivity.
 Qed.
 
 (** The locale logic over any [[runtime]] R. *)
@@ -198,7 +244,7 @@ Lemma locale_wi_pre rep requests m w h k p t z :
   locale_wi rep m w h -> h !! PName k = Some (VName p t) -> ptr_addr z = 0 ->
   contract_pre (setlocale_contract rep requests) [WInt k; WPtr z] m w.
 Proof.
-  intros (Hready & _ & _ & _ & _ & Hcur) Hk Hz. destruct (Hcur _ _ _ Hk) as (Hcat & _ & _).
+  intros (Hready & _ & _ & _ & _ & Hcur & _) Hk Hz. destruct (Hcur _ _ _ Hk) as (Hcat & _ & _).
   split; [exact Hready|]. exists k, z. auto.
 Qed.
 
@@ -209,7 +255,7 @@ Lemma locale_wi_query rep requests r args s m w h k p t z trace ending s' m' w' 
   M.E.invoke (setlocale_contract rep requests) r args [WInt k; WPtr z] s m w trace ending s' m' w' ->
   s' = s /\ m' = m /\ w' = w /\ ending = CallReturn [WPtr p].
 Proof.
-  intros (_ & _ & _ & _ & _ & Hcur) Hk Hz Hi. destruct (Hcur _ _ _ Hk) as (_ & -> & _).
+  intros (_ & _ & _ & _ & _ & Hcur & _) Hk Hz Hi. destruct (Hcur _ _ _ Hk) as (_ & -> & _).
   destruct (LC.setlocale_query_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hz Hi)
     as (_ & -> & -> & -> & ->). auto.
 Qed.
@@ -226,9 +272,10 @@ Lemma locale_set_return rep requests r args s m w h c p trace values s' m' w' :
   locale_wi rep m w h -> agrees m h -> live_disjoint m -> R.ready s m -> ptr_addr p <> 0 ->
   M.E.invoke (setlocale_contract rep requests) r args [WInt c; WPtr p] s m w trace (CallReturn values)
     s' m' w' ->
-  exists q new, values = [WPtr q] /\ (q = mkPtr 0 CNone \/ q = (new c).1) /\
+  exists q new gs', values = [WPtr q] /\ (q = mkPtr 0 CNone \/ q = (new c).1) /\
+    (exists c', gs' = codec_ps c') /\ gs'.*1 = [PName codec_key] /\ ghost_ps gs' /\
     agrees m' h /\ live_disjoint m' /\ R.ready s' m' /\
-    locale_wi rep m' w' (rename h locale_categories new).
+    locale_wi rep m' w' (overwrite gs' (rename h locale_categories new)).
 Proof.
   intros Hwi Ha Hd Hr Hp Hi.
   assert (Hq : locale_query [WInt c; WPtr p] = false) by (cbn; apply Z.eqb_neq; exact Hp).
@@ -248,9 +295,12 @@ Proof.
   rewrite Hq in Hpre. destruct Hpre as (Hready & Hdel & _).
   unfold setlocale_contract in Hpost. cbn [contract_post] in Hpost.
   destruct Hpost as (c' & p' & Hxs & Hend). injection Hxs as <- <-. rewrite Hq in Hend.
-  exists (match values with [WPtr q] => q | _ => mkPtr 0 CNone end), (current_names w').
+  exists (match values with [WPtr q] => q | _ => mkPtr 0 CNone end), (current_names w'),
+    (codec_ps (locale_codec w')).
   destruct Hend as [[Hv _] | [Hv _]]; injection Hv as ->.
   all: split; [reflexivity|]; split; [auto|].
+  all: split; [eexists; reflexivity|]; split; [reflexivity|].
+  all: split; [constructor; [intros m0; exact I | constructor]|].
   all: split; [exact Ha'|]; split; [exact Hd'|]; split; [exact Hr'|].
   all: exact (locale_wi_setter _ _ _ _ _ _ _ _ Hwi Hready Hdel Hd' Hra' Hb).
 Qed.
@@ -285,38 +335,47 @@ Local Instance setter_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** setlocale(c, p)'s triple over the locale world, from [wp_lend]
-    and [locale_set_return]: owning every category's name and the
-    string at p, which vc and vp read as, the call lends every
-    category's new name for good and binds d to null or c's new
-    name. *)
-Lemma wp_setlocale_set f e ls lab d vc vp rest j c p b reg bytes old Φ :
+    and [locale_set_return]: owning every category's name, the codec
+    piece and the string at p, which vc and vp read as, the call lends
+    every category's new name for good, gives the codec piece a new
+    codec c', which is the world's from then on ([codec_current]), and
+    binds d to null or c's new name. *)
+Lemma wp_setlocale_set f e ls lab d vc vp rest j c p b reg bytes old c0 Φ :
   registry (TAtom "setlocale") = Some (setlocale_contract rep requests) ->
   find_fn ge (TAtom "setlocale") = None -> lookup (TAtom "setlocale") (ge_globals ge) = None ->
   arg_x ge e (Arg W vc) = Some (WInt c) -> arg_x ge e (Arg P vp) = Some (WPtr p) ->
   In c locale_categories ->
-  ([∗ list] k ∈ locale_categories, LL.named k (old k).1 (old k).2) -∗ LL.SL.string p b reg bytes -∗
-  ▷ (∀ q (new : Z -> ptr * list Z), ⌜q = mkPtr 0 CNone \/ q = (new c).1⌝ -∗
-     LL.SL.string p b reg bytes -∗ ([∗ list] k ∈ locale_categories, LL.lent k (new k).1 (new k).2) -∗
+  ([∗ list] k ∈ locale_categories, LL.named k (old k).1 (old k).2) -∗ pts (codec_ps c0) -∗
+  LL.SL.string p b reg bytes -∗
+  ▷ (∀ q (new : Z -> ptr * list Z) c', ⌜q = mkPtr 0 CNone \/ q = (new c).1⌝ -∗
+     LL.SL.string p b reg bytes -∗ pts (codec_ps c') -∗
+     ([∗ list] k ∈ locale_categories, LL.lent k (new k).1 (new k).2) -∗
      WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec lab rest j)) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d P) (Global (TAtom "setlocale")) [Arg W vc; Arg P vp] :: rest) j))
         : sexpr) {{ Φ }}.
 Proof.
-  intros Hreg Hfn Hdata Hc Hp Hcat. iIntros "Hks Hs HK".
+  intros Hreg Hfn Hdata Hc Hp Hcat. iIntros "Hks Hcodec Hs HK".
   iDestruct "Hs" as "[%Hok Hs]". pose proof Hok as (_ & Hb0 & Hlo & _).
   iAssert (LL.SL.string p b reg bytes) with "[Hs]" as "Hs"; [iSplit; [done | iExact "Hs"]|].
   iApply (LL.wp_lend registry (locale_wi rep) ge (locale_wi_lent rep) f e ls lab d (TAtom "setlocale")
             [Arg W vc; Arg P vp] rest j (setlocale_contract rep requests) [WInt c; WPtr p]
-            locale_categories old (fun q new => q = mkPtr 0 CNone \/ q = (new c).1) with "Hks Hs HK");
+            locale_categories old (codec_ps c0)
+            (fun q new gs' => (q = mkPtr 0 CNone \/ q = (new c).1) /\ exists c', gs' = codec_ps c')
+            with "Hks Hcodec Hs [HK]");
     [exact Hreg | reflexivity | exact Hfn | exact Hdata | reflexivity |
-     cbn [map_option]; rewrite Hc Hp; reflexivity | | | ].
+     cbn [map_option]; rewrite Hc Hp; reflexivity | | | | | ].
   - split; [right; eexists; reflexivity | do 2 eexists; reflexivity].
+  - apply List.Forall_forall. intros k Hk. cbn. rewrite list_elem_of_singleton. intros E.
+    injection E as ->. unfold codec_key, locale_categories in Hk. cbn in Hk. intuition lia.
   - iIntros (σ) "Hσ Hs". iDestruct (LL.SL.string_facts with "Hσ Hs") as %[_ Hcs].
     iDestruct "Hσ" as (h) "[_ %Hf]". destruct Hf as (_ & _ & _ & Hready & _). iPureIntro.
     split; [exact Hready|]. exists c, p. split; [reflexivity|]. split; [exact Hcat|]. right. eauto.
   - intros s m w h trace values s' m' w' Hw Ha Hd Hr Hi.
     assert (Hnz : ptr_addr p <> 0) by lia.
-    exact (locale_set_return rep requests _ _ _ _ _ _ _ _ _ _ _ _ _ Hw Ha Hd Hr Hnz Hi).
+    destruct (locale_set_return rep requests _ _ _ _ _ _ _ _ _ _ _ _ _ Hw Ha Hd Hr Hnz Hi)
+      as (q & new & gs' & Hv & Hq & Hgs & Hkeys & Hrest). exists q, new, gs'. auto.
+  - iNext. iIntros (q new gs' [Hq [c' ->]]) "Hs Hcodec Hl". iApply ("HK" with "[%] Hs Hcodec Hl"). exact Hq.
 Qed.
 
 End setter.

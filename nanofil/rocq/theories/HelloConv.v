@@ -28,7 +28,7 @@ From Stdlib Require Import ZArith Lia.
 From Stdlib Require String.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run StepRules Symbolic
   ExternalCalls ExternalMachine Pieces Heap ContractFrame Language Logic StringLogic MemLogic
-  LentLogic Locale Libc HelloModule HelloLeaf HelloLocale.
+  LentLogic Locale LocaleLogic Libc HelloModule HelloLeaf HelloLocale.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -258,11 +258,13 @@ Context (valid : term -> list Z -> Prop) (audit : term -> option audited_codec)
   (Hmbrtowc : registry (TAtom "mbrtowc") = Some (mbrtowc_contract valid audit rep requests))
   (Hvalid0 : mbstate_zero_valid valid) (Hbytes : mbstate_valid_bytes valid).
 
-(** The world interpretation makes libc ready, with the codec codec
-    and the errno cell errno, and keeps libc's private state apart. *)
-Context (codec : term) (errno : ptr)
+(** The world interpretation makes libc ready, with the errno cell
+    errno, keeps the codec piece current ([codec_current]) and libc's
+    private state apart. A conversion learns the codec from the codec
+    piece, which setlocale's setter set ([wp_setlocale_set]). *)
+Context (errno : ptr)
   (Hlibc : forall m w h, wi m w h ->
-     libc_ready rep m w /\ locale_codec (libc_locale (fst w)) = codec /\
+     libc_ready rep m w /\ codec_current (libc_locale (fst w)) h /\
      libc_errno (fst w) = errno /\ libc_private m w h).
 
 (** The audited codec premise: the world's codec is one of the audited
@@ -295,9 +297,10 @@ Qed.
 (** The arguments are admitted ([mbrtowc_pre]) where the program owns
     the output, state and errno blocks and the source's life and bytes,
     of four different objects, the state's bytes valid. *)
-Lemma mbrtowc_admitted m w h out src n state bo ro oo xo co bs rs os ys cs be re oe xe ce
+Lemma mbrtowc_admitted codec m w h out src n state bo ro oo xo co bs rs os ys cs be re oe xe ce
     bsrc rsrc osrc ss :
   wi m w h -> agrees m h -> live_disjoint m -> objects_fit (m_regions m) ->
+  h !! PName codec_key = Some (VCodec codec) ->
   (forall l v, (l, v) ∈ block_ps bo ro oo xo co -> h !! l = Some v) ->
   (forall l v, (l, v) ∈ block_ps bs rs os ys cs -> h !! l = Some v) ->
   (forall l v, (l, v) ∈ block_ps be re oe xe ce -> h !! l = Some v) ->
@@ -311,10 +314,11 @@ Lemma mbrtowc_admitted m w h out src n state bo ro oo xo co bs rs os ys cs be re
   valid codec ys ->
   mbrtowc_pre valid rep [WPtr out; WPtr src; WInt n; WPtr state] m w.
 Proof.
-  intros Hw Ha Hd Hfit Ho Hs He Hsr Nos Noe Nosr Nse Nssr Nesr -> -> Herr Hcap Haddr Hbo Hbs Hbsrc Hoal Hsal
+  intros Hw Ha Hd Hfit Hcod Ho Hs He Hsr Nos Noe Nosr Nse Nssr Nesr -> -> Herr Hcap Haddr Hbo Hbs Hbsrc Hoal Hsal
     Lxo Lys Lxe Hn Hss Hval.
   pose proof (Hbytes _ _ Hval) as Hyb.
-  destruct (Hlibc m w h Hw) as (Hready & Hcodec & Herrno & Hown & Hpriv).
+  destruct (Hlibc m w h Hw) as (Hready & Hcur & Herrno & Hown & Hpriv).
+  pose proof (Hcur _ Hcod) as Hcodec.
   destruct (block_facts m h bo ro oo xo co Ha Ho (nonempty_of_length xo 3 Lxo)) as (Lo & Oo & Eo & _).
   destruct (block_facts m h bs rs os ys cs Ha Hs (nonempty_of_length ys 7 Lys)) as (Ls & Os & Es & Vs).
   destruct (block_facts m h be re oe xe ce Ha He (nonempty_of_length xe 3 Lxe)) as (Le & Oe & Ee & _).
@@ -476,7 +480,7 @@ Qed.
 
 (** Campaign 4's [mbrtowc_result], for 0 < n and the audited codec,
     read through the owned bytes: [conv_result]. *)
-Lemma conv_of_result m w out src n state res m' bo oo xo bs os ys be oe bsrc osrc ss :
+Lemma conv_of_result codec m w out src n state res m' bo oo xo bs os ys be oe bsrc osrc ss :
   mbrtowc_result valid audit m w out src n state res m' ->
   hello_codec_profile audit w -> locale_codec (libc_locale (fst w)) = codec ->
   libc_errno (fst w) = mkPtr (be + oe) (Obj be) ->
@@ -530,7 +534,7 @@ Qed.
     binds d to its result r and hands the blocks back holding new bytes
     and slots, which [conv_result] describes. *)
 Lemma wp_mbrtowc f e ls lab d vo vs vn vt rest j out src n state
-    bo ro oo xo co bs rs os ys cs be re oe xe ce bsrc rsrc osrc ss Φ :
+    bo ro oo xo co bs rs os ys cs be re oe xe ce bsrc rsrc osrc ss codec dq Φ :
   find_fn ge (TAtom "mbrtowc") = None -> lookup (TAtom "mbrtowc") (ge_globals ge) = None ->
   arg_x ge e (Arg P vo) = Some (WPtr out) -> arg_x ge e (Arg P vs) = Some (WPtr src) ->
   arg_x ge e (Arg L vn) = Some (WInt n) -> arg_x ge e (Arg P vt) = Some (WPtr state) ->
@@ -540,12 +544,13 @@ Lemma wp_mbrtowc f e ls lab d vo vs vn vt rest j out src n state
   length xo = 4%nat -> length co = 4%nat -> length ys = 8%nat -> length cs = 8%nat ->
   length xe = 4%nat -> length ce = 4%nat ->
   0 < n <= Z.of_nat (length ss) -> Forall (fun x => 0 <= x < 256) ss -> valid codec ys ->
+  pointsto (PName codec_key) dq (VCodec codec) -∗
   pts (block_ps bo ro oo xo co) -∗ pts (block_ps bs rs os ys cs) -∗ pts (block_ps be re oe xe ce) -∗
   pts (block_ps bsrc rsrc osrc ss []) -∗
   ▷ (∀ r xo' ys' xe' co' cs' ce',
        ⌜conv_result valid (audit codec = Some CodecC) codec n ss xo ys xo' ys' xe' r /\ length xo' = 4%nat /\ length ys' = 8%nat /\
         length xe' = 4%nat /\ length co' = 4%nat /\ length cs' = 8%nat /\ length ce' = 4%nat⌝ -∗
-       pts (block_ps bo ro oo xo' co') -∗ pts (block_ps bs rs os ys' cs') -∗ pts (block_ps be re oe xe' ce') -∗
+       pointsto (PName codec_key) dq (VCodec codec) -∗ pts (block_ps bo ro oo xo' co') -∗ pts (block_ps bs rs os ys' cs') -∗ pts (block_ps be re oe xe' ce') -∗
        pts (block_ps bsrc rsrc osrc ss []) -∗
        WP (ERun (mkFrame f (put d (WInt r) e) ls None (Exec lab rest j)) : cexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
@@ -554,29 +559,31 @@ Lemma wp_mbrtowc f e ls lab d vo vs vn vt rest j out src n state
 Proof.
   intros Hfn Hdata Hvo Hvs Hvn Hvt Eout Est Herr Hcap Haddr Hbo Hbs Hbsrc Hoal Hsal Lxo Lco Lys Lcs Lxe Lce
     Hn Hss Hval.
-  iIntros "HBo HBs HBe HBsrc HK".
+  iIntros "Hcod HBo HBs HBe HBsrc HK".
   iDestruct (block_ne with "HBo HBs") as %N1. iDestruct (block_ne with "HBo HBe") as %N2.
   iDestruct (block_ne with "HBo HBsrc") as %N3. iDestruct (block_ne with "HBs HBe") as %N4.
   iDestruct (block_ne with "HBs HBsrc") as %N5. iDestruct (block_ne with "HBe HBsrc") as %N6.
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (mbrtowc_contract valid audit rep requests)
             [WPtr out; WPtr src; WInt n; WPtr state]
-            (pts (block_ps bo ro oo xo co) ∗ pts (block_ps bs rs os ys cs) ∗ pts (block_ps be re oe xe ce) ∗
+            (pointsto (PName codec_key) dq (VCodec codec) ∗
+             pts (block_ps bo ro oo xo co) ∗ pts (block_ps bs rs os ys cs) ∗ pts (block_ps be re oe xe ce) ∗
              pts (block_ps bsrc rsrc osrc ss []))
-            with "[$HBo $HBs $HBe $HBsrc] [HK]");
+            with "[$Hcod $HBo $HBs $HBe $HBsrc] [HK]");
     [exact Hfn | exact Hdata | reflexivity | exact Hmbrtowc | cbn [map_option]; rewrite Hvo Hvs Hvn Hvt; reflexivity
     | | |].
   - split; [right; eexists; reflexivity | do 4 eexists; reflexivity].
-  - iIntros (σ) "Hσ (Ho & Hs & He & Hsr)". iDestruct "Hσ" as (h) "[Hh %Hf]". destruct Hf as (Ha & Hd & Hr & Hw).
+  - iIntros (σ) "Hσ (Hc & Ho & Hs & He & Hsr)". iDestruct "Hσ" as (h) "[Hh %Hf]".
+    destruct Hf as (Ha & Hd & Hr & Hw). iDestruct (gen_heap_valid with "Hh Hc") as %Kc.
     iDestruct (pts_lookup with "Hh Ho") as %Ko. iDestruct (pts_lookup with "Hh Hs") as %Ks.
     iDestruct (pts_lookup with "Hh He") as %Ke. iDestruct (pts_lookup with "Hh Hsr") as %Ksr. iPureIntro.
-    exact (mbrtowc_admitted _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hw Ha Hd
-             (R.address_space _ _ Hr) Ko Ks Ke Ksr N1 N2 N3 N4 N5 N6 Eout Est Herr Hcap Haddr Hbo Hbs Hbsrc Hoal Hsal
+    exact (mbrtowc_admitted _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hw Ha Hd
+             (R.address_space _ _ Hr) Kc Ko Ks Ke Ksr N1 N2 N3 N4 N5 N6 Eout Est Herr Hcap Haddr Hbo Hbs Hbsrc Hoal Hsal
              Lxo Lys Lxe Hn Hss Hval).
-  - iNext. iIntros (σ trace values s' m' w' Hinv) "(%h & Hh & %Hf) (Ho & Hs & He & Hsr)".
-    destruct Hf as (Ha & Hd & Hr & Hw).
+  - iNext. iIntros (σ trace values s' m' w' Hinv) "(%h & Hh & %Hf) (Hc & Ho & Hs & He & Hsr)".
+    destruct Hf as (Ha & Hd & Hr & Hw). iDestruct (gen_heap_valid with "Hh Hc") as %Kc.
     iDestruct (pts_lookup with "Hh Ho") as %Ko. iDestruct (pts_lookup with "Hh Hs") as %Ks.
     iDestruct (pts_lookup with "Hh He") as %Ke. iDestruct (pts_lookup with "Hh Hsr") as %Ksr.
-    destruct (Hlibc _ _ _ Hw) as (_ & Hcodec & Herrno & _).
+    destruct (Hlibc _ _ _ Hw) as (_ & Hcur & Herrno & _). pose proof (Hcur _ Kc) as Hcodec.
     destruct (block_facts _ h bo ro oo xo co Ha Ko (nonempty_of_length xo 3 Lxo)) as (_ & _ & _ & Vo).
     destruct (block_facts _ h bs rs os ys cs Ha Ks (nonempty_of_length ys 7 Lys)) as (_ & _ & _ & Vs).
     destruct (block_facts _ h bsrc rsrc osrc ss [] Ha Ksr ltac:(intros E; rewrite E in Hn; cbn in Hn; lia))
@@ -585,7 +592,7 @@ Proof.
     rewrite (proj2 (Z.eqb_neq n 0) ltac:(lia)) in Hres.
     assert (Hnl : 0 < n <= Z.of_nat (length ss)) by lia.
     assert (Hn0 : n <> 0) by lia.
-    pose proof (conv_of_result _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hres (Haudit _ _ _ Hw) Hcodec
+    pose proof (conv_of_result _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hres (Haudit _ _ _ Hw) Hcodec
                   (eq_trans Herrno Herr) Eout Est Haddr Lxo Vo Lys Vs Hnl Vsr) as Hconv.
     destruct (mbrtowc_frame _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hinv Hw Ha Hd Hr Ko Ks Ke
                 Eout Est Herr Lxo Lco Lys Lcs Lxe Lce Hn0) as (Ha' & Hd' & Hr').
@@ -608,7 +615,7 @@ Proof.
     iSplitL "Hh".
     + iExists _. iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt ls_world]. auto.
     + rewrite !pts_app. iDestruct "Hn" as "(Ho & Hs & He)".
-      iApply ("HK" $! res with "[%] Ho Hs He Hsr").
+      iApply ("HK" $! res with "[%] Hc Ho Hs He Hsr").
       rewrite !length_mem_bytes !length_mem_auxes. split; [exact Hconv|]. repeat split.
 Qed.
 

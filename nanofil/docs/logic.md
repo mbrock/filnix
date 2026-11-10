@@ -830,11 +830,24 @@ whatever memory holds afterwards. `conv_result` reads
   (`mbrtowc_c_error`);
 - an incomplete sequence is shorter than 16 bytes, with no NUL.
 
-The world interpretation must make libc ready with a fixed codec and
-errno cell. It keeps libc's private roots, releases and capabilities
-apart from the program's objects (`libc_private`), and it must survive
-the call's writes into the three blocks. The audited codec stays an
+The world interpretation must make libc ready with a fixed errno
+cell. It keeps libc's private roots, releases and capabilities apart
+from the program's objects (`libc_private`), and it must survive the
+call's writes into the three blocks. The audited codec stays an
 explicit premise.
+
+The codec is not fixed for the whole run: Hello calls
+`setlocale(LC_ALL, "")` before it converts, and that call may select
+another codec. A conversion therefore learns the codec from a ghost
+piece. The ghost heap gains a value `VCodec c`, which, like a name,
+agrees with every memory, under the key `codec_key`, which is no
+category's. `locale_wi` now also says `codec_current`: that piece
+holds the world's codec. `wp_lend` takes extra ghost pieces that a
+setter updates in the same step, so `wp_setlocale_set` takes the codec
+piece and hands it back holding the codec the setter selected
+(`relocale`). `wp_mbrtowc` takes the piece at any fraction, so after
+setlocale it can be made persistent and shared by every conversion,
+and the state stays valid under one codec from call to call.
 
 Two contract gaps went back to Campaign 4, and it fixed both
 (6e82502):
