@@ -21,6 +21,7 @@
     | `ret(V)` | returned V (an integer or constrained variable) |
     | `rets([X1, X2])` | returned a tuple |
     | `ret` | returned from a void function |
+    | `data([X1, ...])` | a `data` function (zreturn) returned these words, each an integer or `ptr(Addr, Cap)` |
     | `unreachable` | executed `unreachable` |
     | `ub(Reason)` | undefined behaviour: `float_conversion` (an invalid float-to-integer conversion), or in plain mode `out_of_bounds(A, Size)`, a memory access outside every live allocation |
     | `trap(Reason)` | a Fil-C check failed (filc mode only): `null_capability`, `out_of_bounds`, `misaligned`, `readonly`, `not_a_function`, `argument_size`, `return_size`, `invalid_free`, `double_free` |
@@ -355,6 +356,10 @@ jump_outcome(branch(V, T1, T2), Ctx, From, Env, S0, Out, S) :-
     ;   X #= 0, T = T2
     ),
     edge_outcome(T, Ctx, From, Env, S0, Out, S).
+jump_outcome(ret(V), Ctx, _, Env, S, Out, S) :-
+    Ctx = ctx(_, _, _, data, _, _), !,
+    value_x(p, V, Ctx, Env, P),
+    returned_data(P, S, Out).
 jump_outcome(ret(V), Ctx, _, Env, S, ret(X), S) :-
     Ctx = ctx(_, _, _, K, _, _),
     value_x(K, V, Ctx, Env, X).
@@ -363,6 +368,40 @@ jump_outcome(rets(Vs), Ctx, _, Env, S, rets(Xs), S) :-
     maplist(class_value_x(Ctx, Env), Ks, Vs, Xs).
 jump_outcome(ret, _, _, _, S, ret, S).
 jump_outcome(unreachable, _, _, _, S, unreachable, S).
+
+% returned_data(+P, +S, -Out): Out is what ret(P) of a data function
+% returns, as filc_prepare_to_return_with_data does: no words for a null
+% P, else the words from P to its object's end, each loaded as a pointer
+% (an integer word has no capability). It traps where libpizlo's checks
+% fail: no object, a function, a freed object, or P not 8-aligned.
+returned_data(P, S, Out) :-
+    ( P = ptr(A, Cap) -> true ; A = P, Cap = none ),
+    must_be(integer, A),
+    (   A =:= 0 -> Out = data([])
+    ;   ( Cap = obj(Base) ; Cap = ro(Base) ) -> data_words(Base, A, Cap, S, Out)
+    ;   Cap = ext(N)
+    ->  format(atom(Msg), 'cannot interpret an access to external ~w', [N]),
+        throw(nanofil_error(Msg))
+    ;   Cap == none -> Out = trap(null_capability)
+    ;   Out = trap(out_of_bounds)
+    ).
+
+data_words(Base, A, Cap, S, Out) :-
+    S = s(mem(_, Rs, _, _), _),
+    object_region(Base, Rs, region(Base, End, _, Life)),
+    (   Life \== live -> Out = trap(out_of_bounds)
+    ;   A mod 8 =\= 0 -> Out = trap(misaligned)
+    ;   A < Base -> Out = trap(out_of_bounds)
+    ;   N is max(0, End - A) // 8,
+        length(Xs, N),
+        foldl(data_word(A, Cap, S), Xs, 0, _),
+        Out = data(Xs)
+    ).
+
+data_word(A, Cap, S, X, I, I1) :-
+    Ai is A + 8 * I,
+    pointer_load_res(filc, [ptr(Ai, Cap)], S, val(X), _),
+    I1 is I + 1.
 
 edge_outcome(T, Ctx, From, Env, S0, Out, S) :-
     (   T = poll(_), get_assoc(hidden(doomed), Env, Why)
@@ -629,7 +668,8 @@ indirect_call_conv(Ret, Params, Res, Args, Xs, Ys, Conv) :-
     length(Params, NParams),
     length(Args, NArgs),
     result_words(Res, CallerWords),
-    return_words(Ret, CalleeWords),
+    % A data function's words are counted when it returns.
+    ( Ret == data -> CalleeWords = CallerWords ; return_words(Ret, CalleeWords) ),
     length(CallerWords, NCallerWords),
     length(CalleeWords, NCalleeWords),
     findall(K, member(param(K, _), Params), ParamClasses),
@@ -732,6 +772,16 @@ call_outcome_result(ret(X), Res, Env0, S, cont(Env, S)) :-
 call_outcome_result(rets(Xs), Res, Env0, S, cont(Env, S)) :-
     rets_env(Res, Xs, Env0, Env).
 call_outcome_result(ret, void, Env, S, cont(Env, S)).
+% A data function's words, read as the call site reads them through the
+% generic entry; too few fail its size check.
+call_outcome_result(data(Xs), Res, Env0, S, Result) :-
+    result_words(Res, Ks), length(Ks, N), length(Xs, NXs),
+    (   NXs < N -> Result = stop(trap(return_size), S)
+    ;   length(Xs1, N), append(Xs1, _, Xs),
+        maplist(generic_word(p), Ks, Xs1, Ys),
+        (   Ys == [] -> Out = ret ; Ys = [Y] -> Out = ret(Y) ; Out = rets(Ys) ),
+        call_outcome_result(Out, Res, Env0, S, Result)
+    ).
 call_outcome_result(unreachable, _, _, S, stop(unreachable, S)).
 call_outcome_result(ub(Why), _, _, S, stop(ub(Why), S)).
 call_outcome_result(trap(Why), _, _, S, stop(trap(Why), S)).
@@ -1819,6 +1869,7 @@ item_bytes(Globals, item(l, sym(S, Off)), Bs) :-
 outcome_text(ret(V), T) :- ret_text(V, T).
 outcome_text(rets(_), 'ret tuple').
 outcome_text(ret, ret).
+outcome_text(data(Xs), T) :- length(Xs, N), format(atom(T), 'ret data ~w words', [N]).
 outcome_text(unreachable, unreachable).
 outcome_text(ub(Why), T) :- format(atom(T), 'ub ~w', [Why]).
 outcome_text(trap(Why), T) :- format(atom(T), 'trap ~w', [Why]).

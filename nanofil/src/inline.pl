@@ -374,7 +374,7 @@ inlined_item(_, _, _, _, _, Item, [Item]).
 
 eligible_callee(Mode, Defined, F) :-
     F = func(_, _, Ret, _, Bs),
-    Ret \= tuple(_),
+    Ret \= tuple(_), Ret \== data,
     func_size(Bs, S), callee_limit(Max), S =< Max,
     \+ ( member(block(_, _, Is, _), Bs), member(call(_, global(G), _), Is),
          get_assoc(G, Defined, _) ),

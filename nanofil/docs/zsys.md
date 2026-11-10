@@ -207,12 +207,13 @@ process exit.
    `zsys_` function on `zargs` returns: it passes its own argument
    buffer, untyped, to the primitive. `zcall` is a libpizlo function,
    but `zargs` and `zreturn` are FilPizlonator intrinsics that speak of
-   the frame's argument and return buffers, which the machine has no
-   memory for; nanofil lowers them as calls to functions nothing
-   defines (below). The choices are to
-   model them in Machine.v, to give each stub a contract generated from
-   its `syscalls.list` signature, or to generate typed stubs in
-   `make-syscalls.sh` for both compilers.
+   the frame's argument and return buffers. nanofil now lowers a call of
+   `zargs` to the entry snapshot (`va_args` at offset 0) and `zreturn` to the
+   IR return class `data` (decision 12), which Machine.v does not have
+   yet, so a stub is outside the model's subset. The choices are to
+   model `data` returns in Machine.v, to give each stub a contract
+   generated from its `syscalls.list` signature, or to generate typed
+   stubs in `make-syscalls.sh` for both compilers.
 3. **Threads, unwinding and the loader** are reachable only through
    paths the single-thread premise rules out: futex waits with no other
    thread, cancellation, `dlopen` of gconv modules. They can stay
@@ -477,11 +478,10 @@ Each frontend fix has a test that fails without it:
   and an offset other than `+ 0` is refused. `tests/c/prog/filc-asm.c`
   covers them against filcc.
 
-Every generated syscall stub now compiles, but not to IR that links:
-its body, a `zcall` of the `zsys_` function on `zargs`, names
+Every generated syscall stub now compiles to IR that links. Its body,
+a `zreturn` of the `zcall` of its `zsys_` function on `zargs`, names
 FilPizlonator's intrinsics `zargs` and `zreturn` (146 units), which
-nanofil lowers as calls and libpizlo does not export. Implementing
-them is decision 12.
+nanofil lowers to the entry snapshot and a `data` return (decision 12).
 
 ## Running nanofil's glibc
 
@@ -497,16 +497,20 @@ loader maps (`LD_DEBUG=libs` checks that). By hand, not CI:
 
     nix build --impure -f nanofil/survey/glibc/mixed.nix check -o /tmp/glibc-mixed-check
 
-The list is the 299 units that define a function Hello or the programs
-reach (`reach.py` over Hello's 33 names and the 66 more the programs
-call), which compile to IR, less the syscall stubs that name `zargs`
-(below). It holds 240 of the 244 units Hello reaches, among them
+The list is the 305 units that define a function Hello or the programs
+reach (`reach.py` over Hello's 33 names and the 74 more the programs
+call), all of which compile to IR. It holds all 244 units Hello
+reaches, among them
 `vfprintf-internal`, `printf_fp`, `malloc`, `fileops`, `strtod_l`,
-`getopt` and the string functions. The libc is shared, so these are
+`getopt`, the string functions and the syscall stubs `open64`,
+`open64_nocancel`, `munmap` and `sysinfo`. The libc is shared, so these are
 the `.os` builds of the same sources as Hello's `libc.a` members.
 
-**Result, 2026-11-10:** nanofil compiled all 299, and all 24
-invocations agree on stdout and exit status. Hello ran with 12
+**Result, 2026-11-10:** nanofil compiled all 305, and all 25
+invocations agree on stdout and exit status. (The first run, before
+`zargs` and `zreturn`, swapped 299 units and agreed on 24.) A sixth
+program, `sys`, calls `open`, `fcntl`, `dup`, `sysinfo`, `mmap` and
+`munmap` through nanofil's stubs, failures and errno included. Hello ran with 12
 argument sets, including bad options, a UTF-8 greeting and `--help`;
 the floats program covered `%f %e %g %a` from subnormals to 1e+4000;
 malloc made 32.7 million allocations. The one difference is in stderr:
@@ -523,7 +527,9 @@ Two gaps showed only at link time, which `run.py` does not reach:
   `always_inline` inline-only body, unless the body names its own
   symbol, as a fortify wrapper does through an asm label
   (`tests/c/prog/gnu89-inline-only.c`).
-- **`zargs` and `zreturn`.** The syscall stubs need them (decision 12).
+- **`zargs` and `zreturn`.** The syscall stubs need them; done
+  (decision 12). The wrapper also compiles the stubs, which
+  `make-syscalls.sh` pipes in on stdin.
 
 ## Decisions this raises
 
@@ -567,7 +573,15 @@ Two gaps showed only at link time, which `run.py` does not reach:
    and variadic wrappers such as `open64`, `fcntl64` and `ioctl`).
    FilPizlonator compiles them to the frame's argument and return
    buffers, and libpizlo does not export them, so nanofil's calls to
-   them do not link. Recommended: IR
-   operations for the frame's argument and return buffers, as a
-   separate item, with Campaign 3 told the operations exist. Until then
-   the mixed glibc keeps filcc's objects for these units.
+   them do not link. Done, with Campaign 3's agreement: a call of `zargs` is
+   `let(T, p, va_args, [const(0)])`, the entry snapshot that `va_start`'s
+   cursor also points into, and a function that calls `zreturn` has the
+   new return class `data` (Fil-C only, ir.pl): it returns by `ret(P)`
+   the 8-byte words from P to its object's end with their capabilities,
+   as libpizlo's `filc_prepare_to_return_with_data`, none for a null P,
+   and it has only the generic entry. A call reads its result words
+   from those, and traps if it reads more than were returned
+   (`tests/c/prog/zreturn.c`, `zreturn-none.c`, unit test
+   `data_return`). Rocq's `ret_type` has no `data`, so such functions
+   decode as outside its subset. filcc itself fails its verifier on
+   `zreturn` of a constant null pointer; nanofil does not.

@@ -1386,7 +1386,12 @@ function_(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     ->  ParamTypes = []
     ;   ParamTypes = ParamTypes0
     ),
-    ret_class(Loc, RetType, Env0, RetClass),
+    (   zreturn_body(Body, Env0)
+    ->  (   RetType == void -> RetClass = data
+        ;   sema_error(Loc, 'zreturn in a function that does not return void is not supported', [])
+        )
+    ;   ret_class(Loc, RetType, Env0, RetClass)
+    ),
     param_names(DclType, Names),
     param_mins(DclType, Env0, Mins),
     statement_expression_jumps(Body, Loc),
@@ -1397,9 +1402,12 @@ function_(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     Lower = lowered_body(Loc, RetType, Variadic, Names, Mins, ParamTypes, Body, Ctx),
     call(Lower, ParamEnv, SretParams-Params0, State),
     append(SretParams, Params0, Params),
-    State = st(EnvEnd, none, [], RevBlocks, _, _, _, build(RevAllocs, _, _, RevRecords, _)),
+    State = st(EnvEnd, none, [], RevBlocks0, _, _, _, build(RevAllocs, _, _, RevRecords, _)),
     env_scope(Env0, Scope, _),
     env_restore(Scope, EnvEnd, Env),
+    (   RetClass == data -> maplist(data_return, RevBlocks0, RevBlocks)
+    ;   RevBlocks = RevBlocks0
+    ),
     reverse(RevBlocks, [block(start, [], Insts0, Jump)|Rest]),
     reverse(RevAllocs, Allocs),
     append(Allocs, Insts0, Insts),
@@ -1418,6 +1426,19 @@ function_(Loc, Name, func(RetType, ParamTypes0, Variadic), DclType, Body,
     append([Origins, Values, Sites], Records).
 
 is_hint(hint(_, _)).
+
+/* Fil-C's zargs() is the function's entry argument snapshot, the one
+   va_start's cursor points into, at offset 0; zreturn(P) returns the
+   words P points at as the call's result. A function that calls
+   zreturn has the IR return class data (ir.pl), which needs the generic
+   entry, and its other returns return no words, a null P
+   (docs/zsys.md). */
+zreturn_body(Body, Env) :-
+    lookup_ordinary(Env, zreturn, fn(_, zreturn, _)),
+    body_identifier(Body, zreturn), !.
+
+data_return(block(L, Ps, Is, from(Os, ret)), block(L, Ps, Is, from(Os, ret(const(0))))) :- !.
+data_return(B, B).
 
 % lowered_body(...)(+ParamEnv, -Params, -State): the function's body
 % lowered from ParamEnv.
@@ -3609,6 +3630,14 @@ lower_node(val(_, call(val(_, decay(fun(_, id(Name)))), XArgs)), Ctx, v(const(0)
         safety_error(Msg)
     ;   { sema_error(Loc, '~w is not supported', [Name]) }
     ).
+lower_node(val(T, call(val(_, decay(fun(_, id(zargs)))), [])), _, v(V, T)) -->
+    env(Env), { lookup_ordinary(Env, zargs, fn(_, zargs, _)) }, !,
+    let(p, va_args, [const(0)], V).
+lower_node(val(_, call(val(_, decay(fun(_, id(zreturn)))), [X])), Ctx, v(const(0), void)) -->
+    env(Env), { lookup_ordinary(Env, zreturn, fn(_, zreturn, _)) }, !,
+    lower(X, Ctx, V0),
+    convert(V0, ptr(void), v(V, _)),
+    term(ret(V)).
 lower_node(val(_, call(XF, XArgs)), Ctx, R) --> !,         % 6.5.2.2
     callee(XF, Ctx, Callee0, func(RetType, Ps, _)),
     {   Ps == unspecified

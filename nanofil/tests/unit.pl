@@ -916,6 +916,51 @@ test(free_does_not_launder_stored_capability) :-
     pizlonate_module(M, C), valid_module(C),
     once(run(C, f, [], 10, trap(out_of_bounds))).
 
+% A data function (zreturn) returns the words from its pointer to the
+% object's end, capabilities kept, and the call reads them as through the
+% generic entry: forwarding its own argument snapshot (zargs) returns
+% the arguments; a null pointer returns no words, so reading one traps.
+test(data_return) :-
+    Box = func(box, export, data, [], [block(s, [], [
+        let(tmp(b), p, alloc(16), [const(16)]),
+        let(tmp(c), p, alloc(8), [const(8)]),
+        store(w, const(41), tmp(c)),
+        store(l, const(7), tmp(b)),
+        let(tmp(q), p, add, [tmp(b), const(8)]),
+        store(p, tmp(c), tmp(q))], ret(tmp(b)))]),
+    Echo = func(echo, export, data, [], [block(s, [], [
+        let(tmp(a), p, va_args, [const(0)])], ret(tmp(a)))]),
+    None = func(none, export, data, [], [block(s, [], [], ret(const(0)))]),
+    Odd = func(odd, export, data, [], [block(s, [], [
+        let(tmp(b), p, alloc(16), [const(16)]),
+        let(tmp(q), p, add, [tmp(b), const(4)])], ret(tmp(q)))]),
+    ir_module([Box, Echo, None, Odd,
+        func(f, export, w, [], [block(s, [], [
+            call(tuple([result(tmp(n), l), result(tmp(c), p)]), global(box), []),
+            let(tmp(x), w, load(sw), [tmp(c)]),
+            let(tmp(y), w, add, [tmp(x), tmp(n)])], ret(tmp(y)))]),
+        func(g, export, l, [], [block(s, [], [
+            call(tuple([result(tmp(u), l), result(tmp(v), l)]), global(echo),
+                 [arg(w, const(5)), arg(l, const(9))]),
+            let(tmp(y), l, sub, [tmp(u), tmp(v)])], ret(tmp(y)))]),
+        func(h, export, void, [], [block(s, [], [
+            call(void, global(none), [])], ret)]),
+        func(k, export, w, [], [block(s, [], [
+            call(result(tmp(x), w), global(none), [])], ret(tmp(x)))]),
+        func(m, export, w, [], [block(s, [], [
+            call(result(tmp(x), w), global(odd), [])], ret(tmp(x)))])], M),
+    once(run(M, f, [], 10, ret(48))),
+    once(run(M, g, [], 10, ret(18446744073709551612))),
+    once(run(M, h, [], 10, ret)),
+    once(run(M, k, [], 10, trap(return_size))),
+    once(run(M, m, [], 10, trap(misaligned))),
+    % Every return carries a pointer, which makes the module Fil-C.
+    catch(( ir_module([func(e, export, data, [], [block(s, [], [], ret)])], _), fail ),
+          nanofil_error(Why), true),
+    sub_atom(Why, _, _, _, 'ret without a value'),
+    ir_module([func(e, export, data, [], [block(s, [], [], ret(const(0)))])], E),
+    module_mode(E, filc).
+
 % Readonly is permission, not allocation origin: heap snapshots may be
 % freed, but static objects and function objects cannot be freed.
 test(free_object_kinds) :-

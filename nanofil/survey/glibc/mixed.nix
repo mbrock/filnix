@@ -9,7 +9,9 @@
 # change: CC is a wrapper that, for each unit named in units (paths
 # under the build directory, such as string/strlen.os), compiles the
 # preprocessed unit with nanofil (opt, -O by default) and assembles it
-# with GNU as over filcc's object; every other compile is filcc's.
+# with GNU as over filcc's object; every other compile is filcc's. The
+# units may be ordinary .c files or the syscall stubs make-syscalls.sh
+# pipes in on stdin.
 # glibc's own make then links libc.so from them. Each unit nanofil
 # compiles is listed in $out/nanofil/compiled, any it fails on (which
 # keep filcc's object) in $out/nanofil/failed.
@@ -51,6 +53,8 @@ let
         -c) compile=1 ;;
         -o) i=$((i + 1)); out=''${args[$i]} ;;
         *.c) src=''${args[$i]} ;;
+        # The generated syscall stubs come on stdin (-x c -).
+        -) src=- ;;
       esac
       i=$((i + 1))
     done
@@ -58,8 +62,11 @@ let
     if [ -z "$compile" ] || [ -z "$out" ] || [ -z "$src" ]; then exec $GLIBC_MIXED_CC "$@"; fi
     rel=''${out#"$NIX_BUILD_TOP"/build/}
     if ! grep -qxF "$rel" ${units}; then exec $GLIBC_MIXED_CC "$@"; fi
-    # filcc's object first, which also writes make's dependency file.
-    $GLIBC_MIXED_CC "$@" || exit
+    # filcc's object first, which also writes make's dependency file. A
+    # unit read from stdin is kept, to be read twice.
+    input=/dev/stdin
+    if [ "$src" = - ]; then input=$out.nf.c; cat >"$input"; fi
+    $GLIBC_MIXED_CC "$@" <"$input" || exit
     pp=() i=0 std= errno= common= copies= inline=
     while [ $i -lt ''${#args[@]} ]; do
       a=''${args[$i]}
@@ -81,7 +88,7 @@ let
     log=$NIX_BUILD_TOP/nanofil
     mkdir -p "$log"
     # nanofil refuses __int128 and has no _BitInt (c_pp.pl).
-    if $GLIBC_MIXED_CC "''${pp[@]}" -U__SIZEOF_INT128__ -U__BITINT_MAXWIDTH__ -E -o "$out.nf.i" &&
+    if $GLIBC_MIXED_CC "''${pp[@]}" -U__SIZEOF_INT128__ -U__BITINT_MAXWIDTH__ -E -o "$out.nf.i" <"$input" &&
        (cd ${nanofil}/src &&
         NANOFIL_STATE=${nanofil}/nanofil.state NANOFIL_STD=$std NANOFIL_MATH_ERRNO=$errno \
           NANOFIL_COMMON=$common ../bin/nanofil ${opt} $copies $inline cc "$out.nf.i" </dev/null) \
@@ -92,7 +99,7 @@ let
     else
       echo "$rel: $(head -c 300 "$out.nf.err")" >>"$log/failed"
     fi
-    rm -f "$out.nf.i" "$out.nf.s"
+    rm -f "$out.nf.i" "$out.nf.s" "$out.nf.c"
     exit 0
   '';
   glibc = stock.overrideAttrs (old: {
@@ -139,7 +146,7 @@ let
       ${pkgs.lib.concatMapStrings (
         a: "printf '%s\\n' ${pkgs.lib.escapeShellArg "hello ${a}"}\n"
       ) hellos}
-      for p in strings stdio floats malloc; do echo $p; done
+      for p in strings stdio floats malloc sys; do echo $p; done
       for a in "" 3 a q; do echo "exit $a"; done
     } >invocations
     run() {

@@ -37,10 +37,14 @@ intl/plural.os
 io/close.os
 io/close_nocancel.os
 io/close_nocancel_nostatus.os
+io/dup.os
+io/fcntl64.os
 io/fstat64.os
 io/fstatat64.os
 io/getcwd.os
 io/lseek64.os
+io/open64.os
+io/open64_nocancel.os
 io/read.os
 io/read_nocancel.os
 io/rmdir.os
@@ -141,8 +145,10 @@ misc/getsysstats.os
 misc/init-misc.os
 misc/makedev.os
 misc/mmap64.os
+misc/munmap.os
 misc/setvmaname.os
 misc/single_threaded.os
+misc/sysinfo.os
 misc/tsearch.os
 nptl/cleanup_compat.os
 nptl/futex-internal.os

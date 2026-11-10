@@ -122,6 +122,7 @@ bijective_value([D|Ds], V) :-
 
 param_kinds(Ps, Ks) :- findall(K, member(param(K, _), Ps), Ks).
 ret_kinds(void, []).
+ret_kinds(data, []).        % its words go through the generic entry
 ret_kinds(tuple(Ks), Ks).
 ret_kinds(w, [w]).
 ret_kinds(l, [l]).
@@ -373,6 +374,9 @@ lower_inst(_, _, I, I).
 
 % Returns are actions too: materialize before popping roots, then signal
 % success in the appropriate exception channel. No safepoint intervenes.
+% A data function (zreturn) leaves its words in the thread's call
+% buffer and their byte count in %rdx, which its generic entry returns.
+lower_jump(data, registers, ret(V), abi_return([return_data(V),pop_frame,success(registers)])) :- !.
 lower_jump(K, Return, ret(V), abi_return([return_value(K,V),pop_frame,success(Return)])) :- !.
 lower_jump(tuple(Ks), buffer(N), rets(Vs),
            abi_return([return_buffer(Words),success_buffer,pop_frame,native_return])) :- !,
@@ -438,6 +442,7 @@ getter_target(Symbols, S, Target) :-
 
 % Adapter plans are consumed by public generic entries and weak thunks.
 % The void generic result is one zero word, despite having no fast value.
+adapter_return(data, adapter_result(registers,data,dynamic,packet([],[]))) :- !.
 adapter_return(Ret, adapter_result(Return,Channel,Size,Packet)) :-
     return_protocol(Ret,Return), ret_kinds(Ret,Ks), length(Ks,N),
     Size is 8*max(1,N),

@@ -226,7 +226,7 @@ A body is a short header, then one stream of instructions.
 
 | Field | Words | Notes |
 | --- | --- | --- |
-| return type | 1 | a class code, 0 for `void`; for `tuple([K1, K2])`, `0x100 + 16*K1 + K2` |
+| return type | 1 | a class code, 0 for `void`, 15 for `data`; for `tuple([K1, K2])`, `0x100 + 16*K1 + K2` |
 | parameter count | 1 |  |
 | parameter classes | 1 each | `w`, `l`, `p`, `s` or `d` |
 | block count | 1 | must equal the number of blocks in the stream |

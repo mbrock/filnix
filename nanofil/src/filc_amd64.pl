@@ -1107,6 +1107,16 @@ abi_action(consume_va(K,P,Size,D), I,B,Ctx) -->
 abi_action(returns_twice(D,Kind,Buf,Mask,Keys), I,B,Ctx) -->
     setjmp(D, Kind, Buf, Mask, Keys, I, B, Ctx).
 abi_action(return_value(K,V), _, _, Ctx) --> ret_value(K, V, Ctx).
+% zreturn: filc_prepare_to_return_with_data(thread, V, no origin) copies
+% V's words into the thread's call buffer and returns their byte count,
+% which %rdx carries out through pop_frame to the generic entry.
+abi_action(return_data(V), _, _, Ctx) -->
+    flight_load(V, Ctx),
+    [ins(mov, q, [reg(rax), reg(rsi)]), ins(mov, q, [reg(rcx), reg(rdx)])],
+    slot_reg_load(thread, rdi, Ctx),
+    [ins(xor, l, [reg(ecx), reg(ecx)]),
+     ins(call, none, [plt(filc_prepare_to_return_with_data)]),
+     ins(mov, q, [reg(rax), reg(rdx)])].
 abi_action(return_typed(Ks,Vs), _, _, Ctx) -->
     { ctx_fn(Ctx, Fn), foldl(typed_return_word, Ks, Vs, KTs, []),
       result_registers(KTs, Rs) },
@@ -3621,6 +3631,12 @@ generic_entry(Generic, adapt(Need,Words,Result)) -->
    call the fast entry in placed Form, then transport Channel into the
    placed Packet and return RetSize in %edx. Pop is the native stack
    argument size. Exceptions skip all result reads and size production. */
+generic_entry_call(reg, data, _, Pop, _, Done) --> !,
+    % The body returned its words' byte count in %rdx (return_data).
+    { field(function_object, fast_entry, rsi, Fast) },
+    [ins(call, q, [ind(Fast)])],
+    stack_release(Pop),
+    [label(Done)].
 generic_entry_call(reg, Channel, Packet, Pop, RetSize, Done) -->
     { field(function_object, fast_entry, rsi, Fast) },
     [ins(call, q, [ind(Fast)])],

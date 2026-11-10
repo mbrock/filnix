@@ -53,13 +53,23 @@
     |---|---|
     | Name | an atom, the symbol |
     | Linkage | `export`, `local`, or `weak` (filc mode only): exported, and a strong definition elsewhere replaces it |
-    | Ret | `w`, `l`, `p`, `s`, `d`, `void`, or `tuple([K1, K2])` |
+    | Ret | `w`, `l`, `p`, `s`, `d`, `void`, `tuple([K1, K2])`, or `data` (filc mode only) |
     | Params | a list of `param(K, tmp(N))`, K one of `w` `l` `p` `s` `d` |
     | Blocks | a list of `block(Label, Phis, Insts, Jump)`, the entry block first |
 
     A `tuple([K1, K2])` return is two words, each Ki `l`, `p`, `s` or
     `d`: a struct of 9 to 16 bytes, its eightbytes as SysV classes them
     (filc mode only).
+
+    A `data` function (Fil-C's `zreturn`, docs/zsys.md) returns by
+    `ret(V)`, V of class `p`, the 8-byte words from V's address to its
+    capability's upper bound, each with its capability, as libpizlo's
+    `filc_prepare_to_return_with_data` does; a null V returns no words.
+    It traps if V is not null and has no object, its object is freed, or
+    V is not 8-aligned. A `data` function is variadic (variadic_func/1):
+    it has only the generic entry. A call of one reads its result words
+    from the returned ones, as through the generic entry, and traps if
+    it reads more words than were returned.
 
     ## Phis and instructions
 
@@ -812,8 +822,9 @@ drop_key(_, Ps, Ps).
 %! variadic_func(+Func) is semidet.
 %
 %  Func takes the entry argument snapshot (`va_args`) of a variadic
-%  function. The snapshot's metadata is retained even if its cursor is
-%  unused.
+%  function, or returns `data`, which also needs the generic entry. The
+%  snapshot's metadata is retained even if its cursor is unused.
+variadic_func(func(_, _, data, _, _)) :- !.
 variadic_func(func(_, _, _, _, Blocks)) :-
     member(block(_, _, Insts, _), Blocks),
     member(let(_, p, va_args, _), Insts), !.
@@ -863,7 +874,7 @@ module_mode(module(Items), Mode) :-
 % or thread-local data or a weak function, which only filc mode models. The cuts commit to the first witness.
 pointer_item(func(_, Linkage, Ret, Params, Blocks)) :-
     (   Linkage == weak
-    ;   ( Ret == p ; Ret = tuple(_) )
+    ;   ( Ret == p ; Ret = tuple(_) ; Ret == data )
     ;   member(param(p, _), Params)
     ;   member(block(_, Phis, Insts, _), Blocks),
         (   member(phi(_, p, _), Phis)
@@ -999,6 +1010,8 @@ valid_item(Symbols, Mode, Stage, func(Name, Linkage, Ret, Params, Blocks)) :-
     ;   fn_error(Name, 'invalid function linkage ~w', [Linkage])
     ),
     ( (any_class(Ret) ; Ret == void ; Ret = tuple(_)) -> true
+    ; Ret == data
+    -> ( Mode == filc -> true ; fn_error(Name, 'return class data needs a Fil-C module', []) )
     ; fn_error(Name, 'invalid return class ~w', [Ret]) ),
     (   ( Ret == x ; member(param(x, _), Params)
         ; member(block(_, Phis, Is, _), Blocks),
@@ -2526,6 +2539,8 @@ store_value_class(K, K) :- any_class(K).
 
 % call_result_ok(+Fn, +Callee, +Res, +CalleeRet): the call site reads the
 % result the way the callee returns it.
+% A data function's words are read as the call site reads them.
+call_result_ok(_, _, _, data) :- !.
 call_result_ok(_, _, void, _).
 call_result_ok(Fn, Callee, tuple(Tos), Ret) :-
     findall(K, member(result(_, K), Tos), Ks),
@@ -2584,6 +2599,7 @@ valid_jump(_, unreachable).
 % the one value V.
 ret_value_ok(void, ctx(_, Fn, _, _, _, _, _), _) :-
     fn_error(Fn, 'ret with a value in a void function', []).
+ret_value_ok(data, Ctx, V) :- valid_use(Ctx, p, V).
 ret_value_ok(tuple(_), ctx(_, Fn, _, _, _, _, _), _) :-
     fn_error(Fn, 'ret of one value in a tuple function', []).
 ret_value_ok(Ret, Ctx, V) :-
@@ -2594,6 +2610,7 @@ ret_value_ok(Ret, Ctx, V) :-
 % nothing.
 ret_void_ok(void, _).
 ret_void_ok(tuple(_), Fn) :- fn_error(Fn, 'ret without a value', []).
+ret_void_ok(data, Fn) :- fn_error(Fn, 'ret without a value', []).
 ret_void_ok(Ret, Fn) :-
     any_class(Ret),
     fn_error(Fn, 'ret without a value', []).

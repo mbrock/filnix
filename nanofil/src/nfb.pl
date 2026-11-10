@@ -438,6 +438,7 @@ param_class(param(K, tmp(_)), C) :- memberchk(K, [w, l, p, s, d]), nfb_code(clas
 param_class(P, _) :- nfb_error('no encoding for the parameter ~q', [P]).
 
 ret_word(void) --> !, [0].
+ret_word(data) --> !, [15].
 ret_word(tuple([K1, K2])) --> !, { nfb_code(class, K1, C1), nfb_code(class, K2, C2), W is 0x100 + 16 * C1 + C2 }, [W].
 ret_word(K) --> { nfb_code(class, K, C) }, !, [C].
 ret_word(R) --> { nfb_error('no encoding for the return type ~q', [R]) }.
@@ -863,6 +864,7 @@ read_param(TN, C, Id, param(K, tmp(D))) :-
     nfb_code(class, K, C), memberchk(K, [w, l, p, s, d]), I is Id + 1, table_arg(I, TN, D).
 
 read_ret(0, void) :- !.
+read_ret(15, data) :- !.
 read_ret(W, tuple([K1, K2])) :- W >= 0x100, !, C1 is (W - 0x100) >> 4, C2 is W /\ 15, nfb_code(class, K1, C1), nfb_code(class, K2, C2).
 read_ret(W, K) :- nfb_code(class, K, W).
 
