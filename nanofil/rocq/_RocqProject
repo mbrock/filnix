@@ -97,5 +97,6 @@ theories/LibcStreamTokens.v
 theories/LibcStreamAdapter.v
 theories/HelloStdio.v
 theories/HelloConv.v
+theories/GetoptLogic.v
 theories/HelloMain.v
 theories/Extract.v

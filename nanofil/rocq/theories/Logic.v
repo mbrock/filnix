@@ -135,7 +135,7 @@ Proof.
   { intros b' o P H reg' E L. rewrite Ho in E. destruct (Z.eqb_spec b' b) as [->|Hne].
     - injection E as <-. discriminate L.
     - exact (H reg' E L). }
-  destruct l as [b'|b' o|b' o|k], v as [reg'|y|c| |q t|cd|sq sp]; cbn [agree_piece] in Ha |- *; try contradiction;
+  destruct l as [b'|b' o|b' o|k], v as [reg'|y|c| |q t|cd|sq sp|ga gi]; cbn [agree_piece] in Ha |- *; try contradiction;
     try exact I.
   - destruct Ha as [E L]. split; [|exact L]. rewrite Ho. destruct (Z.eqb_spec b' b) as [->|]; [congruence|exact E].
   - exact (Hreg _ Ha).
@@ -667,6 +667,29 @@ Proof.
       rewrite (aux_holds_live _ _ _ (aux_piece_holds _ _ _ _ _ Hlv Hax) Hcf).
       destruct x; reflexivity.
   - iNext. iIntros "(Hl & Hc & Hcap)". iApply ("HK" with "Hl Hc Hcap").
+Qed.
+
+(** A pure-effect instruction whose result x the world interpretation
+    fixes, given ghost pieces ps the program owns, such as a token that
+    names libc's state: d is bound to x, and ps is handed back. It reads
+    memory the program does not own, libc's cells, without claiming
+    them. *)
+Lemma wp_world_let_with ps f e ls l d k o args rest j classes xs x Φ :
+  general_op o = true -> op_arg_classes o k = Some classes ->
+  map2_option (value_x ge e) classes args = Some xs ->
+  (forall m w h, wi m w h -> (forall l v, (l, v) ∈ ps -> h !! l = Some v) ->
+     op_res o k xs m = Some (OpRes (RVal x) m)) ->
+  pts ps -∗
+  ▷ (pts ps -∗ WP (ERun (mkFrame f (put d x e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d k o args :: rest) j)) : lexpr) {{ Φ }}.
+Proof.
+  intros Hg Hc Hargs Hop. iIntros "Hps HK".
+  iApply (wp_read_with (pts ps) (fun m => op_res o k xs m = Some (OpRes (RVal x) m)) _ _ []
+            with "Hps [HK]").
+  - iIntros (σ) "(%h & Hh & %Hf) Hps". destruct Hf as (_ & _ & _ & Hw).
+    iDestruct (pts_lookup with "Hh Hps") as %Hl. iPureIntro. exact (Hop _ _ _ Hw Hl).
+  - intros m fuel Hm. exact (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hg Hc Hargs Hm).
+  - iNext. iExact "HK".
 Qed.
 
 (** A raw pointer load by the plain protocol, as [wp_raw_load_pointer],

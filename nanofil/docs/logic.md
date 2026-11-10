@@ -1016,6 +1016,29 @@ reads `optind` and `optarg`, which are libc's cells, directly. So the
 loop needs a getopt triple that takes argv's cells and hands them back
 permuted, and a world-justified read of libc's cells.
 
+**Reading getopt's cells.** Main owns neither cell, and getopt
+rewrites both at every call. A ghost value, `VGetopt optarg optind`
+under the name key 64, stands for what getopt last left there. Like
+the codec and stream tokens, it agrees with every memory.
+[GetoptLogic.v](../rocq/theories/GetoptLogic.v) ties it to the world
+through one premise on wi: the world's getopt state is in memory at
+the two cells (Campaign 4's `getopt_state_at`), and the token is
+current (`getopt_current`). Logic.v's `wp_world_let_with` is an
+instruction whose result wi fixes given pieces the program owns.
+GetoptLogic derives four rules from it:
+- `wp_optarg_check`, optarg's 8-byte read check;
+- `wp_optarg_load`, the pointer load giving the token's optarg;
+- `wp_optind_check`, optind's 4-byte check at alignment 1;
+- `wp_optind_load`, the signed 32-bit load giving the token's optind.
+
+Campaign 4 is adding getopt state to `libc_world` and byte bounds to
+`getopt_slots`. A constant view would make getopt's post claim that
+the cells never change. It confirmed that the registry can be fixed
+per launch after startup fixes argv, which `getopt_contract`'s input
+needs. Main's getopt triple, `wp_main_getopt`, comes next. It takes
+argv's slots and the token and hands both back rewritten, the slots
+permuted as `getopt_order` allows, against the fixed original list.
+
 ## Open questions for mbrock
 
 - Start the logic now, or finish Campaign 4's hi.c first?
