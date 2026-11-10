@@ -118,11 +118,15 @@ c_module(Items00, module(Funcs), Attributes) :-
     weak_linkage(Weak, Funcs1, Funcs2),
     unprototyped_calls(Funcs2, Funcs3),
     alias_kinds(Funcs3, Funcs4),
-    launder_module(Funcs4, Funcs),
+    filc_directives(Items00, Directives),
+    module_asm_symbols(Directives, Funcs4, Funcs5, Final),
+    launder_module(Funcs5, Funcs),
     env_defs(Env, Defs),
-    findall(S-always_inline, ( gen_assoc(inline_attribute(S), Defs, always_inline),
+    findall(S-always_inline, ( gen_assoc(inline_attribute(S0), Defs, always_inline),
+                               final_symbol(Final, S0, S),
                                memberchk(func(S, _, _, _, _), Funcs) ), Always),
-    findall(S-noinline, ( noinline_name(Items0, N), lookup_ordinary(Env, N, fn(_, S, _)),
+    findall(S-noinline, ( noinline_name(Items0, N), lookup_ordinary(Env, N, fn(_, S0, _)),
+                          final_symbol(Final, S0, S),
                           memberchk(func(S, _, _, _, _), Funcs) ), Never0),
     sort(Never0, Never),
     append(Never, Always, Attributes).
@@ -171,29 +175,252 @@ unprototyped_inst(_, Inst, [Inst], N, N).
 %  compileModuleAsm): blank lines vanish, and `.symver L, V` becomes
 %  `.symver pizlonated_L, pizlonated_V`, versioning the symbol of L's
 %  getter, as filcc's objects do (docs/abi-findings.md, *Top-level
-%  asm*). filcc also takes its own .filc_* directives and crashes on any
-%  other text; nanofil refuses everything but .symver, the one directive
-%  the survey's packages use (xz's and libapparmor's compatibility
-%  versions; libressl's empty asm("")).
+%  asm*), and `.filc_globl N` becomes `.globl pizlonated_N`. The other
+%  Fil-C directives (.filc_rename, .filc_alias, .filc_weak_alias and
+%  .filc_weak) change the module's symbols instead and leave no line
+%  (module_asm_symbols/4). filcc crashes on any other text; nanofil
+%  refuses it, and .filc_unsafe_export and an alias at an offset other
+%  than 0 too.
 c_toplevel_asm(Items, Lines) :-
+    module_asm_lines(Items, Pairs),
+    maplist(module_asm_line, Pairs, Liness),
+    append(Liness, Lines).
+
+module_asm_lines(Items, Pairs) :-
     findall(Loc-L,
             ( member(toplevel_asm(Loc, Template), Items),
               split_at(Template, [0'\n], Ls),
               member(L, Ls) ),
-            Pairs),
-    maplist(module_asm_line, Pairs, Liness),
-    append(Liness, Lines).
+            Pairs).
 
 module_asm_line(Loc-L, Lines) :-
-    atom_codes(A, L), atom_chars(A, Cs),
-    (   phrase((ma_blank, ma_end), Cs) -> Lines = []
-    ;   phrase((ma_blank, ".symver", ma_white, ma_blank, ma_id(Local), ma_blank, ",",
-                ma_blank, ma_id(Versioned), ma_blank, ma_end), Cs)
-    ->  atom_chars(LA, Local), atom_chars(VA, Versioned),
-        format(atom(Line), '.symver pizlonated_~w, pizlonated_~w', [LA, VA]),
+    module_asm_directive(Loc-L, D),
+    (   D = symver(LA, VA)
+    ->  format(atom(Line), '.symver pizlonated_~w, pizlonated_~w', [LA, VA]),
         Lines = [Line]
-    ;   sema_error(Loc, 'top-level asm "~w" is not supported; only .symver is', [A])
+    ;   D = globl(N)
+    ->  format(atom(Line), '.globl pizlonated_~w', [N]),
+        Lines = [Line]
+    ;   Lines = []
     ).
+
+% module_asm_directive(+Loc-Line, -D): D is the directive of one line of
+% top-level asm, as FilPizlonator's MATokenizer reads it: none for a
+% blank line, symver(L, V), globl(N), weak(N), rename(Old, New), or
+% alias(Old, New, export) and alias(Old, New, weak) for .filc_alias and
+% .filc_weak_alias.
+module_asm_directive(Loc-L, D) :-
+    atom_codes(A, L), atom_chars(A, Cs),
+    (   phrase((ma_blank, ma_end), Cs) -> D = none
+    ;   phrase(ma_directive(D0), Cs) -> D = D0
+    ;   phrase((ma_blank, ".filc_", ma_id(_), ma_blank, ma_id(_), ma_blank, "+", ma_rest), Cs)
+    ->  sema_error(Loc, 'top-level asm "~w": an alias at an offset is not supported', [A])
+    ;   sema_error(Loc, 'top-level asm "~w" is not supported; only .symver and .filc_rename, .filc_alias, .filc_weak_alias, .filc_weak and .filc_globl are', [A])
+    ).
+
+ma_directive(D) -->
+    ma_blank, ".", ma_id(Word), ma_white, ma_blank, ma_id(A), ma_blank, ma_zero_offset,
+    (   ",", ma_blank, ma_id(B), ma_blank, ma_end,
+        { atom_chars(W, Word), atom_chars(AA, A), atom_chars(BA, B),
+          ma_pair(W, AA, BA, D) }
+    ;   ma_end, { atom_chars(W, Word), atom_chars(AA, A), ma_single(W, AA, D) }
+    ).
+
+ma_pair(symver, L, V, symver(L, V)).
+ma_pair(filc_symver, L, V, symver(L, V)).
+ma_pair(filc_rename, Old, New, rename(Old, New)).
+ma_pair(filc_alias, Old, New, alias(Old, New, export)).
+ma_pair(filc_weak_alias, Old, New, alias(Old, New, weak)).
+
+ma_single(filc_weak, N, weak(N)).
+ma_single(filc_globl, N, globl(N)).
+
+% An offset of zero, `+ 0`, which glibc's vtables.c gives its
+% declare_object_symbol_alias aliases, is the same symbol as none. The
+% IR's aliases have no offset, so any other is refused.
+ma_zero_offset --> "+", !, ma_blank, ma_zeros, ma_blank.
+ma_zero_offset --> [].
+
+ma_zeros --> "0", ma_zeros_rest.
+ma_zeros_rest --> "0", !, ma_zeros_rest.
+ma_zeros_rest --> [].
+
+ma_rest([], []).
+ma_rest([_|Cs], Rest) :- ma_rest(Cs, Rest).
+
+% filc_directives(+Items, -Ds): Ds are the Loc-D symbol directives of
+% the unit's top-level asm, in source order, as FilPizlonator runs them
+% after the module is built (compileModuleAsm): rename, alias, weak and
+% globl.
+filc_directives(Items, Ds) :-
+    module_asm_lines(Items, Pairs),
+    findall(Loc-D, ( member(Loc-L, Pairs), module_asm_directive(Loc-L, D),
+                     D \= none, D \= symver(_, _) ), Ds).
+
+/* Fil-C's symbol directives, as FilPizlonator's compileModuleAsm runs
+   them on the finished module, one after another (glibc's
+   libc-symbols.h: hidden_proto is .filc_rename N, __GI_N; hidden_def
+   .filc_alias __GI_N, N; hidden_weak .filc_weak_alias):
+
+   - rename(Old, New): the symbol Old, defined or only referenced,
+     is named New from then on, everywhere; nothing if the unit has no
+     Old (LLVM's tree shake), an error if it already has a New.
+   - alias(Old, New, L): New becomes a second symbol of linkage L for
+     what Old names, which the unit must define. A New the unit only
+     referenced (or declared weak) is that object from then on, as
+     LLVM replaces the declaration; one it defines is an error, unless
+     it is already the same alias.
+   - weak(N): the definition N gets weak linkage.
+   - globl(N): a definition N with local linkage gets export linkage
+     (c_toplevel_asm/2 emits its .globl line).
+
+   Each symbol is an identity whose name the directives change, so a
+   later rename of an alias's target moves the alias with it, as an
+   LLVM object would. Final is the assoc from each symbol of Items0 to
+   its name in Items; a symbol not in it keeps its name. */
+module_asm_symbols([], Items, Items, Final) :- !, empty_assoc(Final).
+module_asm_symbols(Ds, Items0, Items, Final) :-
+    findall(S, ( member(I, Items0), item_symbol(I, S) ), Named),
+    symbol_refs(Items0, Refs0, []),
+    append(Named, Refs0, Names0), sort(Names0, Names),
+    findall(N-N, member(N, Names), NPs), list_to_assoc(NPs, Cur0),
+    foldl(asm_symbol_directive(Items0), Ds, st(Cur0, [], [], []), st(Cur, Merged, Aliases, Links)),
+    final_names(Cur, Merged, Final),
+    foldl(asm_item(Final, Merged, Links), Items0, Items1, []),
+    maplist(new_alias(Final), Aliases, AliasItems),
+    append(Items1, AliasItems, Items).
+
+item_symbol(func(S, _, _, _, _), S).
+item_symbol(data(S, _, _, _), S).
+item_symbol(alias(S, _, _), S).
+
+% The identity a name stands for now, or none.
+cur_id(Cur, N, Id) :- get_assoc(N, Cur, Id).
+
+% Id is defined: a function or data item of Items0 that is not a weak
+% declaration, or an alias a directive made. Kind is func or data, and
+% Target the identity an alias resolves to.
+defined_id(Items0, Aliases, Id, Target) :-
+    (   memberchk(a(Id, _, T), Aliases) -> Target = T
+    ;   memberchk(func(Id, _, _, _, _), Items0) -> Target = Id
+    ;   member(data(Id, L, _, _), Items0), L \== extern(weak) -> Target = Id
+    ;   memberchk(alias(Id, _, T), Items0) -> Target = T
+    ).
+
+asm_symbol_directive(_, Loc-rename(Old, New), st(Cur0, M, As, Ls), st(Cur, M, As, Ls)) :-
+    (   cur_id(Cur0, Old, Id)
+    ->  (   cur_id(Cur0, New, _)
+        ->  sema_error(Loc, 'cannot rename ~w to ~w, which is taken', [Old, New])
+        ;   del_assoc(Old, Cur0, Id, Cur1), put_assoc(New, Cur1, Id, Cur)
+        )
+    ;   Cur = Cur0
+    ).
+asm_symbol_directive(Items0, Loc-alias(Old, New, L), st(Cur0, M0, As0, Ls), st(Cur, M, As, Ls)) :-
+    (   cur_id(Cur0, Old, OldId), defined_id(Items0, As0, OldId, Target) -> true
+    ;   sema_error(Loc, 'alias ~w must point to a defined variable or function, not ~w', [New, Old])
+    ),
+    (   cur_id(Cur0, New, NewId)
+    ->  (   memberchk(a(NewId, L, Target), As0)
+        ->  Cur = Cur0, M = M0, As = As0
+        ;   defined_id(Items0, As0, NewId, _)
+        ->  sema_error(Loc, 'alias name ~w is already taken by a definition', [New])
+        ;   alias_id(New, As0, AId),
+            put_assoc(New, Cur0, AId, Cur), M = [NewId-Target|M0], As = [a(AId, L, Target)|As0]
+        )
+    ;   alias_id(New, As0, AId),
+        put_assoc(New, Cur0, AId, Cur), M = M0, As = [a(AId, L, Target)|As0]
+    ).
+asm_symbol_directive(Items0, Loc-weak(N), st(Cur, M, As0, Ls), st(Cur, M, As, [Id-weak|Ls])) :-
+    (   cur_id(Cur, N, Id), defined_id(Items0, As0, Id, _) -> true
+    ;   sema_error(Loc, 'cannot do .filc_weak to ~w because it does not exist', [N])
+    ),
+    (   select(a(Id, _, T), As0, As1) -> As = [a(Id, weak, T)|As1] ; As = As0 ).
+asm_symbol_directive(Items0, _-globl(N), st(Cur, M, As, Ls0), st(Cur, M, As, Ls)) :-
+    (   cur_id(Cur, N, Id), defined_id(Items0, As, Id, _) -> Ls = [Id-export|Ls0]
+    ;   Ls = Ls0
+    ).
+
+% A fresh identity for an alias a directive names New: one no symbol of
+% the unit is, whatever names come later.
+alias_id(New, As, alias_symbol(New, N)) :- length(As, N).
+
+% final_names(+Cur, +Merged, -Final): the final name of every identity,
+% and of every merged declaration the name of what it now is.
+final_names(Cur, Merged, Final) :-
+    assoc_to_list(Cur, NIs),
+    findall(Id-N, ( member(N-Id, NIs), N \== Id ), Moved),
+    list_to_assoc(Moved, F0),
+    foldl(merged_name(Cur), Merged, F0, Final).
+
+merged_name(Cur, Id-Target, F0, F) :-
+    assoc_to_list(Cur, NIs),
+    ( member(N-Target, NIs) -> true ; N = Target ),
+    put_assoc(Id, F0, N, F).
+
+%! final_symbol(+Final, +S0, -S)
+%
+%  S is the name module_asm_symbols/4 gave the symbol S0.
+final_symbol(Final, S0, S) :- ( get_assoc(S0, Final, S1) -> S = S1 ; S = S0 ).
+
+% An item with its symbols renamed; a weak declaration of a symbol an
+% alias replaced goes.
+asm_item(_, Merged, _, data(S, extern(weak), _, []), Is, Is) :-
+    memberchk(S-_, Merged), !.
+asm_item(Final, _, Links, I0, [I|Is], Is) :-
+    rename_term(Final, I0, I1),
+    (   item_symbol(I0, S), memberchk(S-L, Links) -> item_linkage(L, I1, I)
+    ;   I = I1
+    ).
+
+item_linkage(L, func(S, L0, R, Ps, Bs), func(S, L1, R, Ps, Bs)) :- !, func_linkage(L, L0, L1).
+item_linkage(L, data(S, L0, A, Is), data(S, L1, A, Is)) :- !, data_linkage(L, L0, L1).
+item_linkage(L, alias(S, _, T), alias(S, L, T)).
+
+func_linkage(weak, _, weak).
+func_linkage(export, local, export) :- !.
+func_linkage(export, L, L).
+
+data_linkage(weak, L0, L) :- !,
+    (   memberchk(L0, [export, local, weak]) -> L = weak
+    ;   memberchk(L0, [ro(export), ro(local), ro(weak)]) -> L = ro(weak)
+    ;   throw(nanofil_error(format('.filc_weak of data of linkage ~w is not supported', [L0])))
+    ).
+data_linkage(export, local, export) :- !.
+data_linkage(export, ro(local), ro(export)) :- !.
+data_linkage(export, tls(local), tls(export)) :- !.
+data_linkage(export, L, L).
+
+new_alias(Final, a(Id, L, T), alias(N, L, TN)) :-
+    final_symbol(Final, Id, N), final_symbol(Final, T, TN).
+
+% symbol_refs(+Term)//: the symbols Term references, global(S) and
+% sym(S, Off).
+symbol_refs(global(S)) --> { atom(S) }, !, [S].
+symbol_refs(sym(S, _)) --> { atom(S) }, !, [S].
+symbol_refs(T) --> { compound(T) }, !, { T =.. [_|As] }, symbol_refs_list(As).
+symbol_refs(T) --> { is_list(T) }, !, symbol_refs_list(T).
+symbol_refs(_) --> [].
+
+symbol_refs_list([]) --> [].
+symbol_refs_list([T|Ts]) --> symbol_refs(T), symbol_refs_list(Ts).
+
+% rename_term(+Final, +T0, -T): T0 with each symbol S, an item's own name
+% or a reference global(S) or sym(S, Off), renamed as Final says.
+rename_term(Final, func(S0, L, R, Ps, Bs0), func(S, L, R, Ps, Bs)) :- !,
+    final_symbol(Final, S0, S), rename_refs(Final, Bs0, Bs).
+rename_term(Final, data(S0, L, A, Is0), data(S, L, A, Is)) :- !,
+    final_symbol(Final, S0, S), rename_refs(Final, Is0, Is).
+rename_term(Final, alias(S0, L, T0), alias(S, L, T)) :- !,
+    final_symbol(Final, S0, S), final_symbol(Final, T0, T).
+rename_term(Final, context(S0, R), context(S, R)) :- !, final_symbol(Final, S0, S).
+rename_term(_, I, I).
+
+rename_refs(Final, global(S0), global(S)) :- atom(S0), !, final_symbol(Final, S0, S).
+rename_refs(Final, sym(S0, O), sym(S, O)) :- atom(S0), !, final_symbol(Final, S0, S).
+rename_refs(Final, [T0|Ts0], [T|Ts]) :- !, rename_refs(Final, T0, T), rename_refs(Final, Ts0, Ts).
+rename_refs(Final, T0, T) :-
+    compound(T0), !, T0 =.. [F|As0], rename_refs(Final, As0, As), T =.. [F|As].
+rename_refs(_, T, T).
 
 % MATokenizer's whitespace (but newline) and identifiers: a letter or _
 % and then letters, digits, _, $, @ and dots.

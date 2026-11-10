@@ -76,6 +76,31 @@ def module_of(cmd):
     return m.group(1) if m else "?"
 
 
+def cc_options(cmd):
+    """The environment and options nanofil-cc (nix/nanofil-cc.nix) derives
+    from a compile command's flags, so each unit is read as the survey
+    would compile it: glibc's -fgnu89-inline gives its extern inline
+    functions the GNU rule (NANOFIL_STD=gnu89)."""
+    env, opts = {}, []
+    for a in cmd.split():
+        if a in ("-std=c23", "-std=gnu23", "-std=c2x", "-std=gnu2x"):
+            env["NANOFIL_STD"] = "c23"
+        elif a in ("-std=c89", "-std=c90", "-std=gnu89", "-std=gnu90", "-std=iso9899:1990",
+                   "-std=iso9899:199409", "-ansi", "-fgnu89-inline"):
+            env["NANOFIL_STD"] = "gnu89"
+        elif a.startswith("-std="):
+            env.pop("NANOFIL_STD", None)
+        elif a in ("-fno-builtin", "-fno-builtin-memcpy", "-fno-builtin-memmove", "-ffreestanding"):
+            opts = [o for o in opts if not o.startswith("--memcpy")] + ["--memcpy=call"]
+        elif a in ("-fno-inline", "-O0"):
+            opts = [o for o in opts if not o.startswith("--inline")] + ["--inline=none"]
+        elif a == "-fcommon":
+            env["NANOFIL_COMMON"] = "1"
+        elif a == "-fno-common":
+            env.pop("NANOFIL_COMMON", None)
+    return env, opts
+
+
 def units(pp, only):
     for root, _, files in os.walk(pp):
         for f in files:
@@ -84,10 +109,11 @@ def units(pp, only):
             path = os.path.join(root, f)
             obj = os.path.relpath(path, pp)[:-2]
             with open(path[:-2] + ".cmd", errors="replace") as fh:
-                mod = module_of(fh.read())
+                cmd = fh.read()
+            mod = module_of(cmd)
             if only and mod not in only:
                 continue
-            yield obj, mod, path
+            yield obj, mod, path, cc_options(cmd)
 
 
 # A top-level asm statement of Fil-C's module-asm directives (.filc_rename,
@@ -117,8 +143,11 @@ def rewrite(path, dest, drop, pad):
 
 
 def compile_one(job):
-    obj, mod, path, out, timeout, drop, pad = job
+    obj, mod, path, (ccenv, ccopts), out, timeout, drop, pad = job
     env = dict(os.environ)
+    env.pop("NANOFIL_STD", None)
+    env.pop("NANOFIL_COMMON", None)
+    env.update(ccenv)
     t = time.monotonic()
     tmp = None
     if drop or pad:
@@ -126,7 +155,7 @@ def compile_one(job):
         rewrite(path, tmp, drop, pad)
         path = tmp
     try:
-        p = subprocess.run([nanofil, "cc-ir", os.path.abspath(path)], cwd=src, env=env,
+        p = subprocess.run([nanofil] + ccopts + ["cc-ir", os.path.abspath(path)], cwd=src, env=env,
                            stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout)
         status = "ok" if p.returncode == 0 else "error"
         stdout, stderr = p.stdout, p.stderr.decode(errors="replace")
@@ -208,9 +237,9 @@ def main():
     with open(os.path.join(a.out, "units.tsv"), "w") as tsv, \
             concurrent.futures.ThreadPoolExecutor(a.j) as ex:
         tsv.write("object\tmodule\tstatus\tseconds\tcause\tmessage\n")
-        futs = [ex.submit(compile_one, (o, m, p, a.out, a.timeout, a.drop_filc_asm,
+        futs = [ex.submit(compile_one, (o, m, p, cc, a.out, a.timeout, a.drop_filc_asm,
                                              a.int128_padding))
-                for o, m, p in jobs]
+                for o, m, p, cc in jobs]
         for i, f in enumerate(concurrent.futures.as_completed(futs), 1):
             obj, mod, status, secs, cause, msg = f.result()
             done[status] += 1
