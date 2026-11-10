@@ -4,6 +4,11 @@ name: Site builder comparison
 
 on:
   workflow_dispatch:
+    inputs:
+      revision:
+        description: Commit to build on both runners (defaults to this workflow's commit)
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -21,27 +26,30 @@ jobs:
       matrix:
         include:
           - name: GitHub 4-core
-            runner: ubuntu-24.04
-          - name: Namespace 16-core
-            runner: nscloud-ubuntu-24.04-amd64-16x32
+            runner: ubuntu-22.04
+          - name: Namespace default 4-core
+            runner: namespace-profile-default
     runs-on: ${{ matrix.runner }}
-    # Namespace 16x32 is $0.024/min PAYG: at most $0.72 compute per trial.
-    # No cache-volume label, hence no persistent-volume storage commitment.
+    # Existing default profile: Ubuntu 22.04, amd64, 4 vCPU / 16 GB.
+    # At $0.012/min PAYG, at most $0.36 compute; no cache volumes attached.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.revision || github.sha }}
       - uses: cachix/install-nix-action@v31
       - name: Build the same site
         env:
           BUILDER: ${{ matrix.name }}
         run: |
           set -o pipefail
+          git rev-parse HEAD > source.txt
           lscpu > machine.txt
           /usr/bin/time -v -o build-time.txt nix build -L .#site 2>&1 | tee build.log
           nix path-info ./result > output.txt
           du -sbL result >> output.txt
           {
-            echo "### $BUILDER — $GITHUB_SHA"
+            echo "### $BUILDER — $(cat source.txt)"
             echo '```text'
             cat build-time.txt output.txt
             echo '```'
@@ -53,6 +61,7 @@ jobs:
           name: site-benchmark-${{ matrix.runner }}
           retention-days: 3
           path: |
+            source.txt
             machine.txt
             build-time.txt
             output.txt
