@@ -427,7 +427,7 @@ Context (diag_ps : list (piece * pval)) (error_spec : contract world)
     agrees m h -> wi m w h ->
     (forall l v, (l,v) ∈ diag_ps ++ byte_ps eb eo xs -> h !! l = Some v) ->
     contract_pre error_spec [WInt 0; WInt n; WPtr fmt; WPtr text] m w)
-  (Herror_post : forall v fmtv txtv n xs s m w h tr vs s' m' w',
+  (Herror_post : forall v fmtv txtv n xs s m w h tr vs s' m' w', length xs = 4%nat ->
     agrees m h -> live_disjoint m -> R.ready s m -> wi m w h ->
     (forall l v, (l,v) ∈ diag_ps ++ byte_ps eb eo xs -> h !! l = Some v) ->
     M.E.invoke error_spec CVoid [Arg W (Const 0); Arg W v; Arg P fmtv; Arg P txtv]
@@ -464,7 +464,7 @@ Proof.
   - iNext. iIntros (σ tr vs s' m' w' Hi) "Hσ Hps".
     iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr & Hw).
     iDestruct (pts_lookup with "Hh Hps") as %Hl.
-    destruct (Herror_post _ _ _ _ _ _ _ _ _ _ _ _ _ _ Ha Hd Hr Hw Hl Hi)
+    destruct (Herror_post _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hlen Ha Hd Hr Hw Hl Hi)
       as (ys & -> & Hys & Hkeys & Ha' & Hd' & Hr' & Hw').
     iMod (pts_update with "Hh Hps") as "[Hh Hps]"; [exact Hkeys|].
     iModIntro. iExists e. iSplit.
