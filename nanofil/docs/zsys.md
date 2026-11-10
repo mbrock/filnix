@@ -298,7 +298,8 @@ unused `__int128_t` padding members as aligned bytes of the same size.
 | `address_space` refused only where used | 2,902 (93%) | |
 | `packed` members | 2,975 (96%) | |
 | `sqrt` and `trunc` | 2,979 (96%) | |
-| aliases of thread-local data | **2,982 (96%)** | |
+| aliases of thread-local data | 2,982 (96%) | |
+| `__alignof__` of an expression | **2,986 (96%)** | |
 
 The last three rows are a new capture, preprocessed without
 `__BITINT_MAXWIDTH__`, so `math_uint128.h` takes its portable path. No
@@ -328,7 +329,7 @@ First errors (one error per unit, so a fix can uncover the next layer):
 | --- | ---: | --- |
 | `__real__`, `__imag__`, `_Complex` returns | 72 | libm's complex functions |
 | x87 and MXCSR | 51 | `fnclex`, `frndint`, `__builtin_ia32_ldmxcsr` in libm's fenv |
-| other | 9 | `__alignof__` of an expression, `__label__`, `#pragma weak` in a body, `__builtin_ia32_cvtpd2ps`, `__builtin_ia32_rdtsc` |
+| other | 5 | `__label__`, `#pragma weak` in a body, `__builtin_ia32_cvtpd2ps`, `__builtin_ia32_rdtsc` |
 
 - **x87 and MXCSR.** Fil-C's own glibc keeps a few x87 instructions
   (`fnclex`, `frndint`, `fnstsw`) as inline asm, which FilPizlonator's
@@ -401,6 +402,16 @@ Each frontend fix has a test that fails without it:
   Rocq's `valid_alias` takes the same linkage. `tests/c/prog/tls-alias.c`,
   two threads against filcc. (clang cannot compile an alias of a static
   thread-local, so the `tls(local)` getter was checked by hand.)
+- GNU `__alignof__` of an expression, as glibc's `strcoll_l` and
+  `strxfrm_l` assert `__alignof__ (table[0])`: a named object's
+  alignment is its declaration's, with its `aligned` and `_Alignas`
+  requests, and any other operand's is its type's (`expr_alignment/3`).
+  nanofil's types keep no typedef and its members no attributes, so an
+  operand whose type is some aligned typedef's (`__alignof__ (*p)` of an
+  `A *p`, where clang gives the typedef's alignment) and a member are
+  refused rather than answered wrong. `tests/c/prog/alignof-expr.c`
+  against filcc; `tests/c/reject/alignof-typedef-expr.c` and
+  `alignof-member-expr.c`.
 - An `address_space` type is refused only where it is used, as a
   vector type is: filcc cannot compile an access through another
   address space either, and glibc's `rseq-internal.h` casts to

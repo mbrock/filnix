@@ -60,7 +60,7 @@
     Env as its last two arguments, so it threads through foldl/4,6.
 */
 :- module(c_types, [empty_env/1, specs_type/4, apply_declarator/5,
-                    type_size_align/4, sizeof_size/3, arith_size/3, classify_builtin/1, complete_type/2, int_type/1, int_info/3,
+                    type_size_align/4, sizeof_size/3, expr_alignment/3, arith_size/3, classify_builtin/1, complete_type/2, int_type/1, int_info/3,
                     integer_promotion/2, usual_arith_conversion/3,
                     float_type/1, arithmetic_type/1, default_promotion/2,
                     constant_value/4, const_convert/4, constant_address/3, float_literal/3,
@@ -221,7 +221,13 @@ declarator_type(Specs, Requests0, Base, Storage, init(dcl(some(Name), SyntaxType
         ),
         bind_ordinary(Name, typedef(Type1), Env2a, Env3),
         (   TA1 == none, \+ lookup_ordinary(Env3, talign(Name), _) -> Env4 = Env3
-        ;   bind_ordinary(talign(Name), TA1, Env3, Env4)
+        ;   bind_ordinary(talign(Name), TA1, Env3, Env3a),
+            (   integer(TA1)                % for expr_alignment/3, unscoped
+            ->  Env3a = e(Ords, Tags, Defs0, Next),
+                put_assoc(aligned_typedef(Type1), Defs0, TA1, Defs),
+                Env4 = e(Ords, Tags, Defs, Next)
+            ;   Env4 = Env3a
+            )
         ),
         transparent_typedef(Specs, Type1, Env4, Env),
         Decl = none
@@ -2360,6 +2366,49 @@ def_size_align(partial(Why, _), _, _) :-
 def_size_align(bad(Why), _, _) :-
     throw(bad(Why)).
 
+doc(expr_alignment(+X, +Env, -A), det, [
+    X: "the elaborated operand of GNU __alignof__ applied to an expression",
+    Env: "the scope",
+    A: "its alignment in bytes",
+    "A named object's alignment is its declaration's, with its _Alignas",
+    "and aligned requests (qalign), as clang's GetAlignOfExpr takes the",
+    "declaration's; any other operand's is its type's, an array's its",
+    "element's. A member, whose alignment clang takes from the field's",
+    "declaration (aligned, packed), is refused, as is a type",
+    "type_size_align/4 refuses: both throw bad(Why). So is an operand",
+    "whose type, or an array level of it, is that of some aligned typedef",
+    "of the unit, unless its declaration's own request settles it: a type",
+    "keeps no typedef, so *p of an A *p, A aligned(16), would read 4",
+    "where clang gives 16. The operand is not evaluated. glibc's string",
+    "functions assert __alignof__ (table[0]).",
+    example(( empty_env(E), expr_alignment(val(long, load(obj(ptr(long), id(p)))), E, 8) )),
+    example(( empty_env(E), expr_alignment(obj(array(short, 4), id(a)), E, 2) )),
+    example(( empty_env(E0), bind_ordinary(qalign(c), 16, E0, E),
+              expr_alignment(obj(char, id(c)), E, 16) )),
+    example(( empty_env(E), catch(expr_alignment(obj(int, member(obj(su(struct, s), id(s)), x)), E, _), bad(W), true),
+              W == '__alignof__ of a member' )),
+    cites('GCC manual, Alignment: __alignof__ of an expression'),
+    cites('clang, lib/Sema/SemaExpr.cpp, CheckAlignOfExpr')
+]).
+expr_alignment(obj(_, member(_, _)), _, _) :- !, throw(bad('__alignof__ of a member')).
+expr_alignment(obj(_, bitfield(_, _)), _, _) :- !, throw(bad('__alignof__ of a member')).
+expr_alignment(obj(_, id(Name)), Env, A) :-
+    lookup_ordinary(Env, qalign(Name), A0), integer(A0), !,
+    A = A0.
+expr_alignment(X, Env, A) :-
+    tree_type(X, T0), unqualified(T0, T1),
+    Env = e(_, _, Defs, _),
+    (   array_level(T1, L), get_assoc(aligned_typedef(L), Defs, _)
+    ->  throw(bad('__alignof__ of an expression whose type may be an aligned typedef'))
+    ;   true
+    ),
+    innermost_element(T1, T),
+    type_size_align(T, Env, _, A).
+
+% array_level(+T, -L): L is T or, for an array, one of its element types.
+array_level(T, T).
+array_level(array(T, _), L) :- array_level(T, L).
+
 doc(sizeof_size(+Type, +Env, -Size), det, [
     Type: "the type of sizeof's operand",
     Env: "the scope",
@@ -2926,6 +2975,8 @@ folded(val(_, alignof(TypeName)), Env, V) :-                % 6.5.3.4p3
     ->  V = A
     ;   V = V0
     ).
+folded(val(_, alignof_expr(X)), Env, V) :-
+    catch(expr_alignment(X, Env, V), bad(_), fail).
 folded(val(_, offsetof(TypeName, Path)), Env, V) :-         % 7.19p3
     type_name_type(TypeName, T, Env, Env1),
     offset_path(Path, T, Env1, 0, V).
@@ -3535,6 +3586,8 @@ elab(sizeof_expr(E), Env, val(ulong, sizeof(X))) :-     % 6.5.3.4p1
     elaborate(E, Env, X), X \= obj(_, bitfield(_, _)).
 elab(sizeof_type(TN), _, val(ulong, sizeof(TN))).
 elab(alignof(TN), _, val(ulong, alignof(TN))).
+elab(alignof_expr(E), Env, val(ulong, alignof_expr(X))) :-  % GNU
+    elaborate(E, Env, X).
 elab(offsetof(TN, Path), _, val(ulong, offsetof(TN, Path))).
 elab(label_addr(Name), Env, X) :-                          % GNU &&label
     label_value(Name, Env, E), elab(E, Env, X).
@@ -5806,6 +5859,7 @@ fault_(assign(Op, A, B), Env, F, As) :-
         )
     ).
 fault_(comma(A, B), Env, F, As) :- operands_fault([A, B], Env, F, As).
+fault_(alignof_expr(E), Env, F, As) :- fault_(E, Env, F, As).
 fault_(sizeof_expr(E), Env, F, As) :-
     (   untyped(E, Env) -> fault_(E, Env, F, As)
     ;   F = 'sizeof of a bit-field', As = []

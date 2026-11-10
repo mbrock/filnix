@@ -3651,6 +3651,11 @@ lower_node(val(_, alignof(TN)), Ctx, v(const(Align), ulong)) --> !,
       ->  Align = A
       ;   Align = Align0
       ) }.
+lower_node(val(_, alignof_expr(X)), Ctx, v(const(A), ulong)) --> !,
+    env(Env),
+    { ctx_loc(Ctx, Loc),
+      catch(expr_alignment(X, Env, A), bad(Why),
+            sema_error(Loc, 'alignof: ~w', [Why])) }.
 % offsetof with a variable array index (GCC and clang accept
 % offsetof(struct seccomp_data, args[x])) is computed at run time.
 lower_node(val(_, offsetof(TN, Path)), Ctx, v(V, ulong)) --> !,

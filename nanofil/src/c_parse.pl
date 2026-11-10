@@ -97,7 +97,7 @@
     | `call(F, Args)` `index(A, I)` | |
     | `member(A, F)` `arrow(A, F)` | `A.F` and `A->F` |
     | `cast(TypeName, E)` | |
-    | `sizeof_type(TypeName)` `sizeof_expr(E)` `alignof(TypeName)` | |
+    | `sizeof_type(TypeName)` `sizeof_expr(E)` `alignof(TypeName)` `alignof_expr(E)` | |
     | `complit(TypeName, Init)` | a compound literal |
     | `offsetof(TypeName, Path)` | Path a list of `field(F)` and `index(E)` |
     | `va_arg(A, TypeName)` | `__builtin_va_arg` |
@@ -1386,11 +1386,15 @@ unary(Env, E) -->
     ;   unary(Env, E0),
         { E = sizeof_expr(E0) }
     ).
-unary(Env, alignof(Type)) -->
+unary(Env, E) -->
     kw(alignof), !,
-    expect('('),
-    type_name(Env, Type),
-    expect(')').
+    (   punct('('), starts_type(Env)
+    ->  type_name(Env, Type),
+        expect(')'),
+        { E = alignof(Type) }
+    ;   unary(Env, E0),         % GNU __alignof__ of an expression
+        { E = alignof_expr(E0) }
+    ).
 unary(Env, E) -->
     kw(extension), !,
     cast(Env, E).
