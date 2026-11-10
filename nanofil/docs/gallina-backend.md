@@ -20,9 +20,12 @@ Four things are wanted from it:
   on `sqlite3.c` without `-O` and about 2000G with it
   ([perf.md](perf.md), item 10). A compiler of this shape in a
   compiled functional language should need a small fraction of that.
-- **A JIT component.** Built by Fil-C, the compiler is a memory-safe
-  library. A program that generates code at run time, such as pcre2,
-  could hand it nanofil IR instead of writing machine code itself.
+- **A JIT component.** A program that generates code at run time,
+  such as pcre2, can hand the compiler nanofil IR instead of writing
+  machine code itself. The regex experiment already does this with
+  the Prolog compiler, `as`, `ld` and `dlopen`; what it lacks is a
+  compiler fast enough to wait for. Built by Fil-C, the compiler is
+  also a memory-safe library such a program can link.
 - **Less mirroring.** `Syntax.v`, `Cfg.v` and `Validate.v` transcribe
   `ir.pl` and `cfg.pl` by hand, and gates check that the two agree.
   A backend written against the model's own definitions has nothing to
@@ -220,6 +223,38 @@ in M6 before anything depends on it:
   deep recursion over long lists needs care in C++ as it did in
   OCaml (`Extract.v` records one such overflow).
 
+**Crane is an alpha, and we expect to patch it.** Its site says so,
+and it will not take all of Gallina. Three rules follow.
+
+- The backend stays in a plain subset: first-order inductives,
+  structural fixpoints, `list`, `option`, `Z`, strings and records.
+  No coinductives, no universe polymorphism, no type classes or
+  functors on the extracted path, and no local fixpoint that is
+  mutually recursive with its enclosing function (Crane's manual
+  lists that shape among those its loop transform declines). The
+  OCaml extraction does not care, and any second extractor will.
+- Crane's own switches are tried first. Its reference manual has
+  type mappings (`Crane Extract Inductive`), `Set Crane Arena` for
+  region allocation of recursive fields, `Set Crane NonAtomicRc`
+  for a non-atomic count in place of `shared_ptr`, `Set Crane Reuse`
+  for in-place reuse and `Set Crane Loopify` to turn recursion into
+  loops. A compiler that runs once per module or per pattern and
+  then frees everything is the case arenas are made for.
+- Past the switches, it is our fork. A change to what Crane emits
+  is a patch in a set we own, applied by the Nix build to a pinned
+  Crane revision, and offered upstream where it is general. The
+  differential tests are what keep a patched extractor honest: the
+  C++ build must print the same bytes as the OCaml build.
+
+**The fallback is Gallina to C.** If Crane costs more to bend than
+it saves, CertiRocq (formerly CertiCoq) compiles Gallina to Clight,
+which any C compiler takes, and brings a small C runtime with its
+own collector; the Codegen plugin is a second, narrower route to C.
+Either gives C that filcc can build, so the library and JIT steps
+below do not depend on Crane. Neither is tried unless M6 fails, and
+whether CertiRocq's runtime (its tagged values and its collector)
+is at home under Fil-C is the first thing to find out then.
+
 The Gallina is written with the second extraction in mind from the
 start: no OCaml-only `Extract Constant` on a hot path without a C++
 twin, and no hand-written OCaml that the compiler's result depends
@@ -228,41 +263,73 @@ replaces it with a Gallina one.
 
 ## The path to a Fil-C library and a JIT
 
-Crane's output is plain C++23, and Fil-C is a C++ compiler (clang 20
-with libc++), so the step is to build the extracted compiler with
-filcc and give it a C interface. Crane's README asks for Clang 19 or
-later; whether Fil-C's libc++ has everything the output uses is
-found out in M8.
+The first JIT needs no encoder and no new way to load code. The
+regex experiment
+([its README](../../experiments/regex-nanofil/README.md),
+[pcre2-jit.md](../../docs/pcre2-jit.md)) already runs one. Behind
+`pcre2_jit_compile`, a patched libpcre2 prints a pattern's bytecode
+as terms and runs a compiler, `rxc`, on a cache miss. The
+experiment's regex compiler, itself Prolog, turns the terms into
+unchecked nanofil IR, then `rxc` runs `nanofil -O compile`, `as` and
+`ld -shared`. The library loads the shared object
+with `dlopen` and keeps it in a cache directory. The Fil-C runtime
+the code calls is already in the loading process, so the trusted
+runtime does not change.
 
-1. **`libnanofil`, pizlonated.** Input: IR text or a term tree.
-   Output: assembly text, later machine code. It is memory-safe
-   against any input, by Fil-C, and checked by the same differential
-   tests as the OCaml build.
-2. **An encoder.** A JIT cannot call GNU as. Asm lines to bytes is
-   one more Gallina function, checked against `as` byte for byte on
-   everything the backend emits.
-3. **Installing code.** Fil-C's `mmap` refuses `PROT_EXEC`, so a
-   program cannot run bytes it wrote. The pinned staging runtime does
-   have one JIT (`filc_llvm_jit.c`, `filc_llvm_jit.h`): a program
-   built with `--filc-enable-jit` builds LLVM IR through a curated
-   LLVM C API, and the runtime compiles it and places the code in its
-   own JIT heap. It loads LLVM into the process and is refused to
-   setuid programs. A nanofil JIT would be the small alternative: no
-   LLVM at run time, and a compiler that is itself Fil-C code. It
-   still needs a runtime entry that installs code, which is a change
-   to the trusted runtime. The compiler being memory-safe does not
-   make its output correct, so the entry must take only what this
-   compiler made from a module `valid` accepts. That design gets a
-   note and an Oracle review before any code, and it is mbrock's
-   decision.
-4. **pcre2 as the first client.** pcre2's own JIT (sljit) writes
-   machine code into executable memory, which Fil-C refuses. A
-   backend that writes nanofil IR for a compiled pattern would be a
-   JIT with Fil-C's checks in the generated code.
+What that route lacks is a fast compiler. A miss costs 0.15 to 0.8 s
+per pattern on SWI-Prolog, and nearly all of it is `nanofil -O
+compile`: `as` and the link together take under a tenth of a second
+even for a module of 36 functions. On Fil-C Trealla, which is what a
+libpcre2 with its compiler inside would run, the median is 2.4 s.
+sljit takes 0.1 ms. So the steps are:
 
-The validator is the asset here. `valid` is already Gallina, already
-extracted and already proved (`valid_no_unchecked`), so the library
-can check a client's IR before compiling it.
+1. **The extracted compiler in `rxc`.** `nanofil-backend compile`
+   takes the place of `nanofil -O compile`. The regex compiler
+   emits unchecked IR, so this needs pizlonation (M4) and nothing
+   after it. The regex compiler itself stays Prolog for now (0.07 s
+   for 36 patterns).
+2. **Code worth running.** The first version's code is what Prolog
+   makes without `-O`, which the experiment measured at 5 to 10 times
+   slower than `-O` code. That is about the interpreter's speed on
+   some patterns, so the route is not yet worth switching on. With
+   `-O`'s middle end and check passes but stack homes, the code is
+   only 1.1 to 1.7 times slower than full `-O`. So for pcre2 the
+   check passes matter far more than a register allocator. M5
+   measures which of them buy the difference on the regex compiler's
+   IR, and those are ported first.
+3. **`libnanofil`, pizlonated.** Crane's output is plain C++23, and
+   Fil-C is a C++ compiler (clang 20 with libc++), so the extracted
+   compiler is built with filcc and given a C interface: IR text or
+   a term tree in, assembly text out. libpcre2 links it and calls it
+   in the process; the hook still runs `as` and `ld` and loads with
+   `dlopen`. It is memory-safe against any input, by Fil-C, and
+   checked by the same differential tests as the OCaml build.
+   Crane's README asks for Clang 19 or later; whether Fil-C's libc++
+   has everything the output uses is found out in M8.
+
+Two further steps are options for later, taken only if measurement
+asks for them:
+
+- **An encoder and a shared-object writer** in Gallina, in place of
+  `as` and `ld`, checked against them byte for byte. The result is
+  still loaded with `dlopen`, so this too leaves the runtime alone.
+  It removes two process starts per miss and the need for binutils
+  where the program runs.
+- **Installing code in the process**, without a file. Fil-C's `mmap`
+  refuses `PROT_EXEC`, so a program cannot run bytes it wrote. The
+  pinned staging runtime has one JIT (`filc_llvm_jit.c`,
+  `filc_llvm_jit.h`), which compiles LLVM IR built through a curated
+  C API and places the code in its own heap; it loads LLVM into the
+  process and is refused to setuid programs. A nanofil entry of that
+  kind would be a change to the trusted runtime. It would get a
+  design note and an Oracle review before any code, and it is
+  mbrock's decision.
+
+The `dlopen` route trusts the cache directory, as the experiment's
+README says: what is in it is loaded as code. The validator is the
+asset on the compiler's side. `valid` is already Gallina, already
+extracted and already proved (`valid_no_unchecked`), so the compiler
+checks a client's IR after pizlonation and before emitting anything.
 
 ## Performance targets
 
@@ -285,9 +352,12 @@ input and the same stages:
 - **Crane C++**: within 2× of the OCaml build.
 - **Pizlonated**: within 4× of the unsafe C++ build, the top of
   Fil-C's usual range.
-- **As a JIT**: a throughput in checked instructions per second, set
-  once the encoder exists; the text path's figure is not a fair
-  guide.
+- **As pcre2's compiler**: IR to assembly for one pattern in at most
+  10 ms, against 0.15 to 0.6 s in Prolog, so that a miss is bounded
+  by the regex compiler, `as` and `ld` at about a tenth of a
+  second. The code's speed has its own target once M5 has measured
+  the passes: within 2× of `-O` code on the experiment's nine
+  benchmark patterns.
 
 A stage that misses its target gets a profile and a note of where
 the time goes before the next stage starts.
@@ -326,30 +396,38 @@ module equals Prolog's as a term, and `nanofil-backend compile
 FILE.ir` equals `nanofil compile FILE.ir` with no Prolog in the
 pipeline.
 
-**M5. Speed.** Profile, fix data structures, record the numbers in
-perf.md's style. Gate: the second performance target.
+**M5. Speed, and pcre2 through `rxc`.** Profile, fix data
+structures, record the numbers in perf.md's style. `rxc` gets a
+switch that runs `nanofil-backend` in place of the Prolog compile.
+Gate: the second performance target; the experiment's checks pass
+with the extracted compiler; the miss time and the code's speed are
+recorded, with a list of the `-O` passes that code needs.
 
 **M6. Crane.** Build Crane in Nix against our Rocq, extract the same
 entry points to C++, compile with clang++ and run the same
 differential tests. Gate: byte identity again, and the C++ target.
 If Crane cannot extract the development, the note says what stopped
-it and what was changed in the Gallina to get through.
+it, and the order of remedies is: change the Gallina, use a Crane
+switch, patch Crane, fall back to CertiRocq.
 
 **M7. A fast simple register allocator.** Designed for a proof, not
 ported. Gate: difftests and package checks by behaviour, and a
 measured run-time gain over stack homes on the benchmark gate.
 
 **M8. The Fil-C library.** The Crane output built by filcc as
-`libnanofil`, the encoder, and the design note for installing code.
-Gate: the pizlonated library passes the differential tests; the note
-is reviewed.
+`libnanofil` and called in the process by the pcre2 hook, which
+still runs `as` and `ld` and loads with `dlopen`. Gate: the
+pizlonated library passes the differential tests and the
+experiment's checks.
 
 **M9. Hybrid `-O`.** Emission of the reuse forms, so Prolog's middle
 end and check passes can feed the extracted backend. This is where
 users of `-O` first feel the speed.
 
 **Later.** The middle end and the check passes in Gallina, each
-replacing a `*_refines` run-time check with a theorem; pcre2.
+replacing a `*_refines` run-time check with a theorem, the ones
+pcre2's code needs first. An encoder and a shared-object writer, and
+installing code in the process, if measurement asks for them.
 
 M1 to M3 can run in parallel once M1's `Asm.v` types are fixed,
 because the plan and the emission pieces own different files.
@@ -397,5 +475,12 @@ otherwise.
 3. **Byte identity as the standard**, until the Gallina backend is
    the reference. Recommended: yes; it is the cheapest strong test
    there is, and the snapshot gate already works this way.
-4. **Installing generated code** (M8) is a runtime change and waits
-   for its own review.
+4. **The first JIT is the regex experiment's route**: `as`, `ld
+   -shared` and `dlopen`, with the extracted compiler in `rxc` from
+   M5. Settled by mbrock. An encoder and installing code in the
+   process are later options; the second is a runtime change and
+   would wait for its own review.
+5. **What pcre2 needs after M5.** The first version's code has none
+   of `-O`'s check elimination. Recommended: port the check passes
+   M5 finds decisive before the M7 allocator, since the experiment
+   shows they are worth 5 to 10× and registers 1.1 to 1.7×.
