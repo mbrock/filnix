@@ -974,6 +974,34 @@ instance. Campaign 4's
 StreamFrameLogic has the same signature, so its `…On` modules take
 the same instance.
 
+**Main's start block.** [HelloMain.v](../rocq/theories/HelloMain.v)
+applies every `…On` functor to one `Logic R`. Its world is libc's, and
+its world interpretation wi stays abstract. Each section premise is
+what one call needs of wi, so a concrete interpretation discharges
+them once:
+- `Kalloc`: an allocation keeps wi;
+- `Kmemset`: zeroing eight owned bytes keeps wi;
+- HelloName's cell layout and store premises;
+- `Hlent`, `Hset_pre` and `Kset` for setlocale.
+
+`wp_main_setlocale` is setlocale's triple over libc's contract,
+`libc_setlocale_contract`, from LentLogic's `wp_lend`. It is the
+libc-world counterpart of LocaleLogic's `wp_setlocale_set`, whose
+world is the locale world alone.
+
+`main_to_setlocale` proves main's start block from the entry up to
+setlocale's call, and the triples of three files compose in it:
+1. two fresh objects, b4 for the greeting's cell and b6 for the
+   conversion state;
+2. `mbszero` on b6 (HelloLeaf);
+3. argv[0] loaded through `wp_raw_load_pointer_in`, its life the head
+   of its string's pieces;
+4. `set_program_name` (HelloProgName);
+5. the literal "" copied.
+
+The rest of the start block comes next: setlocale, the greeting's store
+into b4, and atexit(close_stdout). Then the option loop.
+
 ## Open questions for mbrock
 
 - Start the logic now, or finish Campaign 4's hi.c first?
