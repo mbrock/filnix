@@ -37,6 +37,9 @@ page about it is listed here.
   validator and the machine, the decisions taken and the gates.
 - [Campaign 2: the runtime as axioms](runtime-axioms.md): the facts
   about Fil-C's runtime the model takes as given, each with a native test.
+- [The Gallina backend](gallina-backend.md): the plan for a nanofil IR
+  compiler written in Gallina and extracted, first to OCaml, then to
+  C++ and a Fil-C library.
 - [Campaign 7: trap-obligation census](trap-census.md) and
   [native libc contracts](libc-contracts.md): what a whole program
   (Hello) needs proved, and the libc boundary it relies on.
