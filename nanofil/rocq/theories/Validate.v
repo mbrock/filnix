@@ -436,12 +436,13 @@ Definition is_va_args (t : term) : bool :=
   end.
 
 (** The [sig] of a function outside the [[core-subset|core subset]], read
-    off its term t. *)
+    off its term t. A `data` function, which returns by `zreturn`, is
+    variadic, as `variadic_func/1` says. *)
 Definition term_sig (t : term) : option sig :=
   match t with
   | TApp "func" [_; lk; r; TList ps; TList bs] =>
       Some (mkSig lk (map (fun p => match p with TApp "param" [k; _] => k | _ => p end) ps) r
-                  (existsb (fun b => match b with
+                  (term_eqb r (TAtom "data") || existsb (fun b => match b with
                                      | TApp "block" [_; _; TList is; _] => existsb is_va_args is
                                      | _ => false
                                      end) bs))
@@ -475,8 +476,11 @@ Definition class_atom (t : term) : bool :=
     return type ret. A tuple must match it exactly; one result follows
     `to_result_ok/4` and `class_result_ok/4`: floats only as the same class,
     a long result never from a word return, and a pointer result exactly
-    from a pointer return. *)
+    from a pointer return. A `data` callee takes every result. *)
 Definition call_result_ok (r : call_result) (ret : term) : bool :=
+  (* call_result_ok(_, _, _, data): a `zreturn` callee's words are read
+     as through the generic entry, with their size checked at run time. *)
+  term_eqb ret (TAtom "data") ||
   match r with
   | CVoid => true
   | CTuple rs => term_eqb ret (TApp "tuple" [TList (map (fun x => eclass (snd x)) rs)])
