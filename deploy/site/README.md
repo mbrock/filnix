@@ -20,7 +20,11 @@ renderers, not after the whole site. Site assembly depends on this job and
 fetches these outputs with local/remote builders disabled, so it cannot silently
 recompile proofs. A cache miss or failed upload is visible in the prerequisite.
 The unrelated Binary cache workflow checks toolchain foundations; Pages does
-not wait for its distribution/image jobs. Routine builds remain on GitHub.
+not wait for its distribution/image jobs. The producer uses Namespace 16 CPU /
+32 GiB (no persistent volume), with a 30-minute timeout; ordinary site assembly
+and browser checks remain on free GitHub runners. The previous cold 16-core
+comparison cost about $0.14 per complete job at $0.024/minute; cached producers
+and coalesced pushes cost less, but real proof growth can increase runtime.
 
 The Actions `filnix-org` environment shows deployment status and its public URL.
 Local phone checks remain independent of either publisher. `deployed-phone`
@@ -45,7 +49,8 @@ Expired snapshot bookmarks redirect to the equivalent canonical path; missing
 pages inside retained snapshots still return 404. The retained copies remain
 byte-immutable. At $0.015/GB-month, 100 GB retained is about $1.50/month before
 the allowance; operations/Workers requests are separately metered. No persistent
-Namespace volume or routine paid build shape is enabled.
+Namespace volume is enabled; the prerequisite's timeout bounds a single producer
+to about $0.72 of compute at the listed rate, excluding rounding/teardown.
 
 The manual `Site builder comparison` workflow builds one revision on GitHub
 4-core and Namespace, both on Ubuntu 22.04 with the same public Nix
@@ -64,7 +69,8 @@ not established.
 The Namespace GitHub App must be
 connected to this repository; an authenticated MCP session alone is not that
 connection. This first comparison measures fresh runners, not persistent-store
-caching. Namespace is **not** enabled for every push during the trial.
+caching. Following approval for ongoing operation, Namespace runs the serialized
+generated-input producer; the comparison workflow remains a manual benchmark.
 
 ## Operations
 

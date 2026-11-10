@@ -42,7 +42,10 @@ jobs:
   generated:
     name: Prepare and cache generated pages
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    # Proof capture is CPU-bound. Keep cheap assembly on GitHub, but use
+    # the measured faster machine for the one shared cold producer.
+    runs-on: nscloud-ubuntu-22.04-amd64-16x32
+    timeout-minutes: 30
     concurrency:
       group: site-generated-main
       cancel-in-progress: false
