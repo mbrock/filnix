@@ -20,6 +20,8 @@ Four things are wanted from it:
   on `sqlite3.c` without `-O` and about 2000G with it
   ([perf.md](perf.md), item 10). A compiler of this shape in a
   compiled functional language should need a small fraction of that.
+  The speed is wanted for JIT use and for very large files, not for
+  everyday C builds; the scope note below says why.
 - **A JIT component.** A program that generates code at run time,
   such as pcre2, can hand the compiler nanofil IR instead of writing
   machine code itself. The regex experiment already does this with
@@ -35,8 +37,23 @@ Four things are wanted from it:
   MetaRocq extractor from typed λ□ to nanofil IR could be reasoned
   about through the IR semantics the model already has.
 
-The C frontend stays in Prolog. It is the part that reads like C11,
-and it is not where the time goes.
+**Scope: the C frontend stays in Prolog.** That is not because it is
+cheap. Measured at M1, the frontend is about 40% of the plain SQLite
+compile, and 325 of the 347 s the 281-module test corpus takes,
+because headers dominate an ordinary translation unit. So a perfect
+backend barely speeds up everyday C compiles.
+
+The campaign's speed goal serves two other uses:
+
+- JIT use, such as pcre2 patterns compiled from IR, where there is
+  no C to parse and the backend is the whole compile;
+- very large files, where the backend is more than half of it.
+
+The scope is mbrock's, and so is the reason: "i excluded the c
+frontend from the campaign scope mostly because it's big and messy
+and i am kinda mostly driven to do all this from thinking about jit
+etc". The frontend is something to reconsider later, outside this
+campaign.
 
 ## What exists
 
@@ -373,6 +390,8 @@ Xeon):
 - The 281 modules of the test corpus together: frontend 325.5,
   pizlonate 2.3, validate 5.6, emit 9.9, print 3.2. Their headers
   dominate, so the corpus tests sameness and SQLite tests speed.
+  With the frontend at 94% of the corpus's time, no backend makes
+  those compiles much faster.
 
 The extracted printer prints SQLite's lines in 5.0 s, which is 2.5
 times Prolog's speed, within 230 MB. Two things follow:
@@ -473,6 +492,10 @@ users of `-O` first feel the speed.
 replacing a `*_refines` run-time check with a theorem, the ones
 pcre2's code needs first. An encoder and a shared-object writer, and
 installing code in the process, if measurement asks for them.
+
+**Outside this campaign.** The C frontend. It is where an everyday C
+compile spends its time, so it is the thing to reconsider once the
+backend is done, as its own campaign.
 
 M1 to M3 can run in parallel once M1's `Asm.v` types are fixed,
 because the plan and the emission pieces own different files.
