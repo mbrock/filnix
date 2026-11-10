@@ -176,7 +176,7 @@ binary_op(Code, Op) :-
     Code is 0x10 + I.
 unary_op(Code, Op) :-
     nth0(I, [neg, copy, cast, truncd, truncx, ptoi, itop, stosi, stoui, dtosi, dtoui,
-             xtosi, xtoui, swtof, uwtof, sltof, ultof], Op),
+             xtosi, xtoui, swtof, uwtof, sltof, ultof, sqrt], Op),
     Code is 0x20 + I.
 range_op(0x52, renew(Lo, Hi, R, Al), Lo, Hi, R, Al).
 range_op(0x56, renew_if(Lo, Hi, R, Al), Lo, Hi, R, Al).

@@ -148,7 +148,7 @@ semantics allow:
   phi (the validator rejects each). Values cross calls and joins
   through memory, so no calling convention, register class or phi copy
   needs an 80-bit case.
-- **Ops at x:** `add sub mul div neg copy`, `cmp(Cond, x)` with the
+- **Ops at x:** `add sub mul div neg copy sqrt`, `cmp(Cond, x)` with the
   float conditions, `load(x)` and store width `x` (a 10-byte access,
   8-aligned), `va_arg` at x, and data items `item(x, const(Bits))`
   (10 bytes; the frontend pads with `zero(6)`).

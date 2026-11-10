@@ -981,6 +981,8 @@ kind_res(float_convert, truncd, s, _, [X], S, val(R), S) :-
     ieee_convert(d, s, X, R).
 kind_res(float_convert, truncx, K, _, [X], S, val(R), S) :-
     ieee_convert(x, K, X, R).
+kind_res(float_convert, sqrt, K, _, [X], S, val(R), S) :-
+    ieee_sqrt(K, X, R).
 kind_res(float_to_int, Op, K, _, [X], S, Res, S) :-
     float_integer(Op, K, X, Res).
 kind_res(int_to_float, Op, K, _, [X], S, val(R), S) :-

@@ -756,6 +756,7 @@ float_compute(Op, K) :- float_class(K), memberchk(Op, [add,sub,mul,div,neg]).
 float_compute(cmp(_, K), _) :- float_class(K).
 float_compute(ext(s), d).
 float_compute(truncd, s).
+float_compute(sqrt, K) :- float_class(K).
 float_compute(cast, _).
 float_compute(Op, _) :- memberchk(Op, [stosi,stoui,dtosi,dtoui,swtof,uwtof,sltof,ultof]).
 
@@ -784,6 +785,10 @@ float_op(ext(s), d, [X], Ctx) -->
 float_op(truncd, s, [X], Ctx) -->
     float_load(X, d, xmm0, Ctx),
     [ins(cvtsd2ss, none, [reg(xmm0),reg(xmm0)])], from_xmm(s, xmm0, a).
+float_op(sqrt, K, [X], Ctx) -->
+    { float_suffix(K, S), atom_concat(sqrt, S, I) },
+    float_load(X, K, xmm0, Ctx),
+    [ins(I, none, [reg(xmm0),reg(xmm0)])], from_xmm(K, xmm0, a).
 float_op(cast, K, [X], Ctx) --> load(X, K, a, Ctx).
 float_op(Op, K, [X], Ctx) -->
     { float_to_int(Op, F, Sign) },

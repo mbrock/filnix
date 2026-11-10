@@ -379,6 +379,7 @@ gloss(op, op:copy, "copy", "the value itself; of a global, a pointer to it").
 gloss(op, cmp/2, "cmp(Cond, Class)", "compare two Class values: 1 if Cond holds, else 0").
 gloss(op, ext/1, "ext(Type)", "widen a Type value to the result's class").
 gloss(op, op:truncd, "truncd", "double to single").
+gloss(op, op:sqrt, "sqrt", "the square root, rounded to nearest").
 gloss(op, op:stosi, "stosi", "single to signed integer").
 gloss(op, op:stoui, "stoui", "single to unsigned integer").
 gloss(op, op:dtosi, "dtosi", "double to signed integer").

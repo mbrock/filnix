@@ -80,7 +80,9 @@ def cc_options(cmd):
     """The environment and options nanofil-cc (nix/nanofil-cc.nix) derives
     from a compile command's flags, so each unit is read as the survey
     would compile it: glibc's -fgnu89-inline gives its extern inline
-    functions the GNU rule (NANOFIL_STD=gnu89)."""
+    functions the GNU rule (NANOFIL_STD=gnu89), and libm's
+    -fno-math-errno makes __builtin_sqrt the IR's sqrt
+    (NANOFIL_MATH_ERRNO=0)."""
     env, opts = {}, []
     for a in cmd.split():
         if a in ("-std=c23", "-std=gnu23", "-std=c2x", "-std=gnu2x"):
@@ -98,6 +100,10 @@ def cc_options(cmd):
             env["NANOFIL_COMMON"] = "1"
         elif a == "-fno-common":
             env.pop("NANOFIL_COMMON", None)
+        elif a == "-fno-math-errno":
+            env["NANOFIL_MATH_ERRNO"] = "0"
+        elif a == "-fmath-errno":
+            env.pop("NANOFIL_MATH_ERRNO", None)
     return env, opts
 
 
@@ -147,6 +153,7 @@ def compile_one(job):
     env = dict(os.environ)
     env.pop("NANOFIL_STD", None)
     env.pop("NANOFIL_COMMON", None)
+    env.pop("NANOFIL_MATH_ERRNO", None)
     env.update(ccenv)
     t = time.monotonic()
     tmp = None

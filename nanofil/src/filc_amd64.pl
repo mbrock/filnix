@@ -2021,6 +2021,8 @@ x87_inst(Op, x, [A, B], D, Ctx) -->
     x87_pop(D, Ctx), [ins(fstp, none, [reg('st(0)')])].
 x87_inst(neg, x, [A], D, Ctx) --> !,
     x87_push(A, Ctx), [ins(fchs, none, [])], x87_pop(D, Ctx).
+x87_inst(sqrt, x, [A], D, Ctx) --> !,
+    x87_push(A, Ctx), [ins(fsqrt, none, [])], x87_pop(D, Ctx).
 x87_inst(copy, x, [A], D, Ctx) --> !,
     x87_push(A, Ctx), x87_pop(D, Ctx).
 x87_inst(cmp(Cond, x), w, [A, B], D, Ctx) --> !,

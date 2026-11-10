@@ -1083,6 +1083,8 @@ operand_roles(ucomiss, none, [src(128), src(128)]).
 operand_roles(ucomisd, none, [src(128), src(128)]).
 operand_roles(cvtss2sd, none, [src(128), srcdst(128)]).
 operand_roles(cvtsd2ss, none, [src(128), srcdst(128)]).
+operand_roles(sqrtss, none, [src(128), srcdst(128)]).
+operand_roles(sqrtsd, none, [src(128), srcdst(128)]).
 operand_roles(cvttss2si, b, [src(128), dst(8)]).
 operand_roles(cvttss2si, w, [src(128), dst(16)]).
 operand_roles(cvttss2si, l, [src(128), dst(32)]).

@@ -29,7 +29,8 @@
 # A "// cflags: ..." line passes those flags to clang, and nanofil
 # compiles clang's preprocessing with them, as nanofil-cc does (with
 # NANOFIL_STD=c23 for -std=c23 or gnu23, gnu89 for C90 modes, and
-# NANOFIL_COMMON=1 for -fcommon). NANOFIL_OPT=-O turns on nanofil's
+# NANOFIL_COMMON=1 for -fcommon, NANOFIL_MATH_ERRNO=0 for
+# -fno-math-errno). NANOFIL_OPT=-O turns on nanofil's
 # middle end. Each run gets PROG_TIMEOUT seconds (10); a "// timeout: N"
 # line raises that to N for a program whose threads spin, which crawl
 # when a loaded builder oversubscribes its cores.
@@ -64,7 +65,7 @@ compile() {
   shift 2
   outcome=reject
   if (cd "$src" && TIMEFORMAT='compile elapsed=%3R user=%3U system=%3S' &&
-      time NANOFIL_COMMON=$common timeout "${COMPILE_TIMEOUT:-20}" "$nanofil" "$@" cc "$input" </dev/null) >"$output" 2>"$output.log"; then
+      time NANOFIL_COMMON=$common NANOFIL_MATH_ERRNO=$math_errno timeout "${COMPILE_TIMEOUT:-20}" "$nanofil" "$@" cc "$input" </dev/null) >"$output" 2>"$output.log"; then
     cat "$output.log" >&2
   else
     rc=$?
@@ -120,8 +121,9 @@ for f in "$@"; do
   run_timeout=${PROG_TIMEOUT:-10}
   tmo=$(sed -n 's|^// timeout: ||p' "$f")
   if [[ -n $tmo ]] && (( tmo > run_timeout )); then run_timeout=$tmo; fi
-  input=$f std=c17 common=
+  input=$f std=c17 common= math_errno=
   if [[ " ${cflags[*]} " =~ \ -fcommon\  ]]; then common=1; fi
+  if [[ " ${cflags[*]} " =~ \ -fno-math-errno\  ]]; then math_errno=0; fi
   if [[ " ${cflags[*]} " =~ \ -std=(c|gnu)(23|2x)\  ]]; then std=c23; fi
   if [[ " ${cflags[*]} " =~ \ (-std=(c|gnu)(89|90)|-ansi|-fgnu89-inline)\  ]]; then std=gnu89; fi
   libs=()

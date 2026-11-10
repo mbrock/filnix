@@ -1,0 +1,42 @@
+% sqrt (ir.pl), the IR's square root: sqrtss and sqrtsd natively, ieee.pl's
+% ieee_sqrt in the interpreter. Bits cross the harness as integers, so a
+% wrong rounding, a lost -0, an unquieted NaN or the wrong default NaN for
+% a negative operand shows: 2, 1 + ulp, the least subnormal and the
+% greatest, -0, -1, +inf, -inf, a signaling NaN, the greatest finite, 10
+% and 2/3.
+run(sqrtd, [4611686018427387904]).
+run(sqrtd, [4607182418800017409]).
+run(sqrtd, [1]).
+run(sqrtd, [4503599627370495]).
+run(sqrtd, [9223372036854775808]).
+run(sqrtd, [13830554455654793216]).
+run(sqrtd, [9218868437227405312]).
+run(sqrtd, [18442240474082181120]).
+run(sqrtd, [9219994337134247936]).
+run(sqrtd, [9218868437227405311]).
+run(sqrtd, [4621819117588971520]).
+run(sqrtd, [4604180019048437077]).
+run(sqrts, [1073741824]).
+run(sqrts, [1065353217]).
+run(sqrts, [1]).
+run(sqrts, [2147483648]).
+run(sqrts, [3212836864]).
+run(sqrts, [2139095040]).
+run(sqrts, [2141192192]).
+run(sqrts, [2139095039]).
+run(sqrts, [1051372203]).
+
+func(sqrtd, export, l, [param(l, tmp(a))], [
+    block(start, [], [
+        let(tmp(x), d, cast, [tmp(a)]),
+        let(tmp(y), d, sqrt, [tmp(x)]),
+        let(tmp(r), l, cast, [tmp(y)])
+    ], ret(tmp(r)))
+]).
+func(sqrts, export, w, [param(w, tmp(a))], [
+    block(start, [], [
+        let(tmp(x), s, cast, [tmp(a)]),
+        let(tmp(y), s, sqrt, [tmp(x)]),
+        let(tmp(r), w, cast, [tmp(y)])
+    ], ret(tmp(r)))
+]).

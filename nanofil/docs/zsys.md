@@ -296,7 +296,8 @@ unused `__int128_t` padding members as aligned bytes of the same size.
 | sign builtins, float asm, forward enums | 2,206 (71%) | 2,866 (92%) |
 | declarator attributes, `__int128_t`, no `_BitInt`, alias coalescing | 2,900 (93%) | |
 | `address_space` refused only where used | 2,902 (93%) | |
-| `packed` members | **2,975 (96%)** | |
+| `packed` members | 2,975 (96%) | |
+| `sqrt` and `trunc` | **2,979 (96%)** | |
 
 The last three rows are a new capture, preprocessed without
 `__BITINT_MAXWIDTH__`, so `math_uint128.h` takes its portable path. No
@@ -327,7 +328,6 @@ First errors (one error per unit, so a fix can uncover the next layer):
 | `__real__`, `__imag__`, `_Complex` returns | 72 | libm's complex functions |
 | x87 and MXCSR | 51 | `fnclex`, `frndint`, `__builtin_ia32_ldmxcsr` in libm's fenv |
 | other | 9 | `__alignof__` of an expression, `__label__`, `#pragma weak` in a body, `__builtin_ia32_cvtpd2ps`, `__builtin_ia32_rdtsc` |
-| other math builtins | 4 | `__builtin_trunc`, `truncf`, `sqrtf`, `sqrtl` |
 | TLS alias | 3 | `__libc_errno`, `__libc_h_errno`, `__libc_resp` |
 
 - **x87 and MXCSR.** Fil-C's own glibc keeps a few x87 instructions
@@ -335,11 +335,6 @@ First errors (one error per unit, so a fix can uncover the next layer):
   `validateSafeInlineAsm` accepts, and reads MXCSR through
   `__builtin_ia32_stmxcsr`, a checked memory access. nanofil's IR has
   only the fixed-register instructions of `asm_fixed`.
-- **math builtins.** glibc's own `sqrt`, `sqrtf`, `sqrtl`, `trunc` and
-  `truncf` are these builtins. nanofil reads `__builtin_sqrt` as a call
-  of libm's `sqrt`, which is right in a program but not in libm: the
-  IR of `e_sqrt` compiles, and its `__ieee754_sqrt` calls `sqrt`, whose
-  wrapper calls `__ieee754_sqrt`. They need IR operations.
 
 ### Fixes made along the way
 
@@ -384,6 +379,19 @@ Each frontend fix has a test that fails without it:
   __attribute__((packed))`, which reached 76 units (all of nptl and
   what touches `THREAD_SELF`). `tests/c/prog/packed-member.c` checks
   offsets, sizes and alignments by hand and against filcc.
+- `sqrt` is an IR operation at `s`, `d` and `x` (`ieee_sqrt/3`, rounded
+  to nearest even; `sqrtss`, `sqrtsd` and `fsqrt`; NFB opcode 0x31),
+  and under `-fno-math-errno`, which glibc builds libm with
+  (nanofil-cc and run.py pass it on as `NANOFIL_MATH_ERRNO=0`),
+  `__builtin_sqrt`, `sqrtf` and `sqrtl` are it. Otherwise they stay calls of libm, as clang keeps them when
+  `errno` must be set. `__builtin_trunc` and `truncf` are built from
+  existing operations: a float whose magnitude is below 2^52 (2^23) goes
+  through a 64-bit (32-bit) integer and takes back its sign, so `-0.5`
+  gives `-0`; a larger one, an infinity or a NaN is `x + 0`. glibc's own
+  `sqrt` and `trunc` are these builtins, and read as calls the IR of
+  `e_sqrt` recursed: `__ieee754_sqrt` called `sqrt`, whose wrapper calls
+  `__ieee754_sqrt`. `tests/float/sqrt.ir` (difftest, plain and `-O`)
+  and `tests/c/prog/sqrt-trunc.c` against filcc.
 - An `address_space` type is refused only where it is used, as a
   vector type is: filcc cannot compile an access through another
   address space either, and glibc's `rseq-internal.h` casts to
@@ -430,12 +438,8 @@ Every generated syscall stub now compiles: its body, a `zcall` of the
    reads the same TLS slot. It is an IR validity change (`valid_item`,
    and the interpreter's aliases). Recommended: yes, with Campaign 3's
    agreement, since `errno` is a Hello unit.
-7. **IR operations for `sqrt` and `trunc`** (`sqrtss`, `sqrtsd`,
-   `fsqrt`; `roundsd` with truncation). glibc implements `sqrt`,
-   `sqrtf`, `sqrtl`, `trunc` and `truncf` as the builtins, so a call
-   cannot stand for them, and `__builtin_sqrt` read as a call already
-   makes `e_sqrt`'s IR recurse. Recommended: add `sqrt` as an IR op;
-   `trunc` can be built from existing ops in the frontend.
+7. **IR operations for `sqrt` and `trunc`.** Done (above): `sqrt` is
+   an IR operation, and `trunc` is built in the frontend.
 8. **x87 and MXCSR** (51 libm units, the floating-point environment).
    FilPizlonator accepts a list of x87 control instructions and treats
    `stmxcsr` and `ldmxcsr` as checked memory accesses. Recommended:

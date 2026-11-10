@@ -518,11 +518,22 @@ test(rejects_unknown_instruction) :-
     rejected_with([
         func(f, export, w, [param(w, tmp(a))], [
             block(s, [], [
+                let(tmp(b), w, frobnicate, [tmp(a)])
+            ], ret(tmp(b)))
+        ])
+    ],
+                  "unknown instruction frobnicate").
+
+% sqrt is a float operation (s, d or x); an integer square root is not.
+test(rejects_integer_sqrt) :-
+    rejected_with([
+        func(f, export, w, [param(w, tmp(a))], [
+            block(s, [], [
                 let(tmp(b), w, sqrt, [tmp(a)])
             ], ret(tmp(b)))
         ])
     ],
-                  "unknown instruction sqrt").
+                  "instruction sqrt cannot have class w").
 
 % Literals just above a halfway binary32 value must not be rounded
 % through binary64. Hex and decimal must reach the same rounding boundary.

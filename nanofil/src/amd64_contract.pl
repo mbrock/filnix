@@ -156,7 +156,7 @@ instruction_effects(ins(Op,none,[reg(A),reg(B)]), effect([A,B],[],write,[],next)
     memberchk(Op,[ucomiss,ucomisd]), register(A,A,128), register(B,B,128).
 instruction_effects(ins(Op,none,[reg(A),reg(B)]),
                     effect([A,B],[write(B,128)],preserve,[],next)) :-
-    memberchk(Op,[cvtss2sd,cvtsd2ss]), register(A,A,128), register(B,B,128).
+    memberchk(Op,[cvtss2sd,cvtsd2ss,sqrtss,sqrtsd]), register(A,A,128), register(B,B,128).
 instruction_effects(ins(Op,S,[reg(A),reg(B)]),
                     effect([A],[write(F,W)],preserve,[],next)) :-
     memberchk(Op,[cvttss2si,cvttsd2si]), width(S,W), memberchk(W,[32,64]),

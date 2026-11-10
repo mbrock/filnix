@@ -139,6 +139,7 @@
     | `ext(d)` | `x` | `[d]` | double to extended |
     | `truncd` | `s` | `[d]` | double to single |
     | `truncx` | `s` `d` | `[x]` | extended to single or double |
+    | `sqrt` | `s` `d` `x` | `[K]` | the square root, rounded to nearest (`sqrtss`, `sqrtsd`, `fsqrt`) |
     | `stosi` `stoui` / `dtosi` `dtoui` / `xtosi` `xtoui` | `w` `l` | `[s]` / `[d]` / `[x]` | float to signed or unsigned integer |
     | `swtof` `uwtof` / `sltof` `ultof` | `s` `d` | `[w]` / `[l]` | signed or unsigned integer to float |
     | `cast` | `w` `s` `l` `d` | `[s]` `[w]` `[d]` `[l]` | bitwise: `w` and `s`, `l` and `d` |
@@ -690,6 +691,7 @@ op_kind(ext(s), float_convert).
 op_kind(truncd, float_convert).
 op_kind(ext(d), float_convert).
 op_kind(truncx, float_convert).
+op_kind(sqrt, float_convert).
 op_kind(xtosi, float_to_int).
 op_kind(xtoui, float_to_int).
 op_kind(stosi, float_to_int).
@@ -2241,7 +2243,7 @@ evidence_preserving(let(_, _, Op, _)) :-
     memberchk(Op, [add, sub, mul, div, udiv, rem, urem, and, or, xor,
                    sar, shr, shl, neg, ptoi, cast, truncd,
                    stosi, stoui, dtosi, dtoui, swtof, uwtof, sltof, ultof,
-                   ext(d), truncx, xtosi, xtoui]).
+                   ext(d), truncx, xtosi, xtoui, sqrt]).
 evidence_preserving(let(_, _, cmp(_, _), _)).
 evidence_preserving(let(_, _, ext(_), _)).
 evidence_preserving(let(_, _, copy, Args)) :- \+ memberchk(global(_), Args).
@@ -2697,6 +2699,7 @@ kind_result_ok(float_convert, ext(s), _, K) :- memberchk(K, [d, x]).
 kind_result_ok(float_convert, ext(d), _, x).
 kind_result_ok(float_convert, truncd, _, s).
 kind_result_ok(float_convert, truncx, _, K) :- memberchk(K, [s, d]).
+kind_result_ok(float_convert, sqrt, _, K) :- memberchk(K, [s, d, x]).
 kind_result_ok(float_to_int, _, _, K) :- int_class(K).
 kind_result_ok(int_to_float, _, _, K) :- float_class(K).
 kind_result_ok(cast, _, _, K) :- numeric_class(K).
@@ -2771,6 +2774,7 @@ kind_arg_classes(float_convert, ext(s), _, _, [s]).
 kind_arg_classes(float_convert, truncd, _, _, [d]).
 kind_arg_classes(float_convert, ext(d), _, _, [d]).
 kind_arg_classes(float_convert, truncx, _, _, [x]).
+kind_arg_classes(float_convert, sqrt, K, _, [K]).
 kind_arg_classes(float_to_int, Op, _, _, [K]) :- float_int_source(Op, K).
 kind_arg_classes(int_to_float, Op, _, _, [K]) :-
     ( memberchk(Op, [swtof, uwtof]) -> K = w ; K = l ).

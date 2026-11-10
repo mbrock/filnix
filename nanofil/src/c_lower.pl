@@ -3957,6 +3957,40 @@ builtin(Name, Args, Ctx, v(R, T)) -->
       ) },
     sign_args(Args, T, Ctx, Xs),
     sign_result(T, Op, Xs, Ctx, R).
+% A square root builtin (c_types' root_builtin/3) is the IR's sqrt
+% under -fno-math-errno, else a call of libm's F, which sets errno.
+builtin(Name, [A], Ctx, v(D, T)) -->
+    { root_builtin(Name, F, T) }, !,
+    rval(A, Ctx, V0),
+    { ctx_loc(Ctx, Loc) },
+    assign_convert(A, V0, T, Loc, v(X, _)),
+    { type_class(T, K) },
+    (   { getenv('NANOFIL_MATH_ERRNO', '0') }
+    ->  let(K, sqrt, [X], D)
+    ;   { T == ldouble }
+    ->  { sema_error(Loc, '~w under -fmath-errno is not supported', [Name]) }
+    ;   fresh(D),
+        emit(call(result(D, K), global(F), [arg(K, X)]))
+    ).
+% A trunc builtin (c_types' trunc_builtin/2): a magnitude below Big, the
+% first with no fraction bits, goes through the integer it truncates to
+% and takes back x's sign; anything else is integral, infinite or a NaN.
+builtin(Name, [A], Ctx, R) -->
+    { trunc_builtin(Name, T) }, !,
+    rval(A, Ctx, V0),
+    { ctx_loc(Ctx, Loc) },
+    assign_convert(A, V0, T, Loc, v(X, _)),
+    { trunc_format(T, K, IK, ToInt, FromInt, Big) },
+    sign_result(T, abs, [X], Ctx, Ax),
+    let(w, cmp(lt, K), [Ax, const(Big)], Small),
+    label(LA), label(LB), label(LJoin),
+    term(branch(Small, LA, LB)),
+    start(LA), let(IK, ToInt, [X], I), let(K, FromInt, [I], F0),
+    sign_result(T, copysign, [F0, X], Ctx, RA), here(LA1),
+    term(goto(LJoin)),
+    start(LB), let(K, add, [X, const(0)], RB), here(LB1),
+    term(goto(LJoin)),
+    join_arms(T, LJoin, LA1-RA, LB1-RB, R).
 builtin(Name, [A], Ctx, v(D, double)) -->
     { libm_builtin(Name, F) }, !,
     rval(A, Ctx, V0),
@@ -4426,6 +4460,12 @@ sign_result(ldouble, Op, Xs, Ctx, R) -->
     ),
     store_typed(ushort, E1, Top),
     load_typed(ldouble, Slot, Ctx, R).
+
+% trunc_format(Type, K, IK, ToInt, FromInt, Big): Type's class K, the
+% integer class IK and conversions a magnitude below Big (2^23 or 2^52,
+% as bits) truncates through.
+trunc_format(float, s, w, stosi, swtof, 0x4b000000).
+trunc_format(double, d, l, dtosi, sltof, 0x4330000000000000).
 
 sign_bits(float, s, w, 0x80000000, 0x7fffffff).
 sign_bits(double, d, l, 0x8000000000000000, 0x7fffffffffffffff).

@@ -64,7 +64,7 @@
                     integer_promotion/2, usual_arith_conversion/3,
                     float_type/1, arithmetic_type/1, default_promotion/2,
                     constant_value/4, const_convert/4, constant_address/3, float_literal/3,
-                    float_builtin/3, libm_builtin/2, sign_builtin/3, object_size/4, compatible_type/2, composite_type/3, composite_type/4, inherited_alignment/4, knr_definition/6,
+                    float_builtin/3, libm_builtin/2, sign_builtin/3, root_builtin/3, trunc_builtin/2, object_size/4, compatible_type/2, composite_type/3, composite_type/4, inherited_alignment/4, knr_definition/6,
                     convert_int/3, const_value/4, pp_value/2, num_type/3,
                     scalar_type/1, type_class/2, member_type_offset/5, type_name_type/4,
                     lookup_ordinary/3, bind_ordinary/4, env_scope/3,
@@ -4349,6 +4349,8 @@ builtin_type('__builtin_bswap64', ulong).
 builtin_type(Name, Type) :- rotate_builtin(Name, _, Type).
 builtin_type(Name, double) :- libm_builtin(Name, _).
 builtin_type(Name, T) :- sign_builtin(Name, _, T).
+builtin_type(Name, T) :- root_builtin(Name, _, T).
+builtin_type(Name, T) :- trunc_builtin(Name, T).
 builtin_type('__builtin_trap', void).
 builtin_type('__builtin_isnan', int).
 builtin_type('__builtin_flt_rounds', int).
@@ -4587,20 +4589,52 @@ doc(libm_builtin(?(Name), ?(F)), nondet, [
     "of x converted to double, even with F undeclared. Clang computes",
     "them inline (roundsd); a call of libm's F gives the same exact",
     "result, signed zeros and NaNs included.",
-    "__builtin_sqrt(x) is sqrt(x), correctly rounded either way; for",
-    "x < 0 libm's sets errno to EDOM, as clang's call under the default",
-    "-fmath-errno does (cogl's cogl_sqrti).",
     cites('GCC manual, Other Built-in Functions'),
     cites('C11 7.12.9.1p2'),
     cites('C11 7.12.9.2p2'),
-    cites('C11 7.12.7.5'),
     example(libm_builtin('__builtin_floor', F), F = floor),
-    example(libm_builtin('__builtin_sqrt', F), F = sqrt),
+    fails(libm_builtin('__builtin_sqrt', _)),
     fails(libm_builtin('__builtin_round', _))
 ]).
 libm_builtin('__builtin_ceil', ceil).
 libm_builtin('__builtin_floor', floor).
-libm_builtin('__builtin_sqrt', sqrt).
+
+doc(root_builtin(?(Name), ?(F), ?(Type)), nondet, [
+    Name: "a GNU square root builtin",
+    F: "the libm function it computes",
+    Type: "the type of its argument and result",
+    "__builtin_sqrt(x), __builtin_sqrtf(x) and __builtin_sqrtl(x) are",
+    "the square root of x converted to Type, correctly rounded: the IR's",
+    "sqrt under -fno-math-errno (NANOFIL_MATH_ERRNO=0), as glibc's libm",
+    "is built and where its own sqrt is this builtin, so a call would",
+    "recurse. Under the default -fmath-errno libm's F also sets errno to",
+    "EDOM for x < 0, so the builtin is a call of F, as clang's is (cogl's",
+    "cogl_sqrti); a long double one is then refused.",
+    cites('C11 7.12.7.5'),
+    cites('GCC manual, Other Built-in Functions'),
+    example(root_builtin('__builtin_sqrt', F, T), (F, T) = (sqrt, double)),
+    example(root_builtin('__builtin_sqrtl', F, T), (F, T) = (sqrtl, ldouble)),
+    fails(root_builtin('__builtin_sqrtll', _, _))
+]).
+root_builtin('__builtin_sqrt', sqrt, double).
+root_builtin('__builtin_sqrtf', sqrtf, float).
+root_builtin('__builtin_sqrtl', sqrtl, ldouble).
+
+doc(trunc_builtin(?(Name), ?(Type)), nondet, [
+    Name: "a GNU builtin that rounds toward zero",
+    Type: "the type of its argument and result, float or double",
+    "__builtin_trunc(x) and __builtin_truncf(x) are x rounded toward",
+    "zero: a magnitude below 2^52 (2^23 for float) through the integer it",
+    "truncates to, with x's sign so -0.5 gives -0; any other x is",
+    "already integral, infinite or a NaN, which x + 0 quiets. glibc's own",
+    "trunc and truncf are these builtins. trunc never sets errno.",
+    cites('C11 7.12.9.8p2'),
+    cites('GCC manual, Other Built-in Functions'),
+    example(trunc_builtin('__builtin_truncf', T), T = float),
+    fails(trunc_builtin('__builtin_truncl', _))
+]).
+trunc_builtin('__builtin_trunc', double).
+trunc_builtin('__builtin_truncf', float).
 
 doc(sign_builtin(?(Name), ?(Op), ?(Type)), nondet, [
     Name: "a GNU builtin that edits a float's sign bit",

@@ -20,6 +20,7 @@
     |---|---|
     | `ieee_binary(K, Op, A, B, R)` | Op is `add`, `sub`, `mul` or `div` |
     | `ieee_neg(K, A, B)` | flips the sign bit |
+    | `ieee_sqrt(K, A, B)` | the square root, rounded to nearest; -0 stays -0, and a negative number gives the default NaN |
     | `ieee_convert(From, To, A, B)` | between the two formats |
     | `ieee_from_int(K, N, B)` | N any integer |
     | `ieee_to_int(K, B, N)` | truncates; fails for nonfinite inputs, and the caller checks the destination integer's range |
@@ -27,7 +28,7 @@
     | `ieee_parse(K, Chars, B)` | a decimal or C hexadecimal significand, without a C type suffix: the frontend selects K after removing the suffix |
     | `ieee_decimal(K, B, Chars)` | an exact decimal, not necessarily the shortest; fails for nonfinite inputs |
 */
-:- module(ieee, [ieee_binary/5, ieee_neg/3, ieee_convert/4,
+:- module(ieee, [ieee_binary/5, ieee_neg/3, ieee_sqrt/3, ieee_convert/4,
                  ieee_from_int/3, ieee_to_int/3, ieee_compare/5,
                  ieee_parse/3, ieee_decimal/3]).
 :- use_module(library(lists)).
@@ -121,6 +122,42 @@ ieee_to_int(K, B, N) :-
 %  B is A with its sign bit flipped, NaNs included.
 ieee_neg(K, A, B) :-
     must_be(integer, A), sign_bits(K, 1, S), B is xor(A, S).
+
+%! ieee_sqrt(+K, +A, -B) is det.
+%
+%  B is the square root of the format-K float A, rounded to nearest,
+%  ties to even, as sqrtss, sqrtsd and fsqrt compute it (IEEE 754
+%  5.4.1): a NaN is quieted, +0, -0 and +inf are themselves, and any
+%  other negative number, -inf included, gives the default NaN.
+ieee_sqrt(K, A, B) :-
+    decode(K, A, S, T),
+    (   T == nan -> quiet(K, A, B)
+    ;   T = finite(0, _) -> B = A
+    ;   S =:= 1 -> invalid(K, B)
+    ;   T == inf -> B = A
+    ;   T = finite(N0, P0),
+        % sqrt(N * 2^P) with P even is sqrt(N) * 2^(P/2). The root of
+        % N * 4^G has at least G bits, G = F + 5, two more than rounding
+        % needs; an inexact root lies strictly between Q and Q + 1, and
+        % Q + 1/2 rounds as it does.
+        ( P0 mod 2 =:= 0 -> N1 = N0, P = P0 ; N1 is N0 * 2, P is P0 - 1 ),
+        format(K, F, _, _), G is F + 5,
+        M is N1 << (2 * G), isqrt(M, Q),
+        ( Q * Q =:= M -> Num = Q, Den0 = 1 ; Num is 2 * Q + 1, Den0 = 2 ),
+        H is P // 2 - G,
+        scale(Num, Den0, H, Num1, Den),
+        round_ratio(K, 0, Num1, Den, B)
+    ).
+
+% isqrt(+M, -Q): Q is floor(sqrt(M)) for M >= 0, by Newton's method from
+% above.
+isqrt(0, 0) :- !.
+isqrt(M, Q) :-
+    ilog(M, L), X0 is 1 << (L // 2 + 1),
+    isqrt_(M, X0, Q).
+isqrt_(M, X, Q) :-
+    Y is (X + M // X) // 2,
+    ( Y >= X -> Q = X ; isqrt_(M, Y, Q) ).
 
 %! ieee_binary(+K, +Op, +A, +B, -R) is det.
 %

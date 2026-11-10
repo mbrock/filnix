@@ -7,7 +7,9 @@
 # -fno-builtin-memcpy, -fno-builtin-memmove and -ffreestanding keep every
 # memcpy and memmove a call (--memcpy=call); -fno-inline and -O0 select
 # --inline=none; -fcommon sets NANOFIL_COMMON=1, so tentative
-# definitions are common (weak) symbols. __SIZEOF_INT128__ and
+# definitions are common (weak) symbols; -fno-math-errno sets
+# NANOFIL_MATH_ERRNO=0, so __builtin_sqrt is the IR's sqrt rather than a
+# call of libm's, which sets errno. __SIZEOF_INT128__ and
 # __BITINT_MAXWIDTH__ are not defined, since nanofil refuses __int128 and
 # has no _BitInt. With NANOFIL_KEEP_I=DIR the preprocessed file is
 # also copied into DIR. Anything else
@@ -48,6 +50,8 @@ pkgs.writeShellScript "nanofil-cc" ''
       -fno-inline|-O0) inline=--inline=none; args+=("$1") ;;
       -fcommon) export NANOFIL_COMMON=1; args+=("$1") ;;
       -fno-common) unset NANOFIL_COMMON; args+=("$1") ;;
+      -fno-math-errno) export NANOFIL_MATH_ERRNO=0; args+=("$1") ;;
+      -fmath-errno) unset NANOFIL_MATH_ERRNO; args+=("$1") ;;
       *.c) src=$1; args+=("$1") ;;
       *) args+=("$1") ;;
     esac

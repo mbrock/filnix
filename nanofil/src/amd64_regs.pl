@@ -734,7 +734,7 @@ line_mode(ins(Op,S,[reg(X),reg(X)]), zero(W)) :-
     register(X, F, W), \+ memberchk(F, [rsp,rbp]), !.
 line_mode(ins(Op,S,Os), flex(Roles)) :-
     \+ memberchk(Op, [div,idiv,cltd,cqto,'lock cmpxchg',btc,mfence,movd,movq,
-                      ucomiss,ucomisd,cvtss2sd,cvtsd2ss,cvttss2si,cvttsd2si,
+                      ucomiss,ucomisd,cvtss2sd,cvtsd2ss,sqrtss,sqrtsd,cvttss2si,cvttsd2si,
                       cvtsi2ss,cvtsi2sd]),
     \+ atom_concat(set, _, Op),
     \+ memberchk(S, [ss,sd]),

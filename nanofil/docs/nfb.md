@@ -275,7 +275,7 @@ The tables give the layout after the header. "K" is a class word, "opnd" an oper
 | Ops | Layout |
 | --- | --- |
 | `add` `sub` `mul` `div` `udiv` `rem` `urem` `and` `or` `xor` `sar` `shr` `shl` | K, opnd, opnd |
-| `neg` `copy` `cast` `truncd` `truncx` `ptoi` `itop` | K, opnd |
+| `neg` `copy` `cast` `truncd` `truncx` `ptoi` `itop` `sqrt` | K, opnd |
 | the twelve float and integer conversions (`stosi` ... `ultof`) | K, opnd |
 | `cmp(Cond, K1)` | K, condition, K1, opnd, opnd |
 | `ext(T)` | K, source type, opnd |
@@ -659,7 +659,7 @@ the draft's layouts; a `let` writes its result class first.
 | `0x01` | rebind | one word per temporary the next instruction defines |
 | `0x08` | `phi` | K, then (block index, operand) per pair |
 | `0x10`-`0x1C` | `add` `sub` `mul` `div` `udiv` `rem` `urem` `and` `or` `xor` `sar` `shr` `shl` | K, operand, operand |
-| `0x20`-`0x30` | `neg` `copy` `cast` `truncd` `truncx` `ptoi` `itop` `stosi` `stoui` `dtosi` `dtoui` `xtosi` `xtoui` `swtof` `uwtof` `sltof` `ultof` | K, operand |
+| `0x20`-`0x31` | `neg` `copy` `cast` `truncd` `truncx` `ptoi` `itop` `stosi` `stoui` `dtosi` `dtoui` `xtosi` `xtoui` `swtof` `uwtof` `sltof` `ultof` `sqrt` | K, operand |
 | `0x38` | `cmp(Cond, K1)` | K, cond, K1, operand, operand |
 | `0x39` | `ext(T)` | K, ext type, operand |
 | `0x3A` | `load(T)` | K, load type, operand |
