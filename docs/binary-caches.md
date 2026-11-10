@@ -36,6 +36,21 @@ dependencies, the toplevels and packages, still go to Cachix. Release and CI
 workflows add `https://nix.swa.sh/cache` as a substituter for them, and
 `scripts/ci-cache-check.py` looks for those outputs there.
 
+## Site proof artifacts
+
+The site workflow publishes `site.proofStates`, `site.spikeStates` and
+`site.rocqPages` to `filc.cachix.org` from trusted `main` builds, using a
+cache-scoped write credential. Other branches can read the public cache
+without that credential. Consumers request the exact Nix output paths, not
+a mutable bundle of the latest proof results.
+
+Ordinary Markdown edits preserve these outputs. Rocq theories, capture
+tools or their dependencies invalidate the corresponding proof captures;
+the renderer also depends on the Prolog index, concept text and rendering
+assets. A cache miss, including eviction, rebuilds the required version
+rather than silently displaying stale states. These outputs are not an
+additional toolchain pre-push gate.
+
 ## Automatic publication
 
 A receipt records only that a push once succeeded, and Cachix evicts paths
