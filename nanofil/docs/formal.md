@@ -397,6 +397,39 @@ alone is not freshness. Main branches directly to version on code 129;
 the following end-of-options call is a native continuation control, not
 a prerequisite for that branch.
 
+**Joint model-entry milestone:** [HelloWorld.v](../rocq/theories/HelloWorld.v)
+now constructs one fixed `hello --version` image extending Hello's linked
+initializer. `entry_inhabited` proves that its composite `wi`, heap
+agreement and unique resource keys hold together. The bundle includes
+the argv block and strings, parser token, program-name cells, locale
+names/codec, empty locale string and version-output literals. Native
+parser/FILE/errno inventories exclude all program memory pieces, including
+life pieces; argv and the program-name cells are not private parser roots.
+Only actual public data imports extend the symbol map: the private parser
+object is not a fabricated exported global.
+
+The first-call selection lemma derives decoded parser freshness from the
+initial getopt token and the completed fresh/finished representation.
+The ordinary transition positively requires actual argument words and
+input memory, then restricts the fresh return to code 129 with a finished
+endpoint and an explicit stderr-observation frame. This is selection
+vocabulary, not a proved libc implementation law or evidence that such
+an invocation exists. FILE readiness is structural, not a native FILE
+decoder; the synthetic descriptor's binding to actual private libc
+storage and the thread's errno remains a trusted linking obligation.
+
+Next, prove live-disjointness/runtime readiness and allocate this joint
+bundle in Iris; construct a compatible ordinary selected endpoint and
+discharge full admission; then prove safepoint, program-store and
+selected-call restoration before applying `main_to_version`. In
+particular pointer-store restoration needs agreement and physical
+disjointness, not private identity exclusion alone. Those global heap
+facts can be included explicitly in the concrete `wi`, or passed through
+the generic store callbacks in coordination with Campaign 3. Endpoint
+errno must be resampled, not frozen. No closed version theorem, native
+adequacy, new runtime axiom or Machine change is claimed by this entry
+milestone.
+
 Fil-C's own layering helps: libc is pizlonated C, the runtime's syscall
 wrappers check buffer capabilities before the kernel sees raw addresses,
 so "the kernel writes only within ranges the wrapper checked" is an
