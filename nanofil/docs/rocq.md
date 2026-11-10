@@ -19,7 +19,7 @@ the interpreter and cites the predicate it copies.
 | --- | --- | --- |
 | `Term.v` | ground Prolog terms | names (temporaries, labels, symbols) as terms compared by `==`, and `term_eqb_eq`, that `==` is equality; `char_code/2` |
 | `Maps.v` | library(assoc) | name maps: a hash of the name, then an association list per hash, so a lookup's answer never depends on the hash; what each operation does to a lookup (`nm_find_add`, `nm_find_remove`, `nm_find_fold_add`) |
-| `Ieee.v` | ieee.pl | binary32, binary64 and x87 extended as bit patterns: `decode/4`, `round_ratio/5`, `ieee_binary/5`, `ieee_convert/4`, `ieee_compare/5`, `ieee_from_int/3`, `ieee_to_int/3` |
+| `Ieee.v` | ieee.pl | binary32, binary64 and x87 extended as bit patterns: `decode/4`, `round_ratio/5`, `ieee_binary/5`, `ieee_convert/4`, `ieee_sqrt/3`, `ieee_compare/5`, `ieee_from_int/3`, `ieee_to_int/3` |
 | `Syntax.v` | ir.pl's header tables | classes, ops, values, instructions, jumps, blocks, functions, data, modules; `op_arg_classes/4`, `evidence_preserving/1`, `ahead_transparent/1`, `local_objects/2` |
 | `Values.v` | interp.pl's values | `cap` (`none`, `obj`, `ro`, `fn`, `ext`), `ptr`, `word`; `word_at_class/3` |
 | `Memory.v` | interp.pl's Memory section | regions, `mem`, `cap_access_res/7`, `free_res/4`, bytes and aux, `fresh` |

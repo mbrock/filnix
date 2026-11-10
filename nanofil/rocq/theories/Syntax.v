@@ -232,6 +232,7 @@ Inductive op : Type :=
 | FloatToInt (k : class) (sg : signedness) (* a float of class k to an integer, truncated *)
 | IntToFloat (k : class) (sg : signedness) (* an integer of class k to the nearest float *)
 | Cast (* the same bits at the other class: `w` and `s`, `l` and `d` *)
+| Sqrt (* the square root of a float, rounded to nearest *)
 | Alloc (align : Z) (* a new zeroed heap object of the `l` size read *)
 | Check (lo hi : Z) (r : rights) (align : Z) (* [[check]] of a pointer P: trap unless P may access from P+lo up to P+hi *)
 | CheckAhead (lo hi : Z) (r : rights) (align ahi : Z) (* a check whose bytes from ahi up to hi are for a later access: [[check_ahead]] *)
@@ -429,6 +430,7 @@ Definition op_arg_classes (o : op) (k : class) : option (list class) :=
   | Truncx => Some [Extended]
   | FloatToInt fk _ => Some [fk]
   | IntToFloat ik _ => Some [ik]
+  | Sqrt => Some [k] (* kind_arg_classes(float_convert, sqrt, K, _, [K]) *)
   | Cast =>
       (* cast_classes/2 *)
       match k with
@@ -479,7 +481,7 @@ Definition evidence_preserving (i : inst) : bool :=
              | Sar | Shr | Shl | Neg | Ptoi) _ => true
   | Let _ _ (Cmp _ _) _ => true
   | Let _ _ (Ext _) _ => true
-  | Let _ _ (ExtF _ | Truncd | Truncx | FloatToInt _ _ | IntToFloat _ _ | Cast) _ => true
+  | Let _ _ (ExtF _ | Truncd | Truncx | FloatToInt _ _ | IntToFloat _ _ | Cast | Sqrt) _ => true
   | Let _ _ Copy args => negb (existsb is_global args)
   | _ => false
   end.

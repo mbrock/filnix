@@ -423,7 +423,7 @@ Definition float_arithmetic (o : op) (k : fmt) (xs : list word) : option Z :=
 (** As `kind_res(float_convert, Op, K, ...)`: the float x converted by
     the op o to class k, rounded to nearest: `ext(s)` to any float
     class, `ext(d)` to `x`, `truncd` to `s`, `truncx` to any float
-    class. *)
+    class, and `sqrt`, the square root at k ([ieee_sqrt]). *)
 Definition float_convert (o : op) (k : class) (x : Z) : option Z :=
   let* to := fmt_of k in
   match o, k with
@@ -431,6 +431,7 @@ Definition float_convert (o : op) (k : class) (x : Z) : option Z :=
   | ExtF Double, Extended => Some (ieee_convert FmtD FmtX x)
   | Truncd, Single => Some (ieee_convert FmtD FmtS x)
   | Truncx, _ => Some (ieee_convert FmtX to x)
+  | Sqrt, _ => Some (ieee_sqrt to x)
   | _, _ => None
   end.
 
@@ -576,7 +577,7 @@ Definition op_res (o : op) (k : class) (xs : list word) (m : mem) : option op_ou
   | Cmp _ ck, _, _ => match fmt_of ck with Some _ => None | None => op_res_int o k xs m end
   | (Add | Sub | Mul | Div | Neg | Copy), Some f, _ =>
       let* r := float_arithmetic o f xs in Some (OpRes (RVal (WInt r)) m)
-  | (ExtF _ | Truncd | Truncx), _, [WInt x] =>
+  | (ExtF _ | Truncd | Truncx | Sqrt), _, [WInt x] =>
       let* r := float_convert o k x in Some (OpRes (RVal (WInt r)) m)
   | FloatToInt fk sg, _, [WInt x] =>
       let* from := fmt_of fk in

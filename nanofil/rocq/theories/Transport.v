@@ -156,7 +156,7 @@ Definition dop (t : term) : option op :=
       else if a == "uwtof" then Some (IntToFloat W Unsigned)
       else if a == "sltof" then Some (IntToFloat L Signed)
       else if a == "ultof" then Some (IntToFloat L Unsigned)
-      else if a == "cast" then Some Cast
+      else if a == "cast" then Some Cast else if a == "sqrt" then Some Sqrt
       else if a == "va_args" then Some VaArgs else if a == "va_arg" then Some VaArg
       else if a == "check_function" then Some CheckFunction else None
   | TApp f xs =>

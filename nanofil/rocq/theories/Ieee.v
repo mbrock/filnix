@@ -260,6 +260,31 @@ Definition ieee_convert (from to : fmt) (a : Z) : Z :=
   | (s, Finite n p) => let '(nn, d) := finite_ratio n p in round_ratio to s nn d
   end.
 
+(** As `ieee_sqrt(K, A, B)`: the square root of the pattern a of
+    format k, rounded to nearest, ties to even, as `sqrtss`, `sqrtsd`
+    and `fsqrt` compute it. A NaN is quieted; +0, -0 and +inf are
+    themselves; any other negative number, -inf included, gives the
+    default NaN. For a finite n × 2^p, p made even, the root of n × 4^g
+    with g = f + 5 has at least g bits, two more than rounding needs,
+    and an inexact root lying strictly between q and q + 1 rounds as
+    q + 1/2 does. [Z.sqrt] is `isqrt/2`, the floor of the root. *)
+Definition ieee_sqrt (k : fmt) (a : Z) : Z :=
+  let '(s, t) := decode k a in
+  match t with
+  | NaN => quiet k a
+  | Finite 0 _ => a
+  | Inf => if s =? 1 then invalid k else a
+  | Finite n0 p0 =>
+      if s =? 1 then invalid k else
+      let '(n1, p) := if Z.even p0 then (n0, p0) else (n0 * 2, p0 - 1) in
+      let g := frac_bits k + 5 in
+      let m := Z.shiftl n1 (2 * g) in
+      let q := Z.sqrt m in
+      let '(num, den0) := if q * q =? m then (q, 1) else (2 * q + 1, 2) in
+      let '(num1, den) := scale num den0 (p / 2 - g) in
+      round_ratio k 0 num1 den
+  end.
+
 (** ## Comparison *)
 
 (** A float comparison's condition (`condition/2`): equal, not equal,

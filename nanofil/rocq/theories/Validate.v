@@ -379,6 +379,7 @@ Definition op_result_ok (o : op) (k : class) : bool :=
   | FloatToInt _ _ => int_class k
   | IntToFloat _ _ => float_class k
   | Cast => int_class k || float_class k
+  | Sqrt => float_class k
   | Alloc _ => class_eqb k P
   | Check _ _ _ _ | CheckAhead _ _ _ _ _ | Renew _ _ _ _ | RenewHull _ _ _ _
   | HalfCheck _ _ _ _ _ | RenewIf _ _ _ _ | CheckLimit _ _ _ _ | CheckLocal _ _ _ _ _ =>
