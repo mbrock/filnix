@@ -4405,6 +4405,7 @@ builtin_type(Name, T) :- sign_builtin(Name, _, T).
 builtin_type(Name, T) :- root_builtin(Name, _, T).
 builtin_type(Name, T) :- trunc_builtin(Name, T).
 builtin_type('__builtin_trap', void).
+builtin_type('__builtin_ia32_rdtsc', ullong).
 builtin_type('__builtin_isnan', int).
 builtin_type('__builtin_flt_rounds', int).
 builtin_type('__builtin_object_size', ulong).
@@ -4837,6 +4838,7 @@ vector_builtin_(cvtss2si, [v4sf], int).
 vector_builtin_(cvtss2si64, [v4sf], llong).
 vector_builtin_(cvtsd2si, [v2df], int).
 vector_builtin_(cvtsd2si64, [v2df], llong).
+vector_builtin_(cvtpd2ps, [v2df], v4sf).
 
 doc(lane_builtin(?(Name256), ?(Name128)), nondet, [
     Name256: "an AVX2 builtin on 32-byte vectors",

@@ -299,7 +299,8 @@ unused `__int128_t` padding members as aligned bytes of the same size.
 | `packed` members | 2,975 (96%) | |
 | `sqrt` and `trunc` | 2,979 (96%) | |
 | aliases of thread-local data | 2,982 (96%) | |
-| `__alignof__` of an expression | **2,986 (96%)** | |
+| `__alignof__` of an expression | 2,986 (96%) | |
+| `__label__`, `#pragma weak` in a body, `rdtsc`, `cvtpd2ps` | **2,991 (96%)** | |
 
 The last three rows are a new capture, preprocessed without
 `__BITINT_MAXWIDTH__`, so `math_uint128.h` takes its portable path. No
@@ -329,7 +330,6 @@ First errors (one error per unit, so a fix can uncover the next layer):
 | --- | ---: | --- |
 | `__real__`, `__imag__`, `_Complex` returns | 72 | libm's complex functions |
 | x87 and MXCSR | 51 | `fnclex`, `frndint`, `__builtin_ia32_ldmxcsr` in libm's fenv |
-| other | 5 | `__label__`, `#pragma weak` in a body, `__builtin_ia32_cvtpd2ps`, `__builtin_ia32_rdtsc` |
 
 - **x87 and MXCSR.** Fil-C's own glibc keeps a few x87 instructions
   (`fnclex`, `frndint`, `fnstsw`) as inline asm, which FilPizlonator's
@@ -412,6 +412,24 @@ Each frontend fix has a test that fails without it:
   refused rather than answered wrong. `tests/c/prog/alignof-expr.c`
   against filcc; `tests/c/reject/alignof-typedef-expr.c` and
   `alignof-member-expr.c`.
+- GNU local labels: `__label__ a, b;` at the start of a block declares
+  labels of that block alone, as `strptime_l`'s `get_alt_number` macro
+  declares `do_normal` in a statement expression it expands in many
+  cases. The parser renames them in the block (label statements,
+  `goto`, `&&label` and asm goto labels) to names made from the
+  declaration's place in the tokens, so expansions on one line differ
+  and an inner declaration shadows an outer one.
+  `tests/c/prog/local-label.c` against filcc.
+- `#pragma weak` inside a function body, as `td_ta_map_lwp2thr` writes
+  `#pragma weak ps_get_thread_area` in a case, applies to the file-scope
+  name, as GCC and clang apply it: the lexer moves it to the end of the
+  unit. `tests/c/prog/pragma-weak-body.c` against filcc. (clang ignores
+  a `#pragma weak` that follows a definition; nanofil, at any scope,
+  makes the definition weak. glibc does not rely on either.)
+- `__builtin_ia32_rdtsc` is `asm_fixed(rdtsc)`, edx:eax as one
+  `unsigned long long`, and `__builtin_ia32_cvtpd2ps` rounds two
+  doubles to float and zeroes the upper two elements.
+  `tests/c/prog/ia32-rdtsc-cvt.c` against filcc, a tie included.
 - An `address_space` type is refused only where it is used, as a
   vector type is: filcc cannot compile an access through another
   address space either, and glibc's `rseq-internal.h` casts to

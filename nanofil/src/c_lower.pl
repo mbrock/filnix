@@ -4203,6 +4203,14 @@ builtin('__builtin_expect', [A, B], Ctx, R) --> !,
 builtin(Name, Args, Ctx, R) -->
     { overflow_builtin(Name, Op, Fixed) }, !,
     checked_arithmetic(Args, Op, Fixed, Ctx, R).
+% __builtin_ia32_rdtsc, _rdtsc's builtin, is the rdtsc instruction
+% (asm_fixed, as its inline asm is): edx:eax as one unsigned long long.
+builtin('__builtin_ia32_rdtsc', [], Ctx, R) --> !,
+    asm_fixed_temps([a, d], Outs), { Outs = [a-A, d-D] },
+    emit(asm_fixed(rdtsc, [], Outs)),
+    convert(v(A, uint), ullong, Lo), convert(v(D, uint), ullong, Hi0),
+    binary(shl, Hi0, v(const(32), int), Ctx, Hi),
+    binary(or, Hi, Lo, Ctx, R).
 % GNU vector builtins (c_types vector_builtin/3, generic_vector_builtin/1),
 % computed element by element: each operand is converted to its
 % parameter's type, its elements loaded from the copy it is, and the
@@ -6080,6 +6088,12 @@ vector_op(Name, _, [V], Ret, Ctx, R) -->
     { V = v(_, VT) }, lanes(V, VT, Ctx, [X|_]),
     rounded_even(X, F, Ctx, Y),
     convert(Y, Ret, R).
+% CVTPD2PS: the two doubles rounded to float (to nearest, as the
+% default MXCSR and a C conversion round), the upper two elements zero.
+vector_op(cvtpd2ps, _, [V], Ret, Ctx, R) --> !,
+    { V = v(_, VT) }, lanes(V, VT, Ctx, [A, B]),
+    convert(A, float, FA), convert(B, float, FB),
+    made(Ret, [FA, FB, v(const(0), int), v(const(0), int)], R).
 vector_op(Name, _, _, _, Ctx, _) -->
     { ctx_loc(Ctx, Loc), sema_error(Loc, '__builtin_ia32_~w is not supported', [Name]) }.
 
