@@ -818,8 +818,9 @@ doc(mode_type(+Type0, +Mode, -Type), det, [
     Type: "the type of that mode, bad(Reason) if nanofil has none",
     "GCC's mode attribute gives an integer or floating type the width of",
     "a machine mode, keeping its signedness: QImode is one byte, HImode",
-    "two, SImode four and DImode eight; byte is QI, and word and pointer",
-    "are DI on x86-64; SF is float and DF double. As clang does, nanofil",
+    "two, SImode four and DImode eight; byte is QI, and word, unwind_word",
+    "(libgcc's unwind.h declares _Unwind_Word so) and pointer are DI on",
+    "x86-64; SF is float and DF double. As clang does, nanofil",
     "picks the first standard type of that width and signedness (long,",
     "not long long, for DI). gmp's longlong.h declares UQItype, USItype",
     "and UDItype so. TImode needs __int128, which nanofil refuses. Ignoring",
@@ -828,6 +829,7 @@ doc(mode_type(+Type0, +Mode, -Type), det, [
     example(mode_type(int, 'DI', long)),
     example(mode_type(uint, 'QI', uchar)),
     example(mode_type(int, word, long)),
+    example(mode_type(uint, unwind_word, ulong)),
     example(mode_type(double, 'SF', float)),
     example(mode_type(int, 'TI', bad('mode TI (__int128)')))
 ]).
@@ -852,6 +854,7 @@ mode_bytes('HI', 2).
 mode_bytes('SI', 4).
 mode_bytes('DI', 8).
 mode_bytes(word, 8).
+mode_bytes(unwind_word, 8).
 mode_bytes(pointer, 8).
 mode_bytes('TI', 16).
 
@@ -3696,16 +3699,19 @@ members_type(Members, F, Env, T) :-
     member(q(none, Anon), Members), member_type(Anon, F, Env, T), !.
 
 doc(library_builtin(?(Name), ?(F)), nondet, [
-    Name: "a GNU builtin spelling of a standard library function",
+    Name: "a GNU builtin spelling of a standard, POSIX or GNU library function",
     F: "that function",
     "GCC and clang declare __builtin_F for these library functions F",
     "whether or not a header declares F, and a call is a call of F (bison",
     "parsers call __builtin_memcpy without <string.h>, as netcdf's",
-    "dcetab.c does). builtin_declarations/1 declares each with F's",
+    "dcetab.c does; glibc's own sources call __builtin_mempcpy and",
+    "__builtin_stpcpy). builtin_declarations/1 declares each with F's",
     "prototype, named F in the object.",
     cites('GCC manual, Other Built-in Functions'),
     cites('C11 7.24, 7.22.3, 7.22.4'),
+    cites('POSIX.1-2008 stpcpy'),
     example(library_builtin('__builtin_memcpy', F), F = memcpy),
+    example(library_builtin('__builtin_mempcpy', F), F = mempcpy),
     fails(library_builtin(memcpy, _))
 ]).
 library_builtin(Name, F) :-
@@ -3721,11 +3727,13 @@ library_proto(memmove, vp, [vp, cvp, size]).
 library_proto(memset, vp, [vp, int, size]).
 library_proto(memcmp, int, [cvp, cvp, size]).
 library_proto(memchr, vp, [cvp, int, size]).
+library_proto(mempcpy, vp, [vp, cvp, size]).
 library_proto(strlen, size, [ccp]).
 library_proto(strcmp, int, [ccp, ccp]).
 library_proto(strncmp, int, [ccp, ccp, size]).
 library_proto(strcpy, cp, [cp, ccp]).
 library_proto(strncpy, cp, [cp, ccp, size]).
+library_proto(stpcpy, cp, [cp, ccp]).
 library_proto(strcat, cp, [cp, ccp]).
 library_proto(strncat, cp, [cp, ccp, size]).
 library_proto(strchr, cp, [ccp, int]).

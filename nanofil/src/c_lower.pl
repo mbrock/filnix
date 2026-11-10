@@ -269,9 +269,14 @@ alias_kind(_, data).
 % Linkage, Target, Kind-Loc) the IR's alias(Name, Linkage, Target),
 % once its Target is a definition of the unit of kind Kind, a function
 % for a function and an object for an object, as GCC and clang require.
+% A Target that is itself an alias of the unit stands for the definition
+% at the end of the chain, as the assembler resolves a .set to a symbol
+% the object defines (glibc's strong_alias (chdir, __GI_chdir) after
+% weak_alias (__chdir, chdir)); a cycle is refused.
 alias_kinds(Items0, Items) :- maplist(alias_kind_item(Items0), Items0, Items).
 
-alias_kind_item(Items, alias(Name, Linkage, Target, Kind-Loc), alias(Name, Linkage, Target)) :- !,
+alias_kind_item(Items, alias(Name, Linkage, Target0, Kind-Loc), alias(Name, Linkage, Target)) :- !,
+    alias_chain_end(Items, Loc, [Name], Target0, Target),
     (   memberchk(func(Target, _, _, _, _), Items) -> Found = func
     ;   member(data(Target, L, _, _), Items), L \== extern(weak) -> Found = data
     ;   sema_error(Loc, 'alias ~w must point to a defined variable or function, not ~w', [Name, Target])
@@ -280,6 +285,15 @@ alias_kind_item(Items, alias(Name, Linkage, Target, Kind-Loc), alias(Name, Linka
     ;   sema_error(Loc, 'alias ~w of a ~w names the ~w ~w', [Name, Kind, Found, Target])
     ).
 alias_kind_item(_, Item, Item).
+
+alias_chain_end(Items, Loc, Seen, T0, T) :-
+    (   memberchk(alias(T0, _, T1, _), Items)
+    ->  (   memberchk(T0, Seen)
+        ->  sema_error(Loc, 'alias ~w is part of a cycle of aliases', [T0])
+        ;   alias_chain_end(Items, Loc, [T0|Seen], T1, T)
+        )
+    ;   T = T0
+    ).
 
 % weak_symbols(+Items, +Env, -Weak): Weak is the ordset of the symbols
 % of the names Items declare weak, each Sym-Kind, Kind fn or data.

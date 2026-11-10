@@ -2,7 +2,10 @@
    translation unit an alias is its target: calls reach it and its
    address is the target's. clang (lib/alias.c) calls the exported
    aliases through their own names. An alias may take its type from
-   typeof, as libapparmor's __old_change_hat does. */
+   typeof, as libapparmor's __old_change_hat does. An alias may name
+   another alias, as glibc's syscall wrappers do (weak_alias (__chdir,
+   chdir) and then strong_alias (chdir, __GI_chdir)): it is the
+   definition at the end of the chain. */
 // link: lib/alias.c
 #include <stdio.h>
 
@@ -18,6 +21,8 @@ struct pair mk2(long) __attribute__((alias("mk")));
 extern typeof((fgcmd)) old_fgcmd __attribute__((alias("fgcmd")));
 typeof(hello) hi2 __attribute__((alias("hello")));
 extern typeof(mk) mk3 __attribute__((weak, alias("mk")));
+extern typeof(fgcmd) wfg __attribute__((weak, alias("fgcmd")));
+extern typeof(fgcmd) gfg __attribute__((alias("wfg")));
 
 int from_clang(void);
 
@@ -33,6 +38,7 @@ int main(void)
     printf("%ld %ld %ld\n", p.a, p.b, p.c);
     hi2();
     printf("%d %ld\n", old_fgcmd(5, argv), mk3(8).b);
+    printf("%d %d\n", gfg(6, argv), &gfg == &fgcmd);
     printf("%d\n", from_clang());
     return 0;
 }
