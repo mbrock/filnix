@@ -244,6 +244,41 @@ Proof.
     + exact (conj Hroots' (conj (proj2 Hcurrent) (proj2 Hcurrenterr))).
 Qed.
 
+(** Caller-owned diagnostic strings are returned with their old values.
+    Separation is checked against the sampled errno keys, not merely at
+    entry: a diagnostic prefix must not overwrite the new errno bytes. *)
+Theorem error_pieces_frame : forall rep requests wide native out err b o ps r args xs
+    s m w trace values s' m' w' h old,
+  M.E.invoke (libc_error_contract rep requests wide native) r args xs
+    s m w trace (CallReturn values) s' m' w' ->
+  agrees m h -> live_disjoint m -> R.ready s m ->
+  libc_diagnostic_wi rep native out err b o m w h ->
+  length old = 4%nat ->
+  (forall l v, (l, v) ∈ ps ++ byte_ps b o old -> h !! l = Some v) ->
+  (forall l v, (l, v) ∈ ps -> l ∉ errno_keys b o) ->
+  exists ys, values = [] /\ length ys = 4%nat /\
+    (ps ++ byte_ps b o ys).*1 = (ps ++ byte_ps b o old).*1 /\
+    agrees m' (overwrite (ps ++ byte_ps b o ys) h) /\ live_disjoint m' /\ R.ready s' m' /\
+    libc_diagnostic_wi rep native out err b o m' w' (overwrite (ps ++ byte_ps b o ys) h).
+Proof.
+  intros rep requests wide native out err b o ps r args xs s m w tr vs s' m' w' h old
+    Hi Ha Hd Hr Hw Hlen Howned Hoff.
+  destruct (error_frame rep requests wide native out err b o r args xs
+    s m w tr vs s' m' w' h old Hi Ha Hd Hr Hw Hlen)
+    as (ys & Hvs & Hys & Hkeys & Ha' & Hd' & Hr' & Hw').
+  { intros l v Hin. apply Howned, elem_of_app. right. exact Hin. }
+  assert (Heq : overwrite (ps ++ byte_ps b o ys) h = overwrite (byte_ps b o ys) h).
+  { rewrite overwrite_app. apply LG.overwrite_id. intros l v Hin.
+    rewrite overwrite_out.
+    - apply Howned, elem_of_app. left. exact Hin.
+    - rewrite Hkeys. change (l ∉ (byte_ps b o old).*1).
+      rewrite byte_ps_keys. unfold errno_keys in Hoff. rewrite byte_ps_keys in Hoff.
+      rewrite Hlen. exact (Hoff l v Hin). }
+  exists ys. split; [exact Hvs|]. split; [exact Hys|]. split.
+  { rewrite !fmap_app Hkeys. reflexivity. }
+  rewrite Heq. auto.
+Qed.
+
 End LibcDiagnosticLogicOn.
 
 (** Logical contract controls, not native FILEs or native diagnostic-pool

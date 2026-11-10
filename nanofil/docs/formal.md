@@ -2717,6 +2717,52 @@ libc_getopt equality is not supplied. Registered callback selection,
 main-exit transport, native realization and full teardown remain open.
 No runtime axiom, interpreter transition or Machine theorem changes.
 
+### Campaign 4 milestone 6u: diagnostic literals and consumer binding
+
+[HelloStdio.v](../rocq/theories/HelloStdio.v) now binds the four-argument
+status-zero error call used by close_stdout through the repaired
+HelloClose rule, on the consumer's supplied Logic and machine. A separate
+diagnostic bundle owns the actual closeout literals "%s" and "write
+error"; it does not enlarge the resources required by the version or
+footer consumers. Fixture computation fixes their pointers, regions and
+bytes, proves distinct keys and excludes the owned errno keys. Admission
+reads these strings from current agreement and owned pieces, not equality
+with the initial linked memory. Native diagnostic readiness, writable
+roots and active non-wide stderr remain independent requirements.
+
+LibcDiagnosticLogic.error_pieces_frame combines the 6t errno frame with
+the unchanged diagnostic resources. Explicit key separation matters:
+overwriting the diagnostic prefix after sampling errno must not restore
+an old errno byte. The proof checks identity of the diagnostic overwrite
+at the updated heap, not only at entry. HelloStdio.wp_hello_error derives
+the result, endpoint agreement, readiness and diagnostic envelope before
+asking Kerror to restore the consumer's stronger world interpretation.
+It does not assume the complete consumer postcondition. Its ABI has the
+fixed W,W,P prefix and one promoted pointer vararg.
+
+[HelloDiagnosticChecks.v](../rocq/theories/HelloDiagnosticChecks.v) uses
+a well-formed extension of the small libc fixture with the two real
+literal objects. Both open and already-closed stdout admit
+ordinary calls that change errno and accept "write error" plus newline
+on stderr. The combined frame checks the changed last errno byte and
+every retained diagnostic lookup. A separate Iris call-then-return
+control applies wp_hello_error using hello_genv [] and its genuine
+hello_linked evidence, evaluates the four arguments through the actual
+globals and an environment, and constructs both Hdiagnostic and Kerror.
+Combined literal/errno ownership is inhabited; overlapping update keys
+and closed or wide stderr admission are rejected. This heap owns the
+literal and errno pieces, not stream life/name resources; 6t's separate
+controls cover those observations.
+
+These are logical contract/effects and Iris rule controls with empty
+private native inventories, not native diagnostic execution or a proof
+of the entire close_stdout body. Main's five-argument operand diagnostic
+owns no errno: it needs an unchanged-ghost-heap sibling frame, not a
+fabricated errno resource or unchanged native memory. Full parser
+compatibility, registered callback selection, main-exit transport,
+native realization and teardown remain open. No trusted contract,
+runtime axiom, interpreter transition or Machine theorem changes.
+
 ### Reached-call contract packages and remaining integration
 
 [Getopt.v](../rocq/theories/Getopt.v) supplies independently admitted

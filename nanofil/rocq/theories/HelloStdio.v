@@ -8,7 +8,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run
   ExternalCalls ExternalMachine Stdio Shutdown Streams Formatting Libc LibcStreams LibcExit
   Pieces Heap ContractFrame Logic StringLogic LentLogic LibcStreamLogic LibcErrnoLogic
-  LibcStreamTokens LibcStreamAdapter
+  LibcStreamTokens LibcStreamAdapter LibcDiagnosticLogic
   HelloModule HelloLeaf HelloVersion HelloClose.
 Import ListNotations.
 Open Scope Z_scope.
@@ -87,6 +87,93 @@ Proof.
   - apply all_agree_intro. intros l v Hlv. apply Ha, Howned.
     apply list_elem_of_In. unfold hello_output_pieces. apply in_flat_map.
     exists s. split; [exact Hin|]. apply list_elem_of_In. exact Hlv.
+Qed.
+
+(** A separate bundle avoids strengthening the version/footer callers.
+    These are distinct objects, not duplicate ownership of equal text. *)
+Definition hello_diagnostic_literals : list String.string :=
+  ["closeout#str.55"; "closeout#str.53"].
+Definition hello_diagnostic_pieces : list (piece * pval) :=
+  flat_map hello_literal_pieces hello_diagnostic_literals.
+
+Lemma hello_diagnostic_shape : forall s, In s hello_diagnostic_literals ->
+  string_ok (version_literal s) (ptr_addr (version_literal s))
+    (hello_literal_region s) (hello_literal_bytes s).
+Proof.
+  intros s [<- | [<- | []]]; vm_compute;
+    repeat split; try (right; reflexivity); repeat constructor; congruence.
+Qed.
+
+Lemma hello_diagnostic_owned : forall s m h,
+  In s hello_diagnostic_literals ->
+  (forall l v, (l, v) ∈ hello_diagnostic_pieces -> h !! l = Some v) ->
+  agrees m h -> c_string m (version_literal s) (hello_literal_bytes s).
+Proof.
+  intros s m h Hin Howned Ha. apply string_c_string with
+    (b := ptr_addr (version_literal s)) (reg := hello_literal_region s).
+  - apply hello_diagnostic_shape. exact Hin.
+  - apply all_agree_intro. intros l v Hlv. apply Ha, Howned.
+    apply list_elem_of_In. unfold hello_diagnostic_pieces. apply in_flat_map.
+    exists s. split; [exact Hin|]. apply list_elem_of_In. exact Hlv.
+Qed.
+
+Lemma hello_diagnostic_fixture :
+  version_literal "closeout#str.55" = mkPtr 65744 (Ro 65744) /\
+  version_literal "closeout#str.53" = mkPtr 65680 (Ro 65680) /\
+  hello_literal_bytes "closeout#str.55" = [37; 115] /\
+  hello_literal_bytes "closeout#str.53" = [119; 114; 105; 116; 101; 32; 101; 114; 114; 111; 114].
+Proof. vm_compute. repeat split; reflexivity. Qed.
+
+Lemma hello_diagnostic_keys : NoDup hello_diagnostic_pieces.*1.
+Proof. vm_compute. repeat (apply NoDup_cons; [simpl; intuition congruence|]). apply NoDup_nil. Qed.
+
+Lemma hello_diagnostic_errno_keys : forall b o,
+  b <> 65680 -> b <> 65744 ->
+  forall l v, (l, v) ∈ hello_diagnostic_pieces -> l ∉ errno_keys b o.
+Proof.
+  intros b o Hb Hf l v Hin Hkey.
+  unfold errno_keys in Hkey. rewrite byte_ps_keys in Hkey.
+  apply list_elem_of_fmap in Hkey as (i & E & _).
+  apply list_elem_of_In in Hin. vm_compute in Hin.
+  repeat destruct Hin as [Hin|Hin]; try contradiction;
+    injection Hin as <- <-; simpl in E; try discriminate E;
+    injection E; congruence.
+Qed.
+
+(** Current owned pieces establish the strings, not equality with the
+    startup memory. Native diagnostic readiness remains independent. *)
+Lemma hello_diagnostic_admitted : forall rep requests wide native n m w h file,
+  0 <= n < 2 ^ 32 -> agrees m h ->
+  (forall l v, (l, v) ∈ hello_diagnostic_pieces -> h !! l = Some v) ->
+  diagnostic_ready native m w -> libc_stream_ready rep m w ->
+  Forall (writable_span m) (diagnostic_writes native w) ->
+  libc_file_at w (libc_stderr w) = Some file ->
+  orientation (libc_stream_state w (libc_stderr w)) <> WideOriented ->
+  contract_pre (libc_error_contract rep requests wide native)
+    [WInt 0; WInt n; WPtr (mkPtr 65744 (Ro 65744)); WPtr (mkPtr 65680 (Ro 65680))] m w.
+Proof.
+  intros rep requests wide native n m w h file Hn Ha Hl Hnative Hr Hwrites Hfile Hnarrow.
+  pose proof (hello_diagnostic_owned "closeout#str.55" m h (or_introl eq_refl) Hl Ha) as Hfmt.
+  pose proof (hello_diagnostic_owned "closeout#str.53" m h (or_intror (or_introl eq_refl)) Hl Ha) as Htext.
+  destruct hello_diagnostic_fixture as (Hfp & Htp & Hfb & Htb).
+  rewrite Hfp Hfb in Hfmt. rewrite Htp Htb in Htext.
+  destruct (libc_stream_open rep requests wide m w _ file Hr Hfile) as [info Hopen].
+  assert (Hprotocol : stream_protocol info = libc_stream_state w (libc_stderr w)).
+  { exact (proj1 (proj2 (proj2 Hopen))). }
+  assert (Hdistinct : libc_stdout w <> libc_stderr w).
+  { destruct Hr as (_ & _ & _ & _ & _ & _ & _ & _ & Hd & _).
+    intros E. apply Hd. rewrite E. reflexivity. }
+  split.
+  - split.
+    + exists 0, n, (mkPtr 65744 (Ro 65744)), [WPtr (mkPtr 65680 (Ro 65680))],
+        [37; 115], [119; 114; 105; 116; 101; 32; 101; 114; 114; 111; 114], info.
+      split; [reflexivity|]. split; [lia|]. split; [exact Hn|]. split; [exact Hfmt|]. split.
+      * rewrite <- (app_nil_r [119; 114; 105; 116; 101; 32; 101; 114; 114; 111; 114]).
+        apply format_string; [exact Htext|constructor].
+      * split; [exact (conj Hnative Hr)|]. split; [exact Hwrites|].
+        split; [exact Hopen|]. split; [rewrite Hprotocol; exact Hnarrow|exact Hdistinct].
+    + exists 0, n, (mkPtr 65744 (Ro 65744)), [WPtr (mkPtr 65680 (Ro 65680))]. auto with zarith.
+  - exists n, (mkPtr 65744 (Ro 65744)), [WPtr (mkPtr 65680 (Ro 65680))]. auto with zarith.
 Qed.
 
 (** The default branch is used only for printf sites; registry facts
@@ -294,6 +381,7 @@ Module SL := LibcStreamLogicOn R LG0.
 Module C := HelloCloseOn R LG0.
 Module X := LibcExitOn R C.L.M.
 Module A := LibcStreamAdapterOn R LG0.
+Module D := LibcDiagnosticLogicOn R LG0.
 
 (** The ordinary endpoint has exactly the overwrite shape consumed by
     HelloClose. The life insertion is redundant only because it is OWNED
@@ -425,6 +513,65 @@ Context (registry : name -> option (contract libc_world))
 Local Instance callback_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry wi ge.
 Local Notation cexpr := (language.expr (nanofil_lang registry ge)).
+
+(** Instantiate the repaired HelloClose rule, with actual diagnostic
+    strings and the supplied machine. Kerror restores the consumer's
+    other pools; it does not assume the diagnostic postcondition. *)
+Lemma wp_hello_error rep requests wide native out err b o f e ls lab v fmtv txtv rest j n xs Φ
+    (Hdiagnostic : forall m w h, wi m w h ->
+      libc_diagnostic_wi rep native out err b o m w h /\ diagnostic_ready native m w /\
+      Forall (writable_span m) (diagnostic_writes native w) /\
+      (exists file, libc_file_at w (libc_stderr w) = Some file) /\
+      orientation (libc_stream_state w (libc_stderr w)) <> WideOriented)
+    (Kerror : forall args words s m w trace values s' m' w' h ys,
+      M.E.invoke (libc_error_contract rep requests wide native) CVoid args words
+        s m w trace (CallReturn values) s' m' w' ->
+      wi m w h -> length ys = 4%nat ->
+      libc_diagnostic_wi rep native out err b o m' w'
+        (overwrite (hello_diagnostic_pieces ++ byte_ps b o ys) h) ->
+      wi m' w' (overwrite (hello_diagnostic_pieces ++ byte_ps b o ys) h)) :
+  hello_linked ge -> b <> 65680 -> b <> 65744 ->
+  registry (TAtom "error") = Some (libc_error_contract rep requests wide native) ->
+  arg_x ge e (Arg W v) = Some (WInt n) ->
+  arg_x ge e (Arg P fmtv) = Some (WPtr (mkPtr 65744 (Ro 65744))) ->
+  arg_x ge e (Arg P txtv) = Some (WPtr (mkPtr 65680 (Ro 65680))) ->
+  0 <= n < 2 ^ 32 -> length xs = 4%nat ->
+  pts hello_diagnostic_pieces -∗ C.ML.bytes b o xs -∗
+  ▷ (∀ ys, ⌜length ys = 4%nat⌝ -∗ pts hello_diagnostic_pieces -∗ C.ML.bytes b o ys -∗
+    WP (ERun (mkFrame f e ls None (Exec lab rest j)) : cexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec lab
+    (Call CVoid (Global (TAtom "error")) [Arg W (Const 0); Arg W v; Arg P fmtv; Arg P txtv] :: rest) j))
+    : cexpr) {{ Φ }}.
+Proof.
+  intros Hlinked Hb Hf Hreg Hv Hfmt Htext Hn Hlen. iIntros "Hps Hx HK".
+  iApply (C.wp_close_error registry wi ge b o Hlinked hello_diagnostic_pieces
+    (libc_error_contract rep requests wide native) Hreg with "Hps Hx HK").
+  - reflexivity.
+  - intros. split; [reflexivity|]. split.
+    + split; [reflexivity|]. do 4 eexists. split; [reflexivity|].
+      constructor; [eexists; left; reflexivity|constructor].
+    + do 4 eexists. reflexivity.
+  - intros nn old m w h Hnn Hold Ha Hw Hl.
+    destruct (Hdiagnostic _ _ _ Hw) as (Ht & Hnative & Hwrites & [file Hfile] & Hnarrow).
+    eapply hello_diagnostic_admitted; [exact Hnn|exact Ha| |exact Hnative|
+      |exact Hwrites|exact Hfile|exact Hnarrow].
+    + intros l u Hin. apply Hl, elem_of_app. left. exact Hin.
+    + destruct (proj1 Ht) as (_ & _ & _ & _ & _ & _ & _ & _ & Hprivate).
+      exact (proj1 (proj1 (Hprivate out (or_introl eq_refl)))).
+  - intros vv ff tt nn old s m w h tr vs s' m' w' Hold Ha Hd Hr Hw Hl Hi.
+    destruct (Hdiagnostic _ _ _ Hw) as (Ht & _).
+    destruct (D.error_pieces_frame rep requests wide native out err b o hello_diagnostic_pieces
+      _ _ _ s m w tr vs s' m' w' h old Hi Ha Hd Hr Ht Hold Hl
+      (hello_diagnostic_errno_keys b o Hb Hf)) as (ys & Hvs & Hys & Hkeys & Ha' & Hd' & Hr' & Ht').
+    exists ys. split; [exact Hvs|]. split; [exact Hys|]. split; [exact Hkeys|].
+    split; [exact Ha'|]. split; [exact Hd'|]. split; [exact Hr'|].
+    eapply Kerror; eauto.
+  - exact Hv.
+  - exact Hfmt.
+  - exact Htext.
+  - exact Hn.
+  - exact Hlen.
+Qed.
 
 (** Expose the CURRENT authoritative heap at this boundary, not a saved
     main-entry heap. Freshness belongs only to this one allocation: it is

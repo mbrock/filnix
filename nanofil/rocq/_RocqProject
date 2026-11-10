@@ -97,6 +97,7 @@ theories/LibcStreamTokens.v
 theories/LibcStreamAdapter.v
 theories/LibcDiagnosticLogic.v
 theories/HelloStdio.v
+theories/HelloDiagnosticChecks.v
 theories/HelloConvDefs.v
 theories/HelloConv.v
 theories/GetoptLogic.v
