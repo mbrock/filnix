@@ -15,6 +15,7 @@
     | `difftest FILE OUTDIR` | write `OUTDIR/expected.txt`, `OUTDIR/harness.c` and `OUTDIR/mode` for the file's `run(Fn, Args)` facts |
     | `outcomes FILE` | print the checked module of a Fil-C IR file and the interpreter's outcome of each run line, as terms (rocq/) |
     | `asm-terms FILE TEXT` | as `compile` for a Fil-C module, but write the assembly text to the file TEXT and print each asm.pl line as a term (rocq/backend) |
+    | `abi-terms FILE` | print the checked module of a Fil-C file, then the reference ABI plan of each of its functions and its weak thunks' plans, as terms (rocq/backend) |
 
     A FILE ending in `.c` or `.i` goes through the C frontend; any other
     FILE is IR text. A `.c` file is preprocessed with the predefined
@@ -562,6 +563,15 @@ command(Opt, Registers, Checks, ['asm-terms', File, Text]) :- !,
     open(Text, write, Stream),
     filc_module_emit(Checked, Registers, print_asm_terms(Stream)),
     close(Stream).
+command(Opt, _, Checks, ['abi-terms', File]) :- !,
+    file_module(File, Module0),
+    (   module_mode(Module0, filc) -> true
+    ;   throw(nanofil_error('abi-terms needs a Fil-C module'))
+    ),
+    optimize(Opt, Module0, Module),
+    checked_module(Checks, Module, Checked),
+    format("~k.~n", [Checked]),
+    filc_module_plans(Checked, print_term_line).
 command(Opt, _, Checks, [difftest, File, Dir]) :- !,
     difftest(Opt, Checks, File, Dir).
 command(Opt, _, Checks, [outcomes, File]) :- !,
@@ -691,6 +701,10 @@ print_asm_terms(Stream, Lines) :-
     set_output(Stream),
     print_asm(Lines),
     set_output(Out).
+
+% print_term_line(+Term): Term as a canonical term and a full stop.
+print_term_line(Term) :-
+    format("~k.~n", [Term]).
 
 %! checked_module(+Checks, +Module, -Checked) is det.
 %

@@ -104,7 +104,7 @@
     | Form | a placed return form, `reg` or `mem(Bytes)` (target_form/2) |
 */
 :- module(filc_amd64, [filc_module_asm/2, filc_module_asm/4, filc_module_emit/3,
-                       signature/3]).
+                       filc_module_plans/2, signature/3]).
 
 :- use_module(library(lists)).
 :- use_module(library(dcgs)).
@@ -258,6 +258,28 @@ module_emit(Module, Registers, Branches, Emit) :-
 
 thunk_lines(Callee, Lines) :-
     phrase(thunk(Callee), Lines).
+
+%! filc_module_plans(+Module, :Emit) is det.
+%
+%  Calls Emit(Plan) for the ABI plan (filc_abi:lower_function/4) of
+%  each function of the checked Module, in order, as the reference
+%  emission lowers it: without its source positions, its checks fused
+%  with their accesses, the frame's pools shared. Then it calls
+%  Emit(thunks(Thunks)) with the module's weak thunk plans
+%  (filc_abi:lower_thunks/2). The Gallina backend's plans are compared
+%  with these (rocq/backend).
+filc_module_plans(Module0, Emit) :-
+    once(without_locs(Module0, Module)),
+    Module = module(Items),
+    module_symbols(Module, Symbols),
+    forall(member(Item, Items),
+           (   Item = func(_, _, _, _, _)
+           ->  once(lower_item(shared, Symbols, Item, Plan)),
+               call(Emit, Plan)
+           ;   true
+           )),
+    lower_thunks(Module, Thunks),
+    call(Emit, thunks(Thunks)).
 
 % Complete the ABI product before any instruction selection. Fusion is
 % still target preparation; its separate liveness view preserves indices.
