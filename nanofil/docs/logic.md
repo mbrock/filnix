@@ -862,6 +862,30 @@ Two contract gaps went back to Campaign 4, and it fixed both
   EILSEQ now keeps the entry state and requires a first byte of 128
   or more, so ASCII and NUL never take it.
 
+**gnulib's rpl_mbrtowc.** Hello never calls mbrtowc directly. It calls
+gnulib's wrapper, which converts into the caller's pointer or, when
+that pointer is null, into a fresh four-byte local. After an invalid or
+incomplete sequence (an answer of 2^64-1 or 2^64-2) it asks
+`hard_locale(LC_CTYPE)`. Outside a hard locale, the first byte stands
+for itself: the wrapper stores it as the wide character and returns 1.
+HelloConv.v proves this with two lemmas:
+- `rpl_tail` covers everything from block L11 on: the call through
+  `wp_mbrtowc`, then HelloLocale.v's `hard_locale_spec` on the failure
+  path. `hard_locale` may answer either way, so both branches are
+  proved.
+- `rpl_mbrtowc_spec` enters with an output block the caller owns.
+
+Only rpl_mbsrtowcs's converting loop reaches rpl_mbrtowc from main.
+Main passes a fresh non-null buffer, so the counting loop, which passes
+a null pointer, is never reached, and neither is the null entry.
+
+`rpl_result` states what the caller learns: either mbrtowc's own
+`conv_result`, or 1 with the first byte stored, after a failure that
+left the output alone. The -2 case of `conv_result` keeps its premise
+(n below 16, and no NUL in the n bytes), so a caller that counts n
+through a NUL can rule it out. That is how rpl_mbsrtowcs's `abort`
+becomes unreachable even in a hard locale.
+
 ## Open questions for mbrock
 
 - Start the logic now, or finish Campaign 4's hi.c first?
