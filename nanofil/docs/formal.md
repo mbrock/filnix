@@ -2469,6 +2469,47 @@ adequacy, whole-entry resource admission, diagnostic refinement and
 Iris option-token transfer remain integration work; no runtime axiom,
 interpreter transition or Machine theorem changes.
 
+### Campaign 4 milestone 6o: entry allocation and the Iris close rule
+
+stream_entry_frame derives the full paired stream_tokens_wi after recording
+both handle lives and current open observations. The life-projected data
+frame changes no memory keys, and native readiness excludes both stable
+handles from release pools. stream_entry_alloc performs real Iris allocation
+of the four pieces, requiring their absence in the current authoritative
+heap, independently established live_at facts, current observations and
+the pre-entry private/errno envelope. It does not recover unavailable life
+fragments, duplicate existing ownership or allocate native FILE objects.
+
+HelloStdioOn uses the consumer's supplied LogicSig throughout. Its
+hello_callback_entry exposes the current authoritative heap at the entry
+boundary, not a saved main-entry heap. Other owned main resources frame
+through. It uses current-world observations and reconstructs the same wi.
+Freshness is a fact about that particular pre-allocation heap, not a
+universally reusable admission consequence of wi: the post-state must not
+be forced to re-establish absence of the keys it has just allocated.
+The Kentry premise explicitly covers compatibility with the consumer's
+other private pools: projected FILE separation alone cannot establish
+locale or parser separation after adding handle-life pieces. No main-entry
+heap snapshot or state-interpretation switch is assumed.
+
+hello_fclose_frame puts the existing paired ordinary-return theorem into
+HelloClose's exact closed-pieces-plus-errno overwrite shape. The original
+life insertion is redundant because its value was owned at entry. The
+wp_hello_fclose rule then uses HelloClose's existing wp_close_contract and
+pts_update, consuming real ownership of the selected open snapshot and
+errno bytes and returning the closed snapshot with sampled endpoint errno.
+It handles either designated stream and either zero or EOF, but not an
+unknown pointer. A call-local Kclose premise retains the consumer's other
+abstract invariants. Resource endings do not yield a closed token.
+
+These rules are entry allocation and an ordinary fclose triple, not yet
+an instantiated main-to-callback ownership handoff or a complete binding
+of HelloClose's pointer-universal premises. Returning diagnostics must
+still update stderr observations rather than preserve a stale exact token.
+Native FILE realization, private-root/release execution controls and the
+final callback-return connection to actual local-teardown memory remain
+separate obligations. No trusted contract or runtime law changes here.
+
 ### Reached-call contract packages and remaining integration
 
 [Getopt.v](../rocq/theories/Getopt.v) supplies independently admitted

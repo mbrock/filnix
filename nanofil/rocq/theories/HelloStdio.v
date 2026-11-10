@@ -2,10 +2,14 @@
     object bounds come from the linked fixture, but current memory is
     read from program-owned pieces, not assumed to equal startup memory. *)
 From iris.proofmode Require Import proofmode.
+From iris.base_logic.lib Require Import gen_heap.
+From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run
   ExternalCalls ExternalMachine Stdio Shutdown Streams Formatting Libc LibcStreams LibcExit
-  Pieces Heap ContractFrame Logic StringLogic LibcStreamLogic HelloModule HelloLeaf HelloVersion HelloClose.
+  Pieces Heap ContractFrame Logic StringLogic LentLogic LibcStreamLogic LibcErrnoLogic
+  LibcStreamTokens LibcStreamAdapter
+  HelloModule HelloLeaf HelloVersion HelloClose.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -289,6 +293,134 @@ Module M := V.L.M.
 Module SL := LibcStreamLogicOn R LG0.
 Module C := HelloCloseOn R LG0.
 Module X := LibcExitOn R C.L.M.
+Module A := LibcStreamAdapterOn R LG0.
+
+(** The ordinary endpoint has exactly the overwrite shape consumed by
+    HelloClose. The life insertion is redundant only because it is OWNED
+    at entry; the name and errno updates still need their Iris fragments. *)
+Theorem hello_fclose_frame : forall rep requests wide out err b o dt pending fifo xs
+    r args s m w trace values s' m' w' h,
+  dt = out \/ dt = err -> length xs = 4%nat ->
+  agrees m h -> live_disjoint m -> R.ready s m -> stream_tokens_wi rep out err b o m w h ->
+  (forall l v, (l, v) ∈ stream_ps dt pending fifo ++ byte_ps b o xs -> h !! l = Some v) ->
+  M.E.invoke (fclose_contract (libc_stream_model rep requests wide))
+    r args [WPtr (token_handle dt)] s m w trace (CallReturn values) s' m' w' ->
+  exists n ys, values = [WInt n] /\ 0 <= n < 2 ^ 32 /\ length ys = 4%nat /\
+    (closed_ps dt ++ byte_ps b o ys).*1 = (stream_ps dt pending fifo ++ byte_ps b o xs).*1 /\
+    agrees m' (overwrite (closed_ps dt ++ byte_ps b o ys) h) /\
+    live_disjoint m' /\ R.ready s' m' /\
+    stream_tokens_wi rep out err b o m' w' (overwrite (closed_ps dt ++ byte_ps b o ys) h).
+Proof.
+  intros rep requests wide out err b o dt pending fifo xs r args s m w trace values s' m' w' h
+    Hdt Hxs Ha Hd Hr Hw Howned Hcall.
+  destruct (A.close_frame rep requests wide out err b o dt r args s m w trace values s' m' w' h xs
+    Hdt Hcall Ha Hd Hr Hw Hxs) as (ys & Hys & Hkeys & Ha' & Hd' & Hr' & Hw').
+  { intros l v Hin. apply Howned, elem_of_app. right. exact Hin. }
+  assert (Heq : overwrite (closed_ps dt ++ byte_ps b o ys) h =
+    <[PName (token_key dt) := VStream (token_handle dt) None]> (overwrite (byte_ps b o ys) h)).
+  { rewrite overwrite_app. cbn [closed_ps overwrite]. apply fin_maps.insert_id.
+    rewrite lookup_insert_ne; [|discriminate]. rewrite overwrite_out.
+    - apply Howned, elem_of_app. left. unfold stream_ps. apply elem_of_cons. left. reflexivity.
+    - rewrite byte_ps_keys. intros Hin. apply list_elem_of_fmap in Hin as (i & E & _). discriminate E. }
+  destruct (A.T.EL.S.fclose_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as [(born & p & info & final & n & _ & _ & _ & _ & Hn & _ & _ & _ & _ & _ & Hend)
+      |(why & Hbad & _)]; [|discriminate Hbad].
+  injection Hend as Hvalues. subst values. exists n, ys. split; [reflexivity|]. split.
+  { destruct Hn as [-> | ->]; unfold stream_eof; lia. }
+  split; [exact Hys|]. split.
+  { rewrite !fmap_app (stream_closed_keys dt pending fifo) Hkeys. reflexivity. }
+  rewrite Heq. auto.
+Qed.
+
+Section callback_rules.
+Import LG LG.L.
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
+Context (registry : name -> option (contract libc_world))
+  (wi : mem -> libc_world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
+Local Instance callback_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
+  nanofil_irisGS registry wi ge.
+Local Notation cexpr := (language.expr (nanofil_lang registry ge)).
+
+(** Expose the CURRENT authoritative heap at this boundary, not a saved
+    main-entry heap. Freshness belongs only to this one allocation: it is
+    not an invariant the post-state must re-establish. Unneeded main
+    resources frame through. Kentry supplies compatibility with the
+    consumer's other private pools without switching its interpretation. *)
+Lemma hello_callback_entry rep out err b o σ h op oq ep eq
+    (Kentry : wi (ls_mem σ) (ls_world σ) h ->
+      stream_tokens_wi rep out err b o (ls_mem σ) (ls_world σ)
+        (overwrite (stream_ps out op oq ++ stream_ps err ep eq) h) ->
+      wi (ls_mem σ) (ls_world σ) (overwrite (stream_ps out op oq ++ stream_ps err ep eq) h)) :
+  agrees (ls_mem σ) h -> live_disjoint (ls_mem σ) -> R.ready (ls_rt σ) (ls_mem σ) ->
+  wi (ls_mem σ) (ls_world σ) h -> stream_tokens_wi rep out err b o (ls_mem σ) (ls_world σ) h ->
+  live_at (ls_mem σ) (token_base out) (token_region out) ->
+  live_at (ls_mem σ) (token_base err) (token_region err) ->
+  stream_observation (ls_world σ) (token_handle out) (Some (op, oq)) ->
+  stream_observation (ls_world σ) (token_handle err) (Some (ep, eq)) ->
+  (forall l v, (l, v) ∈ stream_ps out op oq ++ stream_ps err ep eq -> h !! l = None) ->
+  gen_heap_interp h ==∗ heap_interp wi σ ∗
+    pts (stream_ps out op oq) ∗ pts (stream_ps err ep eq).
+Proof.
+  intros Ha Hd Hr Hw Htokens Hol Hel Hoo Heo Hfresh. iIntros "Hh".
+  iMod (stream_entry_alloc rep out err b o _ _ h op oq ep eq Ha Htokens Hol Hel Hoo Heo Hfresh
+    with "Hh") as "(Hh & Ho & He & %Hnew)".
+  iModIntro. iFrame "Ho He". iExists _. iFrame "Hh".
+  iPureIntro. destruct Hnew as [Ha' Hw']. repeat split; try assumption.
+  exact (Kentry Hw Hw').
+Qed.
+
+(** A designated-handle fclose rule, not a dispatcher for arbitrary
+    pointers. The consumer keeps its abstract wi and supplies its local
+    K premise for the rest of that interpretation, as for conversion. *)
+Lemma wp_hello_fclose rep requests wide out err b o dt pending fifo xs
+    f e ls lab result v rest j Φ
+    (Htokens : forall m w h, wi m w h -> stream_tokens_wi rep out err b o m w h)
+    (Kclose : forall s m w h trace values s' m' w' ys,
+      M.E.invoke (fclose_contract (libc_stream_model rep requests wide))
+        (CResult result W) [Arg P v] [WPtr (token_handle dt)] s m w trace (CallReturn values) s' m' w' ->
+      (forall l u, (l, u) ∈ stream_ps dt pending fifo ++ byte_ps b o xs -> h !! l = Some u) ->
+      wi m w h -> length ys = 4%nat ->
+      stream_tokens_wi rep out err b o m' w' (overwrite (closed_ps dt ++ byte_ps b o ys) h) ->
+      wi m' w' (overwrite (closed_ps dt ++ byte_ps b o ys) h)) :
+  dt = out \/ dt = err -> length xs = 4%nat ->
+  find_fn ge (TAtom "fclose") = None -> lookup (TAtom "fclose") (ge_globals ge) = None ->
+  registry (TAtom "fclose") = Some (fclose_contract (libc_stream_model rep requests wide)) ->
+  arg_x ge e (Arg P v) = Some (WPtr (token_handle dt)) ->
+  pts (stream_ps dt pending fifo) -∗ pts (byte_ps b o xs) -∗
+  ▷ (∀ n ys, ⌜0 <= n < 2 ^ 32 /\ length ys = 4%nat⌝ -∗
+    pts (closed_ps dt) -∗ pts (byte_ps b o ys) -∗
+    WP (ERun (mkFrame f (put result (WInt n) e) ls None (Exec lab rest j)) : cexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec lab
+    (Call (CResult result W) (Global (TAtom "fclose")) [Arg P v] :: rest) j)) : cexpr) {{ Φ }}.
+Proof.
+  intros Hdt Hxs Hfn Hg Hreg Hv. iIntros "Hs Hx HK".
+  iApply (C.wp_close_contract registry wi ge f e ls lab result W (TAtom "fclose") _ _ _
+    (fclose_contract (libc_stream_model rep requests wide)) [WPtr (token_handle dt)]
+    (stream_ps dt pending fifo ++ byte_ps b o xs) (fun ys => closed_ps dt ++ byte_ps b o ys)
+    (fun n ys => 0 <= n < 2 ^ 32 /\ length ys = 4%nat) with "[Hs Hx] [HK]").
+  - exact Hfn.
+  - exact Hg.
+  - reflexivity.
+  - exact Hreg.
+  - reflexivity.
+  - left. reflexivity.
+  - cbn [map_option]. rewrite Hv. reflexivity.
+  - split; [right; eexists; reflexivity|eexists; reflexivity].
+  - intros m w h Hw Hl. eapply A.open_admitted; [exact Hdt|apply Htokens; exact Hw|].
+    intros l u Hin. apply Hl, elem_of_app. left. exact Hin.
+  - intros s m w h tr vs s' m' w' Ha Hd Hr Hw Hl Hi.
+    destruct (hello_fclose_frame rep requests wide out err b o dt pending fifo xs _ _
+      s m w tr vs s' m' w' h Hdt Hxs Ha Hd Hr (Htokens _ _ _ Hw) Hl Hi)
+      as (n & ys & -> & Hn & Hys & Hkeys & Ha' & Hd' & Hr' & Htokens').
+    exists n, ys. split; [reflexivity|]. split; [exact Hn|]. split; [auto|].
+    split; [exact Hkeys|]. split; [exact Ha'|]. split; [exact Hd'|]. split; [exact Hr'|].
+    eapply Kclose; eauto.
+  - rewrite pts_app. iFrame.
+  - iNext. iIntros (n ys) "%Hgood Hps". rewrite pts_app. iDestruct "Hps" as "[Hs Hx]".
+    iApply ("HK" with "[%] Hs Hx"). exact Hgood.
+Qed.
+
+End callback_rules.
 
 Theorem hello_output_frame : forall rep requests wide stream g r args xs s m w trace values s' m' w' h,
   output_target (hello_output_api g) libc_stdout w xs = stream ->
@@ -384,3 +516,90 @@ Example shared_invoke_identity : @H.M.E.invoke = @H.C.L.M.E.invoke.
 Proof. reflexivity. Qed.
 
 End HelloStdioSharedChecks.
+
+(** Exercise the Iris rule, not just its pure replacement map: an actual
+    fclose call instruction returns closed-token and sampled-byte resources
+    through the following return instruction, on the fixture's exact LG. *)
+Module HelloCallbackChecks.
+Module LG := StreamHandleChecks.LG.
+Module H := HelloStdioOn InterpRuntime LG.
+Module F := LibcStreamChecks.
+Module T := StreamTokenChecks.
+Import LG LG.L.
+
+Definition close_wi := stream_tokens_wi (fun _ _ => True) T.out T.err 5120 0.
+Definition registry : name -> option (contract libc_world) := fun _ => Some (fclose_contract F.model).
+Definition ge := mkGenv [] [] (fun _ _ => None).
+Definition stub := mkFunc (TAtom "close-control") (TAtom "local") (RClass W) [] [].
+Definition entry_env := [(TAtom "p", WPtr (token_handle T.out))].
+
+Global Instance close_stable : SafepointStable close_wi.
+Proof.
+  apply H.A.tokens_safepoint. intros s m s' m' w [-> ->] Hw. exact Hw.
+Qed.
+
+Example fixture_invoke_identity : @H.M.E.invoke = @T.A.M.E.invoke.
+Proof. reflexivity. Qed.
+
+Section iris.
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
+Local Instance test_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
+  nanofil_irisGS registry close_wi ge.
+
+(** Instantiate the entry wrapper itself, retaining separately owned
+    errno. Freshness is true before allocation, not after it. *)
+Example callback_entry_resources :
+  gen_heap_interp HelloErrnoChecks.heap ∗ pts (byte_ps 5120 0 [0; 0; 0; 0]) ==∗
+    heap_interp close_wi (mkLstate conversion_mem InterpRuntime.start 64 (F.world true)) ∗
+    pts (stream_ps T.out 7 [65; 66]) ∗ pts (stream_ps T.err 3 []) ∗
+    pts (byte_ps 5120 0 [0; 0; 0; 0]).
+Proof.
+  iIntros "[Hh Herrno]".
+  iMod (H.hello_callback_entry close_wi (fun _ _ => True) T.out T.err 5120 0
+    (mkLstate conversion_mem InterpRuntime.start 64 (F.world true)) HelloErrnoChecks.heap
+    7 [65; 66] 3 [] with "Hh") as "(Hσ & Ho & He)".
+  - intros _ Hnew. exact Hnew.
+  - exact HelloErrnoChecks.heap_agrees.
+  - exact HelloErrnoChecks.disjoint.
+  - exact HelloErrnoChecks.ready.
+  - exact T.entry_wi.
+  - exact T.entry_wi.
+  - split; reflexivity.
+  - split; reflexivity.
+  - exists (mkStreamInfo 1 (mkStream ByteOriented [65; 66] true) 7). repeat split; reflexivity.
+  - exists (mkStreamInfo 2 stdout_initial 3). repeat split; reflexivity.
+  - exact T.entry_fresh.
+  - iModIntro. iFrame.
+Qed.
+
+Example close_then_return_resources :
+  pts (stream_ps T.out 7 [65; 66]) -∗ pts (byte_ps 5120 0 [0; 0; 0; 0]) -∗
+  WP (ERun (mkFrame stub entry_env [] None (Exec (TAtom "body")
+    [Call (CResult (TAtom "r") W) (Global (TAtom "fclose")) [Arg P (Tmp (TAtom "p"))]]
+    (JRet (Tmp (TAtom "r"))))) : language.expr (nanofil_lang registry ge))
+  {{ result, ∃ n ys, ⌜result = Ret (WInt n) /\ length ys = 4%nat⌝ ∗
+      pts (closed_ps T.out) ∗ pts (byte_ps 5120 0 ys) }}.
+Proof.
+  iIntros "Ho Herrno".
+  iApply (H.wp_hello_fclose registry close_wi ge (fun _ _ => True)
+    (fun _ _ _ _ => False) (fun _ _ _ _ _ => False) T.out T.err 5120 0 T.out 7 [65; 66]
+    [0; 0; 0; 0] stub entry_env [] (TAtom "body") (TAtom "r") (Tmp (TAtom "p")) []
+    (JRet (Tmp (TAtom "r"))) _ with "Ho Herrno []").
+  - intros m w h Hw. exact Hw.
+  - intros s m w h tr vs s' m' w' ys Hi Hl Hw Hlen Hnew. exact Hnew.
+  - left. reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - iNext. iIntros (n ys) "%Hgood Ho Herrno". destruct Hgood as [Hn Hys].
+    iApply (wp_ret registry close_wi ge stub _ (TAtom "body") (Tmp (TAtom "r")) W (WInt n));
+      [reflexivity| |].
+    + change (Some (WInt (n mod 2 ^ 32)) = Some (WInt n)).
+      rewrite Z.mod_small; [reflexivity|exact Hn].
+    + iNext. iExists n, ys. iFrame. auto.
+Qed.
+
+End iris.
+End HelloCallbackChecks.

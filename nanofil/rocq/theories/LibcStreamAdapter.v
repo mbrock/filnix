@@ -96,8 +96,82 @@ Proof.
   unfold stream_current in Hcurrent. rewrite Hl in Hcurrent. exact (proj2 Hcurrent).
 Qed.
 
+(** Recording independently live handles and CURRENT observations preserves
+    the complete entry envelope. It does not recover unavailable fragments
+    or change the world interpretation used by an existing WP. *)
+Lemma stream_entry_frame : forall rep out err b o m w h op oq ep eq,
+  agrees m h -> stream_tokens_wi rep out err b o m w h ->
+  live_at m (token_base out) (token_region out) ->
+  live_at m (token_base err) (token_region err) ->
+  stream_observation w (token_handle out) (Some (op, oq)) ->
+  stream_observation w (token_handle err) (Some (ep, eq)) ->
+  let h' := overwrite (stream_ps out op oq ++ stream_ps err ep eq) h in
+  agrees m h' /\ stream_tokens_wi rep out err b o m w h'.
+Proof.
+  intros rep out err b o m w h op oq ep eq Ha
+    (Howf & Hewf & Hbase & Hkey & Hout & Herr & _ & _ & Hprivate)
+    Hol Hel Hoo Heo h'.
+  assert (Hdata : memory_keys_from
+    (stream_data_heap (token_base out) (token_base err) h')
+    (stream_data_heap (token_base out) (token_base err) h)).
+  { intros l v Hl Hmem. apply stream_data_lookup in Hl as (Hl & Hno & Hne).
+    unfold h' in Hl. apply lookup_overwrite in Hl as [Hin|[_ Hold]].
+    - apply list_elem_of_In in Hin. cbn [stream_ps app] in Hin.
+      destruct Hin as [E|[E|[E|[E|[]]]]]; injection E as <- <-; contradiction.
+    - exists v. rewrite stream_data_lookup_ne; assumption. }
+  split.
+  { intros l v Hl. unfold h' in Hl. apply lookup_overwrite in Hl as [Hin|[_ Hold]];
+      [|exact (Ha l v Hold)].
+    eapply all_agree_elem; [|exact Hin]. apply all_agree_app.
+    split; apply stream_ps_agree; assumption. }
+  split; [exact Howf|]. split; [exact Hewf|]. split; [exact Hbase|]. split; [exact Hkey|].
+  split; [exact Hout|]. split; [exact Herr|]. split.
+  { unfold stream_current, h'. cbn [stream_ps app overwrite fst snd].
+    rewrite lookup_insert_ne; [|discriminate]. rewrite lookup_insert_eq. exact (conj eq_refl Hoo). }
+  split.
+  { unfold stream_current, h'. cbn [stream_ps app overwrite fst snd].
+    rewrite lookup_insert_ne; [|discriminate]. rewrite lookup_insert_ne; [|congruence].
+    rewrite lookup_insert_ne; [|discriminate]. rewrite lookup_insert_eq. exact (conj eq_refl Heo). }
+  intros d Hd. destruct (Hprivate d Hd) as [Hwi Hrel].
+  split; [eapply errno_wi_heap; eauto|]. intros base l v Hin Hl Hmem.
+  unfold h' in Hl. apply lookup_overwrite in Hl as [Hnew|[_ Hold]];
+    [|exact (Hrel base l v Hin Hold Hmem)].
+  apply list_elem_of_In in Hnew. cbn [stream_ps app] in Hnew.
+  destruct Hnew as [E|[E|[E|[E|[]]]]]; injection E as <- <-; try contradiction.
+  - intros E. subst base. eapply libc_handle_not_released;
+      [exact (proj1 Hwi)|left; reflexivity| |exact Hin]. rewrite Hout. exact (proj1 Howf).
+  - intros E. subst base. eapply libc_handle_not_released;
+      [exact (proj1 Hwi)|right; reflexivity| |exact Hin]. rewrite Herr. exact (proj1 Hewf).
+Qed.
+
 Section snapshot_allocation.
 Context `{!gen_heapGS piece pval Σ}.
+
+(** Fresh ghost recording is not native allocation: both live_at facts
+    and both current observations are independent premises. Freshness is
+    against the authoritative heap, so no existing life is duplicated. *)
+Lemma stream_entry_alloc rep out err b o m w h op oq ep eq :
+  agrees m h -> stream_tokens_wi rep out err b o m w h ->
+  live_at m (token_base out) (token_region out) ->
+  live_at m (token_base err) (token_region err) ->
+  stream_observation w (token_handle out) (Some (op, oq)) ->
+  stream_observation w (token_handle err) (Some (ep, eq)) ->
+  (forall l v, (l, v) ∈ stream_ps out op oq ++ stream_ps err ep eq -> h !! l = None) ->
+  gen_heap_interp h ==∗
+    gen_heap_interp (overwrite (stream_ps out op oq ++ stream_ps err ep eq) h) ∗
+    pts (stream_ps out op oq) ∗ pts (stream_ps err ep eq) ∗
+    ⌜agrees m (overwrite (stream_ps out op oq ++ stream_ps err ep eq) h) /\
+      stream_tokens_wi rep out err b o m w
+        (overwrite (stream_ps out op oq ++ stream_ps err ep eq) h)⌝.
+Proof.
+  intros Ha Hw Hol Hel Hoo Heo Hfresh. iIntros "Hh".
+  destruct Hw as (Howf & Hewf & Hbase & Hkey & Hrest) eqn:E.
+  iMod (pts_alloc h (stream_ps out op oq ++ stream_ps err ep eq) with "Hh") as "[Hh Hps]".
+  - clear -Hbase Hkey. cbn [stream_ps app fmap fst]. repeat constructor; set_solver.
+  - exact Hfresh.
+  - rewrite pts_app. iDestruct "Hps" as "[Ho He]". iModIntro. iFrame.
+    iPureIntro. eapply stream_entry_frame; eauto.
+Qed.
 
 (** Callback entry allocates the reserved snapshot key, while retaining
     an already owned life piece. Neither the life nor a fresh ghost
@@ -739,6 +813,113 @@ Proof.
   destruct (Ha _ _ Hl) as [_ Hbyte].
   destruct (Hbyte (mkRegion 5120 5128 Heap Live) eq_refl eq_refl) as (_ & _ & Hvalue).
   discriminate Hvalue.
+Qed.
+
+(** Entry begins with actual errno ownership, but no recorded FILE lives
+    or observations. The observations are selected from the current world. *)
+Lemma entry_keys : forall l v,
+  HelloErrnoChecks.heap !! l = Some v -> exists i, l = PByte 5120 i.
+Proof.
+  intros l v Hl. unfold HelloErrnoChecks.heap in Hl. apply elem_of_list_to_map_2 in Hl.
+  destruct (MemLogic.byte_ps_elem _ _ _ _ _ Hl) as (i & x & _ & -> & _). eauto.
+Qed.
+
+Lemma entry_wi : stream_tokens_wi (fun _ _ => True) out err 5120 0
+    conversion_mem (F.world true) HelloErrnoChecks.heap.
+Proof.
+  assert (Hkeys : forall l v, stream_data_heap 1024 2048 HelloErrnoChecks.heap !! l = Some v ->
+      mem_piece l -> l ∈ errno_keys 5120 0).
+  { intros l v Hl _. apply stream_data_lookup in Hl as [Hl _].
+    unfold HelloErrnoChecks.heap in Hl. apply elem_of_list_to_map_2 in Hl.
+    change (l ∈ (byte_ps 5120 0 [0; 0; 0; 0]).*1).
+    apply list_elem_of_fmap. exists (l, v). auto. }
+  split; [split; [reflexivity|simpl; lia]|]. split; [split; [reflexivity|simpl; lia]|].
+  split; [discriminate|]. split; [discriminate|]. split; [reflexivity|]. split; [reflexivity|].
+  split.
+  { unfold stream_current. destruct (HelloErrnoChecks.heap !! PName (token_key out)) as [v|] eqn:E;
+      [destruct (entry_keys _ _ E) as [i Hbad]; discriminate Hbad|exact I]. }
+  split.
+  { unfold stream_current. destruct (HelloErrnoChecks.heap !! PName (token_key err)) as [v|] eqn:E;
+      [destruct (entry_keys _ _ E) as [i Hbad]; discriminate Hbad|exact I]. }
+  intros d [-> | ->].
+  all: split; [|intros base l v Hin; change (In base []) in Hin; contradiction].
+  all: split; [apply F.ready|].
+  all: split; [reflexivity|].
+  all: split; [intros root a Hin; change (In root []) in Hin; contradiction|].
+  all: split; [intros base l v Hin; change (In base []) in Hin; contradiction|].
+  all: intros l v Hl Hnot; destruct l as [base|base off|base off|key]; try exact I.
+  all: exfalso; apply Hnot; eapply Hkeys; [exact Hl|exact I].
+Qed.
+
+Lemma entry_fresh : forall l v,
+  (l, v) ∈ stream_ps out 7 [65; 66] ++ stream_ps err 3 [] -> HelloErrnoChecks.heap !! l = None.
+Proof.
+  intros l v Hin. destruct (HelloErrnoChecks.heap !! l) as [old|] eqn:E; [|reflexivity].
+  destruct (entry_keys _ _ E) as [i ->]. apply list_elem_of_In in Hin.
+  cbn [stream_ps app out err token_base token_key] in Hin.
+  destruct Hin as [Hbad|[Hbad|[Hbad|[Hbad|[]]]]]; discriminate Hbad.
+Qed.
+
+Section entry_iris.
+Context `{!gen_heapGS piece pval Σ}.
+
+(** Both real tokens are produced while independently owned errno is
+    retained. This is not just a construction of a pure endpoint map. *)
+Example entry_produces_pair :
+  gen_heap_interp HelloErrnoChecks.heap ∗ pts (byte_ps 5120 0 [0; 0; 0; 0]) ==∗
+  ∃ h, gen_heap_interp h ∗ pts (stream_ps out 7 [65; 66]) ∗ pts (stream_ps err 3 []) ∗
+    pts (byte_ps 5120 0 [0; 0; 0; 0]) ∗
+    ⌜agrees conversion_mem h /\ stream_tokens_wi (fun _ _ => True) out err 5120 0
+      conversion_mem (F.world true) h⌝.
+Proof.
+  iIntros "[Hh Herrno]".
+  iMod (stream_entry_alloc (fun _ _ => True) out err 5120 0 conversion_mem (F.world true)
+    HelloErrnoChecks.heap 7 [65; 66] 3 [] HelloErrnoChecks.heap_agrees entry_wi
+    with "Hh") as "(Hh & Ho & He & %Hnew)".
+  - split; reflexivity.
+  - split; reflexivity.
+  - exists (mkStreamInfo 1 (mkStream ByteOriented [65; 66] true) 7). repeat split; reflexivity.
+  - exists (mkStreamInfo 2 stdout_initial 3). repeat split; reflexivity.
+  - exact entry_fresh.
+  - iModIntro. iExists _. iFrame. done.
+Qed.
+
+End entry_iris.
+
+(** An existing key cannot be freshly recorded, even if its native
+    object is live and the caller has no fragment for the old value. *)
+Example occupied_life_not_fresh :
+  ~ (forall l v, (l, v) ∈ stream_ps out 7 [65; 66] ++ stream_ps err 3 [] ->
+    StreamHandleChecks.heap !! l = None).
+Proof.
+  intros Hfresh. specialize (Hfresh (PLive 1024) (VLive (token_region out))).
+  assert (Hin : (PLive 1024, VLive (token_region out)) ∈
+    stream_ps out 7 [65; 66] ++ stream_ps err 3 []) by
+    (apply list_elem_of_In; simpl; auto).
+  specialize (Hfresh Hin). unfold StreamHandleChecks.heap in Hfresh.
+  rewrite lookup_insert_eq in Hfresh. discriminate Hfresh.
+Qed.
+
+Example occupied_name_not_fresh :
+  ~ (forall l v, (l, v) ∈ stream_ps out 7 [65; 66] ++ stream_ps err 3 [] ->
+    (<[PName (-2) := VCodec (TAtom "C")]> HelloErrnoChecks.heap) !! l = None).
+Proof.
+  intros Hfresh. specialize (Hfresh (PName (-2)) (VStream (token_handle out) (Some (7, [65; 66])))).
+  assert (Hin : (PName (-2), VStream (token_handle out) (Some (7, [65; 66]))) ∈
+    stream_ps out 7 [65; 66] ++ stream_ps err 3 []) by
+    (apply list_elem_of_In; simpl; auto).
+  specialize (Hfresh Hin). rewrite lookup_insert_eq in Hfresh. discriminate Hfresh.
+Qed.
+
+Example aliased_handles_rejected : forall rep b o m w h,
+  ~ stream_tokens_wi rep out out b o m w h.
+Proof. intros rep b o m w h (_ & _ & Hbad & _). apply Hbad. reflexivity. Qed.
+
+Example completed_close_not_readmitted :
+  ~ stream_call_pre F.model [WPtr (token_handle out)] changed_errno (F.world false).
+Proof.
+  intros (p & info & Hargs & _ & Hopen & _). injection Hargs as <-.
+  discriminate Hopen.
 Qed.
 
 End StreamTokenChecks.
