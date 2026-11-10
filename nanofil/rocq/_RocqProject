@@ -20,6 +20,7 @@ theories/Semantics.v
 theories/Run.v
 theories/Machine.v
 theories/Validate.v
+theories/ValidFast.v
 theories/Dominance.v
 theories/Interval.v
 theories/Sites.v

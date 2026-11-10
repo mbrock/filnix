@@ -148,6 +148,7 @@ Definition access_term (a : access) : term :=
       TApp "let" [TApp "tmp" [d]; eclass P; enc_op (RawLoadPointer off es); TList [place_term p]]
   | AStorePointer off v p es =>
       TApp "raw_store_pointer" [TInt off; enc_value v; place_term p; enc_effects es]
+  | ATouch p => TApp "touch" [place_term p]
   end.
 
 (** An instruction after fusion. *)

@@ -19,7 +19,7 @@
     The lines of a module both take are the same. *)
 
 From Stdlib Require Import String ZArith List Bool.
-From Nanofil Require Import Term Syntax Validate Transport.
+From Nanofil Require Import Term Syntax Validate ValidFast Transport.
 From Backend Require Import Text Asm Pizlonate EmitModule.
 Import ListNotations.
 Local Open Scope string_scope.
@@ -64,7 +64,7 @@ Definition compile (m : term) : compiled :=
             match decode_module checked with
             | None => Refused "the checked module does not read back"
             | Some md =>
-                match valid md with
+                match valid_fast md with
                 | None => Outside "a function is outside the subset"
                 | Some false => Refused "the checked module is not valid"
                 | Some true => Pieces (module_pieces md)

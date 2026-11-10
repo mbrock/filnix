@@ -125,7 +125,8 @@ Inductive storage : Type := Heap | Local.
 (** As `proven_access/4` (heap) and `proven_local_access/4` (local):
     the raw access i, which reads the proof q, as the access at the
     place p. A pointer access must declare a protocol of its storage:
-    the heap's or the atomic helpers', or the local's. *)
+    the heap's or the atomic helpers', or the local's. A touch uses
+    the proof and accesses nothing, and is the heap's only. *)
 Definition proven_access (st : storage) (i : inst) (q : name) (p : place) : option access :=
   match i with
   | Let d k (RawLoad t off) [Tmp q'] =>
@@ -146,6 +147,11 @@ Definition proven_access (st : storage) (i : inst) (q : name) (p : place) : opti
             | Local => effects_eqb es local_store_effects
             end
       then Some (AStorePointer off v p es) else None
+  | Touch q' =>
+      match st with
+      | Heap => if name_eqb q' q then Some (ATouch p) else None
+      | Local => None
+      end
   | _ => None
   end.
 
@@ -155,6 +161,7 @@ Definition access_offset (a : access) : Z :=
   match a with
   | ALoad _ _ _ off _ | AStore _ off _ _ | ALoadPointer _ off _ _
   | AStorePointer off _ _ _ => off
+  | ATouch _ => 0
   end.
 
 (** The proof and the offset of an access that may be `reused`: a
@@ -175,7 +182,7 @@ Definition reusable (i : inst) : option (name * Z) :=
     pointer arithmetic outside a flight. *)
 Definition not_emitted (i : inst) : bool :=
   match i with
-  | Call _ (Tmp _) _ | RawCall _ _ _ | RawStore _ _ _ _ | RawStorePointer _ _ _ _ => true
+  | Call _ (Tmp _) _ | RawCall _ _ _ | RawStore _ _ _ _ | RawStorePointer _ _ _ _ | Touch _ => true
   | Let _ _ (RawLoad _ _) _ | Let _ _ (RawLoadPointer _ _) _ => true
   | Let _ P (Add | Sub | Itop) _ => true
   | Let _ P Copy [Tmp _] | Let _ P Copy [Const _] => true

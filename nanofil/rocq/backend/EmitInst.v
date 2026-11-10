@@ -179,6 +179,7 @@ Definition raw_access (cx : ctx) (b : name) (index : string) (a : access) : list
       flat_map (pointer_load_effect cx b index) es ++ flight_store cx d
   | AStorePointer _ v (AtValue p) es => flat_map (pointer_store_effect cx b index v p) es
   | AStorePointer _ _ (AtLocal _ _) _ => todo "pointer store at a local"
+  | ATouch _ => []
   end.
 
 (** ## Named locals *)
@@ -754,7 +755,8 @@ Definition action_lines (cx : ctx) (b : name) (index : string) (a : action) : li
 (** The pointer an access is at. *)
 Definition access_place (a : access) : place :=
   match a with
-  | ALoad _ _ _ _ p | AStore _ _ _ p | ALoadPointer _ _ _ p | AStorePointer _ _ p _ => p
+  | ALoad _ _ _ _ p | AStore _ _ _ p | ALoadPointer _ _ _ p | AStorePointer _ _ p _
+  | ATouch p => p
   end.
 
 (** As `inst//4`: the code of the instruction at index i of the

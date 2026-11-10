@@ -43,7 +43,8 @@ Inductive access : Type :=
 | ALoad (d : name) (k : class) (t : load_type) (off : Z) (p : place) (* `let(tmp(D), K, raw_load(T, Off), [P])` *)
 | AStore (w : width) (off : Z) (v : value) (p : place) (* `raw_store(W, Off, V, P)` *)
 | ALoadPointer (d : name) (off : Z) (es : list effect) (p : place) (* `let(tmp(D), p, raw_load_pointer(Off, Es), [P])` *)
-| AStorePointer (off : Z) (v : value) (p : place) (es : list effect). (* `raw_store_pointer(Off, V, P, Es)` *)
+| AStorePointer (off : Z) (v : value) (p : place) (es : list effect) (* `raw_store_pointer(Off, V, P, Es)` *)
+| ATouch (p : place). (* `touch(P)`: the check alone, with no access after it *)
 
 (** An instruction after fusion (filc_amd64.pl's `fused_blocks/5`). *)
 Inductive finst : Type :=
@@ -62,7 +63,7 @@ Definition place_uses (p : place) : list name :=
 (** The temporaries an access reads. *)
 Definition access_uses (a : access) : list name :=
   match a with
-  | ALoad _ _ _ _ p | ALoadPointer _ _ _ p => place_uses p
+  | ALoad _ _ _ _ p | ALoadPointer _ _ _ p | ATouch p => place_uses p
   | AStore _ _ v p | AStorePointer _ v p _ => value_temps [v] ++ place_uses p
   end.
 
@@ -71,7 +72,7 @@ Definition access_defs (a : access) : list (name * class) :=
   match a with
   | ALoad d k _ _ _ => [(d, k)]
   | ALoadPointer d _ _ _ => [(d, P)]
-  | AStore _ _ _ _ | AStorePointer _ _ _ _ => []
+  | AStore _ _ _ _ | AStorePointer _ _ _ _ | ATouch _ => []
   end.
 
 (** As `cfg:inst_uses/2` of `live_inst/2`: the temporaries a fused

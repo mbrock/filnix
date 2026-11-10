@@ -225,7 +225,7 @@ Definition enc_args (args : list arg) : term := TList (map enc_arg args).
     `raw_store(Width, Off, Value, Addr)`,
     `raw_store_pointer(Off, Value, Addr, Effects)`,
     `call(Res, Callee, Args)`, `raw_call(Res, Callee, Args)`,
-    `local_alloc(Name, Size)` or `loc(File, Line)`.
+    `local_alloc(Name, Size)`, `loc(File, Line)` or `touch(tmp(Q))`.
 
     A [RawStore] of the width [Wp] is written `raw_store(p, ...)`,
     which is not an instruction of the IR (a pointer store is
@@ -243,6 +243,7 @@ Definition enc_inst (i : inst) : term :=
       TApp "raw_call" [enc_call_result r; enc_value callee; enc_args args]
   | LocalAlloc x size => TApp "local_alloc" [x; TInt size]
   | Loc file line => TApp "loc" [file; TInt line]
+  | Touch q => TApp "touch" [enc_tmp q]
   end.
 
 (** ## Jumps and phis *)

@@ -115,8 +115,8 @@ In `nanofil/rocq/theories`, on Rocq 9.1 with stdpp and Iris:
   the `NAMECode.v` fixtures.
 
 The syntax covers the checked stage only. It has no unchecked `load`
-or `store`, and no vectors, `cas` and atomics, `setjmp`, `asm_fixed`
-or `touch`. Of Lua 5.4.7, every function but one decodes into it.
+or `store`, and no vectors, `cas` and atomics, `setjmp` or
+`asm_fixed`. Of Lua 5.4.7, every function but one decodes into it.
 
 ## The first version
 
@@ -503,6 +503,16 @@ The validator is the model's, and nine proof files of the program
 logic read `single_definitions`, so the repair is not this
 campaign's to make alone. Decision 6 below is about it.
 
+*The first repair.* `theories/ValidFast.v` counts every definition
+in one pass into a map, and its `valid_fast` is `valid` with the
+single definitions taken from that count. `valid_fast_eq` proves
+`valid_fast md = valid md` for every module, so `valid` stays the
+definition the proofs and the gates read, and the compiler runs
+`valid_fast`. On SQLite, pizlonation and validation went from 24.8 s
+to 17.2 s and the whole compile from 41 s to 33 s, with the same
+text printed. The two `lookup`s are next; the blocks' own rules are
+4.0 s of what is left and the reuse forms' stage about 5.
+
 *Numbered temporaries gain nothing.* A pass that numbered a
 function's temporaries and gave the plans integer names was written
 and measured: the validator and the plans took the same time. What
@@ -745,7 +755,10 @@ What remains of M3:
 
 - the functions outside the subset, which wait on the model: `touch`
   first, and `setjmp` for Lua's `ldo.c`. With them come the 43
-  modules of the corpus that have no whole text;
+  modules of the corpus that have no whole text. `touch` has since
+  come: the model has `Touch`, the backend fuses it with its check
+  as `filc_amd64.pl` does and emits the check alone, and 26 more
+  files of the C corpus print Prolog's text;
 - the performance target. The profile says it is not met by the
   emission alone: it needs M5's numbered temporaries and a faster
   reader.
@@ -825,9 +838,9 @@ the subset.
   must be `nanofil compile`'s, byte for byte, and each must refuse
   what the other refuses. The IR fixtures give 32 the same, 4 not
   taken and 7 refused by both. The C corpus and the package
-  translation units give 339 the same and 49 not taken (42 with a
-  function outside the subset, 7 plain); the frontend skips 6. The
-  files not taken must be exactly the 53 that
+  translation units give 374 the same and 24 not taken (17 with a
+  function outside the subset, 7 plain); the frontend skips 7. The
+  files not taken must be exactly the 28 that
   `tests/compile/none.txt` names, so the gate fails when the
   backend stops taking a file, and when it starts taking a listed
   one.
@@ -1017,4 +1030,7 @@ otherwise.
    same function and the proofs rewrite once. The backend takes no
    unproved replacement at extraction. Proving `valid (pizlonate m)
    = Some true`, which removes the run altogether for the first
-   version, stays the later goal.
+   version, stays the later goal. *Agreed, with the equality at the
+   top:* the campaign's file proves `valid_fast md = valid md`, the
+   compiler runs `valid_fast`, and `valid_func` and its proofs do
+   not change. `single_definitions` is done; the `lookup`s are not.
