@@ -21,12 +21,18 @@
 # name, as prog/setjmp.c, and for a translation unit, whose
 # directory and prefix vary, its name without the prefix, as ldo.i.
 #
-#   BACKEND=.../nanofil-backend compile.sh FILE...
+# With COMMAND=compile-promoted, both run that command instead
+# (M5b): promotion, copy propagation and selected branches, where
+# nanofil's side is passes([promote, copy]) and
+# emit(stack, selected, call).
+#
+#   BACKEND=.../nanofil-backend [COMMAND=compile-promoted] compile.sh FILE...
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 src="$here/../../../src"
 nanofil="$here/../../../bin/nanofil"
 backend=${BACKEND:-$here/../nanofil-backend}
+command=${COMMAND:-compile}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
@@ -34,7 +40,7 @@ status=0
 for f in "$@"; do
   t0=$SECONDS
   f=$(cd "$(dirname "$f")" && pwd)/$(basename "$f")
-  echo "@@nanofil-backend $(date -u +%FT%TZ) start compile file=$f"
+  echo "@@nanofil-backend $(date -u +%FT%TZ) start $command file=$f"
   ir=$f
   case $f in
     *.c | *.i)
@@ -51,8 +57,8 @@ for f in "$@"; do
   listed=
   if grep -qxF "$name" "$here/compile/none.txt"; then listed=1; fi
   theirs=0 ours=0
-  (cd "$src" && "$nanofil" compile "$ir" </dev/null) >"$work/theirs" 2>"$work/their-err" || theirs=$?
-  "$backend" compile "$ir" >"$work/ours" 2>"$work/our-err" || ours=$?
+  (cd "$src" && "$nanofil" "$command" "$ir" </dev/null) >"$work/theirs" 2>"$work/their-err" || theirs=$?
+  "$backend" "$command" "$ir" >"$work/ours" 2>"$work/our-err" || ours=$?
   why=$(tr -s ' \n' ' ' <"$work/our-err" | head -c 200)
   if [ "$theirs" != 0 ]; then
     if [ "$ours" = 0 ]; then
@@ -80,6 +86,6 @@ for f in "$@"; do
     echo "DIFFER $f: $(cmp "$work/ours" "$work/theirs" 2>&1 | head -c 200)"
     status=1
   fi
-  echo "@@nanofil-backend $(date -u +%FT%TZ) done compile file=$f seconds=$((SECONDS - t0))"
+  echo "@@nanofil-backend $(date -u +%FT%TZ) done $command file=$f seconds=$((SECONDS - t0))"
 done
 exit $status

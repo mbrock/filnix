@@ -16,8 +16,9 @@
 #
 # NANOFIL_BACKEND names the compiler extracted from Rocq
 # (nanofil/rocq/backend, docs/gallina-backend.md). With it the IR is
-# compiled by `nanofil-backend compile` and no Prolog runs after rx.pl.
-# It is the compiler without -O, so the code is the plain compile's.
+# compiled by `nanofil-backend compile-promoted` and no Prolog runs
+# after rx.pl. Of -O it has promotion, copy propagation and selected
+# branches, and no registers: the code takes about twice -O's time.
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -49,7 +50,7 @@ if grep '^%' "$work/rx.ir" >"$output"; then
   exit 1
 fi
 if [ -n "${NANOFIL_BACKEND:-}" ]; then
-  limited "$NANOFIL_BACKEND" compile "$work/rx.ir" </dev/null >"$work/rx.s" || slow
+  limited "$NANOFIL_BACKEND" compile-promoted "$work/rx.ir" </dev/null >"$work/rx.s" || slow
 else
   (cd "$repo/nanofil/src" && limited ../bin/nanofil -O compile "$work/rx.ir" </dev/null) >"$work/rx.s" || slow
 fi

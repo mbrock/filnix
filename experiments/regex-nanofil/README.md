@@ -276,11 +276,21 @@ operations and garbage collection.
 ## The compiler extracted from Rocq
 
 `NANOFIL_BACKEND=.../nanofil-backend` makes `rxc` and `run.sh` compile the
-IR with `nanofil-backend compile`, the backend extracted from Rocq
+IR with `nanofil-backend compile-promoted`, the backend extracted from Rocq
 (`nanofil/rocq/backend`, `nanofil/docs/gallina-backend.md`), so that no
-Prolog runs after `rx.pl`. It is the compiler without `-O`, and its
-assembly for the module of 36 is `nanofil compile`'s byte for byte. `bench`
-and `hook` pass with it. Measured on November 10:
+Prolog runs after `rx.pl`. Of `-O` it has promotion, copy propagation and
+selected branches, and it keeps every value on the stack. Its assembly for
+the module of 36 is `nanofil compile-promoted`'s byte for byte. `bench` and
+`hook` pass with it. Measured on November 10:
+
+- The module compiles in 0.35 s, against 6.2 s for `nanofil -O compile`.
+- A cold cache of the hook's 39 patterns takes 4.1 s, 106 ms a miss.
+- The code takes 1.56 to 2.91 times `-O`'s time per call on the nine
+  patterns above (2.10 times in the geometric mean), and is 3.0 to 11.8
+  times faster than the interpreter. Registers are what remains.
+
+Before that the switch ran `nanofil-backend compile`, the compiler with
+nothing of `-O`, whose assembly is `nanofil compile`'s byte for byte:
 
 - The module compiles in 0.39 s, against 1.4 s for `nanofil compile` and
   6.3 s for `nanofil -O compile`.

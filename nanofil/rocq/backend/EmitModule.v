@@ -11,11 +11,12 @@ From Backend Require Import Text Asm Plan Abi Layout Emit EmitData EmitThunk.
 Import ListNotations.
 Local Open Scope list_scope.
 
-(** The lines of an item. Nothing for a function the model keeps
-    outside the core subset, or one the backend builds no plan for. *)
-Definition item_lines (sy : symbols) (it : item) : option (list line) :=
+(** The lines of an item, a function's with selected branches or
+    not. Nothing for a function the model keeps outside the core
+    subset, or one the backend builds no plan for. *)
+Definition item_code (selected : bool) (sy : symbols) (it : item) : option (list line) :=
   match it with
-  | IFunc f => option_map function_lines (lower_function sy f)
+  | IFunc f => option_map (function_code selected) (lower_function sy f)
   | IOutside _ _ => None
   | IData n lk align items => Some (data_lines n lk align items)
   | IAlias n lk target => Some (alias_lines sy n lk target)
@@ -30,11 +31,17 @@ Definition end_lines : list line := [Dir (DSection SNoteGnuStack)].
     for a piece, prints its lists and drops them before it asks for
     the next, so the lines of a whole module are never all alive.
     A piece is nothing if its item or a thunk has no lines. *)
-Definition module_pieces (md : module) : list (unit -> option (list (list line))) :=
+Definition module_code (selected : bool) (md : module)
+  : list (unit -> option (list (list line))) :=
   let sy := module_symbols md in
-  map (fun it _ => option_map (fun ls => [ls]) (item_lines sy it)) md
+  map (fun it _ => option_map (fun ls => [ls]) (item_code selected sy it)) md
   ++ [fun _ => option_map (map thunk_lines) (lower_thunks sy md);
       fun _ => Some [end_lines]].
+
+(** The reference: no branch is selected. *)
+Definition item_lines : symbols -> item -> option (list line) := item_code false.
+Definition module_pieces : module -> list (unit -> option (list (list line))) :=
+  module_code false.
 
 (** The lists of lines of a module: every piece's. Nothing if some
     piece is nothing. *)

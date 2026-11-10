@@ -7,7 +7,7 @@
     What is not ported yet is a [todo] line (Layout.v). *)
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Maps.
-From Backend Require Import Text Asm Plan PlanTerm Layout EmitInst EmitObject.
+From Backend Require Import Text Asm Plan PlanTerm Layout EmitOps EmitInst EmitObject.
 Import ListNotations.
 Local Open Scope string_scope.
 Local Open Scope Z_scope.
@@ -152,15 +152,17 @@ Definition phi_write (cx : ctx) (ph : phi) : list line :=
          end
   end.
 
-(** As `edge//4`: the parallel copy of the target's phis, the
-    pollcheck if the target asks for one, then the jump. *)
-Definition edge (cx : ctx) (from : name) (t : target) (tag : string) : list line :=
-  let to := edge_label t in
-  let phis := match nm_find to (cx_phis cx) with Some phis => phis | None => [] end in
+(** As `edge_moves//4`: the parallel copy of the target's phis, then
+    the pollcheck if the target asks for one. *)
+Definition edge_moves (cx : ctx) (from : name) (t : target) (tag : string) : list line :=
+  let phis := match nm_find (edge_label t) (cx_phis cx) with Some phis => phis | None => [] end in
   flat_map (phi_read cx from) phis
   ++ flat_map (phi_write cx) phis
-  ++ match t with Poll _ => pollcheck cx from tag | To _ => [] end
-  ++ [ins0 "jmp" [sym (block_label cx to)]].
+  ++ match t with Poll _ => pollcheck cx from tag | To _ => [] end.
+
+(** As `edge//4`: the moves of the edge, then the jump. *)
+Definition edge (cx : ctx) (from : name) (t : target) (tag : string) : list line :=
+  edge_moves cx from t tag ++ [ins0 "jmp" [sym (block_label cx (edge_label t))]].
 
 (** ## Returns *)
 
@@ -283,6 +285,193 @@ Definition block_lines (cx : ctx) (b : pblock) : list line :=
   label (block_label cx (pb_label b))
   :: insts_lines cx (pb_label b) 0 (pb_insts b)
   ++ jump_lines cx (pb_label b) (pb_jump b).
+
+(** ## Branch selection
+
+    As the branch selection of filc_amd64.pl (docs/perf.md). A block
+    whose last instruction is an integer comparison that only the
+    block's branch reads branches on the comparison's flags. A
+    branch whose edge has no phi copy and no poll jumps straight to
+    its block. An edge to the next block falls through. *)
+
+(** One more occurrence of the temporary n. *)
+Definition count_temp (n : name) (m : nmap Z) : nmap Z :=
+  nm_add n (match nm_find n m with Some c => c + 1 | None => 1 end) m.
+
+(** As `temp_names//1`: each occurrence of `tmp(N)` in the term t
+    counted into m. The name N is not searched. *)
+Fixpoint count_temps (t : term) (m : nmap Z) : nmap Z :=
+  let fix count_list (ts : list term) (m : nmap Z) : nmap Z :=
+    match ts with
+    | [] => m
+    | t :: ts' => count_list ts' (count_temps t m)
+    end in
+  match t with
+  | TApp f args =>
+      match args with
+      | [n] => if String.eqb f "tmp" then count_temp n m else count_temps n m
+      | _ => count_list args m
+      end
+  | TList ts => count_list ts m
+  | TInt _ | TAtom _ => m
+  end.
+
+(** As `branch_selection/3`: how many times each temporary occurs in
+    the blocks of the plan, its definition included. *)
+Definition temp_uses (bs : list pblock) : nmap Z :=
+  fold_left (fun m b => count_temps (pblock_term b) m) bs nm_empty.
+
+(** As `negated/2`, on the comparison. *)
+Definition negated (c : cond) : cond :=
+  match c with
+  | Eq => Ne | Ne => Eq
+  | Slt => Sge | Sge => Slt
+  | Sle => Sgt | Sgt => Sle
+  | Ult => Uge | Uge => Ult
+  | Ule => Ugt | Ugt => Ule
+  | Le | Lt | Ge | Gt | Ord | Unord => c
+  end.
+
+(** The jump to the label l when the flags hold the comparison c. *)
+Definition jump_if (c : cond) (l : string) : list line :=
+  match cond_code c with
+  | Some cc => [ins0 ("j" ++ cc) [sym l]]
+  | None => todo "branch condition"
+  end.
+
+Definition two31 : Z := 2147483648.
+
+(** As `integer_immediate/3`: the signed 32-bit immediate that
+    stands for the constant n: always at a word, and at a long only
+    when sign extension gives n back. *)
+Definition integer_immediate (half : bool) (n : Z) : option Z :=
+  if half then Some ((n + two31) mod two32 - two31)
+  else
+    let u := n mod two64 in
+    let v := if u >=? two63 then u - two64 else u in
+    if (- two31 <=? v) && (v <=? two31 - 1) then Some v else None.
+
+(** As `plain_edge/2`: an edge to a block without phis, and without
+    a poll. *)
+Definition plain_edge (cx : ctx) (t : target) : bool :=
+  match t with
+  | Poll _ => false
+  | To l => match nm_find l (cx_phis cx) with Some [] => true | _ => false end
+  end.
+
+(** Whether the edge goes to the next block. *)
+Definition to_next (t : target) (next : option name) : bool :=
+  match next with
+  | Some l => name_eqb (edge_label t) l
+  | None => false
+  end.
+
+(** As `selected_edge//5`: the edge without its jump when it goes to
+    the next block. *)
+Definition selected_edge (cx : ctx) (from : name) (t : target) (tag : string)
+    (next : option name) : list line :=
+  if to_next t next then edge_moves cx from t tag else edge cx from t tag.
+
+(** As `selected_branch//6`: the flags hold c exactly when the
+    branch goes to t. *)
+Definition selected_branch (cx : ctx) (c : cond) (t f : target) (from : name)
+    (next : option name) : list line :=
+  let to_false := jump_if (negated c) (block_label cx (edge_label f)) in
+  if to_next t next && plain_edge cx t && plain_edge cx f then to_false
+  else if plain_edge cx t then
+    jump_if c (block_label cx (edge_label t)) ++ selected_edge cx from f "f" next
+  else if plain_edge cx f then
+    to_false ++ selected_edge cx from t "t" next
+  else
+    let false_label := local_label cx from "jnz" "false" in
+    jump_if (negated c) false_label
+    ++ edge cx from t "t"
+    ++ [label false_label]
+    ++ selected_edge cx from f "f" next.
+
+(** As the `compare` clause of `selected_jump//4`: x and y compared
+    at the class k, y as an immediate when it is a constant that
+    fits one. *)
+Definition compare_flags (cx : ctx) (k : class) (x y : value) : list line :=
+  match k with
+  | W | L =>
+      let half := match k with W => true | _ => false end in
+      let a := reg (reg_name "a" half) in
+      load cx x k "a"
+      ++ match match y with Const n => integer_immediate half n | _ => None end with
+         | Some v => [ins "cmp" (class_suffix half) [imm v; a]]
+         | None =>
+             load cx y k "c" ++ [ins "cmp" (class_suffix half) [reg (reg_name "c" half); a]]
+         end
+  | _ => todo "compare class"
+  end.
+
+(** The instructions before the last, and the last. *)
+Fixpoint split_last {A : Type} (xs : list A) : option (list A * A) :=
+  match xs with
+  | [] => None
+  | x :: xs' =>
+      match split_last xs' with
+      | None => Some ([], x)
+      | Some (init, last) => Some (x :: init, last)
+      end
+  end.
+
+(** As `compare_branch/5`: the instructions before a last integer
+    comparison that only the block's branch reads, with the
+    comparison and the two targets. *)
+Definition compare_branch (uses : nmap Z) (b : pblock)
+  : option (list pinst * cond * class * value * value * target * target) :=
+  match pb_jump b with
+  | PJump (JBranch (Tmp d) t f) =>
+      match split_last (pb_insts b) with
+      | Some (init, PInst (FPlain (Let d' W (Cmp c k) [x; y]))) =>
+          if name_eqb d d'
+             && match k with W | L => true | _ => false end
+             && match nm_find d uses with Some n => n =? 2 | None => false end
+          then Some (init, c, k, x, y, t, f)
+          else None
+      | _ => None
+      end
+  | _ => None
+  end.
+
+(** As `block_code//3` with selected branches: next is the label of
+    the block after b. *)
+Definition selected_block (cx : ctx) (uses : nmap Z) (next : option name) (b : pblock)
+  : list line :=
+  let from := pb_label b in
+  label (block_label cx from)
+  :: match compare_branch uses b with
+     | Some (init, c, k, x, y, t, f) =>
+         insts_lines cx from 0 init
+         ++ compare_flags cx k x y
+         ++ selected_branch cx c t f from next
+     | None =>
+         insts_lines cx from 0 (pb_insts b)
+         ++ match pb_jump b with
+            | PJump (JBranch v t f) =>
+                load cx v W "a"
+                ++ [ins "test" "l" [reg "eax"; reg "eax"]]
+                ++ selected_branch cx Ne t f from next
+            | PJump (JGoto t) => selected_edge cx from t "j" next
+            | j => jump_lines cx from j
+            end
+     end.
+
+Fixpoint selected_blocks (cx : ctx) (uses : nmap Z) (bs : list pblock) : list line :=
+  match bs with
+  | [] => []
+  | b :: bs' =>
+      selected_block cx uses (match bs' with b' :: _ => Some (pb_label b') | [] => None end) b
+      ++ selected_blocks cx uses bs'
+  end.
+
+(** The code of the blocks: with selected branches, or as the
+    reference, which stores a comparison's boolean, tests it and
+    jumps on both arms. *)
+Definition blocks_lines (selected : bool) (cx : ctx) (bs : list pblock) : list line :=
+  if selected then selected_blocks cx (temp_uses bs) bs else flat_map (block_lines cx) bs.
 
 (** ## The shared failure blocks *)
 
@@ -435,7 +624,7 @@ Definition linkage_globl (linkage : term) (s : string) : list line :=
 (** As `function//2`: the implementation (the entry, the blocks, the
     shared exception exit and the failure blocks), then the function
     object and the origins. *)
-Definition function_lines (p : plan) : list line :=
+Definition function_code (selected : bool) (p : plan) : list line :=
   let cx := plan_ctx p in
   let impl := impl_symbol (pl_sig p) (cx_name cx) in
   let bs := pl_blocks p in
@@ -444,7 +633,7 @@ Definition function_lines (p : plan) : list line :=
   ++ linkage_globl (pl_linkage p) impl
   ++ [Dir (DType (LSym impl) (LSym "function")); label impl]
   ++ entry_lines cx p
-  ++ flat_map (block_lines cx) bs
+  ++ blocks_lines selected cx bs
   ++ [label (special_label cx "exc")]
   ++ exit_lines cx (pl_return p)
   ++ flat_map (check_fail_block cx) kinds
@@ -454,3 +643,6 @@ Definition function_lines (p : plan) : list line :=
   ++ function_object_lines cx p impl
   ++ origins cx p kinds
   ++ unreachable_message cx bs.
+
+(** The reference: no branch is selected. *)
+Definition function_lines : plan -> list line := function_code false.

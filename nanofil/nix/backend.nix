@@ -43,7 +43,11 @@
 # (rocq/backend/tests/compile.sh), on the same files and the fixtures
 # of rocq/backend/tests/compile; full=true takes the whole corpus and
 # the translation units; the files it does not take are exactly
-# those rocq/backend/tests/compile/none.txt names. Its reader,
+# those rocq/backend/tests/compile/none.txt names. And
+# `nanofil-backend compile-promoted`, which promotes, propagates
+# copies and selects branches, prints what `nanofil compile-promoted`
+# prints, on the same files and the fixtures of
+# rocq/backend/tests/promote. Its reader,
 # IrText.v, reads the module Prolog reads and nothing where Prolog
 # throws (rocq/backend/tests/read.sh), on the IR fixtures and on a
 # thousand adversarial texts, those also cut into pieces of one and
@@ -102,6 +106,7 @@ let
     tests/par.sh rocq/backend/tests/emit.sh units/*.i | tee emit-packages.log
     tests/par.sh rocq/backend/tests/pizlonate.sh units/*.i | tee pizlonate-packages.log
     tests/par.sh rocq/backend/tests/compile.sh units/*.i | tee compile-packages.log
+    COMMAND=compile-promoted tests/par.sh rocq/backend/tests/compile.sh units/*.i | tee compile-promoted-packages.log
   '';
 in
 pkgs.runCommandCC (if full then "nanofil-backend-full" else "nanofil-backend")
@@ -143,6 +148,7 @@ pkgs.runCommandCC (if full then "nanofil-backend-full" else "nanofil-backend")
           NANOFIL_OPT=-O tests/par.sh rocq/backend/tests/pizlonate.sh ${corpus} ${pizlonate} | tee pizlonate-O.log
           tests/par.sh rocq/backend/tests/promote.sh ${corpus} ${compile} ${promote} | tee promote.log
           tests/par.sh rocq/backend/tests/compile.sh ${corpus} ${compile} | tee compile.log
+          COMMAND=compile-promoted tests/par.sh rocq/backend/tests/compile.sh ${corpus} ${compile} ${promote} | tee compile-promoted.log
         ''
         + packages
       else
@@ -155,6 +161,7 @@ pkgs.runCommandCC (if full then "nanofil-backend-full" else "nanofil-backend")
           tests/par.sh rocq/backend/tests/pizlonate.sh ${quickAbi} ${pizlonate} | tee pizlonate.log
           tests/par.sh rocq/backend/tests/promote.sh ${quickAbi} ${compile} ${promote} | tee promote.log
           tests/par.sh rocq/backend/tests/compile.sh ${quickAbi} ${compile} | tee compile.log
+          COMMAND=compile-promoted tests/par.sh rocq/backend/tests/compile.sh ${quickAbi} ${compile} ${promote} | tee compile-promoted.log
         ''
     )
     + ''

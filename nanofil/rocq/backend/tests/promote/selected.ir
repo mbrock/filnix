@@ -1,0 +1,123 @@
+% Branch selection (docs/gallina-backend.md, M5b), for
+% rocq/backend/tests/compile.sh with COMMAND=compile-promoted: the
+% arms of filc_amd64.pl's selected_branch//6, compare_branch/5 and
+% integer_immediate/3 that tests/filc/branches.ir and the C corpus
+% leave to chance.
+func(keep, export, p, [param(p, tmp(p))], [
+    block(start, [], [], ret(tmp(p)))
+]).
+
+% The true arm is the next block and both edges are plain: one jump,
+% on the negated condition, for each integer comparison.
+func(next_true, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+    block(b0, [], [let(tmp(c0), w, cmp(eq, w), [tmp(a), tmp(b)])], branch(tmp(c0), b1, out)),
+    block(b1, [], [let(tmp(c1), w, cmp(ne, w), [tmp(a), tmp(b)])], branch(tmp(c1), b2, out)),
+    block(b2, [], [let(tmp(c2), w, cmp(slt, w), [tmp(a), tmp(b)])], branch(tmp(c2), b3, out)),
+    block(b3, [], [let(tmp(c3), w, cmp(sle, w), [tmp(a), tmp(b)])], branch(tmp(c3), b4, out)),
+    block(b4, [], [let(tmp(c4), w, cmp(sgt, w), [tmp(a), tmp(b)])], branch(tmp(c4), b5, out)),
+    block(b5, [], [let(tmp(c5), w, cmp(sge, w), [tmp(a), tmp(b)])], branch(tmp(c5), b6, out)),
+    block(b6, [], [let(tmp(c6), w, cmp(ult, w), [tmp(a), tmp(b)])], branch(tmp(c6), b7, out)),
+    block(b7, [], [let(tmp(c7), w, cmp(ule, w), [tmp(a), tmp(b)])], branch(tmp(c7), b8, out)),
+    block(b8, [], [let(tmp(c8), w, cmp(ugt, w), [tmp(a), tmp(b)])], branch(tmp(c8), b9, out)),
+    block(b9, [], [let(tmp(c9), w, cmp(uge, w), [tmp(a), tmp(b)])], branch(tmp(c9), b10, out)),
+    block(b10, [], [], ret(const(1))),
+    block(out, [], [], ret(const(0)))
+]).
+
+% The true arm is plain and is not the next block: a jump on the
+% condition, then the false edge, which falls through (f1), jumps
+% (f2), or copies a phi and jumps (f3).
+func(true_plain, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+    block(f1, [], [let(tmp(c1), w, cmp(slt, w), [tmp(a), tmp(b)])], branch(tmp(c1), yes, f2)),
+    block(f2, [], [let(tmp(c2), w, cmp(ult, w), [tmp(a), tmp(b)])], branch(tmp(c2), yes, f3)),
+    block(mid, [], [], ret(const(7))),
+    block(f3, [], [let(tmp(c3), w, cmp(eq, w), [tmp(b), tmp(a)])], branch(tmp(c3), yes, join)),
+    block(yes, [], [], goto(join)),
+    block(join, [phi(tmp(x), w, [f3-tmp(a), yes-tmp(b)])], [], ret(tmp(x)))
+]).
+
+% The true arm is not plain and the false arm is: a jump on the
+% negated condition, then the true edge, which copies a phi and
+% falls through (t1), or is polled and jumps (t2).
+func(false_plain, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+    block(t0, [], [], goto(t1)),
+    block(t1, [phi(tmp(i), w, [t0-tmp(a), t2-tmp(j)])], [
+        let(tmp(j), w, add, [tmp(i), const(1)]),
+        let(tmp(c1), w, cmp(ugt, w), [tmp(j), tmp(b)])
+    ], branch(tmp(c1), join, no)),
+    block(join, [phi(tmp(x), w, [t1-tmp(j)])], [], ret(tmp(x))),
+    block(no, [], [], goto(t2)),
+    block(t2, [], [let(tmp(c2), w, cmp(sle, w), [tmp(j), tmp(b)])], branch(tmp(c2), poll(t1), no2)),
+    block(no2, [], [], ret(const(3)))
+]).
+
+% Neither arm is plain: the reference's shape, with the false edge
+% falling through (n1), jumping (n2), and both arms polled (n3).
+func(neither, export, w, [param(w, tmp(a)), param(w, tmp(b))], [
+    block(n0, [], [], goto(n1)),
+    block(n1, [phi(tmp(i), w, [n0-tmp(a), n3-tmp(k), n3b-tmp(k)])], [
+        let(tmp(j), w, add, [tmp(i), const(1)]),
+        let(tmp(c1), w, cmp(sge, w), [tmp(j), tmp(b)])
+    ], branch(tmp(c1), far, near)),
+    block(near, [phi(tmp(y), w, [n1-const(1)])], [
+        let(tmp(c2), w, cmp(ule, w), [tmp(y), tmp(b)])
+    ], branch(tmp(c2), far2, far)),
+    block(far2, [phi(tmp(z), w, [near-tmp(y)])], [], ret(tmp(z))),
+    block(far, [phi(tmp(x), w, [n1-tmp(j), near-tmp(y)])], [], goto(n3)),
+    block(n3, [], [
+        let(tmp(k), w, add, [tmp(x), const(2)]),
+        let(tmp(c3), w, cmp(ne, w), [tmp(k), tmp(a)])
+    ], branch(tmp(c3), poll(n1), poll(n3b))),
+    block(n3b, [], [], goto(poll(n1)))
+]).
+
+% A comparison stays an instruction when it is read twice (twice),
+% is not the last instruction (early), is not the branch's (other),
+% is a float's (float), or has a result that is not a w (long); a
+% branch on a constant or on a parameter tests it.
+func(stays, export, w, [param(w, tmp(a)), param(w, tmp(b)), param(d, tmp(x)), param(d, tmp(y))], [
+    block(twice, [], [let(tmp(c1), w, cmp(slt, w), [tmp(a), tmp(b)])], branch(tmp(c1), early, used)),
+    block(used, [], [], ret(tmp(c1))),
+    block(early, [], [
+        let(tmp(c2), w, cmp(eq, w), [tmp(a), tmp(b)]),
+        let(tmp(s), w, add, [tmp(a), tmp(b)])
+    ], branch(tmp(c2), other, done)),
+    block(other, [], [
+        let(tmp(c3), w, cmp(ne, w), [tmp(s), tmp(b)]),
+        let(tmp(c4), w, cmp(ult, w), [tmp(s), tmp(a)])
+    ], branch(tmp(c3), float, done)),
+    block(float, [], [let(tmp(c5), w, cmp(lt, d), [tmp(x), tmp(y)])], branch(tmp(c5), const, done)),
+    block(const, [], [], branch(const(1), param, done)),
+    block(param, [], [], branch(tmp(a), long, done)),
+    block(long, [], [let(tmp(c6), l, cmp(eq, w), [tmp(a), tmp(b)])], branch(tmp(c6), last, done)),
+    block(last, [], [], ret(tmp(c4))),
+    block(done, [], [], ret(const(0)))
+]).
+
+% A constant compared: at w every constant is an immediate, wrapped
+% to 32 signed bits; at l only one that sign extension gives back.
+% A constant on the left is loaded.
+func(immediate, export, w, [param(w, tmp(a)), param(l, tmp(b))], [
+    block(i0, [], [let(tmp(c0), w, cmp(eq, w), [tmp(a), const(5)])], branch(tmp(c0), i1, out)),
+    block(i1, [], [let(tmp(c1), w, cmp(ult, w), [tmp(a), const(2147483648)])], branch(tmp(c1), i2, out)),
+    block(i2, [], [let(tmp(c2), w, cmp(ne, w), [tmp(a), const(4294967295)])], branch(tmp(c2), i3, out)),
+    block(i3, [], [let(tmp(c3), w, cmp(sgt, w), [tmp(a), const(-1)])], branch(tmp(c3), i4, out)),
+    block(i4, [], [let(tmp(c4), w, cmp(sge, w), [tmp(a), const(4294967301)])], branch(tmp(c4), i5, out)),
+    block(i5, [], [let(tmp(c5), w, cmp(slt, w), [tmp(a), const(2147483647)])], branch(tmp(c5), i6, out)),
+    block(i6, [], [let(tmp(c6), w, cmp(eq, l), [tmp(b), const(5)])], branch(tmp(c6), i7, out)),
+    block(i7, [], [let(tmp(c7), w, cmp(ult, l), [tmp(b), const(2147483647)])], branch(tmp(c7), i8, out)),
+    block(i8, [], [let(tmp(c8), w, cmp(ult, l), [tmp(b), const(2147483648)])], branch(tmp(c8), i9, out)),
+    block(i9, [], [let(tmp(c9), w, cmp(ne, l), [tmp(b), const(4294967295)])], branch(tmp(c9), i10, out)),
+    block(i10, [], [let(tmp(c10), w, cmp(sgt, l), [tmp(b), const(-1)])], branch(tmp(c10), i11, out)),
+    block(i11, [], [let(tmp(c11), w, cmp(sge, l), [tmp(b), const(-2147483648)])], branch(tmp(c11), i12, out)),
+    block(i12, [], [let(tmp(c12), w, cmp(sle, l), [tmp(b), const(-2147483649)])], branch(tmp(c12), i13, out)),
+    block(i13, [], [let(tmp(c13), w, cmp(uge, l), [tmp(b), const(18446744073709551615)])], branch(tmp(c13), i14, out)),
+    block(i14, [], [let(tmp(c14), w, cmp(ule, l), [tmp(b), const(18446744071562067968)])], branch(tmp(c14), i15, out)),
+    block(i15, [], [let(tmp(c15), w, cmp(ugt, l), [tmp(b), const(18446744071562067967)])], branch(tmp(c15), i16, out)),
+    block(i16, [], [let(tmp(c16), w, cmp(eq, l), [tmp(b), const(18446744073709551621)])], branch(tmp(c16), i17, out)),
+    block(i17, [], [let(tmp(c17), w, cmp(eq, w), [const(5), tmp(a)])], branch(tmp(c17), i18, out)),
+    block(i18, [], [let(tmp(c18), w, cmp(eq, w), [const(5), const(6)])], branch(tmp(c18), i19, out)),
+    block(i19, [], [let(tmp(c19), w, cmp(sge, l), [const(-1), tmp(b)])], branch(tmp(c19), i21, out)),
+    block(i21, [], [], ret(const(1))),
+    block(out, [], [], ret(const(0)))
+]).

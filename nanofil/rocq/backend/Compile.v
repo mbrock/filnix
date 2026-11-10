@@ -16,11 +16,17 @@
     - It checks the `context/2` items (provenance's records), which
       pizlonation drops here.
 
-    The lines of a module both take are the same. *)
+    The lines of a module both take are the same.
+
+    [compile_promoted] is main.pl's `compile-promoted` command:
+    before pizlonation the module is promoted (Promote.v) and its
+    copies are propagated (Copy.v), and the emission selects its
+    branches (Emit.v). The same gate, with COMMAND=compile-promoted,
+    holds its lines to those of `nanofil compile-promoted`. *)
 
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Validate ValidFast Transport.
-From Backend Require Import Text Asm Pizlonate EmitModule.
+From Backend Require Import Text Asm Pizlonate Copy Promote EmitModule.
 Import ListNotations.
 Local Open Scope string_scope.
 
@@ -46,33 +52,59 @@ Definition func_named_by_atom (it : term) : bool :=
   | _ => true
   end.
 
+(** The lines of the unchecked Fil-C module m, its branches selected
+    or not: pizlonated, read as the model's syntax, judged and
+    emitted. Outside if it has a function outside the
+    [[core-subset|core subset]], which the validator cannot judge. *)
+Definition checked_lines (selected : bool) (m : term) : compiled :=
+  match pizlonate_module m with
+  | None => Refused "an item is not of the unchecked grammar"
+  | Some checked =>
+      match decode_module checked with
+      | None => Refused "the checked module does not read back"
+      | Some md =>
+          match valid_fast md with
+          | None => Outside "a function is outside the subset"
+          | Some false => Refused "the checked module is not valid"
+          | Some true => Pieces (module_code selected md)
+          end
+      end
+  end.
+
 (** The module m, as read, compiled. A plain module is outside: its
-    backend (amd64.pl) is not ported. So is one with a function
-    outside the [[core-subset|core subset]], which the validator
-    cannot judge. *)
-Definition compile (m : term) : compiled :=
+    backend (amd64.pl) is not ported.
+
+    With promoted, as `optimize(passes([promote, copy]))` and
+    `emit(stack, selected, call)`: the module is promoted
+    (Promote.v), its copies are propagated (Copy.v), and its
+    branches are selected (Emit.v). Whether the module is plain is
+    asked of the module as read, as main.pl's `compile` asks it,
+    since promotion can remove every pointer. *)
+Definition compile_as (promoted : bool) (m : term) : compiled :=
   match m with
   | TApp f [TList items] =>
       if negb (String.eqb f "module") then Refused "not a module"
       else if negb (forallb func_named_by_atom items) then
         Refused "a function's name is not an atom"
       else if negb (module_filc items) then Outside "a plain module"
-      else
-        match pizlonate_module m with
-        | None => Refused "an item is not of the unchecked grammar"
-        | Some checked =>
-            match decode_module checked with
-            | None => Refused "the checked module does not read back"
-            | Some md =>
-                match valid_fast md with
-                | None => Outside "a function is outside the subset"
-                | Some false => Refused "the checked module is not valid"
-                | Some true => Pieces (module_pieces md)
-                end
+      else if promoted then
+        match promote_module m with
+        | None => Refused "promotion refuses the module"
+        | Some m1 =>
+            match copy_module m1 with
+            | None => Refused "copy propagation refuses the module"
+            | Some m2 => checked_lines true m2
             end
         end
+      else checked_lines false m
   | _ => Refused "not a module"
   end.
+
+(** As `nanofil compile` without -O. *)
+Definition compile : term -> compiled := compile_as false.
+
+(** With promotion, copy propagation and selected branches. *)
+Definition compile_promoted : term -> compiled := compile_as true.
 
 (** A module of one function that returns its argument is taken, and
     one with no pointer and no outside call is plain. *)

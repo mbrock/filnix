@@ -25,6 +25,7 @@ prog/setjmp-expired.c
 prog/setjmp.c
 prog/zreturn-none.c
 prog/zreturn.c
+promote/plain.ir
 stdlib.i
 u8-uctomb.i
 unistd.i

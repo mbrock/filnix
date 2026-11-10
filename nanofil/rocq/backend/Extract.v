@@ -25,7 +25,11 @@
     - promotion ([promote_module]), on the first module term that
       `nanofil promote-terms` prints, compared with the second;
     - copy propagation ([copy_module]), on the second module term
-      that command prints, compared with the third.
+      that command prints, compared with the third;
+    - the standalone compiler ([compile], and [compile_promoted]
+      with promotion, copy propagation and selected branches) on
+      the module [read_text] reads from IR text, its lines held to
+      what `nanofil compile` and `nanofil compile-promoted` print.
 
     Integers become zarith's, strings OCaml's and [nat] OCaml's
     `int`, as in the model's extraction. The order of two atoms'
@@ -80,5 +84,5 @@ Extract Constant IrText.string_of_rev =>
 Set Extraction Output Directory "extraction".
 Extraction "nanofil_backend.ml" dline rev_lines_parts
   decode_module module_symbols lower_function lower_thunks plan_term thunks_term term_eqb
-  Nfb.encode Nfb.decode Nfb.decode_input enc_module pizlonate_module promote_module copy_module compile read_text
+  Nfb.encode Nfb.decode Nfb.decode_input enc_module pizlonate_module promote_module copy_module compile compile_promoted read_text
   function_lines data_lines alias_lines thunk_lines end_lines module_pieces module_lines is_todo first_todo.

@@ -9,7 +9,8 @@
    With `abi` it is the ABI plans' (see [abi] below), and with
    `emit` the emission's (see [emit]). With `compile FILE.ir` it is
    the standalone compiler (see [compile_file]), which reads no
-   terms.
+   terms, and with `compile-promoted FILE.ir` that compiler after
+   promotion and copy propagation, with selected branches.
 
    The terms are SWI-Prolog's write_canonical form (format's ~k):
    integers, atoms (bare or quoted), compounds f(A, ...) and proper
@@ -490,9 +491,9 @@ let whole () =
    what `nanofil compile` prints for its IR text without -O. Exits 1
    for a module that is not valid, and 3, as `module` above, for one
    the backend does not take. *)
-let compile_term m =
+let compile_term ?(promoted = false) m =
   let check_s = ref 0.0 in
-  (match timed check_s (fun () -> compile m) with
+  (match timed check_s (fun () -> if promoted then compile_promoted m else compile m) with
    | Refused why -> prerr_endline ("nanofil-backend: " ^ why); exit 1
    | Outside why -> prerr_endline ("nanofil-backend: " ^ why); exit 3
    | Pieces ps -> print_pieces ps);
@@ -533,9 +534,9 @@ let file_text f =
 (* `compile FILE.ir`: the standalone compiler. IrText.v reads the
    text and Compile.v compiles the module; nothing of Prolog is in
    the path. Exits 1 for a text the reader does not take. *)
-let compile_file f =
+let compile_file ?(promoted = false) f =
   match timed parse_s (fun () -> read_text (file_text f)) with
-  | Some m -> compile_term m
+  | Some m -> compile_term ~promoted m
   | None -> prerr_endline "nanofil-backend: the IR text is not read"; exit 1
 
 (* The gate of the reader (tests/read.sh). Stdin is what `nanofil
@@ -732,6 +733,11 @@ let () =
   | [| _; "module" |] -> big_minor_heap (); whole ()
   | [| _; "compile-terms" |] -> big_minor_heap (); compile_terms ()
   | [| _; "compile"; f |] -> big_minor_heap (); compile_file f
+  (* `compile-promoted FILE.ir`: as `compile`, after promotion and copy
+     propagation, and with selected branches (compile_promoted in
+     Compile.v); tests/compile.sh, with COMMAND=compile-promoted,
+     holds it to what `nanofil compile-promoted` prints. *)
+  | [| _; "compile-promoted"; f |] -> big_minor_heap (); compile_file ~promoted:true f
   (* `compile-nfb FILE.nfb`: as `compile`, the module read from the NFB
      `nanofil encode-input` writes, by NfbTerm.v's read_term
      (read_encode_term in NfbRead.v); tests/nfb-compile.sh holds it to
@@ -749,6 +755,6 @@ let () =
       big_minor_heap (); nfb_read (List.tl (List.tl (Array.to_list Sys.argv)))
   | _ ->
       prerr_endline
-        "usage: nanofil-backend compile FILE.ir, compile-nfb FILE.nfb, or [abi | emit | module | compile-terms | nfb PREFIX | \
+        "usage: nanofil-backend compile FILE.ir, compile-promoted FILE.ir, compile-nfb FILE.nfb, or [abi | emit | module | compile-terms | nfb PREFIX | \
          pizlonate | promote] <TERMS, or read FILE.ir... <TERMS, or nfb-read FILE.nfb...";
       exit 2

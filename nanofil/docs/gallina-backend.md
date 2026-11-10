@@ -319,8 +319,9 @@ sljit takes 0.1 ms. So the steps are:
    the selection of branches bring the code to 2.1 times `-O`'s,
    which is all that `-O` gives with stack homes; registers are the
    other 2 times. Simplification, inlining, the check passes and the
-   inline `memcpy` change nothing for this code. M5b ports the first
-   three, before Crane and before the allocator.
+   inline `memcpy` change nothing for this code. M5b ported the first
+   three, before Crane and before the allocator, and `rxc` now runs
+   `nanofil-backend compile-promoted`: the measured figure is 2.10.
 3. **`libnanofil`, pizlonated.** Crane's output is plain C++23, and
    Fil-C is a C++ compiler (clang 20 with libc++), so the extracted
    compiler is built with filcc and given a C interface: IR text or
@@ -545,6 +546,20 @@ So the 10 ms target is missed by two to four times, and validation
 is again the largest part. A miss is now bounded as the target
 wanted, by the regex compiler in SWI-Prolog and three process
 starts, at about a tenth of a second.
+
+*With M5b's passes.* `rxc` and `run.sh` now run `nanofil-backend
+compile-promoted`. For the module of 36 it prints 45,702 lines,
+`nanofil compile-promoted`'s byte for byte, in 0.35 s, against 1.4 s
+for that command and 6.2 s for `nanofil -O compile`; the first
+version's text is 99,256 lines, and `-O`'s 28,580. Per call, on the
+nine benchmark patterns and as a multiple of `-O`'s time, the code
+takes 2.10 in the geometric mean (1.56 to 2.91), where the first
+version's takes 6.0 (2.8 to 16): the figure the Prolog selection
+measured below. That is 3.0 to 11.8 times faster than PCRE2's
+interpreter. A cold cache of 39 patterns through the hook takes
+4.1 s, 106 ms a miss, against 4.5 to 4.7 s with the first
+version.
+`bench` and `hook` agree with PCRE2 on every pattern.
 
 *The code's speed, and which passes it needs.* `nanofil compile` on
 the module with one selection of `-O`'s parts at a time, then
@@ -944,7 +959,24 @@ switching on.
   SQLite, which it promotes in 2.8 s. The fixtures of
   `tests/promote` reach each arm in the quick check; 13 mutants of
   `Promote.v` each make one of them differ.
-- Not done: the branch selection and the byte gate.
+- Reached: the selection of branches. `Emit.v`'s `function_code
+  true` gives a branch the flags of the comparison before it, where
+  that comparison's result has no other use, and lets an edge to the
+  next block fall through, as `compare_branch` and `selected_jump`
+  do. 40 mutants of it each make a file of the quick check differ,
+  and the fixture `tests/promote/selected.ir` reaches each of its
+  cases.
+- Reached: the byte gate. `nanofil-backend compile-promoted` runs
+  promotion, copy propagation and the selected emission, and
+  `tests/compile.sh` with `COMMAND=compile-promoted` holds its text
+  to that of the new `nanofil compile-promoted`, which is
+  `passes([promote, copy])` and `emit(stack, selected, call)` with
+  the reference checks. The same on 376 C programs and translation
+  units (2,527,096 lines) and 38 IR fixtures; the files not taken
+  are those of `compile/none.txt`, and none differs.
+- Reached: the regex figure, 2.10 times full `-O` per call, and the
+  `rxc` switch now runs this compiler. The numbers are under
+  [Performance targets](#performance-targets).
 
 **M6. Crane.** Build Crane in Nix against our Rocq, extract the same
 entry points to C++, compile with clang++ and run the same
@@ -1032,9 +1064,9 @@ otherwise.
    benchmark patterns. Promotion with copy propagation is 2.3 times,
    registers 1.7 to 2 times, branch selection 1.1 to 1.6; the check
    passes, simplification and inlining are nothing. Recommended:
-   port promotion, copy propagation and branch selection (M5b)
-   before Crane (M6) and the allocator (M7), and leave the check
-   passes and `simplify.pl` for later. Two earlier versions of this
+   port promotion, copy propagation and branch selection (M5b,
+   done) before Crane (M6) and the allocator (M7), and leave the
+   check passes and `simplify.pl` for later. Two earlier versions of this
    decision were wrong: the first credited the check passes, and the
    second took registers to be worth 1.1 to 1.7 times and put
    simplification in M5b. The other way to the same speed for pcre2
