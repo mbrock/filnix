@@ -125,6 +125,34 @@ Proof.
       exact (Hoff _ old Hold Hnot reg (conj E0 L0) Ho Hend Hout).
 Qed.
 
+(** The unselected FILE keeps its inventory. Its private frame transports
+    through old-object persistence even when the selected FILE writes. *)
+Lemma errno_wi_fixed : forall rep p b o m w m' w' h,
+  libc_errno_wi rep p b o m w h -> agrees m h -> persists m m' ->
+  libc_stream_ready rep m' w' ->
+  libc_errno (fst w') = libc_errno (fst w) ->
+  libc_stream_aux_roots w' p = libc_stream_aux_roots w p ->
+  libc_stream_releases w' p = libc_stream_releases w p ->
+  libc_errno_wi rep p b o m' w' h.
+Proof.
+  intros rep p b o m w m' w' h (Hready & He & Hroots & Hrelease & Hoff)
+    Ha Hp Hready' He' Hroots' Hrelease'.
+  split; [exact Hready'|]. split; [congruence|]. split; [|split].
+  - rewrite Hroots'. intros root a Hin Hspan (l & v & reg & Hl & Hmem & Hlive & Hrange).
+    apply (Hroots root a Hin Hspan). exists l, v, reg.
+    split; [exact Hl|]. split; [exact Hmem|]. split; [|exact Hrange].
+    eapply registered_live_back; [exact Hp| |exact Hlive].
+    eapply agree_piece_registered; [exact Hmem|exact (Ha l v Hl)].
+  - rewrite Hrelease'. exact Hrelease.
+  - intros l v Hl Hnot. destruct l as [base|base off|base off|key]; try exact I.
+    all: intros reg Hlive Ho Hend Hout;
+      apply (Hoff _ v Hl Hnot reg); [|exact Ho|exact Hend|exact Hout];
+      pose proof (Ha _ v Hl) as Hreg;
+      apply agree_piece_registered in Hreg; [|exact I];
+      eapply registered_live_back; [exact Hp| |exact Hlive];
+      exact Hreg.
+Qed.
+
 Lemma overwrite_app : forall ps qs h, overwrite (ps ++ qs) h = overwrite ps (overwrite qs h).
 Proof. intros ps. induction ps as [|[l v] ps IH]; intros qs h; simpl; [reflexivity|rewrite IH; reflexivity]. Qed.
 

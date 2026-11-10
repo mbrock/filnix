@@ -2362,6 +2362,27 @@ life-resource transfer, changed-errno/resource executions, native FILE
 realization and the returning-diagnostic binding remain integration work.
 No HelloClose statement or runtime law changes in this milestone.
 
+### Campaign 4 milestone 6l: paired query preservation
+
+LibcStreamAdapterOn.query_frame now preserves the complete paired
+stream_tokens_wi for either ferror or __fpending, on either designated
+handle. It retains the original ghost heap, native life regions and owned
+errno bytes. The selected stream's exact observations follow from the
+query prefix; the unselected stream's observations and private inventory
+follow from the composite world frame. Its private separation transports
+through old-object persistence, not an assumption of unchanged memory.
+
+The effects relation proves that the query's false allocation policy
+leaves the born list empty. Delegation therefore cannot introduce a new
+release identity; full-heap release separation survives independently of
+the life-projected data frame. No runtime or trusted contract law changes.
+Actual HelloClose-machine controls query stderr's physical count three
+and stdout's sticky error, keeping both snapshots, lives and owned errno.
+These unchanged-memory logical executions do not demonstrate native FILE
+locking or realize the representation. Paired fclose preservation,
+callback-entry resource transfer and returning-diagnostic binding remain
+outstanding, as do changed-errno/resource close executions.
+
 ### Reached-call contract packages and remaining integration
 
 [Getopt.v](../rocq/theories/Getopt.v) supplies independently admitted

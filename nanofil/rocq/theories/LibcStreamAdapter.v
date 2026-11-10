@@ -121,9 +121,133 @@ Qed.
 
 End snapshot_allocation.
 
+(** The other registered stream keeps its observable state and private
+    inventory. Distinct addresses rule out stdout-priority aliasing. *)
+Lemma stream_other_frame : forall p q w w',
+  ((p = libc_stdout w /\ q = libc_stderr w) \/
+   (p = libc_stderr w /\ q = libc_stdout w)) ->
+  ptr_addr (libc_stdout w) <> ptr_addr (libc_stderr w) ->
+  libc_stream_frame p w w' ->
+  libc_file_at w' q = libc_file_at w q /\
+  libc_stream_at w' q = libc_stream_at w q /\
+  libc_stream_state w' q = libc_stream_state w q.
+Proof.
+  intros p q w w' Hwhich Hdistinct
+    (Hout & Herr & _ & _ & _ & _ & _ & _ & Hother).
+  assert (Hne : same_file (libc_stderr w) (libc_stdout w) = false).
+  { unfold same_file. apply andb_false_iff. left. apply Z.eqb_neq. congruence. }
+  destruct Hwhich as [[-> ->]|[-> ->]].
+  - rewrite same_file_refl in Hother. destruct Hother as (Hfile & Hopen & Hstate).
+    assert (Hlookup : libc_file_at w' (libc_stderr w) = libc_file_at w (libc_stderr w)).
+    { unfold libc_file_at. rewrite Hout Herr Hne same_file_refl Hopen Hfile. reflexivity. }
+    assert (Hprotocol : libc_stream_state w' (libc_stderr w) = libc_stream_state w (libc_stderr w)).
+    { unfold libc_stream_state. rewrite Hout Herr Hne same_file_refl Hstate. reflexivity. }
+    split; [exact Hlookup|]. split; [|exact Hprotocol].
+    unfold libc_stream_at. rewrite Hlookup Hout Hprotocol. reflexivity.
+  - rewrite Hne in Hother. destruct Hother as (Hfile & Hopen & Hstate).
+    assert (Hlookup : libc_file_at w' (libc_stdout w) = libc_file_at w (libc_stdout w)).
+    { unfold libc_file_at. rewrite Hout same_file_refl Hopen Hfile. reflexivity. }
+    assert (Hprotocol : libc_stream_state w' (libc_stdout w) = libc_stream_state w (libc_stdout w)).
+    { unfold libc_stream_state. rewrite Hout same_file_refl Hstate. reflexivity. }
+    split; [exact Hlookup|]. split; [|exact Hprotocol].
+    unfold libc_stream_at. rewrite Hlookup Hout Hprotocol. reflexivity.
+Qed.
+
 Module LibcStreamAdapterOn (R : Runtime) (LG : StreamFrameLogic R).
 Module M := LG.L.M.
 Module T := LibcStreamTokensOn R LG.
+
+(** Query contracts permit no allocation; in particular delegation
+    cannot add a newly born release identity to either FILE. *)
+Lemma effects_no_alloc : forall sources roots releases s m born s' m' born',
+  M.E.effects sources roots releases (fun _ _ => False) s m born s' m' born' ->
+  born' = born.
+Proof.
+  intros sources roots releases s m born s' m' born' He.
+  induction He; [reflexivity|exact IHHe|contradiction].
+Qed.
+
+(** Both mirrors and both private-memory frames survive either query.
+    No unchanged-memory premise rules out the native locking writes. *)
+Theorem query_frame : forall rep requests wide out err b o d spec r args
+    s m w trace ending s' m' w' h,
+  d = out \/ d = err ->
+  (spec = ferror_contract (libc_stream_model rep requests wide) \/
+   spec = fpending_contract (libc_stream_model rep requests wide)) ->
+  M.E.invoke spec r args [WPtr (token_handle d)] s m w trace ending s' m' w' ->
+  agrees m h -> live_disjoint m -> R.ready s m -> stream_tokens_wi rep out err b o m w h ->
+  agrees m' h /\ live_disjoint m' /\ R.ready s' m' /\ stream_tokens_wi rep out err b o m' w' h.
+Proof.
+  intros rep requests wide out err b o d spec r args s m w trace ending s' m' w' h
+    Hd Hspec Hcall Ha Hdis Hr
+    (Houtwf & Herrwf & Hbase & Hkey & Hout & Herr & Houtcurrent & Herrcurrent & Hprivate).
+  destruct (Hprivate d Hd) as [Hselected Hrelease].
+  destruct (T.query_frame rep requests wide (token_base out) (token_base err)
+    (token_handle d) b o spec r args s m w trace ending s' m' w' h
+    Hspec Hcall Ha Hdis Hr Hselected) as (Ha' & Hdis' & Hr' & Hselected').
+  split; [exact Ha'|]. split; [exact Hdis'|]. split; [exact Hr'|].
+  destruct (M.E.invoke_prefix _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall) as (born & Hp).
+  destruct (M.E.prefix_preserve _ _ _ _ _ _ _ _ _ _ _ Hp Hr) as [_ Hpers].
+  assert (Hborn : born = []).
+  { destruct Hp as [He _]. destruct Hspec as [-> | ->]; eapply effects_no_alloc; exact He. }
+  subst born.
+  assert (Hprefix : query_prefix (libc_stream_model rep requests wide)
+    [WPtr (token_handle d)] m w [] trace m' w').
+  { destruct Hspec as [-> | ->]; exact (proj2 Hp). }
+  destruct Hprefix as (p & info & Hxs & Hinfo & Hopen & Hframe & Hdelegate & _).
+  injection Hxs as <-.
+  cbn [stream_open stream_at stream_state_at stream_rep libc_stream_model] in Hinfo, Hopen.
+  assert (Hready' := proj1 Hopen).
+  assert (Hdistinct : ptr_addr (libc_stdout w) <> ptr_addr (libc_stderr w)).
+  { destruct (proj1 Hselected) as (_ & _ & _ & _ & _ & _ & _ & _ & Hdistinct & _).
+    exact Hdistinct. }
+  assert (Hother : forall q, (q = out \/ q = err) -> q <> d ->
+      libc_file_at w' (token_handle q) = libc_file_at w (token_handle q) /\
+      libc_stream_at w' (token_handle q) = libc_stream_at w (token_handle q) /\
+      libc_stream_state w' (token_handle q) = libc_stream_state w (token_handle q)).
+  { intros q Hq Hne. apply stream_other_frame with (p := token_handle d); [|exact Hdistinct|exact Hframe].
+    destruct Hd as [-> | ->]; destruct Hq as [-> | ->]; try contradiction;
+      [left|right]; split; congruence. }
+  assert (Hchoice : forall q, q = out \/ q = err -> q = d \/ q <> d).
+  { intros q Hq. destruct Hd as [-> | ->]; destruct Hq as [-> | ->];
+      try (left; reflexivity); right; intros Heq; apply Hbase; congruence. }
+  assert (Hviews : forall q, q = out \/ q = err ->
+      libc_stream_at w' (token_handle q) = libc_stream_at w (token_handle q) /\
+      libc_stream_state w' (token_handle q) = libc_stream_state w (token_handle q)).
+  { intros q Hq. destruct (Hchoice q Hq) as [->|Hne].
+    - split; [rewrite Hinfo; exact (proj1 (proj2 Hopen))|].
+      pose proof (proj1 (proj2 (proj2 Hopen))) as Hprotocol.
+      change (stream_protocol info = libc_stream_state w' (token_handle d)) in Hprotocol.
+      rewrite <- Hprotocol.
+      unfold libc_stream_at in Hinfo.
+      destruct (libc_file_at w (token_handle d)); [injection Hinfo as <-; reflexivity|discriminate].
+    - exact (proj2 (Hother q Hq Hne)). }
+  assert (Hcurrent : forall q, q = out \/ q = err -> stream_current q w' h).
+  { intros q Hq. assert (Hc : stream_current q w h) by (destruct Hq as [-> | ->]; assumption).
+    destruct (Hviews q Hq) as [Hlookup Hstate].
+    unfold stream_current in *. destruct (h !! PName (token_key q)) as [v|]; [|exact I].
+    destruct v; try contradiction. destruct Hc as [-> Hobs]. split; [reflexivity|].
+    unfold stream_observation in *. destruct pending as [[physical fifo]|];
+      rewrite Hlookup; [exact Hobs|rewrite Hstate; exact Hobs]. }
+  split; [exact Houtwf|]. split; [exact Herrwf|]. split; [exact Hbase|]. split; [exact Hkey|].
+  split; [rewrite (proj1 Hframe); exact Hout|].
+  split; [rewrite (proj1 (proj2 Hframe)); exact Herr|].
+  split; [apply Hcurrent; left; reflexivity|]. split; [apply Hcurrent; right; reflexivity|].
+  intros q Hq. destruct (Hchoice q Hq) as [->|Hne].
+  - split; [exact Hselected'|]. intros base l v Hin Hl Hmem.
+    destruct (proj2 (proj2 Hdelegate) base Hin) as [Hold|Hnil];
+      [exact (Hrelease base l v Hold Hl Hmem)|contradiction].
+  - destruct (Hother q Hq Hne) as [Hfile _].
+    destruct (Hprivate q Hq) as [Hwi Hrel].
+    assert (Hroots : libc_stream_aux_roots w' (token_handle q) = libc_stream_aux_roots w (token_handle q))
+      by (unfold libc_stream_aux_roots; rewrite Hfile; reflexivity).
+    assert (Hrels : libc_stream_releases w' (token_handle q) = libc_stream_releases w (token_handle q))
+      by (unfold libc_stream_releases; rewrite Hfile; reflexivity).
+    split; [|rewrite Hrels; exact Hrel].
+    eapply errno_wi_fixed; [exact Hwi| |exact Hpers|exact Hready'| |exact Hroots|exact Hrels].
+    + apply stream_data_agrees. exact Ha.
+    + exact (proj1 (proj2 (proj2 (proj2 Hframe)))).
+Qed.
 
 (** Token ownership plus the current world interpretation admits the
     concrete libc call; openness is not another consumer assumption. *)
@@ -291,6 +415,59 @@ Proof.
   - apply elem_of_cons in Hin as [He|Hin]; [|apply not_elem_of_nil in Hin; contradiction].
     injection He as He Hv. subst l v.
     unfold open_heap. apply lookup_insert_eq.
+Qed.
+
+Lemma open_heap_agrees : agrees conversion_mem open_heap.
+Proof.
+  intros l v Hl. unfold open_heap in Hl.
+  apply lookup_insert_Some in Hl as [[He Hv]|[_ Hl]]; [subst l v; exact I|].
+  apply lookup_insert_Some in Hl as [[He Hv]|[_ Hl]]; [subst l v; exact I|].
+  exact (StreamHandleChecks.heap_agrees l v Hl).
+Qed.
+
+(** An actual stderr query frames the paired interpretation even though
+    stdout's physical count and outstanding FIFO differ from stderr's. *)
+Example stderr_query_preserves_pair :
+  A.M.E.invoke (fpending_contract F.model) CVoid [Arg P (Const 0)]
+    [WPtr (token_handle err)] InterpRuntime.start conversion_mem (F.world true) []
+    (CallReturn [WInt 3]) InterpRuntime.start conversion_mem (F.world true) /\
+  stream_tokens_wi (fun _ _ => True) out err 5120 0 conversion_mem (F.world true) open_heap.
+Proof.
+  assert (Hcall : A.M.E.invoke (fpending_contract F.model) CVoid [Arg P (Const 0)]
+    [WPtr (token_handle err)] InterpRuntime.start conversion_mem (F.world true) []
+    (CallReturn [WInt 3]) InterpRuntime.start conversion_mem (F.world true)).
+  { apply StreamHandleChecks.C.fpending_unchanged with (file := F.err_file).
+    - split; [left; reflexivity|]. exists (Const 0). reflexivity.
+    - apply F.ready.
+    - reflexivity. }
+  split; [exact Hcall|].
+  destruct (A.query_frame (fun _ _ => True) (fun _ _ _ _ => False)
+    (fun _ _ _ _ _ => False) out err 5120 0 err _ _ _ _ _ _ _ _ _ _ _ open_heap
+    (or_intror eq_refl) (or_intror eq_refl) Hcall open_heap_agrees
+    HelloErrnoChecks.disjoint HelloErrnoChecks.ready full_wi) as (_ & _ & _ & Hw).
+  exact Hw.
+Qed.
+
+(** The other query contract and stdout selection use the same frame. *)
+Example stdout_error_preserves_pair :
+  A.M.E.invoke (ferror_contract F.model) CVoid [Arg P (Const 0)]
+    [WPtr (token_handle out)] InterpRuntime.start conversion_mem (F.world true) []
+    (CallReturn [WInt 1]) InterpRuntime.start conversion_mem (F.world true) /\
+  stream_tokens_wi (fun _ _ => True) out err 5120 0 conversion_mem (F.world true) open_heap.
+Proof.
+  assert (Hcall : A.M.E.invoke (ferror_contract F.model) CVoid [Arg P (Const 0)]
+    [WPtr (token_handle out)] InterpRuntime.start conversion_mem (F.world true) []
+    (CallReturn [WInt 1]) InterpRuntime.start conversion_mem (F.world true)).
+  { apply StreamHandleChecks.C.ferror_unchanged with (file := F.out_file).
+    - split; [left; reflexivity|]. exists (Const 0). reflexivity.
+    - apply F.ready.
+    - reflexivity. }
+  split; [exact Hcall|].
+  destruct (A.query_frame (fun _ _ => True) (fun _ _ _ _ => False)
+    (fun _ _ _ _ _ => False) out err 5120 0 out _ _ _ _ _ _ _ _ _ _ _ open_heap
+    (or_introl eq_refl) (or_introl eq_refl) Hcall open_heap_agrees
+    HelloErrnoChecks.disjoint HelloErrnoChecks.ready full_wi) as (_ & _ & _ & Hw).
+  exact Hw.
 Qed.
 
 End StreamTokenChecks.

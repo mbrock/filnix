@@ -282,11 +282,12 @@ Qed.
 
 (** Bind the very machine used by HelloVersion's triples. The proofs
     below type-check invocation transport across the helper aliases. *)
-Module HelloStdio (R : Runtime).
-Module V := HelloVersion R.
+Module HelloStdioOn (R : Runtime) (LG0 : LogicSig R).
+Module LG := LG0.
+Module V := HelloVersionOn R LG0.
 Module M := V.L.M.
-Module SL := LibcStreamLogicOn R V.LG.
-Module C := HelloClose R.
+Module SL := LibcStreamLogicOn R LG0.
+Module C := HelloCloseOn R LG0.
 Module X := LibcExitOn R C.L.M.
 
 Theorem hello_output_frame : forall rep requests wide stream g r args xs s m w trace values s' m' w' h,
@@ -360,4 +361,26 @@ Proof.
   - intros. eapply X.hard_exit_no_return; eauto.
 Qed.
 
+End HelloStdioOn.
+
+(** Standalone users retain the original functor and theorem paths. *)
+Module HelloStdio (R : Runtime).
+Module LG0 := Logic R.
+Include HelloStdioOn R LG0.
 End HelloStdio.
+
+(** Main supplies one instance beneath output and callback triples. *)
+Module HelloStdioSharedChecks.
+Module LG := Logic InterpRuntime.
+Module H := HelloStdioOn InterpRuntime LG.
+
+Example version_expr_identity : H.V.L.expr = LG.L.expr.
+Proof. reflexivity. Qed.
+
+Example close_expr_identity : H.C.L.expr = LG.L.expr.
+Proof. reflexivity. Qed.
+
+Example shared_invoke_identity : @H.M.E.invoke = @H.C.L.M.E.invoke.
+Proof. reflexivity. Qed.
+
+End HelloStdioSharedChecks.
