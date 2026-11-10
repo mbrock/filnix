@@ -18,6 +18,7 @@
 % | aliases | `alias(Name, Linkage, Target)` defines Name as Target, as glibc's `weak_alias (__strlen, strlen)`; reaching Name reaches Target |
 % | weak names | a weak declaration (`extern(weak)` data) gives way to any definition, and a weak function or alias to a non-weak definition of the same name in another object |
 % | external names | a name no object defines is libc's, resolved by the contract registry |
+% | `init` items | a constructor or destructor entry (`init(ctor, P)`, `init(dtor, P)` data) is refused: the Fil-C runtime runs it before main or at exit, which the linked module, entered at ENTRY, does not model, so dropping it would hide code that runs |
 %
 % Items keep their objects' order, objects the order given. Context
 % items (debug origins) are dropped.
@@ -39,6 +40,11 @@ main :-
 object(Spec, Items) :-
     atomic_list_concat([Obj, File], '=', Spec),
     read_file_to_terms(File, [module(Items0)], [encoding(utf8)]),
+    forall(member(data(N, init(K, P), _, _), Items0),
+           ( format(user_error,
+                    "link.pl: ~w's ~q is a ~w entry (init(~w, ~w)), which the linked module does not run~n",
+                    [Obj, N, K, K, P]),
+             halt(1) )),
     exclude(is_context, Items0, Items1),
     convlist(local_name, Items1, Locals),
     maplist(rename(Obj, Locals), Items1, Items).

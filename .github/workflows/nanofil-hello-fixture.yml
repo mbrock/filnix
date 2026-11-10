@@ -1,0 +1,82 @@
+# The Hello fixture check: rocq/theories/HelloCode.v, the module the Iris
+# proof of GNU Hello is about, must be what link.pl and gallina.pl make of
+# a real nanofil-hello-O build (nanofil/nix/hello-fixture.nix). It pins
+# the compiler-chosen names the proofs use. It runs only when the
+# compiler, the toolchain or the fixture's own inputs change: the same
+# files as the check's Nix source, so a re-run with unchanged inputs
+# substitutes the cached result. It never blocks a push: a red run is
+# fixed forward on main (rocq/hello-fixture.sh --update, then the proofs).
+name: Nanofil Hello fixture
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - flake.nix
+      - flake.lock
+      - toolchain.nix
+      - build-filc.nix
+      - "compiler/**"
+      - "runtime/**"
+      - "toolchain/**"
+      - "nanofil/src/**"
+      - "nanofil/bin/**"
+      - nanofil/bench/trap-checked.pl
+      - nanofil/rocq/link.pl
+      - nanofil/rocq/gallina.pl
+      - nanofil/rocq/hello-fixture.sh
+      - nanofil/rocq/theories/HelloCode.v
+      - nanofil/nix/hello.nix
+      - nanofil/nix/hello-fixture.nix
+      - nanofil/nix/nanofil-cc.nix
+      - nanofil/nix/configurations.nix
+      - nanofil/tests/watch.py
+      - .github/workflows/nanofil-hello-fixture.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nanofil-hello-fixture-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fixture:
+    # nanofil compiles Hello's 81 objects at -O: about 80 s on 16 cores,
+    # a few minutes here.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      NIX_CONFIG: |
+        extra-substituters = https://filc.cachix.org
+        extra-trusted-public-keys = filc.cachix.org-1:8rA7kXyu1HaJuMTsAKfA9fU/+r8YtLv5KiZ5hfDNZMk=
+        builders =
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      # Only trusted main publishes, and only the check's own output.
+      - name: Install the fixture cache publisher
+        if: github.ref == 'refs/heads/main'
+        uses: cachix/cachix-action@v16
+        with:
+          name: filc
+          skipPush: true
+      - name: Require cached staging toolchain, never rebuild LLVM here
+        run: |
+          python3 nanofil/tests/watch.py --label 'Staging cache preflight' -- \
+            python3 scripts/ci-cache-check.py packages.x86_64-linux.filcc-staging
+      - name: Build Hello and compare its linked module
+        run: |
+          python3 nanofil/tests/watch.py --label nanofil-hello-fixture --warn-after 1200 --timeout 3000 -- \
+            nix build -L --no-link --max-jobs auto --cores 0 .#checks.x86_64-linux.nanofil-hello-fixture
+      - name: Publish the check's output
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+        env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
+        run: |
+          if out=$(nix build --no-link --print-out-paths --max-jobs 0 .#checks.x86_64-linux.nanofil-hello-fixture); then
+            echo "$out" | cachix push filc
+          else
+            echo "The fixture check did not build; nothing to publish."
+          fi

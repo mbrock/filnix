@@ -6,8 +6,14 @@
 # the final link uses filcc. The check fails unless every object came
 # from nanofil, and runs `make check` plainly and under FUGC_SCRIBBLE
 # and FUGC_VERIFY, once per middle-end, register and check-reuse
-# choice, each in its own derivation (configurations.nix).
-{ pkgs, filcc }:
+# choice, each in its own derivation (configurations.nix). nanofilSrc is
+# the nanofil tree that compiles it, the whole of nanofil/ by default;
+# hello-fixture.nix passes only the files the compile reads.
+{
+  pkgs,
+  filcc,
+  nanofilSrc ? ../.,
+}:
 let
   src = pkgs.hello.src;
   # The reference: the same hello built by filcc alone. Its test suite
@@ -51,7 +57,12 @@ in
 import ./configurations.nix { inherit pkgs; } "nanofil-hello" configurations (
   label: opt:
   pkgs.runCommandCC "nanofil-hello-${label}" { inherit src; } ''
-    cc=${import ./nanofil-cc.nix { inherit pkgs filcc; }}
+    cc=${
+      import ./nanofil-cc.nix {
+        inherit pkgs filcc;
+        src = nanofilSrc;
+      }
+    }
     ${runAll}
     echo "== GNU hello, nanofil ${opt}"
     mkdir hello

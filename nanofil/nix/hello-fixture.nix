@@ -7,15 +7,33 @@
 # with rocq/link.pl from main and prints the result with
 # rocq/gallina.pl. The check fails when the two differ, so the proof
 # cannot go on describing a Hello nanofil no longer makes. To refresh
-# the fixture: rocq/hello-fixture.sh --update.
+# the fixture: rocq/hello-fixture.sh --update. Only the files the
+# compile, the census and the link read are its source, so an edit
+# elsewhere in nanofil/ leaves the check's hash, and its cached result,
+# unchanged (.github/workflows/nanofil-hello-fixture.yml runs it on the
+# same files).
 { pkgs, filcc }:
 let
+  src = pkgs.lib.fileset.toSource {
+    root = ../.;
+    fileset = pkgs.lib.fileset.unions [
+      ../bin
+      ../src
+      ../bench/trap-checked.pl
+      ../rocq/link.pl
+      ../rocq/gallina.pl
+    ];
+  };
   nanofil = pkgs.runCommand "nanofil-hello-fixture-src" { } ''
-    cp -r ${../.} $out
+    cp -r ${src} $out
     chmod -R u+w $out
     patchShebangs $out/bin
   '';
-  hello = (import ./hello.nix { inherit pkgs filcc; }).configurations.O;
+  hello =
+    (import ./hello.nix {
+      inherit pkgs filcc;
+      nanofilSrc = src;
+    }).configurations.O;
   # The census's capture: the wrapper still compiles each object with
   # nanofil, and also saves its checked term.
   captured = hello.overrideAttrs (old: {
