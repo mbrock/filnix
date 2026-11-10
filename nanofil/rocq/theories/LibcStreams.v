@@ -477,7 +477,8 @@ Definition world (opened : bool) : libc_world :=
   (mkLibcPayload (libc_locale (fst conversion_world))
     (mkStdioWorld opened [mkSpan (libc_errno (fst conversion_world)) 4])
     (libc_errno (fst conversion_world))
-    (mkLibcStreams out_file err_file true stdout_initial),
+    (mkLibcStreams out_file err_file true stdout_initial)
+    (libc_getopt (fst conversion_world)),
    mkShutdown Handlers 0 [] [] (mkStream ByteOriented (if opened then [65; 66] else []) true)).
 
 (** Neither stream's private zero-length source exposes errno authority. *)

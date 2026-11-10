@@ -2420,6 +2420,55 @@ native realization, private-lock writes, resource executions or release
 executions. Callback-entry transfer, the Iris close rule and the
 returning-diagnostic binding remain integration work.
 
+### Campaign 4 milestone 6n: concrete option-state binding
+
+Libc.v's libc_payload now contains libc_getopt, and libc_getopt_view
+projects it from the same libc_world used by locale, streams and
+shutdown. libc_getopt_contract binds the existing generic getopt
+contract without creating a sibling machine. Its libc_getopt_rep and
+libc_getopt_inflight wrappers take independent native initialized and
+running predicates and identify the parser's errno cell with libc_errno.
+The public getopt_state_at requirement stays in ordinary admission and
+completion, not arbitrary unfinished prefixes. Ordinary endpoints must
+satisfy both native predicates; neither is inferred from public cells.
+
+libc_getopt_stable preserves the full locale, stdio, errno pointer,
+authoritative shutdown state and stdout FILE inventory. Stderr's handle
+and open flag remain exact, while diagnostic metadata and protocol may
+evolve. This is a conservative safety binding, not a diagnostic/stdio
+realization: it does not relate stderr's FIFO to StreamBytes events,
+derive stream readiness or prove cross-pool native separation. Empty
+trace does not imply unchanged stderr. Other libc contracts do not yet
+preserve parser continuation; a consumer must establish it and refresh
+the sampled errno before readmitting getopt, rather than freezing the
+whole parser record across errno-writing calls.
+
+Getopt.v's getopt_slots now bounds every byte in every eight-byte argv
+slot, including the null sentinel. These bounds pass through the
+existing input pre/post so exact byte pieces can be reconstructed after
+permutation. A control decodes [256; -1; 0; 0; 0; 0; 0; 0] as a null
+pointer but rejects it as a getopt slot; canonical entry/sentinel bytes
+are admitted. Startup's abstract startup_at alone does not establish
+these additional bounds: the concrete copy/store construction or a
+separate entry-image premise supplies them.
+
+The input-indexed registry can be chosen after startup fixes its argument
+witnesses: startup_at and copied_startup_main are registry-free, and
+Linked's execution theorems quantify the registry per run. Choose one
+getopt_input and registry for that launch and retain them across calls;
+getopt_order relates each current permutation to the original pointer
+list. No existential-input contract variant or per-call rebinding is
+needed at these interfaces. The whole-entry theorem must retain this
+quantifier order.
+
+Projection controls vary optarg/optind independently of the preserved
+world and show that completed/inflight envelopes can coexist without
+manufacturing native initialization. Their placeholder option cells are
+not admitted getopt state or a complete invocation witness. Native
+adequacy, whole-entry resource admission, diagnostic refinement and
+Iris option-token transfer remain integration work; no runtime axiom,
+interpreter transition or Machine theorem changes.
+
 ### Reached-call contract packages and remaining integration
 
 [Getopt.v](../rocq/theories/Getopt.v) supplies independently admitted

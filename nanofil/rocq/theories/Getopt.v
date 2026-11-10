@@ -74,11 +74,16 @@ Definition getopt_int_cell m p z : Prop :=
 Definition getopt_optional_int m p : Prop :=
   ptr_addr p = 0 \/ exists z, getopt_int_cell m p z.
 
-(** Pointer slots, including the exact null sentinel. *)
+(** Pointer slots, including the exact null sentinel. Each native byte
+    is canonical independently of the aggregate pointer load; consumers
+    can reconstruct exact byte pieces after argv permutation. *)
 Fixpoint getopt_slots m a (ps : list ptr) : Prop :=
   match ps with
-  | [] => pointer_slot m a (mkPtr 0 CNone)
-  | p :: rest => pointer_slot m a p /\ getopt_slots m (a + 8) rest
+  | [] => pointer_slot m a (mkPtr 0 CNone) /\
+      (forall k, 0 <= k < 8 -> 0 <= m_bytes m (a + k) < 256)
+  | p :: rest => pointer_slot m a p /\
+      (forall k, 0 <= k < 8 -> 0 <= m_bytes m (a + k) < 256) /\
+      getopt_slots m (a + 8) rest
   end.
 
 (** argv[0] is fixed; GNU permutation moves whole tail pointers, never
@@ -451,3 +456,33 @@ Proof.
 Qed.
 
 End Getopt.
+
+(** Slot controls separate canonical bytes from their aggregate load.
+    The noncanonical null encoding cancels 256 against -1 * 256. *)
+Module GetoptSlotChecks.
+
+(** Canonical zero bytes admit both an argv entry and its sentinel. *)
+Example canonical_slots :
+  getopt_slots (mkMem (fun _ => 0) [] (fun _ => CNone)) 0 [mkPtr 0 CNone].
+Proof.
+  cbn [getopt_slots]. repeat split; try reflexivity; try lia;
+    intros k Hk; change (0 <= 0 < 256); lia.
+Qed.
+
+(** These integers decode to zero but are not native memory bytes. *)
+Definition noncanonical : mem :=
+  mkMem (fun a => if a =? 0 then 256 else if a =? 1 then -1 else 0)
+    [] (fun _ => CNone).
+
+(** Merely specifying the loaded pointer does not exclude this memory. *)
+Example noncanonical_pointer : pointer_slot noncanonical 0 (mkPtr 0 CNone).
+Proof. vm_compute. repeat split; congruence. Qed.
+
+(** Bounds apply to the final null slot too, not only nonnull entries. *)
+Example noncanonical_sentinel_rejected : ~ getopt_slots noncanonical 0 [].
+Proof.
+  intros [_ Hbytes]. specialize (Hbytes 0 ltac:(lia)).
+  change (0 <= 256 < 256) in Hbytes. lia.
+Qed.
+
+End GetoptSlotChecks.

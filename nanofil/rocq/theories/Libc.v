@@ -1,4 +1,4 @@
-(** Hello's composite trusted libc boundary. One locale/stdio/errno
+(** Hello's composite trusted libc boundary. One locale/stdio/errno/getopt
     payload accompanies the existing authoritative shutdown state;
     there is no second output queue or callback inventory. The conversion
     contract describes logical represented endpoints, not every native
@@ -6,7 +6,7 @@
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics
-  ExternalCalls ExternalMachine Locale Stdio Shutdown.
+  ExternalCalls ExternalMachine Locale Stdio Shutdown Getopt.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -36,11 +36,16 @@ Record libc_payload : Type := mkLibcPayload {
   libc_locale : locale_world;
   libc_stdio : stdio_world;
   libc_errno : ptr;
-  libc_streams : libc_stream_inventory
+  libc_streams : libc_stream_inventory;
+  libc_getopt : getopt_world
 }.
 
 (** Definitionally the payload * shutdown_state used by Linked. *)
 Definition libc_world : Type := (libc_payload * shutdown_state)%type.
+
+(** Parser state is an independent component of the same libc world;
+    optarg and optind may evolve without changing locale or stdout. *)
+Definition libc_getopt_view (w : libc_world) : getopt_world := libc_getopt (fst w).
 
 (** The full representation owns coherent libc/TLS state and exclusive
     private release rights. Structural facts alone do not establish it.
@@ -58,6 +63,47 @@ Definition libc_ready (rep : mem -> libc_world -> Prop) m w : Prop :=
   | InCallback active => In (registration_token active) (shutdown_consumed (snd w))
   | _ => True
   end.
+
+(** Native initialization/continuation is an independent premise, not a
+    consequence of the exposed option cells. Errno uses the existing TLS
+    cell, not a second cell. Native representation and call admission
+    must also justify separation from locale/stdout storage: a pure world
+    frame is not a native-memory or cross-pool ownership frame. *)
+Definition libc_getopt_rep (initialized : mem -> libc_world -> Prop) m w : Prop :=
+  libc_ready initialized m w /\
+  getopt_errno_cell (libc_getopt_view w) = libc_errno (fst w).
+
+(** A separate native predicate permits unfinished parser state at a
+    logical prefix. Completed public-cell coherence is required only by
+    getopt_pre/post. Ordinary endpoints must satisfy BOTH running and
+    initialized predicates; no implication between them is assumed. *)
+Definition libc_getopt_inflight (running : mem -> libc_world -> Prop) m w : Prop :=
+  libc_ready running m w /\
+  getopt_errno_cell (libc_getopt_view w) = libc_errno (fst w).
+
+(** Preserve the one locale/stdout/shutdown inventory and TLS identity.
+    Diagnostic stderr retains its handle/open flag but may change private
+    storage and protocol. This relation deliberately does not relate its
+    FIFO to the trace, even when the trace is empty. *)
+Definition libc_getopt_stable (w w' : libc_world) : Prop :=
+  libc_locale (fst w') = libc_locale (fst w) /\
+  libc_stdio (fst w') = libc_stdio (fst w) /\
+  libc_errno (fst w') = libc_errno (fst w) /\ snd w' = snd w /\
+  libc_stdout_file (libc_streams (fst w')) = libc_stdout_file (libc_streams (fst w)) /\
+  file_handle (libc_stderr_file (libc_streams (fst w'))) =
+    file_handle (libc_stderr_file (libc_streams (fst w))) /\
+  libc_stderr_open (libc_streams (fst w')) = libc_stderr_open (libc_streams (fst w)).
+
+(** Conservative safety binding over this same world, with no machine
+    application. Native/consumer obligations still include diagnostic
+    trace/protocol correspondence, stream readiness and cross-call parser
+    continuity (including refreshed errno). Other libc contracts do not
+    freeze this entire parser record. Input and registry are fixed for
+    one launch after startup witnesses are chosen, not per permutation. *)
+Definition libc_getopt_contract input initialized running
+    (requests : list word -> mem -> libc_world -> Z -> Z -> Prop) : contract libc_world :=
+  getopt_contract input libc_getopt_view (libc_getopt_rep initialized)
+    (libc_getopt_inflight running) libc_getopt_stable requests.
 
 (** Borrowed-name facts survive projection through the composite world.
     No separate ghost copy of the locale names is introduced here. *)
@@ -738,7 +784,9 @@ Definition conversion_world : libc_world :=
   (mkLibcPayload (mkLocaleWorld 0 (fun _ => mkPtr 4096 (Ro 4096))
     (fun _ => [67]) (TInt 0) [] [] []) (mkStdioWorld true []) (mkPtr 5120 (Obj 5120))
     (mkLibcStreams (mkLibcFile (mkPtr 0 CNone) 0 [] [] [])
-      (mkLibcFile (mkPtr 0 CNone) 0 [] [] []) false stdout_initial),
+      (mkLibcFile (mkPtr 0 CNone) 0 [] [] []) false stdout_initial)
+    (mkGetoptWorld (mkPtr 0 CNone) (mkPtr 0 CNone) (mkPtr 0 CNone)
+      (mkPtr 0 CNone) (mkPtr 5120 (Obj 5120)) (mkPtr 0 CNone) 1 1 0 0 [] [] []),
    mkShutdown Handlers 0 [] [] stdout_initial).
 
 Definition conversion_args : list arg :=
@@ -1037,7 +1085,8 @@ Definition conversion_utf8_world : libc_world :=
   (mkLibcPayload (mkLocaleWorld 0 (fun _ => mkPtr 4096 (Ro 4096))
     (fun _ => audited_codec_name CodecCUtf8) (TInt 0) [] [] [])
     (libc_stdio (fst conversion_world)) (libc_errno (fst conversion_world))
-    (libc_streams (fst conversion_world)), snd conversion_world).
+    (libc_streams (fst conversion_world)) (libc_getopt (fst conversion_world)),
+   snd conversion_world).
 
 Example conversion_utf8_initial_error :
   mbrtowc_result conversion_valid (fun _ => Some CodecCUtf8)
@@ -1251,3 +1300,43 @@ Proof.
       * intros _. split; [lia|]. intros i Hi. assert (i = 0) by lia. subst. discriminate.
   - split; reflexivity.
 Qed.
+
+(** Projection/envelope controls only: the placeholder public cells are
+    not admitted getopt state, and True is not native initialization. *)
+Module LibcGetoptChecks.
+
+(** Vary only the parser component of an existing libc fixture. *)
+Definition world (arg : ptr) (index : Z) : libc_world :=
+  (mkLibcPayload (libc_locale (fst conversion_world)) (libc_stdio (fst conversion_world))
+    (libc_errno (fst conversion_world)) (libc_streams (fst conversion_world))
+    (mkGetoptWorld (mkPtr 0 CNone) (mkPtr 0 CNone) (mkPtr 0 CNone)
+      (mkPtr 0 CNone) (libc_errno (fst conversion_world)) arg index 1 0 0 [] [] []),
+   snd conversion_world).
+
+(** Changing optarg/optind does not force any unrelated world change. *)
+Example parser_can_change :
+  libc_getopt_stable (world (mkPtr 0 CNone) 1) (world (mkPtr 1025 (Ro 1024)) 2) /\
+  getopt_optarg (libc_getopt_view (world (mkPtr 1025 (Ro 1024)) 2)) = mkPtr 1025 (Ro 1024) /\
+  getopt_optind (libc_getopt_view (world (mkPtr 0 CNone) 1)) = 1 /\
+  getopt_optind (libc_getopt_view (world (mkPtr 1025 (Ro 1024)) 2)) = 2.
+Proof. repeat split; reflexivity. Qed.
+
+(** Endpoint envelope predicates can coexist without equating their
+    native parameters. This is not an invocation or adequacy witness. *)
+Example completed_inflight_overlap :
+  libc_getopt_rep (fun _ _ => True) conversion_mem conversion_world /\
+  libc_getopt_inflight (fun _ _ => True) conversion_mem conversion_world.
+Proof.
+  split; split; try reflexivity; exact (proj1 (conversion_pre 1 ltac:(lia))).
+Qed.
+
+(** A running envelope cannot manufacture completed initialization. *)
+Example running_not_initialized :
+  libc_getopt_inflight (fun _ _ => True) conversion_mem conversion_world /\
+  ~ libc_getopt_rep (fun _ _ => False) conversion_mem conversion_world.
+Proof.
+  split; [exact (proj2 completed_inflight_overlap)|].
+  intros [[Hfalse _] _]. exact Hfalse.
+Qed.
+
+End LibcGetoptChecks.
