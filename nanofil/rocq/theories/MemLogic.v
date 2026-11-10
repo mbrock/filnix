@@ -554,6 +554,22 @@ Proof. rewrite /bytes byte_ps_app. apply pts_app. Qed.
 Lemma auxes_app b o cs ds : auxes b o (cs ++ ds) ⊣⊢ auxes b o cs ∗ auxes b (o + Z.of_nat (length cs)) ds.
 Proof. rewrite /auxes aux_ps_app. apply pts_app. Qed.
 
+(** Owning the bytes xs from o is owning their first n and the rest. *)
+Lemma bytes_take_drop b o xs n : (n <= length xs)%nat ->
+  bytes b o xs ⊣⊢ bytes b o (take n xs) ∗ bytes b (o + Z.of_nat n) (drop n xs).
+Proof.
+  intros Hn. assert (E : Z.of_nat n = Z.of_nat (length (take n xs))) by (rewrite length_take; lia).
+  rewrite E -bytes_app take_drop. done.
+Qed.
+
+(** Owning the slots cs from o is owning their first n and the rest. *)
+Lemma auxes_take_drop b o cs n : (n <= length cs)%nat ->
+  auxes b o cs ⊣⊢ auxes b o (take n cs) ∗ auxes b (o + Z.of_nat n) (drop n cs).
+Proof.
+  intros Hn. assert (E : Z.of_nat n = Z.of_nat (length (take n cs))) by (rewrite length_take; lia).
+  rewrite E -auxes_app take_drop. done.
+Qed.
+
 (** A fresh object's pieces are its life, a zero byte at each offset of
     its extent and an empty slot at each: a block from offset 0. *)
 Lemma obj_zero_block b q :

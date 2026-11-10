@@ -14,7 +14,7 @@ From Stdlib Require Import ZArith Lia Permutation.
 From Stdlib Require String.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run StepRules Symbolic
   ExternalCalls ExternalMachine Pieces Heap ContractFrame Language Logic StringLogic MemLogic
-  LentLogic Locale LocaleLogic Libc HelloModule HelloLeaf HelloLocale HelloConv HelloName
+  LentLogic Locale LocaleLogic Libc HelloModule HelloLeaf HelloLocale HelloConvDefs HelloName
   HelloProgName Startup Getopt GetoptLogic HelloVersion.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -373,15 +373,14 @@ Definition name_ok (sargs : list argument) (pname : ptr) : Prop :=
 
 Module HelloMain (R : Runtime).
 Module LG0 := Logic R.
-Module HC := HelloConvOn R LG0.
 Module HP := HelloProgNameOn R LG0.
 Module GL := GetoptLogicOn R LG0.
 Module HV := HelloVersionOn R LG0.
-Module HLo := HC.HLo.
-Module HL := HC.HL.
-Module LL := HC.LL.
-Module ML := HC.ML.
-Module SL := HC.SL.
+Module HLo := HelloLocaleOn R LG0.
+Module HL := HLo.HL.
+Module LL := HL.LL.
+Module ML := HL.ML.
+Module SL := ML.SL.
 Module LG := LG0.
 Module L := LG.L.
 Import L LG SL ML LL HL.
@@ -590,8 +589,8 @@ Proof.
   (* The state is zeroed. *)
   iEval (rewrite (obj_zero_block b6 _); [|compute; congruence]) in "Hb6".
   iDestruct "Hb6" as "(Hl6 & Hy6 & Hc6)". cbn [req_extent heap_req Z.to_nat Pos.to_nat] in *.
-  iEval (rewrite (HC.bytes_split _ _ _ 8); [|rewrite length_replicate; vm_compute; lia]) in "Hy6".
-  iEval (rewrite (HC.auxes_split _ _ _ 8); [|rewrite length_replicate; vm_compute; lia]) in "Hc6".
+  iEval (rewrite (bytes_take_drop _ _ _ 8); [|rewrite length_replicate; vm_compute; lia]) in "Hy6".
+  iEval (rewrite (auxes_take_drop _ _ _ 8); [|rewrite length_replicate; vm_compute; lia]) in "Hc6".
   iDestruct "Hy6" as "[Hy6 Hy6']". iDestruct "Hc6" as "[Hc6 Hc6']".
   iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ _ mbszero_fn (invocation mbszero_fn [WPtr (mkPtr b6 (Obj b6))]));
     [word_premise | unfold find_fn; rewrite Hm; vm_compute; reflexivity | reflexivity |].
@@ -669,8 +668,8 @@ Proof.
     [reflexivity | word_premise | reflexivity | addr_premise | cbn [ptr_addr r_end]; unfold raw_address; drop_wraps_goal; lia |
      cbn [ptr_addr]; unfold raw_address; drop_wraps_goal; rewrite Z.add_0_r; apply mod16_mod8; exact Hb416 |].
   iNext. iIntros "Hl4". gen_env.
-  iEval (rewrite (HC.bytes_split _ _ _ 8); [|rewrite length_replicate; lia]) in "Hy4".
-  iEval (rewrite (HC.auxes_split _ _ _ 1); [|rewrite length_replicate; lia]) in "Hc4".
+  iEval (rewrite (bytes_take_drop _ _ _ 8); [|rewrite length_replicate; lia]) in "Hy4".
+  iEval (rewrite (auxes_take_drop _ _ _ 1); [|rewrite length_replicate; lia]) in "Hc4".
   iDestruct "Hy4" as "[Hy4 Hy4']". iDestruct "Hc4" as "[Hc4 Hc4']".
   iAssert (pcell b4 0 (mkPtr 0 CNone)) with "[Hy4 Hc4]" as "Hp4"; [iApply zero_pcell; iFrame|].
   iApply (wp_raw_store_pointer with "Hl4 Hp4");
