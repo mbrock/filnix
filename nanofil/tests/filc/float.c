@@ -23,6 +23,9 @@ struct pair { long n; int *p; };
 struct pair nbuffer(double, int *, long, int *, double);
 long ncallbuffer(int *);
 double ndata(void);
+struct integer_float { long bits; float f; };
+struct pointer_float { int *p; float f; };
+struct integer_float ninteger_float(int *);
 
 void churn(void) { zgc_request_and_wait(); }
 float cfloat(void *p, float x) { return nfloat(p, x) + 1.0f; }
@@ -96,6 +99,21 @@ int main(int argc, char **argv) {
     case 22: printf("%.17g\n", ndata()); break;
     case 23: printf("%.9g\n", nfloat((char *)p + 12, 2.5f)); break;
     case 24: printf("%.17g\n", ndouble((char *)p + 8, 4.0)); break;
+    case 25: {
+        struct integer_float r = ninteger_float(ip);
+        printf("%d %.9g\n", r.bits == (long)ip, r.f);
+        break;
+    }
+    case 26: {
+        /* The different result signature forces the generic entry.
+           The integer's address bits must not retain the argument's
+           capability: reading through the reinterpreted result traps. */
+        struct pointer_float (*volatile fp)(int *) =
+            (struct pointer_float (*)(int *))ninteger_float;
+        struct pointer_float r = fp(ip);
+        printf("%d\n", *r.p);
+        break;
+    }
     }
     return 0;
 }

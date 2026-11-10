@@ -140,3 +140,10 @@ func(ndata, export, d, [], [
         let(tmp(r), d, add, [tmp(b), tmp(c)])
     ], ret(tmp(r)))
 ]).
+% A generic caller's incoming aux(0) holds p's capability. Returning its
+% address as an integer beside a float must clear that aux, not lend it
+% to a caller that reinterprets the result as tuple([p,s]).
+func(ninteger_float, export, tuple([l,s]), [param(p,tmp(p))], [
+    block(start, [], [let(tmp(bits),l,ptoi,[tmp(p)])],
+          rets([tmp(bits),const(1069547520)]))
+]).

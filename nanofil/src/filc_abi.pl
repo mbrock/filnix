@@ -447,7 +447,7 @@ adapter_return(Ret, adapter_result(Return,Channel,Size,Packet)) :-
     ; Channel = words ),
     generic_params(Ks, Words), findall(S,member(wf(_,S),Words),Copies),
     ( Ks = [] -> Zeros = [data(0),aux(0)]
-    ; findall(aux(I),(nth0(I,Ks,K),K \== p),Zeros) ),
+    ; findall(aux(I),(nth0(I,Ks,K0),K0 \== p),Zeros) ),
     Packet = packet(Copies,Zeros).
 public_object(Func, _, Object) :-
     Func = func(_,_,Ret,Ps,_), param_kinds(Ps,Ks),

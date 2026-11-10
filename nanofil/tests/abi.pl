@@ -6,7 +6,30 @@
 :- use_module('../src/filc_abi').
 :- use_module(library(lists)).
 
-abi_products :- transport, snapshot_lifetimes, variadic_lifetime, routing.
+abi_products :- transport, tuple_aux, snapshot_lifetimes, variadic_lifetime, routing.
+
+% A generic result replaces the incoming packet: every non-pointer cell
+% loses its old capability, regardless of which float selected typed/1.
+% Pointer cells instead copy their returned lower. Check both public
+% entries and external weak thunks through the public lowering products.
+tuple_aux :-
+    forall(member(Ks-Packet,
+        [[l,s]-packet([data(0),data(1)],[aux(0),aux(1)]),
+         [s,l]-packet([data(0),data(1)],[aux(0),aux(1)]),
+         [d,s]-packet([data(0),data(1)],[aux(0),aux(1)]),
+         [s,d]-packet([data(0),data(1)],[aux(0),aux(1)]),
+         [p,s]-packet([data(0),aux(0),data(1)],[aux(1)]),
+         [s,p]-packet([data(0),data(1),aux(1)],[aux(0)])]),
+        ( Ks = [A,B],
+          Call = call(tuple([result(tmp(a),A),result(tmp(b),B)]),global(ext),[]),
+          Bs = [block(start,[],[Call],rets([tmp(a),tmp(b)]))],
+          F = func(tuple_aux,export,tuple(Ks),[],Bs), M = module([F]),
+          Result = adapter_result(registers,typed(Ks),16,Packet),
+          lower_function(M,F,Bs,abi_function(_,_,_,_,_,_,_,_,Object,_)),
+          Object = fast_and_generic(_,adapt(0,[],Actual)), Actual == Result,
+          lower_thunks(M,[thunk(ext,strong,_,[],[],0,ThunkResult,16)]),
+          ThunkResult == Result
+        )).
 
 transport :-
     Ps = [param(p,tmp(p)),param(s,tmp(s)),param(d,tmp(d)),param(l,tmp(n))],
