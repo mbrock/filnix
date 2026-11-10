@@ -21,7 +21,7 @@ Local Open Scope Z_scope.
 (** ## Sets of names *)
 
 (** An ordset of names: sorted in the standard order, each once. *)
-Definition names : Type := list name.
+Notation names := (list name) (only parsing).
 
 (** As `sort/2` on names: the ordset of the names ns. *)
 Definition nsort (ns : list name) : names := sort term_compare ns.

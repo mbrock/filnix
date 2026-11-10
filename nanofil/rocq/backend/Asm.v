@@ -72,7 +72,7 @@ Inductive directive : Type :=
 
 (** A fixed-register instruction from the emitter's own table
     (docs/asm-fixed.md). *)
-Inductive fixed : Type :=
+Inductive fixed_op : Type :=
 | Cpuid
 | Xgetbv
 | Rdtsc
@@ -84,7 +84,7 @@ Inductive fixed : Type :=
 (** A line. *)
 Inductive line : Type :=
 | Label (s : lit) (* `S:` *)
-| Fixed (m : fixed)
+| Fixed (m : fixed_op)
 | Ins (op : string) (suffix : option string) (os : list operand)
   (* Op, then the suffix if any, then the operands in AT&T order *)
 | Dir (d : directive).
@@ -214,7 +214,7 @@ Definition directive_parts (d : directive) (k : parts) : parts :=
   | DAsciz a => ".asciz """ :: lit_text a :: """" :: k
   end.
 
-Definition fixed_name (m : fixed) : string :=
+Definition fixed_name (m : fixed_op) : string :=
   match m with
   | Cpuid => "cpuid"
   | Xgetbv => "xgetbv"

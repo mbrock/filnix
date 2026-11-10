@@ -743,9 +743,9 @@ Definition read_module (cs : list ascii) : option term :=
 
 (** A text in pieces: its end, or its next characters and the rest,
     which is made when asked for. *)
-Inductive text : Type :=
+Inductive chunked : Type :=
 | TextEnd
-| TextPiece (cs : list ascii) (rest : unit -> text).
+| TextPiece (cs : list ascii) (rest : unit -> chunked).
 
 (** What reading the whole clauses of a piece gives: the clauses so
     far, last first, and either the end, at an `end_of_file` clause,
@@ -784,7 +784,7 @@ Fixpoint piece_clauses (fuel : nat) (start cs : list ascii) (st : list frame) (m
     [buf] being the characters before it that are not yet read.
     Only the last characters, with the text's end after them, are
     read as [clauses] reads a whole text. *)
-Fixpoint text_clauses (p : text) (buf : list ascii) (acc : list term) : option (list term) :=
+Fixpoint text_clauses (p : chunked) (buf : list ascii) (acc : list term) : option (list term) :=
   match p with
   | TextEnd => clauses (S (count buf 0)) buf [] (MTerm false) acc
   | TextPiece cs rest =>
@@ -800,7 +800,7 @@ Fixpoint text_clauses (p : text) (buf : list ascii) (acc : list term) : option (
     is not proved; tests/read.sh holds this one to Prolog with pieces
     of one character and of seven, and the examples below cut a text
     at every place. *)
-Definition read_text (p : text) : option term :=
+Definition read_text (p : chunked) : option term :=
   match text_clauses p [] [] with
   | Some r =>
       match items r [] with
@@ -812,7 +812,7 @@ Definition read_text (p : text) : option term :=
 
 (** The text [cs] in pieces of [k] characters, for a [k] above zero
     and a [fuel] of at least the length of [cs]. *)
-Fixpoint cut (fuel k : nat) (cs : list ascii) : text :=
+Fixpoint cut (fuel k : nat) (cs : list ascii) : chunked :=
   match fuel, cs with
   | S fuel', _ :: _ => TextPiece (firstn k cs) (fun _ => cut fuel' k (skipn k cs))
   | _, _ => TextEnd

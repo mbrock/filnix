@@ -25,6 +25,11 @@ Definition item_code (selected : bool) (sy : symbols) (it : item) : option (list
 (** The end of the file: the stack is not executable. *)
 Definition end_lines : list line := [Dir (DSection SNoteGnuStack)].
 
+(** The last piece of every module. It stands alone, with its type
+    written out, because a C++ extraction cannot type a `Some`
+    inside a function that is an element of a list. *)
+Definition end_piece (_ : unit) : option (list (list line)) := Some [end_lines].
+
 (** A module's lists of lines, a piece at a time, in the order
     `module_emit/4` gives them: a piece for each item, one for all
     the weak thunks and one for the end of the file. A driver asks
@@ -36,7 +41,7 @@ Definition module_code (selected : bool) (md : module)
   let sy := module_symbols md in
   map (fun it _ => option_map (fun ls => [ls]) (item_code selected sy it)) md
   ++ [fun _ => option_map (map thunk_lines) (lower_thunks sy md);
-      fun _ => Some [end_lines]].
+      end_piece].
 
 (** The reference: no branch is selected. *)
 Definition item_lines : symbols -> item -> option (list line) := item_code false.

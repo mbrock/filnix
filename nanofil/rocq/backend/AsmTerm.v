@@ -146,7 +146,7 @@ Definition ddirective (t : term) : option directive :=
   | _ => None
   end.
 
-Definition dfixed (t : term) : option fixed :=
+Definition dfixed (t : term) : option fixed_op :=
   let* a := dname t in
   if a == "cpuid" then Some Cpuid
   else if a == "xgetbv" then Some Xgetbv

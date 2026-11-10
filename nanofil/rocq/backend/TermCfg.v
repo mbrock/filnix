@@ -284,6 +284,20 @@ Fixpoint numbered {A : Type} (n : Z) (xs : list A) : list (Z * A) :=
   | x :: xs' => (n, x) :: numbered (n + 1) xs'
   end.
 
+(** Whether t, read in the block l at the position n or at its end,
+    is defined before: defs gives each temporary the block and the
+    position of its definition, ivs the dominator intervals. It
+    stands alone, with its types written out, because a C++
+    extraction cannot type a `None` passed to a local function. *)
+Definition defined_before (defs : nmap (name * Z)) (ivs : nmap (Z * Z))
+    (l : name) (n : option Z) (t : name) : bool :=
+  match nm_find t defs with
+  | Some (dl, dpos) =>
+      if name_eqb dl l then match n with Some n => dpos <? n | None => true end
+      else dominates_by_interval ivs dl l
+  | None => false
+  end.
+
 (** As `strict_ssa(F, Counts, Cfg, Idom)`: every temporary has one
     definition, and in the blocks the entry reaches each definition
     dominates each use. Params and phis are defined at position 0 of
@@ -307,15 +321,6 @@ Definition strict_ssa (counts : nmap nat) (params : list term) (bs : list tblock
                                                      (inst_defs (snd pi)))
                                       (numbered 1 (tb_insts b))) bs) in
       let reach := reached g in
-      (* Whether t, read in the block l at the position n or at its
-         end, is defined before. *)
-      let defined (l : name) (n : option Z) (t : name) : bool :=
-        match nm_find t defs with
-        | Some (dl, dpos) =>
-            if name_eqb dl l then match n with Some n => dpos <? n | None => true end
-            else dominates_by_interval ivs dl l
-        | None => false
-        end in
       forallb
         (fun b =>
            let l := tb_label b in
@@ -326,18 +331,18 @@ Definition strict_ssa (counts : nmap nat) (params : list term) (bs : list tblock
                                      || forallb (fun a => match pair_parts a with
                                                           | Some (pred, v) =>
                                                               negb (nm_mem pred reach)
-                                                              || forallb (defined pred None)
+                                                              || forallb (defined_before defs ivs pred None)
                                                                          (tmp_name v)
                                                           | None => true
                                                           end) args
                                  | _ => true
                                  end) (tb_phis b)
                && forallb (fun pi => match inst_uses (snd pi) with
-                                     | Some us => forallb (defined l (Some (fst pi))) us
+                                     | Some us => forallb (defined_before defs ivs l (Some (fst pi))) us
                                      | None => true
                                      end) (numbered 1 (tb_insts b))
                && match jump_uses (tb_jump b) with
-                  | Some us => forallb (defined l (Some (Z.of_nat (length (tb_insts b)) + 1))) us
+                  | Some us => forallb (defined_before defs ivs l (Some (Z.of_nat (length (tb_insts b)) + 1))) us
                   | None => true
                   end))
         bs
