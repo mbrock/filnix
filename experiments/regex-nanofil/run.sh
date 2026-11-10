@@ -12,9 +12,9 @@
 #                         40 s and 5.5 GB, a pattern of the hook 2 to 7 s.
 #   NANOFIL_BACKEND=.../nanofil-backend ./run.sh
 #                         the IR compiled by the compiler extracted from
-#                         Rocq (compile-promoted: of -O, promotion, copy
-#                         propagation and selected branches): here and
-#                         in rxc
+#                         Rocq (compile-allocated: promotion, copy
+#                         propagation, selected branches and register
+#                         allocation): here and in rxc
 #
 # Needs nix, GNU as, and the PCRE2 source and Fil-C build that
 # ../pcre2-sljit-llvm/run.sh leaves in $WORK. SWIPL and TPL name the
@@ -81,8 +81,8 @@ ir_to_asm() {
 }
 if [ -n "${NANOFIL_BACKEND:-}" ]; then
   export NANOFIL_BACKEND
-  compiler="nanofil-backend compile-promoted"
-  ir_to_asm() { "$NANOFIL_BACKEND" compile-promoted rx.ir </dev/null >rx.s; }
+  compiler="nanofil-backend compile-allocated"
+  ir_to_asm() { "$NANOFIL_BACKEND" compile-allocated rx.ir </dev/null >rx.s; }
 fi
 
 # A saved state is a snapshot of nanofil/src: make it again when that changed.
