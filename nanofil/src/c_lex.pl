@@ -107,13 +107,35 @@ line_chars(S, Cs) :-
 %
 %  Tokens are Tokens0 without their pragma_pack(Op) tokens, each struct
 %  or union keyword under a #pragma pack(N) followed by the attribute
-%  __nanofil_pack__(N). Tokens0 is not copied when it has no pragma
-%  (GLib's resource blobs are millions of tokens).
+%  __nanofil_pack__(N), and each #pragma weak inside braces moved to
+%  the end, where it is a declaration of the unit: GCC applies one in a
+%  function body to the file-scope name, as glibc's td_ta_map_lwp2thr
+%  writes #pragma weak ps_get_thread_area in a case. Tokens0 is not
+%  copied when it has no pragma (GLib's resource blobs are millions of
+%  tokens).
 pack_tokens(Tokens0, Tokens) :-
     (   memberchk(tok(pragma_pack(_), _), Tokens0)
-    ->  once(phrase(packed_tokens(Tokens0, [none]), Tokens))
-    ;   Tokens = Tokens0
+    ->  once(phrase(packed_tokens(Tokens0, [none]), Tokens1))
+    ;   Tokens1 = Tokens0
+    ),
+    (   memberchk(tok(pragma_weak(_, _), _), Tokens1)
+    ->  weak_walk(Tokens1, 0, Tokens, Hoisted, Hoisted)
+    ;   Tokens = Tokens1
     ).
+
+% weak_walk(+Ts0, +Depth, -Ts, -Tail, -Hoisted): Ts is Ts0, at brace
+% depth Depth, without its #pragma weak tokens inside braces, ending in
+% Tail; Hoisted are those tokens, in order.
+weak_walk([], _, Tail, Tail, []).
+weak_walk([T|Ts0], D, Ts, Tail, [T|Hs]) :-
+    T = tok(pragma_weak(_, _), _), D > 0, !,
+    weak_walk(Ts0, D, Ts, Tail, Hs).
+weak_walk([T|Ts0], D0, [T|Ts], Tail, Hs) :-
+    (   T = tok(p('{'), _) -> D is D0 + 1
+    ;   T = tok(p('}'), _) -> D is D0 - 1
+    ;   D = D0
+    ),
+    weak_walk(Ts0, D, Ts, Tail, Hs).
 
 packed_tokens([], _) --> [].
 packed_tokens([tok(pragma_pack(Op), _)|Ts], Packs0) --> !,
