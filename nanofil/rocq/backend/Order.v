@@ -80,19 +80,29 @@ Fixpoint term_compare (t u : term) {struct t} : comparison :=
 Section Sorting.
   Context {A : Type} (cmp : A -> A -> comparison).
 
+  (** The merges below take one element off one list or both at each
+      step, so the two lengths together are steps enough. Each is one
+      function over that count, not a function of xs holding another
+      of ys, so that its C++ extraction is a loop: a merge of two long
+      lists would otherwise be as deep as they are long. *)
+
+  (** `merge` in at most n steps. *)
+  Fixpoint merge_steps (n : nat) (xs ys : list A) : list A :=
+    match n, xs, ys with
+    | _, [], _ => ys
+    | _, _, [] => xs
+    | O, _, _ => xs
+    | S n', x :: xs', y :: ys' =>
+        match cmp x y with
+        | Gt => y :: merge_steps n' xs ys'
+        | _ => x :: merge_steps n' xs' ys
+        end
+    end.
+
   (** The sorted lists xs and ys merged; of two equal elements, xs's
       comes first. *)
-  Fixpoint merge (xs : list A) : list A -> list A :=
-    fix merge_into (ys : list A) : list A :=
-      match xs, ys with
-      | [], _ => ys
-      | _, [] => xs
-      | x :: xs', y :: ys' =>
-          match cmp x y with
-          | Gt => y :: merge_into ys'
-          | _ => x :: merge xs' ys
-          end
-      end.
+  Definition merge (xs ys : list A) : list A :=
+    merge_steps (length xs + length ys) xs ys.
 
   (** A merge sort's stack of sorted runs: the run at depth i, if
       there is one, has 2^i elements. *)
@@ -129,49 +139,61 @@ Section Sorting.
       results are ordsets. *)
   Definition sort (xs : list A) : list A := dedup (msort xs).
 
+  (** `ord_union` in at most n steps. *)
+  Fixpoint union_steps (n : nat) (xs ys : list A) : list A :=
+    match n, xs, ys with
+    | _, [], _ => ys
+    | _, _, [] => xs
+    | O, _, _ => xs
+    | S n', x :: xs', y :: ys' =>
+        match cmp x y with
+        | Lt => x :: union_steps n' xs' ys
+        | Eq => x :: union_steps n' xs' ys'
+        | Gt => y :: union_steps n' xs ys'
+        end
+    end.
+
   (** As `ord_union(Xs, Ys, Zs)`: the union of two ordsets. *)
-  Fixpoint ord_union (xs : list A) : list A -> list A :=
-    fix union_into (ys : list A) : list A :=
-      match xs, ys with
-      | [], _ => ys
-      | _, [] => xs
-      | x :: xs', y :: ys' =>
-          match cmp x y with
-          | Lt => x :: ord_union xs' ys
-          | Eq => x :: ord_union xs' ys'
-          | Gt => y :: union_into ys'
-          end
-      end.
+  Definition ord_union (xs ys : list A) : list A :=
+    union_steps (length xs + length ys) xs ys.
+
+  (** `ord_subtract` in at most n steps. *)
+  Fixpoint subtract_steps (n : nat) (xs ys : list A) : list A :=
+    match n, xs, ys with
+    | _, [], _ => []
+    | _, _, [] => xs
+    | O, _, _ => xs
+    | S n', x :: xs', y :: ys' =>
+        match cmp x y with
+        | Lt => x :: subtract_steps n' xs' ys
+        | Eq => subtract_steps n' xs' ys'
+        | Gt => subtract_steps n' xs ys'
+        end
+    end.
 
   (** As `ord_subtract(Xs, Ys, Zs)`: the elements of the ordset xs
       that are not in the ordset ys. *)
-  Fixpoint ord_subtract (xs : list A) : list A -> list A :=
-    fix subtract_from (ys : list A) : list A :=
-      match xs, ys with
-      | [], _ => []
-      | _, [] => xs
-      | x :: xs', y :: ys' =>
-          match cmp x y with
-          | Lt => x :: ord_subtract xs' ys
-          | Eq => ord_subtract xs' ys'
-          | Gt => subtract_from ys'
-          end
-      end.
+  Definition ord_subtract (xs ys : list A) : list A :=
+    subtract_steps (length xs + length ys) xs ys.
+
+  (** `ord_intersection` in at most n steps. *)
+  Fixpoint intersection_steps (n : nat) (xs ys : list A) : list A :=
+    match n, xs, ys with
+    | _, [], _ => []
+    | _, _, [] => []
+    | O, _, _ => []
+    | S n', x :: xs', y :: ys' =>
+        match cmp x y with
+        | Lt => intersection_steps n' xs' ys
+        | Eq => x :: intersection_steps n' xs' ys'
+        | Gt => intersection_steps n' xs ys'
+        end
+    end.
 
   (** As `ord_intersection(Xs, Ys, Zs)`: the elements of the ordset
       xs that are in the ordset ys too. *)
-  Fixpoint ord_intersection (xs : list A) : list A -> list A :=
-    fix intersect_with (ys : list A) : list A :=
-      match xs, ys with
-      | [], _ => []
-      | _, [] => []
-      | x :: xs', y :: ys' =>
-          match cmp x y with
-          | Lt => ord_intersection xs' ys
-          | Eq => x :: ord_intersection xs' ys'
-          | Gt => intersect_with ys'
-          end
-      end.
+  Definition ord_intersection (xs ys : list A) : list A :=
+    intersection_steps (length xs + length ys) xs ys.
 
   (** As `ord_memberchk(X, Xs)`: whether x is in the ordset xs. *)
   Fixpoint ord_mem (x : A) (xs : list A) : bool :=
