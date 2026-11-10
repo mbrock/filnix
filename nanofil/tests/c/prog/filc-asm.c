@@ -48,6 +48,14 @@ int r0(void) { return 3; }
 extern int r1(void) __attribute__((alias("r0")));
 __asm(".filc_rename r0, __GI_r0");
 
+/* glibc's versioned functions: a C alias, then a .filc_alias of the
+   same pair, which FilPizlonator coalesces with it. */
+int r2(void);
+__asm(".filc_rename r2, __GI_r2");
+int r3(void) { return 13; }
+extern int r2(void) __attribute__((alias("r3")));
+__asm(".filc_alias r3, __GI_r2");
+
 int shown(void) { return 9; }
 __asm(".filc_globl shown");
 int soft(void) { return 11; }
@@ -59,7 +67,7 @@ int main(void)
 {
     printf("%d %d %d\n", foo(1), counter, ext());
     printf("%d %d %d %d\n", wfn(), use_q(), r1(), shown());
-    printf("%d\n", use_wq());
+    printf("%d %d\n", use_wq(), r2());
     printf("%d\n", from_clang());
     return 0;
 }

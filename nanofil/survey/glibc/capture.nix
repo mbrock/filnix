@@ -42,8 +42,8 @@ let
     dest=$NIX_BUILD_TOP/pp/$rel
     mkdir -p "$(dirname "$dest")"
     # Everything but -o FILE and the dependency-file flags, then -E.
-    # nanofil refuses __int128, so, as nanofil-cc does, it is not
-    # advertised to the preprocessor.
+    # nanofil refuses __int128 and has no _BitInt, so, as nanofil-cc
+    # does, neither is advertised to the preprocessor.
     pp=() i=0
     while [ $i -lt ''${#args[@]} ]; do
       a=''${args[$i]}
@@ -61,13 +61,13 @@ let
       tmp=$(mktemp)
       cat >"$tmp"
       cp "$tmp" "$dest.stdin.c"
-      "''${pp[@]}" -U__SIZEOF_INT128__ -E -o "$dest.i" <"$tmp" || echo "preprocess failed" >"$dest.pperr"
+      "''${pp[@]}" -U__SIZEOF_INT128__ -U__BITINT_MAXWIDTH__ -E -o "$dest.i" <"$tmp" || echo "preprocess failed" >"$dest.pperr"
       "$@" <"$tmp"
       status=$?
       rm -f "$tmp"
       exit $status
     fi
-    "''${pp[@]}" -U__SIZEOF_INT128__ -E -o "$dest.i" || echo "preprocess failed" >"$dest.pperr"
+    "''${pp[@]}" -U__SIZEOF_INT128__ -U__BITINT_MAXWIDTH__ -E -o "$dest.i" || echo "preprocess failed" >"$dest.pperr"
     exec "$@"
   '';
 in

@@ -1005,6 +1005,11 @@ other_type_spec(auto_type).
 % capability-bearing cursor in the first word and ignores the rest.
 named_type(tname('__builtin_va_list'), array(struct('builtin.va_list'), 1),
            Env, Env) :- !.
+% clang predefines __int128_t and __uint128_t as __int128 and unsigned
+% __int128, which nanofil refuses where they are used (keyword_combo/2):
+% glibc's bits/link.h pads its audit structs with them.
+named_type(tname('__int128_t'), bad('__int128'), Env, Env) :- !.
+named_type(tname('__uint128_t'), bad('__int128'), Env, Env) :- !.
 named_type(tname(Name), Type, Env, Env) :-
     (   lookup_ordinary(Env, Name, typedef(Type0)) -> Type = Type0
     ;   Type = bad('unknown typedef')

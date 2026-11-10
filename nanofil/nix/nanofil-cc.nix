@@ -7,8 +7,9 @@
 # -fno-builtin-memcpy, -fno-builtin-memmove and -ffreestanding keep every
 # memcpy and memmove a call (--memcpy=call); -fno-inline and -O0 select
 # --inline=none; -fcommon sets NANOFIL_COMMON=1, so tentative
-# definitions are common (weak) symbols. __SIZEOF_INT128__ is not defined, since nanofil
-# refuses __int128. With NANOFIL_KEEP_I=DIR the preprocessed file is
+# definitions are common (weak) symbols. __SIZEOF_INT128__ and
+# __BITINT_MAXWIDTH__ are not defined, since nanofil refuses __int128 and
+# has no _BitInt. With NANOFIL_KEEP_I=DIR the preprocessed file is
 # also copied into DIR. Anything else
 # (linking, configure probes) goes to filcc unchanged. On SWI, nanofil
 # runs from a saved state built here, which starts in 0.05 s instead of
@@ -56,8 +57,9 @@ pkgs.writeShellScript "nanofil-cc" ''
     exec ${filcc}/bin/clang "''${args[@]}" ''${out:+-o "$out"}
   fi
   : "''${out:=$(basename "''${src%.c}").o}"
-  # nanofil refuses __int128, so it is not advertised (c_pp.pl).
-  ${filcc}/bin/clang "''${args[@]}" -U__SIZEOF_INT128__ -E -o "$out.i"
+  # nanofil refuses __int128 and has no _BitInt, so neither is
+  # advertised (c_pp.pl).
+  ${filcc}/bin/clang "''${args[@]}" -U__SIZEOF_INT128__ -U__BITINT_MAXWIDTH__ -E -o "$out.i"
   input=$(realpath "$out.i")
   # The Gallina backend's check compiles the same input again
   # (nix/backend.nix).

@@ -264,27 +264,27 @@ keeps each C translation unit's preprocessed source and its command.
 on each shared-library unit (`.os`, 3,114 of them) and records the
 result. It passes each unit the environment and options nanofil-cc
 would derive from its command (glibc's `-fgnu89-inline` is
-`NANOFIL_STD=gnu89`). Neither is part of any check. The capture builds in about six
-minutes and the run takes about a minute at 14 jobs:
+`NANOFIL_STD=gnu89`), and the capture preprocesses as nanofil-cc does,
+without `__SIZEOF_INT128__` and `__BITINT_MAXWIDTH__`. Neither is part
+of any check. The capture builds in about six minutes and the run takes
+about five at 6 jobs:
 
 ```sh
 nix build -f nanofil/survey/glibc/capture.nix -o /tmp/glibc-pp
 nanofil/bin/nanofil --save-state /tmp/nanofil.state
 export NANOFIL_STATE=/tmp/nanofil.state
-python3 nanofil/survey/glibc/run.py /tmp/glibc-pp /tmp/glibc-nf \
-  --int128-padding
+python3 nanofil/survey/glibc/run.py /tmp/glibc-pp /tmp/glibc-nf
 uv run --with pyelftools python3 nanofil/survey/glibc/reach.py \
   "$(nix build --print-out-paths \
       .#filcc-staging.components.filc-glibc)/lib/libc.a" \
   strlen printf setlocale --units /tmp/glibc-nf/units.tsv
 ```
 
-The units fail in layers, since nanofil reports one error per unit. An
-opt-in rewrite of the captured text lets the run see past the largest
-layer: `--int128-padding` reads three unused `__int128_t` padding
-members as aligned bytes of the same size. `--drop-filc-asm`, which
-deletes the `.filc_*` module asm statements, measured the first survey
-and is no longer needed.
+The units fail in layers, since nanofil reports one error per unit. Two
+opt-in rewrites of the captured text let earlier runs see past the
+largest layers, and neither is needed now: `--drop-filc-asm` deletes
+the `.filc_*` module asm statements, and `--int128-padding` reads three
+unused `__int128_t` padding members as aligned bytes of the same size.
 
 ### Results, 2026-11-10
 
@@ -293,9 +293,12 @@ and is no longer needed.
 | first survey | 255 | 2,365 with `--drop-filc-asm` |
 | three small fixes | 313 | 2,477 with `--drop-filc-asm` |
 | `.filc_*` directives, gnu89 | 2,111 (68%) | 2,749 (88%) |
-| sign builtins, float asm, forward enums | 2,206 (71%) | **2,866 (92%)** |
+| sign builtins, float asm, forward enums | 2,206 (71%) | 2,866 (92%) |
+| declarator attributes, `__int128_t`, no `_BitInt`, alias coalescing | **2,900 (93%)** | |
 
-No unit timed out (120 s); most take under a second.
+The last row is a new capture, preprocessed without
+`__BITINT_MAXWIDTH__`, so `math_uint128.h` takes its portable path. No
+unit timed out (120 s); most take under a second.
 
 With both rewrites, before the `.filc_*` directives, by library:
 
@@ -308,29 +311,27 @@ With both rewrites, before the `.filc_*` directives, by library:
 | libnsl | 38 | 38 |
 | the other 12 | 50 | 31 |
 
-Of the 245 `libc.a` members that define a function Hello reaches, 232
-compile; 12 fail and one (`atexit`) is built into `libc_nonshared.a`,
-not captured as a shared unit.
+Of the 245 `libc.a` members that define a function Hello reaches, 236
+compile (232 before the last row); 8 fail and one (`atexit`) is built
+into `libc_nonshared.a`, not captured as a shared unit. Six of the 8
+are the `packed` member below (`libc-cleanup`, the three
+`pthread_rwlock_*`, `pthread_setcancelstate`, `unwind`), `errno` is the
+TLS alias and `dl-support` is `address_space`.
 
 ### What stops the rest
 
-First errors as captured, and with `--int128-padding` (one error per
-unit, so a fix can uncover the next layer):
+First errors (one error per unit, so a fix can uncover the next layer):
 
-| Cause | As captured | Padded | Where |
-| --- | ---: | ---: | --- |
-| `__int128` | 762 | 30 | link.h padding, then `math_uint128.h` |
-| aligned struct members | 10 | 74 | a `packed` member of `struct __res_state`, inside `struct pthread` |
-| `__real__`, `__imag__`, `_Complex` returns | 72 | 72 | libm's complex functions |
-| x87 and MXCSR | 50 | 50 | `fnclex`, `frndint`, `__builtin_ia32_ldmxcsr` in libm's fenv |
-| other attributes | 3 | 9 | `address_space`, `weak` and `section` placement |
-| other | 6 | 7 | `__alignof__` of an expression, `__label__`, `#pragma weak` in a body, `__builtin_ia32_cvtpd2ps` |
-| other math builtins | 4 | 4 | `__builtin_trunc`, `truncf`, `sqrtf`, `sqrtl` |
-| TLS alias | 1 | 2 | `__libc_errno`, `__libc_h_errno` |
+| Cause | Units | Where |
+| --- | ---: | --- |
+| aligned struct members | 74 | a `packed` member of `struct __res_state`, inside `struct pthread` |
+| `__real__`, `__imag__`, `_Complex` returns | 72 | libm's complex functions |
+| x87 and MXCSR | 51 | `fnclex`, `frndint`, `__builtin_ia32_ldmxcsr` in libm's fenv |
+| other | 7 | `__alignof__` of an expression, `__label__`, `#pragma weak` in a body, `__builtin_ia32_cvtpd2ps` |
+| `address_space` | 4 | `rseq-internal.h`, in a static inline function no unit calls |
+| other math builtins | 4 | `__builtin_trunc`, `truncf`, `sqrtf`, `sqrtl` |
+| TLS alias | 2 | `__libc_errno`, `__libc_h_errno` |
 
-- **`__int128`.** 762 units fail only on three unused padding members of
-  `bits/link.h`'s audit structs, which `ldsodefs.h` includes nearly
-  everywhere. The other 30 use `u128` arithmetic (`printf_fp`, `fma`).
 - **aligned members.** The first error names a member of `struct
   pthread`, but what nanofil refuses is a member of `struct __res_state`
   inside it, `__glibc_extension_index __attribute__((packed))`: a
@@ -378,6 +379,22 @@ Each frontend fix has a test that fails without it:
   types name the same enum. `tests/c/prog/enum-forward.c` fails without
   the fix, as a conflicting declaration, and with the earlier
   declaration's placeholder type kept, as `-2` read back as 4294967294.
+- A declaration attribute among a pointer's qualifiers, as glibc writes
+  `int *__attribute__((weak, __const__)) __h_errno_location (void)` and
+  malloc's hooks, is the declaration's, as clang applies it
+  (`ProcessDeclAttributes`): `weak`, `section`, `alias`, `weakref`,
+  `constructor`, `destructor`, `gnu_inline` and `common`. In a member
+  it is still refused. `tests/c/prog/attr-slide.c`, which fails to link
+  if the attributes are dropped.
+- `__int128_t` and `__uint128_t`, clang's predefined typedefs, are
+  `__int128`, which nanofil refuses where it is used, and
+  `__BITINT_MAXWIDTH__` is not defined, as `__SIZEOF_INT128__` is not:
+  nanofil has no `_BitInt`, and glibc's `math_uint128.h` takes its
+  portable path. `tests/c/prog/int128-portable.c`.
+- A `.filc_alias` that names an existing alias of the same symbol, with
+  the same weakness, is that alias, as FilPizlonator coalesces them:
+  glibc's versioned functions (`pthread_rwlock_rdlock`) write both a C
+  alias and the directive. `tests/c/prog/filc-asm.c`.
 - The `.filc_*` module asm directives, which glibc's `hidden_proto`,
   `hidden_def` and alias macros expand to: `.filc_rename name,
   __GI_name` renames a symbol everywhere, `.filc_alias` and
@@ -393,16 +410,35 @@ Every generated syscall stub now compiles: its body, a `zcall` of the
 ## Decisions this raises
 
 1. **Teach nanofil the `.filc_*` directives.** Done (above).
-2. **`__int128`.** The padding members could be read as 16 aligned
-   bytes when only their size is used; real `u128` arithmetic needs
-   the type. Recommended: neither now; the rewrite flag measures past it.
-3. **Aligned members** (`aligned` on a struct member or type) unblock
-   nptl. nanofil refuses layout attributes on purpose (`layout_attr`);
-   honoring them is a layout change for every backend. Recommended: only
-   if nptl's IR is wanted.
+2. **`__int128`.** Settled without a layout: nanofil still refuses
+   `__int128` where it is used, and glibc compiles around it.
+3. **`packed` on a member** (GCC: the member's alignment is 1 unless
+   `aligned` asks for more). c_types already lays out packed structs and
+   explicitly aligned members, so this is member_alignment's base set to
+   1. It unblocks all 74 nptl units, six of them Hello's. Recommended:
+   yes; it is a layout change, so it waits for review.
 4. **What the proofs trust about glibc's compiler** (above). Recommended:
    decide before any proof uses glibc's IR, not now.
 5. **The boundary itself.** Recommended: keep Campaign 4's per-function
    contracts for Hello, and treat this page's direction as a later
    campaign whose first step is "module `strlen` implements
    `strlen_contract`" for the leaf functions that reach no primitive.
+6. **An alias of thread-local data** (`errno`'s `__libc_errno`).
+   `ir.pl` refuses it; the Fil-C backend's alias getter, which calls the
+   target's getter, already serves it, as filcc's `pizlonated_lerr`
+   reads the same TLS slot. It is an IR validity change (`valid_item`,
+   and the interpreter's aliases). Recommended: yes, with Campaign 3's
+   agreement, since `errno` is a Hello unit.
+7. **IR operations for `sqrt` and `trunc`** (`sqrtss`, `sqrtsd`,
+   `fsqrt`; `roundsd` with truncation). glibc implements `sqrt`,
+   `sqrtf`, `sqrtl`, `trunc` and `truncf` as the builtins, so a call
+   cannot stand for them, and `__builtin_sqrt` read as a call already
+   makes `e_sqrt`'s IR recurse. Recommended: add `sqrt` as an IR op;
+   `trunc` can be built from existing ops in the frontend.
+8. **x87 and MXCSR** (51 libm units, the floating-point environment).
+   FilPizlonator accepts a list of x87 control instructions and treats
+   `stmxcsr` and `ldmxcsr` as checked memory accesses. Recommended:
+   later; the interpreter has no floating-point environment to model.
+9. **`_Complex`** (72 libm units). A frontend feature: complex types,
+   `__real__`, `__imag__`, arithmetic and the calling convention.
+   Recommended: a separate piece of work after the C core.

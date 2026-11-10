@@ -320,7 +320,10 @@ asm_symbol_directive(Items0, Loc-alias(Old, New, L), st(Cur0, M0, As0, Ls), st(C
     ;   sema_error(Loc, 'alias ~w must point to a defined variable or function, not ~w', [New, Old])
     ),
     (   cur_id(Cur0, New, NewId)
-    ->  (   memberchk(a(NewId, L, Target), As0)
+    ->  (   (   memberchk(a(NewId, L, Target), As0)
+            ;   memberchk(alias(NewId, L1, OldId), Items0),     % as FilPizlonator
+                ( L1 == weak -> L == weak ; L \== weak )       % coalesces them
+            )
         ->  Cur = Cur0, M = M0, As = As0
         ;   defined_id(Items0, As0, NewId, _)
         ->  sema_error(Loc, 'alias name ~w is already taken by a definition', [New])

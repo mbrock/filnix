@@ -122,7 +122,7 @@
 %  Items is the translation unit of the c_lex Tokens, as described above.
 %  Throws nanofil_error/1 on a syntax error or unsupported construct.
 c_parse(Tokens, Items) :-
-    list_to_assoc(['__builtin_va_list'-t], Env),
+    list_to_assoc(['__builtin_va_list'-t, '__int128_t'-t, '__uint128_t'-t], Env),
     phrase(unit(Env, Items), Tokens).
 
 %! c_constant_expression(+Tokens, -Expr) is det.
@@ -661,7 +661,7 @@ field_decls(Env, Specs, Mark, [field(FieldSpecs, Dcl, Width)|Fields], Rest) -->
     (   punct(':')
     ->  { Dcl = dcl(none, base, none), Attrs = [] },
         conditional(Env, Width)
-    ;   full_declarator(Env, Dcl, Attrs),
+    ;   full_declarator(Env, no, Dcl, Attrs),
         ( punct(':') -> conditional(Env, Width) ; { Width = none } )
     ),
     attr_list(Attrs1),
@@ -718,13 +718,22 @@ enumerators(_, _) --> parse_error('expected an enumerator').
 % full_declarator(+Env, -Dcl, -Attrs)//: a declarator with its GNU
 % suffix. Attributes before a declarator (GNU allows them after the
 % comma of a declarator list, as in `char *a, __attribute__((unused))
-% *b`) and after it come back as attr(Tokens) specifiers in Attrs.
-full_declarator(Env, dcl(some(Name), Type, Asm), Attrs) -->
+% *b`) and after it come back as attr(Tokens) specifiers in Attrs, and
+% so do declaration attributes among its pointers' qualifiers
+% (declarator//6).
+full_declarator(Env, Dcl, Attrs) -->
+    full_declarator(Env, [], Dcl, Attrs).
+
+% full_declarator(+Env, +Slid0, -Dcl, -Attrs)//: as full_declarator//3;
+% Slid0 is no where declaration attributes have no declaration to go
+% to (a member), and they are refused among the qualifiers.
+full_declarator(Env, Slid0, dcl(some(Name), Type, Asm), Attrs) -->
     attr_list(Pre0),
-    declarator(Env, Name, Type, base),
+    declarator(Env, Name, Type, base, Slid0, Slid),
     gnu_suffix(Asm, Attrs1),
     {   findall(attr(X), member(X, Pre0), Pre),
-        append(Pre, Attrs1, Attrs)
+        ( Slid == no -> Slid1 = [] ; Slid1 = Slid ),
+        append([Pre, Slid1, Attrs1], Attrs)
     }.
 
 % gnu_suffix(-Asm, -Attrs)//: attributes and an asm("symbol") label.
@@ -743,41 +752,79 @@ gnu_suffix(Asm, Attrs) -->
     }.
 
 % declarator(+Env, -Name, -Type, +Base)//: a declarator of Name; Type is
-% built around Base.
+% built around Base. Its qualifiers may hold only hints (a parameter).
 declarator(Env, Name, Type, Base) -->
+    declarator(Env, Name, Type, Base, no, _).
+
+% declarator(+Env, -Name, -Type, +Base, +Slid0, -Slid)//: as
+% declarator//4. A declaration attribute among a pointer's qualifiers
+% (decl_attribute/1), as glibc writes `int *__attribute__((weak))
+% f(void)`, is the declaration's: clang moves it there
+% (ProcessDeclAttributes). Slid is Slid0 with those attr(Tokens)
+% appended; when Slid0 is no they are refused as other honored
+% attributes there are.
+declarator(Env, Name, Type, Base, S0, S) -->
     punct('*'), !,
-    qualifiers(Quals),
-    declarator(Env, Name, Type, ptr(Base, Quals)).
-declarator(Env, Name, Type, Base) -->
+    qualifiers(Quals, S0, S1),
+    declarator(Env, Name, Type, ptr(Base, Quals), S1, S).
+declarator(Env, Name, Type, Base, S0, S) -->
     attrs,
     (   punct('*')          % emacs: typedef void (ATTRIBUTE_MAY_ALIAS *f) (void);
-    ->  qualifiers(Quals),
-        declarator(Env, Name, Type, ptr(Base, Quals))
-    ;   direct_declarator(Env, Name, Type, Base)
+    ->  qualifiers(Quals, S0, S1),
+        declarator(Env, Name, Type, ptr(Base, Quals), S1, S)
+    ;   direct_declarator(Env, Name, Type, Base, S0, S)
     ).
 
-direct_declarator(Env, Name, Type, Base) -->
+direct_declarator(Env, Name, Type, Base, S, S) -->
     token(id(Name)), !,
     suffixes(Env, Base, Type).
-direct_declarator(Env, Name, Type, Base) -->
+direct_declarator(Env, Name, Type, Base, S0, S) -->
     punct('('),
-    declarator(Env, Name, Type, Mid),
+    declarator(Env, Name, Type, Mid, S0, S),
     expect(')'),
     suffixes(Env, Base, Mid).
 
-qualifiers(Quals) -->
+qualifiers(Quals) --> qualifiers(Quals, no, _).
+
+qualifiers(Quals, S0, S) -->
     kw(Q), { memberchk(Q, [const, volatile, restrict, atomic]) }, !,
     { Quals = [Q|Quals1] },
-    qualifiers(Quals1).
-qualifiers(Quals) -->
+    qualifiers(Quals1, S0, S).
+qualifiers(Quals, S0, S) -->
     loc(Loc), gnu_attr(A), !,
-    { hint_attributes(A, Loc) },
-    qualifiers(Quals).
-qualifiers(Quals) --> c23_attr, !, qualifiers(Quals).
-qualifiers(Quals) -->                   % clang's nullability, ignored
+    { slid_attributes(A, Loc, S0, S1) },
+    qualifiers(Quals, S1, S).
+qualifiers(Quals, S0, S) --> c23_attr, !, qualifiers(Quals, S0, S).
+qualifiers(Quals, S0, S) -->            % clang's nullability, ignored
     [tok(id(N), _)], { nullability(N) }, !,
-    qualifiers(Quals).
-qualifiers([]) --> [].
+    qualifiers(Quals, S0, S).
+qualifiers([], S, S) --> [].
+
+% slid_attributes(+Tokens, +Loc, +Slid0, -Slid): Tokens, attributes
+% among a pointer's qualifiers, go to the declaration as attr(Tokens)
+% when Slid0 is a list and every honored one among them is a
+% declaration attribute; otherwise each must be a hint.
+slid_attributes(Tokens, Loc, S0, S) :-
+    (   S0 \== no,
+        forall(( member(group(Inner), Tokens), attribute_items(Inner, Items),
+                 member([T|_], Items), attribute_name(T, Word),
+                 c_types:known_attribute(Word, honored, _) ),
+               decl_attribute(Word))
+    ->  append(S0, [attr(Tokens)], S)
+    ;   hint_attributes(Tokens, Loc), S = S0
+    ).
+
+% decl_attribute(?Word): an honored attribute of the declared symbol
+% (its linkage, section or role), not of a type, so it means the same
+% wherever in the declaration it is written.
+decl_attribute(weak).
+decl_attribute(section).
+decl_attribute(alias).
+decl_attribute(weakref).
+decl_attribute(constructor).
+decl_attribute(destructor).
+decl_attribute(gnu_inline).
+decl_attribute(common).
 
 nullability(N) :- memberchk(N, ['_Nullable', '_Nonnull', '_Null_unspecified', '_Nullable_result']).
 

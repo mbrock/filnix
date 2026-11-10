@@ -11,8 +11,9 @@ trap 'rm -rf "$work"' EXIT
 n=0
 compare() {
   local f=$1
-  # nanofil does not advertise __int128, which it refuses (c_pp.pl).
-  "$filcc" -U__SIZEOF_INT128__ -E -o "$work/ref.i" "$f"
+  # nanofil does not advertise __int128 or _BitInt, which it refuses
+  # or lacks (c_pp.pl).
+  "$filcc" -U__SIZEOF_INT128__ -U__BITINT_MAXWIDTH__ -E -o "$work/ref.i" "$f"
   (cd "$src" && "$nanofil" tokens "$work/ref.i" </dev/null) >"$work/ref.tokens"
   (cd "$src" && "$nanofil" tokens "$f" </dev/null) >"$work/our.tokens"
   if ! diff -u "$work/ref.tokens" "$work/our.tokens" >"$work/diff"; then

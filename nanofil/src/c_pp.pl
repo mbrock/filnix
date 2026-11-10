@@ -950,11 +950,13 @@ pp_profile(Clang, profile(Macros, Paths, Features)) :-
     include_directories(VerboseLines, Paths),
     feature_profile(Clang, Features).
 
-% clang defines __SIZEOF_INT128__, but nanofil refuses __int128: a
-% program that tests for it (coreutils' factor.c) takes its portable
-% path instead. nanofil-cc undefines it in clang's preprocessing too.
-profile_define([t('#', _, _, _), t(define, _, _, _), t('__SIZEOF_INT128__', _, _, _)|_],
-               Macros, Macros) :- !.
+% clang defines __SIZEOF_INT128__ and __BITINT_MAXWIDTH__, but nanofil
+% refuses __int128 and has no _BitInt: a program that tests for them
+% (coreutils' factor.c, glibc's math_uint128.h) takes its portable path
+% instead. nanofil-cc undefines them in clang's preprocessing too.
+profile_define([t('#', _, _, _), t(define, _, _, _), t(M, _, _, _)|_],
+               Macros, Macros) :-
+    memberchk(M, ['__SIZEOF_INT128__', '__BITINT_MAXWIDTH__']), !.
 profile_define([t('#', _, _, _), t(define, _, _, _)|Ts], Macros0, Macros) :-
     !,
     definition_macros(Ts, Macros0, Macros).
