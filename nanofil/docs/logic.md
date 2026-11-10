@@ -750,14 +750,23 @@ packages are still landing.
   proves `hello_linked`. The proof is about the image we run. That
   the linker's pruning kept every reachable definition of the
   original objects is trusted, checked by the linker's own traversal.
-- [HelloVersion.v](../rocq/theories/HelloVersion.v) (471c501) proves
-  `proper_name`, the identity, and the help footer
+- [HelloVersion.v](../rocq/theories/HelloVersion.v) (471c501,
+  dac4525) proves `proper_name`, the identity, and the help footer
   `emit_bug_reporting_address`. The footer's literals stay owned by
   the program; stdout is the world's cell. Its four output calls take
   premises that line up with Campaign 4's Formatting.v contracts.
-  The variadic `version_etc` chain is not yet covered: it needs a rule
-  for the va snapshot's allocation, ownership of the VaArg cursor,
-  and the branches over 0 to 10 authors.
+  It also proves the version chain `version_etc`, `version_etc_va`
+  and `version_etc_arn` for the one call main makes
+  (`version_main_args`): the stream, the package, program and version
+  literals, four author pointers that are `proper_name`'s results, and
+  a null. The other author counts are unreachable, since nothing else
+  calls the chain. `version_etc_va` derives the count of four by
+  running its loop's five va_arg reads over the snapshot; the count is
+  not a premise. The six output calls keep the program's literals on
+  success, partial and negative output alike. The snapshot's
+  allocation, the stores into the author array and the cursor update
+  are world-frame premises (`Kversion_*`), and the output contracts
+  are raw premises like the footer's.
 
 - [HelloClose.v](../rocq/theories/HelloClose.v) (2a1f328) proves
   `close_stream` and `close_stdout`. `close_stream` consumes a usable
@@ -784,6 +793,12 @@ Conventions the pieces share:
   - `wp_strncmp_lengths`;
   - `heap_exact_adequacy` and the Linked transports;
   - `rule_va_args` and `wp_va_args`;
+  - `rule_va_arg`, `wp_va_arg` and `wp_va_arg_pointer`, the cursor
+    read; `rule_snapshot` and `wp_snapshot`, the va snapshot's
+    allocation;
+  - `wp_raw_load_literal`, a pointer load from a read-only literal,
+    which needs an Oracle review of its capability reasoning before
+    promotion;
   - `wp_world_let`, a load whose value wi fixes;
   - `wp_close_errno`, `wp_close_load_w`, `wp_close_contract` and
     `wp_close_stream_pointer`.
