@@ -44,7 +44,8 @@ nanofil/tests/guide.sh [--check]               # regenerate (or check) the outpu
 swipl nanofil/tests/docs.pl -- nanofil/src     # every module has a header and every export PlDoc
 (cd nanofil && swipl web/dterm.pl --check docs/README.md docs/guide.md docs/formal.md docs/filc.md docs/iris.md docs/logic.md docs/nfb-guide-argon.md docs/nfb-guide-wonder.md docs/nfb-guide-wonderful.md src --concepts=docs/concepts --rocq=rocq/theories --rocq=rocq/spikes --rocq=rocq/backend)  # the documents', concepts' and [[concept]] references resolve
 (cd nanofil/src && ../bin/nanofil --script ../tests/gen.pl SEED COUNT </dev/null) >gen.ir  # random IR corpus
-nix build .#checks.x86_64-linux.nanofil        # everything, in one build (about 45 min); CI runs it in 8 shards after each push
+nix build .#checks.x86_64-linux.nanofil        # everything, in one build (about 45 min); CI runs it in 8 shards after each push that changes src, bin or tests
+nix build .#checks.x86_64-linux.nanofil-docs   # the documents' references and the guide's outputs (about a minute)
 nix build .#checks.x86_64-linux.nanofil-rocq   # quick: every theory (one derivation each), model, small corpus
 nix build .#checks.x86_64-linux.nanofil-rocq-parse # grammar round trip of every theory (web/rocq/tests/parse.sh)
 nix build .#checks.x86_64-linux.nanofil-rocq-full # deliberate full mutation campaign (docs/rocq.md)
@@ -72,7 +73,8 @@ theory and its importers), `nanofil-rocq-parse` for changes to
 `web/rocq/rocq_syntax.pl`, `reprint.pl` or `parse.sh`, and a package check for frontend or backend changes.
 Then push with `scripts/ship` (nanofil-only pushes skip the cache gate)
 and keep working. After the push, CI runs `checks.nanofil` split into 8
-shards (.github/workflows/nanofil.yml), quick Rocq and the site. If one
+shards (.github/workflows/nanofil.yml, only when src, bin or tests
+change), the docs check, quick Rocq and the site. If one
 of your runs goes red, fix it forward. To see the whole check on a
 branch before pushing, run the Nanofil workflow on it with
 `workflow_dispatch`, or build one shard locally:

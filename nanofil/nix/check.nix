@@ -31,6 +31,17 @@ let
   trealla = import ./trealla.nix { inherit pkgs; };
   corpus = import ./corpus.nix { inherit pkgs; };
   shardName = builtins.replaceStrings [ "/" ] [ "-of-" ] shard;
+  # The compiler, its driver and its tests: the documents and the Rocq
+  # theories have their own checks (docs.nix, rocq.nix), so editing them
+  # leaves this derivation, and CI's eight shards, unchanged.
+  src = pkgs.lib.fileset.toSource {
+    root = ../.;
+    fileset = pkgs.lib.fileset.unions [
+      ../src
+      ../bin
+      ../tests
+    ];
+  };
 in
 pkgs.runCommandCC
   (if shard == null then "nanofil-check" else "nanofil-check-${shardName}")
@@ -90,7 +101,7 @@ pkgs.runCommandCC
           ${corpus.cproc} ${corpus.c-testsuite} --partition "$part/4"
       done
     }
-    cp -r ${../.} nanofil
+    cp -r ${src} nanofil
     chmod -R u+w nanofil
     cd nanofil
     patchShebangs tests bin
@@ -123,12 +134,7 @@ pkgs.runCommandCC
     # Every module has a header and every export PlDoc (docs/guide.md,
     # Conventions).
     step docs swipl tests/docs.pl -- src
-    # Every predicate, module, link and concept reference in the documents
-    # dterm draws (packages/site's dtermDocs) and the concepts resolves, as
-    # does every [[concept]] in a Prolog or Rocq comment, and each prolog
-    # output has its terms (web/dterm_guide.pl).
-    step "guide links" swipl web/dterm.pl --check docs/README.md docs/guide.md docs/formal.md docs/filc.md docs/iris.md docs/logic.md docs/nfb-guide-argon.md docs/nfb-guide-wonder.md docs/nfb-guide-wonderful.md src \
-      --concepts=docs/concepts --rocq=rocq/theories --rocq=rocq/spikes --rocq=rocq/backend
+    # The documents' references and the guide's outputs: docs.nix.
     # M9 interpreter against nanofil's SSE2 backend.
     # Integer-bit wrappers preserve NaN payloads and negative zero.
     step "difftest float SSE2" env CC=$CC tests/difftest.sh tests/float/*.ir
@@ -136,9 +142,6 @@ pkgs.runCommandCC
     step "difftest backend" env CC=$CC tests/par.sh tests/difftest.sh tests/backend/*.ir
     export FILCC=${filcc}/bin/clang
     step pptest tests/pptest.sh
-    # The guide's example outputs (docs/guide.md, README.md) are what the
-    # compiler now produces.
-    step guide tests/guide.sh --check
     step "difftest filc/*.ir" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/asm-fixed-runs.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/filc/guard-span.ir tests/filc/branches.ir tests/filc/alloc-limit.ir
     step "run-c interop gc float" tests/par.sh tests/filc/run-c.sh interop gc float asm-fixed
     step "variadic+float gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh variadic float
