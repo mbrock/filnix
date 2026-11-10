@@ -681,6 +681,14 @@ let () =
   | [| _; "module" |] -> big_minor_heap (); whole ()
   | [| _; "compile-terms" |] -> big_minor_heap (); compile_terms ()
   | [| _; "compile"; f |] -> big_minor_heap (); compile_file f
+  (* `compile-nfb FILE.nfb`: as `compile`, the module read from the NFB
+     `nanofil encode-input` writes, by NfbTerm.v's read_term
+     (read_encode_term in NfbRead.v); tests/nfb-compile.sh holds it to
+     the text's assembly. *)
+  | [| _; "compile-nfb"; f |] -> big_minor_heap ();
+      (match timed parse_s (fun () -> read_term (file_words f)) with
+       | Some (m, _) -> compile_term m
+       | None -> prerr_endline "nanofil-backend: the NFB is not read"; exit 1)
   | [| _; "nfb"; prefix |] -> big_minor_heap (); nfb prefix
   | [| _; "pizlonate" |] -> big_minor_heap (); pizlonate ()
   | _ when Array.length Sys.argv >= 3 && Sys.argv.(1) = "read" ->
@@ -689,6 +697,6 @@ let () =
       big_minor_heap (); nfb_read (List.tl (List.tl (Array.to_list Sys.argv)))
   | _ ->
       prerr_endline
-        "usage: nanofil-backend compile FILE.ir, or [abi | emit | module | compile-terms | nfb PREFIX | \
+        "usage: nanofil-backend compile FILE.ir, compile-nfb FILE.nfb, or [abi | emit | module | compile-terms | nfb PREFIX | \
          pizlonate] <TERMS, or read FILE.ir... <TERMS, or nfb-read FILE.nfb...";
       exit 2

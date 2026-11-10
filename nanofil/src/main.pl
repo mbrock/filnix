@@ -18,6 +18,7 @@
     | `asm-terms FILE TEXT` | as `compile` for a Fil-C module, but write the assembly text to the file TEXT and print each asm.pl line as a term (rocq/backend) |
     | `abi-terms FILE` | print the checked module of a Fil-C file, then the reference ABI plan of each of its functions and its weak thunks' plans, as terms (rocq/backend) |
     | `encode FILE OUT` | read, validate and write the module as NFB, the bytecode of nfb.pl, to OUT (docs/nfb.md) |
+    | `encode-input FILE OUT` | as `encode`, without the CONTEXT section: the input of `nanofil-backend compile-nfb` (docs/nfb.md) |
     | `decode FILE` | read an NFB file, validate, print the IR |
     | `nfb-terms FILE PREFIX` | write the module, and a Fil-C module's checked module, as NFB with NAMES to `PREFIX.unchecked.nfb` and `PREFIX.checked.nfb`, and print each as `nfb_module(Stage, Module)` without its context items (rocq/backend) |
     | `nfb-check FILE` | write the module, and a Fil-C module's checked module, as NFB and read each back: the same term with NAMES, the same words without it (tests/nfb.sh) |
@@ -676,6 +677,11 @@ command(Opt, [encode, File, Out]) :-
     file_module(File, Module0),
     optimize(Opt, Module0, Module),
     module_nfb(Module, Words),
+    write_nfb_file(Out, Words).
+command(Opt, ['encode-input', File, Out]) :-
+    file_module(File, Module0),
+    optimize(Opt, Module0, Module),
+    module_nfb(Module, [names], Words),
     write_nfb_file(Out, Words).
 command(_, [decode, File]) :-
     (   atom_concat(_, '.nfb', File) -> true

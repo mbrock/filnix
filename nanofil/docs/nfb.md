@@ -495,43 +495,24 @@ The second is the one that costs something, because every canonical-form rule be
 > 1.5 s, and in 1.0 to 1.2 s without NAMES. There NFB is already the
 > faster input, with no id-indexed form.
 >
-> **The id-indexed form, agreed with the backend.** This waits until
-> the backend starts M5. The backend measured that numbering
-> temporaries does not speed its passes, which pay for walking lists
-> rather than for comparing names (gallina-backend.md, The
-> measurements of M5), so the form would save only the reader's name
-> terms, a fraction of the 1.5 s above. It is not worth its proof
-> until a profile says otherwise.
->
-> - The decoder returns a `Syntax.v` module and no second inductive.
->   Temporaries and locals are `TInt` of their ids, and a label is
->   `TInt` of its block's index. Symbols, functions and data keep
->   their names, since the assembly prints them. A function outside
->   the core subset stays `IOutside` with its term and its real names.
-> - Beside the module it returns each function's names, from NAMES or
->   the ids themselves without it: the terms of its temporaries,
->   labels and locals, each list indexed by id.
-> - The backend owns what uses ids: maps keyed by the `Z` inside
->   `TInt`, and a ranking of each function's names after pizlonation.
->   The frame layout follows the names' order, and pizlonation adds
->   names, so the decoder sorts nothing.
-> - The theorem: `decode_ids ws = Some (m, ns)` implies
->   `decode_input ws = Some (named ns m)`, where `named` renames ids
->   back to names. Every proof over `Syntax.v` carries over through it.
->
-> The plan is the cheap variant first. The reader already names by id
-> when NAMES is absent, so `decode_ids` reads NAMES into the record
-> instead of substituting it, then runs `decode_module`. The proof is a
-> renaming lemma at two levels: the reader with name tables is the id
-> reader renamed at the forms table's name fields, and
-> `decode_module` commutes with `named` for each core-subset decoder.
-> That is about 1,500 to 2,500 lines, in an `Nfb*.v` file outside the
-> model's quick gate. It covers the checked stage only: the unchecked
-> stage has no `Syntax.v` types (the backend pizlonates it as a term,
-> with `Pizlonate.pizlonate_module`), so unchecked NFB decodes to its
-> term, by `read_term`. A reader from words straight to `Syntax.v`,
-> with no intermediate term, would be a second large proof for
-> perhaps twice the speed, and comes only if a profile asks for it.
+> **No id-indexed form.** One was planned for M5: `Syntax.v`'s own
+> module with temporaries, locals and labels as `TInt` ids, each
+> function's names returned beside it, and a proved renaming back to
+> `decode_input`'s module. It is dropped. The backend measured that
+> numbering temporaries does not speed its passes, which pay for
+> walking lists rather than for comparing names (gallina-backend.md,
+> The measurements of M5), so the form would save only the reader's
+> name terms, a fraction of the 1.5 s above, for a proof of about
+> 1,500 to 2,500 lines. Instead the standalone compiler reads NFB as
+> it is, with the text input beside it: `nanofil encode-input FILE OUT`
+> writes the module with NAMES and without CONTEXT, and
+> `nanofil-backend compile-nfb OUT` reads it with `read_term` and
+> compiles it as `compile` does the text. `rocq/backend/tests/nfb-compile.sh`
+> holds the two to the same assembly and exit status on `tests/filc`.
+> On SQLite both print the same 135 MB of assembly; the NFB read
+> takes 1.3 s against the text's 7.2 s, and the whole compile peaks
+> at 384 MB against 1.38 GB. CONTEXT, 29 million words there, is
+> left out because reading it would cost as much as the text.
 
 ## Security considerations
 
