@@ -88,6 +88,26 @@ let
     "iris"
     "logic"
   ];
+  # dterm reads Prolog, concepts, saved guide outputs and Rocq indexes.
+  # Keep nanofil/docs for its document-link existence checks as well as
+  # the six rendered documents, but not unrelated site docs/pages/Nix.
+  prologSrc = lib.fileset.toSource {
+    root = ../..;
+    fileset = lib.fileset.unions [
+      ../../nanofil/src
+      ../../nanofil/docs
+      ../../nanofil/web/dterm.pl
+      ../../nanofil/web/dterm_html.pl
+      ../../nanofil/web/dterm_guide.pl
+      ../../nanofil/web/dterm_diagram.pl
+      ../../nanofil/web/dterm.css
+      ../../nanofil/web/dterm.js
+      ../../nanofil/web/concepts.pl
+      ../../nanofil/web/rocq/rocq_draw.pl
+      ../../nanofil/web/rocq/rocq_syntax.pl
+      (lib.fileset.fileFilter (f: f.hasExt "v") ../../nanofil/rocq)
+    ];
+  };
   # The Rocq pages read the complete Rocq/Prolog/concept index, but not
   # ordinary Markdown or the rest of the website. Keep those edits from
   # invalidating the cached rendering as well as the proof captures.
@@ -108,13 +128,15 @@ let
     pkgs.runCommand "filnix-prolog-pages" { nativeBuildInputs = [ swipl ]; }
       ''
         mkdir -p $out
-        cp ${src}/nanofil/web/dterm.css ${src}/nanofil/web/dterm.js $out/
-        swipl ${src}/nanofil/web/dterm.pl $out ${src}/nanofil/src \
+        cp ${prologSrc}/nanofil/web/dterm.css ${prologSrc}/nanofil/web/dterm.js $out/
+        swipl ${prologSrc}/nanofil/web/dterm.pl $out ${prologSrc}/nanofil/src \
           ${
-            lib.concatMapStringsSep " " (d: "--doc=${src}/nanofil/docs/${d}.md") dtermDocs
+            lib.concatMapStringsSep " " (
+              d: "--doc=${prologSrc}/nanofil/docs/${d}.md"
+            ) dtermDocs
           } \
-          --concepts=${src}/nanofil/docs/concepts --rocq=${src}/nanofil/rocq/theories \
-          --rocq=${src}/nanofil/rocq/spikes </dev/null
+          --concepts=${prologSrc}/nanofil/docs/concepts --rocq=${prologSrc}/nanofil/rocq/theories \
+          --rocq=${prologSrc}/nanofil/rocq/spikes </dev/null
       '';
   rocqPages =
     pkgs.runCommand "filnix-rocq-pages" { nativeBuildInputs = [ swipl ]; }
