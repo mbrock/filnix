@@ -45,8 +45,9 @@ page about it is listed here.
   (Hello) needs proved, and the libc boundary it relies on.
 - [Contracts at the zsys_ boundary](zsys.md): an exploration of
   libpizlo's pizlonated system calls as the boundary instead of libc,
-  what Hello reaches through user glibc, and how much of user glibc
-  nanofil compiles to IR.
+  what Hello reaches through user glibc, how much of user glibc
+  nanofil compiles to IR, and Hello running on a glibc whose units it
+  reaches are nanofil's.
 - [A spike: proofs that link user glibc's IR](glibc-ir.md): two
   programs proved with glibc's own strlen and write in the module, and
   libpizlo's zsys_write as the one contract.

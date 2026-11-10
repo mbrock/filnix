@@ -205,9 +205,11 @@ process exit.
 2. **The syscall stubs call through `zcall`.** Each `syscalls.list`
    entry becomes a function whose whole body returns what `zcall` of the
    `zsys_` function on `zargs` returns: it passes its own argument
-   buffer, untyped, to the primitive. nanofil compiles it to IR (below),
-   but `zargs` and `zreturn` speak of the frame's argument and return
-   buffers, which the machine has no memory for. The choices are to
+   buffer, untyped, to the primitive. `zcall` is a libpizlo function,
+   but `zargs` and `zreturn` are FilPizlonator intrinsics that speak of
+   the frame's argument and return buffers, which the machine has no
+   memory for; nanofil lowers them as calls to functions nothing
+   defines (below). The choices are to
    model them in Machine.v, to give each stub a contract generated from
    its `syscalls.list` signature, or to generate typed stubs in
    `make-syscalls.sh` for both compilers.
@@ -475,8 +477,53 @@ Each frontend fix has a test that fails without it:
   and an offset other than `+ 0` is refused. `tests/c/prog/filc-asm.c`
   covers them against filcc.
 
-Every generated syscall stub now compiles: its body, a `zcall` of the
-`zsys_` function on `zargs`, is ordinary IR that calls libpizlo.
+Every generated syscall stub now compiles, but not to IR that links:
+its body, a `zcall` of the `zsys_` function on `zargs`, names
+FilPizlonator's intrinsics `zargs` and `zreturn` (146 units), which
+nanofil lowers as calls and libpizlo does not export. Implementing
+them is decision 12.
+
+## Running nanofil's glibc
+
+Compiling is not running, so `survey/glibc/mixed.nix` builds the
+staging toolchain's own user glibc with nanofil (`-O`) compiling a
+chosen list of units, `survey/glibc/run/units.txt`, and filcc the rest.
+glibc's own make links that `libc.so`. GNU Hello and five small
+programs in `survey/glibc/run/` (strings and ctype, stdio, `printf` of
+`double` and `long double` floats, malloc, and exit status, `abort` and
+`_Exit`) are built once with filcc and run twice: against the stock
+glibc, and with `LD_LIBRARY_PATH` naming the mixed one, which the
+loader maps (`LD_DEBUG=libs` checks that). By hand, not CI:
+
+    nix build --impure -f nanofil/survey/glibc/mixed.nix check -o /tmp/glibc-mixed-check
+
+The list is the 299 units that define a function Hello or the programs
+reach (`reach.py` over Hello's 33 names and the 66 more the programs
+call), which compile to IR, less the syscall stubs that name `zargs`
+(below). It holds 240 of the 244 units Hello reaches, among them
+`vfprintf-internal`, `printf_fp`, `malloc`, `fileops`, `strtod_l`,
+`getopt` and the string functions. The libc is shared, so these are
+the `.os` builds of the same sources as Hello's `libc.a` members.
+
+**Result, 2026-11-10:** nanofil compiled all 299, and all 24
+invocations agree on stdout and exit status. Hello ran with 12
+argument sets, including bad options, a UTF-8 greeting and `--help`;
+the floats program covered `%f %e %g %a` from subnormals to 1e+4000;
+malloc made 32.7 million allocations. The one difference is in stderr:
+`abort`'s Fil-C panic backtrace shows the frame of `__GI_abort` as
+`<somewhere>` instead of `abort.c:78:3`, because nanofil emits no line
+information.
+
+Two gaps showed only at link time, which `run.py` does not reach:
+
+- **GNU extern inline bodies that nothing defines.** glibc builds with
+  `-fgnu89-inline`, and `__libc_use_alloca` and `__find_specmb` exist
+  only as `extern inline` bodies, which clang inlines at `-O2`. nanofil
+  called the external symbol. Now calls go to a local copy, as for an
+  `always_inline` inline-only body, unless the body names its own
+  symbol, as a fortify wrapper does through an asm label
+  (`tests/c/prog/gnu89-inline-only.c`).
+- **`zargs` and `zreturn`.** The syscall stubs need them (decision 12).
 
 ## Decisions this raises
 
@@ -498,6 +545,7 @@ Every generated syscall stub now compiles: its body, a `zcall` of the
    FilPizlonator accepts a list of x87 control instructions and treats
    `stmxcsr` and `ldmxcsr` as checked memory accesses. Recommended:
    later; the interpreter has no floating-point environment to model.
+   Decided: deferred.
 9. **`_Complex`.** Done for `float` and `double` (above); what is
    left is 10 and 11.
 10. **`_Complex long double` returns** (20 libm units, the `l` variants).
@@ -507,10 +555,19 @@ Every generated syscall stub now compiles: its body, a `zcall` of the
    IR's returns are at most two words (`tuple([K1, K2])`), so this is an
    IR change, a two-`x` return the Fil-C backend writes to both slots,
    with the interpreter and Rocq's validator. Its arguments, through
-   memory, already match. Recommended: when libm's `l` functions matter.
+   memory, already match. Decided: deferred; the IR change goes to
+   Campaign 3 once libm's `l` complex functions matter.
 11. **Multiplying or dividing two complex values** (`cpow`, `cpowf`).
    clang calls compiler-rt's `__muldc3`, `__mulsc3`, `__divdc3` and
    `__divsc3`, which in Fil-C are native code (`libyolort.a`) that IR
-   cannot call. Recommended: compile compiler-rt's `muldc3.c` and its
-   kin with nanofil into ordinary IR the frontend calls, or leave the two
-   units out.
+   cannot call. Compiling compiler-rt's `muldc3.c` and its kin with
+   nanofil into ordinary IR the frontend calls would serve them. Decided:
+   the two units stay out, with the refusal.
+12. **`zargs` and `zreturn`** (146 units: every generated syscall stub
+   and variadic wrappers such as `open64`, `fcntl64` and `ioctl`).
+   FilPizlonator compiles them to the frame's argument and return
+   buffers, and libpizlo does not export them, so nanofil's calls to
+   them do not link. Recommended: IR
+   operations for the frame's argument and return buffers, as a
+   separate item, with Campaign 3 told the operations exist. Until then
+   the mixed glibc keeps filcc's objects for these units.

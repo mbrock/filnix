@@ -823,18 +823,21 @@ top_item(ExternalNames, fundef(Loc, Specs, dcl(some(Name), DclType, Asm), Body),
             % definition once it optimizes, so no unit need define the
             % symbol (ell's DEFINE_CLEANUP_FUNC): calls go to a local copy,
             % lowered if called; the function's address is still the
-            % external one. A GNU extern inline body has an external
-            % definition by contract (glibc's fortify wrappers, which call
-            % it through an asm label), so its calls keep going there.
+            % external one.
+            local_inline_copy(always_inline, Loc, Name, Type, DclType, Body, Env2, Env)
+        ;   gnu_inline_rule(Specs),
             lookup_ordinary(Env2, Name, fn(_, Sym, _)),
-            format(atom(Local), '~w.always_inline', [Sym]),
-            env_scope(Env2, Scope, _),
-            put_def(deferred(Local), df(Loc, Name, Type, DclType, Body, Scope),
-                    Env2, Env3),
-            put_def(inline_copy(Sym), Local, Env3, Env4),
-            put_def(inline_copy_of(Local), Sym, Env4, Env5),
-            put_def(inline_attribute(Local), always_inline, Env5, Env)
-        ;   Env = Env2      % GNU extern inline or a C99 inline-only definition
+            \+ ( body_identifier(Body, X), names_symbol(X, Sym, Env2) )
+        ->  % A GNU extern inline body is the function's meaning, as an
+            % external definition must be (C11 6.7.4p7), and clang, which
+            % sees it as available_externally, inlines its calls at -O2:
+            % glibc defines __libc_use_alloca and __find_specmb nowhere
+            % else. Calls go to a local copy too. One that names its own
+            % symbol, as glibc's fortify wrappers do through an asm label
+            % or a __builtin_ spelling, keeps calling the external one,
+            % or the copy would call itself.
+            local_inline_copy(gnu_inline, Loc, Name, Type, DclType, Body, Env2, Env)
+        ;   Env = Env2      % a C99 inline-only definition
         )
     ;   Storage == static
     ->  % One nanofil cannot lower is deferred as a static inline is:
@@ -853,6 +856,38 @@ top_item(ExternalNames, fundef(Loc, Specs, dcl(some(Name), DclType, Asm), Body),
         )
     ;   vector_abi(Type, Env2, ctx(Name, none, none, none, Loc)),
         function(Loc, Name, Type, DclType, Body, Env2, Env, Funcs)
+    ).
+
+% local_inline_copy(+Kind, +Loc, +Name, +Type, +DclType, +Body, +Env0, -Env):
+% calls of the function Name go to Name's Sym.Kind, a local copy of its
+% inline Body, deferred and so lowered only if called. An always_inline
+% copy keeps the attribute for -O's inlining.
+local_inline_copy(Kind, Loc, Name, Type, DclType, Body, Env0, Env) :-
+    lookup_ordinary(Env0, Name, fn(_, Sym, _)),
+    format(atom(Local), '~w.~w', [Sym, Kind]),
+    env_scope(Env0, Scope, _),
+    put_def(deferred(Local), df(Loc, Name, Type, DclType, Body, Scope), Env0, Env1),
+    put_def(inline_copy(Sym), Local, Env1, Env2),
+    put_def(inline_copy_of(Local), Sym, Env2, Env3),
+    (   Kind == always_inline -> put_def(inline_attribute(Local), always_inline, Env3, Env)
+    ;   Env = Env3
+    ).
+
+% body_identifier(+Body, -X): X is an identifier the function body names.
+body_identifier(id(X), X) :- atom(X).
+body_identifier(T, X) :-
+    compound(T), T \= id(_),
+    arg(_, T, A), body_identifier(A, X).
+
+% names_symbol(+X, +Sym, +Env): the identifier X calls or names a
+% function of symbol Sym: itself, through an asm label, or as a
+% __builtin_X spelling of it.
+names_symbol(X, Sym, Env) :-
+    (   lookup_ordinary(Env, X, fn(_, Sym, _)) -> true
+    ;   atom_concat('__builtin_', B, X),
+        (   B == Sym -> true
+        ;   lookup_ordinary(Env, B, fn(_, Sym, _))
+        )
     ).
 
 /* GNU's constructor and destructor attributes, with an optional
