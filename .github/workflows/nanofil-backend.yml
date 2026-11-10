@@ -4,6 +4,10 @@
 # propagation, the Fil-C ABI and emission, and asm.pl. Keep this list to
 # those. It never blocks a push:
 # a red run is fixed forward on main.
+# The crane job holds the same Gallina, extracted to C++ by Crane
+# (nanofil/nix/backend-crane.nix), to the same outputs on the IR
+# fixtures. Extracting and compiling the C++ takes minutes on one
+# translation unit, which is why it is a job of its own.
 # workflow_dispatch with full takes the whole corpus, with and without -O,
 # and the translation units of zlib, GNU hello and Lua; it is about an
 # hour of one core's work.
@@ -15,6 +19,9 @@ on:
     paths:
       - "nanofil/rocq/backend/**"
       - nanofil/nix/backend.nix
+      - nanofil/nix/backend-crane.nix
+      - nanofil/nix/crane.nix
+      - nanofil/nix/crane-nanofil.patch
       - nanofil/src/asm.pl
       - nanofil/src/copy.pl
       - nanofil/src/filc_abi.pl
@@ -74,3 +81,26 @@ jobs:
         with:
           name: nanofil-backend-log
           path: nanofil-backend.log
+
+  crane:
+    if: ${{ !inputs.full }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      NIX_CONFIG: |
+        extra-substituters = https://filc.cachix.org
+        extra-trusted-public-keys = filc.cachix.org-1:8rA7kXyu1HaJuMTsAKfA9fU/+r8YtLv5KiZ5hfDNZMk=
+        builders =
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Extract to C++, build and compare
+        run: |
+          set -o pipefail
+          python3 nanofil/tests/watch.py --label nanofil-backend-crane --warn-after 1500 --timeout 3000 -- \
+            nix build -L --no-link --cores 4 .#checks.x86_64-linux.nanofil-backend-crane 2>&1 | tee nanofil-backend-crane.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nanofil-backend-crane-log
+          path: nanofil-backend-crane.log

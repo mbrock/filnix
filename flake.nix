@@ -372,6 +372,10 @@
               filcc = filcc-staging;
               full = true;
             };
+            # The same backend extracted to C++ by Crane.
+            nanofil-backend-crane = import ./nanofil/nix/backend-crane.nix {
+              inherit pkgs;
+            };
             nanofil-hello = import ./nanofil/nix/hello.nix {
               inherit pkgs;
               filcc = filcc-staging;

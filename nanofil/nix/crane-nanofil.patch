@@ -1,0 +1,705 @@
+diff --git a/src/benchmark.ml b/src/benchmark.ml
+index c102158..9f0d96a 100644
+--- a/src/benchmark.ml
++++ b/src/benchmark.ml
+@@ -157,9 +157,20 @@ let ocaml_callable reference =
+   let _, labels = Table.labels_of_ref reference in
+   let modules, _ = split_last_label labels in
+   let term =
++    let keywords =
++      Extraction_plugin.Ocaml.ocaml_descr.Extraction_plugin.Miniml.keywords
++    in
+     Extraction_plugin.Common.pp_global_name
++      (Extraction_plugin.Common.State.make
++         ~modular:false
++         ~library:false
++         ~keywords
++         ())
+       Extraction_plugin.Common.Term
+-      reference
++      {
++        Extraction_plugin.Miniml.glob = reference;
++        inst = Extraction_plugin.Miniml.InfvInst.empty;
++      }
+   in
+   String.concat "." (List.map Label.to_string modules @ [term])
+ 
+@@ -169,7 +180,12 @@ let ocaml_output expression =
+   let string_ref =
+     Nametab.locate (qualid_of_string "Corelib.Strings.PrimString.string")
+   in
+-  if Extraction_plugin.Table.is_custom string_ref then
++  if Extraction_plugin.Table.is_custom
++       {
++         Extraction_plugin.Miniml.glob = string_ref;
++         inst = Extraction_plugin.Miniml.InfvInst.empty;
++       }
++  then
+     expression
+   else
+     "Pstring.to_string (" ^ expression ^ ")"
+diff --git a/src/common.ml b/src/common.ml
+index e26c6ff..2a53144 100644
+--- a/src/common.ml
++++ b/src/common.ml
+@@ -1552,6 +1552,25 @@ let get_native_char c =
+   in
+   Char.chr (cumul l)
+ 
++(** A byte as it is written inside a C++ character or string literal.
++    Anything but a plain printable character is three octal digits, which
++    is a whole escape, so a digit after it is never read into it. *)
++let cpp_escaped_byte c =
++  let n = Char.code c in
++  if n >= 32 && n < 127 && c <> '\\' && c <> '\'' && c <> '"' && c <> '?'
++  then String.make 1 c
++  else Printf.sprintf "\\%03o" n
++
++(** A string as a C++ [std::string] expression, by its length, so that a
++    zero byte does not end it. *)
++let cpp_string_literal s =
++  let buf = Buffer.create (String.length s + 16) in
++  String.iter (fun c -> Buffer.add_string buf (cpp_escaped_byte c)) s;
++  Printf.sprintf "std::string(\"%s\", %d)" (Buffer.contents buf) (String.length s)
++
++(** A character as a C++ [char] literal. *)
++let cpp_char_literal c = "'" ^ cpp_escaped_byte c ^ "'"
++
+ (** Pretty-print an ascii constructor as a C++ char literal. *)
+ let pp_native_char c = str ("'" ^ Char.escaped (get_native_char c) ^ "'")
+ 
+@@ -1583,7 +1602,8 @@ let check_extract_string () =
+       match lang () with
+       | Cpp -> "string"
+     in
+-    String.equal (find_custom @@ string_type_ref ()) string_type
++    let custom = find_custom @@ string_type_ref () in
++    String.equal custom string_type || String.equal custom "std::string"
+   with Not_found -> false
+ 
+ (** The argument is known to be of type Strings.String.string. Check that it is
+diff --git a/src/common.mli b/src/common.mli
+index 7109cc9..835c199 100644
+--- a/src/common.mli
++++ b/src/common.mli
+@@ -336,6 +336,10 @@ val is_reserved_at_global_scope : string -> bool
+ 
+ (** Check whether an ML term is an [ascii] constructor application that can be
+     decoded into a native C++ [char] literal. *)
++val cpp_string_literal : string -> string
++val cpp_char_literal : char -> string
++val string_type_ref : unit -> GlobRef.t
++val ascii_type_ref : unit -> GlobRef.t
+ val is_native_char : ml_ast -> bool
+ 
+ (** Decode an [ascii] constructor application into a native [char] value. *)
+diff --git a/src/cpp.ml b/src/cpp.ml
+index 8a18693..8051a04 100644
+--- a/src/cpp.ml
++++ b/src/cpp.ml
+@@ -462,7 +462,8 @@ let starts_with_doc_comment p =
+     | p :: rest ->
+       ( match Pp.repr p with
+       | Ppcmd_empty | Ppcmd_print_break _ -> first_output rest
+-      | Ppcmd_string text -> Some (String.starts_with ~prefix:"///" text)
++      | Ppcmd_string text | Ppcmd_sized_string (_, text) ->
++        Some (String.starts_with ~prefix:"///" text)
+       | Ppcmd_glue parts ->
+         ( match first_output parts with
+         | Some _ as result -> result
+diff --git a/src/cpp_print.ml b/src/cpp_print.ml
+index 161f2a4..e7a93fb 100644
+--- a/src/cpp_print.ml
++++ b/src/cpp_print.ml
+@@ -1578,8 +1578,19 @@ and pp_cpp_expr env args t =
+          form, which is what this always used to emit. *)
+       | Some ty when Ml_type_util.contains_tvar ty -> "const auto &" ^ name
+       | Some ty ->
+-        Pp.string_of_ppcmds
+-          (str "const " ++ pp_cpp_type false [] ty ++ str (" &" ^ name))
++        (* The receiver's own type, printed here, is qualified by its Rocq
++           module ([Syntax::Value]) although an inductive is declared at the
++           top level, so the name does not resolve.  The unqualified name
++           after the last [::] is the declared one. *)
++        let spelled = Pp.string_of_ppcmds (pp_cpp_type false [] ty) in
++        let spelled =
++          if String.contains spelled '<' then spelled
++          else
++            match String.rindex_opt spelled ':' with
++            | Some i -> String.sub spelled (i + 1) (String.length spelled - i - 1)
++            | None -> spelled
++        in
++        "const " ^ spelled ^ " &" ^ name
+       | None -> "const auto &" ^ name
+     in
+     if arity <= 1 then
+diff --git a/src/extract_env.ml b/src/extract_env.ml
+index de348f8..feda353 100644
+--- a/src/extract_env.ml
++++ b/src/extract_env.ml
+@@ -13,6 +13,7 @@
+ open Miniml
+ open Constr
+ open Declarations
++open Mod_declarations
+ open Names
+ open ModPath
+ open Libnames
+@@ -44,7 +45,7 @@ let environment_until dir_opt =
+       let meb =
+         Modops.destr_nofunctor
+           (MPfile d)
+-          (Global.lookup_module (MPfile d)).mod_type
++          (Mod_declarations.mod_type (Global.lookup_module (MPfile d)))
+       in
+       ( match dir_opt with
+       | Some d' when DirPath.equal d d' -> [(MPfile d, meb)]
+@@ -239,7 +240,7 @@ let expand_mexpr env mp me =
+   let mb, (_, cst), _ =
+     Mod_typing.translate_module state vm_state env mp inl (MExpr ([], me, None))
+   in
+-  (mb.mod_type, mb.mod_delta)
++  ((Mod_declarations.mod_type mb), (Mod_declarations.mod_delta mb))
+ 
+ (** Expands a module type algebraic expression into a full module type body. *)
+ let expand_modtype env mp me =
+@@ -260,10 +261,10 @@ let no_delta = Mod_subst.empty_delta_resolver
+     expression. *)
+ let flatten_modtype env mp me_alg struc_opt =
+   match struc_opt with
+-  | Some me -> (me, no_delta)
++  | Some me -> (me, no_delta mp)
+   | None ->
+     let mtb = expand_modtype env mp me_alg in
+-    (mtb.mod_type, mtb.mod_delta)
++    ((Mod_declarations.mod_type mtb), (Mod_declarations.mod_delta mtb))
+ 
+ (** Ad-hoc update of environment, inspired by [Mod_typing.check_with_aux_def].
+ *)
+@@ -316,11 +317,11 @@ let rec extract_structure_spec env mp reso = function
+     specs
+   | (l, SFBmodule mb) :: msig ->
+     let specs = extract_structure_spec env mp reso msig in
+-    let spec = extract_mbody_spec env mb.mod_mp mb in
++    let spec = extract_mbody_spec env (MPdot (mp, l)) mb in
+     (l, Smodule spec) :: specs
+   | (l, SFBmodtype mtb) :: msig ->
+     let specs = extract_structure_spec env mp reso msig in
+-    let spec = extract_mbody_spec env mtb.mod_mp mtb in
++    let spec = extract_mbody_spec env (MPdot (mp, l)) mtb in
+     (l, Smodtype spec) :: specs
+ 
+ (* From [module_expression] to specifications *)
+@@ -362,7 +363,7 @@ and extract_mexpression_spec env mp1 (me_struct, me_alg) =
+       | _ -> assert false
+     in
+     let mp = MPbound mbid in
+-    let env' = Modops.add_module_type mp mtb env in
++    let env' = Modops.add_module_parameter mbid mtb env in
+     MTfunsig
+       ( mbid,
+         extract_mbody_spec env mp mtb,
+@@ -375,7 +376,7 @@ and extract_msignature_spec env mp1 reso = function
+     MTsig (mp1, extract_structure_spec env' mp1 reso struc)
+   | MoreFunctor (mbid, mtb, me) ->
+     let mp = MPbound mbid in
+-    let env' = Modops.add_module_type mp mtb env in
++    let env' = Modops.add_module_parameter mbid mtb env in
+     MTfunsig
+       ( mbid,
+         extract_mbody_spec env mp mtb,
+@@ -383,11 +384,11 @@ and extract_msignature_spec env mp1 reso = function
+ 
+ and extract_mbody_spec : 'a. _ -> _ -> 'a generic_module_body -> _ =
+  fun env mp mb ->
+-   match mb.mod_type_alg with
+-   | Some ty -> extract_mexpression_spec env mp (mb.mod_type, ty)
++   match (Mod_declarations.mod_type_alg mb) with
++   | Some ty -> extract_mexpression_spec env mp ((Mod_declarations.mod_type mb), ty)
+    | None ->
+      (* Fall back to expanding the signature *)
+-     extract_msignature_spec env mp mb.mod_delta mb.mod_type
++     extract_msignature_spec env mp (Mod_declarations.mod_delta mb) (Mod_declarations.mod_type mb)
+ 
+ (** Recursively extracts a module structure to ML declarations. When all=false,
+     only extracts needed declarations based on dependency analysis. Evaluation
+@@ -515,7 +516,7 @@ and extract_mexpression access env mp mty = function
+       | NoFunctor _ -> assert false
+     in
+     let mp1 = MPbound mbid in
+-    let env' = Modops.add_module_type mp1 mtb env in
++    let env' = Modops.add_module_parameter mbid mtb env in
+     Miniml.MEfunctor
+       ( mbid,
+         extract_mbody_spec env mp1 mtb,
+@@ -527,7 +528,7 @@ and extract_msignature access env mp reso ~all = function
+     Miniml.MEstruct (mp, extract_structure access env' mp reso ~all struc)
+   | MoreFunctor (mbid, mtb, me) ->
+     let mp1 = MPbound mbid in
+-    let env' = Modops.add_module_type mp1 mtb env in
++    let env' = Modops.add_module_parameter mbid mtb env in
+     Miniml.MEfunctor
+       ( mbid,
+         extract_mbody_spec env mp1 mtb,
+@@ -542,26 +543,26 @@ and extract_module access env mp ~all mb =
+      variables. But a Declare Module at toplevel seems legal (cf #2525). For the
+      moment we don't support this situation. *)
+   let impl =
+-    match Declareops.mod_expr mb with
++    match Mod_declarations.mod_expr mb with
+     | Abstract -> error_no_module_expr mp
+-    | Algebraic me -> extract_mexpression access env mp mb.mod_type me
++    | Algebraic me -> extract_mexpression access env mp (Mod_declarations.mod_type mb) me
+     | Struct sign ->
+       (* This module has a signature, otherwise it would be FullStruct. We
+          extract just the elements required by this signature. *)
+-      let () = add_labels mp mb.mod_type in
+-      let sign = Modops.annotate_struct_body sign mb.mod_type in
+-      extract_msignature access env mp mb.mod_delta ~all:false sign
++      let () = add_labels mp (Mod_declarations.mod_type mb) in
++      let sign = Modops.annotate_struct_body sign (Mod_declarations.mod_type mb) in
++      extract_msignature access env mp (Mod_declarations.mod_delta mb) ~all:false sign
+     | FullStruct ->
+-      extract_msignature access env mp mb.mod_delta ~all mb.mod_type
++      extract_msignature access env mp (Mod_declarations.mod_delta mb) ~all (Mod_declarations.mod_type mb)
+   in
+   (* Slight optimization: for modules without explicit signatures ([FullStruct]
+      case), we build the type out of the extracted implementation *)
+   let typ =
+-    match Declareops.mod_expr mb with
++    match Mod_declarations.mod_expr mb with
+     | FullStruct ->
+-      assert (Option.is_empty mb.mod_type_alg);
++      assert (Option.is_empty (Mod_declarations.mod_type_alg mb));
+       mtyp_of_mexpr impl
+-    | Algebraic fae when Option.is_empty mb.mod_type_alg ->
++    | Algebraic fae when Option.is_empty (Mod_declarations.mod_type_alg mb) ->
+       (* For module applications without explicit type, try to infer from
+          functor *)
+       let inferred_alg_type =
+@@ -591,7 +592,7 @@ and extract_module access env mp ~all mb =
+                       in
+                       Some (MENoFunctor (extract_base_from_with me))
+                   in
+-                  match func_mb.mod_type_alg with
++                  match (Mod_declarations.mod_type_alg func_mb) with
+                   | Some alg -> get_functor_return_type alg
+                   | None -> None
+                 with _ -> None )
+@@ -600,7 +601,7 @@ and extract_module access env mp ~all mb =
+         | MEMoreFunctor _ -> None
+       in
+       ( match inferred_alg_type with
+-      | Some alg_ty -> extract_mexpression_spec env mp (mb.mod_type, alg_ty)
++      | Some alg_ty -> extract_mexpression_spec env mp ((Mod_declarations.mod_type mb), alg_ty)
+       | None -> extract_mbody_spec env mp mb )
+     | _ -> extract_mbody_spec env mp mb
+   in
+@@ -621,7 +622,7 @@ let mono_environment ~opaque_access refs mpl =
+           opaque_access
+           env
+           mp
+-          no_delta
++          (no_delta mp)
+           ~all:(Visit.needed_mp_all mp)
+           struc ) )
+     l
+@@ -2167,12 +2168,13 @@ let extraction_library ~opaque_access is_rec CAst.{loc; v = m} =
+     try Nametab.full_name_module q
+     with Not_found -> error_unknown_module ?loc q
+   in
++  let dir_m = dirpath_of_path dir_m in
+   Visit.add_mp_all (MPfile dir_m);
+   let env = Global.env () in
+   let l = List.rev (environment_until (Some dir_m)) in
+   let select l (mp, struc) =
+     if Visit.needed_mp mp then
+-      (mp, extract_structure opaque_access env mp no_delta ~all:true struc) :: l
++      (mp, extract_structure opaque_access env mp (no_delta mp) ~all:true struc) :: l
+     else
+       l
+   in
+diff --git a/src/extraction.ml b/src/extraction.ml
+index bbe47df..3531bff 100644
+--- a/src/extraction.ml
++++ b/src/extraction.ml
+@@ -56,7 +56,7 @@ let type_of env sg c =
+   Retyping.get_type_of ~polyprop:false env sg (Termops.strip_outer_cast sg c)
+ 
+ let sort_of env sg c =
+-  Retyping.get_sort_family_of
++  Retyping.get_sort_quality_of
+     ~polyprop:false
+     env
+     sg
+@@ -88,11 +88,13 @@ type flag = info * scheme
+ (** {2 [flag_of_type] transforms a type [t] into a [flag]. Really important
+     function} *)
+ 
+-let info_of_family = function
+-  | InSProp | InProp -> Logic
+-  | InSet | InType | InQSort -> Info
++let info_of_family =
++  let open UnivGen.QualityOrSet in
++  function
++  | Qual (QConstant QSProp | QConstant QProp) -> Logic
++  | Set | Qual (QConstant QType | QVar _) -> Info
+ 
+-let info_of_sort s = info_of_family (Sorts.family s)
++let info_of_sort s = info_of_family (UnivGen.QualityOrSet.of_sort s)
+ 
+ let rec flag_of_type env sg t : flag =
+   let t = whd_all env sg t in
+@@ -332,9 +334,7 @@ let db_from_sign s =
+ let rec returns_type_sort c =
+   match Constr.kind c with
+   | Sort s -> (
+-    match Sorts.family s with
+-    | Sorts.InType | Sorts.InSet | Sorts.InQSort -> true
+-    | Sorts.InProp | Sorts.InSProp -> false )
++    match info_of_sort s with Info -> true | Logic -> false )
+   | Prod (_, _, body) -> returns_type_sort body
+   | _ -> false
+ 
+@@ -353,7 +353,7 @@ let rec returns_type_sort c =
+     are the one type variable, and a named binder therefore takes the number
+     its name already has. *)
+ let db_from_rel_context env =
+-  let outer_first = List.rev env.env_rel_context.env_rel_ctx in
++  let outer_first = List.rev (Environ.rel_context env) in
+   let seen = ref [] in
+   snd
+     (List.fold_left
+diff --git a/src/loopify.ml b/src/loopify.ml
+index 6fefa5a..76ceb3a 100644
+--- a/src/loopify.ml
++++ b/src/loopify.ml
+@@ -786,7 +786,7 @@ let loopify_inner_lambdas ~tparams ?(outer_env = []) body =
+         ( process_expr scrut,
+           r,
+           List.map (fun (id, body) -> (id, process_stmts body)) branches,
+-          default )
++          Option.map process_stmts default )
+     | Smatch (scrut, branches, default) ->
+       Smatch
+         ( { scrut with sc_expr = process_expr scrut.sc_expr },
+diff --git a/src/loopify_analysis.ml b/src/loopify_analysis.ml
+index 6329715..06f89b3 100644
+--- a/src/loopify_analysis.ml
++++ b/src/loopify_analysis.ml
+@@ -875,11 +875,14 @@ and collect_stmt check ~in_visitor = function
+   | Swhile (cond, body) | Sfor_range (_, cond, body) ->
+     collect_expr check cond @ collect_stmts check ~in_visitor body
+   | Sblock stmts -> collect_stmts check ~in_visitor stmts
+-  | Sswitch (scrut, _, branches, _) ->
++  | Sswitch (scrut, _, branches, default) ->
+     collect_expr check scrut
+     @ List.concat_map
+         (fun (_, body) -> collect_stmts check ~in_visitor body)
+         branches
++    @ (match default with
++       | Some body -> collect_stmts check ~in_visitor body
++       | None -> [])
+   | Scustom_case (_, scrut, _, branches, _) ->
+     collect_expr check scrut
+     @ List.concat_map
+@@ -944,12 +947,15 @@ let rec count_calls_stmts (check : call_checker) stmts =
+         + count_calls_stmts check then_br
+         + count_calls_stmts check else_br
+       | Sblock ss -> count_calls_stmts check ss
+-      | Sswitch (e, _, branches, _) ->
++      | Sswitch (e, _, branches, default) ->
+         count_calls_expr check e
+         + List.fold_left
+             (fun acc (_, body) -> acc + count_calls_stmts check body)
+             0
+             branches
++        + (match default with
++           | Some body -> count_calls_stmts check body
++           | None -> 0)
+       | Scustom_case (_, scrut, _, branches, _) ->
+         count_calls_expr check scrut
+         + List.fold_left
+diff --git a/src/loopify_tail.ml b/src/loopify_tail.ml
+index d1cf344..e585bff 100644
+--- a/src/loopify_tail.ml
++++ b/src/loopify_tail.ml
+@@ -595,7 +595,11 @@ let rec generic_rewrite_stmt trc = function
+   | Sswitch (scrut, r, branches, default) ->
+     let rw = generic_rewrite_stmts trc in
+     Sswitch
+-      (scrut, r, List.map (fun (id, body) -> (id, rw body)) branches, default)
++      ( scrut, r, List.map (fun (id, body) -> (id, rw body)) branches,
++        (* The default branch returns too: left as it was, its [return]
++           would leave a tail-modulo-cons loop with the list built so far
++           dropped. *)
++        Option.map rw default )
+   | Scustom_case (ty, scrut, tyargs, branches, err) ->
+     let rw = generic_rewrite_stmts trc in
+     Scustom_case (ty, scrut, tyargs,
+diff --git a/src/loopify_tmc.ml b/src/loopify_tmc.ml
+index 136d6ec..ec1a69c 100644
+--- a/src/loopify_tmc.ml
++++ b/src/loopify_tmc.ml
+@@ -239,8 +239,10 @@ let try_tmc_classify check body =
+       scan_stmts (scan_stmts acc then_br) else_br
+     | Scustom_case (_, _, _, branches, _) ->
+       List.fold_left (fun acc (_, _, body) -> scan_stmts acc body) acc branches
+-    | Sswitch (_, _, branches, _) ->
+-      List.fold_left (fun acc (_, body) -> scan_stmts acc body) acc branches
++    | Sswitch (_, _, branches, default) ->
++      let acc =
++        List.fold_left (fun acc (_, body) -> scan_stmts acc body) acc branches in
++      (match default with Some ss -> scan_stmts acc ss | None -> acc)
+     | Smatch (scrut, branches, default) ->
+       let acc =
+         List.fold_left (fun acc br -> scan_stmts acc br.smb_body) acc branches in
+diff --git a/src/minicpp.ml b/src/minicpp.ml
+index 6f50ee0..aa25902 100644
+--- a/src/minicpp.ml
++++ b/src/minicpp.ml
+@@ -2200,9 +2200,10 @@ and free_vars_stmt = function
+             (fun id -> not (List.exists (Id.equal id) pat_bound))
+             body_fv )
+         bs
+-  | Sswitch (s, _, bs, _) ->
++  | Sswitch (s, _, bs, default) ->
+     free_vars_expr s
+     @ List.concat_map (fun (_, b) -> free_vars_body b) bs
++    @ (match default with Some b -> free_vars_body b | None -> [])
+   | Smatch (scrut, branches, default) ->
+     free_vars_expr scrut.sc_expr
+     @ List.concat_map
+diff --git a/src/table.ml b/src/table.ml
+index e957e06..cedfcbf 100644
+--- a/src/table.ml
++++ b/src/table.ml
+@@ -1530,11 +1530,8 @@ let safe_pr_long_global r =
+     | _ -> assert false )
+ 
+ let pr_long_mp mp =
+-  try
+-    let lid = DirPath.repr (Nametab.dirpath_of_module mp) in
+-    str (String.concat "." (List.rev_map Id.to_string lid))
+-  with Not_found ->
+-    str (ModPath.to_string mp)
++  try Libnames.pr_path (Nametab.path_of_module mp)
++  with Not_found -> str (ModPath.to_string mp)
+ 
+ let pr_long_global ref = pr_path (Nametab.path_of_global ref)
+ 
+@@ -3881,7 +3878,7 @@ let extract_numeral r fmt =
+         try Some (Nametab.locate (Libnames.qualid_of_string qstr))
+         with Not_found ->
+           (* Fallback: try in the inductive's own directory *)
+-          let ind_dir = Libnames.dirpath ind_path in
++          let ind_dir = Libnames.pop_dirpath (Libnames.dirpath_of_path ind_path) in
+           let qid = Libnames.make_qualid ind_dir (Names.Id.of_string name) in
+           try Some (Nametab.locate qid) with Not_found -> None)
+         converter_names
+diff --git a/src/toolchain.ml b/src/toolchain.ml
+index 8e4a77f..16105a4 100644
+--- a/src/toolchain.ml
++++ b/src/toolchain.ml
+@@ -176,7 +176,7 @@ let compile_ocaml
+      PATH: otherwise a missing ocamlfind slips past this check and fails later
+      with a raw error instead of the friendly [NoOcamloptFound] handled by
+      callers. *)
+-  let ocamlfind = Envars.ocamlfind () in
++  let ocamlfind = Boot.Env.ocamlfind () in
+   if not (Subprocess.executable_available ocamlfind) then
+     raise NoOcamloptFound;
+   let errfile =
+diff --git a/src/translation.ml b/src/translation.ml
+index 326e412..62ca008 100644
+--- a/src/translation.ml
++++ b/src/translation.ml
+@@ -2705,6 +2705,16 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
+         | Some e -> e
+         | None -> gen_expr_custom_cons ?expected_ty ~slot env _ty r _ts ) )
+     | None -> gen_expr_custom_cons ?expected_ty ~slot env _ty r _ts )
++  | MLcons (_, _, _) when Common.is_native_string ml_e ->
++    (* A literal of Stdlib's [string]: one C++ string, not a chain of
++       one-character concatenations run at every use. *)
++    CPPlit
++      ( Tglob (Common.string_type_ref (), [], []),
++        Common.cpp_string_literal (Common.get_native_string ml_e) )
++  | MLcons (_, _, _) when Common.is_native_char ml_e ->
++    CPPlit
++      ( Tglob (Common.ascii_type_ref (), [], []),
++        Common.cpp_char_literal (Common.get_native_char ml_e) )
+   | MLcons (ty, r, ts) when is_custom r ->
+     gen_expr_custom_cons ?expected_ty ~slot env ty r ts
+   | MLcons (ty, r, ts)
+@@ -6137,6 +6147,13 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
+                      is disabled by the aggregate [box<std::any>]. *)
+                   | _ when erased_eta_param ty || mentions_unresolved_promoted ty ->
+                     Tref (Lvalue, Tconst Tauto)
++                  (* A value that costs something to copy is borrowed from
++                     the caller: the closure is called once per element of
++                     a fold or a map, and a by-value parameter would copy
++                     each element only to pass it on. *)
++                  | (Tglob _ | Tnamespace _ | Tid _)
++                    when not (Ml_type_util.is_trivially_copyable_type ty) ->
++                    Tref (Lvalue, Tconst ty)
+                   | _ -> ty
+                 in
+                 (wrapped, Some (eta_param_id i)) )
+@@ -6169,6 +6186,38 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
+               (fun i _ -> (List.nth eta_arg_reads i) (CPPvar (eta_param_id i)))
+               eta_args
+           in
++          (* The closure may be called many times (it is handed to a fold or
++             a map), and Rocq evaluates a partial application's arguments
++             once, where it is built.  An argument that computes something
++             is therefore bound once outside the closure, which captures
++             the result; left in the body it would be computed again on
++             every call. *)
++          let rec eta_arg_is_cheap = function
++            | CPPvar _ | CPPglob _ | CPPstring _ | CPPuint _ | CPPfloat _
++            | CPPthis | CPPlambda _ ->
++              true
++            | CPPmove e | CPPderef e | CPPget (e, _) | CPPget' (e, _, _)
++            | CPPaccess (_, e, _) | CPPnamespace (_, e) | CPPforward (_, e) ->
++              eta_arg_is_cheap e
++            | _ -> false
++          in
++          let eta_hoisted = ref [] in
++          let args =
++            List.mapi
++              (fun i a ->
++                if eta_arg_is_cheap a then a
++                else begin
++                  let id = Id.of_string (Printf.sprintf "_pa%d" i) in
++                  eta_hoisted := Sasgn (id, Declare Tauto, a) :: !eta_hoisted;
++                  CPPvar id
++                end )
++              args
++          in
++          let eta_bind_once lam =
++            match List.rev !eta_hoisted with
++            | [] -> lam
++            | decls -> mk_iife None (decls @ [Sreturn (Some lam)])
++          in
+           let call_args = args @ eta_vars in
+           let call =
+             (* The number of arguments the callee itself takes.  An
+@@ -6260,15 +6309,22 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
+             let n = List.length exp_dom in
+             let outer = List.filteri (fun i _ -> i < n) eta_args in
+             let inner = List.filteri (fun i _ -> i >= n) eta_args in
+-            mk_lambda outer None
+-              [ Sreturn
+-                  (Some
+-                     (mk_lambda ~tparams:eta_tparams inner ret_ty body
+-                        ~capture:Closure ) ) ]
+-              ~capture:Closure
++            eta_bind_once
++              (mk_lambda outer None
++                 [ Sreturn
++                     (Some
++                        (mk_lambda ~tparams:eta_tparams inner ret_ty body
++                           ~capture:Closure ) ) ]
++                 ~capture:Closure )
+           | _ ->
+-            mk_lambda ~tparams:eta_tparams eta_args ret_ty body
+-              ~capture:(if eta_keep_moves then Immediate else Closure) )
++            (* The bound arguments are locals of the scope that builds the
++               closure, which ends before the closure is called: it copies
++               them. *)
++            eta_bind_once
++              (mk_lambda ~tparams:eta_tparams eta_args ret_ty body
++                 ~capture:
++                   ( if eta_keep_moves && !eta_hoisted = [] then Immediate
++                     else Closure ) ) )
+       | _ ->
+         if id_is_typeclass_instance && args = [] then
+           cglob
+@@ -7953,7 +8009,13 @@ and gen_custom_cpp_case env k (typ : ml_type) t pv =
+      the scrutinee (not used in any branch body) so they get std::move. *)
+   let saved_dead = (!tctx).move_dead_after in
+   let dead_in_scrut =
+-    if Escape.IntSet.is_empty (!tctx).move_owned_vars then
++    (* Under a let-binding's right-hand side the match has a continuation
++       that the branches do not show: a variable absent from every branch
++       may still be read after the match.  The let handler has already put
++       the variables that are dead after the whole right-hand side into
++       [move_dead_after], so nothing is lost by adding none here. *)
++    if (!tctx).move_suppress_tail
++       || Escape.IntSet.is_empty (!tctx).move_owned_vars then
+       Escape.IntSet.empty
+     else
+       let branch_free =
+diff --git a/src/translation_types.ml b/src/translation_types.ml
+index 73fac87..3d45c6b 100644
+--- a/src/translation_types.ml
++++ b/src/translation_types.ml
+@@ -910,29 +910,26 @@ let render_numeral info (n : Z.t) : cpp_expr =
+     [None] if any node is not a recognized positive constructor.
+     Constructor indices (1-based): xI=[positive_xI_idx], xO=[positive_xO_idx],
+     xH=[positive_xH_idx]. *)
+-let rec try_fold_positive expr : int64 option =
++let rec try_fold_positive expr : Z.t option =
+   match strip_magic expr with
+   | MLcons (_, GlobRef.ConstructRef (_, idx), []) when idx = positive_xH_idx ->
+-    Some 1L
++    Some Z.one
+   | MLcons (_, GlobRef.ConstructRef (_, idx), [inner]) when idx = positive_xI_idx ->
+-    Option.map (fun n -> Int64.add (Int64.mul 2L n) 1L) (try_fold_positive inner)
++    Option.map (fun n -> Z.succ (Z.shift_left n 1)) (try_fold_positive inner)
+   | MLcons (_, GlobRef.ConstructRef (_, idx), [inner]) when idx = positive_xO_idx ->
+-    Option.map (fun n -> Int64.mul 2L n) (try_fold_positive inner)
++    Option.map (fun n -> Z.shift_left n 1) (try_fold_positive inner)
+   | _ -> None
+ 
+ (** Fold a Zpos/Zneg constructor wrapping a positive chain into a rendered
+     numeral string.  [cidx] is the 1-based constructor index of the Z
+     constructor; [inner] is its positive argument.  Returns [None] if [inner]
+-    cannot be folded. *)
++    cannot be folded.  The value is kept at arbitrary precision: an [int64]
++    wraps silently from 2^63 on. *)
+ let try_fold_z_binary info cidx inner : cpp_expr option =
+   Option.map
+     (fun pos_val ->
+-      let z_val =
+-        if cidx = z_pos_idx then pos_val
+-        else if cidx = z_neg_idx then Int64.neg pos_val
+-        else pos_val
+-      in
+-      render_numeral info (Z.of_int64 z_val))
++      let z_val = if cidx = z_neg_idx then Z.neg pos_val else pos_val in
++      render_numeral info z_val)
+     (try_fold_positive inner)
+ 
+ (** Whether [r] is a type family over a value -- [sem : idx -> Type] --
+diff --git a/theories/cpp/rc.h b/theories/cpp/rc.h
+index fad6d7e..44f77c1 100644
+--- a/theories/cpp/rc.h
++++ b/theories/cpp/rc.h
+@@ -101,13 +101,24 @@ public:
+         inc_strong();
+     }
+ 
++    // [other] may live inside the object this rc owns (p = p->tail), so the
++    // new block is taken and counted before the old one is released, as
++    // std::shared_ptr does.
+     rc& operator=(const rc& other) noexcept {
+-        if (this != &other) { release(); ctrl_ = other.ctrl_; inc_strong(); }
++        ControlBlock<T>* old = ctrl_;
++        ctrl_ = other.ctrl_;
++        inc_strong();
++        rc drop(old);
+         return *this;
+     }
+ 
+     rc& operator=(rc&& other) noexcept {
+-        if (this != &other) { release(); ctrl_ = other.ctrl_; other.ctrl_ = nullptr; }
++        if (this != &other) {
++            ControlBlock<T>* old = ctrl_;
++            ctrl_ = other.ctrl_;
++            other.ctrl_ = nullptr;
++            rc drop(old);
++        }
+         return *this;
+     }
+ 

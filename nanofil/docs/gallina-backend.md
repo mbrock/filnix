@@ -241,6 +241,9 @@ in M6 before anything depends on it:
   deep recursion over long lists needs care in C++ as it did in
   OCaml (`Extract.v` records one such overflow).
 
+M6 met all three, and its record under [Milestones](#milestones)
+says how each was settled.
+
 **Crane is an alpha, and we expect to patch it.** Its site says so,
 and it will not take all of Gallina. Three rules follow.
 
@@ -279,8 +282,10 @@ twin, and no hand-written OCaml that the compiler's result depends
 on. The canonical-term reader in `main.ml` was such code. Since M4
 the standalone compiler reads IR text with `IrText.v`, and the
 OCaml reader serves only the gates that take Prolog's terms. Three
-character primitives of `IrText.v` have OCaml definitions, and need
-C++ twins at M6.
+character primitives of `IrText.v` have OCaml definitions. At M6
+they needed no C++ twins of their own: Crane's mappings of
+`nat_of_ascii`, `ascii_of_nat` and `string_of_list_ascii` cover
+them.
 
 ## The path to a Fil-C library and a JIT
 
@@ -594,6 +599,44 @@ Four things follow:
   patterns.
 - In Prolog the registers are also what compiling costs: the module
   takes 1.5 s with stack homes and 6.6 s with registers.
+
+**The C++ build, measured at M6.** The target was within 2× of the
+OCaml build, and it is missed: Crane's C++ takes 5 to 7.5 times the
+OCaml build's time and up to 4 times its memory, and it is slower
+than Prolog. Wall time and peak memory on an orb, IR text to
+assembly, for the regex module `rx.ir` (36 functions) and for Lua's
+`lvm.c` as IR; each build prints the same bytes:
+
+- `compile`, `rx.ir`: Prolog 1.27 s and 43 MB, OCaml 0.34 s and
+  57 MB, C++ 2.40 s and 76 MB.
+- `compile`, `lvm.ir`: Prolog 2.87 s and 162 MB, OCaml 1.76 s and
+  153 MB, C++ 8.36 s and 577 MB.
+- `compile-allocated`, `rx.ir`: OCaml 0.39 s and 58 MB, C++ 2.87 s
+  and 76 MB.
+- `compile-allocated`, `lvm.ir`: OCaml 1.67 s and 153 MB, C++
+  9.53 s and 501 MB.
+- `compile-promoted` on one function of 19 kB of IR: OCaml 37 ms,
+  C++ 164 ms. An empty module takes 3 ms in both, so none of it is
+  start-up.
+
+Where the time goes, by `perf record` on the C++ build:
+
+- About 15% is freeing. A `Term` is a reference-counted tree, and
+  dropping the last reference walks it. With `~Term` emptied by
+  hand, as an experiment, the two `compile` runs took 2.05 s and
+  7.22 s. The build keeps the destructor: without it nothing is
+  freed, and the target is missed either way.
+- With the destructor out of the profile, about 15% is copying and
+  moving `Term` variants and 7% is `memmove`, and some parameters
+  still go by value.
+- The rest has no single hot spot.
+
+`Set Crane Arena` was tried and is worse: slower, and ten times the
+memory. So no switch closes the gap, and what would is more patches
+to what Crane emits for values, matches and calls. That work is
+proposed for M8, where the same C++ is built by filcc and its speed
+first matters to a user; until then the OCaml build is the fast
+one.
 
 ## Milestones
 
@@ -985,6 +1028,83 @@ If Crane cannot extract the development, the note says what stopped
 it, and the order of remedies is: change the Gallina, use a Crane
 switch, patch Crane, fall back to CertiRocq.
 
+*Done, but for the speed target.* Crane at commit `c2aadd9`, with a
+patch of ours, extracts the reader of IR text, `compile`,
+`compile_promoted` and M7's `compile_allocated` to 36,106 lines of
+C++23. clang builds them with a driver of 127 lines as
+`nanofil-backend-cpp`, which prints what Prolog and the OCaml build
+print, byte for byte. It takes 5 to 7.5 times the OCaml build's
+time, so the 2× target is missed; the figures and the profile are
+under [Performance targets](#performance-targets). CertiRocq was
+not needed.
+
+- **The gates.** `tests/compile.sh` holds `compile` and
+  `compile-promoted` to Prolog: the same bytes on 376 C programs
+  and translation units and on 38 IR fixtures, with no file
+  differing. That run was before M7's files joined the extraction;
+  the check repeats it on the fixtures with them. Prolog has no
+  `compile-allocated`, so `crane/tests/same.sh` holds that command
+  to the OCaml build's exit status, output and message: the same on
+  252 translation units of the corpus as IR and on 39 fixtures, the
+  other 18 and 13 not taken or refused by both for the same reason,
+  and no file differing.
+- **The mappings.** `CraneMap.v` gives `positive`, `N` and `Z` to
+  `nf::Z` of `nfrt.h`, a 64-bit word that becomes a GMP integer
+  when a result does not fit; `nat` to `uint64_t`, `ascii` to `char`
+  and `string` to `std::string`. `CraneSelfTest.v` holds every
+  mapped function to what `vm_compute` finds for it, on numbers at
+  and past 64 bits, and `selftest.cpp` runs that in the check.
+- **The check.** `nanofil-backend-crane` in the flake
+  (`nix/backend-crane.nix`) builds Crane (`nix/crane.nix`), extracts,
+  compiles, and runs the self-test and the three gates on the IR
+  fixtures and `tests/regs`, and reads the Crane files back with
+  `parse.sh`. It needs no Fil-C toolchain. On 16 cores it takes nine
+  minutes: two to extract, four for clang on the one translation
+  unit, and two for `parse.sh`, which extracts once more. So it is a
+  job of its own in the Nanofil Backend workflow and no part of the
+  quick Rocq gate.
+
+What stopped Crane, in the order of the remedies:
+
+- *Changed in the Gallina.* Three names whose C++ did not compile
+  (`fixed` and `text` renamed, `names` made a notation), two local
+  functions made top-level, and `Order.v`'s four merges written as
+  top-level fixpoints on a count of steps. Each merge was a
+  fixpoint over one list holding a local one over the other, a
+  shape Crane's loop transform declines, and the recursion
+  overflowed the C++ stack in `Abi.frame_of`. Prolog's bytes still
+  match after each change.
+- *Switches.* `Loopify` turns recursion into loops, and
+  `NonAtomicRc` makes the reference counts plain integers.
+  `NoLoopify` is set for `term_eqb` and `Order.term_compare`, for
+  which Loopify's C++ names a function it never declares. Loopify
+  still declines 12 functions, which stay recursive: the stdlib
+  AVL map's `join`, `map2`, `combine` and `equal`, the validator's
+  three walks along a chain of definitions (bounded by fuel), the
+  two walks of a dominator tree, and `Abi.one_per_symbol` over a
+  module's thunks. None has overflowed on the corpus. `Arena` was
+  tried and rejected.
+- *Patched in Crane* (`nix/crane-nanofil.patch`, 705 lines in 17
+  files):
+  - the port to Rocq 9.1, which is API changes in six files;
+  - a string literal is one `std::string` with its length and
+    octal escapes, and a character literal is escaped the same way;
+  - Loopify skipped a switch's default branch, so a `return` there
+    dropped the list built so far;
+  - numerals were folded in `int64` and wrapped silently from 2^63;
+  - `rc.h`'s assignment released the old block before counting the
+    new one, which frees `p->tail` in `p = p->tail`;
+  - costly values are borrowed by `const &` where they were copied,
+    a closure may be called more than once, and a match under a
+    let's right-hand side is translated.
+
+Three of those (the default branch, the numerals and the
+assignment) made C++ that compiled and computed something else.
+That is the argument for keeping the gates on every change to the
+backend: Crane is an alpha, as its site says, and its output is
+trusted only as far as it is compared. The patch is ours to
+maintain; none of it has been offered upstream yet.
+
 **M7. A fast simple register allocator.** Designed for a proof, not
 ported. Gate: difftests and package checks by behaviour, and a
 measured run-time gain over stack homes on the benchmark gate.
@@ -1141,3 +1261,20 @@ otherwise.
    top:* the campaign's file proves `valid_fast md = valid md`, the
    compiler runs `valid_fast`, and `valid_func` and its proofs do
    not change. `single_definitions` is done; the `lookup`s are not.
+7. **What M8 does about the C++ build's speed.** M6's C++ prints the
+   right bytes at 5 to 7.5 times the OCaml build's time, against a
+   target of 2. That matters only in M8: on a single function the
+   C++ took 4.4 times the OCaml build's time, and Fil-C's usual 1.5
+   to 4 times comes on top. By that arithmetic a pattern's 16 to
+   43 ms in the OCaml build would be 0.1 to 0.8 s in a pizlonated
+   `libnanofil`, which is slower than starting the OCaml build as a
+   process, as `rxc` does now. That is an estimate; nothing has
+   been built by filcc yet. Recommended:
+   keep `rxc` on the OCaml build; begin M8 with a bounded attempt
+   on Crane's output (the destructor's walk, the copies of `Term`
+   variants, the parameters still passed by value) with 2 times
+   OCaml on `rx.ir` as the mark; and if that stalls above 3 times,
+   measure CertiRocq's C on the same input before building the
+   library on either. The other choice is to build `libnanofil` as
+   it is, to learn first what filcc makes of Crane's C++, and take
+   the speed after.

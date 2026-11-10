@@ -23,3 +23,7 @@ backend/extraction/nanofil_backend.mli
 backend/extraction/*.cm*
 backend/extraction/*.o
 backend/nanofil-backend
+# Its C++ extraction (rocq/backend/crane/Makefile)
+backend/crane/BackendCrane/
+backend/crane/nanofil-backend-cpp
+backend/crane/selftest
