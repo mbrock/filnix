@@ -171,7 +171,10 @@ table.rq-ctors tr.note td, table.rq-fields tr.note td { padding-top: 0.4rem; }
 .rule-concl.alone { display: flex; flex-wrap: wrap; gap: 0.8em; align-items: baseline; padding: 0; }
 .rule .goal { min-width: 0; }
 .rq-thm { margin: 0.8rem 0 1.2rem; scroll-margin-top: 3rem; }
-.rq-thm-head { margin-bottom: 0.2rem; }
+/* A long declaration name (find_emit_bug_reporting_address_start) has
+   no space to break at; it breaks where it must rather than push the
+   page sideways. */
+.rq-thm-head { margin-bottom: 0.2rem; overflow-wrap: anywhere; }
 .rq-thm > .rule { margin-left: 1.2em; }
 .rq-axiom > .rq-thm-head .kw { color: var(--accent); }
 
