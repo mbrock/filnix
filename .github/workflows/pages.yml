@@ -35,18 +35,9 @@ permissions:
   id-token: write
 
 jobs:
-  deploy:
+  # Every push builds at once; only publishing waits its turn.
+  build:
     runs-on: ubuntu-latest
-    # A deploy in progress finishes; a newer push waits and replaces any
-    # other waiting deploy, so the site follows main even when pushes come
-    # every minute. Only this job queues: the phone check below runs on its
-    # own artifact and never holds back the next deploy.
-    concurrency:
-      group: pages
-      cancel-in-progress: false
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
@@ -54,17 +45,58 @@ jobs:
         run: |
           nix build -L .#site
           cp -rL result _site
+          # The commit it was built from, for the publish job to compare
+          # with what is live.
+          chmod u+w _site
+          echo "$GITHUB_SHA" > _site/commit.txt
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+
+  # A publish in progress finishes; a newer one waits and replaces any other
+  # waiting one, so the site follows main even when pushes come every
+  # minute. A build that finishes after a newer one has gone live is not
+  # published: its commit is already part of the live site's.
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Is this newer than the live site?
+        id: live
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          site=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .html_url)
+          # A fresh query string, so the CDN's ten-minute cache is not asked.
+          live=$(curl -fsS "${site%/}/commit.txt?$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" || true)
+          status=unknown
+          if [[ $live =~ ^[0-9a-f]{40}$ ]]; then
+            status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$live...$GITHUB_SHA" --jq .status || echo unknown)
+          fi
+          echo "live: ${live:-none}; this: $GITHUB_SHA; this is $status"
+          # behind or identical: the live commit already contains this one.
+          # Anything else, including an unknown live commit, publishes.
+          case $status in
+            behind|identical)
+              echo "::notice::Not publishing $GITHUB_SHA: the live site's $live already contains it."
+              echo "publish=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "publish=true" >> "$GITHUB_OUTPUT" ;;
+          esac
       - id: deploy
+        if: steps.live.outputs.publish == 'true'
         uses: actions/deploy-pages@v4
 
-  # The deployed site at phone widths. It reports and never holds back the
-  # deploy above: a red run is fixed forward.
+  # The built site at phone widths. It reports and never holds back the
+  # publish above: a red run is fixed forward.
   phone:
-    needs: deploy
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
