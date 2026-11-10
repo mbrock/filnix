@@ -312,12 +312,15 @@ sljit takes 0.1 ms. So the steps are:
 2. **Code worth running.** The first version's code is what Prolog
    makes without `-O`, which the experiment measured at 5 to 10 times
    slower than `-O` code. That is about the interpreter's speed on
-   some patterns, so the route is not yet worth switching on. With
-   `-O`'s middle end and check passes but stack homes, the code is
-   only 1.1 to 1.7 times slower than full `-O`. So for pcre2 the
-   check passes matter far more than a register allocator. M5
-   measures which of them buy the difference on the regex compiler's
-   IR, and those are ported first.
+   some patterns, so the route is not yet worth switching on. The
+   experiment says where the difference is: "The `--checks` variants
+   barely differ", and with `-O` but stack homes the code is only
+   1.1 to 1.7 times slower than full `-O`. So it is the middle end.
+   The regex compiler keeps a node's choice state in `alloc` slots,
+   and without promotion every use of one is a checked load or
+   store. For pcre2 the middle end matters far more than the check
+   passes or a register allocator, and M5b ports the part of it
+   that code needs, before Crane and before the allocator.
 3. **`libnanofil`, pizlonated.** Crane's output is plain C++23, and
    Fil-C is a C++ compiler (clang 20 with libc++), so the extracted
    compiler is built with filcc and given a C interface: IR text or
@@ -787,6 +790,20 @@ Gate: the second performance target; the experiment's checks pass
 with the extracted compiler; the miss time and the code's speed are
 recorded, with a list of the `-O` passes that code needs.
 
+**M5b. The middle end pcre2's code needs.** Promotion and what it
+stands on: the CFG and dominators of `cfg.pl`, `escape.pl`,
+`promote.pl`, `copy.pl` and `simplify.pl`, about 2,900 lines of
+Prolog. They run before pizlonation, on the unchecked module, and
+their result is in the first version's forms, so nothing after them
+changes. Inlining and local storage are added only if M5's list
+asks for them. Gate: byte identity on the corpus with the Prolog
+compiler run with `-O`'s middle end and the first version's back
+end (`--checks=reference --registers=stack --inline=none`, and the
+emission options at their values without `-O`), and the regex
+experiment's patterns within the 1.1 to 1.7 times of full `-O`
+that stack homes cost. This is the first point where the `rxc`
+route is worth switching on.
+
 **M6. Crane.** Build Crane in Nix against our Rocq, extract the same
 entry points to C++, compile with clang++ and run the same
 differential tests. Gate: byte identity again, and the C++ target.
@@ -808,9 +825,9 @@ experiment's checks.
 end and check passes can feed the extracted backend. This is where
 users of `-O` first feel the speed.
 
-**Later.** The middle end and the check passes in Gallina, each
-replacing a `*_refines` run-time check with a theorem, the ones
-pcre2's code needs first. An encoder and a shared-object writer, and
+**Later.** The rest of the middle end and the check passes in
+Gallina, each replacing a `*_refines` run-time check with a
+theorem. An encoder and a shared-object writer, and
 installing code in the process, if measurement asks for them.
 
 **Outside this campaign.** The C frontend. It is where an everyday C
@@ -869,6 +886,13 @@ otherwise.
    process are later options; the second is a runtime change and
    would wait for its own review.
 5. **What pcre2 needs after M5.** The first version's code has none
-   of `-O`'s check elimination. Recommended: port the check passes
-   M5 finds decisive before the M7 allocator, since the experiment
-   shows they are worth 5 to 10× and registers 1.1 to 1.7×.
+   of `-O`. The experiment puts the 5 to 10× in the middle end: the
+   `--checks` variants barely differ, and registers are worth 1.1 to
+   1.7×. Recommended: port promotion, copy propagation and simplify
+   (M5b) before Crane (M6) and the allocator (M7), and leave the
+   check passes for later. An earlier version of this decision
+   credited the check passes with the 5 to 10×; that was a
+   misreading of the experiment. The other way to the same speed
+   for pcre2 alone is a regex compiler that emits SSA with no
+   `alloc` slots; the port is preferred because every other
+   producer of IR needs promotion too.
