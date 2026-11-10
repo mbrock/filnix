@@ -25,7 +25,7 @@ pkgs.runCommandCC "nanofil-docs"
     export FILCC=${filcc}/bin/clang
     python3 tests/watch.py --label "guide links" --warn-after 120 --timeout 600 -- \
       swipl web/dterm.pl --check docs/README.md docs/guide.md docs/formal.md docs/filc.md docs/iris.md docs/logic.md docs/nfb-guide-argon.md docs/nfb-guide-wonder.md docs/nfb-guide-wonderful.md src \
-      --concepts=docs/concepts --rocq=rocq/theories --rocq=rocq/spikes --rocq=rocq/backend
+      --concepts=docs/concepts --rocq=rocq/theories --rocq=rocq/spikes --rocq=rocq/backend --rocq=rocq/glibc
     python3 tests/watch.py --label guide --warn-after 120 --timeout 600 -- tests/guide.sh --check
     touch $out
   ''
