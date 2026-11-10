@@ -1,0 +1,83 @@
+# Retry delivery of a trusted, already-built site without replaying proofs.
+name: Republish built site
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Pages run whose complete site artifact should be published
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+  deployments: write
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: filnix-org
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify the artifact's trusted main source
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          [[ $RUN_ID =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > source.json
+          jq -e '.head_branch == "main" and .event == "push" and .path == ".github/workflows/pages.yml"' source.json
+          sha=$(jq -r .head_sha source.json)
+          [[ $sha =~ ^[0-9a-f]{40}$ ]]
+          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$sha...$GITHUB_SHA" --jq .status)
+          case $status in ahead|identical) ;; *) exit 1 ;; esac
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify the complete site's commit marker
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          mkdir _site && tar -xf artifact.tar -C _site
+          test "$(cat _site/commit.txt)" = "$SOURCE_SHA"
+      - name: Report deployment of the actual artifact commit
+        id: deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/deployments" --input - --jq .id <<JSON
+          {"ref":"$SOURCE_SHA","environment":"filnix-org","auto_merge":false,"required_contexts":[],"description":"Republish a verified built-site artifact"}
+          JSON
+          )
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" -f state=in_progress \
+            -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+      - name: Upload, verify and atomically promote (no builds)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.FILNIX_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.FILNIX_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: GITHUB_SHA="$SOURCE_SHA" bash deploy/site/publish.sh
+      - name: Report delivery result
+        if: always() && steps.deployment.outputs.id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          case $JOB_STATUS in success) state=success ;; *) state=failure ;; esac
+          gh api "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses" \
+            -f state="$state" -f environment_url=https://filnix.org \
+            -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
