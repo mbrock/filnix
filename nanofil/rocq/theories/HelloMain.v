@@ -10,12 +10,12 @@
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
-From Stdlib Require Import ZArith Lia.
+From Stdlib Require Import ZArith Lia Permutation.
 From Stdlib Require String.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run StepRules Symbolic
   ExternalCalls ExternalMachine Pieces Heap ContractFrame Language Logic StringLogic MemLogic
   LentLogic Locale LocaleLogic Libc HelloModule HelloLeaf HelloLocale HelloConv HelloName
-  HelloProgName.
+  HelloProgName Startup Getopt GetoptLogic.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -54,6 +54,257 @@ Lemma main_entry argc argv :
   invocation main_fn [WInt argc; WPtr argv] =
   mkFrame main_fn [(TAtom "v2", WPtr argv); (TAtom "v0", WInt argc)] [] None (Enter (TAtom "start") None).
 Proof. reflexivity. Qed.
+
+(** ## getopt_long's literals
+
+    Main parses its options with getopt_long(argc, argv, "g:t",
+    longopts, NULL). The option string and the table are Hello's
+    read-only literals; every option's flag is null, so getopt_long
+    returns its value. *)
+
+(** "g:t". *)
+Definition optstring_ptr : ptr := mkPtr 69584 (Ro 69584).
+(** The long options table. *)
+Definition longopts_ptr : ptr := mkPtr 68672 (Ro 68672).
+(** The traditional greeting, "hello, world". *)
+Definition traditional_ptr : ptr := mkPtr 69808 (Ro 69808).
+
+(** Hello's long options: greeting, taking an argument, as 'g';
+    traditional as 't'; help and version as 128 and 129. *)
+Definition hello_options : list long_option :=
+  [mkLongOption (mkPtr 69456 (Ro 69456)) [103; 114; 101; 101; 116; 105; 110; 103] 1 null 103;
+   mkLongOption (mkPtr 69488 (Ro 69488)) [116; 114; 97; 100; 105; 116; 105; 111; 110; 97; 108] 0 null 116;
+   mkLongOption (mkPtr 69520 (Ro 69520)) [104; 101; 108; 112] 0 null 128;
+   mkLongOption (mkPtr 69552 (Ro 69552)) [118; 101; 114; 115; 105; 111; 110] 0 null 129].
+
+(** Hello's symbols put them there. *)
+Lemma getopt_globals :
+  lookup (TAtom "hello#str.69") hello_globals = Some optstring_ptr /\
+  lookup (TAtom "hello#parse_options.longopts.64") hello_globals = Some longopts_ptr /\
+  lookup (TAtom "hello#str.76") hello_globals = Some traditional_ptr /\
+  map (fun o => Some (option_name o)) hello_options =
+    map (fun s => lookup (TAtom s) hello_globals) ["hello#str.65"; "hello#str.66"; "hello#str.67"; "hello#str.68"]%string.
+Proof. vm_compute. auto. Qed.
+
+(** One of main's arguments: the C string at arg_ptr, in the object
+    arg_base with the region arg_region, with contents arg_text. *)
+Record argument : Type := mkArgument {
+  arg_ptr : ptr;
+  arg_base : Z;
+  arg_region : region;
+  arg_text : list Z
+}.
+
+(** Its pieces: the string's. *)
+Definition arg_ps (s : argument) : list (piece * pval) :=
+  string_ps (arg_ptr s) (arg_base s) (arg_region s) (arg_text s).
+
+(** getopt_long's input for one run of main, whose argv is at av and
+    whose arguments are sargs: the same at every call, as the registry
+    is fixed for the run. *)
+Definition hello_input (av : Z) (sargs : list argument) : getopt_input :=
+  mkGetoptInput (Z.of_nat (length sargs)) (mkPtr av (Obj av))
+    (map (fun s => (arg_ptr s, arg_text s)) sargs) optstring_ptr [103; 58; 116]
+    longopts_ptr hello_options null.
+
+(** Argv's order is that of the arguments. *)
+Lemma hello_input_order av sargs : map fst (getopt_arguments (hello_input av sargs)) = map arg_ptr sargs.
+Proof. cbn. rewrite map_map. reflexivity. Qed.
+
+(** The literals getopt_long reads are in memory: the option string,
+    the table's bounds and its records. *)
+Definition hello_table_at (m : mem) : Prop :=
+  c_string m optstring_ptr [103; 58; 116] /\
+  access_res m (ptr_addr longopts_ptr) (ptr_cap longopts_ptr) (32 * (Z.of_nat (length hello_options) + 1))
+    Read 8 = Some ok /\
+  getopt_records m (ptr_addr longopts_ptr) hello_options.
+
+(** What main learns from getopt_long's code: a C int, and 'g'
+    ('g' or --greeting) comes with a nonnull borrow of an argument,
+    as both take one. *)
+Lemma hello_code av sargs m' g code :
+  getopt_result (hello_input av sargs) m' g code ->
+  getopt_int code /\
+  (code = 103 -> getopt_borrow (hello_input av sargs) (getopt_optarg g) /\ ptr_addr (getopt_optarg g) <> 0).
+Proof.
+  unfold getopt_int.
+  intros [(-> & _) | [([-> | ->] & _) | [(byte & mode & Hb & _ & _ & -> & Hmode & Harg) |
+           [(rest & Hs & _) | (i & o & Hi & Hflag & _ & Harg)]]]].
+  - split; [lia | intros E; discriminate E].
+  - split; [lia | intros E; discriminate E].
+  - split; [lia | intros E; discriminate E].
+  - destruct (Z.ltb_spec byte 128) as [Hlt | Hge].
+    + split; [lia|]. intros ->. cbn in Hmode. assert (mode = 1) as -> by congruence.
+      exact (getopt_required_argument _ _ Harg).
+    + split; [lia | lia].
+  - cbn in Hs. discriminate Hs.
+  - destruct i as [|[|[|[|i]]]]; [| | | | destruct i; discriminate Hi];
+      unfold hello_options in Hi; cbn in Hi; injection Hi as <-; cbn in Hflag; rewrite Hflag.
+    + split; [lia|]. intros _. exact (getopt_required_argument _ _ Harg).
+    + split; [lia | intros E; discriminate E].
+    + split; [lia | intros E; discriminate E].
+    + split; [lia | intros E; discriminate E].
+Qed.
+
+(** ## argv as one block
+
+    Main hands argv to getopt_long whole, as HelloConv.v hands mbrtowc
+    its cells: its life, the bytes of its argc + 1 pointer slots and
+    every aux slot of them ([block_ps]). The bytes are those of the
+    pointers ps argv holds, then null ([argv_bytes]); the aux slot at
+    the start of each holds its capability ([argv_caps]). getopt_long
+    may permute the arguments, and Campaign 4's [getopt_slots] says
+    each slot's bytes are a byte each, so the block it hands back is
+    of the same form. *)
+
+(** The eight bytes of the address x, least significant first. *)
+Definition slot_bytes (x : Z) : list Z := map (byte_of x) [0; 1; 2; 3; 4; 5; 6; 7].
+
+(** The bytes of the slots holding the pointers L. *)
+Definition slots_bytes (L : list ptr) : list Z := flat_map (fun q => slot_bytes (ptr_addr q)) L.
+
+(** argv's bytes, holding ps and the null sentinel. *)
+Definition argv_bytes (ps : list ptr) : list Z := slots_bytes (ps ++ [null]).
+
+(** The aux slots cs of argv holding ps: as many as its bytes, the
+    first of each pointer's eight holding its capability. *)
+Definition argv_caps (cs : list cap) (ps : list ptr) : Prop :=
+  length cs = (8 * length (ps ++ [null]))%nat /\
+  forall k q, (ps ++ [null]) !! k = Some q -> cs !! (8 * k)%nat = Some (ptr_cap q).
+
+(** The memory m holds the pointer q at a: a word address, its eight
+    bytes, and its capability in the aux slot. *)
+Definition slot_at (m : mem) (a : Z) (q : ptr) : Prop :=
+  0 <= ptr_addr q < 2 ^ 64 /\ (forall i, 0 <= i < 8 -> m_bytes m (a + i) = byte_of (ptr_addr q) i) /\
+  m_aux m a = ptr_cap q.
+
+(** Eight bytes per pointer. *)
+Lemma length_slots_bytes L : length (slots_bytes L) = (8 * length L)%nat.
+Proof. induction L as [|q L IH]; [reflexivity|]. cbn [slots_bytes flat_map]. rewrite length_app IH. cbn. lia. Qed.
+
+(** The j-th byte of the k-th slot. *)
+Lemma slots_bytes_lookup L k q j :
+  L !! k = Some q -> (j < 8)%nat -> slots_bytes L !! (8 * k + j)%nat = Some (byte_of (ptr_addr q) (Z.of_nat j)).
+Proof.
+  revert k. induction L as [|x L IH]; intros k Hk Hj; [discriminate Hk|].
+  cbn [slots_bytes flat_map]. destruct k as [|k].
+  - cbn in Hk. injection Hk as ->. rewrite lookup_app_l; [|cbn; lia].
+    do 8 (destruct j as [|j]; [reflexivity|]). lia.
+  - rewrite lookup_app_r; [|cbn; lia]. change (length (slot_bytes (ptr_addr x))) with 8%nat.
+    replace (8 * S k + j - 8)%nat with (8 * k + j)%nat by lia. exact (IH k Hk Hj).
+Qed.
+
+(** Eight canonical bytes are determined by their little-endian value. *)
+Lemma load_bytes_canonical m m' a :
+  (forall i, 0 <= i < 8 -> 0 <= m_bytes m (a + i) < 256) ->
+  (forall i, 0 <= i < 8 -> 0 <= m_bytes m' (a + i) < 256) ->
+  load_bytes m a 8 = load_bytes m' a 8 -> forall i, 0 <= i < 8 -> m_bytes m (a + i) = m_bytes m' (a + i).
+Proof.
+  intros H H' E i Hi. unfold load_bytes in E. change (Z.to_nat 8) with 8%nat in E. simpl in E.
+  pose proof (H 0 ltac:(lia)) as H0; pose proof (H 1 ltac:(lia)) as H1; pose proof (H 2 ltac:(lia)) as H2;
+  pose proof (H 3 ltac:(lia)) as H3; pose proof (H 4 ltac:(lia)) as H4; pose proof (H 5 ltac:(lia)) as H5;
+  pose proof (H 6 ltac:(lia)) as H6; pose proof (H 7 ltac:(lia)) as H7.
+  pose proof (H' 0 ltac:(lia)) as H0'; pose proof (H' 1 ltac:(lia)) as H1'; pose proof (H' 2 ltac:(lia)) as H2';
+  pose proof (H' 3 ltac:(lia)) as H3'; pose proof (H' 4 ltac:(lia)) as H4'; pose proof (H' 5 ltac:(lia)) as H5';
+  pose proof (H' 6 ltac:(lia)) as H6'; pose proof (H' 7 ltac:(lia)) as H7'.
+  change (Z.of_nat 0) with 0 in E; change (Z.of_nat 1) with 1 in E; change (Z.of_nat 2) with 2 in E;
+  change (Z.of_nat 3) with 3 in E; change (Z.of_nat 4) with 4 in E; change (Z.of_nat 5) with 5 in E;
+  change (Z.of_nat 6) with 6 in E; change (Z.of_nat 7) with 7 in E.
+  assert (m_bytes m (a + 7) = m_bytes m' (a + 7)) by lia. assert (m_bytes m (a + 6) = m_bytes m' (a + 6)) by lia.
+  assert (m_bytes m (a + 5) = m_bytes m' (a + 5)) by lia. assert (m_bytes m (a + 4) = m_bytes m' (a + 4)) by lia.
+  assert (m_bytes m (a + 3) = m_bytes m' (a + 3)) by lia. assert (m_bytes m (a + 2) = m_bytes m' (a + 2)) by lia.
+  assert (m_bytes m (a + 1) = m_bytes m' (a + 1)) by lia. assert (m_bytes m (a + 0) = m_bytes m' (a + 0)) by lia.
+  assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4 \/ i = 5 \/ i = 6 \/ i = 7) as Hc by lia.
+  destruct Hc as [->|[->|[->|[->|[->|[->|[->| ->]]]]]]]; assumption.
+Qed.
+
+(** A slot is Campaign 4's: a [pointer_slot] of canonical bytes. *)
+Lemma slot_pointer m a q :
+  slot_at m a q -> pointer_slot m a q /\ (forall k, 0 <= k < 8 -> 0 <= m_bytes m (a + k) < 256).
+Proof.
+  intros (Hr & Hb & Hc). split; [split; [exact Hr|split; [|exact Hc]]|].
+  - rewrite <- (Z.mod_small (ptr_addr q) (2 ^ 64)); [|exact Hr]. change (2 ^ 64) with (256 ^ 8).
+    rewrite <- (stored_bytes_value m a 8 (ptr_addr q)); [|lia].
+    apply load_bytes_agree; [lia|]. intros i Hi. rewrite stored_byte; [|exact Hi]. exact (Hb i Hi).
+  - intros k Hk. rewrite (Hb k Hk). unfold byte_of. apply Z.mod_pos_bound. lia.
+Qed.
+
+(** And back. *)
+Lemma pointer_slot_at m a q :
+  pointer_slot m a q -> (forall k, 0 <= k < 8 -> 0 <= m_bytes m (a + k) < 256) -> slot_at m a q.
+Proof.
+  intros (Hr & Hl & Hc) Hb. split; [exact Hr|]. split; [|exact Hc].
+  intros i Hi. rewrite <- (stored_byte m a 8 (ptr_addr q) i Hi).
+  apply (load_bytes_canonical m (store_bytes m a 8 (ptr_addr q)) a); [exact Hb | | | exact Hi].
+  - intros k Hk. rewrite stored_byte; [|exact Hk]. unfold byte_of. apply Z.mod_pos_bound. lia.
+  - rewrite Hl. rewrite stored_bytes_value; [|lia]. change (256 ^ 8) with (2 ^ 64).
+    symmetry. apply Z.mod_small. exact Hr.
+Qed.
+
+(** [getopt_slots] is a slot at each eighth byte, for each pointer
+    and the sentinel. *)
+Lemma slots_of_at m a ps :
+  (forall k q, (ps ++ [null]) !! k = Some q -> slot_at m (a + 8 * Z.of_nat k) q) -> getopt_slots m a ps.
+Proof.
+  revert a. induction ps as [|p ps IH]; intros a H.
+  - cbn [getopt_slots]. apply slot_pointer. pose proof (H 0%nat null eq_refl) as H0.
+    replace (a + 8 * Z.of_nat 0) with a in H0 by lia. exact H0.
+  - cbn [getopt_slots]. pose proof (H 0%nat p eq_refl) as H0.
+    replace (a + 8 * Z.of_nat 0) with a in H0 by lia.
+    destruct (slot_pointer _ _ _ H0) as [Hp Hb]. split; [exact Hp|]. split; [exact Hb|].
+    apply IH. intros k q Hk. replace (a + 8 + 8 * Z.of_nat k) with (a + 8 * Z.of_nat (S k)) by lia.
+    exact (H (S k) q Hk).
+Qed.
+
+(** And back. *)
+Lemma at_of_slots m a ps :
+  getopt_slots m a ps -> forall k q, (ps ++ [null]) !! k = Some q -> slot_at m (a + 8 * Z.of_nat k) q.
+Proof.
+  revert a. induction ps as [|p ps IH]; intros a Hs k q Hk.
+  - destruct k as [|k]; [|destruct k; discriminate Hk]. injection Hk as <-.
+    replace (a + 8 * Z.of_nat 0) with a by lia. destruct Hs as [Hp Hb]. exact (pointer_slot_at _ _ _ Hp Hb).
+  - destruct Hs as (Hp & Hb & Hr). destruct k as [|k].
+    + injection Hk as <-. replace (a + 8 * Z.of_nat 0) with a by lia. exact (pointer_slot_at _ _ _ Hp Hb).
+    + replace (a + 8 * Z.of_nat (S k)) with (a + 8 + 8 * Z.of_nat k) by lia. exact (IH _ Hr k q Hk).
+Qed.
+
+(** Memory whose slots hold ps holds argv's bytes and slots for ps. *)
+Lemma argv_of_slots m a ps :
+  getopt_slots m a ps ->
+  mem_bytes m a (8 * length (ps ++ [null])) = argv_bytes ps /\
+  argv_caps (mem_auxes m a (8 * length (ps ++ [null]))) ps.
+Proof.
+  intros Hs. pose proof (at_of_slots m a ps Hs) as H. split.
+  - apply list_eq. intros i. unfold mem_bytes, argv_bytes. rewrite list_lookup_fmap.
+    destruct (decide (i < 8 * length (ps ++ [null])))%nat as [Hi|Hi].
+    + rewrite lookup_seq_lt; [|exact Hi]. cbn [fmap option_fmap option_map].
+      pose proof (Nat.div_mod_eq i 8) as Ei. pose proof (Nat.mod_upper_bound i 8 ltac:(lia)) as Ej.
+      destruct (lookup_lt_is_Some_2 (ps ++ [null]) (i / 8)) as [q Hq]; [lia|].
+      rewrite Ei (slots_bytes_lookup _ _ _ _ Hq Ej). destruct (H _ _ Hq) as (_ & Hb & _).
+      f_equal. rewrite <- Hb; [|lia]. f_equal. lia.
+    + rewrite lookup_seq_ge; [|lia]. symmetry. apply lookup_ge_None_2. rewrite length_slots_bytes. lia.
+  - split; [apply length_mem_auxes|]. intros k q Hk.
+    pose proof (lookup_lt_Some _ _ _ Hk) as Hlt. unfold mem_auxes. rewrite list_lookup_fmap.
+    rewrite lookup_seq_lt; [|lia]. cbn. destruct (H _ _ Hk) as (_ & _ & Hc). rewrite <- Hc. f_equal. f_equal. lia.
+Qed.
+
+(** The i-th aux piece is the i-th slot's. *)
+Lemma aux_ps_lookup b o cs i c :
+  cs !! i = Some c -> aux_ps b o cs !! i = Some (PAux b (o + Z.of_nat i), VAux c).
+Proof.
+  revert o i. induction cs as [|y cs IH]; intros o i H; [discriminate|].
+  rewrite aux_ps_cons. destruct i as [|i]; cbn in H |- *.
+  - injection H as ->. rewrite Z.add_0_r. reflexivity.
+  - rewrite (IH (o + 1) i H). do 3 f_equal. lia.
+Qed.
+
+(** A pointer of a permitted order of argv is one of the arguments'. *)
+Lemma order_in sargs ps q :
+  getopt_order (map arg_ptr sargs) ps -> In q ps -> exists s, In s sargs /\ q = arg_ptr s.
+Proof.
+  intros H Hq. apply (Permutation_in _ (Permutation_sym (getopt_order_inventory _ _ H))) in Hq.
+  apply in_map_iff in Hq as (s & <- & Hs). eauto.
+Qed.
 
 (** Main's proof over one Logic instance shared by every layer. *)
 Module HelloMain (R : Runtime).
@@ -417,6 +668,311 @@ Proof.
   iApply ("HK" $! e' b4 b6 i k q new c' with
            "[%] Hal Ha0 Hs0 Hlit Hcells Hlent Hcod Hs80 Hl4 Hp4 Hy4 Hc4 Hl6 Hy6 Hy6' Hc6 Hc6'").
   auto 10.
+Qed.
+
+(** ## getopt_long's call
+
+    The run's argv is at av, in an object of the region ar, and holds
+    the arguments sargs; the launcher copies each into an object of its
+    own. getopt_long's registry entry is Campaign 4's
+    [libc_getopt_contract] for this run's input, fixed for the run.
+    Main owns argv as one block, the arguments' strings and the getopt
+    token; the call hands argv back permuted, the strings unchanged and
+    the token naming the new optarg and optind. *)
+
+(** argv: aligned, its argc + 1 slots in its region, argc a positive C
+    int, each argument a C string. *)
+Context (av : Z) (ar : region) (sargs : list argument)
+  (Hav : 0 < av /\ av mod 8 = 0 /\ av + 8 * (Z.of_nat (length sargs) + 1) <= r_end ar /\ r_end ar <= 2 ^ 48)
+  (Hargc : 1 <= Z.of_nat (length sargs) < 2 ^ 31)
+  (Hargs : Forall (fun s => string_ok (arg_ptr s) (arg_base s) (arg_region s) (arg_text s)) sargs).
+
+(** The number of argv's bytes and aux slots. *)
+Local Notation argv_len := (8 * (length sargs + 1))%nat.
+
+(** getopt_long has libc's contract for this run's input, over the
+    native parser's initialized and running representations and its
+    allocation requests. *)
+Context (initialized running : mem -> libc_world -> Prop)
+  (grequests : list word -> mem -> libc_world -> Z -> Z -> Prop)
+  (Hgetopt : registry (TAtom "getopt_long") =
+     Some (libc_getopt_contract (hello_input av sargs) initialized running grequests)).
+
+(** The contract. *)
+Local Notation getopt_spec := (libc_getopt_contract (hello_input av sargs) initialized running grequests).
+
+(** wi ties libc's optarg and optind cells to the parser's state and
+    the getopt token, as GetoptLogic.v's reads need. *)
+Context (optarg_cell optind_cell : ptr)
+  (Hgetopt_wi : forall m w h, wi m w h ->
+     getopt_state_at m (libc_getopt_view w) /\ getopt_optarg_cell (libc_getopt_view w) = optarg_cell /\
+     getopt_optind_cell (libc_getopt_view w) = optind_cell /\ getopt_current (libc_getopt_view w) h).
+
+(** wi keeps Hello's option literals in memory. *)
+Context (Htable : forall m w h, wi m w h -> hello_table_at m).
+
+(** wi admits getopt_long's libc side where main owns argv and the
+    arguments: the parser's representation, its private roots and
+    reads, and their separation from the call's inputs and outputs. *)
+Context (Hgetopt_env : forall m w h xs cs, wi m w h -> agrees m h -> live_disjoint m ->
+   (forall l v, (l, v) ∈ block_ps av ar 0 xs cs ++ flat_map arg_ps sargs -> h !! l = Some v) ->
+   getopt_input_at m (hello_input av sargs) ->
+   libc_getopt_rep initialized m w /\
+   Forall (writable_span m) (getopt_roots (libc_getopt_view w)) /\
+   Forall (fun s => readable_bytes m (span_ptr s) (span_size s)) (getopt_reads (libc_getopt_view w)) /\
+   getopt_separated (hello_input av sargs) (libc_getopt_view w) /\
+   getopt_disjoint (getopt_public_writes (hello_input av sargs) (libc_getopt_view w)) /\
+   getopt_private_owned m (hello_input av sargs) (libc_getopt_view w)).
+
+(** getopt_long's private roots and libc's cells are apart from the
+    program's objects, and it releases none of them. *)
+Context (Hgetopt_apart : forall m w h, wi m w h ->
+   (forall s a, In s (getopt_roots (libc_getopt_view w) ++ getopt_cells (libc_getopt_view w)) ->
+      span_contains s a -> ~ owned_live h m a) /\
+   ids_apart (getopt_owned (libc_getopt_view w)) h).
+
+(** A return of getopt_long keeps wi, with argv's block holding what
+    the memory then holds and the token naming the new optarg and
+    optind. *)
+Context (Kgetopt : forall r args xs s m w h trace values s' m' w' bs cs,
+   M.E.invoke getopt_spec r args xs s m w trace (CallReturn values) s' m' w' ->
+   (forall l v, (l, v) ∈ block_ps av ar 0 bs cs -> h !! l = Some v) -> wi m w h ->
+   wi m' w' (overwrite (block_ps av ar 0 (mem_bytes m' av argv_len) (mem_auxes m' av argv_len) ++
+     getopt_ps (getopt_optarg (libc_getopt_view w')) (getopt_optind (libc_getopt_view w'))) h)).
+
+(** A permitted order of argv has argc pointers. *)
+Lemma order_length ps : getopt_order (map arg_ptr sargs) ps -> length ps = length sargs.
+Proof.
+  intros H. rewrite <- (length_map arg_ptr sargs).
+  symmetry. apply Permutation_length. exact (getopt_order_inventory _ _ H).
+Qed.
+
+(** Owning argv's block holding ps, and the arguments, the memory's
+    slots hold ps: [getopt_slots]. *)
+Lemma argv_slots m h ps cs :
+  agrees m h -> getopt_order (map arg_ptr sargs) ps -> argv_caps cs ps ->
+  (forall l v, (l, v) ∈ block_ps av ar 0 (argv_bytes ps) cs -> h !! l = Some v) ->
+  (forall l v, (l, v) ∈ flat_map arg_ps sargs -> h !! l = Some v) ->
+  getopt_slots m av ps.
+Proof.
+  intros Ha Ho [Lc Hc] Kb Ks.
+  assert (Hlv : live_at m av ar).
+  { apply (Ha (PLive av) (VLive ar)), Kb. apply elem_of_cons. left. reflexivity. }
+  apply slots_of_at. intros k q Hk.
+  assert (Hq : 0 <= ptr_addr q < 2 ^ 64 /\ ~ freed_in (m_regions m) (ptr_cap q)).
+  { pose proof (list_elem_of_lookup_2 _ _ _ Hk) as Hq'.
+    apply list_elem_of_In, in_app_or in Hq' as [Hq' | [<- | []]].
+    - destruct (order_in _ _ _ Ho Hq') as (s & Hs & ->).
+      pose proof (proj1 (List.Forall_forall _ _) Hargs s Hs) as (Hcap & Hb0 & Hbp & Hend & H48 & _).
+      assert (Hlive : live_at m (arg_base s) (arg_region s)).
+      { apply (Ha (PLive (arg_base s)) (VLive (arg_region s))), Ks. apply list_elem_of_In, in_flat_map.
+        exists s. split; [exact Hs|]. unfold arg_ps, string_ps. left. reflexivity. }
+      split; [lia|]. intros (b' & reg' & Hc' & E' & L'). destruct Hlive as [E1 L1].
+      destruct Hcap as [Hc0|Hc0]; rewrite Hc0 in Hc'; destruct Hc' as [E0|E0]; try discriminate E0;
+        injection E0 as <-; rewrite E1 in E'; injection E' as <-; congruence.
+    - split; [cbn; lia|]. intros (b' & reg' & Hc' & _). destruct Hc' as [E0|E0]; discriminate E0. }
+  destruct Hq as [Hr Hf]. split; [exact Hr|]. split.
+  - intros i Hi.
+    assert (Hin : (PByte av (0 + Z.of_nat (8 * k + Z.to_nat i)), VByte (byte_of (ptr_addr q) i)) ∈
+                  block_ps av ar 0 (argv_bytes ps) cs).
+    { apply elem_of_cons. right. apply elem_of_app. left.
+      apply (list_elem_of_lookup_2 _ (8 * k + Z.to_nat i)%nat). apply byte_ps_lookup.
+      unfold argv_bytes. rewrite (slots_bytes_lookup _ _ _ _ Hk); [|lia].
+      rewrite Z2Nat.id; [reflexivity|lia]. }
+    destruct (Ha _ _ (Kb _ _ Hin)) as [_ Hil]. destruct (Hil ar (proj1 Hlv) (proj2 Hlv)) as (_ & _ & Hx).
+    rewrite <- Hx. f_equal. lia.
+  - assert (Hin : (PAux av (0 + Z.of_nat (8 * k)), VAux (ptr_cap q)) ∈ block_ps av ar 0 (argv_bytes ps) cs).
+    { apply elem_of_cons. right. apply elem_of_app. right.
+      apply (list_elem_of_lookup_2 _ (8 * k)%nat). apply aux_ps_lookup. exact (Hc k q Hk). }
+    pose proof (aux_piece_holds _ _ _ _ _ Hlv (Ha _ _ (Kb _ _ Hin))) as Hh.
+    replace (av + 8 * Z.of_nat k) with (av + (0 + Z.of_nat (8 * k))) by lia.
+    exact (aux_holds_kept _ _ _ Hh Hf).
+Qed.
+
+(** The arguments are admitted ([getopt_pre]) where main owns argv's
+    block, holding a permitted order ps, the arguments' strings and the
+    token, whose optind i is at most argc. *)
+Lemma getopt_admitted m w h ps cs a i :
+  wi m w h -> agrees m h -> live_disjoint m ->
+  getopt_order (map arg_ptr sargs) ps -> argv_caps cs ps -> 0 <= i <= Z.of_nat (length sargs) ->
+  (forall l v, (l, v) ∈ block_ps av ar 0 (argv_bytes ps) cs -> h !! l = Some v) ->
+  (forall l v, (l, v) ∈ flat_map arg_ps sargs -> h !! l = Some v) ->
+  (forall l v, (l, v) ∈ getopt_ps a i -> h !! l = Some v) ->
+  getopt_pre (hello_input av sargs) libc_getopt_view (libc_getopt_rep initialized)
+    (getopt_words (hello_input av sargs)) m w.
+Proof.
+  intros Hw Ha Hd Ho Hc Hi Kb Ks Kt.
+  assert (Hlv : live_at m av ar).
+  { apply (Ha (PLive av) (VLive ar)), Kb. apply elem_of_cons. left. reflexivity. }
+  pose proof Hav as (Hav0 & Hav8 & Haend & Har48).
+  assert (Hin : getopt_input_at m (hello_input av sargs)).
+  { destruct (Htable m w h Hw) as (T1 & T2 & T3).
+    unfold getopt_input_at, getopt_vector, getopt_strings, hello_input.
+    cbn [getopt_argc getopt_argv getopt_arguments getopt_optstring getopt_short_options getopt_longopts
+         getopt_options getopt_longindex].
+    split; [lia|]. split; [rewrite length_map; reflexivity|].
+    split.
+    {
+      split; [|split; [|split]].
+      - unfold writable_span. cbn [span_size span_ptr ptr_addr ptr_cap]. split; [lia|].
+        exists av, ar. split; [reflexivity|]. split; [exact (proj1 Hlv)|]. split; [exact (proj2 Hlv)|].
+        apply (access_obj _ _ ar); [exact (proj1 Hlv) | lia | lia | apply Z.mod_1_r].
+      - cbn [ptr_addr ptr_cap]. apply (access_obj _ _ ar); [exact (proj1 Hlv) | lia | lia | exact Hav8].
+      - cbn [ptr_addr ptr_cap]. apply (access_obj _ _ ar); [exact (proj1 Hlv) | lia | lia | exact Hav8].
+      - exists ps. split; [rewrite map_map; exact Ho|]. exact (argv_slots m h ps cs Ha Ho Hc Kb Ks). }
+    split.
+    { apply List.Forall_forall. intros [q t] Hq.
+      apply in_map_iff in Hq as (s & E & Hs). injection E as <- <-. cbn [fst snd].
+      apply (string_c_string _ _ (arg_base s) (arg_region s)); [exact (proj1 (List.Forall_forall _ _) Hargs s Hs)|].
+      apply all_agree_intro. intros l v Hl. apply Ha, Ks. apply list_elem_of_In, in_flat_map.
+      exists s. split; [exact Hs | apply list_elem_of_In; exact Hl]. }
+    split; [exact T1|]. split; [exact T2|]. split; [exact T3|]. split; [left; reflexivity|].
+    vm_compute. reflexivity. }
+  assert (Kall : forall l v, (l, v) ∈ block_ps av ar 0 (argv_bytes ps) cs ++ flat_map arg_ps sargs ->
+                   h !! l = Some v).
+  { intros l v Hl. apply elem_of_app in Hl as [Hl|Hl]; [exact (Kb _ _ Hl) | exact (Ks _ _ Hl)]. }
+  destruct (Hgetopt_env m w h _ _ Hw Ha Hd Kall Hin) as (Hrep & Hroots & Hreads & Hsep & Hdisj & Hpriv).
+  destruct (Hgetopt_wi m w h Hw) as (Hst & _ & _ & Hcur).
+  destruct (Hcur a i (Kt _ _ ltac:(left))) as [_ Hi'].
+  split; [reflexivity|]. split; [exact Hin|]. split; [exact Hrep|]. split; [exact Hst|].
+  split; [rewrite Hi'; unfold hello_input; cbn [getopt_argc]; lia|].
+  split; [exact Hroots|]. split; [exact Hreads|]. split; [exact Hsep|]. split; [exact Hdisj | exact Hpriv].
+Qed.
+
+(** A return of getopt_long satisfies its postcondition. *)
+Lemma getopt_returned r args xs s m w trace values s' m' w' :
+  M.E.invoke getopt_spec r args xs s m w trace (CallReturn values) s' m' w' ->
+  exists born, getopt_post (hello_input av sargs) libc_getopt_view (libc_getopt_rep initialized)
+    xs m w born trace (CallReturn values) m' w'.
+Proof.
+  intros H. inversion H as [trace' ending s0 m0 w0 born Habi Hpre Hp Hpost | ]; subst. exists born. exact Hpost.
+Qed.
+
+(** A return of the call keeps every piece but argv's bytes and slots
+    agreeing ([prefix_agrees_out]): its roots and libc's cells are apart
+    from the program's objects, and argv is the one block of the
+    program's it writes. So with argv's block holding what the memory
+    then holds, and any token, the ghost heap agrees; the live objects
+    stay apart and the runtime ready. *)
+Lemma getopt_frame_ok r args s m w h trace values s' m' w' ps cs a' i' :
+  M.E.invoke getopt_spec r args (getopt_words (hello_input av sargs)) s m w trace (CallReturn values) s' m' w' ->
+  wi m w h -> agrees m h -> live_disjoint m -> R.ready s m ->
+  length (argv_bytes ps) = argv_len -> length cs = argv_len ->
+  (forall l v, (l, v) ∈ block_ps av ar 0 (argv_bytes ps) cs -> h !! l = Some v) ->
+  agrees m' (overwrite (block_ps av ar 0 (mem_bytes m' av argv_len) (mem_auxes m' av argv_len) ++
+                        getopt_ps a' i') h) /\
+  live_disjoint m' /\ R.ready s' m'.
+Proof.
+  intros Hi Hw Ha Hd Hr Lx Lc Kb.
+  pose proof Hav as (Hav0 & Hav8 & Haend & Har48).
+  assert (Hlv : live_at m av ar).
+  { apply (Ha (PLive av) (VLive ar)), Kb. apply elem_of_cons. left. reflexivity. }
+  destruct (Hgetopt_apart m w h Hw) as [Hroots Hrel].
+  destruct (M.E.invoke_prefix _ _ _ _ _ _ _ _ _ _ _ _ _ Hi) as (born & Hp).
+  destruct (M.E.prefix_preserve _ _ _ _ _ _ _ _ _ _ _ Hp Hr) as [Hr' _].
+  set (ks := (byte_ps av 0 (argv_bytes ps) ++ aux_ps av 0 cs).*1).
+  set (outs := fun x => span_contains (mkSpan (mkPtr av (Obj av)) (8 * (Z.of_nat (length sargs) + 1))) x).
+  assert (Hwr : contract_writes getopt_spec (getopt_words (hello_input av sargs)) m w =
+                (getopt_roots (libc_getopt_view w) ++ getopt_cells (libc_getopt_view w)) ++
+                  [mkSpan (mkPtr av (Obj av)) (8 * (Z.of_nat (length sargs) + 1))]).
+  { rewrite <- app_assoc. reflexivity. }
+  destruct (prefix_agrees_out _ _ _ _ _ _ _ _ _ _ _ h ks outs Hp Hr Hd) as (Ha' & _ & Hd' & _).
+  - intros l v Hl _. exact (Ha l v Hl).
+  - intros l v Hl Hm. exact (agree_piece_registered _ _ _ Hm (Ha l v Hl)).
+  - rewrite Hwr. intros sp x Hin Hsp Hol. apply in_app_or in Hin as [Hin|Hin].
+    + exfalso. exact (Hroots sp x Hin Hsp Hol).
+    + destruct Hin as [<-|[]]. exact Hsp.
+  - intros l v Hl Hk. destruct l as [b|b o|b o|k]; try exact I; intros reg Hlv' Ho' He' Hout; apply Hk;
+      unfold outs, span_contains in Hout; cbn [span_ptr span_size ptr_addr] in Hout;
+      (apply (block_key m av ar 0 (argv_bytes ps) cs _ b o reg Hd Hlv);
+       [lia | rewrite Lx; lia | rewrite Lc Lx; reflexivity | auto | exact Hlv' | exact Ho' | exact He' |
+        rewrite Lx; lia]).
+  - exact Hrel.
+  - assert (Hlv' : live_at m' av ar).
+    { apply (Ha' (PLive av) (VLive ar)); [apply Kb; apply elem_of_cons; left; reflexivity|].
+      exact (live_not_key _ _ _ _ _). }
+    split; [|split; [exact Hd' | exact Hr']].
+    intros l v Hl. apply lookup_overwrite in Hl as [Hin | [Hnk Hh]].
+    + apply elem_of_app in Hin as [Hin|Hin].
+      * pose proof (block_after m' av ar 0 argv_len l v Hlv') as H. rewrite !Z.add_0_r in H.
+        apply H; [lia | lia | exact Hin].
+      * apply list_elem_of_singleton in Hin. injection Hin as -> ->. exact I.
+    + apply (Ha' l v Hh). intros Hk. apply Hnk. rewrite fmap_app. apply elem_of_app. left.
+      pose proof (block_keys_after m' av ar 0 (argv_bytes ps) cs argv_len l Lx Lc Hk) as H.
+      rewrite Z.add_0_r in H. exact H.
+Qed.
+
+(** getopt_long(argc, argv, "g:t", longopts, NULL)'s triple, from
+    [libc_getopt_contract]: owning argv's block, holding a permitted
+    order ps of the arguments, their strings, and the token, whose
+    optind is at most argc, the call binds d to its code, a C int, and
+    hands back argv holding another permitted order, the strings, and
+    the token naming the new optarg and optind, in range; a 'g' comes
+    with a nonnull borrow of an argument. *)
+Lemma wp_main_getopt f e ls lab d va vv vs vl vi rest j ps cs a i Φ :
+  map_option (arg_x ge e) [Arg W va; Arg P vv; Arg P vs; Arg P vl; Arg P vi] =
+    Some (getopt_words (hello_input av sargs)) ->
+  getopt_order (map arg_ptr sargs) ps -> argv_caps cs ps -> 0 <= i <= Z.of_nat (length sargs) ->
+  pts (block_ps av ar 0 (argv_bytes ps) cs) -∗ pts (flat_map arg_ps sargs) -∗ pts (getopt_ps a i) -∗
+  ▷ (∀ code ps' cs' a' i',
+       ⌜getopt_order (map arg_ptr sargs) ps' /\ argv_caps cs' ps' /\ 0 <= i' <= Z.of_nat (length sargs) /\
+        getopt_int code /\ (code = 103 -> getopt_borrow (hello_input av sargs) a' /\ ptr_addr a' <> 0)⌝ -∗
+       pts (block_ps av ar 0 (argv_bytes ps') cs') -∗ pts (flat_map arg_ps sargs) -∗ pts (getopt_ps a' i') -∗
+       WP (ERun (mkFrame f (put d (WInt (code mod 2 ^ 32)) e) ls None (Exec lab rest j)) : mexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+     (Exec lab (Call (CResult d W) (Global (TAtom "getopt_long"))
+                  [Arg W va; Arg P vv; Arg P vs; Arg P vl; Arg P vi] :: rest) j)) : mexpr) {{ Φ }}.
+Proof.
+  intros Hx Ho Hc Hi. iIntros "Hb Hs Ht HK".
+  assert (Lp : length ps = length sargs) by exact (order_length ps Ho).
+  assert (Lx : length (argv_bytes ps) = argv_len).
+  { unfold argv_bytes. rewrite length_slots_bytes length_app Lp. cbn [length]. lia. }
+  assert (Lc : length cs = argv_len).
+  { destruct Hc as [Lc _]. rewrite Lc length_app Lp. cbn [length]. lia. }
+  iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ getopt_spec (getopt_words (hello_input av sargs))
+            (pts (block_ps av ar 0 (argv_bytes ps) cs) ∗ pts (flat_map arg_ps sargs) ∗ pts (getopt_ps a i))
+            with "[$Hb $Hs $Ht] [HK]");
+    [apply linked_outside; first [exact Hlinked | reflexivity] |
+     apply linked_unbound; first [exact Hlinked | reflexivity] | reflexivity | exact Hgetopt | exact Hx | | |].
+  - split; [right; eexists; reflexivity | do 5 eexists; reflexivity].
+  - iIntros (σ) "Hσ (Hb & Hs & Ht)". iDestruct "Hσ" as (h) "[Hh %Hf]". destruct Hf as (Ha & Hd & Hr & Hw).
+    iDestruct (pts_lookup with "Hh Hb") as %Kb. iDestruct (pts_lookup with "Hh Hs") as %Ks.
+    iDestruct (pts_lookup with "Hh Ht") as %Kt. iPureIntro.
+    exact (getopt_admitted _ _ _ _ _ _ _ Hw Ha Hd Ho Hc Hi Kb Ks Kt).
+  - iNext. iIntros (σ trace values s' m' w' Hinv) "(%h & Hh & %Hf) (Hb & Hs & Ht)".
+    destruct Hf as (Ha & Hd & Hr & Hw).
+    iDestruct (pts_lookup with "Hh Hb") as %Kb.
+    destruct (getopt_returned _ _ _ _ _ _ _ _ _ _ _ Hinv) as (born & _ & Hin' & _ & _ & code & Hend & Hres).
+    injection Hend as ->.
+    change (getopt_argc (hello_input av sargs)) with (Z.of_nat (length sargs)) in Hres.
+    assert (E : (Z.of_nat (length sargs) =? 0) = false) by (apply Z.eqb_neq; lia).
+    rewrite E in Hres. destruct Hres as (_ & _ & Hrange & Hresult).
+    destruct (hello_code _ _ _ _ _ Hresult) as [Hint Hg].
+    destruct Hin' as (_ & _ & (_ & _ & _ & ps' & Ho' & Hsl') & _).
+    rewrite hello_input_order in Ho'.
+    change (ptr_addr (getopt_argv (hello_input av sargs))) with av in Hsl'.
+    assert (Lp' : length ps' = length sargs) by exact (order_length ps' Ho').
+    destruct (argv_of_slots m' av ps' Hsl') as [Eb Ec].
+    assert (EL : (8 * length (ps' ++ [null]))%nat = argv_len) by (rewrite length_app Lp'; reflexivity).
+    rewrite EL in Eb, Ec.
+    set (a' := getopt_optarg (libc_getopt_view w')). set (i' := getopt_optind (libc_getopt_view w')).
+    destruct (getopt_frame_ok _ _ _ _ _ _ _ _ _ _ _ ps cs a' i' Hinv Hw Ha Hd Hr Lx Lc Kb) as (Ha' & Hd' & Hr').
+    pose proof (Kgetopt _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hinv Kb Hw) as Hw'.
+    rewrite Eb in Ha', Hw'.
+    iMod (pts_update _ (block_ps av ar 0 (argv_bytes ps) cs ++ getopt_ps a i)
+            (block_ps av ar 0 (argv_bytes ps') (mem_auxes m' av argv_len) ++ getopt_ps a' i')
+            with "Hh [Hb Ht]") as "[Hh Hn]".
+    { rewrite !fmap_app. rewrite (block_ps_keys av ar 0 (argv_bytes ps) cs); [reflexivity | |].
+      - rewrite <- Eb, length_mem_bytes. symmetry. exact Lx.
+      - rewrite length_mem_auxes. symmetry. exact Lc. }
+    { rewrite pts_app. iFrame. }
+    iModIntro. iExists (put d (WInt (code mod 2 ^ 32)) e). iSplit.
+    { iPureIntro. unfold external_env. cbn. rewrite Z.mod_mod; [reflexivity | lia]. }
+    iSplitL "Hh".
+    + iExists _. iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt ls_world]. auto.
+    + rewrite pts_app. iDestruct "Hn" as "[Hb Ht]".
+      iApply ("HK" $! code ps' (mem_auxes m' av argv_len) a' i' with "[%] Hb Hs Ht").
+      split; [exact Ho'|]. split; [exact Ec|]. split; [exact Hrange|]. split; [exact Hint | exact Hg].
 Qed.
 
 End main.

@@ -1031,13 +1031,45 @@ GetoptLogic derives four rules from it:
 - `wp_optind_check`, optind's 4-byte check at alignment 1;
 - `wp_optind_load`, the signed 32-bit load giving the token's optind.
 
-Campaign 4 is adding getopt state to `libc_world` and byte bounds to
-`getopt_slots`. A constant view would make getopt's post claim that
-the cells never change. It confirmed that the registry can be fixed
-per launch after startup fixes argv, which `getopt_contract`'s input
-needs. Main's getopt triple, `wp_main_getopt`, comes next. It takes
-argv's slots and the token and hands both back rewritten, the slots
-permuted as `getopt_order` allows, against the fixed original list.
+Campaign 4 added getopt state to `libc_world` (`libc_getopt`, viewed
+by `libc_getopt_view`) and canonical byte bounds to `getopt_slots`
+(1b61cc0). Without that state, any view would be constant, and getopt's
+post would claim the cells never change. Campaign 4 also confirmed that
+the registry can be fixed per launch after startup fixes argv, which
+`getopt_contract`'s input needs.
+
+**getopt_long's call.** [HelloMain.v](../rocq/theories/HelloMain.v)'s
+`wp_main_getopt` is the call main makes, with
+`libc_getopt_contract (hello_input av sargs) …` in the registry. The
+run's arguments `sargs` are strings in objects of their own, as the
+launcher copies them. `hello_input` is getopt's input for the whole
+run: argv, "g:t" and Hello's four long options, every flag null. Main
+hands over argv the way HelloConv hands mbrtowc its cells: one block
+(`block_ps`) of argc + 1 slots. Its bytes are those of the pointers it
+holds (`argv_bytes`) and its aux slots their capabilities (`argv_caps`).
+- The admission (`getopt_admitted`) reads `getopt_slots` from that block
+  and the arguments' lives. Each slot's capability names a live
+  argument, so it is not freed and its aux piece holds it exactly.
+- The return is framed by `prefix_agrees_out`, whose one block out is
+  argv. The new `getopt_slots`, with its byte bounds, turns memory back
+  into a block of the same form (`argv_of_slots`). This is where the
+  bounds are needed: a slot whose bytes are only known to load as a
+  pointer does not fix the bytes the pieces name.
+- The triple hands back another permitted order `ps'`, the strings
+  unchanged and the token renamed to the new optarg and optind, with
+  optind in range. `hello_code` adds that the code is a C int and that
+  a 'g', short or `--greeting`, comes with a nonnull borrow of an
+  argument.
+
+The premises on wi are call-local:
+- `Hgetopt_wi`: the cells and token are current.
+- `Htable`: the literals are in memory.
+- `Hgetopt_env`: libc's side of admission.
+- `Hgetopt_apart`: roots, cells and releases apart from the program.
+- `Kgetopt`: wi survives with the block and the token rewritten.
+
+Next is the option loop, an `iLöb` at `iw_1.L8`, whose exits are the
+version, help and end-of-options blocks.
 
 ## Open questions for mbrock
 
