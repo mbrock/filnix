@@ -320,3 +320,5 @@
 1	run-c gc gc-stress
 1	setjmp gc-stress
 0	-O difftest float SSE2
+150	nfb round trip
+150	-O nfb round trip

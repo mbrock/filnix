@@ -60,6 +60,9 @@ page about it is listed here.
 - [Nonlocal returns](setjmp.md), [floating point](float.md),
   [fixed-register inline asm](asm-fixed.md) and
   [full-width vector access](vector-access.md): their contracts.
+- [NFB, a bytecode for nanofil IR](nfb.md): an RFC draft for the IR as
+  little-endian words, with one encoding per module; the numbers the
+  encoder and decoder of [nfb.pl](../src/nfb.pl) assign.
 - [dterm](dterm.md): how these pages draw Prolog and Rocq, and
   documentation as a relation; its [workbench](../web/workbench/)
   sets the same terms side by side.

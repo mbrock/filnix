@@ -16,9 +16,12 @@
     | `outcomes FILE` | print the checked module of a Fil-C IR file and the interpreter's outcome of each run line, as terms (rocq/) |
     | `asm-terms FILE TEXT` | as `compile` for a Fil-C module, but write the assembly text to the file TEXT and print each asm.pl line as a term (rocq/backend) |
     | `abi-terms FILE` | print the checked module of a Fil-C file, then the reference ABI plan of each of its functions and its weak thunks' plans, as terms (rocq/backend) |
+    | `encode FILE OUT` | read, validate and write the module as NFB, the bytecode of nfb.pl, to OUT (docs/nfb.md) |
+    | `decode FILE` | read an NFB file, validate, print the IR |
+    | `nfb-check FILE` | write the module, and a Fil-C module's checked module, as NFB and read each back: the same term with NAMES, the same words without it (tests/nfb.sh) |
 
-    A FILE ending in `.c` or `.i` goes through the C frontend; any other
-    FILE is IR text. A `.c` file is preprocessed with the predefined
+    A FILE ending in `.c` or `.i` goes through the C frontend, one ending
+    in `.nfb` is NFB, and any other FILE is IR text. A `.c` file is preprocessed with the predefined
     macros and include paths of `$FILCC` (default `filcc`).
 
     ```diagram
@@ -172,6 +175,7 @@
 */
 :- use_module(ir).
 :- use_module(ir_text).
+:- use_module(nfb).
 % Compile-only commands do not need the interpreter or its CLP(Z) solver.
 :- if(current_prolog_flag(dialect, swi)).
 :- autoload(interp, [run/5, module_prepared/2, run_prepared/5, outcome_text/2]).
@@ -465,12 +469,20 @@ report(Error) :-
 %% Loading
 
 % file_module(+File, -Module): Module is the valid IR module in File. A
-% .c or .i file goes through the C frontend, anything else is IR text.
+% .c or .i file goes through the C frontend, a .nfb file is NFB, and
+% anything else is IR text.
 file_module(File, Module) :-
     (   (   atom_concat(_, '.c', File)
         ;   atom_concat(_, '.i', File)
         )
     ->  c_file_module(File, Module)
+    ;   atom_concat(_, '.nfb', File)
+    ->  read_nfb_file(File, Words),
+        (   module_nfb(Module, Words) -> true
+        ;   format(atom(Msg), '~w: not the NFB of a module', [File]),
+            throw(nanofil_error(Msg))
+        ),
+        valid_module(Module)
     ;   read_ir_file(File, Module, _),
         valid_module(Module)
     ).
@@ -572,6 +584,15 @@ command(Opt, _, Checks, ['abi-terms', File]) :- !,
     checked_module(Checks, Module, Checked),
     format("~k.~n", [Checked]),
     filc_module_plans(Checked, print_term_line).
+command(Opt, _, Checks, ['nfb-check', File]) :- !,
+    file_module(File, Module0),
+    optimize(Opt, Module0, Module),
+    nfb_round_trip(File, unchecked, Module),
+    (   module_mode(Module, filc)
+    ->  checked_module(Checks, Module, Checked),
+        nfb_round_trip(File, checked, Checked)
+    ;   true
+    ).
 command(Opt, _, Checks, [difftest, File, Dir]) :- !,
     difftest(Opt, Checks, File, Dir).
 command(Opt, _, Checks, [outcomes, File]) :- !,
@@ -594,6 +615,17 @@ command(_, [tokens, File]) :-
 command(_, [check, File]) :-
     file_module(File, _),
     format("ok~n", []).
+command(Opt, [encode, File, Out]) :-
+    file_module(File, Module0),
+    optimize(Opt, Module0, Module),
+    module_nfb(Module, Words),
+    write_nfb_file(Out, Words).
+command(_, [decode, File]) :-
+    (   atom_concat(_, '.nfb', File) -> true
+    ;   throw(nanofil_error('decode needs a .nfb file'))
+    ),
+    file_module(File, Module),
+    print_module(Module).
 command(Opt, [print, File]) :-
     file_module(File, Module0),
     optimize(Opt, Module0, Module),
@@ -650,6 +682,21 @@ difftest(Sel, Checks, File, Dir) :-
              call_text(Fn, Args, CallText),
              format("  ~w = ~w~n", [CallText, Text])
            )).
+
+% nfb_round_trip(+File, +Stage, +Module): Module, written as NFB, reads
+% back as itself, and its core sections alone read back as a module
+% whose core encoding is those very words (nfb.pl). Prints the sizes;
+% throws nanofil_error otherwise.
+nfb_round_trip(File, Stage, Module) :-
+    module_nfb(Module, Words),
+    nfb_core(Words, Core),
+    (   module_nfb(Module1, Words), Module1 == Module,
+        module_nfb(Module2, Core), module_nfb(Module2, [], Core2), Core2 == Core
+    ->  length(Words, N), length(Core, NC),
+        format("~w: ~w ~w words, ~w core~n", [File, Stage, N, NC])
+    ;   format(atom(Msg), '~w: the ~w module does not read back from NFB', [File, Stage]),
+        throw(nanofil_error(Msg))
+    ).
 
 %! outcomes(+Opt, +Checks, +File) is det.
 %

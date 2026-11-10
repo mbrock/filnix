@@ -146,6 +146,10 @@ pkgs.runCommandCC
     step "pointer+exception gc-stress" env RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" tests/filc/run-c.sh pointer-effects lower-donor exceptions reuse-gc lowers
     step "actual ensure-aux exits" tests/filc/trace-pointer-effects.sh
     step "difftest c/*.c" tests/par.sh tests/difftest.sh tests/c/*.c
+    # Every module of the corpus, unchecked and checked, reads back from
+    # its NFB (docs/nfb.md).
+    step "nfb round trip" tests/par.sh tests/nfb.sh tests/filc/*.ir tests/fixtures/*.ir tests/backend/*.ir tests/float/*.ir tests/c/*.c tests/c/prog/*.c
+    step "-O nfb round trip" env NANOFIL_OPT=-O tests/par.sh tests/nfb.sh tests/filc/*.ir tests/fixtures/*.ir tests/backend/*.ir tests/float/*.ir tests/c/*.c tests/c/prog/*.c
     step reject tests/reject.sh
     # const_eval, the IR and clang on generated integer expressions (docs/arith.md).
     step "arith slice" tests/arith.sh slice
