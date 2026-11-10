@@ -93,17 +93,19 @@ note_kind(Text, cm(F, T, S), cm(F, T, S, Kind)) :-
 
 %  rocq_index_items(+Page, +File, +Items): assert rocq_global/5 for each
 %  name Items define, qualified by the modules they are in.
-rocq_index_items(Page, File, Items) :- index_items(Items, [], Page, File).
+rocq_index_items(Page, File, Items) :- index_items(Items, [], false, Page, File).
 
-index_items(Is, Mod, Page, File) :- forall(member(I, Is), index_item(I, Mod, Page, File)).
+index_items(Is, Mod, InSec, Page, File) :- forall(member(I, Is), index_item(I, Mod, InSec, Page, File)).
 
-index_item(proved(S, _), Mod, Page, File) :- !, index_item(S, Mod, Page, File).
-index_item(block(module(_, Kind, n(_, N), _, _), Body, _), Mod, Page, File) :- !,
+index_item(proved(S, _), Mod, InSec, Page, File) :- !, index_item(S, Mod, InSec, Page, File).
+index_item(block(module(_, Kind, n(_, N), _, _), Body, _), Mod, InSec, Page, File) :- !,
     add_global(N, Mod, Page, module, File),
-    ( Kind == section -> Mod1 = Mod ; append(Mod, [N], Mod1) ),
-    index_items(Body, Mod1, Page, File).
-index_item(S, Mod, Page, File) :-
-    forall(defines(S, N, K), add_global(N, Mod, Page, K, File)).
+    ( Kind == section -> Mod1 = Mod, InSec1 = true ; append(Mod, [N], Mod1), InSec1 = InSec ),
+    index_items(Body, Mod1, InSec1, Page, File).
+index_item(S, Mod, InSec, Page, File) :-
+    forall(defines(S, N, K0),
+           ( ( InSec == true, S = decl(_, _, _) -> K = sec(K0) ; K = K0 ),
+             add_global(N, Mod, Page, K, File) )).
 
 add_global(N, Mod, Page, K, File) :-
     qualify(Mod, N, Q),
@@ -145,13 +147,42 @@ seq_names([N-K|Ns], F, Mod) --> { qualify(Mod, N, Q) }, [n(F, N, Q, K)], seq_nam
 %  is defined in the corpus.
 global_ref(X, Href, Kind) :-
     nb_getval(rq_page, Page), Page \== none,
-    (   nb_getval(rq_mod, Mod), qualify(Mod, X, Q0), rocq_global(_, Q0, Page, Kind, _) -> Q = Q0, P = Page
-    ;   rocq_global(_, X, P0, Kind, _) -> Q = X, P = P0
-    ;   last_part(X, S), findall(Q1-P1-K1, rocq_global(S, Q1, P1, K1, _), Hits), Hits \== [],
-        ( member(Q-Page-Kind, Hits) -> P = Page ; Hits = [Q-P-Kind] )
+    (   nb_getval(rq_mod, Mod), qualify(Mod, X, Q0), rocq_global(_, Q0, Page, K0, _) -> Q = Q0, P = Page
+    ;   rocq_global(_, X, Page, K0, _) -> Q = X, P = Page
+    ;   rocq_global(_, X, P0, K0, _), K0 \= sec(_), page_in_scope(Page, P0) -> Q = X, P = P0
+    ;   atom_concat('R.', S0, X), atom_concat('Runtime.', S0, Q),
+        rocq_global(S0, Q, P0, K0, _), page_in_scope(Page, P0) -> P = P0
+    ;   atomic_list_concat([F, S0], '.', X), atom_concat('-', F, End),
+        rocq_global(S0, Q, P0, K0, _), K0 \= sec(_), sub_atom(P0, _, _, 0, End) -> P = P0
+    ;   last_part(X, S),
+        findall(Q1-P1-K1, ( rocq_global(S, Q1, P1, K1, _), ( P1 == Page ; K1 \= sec(_), page_in_scope(Page, P1) ) ), Hits),
+        Hits \== [],
+        (   member(Q-Page-K0, Hits) -> P = Page
+        ;   page_tree(Page, Tree), Tree \== theories,
+            include([_-PT-_]>>page_tree(PT, Tree), Hits, TreeHits),
+            TreeHits = [Q-P-K0|_], forall(member(_-P1-_, TreeHits), P1 == P) -> true
+        ;   Hits = [Q-P-K0|_], forall(member(_-P1-_, Hits), P1 == P)
+        )
     ),
+    unsec(K0, Kind),
     uri_encoded(fragment, Q, Frag),
     ( P == Page -> format(atom(Href), "#~w", [Frag]) ; format(atom(Href), "~w.html#~w", [P, Frag]) ).
+
+unsec(sec(K), K) :- !.
+unsec(K, K).
+
+%  The theories are in scope everywhere; backend, glibc and spikes only in
+%  their own directory.
+page_in_scope(Page, P) :-
+    (   P == Page -> true
+    ;   sub_atom(P, 0, _, _, 'rocq-theories-') -> true
+    ;   page_tree(Page, Tree), page_tree(P, Tree)
+    ).
+
+page_tree(P, backend) :- sub_atom(P, 0, _, _, 'rocq-backend-'), !.
+page_tree(P, glibc) :- sub_atom(P, 0, _, _, 'rocq-glibc-'), !.
+page_tree(P, spikes) :- sub_atom(P, 0, _, _, 'rocq-spikes-'), !.
+page_tree(_, theories).
 
 last_part(X, S) :- atomic_list_concat(Ps, '.', X), last(Ps, S).
 
@@ -851,15 +882,39 @@ proof_(S, pf(Steps, End)) -->
                    el(div, "rq-states", ( snapshot(Id, States, snap(Start, 0, [], none, []), Initial),
                                           seq_tail(All, Id, States) )) )),
               el(details, "rq-script", ( el(summary, none, "Source script"), el(div, "proof-steps", focus_nodes(Script, tac_row)) )) )) )).
-proof_(_, pf(Steps, End)) -->
-    { include([S]>>(S = step(_, _, _)), Steps, Tacs), length(Tacs, N),
+proof_(S, pf(Steps, End)) -->
+    { include([St]>>(St = step(_, _, _)), Steps, Tacs), length(Tacs, N),
       ( End = qed(_, Kw) -> true ; Kw = '' ),
       ( N =:= 1 -> Count = "1 step" ; format(string(Count), "~d steps", [N]) ),
+      proof_env(S, Tacs, Env),
       foldl(step_depth, Steps, Rows, [], _),
       exclude([R]>>(R = row(close, _, _, _)), Rows, OpenRows), focus_tree(0, OpenRows, Script) },
     el(details, "rq-proof",
        ( el(summary, none, ( kw("Proof"), " ", el(span, "proof-count", esc(Count)), " ", kw(Kw) )),
-         el(div, "proof-steps", focus_nodes(Script, tac_row)) )).
+         { nb_setval(rq_proof_env, Env) },
+         el(div, "proof-steps", focus_nodes(Script, tac_row)),
+         { nb_delete(rq_proof_env) } )).
+
+%  Without captured proof states, a proof's local names come from the
+%  statement's binders and the names its tactics introduce.
+proof_env(S, Tacs, Env) :-
+    stmt_env(S, E0),
+    findall(X, ( member(step(_, _, Ts), Tacs), rocq_tactic_tokens(Ts, T), tactic_intro_var(T, X) ), Xs),
+    append(E0, Xs, E1), sort(E1, Env).
+
+stmt_env(S, Env) :-
+    ( S = thm(_, _, _, Bs, Ty) ; S = def(_, _, _, Bs, Ty, _) ), !,
+    binders_env(Bs, [], E0),
+    ( Ty \== none, rule_parts(Ty, QBs, _, _) -> binders_env(QBs, E0, Env) ; Env = E0 ).
+stmt_env(_, []).
+
+tactic_intro_var(T, X) :-
+    sub_term(Sub, T),
+    (   Sub = ip_name(n(_, X)), X \== '_'
+    ;   Sub = clause(eqn, [token(id(X))])
+    ;   Sub = tlet(n(_, X), _, _)
+    ;   Sub = hyp(n(_, X), _)
+    ).
 
 % Source focus is a tree, independently of the captured command count.
 % A repeated bullet starts a sibling; braces and deeper bullets nest.
@@ -1044,7 +1099,7 @@ bullet_glyph(B, B).
 % source remains available when a tactic extension is not understood.
 tactic_text(F, To, Ts) -->
     { rocq_tactic_tokens(Ts, T), src_text(F-To, Raw),
-      ( tactic_env(F, To, Env) -> true ; Env = [] ) }, !,
+      ( tactic_env(F, To, Env) -> true ; nb_current(rq_proof_env, Env) -> true ; Env = [] ) }, !,
     el(span, "tactic", [title=Raw], tactic_block(T, Env)).
 tactic_text(F, T, Ts) --> el(span, "tactic rq-unparsed", tac_tokens(Ts, F, T)).
 
@@ -1115,6 +1170,10 @@ tactic_inline(tlet(n(_, X), V, B), Env) -->
     el(span, "o rq-tac-chain", ['data-d'=op], ( kw("let"), " ", var_def(X), "\u00A0", defeq, " ", tactic_inline(V, Env), " ",
         kw("in"), " ", tactic_inline(B, [X|Env]) )).
 tactic_inline(call(N, []), Env) --> !, name_ref(N, Env, head).
+tactic_inline(call(pose, [token(id(proof))|Ps]), Env) --> !,
+    el(span, "c rq-tac-call", ['data-d'=args],
+       ( name_ref(pose, Env, head), " ", kw(proof),
+         ( { Ps == [] } -> [] ; " ", el(span, "args rq-tac-args", tactic_parts(Ps, Env)) ) )).
 %  In the proof mode's tactics, a string is a pattern of hypothesis names.
 tactic_inline(call(N, Ps), Env) -->
     { ( nb_current(rq_ipm, I0) -> true ; I0 = false ), ( ipm_tactic(N) -> I = true ; I = I0 ), nb_setval(rq_ipm, I) },
@@ -1500,7 +1559,7 @@ rocq_only(E) :- functor(E, F, _), memberchk(F, [pure, laterN, fupd, fupdw, stepu
 rocq_only(app(_, id(_, F), _)) :- memberchk(F, [own, inv, iProp, uPred]).
 rocq_only(scope(_, _, 'I')).
 
-fragment_(term(E)) --> term(E, []).
+fragment_(term(E)) --> { fragment_vars(E, Env) }, term(E, Env).
 fragment_(typed(n(_, N), T)) --> el(span, "f def", esc(N)), opt_type(T, []).
 fragment_(alts(n(_, N), Cs)) -->
     el(span, "ty def", esc(N)), "\u00A0", defeq, " ", alt_terms(Cs).
@@ -1508,6 +1567,16 @@ fragment_(fields(n(_, N), Fs)) -->
     el(span, "ty def", esc(N)), "\u00A0", defeq, " ",
     el(span, "c rec", ['data-d'=args], el(span, "args recbr curly", inline_fields(Fs))).
 fragment_(sentence(S)) --> sentence_inline(S).
+
+fragment_vars(id(_, X), [X]) :-
+    \+ sub_atom(X, _, _, _, '_'), \+ is_ctor(X), \+ std_type(X), \+ global_ref(X, _, _), !.
+fragment_vars(id(_, _), []) :- !.
+fragment_vars(E, Vs) :-
+    findall(X, ( sub_id(E, X), \+ is_ctor(X), \+ std_type(X), \+ global_ref(X, _, _), \+ app_head(E, X) ), Vs0),
+    sort(Vs0, Vs).
+
+app_head(app(_, id(_, X), _), X).
+app_head(T, X) :- compound(T), T =.. [_, _|As], member(A, As), ( is_list(A) -> member(A1, A) ; A1 = A ), compound(A1), app_head(A1, X).
 
 alt_terms([C]) --> !, alt_term(C).
 alt_terms([C|Cs]) --> alt_term(C), " ", el(span, "op wide bar", "|"), " ", alt_terms(Cs).

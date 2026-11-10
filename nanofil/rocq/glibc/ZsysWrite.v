@@ -1,41 +1,60 @@
-(** A contract at libpizlo's boundary: `zsys_write`, the pizlonated
-    write(2) that user glibc's `write` calls (docs/zsys.md,
-    docs/glibc-ir.md). The contract [zsys_write_contract] is trusted;
-    its native counterexample probe is rocq/glibc/zsys-write.c.
+(** A trusted [[external call|contract]], [zsys_write_contract], at
+    libpizlo's boundary: `c: long zsys_write(int fd, const void *buf, size_t size)`,
+    the pizlonated write(2) that user glibc's `c: write(fd, buf, size)`
+    calls ([zsys.md](../../docs/zsys.md),
+    [glibc-ir.md](../../docs/glibc-ir.md)). Its native counterexample
+    probe is [zsys-write.c](zsys-write.c).
 
-    At the pin, libpizlo's `filc_native_zsys_write(fd, buf, size)`
-    (libpas/src/libpas/filc_runtime.c) is three steps:
+    ## What libpizlo runs
 
-    - `check_fd(fd)`: a Fil-C assertion that fd is not libpizlo's own
-      log descriptor, which exists only when libpizlo logs to a file;
-    - `filc_check_read(buf, size)`: the capability check, a Fil-C panic
-      when buf cannot be read for size bytes;
-    - `FILC_SYSCALL(write(fd, ptr, size))`: leave the Fil-C world, make
-      the system call, come back, and on failure hand errno to
-      `filc_set_errno`, which calls user glibc's errno handler, Fil-C
-      code that stores the number in the thread's errno.
+    At the pin (libpas/src/libpas/filc_runtime.c), libpizlo's native
+    entry point is three steps:
 
-    The contract's world, [fd_world], keeps what no Fil-C code of the
-    module owns: where that errno store lands and which descriptor is
-    libpizlo's log. The errno handler is not proved here; the contract
-    names its effect, a store into the 4-byte [errno_span], as the
-    call's only writable root, so every other byte of memory is kept by
-    the machine's [effects] rule.
+    ```c
+    ssize_t filc_native_zsys_write(int fd, filc_ptr buf, size_t size)
+    {
+        check_fd(fd);
+        filc_check_read(buf, size);
+        return FILC_SYSCALL(write(fd, filc_ptr_ptr(buf), size));
+    }
+    ```
 
-    The world is trusted to be the real one: [errno_ptr] is the calling
-    thread's user glibc `errno` (`__thread int errno`, csu/errno.c),
-    already allocated (Fil-C allocates a thread-local on first use, and
-    the contract allows no allocation); glibc's `errno_handler` is
-    registered (`__libc_start_main` does it; `filc_set_errno` panics
-    without one); `FILC_DUMP_ERRNOS` is unset, so a failure logs
-    nothing; and [log_fd] is libpizlo's log descriptor. The observation reuses
-    ExternalCalls.v's [StreamBytes] event, read at this layer as bytes
-    the kernel accepted for the descriptor, not bytes stdio buffered.
+    - `c: check_fd(fd)` asserts that `c: fd` is not libpizlo's own log
+      descriptor, which exists only when libpizlo logs to a file.
+    - `c: filc_check_read(buf, size)` checks the buffer's capability and
+      panics if `c: buf` cannot be read for `c: size` bytes.
+    - `c: FILC_SYSCALL` leaves the Fil-C world, calls native
+      `c: write(fd, ptr, size)`, re-enters, and on failure passes native
+      `c: errno` to `c: filc_set_errno(my_errno)`, which calls user
+      glibc's `c: errno_handler(errno_value)` to store the error number
+      in the thread's `c: errno`.
 
-    Over a Logic instance, [fd_wi] interprets the world: the errno cell
-    writable and apart from every object the program owns, and the
-    program's descriptors not the log's. [wp_zsys_write] is the
-    contract's rule for a caller owning the buffer's pieces. *)
+    ## World and trust assumptions
+
+    The contract's world, [fd_world], keeps what no Fil-C code in the
+    module owns: the thread's [errno_ptr] and libpizlo's [log_fd]. User
+    glibc's `c: errno_handler(errno_value)` is not proved here; instead,
+    the contract names the 4-byte [errno_span] as the call's only
+    writable root, so every other byte of memory is preserved by the
+    machine's [effects] rule.
+
+    The world is trusted to match the native runtime after startup:
+
+    - [errno_ptr] is the calling thread's user glibc `c: errno`
+      (`c: __thread int errno` in csu/errno.c), already allocated
+      (Fil-C allocates a thread-local on first use, and the contract
+      allows no allocation).
+    - User glibc's `c: errno_handler(errno_value)` is registered by
+      `c: __libc_start_main` (`c: filc_set_errno(my_errno)` panics
+      without one).
+    - `c: FILC_DUMP_ERRNOS` is unset, so a failing call logs nothing.
+    - [log_fd] is libpizlo's log descriptor, and [StreamBytes] (from
+      [ExternalCalls.v](../theories/ExternalCalls.v)) records bytes the
+      kernel accepted for `c: fd`, not bytes buffered by stdio.
+
+    Over a [Logic](../theories/Logic.v) instance, [fd_wi] ties
+    [fd_world] to the ghost heap and [wp_zsys_write] gives the rule for
+    a caller owning the buffer's pieces. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -48,53 +67,56 @@ Open Scope Z_scope.
 
 (** ## The world *)
 
-(** What a descriptor call needs that no Fil-C code of the module
-    owns: the thread's errno, where user glibc's errno handler stores a
-    failure's number, and libpizlo's log descriptor, if it logs to a
-    file. *)
+(** State outside the module's Fil-C code that a descriptor call
+    reaches: *)
 Record fd_world : Type := mkFdWorld {
-  errno_ptr : ptr;
-  log_fd : option Z
+  errno_ptr : ptr;   (* the calling thread's `c: int errno` cell *)
+  log_fd : option Z  (* libpizlo's log descriptor, if it logs to a file *)
 }.
 
-(** The 4 bytes of the world's errno. *)
+(** The 4-byte span of the thread's `c: int errno` cell. *)
 Definition errno_span (w : fd_world) : span := mkSpan (errno_ptr w) 4.
 
-(** The k bytes of memory m from p's address. *)
+(** The first [k] bytes of memory [m] starting at [p]'s address. *)
 Definition bytes_at (m : mem) (p : ptr) (k : Z) : list Z :=
   map (fun i => m_bytes m (ptr_addr p + Z.of_nat i)) (seq 0 (Z.to_nat k)).
 
 (** ## The contract *)
 
-(** zsys_write returns a long (class L), or its result is discarded,
-    and takes an int, a pointer and a size_t. *)
+(** `c: long zsys_write(int fd, const void *buf, size_t size)`: takes
+    `c: int` ([W]), a pointer ([P]) and `c: size_t` ([L]), and returns
+    `c: long` ([L]) or discards its result ([CVoid]). *)
 Definition zsys_write_abi (r : call_result) (args : list arg) : Prop :=
   (r = CVoid \/ exists d, r = CResult d L) /\ exists fd p n, args = [Arg W fd; Arg P p; Arg L n].
 
-(** The precondition: the buffer is readable for its n bytes through a
-    live object's capability ([readable_bytes], the check
-    `filc_check_read` makes), fd is not libpizlo's log descriptor (the
-    check `check_fd` makes), and errno is a live, writable, aligned
-    int ([errno_cell]). *)
+(** Precondition for `c: zsys_write(fd, p, n)`:
+    - [readable_bytes]: `c: p` is readable for `c: n` bytes through a
+      live capability (`c: filc_check_read(buf, size)`);
+    - `c: fd` is not libpizlo's [log_fd] (`c: check_fd(fd)`);
+    - [errno_cell]: [errno_ptr] is a live, writable, aligned `c: int`. *)
 Definition zsys_write_pre (xs : list word) (m : mem) (w : fd_world) : Prop :=
   exists fd p n, xs = [WInt fd; WPtr p; WInt n] /\ readable_bytes m p n /\
     log_fd w <> Some fd /\ errno_cell m (errno_ptr w).
 
-(** A finite prefix: nothing born, the world kept, errno still a
-    writable int, and either nothing observed or the first k bytes
-    of the buffer, k at most n, accepted for fd. *)
+(** Any finite prefix of a call: nothing is allocated, the world is
+    unchanged, `c: errno` stays a writable `c: int` ([errno_cell]), and
+    either nothing was observed or the buffer's first `c: k` bytes
+    ([0 <= k <= n]) were accepted for `c: fd`. *)
 Definition zsys_write_prefix (xs : list word) (m : mem) (w : fd_world) (born : list Z)
     (trace : list event) (m' : mem) (w' : fd_world) : Prop :=
   born = [] /\ w' = w /\ errno_cell m' (errno_ptr w) /\
   (trace = [] \/ exists fd p n k, xs = [WInt fd; WPtr p; WInt n] /\ 0 <= k <= n /\
      trace = [StreamBytes fd (bytes_at m p k)]).
 
-(** The postcondition: as the prefix, and either the kernel accepted
-    the first k bytes, k at most n and below 2^31 (Linux writes at most
-    MAX_RW_COUNT at once), and the call returns k; or it accepted none
-    and the call returns -1, 2^64 - 1 as a long's bits. Only a failure
-    stores errno (FILC_SYSCALL calls the handler only on a nonzero
-    native errno); the contract allows the store either way. *)
+(** Postcondition: as in [zsys_write_prefix], and either:
+    - the kernel accepted the first `c: k` bytes ([0 <= k <= n] and
+      [k < 2 ^ 31], since Linux writes at most `c: MAX_RW_COUNT` at
+      once) and the call returns `c: k`; or
+    - it accepted none and the call returns `c: (long)-1` ([2 ^ 64 - 1]
+      in 64-bit unsigned bits).
+
+    `c: FILC_SYSCALL` calls the handler only on a nonzero native
+    `c: errno`; the contract permits writing [errno_span] either way. *)
 Definition zsys_write_post (xs : list word) (m : mem) (w : fd_world) (born : list Z)
     (trace : list event) (ending : call_end) (m' : mem) (w' : fd_world) : Prop :=
   born = [] /\ w' = w /\ errno_cell m' (errno_ptr w) /\
@@ -103,18 +125,20 @@ Definition zsys_write_post (xs : list word) (m : mem) (w : fd_world) (born : lis
                 ending = CallReturn [WInt k]) \/
      (trace = [] /\ ending = CallReturn [WInt (2 ^ 64 - 1)])).
 
-(** The capability checks a call outside the precondition reaches: the
-    buffer's null or out-of-bounds capability, and argument or return
-    size mismatch. A log descriptor fails libpizlo's own assertion,
-    which is no capability reason. *)
+(** Capability panics a call outside [zsys_write_pre] can reach: a null
+    ([NullCapability]) or out-of-bounds ([OutOfBounds]) buffer in
+    `c: filc_check_read(buf, size)`, or an ABI size mismatch
+    ([ArgumentSize], [ReturnSize]). Passing [log_fd] trips
+    `c: check_fd(fd)`'s own assertion, which is not a capability
+    panic. *)
 Definition zsys_write_panic (why : reason) : Prop :=
   In why [NullCapability; OutOfBounds; ArgumentSize; ReturnSize].
 
-(** The trusted [[external call|contract]] of zsys_write: a long,
-    [zsys_write_abi], [zsys_write_pre], no capability sources (it
-    returns an integer), errno's 4 bytes as its one writable root, no
-    releases, no allocation, [zsys_write_prefix], [zsys_write_post], no
-    resource ending, and [zsys_write_panic]. *)
+(** The trusted [[external call|contract]] of `c: zsys_write(fd, buf, size)`:
+    returns `c: long` ([RClass] [L]), with [zsys_write_abi],
+    [zsys_write_pre], [errno_span] as its sole writable root, no
+    capability sources, releases, allocations or resource endings,
+    [zsys_write_prefix], [zsys_write_post] and [zsys_write_panic]. *)
 Definition zsys_write_contract : contract fd_world :=
   mkContract fd_world (RClass L) zsys_write_abi zsys_write_pre
     (fun _ _ _ => []) (fun _ _ w => [errno_span w]) (fun _ _ _ => [])
@@ -123,8 +147,8 @@ Definition zsys_write_contract : contract fd_world :=
 
 (** ## Boundary checks *)
 
-(** A call that returns anything but -1 accepted exactly that many of
-    the buffer's first bytes for fd. *)
+(** Any return value other than `c: -1` ([2 ^ 64 - 1]) means the kernel
+    accepted that many leading bytes of the buffer for `c: fd`. *)
 Lemma zsys_write_success_bytes : forall xs m w born trace m' w' k,
   zsys_write_post xs m w born trace (CallReturn [WInt k]) m' w' -> k <> 2 ^ 64 - 1 ->
   exists fd p n, xs = [WInt fd; WPtr p; WInt n] /\ 0 <= k <= n /\
@@ -135,7 +159,7 @@ Proof.
   - injection He as ->. contradiction.
 Qed.
 
-(** A failed call observed nothing. *)
+(** A call returning `c: -1` ([2 ^ 64 - 1]) observed no bytes. *)
 Lemma zsys_write_failure_silent : forall xs m w born trace m' w',
   zsys_write_post xs m w born trace (CallReturn [WInt (2 ^ 64 - 1)]) m' w' -> trace = [].
 Proof.
@@ -146,22 +170,23 @@ Qed.
 
 (** ## Over a Logic instance *)
 
-(** The world interpretation, the rule and its lemmas over the
-    [[runtime]] R and the Logic instance LG. *)
+(** World interpretation and weakest-precondition rule for
+    `c: zsys_write(fd, buf, size)` over the [[runtime]] R and
+    [LogicSig] LG0. *)
 Module ZsysWriteOn (R : Runtime) (LG0 : LogicSig R).
 Module LG := LG0.
 Module L := LG.L.
 Import L LG.
 
-(** The world interpretation of a program that writes to the
-    descriptors fds: errno is a writable int apart from every live
-    object owning a piece of h, and no descriptor of fds is
-    libpizlo's log. *)
+(** World invariant for a program writing to descriptors [fds]:
+    `c: errno` is a writable `c: int` ([errno_cell]) apart from every
+    live object in the ghost heap [h] ([roots_apart]), and no descriptor
+    in [fds] is libpizlo's [log_fd]. *)
 Definition fd_wi (fds : list Z) (m : mem) (w : fd_world) (h : gmap piece pval) : Prop :=
   errno_cell m (errno_ptr w) /\ roots_apart [errno_span w] h m /\
   Forall (fun fd => log_fd w <> Some fd) fds.
 
-(** A safepoint keeps [fd_wi]: no region changes ([collector_live]),
+(** A safepoint preserves [fd_wi]: no region changes ([collector_live]),
     and writability and apartness read only regions. *)
 Instance fd_wi_safepoint fds : SafepointStable (fd_wi fds).
 Proof.
@@ -175,8 +200,9 @@ Proof.
     split; [exact E' | exact Hlive].
 Qed.
 
-(** A zsys_write call that returns returns one long: a count no more
-    than its size, or -1. *)
+(** A returning `c: zsys_write(fd, p, n)` call yields one `c: long`: a
+    count `c: k` with [0 <= k <= n] and [k < 2 ^ 31], or `c: -1`
+    ([2 ^ 64 - 1]). *)
 Lemma zsys_write_returns r args xs s m w trace values s' m' w' :
   M.E.invoke zsys_write_contract r args xs s m w trace (CallReturn values) s' m' w' ->
   exists fd p n k, xs = [WInt fd; WPtr p; WInt n] /\ values = [WInt k] /\
@@ -188,11 +214,11 @@ Proof.
     injection He as ->; exists fd, p, n; eexists; auto.
 Qed.
 
-(** After a zsys_write call that returns, from a state interpreted with
-    the ghost heap h, the state is interpreted with h again: the
-    prefix keeps the runtime ready, the frame keeps h agreeing and live
-    objects apart, since the one writable root, errno, is apart from
-    h, and the world and errno's writability are kept. *)
+(** A returning `c: zsys_write(fd, p, n)` call preserves the state
+    interpretation against ghost heap [h]: its prefix keeps the runtime
+    [[ready]], [prefix_agrees] preserves [h] because the only writable
+    root (`c: errno`) is apart from [h], and the postcondition keeps
+    [fd_wi]. *)
 Lemma zsys_write_return_frame fds r args xs s m w trace values s' m' w' h :
   M.E.invoke zsys_write_contract r args xs s m w trace (CallReturn values) s' m' w' ->
   agrees m h -> live_disjoint m -> R.ready s m -> fd_wi fds m w h ->
@@ -212,17 +238,19 @@ Section rule.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (fds : list Z) (registry : name -> option (contract fd_world)) (ge : genv).
 
-(** The Iris instance of the registry and [fd_wi]. *)
+(** The Iris instance for [registry] and [fd_wi]. *)
 Local Instance zsys_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (fd_wi fds) ge.
 
-(** The expressions of the language. *)
+(** Expressions of the language. *)
 Local Notation zexpr := (language.expr (nanofil_lang registry ge)).
 
-(** zsys_write's triple, from [zsys_write_contract]: a call whose
-    arguments read as fd, one of fds, the pointer p and the size n,
-    owning pieces ps that show p readable for n bytes, binds d to a
-    count no more than n, or -1, and the pieces are still owned. *)
+(** Weakest-precondition rule for `c: zsys_write(fd, p, n)`, derived
+    from [zsys_write_contract] via [wp_external]: when `c: fd` is in
+    [fds] and the owned pieces [ps] make `c: p` readable for `c: n`
+    bytes ([readable_bytes]), the call keeps [ps] and binds [d] to a
+    count `c: k` ([0 <= k <= n], [k < 2 ^ 31]) or `c: -1`
+    ([2 ^ 64 - 1]). *)
 Lemma wp_zsys_write f e ls lab d a0 a1 a2 rest j fd p n ps Φ :
   registry (TAtom "zsys_write") = Some zsys_write_contract ->
   find_fn ge (TAtom "zsys_write") = None -> lookup (TAtom "zsys_write") (ge_globals ge) = None ->

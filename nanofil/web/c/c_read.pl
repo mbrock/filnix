@@ -103,8 +103,8 @@ c_snippet(Text, snip(Form, Semi, Spellings, Tokens)) :-
     spellings(Nums, Tokens, Spellings),
     seed_env(Env),
     (   last(Tokens, tok(p(';'), _)) -> Semi = yes, Ts1 = Tokens ; Semi = no, last(Tokens, tok(_, L)), append(Tokens, [tok(p(';'), L)], Ts1) ),
-    (   Semi == no, whole(c_parse:expr(Env, E), Tokens) -> Form = expr(E)
-    ;   Semi == no, whole(c_parse:type_name(Env, T), Tokens) -> Form = type(T)
+    (   Semi == no, whole(c_parse:type_name(Env, T), Tokens) -> Form = type(T)
+    ;   Semi == no, whole(c_parse:expr(Env, E), Tokens) -> Form = expr(E)
     ;   whole(c_parse:block_item(Env, _, I), Ts1) -> Form = stmt(I)
     ;   whole(c_parse:external_decl(Env, _, [D], []), Ts1) -> Form = decl(D)
     ;   whole(c_parse:external_decl(Env, _, [D], []), Tokens) -> Form = decl(D)
@@ -251,7 +251,7 @@ std_typedef(N) :- member(N, [
     atomic_int, atomic_uint, atomic_long, atomic_ulong, atomic_llong, atomic_ullong,
     atomic_intptr_t, atomic_uintptr_t, atomic_size_t, atomic_ptrdiff_t, atomic_flag,
     '__builtin_va_list', '__int128_t', '__uint128_t', '__m128', '__m128i', '__m128d',
-    '__m256', '__m256i', '__m256d'
+    '__m256', '__m256i', '__m256d', filc_ptr, filc_thread
 ]).
 
 seed_env(Env) :- findall(N-t, std_typedef(N), Ps), list_to_assoc(Ps, Env).

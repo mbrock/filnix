@@ -641,6 +641,7 @@ specs_inits(Shown, _Specs, Inits, Ls, Role) -->
 init_dcls([init(D, I)], Ls, Role) --> !, el(span, arg, init_dcl(D, I, Ls, Role)).
 init_dcls([init(D, I)|Is], Ls, Role) --> el(span, arg, ( init_dcl(D, I, Ls, Role), el(span, sep, ",") )), " ", init_dcls(Is, Ls, Role).
 
+init_dcl(D, none, Ls, _) --> { D = dcl(_, func(_, _), _) }, !, declarator(D, Ls, def).
 init_dcl(D, none, Ls, Role) --> !, declarator(D, Ls, Role).
 init_dcl(D, I, Ls, Role) --> el(span, o, ['data-d'=op], ( declarator(D, Ls, Role), "\u00A0", defeq, " ", init(I, Ls) )).
 
@@ -1126,7 +1127,7 @@ snippet(snip(Form, Semi, Sp, Ts)) -->
 
 snippet_locals(Form, Ls) :-
     findall(N, ( sub_term(id(N), Form), atom(N), \+ sub_term(call(id(N), _), Form), \+ upcase_atom(N, N) ), Ns0),
-    findall(N, ( sub_term(dcl(some(N), _, _), Form) ), Ns1),
+    findall(N, ( sub_term(dcl(some(N), T, _), Form), T \= func(_, _) ), Ns1),
     append(Ns0, Ns1, Ns2), sort(Ns2, Ls).
 
 inline_form(expr(E), Ls) --> term(E, Ls).
