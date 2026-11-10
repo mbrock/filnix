@@ -489,7 +489,7 @@ let file_words f =
 let nfb prefix =
   let next = reader (In_channel.input_all stdin) in
   let fail fmt = Printf.ksprintf (fun m -> prerr_endline ("nanofil-backend: " ^ m); exit 1) fmt in
-  let encode_s = ref 0.0 and read_s = ref 0.0 in
+  let encode_s = ref 0.0 and read_s = ref 0.0 and input_s = ref 0.0 in
   let bad = ref 0 in
   let rec go () =
     match timed parse_s next with
@@ -514,6 +514,9 @@ let nfb prefix =
                       (List.map (fun w -> Printf.sprintf "%08x" (Big_int_Z.int_of_big_int w)) ws)) in
                   Printf.printf "%s: words differ at %d of %d/%d\n  rocq:   %s\n  prolog: %s\n" stage i
                     (List.length ours) (List.length theirs) (around ours) (around theirs)));
+        (match timed input_s (fun () -> decode_input theirs) with
+         | Some md' when term_eqb (enc_module md') (enc_module md) -> ()
+         | _ -> incr bad; Printf.printf "%s: decode_input does not give the module\n" stage);
         (match timed read_s (fun () -> decode theirs) with
          | None -> incr bad; Printf.printf "%s: the reader refuses the words\n" stage
          | Some md' ->
@@ -528,8 +531,8 @@ let nfb prefix =
   in
   go ();
   if report then
-    Printf.eprintf "nanofil-backend: parse %.3fs decode_module %.3fs encode %.3fs nfb decode %.3fs\n"
-      !parse_s !decode_s !encode_s !read_s;
+    Printf.eprintf "nanofil-backend: parse %.3fs decode_module %.3fs encode %.3fs nfb decode %.3fs nfb decode_input %.3fs\n"
+      !parse_s !decode_s !encode_s !read_s !input_s;
   if !bad > 0 then exit 1
 
 (* A minor heap of 32 MB: with OCaml's 2 MB, the plans of a large

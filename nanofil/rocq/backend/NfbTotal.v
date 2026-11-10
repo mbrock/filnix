@@ -62,7 +62,7 @@ Lemma read_counted_length : forall {X : Type} (r : reader X) ws v rest,
 Proof.
   intros X r ws v rest Hr H. unfold read_counted in H.
   destruct ws as [|n ws']; [discriminate|].
-  destruct (Z.of_nat (length ws') <? n); [discriminate|].
+  destruct (negb (at_least (Z.to_nat n) ws')); [discriminate|].
   apply read_n_length in H; [simpl; lia | exact Hr].
 Qed.
 
@@ -89,7 +89,7 @@ Lemma read_counted_ext : forall {X : Type} (r1 r2 : reader X) L ws,
 Proof.
   intros X r1 r2 L ws Hext Hr Hws. unfold read_counted.
   destruct ws as [|n ws']; [reflexivity|].
-  destruct (Z.of_nat (length ws') <? n); [reflexivity|].
+  destruct (negb (at_least (Z.to_nat n) ws')); [reflexivity|].
   apply (read_n_ext r1 r2 L); auto. simpl in Hws. lia.
 Qed.
 
@@ -186,24 +186,24 @@ Proof.
 Qed.
 
 (** One round of reading NAMES, with fuel S f. *)
-Lemma name_recs_S : forall pool f w ws,
-  read_name_recs pool (S f) (w :: ws) =
-  (let rt := read_side_term pool (length (w :: ws)) in
+Lemma name_recs_S : forall pool d f w ws,
+  read_name_recs pool d (S f) (w :: ws) =
+  (let rt := read_side_term pool d in
    let* a := read_counted rt (w :: ws) in let* b := read_counted rt (snd a) in
    let* c := read_counted rt (snd b) in
-   let* rest := read_name_recs pool f (snd c) in
+   let* rest := read_name_recs pool d f (snd c) in
    Some (mkFnames (fst a) (fst b) (fst c) :: rest)).
 Proof. reflexivity. Qed.
 
-(** NAMES, with fuel the length of its words: each function's names
-    take a word at least. *)
-Lemma name_recs_fuel : forall pool ws, enough (fun f => read_name_recs pool f ws) (length ws).
+(** NAMES, at any depth, with fuel the length of its words: each
+    function's names take a word at least. *)
+Lemma name_recs_fuel : forall pool d ws, enough (fun f => read_name_recs pool d f ws) (length ws).
 Proof.
-  intros pool ws. apply enough_step. intros g Hg. revert ws Hg.
+  intros pool d ws. apply enough_step. intros g Hg. revert ws Hg.
   induction g as [|g IH]; intros ws Hg.
   - destruct ws; simpl in *; [reflexivity | lia].
   - destruct ws as [|w ws]; [reflexivity|]. rewrite !name_recs_S. cbv zeta.
-    set (rt := read_side_term pool (length (w :: ws))).
+    set (rt := read_side_term pool d).
     assert (Hr : forall ws v rest, rt ws = Some (v, rest) -> (length rest <= length ws)%nat).
     { intros ws' v rest H. apply side_term_length in H. lia. }
     destruct (read_counted rt (w :: ws)) as [[a wa]|] eqn:Ea; [|reflexivity]. cbn [fst snd].

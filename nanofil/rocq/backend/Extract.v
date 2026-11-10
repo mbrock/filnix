@@ -52,5 +52,5 @@ Extract Constant Z.of_nat => "Big_int_Z.big_int_of_int".
 Set Extraction Output Directory "extraction".
 Extraction "nanofil_backend.ml" dline rev_lines_parts
   decode_module module_symbols lower_function lower_thunks plan_term thunks_term term_eqb
-  Nfb.encode Nfb.decode enc_module
+  Nfb.encode Nfb.decode Nfb.decode_input enc_module
   function_lines data_lines alias_lines thunk_lines end_lines module_pieces module_lines is_todo first_todo.

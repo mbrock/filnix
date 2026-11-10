@@ -149,6 +149,15 @@ Fixpoint take (n : nat) (xs : list Z) : option (list Z * list Z) :=
             end
   end.
 
+(** Whether xs has at least n elements; it looks at no more than n of
+    them, so a reader can check a count against the words left in time
+    proportional to the count, not to all the words. *)
+Fixpoint at_least (n : nat) (xs : list Z) : bool :=
+  match n with
+  | O => true
+  | S n' => match xs with [] => false | _ :: xs' => at_least n' xs' end
+  end.
+
 (** Insert x into the sorted list xs, by the order le; an x equal to
     an element (by eqb) is dropped. *)
 Fixpoint insert_uniq {X : Type} (lt eqb : X -> X -> bool) (x : X) (xs : list X) : list X :=
@@ -1397,7 +1406,7 @@ Fixpoint read_n {X : Type} (n : nat) (r : reader X) : reader (list X) :=
     words left is refused before anything is read. *)
 Definition read_counted {X : Type} (r : reader X) : reader (list X) :=
   fun ws => match ws with
-            | n :: ws' => if Z.of_nat (length ws') <? n then None else read_n (Z.to_nat n) r ws'
+            | n :: ws' => if negb (at_least (Z.to_nat n) ws') then None else read_n (Z.to_nat n) r ws'
             | [] => None
             end.
 
@@ -1408,7 +1417,7 @@ Definition read_word : reader Z := fun ws => match ws with x :: xs => Some (x, x
 Definition read_bytes : reader (list Z) :=
   fun ws => match ws with
             | n :: ws' =>
-                if (n <? 0) || (Z.of_nat (length ws') * 4 <? n) then None else
+                if (n <? 0) || negb (at_least (Z.to_nat ((n + 3) / 4)) ws') then None else
                 let* p := take (Z.to_nat ((n + 3) / 4)) ws' in
                 Some (firstn (Z.to_nat n) (unpack (fst p)), snd p)
             | [] => None
@@ -1450,25 +1459,27 @@ Definition index_map {X : Type} (xs : list X) : ZMap.t X :=
   fst (fold_left (fun p x => (ZMap.add (snd p) x (fst p), snd p + 1)) xs (ZMap.empty X, 0)).
 
 (** Read the NAMES section: the pool, then each function's names, as
-    many as the words hold. *)
-Fixpoint read_name_recs (pool : ZMap.t term) (fuel : nat) (ws : list Z) : option (list fnames) :=
+    many as the words hold, each term at most depth deep (the length
+    of the section, measured once). *)
+Fixpoint read_name_recs (pool : ZMap.t term) (depth fuel : nat) (ws : list Z) : option (list fnames) :=
   match ws with
   | [] => Some []
   | _ =>
       match fuel with
       | O => None
       | S f =>
-          let rt := read_side_term pool (length ws) in
+          let rt := read_side_term pool depth in
           let* a := read_counted rt ws in let* b := read_counted rt (snd a) in
           let* c := read_counted rt (snd b) in
-          let* rest := read_name_recs pool f (snd c) in
+          let* rest := read_name_recs pool depth f (snd c) in
           Some (mkFnames (fst a) (fst b) (fst c) :: rest)
       end
   end.
 
 (** The NAMES of the section's words. *)
 Definition read_names (ws : list Z) : option (list fnames) :=
-  let* p := read_strings ws in read_name_recs (index_map (map TAtom (fst p))) (length (snd p)) (snd p).
+  let* p := read_strings ws in
+  let n := length (snd p) in read_name_recs (index_map (map TAtom (fst p))) n n (snd p).
 
 (** The opcode of the next instruction, after its rebind prefix, if any. *)
 Definition next_opcode (ws : list Z) : option Z :=
@@ -1646,7 +1657,7 @@ Fixpoint read_items (r : rtab) (syms : list (term * Z * Z)) (dws fws : list Z)
         let* lk := read_data_linkage lc extra in
         match dws with
         | al :: ni :: dws1 =>
-            if Z.of_nat (length dws1) <? ni then None else
+            if negb (at_least (Z.to_nat ni) dws1) then None else
             let* p := read_n (Z.to_nat ni) (read_data_item r) dws1 in
             let* rest := read_items r syms' (snd p) fws nms in
             Some (TApp "data" [name; lk; TInt al; TList (fst p)] :: rest)

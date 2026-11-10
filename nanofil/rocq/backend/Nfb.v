@@ -96,3 +96,13 @@ Definition decode (ws : list Z) : option module :=
   let* ws1 := encode_with (snd p) m in
   let* ws2 := module_words ws in
   if words_eqb ws1 ws2 then Some m else None.
+
+(** The module the NFB ws encode, for a consumer that needs the module
+    and not the words' identity, such as the backend: the reader, then
+    [decode_module], without [decode]'s check that ws are the words
+    [encode_with] writes for it. The round trip and totality hold for
+    it as for [decode] (NfbProof.v, [input_round_trip]); only the
+    canonical theorem needs the check, which costs as much again as
+    the reading. *)
+Definition decode_input (ws : list Z) : option module :=
+  let* p := read_term ws in decode_module (fst p).

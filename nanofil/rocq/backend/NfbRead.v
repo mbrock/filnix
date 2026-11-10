@@ -206,6 +206,17 @@ Proof. induction xs as [|x xs IH]; intros ys; simpl; [reflexivity|]. rewrite IH.
 Lemma take_app_z : forall xs ys, take (Z.to_nat (Z.of_nat (length xs))) (xs ++ ys) = Some (xs, ys).
 Proof. intros. rewrite Nat2Z.id. apply take_app. Qed.
 
+(** [at_least] n is whether there are n words or more. *)
+Lemma at_least_len : forall n xs, at_least n xs = Nat.leb n (length xs).
+Proof. induction n as [|n IH]; intros [|x xs]; simpl; auto. Qed.
+
+(** [at_least] of a count, as a comparison of integers. *)
+Lemma at_least_spec : forall n xs, at_least (Z.to_nat n) xs = negb (Z.of_nat (length xs) <? n).
+Proof.
+  intros n xs. rewrite at_least_len. destruct (Nat.leb_spec (Z.to_nat n) (length xs));
+    destruct (Z.ltb_spec (Z.of_nat (length xs)) n); simpl; reflexivity || lia.
+Qed.
+
 (** A ZMap lookup after an add. *)
 Lemma zfind_add : forall {A} k k' (v : A) m,
   ZMap.find k (ZMap.add k' v m) = if Z.eqb k' k then Some v else ZMap.find k m.
@@ -567,11 +578,12 @@ Lemma read_bytes_rt : forall bs rest, Forall byte bs ->
 Proof.
   intros bs rest H. destruct (unpack_pack bs H) as [A B].
   unfold read_bytes, bytes_words. simpl app. cbv beta iota.
-  rewrite length_app.
-  replace ((Z.of_nat (length bs) <? 0) || (Z.of_nat (length (pack bs) + length rest) * 4 <? Z.of_nat (length bs)))
-    with false by (symmetry; apply orb_false_iff; split; apply Z.ltb_ge; lia).
   replace (Z.to_nat ((Z.of_nat (length bs) + 3) / 4)) with (length (pack bs)).
-  - rewrite take_app. simpl. rewrite Nat2Z.id, A. reflexivity.
+  - rewrite at_least_len, length_app.
+    replace ((Z.of_nat (length bs) <? 0) || negb (Nat.leb (length (pack bs)) (length (pack bs) + length rest)))
+      with false by (symmetry; apply orb_false_iff; split; [apply Z.ltb_ge; lia|];
+                     apply negb_false_iff, Nat.leb_le; lia).
+    rewrite take_app. simpl. rewrite Nat2Z.id, A. reflexivity.
   - rewrite <- (Z.div_unique (Z.of_nat (length bs) + 3) 4 (Z.of_nat (length (pack bs)))
                  (Z.of_nat (length bs) + 3 - 4 * Z.of_nat (length (pack bs)))) by lia.
     lia.
@@ -619,6 +631,7 @@ Proof.
   intros X r xs wss rest H. unfold read_counted. simpl app. cbv beta iota.
   assert (L : (length xs <= length (concat wss))%nat).
   { apply concat_length_ge. eapply Forall2_impl; [|exact H]. intros a b [H1 _]. exact H1. }
+  rewrite at_least_spec.
   replace (Z.of_nat (length (concat wss ++ rest)) <? Z.of_nat (length xs)) with false
     by (symmetry; apply Z.ltb_ge; rewrite length_app; lia).
   rewrite Nat2Z.id. apply read_n_rt. eapply Forall2_impl; [|exact H]. intros a b [_ H2]. exact H2.
@@ -2571,13 +2584,15 @@ Proof.
   cbv beta iota. cbn [fst snd].
   pose proof (number_index (map TAtom pool) _ _ _ (nodup_atoms pool (sort_strings_nodup _)) En) as P.
   clearbody pool. clear En.
-  apply mapo_forall2 in Er. generalize (le_n (length (concat recs))).
-  generalize (length (concat recs)) at 2 3 as fuel.
-  induction Er as [|f w ns recs Hf _ IH]; intros fuel L; [destruct fuel; reflexivity|].
+  apply mapo_forall2 in Er. cbv zeta.
+  enough (G : forall d fuel, (length (concat recs) <= d)%nat -> (length (concat recs) <= fuel)%nat ->
+              read_name_recs (index_map (map TAtom pool)) d fuel (concat recs) = Some ns)
+    by (apply G; lia).
+  induction Er as [|f w ns recs Hf _ IH]; intros d fuel Ld L; [destruct fuel; reflexivity|].
   destruct (mapo (side_term_words ids) (n_temps f)) as [wa|] eqn:Ea; [|discriminate]. cbv beta iota in Hf.
   destruct (mapo (side_term_words ids) (n_labels f)) as [wb|] eqn:Eb; [|discriminate]. cbv beta iota in Hf.
   destruct (mapo (side_term_words ids) (n_locals f)) as [wc|] eqn:Ec; [|discriminate]. cbv beta iota in Hf.
-  injection Hf as <-. cbn [concat] in *. rewrite !length_app in L. cbn [length] in L.
+  injection Hf as <-. cbn [concat] in *. repeat (rewrite length_app in L, Ld || (progress cbn [length] in L, Ld)).
   destruct fuel as [|fuel]; [lia|].
   repeat (rewrite <- app_assoc || (progress cbn [app])). cbn [read_name_recs].
   rewrite (side_list_rt ids); [|exact P|exact Ea|repeat (rewrite length_app || (progress cbn [length])); lia].
@@ -2701,6 +2716,7 @@ Proof.
     { rewrite length_app. pose proof (concat_length_ge its wss) as G.
       assert (Forall2 (fun _ ws => ws <> []) its wss) by (eapply Forall2_impl; [|exact F]; intros ? ? []; auto).
       specialize (G H). lia. }
+    rewrite at_least_spec.
     destruct (Z.ltb_spec (Z.of_nat (length (concat wss ++ dws))) (Z.of_nat (length its))); [lia|].
     rewrite Nat2Z.id.
     rewrite (read_n_rt _ its wss dws) by (eapply Forall2_impl; [|exact F]; intros ? ? []; auto).

@@ -68,3 +68,13 @@ Proof.
   rewrite (decode_enc_module _ _ Hd). unfold encode_with. rewrite Hb, Hw, words_eqb_refl.
   reflexivity.
 Qed.
+
+(** [decode_input], the reader without [decode]'s check, reads a
+    module back as itself too. *)
+Theorem input_round_trip : forall t m ws,
+  decode_module t = Some m -> encode m = Some ws -> decode_input ws = Some m.
+Proof.
+  intros t m ws Hd He. unfold encode, encode_with in He.
+  destruct (read_encode_term _ _ He) as [b [Hr _]].
+  unfold decode_input. rewrite Hr. cbn [fst]. exact (decode_enc_module _ _ Hd).
+Qed.
