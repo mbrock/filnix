@@ -1,6 +1,8 @@
 errno location is a writable aligned int: yes
 locale query and refusal: yes
 locale queries and refusal retain current borrowed names: yes
+locale query preserves errno contents and its exact cell: yes
+locale refusal may write errno without changing its cell or current names: yes
 C locale names and interior aliases have aligned capability bases: yes
 POSIX returns an independently readable canonical C name: yes
 empty locale input selects the represented environment: yes

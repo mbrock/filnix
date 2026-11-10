@@ -539,7 +539,17 @@ canonical bytes in [0,256). A separate repeated-call C probe sweeps all
 It checks exact state and unchanged output on high-byte EILSEQ, then
 converts ASCII and NUL with the same state and no intervening reset.
 The errno probe writes through a live aligned four-byte int pointer from
-plain __errno_location. These finite probes pass both ordinary and -O
+plain __errno_location. Locale controls also distinguish a query, which
+retains errno's contents and exact cell, from a malformed composite-name
+refusal, which sets EINVAL while retaining that cell and current names.
+The composite libc_setlocale_contract in Libc.v therefore permits scalar
+errno writes on setters, but not queries. It retains stdio/shutdown state
+and the errno pointer, and does not delegate errno's authority into private
+locale caches. This lift reuses the locale result/provenance relations;
+it is not a projection into an old invocation with a narrower footprint.
+Native satisfaction, private-errno separation and repeated-setter
+representation closure remain independent obligations.
+These finite probes pass both ordinary and -O
 native comparisons; the conversion endpoint contract is in
 [Libc.v](../rocq/theories/Libc.v), while errno lookup is modeled below. `get_gconv_fcts` may
 initialize caches, acquire locks, allocate and clean up internal objects.

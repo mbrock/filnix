@@ -2115,9 +2115,54 @@ supplement the source audit above. A repeated-call C probe additionally
 sweeps every first byte with a zero count and nonzero residual state bytes,
 checks exact EILSEQ state preservation, then converts ASCII and NUL on
 that same state without resetting it. Null source/state/output forms,
-composite setlocale/stdio lifts, Iris triples, native representation/prefix
-coverage and the whole Hello theorem remain later work. No core/runtime
+composite stdio lifts, native representation/prefix coverage and the whole
+Hello theorem remain later work. HelloConv supplies the generic call-site
+conversion triple, with explicit representation and frame premises. No core/runtime
 axioms or Campaign 3-owned files change.
+
+### Campaign 4 milestone 6f: composite locale and errno
+
+Libc.v now supplies libc_setlocale_contract over the same libc_world as
+conversion. It reuses Locale's ABI, readable input, locale_selected,
+locale_delegates and projected result, rather than duplicating locale
+state. LibcOn R M exposes setlocale_query_pre, setlocale_query_admitted
+and setlocale_query_exact over the supplied machine's own invocation.
+Admission to a valid-category null query follows from libc_ready alone;
+every endpoint keeps runtime, memory and the entire composite world exact
+and returns that category's current borrowed name. This is HelloLocale's
+query shape, not just equality of the locale projection.
+
+A nonnull setter may select a new codec in the final locale. The
+setlocale_setter_prefix and setlocale_setter_returned lemmas expose the
+selected/refused locale, endpoint readiness, current name/string, and
+old-private-or-born provenance for every new private read, root and name.
+libc_stdio, the libc_errno pointer and the authoritative shutdown state
+remain unchanged. Query/refusal/selection constructions separate admission
+from independently supplied effects and endpoint representation; none
+proves native success or progress.
+
+Setter writes include four scalar errno bytes: selected glibc's
+findlocale.c rejects an invalid name with EINVAL and a failed lookup with
+ENOENT; loading and allocation have further errno-changing paths. This
+does not add errno to the private source or delegation pool. Setter-only
+admission separates private roots from those four bytes, forbids release
+of the errno object, and excludes its Obj/Ro authority from old private
+sources including complete pointer slots. Caller aux outside entry private
+write authority is framed as in conversion. A borrowed old locale name is
+still a valid setter input; input bytes overlapping writable roots are not
+promised unchanged. A subsequent setter must re-establish its separation
+guards through the representation: private own-capability provenance alone
+does not constrain every future auxiliary slot.
+
+LibcOn's errno_contract is definitionally the existing
+errno_location_contract with cell = libc_errno of the payload and
+representation = libc_ready rep. errno_admitted and errno_exact expose
+the exact pointer/capability and unchanged runtime, memory and world;
+lookup transfers no ownership of the errno bytes. The conversion APIs
+and their statements are unchanged. The native locale probe additionally
+checks query errno stability and a malformed-category refusal that changes
+errno while retaining the cell and current names. Concrete registry/wi
+realization, composite stdio and exact-machine exit transport remain open.
 
 ### Reached-call contract packages and remaining integration
 

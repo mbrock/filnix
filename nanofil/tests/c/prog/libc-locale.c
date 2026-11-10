@@ -134,6 +134,15 @@ int main(void) {
         ctype_name == setlocale(LC_CTYPE, 0) && messages_name == setlocale(LC_MESSAGES, 0) &&
         strcmp(ctype_name, "C") == 0 && strcmp(messages_name, "C") == 0;
     answer("locale queries and refusal retain current borrowed names", stable);
+    errno = 73;
+    char *query_name = setlocale(LC_CTYPE, 0);
+    answer("locale query preserves errno contents and its exact cell", errno == 73 &&
+        __errno_location() == error_cell && query_name == ctype_name);
+    errno = 0;
+    char *refused = setlocale(LC_ALL, "NANOFIL_BAD_CATEGORY=C;");
+    answer("locale refusal may write errno without changing its cell or current names", refused == 0 &&
+        errno == EINVAL && __errno_location() == error_cell &&
+        ctype_name == setlocale(LC_CTYPE, 0) && messages_name == setlocale(LC_MESSAGES, 0));
     answer("C locale names and interior aliases have aligned capability bases", locale_name_bases());
     char *separate = malloc(6);
     char *canonical = 0;

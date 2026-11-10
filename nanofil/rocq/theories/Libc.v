@@ -108,6 +108,61 @@ Definition spans_apart (a b : span) : Prop :=
   ptr_addr (span_ptr a) + span_size a <= ptr_addr (span_ptr b) \/
   ptr_addr (span_ptr b) + span_size b <= ptr_addr (span_ptr a).
 
+(** The composite setter borrows the same readable input as Locale's
+    contract. Its independently writable errno cell is not private locale
+    storage, release authority or a source of retained capabilities.
+    Queries need none of these setter-only separation premises. *)
+Definition libc_setlocale_pre rep xs m w : Prop :=
+  libc_ready rep m w /\
+  setlocale_pre (fun _ _ => True) xs m (libc_locale (fst w)) /\
+  if locale_query xs then True else
+    (forall root, In root (locale_roots (libc_locale (fst w))) ->
+      spans_apart root (mkSpan (libc_errno (fst w)) 4)) /\
+    (forall base, In base (locale_owned (libc_locale (fst w))) ->
+      ptr_cap (libc_errno (fst w)) <> Obj base /\
+      ptr_cap (libc_errno (fst w)) <> Ro base) /\
+    (forall base, ptr_cap (libc_errno (fst w)) = Obj base \/
+        ptr_cap (libc_errno (fst w)) = Ro base ->
+      ~ available_cap (locale_sources [] m (libc_locale (fst w))) [] m (Obj base) /\
+      ~ available_cap (locale_sources [] m (libc_locale (fst w))) [] m (Ro base)).
+
+(** Refusal/loading may write errno; a query may not. No errno pointer
+    is added to the capability sources or delegated private roots. *)
+Definition libc_setlocale_writes xs (w : libc_world) : list span :=
+  if locale_query xs then [] else
+    locale_roots (libc_locale (fst w)) ++ [mkSpan (libc_errno (fst w)) 4].
+
+(** Reuse Locale's selected/delegated endpoint rather than another locale
+    inventory. Other authoritative world components remain exact. As for
+    conversion, scalar errno stores leave caller aux unchanged, and the
+    frame tests private authority in entry memory, not after a free. *)
+Definition libc_setlocale_prefix rep xs m w born trace m' w' : Prop :=
+  setlocale_prefix (fun _ _ => True) xs m (libc_locale (fst w))
+    born trace m' (libc_locale (fst w')) /\
+  if locale_query xs then w' = w else
+    libc_ready rep m' w' /\
+    libc_stdio (fst w') = libc_stdio (fst w) /\
+    libc_errno (fst w') = libc_errno (fst w) /\ snd w' = snd w /\
+    (forall a, in_object m a ->
+      ~ write_authority (locale_roots (libc_locale (fst w))) [] m a ->
+      m_aux m' a = m_aux m a).
+
+(** This is the composite call candidate, not a native satisfaction or
+    world-interpretation theorem. Locale changes may select a new codec.
+    Runtime resource endings retain only their actual coherent prefix. *)
+Definition libc_setlocale_contract rep
+    (requests : list word -> mem -> libc_world -> Z -> Z -> Prop) : contract libc_world :=
+  mkContract libc_world (RClass P) setlocale_abi (libc_setlocale_pre rep)
+    (fun xs m w => locale_sources xs m (libc_locale (fst w)))
+    (fun xs _ w => libc_setlocale_writes xs w)
+    (fun xs _ w => locale_releases xs (libc_locale (fst w)))
+    (fun xs m w align size => locale_query xs = false /\ requests xs m w align size)
+    (libc_setlocale_prefix rep)
+    (fun xs m w born trace ending m' w' =>
+      setlocale_post xs m (libc_locale (fst w)) born trace ending m' (libc_locale (fst w')))
+    resource_reason
+    (fun why => In why [NullCapability; OutOfBounds; Misaligned; Readonly; ArgumentSize; ReturnSize]).
+
 Definition mbrtowc_abi (r : call_result) (args : list arg) : Prop :=
   (r = CVoid \/ exists d, r = CResult d L) /\
   exists out src n state, args = [Arg P out; Arg P src; Arg L n; Arg P state].
@@ -234,6 +289,214 @@ Definition mbrtowc_contract valid audit rep
 (** Consumer lemmas share the supplied machine's exact call relations. *)
 Module LibcOn (R : Runtime) (M : ExternalMachineSig R).
 Module E := M.E.
+
+(** The existing TLS lookup contract with the exact composite projection.
+    It exports the cell's capability, never ownership of its four bytes. *)
+Definition errno_contract rep : contract libc_world :=
+  errno_location_contract libc_world (fun w => libc_errno (fst w)) (libc_ready rep).
+
+Theorem errno_admitted : forall rep r args s m w,
+  errno_location_abi r args -> libc_ready rep m w ->
+  E.invoke (errno_contract rep) r args [] s m w
+    [] (CallReturn [WPtr (libc_errno (fst w))]) s m w.
+Proof.
+  intros rep r args s m w Habi Hready. apply E.errno_location_return; auto.
+  exact (proj1 (proj2 (proj2 (proj2 Hready)))).
+Qed.
+
+Theorem errno_exact : forall rep r args xs s m w trace ending s' m' w',
+  E.invoke (errno_contract rep) r args xs s m w trace ending s' m' w' ->
+  trace = [] /\ s' = s /\ m' = m /\ w' = w /\
+  ending = CallReturn [WPtr (libc_errno (fst w))].
+Proof.
+  intros rep r args xs s m w trace ending s' m' w' Hcall.
+  destruct (E.errno_location_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as (_ & _ & _ & _ & Htrace & Hs & Hm & Hw & Hend). auto.
+Qed.
+
+(** Admission and exact query inversion match HelloLocale's call-site
+    premises over this machine, including identity of the entire world. *)
+Theorem setlocale_query_pre : forall rep requests category p m w,
+  libc_ready rep m w -> In category locale_categories -> ptr_addr p = 0 ->
+  contract_pre (libc_setlocale_contract rep requests)
+    [WInt category; WPtr p] m w.
+Proof.
+  intros rep requests category p m w Hready Hcat Hnull.
+  split; [exact Hready|]. split.
+  - split; [exact (proj1 (proj2 Hready))|]. exists category, p. auto.
+  - cbn [locale_query]. rewrite Hnull. exact I.
+Qed.
+
+Theorem setlocale_query_admitted : forall rep requests r args category p s m w,
+  setlocale_abi r args -> libc_ready rep m w ->
+  In category locale_categories -> ptr_addr p = 0 ->
+  E.invoke (libc_setlocale_contract rep requests) r args [WInt category; WPtr p] s m w []
+    (CallReturn [WPtr (locale_name (libc_locale (fst w)) category)]) s m w.
+Proof.
+  intros rep requests r args category p s m w Habi Hready Hcat Hnull.
+  assert (Hquery : locale_query [WInt category; WPtr p] = true).
+  { unfold locale_query. rewrite Hnull. reflexivity. }
+  eapply E.invoke_normal with (born := []).
+  - exact Habi.
+  - exact (setlocale_query_pre rep requests category p m w Hready Hcat Hnull).
+  - split; [constructor|]. split.
+    + split; [reflexivity|]. rewrite Hquery. auto.
+    + rewrite Hquery. reflexivity.
+  - exists category, p. split; [reflexivity|]. rewrite Hquery. reflexivity.
+  - intros why Hbad. discriminate.
+  - intros values Heq. injection Heq as <-. split.
+    + eexists. split; reflexivity.
+    + constructor; [apply locale_name_available; exact Hcat|constructor].
+  - intros status Hbad. discriminate.
+Qed.
+
+Theorem setlocale_query_exact : forall rep requests r args category p s m w
+    trace ending s' m' w',
+  ptr_addr p = 0 ->
+  E.invoke (libc_setlocale_contract rep requests) r args [WInt category; WPtr p]
+    s m w trace ending s' m' w' ->
+  trace = [] /\ s' = s /\ m' = m /\ w' = w /\
+  ending = CallReturn [WPtr (locale_name (libc_locale (fst w)) category)].
+Proof.
+  intros rep requests r args category p s m w trace ending s' m' w' Hnull Hcall.
+  assert (Hquery : locale_query [WInt category; WPtr p] = true).
+  { unfold locale_query. rewrite Hnull. reflexivity. }
+  destruct Hcall as [trace ending s' m' w' born Habi Hpre [He [Hp Hw]] Hpost Hresource Hvalues Hexit
+    |why trace s' m' w' born Habi Hpre [He [Hp Hw]] Hfailure Hresource].
+  - destruct Hp as [Htrace Hp]. rewrite Hquery in Hp, Hw. destruct Hp as (_ & Hm & _).
+    destruct Hpost as (cat & q & Hxs & Hend). injection Hxs as <- <-.
+    rewrite Hquery in Hend. split; [exact Htrace|]. split.
+    + clear -He Hquery. induction He; [reflexivity|exact IHHe|].
+      destruct H as [Hbad _]. congruence.
+    + auto.
+  - inversion Hfailure as [align size [Hbad _] Hsize Hrefuse|align size [Hbad _] Hsize];
+      rewrite Hquery in Hbad; discriminate.
+Qed.
+
+(** These constructions require admission and, for selection, an actual
+    permitted effects prefix and independently represented endpoint. They
+    do not assume invocation or guarantee native selection/termination. *)
+Theorem setlocale_refusal_admitted : forall rep requests r args category p s m w,
+  setlocale_abi r args -> ptr_addr p <> 0 ->
+  libc_setlocale_pre rep [WInt category; WPtr p] m w ->
+  E.invoke (libc_setlocale_contract rep requests) r args [WInt category; WPtr p] s m w []
+    (CallReturn [WPtr (mkPtr 0 CNone)]) s m w.
+Proof.
+  intros rep requests r args category p s m w Habi Hnonnull Hpre.
+  pose proof Hpre as (Hready & Hlocale & _).
+  assert (Hquery : locale_query [WInt category; WPtr p] = false)
+    by (apply Z.eqb_neq; exact Hnonnull).
+  eapply E.invoke_normal with (born := []).
+  - exact Habi.
+  - exact Hpre.
+  - split; [constructor|]. split.
+    + split; [reflexivity|]. rewrite Hquery. split; [exact (proj1 Hlocale)|].
+      split; [apply locale_delegates_refl with (rep := fun _ _ => True); exact (proj1 Hlocale)|].
+      exists category, p. split; [reflexivity|]. left. apply locale_unchanged_refl.
+    + rewrite Hquery. split; [exact Hready|]. repeat split; intros; reflexivity.
+  - exists category, p. split; [reflexivity|]. rewrite Hquery.
+    left. split; [reflexivity|apply locale_unchanged_refl].
+  - intros why Hbad. discriminate.
+  - intros values Heq. injection Heq as <-. split.
+    + eexists. split; reflexivity.
+    + constructor; [left; reflexivity|constructor].
+  - intros status Hbad. discriminate.
+Qed.
+
+Theorem setlocale_selected_admitted : forall rep requests r args category p s m w
+    born s' m' w',
+  setlocale_abi r args -> ptr_addr p <> 0 ->
+  libc_setlocale_pre rep [WInt category; WPtr p] m w ->
+  E.prefix (libc_setlocale_contract rep requests) [WInt category; WPtr p]
+    s m w born [] s' m' w' ->
+  locale_selected category (libc_locale (fst w)) (libc_locale (fst w')) ->
+  E.invoke (libc_setlocale_contract rep requests) r args [WInt category; WPtr p] s m w []
+    (CallReturn [WPtr (locale_name (libc_locale (fst w')) category)]) s' m' w'.
+Proof.
+  intros rep requests r args category p s m w born s' m' w' Habi Hnonnull Hpre Hp Hselected.
+  assert (Hcat : In category locale_categories).
+  { destruct Hpre as (_ & (_ & cat & q & Hxs & Hcat & _) & _).
+    injection Hxs as <- <-. exact Hcat. }
+  assert (Hquery : locale_query [WInt category; WPtr p] = false)
+    by (apply Z.eqb_neq; exact Hnonnull).
+  pose proof Hp as (_ & (_ & Hlocale) & _). rewrite Hquery in Hlocale.
+  destruct Hlocale as (_ & Hd & _).
+  eapply E.invoke_normal with (born := born).
+  - exact Habi.
+  - exact Hpre.
+  - exact Hp.
+  - exists category, p. split; [reflexivity|]. rewrite Hquery. right. auto.
+  - intros why Hbad. discriminate.
+  - intros values Heq. injection Heq as <-. split.
+    + eexists. split; reflexivity.
+    + constructor; [|constructor]. apply locale_retained_available.
+      apply (proj1 (proj2 Hd)). exact Hcat.
+  - intros status Hbad. discriminate.
+Qed.
+
+(** Setter endpoints expose the selected new codec through the actual
+    final locale, not a fixed codec hidden in the entry interpretation.
+    New sources retain precisely Locale's old-private-or-born provenance. *)
+Theorem setlocale_setter_prefix : forall rep requests r args category p s m w
+    trace ending s' m' w',
+  ptr_addr p <> 0 ->
+  E.invoke (libc_setlocale_contract rep requests) r args [WInt category; WPtr p]
+    s m w trace ending s' m' w' ->
+  trace = [] /\ libc_ready rep m' w' /\
+  libc_stdio (fst w') = libc_stdio (fst w) /\
+  libc_errno (fst w') = libc_errno (fst w) /\ snd w' = snd w /\
+  exists born,
+    locale_delegates [WInt category; WPtr p] m (libc_locale (fst w)) born m' (libc_locale (fst w')) /\
+    (forall source, In source (locale_private_sources (libc_locale (fst w'))) ->
+      locale_retained_cap (libc_locale (fst w)) born (ptr_cap (span_ptr source))) /\
+    (locale_unchanged (libc_locale (fst w)) (libc_locale (fst w')) \/
+      locale_selected category (libc_locale (fst w)) (libc_locale (fst w'))).
+Proof.
+  intros rep requests r args category p s m w trace ending s' m' w' Hnonnull Hcall.
+  assert (Hquery : locale_query [WInt category; WPtr p] = false)
+    by (apply Z.eqb_neq; exact Hnonnull).
+  destruct (E.invoke_prefix _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall) as (born & _ & Hp & Hw).
+  destruct Hp as [Htrace Hp]. rewrite Hquery in Hp, Hw.
+  destruct Hp as (_ & Hd & cat & q & Hxs & Hselected). injection Hxs as <- <-.
+  destruct Hw as (Hready & Hstdio & Herrno & Hshutdown & _).
+  split; [exact Htrace|]. split; [exact Hready|]. split; [exact Hstdio|].
+  split; [exact Herrno|]. split; [exact Hshutdown|]. exists born.
+  split; [exact Hd|]. split; [|exact Hselected].
+  intros source Hin. eapply locale_delegates_private; eauto.
+Qed.
+
+Theorem setlocale_setter_returned : forall rep requests r args category p s m w
+    trace values s' m' w',
+  ptr_addr p <> 0 ->
+  E.invoke (libc_setlocale_contract rep requests) r args [WInt category; WPtr p]
+    s m w trace (CallReturn values) s' m' w' ->
+  (values = [WPtr (mkPtr 0 CNone)] /\
+    locale_unchanged (libc_locale (fst w)) (libc_locale (fst w'))) \/
+  (values = [WPtr (locale_name (libc_locale (fst w')) category)] /\
+    locale_selected category (libc_locale (fst w)) (libc_locale (fst w')) /\
+    c_string m' (locale_name (libc_locale (fst w')) category)
+      (locale_text (libc_locale (fst w')) category)).
+Proof.
+  intros rep requests r args category p s m w trace values s' m' w' Hnonnull Hcall.
+  destruct (setlocale_setter_prefix _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hnonnull Hcall)
+    as (_ & Hready & _).
+  assert (Hcat : In category locale_categories).
+  { inversion Hcall; subst.
+    match goal with Hpre : contract_pre _ _ _ _ |- _ =>
+      destruct Hpre as (_ & (_ & cat & q & Hxs & Hcat & _) & _)
+    end. injection Hxs as <- <-. exact Hcat. }
+  assert (Hpost :
+    setlocale_post [WInt category; WPtr p] m (libc_locale (fst w)) [] trace
+      (CallReturn values) m' (libc_locale (fst w'))).
+  { inversion Hcall; subst. assumption. }
+  destruct Hpost as (cat & q & Hxs & Hpost). injection Hxs as <- <-.
+  assert (Hquery : locale_query [WInt category; WPtr p] = false)
+    by (apply Z.eqb_neq; exact Hnonnull).
+  rewrite Hquery in Hpost. destruct Hpost as [[Hret Hunchanged]|[Hret Hselected]];
+    injection Hret as ->; [left; auto|right; split; [reflexivity|]].
+  split; [exact Hselected|].
+  exact (proj1 (proj2 (libc_name rep m' w' category Hready Hcat))).
+Qed.
 
 (** Input-only n=0 admission constructs a call with the exact snapshot.
     The full valid-state/readability premises are intentionally retained. *)
