@@ -54,6 +54,24 @@ parse.sh on them and runs the native probe, in about a minute. It is
 off the quick gate. code.sh needs the six-minute capture, so it is
 run by hand.
 
+## Assumption G1: the proofs are about nanofil's IR of glibc
+
+Every theorem here is about the module that nanofil compiles from
+user glibc's preprocessed units, with `.filc_*` asm dropped. The
+programs these proofs describe run with filcc's `libc.so`, which is
+built from the same sources by filcc's LLVM pass. The theorems carry
+over to a native run only if both compilers give each glibc function
+the same behaviour, the same safety checks and the same object
+layout. That is an assumption, not a theorem: call it **G1**. Any
+claim that rests on these proofs about a real binary names G1.
+
+G1 already applies to the program's own code, which is also nanofil's
+IR. What is new is that glibc's code is under it too, where until now
+Campaign 4's contracts and their native probes stood. Each native
+probe, such as [zsys-write.c](../rocq/glibc/zsys-write.c), checks one
+libpizlo primitive under filcc. It does not check G1 for glibc's code.
+mbrock decides whether G1 is acceptable before Hello uses glibc's IR.
+
 ## The proofs
 
 [GlibcLogic.v](../rocq/glibc/GlibcLogic.v) holds what both proofs
@@ -144,10 +162,9 @@ which needs a 2 GiB buffer, and the log-descriptor assertion.
 
 ## Decisions this raises
 
-1. **What the proofs trust about glibc's compiler.** These proofs are
-   about nanofil's IR of glibc, while programs run with filcc's
-   `libc.so` (zsys.md). Recommended: state it as a named assumption in
-   this spike's doc, and decide before Hello uses glibc's IR.
+1. **What the proofs trust about glibc's compiler.** Recorded as
+   assumption G1 (above). Open: whether mbrock accepts it before Hello
+   uses glibc's IR.
 2. **A descriptor event.** `StreamBytes` means stdio acceptance in
    Campaign 4's contracts, and ExternalCalls.v says it is not a kernel
    write. Reusing it does no harm while no registry holds both `puts`
