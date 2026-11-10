@@ -48,16 +48,20 @@ encoded), and [ir_text.pl](../src/ir_text.pl) reads it.
 
 NFB writes the same `module(Items)` as a stream of words:
 
-```text
- C ──frontend──▶ module(Items) ──middle end──▶ module(Items)
-                      │                              │
-                      │                        pizlonate
-                      │                              ▼
-                      │                        checked module(Items)
-                      │                              │
-                      └──── nfb:module_nfb/2 ──▶ words ──▶ .nfb file
-                                                       │
-                              Gallina: Nfb.encode ─────┘ (same bytes)
+```diagram
+ C
+    │  frontend
+    ▼
+ module(Items)
+    │  middle end
+    ▼
+ module(Items)
+    │  pizlonate
+    ▼
+ checked module(Items)
+    │  nfb:module_nfb/2          from either stage; Gallina's Nfb.encode writes the same bytes
+    ▼
+ words ── write ──▶ .nfb file
 ```
 
 The pipeline in one sentence: a module is **unchecked** when its
@@ -571,7 +575,7 @@ Checked IR is that test, written as data:
 The formal claim is deliberately narrower than "nanofil is proved".
 For the **core subset** of checked filc IR — the subset
 [Syntax.v](../rocq/theories/Syntax.v) transcribes — the Rocq
-development proves `valid_no_unchecked`: a module the model's
+development proves [valid_no_unchecked]: a module the model's
 validator accepts never reaches an `unchecked` outcome, under stated
 axioms about the Fil-C runtime (allocation is fresh, objects do not
 move, free changes only the header, the collector frees nothing
@@ -1126,9 +1130,9 @@ has two representations of a module and NFB sits between them:
   NAMES was present).
 - [Nfb.v](../rocq/backend/Nfb.v) works at the level of
   [Syntax.v](../rocq/theories/Syntax.v)'s inductives. `encode` is
-  `encode_term` of `enc_module`, where the `IrTerm.v` encoders write
+  [encode_term] of [enc_module], where the `IrTerm.v` encoders write
   a Syntax module as the very term Prolog would print; `decode` is
-  the converse — `read_term`, then `Transport.v`'s `decode_module`
+  the converse — `read_term`, then `Transport.v`'s [decode_module]
   into Syntax, then the demand that re-encoding that module
   reproduces the input words on the core sections and NAMES.
 
@@ -1140,9 +1144,9 @@ named locals, variadics. Vectors, `cas` and atomics, `setjmp`,
 `asm_fixed` and plain mode are outside it. A function outside the
 subset does not fail to cross: it becomes `IOutside name term`,
 keeping its address and its whole term but no body, and since
-`enc_item` writes an `IOutside` back as that stored term, such a
+[enc_item] writes an [IOutside] back as that stored term, such a
 function still encodes into NFB and decodes back into the same
-`IOutside`. The boundary of the *model* and the boundary of the
+[IOutside]. The boundary of the *model* and the boundary of the
 *format* are different boundaries, and NFB's is the wider one.
 
 Three practical differences between the two encoders, all recorded in
@@ -1176,18 +1180,20 @@ what it returns, on the core sections), and totality with a bound
 As the RFC's implementation note records, the Gallina `decode`
 accepts words only when re-encoding its result reproduces them,
 which makes canonical form the cheap direction: it is stated and
-proved as `decode_canonical` (with `decode_identity`, the soundness
+proved as [decode_canonical] (with [decode_identity], the soundness
 of the module id) in `NfbProof.v`, and totality as the fuel lemmas of
 `NfbTotal.v` — every fuel-taking reader is given its input's length,
 and each lemma shows more fuel gives the same answer because every
-round consumes a word. **The full round-trip theorem is still in
-progress** and is not claimed here: what exists toward it are the
-field-level lemmas (a signed 64-bit or 96-bit integer, an inline
-constant and an enumeration code each read back as written). Until
-it lands, the honest statement is "the two implementations produce
-identical bytes on the whole corpus, and the Gallina reader accepts
-only canonical bytes" — not "Gallina decode is proved to invert
-Gallina encode". On trust, the same applies as in §8: passing either
+round consumes a word. **The full round-trip theorem is proved as well**:
+[round_trip] in `NfbProof.v` gives
+`decode (encode m) = Some m`, NAMES included, for every module
+[decode_module] gives, from the term reader's half,
+[read_encode_term], and Transport's, [decode_enc_module], which rest
+on the field-level lemmas (a signed 64-bit or 96-bit integer, an
+inline constant and an enumeration code each read back as written).
+Beside it stands the empirical statement "the two implementations
+produce identical bytes on the whole corpus, and the Gallina reader
+accepts only canonical bytes". On trust, the same applies as in §8: passing either
 reader establishes well-formedness, and a consumer that compiles,
 above all one that accepts checked modules from elsewhere, runs the
 validator on what it decoded, every time.
@@ -1221,8 +1227,8 @@ the table is right and the prose is a summary.
 | What bytes is this module? | `nfb:module_nfb/2`; `nanofil encode FILE OUT` |
 | Are these bytes *that* module, canonically? | the reader re-encodes and compares (§10.3); `nanofil nfb-check FILE` |
 | What do the Gallina types mean? | Syntax.v's header table, one constructor per IR functor |
-| What is proved about the bytes? | canonical form and totality (§12); the round trip is in progress |
-| Is a validated checked module memory-safe? | `valid_no_unchecked`, for the core subset, under the runtime axioms (§8) |
+| What is proved about the bytes? | canonical form, totality and the round trip (§12) |
+| Is a validated checked module memory-safe? | [valid_no_unchecked], for the core subset, under the runtime axioms (§8) |
 
 The short version of the whole guide: the IR makes every fact a
 consumer needs — classes, checks, proofs, capabilities' sources,

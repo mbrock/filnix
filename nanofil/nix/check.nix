@@ -127,8 +127,8 @@ pkgs.runCommandCC
     # dterm draws (packages/site's dtermDocs) and the concepts resolves, as
     # does every [[concept]] in a Prolog or Rocq comment, and each prolog
     # output has its terms (web/dterm_guide.pl).
-    step "guide links" swipl web/dterm.pl --check docs/README.md docs/guide.md docs/formal.md docs/filc.md docs/iris.md docs/logic.md src \
-      --concepts=docs/concepts --rocq=rocq/theories --rocq=rocq/spikes
+    step "guide links" swipl web/dterm.pl --check docs/README.md docs/guide.md docs/formal.md docs/filc.md docs/iris.md docs/logic.md docs/nfb-guide-argon.md docs/nfb-guide-wonder.md docs/nfb-guide-wonderful.md src \
+      --concepts=docs/concepts --rocq=rocq/theories --rocq=rocq/spikes --rocq=rocq/backend
     # M9 interpreter against nanofil's SSE2 backend.
     # Integer-bit wrappers preserve NaN payloads and negative zero.
     step "difftest float SSE2" env CC=$CC tests/difftest.sh tests/float/*.ir

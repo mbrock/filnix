@@ -314,7 +314,15 @@ The Markdown stays the source and reads the same on GitHub. On the page:
   [guide/outputs.pl](guide/outputs.pl) from nanofil's own predicates,
   never by parsing the text in the fence. Assembly and C stay text.
 - Inline code that reads as a term is drawn as one, and IR temporaries
-  as the playground draws them.
+  as the playground draws them. A ```` ```prolog ```` fence the document
+  writes itself is drawn as terms too, its `%` comments on their own
+  lines or after a term kept as notes; a fragment such as two
+  instructions needs no full stop, and a fence with a comment inside a
+  term stays text.
+- `[name]` links to a name the Rocq defines; `[Nfb.decode]` picks the
+  one in `Nfb.v` when several files define it.
+- Numbered lists are lists, and a `#` heading after the title names a
+  part, listed in the contents above its sections.
 - `name/N`, `name//N` and `module:name/N` link to the definition, with
   a card of its PlDoc signature and first paragraph on hover; `name.pl`
   and `../src/name.pl` links go to the module's page.

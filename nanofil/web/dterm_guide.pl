@@ -94,6 +94,9 @@ doc_label(formal, "the formal campaign") :- !.
 doc_label(filc, "How Fil-C works") :- !.
 doc_label(iris, "How Iris works") :- !.
 doc_label(logic, "A program logic") :- !.
+doc_label('nfb-guide-argon', "NFB guide (Argon)") :- !.
+doc_label('nfb-guide-wonder', "NFB guide (Wonder)") :- !.
+doc_label('nfb-guide-wonderful', "NFB guide (Wonderful)") :- !.
 doc_label(Doc, Doc).
 
 read_doc(Path, doc(Doc, Dir, Blocks)) :-
@@ -177,7 +180,9 @@ md_blocks([L|Ls0], [table(Head, Rows)|Bs]) :-
     table_line(L, Head), Ls0 = [Sep|Ls1], table_line(Sep, Cells), maplist(rule_cell, Cells), !,
     take_table(Ls1, Rows, Ls), md_blocks(Ls, Bs).
 md_blocks([L|Ls0], [ul(Items)|Bs]) :- item_start(L, _), !,
-    md_items([L|Ls0], Items, Ls), md_blocks(Ls, Bs).
+    md_items(ul, [L|Ls0], Items, Ls), md_blocks(Ls, Bs).
+md_blocks([L|Ls0], [ol(Start, Items)|Bs]) :- ol_start(L, Start, _, _), !,
+    md_items(ol, [L|Ls0], Items, Ls), md_blocks(Ls, Bs).
 md_blocks([L|Ls0], [aside(Inner)|Bs]) :- quote_line(L, Q), !,
     take_quote(Ls0, Qs, Ls), md_blocks([Q|Qs], Inner), md_blocks(Ls, Bs).
 md_blocks([L|Ls0], [p(Text)|Bs]) :-
@@ -195,7 +200,8 @@ hashes(0) --> [].
 
 md_para([L|Ls0], [L|Ps], Ls) :-
     \+ blank(L), \+ md_heading(L, _, _), \+ string_concat("```", _, L),
-    \+ string_concat("<!--", _, L), \+ item_start(L, _), \+ string_concat("|", _, L),
+    \+ string_concat("<!--", _, L), \+ item_start(L, _), \+ ol_start(L, 1, _, _),
+    \+ string_concat("|", _, L),
     \+ embed_line(L, _), \+ quote_line(L, _), !,
     md_para(Ls0, Ps, Ls).
 md_para(Ls, [], Ls).
@@ -208,23 +214,33 @@ take_quote([L|Ls0], [Q|Qs], Ls) :- quote_line(L, Q), !, take_quote(Ls0, Qs, Ls).
 take_quote(Ls, [], Ls).
 
 %  An item is its first line and the lines indented under it, blank
-%  lines between them included, read again as blocks.
-md_items([L|Ls0], [Bs|Items], Ls) :-
-    item_start(L, First),
+%  lines between them included, read again as blocks with the indent of
+%  the item's text (2 for "- ", 3 for "1. ") taken off.
+md_items(Kind, [L|Ls0], [Bs|Items], Ls) :-
+    list_item(Kind, L, W, First),
     take_item(Ls0, Cont0, Ls1),
-    maplist(undent2, Cont0, Cont),
+    maplist(undent(W), Cont0, Cont),
     md_blocks([First|Cont], Bs),
-    (   Ls1 = [L1|_], item_start(L1, _) -> md_items(Ls1, Items, Ls)
-    ;   Ls1 = [B, L1|_], blank(B), item_start(L1, _) -> Ls1 = [_|Ls2], md_items(Ls2, Items, Ls)
+    (   Ls1 = [L1|_], list_item(Kind, L1, _, _) -> md_items(Kind, Ls1, Items, Ls)
+    ;   Ls1 = [B, L1|_], blank(B), list_item(Kind, L1, _, _) -> Ls1 = [_|Ls2], md_items(Kind, Ls2, Items, Ls)
     ;   Items = [], Ls = Ls1
     ).
+
+list_item(ul, L, 2, First) :- item_start(L, First).
+list_item(ol, L, W, First) :- ol_start(L, _, W, First).
+
+%  ol_start(+Line, -N, -Width, -Rest): Line starts item N of an ordered
+%  list, "N. " being Width characters.
+ol_start(L, N, W, Rest) :-
+    string_codes(L, Cs), span([C]>>code_type(C, digit), Cs, Ds, [0'., 0' |Rs]),
+    Ds \== [], number_codes(N, Ds), length(Ds, W0), W is W0 + 2, string_codes(Rest, Rs).
 
 take_item([L|Ls0], [L|Cs], Ls) :- \+ blank(L), indent(L, I), I >= 2, !, take_item(Ls0, Cs, Ls).
 take_item([B, L|Ls0], [B|Cs], Ls) :- blank(B), \+ blank(L), indent(L, I), I >= 2, !,
     take_item([L|Ls0], Cs, Ls).
 take_item(Ls, [], Ls).
 
-undent2(L, S) :- ( blank(L) -> S = "" ; sub_string(L, 2, _, 0, S) ).
+undent(W, L, S) :- ( blank(L) -> S = "" ; indent(L, I), N is min(I, W), sub_string(L, N, _, 0, S) ).
 
 %% The first pass: anchors
 
@@ -240,6 +256,7 @@ prepass_(h(N, T)) :- !,
     assertz(guide_heading(D, Id, N, T, Mods)),
     ( N =:= 2 -> nb_setval(guide_h2, T) ; true ).
 prepass_(ul(Items)) :- !, maplist(prepass, Items).
+prepass_(ol(_, Items)) :- !, maplist(prepass, Items).
 prepass_(aside(Bs)) :- !, prepass(Bs).
 prepass_(_).
 
@@ -294,11 +311,15 @@ rocq_style(Doc) --> { guide_rocq(Doc) }, !,
     "<script defer src=\"rocq/dterm-rocq.js\"></script>\n".
 rocq_style(_) --> [].
 
+%  A document's first # heading is its title; a later one names a part,
+%  listed in the contents above its sections.
 guide_toc(Doc) -->
-    { findall(N-(Id-T), ( guide_heading(Doc, Id, N, T, _), N >= 2, N =< 3 ), Hs) },
+    { findall(N-(Id-T), ( guide_heading(Doc, Id, N, T, _), N =< 3 ), [_|Hs]) },
     el(ul, none, toc_items(Hs)).
 
 toc_items([]) --> [].
+toc_items([1-(Id-T)|Hs]) --> { atom_concat('#', Id, Href) },
+    el(li, "nav-part", el(a, none, [href=Href], toc_text(T))), toc_items(Hs).
 toc_items([2-(Id-T)|Hs0]) -->
     { take_h3(Hs0, Subs, Hs), atom_concat('#', Id, Href) },
     el(li, "nav-section", ( el(a, none, [href=Href], toc_text(T)),
@@ -321,7 +342,11 @@ gblock(h(N, T)) -->
       ( N >= 2 -> nb_setval(guide_sec, sec(Id, T, Mods)) ; true ),
       ( N =:= 2 -> nb_setval(guide_h2, T) ; true ),
       format(atom(H), "h~d", [N]),
-      ( N =:= 1 -> C = "source-title" ; C = "guide-h" ) },
+      (   N =:= 1, once(guide_heading(D, Id1, 1, _, _)), Id1 == Id
+      ->  C = "source-title"
+      ;   N =:= 1 -> C = "guide-h guide-part"
+      ;   C = "guide-h"
+      ) },
     el(H, C, [id=Id], gtext(T)).
 gblock(embed(Name)) --> concept_embed(Name).
 gblock(aside(Bs)) --> el(aside, "sidebar", gblocks(Bs)).
@@ -338,14 +363,15 @@ gblock(p(T)) -->
     el(p, "map-entry", [id=Id], raw(Body)).
 gblock(p(T)) --> { string_codes(T, Cs) }, el(p, none, gi(Cs)).
 gblock(ul(Items)) --> el(ul, none, seq(Items, gitem)).
+gblock(ol(1, Items)) --> !, el(ol, none, seq(Items, gitem)).
+gblock(ol(N, Items)) --> { atom_number(A, N) }, el(ol, none, [start=A], seq(Items, gitem)).
 gblock(table(Head, Rows)) -->
     el(table, "prose-table",
        ( el(thead, none, el(tr, none, seq(Head, gcell(th)))),
          el(tbody, none, seq(Rows, grow)) )).
 gblock(fence("prolog", Lines)) -->
-    { atomic_list_concat(Lines, '\n', T0), atom_string(T0, T),
-      \+ sub_string(T, _, _, _, "%"), fence_terms(T, Ts), Ts \== [] }, !,
-    el(div, "prose-terms", seq(Ts, gclause)).
+    { atomic_list_concat(Lines, '\n', T0), atom_string(T0, T), fence_items(T, Is) }, !,
+    el(div, "prose-terms", seq(Is, fence_item)).
 gblock(fence("diagram", Lines)) --> !, diagram(Lines, guide).
 gblock(fence(Lang, Lines)) --> { memberchk(Lang, ["rocq", "coq"]) }, !, rocq_fence(Lines).
 gblock(fence(Lang, Lines)) --> gfence(Lang, Lines).
@@ -364,8 +390,64 @@ gitem(Bs) --> el(li, none, seq(Bs, gblock)).
 grow(Cells) --> el(tr, none, seq(Cells, gcell(td))).
 gcell(Tag, Text) --> { string_codes(Text, Cs) }, el(Tag, none, gi(Cs)).
 
+%  fence_items(+Text, -Items): a prolog fence the document writes itself,
+%  as clause(Term), comment(Text) for a comment on its own line, and
+%  note(Term, Text) for one after a term on the term's last line. A
+%  fragment without its full stop, such as two instructions of a list,
+%  reads as if it had one. A comment inside a term leaves the fence text.
+fence_items(T, Is) :-
+    (   fence_read(T, Es) -> true
+    ;   string_concat(T, "\n.", T1), fence_read(T1, Es)
+    ),
+    memberchk(_-t(_, _, _), Es),
+    msort(Es, Sorted), pairs_values(Sorted, Es1),
+    fence_place(Es1, 0, T, Is).
+
+%  fence_read(+Text, -Events): Off-t(Term, From, To) for each term and
+%  Off-c(Off, Comment) for each % comment, by character offset.
+fence_read(T, Es) :-
+    catch(setup_call_cleanup(open_string(T, S), fence_events(S, Es), close(S)), _, fail).
+
+fence_events(S, Es) :-
+    read_term(S, X, [variable_names(Vs), module(dterm_syntax), subterm_positions(P), comments(Cs)]),
+    findall(O-c(O, C), ( member(Pos-C0, Cs), stream_position_data(char_count, Pos, O0),
+                         comment_line(C0, O0, O, C) ), CEs),
+    (   X == end_of_file -> Es = CEs
+    ;   maplist([N=V]>>(V = '$VAR'(N)), Vs), arg(1, P, F), arg(2, P, To),
+        append(CEs, [F-t(X, F, To)|Es1], Es), fence_events(S, Es1)
+    ).
+
+fence_place([], _, _, []).
+fence_place([c(O, S)|Es], To0, Text, [comment(C)|Is]) :- !,
+    O >= To0, comment_text(S, C), fence_place(Es, To0, Text, Is).
+fence_place([t(X, _, To)|Es0], _, Text, [I|Is]) :-
+    (   Es0 = [c(O, S)|Es], O >= To, L is O - To, sub_string(Text, To, L, _, Gap),
+        \+ sub_string(Gap, _, _, _, "\n")
+    ->  comment_text(S, C), I = note(X, C)
+    ;   Es = Es0, I = clause(X)
+    ),
+    fence_place(Es, To, Text, Is).
+
+%  comment_line(+Comment, +Off, -LineOff, -Line): the reader gives
+%  consecutive % lines as one comment; each is one line of it.
+comment_line(S, O0, O, C) :-
+    split_string(S, "\n", "", Ls),
+    foldl([L, O1-Ps, O2-[O1-L|Ps]]>>( string_length(L, N), O2 is O1 + N + 1 ), Ls, O0-[], _-Rev),
+    reverse(Rev, Lines), member(O3-C0, Lines),
+    string_codes(C0, Cs0), span([X]>>code_type(X, space), Cs0, Sp, Cs), Cs \== [],
+    length(Sp, NSp), O is O3 + NSp, string_codes(C, Cs).
+
+comment_text(S, C) :-
+    string_codes(S, [0'%|Cs0]), span(==(0'%), Cs0, _, Cs1), string_codes(C0, Cs1), split_string(C0, "", " \t", [C]).
+
+fence_item(clause(X)) --> gclause(X).
+fence_item(comment(C)) --> out_item(comment(C)).
+fence_item(note(X, C)) --> out_item(note(X, C)).
+
 %  A clause in a prolog fence the guide writes itself: a rule as head
-%  over its goals, anything else as a term.
+%  over its goals, a fragment's instructions as a comma chain, anything
+%  else as a term.
+gclause((A, B)) --> !, el(div, "clause item", term((A, B), _, 1000, ctx(guide, data))).
 gclause((H :- B)) --> !,
     el(div, "clause rule",
        ( el(div, head, ( term(H, _, 1199, ctx(guide, head)), "\u00A0",
@@ -555,6 +637,12 @@ link_target(Url, Href, none) :-
 link_target(Url, Href, none) :-
     split_atom_fragment(Url, Path, Frag), site_dir(Path, Page), !,
     atom_concat(Page, Frag, Href).
+%  Another directory, such as ../rocq/backend/, is its tree on GitHub.
+link_target(Path, Href, none) :-
+    atom_concat('../', Rel, Path), sub_atom(Rel, _, 1, 0, '/'),
+    nb_getval(guide_dir, Dir), directory_file_path(Dir, Path, Abs), exists_directory(Abs), !,
+    github(G), atomic_list_concat([Repo, Main], '/blob/', G),
+    atomic_list_concat([Repo, '/tree/', Main, Rel], Href).
 link_target(Url, Href, none) :-
     split_atom_fragment(Url, Path, Frag),
     nb_getval(guide_dir, Dir), directory_file_path(Dir, Path, Abs),
@@ -992,8 +1080,12 @@ rocq_concept_links(r(F, Page, Items, Cms)) :-
            )).
 
 %  rocq_href(+Name, -Href): Name is defined by the indexed Rocq.
+%  File.name is name as the file File.v defines it, as Rocq qualifies it.
 rocq_href(N, Href) :-
-    rocq_draw:rocq_global(N, Q, Page, _, _), !,
+    (   rocq_draw:rocq_global(N, Q, Page, _, _)
+    ;   atomic_list_concat([F, S], '.', N), atom_concat('-', F, End),
+        rocq_draw:rocq_global(S, Q, Page, _, _), sub_atom(Page, _, _, 0, End)
+    ), !,
     uri_encoded(fragment, Q, Frag), format(atom(Href), "rocq/~w.html#~w", [Page, Frag]).
 
 rocq_name_char(C) :- ( code_type(C, csym) ; C == 0'. ; C == 0'' ), !.

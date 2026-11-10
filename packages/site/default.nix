@@ -87,10 +87,13 @@ let
     "filc"
     "iris"
     "logic"
+    "nfb-guide-argon"
+    "nfb-guide-wonder"
+    "nfb-guide-wonderful"
   ];
   # dterm reads Prolog, concepts, saved guide outputs and Rocq indexes.
   # Keep nanofil/docs for its document-link existence checks as well as
-  # the six rendered documents, but not unrelated site docs/pages/Nix.
+  # the rendered documents, but not unrelated site docs/pages/Nix.
   prologSrc = lib.fileset.toSource {
     root = ../..;
     fileset = lib.fileset.unions [
@@ -136,7 +139,7 @@ let
             ) dtermDocs
           } \
           --concepts=${prologSrc}/nanofil/docs/concepts --rocq=${prologSrc}/nanofil/rocq/theories \
-          --rocq=${prologSrc}/nanofil/rocq/spikes </dev/null
+          --rocq=${prologSrc}/nanofil/rocq/spikes --rocq=${prologSrc}/nanofil/rocq/backend </dev/null
       '';
   rocqPages =
     pkgs.runCommand "filnix-rocq-pages" { nativeBuildInputs = [ swipl ]; }

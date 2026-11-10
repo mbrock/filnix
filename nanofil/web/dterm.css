@@ -60,8 +60,8 @@ article.dterm h2 {
 
 .dterm .prose { max-width: 44rem; }
 .dterm .prose p { margin: 0 0 0.55rem; text-align: left; hyphens: manual; }
-.dterm .prose p:last-child, .dterm .prose ul:last-child { margin-bottom: 0; }
-.dterm .prose ul { margin: 0.2rem 0 0.6rem; }
+.dterm .prose p:last-child, .dterm .prose :is(ul, ol):last-child { margin-bottom: 0; }
+.dterm .prose :is(ul, ol) { margin: 0.2rem 0 0.6rem; }
 .dterm .prose pre {
   margin: 0.4rem 0 0.7rem;
   padding: 0.5rem 0.8rem;
@@ -617,8 +617,10 @@ section.pred.multi .prose.between {
 /* The guide (dterm_guide.pl): docs/guide.md drawn beside the modules. */
 article.dterm.guide { max-width: 50rem; }
 .guide-prose { max-width: none; }
-.guide-prose > p, .guide-prose > ul, .guide-prose li { line-height: 1.55; }
+.guide-prose > p, .guide-prose > :is(ul, ol), .guide-prose li { line-height: 1.55; }
 .guide-prose h2.guide-h { margin-top: 2.6rem; }
+.guide-prose h1.guide-part { margin: 3.4rem 0 0; font-size: 1.5rem; }
+.guide-nav li.nav-part { margin: 1rem 0 0.2rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
 .guide-prose h3.guide-h { margin: 2rem 0 0.6rem; font-size: 1.08rem; }
 .guide-prose h4.guide-h { margin: 1.4rem 0 0.4rem; font-size: 0.98rem; color: var(--muted); }
 .guide-prose :is(h2, h3, h4, p.gloss-entry, p.map-entry):target {
@@ -726,7 +728,9 @@ aside.guide-links .label { color: var(--muted); font-size: 0.75rem; text-transfo
   padding: 0.05rem 0.6rem; background: var(--paper); white-space: nowrap;
 }
 .dg-chip.dg-opt { border-style: dashed; }
-.dg-hop { display: inline-flex; gap: 0.4rem; align-items: center; white-space: nowrap; }
+.dg-hop { display: inline-flex; gap: 0.4rem; align-items: center; white-space: nowrap; max-width: 100%; }
+/* The arrow stays with its chip, but a long chip wraps inside the width. */
+.dg-hop > .dg-chip { white-space: normal; min-width: 0; }
 .dg-arrow { color: color-mix(in srgb, var(--ink) 55%, transparent); }
 .dg-boxes .dg-title { margin-bottom: 0.4rem; }
 .dg-box {

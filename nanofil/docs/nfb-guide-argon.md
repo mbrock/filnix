@@ -6,13 +6,11 @@ That design lets three tools share a single contract:
 
 1. **The compiler** ([`src/`](../src/)) lowers C to an *unchecked* IR, optimizes it, translates it into a *checked* IR where every bounds check, capability projection, and garbage-collector safepoint is explicit ([`pizlonate.pl`](../src/pizlonate.pl)), optionally reuses check evidence ([`check_reuse.pl`](../src/check_reuse.pl)), validates the result ([`ir.pl`](../src/ir.pl)), and emits Fil-C x86-64 assembly ([`filc_amd64.pl`](../src/filc_amd64.pl)).
 2. **The relational interpreter** ([`interp.pl`](../src/interp.pl)) executes any IR module at any stage and distinguishes a normal Fil-C runtime panic (`trap(Reason)`) from a compiler bug where a raw access ran without valid check coverage (`unchecked(Reason)`).
-3. **The Rocq model and backend** ([`rocq/theories/`](../rocq/theories/), [`rocq/backend/`](../rocq/backend/)) transcribe the checked IR's syntax ([`Syntax.v`](../rocq/theories/Syntax.v)), small-step semantics ([`Semantics.v`](../rocq/theories/Semantics.v)), and validator ([`Validate.v`](../rocq/theories/Validate.v)), prove that no validated module ever executes an unchecked access ([`Soundness.v`](../rocq/theories/Soundness.v)'s `valid_no_unchecked`), and compile the checked IR to assembly in Gallina.
+3. **The Rocq model and backend** ([`rocq/theories/`](../rocq/theories/), [`rocq/backend/`](../rocq/backend/)) transcribe the checked IR's syntax ([`Syntax.v`](../rocq/theories/Syntax.v)), small-step semantics ([`Semantics.v`](../rocq/theories/Semantics.v)), and validator ([`Validate.v`](../rocq/theories/Validate.v)), prove that no validated module ever executes an unchecked access ([`Soundness.v`](../rocq/theories/Soundness.v)'s [valid_no_unchecked]), and compile the checked IR to assembly in Gallina.
 
 Historically, the only concrete syntax for a nanofil module was canonical Prolog terms (`module(Items)`). **NFB** (*nanofil bytecode*, specified in [`nfb.md`](nfb.md) and implemented in [`nfb.pl`](../src/nfb.pl), [`NfbTerm.v`](../rocq/backend/NfbTerm.v), and [`Nfb.v`](../rocq/backend/Nfb.v)) gives that same IR a canonical binary representation: a flat stream of little-endian 32-bit words inside a sectioned container.
 
 This guide introduces nanofil's IR from the ground up, explains how its checked stage enforces Fil-C's memory safety, walks through how NFB encodes a module into 32-bit words using real examples from the test corpus, and shows how the Prolog and Gallina implementations fit together.
-
----
 
 ## Part I: How the nanofil IR Works
 
@@ -20,7 +18,7 @@ This guide introduces nanofil's IR from the ground up, explains how its checked 
 
 When `nanofil cc` compiles a C translation unit, the program passes through two stages of the same IR grammar before becoming x86-64 assembly:
 
-```text
+```diagram
 C source (.c / .i)
   │  c_pp, c_lex, c_parse, c_types, c_lower
   ▼
@@ -52,7 +50,7 @@ A module is a single term `module(Items)` whose elements are four kinds of top-l
 | `alias(Name, Linkage, Target)` | A symbol alias (`export` or `weak`) for another function or data object `Target` defined in the same module. |
 | `context(Name, Records)` | Optional provenance metadata ([`provenance.pl`](../src/provenance.pl)) recording which C declarations and typed AST nodes produced each temporary and instruction. Ignored by validation, interpretation, and code emission. |
 
-A `data/4` item's `Linkage` controls where it lives and how it is linked:
+A `data` item's `Linkage` controls where it lives and how it is linked:
 
 - `export`, `local`, `weak`: writable data (`.data` / `.bss`).
 - `ro(export)`, `ro(local)`, `ro(weak)`: read-only data (`.rodata`); attempting a write through a capability to a `ro(...)` object traps with `readonly`.
@@ -60,7 +58,7 @@ A `data/4` item's `Linkage` controls where it lives and how it is linked:
 - `init(ctor, Priority)` or `init(dtor, Priority)`: a constructor or destructor entry run before `main` or at exit (`Priority` is `0..65535` or `none`), holding a single `item(p, sym(F, 0))` naming a function `F` in the module.
 - `extern(weak)` with `DataItems = []`: declares an undefined external symbol as weak so `global(Name)` evaluates to a null pointer if no linked object defines it.
 
-Inside `data/4`, `DataItems` is a list of initializer directives:
+Inside a `data` item, `DataItems` is a list of initializer directives:
 
 | Data item | Bytes | Meaning |
 | --- | --- | --- |
@@ -231,8 +229,6 @@ func(large_store, export, void, [], [
 
 Nothing is left implicit: `dst` is checked for an 8-byte aligned write on `[dst+0, dst+8)`, yielding the proven address `tmp(chk0)` of class `a`, and `raw_store_pointer` consumes `tmp(chk0)` along with the exact five-step Fil-C pointer-store protocol.
 
----
-
 ## Part II: How Checked IR Relates to Fil-C's Memory Safety
 
 ### GIMSO, flight pointers, and pointers at rest
@@ -264,9 +260,9 @@ To state what it means for a check optimization to be sound, both [`interp.pl`](
 
 An `unchecked(Reason)` outcome can never happen in valid unchecked IR. In checked IR, it represents a **soundness bug in the compiler**.
 
-The validator (`ir:valid_module/1` in Prolog, `Validate.valid` in Rocq) statically checks that every raw access and every reuse form in a checked module is backed by valid evidence. Campaign 3's main theorem, `valid_no_unchecked` in [`Soundness.v`](../rocq/theories/Soundness.v), proves:
+The validator (`ir:valid_module/1` in Prolog, [Validate.valid] in Rocq) statically checks that every raw access and every reuse form in a checked module is backed by valid evidence. Campaign 3's main theorem, [valid_no_unchecked] in [`Soundness.v`](../rocq/theories/Soundness.v), proves:
 
-> For any runtime satisfying the Fil-C runtime axioms ([`Runtime.v`](../rocq/theories/Runtime.v)), if `Validate.valid` accepts a checked module, no execution starting from a ready state ever reaches `Unchecked r`.
+> For any runtime satisfying the Fil-C runtime axioms ([`Runtime.v`](../rocq/theories/Runtime.v)), if [Validate.valid] accepts a checked module, no execution starting from a ready state ever reaches `Unchecked r`.
 
 ### Safepoints, `free`, and check-reuse evidence
 
@@ -286,8 +282,6 @@ Every instruction that cannot reach a safepoint or modify object bounds/rights i
 1. **Direct proof reuse (`--checks=reuse`, `forward`)**: While only `evidence_preserving` instructions and unpolled CFG edges intervene on every path from a dominating heap check `tmp(Q)`, later scalar `raw_load` and `raw_store` instructions whose byte range `[Off, Off+Size)`, rights, and alignment are covered by `tmp(Q)` can reuse `tmp(Q)` directly—eliminating the second check completely.
 2. **Temporal renewal (`renew`, `renew_hull`)**: If a safepoint (like a function call or loop poll edge) intervenes after a dominating heap check `tmp(Q1)` of `P1`, the spatial bounds `[Lo, Hi)` and alignment are still guaranteed to fit the object's original allocation, provided the object has not been freed since. `renew(Lo, Hi, Rights, Align)` takes `[tmp(Q1), P]` (where `P` is at a known constant offset from `P1` with the same `lower`) and emits a lightweight native check that tests only the header's `FREE` (and `READONLY`) flags.
 3. **One-sided, guarded, and hoisted checks (`half_check`, `span_test` + `renew_if`, `limit` + `check_limit`)**: When an earlier check proved one bound (`half_check`), or a loop preheader ran a non-trapping `span_test` (`renew_if`) or took a `limit` snapshot (`check_limit`), the instruction names the earlier proof or guard temporary as an explicit operand. The validator verifies the dominance and offset-interval side conditions directly from the instruction stream without performing its own search.
-
----
 
 ## Part III: NFB (nanofil Bytecode)
 
@@ -323,10 +317,14 @@ The `stage` and `mode` bits record what `ir:module_stage/2` and `ir:module_mode/
 
 Immediately after the 4-word file header come `nsecs` sections. Each section begins with a 2-word header followed by its payload words:
 
-```text
-┌──────────────────────┬───────────────────────────┬──────────────────────────┐
-│ Word 0: section id   │ Word 1: length in words N │ Words 2 .. N+1: payload  │
-└──────────────────────┴───────────────────────────┴──────────────────────────┘
+```diagram
+┌───────────────────────────┐
+│ section id                │   word 0
+├───────────────────────────┤
+│ length in words N         │   word 1
+├───────────────────────────┤
+│ payload                   │   words 2 .. N+1
+└───────────────────────────┘
 ```
 
 Sections must appear in **strictly increasing `id` order**, at most once per ID. Any **empty core section is omitted** altogether.
@@ -345,7 +343,7 @@ Section IDs are split into two ranges:
 | `5` | `FUNCTIONS` | One entry per kind-`0` (`func`) symbol, in symbol order: `[BodyWordLength, ...BodyWords]`. Prefixing each function with its word length lets a reader skip functions or decode them in parallel. |
 | `6` | `CERTIFICATES` | Reserved for Campaign 5 (`discharged(Cert)` check-discharge certificates). |
 | `0x100` | `NAMES` | Side section: a local string pool, then for each function (in symbol order) three counted lists of terms giving the original names of its temporaries, block labels, and named locals in ID order. |
-| `0x101` | `CONTEXT` | Side section: a local string pool, `Count`, then `[PrecedingNonContextItems, ContextTerm]` for each `context/2` item so decoding restores it to its exact position in `module(Items)`. |
+| `0x101` | `CONTEXT` | Side section: a local string pool, `Count`, then `[PrecedingNonContextItems, ContextTerm]` for each `context` item so decoding restores it to its exact position in `module(Items)`. |
 
 ### Function bodies, implicit dense IDs, and `rebind`
 
@@ -495,6 +493,9 @@ Running `nanofil encode` produces an 82-word (328-byte) file, and `nanofil decod
 ```sh
 $ (cd nanofil/src && ../bin/nanofil encode ../rocq/tests/strings.ir /tmp/strings.nfb </dev/null)
 $ (cd nanofil/src && ../bin/nanofil decode /tmp/strings.nfb </dev/null)
+```
+
+```prolog
 data(punctuation, ro(local), 1, [item(b, str("a;!z"))]).
 func(semicolon, export, w, [], [
     block(start, [], [
@@ -615,15 +616,13 @@ NFB guarantees that every valid module has a single core encoding because every 
 - Empty core sections are omitted; unused padding bytes and flag bits are zero; `rebind` is emitted only when at least one defined temporary is a redefinition.
 - The `stage`, `mode`, and `ordered` header flags are functions of the module.
 
-Rather than writing dozens of separate well-formedness checks for sorting, deduplication, unused table entries, and header flags, **both the Prolog reader (`nfb:read_words/2`) and the Gallina reader (`Nfb.decode` / `NfbTerm.decode_term`) enforce canonicality by re-encoding**:
+Rather than writing dozens of separate well-formedness checks for sorting, deduplication, unused table entries, and header flags, **both the Prolog reader (`nfb:read_words/2`) and the Gallina reader ([Nfb.decode] / [NfbTerm.decode_term]) enforce canonicality by re-encoding**:
 
 1. The reader decodes the input word list `Ws` into a module `M` (checking bounds and counts on the way).
 2. It runs the encoder on `M` (with the same core + `NAMES`/`CONTEXT` section selection).
 3. It requires the re-encoded words `Ws1` to be **word-for-word identical** to `Ws` (ignoring third-party tool sections with ID `>= 0x200`).
 
 If an input file has an unsorted string table, an unused constant, an inline-range constant stored in `CONSTANTS`, a spurious `rebind` of `0`, or a wrong `ordered` flag, re-encoding produces different words and the decoder rejects the file.
-
----
 
 ## Part IV: How the Prolog and Gallina Sides Relate
 
@@ -654,7 +653,7 @@ Inductive pat : Type :=
 Record form : Type := mkForm { f_code : Z; f_pat : pat; f_fields : list lfield }.
 ```
 
-`match_pat` matches a `term` against `f_pat` to produce an environment `env` mapping hole numbers to subterms, and `lfields_out` encodes each hole according to `f_fields`. Conversely, `read_lfields` decodes words into an `env`, and `fill_pat` plugs those subterms back into `f_pat` to build the `term`.
+[match_pat] matches a `term` against `f_pat` to produce an environment `env` mapping hole numbers to subterms, and [lfields_out] encodes each hole according to `f_fields`. Conversely, [read_lfields] decodes words into an `env`, and [fill_pat] plugs those subterms back into `f_pat` to build the `term`.
 
 ### Bridging `Term.v` and `Syntax.v`: `IrTerm.v`, `Transport.v`, and `Nfb.v`
 
@@ -666,19 +665,19 @@ The Rocq model's [`Syntax.v`](../rocq/theories/Syntax.v) defines typed inductive
 | IOutside (n : name) (t : term)
 ```
 
-Keeping the raw `term` inside `IOutside` allows `Validate.v` to inspect the function's signature and global symbol references even when its body lies outside the core subset, and allows NFB to round-trip any module through `Syntax.module` without losing outside functions.
+Keeping the raw `term` inside [IOutside] allows `Validate.v` to inspect the function's signature and global symbol references even when its body lies outside the core subset, and allows NFB to round-trip any module through `Syntax.module` without losing outside functions.
 
 [`rocq/backend/Nfb.v`](../rocq/backend/Nfb.v) composes the typed AST conversion with `NfbTerm.v`:
 
-```text
-Syntax.module  ─── IrTerm.enc_module ──▶  Term.term  ─── NfbTerm.encode_term ──▶  list Z (words)
-Syntax.module  ◀── Transport.decode_module ─ Term.term ◀── NfbTerm.read_term   ───  list Z (words)
+```diagram
+Encode: Syntax.module ─▶ Nfb.enc_module ─▶ Term.term ─▶ NfbTerm.encode_term ─▶ list Z (words)
+Decode: list Z (words) ─▶ NfbTerm.read_term ─▶ Term.term ─▶ Transport.decode_module ─▶ Syntax.module
 ```
 
 Specifically:
 
-- **`Nfb.encode (m : module) : option (list Z)`** turns every `IFunc f`, `IData ...`, and `IAlias ...` into its canonical `Term.term` via `IrTerm.enc_module` (while `IOutside _ t` is already its `term` `t`), and passes `module(Items)` to `NfbTerm.encode_term true`.
-- **`Nfb.decode (ws : list Z) : option module`** runs `NfbTerm.read_term ws` to get `(t, has_names)`, runs `Transport.decode_module t` to build `m : Syntax.module`, re-encodes `m` with `encode_with has_names m`, and checks `words_eqb` against `module_words ws` (which strips `CONTEXT` and tool sections `>= 0x200`).
+- **`Nfb.encode (m : module) : option (list Z)`** turns every `IFunc f`, `IData ...`, and `IAlias ...` into its canonical `Term.term` via [Nfb.enc_module], built from `IrTerm.v`'s encoders (while `IOutside _ t` is already its `term` `t`), and passes `module(Items)` to `NfbTerm.encode_term true`.
+- **`Nfb.decode (ws : list Z) : option module`** runs `NfbTerm.read_term ws` to get `(t, has_names)`, runs `Transport.decode_module t` to build `m : Syntax.module`, re-encodes `m` with `encode_with has_names m`, and checks [words_eqb] against `module_words ws` (which strips `CONTEXT` and tool sections `>= 0x200`).
 
 One minor difference between the two readers is noted in [`nfb.md`](nfb.md): `NfbTerm.v` treats strings in `STRINGS` as raw byte sequences (`0..255`), whereas `nfb.pl` decodes `STRINGS` into Prolog atoms via `utf8_decode//1` and therefore also requires symbol and file names to be valid UTF-8.
 
@@ -687,7 +686,7 @@ One minor difference between the two readers is noted in [`nfb.md`](nfb.md): `Nf
 The RFC ([`nfb.md`](nfb.md)) specifies three formal properties for the Gallina NFB implementation, corresponding to [`NfbProof.v`](../rocq/backend/NfbProof.v) and [`NfbTotal.v`](../rocq/backend/NfbTotal.v):
 
 1. **Canonical form and sound identity (`NfbProof.v`, proved)**:
-   Because `Nfb.decode` accepts a word list `ws` only when `encode_with` reproduces `module_words ws`, the canonicality theorem is short and unconditional:
+   Because [Nfb.decode] accepts a word list `ws` only when [encode_with] reproduces `module_words ws`, the canonicality theorem is short and unconditional:
    ```rocq
    Theorem decode_canonical : forall ws m,
      decode ws = Some m -> encode_with (names_of ws) m = module_words ws.
@@ -699,17 +698,15 @@ The RFC ([`nfb.md`](nfb.md)) specifies three formal properties for the Gallina N
    Any two word streams that decode to the same `Syntax.module` (both with `NAMES` or both without) have identical core and `NAMES` words.
 
 2. **Total and bounded decoding (`NfbTotal.v`, proved)**:
-   Every function in `NfbTerm.v` and `Nfb.v` is a total Gallina function (`decode_total : forall ws, decode ws = None \/ exists m, decode ws = Some m`). Wherever a reader function is not structurally recursive on the input list (`read_sections`, `read_group`, `read_blocks`, `read_rest`, `read_side_term`, `read_name_recs`), it takes a `nat` fuel argument initialized at the call site to `length ws`. `NfbTotal.v` proves that every step consumes at least one word (`takes_word`, `forms_rest_take_words`), so `length ws` is always sufficient fuel: passing any larger fuel `f' >= length ws` yields the exact same result (`sections_fuel`, `group_fuel`, `blocks_fuel`, `rest_fuel`, `side_term_fuel`, `name_recs_fuel`). No input is ever rejected because fuel ran out.
+   Every function in `NfbTerm.v` and `Nfb.v` is a total Gallina function (`decode_total : forall ws, decode ws = None \/ exists m, decode ws = Some m`). Wherever a reader function is not structurally recursive on the input list ([read_sections], [read_group], [read_blocks], [read_rest], [read_side_term], [read_name_recs]), it takes a `nat` fuel argument initialized at the call site to `length ws`. `NfbTotal.v` proves that every step consumes at least one word ([takes_word], [forms_rest_take_words]), so `length ws` is always sufficient fuel: passing any larger fuel `f' >= length ws` yields the exact same result ([sections_fuel], [group_fuel], [blocks_fuel], [rest_fuel], [side_term_fuel], [name_recs_fuel]). No input is ever rejected because fuel ran out.
 
-3. **Round-trip inversion (`decode (encode m) = Some m`, in progress)**:
-   Because `decode` re-encodes what `read_term` and `decode_module` read, proving the round-trip theorem means proving that the reader inverts the writer on every well-formed module. `NfbProof.v` proves the leaf round-trip lemmas—64-bit signed integers (`i64_round_trip`), 96-bit signed wide constants (`wide_round_trip`), 30-bit signed inline constants (`inline_round_trip`), and bijective enumeration code tables (`codes_ok`, `codes_round_trip`)—while the full structural round-trip proof is in progress.
+3. **Round-trip inversion (`decode (encode m) = Some m`, proved)**:
+   Because `decode` re-encodes what `read_term` and [decode_module] read, proving the round-trip theorem means proving that the reader inverts the writer on every well-formed module. [`NfbRead.v`](../rocq/backend/NfbRead.v) proves the leaf round-trip lemmas—64-bit signed integers ([i64_round_trip]), 96-bit signed wide constants ([wide_round_trip]), 30-bit signed inline constants ([inline_round_trip]), and bijective enumeration code tables ([codes_ok], [codes_round_trip])—and the reader half, [read_encode_term]; with [decode_enc_module] in [`NfbTransport.v`](../rocq/backend/NfbTransport.v), they give [round_trip] in `NfbProof.v` for every module that [Transport.decode_module] gives.
 
 Alongside the Rocq proofs, two executable test gates hold the implementations to the corpus on every check run:
 
 - **`nanofil/tests/nfb.sh`** (`nanofil nfb-check FILE`): Encodes and decodes every C and IR module in the corpus—both `unchecked` and `checked`, with and without `-O`—verifying that `module_nfb/2` recovers the identical Prolog term when `NAMES` and `CONTEXT` are included, and recovers a module with identical core words when side sections are stripped.
-- **`nanofil/rocq/backend/tests/nfb.sh`** (`nanofil nfb-terms` + extracted `nanofil-backend nfb`): Runs the extracted Gallina `Nfb.encode` and `Nfb.decode` against `nfb.pl` across the corpus, requiring the Gallina encoder to emit the **exact same bytes** (`NAMES` included) as `nfb.pl` and the Gallina decoder to return the exact same `Syntax.module`.
-
----
+- **`nanofil/rocq/backend/tests/nfb.sh`** (`nanofil nfb-terms` + extracted `nanofil-backend nfb`): Runs the extracted Gallina [Nfb.encode] and [Nfb.decode] against `nfb.pl` across the corpus, requiring the Gallina encoder to emit the **exact same bytes** (`NAMES` included) as `nfb.pl` and the Gallina decoder to return the exact same `Syntax.module`.
 
 ## Quick Reference: Using NFB from the Command Line
 

@@ -158,7 +158,7 @@ that a check just cleared them. Part 2 cashes this out.
 A block is `block(Label, Phis, Insts, Jump)`:
 
 ```prolog
-block(loop, [ Phis... ], [ Insts... ], Jump)
+block(loop, Phis, Insts, Jump)
 ```
 
 First the phis, then the ordinary instructions, then exactly one
@@ -275,7 +275,7 @@ signed and unsigned integer orders (`slt`, `sle`, ...; `ult`, `ule`,
 ...), or the float orders (`lt`, `le`, ..., `o`, `uo` for ordered /
 unordered). `ext(T)` extends the low bytes named by narrow type `T`
 (or widens a float, `ext(s)`, `ext(d)`); `truncd` and `truncx`
-narrow floats; twelve conversions move between floats and signed or
+narrow floats; ten conversions move between floats and signed or
 unsigned integers (`stosi`, `dtoui`, `swtof`, `ultof`, ...: source
 class, signedness, "to"). `ptoi` and `itop` convert between a
 pointer and an integer in Fil-C mode — §7 explains why `itop` yields
@@ -364,9 +364,20 @@ address-plus-capability pairs — and `alloc` yields a `p`.
 contains no check, raw access, `flight`, or poll edge; otherwise it
 is *checked*. The compiler's pipeline crosses from one to the other:
 
-```text
-C source ──frontend──▶ unchecked IR ──middle end (-O)──▶ unchecked IR
-    ──pizlonate──▶ checked IR ──Fil-C backend──▶ assembly
+```diagram
+ C source
+    │  frontend
+    ▼
+ unchecked IR
+    │  middle end (-O)
+    ▼
+ unchecked IR
+    │  pizlonate
+    ▼
+ checked IR
+    │  Fil-C backend
+    ▼
+ assembly
 ```
 
 The frontend and the middle end write unchecked IR. *Pizlonation*
@@ -637,7 +648,7 @@ wrong, and the distinction *is* the safety claim:
 
 "Soundness of checking" is the statement that a module the validator
 accepts never reaches `unchecked`. For the model's *core subset*
-(§19) this is proved in Rocq as `valid_no_unchecked`
+(§19) this is proved in Rocq as [valid_no_unchecked]
 ([Soundness.v](../rocq/theories/Soundness.v)), under explicit axioms
 about the Fil-C runtime, each backed by a native test
 ([formal.md](formal.md), [runtime-axioms.md](runtime-axioms.md)).
@@ -758,11 +769,11 @@ Section ids divide the world in two:
 | 1 | STRINGS | symbol names and `loc` file names |
 | 2 | CONSTANTS | wide integer constants (§14) |
 | 3 | SYMBOLS | every name the module defines or refers to |
-| 4 | DATA | the `data/4` items' bodies |
-| 5 | FUNCTIONS | the `func/5` bodies |
+| 4 | DATA | the `data` items' bodies |
+| 5 | FUNCTIONS | the `func` bodies |
 | 6 | CERTIFICATES | reserved, not yet specified (§16) |
 | `0x100` | NAMES | original names of temporaries, labels, locals (§15) |
-| `0x101` | CONTEXT | the `context/2` records and where they stood (§15) |
+| `0x101` | CONTEXT | the `context` records and where they stood (§15) |
 
 The flags deserve a remark. Stage and mode are *derived* from a
 module's vocabulary by `module_stage/2` and `module_mode/2` (§5);
@@ -1020,7 +1031,7 @@ and functor it uses. A term is then a tag word plus its parts:
 NAMES writes each name list as a count followed by that many side
 terms (the pool and the term tags are visible in the worked example
 of §17). **CONTEXT (`0x101`)** uses the same term encoding: the
-pool, a count, then for each `context/2` item the number of
+pool, a count, then for each `context` item the number of
 non-context items that stood before it, followed by the item itself
 — so the decoder splices every context record back into its original
 position in the item list.
@@ -1118,7 +1129,7 @@ transcription's). In particular:
 | unchecked | pizlonate, validate, compile | a wrong result or a Fil-C panic |
 | checked | validate, compile | nothing more — *if* the validator accepts only safe modules |
 
-The second row rests on `valid_no_unchecked` (§9); a client not
+The second row rests on [valid_no_unchecked] (§9); a client not
 trusted to be correct should send unchecked IR until that theorem
 covers every construct it uses. Evidence needs no extra carriage:
 the reuse forms already take earlier proofs as operands, so the
@@ -1222,8 +1233,11 @@ local list, each name a tag-1 (atom) side term naming a pool entry:
 
 And back:
 
-```text
+```sh
 $ nanofil/bin/nanofil decode add1.nfb
+```
+
+```prolog
 func(add1, export, w, [param(w, tmp(x))], [
     block(start, [], [
         let(tmp(y), w, add, [tmp(x), const(1)])
@@ -1322,15 +1336,10 @@ table in both directions, so its writer and reader cannot disagree
 about a layout. The two implementations are then held to each other
 on the corpus.
 
-```text
-                          Prolog terms  (ir.pl: module(Items))
-                         /              \
-        nfb.pl          /                \   Transport.decode_module
-     module_nfb/2      /                  \  (terms → Syntax.v)
-                      ▼                    ▼
-                   NFB words  ◀── Nfb.v encode/decode ──▶  Syntax.v modules
-                      ▲                    (via IrTerm encoders + NfbTerm words)
-                       \______ byte-identical on the corpus ______/
+```diagram
+Prolog: Prolog terms (ir.pl) ─▶ nfb.pl's module_nfb/2 ─▶ NFB words
+Gallina: Prolog terms (ir.pl) ─▶ Transport.decode_module ─▶ Syntax.v modules ─▶ Nfb.v encode, via IrTerm encoders and NfbTerm words ─▶ NFB words
+Agreement: nfb.pl's NFB words ─▶ byte-identical on the corpus ─▶ Nfb.v's NFB words
 ```
 
 **Prolog: [nfb.pl](../src/nfb.pl).** The table is `nfb_form/3`
@@ -1367,10 +1376,10 @@ backend extracted from it.
 - [Nfb.v](../rocq/backend/Nfb.v) lifts that to
   [Syntax.v](../rocq/theories/Syntax.v) modules. `encode` first
   renders a Syntax module as the term ir.pl would print
-  (`enc_module`, built from IrTerm.v's per-instruction encoders),
+  ([enc_module], built from IrTerm.v's per-instruction encoders),
   then writes that term as words with NfbTerm. `decode` goes the
   other way: NfbTerm's reader gives a module term, Transport.v's
-  `decode_module` turns it into a Syntax module — and then, exactly
+  [decode_module] turns it into a Syntax module — and then, exactly
   as in Prolog, the words are accepted only if `encode` writes the
   same words back (NAMES if present; CONTEXT and tool sections
   aside).
@@ -1420,17 +1429,19 @@ and rejects anything malformed, with any fuel it uses proved never
 to run out at the input's length. As [nfb.md](nfb.md) records the
 implementation's state: because the Gallina `decode` accepts words
 only if `encode` reproduces them, the canonical theorem costs little
-and is proved (`decode_canonical`, with `decode_identity` giving the
+and is proved ([decode_canonical], with [decode_identity] giving the
 sound identity), and totality is proved (`NfbTotal.v`: every fueled
 reader is given the length of its words, and more fuel is shown to
 give the same answer, because each round consumes a word). The cost
 moves to the round trip — showing the reader inverts the writer,
-field by field. **That proof is in progress; it is not on `main`,
-and this guide does not claim it.** What exists today toward it, per
-the RFC's account, is the field-level groundwork, and the very
-strong (but empirical) corpus agreement above. Treat "NFB
-round-trips" as *tested on the whole corpus, in both
-implementations* — and "NFB round-trips, proved" as forthcoming.
+field by field. **That proof is on `main` too:** [round_trip] in NfbProof.v proves
+`decode (encode m) = Some m`, NAMES included, for every module
+`Transport.decode_module` gives, from its two halves,
+[read_encode_term] (the term reader gives back what the term writer
+wrote) and [decode_enc_module] (`decode_module` reads
+`enc_module m` as `m`). The very strong (but empirical) corpus
+agreement above holds the same thing to every real module, in both
+implementations.
 
 ## 20. A map for going further
 
@@ -1459,9 +1470,8 @@ instruction, one operand word per value, names and context on the
 side — with exactly one encoding per module, so the words are the
 module's identity. And both the Prolog compiler and the Gallina
 backend implement that encoding from a single shared table design,
-held byte-identical on the corpus, with the canonical-form and
-totality theorems proved and the full round-trip proof still in
-progress.
+held byte-identical on the corpus, with the canonical-form,
+totality and round-trip theorems proved.
 
 
 

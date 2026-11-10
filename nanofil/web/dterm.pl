@@ -1311,6 +1311,7 @@ word_(`docs`, [0'/|Cs0], Vars, F) -->
 word_(W, Cs, Vars, F) --> esc(W), inl(Cs, Vars, F).
 
 pred_ref(W, Cs0, Ref, PI, Cs) :-
+    W = [C0|_], code_type(C0, lower),   % a name, not 32/64 or Var/2
     atom_codes(N, W),
     (   Cs0 = [0'/, 0'/|Cs1] -> Slash = `//` ; Cs0 = [0'/|Cs1], Slash = `/` ),
     span([C]>>code_type(C, digit), Cs1, Ds, Cs), Ds \== [],
