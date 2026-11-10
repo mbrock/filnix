@@ -1844,12 +1844,20 @@ switch_ctx(ctx(Func, Ret, _, Cont, Loc), LBreak,
 % Gotos may stay inside or leave boundaries, never enter one (including a
 % sibling). Case dispatch must originate inside the same boundary. Keeping
 % this separate from emission also checks forward gotos and unevaluated code.
+% It also refuses a label defined twice in the function (6.8.1p3), as
+% clang does, at the second definition (GNU local labels have names of
+% their own by then, c_parse's local_labels//1).
 statement_expression_jumps(Body, Loc) :-
     phrase(jump_regions(Body, [], [], [], Loc), Events),
+    findall(Name-LLoc, member(label_region(Name, _, LLoc), Events), Defs),
+    (   append(_, [Name-_|Later], Defs), memberchk(Name-Again, Later)
+    ->  sema_error(Again, 'redefinition of label ~w', [Name])
+    ;   true
+    ),
     maplist(check_jump_region(Events), Events).
 
 check_jump_region(Events, jump(Name, From, Loc)) :- !,
-    (   member(label_region(Name, To), Events),
+    (   member(label_region(Name, To, _), Events),
         \+ append(_, To, From)
     ->  sema_error(Loc, 'goto into a statement expression is not allowed', [])
     ;   true
@@ -1865,7 +1873,7 @@ jump_regions(at(Loc, Term), Path, Regions, Switch, _) --> !,
 jump_regions(stmtexpr(Block), Path, Regions, Switch, Loc) --> !,
     jump_regions(Block, [0|Path], [Path|Regions], Switch, Loc).
 jump_regions(label(Name, Body), Path, Regions, Switch, Loc) --> !,
-    [label_region(Name, Regions)],
+    [label_region(Name, Regions, Loc)],
     jump_regions(Body, [0|Path], Regions, Switch, Loc).
 jump_regions(goto(Name), _, Regions, _, Loc) --> !,
     [jump(Name, Regions, Loc)].
