@@ -70,6 +70,7 @@ let
       ../../pages
       ../../nanofil/docs
       ../../nanofil/src
+      ../../nanofil/tests/c
       ../../nanofil/web
       # nanofil's Rocq, wherever the development puts it (dterm-rocq).
       (lib.fileset.fileFilter (f: f.hasExt "v") ../../nanofil)
@@ -139,7 +140,8 @@ let
             ) dtermDocs
           } \
           --concepts=${prologSrc}/nanofil/docs/concepts --rocq=${prologSrc}/nanofil/rocq/theories \
-          --rocq=${prologSrc}/nanofil/rocq/spikes --rocq=${prologSrc}/nanofil/rocq/backend </dev/null
+          --rocq=${prologSrc}/nanofil/rocq/spikes --rocq=${prologSrc}/nanofil/rocq/backend \
+          --rocq=${prologSrc}/nanofil/rocq/glibc </dev/null
       '';
   rocqPages =
     pkgs.runCommand "filnix-rocq-pages" { nativeBuildInputs = [ swipl ]; }
