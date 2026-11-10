@@ -139,33 +139,29 @@ Definition typed_ret_kinds (ks : list class) : list class :=
   flat_map (fun k => match k with P => [L; L] | _ => [k] end) ks.
 
 (** As `generic_typed_gprs//2` and `generic_typed_xmms//2`, over the
-    registers `result_registers/2` gives the words: integer words in
-    `%rdx` then `%rcx`, float words in `%xmm0` then `%xmm1`. *)
-Fixpoint generic_typed_gprs (ks : list class) (gs : list string) (offs : list Z)
-  : list line :=
-  match ks, offs with
-  | k :: ks', off :: offs' =>
-      if float_class k then generic_typed_gprs ks' gs offs'
-      else match gs with
-           | g :: gs' => ins "mov" "q" [reg g; mem off "rbx"] :: generic_typed_gprs ks' gs' offs'
-           | [] => todo "result registers"
-           end
-  | _, _ => []
+    registers `result_registers/2` gives the words. *)
+Fixpoint generic_typed_gprs (rs : list result_reg) (offs : list Z) : list line :=
+  match rs, offs with
+  | [], [] => []
+  | r :: rs', off :: offs' =>
+      match r with
+      | RrGpr g => [ins "mov" "q" [reg g; mem off "rbx"]]
+      | RrXmm _ _ => []
+      end
+      ++ generic_typed_gprs rs' offs'
+  | _, _ => todo "result registers"
   end.
 
-Fixpoint generic_typed_xmms (ks : list class) (xs : list string) (offs : list Z)
-  : list line :=
-  match ks, offs with
-  | k :: ks', off :: offs' =>
-      if float_class k
-      then match xs with
-           | x :: xs' =>
-               from_xmm k x "a" ++ [ins "mov" "q" [reg "rax"; mem off "rbx"]]
-               ++ generic_typed_xmms ks' xs' offs'
-           | [] => todo "result registers"
-           end
-      else generic_typed_xmms ks' xs offs'
-  | _, _ => []
+Fixpoint generic_typed_xmms (rs : list result_reg) (offs : list Z) : list line :=
+  match rs, offs with
+  | [], [] => []
+  | r :: rs', off :: offs' =>
+      match r with
+      | RrXmm k x => from_xmm k x "a" ++ [ins "mov" "q" [reg "rax"; mem off "rbx"]]
+      | RrGpr _ => []
+      end
+      ++ generic_typed_xmms rs' offs'
+  | _, _ => todo "result registers"
   end.
 
 (** As `generic_reg_results//2`: the result words from their
@@ -182,11 +178,13 @@ Definition generic_reg_results (c : adapter_channel) (dests zeros : list Z) : li
       | _, _ => todo "float result"
       end
   | AdTyped ks =>
-      let kts := typed_ret_kinds ks in
-      generic_typed_gprs kts ["rdx"; "rcx"] dests
-      ++ generic_typed_xmms kts ["xmm0"; "xmm1"] dests
-      ++ [ins "xor" "l" [reg "eax"; reg "eax"]]
-      ++ generic_zeroings zeros
+      match result_registers (typed_ret_kinds ks) ["rdx"; "rcx"] ["xmm0"; "xmm1"] with
+      | Some rs =>
+          generic_typed_gprs rs dests ++ generic_typed_xmms rs dests
+          ++ [ins "xor" "l" [reg "eax"; reg "eax"]]
+          ++ generic_zeroings zeros
+      | None => todo "result registers"
+      end
   | AdWords => generic_reg_stores dests ["rdx"; "rcx"] ++ generic_zeroings zeros
   end.
 

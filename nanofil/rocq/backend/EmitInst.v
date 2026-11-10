@@ -469,34 +469,36 @@ Fixpoint buffer_slot_copies (cx : ctx) (ks : list key) (off : Z) : list line :=
       ++ buffer_slot_copies cx ks' (off + eight)
   end.
 
-(** As `typed_result_gprs//3` and `typed_result_xmms//3`: a returned
-    tuple's integer words are in `%rdx` then `%rcx` and its float
-    words in `%xmm0` then `%xmm1`. The integer registers are stored
-    first, since a float goes to its slot through `%rax`. *)
-Fixpoint typed_result_gprs (cx : ctx) (ks : list (class * key)) (gs : list string)
-  : list line :=
-  match ks with
-  | [] => []
-  | (k, t) :: ks' =>
-      if float_class k then typed_result_gprs cx ks' gs
-      else match gs with
-           | g :: gs' => slot_store cx g t ++ typed_result_gprs cx ks' gs'
-           | [] => todo "result registers"
-           end
+(** As `typed_result_gprs//3` and `typed_result_xmms//3`, over the
+    registers `result_registers/2` gives a returned tuple's words.
+    The integer registers are stored first, since a float goes to
+    its slot through `%rax`. *)
+Fixpoint typed_result_gprs (cx : ctx) (ts : list key) (rs : list result_reg) : list line :=
+  match ts, rs with
+  | [], [] => []
+  | t :: ts', r :: rs' =>
+      match r with RrGpr g => slot_store cx g t | RrXmm _ _ => [] end
+      ++ typed_result_gprs cx ts' rs'
+  | _, _ => todo "result registers"
   end.
 
-Fixpoint typed_result_xmms (cx : ctx) (ks : list (class * key)) (xs : list string)
-  : list line :=
-  match ks with
-  | [] => []
-  | (k, t) :: ks' =>
-      if float_class k
-      then match xs with
-           | x :: xs' =>
-               from_xmm k x "a" ++ slot_store cx "rax" t ++ typed_result_xmms cx ks' xs'
-           | [] => todo "result registers"
-           end
-      else typed_result_xmms cx ks' xs
+Fixpoint typed_result_xmms (cx : ctx) (ts : list key) (rs : list result_reg) : list line :=
+  match ts, rs with
+  | [], [] => []
+  | t :: ts', r :: rs' =>
+      match r with
+      | RrXmm k x => from_xmm k x "a" ++ slot_store cx "rax" t
+      | RrGpr _ => []
+      end
+      ++ typed_result_xmms cx ts' rs'
+  | _, _ => todo "result registers"
+  end.
+
+(** As `typed_result_stores//3`, with `result_registers/2`. *)
+Definition typed_result_stores (cx : ctx) (ks : list (class * key)) : list line :=
+  match result_registers (map fst ks) ["rdx"; "rcx"] ["xmm0"; "xmm1"] with
+  | Some rs => typed_result_gprs cx (map snd ks) rs ++ typed_result_xmms cx (map snd ks) rs
+  | None => todo "result registers"
   end.
 
 (** As `fast_result//3`: the exception flag, then the results from
@@ -507,7 +509,7 @@ Definition fast_result (cx : ctx) (r : protocol) (c : channels) : list line :=
   match r, c with
   | Registers, ChFloat k d => flag ++ from_xmm k "xmm0" "a" ++ slot_store cx "rax" (KTmp d)
   | Registers, ChTyped ks =>
-      flag ++ typed_result_gprs cx ks ["rdx"; "rcx"] ++ typed_result_xmms cx ks ["xmm0"; "xmm1"]
+      flag ++ typed_result_stores cx ks
   | Registers, ChSlots ks => flag ++ reg_slot_stores cx ks ["rdx"; "rcx"]
   | Buffer _, ChSlots ks =>
       [ins "cmp" "b" [imm 0; mem 0 "rsp"]; ins0 "jne" [sym exc]]

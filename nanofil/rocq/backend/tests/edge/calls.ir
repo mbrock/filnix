@@ -1,0 +1,78 @@
+% Calls and returns the corpus lacks (docs/gallina-backend.md, M3),
+% for rocq/backend/tests/emit.sh. Each function makes one call that
+% needs a weak thunk: arguments that end at cell 16, 17, 32 and 33; a
+% pointer and a float cell at and past cell 32; results in a buffer;
+% and float tuples, where a third float word has no xmm register
+% left and takes an integer one (result_registers/4). No function
+% here returns such a tuple: nanofil takes a tuple return of two
+% words only.
+func(call_buf_few, export, void, [param(s, tmp(fs)), param(d, tmp(fd)), param(p, tmp(pp)), param(w, tmp(iw)), param(l, tmp(il))], [
+    block(start, [], [
+        call(tuple([result(tmp(a3), l), result(tmp(b3), p)]), global(buf_few), [arg(p, tmp(pp)), arg(s, tmp(fs)), arg(l, tmp(il)), arg(w, tmp(iw)), arg(l, tmp(il)), arg(s, tmp(fs))])
+    ], ret)
+]).
+func(call_buf_many, export, void, [param(s, tmp(fs)), param(d, tmp(fd)), param(p, tmp(pp)), param(w, tmp(iw)), param(l, tmp(il))], [
+    block(start, [], [
+        call(tuple([result(tmp(a3), p), result(tmp(b3), p)]), global(buf_many), [arg(p, tmp(pp)), arg(s, tmp(fs)), arg(d, tmp(fd)), arg(w, tmp(iw)), arg(l, tmp(il)), arg(p, tmp(pp)), arg(p, tmp(pp)), arg(s, tmp(fs)), arg(d, tmp(fd)), arg(w, tmp(iw)), arg(l, tmp(il)), arg(p, tmp(pp)), arg(p, tmp(pp)), arg(s, tmp(fs)), arg(d, tmp(fd)), arg(w, tmp(iw)), arg(l, tmp(il)), arg(p, tmp(pp)), arg(p, tmp(pp)), arg(s, tmp(fs)), arg(d, tmp(fd)), arg(w, tmp(iw)), arg(l, tmp(il)), arg(p, tmp(pp)), arg(p, tmp(pp)), arg(s, tmp(fs)), arg(d, tmp(fd)), arg(w, tmp(iw)), arg(l, tmp(il)), arg(p, tmp(pp)), arg(p, tmp(pp)), arg(s, tmp(fs)), arg(d, tmp(fd)), arg(w, tmp(iw)), arg(l, tmp(il)), arg(p, tmp(pp)), arg(p, tmp(pp)), arg(s, tmp(fs)), arg(d, tmp(fd)), arg(w, tmp(iw)), arg(l, tmp(il)), arg(p, tmp(pp))])
+    ], ret)
+]).
+func(call_exact16, export, void, [param(s, tmp(fs)), param(d, tmp(fd)), param(p, tmp(pp)), param(w, tmp(iw)), param(l, tmp(il))], [
+    block(start, [], [
+        call(void, global(exact16), [arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw))])
+    ], ret)
+]).
+func(call_exact17, export, void, [param(s, tmp(fs)), param(d, tmp(fd)), param(p, tmp(pp)), param(w, tmp(iw)), param(l, tmp(il))], [
+    block(start, [], [
+        call(void, global(exact17), [arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw))])
+    ], ret)
+]).
+func(call_exact32, export, void, [param(s, tmp(fs)), param(d, tmp(fd)), param(p, tmp(pp)), param(w, tmp(iw)), param(l, tmp(il))], [
+    block(start, [], [
+        call(void, global(exact32), [arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il)), arg(l, tmp(il))])
+    ], ret)
+]).
+func(call_exact33, export, void, [param(s, tmp(fs)), param(d, tmp(fd)), param(p, tmp(pp)), param(w, tmp(iw)), param(l, tmp(il))], [
+    block(start, [], [
+        call(void, global(exact33), [arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw))])
+    ], ret)
+]).
+func(call_many_mixed, export, void, [param(s, tmp(fs)), param(d, tmp(fd)), param(p, tmp(pp)), param(w, tmp(iw)), param(l, tmp(il))], [
+    block(start, [], [
+        call(void, global(many_mixed), [arg(s, tmp(fs)), arg(d, tmp(fd)), arg(p, tmp(pp)), arg(w, tmp(iw)), arg(l, tmp(il)), arg(s, tmp(fs)), arg(d, tmp(fd)), arg(p, tmp(pp)), arg(w, tmp(iw)), arg(l, tmp(il)), arg(s, tmp(fs)), arg(d, tmp(fd)), arg(p, tmp(pp)), arg(w, tmp(iw)), arg(l, tmp(il)), arg(s, tmp(fs)), arg(d, tmp(fd)), arg(p, tmp(pp)), arg(w, tmp(iw)), arg(l, tmp(il)), arg(s, tmp(fs)), arg(d, tmp(fd)), arg(p, tmp(pp)), arg(w, tmp(iw)), arg(l, tmp(il)), arg(s, tmp(fs)), arg(d, tmp(fd)), arg(p, tmp(pp)), arg(w, tmp(iw)), arg(l, tmp(il)), arg(s, tmp(fs)), arg(d, tmp(fd)), arg(p, tmp(pp)), arg(w, tmp(iw)), arg(l, tmp(il)), arg(s, tmp(fs)), arg(d, tmp(fd)), arg(p, tmp(pp)), arg(w, tmp(iw)), arg(l, tmp(il))])
+    ], ret)
+]).
+func(call_many_s, export, void, [param(s, tmp(fs)), param(d, tmp(fd)), param(p, tmp(pp)), param(w, tmp(iw)), param(l, tmp(il))], [
+    block(start, [], [
+        call(void, global(many_s), [arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs))])
+    ], ret)
+]).
+func(call_ret_p, export, void, [param(s, tmp(fs)), param(d, tmp(fd)), param(p, tmp(pp)), param(w, tmp(iw)), param(l, tmp(il))], [
+    block(start, [], [
+        call(result(tmp(p1), p), global(ret_p), [arg(p, tmp(pp)), arg(p, tmp(pp)), arg(p, tmp(pp))])
+    ], ret)
+]).
+func(call_ret_s, export, void, [param(s, tmp(fs)), param(d, tmp(fd)), param(p, tmp(pp)), param(w, tmp(iw)), param(l, tmp(il))], [
+    block(start, [], [
+        call(result(tmp(f1), s), global(ret_s), [arg(d, tmp(fd)), arg(d, tmp(fd)), arg(d, tmp(fd)), arg(d, tmp(fd)), arg(d, tmp(fd)), arg(d, tmp(fd)), arg(d, tmp(fd)), arg(d, tmp(fd)), arg(d, tmp(fd)), arg(s, tmp(fs)), arg(s, tmp(fs))])
+    ], ret)
+]).
+func(call_ret_w, export, void, [param(s, tmp(fs)), param(d, tmp(fd)), param(p, tmp(pp)), param(w, tmp(iw)), param(l, tmp(il))], [
+    block(start, [], [
+        call(result(tmp(p1), w), global(ret_w), [arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(s, tmp(fs)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw)), arg(w, tmp(iw))])
+    ], ret)
+]).
+func(call_sld, export, void, [param(s, tmp(fs)), param(d, tmp(fd)), param(p, tmp(pp)), param(w, tmp(iw)), param(l, tmp(il))], [
+    block(start, [], [
+        call(tuple([result(tmp(a1), s), result(tmp(c1), l), result(tmp(e1), d)]), global(sld), [])
+    ], ret)
+]).
+func(call_ssld, export, void, [param(s, tmp(fs)), param(d, tmp(fd)), param(p, tmp(pp)), param(w, tmp(iw)), param(l, tmp(il))], [
+    block(start, [], [
+        call(tuple([result(tmp(a1), s), result(tmp(b1), s), result(tmp(c1), l), result(tmp(e1), d)]), global(ssld), [])
+    ], ret)
+]).
+func(call_three_doubles, export, void, [param(s, tmp(fs)), param(d, tmp(fd)), param(p, tmp(pp)), param(w, tmp(iw)), param(l, tmp(il))], [
+    block(start, [], [
+        call(tuple([result(tmp(a), d), result(tmp(b), d), result(tmp(c), d)]), global(three_doubles), [])
+    ], ret)
+]).

@@ -201,32 +201,26 @@ Fixpoint typed_return_words (ks : list class) (vs : list value) : list ret_word 
   | _, _ => []
   end.
 
-(** As `result_registers/2` and `typed_return_loads//4`: integer
-    words in `%rdx` then `%rcx`, float words in `%xmm0` then
-    `%xmm1`. *)
-Fixpoint typed_return_loads (cx : ctx) (ws : list ret_word) (gs xs : list string) : list line :=
-  match ws with
-  | [] => []
-  | RwVal k v :: ws' =>
-      if float_class k
-      then match xs with
-           | x :: xs' => load cx v k "a" ++ to_xmm k "a" x ++ typed_return_loads cx ws' gs xs'
-           | [] => todo "too many float words in a returned tuple"
-           end
-      else match gs with
-           | g :: gs' => load cx v k g ++ typed_return_loads cx ws' gs' xs
-           | [] => todo "too many integer words in a returned tuple"
-           end
-  | RwAddr v :: ws' =>
-      match gs with
-      | g :: gs' => load cx v L g ++ typed_return_loads cx ws' gs' xs
-      | [] => todo "too many integer words in a returned tuple"
+(** The class of a word of a returned tuple. *)
+Definition ret_word_class (w : ret_word) : class :=
+  match w with RwVal k _ => k | RwAddr _ | RwLower _ => L end.
+
+(** As `typed_return_loads//4` and `typed_return_load//5`: each word
+    into the register `result_registers/2` gives it, here by its
+    short name. *)
+Fixpoint typed_return_loads (cx : ctx) (ws : list ret_word) (rs : list result_reg) : list line :=
+  match ws, rs with
+  | [], [] => []
+  | w :: ws', r :: rs' =>
+      match w, r with
+      | RwVal k v, RrXmm _ x => load cx v k "a" ++ to_xmm k "a" x
+      | RwVal k v, RrGpr g => load cx v k g
+      | RwAddr v, RrGpr g => load cx v L g
+      | RwLower v, RrGpr g => lower_load cx v (reg64 g)
+      | _, _ => todo "typed return word"
       end
-  | RwLower v :: ws' =>
-      match gs with
-      | g :: gs' => lower_load cx v (reg64 g) ++ typed_return_loads cx ws' gs' xs
-      | [] => todo "too many integer words in a returned tuple"
-      end
+      ++ typed_return_loads cx ws' rs'
+  | _, _ => todo "typed return words"
   end.
 
 (** As `buffer_words//3`: the words of a buffered return into the
@@ -264,7 +258,11 @@ Definition jump_lines (cx : ctx) (from : name) (j : pjump) : list line :=
       ++ [ins "mov" "b" [imm 0; mem 0 "rax"]]
       ++ frame_pop cx ++ leave_ret
   | PReturnTyped ks vs =>
-      typed_return_loads cx (typed_return_words ks vs) ["d"; "c"] ["xmm0"; "xmm1"]
+      let ws := typed_return_words ks vs in
+      match result_registers (map ret_word_class ws) ["d"; "c"] ["xmm0"; "xmm1"] with
+      | Some rs => typed_return_loads cx ws rs
+      | None => todo "result registers"
+      end
       ++ frame_pop cx ++ success Registers
   | PReturnRegisters [v1; v2] =>
       load cx v1 L "d" ++ load cx v2 L "c" ++ frame_pop cx ++ success Registers

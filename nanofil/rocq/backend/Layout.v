@@ -326,6 +326,37 @@ Definition float_class (k : class) : bool :=
 
 Definition xmm_reg (i : Z) : string := "xmm" ++ decimal i.
 
+(** The register of a word of a returned tuple: `gpr(G)` or
+    `xmm(K, X)`. *)
+Inductive result_reg : Type :=
+| RrGpr (g : string)
+| RrXmm (k : class) (x : string).
+
+(** As `result_registers/4`: integer words in the registers gs in
+    order, float words in xs. A float word with no xmm register left
+    takes an integer one, as the second clause gives it; nothing if
+    the integer ones run out. *)
+Fixpoint result_registers (ks : list class) (gs xs : list string) : option (list result_reg) :=
+  match ks with
+  | [] => Some []
+  | k :: ks' =>
+      match (if float_class k then xs else []) with
+      | x :: xs' => option_map (cons (RrXmm k x)) (result_registers ks' gs xs')
+      | [] =>
+          match gs with
+          | g :: gs' => option_map (cons (RrGpr g)) (result_registers ks' gs' xs)
+          | [] => None
+          end
+      end
+  end.
+
+(** A tuple's third float word has no xmm register and takes an
+    integer one. *)
+Example result_registers_floats :
+  result_registers [Double; L; Double; Double] ["rdx"; "rcx"] ["xmm0"; "xmm1"]
+  = Some [RrXmm Double "xmm0"; RrGpr "rdx"; RrXmm Double "xmm1"; RrGpr "rcx"].
+Proof. reflexivity. Qed.
+
 (** As `bank_locations/7`: each class's location, then the count of
     stack words and of xmm registers. *)
 Fixpoint bank_locations (ks : list class) (rs : list string) (x s : Z)

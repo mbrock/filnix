@@ -16,6 +16,9 @@ EmitOps.v
 EmitInst.v
 EmitObject.v
 Emit.v
+EmitData.v
+EmitThunk.v
+EmitModule.v
 NfbTerm.v
 Nfb.v
 NfbProof.v

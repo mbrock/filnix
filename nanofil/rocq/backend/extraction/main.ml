@@ -295,18 +295,16 @@ let abi () =
 
 (* The gate of the emission (tests/emit.sh). Stdin is what `nanofil
    emit-terms FILE` prints: the checked module, then a list of line
-   terms for each item, for each weak thunk and for the end of the
-   file. A list that defines a function's implementation
-   (`label(pizlonatedFIP<sig>_<name>)`) is held to the lines Emit.v
-   builds from the function's plan, compared as text. Where Emit.v
-   has a todo line, the lines before the first one must begin the
-   Prolog compiler's and the lines after the last one must end them;
-   such a function is counted as partial, and its first todo is
-   tallied on stderr. A function the model keeps outside its subset
-   has no plan and is counted as outside; other lists are passed
-   over. Exits 1 on a
-   function that differs, on a plan whose implementation no list
-   defines, or, if NANOFIL_BACKEND_STRICT is set, on
+   terms for each item in order, for each weak thunk in order and for
+   the end of the file. Each list is held to the lines the backend
+   gives the same item or thunk (EmitModule.v), compared as text.
+   Where the backend has a todo line, the lines before the first one
+   must begin the Prolog compiler's and the lines after the last one
+   must end them; such a list is counted as partial, and its first
+   todo is tallied on stderr. A function the model keeps outside its
+   subset is counted as outside and one the backend builds no plan
+   for as refused; both are passed over. Exits 1 on a list that
+   differs or is missing, or, if NANOFIL_BACKEND_STRICT is set, on
    one that is partial or refused. *)
 let emit () =
   let next = reader (In_channel.input_all stdin) in
@@ -322,31 +320,17 @@ let emit () =
     | None -> fail "no module"
   in
   let sy = timed lower_s (fun () -> module_symbols md) in
-  let same = ref 0 and differ = ref 0 and partial = ref 0 and refused = ref 0 in
-  let outside = ref 0 and passed = ref 0 in
-  (* Each function's plan, by its implementation's symbol. *)
-  let plans = Hashtbl.create 64 in
-  List.iter (fun it ->
-      match it with
-      | IFunc f ->
-          (match timed lower_s (fun () -> lower_function sy f) with
-           | Some p -> Hashtbl.replace plans (impl_symbol p.pl_sig (name_text p.pl_name)) p
-           | None -> incr refused; Printf.eprintf "refused %s\n" (shown f.fn_name))
-      | _ -> ())
-    md;
-  let todos = Hashtbl.create 16 and seen = Hashtbl.create 64 in
+  (* same, differ and partial, for functions, data and thunks. *)
+  let counts = Array.make_matrix 3 3 0 in
+  let refused = ref 0 and outside = ref 0 in
+  let todos = Hashtbl.create 16 in
   let text l = String.concat "" (rev_lines_parts [l] []) in
-  let rec implementation = function
-    | TApp ("label", [TAtom s]) :: _ ->
-        if String.length s > 13 && String.sub s 0 13 = "pizlonatedFIP" then Some s else None
-    | _ :: ts -> implementation ts
-    | [] -> None
+  let list_of what = function
+    | Some (TList theirs) -> theirs
+    | Some t -> fail "not a list of lines for %s: %s" what (shown t)
+    | None -> fail "no lines for %s" what
   in
-  let report_differ name i ours theirs =
-    incr differ;
-    Printf.eprintf "DIFFER %s at line %d\n  rocq:   %s  prolog: %s" name i ours theirs
-  in
-  let check name ours theirs =
+  let check kind name ours theirs =
     let theirs = Array.of_list (List.map (fun t ->
         match dline t with
         | Some l -> text l
@@ -375,48 +359,107 @@ let emit () =
          done
      with Exit -> ());
     match !bad with
-    | Some (i, a, b) -> report_differ name i a b
+    | Some (i, a, b) ->
+        counts.(kind).(1) <- counts.(kind).(1) + 1;
+        Printf.eprintf "DIFFER %s at line %d\n  rocq:   %s  prolog: %s" name i a b
     | None ->
-        if !first = n then incr same
+        if !first = n then counts.(kind).(0) <- counts.(kind).(0) + 1
         else begin
-          incr partial;
+          counts.(kind).(2) <- counts.(kind).(2) + 1;
           let what = match first_todo (Array.to_list ours) with Some w -> w | None -> "" in
           Hashtbl.replace todos what (1 + Option.value ~default:0 (Hashtbl.find_opt todos what))
         end
   in
-  let rec go () =
-    match next () with
-    | None -> ()
-    | Some (TList theirs) ->
-        (match implementation theirs with
-         | Some s ->
-             (match Hashtbl.find_opt plans s with
-              | Some p ->
-                  Hashtbl.replace seen s ();
-                  let ours = timed emit_s (fun () -> function_lines p) in
-                  timed compare_s (fun () -> check s ours theirs)
-              | None -> incr outside)
-         | None -> incr passed);
-        go ()
-    | Some t -> fail "not a list of lines: %s" (shown t)
+  let held kind name ours theirs =
+    let ours = timed emit_s ours in
+    timed compare_s (fun () -> check kind name ours theirs)
   in
-  go ();
-  (* A refused function has no plan either, and its list was counted
-     with those outside the subset. *)
-  Printf.printf "functions same %d differ %d partial %d refused %d outside %d, other lists %d\n"
-    !same !differ !partial !refused (!outside - !refused) !passed;
+  List.iter (fun it ->
+      match it with
+      | IFunc f ->
+          let name = shown f.fn_name in
+          let theirs = list_of name (next ()) in
+          (match timed lower_s (fun () -> lower_function sy f) with
+           | Some p -> held 0 name (fun () -> function_lines p) theirs
+           | None -> incr refused; Printf.eprintf "refused %s\n" name)
+      | IOutside (n, _) -> ignore (list_of (shown n) (next ())); incr outside
+      | IData (n, lk, align, items) ->
+          let name = shown n in
+          held 1 name (fun () -> data_lines n lk align items) (list_of name (next ()))
+      | IAlias (n, lk, target) ->
+          let name = shown n in
+          held 1 name (fun () -> alias_lines sy n lk target) (list_of name (next ())))
+    md;
+  (* The thunks, then the end of the file, which is the last list. *)
+  let rec rest acc = match next () with None -> List.rev acc | t -> rest (list_of "a thunk" t :: acc) in
+  let lists = rest [] in
+  let thunks, last =
+    match List.rev lists with
+    | last :: thunks -> List.rev thunks, last
+    | [] -> fail "no lines for the end of the file"
+  in
+  (match timed lower_s (fun () -> lower_thunks sy md) with
+   | Some ts ->
+       if List.length ts <> List.length thunks then
+         fail "%d thunks, and lines for %d" (List.length ts) (List.length thunks);
+       List.iter2 (fun t theirs ->
+           held 2 ("the thunk of " ^ shown t.th_name) (fun () -> thunk_lines t) theirs)
+         ts thunks
+   | None -> incr refused; prerr_endline "refused thunks");
+  let ends = counts.(1).(1) in
+  check 1 "the end of the file" end_lines last;
+  let end_differs = counts.(1).(1) > ends in
+  if not end_differs then counts.(1).(0) <- counts.(1).(0) - 1;
+  let c = counts in
+  Printf.printf
+    "functions same %d differ %d partial %d refused %d outside %d, data same %d differ %d partial %d, thunks same %d differ %d partial %d\n"
+    c.(0).(0) c.(0).(1) c.(0).(2) !refused !outside
+    c.(1).(0) c.(1).(1) c.(1).(2) c.(2).(0) c.(2).(1) c.(2).(2);
   Hashtbl.iter (fun what k -> Printf.eprintf "todo %6d %s\n" k what) todos;
-  (* A plan whose implementation no list defined was never compared. *)
-  let unmatched = ref 0 in
-  Hashtbl.iter (fun s _ ->
-      if not (Hashtbl.mem seen s) then begin
-        incr unmatched; Printf.eprintf "UNMATCHED %s\n" s end) plans;
   if report then
     Printf.eprintf "nanofil-backend: parse %.3fs decode %.3fs lower %.3fs emit %.3fs compare %.3fs\n"
       !parse_s !decode_s !lower_s !emit_s !compare_s;
-  if !differ > 0 || !unmatched > 0
-     || ((!partial > 0 || !refused > 0) && Sys.getenv_opt "NANOFIL_BACKEND_STRICT" <> None)
+  let sum j = c.(0).(j) + c.(1).(j) + c.(2).(j) in
+  if sum 1 > 0
+     || ((sum 2 > 0 || !refused > 0) && Sys.getenv_opt "NANOFIL_BACKEND_STRICT" <> None)
   then exit 1
+
+(* The assembly of a checked module, the first term of stdin, as
+   EmitModule.v's module_lines gives it and Asm.v prints it: what
+   `nanofil compile` prints for the module without -O. Exits 3, with
+   no output, for a module the backend does not take whole: one with
+   a function outside the subset or without a plan, or with a form
+   that is not ported. *)
+let whole () =
+  let next = reader (In_channel.input_all stdin) in
+  let fail fmt = Printf.ksprintf (fun m -> prerr_endline ("nanofil-backend: " ^ m); exit 1) fmt in
+  let pass fmt = Printf.ksprintf (fun m -> prerr_endline ("nanofil-backend: " ^ m); exit 3) fmt in
+  let lower_s = ref 0.0 in
+  let md =
+    match timed parse_s next with
+    | Some t ->
+        (match timed decode_s (fun () -> decode_module t) with
+         | Some md -> md
+         | None -> fail "the first term is not a module")
+    | None -> fail "no module"
+  in
+  match timed lower_s (fun () -> module_lines md) with
+  | None -> pass "a function is outside the subset or has no plan"
+  | Some lists ->
+      List.iter (fun ls ->
+          match first_todo ls with
+          | Some what -> pass "not ported: %s" what
+          | None -> ()) lists;
+      set_binary_mode_out stdout true;
+      let text = Buffer.create 65536 in
+      timed print_s (fun () ->
+        List.iter (fun ls ->
+            List.iter (Buffer.add_string text) (rev_lines_parts (List.rev ls) []);
+            Buffer.output_buffer stdout text;
+            Buffer.clear text) lists);
+      if report then
+        Printf.eprintf "nanofil-backend: parse %.3fs decode %.3fs lower and emit %.3fs print %.3fs\n"
+          !parse_s !decode_s !lower_s !print_s
 
 (* The little-endian words of the file f. *)
 let file_words f =
@@ -486,5 +529,6 @@ let () =
   | [| _ |] -> asm ()
   | [| _; "abi" |] -> big_minor_heap (); abi ()
   | [| _; "emit" |] -> big_minor_heap (); emit ()
+  | [| _; "module" |] -> big_minor_heap (); whole ()
   | [| _; "nfb"; prefix |] -> big_minor_heap (); nfb prefix
-  | _ -> prerr_endline "usage: nanofil-backend [abi | emit | nfb PREFIX] <TERMS"; exit 2
+  | _ -> prerr_endline "usage: nanofil-backend [abi | emit | module | nfb PREFIX] <TERMS"; exit 2

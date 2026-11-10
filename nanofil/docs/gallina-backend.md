@@ -532,45 +532,83 @@ calls, variadics, function objects, data, aliases and TLS. Gate:
 whole-module byte identity on the corpus, hello, zlib and Lua, with
 the first performance target.
 
-*So far: every function of the subset.* The command is `nanofil
-emit-terms FILE`, which prints the checked module and then the
-reference emission's lines as terms: a list for each item, for each
-weak thunk and for the end of the file. `Layout.v` has a function's
-context and the loads and stores of homes. `EmitOps.v` is
-`amd64.pl`'s scalar selection, with SSE2 and x87. `EmitInst.v` emits
-one instruction of a plan: lets, span tests, flights, fused and
-reused accesses, pointer effects, named locals, calls and the ABI's
-actions. `EmitObject.v` emits a function's getter, generic entry,
-variadic adapter and object, and `Emit.v` the function.
-`rocq/backend/tests/emit.sh` is the gate. It builds each function's
-plan, emits its lines and compares them, as text, with the list
-that defines the function's implementation. Emission is total: a
-form that is not ported gives a `todo` line, the gate counts such a
-function as partial, and none is left.
+*So far: every list of every module, and whole modules.* The
+command is `nanofil emit-terms FILE`, which prints the checked
+module and then the reference emission's lines as terms: a list for
+each item, for each weak thunk and for the end of the file.
+`Layout.v` has a function's context and the loads and stores of
+homes. `EmitOps.v` is `amd64.pl`'s scalar selection, with SSE2 and
+x87. `EmitInst.v` emits one instruction of a plan: lets, span tests,
+flights, fused and reused accesses, pointer effects, named locals,
+calls and the ABI's actions. `EmitObject.v` emits a function's
+getter, generic entry, variadic adapter and object, and `Emit.v` the
+function. `EmitData.v` emits a data object with its relocation
+table, a thread-local object, an init entry, a weak declaration and
+an alias's getter. `EmitThunk.v` emits a weak thunk, and
+`EmitModule.v` puts the lists in the file's order.
 
-- On the 280 modules of the corpus, the lines of all 1090 functions
-  of the subset are the same. The 576 functions outside it have no
-  plan and are passed over.
-- On SQLite the lines of all 3106 functions are the same. In OCaml
-  the plans take 2.6 s and the emission 1.7 s, where Prolog's
-  emission stage takes 20.6 s for both and for the lists below.
-  The target for the two together is 1.0 s, so they miss it by more
-  than four times; the profile above says where the plans' time
-  goes, and the emission has none yet.
-- With `-O` the lines of 538 corpus functions are the same, and
-  the backend refuses 256 when it builds their plans. M2 compared
-  plans only without `-O`, so this is the first run of them.
+`rocq/backend/tests/emit.sh` is the gate. It emits each list again
+from the module and compares it, as text, with the reference's.
+Then, without `-O`, it compares what `nanofil-backend module` prints
+for the module with what `nanofil compile` prints for the file.
+Emission is total: a form that is not ported gives a `todo` line,
+and the gate counts such a list as partial. None is left. The todos
+that remain in the code stand where Prolog itself fails or throws.
+
+- On the 280 modules of the corpus, all 1090 functions of the
+  subset, all 2394 lists of data and aliases and all 1630 weak
+  thunks are the same. The 576 functions outside the subset have no
+  plan and are passed over. The 237 modules with no such function
+  are `nanofil compile`'s text byte for byte, and the other 43 have
+  no whole text yet.
+- On SQLite all 3106 functions, 1843 data lists and 181 thunks are
+  the same, and the whole module is `nanofil compile`'s 135 MB of
+  assembly byte for byte.
+- In OCaml, SQLite's plans take 2.9 s and its functions' emission
+  1.6 s. `nanofil-backend module` lowers and emits the whole of it
+  in 6.0 s and prints it in 2.3 s, where Prolog's emission stage
+  takes 20.6 s. The target for lowering and emission is 1.0 s, so
+  they miss it by six times; the profile above says where the
+  plans' time goes, and the emission has none yet.
+- With `-O` the lines of 538 corpus functions are the same, with
+  all the data and thunks, and the backend refuses 256 when it
+  builds their plans. Every one of the 256 has a reuse form
+  (`renew`, `renew_hull`, `renew_if`, `half_check` or a limit
+  check), which `Fuse.v` leaves to M9, so they are not M3's.
+- `rocq/backend/tests/edge` has two fixtures for the arms the
+  corpus does not reach. `calls.ir` has calls whose arguments end
+  at cells 16, 17, 32 and 33, a pointer cell at exactly cell 32,
+  results in a buffer and float tuples. `data.ir` has a weak
+  read-only object, a negative addend, alignments of 64 and 128,
+  thread-local objects with pointers, and every kind of init entry
+  and alias. A mutation of the pointer cell limit in a thunk
+  survived the corpus and is caught by `calls.ir`.
+
+What it showed:
+
+- Porting a predicate at each of its call sites hides a wrong
+  port. `result_registers/4` gives a tuple's third float word an
+  integer register once `%xmm0` and `%xmm1` are taken. Three
+  function-side ports of it gave that word nothing, and the corpus
+  has no such call. The thunk port followed the clause order, and
+  a fixture then showed the difference. It is now one definition
+  in `Layout.v`, shared by the function, the call, the generic
+  entry and the thunk.
+- Some arms cannot be reached through the gate, because the
+  validator rejects their input: an alias with `local` linkage, an
+  alias of a thread-local object or of a weak declaration, and a
+  negative `x` constant.
+- A data object of 200,000 items overflows the 8 MB stack in the
+  driver, with the stub emission as with the real one. With an
+  unlimited stack the lines are Prolog's. `payload_items` is not
+  tail-recursive either, so M5 looks at both.
 
 What remains of M3:
 
-- the lists that are not a function's: data, weak thunks, aliases,
-  TLS, init entries and the end of the file, 4304 lists in the
-  corpus and 2025 in SQLite;
-- the plans the backend refuses with `-O`;
 - the functions outside the subset, which wait on the model, `touch`
-  first;
-- the text of a whole module, on the corpus, hello, zlib and Lua;
-- the performance target.
+  first, and with them the 43 modules that have no whole text;
+- the text of hello, zlib and Lua;
+- the performance target, with a profile of the emission first.
 
 **M4. Pizlonation and a standalone compiler.** `Unchecked.v`,
 `Pizlonate.v` and a Gallina reader for IR text. The pipeline is
