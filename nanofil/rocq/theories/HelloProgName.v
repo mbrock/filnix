@@ -42,12 +42,9 @@ Qed.
 (** String-valued program-name reasoning over any [[runtime]]. *)
 Module HelloProgName (R : Runtime).
 Module HN := HelloName R.
-Module HL := HN.HL.
-Module ML := HL.ML.
-Module SL := ML.SL.
-Module LG := ML.LG.
-Module L := LG.L.
-Import L LG SL ML HL HN.
+(** Import the existing module paths rather than copying their nested
+    signatures into another chain of aliases. *)
+Import HN.L HN.LG HN.SL HN.ML HN.HL HN.
 
 Section name.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
