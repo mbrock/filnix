@@ -13,4 +13,5 @@ Abi.v
 PlanTerm.v
 NfbTerm.v
 Nfb.v
+NfbProof.v
 Extract.v
