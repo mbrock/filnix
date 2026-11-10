@@ -2510,6 +2510,53 @@ Native FILE realization, private-root/release execution controls and the
 final callback-return connection to actual local-teardown memory remain
 separate obligations. No trusted contract or runtime law changes here.
 
+### Campaign 4 milestone 6p: open-only callback permissions
+
+Heap.v adds VStreamOpen as the last pval constructor, accepted only under
+PName by agree_piece. It is an exclusive ghost permission, not native
+read/write/release authority. The existing VStream snapshots keep their
+exact pending-count/FIFO meaning. stream_current accepts VStreamOpen only
+when its full pointer equals the descriptor handle and the current stream
+is open; it infers neither pending count nor logical FIFO contents.
+
+open_permission_ps owns a native handle life and one permission name.
+permission_ps dispatches the actual pointer argument to one of the two
+descriptors, recording that actual argument even in the fallback branch.
+Pure owned lookups and stream_current therefore reject unknown pointers
+and same-address pointers with the wrong capability. No empty/default
+assertion makes HelloClose's pointer-universal admission premise vacuous.
+
+Paired query and ordinary-close frames now preserve either exact tokens
+or open-only permissions. Closing replaces the selected permission value
+with the existing closed VStream value at the same key, samples endpoint
+errno, and retains the other permission. permission_fclose_frame exposes
+HelloClose's exact overwrite shape; wp_permission_fclose performs the real
+owned-resource update on the supplied LogicSig and retains a call-local
+Kclose premise for the consumer's other invariants. Resource prefixes do
+not yield a completed closed token.
+
+The permission controls reserve -4/-5, distinct from exact snapshots
+-2/-3, codec -1, locale categories 0..12 and getopt 64. Their heap contains
+no exact snapshot names. Distinct keys alone cannot maintain an old exact
+snapshot through a diagnostic; conjoining that old interpretation would
+still require updating it. Both complete token lists cannot be separately
+owned because they duplicate full ownership of the native life key.
+Actual allocation must still prove freshness against the authoritative
+heap, not merely choose a reserved integer.
+
+Controls distinguish a changed pending count/FIFO from continued openness,
+reject unknown and wrong-capability arguments through pure lookups, and
+reject an open permission after close. The changed-errno ordinary-close
+control checks both permission keys and the sampled final errno byte,
+for zero and EOF results; an Iris control applies the actual call rule
+and returns its closed permission and errno resources. These remain
+logical contract and resource controls, not native FILE realization or
+executions of private FILE locking writes. Open-only entry allocation,
+the actual main-to-callback handoff and returning-diagnostic binding remain
+next obligations. Openness alone does not supply diagnostic formatting
+readiness, orientation, native metadata authority, cross-pool frames or
+trace/accepted-byte coupling. No runtime axiom or Machine theorem changes.
+
 ### Reached-call contract packages and remaining integration
 
 [Getopt.v](../rocq/theories/Getopt.v) supplies independently admitted

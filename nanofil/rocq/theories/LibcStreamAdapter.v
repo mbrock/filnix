@@ -23,6 +23,22 @@ Definition stream_ps (d : stream_token) (pending : Z) (fifo : list Z) : list (pi
   [(PLive (token_base d), VLive (token_region d));
    (PName (token_key d), VStream (token_handle d) (Some (pending, fifo)))].
 
+(** The actual argument is recorded, including its capability. This
+    permission observes openness, not a fixed pending count or FIFO.
+    Use distinct descriptors/keys from exact snapshots; the native life
+    piece is still exclusive and cannot be owned twice. *)
+Definition open_permission_ps (d : stream_token) (p : ptr) : list (piece * pval) :=
+  [(PLive (token_base d), VLive (token_region d));
+   (PName (token_key d), VStreamOpen p)].
+
+(** Even the fallback contains the actual argument, never an empty
+    assertion or an unchanged stdout token for an unrelated pointer. *)
+Definition permission_descriptor (out err : stream_token) (p : ptr) : stream_token :=
+  if same_file p (token_handle out) then out else err.
+
+Definition permission_ps (out err : stream_token) (p : ptr) : list (piece * pval) :=
+  open_permission_ps (permission_descriptor out err p) p.
+
 (** Ordinary completed closure does not freeze orientation or error.
     A resource prefix is not enough to establish this observation. *)
 Definition closed_ps (d : stream_token) : list (piece * pval) :=
@@ -44,8 +60,25 @@ Definition stream_current (d : stream_token) (w : libc_world) (h : gmap piece pv
   match h !! PName (token_key d) with
   | None => True
   | Some (VStream p snapshot) => p = token_handle d /\ stream_observation w p snapshot
+  | Some (VStreamOpen p) => p = token_handle d /\ exists info, libc_stream_at w p = Some info
   | Some _ => False
   end.
+
+(** Both kinds preserve their meaning when the views they actually
+    observe are unchanged. Open-only permissions do not observe FIFO. *)
+Lemma stream_current_views : forall d w w' h,
+  libc_stream_at w' (token_handle d) = libc_stream_at w (token_handle d) ->
+  libc_stream_state w' (token_handle d) = libc_stream_state w (token_handle d) ->
+  stream_current d w h -> stream_current d w' h.
+Proof.
+  intros d w w' h Hlookup Hstate Hc. unfold stream_current in *.
+  destruct (h !! PName (token_key d)) as [v|]; [|exact I].
+  destruct v; try contradiction.
+  - destruct Hc as [-> Hobs]. split; [reflexivity|].
+    unfold stream_observation in *. destruct pending as [[physical fifo]|];
+      rewrite Hlookup; [exact Hobs|rewrite Hstate; exact Hobs].
+  - destruct Hc as [-> Hopen]. split; [reflexivity|]. rewrite Hlookup. exact Hopen.
+Qed.
 
 (** Keys below the codec key (-1) do not overlap locale categories.
     Actual freshness against other adapters is still required by allocation. *)
@@ -94,6 +127,36 @@ Proof.
   assert (Hl : h !! PName (token_key d) = Some (VStream (token_handle d) None)).
   { apply Howned. unfold closed_ps. set_solver. }
   unfold stream_current in Hcurrent. rewrite Hl in Hcurrent. exact (proj2 Hcurrent).
+Qed.
+
+Lemma stream_permission_current : forall d p w h,
+  stream_current d w h ->
+  (forall l v, (l, v) ∈ open_permission_ps d p -> h !! l = Some v) ->
+  p = token_handle d /\ exists info, libc_stream_at w p = Some info.
+Proof.
+  intros d p w h Hcurrent Howned.
+  assert (Hl : h !! PName (token_key d) = Some (VStreamOpen p)).
+  { apply Howned. unfold open_permission_ps. apply elem_of_cons. right. apply elem_of_cons. left. reflexivity. }
+  unfold stream_current in Hcurrent. rewrite Hl in Hcurrent. exact Hcurrent.
+Qed.
+
+Lemma permission_selected : forall out err p,
+  permission_descriptor out err p = out \/ permission_descriptor out err p = err.
+Proof. intros. unfold permission_descriptor. destruct (same_file p (token_handle out)); auto. Qed.
+
+(** Pure owned lookups already reject unknown and wrong-capability
+    arguments, as required by HelloClose's pointer-universal premises. *)
+Lemma permission_known : forall rep out err b o p m w h,
+  stream_tokens_wi rep out err b o m w h ->
+  (forall l v, (l, v) ∈ permission_ps out err p -> h !! l = Some v) ->
+  p = token_handle (permission_descriptor out err p) /\
+    (p = token_handle out \/ p = token_handle err).
+Proof.
+  intros rep out err b o p m w h (_ & _ & _ & _ & _ & _ & Ho & He & _) Hl.
+  assert (Hc : stream_current (permission_descriptor out err p) w h).
+  { destruct (permission_selected out err p) as [-> | ->]; assumption. }
+  destruct (stream_permission_current _ _ _ _ Hc Hl) as [Hp _].
+  split; [exact Hp|]. rewrite Hp. destruct (permission_selected out err p) as [-> | ->]; auto.
 Qed.
 
 (** Recording independently live handles and CURRENT observations preserves
@@ -299,10 +362,7 @@ Proof.
   assert (Hcurrent : forall q, q = out \/ q = err -> stream_current q w' h).
   { intros q Hq. assert (Hc : stream_current q w h) by (destruct Hq as [-> | ->]; assumption).
     destruct (Hviews q Hq) as [Hlookup Hstate].
-    unfold stream_current in *. destruct (h !! PName (token_key q)) as [v|]; [|exact I].
-    destruct v; try contradiction. destruct Hc as [-> Hobs]. split; [reflexivity|].
-    unfold stream_observation in *. destruct pending as [[physical fifo]|];
-      rewrite Hlookup; [exact Hobs|rewrite Hstate; exact Hobs]. }
+    eapply stream_current_views; eauto. }
   split; [exact Houtwf|]. split; [exact Herrwf|]. split; [exact Hbase|]. split; [exact Hkey|].
   split; [rewrite (proj1 Hframe); exact Hout|].
   split; [rewrite (proj1 (proj2 Hframe)); exact Herr|].
@@ -415,12 +475,10 @@ Proof.
       { destruct Hd as [-> | ->]; destruct Hq as [-> | ->]; congruence. }
       assert (Hc : stream_current q w h) by (destruct Hq as [-> | ->]; assumption).
       destruct (Hother q Hq Hne) as (_ & Hlookup & Hprotocol).
-      unfold stream_current in *. unfold h1. rewrite lookup_insert_ne; [|congruence].
+      pose proof (stream_current_views q w w' h Hlookup Hprotocol Hc) as Hafter.
+      unfold stream_current in Hafter |- *. unfold h1. rewrite lookup_insert_ne; [|congruence].
       unfold h0. rewrite overwrite_out.
-      + destruct (h !! PName (token_key q)) as [v|]; [|exact I].
-        destruct v; try contradiction. destruct Hc as [-> Hobs]. split; [reflexivity|].
-        unfold stream_observation in *. destruct pending as [[physical fifo]|];
-          rewrite Hlookup; [exact Hobs|rewrite Hprotocol; exact Hobs].
+      + exact Hafter.
       + rewrite byte_ps_keys. intros Hin. apply list_elem_of_fmap in Hin as (i & E & _).
         discriminate E. }
   split; [exact Houtwf|]. split; [exact Herrwf|]. split; [exact Hbase|]. split; [exact Hkey|].
@@ -462,6 +520,24 @@ Proof.
   assert (Hcurrent : stream_current d w h) by (destruct Hd as [-> | ->]; assumption).
   destruct (stream_open_current d w h pending fifo Hcurrent Howned) as (info & Hinfo & _).
   unfold libc_stream_at in Hinfo. destruct (libc_file_at w (token_handle d)) as [file|] eqn:Hfile;
+    [eapply libc_stream_admitted; eauto|discriminate].
+Qed.
+
+(** This is pointer-universal admission from owned permission pieces,
+    not an assumed choice of a registered handle. *)
+Theorem permission_admitted : forall rep requests wide out err b o p m w h,
+  stream_tokens_wi rep out err b o m w h ->
+  (forall l v, (l, v) ∈ permission_ps out err p -> h !! l = Some v) ->
+  stream_call_pre (libc_stream_model rep requests wide) [WPtr p] m w.
+Proof.
+  intros rep requests wide out err b o p m w h Hw Hl.
+  pose proof (permission_selected out err p) as Hd.
+  destruct Hw as (_ & _ & _ & _ & _ & _ & Ho & He & Hprivate).
+  assert (Hc : stream_current (permission_descriptor out err p) w h)
+    by (destruct Hd as [-> | ->]; assumption).
+  destruct (stream_permission_current _ _ _ _ Hc Hl) as [Hp [info Hinfo]].
+  pose proof (proj1 (proj1 (Hprivate _ Hd))) as Hready.
+  unfold libc_stream_at in Hinfo. destruct (libc_file_at w p) as [file|] eqn:Hfile;
     [eapply libc_stream_admitted; eauto|discriminate].
 Qed.
 
@@ -923,3 +999,122 @@ Proof.
 Qed.
 
 End StreamTokenChecks.
+
+(** Open-only callback permissions use separate keys from the exact
+    -2/-3 snapshots, codec -1, locale 0..12 and getopt 64. The fixture
+    contains NO exact snapshot names; two interpretations must not be
+    conjoined to hide stale observations after diagnostics. *)
+Module StreamPermissionChecks.
+Module T := StreamTokenChecks.
+Module F := LibcStreamChecks.
+Module A := T.A.
+
+Definition out := mkStreamToken (token_handle T.out) (token_base T.out) (token_region T.out) (-4).
+Definition err := mkStreamToken (token_handle T.err) (token_base T.err) (token_region T.err) (-5).
+Definition heap : gmap piece pval :=
+  <[PName (-4) := VStreamOpen (token_handle out)]>
+    (<[PName (-5) := VStreamOpen (token_handle err)]> StreamHandleChecks.heap).
+
+Lemma memory_lookup : forall l, mem_piece l -> heap !! l = T.open_heap !! l.
+Proof.
+  intros l Hmem. destruct l; try contradiction.
+  all: unfold heap, T.open_heap; repeat (rewrite lookup_insert_ne; [|discriminate]); reflexivity.
+Qed.
+
+Lemma heap_agrees : agrees conversion_mem heap.
+Proof.
+  intros l v Hl. unfold heap in Hl.
+  apply lookup_insert_Some in Hl as [[He Hv]|[_ Hl]]; [subst l v; exact I|].
+  apply lookup_insert_Some in Hl as [[He Hv]|[_ Hl]]; [subst l v; exact I|].
+  exact (StreamHandleChecks.heap_agrees l v Hl).
+Qed.
+
+Lemma currents : stream_current out (F.world true) heap /\ stream_current err (F.world true) heap.
+Proof.
+  unfold stream_current, heap. cbn [out err token_key].
+  rewrite lookup_insert_eq. rewrite lookup_insert_ne; [|discriminate]. rewrite lookup_insert_eq.
+  split; (split; [reflexivity|]).
+  - exists (mkStreamInfo 1 (mkStream ByteOriented [65; 66] true) 7). reflexivity.
+  - exists (mkStreamInfo 2 stdout_initial 3). reflexivity.
+Qed.
+
+Lemma full_wi : stream_tokens_wi (fun _ _ => True) out err 5120 0
+    conversion_mem (F.world true) heap.
+Proof.
+  destruct T.full_wi as (_ & _ & _ & _ & _ & _ & _ & _ & Hprivate).
+  assert (Hdata : memory_keys_from (stream_data_heap 1024 2048 heap)
+      (stream_data_heap 1024 2048 T.open_heap)).
+  { intros l v Hl Hmem. apply stream_data_lookup in Hl as (Hl & Ho & He).
+    exists v. rewrite stream_data_lookup_ne; [rewrite <- memory_lookup; assumption|assumption|assumption]. }
+  split; [split; [reflexivity|simpl; lia]|]. split; [split; [reflexivity|simpl; lia]|].
+  split; [discriminate|]. split; [discriminate|]. split; [reflexivity|]. split; [reflexivity|].
+  split; [exact (proj1 currents)|]. split; [exact (proj2 currents)|].
+  intros d [-> | ->].
+  - destruct (Hprivate T.out (or_introl eq_refl)) as [Hwi Hrel].
+    split; [eapply errno_wi_heap; [exact Hwi|exact Hdata]|].
+    intros base l v Hin Hl Hmem. apply (Hrel base l v Hin); [rewrite <- memory_lookup; assumption|exact Hmem].
+  - destruct (Hprivate T.err (or_intror eq_refl)) as [Hwi Hrel].
+    split; [eapply errno_wi_heap; [exact Hwi|exact Hdata]|].
+    intros base l v Hin Hl Hmem. apply (Hrel base l v Hin); [rewrite <- memory_lookup; assumption|exact Hmem].
+Qed.
+
+(** Rejection follows from the PURE interface, without Iris falsehood. *)
+Example unknown_argument_rejected : forall rep b o m w h,
+  stream_tokens_wi rep out err b o m w h ->
+  ~ (forall l v, (l, v) ∈ permission_ps out err (mkPtr 3072 (Obj 3072)) -> h !! l = Some v).
+Proof.
+  intros rep b o m w h Hw Hl.
+  destruct (proj2 (permission_known _ _ _ _ _ _ _ _ _ Hw Hl)) as [Hbad|Hbad]; discriminate Hbad.
+Qed.
+
+Example wrong_capability_rejected : forall rep b o m w h,
+  stream_tokens_wi rep out err b o m w h ->
+  ~ (forall l v, (l, v) ∈ permission_ps out err (mkPtr 1024 (Ro 1024)) -> h !! l = Some v).
+Proof.
+  intros rep b o m w h Hw Hl.
+  destruct (proj2 (permission_known _ _ _ _ _ _ _ _ _ Hw Hl)) as [Hbad|Hbad]; discriminate Hbad.
+Qed.
+
+(** A new pending count/FIFO invalidates the old exact snapshot, while
+    the open-only permission is still current. This is a world-view
+    control, not a native diagnostic execution. *)
+Definition changed_world : libc_world :=
+  (mkLibcPayload (libc_locale (fst (F.world true))) (libc_stdio (fst (F.world true)))
+    (libc_errno (fst (F.world true)))
+    (mkLibcStreams (mkLibcFile (token_handle out) 9 [] [] []) F.err_file true stdout_initial)
+    (libc_getopt (fst (F.world true))),
+   mkShutdown Handlers 0 [] [] (mkStream ByteOriented [65; 66; 67] true)).
+
+Example open_permission_not_snapshot :
+  stream_current out changed_world heap /\
+  ~ stream_current out changed_world
+    (<[PName (-4) := VStream (token_handle out) (Some (7, [65; 66]))]> heap).
+Proof.
+  split.
+  - unfold stream_current, heap. cbn [out token_key]. rewrite lookup_insert_eq.
+    split; [reflexivity|]. exists (mkStreamInfo 1 (mkStream ByteOriented [65; 66; 67] true) 9).
+    reflexivity.
+  - unfold stream_current. cbn [out token_key]. rewrite lookup_insert_eq.
+    intros (_ & info & Hinfo & Hpending & _).
+    change (Some (mkStreamInfo 1 (mkStream ByteOriented [65; 66; 67] true) 9) = Some info) in Hinfo.
+    injection Hinfo as <-. discriminate Hpending.
+Qed.
+
+Example closed_permission_rejected : ~ stream_current out (F.world false) heap.
+Proof.
+  unfold stream_current, heap. cbn [out token_key]. rewrite lookup_insert_eq.
+  intros (_ & info & Hinfo). discriminate Hinfo.
+Qed.
+
+Example query_preserves_permissions :
+  stream_tokens_wi (fun _ _ => True) out err 5120 0 conversion_mem (F.world true) heap.
+Proof.
+  destruct T.stdout_error_preserves_pair as [Hcall _].
+  destruct (A.query_frame (fun _ _ => True) (fun _ _ _ _ => False)
+    (fun _ _ _ _ _ => False) out err 5120 0 out _ _ _ _ _ _ _ _ _ _ _ heap
+    (or_introl eq_refl) (or_introl eq_refl) Hcall heap_agrees
+    HelloErrnoChecks.disjoint HelloErrnoChecks.ready full_wi) as (_ & _ & _ & Hw).
+  exact Hw.
+Qed.
+
+End StreamPermissionChecks.

@@ -332,6 +332,53 @@ Proof.
   rewrite Heq. auto.
 Qed.
 
+(** The actual argument is checked by the permission value before
+    selecting the paired frame. The returned token replaces that SAME
+    permission key; no fixed pending/FIFO snapshot is needed. *)
+Theorem permission_fclose_frame : forall rep requests wide out err b o p xs
+    r args s m w trace values s' m' w' h,
+  length xs = 4%nat ->
+  agrees m h -> live_disjoint m -> R.ready s m -> stream_tokens_wi rep out err b o m w h ->
+  (forall l v, (l, v) ∈ permission_ps out err p ++ byte_ps b o xs -> h !! l = Some v) ->
+  M.E.invoke (fclose_contract (libc_stream_model rep requests wide))
+    r args [WPtr p] s m w trace (CallReturn values) s' m' w' ->
+  exists n ys, values = [WInt n] /\ 0 <= n < 2 ^ 32 /\ length ys = 4%nat /\
+    (closed_ps (permission_descriptor out err p) ++ byte_ps b o ys).*1 =
+      (permission_ps out err p ++ byte_ps b o xs).*1 /\
+    agrees m' (overwrite (closed_ps (permission_descriptor out err p) ++ byte_ps b o ys) h) /\
+    live_disjoint m' /\ R.ready s' m' /\
+    stream_tokens_wi rep out err b o m' w'
+      (overwrite (closed_ps (permission_descriptor out err p) ++ byte_ps b o ys) h).
+Proof.
+  intros rep requests wide out err b o p xs r args s m w trace values s' m' w' h
+    Hxs Ha Hd Hr Hw Howned Hcall.
+  assert (Hps : forall l v, (l, v) ∈ permission_ps out err p -> h !! l = Some v).
+  { intros l v Hin. apply Howned, elem_of_app. left. exact Hin. }
+  destruct (permission_known _ _ _ _ _ _ _ _ _ Hw Hps) as [Hp _].
+  set (dt := permission_descriptor out err p) in *.
+  assert (Hcall' : M.E.invoke (fclose_contract (libc_stream_model rep requests wide))
+    r args [WPtr (token_handle dt)] s m w trace (CallReturn values) s' m' w').
+  { rewrite <- Hp. exact Hcall. }
+  destruct (A.close_frame rep requests wide out err b o dt r args s m w trace values s' m' w' h xs
+    (permission_selected out err p) Hcall' Ha Hd Hr Hw Hxs) as (ys & Hys & Hkeys & Ha' & Hd' & Hr' & Hw').
+  { intros l v Hin. apply Howned, elem_of_app. right. exact Hin. }
+  assert (Heq : overwrite (closed_ps dt ++ byte_ps b o ys) h =
+    <[PName (token_key dt) := VStream (token_handle dt) None]> (overwrite (byte_ps b o ys) h)).
+  { rewrite overwrite_app. cbn [closed_ps overwrite]. apply fin_maps.insert_id.
+    rewrite lookup_insert_ne; [|discriminate]. rewrite overwrite_out.
+    - apply Hps. unfold permission_ps, open_permission_ps. fold dt.
+      apply elem_of_cons. left. reflexivity.
+    - rewrite byte_ps_keys. intros Hin. apply list_elem_of_fmap in Hin as (i & E & _). discriminate E. }
+  destruct (A.T.EL.S.fclose_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as [(born & q & info & final & n & _ & _ & _ & _ & Hn & _ & _ & _ & _ & _ & Hend)
+      |(why & Hbad & _)]; [|discriminate Hbad].
+  injection Hend as Hvalues. subst values. exists n, ys. split; [reflexivity|]. split.
+  { destruct Hn as [-> | ->]; unfold stream_eof; lia. }
+  split; [exact Hys|]. split.
+  { rewrite !fmap_app Hkeys. reflexivity. }
+  rewrite Heq. auto.
+Qed.
+
 Section callback_rules.
 Import LG LG.L.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -411,6 +458,59 @@ Proof.
   - intros s m w h tr vs s' m' w' Ha Hd Hr Hw Hl Hi.
     destruct (hello_fclose_frame rep requests wide out err b o dt pending fifo xs _ _
       s m w tr vs s' m' w' h Hdt Hxs Ha Hd Hr (Htokens _ _ _ Hw) Hl Hi)
+      as (n & ys & -> & Hn & Hys & Hkeys & Ha' & Hd' & Hr' & Htokens').
+    exists n, ys. split; [reflexivity|]. split; [exact Hn|]. split; [auto|].
+    split; [exact Hkeys|]. split; [exact Ha'|]. split; [exact Hd'|]. split; [exact Hr'|].
+    eapply Kclose; eauto.
+  - rewrite pts_app. iFrame.
+  - iNext. iIntros (n ys) "%Hgood Hps". rewrite pts_app. iDestruct "Hps" as "[Hs Hx]".
+    iApply ("HK" with "[%] Hs Hx"). exact Hgood.
+Qed.
+
+(** The pointer-universal variant consumes an open-only permission and
+    updates its own key. Admission rejects unknown pointers through the
+    pure lookup premise, before invoking libc. *)
+Lemma wp_permission_fclose rep requests wide out err b o p xs
+    f e ls lab result v rest j Φ
+    (Htokens : forall m w h, wi m w h -> stream_tokens_wi rep out err b o m w h)
+    (Kclose : forall s m w h trace values s' m' w' ys,
+      M.E.invoke (fclose_contract (libc_stream_model rep requests wide))
+        (CResult result W) [Arg P v] [WPtr p] s m w trace (CallReturn values) s' m' w' ->
+      (forall l u, (l, u) ∈ permission_ps out err p ++ byte_ps b o xs -> h !! l = Some u) ->
+      wi m w h -> length ys = 4%nat ->
+      stream_tokens_wi rep out err b o m' w'
+        (overwrite (closed_ps (permission_descriptor out err p) ++ byte_ps b o ys) h) ->
+      wi m' w' (overwrite (closed_ps (permission_descriptor out err p) ++ byte_ps b o ys) h)) :
+  length xs = 4%nat ->
+  find_fn ge (TAtom "fclose") = None -> lookup (TAtom "fclose") (ge_globals ge) = None ->
+  registry (TAtom "fclose") = Some (fclose_contract (libc_stream_model rep requests wide)) ->
+  arg_x ge e (Arg P v) = Some (WPtr p) ->
+  pts (permission_ps out err p) -∗ pts (byte_ps b o xs) -∗
+  ▷ (∀ n ys, ⌜0 <= n < 2 ^ 32 /\ length ys = 4%nat⌝ -∗
+    pts (closed_ps (permission_descriptor out err p)) -∗ pts (byte_ps b o ys) -∗
+    WP (ERun (mkFrame f (put result (WInt n) e) ls None (Exec lab rest j)) : cexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec lab
+    (Call (CResult result W) (Global (TAtom "fclose")) [Arg P v] :: rest) j)) : cexpr) {{ Φ }}.
+Proof.
+  intros Hxs Hfn Hg Hreg Hv. iIntros "Hs Hx HK".
+  iApply (C.wp_close_contract registry wi ge f e ls lab result W (TAtom "fclose") _ _ _
+    (fclose_contract (libc_stream_model rep requests wide)) [WPtr p]
+    (permission_ps out err p ++ byte_ps b o xs)
+    (fun ys => closed_ps (permission_descriptor out err p) ++ byte_ps b o ys)
+    (fun n ys => 0 <= n < 2 ^ 32 /\ length ys = 4%nat) with "[Hs Hx] [HK]").
+  - exact Hfn.
+  - exact Hg.
+  - reflexivity.
+  - exact Hreg.
+  - reflexivity.
+  - left. reflexivity.
+  - cbn [map_option]. rewrite Hv. reflexivity.
+  - split; [right; eexists; reflexivity|eexists; reflexivity].
+  - intros m w h Hw Hl. eapply A.permission_admitted; [apply Htokens; exact Hw|].
+    intros l u Hin. apply Hl, elem_of_app. left. exact Hin.
+  - intros s m w h tr vs s' m' w' Ha Hd Hr Hw Hl Hi.
+    destruct (permission_fclose_frame rep requests wide out err b o p xs _ _
+      s m w tr vs s' m' w' h Hxs Ha Hd Hr (Htokens _ _ _ Hw) Hl Hi)
       as (n & ys & -> & Hn & Hys & Hkeys & Ha' & Hd' & Hr' & Htokens').
     exists n, ys. split; [reflexivity|]. split; [exact Hn|]. split; [auto|].
     split; [exact Hkeys|]. split; [exact Ha'|]. split; [exact Hd'|]. split; [exact Hr'|].
@@ -603,3 +703,113 @@ Qed.
 
 End iris.
 End HelloCallbackChecks.
+
+(** The open-only rule is exercised on the very same logic as the
+    callback controls, with an inhabited paired interpretation. *)
+Module HelloPermissionChecks.
+Module P := StreamPermissionChecks.
+Module T := StreamTokenChecks.
+Module F := LibcStreamChecks.
+Module LG := StreamHandleChecks.LG.
+Module H := HelloStdioOn InterpRuntime LG.
+Import LG LG.L.
+
+Definition close_wi := stream_tokens_wi (fun _ _ => True) P.out P.err 5120 0.
+Definition registry := HelloCallbackChecks.registry.
+Definition ge := HelloCallbackChecks.ge.
+Definition stub := HelloCallbackChecks.stub.
+Definition entry_env := HelloCallbackChecks.entry_env.
+
+Global Instance close_stable : SafepointStable close_wi.
+Proof.
+  apply H.A.tokens_safepoint. intros s m s' m' w [-> ->] Hw. exact Hw.
+Qed.
+
+(** The real changed-errno call closes -4 and leaves stderr's open-only
+    -5 permission, rather than manufacturing a fixed stderr snapshot. *)
+Example permission_close_endpoint : forall n, n = 0 \/ n = stream_eof ->
+  exists ys, length ys = 4%nat /\
+    stream_tokens_wi (fun _ _ => True) P.out P.err 5120 0 T.changed_errno (F.world false)
+      (overwrite (closed_ps P.out ++ byte_ps 5120 0 ys) P.heap) /\
+    (overwrite (closed_ps P.out ++ byte_ps 5120 0 ys) P.heap) !! PName (-4) =
+      Some (VStream (token_handle P.out) None) /\
+    (overwrite (closed_ps P.out ++ byte_ps 5120 0 ys) P.heap) !! PName (-5) =
+      Some (VStreamOpen (token_handle P.err)) /\
+    (overwrite (closed_ps P.out ++ byte_ps 5120 0 ys) P.heap) !! PByte 5120 3 = Some (VByte 1).
+Proof.
+  intros n Hn.
+  destruct (H.permission_fclose_frame (fun _ _ => True) (fun _ _ _ _ => False)
+    (fun _ _ _ _ _ => False) P.out P.err 5120 0 (token_handle P.out) [0; 0; 0; 0]
+    CVoid [Arg P (Const 0)] InterpRuntime.start conversion_mem (F.world true) [] [WInt n]
+    InterpRuntime.start T.changed_errno (F.world false) P.heap eq_refl P.heap_agrees
+    HelloErrnoChecks.disjoint HelloErrnoChecks.ready P.full_wi)
+      as (result & ys & Hresult & _ & Hlen & _ & Hag & _ & _ & Hw).
+  - intros l v Hin. apply elem_of_app in Hin as [Hin|Hin].
+    + change ((l, v) ∈ open_permission_ps P.out (token_handle P.out)) in Hin.
+      unfold open_permission_ps in Hin. apply list_elem_of_In in Hin.
+      destruct Hin as [E|[E|[]]]; injection E as <- <-.
+      * unfold P.heap, StreamHandleChecks.heap.
+        repeat (rewrite lookup_insert_ne; [|discriminate]). apply lookup_insert_eq.
+      * unfold P.heap. apply lookup_insert_eq.
+    + destruct (MemLogic.byte_ps_elem _ _ _ _ _ Hin) as (i & x & Hi & El & Ev). subst l v.
+      unfold P.heap, StreamHandleChecks.heap.
+      repeat (rewrite lookup_insert_ne; [|discriminate]).
+      unfold HelloErrnoChecks.heap. apply elem_of_list_to_map_1; [|exact Hin].
+      change (base.NoDup [PByte 5120 0; PByte 5120 1; PByte 5120 2; PByte 5120 3]).
+      repeat (apply base.NoDup_cons_2; [set_solver|]). apply base.NoDup_nil_2.
+  - exact (T.changed_close n Hn).
+  - exists ys. split; [exact Hlen|]. split; [exact Hw|]. split.
+    + rewrite overwrite_app. cbn [closed_ps overwrite P.out token_key token_base].
+      rewrite lookup_insert_ne; [|discriminate]. apply lookup_insert_eq.
+    + split.
+      * rewrite overwrite_app. cbn [closed_ps overwrite P.out token_key token_base].
+        rewrite lookup_insert_ne; [|discriminate]. rewrite lookup_insert_ne; [|discriminate].
+        rewrite overwrite_out.
+        -- unfold P.heap. rewrite lookup_insert_ne; [|discriminate]. apply lookup_insert_eq.
+        -- rewrite byte_ps_keys. intros Hin. apply list_elem_of_fmap in Hin as (i & E & _). discriminate E.
+      * destruct ys as [|a [|b [|c [|d rest]]]]; try discriminate Hlen.
+        assert (rest = []) as -> by (destruct rest; [reflexivity|discriminate Hlen]).
+        assert (Hl : (overwrite (closed_ps P.out ++ byte_ps 5120 0 [a; b; c; d]) P.heap) !!
+          PByte 5120 3 = Some (VByte d)).
+        { rewrite overwrite_app. cbn [closed_ps byte_ps overwrite].
+          repeat (rewrite lookup_insert_ne; [|discriminate]). apply lookup_insert_eq. }
+        destruct (Hag _ _ Hl) as [_ Hvalue].
+        destruct (Hvalue (mkRegion 5120 5128 Heap Live) eq_refl eq_refl) as (_ & _ & Hv).
+        change (1 = d) in Hv. rewrite Hv. exact Hl.
+Qed.
+
+Section iris.
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
+Local Instance test_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
+  nanofil_irisGS registry close_wi ge.
+
+Example permission_close_then_return :
+  pts (permission_ps P.out P.err (token_handle P.out)) -∗ pts (byte_ps 5120 0 [0; 0; 0; 0]) -∗
+  WP (ERun (mkFrame stub entry_env [] None (Exec (TAtom "body")
+    [Call (CResult (TAtom "r") W) (Global (TAtom "fclose")) [Arg P (Tmp (TAtom "p"))]]
+    (JRet (Tmp (TAtom "r"))))) : language.expr (nanofil_lang registry ge))
+  {{ result, ∃ n ys, ⌜result = Ret (WInt n) /\ length ys = 4%nat⌝ ∗
+      pts (closed_ps P.out) ∗ pts (byte_ps 5120 0 ys) }}.
+Proof.
+  iIntros "Ho Herrno".
+  iApply (H.wp_permission_fclose registry close_wi ge (fun _ _ => True)
+    (fun _ _ _ _ => False) (fun _ _ _ _ _ => False) P.out P.err 5120 0 (token_handle P.out)
+    [0; 0; 0; 0] stub entry_env [] (TAtom "body") (TAtom "r") (Tmp (TAtom "p")) []
+    (JRet (Tmp (TAtom "r"))) _ with "Ho Herrno []").
+  - intros m w h Hw. exact Hw.
+  - intros s m w h tr vs s' m' w' ys Hi Hl Hw Hlen Hnew. exact Hnew.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - iNext. iIntros (n ys) "%Hgood Ho Herrno". destruct Hgood as [Hn Hys].
+    iApply (wp_ret registry close_wi ge stub _ (TAtom "body") (Tmp (TAtom "r")) W (WInt n));
+      [reflexivity| |].
+    + change (Some (WInt (n mod 2 ^ 32)) = Some (WInt n)).
+      rewrite Z.mod_small; [reflexivity|exact Hn].
+    + iNext. iExists n, ys. iFrame. auto.
+Qed.
+
+End iris.
+End HelloPermissionChecks.

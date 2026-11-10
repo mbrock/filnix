@@ -135,7 +135,7 @@ Proof.
   { intros b' o P H reg' E L. rewrite Ho in E. destruct (Z.eqb_spec b' b) as [->|Hne].
     - injection E as <-. discriminate L.
     - exact (H reg' E L). }
-  destruct l as [b'|b' o|b' o|k], v as [reg'|y|c| |q t|cd|sq sp|ga gi]; cbn [agree_piece] in Ha |- *; try contradiction;
+  destruct l as [b'|b' o|b' o|k], v as [reg'|y|c| |q t|cd|sq sp|ga gi|op]; cbn [agree_piece] in Ha |- *; try contradiction;
     try exact I.
   - destruct Ha as [E L]. split; [|exact L]. rewrite Ho. destruct (Z.eqb_spec b' b) as [->|]; [congruence|exact E].
   - exact (Hreg _ Ha).
