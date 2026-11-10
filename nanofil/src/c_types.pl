@@ -531,12 +531,16 @@ reflect_param(_, _, Env, Env).
 %! specs_type(+Specs, -Type, +Env0, -Env) is det.
 %
 %  Type is the type the declaration specifiers Specs name, bad(Reason)
-%  if the frontend cannot handle it. Env is Env0 with the struct, union
-%  and enum definitions in Specs entered.
+%  if the frontend cannot handle it, as for an address_space attribute.
+%  Env is Env0 with the struct, union and enum definitions in Specs
+%  entered.
 
 specs_type(Specs, Type, Env0, Env) :-
     base_type(Specs, Type0, Env0, Env),
-    (   member(attr(Tokens), Specs), vector_attr(Tokens)
+    (   member(attr(Tokens), Specs), attr_word(Tokens, W),
+        memberchk(W, [address_space, '__address_space__'])
+    ->  Type = bad(address_space)
+    ;   member(attr(Tokens), Specs), vector_attr(Tokens)
     ->  vector_type(Specs, Type0, Env, Type)
     ;   memberchk(qual(atomic), Specs), atomic_su_type(Type0, Env, T)
     ->  Type = T
@@ -577,6 +581,7 @@ attribute_entry(cleanup, honored, 'c_lower cleanup_decls//4 runs it on every sco
 attribute_entry(mode, honored, 'mode_type/3').
 attribute_entry(vector_size, honored, 'the type is refused (bad) where it is used').
 attribute_entry(ext_vector_type, honored, 'as vector_size').
+attribute_entry(address_space, honored, 'the type is refused (bad) where it is used: Fil-C code has one address space, and filcc cannot compile an access through another (FilPizlonator asserts); glibc\'s rseq-internal.h casts to address_space(257) in a static inline function its units never call').
 attribute_entry(section, honored, 'as filcc: FilPizlonator gives neither pizlonatedDO_X nor a function a section, so the object stays in .data, .bss or .rodata and the function in .text, where nanofil puts them; Fil-C code cannot name __start_X or __stop_X (docs/abi-findings.md, *Sections*)').
 attribute_entry(weak, honored, 'c_lower weak symbols (weak_attr/1)').
 attribute_entry(alias, honored, 'c_lower alias_decl/8; a variable alias is refused').
