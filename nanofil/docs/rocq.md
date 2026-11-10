@@ -105,10 +105,11 @@ other soundness-relevant change calls for the opt-in evidence.
 
 CI (`.github/workflows/nanofil-rocq.yml`) runs the quick root and the
 grammar round trip after each push that changes model, compiler/validator
-or gate inputs (its `paths` list), on a 16-core Namespace runner whose Nix
-store persists between runs, so it recompiles only changed theories; a
-newer push waits for the running one rather than cancelling it. Main
-publishes the model's small output to filc.cachix.org. Unrelated web
+or gate inputs (its `paths` list), on a 16-core Namespace runner. Main
+publishes every theory's object, every reprint's verdict and the model to
+filc.cachix.org, so CI and every orb recompile only changed theories and
+their importers; a newer push waits for the running one rather than
+cancelling it. Unrelated web
 styling, rendering and documentation edits skip it. Run the quick root
 yourself before pushing such a change:
 `nix build .#checks.x86_64-linux.nanofil-rocq`.
