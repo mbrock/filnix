@@ -450,7 +450,14 @@ patch sources and the runner are added; only the PipeWire leaf derivation is
 replaced. No LLVM, runtime, compiler wrapper or shared-library dependency is
 rebuilt.
 
+The file was removed in 46be74e5; the commands below run it from a worktree
+of 32bf7f5e, where it still exists.
+
 ```sh
+# The experiment as of 32bf7f5e; it reads the flake around it.
+git worktree add --detach /tmp/filnix-32bf7f5 32bf7f5e
+cd /tmp/filnix-32bf7f5
+
 # Check the selected libc, cancellation races, signal masks and C/C++ cleanup.
 nix build --impure -f tests/pipewire-cancellation.nix probe \
   --max-jobs 1 --cores 2 --no-link -L
