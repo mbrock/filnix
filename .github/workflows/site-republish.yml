@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: Pages run whose complete site artifact should be published
+        description: Site workflow run whose complete artifact should be published
         type: string
         required: true
 

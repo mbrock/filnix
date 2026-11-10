@@ -1,8 +1,7 @@
 # Publishes the site built by .#site (packages/site): pages/ as is and docs/
 # rendered with pandoc, which substitutes from cache.nixos.org.
-# Pages must be enabled in the repository settings with "GitHub Actions" as
-# the source.
-name: Pages
+# Cloudflare R2 + the Worker serve filnix.org; no GitHub Pages deployment.
+name: Site
 
 on:
   push:
@@ -32,8 +31,6 @@ env:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
   # One cold producer finishes and seeds the shared cache; newer pushes
@@ -96,51 +93,17 @@ jobs:
           # with what is live.
           chmod u+w _site
           echo "$GITHUB_SHA" > _site/commit.txt
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      # Preserve the tar/name contract for phone checks and recovery of
+      # both old and new runs, without calling the GitHub Pages service.
+      - name: Package the site
+        run: tar -C _site -cf "$RUNNER_TEMP/artifact.tar" .
+      - uses: actions/upload-artifact@v4
         with:
-          path: _site
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: 3
 
-  # A publish in progress finishes; a newer one waits and replaces any other
-  # waiting one, so the site follows main even when pushes come every
-  # minute. A build that finishes after a newer one has gone live is not
-  # published: its commit is already part of the live site's.
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-    concurrency:
-      group: pages
-      cancel-in-progress: false
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - name: Is this newer than the live site?
-        id: live
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          site=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .html_url)
-          # A fresh query string, so the CDN's ten-minute cache is not asked.
-          live=$(curl -fsS "${site%/}/commit.txt?$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" || true)
-          status=unknown
-          if [[ $live =~ ^[0-9a-f]{40}$ ]]; then
-            status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$live...$GITHUB_SHA" --jq .status || echo unknown)
-          fi
-          echo "live: ${live:-none}; this: $GITHUB_SHA; this is $status"
-          # behind or identical: the live commit already contains this one.
-          # Anything else, including an unknown live commit, publishes.
-          case $status in
-            behind|identical)
-              echo "::notice::Not publishing $GITHUB_SHA: the live site's $live already contains it."
-              echo "publish=false" >> "$GITHUB_OUTPUT" ;;
-            *) echo "publish=true" >> "$GITHUB_OUTPUT" ;;
-          esac
-      - id: deploy
-        if: steps.live.outputs.publish == 'true'
-        uses: actions/deploy-pages@v4
-
-  # A separate destination during the trial: Pages above stays unchanged.
+  # The sole publisher. It serializes promotions and rejects stale builds.
   publish-r2:
     needs: build
     runs-on: ubuntu-latest
@@ -160,7 +123,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: github-pages
-      - name: Unpack the same site as Pages
+      - name: Unpack the built site
         run: mkdir _site && tar -xf artifact.tar -C _site
       - name: Upload, verify and atomically promote the R2 release
         id: publish

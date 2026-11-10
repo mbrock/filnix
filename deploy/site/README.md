@@ -1,10 +1,13 @@
 # filnix.org hosting
 
-The existing Pages workflow still builds and deploys to GitHub Pages. Its
-independent `publish-r2` job uploads the **same artifact** to Cloudflare R2,
-verifies object paths/sizes and `commit.txt`, then atomically replaces
-`current.json`. Concurrent publication is serialized; an older build cannot
-replace a newer live commit. Upload failures leave the previous release live.
+The **Site** workflow (`.github/workflows/pages.yml`) builds and publishes only
+to Cloudflare R2. Its `publish-r2` job verifies object paths/sizes and
+`commit.txt`, then atomically replaces `current.json`. Concurrent publication
+is serialized; an older build cannot replace a newer live commit. Upload
+failures leave the previous release live. There is no GitHub Pages deployment,
+Pages setup action or Pages/OIDC write permission. The artifact retains its
+historical `github-pages` name and `artifact.tar` format so phone checks and
+manual recovery work for both old and new runs; it is a normal Actions artifact.
 
 `filnix-site` is a private Standard R2 bucket. `worker.mjs` is its only public
 front end, bound as `SITE`. The Worker redirects canonical paths to
@@ -13,13 +16,13 @@ It streams downloads, supports HEAD, conditional and range requests, and caches
 immutable full responses up to Cloudflare's ordinary 512 MiB object limit.
 `/commit.txt` reports the canonical release without caching.
 
-The Pages workflow first prepares the four exact generated-page outputs and
+The Site workflow first prepares the four exact generated-page outputs and
 publishes them to Cachix. This producer is serialized: one active run finishes,
 with only the newest pending run kept. Proof captures are uploaded before the
 renderers, not after the whole site. Site assembly depends on this job and
 fetches these outputs with local/remote builders disabled, so it cannot silently
 recompile proofs. A cache miss or failed upload is visible in the prerequisite.
-The unrelated Binary cache workflow checks toolchain foundations; Pages does
+The unrelated Binary cache workflow checks toolchain foundations; Site does
 not wait for its distribution/image jobs. The producer uses Namespace 16 CPU /
 32 GiB (no persistent volume), with a 30-minute timeout; ordinary site assembly
 and browser checks remain on free GitHub runners. The previous cold 16-core
@@ -27,7 +30,7 @@ comparison cost about $0.14 per complete job at $0.024/minute; cached producers
 and coalesced pushes cost less, but real proof growth can increase runtime.
 
 The Actions `filnix-org` environment shows deployment status and its public URL.
-Local phone checks remain independent of either publisher. `deployed-phone`
+Local phone checks remain independent of publication. `deployed-phone`
 also checks the public site at 320 and 390 pixels and every deployed Rocq page.
 
 ## Credentials and costs
@@ -81,5 +84,6 @@ generated-input producer; the comparison workflow remains a manual benchmark.
 - To roll back, stop/serialize the `filnix-org` publisher first, verify a retained
   release's objects, then replace `current.json` with `{"sha":"<full commit>"}`.
   Do not delete the current release or race an in-progress publisher.
-- Keep GitHub Pages and its `github.io` URL unchanged until a separate cutover
-  decision. No redirect of the old site is part of this trial.
+- The existing GitHub Pages site and its `github.io` URL are left online at
+  their last deployment, but this workflow no longer updates them. Repository
+  Pages settings and DNS are unchanged; no redirect or site deletion is involved.
