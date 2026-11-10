@@ -52,7 +52,7 @@ printf '{"sha":"%s"}\n' "$GITHUB_SHA" > current.json
 aws "${aws_args[@]}" s3 cp current.json "s3://$bucket/current.json" \
   --content-type application/json --cache-control no-store --no-progress
 echo "promoted=true" >> "$GITHUB_OUTPUT"
-echo "Published https://filnix.org/__releases/$GITHUB_SHA/" >> "$GITHUB_STEP_SUMMARY"
+echo "Published https://filnix.org/ (release $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
 
 # A fresh inventory includes this release. This job holds the promotion
 # lock; pruning never races a different promotion. Keep the live SHA,

@@ -37,7 +37,7 @@ stamp("worker.js", [
 stamp("play.js", [
     ('"./editor.js"', f'"./editor.js?v={digest(out / "editor.js")}"'),
     ('"./ir.js"', f'"./ir.js?v={digest(out / "ir.js")}"'),
-    ('new Worker("worker.js")', f'new Worker("worker.js?v={digest(out / "worker.js")}")'),
+    ('"./worker.js"', f'"./worker.js?v={digest(out / "worker.js")}"'),
 ])
 stamp("index.html", [
     ('href="../dterm.css"', f'href="../dterm.css?v={digest(web / "dterm.css")}"'),

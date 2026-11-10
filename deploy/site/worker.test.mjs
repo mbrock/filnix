@@ -15,6 +15,7 @@ function site() {
     [`releases/${sha}/docs/index.html`, "docs"],
     [`releases/${sha}/large.bin`, "0123456789abcdef"],
     [`releases/${next}/index.html`, "<h1>next</h1>"],
+    [`releases/${next}/large.bin`, "next release"],
     [`releases/${next}/commit.txt`, next],
   ]);
   globalThis.caches = { default: { async match() {}, async put() {} } };
@@ -42,11 +43,25 @@ function site() {
   };
 }
 
-test("promotion redirects new visitors, without changing existing release URLs", async () => {
+test("canonical pages stay clean and fresh, while pinned resources survive promotion", async () => {
   const s = site();
-  assert.equal((await s.fetch("/?q=hello")).headers.get("location"), `https://filnix.org${prefix}/?q=hello`);
+  const first = await s.fetch("/?q=hello");
+  assert.equal(first.status, 200);
+  assert.equal(first.headers.get("location"), null);
+  assert.equal(first.headers.get("cache-control"), "no-store");
+  assert.equal(await first.text(), "<h1>first</h1>");
+  assert.equal(await (await s.fetch("/docs/")).text(), "docs");
+  assert.equal((await s.fetch("/docs")).headers.get("location"), "https://filnix.org/docs/");
+  const head = await s.fetch("/docs/", { method: "HEAD" });
+  assert.equal(head.status, 200);
+  assert.equal(await head.text(), "");
   s.promote(next);
-  assert.equal((await s.fetch("/docs/")).headers.get("location"), `https://filnix.org/__releases/${next}/docs/`);
+  assert.equal(await (await s.fetch("/")).text(), "<h1>next</h1>");
+  assert.equal((await s.fetch("/docs/")).status, 404);
+  assert.equal(await (await s.fetch("/large.bin")).text(), "next release");
+  const asset = await s.fetch(`${prefix}/large.bin`);
+  assert.equal(await asset.text(), "0123456789abcdef");
+  assert.match(asset.headers.get("cache-control"), /immutable/);
   assert.equal(await (await s.fetch(`${prefix}/`)).text(), "<h1>first</h1>");
   assert.equal(await (await s.fetch("/commit.txt")).text(), `${next}\n`);
   assert.equal((await s.fetch(`${prefix}/docs`)).status, 308);
@@ -65,6 +80,7 @@ test("expired bookmarks redirect to canonical paths, without masking real missin
   assert.equal(expired.status, 302);
   assert.equal(expired.headers.get("location"), "https://filnix.org/docs/?search=hello");
   assert.equal(expired.headers.get("cache-control"), "no-store");
+  assert.equal((await s.fetch(`${prefix}/large.bin`)).status, 404);
   assert.equal((await s.fetch(`/__releases/${next}/absent.html`)).status, 404);
   s.expire(next);
   assert.equal((await s.fetch(`/__releases/${next}/absent.html`)).status, 404);

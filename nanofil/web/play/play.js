@@ -4,7 +4,7 @@ import { editor, mark, link, count } from "./editor.js";
 import { gloss, highlightValues } from "./ir.js";
 
 const $ = (id) => document.getElementById(id);
-const worker = new Worker("worker.js");
+const worker = new Worker(new URL("./worker.js", import.meta.url));
 const fmt = (ms) => (ms < 1000 ? `${ms.toFixed(0)} ms` : `${(ms / 1000).toFixed(2)} s`);
 const state = (s) => (document.body.dataset.state = s);
 
@@ -19,7 +19,7 @@ let current = null;
 
 async function open(name) {
   if (!files.has(name)) {
-    const text = await (await fetch(`examples/${name}.c`, { cache: "no-cache" })).text();
+    const text = await (await fetch(new URL(`examples/${name}.c`, import.meta.url), { cache: "no-cache" })).text();
     files.set(name, text);
     states.set(name, ed.state(text));
   }

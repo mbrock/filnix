@@ -1,6 +1,6 @@
 // R2 holds immutable releases/<sha>/ trees. Only current.json is mutable.
-// Canonical URLs redirect into a complete release, so relative links keep
-// using that release even if another build is promoted during navigation.
+// Canonical pages resolve current.json once. Their resource URLs are pinned
+// at publication, so promotion cannot mix assets from different releases.
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -22,27 +22,28 @@ export default {
       return reply("Invalid path", 400);
     }
     const pinned = path.match(/^\/__releases\/([0-9a-f]{40})(\/.*)?$/);
+    let sha, tail;
     if (!pinned) {
       const current = await env.SITE.get("current.json");
       if (!current) return reply("First deployment is not ready", 503);
-      const { sha } = await current.json();
+      ({ sha } = await current.json());
       if (!/^[0-9a-f]{40}$/.test(sha)) return reply("Invalid deployment", 503);
       if (path === "/commit.txt") {
         return reply(`${sha}\n`, 200, { "content-type": "text/plain; charset=utf-8" });
       }
-      url.pathname = `/__releases/${sha}${url.pathname}`;
-      return reply(null, 302, { location: url.href });
-    }
-    const [, sha, tail = "/"] = pinned;
-    if (!pinned[2]) {
-      url.pathname += "/";
-      return reply(null, 308, { location: url.href });
+      tail = path;
+    } else {
+      [, sha, tail = "/"] = pinned;
+      if (!pinned[2]) {
+        url.pathname += "/";
+        return reply(null, 308, { location: url.href });
+      }
     }
     // A query string cannot select different immutable bytes.
     const cacheURL = new URL(url);
     cacheURL.search = "";
     const cacheRequest = new Request(cacheURL);
-    const cacheable = request.method === "GET" &&
+    const cacheable = pinned && request.method === "GET" &&
       !["range", "if-match", "if-none-match", "if-modified-since", "if-unmodified-since"]
         .some(h => request.headers.has(h));
     if (cacheable) {
@@ -53,9 +54,10 @@ export default {
     if (tail.endsWith("/")) key += "index.html";
     const meta = await env.SITE.head(key);
     if (!meta) {
-      // A retained release's missing page is still a real 404. Once the
-      // whole snapshot expires, old bookmarks move to its canonical path.
-      if (!await env.SITE.head(`releases/${sha}/commit.txt`)) {
+      // Expired page bookmarks may move forward, but an expired asset must
+      // never silently become a different release's JS, WASM, CSS or data.
+      const page = tail.endsWith("/") || tail.endsWith(".html") || !tail.split("/").at(-1).includes(".");
+      if (pinned && page && !await env.SITE.head(`releases/${sha}/commit.txt`)) {
         const current = await env.SITE.get("current.json");
         if (current && (await current.json()).sha !== sha) {
           url.pathname = url.pathname.replace(/^\/__releases\/[0-9a-f]{40}/, "");
@@ -73,7 +75,7 @@ export default {
     headers.set("etag", meta.httpEtag);
     headers.set("last-modified", meta.uploaded.toUTCString());
     headers.set("accept-ranges", "bytes");
-    headers.set("cache-control", "public, max-age=31536000, immutable");
+    headers.set("cache-control", pinned ? "public, max-age=31536000, immutable" : "no-store");
     headers.set("x-content-type-options", "nosniff");
     const matches = (value, weak) => value.split(",").some(tag => {
       tag = tag.trim();

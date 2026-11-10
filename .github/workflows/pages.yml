@@ -79,7 +79,7 @@ jobs:
       - name: Check the R2 serving and retention contracts
         run: |
           node --test deploy/site/worker.test.mjs
-          python3 -m unittest discover -s tests -p test_site_retention.py
+          python3 -m unittest discover -s tests -p 'test_site_*.py'
       - uses: cachix/install-nix-action@v31
       - name: Fetch exact generated pages (never rebuild proofs here)
         run: |
@@ -93,6 +93,7 @@ jobs:
           # with what is live.
           chmod u+w _site
           echo "$GITHUB_SHA" > _site/commit.txt
+          python3 deploy/site/prepare.py _site "$GITHUB_SHA"
       # Preserve the tar/name contract for phone checks and recovery of
       # both old and new runs, without calling the GitHub Pages service.
       - name: Package the site

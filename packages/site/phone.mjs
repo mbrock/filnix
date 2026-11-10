@@ -57,6 +57,11 @@ const server = remote ? null : createServer((req, res) => {
   let path = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname)).replace(/^\/+/, "");
   if (path === "" || path.endsWith("/")) path += "index.html";
   try {
+    const pinned = path.match(/^__releases\/([0-9a-f]{40})\/(.*)$/);
+    if (pinned) {
+      if (readFileSync(join(site, "commit.txt"), "utf8").trim() !== pinned[1]) throw new Error("Wrong release");
+      path = pinned[2];
+    }
     const body = readFileSync(join(site, path));
     res.writeHead(200, { "content-type": types[extname(path)] ?? "application/octet-stream" });
     res.end(body);
@@ -66,7 +71,7 @@ const server = remote ? null : createServer((req, res) => {
 });
 let base;
 if (remote) {
-  // Follow the canonical URL into its immutable release before testing.
+  // Accept either canonical serving or a legacy release redirect.
   const response = await fetch(site, { method: "HEAD" });
   if (!response.ok) throw new Error(`${site}: HTTP ${response.status}`);
   base = new URL(".", response.url).href.replace(/\/$/, "");
