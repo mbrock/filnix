@@ -824,7 +824,7 @@ drop_key(_, Ps, Ps).
 %  Func takes the entry argument snapshot (`va_args`) of a variadic
 %  function, or returns `data`, which also needs the generic entry. The
 %  snapshot's metadata is retained even if its cursor is unused.
-variadic_func(func(_, _, data, _, _)) :- !.
+variadic_func(func(_, _, Ret, _, _)) :- Ret == data, !.
 variadic_func(func(_, _, _, _, Blocks)) :-
     member(block(_, _, Insts, _), Blocks),
     member(let(_, p, va_args, _), Insts), !.
