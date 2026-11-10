@@ -1242,11 +1242,15 @@ block_(_, F, fence("prolog", Lines)) -->
     el(div, "prose-terms", seq(Ts, fence_term(F))).
 block_(_, F, fence("diagram", Lines)) --> !, diagram(Lines, F).
 block_(_, _, embed(Name)) --> concept_embed(Name).
-block_(_, _, fence("c", Lines)) --> c_fence(Lines), !.
+%  A C fence is drawn from nanofil's parse (c/c_draw.pl), inside this
+%  clause: with a separate fence("c", _) clause SWI 10 builds no index
+%  on the block and the full render peaks at 2.1 GB instead of 0.7 GB.
 block_(_, _, fence(Lang, Lines)) -->
-    { dedent(Lines, Ls), atomic_list_concat(Ls, '\n', T),
-      ( Lang == "" -> C = "fence" ; atom_concat('fence lang-', Lang, C) ) },
-    el(pre, C, esc(T)).
+    (   { Lang == "c" }, c_fence(Lines) -> []
+    ;   { dedent(Lines, Ls), atomic_list_concat(Ls, '\n', T),
+          ( Lang == "" -> C = "fence" ; atom_concat('fence lang-', Lang, C) ) },
+        el(pre, C, esc(T))
+    ).
 
 row_(Vars, F, Cells) --> el(tr, none, seq(Cells, cell_(td, Vars, F))).
 cell_(Tag, Vars, F, Text) --> el(Tag, none, inline(Text, Vars, F)).
