@@ -496,8 +496,11 @@ Definition public_object (f : func) : option object :=
 
 (** As `lower_function/4` of the function f after `fused_blocks/5`:
     its plan, with sy the symbols of its module. Nothing if the
-    function is outside what the first version lowers. *)
+    function is outside what the first version lowers, as one that
+    calls setjmp is: its frame keeps a snapshot and a hidden buffer
+    for each site, which nothing here builds. *)
 Definition lower_function (sy : symbols) (f : func) : option plan :=
+  if setjmp_func f then None else
   let* bs := fused_blocks (fn_params f) (fn_blocks f) in
   let* sig := signature (fn_ret f) (map fst (fn_params f)) in
   let* ret := return_protocol (fn_ret f) in

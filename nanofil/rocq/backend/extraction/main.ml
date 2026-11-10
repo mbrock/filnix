@@ -234,7 +234,8 @@ let rec first_difference path ours theirs =
    `abi_function(...)` for each function, then `thunks(...)`. Each
    plan Abi.v builds for a function of the core subset must be the
    term the Prolog compiler printed. A function the model keeps
-   outside the subset is counted and passed over; one of the subset
+   outside the subset, or that calls setjmp, which the backend has
+   no plan for, is counted and passed over; another of the subset
    that the backend refuses is counted, named on stderr, and fails
    the gate if NANOFIL_BACKEND_STRICT is set. Exits 1 on a plan that
    differs. *)
@@ -274,6 +275,7 @@ let abi () =
     | None -> ()
     | Some (TApp ("abi_function", name :: _) as theirs) ->
         (match Hashtbl.find_opt items name with
+         | Some (IFunc f) when setjmp_func f -> incr outside
          | Some (IFunc f) ->
              (match timed lower_s (fun () -> Option.map plan_term (lower_function sy f)) with
               | Some ours -> compare (shown name) ours theirs
@@ -304,8 +306,9 @@ let abi () =
    must begin the Prolog compiler's and the lines after the last one
    must end them; such a list is counted as partial, and its first
    todo is tallied on stderr. A function the model keeps outside its
-   subset is counted as outside and one the backend builds no plan
-   for as refused; both are passed over. Exits 1 on a list that
+   subset, or that calls setjmp, is counted as outside and another
+   the backend builds no plan for as refused; both are passed over.
+   Exits 1 on a list that
    differs or is missing, or, if NANOFIL_BACKEND_STRICT is set, on
    one that is partial or refused. *)
 let emit () =
@@ -378,6 +381,7 @@ let emit () =
   in
   List.iter (fun it ->
       match it with
+      | IFunc f when setjmp_func f -> ignore (list_of (shown f.fn_name) (next ())); incr outside
       | IFunc f ->
           let name = shown f.fn_name in
           let theirs = list_of name (next ()) in

@@ -22,6 +22,8 @@ prog/ia32-rdtsc-cvt.c
 prog/launder-local.c
 prog/setjmp-expired.c
 prog/setjmp.c
+prog/zreturn-none.c
+prog/zreturn.c
 stdlib.i
 u8-uctomb.i
 unistd.i

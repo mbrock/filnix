@@ -61,6 +61,7 @@ jobs:
         env:
           ROOT: ${{ steps.select.outputs.root }}
         run: |
+          set -o pipefail
           warn=300; limit=900
           if [ "$ROOT" = nanofil-backend-full ]; then warn=1800; limit=3300; fi
           python3 nanofil/tests/watch.py --label "$ROOT" --warn-after "$warn" --timeout "$limit" -- \
