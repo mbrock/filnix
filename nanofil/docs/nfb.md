@@ -485,12 +485,23 @@ The second is the one that costs something, because every canonical-form rule be
 > words' identity. `decode` keeps the check, so `decode_canonical`
 > holds. About 45% of `decode_input` is the GC, because every
 > instruction is built twice: once as a term by the reader and once as
-> `Syntax.v` by `decode_module`. So the backend keeps the term reader
-> until NFB pays for itself, and that needs the id-indexed form above.
-> `nanofil-backend nfb-read FILE.nfb` times the input path by itself.
+> `Syntax.v` by `decode_module`. `nanofil-backend nfb-read FILE.nfb`
+> times the input path by itself.
+>
+> The standalone compiler (`nanofil-backend compile`) reads the
+> unchecked module, which has no `Syntax.v` types and is pizlonated as
+> a term, so its input is that term. On SQLite, `IrText.v` reads it
+> from IR text in 9.6 s; `decode_input` reads it from NFB in 1.4 to
+> 1.5 s, and in 1.0 to 1.2 s without NAMES. There NFB is already the
+> faster input, with no id-indexed form.
 >
 > **The id-indexed form, agreed with the backend.** This waits until
-> the backend starts M5.
+> the backend starts M5. The backend measured that numbering
+> temporaries does not speed its passes, which pay for walking lists
+> rather than for comparing names (gallina-backend.md, The
+> measurements of M5), so the form would save only the reader's name
+> terms, a fraction of the 1.5 s above. It is not worth its proof
+> until a profile says otherwise.
 >
 > - The decoder returns a `Syntax.v` module and no second inductive.
 >   Temporaries and locals are `TInt` of their ids, and a label is
