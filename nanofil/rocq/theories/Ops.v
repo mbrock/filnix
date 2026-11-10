@@ -458,7 +458,8 @@ Definition integer_source (ik : class) (sg : signedness) (x : Z) : option Z :=
 (** As `kind_res/8` for the core subset's integer, pointer and checked
     ops: what the op o of result class k does on the words xs in the
     memory m, or none where the interpreter fails (arguments of the
-    wrong form, or a capability it cannot follow). The checks read
+    wrong form, a capability it cannot follow, or a `setjmp`, which
+    `kind_res/8` refuses since it does not return twice). The checks read
     memory and never change it; [Alloc] asks for an allocation. *)
 Definition op_res_int (o : op) (k : class) (xs : list word) (m : mem) : option op_out :=
   let pure (x : option word) := let* w := x in Some (OpRes (RVal w) m) in

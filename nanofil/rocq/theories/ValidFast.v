@@ -95,6 +95,7 @@ Qed.
 
 (** As [stage_sources], with [single_definitions_fast]. *)
 Definition stage_sources_fast (md : module) (f : func) (doms : nmap (Z * Z)) : src :=
+  if setjmp_func f then mkSrc [] [] [] [] else
   let once := single_definitions_fast f in
   mkSrc (flat_map (fun b => flat_map (fun i => match renew_source once i with
                                                | Some r => [r]

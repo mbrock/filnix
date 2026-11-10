@@ -590,8 +590,11 @@ Proof.
   destruct (skipn_cons _ _ _ _ _ (eq_sym Hk)) as (_ & _ & Hlen).
   assert (Hpt : point_site (fr_fn (c_frame c)) (fr_at (c_frame c)) = Some (l, Z.of_nat k))
     by (rewrite Ha, Hk; apply point_site_exec; [exact Hb | lia]).
-  exact (hull_access_not_unchecked ge md (c_frame c) (c_mem c) l (Z.of_nat k) Hmd Hinf Hr (scope_plain_of _ _ _ Hsc) Hpt
-           i q fa live why Hfit Hl (Hdom Hr) Hfa Hh).
+  (* A function with a setjmp has no single definitions, so no hull. *)
+  destruct (fn_src_cases md (fr_fn (c_frame c))) as [[_ E] | [_ E]]; rewrite E in Hh; cbn [s_once] in Hh.
+  - rewrite hull_covered_nil in Hh. discriminate Hh.
+  - exact (hull_access_not_unchecked ge md (c_frame c) (c_mem c) l (Z.of_nat k) Hmd Hinf Hr (scope_plain_of _ _ _ Hsc) Hpt
+             i q fa live why Hfit Hl (Hdom Hr) Hfa Hh).
 Qed.
 
 End Hull.

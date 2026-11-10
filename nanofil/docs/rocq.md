@@ -61,9 +61,12 @@ generic entry's argument and result conversions), `raw_load`,
 `raw_load_pointer`, `raw_store`, `raw_store_pointer` with their effect
 lists, `flight`, poll edges, direct `call`, libc `free`, and variadic
 functions (`va_args`, `va_arg`, the entry snapshot and the extra
-arguments of a call through the generic entry), and `touch`, which
-uses a vector check's proof and does nothing else. What is left out is
-vectors, `store`, `cas` and atomics, `setjmp` and `asm_fixed`.
+arguments of a call through the generic entry), `touch`, which
+uses a vector check's proof and does nothing else, and `setjmp`, which
+the validator judges as ir.pl does (a zero SaveMask but for
+`sigsetjmp`, no locals and no reuse sources in its function) and whose
+step is stuck, since interp.pl refuses it. What is left out is
+vectors, `store`, `cas` and atomics, and `asm_fixed`.
 A function that uses anything else decodes to `IOutside`. It keeps its address,
 its `fn` capability and its term (so the validator can read its
 signature and its calls), but running or calling it is stuck, and the
@@ -193,8 +196,9 @@ functions take a `lua_State` and call libc (allocation, strings,
 `setjmp` for errors), which the interpreter does not model, and Lua's
 tests run natively in `nix/lua.nix`. What the gate takes instead is
 Lua's source in two ways. Lowered file by file, every one of Lua's
-1,096 functions but one decodes into the subset; the one is
-`luaD_rawrunprotected`, which calls `_setjmp`. And
+1,096 functions decodes into the subset; the last was
+`luaD_rawrunprotected`, which calls `_setjmp`, and a run of it stops
+there. And
 [rocq/tests/lua.c](../rocq/tests/lua.c) includes lctype.c, lobject.c
 and lstring.c, as Lua's onelua.c does, and runs the functions of theirs
 that need neither a state nor libc on the path taken: integer and float
@@ -336,8 +340,9 @@ the Nanofil Gate workflow) runs it on the IR fixtures, `tests/c`,
 `tests/c/prog`, cproc and c-testsuite, and on every translation unit of
 GNU hello, zlib, Lua and SQLite. It fails on any module the model
 rejects. A module with a function outside the [[core-subset|core subset]]
-(setjmp, inline asm, vectors) is counted as `outside`, since the theorem says nothing
-about it, and does not fail.
+(inline asm, vectors) is counted as `outside`, since the theorem says nothing
+about it, and does not fail. A function with a `setjmp` is judged, but
+no theorem follows a `longjmp` back into it: its runs stop at the setjmp.
 
 The driver, rocq.nix's `model.driver`, needs only Extract.v's import
 closure, 14 theories, so the gate does not wait for the rest of the

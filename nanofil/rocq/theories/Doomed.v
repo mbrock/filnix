@@ -661,11 +661,15 @@ Lemma weak_operands : forall b kk i n1 p p1 lo1 hi1 al1 d,
   find_block l (fn_blocks (fr_fn fr)) = Some b -> nth_error (b_insts b) kk = Some i -> k = Z.of_nat kk ->
   In n1 (inst_uses i) -> (forall y, p = Tmp y -> In y (inst_uses i)) ->
   lookup n1 (s_renews (fn_src md (fr_fn fr))) = Some (p1, lo1, hi1, al1) ->
-  pointer_distance (single_definitions (fr_fn fr)) p (Tmp p1) = Some d ->
+  pointer_distance (s_once (fn_src md (fr_fn fr))) p (Tmp p1) = Some d ->
   exists pp1 pp, lookup n1 (fr_env fr) = Some (WPtr pp1) /\ value_x ge (fr_env fr) P p = Some (WPtr pp) /\
     ptr_cap pp = ptr_cap pp1.
 Proof.
   intros b kk i n1 p p1 lo1 hi1 al1 d Hb Hk Hkk Hu1 Hu Esrc Ed.
+  (* A function with a setjmp has no renew sources. *)
+  destruct (fn_src_cases md (fr_fn fr)) as [[_ Esj] | [_ Esj]].
+  { rewrite Esj in Esrc. discriminate Esrc. }
+  rewrite Esj in Ed. cbn [s_once] in Ed.
   destruct (renew_source_def _ _ _ _ _ _ _ Esrc) as (i1 & r1 & En1 & Hcf & Hop1).
   assert (Hdn1 : dominating (fr_fn fr) l k n1)
     by (apply (operand_at md fr l k Hmd Hin Hr Hpt b kk i n1 Hb Hk Hkk Hu1); unfold once_has; rewrite En1; reflexivity).
@@ -1403,7 +1407,8 @@ Proof.
   injection Hc as <- _. apply andb_true_iff in Eu as [Hpu Hta].
   destruct (skipn_cons _ _ _ _ _ Hrest) as (Hka & Hrest2 & _).
   (* The validator accepted it here. *)
-  apply mem_in in Em. unfold fn_src, stage_sources in Em. simpl in Em.
+  apply mem_in in Em.
+  destruct (fn_src_cases md f) as [[_ Esj] | [_ Esj]]; rewrite Esj in Em; cbn [s_ahead] in Em; [destruct Em|].
   destruct (ahead_accepted _ _ Hnd Em) as (b2 & k2 & i2 & Hb2 & Hk2 & _ & Hacc).
   change (fr_fn (c_frame c)) with f in Hb2, Hk2, Hacc. change (single_definitions f) with once in Hacc.
   unfold ahead_accepts in Hacc.

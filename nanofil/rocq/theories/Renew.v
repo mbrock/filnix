@@ -56,7 +56,8 @@ Lemma renew_source_def : forall md f n1 p1 lo1 hi1 al1,
     check_fact i = Some (mkFact n1 (Tmp p1) lo1 hi1 r1 al1) /\
     once_has (single_definitions f) p1 = true.
 Proof.
-  intros md f n1 p1 lo1 hi1 al1 H. unfold fn_src, stage_sources in H. simpl in H.
+  intros md f n1 p1 lo1 hi1 al1 H.
+  destruct (fn_src_cases md f) as [[_ Esj] | [_ Esj]]; rewrite Esj in H; cbn [s_renews] in H; [discriminate H|].
   destruct (lookup_some_in _ _ _ _ H) as (n1' & En & Hin). apply name_eqb_true in En. subst n1'.
   apply in_flat_map in Hin as (b & Hb & Hin). apply in_flat_map in Hin as (i & Hi & Hin).
   destruct (renew_source (single_definitions f) i) as [[q1 v]|] eqn:Er; [|destruct Hin].
@@ -581,13 +582,17 @@ Lemma reuse_operands : forall b kk i n1 p p1 lo1 hi1 al1 d,
   find_block l (fn_blocks (fr_fn fr)) = Some b -> nth_error (b_insts b) kk = Some i -> k = Z.of_nat kk ->
   In n1 (inst_uses i) -> (forall y, p = Tmp y -> In y (inst_uses i)) ->
   lookup n1 (s_renews (fn_src md (fr_fn fr))) = Some (p1, lo1, hi1, al1) ->
-  pointer_distance (single_definitions (fr_fn fr)) p (Tmp p1) = Some d ->
+  pointer_distance (s_once (fn_src md (fr_fn fr))) p (Tmp p1) = Some d ->
   exists pp1 pp m1 r1,
     lookup n1 (fr_env fr) = Some (WPtr pp1) /\ value_x ge (fr_env fr) P p = Some (WPtr pp) /\
     check_passes m1 pp1 lo1 hi1 r1 al1 /\ persists m1 m /\ objects_fit (m_regions m1) /\ lo1 < hi1 /\
     ptr_cap pp = ptr_cap pp1 /\ ptr_addr pp mod 2 ^ 64 = (ptr_addr pp1 + d) mod 2 ^ 64.
 Proof.
   intros b kk i n1 p p1 lo1 hi1 al1 d Hb Hk Hkk Hu1 Hu Esrc Ed.
+  (* A function with a setjmp has no renew sources. *)
+  destruct (fn_src_cases md (fr_fn fr)) as [[_ Esj] | [_ Esj]].
+  { rewrite Esj in Esrc. discriminate Esrc. }
+  rewrite Esj in Ed. cbn [s_once] in Ed.
   destruct (renew_source_def _ _ _ _ _ _ _ Esrc) as (i1 & _ & En1 & _).
   assert (Hdn1 : dominating (fr_fn fr) l k n1)
     by (apply (operand_at b kk i n1 Hb Hk Hkk Hu1); unfold once_has; rewrite En1; reflexivity).

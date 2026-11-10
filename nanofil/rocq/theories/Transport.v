@@ -12,7 +12,7 @@
     it behave as the interpreter's do, but running it is stuck. *)
 
 From Stdlib Require Import String ZArith List Bool Ascii.
-From Nanofil Require Import Term Syntax Values Memory Ops Semantics Runtime Run Validate.
+From Nanofil Require Import Term Syntax Values Memory Ops Semantics Runtime Run Validate ValidFast.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -192,6 +192,13 @@ Definition dop (t : term) : option op :=
       else if f == "span_test" then
         match xs with [lo; hi] => let* lo' := dz lo in let* hi' := dz hi in
                                   Some (SpanTest lo' hi') | _ => None end
+      else if f == "setjmp" then
+        match xs with
+        | [TAtom "setjmp"] => Some (Setjmp SjSetjmp)
+        | [TAtom "_setjmp"] => Some (Setjmp SjUnderscore)
+        | [TAtom "sigsetjmp"] => Some (Setjmp SjSig)
+        | _ => None
+        end
       else if f == "limit" then
         match xs with [n] => let* n' := dz n in Some (Limit n') | _ => None end
       else if f == "check_local" then
@@ -587,7 +594,8 @@ Definition unjudged_users (md : module) (olds news : list item) : bool :=
     mutant is outside when it is outside the core subset, when it
     changes a function's signature and a function outside the subset
     refers to it, or when it changes data or an alias that a function
-    outside the subset refers to by name. *)
+    outside the subset refers to by name. It runs [valid_items_fast],
+    which is [valid_items] by [valid_items_fast_eq]. *)
 Definition judge_valid (md : module) (line : term) : term :=
   match line with
   | TApp "verdict" [nm; TInt at_; id; change; expected] =>
@@ -612,7 +620,7 @@ Definition judge_valid (md : module) (line : term) : term :=
                | _, _ => unjudged_users md removed added
                end in
           if outside then TApp "outside" [nm; id] else
-          let got := everdict (valid_items (splice_at i xs md)) in
+          let got := everdict (valid_items_fast (splice_at i xs md)) in
           if term_eqb got expected then TApp "agree" [nm; id; got]
           else TApp "disagree" [nm; id; got; expected]
       end

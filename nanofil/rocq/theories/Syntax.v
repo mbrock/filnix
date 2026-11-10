@@ -10,10 +10,11 @@
     named locals, `touch` (a vector access's check, whose proof it uses
     without accessing anything); and, for the Lua suite, the float
     classes with their conversions (Ieee.v) and variadic functions
-    (`va_args`, `va_arg`).
-    Vectors, [[cas]] and atomics, `setjmp`, [[asm_fixed]] and plain
-    mode are deferred: a function that uses them is [IOutside], which
-    has an address but no body (Transport.v decides).
+    (`va_args`, `va_arg`); and `setjmp`, whose syntax and validation
+    are ir.pl's while its step is stuck, as the interpreter refuses it.
+    Vectors, [[cas]] and atomics, [[asm_fixed]] and plain mode are
+    deferred: a function that uses them is [IOutside], which has an
+    address but no body (Transport.v decides).
 
     ## Items, blocks and instructions
 
@@ -207,12 +208,16 @@ Definition load_effects : list effect := [AuxRead; LowerResolve; AddressRead].
     atomic box, so there is no lower to resolve. *)
 Definition local_load_effects : list effect := [AuxRead; AddressRead].
 
+(** Which of the three returns-twice calls a `setjmp(Kind)` is:
+    `setjmp`, `'_setjmp'` or `sigsetjmp` (`op_kind/2`). *)
+Inductive setjmp_kind : Type := SjSetjmp | SjUnderscore | SjSig.
+
 (** An operation, the Op of a `let` (ir.pl's Ops table): one
     constructor per functor in the core subset, with the functor's
     parameters as its arguments. The arithmetic and conversions come
     first, then the [[alloc]], the checks of the checked stage and
-    their [[reuse]] forms, the [[raw-access|raw loads]] and the
-    variadic ops. What each reads is [op_arg_classes]. *)
+    their [[reuse]] forms, the [[raw-access|raw loads]], the
+    variadic ops and `setjmp`. What each reads is [op_arg_classes]. *)
 Inductive op : Type :=
 | Add | Sub | Mul | Div | Udiv | Rem | Urem | And | Or | Xor
 | Sar | Shr | Shl | Neg | Copy | Ptoi | Itop
@@ -244,7 +249,11 @@ Inductive op : Type :=
 (* `va_args` takes a variadic function's entry argument snapshot at a
    byte offset; `va_arg` loads the next argument through a va_list. *)
 | VaArgs
-| VaArg.
+| VaArg
+(* `setjmp(Kind)` saves its caller's context into the buffer it reads
+   and returns 0, and returns again, nonzero, when a `longjmp` restores
+   it (docs/setjmp.md). *)
+| Setjmp (kind : setjmp_kind).
 
 (** ## Values, instructions and jumps *)
 
@@ -441,6 +450,7 @@ Definition op_arg_classes (o : op) (k : class) : option (list class) :=
   | RawLoadPointer _ _ => Some [A]
   | VaArgs => Some [L]
   | VaArg => Some [P]
+  | Setjmp _ => match k with W => Some [P; W] | _ => None end (* kind_arg_classes(setjmp, _, w, filc, [p, w]) *)
   end.
 
 (** Whether the value v is a symbol's address, a [Global]. *)
@@ -484,6 +494,17 @@ Definition ahead_transparent (i : inst) : bool :=
   | Let _ _ (Div | Udiv | Rem | Urem) _ => false
   | _ => true
   end.
+
+(** As `setjmp_func/1`: the function f calls `setjmp` somewhere,
+    reachable or not. Its second return is a control edge the blocks do
+    not show (docs/setjmp.md), so the validator refuses what would need
+    it. *)
+Definition setjmp_func (f : func) : bool :=
+  existsb (fun b => existsb (fun i => match i with
+                                      | Let _ _ (Setjmp _) _ => true
+                                      | _ => false
+                                      end) (b_insts b))
+          (fn_blocks f).
 
 (** As `local_objects(Func, Objects)`: the named locals the function f
     declares, each with its size, in instruction order. *)

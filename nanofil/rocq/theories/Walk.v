@@ -386,6 +386,57 @@ Qed.
 Definition fn_src (md : module) (f : func) : src :=
   stage_sources md f (match block_intervals (fn_blocks f) with Some doms => doms | None => nm_empty end).
 
+(** The function f's dominator intervals, as [fn_src] reads them. *)
+Definition fn_doms (f : func) : nmap (Z * Z) :=
+  match block_intervals (fn_blocks f) with Some doms => doms | None => nm_empty end.
+
+(** [fn_src] by cases: empty in a function with a `setjmp`, else what
+    the single definitions give. The proofs of the reuse forms rewrite
+    by it, so a hypothesis about a source becomes one about
+    [single_definitions] or about an empty list. *)
+Lemma fn_src_cases : forall md f,
+  (setjmp_func f = true /\ fn_src md f = mkSrc [] [] [] []) \/
+  (setjmp_func f = false /\
+   fn_src md f =
+     mkSrc (flat_map (fun b => flat_map (fun i => match renew_source (single_definitions f) i with
+                                                  | Some r => [r]
+                                                  | None => []
+                                                  end) (b_insts b)) (fn_blocks f))
+           (single_definitions f) (ahead_justified f (single_definitions f))
+           (repeated_getters md f (fn_doms f) (single_definitions f))).
+Proof.
+  intros md f. unfold fn_src, fn_doms, stage_sources. destruct (setjmp_func f); auto.
+Qed.
+
+(** The first answer of a function that answers nothing is none. *)
+Lemma first_some_none : forall {X Y : Type} (g : X -> option Y) xs,
+  (forall x, g x = None) -> first_some g xs = None.
+Proof. intros X Y g xs H. induction xs as [|x xs IH]; [reflexivity|]. simpl. rewrite H. exact IH. Qed.
+
+(** With no single definitions there is no exact base, so no distance. *)
+Lemma pointer_distance_nil : forall p p1, pointer_distance [] p p1 = None.
+Proof.
+  intros p p1. unfold pointer_distance. apply first_some_none.
+  intros [[n| | ] [k k']]; try reflexivity. unfold exact_base, once_has. simpl.
+  rewrite andb_false_r. reflexivity.
+Qed.
+
+(** With no single definitions no hull covers an access. *)
+Lemma hull_covered_nil : forall i q p lo al live, hull_covered i q p lo al live [] = false.
+Proof.
+  intros i q p lo al live. unfold hull_covered.
+  destruct (raw_access i) as [[[[q' x] off] need]|]; [|reflexivity].
+  destruct (access_size_align x) as [size aa]. cbv zeta.
+  assert (E : forall (live : list fact),
+    flat_map (fun f => match pointer_distance [] (f_p f) p with
+                       | Some d => if near_offset d && near_offset (f_lo f + d) && near_offset (f_hi f + d)
+                                   then [(f_lo f + d, f_hi f + d, f_r f)] else []
+                       | None => []
+                       end) live = []).
+  { intros l. induction l as [|a rest IH]; [reflexivity|]. cbn [flat_map]. rewrite pointer_distance_nil. exact IH. }
+  rewrite E. cbn [existsb]. rewrite !andb_false_r. reflexivity.
+Qed.
+
 (** The label of the function f's entry block, its first, if it has blocks. *)
 Definition entry_label (f : func) : option name :=
   match fn_blocks f with b :: _ => Some (b_label b) | [] => None end.

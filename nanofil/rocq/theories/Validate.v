@@ -394,6 +394,7 @@ Definition op_result_ok (o : op) (k : class) : bool :=
   | RawLoadPointer _ _ => class_eqb k P
   | VaArgs => class_eqb k P
   | VaArg => any_class k
+  | Setjmp _ => class_eqb k W
   end.
 
 (** ## Signatures *)
@@ -524,7 +525,7 @@ Definition init_entry_named (md : module) (s : name) : bool :=
       destructor table entry.
     - Any other `let` has a valid op ([valid_op], [op_result_ok]) and
       operands at the classes the op reads; `va_args` takes a nonnegative
-      constant.
+      constant, and `setjmp` and `_setjmp` a zero SaveMask.
     - A raw store writes a value of its width's class through an access
       [[proof]] (`a`); a raw pointer store has one of the heap, local or
       atomic effect lists.
@@ -551,6 +552,10 @@ Definition valid_inst (md : module) (classes : list (name * class)) (i : inst) :
       match o, args with
       | VaArgs, [Const off] => 0 <=? off
       | VaArgs, _ => false
+      (* `setjmp and _setjmp need a zero SaveMask` *)
+      | Setjmp SjSig, _ => true
+      | Setjmp _, [_; Const Z0] => true
+      | Setjmp _, _ => false
       | _, _ => true
       end &&
       match op_arg_classes o k with
@@ -640,10 +645,12 @@ Fixpoint no_dups (ns : list name) : bool :=
 (** As `valid_locals/3`: each local object of the function f is declared
     once, by a `local_alloc` in the entry block; there each `check_local` of
     it comes after the declaration, and in another block it needs only the
-    declaration. *)
+    declaration. A function with a `setjmp` ([setjmp_func]) has no
+    locals: `local storage in a returns-twice function`. *)
 Definition valid_locals (f : func) : bool :=
   let objs := local_objects f in
   no_dups (map fst objs) &&
+  match objs with [] => true | _ :: _ => negb (setjmp_func f) end &&
   match fn_blocks f with
   | [] => false
   | entry :: _ =>
@@ -1492,8 +1499,11 @@ Record src : Type := mkSrc {
 }.
 
 (** As `stage_sources/4`: the [src] of the function f of the module md, with
-    doms its dominator intervals. *)
+    doms its dominator intervals. All four are empty in a function with a
+    `setjmp` ([setjmp_func]), whose second return the blocks do not show,
+    so no reuse form is accepted there. *)
 Definition stage_sources (md : module) (f : func) (doms : nmap (Z * Z)) : src :=
+  if setjmp_func f then mkSrc [] [] [] [] else
   let once := single_definitions f in
   mkSrc (flat_map (fun b => flat_map (fun i => match renew_source once i with
                                                | Some r => [r]

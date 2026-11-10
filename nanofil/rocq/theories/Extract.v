@@ -2,7 +2,10 @@
     ([decode_module]), the [[interpreter]]'s instance of the semantics,
     and [judge], which the driver (extraction/main.ml) applies to every
     line `nanofil outcomes` prints, and [judge_valid], which it applies
-    to rocq/mutants.pl's [[mutant]] verdicts (Transport.v). Integers
+    to rocq/mutants.pl's [[mutant]] verdicts (Transport.v), and the
+    validator itself: Validate.v's [valid_items] and [valid_func], and
+    ValidFast.v's [valid_items_fast], [valid_func_fast] and
+    [valid_fast], which answer as they and [valid] do. Integers
     become zarith's, strings OCaml's, and [nat] OCaml's `int`: the
     model's [nat]s count list elements and rounds, and a unary one as
     large as the [[fuel]] of a big function (before Cfg.v, the square
@@ -11,7 +14,7 @@
 
 From Stdlib Require Extraction ExtrOcamlBasic ExtrOcamlNativeString ExtrOcamlZBigInt
   ExtrOcamlNatInt.
-From Nanofil Require Import Term Maps Transport.
+From Nanofil Require Import Term Maps Validate ValidFast Transport.
 
 (** Maps.v's [string_hash] decides which bucket a name goes in, never
     an answer: a lookup compares the names in its bucket with
@@ -23,4 +26,5 @@ Extract Constant Maps.string_hash =>
      ((Hashtbl.hash s + 31 * Big_int_Z.int_of_big_int h) land 0xFFFFF))".
 
 Set Extraction Output Directory "extraction".
-Extraction "nanofil_model.ml" term_eqb decode_module judge judge_valid.
+Extraction "nanofil_model.ml" term_eqb decode_module judge judge_valid
+  valid_items valid_func valid_items_fast valid_func_fast valid_fast.

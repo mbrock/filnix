@@ -262,7 +262,10 @@ Proof.
   apply name_eqb_true in Egn'. subst gn'. rename lo0 into glo, hi0 into ghi.
   destruct (first_some _ (guard_chain _ p)) as [[olo ohi]|] eqn:Ef; [|discriminate Ech].
   apply andb_true_iff in Ech as [E1 E2]. apply Z.leb_le in E1, E2.
-  simpl in Egn.
+  (* A function with a setjmp has no single definitions. *)
+  destruct (fn_src_cases md (fr_fn fr)) as [[_ Es] | [_ Es]];
+    rewrite Es in Egn; cbn [s_once] in Egn; [discriminate Egn|].
+  try (rewrite Es in Ho; cbn [s_once] in Ho). try (rewrite Es in Ef; cbn [s_once] in Ef).
   (* The step, with the operands it reads. *)
   intros Hst. rewrite inst_step_let in Hst by reflexivity.
   cbn [op_arg_classes map2_option] in Hst.
@@ -341,7 +344,10 @@ Proof.
   destruct uargs as [| [n0 | | ] [|]]; try discriminate Eu.
   repeat rewrite andb_true_iff in Eu. destruct Eu as ((((Eun' & Elo) & Ehi) & Ho) & Hlc).
   apply name_eqb_true in Eun'. subst un'. apply Z.eqb_eq in Elo, Ehi. subst lo hi.
-  simpl in Eun.
+  (* A function with a setjmp has no single definitions. *)
+  destruct (fn_src_cases md (fr_fn fr)) as [[_ Es] | [_ Es]];
+    rewrite Es in Eun; cbn [s_once] in Eun; [discriminate Eun|].
+  try (rewrite Es in Ho; cbn [s_once] in Ho). try (rewrite Es in Hlc; cbn [s_once] in Hlc).
   (* The limit holds N0's capability and the size it read. *)
   assert (Hdu : dominating (fr_fn fr) l k un)
     by (apply (operand_at md fr l k Hmd Hin Hr Hpt b kk i un Hb Hk Hkk);
