@@ -1154,8 +1154,34 @@ that these calls keep optarg, optind and the parser's state.
 Getopt's sampled errno may change, and `getopt_current` does not
 constrain it.
 
-Next is the greeting at `iw_1.join`, then the operand errors at
-`iw_1.L79` and `iw_1.L113`.
+**The operand errors.** These two blocks are the operand check's
+other exits:
+- `main_hint`, at `iw_1.L113`: main prints to stderr that --help says
+  more, naming the program (`main_output_args`, now covering stderr's
+  line too), and exits with 1.
+- `main_extra`, at `iw_1.L79`: main loads argv[optind] again. Since
+  optind is below argc, that slot holds an argument (`slot_kinds`).
+  Main reports it with `error(0, 0, ...)` and goes on to the hint.
+  This `error` owns no errno piece, so its premise `Hdiag_post` keeps
+  the ghost heap unchanged and returns with nothing. HelloClose's
+  four-argument `error`, in contrast, hands back the errno block it
+  owns. A concrete `wi` discharges `Hdiag_post` with Campaign 4's
+  returning diagnostic frame, in its no-owned-errno form.
+
+`loop_exits` gathers the loop's exits other than the greeting.
+`main_to_join` composes them with `main_to_loop`. Main is then proved
+from its entry through every path except `iw_1.join`, which is entered
+with pr.2 clear and optind at argc, and is left to one continuation.
+The version and help paths use up the literals and the program's
+name cells. The greeting needs neither.
+
+Next is the greeting at `iw_1.join`: strlen of the greeting, xmalloc,
+`rpl_mbsrtowcs_spec`, then wprintf, free and exit(0), or
+`error(1, errno, ...)` if the conversion fails. xmalloc's failure
+path is `xalloc_die`, which reaches `abort` only if `exit_failure` is
+0. Showing that abort is unreachable therefore needs the
+`exit_failure` cell, which holds 1 in Hello's data and which no code
+writes, and `error` with a nonzero status never returning.
 
 ## Open questions for mbrock
 
