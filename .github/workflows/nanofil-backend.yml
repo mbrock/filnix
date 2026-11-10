@@ -1,6 +1,8 @@
 # The Gallina backend's check (nanofil/rocq/backend, docs/gallina-backend.md)
-# after each push that changes it or asm.pl, whose text its printer must
-# reproduce. It never blocks a push: a red run is fixed forward on main.
+# after each push that changes it or the Prolog files whose output it must
+# reproduce byte for byte: the reader, pizlonation, the Fil-C ABI and
+# emission, and asm.pl. Keep this list to those. It never blocks a push:
+# a red run is fixed forward on main.
 # workflow_dispatch with full takes the whole corpus, with and without -O,
 # and the translation units of zlib, GNU hello and Lua; it is about an
 # hour of one core's work.
@@ -13,6 +15,10 @@ on:
       - "nanofil/rocq/backend/**"
       - nanofil/nix/backend.nix
       - nanofil/src/asm.pl
+      - nanofil/src/filc_abi.pl
+      - nanofil/src/filc_amd64.pl
+      - nanofil/src/ir_text.pl
+      - nanofil/src/pizlonate.pl
       - .github/workflows/nanofil-backend.yml
   workflow_dispatch:
     inputs:

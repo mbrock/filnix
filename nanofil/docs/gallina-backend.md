@@ -781,7 +781,9 @@ names, and a function outside the subset kept as a term.
 
 The full check (`nanofil-backend-full`, about an hour) runs only
 when asked, by `workflow_dispatch`; the quick one runs on pushes
-that touch the backend's paths and on no others.
+that touch the backend's paths or the five Prolog files it must
+match (`ir_text.pl`, `pizlonate.pl`, `filc_abi.pl`, `filc_amd64.pl`
+and `asm.pl`), and on no others.
 
 **M5. Speed, and pcre2 through `rxc`.** Profile, fix data
 structures, record the numbers in perf.md's style. `rxc` gets a
