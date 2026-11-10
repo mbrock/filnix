@@ -329,6 +329,25 @@ Proof.
   destruct (Z.ltb_spec x 0); split; lia.
 Qed.
 
+(** A slot's bytes are a pointer cell's. *)
+Lemma slot_cell b o x : byte_ps b o (slot_bytes x) = cell b o x.
+Proof.
+  unfold byte_ps, slot_bytes, cell, seqZ. simpl. rewrite !(Z.add_comm _ o) Z.add_0_r. reflexivity.
+Qed.
+
+(** Slot k of argv holding a permitted order ps: an argument, before
+    the sentinel, or the sentinel itself, null. *)
+Lemma slot_kinds sargs ps k q :
+  getopt_order (map arg_ptr sargs) ps -> (ps ++ [null]) !! k = Some q ->
+  (k = length ps /\ q = null) \/ ((k < length ps)%nat /\ exists s, In s sargs /\ q = arg_ptr s).
+Proof.
+  intros Ho Hq. apply lookup_app_Some in Hq as [Hq | [Hle Hq]].
+  - right. split; [exact (lookup_lt_Some _ _ _ Hq)|].
+    apply (order_in sargs ps q Ho). apply list_elem_of_In. exact (list_elem_of_lookup_2 _ _ _ Hq).
+  - left. revert Hq. destruct (k - length ps)%nat as [|j] eqn:E; intros Hq; [|destruct j; discriminate Hq].
+    cbn in Hq. assert (q = null) as -> by congruence. split; [lia | reflexivity].
+Qed.
+
 (** Main's proof over one Logic instance shared by every layer. *)
 Module HelloMain (R : Runtime).
 Module LG0 := Logic R.
@@ -1257,6 +1276,216 @@ Proof.
   - rewrite /loop_res. iFrame.
   - iApply ("HK" $! e b4 b6 i k q new c' with "[%] Hlit Hcells Hlent Hcod Hs80 Hy4 Hc4 Hl6 Hy6 Hy6' Hc6 Hc6'").
     auto 10.
+Qed.
+
+(** ## The operand check
+
+    After the options, main checks that no operand is left: unless pr.2
+    is set, it compares optind with argc (iw_1.L59), and if an operand
+    remains or pr.2 is set, it loads argv[optind] (iw_1.L55). A nonnull
+    one is an extra operand (iw_1.L79); a null one, with pr.2 set,
+    leads to the hint to try --help (iw_1.L113). Otherwise main goes on
+    to greet (iw_1.join). optind is the token's, at most argc, so the
+    load is of one of argv's argc + 1 slots. *)
+
+(** libc's optind cell is the global optind. *)
+Context (Hoptind_g : lookup (TAtom "optind") (ge_globals ge) = Some optind_cell).
+
+(** A pointer cell is its bytes and its first aux slot. *)
+Lemma pcell_split b o q : pcell b o q ⊣⊢ bytes b o (slot_bytes (ptr_addr q)) ∗ auxes b o [ptr_cap q].
+Proof.
+  rewrite /pcell /bytes /auxes slot_cell.
+  change ((PAux b o, VAux (ptr_cap q)) :: cell b o (ptr_addr q)) with
+    ([(PAux b o, VAux (ptr_cap q))] ++ cell b o (ptr_addr q)).
+  rewrite pts_app. change (aux_ps b o [ptr_cap q]) with [(PAux b o, VAux (ptr_cap q))].
+  iSplit; iIntros "[A B]"; iFrame.
+Qed.
+
+(** argv's block holding ps: its life, the slots before slot k, slot
+    k's pointer cell, and the slots after it. *)
+Lemma argv_block_slot b reg ps cs k q :
+  argv_caps cs ps -> (ps ++ [null]) !! k = Some q ->
+  pts (block_ps b reg 0 (argv_bytes ps) cs) ⊣⊢
+  live b reg ∗ bytes b 0 (slots_bytes (take k (ps ++ [null]))) ∗ auxes b 0 (take (8 * k) cs) ∗
+  pcell b (8 * Z.of_nat k) q ∗
+  bytes b (8 * Z.of_nat k + 8) (slots_bytes (drop (S k) (ps ++ [null]))) ∗
+  auxes b (8 * Z.of_nat k + 1) (drop (S (8 * k)) cs).
+Proof.
+  intros [Lc Hc] Hq. pose proof (lookup_lt_Some _ _ _ Hq) as Hk. pose proof (Hc k q Hq) as Hcq.
+  assert (Ex : argv_bytes ps = slots_bytes (take k (ps ++ [null])) ++ slot_bytes (ptr_addr q) ++
+                               slots_bytes (drop (S k) (ps ++ [null]))).
+  { unfold argv_bytes. transitivity (slots_bytes (take k (ps ++ [null]) ++ q :: drop (S k) (ps ++ [null]))).
+    - rewrite (take_drop_middle _ _ _ Hq). reflexivity.
+    - unfold slots_bytes. rewrite flat_map_app. reflexivity. }
+  assert (Ec : take (8 * k) cs ++ ptr_cap q :: drop (S (8 * k)) cs = cs) by exact (take_drop_middle _ _ _ Hcq).
+  assert (Lt : length (slots_bytes (take k (ps ++ [null]))) = (8 * k)%nat).
+  { rewrite length_slots_bytes length_take. lia. }
+  assert (Lt' : length (take (8 * k) cs) = (8 * k)%nat).
+  { rewrite length_take Lc. lia. }
+  assert (A : auxes b 0 cs ⊣⊢ auxes b 0 (take (8 * k) cs) ∗ auxes b (8 * Z.of_nat k) [ptr_cap q] ∗
+                              auxes b (8 * Z.of_nat k + 1) (drop (S (8 * k)) cs)).
+  { transitivity (auxes b 0 (take (8 * k) cs ++ ptr_cap q :: drop (S (8 * k)) cs)); [rewrite Ec; reflexivity|].
+    rewrite auxes_app Lt'.
+    change (ptr_cap q :: drop (S (8 * k)) cs) with ([ptr_cap q] ++ drop (S (8 * k)) cs).
+    rewrite auxes_app. cbn [length]. replace (0 + Z.of_nat (8 * k)) with (8 * Z.of_nat k) by lia.
+    change (Z.of_nat 1) with 1. reflexivity. }
+  rewrite block_pts Ex !bytes_app Lt. change (length (slot_bytes (ptr_addr q))) with 8%nat.
+  replace (0 + Z.of_nat (8 * k)) with (8 * Z.of_nat k) by lia. change (Z.of_nat 8) with 8.
+  rewrite A pcell_split.
+  iSplit; [iIntros "(Hl & (Hy0 & Hy1 & Hy2) & (Hx0 & Hx1 & Hx2))" |
+           iIntros "(Hl & Hy0 & Hx0 & (Hy1 & Hx1) & Hy2 & Hx2)"]; iFrame.
+Qed.
+
+(** An exit of the operand check: entering the block lab from the
+    block from, with the loop's facts and pieces and pr.2 bound to
+    lose, where P lose i holds of pr.2 and optind. *)
+Definition operand_exit (b4 b6 : Z) (lab from : String.string) (P : Z -> Z -> Prop)
+    (Φ : language.val (nanofil_lang registry ge) → iProp Σ) : iProp Σ :=
+  ∀ e ps cs a i g lose,
+    ⌜loop_facts e b4 b6 ps cs i g /\ lookup (TAtom "iw_1.pr.2") e = Some (WInt lose) /\ P lose i⌝ -∗
+    loop_res b4 ps cs a i g -∗
+    WP (ERun (mkFrame main_fn e [] None (Enter (TAtom lab) (Some (TAtom from)))) : mexpr) {{ Φ }}.
+
+(** iw_1.L55: argv[optind], at most argc, is loaded; a nonnull one
+    goes to iw_1.L79 with optind below argc, a null one to iw_1.L113,
+    which only pr.2 set reaches, as without it optind is below argc. *)
+Lemma operand_L55 b4 b6 e ps cs a i g lose Φ :
+  ⌜loop_facts e b4 b6 ps cs i g /\ lookup (TAtom "iw_1.pr.2") e = Some (WInt lose) /\
+   (lose = 0 \/ lose = 1) /\ (lose = 0 -> i < Z.of_nat (length sargs))⌝ -∗
+  loop_res b4 ps cs a i g -∗
+  (operand_exit b4 b6 "iw_1.L79"%string "iw_1.L55"%string (fun _ i => i < Z.of_nat (length sargs)) Φ ∧
+   operand_exit b4 b6 "iw_1.L113"%string "iw_1.L55"%string
+     (fun lose i => lose = 1 /\ i = Z.of_nat (length sargs)) Φ) -∗
+  WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L55") (Some (TAtom "iw_1.L60")))) : mexpr) {{ Φ }}.
+Proof.
+  unfold loop_res, operand_exit. iIntros ((Hf & Hpr & Hlose & Hlt)) "(Hb & Hs & Ht & Hl4 & Hp4) HK".
+  pose proof Hf as ((H0 & H2 & H4 & H6 & H11) & Hc1 & Hfr & Ho & Hc & Hi & Hg).
+  pose proof Hav as (Hav0 & Hav8 & Haend & Har48). pose proof Hargc as Hargc'.
+  pose proof (order_length ps Ho) as Lp.
+  destruct (lookup_lt_is_Some_2 (ps ++ [null]) (Z.to_nat i)) as [q Hq].
+  { rewrite length_app Lp. cbn [length]. lia. }
+  pose proof (slot_kinds sargs ps (Z.to_nat i) q Ho Hq) as Hkind.
+  assert (Hqf : 0 <= ptr_addr q < 2 ^ 64 /\ (forall xb, ptr_cap q = Obj xb \/ ptr_cap q = Ro xb ->
+                  exists xr, (PLive xb, VLive xr) ∈ flat_map arg_ps sargs)).
+  { destruct Hkind as [[_ ->] | [_ (s & Hs & ->)]].
+    - split; [cbn; lia|]. intros xb [E|E]; discriminate E.
+    - pose proof (proj1 (List.Forall_forall _ _) Hargs s Hs) as (Hcap & Hb0 & Hbp & Hend & H48 & _).
+      split; [lia|]. intros xb Hxb. exists (arg_region s).
+      assert (xb = arg_base s) as ->.
+      { destruct Hcap as [E1|E1]; rewrite E1 in Hxb; destruct Hxb as [E2|E2]; congruence. }
+      apply list_elem_of_In, in_flat_map. exists s. split; [exact Hs|]. unfold arg_ps, string_ps. left. reflexivity. }
+  destruct Hqf as [Hqr Hlife].
+  mn_enter "iw_1.L55".
+  (* optind, sign-extended, times 8, past argv. *)
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite Hoptind_g; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply (GL.wp_optind_check registry wi ge libc_getopt_view optarg_cell optind_cell Hcells Hgetopt_wi);
+    [reflexivity | word_premise |].
+  iNext. gen_env.
+  iApply (GL.wp_optind_load registry wi ge libc_getopt_view optarg_cell optind_cell Hcells Hgetopt_wi
+            with "Ht"); [reflexivity | word_premise |].
+  iNext. iIntros "Ht". gen_env.
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  iApply wp_flight; [word_premise | word_premise | word_premise |]. iNext. gen_env.
+  (* argv[optind]. *)
+  iEval (rewrite (argv_block_slot av ar ps cs (Z.to_nat i) q Hc Hq)) in "Hb".
+  iDestruct "Hb" as "(Hal & Hy0 & Hx0 & Hq & Hy1 & Hx1)".
+  iApply (wp_check_read with "Hal");
+    [reflexivity | word_premise | left; reflexivity | addr_premise | addr_premise | addr_premise |].
+  iNext. iIntros "Hal". gen_env.
+  iApply (wp_raw_load_pointer_in with "Hal Hq Hs");
+    [reflexivity | word_premise | left; reflexivity | addr_premise | addr_premise | exact Hqr | exact Hlife |].
+  iNext. iIntros "Hal Hq Hs". gen_env.
+  iAssert (pts (block_ps av ar 0 (argv_bytes ps) cs)) with "[Hal Hy0 Hx0 Hq Hy1 Hx1]" as "Hb".
+  { rewrite (argv_block_slot av ar ps cs (Z.to_nat i) q Hc Hq). iFrame. }
+  destruct Hkind as [[Ek ->] | [Ek (s & Hs & ->)]].
+  - (* Null: optind is argc, which only pr.2 set lets through. *)
+    assert (Ei : i = Z.of_nat (length sargs)) by lia.
+    assert (Hl1 : lose = 1).
+    { destruct Hlose as [El | El]; [|exact El]. specialize (Hlt El). lia. }
+    iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+    iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+    iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+    iDestruct "HK" as "[_ HK]".
+    iApply ("HK" $! _ ps cs a i g lose with "[%] [$Hb $Hs $Ht $Hl4 $Hp4]").
+    split; [|split; [assumption | split; [exact Hl1 | exact Ei]]].
+    split; [repeat split; assumption|]. split; [assumption|]. split; [exact Hfr|]. auto.
+  - (* An argument: an extra operand. *)
+    pose proof (proj1 (List.Forall_forall _ _) Hargs s Hs) as (_ & Hb0 & Hbp & _).
+    assert (Ei : i < Z.of_nat (length sargs)) by lia.
+    iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+    iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+    iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+    iDestruct "HK" as "[HK _]".
+    iApply ("HK" $! _ ps cs a i g lose with "[%] [$Hb $Hs $Ht $Hl4 $Hp4]").
+    split; [|split; [assumption | exact Ei]].
+    split; [repeat split; assumption|]. split; [assumption|]. split; [exact Hfr|]. auto.
+Qed.
+
+(** The operand check, from iw_1.L10, entered at the end of options,
+    to its three exits. *)
+Lemma main_operands b4 b6 e ps cs a i g lose Φ :
+  ⌜loop_facts e b4 b6 ps cs i g /\ lookup (TAtom "iw_1.pr.2") e = Some (WInt lose) /\ (lose = 0 \/ lose = 1)⌝ -∗
+  loop_res b4 ps cs a i g -∗
+  (operand_exit b4 b6 "iw_1.L79"%string "iw_1.L55"%string (fun _ i => i < Z.of_nat (length sargs)) Φ ∧
+   operand_exit b4 b6 "iw_1.L113"%string "iw_1.L55"%string
+     (fun lose i => lose = 1 /\ i = Z.of_nat (length sargs)) Φ ∧
+   operand_exit b4 b6 "iw_1.join"%string "iw_1.L60"%string
+     (fun lose i => lose = 0 /\ i = Z.of_nat (length sargs)) Φ) -∗
+  WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L10") (Some (TAtom "iw_1.L8")))) : mexpr) {{ Φ }}.
+Proof.
+  iIntros ((Hf & Hpr & Hlose)) "Hr HK".
+  pose proof Hf as ((H0 & H2 & H4 & H6 & H11) & Hc1 & Hfr & Ho & Hc & Hi & Hg).
+  pose proof Hargc as Hargc'.
+  mn_enter "iw_1.L10".
+  iApply (wp_branch _ _ _ _ _ _ _ _ _ _ lose); [word_premise|]. iNext.
+  destruct Hlose as [El | El]; subst lose; cbn [Z.eqb edge_label].
+  - (* pr.2 clear: is optind below argc? *)
+    mn_enter "iw_1.L59". unfold loop_res. iDestruct "Hr" as "(Hb & Hs & Ht & Hl4 & Hp4)".
+    iApply wp_let; [reflexivity | reflexivity | cbn; rewrite Hoptind_g; reflexivity | intros ?m; word_premise |].
+    iNext. gen_env.
+    iApply (GL.wp_optind_check registry wi ge libc_getopt_view optarg_cell optind_cell Hcells Hgetopt_wi);
+      [reflexivity | word_premise |].
+    iNext. gen_env.
+    iApply (GL.wp_optind_load registry wi ge libc_getopt_view optarg_cell optind_cell Hcells Hgetopt_wi
+              with "Ht"); [reflexivity | word_premise |].
+    iNext. iIntros "Ht". gen_env.
+    destruct (Z.lt_ge_cases i (Z.of_nat (length sargs))) as [Hlt | Hge].
+    + iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+      iApply wp_goto. iNext. cbn [edge_label]. mn_enter "iw_1.L60". gen_env.
+      iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+      iApply (operand_L55 b4 b6 _ ps cs a i g 0 with "[%] [$Hb $Hs $Ht $Hl4 $Hp4] [HK]").
+      * split; [|split; [assumption | split; [left; reflexivity | intros _; exact Hlt]]].
+        split; [repeat split; assumption|]. split; [assumption|]. split; [exact Hfr|]. auto.
+      * iSplit; [iDestruct "HK" as "[H _]" | iDestruct "HK" as "[_ [H _]]"]; iExact "H".
+    + iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+      iApply wp_goto. iNext. cbn [edge_label]. mn_enter "iw_1.L60". gen_env.
+      iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+      iDestruct "HK" as "[_ [_ HK]]".
+      iApply ("HK" $! _ ps cs a i g 0 with "[%] [$Hb $Hs $Ht $Hl4 $Hp4]").
+      split; [|split; [assumption | split; [reflexivity | lia]]].
+      split; [repeat split; assumption|]. split; [assumption|]. split; [exact Hfr|]. auto.
+  - (* pr.2 set: straight to argv[optind]. *)
+    mn_enter "iw_1.L60". gen_env.
+    iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+    iApply (operand_L55 b4 b6 _ ps cs a i g 1 with "[%] Hr [HK]").
+    + split; [|split; [assumption | split; [right; reflexivity | intros E; discriminate E]]].
+      split; [repeat split; assumption|]. split; [assumption|]. split; [exact Hfr|]. auto.
+    + iSplit; [iDestruct "HK" as "[H _]" | iDestruct "HK" as "[_ [H _]]"]; iExact "H".
+Qed.
+
+(** The operand check is the loop's end-of-options exit. *)
+Lemma operands_exit b4 b6 Φ :
+  (operand_exit b4 b6 "iw_1.L79"%string "iw_1.L55"%string (fun _ i => i < Z.of_nat (length sargs)) Φ ∧
+   operand_exit b4 b6 "iw_1.L113"%string "iw_1.L55"%string
+     (fun lose i => lose = 1 /\ i = Z.of_nat (length sargs)) Φ ∧
+   operand_exit b4 b6 "iw_1.join"%string "iw_1.L60"%string
+     (fun lose i => lose = 0 /\ i = Z.of_nat (length sargs)) Φ) -∗
+  loop_exit b4 b6 "iw_1.L10"%string "iw_1.L8"%string Φ.
+Proof.
+  iIntros "HK". rewrite /loop_exit. iIntros (e ps cs a i g lose Hf) "Hr".
+  iApply (main_operands with "[%] Hr HK"). exact Hf.
 Qed.
 
 End main.

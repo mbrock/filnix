@@ -1095,8 +1095,22 @@ first slot to `main_start`) and the token at any optind in range. It
 needs the launcher to give the arguments' strings objects of their
 own, which Startup.v's `copy_slots` does, one allocation per string.
 
-Next is the end of options (`iw_1.L10`: the operand check on optind),
-then the version and help paths over HelloVersionOn and HelloStdioOn.
+**The operand check.** `main_operands` goes from `iw_1.L10` to three
+exits (`operand_exit`), each with a fact about pr.2 and optind:
+- `iw_1.L79`, an extra operand: optind < argc.
+- `iw_1.L113`, the hint to try --help: pr.2 set and optind = argc.
+- `iw_1.join`, on to greet: pr.2 clear and optind = argc.
+
+With pr.2 clear, main compares the token's optind with argc. If an
+operand remains, or pr.2 is set, main loads `argv[optind]`. The token
+keeps optind at most argc, so the load is of one of argv's argc + 1
+slots. `argv_block_slot` lends that slot's pointer cell out of argv's
+block for `wp_raw_load_pointer_in`, and its capability is an
+argument's, whose life main owns, or the sentinel's, which is null.
+`operands_exit` makes the operand check the loop's end-of-options exit.
+
+Next are the version and help paths over HelloVersionOn and
+HelloStdioOn, then the greeting at `iw_1.join`.
 
 ## Open questions for mbrock
 
