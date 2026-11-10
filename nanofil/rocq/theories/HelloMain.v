@@ -801,12 +801,14 @@ Context (Hgetopt_apart : forall m w h, wi m w h ->
       span_contains s a -> ~ owned_live h m a) /\
    ids_apart (getopt_owned (libc_getopt_view w)) h).
 
-(** A return of getopt_long keeps wi, with argv's block holding what
-    the memory then holds and the token naming the new optarg and
-    optind. *)
+(** A return of getopt_long from a memory that agrees with the ghost
+    heap, with its live objects apart and the runtime ready, keeps wi,
+    with argv's block holding what the memory then holds and the token
+    naming the new optarg and optind. *)
 Context (Kgetopt : forall r args xs s m w h trace values s' m' w' bs cs,
    M.E.invoke getopt_spec r args xs s m w trace (CallReturn values) s' m' w' ->
    (forall l v, (l, v) ∈ block_ps av ar 0 bs cs -> h !! l = Some v) -> wi m w h ->
+   agrees m h -> live_disjoint m -> R.ready s m ->
    wi m' w' (overwrite (block_ps av ar 0 (mem_bytes m' av argv_len) (mem_auxes m' av argv_len) ++
      getopt_ps (getopt_optarg (libc_getopt_view w')) (getopt_optind (libc_getopt_view w'))) h)).
 
@@ -1049,7 +1051,7 @@ Proof.
     rewrite EL in Eb, Ec.
     set (a' := getopt_optarg (libc_getopt_view w')). set (i' := getopt_optind (libc_getopt_view w')).
     destruct (getopt_frame_ok _ _ _ _ _ _ _ _ _ _ _ ps cs a' i' Hinv Hw Ha Hd Hr Lx Lc Kb) as (Ha' & Hd' & Hr').
-    pose proof (Kgetopt _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hinv Kb Hw) as Hw'.
+    pose proof (Kgetopt _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hinv Kb Hw Ha Hd Hr) as Hw'.
     rewrite Eb in Ha', Hw'.
     iMod (pts_update _ (block_ps av ar 0 (argv_bytes ps) cs ++ getopt_ps a i)
             (block_ps av ar 0 (argv_bytes ps') (mem_auxes m' av argv_len) ++ getopt_ps a' i')

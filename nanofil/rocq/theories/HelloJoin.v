@@ -189,13 +189,15 @@ Context (Hgetopt_apart : forall m w h, wi m w h ->
       span_contains s a -> ~ owned_live h m a) /\
    ids_apart (getopt_owned (libc_getopt_view w)) h).
 
-(** A return of getopt_long keeps wi, with argv's block holding what
-    the memory then holds and the token naming the new optarg and
-    optind. *)
+(** A return of getopt_long from a memory that agrees with the ghost
+    heap, with its live objects apart and the runtime ready, keeps wi,
+    with argv's block holding what the memory then holds and the token
+    naming the new optarg and optind. *)
 Context (Kgetopt : forall r args xs s m w h trace values s' m' w' bs cs,
    M.E.invoke (libc_getopt_refined_contract (hello_input av sargs) initialized running grequests transition)
      r args xs s m w trace (CallReturn values) s' m' w' ->
    (forall l v, (l, v) ∈ block_ps av ar 0 bs cs -> h !! l = Some v) -> wi m w h ->
+   agrees m h -> live_disjoint m -> R.ready s m ->
    wi m' w' (overwrite (block_ps av ar 0 (mem_bytes m' av (8 * (length sargs + 1))) (mem_auxes m' av (8 * (length sargs + 1))) ++
      getopt_ps (getopt_optarg (libc_getopt_view w')) (getopt_optind (libc_getopt_view w'))) h)).
 
