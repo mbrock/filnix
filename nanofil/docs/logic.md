@@ -1068,8 +1068,35 @@ The premises on wi are call-local:
 - `Hgetopt_apart`: roots, cells and releases apart from the program.
 - `Kgetopt`: wi survives with the block and the token rewritten.
 
-Next is the option loop, an `iLöb` at `iw_1.L8`, whose exits are the
-version, help and end-of-options blocks.
+**The option loop.** `main_loop` is a Löb induction at the entry of
+`iw_1.L8`. getopt promises no bound on how often it returns, so the
+loop may run forever, which `never_panics` allows. Each round enters a
+block, and that step guards the induction hypothesis. The code's
+32 bits are compared (`int32_eq`, `int32_end`), and the cases are:
+- `'g'`: optarg is loaded through the token (GetoptLogic's
+  `wp_optarg_check` and `wp_optarg_load`) and stored in the greeting's
+  cell b4, then back round.
+- `'t'`: the traditional greeting is stored, then back round.
+- Any other code but help and version: back round with pr.2, the
+  "lose" flag, set to 1.
+
+The exits are left to continuations (`loop_exit`): `iw_1.L21`
+(version), `iw_1.L39` (help) and `iw_1.L10` (end of options). Each
+gets the loop's pieces (`loop_res`): argv's block, the strings, the
+token, and b4 holding a `greeting_ok` pointer, which is the default,
+the traditional greeting, or a nonnull argument borrow. It also gets
+pr.2 at 0 or 1. Main owns everything else the start block left
+(b4's tail, b6, the lent names and the codec), and the continuations
+capture it.
+
+`main_to_loop` composes `main_start` with the loop. It takes argv as a
+block holding the arguments in order (`argv_block_split` lends its
+first slot to `main_start`) and the token at any optind in range. It
+needs the launcher to give the arguments' strings objects of their
+own, which Startup.v's `copy_slots` does, one allocation per string.
+
+Next is the end of options (`iw_1.L10`: the operand check on optind),
+then the version and help paths over HelloVersionOn and HelloStdioOn.
 
 ## Open questions for mbrock
 
