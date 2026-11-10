@@ -446,6 +446,38 @@ slots, roots, entry and exit actions, call layouts, signatures.
 Gate: the plan of every corpus function in the subset equals
 Prolog's, as terms.
 
+*Done.* The command is `nanofil abi-terms FILE`, which prints the
+checked module, the plan of each function and the plans of its weak
+thunks. `Plan.v` has the plan's types, whose instructions are
+`Syntax.v`'s. `Fuse.v` joins a check to its access, `Liveness.v`
+and `FrameSlots.v` give temporaries their slots, `Abi.v` builds the
+plan, and `Order.v` is Prolog's standard order of terms, which the
+plans are sorted by. `IrTerm.v` and `PlanTerm.v` write a plan as
+Prolog's term, and `rocq/backend/tests/abi.sh` is the gate. Only the
+reference path is compared, without `-O`.
+
+On the 280 modules of the corpus, the plans of 1089 functions and
+all 280 lists of thunks are the same terms. The backend refuses no
+function of the subset. The model keeps 576 functions outside it,
+and they are passed over: 535 for `touch`, 12 for `asm_fixed`, 11
+for `fence`, 9 for `setjmp` and 9 for `raw_cas`. On SQLite all 3106
+plans and the thunks are the same, with nothing outside. Found:
+
+- `filc_abi.pl`'s `adapter_return/2` zeroes too few aux words when a
+  tuple with a float comes back. Its test for a float leaves `K`
+  bound to the first float's class, and the list of zeros then keeps
+  only the cells of that class. For `tuple([l, s])` the adapter
+  zeroes `aux(1)` and leaves `aux(0)` as it was. `Abi.v` follows it,
+  to give the same plan, and says so; the fix belongs in Prolog
+  first.
+- `touch` is the pizlonated `access`, and it keeps a third of the
+  corpus's functions out of the gate. It is the first construct to
+  ask the model's owner for.
+- Building SQLite's plans takes 7.8 s in OCaml, more than the whole
+  M3 target of 2.7 s. It has no profile yet. Liveness visits the
+  blocks in rounds where `cfg.pl` keeps a worklist, and its sets are
+  sorted lists. M3 profiles this with the printer.
+
 **M3. Stack-homed emission.** `filc_amd64.pl`'s reference emission
 and `amd64.pl`'s scalar selection, in pieces: scalars, compares and
 jumps first; then checks, flights, raw accesses and polls; then

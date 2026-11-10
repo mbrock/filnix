@@ -3,4 +3,12 @@
 Text.v
 Asm.v
 AsmTerm.v
+IrTerm.v
+Order.v
+Plan.v
+Fuse.v
+Liveness.v
+FrameSlots.v
+Abi.v
+PlanTerm.v
 Extract.v

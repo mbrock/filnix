@@ -1,9 +1,12 @@
-(* The driver of the extracted backend. So far it is the printer's
-   gate: it reads the line terms `nanofil asm-terms FILE TEXT` prints
-   from stdin, decodes each (AsmTerm.v's dline) and writes their text
-   (Asm.v's rev_lines_parts) to stdout, which tests/asm.sh compares
-   with the text that command wrote. It exits 1 on a term that is not
-   a line.
+(* The driver of the extracted backend: the gates of its parts.
+
+   With no argument it is the printer's: it reads the line terms
+   `nanofil asm-terms FILE TEXT` prints from stdin, decodes each
+   (AsmTerm.v's dline) and writes their text (Asm.v's
+   rev_lines_parts) to stdout, which tests/asm.sh compares with the
+   text that command wrote. It exits 1 on a term that is not a line.
+
+   With `abi` it is the ABI plans' (see [abi] below).
 
    The terms are SWI-Prolog's write_canonical form (format's ~k):
    integers, atoms (bare or quoted), compounds f(A, ...) and proper
@@ -144,7 +147,7 @@ let timed total f =
    and 135 MB of text) is held but the input. *)
 let chunk = 4096
 
-let () =
+let asm () =
   let next = reader (In_channel.input_all stdin) in
   set_binary_mode_out stdout true;
   let count = ref 0 in
@@ -181,3 +184,110 @@ let () =
   if report then
     Printf.eprintf "nanofil-backend: %d lines parse %.3fs decode %.3fs print %.3fs\n"
       !count !parse_s !decode_s !print_s
+
+(* A term as Prolog writes it, quotes aside: for reporting. *)
+let rec show b = function
+  | TInt n -> Buffer.add_string b (Big_int_Z.string_of_big_int n)
+  | TAtom a -> Buffer.add_string b a
+  | TList ts -> Buffer.add_char b '['; show_args b ts; Buffer.add_char b ']'
+  | TApp (f, ts) ->
+      Buffer.add_string b f; Buffer.add_char b '('; show_args b ts; Buffer.add_char b ')'
+and show_args b = function
+  | [] -> ()
+  | [t] -> show b t
+  | t :: ts -> show b t; Buffer.add_char b ','; show_args b ts
+
+let shown t =
+  let b = Buffer.create 256 in
+  show b t;
+  if Buffer.length b > 600 then Buffer.sub b 0 600 ^ "..." else Buffer.contents b
+
+(* Where the terms [ours] and [theirs] first differ: the path of
+   argument and element numbers to the innermost pair of subterms
+   that differ in more than one argument, and that pair. *)
+let rec first_difference path ours theirs =
+  let here () = (List.rev path, ours, theirs) in
+  let inside xs ys =
+    if List.length xs <> List.length ys then here ()
+    else
+      match List.filter (fun (_, (x, y)) -> not (term_eqb x y))
+              (List.mapi (fun i p -> (i, p)) (List.combine xs ys)) with
+      | [(i, (x, y))] -> first_difference (string_of_int (i + 1) :: path) x y
+      | _ -> here ()
+  in
+  match ours, theirs with
+  | TApp (f, xs), TApp (g, ys) when f = g -> inside xs ys
+  | TList xs, TList ys -> inside xs ys
+  | _ -> here ()
+
+(* The gate of the ABI plans (tests/abi.sh). Stdin is what `nanofil
+   abi-terms FILE` prints: the checked module, then an
+   `abi_function(...)` for each function, then `thunks(...)`. Each
+   plan Abi.v builds for a function of the core subset must be the
+   term the Prolog compiler printed. A function the model keeps
+   outside the subset is counted and passed over; one of the subset
+   that the backend refuses is counted, named on stderr, and fails
+   the gate if NANOFIL_BACKEND_STRICT is set. Exits 1 on a plan that
+   differs. *)
+let abi () =
+  let next = reader (In_channel.input_all stdin) in
+  let fail fmt = Printf.ksprintf (fun m -> prerr_endline ("nanofil-backend: " ^ m); exit 1) fmt in
+  let lower_s = ref 0.0 and compare_s = ref 0.0 in
+  let next () = timed parse_s next in
+  let md =
+    match next () with
+    | Some t ->
+        (match timed decode_s (fun () -> decode_module t) with
+         | Some md -> md
+         | None -> fail "the first term is not a module")
+    | None -> fail "no module"
+  in
+  let sy = timed lower_s (fun () -> module_symbols md) in
+  let items = Hashtbl.create 64 in
+  List.iter (fun it ->
+      match it with
+      | IFunc f -> if not (Hashtbl.mem items f.fn_name) then Hashtbl.add items f.fn_name it
+      | IOutside (n, _) -> if not (Hashtbl.mem items n) then Hashtbl.add items n it
+      | _ -> ())
+    md;
+  let same = ref 0 and differ = ref 0 and refused = ref 0 and outside = ref 0 in
+  let compare what ours theirs =
+    if timed compare_s (fun () -> term_eqb ours theirs) then incr same
+    else begin
+      incr differ;
+      let path, a, b = first_difference [] ours theirs in
+      Printf.eprintf "DIFFER %s at %s\n  rocq:   %s\n  prolog: %s\n" what
+        (String.concat "." path) (shown a) (shown b)
+    end
+  in
+  let rec go () =
+    match next () with
+    | None -> ()
+    | Some (TApp ("abi_function", name :: _) as theirs) ->
+        (match Hashtbl.find_opt items name with
+         | Some (IFunc f) ->
+             (match timed lower_s (fun () -> Option.map plan_term (lower_function sy f)) with
+              | Some ours -> compare (shown name) ours theirs
+              | None -> incr refused; Printf.eprintf "refused %s\n" (shown name))
+         | Some _ -> incr outside
+         | None -> fail "the module has no function %s" (shown name));
+        go ()
+    | Some (TApp ("thunks", _) as theirs) ->
+        (match timed lower_s (fun () -> Option.map thunks_term (lower_thunks sy md)) with
+         | Some ours -> compare "thunks" ours theirs
+         | None -> incr refused; prerr_endline "refused thunks");
+        go ()
+    | Some t -> fail "not a plan: %s" (shown t)
+  in
+  go ();
+  Printf.printf "plans same %d differ %d refused %d outside %d\n" !same !differ !refused !outside;
+  if report then
+    Printf.eprintf "nanofil-backend: parse %.3fs decode %.3fs lower %.3fs compare %.3fs\n"
+      !parse_s !decode_s !lower_s !compare_s;
+  if !differ > 0 || (!refused > 0 && Sys.getenv_opt "NANOFIL_BACKEND_STRICT" <> None) then exit 1
+
+let () =
+  match Sys.argv with
+  | [| _ |] -> asm ()
+  | [| _; "abi" |] -> abi ()
+  | _ -> prerr_endline "usage: nanofil-backend [abi] <TERMS"; exit 2
