@@ -73,6 +73,9 @@ page about it is listed here.
 - [The IR and NFB: a guide](nfb-guide-wonder.md): the IR (modules,
   blocks, phis, classes, the unchecked and checked stages) and then
   NFB for a newcomer, with real encoded words from the corpus.
+- [The nanofil IR and NFB: a newcomer's guide](nfb-guide-wonderful.md):
+  the IR, its checked stage and NFB's words, written by Meta's Muse
+  Wonderful (muse-wonder-full-1.0).
 - [dterm](dterm.md): how these pages draw Prolog and Rocq, and
   documentation as a relation; its [workbench](../web/workbench/)
   sets the same terms side by side.
