@@ -2665,6 +2665,58 @@ registered callback selection and main-exit transport, native realization
 and full teardown remain open. No trusted contract, interpreter, runtime
 axiom, Machine theorem or Campaign 3-owned source changes.
 
+### Campaign 4 milestone 6t: returning diagnostic frame
+
+[LibcDiagnosticLogic.v](../rocq/theories/LibcDiagnosticLogic.v) binds the
+existing error formatter and status-zero error wrapper to the composite
+libc world and the consumer's supplied machine. Native diagnostic
+sources, writes, allocation requests and segment interpretation are
+unchanged parameters. The composite context additionally requires
+independent stream readiness at both endpoints and preserves the stable
+handles, locale, errno identity and shutdown callback inventory. It does
+not freeze stdout's protocol, either FILE inventory, native memory or
+the parser's sampled errno. Nonzero status remains inadmissible to this
+ordinary-return contract; its exit request belongs to Diagnostics.
+
+The derived error_frame handles an actual ordinary invocation. It frames
+the union of both FILE write inventories and diagnostic writes against
+the life-projected heap, hands out only the four owned scalar errno
+bytes, samples their actual endpoint values and restores both original
+handle regions. Each stream's delegation reconstructs its private frame.
+Future FILE release separation is checked against the full heap,
+including the erased lives, not inferred from projected born separation.
+errno_wi_endpoint now asks only for errno identity rather than the entire
+selected-stream frame; its proof and both existing callers justify that
+narrower premise without changing a trusted contract.
+
+Diagnostic-compatible stream names are absent, open-only or
+completed-closed. Exact open observations are explicitly excluded:
+stdout settlement and stderr acceptance can stale their pending/FIFO
+snapshots. The frame retains the compatible names unchanged, including
+already-closed stdout. It also derives separation of future diagnostic
+write roots from root delegation, persistence and born separation.
+
+The controls construct independently admitted status-zero calls with an
+authorized store changing errno from [0;0;0;0] to [4;3;2;1], stdout
+settlement and stderr acceptance of [67;10]. Applying the actual frame
+retains both handle/name resources and recovers the changed last errno
+byte. Both initially open and already-closed stdout are covered. Further
+controls reject exact open snapshots, demonstrate their staleness, reject
+hidden private byte/aux ownership, and reject nonzero ordinary admission.
+These are logical contract/effects witnesses with empty private native
+inventories, not native FILE, locking or diagnostic-pool executions.
+
+This is a conditional pure heap frame, not Iris ownership transfer or a
+completed HelloClose Herror_pre/Herror_post binding. Diagnostic admission
+still needs native readiness and actual formatter/string premises.
+Write-root delegation does not establish complete retained-source pool
+provenance, cross-pool release safety or future native readiness. Stronger
+consumer/parser compatibility must preserve parser continuation and cell
+identities while refreshing sampled errno from endpoint memory; full
+libc_getopt equality is not supplied. Registered callback selection,
+main-exit transport, native realization and full teardown remain open.
+No runtime axiom, interpreter transition or Machine theorem changes.
+
 ### Reached-call contract packages and remaining integration
 
 [Getopt.v](../rocq/theories/Getopt.v) supplies independently admitted

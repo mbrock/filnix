@@ -95,6 +95,7 @@ theories/HelloClose.v
 theories/LibcErrnoLogic.v
 theories/LibcStreamTokens.v
 theories/LibcStreamAdapter.v
+theories/LibcDiagnosticLogic.v
 theories/HelloStdio.v
 theories/HelloConv.v
 theories/GetoptLogic.v

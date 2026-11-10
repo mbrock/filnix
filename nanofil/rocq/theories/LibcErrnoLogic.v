@@ -92,15 +92,15 @@ Qed.
 
 Lemma errno_wi_endpoint : forall rep requests wide p b o m w born m' w' h h',
   libc_errno_wi rep p b o m w h -> agrees m h -> persists m m' -> live_disjoint m' ->
-  libc_stream_ready rep m' w' -> libc_stream_frame p w w' ->
+  libc_stream_ready rep m' w' -> libc_errno (fst w') = libc_errno (fst w) ->
   stream_delegates (libc_stream_model rep requests wide) w p born m' w' ->
   ids_apart born h -> memory_keys_from h' h -> libc_errno_wi rep p b o m' w' h'.
 Proof.
   intros rep requests wide p b o m w born m' w' h h'
-    (Hready & He & Hroots & Hrel & Hoff) Ha Hp Hd Hready' Hframe
+    (Hready & He & Hroots & Hrel & Hoff) Ha Hp Hd Hready' Herrno
     (Hdelegate & _ & Hrelease) Hb Hkeys.
   assert (He' : libc_errno (fst w') = mkPtr (b + o) (Obj b)).
-  { rewrite (proj1 (proj2 (proj2 (proj2 Hframe)))). exact He. }
+  { rewrite Herrno. exact He. }
   assert (Hown : forall a, owned_live h' m' a -> owned_live h m a /\ owned_live h m' a).
   { intros a (l & v & reg & Hl & Hmem & Hlive & Hrange).
     destruct (Hkeys l v Hl Hmem) as [old Hold].
@@ -267,7 +267,7 @@ Proof.
     destruct Hp as (_ & p0 & info & Hxs & Hinfo & Hopen & Hframe & Hdelegate & _);
     injection Hxs as <-;
     eapply errno_wi_endpoint; [exact Hwi|exact Ha|exact Hpers|exact Hd'|
-      exact (proj1 Hopen)|exact Hframe|exact Hdelegate|exact Hb|];
+      exact (proj1 Hopen)|exact (proj1 (proj2 (proj2 (proj2 Hframe))))|exact Hdelegate|exact Hb|];
     intros l v Hl _; eauto).
 Qed.
 
@@ -305,7 +305,7 @@ Proof.
     + apply Hexcept; [exact Hold|]. rewrite <- (errno_bytes_keys m' b o). exact Hnot.
   - split; [exact Hd'|]. split; [exact Hr'|].
     eapply errno_wi_endpoint; [exact Hwi|exact Ha|exact Hpers|exact Hd'|
-      exact Hready|exact Hframe|exact Hdelegate|exact Hb|].
+      exact Hready|exact (proj1 (proj2 (proj2 (proj2 Hframe))))|exact Hdelegate|exact Hb|].
     intros l v Hl Hmem. destruct (lookup_overwrite _ _ _ _ Hl) as [Hin|[_ Hold]]; [|eauto].
     assert (Hkey : l ∈ (byte_ps b o xs).*1).
     { rewrite <- Hkeys. apply list_elem_of_fmap. exists (l, v). auto. }
