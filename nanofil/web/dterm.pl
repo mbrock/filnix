@@ -91,6 +91,8 @@ main :-
     findall(F, (member(D, Dirs), directory_file_path(D, '*.pl', P),
                 expand_file_name(P, Fs), member(F, Fs)), Files0),
     sort(Files0, Files),
+    % ```c fences are drawn from nanofil's own parse (c/c_draw.pl).
+    ( member(F, Files), file_base_name(F, 'c_parse.pl') -> file_directory_name(F, CDir), nb_setval(c_src_dir, CDir) ; true ),
     maplist(read_source, Files, Sources),
     maplist(index_source, Sources),
     ( concepts_loaded -> index_concept_links(Sources) ; true ),

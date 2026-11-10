@@ -35,7 +35,7 @@ function changed() {
   const edited = current && doc.toString() !== files.get(current);
   $("revert").hidden = !edited;
   const option = $("example").selectedOptions[0];
-  if (option) option.textContent = `${option.value}.c${edited ? " •" : ""}`;
+  if (option) option.textContent = `${current === "linked" ? linked.get("name") ?? "linked.c" : option.value + ".c"}${edited ? " •" : ""}`;
   const head = source.state.selection.main.head;
   const line = doc.lineAt(head);
   $("pos").textContent = `${line.number}:${head - line.from + 1}`;
@@ -131,7 +131,28 @@ async function symbol(name) {
   return dom;
 }
 
-const opened = open(location.hash.slice(1) || "hello").catch(() => open("hello"));
+// A C page (nanofil/c/) links here with its file in the address:
+// #src=BASE64URL&name=FILE, and &ir=FUNCTION to open that function's IR
+// once it is compiled.
+const linked = new URLSearchParams(location.hash.startsWith("#src=") ? location.hash.slice(1) : "");
+let irFocus = linked.get("ir");
+if (linked.has("src")) {
+  const b64 = linked.get("src").replace(/-/g, "+").replace(/_/g, "/");
+  const text = new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+  const name = linked.get("name") ?? "linked.c";
+  const key = "linked";
+  files.set(key, text);
+  states.set(key, ed.state(text));
+  const option = document.createElement("option");
+  option.value = key;
+  option.textContent = name;
+  $("example").prepend(option);
+}
+// After the module has run: a linked file is already in files, and open()
+// would otherwise reach follow() before tab is declared.
+const opened = Promise.resolve()
+  .then(() => open(linked.has("src") ? "linked" : location.hash.slice(1) || "hello"))
+  .catch(() => open("hello"));
 $("example").onchange = async () => {
   await open($("example").value);
   history.replaceState(null, "", "#" + current);
@@ -228,6 +249,15 @@ worker.onmessage = ({ data }) => {
     for (const b of tabs()) b.disabled = !has(b.dataset.tab);
     show(has(tab) ? tab : has("ir") ? "ir" : [...tabs()].findLast((b) => !b.disabled)?.dataset.tab ?? "c");
     state(failed ? "failed" : "ok");
+    if (irFocus && !failed) {
+      show("ir");
+      const el = document.querySelector(`[data-slot="ir"] details.clause[data-name="${CSS.escape(irFocus)}"]`);
+      if (el) {
+        el.open = true;
+        el.scrollIntoView({ block: "start" });
+      }
+      irFocus = null;
+    }
     Promise.all([ask("play_view:play_outline(O)"), ask("play_view:play_lines(C)")]).then(([r, c]) => {
       outline = r?.O ?? [];
       // One item per line, so the same line is the same object to hover.
