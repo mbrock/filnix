@@ -595,7 +595,7 @@ change does not update Filnix's dependency pin.
 ### The pause experiment only handles a narrow case
 
 At the [investigated baseline][filnix-baseline], the
-[isolated test derivation](../tests/pipewire-cancellation.nix) applies the
+[isolated test derivation](https://github.com/mbrock/filnix/blob/32bf7f5e1e229a2be47bbc2ab048d985e30dc9f5/tests/pipewire-cancellation.nix) applies the
 [signal-reservation patch](../patches/glibc-filc-cancellation-signals.patch) and
 [pause cancellation patch](../patches/glibc-filc-pause-cancel.patch) to a private
 2.40-based libc without changing the shared Fil-C toolchain. These patches have
