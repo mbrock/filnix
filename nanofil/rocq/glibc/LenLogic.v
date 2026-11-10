@@ -9,19 +9,15 @@
     ([wp_call_bind]) and the proof walks glibc's own IR. The module
     calls nothing outside itself; the registry is empty.
 
-    glibc's strlen reads whole aligned 8-byte words, from the word
-    holding the string's first byte through the word holding its NUL.
-    That is safe on Fil-C only because objects are laid out in whole
-    words: the literal's object is 16 bytes, its 13 bytes rounded up
-    (Run.v's [layout]; filcc's literal object is also 16 bytes, probed in
-    docs/glibc-ir.md). The proof owns the object's life and its two
-    words ([msg_ps]), lends the life to each read check and a word to
-    each raw load ([wp_raw_load_read], which also takes the literal's
-    read-only capability), and finds that strlen returns 12. Every
-    value of the run is a numeral, so GlibcLogic.v's [step] takes each
-    instruction by its rule with its premises computed.
+    The call is taken by StrlenLogic.v's [wp_glibc_strlen], the triple
+    of glibc's strlen for any string: the literal's object is 8-aligned
+    and 16 bytes, its 13 bytes rounded up to whole words (Run.v's
+    [layout]; filcc's literal object is also 16 bytes, probed in
+    docs/glibc-ir.md), and the program owns its life and both words
+    ([msg_ps]), which is the triple's precondition. Its first zero is
+    12 bytes in, so strlen returns 12.
 
-    [len_never_panics] is [[never_panics]] for `main`, through
+    [len_never_panics] is [never_panics] for `main`, through
     GlibcLogic.v's [pieces_never_panics]: Iris [[adequacy]] where the
     program starts owning pieces of its initial memory, here the
     literal's. *)
@@ -32,7 +28,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules ExternalCalls ExternalMachine Transport Pieces Heap Language Logic.
-From Glibc Require Import LenCode GlibcLogic.
+From Glibc Require Import LenCode GlibcLogic StrlenBits StrlenLogic.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -137,6 +133,7 @@ Qed.
 Module LenLogic (R : Runtime).
 Module LG := Logic R.
 Module GL := GlibcLogicOn R LG.
+Module SO := StrlenOn R LG.
 Module L := LG.L.
 Module P := LG.P.
 Import L LG GL.
@@ -161,24 +158,28 @@ Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Local Instance len_irisGS : irisGS_gen hlc (nanofil_lang no_contracts lge) Σ :=
   nanofil_irisGS no_contracts no_world lge.
 
-(** glibc's strlen, called with the literal, owning its pieces: it
-    reads the literal's two words, each after a check that passes, and
-    returns 12, handing the pieces back. *)
+(** glibc's strlen, called with the literal, owning its pieces:
+    [wp_glibc_strlen] with its two words, returning 12 and handing the
+    pieces back. *)
 Lemma strlen_msg_spec Φ :
   pts msg_ps -∗ (pts msg_ps -∗ Φ (Ret (WInt 12))) -∗
   WP (ERun (mkFrame strlen_fn [(TAtom "v0", WPtr msg_ptr)] [] None (Enter (TAtom "start") None)) : lexpr)
     {{ Φ }}.
 Proof.
   iIntros "Hps HΦ". rewrite /msg_ps !pts_app. iDestruct "Hps" as "(Hl & H0 & H1)".
-  repeat step.
-  iApply (wp_check_read with "Hl"); [side | side | side | side | side | side |]. iNext. iIntros "Hl". norm_env.
-  iApply (wp_raw_load_read with "Hl H0"); [side | side | side | side |]. iNext. iIntros "Hl H0". norm_env.
-  repeat step.
-  iApply (wp_check_read with "Hl"); [side | side | side | side | side | side |]. iNext. iIntros "Hl". norm_env.
-  iApply (wp_raw_load_read with "Hl H1"); [side | side | side | side |]. iNext. iIntros "Hl H1". norm_env.
-  repeat step.
-  iApply wp_ret; [side | side |]. iNext.
-  iApply "HΦ". iFrame.
+  iApply (SO.wp_glibc_strlen no_contracts no_world lge msg_ptr msg_base msg_reg [msg_w0; msg_w1] 12
+            with "Hl [H0 H1]").
+  - right. reflexivity.
+  - vm_compute. reflexivity.
+  - vm_compute. reflexivity.
+  - vm_compute. congruence.
+  - vm_compute. congruence.
+  - vm_compute. congruence.
+  - repeat constructor; vm_compute; congruence.
+  - split; [vm_compute; reflexivity|]. intros u Hu. do 12 (destruct u as [|u]; [vm_compute; congruence|]). lia.
+  - cbn [words_ps]. rewrite app_nil_r pts_app. iFrame.
+  - iIntros "Hl Hps". cbn [words_ps]. rewrite app_nil_r pts_app. iDestruct "Hps" as "[H0 H1]".
+    iApply "HΦ". iFrame.
 Qed.
 
 (** `main`, owning the literal, returns 12: glibc's strlen of it. *)

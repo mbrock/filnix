@@ -4,7 +4,8 @@
 
     `main` writes the literal "hello, glibc\n" to descriptor 1 with
     `write(1, msg, strlen(msg))`. Both calls run glibc's own IR:
-    `strlen` is `__strlen`'s word-at-a-time scan, as in LenLogic.v, and
+    `strlen` is `__strlen`'s word-at-a-time scan, taken by StrlenLogic.v's
+    triple [wp_glibc_strlen], and
     `write` is the alias of `__libc_write`, whose body calls libpizlo's
     `zsys_write` and returns what it returns. The linked module defines
     everything but `zsys_write`, so that one name is the registry's,
@@ -24,7 +25,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules ExternalCalls ExternalMachine Transport Pieces Heap ContractFrame Language Logic.
-From Glibc Require Import SayCode GlibcLogic ZsysWrite.
+From Glibc Require Import SayCode GlibcLogic ZsysWrite StrlenLogic.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -139,6 +140,7 @@ Module SayLogic (R : Runtime).
 Module LG := Logic R.
 Module GL := GlibcLogicOn R LG.
 Module ZW := ZsysWriteOn R LG.
+Module SO := StrlenOn R LG.
 Module L := LG.L.
 Import L LG GL ZW.
 
@@ -164,23 +166,27 @@ Local Instance say_irisGS : irisGS_gen hlc (nanofil_lang say_registry say_ge) Σ
 (** The expressions of say.c's language. *)
 Local Notation sexpr := (language.expr (nanofil_lang say_registry say_ge)).
 
-(** glibc's strlen, called with the literal, owning its pieces: it
-    reads the literal's two words and returns 13. *)
+(** glibc's strlen, called with the literal, owning its pieces:
+    [wp_glibc_strlen] with its two words, returning 13. *)
 Lemma strlen_msg_spec Φ :
   pts msg_ps -∗ (pts msg_ps -∗ Φ (Ret (WInt 13))) -∗
   WP (ERun (mkFrame strlen_fn [(TAtom "v0", WPtr msg_ptr)] [] None (Enter (TAtom "start") None)) : sexpr)
     {{ Φ }}.
 Proof.
   iIntros "Hps HΦ". rewrite /msg_ps !pts_app. iDestruct "Hps" as "(Hl & H0 & H1)".
-  repeat step.
-  iApply (wp_check_read with "Hl"); [side | side | side | side | side | side |]. iNext. iIntros "Hl". norm_env.
-  iApply (wp_raw_load_read with "Hl H0"); [side | side | side | side |]. iNext. iIntros "Hl H0". norm_env.
-  repeat step.
-  iApply (wp_check_read with "Hl"); [side | side | side | side | side | side |]. iNext. iIntros "Hl". norm_env.
-  iApply (wp_raw_load_read with "Hl H1"); [side | side | side | side |]. iNext. iIntros "Hl H1". norm_env.
-  repeat step.
-  iApply wp_ret; [side | side |]. iNext.
-  iApply "HΦ". iFrame.
+  iApply (SO.wp_glibc_strlen say_registry (fd_wi [1]) say_ge msg_ptr msg_base msg_reg [msg_w0; msg_w1] 13
+            with "Hl [H0 H1]").
+  - right. reflexivity.
+  - vm_compute. reflexivity.
+  - vm_compute. reflexivity.
+  - vm_compute. congruence.
+  - vm_compute. congruence.
+  - vm_compute. congruence.
+  - repeat constructor; vm_compute; congruence.
+  - split; [vm_compute; reflexivity|]. intros u Hu. do 13 (destruct u as [|u]; [vm_compute; congruence|]). lia.
+  - cbn [words_ps]. rewrite app_nil_r pts_app. iFrame.
+  - iIntros "Hl Hps". cbn [words_ps]. rewrite app_nil_r pts_app. iDestruct "Hps" as "[H0 H1]".
+    iApply "HΦ". iFrame.
 Qed.
 
 (** `main`, owning the literal, returns 0: glibc's strlen measures it,

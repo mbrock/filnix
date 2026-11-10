@@ -7,7 +7,12 @@ primitives. This spike tries that end to end on two small programs.
 Hello's proof keeps Campaign 4's per-function contracts; nothing here
 changes it.
 
-The result is two Iris proofs whose module contains glibc's own code:
+The result is a triple for glibc's own strlen and two Iris proofs
+whose module contains glibc's own code:
+
+- [StrlenLogic.v](../rocq/glibc/StrlenLogic.v) proves
+  `wp_glibc_strlen` over `__strlen`'s IR, for any string whose object
+  is laid out in whole words.
 
 - [len.c](../rocq/glibc/len.c) returns `strlen` of a literal. Its
   module holds glibc's strlen, and it calls no contract at all:
@@ -21,10 +26,13 @@ The result is two Iris proofs whose module contains glibc's own code:
 ## The pipeline
 
 1. **glibc's units.** [survey/glibc/capture.nix](../survey/glibc/capture.nix)
-   keeps each preprocessed unit of the staging user glibc. A unit's
-   `.filc_*` module asm is dropped, as `run.py --drop-filc-asm` does,
-   until nanofil reads those directives. Then `nanofil -O` compiles
-   `string/strlen.os` and `io/write.os` like any C file.
+   keeps each preprocessed unit of the staging user glibc. The
+   fixtures here were made with each unit's `.filc_*` module asm
+   dropped, as `run.py --drop-filc-asm` does. Then `nanofil -O`
+   compiles `string/strlen.os` and `io/write.os` like any C file.
+   nanofil on main now reads those directives, which gives glibc's
+   real `__GI_` names; the fixtures have not been regenerated with
+   them yet.
 2. **Linking.** [link.pl](../rocq/link.pl) links the program's checked
    module with the units' modules from `main`. glibc defines `__strlen`
    and the alias `strlen`, so the linker now reads aliases: an alias is a
@@ -76,7 +84,7 @@ glibc's IR.
 
 ## The proofs
 
-[GlibcLogic.v](../rocq/glibc/GlibcLogic.v) holds what both proofs
+[GlibcLogic.v](../rocq/glibc/GlibcLogic.v) holds what the proofs
 share:
 
 - `wp_raw_load_read`: Logic.v's raw long load through a read-only
@@ -86,16 +94,40 @@ share:
 - `step`: takes the next instruction by its rule, with every premise
   computed. `norm_env` keeps the frame's environment as numerals.
 
-[LenLogic.v](../rocq/glibc/LenLogic.v) walks glibc's word-at-a-time
-`__strlen` over the literal "hello, glibc". It owns the literal's life
-and its two words, reads each after a check that passes, and returns
-12. [SayLogic.v](../rocq/glibc/SayLogic.v) does the same for
-"hello, glibc\n", then enters `__libc_write`, whose body is one call
-of `zsys_write`.
+### glibc's strlen, for any string
 
-Both proofs are about one fixed literal. Every value of the run is a
-numeral, so the proof is mostly computation. A strlen triple for any
-string is the next step (below).
+[StrlenLogic.v](../rocq/glibc/StrlenLogic.v) proves
+`wp_glibc_strlen`, a triple of `__strlen`'s IR over any registry and
+world, so a program uses it as a rule at its call. glibc's strlen
+loads the aligned word that holds the string's first byte, masks off
+the bytes before the string, then loads each next word until one
+holds a zero byte, and counts bits to find which. So the triple is
+about whole words, not bytes:
+
+| Premise | Meaning |
+| --- | --- |
+| capability | names the object b, read-write or read-only |
+| alignment | b is 8-aligned |
+| ownership | b's life, and every byte of the words from the one holding the first byte through the one holding the NUL, bytes past the NUL included |
+| bounds | those words lie in b's region |
+| result | the index of the first zero byte from the string's start |
+
+That is the whole-word rounding glibc's strlen depends on, stated as a
+premise: a string whose NUL ends an object mid-word does not meet it.
+[StrlenBits.v](../rocq/glibc/StrlenBits.v) holds the bit facts:
+bitwise ops and carry-free sums byte by byte, the two zero-byte masks
+of string-fza.h and string-fzb.h, and the population count of
+string-fzi.h, each byte claim checked on all 256 bytes by computation.
+The loop is proved for any number of words by induction on them.
+
+### The programs
+
+[LenLogic.v](../rocq/glibc/LenLogic.v) and
+[SayLogic.v](../rocq/glibc/SayLogic.v) take glibc's strlen by
+`wp_glibc_strlen`. The literal's object is 16 bytes and 8-aligned, and
+the program owns its life and both words, which is the triple's
+premise. SayLogic.v then enters `__libc_write`, whose body is one
+call of `zsys_write`, and walks it with `step`.
 
 ## The zsys_write contract
 
@@ -136,31 +168,34 @@ which needs a 2 GiB buffer, and the log-descriptor assertion.
   words.** It reads the aligned 8-byte word that holds the first byte,
   then every word through the one holding the NUL. That stays in
   bounds because filcc gives a 13-byte literal a 16-byte object, and
-  the model's layout rounds data to 8. A general strlen triple must
-  require the object's end to be 8-aligned. Every Fil-C object meets
-  that, but no current string predicate states it.
+  the model's layout rounds data to 8. `wp_glibc_strlen` states it as
+  its ownership and bounds premise. StringLogic.v's `string` owns
+  bytes through the NUL only, so a caller holding a `string` needs the
+  bytes after it too; no lemma gives them yet.
 - **The libc boundary moves, but no new dispatch is needed.** Linking
   takes care of it, as zsys.md predicted.
 - **`errno` is the first callback.** Naming the handler's effect as a
   writable root works for a single store. Proving `errno_handler`'s
   triple would remove the trust.
-- **Cost.** Each proof walks about 90 instructions of strlen. The
-  computed steps take about 7 seconds and the Qed about 13; each file
-  checks in under 30 seconds.
+- **Cost.** StrlenLogic.v takes about 54 seconds, most of it the two
+  Qeds (15 and 16 s), and StrlenBits.v about 3. With the triple,
+  LenLogic.v takes 6 seconds and SayLogic.v 7, down from 28 and 29
+  when each walked strlen's 90 instructions on its literal.
 - **parse.sh.** The grammar reads `let x := eval vm_compute in t in`
   only when a single tactic follows. The tactics are written that way;
   [rocq_syntax.pl](../web/rocq/rocq_syntax.pl) is unchanged.
 
 ## Next steps
 
-1. A strlen triple for any string, `string p` with an 8-aligned object
-   end, proved once over `__strlen`'s IR. That is the first lemma
-   "module strlen implements `strlen_contract`" of zsys.md.
+1. Done: `wp_glibc_strlen`. Left: a bridge from StringLogic.v's
+   `string` (bytes through the NUL) to its words, so Campaign 4's
+   `strlen_contract` callers can use it.
 2. The other leaf functions Hello calls that reach no primitive
    (`strcmp`, `memchr`, the ctype tables), the same way.
 3. `printf` only after these. It pulls in the stdio core of about 357
    symbols, with its locks, vtables and locale.
-4. Drop the `.filc_*` rewrite once nanofil reads the directives.
+4. Regenerate the fixtures with the `.filc_*` directives kept, now
+   that nanofil reads them, and drop the rewrite in code.sh.
 
 ## Decisions this raises
 
@@ -176,7 +211,7 @@ which needs a 2 GiB buffer, and the log-descriptor assertion.
 
 ## Review
 
-An Oracle review of the contract and the link.pl change found two
+An Oracle review of the contract and the linker change found two
 blockers, both fixed:
 
 - The errno cell was any writable span, so the contract could be
@@ -190,7 +225,7 @@ blockers, both fixed:
 
 Its notes, left open:
 
-- link.pl retargets an alias of an overridden weak function to the
+- The linker retargets an alias of an overridden weak function to the
   strong definition; in ELF the alias keeps the original address.
   Weak data is not treated as weak, so it still fails as defined twice.
 - Hello passes each libgnu.a member as a plain object. A strong

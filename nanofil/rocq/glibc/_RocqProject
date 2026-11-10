@@ -2,6 +2,8 @@
 -R . Glibc
 GlibcLogic.v
 LenCode.v
+StrlenBits.v
+StrlenLogic.v
 LenLogic.v
 ZsysWrite.v
 SayCode.v
