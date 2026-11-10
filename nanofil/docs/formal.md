@@ -2557,6 +2557,48 @@ next obligations. Openness alone does not supply diagnostic formatting
 readiness, orientation, native metadata authority, cross-pool frames or
 trace/accepted-byte coupling. No runtime axiom or Machine theorem changes.
 
+### Campaign 4 milestone 6q: consumed-stage callback transfer
+
+permission_entry_alloc records both native handle lives and open-only
+permissions from independent current liveness and openness facts. It
+requires actual authoritative absence for all four pieces. The derived
+endpoint retains the full paired interpretation, including projected
+private-memory frames and full-heap release separation. This allocation
+neither creates native objects nor recovers already-owned fragments.
+
+hello_callback_transfer consumes one owned before-stage name, allocates
+the paired permissions, updates that same stage key to its after value,
+and returns one after-stage fragment with both permission bundles. Memory,
+runtime state, world and the consumer's world interpretation are unchanged.
+Admission requires both the current interpretation and the authoritative
+before-stage lookup. Freshness is therefore not inferred again after the
+stage changes. The intermediate allocated heap need not satisfy that
+interpretation: Kentry restores it only after the stage update, using the
+derived paired endpoint rather than an assumed postcondition.
+
+The generic values must differ and the after value must agree with a name
+key in every memory. The stage key is below -1 and distinct from both
+permission keys; compatibility with other adapters remains the consumer's
+namespace and Kentry obligation. The control reserves -6 for the stage,
+-4/-5 for permissions and -7 for an independently framed name, using two
+VCodec tags without adding a constructor or changing the codec key -1.
+Its single stage-sensitive interpretation proves both universal admission
+and restoration premises. Actual authoritative/owned-resource application
+retains errno and the unrelated name. Endpoint controls check the changed
+stage, rejection of the old lookup, unchanged frame values and rejection
+of occupied life/name keys despite native liveness. This is one consumed
+admission ticket, not a general irrevocable phase protocol.
+
+The stage changes at callback entry, not at atexit registration. HelloMain
+can retain its before fragment through the caller-built exit wands without
+changing the loop or atexit's contract. The transfer proved here is still
+a state-interpretation update, not a program assertion exposing the current
+authoritative heap: the actual callback-entry WP lifting and main-to-callback
+composition remain next. Returning diagnostics and native FILE realization
+also remain separate. The fixture's identity safepoints establish only its
+own stability, not a general native representation law. No interpreter
+transition, trusted libc contract, runtime axiom or Machine theorem changes.
+
 ### Reached-call contract packages and remaining integration
 
 [Getopt.v](../rocq/theories/Getopt.v) supplies independently admitted

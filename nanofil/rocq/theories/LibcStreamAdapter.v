@@ -207,8 +207,112 @@ Proof.
       [exact (proj1 Hwi)|right; reflexivity| |exact Hin]. rewrite Herr. exact (proj1 Hewf).
 Qed.
 
+(* Recording open-only permissions uses the same private/release frame as
+   exact entry, but never installs an exact pending/FIFO observation. *)
+Lemma permission_entry_frame : forall rep out err b o m w h,
+  agrees m h -> stream_tokens_wi rep out err b o m w h ->
+  live_at m (token_base out) (token_region out) ->
+  live_at m (token_base err) (token_region err) ->
+  (exists info, libc_stream_at w (token_handle out) = Some info) ->
+  (exists info, libc_stream_at w (token_handle err) = Some info) ->
+  let h' := overwrite (open_permission_ps out (token_handle out) ++
+    open_permission_ps err (token_handle err)) h in
+  agrees m h' /\ stream_tokens_wi rep out err b o m w h'.
+Proof.
+  intros rep out err b o m w h Ha
+    (Howf & Hewf & Hbase & Hkey & Hout & Herr & _ & _ & Hprivate)
+    Hol Hel Hoo Heo h'.
+  assert (Hdata : memory_keys_from
+    (stream_data_heap (token_base out) (token_base err) h')
+    (stream_data_heap (token_base out) (token_base err) h)).
+  { intros l v Hl Hmem. apply stream_data_lookup in Hl as (Hl & Hno & Hne).
+    unfold h' in Hl. apply lookup_overwrite in Hl as [Hin|[_ Hold]].
+    - apply list_elem_of_In in Hin. cbn [open_permission_ps app] in Hin.
+      destruct Hin as [E|[E|[E|[E|[]]]]]; injection E as <- <-; contradiction.
+    - exists v. rewrite stream_data_lookup_ne; assumption. }
+  split.
+  { intros l v Hl. unfold h' in Hl. apply lookup_overwrite in Hl as [Hin|[_ Hold]];
+      [|exact (Ha l v Hold)].
+    apply list_elem_of_In in Hin. cbn [open_permission_ps app] in Hin.
+    destruct Hin as [E|[E|[E|[E|[]]]]]; injection E as <- <-;
+      cbn [agree_piece]; assumption || exact I. }
+  split; [exact Howf|]. split; [exact Hewf|]. split; [exact Hbase|]. split; [exact Hkey|].
+  split; [exact Hout|]. split; [exact Herr|]. split.
+  { unfold stream_current, h'. cbn [open_permission_ps app overwrite fst snd].
+    rewrite lookup_insert_ne; [|discriminate]. rewrite lookup_insert_eq. exact (conj eq_refl Hoo). }
+  split.
+  { unfold stream_current, h'. cbn [open_permission_ps app overwrite fst snd].
+    rewrite lookup_insert_ne; [|discriminate]. rewrite lookup_insert_ne; [|congruence].
+    rewrite lookup_insert_ne; [|discriminate]. rewrite lookup_insert_eq. exact (conj eq_refl Heo). }
+  intros d Hd. destruct (Hprivate d Hd) as [Hwi Hrel].
+  split; [eapply errno_wi_heap; eauto|]. intros base l v Hin Hl Hmem.
+  unfold h' in Hl. apply lookup_overwrite in Hl as [Hnew|[_ Hold]];
+    [|exact (Hrel base l v Hin Hold Hmem)].
+  apply list_elem_of_In in Hnew. cbn [open_permission_ps app] in Hnew.
+  destruct Hnew as [E|[E|[E|[E|[]]]]]; injection E as <- <-; try contradiction.
+  - intros E. subst base. eapply libc_handle_not_released;
+      [exact (proj1 Hwi)|left; reflexivity| |exact Hin]. rewrite Hout. exact (proj1 Howf).
+  - intros E. subst base. eapply libc_handle_not_released;
+      [exact (proj1 Hwi)|right; reflexivity| |exact Hin]. rewrite Herr. exact (proj1 Hewf).
+Qed.
+
+(** Updating an unrelated ghost name changes no memory keys or stream
+    lookups. Full-heap release separation remains intact. *)
+Lemma stream_tokens_name_update : forall rep out err b o m w h key value,
+  key <> token_key out -> key <> token_key err ->
+  stream_tokens_wi rep out err b o m w h ->
+  stream_tokens_wi rep out err b o m w (<[PName key := value]> h).
+Proof.
+  intros rep out err b o m w h key value Hko Hke
+    (Howf & Hewf & Hbase & Hkey & Hout & Herr & Ho & He & Hprivate).
+  assert (Hmem : memory_keys_from (<[PName key := value]> h) h).
+  { intros l v Hl Hmem. apply lookup_insert_Some in Hl as [[E _]|[_ Hold]];
+      [subst l; contradiction|eauto]. }
+  assert (Hdata : memory_keys_from
+    (stream_data_heap (token_base out) (token_base err) (<[PName key := value]> h))
+    (stream_data_heap (token_base out) (token_base err) h)).
+  { intros l v Hl Hm. apply stream_data_lookup in Hl as (Hl & Hno & Hne).
+    destruct (Hmem l v Hl Hm) as [old Hold]. exists old.
+    rewrite stream_data_lookup_ne; assumption. }
+  split; [exact Howf|]. split; [exact Hewf|]. split; [exact Hbase|]. split; [exact Hkey|].
+  split; [exact Hout|]. split; [exact Herr|]. split.
+  { unfold stream_current in *. rewrite lookup_insert_ne; [exact Ho|congruence]. }
+  split.
+  { unfold stream_current in *. rewrite lookup_insert_ne; [exact He|congruence]. }
+  intros d Hd. destruct (Hprivate d Hd) as [Hwi Hrel].
+  split; [eapply errno_wi_heap; eauto|]. intros base l v Hin Hl Hm.
+  destruct (Hmem l v Hl Hm) as [old Hold]. exact (Hrel base l old Hin Hold Hm).
+Qed.
+
 Section snapshot_allocation.
 Context `{!gen_heapGS piece pval Σ}.
+
+Lemma permission_entry_alloc rep out err b o m w h :
+  agrees m h -> stream_tokens_wi rep out err b o m w h ->
+  live_at m (token_base out) (token_region out) ->
+  live_at m (token_base err) (token_region err) ->
+  (exists info, libc_stream_at w (token_handle out) = Some info) ->
+  (exists info, libc_stream_at w (token_handle err) = Some info) ->
+  (forall l v, (l, v) ∈ open_permission_ps out (token_handle out) ++
+    open_permission_ps err (token_handle err) -> h !! l = None) ->
+  gen_heap_interp h ==∗
+    gen_heap_interp (overwrite (open_permission_ps out (token_handle out) ++
+      open_permission_ps err (token_handle err)) h) ∗
+    pts (open_permission_ps out (token_handle out)) ∗ pts (open_permission_ps err (token_handle err)) ∗
+    ⌜agrees m (overwrite (open_permission_ps out (token_handle out) ++
+      open_permission_ps err (token_handle err)) h) /\
+      stream_tokens_wi rep out err b o m w
+        (overwrite (open_permission_ps out (token_handle out) ++ open_permission_ps err (token_handle err)) h)⌝.
+Proof.
+  intros Ha Hw Hol Hel Hoo Heo Hfresh. iIntros "Hh".
+  destruct Hw as (Howf & Hewf & Hbase & Hkey & Hrest) eqn:E.
+  iMod (pts_alloc h (open_permission_ps out (token_handle out) ++
+    open_permission_ps err (token_handle err)) with "Hh") as "[Hh Hps]".
+  - clear -Hbase Hkey. cbn [open_permission_ps app fmap fst]. repeat constructor; set_solver.
+  - exact Hfresh.
+  - rewrite pts_app. iDestruct "Hps" as "[Ho He]". iModIntro. iFrame.
+    iPureIntro. eapply permission_entry_frame; eauto.
+Qed.
 
 (** Fresh ghost recording is not native allocation: both live_at facts
     and both current observations are independent premises. Freshness is

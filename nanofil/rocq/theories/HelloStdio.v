@@ -416,6 +416,58 @@ Proof.
   exact (Kentry Hw Hw').
 Qed.
 
+(** The before-stage fragment is consumed at this boundary. Allocation
+    need not preserve wi at its intermediate heap: Kentry restores the
+    same interpretation only after the actual stage-key update. *)
+Lemma hello_callback_transfer rep out err b o stage before after
+    (Hentry : forall m w h, wi m w h -> h !! PName stage = Some before ->
+      stream_tokens_wi rep out err b o m w h /\
+      live_at m (token_base out) (token_region out) /\
+      live_at m (token_base err) (token_region err) /\
+      (exists info, libc_stream_at w (token_handle out) = Some info) /\
+      (exists info, libc_stream_at w (token_handle err) = Some info) /\
+      (forall l v, (l, v) ∈ open_permission_ps out (token_handle out) ++
+        open_permission_ps err (token_handle err) -> h !! l = None))
+    (Kentry : forall m w h, wi m w h -> h !! PName stage = Some before ->
+      stream_tokens_wi rep out err b o m w
+        (<[PName stage := after]>
+          (overwrite (open_permission_ps out (token_handle out) ++
+            open_permission_ps err (token_handle err)) h)) ->
+      wi m w (<[PName stage := after]>
+        (overwrite (open_permission_ps out (token_handle out) ++
+          open_permission_ps err (token_handle err)) h))) :
+  (stage < -1)%Z -> stage <> token_key out -> stage <> token_key err ->
+  before <> after -> (forall m, agree_piece m (PName stage) after) ->
+  forall σ, heap_interp wi σ -∗ pts [(PName stage, before)] ==∗
+    heap_interp wi σ ∗ pts [(PName stage, after)] ∗
+    pts (open_permission_ps out (token_handle out)) ∗
+    pts (open_permission_ps err (token_handle err)).
+Proof.
+  intros Hstage Hso Hse Hneq Hagree σ. iIntros "Hσ Hstage".
+  iDestruct "Hσ" as (h) "(Hh & %Ha & %Hd & %Hr & %Hw)".
+  iDestruct (pts_lookup with "Hh Hstage") as %Howned.
+  assert (Hs : h !! PName stage = Some before).
+  { apply Howned. apply elem_of_cons. left. reflexivity. }
+  destruct (Hentry _ _ _ Hw Hs) as (Ht & Hol & Hel & Hoo & Heo & Hfresh).
+  iMod (permission_entry_alloc rep out err b o _ _ h Ha Ht Hol Hel Hoo Heo Hfresh
+    with "Hh") as "(Hh & Ho & He & %Hnew)".
+  destruct Hnew as [HaA HwA].
+  iEval (rewrite /pts /=) in "Hstage". iDestruct "Hstage" as "[Hstage _]".
+  iMod (gen_heap_update _ (PName stage) before after with "Hh Hstage")
+    as "[Hh Hstage]".
+  assert (HaF : agrees (ls_mem σ) (<[PName stage := after]>
+      (overwrite (open_permission_ps out (token_handle out) ++
+        open_permission_ps err (token_handle err)) h))).
+  { intros l v Hl. apply lookup_insert_Some in Hl as [[El Ev] | [_ Hl]].
+    - subst l v. apply Hagree.
+    - exact (HaA _ _ Hl). }
+  pose proof (stream_tokens_name_update _ _ _ _ _ _ _ _ stage after Hso Hse HwA) as HwF.
+  iModIntro. iFrame "Ho He". iSplitL "Hh".
+  - iExists _. iFrame "Hh". iPureIntro. repeat split; try assumption.
+    exact (Kentry _ _ _ Hw Hs HwF).
+  - rewrite /pts /=. iFrame.
+Qed.
+
 (** A designated-handle fclose rule, not a dispatcher for arbitrary
     pointers. The consumer keeps its abstract wi and supplies its local
     K premise for the rest of that interpretation, as for conversion. *)
@@ -813,3 +865,175 @@ Qed.
 
 End iris.
 End HelloPermissionChecks.
+
+(** A single fixed interpretation admits allocation only before its
+    owned stage is consumed. No assumption supplies either compatibility
+    premise of the wrapper. Native safepoints are identity in this fixture. *)
+Module HelloTransferChecks.
+Module LG := StreamHandleChecks.LG.
+Module H := HelloStdioOn InterpRuntime LG.
+Module F := LibcStreamChecks.
+Module T := StreamTokenChecks.
+Module P := StreamPermissionChecks.
+Import LG LG.L.
+
+Definition stage : Z := -6.
+Definition before := VCodec (TAtom "callback-before").
+Definition after := VCodec (TAtom "callback-entered").
+Definition unrelated := [(PName (-7), VCodec (TAtom "unrelated"))].
+Definition pair_ps := open_permission_ps P.out (token_handle P.out) ++
+  open_permission_ps P.err (token_handle P.err).
+Definition pair_wi := stream_tokens_wi (fun _ _ => True) P.out P.err 5120 0.
+Definition entry_heap : gmap piece pval :=
+  <[PName stage := before]> (<[PName (-7) := VCodec (TAtom "unrelated")]> HelloErrnoChecks.heap).
+Definition admission m w (h : gmap piece pval) :=
+  live_at m (token_base P.out) (token_region P.out) /\
+  live_at m (token_base P.err) (token_region P.err) /\
+  (exists info, libc_stream_at w (token_handle P.out) = Some info) /\
+  (exists info, libc_stream_at w (token_handle P.err) = Some info) /\
+  (forall l v, (l, v) ∈ pair_ps -> h !! l = None).
+Definition callback_wi m w h := pair_wi m w h /\
+  ((h !! PName stage = Some before /\ admission m w h) \/ h !! PName stage = Some after).
+
+Global Instance callback_stable : SafepointStable callback_wi.
+Proof. split. intros s m s' m' w h [-> ->] Hw. exact Hw. Qed.
+
+Lemma entry_admitted : forall m w h,
+  callback_wi m w h -> h !! PName stage = Some before -> pair_wi m w h /\ admission m w h.
+Proof.
+  intros m w h [Hpair [[_ Hadmit]|Hafter]] Hbefore; [exact (conj Hpair Hadmit)|].
+  rewrite Hbefore in Hafter. discriminate Hafter.
+Qed.
+
+Lemma entry_restored : forall m w h,
+  callback_wi m w h -> h !! PName stage = Some before ->
+  pair_wi m w (<[PName stage := after]> (overwrite pair_ps h)) ->
+  callback_wi m w (<[PName stage := after]> (overwrite pair_ps h)).
+Proof.
+  intros m w h _ _ Hpair. split; [exact Hpair|]. right. apply lookup_insert_eq.
+Qed.
+
+Lemma errno_pair : pair_wi conversion_mem (F.world true) HelloErrnoChecks.heap.
+Proof.
+  destruct T.entry_wi as (_ & _ & _ & _ & _ & _ & Ho & He & Hprivate).
+  split; [split; [reflexivity|simpl; lia]|]. split; [split; [reflexivity|simpl; lia]|].
+  split; [discriminate|]. split; [discriminate|]. split; [reflexivity|]. split; [reflexivity|].
+  split.
+  { unfold stream_current. destruct (HelloErrnoChecks.heap !! PName (token_key P.out)) as [v|] eqn:E;
+      [destruct (T.entry_keys _ _ E) as [i Hbad]; discriminate Hbad|exact I]. }
+  split.
+  { unfold stream_current. destruct (HelloErrnoChecks.heap !! PName (token_key P.err)) as [v|] eqn:E;
+      [destruct (T.entry_keys _ _ E) as [i Hbad]; discriminate Hbad|exact I]. }
+  intros d [-> | ->]; [exact (Hprivate T.out (or_introl eq_refl))|exact (Hprivate T.err (or_intror eq_refl))].
+Qed.
+
+Lemma entry_agrees : agrees conversion_mem entry_heap.
+Proof.
+  intros l v Hl. unfold entry_heap in Hl.
+  apply lookup_insert_Some in Hl as [[El Ev]|[_ Hl]]; [subst l v; exact I|].
+  apply lookup_insert_Some in Hl as [[El Ev]|[_ Hl]]; [subst l v; exact I|].
+  exact (HelloErrnoChecks.heap_agrees l v Hl).
+Qed.
+
+Lemma entry_fresh : forall l v, (l, v) ∈ pair_ps -> entry_heap !! l = None.
+Proof.
+  intros l v Hin. destruct (entry_heap !! l) as [old|] eqn:E; [|reflexivity].
+  unfold entry_heap in E. apply list_elem_of_In in Hin.
+  cbn [pair_ps open_permission_ps app P.out P.err token_base token_key] in Hin.
+  destruct Hin as [El|[El|[El|[El|[]]]]]; injection El as <- <-.
+  all: repeat (rewrite lookup_insert_ne in E; [|discriminate]).
+  all: rewrite lookup_empty in E; discriminate E.
+Qed.
+
+Lemma entry_inhabited : callback_wi conversion_mem (F.world true) entry_heap.
+Proof.
+  split.
+  - eapply stream_tokens_name_update; [discriminate|discriminate|].
+    eapply stream_tokens_name_update; [discriminate|discriminate|exact errno_pair].
+  - left. split; [apply lookup_insert_eq|].
+    split; [split; reflexivity|]. split; [split; reflexivity|].
+    split; [exists (mkStreamInfo 1 (mkStream ByteOriented [65; 66] true) 7); reflexivity|].
+    split; [exists (mkStreamInfo 2 stdout_initial 3); reflexivity|exact entry_fresh].
+Qed.
+
+(** The endpoint has the after lookup, not another allocation ticket.
+    The native state, errno and unrelated name have not changed. *)
+Example transfer_endpoint :
+  let h := <[PName stage := after]> (overwrite pair_ps entry_heap) in
+  agrees conversion_mem h /\ callback_wi conversion_mem (F.world true) h /\
+  h !! PName stage = Some after /\ h !! PName stage <> Some before /\
+  h !! PByte 5120 3 = Some (VByte 0) /\
+  h !! PName (-7) = Some (VCodec (TAtom "unrelated")).
+Proof.
+  intro h. destruct entry_inhabited as [Hpair [[Hs Hadmit]|Hs]];
+    [|unfold entry_heap in Hs; rewrite lookup_insert_eq in Hs; discriminate Hs].
+  destruct Hadmit as (Hol & Hel & Hoo & Heo & Hfresh).
+  destruct (permission_entry_frame (fun _ _ => True) P.out P.err 5120 0 _ _ _
+    entry_agrees Hpair Hol Hel Hoo Heo) as [HaA HwA].
+  assert (Hfinal : pair_wi conversion_mem (F.world true) h).
+  { eapply stream_tokens_name_update; [discriminate|discriminate|exact HwA]. }
+  split.
+  - intros l v Hl. apply lookup_insert_Some in Hl as [[El Ev]|[_ Hl]].
+    + subst l v. exact I.
+    + exact (HaA _ _ Hl).
+  - split; [apply entry_restored; [exact entry_inhabited|exact Hs|exact Hfinal]|].
+    split; [apply lookup_insert_eq|]. split.
+    + rewrite lookup_insert_eq. discriminate.
+    + unfold h, pair_ps, entry_heap.
+      cbn [open_permission_ps P.out P.err token_base token_key overwrite app fst snd].
+      split; repeat (rewrite lookup_insert_ne; [|discriminate]); apply lookup_insert_eq.
+Qed.
+
+Example occupied_life_rejected :
+  live_at conversion_mem (token_base P.out) (token_region P.out) /\
+  ~ admission conversion_mem (F.world true)
+    (<[PLive (token_base P.out) := VLive (token_region P.out)]> entry_heap).
+Proof.
+  split; [split; reflexivity|]. intros (_ & _ & _ & _ & Hfresh).
+  assert (Hin : (PLive (token_base P.out), VLive (token_region P.out)) ∈ pair_ps).
+  { apply elem_of_app. left. apply elem_of_cons. left. reflexivity. }
+  specialize (Hfresh _ _ Hin). rewrite lookup_insert_eq in Hfresh. discriminate Hfresh.
+Qed.
+
+Example occupied_name_rejected :
+  live_at conversion_mem (token_base P.out) (token_region P.out) /\
+  ~ admission conversion_mem (F.world true)
+    (<[PName (token_key P.out) := VCodec (TAtom "occupied")]> entry_heap).
+Proof.
+  split; [split; reflexivity|]. intros (_ & _ & _ & _ & Hfresh).
+  assert (Hin : (PName (token_key P.out), VStreamOpen (token_handle P.out)) ∈ pair_ps).
+  { apply elem_of_app. left. apply elem_of_cons. right. apply elem_of_cons. left. reflexivity. }
+  specialize (Hfresh _ _ Hin). rewrite lookup_insert_eq in Hfresh. discriminate Hfresh.
+Qed.
+
+Section iris.
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
+
+(** Apply the wrapper with actual authoritative and owned resources,
+    not abstract Hentry/Kentry assumptions. Both independent frames stay. *)
+Example callback_transfer_resources :
+  gen_heap_interp entry_heap ∗ pts [(PName stage, before)] ∗
+    pts (byte_ps 5120 0 [0; 0; 0; 0]) ∗ pts unrelated ==∗
+  heap_interp callback_wi (mkLstate conversion_mem InterpRuntime.start 64 (F.world true)) ∗
+    pts [(PName stage, after)] ∗ pts (open_permission_ps P.out (token_handle P.out)) ∗
+    pts (open_permission_ps P.err (token_handle P.err)) ∗
+    pts (byte_ps 5120 0 [0; 0; 0; 0]) ∗ pts unrelated.
+Proof.
+  iIntros "(Hh & Hstage & Herrno & Hother)".
+  iAssert (heap_interp callback_wi
+    (mkLstate conversion_mem InterpRuntime.start 64 (F.world true))) with "[Hh]" as "Hσ".
+  { iExists entry_heap. iFrame. iPureIntro.
+    exact (conj entry_agrees (conj HelloErrnoChecks.disjoint
+      (conj HelloErrnoChecks.ready entry_inhabited))). }
+  iMod (H.hello_callback_transfer callback_wi (fun _ _ => True) P.out P.err 5120 0
+    stage before after entry_admitted entry_restored with "Hσ Hstage") as "(Hσ & Hstage & Ho & He)".
+  - unfold stage. lia.
+  - discriminate.
+  - discriminate.
+  - discriminate.
+  - intros m. exact I.
+  - iModIntro. iFrame.
+Qed.
+
+End iris.
+End HelloTransferChecks.
