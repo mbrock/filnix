@@ -11,6 +11,11 @@ Liveness.v
 FrameSlots.v
 Abi.v
 PlanTerm.v
+Layout.v
+EmitOps.v
+EmitInst.v
+EmitObject.v
+Emit.v
 NfbTerm.v
 Nfb.v
 NfbProof.v

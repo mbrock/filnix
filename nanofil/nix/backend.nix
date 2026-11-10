@@ -19,8 +19,11 @@
 # the others lack; full=true takes the whole corpus. NFB: Nfb.v's
 # writer writes the words nfb.pl writes and its reader reads them back
 # (rocq/backend/tests/nfb.sh, docs/nfb.md), on the same files; full=true
-# takes the whole corpus, with and without -O. Then parse.sh
-# reads every backend sentence back (web/rocq).
+# takes the whole corpus, with and without -O. M3: the lines Emit.v
+# gives each function's plan are the reference emission's
+# (rocq/backend/tests/emit.sh), on the same files; full=true takes the
+# whole corpus. Then parse.sh reads every backend sentence back
+# (web/rocq).
 {
   pkgs,
   filcc,
@@ -78,18 +81,20 @@ pkgs.runCommandCC (if full then "nanofil-backend-full" else "nanofil-backend")
           tests/par.sh rocq/backend/tests/abi.sh ${corpus} | tee abi.log
           tests/par.sh rocq/backend/tests/nfb.sh ${corpus} | tee nfb.log
           NANOFIL_OPT=-O tests/par.sh rocq/backend/tests/nfb.sh ${corpus} | tee nfb-O.log
+          tests/par.sh rocq/backend/tests/emit.sh ${corpus} | tee emit.log
         ''
       else
         ''
           tests/par.sh rocq/backend/tests/asm.sh ${quick} | tee asm.log
           tests/par.sh rocq/backend/tests/abi.sh ${quickAbi} | tee abi.log
           tests/par.sh rocq/backend/tests/nfb.sh ${quickAbi} | tee nfb.log
+          tests/par.sh rocq/backend/tests/emit.sh ${quickAbi} | tee emit.log
         ''
     )
     + ''
       python3 tests/watch.py --label "backend parse/typecheck" -- bash web/rocq/tests/parse.sh rocq/backend/*.v
       mkdir -p $out/bin
       cp rocq/backend/nanofil-backend $out/bin/
-      cp timings.log asm*.log abi.log nfb*.log $out/
+      cp timings.log asm*.log abi.log nfb*.log emit.log $out/
     ''
   )

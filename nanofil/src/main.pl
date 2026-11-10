@@ -20,6 +20,7 @@
     | `decode FILE` | read an NFB file, validate, print the IR |
     | `nfb-terms FILE PREFIX` | write the module, and a Fil-C module's checked module, as NFB with NAMES to `PREFIX.unchecked.nfb` and `PREFIX.checked.nfb`, and print each as `nfb_module(Stage, Module)` without its context items (rocq/backend) |
     | `nfb-check FILE` | write the module, and a Fil-C module's checked module, as NFB and read each back: the same term with NAMES, the same words without it (tests/nfb.sh) |
+    | `emit-terms FILE` | print the checked module of a Fil-C file, then the reference emission's asm.pl lines, a list for each item, for each weak thunk and for the end of the file, as terms (rocq/backend) |
 
     A FILE ending in `.c` or `.i` goes through the C frontend, one ending
     in `.nfb` is NFB, and any other FILE is IR text. A `.c` file is preprocessed with the predefined
@@ -603,6 +604,15 @@ command(Opt, _, Checks, ['nfb-terms', File, Prefix]) :- !,
         nfb_terms(Prefix, checked, Checked)
     ;   true
     ).
+command(Opt, _, Checks, ['emit-terms', File]) :- !,
+    file_module(File, Module0),
+    (   module_mode(Module0, filc) -> true
+    ;   throw(nanofil_error('emit-terms needs a Fil-C module'))
+    ),
+    optimize(Opt, Module0, Module),
+    checked_module(Checks, Module, Checked),
+    format("~k.~n", [Checked]),
+    filc_module_emit(Checked, stack, print_term_line).
 command(Opt, _, Checks, [difftest, File, Dir]) :- !,
     difftest(Opt, Checks, File, Dir).
 command(Opt, _, Checks, [outcomes, File]) :- !,

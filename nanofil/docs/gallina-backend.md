@@ -532,6 +532,46 @@ calls, variadics, function objects, data, aliases and TLS. Gate:
 whole-module byte identity on the corpus, hello, zlib and Lua, with
 the first performance target.
 
+*So far: every function of the subset.* The command is `nanofil
+emit-terms FILE`, which prints the checked module and then the
+reference emission's lines as terms: a list for each item, for each
+weak thunk and for the end of the file. `Layout.v` has a function's
+context and the loads and stores of homes. `EmitOps.v` is
+`amd64.pl`'s scalar selection, with SSE2 and x87. `EmitInst.v` emits
+one instruction of a plan: lets, span tests, flights, fused and
+reused accesses, pointer effects, named locals, calls and the ABI's
+actions. `EmitObject.v` emits a function's getter, generic entry,
+variadic adapter and object, and `Emit.v` the function.
+`rocq/backend/tests/emit.sh` is the gate. It builds each function's
+plan, emits its lines and compares them, as text, with the list
+that defines the function's implementation. Emission is total: a
+form that is not ported gives a `todo` line, the gate counts such a
+function as partial, and none is left.
+
+- On the 280 modules of the corpus, the lines of all 1090 functions
+  of the subset are the same. The 576 functions outside it have no
+  plan and are passed over.
+- On SQLite the lines of all 3106 functions are the same. In OCaml
+  the plans take 2.6 s and the emission 1.7 s, where Prolog's
+  emission stage takes 20.6 s for both and for the lists below.
+  The target for the two together is 1.0 s, so they miss it by more
+  than four times; the profile above says where the plans' time
+  goes, and the emission has none yet.
+- With `-O` the lines of 538 corpus functions are the same, and
+  the backend refuses 256 when it builds their plans. M2 compared
+  plans only without `-O`, so this is the first run of them.
+
+What remains of M3:
+
+- the lists that are not a function's: data, weak thunks, aliases,
+  TLS, init entries and the end of the file, 4304 lists in the
+  corpus and 2025 in SQLite;
+- the plans the backend refuses with `-O`;
+- the functions outside the subset, which wait on the model, `touch`
+  first;
+- the text of a whole module, on the corpus, hello, zlib and Lua;
+- the performance target.
+
 **M4. Pizlonation and a standalone compiler.** `Unchecked.v`,
 `Pizlonate.v` and a Gallina reader for IR text. The pipeline is
 read, pizlonate, `valid`, lower, emit, print. Gate: the pizlonated

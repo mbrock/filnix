@@ -6,7 +6,8 @@
    rev_lines_parts) to stdout, which tests/asm.sh compares with the
    text that command wrote. It exits 1 on a term that is not a line.
 
-   With `abi` it is the ABI plans' (see [abi] below).
+   With `abi` it is the ABI plans' (see [abi] below), and with
+   `emit` the emission's (see [emit]).
 
    The terms are SWI-Prolog's write_canonical form (format's ~k):
    integers, atoms (bare or quoted), compounds f(A, ...) and proper
@@ -292,6 +293,131 @@ let abi () =
       !parse_s !decode_s !lower_s !compare_s;
   if !differ > 0 || (!refused > 0 && Sys.getenv_opt "NANOFIL_BACKEND_STRICT" <> None) then exit 1
 
+(* The gate of the emission (tests/emit.sh). Stdin is what `nanofil
+   emit-terms FILE` prints: the checked module, then a list of line
+   terms for each item, for each weak thunk and for the end of the
+   file. A list that defines a function's implementation
+   (`label(pizlonatedFIP<sig>_<name>)`) is held to the lines Emit.v
+   builds from the function's plan, compared as text. Where Emit.v
+   has a todo line, the lines before the first one must begin the
+   Prolog compiler's and the lines after the last one must end them;
+   such a function is counted as partial, and its first todo is
+   tallied on stderr. A function the model keeps outside its subset
+   has no plan and is counted as outside; other lists are passed
+   over. Exits 1 on a
+   function that differs, on a plan whose implementation no list
+   defines, or, if NANOFIL_BACKEND_STRICT is set, on
+   one that is partial or refused. *)
+let emit () =
+  let next = reader (In_channel.input_all stdin) in
+  let fail fmt = Printf.ksprintf (fun m -> prerr_endline ("nanofil-backend: " ^ m); exit 1) fmt in
+  let lower_s = ref 0.0 and emit_s = ref 0.0 and compare_s = ref 0.0 in
+  let next () = timed parse_s next in
+  let md =
+    match next () with
+    | Some t ->
+        (match timed decode_s (fun () -> decode_module t) with
+         | Some md -> md
+         | None -> fail "the first term is not a module")
+    | None -> fail "no module"
+  in
+  let sy = timed lower_s (fun () -> module_symbols md) in
+  let same = ref 0 and differ = ref 0 and partial = ref 0 and refused = ref 0 in
+  let outside = ref 0 and passed = ref 0 in
+  (* Each function's plan, by its implementation's symbol. *)
+  let plans = Hashtbl.create 64 in
+  List.iter (fun it ->
+      match it with
+      | IFunc f ->
+          (match timed lower_s (fun () -> lower_function sy f) with
+           | Some p -> Hashtbl.replace plans (impl_symbol p.pl_sig (name_text p.pl_name)) p
+           | None -> incr refused; Printf.eprintf "refused %s\n" (shown f.fn_name))
+      | _ -> ())
+    md;
+  let todos = Hashtbl.create 16 and seen = Hashtbl.create 64 in
+  let text l = String.concat "" (rev_lines_parts [l] []) in
+  let rec implementation = function
+    | TApp ("label", [TAtom s]) :: _ ->
+        if String.length s > 13 && String.sub s 0 13 = "pizlonatedFIP" then Some s else None
+    | _ :: ts -> implementation ts
+    | [] -> None
+  in
+  let report_differ name i ours theirs =
+    incr differ;
+    Printf.eprintf "DIFFER %s at line %d\n  rocq:   %s  prolog: %s" name i ours theirs
+  in
+  let check name ours theirs =
+    let theirs = Array.of_list (List.map (fun t ->
+        match dline t with
+        | Some l -> text l
+        | None -> fail "not a line: %s" (shown t)) theirs) in
+    let ours = Array.of_list ours in
+    let n = Array.length ours and m = Array.length theirs in
+    let first = ref n and last = ref (-1) in
+    Array.iteri (fun i l -> if is_todo l then begin
+        if !first = n then first := i; last := i end) ours;
+    let ours_text = Array.map text ours in
+    (* The lines before the first todo begin theirs. *)
+    let bad = ref None in
+    (try
+       for i = 0 to !first - 1 do
+         if i >= m || ours_text.(i) <> theirs.(i) then begin
+           bad := Some (i, ours_text.(i), if i < m then theirs.(i) else "(none)\n"); raise Exit end
+       done;
+       if !first = n then begin
+         if n < m then begin bad := Some (n, "(none)\n", theirs.(n)); raise Exit end
+       end else
+         (* The lines after the last todo end theirs. *)
+         for k = 1 to n - 1 - !last do
+           if m - k < 0 || ours_text.(n - k) <> theirs.(m - k) then begin
+             bad := Some (n - k, ours_text.(n - k), if m - k >= 0 then theirs.(m - k) else "(none)\n");
+             raise Exit end
+         done
+     with Exit -> ());
+    match !bad with
+    | Some (i, a, b) -> report_differ name i a b
+    | None ->
+        if !first = n then incr same
+        else begin
+          incr partial;
+          let what = match first_todo (Array.to_list ours) with Some w -> w | None -> "" in
+          Hashtbl.replace todos what (1 + Option.value ~default:0 (Hashtbl.find_opt todos what))
+        end
+  in
+  let rec go () =
+    match next () with
+    | None -> ()
+    | Some (TList theirs) ->
+        (match implementation theirs with
+         | Some s ->
+             (match Hashtbl.find_opt plans s with
+              | Some p ->
+                  Hashtbl.replace seen s ();
+                  let ours = timed emit_s (fun () -> function_lines p) in
+                  timed compare_s (fun () -> check s ours theirs)
+              | None -> incr outside)
+         | None -> incr passed);
+        go ()
+    | Some t -> fail "not a list of lines: %s" (shown t)
+  in
+  go ();
+  (* A refused function has no plan either, and its list was counted
+     with those outside the subset. *)
+  Printf.printf "functions same %d differ %d partial %d refused %d outside %d, other lists %d\n"
+    !same !differ !partial !refused (!outside - !refused) !passed;
+  Hashtbl.iter (fun what k -> Printf.eprintf "todo %6d %s\n" k what) todos;
+  (* A plan whose implementation no list defined was never compared. *)
+  let unmatched = ref 0 in
+  Hashtbl.iter (fun s _ ->
+      if not (Hashtbl.mem seen s) then begin
+        incr unmatched; Printf.eprintf "UNMATCHED %s\n" s end) plans;
+  if report then
+    Printf.eprintf "nanofil-backend: parse %.3fs decode %.3fs lower %.3fs emit %.3fs compare %.3fs\n"
+      !parse_s !decode_s !lower_s !emit_s !compare_s;
+  if !differ > 0 || !unmatched > 0
+     || ((!partial > 0 || !refused > 0) && Sys.getenv_opt "NANOFIL_BACKEND_STRICT" <> None)
+  then exit 1
+
 (* The little-endian words of the file f. *)
 let file_words f =
   let s = In_channel.with_open_bin f In_channel.input_all in
@@ -359,5 +485,6 @@ let () =
   match Sys.argv with
   | [| _ |] -> asm ()
   | [| _; "abi" |] -> big_minor_heap (); abi ()
+  | [| _; "emit" |] -> big_minor_heap (); emit ()
   | [| _; "nfb"; prefix |] -> big_minor_heap (); nfb prefix
-  | _ -> prerr_endline "usage: nanofil-backend [abi | nfb PREFIX] <TERMS"; exit 2
+  | _ -> prerr_endline "usage: nanofil-backend [abi | emit | nfb PREFIX] <TERMS"; exit 2
