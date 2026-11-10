@@ -87,10 +87,14 @@ check() {
       [ "${words[i + 1]%/}" = "$over" ] && args+=("${words[i]}" "$dir/$over" "${words[i + 2]}") && break
     done
   fi
+  # Each verdict says how long the reprint took to print and to compile,
+  # so a slow gate names its slow files.
+  local t0=$EPOCHREALTIME t1 took
   if ! swipl "$here/reprint.pl" "$f" --strict >"$dir/$rel" </dev/null 2>"$tmp/verdict-$n.log"; then
     echo "FAIL $f: the grammar does not read it" >"$tmp/verdict-$n"
-  elif (cd "$dir" && $coqc "${args[@]}" "$rel" >"$tmp/verdict-$n.log" 2>&1); then
-    echo "ok   $f" >"$tmp/verdict-$n"
+  elif t1=$EPOCHREALTIME; (cd "$dir" && $coqc "${args[@]}" "$rel" >"$tmp/verdict-$n.log" 2>&1); then
+    took=$(awk -v a="$t0" -v b="$t1" -v c="$EPOCHREALTIME" 'BEGIN { printf "print %.1fs, compile %.1fs", b - a, c - b }')
+    echo "ok   $f ($took)" >"$tmp/verdict-$n"
   else
     echo "FAIL $f: the reprint does not compile" >"$tmp/verdict-$n"
     sed -i 's/^/  /' "$tmp/verdict-$n.log"
