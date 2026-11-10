@@ -1,0 +1,5 @@
+% A clause that is not an item of a module.
+func(f, export, p, [param(p, tmp(a))], [
+    block(start, [], [], ret(tmp(a)))
+]).
+item(l, const(1)).

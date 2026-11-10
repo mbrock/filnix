@@ -7,7 +7,9 @@
    text that command wrote. It exits 1 on a term that is not a line.
 
    With `abi` it is the ABI plans' (see [abi] below), and with
-   `emit` the emission's (see [emit]).
+   `emit` the emission's (see [emit]). With `compile FILE.ir` it is
+   the standalone compiler (see [compile_file]), which reads no
+   terms.
 
    The terms are SWI-Prolog's write_canonical form (format's ~k):
    integers, atoms (bare or quoted), compounds f(A, ...) and proper
@@ -133,7 +135,7 @@ let reader (s : string) : unit -> term option =
 (* NANOFIL_BACKEND_TIME=1 reports the CPU seconds of each step on
    stderr, for the campaign's timings. *)
 let report = Sys.getenv_opt "NANOFIL_BACKEND_TIME" <> None
-let parse_s = ref 0.0 and decode_s = ref 0.0 and print_s = ref 0.0
+let parse_s = ref 0.0 and decode_s = ref 0.0 and print_s = ref 0.0 and lower_s = ref 0.0
 
 let timed total f =
   if report then begin
@@ -424,26 +426,13 @@ let emit () =
      || ((sum 2 > 0 || !refused > 0) && Sys.getenv_opt "NANOFIL_BACKEND_STRICT" <> None)
   then exit 1
 
-(* The assembly of a checked module, the first term of stdin, as
-   EmitModule.v's module_pieces gives it and Asm.v prints it: what
-   `nanofil compile` prints for the module without -O. Each piece is
-   printed before the next is asked for, so its lines die in the
-   minor heap. Exits 3, with its output cut short, for a module the
-   backend does not take whole: one with a function outside the
-   subset or without a plan, or with a form that is not ported. *)
-let whole () =
-  let next = reader (In_channel.input_all stdin) in
-  let fail fmt = Printf.ksprintf (fun m -> prerr_endline ("nanofil-backend: " ^ m); exit 1) fmt in
+(* Prints the lines of a module's pieces (EmitModule.v's
+   module_pieces) as Asm.v prints them. Each piece is printed before
+   the next is asked for, so its lines die in the minor heap. Exits
+   3, with the output cut short, at a piece that is nothing or has a
+   form that is not ported. *)
+let print_pieces pieces =
   let pass fmt = Printf.ksprintf (fun m -> prerr_endline ("nanofil-backend: " ^ m); exit 3) fmt in
-  let lower_s = ref 0.0 in
-  let md =
-    match timed parse_s next with
-    | Some t ->
-        (match timed decode_s (fun () -> decode_module t) with
-         | Some md -> md
-         | None -> fail "the first term is not a module")
-    | None -> fail "no module"
-  in
   set_binary_mode_out stdout true;
   let text = Buffer.create 65536 in
   (* A chunk of lines at a time, as in asm above. *)
@@ -469,10 +458,105 @@ let whole () =
                | Some what -> pass "not ported: %s" what
                | None -> ());
               timed print_s (fun () -> print ls)) lists)
-    (timed lower_s (fun () -> module_pieces md));
+    pieces
+
+(* The assembly of a checked module, the first term of stdin, as
+   EmitModule.v's module_pieces gives it and Asm.v prints it: what
+   `nanofil compile` prints for the module without -O. Exits 3, with
+   its output cut short, for a module the backend does not take
+   whole: one with a function outside the subset or without a plan,
+   or with a form that is not ported. *)
+let whole () =
+  let next = reader (In_channel.input_all stdin) in
+  let fail fmt = Printf.ksprintf (fun m -> prerr_endline ("nanofil-backend: " ^ m); exit 1) fmt in
+  let md =
+    match timed parse_s next with
+    | Some t ->
+        (match timed decode_s (fun () -> decode_module t) with
+         | Some md -> md
+         | None -> fail "the first term is not a module")
+    | None -> fail "no module"
+  in
+  print_pieces (timed lower_s (fun () -> module_pieces md));
   if report then
     Printf.eprintf "nanofil-backend: parse %.3fs decode %.3fs lower and emit %.3fs print %.3fs\n"
       !parse_s !decode_s !lower_s !print_s
+
+(* The assembly of the unchecked module m, as Compile.v compiles it:
+   what `nanofil compile` prints for its IR text without -O. Exits 1
+   for a module that is not valid, and 3, as `module` above, for one
+   the backend does not take. *)
+let compile_term m =
+  let check_s = ref 0.0 in
+  (match timed check_s (fun () -> compile m) with
+   | Refused why -> prerr_endline ("nanofil-backend: " ^ why); exit 1
+   | Outside why -> prerr_endline ("nanofil-backend: " ^ why); exit 3
+   | Pieces ps -> print_pieces ps);
+  if report then
+    Printf.eprintf
+      "nanofil-backend: read %.3fs pizlonate and validate %.3fs lower and emit %.3fs print %.3fs\n"
+      !parse_s !check_s !lower_s !print_s
+
+(* compile_term of the first term of stdin, which is what `nanofil
+   read-terms FILE.ir` prints. *)
+let compile_terms () =
+  match timed parse_s (reader (In_channel.input_all stdin)) with
+  | Some m -> compile_term m
+  | None -> prerr_endline "nanofil-backend: no module"; exit 1
+
+(* The bytes of the file f as the text IrText.v reads: pieces of
+   NANOFIL_BACKEND_PIECE bytes (default 1 MB), each a list of
+   characters made when the reader asks for it, so the whole file is
+   never a list. *)
+let file_text f =
+  let size = match Sys.getenv_opt "NANOFIL_BACKEND_PIECE" with
+    | Some n -> int_of_string n
+    | None -> 1 lsl 20 in
+  let ic = In_channel.open_bin f in
+  let buf = Bytes.create size in
+  let rec fill at =
+    let n = if at < size then In_channel.input ic buf at (size - at) else 0 in
+    if n = 0 then at else fill (at + n) in
+  let rec next () =
+    let n = fill 0 in
+    if n = 0 then (In_channel.close ic; TextEnd)
+    else
+      let rec go i acc = if i < 0 then acc else go (i - 1) (Bytes.unsafe_get buf i :: acc) in
+      TextPiece (go (n - 1) [], next)
+  in
+  next ()
+
+(* `compile FILE.ir`: the standalone compiler. IrText.v reads the
+   text and Compile.v compiles the module; nothing of Prolog is in
+   the path. Exits 1 for a text the reader does not take. *)
+let compile_file f =
+  match timed parse_s (fun () -> read_text (file_text f)) with
+  | Some m -> compile_term m
+  | None -> prerr_endline "nanofil-backend: the IR text is not read"; exit 1
+
+(* The gate of the reader (tests/read.sh). Stdin is what `nanofil
+   read-each FILE...` prints: for each file `read(Module)`, or
+   `refused` where Prolog throws. For each file in turn, prints
+   `same` if IrText.v reads the module Prolog reads, `both-refuse` if
+   neither reads the text, `refused` if only Prolog reads it,
+   `DIFFER` if the two modules differ, `ACCEPTED` if only IrText.v
+   reads it and `UNREADABLE` if it reads it and this driver cannot
+   read Prolog's term; then the file. Each term is on a line of its
+   own. *)
+let read_files files =
+  let lines = ref (String.split_on_char '\n' (In_channel.input_all stdin)) in
+  List.iter (fun f ->
+      let line = match !lines with
+        | l :: r -> lines := r; l
+        | [] -> prerr_endline ("nanofil-backend: no term for " ^ f); exit 1 in
+      let verdict = match read_text (file_text f) with
+        | None -> if line = "refused." then "both-refuse" else "refused"
+        | Some m ->
+            if line = "refused." then "ACCEPTED"
+            else match (try reader line () with _ -> None) with
+              | Some (TApp ("read", [t])) -> if term_eqb m t then "same" else "DIFFER"
+              | _ -> "UNREADABLE" in
+      Printf.printf "%s %s\n" verdict f) files
 
 (* The little-endian words of the file f. *)
 let file_words f =
@@ -595,11 +679,16 @@ let () =
   | [| _; "abi" |] -> big_minor_heap (); abi ()
   | [| _; "emit" |] -> big_minor_heap (); emit ()
   | [| _; "module" |] -> big_minor_heap (); whole ()
+  | [| _; "compile-terms" |] -> big_minor_heap (); compile_terms ()
+  | [| _; "compile"; f |] -> big_minor_heap (); compile_file f
   | [| _; "nfb"; prefix |] -> big_minor_heap (); nfb prefix
   | [| _; "pizlonate" |] -> big_minor_heap (); pizlonate ()
+  | _ when Array.length Sys.argv >= 3 && Sys.argv.(1) = "read" ->
+      big_minor_heap (); read_files (List.tl (List.tl (Array.to_list Sys.argv)))
   | _ when Array.length Sys.argv >= 3 && Sys.argv.(1) = "nfb-read" ->
       big_minor_heap (); nfb_read (List.tl (List.tl (Array.to_list Sys.argv)))
   | _ ->
       prerr_endline
-        "usage: nanofil-backend [abi | emit | module | nfb PREFIX | pizlonate] <TERMS, or nfb-read FILE.nfb...";
+        "usage: nanofil-backend compile FILE.ir, or [abi | emit | module | compile-terms | nfb PREFIX | \
+         pizlonate] <TERMS, or read FILE.ir... <TERMS, or nfb-read FILE.nfb...";
       exit 2

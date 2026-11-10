@@ -1,0 +1,7 @@
+% Two functions of one name.
+func(f, export, p, [param(p, tmp(a))], [
+    block(start, [], [], ret(tmp(a)))
+]).
+func(f, export, p, [param(p, tmp(a))], [
+    block(start, [], [], ret(tmp(a)))
+]).

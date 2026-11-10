@@ -1,0 +1,9 @@
+% A run is no part of the module, and data may be named by any term.
+run(f, [0]).
+func(f, export, p, [param(p, tmp(a))], [
+    block(start, [], [
+        let(tmp(g), p, copy, [global(d)])
+    ], ret(tmp(g)))
+]).
+data(d, local, 8, [item(l, const(7))]).
+data(pair(1, 'two words'), local, 8, [item(l, const(8))]).

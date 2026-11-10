@@ -276,8 +276,11 @@ is at home under Fil-C is the first thing to find out then.
 The Gallina is written with the second extraction in mind from the
 start: no OCaml-only `Extract Constant` on a hot path without a C++
 twin, and no hand-written OCaml that the compiler's result depends
-on. The canonical-term reader in `main.ml` is such code today, and M4
-replaces it with a Gallina one.
+on. The canonical-term reader in `main.ml` was such code. Since M4
+the standalone compiler reads IR text with `IrText.v`, and the
+OCaml reader serves only the gates that take Prolog's terms. Three
+character primitives of `IrText.v` have OCaml definitions, and need
+C++ twins at M6.
 
 ## The path to a Fil-C library and a JIT
 
@@ -443,8 +446,8 @@ half of all of it is finding and adding names in maps: a name is a
 term such as `tmp(v12)`, hashed and compared as one at every step.
 The repair is to number a function's temporaries once and key the
 maps and sets by number, which changes every pass of M2 and belongs
-to M5. The gate's 1.4 GB for SQLite, nearly all of it the module
-read as terms, goes with M4's reader.
+to M5. The gate's 1.4 GB for SQLite is nearly all the module read
+as terms, which a reader of NFB words would not build.
 
 Both parts still miss their targets, by less than twice for
 printing and by more than twice for the plans before any emission.
@@ -456,8 +459,9 @@ written inside a loop.
 emits it and prints it in 8.8 s. As shares of that time:
 
 - Reading the module as terms is 28%, and nearly two thirds of
-  that is the collector. M4's reader takes NFB words and builds
-  the module with no terms between.
+  that is the collector. A reader of NFB words builds the module
+  with no terms between; it becomes the compiler's input once it is
+  faster than reading text.
 - Building the plans is 24%. Slots are 16%, nearly all of it the
   first and last touch of each temporary (15%) and the liveness
   under that (8%); fusing is 5%. This is the part that waits for
@@ -652,14 +656,14 @@ What remains of M3:
   first, and `setjmp` for Lua's `ldo.c`. With them come the 43
   modules of the corpus that have no whole text;
 - the performance target. The profile says it is not met by the
-  emission alone: it needs M5's numbered temporaries and M4's
+  emission alone: it needs M5's numbered temporaries and a faster
   reader.
 
 **M4. Pizlonation and a standalone compiler.** `Pizlonate.v` and a
 Gallina reader for IR text. The pipeline is read, pizlonate,
 `valid`, lower, emit, print. Gate: the pizlonated module equals
 Prolog's as a term, and `nanofil-backend compile FILE.ir` equals
-`nanofil compile FILE.ir` with no Prolog in the pipeline.
+`nanofil compile FILE.ir` with no Prolog in the pipeline. Done.
 
 *Pizlonation is done.* `Pizlonate.v`'s `pizlonate_module` takes a
 module's term and gives the term pizlonate.pl gives: every access
@@ -693,8 +697,88 @@ Prolog fails or throws.
   gate, which prints modules without them; the standalone
   compiler's gate reads them.
 
-What remains of M4: the IR text reader, and `nanofil-backend
-compile`.
+*The standalone compiler is done.* `nanofil-backend compile
+FILE.ir` reads the text with `IrText.v` and compiles the module
+with `Compile.v`: pizlonate, read into `Syntax.v`'s types, the
+model's `valid`, lower, emit, print. It exits 1 for a module it
+refuses and 3 for one it does not take: a plain module, whose
+backend (amd64.pl) is not ported, or one with a function outside
+the subset.
+
+- **The reader** takes what ir_text.pl's printer writes and a
+  little more: comments, names, quoted atoms and strings with their
+  escapes, symbol atoms, decimal integers, compounds, proper lists,
+  and one operator, the infix `-` of a phi's edges. It gives nothing
+  for the rest of Prolog's syntax. The rule is that it never reads a
+  text differently from SWI-Prolog; it may refuse what Prolog reads.
+  Every loop is a tail call, so a module of 200,000 items needs no
+  more stack than one item.
+- **The reader's gate** is `tests/read.sh`, with a new command
+  `nanofil read-each` that prints the module Prolog reads from each
+  file. The fixtures and 387 texts of the corpus all read the same.
+  Of 1,088 adversarial texts (escapes, quotes, UTF-8, numbers,
+  operators, comments, clause ends), 626 read the same, both refuse
+  227, and the reader alone refuses 235. `tests/read/refused.txt`
+  names those 235, and the gate fails if the set changes either way.
+  The largest groups are uses of `-` that are not a phi's edge,
+  number forms other than decimal, and bytes outside ASCII that are
+  not inside quotes.
+- **A text in pieces.** The driver gives the reader the file a
+  megabyte at a time, and a piece is a list of characters only while
+  its clauses are read. For SQLite's 78 MB of text this is 1.3 GB at
+  the peak in place of 2.8 GB, at the same speed. That reading in
+  pieces equals reading the whole list is not proved: two `Example`s
+  cut a text at every size from 1 to 40, and the gate runs the
+  adversarial texts again in pieces of one byte and of seven.
+- **The compiler's gate** is `tests/compile.sh`: the text printed
+  must be `nanofil compile`'s, byte for byte, and each must refuse
+  what the other refuses. The IR fixtures give 32 the same, 4 not
+  taken and 7 refused by both. The C corpus and the package
+  translation units give 339 the same and 49 not taken (42 with a
+  function outside the subset, 7 plain); the frontend skips 6. The
+  files not taken must be exactly the 53 that
+  `tests/compile/none.txt` names, so the gate fails when the
+  backend stops taking a file, and when it starts taking a listed
+  one.
+- **Three known gaps**, all on the side of taking less or checking
+  less than Prolog, none of which changes a line both print:
+  - A function's name must be an atom; a data object's may be any
+    term, as in Prolog.
+  - The `context/2` items are dropped unchecked. Prolog checks
+    provenance's records before it drops them.
+  - Prolog also runs `valid_module/1` on the module as written.
+    Here only the pizlonated module is judged.
+- **Mutations and fuzzing.** Of 25 wrong readers, the gates catch
+  24; the last showed that a test in the symbol atoms was redundant,
+  and it is removed. Of 6 wrong versions of `Compile.v`, an
+  `Example` or the gate catches 4. The other two cannot show: one
+  skips the early exit for a function outside the subset, which the
+  driver then finds as a missing plan, and one asks an atom of every
+  five-argument item, and only `func` has five. Of 5,876 mutated
+  IR texts, 1,127 compile to the same bytes, both refuse 4,582, and
+  167 that Prolog compiles are not taken, as plain or outside the
+  subset. No text differs, and the backend compiles nothing that
+  Prolog refuses.
+- **SQLite.** `compile` on SQLite's IR text prints Prolog's
+  assembly, byte for byte, in 41 s and 1.3 GB, against 70 s and
+  2.1 GB for `nanofil compile`. Reading is 9.6 s, pizlonation and
+  validation 24.8 s, lowering and emission 4.9 s, printing 2.0 s.
+  Pizlonation is under a second of that, so the model's validator
+  is more than half of the whole compile. It was written to be
+  proved about, not to be fast, and it is M5's first target.
+
+The driver's input stays text. An NFB reader is proved
+(`Nfb.decode`), but its checked decoding of SQLite's two stages
+took 17 s, where the text reader takes 9.6 s for the first and the
+driver's OCaml reader of Prolog's terms about a second. It becomes
+the input when it is the faster one. The NFB work now aims at
+decoding straight into M5's numbered form: `Syntax.v`'s own types
+with a temporary named by an integer term, symbols keeping their
+names, and a function outside the subset kept as a term.
+
+The full check (`nanofil-backend-full`, about an hour) runs only
+when asked, by `workflow_dispatch`; the quick one runs on pushes
+that touch the backend's paths and on no others.
 
 **M5. Speed, and pcre2 through `rxc`.** Profile, fix data
 structures, record the numbers in perf.md's style. `rxc` gets a

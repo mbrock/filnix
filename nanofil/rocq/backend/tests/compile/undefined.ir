@@ -1,0 +1,4 @@
+% A use with no definition: the validator refuses the module.
+func(f, export, p, [param(p, tmp(a))], [
+    block(start, [], [], ret(tmp(b)))
+]).

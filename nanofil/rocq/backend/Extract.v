@@ -33,7 +33,7 @@ From Stdlib Require Extraction ExtrOcamlBasic ExtrOcamlNativeString
 From Stdlib Require Import ZArith.
 From Nanofil Require Import Term Maps Transport.
 From Backend Require Import Text Asm AsmTerm Order Abi PlanTerm Layout Emit EmitData EmitThunk
-  EmitModule Nfb Pizlonate.
+  EmitModule Nfb Pizlonate Compile IrText.
 
 (** The hash that picks a name's bucket becomes OCaml's string hash,
     as in the model's extraction (theories/Extract.v): a lookup
@@ -57,8 +57,24 @@ Extract Constant Z.of_nat => "Big_int_Z.big_int_of_int".
     million words. *)
 Extract Inlined Constant length => "List.length".
 
+(** The IR text reader (IrText.v) takes the file's bytes as lists
+    of characters. A character's code and the character of a code are
+    OCaml's, and a string is filled from its characters, last first,
+    in one pass. *)
+Extract Constant IrText.code => "Char.code".
+Extract Constant IrText.byte => "Char.chr".
+Extract Constant IrText.string_of_rev =>
+  "(fun cs ->
+     let n = List.length cs in
+     let b = Bytes.create n in
+     let rec fill i = function
+       | [] -> ()
+       | c :: r -> Bytes.unsafe_set b i c; fill (i - 1) r in
+     fill (n - 1) cs;
+     Bytes.unsafe_to_string b)".
+
 Set Extraction Output Directory "extraction".
 Extraction "nanofil_backend.ml" dline rev_lines_parts
   decode_module module_symbols lower_function lower_thunks plan_term thunks_term term_eqb
-  Nfb.encode Nfb.decode Nfb.decode_input enc_module pizlonate_module
+  Nfb.encode Nfb.decode Nfb.decode_input enc_module pizlonate_module compile read_text
   function_lines data_lines alias_lines thunk_lines end_lines module_pieces module_lines is_todo first_todo.

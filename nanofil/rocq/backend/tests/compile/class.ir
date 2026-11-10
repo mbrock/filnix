@@ -1,0 +1,6 @@
+% A load whose address is a word, in a module with a pointer.
+func(f, export, w, [param(p, tmp(a)), param(w, tmp(n))], [
+    block(start, [], [
+        let(tmp(x), w, load(sw), [tmp(n)])
+    ], ret(tmp(x)))
+]).

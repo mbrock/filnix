@@ -23,6 +23,7 @@
     | `emit-terms FILE` | print the checked module of a Fil-C file, then the reference emission's asm.pl lines, a list for each item, for each weak thunk and for the end of the file, as terms; a `.i` file is a Fil-C module whatever it uses, as for `cc` (rocq/backend) |
     | `pizlonate-terms FILE` | print the module of a file and then its pizlonation, each without its context items, as terms: the result of pizlonate.pl alone, neither validated nor passed to the check passes (rocq/backend) |
     | `read-terms FILE` | print the module of an IR text file as a term, as read: every item, the context items included, and not validated (rocq/backend) |
+    | `read-each FILE...` | for each IR text file in turn, print `read(Module)` with the module `read-terms` prints, or `refused` where reading it throws (rocq/backend) |
 
     A FILE ending in `.c` or `.i` goes through the C frontend, one ending
     in `.nfb` is NFB, and any other FILE is IR text. A `.c` file is preprocessed with the predefined
@@ -597,6 +598,12 @@ command(Opt, _, _, ['pizlonate-terms', File]) :- !,
 command(_, _, _, ['read-terms', File]) :- !,
     read_ir_file(File, Module, _),
     format("~k.~n", [Module]).
+command(_, _, _, ['read-each'|Files]) :- !,
+    forall(member(File, Files),
+           (   catch(read_ir_file(File, Module, _), _, fail)
+           ->  format("~k.~n", [read(Module)])
+           ;   format("refused.~n")
+           )).
 command(Opt, _, Checks, ['nfb-check', File]) :- !,
     file_module(File, Module0),
     optimize(Opt, Module0, Module),

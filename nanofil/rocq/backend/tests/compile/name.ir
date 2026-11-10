@@ -1,0 +1,5 @@
+% A function named by a term that is not an atom. ir.pl's validator
+% takes it, and the Prolog emission throws at the name.
+func(tmp(a), export, p, [param(p, tmp(a))], [
+    block(start, [], [], ret(tmp(a)))
+]).

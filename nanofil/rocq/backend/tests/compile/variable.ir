@@ -1,0 +1,4 @@
+% A clause with a variable.
+func(f, export, p, [param(p, tmp(A))], [
+    block(start, [], [], ret(tmp(A)))
+]).
