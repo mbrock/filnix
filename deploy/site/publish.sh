@@ -22,16 +22,13 @@ if python3 -c 'import json,sys; sys.exit(not any(o["Key"]=="current.json" for o 
   esac
 fi
 
-# Keep retained snapshots rather than deleting bookmarked releases. The
-# bounded trial stops new uploads at 8 GiB (at most ~$0.13/month storage
-# without any free allowance); existing hosting continues to work.
+# R2 storage is metered, not capped at the old trial's 8 GiB. Retention
+# runs only after a complete new release has been verified and promoted.
 python3 - <<'PY'
 import json
 from pathlib import Path
 old = sum(o["Size"] for o in json.load(open("bucket.json")).get("Contents", []))
 new = sum(p.stat().st_size for p in Path("_site").rglob("*") if p.is_file())
-if old + new > 8 * 1024**3:
-    raise SystemExit("Trial's 8 GiB storage cap reached; review retention before uploading")
 print(f"Existing {old:,} bytes; this release {new:,} bytes")
 PY
 
@@ -56,3 +53,9 @@ aws "${aws_args[@]}" s3 cp current.json "s3://$bucket/current.json" \
   --content-type application/json --cache-control no-store --no-progress
 echo "promoted=true" >> "$GITHUB_OUTPUT"
 echo "Published https://filnix.org/__releases/$GITHUB_SHA/" >> "$GITHUB_STEP_SUMMARY"
+
+# A fresh inventory includes this release. This job holds the promotion
+# lock; pruning never races a different promotion. Keep the live SHA,
+# newest five snapshots and a 24-hour grace for readers/browser checks.
+aws "${aws_args[@]}" s3api list-objects-v2 --bucket "$bucket" --output json > bucket.json
+python3 deploy/site/prune.py bucket.json "$GITHUB_SHA" --bucket "$bucket" "${aws_args[@]}"

@@ -11,9 +11,11 @@ function site() {
   let current = sha;
   const files = new Map([
     [`releases/${sha}/index.html`, "<h1>first</h1>"],
+    [`releases/${sha}/commit.txt`, sha],
     [`releases/${sha}/docs/index.html`, "docs"],
     [`releases/${sha}/large.bin`, "0123456789abcdef"],
     [`releases/${next}/index.html`, "<h1>next</h1>"],
+    [`releases/${next}/commit.txt`, next],
   ]);
   globalThis.caches = { default: { async match() {}, async put() {} } };
   const env = { SITE: {
@@ -33,6 +35,9 @@ function site() {
   } };
   return {
     promote(value) { current = value; },
+    expire(value) {
+      for (const key of files.keys()) if (key.startsWith(`releases/${value}/`)) files.delete(key);
+    },
     fetch(path, options) { return worker.fetch(new Request(`https://filnix.org${path}`, options), env, { waitUntil() {} }); },
   };
 }
@@ -49,6 +54,20 @@ test("promotion redirects new visitors, without changing existing release URLs",
   s.promote(null);
   assert.equal((await s.fetch("/")).status, 503);
   assert.equal((await s.fetch(`${prefix}/`)).status, 200);
+});
+
+test("expired bookmarks redirect to canonical paths, without masking real missing pages", async () => {
+  const s = site();
+  s.promote(next);
+  assert.equal((await s.fetch(`${prefix}/absent.html`)).status, 404);
+  s.expire(sha);
+  const expired = await s.fetch(`${prefix}/docs/?search=hello`);
+  assert.equal(expired.status, 302);
+  assert.equal(expired.headers.get("location"), "https://filnix.org/docs/?search=hello");
+  assert.equal(expired.headers.get("cache-control"), "no-store");
+  assert.equal((await s.fetch(`/__releases/${next}/absent.html`)).status, 404);
+  s.expire(next);
+  assert.equal((await s.fetch(`/__releases/${next}/absent.html`)).status, 404);
 });
 
 test("binary downloads retain exact bytes, HEAD metadata and range semantics", async () => {

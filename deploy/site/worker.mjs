@@ -53,6 +53,15 @@ export default {
     if (tail.endsWith("/")) key += "index.html";
     const meta = await env.SITE.head(key);
     if (!meta) {
+      // A retained release's missing page is still a real 404. Once the
+      // whole snapshot expires, old bookmarks move to its canonical path.
+      if (!await env.SITE.head(`releases/${sha}/commit.txt`)) {
+        const current = await env.SITE.get("current.json");
+        if (current && (await current.json()).sha !== sha) {
+          url.pathname = url.pathname.replace(/^\/__releases\/[0-9a-f]{40}/, "");
+          return reply(null, 302, { location: url.href });
+        }
+      }
       if (!tail.endsWith("/") && await env.SITE.head(`${key}/index.html`)) {
         url.pathname += "/";
         return reply(null, 308, { location: url.href });

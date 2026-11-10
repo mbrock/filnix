@@ -36,14 +36,55 @@ permissions:
   id-token: write
 
 jobs:
-  # Every push builds at once; only publishing waits its turn.
+  # One cold producer finishes and seeds the shared cache; newer pushes
+  # coalesce into the newest pending producer rather than duplicating proofs
+  # or repeatedly cancelling the only run that can make them available.
+  generated:
+    name: Prepare and cache generated pages
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: site-generated-main
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      # Only publish these exact Nix outputs, not a mutable "latest" bundle
+      # or every store path produced by the runner. No PR/branch gets a key.
+      - name: Install the site cache publisher
+        uses: cachix/cachix-action@v16
+        with:
+          name: filc
+          skipPush: true
+      - name: Prepare and immediately cache proof states
+        env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
+        run: |
+          set -o pipefail
+          nix build -L --no-link --print-out-paths \
+            .#site.proofStates .#site.spikeStates | cachix push filc
+      - name: Prepare and cache rendered pages
+        env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
+        run: |
+          set -o pipefail
+          nix build --no-link --print-out-paths \
+            .#site.rocqPages .#site.prologPages | cachix push filc
+
   build:
+    needs: generated
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check the R2 serving contract
-        run: node --test deploy/site/worker.test.mjs
+      - name: Check the R2 serving and retention contracts
+        run: |
+          node --test deploy/site/worker.test.mjs
+          python3 -m unittest discover -s tests -p test_site_retention.py
       - uses: cachix/install-nix-action@v31
+      - name: Fetch exact generated pages (never rebuild proofs here)
+        run: |
+          nix build -L --no-link --max-jobs 0 --builders "" \
+            .#site.proofStates .#site.spikeStates .#site.rocqPages .#site.prologPages
       - name: Build the site
         run: |
           nix build -L .#site
@@ -52,22 +93,6 @@ jobs:
           # with what is live.
           chmod u+w _site
           echo "$GITHUB_SHA" > _site/commit.txt
-      # Only publish these exact Nix outputs, not a mutable "latest" bundle
-      # or every store path produced by the runner. No PR/branch gets a key.
-      - name: Install the site cache publisher
-        if: github.ref == 'refs/heads/main'
-        uses: cachix/cachix-action@v16
-        with:
-          name: filc
-          skipPush: true
-      - name: Cache proof states and rendered pages
-        if: github.ref == 'refs/heads/main'
-        env:
-          CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
-        run: |
-          nix build --no-link --print-out-paths \
-            .#site.proofStates .#site.spikeStates .#site.rocqPages \
-            .#site.prologPages | cachix push filc
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
@@ -145,7 +170,8 @@ jobs:
 
   deployed-phone:
     needs: publish-r2
-    if: needs.publish-r2.outputs.promoted == 'true'
+    # Even a retention failure after promotion must not skip live checks.
+    if: always() && needs.publish-r2.outputs.promoted == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

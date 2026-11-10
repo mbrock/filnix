@@ -1,4 +1,4 @@
-# filnix.org hosting trial
+# filnix.org hosting
 
 The existing Pages workflow still builds and deploys to GitHub Pages. Its
 independent `publish-r2` job uploads the **same artifact** to Cloudflare R2,
@@ -7,11 +7,20 @@ verifies object paths/sizes and `commit.txt`, then atomically replaces
 replace a newer live commit. Upload failures leave the previous release live.
 
 `filnix-site` is a private Standard R2 bucket. `worker.mjs` is its only public
-front end, bound as `SITE`. The free-plan Worker redirects canonical paths to
+front end, bound as `SITE`. The Worker redirects canonical paths to
 `/__releases/<commit>/…`; relative links consequently stay within one release.
 It streams downloads, supports HEAD, conditional and range requests, and caches
 immutable full responses up to Cloudflare's ordinary 512 MiB object limit.
 `/commit.txt` reports the canonical release without caching.
+
+The Pages workflow first prepares the four exact generated-page outputs and
+publishes them to Cachix. This producer is serialized: one active run finishes,
+with only the newest pending run kept. Proof captures are uploaded before the
+renderers, not after the whole site. Site assembly depends on this job and
+fetches these outputs with local/remote builders disabled, so it cannot silently
+recompile proofs. A cache miss or failed upload is visible in the prerequisite.
+The unrelated Binary cache workflow checks toolchain foundations; Pages does
+not wait for its distribution/image jobs. Routine builds remain on GitHub.
 
 The Actions `filnix-org` environment shows deployment status and its public URL.
 Local phone checks remain independent of either publisher. `deployed-phone`
@@ -21,20 +30,22 @@ also checks the public site at 320 and 390 pixels and every deployed Rocq page.
 
 Actions uses `FILNIX_R2_ACCESS_KEY_ID` and `FILNIX_R2_SECRET_ACCESS_KEY`.
 These are **object read/write only for this bucket**: no DNS, Worker editing,
-bucket administration or other-bucket access. The initial trial token expires
-on **2026-12-10 at 23:00 UTC**; renew/revoke through Cloudflare, never by adding
-credentials to this repository. Worker deployments are separate administrative
+bucket administration or other-bucket access. The trial expiration was removed
+when ongoing hosting was approved; rotate/revoke through Cloudflare, never by
+adding credentials to this repository. Worker deployments are separate administrative
 operations using `wrangler.jsonc` or the Cloudflare connection, not this token.
 
-No paid Workers plan or persistent Namespace volume is selected. Free Workers
-has a daily request limit; exceeding it stops serving until reset rather than
-automatically upgrading. R2 is metered with a free allowance, not a hard quota.
-The publisher caps retained trial objects at **8 GiB**, conservatively counting
-the whole incoming release before upload. At the listed $0.015/GB-month this
-is about $0.13/month before free allowance. At the cap, new publishes stop;
-existing releases remain live. Do not delete bookmarked immutable releases
-without deciding a retention/redirect policy first. Operation charges remain
-metered; monitor account usage during the trial.
+R2 is metered with a free allowance, not a hard quota. The old **8 GiB trial
+cap is removed**. After successful promotion, the serialized publisher deletes
+only snapshots older than 24 hours, except the newest five and current release.
+It uses each tree's youngest object so partial uploads also get a grace period.
+Other bucket keys are untouched. Cleanup errors fail visibly but do not undo
+promotion or skip deployed checks. `prune.py --dry-run` emits the deletion plan.
+Expired snapshot bookmarks redirect to the equivalent canonical path; missing
+pages inside retained snapshots still return 404. The retained copies remain
+byte-immutable. At $0.015/GB-month, 100 GB retained is about $1.50/month before
+the allowance; operations/Workers requests are separately metered. No persistent
+Namespace volume or routine paid build shape is enabled.
 
 The manual `Site builder comparison` workflow builds one revision on GitHub
 4-core and Namespace, both on Ubuntu 22.04 with the same public Nix
