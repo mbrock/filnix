@@ -333,8 +333,8 @@ checks a client's IR after pizlonation and before emitting anything.
 
 ## Performance targets
 
-These are targets, not measurements. M1 measures the baseline per
-stage; until then the known figures are perf.md's:
+These are targets. The figures known before the campaign are
+perf.md's:
 
 - `sqlite3.c`, 3106 functions and 218k checked instructions: 651.6G
   user instructions without `-O`, about 2000G with it. In a loaded
@@ -362,6 +362,28 @@ input and the same stages:
 A stage that misses its target gets a profile and a note of where
 the time goes before the next stage starts.
 
+**The baseline, measured at M1.** CPU seconds of the plain compile
+in SWI-Prolog, stage by stage, on one core of an orb (a 2.6 GHz
+Xeon):
+
+- SQLite 3.51.2's amalgamation with `nix/sqlite.nix`'s flags,
+  preprocessed: 141,500 lines in, 5.52 million asm lines and 135 MB
+  out. Frontend 35.9, pizlonate 6.3, validate 13.6, emit 20.6,
+  print 12.8. The stages this campaign ports are 53.3 of 89.2 s.
+- The 281 modules of the test corpus together: frontend 325.5,
+  pizlonate 2.3, validate 5.6, emit 9.9, print 3.2. Their headers
+  dominate, so the corpus tests sameness and SQLite tests speed.
+
+The extracted printer prints SQLite's lines in 5.0 s, which is 2.5
+times Prolog's speed, within 230 MB. Two things follow:
+
+- Printing is where Prolog is nearest to native code, because SWI
+  writes its text in C. The Gallina printer makes a string per digit
+  and a list cell per part. So this ratio says little about emission.
+- A twentieth of 53.3 s is 2.7 s, and the printer alone takes 5.0.
+  The M3 target cannot be met unless the printer gets faster too, so
+  M3 profiles it first and M5 owns what remains.
+
 ## Milestones
 
 Each ends with its gate green and a short note of what it found.
@@ -371,11 +393,34 @@ with its `_RocqProject`, a build script, extraction to a
 `nanofil-backend` binary and a Nix check outside the quick gate.
 Gate: the empty project builds, extracts and passes `parse.sh`.
 
+*Done.* `make -C rocq/backend` builds `nanofil-backend` in two
+seconds. It compiles only the model files the backend imports, which
+is `Term.v` so far, so it does not wait for the model's proofs. The
+flake checks are `nanofil-backend`, which takes ten seconds once its
+inputs are built, and `nanofil-backend-full`. They have their own
+workflow, and the quick Rocq gate does not read the directory.
+
 **M1. Asm lines and the printer.** `Asm.v`: lines, directives,
 operands and expressions as inductives, a decoder from terms, and
 the printer. A Prolog command prints a module's line list as terms.
 Gate: for the corpus, the printed text equals `nanofil compile`'s,
 byte for byte; the per-stage baseline is measured and recorded here.
+
+*Done.* The command is `nanofil asm-terms FILE TEXT`, which writes
+the text and prints the lines it is the text of. `Asm.v` has the
+types and the printer, `AsmTerm.v` the decoder, and
+`rocq/backend/tests/asm.sh` is the gate. The text is the same for
+all 280 Fil-C modules of `tests/filc`, `tests/c` and `tests/c/prog`,
+with and without `-O`, and for SQLite's 5.52 million lines. Seven
+files are skipped: six that nanofil refuses without their test's
+flags, and one plain module. Found:
+
+- A `match` on string literals extracts to a decision tree per bit:
+  the decoder was 11,701 lines of OCaml. Names are compared with
+  `String.eqb` instead, and it is 1,713.
+- A driver that holds a module's terms, lines and parts needs 4 GB
+  for SQLite. It now works a chunk of lines at a time.
+- The baseline is under Performance targets above.
 
 **M2. Frames and the ABI plan.** `filc_abi.pl` and `frame_slots.pl`:
 slots, roots, entry and exit actions, call layouts, signatures.

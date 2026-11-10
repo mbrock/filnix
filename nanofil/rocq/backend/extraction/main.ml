@@ -15,7 +15,9 @@ open Nanofil_backend
 
 exception Syntax of string
 
-let parse (s : string) : term list =
+(* [reader s] reads the next term of [s] at each call, and None at
+   its end. *)
+let reader (s : string) : unit -> term option =
   let n = String.length s in
   let pos = ref 0 in
   let peek () = if !pos < n then s.[!pos] else '\000' in
@@ -115,36 +117,67 @@ let parse (s : string) : term list =
     skip ();
     if peek () = ',' then (incr pos; t :: args ()) else [t]
   in
-  let rec terms acc =
+  fun () ->
     skip ();
-    if !pos >= n then List.rev acc
+    if !pos >= n then None
     else begin
       let t = term () in
       expect '.';
-      terms (t :: acc)
+      Some t
     end
-  in
-  terms []
 
 (* NANOFIL_BACKEND_TIME=1 reports the CPU seconds of each step on
    stderr, for the campaign's timings. *)
-let timed name f =
-  let t0 = Sys.time () in
-  let x = f () in
-  if Sys.getenv_opt "NANOFIL_BACKEND_TIME" <> None then
-    Printf.eprintf "nanofil-backend: %s %.3fs\n" name (Sys.time () -. t0);
-  x
+let report = Sys.getenv_opt "NANOFIL_BACKEND_TIME" <> None
+let parse_s = ref 0.0 and decode_s = ref 0.0 and print_s = ref 0.0
+
+let timed total f =
+  if report then begin
+    let t0 = Sys.time () in
+    let x = f () in
+    total := !total +. (Sys.time () -. t0);
+    x
+  end else f ()
+
+(* The terms are read, decoded and printed a chunk of lines at a
+   time, so nothing of a whole module (SQLite has 5.5 million lines
+   and 135 MB of text) is held but the input. *)
+let chunk = 4096
 
 let () =
-  let terms = timed "parse" (fun () -> parse (In_channel.input_all stdin)) in
-  (* The lines in reverse, which is what the printer's loop reads. *)
-  let rev, _ =
-    timed "decode" (fun () ->
-      List.fold_left (fun (acc, i) t ->
-          match dline t with
-          | Some l -> (l :: acc, i + 1)
-          | None -> Printf.eprintf "nanofil-backend: term %d is not a line\n" i; exit 1)
-        ([], 1) terms)
-  in
+  let next = reader (In_channel.input_all stdin) in
   set_binary_mode_out stdout true;
-  timed "print" (fun () -> List.iter print_string (rev_lines_parts rev []))
+  let count = ref 0 in
+  let rec terms acc k =
+    if k = chunk then acc
+    else match next () with
+      | Some t -> terms (t :: acc) (k + 1)
+      | None -> acc
+  in
+  (* The lines of the terms [rev], which are in reverse, in order. *)
+  let lines rev =
+    let i = ref (!count + List.length rev + 1) in
+    List.rev_map (fun t ->
+        decr i;
+        match dline t with
+        | Some l -> l
+        | None ->
+            Printf.eprintf "nanofil-backend: term %d is not a line\n" !i;
+            exit 1)
+      rev
+  in
+  let rec go () =
+    match timed parse_s (fun () -> terms [] 0) with
+    | [] -> ()
+    | rev ->
+        let ls = timed decode_s (fun () -> lines rev) in
+        count := !count + List.length rev;
+        (* The printer reads the lines in reverse. *)
+        timed print_s (fun () ->
+          List.iter print_string (rev_lines_parts (List.rev ls) []));
+        go ()
+  in
+  go ();
+  if report then
+    Printf.eprintf "nanofil-backend: %d lines parse %.3fs decode %.3fs print %.3fs\n"
+      !count !parse_s !decode_s !print_s
