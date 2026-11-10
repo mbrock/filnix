@@ -1005,6 +1005,7 @@ Proof.
       pose proof (class_code_range _ _ Ec1). pose proof (class_code_range _ _ Ec2).
       unfold read_result.
       replace (Z.eqb (256 + 16 * c1 + c2) 0) with false by (symmetry; apply Z.eqb_neq; lia).
+    replace (Z.eqb (256 + 16 * c1 + c2) 15) with false by (symmetry; apply Z.eqb_neq; lia).
       replace (256 <=? 256 + 16 * c1 + c2) with true by (symmetry; apply Z.leb_le; lia).
       replace ((256 + 16 * c1 + c2 - 256) / 16) with c1
         by (apply (Z.div_unique _ _ _ c2); lia).
@@ -2209,9 +2210,12 @@ Lemma ret_rt : forall ret rw, ret_word ret = Some rw -> read_ret rw = Some ret.
 Proof.
   intros ret rw H. unfold ret_word in H. destruct (is_atom "void" ret) eqn:Ev.
   - injection H as <-. apply is_atom_inv in Ev. subst. reflexivity.
-  - destruct (app_args "tuple" 1 ret) as [[|[| | |[|k1 [|k2 []]]] []]|] eqn:Et;
+  - destruct (is_atom "data" ret) eqn:Ed.
+    { injection H as <-. apply is_atom_inv in Ed. subst. reflexivity. }
+    destruct (app_args "tuple" 1 ret) as [[|[| | |[|k1 [|k2 []]]] []]|] eqn:Et;
     try (pose proof (class_code_range _ _ H); unfold read_ret;
          replace (Z.eqb rw 0) with false by (symmetry; apply Z.eqb_neq; lia);
+         replace (Z.eqb rw 15) with false by (symmetry; apply Z.eqb_neq; lia);
          replace (256 <=? rw) with false by (symmetry; apply Z.leb_gt; lia);
          apply codes_round_trip; exact H).
     destruct (enc_code EClass k1) as [c1|] eqn:E1; [|discriminate].
@@ -2219,6 +2223,7 @@ Proof.
     pose proof (class_code_range _ _ E1). pose proof (class_code_range _ _ E2).
     apply app_args_inv in Et as [-> _]. unfold read_ret.
     replace (Z.eqb (256 + 16 * c1 + c2) 0) with false by (symmetry; apply Z.eqb_neq; lia).
+    replace (Z.eqb (256 + 16 * c1 + c2) 15) with false by (symmetry; apply Z.eqb_neq; lia).
     replace (256 <=? 256 + 16 * c1 + c2) with true by (symmetry; apply Z.leb_le; lia).
     replace ((256 + 16 * c1 + c2 - 256) / 16) with c1 by (apply (Z.div_unique _ _ _ c2); lia).
     replace ((256 + 16 * c1 + c2) mod 16) with c2 by (apply (Z.mod_unique _ _ (16 + c1)); lia).

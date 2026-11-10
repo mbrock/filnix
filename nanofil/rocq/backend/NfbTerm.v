@@ -958,6 +958,7 @@ Definition param_parts (t : term) : option (term * Z) :=
 (** The word of a function's return type. *)
 Definition ret_word (r : term) : option Z :=
   if is_atom "void" r then Some 0 else
+  if is_atom "data" r then Some 15 else
   match app_args "tuple" 1 r with
   | Some [TList [k1; k2]] =>
       let* c1 := enc_code EClass k1 in let* c2 := enc_code EClass k2 in Some (256 + 16 * c1 + c2)
@@ -1561,6 +1562,7 @@ Fixpoint read_blocks (r : rtab) (fuel : nat) (i : Z) (k : nat) (n x : Z) : reade
 (** The return type of its word. *)
 Definition read_ret (z : Z) : option term :=
   if Z.eqb z 0 then Some (TAtom "void")
+  else if Z.eqb z 15 then Some (TAtom "data")
   else if 256 <=? z then
     if (z - 256) / 16 <? 16 then
       let* k1 := dec_code EClass ((z - 256) / 16) in let* k2 := dec_code EClass (z mod 16) in
