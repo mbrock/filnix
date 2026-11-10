@@ -34,6 +34,27 @@ Definition hello_output_literals : list String.string :=
    "hello#str.70"; "hello#str.63"; "hello#str.71";
    "hello#str.72"; "hello#str.73"; "hello#str.74"; "hello#str.75"].
 
+(** Compute the closed fixture strings once, then rewrite by a checked
+    equality instead of repeatedly reducing the linked initializer. *)
+Local Definition hello_literal_cache : list (String.string * list Z) := Eval vm_compute in
+  map (fun s => (s, hello_literal_bytes s)) hello_output_literals.
+
+Local Lemma hello_literal_cache_valid :
+  List.Forall (fun sb => hello_literal_bytes (fst sb) = snd sb) hello_literal_cache.
+Proof.
+  repeat (apply List.Forall_cons; [vm_compute; reflexivity|]). constructor.
+Qed.
+
+Local Lemma hello_literal_cached : forall s bytes,
+  In (s, bytes) hello_literal_cache -> hello_literal_bytes s = bytes.
+Proof.
+  intros s bytes Hin. pose proof hello_literal_cache_valid as Hcache.
+  rewrite List.Forall_forall in Hcache. exact (Hcache (s, bytes) Hin).
+Qed.
+
+Local Ltac hello_cached_format :=
+  erewrite hello_literal_cached; [|vm_compute; eauto 30].
+
 Definition hello_literal_pieces (s : String.string) : list (piece * pval) :=
   string_ps (version_literal s) (ptr_addr (version_literal s))
     (hello_literal_region s) (hello_literal_bytes s).
@@ -104,11 +125,7 @@ Proof.
     eexists; eexists; eexists; split; [reflexivity|];
     split; [apply Hstring; simpl; tauto|]; cbv beta iota zeta;
     try reflexivity;
-    match goal with |- narrow_format ?m ?format ?args ?out =>
-      let fmt := eval vm_compute in format in
-      change (narrow_format m fmt args out)
-    | |- ?unexpected => fail 1 "Unexpected output interpretation:" unexpected
-    end; hello_format Hstring).
+    hello_cached_format; hello_format Hstring).
 Qed.
 
 Lemma hello_footer_text : forall stream g xs m h,
@@ -127,9 +144,7 @@ Proof.
     eexists; eexists; eexists; split; [reflexivity|];
     split; [apply Hstring; simpl; tauto|]; cbv beta iota zeta;
     try reflexivity;
-    match goal with |- narrow_format ?m ?format ?args ?out =>
-      let fmt := eval vm_compute in format in
-      change (narrow_format m fmt args out) end; hello_format Hstring).
+    hello_cached_format; hello_format Hstring).
 Qed.
 
 (** Class-only admission of the selected promoted ABI, independent of
