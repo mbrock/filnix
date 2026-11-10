@@ -132,7 +132,8 @@ Definition output_prefix {world} (api : narrow_api) (model : stream_model world)
     stream_frame model (output_target api stdout w xs) w w' /\
     stream_delegates model w (output_target api stdout w xs) born m' w' /\
     ((trace = [] /\ accepted actions = []) \/
-      trace = [StreamBytes (stream_identifier info) (accepted actions)]).
+      trace = [StreamBytes (stream_identifier info) (accepted actions)]) /\
+    stream_aux_frame model m w (output_target api stdout w xs) m'.
 
 (** A completed output call includes the cumulative acceptance event,
     even on failure, but does not promise descriptor delivery. *)
@@ -226,7 +227,8 @@ Definition wprintf_effect {world} (model : stream_model world) (stdout : world -
     stream_identifier info' = stream_identifier info /\
     stream_frame model (stdout w) w w' /\ stream_delegates model w (stdout w) born m' w' /\
     ((trace = [] /\ bytes = [] /\ result = None) \/
-      trace = [StreamBytes (stream_identifier info) bytes]).
+      trace = [StreamBytes (stream_identifier info) bytes]) /\
+    stream_aux_frame model m w (stdout w) m'.
 
 (** The selected wprintf contract has a separate native realization
     premise. Success counts wchar_t output, not encoded bytes. Resources
@@ -327,7 +329,11 @@ Definition error_format_prefix {world} (model : stream_model world)
     (forall root, In root (diagnostic_writes diagnostic w') ->
       available_cap (diagnostic_sources diagnostic m w) born m' (ptr_cap (span_ptr root)) /\
       forall a, span_contains root a -> write_authority (diagnostic_writes diagnostic w) born m' a) /\
-    ((trace = [] /\ accepted actions = []) \/ trace = [StreamBytes 2 (accepted actions)]).
+    ((trace = [] /\ accepted actions = []) \/ trace = [StreamBytes 2 (accepted actions)]) /\
+    (forall a, in_object m a ->
+      ~ write_authority (stream_aux_roots model w (stdout w) ++
+        stream_aux_roots model w (stderr w) ++ diagnostic_writes diagnostic w) [] m a ->
+      m_aux m' a = m_aux m a).
 
 (** error's formatting stage has the actual W,W,P variadic ABI and void
     return. It NEVER emits ProcessExit: the separate ending protocol owns

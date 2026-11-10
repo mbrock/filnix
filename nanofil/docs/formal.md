@@ -2175,6 +2175,65 @@ checks query errno stability and a malformed-category refusal that changes
 errno while retaining the cell and current names. Concrete registry/wi
 realization, composite stdio and exact-machine exit transport remain open.
 
+### Campaign 4 milestone 6g: composite streams and hard exit
+
+[LibcStreams.v](../rocq/theories/LibcStreams.v) supplies the concrete
+libc_world stream projections and the plain ferror, __fpending, fclose,
+printf, fprintf and fputs registry. The payload now carries stable FILE
+handles, physical pending counts, private sources, write roots and owned
+release identities. Stdout still has exactly one logical protocol,
+shutdown_stdout; stderr has a separate protocol. Handle lookup checks both
+address and capability, and readiness requires different handle addresses.
+Closed handles retain identity and protocol lookup but expose no active
+sources, writes or releases. Legacy puts uses active stdout roots plus
+errno, not stderr's private authority.
+
+The readiness change is intentional: libc_ready no longer requires stdout
+open, but still requires its current stdio roots writable. This admits the
+same registered errno contract after fclose(stdout), as HelloClose needs.
+Actual stream calls still require an active handle; legacy stdio_ready and
+puts admission are not weakened. Concrete readiness normalizes the old
+stdio roots to the active stdout inventory, so retired buffers need not
+remain writable. Both streams may close independently.
+
+Delegation now guards future source capabilities and release identities,
+not just write roots. New authority must come from old FILE authority or
+fresh allocations. The fixed scalar errno write has a zero-length source
+for its capability, but no errno authority may enter FILE-private pools.
+Every query, close and formatting prefix frames entry-object aux outside
+private write authority; four scalar errno bytes do not authorize aux
+clobbering. Resource endpoints obey the same frame. Diagnostic realization
+must likewise keep scalar errno writes out of its aux-authorizing pool.
+Readiness explicitly separates active release pools from each other,
+locale ownership, stable FILE identities and retained opposite-stream or
+locale capability sources. Native exclusivity, caller-owned setvbuf storage
+and separation from program-owned pieces remain representation obligations.
+Shared native locks need not be falsely declared byte-disjoint.
+
+[LibcExit.v](../rocq/theories/LibcExit.v) supplies a hard-only _exit/_Exit
+summary and transport over the consumer's supplied M.E and M.step_exit.
+There is no sibling machine and no change to Ending's soft-exit executor.
+Admission needs canonical W status, libc readiness and an independently
+established not-HandedOff phase. Finite prefixes distinguish before the
+request, requested but host-blocked, and host-completed. Only independent
+host completion emits ProcessExit and CallExit; an ordinary return or
+resource completion is impossible. Full signed shutdown status and low-byte
+host status stay distinct. Pending callbacks, consumed history and old
+stdout obligations survive hard exit unchanged. Relating this summary to
+Ending's runtime-dependent representation and host predicate still needs
+an explicit compatibility premise; registry lookup alone is not executor
+refinement.
+
+Logical controls include an actual EOF fclose followed by exact errno
+lookup, stderr query after stdout closes, closed-stdout query rejection,
+physical pending distinct from FIFO length, nontrivial errno-aux clobber
+rejection, overlapping/static release rejection, signed -257/host-255,
+blocked-host prefixes and false-host completion rejection. These tiny
+represented fixtures do not establish native FILE adequacy. Literal
+argument admission and program memory/world frames are the next integration
+steps; native representation, allocation policy and wide settlement remain
+explicit trusted premises.
+
 ### Reached-call contract packages and remaining integration
 
 [Getopt.v](../rocq/theories/Getopt.v) supplies independently admitted

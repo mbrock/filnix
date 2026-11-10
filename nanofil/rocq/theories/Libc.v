@@ -11,10 +11,32 @@ Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
 
+(** A represented FILE's handle, physical pending count and private
+    storage. No logical output queue is stored in this record. Owned
+    heaps exclude static FILE objects and caller setvbuf storage. *)
+Record libc_file : Type := mkLibcFile {
+  file_handle : ptr;
+  file_pending : Z;
+  file_reads : list span;
+  file_roots : list span;
+  file_owned : list Z
+}.
+
+(** Stdout's open flag remains [stdout_usable], and its protocol remains
+    [shutdown_stdout]. Stderr has its own protocol and open flag. These
+    fields supply the physical information absent from [stdio_world]. *)
+Record libc_stream_inventory : Type := mkLibcStreams {
+  libc_stdout_file : libc_file;
+  libc_stderr_file : libc_file;
+  libc_stderr_open : bool;
+  libc_stderr_state : stream_state
+}.
+
 Record libc_payload : Type := mkLibcPayload {
   libc_locale : locale_world;
   libc_stdio : stdio_world;
-  libc_errno : ptr
+  libc_errno : ptr;
+  libc_streams : libc_stream_inventory
 }.
 
 (** Definitionally the payload * shutdown_state used by Linked. *)
@@ -22,11 +44,14 @@ Definition libc_world : Type := (libc_payload * shutdown_state)%type.
 
 (** The full representation owns coherent libc/TLS state and exclusive
     private release rights. Structural facts alone do not establish it.
-    In a callback, uniqueness is not evidence that its token was popped. *)
+    In a callback, uniqueness is not evidence that its token was popped.
+    Readiness does not require stdout open: errno lookup, locale and
+    conversion remain valid after fclose. Output admits an open handle
+    separately. Retired stdio roots must be removed, not kept writable. *)
 Definition libc_ready (rep : mem -> libc_world -> Prop) m w : Prop :=
   rep m w /\
   locale_ready (fun _ _ => True) m (libc_locale (fst w)) /\
-  stdio_ready m (libc_stdio (fst w)) /\ errno_cell m (libc_errno (fst w)) /\
+  Forall (writable_span m) (stdio_roots (libc_stdio (fst w))) /\ errno_cell m (libc_errno (fst w)) /\
   stream_wf (shutdown_stdout (snd w)) /\ shutdown_unique (snd w) /\
   -(2 ^ 31) <= shutdown_status (snd w) < 2 ^ 31 /\
   match shutdown_at (snd w) with
@@ -143,6 +168,7 @@ Definition libc_setlocale_prefix rep xs m w born trace m' w' : Prop :=
     libc_ready rep m' w' /\
     libc_stdio (fst w') = libc_stdio (fst w) /\
     libc_errno (fst w') = libc_errno (fst w) /\ snd w' = snd w /\
+    libc_streams (fst w') = libc_streams (fst w) /\
     (forall a, in_object m a ->
       ~ write_authority (locale_roots (libc_locale (fst w))) [] m a ->
       m_aux m' a = m_aux m a).
@@ -233,6 +259,7 @@ Definition mbrtowc_prefix rep xs m w born (trace : list event) m' w' : Prop :=
         locale_delegates [] m (libc_locale (fst w)) born m' (libc_locale (fst w')) /\
         libc_stdio (fst w') = libc_stdio (fst w) /\
         libc_errno (fst w') = libc_errno (fst w) /\ snd w' = snd w /\
+        libc_streams (fst w') = libc_streams (fst w) /\
         (forall a, in_object m a ->
           ~ write_authority (locale_roots (libc_locale (fst w))) [] m a ->
           m_aux m' a = m_aux m a)
@@ -689,7 +716,9 @@ Definition conversion_mem : mem := mkMem
 
 Definition conversion_world : libc_world :=
   (mkLibcPayload (mkLocaleWorld 0 (fun _ => mkPtr 4096 (Ro 4096))
-    (fun _ => [67]) (TInt 0) [] [] []) (mkStdioWorld true []) (mkPtr 5120 (Obj 5120)),
+    (fun _ => [67]) (TInt 0) [] [] []) (mkStdioWorld true []) (mkPtr 5120 (Obj 5120))
+    (mkLibcStreams (mkLibcFile (mkPtr 0 CNone) 0 [] [] [])
+      (mkLibcFile (mkPtr 0 CNone) 0 [] [] []) false stdout_initial),
    mkShutdown Handlers 0 [] [] stdout_initial).
 
 Definition conversion_args : list arg :=
@@ -719,7 +748,7 @@ Proof.
       * intros category _. vm_compute. repeat split; congruence.
       * split; [constructor|]. split; [constructor|].
         intros category _. exists 4096. split; [right; reflexivity|reflexivity].
-    + split; [split; [reflexivity|constructor]|]. split.
+    + split; [constructor|]. split.
       * split; [discriminate|]. split; [|reflexivity]. split; [simpl; lia|].
         exists 5120, (mkRegion 5120 5128 Heap Live). repeat split; reflexivity.
       * split; [apply stdout_initial_wf|]. split; [constructor|]. split; [simpl; lia|exact I].
@@ -791,7 +820,8 @@ Proof.
     split; [exact (proj1 (conversion_pre 1 ltac:(lia)))|].
     split; [apply locale_unchanged_refl|]. split.
     + eapply locale_delegates_refl. exact (proj1 (proj2 (proj1 (conversion_pre 1 ltac:(lia))))).
-    + split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|]. intros; reflexivity.
+    + split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+      split; [reflexivity|]. intros; reflexivity.
   - eapply InterpLibc.E.failure_oom with (align := 16) (size := 32).
     + eexists; eexists; eexists; eexists. split; [reflexivity|]. split; [discriminate|]. auto.
     + unfold max_allocation_size. lia.
@@ -834,7 +864,7 @@ Proof.
         -- intros category _. vm_compute. repeat split; congruence.
         -- split; [constructor|]. split; [constructor|].
            intros category _. exists 4096. split; [right; reflexivity|reflexivity].
-      * split; [split; [reflexivity|constructor]|]. split.
+      * split; [constructor|]. split.
         -- split; [discriminate|]. split; [|reflexivity]. split; [change (0 <= 4); lia|].
            exists 5120, (mkRegion 5120 5128 Heap Live). repeat split; reflexivity.
         -- split; [apply stdout_initial_wf|]. split; [constructor|]. split; [simpl; lia|exact I].
@@ -842,7 +872,8 @@ Proof.
       * split; [intros root Hfalse; contradiction|]. split.
         -- intros category Hcat. apply locale_name_retained. exact Hcat.
         -- split; [intros source Hfalse; contradiction|intros base Hfalse; contradiction].
-      * split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|]. intros; reflexivity.
+      * split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+        split; [reflexivity|]. intros; reflexivity.
 Qed.
 
 Example conversion_positive_call :
@@ -876,7 +907,7 @@ Example conversion_caller_aux_rejected : forall c, c <> CNone -> forall s s' tra
 Proof.
   intros c Hcap s s' trace ending Hcall.
   destruct (InterpLibc.E.invoke_prefix _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
-    as (born & _ & _ & _ & _ & _ & _ & _ & _ & Hframe).
+    as (born & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hframe).
   specialize (Hframe 3072).
   assert (in_object conversion_mem 3072) as Hin.
   { exists 3072, (mkRegion 3072 3080 Stack Live). split; [reflexivity|]. simpl; lia. }
@@ -1102,7 +1133,7 @@ Proof.
         -- intros category _. vm_compute. repeat split; congruence.
         -- split; [constructor|]. split; [constructor|].
            intros category _. exists 4096. split; [right; reflexivity|reflexivity].
-      * split; [split; [reflexivity|constructor]|]. split.
+      * split; [constructor|]. split.
         -- split; [discriminate|]. split; [|reflexivity]. split; [change (0 <= 4); lia|].
            exists 5120, (mkRegion 5120 5128 Heap Live). repeat split; reflexivity.
         -- split; [apply stdout_initial_wf|]. split; [constructor|]. split; [simpl; lia|exact I].
@@ -1111,6 +1142,7 @@ Proof.
         -- intros category Hcat. apply locale_name_retained. exact Hcat.
         -- split; [intros source Hfalse; contradiction|intros base Hfalse; contradiction].
       * split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+        split; [reflexivity|].
         intros a (base & reg & Hreg & Hrange) _.
         assert (a < 5128) as Hbound.
         { cbn [conversion_mem m_regions object_region r_base] in Hreg.

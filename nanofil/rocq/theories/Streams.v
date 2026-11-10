@@ -33,6 +33,7 @@ Record stream_model (world : Type) : Type := mkStreamModel {
   stream_rep : mem -> world -> Prop;
   stream_sources : world -> ptr -> list span;
   stream_writes : world -> ptr -> list span;
+  stream_aux_roots : world -> ptr -> list span;
   stream_releases : world -> ptr -> list Z;
   stream_requests : world -> ptr -> Z -> Z -> Prop;
   stream_frame : ptr -> world -> world -> Prop;
@@ -43,10 +44,19 @@ Arguments stream_state_at {world}.
 Arguments stream_rep {world}.
 Arguments stream_sources {world}.
 Arguments stream_writes {world}.
+Arguments stream_aux_roots {world}.
 Arguments stream_releases {world}.
 Arguments stream_requests {world}.
 Arguments stream_frame {world}.
 Arguments stream_wide_settlement {world}.
+
+(** Scalar-only roots (notably errno) need not authorize aux mutation.
+    Test entry memory, not historical born objects after a release. The
+    ordinary effects path still bounds all writes independently. *)
+Definition stream_aux_frame {world} (model : stream_model world)
+    (m : mem) (w : world) (p : ptr) (m' : mem) : Prop :=
+  forall a, in_object m a ->
+    ~ write_authority (stream_aux_roots model w p) [] m a -> m_aux m' a = m_aux m a.
 
 (** Canonical physical size_t and a well-formed logical protocol. A
     physical count is deliberately not equated with outstanding output. *)
@@ -72,12 +82,22 @@ Definition stream_query_abi (cls : class) (r : call_result) (args : list arg) : 
   (r = CVoid \/ exists d, r = CResult d cls) /\ exists v, args = [Arg P v].
 
 (** Readable caller arguments cannot delegate new persistent writable
-    roots: only the old stream roots and fresh allocations may do so. *)
+    roots: only the old stream roots and fresh allocations may do so.
+    Future private sources retain old source capabilities or born ones;
+    future release rights retain old ownership or fresh allocation. A
+    writable root alone is not evidence of exclusive release ownership. *)
 Definition stream_delegates {world} (model : stream_model world)
     (w : world) (p : ptr) (born : list Z) (m' : mem) (w' : world) : Prop :=
-  forall root, In root (stream_writes model w' p) ->
+  (forall root, In root (stream_writes model w' p) ->
     available_cap (stream_sources model w p) born m' (ptr_cap (span_ptr root)) /\
-    forall a, span_contains root a -> write_authority (stream_writes model w p) born m' a.
+    forall a, span_contains root a -> write_authority (stream_writes model w p) born m' a) /\
+  (forall source, In source (stream_sources model w' p) ->
+    (exists old, In old (stream_sources model w p) /\
+      ptr_cap (span_ptr source) = ptr_cap (span_ptr old)) \/
+    (exists base, In base born /\
+      (ptr_cap (span_ptr source) = Obj base \/ ptr_cap (span_ptr source) = Ro base))) /\
+  (forall base, In base (stream_releases model w' p) ->
+    In base (stream_releases model w p) \/ In base born).
 
 (** Admission to queries and close is independent of the chosen result. *)
 Definition stream_call_pre {world} (model : stream_model world)
@@ -111,7 +131,7 @@ Definition query_prefix {world} (model : stream_model world)
     (trace : list event) (m' : mem) (w' : world) : Prop :=
   exists p info, xs = [WPtr p] /\ stream_at model w p = Some info /\
     stream_open model m' w' p info /\ stream_frame model p w w' /\
-    stream_delegates model w p born m' w' /\ trace = [].
+    stream_delegates model w p born m' w' /\ trace = [] /\ stream_aux_frame model m w p m'.
 
 (** ferror's exact P-to-W contract. *)
 Definition ferror_contract {world} (model : stream_model world) : contract world :=
@@ -177,7 +197,8 @@ Definition fclose_prefix {world} (model : stream_model world)
     stream_rep model m' w' /\ stream_frame model p w w' /\
     stream_delegates model w p born m' w' /\ trace = [] /\
     (stream_at model w' p = None \/ exists info',
-      stream_at model w' p = Some info' /\ stream_protocol info' = final).
+      stream_at model w' p = Some info' /\ stream_protocol info' = final) /\
+    stream_aux_frame model m w p m'.
 
 (** Close settles all old obligations in FIFO order (delivery OR error
     discard), consumes the handle and owned heaps on both result paths.

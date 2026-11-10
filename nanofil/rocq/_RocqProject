@@ -53,6 +53,8 @@ theories/Linked.v
 theories/Ending.v
 theories/Diagnostics.v
 theories/Libc.v
+theories/LibcStreams.v
+theories/LibcExit.v
 theories/Hi.v
 theories/Composition.v
 theories/Panics.v
