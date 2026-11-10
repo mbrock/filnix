@@ -36,20 +36,27 @@ dependencies, the toplevels and packages, still go to Cachix. Release and CI
 workflows add `https://nix.swa.sh/cache` as a substituter for them, and
 `scripts/ci-cache-check.py` looks for those outputs there.
 
-## Site proof artifacts
+## Site generated artifacts
 
-The site workflow publishes `site.proofStates`, `site.spikeStates` and
-`site.rocqPages` to `filc.cachix.org` from trusted `main` builds, using a
-cache-scoped write credential. Other branches can read the public cache
-without that credential. Consumers request the exact Nix output paths, not
-a mutable bundle of the latest proof results.
+The site workflow publishes `site.proofStates`, `site.spikeStates`,
+`site.rocqPages` and `site.prologPages` to `filc.cachix.org` from trusted
+`main` builds, using a cache-scoped write credential. Other branches can
+read the public cache without that credential. Consumers request the exact
+Nix output paths, not a mutable bundle of the latest generated pages or
+proof results.
 
-Ordinary Markdown edits preserve these outputs. Rocq theories, capture
-tools or their dependencies invalidate the corresponding proof captures;
+Unrelated site Markdown edits preserve these outputs. Rocq theories,
+capture tools or their dependencies invalidate the corresponding proof captures;
 the renderer also depends on the Prolog index, concept text and rendering
 assets. A cache miss, including eviction, rebuilds the required version
 rather than silently displaying stale states. These outputs are not an
 additional toolchain pre-push gate.
+
+The Prolog pages also survive edits to unrelated `docs/`, `pages/` and Nix
+files. They still depend on Prolog sources, renderer modules/assets,
+concepts and Rocq cross-file indexes. The nanofil documents remain inputs:
+the renderer draws six of them, reads saved guide outputs, and checks links
+to the others. Changing those inputs invalidates the exact cached pages.
 
 ## Automatic publication
 
