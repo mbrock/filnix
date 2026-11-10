@@ -1,0 +1,77 @@
+% Allocs that stay (docs/gallina-backend.md, M5b), for
+% rocq/backend/tests/promote.sh: one whose address escapes, one of a
+% size that is no constant or that an alloc could trap on, one with
+% a slot outside it or a pointer slot that is not aligned, and one in
+% a function that is not in strict SSA form.
+func(escapes, export, w, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(4), [const(4)]),
+        store(w, tmp(k), tmp(a)),
+        call(void, global(sink), [arg(p, tmp(a))]),
+        let(tmp(v), w, load(sw), [tmp(a)])
+    ], ret(tmp(v)))
+]).
+
+func(sink, export, void, [param(p, tmp(q))], [
+    block(start, [], [store(w, const(0), tmp(q))], ret)
+]).
+
+func(sized, export, w, [param(l, tmp(n))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(4), [tmp(n)]),
+        store(w, const(1), tmp(a)),
+        let(tmp(v), w, load(sw), [tmp(a)])
+    ], ret(tmp(v)))
+]).
+
+func(huge, export, w, [], [
+    block(start, [], [
+        let(tmp(a), p, alloc(4), [const(281474976710656)]),
+        store(w, const(1), tmp(a)),
+        let(tmp(v), w, load(sw), [tmp(a)])
+    ], ret(tmp(v)))
+]).
+
+func(largest, export, w, [], [
+    block(start, [], [
+        let(tmp(a), p, alloc(4), [const(281474976710655)]),
+        store(w, const(1), tmp(a)),
+        let(tmp(v), w, load(sw), [tmp(a)])
+    ], ret(tmp(v)))
+]).
+
+func(outside, export, w, [], [
+    block(start, [], [
+        let(tmp(a), p, alloc(4), [const(6)]),
+        let(tmp(a4), p, add, [tmp(a), const(4)]),
+        store(w, const(1), tmp(a4)),
+        let(tmp(v), w, load(sw), [tmp(a)])
+    ], ret(tmp(v)))
+]).
+
+func(before, export, w, [], [
+    block(start, [], [
+        let(tmp(a), p, alloc(4), [const(8)]),
+        let(tmp(m), p, add, [tmp(a), const(-4)]),
+        store(w, const(1), tmp(m)),
+        let(tmp(v), w, load(sw), [tmp(a)])
+    ], ret(tmp(v)))
+]).
+
+func(unaligned, export, p, [param(p, tmp(q))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(8), [const(16)]),
+        let(tmp(a4), p, add, [tmp(a), const(4)]),
+        store(p, tmp(q), tmp(a4)),
+        let(tmp(v), p, load(p), [tmp(a4)])
+    ], ret(tmp(v)))
+]).
+
+func(twice, export, w, [param(w, tmp(c))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(4), [const(4)]),
+        store(w, const(1), tmp(a))
+    ], branch(tmp(c), then, else)),
+    block(then, [], [let(tmp(v), w, load(sw), [tmp(a)])], ret(tmp(v))),
+    block(else, [], [let(tmp(v), w, copy, [const(2)])], ret(tmp(v)))
+]).

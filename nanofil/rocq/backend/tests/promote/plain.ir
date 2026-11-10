@@ -1,0 +1,39 @@
+% Promotion in a module that is not in Fil-C mode
+% (docs/gallina-backend.md, M5b), for rocq/backend/tests/promote.sh:
+% addresses have the class `l`, an alloc of any size and a pointer
+% slot at any offset promote, and an alloc with a store of an `l`
+% that is neither a temporary nor a constant is not split.
+func(halves, export, l, [param(l, tmp(k))], [
+    block(start, [], [
+        let(tmp(a), l, alloc(8), [const(8)]),
+        store(l, tmp(k), tmp(a)),
+        let(tmp(a4), l, add, [tmp(a), const(4)]),
+        let(tmp(hi), w, load(sw), [tmp(a4)]),
+        let(tmp(v), l, load(l), [tmp(a)]),
+        let(tmp(x), l, ext(sw), [tmp(hi)]),
+        let(tmp(s), l, add, [tmp(v), tmp(x)])
+    ], ret(tmp(s)))
+]).
+
+data(cell, local, 8, [item(l, const(41))]).
+
+func(symbol, export, l, [], [
+    block(start, [], [
+        let(tmp(a), l, alloc(8), [const(8)]),
+        store(l, global(cell), tmp(a)),
+        let(tmp(a4), l, add, [tmp(a), const(4)]),
+        let(tmp(hi), w, load(sw), [tmp(a4)]),
+        let(tmp(v), l, load(l), [tmp(a)]),
+        let(tmp(x), l, ext(sw), [tmp(hi)]),
+        let(tmp(s), l, add, [tmp(v), tmp(x)])
+    ], ret(tmp(s)))
+]).
+
+func(huge, export, w, [], [
+    block(start, [], [
+        let(tmp(a), l, alloc(4), [const(281474976710656)]),
+        let(tmp(a4), l, add, [tmp(a), const(4)]),
+        store(w, const(1), tmp(a4)),
+        let(tmp(v), w, load(sw), [tmp(a4)])
+    ], ret(tmp(v)))
+]).

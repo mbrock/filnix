@@ -22,8 +22,10 @@
     - pizlonation ([pizlonate_module]), on the module term that
       `nanofil pizlonate-terms` prints first, compared with the
       term it prints second;
+    - promotion ([promote_module]), on the first module term that
+      `nanofil promote-terms` prints, compared with the second;
     - copy propagation ([copy_module]), on the second module term
-      that `nanofil promote-terms` prints, compared with the third.
+      that command prints, compared with the third.
 
     Integers become zarith's, strings OCaml's and [nat] OCaml's
     `int`, as in the model's extraction. The order of two atoms'
@@ -35,7 +37,7 @@ From Stdlib Require Extraction ExtrOcamlBasic ExtrOcamlNativeString
 From Stdlib Require Import ZArith.
 From Nanofil Require Import Term Maps Transport.
 From Backend Require Import Text Asm AsmTerm Order Abi PlanTerm Layout Emit EmitData EmitThunk
-  EmitModule Nfb Pizlonate Copy Compile IrText.
+  EmitModule Nfb Pizlonate Promote Copy Compile IrText.
 
 (** The hash that picks a name's bucket becomes OCaml's string hash,
     as in the model's extraction (theories/Extract.v): a lookup
@@ -78,5 +80,5 @@ Extract Constant IrText.string_of_rev =>
 Set Extraction Output Directory "extraction".
 Extraction "nanofil_backend.ml" dline rev_lines_parts
   decode_module module_symbols lower_function lower_thunks plan_term thunks_term term_eqb
-  Nfb.encode Nfb.decode Nfb.decode_input enc_module pizlonate_module copy_module compile read_text
+  Nfb.encode Nfb.decode Nfb.decode_input enc_module pizlonate_module promote_module copy_module compile read_text
   function_lines data_lines alias_lines thunk_lines end_lines module_pieces module_lines is_todo first_todo.

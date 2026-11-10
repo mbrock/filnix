@@ -33,9 +33,11 @@
 # (rocq/backend/tests/pizlonate.sh), on the same files and the
 # fixtures of rocq/backend/tests/pizlonate; full=true takes the whole
 # corpus, with and without -O, and the translation units. M5b:
-# Copy.v makes of a promoted module the term copy.pl makes of it
-# (rocq/backend/tests/promote.sh), on the same files; full=true
-# takes the whole corpus. And
+# Promote.v makes of a module the term promote.pl makes of it, and
+# Copy.v of that the term copy.pl makes of it
+# (rocq/backend/tests/promote.sh), on the same files and the
+# fixtures of rocq/backend/tests/promote; full=true takes the whole
+# corpus. And
 # `nanofil-backend compile`, which reads IR text itself, prints what
 # `nanofil compile` prints and refuses what it refuses
 # (rocq/backend/tests/compile.sh), on the same files and the fixtures
@@ -74,6 +76,7 @@ let
   edge = "rocq/backend/tests/edge/*.ir";
   pizlonate = "rocq/backend/tests/pizlonate/*.ir";
   compile = "${edge} ${pizlonate} rocq/backend/tests/compile/*.ir";
+  promote = "rocq/backend/tests/promote/*.ir";
   # zlib, GNU hello and Lua, built through nanofil-cc as their own
   # checks build them, keeping each preprocessed translation unit.
   # None of their flags makes nanofil-cc set NANOFIL_STD or
@@ -138,7 +141,7 @@ pkgs.runCommandCC (if full then "nanofil-backend-full" else "nanofil-backend")
           NANOFIL_OPT=-O tests/par.sh rocq/backend/tests/emit.sh ${corpus} ${edge} | tee emit-O.log
           tests/par.sh rocq/backend/tests/pizlonate.sh ${corpus} ${pizlonate} | tee pizlonate.log
           NANOFIL_OPT=-O tests/par.sh rocq/backend/tests/pizlonate.sh ${corpus} ${pizlonate} | tee pizlonate-O.log
-          tests/par.sh rocq/backend/tests/promote.sh ${corpus} ${compile} | tee promote.log
+          tests/par.sh rocq/backend/tests/promote.sh ${corpus} ${compile} ${promote} | tee promote.log
           tests/par.sh rocq/backend/tests/compile.sh ${corpus} ${compile} | tee compile.log
         ''
         + packages
@@ -150,7 +153,7 @@ pkgs.runCommandCC (if full then "nanofil-backend-full" else "nanofil-backend")
           tests/par.sh rocq/backend/tests/nfb-compile.sh tests/filc/*.ir | tee nfb-compile.log
           tests/par.sh rocq/backend/tests/emit.sh ${quickAbi} ${edge} | tee emit.log
           tests/par.sh rocq/backend/tests/pizlonate.sh ${quickAbi} ${pizlonate} | tee pizlonate.log
-          tests/par.sh rocq/backend/tests/promote.sh ${quickAbi} ${compile} | tee promote.log
+          tests/par.sh rocq/backend/tests/promote.sh ${quickAbi} ${compile} ${promote} | tee promote.log
           tests/par.sh rocq/backend/tests/compile.sh ${quickAbi} ${compile} | tee compile.log
         ''
     )

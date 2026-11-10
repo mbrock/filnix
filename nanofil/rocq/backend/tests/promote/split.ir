@@ -1,0 +1,62 @@
+% An `l` access split into two words (docs/gallina-backend.md, M5b),
+% for rocq/backend/tests/promote.sh: an alloc with an `l` access that
+% a `w` access overlaps promotes once the `l` stores and loads are
+% two `w` ones each, with temporaries `sw.N` that pass over the names
+% the function has. An alloc that would not promote even so stays
+% whole.
+func(halves, export, l, [param(l, tmp(k)), param(w, tmp('sw.1'))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(8), [const(8)]),
+        store(l, tmp(k), tmp(a)),
+        let(tmp(a4), p, add, [tmp(a), const(4)]),
+        let(tmp(hi), w, load(sw), [tmp(a4)]),
+        store(w, tmp('sw.1'), tmp(a)),
+        let(tmp(v), l, load(l), [tmp(a)]),
+        store(l, const(81985529216486895), tmp(a)),
+        let(tmp('sw.4'), l, load(l), [tmp(a)]),
+        let(tmp(x), l, ext(sw), [tmp(hi)]),
+        let(tmp(s1), l, add, [tmp(v), tmp('sw.4')]),
+        let(tmp(s2), l, add, [tmp(s1), tmp(x)])
+    ], ret(tmp(s2)))
+]).
+
+func(byte_of_long, export, w, [param(l, tmp(k)), param(w, tmp(c))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(8), [const(16)]),
+        store(l, tmp(k), tmp(a)),
+        let(tmp(a8), p, add, [tmp(a), const(8)]),
+        store(l, tmp(k), tmp(a8)),
+        let(tmp(a5), p, add, [tmp(a), const(5)])
+    ], branch(tmp(c), then, join)),
+    block(then, [], [store(l, const(-1), tmp(a))], goto(join)),
+    block(join, [], [
+        let(tmp(v), w, load(ub), [tmp(a5)]),
+        let(tmp(u), l, load(l), [tmp(a8)]),
+        let(tmp(uw), w, copy, [tmp(u)]),
+        let(tmp(s), w, add, [tmp(v), tmp(uw)])
+    ], ret(tmp(s)))
+]).
+
+func(whole, export, l, [param(l, tmp(k))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(8), [const(8)]),
+        store(l, tmp(k), tmp(a)),
+        let(tmp(a3), p, add, [tmp(a), const(3)]),
+        let(tmp(h), w, load(uh), [tmp(a3)]),
+        let(tmp(v), l, load(l), [tmp(a)]),
+        let(tmp(x), l, ext(uw), [tmp(h)]),
+        let(tmp(s), l, add, [tmp(v), tmp(x)])
+    ], ret(tmp(s)))
+]).
+
+func(float_unstored, export, d, [param(l, tmp(k))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(8), [const(16)]),
+        store(l, tmp(k), tmp(a)),
+        let(tmp(a4), p, add, [tmp(a), const(4)]),
+        let(tmp(hi), w, load(sw), [tmp(a4)]),
+        let(tmp(a8), p, add, [tmp(a), const(8)]),
+        let(tmp(f), d, load(d), [tmp(a8)]),
+        store(d, tmp(f), tmp(a8))
+    ], ret(tmp(f)))
+]).

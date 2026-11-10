@@ -932,8 +932,19 @@ switching on.
   prints the module, its promotion and the copy pass's result: the
   same on every file of the corpus nanofil accepts, where copy.pl
   changes 1,034 functions in 221 files.
-- Not done: escape analysis and promotion, then the branch
-  selection and the byte gate.
+- Reached: escape analysis and promotion. `Escape.v` finds the
+  allocs whose address does not escape and their accesses, and
+  `Promote.v` makes of a module the term `promote.pl` makes of it:
+  the slots of an alloc as temporaries, with pruned phis, punned
+  reads as shifts, `l` accesses split into words, and float slots
+  only where a store comes before every load. The same gate holds
+  it to the second term `nanofil promote-terms` prints: the same on
+  every file of the corpus nanofil accepts, where promote.pl
+  changes 1,384 functions in 261 files, and on all 4,949 items of
+  SQLite, which it promotes in 2.8 s. The fixtures of
+  `tests/promote` reach each arm in the quick check; 13 mutants of
+  `Promote.v` each make one of them differ.
+- Not done: the branch selection and the byte gate.
 
 **M6. Crane.** Build Crane in Nix against our Rocq, extract the same
 entry points to C++, compile with clang++ and run the same

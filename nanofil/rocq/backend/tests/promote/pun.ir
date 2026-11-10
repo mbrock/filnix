@@ -1,0 +1,58 @@
+% Reads of the bytes of a slot (docs/gallina-backend.md, M5b), for
+% rocq/backend/tests/promote.sh: a `b` or `h` read inside a `w` or `h`
+% slot is the slot's value shifted, in a temporary `pun.D`. An alloc
+% with a store inside a slot, or with accesses that overlap and are
+% not one inside the other, stays.
+func(bytes, export, w, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(4), [const(8)]),
+        store(w, tmp(k), tmp(a)),
+        let(tmp(a1), p, add, [tmp(a), const(1)]),
+        let(tmp(a2), p, add, [tmp(a), const(2)]),
+        let(tmp(a3), p, add, [tmp(a), const(3)]),
+        let(tmp(a4), p, add, [tmp(a), const(4)]),
+        let(tmp(a5), p, add, [tmp(a), const(5)]),
+        store(h, tmp(k), tmp(a4)),
+        let(tmp(b0), w, load(ub), [tmp(a)]),
+        let(tmp(b1), w, load(ub), [tmp(a1)]),
+        let(tmp(b2), w, load(sb), [tmp(a2)]),
+        let(tmp(b3), l, load(ub), [tmp(a3)]),
+        let(tmp(h2), w, load(uh), [tmp(a2)]),
+        let(tmp(b5), w, load(sb), [tmp(a5)]),
+        let(tmp(s1), w, add, [tmp(b0), tmp(b1)]),
+        let(tmp(s2), w, add, [tmp(s1), tmp(b2)]),
+        let(tmp(s3), w, add, [tmp(s2), tmp(h2)]),
+        let(tmp(s4), w, add, [tmp(s3), tmp(b5)]),
+        let(tmp(b3w), w, copy, [tmp(b3)]),
+        let(tmp(s5), w, add, [tmp(s4), tmp(b3w)])
+    ], ret(tmp(s5)))
+]).
+
+func(joined, export, w, [param(w, tmp(c)), param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(4), [const(4)]),
+        store(w, tmp(k), tmp(a)),
+        let(tmp(a1), p, add, [tmp(a), const(1)])
+    ], branch(tmp(c), then, join)),
+    block(then, [], [store(w, const(513), tmp(a))], goto(join)),
+    block(join, [], [let(tmp(v), w, load(ub), [tmp(a1)])], ret(tmp(v)))
+]).
+
+func(stored_inside, export, w, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(4), [const(4)]),
+        store(w, tmp(k), tmp(a)),
+        let(tmp(a1), p, add, [tmp(a), const(1)]),
+        store(b, const(0), tmp(a1)),
+        let(tmp(v), w, load(sw), [tmp(a)])
+    ], ret(tmp(v)))
+]).
+
+func(across, export, w, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(4), [const(8)]),
+        store(w, tmp(k), tmp(a)),
+        let(tmp(a3), p, add, [tmp(a), const(3)]),
+        let(tmp(v), w, load(uh), [tmp(a3)])
+    ], ret(tmp(v)))
+]).

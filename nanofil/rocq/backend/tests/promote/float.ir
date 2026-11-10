@@ -1,0 +1,82 @@
+% Float slots (docs/gallina-backend.md, M5b), for
+% rocq/backend/tests/promote.sh: an alloc with an `s` or `d` slot
+% promotes only if every load of the slot comes after a store to it
+% on every path, since a float temporary has no zero to start from.
+func(stored, export, d, [param(d, tmp(x))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(8), [const(8)]),
+        store(d, tmp(x), tmp(a)),
+        let(tmp(v), d, load(d), [tmp(a)])
+    ], ret(tmp(v)))
+]).
+
+func(unstored, export, d, [param(d, tmp(x))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(8), [const(8)]),
+        let(tmp(v), d, load(d), [tmp(a)]),
+        store(d, tmp(x), tmp(a))
+    ], ret(tmp(v)))
+]).
+
+func(both, export, s, [param(w, tmp(c)), param(s, tmp(x)), param(s, tmp(y))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(4), [const(8)]),
+        let(tmp(a4), p, add, [tmp(a), const(4)]),
+        store(w, tmp(c), tmp(a4))
+    ], branch(tmp(c), then, else)),
+    block(then, [], [store(s, tmp(x), tmp(a))], goto(join)),
+    block(else, [], [store(s, tmp(y), tmp(a))], goto(join)),
+    block(join, [], [let(tmp(v), s, load(s), [tmp(a)])], ret(tmp(v)))
+]).
+
+func(left, export, s, [param(w, tmp(c)), param(s, tmp(x))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(4), [const(4)])
+    ], branch(tmp(c), then, else)),
+    block(then, [], [store(s, tmp(x), tmp(a))], goto(join)),
+    block(else, [], [], goto(join)),
+    block(join, [], [let(tmp(v), s, load(s), [tmp(a)])], ret(tmp(v)))
+]).
+
+func(right, export, s, [param(w, tmp(c)), param(s, tmp(x))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(4), [const(4)])
+    ], branch(tmp(c), then, else)),
+    block(then, [], [], goto(join)),
+    block(else, [], [store(s, tmp(x), tmp(a))], goto(join)),
+    block(join, [], [let(tmp(v), s, load(s), [tmp(a)])], ret(tmp(v)))
+]).
+
+func(round, export, d, [param(w, tmp(n)), param(d, tmp(x))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(8), [const(16)]),
+        let(tmp(i), p, add, [tmp(a), const(8)]),
+        store(d, tmp(x), tmp(a)),
+        store(w, const(0), tmp(i))
+    ], goto(head)),
+    block(head, [], [
+        let(tmp(i0), w, load(sw), [tmp(i)]),
+        let(tmp(c), w, cmp(slt, w), [tmp(i0), tmp(n)])
+    ], branch(tmp(c), body, done)),
+    block(body, [], [
+        let(tmp(v), d, load(d), [tmp(a)]),
+        let(tmp(v2), d, add, [tmp(v), tmp(v)]),
+        store(d, tmp(v2), tmp(a)),
+        let(tmp(i1), w, add, [tmp(i0), const(1)]),
+        store(w, tmp(i1), tmp(i))
+    ], goto(head)),
+    block(done, [], [let(tmp(r), d, load(d), [tmp(a)])], ret(tmp(r)))
+]).
+
+func(again, export, d, [param(w, tmp(n)), param(d, tmp(x))], [
+    block(start, [], [], goto(head)),
+    block(head, [phi(tmp(i), w, [start-const(0), body-tmp(i1)])], [
+        let(tmp(a), p, alloc(8), [const(8)]),
+        let(tmp(c), w, cmp(slt, w), [tmp(i), tmp(n)])
+    ], branch(tmp(c), body, done)),
+    block(body, [], [
+        store(d, tmp(x), tmp(a)),
+        let(tmp(i1), w, add, [tmp(i), const(1)])
+    ], goto(head)),
+    block(done, [], [let(tmp(r), d, load(d), [tmp(a)])], ret(tmp(r)))
+]).

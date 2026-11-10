@@ -157,6 +157,33 @@ Section Sorting.
           | Gt => subtract_from ys'
           end
       end.
+
+  (** As `ord_intersection(Xs, Ys, Zs)`: the elements of the ordset
+      xs that are in the ordset ys too. *)
+  Fixpoint ord_intersection (xs : list A) : list A -> list A :=
+    fix intersect_with (ys : list A) : list A :=
+      match xs, ys with
+      | [], _ => []
+      | _, [] => []
+      | x :: xs', y :: ys' =>
+          match cmp x y with
+          | Lt => ord_intersection xs' ys
+          | Eq => x :: ord_intersection xs' ys'
+          | Gt => intersect_with ys'
+          end
+      end.
+
+  (** As `ord_memberchk(X, Xs)`: whether x is in the ordset xs. *)
+  Fixpoint ord_mem (x : A) (xs : list A) : bool :=
+    match xs with
+    | [] => false
+    | y :: xs' =>
+        match cmp x y with
+        | Lt => false
+        | Eq => true
+        | Gt => ord_mem x xs'
+        end
+    end.
 End Sorting.
 
 (** Whether two ordsets of names are the same. *)

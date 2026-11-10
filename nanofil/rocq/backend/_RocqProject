@@ -28,6 +28,8 @@ NfbTotal.v
 Pizlonate.v
 TermCfg.v
 Copy.v
+Escape.v
+Promote.v
 Compile.v
 IrText.v
 Extract.v

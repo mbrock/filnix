@@ -690,26 +690,34 @@ let changed before after =
 
 (* The gate of promotion and copy propagation (tests/promote.sh).
    Stdin is what `nanofil promote-terms FILE` prints: the module, what
-   promote.pl makes of it, and what copy.pl makes of that. Copy.v must
-   make the third term of the second. Prints, for each pass, how many
+   promote.pl makes of it, and what copy.pl makes of that. Promote.v
+   must make the second term of the first, and Copy.v the third of
+   the second. Prints, for each pass, how many
    items the Prolog pass changed, how many items are the same and, for
    each that is not, where it first differs. Exits 1 on any
    difference. *)
 let promote () =
   let next = reader (In_channel.input_all stdin) in
   let fail fmt = Printf.ksprintf (fun m -> prerr_endline ("nanofil-backend: " ^ m); exit 1) fmt in
-  let copy_s = ref 0.0 in
+  let promote_s = ref 0.0 and copy_s = ref 0.0 in
   let term what = match timed parse_s next with Some t -> t | None -> fail "no %s" what in
-  let _before = term "module" in
+  let before = term "module" in
   let promoted = term "promoted module" in
   let copied = term "copied module" in
+  let ours_promoted = match timed promote_s (fun () -> promote_module before) with
+    | Some t -> t
+    | None -> fail "promotion refuses the module" in
   let ours = match timed copy_s (fun () -> copy_module promoted) with
     | Some t -> t
     | None -> fail "copy propagation refuses the module" in
   if report then
-    Printf.eprintf "nanofil-backend: parse %.3fs copy %.3fs\n" !parse_s !copy_s;
+    Printf.eprintf "nanofil-backend: parse %.3fs promote %.3fs copy %.3fs\n" !parse_s !promote_s
+      !copy_s;
+  Printf.printf "promote changes %d items\n" (changed before promoted);
+  let promote_same = same_items "promote " ours_promoted promoted in
   Printf.printf "copy changes %d items\n" (changed promoted copied);
-  if not (same_items "copy " ours copied) then exit 1
+  let copy_same = same_items "copy " ours copied in
+  if not (promote_same && copy_same) then exit 1
 
 (* A minor heap of 32 MB: with OCaml's 2 MB, the plans of a large
    function were promoted while they were built, which cost a

@@ -5,7 +5,10 @@
 # what copy.pl makes of that, as terms; the extracted backend
 # (BACKEND, built by make in rocq/backend) runs each pass on the
 # term before it and must get the term after it. A file nanofil
-# refuses is skipped. Fails if any item differs.
+# refuses is skipped. Fails if any item differs. The fixtures of
+# tests/promote reach the arms of promote.pl that the IR fixtures
+# do not: phis, punned reads, split words, float slots and the
+# allocs that stay.
 #
 #   BACKEND=.../nanofil-backend promote.sh FILE...
 set -euo pipefail

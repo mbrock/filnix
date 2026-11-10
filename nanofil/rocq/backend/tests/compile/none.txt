@@ -3,6 +3,7 @@ fd-hook.i
 filc/asm-fixed-runs.ir
 filc/asm-fixed.ir
 filc/setjmp.ir
+filc/slow-calls.ir
 ldo.i
 mbsrtowcs-state.i
 pizlonate/plain.ir

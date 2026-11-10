@@ -1,0 +1,88 @@
+% Slots that become temporaries (docs/gallina-backend.md, M5b), for
+% rocq/backend/tests/promote.sh: a phi where two paths meet and round
+% a loop, none where the slot is dead, each load type as a copy or an
+% extension, a block nothing reaches, and temporaries that already
+% have the names the pass would give its phis.
+func(diamond, export, w, [param(w, tmp(c)), param(p, tmp(q))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(8), [const(16)]),
+        store(w, const(1), tmp(a)),
+        let(tmp(a8), p, add, [tmp(a), const(8)]),
+        store(p, tmp(q), tmp(a8))
+    ], branch(tmp(c), then, else)),
+    block(then, [], [store(w, const(2), tmp(a))], goto(join)),
+    block(else, [], [], goto(join)),
+    block(join, [], [
+        let(tmp(v), w, load(sw), [tmp(a)]),
+        let(tmp(r), p, load(p), [tmp(a8)]),
+        let(tmp(u), w, load(sw), [tmp(r)]),
+        let(tmp(s), w, add, [tmp(v), tmp(u)])
+    ], ret(tmp(s)))
+]).
+
+func(loop, export, l, [param(w, tmp(n)), param(w, tmp('pr.1'))], [
+    block(start, [], [
+        let(tmp(i), p, alloc(4), [const(4)]),
+        let(tmp(s), p, alloc(8), [const(8)]),
+        let(tmp(dead), p, alloc(4), [const(4)]),
+        store(w, tmp('pr.1'), tmp(i)),
+        store(l, const(0), tmp(s)),
+        store(w, const(9), tmp(dead))
+    ], goto(head)),
+    block(head, [], [
+        let(tmp(i0), w, load(sw), [tmp(i)]),
+        let(tmp('pr.3'), w, cmp(slt, w), [tmp(i0), tmp(n)])
+    ], branch(tmp('pr.3'), body, done)),
+    block(body, [], [
+        let(tmp(i1), w, load(sw), [tmp(i)]),
+        let(tmp(x), l, ext(sw), [tmp(i1)]),
+        let(tmp(s0), l, load(l), [tmp(s)]),
+        let(tmp(s1), l, add, [tmp(s0), tmp(x)]),
+        store(l, tmp(s1), tmp(s)),
+        let(tmp(i2), w, add, [tmp(i1), const(1)]),
+        store(w, tmp(i2), tmp(i)),
+        store(w, tmp(i2), tmp(dead))
+    ], goto(head)),
+    block(done, [], [let(tmp(r), l, load(l), [tmp(s)])], ret(tmp(r)))
+]).
+
+func(widths, export, l, [param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(8), [const(16)]),
+        store(w, tmp(k), tmp(a)),
+        let(tmp(a4), p, add, [tmp(a), const(4)]),
+        store(h, tmp(k), tmp(a4)),
+        let(tmp(a6), p, add, [tmp(a), const(6)]),
+        store(b, tmp(k), tmp(a6)),
+        let(tmp(a8), p, add, [tmp(a), const(8)]),
+        let(tmp(v0), l, load(sw), [tmp(a)]),
+        let(tmp(v1), l, load(uw), [tmp(a)]),
+        let(tmp(v2), w, load(uw), [tmp(a)]),
+        let(tmp(v3), w, load(sh), [tmp(a4)]),
+        let(tmp(v4), l, load(uh), [tmp(a4)]),
+        let(tmp(v5), w, load(sb), [tmp(a6)]),
+        let(tmp(v6), l, load(ub), [tmp(a6)]),
+        let(tmp(v7), l, load(l), [tmp(a8)]),
+        let(tmp(s1), l, add, [tmp(v0), tmp(v1)]),
+        let(tmp(s2), w, add, [tmp(v2), tmp(v3)]),
+        let(tmp(s3), w, add, [tmp(s2), tmp(v5)]),
+        let(tmp(s4), l, add, [tmp(s1), tmp(v4)]),
+        let(tmp(s5), l, add, [tmp(s4), tmp(v6)]),
+        let(tmp(s6), l, add, [tmp(s5), tmp(v7)]),
+        let(tmp(s7), l, ext(sw), [tmp(s3)]),
+        let(tmp(s8), l, add, [tmp(s6), tmp(s7)])
+    ], ret(tmp(s8)))
+]).
+
+func(lost, export, w, [param(w, tmp(c))], [
+    block(start, [], [
+        let(tmp(a), p, alloc(4), [const(4)]),
+        store(w, const(7), tmp(a))
+    ], branch(tmp(c), one, two)),
+    block(one, [], [store(w, const(8), tmp(a))], goto(two)),
+    block(two, [], [let(tmp(v), w, load(sw), [tmp(a)])], ret(tmp(v))),
+    block(nowhere, [], [
+        let(tmp(u), w, load(sw), [tmp(a)]),
+        store(w, tmp(u), tmp(a))
+    ], goto(two))
+]).
