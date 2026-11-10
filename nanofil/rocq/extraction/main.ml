@@ -149,8 +149,9 @@ let show t = let b = Buffer.create 64 in print b t; Buffer.contents b
 
 (* --module: the model's verdict on the module itself, as Validate.v's
    [valid] gives it (rocq/gate.sh): outside when an item is outside the
-   core subset, else [valid_items]. Prints one term, valid(Items),
-   invalid(Items, Rejected) or outside(Items, Outside, Rejected), where
+   core subset, else [valid_items], run as ValidFast.v's
+   [valid_items_fast] and [valid_func_fast], proved equal to them.
+   Prints one term, valid(Items), invalid(Items, Rejected) or outside(Items, Outside, Rejected), where
    Rejected names the items [valid_items] rejects (unique_names when
    two items share a name) and Outside those outside the subset; exits
    1 for invalid only. Within an outside module, Rejected is
@@ -165,7 +166,7 @@ let judge_module md =
     (if unique_names md then [] else [TAtom "unique_names"])
     @ List.filter_map (fun it ->
           let ok = match it with
-            | IFunc f -> valid_func md f
+            | IFunc f -> valid_func_fast md f
             | IData (n, lk, al, its) -> valid_data md n lk al its
             | IAlias (n, lk, t) -> valid_alias md n lk t
             | IOutside _ -> true in
@@ -174,7 +175,7 @@ let judge_module md =
   let items = TInt (Big_int_Z.big_int_of_int (List.length md)) in
   let verdict =
     if outside <> [] then TApp ("outside", [items; TList outside; TList (Lazy.force rejected)])
-    else if valid_items md then TApp ("valid", [items])
+    else if valid_items_fast md then TApp ("valid", [items])
     else TApp ("invalid", [items; TList (Lazy.force rejected)]) in
   print_endline (show verdict);
   match verdict with TApp ("invalid", _) -> exit 1 | _ -> ()

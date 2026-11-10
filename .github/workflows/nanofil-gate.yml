@@ -1,7 +1,7 @@
 # The extracted Rocq validator on every module nanofil -O emits for the
 # corpus, GNU hello, zlib, Lua and SQLite (nanofil/nix/rocq-gate.nix,
 # nanofil/rocq/gate.sh), after each push that changes the compiler, the
-# 14 theories the driver is extracted from, or the gate. It never blocks
+# 15 theories the driver is extracted from, or the gate. It never blocks
 # a push: a red run is a module the proved validator rejects, fixed
 # forward on main.
 name: Nanofil Gate
@@ -34,6 +34,7 @@ on:
       - nanofil/rocq/theories/Semantics.v
       - nanofil/rocq/theories/Run.v
       - nanofil/rocq/theories/Validate.v
+      - nanofil/rocq/theories/ValidFast.v
       - nanofil/rocq/theories/Transport.v
       - nanofil/rocq/theories/Extract.v
       - nanofil/nix/rocq-gate.nix
