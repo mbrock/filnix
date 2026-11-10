@@ -88,6 +88,20 @@ let
     "iris"
     "logic"
   ];
+  # The Rocq pages read the complete Rocq/Prolog/concept index, but not
+  # ordinary Markdown or the rest of the website. Keep those edits from
+  # invalidating the cached rendering as well as the proof captures.
+  rocqSrc = lib.fileset.toSource {
+    root = ../..;
+    fileset = lib.fileset.unions [
+      ../../nanofil/src
+      ../../nanofil/docs/concepts
+      ../../nanofil/web/rocq
+      ../../nanofil/web/concepts.pl
+      ../../nanofil/web/dterm_html.pl
+      (lib.fileset.fileFilter (f: f.hasExt "v") ../../nanofil)
+    ];
+  };
   # Independent renderers are cached separately. The Rocq invocation still
   # sees every source for its real cross-file index and captured states.
   prologPages =
@@ -96,7 +110,9 @@ let
         mkdir -p $out
         cp ${src}/nanofil/web/dterm.css ${src}/nanofil/web/dterm.js $out/
         swipl ${src}/nanofil/web/dterm.pl $out ${src}/nanofil/src \
-          ${lib.concatMapStringsSep " " (d: "--doc=${src}/nanofil/docs/${d}.md") dtermDocs} \
+          ${
+            lib.concatMapStringsSep " " (d: "--doc=${src}/nanofil/docs/${d}.md") dtermDocs
+          } \
           --concepts=${src}/nanofil/docs/concepts --rocq=${src}/nanofil/rocq/theories \
           --rocq=${src}/nanofil/rocq/spikes </dev/null
       '';
@@ -104,11 +120,11 @@ let
     pkgs.runCommand "filnix-rocq-pages" { nativeBuildInputs = [ swipl ]; }
       ''
         mkdir -p $out
-        cp ${src}/nanofil/web/rocq/dterm-rocq.css ${src}/nanofil/web/rocq/dterm-rocq.js $out/
-        mapfile -t rocq < <(cd ${src} && find nanofil -name '*.v' | sort)
-        swipl ${src}/nanofil/web/rocq/dterm_rocq.pl $out ${src} \
-          --states=${proofStates} --states=${spikeStates} --prolog=${src}/nanofil/src \
-          --concepts=${src}/nanofil/docs/concepts "''${rocq[@]}" </dev/null
+        cp ${rocqSrc}/nanofil/web/rocq/dterm-rocq.css ${rocqSrc}/nanofil/web/rocq/dterm-rocq.js $out/
+        mapfile -t rocq < <(cd ${rocqSrc} && find nanofil -name '*.v' | sort)
+        swipl ${rocqSrc}/nanofil/web/rocq/dterm_rocq.pl $out ${rocqSrc} \
+          --states=${proofStates} --states=${spikeStates} --prolog=${rocqSrc}/nanofil/src \
+          --concepts=${rocqSrc}/nanofil/docs/concepts "''${rocq[@]}" </dev/null
       '';
 in
 pkgs.runCommand "filnix-site"

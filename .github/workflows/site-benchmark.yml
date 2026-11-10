@@ -16,6 +16,10 @@ on:
         options:
           - namespace-profile-default
           - nscloud-ubuntu-22.04-amd64-16x32
+      require_proof_cache:
+        description: Require exact proof-state and Rocq-page outputs from cache (timed)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -48,11 +52,22 @@ jobs:
       - name: Build the same site
         env:
           BUILDER: ${{ matrix.name }}
+          REQUIRE_PROOF_CACHE: ${{ inputs.require_proof_cache }}
         run: |
           set -o pipefail
           git rev-parse HEAD > source.txt
           lscpu > machine.txt
-          /usr/bin/time -v -o build-time.txt nix build -L .#site 2>&1 | tee build.log
+          # The child shell, not this shell, expands the timed script.
+          # shellcheck disable=SC2016
+          /usr/bin/time -v -o build-time.txt bash -euo pipefail -c '
+            if [[ "$REQUIRE_PROOF_CACHE" == true ]]; then
+              # Zero local/remote builders: a cache miss fails instead of
+              # silently doing prover work. Include downloads in the timing.
+              nix build -L --no-link --print-out-paths --max-jobs 0 --builders "" \
+                .#site.proofStates .#site.spikeStates .#site.rocqPages
+            fi
+            nix build -L .#site
+          ' 2>&1 | tee build.log
           nix path-info ./result > output.txt
           du -sbL result >> output.txt
           {
@@ -61,6 +76,7 @@ jobs:
             cat build-time.txt output.txt
             echo '```'
             echo 'Fresh runner; public Nix substituters; no persistent Nix volume.'
+            echo "Require exact proof outputs from cache: $REQUIRE_PROOF_CACHE (downloads included)."
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
