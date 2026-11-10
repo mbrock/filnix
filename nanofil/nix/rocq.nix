@@ -56,7 +56,7 @@ let
         exit 1
       fi
       start=$SECONDS
-      python3 ${../tests/watch.py} --label "Rocq compile/extraction/link" -- make -j"$NIX_BUILD_CORES"
+      python3 ${../tests/watch.py} --label "Rocq compile/extraction/link" --timeout 600 -- make -j"$NIX_BUILD_CORES"
       echo "@@nanofil-rocq $((SECONDS - start))s compile-extract-link"
     '';
     installPhase = ''

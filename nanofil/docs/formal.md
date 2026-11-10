@@ -2234,6 +2234,42 @@ argument admission and program memory/world frames are the next integration
 steps; native representation, allocation policy and wide settlement remain
 explicit trusted premises.
 
+### Campaign 4 milestone 6h: literal admission and selected FILE frames
+
+[HelloStdio.v](../rocq/theories/HelloStdio.v) derives the version and help
+footer's literal bytes, bounds and author life tokens from the actual
+linked Hello fixture. Admission uses ownership of those pieces and
+agreement with the current memory; it does not assume that memory still
+equals startup memory. The six version calls and four footer calls have
+concrete registry, ABI, format interpretation and selected-handle facts.
+
+[LibcStreamLogic.v](../rocq/theories/LibcStreamLogic.v) accepts the
+consumer's exact logic instance, retaining its inductive invocation types.
+Output, query and close effects preserve separated program memory and
+runtime readiness and propagate world root/release separation. Output
+keeps the selected handle open and non-wide; these frames also cover
+resource-ending prefixes, without asserting successful output. HelloStdio
+specializes the returning output frames to HelloVersion's own machine and
+the hard-exit admission/no-return interface to HelloClose's own machine.
+Represented readiness at a safepoint remains an explicit native law.
+
+Query prefixes now additionally preserve entry-object bytes outside
+private FILE roots. Selected ferror and __fpending locking cannot alter
+scalar errno; output and close retain their independent errno effects.
+The existing all-write-roots separation frame nevertheless excludes
+program-owned errno. HelloClose's query/fclose frames with owned errno,
+including its ghost-piece update at close, remain separate integration
+work. These lemmas do not yet construct the initial ghost heap or close
+the whole Hello execution.
+
+The conversion boundary also exports mbrtowc_initial_error: under the
+audited C/C.UTF-8 profile, valid initial-count state remains valid and
+initial on EILSEQ, and its first source byte was nonzero. This supports
+gnulib's one-byte fallback without stepping beyond a NUL terminator.
+Pending UTF-8 error state and arbitrary codecs receive no new guarantee;
+the selected source audit and residual-state native probes are recorded
+in [libc-contracts.md](libc-contracts.md).
+
 ### Reached-call contract packages and remaining integration
 
 [Getopt.v](../rocq/theories/Getopt.v) supplies independently admitted

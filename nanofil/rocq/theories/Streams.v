@@ -125,13 +125,18 @@ Definition fpending_post {world} (model : stream_model world)
     ending = CallReturn [WInt (stream_pending info)].
 
 (** Query prefixes preserve the selected open stream and have no output.
-    Queries do not allocate, hence have no modeled resource ending. *)
+    Queries may lock private FILE storage, but preserve caller bytes and
+    scalar errno. This is a trusted entry-memory frame, not a consequence
+    of the larger ordinary write footprint. Queries do not allocate,
+    hence have no modeled resource ending. *)
 Definition query_prefix {world} (model : stream_model world)
     (xs : list word) (m : mem) (w : world) (born : list Z)
     (trace : list event) (m' : mem) (w' : world) : Prop :=
   exists p info, xs = [WPtr p] /\ stream_at model w p = Some info /\
     stream_open model m' w' p info /\ stream_frame model p w w' /\
-    stream_delegates model w p born m' w' /\ trace = [] /\ stream_aux_frame model m w p m'.
+    stream_delegates model w p born m' w' /\ trace = [] /\ stream_aux_frame model m w p m' /\
+    forall a, in_object m a ->
+      ~ write_authority (stream_aux_roots model w p) [] m a -> m_bytes m' a = m_bytes m a.
 
 (** ferror's exact P-to-W contract. *)
 Definition ferror_contract {world} (model : stream_model world) : contract world :=

@@ -73,6 +73,7 @@ theories/Heap.v
 theories/ContractFrame.v
 theories/Language.v
 theories/Logic.v
+theories/LibcStreamLogic.v
 theories/StringLogic.v
 theories/MemLogic.v
 theories/LentLogic.v
@@ -91,5 +92,6 @@ theories/HelloReach.v
 theories/CallbackLogic.v
 theories/HelloVersion.v
 theories/HelloClose.v
+theories/HelloStdio.v
 theories/HelloConv.v
 theories/Extract.v

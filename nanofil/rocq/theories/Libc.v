@@ -269,7 +269,9 @@ Definition mbrtowc_prefix rep xs m w born (trace : list event) m' w' : Prop :=
 (** Entry-memory byte claims never inspect an already modified input.
     Generic EILSEQ state stays unspecified. The audited stateless C
     converter rejects only non-ASCII and leaves all eight state bytes
-    unchanged, including residual bytes. UTF-8 gets no such error law.
+    unchanged, including residual bytes. Both Hello codecs preserve
+    valid initial count on EILSEQ and cannot reject a first-byte NUL.
+    UTF-8 pending-state errors still have no reusable-state guarantee.
     Nonerror errno changes are permitted while lazy loading is unaudited. *)
 Definition mbrtowc_result (valid : term -> list Z -> Prop) audit m w out src n state result m' : Prop :=
   0 <= result < 2 ^ 64 /\
@@ -287,7 +289,11 @@ Definition mbrtowc_result (valid : term -> list Z -> Prop) audit m w out src n s
       (forall a, span_contains (mkSpan out 4) a -> m_bytes m' a = m_bytes m a) /\
       (audit (locale_codec (libc_locale (fst w))) = Some CodecC ->
         mbstate_bytes m' state = mbstate_bytes m state /\
-        128 <= m_bytes m (ptr_addr src) < 256)) \/
+        128 <= m_bytes m (ptr_addr src) < 256) /\
+      (hello_codec_profile audit w -> load_bytes m (ptr_addr state) 4 = 0 ->
+        valid (locale_codec (libc_locale (fst w))) (mbstate_bytes m state) ->
+        valid (locale_codec (libc_locale (fst w))) (mbstate_bytes m' state) /\
+        load_bytes m' (ptr_addr state) 4 = 0 /\ m_bytes m (ptr_addr src) <> 0)) \/
    (result = 2 ^ 64 - 2 /\
       valid (locale_codec (libc_locale (fst w))) (mbstate_bytes m' state) /\
       (forall a, span_contains (mkSpan out 4) a -> m_bytes m' a = m_bytes m a) /\
@@ -688,8 +694,22 @@ Theorem mbrtowc_c_error : forall valid audit m w out src n state m',
   128 <= m_bytes m (ptr_addr src) < 256.
 Proof.
   intros valid audit m w out src n state m' (_ & Hcases) Hc.
-  destruct Hcases as [(Hbad & _)|[(_ & Hbad & _)|[(_ & _ & _ & Herror)|(Hbad & _)]]];
+  destruct Hcases as [(Hbad & _)|[(_ & Hbad & _)|[(_ & _ & _ & Herror & _)|(Hbad & _)]]];
     try lia. exact (Herror Hc).
+Qed.
+
+(** The selected C/UTF-8 initial-state error boundary used by gnulib's
+    one-byte fallback. No promise is made about a pending UTF-8 state. *)
+Theorem mbrtowc_initial_error : forall valid audit m w out src n state m',
+  mbrtowc_result valid audit m w out src n state (2 ^ 64 - 1) m' ->
+  hello_codec_profile audit w -> load_bytes m (ptr_addr state) 4 = 0 ->
+  valid (locale_codec (libc_locale (fst w))) (mbstate_bytes m state) ->
+  valid (locale_codec (libc_locale (fst w))) (mbstate_bytes m' state) /\
+  load_bytes m' (ptr_addr state) 4 = 0 /\ m_bytes m (ptr_addr src) <> 0.
+Proof.
+  intros valid audit m w out src n state m' (_ & Hcases) Hprofile Hinitial Hvalid.
+  destruct Hcases as [(Hbad & _)|[(_ & Hbad & _)|[(_ & _ & _ & _ & Herror)|(Hbad & _)]]];
+    try lia. exact (Herror Hprofile Hinitial Hvalid).
 Qed.
 
 Theorem mbrtowc_valid_after_c : forall valid audit m w out src n state result m',
@@ -917,12 +937,12 @@ Proof.
 Qed.
 
 (** Profiled incomplete calls preserve valid continuation, not initial
-    state. Both unprofiled and UTF-8 EILSEQ may leave invalid state. *)
+    state. An unprofiled EILSEQ may still leave invalid state. *)
 Example conversion_incomplete_and_error :
   mbrtowc_result conversion_valid conversion_audit conversion_mem conversion_world
     (mkPtr 2048 (Obj 2048)) (mkPtr 1024 (Ro 1024)) 1 (mkPtr 3072 (Obj 3072))
     (2 ^ 64 - 2) (conversion_memory 0 (226 * 2 ^ 32 + 1) 9) /\
-  (forall audit, audit (TInt 0) <> Some CodecC ->
+  (forall audit, audit (TInt 0) <> Some CodecC -> ~ hello_codec_profile audit conversion_world ->
   mbrtowc_result conversion_valid audit conversion_mem conversion_world
     (mkPtr 2048 (Obj 2048)) (mkPtr 1024 (Ro 1024)) 1 (mkPtr 3072 (Obj 3072))
     (2 ^ 64 - 1) (conversion_memory 0 255 84)).
@@ -935,13 +955,13 @@ Proof.
       assert (a = 2048 \/ a = 2049 \/ a = 2050 \/ a = 2051) by lia.
       destruct H as [-> | [-> | [-> | ->]]]; reflexivity.
     + intros _. split; [lia|]. intros i Hi. assert (i = 0) by lia. subst. discriminate.
-  - intros audit Hnotc. split; [lia|]. right. right. left.
+  - intros audit Hnotc Hnotprofile. split; [lia|]. right. right. left.
     split; [reflexivity|]. split; [reflexivity|].
     split.
     + intros a Ha. change (2048 <= a < 2052) in Ha.
       assert (a = 2048 \/ a = 2049 \/ a = 2050 \/ a = 2051) by lia.
       destruct H as [-> | [-> | [-> | ->]]]; reflexivity.
-    + intros Hc. contradiction.
+    + split; [intros Hc; contradiction|]. intros Hprofile. contradiction.
 Qed.
 
 (** A mathematical memory write is not automatically a byte. Neither
@@ -976,7 +996,9 @@ Proof.
   - intros a Ha. change (2048 <= a < 2052) in Ha.
     unfold conversion_c_error_end, store_bytes. cbn [m_bytes].
     rewrite (proj2 (Z.leb_gt 5120 a) ltac:(lia)). reflexivity.
-  - intros _. split; [reflexivity|]. vm_compute. repeat split; congruence.
+  - split.
+    + intros _. split; [reflexivity|]. vm_compute. repeat split; congruence.
+    + intros _ _ Hvalid. split; [exact Hvalid|]. split; [reflexivity|discriminate].
 Qed.
 
 Example conversion_c_error_valid_residual :
@@ -1007,6 +1029,59 @@ Proof.
   intros Hresult.
   destruct (mbrtowc_c_error _ _ _ _ _ _ _ _ _ Hresult eq_refl) as [Hstate _].
   discriminate Hstate.
+Qed.
+
+(** UTF-8 initial-count EILSEQ is reusable even with residual bytes;
+    this fixture tests the error relation, not native locale readiness. *)
+Definition conversion_utf8_world : libc_world :=
+  (mkLibcPayload (mkLocaleWorld 0 (fun _ => mkPtr 4096 (Ro 4096))
+    (fun _ => audited_codec_name CodecCUtf8) (TInt 0) [] [] [])
+    (libc_stdio (fst conversion_world)) (libc_errno (fst conversion_world))
+    (libc_streams (fst conversion_world)), snd conversion_world).
+
+Example conversion_utf8_initial_error :
+  mbrtowc_result conversion_valid (fun _ => Some CodecCUtf8)
+    conversion_c_error_mem conversion_utf8_world
+    (mkPtr 2048 (Obj 2048)) (mkPtr 1024 (Ro 1024)) 1 (mkPtr 3072 (Obj 3072))
+    (2 ^ 64 - 1) conversion_c_error_end.
+Proof.
+  split; [lia|]. right. right. left. split; [reflexivity|]. split; [reflexivity|].
+  split.
+  - intros a Ha. change (2048 <= a < 2052) in Ha.
+    unfold conversion_c_error_end, store_bytes. cbn [m_bytes].
+    rewrite (proj2 (Z.leb_gt 5120 a) ltac:(lia)). reflexivity.
+  - split; [discriminate|]. intros _ _ Hvalid.
+    split; [exact Hvalid|]. split; [reflexivity|discriminate].
+Qed.
+
+Example conversion_utf8_initial_error_changed_count_rejected :
+  ~ mbrtowc_result conversion_valid (fun _ => Some CodecCUtf8)
+    conversion_c_error_mem conversion_utf8_world
+    (mkPtr 2048 (Obj 2048)) (mkPtr 1024 (Ro 1024)) 1 (mkPtr 3072 (Obj 3072))
+    (2 ^ 64 - 1) (conversion_memory 0 (226 * 2 ^ 32 + 1) 84).
+Proof.
+  intros Hresult.
+  destruct (mbrtowc_initial_error _ _ _ _ _ _ _ _ _ Hresult)
+    as (_ & Hcount & _).
+  - exists CodecCUtf8. split; reflexivity.
+  - reflexivity.
+  - vm_compute. split; [repeat constructor; congruence|auto].
+  - discriminate Hcount.
+Qed.
+
+Example conversion_utf8_initial_error_nul_rejected :
+  ~ mbrtowc_result conversion_valid (fun _ => Some CodecCUtf8)
+    (store_bytes conversion_mem 1024 1 0) conversion_utf8_world
+    (mkPtr 2048 (Obj 2048)) (mkPtr 1024 (Ro 1024)) 1 (mkPtr 3072 (Obj 3072))
+    (2 ^ 64 - 1) conversion_c_error_end.
+Proof.
+  intros Hresult.
+  destruct (mbrtowc_initial_error _ _ _ _ _ _ _ _ _ Hresult)
+    as (_ & _ & Hbyte).
+  - exists CodecCUtf8. split; reflexivity.
+  - reflexivity.
+  - vm_compute. split; [repeat constructor; congruence|auto].
+  - apply Hbyte. reflexivity.
 Qed.
 
 (** The profiled output interpretations are not generic decoder laws. *)

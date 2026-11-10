@@ -64,6 +64,17 @@ static int c_conversion_reuse(void) {
     return 1;
 }
 
+// The initial UTF-8 error boundary is narrower than arbitrary EILSEQ:
+// pending input can reject a NUL. Reuse initial-count state without reset,
+// including nonzero residual value bytes, after each rejected sequence.
+static int initial_error_reuse(const char *src, wchar_t wc, mbstate_t *state,
+                               const unsigned char *initial) {
+    if (!src[0] || errno != EILSEQ || wc != 99 ||
+        memcmp(state, initial, sizeof *state) != 0 || !mbsinit(state)) return 0;
+    if (mbrtowc(&wc, "Q", 1, state) != 1 || wc != L'Q' || !mbsinit(state)) return 0;
+    return mbrtowc(&wc, "", 1, state) == 0 && wc == 0 && mbsinit(state);
+}
+
 static int conversion_boundaries(const char *locale, int utf8) {
     if (!setlocale(LC_ALL, locale) || sizeof(wchar_t) != 4 || sizeof(mbstate_t) != 8)
         return 0;
@@ -73,19 +84,23 @@ static int conversion_boundaries(const char *locale, int utf8) {
             char bytes[16];
             memset(bytes, 0x80, sizeof bytes);
             bytes[0] = (char)lead;
-            mbstate_t state = {0};
+            unsigned char initial[8] = {0, 0, 0, 0, 83, 167, 254, 19};
+            mbstate_t state;
+            memcpy(&state, initial, sizeof state);
             wchar_t wc = 99;
             errno = 0;
             size_t r = mbrtowc(&wc, bytes, n, &state);
             if (r == (size_t)-2) saw_incomplete = 1;
             good = conversion_result(bytes, n, r, wc) && good;
+            if (r == (size_t)-1) good = initial_error_reuse(bytes, wc, &state, initial) && good;
             if (r != (size_t)-1 && r != (size_t)-2) good = mbsinit(&state) && good;
             bytes[n - 1] = 0;
-            memset(&state, 0, sizeof state);
+            memcpy(&state, initial, sizeof state);
             wc = 99;
             errno = 0;
             r = mbrtowc(&wc, bytes, n, &state);
             good = r != (size_t)-2 && conversion_result(bytes, n, r, wc) && good;
+            if (r == (size_t)-1) good = initial_error_reuse(bytes, wc, &state, initial) && good;
             if (r != (size_t)-1) good = mbsinit(&state) && good;
         }
     }

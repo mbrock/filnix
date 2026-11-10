@@ -579,8 +579,8 @@ illegal-input marker updates step-data flags, not the caller's state.
 Lazy loader fallback selects the same C table and has no caller-state
 pointer. The pre-converter address-overflow error is excluded by full
 input readability and Runtime.address_space, not by the result relation
-alone. This C-only guarantee is keyed by the audited opaque codec,
-not a name comparison, and does not extend to C.UTF-8 EILSEQ. The selected
+alone. This exact eight-byte guarantee is keyed by the audited C codec,
+not a name comparison, and does not extend to pending C.UTF-8 EILSEQ. The selected
 UTF-8 loop permits up to **six** bytes, checks available continuation
 bytes before declaring incomplete, and treats NUL as a non-continuation.
 For a valid same-codec state, this supports consumption at most n, no NUL
@@ -588,6 +588,22 @@ in positive consumption, and no -2 when the interval contains NUL or
 n>=16. NUL completion yields zero; a completed character leaves an
 initial state, whereas incomplete input can leave a valid pending state.
 These are trusted profile properties, not a mechanized libc proof.
+
+The narrower `mbrtowc_initial_error` law covers both audited Hello codecs:
+from a valid state whose first four bytes load as zero, EILSEQ keeps the
+state valid and those count bytes zero, and the first input byte was not
+NUL. In the selected UTF-8 path, zero count bypasses skeleton.c's pending
+SINGLE conversion, illegal-input exits in gconv_simple.c do not store
+caller state, and STORE_REST is guarded by INCOMPLETE_INPUT, not EILSEQ.
+A first-byte NUL takes the ASCII success path and returns zero. The
+pre-converter pointer-overflow error is excluded by the admitted readable
+input interval and runtime address-space bounds. No new reusable-state
+claim applies to pending UTF-8 errors or arbitrary codecs. The native
+boundary probe now uses nonzero residual state bytes for every lead byte
+and n=1..16, with and without a final NUL; after each initial-state error
+it checks exact state preservation and immediately converts Q and NUL
+without resetting. Pending-state/NUL errors remain a contrasting control.
+
 The finite probes above supplement the source audit; their exact UTF-8
 value/continuation samples cover one through four bytes, not all six-byte
 sequences or all represented states. Neither the profile nor these probes

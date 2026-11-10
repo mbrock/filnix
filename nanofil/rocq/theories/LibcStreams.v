@@ -368,7 +368,7 @@ Proof.
   split; [reflexivity|]. split; [exact (proj1 (proj2 Ho))|].
   split; [exact Ho|]. split; [apply libc_stream_frame_refl|].
   split; [apply libc_stream_delegates_refl; exact Hr|]. split; [reflexivity|].
-  unfold stream_aux_frame. intros; reflexivity.
+  split; [unfold stream_aux_frame|]; intros; reflexivity.
 Qed.
 
 (** The concrete ferror query admits either sticky-error value without
@@ -637,6 +637,25 @@ Proof.
     (stream_aux_roots model (world true) (file_handle out_file)) [] m 5120).
   { intros [(root & [] & _)|(base & reg & [] & _)]. }
   specialize (Hframe 5120 Hin Houtside). rewrite Hold, Hnew in Hframe. discriminate.
+Qed.
+
+(** Query-only byte framing protects the last errno byte too, even
+    though ordinary effects authorize all four scalar errno writes. *)
+Example query_errno_byte_clobber_rejected : forall spec s m' s' trace ending,
+  (spec = ferror_contract model \/ spec = fpending_contract model) ->
+  m_bytes m' 5123 <> m_bytes conversion_mem 5123 ->
+  ~ M.E.invoke spec CVoid [Arg P (Const 0)] [WPtr (file_handle out_file)]
+    s conversion_mem (world true) trace ending s' m' (world true).
+Proof.
+  intros spec s m' s' trace ending Hspec Hchanged Hcall.
+  destruct Hspec as [-> | ->].
+  all: (
+    destruct (M.E.invoke_prefix _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+      as (born & _ & p & info & Hxs & _ & _ & _ & _ & _ & _ & Hbytes);
+    injection Hxs as <-;
+    apply Hchanged, Hbytes;
+    [exists 5120, (mkRegion 5120 5128 Heap Live); split; [reflexivity|simpl; lia]
+    |intros [(root & [] & _)|(base & reg & [] & _)] ]).
 Qed.
 
 (** Two active, different FILEs may not both own the same release. *)
