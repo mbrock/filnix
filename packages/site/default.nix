@@ -70,7 +70,6 @@ let
       ../../pages
       ../../nanofil/docs
       ../../nanofil/src
-      ../../nanofil/tests/c
       ../../nanofil/web
       # nanofil's Rocq, wherever the development puts it (dterm-rocq).
       (lib.fileset.fileFilter (f: f.hasExt "v") ../../nanofil)
