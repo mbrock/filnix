@@ -1,3 +1,4 @@
 self-hosted-runner:
   labels:
     - namespace-profile-default
+    - nscloud-ubuntu-22.04-amd64-16x32
