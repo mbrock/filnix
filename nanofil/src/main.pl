@@ -10,6 +10,7 @@
     | `compile FILE` | read, validate, print x86-64 assembly |
     | `cc FILE` | compile C (`.c`, or preprocessed `.i`) to Fil-C assembly |
     | `cc-ir FILE` | compile C, print the IR (unchecked; the Fil-C backend's input is pizlonated) |
+    | `checked-terms FILE` | print, without its context items, the checked module `cc` (a C file) or `compile` (a Fil-C IR file) gives the backend, as a term (rocq/gate.sh) |
     | `tokens FILE` | print C token terms, without locations |
     | `run FILE FN ARG...` | interpret FN on integer arguments |
     | `difftest FILE OUTDIR` | write `OUTDIR/expected.txt`, `OUTDIR/harness.c` and `OUTDIR/mode` for the file's `run(Fn, Args)` facts |
@@ -570,6 +571,22 @@ command(Opt0, Registers, Checks, [cc, File]) :- !,
     release_stacks,
     mode_print_asm(filc, Registers, Checks, Module),
     forall(member(Line, AsmLines), format("~w~n", [Line])).
+command(Opt0, _, Checks, ['checked-terms', File]) :- !,
+    (   ( atom_concat(_, '.c', File) ; atom_concat(_, '.i', File) )
+    ->  c_file_module(File, Module0, _, Attributes),
+        inline_attributes(Opt0, Attributes, Opt)
+    ;   file_module(File, Module0),
+        (   module_mode(Module0, filc) -> true
+        ;   throw(nanofil_error('checked-terms needs a Fil-C module'))
+        ),
+        Opt = Opt0
+    ),
+    release_stacks,
+    once(optimize(Opt, Module0, Module)),
+    release_stacks,
+    checked_module(Checks, Module, Checked),
+    code_module_term(Checked, Term),
+    format("~k.~n", [Term]).
 command(Opt, Registers, Checks, ['asm-terms', File, Text]) :- !,
     file_module(File, Module0),
     (   module_mode(Module0, filc) -> true

@@ -3,7 +3,8 @@
    the checked module, and judges each following line (Transport.v's
    judge). With --valid it reads rocq/mutants.pl's output instead and
    judges each verdict (judge_valid). Prints one judgment per line and a summary, and exits 1 if
-   any line disagrees.
+   any line disagrees. With --module it judges only the module, the
+   first term (judge_module below).
 
    The terms are SWI-Prolog's write_canonical form (format's ~k):
    integers, atoms (bare or quoted), compounds f(A, ...) and proper
@@ -146,10 +147,44 @@ let rec print (b : Buffer.t) (t : term) : unit =
 
 let show t = let b = Buffer.create 64 in print b t; Buffer.contents b
 
+(* --module: the model's verdict on the module itself, as Validate.v's
+   [valid] gives it (rocq/gate.sh): outside when an item is outside the
+   core subset, else [valid_items]. Prints one term, valid(Items),
+   invalid(Items, Rejected) or outside(Items, Outside, Rejected), where
+   Rejected names the items [valid_items] rejects (unique_names when
+   two items share a name) and Outside those outside the subset; exits
+   1 for invalid only. Within an outside module, Rejected is
+   information: the theorem says nothing about such a module. *)
+let judge_module md =
+  let name = function
+    | IFunc f -> f.fn_name
+    | IOutside (n, _) | IData (n, _, _, _) | IAlias (n, _, _) -> n in
+  let rejected =
+    (if unique_names md then [] else [TAtom "unique_names"])
+    @ List.filter_map (fun it ->
+          let ok = match it with
+            | IFunc f -> valid_func md f
+            | IData (n, lk, al, its) -> valid_data md n lk al its
+            | IAlias (n, lk, t) -> valid_alias md n lk t
+            | IOutside _ -> true in
+          if ok then None else Some (name it)) md in
+  let outside = List.filter_map (function IOutside (n, _) -> Some n | _ -> None) md in
+  let items = TInt (Big_int_Z.big_int_of_int (List.length md)) in
+  let verdict =
+    if outside <> [] then TApp ("outside", [items; TList outside; TList rejected])
+    else if valid_items md then TApp ("valid", [items])
+    else TApp ("invalid", [items; TList rejected]) in
+  print_endline (show verdict);
+  match verdict with TApp ("invalid", _) -> exit 1 | _ -> ()
+
 let () =
   let input = In_channel.input_all stdin in
   match parse input with
   | [] -> prerr_endline "nanofil-model: no input"; exit 2
+  | m :: _ when Array.exists (( = ) "--module") Sys.argv ->
+      (match decode_module m with
+       | None -> prerr_endline "nanofil-model: the module does not decode"; exit 2
+       | Some md -> judge_module md)
   | m :: lines ->
       match decode_module m with
       | None -> prerr_endline "nanofil-model: the module does not decode"; exit 2

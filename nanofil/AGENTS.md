@@ -48,6 +48,7 @@ nix build .#checks.x86_64-linux.nanofil        # everything, in one build (about
 nix build .#checks.x86_64-linux.nanofil-rocq   # quick: every theory (one derivation each), model, small corpus
 nix build .#checks.x86_64-linux.nanofil-rocq-parse # grammar round trip of every theory (web/rocq/tests/parse.sh)
 nix build .#checks.x86_64-linux.nanofil-rocq-full # deliberate full mutation campaign (docs/rocq.md)
+nix build .#checks.x86_64-linux.nanofil-rocq-gate # the extracted validator on every -O module of the corpus, hello, zlib, Lua and SQLite
 nix build .#checks.x86_64-linux.nanofil-hello  # GNU hello built only by nanofil, vs filcc
 nix build .#checks.x86_64-linux.nanofil-zlib   # zlib built only by nanofil, vs filcc
 nix build .#checks.x86_64-linux.nanofil-lua    # Lua built only by nanofil, vs filcc

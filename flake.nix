@@ -323,6 +323,17 @@
                 inherit pkgs;
                 filcc = filcc-staging;
               }).parse;
+            # The extracted validator on every -O module of the corpus,
+            # hello, zlib, Lua and SQLite (.github/workflows/nanofil-gate.yml).
+            nanofil-rocq-gate = import ./nanofil/nix/rocq-gate.nix {
+              inherit pkgs;
+              filcc = filcc-staging;
+              driver =
+                (import ./nanofil/nix/rocq.nix {
+                  inherit pkgs;
+                  filcc = filcc-staging;
+                }).model.driver;
+            };
             nanofil-rocq-full = import ./nanofil/nix/rocq.nix {
               inherit pkgs;
               filcc = filcc-staging;

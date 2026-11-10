@@ -15,12 +15,16 @@
 # also copied into DIR. Anything else
 # (linking, configure probes) goes to filcc unchanged. On SWI, nanofil
 # runs from a saved state built here, which starts in 0.05 s instead of
-# 0.26 s.
+# 0.26 s. With terms = true (rocq-gate.nix) a compile instead writes the
+# checked module nanofil would emit (`checked-terms`) into
+# $NANOFIL_TERMS and takes the object from filcc, so the build still
+# links.
 {
   pkgs,
   filcc,
   # The nanofil tree to run; the survey passes one of only bin/ and src/.
   src ? ../.,
+  terms ? false,
 }:
 let
   nanofil =
@@ -73,7 +77,9 @@ pkgs.writeShellScript "nanofil-cc" ''
   # Trealla resolves transitive module imports relative to the working
   # directory. Keep package builds usable on either Prolog host.
   compile() {
-    (cd ${nanofil}/src && ../bin/nanofil ''${NANOFIL_OPT:-} $copies $inline cc "$input" \
+    (cd ${nanofil}/src && ../bin/nanofil ''${NANOFIL_OPT:-} $copies $inline ${
+      if terms then "checked-terms" else "cc"
+    } "$input" \
       </dev/null) >"$out.s" 2>"$out.err"
   }
   # Every compile gets SWI's default 1 GB stack first, so parallel
@@ -90,7 +96,12 @@ pkgs.writeShellScript "nanofil-cc" ''
     compile || { cat "$out.err" >&2; exit 1; }
   fi
   cat "$out.err" >&2
-  as -o "$out" "$out.s"
-  rm "$out.i" "$out.s" "$out.err"
+  ${
+    if terms then
+      ''mv "$out.s" "$NANOFIL_TERMS/$(echo "$input" | md5sum | cut -c1-8)-$(basename "$out").terms"; ${filcc}/bin/clang "''${args[@]}" -c -o "$out"''
+    else
+      ''as -o "$out" "$out.s"''
+  }
+  rm "$out.i" ${pkgs.lib.optionalString (!terms) ''"$out.s" ''}"$out.err"
   echo "$out" >>"''${NANOFIL_LOG:-/dev/null}"
 ''

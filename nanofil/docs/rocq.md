@@ -321,6 +321,41 @@ hull allowed below its lower proof; cycles that needed no poll; data
 aligned up to 8192; `item(l, sym(_, _))` allowed; calls through an
 alias of data allowed; and an `extern(weak)` declaration with items.
 
+### On what the compiler emits
+
+The mutation gate asks whether the model agrees with `valid_module/1`.
+[rocq/gate.sh](../rocq/gate.sh) asks the question the theorem answers:
+is every checked module `nanofil -O` gives its backend one the model's
+`valid` accepts? Then Soundness.v's `valid_no_unchecked` covers it:
+no run of it takes an [[unchecked]] step, whatever check pass made it. `nanofil checked-terms` prints the module, after the
+middle end and the `combined` checks, and the driver's `--module` mode
+judges it. The check `nanofil-rocq-gate` ([nix/rocq-gate.nix](../nix/rocq-gate.nix),
+the Nanofil Gate workflow) runs it on the IR fixtures, `tests/c`,
+`tests/c/prog`, cproc and c-testsuite, and on every translation unit of
+GNU hello, zlib, Lua and SQLite. It fails on any module the model
+rejects. A module with a function outside the [[core-subset|core subset]]
+(setjmp, inline asm, vectors) is counted as `outside`, since the theorem says nothing
+about it, and does not fail.
+
+The driver, rocq.nix's `model.driver`, needs only Extract.v's import
+closure, 14 theories, so the gate does not wait for the rest of the
+model. The packages compile through nanofil-cc's terms mode,
+which takes the objects from filcc, so their builds still link.
+
+| Part | Valid | Outside | Plain or refused | Invalid |
+| --- | --- | --- | --- | --- |
+| IR fixtures, C tests, programs, cproc, c-testsuite | 602 | 43 | 14 plain, 64 refused (cproc) | 0 |
+| GNU hello | 81 | 0 | 0 | 0 |
+| zlib | 17 | 0 | 0 | 0 |
+| Lua 5.4.7 | 33 | 1 (ldo.c, setjmp) | 0 | 0 |
+| SQLite 3.51.2 (sqlite3.c, 4,203 items; shell.c) | 2 | 0 | 0 | 0 |
+
+On 16 cores a cold run takes about 5 minutes, nearly all of it
+sqlite3.c's `-O` compile (260 s, with a 4 GB stack, since it overflows
+1 GB). Judging takes 40 s for the corpus and 24 s for SQLite. The
+modules of `tests/c/prog/sqrt-trunc.c` are outside: the IR's `sqrt` is
+not in the model yet.
+
 ## Decisions
 
 These are formal.md's early decisions as they turned out in the code:
