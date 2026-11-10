@@ -318,6 +318,11 @@
               inherit pkgs;
               filcc = filcc-staging;
             };
+            nanofil-rocq-parse =
+              (import ./nanofil/nix/rocq.nix {
+                inherit pkgs;
+                filcc = filcc-staging;
+              }).parse;
             nanofil-rocq-full = import ./nanofil/nix/rocq.nix {
               inherit pkgs;
               filcc = filcc-staging;

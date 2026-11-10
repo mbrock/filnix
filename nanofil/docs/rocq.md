@@ -77,16 +77,23 @@ they are provenance's records, which `valid_contexts/1` checks and
 
 Rocq is experimental work, not a reason to turn every edit into a long
 release qualification. `checks.x86_64-linux.nanofil-rocq` is the quick
-push check, targeted at 1–2 minutes: build/extract/link the model, run
-`web/rocq/tests/parse.sh` on every theory, then compare outcomes and base
-validator verdicts on `rocq/tests/*.ir`, `tests/filc/basic.ir`,
-`tests/c/ldouble.c` and `tests/c/prog/alias.c`, with reference checks.
-The model's build runs parse.sh in place: one make compiles the theories
-and, as soon as a theory's imports are compiled, compiles its reprint
-alone against them, so the parse check runs beside the compile instead of
-after it. It exports the checked original sources and objects. The Ltac
-fixtures compile in their own projects; a source-only checkout builds
-the originals in a copy. No no-admit, parsing or typechecking gate is skipped.
+push check: compile every theory, refuse Admitted and stray axioms,
+extract/link the model, then compare outcomes and base validator verdicts
+on `rocq/tests/*.ir`, `tests/filc/basic.ir`, `tests/c/ldouble.c` and
+`tests/c/prog/alias.c`, with reference checks. Each theory is its own
+Nix derivation (`nix/rocq.nix`), whose inputs are that `.v` file and the
+objects of the theories it imports, so an edit recompiles that file and
+its importers only; a compiler-only change fetches or reuses the whole
+model and runs the corpus in seconds. The imports are read from the
+`From Nanofil Require` sentences and checked against `rocq dep`.
+`checks.x86_64-linux.nanofil-rocq-parse` is the grammar round trip of
+`web/rocq/tests/parse.sh`, also one derivation per theory: reprint the
+file with every subterm in parentheses and compile the reprint against
+its imports' original objects, plus parse.sh's Ltac, term and Iris
+fixtures. A theory edit reruns that file's reprint; a grammar edit reruns
+all of them at once. CI runs both after each relevant push; run
+`nanofil-rocq-parse` yourself when you change `rocq_syntax.pl`,
+`reprint.pl` or `parse.sh`. No no-admit, parsing or typechecking gate is skipped.
 `NANOFIL_MUTANTS=0` selects `mutants.pl --base`: it generates no mutations,
 only the unchanged items' whole-module verdicts. This is a smoke check,
 not rejection coverage or a soundness proof.
@@ -96,10 +103,14 @@ mutant verdicts, not their unchanged base verdicts. They are covered only by the
 no-mutants smoke check. This tradeoff is deliberate; a dominance or
 other soundness-relevant change calls for the opt-in evidence.
 
-CI (`.github/workflows/nanofil-rocq.yml`) runs the quick root after each
-push that changes model, compiler/validator or gate inputs (its `paths`
-list); unrelated web styling, rendering and documentation edits skip it.
-Run it yourself before pushing such a change:
+CI (`.github/workflows/nanofil-rocq.yml`) runs the quick root and the
+grammar round trip after each push that changes model, compiler/validator
+or gate inputs (its `paths` list), on a 16-core Namespace runner whose Nix
+store persists between runs, so it recompiles only changed theories; a
+newer push waits for the running one rather than cancelling it. Main
+publishes the model's small output to filc.cachix.org. Unrelated web
+styling, rendering and documentation edits skip it. Run the quick root
+yourself before pushing such a change:
 `nix build .#checks.x86_64-linux.nanofil-rocq`.
 
 The complete outcome and mutation matrix described below is

@@ -7,7 +7,7 @@
 #   nix build -L .#checks.x86_64-linux.nanofil-glibc
 #
 # It compiles the proofs against the model's compiled theories (the
-# nanofil-rocq model output), printing each file's time, reads every
+# nanofil-rocq model's objects), printing each file's time, reads every
 # sentence back with parse.sh (web/rocq), and runs the native probe of
 # the zsys_write contract with filcc. That the Code.v fixtures are
 # nanofil's current products is rocq/glibc/code.sh's check, which needs
@@ -45,7 +45,7 @@ pkgs.runCommandCC "nanofil-glibc"
     set -o pipefail
     cp -r ${src} nanofil
     chmod -R u+w nanofil
-    cp -rp ${model}/share/rocq/theories nanofil/rocq/
+    cp -rp ${model.objects}/share/rocq/theories nanofil/rocq/
     chmod -R u+w nanofil
     cd nanofil
     patchShebangs rocq/glibc

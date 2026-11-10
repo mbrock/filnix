@@ -12,8 +12,9 @@
 # compiled with the project's -R/-Q flags, after the files it imports.
 # With a _RocqProject, one make compiles the originals and checks the
 # reprints, each reprint as soon as its file's imports are compiled.
-# PARSE_IN_PLACE=1 compiles the originals where they are, not in a copy,
-# so the model's build (nix/rocq.nix) checks its theories as it compiles.
+# PARSE_IN_PLACE=1 compiles the originals where they are, not in a copy;
+# nix/rocq.nix uses it with --check to check one theory against the
+# compiled objects of its imports.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../../.." && pwd)
@@ -137,7 +138,11 @@ build() {
   done < <(order "$proj")
 }
 
-if [ $# -eq 0 ]; then
+# --fixtures: only the built-in fixtures below (nix/rocq.nix checks each
+# theory in its own derivation).
+if [ "${1-}" = --fixtures ]; then
+  shift
+elif [ $# -eq 0 ]; then
   mapfile -t files < <(cd "$root" && find nanofil -name '*.v' -not -path '*/_build/*' | sort)
   set -- "${files[@]/#/$root/}"
 fi
