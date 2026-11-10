@@ -424,8 +424,9 @@ Every generated syscall stub now compiles: its body, a `zcall` of the
    (`member_alignment/4`) to one. It unblocks all 76 nptl units, six of
    them Hello's. Recommended: yes; it is a layout change, so it waits
    for review.
-4. **What the proofs trust about glibc's compiler** (above). Recommended:
-   decide before any proof uses glibc's IR, not now.
+4. **What the proofs trust about glibc's compiler** (above). Decided
+   for now: it is [glibc-ir.md](glibc-ir.md)'s assumption G1, written
+   down and decided again before Hello uses glibc's IR.
 5. **The boundary itself.** Recommended: keep Campaign 4's per-function
    contracts for Hello, and treat this page's direction as a later
    campaign whose first step is "module `strlen` implements
