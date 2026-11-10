@@ -220,6 +220,9 @@ jobs:
       - name: Check every Rocq page at phone widths
         run: |
           set -o pipefail
+          # Match the Worker's immutable resource paths in this local copy.
+          mkdir -p _site/__releases
+          ln -s .. "_site/__releases/$GITHUB_SHA"
           python3 -m http.server 8765 --bind 127.0.0.1 --directory _site >/tmp/rocq-http.log 2>&1 &
           server=$!
           trap 'kill "$server"' EXIT
