@@ -18,5 +18,18 @@ Set Crane Loopify Diagnostics.
    only as deep as a term nests. *)
 Crane NoLoopify term_eqb Order.term_compare.
 
+(* How the C++ holds its data; the campaign doc's M8 has what each is
+   worth on rx.ir. An inductive's alternatives are in Crane's own
+   variant, and a field that is another inductive is a pointer, as in
+   OCaml. A term nests only as deep as IR text does, so its destructor
+   recurses once a level and does not drain into fresh cells.
+
+   [Set Crane GC], which is off, is the other way to hold it: no counts
+   and no destructors, with every block from a collector that has
+   Boehm's API. main.cpp and nfrt.h follow the CRANE_GC the header then
+   defines, and the program links libgc. *)
+Set Crane FastVariant. Set Crane BoxedFields.
+Set Crane BoundedNesting.
+
 Crane Extraction "nb" read_text compile compile_promoted compile_allocated
   rev_lines_parts first_todo.

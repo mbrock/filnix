@@ -638,6 +638,82 @@ proposed for M8, where the same C++ is built by filcc and its speed
 first matters to a user; until then the OCaml build is the fast
 one.
 
+**The C++ build after M8's attempt.** M8 began with a bounded
+attempt on Crane's output, with 2× the OCaml build on `rx.ir` as
+the mark and 3× as the point to stop (decision 7). It stopped at
+about 3×, and Crane's C++ is not taken further. Best of three on
+an orb, `compile` and then `compile-allocated`; every build prints
+the same bytes:
+
+- OCaml: `rx.ir` 0.34 and 0.41 s at 56 MB; `lvm.ir` 1.72 and
+  1.68 s at 149 MB.
+- C++ as it is checked, with counted references: `rx.ir` 0.96 and
+  1.30 s at 55 MB, which is 2.8 and 3.1 times; `lvm.ir` 4.75 and
+  4.59 s at 382 and 371 MB, which is 2.8 and 2.7 times.
+- C++ under `Set Crane GC`, with Boehm's collector as it comes:
+  `rx.ir` 1.01 and 1.50 s at 79 MB; `lvm.ir` 5.07 and 4.82 s at
+  410 and 436 MB.
+- The same with `GC_FREE_SPACE_DIVISOR=1`: `rx.ir` 0.84 and
+  1.13 s at 130 MB; `lvm.ir` 4.44 s at 548 MB for `compile`.
+- The same with a first heap of 256 MB: `rx.ir` 0.76 and 1.01 s
+  at 285 MB.
+
+What moved it from M6's 2.40 s on `rx.ir`:
+
+- Three switches took it to 1.17 s. `FastVariant` holds an
+  inductive's alternatives in Crane's own variant, `BoxedFields`
+  makes a field that is another inductive a pointer, as OCaml
+  does, and `BoundedNesting`, which is ours, lets a term's
+  destructor recurse once a level where it drained every list it
+  owned into fresh cells.
+- A change to Loopify took it to 0.96 s. `existsb`, `forallb` and
+  a fixpoint of the shape `a || f rest` were loops over a stack of
+  frames that copied every element; they are loops that stop
+  early, with no frames. 81 functions keep a frame stack, where
+  90 did.
+
+`Set Crane GC` was the last experiment: no counts and no
+destructors, a handle is a bare pointer, and every block comes
+from a collector with Boehm's API. What it showed:
+
+- All 52 inductives become trivially copyable and trivially
+  destructible, as hoped. A `Term` is still 24 bytes, so it is
+  not expected to travel in registers; that was not checked in
+  the assembly.
+- clang turns no more of the recursive functions into loops than
+  it does with counts. Of the 12 Loopify declines, five keep a
+  call to themselves in both builds, one has none in either, and
+  six are inlined away.
+- Memory was not flat until `crane::variant` was changed. A
+  conservative collector reads the stale bytes of a variant's
+  storage and padding as pointers, and the reachable heap climbed
+  to 174 MB on `rx.ir`. With the storage cleared and the padding
+  gone it stays near 30 MB through all 38 pieces.
+- The collector is then the cost, and not the code. `compile` on
+  `rx.ir` makes 17.65 million allocations, 14 million of them of
+  32 bytes or less. With Boehm as it comes, `libgc` is 65 to 70%
+  of the time, and the program's own code about 0.3 s, which is
+  the OCaml build's whole run. With a large first heap it
+  collects four times and `libgc` is still 48%, now in
+  allocation. OCaml's allocator bumps a pointer and its collector
+  is generational; Boehm's does neither.
+
+So neither way of holding the data reaches 2×. Counted, the time
+is in copies and destruction; collected, it is in the collector.
+What is left is to allocate less, by more changes to what Crane
+writes or to the Gallina, and that was not tried.
+
+The collected build was also the first given to filcc, against
+the Fil-C `boehmgc`, which is FUGC behind Boehm's API. It did not
+finish. After 17 minutes of processor time and 8.9 GB the
+compiler was in the Fil-C pass, in `computeFrameIndexMap`, which
+finds the frame slots of a function's pointers, with 98% of the
+samples there; at `-O1` it was in the same pass at the same size
+when it was stopped after three minutes. So nothing is known of
+FUGC's speed on this program, and a pizlonated library of Crane's
+output would need that pass looked at first. The build was
+stopped and that was not followed up.
+
 ## Milestones
 
 Each ends with its gate green and a short note of what it found.
@@ -1034,8 +1110,9 @@ patch of ours, extracts the reader of IR text, `compile`,
 C++23. clang builds them with a driver of 127 lines as
 `nanofil-backend-cpp`, which prints what Prolog and the OCaml build
 print, byte for byte. It takes 5 to 7.5 times the OCaml build's
-time, so the 2× target is missed; the figures and the profile are
-under [Performance targets](#performance-targets). CertiRocq was
+time (about 3 after M8's attempt), so the 2× target is missed; the
+figures and the profile are under
+[Performance targets](#performance-targets). CertiRocq was
 not needed.
 
 - **The gates.** `tests/compile.sh` holds `compile` and
@@ -1075,7 +1152,8 @@ What stopped Crane, in the order of the remedies:
   overflowed the C++ stack in `Abi.frame_of`. Prolog's bytes still
   match after each change.
 - *Switches.* `Loopify` turns recursion into loops, and
-  `NonAtomicRc` makes the reference counts plain integers.
+  `NonAtomicRc` makes the reference counts plain integers. M8
+  added `FastVariant`, `BoxedFields` and `BoundedNesting`.
   `NoLoopify` is set for `term_eqb` and `Order.term_compare`, for
   which Loopify's C++ names a function it never declares. Loopify
   still declines 12 functions, which stay recursive: the stdlib
@@ -1085,7 +1163,8 @@ What stopped Crane, in the order of the remedies:
   module's thunks. None has overflowed on the corpus. `Arena` was
   tried and rejected.
 - *Patched in Crane* (`nix/crane-nanofil.patch`, 705 lines in 17
-  files):
+  files at M6, and 1,277 in 24 with M8's three additions at the
+  end of this list):
   - the port to Rocq 9.1, which is API changes in six files;
   - a string literal is one `std::string` with its length and
     octal escapes, and a character literal is escaped the same way;
@@ -1096,7 +1175,19 @@ What stopped Crane, in the order of the remedies:
     new one, which frees `p->tail` in `p = p->tail`;
   - costly values are borrowed by `const &` where they were copied,
     a closure may be called more than once, and a match under a
-    let's right-hand side is translated.
+    let's right-hand side is translated;
+  - M8: the `BoundedNesting` switch, under which a type that
+    recurs through another, as a term does through a list of
+    terms, has no draining destructor;
+  - M8: Loopify writes `existsb`, `forallb` and fixpoints of the
+    shape `a || f rest` as loops that stop early;
+  - M8: the `GC` switch, which is off. The header defines
+    `CRANE_GC`, under which `rc.h`'s handle is a bare pointer,
+    blocks come from `GC_MALLOC`, no destructor is written, and
+    `crane::variant` keeps no stale bytes. `main.cpp` and
+    `nfrt.h` follow the same macro, and the program links
+    `libgc`. No check builds it: it was held to the OCaml build's
+    bytes on `rx.ir` and `lvm.ir` by hand, when it was measured.
 
 Three of those (the default branch, the numerals and the
 assignment) made C++ that compiled and computed something else.
@@ -1168,6 +1259,17 @@ three-address `lea`, `imm32` operands and narrow loads and stores.
 still runs `as` and `ld` and loads with `dlopen`. Gate: the
 pizlonated library passes the differential tests and the
 experiment's checks.
+
+*Not built on Crane.* M8 began, as decision 7 has it, with a
+bounded attempt on the speed of Crane's C++. It went from 5 to 7.5
+times the OCaml build's time to about 3, with counted references
+and with a collector, and stopped there; the one filcc build that
+was started did not finish compiling. The figures and what was
+learnt are under [Performance targets](#performance-targets).
+Crane's C++ is not taken further. The check and the C++ build
+stay as they are, held to the same bytes, and `rxc` stays on the
+OCaml build. What the library is built from is open: CertiRocq's
+C is being tried on the same input, as its own piece of work.
 
 **M9. Hybrid `-O`.** Emission of the reuse forms, so Prolog's middle
 end and check passes can feed the extracted backend. This is where
@@ -1277,4 +1379,7 @@ otherwise.
    measure CertiRocq's C on the same input before building the
    library on either. The other choice is to build `libnanofil` as
    it is, to learn first what filcc makes of Crane's C++, and take
-   the speed after.
+   the speed after. *Agreed, and done:* the attempt stopped at
+   about 3 times, with counted references and with a collector,
+   and Crane's C++ is not taken further. CertiRocq's C is being
+   tried on the same input as its own piece of work.

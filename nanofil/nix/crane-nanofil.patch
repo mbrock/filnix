@@ -134,7 +134,7 @@ index 161f2a4..e7a93fb 100644
      in
      if arity <= 1 then
 diff --git a/src/extract_env.ml b/src/extract_env.ml
-index de348f8..feda353 100644
+index de348f8..3d6ec38 100644
 --- a/src/extract_env.ml
 +++ b/src/extract_env.ml
 @@ -13,6 +13,7 @@
@@ -304,7 +304,23 @@ index de348f8..feda353 100644
            ~all:(Visit.needed_mp_all mp)
            struc ) )
      l
-@@ -2167,12 +2168,13 @@ let extraction_library ~opaque_access is_rec CAst.{loc; v = m} =
+@@ -771,10 +772,14 @@ let spec_header ?(unit_includes = []) si () =
+       str ("#ifndef " ^ g) ++ fnl () ++ str ("#define " ^ g) ++ fnl2 ()
+     | None -> mt ()
+   in
++  (* [Set Crane GC] is defined first of all, so that the headers a custom
++     extraction names (the ones a mapped type lives in) see it too: a type
++     of theirs that owns a block has to stop owning it under the collector. *)
+   let h =
+     List.fold_left
+       (fun p s -> p ++ mk_include s ++ fnl ())
+-      (str "")
++      (if Table.gc_handles () then str "#define CRANE_GC 1" ++ fnl ()
++       else str "")
+       (himports @ imps)
+   in
+ 
+@@ -2167,12 +2172,13 @@ let extraction_library ~opaque_access is_rec CAst.{loc; v = m} =
      try Nametab.full_name_module q
      with Not_found -> error_unknown_module ?loc q
    in
@@ -370,8 +386,38 @@ index bbe47df..3531bff 100644
    let seen = ref [] in
    snd
      (List.fold_left
+diff --git a/src/gen_inductives.ml b/src/gen_inductives.ml
+index 1d68554..f158726 100644
+--- a/src/gen_inductives.ml
++++ b/src/gen_inductives.ml
+@@ -1348,8 +1348,11 @@ let gen_ind_header_v2
+            even for arena-backed values (the region only owns the payload
+            memory; per-node refcounting still drives destruction), so the
+            iterative destructor that drains those smart-pointer chains is
+-           needed here exactly as for any other recursive type. *)
+-        if is_coinductive then []
++           needed here exactly as for any other recursive type.
++
++           [Crane GC]: a handle is a plain pointer the collector follows, so
++           destroying a value does nothing and there is no chain to drain. *)
++        if is_coinductive || Table.gc_handles () then []
+         else
+           (* Check whether ML type [t] is a reference to [ref_name] applied to
+              the same type variables [ref_vars] (i.e., a direct recursive or
+@@ -1465,6 +1468,11 @@ let gen_ind_header_v2
+           in
+           let rec classify_ml_self_ref = function
+             | ml_ty when is_direct_self_ref ml_ty -> `Direct
++            (* [Crane BoundedNesting]: recursion through another inductive is
++               bounded in depth and needs no drain. *)
++            | Miniml.Tglob (g, _, _)
++              when Table.bounded_nesting () && not (globref_equal g name) ->
++              `None
+             | Miniml.Tglob (g, [arg], _)
+               when (is_list_global g || is_list_shaped_ind g)
+                    && is_direct_self_ref arg ->
 diff --git a/src/loopify.ml b/src/loopify.ml
-index 6fefa5a..76ceb3a 100644
+index 6fefa5a..6017e2e 100644
 --- a/src/loopify.ml
 +++ b/src/loopify.ml
 @@ -786,7 +786,7 @@ let loopify_inner_lambdas ~tparams ?(outer_env = []) body =
@@ -383,8 +429,34 @@ index 6fefa5a..76ceb3a 100644
      | Smatch (scrut, branches, default) ->
        Smatch
          ( { scrut with sc_expr = process_expr scrut.sc_expr },
+@@ -1383,6 +1383,7 @@ let transform_fundef_exn ~tparams (f : dfun) params body =
+   let check = fn_checker names in
+   (* Hoist recursive calls out of if-conditions/scrutinees so a value-typed
+      condition-dependent recursion can loopify instead of bailing. *)
++  let body = expose_tail_calls check body in
+   let body = hoist_rec_conditions check params ret_ty body in
+   let body = expose_tail_calls check body in
+   (* Cofixpoint guard: if this function body ends with a [lazy_] return,
+@@ -1523,9 +1524,16 @@ let transform_method ~tparams ~self_ty mf =
+       method_checker ~n_params ~has_self_param:false ~this_pos
+         ?self_ref:mf.mf_globref mf.mf_name
+     in
++    (* A recursive call under a returned [?:], [||] or [&&] is a tail call,
++       exactly as in {!transform_fundef}: [existsb] and [forallb] then run as
++       loops that stop at the first decisive element, rather than pushing a
++       frame holding a copy of every element and applying the predicate to
++       all of them on the way back. *)
+     { mf with
+       mf_body =
+-        hoist_rec_conditions check mf.mf_params mf.mf_ret_type mf.mf_body }
++        expose_tail_calls check
++          (hoist_rec_conditions check mf.mf_params mf.mf_ret_type
++             (expose_tail_calls check mf.mf_body)) }
+   in
+   if has_lazy_body mf.mf_body then begin
+     let basic_check =
 diff --git a/src/loopify_analysis.ml b/src/loopify_analysis.ml
-index 6329715..06f89b3 100644
+index 6329715..d35eb3b 100644
 --- a/src/loopify_analysis.ml
 +++ b/src/loopify_analysis.ml
 @@ -875,11 +875,14 @@ and collect_stmt check ~in_visitor = function
@@ -420,6 +492,67 @@ index 6329715..06f89b3 100644
        | Scustom_case (_, scrut, _, branches, _) ->
          count_calls_expr check scrut
          + List.fold_left
+@@ -1064,7 +1070,42 @@ and has_recursive_branch_dependency check stmts =
+     [if (a) return b; else return false;].  A call there is a tail call, and
+     in statement form the transforms see it as one rather than as a call
+     nested in an expression.  Lambdas are left to their own transform. *)
+-let rec expose_tail_calls check stmts = List.map (expose_stmt check) stmts
++(* A short-circuit expression as its kind and two operands.  [orb] and [andb]
++   arrive as the inline mapping's template applied to its two arguments, not
++   as [Bor]/[Band]. *)
++let short_circuit = function
++  | CPPbinop (Bor, a, b) -> Some (true, a, b)
++  | CPPbinop (Band, a, b) -> Some (false, a, b)
++  | CPPfun_call (_, CPPglob (_, _, Some {ci_inline = Some {it_text; _}; _}), args) ->
++    (match call_args args with
++     | [a; b] when String.equal it_text "(%a0 || %a1)" -> Some (true, a, b)
++     | [a; b] when String.equal it_text "(%a0 && %a1)" -> Some (false, a, b)
++     | _ -> None)
++  | _ -> None
++
++let rec expose_tail_calls check stmts =
++  List.map (expose_stmt check) (fold_bound_operand check stmts)
++
++(* The translation binds a call that is an argument to a local first:
++   [bool r = f(..); return a || r;].  Where the call is recursive and the
++   local is the short-circuit's second operand and nothing else, that is
++   [return a || f(..)], which {!expose_return} then writes as an [if]: the
++   call is not made when [a] decides, as the Rocq [orb] would have it. *)
++and fold_bound_operand check stmts =
++  let holds e = count_calls_expr check e > 0 in
++  match List.rev stmts with
++  | Sreturn (Some e) :: Sasgn (v, Declare _, bound) :: before when holds bound ->
++    let is_v = function CPPvar x -> Id.equal x v | _ -> false in
++    (match short_circuit e with
++     | Some (is_or, a, (CPPvar _ | CPPmove (CPPvar _) as b))
++       when expr_exists is_v b && not (expr_exists is_v a) ->
++       let on_a, on_not_a =
++         if is_or then ([Sreturn (Some (CPPbool true))], [Sreturn (Some bound)])
++         else ([Sreturn (Some bound)], [Sreturn (Some (CPPbool false))])
++       in
++       List.rev (Sif (a, on_a, on_not_a) :: before)
++     | _ -> stmts)
++  | _ -> stmts
+ 
+ and expose_stmt check = function
+   | Sreturn (Some e) -> expose_return check e
+@@ -1075,9 +1116,13 @@ and expose_return check e =
+   let return e = expose_return check e in
+   match e with
+   | CPPcond (c, a, b) when holds a || holds b -> Sif (c, [return a], [return b])
+-  | CPPbinop (Bor, a, b) when holds b -> Sif (a, [Sreturn (Some (CPPbool true))], [return b])
+-  | CPPbinop (Band, a, b) when holds b -> Sif (a, [return b], [Sreturn (Some (CPPbool false))])
+-  | _ -> Sreturn (Some e)
++  | _ ->
++    (match short_circuit e with
++     | Some (true, a, b) when holds b ->
++       Sif (a, [Sreturn (Some (CPPbool true))], [return b])
++     | Some (false, a, b) when holds b ->
++       Sif (a, [return b], [Sreturn (Some (CPPbool false))])
++     | _ -> Sreturn (Some e))
+ 
+ (** Classify a function body's recursion pattern. Collects all recursive call
+     sites and checks whether they are all in tail position, some non-tail, or
 diff --git a/src/loopify_tail.ml b/src/loopify_tail.ml
 index d1cf344..e585bff 100644
 --- a/src/loopify_tail.ml
@@ -471,7 +604,7 @@ index 6f50ee0..aa25902 100644
      free_vars_expr scrut.sc_expr
      @ List.concat_map
 diff --git a/src/table.ml b/src/table.ml
-index e957e06..cedfcbf 100644
+index e957e06..7f575ad 100644
 --- a/src/table.ml
 +++ b/src/table.ml
 @@ -1530,11 +1530,8 @@ let safe_pr_long_global r =
@@ -488,7 +621,42 @@ index e957e06..cedfcbf 100644
  
  let pr_long_global ref = pr_path (Nametab.path_of_global ref)
  
-@@ -3881,7 +3878,7 @@ let extract_numeral r fmt =
+@@ -2286,6 +2283,34 @@ let fast_variant () = fast_variant_requested () && not (String.equal (std_lib ()
+ let {Goptions.get = boxed_fields} =
+   declare_bool_option_and_ref ~key:["Crane"; "BoxedFields"] ~value:false ()
+ 
++(* --- Destruction of nested recursion ---------------------------------- *)
++
++(* [Set Crane BoundedNesting] declares that recursion routed through another
++   inductive ([Node : list tree -> tree]) is bounded in depth, as a syntax
++   tree's nesting is.  Such a type then gets no draining destructor: its
++   values are destroyed member-wise, recursing once per level of nesting,
++   while a directly recursive field (a list's tail) is still drained in a
++   loop.  The drain it replaces moves every element of every uniquely owned
++   list into a freshly allocated cell, which costs more than the destruction
++   itself.  Opt-in, because a value nested deeper than the stack allows then
++   overflows it. *)
++let {Goptions.get = bounded_nesting} =
++  declare_bool_option_and_ref ~key:["Crane"; "BoundedNesting"] ~value:false ()
++
++(* --- Garbage-collected handles ---------------------------------------- *)
++
++(* [Set Crane GC] hands every heap block the generated program makes to a
++   garbage collector with Boehm's API ([GC_MALLOC] from <gc.h>): the header
++   defines CRANE_GC before the runtime headers, under which [crane::rc],
++   [crane::fn] and a boxed field are plain pointers with no count, copied
++   and dropped for free, and nothing is ever deleted.  An inductive then
++   needs no draining destructor, so none is generated, and one whose fields
++   are all handles or scalars is trivially copyable.  The program links
++   libgc, and whatever else it allocates that may hold such a pointer has to
++   come from the collector too. *)
++let {Goptions.get = gc_handles} =
++  declare_bool_option_and_ref ~key:["Crane"; "GC"] ~value:false ()
++
+ (* --- Last-use moves --------------------------------------------------- *)
+ 
+ (* [Last_use] rewrites a local's final read as [std::move], removing a
+@@ -3881,7 +3906,7 @@ let extract_numeral r fmt =
          try Some (Nametab.locate (Libnames.qualid_of_string qstr))
          with Not_found ->
            (* Fallback: try in the inductive's own directory *)
@@ -497,6 +665,23 @@ index e957e06..cedfcbf 100644
            let qid = Libnames.make_qualid ind_dir (Names.Id.of_string name) in
            try Some (Nametab.locate qid) with Not_found -> None)
          converter_names
+diff --git a/src/table.mli b/src/table.mli
+index d16cbde..82e289e 100644
+--- a/src/table.mli
++++ b/src/table.mli
+@@ -861,6 +861,12 @@ val boxed_fields : unit -> bool
+     [crane::variant] rather than [std::variant].  Never in the BDE flavor. *)
+ val fast_variant : unit -> bool
+ 
++val bounded_nesting : unit -> bool
++
++(** [Set Crane GC]: handles are plain pointers into a garbage-collected heap
++    (Boehm's API), and no destructor is generated for an inductive. *)
++val gc_handles : unit -> bool
++
+ (** Whether non-atomic reference counting ([crane::rc]) is in effect for this
+     unit, swapping [std::shared_ptr]/[std::make_shared] for
+     [crane::rc]/[crane::make_rc].  This is the resolved answer, not the raw
 diff --git a/src/toolchain.ml b/src/toolchain.ml
 index 8e4a77f..16105a4 100644
 --- a/src/toolchain.ml
@@ -672,11 +857,367 @@ index 73fac87..3d45c6b 100644
      (try_fold_positive inner)
  
  (** Whether [r] is a type family over a value -- [sem : idx -> Type] --
+diff --git a/theories/cpp/crane_variant.h b/theories/cpp/crane_variant.h
+index 792bcdd..356293b 100644
+--- a/theories/cpp/crane_variant.h
++++ b/theories/cpp/crane_variant.h
+@@ -45,8 +45,25 @@ template <class... Ts> class variant {
+ 
+   template <class T> static constexpr bool is_alternative = (std::is_same_v<T, Ts> || ...);
+ 
++#ifdef CRANE_GC
++  // A conservative collector reads every word of a block as a possible
++  // pointer, so no word of a variant may hold bytes left over from whatever
++  // was in its place: a stale pointer copied along with a value keeps what it
++  // points at alive.  The storage starts out zero, and the index is an
++  // integer as wide as the alignment, which leaves no padding after it.
++  static constexpr std::size_t align_ = std::max({alignof(Ts)...});
++  static constexpr std::size_t size_ =
++      (std::max({sizeof(Ts)...}) + align_ - 1) / align_ * align_;
++  using index_t = std::conditional_t<
++      align_ >= 8, std::uint64_t,
++      std::conditional_t<align_ >= 4, std::uint32_t,
++                         std::conditional_t<align_ >= 2, std::uint16_t, std::uint8_t>>>;
++  alignas(Ts...) unsigned char storage_[size_] = {};
++  index_t index_;
++#else
+   alignas(Ts...) unsigned char storage_[std::max({sizeof(Ts)...})];
+   std::uint8_t index_;
++#endif
+ 
+   // f(integral_constant<I>) for the active index I: a chain of compares the
+   // optimiser turns into a jump table, inlined where it is used.
+@@ -86,6 +103,16 @@ template <class... Ts> class variant {
+ 
+ public:
+   variant() : index_(0) { ::new (storage_) alt<0>(); }
++  // Where every alternative is trivially copyable and destructible the
++  // variant is too -- its bytes are the value -- so it is passed and
++  // returned in registers and copied as a block.  Otherwise the special
++  // members dispatch on the index.
++  variant(const variant &)
++    requires(std::is_trivially_copy_constructible_v<Ts> && ...)
++  = default;
++  variant(variant &&) noexcept
++    requires(std::is_trivially_move_constructible_v<Ts> && ...)
++  = default;
+   variant(const variant &o) { copy_from(o); }
+   variant(variant &&o) noexcept { move_from(o); }
+ 
+@@ -102,17 +129,32 @@ public:
+     ::new (storage_) alt<I>(std::forward<A>(a)...);
+   }
+ 
++  // [o] may live inside the value this variant owns (p = p.tail, which
++  // loopified code writes as an assignment from a reference into the old
++  // value), so it is taken before the old value is destroyed.
++  variant &operator=(const variant &)
++    requires((std::is_trivially_copy_assignable_v<Ts> &&
++              std::is_trivially_copy_constructible_v<Ts> &&
++              std::is_trivially_destructible_v<Ts>) && ...)
++  = default;
++  variant &operator=(variant &&) noexcept
++    requires((std::is_trivially_move_assignable_v<Ts> &&
++              std::is_trivially_move_constructible_v<Ts> &&
++              std::is_trivially_destructible_v<Ts>) && ...)
++  = default;
+   variant &operator=(const variant &o) {
+     if (this != &o) {
++      variant taken(o);
+       destroy();
+-      copy_from(o);
++      move_from(taken);
+     }
+     return *this;
+   }
+   variant &operator=(variant &&o) noexcept {
+     if (this != &o) {
++      variant taken(std::move(o));
+       destroy();
+-      move_from(o);
++      move_from(taken);
+     }
+     return *this;
+   }
+@@ -124,12 +166,23 @@ public:
+   }
+ 
+   template <std::size_t I, class... A> alt<I> &emplace(A &&...a) {
++#ifdef CRANE_GC
++    // The new value is made first, since the storage is cleared under it.
++    alt<I> made(std::forward<A>(a)...);
++    destroy();
++    for (unsigned char &b : storage_) b = 0;
++    ::new (storage_) alt<I>(std::move(made));
++#else
+     destroy();
+     ::new (storage_) alt<I>(std::forward<A>(a)...);
++#endif
+     index_ = I;
+     return raw<I>();
+   }
+ 
++  ~variant()
++    requires(std::is_trivially_destructible_v<Ts> && ...)
++  = default;
+   ~variant() { destroy(); }
+ 
+   std::size_t index() const { return index_; }
+diff --git a/theories/cpp/field.h b/theories/cpp/field.h
+index 2c9b19c..c56ea6e 100644
+--- a/theories/cpp/field.h
++++ b/theories/cpp/field.h
+@@ -43,6 +43,14 @@ CRANE_RC_POLICY_BEGIN
+ // One shared, immutable cell holding a T, from the thread's heap every other
+ // small runtime block uses (pool.h).
+ template <class T> class field_box {
++#ifdef CRANE_GC
++  // A collected cell is the value alone: nothing counts or destroys it.
++  struct cell : pool_detail::pooled<cell> {
++    T value;
++    template <class... A>
++    explicit cell(A &&...a) : value(std::forward<A>(a)...) {}
++  };
++#else
+   struct cell : shared_block, pool_detail::pooled<cell> {
+     T value;
+     template <class... A>
+@@ -51,6 +59,7 @@ template <class T> class field_box {
+       cell::dispose(static_cast<const cell *>(static_cast<const shared_block *>(b)), h);
+     }
+   };
++#endif
+   const cell *p_;
+ 
+ public:
+@@ -60,6 +69,11 @@ public:
+   field_box(const T &v) : p_(new cell(v)) {}
+   field_box(T &&v) : p_(new cell(std::move(v))) {}
+ 
++#ifdef CRANE_GC
++  // A plain pointer to a collected cell: copies and drops are free.
++  field_box(const field_box &) noexcept = default;
++  field_box &operator=(const field_box &) noexcept = default;
++#else
+   field_box(const field_box &o) noexcept : p_(o.p_) { p_->retain(); }
+   field_box(field_box &&o) noexcept : p_(std::exchange(o.p_, nullptr)) {}
+   field_box &operator=(const field_box &o) noexcept {
+@@ -76,6 +90,7 @@ public:
+     if (p_)
+       p_->release();
+   }
++#endif
+ 
+   const T &operator*() const noexcept { return p_->value; }
+   const T *operator->() const noexcept { return &p_->value; }
+diff --git a/theories/cpp/fn.h b/theories/cpp/fn.h
+index 1f498b9..33c9cd4 100644
+--- a/theories/cpp/fn.h
++++ b/theories/cpp/fn.h
+@@ -183,6 +183,15 @@ public:
+     CRANE_FN_STAT(made);
+   }
+ 
++#ifdef CRANE_GC
++  // A plain pointer to a collected block: copies and drops are free.
++  fn(const fn &) noexcept = default;
++  fn &operator=(const fn &) noexcept = default;
++  fn &operator=(std::nullptr_t) noexcept {
++    p_ = nullptr;
++    return *this;
++  }
++#else
+   fn(const fn &o) noexcept : p_(o.p_) { retain(); }
+   fn(fn &&o) noexcept : p_(std::exchange(o.p_, nullptr)) {}
+   // [o] may be owned by the closure this one releases, so its pointer is
+@@ -203,6 +212,7 @@ public:
+     return *this;
+   }
+   ~fn() { release(); }
++#endif
+ 
+   // Arguments the caller keeps go in by reference; arguments it gives up
+   // are moved.  Where a parameter type is itself a reference the two
+diff --git a/theories/cpp/pool.h b/theories/cpp/pool.h
+index f1fcd13..33ab926 100644
+--- a/theories/cpp/pool.h
++++ b/theories/cpp/pool.h
+@@ -34,6 +34,12 @@
+ #pragma once
+ #include <cstddef>
+ #include <new>
++// [Set Crane GC]: the generated header defines CRANE_GC, and every block the
++// runtime makes comes from a garbage collector with Boehm's API instead of
++// the thread's heap, and is never given back.
++#ifdef CRANE_GC
++#include <gc.h>
++#endif
+ 
+ namespace crane {
+ 
+@@ -114,6 +120,23 @@ inline thread_heap &this_thread_heap() noexcept {
+   return h;
+ }
+ 
++#ifdef CRANE_GC
++// A collected block: allocated by the collector, and reclaimed by it once
++// nothing points at it, without its destructor being run.
++inline void *gc_alloc(std::size_t n) {
++  return GC_MALLOC(n);
++}
++
++template <typename Derived> struct pooled {
++  static void *operator new(std::size_t n) { return gc_alloc(n); }
++  static void operator delete(void *, std::size_t) noexcept {}
++  static void dispose(const Derived *, thread_heap &) noexcept {}
++  static void *operator new(std::size_t n, std::align_val_t a) {
++    return GC_memalign(static_cast<std::size_t>(a), n);
++  }
++  static void operator delete(void *, std::size_t, std::align_val_t) noexcept {}
++};
++#else
+ template <typename Derived> struct pooled {
+   static void *operator new(std::size_t) {
+     // always sizeof(Derived): Derived has no virtual base, no tail.
+@@ -143,6 +166,10 @@ template <typename Derived> struct pooled {
+     ::operator delete(p, a);
+   }
+ };
++#endif
+ 
+ } // namespace pool_detail
++#ifdef CRANE_GC
++using pool_detail::gc_alloc;
++#endif
+ } // namespace crane
 diff --git a/theories/cpp/rc.h b/theories/cpp/rc.h
-index fad6d7e..44f77c1 100644
+index fad6d7e..18ebe60 100644
 --- a/theories/cpp/rc.h
 +++ b/theories/cpp/rc.h
-@@ -101,13 +101,24 @@ public:
+@@ -26,6 +26,122 @@
+ #include "arena.h"
+ #endif
+ 
++
++#ifdef CRANE_GC
++// [Set Crane GC]: rc<T> is a plain pointer to a T the collector owns.  It has
++// no count and no control block; copying, moving and dropping it do nothing
++// beyond copying the pointer, so it is trivially copyable and destructible,
++// and so is any aggregate of such handles.  Nothing is ever deleted, and no
++// T's destructor is run: what a T holds has to be collected memory as well.
++namespace crane {
++
++template <typename T> class rc;
++template <typename T> class weak;
++template <typename T, typename... Args> rc<T> make_rc(Args&&... args);
++
++template <typename T>
++class rc {
++public:
++    using element_type = T;
++    using crane_cheap_copy = void;
++
++    rc() noexcept = default;
++    rc(std::nullptr_t) noexcept {}
++    explicit rc(const weak<T>& w) noexcept;
++
++    T* get() const noexcept { return p_; }
++    T& operator*() const noexcept { assert(p_); return *p_; }
++    T* operator->() const noexcept { return p_; }
++    explicit operator bool() const noexcept { return p_ != nullptr; }
++
++    // No handle is ever known to be the only one, so nothing it points at
++    // may be consumed in place.
++    std::size_t use_count() const noexcept { return p_ ? 2 : 0; }
++
++    void reset() noexcept { p_ = nullptr; }
++    void swap(rc& other) noexcept { std::swap(p_, other.p_); }
++    weak<T> downgrade() const noexcept;
++
++    template <typename... Args>
++    static rc<T> make(Args&&... args) { return make_rc<T>(std::forward<Args>(args)...); }
++
++    // The handle on an object [make_rc] made.
++    static rc<T> of(T* p) noexcept { rc r; r.p_ = p; return r; }
++
++private:
++    T* p_{nullptr};
++};
++
++// With nothing counted a weak handle keeps its object alive like any other.
++template <typename T>
++class weak {
++public:
++    weak() noexcept = default;
++    bool expired() const noexcept { return p_ == nullptr; }
++    rc<T> lock() const noexcept { return rc<T>::of(p_); }
++    void reset() noexcept { p_ = nullptr; }
++private:
++    friend class rc<T>;
++    T* p_{nullptr};
++};
++
++template <typename T>
++rc<T>::rc(const weak<T>& w) noexcept : p_(w.p_) {}
++template <typename T>
++weak<T> rc<T>::downgrade() const noexcept { weak<T> w; w.p_ = p_; return w; }
++
++template <typename T>
++class enable_rc_from_this {
++public:
++    rc<T> rc_from_this() const noexcept {
++        return rc<T>::of(const_cast<T*>(static_cast<const T*>(this)));
++    }
++};
++
++template <typename T, typename... Args>
++rc<T> make_rc(Args&&... args) {
++    static_assert(!std::is_array<T>::value, "rc<T> does not support arrays");
++    void* mem = alignof(T) > __STDCPP_DEFAULT_NEW_ALIGNMENT__
++        ? GC_memalign(alignof(T), sizeof(T)) : gc_alloc(sizeof(T));
++    return rc<T>::of(::new (mem) T(std::forward<Args>(args)...));
++}
++
++// Reuse needs a cell known to have one owner, and none is.
++template <typename T, typename... Args>
++rc<T> make_rc_reusing(rc<T>, Args&&... args) {
++    return make_rc<T>(std::forward<Args>(args)...);
++}
++template <typename T, typename... Args>
++rc<T> make_rc_reusing_unchecked(rc<T>, Args&&... args) {
++    return make_rc<T>(std::forward<Args>(args)...);
++}
++template <typename T>
++bool rc_unique(const rc<T>&) noexcept { return false; }
++
++template <typename Ctor, typename T>
++struct taken {
++    Ctor  fields;
++    rc<T> token;
++};
++template <typename Ctor, typename T>
++taken<Ctor, T> take_for_reuse(T& node, rc<T>&, bool& uniq) {
++    using std::get;
++    uniq = false;
++    return { Ctor(get<Ctor>(node.v())), rc<T>() };
++}
++template <typename T>
++struct reuse_step_result {
++    rc<T> next;
++    rc<T> token;
++};
++template <typename T>
++reuse_step_result<T> reuse_step(rc<T>&, bool& uniq, const rc<T>& rec_field) {
++    uniq = false;
++    return { rec_field, rc<T>() };
++}
++
++} // namespace crane
++#else
+ namespace crane {
+ 
+ // Forward declarations
+@@ -101,13 +217,24 @@ public:
          inc_strong();
      }
  
@@ -703,3 +1244,34 @@ index fad6d7e..44f77c1 100644
          return *this;
      }
  
+@@ -445,6 +572,7 @@ rc<T> rc<T>::make(Args&&... args) {
+ }
+ 
+ } // namespace crane
++#endif // CRANE_GC
+ 
+ // Overload of [crane_raw] (declared in crane_fn.h for std::shared_ptr<T> / T*)
+ // for the non-atomic [crane::rc<T>]: extract the raw pointer. Kept here so it is
+diff --git a/theories/cpp/shared_block.h b/theories/cpp/shared_block.h
+index 24b69b5..edde38d 100644
+--- a/theories/cpp/shared_block.h
++++ b/theories/cpp/shared_block.h
+@@ -93,12 +93,18 @@ struct shared_block {
+   mutable block_detail::count rc;
+   const pool_detail::destroy_fn destroy;
+ 
++#ifdef CRANE_GC
++  // A collected block is not counted: the collector finds what is live.
++  void retain() const noexcept {}
++  void release() const noexcept {}
++#else
+   void retain() const noexcept { rc.inc(); }
+   // Drops one reference; the last one frees the block.
+   void release() const noexcept {
+     if (rc.dec())
+       block_detail::free_block(this, destroy);
+   }
++#endif
+ };
+ 
+ CRANE_RC_POLICY_END

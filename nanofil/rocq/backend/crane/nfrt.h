@@ -16,9 +16,17 @@ namespace nf {
 // the word; any other is a GMP integer on the heap, and is never one
 // that would fit. The compiler's numbers are nearly all small, and a
 // copy of a small one allocates nothing.
+//
+// Under [Set Crane GC] the GMP integer is in a collected block that is
+// never written again, so a Z is two words that copy as two words, and
+// the collector frees the integer.
 class Z {
   int64_t s_ = 0;
+#ifdef CRANE_GC
+  const mpz_class *b_ = nullptr;
+#else
   mpz_class *b_ = nullptr;
+#endif
 
   static Z of_mpz(mpz_class &&m) {
     if (m.fits_slong_p()) return Z(static_cast<int64_t>(m.get_si()));
@@ -41,6 +49,7 @@ public:
     }
   }
   static Z decimal(const char *digits) { return of_mpz(mpz_class(digits)); }
+#ifndef CRANE_GC
   Z(const Z &o) : s_(o.s_), b_(o.b_ ? new mpz_class(*o.b_) : nullptr) {}
   Z(Z &&o) noexcept : s_(o.s_), b_(o.b_) { o.b_ = nullptr; }
   Z &operator=(const Z &o) {
@@ -62,6 +71,7 @@ public:
     return *this;
   }
   ~Z() { delete b_; }
+#endif
 
   friend Z operator+(const Z &a, const Z &b) {
     int64_t r;
@@ -225,7 +235,7 @@ inline Z string_hash(const std::string &s, const Z &h) {
 template <class L> inline std::string string_of_list(const L &cs) {
   std::string s;
   for (const L *p = &cs;;) {
-    auto *cell = std::get_if<typename L::Cons>(&p->v());
+    auto *cell = get_if<typename L::Cons>(&p->v());
     if (!cell) return s;
     s.push_back(cell->a);
     p = cell->l.get();

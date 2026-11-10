@@ -21,7 +21,42 @@
 #include <string>
 #include <vector>
 
+#ifdef CRANE_GC
+#include <gc.h>
+#include <new>
+
+// Under [Set Crane GC] every block of the program comes from the
+// collector, so one that is reachable only through another -- a string's
+// bytes from a term, a vector's elements from a frame -- is found and
+// kept. A block its owner gives up is handed back at once.
+void *operator new(std::size_t n) { return crane::gc_alloc(n); }
+void *operator new[](std::size_t n) { return crane::gc_alloc(n); }
+void *operator new(std::size_t n, std::align_val_t a) { return GC_memalign(static_cast<std::size_t>(a), n); }
+void *operator new[](std::size_t n, std::align_val_t a) { return GC_memalign(static_cast<std::size_t>(a), n); }
+void operator delete(void *p) noexcept { GC_FREE(p); }
+void operator delete[](void *p) noexcept { GC_FREE(p); }
+void operator delete(void *p, std::size_t) noexcept { GC_FREE(p); }
+void operator delete[](void *p, std::size_t) noexcept { GC_FREE(p); }
+void operator delete(void *p, std::align_val_t) noexcept { GC_FREE(p); }
+void operator delete[](void *p, std::align_val_t) noexcept { GC_FREE(p); }
+void operator delete(void *p, std::size_t, std::align_val_t) noexcept { GC_FREE(p); }
+void operator delete[](void *p, std::size_t, std::align_val_t) noexcept { GC_FREE(p); }
+
 namespace {
+// GMP's limbs hold no pointers, and the collector frees them.
+void *limbs_alloc(size_t n) { return GC_MALLOC_ATOMIC(n); }
+void *limbs_realloc(void *p, size_t, size_t n) { return GC_REALLOC(p, n); }
+void limbs_free(void *, size_t) {}
+} // namespace
+#endif
+
+namespace {
+
+// A field as its value, whether Crane holds it boxed or not.
+template <class T> decltype(auto) un(const T &v) {
+  if constexpr (requires { *v; v.operator->(); }) return *v;
+  else return (v);
+}
 
 [[noreturn]] void stop(int code, const std::string &why) {
   std::fflush(stdout);
@@ -67,18 +102,18 @@ void print_lines(const List<Line> &lines) {
     List<Line> rev = List<Line>::nil();
     int k = 0;
     while (k < chunk) {
-      auto *cell = std::get_if<List<Line>::Cons>(&at->v());
+      auto *cell = get_if<List<Line>::Cons>(&at->v());
       if (!cell) break;
-      rev = List<Line>::cons(cell->a, std::move(rev));
+      rev = List<Line>::cons(un(cell->a), std::move(rev));
       at = cell->l.get();
       ++k;
     }
     if (k == 0) return;
     List<std::string> parts = Asm::rev_lines_parts(rev, List<std::string>::nil());
     for (const List<std::string> *p = &parts;;) {
-      auto *cell = std::get_if<List<std::string>::Cons>(&p->v());
+      auto *cell = get_if<List<std::string>::Cons>(&p->v());
       if (!cell) break;
-      std::fwrite(cell->a.data(), 1, cell->a.size(), stdout);
+      std::fwrite(un(cell->a).data(), 1, un(cell->a).size(), stdout);
       p = cell->l.get();
     }
   }
@@ -86,9 +121,9 @@ void print_lines(const List<Line> &lines) {
 
 template <class A, class F> void each(const List<A> &xs, F f) {
   for (const List<A> *p = &xs;;) {
-    auto *cell = std::get_if<typename List<A>::Cons>(&p->v());
+    auto *cell = get_if<typename List<A>::Cons>(&p->v());
     if (!cell) return;
-    f(cell->a);
+    f(un(cell->a));
     p = cell->l.get();
   }
 }
@@ -107,6 +142,10 @@ void print_pieces(const List<crane::fn<std::optional<List<List<Line>>>(std::mono
 } // namespace
 
 int main(int argc, char **argv) {
+#ifdef CRANE_GC
+  GC_INIT();
+  mp_set_memory_functions(limbs_alloc, limbs_realloc, limbs_free);
+#endif
   auto command = [&](const char *name) { return argc == 3 && !std::strcmp(argv[1], name); };
   bool promoted = command("compile-promoted"), allocated = command("compile-allocated");
   if (!(promoted || allocated || command("compile"))) {
@@ -119,9 +158,9 @@ int main(int argc, char **argv) {
   Compiled c = allocated  ? Compile::compile_allocated(*m)
                : promoted ? Compile::compile_promoted(*m)
                           : Compile::compile(*m);
-  if (auto *r = std::get_if<Compiled::Refused>(&c.v())) stop(1, r->why);
-  if (auto *o = std::get_if<Compiled::Outside>(&c.v())) stop(3, o->why);
-  print_pieces(std::get<Compiled::Pieces>(c.v()).ps);
+  if (auto *r = get_if<Compiled::Refused>(&c.v())) stop(1, un(r->why));
+  if (auto *o = get_if<Compiled::Outside>(&c.v())) stop(3, un(o->why));
+  print_pieces(un(get<Compiled::Pieces>(c.v()).ps));
   std::fflush(stdout);
   return 0;
 }
