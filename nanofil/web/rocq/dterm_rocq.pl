@@ -211,13 +211,17 @@ utc_stamp(Time, Stamp) :-
     stamp_date_time(Time, Date, 'UTC'), format_time(atom(Stamp), '%FT%TZ', Date).
 
 % Captures belong to the exact source, never a nearby revision's offsets.
+% A file of a directory no capture replayed (rocq/backend) is drawn
+% without states; one missing from a captured directory is an error.
 source_states(File, Text) :-
     nb_getval(rq_capture, Capture),
-    (   Capture \== none, atom_concat('nanofil/rocq/', Rel, File)
-    ->  get_dict(Rel, Capture.files, Entry),
-        crypto_data_hash(Text, Hash, [algorithm(sha256), encoding(utf8)]),
+    (   Capture \== none, atom_concat('nanofil/rocq/', Rel, File), get_dict(Rel, Capture.files, Entry)
+    ->  crypto_data_hash(Text, Hash, [algorithm(sha256), encoding(utf8)]),
         ( atom_string(Hash, Entry.sha256) -> rocq_set_states(Entry.states)
         ; throw(error(stale_proof_capture(File), _)) )
+    ;   Capture \== none, atom_concat('nanofil/rocq/', Rel, File), file_directory_name(Rel, Dir),
+        get_dict(Other, Capture.files, _), file_directory_name(Other, Dir)
+    ->  throw(error(missing_proof_capture(File), _))
     ;   rocq_set_states(none)
     ).
 

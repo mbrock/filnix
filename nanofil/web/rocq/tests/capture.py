@@ -129,6 +129,18 @@ Proof. intro b. reflexivity. Qed.
     assert 'id="Nested.rewriting"' in html
     assert "rq-unparsed" not in html, "supported tactics must use the structured printer"
 
+    # A directory no capture replayed is drawn too, without states; a
+    # file the capture of its own directory lacks is refused by name.
+    plain = "Lemma plain : True.\nProof. exact I. Qed.\n"
+    for name in ["nanofil/rocq/other/Plain.v", "nanofil/rocq/Missing.v"]:
+        (root / name).parent.mkdir(exist_ok=True)
+        (root / name).write_text(plain)
+    subprocess.run(render + ["nanofil/rocq/other/Plain.v"], check=True, stdin=subprocess.DEVNULL)
+    assert "Proof checked" not in (out / "rocq-other-Plain.html").read_text()
+    refused = subprocess.run(render + ["nanofil/rocq/Missing.v"], stdin=subprocess.DEVNULL,
+                             stderr=subprocess.PIPE, text=True)
+    assert refused.returncode != 0 and "missing_proof_capture" in refused.stderr
+
     # Grow one page, not the number of pages. Copy the real captured
     # proof with renamed lemmas and shifted character offsets, and have
     # coqc check the resulting source too. Whole-page DCG output exceeds

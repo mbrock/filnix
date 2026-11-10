@@ -352,8 +352,10 @@ its output and embeds the rendered states in HTML; the reader needs
 neither a server nor a running prover. With `spikes = true` it replays only
 the logic spikes, which need std++ and Iris, against the theories they
 import (`capture.py --replay spikes/`); `--states` is given once per
-capture. The renderer reads and indexes every file, then forks a worker
-per core (up to 8) to draw the pages. To preview with local tools:
+capture. A file in a directory no capture replayed (`rocq/backend`) is
+drawn without states; a file missing from a captured directory fails the
+build by name. The renderer reads and indexes every file, then forks a
+worker per core (up to 8) to draw the pages. To preview with local tools:
 
 ```sh
 python3 nanofil/tests/watch.py --label 'Proof capture' -- \
