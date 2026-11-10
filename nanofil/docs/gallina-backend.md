@@ -925,6 +925,16 @@ patterns at the 2.1 times of full `-O` that this selection measures
 in Prolog. This is the first point where the `rxc` route is worth
 switching on.
 
+- Reached: copy propagation. `Copy.v` makes of a promoted module
+  the term `copy.pl` makes of it, on `TermCfg.v`'s blocks, CFG and
+  strict-SSA check, which reuse the model's `Cfg.v` dominators.
+  `tests/promote.sh` holds it to `nanofil promote-terms`, which
+  prints the module, its promotion and the copy pass's result: the
+  same on every file of the corpus nanofil accepts, where copy.pl
+  changes 1,034 functions in 221 files.
+- Not done: escape analysis and promotion, then the branch
+  selection and the byte gate.
+
 **M6. Crane.** Build Crane in Nix against our Rocq, extract the same
 entry points to C++, compile with clang++ and run the same
 differential tests. Gate: byte identity again, and the C++ target.

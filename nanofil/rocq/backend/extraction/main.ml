@@ -636,6 +636,31 @@ let nfb_read files =
       | None -> Printf.printf "%s: refused\n" f; exit 1) files;
   if report then Printf.eprintf "nanofil-backend: load %.3fs decode_input %.3fs\n" !load_s !input_s
 
+(* Whether the modules ours and theirs are the same term. Prints
+   `WHATitems same N differ M` and, for each item that differs, where
+   it first does. *)
+let same_items what ours theirs =
+  let name = function TApp (_, n :: _) -> shown n | t -> shown t in
+  match ours, theirs with
+  | TApp ("module", [TList xs]), TApp ("module", [TList ys])
+    when List.length xs = List.length ys ->
+      let same = ref 0 and differ = ref 0 in
+      List.iter2 (fun x y ->
+          if term_eqb x y then incr same
+          else begin
+            incr differ;
+            let path, a, b = first_difference [] x y in
+            Printf.eprintf "%s%s differs at %s\n  rocq:   %s\n  prolog: %s\n" what (name x)
+              (String.concat "." path) (shown a) (shown b)
+          end) xs ys;
+      Printf.printf "%sitems same %d differ %d\n" what !same !differ;
+      !differ = 0
+  | _ ->
+      let path, a, b = first_difference [] ours theirs in
+      Printf.eprintf "nanofil-backend: %smodules differ at %s\n  rocq:   %s\n  prolog: %s\n" what
+        (String.concat "." path) (shown a) (shown b);
+      false
+
 (* The gate of pizlonation (tests/pizlonate.sh). Stdin is what
    `nanofil pizlonate-terms FILE` prints: the module, then what
    pizlonate.pl makes of it. Pizlonate.v must make the same term of
@@ -650,27 +675,41 @@ let pizlonate () =
   let ours = match timed pass_s (fun () -> pizlonate_module before) with
     | Some t -> t
     | None -> fail "pizlonation refuses the module" in
-  let name = function TApp (_, n :: _) -> shown n | t -> shown t in
-  (match ours, theirs with
-   | TApp ("module", [TList xs]), TApp ("module", [TList ys])
-     when List.length xs = List.length ys ->
-       let same = ref 0 and differ = ref 0 in
-       List.iter2 (fun x y ->
-           if term_eqb x y then incr same
-           else begin
-             incr differ;
-             let path, a, b = first_difference [] x y in
-             Printf.eprintf "%s differs at %s\n  rocq:   %s\n  prolog: %s\n" (name x)
-               (String.concat "." path) (shown a) (shown b)
-           end) xs ys;
-       Printf.printf "items same %d differ %d\n" !same !differ;
-       if report then
-         Printf.eprintf "nanofil-backend: parse %.3fs pizlonate %.3fs\n" !parse_s !pass_s;
-       if !differ > 0 then exit 1
-   | _ ->
-       let path, a, b = first_difference [] ours theirs in
-       fail "modules differ at %s\n  rocq:   %s\n  prolog: %s" (String.concat "." path)
-         (shown a) (shown b))
+  if report then
+    Printf.eprintf "nanofil-backend: parse %.3fs pizlonate %.3fs\n" !parse_s !pass_s;
+  if not (same_items "" ours theirs) then exit 1
+
+(* How many items of the module after differ from the item at the
+   same place in before: what a pass changed. *)
+let changed before after =
+  match before, after with
+  | TApp ("module", [TList xs]), TApp ("module", [TList ys])
+    when List.length xs = List.length ys ->
+      List.fold_left2 (fun n x y -> if term_eqb x y then n else n + 1) 0 xs ys
+  | _ -> if term_eqb before after then 0 else 1
+
+(* The gate of promotion and copy propagation (tests/promote.sh).
+   Stdin is what `nanofil promote-terms FILE` prints: the module, what
+   promote.pl makes of it, and what copy.pl makes of that. Copy.v must
+   make the third term of the second. Prints, for each pass, how many
+   items the Prolog pass changed, how many items are the same and, for
+   each that is not, where it first differs. Exits 1 on any
+   difference. *)
+let promote () =
+  let next = reader (In_channel.input_all stdin) in
+  let fail fmt = Printf.ksprintf (fun m -> prerr_endline ("nanofil-backend: " ^ m); exit 1) fmt in
+  let copy_s = ref 0.0 in
+  let term what = match timed parse_s next with Some t -> t | None -> fail "no %s" what in
+  let _before = term "module" in
+  let promoted = term "promoted module" in
+  let copied = term "copied module" in
+  let ours = match timed copy_s (fun () -> copy_module promoted) with
+    | Some t -> t
+    | None -> fail "copy propagation refuses the module" in
+  if report then
+    Printf.eprintf "nanofil-backend: parse %.3fs copy %.3fs\n" !parse_s !copy_s;
+  Printf.printf "copy changes %d items\n" (changed promoted copied);
+  if not (same_items "copy " ours copied) then exit 1
 
 (* A minor heap of 32 MB: with OCaml's 2 MB, the plans of a large
    function were promoted while they were built, which cost a
@@ -695,6 +734,7 @@ let () =
        | None -> prerr_endline "nanofil-backend: the NFB is not read"; exit 1)
   | [| _; "nfb"; prefix |] -> big_minor_heap (); nfb prefix
   | [| _; "pizlonate" |] -> big_minor_heap (); pizlonate ()
+  | [| _; "promote" |] -> big_minor_heap (); promote ()
   | _ when Array.length Sys.argv >= 3 && Sys.argv.(1) = "read" ->
       big_minor_heap (); read_files (List.tl (List.tl (Array.to_list Sys.argv)))
   | _ when Array.length Sys.argv >= 3 && Sys.argv.(1) = "nfb-read" ->
@@ -702,5 +742,5 @@ let () =
   | _ ->
       prerr_endline
         "usage: nanofil-backend compile FILE.ir, compile-nfb FILE.nfb, or [abi | emit | module | compile-terms | nfb PREFIX | \
-         pizlonate] <TERMS, or read FILE.ir... <TERMS, or nfb-read FILE.nfb...";
+         pizlonate | promote] <TERMS, or read FILE.ir... <TERMS, or nfb-read FILE.nfb...";
       exit 2

@@ -24,6 +24,7 @@
     | `nfb-check FILE` | write the module, and a Fil-C module's checked module, as NFB and read each back: the same term with NAMES, the same words without it (tests/nfb.sh) |
     | `emit-terms FILE` | print the checked module of a Fil-C file, then the reference emission's asm.pl lines, a list for each item, for each weak thunk and for the end of the file, as terms; a `.i` file is a Fil-C module whatever it uses, as for `cc` (rocq/backend) |
     | `pizlonate-terms FILE` | print the module of a file and then its pizlonation, each without its context items, as terms: the result of pizlonate.pl alone, neither validated nor passed to the check passes (rocq/backend) |
+    | `promote-terms FILE` | print the module of a file, then what promote.pl makes of it, then what copy.pl makes of that, each without its context items, as terms (rocq/backend) |
     | `read-terms FILE` | print the module of an IR text file as a term, as read: every item, the context items included, and not validated (rocq/backend) |
     | `read-each FILE...` | for each IR text file in turn, print `read(Module)` with the module `read-terms` prints, or `refused` where reading it throws (rocq/backend) |
 
@@ -613,6 +614,12 @@ command(Opt, _, _, ['pizlonate-terms', File]) :- !,
     once(pizlonate_module(Module, Checked)),
     code_module_term(Module, Before), format("~k.~n", [Before]),
     code_module_term(Checked, After), format("~k.~n", [After]).
+command(_, _, _, ['promote-terms', File]) :- !,
+    file_module(File, Module),
+    optimize(passes([promote]), Module, Promoted),
+    optimize(passes([copy]), Promoted, Copied),
+    forall(member(M, [Module, Promoted, Copied]),
+           ( code_module_term(M, T), format("~k.~n", [T]) )).
 command(_, _, _, ['read-terms', File]) :- !,
     read_ir_file(File, Module, _),
     format("~k.~n", [Module]).

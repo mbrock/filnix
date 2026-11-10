@@ -26,6 +26,8 @@ NfbRead.v
 NfbProof.v
 NfbTotal.v
 Pizlonate.v
+TermCfg.v
+Copy.v
 Compile.v
 IrText.v
 Extract.v
