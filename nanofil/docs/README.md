@@ -43,6 +43,10 @@ page about it is listed here.
 - [Campaign 7: trap-obligation census](trap-census.md) and
   [native libc contracts](libc-contracts.md): what a whole program
   (Hello) needs proved, and the libc boundary it relies on.
+- [Contracts at the zsys_ boundary](zsys.md): an exploration of
+  libpizlo's pizlonated system calls as the boundary instead of libc,
+  what Hello reaches through user glibc, and how much of user glibc
+  nanofil compiles to IR.
 
 ## The compiler
 

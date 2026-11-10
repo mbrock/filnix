@@ -1,0 +1,386 @@
+# Contracts at the zsys_ boundary
+
+An exploration, not a campaign. Today the formal campaign trusts glibc
+through a contract per libc function: Campaign 4 writes them in
+[ExternalCalls.v](../rocq/theories/ExternalCalls.v), [Libc.v](../rocq/theories/Libc.v)
+and their siblings ([libc-contracts.md](libc-contracts.md)), and
+Campaign 3 uses them through `wp_external` ([logic.md](logic.md)). That
+continues as it is, for Hello and the campaigns in flight.
+
+This page looks one layer down. Fil-C's user glibc is Fil-C code: it
+compiles with Fil-C and makes no system call itself. It calls libpizlo,
+the runtime, whose `zsys_` functions are the pizlonated system calls,
+next to a few dozen other entry points that are not system calls. If
+nanofil compiles user glibc to IR, glibc becomes module code that the
+logic proves like Hello's own, and only libpizlo's entry points need
+contracts. The page counts that primitive set, measures what Hello
+reaches through glibc, sketches how such contracts fit Machine.v,
+ExternalMachine.v and the Iris logic, and reports how much of user glibc
+nanofil compiles today.
+
+Everything here is read against the staging pin, mbrock/fil-c at
+[`18b6663a2785`](https://github.com/mbrock/fil-c/commit/18b6663a2785c8eba6cc2a544a7711e19fc448c7),
+as [runtime-axioms.md](runtime-axioms.md) is:
+
+```sh
+nix build -o /tmp/filc-ref .#lib.x86_64-linux.filc-staging-ref-src
+nix build -o /tmp/libc --impure --expr '
+  let f = builtins.getFlake (toString ./.);
+      pkgs = import f.inputs.nixpkgs { system = "x86_64-linux"; };
+  in (import ./lib/sources.nix {
+        inherit pkgs; variant = "staging"; }).user-glibc-src'
+```
+
+User glibc is `projects/user-glibc-2.44` in the second tree. The
+prototypes are `filc/include/pizlonated_syscalls.h` in the first, and
+the implementations are `libpas/src/libpas/filc_runtime.c` (native) and
+`filc/src/runtime.c` (Fil-C).
+
+## The primitive set
+
+`pizlonated_syscalls.h` declares **337** `zsys_` functions. They are
+not all alike:
+
+| Kind | Count | Examples |
+| --- | ---: | --- |
+| native wrappers of one system call | 312 | `zsys_read`, `zsys_openat`, `zsys_mmap` |
+| loader calls | 4 | `zsys_dlopen`, `zsys_dlsym` |
+| Fil-C code in libpizlo | 21 | `zsys_close`, `zsys_fork`, `zsys_syscall` |
+
+A native wrapper has one shape. It checks the capabilities of its
+pointer arguments (`filc_check_write(buf, size)` in `zsys_read`, a
+Fil-C panic if the check fails), leaves the Fil-C world (`filc_exit`,
+so the collector may run), makes the system call, comes back
+(`filc_enter`) and, on failure, reports errno through
+`filc_set_errno`. That last step calls back into user glibc: libc's
+startup registers its `errno_handler` with `zregister_sys_errno_handler`
+(`csu/libc-start.c`), and libpizlo calls it with the error number.
+
+Some are system calls only in name, and their contracts would say more
+than the kernel's manual page does:
+
+- `zsys_exit_soft` and `zsys_exit_hard` end the process through the
+  native libc's `exit(3)` and `_Exit(2)`.
+- `zsys_mmap` allocates a fresh collector object for the mapping,
+  refuses `PROT_EXEC`, and returns a capability for it; `zsys_munmap`
+  and `zsys_mremap` change such objects.
+- The futex calls take an absolute timeout and return the error number
+  instead of setting errno.
+- `zsys_sigaction`, `zsys_sigprocmask` (really `pthread_sigmask`),
+  `zsys_raise` and `zsys_abort` go through the runtime's signal
+  deferral.
+- Twelve come in pairs, a native `_impl` and a Fil-C wrapper that keeps
+  libpizlo's own bookkeeping: `zsys_close` clears its descriptor
+  table entry around `zsys_close_impl`. `zsys_syscall` dispatches a raw
+  syscall number to the others.
+- `zsys_isatty`, `zsys_getcwd`, the `keyctl` family and
+  `zsys_raw_sched_getaffinity` package a call differently from the
+  kernel.
+
+Beyond `zsys_`, `stdfil.h` and `pizlonated_runtime.h` declare about
+150 more libpizlo functions. User glibc's `libc.a` calls **45** of them:
+threads (`zthread_create2`, `zthread_exit`), `zlongjmp` and the
+unwinder (`_Unwind_ForcedUnwind`), fibers for `ucontext`, the collector
+(`zgc_realloc`, `zgc_aligned_alloc`), checked copies (`zmemmove`,
+`zmemset`), the dynamic call `zcall`, pointer tables, the errno and
+dlerror handler registration, x87 control words and `cpuid`, and
+diagnostics (`zerror`, `zprintf`). `libc.a` names **272** of the 337
+`zsys_` functions, plus `zsys_brk`, which this header no longer
+declares.
+
+Under all of these lies the runtime the compiler calls: checks,
+allocation, barriers, pollchecks (`filc_*`, about 45 names in `libc.a`).
+nanofil's checked IR and Campaign 2's axioms already model that layer;
+it is not part of this boundary.
+
+## What Hello reaches
+
+Hello calls 33 libc functions (`hello_externals`). The tool
+[survey/glibc/reach.py](../survey/glibc/reach.py) builds a function
+graph from `libc.a`'s relocations and follows it from those 33 names
+down to the libpizlo names no member of `libc.a` defines.
+
+It over-approximates. A function whose address is stored in anything
+reached counts as called: libio's vtables put every stream kind's
+methods behind `fclose`. It reads the static `libc.a`, not `libc.so`,
+and it does not follow `dlopen`.
+
+**468** glibc symbols, in 245 of `libc.a`'s 1,960 members, reach
+**21** `zsys_` functions and **12** other libpizlo names:
+
+- `zsys_`: `read`, `write`, `writev`, `open`, `close`, `lseek`,
+  `fstat`, `fstatat`, `ioctl`, `getdents`, `getcwd`, `mmap`, `munmap`,
+  `futex_wait`, `futex_wake`, `futex_timedwait`, `getrlimit`,
+  `sysinfo`, `wait4`, `exit_soft`, `exit_hard`.
+- Others: `zmemmove`, `zmemset`, `zgc_realloc`, `zcall`, `zlongjmp`,
+  `zget_jmp_buf_impl_frame`, `_Unwind_ForcedUnwind`, `_Unwind_GetCFA`,
+  `__gcc_personality_v0`, `zerror`, `zerrorf`, `zprintf`.
+
+Per call, the picture splits in two:
+
+| Hello's calls | glibc symbols | libpizlo names |
+| --- | ---: | --- |
+| `strlen`, `strcmp`, `strncmp`, `strrchr`, `memcmp`, `memchr`, `mbsinit`, `__ctype_b_loc`, `__ctype_get_mb_cur_max`, `__errno_location`, `__fpending`, `malloc`, `free`, `iswprint` | 1 to 3 | none |
+| `memset`, `memcpy`, `realloc` | 1 or 2 | `zmemset`, `zmemmove`, `zgc_realloc` |
+| `_exit` | 1 | `zsys_exit_hard` |
+| `abort` | 1 | `zerror` |
+| `ferror` | 4 | futex wait and wake |
+| `atexit` | 33 | 8, futex and mmap |
+| `fclose`, `fputs`, `printf`, `fprintf`, `wprintf`, `mbrtowc`, `mbrtoc32`, `error`, `exit`, `getopt_long`, `setlocale` | 356 to 415 | 27 to 29 |
+
+The first fourteen are plain Fil-C code that calls nothing in
+libpizlo. `malloc` and `free` are the runtime's allocation and free:
+user glibc's `malloc` is `zgc_alloc`, which the compiler turns into the
+runtime's allocation. The last eleven share one core of about 357
+symbols. Shortest paths (`reach.py --why`) show where it comes from:
+
+- `fclose` checks the stream's vtable (`_IO_vtable_check`) and so
+  reaches every vtable, among them popen's, whose close waits with
+  `zsys_wait4`.
+- `_IO_un_link` runs a cleanup handler that can unwind a cancelled
+  thread (`__pthread_unwind`), which reaches `_Unwind_ForcedUnwind` and
+  `zlongjmp`.
+- `setlocale` finds locales in the archive (`zsys_open`, `zsys_mmap`)
+  and in directories (`zsys_getdents`), and takes the locale lock, a
+  rwlock that can wait on a futex.
+
+Hello's proof would show most of this core unreachable, as it does
+`abort` and quotearg today: no popen stream exists, no other thread
+cancels, and the selected locale profile reads no file. The over-approximation
+is a list of the invariants that proof needs, not of the contracts.
+
+## How the contracts would fit
+
+### Machine and ExternalMachine
+
+No new dispatch is needed. `external_site` in
+[ExternalMachine.v](../rocq/theories/ExternalMachine.v) already takes
+any direct call of a name the module does not define, that is not
+global data and not `free`, to the registry. Link glibc's IR into the
+module, as [link.pl](../rocq/link.pl) links Hello's objects, and
+`printf` becomes a function `find_fn` finds. What is left unresolved is
+exactly libpizlo's names, so the registry maps `zsys_read` and its kin
+to contracts.
+
+The `contract` record of [ExternalCalls.v](../rocq/theories/ExternalCalls.v)
+fits a native wrapper field by field. For `zsys_read(fd, buf, size)`:
+
+| Field | `zsys_read` |
+| --- | --- |
+| `contract_abi` | an int, a pointer and a size; returns a long |
+| `contract_pre` | `buf` writable for `size` bytes, the check `filc_check_write` makes; `fd` not libpizlo's log descriptor |
+| `contract_writes` | the span `buf`, `size` |
+| `contract_prefix`, `contract_post` | at most `size` bytes of the descriptor's input in `buf`, the count returned; or -1 and an error number |
+| `contract_panics` | the capability check, outside the premise |
+
+`zmemmove` and `zmemset` are the checked copies whose contracts already
+exist: `copy_contract` and `memset_contract` describe them as well as
+glibc's `memcpy` and `memset`, which here only forward to them.
+`zsys_mmap` is an allocation step, a `fresh` object made through the
+request the contract names, like `malloc`'s. `zgc_realloc` is Campaign
+4's `realloc` contract.
+
+### The world gets smaller
+
+The `world` a contract speaks of changes from libc's state to the
+operating system's. Today `libc_world` holds the locale, stdio's
+buffers and registrations, the stream inventory and getopt's state, and
+an observation is `StreamBytes`, bytes stdio accepted. At the zsys_
+layer all of that is memory of the module: the `FILE` objects, the
+locale tables, `optind`, the exit handler list. The logic owns it
+through points-to facts and module invariants, as Hello's proof owns
+closeout's static. The world keeps only what no Fil-C code holds:
+descriptors and their offsets, file contents and input, the working
+directory, and the observations, bytes written to a descriptor and the
+process exit.
+
+### Three things the boundary does not have yet
+
+1. **errno is a callback.** A failing wrapper calls libc's
+   `errno_handler`, Fil-C code, from inside the primitive. An external
+   call is one atomic step today. The callback frames Campaign 4 built
+   for exit handlers (Linked.v, milestone 6c) are the precedent; a
+   lighter way is to prove `errno_handler`'s triple once and let the
+   contracts name its effect, a store into the thread's errno cell.
+2. **The syscall stubs call through `zcall`.** Each `syscalls.list`
+   entry becomes a function whose whole body returns what `zcall` of the
+   `zsys_` function on `zargs` returns: it passes its own argument
+   buffer, untyped, to the primitive. nanofil compiles it to IR (below),
+   but `zargs` and `zreturn` speak of the frame's argument and return
+   buffers, which the machine has no memory for. The choices are to
+   model them in Machine.v, to give each stub a contract generated from
+   its `syscalls.list` signature, or to generate typed stubs in
+   `make-syscalls.sh` for both compilers.
+3. **Threads, unwinding and the loader** are reachable only through
+   paths the single-thread premise rules out: futex waits with no other
+   thread, cancellation, `dlopen` of gconv modules. They can stay
+   without contracts, so reaching one is a failure the proof must rule
+   out, as `abort` is now. A futex wake with no waiter and a wait on a
+   value that changed can have small contracts; a wait that would block
+   is a stall, which the logic already treats as no failure.
+
+### The Iris logic
+
+`wp_external` in [Logic.v](../rocq/theories/Logic.v) stays the rule for
+a call of a primitive. glibc's functions get triples proven over their
+IR, as `mbszero_spec` and `rpl_mbsrtowcs_spec` are over Hello's.
+
+The contracts Campaign 4 has written do not go to waste: they become
+the specifications those proofs establish. A lemma of the form "the
+module's `strlen` implements `strlen_contract`" would let a proof use
+`wp_external` at `strlen` and have the call discharged by glibc's own
+code. That lemma can be proved one function at a time, starting with
+the fourteen that reach no primitive, without changing the registry
+Hello's proof uses. It is the incremental path from today's boundary to
+this one.
+
+## What stays trusted
+
+- libpizlo: each wrapper's checks and its native code, the native libc
+  beneath it (`exit(3)`, `_Exit`, the loader), and the kernel, through
+  the contracts.
+- The runtime facts of Campaign 2, as now.
+- Startup before the first modeled instruction: the launcher and
+  `ld.so`. More of `__libc_start_main` becomes Fil-C code that could be
+  proved.
+- **Which compiler built glibc.** The proof would be about nanofil's
+  IR of glibc. Programs run with filcc's `libc.so`. Either nanofil
+  builds the libc a proved program runs with, which is further off than
+  compiling glibc to IR, or filcc's build is trusted to agree with
+  nanofil's. This is the main new trust question.
+
+What leaves the trusted base is the semantics of the 33 (or 56)
+functions Campaign 4 writes by hand: formatting, conversion, getopt,
+stdio buffering, the shutdown lifecycle. What grows is the proof: up to
+468 glibc symbols for Hello, among them all of `vfprintf`, against 21
+functions of Hello's own.
+
+## The experiment: user glibc in nanofil IR
+
+[survey/glibc/capture.nix](../survey/glibc/capture.nix) rebuilds the
+staging toolchain's own user glibc with one change: a CC wrapper that
+keeps each C translation unit's preprocessed source and its command.
+[survey/glibc/run.py](../survey/glibc/run.py) then runs `nanofil cc-ir`
+on each shared-library unit (`.os`, 3,114 of them) and records the
+result. Neither is part of any check. The capture builds in about six
+minutes and the run takes about a minute at 14 jobs:
+
+```sh
+nix build -f nanofil/survey/glibc/capture.nix -o /tmp/glibc-pp
+nanofil/bin/nanofil --save-state /tmp/nanofil.state
+export NANOFIL_STATE=/tmp/nanofil.state
+python3 nanofil/survey/glibc/run.py /tmp/glibc-pp /tmp/glibc-nf \
+  --drop-filc-asm --int128-padding
+uv run --with pyelftools python3 nanofil/survey/glibc/reach.py \
+  "$(nix build --print-out-paths \
+      .#filcc-staging.components.filc-glibc)/lib/libc.a" \
+  strlen printf setlocale --units /tmp/glibc-nf/units.tsv
+```
+
+The units fail in layers, since nanofil reports one error per unit. Two
+opt-in rewrites of the captured text let the run see past the first two
+layers: `--drop-filc-asm` deletes the `.filc_*` module asm statements
+(below), and `--int128-padding` reads three unused `__int128_t` padding
+members as aligned bytes of the same size.
+
+### Results, 2026-11-10
+
+| Run | Units to IR |
+| --- | ---: |
+| as captured | 313 (10%) |
+| `--drop-filc-asm` | 1,839 (59%) |
+| both rewrites | **2,477 (80%)** |
+
+Before the three frontend fixes below, the same runs gave 255, 1,734
+and 2,365. No unit timed out (120 s); most take under a second.
+
+With both rewrites, by library:
+
+| Library | Units | To IR |
+| --- | ---: | ---: |
+| libc | 2,057 | 1,911 |
+| libm | 672 | 201 |
+| iconvdata | 256 | 256 |
+| libthread_db | 41 | 40 |
+| libnsl | 38 | 38 |
+| the other 12 | 50 | 31 |
+
+Of the 245 `libc.a` members that define a function Hello reaches, 232
+compile; 12 fail and one (`atexit`) is built into `libc_nonshared.a`,
+not captured as a shared unit.
+
+### What stops the rest
+
+In order of the layers (one error per unit):
+
+| Cause | Units | Where |
+| --- | ---: | --- |
+| `.filc_*` module asm | 1,527 | every `hidden_proto` |
+| `__int128` | 792 | link.h padding (762), `math_uint128.h` (30) |
+| inline asm | 395 | x86 `roundsd` in `math-inline-asm.h` (388) |
+| aligned struct members | 74 | `struct pthread` in nptl's `descr.h` |
+| `__real__`, `__imag__`, `_Complex` returns | 72 | libm's complex functions |
+| conflicting redeclarations | 27 | `nss_files.h`; not yet diagnosed |
+| other parse errors | 6 | `strcoll_l`, `strptime_l`, `nptl_db` |
+| math builtins | 22 | `__builtin_fabsf`, `copysign`, `sqrtl`, `trap` |
+| other attributes | 9 | `address_space`, `weak` and `section` placement |
+| TLS alias | 2 | `__libc_errno`, `__libc_h_errno` |
+
+- **`.filc_*` module asm.** glibc's `hidden_proto(name)` expands to
+  `asm(".filc_rename name, __GI_name")`, and `hidden_def` and the
+  aliases to `.filc_alias` and `.filc_weak_alias`. FilPizlonator reads
+  these directives (`compileModuleAsm`); nanofil reads only `.symver`.
+  Dropping them loses `__GI_` renames, which matter for linking a libc,
+  not for reading its IR.
+- **`__int128`.** 762 units fail only on three unused padding members of
+  `bits/link.h`'s audit structs, which `ldsodefs.h` includes nearly
+  everywhere. The other 30 use `u128` arithmetic (`printf_fp`, `fma`).
+- **inline asm.** libm truncates with `roundsd`, which nanofil cannot
+  check; `frndint` and a few others follow. Most of libm's 471 failures
+  are this.
+- **aligned members.** `struct pthread` ends in
+  `__attribute ((aligned (TCB_ALIGNMENT)))`, which nanofil refuses as a
+  layout attribute. It reaches 74 units, all nptl or what touches
+  `THREAD_SELF`: Hello's rwlock and cleanup members among them.
+
+### Fixes made along the way
+
+Three small frontend fixes, each with a test that fails without it:
+
+- `mode(unwind_word)` is DImode on x86-64, as filcc makes it (8 bytes,
+  8-aligned, signedness kept). nanofil refused it, and nptl's `pthread.h`
+  declares `_Unwind_Word` so. A `doc/3` example in `c_types.pl`.
+- `__builtin_mempcpy` and `__builtin_stpcpy` are calls of `mempcpy`
+  and `stpcpy`, like the other library builtins (33 units). A `doc/3`
+  example.
+- An alias may name another alias of the unit, as every generated
+  syscall stub does (`weak_alias (__chdir, chdir)`, then
+  `strong_alias (chdir, __GI_chdir)`); it is the definition at the end
+  of the chain, and a cycle is refused as clang refuses it.
+  `tests/c/prog/alias.c` covers it.
+
+Every generated syscall stub now compiles: its body, a `zcall` of the
+`zsys_` function on `zargs`, is ordinary IR that calls libpizlo.
+
+## Decisions this raises
+
+1. **Teach nanofil the `.filc_*` directives.** `.filc_rename`,
+   `.filc_alias` and `.filc_weak_alias` map onto the IR's
+   alias items and a renaming of a defined symbol; `.filc_weak` and
+   `.filc_globl` onto linkage. It is about 1,500 units' first error, but
+   it touches c_lower's handling of names and the IR's aliases, so it is
+   brought for review rather than made here. Recommended: yes, as the
+   next step if this exploration continues.
+2. **`__int128`.** The padding members could be read as 16 aligned
+   bytes when only their size is used; real `u128` arithmetic needs
+   the type. Recommended: neither now; the rewrite flag measures past it.
+3. **Aligned members** (`aligned` on a struct member or type) unblock
+   nptl. nanofil refuses layout attributes on purpose (`layout_attr`);
+   honoring them is a layout change for every backend. Recommended: only
+   if nptl's IR is wanted.
+4. **What the proofs trust about glibc's compiler** (above). Recommended:
+   decide before any proof uses glibc's IR, not now.
+5. **The boundary itself.** Recommended: keep Campaign 4's per-function
+   contracts for Hello, and treat this page's direction as a later
+   campaign whose first step is "module `strlen` implements
+   `strlen_contract`" for the leaf functions that reach no primitive.
