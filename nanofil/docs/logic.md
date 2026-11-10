@@ -530,9 +530,9 @@ does.
    list.
 2. Done: leaf triples from contracts that exist, then
    `set_program_name`. See "Milestone 2" below.
-3. In progress: the conversion chain, over a locale the world
-   interpretation holds. See "Milestone 3" below.
-4. `main` and its option loop, from Campaign 4's entry. This needs
+3. Done: the conversion chain, over a locale the world interpretation
+   holds, up to `rpl_mbsrtowcs_spec`. See "Milestone 3" below.
+4. In progress: `main` and its option loop, from Campaign 4's entry. This needs
    `setlocale`, `atexit`, `getopt_long`, `wprintf` and `exit`.
 5. `close_stdout` as exit's callback, through Campaign 4's Linked.v
    bridge, which runs an ordinary callback frame.
@@ -926,11 +926,15 @@ The count left, len - i, never reaches zero before the NUL, because
 i ≤ j ≤ len. Main reads the result as a wide string with
 `wprintf("%ls")`, or calls `error` on -1.
 
-rpl_mbsrtowcs's entry (start to L28) is not proved yet. It loads the
-greeting pointer through srcp, and the greeting may be a read-only
-literal. Logic.v's `wp_raw_load_pointer_in` now loads any pointer,
-read-only literals included. It promotes HelloVersion's
-`wp_raw_load_literal` after Oracle review:
+`rpl_mbsrtowcs_spec` adds the entry, from start to L28, and so proves
+the whole call as main makes it: dest a fresh buffer of len wide
+characters, srcp a cell holding the string, len its length with the
+NUL, and ps main's own state, not null, valid and initial. The entry
+allocates a local only the counting loop uses, keeps ps, loads the
+string through srcp, and enters the loop with nothing written. The
+string may be a read-only literal. Logic.v's `wp_raw_load_pointer_in`
+loads any pointer, read-only literals included. It promotes
+HelloVersion's `wp_raw_load_literal` after Oracle review:
 - the cell may be reached through a read-write or a read-only
   capability;
 - the life of the object the loaded capability names is any
@@ -939,7 +943,9 @@ read-only literals included. It promotes HelloVersion's
 
 Its proof rests on Pieces.v's `aux_holds_kept`: a stored capability
 whose object is not freed is exactly what the slot holds.
-`wp_raw_load_pointer` stays as it is for its callers.
+`wp_raw_load_pointer` stays as it is for its callers. In
+rpl_mbsrtowcs the life of the greeting's object is the head piece of
+its `SL.string`, so the load needs no new token.
 
 **Stream tokens.** The ghost heap gains a value
 `VStream p pending` for Campaign 4's stream adapter. Its key is a
