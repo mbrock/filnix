@@ -2,3 +2,7 @@ self-hosted-runner:
   labels:
     - namespace-profile-default
     - nscloud-ubuntu-22.04-amd64-16x32
+    # Namespace companion labels (cache volume for nanofil-rocq.yml).
+    - nscloud-ubuntu-22.04-amd64-16x32-with-cache
+    - nscloud-cache-tag-nanofil-rocq-nix
+    - nscloud-cache-allow-commit-from-main
