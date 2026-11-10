@@ -161,6 +161,7 @@ Definition enc_op (o : op) : term :=
       | _, _ => TApp "int_to_float" [eclass k; enc_signedness sg]
       end
   | Cast => TAtom "cast"
+  | Sqrt => TAtom "sqrt"
   | Alloc al => TApp "alloc" [TInt al]
   | Check lo hi r al => enc_check4 "check" lo hi r al
   | CheckAhead lo hi r al ahi =>
@@ -346,7 +347,7 @@ Proof. reflexivity. Qed.
 Example atom_ops_read_back :
   reads_back dop enc_op
     [Add; Sub; Mul; Div; Udiv; Rem; Urem; And; Or; Xor; Sar; Shr; Shl; Neg; Copy; Ptoi; Itop;
-     Truncd; Truncx; Cast; CheckFunction; VaArgs; VaArg;
+     Truncd; Truncx; Cast; Sqrt; CheckFunction; VaArgs; VaArg;
      FloatToInt Single Signed; FloatToInt Single Unsigned;
      FloatToInt Double Signed; FloatToInt Double Unsigned;
      FloatToInt Extended Signed; FloatToInt Extended Unsigned;
