@@ -332,6 +332,15 @@
                   filcc = filcc-staging;
                 }).model;
             };
+            nanofil-backend = import ./nanofil/nix/backend.nix {
+              inherit pkgs;
+              filcc = filcc-staging;
+            };
+            nanofil-backend-full = import ./nanofil/nix/backend.nix {
+              inherit pkgs;
+              filcc = filcc-staging;
+              full = true;
+            };
             nanofil-hello = import ./nanofil/nix/hello.nix {
               inherit pkgs;
               filcc = filcc-staging;

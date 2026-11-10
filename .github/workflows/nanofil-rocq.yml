@@ -10,6 +10,9 @@ on:
       - flake.nix
       - flake.lock
       - "nanofil/rocq/**"
+      # The Gallina backend has its own check (nanofil-backend.yml);
+      # nothing in the quick gate reads it.
+      - "!nanofil/rocq/backend/**"
       - "nanofil/src/**"
       - "nanofil/bin/**"
       - nanofil/nix/rocq.nix

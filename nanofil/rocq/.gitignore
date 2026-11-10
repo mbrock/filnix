@@ -16,3 +16,10 @@ nanofil-model
 # nia/lia proof cache (Runtime.v)
 .nia.cache
 .lia.cache
+# The Gallina backend (rocq/backend/Makefile)
+backend/.deps
+backend/extraction/nanofil_backend.ml
+backend/extraction/nanofil_backend.mli
+backend/extraction/*.cm*
+backend/extraction/*.o
+backend/nanofil-backend

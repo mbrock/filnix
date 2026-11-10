@@ -1,0 +1,64 @@
+# The Gallina backend's check (nanofil/rocq/backend, docs/gallina-backend.md)
+# after each push that changes it or asm.pl, whose text its printer must
+# reproduce. It never blocks a push: a red run is fixed forward on main.
+# workflow_dispatch with full takes the whole corpus, with and without -O.
+name: Nanofil Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "nanofil/rocq/backend/**"
+      - nanofil/nix/backend.nix
+      - nanofil/src/asm.pl
+      - .github/workflows/nanofil-backend.yml
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Compare on the whole corpus, with and without -O
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nanofil-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      NIX_CONFIG: |
+        extra-substituters = https://filc.cachix.org
+        extra-trusted-public-keys = filc.cachix.org-1:8rA7kXyu1HaJuMTsAKfA9fU/+r8YtLv5KiZ5hfDNZMk=
+        builders =
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select the quick check or the whole corpus
+        id: select
+        env:
+          FULL: ${{ inputs.full }}
+        run: |
+          if [ "$FULL" = true ]; then root=nanofil-backend-full; else root=nanofil-backend; fi
+          echo "root=$root" >> "$GITHUB_OUTPUT"
+      - uses: cachix/install-nix-action@v31
+      - name: Require cached staging toolchain, never rebuild LLVM here
+        run: |
+          python3 nanofil/tests/watch.py --label 'Staging cache preflight' -- \
+            python3 scripts/ci-cache-check.py packages.x86_64-linux.filcc-staging
+      - name: Build and compare
+        env:
+          ROOT: ${{ steps.select.outputs.root }}
+        run: |
+          warn=300; limit=900
+          if [ "$ROOT" = nanofil-backend-full ]; then warn=600; limit=1500; fi
+          python3 nanofil/tests/watch.py --label "$ROOT" --warn-after "$warn" --timeout "$limit" -- \
+            nix build -L --no-link --cores 2 ".#checks.x86_64-linux.$ROOT" 2>&1 | tee nanofil-backend.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nanofil-backend-log
+          path: nanofil-backend.log
