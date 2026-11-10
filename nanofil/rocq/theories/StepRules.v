@@ -34,7 +34,7 @@ Lemma doomed_result_continue : forall ge fr m i e ls m',
   fr_doomed fr = None -> doomed_result ge fr m i (IContinue e ls m') = Some (IContinue e ls m', None).
 Proof.
   intros ge fr m i e ls m' Hd. unfold doomed_result. rewrite Hd.
-  destruct i as [d k o args| | | | | | |]; try reflexivity.
+  destruct i as [d k o args| | | | | | | |]; try reflexivity.
   destruct k; try reflexivity. destruct o; try reflexivity.
   destruct args as [|a [|a' args]]; reflexivity.
 Qed.
@@ -45,7 +45,7 @@ Lemma doomed_result_fresh_none : forall ge fr m i q k,
   fr_doomed fr = None -> doomed_result ge fr m i (IFresh q k) = Some (IFresh q k, None).
 Proof.
   intros ge fr m i q kk Hd. unfold doomed_result. rewrite Hd.
-  destruct i as [d k o args| | | | | | |]; try reflexivity.
+  destruct i as [d k o args| | | | | | | |]; try reflexivity.
   destruct k; try reflexivity. destruct o; try reflexivity.
   destruct args as [|a [|a' args]]; reflexivity.
 Qed.
@@ -56,7 +56,7 @@ Lemma doomed_result_call : forall ge fr m i g xs pd,
   fr_doomed fr = None -> doomed_result ge fr m i (ICall g xs pd) = Some (ICall g xs pd, None).
 Proof.
   intros ge fr m i g xs pd Hd. unfold doomed_result. rewrite Hd.
-  destruct i as [d k o args| | | | | | |]; try reflexivity.
+  destruct i as [d k o args| | | | | | | |]; try reflexivity.
   destruct k; try reflexivity. destruct o; try reflexivity.
   destruct args as [|a [|a' args]]; reflexivity.
 Qed.

@@ -127,7 +127,7 @@ Qed.
     pointer y that i uses. *)
 Lemma check_fact_uses : forall i fa y, check_fact i = Some fa -> f_p fa = Tmp y -> In y (inst_uses i).
 Proof.
-  intros i fa y H Hy. destruct i as [q k o args | | | | | | |]; try discriminate H.
+  intros i fa y H Hy. destruct i as [q k o args | | | | | | | | ]; try discriminate H.
   destruct k, o; try discriminate H;
     destruct args as [|a1 [|a2 [|a3 [|a4 args]]]]; simpl in H; try discriminate H;
     injection H as <-; simpl in Hy; subst; apply value_temps_in; simpl; auto.
@@ -148,13 +148,13 @@ Proof.
     split; [right; eauto|]. intros fa Hfa. apply evidence_after_incl in Hfa as [<- | Hfa]; [right; reflexivity|].
     left. exact (evidence_after_incl _ _ _ Hfa).
   - destruct (is_check_local i) eqn:Hcl.
-    + destruct i as [q k o args | | | | | | |]; try discriminate Hcl.
+    + destruct i as [q k o args | | | | | | | | ]; try discriminate Hcl.
       destruct k; try discriminate Hcl; destruct o; try discriminate Hcl;
         destruct args; try discriminate Hcl.
       destruct (checked_inst_rest_local_cov _ _ _ _ _ _ _ _ _ _ _ Hc) as (access & -> & _ & ->).
       split; [right; eauto|]. intros fa Hfa. left. exact (kill_incl _ _ _ (evidence_after_incl _ _ _ Hfa)).
     + destruct (is_check_function i) eqn:Hcf.
-      * destruct i as [q k o args | | | | | | |]; try discriminate Hcf.
+      * destruct i as [q k o args | | | | | | | | ]; try discriminate Hcf.
         destruct k; try discriminate Hcf; destruct o; try discriminate Hcf.
         destruct (checked_inst_rest_function_rest _ _ _ _ _ _ _ Hc) as (-> & r & cargs & ->).
         split; [right; eauto | intros fa []].
@@ -372,13 +372,15 @@ Definition jump_claim (ge : genv) (m : Memory.mem) (fr : frame) (j : jump) (live
   forall t, taken_target ge fr j = Some t -> is_poll t = false -> facts_hold ge m (fr_env fr) live.
 
 (** Between a check and the access the pass took with it: the fact fb
-    that covers the access ([covered_access]) holds, with the facts pre
+    that covers the access ([covered_access]), or whose proof a touch
+    uses, holds, with the facts pre
     the pass kept with it, and live' is what [evidence_after] keeps of
     pre across the access; or, after a `check_function`, the access is a
     raw call through q whose pointer p passed its function check
     ([function_check_res]), and the pass keeps no fact. *)
 Definition pair_claim (ge : genv) (m : Memory.mem) (fr : frame) (access : inst) (live' : list fact) : Prop :=
-  (exists fb pre, covered_access access (f_q fb) (f_lo fb) (f_hi fb) (f_r fb) (f_al fb) = true /\
+  (exists fb pre, (covered_access access (f_q fb) (f_lo fb) (f_hi fb) (f_r fb) (f_al fb) = true \/
+                   access = Touch (f_q fb)) /\
      live' = evidence_after access pre /\ facts_hold ge m (fr_env fr) (fb :: pre)) \/
   (live' = [] /\ exists r q args p, access = RawCall r (Tmp q) args /\
      lookup q (fr_env fr) = Some (WPtr p) /\ function_check_res ge p = Some ok).
@@ -527,11 +529,11 @@ Proof.
     destruct (checked_inst_rest_check _ _ _ _ _ _ _ _ Hf Hg Hc) as (access & -> & Hu & ->).
     destruct (check_like_holds _ _ _ _ _ _ _ _ _ Hf Hg Hs) as [Ha Hb].
     right. exists access. split; [reflexivity|]. left. exists fb, (fa :: evidence_after i live).
-    apply andb_true_iff in Hu as [Hcov _]. split; [exact Hcov|]. split; [reflexivity|].
+    split; [destruct (proof_use_cases _ _ _ _ _ _ Hu); auto|]. split; [reflexivity|].
     rewrite He. apply facts_hold_cons; [exact Hb|]. apply facts_hold_cons; [exact Ha|].
     eapply evidence_after_holds; eauto.
   - destruct (is_check_local i) eqn:Hcl.
-    + destruct i as [q k o args | | | | | | |]; try discriminate Hcl.
+    + destruct i as [q k o args | | | | | | | | ]; try discriminate Hcl.
       destruct k; try discriminate Hcl; destruct o; try discriminate Hcl;
         destruct args; try discriminate Hcl.
       specialize (Hl eq_refl).
@@ -539,11 +541,11 @@ Proof.
       destruct (check_local_fact _ _ _ _ _ _ _ _ _ _ _ _ _ Hfit Hpos Hcov Hs) as (-> & Hag & Hq).
       destruct (let_step _ _ _ _ _ _ _ _ _ _ Hs) as [Hreg _].
       right. exists access. split; [reflexivity|]. left.
-      exists (mkFact q (Tmp q) 0 bytes r align), (kill q live). split; [exact Hcov|].
+      exists (mkFact q (Tmp q) 0 bytes r align), (kill q live). split; [left; exact Hcov|].
       split; [reflexivity|]. rewrite He. apply facts_hold_cons; [exact Hq|].
       eapply facts_hold_kill; [reflexivity | exact Hag | exact Hl].
     + destruct (is_check_function i) eqn:Hcf.
-      * destruct i as [q k o args | | | | | | |]; try discriminate Hcf.
+      * destruct i as [q k o args | | | | | | | | ]; try discriminate Hcf.
         destruct k; try discriminate Hcf; destruct o; try discriminate Hcf.
         destruct (checked_inst_rest_function_rest _ _ _ _ _ _ _ Hc) as (-> & r & cargs & ->).
         destruct (check_function_step _ _ _ _ _ _ _ _ Hs) as (p & Hp & ->).

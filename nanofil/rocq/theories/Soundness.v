@@ -86,7 +86,7 @@ Lemma inst_unchecked_source : forall ge fr m i w,
   (exists r args x m', i = Call r (Global free_name) args /\ ge_free ge x m = Some (RUnchecked w, m')).
 Proof.
   intros ge fr m i w H.
-  destruct i as [q k o args | d o args lw | wd off v a | off v a es | r cl args | r cl args | x size | file line].
+  destruct i as [q k o args | d o args lw | wd off v a | off v a es | r cl args | r cl args | x size | file line | tq].
   - left. exists q, k, o, args. split; [reflexivity|].
     destruct (special_let o) eqn:Es.
     + exfalso. destruct o; try discriminate Es; cbn -[access_res function_check_res] in H.
@@ -118,6 +118,7 @@ Proof.
     cases H. injection H as <-. subst. do 4 eexists. split; [reflexivity | eassumption].
   - right. right. right. left. do 3 eexists. reflexivity.
   - exfalso. simpl in H. cases H.
+  - exfalso. simpl in H. discriminate H.
   - exfalso. simpl in H. discriminate H.
 Qed.
 

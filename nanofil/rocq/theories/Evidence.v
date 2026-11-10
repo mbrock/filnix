@@ -181,6 +181,8 @@ Proof.
     split; [eapply store_res_regions; eauto | reflexivity].
   - (* loc *)
     simpl in H. injection H as <- <- <-. simpl. auto.
+  - (* touch *)
+    simpl in H. injection H as <- <- <-. simpl. auto.
 Qed.
 
 (** ## The pass's bookkeeping *)
@@ -325,7 +327,7 @@ Lemma check_like_continue : forall ge fr m i fa fb e' l' m',
 Proof.
   unfold check_passes, access_res.
   intros ge fr m i fa fb e' l' m' Hf Hg H.
-  destruct i as [q k o args | | | | | | |]; try discriminate Hf.
+  destruct i as [q k o args | | | | | | | | ]; try discriminate Hf.
   destruct k; try (destruct o; discriminate Hf).
   destruct o; try discriminate Hf;
     rewrite inst_step_let in H by reflexivity; cbn zeta in H.
@@ -572,6 +574,7 @@ Definition generic_rest (s : src) (i : inst) (rest : list inst) (live : list fac
       | None =>
           match i with
           | RawCall _ _ _ => false
+          | Touch _ => false                                  (* not right after its check *)
           | Call _ (Tmp _) _ => false                         (* unchecked_access *)
           | Let _ P (Add | Sub | Itop) _ => false              (* implicit_flight *)
           | Let _ P Copy [Tmp _] | Let _ P Copy [Const _] => false
@@ -586,7 +589,7 @@ Definition generic_rest (s : src) (i : inst) (rest : list inst) (live : list fac
 Lemma checked_inst_rest_generic : forall s i rest live,
   pass_special i = false -> checked_inst_rest s i rest live = generic_rest s i rest live.
 Proof.
-  intros s i rest live H. destruct i as [q k o args | | | | | | |]; try reflexivity.
+  intros s i rest live H. destruct i as [q k o args | | | | | | | | ]; try reflexivity.
   destruct k; try reflexivity; destruct o; try reflexivity;
     destruct args as [|a1 [|a2 [|a3 [|a4 args]]]]; try reflexivity; discriminate H.
 Qed.
@@ -607,7 +610,7 @@ Proof.
   unfold generic_rest. intros s i rest live rest' live' H. cbn zeta in H.
   match type of H with (if ?b then _ else _) = _ => destruct b eqn:Hok; [|discriminate H] end.
   injection H as <- <-. split; [reflexivity|]. split.
-  - destruct i as [d k o args | | | | | | |]; auto.
+  - destruct i as [d k o args | | | | | | | | ]; auto.
     destruct k, o; auto; destruct args as [|[n|c|g] [|a2 args]]; auto.
     destruct (lookup d (s_getters s)); auto. destruct (name_eqb _ _); eauto.
   - intros q x off need Hr. rewrite Hr in Hok. apply andb_true_iff in Hok as [_ Hok].
@@ -618,7 +621,7 @@ Qed.
 (** A check-like instruction has an access range too. *)
 Lemma access_fact_some : forall i fa, check_fact i = Some fa -> exists fb, access_fact i = Some fb.
 Proof.
-  intros i fa H. destruct i as [q k o args | | | | | | |]; try discriminate H.
+  intros i fa H. destruct i as [q k o args | | | | | | | | ]; try discriminate H.
   destruct k, o; try discriminate H;
     destruct args as [|a1 [|a2 [|a3 [|a4 args]]]]; simpl in *; try discriminate H; eauto.
 Qed.
@@ -636,7 +639,7 @@ Lemma checked_inst_rest_check : forall s i rest live rest' live' fa fb,
     live' = evidence_after access (fa :: evidence_after i live).
 Proof.
   intros s i rest live rest' live' fa fb Hf Hg H.
-  destruct i as [q k o args | | | | | | |]; try discriminate Hf.
+  destruct i as [q k o args | | | | | | | | ]; try discriminate Hf.
   destruct k; try (destruct o; discriminate Hf).
   destruct o; try discriminate Hf;
     destruct args as [|a1 [|a2 [|a3 [|a4 args]]]]; simpl in Hf, Hg; try discriminate Hf;
@@ -697,7 +700,7 @@ Proof.
     + eapply evidence_after_holds; eauto.
   - destruct (pass_special i) eqn:Hp.
     + right. unfold pass_special in Hp. rewrite Hf in Hp.
-      destruct i as [q k o args | | | | | | |]; try discriminate Hp.
+      destruct i as [q k o args | | | | | | | | ]; try discriminate Hp.
       destruct k; try discriminate Hp; destruct o; try discriminate Hp.
       * destruct args; [|discriminate Hp].
         destruct (checked_inst_rest_local _ _ _ _ _ _ _ _ _ _ _ Hc) as (access & -> & ->).
@@ -718,6 +721,17 @@ Proof.
         eapply facts_hold_kill; eauto.
 Qed.
 
+(** As `proof_use/6`'s two clauses: an instruction that uses the
+    proof q right after its check is a touch of q, which accesses
+    nothing, or an access q's range covers. *)
+Lemma proof_use_cases : forall i q lo hi r al,
+  proof_use i q lo hi r al = true -> i = Touch q \/ covered_access i q lo hi r al = true.
+Proof.
+  intros i q lo hi r al H. destruct i as [d k o args | | | | | | | | q'];
+    try (right; unfold proof_use in H; apply andb_true_iff in H as [H _]; exact H).
+  left. unfold proof_use in H. apply term_eqb_eq in H. subst q'. reflexivity.
+Qed.
+
 (** The access a check-like instruction i is checked for, run right
     after it, gives no [[unchecked]], where objects fit the address
     space. *)
@@ -735,7 +749,8 @@ Proof.
   assert (exists fb, access_fact i = Some fb) as [fb Hg]
     by (eapply access_fact_some; eauto).
   destruct (checked_inst_rest_check _ _ _ _ _ _ _ _ Ef Hg Hc) as (access' & E & Hu & _).
-  injection E as <- _. apply andb_true_iff in Hu as [Hcov _].
+  injection E as <- _. destruct (proof_use_cases _ _ _ _ _ _ Hu) as [-> | Hcov].
+  { cbn. discriminate. }
   destruct (proj2 (check_like_holds _ _ _ _ _ _ _ _ _ Ef Hg Hs)) as (p & Eq & _ & Hp).
   rewrite <- He in Eq.
   exact (covered_access_not_unchecked _ _ _ _ _ _ _ _ _ _ _ Hfit Hcov Eq Hp).

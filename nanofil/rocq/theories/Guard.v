@@ -213,7 +213,7 @@ Proof.
   - simpl in H. apply orb_true_iff in H as [H | H]; [apply value_eqb_eq in H; subst; eauto|].
     destruct p as [x | c | g]; try discriminate H.
     destruct (lookup x (single_definitions (fr_fn fr))) as [[| ph | i]|] eqn:Ex; try discriminate H.
-    destruct i as [| d o args lw | | | | | | ]; try discriminate H.
+    destruct i as [| d o args lw | | | | | | | ]; try discriminate H.
     destruct lw as [| b]; try discriminate H.
     pose proof (flight_def_name _ _ _ _ _ _ Ex) as ->.
     assert (Hox : once_has (single_definitions (fr_fn fr)) x = true) by (unfold once_has; rewrite Ex; reflexivity).
@@ -255,7 +255,7 @@ Proof.
   unfold guard_covers in Eg.
   destruct g as [gn | | ]; try discriminate Eg.
   destruct (lookup gn (s_once (fn_src md (fr_fn fr)))) as [[| | gi]|] eqn:Egn; try discriminate Eg.
-  destruct gi as [gn' gk go gargs | | | | | | |]; try discriminate Eg.
+  destruct gi as [gn' gk go gargs | | | | | | | | ]; try discriminate Eg.
   destruct gk; try discriminate Eg. destruct go; try discriminate Eg.
   destruct gargs as [| [n0 | | ] [|]]; try discriminate Eg.
   repeat rewrite andb_true_iff in Eg. destruct Eg as ((Egn' & Ho) & Ech).
@@ -336,7 +336,7 @@ Proof.
   unfold limit_covers in Eu.
   destruct u as [un | | ]; try discriminate Eu.
   destruct (lookup un (s_once (fn_src md (fr_fn fr)))) as [[| | ui]|] eqn:Eun; try discriminate Eu.
-  destruct ui as [un' uk uo uargs | | | | | | |]; try discriminate Eu.
+  destruct ui as [un' uk uo uargs | | | | | | | | ]; try discriminate Eu.
   destruct uk; try discriminate Eu. destruct uo; try discriminate Eu.
   destruct uargs as [| [n0 | | ] [|]]; try discriminate Eu.
   repeat rewrite andb_true_iff in Eu. destruct Eu as ((((Eun' & Elo) & Ehi) & Ho) & Hlc).
@@ -424,7 +424,7 @@ Proof.
   destruct (guard_shape _ _ _ _ _ Hi Hst) as (q & o & a1 & a2 & -> & Ho).
   destruct (G.run_point _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hmd Hge Hfree Hin Hcf H0 Hreach Hd Ha
               ltac:(destruct Ho as [(? & ? & ? & ? & ->) | (? & ? & ? & ? & ->)]; reflexivity)
-              ltac:(intros ? ? ? E; discriminate E))
+              ltac:(intros ? ? ? E; discriminate E) ltac:(intros ? E; discriminate E))
     as (b & kk & live & out & Hinf & Hr & Hsc & Hpt & Hb & Hnth & Hc & _ & _).
   destruct Ho as [(lo & hi & r & al & ->) | (lo & hi & r & al & ->)].
   - exact (renew_if_not_unchecked ge md (c_frame c) (c_mem c) l (Z.of_nat kk) Hmd Hinf Hr (scope_plain_of _ _ _ Hsc) Hpt

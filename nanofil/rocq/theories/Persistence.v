@@ -332,7 +332,8 @@ Proof.
       split; [exact Hd|].
       destruct Hpc as [(fb & pre & Hcov & -> & Hh) | Hfn]; [left | right; exact Hfn].
       exists fb, pre. split; [exact Hcov|]. split; [reflexivity|].
-      eapply facts_hold_same; [exact (Hreg (covered_relies _ _ _ _ _ _ _ Hcov)) | exact Hh].
+      eapply facts_hold_same; [apply Hreg | exact Hh].
+      destruct Hcov as [Hcov | ->]; [exact (covered_relies _ _ _ _ _ _ _ Hcov) | reflexivity].
 Qed.
 
 (** Every machine step from a [[ready]] state keeps [inv]. *)
@@ -400,7 +401,8 @@ Proof.
       rewrite raw_call_alone in Hc. discriminate Hc.
   - injection E' as <- _. left.
     destruct Hpc as [(fb & pre & Hcov & _ & Hh) | (_ & r & q & args & p & -> & Hq & Hc)].
-    + destruct (Hh fb (or_introl eq_refl)) as (p & Eq & _ & Hpass).
+    + destruct Hcov as [Hcov | ->]; [|cbn; discriminate].
+      destruct (Hh fb (or_introl eq_refl)) as (p & Eq & _ & Hpass).
       exact (covered_access_not_unchecked _ _ _ _ _ _ _ _ _ _ _ Hfit Hcov Eq Hpass).
     + exact (raw_call_checked _ _ _ _ _ _ _ _ Hq Hc).
 Qed.

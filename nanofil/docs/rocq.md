@@ -60,8 +60,9 @@ generic entry's argument and result conversions), `raw_load`,
 `raw_load_pointer`, `raw_store`, `raw_store_pointer` with their effect
 lists, `flight`, poll edges, direct `call`, libc `free`, and variadic
 functions (`va_args`, `va_arg`, the entry snapshot and the extra
-arguments of a call through the generic entry). What is left out is
-vectors, `store`, `cas` and atomics, `setjmp`, `asm_fixed` and `touch`.
+arguments of a call through the generic entry), and `touch`, which
+uses a vector check's proof and does nothing else. What is left out is
+vectors, `store`, `cas` and atomics, `setjmp` and `asm_fixed`.
 A function that uses anything else decodes to `IOutside`. It keeps its address,
 its `fn` capability and its term (so the validator can read its
 signature and its calls), but running or calling it is stuck, and the

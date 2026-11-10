@@ -6,7 +6,7 @@
 
     Decoding is partial in one deliberate way: a function that uses
     anything outside the [[core subset]] (a vector class, `store`,
-    [[cas]], `setjmp`, [[asm_fixed]], [[touch]] ...) decodes to
+    [[cas]], `setjmp`, [[asm_fixed]] ...) decodes to
     [IOutside Name Term]. It keeps its address and its term (the
     [[validator]] reads its signature), so calls to it and pointers to
     it behave as the interpreter's do, but running it is stuck. *)
@@ -280,6 +280,7 @@ Definition dinst (t : term) : option inst :=
       Some (RawCall r' c args')
   | TApp "local_alloc" [x; TInt size] => Some (LocalAlloc x size)
   | TApp "loc" [file; TInt line] => Some (Loc file line)
+  | TApp "touch" [TApp "tmp" [q]] => Some (Touch q)
   | _ => None
   end.
 

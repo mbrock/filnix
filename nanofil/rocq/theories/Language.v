@@ -103,7 +103,7 @@ Lemma doomed_result_stop ge fr m i out od o :
   doomed_result ge fr m i out = Some od -> fst od = IStop o -> returning o -> out = IStop o.
 Proof.
   intros H Hf Hr. destruct (ahead_inst i) eqn:Ea.
-  - destruct i as [d k op args | | | | | | |]; try discriminate Ea. destruct k; try discriminate Ea.
+  - destruct i as [d k op args | | | | | | | | ]; try discriminate Ea. destruct k; try discriminate Ea.
     destruct op; try discriminate Ea. destruct args as [|v [|v' args]]; try discriminate Ea.
     unfold doomed_result in H. cases H; inversion H; subst; cbn in Hf; try discriminate Hf;
       try (injection Hf as <-; cbn in Hr; tauto); auto.

@@ -547,6 +547,7 @@ Definition inst_step (ge : genv) (fr : frame) (m : mem) (i : inst) : option inst
   let locals := fr_locals fr in
   match i with
   | Loc _ _ => Some (IContinue e locals m)
+  | Touch _ => Some (IContinue e locals m)
   | LocalAlloc x size =>
       match lookup x locals with
       | Some None =>

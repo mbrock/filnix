@@ -76,7 +76,7 @@ Qed.
     `check_ahead` needs a [[need]] to cover its early bytes. *)
 Lemma ahead_accepts_nil : forall once i, ahead_accepts once [] i = None.
 Proof.
-  intros once i. destruct i as [q k o args | | | | | | |]; try reflexivity.
+  intros once i. destruct i as [q k o args | | | | | | | | ]; try reflexivity.
   destruct k; try reflexivity. destruct o; try reflexivity.
   destruct args as [|p [|a args]]; try reflexivity.
   cbn beta iota delta [ahead_accepts]. generalize (guard_chain once p) as es. intros es.

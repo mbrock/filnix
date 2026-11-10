@@ -429,7 +429,7 @@ Proof.
   - destruct Hb as [E | Hb]; [injection E as -> _ _; exact (Hdom n eq_refl Ho)|].
     destruct p as [x | c | g]; try contradiction.
     destruct (lookup x (single_definitions f)) as [[| ph | i]|] eqn:Ex; try contradiction.
-    destruct i as [ | d o args lw | | | | | | ]; try contradiction.
+    destruct i as [ | d o args lw | | | | | | | ]; try contradiction.
     destruct lw as [| b']; try contradiction.
     destruct (flight_term o args b') as [[ov sign]|]; [|contradiction].
     destruct (offset_interval _ ov L) as [[olo ohi]|]; [|contradiction].
@@ -589,7 +589,7 @@ Lemma alias_source : forall ge fr m i w,
   (exists q lo hi rs al a1 a2, i = Let q A (CheckLimit lo hi rs al) [a1; a2] /\ w = WhyLimit).
 Proof.
   intros ge fr m i w Ht H Hw.
-  destruct i as [q k o args | d o args lw | wd off v a | off v a es | r cl args | r cl args | x size | x y].
+  destruct i as [q k o args | d o args lw | wd off v a | off v a es | r cl args | r cl args | x size | x y | tq].
   - destruct (special_let o) eqn:Es; [destruct o; try discriminate Es; destruct k; discriminate Ht|].
     rewrite inst_step_let in H by exact Es. cbv zeta in H.
     destruct (op_arg_classes o k) as [cls|]; [|discriminate H]. simpl in H.
@@ -613,6 +613,7 @@ Proof.
   - discriminate Ht.
   - discriminate Ht.
   - discriminate Ht.
+  - exfalso. simpl in H. discriminate H.
   - exfalso. simpl in H. discriminate H.
 Qed.
 
@@ -774,19 +775,21 @@ End Weak.
 (** Where the pass is in a block when the instructions `is` remain, out
     being the facts at the block's end, without saying which facts are
     live: before one of its steps ([walks]), or between a check and the
-    raw access or raw call it took with it. *)
+    raw access, raw call or touch it took with it. *)
 Definition dpos (s : src) (is : list inst) (out : list fact) : Prop :=
   (exists live, walks s is live out) \/
   (exists access rest' live', is = access :: rest' /\ walks s rest' live' out /\
-     (raw_access access <> None \/ exists r cl args, access = RawCall r cl args)).
+     (raw_access access <> None \/ (exists r cl args, access = RawCall r cl args) \/
+      exists q, access = Touch q)).
 
 (** One step of the pass ([checked_inst_rest]) takes one instruction
-    i, or i and the raw access or raw call that follows it, taken with
-    it ([pass_live_after]). *)
+    i, or i and the raw access, raw call or touch that follows it,
+    taken with it ([pass_live_after]). *)
 Lemma pass_after : forall s i rest live rest' live',
   checked_inst_rest s i rest live = Some (rest', live') ->
   rest' = rest \/
-  exists a, rest = a :: rest' /\ (raw_access a <> None \/ exists r cl args, a = RawCall r cl args).
+  exists a, rest = a :: rest' /\ (raw_access a <> None \/ (exists r cl args, a = RawCall r cl args) \/
+                                  exists q, a = Touch q).
 Proof.
   intros s i rest live rest' live' Hc.
   assert (Hcov : forall a q lo hi r al, covered_access a q lo hi r al = true -> raw_access a <> None)
@@ -794,18 +797,19 @@ Proof.
   destruct (check_fact i) as [fa0|] eqn:Hf.
   - destruct (access_fact_some _ _ Hf) as [fb Hg].
     destruct (checked_inst_rest_check _ _ _ _ _ _ _ _ Hf Hg Hc) as (access & -> & Hu & _).
-    apply andb_true_iff in Hu as [Hu _]. right. exists access. split; [reflexivity | left; exact (Hcov _ _ _ _ _ _ Hu)].
+    right. exists access. split; [reflexivity|].
+    destruct (proof_use_cases _ _ _ _ _ _ Hu) as [-> | Hu']; [right; right; eauto | left; exact (Hcov _ _ _ _ _ _ Hu')].
   - destruct (is_check_local i) eqn:Hcl.
-    + destruct i as [q k o args | | | | | | |]; try discriminate Hcl.
+    + destruct i as [q k o args | | | | | | | | ]; try discriminate Hcl.
       destruct k; try discriminate Hcl; destruct o; try discriminate Hcl;
         destruct args; try discriminate Hcl.
       destruct (checked_inst_rest_local_cov _ _ _ _ _ _ _ _ _ _ _ Hc) as (access & -> & Hu & _).
       right. exists access. split; [reflexivity | left; exact (Hcov _ _ _ _ _ _ Hu)].
     + destruct (is_check_function i) eqn:Hcf.
-      * destruct i as [q k o args | | | | | | |]; try discriminate Hcf.
+      * destruct i as [q k o args | | | | | | | | ]; try discriminate Hcf.
         destruct k; try discriminate Hcf; destruct o; try discriminate Hcf.
         destruct (checked_inst_rest_function_rest _ _ _ _ _ _ _ Hc) as (_ & r & cargs & ->).
-        right. eexists. split; [reflexivity | right; eauto].
+        right. eexists. split; [reflexivity | right; left; eauto].
       * assert (Hs' : pass_special i = false).
         { destruct (pass_special i) eqn:Hp; [|reflexivity].
           destruct (pass_special_cases _ Hp Hf) as [E | E]; congruence. }
@@ -908,7 +912,7 @@ Proof.
     destruct (fr_doomed fr) as [w0|] eqn:Ed; [|injection H as <-; left; reflexivity].
     destruct why; injection H as <-; first [left; reflexivity | right; eauto]. }
   destruct (ahead_inst i) eqn:Ea; [|destruct (Hother eq_refl) as [E | E]; [left; exact E | right; right; exact E]].
-  destruct i as [d k o args | | | | | | |]; try discriminate Ea. destruct k; try discriminate Ea.
+  destruct i as [d k o args | | | | | | | | ]; try discriminate Ea. destruct k; try discriminate Ea.
   destruct o; try discriminate Ea. destruct args as [|v [|v' args]]; try discriminate Ea.
   unfold doomed_result in H.
   destruct out as [e l m' | oc | g xs pd | q k | x]; try (injection H as <-; left; reflexivity).
@@ -932,7 +936,7 @@ Proof.
   intros f q p H.
   destruct (lookup_some_in _ _ _ _ H) as (q' & Eq & Hin). apply name_eqb_true in Eq. subst q'.
   unfold proof_pointers in Hin. apply in_flat_map in Hin as (b & Hb & Hin). apply in_flat_map in Hin as (i & Hi & Hin).
-  destruct i as [q0 k o args | | | | | | |]; try destruct Hin.
+  destruct i as [q0 k o args | | | | | | | | ]; try destruct Hin.
   destruct k; try destruct Hin.
   destruct (proof_pointer o args) as [p0|] eqn:Ep; [|destruct Hin].
   destruct (once_has (single_definitions f) q0) eqn:Ho; [|destruct Hin].
@@ -1036,7 +1040,7 @@ Proof.
   { intros o' Hg Hf. rewrite Hd in Hg. destruct o'; injection Hg as <-; simpl in Hf; try discriminate Hf;
       injection Hf as <-; auto. }
   destruct (ahead_inst i) eqn:Ea.
-  - destruct i as [d k o args | | | | | | |]; try discriminate Ea. destruct k; try discriminate Ea.
+  - destruct i as [d k o args | | | | | | | | ]; try discriminate Ea. destruct k; try discriminate Ea.
     destruct o; try discriminate Ea. destruct args as [|v [|v' args]]; try discriminate Ea.
     unfold doomed_result in H.
     destruct out as [e l m' | oc | g xs pd | q k | x]; try (injection H as <-; discriminate Ho).
@@ -1123,7 +1127,7 @@ Proof.
         destruct (alias_source _ _ _ _ _ Ht Hi Hw)
           as [(q & lo & hi & rs & al & a1 & a2 & -> & _) | [(q & lo & hi & rs & al & a1 & a2 & a3 & -> & _) |
               [(q & bd & lo & hi & rs & al & a1 & a2 & -> & _) | (q & lo & hi & rs & al & a1 & a2 & -> & _)]]];
-          destruct Hacc as [Hacc | (r' & cl & args & Hacc)]; try exact (Hacc eq_refl); discriminate Hacc. }
+          destruct Hacc as [Hacc | [(r' & cl & args & Hacc) | (tq & Hacc)]]; try exact (Hacc eq_refl); discriminate Hacc. }
     destruct Hc as (live & rest' & live' & Hc).
     destruct (alias_source _ _ _ _ _ Ht Hi Hw)
       as [(q & lo & hi & rs & al & a1 & a2 & -> & ->) | [(q & lo & hi & rs & al & a1 & a2 & a3 & -> & ->) |
@@ -1389,8 +1393,8 @@ Proof.
   rewrite Hb in Hb'. injection Hb' as <-.
   destruct Hat as [(live & Hw & _ & _) | (access & rest' & live' & Ea & _ & _ & Hpc)].
   2: { exfalso. injection Ea as <- _.
-       destruct Hpc as [(fb & pre & Hcov & _) | (_ & r' & q' & args & p' & Eacc & _)];
-         [unfold covered_access in Hcov; simpl in Hcov; discriminate Hcov | discriminate Eacc]. }
+       destruct Hpc as [(fb & pre & [Hcov | Eacc] & _) | (_ & r' & q' & args & p' & Eacc & _)];
+         [unfold covered_access in Hcov; simpl in Hcov; discriminate Hcov | discriminate Eacc | discriminate Eacc]. }
   destruct (walks_cons _ _ _ _ _ Hw) as (rest' & live' & Hc & Hw').
   cbn beta iota zeta delta [checked_inst_rest] in Hc.
   destruct (mem d (s_ahead (fn_src md f))) eqn:Em; [|discriminate Hc]. simpl in Hc.
@@ -1403,7 +1407,7 @@ Proof.
   destruct (ahead_accepted _ _ Hnd Em) as (b2 & k2 & i2 & Hb2 & Hk2 & _ & Hacc).
   change (fr_fn (c_frame c)) with f in Hb2, Hk2, Hacc. change (single_definitions f) with once in Hacc.
   unfold ahead_accepts in Hacc.
-  destruct i2 as [q2 c2 o2 args2 | | | | | | |]; try discriminate Hacc.
+  destruct i2 as [q2 c2 o2 args2 | | | | | | | | ]; try discriminate Hacc.
   destruct c2; try discriminate Hacc. destruct o2; try discriminate Hacc.
   destruct args2 as [|p2 [|p3 args2]]; try discriminate Hacc.
   match type of Hacc with context [if ?cond then _ else _] => destruct cond eqn:Ex end;
@@ -1473,8 +1477,9 @@ Proof.
     rewrite <- Hl in Hr. exact (operand_not_defined _ _ _ _ _ _ _ Hf Hd Hdd Hbin Hr Hki Hu Ho1).
   - intros l' is j' Ex. injection Ex as <- <- <-.
     exists E, b, out. split; [exact HE|]. split; [exact Hb|]. split; [exact Hout|].
-    right. exists access, rest2, live'. split; [reflexivity|]. split; [exact Hw'|]. left.
-    apply andb_true_iff in Hpu as [Hcov _]. unfold covered_access in Hcov. intros Er. rewrite Er in Hcov. discriminate Hcov.
+    right. exists access, rest2, live'. split; [reflexivity|]. split; [exact Hw'|].
+    destruct (proof_use_cases _ _ _ _ _ _ Hpu) as [-> | Hcov]; [right; right; eauto | left].
+    unfold covered_access in Hcov. intros Er. rewrite Er in Hcov. discriminate Hcov.
   - destruct (step_keeps once (proof_pointers f once) access _ n h Hta (Hnot (S k) _ Hka (le_S _ _ (le_n _))) Eh)
       as (h' & Hh' & Hhh').
     exists n, pn, (K + lo), (K + hi). cbn [fr_env fr_at].

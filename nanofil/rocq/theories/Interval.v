@@ -311,7 +311,7 @@ Proof.
         destruct (depth <? 32); [|no_answer E Hm].
         destruct (lookup n once) as [[| ph | i]|] eqn:El;
           try (no_answer E Hm).
-        destruct i as [n' k' o args | | | | | | | ];
+        destruct i as [n' k' o args | | | | | | | | ];
           try (no_answer E Hm).
         destruct (name_eqb n' n && class_eqb k' k) eqn:Ek;
           [|no_answer E Hm].

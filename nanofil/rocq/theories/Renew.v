@@ -62,7 +62,7 @@ Proof.
   destruct (renew_source (single_definitions f) i) as [[q1 v]|] eqn:Er; [|destruct Hin].
   destruct Hin as [E | []]. injection E as -> ->.
   unfold renew_source in Er.
-  destruct i as [q k o args | | | | | | |]; try discriminate Er.
+  destruct i as [q k o args | | | | | | | | ]; try discriminate Er.
   destruct k; try (destruct o; discriminate Er).
   (* Each of the five source ops (check, check_ahead, renew_if,
      check_limit, half_check) has the fact its source records, so it is
@@ -115,7 +115,7 @@ Lemma check_fact_ok : forall md f b i fa,
   f_lo fa < f_hi fa /\ check_align (f_al fa) = true.
 Proof.
   intros md f b i fa Hmd Hin Hb Hi Hf. destruct (inst_valid _ _ _ _ Hmd Hin Hb Hi) as [cls Hvi].
-  destruct i as [q k o args | | | | | | |]; try discriminate Hf.
+  destruct i as [q k o args | | | | | | | | ]; try discriminate Hf.
   destruct k; try (destruct o; discriminate Hf).
   destruct o; try discriminate Hf; cbn -[valid_op] in Hf; cases Hf; injection Hf as <-;
     unfold valid_inst in Hvi; simpl in Hvi; unfold check_ok in Hvi;
@@ -430,7 +430,7 @@ Proof.
   - destruct H as [E | H]; [left; auto | right].
     destruct p as [y | c | g]; [|simpl in H; contradiction | simpl in H; contradiction].
     destruct (lookup y once) as [[| ph | i]|] eqn:Ey; try (simpl in H; contradiction).
-    destruct i as [| d o args lw | | | | | | ]; try (simpl in H; contradiction).
+    destruct i as [| d o args lw | | | | | | | ]; try (simpl in H; contradiction).
     destruct lw; [simpl in H; contradiction | eauto 8].
 Qed.
 
@@ -446,7 +446,7 @@ Qed.
     Single.v's invariant covers it. *)
 Lemma check_fact_replayable : forall i fa, check_fact i = Some fa -> replayable i = true.
 Proof.
-  intros i fa H. destruct i as [q k o args | | | | | | |]; try discriminate H.
+  intros i fa H. destruct i as [q k o args | | | | | | | | ]; try discriminate H.
   destruct o; try reflexivity. destruct k; discriminate H.
 Qed.
 
@@ -454,7 +454,7 @@ Qed.
     own access checks ([access_fact]). *)
 Lemma access_fact_some : forall i fa, check_fact i = Some fa -> exists fb, access_fact i = Some fb.
 Proof.
-  intros i fa H. destruct i as [q k o args | | | | | | |]; try discriminate H.
+  intros i fa H. destruct i as [q k o args | | | | | | | | ]; try discriminate H.
   destruct k; try (eexists; exact H). destruct o; try (eexists; exact H).
   destruct args as [|a [|a2 args]]; try (eexists; exact H). eexists. reflexivity.
 Qed.
@@ -838,7 +838,7 @@ Lemma run_point : forall ge md f xs fr m fuel s0 c s l i rest j,
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
   H.P.I.RM.mreachable ge (mkConfig fr [] m fuel, s0) (c, s) ->
   fr_doomed (c_frame c) = None -> fr_at (c_frame c) = Exec l (i :: rest) j ->
-  raw_access i = None -> (forall r cl args, i <> RawCall r cl args) ->
+  raw_access i = None -> (forall r cl args, i <> RawCall r cl args) -> (forall q, i <> Touch q) ->
   exists b kk live out,
     In (IFunc (fr_fn (c_frame c))) md /\ is_reachable (fn_doms (fr_fn (c_frame c))) l = true /\
     scope_holds ge (c_frame c) (c_mem c) /\
@@ -847,17 +847,18 @@ Lemma run_point : forall ge md f xs fr m fuel s0 c s l i rest j,
     checked_inst_rest (fn_src md (fr_fn (c_frame c))) i rest live = Some out /\
     objects_fit (m_regions (c_mem c)) /\ freed_empty (m_regions (c_mem c)).
 Proof.
-  intros ge md f xs fr m fuel s0 c s l i rest j Hmd Hge Hfree Hin Hcf H0 Hreach Hd Ha Hra Hrc.
+  intros ge md f xs fr m fuel s0 c s l i rest j Hmd Hge Hfree Hin Hcf H0 Hreach Hd Ha Hra Hrc Hrt.
   (* The pass accepted the instruction at the point. *)
   pose proof (H.P.mreachable_inv _ _ _ _ Hge Hmd Hfree Hreach H0 (H.P.start_inv _ _ _ _ _ _ _ s0 Hmd Hin Hcf))
     as [(Hinf & _ & Hpo) _].
   simpl in Hinf, Hpo. destruct Hpo as [Hd0 | Hpo]; [congruence|].
   destruct (H.P.I.point_ok_exec_inv _ _ _ _ _ _ _ Hpo Ha) as (E & b & out & kk & _ & Hb & _ & _ & Hk & Hat).
   destruct Hat as [(live & Hw & _ & _) | (access & rest' & live' & E' & _ & _ & Hpc)].
-  2: { (* only a raw access or raw call follows a check as its access *)
+  2: { (* only a raw access, a touch or a raw call follows a check as its access *)
        injection E' as <- _. exfalso.
-       destruct Hpc as [(fb & pre & Hcov & _) | (_ & r & q' & args & p & E'' & _)].
+       destruct Hpc as [(fb & pre & [Hcov | E''] & _) | (_ & r & q' & args & p & E'' & _)].
        - unfold covered_access in Hcov. rewrite Hra in Hcov. discriminate Hcov.
+       - exact (Hrt _ E'').
        - exact (Hrc _ _ _ E''). }
   destruct (walks_cons _ _ _ _ _ Hw) as (rest' & live' & Hc & _).
   (* Single definitions replay there. *)
@@ -893,7 +894,7 @@ Proof.
               ltac:(destruct Ho as [(? & ? & ? & ? & ? & ? & -> & ->)
                                    | [(? & ? & ? & ? & ? & ? & ? & -> & ->) | (? & ? & ? & ? & ? & ? & ? & -> & ->)]];
                     reflexivity)
-              ltac:(intros ? ? ? E; discriminate E))
+              ltac:(intros ? ? ? E; discriminate E) ltac:(intros ? E; discriminate E))
     as (b & kk & live & out & Hinf & Hr & Hsc & Hpt & Hb & Hnth & Hc & Hfit & Hfe).
   (* The pass accepts a reuse form only where its sources are proofs'
      names. *)

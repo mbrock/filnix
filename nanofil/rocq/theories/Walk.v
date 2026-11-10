@@ -247,7 +247,7 @@ Definition relies (s : src) (i : inst) : bool :=
     evidence preserving. *)
 Lemma check_fact_preserving : forall i fa, check_fact i = Some fa -> evidence_preserving i = true.
 Proof.
-  intros i fa H. destruct i as [q k o args | | | | | | |]; try discriminate H.
+  intros i fa H. destruct i as [q k o args | | | | | | | | ]; try discriminate H.
   destruct o; try (destruct k; discriminate H); destruct k; try discriminate H;
     destruct args as [|a1 [|a2 [|a3 [|a4 args]]]]; try discriminate H; reflexivity.
 Qed.
@@ -264,7 +264,7 @@ Proof.
   - rewrite (check_fact_preserving _ _ Hf) in Hp. discriminate Hp.
   - destruct (pass_special i) eqn:Hs.
     + unfold pass_special in Hs. rewrite Hf in Hs.
-      destruct i as [q k o args | | | | | | |]; try discriminate Hs.
+      destruct i as [q k o args | | | | | | | | ]; try discriminate Hs.
       destruct k; try discriminate Hs; destruct o; try discriminate Hs.
       * destruct args; [discriminate Hl | discriminate Hs].
       * exact (checked_inst_rest_function _ _ _ _ _ _ _ Hc).
@@ -272,7 +272,7 @@ Proof.
       cbn zeta in Hc.
       match type of Hc with (if ?b then _ else _) = _ => destruct b; [|discriminate Hc] end.
       injection Hc as _ <-. unfold evidence_after. rewrite Hp.
-      destruct i as [d k o args | | | | | | |]; try reflexivity.
+      destruct i as [d k o args | | | | | | | | ]; try reflexivity.
       destruct o; try reflexivity; destruct k; try reflexivity;
         destruct args as [|[n|c|g] [|a2 args]]; try reflexivity.
       unfold repeated_getter in Hg. destruct (lookup d (s_getters s)) as [g1|]; [|reflexivity].
@@ -440,7 +440,7 @@ Definition is_check_function (i : inst) : bool :=
 Lemma pass_special_cases : forall i,
   pass_special i = true -> check_fact i = None -> is_check_local i = true \/ is_check_function i = true.
 Proof.
-  intros i H Hf. destruct i as [q k o args | | | | | | |]; try discriminate H.
+  intros i H Hf. destruct i as [q k o args | | | | | | | | ]; try discriminate H.
   destruct o; destruct k; try discriminate H; try discriminate Hf; auto;
     destruct args as [|a1 [|a2 [|a3 [|a4 args]]]]; auto; discriminate.
 Qed.
@@ -494,7 +494,7 @@ Qed.
 (** A [[raw access]] is not one of the instructions the pass treats apart. *)
 Lemma raw_access_not_special : forall i a, raw_access i = Some a -> pass_special i = false.
 Proof.
-  intros i a H. destruct i as [q k o args | | | | | | |]; try reflexivity.
+  intros i a H. destruct i as [q k o args | | | | | | | | ]; try reflexivity.
   destruct o; simpl in H; try discriminate H; destruct k; reflexivity.
 Qed.
 

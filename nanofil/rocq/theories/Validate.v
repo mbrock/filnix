@@ -100,6 +100,7 @@ Definition inst_uses (i : inst) : list name :=
                    ++ match lw with LowerOf p => [p] | LowerNone => [] end)
   | RawStore _ _ v a | RawStorePointer _ v a _ => value_temps [v; a]
   | Call _ f args | RawCall _ f args => value_temps (f :: map arg_value args)
+  | Touch q => [q]
   | LocalAlloc _ _ | Loc _ _ => []
   end.
 
@@ -534,6 +535,7 @@ Definition valid_inst (md : module) (classes : list (name * class)) (i : inst) :
   let use := valid_use classes in
   match i with
   | Loc file _ => match file with TAtom _ => true | _ => false end
+  | Touch q => use A (Tmp q)
   | LocalAlloc _ size => (0 <=? size) && (size <=? 2 ^ 31 - 1)
   | Flight _ o args lw =>
       match o, args with
@@ -779,10 +781,13 @@ Definition storage_effects (i : inst) (s : storage) : bool :=
   end.
 
 (** As `proof_use/6`: the instruction i, right after the [[check]] of the
-    proof q, uses it: a heap [[raw-access|raw access]] the proof covers
-    ([covered_access]). *)
+    proof q, uses it: a touch of q, which accesses nothing, or a heap
+    [[raw-access|raw access]] the proof covers ([covered_access]). *)
 Definition proof_use (i : inst) (q : name) (lo hi : Z) (r : rights) (al : Z) : bool :=
-  covered_access i q lo hi r al && storage_effects i Heap'.
+  match i with
+  | Touch q' => name_eqb q' q
+  | _ => covered_access i q lo hi r al && storage_effects i Heap'
+  end.
 
 (** As `reusing_access/2`: whether the access i, of type x, may read a
     [[live-fact|live]] proof that is not its own check's: a scalar access,
@@ -1616,6 +1621,7 @@ Definition checked_inst_rest (s : src) (i : inst) (rest : list inst) (live : lis
         | None =>
             match i with
             | RawCall _ _ _ => false
+            | Touch _ => false                                  (* not right after its check *)
             | Call _ (Tmp _) _ => false                         (* unchecked_access *)
             | Let _ P (Add | Sub | Itop) _ => false              (* implicit_flight *)
             | Let _ P Copy [Tmp _] | Let _ P Copy [Const _] => false
@@ -1752,11 +1758,12 @@ Definition checked_op (o : op) : bool :=
   end.
 
 (** As `checked_inst/1`: the instruction i uses a word of the checked
-    [[stage]]: a checked op, a raw store, a raw call or a [[flight]]. *)
+    [[stage]]: a checked op, a raw store, a raw call, a [[flight]] or a
+    [[touch]]. *)
 Definition checked_inst (i : inst) : bool :=
   match i with
   | Let _ _ o _ => checked_op o
-  | RawStore _ _ _ _ | RawStorePointer _ _ _ _ | RawCall _ _ _ | Flight _ _ _ _ => true
+  | RawStore _ _ _ _ | RawStorePointer _ _ _ _ | RawCall _ _ _ | Flight _ _ _ _ | Touch _ => true
   | _ => false
   end.
 

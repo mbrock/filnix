@@ -124,7 +124,7 @@ Lemma doomed_result_fresh : forall ge fr m i out od,
   od = (out, None) \/ exists e w, od = (IContinue e (fr_locals fr) m, Some w).
 Proof.
   intros ge fr m i out od Hd H. destruct (ahead_inst i) eqn:Ea.
-  - destruct i as [d k o args | | | | | | |]; try discriminate Ea. destruct k; try discriminate Ea.
+  - destruct i as [d k o args | | | | | | | | ]; try discriminate Ea. destruct k; try discriminate Ea.
     destruct o; try discriminate Ea. destruct args as [|v [|v' args]]; try discriminate Ea.
     unfold doomed_result in H. rewrite Hd in H. cases H; inversion H; subst; eauto.
   - rewrite (doomed_result_other _ _ _ _ _ Ea) in H. rewrite Hd in H. cases H; inversion H; subst; auto.
@@ -139,7 +139,7 @@ Lemma doomed_result_doomed : forall ge fr m i out od,
 Proof.
   intros ge fr m i out od Hd H. destruct (fr_doomed fr) as [w0|] eqn:Ew; [|congruence].
   destruct (ahead_inst i) eqn:Ea.
-  - destruct i as [d k o args | | | | | | |]; try discriminate Ea. destruct k; try discriminate Ea.
+  - destruct i as [d k o args | | | | | | | | ]; try discriminate Ea. destruct k; try discriminate Ea.
     destruct o; try discriminate Ea. destruct args as [|v [|v' args]]; try discriminate Ea.
     unfold doomed_result in H. rewrite Ew in H. cases H; inversion H; subst; simpl;
       (split; [discriminate | eauto]).

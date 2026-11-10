@@ -7,8 +7,10 @@
     the integer and pointer [[class|classes]], [[check]] and its
     [[reuse]] vocabulary, the `raw_*` [[raw-access|accesses]],
     [[flight]], [[poll|poll edges]], `call`, `raw_call` and `free`, and
-    named locals; and, for the Lua suite, the float classes with their
-    conversions (Ieee.v) and variadic functions (`va_args`, `va_arg`).
+    named locals, `touch` (a vector access's check, whose proof it uses
+    without accessing anything); and, for the Lua suite, the float
+    classes with their conversions (Ieee.v) and variadic functions
+    (`va_args`, `va_arg`).
     Vectors, [[cas]] and atomics, `setjmp`, [[asm_fixed]] and plain
     mode are deferred: a function that uses them is [IOutside], which
     has an address but no body (Transport.v decides).
@@ -29,7 +31,8 @@
     | `Call r callee args` | `call(Res, Callee, [arg(K, Value)])` |
     | `RawCall r callee args` | `raw_call(Res, Callee, Args)` |
     | `LocalAlloc x size` | `local_alloc(Name, Size)` |
-    | `Loc file line` | `loc(File, Line)` | *)
+    | `Loc file line` | `loc(File, Line)` |
+    | `Touch q` | `touch(tmp(Q))` | *)
 
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term.
@@ -280,7 +283,8 @@ Inductive inst : Type :=
 | Call (r : call_result) (callee : value) (args : list arg) (* call callee, a symbol or a pointer *)
 | RawCall (r : call_result) (callee : value) (args : list arg) (* call the proven function callee, of class [F] *)
 | LocalAlloc (x : name) (size : Z) (* declare the named local x, of size zeroed bytes *)
-| Loc (file : term) (line : Z). (* a source position; does nothing *)
+| Loc (file : term) (line : Z) (* a source position; does nothing *)
+| Touch (q : name). (* `touch(tmp(Q))`: use the proof q of the check just before it, and do nothing else *)
 
 (** A jump's target: `L`, or `poll(L)`, a [[poll|pollcheck]] on the
     edge before going to L. *)
@@ -450,6 +454,7 @@ Definition is_global (v : value) : bool :=
 Definition evidence_preserving (i : inst) : bool :=
   match i with
   | Loc _ _ => true
+  | Touch _ => true
   | Flight _ _ _ _ => true
   | Let _ A (Check _ _ _ _) _ | Let _ A (CheckAhead _ _ _ _ _) _
   | Let _ A (Renew _ _ _ _) _ | Let _ A (RenewHull _ _ _ _) _

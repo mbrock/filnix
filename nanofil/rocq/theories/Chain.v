@@ -314,7 +314,7 @@ Proof.
   - destruct Hb as [E | Hb]; [injection E as -> -> ->; exact (Hrel Hst)|].
     destruct p as [x | c | g]; try contradiction.
     destruct (lookup x (single_definitions (fr_fn fr))) as [[| ph | i]|] eqn:Ex; try contradiction.
-    destruct i as [ | d o args lw | | | | | | ]; try contradiction.
+    destruct i as [ | d o args lw | | | | | | | ]; try contradiction.
     destruct lw as [| b']; try contradiction.
     destruct (flight_term o args b') as [[ov sign]|] eqn:Ef; [|contradiction].
     destruct (offset_interval _ ov L) as [[olo ohi]|] eqn:Eo; [|contradiction].
