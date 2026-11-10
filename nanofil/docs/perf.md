@@ -9,9 +9,130 @@ instructions, and a ranked plan. It is separate from the semantic
 campaign ([campaign.md](campaign.md)): nothing here weakens a check,
 and safety decisions are flagged for review before implementation.
 
-## Stocktake (10 November 2026, at `1604dee687af`)
+## Slow-call experiment (10 November 2026, based on `960063d78875`)
 
-**Current `-O`: 1.61× filcc `-O2`'s time, 2.17× its instructions**
+**Current `-O`: 1.63× filcc `-O2`'s time, 2.18× its instructions.**
+**`-O --slow-calls=save`: also 1.63× time, 2.18× instructions.** On a
+fresh eleven-workload quiet-swa gate, the nominal change is **+0.03%
+task-clock time, −0.04% instructions**. Wall time changes +0.19%.
+These are flat results, not the low-single-digit win hypothesized below.
+**Recommendation: do not make save mode the default.** Keep the reviewed
+experiment opt-in; it adds a native call rule without a measured payoff.
+The default, root/check behavior and Fil-C toolchain are unchanged.
+
+The rule and save-stub contract were reviewed before implementation;
+Oracle's implementation review found no blockers. Poll and ensure-aux
+**can invoke user signal handlers**: preservation is on normal return,
+not a claim that callbacks cannot occur. Abandoning longjmp requires no
+stub cleanup; setjmp destinations stay excluded from home allocation.
+See [the contract and decisive tests](abi-findings.md#slow-path-register-call-rule-2026-11-10).
+Default plain/`-O` emissions remained byte-identical on 82 frozen snapshots.
+
+### Fresh gate and independent controls
+
+Task-clock ratios to the **same pinned item-20 filcc binaries**, with
+user-instruction ratios in parentheses; medians of 11 shuffled trials
+after warm-up, core 6, sibling 22. Fresh reference/save builds share one
+compiler revision. Every workload's stdout matches filcc byte for byte.
+
+| Workload | filcc ms | `-O` | `-O --slow-calls=save` | save time change |
+| --- | --: | --: | --: | --: |
+| zlib -6 | 135.2 | 1.86 (2.73) | 1.86 (2.73) | −0.2% |
+| zlib -d | 18.8 | 1.51 (2.36) | 1.52 (2.37) | +0.7% |
+| bzip2 -9 | 274.9 | 1.43 (1.69) | 1.44 (1.69) | +0.4% |
+| bzip2 -d | 94.2 | 2.18 (2.43) | 2.17 (2.43) | −0.1% |
+| lz4 -1 | 14.4 | 1.88 (6.97) | 1.85 (6.95) | −1.6% |
+| lz4 -9 | 157.8 | 1.49 (1.65) | 1.49 (1.65) | +0.0% |
+| lz4 -d | 13.6 | 2.20 (3.78) | 2.19 (3.78) | −0.6% |
+| Lua int | 48.7 | 1.40 (1.48) | 1.40 (1.49) | +0.1% |
+| Lua tab | 40.5 | 1.31 (1.39) | 1.33 (1.40) | +1.7% |
+| Lua str | 272.0 | 1.33 (1.36) | 1.33 (1.36) | −0.2% |
+| SQLite | 672.8 | 1.59 (1.60) | 1.59 (1.59) | +0.1% |
+| **geomean** | | **1.63 (2.18)** | **1.63 (2.18)** | **+0.03%** |
+
+Independent controls reorder the mode list and take **21 trials** each:
+
+| Control | `-O` median ms (min–max) | save median ms (min–max) | change |
+| --- | ---: | ---: | ---: |
+| bzip2 -d | 206.22 (203.64–253.13) | 205.93 (203.64–209.52) | −0.14% |
+| SQLite | 1071.40 (1064.60–1078.71) | 1071.57 (1066.25–1078.55) | +0.02% |
+
+Their wall-time changes are −0.17% and +0.04%. The bzip2 reference
+control contains one 253.13 ms outlier, retained in the data; its cause
+is not established. Overlapping ranges, including Lua tab's gate
+samples, do not establish a speedup or regression. This experiment does
+not retest or change the earlier **shared-lowers** recommendation.
+
+### Compile-time budget
+
+`bench/compile.py` now enforces an explicit acceptance guardrail, separate
+from runtime timing. Three shuffled trials compile fixed preprocessed
+bzip2 `compress.c`, Lua `lvm.c` and the SQLite amalgamation, using one
+saved compiler state on swa core 14. Assembly goes to `/dev/null`;
+preprocessing and saved-state creation are outside the timing. The
+frozen pre-implementation `-O` user-CPU medians at `960063d78875` are
+**2.00, 5.16 and 207.57 seconds** respectively.
+
+[`compile-budget.json`](../bench/compile-budget.json) requires:
+
+- Both optimized modes ≤6× same-run plain user CPU **and** ≤1.25× the
+  frozen optimized baseline. Never refresh that denominator merely to
+  pass a regression.
+- Save mode ≤1.10× same-run reference `-O` user CPU.
+- Each compile ≤600 s wall time and ≤3 GiB peak RSS, with a 4 GB Prolog
+  stack limit; at least three trials, all three modes, the calibrated
+  CPU model/core and exact input hashes are mandatory.
+
+**Budget verdict: PASS.** Median user-CPU seconds, three trials per mode:
+
+| Input | plain | reference `-O` | save `-O` |
+| --- | --: | --: | --: |
+| bzip2 compress.c | 0.73 | 1.96 | 2.01 |
+| Lua lvm.c | 1.79 | 5.26 | 5.21 |
+| SQLite amalgamation | 43.79 | 206.98 | 207.58 |
+
+SQLite's save/reference change is +0.29%; the largest observed RSS is
+2.10 GiB and the longest compile 227.05 s wall. Mutation controls reject
+a joint plain/optimized slowdown against the frozen denominator, a
+candidate-only slowdown, ratio/RSS overruns, changed inputs and hardware.
+Exact threshold controls and the process-group wall timeout also passed.
+
+The guard is an explicit local acceptance command, not a host-dependent
+timing assertion in Nix CI. Running without `--budget` records calibration
+only and cannot claim a passing verdict. Run it separately from the
+runtime gate:
+
+```sh
+nix build --impure -f nanofil/bench/compile.nix -o .amp/in/compile-inputs
+SWIPL=/tmp/swipl/bin/swipl python3 nanofil/tests/watch.py --label compile-budget --timeout 2400 -- python3 nanofil/bench/compile.py --inputs .amp/in/compile-inputs --budget nanofil/bench/compile-budget.json --json compile.json
+```
+
+### Measurement record
+
+[Raw samples and provenance](../bench/slow-calls-2026-11-10.json) retain
+the gate, both controls, compile calibration/budget results, input/binary
+hashes, compiler source hash and host-load samples. The runtime gate ran
+16:59–17:03 UTC, controls 17:03–17:05, with **no concurrent compilation
+or profiling**. Load was 0.50–0.92 at the gate and 0.30–0.89 in controls;
+sibling 22 was at most 0.9% / 1.1% busy in 10-second samples. The runner
+waited 4 s / 1 s / 3 s for cores 6/22 to be below 5% busy. The site-deploy
+thread planned no heavy local work. This was quiet, not a globally
+reserved host; powersave governor and boost stayed unchanged.
+
+Build the opt-in mode with
+`nix build --impure -f nanofil/bench --argstr only O,O-slow`.
+The exact comparison tree is retained on swa at
+`/home/mbrock/filnix-nanofil-perf-rebaseline/.amp/in/slow-cmp`:
+
+```sh
+python3 nanofil/bench/run.py --out .amp/in/slow-cmp --ref .amp/in/slow-cmp --swipl .amp/in/no-swipl --modes ref,O,O-slow --trials 11 --cpu 6 --busy 0.05 --events cycles:u,branch-misses:u,duration_time --json slow-gate.json
+python3 nanofil/bench/run.py --out .amp/in/slow-cmp --ref .amp/in/slow-cmp --swipl .amp/in/no-swipl --only 'bzip2 -d text' --modes O-slow,ref,O --trials 21 --cpu 6 --busy 0.05 --events cycles:u,branch-misses:u,duration_time --json slow-bzip2.json
+python3 nanofil/bench/run.py --out .amp/in/slow-cmp --ref .amp/in/slow-cmp --swipl .amp/in/no-swipl --only sqlite --modes O-slow,ref,O --trials 21 --cpu 6 --busy 0.05 --events cycles:u,branch-misses:u,duration_time --json slow-sqlite.json
+```
+
+## Earlier stocktake (10 November 2026, at `1604dee687af`)
+
+**At this revision, `-O`: 1.61× filcc `-O2`'s time, 2.17× its instructions**
 on the eleven-workload gate (swa, core 6, 11 trials). This measures
 `--operands=regions` and `--inline=wide` together. The former headline,
 1.69×, measured wide inlining before regions; it was not today's default.
@@ -68,18 +189,19 @@ at 0.02 of its counts, core 6, 11 trials: filcc 11592.6 ms; `-O`
 (18784.1–19162.5 / 18421.6–18620.6 ms). Its printed program names/counts
 match filcc's; this is a workload-output check, not SWI's correctness suite.
 
-### Next levers, ranked by expected runtime win
+### Lever ranking from this stocktake
 
-These are estimates from item 19, **not measured gains on today's
-compiler**, and their instruction budgets overlap. Review the contract
-before implementing a runtime or register-checker change.
+Globals and memcpy remain estimates from item 19, **not measured gains
+on today's compiler**, and their instruction budgets overlap. The
+top-ranked slow-call hypothesis has now been tested above and did not
+pay off; the compile-time guardrail is also implemented above.
 
 | Rank | Lever | Expected win and evidence | Prerequisite |
 | --- | --- | --- | --- |
-| 1 | Slow-path register convention | Broadest remaining opportunity; a low-single-digit time win is a hypothesis, not a measurement. The scratch allocator experiment gave registers to another 2.6% of zlib `-6`'s instructions and 4.5% of lz4 `-9`'s. The 8.8% → 0.7% crossing-call figure is **not** an 8.1% runtime saving: most homes became ordinary register pressure instead. | A reviewed call-rule contract in `amd64_regs_check.pl`; audit save stubs for poll, store-barrier and ensure-aux slow calls, including GC and exceptional exits. |
+| Tested | Slow-path register convention | The earlier low-single-digit time hypothesis was not borne out: +0.03% gate time, −0.04% instructions. Scratch allocation opportunity did not translate to a runtime gain. | Contract and implementation reviewed; retain `--slow-calls=save` opt-in, not default. |
 | 2 | Globals without getters | About 0.8G gate instructions and 1.6G on SWI in the old profile; roughly 1% gate time inferred, with 10–15% instruction opportunities in zlib `-d` and lz4. | Establish exactly when filcc bypasses initialization/registration; `abi-findings.md` distinguishes a source reading from a GC stress test. |
 | 3 | `memcpy` straight to `filc_memmove` | Old estimate: about 4% of SQLite's time, only about 0.4% of an eleven-workload geomean if nothing else changes. Wider inlining already changed the callers, so recount first. | Preserve the agreed bad-copy error observation, not only successful bytes. |
-| — | Compile-time gate for `-O` | No direct runtime gain; put it in place **before another default change**. A fresh, single pinned-core compile of the same preprocessed sqlite3.c takes 43.56 → 211.31 user seconds (4.85×), 49.39 → 228.11 wall seconds (4.62×), with a 4 GB Prolog stack and about 2.1 GiB RSS. This is a budget warning, not a calibrated gate threshold. | Choose representative files and explicit time/memory/stack budgets; retain `-O` versus plain and a frozen optimized baseline, so cumulative regressions cannot hide in a moving denominator. |
+| Implemented | Compile-time gate for `-O` | No direct runtime gain; the single SQLite probe led to the three-file, three-trial guardrail above. | Keep both same-run ratios and the frozen optimized denominator; do not rebaseline away a regression. |
 
 ### Fresh instruction profile
 
