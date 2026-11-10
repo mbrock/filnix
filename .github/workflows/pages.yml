@@ -170,13 +170,18 @@ jobs:
           python3 nanofil/tests/watch.py --label 'Live site at phone widths' -- \
             node packages/site/phone.mjs https://filnix.org/ 320 390 \
             2>&1 | tee deployed-phone.log
-      - name: Check the deployed Rocq pages
+      # The artifact job below exhaustively checks every Rocq page, with
+      # and without scripts. After promotion, smoke-test that immutable
+      # release instead of repeating the full sweep over the network.
+      - name: Smoke-test the deployed Rocq pages
         run: |
           set -o pipefail
-          python3 nanofil/tests/watch.py --label 'Live Rocq phone pages' \
-            --warn-after 300 --timeout 900 -- \
-            node nanofil/web/rocq/tests/layout.mjs \
-            "https://filnix.org/__releases/$GITHUB_SHA" --pages-only 320 390 \
+          python3 nanofil/tests/watch.py --label 'Live Rocq smoke test' -- \
+            node packages/site/phone.mjs \
+            "https://filnix.org/__releases/$GITHUB_SHA/" \
+            nanofil/rocq/index.html nanofil/rocq/rocq-theories-Machine.html \
+            nanofil/rocq/rocq-theories-Evidence.html nanofil/rocq/rocq-backend-EmitModule.html \
+            nanofil/rocq/rocq-glibc-ZsysWrite.html 320 390 \
             2>&1 | tee deployed-rocq-phone.log
       - uses: actions/upload-artifact@v4
         if: always()
