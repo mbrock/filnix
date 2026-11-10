@@ -89,4 +89,5 @@ theories/HelloReach.v
 theories/CallbackLogic.v
 theories/HelloVersion.v
 theories/HelloClose.v
+theories/HelloConv.v
 theories/Extract.v

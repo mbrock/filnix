@@ -788,6 +788,52 @@ Conventions the pieces share:
   - `wp_close_errno`, `wp_close_load_w`, `wp_close_contract` and
     `wp_close_stream_pointer`.
 
+**The conversion chain, first step.** mbrtowc writes three cells the
+program owns: the wide character, the conversion state and errno.
+Its roots therefore meet the program's objects, and the external
+call frame, which needed roots apart from every owned object, did not
+apply. [ContractFrame.v](../rocq/theories/ContractFrame.v) now has a
+frame for calls into owned blocks (54dc057): `agrees_except`,
+`roots_out` and `pieces_off` say that the roots touch owned objects
+only at the addresses the program hands over, and that no other piece
+lies there. `local_agrees_out` and Logic.v's `effects_agrees_out` and
+`prefix_agrees_out` keep every other piece agreeing.
+`local_agrees` and `effects_agrees` are now the case where nothing is
+handed over, with the same statements as before.
+
+[HelloConv.v](../rocq/theories/HelloConv.v) proves `wp_mbrtowc` over
+Campaign 4's `libc_world`, using `LibcOn R L.M`. The program hands
+over the three cells as whole blocks (life, bytes and aux slots) and
+lends the source bytes. The call gives the blocks back holding
+whatever memory holds afterwards. `conv_result` reads
+`mbrtowc_result` through the owned bytes under the audited codec:
+- a NUL converts to 0 and resets the state;
+- a character of r bytes, none of them NUL, becomes a nonzero wide
+  character;
+- EILSEQ stores 84 in errno and leaves the output alone. Under the C
+  codec it also keeps the state and starts at a byte of 128 or more
+  (`mbrtowc_c_error`);
+- an incomplete sequence is shorter than 16 bytes, with no NUL.
+
+The world interpretation must make libc ready with a fixed codec and
+errno cell. It keeps libc's private roots, releases and capabilities
+apart from the program's objects (`libc_private`), and it must survive
+the call's writes into the three blocks. The audited codec stays an
+explicit premise.
+
+Two contract gaps went back to Campaign 4, and it fixed both
+(6e82502):
+- Nothing kept the state's bytes in 0 to 255 after a call, so the
+  second call of rpl_mbsrtowcs's loop could not be admitted. The
+  contract now requires `mbstate_valid_bytes`: valid states hold
+  bytes.
+- Under the C codec, `hard_locale` is false, so rpl_mbrtowc's fallback
+  turns EILSEQ into a one-byte character and the loop calls mbrtowc
+  again with the same state. The EILSEQ state was unspecified, which
+  would have made that call stuck. For the audited C codec only,
+  EILSEQ now keeps the entry state and requires a first byte of 128
+  or more, so ASCII and NUL never take it.
+
 ## Open questions for mbrock
 
 - Start the logic now, or finish Campaign 4's hi.c first?
