@@ -19,6 +19,8 @@ let
         ./rocq_draw.pl
         ./dterm_rocq.pl
         ../dterm_html.pl
+        # rocq_draw.pl and dterm_rocq.pl load it, for the capture regression.
+        ../concepts.pl
         ./tests/capture.py
       ]
       ++ pkgs.lib.optional spikes ../../rocq/spikes

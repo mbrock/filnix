@@ -80,7 +80,9 @@ write_source_pages(Out, Read) :-
     ),
     length(Read, NPages), N is min(8, min(C, NPages)),
     (   N =< 1
-    ->  maplist(write_source_page(Out), Read)
+    ->  nb_setval(rq_failed, false),
+        forall(member(Page, Read), draw_or_report(Out, Page)),
+        nb_getval(rq_failed, false)
     ;   map_list_to_pairs([page(_, Text, _, _), L]>>string_length(Text, L), Read, Sized),
         keysort(Sized, Ascending), reverse(Ascending, Longest), pairs_values(Longest, Pages),
         directory_file_path(Out, '.claims', Claims), make_directory(Claims),
@@ -89,20 +91,31 @@ write_source_pages(Out, Read) :-
         maplist([Pid, S]>>wait(Pid, S), Pids, Statuses),
         delete_directory_and_contents(Claims),
         (   forall(member(S, Statuses), S == exited(0)) -> true
-        ;   format(user_error, "dterm-rocq: a page worker failed: ~w~n", [Statuses]), halt(1)
+        ;   format(user_error, "dterm-rocq: the pages named above were not drawn~n", []), halt(1)
         )
     ).
 
 page_worker(Out, Claims, Pages, _, Pid) :-
     fork(Pid0),
     (   Pid0 == child
-    ->  set_stream(user_error, buffer(line)),
-        (   catch(forall(( member(Page, Pages), claim(Claims, Page) ), write_source_page(Out, Page)),
-                  E, ( print_message(error, E), fail ))
-        ->  halt(0)
-        ;   halt(1)
-        )
+    ->  set_stream(user_error, buffer(line)), nb_setval(rq_failed, false),
+        forall(( member(Page, Pages), claim(Claims, Page) ), draw_or_report(Out, Page)),
+        (   nb_getval(rq_failed, false) -> halt(0) ; halt(1) )
     ;   Pid = Pid0
+    ).
+
+%  Draw one page; if it fails or throws, name it and its error, mark the
+%  run failed, and go on to the next page.
+draw_or_report(Out, Page) :-
+    Page = page(File, _, _, _),
+    (   catch(write_source_page(Out, Page), E, true)
+    ->  (   var(E) -> true
+        ;   print_message(error, E),
+            format(user_error, "dterm-rocq: ~w: not drawn, it raised the error above~n", [File]),
+            nb_setval(rq_failed, true)
+        )
+    ;   format(user_error, "dterm-rocq: ~w: not drawn, drawing it failed~n", [File]),
+        nb_setval(rq_failed, true)
     ).
 
 claim(Claims, page(File, _, _, _)) :-
