@@ -1,7 +1,8 @@
 -- Rewrites links in docs/*.md for the rendered site: foo.md becomes
--- foo.html, README.md the index, and paths outside docs/ point at GitHub.
+-- foo.html, README.md the index, and paths outside docs/ their drawn
+-- code page, or else GitHub (pages.lua).
 -- Mermaid code blocks become <pre class="mermaid"> for mermaid.js.
-local repo = "https://github.com/mbrock/filnix/blob/main/"
+local pages = dofile((PANDOC_SCRIPT_FILE:match("^(.*)/") or ".") .. "/pages.lua")
 
 function Link(el)
   local target = el.target
@@ -10,7 +11,7 @@ function Link(el)
   end
   local path, fragment = target:match("^([^#]*)(#?.*)$")
   if path:match("^%.%./") then
-    el.target = repo .. path:sub(4) .. fragment
+    el.target = pages.href(pages.normalize("docs", path), fragment, "docs")
   elseif path == "README.md" then
     el.target = "index.html" .. fragment
   else

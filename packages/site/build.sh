@@ -22,6 +22,23 @@ cp -r "$src/pages/." "$out/"
 # pages/style.css (copied above) is shared by the docs and the pages.
 cp "$src"/docs/*.txt "$out/docs/"
 
+# The code pages come first: a document's link to a code file goes to its
+# page when $SITE has one, else to GitHub (pages.lua).
+export SITE=$out
+mkdir -p "$out/nanofil"
+# Rendered in independent derivations, with the same complete cross-file
+# indexes and real proof states. Assembly never substitutes a fixture.
+cp -r "${PROLOG_PAGES:?the site needs rendered Prolog pages}/." "$out/nanofil/"
+cp -r "${ROCQ_PAGES:?the site needs rendered Rocq pages}" "$out/nanofil/rocq"
+
+# filnix's own Nix, drawn by dterm-nix with nanofil's dterm.css and
+# dterm.js (../nanofil/).
+echo "$(date -u +%FT%TZ) site: render $# Nix pages and option index"
+mkdir -p "$out/nix"
+cp "$src"/dterm-nix/dterm-nix.css "$src"/dterm-nix/dterm-nix.js "$out/nix/"
+(cd "$src" && swipl dterm-nix/dterm_nix.pl "$out/nix" . --files="$files" \
+  --options="$options" --nixpkgs="$nixpkgs" "$@" </dev/null)
+
 for md in "$src"/docs/*.md; do
   name=$(basename "$md" .md)
   echo "$(date -u +%FT%TZ) site: render docs/$name.md"
@@ -46,11 +63,6 @@ for md in "$src"/docs/*.md; do
     -V source="$name.md" "${args[@]}" -o "$out/docs/$html.html" "$md"
 done
 
-mkdir -p "$out/nanofil"
-# Rendered in independent derivations, with the same complete cross-file
-# indexes and real proof states. Assembly never substitutes a fixture.
-cp -r "${PROLOG_PAGES:?the site needs rendered Prolog pages}/." "$out/nanofil/"
-cp -r "${ROCQ_PAGES:?the site needs rendered Rocq pages}" "$out/nanofil/rocq"
 # The dterm workbench: the samples drawn by dterm, set side by side.
 echo "$(date -u +%FT%TZ) site: render dterm workbench"
 mkdir -p "$out/nanofil/workbench"
@@ -112,14 +124,6 @@ for md in "$src"/nanofil/docs/archive/*.md; do
     -V nanofil -M archived=true -V source="archive/$name.md" "${args[@]}" \
     -o "$out/nanofil/docs/$name.html" "$md"
 done
-
-# filnix's own Nix, drawn by dterm-nix with nanofil's dterm.css and
-# dterm.js (../nanofil/).
-echo "$(date -u +%FT%TZ) site: render $# Nix pages and option index"
-mkdir -p "$out/nix"
-cp "$src"/dterm-nix/dterm-nix.css "$src"/dterm-nix/dterm-nix.js "$out/nix/"
-(cd "$src" && swipl dterm-nix/dterm_nix.pl "$out/nix" . --files="$files" \
-  --options="$options" --nixpkgs="$nixpkgs" "$@" </dev/null)
 
 status=0
 for html in "$out"/nanofil/docs/*.html; do

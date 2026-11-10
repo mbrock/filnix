@@ -160,8 +160,19 @@ concept_path(Path, Pre, Href) :- atom_concat('../../rocq/', F, Path), file_name_
     format(atom(Href), "~wrocq/~w.html", [Pre, Page]).
 concept_path(Path, Pre, Href) :- atom_concat('../../src/', F, Path), file_name_extension(M, pl, F), !,
     format(atom(Href), "~w~w.html", [Pre, M]).
+%  A Nix file is its dterm-nix page: ../../nix/check.nix is
+%  nix/nanofil-nix-check.html, beside nanofil/ on the site.
+concept_path(Path, Pre, Href) :- file_name_extension(_, nix, Path),
+    concept_rel(Path, Parts), Parts \= [experiments|_], !,
+    atomic_list_concat(Parts, '-', B0), file_name_extension(B, nix, B0),
+    format(atom(Href), "~w../nix/~w.html", [Pre, B]).
 concept_path(Path, _, Href) :-
+    concept_rel(Path, Parts), atomic_list_concat(Parts, '/', Rel),
+    atom_concat('https://github.com/mbrock/filnix/blob/main/', Rel, Href).
+
+%  concept_rel(+Path, -Parts): Path, relative to nanofil/docs/concepts,
+%  as the parts of its path in the repository.
+concept_rel(Path, Parts) :-
     atomic_list_concat(Parts0, '/', Path),
     foldl([P, A0, A]>>( P == '..' -> A0 = [_|A] ; A = [P|A0] ), Parts0, [concepts, docs, nanofil], R),
-    reverse(R, Parts), atomic_list_concat(Parts, '/', Rel),
-    atom_concat('https://github.com/mbrock/filnix/blob/main/', Rel, Href).
+    reverse(R, Parts).
